@@ -124,6 +124,39 @@ describe('INT-249：分组视图未分组虚拟分组', () => {
     expect(store.groupsList.find(g => g.id === UNGROUPED_GROUP_ID)).toBeUndefined();
   });
 
+  it('INT-528：回收站/收藏态 getGroups 透传 onlyDeleted/favorite（分组视图空白根因）', async () => {
+    testcasesPortMocks.getGroups.mockResolvedValue({
+      items: [{ id: 'g1', name: '分组A', testCaseCount: 30 }],
+      total: 1, page: 1, perPage: 1000, pages: 1,
+    });
+    testcasesPortMocks.getAll.mockResolvedValue({
+      items: [caseOf(9)],
+      total: 18, page: 1, perPage: 50, pages: 1,
+    });
+
+    const store = useTestCaseStore();
+    // 回收站态：onlyDeleted=true
+    await store.fetchTestCases({ onlyDeleted: true, favorite: false });
+    expect(testcasesPortMocks.getGroups).toHaveBeenLastCalledWith(expect.objectContaining({
+      onlyDeleted: true,
+      favorite: false,
+    }));
+
+    // 收藏态：favorite=true
+    await store.fetchTestCases({ favorite: true, onlyDeleted: false });
+    expect(testcasesPortMocks.getGroups).toHaveBeenLastCalledWith(expect.objectContaining({
+      onlyDeleted: false,
+      favorite: true,
+    }));
+
+    // 普通态：默认 false/false 不漂移
+    await store.fetchTestCases();
+    expect(testcasesPortMocks.getGroups).toHaveBeenLastCalledWith(expect.objectContaining({
+      onlyDeleted: false,
+      favorite: false,
+    }));
+  });
+
   it('已存在同名真实分组时不挂载虚拟分组（避免同桶双计）', async () => {
     testcasesPortMocks.getGroups.mockResolvedValue({
       items: [

@@ -161,7 +161,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
       const perPage = params.perPage || DEFAULT_FETCH_PAGE_SIZE;
 
       const [groupsResponse, testCasesResponse] = await Promise.all([
-        testcasesPort.getGroups({ page: 1, perPage: 1000, algorithmType: params.algorithmType, testType: params.testType, keyword: params.keyword, dimensionId: params.dimensionId }),
+        testcasesPort.getGroups({ page: 1, perPage: 1000, algorithmType: params.algorithmType, testType: params.testType, keyword: params.keyword, dimensionId: params.dimensionId, favorite: params.favorite || false, onlyDeleted: params.onlyDeleted || false }),
         testcasesPort.getAll({
           page,
           perPage,

@@ -227,6 +227,34 @@ class TestTestCaseStatsFilters:
         assert counts.get(testcase_db['g1']) == 2
         assert counts.get(testcase_db['g2']) == 1
 
+    def test_deleted_true_counts_trashed_only(self, testcase_db):
+        """INT-528：deleted=True 统计回收站（软删除）用例，默认口径不受影响。"""
+        from task_service.infrastructure.persistence._testcase_query_mixin import TestCaseQueryMixin
+        repo = TestCaseQueryMixin()
+        # 默认未删除口径：c4（已删）不计入
+        assert repo.get_testcase_stats()['total'] == 3
+        assert repo.get_testcase_stats(group_by='group_id')['items'] == [
+            {'key': testcase_db['g1'], 'count': 2},
+            {'key': testcase_db['g2'], 'count': 1},
+        ]
+        # 回收站口径：仅 c4
+        assert repo.get_testcase_stats(deleted=True)['total'] == 1
+        assert repo.get_testcase_stats(deleted=True, group_by='group_id')['items'] == [
+            {'key': testcase_db['g1'], 'count': 1},
+        ]
+
+    def test_keyword_matches_trashed_case_in_recycle_scope(self, testcase_db):
+        """INT-528：回收站态 keyword 可命中已删用例（分组列表空白根因）。"""
+        from task_service.infrastructure.persistence._testcase_query_mixin import TestCaseQueryMixin
+        repo = TestCaseQueryMixin()
+        # 默认活跃口径：已删用例名不命中
+        assert repo.get_testcase_stats(keyword='已删')['total'] == 0
+        # 回收站口径：命中已删用例
+        assert repo.get_testcase_stats(keyword='已删', deleted=True)['total'] == 1
+        # 分组收敛口径：命中分组为 g1
+        items = repo.get_testcase_stats(keyword='已删', deleted=True, group_by='group_id')['items']
+        assert items == [{'key': testcase_db['g1'], 'count': 1}]
+
 
 class TestGroupServiceFilters:
     """缺陷3：网关 GroupService.get_all 过滤转发与分组收敛。"""
@@ -275,9 +303,44 @@ class TestGroupServiceFilters:
     def test_no_filter_keeps_all_groups(self, monkeypatch):
         payload, http_code, captured = self._run(
             monkeypatch, query={}, stats_items=[])
-        # 无筛选时仅做当前页计数统计，不携带用例级过滤参数
-        assert captured['stats_kwargs'] == {'group_by': 'group_id'}
+        # 无筛选时仅做当前页计数统计，不携带用例级过滤参数；
+        # INT-528：收藏/回收站口径（默认 False）随计数下推，与可见数据口径一致
+        assert captured['stats_kwargs'] == {'group_by': 'group_id', 'favorite': False, 'deleted': False}
         assert payload['data']['total'] == 2
+
+    def test_recycle_scope_forwarded_with_keyword(self, monkeypatch):
+        """INT-528：回收站态 keyword 筛选下 favorite/deleted 随统计下推。"""
+        payload, http_code, captured = self._run(
+            monkeypatch,
+            query={'keyword': '已删', 'only_deleted': 'true'},
+            stats_items=[{'key': 'g1', 'count': 1}])
+
+        assert captured['stats_kwargs']['keyword'] == '已删'
+        assert captured['stats_kwargs']['group_by'] == 'group_id'
+        assert captured['stats_kwargs']['favorite'] is False
+        assert captured['stats_kwargs']['deleted'] is True
+        assert [i['id'] for i in payload['data']['items']] == ['g1']
+
+    def test_recycle_scope_forwarded_without_filters(self, monkeypatch):
+        """INT-528：回收站态无关键字时分组计数也走已删口径。"""
+        payload, http_code, captured = self._run(
+            monkeypatch,
+            query={'only_deleted': 'true'},
+            stats_items=[{'key': 'g1', 'count': 1}])
+
+        assert captured['stats_kwargs'] == {'group_by': 'group_id', 'favorite': False, 'deleted': True}
+        assert payload['data']['total'] == 2
+
+    def test_favorite_scope_forwarded(self, monkeypatch):
+        """INT-528：收藏态筛选 favorite=True 随统计下推。"""
+        payload, http_code, captured = self._run(
+            monkeypatch,
+            query={'favorite': 'true', 'keyword': '收藏'},
+            stats_items=[{'key': 'g2', 'count': 1}])
+
+        assert captured['stats_kwargs']['favorite'] is True
+        assert captured['stats_kwargs']['deleted'] is False
+        assert [i['id'] for i in payload['data']['items']] == ['g2']
 
 
 # ==================== 缺陷4：本地存储回退下载路由 ====================

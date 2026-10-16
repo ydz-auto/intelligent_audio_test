@@ -46,6 +46,10 @@ class GroupListQuery(APIModel):
     keyword: Optional[str] = Field(None)
     type: Optional[str] = Field(None, validation_alias=AliasChoices('type', 'test_type', 'testType'))
     dimension_id: Optional[int] = Field(None, validation_alias=AliasChoices('dimension_id', 'dimensionId'))
+    # INT-528：收藏 / 回收站口径（与 TestCaseListQuery 一致，双视图贯通）——
+    # favorite=true 仅当前用户收藏；only_deleted=true 仅回收站软删除项
+    favorite: Optional[bool] = Field(False)
+    only_deleted: Optional[bool] = Field(False)
 
 
 class GroupDeleteQuery(APIModel):

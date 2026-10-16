@@ -57,11 +57,13 @@ class _TaskDataProxy:
 
     def get_testcase_stats(self, algorithm_type=None, group_id=None, group_by=None,
                            test_type=None, keyword=None, dimension_id=None,
-                           reraise=False):
+                           favorite=None, deleted=None, reraise=False):
         """通过 gRPC 聚合统计 TestCase（group_by 可选 algorithm_type/group_id）
 
         test_type 为执行口径（api/e2e，task_service 侧按配置形态派生）；
         keyword/dimension_id 供分组列表筛选（INT-146）。
+        favorite（INT-528）：True 仅当前用户收藏；deleted（INT-528）：
+        True 统计回收站（软删除）用例，默认统计未删除（镜像 get_task_stats）。
         reraise=True 时失败上抛（首页统计链路 INT-204，同 get_task_stats）；
         默认 False 维持吞异常返回 {} 的既有失败语义（分组列表/删除前计数等）。
         """
@@ -74,6 +76,8 @@ class _TaskDataProxy:
                 test_type=test_type or '',
                 keyword=keyword or '',
                 dimension_id=int(dimension_id) if dimension_id else 0,
+                favorite=bool(favorite) if favorite is not None else False,
+                deleted=bool(deleted) if deleted is not None else False,
             ))
             if not resp.success:
                 raise RuntimeError(f"GetTestCaseStats gRPC 失败: {resp.message}")

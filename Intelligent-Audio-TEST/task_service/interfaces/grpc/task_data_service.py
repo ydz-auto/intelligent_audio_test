@@ -411,8 +411,11 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
         keyword / dimension_id 过滤，可选 group_by 字段返回分组计数。
         不指定 group_by 时返回 {'total': N}；指定 group_by 时返回
         {'items': [{key, count}, ...]}。
+        favorite（INT-528）：仅当前用户收藏（user_id 经 x-user-id metadata 透传）；
+        deleted（INT-528）：True 统计回收站（软删除）用例，默认未删除。
         """
         try:
+            from shared.infrastructure.user_context import user_id_from_context
             result = testcase_repository.get_testcase_stats(
                 algorithm_type=request.algorithm_type or '',
                 group_id=request.group_id or '',
@@ -420,6 +423,9 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
                 test_type=request.test_type or '',
                 keyword=request.keyword or '',
                 dimension_id=request.dimension_id or None,
+                favorite=bool(request.favorite),
+                deleted=bool(request.deleted),
+                user_id=user_id_from_context(context),
             )
             if 'error' in result:
                 return self._resp(False, result['error'])

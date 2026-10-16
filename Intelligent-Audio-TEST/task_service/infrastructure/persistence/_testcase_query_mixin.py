@@ -323,11 +323,16 @@ class TestCaseQueryMixin:
 
     def get_testcase_stats(self, algorithm_type: str = '', group_id: str = '',
                            group_by: str = '', dimension_id: int = None,
-                           keyword: str = '', test_type: str = '') -> dict:
+                           keyword: str = '', test_type: str = '',
+                           favorite: bool = False, deleted: bool = False,
+                           user_id: int = None) -> dict:
         """聚合统计 TestCase — count / group_by。
 
         多维筛选：algorithm_type / dimension_id / group_id / keyword /
-        test_type（执行口径，test_type 列已废弃后按配置形态派生）
+        test_type（执行口径，test_type 列已废弃后按配置形态派生）；
+        favorite（INT-528）：仅当前用户收藏（user_id 来自 x-user-id metadata，
+        与 query_testcases 同口径）；deleted（INT-528）：True 统计回收站
+        （软删除）用例，默认统计未删除用例（镜像 get_task_stats 的 deleted）。
         """
         from sqlalchemy import func as _func
 
@@ -335,14 +340,20 @@ class TestCaseQueryMixin:
         try:
             return self._get_testcase_stats_impl(
                 session, _func, algorithm_type, group_id, group_by,
-                dimension_id, keyword, test_type)
+                dimension_id, keyword, test_type, favorite, deleted, user_id)
         finally:
             session.close()
 
     def _get_testcase_stats_impl(self, session, _func, algorithm_type, group_id,
-                                 group_by, dimension_id, keyword, test_type) -> dict:
+                                 group_by, dimension_id, keyword, test_type,
+                                 favorite=False, deleted=False, user_id=None) -> dict:
         """get_testcase_stats 的实现（拆分大函数）。"""
-        query = session.query(TestCase).filter(TestCase.deleted == False)  # noqa: E712
+        query = session.query(TestCase)
+        # INT-528：回收站口径可统计软删除用例；默认与既有行为一致仅统计未删除
+        if deleted:
+            query = query.filter(TestCase.deleted == True)  # noqa: E712
+        else:
+            query = query.filter(TestCase.deleted == False)  # noqa: E712
         if algorithm_type:
             query = query.filter(TestCase.algorithm_type == algorithm_type)
         if group_id:
@@ -356,6 +367,20 @@ class TestCaseQueryMixin:
                 (TestCase.name.like(f'%{keyword}%')) |
                 (TestCase.description.like(f'%{keyword}%'))
             )
+
+        # INT-528：仅当前用户收藏（与 query_testcases 同口径，user_id 缺失恒空）
+        if favorite:
+            from shared.models.common_enums import EntityType
+            from task_service.infrastructure.persistence.models import Favorite
+            if not user_id:
+                return {'items': [], 'total': 0} if group_by else {'total': 0}
+            from sqlalchemy import select as sa_select
+            query = query.filter(sa_select(Favorite.id)
+                                 .where(Favorite.user_id == user_id,
+                                        Favorite.entity_type == EntityType.TESTCASE.value,
+                                        Favorite.entity_id == TestCase.id)
+                                 .correlate(TestCase)
+                                 .exists())
 
         # test_type 执行口径由 config 形态（+上传双变体名后缀）派生，
         # SQL 无法过滤，命中时逐行取 config 后 Python 侧过滤

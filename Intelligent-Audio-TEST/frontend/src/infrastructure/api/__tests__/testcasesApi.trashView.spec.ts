@@ -50,6 +50,17 @@ describe('testcasesApi 收藏 / 回收站参数契约（INT-215）', () => {
     expect(params.only_deleted).toBe(true);
   });
 
+  it('getGroups 分组列表同样映射 onlyDeleted→only_deleted、favorite 透传（INT-528）', async () => {
+    mockedRequest.mockResolvedValueOnce({ items: [], total: 0, page: 1, per_page: 50, pages: 1 });
+    await testcasesApi.getGroups({ page: 1, perPage: 1000, favorite: true, onlyDeleted: true });
+    const [method, url, , options] = mockedRequest.mock.calls[0];
+    expect(method).toBe('GET');
+    expect(url).toBe('/groups');
+    const params = options?.params as Record<string, any>;
+    expect(params.favorite).toBe(true);
+    expect(params.only_deleted).toBe(true);
+  });
+
   it('getIdsByFilter 请求体映射 onlyDeleted→only_deleted（回收站全部恢复圈定口径）', async () => {
     mockedRequest.mockResolvedValueOnce({ ids: ['a', 'b'] });
     const result = await testcasesApi.getIdsByFilter({ onlyDeleted: true, testType: 'api' });

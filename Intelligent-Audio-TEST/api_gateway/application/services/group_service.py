@@ -37,6 +37,9 @@ class GroupService:
         keyword = query.keyword
         test_type = query.type
         dimension_id = query.dimension_id
+        # INT-528：收藏 / 回收站口径（与 TestCaseListQuery 一致，双视图贯通）
+        favorite = query.favorite or False
+        only_deleted = query.only_deleted or False
         # 分组列表按"分组下匹配用例数"筛选（V9.7.10 对齐，INT-146）：
         # 任一用例级筛选存在时，仅返回有匹配用例的分组，计数为匹配用例数
         has_case_filters = bool(algorithm_type or test_type or keyword or dimension_id)
@@ -55,9 +58,11 @@ class GroupService:
         case_counts = {}
         if has_case_filters:
             # gRPC GetTestCaseStats 支持用例级筛选 + group_by='group_id'
+            # INT-528：收藏/回收站口径随筛选项下推，回收站态 keyword 命中已删用例
             stats = _tds.get_testcase_stats(
                 algorithm_type=algorithm_type, group_by='group_id',
                 test_type=test_type, keyword=keyword, dimension_id=dimension_id,
+                favorite=favorite, deleted=only_deleted,
             )
             items = stats.get('items') or []
             case_counts = {item.get('key', ''): item.get('count', 0) for item in items}
@@ -73,7 +78,10 @@ class GroupService:
         if not has_case_filters:
             group_ids = [str(g.get('id')) for g in page_groups]
             if group_ids:
-                stats = _tds.get_testcase_stats(group_by='group_id')
+                # INT-528：收藏/回收站口径同步作用于无筛选分组计数，
+                # 回收站态分组卡计数为已删用例数（与可见数据一致）
+                stats = _tds.get_testcase_stats(
+                    group_by='group_id', favorite=favorite, deleted=only_deleted)
                 items = stats.get('items') or []
                 case_counts = {item.get('key', ''): item.get('count', 0) for item in items}
                 # 仅保留当前页分组

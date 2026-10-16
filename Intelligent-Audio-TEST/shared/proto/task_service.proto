@@ -1018,6 +1018,8 @@ message TestCaseAggStatsRequest {
   string test_type = 4;       // 可选，按用例类型过滤（api / e2e；test_type 列已废弃，按配置形态派生）
   string keyword = 5;         // 可选，按用例 id/name/description 模糊匹配（分组列表筛选）
   int32 dimension_id = 6;     // 可选，按评估维度过滤（config JSON 匹配，分组列表筛选）
+  bool favorite = 7;          // 可选，true 仅当前用户收藏（INT-528：分组列表收藏口径）
+  bool deleted = 8;           // 可选，true 统计回收站（软删除）用例；默认统计未删除用例（INT-528，镜像 TaskAggStatsRequest.deleted）
 }
 
 // 设备占用聚合请求（INT-493 §4.3）——device_ids/lab_id 均可选，空 = 全物理设备
