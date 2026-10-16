@@ -42,4 +42,10 @@ export interface TestDeviceItemDto {
   lab_name: string | null
   /** INT-487：待后端暴露 occupied/testing（§11-26），mock 本地瞬时态兜底 */
   occupied: boolean
+  /** §6.2 高级设置（设备管理:292-296：API级别/备注/标签/自定义属性；后端 schema 未覆盖，mock 先行） */
+  api_level?: string | null
+  remark?: string | null
+  tags?: string[] | null
+  custom_attributes?: string[] | null
+  priority?: number | null
 }

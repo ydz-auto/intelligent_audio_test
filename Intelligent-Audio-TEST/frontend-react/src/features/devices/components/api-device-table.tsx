@@ -7,6 +7,7 @@
  */
 import { BadgeCheck, ChevronDown, ChevronRight, Cloud, Link2Off } from 'lucide-react'
 import { Fragment, useState } from 'react'
+import { Link } from '@tanstack/react-router'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -26,6 +27,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import {
+  StatusBadge as UiStatusBadge,
+  type StatusVariant,
+} from '@/features/dashboard/components/ui/status-badge'
+import { StaticDataTable } from '@/features/system-settings/components/static-data-table'
 import { cn } from '@/lib/utils'
 import type { ApiDevice } from '@/domain/models/apiDevice'
 import { API_ENV_META, API_PROTOCOL_META } from '@/domain/models/apiDevice'
@@ -44,6 +50,7 @@ export interface ApiDeviceTableProps {
   canUpdate: boolean
   canDelete: boolean
   canControl: boolean
+  canHealth: boolean
   onDetail: (device: ApiDevice) => void
   onEdit: (device: ApiDevice) => void
   onHealth: (device: ApiDevice) => void
@@ -52,27 +59,11 @@ export interface ApiDeviceTableProps {
   onEmptyAdd: () => void
 }
 
-function StatusBadge({ status }: { status: string | null }) {
+/** API 状态徽章（P3-28 返修：复用共享 StatusBadge，删除本地重造） */
+function ApiStatusBadge({ status }: { status: string | null }) {
   if (!status) return <span className='text-muted-foreground'>—</span>
-  return (
-    <Badge
-      variant='outline'
-      className={cn(
-        'gap-1.5 px-2 font-normal',
-        status === 'online' && 'text-success border-success/30 bg-success/10',
-        status === 'offline' && 'text-muted-foreground'
-      )}
-    >
-      <span
-        aria-hidden='true'
-        className={cn(
-          'size-1.5 rounded-full',
-          status === 'online' ? 'bg-[var(--success)]' : 'bg-[var(--muted-foreground)]'
-        )}
-      />
-      {status === 'online' ? '在线' : '离线'}
-    </Badge>
-  )
+  const variant: StatusVariant = status === 'online' ? 'success' : 'neutral'
+  return <UiStatusBadge label={status === 'online' ? '在线' : '离线'} variant={variant} size='sm' />
 }
 
 export function ApiDeviceTable(props: ApiDeviceTableProps) {
@@ -175,7 +166,7 @@ export function ApiDeviceTable(props: ApiDeviceTableProps) {
                   <tr
                     className={cn(
                       'hover:bg-muted/40 border-border/50 border-b last:border-b-0',
-                      offline && 'bg-muted/20',
+                      offline && 'bg-muted/20 border-l-4 border-l-[var(--table-disabled)]',
                       props.selectedIds.has(row.id) && 'bg-primary/[0.04] dark:bg-primary/10'
                     )}
                   >
@@ -242,7 +233,7 @@ export function ApiDeviceTable(props: ApiDeviceTableProps) {
                       )}
                     </td>
                     <td className='px-3 py-2'>
-                      <StatusBadge status={row.status} />
+                      <ApiStatusBadge status={row.status} />
                     </td>
                     <td className='px-3 py-2'>
                       <Badge variant='secondary' className='rounded-md px-1.5 font-normal'>
@@ -272,9 +263,17 @@ export function ApiDeviceTable(props: ApiDeviceTableProps) {
                           {row.rmsSplMappingName}
                         </Badge>
                       ) : (
-                        <span className='text-muted-foreground text-xs'>
+                        // §3.6/§9：未关联 RMS-SPL 显「去配置」link → /SPLMapping?domain=digital（P3-22 返修）
+                        <span className='text-muted-foreground inline-flex items-center gap-1 text-xs'>
                           未关联
-                          <Link2Off aria-hidden='true' className='text-muted-foreground ms-1 inline size-3' />
+                          <Link2Off aria-hidden='true' className='text-muted-foreground size-3' />
+                          <Link
+                            to='/SPLMapping'
+                            search={{ domain: 'digital' }}
+                            className='text-primary hover:underline'
+                          >
+                            去配置
+                          </Link>
                         </span>
                       )}
                     </td>
@@ -290,6 +289,7 @@ export function ApiDeviceTable(props: ApiDeviceTableProps) {
                           canUpdate={props.canUpdate}
                           canDelete={props.canDelete}
                           canControl={props.canControl}
+                          canHealth={props.canHealth}
                           canPlaybackControl={false}
                           onDetail={() => props.onDetail(row)}
                           onEdit={() => props.onEdit(row)}
@@ -302,6 +302,8 @@ export function ApiDeviceTable(props: ApiDeviceTableProps) {
                           onPlayTest={() => undefined}
                           onResultAnalysis={() => undefined}
                           onDiagnose={() => undefined}
+                          onInstallApp={() => undefined}
+                          onUninstallApp={() => undefined}
                         />
                       </div>
                     </td>
@@ -310,46 +312,53 @@ export function ApiDeviceTable(props: ApiDeviceTableProps) {
                     <tr className='border-border/50 border-b bg-muted/30'>
                       <td colSpan={props.batchMode ? 13 : 12} className='px-4 py-2.5'>
                         <div className='text-muted-foreground mb-1.5 text-xs'>端点明细</div>
-                        <table className='w-full text-xs'>
-                          <thead>
-                            <tr className='bg-[var(--table-header)] text-xs text-muted-foreground'>
-                              <th className='px-2 py-1.5 text-left font-medium'>URL</th>
-                              <th className='px-2 py-1.5 text-left font-medium'>名称</th>
-                              <th className='px-2 py-1.5 text-right font-medium'>优先级</th>
-                              <th className='px-2 py-1.5 text-right font-medium'>最大进程</th>
-                              <th className='px-2 py-1.5 text-right font-medium'>超时</th>
-                              <th className='px-2 py-1.5 text-right font-medium'>音频时长</th>
-                              <th className='px-2 py-1.5 text-left font-medium'>状态</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {row.endpoints.length === 0 ? (
-                              <tr>
-                                <td colSpan={7} className='text-muted-foreground px-2 py-3 text-center'>
-                                  暂无端点，请在编辑弹窗中配置
-                                </td>
-                              </tr>
-                            ) : (
-                              row.endpoints.map((ep) => (
-                                <tr key={ep.id ?? ep.endpoint} className='border-border/40 border-b last:border-b-0'>
-                                  <td className='max-w-56 px-2 py-1.5 font-mono truncate'>{ep.endpoint}</td>
-                                  <td className='px-2 py-1.5'>{ep.name ?? '—'}</td>
-                                  <td className='px-2 py-1.5 text-right tabular-nums'>{ep.priority ?? '—'}</td>
-                                  <td className='px-2 py-1.5 text-right tabular-nums'>{ep.maxProcess ?? '—'}</td>
-                                  <td className='px-2 py-1.5 text-right tabular-nums'>
-                                    {ep.maxTimeout != null ? `${ep.maxTimeout}s` : '—'}
-                                  </td>
-                                  <td className='px-2 py-1.5 text-right tabular-nums'>
-                                    {ep.maxAudioDuration != null ? `${ep.maxAudioDuration}s` : '—'}
-                                  </td>
-                                  <td className='px-2 py-1.5'>
-                                    <StatusBadge status={ep.status} />
-                                  </td>
-                                </tr>
-                              ))
-                            )}
-                          </tbody>
-                        </table>
+                        {/* P3-27 返修：复用 StaticDataTable（端点只读表） */}
+                        <StaticDataTable
+                          columns={[
+                            {
+                              key: 'endpoint',
+                              header: 'URL',
+                              className: 'max-w-56 font-mono',
+                              render: (ep) => <span className='block truncate'>{ep.endpoint}</span>,
+                            },
+                            { key: 'name', header: '名称', render: (ep) => ep.name ?? '—' },
+                            {
+                              key: 'priority',
+                              header: '优先级',
+                              className: 'text-right tabular-nums',
+                              render: (ep) => ep.priority ?? '—',
+                            },
+                            {
+                              key: 'maxProcess',
+                              header: '最大进程',
+                              className: 'text-right tabular-nums',
+                              render: (ep) => ep.maxProcess ?? '—',
+                            },
+                            {
+                              key: 'maxTimeout',
+                              header: '超时',
+                              className: 'text-right tabular-nums',
+                              render: (ep) =>
+                                ep.maxTimeout != null ? `${ep.maxTimeout}s` : '—',
+                            },
+                            {
+                              key: 'maxAudioDuration',
+                              header: '音频时长',
+                              className: 'text-right tabular-nums',
+                              render: (ep) =>
+                                ep.maxAudioDuration != null ? `${ep.maxAudioDuration}s` : '—',
+                            },
+                            {
+                              key: 'status',
+                              header: '状态',
+                              render: (ep) => <ApiStatusBadge status={ep.status} />,
+                            },
+                          ]}
+                          rows={row.endpoints}
+                          rowKey={(ep) => ep.id ?? ep.endpoint}
+                          emptyText='暂无端点，请在编辑弹窗中配置'
+                          minWidth='640px'
+                        />
                       </td>
                     </tr>
                   )}

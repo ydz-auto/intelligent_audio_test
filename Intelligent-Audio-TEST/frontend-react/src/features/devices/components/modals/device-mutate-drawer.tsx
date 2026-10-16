@@ -1,20 +1,22 @@
 /**
  * 设备新增/编辑抽屉（16_设备域.md §6.2；Sheet sideDrawer `sm:max-w-[600px]`）。
- * 分节「基本信息」（名称（必填）/描述）+ 分节随页签分叉：
- * - 测试设备：型号（必填）/设备类型（必填）/设备系统（必填，iOS·Android·HarmonyOS）/系统版本（必填）/
- *   应用名称（必填）/应用版本（必填）/连接方式（必填，USB连接·远程连接）/设备序列号（必填，选设备自动填充
- *   disabled）/IP地址·端口(conditional remote)/是否需要提示词(switch)/算法类型(多选 chips)/
- *   状态采集字段（只读：电池/存储/网络）/高级设置（Collapsible：备注/优先级）
- * - 播放设备：型号（必填）/设备类型（必填，干声·噪声）/系统唯一标识（必填，自动填充 disabled）/
- *   通道索引/支持的通道数/支持的格式(多选)/采样率/声压映射 select
- * - 测试 API：API名称（必填）/供应商/API 端点（必填，URL）/关联算法（必填）/API 元数据(协议+环境)/
- *   默认最大进程数/默认最大超时/默认最大音频时长（编辑复用 INT-355 §5.3 口径，字段以 INT-355 为准）
- * 提交前必填校验；成功 toast「{实体}已保存」+ 列表失效重拉（mock 内存库 invalidate）。
- * mock 阶段用受控 state 表单（对齐 audio-import modals 模式；接线后 RHF+zod 化）。
+ * 分节「基本信息」（名称/描述）+ 分节随页签分叉：
+ * - 测试设备：型号/设备类型/设备系统/系统版本/API级别（随系统切换）/应用名称/应用版本/连接方式/
+ *   设备序列号/IP·端口(conditional remote)/是否需要提示词/算法类型/状态采集（只读）/
+ *   高级设置（备注/标签/自定义属性/优先级）
+ * - 播放设备：型号/设备类型/系统唯一标识/通道索引/支持的通道数/支持的格式/采样率/声压映射
+ * - 测试 API：API名称/供应商/API端点/关联算法（默认全局算法）/协议/环境/最大进程数/超时/音频时长/
+ *   端点列表（ArrayField，编辑回显）
+ * 表单按 AGENTS §3.7 落 RHF+zod（schema 见 lib/device-form-schema.ts）。
+ * P2-1 返修：编辑提交 patch 只携带表单可编辑字段，不重置 status/occupied/labId/labName/
+ * driverName/lastOnlineAt/createdAt 等非表单字段。
  */
-import { ChevronDown, Plus } from 'lucide-react'
+import { ChevronDown, Plus, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -39,16 +41,24 @@ import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import type { DevicesTabKey } from '@/features/devices/constants'
 import type { DeviceMutateState } from '@/features/devices/types'
+import {
+  apiDeviceFormSchema,
+  playbackDeviceFormSchema,
+  testDeviceFormSchema,
+} from '@/features/devices/lib/device-form-schema'
+import { normalizeDeviceSystem } from '@/features/devices/lib/device-system'
+import { MOCK_ASSOCIATE_SPL_OPTIONS } from '@/features/devices/components/modals/associate-spl-dialog'
 import { useDeviceMutations } from '@/application/devices/use-devices'
 import type { TestDevice } from '@/domain/models/testDevice'
 import type { PlaybackDevice } from '@/domain/models/playbackDevice'
 import type { ApiDevice } from '@/domain/models/apiDevice'
+import type { ApiEndpoint } from '@/domain/models/apiDevice'
 
 export interface DeviceMutateDrawerProps {
   state: DeviceMutateState
   onOpenChange: (open: boolean) => void
-  /** 扫描预填（§6.1：测试设备 name/model/serialNumber/system 等） */
-  prefill?: Partial<TestDevice> | null
+  /** 扫描预填（§6.1：随页签分叉） */
+  prefill?: Partial<TestDevice> | Partial<PlaybackDevice> | Partial<ApiDevice> | null
 }
 
 const SYSTEM_OPTIONS = [
@@ -57,17 +67,124 @@ const SYSTEM_OPTIONS = [
   { value: 'HarmonyOS', label: 'HarmonyOS' },
 ]
 
+const ANDROID_API_LEVELS = ['26', '28', '30', '32', '33', '34']
+const HARMONY_API_LEVELS = ['3.0', '3.1', '3.2', '4.0', '4.2']
 const FORMAT_OPTIONS = ['WAV', 'MP3', 'FLAC', 'AAC', 'OGG', 'WMA']
+/** 测试设备算法类型（对照 mock supported_algorithms 值，device.py supported_algorithms 实测） */
 const ALGORITHM_OPTIONS = ['asr_streaming', 'wakeword_detect', 'tts_eval']
+const PROTOCOL_OPTIONS = ['http', 'https', 'ws', 'wss']
+const ENV_OPTIONS = [
+  { value: 'development', label: '开发' },
+  { value: 'testing', label: '测试' },
+  { value: 'production', label: '生产' },
+]
+
+/** API 端点编辑行（§6.2 apiEndpoint ArrayField；INT-355 §5.3 口径子集） */
+interface EndpointFormRow {
+  key: string
+  endpoint: string
+  name: string
+  priority: string
+  maxProcess: string
+  maxTimeout: string
+  maxAudioDuration: string
+}
+
+const ENDPOINT_EMPTY: EndpointFormRow = {
+  key: '',
+  endpoint: '',
+  name: '',
+  priority: '1',
+  maxProcess: '1',
+  maxTimeout: '30',
+  maxAudioDuration: '60',
+}
+
+function endpointKey(): string {
+  return Math.random().toString(36).slice(2, 9)
+}
+
+/** 三页签表单 schema（§6.2 分叉；z.discriminatedUnion 单 useForm 承载） */
+const deviceFormSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('test'), ...testDeviceFormSchema.shape }),
+  z.object({ kind: z.literal('playback'), ...playbackDeviceFormSchema.shape }),
+  z.object({ kind: z.literal('api'), ...apiDeviceFormSchema.shape }),
+])
+
+type DeviceForm = z.infer<typeof deviceFormSchema>
+
+function buildDefaults(
+  state: DeviceMutateState,
+  prefill: Partial<TestDevice> | Partial<PlaybackDevice> | Partial<ApiDevice> | null | undefined
+): DeviceForm {
+  if (state.kind === 'test') {
+    const device = state.mode === 'edit' ? (state.device as TestDevice | null) : null
+    const scanPrefill = prefill as Partial<TestDevice> | null
+    return {
+      kind: 'test',
+      name: device?.name ?? scanPrefill?.name ?? '',
+      description: device?.description ?? '',
+      remark: device?.remark ?? '',
+      model: device?.model ?? scanPrefill?.model ?? '',
+      deviceType: device?.type ?? scanPrefill?.type ?? 'physical',
+      system: normalizeDeviceSystem(device?.system ?? scanPrefill?.system)?.label ?? 'Android',
+      systemVersion: device?.systemVersion ?? scanPrefill?.systemVersion ?? '',
+      apiLevel: device?.apiLevel ?? '',
+      appName: device?.appName ?? '',
+      appVersion: device?.appVersion ?? '',
+      connectionType: device?.connectionType ?? 'usb',
+      serialNumber: device?.serialNumber ?? scanPrefill?.serialNumber ?? '',
+      ip: device?.ip ?? scanPrefill?.ip ?? '',
+      port: '5555',
+      needsPromptAudio: device?.needsPromptAudio ?? false,
+      algorithms: device?.supportedAlgorithms ?? [],
+      tags: device?.tags ?? [],
+      customAttributes: (device?.customAttributes ?? []).join(', '),
+      priority: String(device?.priority ?? 5),
+    }
+  }
+  if (state.kind === 'playback') {
+    const device = state.mode === 'edit' ? (state.device as PlaybackDevice | null) : null
+    return {
+      kind: 'playback',
+      name: device?.name ?? '',
+      description: device?.description ?? '',
+      model: device?.model ?? '',
+      deviceType: device?.deviceType ?? 'dry',
+      deviceUniqueId: device?.deviceUniqueId ?? '',
+      channelIndex: String(device?.channelIndex ?? 0),
+      supportedChannels: device?.supportedChannels != null ? String(device.supportedChannels) : '',
+      supportedFormats: device?.supportedFormats ?? [],
+      sampleRate: String(device?.sampleRate ?? 48000),
+      splMappingId: device?.currentSplMappingId != null ? String(device.currentSplMappingId) : '',
+    }
+  }
+  const device = state.mode === 'edit' ? (state.device as ApiDevice | null) : null
+  return {
+    kind: 'api',
+    name: device?.name ?? '',
+    description: device?.description ?? '',
+    vendor: device?.vendor ?? '',
+    apiUrl: device?.apiUrl ?? '',
+    protocol: device?.protocol ?? 'https',
+    environment: device?.environment ?? 'testing',
+    algorithmType: device?.algorithmType ?? 'asr_streaming',
+    maxProcess: String(device?.defaultMaxProcess ?? 5),
+    maxTimeout: String(device?.defaultMaxTimeout ?? 30),
+    maxAudioDuration: String(device?.defaultMaxAudioDuration ?? 60),
+  }
+}
 
 function Field({
   label,
   required,
+  error,
   children,
   className,
 }: {
   label: string
   required?: boolean
+  error?: string
   children: React.ReactNode
   className?: string
 }) {
@@ -78,6 +195,43 @@ function Field({
         {required && <span className='text-destructive'> *</span>}
       </Label>
       {children}
+      {error && <p className='text-destructive text-xs'>{error}</p>}
+    </div>
+  )
+}
+
+/** 标签/算法多选 chips（§6.2 BadgeListCell 输入态） */
+function ChipField({
+  label,
+  options,
+  selected,
+  onToggle,
+}: {
+  label: string
+  options: readonly string[]
+  selected: string[]
+  onToggle: (value: string) => void
+}) {
+  return (
+    <div className='flex flex-col gap-1'>
+      <Label className='text-xs'>{label}</Label>
+      <div className='flex flex-wrap gap-1.5'>
+        {options.map((option) => (
+          <button
+            key={option}
+            type='button'
+            onClick={() => onToggle(option)}
+            className={cn(
+              'rounded-md border px-2 py-1 text-xs transition-colors',
+              selected.includes(option)
+                ? 'border-primary bg-primary/10 text-primary'
+                : 'hover:bg-muted'
+            )}
+          >
+            {option}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
@@ -91,178 +245,180 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
   const { createTest, updateTest, createPlayback, updatePlayback, createApi, updateApi } =
     useDeviceMutations()
 
-  // mock 阶段受控表单（§6.2 字段子集；接线后 RHF+zod）
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [model, setModel] = useState('')
-  const [deviceType, setDeviceType] = useState('physical')
-  const [system, setSystem] = useState('Android')
-  const [systemVersion, setSystemVersion] = useState('')
-  const [appName, setAppName] = useState('')
-  const [appVersion, setAppVersion] = useState('')
-  const [connectionType, setConnectionType] = useState('usb')
-  const [serialNumber, setSerialNumber] = useState('')
-  const [ip, setIp] = useState('')
-  const [port, setPort] = useState('5555')
-  const [needsPrompt, setNeedsPrompt] = useState(false)
-  const [algorithms, setAlgorithms] = useState<string[]>([])
-  const [priority, setPriority] = useState('5')
-  const [vendor, setVendor] = useState('')
-  const [apiUrl, setApiUrl] = useState('')
-  const [protocol, setProtocol] = useState('https')
-  const [environment, setEnvironment] = useState('testing')
-  const [maxProcess, setMaxProcess] = useState('5')
-  const [maxTimeout, setMaxTimeout] = useState('30')
-  const [maxAudioDuration, setMaxAudioDuration] = useState('60')
-  const [supportedFormats, setSupportedFormats] = useState<string[]>([])
-  const [channelIndex, setChannelIndex] = useState('0')
-  const [sampleRate, setSampleRate] = useState('48000')
+  const form = useForm<DeviceForm>({
+    resolver: zodResolver(deviceFormSchema),
+    values: buildDefaults(state, prefill),
+  })
+
+  // API 端点数组（§6.2 apiEndpoint ArrayField；受控于本地 state，编辑回显）
+  const [endpoints, setEndpoints] = useState<EndpointFormRow[]>([])
   const [saving, setSaving] = useState(false)
 
-  // 打开/切换模式时预填（编辑回显 + 扫描预填 §6.1）
+  // 打开 API 编辑时回显端点列表；关闭/切换页签时清空
   useEffect(() => {
-    if (!open) return
-    setName(editingDevice?.name ?? prefill?.name ?? '')
-    setDescription(editingDevice?.description ?? '')
-    if (kind === 'test') {
-      const device = editingDevice as TestDevice | null
-      setModel(device?.model ?? prefill?.model ?? '')
-      setSystem(device?.system ?? prefill?.system ?? 'Android')
-      setSystemVersion(device?.systemVersion ?? prefill?.systemVersion ?? '')
-      setAppName(device?.appName ?? '')
-      setAppVersion(device?.appVersion ?? '')
-      setConnectionType(device?.connectionType ?? 'usb')
-      setSerialNumber(device?.serialNumber ?? prefill?.serialNumber ?? '')
-      setIp(device?.ip ?? '')
-      setNeedsPrompt(device?.needsPromptAudio ?? false)
-      setAlgorithms(device?.supportedAlgorithms ?? [])
-      setPriority('5')
-    } else if (kind === 'playback') {
-      const device = editingDevice as PlaybackDevice | null
-      setModel(device?.model ?? '')
-      setDeviceType(device?.deviceType ?? 'dry')
-      setSerialNumber(device?.deviceUniqueId ?? '')
-      setChannelIndex(String(device?.channelIndex ?? 0))
-      setSampleRate(String(device?.sampleRate ?? 48000))
-      setSupportedFormats(device?.supportedFormats ?? [])
-    } else {
-      const device = editingDevice as ApiDevice | null
-      setVendor(device?.vendor ?? '')
-      setApiUrl(device?.apiUrl ?? '')
-      setProtocol(device?.protocol ?? 'https')
-      setEnvironment(device?.environment ?? 'testing')
-      setMaxProcess(String(device?.defaultMaxProcess ?? 5))
-      setMaxTimeout(String(device?.defaultMaxTimeout ?? 30))
-      setMaxAudioDuration(String(device?.defaultMaxAudioDuration ?? 60))
+    if (kind === 'api' && state.open && state.mode === 'edit' && state.device) {
+      const api = state.device as ApiDevice
+      setEndpoints(
+        (api.endpoints ?? []).map((ep) => ({
+          key: endpointKey(),
+          endpoint: ep.endpoint,
+          name: ep.name ?? '',
+          priority: String(ep.priority ?? 1),
+          maxProcess: String(ep.maxProcess ?? 1),
+          maxTimeout: String(ep.maxTimeout ?? 30),
+          maxAudioDuration: String(ep.maxAudioDuration ?? 60),
+        }))
+      )
+    } else if (!state.open) {
+      setEndpoints([])
     }
-  }, [open, kind, editingDevice, prefill])
+  }, [kind, state.open, state.mode, state.device])
 
-  const toggleAlgorithm = (algo: string) => {
-    setAlgorithms((prev) =>
-      prev.includes(algo) ? prev.filter((a) => a !== algo) : [...prev, algo]
-    )
+  const handleOpenChange = (next: boolean) => {
+    props.onOpenChange(next)
   }
 
-  const toggleFormat = (format: string) => {
-    setSupportedFormats((prev) =>
-      prev.includes(format) ? prev.filter((f) => f !== format) : [...prev, format]
-    )
+  const toggleChip = (field: 'algorithms' | 'supportedFormats' | 'tags') => (value: string) => {
+    const current = (form.getValues(field) ?? []) as string[]
+    const next = current.includes(value)
+      ? current.filter((item) => item !== value)
+      : [...current, value]
+    form.setValue(field, next)
   }
 
-  const handleSave = async () => {
-    if (!name.trim()) {
-      toast.error('请填写设备名称')
-      return
-    }
+  const updateEndpoint = (key: string, patch: Partial<EndpointFormRow>) => {
+    setEndpoints((prev) => prev.map((row) => (row.key === key ? { ...row, ...patch } : row)))
+  }
+
+  const addEndpoint = () => {
+    setEndpoints((prev) => [...prev, { ...ENDPOINT_EMPTY, key: endpointKey() }])
+  }
+
+  const removeEndpoint = (key: string) => {
+    setEndpoints((prev) => prev.filter((row) => row.key !== key))
+  }
+
+  const handleSave = async (values: DeviceForm) => {
     setSaving(true)
     try {
-      if (kind === 'test') {
-        const base = {
-          name: name.trim(),
-          description: description || null,
-          model: model || null,
-          system,
-          systemVersion: systemVersion || null,
-          appName: appName || null,
-          appVersion: appVersion || null,
-          connectionType,
-          serialNumber: serialNumber || null,
-          ip: connectionType === 'remote' ? ip || null : null,
-          needsPromptAudio: needsPrompt,
-          supportedAlgorithms: algorithms.length > 0 ? algorithms : null,
-          status: 'offline',
-          type: deviceType,
-          occupied: false,
-          labId: null,
-          labName: null,
-          driverName: null,
-          maxAudioDuration: null,
-          location: null,
-          keywords: null,
-          lastOnlineAt: null,
-        } satisfies Omit<TestDevice, 'id' | 'createdAt' | 'updatedAt'>
-        if (isEdit) {
-          await updateTest.mutateAsync({ id: editingDevice!.id, patch: base })
-        } else {
-          await createTest.mutateAsync(base)
+      if (values.kind === 'test') {
+        const editable = {
+          name: values.name.trim(),
+          description: values.description?.trim() || null,
+          remark: values.remark?.trim() || null,
+          model: values.model.trim(),
+          type: values.deviceType,
+          system: values.system,
+          systemVersion: values.systemVersion.trim(),
+          apiLevel: values.apiLevel?.trim() || null,
+          appName: values.appName.trim(),
+          appVersion: values.appVersion.trim(),
+          connectionType: values.connectionType,
+          serialNumber: values.serialNumber.trim(),
+          ip: values.connectionType === 'remote' ? (values.ip?.trim() || null) : null,
+          needsPromptAudio: values.needsPromptAudio,
+          supportedAlgorithms: values.algorithms.length > 0 ? values.algorithms : null,
+          tags: values.tags.length > 0 ? values.tags : null,
+          priority: Number(values.priority) || 5,
+          // 高级设置「自定义属性」（§6.2；逗号分隔 key=value，接线后按后端契约）
+          customAttributes: values.customAttributes?.trim()
+            ? values.customAttributes
+                .split(/[,，]/)
+                .map((item) => item.trim())
+                .filter(Boolean)
+            : null,
         }
-      } else if (kind === 'playback') {
-        const base = {
-          name: name.trim(),
-          description: description || null,
-          model: model || null,
-          deviceType: (deviceType as PlaybackDevice['deviceType']),
-          deviceUniqueId: serialNumber || null,
-          sampleRate: Number(sampleRate) || 48000,
-          channelIndex: Number(channelIndex) || 0,
-          status: 'offline',
-          currentSplMappingId: null,
-          currentSplMappingName: null,
-          occupied: false,
-          labId: null,
-          labName: null,
-          supportedFormats: supportedFormats.length > 0 ? supportedFormats : null,
-          supportedChannels: null,
-          createdAt: null,
-          updatedAt: null,
-        } satisfies Omit<PlaybackDevice, 'id'>
         if (isEdit) {
-          await updatePlayback.mutateAsync({ id: editingDevice!.id, patch: base })
+          // P2-1：patch 只携带表单可编辑字段，不重置 status/occupied/labId/labName/driverName/lastOnlineAt/location/keywords
+          await updateTest.mutateAsync({ id: editingDevice!.id, patch: editable })
         } else {
-          await createPlayback.mutateAsync(base)
+          await createTest.mutateAsync({
+            ...editable,
+            status: 'offline',
+            occupied: false,
+            labId: null,
+            labName: null,
+            driverName: null,
+            maxAudioDuration: null,
+            location: null,
+            keywords: null,
+            lastOnlineAt: null,
+          })
+        }
+      } else if (values.kind === 'playback') {
+        const splMappingId = values.splMappingId ? Number(values.splMappingId) : null
+        const editable = {
+          name: values.name.trim(),
+          description: values.description?.trim() || null,
+          model: values.model.trim(),
+          deviceType: values.deviceType as PlaybackDevice['deviceType'],
+          deviceUniqueId: values.deviceUniqueId.trim(),
+          channelIndex: Number(values.channelIndex) || 0,
+          supportedChannels: values.supportedChannels ? Number(values.supportedChannels) || null : null,
+          supportedFormats: values.supportedFormats.length > 0 ? values.supportedFormats : null,
+          sampleRate: Number(values.sampleRate) || 48000,
+          currentSplMappingId: splMappingId,
+          currentSplMappingName:
+            MOCK_ASSOCIATE_SPL_OPTIONS.find((m) => m.id === splMappingId)?.name ?? null,
+        }
+        if (isEdit) {
+          await updatePlayback.mutateAsync({ id: editingDevice!.id, patch: editable })
+        } else {
+          await createPlayback.mutateAsync({
+            ...editable,
+            status: 'offline',
+            occupied: false,
+            labId: null,
+            labName: null,
+          })
         }
       } else {
-        const base = {
-          name: name.trim(),
-          description: description || null,
-          vendor: vendor || null,
-          apiUrl: apiUrl || null,
-          status: 'offline',
-          meta: { protocol, environment },
-          protocol,
-          environment,
-          algorithmType: 'asr_streaming',
-          defaultMaxProcess: Number(maxProcess) || 5,
-          defaultMaxTimeout: Number(maxTimeout) || 30,
-          defaultMaxAudioDuration: Number(maxAudioDuration) || 60,
-          healthScore: null,
-          endpoints: [],
-          rmsSplMappingId: null,
-          rmsSplMappingName: null,
-          occupied: false,
-          createdAt: null,
-          updatedAt: null,
-        } satisfies Omit<ApiDevice, 'id'>
+        const editable = {
+          name: values.name.trim(),
+          description: values.description?.trim() || null,
+          vendor: values.vendor?.trim() || null,
+          apiUrl: values.apiUrl.trim(),
+          protocol: values.protocol,
+          environment: values.environment || null,
+          meta: { protocol: values.protocol, environment: values.environment },
+          algorithmType: values.algorithmType,
+          defaultMaxProcess: Number(values.maxProcess) || 5,
+          defaultMaxTimeout: Number(values.maxTimeout) || 30,
+          defaultMaxAudioDuration: Number(values.maxAudioDuration) || 60,
+          endpoints: endpoints
+            .filter((row) => row.endpoint.trim())
+            .map(
+              (row): ApiEndpoint => ({
+                id: null,
+                endpoint: row.endpoint.trim(),
+                name: row.name.trim() || null,
+                priority: Number(row.priority) || 1,
+                maxProcess: Number(row.maxProcess) || 1,
+                maxTimeout: Number(row.maxTimeout) || 30,
+                maxAudioDuration: Number(row.maxAudioDuration) || 60,
+                status: 'online',
+                healthScore: null,
+                description: null,
+              })
+            ),
+        }
         if (isEdit) {
-          await updateApi.mutateAsync({ id: editingDevice!.id, patch: base })
+          await updateApi.mutateAsync({ id: editingDevice!.id, patch: editable })
         } else {
-          await createApi.mutateAsync(base)
+          await createApi.mutateAsync({
+            ...editable,
+            status: 'offline',
+            healthScore: null,
+            rmsSplMappingId: null,
+            rmsSplMappingName: null,
+            occupied: false,
+          })
         }
       }
       toast.success(
         kind === 'test' ? '测试设备已保存' : kind === 'playback' ? '播放设备已保存' : '测试 API 已保存'
       )
-      props.onOpenChange(false)
+      handleOpenChange(false)
     } catch {
       toast.error('保存失败，请重试')
     } finally {
@@ -271,282 +427,458 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
   }
 
   const title = isEdit ? '编辑设备' : DEVICE_ADD_TITLE[kind]
+  // RHF 判别联合 errors 字段访问宽松化（按 kind 分支读取对应字段）
+  const fieldErrors = form.formState.errors as Record<string, { message?: string } | undefined>
+  const errors = fieldErrors
 
   return (
-    <Sheet open={open} onOpenChange={props.onOpenChange}>
+    <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent className='sm:max-w-[600px]'>
         <SheetHeader>
           <SheetTitle>{title}</SheetTitle>
-          <SheetDescription>登记或修改{kind === 'test' ? '测试设备' : kind === 'playback' ? '播放设备' : '测试 API'}信息。</SheetDescription>
+          <SheetDescription>
+            登记或修改{kind === 'test' ? '测试设备' : kind === 'playback' ? '播放设备' : '测试 API'}信息。
+          </SheetDescription>
         </SheetHeader>
 
-        <div className='flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-2'>
-          {/* 基本信息 */}
-          <section className='flex flex-col gap-2'>
-            <h3 className='text-sm font-medium'>基本信息</h3>
-            <Field label='名称' required>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder='如：音箱-客厅位' className='h-8' />
-            </Field>
-            <Field label='描述'>
-              <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder='设备用途或工位说明' className='h-8' />
-            </Field>
-          </section>
-
-          {kind === 'test' && (
+        <form onSubmit={form.handleSubmit(handleSave)} className='flex min-h-0 flex-1 flex-col'>
+          <div className='flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-2'>
+            {/* 基本信息 */}
             <section className='flex flex-col gap-2'>
-              <h3 className='text-sm font-medium'>测试设备信息</h3>
-              <div className='grid grid-cols-2 gap-2.5'>
-                <Field label='型号' required>
-                  <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder='如：旗舰 S1' className='h-8' />
-                </Field>
-                <Field label='设备类型' required>
-                  <Select value={deviceType} onValueChange={(value) => setDeviceType(value ?? '')}>
-                    <SelectTrigger size='sm' className='w-full'>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value='physical'>真机</SelectItem>
-                      <SelectItem value='http_api'>HTTP API</SelectItem>
-                      <SelectItem value='websocket_api'>Realtime WS</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label='设备系统' required>
-                  <Select value={system} onValueChange={(value) => setSystem(value ?? '')}>
-                    <SelectTrigger size='sm' className='w-full'>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SYSTEM_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label='系统版本' required>
-                  <Input value={systemVersion} onChange={(e) => setSystemVersion(e.target.value)} placeholder='如：12' className='h-8' />
-                </Field>
-                <Field label='应用名称'>
-                  <Input value={appName} onChange={(e) => setAppName(e.target.value)} className='h-8' />
-                </Field>
-                <Field label='应用版本'>
-                  <Input value={appVersion} onChange={(e) => setAppVersion(e.target.value)} className='h-8' />
-                </Field>
-                <Field label='连接方式' required>
-                  <Select value={connectionType} onValueChange={(value) => setConnectionType(value ?? '')}>
-                    <SelectTrigger size='sm' className='w-full'>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value='usb'>USB连接</SelectItem>
-                      <SelectItem value='remote'>远程连接</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label='设备序列号' required>
-                  <Input value={serialNumber} onChange={(e) => setSerialNumber(e.target.value)} disabled placeholder='连接后自动填充' className='h-8' />
-                </Field>
-                {connectionType === 'remote' && (
-                  <>
-                    <Field label='IP 地址'>
-                      <Input value={ip} onChange={(e) => setIp(e.target.value)} placeholder='192.168.x.x' className='h-8' />
-                    </Field>
-                    <Field label='端口'>
-                      <Input value={port} onChange={(e) => setPort(e.target.value)} type='number' className='h-8' />
-                    </Field>
-                  </>
-                )}
-              </div>
-              <label className='flex items-center gap-2 text-sm'>
-                <Switch size='sm' checked={needsPrompt} onCheckedChange={setNeedsPrompt} />
-                是否需要提示词
-              </label>
-              <Field label='算法类型'>
-                <div className='flex flex-wrap gap-1.5'>
-                  {ALGORITHM_OPTIONS.map((algo) => (
-                    <button
-                      key={algo}
-                      type='button'
-                      onClick={() => toggleAlgorithm(algo)}
-                      className={cn(
-                        'rounded-md border px-2 py-1 text-xs transition-colors',
-                        algorithms.includes(algo)
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'hover:bg-muted'
-                      )}
-                    >
-                      {algo}
-                    </button>
-                  ))}
-                </div>
+              <h3 className='text-sm font-medium'>基本信息</h3>
+              <Field label='名称' required error={errors.name?.message}>
+                <Input
+                  {...form.register('name')}
+                  aria-invalid={Boolean(errors.name)}
+                  placeholder='如：音箱-客厅位'
+                  className='h-8'
+                />
               </Field>
-              {/* 状态采集字段（§6.2：只读展示设备实时采集值） */}
-              <div className='border-border/60 grid grid-cols-3 gap-2 rounded-lg border p-2.5 text-xs'>
-                <div className='flex flex-col gap-0.5'>
-                  <span className='text-muted-foreground'>电池状态</span>
-                  <span>87% · 正常</span>
-                </div>
-                <div className='flex flex-col gap-0.5'>
-                  <span className='text-muted-foreground'>存储状态</span>
-                  <span>剩余 42GB</span>
-                </div>
-                <div className='flex flex-col gap-0.5'>
-                  <span className='text-muted-foreground'>网络状态</span>
-                  <span>Wi-Fi 已连接</span>
-                </div>
-              </div>
-              {/* 高级设置（§6.2 Collapsible 分区） */}
-              <Collapsible>
-                <CollapsibleTrigger
-                  render={
-                    <Button variant='ghost' size='sm' className='h-7 gap-1 px-1 text-xs' />
-                  }
-                >
-                  <ChevronDown aria-hidden='true' className='size-3.5' />
-                  高级设置
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <div className='grid grid-cols-2 gap-2.5 pt-2'>
-                    <Field label='备注'>
-                      <Input value={description} onChange={(e) => setDescription(e.target.value)} className='h-8' />
+              <Field label='描述'>
+                <Input
+                  {...form.register('description')}
+                  placeholder='设备用途或工位说明'
+                  className='h-8'
+                />
+              </Field>
+            </section>
+
+            {kind === 'test' && (
+              <section className='flex flex-col gap-2'>
+                <h3 className='text-sm font-medium'>测试设备信息</h3>
+                <div className='grid grid-cols-2 gap-2.5'>
+                  <Field label='型号' required error={errors.model?.message}>
+                    <Input {...form.register('model')} placeholder='如：旗舰 S1' className='h-8' />
+                  </Field>
+                  <Field label='设备类型' required error={errors.deviceType?.message}>
+                    <Select
+                      value={form.watch('deviceType')}
+                      onValueChange={(value) => form.setValue('deviceType', value ?? '')}
+                    >
+                      <SelectTrigger size='sm' className='w-full'>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value='physical'>真机</SelectItem>
+                        <SelectItem value='http_api'>HTTP API</SelectItem>
+                        <SelectItem value='websocket_api'>Realtime WS</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label='设备系统' required error={errors.system?.message}>
+                    <Select
+                      value={form.watch('system')}
+                      onValueChange={(value) => form.setValue('system', value ?? '')}
+                    >
+                      <SelectTrigger size='sm' className='w-full'>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SYSTEM_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label='系统版本' required error={errors.systemVersion?.message}>
+                    <Input {...form.register('systemVersion')} placeholder='如：12' className='h-8' />
+                  </Field>
+                  {/* API 级别（随设备系统切换，§6.2/设备管理:262-278） */}
+                  {form.watch('system') === 'iOS' ? (
+                    <Field label='iOS 版本'>
+                      <Input {...form.register('systemVersion')} disabled className='h-8' />
                     </Field>
-                    <Field label='优先级'>
-                      <Select value={priority} onValueChange={(value) => setPriority(value ?? '')}>
+                  ) : (
+                    <Field
+                      label={form.watch('system') === 'HarmonyOS' ? 'HarmonyOS API级别' : 'Android API级别'}
+                    >
+                      <Select
+                        value={form.watch('apiLevel')}
+                        onValueChange={(value) => form.setValue('apiLevel', value ?? '')}
+                      >
                         <SelectTrigger size='sm' className='w-full'>
-                          <SelectValue />
+                          <SelectValue placeholder='选择 API 级别' />
                         </SelectTrigger>
                         <SelectContent>
-                          {Array.from({ length: 10 }, (_, i) => String(i + 1)).map((value) => (
-                            <SelectItem key={value} value={value}>
-                              {value}
+                          {(form.watch('system') === 'HarmonyOS'
+                            ? HARMONY_API_LEVELS
+                            : ANDROID_API_LEVELS
+                          ).map((level) => (
+                            <SelectItem key={level} value={level}>
+                              API {level}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </Field>
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-            </section>
-          )}
-
-          {kind === 'playback' && (
-            <section className='flex flex-col gap-2'>
-              <h3 className='text-sm font-medium'>播放设备信息</h3>
-              <div className='grid grid-cols-2 gap-2.5'>
-                <Field label='型号' required>
-                  <Input value={model} onChange={(e) => setModel(e.target.value)} className='h-8' />
-                </Field>
-                <Field label='设备类型' required>
-                  <Select value={deviceType} onValueChange={(value) => setDeviceType(value ?? '')}>
-                    <SelectTrigger size='sm' className='w-full'>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value='dry'>干声设备</SelectItem>
-                      <SelectItem value='noise'>噪声设备</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label='系统唯一标识' required>
-                  <Input value={serialNumber} disabled placeholder='连接后自动填充' className='h-8' />
-                </Field>
-                <Field label='通道索引'>
-                  <Input value={channelIndex} type='number' onChange={(e) => setChannelIndex(e.target.value)} className='h-8' />
-                </Field>
-                <Field label='采样率' required>
-                  <Input value={sampleRate} type='number' onChange={(e) => setSampleRate(e.target.value)} className='h-8' />
-                </Field>
-              </div>
-              <Field label='支持的格式'>
-                <div className='flex flex-wrap gap-1.5'>
-                  {FORMAT_OPTIONS.map((format) => (
-                    <button
-                      key={format}
-                      type='button'
-                      onClick={() => toggleFormat(format)}
-                      className={cn(
-                        'rounded-md border px-2 py-1 text-xs transition-colors',
-                        supportedFormats.includes(format)
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'hover:bg-muted'
-                      )}
+                  )}
+                  <Field label='应用名称' required error={errors.appName?.message}>
+                    <Input {...form.register('appName')} className='h-8' />
+                  </Field>
+                  <Field label='应用版本' required error={errors.appVersion?.message}>
+                    <Input {...form.register('appVersion')} className='h-8' />
+                  </Field>
+                  <Field label='连接方式' required error={errors.connectionType?.message}>
+                    <Select
+                      value={form.watch('connectionType')}
+                      onValueChange={(value) => form.setValue('connectionType', value ?? '')}
                     >
-                      {format}
-                    </button>
-                  ))}
+                      <SelectTrigger size='sm' className='w-full'>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value='usb'>USB连接</SelectItem>
+                        <SelectItem value='remote'>远程连接</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label='设备序列号' required error={errors.serialNumber?.message}>
+                    <Input {...form.register('serialNumber')} placeholder='连接后自动填充' className='h-8' />
+                  </Field>
+                  {form.watch('connectionType') === 'remote' && (
+                    <>
+                      <Field label='IP 地址'>
+                        <Input {...form.register('ip')} placeholder='192.168.x.x' className='h-8' />
+                      </Field>
+                      <Field label='端口'>
+                        <Input {...form.register('port')} type='number' className='h-8' />
+                      </Field>
+                    </>
+                  )}
                 </div>
-              </Field>
-            </section>
-          )}
-
-          {kind === 'api' && (
-            <section className='flex flex-col gap-2'>
-              <h3 className='text-sm font-medium'>API 信息</h3>
-              <div className='grid grid-cols-2 gap-2.5'>
-                <Field label='供应商'>
-                  <Input value={vendor} onChange={(e) => setVendor(e.target.value)} className='h-8' />
-                </Field>
-                <Field label='协议' required>
-                  <Select value={protocol} onValueChange={(value) => setProtocol(value ?? '')}>
-                    <SelectTrigger size='sm' className='w-full'>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value='http'>HTTP</SelectItem>
-                      <SelectItem value='https'>HTTPS</SelectItem>
-                      <SelectItem value='ws'>WS</SelectItem>
-                      <SelectItem value='wss'>WSS</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label='环境'>
-                  <Select value={environment} onValueChange={(value) => setEnvironment(value ?? '')}>
-                    <SelectTrigger size='sm' className='w-full'>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value='development'>开发</SelectItem>
-                      <SelectItem value='testing'>测试</SelectItem>
-                      <SelectItem value='production'>生产</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label='默认最大进程数'>
-                  <Input value={maxProcess} type='number' onChange={(e) => setMaxProcess(e.target.value)} className='h-8' />
-                </Field>
-                <Field label='默认最大超时（秒）'>
-                  <Input value={maxTimeout} type='number' onChange={(e) => setMaxTimeout(e.target.value)} className='h-8' />
-                </Field>
-                <Field label='默认最大音频时长（秒）'>
-                  <Input value={maxAudioDuration} type='number' onChange={(e) => setMaxAudioDuration(e.target.value)} className='h-8' />
-                </Field>
-              </div>
-              <Field label='API 端点' required>
-                <div className='flex items-center gap-1.5'>
-                  <Input value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} placeholder='https://api.example.com/v1/asr' className='h-8 flex-1' />
-                  <Button variant='outline' size='icon-sm' aria-label='添加端点' type='button'>
-                    <Plus aria-hidden='true' />
-                  </Button>
+                <label className='flex items-center gap-2 text-sm'>
+                  <Switch
+                    size='sm'
+                    checked={form.watch('needsPromptAudio')}
+                    onCheckedChange={(checked) => form.setValue('needsPromptAudio', checked)}
+                  />
+                  是否需要提示词
+                </label>
+                <ChipField
+                  label='算法类型'
+                  options={ALGORITHM_OPTIONS}
+                  selected={form.watch('algorithms')}
+                  onToggle={toggleChip('algorithms')}
+                />
+                {/* 状态采集字段（§6.2：只读展示设备实时采集值） */}
+                <div className='border-border/60 grid grid-cols-3 gap-2 rounded-lg border p-2.5 text-xs'>
+                  <div className='flex flex-col gap-0.5'>
+                    <span className='text-muted-foreground'>电池状态</span>
+                    <span>87% · 正常</span>
+                  </div>
+                  <div className='flex flex-col gap-0.5'>
+                    <span className='text-muted-foreground'>存储状态</span>
+                    <span>剩余 42GB</span>
+                  </div>
+                  <div className='flex flex-col gap-0.5'>
+                    <span className='text-muted-foreground'>网络状态</span>
+                    <span>Wi-Fi 已连接</span>
+                  </div>
                 </div>
-              </Field>
-              <p className='text-muted-foreground text-xs'>
-                端点列表（优先级/最大进程/超时/音频时长）编辑复用 INT-355 §5.3 API 编辑弹窗口径。
-              </p>
-            </section>
-          )}
-        </div>
+                {/* 高级设置（§6.2 Collapsible：备注/标签/自定义属性/优先级） */}
+                <Collapsible>
+                  <CollapsibleTrigger
+                    render={
+                      <Button variant='ghost' size='sm' className='h-7 gap-1 px-1 text-xs' />
+                    }
+                  >
+                    <ChevronDown aria-hidden='true' className='size-3.5' />
+                    高级设置
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className='grid grid-cols-2 gap-2.5 pt-2'>
+                      <Field label='备注'>
+                        <Input {...form.register('remark')} placeholder='与基本信息「描述」独立' className='h-8' />
+                      </Field>
+                      <Field label='优先级'>
+                        <Select
+                          value={form.watch('priority')}
+                          onValueChange={(value) => form.setValue('priority', value ?? '5')}
+                        >
+                          <SelectTrigger size='sm' className='w-full'>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Array.from({ length: 10 }, (_, i) => String(i + 1)).map((value) => (
+                              <SelectItem key={value} value={value}>
+                                {value}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                    </div>
+                    <div className='flex flex-col gap-2 pt-2'>
+                      <ChipField
+                        label='标签'
+                        options={['远场', '近场', '车载', '会议室', '手机', '音柱']}
+                        selected={form.watch('tags')}
+                        onToggle={toggleChip('tags')}
+                      />
+                      <Field label='自定义属性'>
+                        <Input
+                          {...form.register('customAttributes')}
+                          placeholder='如：房间=客厅, 朝向=南（逗号分隔）'
+                          className='h-8'
+                        />
+                      </Field>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              </section>
+            )}
 
-        <SheetFooter>
-          <Button variant='outline' onClick={() => props.onOpenChange(false)}>
-            取消
-          </Button>
-          <Button disabled={saving} onClick={() => void handleSave()}>
-            {saving ? '保存中...' : '保存'}
-          </Button>
-        </SheetFooter>
+            {kind === 'playback' && (
+              <section className='flex flex-col gap-2'>
+                <h3 className='text-sm font-medium'>播放设备信息</h3>
+                <div className='grid grid-cols-2 gap-2.5'>
+                  <Field label='型号' required error={errors.model?.message}>
+                    <Input {...form.register('model')} className='h-8' />
+                  </Field>
+                  <Field label='设备类型' required error={errors.deviceType?.message}>
+                    <Select
+                      value={form.watch('deviceType')}
+                      onValueChange={(value) => form.setValue('deviceType', value ?? '')}
+                    >
+                      <SelectTrigger size='sm' className='w-full'>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value='dry'>干声设备</SelectItem>
+                        <SelectItem value='noise'>噪声设备</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label='系统唯一标识' required error={errors.deviceUniqueId?.message}>
+                    <Input {...form.register('deviceUniqueId')} placeholder='连接后自动填充' className='h-8' />
+                  </Field>
+                  <Field label='通道索引'>
+                    <Input {...form.register('channelIndex')} type='number' className='h-8' />
+                  </Field>
+                  <Field label='支持的通道数'>
+                    <Input {...form.register('supportedChannels')} type='number' placeholder='如：2' className='h-8' />
+                  </Field>
+                  <Field label='采样率' required error={errors.sampleRate?.message}>
+                    <Input {...form.register('sampleRate')} type='number' className='h-8' />
+                  </Field>
+                  <Field label='声压映射'>
+                    <Select
+                      value={form.watch('splMappingId')}
+                      onValueChange={(value) => form.setValue('splMappingId', value ?? '')}
+                    >
+                      <SelectTrigger size='sm' className='w-full'>
+                        <SelectValue placeholder='不使用声压映射' />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value=''>不使用声压映射</SelectItem>
+                        {MOCK_ASSOCIATE_SPL_OPTIONS.map((mapping) => (
+                          <SelectItem key={mapping.id} value={String(mapping.id)}>
+                            {mapping.name}（{mapping.calibrationStatus === 'calibrated' ? '已校准' : '未校准'}）
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                </div>
+                <ChipField
+                  label='支持的格式'
+                  options={FORMAT_OPTIONS}
+                  selected={form.watch('supportedFormats')}
+                  onToggle={toggleChip('supportedFormats')}
+                />
+              </section>
+            )}
+
+            {kind === 'api' && (
+              <section className='flex flex-col gap-2'>
+                <h3 className='text-sm font-medium'>API 信息</h3>
+                <div className='grid grid-cols-2 gap-2.5'>
+                  <Field label='供应商'>
+                    <Input {...form.register('vendor')} className='h-8' />
+                  </Field>
+                  <Field label='协议' required error={errors.protocol?.message}>
+                    <Select
+                      value={form.watch('protocol')}
+                      onValueChange={(value) => form.setValue('protocol', value ?? '')}
+                    >
+                      <SelectTrigger size='sm' className='w-full'>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PROTOCOL_OPTIONS.map((value) => (
+                          <SelectItem key={value} value={value}>
+                            {value.toUpperCase()}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label='环境'>
+                    <Select
+                      value={form.watch('environment')}
+                      onValueChange={(value) => form.setValue('environment', value ?? '')}
+                    >
+                      <SelectTrigger size='sm' className='w-full'>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ENV_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label='关联算法' required error={errors.algorithmType?.message}>
+                    <Select
+                      value={form.watch('algorithmType')}
+                      onValueChange={(value) => form.setValue('algorithmType', value ?? '')}
+                    >
+                      <SelectTrigger size='sm' className='w-full'>
+                        <SelectValue placeholder='请选择算法' />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ALGORITHM_OPTIONS.map((value) => (
+                          <SelectItem key={value} value={value}>
+                            {value}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label='默认最大进程数'>
+                    <Input {...form.register('maxProcess')} type='number' className='h-8' />
+                  </Field>
+                  <Field label='默认最大超时（秒）'>
+                    <Input {...form.register('maxTimeout')} type='number' className='h-8' />
+                  </Field>
+                  <Field label='默认最大音频时长（秒）'>
+                    <Input {...form.register('maxAudioDuration')} type='number' className='h-8' />
+                  </Field>
+                </div>
+                <Field label='API 端点' required error={errors.apiUrl?.message}>
+                  <Input {...form.register('apiUrl')} placeholder='https://api.example.com/v1/asr' className='h-8' />
+                </Field>
+                {/* 端点列表（§6.2 apiEndpoint ArrayField：URL / 名称 / 优先级 / 最大进程 / 超时 / 音频时长） */}
+                <div className='flex flex-col gap-2'>
+                  <div className='flex items-center justify-between'>
+                    <Label className='text-xs'>端点列表</Label>
+                    <Button type='button' variant='outline' size='sm' className='h-7 gap-1 text-xs' onClick={addEndpoint}>
+                      <Plus aria-hidden='true' className='size-3.5' />
+                      添加端点
+                    </Button>
+                  </div>
+                  {endpoints.length === 0 ? (
+                    <p className='text-muted-foreground border-border/60 rounded-lg border border-dashed p-3 text-center text-xs'>
+                      暂无端点，点击「添加端点」配置（优先级/最大进程/超时/音频时长）
+                    </p>
+                  ) : (
+                    <div className='flex flex-col gap-2'>
+                      {endpoints.map((row) => (
+                        <div key={row.key} className='border-border/60 flex flex-col gap-1.5 rounded-lg border p-2'>
+                          <div className='flex items-center gap-1.5'>
+                            <Input
+                              value={row.endpoint}
+                              onChange={(e) => updateEndpoint(row.key, { endpoint: e.target.value })}
+                              placeholder='/v1/asr/stream'
+                              className='h-7 flex-1 font-mono text-xs'
+                              aria-label='端点 URL'
+                            />
+                            <Button
+                              type='button'
+                              variant='ghost'
+                              size='icon-sm'
+                              className='size-6 text-destructive'
+                              aria-label='删除端点'
+                              onClick={() => removeEndpoint(row.key)}
+                            >
+                              <X aria-hidden='true' className='size-3.5' />
+                            </Button>
+                          </div>
+                          <div className='grid grid-cols-5 gap-1.5'>
+                            <Input
+                              value={row.name}
+                              onChange={(e) => updateEndpoint(row.key, { name: e.target.value })}
+                              placeholder='名称'
+                              className='h-7 text-xs'
+                            />
+                            <Input
+                              value={row.priority}
+                              type='number'
+                              min={1}
+                              max={10}
+                              onChange={(e) => updateEndpoint(row.key, { priority: e.target.value })}
+                              placeholder='优先级'
+                              className='h-7 text-xs'
+                            />
+                            <Input
+                              value={row.maxProcess}
+                              type='number'
+                              min={1}
+                              max={100}
+                              onChange={(e) => updateEndpoint(row.key, { maxProcess: e.target.value })}
+                              placeholder='最大进程'
+                              className='h-7 text-xs'
+                            />
+                            <Input
+                              value={row.maxTimeout}
+                              type='number'
+                              min={1}
+                              max={300}
+                              onChange={(e) => updateEndpoint(row.key, { maxTimeout: e.target.value })}
+                              placeholder='超时(s)'
+                              className='h-7 text-xs'
+                            />
+                            <Input
+                              value={row.maxAudioDuration}
+                              type='number'
+                              min={1}
+                              onChange={(e) => updateEndpoint(row.key, { maxAudioDuration: e.target.value })}
+                              placeholder='音频时长(s)'
+                              className='h-7 text-xs'
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
+          </div>
+
+          <SheetFooter>
+            <Button type='button' variant='outline' onClick={() => handleOpenChange(false)}>
+              取消
+            </Button>
+            <Button type='submit' disabled={saving}>
+              {saving ? '保存中...' : '保存'}
+            </Button>
+          </SheetFooter>
+        </form>
       </SheetContent>
     </Sheet>
   )

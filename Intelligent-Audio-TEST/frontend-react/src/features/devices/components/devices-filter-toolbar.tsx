@@ -3,7 +3,7 @@
  * 搜索（debounce 500ms）+ 按页签 facet：测试=状态/连接方式/分组/实验室；
  * 播放=状态/设备类型/实验室；API=状态/协议/环境（API 无实验室维度 §3.6 注）。
  * 实验室 facet 选项动态 GET /laboratories（INT-487：DTO 未暴露前规范隐藏，mock 先行展示）。
- * 全局算法联动 chip：测试/播放页签显（测试设备/播放设备可挂算法），API 页签隐藏（§10 清单 3）。
+ * 全局算法联动 chip（§2.2）：仅测试设备页签显（播放/API 无算法维度隐藏，P2-9 返修）。
  */
 import { Check, ChevronDown, FilterX, Search } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -27,11 +27,14 @@ import {
   STATUS_FILTER_OPTIONS,
   type DevicesTabKey,
 } from '@/features/devices/constants'
+import { DeviceAlgorithmChip } from '@/features/devices/components/global-algorithm-chip'
 import type { Laboratory } from '@/domain/models/laboratory'
 import type { DeviceGroup } from '@/domain/models/deviceGroup'
 
 export interface DevicesFilterToolbarProps {
   tab: DevicesTabKey
+  /** §2.2 全局算法联动 chip（仅测试页签显） */
+  showAlgorithmChip: boolean
   searchValue: string
   onSearch: (value: string) => void
   status: string | null
@@ -204,6 +207,8 @@ export function DevicesFilterToolbar(props: DevicesFilterToolbarProps) {
   return (
     <div className='bg-card/50 rounded-lg border p-2.5 sm:p-3'>
       <div className='flex flex-wrap items-center gap-2'>
+        {/* 全局算法联动 chip（§2.2：仅测试页签显；播放/API 隐藏） */}
+        {props.showAlgorithmChip && <DeviceAlgorithmChip />}
         <div className='relative'>
           <Search
             aria-hidden='true'

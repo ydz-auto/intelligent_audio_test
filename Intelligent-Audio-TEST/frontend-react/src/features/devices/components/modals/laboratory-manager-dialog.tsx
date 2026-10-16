@@ -8,8 +8,8 @@
  * 数据契约按 doc/总架构/实验室扩展功能设计.md §5.1 设计；后端 /api/laboratories CRUD 未实现
  * （§11-24）——本弹窗为设计稿 mock 预览，入口在「更多操作」禁用 + Tooltip「实验室管理后端建设中」。
  */
-import { MapPin, Plus, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { MapPin, Pencil, Plus, Trash2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -32,6 +32,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { StaticDataTable } from '@/features/system-settings/components/static-data-table'
 import { cn } from '@/lib/utils'
 import type { Laboratory, LaboratoryStatus } from '@/domain/models/laboratory'
 import { LABORATORY_STATUS_META } from '@/domain/models/laboratory'
@@ -50,7 +51,8 @@ const STATUS_OPTIONS: ReadonlyArray<{ value: LaboratoryStatus; label: string }> 
 ]
 
 export function LaboratoryManagerDialog(props: LaboratoryManagerDialogProps) {
-  const { create, remove } = useLaboratoryMutations()
+  const { create, remove, update } = useLaboratoryMutations()
+  const [editing, setEditing] = useState<Laboratory | null>(null)
   const [name, setName] = useState('')
   const [code, setCode] = useState('')
   const [building, setBuilding] = useState('')
@@ -60,28 +62,67 @@ export function LaboratoryManagerDialog(props: LaboratoryManagerDialogProps) {
   const [status, setStatus] = useState<LaboratoryStatus>('active')
   const [deleteTarget, setDeleteTarget] = useState<Laboratory | null>(null)
 
-  const handleCreate = async () => {
+  const resetForm = () => {
+    setEditing(null)
+    setName('')
+    setCode('')
+    setBuilding('')
+    setFloor('')
+    setRoomNumber('')
+    setDescription('')
+    setStatus('active')
+  }
+
+  // 每次打开重置表单
+  useEffect(() => {
+    if (props.open) resetForm()
+  }, [props.open])
+
+  /** P3-21 返修：编辑实验室（§6.26 列表操作 [编辑·删除]） */
+  const startEdit = (lab: Laboratory) => {
+    setEditing(lab)
+    setName(lab.name)
+    setCode(lab.code)
+    setBuilding(lab.building ?? '')
+    setFloor(lab.floor ?? '')
+    setRoomNumber(lab.roomNumber ?? '')
+    setDescription(lab.description ?? '')
+    setStatus(lab.status)
+  }
+
+  const handleSubmit = async () => {
     if (!name.trim() || !code.trim()) {
       toast.error('请填写实验室名称与代码')
       return
     }
     try {
-      await create.mutateAsync({
-        name: name.trim(),
-        code: code.trim(),
-        building: building || null,
-        floor: floor || null,
-        roomNumber: roomNumber || null,
-        description: description || null,
-        status,
-      })
-      toast.success('实验室已创建')
-      setName('')
-      setCode('')
-      setBuilding('')
-      setFloor('')
-      setRoomNumber('')
-      setDescription('')
+      if (editing) {
+        await update.mutateAsync({
+          id: editing.id,
+          patch: {
+            name: name.trim(),
+            code: code.trim(),
+            building: building || null,
+            floor: floor || null,
+            roomNumber: roomNumber || null,
+            description: description || null,
+            status,
+          },
+        })
+        toast.success('实验室已更新')
+      } else {
+        await create.mutateAsync({
+          name: name.trim(),
+          code: code.trim(),
+          building: building || null,
+          floor: floor || null,
+          roomNumber: roomNumber || null,
+          description: description || null,
+          status,
+        })
+        toast.success('实验室已创建')
+      }
+      resetForm()
     } catch {
       toast.error('操作失败，请稍后重试')
     }
@@ -152,93 +193,115 @@ export function LaboratoryManagerDialog(props: LaboratoryManagerDialogProps) {
                 <Input id='lab-desc' value={description} onChange={(e) => setDescription(e.target.value)} placeholder='选填' className='h-8' />
               </div>
               <div className='col-span-3 flex justify-end gap-2'>
-                <Button variant='outline' size='sm' onClick={() => { setName(''); setCode(''); setBuilding(''); setFloor(''); setRoomNumber(''); setDescription('') }}>
-                  取消
-                </Button>
-                <Button size='sm' className='gap-1' onClick={() => void handleCreate()}>
+                {editing ? (
+                  <Button variant='ghost' size='sm' onClick={resetForm}>
+                    取消编辑
+                  </Button>
+                ) : (
+                  <Button variant='outline' size='sm' onClick={resetForm}>
+                    取消
+                  </Button>
+                )}
+                <Button size='sm' className='gap-1' onClick={() => void handleSubmit()}>
                   <Plus aria-hidden='true' className='size-3.5' />
-                  新建实验室
+                  {editing ? '保存修改' : '新建实验室'}
                 </Button>
               </div>
             </div>
 
-            {/* 实验室列表（§6.26 DataTable） */}
-            <div className='bg-card ring-foreground/10 overflow-hidden rounded-lg ring-1'>
-              <div className='overflow-x-auto'>
-                <table className='w-full min-w-[720px] text-xs'>
-                  <thead>
-                    <tr className='bg-[var(--table-header)]'>
-                      <th className='px-2.5 py-1.5 text-left font-medium'>代码</th>
-                      <th className='px-2.5 py-1.5 text-left font-medium'>名称</th>
-                      <th className='px-2.5 py-1.5 text-left font-medium'>所在位置</th>
-                      <th className='px-2.5 py-1.5 text-left font-medium'>状态</th>
-                      <th className='px-2.5 py-1.5 text-right font-medium'>资源统计</th>
-                      <th className='px-2.5 py-1.5 text-left font-medium'>更新时间</th>
-                      <th className='w-14 px-2.5 py-1.5 text-right font-medium'>操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {props.labs.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} className='text-muted-foreground px-3 py-6 text-center'>
-                          暂无实验室
-                        </td>
-                      </tr>
-                    ) : (
-                      props.labs.map((lab) => {
-                        const statusMeta = LABORATORY_STATUS_META[lab.status]
-                        const toneClass = {
-                          success: 'text-success border-success/40 bg-success/10',
-                          neutral: 'text-muted-foreground',
-                          warning: 'text-warning border-warning/40 bg-warning/10',
-                        }[statusMeta.tone]
-                        return (
-                          <tr key={lab.id} className='hover:bg-muted/40 border-border/50 border-b last:border-b-0'>
-                            <td className='px-2.5 py-1.5 font-mono'>{lab.code}</td>
-                            <td className='max-w-40 px-2.5 py-1.5'>
-                              <span className='min-w-0 block truncate'>{lab.name}</span>
-                              {lab.description && (
-                                <span className='text-muted-foreground min-w-0 block truncate text-[11px]'>
-                                  {lab.description}
-                                </span>
-                              )}
-                            </td>
-                            <td className='px-2.5 py-1.5'>
-                              <span className='text-muted-foreground inline-flex items-center gap-1'>
-                                <MapPin aria-hidden='true' className='size-3' />
-                                {[lab.building, lab.floor, lab.roomNumber].filter(Boolean).join('·') || '—'}
-                              </span>
-                            </td>
-                            <td className='px-2.5 py-1.5'>
-                              <Badge variant='outline' className={cn('rounded-sm px-1 font-normal', toneClass)}>
-                                {statusMeta.label}
-                              </Badge>
-                            </td>
-                            <td className='px-2.5 py-1.5 text-right font-mono tabular-nums'>
-                              设备 {lab.deviceCount} · 播放 {lab.playbackDeviceCount} · 用例 {lab.testCaseCount}
-                            </td>
-                            <td className='px-2.5 py-1.5 font-mono tabular-nums'>
-                              {lab.updatedAt ? lab.updatedAt.replace('T', ' ').slice(0, 16) : '—'}
-                            </td>
-                            <td className='px-2.5 py-1.5 text-right'>
-                              <Button
-                                variant='ghost'
-                                size='icon-sm'
-                                className='size-6 text-destructive'
-                                aria-label={`删除实验室 ${lab.name}`}
-                                onClick={() => setDeleteTarget(lab)}
-                              >
-                                <Trash2 aria-hidden='true' className='size-3.5' />
-                              </Button>
-                            </td>
-                          </tr>
-                        )
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            {/* 实验室列表（§6.26 DataTable；P3-27 返修：复用 StaticDataTable） */}
+            <StaticDataTable
+              columns={[
+                {
+                  key: 'code',
+                  header: '代码',
+                  className: 'font-mono',
+                  render: (lab: Laboratory) => lab.code,
+                },
+                {
+                  key: 'name',
+                  header: '名称',
+                  className: 'max-w-40',
+                  render: (lab: Laboratory) => (
+                    <>
+                      <span className='min-w-0 block truncate'>{lab.name}</span>
+                      {lab.description && (
+                        <span className='text-muted-foreground min-w-0 block truncate text-[11px]'>
+                          {lab.description}
+                        </span>
+                      )}
+                    </>
+                  ),
+                },
+                {
+                  key: 'location',
+                  header: '所在位置',
+                  render: (lab: Laboratory) => (
+                    <span className='text-muted-foreground inline-flex items-center gap-1'>
+                      <MapPin aria-hidden='true' className='size-3' />
+                      {[lab.building, lab.floor, lab.roomNumber].filter(Boolean).join('·') || '—'}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'status',
+                  header: '状态',
+                  render: (lab: Laboratory) => {
+                    const statusMeta = LABORATORY_STATUS_META[lab.status]
+                    const toneClass = {
+                      success: 'text-success border-success/40 bg-success/10',
+                      neutral: 'text-muted-foreground',
+                      warning: 'text-warning border-warning/40 bg-warning/10',
+                    }[statusMeta.tone]
+                    return (
+                      <Badge variant='outline' className={cn('rounded-sm px-1 font-normal', toneClass)}>
+                        {statusMeta.label}
+                      </Badge>
+                    )
+                  },
+                },
+                {
+                  key: 'resources',
+                  header: '资源统计',
+                  className: 'text-right font-mono tabular-nums',
+                  render: (lab: Laboratory) =>
+                    `设备 ${lab.deviceCount} · 播放 ${lab.playbackDeviceCount} · 用例 ${lab.testCaseCount}`,
+                },
+                {
+                  key: 'updatedAt',
+                  header: '更新时间',
+                  className: 'font-mono tabular-nums',
+                  render: (lab: Laboratory) =>
+                    lab.updatedAt ? lab.updatedAt.replace('T', ' ').slice(0, 16) : '—',
+                },
+              ]}
+              rows={props.labs}
+              rowKey={(lab) => String(lab.id)}
+              emptyText='暂无实验室'
+              minWidth='720px'
+              actions={(lab) => (
+                <span className='flex items-center justify-end gap-1'>
+                  <Button
+                    variant='ghost'
+                    size='icon-sm'
+                    className='size-6'
+                    aria-label={`编辑实验室 ${lab.name}`}
+                    onClick={() => startEdit(lab)}
+                  >
+                    <Pencil aria-hidden='true' className='size-3.5' />
+                  </Button>
+                  <Button
+                    variant='ghost'
+                    size='icon-sm'
+                    className='size-6 text-destructive'
+                    aria-label={`删除实验室 ${lab.name}`}
+                    onClick={() => setDeleteTarget(lab)}
+                  >
+                    <Trash2 aria-hidden='true' className='size-3.5' />
+                  </Button>
+                </span>
+              )}
+            />
           </div>
 
           <DialogFooter>

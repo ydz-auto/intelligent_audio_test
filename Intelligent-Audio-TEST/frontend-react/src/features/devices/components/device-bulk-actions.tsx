@@ -42,45 +42,48 @@ export function DeviceBulkActions(props: DeviceBulkActionsProps) {
   )
 
   return (
-    <div className='shadow-xl flex items-center justify-between gap-2 rounded-xl border bg-background/95 p-2 backdrop-blur-lg'>
-      <span className='flex min-w-0 items-center gap-1.5 px-1 text-sm'>
-        <Button
-          variant='ghost'
-          size='icon-sm'
-          aria-label='清空选择'
-          className='size-6'
-          onClick={props.onClear}
-        >
-          <X aria-hidden='true' className='size-3.5' />
-        </Button>
-        <Badge variant='secondary' className='rounded-md px-1.5 font-normal tabular-nums'>
-          {props.count}
-        </Badge>
-        <span className='text-muted-foreground truncate text-xs'>
-          {label} {props.count} 个已选择
-        </span>
-      </span>
-      <span className='flex shrink-0 flex-wrap items-center justify-end gap-1.5'>
-        {props.tab === 'test' && props.canControl && (
-          <>
-            {outlineAction('连接', 'connect')}
-            {outlineAction('断开', 'disconnect')}
-            {outlineAction('重启', 'reboot')}
-            {outlineAction('关机', 'shutdown')}
-            {outlineAction('健康检查', 'health_check')}
-          </>
-        )}
-        {props.canDelete && (
+    // P2-10 返修：§3.8「fixed bottom-6 left-1/2 z-50 -translate-x-1/2」悬浮层（照 audio-bulk-actions 同款）
+    <div className='fixed bottom-6 left-1/2 z-50 w-max max-w-[calc(100vw-2rem)] -translate-x-1/2'>
+      <div className='shadow-xl flex items-center justify-between gap-2 rounded-xl border bg-background/95 p-2 backdrop-blur-lg'>
+        <span className='flex min-w-0 items-center gap-1.5 px-1 text-sm'>
           <Button
-            variant='destructive'
-            size='sm'
-            className='h-8 gap-1 text-xs'
-            onClick={() => props.onAction('delete')}
+            variant='ghost'
+            size='icon-sm'
+            aria-label='清空选择'
+            className='size-6'
+            onClick={props.onClear}
           >
-            删除
+            <X aria-hidden='true' className='size-3.5' />
           </Button>
-        )}
-      </span>
+          <Badge variant='secondary' className='rounded-md px-1.5 font-normal tabular-nums'>
+            {props.count}
+          </Badge>
+          <span className='text-muted-foreground truncate text-xs'>
+            {label} {props.count} 个已选择
+          </span>
+        </span>
+        <span className='flex shrink-0 flex-wrap items-center justify-end gap-1.5'>
+          {props.tab === 'test' && props.canControl && (
+            <>
+              {outlineAction('连接', 'connect')}
+              {outlineAction('断开', 'disconnect')}
+              {outlineAction('重启', 'reboot')}
+              {outlineAction('关机', 'shutdown')}
+              {outlineAction('健康检查', 'health_check')}
+            </>
+          )}
+          {props.canDelete && (
+            <Button
+              variant='destructive'
+              size='sm'
+              className='h-8 gap-1 text-xs'
+              onClick={() => props.onAction('delete')}
+            >
+              删除
+            </Button>
+          )}
+        </span>
+      </div>
     </div>
   )
 }

@@ -7,10 +7,11 @@
  * API 服务：后端恒空 → 页签显空态「API 暂不支持自动扫描，请手动添加」（§11-11）。
  * 已注册设备行显「已添加」muted 徽标 + 添加钮禁用；底部「开始扫描/扫描中...」；
  * 空态「未扫描到任何设备，请确保 ADB 设备已连接」；mock 兜底加 muted 提示「当前为模拟数据」。
- * 点「添加」→ 关扫描窗 + 开新增抽屉预填（§6.1 注）。
+ * 点「添加」→ 关扫描窗 + 开新增抽屉并预填扫描行字段（§6.1 注 / P2-13 返修）。
+ * P2-2 返修：timer 用 useRef 持有，reset/关闭 clearInterval，杜绝并发双 interval。
  */
 import { Smartphone, AudioLines, Ban } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -24,16 +25,24 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Progress } from '@/features/tasks/components/ui/progress'
+import { normalizeDeviceSystem } from '@/features/devices/lib/device-system'
 import type { DevicesTabKey } from '@/features/devices/constants'
+import type { TestDevice } from '@/domain/models/testDevice'
+import type { PlaybackDevice } from '@/domain/models/playbackDevice'
+import type { ApiDevice } from '@/domain/models/apiDevice'
 
 export interface ScanDevicesDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   tab: DevicesTabKey
-  onAddToMutate: (kind: DevicesTabKey) => void
+  /** §6.1 扫描「添加」→ 开新增抽屉并预填扫描行字段（P2-13：透传行数据） */
+  onAddToMutate: (
+    kind: DevicesTabKey,
+    prefill: Partial<TestDevice> | Partial<PlaybackDevice> | Partial<ApiDevice>
+  ) => void
 }
 
-/** 扫描结果行（device.py DeviceScanItem / playback.py PlaybackScanItem） */
+/** 扫描结果行（device.py DeviceScanItem / playback.py PlaybackScanItem，snake_case 直出） */
 interface ScanResultRow {
   name?: string | null
   model?: string | null
@@ -63,8 +72,17 @@ export function ScanDevicesDialog(props: ScanDevicesDialogProps) {
   const [scanning, setScanning] = useState(false)
   const [rows, setRows] = useState<ScanResultRow[]>([])
   const [adding, setAdding] = useState<Set<number>>(new Set())
+  const timerRef = useRef<number | null>(null)
+
+  const clearTimer = () => {
+    if (timerRef.current != null) {
+      window.clearInterval(timerRef.current)
+      timerRef.current = null
+    }
+  }
 
   const reset = () => {
+    clearTimer()
     setProgress(0)
     setScanning(false)
     setRows([])
@@ -72,39 +90,66 @@ export function ScanDevicesDialog(props: ScanDevicesDialogProps) {
   }
 
   const handleScan = () => {
+    // 防重入：已扫描中不重复启动
+    if (scanning) return
+    clearTimer()
     // 模拟分档进度（§6.1 scanStatus 状态机）；接线后接 useDeviceMutations().scan
     setScanning(true)
     setProgress(0)
     const kind = props.tab === 'test' ? 'test' : 'playback'
-    const timer = window.setInterval(() => {
-      setProgress((prev) => {
-        const next = Math.min(100, prev + 25)
-        if (next >= 100) {
-          window.clearInterval(timer)
-          setScanning(false)
-          // mock 扫描结果（§6.1 mock 兜底）
-          setRows(
-            kind === 'test'
-              ? [
-                  { name: '音箱-扫描新机', model: '旗舰 S1', serial: 'SN-SCAN-1001', system: 'harmony', system_version: '3.2.1', ip: '192.168.1.51', status: 'online', is_registered: false, id: null, type: 'physical' },
-                  { name: '手机-扫描小米14', model: 'Xiaomi 14', serial: 'SN-SCAN-1002', system: 'android', system_version: '14', ip: '192.168.1.52', status: 'online', is_registered: false, id: null, type: 'physical' },
-                  { name: '音箱-客厅位', model: '旗舰 S1', serial: 'SN-A001-8821', system: 'harmony', system_version: '3.2.1', ip: '192.168.1.21', status: 'online', is_registered: true, id: 1, type: 'physical' },
-                ]
-              : [
-                  { name: 'Speaker Out 1', model: '系统音频通道', device_unique_id: 'AUDIO-OUT-01', channel_index: 0, sample_rate: 48000, type: 'dry', status: 'online' },
-                  { name: 'Speaker Out 2', model: '系统音频通道', device_unique_id: 'AUDIO-OUT-02', channel_index: 1, sample_rate: 48000, type: 'noise', status: 'offline' },
-                ]
-          )
-        }
-        return next
-      })
+    // P2-2 返修：updater 不做副作用——完成逻辑放 interval 回调（tick 计数驱动）
+    let tick = 0
+    timerRef.current = window.setInterval(() => {
+      tick += 1
+      const next = Math.min(100, tick * 25)
+      setProgress(next)
+      if (next >= 100) {
+        clearTimer()
+        setScanning(false)
+        // mock 扫描结果（§6.1 mock 兜底）
+        setRows(
+          kind === 'test'
+            ? [
+                { name: '音箱-扫描新机', model: '旗舰 S1', serial: 'SN-SCAN-1001', system: 'harmony', system_version: '3.2.1', ip: '192.168.1.51', status: 'online', is_registered: false, id: null, type: 'physical' },
+                { name: '手机-扫描小米14', model: 'Xiaomi 14', serial: 'SN-SCAN-1002', system: 'android', system_version: '14', ip: '192.168.1.52', status: 'online', is_registered: false, id: null, type: 'physical' },
+                { name: '音箱-客厅位', model: '旗舰 S1', serial: 'SN-A001-8821', system: 'harmony', system_version: '3.2.1', ip: '192.168.1.21', status: 'online', is_registered: true, id: 1, type: 'physical' },
+              ]
+            : [
+                { name: 'Speaker Out 1', model: '系统音频通道', device_unique_id: 'AUDIO-OUT-01', channel_index: 0, sample_rate: 48000, type: 'dry', status: 'online' },
+                { name: 'Speaker Out 2', model: '系统音频通道', device_unique_id: 'AUDIO-OUT-02', channel_index: 1, sample_rate: 48000, type: 'noise', status: 'offline' },
+              ]
+        )
+      }
     }, 350)
   }
 
   const handleAdd = (index: number) => {
     if (adding.has(index)) return
     setAdding((prev) => new Set(prev).add(index))
-    props.onAddToMutate(props.tab)
+    const row = rows[index]
+    // §6.1：预填扫描行字段（test: name/model/serialNumber/system归一/systemVersion/appName/appVersion/ip；
+    // playback: name/model/deviceUniqueId/channelIndex/sampleRate/deviceType）
+    const prefill: Partial<TestDevice> | Partial<PlaybackDevice> | Partial<ApiDevice> =
+      props.tab === 'test'
+        ? {
+            name: row?.name ?? '',
+            model: row?.model ?? '',
+            serialNumber: row?.serial ?? '',
+            system: normalizeDeviceSystem(row?.system)?.label ?? 'Android',
+            systemVersion: row?.system_version ?? '未知',
+            ip: row?.ip ?? '',
+            appName: 'Default App',
+            appVersion: '1.0.0',
+          }
+        : {
+            name: row?.name ?? '',
+            model: row?.model ?? '',
+            deviceUniqueId: row?.device_unique_id ?? '',
+            channelIndex: row?.channel_index ?? 0,
+            sampleRate: row?.sample_rate ?? 48000,
+            deviceType: (row?.type as PlaybackDevice['deviceType']) ?? 'dry',
+          }
+    props.onAddToMutate(props.tab, prefill)
     toast.success('已添加到设备登记表单，请补充信息后保存')
   }
 
@@ -169,7 +214,7 @@ export function ScanDevicesDialog(props: ScanDevicesDialogProps) {
                       </span>
                       <span className='text-muted-foreground block text-xs'>
                         {props.tab === 'test'
-                          ? `${row.system ?? '未知系统'} - ${row.serial ?? '—'}`
+                          ? `${normalizeDeviceSystem(row.system)?.label ?? row.system ?? '未知系统'} - ${row.serial ?? '—'}`
                           : `通道 ${row.channel_index ?? 0} · ${row.sample_rate ?? 48000} Hz`}
                         {row.ip ? ` · ${row.ip}` : ''}
                       </span>

@@ -1,10 +1,11 @@
 /**
  * 播放设备关联声压映射弹窗（16_设备域.md §6.4；Dialog sm:max-w-md）。
- * 标题「关联声压映射」；映射 Select（GET /spl/by-device/{id}，选项「{名}（已校准/未校准）」）+
- * 校验提示（映射 device_id/device_type 不匹配后端 400 内联展示「SPL 映射设备不匹配/类型不匹配」）；
- * 主钮「关联」（playback:control）；成功 toast「SPL 映射关联成功」。
+ * 标题「关联声压映射」；映射 Select（GET /spl/by-device/{id}，选项「{名}（已校准/未校准）」，ui 基元）+
+ * 校验提示（映射 device_id/device_type 不匹配后端 400 内联展示 §9「SPL 映射类型不匹配：
+ * 映射类型为 {a}, 设备类型为 {b}」）；主钮「关联」（playback:control）；成功 toast「SPL 映射关联成功」。
+ * P3-26 返修：手写原生 select → ui Select；错误文案对齐 §9。
  */
-import { AudioLines, Check, ChevronDown } from 'lucide-react'
+import { AudioLines, Check } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -16,8 +17,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import type { AssociateSplState } from '@/features/devices/types'
+import { PLAYBACK_DEVICE_TYPE_META } from '@/domain/models/playbackDevice'
 
 /** 可选 SPL 映射 refs（§6.4 选项「{名}（已校准）」；mock 阶段静态） */
 export const MOCK_ASSOCIATE_SPL_OPTIONS = [
@@ -33,24 +42,27 @@ export function AssociateSplDialog({
   state: AssociateSplState
   onOpenChange: (open: boolean) => void
 }) {
-  const [mappingId, setMappingId] = useState<number | null>(null)
+  const [mappingId, setMappingId] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (state.open) {
-      setMappingId(null)
+      setMappingId('')
       setError(null)
     }
   }, [state.open])
 
   const handleAssociate = () => {
-    if (mappingId == null) {
+    if (!mappingId) {
       setError('请选择一个声压映射')
       return
     }
-    const mapping = MOCK_ASSOCIATE_SPL_OPTIONS.find((m) => m.id === mappingId)
+    const mapping = MOCK_ASSOCIATE_SPL_OPTIONS.find((m) => m.id === Number(mappingId))
     if (mapping && mapping.calibrationStatus === 'uncalibrated') {
-      setError('SPL 映射类型不匹配：映射类型为设备 SPL，请选择已校准映射')
+      const deviceType = state.device?.deviceType
+      const deviceTypeLabel = deviceType ? (PLAYBACK_DEVICE_TYPE_META[deviceType]?.label ?? deviceType) : '未知'
+      // §9 文案：SPL 映射类型不匹配：映射类型为 {a}, 设备类型为 {b}
+      setError(`SPL 映射类型不匹配：映射类型为「${mapping.name}」, 设备类型为「${deviceTypeLabel}」`)
       return
     }
     setError(null)
@@ -69,28 +81,24 @@ export function AssociateSplDialog({
         </DialogHeader>
 
         <div className='flex flex-col gap-2'>
-          <div className='relative'>
-            <AudioLines aria-hidden='true' className='text-muted-foreground absolute start-2 top-1/2 size-3.5 -translate-y-1/2' />
-            <select
-              value={mappingId ?? ''}
-              onChange={(e) => {
-                setMappingId(e.target.value ? Number(e.target.value) : null)
-                setError(null)
-              }}
-              className={cn(
-                'border-input h-9 w-full appearance-none rounded-lg border bg-transparent ps-7 pr-8 text-sm outline-none',
-                error && 'border-destructive'
-              )}
-              aria-label='选择声压映射'
-            >
-              <option value=''>请选择声压映射</option>
-              {MOCK_ASSOCIATE_SPL_OPTIONS.map((mapping) => (
-                <option key={mapping.id} value={mapping.id}>
-                  {mapping.name}（{mapping.calibrationStatus === 'calibrated' ? '已校准' : '未校准'}）
-                </option>
-              ))}
-            </select>
-            <ChevronDown aria-hidden='true' className='text-muted-foreground pointer-events-none absolute end-2 top-1/2 size-3.5 -translate-y-1/2' />
+          <div className='flex items-center gap-2'>
+            <AudioLines aria-hidden='true' className='text-muted-foreground size-4 shrink-0' />
+            <Select value={mappingId} onValueChange={(value) => { setMappingId(value ?? ''); setError(null) }}>
+              <SelectTrigger
+                size='sm'
+                className={cn('w-full', error && 'border-destructive')}
+                aria-label='选择声压映射'
+              >
+                <SelectValue placeholder='请选择声压映射' />
+              </SelectTrigger>
+              <SelectContent>
+                {MOCK_ASSOCIATE_SPL_OPTIONS.map((mapping) => (
+                  <SelectItem key={mapping.id} value={String(mapping.id)}>
+                    {mapping.name}（{mapping.calibrationStatus === 'calibrated' ? '已校准' : '未校准'}）
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           {error && <p className='text-destructive text-xs'>{error}</p>}
         </div>

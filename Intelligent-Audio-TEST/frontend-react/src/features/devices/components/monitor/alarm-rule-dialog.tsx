@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { StaticDataTable } from '@/features/system-settings/components/static-data-table'
 import { cn } from '@/lib/utils'
 import type { AlarmRule } from '@/domain/models/alarm'
 import {
@@ -270,98 +271,101 @@ export function AlarmRuleDialog({
                 </div>
             </div>
 
-            {/* 规则 StaticDataTable */}
-            <div className='bg-card ring-foreground/10 overflow-hidden rounded-lg ring-1'>
-              <div className='overflow-x-auto'>
-                <table className='w-full min-w-[560px] text-xs'>
-                  <thead>
-                    <tr className='bg-[var(--table-header)]'>
-                      <th className='px-2.5 py-1.5 text-left font-medium'>名称</th>
-                      <th className='px-2.5 py-1.5 text-left font-medium'>指标</th>
-                      <th className='px-2.5 py-1.5 text-right font-medium'>阈值</th>
-                      <th className='px-2.5 py-1.5 text-left font-medium'>级别</th>
-                      <th className='px-2.5 py-1.5 text-center font-medium'>邮件</th>
-                      <th className='px-2.5 py-1.5 text-center font-medium'>启用</th>
-                      <th className='px-2.5 py-1.5 text-right font-medium'>操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rules.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} className='text-muted-foreground px-3 py-6 text-center'>
-                          暂无告警规则
-                        </td>
-                      </tr>
-                    ) : (
-                      rules.map((rule) => {
-                        const metric = ALARM_METRIC_META[rule.metricType]
-                        const severity = ALARM_SEVERITY_META[rule.severity]
-                        return (
-                          <tr key={rule.id} className='hover:bg-muted/40 border-border/50 border-b last:border-b-0'>
-                            <td className='max-w-40 px-2.5 py-1.5'>
-                              <span className='min-w-0 block truncate'>{rule.name}</span>
-                            </td>
-                            <td className='px-2.5 py-1.5'>{metric.label}</td>
-                            <td className='px-2.5 py-1.5 text-right font-mono tabular-nums'>
-                              {rule.thresholdValue} {metric.unit}
-                            </td>
-                            <td className='px-2.5 py-1.5'>
-                              <Badge
-                                variant='outline'
-                                className={cn(
-                                  'rounded-sm px-1 font-normal',
-                                  severity.tone === 'destructive' && 'text-destructive border-destructive/40 bg-destructive/10',
-                                  severity.tone === 'warning' && 'text-warning border-warning/40 bg-warning/10',
-                                  severity.tone === 'info' && 'text-info border-info/40 bg-info/10'
-                                )}
-                              >
-                                {severity.label}
-                              </Badge>
-                            </td>
-                            <td className='px-2.5 py-1.5 text-center'>
-                              <Switch
-                                size='sm'
-                                checked={rule.notifyEmail}
-                                onCheckedChange={(notifyEmail) =>
-                                  void save.mutateAsync({ ...rule, notifyEmail })
-                                }
-                                aria-label={`${rule.name} 邮件通知`}
-                              />
-                            </td>
-                            <td className='px-2.5 py-1.5 text-center'>
-                              <Switch
-                                size='sm'
-                                checked={rule.enabled}
-                                onCheckedChange={(enabled) =>
-                                  void save.mutateAsync({ ...rule, enabled })
-                                }
-                                aria-label={`${rule.name} 启用`}
-                              />
-                            </td>
-                            <td className='px-2.5 py-1.5 text-right'>
-                              <span className='flex items-center justify-end gap-1'>
-                                <Button variant='ghost' size='sm' className='h-6 px-1.5 text-xs' onClick={() => startEdit(rule)}>
-                                  编辑
-                                </Button>
-                                <Button
-                                  variant='ghost'
-                                  size='icon-sm'
-                                  className='size-6 text-destructive'
-                                  aria-label={`删除规则 ${rule.name}`}
-                                  onClick={() => setDeleteTarget(rule)}
-                                >
-                                  <Trash2 aria-hidden='true' className='size-3.5' />
-                                </Button>
-                              </span>
-                            </td>
-                          </tr>
-                        )
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            {/* 规则 StaticDataTable（P3-27 返修：复用 StaticDataTable） */}
+            <StaticDataTable
+              columns={[
+                {
+                  key: 'name',
+                  header: '名称',
+                  className: 'max-w-40',
+                  render: (rule: AlarmRule) => (
+                    <span className='min-w-0 block truncate'>{rule.name}</span>
+                  ),
+                },
+                {
+                  key: 'metric',
+                  header: '指标',
+                  render: (rule: AlarmRule) => ALARM_METRIC_META[rule.metricType].label,
+                },
+                {
+                  key: 'threshold',
+                  header: '阈值',
+                  className: 'text-right font-mono tabular-nums',
+                  render: (rule: AlarmRule) =>
+                    `${rule.thresholdValue} ${ALARM_METRIC_META[rule.metricType].unit}`,
+                },
+                {
+                  key: 'severity',
+                  header: '级别',
+                  render: (rule: AlarmRule) => {
+                    const severity = ALARM_SEVERITY_META[rule.severity]
+                    return (
+                      <Badge
+                        variant='outline'
+                        className={cn(
+                          'rounded-sm px-1 font-normal',
+                          severity.tone === 'destructive' && 'text-destructive border-destructive/40 bg-destructive/10',
+                          severity.tone === 'warning' && 'text-warning border-warning/40 bg-warning/10',
+                          severity.tone === 'info' && 'text-info border-info/40 bg-info/10'
+                        )}
+                      >
+                        {severity.label}
+                      </Badge>
+                    )
+                  },
+                },
+                {
+                  key: 'email',
+                  header: '邮件',
+                  className: 'text-center',
+                  render: (rule: AlarmRule) => (
+                    <Switch
+                      size='sm'
+                      checked={rule.notifyEmail}
+                      onCheckedChange={(notifyEmail) =>
+                        void save.mutateAsync({ ...rule, notifyEmail })
+                      }
+                      aria-label={`${rule.name} 邮件通知`}
+                    />
+                  ),
+                },
+                {
+                  key: 'enabled',
+                  header: '启用',
+                  className: 'text-center',
+                  render: (rule: AlarmRule) => (
+                    <Switch
+                      size='sm'
+                      checked={rule.enabled}
+                      onCheckedChange={(enabled) =>
+                        void save.mutateAsync({ ...rule, enabled })
+                      }
+                      aria-label={`${rule.name} 启用`}
+                    />
+                  ),
+                },
+              ]}
+              rows={rules}
+              rowKey={(rule) => String(rule.id)}
+              emptyText='暂无告警规则'
+              minWidth='560px'
+              actions={(rule) => (
+                <span className='flex items-center justify-end gap-1'>
+                  <Button variant='ghost' size='sm' className='h-6 px-1.5 text-xs' onClick={() => startEdit(rule)}>
+                    编辑
+                  </Button>
+                  <Button
+                    variant='ghost'
+                    size='icon-sm'
+                    className='size-6 text-destructive'
+                    aria-label={`删除规则 ${rule.name}`}
+                    onClick={() => setDeleteTarget(rule)}
+                  >
+                    <Trash2 aria-hidden='true' className='size-3.5' />
+                  </Button>
+                </span>
+              )}
+            />
           </div>
 
           <DialogFooter>

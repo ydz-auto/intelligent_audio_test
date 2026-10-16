@@ -4,15 +4,20 @@
  * resolved(neutral)/总计 total）+ 告警/历史监控 Tabs：
  * - 告警列表：状态 facet + 级别 facet +「告警规则」outline 钮；列=级别/设备/规则/指标/内容/
  *   触发值·阈值/邮件/触发时间/操作（确认钮 device:control / 已确认态显 acknowledged_by）
- * - 历史监控：事件类型 facet + 时间范围 Select；列=设备/事件类型/变更/来源/结果/详情/时间
+ * - 历史监控：事件类型 facet + 时间范围 Select（今日/近7天/近30天/自定义 start/end）+ 四类历史
+ *   子页签（状态/性能/操作/错误）+ 统计分析 vChart 区（可用性/性能/错误/使用）
  * 数据 GET /alarms（含 stats）+ /status-history 实测；30s 轮询兜底（§11-4 SSE 断链）。
+ * P2-4 返修：时间范围筛选接入 createdAt；P2-12 返修：四类历史 + 统计分析区；
+ * P3-27 返修：复用 StaticDataTable；P3-28 返修：复用 IconBadge。
  */
-import { Bell, ChevronDown, Circle, CircleCheck, X } from 'lucide-react'
-import { useState } from 'react'
+import { Bell, ChevronDown, Circle, CircleCheck } from 'lucide-react'
+import { useMemo, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { IconBadge } from '@/components/ui/icon-badge'
+import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -27,6 +32,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { StaticDataTable } from '@/features/system-settings/components/static-data-table'
 import { cn } from '@/lib/utils'
 import type {
   Alarm,
@@ -39,6 +45,12 @@ import {
   ALARM_STATUS_META,
   DEVICE_EVENT_TYPE_META,
 } from '@/domain/models/alarm'
+import {
+  HISTORY_CATEGORY_EVENT_TYPES,
+  filterByTimeRange,
+  type HistoryTimeRange,
+} from '@/features/devices/lib/alarm-history-stats'
+import { HistoryStatsCharts } from '@/features/devices/components/monitor/history-stats-charts'
 
 export interface AlarmPanelProps {
   open: boolean
@@ -72,6 +84,15 @@ const TIME_RANGE_OPTIONS = [
   { value: 'custom', label: '自定义' },
 ]
 
+const HISTORY_CATEGORIES = [
+  { value: 'status', label: '状态历史' },
+  { value: 'performance', label: '性能历史' },
+  { value: 'operation', label: '操作历史' },
+  { value: 'error', label: '错误历史' },
+] as const
+
+type HistoryCategory = (typeof HISTORY_CATEGORIES)[number]['value']
+
 function StatBadge({
   label,
   value,
@@ -90,22 +111,21 @@ function StatBadge({
   )
 }
 
-/** 告警级别 IconBadge（critical=destructive/warning=warning/info=info，Bell 图标） */
+/** 告警级别 IconBadge（P3-28：复用 ui/icon-badge，critical=destructive/warning=warning/info=info） */
 function SeverityIcon({ severity }: { severity: Alarm['severity'] }) {
   if (!severity) return <span className='text-muted-foreground'>—</span>
   const meta = ALARM_SEVERITY_META[severity]
-  const toneClass = {
-    destructive: 'bg-destructive/10 text-destructive',
-    warning: 'bg-warning/10 text-warning',
-    info: 'bg-info/10 text-info',
-  }[meta.tone]
   return (
-    <span
-      className={cn('inline-flex size-6 items-center justify-center rounded-md', toneClass)}
-    >
-      <Bell aria-hidden='true' className='size-3.5' />
-    </span>
+    <IconBadge tone={meta.tone} size='xs'>
+      <Bell aria-hidden='true' />
+    </IconBadge>
   )
+}
+
+/** 状态码中文（P4：历史变更列显中文而非英文状态码） */
+function statusCodeLabel(status: string | null): string {
+  if (!status) return '—'
+  return DEVICE_EVENT_TYPE_META[status as keyof typeof DEVICE_EVENT_TYPE_META]?.label ?? status
 }
 
 export function AlarmPanel(props: AlarmPanelProps) {
@@ -113,18 +133,193 @@ export function AlarmPanel(props: AlarmPanelProps) {
   const [severity, setSeverity] = useState<string>('all')
   const [alarmStatus, setAlarmStatus] = useState<string>('all')
   const [eventType, setEventType] = useState<string>('all')
-  const [timeRange, setTimeRange] = useState<string>('7d')
+  const [timeRange, setTimeRange] = useState<HistoryTimeRange>('7d')
+  const [customStart, setCustomStart] = useState<string>('')
+  const [customEnd, setCustomEnd] = useState<string>('')
+  const [historyCategory, setHistoryCategory] = useState<HistoryCategory>('status')
 
-  const filteredAlarms = props.alarms.filter((alarm) => {
-    if (severity !== 'all' && alarm.severity !== severity) return false
-    if (alarmStatus !== 'all' && alarm.status !== alarmStatus) return false
-    return true
-  })
+  const filteredAlarms = useMemo(
+    () =>
+      props.alarms.filter((alarm) => {
+        if (severity !== 'all' && alarm.severity !== severity) return false
+        if (alarmStatus !== 'all' && alarm.status !== alarmStatus) return false
+        return true
+      }),
+    [props.alarms, severity, alarmStatus]
+  )
 
-  const filteredHistory = props.statusHistory.filter((event) => {
-    if (eventType !== 'all' && event.eventType !== eventType) return false
-    return true
-  })
+  // P2-4：时间范围筛选接入 createdAt（今日/近7天/近30天/自定义）
+  const filteredHistory = useMemo(() => {
+    const categoryTypes = HISTORY_CATEGORY_EVENT_TYPES[historyCategory]
+    return props.statusHistory.filter((event) => {
+      if (categoryTypes && !categoryTypes.includes(event.eventType)) return false
+      if (eventType !== 'all' && event.eventType !== eventType) return false
+      if (!filterByTimeRange(event.createdAt, timeRange, customStart, customEnd)) return false
+      return true
+    })
+  }, [props.statusHistory, historyCategory, eventType, timeRange, customStart, customEnd])
+
+  const alarmColumns = [
+    {
+      key: 'severity',
+      header: '级别',
+      render: (alarm: Alarm) => <SeverityIcon severity={alarm.severity} />,
+    },
+    {
+      key: 'device',
+      header: '设备',
+      className: 'max-w-36',
+      render: (alarm: Alarm) => (
+        <>
+          <span className='min-w-0 block truncate'>{alarm.deviceName ?? '—'}</span>
+          {alarm.deviceId != null && (
+            <span className='text-muted-foreground font-mono text-[11px]'>#{alarm.deviceId}</span>
+          )}
+        </>
+      ),
+    },
+    {
+      key: 'rule',
+      header: '规则',
+      className: 'max-w-36',
+      render: (alarm: Alarm) => (
+        <span className='min-w-0 block truncate'>{alarm.ruleName ?? '—'}</span>
+      ),
+    },
+    {
+      key: 'metric',
+      header: '指标',
+      render: (alarm: Alarm) =>
+        alarm.metricType ? ALARM_METRIC_META[alarm.metricType].label : '—',
+    },
+    {
+      key: 'content',
+      header: '内容',
+      className: 'max-w-56',
+      render: (alarm: Alarm) => (
+        <Tooltip>
+          <TooltipTrigger render={<span className='min-w-0 block truncate text-start' />}>
+            {alarm.content ?? '—'}
+          </TooltipTrigger>
+          {alarm.content && <TooltipContent className='max-w-80'>{alarm.content}</TooltipContent>}
+        </Tooltip>
+      ),
+    },
+    {
+      key: 'threshold',
+      header: '触发值/阈值',
+      className: 'text-right font-mono tabular-nums',
+      render: (alarm: Alarm) => `${alarm.triggerValue ?? '—'}/${alarm.thresholdValue ?? '—'}`,
+    },
+    {
+      key: 'email',
+      header: '邮件',
+      className: 'text-center',
+      render: (alarm: Alarm) =>
+        alarm.emailSent ? (
+          alarm.emailError ? (
+            // P4：邮件失败 Tooltip（email_error）
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <CircleCheck
+                    aria-label='邮件发送失败'
+                    className='text-warning mx-auto size-3.5'
+                  />
+                }
+              />
+              <TooltipContent>{alarm.emailError}</TooltipContent>
+            </Tooltip>
+          ) : (
+            <CircleCheck aria-label='已发送邮件' className='text-success mx-auto size-3.5' />
+          )
+        ) : (
+          <Circle aria-hidden='true' className='text-muted-foreground mx-auto size-3.5' />
+        ),
+    },
+    {
+      key: 'createdAt',
+      header: '触发时间',
+      className: 'font-mono tabular-nums',
+      render: (alarm: Alarm) =>
+        alarm.createdAt ? alarm.createdAt.replace('T', ' ').slice(0, 16) : '—',
+    },
+  ]
+
+  const historyColumns = [
+    {
+      key: 'device',
+      header: '设备',
+      className: 'max-w-36',
+      render: (event: DeviceStatusEvent) => (
+        <span className='min-w-0 block truncate'>{event.deviceName ?? '—'}</span>
+      ),
+    },
+    {
+      key: 'eventType',
+      header: '事件类型',
+      render: (event: DeviceStatusEvent) => (
+        <Badge variant='outline' className='rounded-sm px-1 font-normal'>
+          {DEVICE_EVENT_TYPE_META[event.eventType]?.label ?? event.eventType}
+        </Badge>
+      ),
+    },
+    {
+      key: 'transition',
+      header: '变更',
+      className: 'font-mono text-[11px]',
+      render: (event: DeviceStatusEvent) => (
+        <>
+          {statusCodeLabel(event.fromStatus)} <span aria-hidden='true'>→</span>{' '}
+          {statusCodeLabel(event.toStatus)}
+        </>
+      ),
+    },
+    {
+      key: 'source',
+      header: '来源',
+      render: (event: DeviceStatusEvent) => (
+        <span className='text-muted-foreground'>{event.source ?? '—'}</span>
+      ),
+    },
+    {
+      key: 'result',
+      header: '结果',
+      className: 'text-center',
+      render: (event: DeviceStatusEvent) =>
+        event.result === 'success' ? (
+          <CircleCheck aria-label='成功' className='text-success mx-auto size-3.5' />
+        ) : event.result === 'failed' ? (
+          <span className='bg-destructive/10 text-destructive inline-flex size-4 items-center justify-center rounded-full'>
+            <svg aria-label='失败' className='size-3' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5'>
+              <path d='M18 6 6 18M6 6l12 12' strokeLinecap='round' />
+            </svg>
+          </span>
+        ) : (
+          <span className='text-muted-foreground'>—</span>
+        ),
+    },
+    {
+      key: 'detail',
+      header: '详情',
+      className: 'max-w-52',
+      render: (event: DeviceStatusEvent) => (
+        <Tooltip>
+          <TooltipTrigger render={<span className='min-w-0 block truncate text-start' />}>
+            {event.detail ?? '—'}
+          </TooltipTrigger>
+          {event.detail && <TooltipContent className='max-w-80'>{event.detail}</TooltipContent>}
+        </Tooltip>
+      ),
+    },
+    {
+      key: 'createdAt',
+      header: '时间',
+      className: 'font-mono tabular-nums',
+      render: (event: DeviceStatusEvent) =>
+        event.createdAt ? event.createdAt.replace('T', ' ').slice(0, 16) : '—',
+    },
+  ]
 
   return (
     <Collapsible
@@ -215,104 +410,34 @@ export function AlarmPanel(props: AlarmPanelProps) {
                   </Button>
                 )}
               </div>
-              <div className='bg-card ring-foreground/10 overflow-hidden rounded-lg ring-1'>
-                <div className='overflow-x-auto'>
-                  <table className='w-full min-w-[900px] text-xs'>
-                    <thead>
-                      <tr className='bg-[var(--table-header)]'>
-                        <th className='px-2.5 py-1.5 text-left font-medium'>级别</th>
-                        <th className='px-2.5 py-1.5 text-left font-medium'>设备</th>
-                        <th className='px-2.5 py-1.5 text-left font-medium'>规则</th>
-                        <th className='px-2.5 py-1.5 text-left font-medium'>指标</th>
-                        <th className='px-2.5 py-1.5 text-left font-medium'>内容</th>
-                        <th className='px-2.5 py-1.5 text-right font-medium'>触发值/阈值</th>
-                        <th className='px-2.5 py-1.5 text-center font-medium'>邮件</th>
-                        <th className='px-2.5 py-1.5 text-left font-medium'>触发时间</th>
-                        <th className='px-2.5 py-1.5 text-right font-medium'>操作</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredAlarms.length === 0 ? (
-                        <tr>
-                          <td colSpan={9} className='text-muted-foreground px-3 py-6 text-center'>
-                            暂无告警
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredAlarms.map((alarm) => {
-                          const metricLabel = alarm.metricType
-                            ? ALARM_METRIC_META[alarm.metricType].label
-                            : '—'
-                          return (
-                            <tr key={alarm.id} className='hover:bg-muted/40 border-border/50 border-b last:border-b-0'>
-                              <td className='px-2.5 py-1.5'>
-                                <SeverityIcon severity={alarm.severity} />
-                              </td>
-                              <td className='max-w-36 px-2.5 py-1.5'>
-                                <span className='min-w-0 block truncate'>{alarm.deviceName ?? '—'}</span>
-                                {alarm.deviceId != null && (
-                                  <span className='text-muted-foreground font-mono text-[11px]'>#{alarm.deviceId}</span>
-                                )}
-                              </td>
-                              <td className='max-w-36 px-2.5 py-1.5'>
-                                <span className='min-w-0 block truncate'>{alarm.ruleName ?? '—'}</span>
-                              </td>
-                              <td className='px-2.5 py-1.5'>{metricLabel}</td>
-                              <td className='max-w-56 px-2.5 py-1.5'>
-                                <Tooltip>
-                                  <TooltipTrigger
-                                    render={<span className='min-w-0 block truncate text-start' />}
-                                  >
-                                    {alarm.content ?? '—'}
-                                  </TooltipTrigger>
-                                  {alarm.content && (
-                                    <TooltipContent className='max-w-80'>
-                                      {alarm.content}
-                                    </TooltipContent>
-                                  )}
-                                </Tooltip>
-                              </td>
-                              <td className='px-2.5 py-1.5 text-right font-mono tabular-nums'>
-                                {alarm.triggerValue ?? '—'}/{alarm.thresholdValue ?? '—'}
-                              </td>
-                              <td className='px-2.5 py-1.5 text-center'>
-                                {alarm.emailSent ? (
-                                  <CircleCheck aria-label='已发送邮件' className='text-success mx-auto size-3.5' />
-                                ) : (
-                                  <Circle aria-hidden='true' className='text-muted-foreground mx-auto size-3.5' />
-                                )}
-                              </td>
-                              <td className='px-2.5 py-1.5 font-mono tabular-nums'>
-                                {alarm.createdAt ? alarm.createdAt.replace('T', ' ').slice(0, 16) : '—'}
-                              </td>
-                              <td className='px-2.5 py-1.5 text-right'>
-                                {alarm.status === 'active' && props.canControl ? (
-                                  <Button
-                                    variant='outline'
-                                    size='sm'
-                                    className='h-6 gap-1 px-2 text-xs'
-                                    onClick={() => props.onAcknowledge(alarm)}
-                                  >
-                                    确认
-                                  </Button>
-                                ) : alarm.status === 'acknowledged' ? (
-                                  <span className='text-muted-foreground text-[11px]'>
-                                    {alarm.acknowledgedBy ?? '已确认'}
-                                  </span>
-                                ) : (
-                                  <Badge variant='outline' className='rounded-sm px-1 font-normal'>
-                                    {ALARM_STATUS_META[alarm.status ?? 'resolved']?.label ?? '已恢复'}
-                                  </Badge>
-                                )}
-                              </td>
-                            </tr>
-                          )
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              {/* P3-27：告警表复用 StaticDataTable */}
+              <StaticDataTable
+                columns={alarmColumns}
+                rows={filteredAlarms}
+                rowKey={(alarm) => String(alarm.id)}
+                emptyText='暂无告警'
+                minWidth='900px'
+                actions={(alarm) =>
+                  alarm.status === 'active' && props.canControl ? (
+                    <Button
+                      variant='outline'
+                      size='sm'
+                      className='h-6 gap-1 px-2 text-xs'
+                      onClick={() => props.onAcknowledge(alarm)}
+                    >
+                      确认
+                    </Button>
+                  ) : alarm.status === 'acknowledged' ? (
+                    <span className='text-muted-foreground text-[11px]'>
+                      {alarm.acknowledgedBy ?? '已确认'}
+                    </span>
+                  ) : (
+                    <Badge variant='outline' className='rounded-sm px-1 font-normal'>
+                      {ALARM_STATUS_META[alarm.status ?? 'resolved']?.label ?? '已恢复'}
+                    </Badge>
+                  )
+                }
+              />
             </div>
           ) : (
             <div className='flex flex-col gap-2'>
@@ -330,7 +455,7 @@ export function AlarmPanel(props: AlarmPanelProps) {
                     ))}
                   </SelectContent>
                 </Select>
-                <Select value={timeRange} onValueChange={(value) => setTimeRange(value ?? '7d')}>
+                <Select value={timeRange} onValueChange={(value) => setTimeRange((value ?? '7d') as HistoryTimeRange)}>
                   <SelectTrigger size='sm' className='w-28'>
                     <SelectValue placeholder='全部时间' />
                   </SelectTrigger>
@@ -342,90 +467,53 @@ export function AlarmPanel(props: AlarmPanelProps) {
                     ))}
                   </SelectContent>
                 </Select>
+                {/* P2-4：自定义时间范围起止输入 */}
+                {timeRange === 'custom' && (
+                  <>
+                    <Input
+                      type='date'
+                      value={customStart}
+                      onChange={(e) => setCustomStart(e.target.value)}
+                      className='h-8 w-36'
+                      aria-label='自定义开始时间'
+                    />
+                    <Input
+                      type='date'
+                      value={customEnd}
+                      onChange={(e) => setCustomEnd(e.target.value)}
+                      className='h-8 w-36'
+                      aria-label='自定义结束时间'
+                    />
+                  </>
+                )}
               </div>
-              <div className='bg-card ring-foreground/10 overflow-hidden rounded-lg ring-1'>
-                <div className='overflow-x-auto'>
-                  <table className='w-full min-w-[760px] text-xs'>
-                    <thead>
-                      <tr className='bg-[var(--table-header)]'>
-                        <th className='px-2.5 py-1.5 text-left font-medium'>设备</th>
-                        <th className='px-2.5 py-1.5 text-left font-medium'>事件类型</th>
-                        <th className='px-2.5 py-1.5 text-left font-medium'>变更</th>
-                        <th className='px-2.5 py-1.5 text-left font-medium'>来源</th>
-                        <th className='px-2.5 py-1.5 text-center font-medium'>结果</th>
-                        <th className='px-2.5 py-1.5 text-left font-medium'>详情</th>
-                        <th className='px-2.5 py-1.5 text-left font-medium'>时间</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredHistory.length === 0 ? (
-                        <tr>
-                          <td colSpan={7} className='text-muted-foreground px-3 py-6 text-center'>
-                            暂无历史记录
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredHistory.map((event) => {
-                          const meta = DEVICE_EVENT_TYPE_META[event.eventType]
-                          return (
-                            <tr key={event.id} className='hover:bg-muted/40 border-border/50 border-b last:border-b-0'>
-                              <td className='max-w-36 px-2.5 py-1.5'>
-                                <span className='min-w-0 block truncate'>{event.deviceName ?? '—'}</span>
-                              </td>
-                              <td className='px-2.5 py-1.5'>
-                                <Badge variant='outline' className='rounded-sm px-1 font-normal'>
-                                  {meta.label}
-                                </Badge>
-                              </td>
-                              <td className='px-2.5 py-1.5 font-mono text-[11px]'>
-                                {event.fromStatus ?? '—'} <span aria-hidden='true'>→</span> {event.toStatus ?? '—'}
-                              </td>
-                              <td className='px-2.5 py-1.5 text-muted-foreground'>{event.source ?? '—'}</td>
-                              <td className='px-2.5 py-1.5 text-center'>
-                                {event.result === 'success' ? (
-                                  <CircleCheck aria-label='成功' className='text-success mx-auto size-3.5' />
-                                ) : event.result === 'failed' ? (
-                                  <CircleXLabel />
-                                ) : (
-                                  <span className='text-muted-foreground'>—</span>
-                                )}
-                              </td>
-                              <td className='max-w-52 px-2.5 py-1.5'>
-                                <Tooltip>
-                                  <TooltipTrigger
-                                    render={<span className='min-w-0 block truncate text-start' />}
-                                  >
-                                    {event.detail ?? '—'}
-                                  </TooltipTrigger>
-                                  {event.detail && (
-                                    <TooltipContent className='max-w-80'>{event.detail}</TooltipContent>
-                                  )}
-                                </Tooltip>
-                              </td>
-                              <td className='px-2.5 py-1.5 font-mono tabular-nums'>
-                                {event.createdAt ? event.createdAt.replace('T', ' ').slice(0, 16) : '—'}
-                              </td>
-                            </tr>
-                          )
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              {/* P2-12：四类历史子页签（状态/性能/操作/错误） */}
+              <Tabs
+                value={historyCategory}
+                onValueChange={(value) => setHistoryCategory(value as HistoryCategory)}
+              >
+                <TabsList variant='line' className='w-fit'>
+                  {HISTORY_CATEGORIES.map((category) => (
+                    <TabsTrigger key={category.value} value={category.value}>
+                      {category.label}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
+              {/* P3-27：历史表复用 StaticDataTable */}
+              <StaticDataTable
+                columns={historyColumns}
+                rows={filteredHistory}
+                rowKey={(event) => String(event.id)}
+                emptyText='暂无历史记录'
+                minWidth='760px'
+              />
+              {/* P2-12：统计分析 vChart 区（可用性/性能/错误/使用） */}
+              <HistoryStatsCharts />
             </div>
           )}
         </div>
       </CollapsibleContent>
     </Collapsible>
-  )
-}
-
-/** 失败结果圆叉 */
-function CircleXLabel() {
-  return (
-    <span className='bg-destructive/10 text-destructive inline-flex size-4 items-center justify-center rounded-full'>
-      <X aria-label='失败' className='size-3' />
-    </span>
   )
 }

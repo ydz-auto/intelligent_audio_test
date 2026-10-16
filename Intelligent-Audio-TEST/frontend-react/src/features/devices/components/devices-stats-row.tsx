@@ -43,7 +43,13 @@ export function DevicesStatsRow({
       </div>
     )
   }
-  const dots = ['bg-neutral-400', 'bg-[var(--success)]', 'bg-[var(--muted-foreground)]', 'bg-[var(--destructive)]']
+  // P4 返修：色条全走语义 token（neutral/success/muted/destructive，§2.1 口径）
+  const dots = [
+    'bg-[var(--muted-foreground)]',
+    'bg-[var(--success)]',
+    'bg-[var(--muted-foreground)]',
+    'bg-[var(--destructive)]',
+  ]
   return (
     <div className='flex flex-wrap items-center gap-2'>
       {labels.map((label, index) => (

@@ -27,6 +27,8 @@ export interface DeviceDetailDialogProps {
   state: DeviceDetailState
   onOpenChange: (open: boolean) => void
   onEdit: (kind: DevicesTabKey, device: TestDevice | PlaybackDevice | ApiDevice) => void
+  /** P3-14 返修：详情内「编辑」按 canUpdate 权限门控（行菜单已按码显隐） */
+  canUpdate: boolean
 }
 
 function Row({ label, value }: { label: string; value: ReactNode }) {
@@ -163,7 +165,7 @@ export function DeviceDetailDialog(props: DeviceDetailDialogProps) {
           <Button variant='outline' onClick={() => props.onOpenChange(false)}>
             关闭
           </Button>
-          {device && props.onEdit && (
+          {device && props.canUpdate && (
             <Button
               onClick={() => {
                 props.onOpenChange(false)

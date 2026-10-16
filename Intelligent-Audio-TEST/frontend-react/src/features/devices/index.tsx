@@ -10,7 +10,7 @@
  * 不接后端。全局算法联动（§2.2）：算法过滤走全局切换器（chip 只读 + ×），本页不重复筛选器。
  */
 import { useNavigate } from '@tanstack/react-router'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -73,9 +73,14 @@ import { DeviceDetailDialog } from '@/features/devices/components/modals/device-
 import { DeviceGroupManagerDialog } from '@/features/devices/components/modals/device-group-manager-dialog'
 import { LaboratoryManagerDialog } from '@/features/devices/components/modals/laboratory-manager-dialog'
 import { AssociateSplDialog } from '@/features/devices/components/modals/associate-spl-dialog'
+import {
+  DeviceOperateDialog,
+  type DeviceOperateKind,
+} from '@/features/devices/components/modals/device-operate-dialog'
 import type { TestDevice } from '@/domain/models/testDevice'
 import type { PlaybackDevice } from '@/domain/models/playbackDevice'
 import type { ApiDevice } from '@/domain/models/apiDevice'
+import type { DeviceGroup } from '@/domain/models/deviceGroup'
 
 const DEFAULT_FILTERS: DevicesFilters = {
   search: '',
@@ -108,6 +113,12 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
   const canControl = hasPermission(
     tab === 'test' ? 'device:control' : tab === 'playback' ? 'playback:control' : 'api_config:test'
   )
+  /** 健康检查权限：API 页签走 api_config:read（§3.6），测试页签走 device:control（P2-7 返修） */
+  const canHealth = hasPermission(
+    tab === 'api' ? 'api_config:read' : tab === 'test' ? 'device:control' : 'playback:control'
+  )
+  /** 批量健康检查（§3.3：device:control 且仅测试设备页签，P2-8 返修） */
+  const canBatchHealth = hasPermission('device:control') && tab === 'test'
   const canRead = hasPermission(
     tab === 'test' ? 'device:read' : tab === 'playback' ? 'playback:read' : 'api_config:read'
   )
@@ -122,7 +133,7 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
   const alarmsQuery = useDeviceAlarms()
   const rulesQuery = useAlarmRules()
   const historyQuery = useStatusHistory()
-  const { removeTest, removePlayback, removeApi, control, batch } = useDeviceMutations()
+  const { removeTest, removePlayback, removeApi, control, setOccupied, batch } = useDeviceMutations()
   const { acknowledge } = useAlarmMutations()
 
   const [testFilters, setTestFilters] = useState<TestDeviceFilters>(DEFAULT_TEST_FILTERS)
@@ -144,7 +155,9 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
     mode: 'create',
     kind: 'test',
   })
-  const [mutatePrefill, setMutatePrefill] = useState<Partial<TestDevice> | null>(null)
+  const [mutatePrefill, setMutatePrefill] = useState<
+    Partial<TestDevice> | Partial<PlaybackDevice> | Partial<ApiDevice> | null
+  >(null)
   const [scanOpen, setScanOpen] = useState(false)
   const [detailState, setDetailState] = useState<DeviceDetailState>({
     open: false,
@@ -158,6 +171,11 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
     open: false,
     device: null,
   })
+  const [operateState, setOperateState] = useState<{
+    open: boolean
+    kind: DeviceOperateKind | null
+    device: TestDevice | null
+  }>({ open: false, kind: null, device: null })
   const [deleteTarget, setDeleteTarget] = useState<DeviceDeleteTarget | null>(null)
   const [batchConfirm, setBatchConfirm] = useState<{ action: string; count: number } | null>(null)
   const [confirmPending, setConfirmPending] = useState(false)
@@ -201,7 +219,7 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
       if (f.connectionType) rows = rows.filter((row) => row.connectionType === f.connectionType)
       if (f.groupId) {
         const group = groups.find((g) => String(g.id) === f.groupId)
-        const memberIds = new Set(group?.members ?? [])
+        const memberIds = group ? collectGroupMemberIds(group) : new Set<number>()
         rows = rows.filter((row) => memberIds.has(row.id))
       }
       if (f.labId) rows = rows.filter((row) => String(row.labId) === f.labId)
@@ -287,7 +305,8 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
     }
     const devices = tab === 'test' ? testDevices : playbackDevices
     const online = devices.filter((d) => d.status === 'online').length
-    const offline = devices.filter((d) => d.status === 'offline' || d.status === 'connecting' || d.status === 'disconnecting').length
+    // §3.4 注 / INT-487：连接中/断开中为瞬时态不入徽章，离线只计 status==='offline'（P2-5 返修）
+    const offline = devices.filter((d) => d.status === 'offline').length
     const error = devices.filter((d) => d.status === 'error').length
     return [devices.length, online, offline, error]
   }, [tab, testDevices, playbackDevices, apiDevices])
@@ -304,21 +323,33 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
   }
 
   const toggleSelectAll = () => {
+    // P3-30 返修：按「本页是否全选」切换，保留跨页选择集（不再 prev.size===pageRows.length 巧合清选）
     setSelectedIds((prev) => {
-      if (pageRows.length > 0 && prev.size === pageRows.length) return new Set()
-      return new Set(pageRows.map((row) => row.id))
+      const pageSelected = pageRows.filter((row) => prev.has(row.id))
+      if (pageRows.length > 0 && pageSelected.length === pageRows.length) {
+        const next = new Set(prev)
+        pageRows.forEach((row) => next.delete(row.id))
+        return next
+      }
+      const next = new Set(prev)
+      pageRows.forEach((row) => next.add(row.id))
+      return next
     })
   }
 
   /* ───────── 行操作分派 ───────── */
 
-  const handleControl = async (action: string) => {
-    const result = await control.mutateAsync({ id: 0, action })
+  /** P2-3 返修：行级控制透传 device.id（不再打向 id=0） */
+  const handleControl = async (id: number, action: string) => {
+    const result = await control.mutateAsync({ id, action })
     void result
     toast.success('操作已提交')
   }
 
-  const openMutate = (state: DeviceMutateState, prefill: Partial<TestDevice> | null = null) => {
+  const openMutate = (
+    state: DeviceMutateState,
+    prefill: Partial<TestDevice> | Partial<PlaybackDevice> | Partial<ApiDevice> | null = null
+  ) => {
     setMutatePrefill(prefill)
     setMutateState(state)
   }
@@ -327,7 +358,14 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
     setMutateState({ open: true, mode: 'edit', kind, device })
   }
 
+  /** P3-20 返修：测试/停止测试置/清 occupied 本地瞬时态兜底（INT-487 §3.4 注③） */
+  const handleTest = (device: TestDevice) => {
+    void setOccupied.mutateAsync({ kind: 'test', id: device.id, occupied: true })
+    toast.success(`已开始测试：${device.name}`)
+  }
+
   const handleStopTest = (device: TestDevice) => {
+    void setOccupied.mutateAsync({ kind: 'test', id: device.id, occupied: false })
     toast.success(`已停止设备「${device.name}」的测试`)
   }
 
@@ -379,10 +417,11 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
           ids: [...selectedIds],
         })
         const label = BATCH_ACTION_LABEL[batchConfirm.action] ?? batchConfirm.action
+        // P2-6 返修：按 batch 响应命中标记（replayedCount）区分；部分失败显「成功 s/t」
         toast.success(
-          result.successCount === result.total
-            ? `${label}完成：成功 ${result.successCount}/${result.total}`
-            : `${label}完成：命中幂等回放，未重复执行`
+          (result.replayedCount ?? 0) > 0
+            ? `${label}：命中幂等回放，未重复执行`
+            : `${label}完成：成功 ${result.successCount}/${result.total}`
         )
       }
       setSelectedIds(new Set())
@@ -394,18 +433,13 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
     }
   }
 
-  const handleScanAdd = (kind: DevicesTabKey) => {
+  /** P2-13 返修：扫描「添加」透传行数据预填（§6.1 test: name/model/serialNumber/system归一/...） */
+  const handleScanAdd = (
+    kind: DevicesTabKey,
+    prefill: Partial<TestDevice> | Partial<PlaybackDevice> | Partial<ApiDevice>
+  ) => {
     setScanOpen(false)
-    // §6.1：扫描「添加」→ 开新增抽屉并预填
-    openMutate({ open: true, mode: 'create', kind }, {
-      name: kind === 'test' ? '扫描新设备' : '扫描播放设备',
-      model: '待补充型号',
-      system: 'Android',
-      systemVersion: '未知',
-      serialNumber: kind === 'test' ? 'SN-SCAN-PREVIEW' : 'AUDIO-SCAN-PREVIEW',
-      appName: 'Default App',
-      appVersion: '1.0.0',
-    })
+    openMutate({ open: true, mode: 'create', kind }, prefill)
   }
 
   const tabRowCallbacks = {
@@ -414,15 +448,20 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
       canUpdate,
       canDelete,
       canControl,
+      canHealth,
       onDetail: (device: TestDevice) => setDetailState({ open: true, kind: 'test', device }),
       onEdit: (device: TestDevice) => openMutate({ open: true, mode: 'edit', kind: 'test', device }),
       onHealth: (device: TestDevice) => {
-        void handleControl('health_check')
+        void handleControl(device.id, 'health_check')
         toast.success(`健康检查已发起：${device.name}`)
       },
-      onTest: (device: TestDevice) => toast.success(`已开始测试：${device.name}`),
+      onTest: (device: TestDevice) => handleTest(device),
       onStopTest: (device: TestDevice) => handleStopTest(device),
-      onControl: (_device: TestDevice, action: string) => void handleControl(action),
+      onControl: (device: TestDevice, action: string) => void handleControl(device.id, action),
+      onInstallApp: (device: TestDevice) =>
+        setOperateState({ open: true, kind: 'install-app', device }),
+      onUninstallApp: (device: TestDevice) =>
+        setOperateState({ open: true, kind: 'uninstall-app', device }),
       onDelete: (device: TestDevice) => setDeleteTarget({ kind: 'test', device }),
       onEmptyAdd: () => openMutate({ open: true, mode: 'create', kind: 'test' }),
     },
@@ -431,12 +470,13 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
       canUpdate,
       canDelete,
       canControl,
+      canHealth,
       onDetail: (device: PlaybackDevice) => setDetailState({ open: true, kind: 'playback', device }),
       onEdit: (device: PlaybackDevice) => openMutate({ open: true, mode: 'edit', kind: 'playback', device }),
       onAssociateSpl: (device: PlaybackDevice) => setAssociateSplState({ open: true, device }),
       onPlayTest: (device: PlaybackDevice) => toast.success(`已开始播放测试：${device.name}`),
       onStop: (device: PlaybackDevice) => toast.success(`已停止播放：${device.name}`),
-      onControl: (_device: PlaybackDevice, action: string) => void handleControl(action),
+      onControl: (device: PlaybackDevice, action: string) => void handleControl(device.id, action),
       onResultAnalysis: (device: PlaybackDevice) => toast.success(`已生成播放测试结果分析：${device.name}`),
       onDiagnose: (device: PlaybackDevice) => toast.success(`设备诊断完成：${device.name}`),
       onDelete: (device: PlaybackDevice) => setDeleteTarget({ kind: 'playback', device }),
@@ -447,9 +487,13 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
       canUpdate,
       canDelete,
       canControl,
+      canHealth,
       onDetail: (device: ApiDevice) => setDetailState({ open: true, kind: 'api', device }),
       onEdit: (device: ApiDevice) => openMutate({ open: true, mode: 'edit', kind: 'api', device }),
-      onHealth: (device: ApiDevice) => toast.success(`健康检查已发起：${device.name}`),
+      onHealth: (device: ApiDevice) => {
+        void handleControl(device.id, 'health_check')
+        toast.success(`健康检查已发起：${device.name}`)
+      },
       onStopTest: (device: ApiDevice) => toast.success(`已停止测试：${device.name}`),
       onDelete: (device: ApiDevice) => setDeleteTarget({ kind: 'api', device }),
       onEmptyAdd: () => openMutate({ open: true, mode: 'create', kind: 'api' }),
@@ -470,7 +514,8 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
           <span className='flex flex-wrap items-center gap-2'>
             设备管理
             <Badge variant='outline' className='font-normal tabular-nums'>
-              {tab === 'api' ? '可用' : '在线'} {onlineCount}/共 {totalCount}
+              {/* §3.1/§9 口径「在线 {n}/共 {m}」（P3-23 返修：API 页签不再用「可用」） */}
+              在线 {onlineCount}/共 {totalCount}
             </Badge>
           </span>
         </SectionPageLayout.Title>
@@ -482,6 +527,7 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
             onTogglesChange={setToggles}
             canCreate={canCreate}
             canControl={canControl}
+            canBatchHealth={canBatchHealth}
             canGroupManage={canGroupManage}
             canLabManage={canLabManage}
             onAdd={() => openMutate({ open: true, mode: 'create', kind: tab })}
@@ -535,22 +581,25 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
 
             <DevicesFilterToolbar
               tab={tab}
+              showAlgorithmChip={tab === 'test'}
               searchValue={activeFilters.search}
               onSearch={(value) => setActiveFilters({ ...activeFilters, search: value })}
               status={activeFilters.status}
               onStatus={(status) => setActiveFilters({ ...activeFilters, status })}
               labs={labs}
               labId={tab === 'api' ? null : tab === 'test' ? testFilters.labId : playbackFilters.labId}
-              onLabId={(labId) =>
-                tab === 'test'
-                  ? setTestFilters({ ...testFilters, labId })
-                  : tab === 'playback'
-                    ? setPlaybackFilters({ ...playbackFilters, labId })
-                    : undefined
-              }
+              onLabId={(labId) => {
+                // P3-30 返修：分组/实验室筛选变更也重置页码
+                setPage(1)
+                if (tab === 'test') setTestFilters({ ...testFilters, labId })
+                else if (tab === 'playback') setPlaybackFilters({ ...playbackFilters, labId })
+              }}
               groups={groups}
               groupId={tab === 'test' ? testFilters.groupId : null}
-              onGroupId={(groupId) => setTestFilters({ ...testFilters, groupId })}
+              onGroupId={(groupId) => {
+                setPage(1)
+                setTestFilters({ ...testFilters, groupId })
+              }}
               connectionType={testFilters.connectionType}
               onConnectionType={(connectionType) =>
                 setActiveFilters({ ...testFilters, connectionType })
@@ -670,6 +719,7 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
         state={detailState}
         onOpenChange={(open) => setDetailState((prev) => ({ ...prev, open, device: open ? prev.device : null }))}
         onEdit={handleDetailEdit}
+        canUpdate={canUpdate}
       />
       <DeviceGroupManagerDialog
         open={groupManagerOpen}
@@ -690,6 +740,25 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
       <AssociateSplDialog
         state={associateSplState}
         onOpenChange={(open) => setAssociateSplState((prev) => ({ ...prev, open }))}
+      />
+      <DeviceOperateDialog
+        open={operateState.open}
+        kind={operateState.kind}
+        device={operateState.device}
+        onOpenChange={(open) =>
+          setOperateState((prev) => ({ ...prev, open, kind: open ? prev.kind : null }))
+        }
+        onConfirm={(kind, filePath, packageName) => {
+          const device = operateState.device
+          if (!device) return
+          void handleControl(device.id, kind === 'install-app' ? 'install_app' : 'uninstall_app')
+          toast.success(
+            kind === 'install-app'
+              ? `已发起安装「${packageName}」（路径 ${filePath}）`
+              : `已发起卸载「${packageName}」`
+          )
+          setOperateState({ open: false, kind: null, device: null })
+        }}
       />
 
       {/* 删除确认（§3.4.1/§3.5/§3.6） */}
@@ -728,6 +797,13 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
 }
 
 /* ───────── 批量动作中文（§9 toast 口径） ───────── */
+
+/** P3-29 返修：递归收集分组（含嵌套子分组）成员 id */
+function collectGroupMemberIds(group: DeviceGroup, acc: Set<number> = new Set()): Set<number> {
+  for (const member of group.members) acc.add(member)
+  for (const child of group.children) collectGroupMemberIds(child, acc)
+  return acc
+}
 
 const BATCH_ACTION_LABEL: Record<string, string> = {
   connect: '连接',
@@ -774,6 +850,17 @@ function PaginationBar({
         </SelectContent>
       </Select>
       <div className='flex items-center gap-1'>
+        {/* P3-33：首/末页 DoubleArrow（§3.9） */}
+        <Button
+          variant='outline'
+          size='sm'
+          className='h-8 min-w-8 px-2'
+          disabled={page <= 1}
+          onClick={() => onPageChange(1)}
+          aria-label='首页'
+        >
+          <ChevronsLeft aria-hidden='true' className='size-3.5' />
+        </Button>
         <Button
           variant='outline'
           size='sm'
@@ -796,6 +883,16 @@ function PaginationBar({
           aria-label='下一页'
         >
           <ChevronRight aria-hidden='true' className='size-3.5' />
+        </Button>
+        <Button
+          variant='outline'
+          size='sm'
+          className='h-8 min-w-8 px-2'
+          disabled={page >= pageCount}
+          onClick={() => onPageChange(pageCount)}
+          aria-label='末页'
+        >
+          <ChevronsRight aria-hidden='true' className='size-3.5' />
         </Button>
       </div>
     </div>

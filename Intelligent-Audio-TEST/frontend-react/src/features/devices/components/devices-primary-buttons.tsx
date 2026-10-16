@@ -48,6 +48,8 @@ export interface DevicesPrimaryButtonsProps {
   onTogglesChange: (next: DeviceHeaderToggles) => void
   canCreate: boolean
   canControl: boolean
+  /** 批量健康检查（P2-8 返修：device:control 且仅测试页签） */
+  canBatchHealth: boolean
   canGroupManage: boolean
   canLabManage: boolean
   onAdd: () => void
@@ -185,32 +187,44 @@ export function DevicesPrimaryButtons(props: DevicesPrimaryButtonsProps) {
               分组管理
             </DropdownMenuItem>
           )}
-          {/* 实验室管理（§3.3/§6.26：三页签均显；INT-487 后端未实现 → 禁用 + Tooltip） */}
+          {/* 实验室管理（§3.3/§6.26：三页签均显；INT-487 后端未实现 → 禁用 + Tooltip P3-25） */}
           {props.canLabManage && (
-            <DropdownMenuItem disabled title='实验室管理后端建设中'>
-              <Building2 aria-hidden='true' />
-              实验室管理
-            </DropdownMenuItem>
+            <Tooltip>
+              <TooltipTrigger
+                render={<DropdownMenuItem disabled className='gap-2' />}
+              >
+                <Building2 aria-hidden='true' />
+                实验室管理
+              </TooltipTrigger>
+              <TooltipContent>实验室管理后端建设中</TooltipContent>
+            </Tooltip>
           )}
-          {props.canControl && (
+          {/* 批量健康检查（P2-8：device:control 且仅测试页签，播放/API 不再越位显） */}
+          {props.canBatchHealth && (
             <DropdownMenuItem onClick={props.onBatchHealth}>
               <Stethoscope aria-hidden='true' />
               批量健康检查
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
-          {/* 导入/导出（§3.3/§11-21：现状无处理器 → 禁用 + Tooltip） */}
+          {/* 导入/导出（§3.3/§11-21：现状无处理器 → 禁用 + Tooltip P3-25） */}
           {props.canCreate && (
-            <DropdownMenuItem disabled title='设备导入导出后端建设中'>
-              <Upload aria-hidden='true' />
-              导入设备
-            </DropdownMenuItem>
+            <Tooltip>
+              <TooltipTrigger render={<DropdownMenuItem disabled className='gap-2' />}>
+                <Upload aria-hidden='true' />
+                导入设备
+              </TooltipTrigger>
+              <TooltipContent>设备导入导出后端建设中</TooltipContent>
+            </Tooltip>
           )}
           {props.canCreate && (
-            <DropdownMenuItem disabled title='设备导入导出后端建设中'>
-              <Download aria-hidden='true' />
-              导出设备
-            </DropdownMenuItem>
+            <Tooltip>
+              <TooltipTrigger render={<DropdownMenuItem disabled className='gap-2' />}>
+                <Download aria-hidden='true' />
+                导出设备
+              </TooltipTrigger>
+              <TooltipContent>设备导入导出后端建设中</TooltipContent>
+            </Tooltip>
           )}
         </DropdownMenuContent>
       </DropdownMenu>

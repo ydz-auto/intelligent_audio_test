@@ -46,6 +46,7 @@ export interface PlaybackDeviceTableProps {
   canUpdate: boolean
   canDelete: boolean
   canControl: boolean
+  canHealth: boolean
   onDetail: (device: PlaybackDevice) => void
   onEdit: (device: PlaybackDevice) => void
   onAssociateSpl: (device: PlaybackDevice) => void
@@ -186,7 +187,7 @@ export function PlaybackDeviceTable(props: PlaybackDeviceTableProps) {
                   key={row.id}
                   className={cn(
                     'hover:bg-muted/40 border-border/50 border-b last:border-b-0',
-                    isOffline && 'bg-muted/20',
+                    isOffline && 'bg-muted/20 border-l-4 border-l-[var(--table-disabled)]',
                     props.selectedIds.has(row.id) && 'bg-primary/[0.04] dark:bg-primary/10'
                   )}
                 >
@@ -245,7 +246,8 @@ export function PlaybackDeviceTable(props: PlaybackDeviceTableProps) {
                     <span className='font-mono text-xs truncate'>{row.deviceUniqueId ?? '—'}</span>
                   </td>
                   <td className='px-3 py-2 text-right font-mono text-xs tabular-nums'>
-                    {row.supportedChannels ?? row.channelIndex ?? 0}
+                    {/* P4：通道数缺失显「—」而非 0 */}
+                    {row.supportedChannels ?? (row.channelIndex != null ? row.channelIndex : '—')}
                   </td>
                   <td className='px-3 py-2 text-right font-mono text-xs tabular-nums'>
                     {row.sampleRate ? `${row.sampleRate} Hz` : '—'}
@@ -271,6 +273,7 @@ export function PlaybackDeviceTable(props: PlaybackDeviceTableProps) {
                         canUpdate={props.canUpdate}
                         canDelete={props.canDelete}
                         canControl={props.canControl}
+                        canHealth={props.canHealth}
                         canPlaybackControl={props.canControl}
                         onDetail={() => props.onDetail(row)}
                         onEdit={() => props.onEdit(row)}
@@ -283,6 +286,8 @@ export function PlaybackDeviceTable(props: PlaybackDeviceTableProps) {
                         onPlayTest={() => props.onPlayTest(row)}
                         onResultAnalysis={() => props.onResultAnalysis(row)}
                         onDiagnose={() => props.onDiagnose(row)}
+                        onInstallApp={() => undefined}
+                        onUninstallApp={() => undefined}
                       />
                     </div>
                   </td>

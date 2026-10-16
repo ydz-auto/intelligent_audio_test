@@ -36,11 +36,18 @@ export interface TestDevice {
   /** DeviceSystem 归一值（iOS/Android/HarmonyOS） */
   system: string | null
   systemVersion: string | null
+  /** API 级别（Android API级别/HarmonyOS API级别，随设备系统切换，§6.2/设备管理:262-278） */
+  apiLevel: string | null
   appName: string | null
   appVersion: string | null
   connectionType: string | null
   serialNumber: string | null
   ip: string | null
+  /** 高级设置（§6.2/设备管理:292-296：备注/标签/自定义属性/优先级） */
+  remark: string | null
+  tags: string[] | null
+  customAttributes: string[] | null
+  priority: number | null
   /** 五态状态机值；「测试中」不落此枚举 */
   status: DeviceFiveState | null
   lastOnlineAt: string | null

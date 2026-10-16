@@ -35,7 +35,9 @@ import {
   fetchTestDevices,
   saveAlarmRule,
   scanDevices,
+  setDeviceOccupied,
   updateApiDevice,
+  updateLaboratory,
   updatePlaybackDevice,
   updateTestDevice,
 } from '@/infrastructure/api/devicesApi'
@@ -173,6 +175,20 @@ export function useDeviceMutations() {
     mutationFn: ({ id, action }: { id: number; action: string }) => controlDevice(id, action),
   })
 
+  /** 「测试中」占用态本地瞬时态兜底（INT-487：置/清 occupied + 列表失效刷新） */
+  const setOccupied = useMutation({
+    mutationFn: ({
+      kind,
+      id,
+      occupied,
+    }: {
+      kind: 'test' | 'playback' | 'api'
+      id: number
+      occupied: boolean
+    }) => setDeviceOccupied(kind, id, occupied),
+    onSuccess: () => invalidateAll(),
+  })
+
   const batch = useMutation({
     mutationFn: ({ action, ids }: { action: string; ids: number[] }) => batchDeviceAction(action, ids),
     onSuccess: () => invalidateAll(),
@@ -193,6 +209,7 @@ export function useDeviceMutations() {
     updateApi,
     removeApi,
     control,
+    setOccupied,
     batch,
     scan,
     invalidateAll,
@@ -248,5 +265,18 @@ export function useLaboratoryMutations() {
     onSuccess: invalidate,
   })
 
-  return { create, remove }
+  const update = useMutation({
+    mutationFn: ({
+      id,
+      patch,
+    }: {
+      id: number
+      patch: Partial<
+        Omit<Laboratory, 'id' | 'createdAt' | 'updatedAt' | 'deviceCount' | 'playbackDeviceCount' | 'testCaseCount'>
+      >
+    }) => updateLaboratory(id, patch),
+    onSuccess: invalidate,
+  })
+
+  return { create, remove, update }
 }

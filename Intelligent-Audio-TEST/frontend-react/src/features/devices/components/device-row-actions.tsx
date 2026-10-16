@@ -2,11 +2,13 @@
  * 设备行操作菜单（16_设备域.md §3.4.1/§3.5/§3.6；DataTableRowActionMenu 对位）。
  * 按页签 + 状态 + 权限显隐：
  * - 测试设备：详情/编辑/健康检查/测试·停止测试（占用态显「停止测试」destructive + 离线禁用
- *   Tooltip「设备离线」）/连接/断开/重启/关机/安装·卸载应用（iOS 禁用 Tooltip「iOS 设备不支持该操作」）/删除
+ *   Tooltip「设备离线」）/连接/断开/重启/关机/安装·卸载应用（iOS 禁用 Tooltip「iOS 设备不支持该操作」；
+ *   安装/卸载走参数小弹窗 P3-31）/删除
  * - 播放设备：详情/编辑/关联声压映射/播放测试/停止/重启播放设备/重置配置/静音·取消静音/
- *   播放测试结果分析/设备诊断·修复·优化/删除（离线行 DISABLED_ROW）
- * - 测试 API：详情/编辑/健康检查/停止测试/删除（离线端点行 DISABLED_ROW + 禁选）
- * 交互调用方：连接/断开/重启/关机/装/卸 → onControl(action)（mock 幂等 toast）。
+ *   播放测试结果分析/设备诊断·修复·优化/删除
+ * - 测试 API：详情/编辑/健康检查（api_config:read，P2-7）/停止测试/删除（离线端点行禁选）
+ * 交互调用方：连接/断开/重启/关机 → onControl(action)（mock 幂等 toast）；装/卸 → 参数弹窗。
+ * P3-24 返修：iOS 判定走 normalizeDeviceSystem 归一（小写 harmony/android 不再恒不命中）。
  */
 import { MoreHorizontal } from 'lucide-react'
 
@@ -18,6 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { isIosSystem } from '@/features/devices/lib/device-system'
 import type { DevicesTabKey } from '@/features/devices/constants'
 import type { TestDevice } from '@/domain/models/testDevice'
 import type { PlaybackDevice } from '@/domain/models/playbackDevice'
@@ -30,6 +33,8 @@ export interface DeviceRowActionsProps {
   canUpdate: boolean
   canDelete: boolean
   canControl: boolean
+  /** 健康检查权限（P2-7 返修：API 页签=api_config:read，测试页签=device:control） */
+  canHealth: boolean
   canPlaybackControl: boolean
   onDetail: () => void
   onEdit: () => void
@@ -42,10 +47,13 @@ export interface DeviceRowActionsProps {
   onPlayTest: () => void
   onResultAnalysis: () => void
   onDiagnose: () => void
+  /** 安装/卸载参数小弹窗（§3.4.1：file_path/package_name 输入，P3-31 补口） */
+  onInstallApp: () => void
+  onUninstallApp: () => void
 }
 
 export function DeviceRowActions(props: DeviceRowActionsProps) {
-  const { kind, device, canControl, canRead } = props
+  const { kind, device, canControl, canRead, canHealth } = props
   const isTest = kind === 'test'
   const isPlayback = kind === 'playback'
   const isApi = kind === 'api'
@@ -54,10 +62,14 @@ export function DeviceRowActions(props: DeviceRowActionsProps) {
   const isOffline = status === 'offline'
   const isConnecting = status === 'connecting'
   const isDisconnecting = status === 'disconnecting'
-  const isIos = isTest && 'system' in device && device.system === 'iOS'
+  // P3-24：iOS 判定归一（'iOS'/'ios' 均命中）
+  const isIos = isTest && 'system' in device && isIosSystem(device.system)
 
   /** 测试/停止测试：占用态显「停止测试」destructive；offline 态「测试」禁用 + Tooltip「设备离线」 */
   const testingOccupied = isTest && (device as TestDevice).occupied
+
+  const offlineTooltip = '设备离线，无法执行操作'
+  const controlDisabled = isOffline
 
   const controlItem = (
     action: string,
@@ -86,13 +98,15 @@ export function DeviceRowActions(props: DeviceRowActionsProps) {
           <DropdownMenuItem onClick={props.onDetail}>详情</DropdownMenuItem>
         )}
         {props.canUpdate && (
-          <DropdownMenuItem onClick={props.onEdit}>编辑</DropdownMenuItem>
+          <DropdownMenuItem disabled={isOffline} title={isOffline ? offlineTooltip : undefined} onClick={props.onEdit}>
+            编辑
+          </DropdownMenuItem>
         )}
 
-        {isTest && canControl && (
+        {isTest && canHealth && (
           <DropdownMenuItem
             disabled={isOffline}
-            title={isOffline ? '设备离线，无法执行操作' : undefined}
+            title={isOffline ? offlineTooltip : undefined}
             onClick={props.onHealth}
           >
             健康检查
@@ -120,17 +134,29 @@ export function DeviceRowActions(props: DeviceRowActionsProps) {
         {isPlayback && props.canPlaybackControl && (
           <>
             <DropdownMenuItem onClick={props.onAssociateSpl}>关联声压映射</DropdownMenuItem>
-            <DropdownMenuItem disabled={isOffline} onClick={props.onPlayTest}>
+            <DropdownMenuItem disabled={isOffline} title={isOffline ? offlineTooltip : undefined} onClick={props.onPlayTest}>
               播放测试
             </DropdownMenuItem>
-            <DropdownMenuItem disabled={isOffline} onClick={props.onStopTest}>
+            <DropdownMenuItem disabled={isOffline} title={isOffline ? offlineTooltip : undefined} onClick={props.onStopTest}>
               停止
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            {controlItem('restart', '重启播放设备')}
-            {controlItem('reset-config', '重置播放设备配置')}
-            {controlItem('mute', '静音')}
-            {controlItem('unmute', '取消静音')}
+            {controlItem('restart', '重启播放设备', {
+              disabled: controlDisabled,
+              title: isOffline ? offlineTooltip : undefined,
+            })}
+            {controlItem('reset-config', '重置播放设备配置', {
+              disabled: controlDisabled,
+              title: isOffline ? offlineTooltip : undefined,
+            })}
+            {controlItem('mute', '静音', {
+              disabled: controlDisabled,
+              title: isOffline ? offlineTooltip : undefined,
+            })}
+            {controlItem('unmute', '取消静音', {
+              disabled: controlDisabled,
+              title: isOffline ? offlineTooltip : undefined,
+            })}
             <DropdownMenuSeparator />
           </>
         )}
@@ -143,11 +169,17 @@ export function DeviceRowActions(props: DeviceRowActionsProps) {
           <DropdownMenuItem onClick={props.onDiagnose}>设备诊断·修复·优化</DropdownMenuItem>
         )}
 
-        {isApi && canControl && (
-          <DropdownMenuItem onClick={props.onHealth}>健康检查</DropdownMenuItem>
+        {isApi && canHealth && (
+          <DropdownMenuItem
+            disabled={isOffline}
+            title={isOffline ? offlineTooltip : undefined}
+            onClick={props.onHealth}
+          >
+            健康检查
+          </DropdownMenuItem>
         )}
         {isApi && canControl && (
-          <DropdownMenuItem disabled={isOffline} onClick={props.onStopTest}>
+          <DropdownMenuItem disabled={isOffline} title={isOffline ? offlineTooltip : undefined} onClick={props.onStopTest}>
             停止测试
           </DropdownMenuItem>
         )}
@@ -156,35 +188,46 @@ export function DeviceRowActions(props: DeviceRowActionsProps) {
           <>
             <DropdownMenuSeparator />
             {controlItem('connect', '连接', {
-              disabled: isConnecting || isIos,
-              title: isIos ? 'iOS 设备不支持该操作' : undefined,
+              disabled: isConnecting || isIos || isOffline,
+              title: isOffline ? offlineTooltip : isIos ? 'iOS 设备不支持该操作' : undefined,
             })}
             {controlItem('disconnect', '断开', {
-              disabled: isDisconnecting || isIos,
-              title: isIos ? 'iOS 设备不支持该操作' : undefined,
+              disabled: isDisconnecting || isIos || isOffline,
+              title: isOffline ? offlineTooltip : isIos ? 'iOS 设备不支持该操作' : undefined,
             })}
             {controlItem('reboot', '重启', {
-              disabled: isIos,
-              title: isIos ? 'iOS 设备不支持该操作' : undefined,
+              disabled: isIos || isOffline,
+              title: isOffline ? offlineTooltip : isIos ? 'iOS 设备不支持该操作' : undefined,
             })}
             {controlItem('shutdown', '关机', {
-              disabled: isIos,
-              title: isIos ? 'iOS 设备不支持该操作' : undefined,
+              disabled: isIos || isOffline,
+              title: isOffline ? offlineTooltip : isIos ? 'iOS 设备不支持该操作' : undefined,
             })}
-            {controlItem('install-app', '安装应用', {
-              disabled: isIos,
-              title: isIos ? 'iOS 设备不支持该操作' : undefined,
-            })}
-            {controlItem('uninstall-app', '卸载应用', {
-              disabled: isIos,
-              title: isIos ? 'iOS 设备不支持该操作' : undefined,
-            })}
+            <DropdownMenuItem
+              disabled={isIos || isOffline}
+              title={isOffline ? offlineTooltip : isIos ? 'iOS 设备不支持该操作' : undefined}
+              onClick={props.onInstallApp}
+            >
+              安装应用
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={isIos || isOffline}
+              title={isOffline ? offlineTooltip : isIos ? 'iOS 设备不支持该操作' : undefined}
+              onClick={props.onUninstallApp}
+            >
+              卸载应用
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
           </>
         )}
 
         {props.canDelete && (
-          <DropdownMenuItem variant='destructive' onClick={props.onDelete}>
+          <DropdownMenuItem
+            variant='destructive'
+            disabled={isOffline}
+            title={isOffline ? offlineTooltip : undefined}
+            onClick={props.onDelete}
+          >
             删除
           </DropdownMenuItem>
         )}

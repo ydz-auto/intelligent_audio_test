@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import type { TestDevice } from '@/domain/models/testDevice'
+import { deviceSystemLabel } from '@/features/devices/lib/device-system'
 import { DeviceStatusBadge } from '@/features/devices/components/device-status-badge'
 import { DeviceRowActions } from '@/features/devices/components/device-row-actions'
 
@@ -46,6 +47,7 @@ export interface TestDeviceTableProps {
   canUpdate: boolean
   canDelete: boolean
   canControl: boolean
+  canHealth: boolean
   onDetail: (device: TestDevice) => void
   onEdit: (device: TestDevice) => void
   onHealth: (device: TestDevice) => void
@@ -54,6 +56,8 @@ export interface TestDeviceTableProps {
   onControl: (device: TestDevice, action: string) => void
   onDelete: (device: TestDevice) => void
   onEmptyAdd: () => void
+  onInstallApp: (device: TestDevice) => void
+  onUninstallApp: (device: TestDevice) => void
 }
 
 /** 支持算法 BadgeListCell（最多 2 枚 + 「+N」tooltip 全量） */
@@ -187,7 +191,8 @@ export function TestDeviceTable(props: TestDeviceTableProps) {
                   key={row.id}
                   className={cn(
                     'hover:bg-muted/40 border-border/50 border-b last:border-b-0',
-                    isOffline && 'bg-muted/20',
+                    // P3-32：离线行 DISABLED_ROW 语义（--table-disabled 左标线 + 底色）
+                    isOffline && 'bg-muted/20 border-l-4 border-l-[var(--table-disabled)]',
                     props.selectedIds.has(row.id) && 'bg-primary/[0.04] dark:bg-primary/10'
                   )}
                 >
@@ -203,8 +208,12 @@ export function TestDeviceTable(props: TestDeviceTableProps) {
                     </td>
                   )}
                   <td className='px-3 py-2'>
-                    <span className='font-mono text-xs text-muted-foreground tabular-nums'>
-                      #{row.id}
+                    {/* P4：ID 列带复制 */}
+                    <span className='inline-flex items-center gap-1'>
+                      <span className='font-mono text-xs text-muted-foreground tabular-nums'>
+                        #{row.id}
+                      </span>
+                      <CopyButton value={String(row.id)} size='icon' className='size-5' aria-label='复制设备 ID' />
                     </span>
                   </td>
                   <td className='max-w-48 px-3 py-2'>
@@ -230,9 +239,10 @@ export function TestDeviceTable(props: TestDeviceTableProps) {
                     )}
                   </td>
                   <td className='px-3 py-2'>
+                    {/* P3-24：系统归一展示（harmony/android → HarmonyOS/Android） */}
                     {row.system ? (
                       <Badge variant='outline' className='rounded-md px-1.5 font-normal'>
-                        {row.system}
+                        {deviceSystemLabel(row.system)}
                       </Badge>
                     ) : (
                       <span className='text-muted-foreground'>—</span>
@@ -255,7 +265,7 @@ export function TestDeviceTable(props: TestDeviceTableProps) {
                     </Badge>
                     {row.connectionType === 'remote' && row.ip && (
                       <span className='text-muted-foreground block text-xs'>
-                        {row.ip}:5555
+                        {row.ip}
                       </span>
                     )}
                   </td>
@@ -304,6 +314,7 @@ export function TestDeviceTable(props: TestDeviceTableProps) {
                         canUpdate={props.canUpdate}
                         canDelete={props.canDelete}
                         canControl={props.canControl}
+                        canHealth={props.canHealth}
                         canPlaybackControl={false}
                         onDetail={() => props.onDetail(row)}
                         onEdit={() => props.onEdit(row)}
@@ -316,6 +327,8 @@ export function TestDeviceTable(props: TestDeviceTableProps) {
                         onPlayTest={() => undefined}
                         onResultAnalysis={() => undefined}
                         onDiagnose={() => undefined}
+                        onInstallApp={() => props.onInstallApp(row)}
+                        onUninstallApp={() => props.onUninstallApp(row)}
                       />
                     </div>
                   </td>

@@ -32,9 +32,11 @@ const BASE_DTO: TestDeviceItemDto = {
 }
 
 describe('testDeviceFromDto', () => {
-  it('将五态状态机值归一为 domain 枚举（在线/连接中/错误等）', () => {
+  it('将五态状态机值归一为 domain 枚举（五态全覆盖）', () => {
     expect(toDeviceFiveState('online')).toBe('online')
+    expect(toDeviceFiveState('offline')).toBe('offline')
     expect(toDeviceFiveState('connecting')).toBe('connecting')
+    expect(toDeviceFiveState('disconnecting')).toBe('disconnecting')
     expect(toDeviceFiveState('error')).toBe('error')
     expect(toDeviceFiveState('unknown-value')).toBeNull()
     expect(toDeviceFiveState(null)).toBeNull()
@@ -48,13 +50,38 @@ describe('testDeviceFromDto', () => {
     expect(device.status).toBe('online')
   })
 
-  it('camelCase 字段一一映射 snake_case DTO（字段命名契约 §10.1）', () => {
+  it('camelCase 字段一一映射 snake_case DTO（字段命名契约 §10.1 全覆盖）', () => {
     const device = testDeviceFromDto(BASE_DTO)
-    expect(device.serialNumber).toBe(BASE_DTO.serial_number)
+    expect(device.id).toBe(BASE_DTO.id)
+    expect(device.name).toBe(BASE_DTO.name)
+    expect(device.model).toBe(BASE_DTO.model)
+    expect(device.description).toBe(BASE_DTO.description)
+    expect(device.type).toBe(BASE_DTO.type)
+    expect(device.system).toBe(BASE_DTO.system)
     expect(device.systemVersion).toBe(BASE_DTO.system_version)
+    expect(device.appName).toBe(BASE_DTO.app_name)
+    expect(device.appVersion).toBe(BASE_DTO.app_version)
+    expect(device.connectionType).toBe(BASE_DTO.connection_type)
+    expect(device.serialNumber).toBe(BASE_DTO.serial_number)
+    expect(device.ip).toBe(BASE_DTO.ip)
+    expect(device.driverName).toBe(BASE_DTO.driver_name)
     expect(device.supportedAlgorithms).toEqual(BASE_DTO.supported_algorithms)
     expect(device.needsPromptAudio).toBe(BASE_DTO.needs_prompt_audio)
+    expect(device.maxAudioDuration).toBe(BASE_DTO.max_audio_duration)
+    expect(device.location).toBe(BASE_DTO.location)
+    expect(device.keywords).toBe(BASE_DTO.keywords)
     expect(device.lastOnlineAt).toBe(BASE_DTO.last_online_at)
+    expect(device.createdAt).toBe(BASE_DTO.created_at)
+    expect(device.updatedAt).toBe(BASE_DTO.updated_at)
+  })
+
+  it('§6.2 高级设置字段（apiLevel/remark/tags/customAttributes/priority）缺省回退', () => {
+    const device = testDeviceFromDto(BASE_DTO)
+    expect(device.apiLevel).toBeNull()
+    expect(device.remark).toBeNull()
+    expect(device.tags).toBeNull()
+    expect(device.customAttributes).toBeNull()
+    expect(device.priority).toBeNull()
   })
 
   it('未绑定实验室/未占用时返回 null/false（INT-487 未绑定口径）', () => {

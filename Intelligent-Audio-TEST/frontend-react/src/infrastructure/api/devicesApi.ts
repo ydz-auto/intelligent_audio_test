@@ -251,12 +251,47 @@ export async function controlDevice(id: number, action: string) {
   return { success: true, action, id }
 }
 
+/** 「测试中」占用态本地瞬时态兜底（INT-487 §3.4 注③：后端 occupied/testing 待立项，
+ * 落地前前端「测试/停止测试」动作置/清 occupied；接线后改调占用查询/任务派发端点） */
+export async function setDeviceOccupied(
+  kind: 'test' | 'playback' | 'api',
+  id: number,
+  occupied: boolean
+) {
+  // TODO(API 接线): POST /api/v1/tasks/{id}/start|stop 联动占用状态
+  if (kind === 'test') {
+    testDeviceStore = testDeviceStore.map((d) => (d.id === id ? { ...d, occupied } : d))
+  } else if (kind === 'playback') {
+    playbackDeviceStore = playbackDeviceStore.map((d) => (d.id === id ? { ...d, occupied } : d))
+  } else {
+    apiDeviceStore = apiDeviceStore.map((d) => (d.id === id ? { ...d, occupied } : d))
+  }
+  await mockLatency(null, 80)
+  return { success: true }
+}
+
 /** 批量设备操作（§3.8；POST /test-devices/batch；delete 前端串行 §11-7） */
+const executedBatchKeys = new Set<string>()
+
 export async function batchDeviceAction(action: string, ids: number[]) {
   // TODO(API 接线): POST /api/v1/test-devices/batch
   await mockLatency(null, 220)
+  // 幂等键模拟：同 action + 同 id 集合重复提交 → 命中幂等回放（P2-6 返修：部分失败与回放区分）
+  const key = `${action}:${[...ids].sort((a, b) => a - b).join(',')}`
+  const replayed = executedBatchKeys.has(key)
+  executedBatchKeys.add(key)
   const successCount = ids.length
-  return { action, total: ids.length, successCount, results: ids.map((id) => ({ id, success: true, message: null })) }
+  return {
+    action,
+    total: ids.length,
+    successCount,
+    replayedCount: replayed ? ids.length : 0,
+    results: ids.map((id) => ({
+      id,
+      success: true,
+      message: replayed ? '命中幂等回放，未重复执行' : null,
+    })),
+  }
 }
 
 /** 确认告警（§3.7；POST /alarms/{id}/acknowledge，acknowledged_by 后端注入 request.username） */
@@ -303,6 +338,19 @@ export async function createLaboratory(input: Omit<Laboratory, 'id' | 'createdAt
 export async function deleteLaboratory(id: number) {
   // TODO(API 接线): DELETE /api/v1/laboratories/{id}
   laboratoryStore = laboratoryStore.filter((l) => l.id !== id)
+  await mockLatency(null, 120)
+  return { success: true }
+}
+
+/** 编辑实验室（§6.26；PUT /laboratories/{id}——P3-21 返修补「编辑」操作） */
+export async function updateLaboratory(
+  id: number,
+  patch: Partial<Omit<Laboratory, 'id' | 'createdAt' | 'updatedAt' | 'deviceCount' | 'playbackDeviceCount' | 'testCaseCount'>>
+) {
+  // TODO(API 接线): PUT /api/v1/laboratories/{id}
+  laboratoryStore = laboratoryStore.map((l) =>
+    l.id === id ? { ...l, ...patch, updatedAt: now() } : l
+  )
   await mockLatency(null, 120)
   return { success: true }
 }
