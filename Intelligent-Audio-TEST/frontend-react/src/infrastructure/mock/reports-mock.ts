@@ -208,7 +208,9 @@ export const MOCK_REPORT_COUNTS: ReportCounts = {
   all: 10,
   draft: 3,
   published: 7,
-  comparison: 3,
+  // P3-1 口径对齐：comparison 只计 type='comparison'（2 项：1190/1186），不含二次对比——
+  // 与类型 chips 同源（对比2+二次1）、与快速筛选 type='comparison' 的实选结果一致
+  comparison: 2,
 }
 
 /** 报告头算法徽标色板数据源（算法枚举，对照 api_gateway/schemas/algorithm.py 实测名） */

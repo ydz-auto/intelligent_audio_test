@@ -73,7 +73,7 @@ export function ReportViewPage() {
   const [renameOpen, setRenameOpen] = useState(false)
   const [activeSection, setActiveSection] = useState('report-overview')
   const [progress, setProgress] = useState(0)
-  const sectionRefs = useRef<Record<string, HTMLElement | null>>({})
+  const containerRef = useRef<HTMLDivElement>(null)
 
   // 回退来源入口（15_报告域.md §3.1：管理页进→/report-center，展示页进→/reports，无来源默认 /reports）
   const backTarget = useMemo(() => {
@@ -93,29 +93,43 @@ export function ReportViewPage() {
     return base
   }, [report?.type])
 
-  // scrollspy + 阅读进度条
+  // scrollspy + 阅读进度条（P2-1：容器内滚动，scroll 事件与坐标系绑定 report-view-container；
+  // SidebarInset overflow-hidden 下 window 永不起滚，进度/激活分节全部用容器坐标系判。
+  // 锚点元素从容器内按 <section id='report-*'> 收集——面板不逐段透传 ref，逐条 querySelector 即可）
   useEffect(() => {
     if (!sections.length) return
+    const container = containerRef.current
+    if (!container) return
+    const anchors = new Map<string, HTMLElement>()
+    for (const section of sections) {
+      const el = container.querySelector<HTMLElement>(`#${section.id}`)
+      if (el) anchors.set(section.id, el)
+    }
     const handleScroll = () => {
-      const max = document.documentElement.scrollHeight - window.innerHeight
-      setProgress(max > 0 ? (window.scrollY / max) * 100 : 0)
-      const offset = window.scrollY + 140
+      const max = container.scrollHeight - container.clientHeight
+      setProgress(max > 0 ? (container.scrollTop / max) * 100 : 0)
+      const offset = container.scrollTop + 140
       let current = sections[0].id
       for (const section of sections) {
-        const el = sectionRefs.current[section.id]
-        if (el && el.getBoundingClientRect().top + window.scrollY <= offset) {
-          current = section.id
+        const el = anchors.get(section.id)
+        if (el) {
+          // 元素在滚动内容中的绝对偏移 = 容器视口内偏移 + 已滚距离
+          const elTop =
+            el.getBoundingClientRect().top -
+            container.getBoundingClientRect().top +
+            container.scrollTop
+          if (elTop <= offset) current = section.id
         }
       }
       setActiveSection(current)
     }
     handleScroll()
-    window.addEventListener('scroll', handleScroll, { passive: true })
-    return () => window.removeEventListener('scroll', handleScroll)
+    container.addEventListener('scroll', handleScroll, { passive: true })
+    return () => container.removeEventListener('scroll', handleScroll)
   }, [sections])
 
   const handleNav = (id: string) => {
-    const el = sectionRefs.current[id]
+    const el = containerRef.current?.querySelector<HTMLElement>(`#${id}`)
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
@@ -151,7 +165,10 @@ export function ReportViewPage() {
   const isComparison = report.type === 'comparison' || report.type === 'secondary_comparison'
 
   return (
-    <div className='report-view-container min-h-0 flex-1 overflow-auto print:mx-auto print:max-w-none'>
+    <div
+      ref={containerRef}
+      className='report-view-container min-h-0 flex-1 overflow-auto print:mx-auto print:max-w-none'
+    >
       <div className='mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6'>
         <ReportHeader
           report={report}
@@ -176,31 +193,25 @@ export function ReportViewPage() {
 
         <div className='mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_220px]'>
           <main className='min-w-0 space-y-6'>
-            <div
-              ref={(el) => {
-                sectionRefs.current['report-overview'] = el
-              }}
-            >
-              {isComparison ? (
-                <ComparisonReportPanel
-                  report={report}
-                  isExporting={exportOpen}
-                  editing={editing}
-                  onStartEditing={() => setEditing(true)}
-                  onExitEditing={() => setEditing(false)}
-                  onSaveAnalysis={(content) => void saveAnalysis(content)}
-                />
-              ) : (
-                <TaskReportPanel
-                  report={report}
-                  isExporting={exportOpen}
-                  editing={editing}
-                  onStartEditing={() => setEditing(true)}
-                  onExitEditing={() => setEditing(false)}
-                  onSaveAnalysis={(content) => void saveAnalysis(content)}
-                />
-              )}
-            </div>
+            {isComparison ? (
+              <ComparisonReportPanel
+                report={report}
+                isExporting={exportOpen}
+                editing={editing}
+                onStartEditing={() => setEditing(true)}
+                onExitEditing={() => setEditing(false)}
+                onSaveAnalysis={(content) => void saveAnalysis(content)}
+              />
+            ) : (
+              <TaskReportPanel
+                report={report}
+                isExporting={exportOpen}
+                editing={editing}
+                onStartEditing={() => setEditing(true)}
+                onExitEditing={() => setEditing(false)}
+                onSaveAnalysis={(content) => void saveAnalysis(content)}
+              />
+            )}
           </main>
 
           <aside className='print:hidden'>

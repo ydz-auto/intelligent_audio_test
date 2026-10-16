@@ -7,6 +7,8 @@
   .report-view-container {
     max-width: none;
     padding: 0;
+    /* P3-2：容器 overflow-auto 只在屏态生效，打印必须还原为可见，否则内容被裁成单页滚动盒 */
+    overflow: visible;
   }
 
   .report-view-container aside,

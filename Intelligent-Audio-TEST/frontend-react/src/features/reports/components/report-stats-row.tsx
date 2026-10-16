@@ -68,10 +68,8 @@ export function ReportStatsRow({
       return activeFilter.status === kind
     }
     if (kind === 'comparison') {
-      return (
-        activeFilter.type === 'comparison' ||
-        activeFilter.type === 'secondary_comparison'
-      )
+      // P3-1 口径对齐：徽章代表 type='comparison' 筛选，计数与实选结果一致；二次对比经类型 chips 独立筛选
+      return activeFilter.type === 'comparison'
     }
     return false
   }
