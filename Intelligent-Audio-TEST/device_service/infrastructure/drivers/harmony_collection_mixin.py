@@ -2,7 +2,7 @@
 """鸿蒙基础驱动结果采集混入 —— 录屏链 + 小艺 UI 文本抓取
 
 参考 harmony_xiaoyichat（小艺通话聊天驱动）的成熟链路，为平台基础驱动
-（HarmonyDriver，AppType.HARMONY_BASE）提供真实结果采集能力：
+（HarmonyDriver，is_base_driver=True）提供真实结果采集能力：
 
 - 录屏（round 模式，每轮一段 mp4）：pre_process 启动 / post_process 停止
 - 回复等待：回答气泡文本连续多次采样稳定即视为回复完成（不依赖特定 UI 文案）

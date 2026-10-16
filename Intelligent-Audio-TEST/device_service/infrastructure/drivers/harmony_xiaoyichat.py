@@ -2,6 +2,7 @@ import time
 import subprocess
 import os
 import re
+import uuid
 import wave
 import array
 import base64
@@ -9,7 +10,7 @@ import tempfile
 import shutil
 
 from .harmony_driver import HarmonyDriver
-from .driver_types import AppType, AppVersion, DevicePlatform
+from .driver_types import DevicePlatform
 from .registry import register_driver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry
 from .driver_constants import *
@@ -32,8 +33,8 @@ class Xiaoyilivechat(HarmonyDriver):
     """
 
     # —— 驱动元数据 ——
-    app_type = AppType.XIAOYI_LIVECHAT
-    version = AppVersion.V1
+    app_type = "xiaoyi_livechat"
+    version = "v1"
     platform = DevicePlatform.HARMONYOS
     keywords = "harmony.xiaoyi_livechat.v1"
     display_name = "小艺通话聊天 v1"
@@ -47,6 +48,9 @@ class Xiaoyilivechat(HarmonyDriver):
     # 时钟 app:测试中设的闹钟可能响铃打断测试,开局与收尾各清一次保证无残留
     CLOCK_BUNDLE = 'com.huawei.hmos.clock'
     CLOCK_DB_PATH = '/data/app/el1/100/database/com.huawei.hmos.clock/entry/rdb/Clock.db'
+    # VEGA-10: 录音落盘临时后缀——先 recv 到 *.part，用例纪元校验通过后再原子替换，
+    # 防止跨用例滞留线程/半写文件污染正式路径
+    PART_FILE_SUFFIX = '.part'
     # 小艺聊天页右上角设置入口坐标（SymbolGlyph 选择器在新版本上失效,改用坐标）
     SETTINGS_ENTRY_TOUCH = (1154, 234)
 
@@ -57,10 +61,33 @@ class Xiaoyilivechat(HarmonyDriver):
         # ai PCM 首帧时间戳(替代录屏 first_frame 作为模型回复起始基准) + 本轮基线快照
         self._ai_first_frame_ms = None
         self._ai_pcm_size_base = None
+        # VEGA-10: 用例纪元——initialize 每用例推进一次；拉取线程在落盘前校验纪元，
+        # 纪元已变(用例已切换)则丢弃本次写入，防止被线程池放弃的滞留任务把
+        # 新用例的设备录音写进旧用例的本地路径（驱动为单例，跨用例复用）
+        self._case_epoch = None
+        # VEGA-10: 设备端 pcm 残留基线 {remote_path: size}——_clear_pcm 清理失败时记录，
+        # 选文件时排除 size 未变化的纯残留，防止上个用例/上个批次的同槽位文件被误选
+        # （流槽位号每批次重置，跨批次文件名会重复，如 r0_100016_..._client_in..pcm）
+        self._pcm_baseline = {}
         # hw_params 播放流回复检测（小艺专用）：播放流 open=正在回复，closed=回复完成
         self.HW_PARAMS_PATH = '/proc/asound/card0/pcm0p/sub0/hw_params'  # 设备路径若漂移改这里
         self.HW_PARAMS_END_TIMEOUT = 300    # 等回复结束超时(对齐原 UI 法"正在听"超时)
         self.HW_PARAMS_CLOSED_CONFIRM = 3   # 连续 N 次 closed 才判定结束(约3s,防句间瞬时关流误判)
+
+    @staticmethod
+    def _as_bool(value):
+        """兼容配置中 snake/camel 的布尔值（与 e2e_aggregator._as_bool 一致）。
+
+        is_interruption 等标记经 kwargs 传入时可能为 int(1/0)/bool/str('true'/'True'/'1')，
+        统一解析，避免聚合层识别为打断轮而驱动层未走打断分支。
+        """
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value != 0
+        if isinstance(value, str):
+            return value.strip().lower() in ('true', '1', 'yes', 'y', '是')
+        return False
 
     # 是否启用录屏(小艺=True 保留录屏 wav 作为评估音频源)。
     # Doubao/ChatGPT 在各自子类置 False:无录屏,get_results 跳过录屏拉取,
@@ -438,15 +465,23 @@ class Xiaoyilivechat(HarmonyDriver):
                   content=f"清理 {app} pcm 完成: rc={result.returncode}",
                   task_id=task_id, test_case_id=test_case_id)
 
-        # 清除后检测：若仍有残留 .pcm 文件，仅日志告警（不改行为，便于排查）
+        # 清除后检测：若仍有残留 .pcm 文件，记入残留基线并在后续选文件时排除
         # 可能原因：文件被采集进程占用/权限不足/路径不存在
+        # VEGA-10: 流槽位号每批次重置，残留文件会与后续用例的新文件同名
+        # （如 100016_..._client_in..pcm），_pick_pcm 按 size 取最大时残留常胜出，
+        # 导致上个用例/上个批次的录音被当成本用例内容。故记录 {path: size} 基线，
+        # 选文件时排除 size 未变化的纯残留（size 增长说明本用例 dump 正在写，允许选取）。
         remaining = []
         for d in dirs:
             remaining.extend(self._list_dir_pcm(device_sn, d))
         if remaining:
+            self._pcm_baseline = {f: self._get_device_file_size(device_sn, f) for f in remaining}
             self._log(level='WARNING',
-                      content=f"pcm清除失败: 残留 {len(remaining)} 个文件: {remaining}",
+                      content=(f"pcm清除失败: 残留 {len(remaining)} 个文件已记入基线并在选取时排除: "
+                               f"{list(self._pcm_baseline.items())}"),
                       task_id=task_id, test_case_id=test_case_id)
+        else:
+            self._pcm_baseline = {}
 
     def _list_dir_pcm(self, device_sn, remote_dir):
         """列出设备指定目录下所有 pcm 文件路径（用于按后缀匹配区分用户输入/AI回复）"""
@@ -836,16 +871,38 @@ class Xiaoyilivechat(HarmonyDriver):
         导致转出的 user_wav 无声。故改为按设备上实际文件 size 取最大。
 
         size 全部取不到(stat 失败/全 0)时退回按文件名排序取最后一个,保持旧行为。
+
+        VEGA-10: 候选先经残留基线过滤——_pcm_baseline 中 size 未变化的文件是
+        清理失败的跨用例残留(流槽位号批次重置导致同名)，一律排除；
+        size 有增长的基线文件说明本用例 dump 正在同名写入，允许选取但告警。
+        全部候选均为纯残留时返回 None（宁缺毋错，不再把别人的录音当成本用例）。
         """
         suffixes = [suffix] if isinstance(suffix, str) else suffix
         matches = [f for f in files
                    if any(f.endswith(s) for s in suffixes) and f != exclude]
         if not matches:
             return None
+        baseline = getattr(self, '_pcm_baseline', None) or {}
         sized = []
         for f in matches:
             sz = self._get_device_file_size(device_sn, f)
+            base_sz = baseline.get(f)
+            if base_sz is not None:
+                if sz == base_sz:
+                    self._log(level='DEBUG',
+                              content=f"pick_pcm 排除残留基线文件(size未变化): {f} size={sz}",
+                              task_id=task_id, test_case_id=test_case_id)
+                    continue
+                self._log(level='WARNING',
+                          content=(f"pick_pcm 基线残留文件 size 已变化({base_sz}->{sz})，"
+                                   f"本用例 dump 写入同名文件，允许选取但音频可能混有旧内容: {f}"),
+                          task_id=task_id, test_case_id=test_case_id)
             sized.append((sz, f))
+        if not sized:
+            self._log(level='WARNING',
+                      content=f"pick_pcm 候选全部为跨用例残留，放弃选取: suffix={suffix} matches={matches}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return None
         # 仅当至少一个 size>0 时按 size 降序取最大;否则退回按名取最后(旧行为)
         if any(sz > 0 for sz, _ in sized):
             sized.sort(key=lambda t: t[0], reverse=True)
@@ -855,24 +912,41 @@ class Xiaoyilivechat(HarmonyDriver):
                               f"candidates={[(s, os.path.basename(f)) for s, f in sized]}",
                       task_id=task_id, test_case_id=test_case_id)
             return picked
-        matches.sort()
-        return matches[-1]
+        sized.sort(key=lambda t: t[1])
+        return sized[-1][1]
 
     def _recv_pcm(self, device_sn, remote_path, local_path, task_id=None, test_case_id=None, app='', role=''):
-        """从设备拉取单个 pcm 文件到本地，成功返回 local_path，失败返回 None"""
+        """从设备拉取单个 pcm 文件到本地，成功返回 local_path，失败返回 None
+
+        VEGA-10 落盘时序防护：先 recv 到 *.part 临时文件，校验用例纪元未变
+        （拉取期间用例未切换）后才原子替换到正式路径；纪元已变说明本线程是
+        被线程池放弃的滞留任务，设备上的录音已属于新用例，立即丢弃，
+        防止新用例音频写进旧用例路径。
+        """
         if not remote_path:
             return None
+        epoch = self._case_epoch
+        part_path = local_path + self.PART_FILE_SUFFIX
         try:
-            subprocess.run(['hdc', '-t', device_sn, 'file', 'recv', remote_path, local_path],
+            subprocess.run(['hdc', '-t', device_sn, 'file', 'recv', remote_path, part_path],
                            check=False, capture_output=True, text=True, timeout=EXTRA_LONG_HDC_TIMEOUT)
         except Exception as e:
+            self._remove_quietly(part_path)
             self._log(level='WARNING', content=f"{app} {role} pcm 拉取异常: {e}",
                       task_id=task_id, test_case_id=test_case_id)
             return None
-        if not os.path.exists(local_path):
+        if not os.path.exists(part_path):
             self._log(level='WARNING', content=f"{app} {role} pcm 拉取失败: remote={remote_path}",
                       task_id=task_id, test_case_id=test_case_id)
             return None
+        if epoch is not None and self._case_epoch != epoch:
+            self._remove_quietly(part_path)
+            self._log(level='ERROR',
+                      content=(f"{app} {role} pcm 拉取被丢弃: 拉取期间用例已切换"
+                               f"(epoch {epoch} -> {self._case_epoch}), remote={remote_path}"),
+                      task_id=task_id, test_case_id=test_case_id)
+            return None
+        os.replace(part_path, local_path)
         self._log(level='INFO', content=f"{app} {role} pcm 拉取成功: {local_path}",
                   task_id=task_id, test_case_id=test_case_id)
         return local_path
@@ -1189,6 +1263,10 @@ class Xiaoyilivechat(HarmonyDriver):
             device_sn, task_id=task_id, test_case_id=test_case_id)
         if not proceed:
             return False
+        # VEGA-10: 推进用例纪元——上个用例被线程池放弃的滞留拉取任务在落盘前
+        # 会发现纪元已变而丢弃写入，保证用例↔录音 1:1
+        self._case_epoch = uuid.uuid4().hex
+        self._pcm_baseline = {}
         # 重置跨用例残留的录屏状态（驱动为单例，跨用例复用，避免上个用例的标志位污染本次）
         self._recording = False
         self._record_mode = kwargs.get('record_mode', 'round')
@@ -1288,7 +1366,7 @@ class Xiaoyilivechat(HarmonyDriver):
         # "写入中清空"。
         # 残留风险: 若系统音频 dump(sys.audio.dump.write*)跨轮保持文件句柄常开,仍可能清坏——
         # 真机验证若再拉不到,改为清前 param set ...enable n 关 dump→rm→enable w 重开。
-        is_interruption = kwargs.get('is_interruption') in (True, 'true', '1', 1)
+        is_interruption = self._as_bool(kwargs.get('is_interruption'))
         if (record_mode != 'case' or is_first) and not is_interruption:
             self._clear_pcm(device_sn, app=getattr(self, '_pcm_app', 'xiaoyi'),
                             task_id=task_id, test_case_id=test_case_id)
@@ -1348,7 +1426,7 @@ class Xiaoyilivechat(HarmonyDriver):
                   task_id=task_id, test_case_id=test_case_id)
 
         # 打断轮(is_interruption=True):不等 AI 回复完成,直接收尾进入下一轮 pre_process
-        if kwargs.get('is_interruption') in (True, 'true', '1', 1):
+        if self._as_bool(kwargs.get('is_interruption')):
             self._log(level='INFO', content='is_interruption=True,跳过等待 AI 回复完成,直接收尾',
                       task_id=task_id, test_case_id=test_case_id)
             replied = True
@@ -1396,7 +1474,7 @@ class Xiaoyilivechat(HarmonyDriver):
         is_last = (total_rounds and round_number == total_rounds - 1)
 
         # case 模式打断轮非末轮：延迟 CASE_BARGE_IN_DELAY_SECONDS 再进下一轮播放（可被停止/暂停打断）
-        if (kwargs.get('is_interruption') in (True, 'true', '1', 1)
+        if (self._as_bool(kwargs.get('is_interruption'))
                 and record_mode == 'case' and not is_last):
             self._log(level='INFO',
                       content=f"打断轮结束,等待{CASE_BARGE_IN_DELAY_SECONDS}s后进入下一轮播放: r{round_number}/{total_rounds}",
@@ -1464,10 +1542,25 @@ class Xiaoyilivechat(HarmonyDriver):
         """从设备拉取录屏文件(转 wav)并上传 OSS，返回 mp4 的 OSS URL（失败返回 None）。teardown 兜底用。
 
         本地临时目录即传即清: mp4 + wav 都上传 OSS,评估端回看用 mp4、分析用 wav。
+
+        VEGA-10 跨用例污染防护（双层）：
+        1. 文件名一致性校验：_record_file_name 按用例命名（{test_case_id}[_rN].mp4），
+           若其中不含本次调用的 test_case_id，说明驱动状态已属于别的用例
+           （线程池超时被放弃的滞留 teardown 在下一个用例期间才真正执行），立即放弃；
+        2. 用例纪元校验：先 recv 到 *.part 临时文件，落盘后校验 _case_epoch 未变
+           （用例未切换）才原子替换到正式路径，否则删除临时文件。
         """
         record_file_name = getattr(self, '_record_file_name', None)
         if not record_file_name:
             return None
+        # 防护1: 录屏文件名必须属于本次调用的用例（防止滞留任务把新用例录屏拉进旧用例路径）
+        if test_case_id is not None and str(test_case_id) not in str(record_file_name):
+            self._log(level='ERROR',
+                      content=(f"录屏兜底拉取被拒绝: 驱动当前录屏名 {record_file_name} "
+                               f"不属于用例 {test_case_id}(疑似跨用例滞留任务), 放弃拉取"),
+                      task_id=task_id, test_case_id=test_case_id)
+            return None
+        epoch = self._case_epoch
         task_id_path = str(task_id) if task_id else 'default_task_id'
         test_case_id_path = str(test_case_id) if test_case_id else 'default_id'
         oss_key_prefix = f'{task_id_path}/{test_case_id_path}/{device_sn}'
@@ -1490,14 +1583,23 @@ class Xiaoyilivechat(HarmonyDriver):
                 device_path = ''
         try:
             local_path = os.path.join(local_dir, record_file_name)
-            recv_result = subprocess.run(['hdc', '-t', device_sn, 'file', 'recv', device_path, local_path],
+            part_path = local_path + self.PART_FILE_SUFFIX
+            recv_result = subprocess.run(['hdc', '-t', device_sn, 'file', 'recv', device_path, part_path],
                                          check=False, capture_output=True, text=True,
                                          timeout=EXTRA_LONG_HDC_TIMEOUT)
-            if not os.path.exists(local_path):
+            if not os.path.exists(part_path):
                 self._log(level='WARNING',
                           content=f"teardown兜底拉取录屏失败: device_path={device_path!r} err={recv_result.stderr}",
                           task_id=task_id, test_case_id=test_case_id)
                 return None
+            # 防护2: recv 期间用例已切换(纪元变化)则丢弃，绝不写入正式路径
+            if epoch is not None and self._case_epoch != epoch:
+                self._remove_quietly(part_path)
+                self._log(level='ERROR',
+                          content=f"录屏兜底拉取被丢弃: 拉取期间用例已切换(epoch {epoch} -> {self._case_epoch})",
+                          task_id=task_id, test_case_id=test_case_id)
+                return None
+            os.replace(part_path, local_path)
             wav_path = self._mp4_to_wav(local_path, task_id=task_id, test_case_id=test_case_id)
             # mp4 + wav 都上传 OSS,返回 mp4 的 OSS URL(评估主视频)
             oss_url = self._upload_file_to_oss(local_path, oss_key_prefix,
@@ -1507,11 +1609,21 @@ class Xiaoyilivechat(HarmonyDriver):
                                          task_id=task_id, test_case_id=test_case_id)
             return oss_url
         except Exception as e:
+            self._remove_quietly(locals().get('part_path'))
             self._log(level='WARNING', content=f"teardown兜底拉取录屏异常: {e}",
                       task_id=task_id, test_case_id=test_case_id)
             return None
         finally:
             shutil.rmtree(local_dir, ignore_errors=True)
+
+    @staticmethod
+    def _remove_quietly(path):
+        """删除临时文件（失败仅忽略，不阻断主流程）"""
+        try:
+            if path and os.path.exists(path):
+                os.remove(path)
+        except OSError:
+            pass
 
     def get_results(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> list:
         # 打印接收到的播放时间戳（验证链路）
@@ -1555,6 +1667,30 @@ class Xiaoyilivechat(HarmonyDriver):
         answer_text = getattr(self, 'answer_text', None)
         # first_frame_ms 优先用 ai PCM 首帧(模型回复起始时刻)，缺失则回退录屏 first_frame
         first_frame_ms = getattr(self, '_ai_first_frame_ms', None) or getattr(self, '_recorder_first_frame_ms', None)
+        # VEGA-10: 录屏名一致性校验——_record_file_name 由 pre_process 按
+        # {test_case_id}[_rN].mp4 命名；若不含本次用例 ID，说明单例驱动状态已被
+        # 别的用例污染（如线程池放弃的滞留任务触发了本次采集），拒绝拉取，
+        # 保证用例↔录音 1:1 对应
+        if (test_case_id is not None and getattr(self, '_record_file_name', None)
+                and str(test_case_id) not in str(record_file_name)):
+            self._log(level='ERROR',
+                      content=(f"[get_results] 录屏名一致性校验失败: {record_file_name} 不属于用例 "
+                               f"{test_case_id}, 拒绝拉取防止跨用例串音"),
+                      task_id=task_id, test_case_id=test_case_id)
+            return [{
+                'success': False,
+                'message': f'录屏名不属于当前用例(跨用例污染防护): {record_file_name}',
+                'record_path': '',
+                'record_device_path': '',
+                'wav_path': '',
+                'start_ms': ts['start_ms'],
+                'end_ms': ts['end_ms'],
+                'first_frame_ms': first_frame_ms,
+                'question': question_text or '',
+                'answer': answer_text or '',
+                'user_wav': '',
+                'ai_wav': ''
+            }]
         task_id_path = str(task_id) if task_id else 'default_task_id'
         test_case_id_path = str(test_case_id) if test_case_id else 'default_id'
         oss_key_prefix = f'{task_id_path}/{test_case_id_path}/{device_sn}'
@@ -1615,10 +1751,14 @@ class Xiaoyilivechat(HarmonyDriver):
                           content=f"录屏文件设备路径为空，无法拉取: record_file_name={record_file_name}, mediatool stdout={query.stdout if query else 'N/A'}",
                           task_id=task_id, test_case_id=test_case_id)
             local_path = os.path.join(local_dir, record_file_name)
-            recv_result = subprocess.run(['hdc', '-t', device_sn, 'file', 'recv', device_path, local_path],
+            # VEGA-10: 先 recv 到 *.part 再原子替换，避免半截 mp4 被并发读取；
+            # recv 期间用例纪元变化(滞留任务)则丢弃，不写正式路径
+            epoch = self._case_epoch
+            part_path = local_path + self.PART_FILE_SUFFIX
+            recv_result = subprocess.run(['hdc', '-t', device_sn, 'file', 'recv', device_path, part_path],
                                          check=False, capture_output=True, text=True,
                                          timeout=EXTRA_LONG_HDC_TIMEOUT)
-            if not os.path.exists(local_path):
+            if not os.path.exists(part_path):
                 self._log(level='ERROR', content=f"录屏文件拉取失败: {recv_result.stderr}",
                           task_id=task_id, test_case_id=test_case_id)
                 return [{
@@ -1635,6 +1775,27 @@ class Xiaoyilivechat(HarmonyDriver):
                     'user_wav': user_wav or '',
                     'ai_wav': ai_wav or ''
                 }]
+            if epoch is not None and self._case_epoch != epoch:
+                self._remove_quietly(part_path)
+                self._log(level='ERROR',
+                          content=(f"[get_results] 录屏拉取被丢弃: 拉取期间用例已切换"
+                                   f"(epoch {epoch} -> {self._case_epoch})"),
+                          task_id=task_id, test_case_id=test_case_id)
+                return [{
+                    'success': False,
+                    'message': '录屏拉取期间用例已切换,丢弃(跨用例污染防护)',
+                    'record_path': '',
+                    'record_device_path': device_path or '',
+                    'wav_path': '',
+                    'start_ms': ts['start_ms'],
+                    'end_ms': ts['end_ms'],
+                    'first_frame_ms': first_frame_ms,
+                    'question': question_text or '',
+                    'answer': answer_text or '',
+                    'user_wav': user_wav or '',
+                    'ai_wav': ai_wav or ''
+                }]
+            os.replace(part_path, local_path)
             # mp4 无损转 wav
             wav_path = self._mp4_to_wav(local_path, task_id=task_id, test_case_id=test_case_id)
             # mp4(回看原视频) + wav(评估分析) 都上传 OSS
@@ -1666,6 +1827,8 @@ class Xiaoyilivechat(HarmonyDriver):
         except Exception as e:
             import traceback
             tb = traceback.format_exc()
+            # VEGA-10: 异常时清理可能存在的 *.part 临时文件，避免半成品残留
+            self._remove_quietly(locals().get('part_path'))
             # 收集异常发生时已拿到的关键上下文，便于定位失败点
             query_out = query.stdout if query else '<query未执行>'
             query_err = query.stderr if query else ''
