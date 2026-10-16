@@ -1,0 +1,462 @@
+/**
+ * 用例管理页（11_用例域.md §3.1 页面总骨架，SectionPageLayout fixedContent + 双视图表格）。
+ * 装配：Breadcrumb 工作台/用例管理｜Title「用例管理」｜Actions（+新增用例/导入/导出/模板下载）｜
+ * Content（视图页签 line → 筛选工具栏 → 分组/平铺表格 → 批量浮条）/ Footer（分页 Portal）。
+ * 路由 /testcases/$view（by-group/by-tag 白名单在路由层）；mock 态全部弹窗/toast 演示，
+ * 接线后替换为 application/testcases mutations + URL 态 useTableUrlState。
+ */
+import { Link, useNavigate } from '@tanstack/react-router'
+import { FileDown, FileSpreadsheet, FileUp, Plus } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
+import { toast } from 'sonner'
+
+import { usePermissions } from '@/application/hooks/use-permissions'
+import { useDimensionOptions } from '@/application/testcases/use-evaluation-dimensions'
+import { useCaseGroups } from '@/application/testcases/use-case-groups'
+import { useCaseTags } from '@/application/testcases/use-case-tags'
+import {
+  useTestCasesList,
+  type TestCaseListFilters,
+} from '@/application/testcases/use-testcases-list'
+import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
+import type { TestCaseListItem } from '@/domain/models/testCase'
+import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
+import {
+  DEFAULT_VISIBLE_COLUMNS,
+  TEST_CASES_TABS,
+  type CaseColumnKey,
+  type TestCasesViewKey,
+} from '@/features/testcases/constants'
+import { TestCasesFilterToolbar } from '@/features/testcases/components/testcases-filter-toolbar'
+import { GroupedCaseTable, type GroupActionCallbacks } from '@/features/testcases/components/grouped-case-table'
+import { FlatCaseTable } from '@/features/testcases/components/flat-case-table'
+import { CaseBulkActions, type BatchActionKey } from '@/features/testcases/components/case-bulk-actions'
+import { TestCasesPagination } from '@/features/testcases/components/testcases-pagination'
+import type { CaseRowCallbacks } from '@/features/testcases/components/case-row'
+import { CaseMutateDrawer } from '@/features/testcases/modals/case-mutate-drawer'
+import { ImportExportDialog } from '@/features/testcases/modals/import-export-dialog'
+import { GroupMutateDialog } from '@/features/testcases/modals/group-mutate-dialog'
+import { BatchDimensionsDialog } from '@/features/testcases/modals/batch-dimensions-dialog'
+import { BatchAdjustGroupDialog } from '@/features/testcases/modals/batch-adjust-group-dialog'
+import { BatchManageTagsDialog } from '@/features/testcases/modals/batch-manage-tags-dialog'
+import { AudioPreviewConfigDialog } from '@/features/testcases/modals/audio-preview-config-dialog'
+import {
+  CaseConfirmDialog,
+  type CaseConfirmState,
+} from '@/features/testcases/modals/case-confirms'
+
+export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
+  const { hasPermission } = usePermissions()
+  const navigate = useNavigate()
+  const algorithmId = useAlgorithmStore((s) => s.algorithmId)
+
+  const [filters, setFilters] = useState<TestCaseListFilters>({})
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [visible, setVisible] = useState<Set<CaseColumnKey>>(
+    () => new Set(DEFAULT_VISIBLE_COLUMNS)
+  )
+
+  // 弹窗状态
+  const [mutateCase, setMutateCase] = useState<TestCaseListItem | null>(null)
+  const [mutateOpen, setMutateOpen] = useState(false)
+  const [presetGroupId, setPresetGroupId] = useState<string | null>(null)
+  const [importExport, setImportExport] = useState<{ open: boolean; mode: 'import' | 'export' }>({ open: false, mode: 'import' })
+  const [groupDialog, setGroupDialog] = useState<{ open: boolean; group: TestCaseGroup | null }>({ open: false, group: null })
+  const [previewCase, setPreviewCase] = useState<TestCaseListItem | null>(null)
+  const [batchDialog, setBatchDialog] = useState<{ kind: 'dimensions' | 'group' | 'tags'; count: number } | null>(null)
+  const [confirm, setConfirm] = useState<CaseConfirmState | null>(null)
+
+  const listQuery = useTestCasesList(view, {
+    ...filters,
+    algorithmType: filters.algorithmType ?? algorithmId,
+  })
+  const groupsQuery = useCaseGroups()
+  const tagsQuery = useCaseTags()
+  const dimsQuery = useDimensionOptions(algorithmId)
+
+  const items = listQuery.data?.items ?? []
+  const total = listQuery.data?.total ?? 0
+  const groups = groupsQuery.data ?? []
+  const tags = tagsQuery.data ?? []
+  const dimensions = dimsQuery.data ?? []
+
+  const isFiltered = useMemo(
+    () =>
+      Object.entries(filters).some(([key, value]) => {
+        if (key === 'algorithmType') return false
+        if (Array.isArray(value)) return value.length > 0
+        return value != null && value !== '' && value !== false
+      }),
+    [filters]
+  )
+
+  const clearSelection = useCallback(() => setSelected(new Set()), [])
+
+  /** 视图页签切换：重置筛选与勾选集（URL 态回归：接线后 page/search/… 进 search） */
+  const handleViewChange = (next: string) => {
+    setFilters({})
+    clearSelection()
+    void navigate({
+      to: '/testcases/$view',
+      params: { view: next as TestCasesViewKey },
+    })
+  }
+
+  const rowCallbacks = useMemo<CaseRowCallbacks>(
+    () => ({
+      onPreview: (c) => setPreviewCase(c),
+      onEdit: (c) => {
+        setPresetGroupId(null)
+        setMutateCase(c)
+        setMutateOpen(true)
+      },
+      onReferenceParams: (c) =>
+        toast.success(`参考参数（${c.name}）将在接线批次打开行级编辑`),
+      onDelete: (c) => setConfirm({ kind: 'delete', name: c.name }),
+      onRestore: (c) => setConfirm({ kind: 'restore', name: c.name }),
+      onPurge: (c) => setConfirm({ kind: 'purge', name: c.name }),
+    }),
+    []
+  )
+
+  const groupCallbacks = useMemo<GroupActionCallbacks>(
+    () => ({
+      onCreateInGroup: (group) => {
+        setPresetGroupId(group?.id ?? null)
+        setMutateCase(null)
+        setMutateOpen(true)
+      },
+      onEditGroup: (group) => setGroupDialog({ open: true, group }),
+      onDeleteGroup: (group) => setConfirm({ kind: 'delete-group', name: group.name }),
+      onCopyGroup: (group) => {
+        toast.success('已复制分组', { description: `新分组：${group.name}_copy` })
+      },
+    }),
+    []
+  )
+
+  const handleBatchAction = (action: BatchActionKey, ids: string[]) => {
+    const count = ids.length
+    switch (action) {
+      case 'dimensions':
+      case 'group':
+      case 'tags':
+        setBatchDialog({ kind: action, count })
+        break
+      case 'copy':
+        setConfirm({ kind: 'batch-copy', count })
+        break
+      case 'delete':
+        setConfirm({ kind: 'batch-delete', count })
+        break
+      case 'restore':
+        setConfirm({ kind: 'batch-restore', count })
+        break
+      case 'purge':
+        setConfirm({ kind: 'batch-purge', count })
+        break
+      case 'name':
+        setConfirm({ kind: 'auto-name', count })
+        break
+      default:
+        toast.success('批量操作执行成功（演示：完整弹窗随接线批次落地）')
+    }
+  }
+
+  const handleConfirm = (state: CaseConfirmState) => {
+    switch (state.kind) {
+      case 'delete':
+        toast.success('已移入回收站')
+        break
+      case 'purge':
+        toast.success('已彻底删除')
+        break
+      case 'restore':
+        toast.success(`用例「${state.name}」已恢复`)
+        break
+      case 'delete-group':
+        toast.success('删除分组成功')
+        break
+      case 'restore-all':
+        toast.success(`已恢复 ${state.count ?? 0} 个用例`)
+        break
+      case 'batch-copy':
+        toast.success('批量复制成功')
+        break
+      case 'batch-delete':
+        toast.success('已批量移入回收站')
+        break
+      case 'batch-restore':
+        toast.success('已批量恢复')
+        break
+      case 'batch-purge':
+        toast.success('已批量彻底删除')
+        break
+      case 'auto-name':
+        toast.success('自动生成名称完成')
+        break
+    }
+    clearSelection()
+    setConfirm(null)
+  }
+
+  const openCreate = () => {
+    setPresetGroupId(null)
+    setMutateCase(null)
+    setMutateOpen(true)
+  }
+
+  const trashCount = useMemo(
+    () => (filters.trash ? items.filter((c) => c.deleted).length : 0),
+    [filters.trash, items]
+  )
+
+  return (
+    <>
+      <SectionPageLayout fixedContent>
+        <SectionPageLayout.Breadcrumb>
+          <nav aria-label='面包屑' className='text-sm'>
+            <ol className='flex flex-wrap items-center gap-1.5'>
+              <li>
+                <Link
+                  to='/dashboard'
+                  className='text-muted-foreground hover:text-foreground transition-colors'
+                >
+                  工作台
+                </Link>
+              </li>
+              <li aria-hidden='true' className='text-muted-foreground/50'>
+                /
+              </li>
+              <li aria-current='page' className='text-foreground font-medium'>
+                用例管理
+              </li>
+            </ol>
+          </nav>
+        </SectionPageLayout.Breadcrumb>
+
+        <SectionPageLayout.Title>用例管理</SectionPageLayout.Title>
+
+        <SectionPageLayout.Actions>
+          {hasPermission('testcase:create') && (
+            <Button size='sm' className='h-7 gap-1.5' onClick={openCreate}>
+              <Plus aria-hidden='true' className='size-3.5' />
+              新增用例
+            </Button>
+          )}
+          {hasPermission('testcase:import_export') && (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button size='sm' variant='outline' className='h-7 gap-1.5' />
+                }
+              >
+                <FileUp aria-hidden='true' className='size-3.5' />
+                导入
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align='end' className='w-44'>
+                <DropdownMenuItem
+                  onSelect={() => setImportExport({ open: true, mode: 'import' })}
+                >
+                  导入用例文件
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => void navigate({ to: '/audio-import' })}
+                >
+                  去音频导入页生成
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          {hasPermission('testcase:import_export') && (
+            <Button
+              size='sm'
+              variant='outline'
+              className='h-7 gap-1.5'
+              onClick={() => setImportExport({ open: true, mode: 'export' })}
+            >
+              <FileSpreadsheet aria-hidden='true' className='size-3.5' />
+              导出
+            </Button>
+          )}
+          {hasPermission('testcase:import_export') && (
+            <Button
+              size='sm'
+              variant='ghost'
+              className='h-7 gap-1.5'
+              onClick={() => toast.success('模板已下载（演示：testcase-import-template.json）')}
+            >
+              <FileDown aria-hidden='true' className='size-3.5' />
+              模板下载
+            </Button>
+          )}
+        </SectionPageLayout.Actions>
+
+        <SectionPageLayout.Content>
+          <div className='flex h-full min-h-0 flex-col gap-3'>
+            <Tabs value={view} onValueChange={handleViewChange}>
+              <TabsList variant='line' className='max-w-full flex-wrap justify-start'>
+                {TEST_CASES_TABS.map((t) => (
+                  <TabsTrigger key={t.key} value={t.key} className='px-3'>
+                    {t.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+
+            <TestCasesFilterToolbar
+              filters={filters}
+              onChange={setFilters}
+              onReset={() => setFilters({})}
+              isFiltered={isFiltered}
+              groups={groups}
+              tags={tags}
+              dimensions={dimensions}
+              onRestoreAll={() =>
+                setConfirm({ kind: 'restore-all', count: trashCount })
+              }
+            />
+
+            <div className='min-h-0 flex-1 overflow-auto'>
+              {view === 'by-group' ? (
+                <GroupedCaseTable
+                  groups={groups}
+                  cases={items}
+                  loading={listQuery.isLoading}
+                  selected={selected}
+                  visible={visible}
+                  onVisibleChange={setVisible}
+                  tagRegistry={tags}
+                  callbacks={rowCallbacks}
+                  actionCallbacks={groupCallbacks}
+                  onToggleSelect={(id, checked) => {
+                    setSelected((prev) => {
+                      const next = new Set(prev)
+                      if (checked) next.add(id)
+                      else next.delete(id)
+                      return next
+                    })
+                  }}
+                  onToggleAll={(ids, checked) => {
+                    setSelected((prev) => {
+                      const next = new Set(prev)
+                      if (checked) ids.forEach((id) => next.add(id))
+                      else ids.forEach((id) => next.delete(id))
+                      return next
+                    })
+                  }}
+                />
+              ) : (
+                <FlatCaseTable
+                  cases={items}
+                  loading={listQuery.isLoading}
+                  trash={filters.trash ?? false}
+                  selected={selected}
+                  visible={visible}
+                  onVisibleChange={setVisible}
+                  tagRegistry={tags}
+                  callbacks={rowCallbacks}
+                  onToggleSelect={(id, checked) => {
+                    setSelected((prev) => {
+                      const next = new Set(prev)
+                      if (checked) next.add(id)
+                      else next.delete(id)
+                      return next
+                    })
+                  }}
+                  onToggleAll={(ids, checked) => {
+                    setSelected((prev) => {
+                      const next = new Set(prev)
+                      if (checked) ids.forEach((id) => next.add(id))
+                      else ids.forEach((id) => next.delete(id))
+                      return next
+                    })
+                  }}
+                  onCreate={openCreate}
+                />
+              )}
+            </div>
+          </div>
+
+          <TestCasesPagination
+            total={total}
+            tagPage={view === 'by-tag' ? 1 : undefined}
+            tagPages={view === 'by-tag' ? Math.max(1, Math.ceil(total / 10)) : undefined}
+          />
+        </SectionPageLayout.Content>
+      </SectionPageLayout>
+
+      {/* 批量浮条 */}
+      <CaseBulkActions
+        selectedIds={[...selected]}
+        onClear={clearSelection}
+        trash={filters.trash ?? false}
+        onBatchAction={handleBatchAction}
+      />
+
+      {/* 弹窗群（Provider 挂页级，§5） */}
+      <CaseMutateDrawer
+        open={mutateOpen}
+        onOpenChange={setMutateOpen}
+        caseItem={mutateCase}
+        groups={groups}
+        tags={tags}
+        presetGroupId={presetGroupId}
+      />
+      <ImportExportDialog
+        open={importExport.open}
+        onOpenChange={(open) => setImportExport((prev) => ({ ...prev, open }))}
+        mode={importExport.mode}
+      />
+      <GroupMutateDialog
+        open={groupDialog.open}
+        onOpenChange={(open) => setGroupDialog((prev) => ({ ...prev, open }))}
+        group={groupDialog.group}
+      />
+      <AudioPreviewConfigDialog
+        open={previewCase != null}
+        onOpenChange={(open) => !open && setPreviewCase(null)}
+        caseItem={previewCase}
+      />
+      {batchDialog?.kind === 'dimensions' && (
+        <BatchDimensionsDialog
+          open
+          onOpenChange={(open) => !open && setBatchDialog(null)}
+          count={batchDialog.count}
+          dimensions={dimensions}
+        />
+      )}
+      {batchDialog?.kind === 'group' && (
+        <BatchAdjustGroupDialog
+          open
+          onOpenChange={(open) => !open && setBatchDialog(null)}
+          count={batchDialog.count}
+          groups={groups}
+        />
+      )}
+      {batchDialog?.kind === 'tags' && (
+        <BatchManageTagsDialog
+          open
+          onOpenChange={(open) => !open && setBatchDialog(null)}
+          count={batchDialog.count}
+          tags={tags}
+        />
+      )}
+      <CaseConfirmDialog
+        open={confirm != null}
+        onOpenChange={(open) => !open && setConfirm(null)}
+        state={confirm}
+        onConfirm={handleConfirm}
+      />
+    </>
+  )
+}

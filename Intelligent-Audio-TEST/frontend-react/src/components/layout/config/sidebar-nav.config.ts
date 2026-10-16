@@ -81,6 +81,8 @@ export const ROOT_SIDEBAR_NAV: NavGroup[] = [
         url: '/testcases',
         icon: ListChecks,
         requiredPermission: 'testcase:read',
+        // 双视图路径 /testcases/$view 同项高亮（checkIsActive activeUrls 等价机制）
+        activeUrls: ['/testcases'],
       },
       {
         title: '音频管理',
