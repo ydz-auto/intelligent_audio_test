@@ -373,6 +373,27 @@ def _calculate_response_latency(played_audios, user_wav, ai_wav):
     return result
 
 
+# ─────────── 音频有效性检查 ───────────
+def _detect_silence(wav_path: str, rms_threshold: float = 0.001) -> Dict[str, Any]:
+    """检测音频是否静音（设备无有效语音输出）。
+
+    静音判定: 全音频 RMS < rms_threshold（约 -60 dBFS）。
+    参考量级: 数字静音/噪声底 RMS≈0.0002，正常语音 RMS 一般 >0.01。
+
+    Returns:
+        {'is_silent': bool, 'rms': float|None, 'error': str}
+    """
+    try:
+        sr, data = _load_audio(wav_path)
+        if data.size == 0:
+            return {'is_silent': True, 'rms': 0.0, 'error': ''}
+        rms = float(np.sqrt(np.mean(data ** 2)))
+        return {'is_silent': rms < rms_threshold, 'rms': round(rms, 6), 'error': ''}
+    except Exception as exc:
+        logger.warning(f'[env_judge] 静音检测加载音频失败: {exc}')
+        return {'is_silent': False, 'rms': None, 'error': str(exc)}
+
+
 # ─────────── 主入口 ───────────
 def evaluate_env_judge(
     user_wav: str,
@@ -447,6 +468,30 @@ def evaluate_env_judge(
     # 从 ai_wav 提取 ASR 文本（供参考）
     answer_text = get_asr_text(ai_wav)
     result['ai_answer'] = answer_text
+
+    # ─── 1.1 音频有效性前置检查 ───
+    # 设备无有效语音输出（录音静音 / ASR 为空）时直接判失败，不再把无内容音频
+    # 交给裁判 LLM——否则 LLM 会依据 prompt 中内置的参考答案文本臆断打高分
+    # （例如设备录音为纯静音时仍被判"理解正确"）。
+    if not answer_text.strip():
+        silence = _detect_silence(ai_wav)
+        result['understand_correct'] = False
+        result['understand_correct_pass'] = 0
+        result['score'] = 1
+        if silence.get('is_silent'):
+            result['message'] = (
+                f'ai_wav 录音为静音(rms={silence.get("rms")})，模型无回复，'
+                '环境声可能未采集到设备或设备未响应，判为失败'
+            )
+            result['reason'] = '设备未产生任何回复（ai_wav 为静音），未理解环境音内容。'
+        else:
+            result['message'] = (
+                f'ai_wav 无有效 ASR 文本且 rms={silence.get("rms")}，'
+                '无法确认模型回复内容，判为失败'
+            )
+            result['reason'] = '模型未输出可识别语音（ASR 为空），未理解环境音内容。'
+        logger.warning(f'[env_judge] {result["message"]}')
+        return result
 
     # 构建 prompt
     prompt = build_env_judge_prompt(correctAnswer, script_type)
