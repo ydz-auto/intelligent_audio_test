@@ -45,7 +45,7 @@
                 'fa-clock': file.status === 'pending'
               }"></i>
               {{ file.status === 'completed' ? '已完成' : file.status === 'failed' ? '失败' : file.status === 'uploading' ? '上传中' : '待上传' }}
-              <span class="error-message" v-if="file.errorMessage">({{ file.errorMessage }})</span>
+              <span class="error-message" v-if="file.errorMessage || file.error">({{ file.errorMessage || file.error }})</span>
             </span>
           </div>
           <div class="file-progress">
@@ -80,7 +80,10 @@ interface AudioUploadFile {
   size: number;
   uploadedSize: number;
   status: 'pending' | 'uploading' | 'completed' | 'failed';
+  // 上传逻辑（audioImport.ts）写的是 error，历史模板读的是 errorMessage，
+  // 两者都认，避免失败原因在界面上显示不出来（VEGA-31 需要展示可操作提示）
   errorMessage?: string;
+  error?: string;
 }
 
 interface AudioUploadTask {

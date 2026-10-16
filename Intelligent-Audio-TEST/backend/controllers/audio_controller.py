@@ -1243,7 +1243,7 @@ class AudioController:
                     # 如果是秒传且需要创建测试用例
                     if create_test_case:
                         # 秒传场景：已有音频的 name 可能改过名，前端传的 audio_name 匹配不上，
-                        # 这里直接把 existing_audio.id 填进 rounds_config 里对应的项
+                        # 这里按 name / original_filename / md5 把 existing_audio.id 填进对得上号的项
                         if rounds_config:
                             # 先收集所有未匹配的音频项
                             unmatched_items = []
@@ -1264,9 +1264,51 @@ class AudioController:
                                         or not item_name):
                                     a['audio_id'] = existing_audio.id
                                     matched_count += 1
-                            # 如果按名称都匹配不上，且只有一个未匹配项，直接填（秒传的音频就是它）
-                            if matched_count == 0 and len(unmatched_items) == 1:
-                                unmatched_items[0]['audio_id'] = existing_audio.id
+                            # VEGA-31：按名称一个都对不上时**不得强填**。
+                            # 秒传命中已有音频靠的是 md5，与文件名无关；把 existing_audio.id 硬填进
+                            # 一个名字完全对不上的项，会建出「用例名取自前端 audio_name（如 JS135）、
+                            # description 与 config.rounds[].audios[].audio_id 指向另一条音频（如 JS121）」
+                            # 的矛盾用例，且全程无提示。处置口径：拒绝建用例 + 明确提示。
+                            # （不选「按真实文件名另建 audios 行」：那会绕过 md5 去重留下同 md5 两行，
+                            #  后续 Audio.query.filter_by(md5=...).first() 命中哪条不确定。）
+                            # 判定用「无一项匹配上」而非「仅一项未匹配」：进入本分支时，同分组其它项
+                            # 在前几次 merge 后已由前端回填 audio_id，未匹配项只可能是本次上传的这一项。
+                            if matched_count == 0 and unmatched_items:
+                                uploaded_names = '、'.join(
+                                    (a.get('audio_name') or '(未命名)') for a in unmatched_items[:3]
+                                )
+                                logger.warning(
+                                    f'秒传建用例被拒绝：本次上传「{uploaded_names}」的 md5 '
+                                    f'{upload_file.md5} 命中已有音频「{existing_audio.name}」'
+                                    f'(id={existing_audio.id})，但名称与该音频对不上，未创建测试用例'
+                                )
+                                return error_response(
+                                    f'秒传未建用例：本次上传的「{uploaded_names}」与已有音频'
+                                    f'「{existing_audio.name}」内容完全相同（md5 一致），但名称对不上，'
+                                    f'无法确认要复用的是同一条音频。为避免生成「用例名与音频互相矛盾」'
+                                    f'的用例，本次未创建测试用例。请任选一种处理：'
+                                    f'① 把文件重命名为「{existing_audio.name}」后重新上传；'
+                                    f'② 先在音频库把「{existing_audio.name}」重命名为「{uploaded_names}」；'
+                                    f'③ 若确实是两条不同音频，请先在音频库删除或重命名这条重复音频再上传。'
+                                )
+                            # VEGA-31：前端已回填的 audio_id 同样要与该项 audio_name 一致。
+                            # 多文件分组里，前一个秒传文件（createTestCase=false 分支）也会把
+                            # md5 命中的 audio_id 回填进 rounds，若名称对不上，用例名与音频依旧矛盾。
+                            mismatch = AudioController._find_round_audio_name_mismatch(rounds_config)
+                            if mismatch:
+                                mismatch_item, mismatch_id, mismatch_audio = mismatch
+                                logger.warning(
+                                    f'秒传建用例被拒绝：用例配置里音频项「{mismatch_item}」指向的音频'
+                                    f'(id={mismatch_id}, 名称「{mismatch_audio}」)与该项名称对不上，'
+                                    f'未创建测试用例'
+                                )
+                                return error_response(
+                                    f'秒传未建用例：用例配置里的音频「{mismatch_item}」指向的是另一条音频'
+                                    f'「{mismatch_audio}」(id={mismatch_id})，名称与音频互相矛盾。'
+                                    f'为避免生成错配用例，本次未创建测试用例。请先核对文件名与音频库中的'
+                                    f'命名（把文件重命名为「{mismatch_audio}」，或在音频库中修正该音频的名称）'
+                                    f'后重新上传。'
+                                )
                         # 秒传场景也要持久化标注（同 code 覆盖旧记录），并构造 raw_annotations 供用例参数提取
                         raw_annotations_data = AudioController._persist_annotations_and_raw(
                             existing_audio.id,
@@ -1847,6 +1889,47 @@ class AudioController:
                 if aid is not None:
                     audio_ids.add(str(aid))
         return audio_ids
+
+    # 秒传建用例前的自检：rounds 里已定 audio_id 的项，其 audio_name 必须与所指向音频对得上
+    @staticmethod
+    def _find_round_audio_name_mismatch(rounds_config):
+        """找出 rounds 中「audio_name 与所指向音频对不上」的首个音频项（VEGA-31）。
+
+        秒传命中已有音频靠 md5，前端回填的 audio_id 也来自秒传/合并响应，两者都可能与
+        该项自己的 audio_name 指向不同音频，从而建出「用例名与音频互相矛盾」的用例
+        （实测 JS135 的用例名 / description / audio_id 互指 JS135 与 JS121）。
+
+        判定沿用匹配侧的三个键：name / original_filename / md5。音频不存在（已删除等）
+        时不判为矛盾，交由既有流程处理，避免此处扩大拦截面。
+
+        :param rounds_config: 蛇形 key 的 rounds 配置（dict 列表）
+        :return: (项 audio_name, audio_id, 实际音频名)；无矛盾返回 None
+        """
+        for round_item in rounds_config or []:
+            if not isinstance(round_item, dict):
+                continue
+            for audio_item in round_item.get('audios') or []:
+                if not isinstance(audio_item, dict):
+                    continue
+                item_name = audio_item.get('audio_name') or ''
+                audio_id = audio_item.get('audio_id')
+                if not item_name or not audio_id:
+                    continue
+                try:
+                    audio_id_int = int(audio_id)
+                except (TypeError, ValueError):
+                    continue
+                audio = db.session.get(Audio, audio_id_int)
+                if not audio or getattr(audio, 'deleted', False):
+                    continue
+                if item_name in (
+                    audio.name,
+                    getattr(audio, 'original_filename', None) or '',
+                    getattr(audio, 'md5', None) or '',
+                ):
+                    continue
+                return item_name, audio_id_int, audio.name
+        return None
 
     # 查同一音频是否已在**其它分组**存在活跃用例
     @staticmethod
