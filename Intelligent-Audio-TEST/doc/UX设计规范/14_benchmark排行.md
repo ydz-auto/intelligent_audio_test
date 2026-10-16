@@ -1,6 +1,6 @@
 # 排行榜页 UX 设计规范（对齐 newAPI rankings）
 
-> 卡 INT-359 ｜ UX设计师B ｜ 2026-10-14（v1.1 修订 2026-10-15：算法切换口径改判 INT-442，见 §3.2；v1.2 修订 2026-10-16：INT-391 审核放行条件——文案全量改「排行榜」+ DTO→Domain 映射 + 未登录对齐 INT-344 + 基座节号勘误 + 权限码计数 5→6，见修订表；v1.3 修订 2026-10-16：INT-381 前置审核打回修订——Benchmark 报告域补全（§10）与 `infrastructure/adapters/*` 转换层，见修订表）｜ 基准：newAPI 参照源码 `D:\00_code\new_api_xagents`（web/src/features/rankings 全目录、web/src/routes/rankings、web/src/hooks/use-top-nav-links.ts、web/src/lib/nav-modules.ts、web/src/lib/use-chart-theme.ts、web/src/components/layout/components/public-layout.tsx｜public-navigation.tsx），本平台后端实测 `report_service/interfaces/api/benchmark_routes.py`、`api_gateway/routes/benchmark_bp.py`、`api_gateway/application/services/benchmark/benchmark_service.py`、`report_service/infrastructure/persistence/models/benchmark_models.py`、`report_service/application/services/benchmark_ranking_service.py`、`report_service/domain/entities/benchmark.py`、`scripts/migrations/202608/seed_rbac.py`，全部取材自实测源码，无杜撰。
+> 卡 INT-359 ｜ UX设计师B ｜ 2026-10-14（v1.1 修订 2026-10-15：算法切换口径改判 INT-442，见 §3.2；v1.2 修订 2026-10-16：INT-391 审核放行条件——文案全量改「排行榜」+ DTO→Domain 映射 + 未登录对齐 INT-344 + 基座节号勘误 + 权限码计数 5→6，见修订表；v1.3 修订 2026-10-16：INT-381 前置审核打回修订——Benchmark 报告域补全（§10）与 `infrastructure/adapters/*` 转换层，见修订表；v1.4 修订 2026-10-16：INT-429 RBAC 落地回写（§6.1 权限事实/§6.2 角色映射表改注）+ INT-391 复核收口对齐（§10 前端路由按 INT-344 v1.4 不新建 /benchmarks/*、写侧归属总控裁决、radius 校准），见修订表）｜ 基准：newAPI 参照源码 `D:\00_code\new_api_xagents`（web/src/features/rankings 全目录、web/src/routes/rankings、web/src/hooks/use-top-nav-links.ts、web/src/lib/nav-modules.ts、web/src/lib/use-chart-theme.ts、web/src/components/layout/components/public-layout.tsx｜public-navigation.tsx），本平台后端实测 `report_service/interfaces/api/benchmark_routes.py`、`api_gateway/routes/benchmark_bp.py`、`api_gateway/application/services/benchmark/benchmark_service.py`、`report_service/infrastructure/persistence/models/benchmark_models.py`、`report_service/application/services/benchmark_ranking_service.py`、`report_service/domain/entities/benchmark.py`、`scripts/migrations/202608/seed_rbac.py`，全部取材自实测源码，无杜撰。
 > 背景裁定：benchmark 排行页**恢复设计**（原 2026-10-10 搁置裁定由负责人 2026-10-14 恢复，仅设计阶段）；版式照 newAPI 官方排行榜页（rankings）；**数据以 B 域 benchmark 钩子现状为准，后端没有的数据不虚构，缺口一律标注「待后端立项」**。
 > 技术栈：React 19 + TS + Rsbuild + Tailwind 4 + shadcn 风格组件 + TanStack Router/Query + @visactor/react-vchart（newAPI 排行页图表同款依赖，`web/package.json:44-45` 实测 ^2.1.2）+ next-themes 深浅色（CSS/组件/交互件直接复用 newAPI 现成的，负责人 2026-10-14 裁定；多主题预设体系，lake-view 为默认参考预设——本文 token 均引基座卡 `01_全局基座.md` 的定义）。
 
@@ -72,7 +72,7 @@ newAPI 排行页（/rankings）是「**公共数据页**」：不走登录后的
 | `GET /api/v1/benchmarks/sources`（分页+sourceType） | `benchmark:baseline:read` | 数据源列表（管理界面用，见 §2.5） |
 | `GET /api/v1/benchmarks/baselines`（category/metricCode/sourceId 分页） | `benchmark:baseline:read` | 外部基线条目列表（管理界面用） |
 | `GET /api/v1/benchmarks/metric-mappings?activeOnly=` | `benchmark:ranking:read` | 指标映射清单（**指标筛选下拉的数据源**：metric_code ↔ 指标显示名/单位/方向） |
-| `POST /sources`、`POST /baselines(/version)`、`POST|PUT /metric-mappings` | `benchmark:baseline:write|publish`、`benchmark:mapping:manage` | 写侧（数据源/基线导入/映射管理——归配置运维卡 INT-362 设计，本页不设） |
+| `POST /sources`、`POST /baselines(/version)`、`POST|PUT /metric-mappings` | `benchmark:baseline:write|publish`、`benchmark:mapping:manage` | 写侧（数据源/基线导入/映射管理——归属总控 INT-391 收口裁决：另行立项「benchmark 配置写侧界面」，不归 INT-362；本页不设） |
 
 权限校验语义（`api_gateway/application/services/auth/dependencies.py` 实测）：多权限 OR、`*` 通配直放、`AUTH_MODE=off` 时中间件注入 `['*']` 全放行。
 
@@ -118,7 +118,7 @@ newAPI 排行页（/rankings）是「**公共数据页**」：不走登录后的
 
 ### 2.5 范围边界
 
-- 本卡只做**排行展示页（读侧 + 重算按钮）**；数据源管理/基线导入/指标映射管理是写侧资源界面，归**配置运维卡 INT-362** 设计（接口契约已在 §2.1 记录）。
+- 本卡只做**排行展示页（读侧 + 重算按钮）**；数据源管理/基线导入/指标映射管理是写侧资源界面，归属总控 INT-391 收口裁决：另行立项「benchmark 配置写侧界面」（不归 INT-362），本页不设（接口契约已在 §2.1 记录）。
 - 「Benchmark 徽章」联动：任务域已发布任务卡的 Benchmark 徽章（`PublishedTaskPanel.vue:19` 现状）在新前端可链入本页并预置 `publishedTaskId` 筛选（`/ranking` 实测支持该参数）——由任务域卡 INT-354 落地，本页只保证 URL 参数可还原。
 
 ---
@@ -196,7 +196,7 @@ PublicLayout（站头 PublicHeader + main + 页脚 Footer，对位 newAPI public
 
 ### 4.4 指标组卡（对位 models-section.tsx）
 
-- 卡容器：`bg-card overflow-hidden rounded-lg border`（radius-lg=12px 系，基座卡 §4.2）。
+- 卡容器：`bg-card overflow-hidden rounded-lg border`（照 newAPI 实测 `rounded-lg`；圆角值按基座卡 §5 组件表 Card 行 rounded-xl 实施时校准）。
 - 卡头（`px-5 py-4`，两端对齐）：
   - 左：lucide 图标（按 category 固定：asr=`AudioLines`、voice_llm=`MessagesSquare`、tts=`Volume2`、translation=`Languages`，`text-primary size-4`）+ 标题 `{指标名} · {场景}`（`text-base font-semibold`）+ 方向徽章（「越低越好」=neutral 软底 /「越高越好」=primary 软底，基座卡 §5 组件表 Badge 行）+ 说明行（`text-muted-foreground mt-1 text-sm`：「平台实测与外部基线按 {direction} 排名，共 {total} 个主体参与。」）。
   - 右（`text-right shrink-0`）：参与主体数 `font-mono text-2xl font-semibold tabular-nums`（对位 newAPI tokens 大数字位）+ 角标「个主体 · 计算于 {MM-DD HH:mm}」（`text-[10px] tracking-widest uppercase text-muted-foreground/80`，uppercase 仅作用于西文，中文原样）。
@@ -283,24 +283,24 @@ newAPI 的 growth 是"越大越好"隐含语义；本平台 delta 方向随指�
 ### 6.1 权限事实（实测，非杜撰）
 
 - 网关为 benchmark 路由定义 6 个权限码：`benchmark:ranking:read / benchmark:ranking:compute / benchmark:baseline:read / benchmark:baseline:write / benchmark:baseline:publish / benchmark:mapping:manage`（`benchmark_bp.py` 实测）。
-- **缺口**：`scripts/migrations/202608/seed_rbac.py` 的 100 个权限码中**不含任何 `benchmark:*`**（全文 grep 实测）——即 AUTH_MODE=on 时，五个系统角色中**仅 admin（通配 `*`）可访问**，tester/algo_engineer/device_admin/guest 一律 403；AUTH_MODE=off（现状部署）时中间件注入 `['*']` 全员放行。**「待后端立项（RBAC 补码）」**：将 `benchmark:ranking:read` 补入种子并分发角色（建议见 §6.2 建议列，供后端立项参考，非现状）。
+- **现状（INT-429 已落地，commit 8e5ab2e6）**：`scripts/migrations/202608/seed_rbac.py` 已定义全部 6 个 `benchmark:*` 权限点（seed 全量 107 实码 + `*`，21 模块）并**授 tester 与 algo_engineer 全 6 码**（含 `ranking:read` 读榜与 `ranking:compute` 触发重算）；guest / device_admin **未授**；admin 经 `*` 通配持有。AUTH_MODE=on 时 tester/algo_engineer 正常读榜并可触发重算；device_admin/guest 一律 403；AUTH_MODE=off（现状部署）时中间件注入 `['*']` 全员放行。原「待后端立项（RBAC 补码）」已由 INT-429 闭合，本节不再立项。
 
 ### 6.2 角色映射表
 
-| 角色（seed_rbac `ROLES`） | 现状权限判定 | 顶部导航「排行榜」 | 页面读取（榜单/筛选/搜索） | 「当前算法」大卡片 | 「立即计算」 | 「查看报告」行内链接 | 立项建议（待后端立项，非现状） |
+| 角色（seed_rbac `ROLES`） | 现状权限判定 | 顶部导航「排行榜」 | 页面读取（榜单/筛选/搜索） | 「当前算法」大卡片 | 「立即计算」 | 「查看报告」行内链接 | 立项结论（INT-429 已落地） |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | admin 超级管理员（`*`） | `*` 通配 | 可见 | 可用 | 完整卡（algorithm:read∈`*`） | 可用（`benchmark:ranking:compute`） | 可用（report:read∈`*`） | 维持 |
-| tester 测试工程师 | 无 benchmark:* → AUTH_MODE=on 403；off 放行 | off 可见 / on 隐藏 | off 可用 / on 数据 403 空态（URL 直达） | 完整卡（algorithm:read） | 隐藏 | 可用（report:read） | 建议：补 `benchmark:ranking:read`（可读榜） |
-| algo_engineer 算法工程师 | 同上 | 同上 | 同上 | 完整卡（algorithm:read） | 隐藏 | 可用（report:read） | 建议：补 `benchmark:ranking:read` + `benchmark:ranking:compute`（算法侧负责重算） |
-| device_admin 设备管理员 | 同上 | 同上 | 同上 | 只读降级条（无 algorithm:read） | 隐藏 | 隐藏（无 report:read） | 建议：不补（职能无关，导航整项隐藏） |
-| guest 游客 | 同上 | 同上 | 同上 | 只读降级条（无 algorithm:read） | 隐藏 | 隐藏 | 建议：补 `benchmark:ranking:read`（公开榜可读，无溯源报告链接） |
+| tester 测试工程师 | `benchmark:*` 全 6 码（INT-429 已授） | 可见 | 可用 | 完整卡（algorithm:read） | 可用（`benchmark:ranking:compute`） | 可用（report:read） | 已落地（INT-429），无需再立项 |
+| algo_engineer 算法工程师 | `benchmark:*` 全 6 码（INT-429 已授） | 可见 | 可用 | 完整卡（algorithm:read） | 可用（`benchmark:ranking:compute`） | 可用（report:read） | 已落地（INT-429），无需再立项 |
+| device_admin 设备管理员 | 无 benchmark:* → AUTH_MODE=on 403；off 放行 | 隐藏 | 数据 403 空态（URL 直达） | 只读降级条（无 algorithm:read） | 隐藏 | 隐藏（无 report:read） | 维持不补（INT-429 未授） |
+| guest 游客 | 无 benchmark:* → AUTH_MODE=on 403；off 放行 | 隐藏 | 数据 403 空态（URL 直达） | 只读降级条（无 algorithm:read） | 隐藏 | 隐藏 | 维持不补（INT-429 未授） |
 | 未登录访客（AUTH_MODE=on） | 无 | 隐藏（URL 直达可达——INT-344 定稿） | 数据 403 空态（不跳登录；榜单查询 403 → 权限空态，§5.1） | 只读降级条（未登录，两接口 403） | 隐藏 | 隐藏 | 无需立项（已按 INT-344 定稿：入口隐藏 + URL 直达 + 数据 403 空态） |
 
 > 注：「当前算法」大卡片页内独立（§3.2/§4.5），无 `algorithm:read` 时仅降级条不阻塞榜单浏览；AUTH_MODE=off（现状部署）时全员 `['*']`，大卡片全角色完整卡。
 
-- 前端判定对齐本平台惯例（`authStore.hasPermission` 含 `*` 通配，系统设置卡 §2.0 实测）：**路由不设硬守卫**（公开可达，对齐 INT-344 §2.2「URL 直达可达、数据 403 空态」）——未登录与已登录无 `benchmark:ranking:read` 者，顶部导航入口隐藏，URL 直达时榜单数据 403 → 权限空态（§5.1，不跳登录）；已登录持码（现仅 admin/`*`）正常读；AUTH_MODE=off（现状部署）放行。
+- 前端判定对齐本平台惯例（`authStore.hasPermission` 含 `*` 通配，系统设置卡 §2.0 实测）：**路由不设硬守卫**（公开可达，对齐 INT-344 §2.2「URL 直达可达、数据 403 空态」）——未登录与已登录无 `benchmark:ranking:read` 者，顶部导航入口隐藏，URL 直达时榜单数据 403 → 权限空态（§5.1，不跳登录）；已登录持码（admin/`*`、tester、algo_engineer——INT-429 已授）正常读；AUTH_MODE=off（现状部署）放行。
 - 导航按角色渲染的原则由导航栏卡 INT-344 统一实现：本页入口无权限时**整项隐藏**（不是置灰）。
-- 页面内无数据写操作按钮（除重算）；数据源/基线/映射管理入口不在本页（归配置运维卡 INT-362）。
+- 页面内无数据写操作按钮（除重算）；数据源/基线/映射管理写侧界面不在本页（总控 INT-391 收口裁决：另行立项「benchmark 配置写侧界面」，不归 INT-362）。
 
 ---
 
@@ -386,10 +386,10 @@ interfaces/
 │  │  ├─ delta-text.tsx                  # 基线差文案（direction 感知正负色，对位 GrowthText）
 │  │  └─ source-badge.tsx                # 来源/主体类型/设备类型/版本 徽章组
 │  └─ lib/format.ts                      # formatMetricValue（单位缩写）/ formatGap / formatComputedAt
-├─ routes/benchmarks/reports/index.tsx               # /benchmarks/reports Benchmark 报告列表（报告Benchmark排行功能设计文档.md:446-457，§10.2）
-├─ routes/benchmarks/reports/$reportId/index.tsx     # /benchmarks/reports/:reportId 详情（内嵌排行区块，§10.3）
-└─ features/benchmark-ranking-block/                 # 「Benchmark 排行」区块（报告详情内嵌，15_报告域 §3.8 消费）
-   └─ components/benchmark-ranking-block.tsx         # 排行表 + 参考线图表(ECharts) + 来源筛选 + 版本标注 + 异步进度（报告Benchmark排行功能设计文档.md:436-444）
+├─ features/benchmark-ranking-block/                 # 「Benchmark 排行」区块（报告详情页内嵌，15_报告域 §3.8 消费）
+│  └─ components/benchmark-ranking-block.tsx         # 排行表 + 参考线图表(ECharts) + 来源筛选 + 版本标注 + 异步进度（报告Benchmark排行功能设计文档.md:436-444）
+└─ （不新建 `/benchmarks/*` 前端路由——INT-344 v1.4 裁定 2026-10-16：Benchmark 报告列表并入报告中心类型页签
+   `/reports`、详情复用报告详情页 `/report/{reportId}`，具体落位实施卡基线裁定，§10.2）
 application/
 ├─ rankings/useRankings.ts               # TanStack Query（queryKey=[benchmarks,ranking,filters]，
 │                                        #   staleTime 5min，keepPreviousData；对位 newAPI use-rankings.ts）
@@ -429,9 +429,9 @@ domain/
 2. 落 routes + features/rankings 全套组件（§4/§5 规格）；`groupRankings.ts`/`rankingFilters.ts` 配 vitest 单测（分组边界：并列名次/单主体不归一化 score100 为空/场景缺省「通用」）；`adapters/benchmarkAdapter.ts` DTO→Domain 映射配 vitest 单测（snake_case→camelCase 全字段，interfaces 层零 snake_case 断言）。
 3. 抽平台件 `algorithm-selector.tsx`（Command 搜索 + 卡片网格双通道，INT-355 §3.4 基准）与 `useRankingAlgorithm`（页内 store，**不写回全局**），落 `current-algorithm-card.tsx` 完整卡 + 只读降级条（INT-436 §3.4 契约）。
 4. 公开路由与站头/页脚接导航栏卡（INT-344）的 PublicLayout；导航入口「排行榜」由导航栏卡按 `benchmark:ranking:read` 渲染（未登录隐藏、URL 直达数据 403 空态）；主题切换/多预设接基座卡（INT-343）机制。
-5. 「待后端立项」四项随本页实施不做、不占位：时间维度周期页签、厂商份额卡、升降榜卡、**榜单按算法过滤**（§2.4，算法大卡先行落地为显示/切换）；RBAC 补码（§6.1）单独立项。
+5. 「待后端立项」四项随本页实施不做、不占位：时间维度周期页签、厂商份额卡、升降榜卡、**榜单按算法过滤**（§2.4，算法大卡先行落地为显示/切换）；RBAC 补码已由 INT-429 落地（seed 补 6 码并授 tester+algo_engineer），不再单独立项（§6.1）。
 6. 回归断言：URL 筛选刷新还原、并列名次显示、深浅色图表重建、无权限角色入口隐藏 + URL 直达数据 403 空态（不跳登录）、AUTH_MODE=off 全放行、**算法大卡完整/降级两态 + 页内切换不写全局**、组件字段全 camelCase（零 snake_case 泄漏到 interfaces）、移动端单栏塌缩。
-7. **INT-381 返修**：落 `/benchmarks/reports` 列表/详情路由 + `benchmark-ranking-block` 排行区块组件（供 15_报告域 §3.8 装配）；发布接口 `POST /api/v1/benchmarks/reports` 接入；DTO 转换并入 `adapters/benchmarkAdapter.ts`；回归断言：排行区块异步进度/来源筛选/版本标注/导出 HTML 含排行区块。
+7. **INT-381 返修 + INT-344 v1.4 路由对齐**：落 `benchmark-ranking-block` 排行区块组件（供 15_报告域 §3.8 装配）；**不新建 `/benchmarks/*` 前端路由**——报告列表并入报告中心类型页签、详情复用 `/report/{reportId}`（落位实施卡基线裁定）；发布接口 `POST /api/v1/benchmarks/reports` 接入；DTO 转换并入 `adapters/benchmarkAdapter.ts`；回归断言：排行区块异步进度/来源筛选/版本标注/导出 HTML 含排行区块。
 
 ---
 
@@ -449,7 +449,7 @@ domain/
 ### 10.2 Benchmark 报告列表 / 详情（接口 + 路由）
 
 - **接口**（:388-394 实测）：`GET /api/v1/benchmarks/reports`（列表）+ `GET /api/v1/benchmarks/reports/{reportId}`（详情）。
-- **路由**（:446-457 实测）：`/benchmarks/reports`（列表）+ `/benchmarks/reports/:reportId`（详情）——列表形态复用报告中心 DataTable 版式（类型徽标「Benchmark 报告」）；详情页通用能力（报告头/导出/分享/AI 入口）由 **15_报告域.md §3.8** 落位，本卡只定义排行区块组件。
+- **前端路由（INT-344 v1.4 对齐，2026-10-16 裁定）**：**不新建 `/benchmarks/*` 前端路由**——Benchmark 报告列表并入**报告中心类型页签**（`/reports`，DataTable 版式 + 类型徽标「Benchmark 报告」）；详情**复用报告详情页 `/report/{reportId}`**（报告头/导出/分享/AI 入口由 **15_报告域.md §3.8** 落位，本卡只定义排行区块组件）；具体落位在实施卡基线裁定。后端接口 `GET /api/v1/benchmarks/reports` + `/reports/{reportId}`（:388-394 实测）不变。
 
 ### 10.3 排行区块组件规格（14 定义，15 消费）
 
@@ -474,3 +474,5 @@ domain/
 | 2026-10-15 | 负责人改判（INT-442 联动）：§3.2 算法口径推翻——原「本页不设算法筛选、与全局切换器无联动」改为**页面内「当前算法」大卡片**（复用 INT-436 工作台概览算法大卡片契约 + INT-355 §3.4 双通道选择器），**不再用右上角全局切换器**；页内独立不写回全局（公开页）；ReadModel 无算法维度 → 榜单按算法过滤标注待后端立项；新增 §4.5 大卡、§5.1/§5.6 交互、§6.2「当前算法」列、§7 文案、§9 组件树与清单同步。 |
 | 2026-10-16 | INT-391 审核放行条件修订（v1.2）：①文案口径全量「排行榜」——页内 H1（§4.2/§7）、组件文案、导航引用（§3.1/§6.2/§9 清单）改纯中文，站内不出现 Benchmark 字样（红线④，INT-344 定稿）；②§9 补 DTO→Domain camelCase 全量字段映射（唯一转换层 `benchmarkApi.ts`），§4.4 组件规格字段改 camelCase；③未登录行为对齐 INT-344——入口隐藏 + URL 直达 + 数据 403 空态（不跳登录，新增 §5.1 权限空态/§7 权限空态文案，§6.2 各角色行同步）；④基座节号勘误（§5.9/5.8/5.10/5.11/5.6→§5 组件表对应行、§3.8→§3.3、§9 依赖规则→§10）；⑤权限码计数 5→6（§6.1）。 |
 | 2026-10-16 | 前置审核 INT-381 打回修订：补 Benchmark 报告域（新增 §10）——报告发布（入口/流程/report_type='benchmark'）、报告列表/详情（`/benchmarks/reports` + `:reportId`，接口与路由引用报告Benchmark排行功能设计文档.md:388-394/:446-457）、报告详情内嵌排行区块组件规格（14 定义、15_报告域 §3.8 消费联动）、导出 HTML 含排行；§9 组件树补 benchmarks 路由 + `benchmark-ranking-block` 组件 + `infrastructure/adapters/benchmarkAdapter.ts` 转换层（对齐整站 `infrastructure/adapters/*` 约定）；实施清单补 §9-7。 |
+| 2026-10-16 | INT-429 落地回写（总控放行条件 #1，回写归属 UX设计师A）：§6.1 权限事实改「6 码已定义并授 tester+algo_engineer（全 6 码）、guest/device_admin 未授」——原「缺口/待后端立项（RBAC 补码）」撤销；§6.2 角色映射表按当前 seed 重写（tester/algo 导航可见、可读榜、可触发重算；device_admin/guest 维持 403），「立项建议」列改「立项结论（已落地）」；§3.1 入口判定同步；实施清单 #5 RBAC 补码改注已落地。 |
+| 2026-10-16 | INT-391 复核收口对齐（UX设计师B）：§10.2 前端路由按 INT-344 v1.4 对齐——**不新建 `/benchmarks/*` 前端路由**（列表并入报告中心类型页签、详情复用 `/report/{reportId}`，落位实施卡基线裁定）；§9 组件树移除 `routes/benchmarks/*`、保留 `benchmark-ranking-block`；§2.1/§2.5/§6.2 写侧界面归属按总控裁决改注（另行立项「benchmark 配置写侧界面」，不归 INT-362）；§4.4 radius-lg=12px 笔误按基座卡 §5 组件表 Card 行 rounded-xl 校准。 |
