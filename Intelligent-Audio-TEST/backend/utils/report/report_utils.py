@@ -157,6 +157,9 @@ class ReportUtils:
         支持根据 result_data 中的 result_type 添加后缀以区分不同结果类型（如 recording/fix）。
         """
         version = None
+        # api_id / device_id 双空（含属性不存在）时，下面的赋值分支都不会进入，
+        # 需先初始化，否则两处 `if not base_resource:` 兜底判断会抛 UnboundLocalError
+        base_resource = None
         result_type_suffix = ""
 
         try:
