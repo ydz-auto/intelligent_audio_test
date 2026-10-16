@@ -353,6 +353,8 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
         agg['per_round'] = per_round
         logger.info(
             f'[reject_judge] 文本整体评估: n_reject_rounds={n_reject_rounds} '
+            f'配置拒识轮数={sum(1 for rd in rounds if isinstance(rd, dict) and self._is_reject_round(task_params, rd))} '
+            f'user_wav={os.path.basename(user_wav) if user_wav else "无"} '
             f'success={agg.get("n_rate_success", 0)} '
             f'inquiry={agg.get("n_rate_inquiry", 0)} '
             f'failure={agg.get("n_rate_failure", 0)}'

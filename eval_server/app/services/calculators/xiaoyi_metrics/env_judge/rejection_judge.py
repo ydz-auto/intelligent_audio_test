@@ -866,6 +866,11 @@ def evaluate_rejection_judge_text(user_wav: str, ai_wav: str, model: str = '',
     if not user_segs:
         return {'enabled': False, 'message': '用户侧未检测到语音段', 'rounds': []}
     bc_segs = user_segs[1:] if has_intent else user_segs
+    # 轮次切分可追溯日志：wav 文件名 + 用户ASR段数 + 切出的拒识轮数，便于定位切分偏少的用例
+    logger.info(
+        f'[reject_judge_text] 轮次切分: user_wav={os.path.basename(user_wav)} '
+        f'用户ASR段数={len(user_segs)} (has_intent={has_intent}) 切出拒识轮={len(bc_segs)}'
+    )
     if not bc_segs:
         return {'enabled': False, 'message': '未检测到拒识干扰（用户侧仅意图段/无干扰）', 'rounds': []}
 
