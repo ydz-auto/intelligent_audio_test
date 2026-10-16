@@ -103,6 +103,10 @@ def test_p1_registry_captures_created_api_before_midway_failure(monkeypatch, tmp
     """P1 创建即登记：api_cfg 创建成功后即写入 registry，upload/init 中途失败不丢。"""
     _make_wav_samples(monkeypatch, tmp_path)
     _patch_upload_init_fail(monkeypatch)
+    # 与 test_p2 的 _patch_front 一致：_isolated_db_url 必须 mock，否则 multica
+    # worktree（无 .env）会先在 conftest sqlite DATABASE_URL 处 GateFail，屏蔽 P1 防线
+    monkeypatch.setattr(sg, '_isolated_db_url',
+                        lambda: 'postgresql://u:p@localhost:5432/intelligent_audio_test_test')
     monkeypatch.setattr(sg.psycopg2, 'connect', lambda *a, **k: _FakeConn())
 
     created = {}
