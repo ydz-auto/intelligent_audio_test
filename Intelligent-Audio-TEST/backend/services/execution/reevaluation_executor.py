@@ -948,10 +948,14 @@ class ReevaluationExecutor:
                 return False
 
             # 仍有用例在评估，继续等待
+            # （tcs 已按 execution_status='completed' 过滤，这里显式传入同一口径，
+            #  与 is_case_evaluation_finished 的「轮次完整性」前置保持一致）
             dim_states = get_task_dimension_evaluation_states(db.session, task_id)
             if any(
                 not is_case_evaluation_finished(
-                    tc.evaluation_status, dim_states.get(tc.test_case_id)
+                    tc.evaluation_status,
+                    dim_states.get(tc.test_case_id),
+                    tc.execution_status,
                 )
                 for tc in tcs
             ):
