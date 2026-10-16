@@ -166,9 +166,9 @@ export const WHY_CHOOSE_US = {
     },
     {
       icon: ArrowLeftRight,
-      title: '多 API 接入',
+      title: '多友商横向对比',
       description:
-        '对接多个语音识别和翻译服务，统一管理端点，健康状态实时监控。',
+        '多个厂商模型/APP/API 在同一测试集、同一指标下同时实测，横向排名看清业界水平。',
     },
     {
       icon: Star,
