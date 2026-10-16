@@ -426,7 +426,7 @@ function CategoryTreeCard({
                       {cat.tagCount}
                     </span>
                   </button>
-                  {active && (canUpdate || canDelete) && (
+                  {active && (
                     <span className='flex shrink-0 items-center gap-0.5'>
                       <Tooltip>
                         <TooltipTrigger

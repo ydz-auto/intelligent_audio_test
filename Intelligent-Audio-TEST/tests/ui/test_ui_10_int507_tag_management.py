@@ -334,6 +334,17 @@ def test_08_rbac_readonly_state(drv):
     assert edit_btn and edit_btn[0].get_attribute('disabled'), '只读态编辑标签应禁用'
     del_btn = drv.find_elements(By.CSS_SELECTOR, "button[aria-label^='删除标签 ']")
     assert del_btn and del_btn[0].get_attribute('disabled'), '只读态删除标签应禁用'
+    # 左分类树行内编辑/删除钮：选中行恒渲染但置灰（§7 注 1 不整组隐藏 + Tooltip）
+    drv.find_element(By.XPATH, "//button[contains(., '人数')]").click()
+    time.sleep(0.8)
+    cat_edit = drv.find_element(By.CSS_SELECTOR, "button[aria-label='编辑分类 人数']")
+    assert cat_edit.get_attribute('disabled'), '只读态左树编辑分类应置灰'
+    cat_del = drv.find_element(By.CSS_SELECTOR, "button[aria-label='删除分类 人数']")
+    assert cat_del.get_attribute('disabled'), '只读态左树删除分类应置灰'
+    from selenium.webdriver.common.action_chains import ActionChains
+    ActionChains(drv).move_to_element(cat_edit).perform()
+    time.sleep(0.8)
+    assert '无 tag:update 权限' in _body_text(drv), '只读态左树编辑分类 Tooltip 缺失'
     # 恢复 admin 会话（后续用例隔离）
     drv.execute_script("window.localStorage.clear()")
 
