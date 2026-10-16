@@ -40,7 +40,8 @@ def _lab_payload(code, name, **extra):
 def test_laboratory_crud_full_flow(api):
     code = f'INT537-LAB-{os.getpid()}'[:50]
     payload = _lab_payload(code, 'INT-537 集成冒烟实验室',
-                           building='测试楼', floor='3楼', room_number='301')
+                           building='测试楼', floor='3楼', room_number='301',
+                           description='集成冒烟主实验室')
 
     # POST → 201
     resp = api.post('/laboratories', json=payload, headers=_base_headers())
