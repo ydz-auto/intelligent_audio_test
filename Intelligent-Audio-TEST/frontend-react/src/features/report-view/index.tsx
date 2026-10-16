@@ -145,7 +145,7 @@ export function ReportViewPage() {
   const isComparison = report.type === 'comparison' || report.type === 'secondary_comparison'
 
   return (
-    <div className='report-view-container print:mx-auto print:max-w-none'>
+    <div className='report-view-container min-h-0 flex-1 overflow-auto print:mx-auto print:max-w-none'>
       <div className='mx-auto w-full max-w-[1200px] px-4 py-6 sm:px-6'>
         <ReportHeader
           report={report}
