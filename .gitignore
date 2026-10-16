@@ -185,3 +185,9 @@ Intelligent-Audio-TEST/frontend/snake-props.txt
 
 # Split/verify scratch scripts
 /_split_*.*
+
+# worktree 模式切换前快照：生成缓存 / 一次性探测脚本 / UI 抓取产物（非交付物）
+Intelligent-Audio-TEST/frontend-react/.tanstack/
+Intelligent-Audio-TEST/frontend-react/_hero_probe.py
+Intelligent-Audio-TEST/frontend-react/_rpt_diag.py
+Intelligent-Audio-TEST/tests/ui/artifacts/

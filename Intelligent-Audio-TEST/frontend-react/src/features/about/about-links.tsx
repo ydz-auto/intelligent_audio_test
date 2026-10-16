@@ -1,4 +1,4 @@
-import { useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import {
   ArrowUpRight,
   BookOpen,
@@ -134,11 +134,8 @@ export function AboutLinks() {
   const [needLogin, setNeedLogin] = useState(false)
 
   const handleLinkClick = (item: LinkItem) => (event: React.MouseEvent) => {
-    if (item.href && !item.guarded) {
-      return // 公开链接走原生 a 跳转（路由历史回退可直达）
-    }
     if (!item.guarded) {
-      return
+      return // 公开链接走 TanStack Link 客户端导航
     }
     event.preventDefault()
     if (!user) {
@@ -171,8 +168,8 @@ export function AboutLinks() {
               />
               <div className='min-w-0 flex-1'>
                 {item.href ? (
-                  <a
-                    href={item.href}
+                  <Link
+                    to={item.href}
                     onClick={handleLinkClick(item)}
                     className={cn(
                       'text-primary inline-flex items-center gap-1 text-sm font-medium hover:underline',
@@ -186,7 +183,7 @@ export function AboutLinks() {
                       aria-hidden='true'
                       className='text-muted-foreground size-3.5'
                     />
-                  </a>
+                  </Link>
                 ) : (
                   <span className='text-muted-foreground text-sm'>
                     {item.title}
@@ -197,7 +194,7 @@ export function AboutLinks() {
                   {item.repoPath && (
                     <>
                       {' · '}
-                      <code className='text-muted-foreground font-mono text-[0.8125rem]'>
+                      <code className='text-muted-foreground font-mono text-xs'>
                         {item.repoPath}
                       </code>
                       <span>

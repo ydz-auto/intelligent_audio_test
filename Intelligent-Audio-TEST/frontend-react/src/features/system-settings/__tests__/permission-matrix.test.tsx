@@ -6,8 +6,6 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import { PERMISSION_CATALOG } from '@/domain/models/permission'
-
 import { PermissionMatrix } from '../components/permission-matrix'
 
 const TEST_MODULES = [
