@@ -91,16 +91,20 @@ NON_SEMANTIC_SCORING_CRITERIA = """- 5分（完全正确）：模型准确识别
 
 
 # ─────────── prompt 构建 ───────────
-def build_env_judge_prompt(correct_answer: str, script_type: str = 'semantic') -> str:
+def build_env_judge_prompt(correct_answer: str, script_type: str = 'semantic',
+                           model_output_text: str = '') -> str:
     """构建环境理解判定 prompt
 
     Args:
         correct_answer: 环境音参考内容文本（正确答案）
         script_type: 'non_semantic'(无语义) 或 'semantic'(有语义)
+        model_output_text: 模型输出音频的 ASR 转写文本。裁判必须以该文本为准判断
+            模型实际输出内容——ai_wav 可能为长段静音或混入环境声/噪声，
+            仅凭音频易被裁判误判（把环境声当模型输出、或依据参考答案臆断）。
     """
     if script_type == 'non_semantic':
-        return _build_non_semantic_prompt(correct_answer)
-    return _build_semantic_prompt(correct_answer)
+        return _build_non_semantic_prompt(correct_answer, model_output_text)
+    return _build_semantic_prompt(correct_answer, model_output_text)
 
 
 def _env_type_to_script_type(env_type) -> str:
@@ -116,18 +120,32 @@ def _env_type_to_script_type(env_type) -> str:
     return 'semantic'
 
 
-def _build_non_semantic_prompt(correct_answer: str) -> str:
+def _build_non_semantic_prompt(correct_answer: str, model_output_text: str = '') -> str:
     """无语义脚本 prompt：判断模型是否正确识别了环境声音类型"""
     sound_type_blocks = []
     for i, (key, definition) in enumerate(NON_SEMANTIC_SOUND_TYPES.items(), 1):
         sound_type_blocks.append(f"类型{i} — {key}\n  {definition}")
     sound_types_text = '\n\n'.join(sound_type_blocks)
 
+    output_block = (
+        f'{model_output_text}'
+        if model_output_text.strip()
+        else '（空：模型未输出任何有效语音）'
+    )
+
     return f"""你是语音对话能力的裁判专家。你将收到【模型输出音频】以及下方【环境声音参考答案】。
 
 在环境理解-无语义场景中，用户所处的环境中出现了一段环境声音（如门铃、电话、警报等非语音噪声）。用户会询问"刚刚是什么声音"之类的问题，模型需要正确识别并描述该环境声音的类型。
 
 请结合模型输出音频和参考答案，判断模型是否正确识别了环境声音的类型。
+
+【重要】音频可能包含长段静音或混入环境声/噪声。模型实际输出的内容以下方【模型输出内容（ASR 转写）】为准，不要依据音频中的环境声或静音部分判断模型输出。
+
+═══════════════════════════════════════
+【模型输出内容（ASR 转写）】
+═══════════════════════════════════════
+
+{output_block}
 
 ═══════════════════════════════════════
 【评分标准】（1-5分，仅可给出1至5的正数整数）
@@ -155,7 +173,7 @@ def _build_non_semantic_prompt(correct_answer: str) -> str:
 【评估步骤】
 ═══════════════════════════════════════
 
-1. 从模型输出音频中提取模型实际输出的语音内容。
+1. 以【模型输出内容（ASR 转写）】为准，识别模型实际输出的语音内容；若该内容为空，则模型未输出有效语音，直接按 1 分（完全错误）判定。
 2. 将模型识别的声音类型与【环境声音参考答案】进行比对。
 3. 评估模型是否正确识别了声音类型，描述是否准确。
 4. 根据评分标准给出1-5的整数评分。
@@ -179,18 +197,32 @@ def _build_non_semantic_prompt(correct_answer: str) -> str:
 - reason 为简短判定理由，需说明：模型识别出的声音类型是什么，与参考答案是否一致，有何偏差"""
 
 
-def _build_semantic_prompt(correct_answer: str) -> str:
+def _build_semantic_prompt(correct_answer: str, model_output_text: str = '') -> str:
     """有语义脚本 prompt：判断模型是否正确理解了环境音内容"""
     scene_blocks = []
     for i, (key, definition) in enumerate(ENVIRONMENT_SCENES.items(), 1):
         scene_blocks.append(f"场景{i} — {key}\n  {definition}")
     scenes_text = '\n\n'.join(scene_blocks)
 
+    output_block = (
+        f'{model_output_text}'
+        if model_output_text.strip()
+        else '（空：模型未输出任何有效语音）'
+    )
+
     return f"""你是语音对话能力的裁判专家。你将收到【模型输出音频】以及下方【环境音参考内容文本】。
 
 在环境理解-有语义场景中，用户在交互过程中所处环境内存在可识别的环境音内容（如新闻广播、公共播报等）。模型需要对环境音内容进行感知和理解，并在输出中体现出对环境音内容的正确理解。下方【环境音参考内容文本】即为环境音中实际包含的内容文本，作为评估模型理解准确性的参考标准。
 
 请结合模型输出音频和参考内容文本，对模型输出内容与环境音参考内容的相关性、一致性和完整性进行综合评估，判断模型是否正确理解了环境音内容。
+
+【重要】音频可能包含长段静音或混入环境声/噪声。模型实际输出的内容以下方【模型输出内容（ASR 转写）】为准，不要依据音频中的环境声或静音部分判断模型输出。若模型输出与参考内容无关（如反问用户、要求补充信息、闲聊寒暄等），说明模型未理解环境音内容，应判低分。
+
+═══════════════════════════════════════
+【模型输出内容（ASR 转写）】
+═══════════════════════════════════════
+
+{output_block}
 
 ═══════════════════════════════════════
 【评分标准】（1-5分，仅可给出1至5的正数整数）
@@ -219,7 +251,7 @@ def _build_semantic_prompt(correct_answer: str) -> str:
 【评估步骤】
 ═══════════════════════════════════════
 
-1. 从模型输出音频中提取模型实际输出的语音内容。
+1. 以【模型输出内容（ASR 转写）】为准，识别模型实际输出的语音内容；若该内容为空，则模型未输出有效语音，直接按 1 分（完全错误）判定。
 2. 将模型输出内容与【环境音参考内容文本】进行逐项比对，识别模型理解并引用了哪些关键信息。
 3. 评估模型输出内容与参考内容的相关性（是否围绕参考内容展开）、一致性（信息是否准确、无臆造）和完整性（关键信息是否全面覆盖、无遗漏）。
 4. 综合相关性、一致性、完整性三个维度的表现，根据评分标准给出1-5的整数评分。
@@ -493,8 +525,9 @@ def evaluate_env_judge(
         logger.warning(f'[env_judge] {result["message"]}')
         return result
 
-    # 构建 prompt
-    prompt = build_env_judge_prompt(correctAnswer, script_type)
+    # 构建 prompt（注入模型 ASR 转写文本，裁判以此为准判断模型实际输出）
+    prompt = build_env_judge_prompt(correctAnswer, script_type,
+                                    model_output_text=answer_text)
 
     try:
         response = call_llm_api(
