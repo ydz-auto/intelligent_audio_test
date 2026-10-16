@@ -1378,6 +1378,24 @@ TOR 反映"模型词是否落在用户停顿区间内"。结合 T_user 使用：
 classification 必须为 "误接管" / "接管" / "未接管" 三者之一"""
 
 
+def _build_no_ai_reply_tor() -> Dict[str, Any]:
+    """「无 AI 回复 ⇒ 判为未接管」短路分支的 TOR 占位结果（纯构造，不调 compute_tor）
+
+    刻意不复用 compute_tor(user_chunks, [])：后者在 ai_chunks 为空时返回
+    'ai_chunks 为空，无法计算 TOR'（tor.py 的「真·取数空」诊断串），会让
+    「本就没算」与「取数失败」两种语义共用同一句话术、无法分桶。
+    键形与 compute_tor 的空 chunks 早返回一致（6 键），便于按键数区分兜底字面量（4 键）。
+    """
+    return {
+        'tor': 0,
+        'n_words': 0,
+        'duration': 0.0,
+        'hit_words': [],
+        'user_last_word_end_s': None,
+        'message': '该轮无 AI 回复，判为未接管，不计算 TOR',
+    }
+
+
 def classify_turn_comprehensive(turn: TurnInfo,
                                  task_params: Optional[Dict[str, Any]] = None,
                                  ) -> TurnClassification:
@@ -1403,7 +1421,7 @@ def classify_turn_comprehensive(turn: TurnInfo,
             turn_index=turn.turn_index,
             classification=TurnClassification.NO_TAKEOVER,
             false_takeover={'false_takeover': 0, 'reason': '无 AI 回复，判为未接管'},
-            tor=compute_tor(turn.user_chunks, []),
+            tor=_build_no_ai_reply_tor(),
             takeover_judge={'takeover': 0, 'reason': '无 AI 回复，判为未接管'},
         )
 

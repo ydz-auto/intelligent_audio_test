@@ -582,7 +582,13 @@ class TurnEvalCalculator(BaseCalculator):
             if last.get('tor'):
                 results['tor'] = last['tor']
             else:
-                results['tor'] = {'tor': 0, 'n_words': 0, 'duration': 0.0, 'message': '无 AI 回复'}
+                # 该轮未计算 TOR（如「误接管」轮本就不算 TOR，tor=None 是合法的），
+                # 说清「为什么没算」，不复用 tor.py 的「ai_chunks 为空，无法计算 TOR」
+                # 那句「真·取数空」诊断串，否则两种语义无法分桶（同 takeover_latency 的措辞）
+                results['tor'] = {
+                    'tor': 0, 'n_words': 0, 'duration': 0.0,
+                    'message': f"分类为{last['classification']}，不计算 TOR",
+                }
             # false_takeover 兼容
             results['false_takeover'] = {
                 'tor': last['false_takeover']['false_takeover'],
@@ -685,8 +691,11 @@ class TurnEvalCalculator(BaseCalculator):
                     'false_takeover_rate': round(false_takeover / len(rt), 4) if rt else 0,
                     'turns': rt,
                 },
+                # 该轮未计算 TOR（如「误接管」轮本就不算 TOR，tor=None 是合法的）：
+                # 说清「为什么没算」，不复用 tor.py 的「真·取数空」诊断串
                 'tor': last.get('tor') or {
-                    'tor': 0, 'n_words': 0, 'duration': 0.0, 'message': '无 AI 回复',
+                    'tor': 0, 'n_words': 0, 'duration': 0.0,
+                    'message': f"分类为{last.get('classification')}，不计算 TOR",
                 },
                 'false_takeover': {
                     'tor': (last.get('false_takeover') or {}).get('false_takeover', 0),
