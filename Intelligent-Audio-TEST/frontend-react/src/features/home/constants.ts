@@ -26,7 +26,8 @@ export const HERO = {
   badge: '端到端测试 · API 测试 · 多维评估',
   titleLine1: '智能语音测试平台',
   titleLine2: '让每一次语音交互都可度量',
-  highlight: '真实设备、真实链路、真实指标——一句话看到全部。',
+  // 负责人 2026-10-16 定稿：highlight 并入多友商横向对比核心价值（多友商同集同指标同时实测）
+  highlight: '真实设备、真实链路、真实指标，多友商横向对比，看清真实用户体验。',
   description:
     '面向语音团队的端到端测试与 API 测试解决方案：多设备并行执行、自动化任务调度、多维度评估与可视化报告，一个平台全部完成。',
   primaryAction: '立即开始测试',
@@ -447,7 +448,8 @@ export const FAQ = {
 
 /** ⑨ 尾部 CTA */
 export const CTA_BAND = {
-  eyebrow: '智能语音测试平台 / 一次切换，全局生效',
+  // 负责人 2026-10-16 定稿：eyebrow 去算法切换话术，改品牌句
+  eyebrow: '智能语音测试平台，让每一次测试都有结果。',
   heading: '准备好开始下一次测试了吗？',
   primaryAction: '进入工作台',
   primaryActionAnonymous: '立即体验',

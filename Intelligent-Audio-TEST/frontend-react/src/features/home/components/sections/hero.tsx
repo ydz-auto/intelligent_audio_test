@@ -53,9 +53,8 @@ export function HeroSection({ className }: { className?: string }) {
             >
               {HERO.titleLine1}
               <br />
-              <span className='from-primary to-secondary bg-gradient-to-r bg-clip-text text-transparent'>
-                {HERO.titleLine2}
-              </span>
+              {/* 负责人 2026-10-16 定稿：slogan 纯色可读，去渐变（右端 secondary 在深色底对比不足） */}
+              <span className='text-foreground'>{HERO.titleLine2}</span>
             </h1>
             <p className='text-primary mt-5 text-lg font-semibold sm:text-xl'>
               {HERO.highlight}
