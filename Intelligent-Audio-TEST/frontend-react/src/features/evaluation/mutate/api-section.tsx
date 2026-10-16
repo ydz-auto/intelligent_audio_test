@@ -3,10 +3,11 @@
  * Master入口URL · API设置（请求方法/超时/Headers JSON/bodyTemplate JSON）·
  * 所需输入配置（行编辑器）· 输出字段配置（行编辑器）· 统计方式 · 聚合分母口径 ·
  * 排除轮次（多选「第{n}轮」+「最后一轮」(-1)）· API端点配置（行编辑器）。
+ * P3-2 审计收敛：所需输入/输出字段/API 端点子编辑器由组件本地 useState 收敛进
+ * RHF useFieldArray（随表单载荷提交，编辑态可反填）。
  */
 import { Plus, Trash2 } from 'lucide-react'
-import { useState } from 'react'
-import type { UseFormReturn } from 'react-hook-form'
+import { useFieldArray, type UseFormReturn } from 'react-hook-form'
 
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -24,34 +25,37 @@ import {
   AGG_DENOMINATOR_OPTIONS,
   STATISTIC_METHOD_OPTIONS,
 } from '@/features/evaluation/constants'
-import type { DimensionFormValues } from '@/features/evaluation/mutate/dimension-form-schema'
+import type {
+  ApiEndpointRow,
+  DimensionFormValues,
+  OutputFieldRow,
+  RequiredInputRow,
+} from '@/features/evaluation/mutate/dimension-form-schema'
 
 const API_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'] as const
 
-interface RequiredInputRow {
-  key: string
-  label: string
-  fieldType: string
-  required: boolean
-  defaultValue: string
-  description: string
+const NEW_INPUT_ROW: RequiredInputRow = {
+  key: '',
+  label: '',
+  fieldType: '文本',
+  required: false,
+  defaultValue: '',
+  description: '',
 }
-
-interface OutputFieldRow {
-  name: string
-  label: string
-  outputRole: string
-  aggRole: string
-  defaultValue: string
+const NEW_OUTPUT_ROW: OutputFieldRow = {
+  name: '',
+  label: '',
+  outputRole: '主结果',
+  aggRole: '直接值',
+  defaultValue: '',
 }
-
-interface ApiEndpointRow {
-  url: string
-  name: string
-  priority: number
-  maxProcess: number
-  maxTimeout: number
-  maxAudioDuration: number
+const NEW_ENDPOINT_ROW: ApiEndpointRow = {
+  url: '',
+  name: '',
+  priority: 1,
+  maxProcess: 5,
+  maxTimeout: 30,
+  maxAudioDuration: 60,
 }
 
 export function ApiSection({
@@ -59,54 +63,10 @@ export function ApiSection({
 }: {
   form: UseFormReturn<DimensionFormValues>
 }) {
-  const { register, watch, setValue } = form
-  const [inputs, setInputs] = useState<RequiredInputRow[]>([
-    {
-      key: 'asr_result',
-      label: 'ASR识别结果',
-      fieldType: '文本',
-      required: true,
-      defaultValue: '',
-      description: 'ASR算法识别出的文本',
-    },
-    {
-      key: 'asr_ref',
-      label: '参考文本',
-      fieldType: '文本',
-      required: true,
-      defaultValue: '',
-      description: '标准参考文本',
-    },
-  ])
-  const [outputs, setOutputs] = useState<OutputFieldRow[]>([
-    {
-      name: 'score',
-      label: '评分结果',
-      outputRole: '主结果',
-      aggRole: '直接值',
-      defaultValue: '',
-    },
-  ])
-  const [endpoints, setEndpoints] = useState<ApiEndpointRow[]>([
-    {
-      url: 'https://api.example.com/evaluation/accuracy',
-      name: '主评估端点',
-      priority: 1,
-      maxProcess: 5,
-      maxTimeout: 30,
-      maxAudioDuration: 60,
-    },
-  ])
-
-  const updateInput = (index: number, patch: Partial<RequiredInputRow>) => {
-    setInputs((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)))
-  }
-  const updateOutput = (index: number, patch: Partial<OutputFieldRow>) => {
-    setOutputs((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)))
-  }
-  const updateEndpoint = (index: number, patch: Partial<ApiEndpointRow>) => {
-    setEndpoints((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)))
-  }
+  const { register, watch, setValue, control } = form
+  const inputs = useFieldArray({ control, name: 'requiredInputs' })
+  const outputs = useFieldArray({ control, name: 'outputFields' })
+  const endpoints = useFieldArray({ control, name: 'apiEndpoints' })
 
   return (
     <div className='space-y-3'>
@@ -189,40 +149,37 @@ export function ApiSection({
             variant='outline'
             size='sm'
             className='h-7 gap-1.5'
-            onClick={() =>
-              setInputs((prev) => [
-                ...prev,
-                { key: '', label: '', fieldType: '文本', required: false, defaultValue: '', description: '' },
-              ])
-            }
+            onClick={() => inputs.append({ ...NEW_INPUT_ROW })}
           >
             <Plus aria-hidden='true' className='size-3.5' />
             添加输入
           </Button>
         </div>
         <div className='space-y-2'>
-          {inputs.map((row, index) => (
+          {inputs.fields.map((row, index) => (
             <div
-              key={index}
+              key={row.id}
               className='border-border/60 flex flex-wrap items-center gap-2 rounded-lg border px-2 py-1.5'
             >
               <Input
                 aria-label={`输入参数名 ${index + 1}`}
                 placeholder='参数键名 (如: asr_result)'
-                value={row.key}
-                onChange={(e) => updateInput(index, { key: e.target.value })}
+                {...register(`requiredInputs.${index}.key`)}
                 className='h-8 w-40'
               />
               <Input
                 aria-label={`输入显示标签 ${index + 1}`}
                 placeholder='显示标签'
-                value={row.label}
-                onChange={(e) => updateInput(index, { label: e.target.value })}
+                {...register(`requiredInputs.${index}.label`)}
                 className='h-8 w-32'
               />
               <Select
-                value={row.fieldType}
-                onValueChange={(value) => updateInput(index, { fieldType: value ?? '文本' })}
+                value={watch(`requiredInputs.${index}.fieldType`)}
+                onValueChange={(value) =>
+                  setValue(`requiredInputs.${index}.fieldType`, value ?? '文本', {
+                    shouldDirty: true,
+                  })
+                }
               >
                 <SelectTrigger size='sm' className='w-28'>
                   <SelectValue />
@@ -238,8 +195,12 @@ export function ApiSection({
               <label className='flex items-center gap-1.5 text-xs'>
                 <Checkbox
                   aria-label={`输入必填 ${index + 1}`}
-                  checked={row.required}
-                  onCheckedChange={(checked) => updateInput(index, { required: !!checked })}
+                  checked={watch(`requiredInputs.${index}.required`)}
+                  onCheckedChange={(checked) =>
+                    setValue(`requiredInputs.${index}.required`, !!checked, {
+                      shouldDirty: true,
+                    })
+                  }
                 />
                 必填
               </label>
@@ -249,7 +210,7 @@ export function ApiSection({
                 size='icon-sm'
                 className='text-destructive ml-auto'
                 aria-label={`删除输入 ${index + 1}`}
-                onClick={() => setInputs((prev) => prev.filter((_, i) => i !== index))}
+                onClick={() => inputs.remove(index)}
               >
                 <Trash2 aria-hidden='true' className='size-3.5' />
               </Button>
@@ -267,12 +228,7 @@ export function ApiSection({
             variant='outline'
             size='sm'
             className='h-7 gap-1.5'
-            onClick={() =>
-              setOutputs((prev) => [
-                ...prev,
-                { name: '', label: '', outputRole: '主结果', aggRole: '直接值', defaultValue: '' },
-              ])
-            }
+            onClick={() => outputs.append({ ...NEW_OUTPUT_ROW })}
           >
             <Plus aria-hidden='true' className='size-3.5' />
             添加字段
@@ -282,28 +238,30 @@ export function ApiSection({
           配置评估结果提取字段及聚合角色（用于报告统计）
         </p>
         <div className='space-y-2'>
-          {outputs.map((row, index) => (
+          {outputs.fields.map((row, index) => (
             <div
-              key={index}
+              key={row.id}
               className='border-border/60 flex flex-wrap items-center gap-2 rounded-lg border px-2 py-1.5'
             >
               <Input
                 aria-label={`输出字段名 ${index + 1}`}
                 placeholder='字段名'
-                value={row.name}
-                onChange={(e) => updateOutput(index, { name: e.target.value })}
+                {...register(`outputFields.${index}.name`)}
                 className='h-8 w-32'
               />
               <Input
                 aria-label={`输出显示名 ${index + 1}`}
                 placeholder='显示名'
-                value={row.label}
-                onChange={(e) => updateOutput(index, { label: e.target.value })}
+                {...register(`outputFields.${index}.label`)}
                 className='h-8 w-32'
               />
               <Select
-                value={row.outputRole}
-                onValueChange={(value) => updateOutput(index, { outputRole: value ?? '主结果' })}
+                value={watch(`outputFields.${index}.outputRole`)}
+                onValueChange={(value) =>
+                  setValue(`outputFields.${index}.outputRole`, value ?? '主结果', {
+                    shouldDirty: true,
+                  })
+                }
               >
                 <SelectTrigger size='sm' className='w-28'>
                   <SelectValue />
@@ -317,8 +275,12 @@ export function ApiSection({
                 </SelectContent>
               </Select>
               <Select
-                value={row.aggRole}
-                onValueChange={(value) => updateOutput(index, { aggRole: value ?? '直接值' })}
+                value={watch(`outputFields.${index}.aggRole`)}
+                onValueChange={(value) =>
+                  setValue(`outputFields.${index}.aggRole`, value ?? '直接值', {
+                    shouldDirty: true,
+                  })
+                }
               >
                 <SelectTrigger size='sm' className='w-28'>
                   <SelectValue />
@@ -337,7 +299,7 @@ export function ApiSection({
                 size='icon-sm'
                 className='text-destructive ml-auto'
                 aria-label={`删除输出字段 ${index + 1}`}
-                onClick={() => setOutputs((prev) => prev.filter((_, i) => i !== index))}
+                onClick={() => outputs.remove(index)}
               >
                 <Trash2 aria-hidden='true' className='size-3.5' />
               </Button>
@@ -445,10 +407,10 @@ export function ApiSection({
             size='sm'
             className='h-7 gap-1.5'
             onClick={() =>
-              setEndpoints((prev) => [
-                ...prev,
-                { url: '', name: '', priority: prev.length + 1, maxProcess: 5, maxTimeout: 30, maxAudioDuration: 60 },
-              ])
+              endpoints.append({
+                ...NEW_ENDPOINT_ROW,
+                priority: endpoints.fields.length + 1,
+              })
             }
           >
             <Plus aria-hidden='true' className='size-3.5' />
@@ -456,23 +418,21 @@ export function ApiSection({
           </Button>
         </div>
         <div className='space-y-2'>
-          {endpoints.map((row, index) => (
+          {endpoints.fields.map((row, index) => (
             <div
-              key={index}
+              key={row.id}
               className='border-border/60 flex flex-wrap items-center gap-2 rounded-lg border px-2 py-1.5'
             >
               <Input
                 aria-label={`端点 URL ${index + 1}`}
                 placeholder='端点 URL*'
-                value={row.url}
-                onChange={(e) => updateEndpoint(index, { url: e.target.value })}
+                {...register(`apiEndpoints.${index}.url`)}
                 className='h-8 min-w-52 flex-1 font-mono text-xs'
               />
               <Input
                 aria-label={`端点名称 ${index + 1}`}
                 placeholder='端点名称(可选)'
-                value={row.name}
-                onChange={(e) => updateEndpoint(index, { name: e.target.value })}
+                {...register(`apiEndpoints.${index}.name`)}
                 className='h-8 w-32'
               />
               <Input
@@ -480,8 +440,9 @@ export function ApiSection({
                 type='number'
                 min={1}
                 max={10}
-                value={row.priority}
-                onChange={(e) => updateEndpoint(index, { priority: Number(e.target.value) })}
+                {...register(`apiEndpoints.${index}.priority`, {
+                  valueAsNumber: true,
+                })}
                 className='h-8 w-20'
               />
               <Button
@@ -490,7 +451,7 @@ export function ApiSection({
                 size='icon-sm'
                 className='text-destructive ml-auto'
                 aria-label={`删除端点 ${index + 1}`}
-                onClick={() => setEndpoints((prev) => prev.filter((_, i) => i !== index))}
+                onClick={() => endpoints.remove(index)}
               >
                 <Trash2 aria-hidden='true' className='size-3.5' />
               </Button>

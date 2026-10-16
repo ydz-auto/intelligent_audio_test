@@ -2,7 +2,9 @@
  * 评估维度页筛选工具栏（features/evaluation；11_用例域.md §4.1 筛选行）。
  * 搜索（名称/描述/keywords）+ 状态 facet + 分类 facet + 关联算法 facet（与全局算法
  * 切换器联动：全局算法非空时 facet 默认值取全局算法并显示只读联动 chip，× 清空回到
- * 页内自由筛选）+ 重置筛选。
+ * 页内自由筛选；用户显式选择 facet 即脱离全局）+ 重置筛选。
+ * algorithmFilter=用户显式页内值（isFiltered/重置判定），algorithmFacetValue=实际生效值
+ * （显式值优先，否则继承全局算法）。
  */
 import { Search, X } from 'lucide-react'
 
@@ -27,6 +29,7 @@ export function EvaluationToolbar({
   onCategoryFilter,
   categories,
   algorithmFilter,
+  algorithmFacetValue,
   onAlgorithmFilter,
   algorithmOptions,
   globalAlgorithmLabel,
@@ -42,6 +45,8 @@ export function EvaluationToolbar({
   onCategoryFilter: (value: string) => void
   categories: EvaluationCategory[]
   algorithmFilter: string
+  /** facet 实际生效值（显式选择优先，否则继承全局算法；无全局时 'all'） */
+  algorithmFacetValue: string
   onAlgorithmFilter: (value: string) => void
   algorithmOptions: Array<{ value: string; label: string }>
   /** 全局算法名（联动 chip；null=无全局选择） */
@@ -95,7 +100,7 @@ export function EvaluationToolbar({
         title='关联算法'
         allLabel={ALGORITHM_FILTER_ALL_LABEL}
         options={algorithmOptions}
-        value={algorithmFilter}
+        value={algorithmFacetValue}
         onValueChange={onAlgorithmFilter}
         disabled={!canFilter}
       />
@@ -118,7 +123,7 @@ export function EvaluationToolbar({
               }
             />
             <TooltipContent>
-              清除后将显示全部算法的维度
+              当前按全局算法筛选，点击 × 清除后显示全部算法的维度
             </TooltipContent>
           </Tooltip>
         </span>

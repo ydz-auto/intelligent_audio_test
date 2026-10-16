@@ -64,6 +64,10 @@ import { CategoryMutateDialog } from '@/features/evaluation/modals/category-muta
 import { RuleCalcDialog } from '@/features/evaluation/modals/dimension-rule-calc-dialog'
 import { HealthTestDialog } from '@/features/evaluation/modals/health-test-dialog'
 import { EvaluationConfirmDialog } from '@/features/evaluation/modals/evaluation-confirms'
+import {
+  buildDimensionExcelHtml,
+  downloadBlob,
+} from '@/features/evaluation/export-dimensions'
 import type {
   CategoryDialogState,
   EvaluationConfirmState,
@@ -161,6 +165,12 @@ export function EvaluationPage() {
   const globalAlgorithmLabel = globalAlgorithmId
     ? getAlgorithmLabel(globalAlgorithmId)
     : null
+  // 全局算法联动（§4.1）：页内 facet 未显式选择时，过滤口径/默认值继承全局算法；
+  // 用户在 facet 显式选择即脱离全局（effective 取页内值，chip 隐藏）。
+  const effectiveAlgorithmId =
+    algorithmFilter !== 'all' ? algorithmFilter : globalAlgorithmId || ''
+  const algorithmFacetValue =
+    algorithmFilter !== 'all' ? algorithmFilter : globalAlgorithmId || 'all'
 
   /* ───────── 派生：筛选 → 层级 → 分组 ───────── */
 
@@ -180,9 +190,9 @@ export function EvaluationPage() {
         categoryFilter === 'all' ||
         String(dim.categoryId ?? '') === categoryFilter
       const algorithmHit =
-        algorithmFilter === 'all' ||
+        !effectiveAlgorithmId ||
         (dim.associatedAlgorithms ?? []).some(
-          (a) => a.algorithmType === algorithmFilter
+          (a) => a.algorithmType === effectiveAlgorithmId
         )
       return searchHit && statusHit && categoryHit && algorithmHit
     }
@@ -200,7 +210,7 @@ export function EvaluationPage() {
         if (matches(dim)) {
           included.add(dim.id)
           for (const child of byParentId.get(dim.id) ?? []) {
-            if (keyword || algorithmFilter !== 'all' || matches(child))
+            if (keyword || !!effectiveAlgorithmId || matches(child))
               included.add(child.id)
           }
         }
@@ -210,7 +220,7 @@ export function EvaluationPage() {
       }
     }
     return dimensions.filter((dim) => included.has(dim.id))
-  }, [dimensions, searchKeyword, statusFilter, categoryFilter, algorithmFilter])
+  }, [dimensions, searchKeyword, statusFilter, categoryFilter, effectiveAlgorithmId])
 
   const hierarchicalDimensions = useMemo<HierarchicalDimension[]>(() => {
     const mains = filteredDimensions.filter(
@@ -494,18 +504,25 @@ export function EvaluationPage() {
       .then(() => toast.success(isNew ? '分类添加成功' : '分类更新成功'))
   }
 
-  const handleExport = () => {
-    const blob = new Blob([JSON.stringify(dimensions, null, 2)], {
-      type: 'application/json',
-    })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
+  const handleExport = (format: 'json' | 'excel') => {
+    // §4.1 导出维度（JSON/Excel 二选一下拉项）；mock 阶段 Blob 下载
     const date = new Date().toISOString().slice(0, 10)
-    anchor.href = url
-    anchor.download = `evaluation-dimensions-${date}.json`
-    anchor.click()
-    URL.revokeObjectURL(url)
-    toast.success('导出完成')
+    const filename = `evaluation-dimensions-${date}.${format === 'json' ? 'json' : 'xls'}`
+    if (format === 'json') {
+      downloadBlob(
+        JSON.stringify(dimensions, null, 2),
+        filename,
+        'application/json'
+      )
+    } else {
+      downloadBlob(
+        buildDimensionExcelHtml(dimensions, categories),
+        filename,
+        'application/vnd.ms-excel',
+        true
+      )
+    }
+    toast.success(`导出完成（${format === 'json' ? 'JSON' : 'Excel'}）`)
   }
 
   const handleImport = () => {
@@ -631,10 +648,12 @@ export function EvaluationPage() {
                 setPage(1)
               }}
               algorithmOptions={algorithmOptions}
-              globalAlgorithmLabel={
-                algorithmFilter === 'all' ? globalAlgorithmLabel : null
-              }
-              onClearGlobalAlgorithm={() => setGlobalAlgorithmId('')}
+              algorithmFacetValue={algorithmFacetValue}
+              globalAlgorithmLabel={globalAlgorithmLabel}
+              onClearGlobalAlgorithm={() => {
+                setGlobalAlgorithmId('')
+                toast.success('已清除全局算法，显示全部算法的维度')
+              }}
               canFilter={canRead}
               onReset={() => {
                 resetSearch()

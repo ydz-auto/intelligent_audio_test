@@ -17,6 +17,15 @@
 8. API 健康测试（§5.5）：点「测试维度 识别准确率 的 API」→ 结果弹窗「API健康测试结果」+ 在线
 9. 删除确认（§4.1/§5.6）：点「删除维度 …」→ ConfirmDialog 文案 → 确认 → toast「维度已删除」
 10. RBAC 只读态：注入仅 evaluation:read 快照 → 写钮禁用 + Tooltip「无 evaluation:dim_manage 权限」
+11. 全局算法联动（P2-1 返修，§4.1）：全局算法 asr-v3 → chip + facet 继承 + 列表过滤 + × 清空
+12. 权重滑杆提交（§4.1/§10-4）：ArrowUp → onValueCommitted → toast「权重更新成功」
+13. 批量禁用（勾选 → 浮条 → 确认弹窗 → toast）
+14. 批量删除（勾选 → 确认弹窗 → toast；mock 重拉还原静态数据，行态不断言）
+15. 复制维度（确认弹窗 → 成功 toast）
+16. 上移/下移边界（首行/子维度边界禁用 + 有效上移）
+17. 分页（共 12 条 → 1 / 2 → 下一页 → 2 / 2）
+18. 导入/导出（JSON/Excel 二选一下拉项 → toast）
+19. 分类含维度删除拦截（分组视图禁用 + Tooltip 文案）
 
 失败落 tests/ui/artifacts/int509_evaluation/<用例>/（截图+console+source）。
 """
@@ -130,11 +139,23 @@ def _login(drv, username='demo_admin'):
     time.sleep(1.2)
     drv.execute_script('try { window.localStorage.clear() } catch (e) {}')
     _goto(drv, '/login')
+    # React SPA 首屏挂载时序：显式等用户名输入框出现再交互（防首测 flaky）
+    WebDriverWait(drv, 20).until(
+        lambda d: len(d.find_elements(By.ID, 'username')) > 0)
     drv.find_element(By.ID, 'username').send_keys(username)
     drv.find_element(By.ID, 'password').send_keys('mock-pass-001')
     drv.find_element(By.XPATH, "//button[contains(., '登 录')]").click()
     WebDriverWait(drv, 15).until(lambda d: '/login' not in d.current_url)
     time.sleep(1.0)
+    # 全局算法置空：默认展示全部维度（全局算法联动口径单独由 test_11 覆盖）
+    _set_global_algorithm(drv, '')
+
+
+def _set_global_algorithm(drv, algorithm_id):
+    """设置全局算法 store（iatp:algorithm:v1）；空串=无全局选择（全部维度可见）。"""
+    drv.execute_script(
+        "window.localStorage.setItem('iatp:algorithm:v1', arguments[0])",
+        json.dumps({'state': {'algorithmId': algorithm_id}, 'version': 0}))
 
 
 def _table_headers(drv):
@@ -329,6 +350,7 @@ def test_10_rbac_readonly_state(drv):
     drv.execute_script(
         "window.localStorage.setItem('iatp:auth:v1', arguments[0])",
         json.dumps(snapshot, ensure_ascii=False))
+    _set_global_algorithm(drv, '')
     _goto(drv, '/Evaluation')
     txt = _body_text(drv)
     assert '评估维度' in txt, f'只读态页面未渲染：{txt[:150]}'
@@ -344,3 +366,192 @@ def test_10_rbac_readonly_state(drv):
     assert del_btn and del_btn[0].get_attribute('disabled'), '只读态删除维度应禁用'
     # 恢复 admin 会话（后续用例隔离）
     drv.execute_script("window.localStorage.clear()")
+
+
+# ── 11. 全局算法联动（§4.1，P2-1 返修）────────────────────
+def test_11_global_algorithm_linkage(drv):
+    _login(drv)
+    _set_global_algorithm(drv, 'asr-v3')
+    _goto(drv, '/Evaluation')
+    txt = _body_text(drv)
+    # 联动 chip（算法：通用识别引擎）
+    assert '算法：通用识别引擎' in txt, f'全局算法联动 chip 缺失：{txt[:300]}'
+    # 关联算法 facet 显式显示全局算法值（非「全部」）
+    facet = [b for b in drv.find_elements(By.TAG_NAME, 'button') if '关联算法' in b.text]
+    assert facet and '通用识别引擎' in facet[0].text, \
+        f'关联算法 facet 未继承全局算法：{facet[0].text if facet else "无"}'
+    assert '全部' not in facet[0].text.replace('关联算法', ''), \
+        '关联算法 facet 不应显示「全部」'
+    # 列表按全局算法过滤：asr-v3 维度在，eval-ensemble/asr-stream 维度隐藏
+    for dim in ['识别准确率', '字准率', '句准率', '噪声鲁棒性']:
+        assert dim in txt, f'asr-v3 维度「{dim}」应可见：{txt[:500]}'
+    for dim in ['语义理解', '唤醒成功率', '响应时延']:
+        assert dim not in txt, f'非 asr-v3 维度「{dim}」应被全局过滤隐藏：{txt[:500]}'
+    # × 清空全局算法 → 回到页内自由筛选（全部维度可见）
+    drv.find_element(By.CSS_SELECTOR, "button[aria-label='清除全局算法']").click()
+    WebDriverWait(drv, 10).until(
+        lambda d: '语义理解' in _body_text(drv) and '唤醒成功率' in _body_text(drv))
+    txt = _body_text(drv)
+    assert '算法：通用识别引擎' not in txt, '清除全局算法后联动 chip 应隐藏'
+
+
+# ── 12. 权重滑杆提交（onValueCommitted，§4.1/§10-4）────────
+def test_12_weight_slider_commit(drv):
+    _login(drv)
+    _goto(drv, '/Evaluation')
+    # base-ui slider：交互元素是 thumb 内嵌的 native range input（clip-path 隐藏）
+    inputs = drv.find_elements(
+        By.CSS_SELECTOR, "[data-slot='slider-thumb'] input[type='range']")
+    assert inputs, '权重滑杆 range input 缺失'
+    drv.execute_script('arguments[0].focus();', inputs[0])
+    time.sleep(0.3)
+    inputs[0].send_keys(Keys.ARROW_UP)
+    WebDriverWait(drv, 10).until(
+        lambda d: '权重更新成功' in _body_text(drv))
+
+
+# ── 13. 批量禁用（勾选 → 浮条 → 确认弹窗）────────────────
+def test_13_batch_disable(drv):
+    _login(drv)
+    _goto(drv, '/Evaluation')
+    drv.find_element(By.CSS_SELECTOR, "[aria-label='选择维度 识别准确率']").click()
+    time.sleep(0.3)
+    drv.find_element(By.CSS_SELECTOR, "[aria-label='选择维度 字准率']").click()
+    time.sleep(0.3)
+    assert '已选择 2 个维度' in _body_text(drv), '批量浮条计数缺失'
+    drv.find_element(By.XPATH, "//button[contains(., '批量禁用')]").click()
+    time.sleep(0.8)
+    dialog = drv.find_element(By.CSS_SELECTOR, "[data-slot='alert-dialog-content']")
+    dtxt = dialog.text
+    assert '确定要禁用选中的 2 个维度吗' in dtxt, f'批量禁用确认文案缺失：{dtxt[:200]}'
+    confirm = [b for b in dialog.find_elements(By.TAG_NAME, 'button')
+               if b.text.strip() == '批量禁用' and b.is_displayed()]
+    assert confirm, '批量禁用确认按钮缺失'
+    confirm[0].click()
+    WebDriverWait(drv, 10).until(
+        lambda d: '批量操作执行成功' in _body_text(drv))
+
+
+# ── 14. 批量删除（勾选 → 浮条 → 确认弹窗 → toast）────────
+# 注：mock 阶段 mutation invalidate 后重拉还原静态 mock 数据，行移除态会被回写，
+# 故按 test_09 口径断言确认弹窗与成功 toast（交互链路完整覆盖）。
+def test_14_batch_delete(drv):
+    _login(drv)
+    _goto(drv, '/Evaluation')
+    drv.find_element(By.CSS_SELECTOR, "[aria-label='选择维度 响应时延']").click()
+    time.sleep(0.3)
+    drv.find_element(By.CSS_SELECTOR, "[aria-label='选择维度 噪声鲁棒性']").click()
+    time.sleep(0.3)
+    drv.find_element(By.XPATH, "//button[contains(., '批量删除')]").click()
+    time.sleep(0.8)
+    dialog = drv.find_element(By.CSS_SELECTOR, "[data-slot='alert-dialog-content']")
+    dtxt = dialog.text
+    assert '确定要删除选中的 2 个维度吗' in dtxt, f'批量删除确认文案缺失：{dtxt[:200]}'
+    confirm = [b for b in dialog.find_elements(By.TAG_NAME, 'button')
+               if b.text.strip() == '批量删除' and b.is_displayed()]
+    assert confirm, '批量删除确认按钮缺失'
+    confirm[0].click()
+    WebDriverWait(drv, 10).until(
+        lambda d: '批量操作执行成功' in _body_text(drv))
+
+
+# ── 15. 复制维度（确认弹窗 → 成功 toast）──────────────────
+def test_15_duplicate_dimension(drv):
+    _login(drv)
+    _goto(drv, '/Evaluation')
+    drv.find_element(By.CSS_SELECTOR, "button[aria-label='复制维度 响应时延']").click()
+    time.sleep(0.8)
+    dialog = drv.find_element(By.CSS_SELECTOR, "[data-slot='alert-dialog-content']")
+    dtxt = dialog.text
+    assert '确定要复制维度「响应时延」吗' in dtxt, f'复制确认文案缺失：{dtxt[:200]}'
+    confirm = [b for b in dialog.find_elements(By.TAG_NAME, 'button')
+               if b.text.strip() == '复制' and b.is_displayed()]
+    assert confirm, '复制确认按钮缺失'
+    confirm[0].click()
+    WebDriverWait(drv, 10).until(
+        lambda d: '维度复制成功' in _body_text(drv))
+
+
+# ── 16. 上移/下移边界（主/子维度同屏）────────────────────
+def test_16_move_boundaries(drv):
+    _login(drv)
+    _goto(drv, '/Evaluation')
+    # 首行主维度上移禁用
+    up1 = drv.find_elements(By.CSS_SELECTOR, "button[aria-label='上移维度 识别准确率']")
+    assert up1 and up1[0].get_attribute('disabled'), '首行主维度上移应禁用'
+    # 子维度「字准率」上移禁用（父维度在其上方）
+    up_sub = drv.find_elements(By.CSS_SELECTOR, "button[aria-label='上移维度 字准率']")
+    assert up_sub and up_sub[0].get_attribute('disabled'), '子维度上移到父维度之上应禁用'
+    # 子维度「句准率」下移禁用（下一行为其它主维度）
+    down_sub = drv.find_elements(By.CSS_SELECTOR, "button[aria-label='下移维度 句准率']")
+    assert down_sub and down_sub[0].get_attribute('disabled'), '子维度下移到其它主维度组应禁用'
+    # 有效上移：第二主维度「语义理解」上移可用并触发成功 toast
+    up2 = drv.find_elements(By.CSS_SELECTOR, "button[aria-label='上移维度 语义理解']")
+    assert up2 and not up2[0].get_attribute('disabled'), '非边界主维度上移应可用'
+    up2[0].click()
+    WebDriverWait(drv, 10).until(
+        lambda d: '已上移' in _body_text(drv))
+
+
+# ── 17. 分页（列表视图 Footer Portal）────────────────────
+def test_17_pagination(drv):
+    _login(drv)
+    _goto(drv, '/Evaluation')
+    txt = _body_text(drv)
+    assert '共 12 条' in txt, f'分页总条数缺失：{txt[:300]}'
+    assert '1 / 2' in txt, f'首页分页指示缺失：{txt[:300]}'
+    next_btn = [b for b in drv.find_elements(By.TAG_NAME, 'button')
+                if b.text.strip() == '下一页' and b.is_displayed()]
+    assert next_btn and not next_btn[0].get_attribute('disabled'), '下一页应可用'
+    next_btn[0].click()
+    time.sleep(0.8)
+    txt = _body_text(drv)
+    assert '2 / 2' in txt, f'第二页分页指示缺失：{txt[:300]}'
+    assert '回声消除效果' in txt, f'第二页维度缺失：{txt[:400]}'
+    assert '识别准确率' not in txt, '第二页不应出现第一页维度'
+
+
+# ── 18. 导入/导出（JSON/Excel 二选一下拉，§4.1）───────────
+def test_18_import_export(drv):
+    _login(drv)
+    _goto(drv, '/Evaluation')
+    drv.find_element(By.XPATH, "//button[contains(., '导入/导出')]").click()
+    time.sleep(0.7)
+    items = drv.find_elements(By.CSS_SELECTOR, "[data-slot='dropdown-menu-item']")
+    labels = [i.text for i in items]
+    assert any('导入维度' in l for l in labels), f'导入项缺失：{labels}'
+    assert any('导出维度（JSON）' in l for l in labels), f'JSON 导出项缺失：{labels}'
+    assert any('导出维度（Excel）' in l for l in labels), f'Excel 导出项缺失：{labels}'
+    # 导入 → toast
+    for i in items:
+        if '导入维度' in i.text:
+            i.click()
+            break
+    WebDriverWait(drv, 10).until(
+        lambda d: '导入完成：新增 2 · 更新 1' in _body_text(drv))
+    # 导出 JSON → toast
+    drv.find_element(By.XPATH, "//button[contains(., '导入/导出')]").click()
+    time.sleep(0.7)
+    for i in drv.find_elements(By.CSS_SELECTOR, "[data-slot='dropdown-menu-item']"):
+        if '导出维度（JSON）' in i.text:
+            i.click()
+            break
+    WebDriverWait(drv, 10).until(
+        lambda d: '导出完成（JSON）' in _body_text(drv))
+
+
+# ── 19. 分类含维度删除拦截（分组视图）────────────────────
+def test_19_category_delete_interception(drv):
+    from selenium.webdriver.common.action_chains import ActionChains
+    _login(drv)
+    _goto(drv, '/Evaluation')
+    drv.find_element(By.XPATH, "//button[contains(., '分组视图')]").click()
+    time.sleep(1.0)
+    # 含维度分类「识别质量」删除钮禁用
+    del_btn = drv.find_elements(By.CSS_SELECTOR, "button[aria-label='删除分类 识别质量']")
+    assert del_btn and del_btn[0].get_attribute('disabled'), \
+        '含维度分类的删除钮应禁用'
+    # 悬停可见拦截 Tooltip
+    ActionChains(drv).move_to_element(del_btn[0]).perform()
+    WebDriverWait(drv, 10).until(
+        lambda d: '请先迁移或删除维度' in _body_text(drv))

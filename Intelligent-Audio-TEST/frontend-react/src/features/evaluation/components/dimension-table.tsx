@@ -113,6 +113,9 @@ export function DimensionTable({
               )
               const isLlmJudge = dimension.resultType === 'llm_judge'
               const apiOnline = dimension.apiStatus !== 'offline'
+              // 禁用态 Tooltip 口径（§7 注 1）：写权限缺失 →「无 {权限码} 权限」；移动边界 → 边界提示
+              const permManageTooltip = '无 evaluation:dim_manage 权限'
+              const permReadTooltip = '无 evaluation:read 权限'
               return (
                 <tr
                   key={dimension.id}
@@ -236,6 +239,13 @@ export function DimensionTable({
                         label='上移'
                         ariaLabel={`上移维度 ${dimension.name}`}
                         disabled={!canManage || !canMoveUp(dimension)}
+                        disabledTooltip={
+                          !canManage
+                            ? permManageTooltip
+                            : canMoveUp(dimension)
+                              ? undefined
+                              : '已是首行'
+                        }
                         onClick={() => onMove(dimension, -1)}
                       >
                         <ArrowUp aria-hidden='true' className='size-3.5' />
@@ -244,6 +254,13 @@ export function DimensionTable({
                         label='下移'
                         ariaLabel={`下移维度 ${dimension.name}`}
                         disabled={!canManage || !canMoveDown(dimension)}
+                        disabledTooltip={
+                          !canManage
+                            ? permManageTooltip
+                            : canMoveDown(dimension)
+                              ? undefined
+                              : '已是末行'
+                        }
                         onClick={() => onMove(dimension, 1)}
                       >
                         <ArrowDown aria-hidden='true' className='size-3.5' />
@@ -252,6 +269,7 @@ export function DimensionTable({
                         label='编辑'
                         ariaLabel={`编辑维度 ${dimension.name}`}
                         disabled={!canManage}
+                        disabledTooltip={permManageTooltip}
                         onClick={() => onEdit(dimension)}
                       >
                         <Pencil aria-hidden='true' className='size-3.5' />
@@ -260,6 +278,7 @@ export function DimensionTable({
                         label='复制'
                         ariaLabel={`复制维度 ${dimension.name}`}
                         disabled={!canManage}
+                        disabledTooltip={permManageTooltip}
                         onClick={() => onDuplicate(dimension)}
                       >
                         <Copy aria-hidden='true' className='size-3.5' />
@@ -268,6 +287,7 @@ export function DimensionTable({
                         label={dimension.status ? '禁用' : '启用'}
                         ariaLabel={`${dimension.status ? '禁用' : '启用'}维度 ${dimension.name}`}
                         disabled={!canManage}
+                        disabledTooltip={permManageTooltip}
                         onClick={() => onToggleStatus(dimension)}
                       >
                         <span
@@ -284,6 +304,7 @@ export function DimensionTable({
                           label='添加子维度'
                           ariaLabel={`为维度 ${dimension.name} 添加子维度`}
                           disabled={!canManage}
+                          disabledTooltip={permManageTooltip}
                           onClick={() => onAddSub(dimension)}
                         >
                           <Plus aria-hidden='true' className='size-3.5' />
@@ -293,6 +314,7 @@ export function DimensionTable({
                         label='测试 API'
                         ariaLabel={`测试维度 ${dimension.name} 的 API`}
                         disabled={!canRead}
+                        disabledTooltip={permReadTooltip}
                         onClick={() => onTestApi(dimension)}
                       >
                         <Activity aria-hidden='true' className='size-3.5' />
@@ -301,6 +323,7 @@ export function DimensionTable({
                         label='规则试算'
                         ariaLabel={`规则试算维度 ${dimension.name}`}
                         disabled={!canManage}
+                        disabledTooltip={permManageTooltip}
                         onClick={() => onRuleCalc(dimension)}
                       >
                         <Calculator aria-hidden='true' className='size-3.5' />
@@ -309,6 +332,7 @@ export function DimensionTable({
                         label='删除'
                         ariaLabel={`删除维度 ${dimension.name}`}
                         disabled={!canManage}
+                        disabledTooltip={permManageTooltip}
                         destructive
                         onClick={() => onDelete(dimension)}
                       >
@@ -326,11 +350,12 @@ export function DimensionTable({
   )
 }
 
-/** 操作 ghost icon 钮（权限禁用 + Tooltip 文案） */
+/** 操作 ghost icon 钮（权限/边界禁用 + Tooltip 文案；§7 注 1「无 {权限码} 权限」口径） */
 function ActionButton({
   label,
   ariaLabel,
   disabled,
+  disabledTooltip,
   destructive,
   onClick,
   children,
@@ -338,6 +363,8 @@ function ActionButton({
   label: string
   ariaLabel: string
   disabled?: boolean
+  /** 禁用态 Tooltip（权限码/边界原因；缺省回退 label） */
+  disabledTooltip?: string
   destructive?: boolean
   onClick: () => void
   children: React.ReactNode
@@ -364,7 +391,7 @@ function ActionButton({
             </span>
           }
         />
-        <TooltipContent>{label}</TooltipContent>
+        <TooltipContent>{disabledTooltip ?? label}</TooltipContent>
       </Tooltip>
     )
   }

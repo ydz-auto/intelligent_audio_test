@@ -2,9 +2,9 @@
  * 评估维度页页头动作区（features/evaluation；11_用例域.md §4.1 Actions 工具行）。
  * 「+ 新增维度」（evaluation:dim_manage）｜「+ 新增分类」（evaluation:category_manage）｜
  * 「批量操作」下拉（evaluation:dim_manage：批量启用/禁用/删除，空选禁用+Tooltip）｜
- * 「导入/导出」下拉（evaluation:import_export：导入维度/导出维度）。
+ * 「导入/导出」下拉（evaluation:import_export：导入维度/导出维度 JSON/Excel 二选一）。
  */
-import { Download, FolderPlus, Import, Plus, SlidersHorizontal, Upload } from 'lucide-react'
+import { FileSpreadsheet, FileType, FolderPlus, Import, Plus, SlidersHorizontal, Upload } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -36,7 +36,7 @@ export function EvaluationHeaderActions({
   onAddCategory: () => void
   onBatchAction: (action: 'enable' | 'disable' | 'delete') => void
   onImport: () => void
-  onExport: () => void
+  onExport: (format: 'json' | 'excel') => void
 }) {
   const batchDisabled = !canManage || selectedCount === 0
   const batchTooltip = !canManage
@@ -45,26 +45,44 @@ export function EvaluationHeaderActions({
 
   return (
     <div className='flex flex-wrap items-center gap-2'>
-      <Button
-        variant='outline'
-        size='sm'
-        className='h-7 gap-1.5'
-        disabled={!canManage}
-        onClick={onAddDimension}
-      >
-        <Plus aria-hidden='true' className='size-3.5' />
-        新增维度
-      </Button>
-      <Button
-        variant='outline'
-        size='sm'
-        className='h-7 gap-1.5'
-        disabled={!canCategoryManage}
-        onClick={onAddCategory}
-      >
-        <FolderPlus aria-hidden='true' className='size-3.5' />
-        新增分类
-      </Button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              variant='outline'
+              size='sm'
+              className='h-7 gap-1.5'
+              disabled={!canManage}
+              onClick={onAddDimension}
+            >
+              <Plus aria-hidden='true' className='size-3.5' />
+              新增维度
+            </Button>
+          }
+        />
+        <TooltipContent>
+          {canManage ? '新增维度' : '无 evaluation:dim_manage 权限'}
+        </TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              variant='outline'
+              size='sm'
+              className='h-7 gap-1.5'
+              disabled={!canCategoryManage}
+              onClick={onAddCategory}
+            >
+              <FolderPlus aria-hidden='true' className='size-3.5' />
+              新增分类
+            </Button>
+          }
+        />
+        <TooltipContent>
+          {canCategoryManage ? '新增分类' : '无 evaluation:category_manage 权限'}
+        </TooltipContent>
+      </Tooltip>
 
       <Tooltip>
         <TooltipTrigger
@@ -133,14 +151,25 @@ export function EvaluationHeaderActions({
             </Button>
           }
         />
-        <DropdownMenuContent align='end' className='w-44'>
+        <DropdownMenuContent align='end' className='w-52'>
           <DropdownMenuItem disabled={!canImportExport} onSelect={onImport}>
             <Upload aria-hidden='true' className='size-3.5' />
             导入维度
           </DropdownMenuItem>
-          <DropdownMenuItem disabled={!canImportExport} onSelect={onExport}>
-            <Download aria-hidden='true' className='size-3.5' />
-            导出维度
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            disabled={!canImportExport}
+            onSelect={() => onExport('json')}
+          >
+            <FileType aria-hidden='true' className='size-3.5' />
+            导出维度（JSON）
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={!canImportExport}
+            onSelect={() => onExport('excel')}
+          >
+            <FileSpreadsheet aria-hidden='true' className='size-3.5' />
+            导出维度（Excel）
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

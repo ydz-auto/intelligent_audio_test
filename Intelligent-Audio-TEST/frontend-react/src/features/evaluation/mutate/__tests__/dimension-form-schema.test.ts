@@ -1,7 +1,8 @@
 /**
  * 评估维度表单 schema/转换器（11_用例域.md §5.5）单元测试。
  * 覆盖空表单初值、编辑反填（toDimensionFormValues）、保存载荷收敛
- * （toDimensionSaveInput：子维度不携带 API 配置、LLM Judge 结果类型映射）。
+ * （toDimensionSaveInput：子维度不携带 API 配置、LLM Judge 结果类型映射、
+ * 所需输入/输出字段/API 端点随载荷提交——P3-2 收敛）。
  */
 import { describe, expect, it } from 'vitest'
 
@@ -36,6 +37,15 @@ const mockDimension: Dimension = {
       { condition: '<', value: 95, score: 0 },
     ],
   },
+  requiredInputs: [
+    { key: 'asr_result', label: 'ASR识别结果', fieldType: '文本', required: true, description: 'ASR算法识别出的文本' },
+  ],
+  outputFields: [
+    { name: 'score', label: '评分结果', outputRole: '主结果', aggRole: '直接值' },
+  ],
+  apiEndpoints: [
+    { url: 'https://api.example.com/evaluation/accuracy', name: '主评估端点', priority: 1, maxProcess: 5, maxTimeout: 30, maxAudioDuration: 60 },
+  ],
   statisticMethod: 'average',
   aggDenominator: 'case',
   excludeRounds: [],
@@ -52,6 +62,15 @@ describe('emptyDimensionFormValues', () => {
     expect(values.weight).toBe(5)
     expect(values.resultType).toBe('1')
     expect(values.rule.length).toBeGreaterThan(0)
+  })
+
+  it('所需输入/输出字段/API 端点带默认行（P3-2 子编辑器收敛进表单）', () => {
+    const values = emptyDimensionFormValues()
+    expect(values.requiredInputs.length).toBeGreaterThan(0)
+    expect(values.requiredInputs[0].key).toBe('asr_result')
+    expect(values.outputFields.length).toBeGreaterThan(0)
+    expect(values.apiEndpoints.length).toBeGreaterThan(0)
+    expect(values.apiEndpoints[0].priority).toBe(1)
   })
 })
 
@@ -75,6 +94,25 @@ describe('toDimensionFormValues', () => {
     expect(values.resultType).toBe('llm_judge')
     expect(values.llmModel).toBe('gpt-4o-mini')
   })
+
+  it('所需输入/输出字段/API 端点反填（P3-2）', () => {
+    const values = toDimensionFormValues(mockDimension)
+    expect(values.requiredInputs).toHaveLength(1)
+    expect(values.requiredInputs[0]).toMatchObject({
+      key: 'asr_result',
+      label: 'ASR识别结果',
+      required: true,
+    })
+    expect(values.outputFields[0]).toMatchObject({
+      name: 'score',
+      outputRole: '主结果',
+      aggRole: '直接值',
+    })
+    expect(values.apiEndpoints[0]).toMatchObject({
+      url: 'https://api.example.com/evaluation/accuracy',
+      priority: 1,
+    })
+  })
 })
 
 describe('toDimensionSaveInput', () => {
@@ -91,6 +129,22 @@ describe('toDimensionSaveInput', () => {
     ])
   })
 
+  it('主维度携带所需输入/输出字段/API 端点（P3-2）', () => {
+    const input = toDimensionSaveInput(toDimensionFormValues(mockDimension))
+    expect(input.requiredInputs).toEqual([
+      {
+        key: 'asr_result',
+        label: 'ASR识别结果',
+        fieldType: '文本',
+        required: true,
+        defaultValue: undefined,
+        description: 'ASR算法识别出的文本',
+      },
+    ])
+    expect(input.outputFields?.[0].name).toBe('score')
+    expect(input.apiEndpoints?.[0].priority).toBe(1)
+  })
+
   it('子维度不携带 API 配置（继承父维度）', () => {
     const values = toDimensionFormValues({
       ...mockDimension,
@@ -104,6 +158,9 @@ describe('toDimensionSaveInput', () => {
     expect(input.apiUrl).toBeNull()
     expect(input.apiSettings).toBeUndefined()
     expect(input.keywords).toBeNull()
+    expect(input.requiredInputs).toBeUndefined()
+    expect(input.outputFields).toBeUndefined()
+    expect(input.apiEndpoints).toBeUndefined()
   })
 
   it('LLM Judge 保存载荷携带 llmJudgeConfig', () => {
@@ -122,3 +179,4 @@ describe('toDimensionSaveInput', () => {
     })
   })
 })
+

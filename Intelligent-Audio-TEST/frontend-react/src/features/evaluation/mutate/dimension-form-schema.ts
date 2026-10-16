@@ -20,11 +20,65 @@ export interface RuleRow {
   score: number
 }
 
+/** 所需输入配置行（API配置节「所需输入配置」编辑器行；对齐 DimensionRequiredInput） */
+export interface RequiredInputRow {
+  key: string
+  label: string
+  fieldType: string
+  required: boolean
+  defaultValue: string
+  description: string
+}
+
+/** 输出字段配置行（API配置节「输出字段配置」编辑器行；对齐 DimensionOutputField） */
+export interface OutputFieldRow {
+  name: string
+  label: string
+  outputRole: string
+  aggRole: string
+  defaultValue: string
+}
+
+/** API 端点配置行（API配置节「API 端点配置」编辑器行；对齐 DimensionApiEndpoint） */
+export interface ApiEndpointRow {
+  url: string
+  name: string
+  priority: number
+  maxProcess: number
+  maxTimeout: number
+  maxAudioDuration: number
+}
+
 /** 规则行 zod 字段（与 RuleRow 同构） */
 const ruleRowSchema = z.object({
   condition: z.string(),
   value: z.number(),
   score: z.number(),
+})
+
+/** 所需输入/输出字段/API 端点子编辑器行 zod（P3-2 收敛进表单载荷，编辑态可反填） */
+const requiredInputRowSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  fieldType: z.string(),
+  required: z.boolean(),
+  defaultValue: z.string(),
+  description: z.string(),
+})
+const outputFieldRowSchema = z.object({
+  name: z.string(),
+  label: z.string(),
+  outputRole: z.string(),
+  aggRole: z.string(),
+  defaultValue: z.string(),
+})
+const apiEndpointRowSchema = z.object({
+  url: z.string(),
+  name: z.string(),
+  priority: z.number(),
+  maxProcess: z.number(),
+  maxTimeout: z.number(),
+  maxAudioDuration: z.number(),
 })
 
 export const dimensionFormSchema = z
@@ -58,6 +112,9 @@ export const dimensionFormSchema = z
     aggDenominator: z.string(),
     excludeRounds: z.array(z.string()),
     associatedAlgorithms: z.array(z.string()),
+    requiredInputs: z.array(requiredInputRowSchema),
+    outputFields: z.array(outputFieldRowSchema),
+    apiEndpoints: z.array(apiEndpointRowSchema),
   })
   .superRefine((values, ctx) => {
     if (values.resultMin >= values.resultMax) {
@@ -117,6 +174,43 @@ export function emptyDimensionFormValues(): DimensionFormValues {
     aggDenominator: 'case',
     excludeRounds: [],
     associatedAlgorithms: [],
+    requiredInputs: [
+      {
+        key: 'asr_result',
+        label: 'ASR识别结果',
+        fieldType: '文本',
+        required: true,
+        defaultValue: '',
+        description: 'ASR算法识别出的文本',
+      },
+      {
+        key: 'asr_ref',
+        label: '参考文本',
+        fieldType: '文本',
+        required: true,
+        defaultValue: '',
+        description: '标准参考文本',
+      },
+    ],
+    outputFields: [
+      {
+        name: 'score',
+        label: '评分结果',
+        outputRole: '主结果',
+        aggRole: '直接值',
+        defaultValue: '',
+      },
+    ],
+    apiEndpoints: [
+      {
+        url: 'https://api.example.com/evaluation/accuracy',
+        name: '主评估端点',
+        priority: 1,
+        maxProcess: 5,
+        maxTimeout: 30,
+        maxAudioDuration: 60,
+      },
+    ],
   }
 }
 
@@ -131,6 +225,30 @@ export function toDimensionFormValues(dimension: Dimension): DimensionFormValues
     condition: String(r.condition),
     value: Number(r.value),
     score: Number(r.score),
+  }))
+  // 子编辑器反填（P3-2）：缺省（null/空）时回退默认行，保证编辑态可继续编辑
+  const requiredInputs = (dimension.requiredInputs ?? []).map((ri) => ({
+    key: ri.key ?? '',
+    label: ri.label ?? '',
+    fieldType: ri.fieldType ?? '文本',
+    required: !!ri.required,
+    defaultValue: ri.defaultValue != null ? String(ri.defaultValue) : '',
+    description: ri.description ?? '',
+  }))
+  const outputFields = (dimension.outputFields ?? []).map((of) => ({
+    name: of.name ?? '',
+    label: of.label ?? '',
+    outputRole: of.outputRole ?? '主结果',
+    aggRole: of.aggRole ?? '直接值',
+    defaultValue: of.defaultValue != null ? String(of.defaultValue) : '',
+  }))
+  const apiEndpoints = (dimension.apiEndpoints ?? []).map((ep) => ({
+    url: ep.url ?? '',
+    name: ep.name ?? '',
+    priority: ep.priority ?? 1,
+    maxProcess: ep.maxProcess ?? 5,
+    maxTimeout: ep.maxTimeout ?? 30,
+    maxAudioDuration: ep.maxAudioDuration ?? 60,
   }))
   return {
     name: dimension.name,
@@ -168,6 +286,18 @@ export function toDimensionFormValues(dimension: Dimension): DimensionFormValues
     associatedAlgorithms: (dimension.associatedAlgorithms ?? []).map(
       (a) => a.algorithmType
     ),
+    requiredInputs:
+      requiredInputs.length > 0
+        ? requiredInputs
+        : emptyDimensionFormValues().requiredInputs,
+    outputFields:
+      outputFields.length > 0
+        ? outputFields
+        : emptyDimensionFormValues().outputFields,
+    apiEndpoints:
+      apiEndpoints.length > 0
+        ? apiEndpoints
+        : emptyDimensionFormValues().apiEndpoints,
   }
 }
 
@@ -244,6 +374,36 @@ export function toDimensionSaveInput(values: DimensionFormValues): Partial<Dimen
       isDefault: false,
       weight: values.weight,
     })),
+    // P3-2：所需输入/输出字段/API 端点随保存载荷提交（子维度继承父维度，不携带）
+    requiredInputs: isSub
+      ? undefined
+      : values.requiredInputs.map((ri) => ({
+          key: ri.key,
+          label: ri.label,
+          fieldType: ri.fieldType,
+          required: ri.required,
+          defaultValue: ri.defaultValue || undefined,
+          description: ri.description || undefined,
+        })),
+    outputFields: isSub
+      ? undefined
+      : values.outputFields.map((of) => ({
+          name: of.name,
+          label: of.label,
+          outputRole: of.outputRole,
+          aggRole: of.aggRole,
+          defaultValue: of.defaultValue || undefined,
+        })),
+    apiEndpoints: isSub
+      ? undefined
+      : values.apiEndpoints.map((ep) => ({
+          url: ep.url,
+          name: ep.name,
+          priority: ep.priority,
+          maxProcess: ep.maxProcess,
+          maxTimeout: ep.maxTimeout,
+          maxAudioDuration: ep.maxAudioDuration,
+        })),
     apiUrl: isSub ? null : values.apiUrl || null,
     apiSettings: isSub
       ? undefined

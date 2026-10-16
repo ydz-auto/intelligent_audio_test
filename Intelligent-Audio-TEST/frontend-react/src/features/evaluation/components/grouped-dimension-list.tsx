@@ -145,16 +145,25 @@ export function GroupedDimensionList({
                 )}
               </button>
               <div className='flex shrink-0 items-center gap-1'>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  className='h-7 gap-1.5'
-                  disabled={!canManage}
-                  onClick={() => onAddDimension(group.category)}
-                >
-                  <Plus aria-hidden='true' className='size-3.5' />
-                  添加维度
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant='outline'
+                        size='sm'
+                        className='h-7 gap-1.5'
+                        disabled={!canManage}
+                        onClick={() => onAddDimension(group.category)}
+                      >
+                        <Plus aria-hidden='true' className='size-3.5' />
+                        添加维度
+                      </Button>
+                    }
+                  />
+                  <TooltipContent>
+                    {canManage ? '添加维度' : '无 evaluation:dim_manage 权限'}
+                  </TooltipContent>
+                </Tooltip>
                 {group.category && (
                   <>
                     <Tooltip>
