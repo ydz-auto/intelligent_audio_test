@@ -1,6 +1,6 @@
 # 排行榜页 UX 设计规范（对齐 newAPI rankings）
 
-> 卡 INT-359 ｜ UX设计师B ｜ 2026-10-14（v1.1 修订 2026-10-15：算法切换口径改判 INT-442，见 §3.2；v1.2 修订 2026-10-16：INT-391 审核放行条件——文案全量改「排行榜」+ DTO→Domain 映射 + 未登录对齐 INT-344 + 基座节号勘误 + 权限码计数 5→6，见修订表；v1.3 修订 2026-10-16：INT-381 前置审核打回修订——Benchmark 报告域补全（§10）与 `infrastructure/adapters/*` 转换层，见修订表；v1.4 修订 2026-10-16：INT-429 RBAC 落地回写（§6.1 权限事实/§6.2 角色映射表改注）+ INT-391 复核收口对齐（§10 前端路由按 INT-344 v1.4 不新建 /benchmarks/*、写侧归属总控裁决、radius 校准），见修订表）｜ 基准：newAPI 参照源码 `D:\00_code\new_api_xagents`（web/src/features/rankings 全目录、web/src/routes/rankings、web/src/hooks/use-top-nav-links.ts、web/src/lib/nav-modules.ts、web/src/lib/use-chart-theme.ts、web/src/components/layout/components/public-layout.tsx｜public-navigation.tsx），本平台后端实测 `report_service/interfaces/api/benchmark_routes.py`、`api_gateway/routes/benchmark_bp.py`、`api_gateway/application/services/benchmark/benchmark_service.py`、`report_service/infrastructure/persistence/models/benchmark_models.py`、`report_service/application/services/benchmark_ranking_service.py`、`report_service/domain/entities/benchmark.py`、`scripts/migrations/202608/seed_rbac.py`，全部取材自实测源码，无杜撰。
+> 卡 INT-359 ｜ UX设计师B ｜ 2026-10-14（v1.1 修订 2026-10-15：算法切换口径改判 INT-442，见 §3.2；v1.2 修订 2026-10-16：INT-391 审核放行条件——文案全量改「排行榜」+ DTO→Domain 映射 + 未登录对齐 INT-344 + 基座节号勘误 + 权限码计数 5→6，见修订表；v1.3 修订 2026-10-16：INT-381 前置审核打回修订——Benchmark 报告域补全（§10）与 `infrastructure/adapters/*` 转换层，见修订表；v1.4 修订 2026-10-16：INT-429 RBAC 落地回写（§6.1 权限事实/§6.2 角色映射表改注）+ INT-391 复核收口对齐（§10 前端路由按 INT-344 v1.4 不新建 /benchmarks/*、写侧归属总控裁决、radius 校准）；v1.5 修订 2026-10-16：核心业务口径对齐——Hero 副标题显式落「多友商横向能力对比」、保留「按指标生成名次」（负责人 2026-10-16 口径），见修订表）｜ 基准：newAPI 参照源码 `D:\00_code\new_api_xagents`（web/src/features/rankings 全目录、web/src/routes/rankings、web/src/hooks/use-top-nav-links.ts、web/src/lib/nav-modules.ts、web/src/lib/use-chart-theme.ts、web/src/components/layout/components/public-layout.tsx｜public-navigation.tsx），本平台后端实测 `report_service/interfaces/api/benchmark_routes.py`、`api_gateway/routes/benchmark_bp.py`、`api_gateway/application/services/benchmark/benchmark_service.py`、`report_service/infrastructure/persistence/models/benchmark_models.py`、`report_service/application/services/benchmark_ranking_service.py`、`report_service/domain/entities/benchmark.py`、`scripts/migrations/202608/seed_rbac.py`，全部取材自实测源码，无杜撰。
 > 背景裁定：benchmark 排行页**恢复设计**（原 2026-10-10 搁置裁定由负责人 2026-10-14 恢复，仅设计阶段）；版式照 newAPI 官方排行榜页（rankings）；**数据以 B 域 benchmark 钩子现状为准，后端没有的数据不虚构，缺口一律标注「待后端立项」**。
 > 技术栈：React 19 + TS + Rsbuild + Tailwind 4 + shadcn 风格组件 + TanStack Router/Query + @visactor/react-vchart（newAPI 排行页图表同款依赖，`web/package.json:44-45` 实测 ^2.1.2）+ next-themes 深浅色（CSS/组件/交互件直接复用 newAPI 现成的，负责人 2026-10-14 裁定；多主题预设体系，lake-view 为默认参考预设——本文 token 均引基座卡 `01_全局基座.md` 的定义）。
 
@@ -314,7 +314,7 @@ newAPI 的 growth 是"越大越好"隐含语义；本平台 delta 方向随指�
 ### Hero
 
 - 标题：「排行榜」
-- 副标题：「汇聚平台实测与业界公开基线的语音能力横向对比，按指标与场景生成名次。」
+- 副标题：「多个厂商模型/APP/API 在同一标准化环境、同一测试集与指标下同时实测，按指标与场景生成名次，横向看清业界水平。」
 - 页签（aria-label「指标类别」）：「全部」「语音识别」「语音对话」「语音合成」「翻译」
 - 页签 sr-only 状态：「{名称}，当前已选中」/「{名称}」
 
@@ -477,3 +477,4 @@ domain/
 | 2026-10-16 | INT-429 落地回写（总控放行条件 #1，回写归属 UX设计师A）：§6.1 权限事实改「6 码已定义并授 tester+algo_engineer（全 6 码）、guest/device_admin 未授」——原「缺口/待后端立项（RBAC 补码）」撤销；§6.2 角色映射表按当前 seed 重写（tester/algo 导航可见、可读榜、可触发重算；device_admin/guest 维持 403），「立项建议」列改「立项结论（已落地）」；§3.1 入口判定同步；实施清单 #5 RBAC 补码改注已落地。 |
 | 2026-10-16 | INT-391 复核收口对齐（UX设计师B）：§10.2 前端路由按 INT-344 v1.4 对齐——**不新建 `/benchmarks/*` 前端路由**（列表并入报告中心类型页签、详情复用 `/report/{reportId}`，落位实施卡基线裁定）；§9 组件树移除 `routes/benchmarks/*`、保留 `benchmark-ranking-block`；§2.1/§2.5/§6.2 写侧界面归属按总控裁决改注（另行立项「benchmark 配置写侧界面」，不归 INT-362）；§4.4 radius-lg=12px 笔误按基座卡 §5 组件表 Card 行 rounded-xl 校准。 |
 | 2026-10-16 | **INT-442 口径修正（负责人 2026-10-16）**：算法切换大卡片 = **每算法一张大卡**（算法卡片网格，不是单张当前算法卡）——§3.2/§4.5 由「「当前算法」大卡片」重做为「算法卡片网格」：数据源改 `GET /algorithm/definitions` 全量（含描述/参数摘要，不用仅 value/name/group 的 `/options`）、每卡=算法名+分组+参数摘要+描述、点击直选=切换页内算法、选中态高亮、首卡「全部算法」、离线卡置灰、只读降级条保留；**页内独立 store 语义不变**（公开页不污染全局，2026-10-16 修正仅改形态）；§2.1 映射表/§4.1/§5.1/§5.6/§6.2/§7 文案/§8 token/§9 组件树（algorithm-card-grid/useRankingAlgorithm）/实施清单同步；INT-486 可视稿按本口径修正（其卡单独落）。 |
+| 2026-10-16 | 核心业务口径对齐（负责人 2026-10-16：多友商横向能力对比）：§7 Hero 副标题改「多个厂商模型/APP/API 在同一标准化环境、同一测试集与指标下同时实测，按指标与场景生成名次，横向看清业界水平。」——「按指标生成名次」口径保留，显式落「多友商同集同指标同时实测横向对比」业务模型；首页六卡「多 API 接入」改「多友商横向对比」表述归 INT-345（A 线），报告域/测试执行联动由对应卡承接。 |
