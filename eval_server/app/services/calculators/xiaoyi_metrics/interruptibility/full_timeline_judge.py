@@ -2,6 +2,7 @@
 import copy
 import hashlib
 import json
+import logging
 import math
 import os
 import threading
@@ -284,6 +285,80 @@ def build_output_schema(packet):
     return dict(task=packet['task'], case=packet['case'], round_details=rows, aggregate=aggregate_rows(rows))
 
 
+
+_LOGGER = logging.getLogger(__name__)
+
+
+class FullTimelineOutputError(ValueError):
+    """Invalid output after bounded retries; raw evidence is kept off platform data."""
+    def __init__(self, message, attempts):
+        super().__init__(message)
+        self.attempts = attempts
+
+
+def _remove_trailing_commas(content):
+    """Remove only commas before ]/} outside JSON strings; never alter values."""
+    output, in_string, escaped, removed = [], False, False, 0
+    for index, char in enumerate(content):
+        if in_string:
+            output.append(char)
+            if escaped:
+                escaped = False
+            elif char == '\\':
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == ',':
+            following = index + 1
+            while following < len(content) and content[following] in ' \t\r\n':
+                following += 1
+            if following < len(content) and content[following] in ']}':
+                removed += 1
+                continue
+        output.append(char)
+    return ''.join(output), removed
+
+
+def _parse_judge_content(content):
+    if not isinstance(content, str):
+        raise ValueError('Judge content must be a JSON string')
+    content = content.strip()
+    if content.startswith('```') and content.endswith('```') and '\n' in content:
+        first, rest = content.split('\n', 1)
+        if first.strip().lower() in ('```', '```json'):
+            content = rest.rsplit('```', 1)[0].strip()
+
+    def unique_object(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError('Duplicate JSON key: ' + key)
+            value[key] = item
+        return value
+
+    def reject_constant(value):
+        raise ValueError('Non-finite JSON constant: ' + value)
+
+    def load(value):
+        parsed = json.loads(value, object_pairs_hook=unique_object, parse_constant=reject_constant)
+        if not isinstance(parsed, dict):
+            raise ValueError('Judge JSON root must be an object')
+        return parsed
+
+    try:
+        return load(content), dict(repaired=False, removed_trailing_commas=0)
+    except json.JSONDecodeError:
+        repaired, removed = _remove_trailing_commas(content)
+        if not removed:
+            raise
+        # Syntax repair cannot invent keys, IDs, rounds, quotes, or closing brackets.
+        parsed = load(repaired)
+        return parsed, dict(repaired=True, removed_trailing_commas=removed)
+
+
 def judge_full_timeline(packet, model='', max_tokens=None, temperature=None, call=None):
     prompt = Path(__file__).with_name('full_timeline_prompt.txt').read_text(encoding='utf-8-sig')
     prompt = prompt.split('【输出结构】')[0]
@@ -294,20 +369,43 @@ def judge_full_timeline(packet, model='', max_tokens=None, temperature=None, cal
         call = call_llm
         model = resolve_model(model, dimension='interruption_judge')
     request = json.dumps(packet, ensure_ascii=False, separators=(',', ':'))
-    # The actual gateway rejected four parallel requests. Bound this expensive
-    # domain separately without changing concurrency for unrelated dimensions.
-    with _CALL_GATE:
-        response = call(model=model, prompt=request, system_message=prompt,
-                        max_tokens=max_tokens or 16000, temperature=0 if temperature is None else temperature,
-                        log_context={'dimension': 'interruption_full_timeline'})
-    content = response.get('content', '').strip()
-    if content.startswith('```'):
-        content = content.split('\n', 1)[1].rsplit('```', 1)[0]
-    parsed = json.loads(content)
-    result = validate_and_derive(packet, parsed)
-    result.update(model=model, tokens_used=response.get('tokens_used', 0),
-                  input_sha256=hashlib.sha256(request.encode()).hexdigest(), raw_llm_result=parsed)
-    return result
+    attempts, tokens_used = [], 0
+    for attempt in range(2):
+        attempt_prompt = prompt
+        if attempt:
+            attempt_prompt += ('\n【输出校验重试】上次输出未通过解析或轮次/词ID校验。'
+                '请根据同一输入重新输出完整严格JSON，不要解释、不要尾逗号、不要重复键，'
+                'round_details只能包含本次骨架中完整的轮对象，禁止追加字符串或补充对象。'
+                '不要为了通过校验虚构词ID、轮次或边界。')
+        # Transport failures keep the existing shared client's network retry policy.
+        with _CALL_GATE:
+            response = call(model=model, prompt=request, system_message=attempt_prompt,
+                            max_tokens=max_tokens or 16000, temperature=0 if temperature is None else temperature,
+                            log_context={'dimension': 'interruption_full_timeline', 'output_attempt': attempt + 1})
+        tokens_used += response.get('tokens_used', 0) or 0
+        content = response.get('content', '')
+        record = dict(attempt=attempt + 1, raw_content=content)
+        attempts.append(record)
+        try:
+            parsed, parse_info = _parse_judge_content(content)
+            record.update(parse_info)
+            result = validate_and_derive(packet, parsed)
+        except ValueError as exc:
+            record.update(validation_passed=False, error=str(exc))
+            _LOGGER.warning('[interruption] output attempt %s failed: %s', attempt + 1, exc)
+            if attempt == 0:
+                continue
+            raise FullTimelineOutputError(
+                'Full timeline output invalid after 2 attempts: ' + str(exc), attempts) from exc
+        record['validation_passed'] = True
+        if parse_info['repaired']:
+            _LOGGER.warning('[interruption] removed %s trailing commas; business validation passed',
+                            parse_info['removed_trailing_commas'])
+        result.update(model=model, tokens_used=tokens_used,
+                      input_sha256=hashlib.sha256(request.encode()).hexdigest(), raw_llm_result=parsed,
+                      raw_llm_content=content, output_parse=parse_info, output_attempts=attempts)
+        return result
+
 
 
 def attach_full_timeline(calculator_result, blocks, task_params, case_info):

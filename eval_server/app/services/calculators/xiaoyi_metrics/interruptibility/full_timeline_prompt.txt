@@ -32,6 +32,13 @@
 不遵从时original_content_stop_latency_ms和settled_after_confirmation_latency_ms为null；额外提供observed_elapsed_to_last_model_word_ms及observation_span_ms，表示观察到的时间，不是成功停止时延或连续讲话时长。不要把观察截止点当真实停止点。
 聚合aggregate增加stop_results，每项带round_id和同一逐轮stop_review字段。停止时延独立于普通回复时延统计；聚合与逐轮逐字段一致。所有停止指标均为ASR词级代理，不声称已经测到物理音频停声。
 
+【回答归属优先于回复首词，必须先检查】
+1. 先为完整query时间线中的每次实际用户请求（包括未列入scheduled_rounds的初始请求）识别其意图，再判断模型各连续语义片段承接哪一次请求。scheduled_rounds只限定待评分轮次，不能忽略初始问题。
+2. 模型可能先对上一问说“等我想一想”，隔一段时间才继续上一问。中间发生新query并不会自动改变这段迟到内容的归属。新query结束后的第一段answer也不自动属于新query。
+3. 区分“新请求承接词”与“上一回答的延迟续答”：检查前文等待语、句法延续、该片段是否实际回应当前新增意图。上一回答的泛化片段如“现在暂时无法获取……”若延续此前尚未结束的回答，且没有回应新请求的独立证据，按旧内容处理；不能因为更后面出现新问题的关键词，就把前面的泛化片段反向全部归为新回复。
+4. 保留快回复首词口径：本轮插话后独立出现“嗯”“好”“我想想”等，并引出本轮回答时，仍从承接词首字计时；不得一律推迟到正文，也不能把所有泛化承接语都归旧回答。优先判断该承接语究竟承接哪次请求。
+5. response_start_reason必须比较候选点：说明候选前后内容与上一问、本轮意图的关系；排除迟到旧回答后选择最早承接当前请求的首词。仅“发生在本轮之后”或“后面谈到了新主题”均不足以证明候选属于当前请求。明确旧内容可继续用词证据计时，不因泛化片段本身就将整轮置为未知。
+
 【新回应首词——不要过度保守】
 1. “嗯”“哦”“啊”“好”等等待词、快回复词，出现在本轮插话后并引出新回应时，算新回应首词。即使与旧句尾连续，也不能仅因不含正文信息而排除。
 2. “我想想”“让我想想”“等我想一想”“我考虑一下”“好你说”等承接语取首词，不跳到正文。
@@ -56,7 +63,7 @@
 然后仅根据这份round_details生成aggregate，不能独立猜聚合值。
 aggregate.behavior_counts只统计普通/停止轮，含回复、恢复、询问、无关、静默、不可判定。恢复原话题角色独立统计。
 round_response_latencies与round_reply_latencies按普通/停止轮顺序输出，每项带round_id和值；缺值用null，禁止用-1哨兵，真实负值有效。
-时延统计valid_count/avg_ms/min_ms/max_ms只包含非null值；无有效值时后三项为null。
+时延valid_count/min_ms/max_ms保留非null原值；avg_ms仅纳入大于0的值，null、0、负数不参与均值，平均无有效值时avg_ms=null。
 未知不算失败或成功。stop_compliance仅统计停止轮；resume_results列出所有恢复角色逐轮结果。
 输出前检查：计数之和=ordinary_rounds；ordinary_rounds+resume_rounds=total_rounds；每个数组ID与逐轮对象一致；时延及reason对应同一组词。
 模型返回的聚合和数值为待校验声明；接收端必须使用同一逐轮词ID与源ASR重算，校验通过后才用于报告。

@@ -120,6 +120,95 @@ class JudgeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'non-object'):
             j.validate_and_derive(self.packet,self.raw)
 
+
+class JsonOutputTests(unittest.TestCase):
+    setUp = JudgeTests.setUp
+
+    def test_trailing_comma_repair_preserves_strings_and_escapes(self):
+        value = {'s': '引号"、反斜线\\、文本,}和,]保持原样', 'n': [1, 2]}
+        text = json.dumps(value, ensure_ascii=False)
+        text = text[:-1] + ', \n}'
+        parsed, audit = j._parse_judge_content(text)
+        self.assertEqual(parsed, value)
+        self.assertEqual(audit, dict(repaired=True, removed_trailing_commas=1))
+
+    def test_nested_object_and_array_commas(self):
+        parsed, audit = j._parse_judge_content('{"a":[{"x":1,},2,],}')
+        self.assertEqual(parsed, {'a': [{'x': 1}, 2]})
+        self.assertEqual(audit['removed_trailing_commas'], 3)
+
+    def test_strict_json_unchanged(self):
+        parsed, audit = j._parse_judge_content('{"s":",}","x":0}')
+        self.assertEqual(parsed['s'], ',}')
+        self.assertFalse(audit['repaired'])
+
+    def test_duplicate_keys_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'Duplicate JSON key'):
+            j._parse_judge_content('{"round":1,"round":2}')
+
+    def test_nonfinite_constants_rejected(self):
+        for value in ('NaN', 'Infinity', '-Infinity'):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                j._parse_judge_content('{"x":' + value + '}')
+
+    def test_no_guessing_quotes_or_closing_brackets(self):
+        for text in ('{"x":1', "{'x':1}", '{"x" 1}', '[1,2]'):
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                j._parse_judge_content(text)
+
+    def test_clean_output_calls_once(self):
+        remote = unittest.mock.Mock(return_value=dict(content=json.dumps(self.raw), tokens_used=5))
+        result = j.judge_full_timeline(self.packet, call=remote)
+        self.assertEqual(remote.call_count, 1)
+        self.assertFalse(result['output_parse']['repaired'])
+
+    def test_repair_does_not_call_model_again(self):
+        text = json.dumps(self.raw)[:-1] + ',}'
+        remote = unittest.mock.Mock(return_value=dict(content=text, tokens_used=5))
+        result = j.judge_full_timeline(self.packet, call=remote)
+        self.assertEqual(remote.call_count, 1)
+        self.assertEqual(result['raw_llm_content'], text)
+        self.assertEqual(result['output_attempts'][0]['raw_content'], text)
+        self.assertTrue(result['output_parse']['repaired'])
+        self.assertEqual(result['round_details'][0]['response_start_word_id'], 'M0001')
+
+    def test_invalid_output_retry_once_then_success(self):
+        remote = unittest.mock.Mock(side_effect=[dict(content='{"broken":', tokens_used=2),
+            dict(content=json.dumps(self.raw), tokens_used=5)])
+        result = j.judge_full_timeline(self.packet, call=remote)
+        self.assertEqual(remote.call_count, 2)
+        self.assertEqual(result['tokens_used'], 7)
+        self.assertFalse(result['output_attempts'][0]['validation_passed'])
+        self.assertTrue(result['output_attempts'][1]['validation_passed'])
+
+    def test_two_invalid_outputs_still_fail(self):
+        remote = unittest.mock.Mock(return_value=dict(content='not JSON', tokens_used=2))
+        with self.assertRaises(j.FullTimelineOutputError) as failure:
+            j.judge_full_timeline(self.packet, call=remote)
+        self.assertEqual(remote.call_count, 2)
+        self.assertEqual(len(failure.exception.attempts), 2)
+
+    def test_repaired_syntax_cannot_bypass_word_validation(self):
+        self.raw['round_details'][0]['response_start_word_id'] = 'M9999'
+        remote = unittest.mock.Mock(return_value=dict(content=json.dumps(self.raw)[:-1]+',}', tokens_used=1))
+        with self.assertRaises(j.FullTimelineOutputError):
+            j.judge_full_timeline(self.packet, call=remote)
+        self.assertEqual(remote.call_count, 2)
+
+    def test_string_fragments_are_not_deleted_to_make_valid_rounds(self):
+        self.raw['round_details'].append('topic_resumed:true')
+        remote = unittest.mock.Mock(return_value=dict(content=json.dumps(self.raw), tokens_used=1))
+        with self.assertRaises(j.FullTimelineOutputError):
+            j.judge_full_timeline(self.packet, call=remote)
+        self.assertEqual(remote.call_count, 2)
+
+    def test_transport_errors_do_not_trigger_output_retry(self):
+        remote = unittest.mock.Mock(side_effect=RuntimeError('network failure'))
+        with self.assertRaisesRegex(RuntimeError, 'network failure'):
+            j.judge_full_timeline(self.packet, call=remote)
+        self.assertEqual(remote.call_count, 1)
+
+
 def test_real_calculator_dispatches_once_and_projects_same_negative_latency():
     from app.services.calculators.xiaoyi_metrics.interruptibility.strategy import InterruptionMetricsCalculator
     raw={'round_details':[dict(round=1,behavior='回复',behavior_reason='好是承接',
@@ -142,6 +231,32 @@ def test_real_calculator_dispatches_once_and_projects_same_negative_latency():
     assert set(result) == {'interruption', 'per_round'}
     assert result['interruption']['round_details'][0]['reply_latency_ms']==-1
     assert result['per_round'][1]['interruption']['reply_latency_avg_ms']==-1
+
+
+def test_real_calculator_repair_and_failure_keep_platform_envelope():
+    from app.services.calculators.xiaoyi_metrics.interruptibility.strategy import InterruptionMetricsCalculator
+    raw={'round_details':[dict(round=1,behavior='回复',behavior_reason='好是承接',
+        alignment=dict(status='matched',reason='实际换话题',user_start_word_id='U0000',
+            user_end_word_id='U0000',start_boundary_valid=True,end_boundary_valid=True),
+        response_start_word_id='M0001',last_old_content_word_id='M0000')]}
+    params=dict(user_asr=[dict(text='换话题',timestamp=[1,2])],
+        model_asr=[dict(text='旧',timestamp=[1.1,1.5]),dict(text='好',timestamp=[2.5,2.8])],
+        interruption_rounds=[1],rounds=[dict(is_interruption=True,query='初始'),dict(query='换话题')])
+    for content, expected_calls, failed in [(json.dumps(raw)[:-1]+',}',1,False),('not JSON',2,True)]:
+        with patch('app.services.calculators.xiaoyi_metrics.shared.llm_client.call_llm',
+                   return_value=dict(content=content,tokens_used=1)) as remote:
+            result=InterruptionMetricsCalculator().run(params)
+        assert remote.call_count==expected_calls
+        assert set(result)=={'interruption','per_round'}
+        data=result['interruption']
+        assert not any(k in data for k in ('output_parse','output_attempts','raw_llm_content','aggregate'))
+        if failed:
+            assert data['is_success'] is False
+            assert data['success_count'] is None
+        else:
+            assert data['success_count']==1
+            assert data['reply_latency_avg_ms']==500
+            assert result['per_round'][1]['interruption']['reply_latency_avg_ms']==500
 
 
 if __name__=='__main__':unittest.main()
