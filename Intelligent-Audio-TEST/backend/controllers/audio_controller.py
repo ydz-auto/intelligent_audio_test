@@ -1261,7 +1261,6 @@ class AudioController:
                                         continue
                                     unmatched_items.append(a)
                             # 对未匹配项尝试按 name/original_filename/md5 匹配
-                            matched_count = 0
                             for a in unmatched_items:
                                 item_name = a.get('audio_name') or ''
                                 if (item_name == existing_audio.name
@@ -1269,7 +1268,6 @@ class AudioController:
                                         or item_name == (existing_audio.md5 or '')
                                         or not item_name):
                                     a['audio_id'] = existing_audio.id
-                                    matched_count += 1
                             # VEGA-31：按名称一个都对不上时**不得强填**。
                             # 秒传命中已有音频靠的是 md5，与文件名无关；把 existing_audio.id 硬填进
                             # 一个名字完全对不上的项，会建出「用例名取自前端 audio_name（如 JS135）、
@@ -1277,24 +1275,32 @@ class AudioController:
                             # 的矛盾用例，且全程无提示。处置口径：拒绝建用例 + 明确提示。
                             # （不选「按真实文件名另建 audios 行」：那会绕过 md5 去重留下同 md5 两行，
                             #  后续 Audio.query.filter_by(md5=...).first() 命中哪条不确定。）
-                            # 判定用「无一项匹配上」而非「仅一项未匹配」：进入本分支时，同分组其它项
-                            # 在前几次 merge 后已由前端回填 audio_id，未匹配项只可能是本次上传的这一项。
-                            if matched_count == 0 and unmatched_items:
-                                uploaded_names = '、'.join(
-                                    (a.get('audio_name') or '(未命名)') for a in unmatched_items[:3]
+                            # 判定必须**逐项**：上面按名匹配完仍没有 audio_id 的项，就不是本次秒传
+                            # 命中的那条音频，也就无法确定它指哪条音频 → 拒绝。
+                            # 只看「全局一个都没匹配上」（matched_count == 0）会漏：同分组别的项
+                            # （名字恰好对得上命中音频，或没带 audio_name 被「空名」规则填上）一旦
+                            # 匹配成功，错配项就不再被拦，照样被 _create_test_case_from_audio 的
+                            # 兜底强填成命中音频，建出与「现象」逐字相同的用例（实测 rounds[0] 是
+                            # JS121 的项、rounds[1] 才是本次上传的 JS135 时即如此）。
+                            unresolved_items = [a for a in unmatched_items if not a.get('audio_id')]
+                            if unresolved_items:
+                                unresolved_names = '、'.join(
+                                    (a.get('audio_name') or '(未命名)') for a in unresolved_items[:3]
                                 )
                                 logger.warning(
-                                    f'秒传建用例被拒绝：本次上传「{uploaded_names}」的 md5 '
+                                    f'秒传建用例被拒绝：本次上传「{upload_file.filename}」的 md5 '
                                     f'{upload_file.md5} 命中已有音频「{existing_audio.name}」'
-                                    f'(id={existing_audio.id})，但名称与该音频对不上，未创建测试用例'
+                                    f'(id={existing_audio.id})，但用例配置里的音频项'
+                                    f'「{unresolved_names}」与该音频名称对不上，未创建测试用例'
                                 )
                                 return error_response(
-                                    f'秒传未建用例：本次上传的「{uploaded_names}」与已有音频'
-                                    f'「{existing_audio.name}」内容完全相同（md5 一致），但名称对不上，'
+                                    f'秒传未建用例：本次上传「{upload_file.filename}」与已有音频'
+                                    f'「{existing_audio.name}」内容完全相同（md5 一致），但用例配置里的'
+                                    f'音频项「{unresolved_names}」与该音频名称对不上，'
                                     f'无法确认要复用的是同一条音频。为避免生成「用例名与音频互相矛盾」'
                                     f'的用例，本次未创建测试用例。请任选一种处理：'
                                     f'① 把文件重命名为「{existing_audio.name}」后重新上传；'
-                                    f'② 先在音频库把「{existing_audio.name}」重命名为「{uploaded_names}」；'
+                                    f'② 先在音频库把「{existing_audio.name}」重命名为「{unresolved_names}」；'
                                     f'③ 若确实是两条不同音频，请先在音频库删除或重命名这条重复音频再上传。'
                                 )
                             # VEGA-31：前端已回填的 audio_id 同样要与该项 audio_name 一致。

@@ -11,6 +11,8 @@ config.rounds[].audios[].audio_id 指向另一条音频（JS121）」的矛盾�
 1. 秒传建用例前，按名称一个都对不上 → **拒绝建用例**并给出可操作提示（不再强填）。
    选「拒绝」而非「按真实文件名另建 audios 行」：后者会绕过 md5 去重留下同 md5 两行，
    后续 `Audio.query.filter_by(md5=...).first()` 命中哪条不确定。
+   判定是**逐项**的：按名匹配完仍没有 audio_id 的项一律拒绝，不看「全 rounds 一个都
+   没匹配上」这个全局计数（后者在错配项不是唯一未匹配项时会漏，见 TestPerItemJudgment）。
 2. 前端已回填的 audio_id 也要与该项 audio_name 一致（多文件分组里前一个秒传文件会把
    md5 命中的 audio_id 回填进 rounds）→ 不一致同样拒绝，不静默错配。
 3. 回归：md5 已存在且名称匹配（含「音频在库里改过名、原始文件名仍对得上」）的秒传
@@ -462,3 +464,106 @@ class TestFindRoundAudioNameMismatch:
         from backend.controllers.audio_controller import AudioController
 
         assert AudioController._find_round_audio_name_mismatch(rounds) is None
+
+
+# ============================================================
+# 4. 逐项判定：错配项不在「唯一未匹配位置」时同样必须拒绝（第 2 轮补充）
+# ============================================================
+
+# 独立命名：本文件其它测试都不用它做 audio.name / original_filename / md5，
+# 因此「按名匹配」不可能被别处残留行命中，判定结果与测试执行顺序无关。
+MISMATCH_NAME = f'JS135_{RUN_TAG}_second.wav'
+
+
+class TestPerItemJudgment:
+    """自检必须是**逐项**的：不能只看「全 rounds 一个都没匹配上」这个全局计数
+
+    原判定 `matched_count == 0 and unmatched_items`（全局）会漏掉这类构造：同分组别的项
+    名字恰好对得上命中音频（或没带 audio_name 被「空名」规则填上）时 matched_count ≥ 1，
+    错配项不再被拦，随后被 `_create_test_case_from_audio` 的兜底强填成命中音频，
+    建出与缺陷「现象」逐字相同的用例（用例名 JS135 / description 与 audio_id 都是 JS121）。
+    """
+
+    @pytest.mark.parametrize(
+        'label,rounds',
+        [
+            (
+                'A-错配项在第二轮',
+                [
+                    {'roundNumber': 1, 'audios': [{'audioName': EXISTING_NAME, 'playOrder': 0}]},
+                    {'roundNumber': 2, 'audios': [{'audioName': MISMATCH_NAME, 'playOrder': 0}]},
+                ],
+            ),
+            (
+                'C-首项无audio_name',
+                [
+                    {'roundNumber': 1, 'audios': [{'playOrder': 0}]},
+                    {'roundNumber': 2, 'audios': [{'audioName': MISMATCH_NAME, 'playOrder': 0}]},
+                ],
+            ),
+            (
+                'D-同轮第二项错配',
+                [
+                    {
+                        'roundNumber': 1,
+                        'audios': [
+                            {'audioName': EXISTING_NAME, 'playOrder': 0},
+                            {'audioName': MISMATCH_NAME, 'playOrder': 1},
+                        ],
+                    }
+                ],
+            ),
+        ],
+    )
+    def test_mismatch_item_not_in_first_position_is_rejected(self, client, app, label, rounds):
+        """本次秒传文件名为 MISMATCH_NAME（md5 命中 EXISTING_NAME 那条音频）→ 拒绝建用例"""
+        import backend.controllers.audio_controller as audio_controller
+
+        existing = _make_audio(EXISTING_NAME, MD5_EXISTING)
+        task_id, file_id = _make_upload_file(MD5_EXISTING, filename=MISMATCH_NAME)
+        before_count = TestCase.query.count()
+        try:
+            with patch.object(audio_controller, 'db', _NoCommitDB(db)), patch(PATCH_REF_PARAMS):
+                resp = client.post(
+                    ENDPOINT,
+                    json=_merge_payload(file_id, task_id, rounds),
+                )
+
+            body = resp.get_json()
+            assert resp.status_code == 400, f'[{label}] 期望拒绝建用例，实际 {resp.status_code} {body}'
+            assert body['code'] != 0, body
+            # 提示点名对不上的项与命中的已有音频，且给出可操作指引
+            assert MISMATCH_NAME in body['message'], body
+            assert EXISTING_NAME in body['message'], body
+            assert '重命名' in body['message'], body
+
+            # 不建用例、不留矛盾行（无部分写入）
+            assert TestCase.query.count() == before_count, _cases_in_group()
+            assert _cases_in_group() == []
+        finally:
+            _purge(audio_ids=[existing.id], task_ids=[task_id])
+
+    def test_sole_unmatched_item_still_rejected(self, client, app):
+        """对照：唯一未匹配项（单文件场景）与逐项判定结果一致，仍拒绝"""
+        import backend.controllers.audio_controller as audio_controller
+
+        existing = _make_audio(EXISTING_NAME, MD5_EXISTING)
+        task_id, file_id = _make_upload_file(MD5_EXISTING, filename=MISMATCH_NAME)
+        before_count = TestCase.query.count()
+        try:
+            with patch.object(audio_controller, 'db', _NoCommitDB(db)), patch(PATCH_REF_PARAMS):
+                resp = client.post(
+                    ENDPOINT,
+                    json=_merge_payload(
+                        file_id,
+                        task_id,
+                        [{'roundNumber': 1, 'audios': [{'audioName': MISMATCH_NAME, 'playOrder': 0}]}],
+                    ),
+                )
+
+            assert resp.status_code == 400, resp.get_json()
+            assert TestCase.query.count() == before_count
+            assert _cases_in_group() == []
+        finally:
+            _purge(audio_ids=[existing.id], task_ids=[task_id])
+
