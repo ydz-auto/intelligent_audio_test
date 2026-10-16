@@ -2,7 +2,8 @@
  * 用例列表/详情 API 桩（infrastructure 层，11_用例域.md §3.3）。
  * 全部返回 mock 常量（红线④），接线时替换为真实请求：
  *   GET /api/v1/testcases（testcase.py TestCaseListQuery：page/per_page/keyword/tag/group_id/
- *       algorithm_type/view/include_deleted/favorite/only_deleted/type/dimension_id）
+ *       algorithm_type/view/include_deleted/favorite/only_deleted/dimension_id；
+ *       type 为残留参数——INT-486 用例不分类型口径前端不再发送）
  *   GET /api/v1/testcases/{id}            （TestCaseDetailData）
  *   GET /api/v1/testcases/stats           （TestCaseStatsData）
  * 本桩在 application 层 use-testcases-list 分发：view=by-group 走 fetchCaseGroupView（分组行聚合），
@@ -15,7 +16,6 @@ export interface TestCaseListQuery {
   page?: number
   perPage?: number
   search?: string
-  type?: string | null
   groupId?: string | null
   tags?: string[]
   dimensionId?: number | null
@@ -54,14 +54,13 @@ export async function fetchTestCases(
   query: TestCaseListQuery
 ): Promise<TestCaseListResult> {
   // TODO(API 接线): GET /api/v1/testcases?…
-  const { search, type, groupId, tags, dimensionId, favorite, trash } = query
+  const { search, groupId, tags, dimensionId, favorite, trash } = query
 
   let items = MOCK_TEST_CASES
   if (trash) items = items.filter((c) => c.deleted)
   else items = items.filter((c) => !c.deleted)
   if (favorite && !trash) items = items.filter((c) => c.isFavorite)
   if (search) items = items.filter((c) => matchKeyword(c, search))
-  if (type && type !== 'all') items = items.filter((c) => c.type === type)
   // 未分组虚拟组（INT-249 口径）：facet 值 '__ungrouped__' → groupId 为空
   if (groupId === '__ungrouped__') items = items.filter((c) => c.groupId === null)
   else if (groupId) items = items.filter((c) => c.groupId === groupId)
@@ -76,7 +75,7 @@ export async function fetchTestCases(
   return mockLatency({ items, total: items.length })
 }
 
-/** 分组视图数据（grouped-case-table 消费：分组头 + 组内行） */
+/** 分组视图数据（grouped-case-list 消费：分组卡 + 组内用例卡） */
 export async function fetchGroupedTestCases(
   query: TestCaseListQuery
 ): Promise<TestCaseListResult> {
@@ -84,7 +83,7 @@ export async function fetchGroupedTestCases(
   return result
 }
 
-/** 标签视图数据（flat-case-table 消费；后端 view=tag 契约保留，前端拍平为行集合） */
+/** 标签视图数据（tag-case-list 消费；后端 view=tag 契约保留，前端按标签聚合为标签卡） */
 export async function fetchTagGroupedTestCases(
   query: TestCaseListQuery
 ): Promise<TestCaseListResult> {

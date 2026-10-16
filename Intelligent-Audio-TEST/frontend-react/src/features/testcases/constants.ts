@@ -1,8 +1,9 @@
 /**
  * 用例管理页常量（features/testcases，11_用例域.md §8 中文文案全量源）。
- * 视图页签/白名单/列显隐/算法标签映射/时长格式化；徽章映射走 status-badge 语义名。
+ * 视图页签/白名单/算法标签映射/时长格式化；徽章映射走 status-badge 语义名。
  * INT-486 用例不分类型口径（负责人 2026-10-16）：用例无 api/e2e 之分，测试类型 facet
  * 与类型徽章移除；正式类型维度=算法类型（algorithmType，test_type 残留待 INT-79 废弃）。
+ * INT-490 卡片流逆转：列显隐选项随表格版式废止，常量收敛为视图页签与格式化工具。
  */
 import { MOCK_ALGORITHMS } from '@/domain/models/algorithm'
 
@@ -27,27 +28,6 @@ export function getAlgorithmLabel(algorithmType: string | null): string {
   if (!algorithmType) return '—'
   return ALGORITHM_LABELS[algorithmType] ?? algorithmType
 }
-
-/** 列显隐选项（视图选项下拉，§3.3；类型列已按口径收敛为算法类型列） */
-export const COLUMN_OPTIONS = [
-  { key: 'name', label: '用例名称' },
-  { key: 'algorithm', label: '算法' },
-  { key: 'tags', label: '标签' },
-  { key: 'group', label: '分组' },
-  { key: 'rounds', label: '轮次·时长' },
-  { key: 'updatedAt', label: '更新时间' },
-  { key: 'id', label: 'ID' },
-] as const
-
-export type CaseColumnKey = (typeof COLUMN_OPTIONS)[number]['key']
-
-export const DEFAULT_VISIBLE_COLUMNS: CaseColumnKey[] = [
-  'name',
-  'algorithm',
-  'tags',
-  'rounds',
-  'updatedAt',
-]
 
 /** ISO 时间串 → 「YYYY-MM-DD HH:mm」（轻量格式化，无 dayjs；异常原样返回） */
 export function formatDateTime(value: string | null | undefined): string {

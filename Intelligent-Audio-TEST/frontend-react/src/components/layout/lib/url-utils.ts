@@ -61,7 +61,18 @@ export function checkIsActive(
 ): boolean {
   const hrefWithoutQuery = href.split('?')[0]
 
-  if (item.activeUrls?.some((url) => urlToString(url) === hrefWithoutQuery)) {
+  // activeUrls 按路径段前缀匹配（INT-490 修复 P1）：/testcases 命中 /testcases/by-group、
+  // /tasks 命中 /tasks/:id——仅精确相等会让子路径导航项无法高亮；路径段边界（/testcasesx
+  // 不命中 /testcases）由「前缀后紧跟 /」保证。
+  if (
+    item.activeUrls?.some((url) => {
+      const active = urlToString(url)
+      if (!active) return false
+      const activeNoQuery = active.split('?')[0]
+      if (activeNoQuery === hrefWithoutQuery) return true
+      return hrefWithoutQuery.startsWith(`${activeNoQuery}/`)
+    })
+  ) {
     return true
   }
 

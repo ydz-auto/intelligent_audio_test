@@ -15,7 +15,6 @@ import type { TestCasesViewKey } from '@/features/testcases/constants'
 
 export interface TestCaseListFilters {
   search?: string
-  type?: string | null
   groupId?: string | null
   tags?: string[]
   dimensionId?: number | null
@@ -37,7 +36,6 @@ export function useTestCasesList(
     queryFn: async () => {
       const query: TestCaseListQuery = {
         search: filters.search,
-        type: filters.type,
         groupId: filters.groupId,
         tags: filters.tags,
         dimensionId: filters.dimensionId,

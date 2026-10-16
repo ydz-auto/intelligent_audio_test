@@ -10,7 +10,7 @@ import {
 } from '@tanstack/react-router'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { ClipboardList, Activity } from 'lucide-react'
+import { ClipboardList, Activity, ListChecks } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 
@@ -91,5 +91,24 @@ describe('NavGroup', () => {
     expect(
       screen.getByRole('link', { name: '用户管理' })
     ).toBeInTheDocument()
+  })
+
+  it('INT-490 P1：activeUrls 前缀命中子路径——/testcases/by-group 高亮「用例管理」', async () => {
+    const items = [
+      {
+        title: '用例管理',
+        url: '/testcases',
+        icon: ListChecks,
+        requiredPermission: 'testcase:read',
+        activeUrls: ['/testcases'],
+      },
+    ]
+    await renderNavGroup(
+      <NavGroup title='测试资产' items={items} />,
+      '/testcases/by-group'
+    )
+    expect(
+      screen.getByRole('link', { name: '用例管理' })
+    ).toHaveAttribute('data-active')
   })
 })

@@ -31,17 +31,14 @@ import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import {
-  DEFAULT_VISIBLE_COLUMNS,
   TEST_CASES_TABS,
-  type CaseColumnKey,
   type TestCasesViewKey,
 } from '@/features/testcases/constants'
 import { TestCasesFilterToolbar } from '@/features/testcases/components/testcases-filter-toolbar'
-import { GroupedCaseTable, type GroupActionCallbacks } from '@/features/testcases/components/grouped-case-table'
-import { FlatCaseTable } from '@/features/testcases/components/flat-case-table'
+import { GroupedCaseList, type GroupActionCallbacks } from '@/features/testcases/components/grouped-case-list'
+import { TagCaseList } from '@/features/testcases/components/tag-case-list'
 import { CaseBulkActions, type BatchActionKey } from '@/features/testcases/components/case-bulk-actions'
-import { TestCasesPagination } from '@/features/testcases/components/testcases-pagination'
-import type { CaseRowCallbacks } from '@/features/testcases/components/case-row'
+import type { CaseCardCallbacks } from '@/features/testcases/components/case-card'
 import { CaseMutateDrawer } from '@/features/testcases/modals/case-mutate-drawer'
 import { ImportExportDialog } from '@/features/testcases/modals/import-export-dialog'
 import { GroupMutateDialog } from '@/features/testcases/modals/group-mutate-dialog'
@@ -61,9 +58,6 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
 
   const [filters, setFilters] = useState<TestCaseListFilters>({})
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [visible, setVisible] = useState<Set<CaseColumnKey>>(
-    () => new Set(DEFAULT_VISIBLE_COLUMNS)
-  )
 
   // 弹窗状态
   const [mutateCase, setMutateCase] = useState<TestCaseListItem | null>(null)
@@ -84,7 +78,6 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   const dimsQuery = useDimensionOptions(algorithmId)
 
   const items = listQuery.data?.items ?? []
-  const total = listQuery.data?.total ?? 0
   const groups = groupsQuery.data ?? []
   const tags = tagsQuery.data ?? []
   const dimensions = dimsQuery.data ?? []
@@ -101,6 +94,24 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
 
   const clearSelection = useCallback(() => setSelected(new Set()), [])
 
+  const toggleSelect = useCallback((id: string, checked: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }, [])
+
+  const toggleAll = useCallback((ids: string[], checked: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (checked) ids.forEach((id) => next.add(id))
+      else ids.forEach((id) => next.delete(id))
+      return next
+    })
+  }, [])
+
   /** 视图页签切换：重置筛选与勾选集（URL 态回归：接线后 page/search/… 进 search） */
   const handleViewChange = (next: string) => {
     setFilters({})
@@ -111,16 +122,17 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
     })
   }
 
-  const rowCallbacks = useMemo<CaseRowCallbacks>(
+  const rowCallbacks = useMemo<CaseCardCallbacks>(
     () => ({
       onPreview: (c) => setPreviewCase(c),
+      onCopy: (c) =>
+        toast.success('已复制测试用例', { description: `已创建副本：${c.name}_copy` }),
+      onFavorite: (c) => toast.success(c.isFavorite ? '已取消收藏' : '已加入收藏'),
       onEdit: (c) => {
         setPresetGroupId(null)
         setMutateCase(c)
         setMutateOpen(true)
       },
-      onReferenceParams: (c) =>
-        toast.success(`参考参数（${c.name}）将在接线批次打开行级编辑`),
       onDelete: (c) => setConfirm({ kind: 'delete', name: c.name }),
       onRestore: (c) => setConfirm({ kind: 'restore', name: c.name }),
       onPurge: (c) => setConfirm({ kind: 'purge', name: c.name }),
@@ -328,70 +340,33 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
 
             <div className='min-h-0 flex-1 overflow-auto'>
               {view === 'by-group' ? (
-                <GroupedCaseTable
+                <GroupedCaseList
                   groups={groups}
-                  cases={items}
-                  loading={listQuery.isLoading}
-                  selected={selected}
-                  visible={visible}
-                  onVisibleChange={setVisible}
-                  tagRegistry={tags}
-                  callbacks={rowCallbacks}
-                  actionCallbacks={groupCallbacks}
-                  onToggleSelect={(id, checked) => {
-                    setSelected((prev) => {
-                      const next = new Set(prev)
-                      if (checked) next.add(id)
-                      else next.delete(id)
-                      return next
-                    })
-                  }}
-                  onToggleAll={(ids, checked) => {
-                    setSelected((prev) => {
-                      const next = new Set(prev)
-                      if (checked) ids.forEach((id) => next.add(id))
-                      else ids.forEach((id) => next.delete(id))
-                      return next
-                    })
-                  }}
-                />
-              ) : (
-                <FlatCaseTable
                   cases={items}
                   loading={listQuery.isLoading}
                   trash={filters.trash ?? false}
                   selected={selected}
-                  visible={visible}
-                  onVisibleChange={setVisible}
                   tagRegistry={tags}
                   callbacks={rowCallbacks}
-                  onToggleSelect={(id, checked) => {
-                    setSelected((prev) => {
-                      const next = new Set(prev)
-                      if (checked) next.add(id)
-                      else next.delete(id)
-                      return next
-                    })
-                  }}
-                  onToggleAll={(ids, checked) => {
-                    setSelected((prev) => {
-                      const next = new Set(prev)
-                      if (checked) ids.forEach((id) => next.add(id))
-                      else ids.forEach((id) => next.delete(id))
-                      return next
-                    })
-                  }}
+                  onBatchAction={handleBatchAction}
+                  actionCallbacks={groupCallbacks}
+                  onToggleSelect={toggleSelect}
+                  onToggleAll={toggleAll}
+                />
+              ) : (
+                <TagCaseList
+                  cases={items}
+                  loading={listQuery.isLoading}
+                  selected={selected}
+                  tagRegistry={tags}
+                  callbacks={rowCallbacks}
+                  onToggleSelect={toggleSelect}
+                  onToggleAll={toggleAll}
                   onCreate={openCreate}
                 />
               )}
             </div>
           </div>
-
-          <TestCasesPagination
-            total={total}
-            tagPage={view === 'by-tag' ? 1 : undefined}
-            tagPages={view === 'by-tag' ? Math.max(1, Math.ceil(total / 10)) : undefined}
-          />
         </SectionPageLayout.Content>
       </SectionPageLayout>
 
@@ -410,6 +385,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
         caseItem={mutateCase}
         groups={groups}
         tags={tags}
+        dimensions={dimensions}
         presetGroupId={presetGroupId}
       />
       <ImportExportDialog

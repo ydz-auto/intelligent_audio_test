@@ -1,13 +1,14 @@
 /**
  * 新增/编辑用例抽屉（11_用例域.md §5.1，Sheet `sm:max-w-[1280px]`，testcase:create/update）。
  * 单栏纵向分节（节间 border-b）：基本信息（双列栅格）/标签（TagInput chips + 已有标签建议）/
- * 描述/关联算法/轮次配置（左轮次导航 180px + 右步骤区横向锚点 Tabs line：算法参数→音频列表→
- * 噪声与干扰→评估维度→参考参数）。
- * INT-486 用例不分类型口径（负责人 2026-10-16）：头部类型切换（API/E2E）移除——用例无类型之分，
- * 正式类型维度=关联算法（algorithmType）。
- * 可视稿演示态：轮次步骤区为结构占位（完整字段随接线批次落地，§5.1 已列全）。
+ * 描述/关联算法/轮次配置（左 RoundNav 180px + 右步骤区横向锚点 Tabs line：
+ * 算法参数→音频列表→噪声与干扰→评估维度→参考参数，五步全字段表单）/全局背景噪声与整体评估维度
+ * （多轮 >1 时追加两节）。
+ * INT-486 用例不分类型口径：头部类型切换（API/E2E）移除——正式类型维度=关联算法。
+ * 轮次载荷形态对照 api_gateway/schemas/testcase.py TestCaseConfig.rounds 实测（mock 桩，
+ * 接线后替换为 application/testcases mutations）。
  */
-import { Plus, Sparkles } from 'lucide-react'
+import { Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
@@ -31,13 +32,20 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import { cn } from '@/lib/utils'
 import { MOCK_ALGORITHMS } from '@/domain/models/algorithm'
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import type { TagItem } from '@/domain/models/testTag'
+import type { EvaluationDimensionItem } from '@/domain/models/evaluationDimension'
+import { RoundNav, type RoundDraft } from '@/features/testcases/modals/round-config/round-nav'
+import { AlgorithmParamsStep } from '@/features/testcases/modals/round-config/algo-params-step'
+import { AudioListStep } from '@/features/testcases/modals/round-config/audio-list-step'
+import { NoiseInterferenceStep } from '@/features/testcases/modals/round-config/noise-interference-step'
+import { EvaluationStep } from '@/features/testcases/modals/round-config/evaluation-step'
+import { ReferenceStep } from '@/features/testcases/modals/round-config/reference-step'
 
 const STEPS = ['算法参数', '音频列表', '噪声与干扰', '评估维度', '参考参数'] as const
 
@@ -129,6 +137,7 @@ export function CaseMutateDrawer({
   caseItem,
   groups,
   tags,
+  dimensions,
   presetGroupId,
 }: {
   open: boolean
@@ -136,6 +145,7 @@ export function CaseMutateDrawer({
   caseItem: TestCaseListItem | null
   groups: TestCaseGroup[]
   tags: TagItem[]
+  dimensions: EvaluationDimensionItem[]
   /** 新建态预填分组（分组视图「新增用例到此分组」入口；编辑态忽略） */
   presetGroupId?: string | null
 }) {
@@ -144,11 +154,44 @@ export function CaseMutateDrawer({
   const [tagValue, setTagValue] = useState<string[]>(caseItem?.tags ?? [])
   const [groupValue, setGroupValue] = useState(caseItem?.groupId ?? presetGroupId ?? '')
   const [newGroupName, setNewGroupName] = useState('')
+  const [algorithmType, setAlgorithmType] = useState(caseItem?.algorithmType ?? '')
+  const [rounds, setRounds] = useState<RoundDraft[]>([
+    { number: 1, audioCount: 2, dimensionCount: 1 },
+    { number: 2, audioCount: 1, dimensionCount: 2 },
+  ])
+  const [activeRound, setActiveRound] = useState(1)
 
   const groupOptions = [
     ...groups.map((g) => ({ value: g.id, label: g.name })),
     { value: '__new__', label: '+ 新建分组' },
   ]
+
+  const nextRoundNumber = () =>
+    rounds.length ? Math.max(...rounds.map((r) => r.number)) + 1 : 1
+
+  const addRound = () => {
+    const number = nextRoundNumber()
+    setRounds((prev) => [...prev, { number, audioCount: 0, dimensionCount: 0 }])
+    setActiveRound(number)
+  }
+
+  const copyRound = () => {
+    const src = rounds.find((r) => r.number === activeRound)
+    if (!src) return
+    const number = nextRoundNumber()
+    setRounds((prev) => [...prev, { ...src, number }])
+    setActiveRound(number)
+  }
+
+  const deleteRound = (number: number) => {
+    setRounds((prev) => {
+      const next = prev.filter((r) => r.number !== number)
+      if (activeRound === number) setActiveRound(next[0]?.number ?? 1)
+      return next
+    })
+  }
+
+  const activeRoundDraft = rounds.find((r) => r.number === activeRound) ?? rounds[0]
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -242,7 +285,7 @@ export function CaseMutateDrawer({
             {/* 关联算法 */}
             <section className='border-border/60 border-t pt-4'>
               <Label className='mb-2'>关联算法</Label>
-              <Select defaultValue={caseItem?.algorithmType ?? ''}>
+              <Select value={algorithmType} onValueChange={(v) => setAlgorithmType(v ?? '')}>
                 <SelectTrigger size='sm' className='h-8 w-full sm:w-80'>
                   <SelectValue placeholder='请选择算法' />
                 </SelectTrigger>
@@ -254,46 +297,26 @@ export function CaseMutateDrawer({
                   ))}
                 </SelectContent>
               </Select>
+              <p className='text-muted-foreground mt-1 text-xs'>
+                算法类型决定「算法参数/评估维度」步骤的可用字段与维度过滤。
+              </p>
             </section>
 
             {/* 轮次配置 */}
             <section className='border-border/60 border-t pt-4'>
-              <div className='mb-2 flex items-center justify-between'>
-                <Label className='text-base font-medium'>轮次配置</Label>
-                <div className='flex gap-2'>
-                  <Button type='button' variant='ghost' size='sm' className='h-7 gap-1'>
-                    <Plus aria-hidden='true' className='size-3.5' />
-                    添加轮次
-                  </Button>
-                  <Button type='button' variant='ghost' size='sm' className='h-7 gap-1'>
-                    复制当前轮次
-                  </Button>
-                </div>
-              </div>
-              <div className='rounded-lg border'>
-                <div className='flex min-h-64 flex-col sm:flex-row'>
-                  {/* 左：轮次导航（180px） */}
-                  <div className='border-border/60 shrink-0 border-b p-2 sm:w-44 sm:border-r sm:border-b-0'>
-                    <div className='space-y-1.5'>
-                      {[1, 2].map((n) => (
-                        <button
-                          key={n}
-                          type='button'
-                          className={cn(
-                            'hover:bg-accent flex w-full items-center justify-between rounded-md px-2 py-1.5 text-start text-sm transition-colors',
-                            n === 1 && 'bg-accent'
-                          )}
-                        >
-                          <span className='font-medium'>第 {n} 轮</span>
-                          <span className='text-muted-foreground text-xs'>
-                            {n === 1 ? '2 音频·1 维度' : '1 音频·2 维度'}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+              <Label className='mb-2 text-base font-medium'>轮次配置</Label>
+              <div className='overflow-hidden rounded-lg border'>
+                <div className='flex min-h-96 flex-col sm:flex-row'>
+                  <RoundNav
+                    rounds={rounds}
+                    activeRound={activeRound}
+                    onSelect={setActiveRound}
+                    onAdd={addRound}
+                    onCopy={copyRound}
+                    onDelete={deleteRound}
+                  />
                   {/* 右：步骤区横向锚点 Tabs line */}
-                  <div className='min-h-64 flex-1'>
+                  <div className='min-h-96 flex-1'>
                     <div className='border-border/60 border-b px-3 pt-2'>
                       <Tabs value={step} onValueChange={(v) => setStep(v as (typeof STEPS)[number])}>
                         <TabsList variant='line' className='max-w-full flex-wrap justify-start'>
@@ -306,12 +329,51 @@ export function CaseMutateDrawer({
                       </Tabs>
                     </div>
                     <div className='px-3 py-3'>
-                      <StepPlaceholder step={step} />
+                      <StepBody
+                        step={step}
+                        activeRound={activeRoundDraft}
+                        algorithmType={algorithmType}
+                        dimensions={dimensions}
+                      />
                     </div>
                   </div>
                 </div>
               </div>
             </section>
+
+            {/* 全局背景噪声 / 整体评估维度（多轮 >1 时追加两节） */}
+            {rounds.length > 1 && (
+              <section className='border-border/60 space-y-4 border-t pt-4'>
+                <div className='space-y-2'>
+                  <div className='flex items-center justify-between'>
+                    <Label className='text-base font-medium'>全局背景噪声</Label>
+                    <Switch aria-label='启用全局背景噪声' defaultChecked />
+                  </div>
+                  <Select defaultValue='粉红噪声_94dB.wav'>
+                    <SelectTrigger size='sm' className='h-8 w-full sm:w-80'>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {['粉红噪声_94dB.wav', '白噪声_85dB.wav', '街道环境音.wav'].map((n) => (
+                        <SelectItem key={n} value={n}>
+                          {n}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className='text-muted-foreground text-xs'>
+                    启用后应用于全部轮次（case 级背景噪声，轮次内未配置时生效）。
+                  </p>
+                </div>
+                <div className='space-y-2'>
+                  <Label className='text-base font-medium'>整体评估维度</Label>
+                  <EvaluationStep dimensions={dimensions} algorithmType={algorithmType} />
+                  <p className='text-muted-foreground text-xs'>
+                    跨轮次聚合评估维度，权重/阈值配置对所有轮次生效。
+                  </p>
+                </div>
+              </section>
+            )}
           </div>
         </ScrollArea>
 
@@ -320,10 +382,12 @@ export function CaseMutateDrawer({
             <Button variant='outline' onClick={() => onOpenChange(false)}>
               取消
             </Button>
-            <Button onClick={() => {
-              toast.success(isEdit ? '更新测试用例成功' : '添加测试用例成功')
-              onOpenChange(false)
-            }}>
+            <Button
+              onClick={() => {
+                toast.success(isEdit ? '更新测试用例成功' : '添加测试用例成功')
+                onOpenChange(false)
+              }}
+            >
               保存
             </Button>
           </div>
@@ -333,18 +397,27 @@ export function CaseMutateDrawer({
   )
 }
 
-function StepPlaceholder({ step }: { step: (typeof STEPS)[number] }) {
-  const notes: Record<(typeof STEPS)[number], string> = {
-    算法参数: '按算法 schema 渲染 DynamicForm；排除 voiceprint / interferers / audio_select 类型参数（归后两步）。',
-    音频列表: '音频卡列表（拖拽排序 GripVertical）——音频文件 Combobox、播放设备、声压级 dB；工具栏排序/标签交错/设备交叉。',
-    噪声与干扰: '背景噪声节 + 声纹注册配置节 + 干扰人配置节（干扰音频/播放设备/声压/开始延迟/循环播放）。',
-    评估维度: '维度 chips 多选区（按当前算法过滤可用维度）+ 已选维度参数卡（权重 Slider + 阈值 + LLM Judge 配置）。',
-    参考参数: '路径行 FolderOpen + 参考参数路径；未生成时空态「参考参数将在音频关联后自动生成」；编辑态 Textarea mono + 保存。',
+function StepBody({
+  step,
+  activeRound,
+  algorithmType,
+  dimensions,
+}: {
+  step: (typeof STEPS)[number]
+  activeRound: RoundDraft | undefined
+  algorithmType: string
+  dimensions: EvaluationDimensionItem[]
+}) {
+  switch (step) {
+    case '算法参数':
+      return <AlgorithmParamsStep algorithmType={algorithmType || null} />
+    case '音频列表':
+      return <AudioListStep presetCount={activeRound?.audioCount || 1} />
+    case '噪声与干扰':
+      return <NoiseInterferenceStep />
+    case '评估维度':
+      return <EvaluationStep dimensions={dimensions} algorithmType={algorithmType || null} />
+    case '参考参数':
+      return <ReferenceStep generated={activeRound !== undefined && activeRound.audioCount > 0} />
   }
-  return (
-    <div className='flex items-center gap-3'>
-      <span aria-hidden='true' className='text-2xl'>📋</span>
-      <p className='text-muted-foreground text-xs leading-relaxed'>{notes[step]}</p>
-    </div>
-  )
 }

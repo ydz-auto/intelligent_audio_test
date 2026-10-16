@@ -47,7 +47,22 @@ describe('checkIsActive', () => {
 
   it('activeUrls 对当前 URL 去查询串后精确命中', () => {
     expect(checkIsActive('/tasks?tab=merged', activeUrlsItem)).toBe(true)
-    expect(checkIsActive('/tasks/42', activeUrlsItem)).toBe(false)
+    expect(checkIsActive('/tasks/42', activeUrlsItem)).toBe(true)
+    expect(checkIsActive('/tasks/42/rounds', activeUrlsItem)).toBe(true)
+    // 路径段边界：/testcasesx 前缀相同但非子路径，不命中
+    expect(checkIsActive('/tasksetup', activeUrlsItem)).toBe(false)
+  })
+
+  it('activeUrls 子路径命中（INT-490 P1：/testcases 命中双视图 /testcases/$view）', () => {
+    const testcasesItem: NavItem = {
+      title: '用例管理',
+      url: '/testcases',
+      activeUrls: ['/testcases'],
+    }
+    expect(checkIsActive('/testcases', testcasesItem)).toBe(true)
+    expect(checkIsActive('/testcases/by-group', testcasesItem)).toBe(true)
+    expect(checkIsActive('/testcases/by-tag?search=中文', testcasesItem)).toBe(true)
+    expect(checkIsActive('/testcases-list', testcasesItem)).toBe(false)
   })
 
   it('折叠项任一子项命中即激活', () => {

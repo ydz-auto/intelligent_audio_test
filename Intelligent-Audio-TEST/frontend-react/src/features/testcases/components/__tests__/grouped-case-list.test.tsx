@@ -1,0 +1,147 @@
+/**
+ * 分组卡片流测试（V9.7.10 TestCaseListContainer 分组视图等价移植，11_用例域.md §3.5）：
+ * INT-490 P2 回归——groups 异步加载后分组卡默认展开（首屏组内用例可见）；
+ * 组头勾选全选/全不选；组内懒加载「已显示 {n} / {总} 条 · 加载更多」。
+ */
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
+import { useState } from 'react'
+
+import type { TestCaseListItem } from '@/domain/models/testCase'
+import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
+import type { TagItem } from '@/domain/models/testTag'
+import { MOCK_TAGS } from '@/infrastructure/mock/testcases-mock'
+import { GroupedCaseList } from '@/features/testcases/components/grouped-case-list'
+import type { CaseCardCallbacks } from '@/features/testcases/components/case-card'
+
+const GROUPS: TestCaseGroup[] = [
+  {
+    id: 'g1',
+    name: '智能音箱功能测试',
+    description: null,
+    algorithmType: 'asr-v3',
+    createdAt: '2026-09-01 11:00',
+    updatedAt: '2026-10-14 16:20',
+    testCaseCount: 5,
+  },
+  {
+    id: 'g2',
+    name: '车载语音交互',
+    description: null,
+    algorithmType: 'asr-v3',
+    createdAt: '2026-09-02 09:30',
+    updatedAt: '2026-10-12 15:10',
+    testCaseCount: 3,
+  },
+]
+
+const CASES: TestCaseListItem[] = [
+  { id: 'tc-001', name: '智能音箱-播放音乐', description: null, groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e', tags: ['音箱'], algorithmType: 'asr-v3', createdAt: '2026-09-10 10:00', updatedAt: '2026-10-15 09:32', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 156, rounds: 2 },
+  { id: 'tc-002', name: '智能音箱-调节音量', description: null, groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e', tags: [], algorithmType: 'asr-v3', createdAt: '2026-09-11 09:00', updatedAt: '2026-10-14 16:20', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 48, rounds: 1 },
+  { id: 'tc-003', name: '智能音箱-语音点歌', description: null, groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e', tags: [], algorithmType: 'asr-stream', createdAt: '2026-09-12 14:00', updatedAt: '2026-10-14 10:05', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 210, rounds: 3 },
+  { id: 'tc-004', name: '智能音箱-天气查询', description: null, groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e', tags: [], algorithmType: 'asr-v3', createdAt: '2026-09-13 10:30', updatedAt: '2026-10-13 09:50', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 12, rounds: 1 },
+  { id: 'tc-005', name: '智能音箱-闹钟设置', description: null, groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e', tags: [], algorithmType: 'asr-v3', createdAt: '2026-09-14 08:00', updatedAt: '2026-10-12 11:30', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 132, rounds: 2 },
+  { id: 'tc-006', name: '智能音箱-闹钟设置2', description: null, groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e', tags: [], algorithmType: 'asr-v3', createdAt: '2026-09-14 08:00', updatedAt: '2026-10-12 11:30', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 130, rounds: 2 },
+  { id: 'tc-007', name: '车载-导航指令', description: null, groupId: 'g2', groupName: '车载语音交互', type: 'e2e', tags: [], algorithmType: 'asr-v3', createdAt: '2026-09-15 09:00', updatedAt: '2026-10-12 15:10', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 96, rounds: 2 },
+]
+
+const noopCallbacks: CaseCardCallbacks = {
+  onPreview: vi.fn(),
+  onCopy: vi.fn(),
+  onFavorite: vi.fn(),
+  onEdit: vi.fn(),
+  onDelete: vi.fn(),
+  onRestore: vi.fn(),
+  onPurge: vi.fn(),
+}
+
+const actionCallbacks = {
+  onCreateInGroup: vi.fn(),
+  onEditGroup: vi.fn(),
+  onDeleteGroup: vi.fn(),
+  onCopyGroup: vi.fn(),
+}
+
+const setupUser = () => userEvent.setup()
+
+/** 受控外壳：模拟 React Query 异步返回 groups（首帧空数组，加载后补齐） */
+function Harness({ loading = false }: { loading?: boolean }) {
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  return (
+    <GroupedCaseList
+      groups={loading ? [] : GROUPS}
+      cases={loading ? [] : CASES}
+      loading={loading}
+      trash={false}
+      selected={selected}
+      tagRegistry={MOCK_TAGS as TagItem[]}
+      callbacks={noopCallbacks}
+      onBatchAction={vi.fn()}
+      actionCallbacks={actionCallbacks}
+      onToggleSelect={(id, c) =>
+        setSelected((prev) => {
+          const next = new Set(prev)
+          if (c) next.add(id)
+          else next.delete(id)
+          return next
+        })
+      }
+      onToggleAll={(ids, c) =>
+        setSelected((prev) => {
+          const next = new Set(prev)
+          ids.forEach((id) => (c ? next.add(id) : next.delete(id)))
+          return next
+        })
+      }
+    />
+  )
+}
+
+describe('GroupedCaseList', () => {
+  it('INT-490 P2：分组异步到达后默认展开，首屏组内用例可见（无需手动展开）', async () => {
+    const { rerender } = render(<Harness loading />)
+    // 首帧 groups 为空（React Query 未返回）→ 骨架态
+    expect(screen.queryByText('智能音箱功能测试')).not.toBeInTheDocument()
+    // 分组到达后补齐展开集，组内用例卡可见
+    rerender(<Harness />)
+    await waitFor(() => {
+      expect(screen.getByText('智能音箱-播放音乐')).toBeInTheDocument()
+    })
+    expect(screen.getByText('车载-导航指令')).toBeInTheDocument()
+  })
+
+  it('加载态渲染骨架而非分组头', () => {
+    render(<Harness loading />)
+    expect(screen.queryByText('智能音箱功能测试')).not.toBeInTheDocument()
+  })
+
+  it('组头勾选全选该组用例，页级计数联动', async () => {
+    const user = setupUser()
+    render(<Harness />)
+    await user.click(screen.getByLabelText('全选分组 智能音箱功能测试'))
+    // g1 共 6 条全选，列表头「已选择 6 个用例」
+    expect(screen.getByText('已选择 6 个用例')).toBeInTheDocument()
+  })
+
+  it('组内懒加载分页：超过 5 条显示「已显示 5 / 6 条 · 加载更多」，点击后全部可见', async () => {
+    const user = setupUser()
+    render(<Harness />)
+    // 第 6 条初始不可见
+    expect(screen.queryByText('智能音箱-闹钟设置2')).not.toBeInTheDocument()
+    expect(screen.getByText(/已显示 5 \/ 6 条 · 加载更多/)).toBeInTheDocument()
+    await user.click(screen.getByText(/加载更多/))
+    // 点击后加载第 6 条，加载更多行消失
+    expect(screen.getByText('智能音箱-闹钟设置2')).toBeInTheDocument()
+    expect(screen.queryByText(/已显示 6 \/ 6 条 · 加载更多/)).not.toBeInTheDocument()
+  })
+
+  it('分组排序下拉：按用例数量/分组名称/创建时间', async () => {
+    const user = setupUser()
+    render(<Harness />)
+    await user.click(screen.getByRole('button', { name: /排序/ }))
+    expect(await screen.findByText('按用例数量')).toBeInTheDocument()
+    expect(screen.getByText('按分组名称')).toBeInTheDocument()
+    expect(screen.getByText('按创建时间')).toBeInTheDocument()
+  })
+})
