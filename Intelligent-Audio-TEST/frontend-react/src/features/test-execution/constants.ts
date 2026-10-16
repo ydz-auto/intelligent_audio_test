@@ -1,9 +1,10 @@
 /**
  * 测试执行流程常量（interfaces/features/test-execution 层；10_测试执行.md §10，
  * INT-486 合并口径：不再有「选择算法」步骤——算法切换已全局化（INT-436/442 概览大卡
- * + 导航栏切换器），流程首步即选择测试用例；端到端+API 合并 /start-test 单入口内部两模式）。
- * TEST_FLOW_CONFIG：testType 分叉声明式常量（步骤定义/文案/校验规则），
- * 照 setup-wizard STEPS / playground-parameter-controls 形态。
+ * + 导航栏切换器）；端到端+API 合并 /start-test 单入口。
+ * INT-486 2026-10-16 追加口径（负责人定稿）：开始测试不再分 E2E/API 模式——单流程，
+ * 第二步资源选择同屏同选设备 + API（混合执行），用例不分类型。
+ * TEST_FLOW_CONFIG：单流程声明式常量（步骤定义/文案），照 setup-wizard STEPS 形态。
  */
 import type { FlowStep } from '@/application/test-execution/useFlowSteps'
 
@@ -17,52 +18,29 @@ export interface TestFlowConfig {
   /** 页面标题与副文 */
   title: string
   subtitle: string
-  /** 步骤名（E2E/API 分叉） */
+  /** 步骤名（单流程，不分 E2E/API） */
   steps: FlowStepDefinition[]
-  /** 测试类型锁（步骤二类型 facet 只读徽章） */
-  lockedTypeBadge: '端到端测试' | 'API测试'
-  /** 步骤三资源名词（设备/API） */
-  resourceNoun: '设备' | 'API'
   /** 底部上下文提示（voice_llm 建议等） */
   voiceLlmAlert: string
   /** voice_llm 建议并发数 */
   voiceLlmConcurrency: number
 }
 
-export const TEST_FLOW_CONFIG: Record<'e2e' | 'api', TestFlowConfig> = {
-  e2e: {
-    title: '端到端测试',
-    subtitle: '通过完整的测试流程验证语音产品的功能和性能',
-    steps: [
-      { index: 0, title: '选择测试用例', description: '勾选要执行的用例集' },
-      { index: 1, title: '选择测试设备', description: '选择在线设备与执行参数' },
-      { index: 2, title: '执行测试', description: '监控执行进度与结果' },
-      { index: 3, title: '查看结果', description: '查看与导出测试报告' },
-    ],
-    lockedTypeBadge: '端到端测试',
-    resourceNoun: '设备',
-    voiceLlmAlert:
-      'voice_llm 测试可能需要设备支持：音量控制、导轨控制、打断检测。请确认设备能力后再选择。',
-    voiceLlmConcurrency: 2,
-  },
-  api: {
-    title: 'API 测试',
-    subtitle: '测试语音服务 API 的功能和性能，验证接口响应和数据正确性',
-    steps: [
-      { index: 0, title: '选择测试用例', description: '勾选要执行的用例集' },
-      { index: 1, title: '选择被测 API', description: '选择在线 API 与执行参数' },
-      { index: 2, title: '执行测试', description: '监控执行进度与结果' },
-      { index: 3, title: '查看结果', description: '查看与导出测试报告' },
-    ],
-    lockedTypeBadge: 'API测试',
-    resourceNoun: 'API',
-    voiceLlmAlert:
-      'voice_llm 用例支持多轮对话，每个用例可配置多个轮次的输入文本/音频',
-    voiceLlmConcurrency: 2,
-  },
+export const TEST_FLOW_CONFIG: TestFlowConfig = {
+  title: '开始测试',
+  subtitle: '选择用例与设备/API，在同一流程内完成语音测试与报告生成',
+  steps: [
+    { index: 0, title: '选择测试用例', description: '勾选要执行的用例集' },
+    { index: 1, title: '选择测试资源', description: '同屏选择设备与 API（混合执行）' },
+    { index: 2, title: '执行测试', description: '监控执行进度与结果' },
+    { index: 3, title: '查看结果', description: '查看与导出测试报告' },
+  ],
+  voiceLlmAlert:
+    'voice_llm 用例支持多轮对话，每个用例可配置多个轮次的输入文本/音频；物理设备测试可能需要音量控制、导轨控制、打断检测等设备能力。',
+  voiceLlmConcurrency: 2,
 }
 
-/** 网络环境选项（E2E 执行参数，对齐端到端测试功能设计文档 :338） */
+/** 网络环境选项（执行参数，对齐端到端测试功能设计文档 :338） */
 export const NETWORK_OPTIONS = ['默认', 'Wi-Fi', '移动网络', '飞行模式'] as const
 
 /** 被测对象系统类型筛选（INT-486 口径 2026-10-16：Android/鸿蒙/播放设备等；数据来自 device.system/type） */
@@ -71,6 +49,21 @@ export const RESOURCE_SYSTEM_OPTIONS = [
   { value: 'android', label: 'Android' },
   { value: 'harmony', label: '鸿蒙' },
   { value: 'api', label: 'API 网关' },
+] as const
+
+/** 被测 API 厂商筛选（INT-486 口径 2026-10-16：按 API 筛选维度含厂商） */
+export const RESOURCE_VENDOR_OPTIONS = [
+  { value: 'all', label: '全部厂商' },
+  { value: '内部 ASR 组', label: '内部 ASR 组' },
+  { value: '内部唤醒组', label: '内部唤醒组' },
+  { value: 'TTS 组', label: 'TTS 组' },
+] as const
+
+/** 被测 API 协议筛选（INT-486 口径 2026-10-16：按 API 筛选维度含协议） */
+export const RESOURCE_PROTOCOL_OPTIONS = [
+  { value: 'all', label: '全部协议' },
+  { value: 'http', label: 'HTTP' },
+  { value: 'websocket', label: 'WebSocket' },
 ] as const
 
 /**

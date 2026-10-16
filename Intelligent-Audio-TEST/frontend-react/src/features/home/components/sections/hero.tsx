@@ -67,7 +67,7 @@ export function HeroSection({ className }: { className?: string }) {
                 size='lg'
                 className='h-12 rounded-full px-6'
                 render={
-                  <Link to={user ? '/dashboard' : '/E2ETest'} />
+                  <Link to={user ? '/dashboard' : '/start-test'} />
                 }
               >
                 {user ? HERO.primaryActionAuthed : HERO.primaryAction}

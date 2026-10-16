@@ -1,8 +1,9 @@
 /**
  * 任务名称弹窗（§5.1；interfaces/features/test-execution/modals；newAPI Dialog 基元）。
- * 字段：任务名称*（Input maxlength 50，默认预填「E2E测试任务_{YYYY-MM-DD HH:mm}」）；
+ * 字段：任务名称*（Input maxlength 50，默认预填「测试任务_{YYYY-MM-DD HH:mm}」）；
  * 说明行 + 执行摘要一行；主钮「开始测试」（进行中「正在启动…」+ Loader）——
  * 确认即创建+启动+跳 step=3（useTestLaunch.launch）。
+ * INT-486 2026-10-16 口径：设备+API 混合执行，摘要含设备/API 双计数。
  */
 import { useState } from 'react'
 
@@ -24,7 +25,6 @@ import type { ExecutionParams } from '@/domain/models/testExecution'
 interface TaskNameDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  type: 'e2e' | 'api'
   algorithmType: string | null | undefined
   caseCount: number
   deviceCount: number
@@ -37,7 +37,6 @@ interface TaskNameDialogProps {
 export function TaskNameDialog({
   open,
   onOpenChange,
-  type,
   algorithmType,
   caseCount,
   deviceCount,
@@ -47,31 +46,25 @@ export function TaskNameDialog({
   params,
 }: TaskNameDialogProps) {
   const { defaultTaskName, launch } = useTestLaunch()
-  const [name, setName] = useState(() => defaultTaskName(type))
+  const [name, setName] = useState(() => defaultTaskName())
   const [starting, setStarting] = useState(false)
 
   // open 变更时重置默认名称
   const handleOpenChange = (next: boolean) => {
-    if (next) setName(defaultTaskName(type))
+    if (next) setName(defaultTaskName())
     onOpenChange(next)
   }
 
-  const summary =
-    type === 'e2e'
-      ? `${caseCount} 条 · ${deviceCount} 台 · 并发 ${params.concurrency}`
-      : `${caseCount} 条 · ${apiCount} 个 · 并发 ${apiCount === 0 ? 0 : params.concurrency}`
+  const summary = `${caseCount} 条 · ${deviceCount} 台 · ${apiCount} 个 · 并发 ${params.concurrency}`
 
-  /** 任务 device_types（混跑语义：E2E 含 http_api/websocket_api 网关；API 页为 http_api） */
-  const deviceTypes = type === 'e2e'
-    ? ['smart_speaker', 'http_api', 'websocket_api']
-    : ['http_api']
+  /** 任务 device_types（混跑语义：设备 + HTTP API + Realtime WS 网关全链） */
+  const deviceTypes = ['smart_speaker', 'http_api', 'websocket_api']
 
   const handleStart = async () => {
     if (!name.trim()) return
     setStarting(true)
     try {
       await launch(name.trim(), {
-        type,
         algorithmType,
         deviceIds,
         apiIds,

@@ -1,5 +1,6 @@
 /**
- * 测试启动编排（application 层；10_测试执行.md §3.7 启动校验链）。
+ * 测试启动编排（application 层；10_测试执行.md §3.7 启动校验链；INT-486 2026-10-16
+ * 追加口径：开始测试不再分 E2E/API——校验设备/API 任一在线即可启动，混合执行）。
  * 校验（全部 toast.warning，照 setup-wizard toast.error 模式）→ 任务名称默认值 →
  * POST /tasks（task:create）+ POST /tasks/{id}/start（task:execute）→ 成功跳 step=3；
  * 失败 toast.error「创建或启动测试任务失败：{message}」。
@@ -30,7 +31,6 @@ export function useTestLaunch() {
   /** 启动校验链（§3.7；返回错误文案数组，空=通过） */
   const validate = useCallback(
     (opts: {
-      type: 'e2e' | 'api'
       cases: TestCase[]
       devices: Device[]
       apis: ApiConfig[]
@@ -43,21 +43,22 @@ export function useTestLaunch() {
       if (all.length === 0) {
         errors.push('当前筛选条件下没有可用的测试用例，请选择用例或调整筛选条件')
       }
-      if (opts.type === 'e2e') {
-        const selected = opts.devices.filter((d) => opts.deviceIds.includes(d.id))
-        if (selected.length === 0) {
-          errors.push('请至少选择一台在线测试设备')
-        } else {
-          const offline = selected.filter((d) => d.status !== 'online').map((d) => d.name)
-          if (offline.length) errors.push(`以下设备处于离线状态，无法执行测试：${offline.join('、')}`)
-        }
+      const selectedDevices = opts.devices.filter((d) => opts.deviceIds.includes(d.id))
+      const selectedApis = opts.apis.filter((a) => opts.apiIds.includes(a.id))
+      if (selectedDevices.length === 0 && selectedApis.length === 0) {
+        errors.push('请至少选择一台在线设备或一个在线 API')
       } else {
-        const selected = opts.apis.filter((a) => opts.apiIds.includes(a.id))
-        if (selected.length === 0) {
-          errors.push('请至少选择一个在线 API')
-        } else {
-          const offline = selected.filter((a) => a.status !== 'online').map((a) => a.name)
-          if (offline.length) errors.push(`以下 API 处于离线状态，无法执行测试：${offline.join('、')}`)
+        const offlineDevices = selectedDevices
+          .filter((d) => d.status !== 'online')
+          .map((d) => d.name)
+        if (offlineDevices.length) {
+          errors.push(`以下设备处于离线状态，无法执行测试：${offlineDevices.join('、')}`)
+        }
+        const offlineApis = selectedApis
+          .filter((a) => a.status !== 'online')
+          .map((a) => a.name)
+        if (offlineApis.length) {
+          errors.push(`以下 API 处于离线状态，无法执行测试：${offlineApis.join('、')}`)
         }
       }
       return errors
@@ -65,17 +66,14 @@ export function useTestLaunch() {
     []
   )
 
-  /** 默认任务名称（现 handleStartTask 口径：E2E测试任务_{YYYY-MM-DD HH:mm}） */
-  const defaultTaskName = useCallback((type: 'e2e' | 'api') => {
-    return type === 'e2e'
-      ? `E2E测试任务_${formatNow()}`
-      : `API测试任务_${formatNow()}`
+  /** 默认任务名称（2026-10-16 口径：不再分 E2E/API 模式） */
+  const defaultTaskName = useCallback(() => {
+    return `测试任务_${formatNow()}`
   }, [])
 
   /** 创建 + 启动 + 跳 step=3 */
   const launch = useCallback(
     async (name: string, opts: {
-      type: 'e2e' | 'api'
       algorithmType?: string | null
       deviceIds: number[]
       apiIds: number[]
@@ -85,7 +83,8 @@ export function useTestLaunch() {
       const caseStore = useCaseSelectionStore.getState()
       const input: TaskLaunchInput = {
         name,
-        testType: opts.type,
+        // 用例不分类型（test_type 残留列待 INT-79 废弃），任务不再声明测试类型
+        testType: null,
         algorithmType: opts.algorithmType ?? null,
         testCaseIds: caseStore.manualCaseIds,
         filterAllMode: caseStore.filterAllMode,
@@ -108,14 +107,12 @@ export function useTestLaunch() {
   /** 步骤三底部摘要（§5.1 任务名称弹窗执行摘要行） */
   const summary = useCallback(
     (opts: {
-      type: 'e2e' | 'api'
       caseCount: number
-      resourceCount: number
+      deviceCount: number
+      apiCount: number
       concurrency: number
     }) => {
-      return opts.type === 'e2e'
-        ? `${opts.caseCount} 条 · ${opts.resourceCount} 台 · 并发 ${opts.concurrency}`
-        : `${opts.caseCount} 条 · ${opts.resourceCount} 个 · 并发 ${opts.concurrency}`
+      return `${opts.caseCount} 条 · ${opts.deviceCount} 台 · ${opts.apiCount} 个 · 并发 ${opts.concurrency}`
     },
     []
   )

@@ -30,6 +30,8 @@ interface SelectionSummaryProps {
   total?: number
   /** 资源：单位文案（「台设备」/「个 API」） */
   unitText?: string
+  /** 资源：自定义已选文案（设备+API 混合计数，如「3 台设备 · 2 个 API」） */
+  countText?: string
   /** 资源：并发补充（API 页「· 并发上限 {sum}」） */
   concurrencyText?: string
   /** 资源明细项（名称+状态+移除） */
@@ -46,6 +48,7 @@ export function SelectionSummary({
   onClear,
   total,
   unitText,
+  countText,
   concurrencyText,
   items = [],
   onRemoveItem,
@@ -60,8 +63,16 @@ export function SelectionSummary({
         )}
       >
         <span>
-          已选 <span className='font-medium tabular-nums'>{count}</span>{' '}
-          {unitText ?? '项'}
+          {countText ? (
+            <>
+              已选 <span className='font-medium tabular-nums'>{countText}</span>
+            </>
+          ) : (
+            <>
+              已选 <span className='font-medium tabular-nums'>{count}</span>{' '}
+              {unitText ?? '项'}
+            </>
+          )}
           {concurrencyText && (
             <span className='text-muted-foreground ms-2 text-xs'>
               · {concurrencyText}

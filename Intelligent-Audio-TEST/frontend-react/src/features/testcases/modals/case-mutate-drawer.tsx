@@ -1,8 +1,10 @@
 /**
  * 新增/编辑用例抽屉（11_用例域.md §5.1，Sheet `sm:max-w-[1280px]`，testcase:create/update）。
- * 头部类型切换（API / E2E，默认胶囊）+ 单栏纵向分节（节间 border-b）：
- * 基本信息（双列栅格）/标签（TagInput chips + 已有标签建议）/描述/关联算法/轮次配置
- * （左轮次导航 180px + 右步骤区横向锚点 Tabs line：算法参数→音频列表→噪声与干扰→评估维度→参考参数）。
+ * 单栏纵向分节（节间 border-b）：基本信息（双列栅格）/标签（TagInput chips + 已有标签建议）/
+ * 描述/关联算法/轮次配置（左轮次导航 180px + 右步骤区横向锚点 Tabs line：算法参数→音频列表→
+ * 噪声与干扰→评估维度→参考参数）。
+ * INT-486 用例不分类型口径（负责人 2026-10-16）：头部类型切换（API/E2E）移除——用例无类型之分，
+ * 正式类型维度=关联算法（algorithmType）。
  * 可视稿演示态：轮次步骤区为结构占位（完整字段随接线批次落地，§5.1 已列全）。
  */
 import { Plus, Sparkles } from 'lucide-react'
@@ -138,7 +140,6 @@ export function CaseMutateDrawer({
   presetGroupId?: string | null
 }) {
   const isEdit = caseItem != null
-  const [testType, setTestType] = useState<'api' | 'e2e'>(caseItem?.type ?? 'e2e')
   const [step, setStep] = useState<(typeof STEPS)[number]>('算法参数')
   const [tagValue, setTagValue] = useState<string[]>(caseItem?.tags ?? [])
   const [groupValue, setGroupValue] = useState(caseItem?.groupId ?? presetGroupId ?? '')
@@ -158,23 +159,10 @@ export function CaseMutateDrawer({
               <SheetTitle>{isEdit ? '编辑测试用例' : '新增测试用例'}</SheetTitle>
               <SheetDescription>
                 {isEdit
-                  ? `正在编辑「${caseItem?.name}」，统一管理端到端测试用例和 API 测试用例`
-                  : '统一管理端到端测试用例和 API 测试用例'}
+                  ? `正在编辑「${caseItem?.name}」，配置分组、标签与关联算法`
+                  : '配置用例名称、分组、标签与关联算法'}
               </SheetDescription>
             </div>
-            {/* 头部类型切换（默认胶囊；编辑态锁定显示类型 Badge） */}
-            {isEdit ? (
-              <Badge variant='outline' className='gap-1 rounded-md px-1.5'>
-                {caseItem?.type === 'api' ? 'API 测试' : '端到端测试'}
-              </Badge>
-            ) : (
-              <Tabs value={testType} onValueChange={(v) => setTestType(v as 'api' | 'e2e')}>
-                <TabsList variant='default'>
-                  <TabsTrigger value='api'>API</TabsTrigger>
-                  <TabsTrigger value='e2e'>E2E</TabsTrigger>
-                </TabsList>
-              </Tabs>
-            )}
           </div>
         </SheetHeader>
 
@@ -349,7 +337,7 @@ function StepPlaceholder({ step }: { step: (typeof STEPS)[number] }) {
   const notes: Record<(typeof STEPS)[number], string> = {
     算法参数: '按算法 schema 渲染 DynamicForm；排除 voiceprint / interferers / audio_select 类型参数（归后两步）。',
     音频列表: '音频卡列表（拖拽排序 GripVertical）——音频文件 Combobox、播放设备、声压级 dB；工具栏排序/标签交错/设备交叉。',
-    噪声与干扰: '（仅 E2E）背景噪声节 + 声纹注册配置节 + 干扰人配置节（干扰音频/播放设备/声压/开始延迟/循环播放）。',
+    噪声与干扰: '背景噪声节 + 声纹注册配置节 + 干扰人配置节（干扰音频/播放设备/声压/开始延迟/循环播放）。',
     评估维度: '维度 chips 多选区（按当前算法过滤可用维度）+ 已选维度参数卡（权重 Slider + 阈值 + LLM Judge 配置）。',
     参考参数: '路径行 FolderOpen + 参考参数路径；未生成时空态「参考参数将在音频关联后自动生成」；编辑态 Textarea mono + 保存。',
   }

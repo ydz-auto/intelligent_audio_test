@@ -1,8 +1,9 @@
 /**
  * 用例筛选工具栏（11_用例域.md §3.4 DataTableToolbar 形态）：
- * 搜索（debounce 500ms）+ 测试类型/分组/标签/评估维度 facet chips + 全局算法联动 chip
+ * 搜索（debounce 500ms）+ 分组/标签/评估维度 facet chips + 全局算法联动 chip
  * + 收藏/回收站工具条（回收站态「全部恢复」ghost 钮）+ 重置。
  * 标签 facet 按分类分组呈现（INT-487：选项组头=分类名，数据源 GET /tags/by-category）。
+ * INT-486 用例不分类型口径（负责人 2026-10-16）：测试类型 facet 移除——用例无 api/e2e 之分。
  */
 import { Check, ChevronDown, FilterX, Search } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
@@ -21,9 +22,6 @@ import type { TestCaseListFilters } from '@/application/testcases/use-testcases-
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import type { EvaluationDimensionItem } from '@/domain/models/evaluationDimension'
 import type { TagItem } from '@/domain/models/testTag'
-import {
-  TEST_TYPE_OPTIONS,
-} from '@/features/testcases/constants'
 import { FavoriteTrashToggle } from '@/features/testcases/components/favorite-trash-toggle'
 import { TestCasesAlgorithmChip } from '@/features/testcases/components/global-algorithm-chip'
 
@@ -266,12 +264,6 @@ export function TestCasesFilterToolbar({
           />
         </div>
 
-        <SingleFacet
-          label='测试类型'
-          value={filters.type ?? null}
-          options={[...TEST_TYPE_OPTIONS]}
-          onChange={(v) => update({ type: v })}
-        />
         <SingleFacet
           label='分组'
           value={filters.groupId ?? null}

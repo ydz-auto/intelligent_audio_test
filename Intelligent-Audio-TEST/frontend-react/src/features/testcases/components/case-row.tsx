@@ -2,9 +2,8 @@
  * 用例表格行（11_用例域.md §3.3 列定义，分组/平铺两视图共用）。
  * 单元格 `py-2`、字号 13px；数值列 mono tabular-nums；回收站行 DISABLED_ROW
  * （muted 底 + 左标线）+ 状态位「已删除」destructive 徽章。
- * 类型徽章：端到端测试=chart-1 系软底（Smartphone）、API测试=chart-2 系软底（ArrowLeftRight）。
+ * INT-486 用例不分类型口径（负责人 2026-10-16）：类型徽章移除——正式类型维度=算法类型列。
  */
-import { ArrowLeftRight, Smartphone } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -46,10 +45,6 @@ export function CaseTableRow({
 }) {
   const disabled = caseItem.deleted === true
   const col = (key: CaseColumnKey) => visible.has(key)
-  const typeMeta =
-    caseItem.type === 'api'
-      ? { label: 'API 测试', icon: ArrowLeftRight, cls: 'border-chart-2/40 bg-chart-2/10 text-chart-2' }
-      : { label: '端到端测试', icon: Smartphone, cls: 'border-chart-1/40 bg-chart-1/10 text-chart-1' }
 
   return (
     <tr
@@ -81,20 +76,6 @@ export function CaseTableRow({
                 : (caseItem.description ?? '')}
             </span>
           </div>
-        </td>
-      )}
-      {col('type') && (
-        <td className='px-3 py-2'>
-          {disabled ? (
-            <Badge variant='destructive' className='rounded-md px-1.5'>
-              已删除
-            </Badge>
-          ) : (
-            <Badge variant='outline' className={cn('rounded-md px-1.5', typeMeta.cls)}>
-              <typeMeta.icon aria-hidden='true' className='size-3' />
-              {typeMeta.label}
-            </Badge>
-          )}
         </td>
       )}
       {col('algorithm') && (

@@ -4,7 +4,6 @@
  */
 import { Link } from '@tanstack/react-router'
 import {
-  ArrowLeftRight,
   Check,
   ChevronDown,
   ChevronUp,
@@ -132,7 +131,7 @@ function ApiPreviewCard(props: { signals: HeroSignal[] }) {
           平台全部能力开放为 REST 与 SSE
           接口：创建任务、订阅进度、拉取报告，脚本化集成与页面操作同样简单。
         </p>
-        <Button render={<Link to='/E2ETest' />}>开始端到端测试</Button>
+        <Button render={<Link to='/start-test' />}>开始测试</Button>
       </div>
 
       <Collapsible className='my-3 space-y-3'>
@@ -262,17 +261,10 @@ function CompactQuickAction(props: { action: QuickAction }) {
 
 const ALL_QUICK_ACTIONS: QuickAction[] = [
   {
-    title: '端到端测试',
-    description: '按五步流程对真机发起音频测试',
-    to: '/E2ETest',
+    title: '开始测试',
+    description: '选用例 + 设备/API，同一流程完成测试',
+    to: '/start-test',
     icon: Smartphone,
-    requiredPermission: 'task:execute',
-  },
-  {
-    title: 'API 测试',
-    description: '面向 API 被测对象的接口测试',
-    to: '/APITest',
-    icon: ArrowLeftRight,
     requiredPermission: 'task:execute',
   },
   {

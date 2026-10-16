@@ -5,7 +5,7 @@
  * 用例执行详情（§5.2 多轮指标对比/日志分页）。
  */
 
-/** 执行参数（§3.6.3；E2E 可编辑 / API 只读展示） */
+/** 执行参数（§3.6.3；INT-486 2026-10-16 口径：设备+API 混合执行，均可编辑） */
 export interface ExecutionParams {
   /** 测试轮数（min 1 max 20，default 1） */
   rounds: number
@@ -13,9 +13,9 @@ export interface ExecutionParams {
   timeout: number
   /** 失败自动重试次数（min 0 max 5，default 0） */
   retries: number
-  /** 并发任务数（E2E 默认 4；API 页只读=所选 API maxConcurrent 自动求和） */
+  /** 并发任务数（default 4；API 并发上限自动合计作补充展示） */
   concurrency: number
-  /** 网络环境（E2E：默认/Wi-Fi/移动网络/飞行模式；device:control 才可设） */
+  /** 网络环境（默认/Wi-Fi/移动网络/飞行模式；device:control 才可设） */
   network: string
   /** 报告模板（默认标准模板） */
   reportTemplate: string
@@ -43,14 +43,15 @@ export const DEFAULT_EXECUTION_PARAMS: ExecutionParams = {
 /** 任务创建/启动载荷（task_bp.py POST /tasks + POST /tasks/{id}/start；TODO 接线） */
 export interface TaskLaunchInput {
   name: string
-  testType: 'e2e' | 'api'
+  /** 用例不分类型（INT-486 2026-10-16 口径；test_type 残留列待 INT-79 废弃） */
+  testType: 'e2e' | 'api' | null
   algorithmType: string | null
   testCaseIds: string[]
   /** 圈定模式：未手动选择时按筛选条件全量圈定（filter-all 口径显性化） */
   filterAllMode: boolean
-  /** E2E：所选设备 id 集 */
+  /** 所选设备 id 集（设备+API 混合执行） */
   deviceIds: number[]
-  /** API：所选 API id 集 */
+  /** 所选 API id 集（设备+API 混合执行） */
   apiIds: number[]
   params: ExecutionParams
 }

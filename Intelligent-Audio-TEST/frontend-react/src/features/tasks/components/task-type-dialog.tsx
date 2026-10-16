@@ -1,10 +1,9 @@
 /**
- * 任务类型选择弹窗（09_任务域.md §5.6，页头「+ 创建新任务」）。
- * 标题「创建新任务」说明「请选择测试类型」；两张选项卡（grid-cols-2）：
- * 端到端测试（Smartphone，bg-primary/10 text-primary）/ API测试（ArrowLeftRight，bg-secondary/10 text-secondary）。
- * 点击跳对应创建页（创建流程归测试执行卡 INT-355，本卡只出选择弹窗）。
+ * 任务创建入口弹窗（09_任务域.md §5.6，页头「+ 创建新任务」）。
+ * 标题「创建新任务」；单入口卡「开始测试」（INT-486 2026-10-16 口径：开始测试不再分
+ * E2E/API 模式，设备+API 混合执行，点击跳 /start-test 单流程）。
  */
-import { ArrowLeftRight, Smartphone } from 'lucide-react'
+import { Smartphone } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 
 import { Button } from '@/components/ui/button'
@@ -35,26 +34,17 @@ export function TaskTypeDialog({
       <DialogContent className='sm:max-w-md'>
         <DialogHeader>
           <DialogTitle>创建新任务</DialogTitle>
-          <DialogDescription>请选择测试类型</DialogDescription>
+          <DialogDescription>选择用例与设备/API，开始一次测试</DialogDescription>
         </DialogHeader>
-        <div className='grid grid-cols-2 gap-4'>
+        <div className='grid grid-cols-1 gap-4'>
           <button
             type='button'
-            onClick={() => go('/E2ETest')}
+            onClick={() => go('/start-test')}
             className='hover:shadow-lg group flex flex-col items-center gap-3 rounded-xl border bg-primary/10 p-6 text-primary transition-all'
           >
             <Smartphone aria-hidden='true' className='size-8' />
-            <span className='text-sm font-medium'>端到端测试</span>
-            <span className='text-primary/70 text-xs'>真实设备 · 端到端链路验证</span>
-          </button>
-          <button
-            type='button'
-            onClick={() => go('/APITest')}
-            className='hover:shadow-lg group flex flex-col items-center gap-3 rounded-xl border bg-secondary/10 p-6 text-secondary transition-all'
-          >
-            <ArrowLeftRight aria-hidden='true' className='size-8' />
-            <span className='text-sm font-medium'>API 测试</span>
-            <span className='text-secondary/70 text-xs'>HTTP 接口 · 通道稳定性验证</span>
+            <span className='text-sm font-medium'>开始测试</span>
+            <span className='text-primary/70 text-xs'>设备 + API 混合执行 · 同流程完成测试与报告</span>
           </button>
         </div>
         <div className='flex justify-end'>

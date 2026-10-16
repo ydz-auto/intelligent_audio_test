@@ -1,10 +1,13 @@
 /**
  * 步骤三：选择资源与执行参数（interfaces/features/test-execution/components；
- * 10_测试执行.md §3.6）。工具行 + 分叉（E2E 设备网格 / API 表格）+ 执行参数区
- * （测试配置/并发/网络/报告四类，照 playground-parameter-panel 参数卡形态）。
+ * 10_测试执行.md §3.6；INT-486 2026-10-16 追加口径：开始测试不再分 E2E/API——
+ * 本步同屏同选设备 + API（混合执行），筛选按设备/API 维度组合）。
+ * 工具行（搜索/状态/实验室/系统类型 + API 厂商/协议筛选）+ 设备网格 + 被测 API 表格
+ * + 执行参数区（测试配置/并发/网络，照 playground-parameter-panel 参数卡形态）。
+ * 报告参数不在第二步配置（负责人 2026-10-16 口径确认：报告内容/导出在报告阶段处理）。
  * readOnly（§3.1.1）：设备/API 列表只读可见；扫描/新增/连接测试/编辑/删除隐藏；参数只读展示。
  * 多友商口径（负责人 2026-10-16 核心业务口径）：多被测主体同集同指标同时实测=本步
- * API 多选（api-table 行 ☑ + 表头全选）+ 并发自动合计（「并发任务数」由所选 API 并发上限求和）。
+ * 设备 + API 多选 + 并发自动合计（「并发任务数」由所选 API 并发上限求和）。
  */
 import { Info, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -34,19 +37,22 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { cn } from '@/lib/utils'
 
 import { DeviceCard } from '@/features/test-execution/components/device-card'
 import { ApiTable } from '@/features/test-execution/components/api-table'
 import { ParamCard } from '@/features/test-execution/components/param-card'
 import { SelectionSummary } from '@/features/test-execution/components/selection-summary'
-import { NETWORK_OPTIONS, REPORT_INCLUDE_OPTIONS, REPORT_TEMPLATE_OPTIONS, RESOURCE_SYSTEM_OPTIONS, MOCK_RESOURCE_LABS } from '@/features/test-execution/constants'
+import {
+  MOCK_RESOURCE_LABS,
+  NETWORK_OPTIONS,
+  RESOURCE_PROTOCOL_OPTIONS,
+  RESOURCE_SYSTEM_OPTIONS,
+  RESOURCE_VENDOR_OPTIONS,
+} from '@/features/test-execution/constants'
 import type { ApiConfig } from '@/domain/models/apiConfig'
 import type { Device } from '@/domain/models/device'
 
 interface StepResourcesProps {
-  type: 'e2e' | 'api'
-  resourceNoun: string
   voiceLlmAlert: string
   readOnly: boolean
   onOpenApiEdit: (api?: ApiConfig) => void
@@ -56,8 +62,6 @@ interface StepResourcesProps {
 }
 
 export function StepResources({
-  type,
-  resourceNoun,
   voiceLlmAlert,
   readOnly,
   onOpenApiEdit,
@@ -67,7 +71,7 @@ export function StepResources({
 }: StepResourcesProps) {
   const { hasPermission } = usePermissions()
   const { current: currentAlgorithm, algorithmType } = useAlgorithmChannel()
-  const resources = useResourceSelection(type, algorithmType)
+  const resources = useResourceSelection(algorithmType)
   const apisCrud = useApisCrud()
   const params = useExecutionStore((s) => s.params)
   const setParams = useExecutionStore((s) => s.setParams)
@@ -76,9 +80,11 @@ export function StepResources({
   // INT-486 口径 2026-10-16：实验室/系统类型筛选（INT-487 设备-实验室绑定待接线）
   const [labFilter, setLabFilter] = useState('all')
   const [systemFilter, setSystemFilter] = useState<'all' | 'android' | 'harmony' | 'api'>('all')
+  // INT-486 口径 2026-10-16：API 厂商/协议筛选维度
+  const [vendorFilter, setVendorFilter] = useState('all')
+  const [protocolFilter, setProtocolFilter] = useState<'all' | 'http' | 'websocket'>('all')
   const [testingIds, setTestingIds] = useState<Set<number>>(new Set())
 
-  const isApi = type === 'api'
   const canDeviceControl = hasPermission('device:control')
   const canDeviceCreate = hasPermission('device:create')
   const canApiCreate = hasPermission('api_config:create')
@@ -120,15 +126,21 @@ export function StepResources({
     return resources.apis.filter((a) => {
       if (statusFilter !== 'all' && (a.status ?? 'offline') !== statusFilter) return false
       if (labApiIds !== null && !labApiIds.includes(a.id)) return false
-      // API 均为网关：系统类型仅「全部/API 网关」有效，物理系统筛选对 API 无命中
+      // 系统类型 facet：API 均为网关，「仅 API 网关」命中；物理系统筛选对 API 无命中
       if (systemFilter === 'android' || systemFilter === 'harmony') return false
+      if (vendorFilter !== 'all' && a.vendor !== vendorFilter) return false
+      if (protocolFilter !== 'all') {
+        const isWs = a.deviceType === 'websocket_api'
+        if (protocolFilter === 'websocket' && !isWs) return false
+        if (protocolFilter === 'http' && isWs) return false
+      }
       if (q) {
         const haystack = `${a.name} ${a.apiUrl ?? ''}`.toLowerCase()
         if (!haystack.includes(q)) return false
       }
       return true
     })
-  }, [resources.apis, keyword, statusFilter, labApiIds, systemFilter])
+  }, [resources.apis, keyword, statusFilter, labApiIds, systemFilter, vendorFilter, protocolFilter])
 
   /** API 并发自动求和（§3.6.3 并发数参数卡；现 apiTest.steps.ts:154-158 口径） */
   const apiConcurrencySum = useMemo(
@@ -168,6 +180,7 @@ export function StepResources({
 
   const selectedDevices = resources.devices.filter((d) => resources.deviceIds.includes(d.id))
   const selectedApis = resources.apis.filter((a) => resources.apiIds.includes(a.id))
+  const totalSelected = resources.deviceIds.length + resources.apiIds.length
 
   return (
     <div className='flex flex-col gap-4'>
@@ -186,7 +199,7 @@ export function StepResources({
           <Input
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            placeholder={isApi ? '搜索 API 名称或端点' : '搜索设备名称或型号'}
+            placeholder='搜索设备或 API 名称'
             className='h-8 w-[200px] ps-7 sm:w-[240px]'
           />
         </div>
@@ -221,39 +234,68 @@ export function StepResources({
           </SelectContent>
         </Select>
 
-        {/* 系统类型 facet（E2E 设备按 system/type；API 均为网关） */}
-        {!isApi && (
-          <Select
-            value={systemFilter}
-            onValueChange={(v) => setSystemFilter(v as 'all' | 'android' | 'harmony' | 'api')}
-          >
-            <SelectTrigger className='h-8 w-32 text-xs'>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {RESOURCE_SYSTEM_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
+        {/* 系统类型 facet（设备按 system/type；API 均为网关） */}
+        <Select
+          value={systemFilter}
+          onValueChange={(v) => setSystemFilter(v as 'all' | 'android' | 'harmony' | 'api')}
+        >
+          <SelectTrigger className='h-8 w-32 text-xs'>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {RESOURCE_SYSTEM_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* 厂商 facet（API 筛选维度，INT-486 口径） */}
+        <Select value={vendorFilter} onValueChange={(v) => setVendorFilter(v ?? 'all')}>
+          <SelectTrigger className='h-8 w-32 text-xs'>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {RESOURCE_VENDOR_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* 协议 facet（API 筛选维度，INT-486 口径） */}
+        <Select
+          value={protocolFilter}
+          onValueChange={(v) => setProtocolFilter(v as 'all' | 'http' | 'websocket')}
+        >
+          <SelectTrigger className='h-8 w-32 text-xs'>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {RESOURCE_PROTOCOL_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         {/* 右端操作（权限显隐；readOnly 隐藏） */}
         {!readOnly && (
           <div className='ml-auto flex items-center gap-2'>
-            {!isApi && canDeviceControl && (
+            {canDeviceControl && (
               <Button variant='outline' size='sm' onClick={onScanDevices}>
                 扫描设备
               </Button>
             )}
-            {!isApi && canDeviceCreate && (
+            {canDeviceCreate && (
               <Button variant='outline' size='sm' onClick={onAddDevice}>
                 新增设备
               </Button>
             )}
-            {isApi && canApiCreate && (
+            {canApiCreate && (
               <Button size='sm' onClick={() => onOpenApiEdit()}>
                 新增 API
               </Button>
@@ -263,18 +305,19 @@ export function StepResources({
       </div>
 
       {/* 过滤空态兜底（§3.3） */}
-      {(isApi ? resources.apis.length === 0 : resources.devices.length === 0) &&
+      {resources.devices.length === 0 &&
+        resources.apis.length === 0 &&
         !resources.isLoading && (
           <Empty className='min-h-[200px] border-dashed'>
             <EmptyHeader>
               <EmptyMedia variant='icon' />
               <EmptyTitle>
-                当前算法（{currentAlgorithm?.name ?? '未选择'}）下没有可用{resourceNoun}
+                当前算法（{currentAlgorithm?.name ?? '未选择'}）下没有可用设备或 API
               </EmptyTitle>
               <EmptyDescription>
                 {resources.isTemporary
                   ? `已临时显示全部，全局算法仍为 ${currentAlgorithm?.name ?? '未选择'}`
-                  : '更换算法或查看全部设备'}
+                  : '更换算法或查看全部资源'}
               </EmptyDescription>
             </EmptyHeader>
             {!readOnly && (
@@ -298,76 +341,106 @@ export function StepResources({
       )}
 
       {/* voice_llm Alert（步骤三顶部） */}
-      {!isApi && isVoiceLlm && (
+      {isVoiceLlm && (
         <Alert className='py-2'>
           <Info aria-hidden='true' className='size-4' />
           <AlertDescription className='text-xs'>{voiceLlmAlert}</AlertDescription>
         </Alert>
       )}
 
-      {/* 资源区（E2E 设备网格 / API 表格） */}
+      {/* 资源区（设备网格 + 被测 API 表格，同屏同选混合执行） */}
       {resources.isLoading ? (
         <div aria-busy='true' className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3'>
           {Array.from({ length: 6 }).map((_, index) => (
             <Skeleton key={index} className='h-44 w-full rounded-xl' />
           ))}
         </div>
-      ) : isApi ? (
-        <ApiTable
-          apis={visibleApis}
-          selectedIds={resources.apiIds}
-          readOnly={readOnly}
-          canTest={canApiTest}
-          canEdit={canApiEdit}
-          canDelete={canApiDelete}
-          testingIds={testingIds}
-          onToggle={resources.toggleApi}
-          onToggleAll={() => {
-            const onlineIds = resources.apis.filter((a) => a.status === 'online').map((a) => a.id)
-            const allSelected = onlineIds.every((id) => resources.apiIds.includes(id))
-            resources.selectAllApis(allSelected ? [] : onlineIds)
-          }}
-          onTestConnection={handleApiTest}
-          onEdit={onOpenApiEdit}
-          onDelete={(api) => void apisCrud.remove(api)}
-        />
       ) : (
-        <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3'>
-          {visibleDevices.map((device) => (
-            <DeviceCard
-              key={device.id}
-              device={device}
-              selected={resources.deviceIds.includes(device.id)}
+        <>
+          {/* 设备 */}
+          <section className='space-y-2'>
+            <h3 className='text-sm font-semibold'>
+              设备
+              <span className='text-muted-foreground ms-2 text-xs font-normal'>
+                {visibleDevices.length} 台在线可执行设备
+              </span>
+            </h3>
+            <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3'>
+              {visibleDevices.map((device) => (
+                <DeviceCard
+                  key={device.id}
+                  device={device}
+                  selected={resources.deviceIds.includes(device.id)}
+                  readOnly={readOnly}
+                  canControl={canDeviceControl}
+                  testing={testingIds.has(device.id)}
+                  onToggle={resources.toggleDevice}
+                  onTestConnection={() => void handleTestConnection(device)}
+                />
+              ))}
+            </div>
+            {visibleDevices.length === 0 && (
+              <p className='text-muted-foreground text-xs'>当前筛选条件下没有可用设备</p>
+            )}
+          </section>
+
+          {/* 被测 API */}
+          <section className='space-y-2'>
+            <h3 className='text-sm font-semibold'>
+              被测 API
+              <span className='text-muted-foreground ms-2 text-xs font-normal'>
+                {visibleApis.length} 个可执行 API
+              </span>
+            </h3>
+            <ApiTable
+              apis={visibleApis}
+              selectedIds={resources.apiIds}
               readOnly={readOnly}
-              canControl={canDeviceControl}
-              testing={testingIds.has(device.id)}
-              onToggle={resources.toggleDevice}
-              onTestConnection={() => void handleTestConnection(device)}
+              canTest={canApiTest}
+              canEdit={canApiEdit}
+              canDelete={canApiDelete}
+              testingIds={testingIds}
+              onToggle={resources.toggleApi}
+              onToggleAll={() => {
+                const onlineIds = resources.apis.filter((a) => a.status === 'online').map((a) => a.id)
+                const allSelected = onlineIds.every((id) => resources.apiIds.includes(id))
+                resources.selectAllApis(allSelected ? [] : onlineIds)
+              }}
+              onTestConnection={handleApiTest}
+              onEdit={onOpenApiEdit}
+              onDelete={(api) => void apisCrud.remove(api)}
             />
-          ))}
-        </div>
+            {visibleApis.length === 0 && (
+              <p className='text-muted-foreground text-xs'>当前筛选条件下没有可用 API</p>
+            )}
+          </section>
+        </>
       )}
 
       {/* 已选资源汇总行 */}
       {!readOnly && (
         <SelectionSummary
           mode='resource'
-          count={isApi ? resources.apiIds.length : resources.deviceIds.length}
-          unitText={isApi ? '个 API' : '台设备'}
-          concurrencyText={isApi ? `并发上限 ${apiConcurrencySum}` : undefined}
-          items={
-            isApi
-              ? selectedApis.map((a) => ({ id: a.id, name: a.name, status: a.status }))
-              : selectedDevices.map((d) => ({ id: d.id, name: d.name, status: d.status }))
-          }
-          onClear={() =>
-            isApi ? resources.selectAllApis([]) : resources.selectAllDevices([])
-          }
-          onRemoveItem={(id) => (isApi ? resources.removeApi(id) : resources.removeDevice(id))}
+          count={totalSelected}
+          countText={`${resources.deviceIds.length} 台设备 · ${resources.apiIds.length} 个 API`}
+          unitText='个资源'
+          concurrencyText={`并发上限 ${apiConcurrencySum}`}
+          items={[
+            ...selectedDevices.map((d) => ({ id: d.id, name: d.name, status: d.status })),
+            ...selectedApis.map((a) => ({ id: a.id, name: a.name, status: a.status })),
+          ]}
+          onClear={() => {
+            resources.selectAllDevices([])
+            resources.selectAllApis([])
+          }}
+          onRemoveItem={(id) => {
+            if (resources.deviceIds.includes(id)) resources.removeDevice(id)
+            else resources.removeApi(id)
+          }}
         />
       )}
 
-      {/* 执行参数区（§3.6.3） */}
+      {/* 执行参数区（§3.6.3；报告参数不在本步配置——负责人 2026-10-16 口径） */}
       <div className='border-border/70 bg-background/95 ring-foreground/5 rounded-xl border p-4 ring-1'>
         <h3 className='mb-3 text-sm font-semibold'>执行参数</h3>
         <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
@@ -376,7 +449,7 @@ export function StepResources({
             label='测试轮数'
             value={`${params.rounds}`}
             description='每个用例执行的轮次数'
-            readOnly={readOnly || isApi}
+            readOnly={readOnly}
           >
             <Input
               type='number'
@@ -391,7 +464,7 @@ export function StepResources({
             label='超时时间'
             value={`${params.timeout}s`}
             description='单轮次执行超时上限，超时按该轮失败处理'
-            readOnly={readOnly || isApi}
+            readOnly={readOnly}
           >
             <Input
               type='number'
@@ -405,7 +478,7 @@ export function StepResources({
             label='重试次数'
             value={`${params.retries}`}
             description='执行失败自动重试次数'
-            readOnly={readOnly || isApi}
+            readOnly={readOnly}
           >
             <Input
               type='number'
@@ -417,145 +490,60 @@ export function StepResources({
             />
           </ParamCard>
 
-          {/* 并发数参数卡（E2E 可改 / API 只读自动求和） */}
+          {/* 并发数参数卡（可编辑；API 并发上限自动合计作补充） */}
           <ParamCard
             label='并发任务数'
-            value={isApi ? `${apiConcurrencySum}` : `${params.concurrency}`}
-            description={isApi ? '由所选 API 的并发上限自动合计' : '同时执行的用例数上限'}
-            readOnly={readOnly || isApi}
+            value={`${params.concurrency}`}
+            description={`同时执行的用例数上限；所选 API 并发上限合计 ${apiConcurrencySum}`}
+            readOnly={readOnly}
           >
-            {!isApi && (
-              <Input
-                type='number'
-                min={1}
-                max={32}
-                value={params.concurrency}
-                onChange={(e) => setParams({ concurrency: Number(e.target.value) || 4 })}
-                className='h-8'
-              />
-            )}
+            <Input
+              type='number'
+              min={1}
+              max={32}
+              value={params.concurrency}
+              onChange={(e) => setParams({ concurrency: Number(e.target.value) || 4 })}
+              className='h-8'
+            />
           </ParamCard>
         </div>
 
-        {/* voice_llm 建议并发（E2E） */}
-        {!isApi && isVoiceLlm && (
+        {/* voice_llm 建议并发 */}
+        {isVoiceLlm && (
           <p className='text-warning mt-3 text-xs'>
             voice_llm 多轮对话测试建议并发数为 2（默认 4），以获得更稳定的结果。
           </p>
         )}
 
-        {/* 网络配置（E2E，device:control 才可设；tester 无权限项隐藏只读展示） */}
-        {!isApi && (
-          <div className='mt-4'>
-            <h4 className='mb-2 text-xs font-medium'>网络配置</h4>
-            {canDeviceControl && !readOnly ? (
-              <Select
-                value={params.network}
-                onValueChange={(v) => setParams({ network: v ?? '默认' })}
-              >
-                <SelectTrigger className='h-8 w-40 text-xs'>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {NETWORK_OPTIONS.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <p className='text-muted-foreground text-xs'>当前：{params.network}（需 device:control 权限设置）</p>
-            )}
-          </div>
-        )}
-
-        {/* 报告配置 */}
-        <div className='mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
-          <ParamCard
-            label='报告模板'
-            value={params.reportTemplate}
-            description='生成报告使用的模板'
-            readOnly={readOnly}
-          >
+        {/* 网络配置（device:control 才可设；tester 无权限项隐藏只读展示） */}
+        <div className='mt-4'>
+          <h4 className='mb-2 text-xs font-medium'>网络配置</h4>
+          {canDeviceControl && !readOnly ? (
             <Select
-              value={params.reportTemplate}
-              onValueChange={(v) => setParams({ reportTemplate: v ?? '标准模板' })}
+              value={params.network}
+              onValueChange={(v) => setParams({ network: v ?? '默认' })}
             >
-              <SelectTrigger className='h-8 w-full text-xs'>
+              <SelectTrigger className='h-8 w-40 text-xs'>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {REPORT_TEMPLATE_OPTIONS.map((option) => (
+                {NETWORK_OPTIONS.map((option) => (
                   <SelectItem key={option} value={option}>
                     {option}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-          </ParamCard>
-
-          <ParamCard
-            label='包含内容'
-            value={`${REPORT_INCLUDE_OPTIONS.filter((o) => params[o.value as keyof typeof params]).length} 项`}
-            description='图表 / 详细日志 / 参考参数'
-            readOnly={readOnly}
-          >
-            <div className='flex flex-col gap-1'>
-              {REPORT_INCLUDE_OPTIONS.map((option) => {
-                const key = option.value as 'includeCharts' | 'includeDetailedLogs' | 'includeReferenceParams'
-                return (
-                  <label key={option.value} className='flex items-center gap-1.5 text-xs'>
-                    <input
-                      type='checkbox'
-                      className='size-3.5 accent-[var(--primary)]'
-                      checked={params[key]}
-                      onChange={(e) => setParams({ [key]: e.target.checked })}
-                    />
-                    {option.label}
-                  </label>
-                )
-              })}
-            </div>
-          </ParamCard>
-
-          <ParamCard
-            label='导出格式'
-            value={params.exportFormats.join('/').toUpperCase()}
-            description='报告导出格式预选（CSV/Excel/PDF/HTML）'
-            readOnly={readOnly}
-          >
-            <div className='flex flex-wrap gap-1'>
-              {['csv', 'excel', 'pdf', 'html'].map((format) => (
-                <button
-                  key={format}
-                  type='button'
-                  className={cn(
-                    'rounded-md border px-1.5 py-0.5 text-[11px] uppercase transition-colors',
-                    params.exportFormats.includes(format)
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border text-muted-foreground'
-                  )}
-                  onClick={() =>
-                    setParams({
-                      exportFormats: params.exportFormats.includes(format)
-                        ? params.exportFormats.filter((f) => f !== format)
-                        : [...params.exportFormats, format],
-                    })
-                  }
-                >
-                  {format}
-                </button>
-              ))}
-            </div>
-          </ParamCard>
+          ) : (
+            <p className='text-muted-foreground text-xs'>当前：{params.network}（需 device:control 权限设置）</p>
+          )}
         </div>
       </div>
 
       {/* 分页 */}
       <div className='flex items-center justify-between text-xs'>
         <span className='text-muted-foreground'>
-          共 {isApi ? resources.apis.length : resources.devices.length} 个{resourceNoun}
+          共 {resources.devices.length} 台设备 · {resources.apis.length} 个 API
         </span>
         <span className='text-muted-foreground'>每页 10 条 · 第 1 / 1 页</span>
       </div>

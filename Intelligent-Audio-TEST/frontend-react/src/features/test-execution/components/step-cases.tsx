@@ -37,8 +37,6 @@ import { SelectionSummary } from '@/features/test-execution/components/selection
 import { fetchCaseGroups, fetchCaseTags, fetchEvaluationDimensions } from '@/infrastructure/api/test-execution-api'
 
 interface StepCasesProps {
-  type: 'e2e' | 'api'
-  lockedTypeBadge: string
   readOnly: boolean
   view: 'table' | 'card'
   onViewChange: (view: 'table' | 'card') => void
@@ -46,7 +44,7 @@ interface StepCasesProps {
   onGoStep0?: () => void
 }
 
-export function StepCases({ type, lockedTypeBadge, readOnly, view, onViewChange }: StepCasesProps) {
+export function StepCases({ readOnly, view, onViewChange }: StepCasesProps) {
   const { hasPermission } = usePermissions()
   const { algorithmType, current: currentAlgorithm } = useAlgorithmChannel()
   const [keyword, setKeyword] = useState('')
@@ -71,10 +69,9 @@ export function StepCases({ type, lockedTypeBadge, readOnly, view, onViewChange 
       groupId: groupId ?? null,
       tags: tags.length ? tags : undefined,
       dimensionId: dimensionId ?? null,
-      type,
       algorithmType,
     }),
-    [debouncedKeyword, groupId, tags, dimensionId, type, algorithmType]
+    [debouncedKeyword, groupId, tags, dimensionId, algorithmType]
   )
 
   const listQuery = useQuery({
@@ -142,11 +139,6 @@ export function StepCases({ type, lockedTypeBadge, readOnly, view, onViewChange 
             className='h-8 w-[200px] ps-7 sm:w-[240px]'
           />
         </div>
-
-        {/* 类型 facet（只读徽章：本页语义即测试类型） */}
-        <Badge variant='outline' className='rounded-md px-2 py-1 text-xs'>
-          {lockedTypeBadge}
-        </Badge>
 
         {/* 分组 facet（单选，Command 搜索） */}
         <Popover>
@@ -445,9 +437,6 @@ export function StepCases({ type, lockedTypeBadge, readOnly, view, onViewChange 
                   <span className='min-w-0 flex-1'>
                     <span className='block truncate text-sm font-medium'>{item.name}</span>
                     <span className='text-muted-foreground mt-0.5 flex flex-wrap items-center gap-1 text-xs'>
-                      <Badge variant='outline' className='text-[11px]'>
-                        {item.type === 'api' ? 'API测试' : '端到端测试'}
-                      </Badge>
                       <span className='tabular-nums'>
                         {item.rounds} 轮 · {formatDuration(item.totalDuration)}
                       </span>

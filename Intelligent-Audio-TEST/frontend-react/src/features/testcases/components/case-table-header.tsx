@@ -94,9 +94,6 @@ export function CaseTableHeader({
             <SortableHeader label='用例名称' active />
           </th>
         )}
-        {col('type') && (
-          <th className='px-3 py-2 text-left font-medium'>类型</th>
-        )}
         {col('algorithm') && (
           <th className='px-3 py-2 text-left font-medium'>算法</th>
         )}

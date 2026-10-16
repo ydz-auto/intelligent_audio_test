@@ -1,6 +1,7 @@
 /**
  * 测试执行页（interfaces/features/test-execution/index.tsx；10_测试执行.md §3.1，
- * INT-486 合并口径）：/start-test 单入口，内部端到端/API 两模式（顶部 Tabs 切换）。
+ * INT-486 合并口径）：/start-test 单入口，单流程（2026-10-16 追加口径：不再分
+ * E2E/API 两模式——步骤一选用例（不分类型），步骤二同屏选设备+API 混合，直接开始测试）。
  * 四步流程（INT-486：不再有「选择算法」步骤——算法切换已全局化 INT-436/442，
  * 测试流程不再单独选算法，用例/资源列表按全局算法自动过滤）。
  * 三段式全高骨架（照 playground/index.tsx）：顶部条 / 流程步骤条 / 内容区 / 底部动作条。
@@ -23,13 +24,12 @@ import { useCaseSelectionStore } from '@/infrastructure/stores/case-selection-st
 import { useResourceSelectionStore } from '@/infrastructure/stores/resource-selection-store'
 import { MOCK_TESTCASES } from '@/infrastructure/mock/test-execution-mock'
 import { Button } from '@/components/ui/button'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { cn } from '@/lib/utils'
 import { navigateWithSearch } from '@/features/test-execution/lib/navigate-search'
 
-import { TEST_FLOW_CONFIG, type TestFlowConfig } from '@/features/test-execution/constants'
+import { TEST_FLOW_CONFIG } from '@/features/test-execution/constants'
 import { FlowSteps } from '@/features/test-execution/components/flow-steps'
 import { FlowFooter } from '@/features/test-execution/components/flow-footer'
 import { StepCases } from '@/features/test-execution/components/step-cases'
@@ -45,17 +45,12 @@ import type { ApiConfig } from '@/domain/models/apiConfig'
 import type { ApiHealthCheckResult } from '@/domain/models/apiConfig'
 
 interface TestExecutionPageProps {
-  testType: 'e2e' | 'api'
-  /** 模式切换（/start-test URL mode 参数回写） */
-  onModeChange: (mode: 'e2e' | 'api') => void
   /** 初始视图（URL validateSearch view） */
   initialView?: 'table' | 'card'
   onViewChange: (view: 'table' | 'card') => void
 }
 
 export function TestExecutionPage({
-  testType,
-  onModeChange,
   initialView = 'table',
   onViewChange,
 }: TestExecutionPageProps) {
@@ -66,9 +61,9 @@ export function TestExecutionPage({
   const { algorithmType } = useAlgorithmChannel()
   const reportStep = useReportStep()
   const launch = useTestLaunch()
-  const resources = useResourceSelection(testType, algorithmType)
+  const resources = useResourceSelection(algorithmType)
 
-  const config: TestFlowConfig = TEST_FLOW_CONFIG[testType]
+  const config = TEST_FLOW_CONFIG
 
   const params = useExecutionStore((s) => s.params)
   const taskId = useExecutionStore((s) => s.taskId)
@@ -100,22 +95,15 @@ export function TestExecutionPage({
   /** 步骤 0-1 上下文提示（voice_llm 场景 / 校验错误摘要） */
   const footerHint = useMemo(() => {
     if (step === 0 && algorithmType === 'tts_eval') return config.voiceLlmAlert
-    if (step === 1 && testType === 'e2e' && algorithmType === 'tts_eval')
+    if (step === 1 && algorithmType === 'tts_eval')
       return 'voice_llm 多轮对话测试建议并发数为 2（默认 4），以获得更稳定的结果。'
     return undefined
-  }, [step, algorithmType, config.voiceLlmAlert, testType])
+  }, [step, algorithmType, config.voiceLlmAlert])
 
   const clearFlowState = () => {
     resetFlow()
     clearCases()
     clearResources()
-  }
-
-  const handleModeChange = (next: 'e2e' | 'api') => {
-    if (next === testType) return
-    // 切换模式清空本流程选择（用例/设备/API 按模式分叉）
-    clearFlowState()
-    onModeChange(next)
   }
 
   const handleResetConfirm = () => {
@@ -152,8 +140,7 @@ export function TestExecutionPage({
       return
     }
     const errors = launch.validate({
-      type: testType,
-      cases: caseState.filterAllMode ? MOCK_TESTCASES.filter((c) => c.type === testType) : [],
+      cases: caseState.filterAllMode ? MOCK_TESTCASES : [],
       devices: resources.devices,
       apis: resources.apis,
       deviceIds,
@@ -177,20 +164,6 @@ export function TestExecutionPage({
       <div className='shrink-0 border-b px-4 py-3 sm:px-6'>
         <div className='flex flex-wrap items-center justify-between gap-2'>
           <div className='flex min-w-0 items-center gap-3'>
-            {/* 端到端/API 模式切换（INT-486 合并入口） */}
-            <Tabs
-              value={testType}
-              onValueChange={(v) => handleModeChange(v as 'e2e' | 'api')}
-            >
-              <TabsList className='h-8'>
-                <TabsTrigger value='e2e' className='text-xs'>
-                  端到端测试
-                </TabsTrigger>
-                <TabsTrigger value='api' className='text-xs'>
-                  API 测试
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
             <div className='min-w-0'>
               <h1 className='text-sm font-semibold sm:text-base'>{config.title}</h1>
               <p className='text-muted-foreground mt-0.5 hidden text-xs sm:block'>
@@ -235,8 +208,6 @@ export function TestExecutionPage({
         >
           {step === 0 && (
             <StepCases
-              type={testType}
-              lockedTypeBadge={config.lockedTypeBadge}
               readOnly={readOnly}
               view={initialView}
               onViewChange={onViewChange}
@@ -245,8 +216,6 @@ export function TestExecutionPage({
 
           {step === 1 && (
             <StepResources
-              type={testType}
-              resourceNoun={config.resourceNoun}
               voiceLlmAlert={config.voiceLlmAlert}
               readOnly={readOnly}
               onOpenApiEdit={(api) => setApiEdit({ open: true, api })}
@@ -331,7 +300,6 @@ export function TestExecutionPage({
       <TaskNameDialog
         open={taskNameOpen}
         onOpenChange={setTaskNameOpen}
-        type={testType}
         algorithmType={algorithmType}
         caseCount={manualCaseIds.length}
         deviceCount={deviceIds.length}
