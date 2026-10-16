@@ -100,8 +100,8 @@ export function ProfileDropdown() {
               <DropdownMenuItem
                 render={
                   <Link
-                    to='/system-settings/$section'
-                    params={{ section: 'site' }}
+                    to='/system-settings/$domain/$section'
+                    params={{ domain: 'site', section: 'info' }}
                   />
                 }
               >
