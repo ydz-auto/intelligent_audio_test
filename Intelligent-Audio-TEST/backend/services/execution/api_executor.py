@@ -354,7 +354,14 @@ class APIExecutor(BaseExecutor):
             local_db_session.close()
 
     def _validate_and_get_data(self, app, task_id, tc_rel_id):
-        """验证并获取执行数据"""
+        """验证并获取执行数据
+
+        取不到数据时**不抛异常**，改为把 TaskCase 显式置失败并落 error_message（可见原因）。
+        原因：异常会被 execute_api_case 的兜底 except 吞掉（只写日志、return False），
+        TaskCase 会停在 execution_status='running'，任务主循环一直等它收敛，直到
+        test_case_wait_time（默认 3000 秒）超时才被笼统标失败 —— 即 issue VEGA-32 缺陷 D1
+        的「软删用例静默卡死」。此处对齐同文件 _get_audio_data 的 _fail_tc_rel 写法。
+        """
         if app is None:
             raise ValueError("app参数不能为空")
 
@@ -366,15 +373,26 @@ class APIExecutor(BaseExecutor):
         try:
             tc_rel = local_db_session.query(TaskCase).get(tc_rel_id)
             if not tc_rel:
-                raise ValueError(f"找不到测试用例关联记录，ID: {tc_rel_id}")
+                error_msg = f"找不到测试用例关联记录，ID: {tc_rel_id}"
+                self._log('ERROR', f"API 用例执行失败: {error_msg}", task_id)
+                self._fail_tc_rel(tc_rel_id, error_msg)
+                return False, error_msg
 
             task = local_db_session.query(Task).get(task_id)
             if not task:
-                raise ValueError(f"找不到任务，ID: {task_id}")
+                error_msg = f"找不到任务，ID: {task_id}"
+                self._log('ERROR', f"API 用例执行失败: {error_msg}", task_id)
+                self._fail_tc_rel(tc_rel_id, error_msg)
+                return False, error_msg
 
             case = local_db_session.query(TestCase).get(tc_rel.test_case_id)
             if not case:
-                raise ValueError(f"找不到测试用例，ID: {tc_rel.test_case_id}")
+                # 用例不存在或已被软删（全局过滤单一入口，见 models/soft_delete.py）：
+                # 口径「软删即不可用」——不静默跳过，显式失败并记录可见原因
+                error_msg = "找不到测试用例"
+                self._log('ERROR', f"API 用例执行失败: {error_msg}", task_id)
+                self._fail_tc_rel(tc_rel_id, error_msg)
+                return False, error_msg
 
             self.current_test_case_id = case.id
             self._thread_ctx.current_test_case_id = case.id

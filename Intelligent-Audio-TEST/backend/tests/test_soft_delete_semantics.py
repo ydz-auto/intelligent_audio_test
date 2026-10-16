@@ -4,12 +4,15 @@
 覆盖：
 1. 全局软删过滤单一入口 —— 建任务 / 执行 / 报告 / 发布任务四条路径同口径；
 2. 软删审计 —— 软删后 deleted_at 非空、恢复后清空；
-3. 显式放开 —— include_deleted() / execution_options(include_deleted=True) 可读到软删行。
+3. 显式放开 —— include_deleted() / execution_options(include_deleted=True) 可读到软删行；
+4. 操作人机制就位（临时口径 A）—— 有身份来源时落库、无身份来源时不伪造；
+5. 执行路径软删不得静默（缺陷 D1 回归）。
 
 运行（在 Intelligent-Audio-TEST 目录下）：
     python -m pytest backend/tests/test_soft_delete_semantics.py -v
 """
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import text
@@ -20,6 +23,11 @@ from backend.models.soft_delete import bulk_soft_delete, include_deleted
 from backend.controllers.task_controller import TaskController
 from backend.controllers.published_task_controller import PublishedTaskController
 from backend.controllers.testcase_controller import TestCaseController
+from backend.services.execution.execution_engine import ExecutionEngine
+from backend.services.execution.api_executor import APIExecutor
+
+UTC8 = timezone(timedelta(hours=8))
+OPERATOR_ID = 424242
 
 
 def _new_group():
@@ -358,3 +366,180 @@ def test_group_cascade_soft_delete_writes_deleted_at(app, client):
     ), {'i': group.id}).fetchone()
     assert group_row[0] is True
     assert group_row[1] is not None
+
+
+# ---------- 5. 操作人机制就位（临时口径 A：无认证体系时落 NULL，但不伪造身份） ----------
+
+def _raw_case_operator(case_id):
+    """绕开 ORM 直接读软删痕迹 + 操作人（软删行对 ORM 查询不可见）"""
+    return db.session.execute(text(
+        'SELECT deleted, deleted_at, updated_by_user_id FROM test_cases WHERE id = :i'
+    ), {'i': case_id}).fetchone()
+
+
+def test_operator_header_lands_on_single_delete(app, client):
+    """写入点① 单条删除（ORM 路径，走 before_flush）：X-User-Id 注入时操作人落库"""
+    group = _new_group()
+    case = _new_case(group)
+    db.session.commit()
+
+    resp = client.delete(f'/api/v1/testcases/{case.id}',
+                         headers={'X-User-Id': str(OPERATOR_ID)})
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+
+    deleted, deleted_at, operator = _raw_case_operator(case.id)
+    assert deleted is True
+    assert deleted_at is not None
+    assert operator == OPERATOR_ID
+
+
+def test_operator_header_lands_on_batch_delete(app, client):
+    """写入点② 批量删除（bulk 统一入口）：X-User-Id 注入时操作人落库"""
+    group = _new_group()
+    ids = [_new_case(group).id, _new_case(group).id]
+    db.session.commit()
+
+    resp = client.post('/api/v1/testcases/batch',
+                       json={'action': 'delete', 'ids': ids},
+                       headers={'X-User-Id': str(OPERATOR_ID)})
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+
+    for case_id in ids:
+        deleted, deleted_at, operator = _raw_case_operator(case_id)
+        assert deleted is True
+        assert deleted_at is not None
+        assert operator == OPERATOR_ID
+
+
+def test_operator_header_lands_on_tag_cascade(app, client):
+    """写入点③ 删标签级联（bulk 统一入口，最易漏的一处）"""
+    group = _new_group()
+    case = _new_case(group)
+    tag = Tag(name=f'软删测试标签-{uuid.uuid4().hex[:8]}')
+    db.session.add(tag)
+    db.session.flush()
+    db.session.add(TestCaseTag(test_case_id=case.id, tag_id=tag.id))
+    db.session.commit()
+
+    resp = client.delete(f'/api/v1/tags/{tag.id}?cascade=true',
+                         headers={'X-User-Id': str(OPERATOR_ID)})
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+
+    deleted, deleted_at, operator = _raw_case_operator(case.id)
+    assert deleted is True
+    assert deleted_at is not None
+    assert operator == OPERATOR_ID
+
+
+def test_operator_header_lands_on_group_cascade(app, client):
+    """写入点④ 删分组级联（bulk 统一入口）+ 分组本体（ORM 路径），两处都要落操作人"""
+    group = _new_group()
+    case = _new_case(group)
+    db.session.commit()
+
+    resp = client.delete(f'/api/v1/groups/{group.id}?cascade=true',
+                         headers={'X-User-Id': str(OPERATOR_ID)})
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+
+    deleted, deleted_at, operator = _raw_case_operator(case.id)
+    assert deleted is True
+    assert deleted_at is not None
+    assert operator == OPERATOR_ID
+
+    group_row = db.session.execute(text(
+        'SELECT deleted, deleted_at, updated_by_user_id FROM test_case_groups WHERE id = :i'
+    ), {'i': group.id}).fetchone()
+    assert group_row[0] is True
+    assert group_row[1] is not None
+    assert group_row[2] == OPERATOR_ID
+
+
+def test_operator_stays_null_without_identity(app, client):
+    """临时口径 A：无身份来源时**不伪造**操作人，落 NULL 属预期（deleted_at 仍须非空）"""
+    group = _new_group()
+    case = _new_case(group)
+    db.session.commit()
+
+    resp = client.delete(f'/api/v1/testcases/{case.id}')
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+
+    deleted, deleted_at, operator = _raw_case_operator(case.id)
+    assert deleted is True
+    assert deleted_at is not None
+    assert operator is None
+
+
+def test_deleted_at_is_utc8_wall_clock(app, client):
+    """deleted_at 为东八区时间（与库内既有 created_at/updated_at 口径一致）"""
+    group = _new_group()
+    case = _new_case(group)
+    db.session.commit()
+
+    before = datetime.now(UTC8).replace(tzinfo=None) - timedelta(seconds=5)
+    resp = client.delete(f'/api/v1/testcases/{case.id}')
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    after = datetime.now(UTC8).replace(tzinfo=None) + timedelta(seconds=5)
+
+    stored = _raw_case_operator(case.id)[1]
+    assert stored is not None
+    assert before <= stored <= after, f'deleted_at={stored} 不在东八区当前时间窗口内'
+
+
+# ---------- 6. 执行路径：软删用例不得静默（缺陷 D1 回归） ----------
+
+def test_api_execution_of_soft_deleted_case_marks_failed(app):
+    """建任务后用例被软删 → API 执行必须显式失败并落 error_message。
+
+    缺陷 D1：原先 `_validate_and_get_data` 取不到用例时抛异常，异常被
+    `execute_api_case` 的兜底 except 吞掉，TaskCase 停在 execution_status='running'，
+    任务主循环要干等到 test_case_wait_time（默认 3000 秒）超时才收敛。
+    口径「软删即不可用」：显式失败 + 可见原因，不静默。
+    """
+    group = _new_group()
+    case = _new_case(group)
+    task = Task(name=f'软删执行测试任务-{uuid.uuid4().hex[:8]}', type='api',
+                status='running', total_cases=1)
+    db.session.add(task)
+    db.session.flush()
+    tc_rel = TaskCase(task_id=task.id, test_case_id=case.id, status='pending',
+                      execution_status='pending', evaluation_status='pending')
+    db.session.add(tc_rel)
+    db.session.commit()
+    task_id, tc_rel_id = task.id, tc_rel.id
+
+    # 建任务之后软删该用例
+    case.deleted = True
+    db.session.commit()
+
+    APIExecutor(ExecutionEngine()).execute_api_case(app, task_id, tc_rel_id)
+
+    row = db.session.execute(text(
+        'SELECT status, execution_status, error_message FROM task_case_relations WHERE id = :i'
+    ), {'i': tc_rel_id}).fetchone()
+    assert row[0] == 'failed', f'期望 status=failed，实际 {row[0]!r}'
+    assert row[1] == 'failed', \
+        f'期望 execution_status=failed，实际 {row[1]!r}（停在 running 会让任务无法收敛）'
+    assert row[2] == '找不到测试用例', f'期望可见失败原因，实际 {row[2]!r}'
+
+
+def test_api_execution_of_alive_case_regression(app):
+    """回归：未软删用例不会被上面的改动误判为失败（走不到「找不到测试用例」分支）"""
+    group = _new_group()
+    case = _new_case(group)
+    task = Task(name=f'正常执行测试任务-{uuid.uuid4().hex[:8]}', type='api',
+                status='running', total_cases=1)
+    db.session.add(task)
+    db.session.flush()
+    tc_rel = TaskCase(task_id=task.id, test_case_id=case.id, status='pending',
+                      execution_status='pending', evaluation_status='pending')
+    db.session.add(tc_rel)
+    db.session.commit()
+    tc_rel_id = tc_rel.id
+
+    APIExecutor(ExecutionEngine()).execute_api_case(app, task.id, tc_rel_id)
+
+    row = db.session.execute(text(
+        'SELECT error_message FROM task_case_relations WHERE id = :i'
+    ), {'i': tc_rel_id}).fetchone()
+    # 未软删用例：不会被误报为「找不到测试用例」（后续失败原因是缺 API 配置等真实原因）
+    assert row[0] != '找不到测试用例', f'未软删用例被误判: {row[0]!r}'
