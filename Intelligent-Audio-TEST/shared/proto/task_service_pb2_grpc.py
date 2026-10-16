@@ -5850,6 +5850,11 @@ class TaskDataServiceStub:
                 request_serializer=task__service__pb2.TestCaseAggStatsRequest.SerializeToString,
                 response_deserializer=task__service__pb2.TaskDataResponse.FromString,
                 _registered_method=True)
+        self.GetDeviceOccupancy = channel.unary_unary(
+                '/task_service.TaskDataService/GetDeviceOccupancy',
+                request_serializer=task__service__pb2.GetDeviceOccupancyRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
 
 
 class TaskDataServiceServicer:
@@ -6095,6 +6100,15 @@ class TaskDataServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetDeviceOccupancy(self, request, context):
+        """设备占用聚合（实验室扩展 INT-493 §4.3）— 按物理设备聚合 task_case_relations
+        活动行（execution_status IN pending/queued/running，device_type='physical'），
+        出参 data JSON: {device_id: {occupied_status, task_id, case_id}}
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_TaskDataServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -6266,6 +6280,11 @@ def add_TaskDataServiceServicer_to_server(servicer, server):
             'GetTestCaseStats': grpc.unary_unary_rpc_method_handler(
                     servicer.GetTestCaseStats,
                     request_deserializer=task__service__pb2.TestCaseAggStatsRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'GetDeviceOccupancy': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetDeviceOccupancy,
+                    request_deserializer=task__service__pb2.GetDeviceOccupancyRequest.FromString,
                     response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
             ),
     }
@@ -7189,6 +7208,33 @@ class TaskDataService:
             target,
             '/task_service.TaskDataService/GetTestCaseStats',
             task__service__pb2.TestCaseAggStatsRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetDeviceOccupancy(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/GetDeviceOccupancy',
+            task__service__pb2.GetDeviceOccupancyRequest.SerializeToString,
             task__service__pb2.TaskDataResponse.FromString,
             options,
             channel_credentials,

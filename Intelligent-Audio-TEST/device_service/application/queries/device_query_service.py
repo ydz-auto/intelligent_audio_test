@@ -26,12 +26,13 @@ class DeviceQueryService:
 
     def get_all(self, page: int = 1, per_page: int = 10, keyword: str = None,
                 status: str = None, device_type: str = None,
-                algorithm_type: str = None) -> dict:
+                algorithm_type: str = None, lab_id: int = None) -> dict:
         """分页查询设备列表"""
         try:
             result = self.repo.list_devices(
                 page=page, per_page=per_page, keyword=keyword,
                 status=status, device_type=device_type, algorithm_type=algorithm_type,
+                lab_id=lab_id,
             )
 
             # 添加驱动名称

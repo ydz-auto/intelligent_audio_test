@@ -17,6 +17,7 @@ from device_service.infrastructure.persistence._device_converters import (
 from device_service.infrastructure.persistence._device_serializers import (
     _playback_to_dict,
 )
+from device_service.infrastructure.persistence._lab_resolver import resolve_lab_names
 
 
 class PlaybackRepository(PlaybackRepositoryInterface):
@@ -77,7 +78,8 @@ class PlaybackRepository(PlaybackRepositoryInterface):
         po = session.query(PlaybackDevice).filter_by(id=device_id, is_deleted=0).first()
         if po is None:
             return None
-        return _playback_po_to_entity(po)
+        lab_names = resolve_lab_names([po.lab_id]) if po.lab_id else {}
+        return _playback_po_to_entity(po, lab_name=lab_names.get(po.lab_id))
 
     def delete_playback_device(self, device_id: int) -> bool:
         """软删除播放设备"""
@@ -93,10 +95,12 @@ class PlaybackRepository(PlaybackRepositoryInterface):
         return True
 
     def list_playback_devices(self, page: int = 1, per_page: int = 10,
-                              keyword: str = None, device_type: str = None) -> dict:
+                              keyword: str = None, device_type: str = None,
+                              lab_id: int = None) -> dict:
         """分页查询播放设备列表。
 
         返回 dict（含 items/total/page 等字段），items 为 PlaybackDevice PO 的序列化 dict。
+        lab_id 按实验室过滤（INT-493 §4.2），lab_name 经 laboratories 表解析后随 items 返回。
         """
         session = get_db_session()
         query = session.query(PlaybackDevice).filter_by(is_deleted=0)
@@ -110,15 +114,30 @@ class PlaybackRepository(PlaybackRepositoryInterface):
             )
         if device_type:
             query = query.filter(PlaybackDevice.device_type == device_type)
+        if lab_id:
+            query = query.filter(PlaybackDevice.lab_id == lab_id)
 
         pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+        items = [_playback_to_dict(d) for d in pagination.items]
+        self._fill_lab_names(items)
         return {
-            'items': [_playback_to_dict(d) for d in pagination.items],
+            'items': items,
             'total': pagination.total,
             'page': pagination.page,
             'per_page': pagination.per_page,
             'pages': pagination.pages,
         }
+
+    @staticmethod
+    def _fill_lab_names(items: List[dict]) -> None:
+        """批量回填 items 中 lab_id 对应的 lab_name（laboratories 表，INT-493 §4.2）。"""
+        lab_ids = [item['lab_id'] for item in items if item.get('lab_id')]
+        if not lab_ids:
+            return
+        names = resolve_lab_names(lab_ids)
+        for item in items:
+            if item.get('lab_id') is not None:
+                item['lab_name'] = names.get(item['lab_id'])
 
     def check_playback_in_testcases(self, device_id: int) -> int:
         """检查播放设备是否被测试用例引用"""

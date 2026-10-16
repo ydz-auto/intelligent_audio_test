@@ -20,6 +20,7 @@ from device_service.infrastructure.persistence._device_converters import (
 from device_service.infrastructure.persistence._device_serializers import (
     _device_to_dict,
 )
+from device_service.infrastructure.persistence._lab_resolver import resolve_lab_names
 
 
 class DeviceRepository(DeviceRepositoryInterface):
@@ -78,7 +79,8 @@ class DeviceRepository(DeviceRepositoryInterface):
         po = session.query(Device).filter_by(id=device_id, deleted=False).first()
         if po is None:
             return None
-        return _device_po_to_entity(po)
+        lab_names = resolve_lab_names([po.lab_id]) if po.lab_id else {}
+        return _device_po_to_entity(po, lab_name=lab_names.get(po.lab_id))
 
     def delete_device(self, device_id: int) -> bool:
         """软删除设备"""
@@ -96,11 +98,12 @@ class DeviceRepository(DeviceRepositoryInterface):
 
     def list_devices(self, page: int = 1, per_page: int = 10, keyword: str = None,
                      status: str = None, device_type: str = None,
-                     algorithm_type: str = None) -> dict:
+                     algorithm_type: str = None, lab_id: int = None) -> dict:
         """分页查询设备列表。
 
         返回 dict（含 items/total/page 等字段），items 为 Device PO 的序列化 dict，
-        用于上层分页/序列化。
+        用于上层分页/序列化。lab_id 按实验室过滤（INT-493 §4.2），lab_name 经
+        laboratories 表解析后随 items 返回。
         """
         session = get_db_session()
         query = session.query(Device).filter_by(deleted=False)
@@ -120,15 +123,30 @@ class DeviceRepository(DeviceRepositoryInterface):
             query = query.filter(Device.type == device_type)
         if algorithm_type:
             query = query.filter(Device.supported_algorithms.contains([algorithm_type]))
+        if lab_id:
+            query = query.filter(Device.lab_id == lab_id)
 
         pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+        items = [_device_to_dict(d) for d in pagination.items]
+        self._fill_lab_names(items)
         return {
-            'items': [_device_to_dict(d) for d in pagination.items],
+            'items': items,
             'total': pagination.total,
             'page': pagination.page,
             'per_page': pagination.per_page,
             'pages': pagination.pages,
         }
+
+    @staticmethod
+    def _fill_lab_names(items: List[dict]) -> None:
+        """批量回填 items 中 lab_id 对应的 lab_name（laboratories 表，INT-493 §4.2）。"""
+        lab_ids = [item['lab_id'] for item in items if item.get('lab_id')]
+        if not lab_ids:
+            return
+        names = resolve_lab_names(lab_ids)
+        for item in items:
+            if item.get('lab_id') is not None:
+                item['lab_name'] = names.get(item['lab_id'])
 
     def get_device_statuses(self, device_ids: List[int] = None) -> List[dict]:
         """批量获取设备状态（返回状态摘要 dict 列表）"""

@@ -10,8 +10,11 @@ from device_service.infrastructure.persistence.models import (
 )
 
 
-def _device_to_dict(device: Device) -> dict:
-    """将 Device ORM 对象序列化为 dict（保留供上层序列化使用）"""
+def _device_to_dict(device: Device, lab_name: str = None) -> dict:
+    """将 Device ORM 对象序列化为 dict（保留供上层序列化使用）
+
+    lab_name 由调用方经 laboratories 表解析传入（INT-493 §4.2），缺省 null。
+    """
     return {
         'id': device.id,
         'name': device.name,
@@ -35,11 +38,16 @@ def _device_to_dict(device: Device) -> dict:
         'created_at': device.created_at.isoformat() if device.created_at else None,
         'updated_at': device.updated_at.isoformat() if device.updated_at else None,
         'supported_algorithms': device.supported_algorithms or [],
+        'lab_id': getattr(device, 'lab_id', None),
+        'lab_name': lab_name,
     }
 
 
-def _playback_to_dict(device: PlaybackDevice) -> dict:
-    """将 PlaybackDevice ORM 对象序列化为 dict（保留供上层序列化使用）"""
+def _playback_to_dict(device: PlaybackDevice, lab_name: str = None) -> dict:
+    """将 PlaybackDevice ORM 对象序列化为 dict（保留供上层序列化使用）
+
+    lab_name 由调用方经 laboratories 表解析传入（INT-493 §4.2），缺省 null。
+    """
     return {
         'id': device.id,
         'name': device.name,
@@ -53,6 +61,8 @@ def _playback_to_dict(device: PlaybackDevice) -> dict:
         'current_spl_mapping_id': device.current_spl_mapping_id,
         'created_at': device.created_at.isoformat() if device.created_at else None,
         'updated_at': device.updated_at.isoformat() if device.updated_at else None,
+        'lab_id': getattr(device, 'lab_id', None),
+        'lab_name': lab_name,
     }
 
 

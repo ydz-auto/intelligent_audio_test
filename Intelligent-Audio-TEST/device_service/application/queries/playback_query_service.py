@@ -34,11 +34,12 @@ class PlaybackQueryService:
     # ========== 读操作 ==========
 
     def get_all(self, page: int = 1, per_page: int = 10, keyword: str = None,
-                device_type: str = None) -> dict:
+                device_type: str = None, lab_id: int = None) -> dict:
         """分页查询"""
         try:
             result = self.repo.list_playback_devices(
                 page=page, per_page=per_page, keyword=keyword, device_type=device_type,
+                lab_id=lab_id,
             )
             return {'success': True, 'message': 'Success', 'data': result, 'code': 200}
         except Exception as e:

@@ -7,10 +7,11 @@ TaskCaseRepositoryABC 接口适配。
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from shared.models.common_enums import DeviceType
+from shared.models.common_enums import DeviceOccupancyStatus, DeviceType
 from shared.models.database import get_db_session, utc8now
 from shared.utils.status_utils import derive_task_case_status, task_case_not_removed
 from shared.utils.status_constants import (
+    DEVICE_OCCUPANCY_EXECUTION_STATUSES,
     ExecutionStatus,
     TaskStatus as SharedTaskStatus,
 )
@@ -387,5 +388,64 @@ class TaskCaseStatsMixin:
                 query = query.filter(Task.group_id == group_id)
             total = query.count()
             return {'total': int(total)}
+        finally:
+            session.close()
+
+    def get_device_occupancy(self, device_ids: List[str] = None,
+                             lab_id: int = None) -> dict:
+        """按物理设备聚合设备占用状态（实验室扩展 INT-493 §4.3）。
+
+        数据源 task_case_relations 活动行（execution_status IN
+        ('pending','queued','running')），只统计 device_type='physical' 的行
+        （http_api/websocket_api 排除）。
+
+        状态判定（同一物理设备同一时刻仅一个用例执行，DistributedLock 保证 1:1）：
+        - 存在 execution_status='running' 活动行 → testing（测试中）
+        - 否则存在 pending/queued 活动行 → occupied（已占用/排队中）
+        - 均无 → 该设备不在返回字典中（DTO 层 occupied_status=null）
+
+        返回 {device_id(str): {occupied_status, task_id, case_id}}。
+        device_ids/lab_id 均可选过滤，空 device_ids = 全物理设备。
+        """
+        session = get_db_session()
+        try:
+            query = session.query(
+                TaskCase.device_id,
+                TaskCase.execution_status,
+                TaskCase.task_id,
+                TaskCase.test_case_id,
+            ).filter(
+                TaskCase.device_type == DeviceType.PHYSICAL.value,
+                TaskCase.execution_status.in_(DEVICE_OCCUPANCY_EXECUTION_STATUSES),
+            )
+            if device_ids:
+                # device_id 列为 String(50)，入参为 int（网关设备 ID）时统一转字符串匹配
+                query = query.filter(TaskCase.device_id.in_([str(d) for d in device_ids]))
+            if lab_id:
+                query = query.filter(TaskCase.lab_id == lab_id)
+            rows = query.all()
+
+            result: dict = {}
+            running = ExecutionStatus.RUNNING
+            for device_id, execution_status, task_id, case_id in rows:
+                if not device_id:
+                    continue
+                prev = result.get(device_id)
+                if prev is None:
+                    result[device_id] = {
+                        'occupied_status': (
+                            DeviceOccupancyStatus.TESTING.value
+                            if execution_status == running
+                            else DeviceOccupancyStatus.OCCUPIED.value
+                        ),
+                        'task_id': task_id,
+                        'case_id': case_id,
+                    }
+                elif execution_status == running:
+                    # running 优先：pending/queued 与 running 并存时取 testing
+                    result[device_id]['occupied_status'] = DeviceOccupancyStatus.TESTING.value
+                    result[device_id]['task_id'] = task_id
+                    result[device_id]['case_id'] = case_id
+            return result
         finally:
             session.close()

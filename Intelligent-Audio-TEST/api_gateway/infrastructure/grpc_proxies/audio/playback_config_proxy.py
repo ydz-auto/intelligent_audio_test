@@ -98,7 +98,7 @@ class _PlaybackConfigProxy:
             error_msg_prefix='删除播放设备失败',
         )
 
-    def get_all(self, page=1, per_page=10, keyword=None, device_type=None):
+    def get_all(self, page=1, per_page=10, keyword=None, device_type=None, lab_id=None):
         """分页查询播放设备列表
 
         Returns:
@@ -113,6 +113,7 @@ class _PlaybackConfigProxy:
                 per_page=int(per_page or 10),
                 keyword=keyword or '',
                 device_type=device_type or '',
+                lab_id=int(lab_id) if lab_id else 0,
             ))
             return {
                 'success': resp.success,

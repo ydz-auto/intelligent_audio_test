@@ -128,6 +128,7 @@ class DeviceConfigServiceServicer(e2e_grpc.DeviceConfigServiceServicer):
                 status=request.status or None,
                 device_type=request.device_type or None,
                 algorithm_type=request.algorithm_type or None,
+                lab_id=request.lab_id or None,
             )
             return e2e_pb.ListDevicesResponse(
                 success=result.get('success', False),

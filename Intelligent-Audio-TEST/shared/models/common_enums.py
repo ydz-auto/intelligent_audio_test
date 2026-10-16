@@ -99,6 +99,18 @@ class DeviceType(str, Enum):
     WEBSOCKET_API = 'websocket_api'
 
 
+class DeviceOccupancyStatus(str, Enum):
+    """物理设备占用状态枚举（实验室扩展 INT-493 §4.3）
+
+    语义（按 task_case_relations 活动行聚合，只统计 device_type='physical'）：
+    - TESTING  测试中（存在 execution_status='running' 的活动行）
+    - OCCUPIED 已占用（无 running，但存在 pending/queued 排队活动行）
+    无任何活动行时占用态为 null（无枚举成员，DTO 字段直接为 None，前端渲染「未绑定」）。
+    """
+    TESTING = 'testing'
+    OCCUPIED = 'occupied'
+
+
 class APIProtocol(str, Enum):
     """API 传输协议枚举 — Adapter 分型依据（执行域 P0 新增）"""
     HTTP = 'http'

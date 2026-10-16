@@ -20,6 +20,7 @@ class DeviceListQuery(APIModel):
     status: Optional[str] = Field(None)
     device_type: Optional[str] = Field(None, alias='type')
     algorithm_type: Optional[str] = Field(None)
+    lab_id: Optional[int] = Field(None)
 
 
 class DeviceStatusQuery(APIModel):
@@ -111,6 +112,11 @@ class DeviceItem(APIModel):
     updated_at: Optional[str] = Field(None)
     driver_name: Optional[str] = Field(None)
     supported_algorithms: Optional[List[str]] = Field(None)
+    # 实验室扩展（INT-493 §4.2/§4.3）：所属实验室 + 占用状态（null=无占用）
+    lab_id: Optional[int] = Field(None)
+    lab_name: Optional[str] = Field(None)
+    occupied_status: Optional[str] = Field(None)
+    occupied_task_id: Optional[int] = Field(None)
 
 
 class DeviceListData(PaginatedData[DeviceItem]):

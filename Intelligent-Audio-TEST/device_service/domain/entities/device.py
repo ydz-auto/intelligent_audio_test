@@ -116,6 +116,8 @@ class DeviceAggregate:
             'created_at': self.config.get('created_at').isoformat() if self.config.get('created_at') else None,
             'updated_at': self.config.get('updated_at').isoformat() if self.config.get('updated_at') else None,
             'supported_algorithms': self.config.get('supported_algorithms') or [],
+            'lab_id': self.config.get('lab_id'),
+            'lab_name': self.config.get('lab_name'),
         }
 
 

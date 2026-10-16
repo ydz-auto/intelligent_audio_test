@@ -18,6 +18,9 @@ class PlaybackDeviceItem(APIModel):
     current_spl_mapping_id: Optional[int] = Field(None)
     created_at: Optional[str] = Field(None)
     updated_at: Optional[str] = Field(None)
+    # 实验室扩展（INT-493 §4.2）：所属实验室（未绑定为 null，前端渲染「未绑定」）
+    lab_id: Optional[int] = Field(None)
+    lab_name: Optional[str] = Field(None)
 
 
 class PlaybackDeviceListQuery(APIModel):
@@ -25,6 +28,7 @@ class PlaybackDeviceListQuery(APIModel):
     per_page: int = Field(10)
     keyword: Optional[str] = Field(None)
     device_type: Optional[str] = Field(None, validation_alias=AliasChoices('type', 'device_type', 'deviceType'))
+    lab_id: Optional[int] = Field(None)
 
 
 class PlaybackDeviceListData(PaginatedData[PlaybackDeviceItem]):

@@ -81,6 +81,26 @@ class _TaskDataProxy:
         return _grpc_call(_call, default_return={}, error_msg_prefix='GetTestCaseStats gRPC 失败',
                           reraise=reraise)
 
+    def get_device_occupancy(self, device_ids=None, lab_id=None):
+        """通过 gRPC 聚合物理设备占用状态（INT-493 §4.3）
+
+        返回 {device_id(str): {occupied_status, task_id, case_id}}。
+        device_ids/lab_id 均可选过滤；调用失败返回 {}（占用态为可选注入，
+        降级为全 null 不阻塞设备列表）。
+        """
+        def _call():
+            stub = get_task_data_service_stub()
+            resp = stub.GetDeviceOccupancy(task_pb.GetDeviceOccupancyRequest(
+                data=json.dumps({
+                    'device_ids': list(device_ids or []),
+                    'lab_id': int(lab_id) if lab_id else None,
+                }, ensure_ascii=False, default=str),
+            ))
+            if not resp.success:
+                raise RuntimeError(f"GetDeviceOccupancy gRPC 失败: {resp.message}")
+            return json.loads(resp.data) if resp.data else {}
+        return _grpc_call(_call, default_return={}, error_msg_prefix='GetDeviceOccupancy gRPC 失败')
+
     # ---- TestCaseGroup 查询/创建 ----
 
     def list_testcase_groups(self, algorithm_type=None, search=None, reraise=False):

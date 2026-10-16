@@ -57,12 +57,18 @@ class DeviceQueryService:
             status=query_params.status,
             device_type=query_params.device_type,
             algorithm_type=query_params.algorithm_type,
+            lab_id=query_params.lab_id,
         )
 
         if not result.get('success'):
             return wrap_grpc_response(result, default_error_msg='查询失败')
 
-        return success_response(result.get('data'))
+        data = result.get('data') or {}
+        if isinstance(data, dict):
+            items = data.get('items') or []
+            DeviceQueryService._inject_occupancy(items)
+            data['items'] = items
+        return success_response(data)
 
     # 批量获取设备状态 (用于 HTTP 轮询降级)
     @staticmethod
@@ -142,7 +148,35 @@ class DeviceQueryService:
                 error_code_mapping={404: ('未找到设备', 404)},
             )
 
-        return success_response(result.get('data'))
+        data = result.get('data')
+        if isinstance(data, dict):
+            DeviceQueryService._inject_occupancy([data])
+        return success_response(data)
+
+    @staticmethod
+    def _inject_occupancy(items):
+        """经 task_service GetDeviceOccupancy RPC 注入设备占用态（INT-493 §4.3）。
+
+        task_case_relations 归 task_service 域，网关经 gRPC+ACL 读取，不直读 DB；
+        无活动占用行的设备占用态为 null（不注入字段）。RPC 失败降级为空映射，
+        占用字段保持 null —— 占用态为可选注入，不阻塞设备列表/详情。
+        """
+        if not items:
+            return items
+        from api_gateway.infrastructure.grpc_proxies.task_data_proxies import task_data_service
+        device_ids = [item['id'] for item in items if item.get('id') is not None]
+        if not device_ids:
+            return items
+        occupancy = task_data_service.get_device_occupancy(device_ids=device_ids)
+        for item in items:
+            occ = occupancy.get(str(item.get('id')))
+            if occ:
+                item['occupied_status'] = occ.get('occupied_status')
+                item['occupied_task_id'] = occ.get('task_id')
+            else:
+                item['occupied_status'] = None
+                item['occupied_task_id'] = None
+        return items
 
     # 批量健康检查
     @staticmethod

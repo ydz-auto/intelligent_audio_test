@@ -88,6 +88,13 @@ FINISHED_CASE_STATUSES = frozenset({TaskCaseStatus.COMPLETED, TaskCaseStatus.FAI
 # 活跃执行状态集合（queued/running）
 ACTIVE_EXECUTION_STATUSES = frozenset({ExecutionStatus.QUEUED, ExecutionStatus.RUNNING})
 
+# 设备占用聚合活跃执行状态集合（pending/queued/running，INT-493 §4.3）
+# 与 ACTIVE_EXECUTION_STATUSES 的区别：占用聚合把排队中的 pending 也计入
+# （任务刚创建未调度即算占用），running 单列判定 testing。
+DEVICE_OCCUPANCY_EXECUTION_STATUSES = frozenset({
+    ExecutionStatus.PENDING, ExecutionStatus.QUEUED, ExecutionStatus.RUNNING,
+})
+
 # 活跃评估状态集合（pending/queued/running/calculating）
 ACTIVE_EVALUATION_STATUSES = frozenset({
     EvaluationStatus.PENDING, EvaluationStatus.QUEUED,

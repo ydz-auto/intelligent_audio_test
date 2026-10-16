@@ -428,6 +428,25 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
             logger.exception('GetTestCaseStats failed')
             return self._resp(False, str(e))
 
+    def GetDeviceOccupancy(self, request, context=None):
+        """设备占用聚合（实验室扩展 INT-493 §4.3）
+
+        入参 data JSON 可选 device_ids / lab_id 过滤，出参 data JSON：
+        {device_id: {occupied_status, task_id, case_id}}。语义见仓储
+        get_device_occupancy：running → testing，pending/queued → occupied，
+        无活动行 → 该设备不返回（DTO 层 occupied_status=null）。
+        """
+        try:
+            data = _loads(request.data, {})
+            result = task_repository.get_device_occupancy(
+                device_ids=data.get('device_ids') or None,
+                lab_id=data.get('lab_id') or None,
+            )
+            return self._resp(True, '', result)
+        except Exception as e:
+            logger.exception('GetDeviceOccupancy failed')
+            return self._resp(False, str(e))
+
     # ========== Log CRUD（P0-3 新增，替代 api_gateway/shared/utils 直连 DB）==========
 
     def BatchCreateLogs(self, request, context=None):

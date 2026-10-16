@@ -840,6 +840,10 @@ service TaskDataService {
   // 聚合统计（供 stats_cache / home_service 用）— count/group_by
   rpc GetTaskStats(TaskAggStatsRequest) returns (TaskDataResponse);
   rpc GetTestCaseStats(TestCaseAggStatsRequest) returns (TaskDataResponse);
+  // 设备占用聚合（实验室扩展 INT-493 §4.3）— 按物理设备聚合 task_case_relations
+  // 活动行（execution_status IN pending/queued/running，device_type='physical'），
+  // 出参 data JSON: {device_id: {occupied_status, task_id, case_id}}
+  rpc GetDeviceOccupancy(GetDeviceOccupancyRequest) returns (TaskDataResponse);
 }
 
 message GetTestResultByIdRequest {
@@ -985,6 +989,11 @@ message TestCaseAggStatsRequest {
   string test_type = 4;       // 可选，按用例类型过滤（api / e2e；test_type 列已废弃，按配置形态派生）
   string keyword = 5;         // 可选，按用例 id/name/description 模糊匹配（分组列表筛选）
   int32 dimension_id = 6;     // 可选，按评估维度过滤（config JSON 匹配，分组列表筛选）
+}
+
+// 设备占用聚合请求（INT-493 §4.3）——device_ids/lab_id 均可选，空 = 全物理设备
+message GetDeviceOccupancyRequest {
+  string data = 1;  // JSON: {"device_ids": [int], "lab_id": int?}
 }
 
 // ===== Log CRUD RPC（P0-3 新增，替代 api_gateway/shared/utils 直连 DB）=====

@@ -72,6 +72,7 @@ class PlaybackConfigServiceServicer(e2e_grpc.PlaybackConfigServiceServicer):
                 per_page=request.per_page or 10,
                 keyword=request.keyword or None,
                 device_type=request.device_type or None,
+                lab_id=request.lab_id or None,
             )
             return e2e_pb.ListPlaybackDevicesResponse(
                 success=result.get('success', False),

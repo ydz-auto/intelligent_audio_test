@@ -37,13 +37,14 @@ def _now():
 
 # ========== Device PO ↔ Entity ==========
 
-def _device_po_to_entity(po: Device, tags: List[DeviceTagEntity] = None) -> DeviceAggregate:
+def _device_po_to_entity(po: Device, tags: List[DeviceTagEntity] = None, lab_name: str = None) -> DeviceAggregate:
     """Device PO → DeviceAggregate 聚合根。
 
     PO 字段映射说明：
         - PO.type → entity.device_type
         - PO.supported_algorithms 等扩展属性放入 entity.config
         - PO.deleted → entity.deleted
+        - lab_name 由调用方经 laboratories 表解析传入（INT-493 §4.2），缺省 null
     """
     config: Dict[str, Any] = {
         'model': po.model,
@@ -61,6 +62,8 @@ def _device_po_to_entity(po: Device, tags: List[DeviceTagEntity] = None) -> Devi
         'serial_number': po.serial_number,
         'ip': getattr(po, 'ip', None),
         'supported_algorithms': po.supported_algorithms or [],
+        'lab_id': getattr(po, 'lab_id', None),
+        'lab_name': lab_name,
     }
     return DeviceAggregate(
         id=po.id,
@@ -133,13 +136,14 @@ def _device_tag_po_to_entity(po: DeviceTag, name: str = "") -> DeviceTagEntity:
 
 # ========== PlaybackDevice PO ↔ Entity ==========
 
-def _playback_po_to_entity(po: PlaybackDevice) -> PlaybackDeviceAggregate:
+def _playback_po_to_entity(po: PlaybackDevice, lab_name: str = None) -> PlaybackDeviceAggregate:
     """PlaybackDevice PO → PlaybackDeviceAggregate 聚合根。
 
     PO 字段映射说明：
         - PO.device_type → entity.device_type
         - PO.is_deleted (0/1) → entity.deleted (bool)
         - 扩展属性放入 entity.config
+        - lab_name 由调用方经 laboratories 表解析传入（INT-493 §4.2），缺省 null
     """
     config: Dict[str, Any] = {
         'model': po.model,
@@ -149,6 +153,8 @@ def _playback_po_to_entity(po: PlaybackDevice) -> PlaybackDeviceAggregate:
         'description': po.description,
         'status': po.status,
         'current_spl_mapping_id': po.current_spl_mapping_id,
+        'lab_id': getattr(po, 'lab_id', None),
+        'lab_name': lab_name,
     }
     return PlaybackDeviceAggregate(
         id=po.id,

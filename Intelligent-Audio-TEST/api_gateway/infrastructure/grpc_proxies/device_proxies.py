@@ -313,7 +313,7 @@ class _DeviceConfigProxy:
         )
 
     def get_all(self, page=1, per_page=10, keyword=None, status=None,
-                device_type=None, algorithm_type=None):
+                device_type=None, algorithm_type=None, lab_id=None):
         """分页查询设备列表
 
         Returns:
@@ -330,6 +330,7 @@ class _DeviceConfigProxy:
                 status=status or '',
                 device_type=device_type or '',
                 algorithm_type=algorithm_type or '',
+                lab_id=int(lab_id) if lab_id else 0,
             ))
             return {
                 'success': resp.success,

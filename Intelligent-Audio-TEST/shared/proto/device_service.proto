@@ -305,6 +305,7 @@ message ListDevicesRequest {
   string status = 4;
   string device_type = 5;
   string algorithm_type = 6;
+  int32 lab_id = 7;  // 实验室扩展（INT-493）：按实验室过滤（0/未传 = 不过滤）
 }
 message ListDevicesResponse {
   bool success = 1;
@@ -587,6 +588,7 @@ message ListPlaybackDevicesRequest {
   int32 per_page = 2;
   string keyword = 3;
   string device_type = 4;
+  int32 lab_id = 5;  // 实验室扩展（INT-493）：按实验室过滤（0/未传 = 不过滤）
 }
 message ListPlaybackDevicesResponse {
   bool success = 1;

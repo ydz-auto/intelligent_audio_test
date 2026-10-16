@@ -49,6 +49,7 @@ class PlaybackQueryService:
             per_page=query.per_page,
             keyword=query.keyword,
             device_type=query.device_type,
+            lab_id=query.lab_id,
         )
 
         if not result.get('success'):
