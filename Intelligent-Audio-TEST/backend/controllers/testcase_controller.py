@@ -1211,12 +1211,75 @@ class TestCaseController:
         return f"已成功批量删除 {len(ids)} 个用例"
 
     @staticmethod
+    def _find_move_name_conflicts(ids, target_group_id):
+        """列出批量移动后会与目标分组内活跃用例重名的用例名（去重、保序）
+
+        冲突有两个来源：
+        1. 目标分组**已有**同名活跃用例（排除本次要移动的行自身——用例本来就在目标分组
+           时移动是幂等的，不算冲突）；
+        2. 本次**一起移入**的用例之间互相同名（若这些同名行本来就都在目标分组，则是既存
+           状态，移动不新增，不计冲突）。
+
+        :param ids: 待移动的用例 ID 列表
+        :param target_group_id: 目标分组 ID
+        :return: 冲突的用例名列表；无冲突时返回空列表
+        """
+        moving = TestCase.query.filter(
+            TestCase.id.in_(ids), TestCase.deleted == False  # noqa: E712
+        ).all()
+        if not moving:
+            return []
+
+        conflicts = []
+        moving_ids = {tc.id for tc in moving}
+
+        # 来源 2：一起移入的行互相同名
+        by_name = {}
+        for tc in moving:
+            by_name.setdefault(tc.name, []).append(tc)
+        for name, same_name_cases in by_name.items():
+            if len(same_name_cases) > 1 and any(
+                tc.group_id != target_group_id for tc in same_name_cases
+            ):
+                conflicts.append(name)
+
+        # 来源 1：目标分组已有同名活跃用例
+        existing = TestCase.query.filter(
+            TestCase.name.in_(list(by_name.keys())),
+            TestCase.group_id == target_group_id,
+            TestCase.deleted == False,  # noqa: E712
+        ).all()
+        for tc in existing:
+            if tc.id not in moving_ids and tc.name not in conflicts:
+                conflicts.append(tc.name)
+
+        return conflicts
+
+    @staticmethod
     def _batch_move_to_group(req_data):
-        """批量移动到分组"""
+        """批量移动到分组
+
+        移动会把用例带进目标分组；目标分组若已有同名活跃用例，就会产生「**同组内**同名两条
+        活跃」，恰好击穿用例创建路径（`audio_controller.py` 同名去重键 `(name, group_id)`）
+        想维护的那条不变量——按名字/编号匹配会命中配置不同的行。故移动前先做冲突校验，
+        有冲突**一律拦下**并给出可见提示（这是缺陷，不是产品能力）。
+
+        注意与 `_batch_copy_to_group` 的区别：复制到分组产生的**跨组**同名是**有意保留**的
+        产品能力，不在此拦；这里拦的只是「同组内」同名。
+        """
         ids = req_data.ids
         target_group_id = req_data.target_group_id
         if not target_group_id:
             return error_response("移动操作需要 'target_group_id'")
+
+        conflicts = TestCaseController._find_move_name_conflicts(ids, target_group_id)
+        if conflicts:
+            detail = '、'.join(f'「{name}」' for name in conflicts)
+            return error_response(
+                f'目标分组已存在同名活跃用例 {detail}，移动会产生同组同名用例，已取消本次移动；'
+                f'请先重命名，或改用「复制到分组」'
+            )
+
         TestCase.query.filter(TestCase.id.in_(ids)).update({"group_id": target_group_id}, synchronize_session=False)
         return f"已成功将 {len(ids)} 个用例移动至目标分组"
 

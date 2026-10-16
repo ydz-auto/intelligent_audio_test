@@ -1294,7 +1294,8 @@ class AudioController:
                         # 提交测试用例创建
                         db.session.commit()
 
-                        return success_response({
+                        # 建用例被跨组重复拦截时，响应体给出可见原因（不静默）
+                        instant_data = {
                             "file_id": file_id,
                             "audio_id": existing_audio.id,
                             "name": existing_audio.name,
@@ -1302,7 +1303,20 @@ class AudioController:
                             "test_case_id": tc_ids[0] if tc_ids else None,
                             "test_case_count": len(tc_ids) if isinstance(tc_ids, list) else (1 if tc_ids else 0),
                             "instant_upload": True
-                        }, "秒传成功，测试用例已创建")
+                        }
+                        instant_message = "秒传成功，测试用例已创建"
+                        if not tc_ids:
+                            conflict = AudioController._find_active_case_in_other_group_by_name(
+                                existing_audio.id, effective_group_name, algorithm_type
+                            )
+                            if conflict:
+                                instant_data["test_case_skipped_reason"] = (
+                                    f'该音频已在分组「{conflict[0]}」存在活跃用例「{conflict[1]}」，'
+                                    f'未重复创建；如需在分组「{effective_group_name}」使用，请用「复制到分组」'
+                                )
+                                instant_message = "秒传成功；该音频已在其它分组存在活跃用例，未重复创建测试用例"
+
+                        return success_response(instant_data, instant_message)
                     else:
                         # 秒传但不需要创建测试用例，也要持久化标注（同 code 覆盖旧记录）
                         AudioController._persist_annotations_and_raw(
@@ -1544,6 +1558,20 @@ class AudioController:
             if created_test_case_id:
                 response_data["test_case_id"] = created_test_case_id
                 response_data["test_case_count"] = created_test_case_count
+            elif create_test_case:
+                # 建用例被跨组重复拦截时，响应体给出可见原因（不静默）
+                conflict = AudioController._find_active_case_in_other_group_by_name(
+                    new_audio.id, effective_group_name, algorithm_type
+                )
+                if conflict:
+                    response_data["test_case_skipped_reason"] = (
+                        f'该音频已在分组「{conflict[0]}」存在活跃用例「{conflict[1]}」，'
+                        f'未重复创建；如需在分组「{effective_group_name}」使用，请用「复制到分组」'
+                    )
+                    return success_response(
+                        response_data,
+                        "文件合并成功；该音频已在其它分组存在活跃用例，未重复创建测试用例",
+                    )
 
             return success_response(response_data, "文件合并成功")
         except Exception as e:
@@ -1763,29 +1791,31 @@ class AudioController:
         normalized = unicodedata.normalize('NFKC', str(group_name))
         return re.sub(r'\s+', ' ', normalized).strip()
 
-    # 取一个全局不冲突的用例名
+    # 取一个分组内不冲突的用例名
     @staticmethod
-    def _resolve_unique_case_name(base_name):
-        """取一个在「全部未删除用例」范围内不冲突的用例名。
+    def _resolve_unique_case_name(base_name, group_id):
+        """取一个在**目标分组内**不冲突的用例名。
 
-        判重范围**不含 group_id**：同一音频以「带目录 / 不带目录」两种方式上传时会落到
-        不同分组（带目录 → 目录名分组，不带目录 → 默认分组），若按 (name, group_id) 判重，
-        两行会逐字同名；而按编号/名字匹配用例时会命中配置不同的行（播放设备、评估比对
-        基准都可能不同）。跨分组重名的产品口径为「改名共存」，不做复用或合并——复用会把
-        新上传的配置悄悄挂到旧行上，正是本缺陷要避免的后果。
+        判重键保持 `(name, group_id, deleted=False)`（同组内去重维持现状，不改成分组无关）：
+        跨组同名是**有意保留的产品能力**——`TestCaseController._batch_copy_to_group` 就是
+        按 `name=tc.name` 逐字复制到目标分组，若把去重键改成"分组无关"，等于把这条既有能力
+        当缺陷修掉。跨组「同一音频重复建用例」的问题改由 `_find_active_case_in_other_group`
+        在**上传路径**上按 `audio_id` 单独处置（按音频身份去重，不是按名字全局唯一）。
 
         同一秒内两次上传：先试 _HHMMSS，仍冲突则递增 _HHMMSS_2 / _HHMMSS_3 ...
+        （旧实现只查一次 + 只加一次秒级后缀，同秒第二次仍会撞名）
 
         :param base_name: 基础用例名（如 测试用例_xxx.wav）
-        :return: 与所有未删除用例都不同名的用例名
+        :param group_id: 目标分组 ID（判重范围限定在该分组内）
+        :return: 在该分组内不与活跃用例重名的用例名
         """
-        if not TestCase.query.filter_by(name=base_name, deleted=False).first():
+        if not TestCase.query.filter_by(name=base_name, group_id=group_id, deleted=False).first():
             return base_name
 
         suffix = now_cst().strftime('%H%M%S')
         for seq in range(1, AudioController.CASE_NAME_SUFFIX_MAX_ATTEMPTS + 1):
             candidate = f"{base_name}_{suffix}" if seq == 1 else f"{base_name}_{suffix}_{seq}"
-            if not TestCase.query.filter_by(name=candidate, deleted=False).first():
+            if not TestCase.query.filter_by(name=candidate, group_id=group_id, deleted=False).first():
                 return candidate
 
         # 极端并发下序号用尽：退化为 uuid 短后缀，保证名字不冲突
@@ -1795,6 +1825,80 @@ class AudioController:
             f'退化为「{candidate}」'
         )
         return candidate
+
+    # 从用例 config 中提取涉及的全部 audio_id
+    @staticmethod
+    def _extract_audio_ids_from_config(config):
+        """提取用例 config 中 rounds[].audios[].audio_id 的集合（含 str/int 混用归一）。
+
+        :param config: 用例 config（JSON）
+        :return: audio_id 字符串集合；config 异常时返回空集合
+        """
+        audio_ids = set()
+        if not isinstance(config, dict):
+            return audio_ids
+        for round_item in config.get('rounds') or []:
+            if not isinstance(round_item, dict):
+                continue
+            for audio_item in round_item.get('audios') or []:
+                if not isinstance(audio_item, dict):
+                    continue
+                aid = audio_item.get('audio_id')
+                if aid is not None:
+                    audio_ids.add(str(aid))
+        return audio_ids
+
+    # 查同一音频是否已在**其它分组**存在活跃用例
+    @staticmethod
+    def _find_active_case_in_other_group(audio_id, group_id):
+        """查同一 `audio_id` 是否已在其它分组存在活跃用例。
+
+        上传路径是**隐式**建用例（用户传的是音频，用例是副作用）：同一音频以「带目录 /
+        不带目录」两种方式上传会落到不同分组，各得一条用例。旧去重键含 group_id，跨组时
+        判不出来，两行用例名逐字相同（实测 JG0103 / JG0078 / JG0045 / JS135），按编号/
+        名字匹配会命中配置不同的行（`playback_device_id` 8 vs 5，评估比对基准也不同）。
+
+        注意这是按**音频身份**去重，不是按名字做全局唯一：显式复制/移动（用户主动要求
+        复制一份到目标分组）不受此限。
+
+        :param audio_id: 音频 ID
+        :param group_id: 本次要建用例的目标分组 ID（该分组内不计入冲突）；目标分组尚未
+            创建时传 None，表示不排除任何分组
+        :return: (分组名, 用例名, 用例ID)；无冲突时返回 None
+        """
+        query = db.session.query(
+            TestCase.id, TestCase.name, TestCase.group_id, TestCase.config
+        ).filter(TestCase.deleted == False)  # noqa: E712
+        if group_id is not None:
+            query = query.filter(TestCase.group_id != group_id)
+        target_audio_id = str(audio_id)
+        for case_id, case_name, case_group_id, config in query.all():
+            if target_audio_id in AudioController._extract_audio_ids_from_config(config):
+                other_group = TestCaseGroup.query.filter_by(id=case_group_id).first()
+                group_name = other_group.name if other_group else case_group_id
+                return group_name, case_name, case_id
+        return None
+
+    # 按「分组名 + 算法类型」查跨组重复（调用侧没有 group_id 时用，供响应体给出可见原因）
+    @staticmethod
+    def _find_active_case_in_other_group_by_name(audio_id, group_name, algorithm_type):
+        """同 `_find_active_case_in_other_group`，但目标分组按 (name, algorithm_type) 定位。
+
+        调用侧只有 `effective_group_name` 时（未建用例的跳过分支）用它拼可见提示，
+        避免为了拿 group_id 而重复走一遍 get-or-create。
+
+        :param audio_id: 音频 ID
+        :param group_name: 本次目标分组名
+        :param algorithm_type: 算法类型
+        :return: (分组名, 用例名, 用例ID)；无冲突时返回 None
+        """
+        group = TestCaseGroup.query.filter_by(
+            name=group_name, algorithm_type=algorithm_type, deleted=False
+        ).first()
+        # 目标分组不存在（被拦的上传不会建空分组）→ 无需排除任何分组
+        return AudioController._find_active_case_in_other_group(
+            audio_id, group.id if group else None
+        )
 
     # 内部辅助方法：从音频创建测试用例
     @staticmethod
@@ -1839,6 +1943,26 @@ class AudioController:
                 f'音频建用例未取到分组名（audio_id={audio_id}），'
                 f'落默认分组「{DEFAULT_UPLOAD_GROUP_NAME}」'
             )
+
+        # 跨组重复建用例处置（本卡口径：隐式上传路径**拦截**，不新增跨组同名活跃用例）
+        # 上传建用例是用户传音频的副作用，同一音频已在别的分组有活跃用例时再建一条，
+        # 会得到与旧行逐字同名的用例（旧去重键含 group_id 判不出来），按编号/名字匹配
+        # 就会命中配置不同的行。用户若确实要在目标分组再用一次，走显式「复制到分组」。
+        # 先查后建：被拦时不留空分组（故此处按名查已有分组，查不到就不排除任何分组）。
+        existing_group = TestCaseGroup.query.filter_by(
+            name=effective_group_name, algorithm_type=algorithm_type, deleted=False
+        ).first()
+        conflict = AudioController._find_active_case_in_other_group(
+            audio_id, existing_group.id if existing_group else None
+        )
+        if conflict:
+            conflict_group_name, conflict_case_name, conflict_case_id = conflict
+            logger.warning(
+                f'音频 audio_id={audio_id} 已在分组「{conflict_group_name}」存在活跃用例'
+                f'「{conflict_case_name}」(id={conflict_case_id})，'
+                f'本次上传到分组「{effective_group_name}」不再重复建用例'
+            )
+            return []
 
         with db.session.no_autoflush:
             # 获取或创建分组（按 name + algorithm_type 联合查找）
@@ -1890,8 +2014,8 @@ class AudioController:
                 else:
                     test_case_name = base_name
 
-                # 同名时加后缀避免冲突；判重范围覆盖全部分组（见 _resolve_unique_case_name）
-                test_case_name = AudioController._resolve_unique_case_name(test_case_name)
+                # 同组内同名时加后缀避免冲突；判重键保持 (name, group_id)（见 _resolve_unique_case_name）
+                test_case_name = AudioController._resolve_unique_case_name(test_case_name, group.id)
 
                 # ===== 构建 config =====
                 # 统一走 rounds 架构，前端始终构建 rounds_config

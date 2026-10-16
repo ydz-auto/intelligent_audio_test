@@ -1,23 +1,30 @@
 # -*- coding: utf-8 -*-
-"""用例创建去重键 / 分组名归一 测试（VEGA-30）
+"""上传建用例的同名处置 / 分组名归一 测试（VEGA-30）
 
-缺陷：`_create_test_case_from_audio` 的同名去重键含 group_id，同一音频以
-「带目录 / 不带目录」两种方式上传时会落到不同分组（带目录 → 目录名分组，
-不带目录 → 默认分组「音频上传生成」），两行用例名逐字相同 → 按编号/名字匹配
-用例时会命中配置不同的行（播放设备、评估比对基准都可能不同）。
+缺陷：`_create_test_case_from_audio` 的同名去重键含 group_id，同一音频以「带目录 /
+不带目录」两种方式上传时会落到不同分组（带目录 → 目录名分组，不带目录 → 默认分组 /
+算法类型分组），旧实现跨组判不出来，两行用例名**逐字相同**（实测 JG0103 / JG0078 /
+JG0045 / JS135），按编号/名字匹配会命中配置不同的行（`playback_device_id` 8 vs 5，
+评估比对基准也不同）。
+
+本卡口径（见首条评论）：
+- **同组内去重键保持现状** `(name, group_id, deleted=False)` —— 不改成"分组无关"，
+  因为跨组同名是**有意保留的产品能力**（`_batch_copy_to_group` 逐字复制到目标分组）。
+- **上传路径（隐式建用例）按 `audio_id` 拦截**：同一音频已在其它分组有活跃用例时，
+  不再重复建用例，并留下 warning 日志 + 响应体可见原因。
+- 同秒两次上传靠**循环取不冲突名字**（`_HHMMSS` / `_HHMMSS_2` / ...）。
+- 分组名 strip + 全半角归一；缺省落默认分组不静默。
 
 本文件覆盖：
-1. `_resolve_unique_case_name`：判重范围覆盖**全部分组**（不再含 group_id）
-2. 同一秒内两次同名上传：名字不撞（后缀递增 _HHMMSS / _HHMMSS_2 ...）
-3. 软删行不参与判重（`deleted=False` 过滤语义未变）
-4. `_normalize_group_name`：strip + 全半角归一
-5. `_create_test_case_from_audio`：同组 / 跨组两种情形都不产生同名活跃用例
-6. 上传接口（`/api/v1/audios/upload/merge` 秒传分支）既有行为不被破坏
+1. `_resolve_unique_case_name`：判重范围**限定目标分组** + 同秒后缀循环
+2. `_normalize_group_name`：strip + 全半角归一
+3. `_extract_audio_ids_from_config` / `_find_active_case_in_other_group`：跨组音频身份判重
+4. `_create_test_case_from_audio`：跨组重复被拦、同组重复改名、分组名归一、缺省分组告警
+5. 上传接口（`/api/v1/audios/upload/merge` 秒传分支）既有行为不被破坏
 
 测试用独立测试库 intelligent_audio_test_test，由 conftest 的外层事务回滚隔离。
-用例名带本次运行的随机 tag，避免测试库中历史残留行干扰判重断言。
+用例名/分组名带本次运行的随机 tag，避免测试库中历史残留行干扰断言。
 """
-import logging
 import uuid
 from datetime import datetime
 from unittest.mock import patch
@@ -84,9 +91,12 @@ def _make_group(name, algorithm_type='asr'):
     return group
 
 
-def _make_case(name, group_id, deleted=False):
+def _make_case(name, group_id, deleted=False, audio_id=None):
+    config = {}
+    if audio_id is not None:
+        config = {'rounds': [{'round_number': 1, 'audios': [{'audio_id': audio_id, 'spl': 65.0}]}]}
     tc = TestCase(
-        id=str(uuid.uuid4()), name=name, group_id=group_id, config={}, test_type='api'
+        id=str(uuid.uuid4()), name=name, group_id=group_id, config=config, test_type='api'
     )
     tc.deleted = deleted
     db.session.add(tc)
@@ -153,17 +163,21 @@ def _purge(case_ids=(), audio_id=None, task_ids=()):
 
 
 # ============================================================
-# _resolve_unique_case_name：判重范围 + 后缀策略
+# _resolve_unique_case_name：判重范围 + 同秒后缀循环
 # ============================================================
 
 class TestResolveUniqueCaseName:
-    """用例名取唯一：判重覆盖全部分组，同秒冲突靠后缀递增"""
+    """用例名取唯一：判重限定目标分组（不改成分组无关），同秒冲突靠后缀递增"""
 
     def test_returns_base_name_when_no_conflict(self, app):
-        """无同名活跃用例时原样返回基础名"""
+        """无同组同名活跃用例时原样返回基础名"""
         from backend.controllers.audio_controller import AudioController
 
-        assert AudioController._resolve_unique_case_name(BASE_CASE_NAME) == BASE_CASE_NAME
+        group = _make_group(GROUP_TAKEOVER)
+        assert (
+            AudioController._resolve_unique_case_name(BASE_CASE_NAME, group.id)
+            == BASE_CASE_NAME
+        )
 
     def test_same_group_conflict_gets_suffix(self, app):
         """同组同名：加后缀（原有行为不回归）"""
@@ -172,33 +186,39 @@ class TestResolveUniqueCaseName:
         group = _make_group(GROUP_TAKEOVER)
         _make_case(BASE_CASE_NAME, group.id)
 
-        resolved = AudioController._resolve_unique_case_name(BASE_CASE_NAME)
+        resolved = AudioController._resolve_unique_case_name(BASE_CASE_NAME, group.id)
         assert resolved != BASE_CASE_NAME
         assert resolved.startswith(f'{BASE_CASE_NAME}_')
 
-    def test_cross_group_conflict_gets_suffix(self, app):
-        """跨组同名：同样加后缀（缺陷根因——旧去重键含 group_id 判不出来）"""
+    def test_cross_group_same_name_is_not_a_name_conflict(self, app):
+        """跨组同名**不算**命名冲突：判重键保持 (name, group_id)，未实现"全局同名唯一"
+
+        这是本卡口径的护栏测试——跨组同名是有意保留的产品能力
+        （`_batch_copy_to_group` 逐字复制到目标分组），不得靠改去重键来消灭。
+        """
         from backend.controllers.audio_controller import AudioController
 
-        takeover_group = _make_group(GROUP_TAKEOVER)
-        _make_group(GROUP_REJECT)
-        _make_case(BASE_CASE_NAME, takeover_group.id)
+        other_group = _make_group(GROUP_TAKEOVER)
+        target_group = _make_group(GROUP_REJECT)
+        _make_case(BASE_CASE_NAME, other_group.id)
 
-        resolved = AudioController._resolve_unique_case_name(BASE_CASE_NAME)
-        assert resolved != BASE_CASE_NAME
-        assert resolved.startswith(f'{BASE_CASE_NAME}_')
+        # 另一个分组里已有同名活跃用例，但目标分组内没有 → 不需要加后缀
+        assert (
+            AudioController._resolve_unique_case_name(BASE_CASE_NAME, target_group.id)
+            == BASE_CASE_NAME
+        )
 
     def test_two_uploads_in_same_second_get_distinct_names(self, app):
-        """同一秒内两次同名上传：后缀递增，两行名字不同"""
+        """同一秒内两次同名上传：后缀递增，两行名字不同（旧实现只查一次会撞名）"""
         from backend.controllers.audio_controller import AudioController
 
         group = _make_group(GROUP_REJECT)
-        # 已有一条同名活跃用例（更早的上传），两次上传落在同一秒
+        # 已有一条同组同名活跃用例（更早的上传），两次上传落在同一秒
         _make_case(BASE_CASE_NAME, group.id)
         with patch(f'{CONTROLLER}.now_cst', return_value=FIXED_NOW):
-            first = AudioController._resolve_unique_case_name(BASE_CASE_NAME)
+            first = AudioController._resolve_unique_case_name(BASE_CASE_NAME, group.id)
             _make_case(first, group.id)
-            second = AudioController._resolve_unique_case_name(BASE_CASE_NAME)
+            second = AudioController._resolve_unique_case_name(BASE_CASE_NAME, group.id)
             _make_case(second, group.id)
 
         # 第一次仍沿用「_HHMMSS」后缀（与旧实现兼容），第二次递增序号
@@ -213,7 +233,10 @@ class TestResolveUniqueCaseName:
         group = _make_group(GROUP_TAKEOVER)
         _make_case(BASE_CASE_NAME, group.id, deleted=True)
 
-        assert AudioController._resolve_unique_case_name(BASE_CASE_NAME) == BASE_CASE_NAME
+        assert (
+            AudioController._resolve_unique_case_name(BASE_CASE_NAME, group.id)
+            == BASE_CASE_NAME
+        )
 
 
 # ============================================================
@@ -243,15 +266,104 @@ class TestNormalizeGroupName:
 
 
 # ============================================================
-# _create_test_case_from_audio：两种上传方式不再产生同名活跃用例
+# 跨组音频身份判重
+# ============================================================
+
+class TestExtractAudioIdsFromConfig:
+    """从 config.rounds[].audios[].audio_id 提取音频 ID"""
+
+    def test_extracts_from_rounds(self, app):
+        from backend.controllers.audio_controller import AudioController
+
+        config = {
+            'rounds': [
+                {'round_number': 1, 'audios': [{'audio_id': 7}, {'audio_id': '8'}]},
+                {'round_number': 2, 'audios': [{'audio_id': 9}]},
+            ]
+        }
+        assert AudioController._extract_audio_ids_from_config(config) == {'7', '8', '9'}
+
+    @pytest.mark.parametrize('config', [None, {}, {'rounds': []}, 'not-a-dict', {'rounds': [None]}])
+    def test_tolerates_malformed_config(self, app, config):
+        from backend.controllers.audio_controller import AudioController
+
+        assert AudioController._extract_audio_ids_from_config(config) == set()
+
+
+class TestFindActiveCaseInOtherGroup:
+    """同一 audio_id 在其它分组的活跃用例查找"""
+
+    def test_finds_case_in_other_group(self, app):
+        from backend.controllers.audio_controller import AudioController
+
+        audio = _make_audio()
+        other_group = _make_group(GROUP_TAKEOVER)
+        target_group = _make_group(GROUP_REJECT)
+        case = _make_case(BASE_CASE_NAME, other_group.id, audio_id=audio.id)
+
+        conflict = AudioController._find_active_case_in_other_group(audio.id, target_group.id)
+        assert conflict == (GROUP_TAKEOVER, BASE_CASE_NAME, case.id)
+
+    def test_ignores_case_in_target_group(self, app):
+        """目标分组内的同名用例不算跨组冲突（同组去重另有后缀逻辑）"""
+        from backend.controllers.audio_controller import AudioController
+
+        audio = _make_audio()
+        target_group = _make_group(GROUP_REJECT)
+        _make_case(BASE_CASE_NAME, target_group.id, audio_id=audio.id)
+
+        assert (
+            AudioController._find_active_case_in_other_group(audio.id, target_group.id) is None
+        )
+
+    def test_ignores_soft_deleted_case(self, app):
+        from backend.controllers.audio_controller import AudioController
+
+        audio = _make_audio()
+        other_group = _make_group(GROUP_TAKEOVER)
+        target_group = _make_group(GROUP_REJECT)
+        _make_case(BASE_CASE_NAME, other_group.id, deleted=True, audio_id=audio.id)
+
+        assert (
+            AudioController._find_active_case_in_other_group(audio.id, target_group.id) is None
+        )
+
+    def test_returns_none_for_unrelated_audio(self, app):
+        """其它用例引用的是别的音频 → 不冲突"""
+        from backend.controllers.audio_controller import AudioController
+
+        audio = _make_audio()
+        other_audio = _make_audio(name=f'other_{RUN_TAG}.wav')
+        other_group = _make_group(GROUP_TAKEOVER)
+        target_group = _make_group(GROUP_REJECT)
+        _make_case(BASE_CASE_NAME, other_group.id, audio_id=other_audio.id)
+
+        assert (
+            AudioController._find_active_case_in_other_group(audio.id, target_group.id) is None
+        )
+
+    def test_none_group_id_excludes_nothing(self, app):
+        """目标分组尚未创建（group_id=None）时不排除任何分组，仍能查出冲突"""
+        from backend.controllers.audio_controller import AudioController
+
+        audio = _make_audio()
+        other_group = _make_group(GROUP_TAKEOVER)
+        case = _make_case(BASE_CASE_NAME, other_group.id, audio_id=audio.id)
+
+        conflict = AudioController._find_active_case_in_other_group(audio.id, None)
+        assert conflict == (GROUP_TAKEOVER, BASE_CASE_NAME, case.id)
+
+
+# ============================================================
+# _create_test_case_from_audio：两种上传方式下的处置
 # ============================================================
 
 class TestCreateTestCaseFromAudioNaming:
-    """同一音频在「带目录 / 不带目录」两种上传方式下的用例命名"""
+    """同一音频在「带目录 / 不带目录」两种上传方式下的用例创建"""
 
     @staticmethod
     def _create(audio_id, group_name):
-        """调 _create_test_case_from_audio（参考参数生成打桩，聚焦命名逻辑）"""
+        """调 _create_test_case_from_audio（参考参数生成打桩，聚焦命名/去重逻辑）"""
         from backend.controllers.audio_controller import AudioController
 
         with patch(PATCH_REF_PARAMS):
@@ -259,21 +371,38 @@ class TestCreateTestCaseFromAudioNaming:
                 audio_id, ['api'], [], group_name=group_name, algorithm_type='asr'
             )
 
-    def test_cross_group_upload_modes_do_not_share_name(self, app):
-        """不带目录（落默认分组）与带目录（落目录名分组）：两行不同名"""
+    def test_cross_group_upload_modes_do_not_create_duplicate_name(self, app):
+        """不带目录与带目录两种方式上传同一音频：第二次被拦，不新增跨组同名活跃用例
+
+        本卡口径 = 隐式上传路径**拦截**（不新增跨组同名活跃用例）。
+        """
         audio = _make_audio()
         # 不带目录：group_name=None → 默认分组「音频上传生成」
-        # 带目录：group_name=目录名 → 目录名分组
-        tc_ids = self._create(audio.id, None) + self._create(audio.id, GROUP_TAKEOVER)
+        first_ids = self._create(audio.id, None)
+        # 带目录：group_name=目录名 → 目录名分组；同一音频已在别的分组有活跃用例 → 拦
+        second_ids = self._create(audio.id, GROUP_TAKEOVER)
         db.session.flush()
 
-        rows = TestCase.query.filter(TestCase.id.in_(tc_ids)).all()
-        assert len(rows) == 2
-        # 确实落在两个不同分组（复现缺陷触发条件）
-        assert len({r.group_id for r in rows}) == 2
-        # 但用例名不再逐字相同
-        assert len({r.name for r in rows}) == 2
+        assert len(first_ids) == 1
+        assert second_ids == []
+
+        rows = TestCase.query.filter(TestCase.id.in_(first_ids)).all()
+        assert len(rows) == 1
         assert _duplicate_active_names(BASE_CASE_NAME) == []
+        # 被拦时不会凭空建出目标分组
+        assert TestCaseGroup.query.filter_by(name=GROUP_TAKEOVER).first() is None
+
+    def test_cross_group_block_logs_warning(self, app):
+        """拦截不得静默：留 warning 日志，且点名冲突所在分组与用例"""
+        audio = _make_audio(name=f'warn_{RUN_TAG}.wav')
+        self._create(audio.id, GROUP_TAKEOVER)
+
+        with patch(f'{CONTROLLER}.logger') as mock_logger:
+            blocked = self._create(audio.id, None)
+
+        assert blocked == []
+        warnings = [str(call.args[0]) for call in mock_logger.warning.call_args_list]
+        assert any(GROUP_TAKEOVER in msg for msg in warnings)
 
     def test_same_group_upload_twice_does_not_share_name(self, app):
         """同组重复上传（两次都落默认分组）：两行不同名"""
@@ -316,7 +445,7 @@ class TestCreateTestCaseFromAudioNaming:
 # ============================================================
 
 class TestUploadMergeEndpointRegression:
-    """秒传建用例走真实接口：既有上传行为不被破坏，且两种分组口径不产生同名用例
+    """秒传建用例走真实接口：既有上传行为不被破坏，跨组重复给可见原因
 
     注：接口内部 `db.session.commit()` 会真正提交（穿透 conftest 的外层事务回滚，
     conftest 已注明的已知限制），把数据写进测试库。本类只验证命名/分组口径与接口
@@ -362,8 +491,8 @@ class TestUploadMergeEndpointRegression:
             },
         )
 
-    def test_two_group_scopes_create_distinct_names(self, client, app):
-        """不带目录（root）与带目录（folder）两次上传：接口成功且用例不同名"""
+    def test_two_group_scopes_do_not_create_duplicate_name(self, client, app):
+        """不带目录（root）与带目录（folder）两次上传：第二次不重复建用例并给出原因"""
         import backend.controllers.audio_controller as audio_controller
 
         audio = _make_audio(md5='a' * 32)
@@ -391,13 +520,16 @@ class TestUploadMergeEndpointRegression:
             assert root_data['instantUpload'] is True
             assert folder_data['instantUpload'] is True
 
-            tc_ids = [root_data['testCaseId'], folder_data['testCaseId']]
-            assert all(tc_ids)
-            rows = TestCase.query.filter(TestCase.id.in_(tc_ids)).all()
-            assert len(rows) == 2
-            # 落在两个不同分组，但用例名不同（缺陷修复点）
-            assert len({r.group_id for r in rows}) == 2
-            assert len({r.name for r in rows}) == 2
+            # 第一次建了用例；第二次因同一音频已在其它分组有活跃用例而跳过
+            tc_ids = [root_data['testCaseId']] if root_data.get('testCaseId') else []
+            assert tc_ids
+            assert folder_data.get('testCaseId') is None
+            reason = folder_data.get('testCaseSkippedReason')
+            assert reason, folder_data
+            # 可见原因要点名冲突所在分组（第一次那条用例落的分组）
+            first_case = TestCase.query.filter_by(id=tc_ids[0]).first()
+            conflict_group = TestCaseGroup.query.filter_by(id=first_case.group_id).first()
+            assert conflict_group.name in reason
             assert _duplicate_active_names(BASE_CASE_NAME) == []
         finally:
             _purge(case_ids=tc_ids, audio_id=audio.id, task_ids=task_ids)
