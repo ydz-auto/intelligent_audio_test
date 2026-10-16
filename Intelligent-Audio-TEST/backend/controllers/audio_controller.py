@@ -1146,12 +1146,23 @@ class AudioController:
             description = validated.description
             user_tags = validated.tags
             
+            # 分组级配置：前端按分组下发的分组名（testCaseConfig.groupName）。
+            # 必须在算 effective_group_name **之前**读取——它是分组判定的最高优先级来源；
+            # 读晚了就只剩一个没人再看的赋值，前端下发的分组名会被静默丢弃（VEGA-38）。
+            tc_config = validated.test_case_config
+            tc_group_name = tc_config.group_name if tc_config else None
+
             # 计算实际分组名称
             # 分组名派生自用户输入的目录名 / 自定义名，先做 strip + 全半角归一，
             # 否则「拒识」与「拒识 」会各建一个分组
+            # 优先级（高→低）：分组级配置 > 目录名/自定义名 > 顶层 test_case_group_name
+            #                  > 算法类型 > 缺省分组
             normalized_custom_group_name = AudioController._normalize_group_name(custom_group_name)
             normalized_test_case_group_name = AudioController._normalize_group_name(test_case_group_name)
-            if group_name_type in ('custom', 'folder') and normalized_custom_group_name:
+            normalized_tc_group_name = AudioController._normalize_group_name(tc_group_name)
+            if normalized_tc_group_name:
+                effective_group_name = normalized_tc_group_name
+            elif group_name_type in ('custom', 'folder') and normalized_custom_group_name:
                 effective_group_name = normalized_custom_group_name
             elif normalized_test_case_group_name:
                 effective_group_name = normalized_test_case_group_name
@@ -1173,8 +1184,7 @@ class AudioController:
             prompt_target_language = validated.prompt_target_language
             prompt_algorithm_type = validated.prompt_algorithm_type
 
-            # 多轮上传配置
-            tc_config = validated.test_case_config
+            # 多轮上传配置（tc_config / tc_group_name 已在上面算 effective_group_name 前读取）
             # rounds 经 pydantic RoundConfigItem 归一化 key 后转回 dict，
             # 保证后端代码拿到的 rounds 是蛇形 key 的 dict 列表
             rounds_config = None
@@ -1183,13 +1193,9 @@ class AudioController:
                     r.model_dump(exclude_none=True, by_alias=False)
                     for r in tc_config.rounds
                 ]
-            tc_group_name = tc_config.group_name if tc_config else None
             tc_inherit_tags = tc_config.inherit_tags if tc_config is not None else True
             # case 级背景噪声（rounds 外层），优先级高于轮次级
             tc_case_background_noise = tc_config.background_noise if tc_config else None
-            # test_case_config 优先级高于顶层 test_case_group_name / inherit_tags
-            if tc_group_name:
-                test_case_group_name = tc_group_name
             # tc_config.algorithm_params（按轮分组 [{round_number, params}]）优先于顶层 algorithm_params
             # 前端 dispatchParamsToRounds 把参数按轮分发到 tc_config.algorithm_params，
             # 顶层 algorithm_params 是扁平列表（不分轮），只有 tc_config 没有时才用顶层兜底

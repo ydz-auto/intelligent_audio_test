@@ -1295,10 +1295,19 @@ export function useAudioImport() {
     const groupTestCaseConfigs = new Map<string, TestCaseConfig | undefined>()
     if (audioFileInfos.length > 0 && uploadOptions.createTestCase) {
       audioGroups.forEach((groupFiles, groupKey) => {
+        // 该分组自己的分组名：取分组内文件所在根目录的映射值（与下面 folderGroupName 同一口径）。
+        // 不能取 Object.values(folderGroupMappings)[0]——那是**第一个**根目录的分组名，
+        // 多个根目录时会把所有分组的用例都算成第一个分组（后端按它建用例就会串组）。
+        const firstGroupFile = groupFiles[0] as any
+        const groupRelativePath = firstGroupFile?.webkitRelativePath || ''
+        const groupRootFolder = groupRelativePath ? groupRelativePath.split('/')[0] : ''
+        const groupFolderName = folderGroupMappings && groupRootFolder
+          ? folderGroupMappings[groupRootFolder] || undefined
+          : undefined
         const groupConfig = buildTestCaseConfig(groupFiles, allRawFiles, {
           spl: uploadOptions.spl,
           playbackDeviceId: uploadOptions.playbackDeviceId,
-          groupName: folderGroupMappings ? Object.values(folderGroupMappings)[0] : undefined,
+          groupName: groupFolderName,
           inheritTags: uploadOptions.inheritTags,
           algorithmParams: uploadOptions.algorithmParams
         })
