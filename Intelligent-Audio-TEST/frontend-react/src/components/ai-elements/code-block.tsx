@@ -19,7 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 'use client'
 
 import { Check, Copy, RotateCcw, X } from 'lucide-react'
-import { type ComponentProps, type ReactNode, useState } from 'react'
+import {
+  type ComponentProps,
+  type HTMLAttributes,
+  type ReactNode,
+  useState,
+} from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -36,6 +41,66 @@ type CodeBlockProps = ComponentProps<'div'> & {
   showToolbar?: boolean
   title?: ReactNode
 }
+
+type CodeBlockFrameProps = Omit<HTMLAttributes<HTMLDivElement>, 'title'> & {
+  bodyClassName?: string
+  bodyMaxHeight?: string
+  bodyOverlay?: ReactNode
+  children: ReactNode
+  endActions?: ReactNode
+  showToolbar?: boolean
+  title?: ReactNode
+}
+
+/**
+ * 代码块外框（07_文档.md §7 照 newAPI components/ai-elements/code-block.tsx 的
+ * CodeBlockFrame）：工具栏（语言名 + 尾部动作）+ 可滚动手区 + 遮罩。
+ * 供文档页 GuideCodeBlock 等需要自定义代码体/高亮引擎的场景消费。
+ */
+export const CodeBlockFrame = ({
+  bodyClassName,
+  bodyMaxHeight,
+  bodyOverlay,
+  children,
+  className,
+  endActions,
+  showToolbar = false,
+  title,
+  ...props
+}: CodeBlockFrameProps) => (
+  <div
+    className={cn(
+      'bg-muted/20 text-foreground my-3 w-full max-w-full overflow-hidden rounded-lg border shadow-xs',
+      className
+    )}
+    {...props}
+  >
+    {showToolbar && (
+      <div className='bg-muted/35 border-border/70 flex min-h-10 items-center gap-2 border-b px-2 py-1.5'>
+        <div className='min-w-0 flex-1'>
+          <div className='text-muted-foreground truncate font-mono text-[11px] font-medium tracking-wide uppercase'>
+            {title}
+          </div>
+        </div>
+        {endActions && (
+          <div className='flex shrink-0 items-center gap-1'>{endActions}</div>
+        )}
+      </div>
+    )}
+    <div className='relative min-w-0'>
+      <div
+        className={cn(
+          'code-block-scroll max-w-full overflow-auto transition-[max-height] duration-200 ease-out',
+          bodyClassName
+        )}
+        style={{ maxHeight: bodyMaxHeight }}
+      >
+        {children}
+      </div>
+      {bodyOverlay}
+    </div>
+  </div>
+)
 
 /**
  * 代码块（08_AI对话页.md §3.4 照 newAPI CodeBlock 版式；视觉稿无高亮引擎，
