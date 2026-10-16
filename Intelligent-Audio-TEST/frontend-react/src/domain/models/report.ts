@@ -27,8 +27,7 @@ export interface ReportListItemSummary {
   task_count?: number
 }
 
-/** GET /reports 列表项（report.py ReportListItem） */
-export interface ReportListItem {
+/** GET /reports 列表项（report.py ReportListItem） */export interface ReportListItem {
   id: number
   name: string
   type: ReportType
@@ -85,6 +84,10 @@ export interface ReportMetricValue {
   id?: number
   metric: string
   value: number
+  /** 五档评分（0-5；块一「得分」真实字段，缺省时显示「—」） */
+  score?: number
+  /** 详情·错误（块一可折叠长文本；>50 字展开/收起） */
+  error?: string
 }
 
 /** report.py ReportDeviceStat */
@@ -155,10 +158,16 @@ export interface ReportResourceHeader {
   editable?: boolean
 }
 
-/** metric_data 扁平格式（§1.2：[{resource, metrics:[{id,metric,value}]}]） */
+/** metric_data 扁平格式（§1.2：[{resource, metrics:[{id,metric,value}]}]，双格式兼容） */
 export interface ReportMetricDataGroup {
   resource: string
-  metrics: ReportMetricValue[]
+  metrics?: ReportMetricValue[]
+  /** §1.2 flatten_metric_data 双格式之一：[{resource, categories:[{categoryId, categoryName, metrics}]}] */
+  categories?: {
+    categoryId?: string
+    categoryName: string
+    metrics: ReportMetricValue[]
+  }[]
 }
 
 /** §1.2 raw_data 资源级原始值集合（flatten_raw_data 归一） */
@@ -302,6 +311,8 @@ export interface ReportSummary {
   /** 用例聚合（SpecificCase/Tag/Category 回退重算源） */
   cases?: ReportCaseItem[]
   detailed_results?: unknown[]
+  /** 对比报告：对比任务数（§3.2 报告头「{taskCount} 个任务对比」真实字段） */
+  task_count?: number
 }
 
 /** GET /reports/{id}（report.py ReportDetailData） */
@@ -333,6 +344,12 @@ export interface ReportCaseItem {
   tags: string[]
   /** {resource:{dimension:value}} 或 [{resource, metrics}] 双格式（按算法类型区分） */
   metrics: ReportCaseMetrics
+  /** 用例参数（算法输入参数，按轮次展示；§3.5.4 caseParams 契约） */
+  caseParams?: Record<string, ReportReferenceParam>
+  /** 块一「得分」真实字段（dict 格式 metrics 的评分兜底；数组格式走 ReportMetricValue.score） */
+  metricScore?: Record<string, number>
+  /** 块一「详情·错误」真实字段（dict 格式 metrics 的错误文本兜底；数组格式走 ReportMetricValue.error） */
+  metricError?: Record<string, string>
   results: ReportCaseResult[]
   audios: ReportAudioItem[]
   referenceParams?: Record<string, ReportReferenceParam>

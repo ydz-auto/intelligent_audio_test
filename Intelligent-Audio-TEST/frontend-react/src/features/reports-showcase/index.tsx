@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
 import { usePublishedReportList } from '@/application/reports-showcase/use-published-report-list'
 import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
-import { getLinkedAlgorithmLabel, toReportAlgorithmType } from '@/features/reports/lib/algorithm'
+import { toReportAlgorithmType } from '@/features/reports/lib/algorithm'
 import { buildShowcaseQuery } from '@/features/reports-showcase/lib/search'
 import { ReportsPagination } from '@/features/reports/components/reports-pagination'
 import type { ShowcaseSearch } from '@/features/reports-showcase/types'
@@ -91,6 +91,11 @@ export function ReportShowcasePage() {
       setSearch({ timeRange, startTime: undefined, endTime: undefined, page: 1 }),
     [setSearch]
   )
+  const handleCustomRangeChange = useCallback(
+    (start?: string, end?: string) =>
+      setSearch({ startTime: start || undefined, endTime: end || undefined, page: 1 }),
+    [setSearch]
+  )
   const handleSortChange = useCallback(
     (sortBy: ShowcaseSearch['sortBy'], sortOrder?: ShowcaseSearch['sortOrder']) => {
       setSearch({
@@ -155,6 +160,9 @@ export function ReportShowcasePage() {
             onTypeChange={handleTypeChange}
             timeRange={search.timeRange}
             onTimeRangeChange={handleTimeRangeChange}
+            startTime={search.startTime}
+            endTime={search.endTime}
+            onCustomRangeChange={handleCustomRangeChange}
             hasActiveFilters={hasActiveFilters}
             onClearAll={handleClearAll}
           />
@@ -169,11 +177,6 @@ export function ReportShowcasePage() {
             onSortChange={handleSortChange}
             viewMode={search.view}
             onViewModeChange={handleViewModeChange}
-            algorithmLabel={
-              effectiveAlgorithmType
-                ? (getLinkedAlgorithmLabel(globalAlgorithmId) ?? effectiveAlgorithmType)
-                : undefined
-            }
           />
 
           {search.view === 'card' && !listQuery.isLoading ? (

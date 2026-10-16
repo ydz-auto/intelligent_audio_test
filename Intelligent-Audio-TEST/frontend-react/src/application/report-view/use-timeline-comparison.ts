@@ -12,6 +12,8 @@ export interface TimelineSegment {
   end: number
   text: string
   isMatch?: boolean
+  /** 结果段归属资源（algorithmResults[].device 注入；资源下拉过滤用） */
+  resource?: string
 }
 
 export interface TimelineResult {
@@ -119,17 +121,32 @@ export function useTimelineComparison() {
       ? refKeys.map((k) => referenceParams[k]).filter((v) => v !== undefined)
       : []
     const referenceSegments = refRows.flatMap((v) => parseTimelineData(v))
-    const resultSegments = resultRows.flatMap((v) => parseTimelineData((v as { value?: unknown }).value))
+    const resultSegments = resultRows.flatMap((v) => {
+      const segs = parseTimelineData((v as { value?: unknown }).value)
+      const device = (v as { device?: string }).device
+      return segs.map((s) => ({ ...s, resource: device }))
+    })
     if (referenceSegments.length === 0 && resultSegments.length === 0) return null
-    const speakers = [...new Set(referenceSegments.map((s) => s.speaker))]
+    // 说话人并集（参考 + 结果两侧；P3-8）
+    const speakers = [...new Set([
+      ...referenceSegments.map((s) => s.speaker),
+      ...resultSegments.map((s) => s.speaker),
+    ])]
+    // 匹配段高亮：贪心说话人映射（overlap ±0.5s）标记结果段 isMatch（P3-8）
+    const mapping = computeOptimalSpeakerMapping(referenceSegments, resultSegments)
+    const mappedResultSpeakers = new Set(mapping.values())
+    const resultSegmentsWithMatch = resultSegments.map((s) => ({
+      ...s,
+      isMatch: mappedResultSpeakers.has(s.speaker),
+    }))
     const maxEnd = Math.max(
       0,
       ...referenceSegments.map((s) => s.end),
-      ...resultSegments.map((s) => s.end)
+      ...resultSegmentsWithMatch.map((s) => s.end)
     )
     return {
       referenceSegments,
-      resultSegments,
+      resultSegments: resultSegmentsWithMatch,
       effectiveDuration: maxEnd,
       speakers: ['全部', ...speakers],
     }

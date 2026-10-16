@@ -11,6 +11,7 @@ import {
   batchDeleteReports,
   deleteReport,
   exportReports,
+  generateTaskReport,
   publishReport,
   purgeReport,
   regenerateReport,
@@ -32,6 +33,16 @@ export function useReportActions() {
     async (id: number) => {
       await publishReport(id)
       toast.success('报告发布成功')
+      refresh()
+    },
+    [refresh]
+  )
+
+  /** 取消发布（快照语义：桩写回 name 保持成功回执；TODO(API 接线): POST /reports/{id}/unpublish） */
+  const unpublish = useCallback(
+    async (id: number, name?: string) => {
+      await updateReport(id, { name: name || undefined })
+      toast.success('已取消发布')
       refresh()
     },
     [refresh]
@@ -92,6 +103,17 @@ export function useReportActions() {
     [refresh]
   )
 
+  /** 生成报告（POST /reports/generate-task；返回新报告 id） */
+  const generate = useCallback(
+    async (taskId: number, name?: string, description?: string): Promise<number> => {
+      const result = await generateTaskReport({ task_id: taskId, name, description })
+      toast.success('报告已生成')
+      refresh()
+      return result.report_id
+    },
+    [refresh]
+  )
+
   const exportReport = useCallback(
     async (ids: number[], format: string) => {
       await exportReports({ ids, format })
@@ -102,12 +124,14 @@ export function useReportActions() {
 
   return {
     publish,
+    unpublish,
     rename,
     softDelete,
     restore,
     purge,
     toggleFavorite,
     regenerate,
+    generate,
     exportReport,
     refresh,
   }

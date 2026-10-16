@@ -94,6 +94,7 @@ export function ReportShowcaseCardGrid({
                       variant='ghost'
                       size='sm'
                       className='h-7 gap-1 px-2 text-xs'
+                      aria-label='复制链接'
                       onClick={() => handleCopyLink(report)}
                     >
                       <Copy aria-hidden='true' className='size-3.5' />

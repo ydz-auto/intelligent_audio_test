@@ -3,8 +3,9 @@
  * 筛选卡（名称搜索/分组/标签/维度/排序）+ 已固定用例区 + 用例列表（状态点 + 名称 + 分组徽标
  * + CaseIdBadge + 标签 + 下载日志 + 展开）+ 展开详情 = TestCaseReportDetail 七块（§3.5）。
  */
-import { ChevronDown, Download, Pin, PinOff } from 'lucide-react'
-import { useState } from 'react'
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, ChevronDown, Download, Pin, PinOff } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -27,6 +28,7 @@ import { cn } from '@/lib/utils'
 
 import { CaseReportDetail } from '../case-report-detail'
 import { CaseDetailDialog } from '../modals/case-detail-dialog'
+import { LogDownloadProgressDialog } from '../modals/log-download-progress-dialog'
 
 export function SpecificCaseComparison({
   report,
@@ -39,6 +41,7 @@ export function SpecificCaseComparison({
   const {
     filters,
     setFilters,
+    applyFilters,
     resetFilters,
     items,
     isLoading,
@@ -56,14 +59,37 @@ export function SpecificCaseComparison({
     downloadLogs,
   } = useReportCases(report.id, fallbackCases)
 
+  // 筛选卡可选项（分组/标签/评估维度；标签合并自用例 + summary 标签池）
+  const availableGroups = useMemo(
+    () => report.summary.case_categories.map((c) => c.category_name).filter(Boolean),
+    [report.summary.case_categories]
+  )
+  const availableTags = useMemo(() => {
+    const set = new Set<string>()
+    for (const c of fallbackCases) for (const t of c.tags) set.add(t)
+    for (const tag of [...(report.summary.all_tags ?? []), ...report.summary.all_case_tags]) {
+      if (tag.tag_name) set.add(tag.tag_name)
+    }
+    return [...set]
+  }, [fallbackCases, report.summary.all_tags, report.summary.all_case_tags])
+  const availableMetrics = useMemo(
+    () => report.summary.all_metrics.map((m) => m.name),
+    [report.summary.all_metrics]
+  )
+
   const [collapsed, setCollapsed] = useState(false)
   const [detailCase, setDetailCase] = useState<ReportCaseItem>()
   const [downloadingId, setDownloadingId] = useState<string>()
+  const [downloadTarget, setDownloadTarget] = useState<ReportCaseItem>()
 
   const handleDownload = async (caseId: string) => {
     setDownloadingId(caseId)
     try {
       await downloadLogs(caseId)
+      const target =
+        items.find((c) => c.id === caseId) ??
+        fallbackCases.find((c) => c.id === caseId)
+      setDownloadTarget(target)
     } finally {
       setDownloadingId(undefined)
     }
@@ -89,9 +115,9 @@ export function SpecificCaseComparison({
       </div>
 
       <CollapsibleContent className='space-y-3'>
-        {/* 筛选卡 */}
+        {/* 筛选卡（§3.3.7：名称/分组多选/标签多选/评估维度多选/排序[按评估维度含资源+维度+升降序]） */}
         <div className='rounded-xl border p-3'>
-          <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
+          <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3'>
             <div>
               <label className='text-muted-foreground mb-1 block text-xs'>用例名称</label>
               <Input
@@ -102,60 +128,198 @@ export function SpecificCaseComparison({
               />
             </div>
             <div>
-              <label className='text-muted-foreground mb-1 block text-xs'>用例分组</label>
-              <Select
-                value={filters.categories?.[0] ?? 'all'}
-                onValueChange={(v) =>
-                  setFilters({ ...filters, categories: v && v !== 'all' ? [v] : undefined })
-                }
-              >
-                <SelectTrigger className='h-8 text-xs'>
-                  <SelectValue placeholder='(显示全部)' />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value='all'>(显示全部)</SelectItem>
-                  {report.summary.case_categories.map((c) => (
-                    <SelectItem key={c.category_id ?? c.category_name} value={c.category_name}>
-                      {c.category_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
               <label className='text-muted-foreground mb-1 block text-xs'>排序方式</label>
-              <Select
-                value={filters.sortBy ?? 'name'}
-                onValueChange={(v) =>
-                  setFilters({ ...filters, sortBy: v as typeof filters.sortBy })
-                }
-              >
-                <SelectTrigger className='h-8 text-xs'>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value='name'>按名称</SelectItem>
-                  <SelectItem value='category'>按分组</SelectItem>
-                  <SelectItem value='createdat'>按创建时间</SelectItem>
-                  <SelectItem value='metric'>按评估维度</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className='flex items-center gap-1.5'>
+                <Select
+                  value={filters.sortBy ?? 'name'}
+                  onValueChange={(v) =>
+                    setFilters({ ...filters, sortBy: v as typeof filters.sortBy })
+                  }
+                >
+                  <SelectTrigger className='h-8 flex-1 text-xs'>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='name'>按名称</SelectItem>
+                    <SelectItem value='category'>按分组</SelectItem>
+                    <SelectItem value='createdat'>按创建时间</SelectItem>
+                    <SelectItem value='metric'>按评估维度</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  className='h-8 px-2'
+                  aria-label={filters.sortOrder === 'desc' ? '降序' : '升序'}
+                  title={filters.sortOrder === 'desc' ? '降序' : '升序'}
+                  onClick={() =>
+                    setFilters({
+                      ...filters,
+                      sortOrder: filters.sortOrder === 'desc' ? 'asc' : 'desc',
+                    })
+                  }
+                >
+                  {filters.sortOrder === 'desc' ? (
+                    <ArrowDownWideNarrow aria-hidden='true' className='size-3.5' />
+                  ) : (
+                    <ArrowUpNarrowWide aria-hidden='true' className='size-3.5' />
+                  )}
+                </Button>
+              </div>
             </div>
-            <div className='flex items-end justify-end gap-2'>
-              <Button
-                variant='ghost'
-                size='sm'
-                onClick={() => {
-                  resetFilters()
-                  void refetch()
-                }}
-              >
-                重置
-              </Button>
-              <Button size='sm' onClick={() => void refetch()}>
-                应用筛选
-              </Button>
+            {filters.sortBy === 'metric' && (
+              <div className='grid grid-cols-2 gap-1.5'>
+                <div>
+                  <label className='text-muted-foreground mb-1 block text-xs'>资源</label>
+                  <Select
+                    value={filters.sortResource ?? 'all'}
+                    onValueChange={(v) =>
+                      setFilters({ ...filters, sortResource: v === 'all' || v === null ? undefined : v })
+                    }
+                  >
+                    <SelectTrigger className='h-8 text-xs'>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='all'>全部资源(平均)</SelectItem>
+                      {report.summary.resources.map((r) => (
+                        <SelectItem key={r} value={r}>{r}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className='text-muted-foreground mb-1 block text-xs'>评估维度</label>
+                  <Select
+                    value={filters.sortMetric ?? availableMetrics[0] ?? 'all'}
+                    onValueChange={(v) =>
+                      setFilters({ ...filters, sortMetric: v === 'all' || v === null ? undefined : v })
+                    }
+                  >
+                    <SelectTrigger className='h-8 text-xs'>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableMetrics.map((m) => (
+                        <SelectItem key={m} value={m}>{m}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className='mt-2 space-y-1.5 border-t pt-2'>
+            <div className='flex flex-wrap items-center gap-1.5'>
+              <span className='text-muted-foreground w-16 shrink-0 text-xs'>用例分组</span>
+              {availableGroups.map((g) => {
+                const active = filters.categories?.includes(g) ?? false
+                return (
+                  <button
+                    key={g}
+                    type='button'
+                    aria-pressed={active}
+                    className={cn(
+                      'rounded-md px-2 py-0.5 text-xs transition-colors',
+                      active
+                        ? 'bg-primary text-primary-foreground'
+                        : 'hover:bg-muted text-muted-foreground'
+                    )}
+                    onClick={() =>
+                      setFilters({
+                        ...filters,
+                        categories: active
+                          ? (filters.categories ?? []).filter((x) => x !== g)
+                          : [...(filters.categories ?? []), g],
+                      })
+                    }
+                  >
+                    {g}
+                  </button>
+                )
+              })}
             </div>
+            <div className='flex flex-wrap items-center gap-1.5'>
+              <span className='text-muted-foreground w-16 shrink-0 text-xs'>用例标签</span>
+              {availableTags.map((t) => {
+                const active = filters.tags?.includes(t) ?? false
+                return (
+                  <button
+                    key={t}
+                    type='button'
+                    aria-pressed={active}
+                    className={cn(
+                      'rounded-md px-2 py-0.5 text-xs transition-colors',
+                      active
+                        ? 'bg-primary text-primary-foreground'
+                        : 'hover:bg-muted text-muted-foreground'
+                    )}
+                    onClick={() =>
+                      setFilters({
+                        ...filters,
+                        tags: active
+                          ? (filters.tags ?? []).filter((x) => x !== t)
+                          : [...(filters.tags ?? []), t],
+                      })
+                    }
+                  >
+                    {t}
+                  </button>
+                )
+              })}
+            </div>
+            <div className='flex flex-wrap items-center gap-1.5'>
+              <span className='text-muted-foreground w-16 shrink-0 text-xs'>评估维度</span>
+              {availableMetrics.map((m) => {
+                const active = filters.metrics?.includes(m) ?? false
+                return (
+                  <button
+                    key={m}
+                    type='button'
+                    aria-pressed={active}
+                    className={cn(
+                      'rounded-md px-2 py-0.5 text-xs transition-colors',
+                      active
+                        ? 'bg-primary text-primary-foreground'
+                        : 'hover:bg-muted text-muted-foreground'
+                    )}
+                    onClick={() =>
+                      setFilters({
+                        ...filters,
+                        metrics: active
+                          ? (filters.metrics ?? []).filter((x) => x !== m)
+                          : [...(filters.metrics ?? []), m],
+                      })
+                    }
+                  >
+                    {m}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className='mt-2 flex items-center justify-end gap-2 border-t pt-2'>
+            <Button
+              variant='ghost'
+              size='sm'
+              onClick={() => {
+                resetFilters()
+                void refetch()
+              }}
+            >
+              重置
+            </Button>
+            <Button
+              size='sm'
+              onClick={() => {
+                applyFilters(filters)
+                void refetch()
+              }}
+            >
+              应用筛选
+            </Button>
           </div>
         </div>
 
@@ -275,6 +439,18 @@ export function SpecificCaseComparison({
         )}
       </CollapsibleContent>
 
+      <LogDownloadProgressDialog
+        open={downloadTarget !== undefined}
+        onOpenChange={(open) => {
+          if (!open) setDownloadTarget(undefined)
+        }}
+        caseName={downloadTarget?.name ?? ''}
+        totalSize={1024 * 380}
+        onComplete={() => {
+          setDownloadTarget(undefined)
+          toast.success('日志下载完成')
+        }}
+      />
       <CaseDetailDialog
         open={detailCase !== undefined}
         onOpenChange={(open) => {

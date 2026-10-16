@@ -59,7 +59,7 @@ export function getNormalizedMetricData(
   const result: Record<string, Record<string, number>> = {}
   for (const group of summary?.metric_data ?? []) {
     const metrics: Record<string, number> = {}
-    for (const m of group.metrics) metrics[m.metric] = m.value
+    for (const m of group.metrics ?? []) metrics[m.metric] = m.value
     result[group.resource] = metrics
   }
   return result

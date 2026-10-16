@@ -17,6 +17,14 @@ import type { DisplayType } from './use-case-category-comparison'
 
 export type { DisplayType }
 
+// interfaces 层不直 import infrastructure/adapters（P2-20：经 application 层再导出，依赖单向）
+export {
+  getDefaultChartConfig,
+  rebinDistributionData,
+  calculateDistributionStats,
+} from '@/infrastructure/adapters/chartConfig'
+export type { DistributionStats, RebinResult } from '@/infrastructure/adapters/chartConfig'
+
 export interface ChartSeriesData {
   labels: string[]
   datasets: { label: string; data: number[]; backgroundColor?: string; borderColor?: string; fill?: boolean; tension?: number }[]

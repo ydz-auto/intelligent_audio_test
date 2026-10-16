@@ -3,21 +3,21 @@
  * 报告名称 Input + 报告描述 Textarea + 状态徽标；保存 → PUT /reports/{id}。
  */
 import { useState } from 'react'
-import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
+import { useReportActions } from '@/application/reports/use-report-actions'
 import type { ReportDetailData } from '@/domain/models/report'
-import { updateReport } from '@/infrastructure/api/reports-api'
 import { REPORT_STATUS_META } from '@/features/reports/constants'
 
 export function ReportSaveCard({ report }: { report: ReportDetailData }) {
   const [name, setName] = useState(report.name)
   const [description, setDescription] = useState(report.description ?? '')
   const statusMeta = REPORT_STATUS_META[report.status]
+  const { rename } = useReportActions()
 
   return (
     <div className='bg-card rounded-2xl border shadow-xs p-4'>
@@ -43,9 +43,7 @@ export function ReportSaveCard({ report }: { report: ReportDetailData }) {
         <Button
           size='sm'
           onClick={() => {
-            void updateReport(report.id, { name, description }).then(() =>
-              toast.success('报告保存成功')
-            )
+            void rename(report.id, { name, description })
           }}
         >
           保存

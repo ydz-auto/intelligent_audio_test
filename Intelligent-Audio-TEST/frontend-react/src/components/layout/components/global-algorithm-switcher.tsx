@@ -38,6 +38,7 @@ export function GlobalAlgorithmSwitcher() {
   }, [enabled, query])
 
   const current = enabled.find((a) => a.id === algorithmId) ?? enabled[0]
+  const isAll = !algorithmId
 
   return (
     <Popover
@@ -61,7 +62,7 @@ export function GlobalAlgorithmSwitcher() {
           算法
         </span>
         <span className='min-w-0 max-w-28 truncate'>
-          {current?.name ?? '选择算法'}
+          {isAll ? '全部算法' : (current?.name ?? '选择算法')}
         </span>
         <ChevronsUpDown aria-hidden='true' className='size-3.5 shrink-0' />
       </PopoverTrigger>

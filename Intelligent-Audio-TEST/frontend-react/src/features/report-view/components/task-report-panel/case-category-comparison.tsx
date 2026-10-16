@@ -4,6 +4,7 @@
  */
 import { ChevronDown } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -29,6 +30,7 @@ export function CaseCategoryComparison({
   isExporting?: boolean
 }) {
   const {
+    groupKeys,
     matrix,
     filteredGroups,
     allMetrics,
@@ -68,7 +70,7 @@ export function CaseCategoryComparison({
       </div>
 
       <CollapsibleContent className='space-y-3'>
-        {/* 筛选卡 */}
+        {/* 筛选卡（§3.3.5：用例名称 / 用例分组多选 / 评估维度多选；重置与应用筛选已接线） */}
         <div className='rounded-xl border p-3'>
           <div className='flex flex-wrap items-end gap-3'>
             <div className='min-w-40 flex-1'>
@@ -91,6 +93,22 @@ export function CaseCategoryComparison({
               </label>
             </div>
           </div>
+          <div className='mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 border-t pt-2'>
+            <span className='text-muted-foreground text-xs'>选择用例分组（可多选）：</span>
+            {groupKeys.map((g) => (
+              <label key={g} className='flex items-center gap-1.5 text-xs'>
+                <Checkbox
+                  checked={selectedGroups.includes(g)}
+                  onCheckedChange={(checked) => {
+                    setSelectedGroups((prev) =>
+                      checked ? [...prev, g] : prev.filter((x) => x !== g)
+                    )
+                  }}
+                />
+                {g}
+              </label>
+            ))}
+          </div>
           <div className='mt-2 flex flex-wrap items-center gap-x-4 gap-y-1'>
             <span className='text-muted-foreground text-xs'>选择评估维度（可多选）：</span>
             {availableMetrics.map((m) => (
@@ -107,7 +125,7 @@ export function CaseCategoryComparison({
               </label>
             ))}
           </div>
-          <div className='mt-2 flex items-center justify-end gap-2'>
+          <div className='mt-2 flex items-center justify-end gap-2 border-t pt-2'>
             <Button
               variant='ghost'
               size='sm'
@@ -119,7 +137,15 @@ export function CaseCategoryComparison({
             >
               重置
             </Button>
-            <Button size='sm'>应用筛选</Button>
+            <Button
+              size='sm'
+              onClick={() => {
+                // 分组/维度/关键字过滤为实时生效，此处显式提交并反馈
+                toast.success('筛选已应用')
+              }}
+            >
+              应用筛选
+            </Button>
           </div>
         </div>
 
@@ -139,6 +165,7 @@ export function CaseCategoryComparison({
                 resources={resources}
                 displayType={activeDisplayType}
                 onDisplayTypeChange={setActiveDisplayType}
+                isExporting={isExporting}
               />
             )
           })

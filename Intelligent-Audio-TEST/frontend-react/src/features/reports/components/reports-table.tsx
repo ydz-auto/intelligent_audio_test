@@ -34,6 +34,8 @@ import { ReportRowActions, type ReportRowAction } from './report-row-actions'
 interface ReportsTableProps {
   items: ReportListItem[]
   isLoading?: boolean
+  /** 列表加载失败（P2-18：错误态「加载失败/请重试」，不得落「暂无报告」误导） */
+  hasError?: boolean
   totalCount: number
   trashMode: boolean
   selectedIds: number[]
@@ -43,11 +45,13 @@ interface ReportsTableProps {
   onRowAction: (report: ReportListItem, action: ReportRowAction) => void
   onRowClick: (report: ReportListItem) => void
   onClearFilters: () => void
+  onRetry?: () => void
 }
 
 export function ReportsTable({
   items,
   isLoading,
+  hasError,
   totalCount,
   trashMode,
   selectedIds,
@@ -57,6 +61,7 @@ export function ReportsTable({
   onRowAction,
   onRowClick,
   onClearFilters,
+  onRetry,
 }: ReportsTableProps) {
   const allVisibleSelected = items.length > 0 && items.every((i) => selectedIds.includes(i.id))
 
@@ -72,6 +77,25 @@ export function ReportsTable({
           </div>
         ))}
       </div>
+    )
+  }
+
+  if (hasError && items.length === 0) {
+    return (
+      <Empty className='min-h-[320px] border-dashed'>
+        <EmptyHeader>
+          <EmptyMedia variant='icon'>
+            <ArrowUpDown className='size-4' />
+          </EmptyMedia>
+          <EmptyTitle>加载失败</EmptyTitle>
+          <EmptyDescription>报告列表加载失败，请重试</EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          <Button variant='outline' size='sm' onClick={onRetry}>
+            请重试
+          </Button>
+        </EmptyContent>
+      </Empty>
     )
   }
 

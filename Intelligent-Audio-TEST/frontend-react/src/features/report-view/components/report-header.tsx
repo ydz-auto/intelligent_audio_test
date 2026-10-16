@@ -91,7 +91,7 @@ export function ReportHeader({
             </div>
             <div className='text-muted-foreground mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs'>
               {isComparison ? (
-                <span>{report.summary.resources.length} 个任务对比</span>
+                <span>{report.summary.task_count ?? report.summary.resources.length} 个任务对比</span>
               ) : (
                 <span className='flex items-center gap-1'>
                   任务：{report.task_name}

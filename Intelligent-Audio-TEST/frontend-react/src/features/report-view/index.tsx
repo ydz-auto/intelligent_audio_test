@@ -8,11 +8,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useReportDetail } from '@/application/report-view/use-report-detail'
 import { useReportAnalysis } from '@/application/report-view/use-report-analysis'
+import { useReportActions } from '@/application/reports/use-report-actions'
 import { ExportReportDialog } from '@/features/reports/components/modals/export-report-dialog'
 import { PublishReportDialog, RegenerateReportDialog } from '@/features/reports/components/modals/report-confirm-dialogs'
 import { ReportRenameDialog } from '@/features/reports/components/modals/report-rename-dialog'
@@ -61,6 +62,7 @@ export function ReportViewPage() {
   const reportId = Number(reportIdParam)
   const navigate = useNavigate()
   const { hasPermission } = usePermissions()
+  const reportActions = useReportActions()
   const detailQuery = useReportDetail(reportId)
   const report = detailQuery.data
 
@@ -131,6 +133,11 @@ export function ReportViewPage() {
           <EmptyTitle>报告不存在</EmptyTitle>
           <EmptyDescription>请提供有效的报告ID</EmptyDescription>
         </EmptyHeader>
+        <EmptyContent>
+          <Button variant='outline' size='sm' onClick={() => void navigate({ to: '/report-center' })}>
+            返回报告中心
+          </Button>
+        </EmptyContent>
       </Empty>
     )
   }
@@ -150,10 +157,7 @@ export function ReportViewPage() {
           onSave={() => setEditing(false)}
           onPublish={() => setPublishOpen(true)}
           onUnpublish={() => {
-            void import('@/infrastructure/api/reports-api').then(({ updateReport }) =>
-              updateReport(report.id, { name: report.name })
-            )
-            toast.success('已取消发布')
+            void reportActions.unpublish(report.id, report.name)
           }}
           onExport={() => setExportOpen(true)}
           onRegenerate={() => setRegenerateOpen(true)}
@@ -174,6 +178,7 @@ export function ReportViewPage() {
               {isComparison ? (
                 <ComparisonReportPanel
                   report={report}
+                  isExporting={exportOpen}
                   editing={editing}
                   onStartEditing={() => setEditing(true)}
                   onExitEditing={() => setEditing(false)}
@@ -182,6 +187,7 @@ export function ReportViewPage() {
               ) : (
                 <TaskReportPanel
                   report={report}
+                  isExporting={exportOpen}
                   editing={editing}
                   onStartEditing={() => setEditing(true)}
                   onExitEditing={() => setEditing(false)}
@@ -230,10 +236,7 @@ export function ReportViewPage() {
         report={report}
         onConfirm={(target) => {
           setPublishOpen(false)
-          void import('@/infrastructure/api/reports-api').then(({ publishReport }) =>
-            publishReport(target.id)
-          )
-          toast.success('报告发布成功')
+          void reportActions.publish(target.id)
         }}
       />
       <RegenerateReportDialog
@@ -242,21 +245,14 @@ export function ReportViewPage() {
         report={report}
         onConfirm={(target) => {
           setRegenerateOpen(false)
-          void import('@/infrastructure/api/reports-api').then(({ regenerateReport }) =>
-            regenerateReport(target.id)
-          )
-          toast.success('报告已重新生成')
+          void reportActions.regenerate(target.id)
         }}
       />
       <ReportRenameDialog
         open={renameOpen}
         onOpenChange={setRenameOpen}
         report={report}
-        onConfirm={(target, payload) =>
-          void import('@/infrastructure/api/reports-api').then(({ updateReport }) =>
-            updateReport(target.id, payload)
-          )
-        }
+        onConfirm={(target, payload) => void reportActions.rename(target.id, payload)}
       />
     </div>
   )

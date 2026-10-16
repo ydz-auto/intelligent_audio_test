@@ -20,8 +20,9 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useCompletedTasks } from '@/application/reports/use-completed-tasks'
+import { useReportCompare } from '@/application/reports/use-report-compare'
 import type { ReportListItem } from '@/domain/models/report'
-import { MOCK_COMPLETED_TASKS } from '@/infrastructure/mock/reports-mock'
 import { cn } from '@/lib/utils'
 
 interface ReportCompareDialogProps {
@@ -42,6 +43,8 @@ export function ReportCompareDialog({
   const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>([])
   const [name, setName] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const { data: tasks = [] } = useCompletedTasks()
+  const { compare, secondaryCompare } = useReportCompare()
 
   const taskCount = selectedTaskIds.length
   const reportCount = selectedReports.length
@@ -65,21 +68,13 @@ export function ReportCompareDialog({
 
   const handleSubmit = async () => {
     setSubmitting(true)
-    // TODO(API 接线): POST /reports/compare{task_ids,name,description} /
-    //   POST /reports/secondary-compare{report_ids,description}
-    const { compareReports, secondaryCompareReports } = await import(
-      '@/infrastructure/api/reports-api'
-    )
-    const result =
+    const resultId =
       source === 'task'
-        ? await compareReports({ task_ids: selectedTaskIds, name: name || '对比报告' })
-        : await secondaryCompareReports({
-            report_ids: selectedReports.map((r) => r.id),
-            description: name || undefined,
-          })
+        ? await compare(selectedTaskIds, name || '对比报告')
+        : await secondaryCompare(selectedReports.map((r) => r.id), name || undefined)
     setSubmitting(false)
     handleOpenChange(false)
-    onCompared(result.report_id)
+    onCompared(resultId)
   }
 
   return (
@@ -107,7 +102,7 @@ export function ReportCompareDialog({
 
           {source === 'task' ? (
             <div className='max-h-56 space-y-1 overflow-y-auto rounded-lg border p-2'>
-              {MOCK_COMPLETED_TASKS.map((task) => (
+              {tasks.map((task) => (
                 <label
                   key={task.id}
                   className={cn(

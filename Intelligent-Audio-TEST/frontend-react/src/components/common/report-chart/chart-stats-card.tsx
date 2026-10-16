@@ -1,10 +1,11 @@
 /**
  * ChartStatsCard 对位（15_报告域.md §3.7：正态分布统计卡）。
  * 标题「统计信息」+ 设备 Tab + 基础统计前 8 项 +「正方向区间：」+「负方向区间：」。
+ * 共享平台件（INT-430 前置条件）；DistributionStats 类型经 application 层再导出（P2-20）。
  */
 import { useMemo, useState } from 'react'
 
-import type { DistributionStats } from '@/infrastructure/adapters/chartConfig'
+import type { DistributionStats } from '@/application/report-view/use-report-charts'
 
 interface ChartStatsCardProps {
   stats: DistributionStats | null

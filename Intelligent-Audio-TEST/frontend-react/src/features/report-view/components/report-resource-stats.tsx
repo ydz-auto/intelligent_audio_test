@@ -22,8 +22,8 @@ import type {
 import { cn } from '@/lib/utils'
 
 function successVariant(rate: number) {
-  if (rate >= 95) return 'success' as const
-  if (rate >= 90) return 'warning' as const
+  if (rate >= 80) return 'success' as const
+  if (rate >= 50) return 'warning' as const
   return 'danger' as const
 }
 
@@ -36,6 +36,7 @@ function DeviceApiCard({
   failedCases,
   successRate,
   metrics,
+  metricUnits,
 }: {
   name: string
   subtitle?: string
@@ -45,6 +46,7 @@ function DeviceApiCard({
   failedCases: number
   successRate: number
   metrics?: Record<string, unknown>
+  metricUnits?: Record<string, string>
 }) {
   return (
     <div className='bg-background rounded-lg border p-3'>
@@ -90,6 +92,7 @@ function DeviceApiCard({
               <span className='text-muted-foreground truncate'>{key}</span>
               <span className='font-mono tabular-nums'>
                 {typeof value === 'number' ? value.toFixed(1) : String(value)}
+                {metricUnits?.[key] ? <span className='text-muted-foreground ms-0.5'>{metricUnits[key]}</span> : null}
               </span>
             </div>
           ))}
@@ -102,6 +105,9 @@ function DeviceApiCard({
 function DeviceStatsGrid({ report }: { report: ReportDetailData }) {
   const devices: ReportDeviceStat[] = report.summary.device_stats
   const apis: ReportApiStat[] = report.summary.api_stats
+  const metricUnits: Record<string, string> = Object.fromEntries(
+    report.summary.all_metrics.map((m) => [m.name, m.unit ?? ''])
+  )
 
   return (
     <div className='grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3'>
@@ -116,19 +122,21 @@ function DeviceStatsGrid({ report }: { report: ReportDetailData }) {
           failedCases={device.failed_cases}
           successRate={device.success_rate}
           metrics={device.metrics}
+          metricUnits={metricUnits}
         />
       ))}
       {apis.map((api) => (
         <DeviceApiCard
           key={`api-${api.id}`}
           name={api.name}
-          subtitle={api.status === 'active' ? '在线 API' : '离线 API'}
+          subtitle='API'
           status={api.status}
           totalCases={api.total_cases}
           completedCases={api.completed_cases}
           failedCases={api.failed_cases}
           successRate={api.success_rate}
           metrics={api.metrics}
+          metricUnits={metricUnits}
         />
       ))}
     </div>

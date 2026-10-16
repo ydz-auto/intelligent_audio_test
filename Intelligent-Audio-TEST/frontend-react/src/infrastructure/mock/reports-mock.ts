@@ -603,6 +603,7 @@ function buildComparisonReportDetail(type: 'comparison' | 'secondary_comparison'
     total_cases: 48,
     completed_cases: 48,
     failed_cases: 3,
+    task_count: 4,
     resources: ['task_1041', 'task_1037', 'task_1035', 'task_1042'],
     resource_headers: [
       { key: 'task_1041', label: '车载语音助手唤醒词响应测试', type: 'task', id: 1041, name: '车载语音助手唤醒词响应测试' },
@@ -743,6 +744,11 @@ const MOCK_REPORT_CASES: ReportCaseItem[] = [
     referenceParams: {
       asr_text: { code: 'asr_text', type: 'text', value: '小爱同学，今天天气怎么样？' },
     },
+    caseParams: {
+      wakeword: { code: 'wakeword', type: 'text', value: '小爱同学' },
+      distance: { code: 'distance', type: 'number', value: 3 },
+      noise: { code: 'noise', type: 'number', value: 35 },
+    },
     algorithmResults: [
       { paramCode: 'asr_text', paramType: 'text', label: '识别文本', value: '小爱同学，今天天气怎么样？', device: 'device_1' },
       { paramCode: 'wer_score', paramType: 'number', label: 'WER 评分', value: 2.1, device: 'device_1' },
@@ -787,7 +793,15 @@ const MOCK_REPORT_CASES: ReportCaseItem[] = [
     algorithmType: 'asr_streaming',
     metrics: {
       device_2: { 唤醒成功率: 100, 识别准确率: 98.2, 平均响应时间: 212 },
-      api_101: { 唤醒成功率: 100, 识别准确率: 98.8, 平均响应时间: 188 },
+    },
+    metricScore: { 唤醒成功率: 5, 识别准确率: 4, 平均响应时间: 5 },
+    metricError: {
+      识别准确率: '近场桌面识别存在轻微漏字，置信度 0.92，建议复核超长指令；已确认唤醒词命中率 100%。',
+    },
+    caseParams: {
+      wakeword: { code: 'wakeword', type: 'text', value: '小爱同学' },
+      distance: { code: 'distance', type: 'number', value: 0.5 },
+      environment: { code: 'environment', type: 'text', value: '安静室内' },
     },
     results: [
       { resource: 'device_2', status: 'completed', startTime: '2026-10-15T08:58:31', endTime: '2026-10-15T08:58:31' },
@@ -840,9 +854,38 @@ const MOCK_REPORT_CASES: ReportCaseItem[] = [
     tags: ['近场', '唤醒'],
     algorithmType: 'voice_llm',
     metrics: [
-      { resource: 'device_1', metrics: [{ id: 104, metric: '平均WER', value: 4.6 }, { id: 105, metric: '平均响应时间', value: 342 }] },
-      { resource: 'api_101', metrics: [{ id: 104, metric: '平均WER', value: 3.9 }, { id: 105, metric: '平均响应时间', value: 318 }] },
+      {
+        resource: 'device_1',
+        metrics: [
+          { id: 104, metric: '平均WER@round:1', value: 4.2, score: 4, error: '第 1 轮 WER 4.2%，受环境噪声影响，建议复核。' },
+          { id: 105, metric: '平均响应时间@round:1', value: 342, score: 5 },
+          { id: 104, metric: '平均WER@round:2', value: 3.1, score: 5 },
+          { id: 105, metric: '平均响应时间@round:2', value: 338, score: 5 },
+          { id: 104, metric: '平均WER@round:3', value: 6.5, score: 3, error: '第 3 轮 WER 6.5%，上下文保持良好但收尾语气停顿略长，建议优化多轮衔接。' },
+          { id: 105, metric: '平均响应时间@round:3', value: 356, score: 4 },
+          { id: 104, metric: '平均WER', value: 4.6, score: 4 },
+          { id: 105, metric: '平均响应时间', value: 345, score: 5 },
+        ],
+      },
+      {
+        resource: 'api_101',
+        metrics: [
+          { id: 104, metric: '平均WER@round:1', value: 3.6, score: 5 },
+          { id: 105, metric: '平均响应时间@round:1', value: 318, score: 5 },
+          { id: 104, metric: '平均WER@round:2', value: 2.8, score: 5 },
+          { id: 105, metric: '平均响应时间@round:2', value: 315, score: 5 },
+          { id: 104, metric: '平均WER@round:3', value: 5.8, score: 4 },
+          { id: 105, metric: '平均响应时间@round:3', value: 331, score: 5 },
+          { id: 104, metric: '平均WER', value: 4.0, score: 5 },
+          { id: 105, metric: '平均响应时间', value: 321, score: 5 },
+        ],
+      },
     ],
+    caseParams: {
+      'prompt@round:1': { code: 'prompt@round:1', type: 'text', value: '请回答：今天天气怎么样？' },
+      'prompt@round:2': { code: 'prompt@round:2', type: 'text', value: '请回答：明天天气怎么样？' },
+      'prompt@round:3': { code: 'prompt@round:3', type: 'text', value: '请回答：还有什么需要帮忙的吗？' },
+    },
     results: [
       { resource: 'device_1', status: 'completed', startTime: '2026-10-15T09:05:00', endTime: '2026-10-15T09:05:06' },
       { resource: 'api_101', status: 'completed', startTime: '2026-10-15T09:05:00', endTime: '2026-10-15T09:05:05' },

@@ -125,7 +125,7 @@ export function ReportShowcaseList({
                   <td className='cursor-pointer px-3 py-2.5' onClick={() => onRowClick(report)}>
                     <p className='font-medium'>{report.name}</p>
                     <p className='text-muted-foreground text-xs'>
-                      {report.type === 'task' ? '任务报告' : '对比报告'} · {report.task_name}
+                      {typeMeta.label} · {report.task_name}
                     </p>
                   </td>
                   <td className='px-3 py-2.5'>

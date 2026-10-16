@@ -4,6 +4,7 @@
  * + 报告类型 chips（h-11 rounded-xl）+ 时间范围筛选（状态固定已发布，不设状态筛选）。
  */
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -39,6 +40,9 @@ interface ReportShowcaseHeroProps {
   onTypeChange: (value: ReportType | undefined) => void
   timeRange: ReportTimeRange | undefined
   onTimeRangeChange: (value: ReportTimeRange | undefined) => void
+  startTime?: string
+  endTime?: string
+  onCustomRangeChange: (start?: string, end?: string) => void
   hasActiveFilters: boolean
   onClearAll: () => void
 }
@@ -50,6 +54,9 @@ export function ReportShowcaseHero({
   onTypeChange,
   timeRange,
   onTimeRangeChange,
+  startTime,
+  endTime,
+  onCustomRangeChange,
   hasActiveFilters,
   onClearAll,
 }: ReportShowcaseHeroProps) {
@@ -109,6 +116,13 @@ export function ReportShowcaseHero({
               </button>
             )
           })}
+          <span
+            className='bg-muted text-muted-foreground inline-flex h-11 items-center gap-1.5 rounded-xl px-4 text-sm font-medium'
+            title='本页仅展示已发布报告'
+          >
+            <span aria-hidden='true' className='bg-success size-2 rounded-full' />
+            已发布
+          </span>
         </div>
         <Select
           value={timeRange ?? 'all'}
@@ -127,6 +141,26 @@ export function ReportShowcaseHero({
             ))}
           </SelectContent>
         </Select>
+
+        {timeRange === 'custom' && (
+          <div className='flex flex-wrap items-center gap-2'>
+            <Input
+              type='datetime-local'
+              value={startTime ?? ''}
+              onChange={(event) => onCustomRangeChange(event.target.value, endTime)}
+              aria-label='开始时间'
+              className='h-9 w-[190px] text-sm tabular-nums'
+            />
+            <span className='text-muted-foreground text-xs'>至</span>
+            <Input
+              type='datetime-local'
+              value={endTime ?? ''}
+              onChange={(event) => onCustomRangeChange(startTime, event.target.value)}
+              aria-label='结束时间'
+              className='h-9 w-[190px] text-sm tabular-nums'
+            />
+          </div>
+        )}
       </div>
     </div>
   )

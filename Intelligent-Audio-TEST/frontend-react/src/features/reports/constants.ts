@@ -89,10 +89,10 @@ export function getAlgorithmLabel(algorithmType?: string): string {
   return ALGORITHM_LABELS[algorithmType] ?? algorithmType
 }
 
-/** 通过率语义色（规范 §6：≥95 success / ≥90 warning / <90 destructive） */
+/** 通过率语义色（规范 §5 / V9.7.31 基线：≥80 success / ≥50 warning / 其余 danger） */
 export function getSuccessRateVariant(rate: number): 'success' | 'warning' | 'danger' {
-  if (rate >= 95) return 'success'
-  if (rate >= 90) return 'warning'
+  if (rate >= 80) return 'success'
+  if (rate >= 50) return 'warning'
   return 'danger'
 }
 

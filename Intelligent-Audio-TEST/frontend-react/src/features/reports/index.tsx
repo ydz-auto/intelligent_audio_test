@@ -21,16 +21,13 @@ import { SectionPageLayout } from '@/components/layout/components/section-page-l
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useReportList } from '@/application/reports/use-report-list'
 import { useReportTabCounts } from '@/application/reports/use-tab-counts'
+import { useReportSummaryCounts } from '@/application/reports/use-report-summary-counts'
 import {
   useBatchReportActions,
   useReportActions,
 } from '@/application/reports/use-report-actions'
 import type { ReportListItem } from '@/domain/models/report'
-import {
-  MOCK_REPORT_LIST_ITEMS,
-} from '@/infrastructure/mock/reports-mock'
 import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
-import { resolveReportUiFlags } from '@/infrastructure/stores/reports-ui-store'
 import type { ReportsSearch } from '@/features/reports/types'
 import { getLinkedAlgorithmLabel, toReportAlgorithmType } from '@/features/reports/lib/algorithm'
 import { buildReportListQuery } from '@/features/reports/lib/search'
@@ -56,22 +53,6 @@ import {
   PurgeReportDialog,
 } from './components/modals/report-confirm-dialogs'
 
-/** Hero 类型 chips 计数（mock 全量，剔除回收站项；演示用） */
-function useReportTypeCounts() {
-  return useMemo(() => {
-    const items = MOCK_REPORT_LIST_ITEMS.filter((item) => {
-      const flags = resolveReportUiFlags(item.id, item.is_favorite)
-      return !flags.deleted
-    })
-    return {
-      all: items.length,
-      task: items.filter((i) => i.type === 'task').length,
-      comparison: items.filter((i) => i.type === 'comparison').length,
-      secondary_comparison: items.filter((i) => i.type === 'secondary_comparison').length,
-    }
-  }, [])
-}
-
 export function ReportCenterPage() {
   const rawSearch = useSearch({ strict: false }) as unknown as ReportsSearch
   const navigate = useNavigate()
@@ -79,9 +60,16 @@ export function ReportCenterPage() {
   const globalAlgorithmId = useAlgorithmStore((s) => s.algorithmId)
   const reportActions = useReportActions()
   const batchActions = useBatchReportActions()
-  const typeCounts = useReportTypeCounts()
+  const summaryCountsQuery = useReportSummaryCounts()
+  const typeCounts = summaryCountsQuery.data?.typeCounts ?? {
+    all: 0,
+    task: 0,
+    comparison: 0,
+    secondary_comparison: 0,
+  }
+  const favoriteCount = summaryCountsQuery.data?.favoriteCount ?? 0
 
-  const tab: 'test' | 'history' = rawSearch.tab ?? 'history'
+  const tab: 'test' | 'history' = rawSearch.tab ?? 'test'
   const search: ReportsSearch = { ...rawSearch, tab }
 
   // 全局算法联动（规范 §2.2）：URL 无 algorithmType 时自动附全局；'none' 为「本页临时解除」
@@ -249,6 +237,7 @@ export function ReportCenterPage() {
         void navigate({
           to: '/report/$reportId',
           params: { reportId: String(report.id) },
+          search: { from: 'management' },
         })
       } else if (action === 'edit') {
         setRenameTarget(report)
@@ -282,17 +271,12 @@ export function ReportCenterPage() {
       void navigate({
         to: '/report/$reportId',
         params: { reportId: String(reportId) },
+        search: { from: 'management' },
       })
     },
     [navigate]
   )
 
-  const favoriteCount = useMemo(() => {
-    return MOCK_REPORT_LIST_ITEMS.filter((item) => {
-      const flags = resolveReportUiFlags(item.id, item.is_favorite)
-      return flags.isFavorite && !flags.deleted
-    }).length
-  }, [])
   const trashMode = search.trash ?? false
   const favoriteOnly = search.favorite ?? false
 
@@ -321,9 +305,13 @@ export function ReportCenterPage() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align='end' className='w-44'>
             <DropdownMenuItem
-              onClick={() =>
-                openExportDialog(items.length, '当前筛选列表全部报告')
-              }
+              onClick={() => {
+                if (selectedIds.length > 0) {
+                  openExportDialog(selectedIds.length, `已选择 ${selectedIds.length} 个报告`)
+                } else {
+                  openExportDialog(items.length, '当前筛选列表全部报告')
+                }
+              }}
             >
               导出 CSV
             </DropdownMenuItem>
@@ -392,7 +380,7 @@ export function ReportCenterPage() {
             onClearAlgorithm={handleClearAlgorithm}
           />
 
-          {tab === 'history' && !trashMode && (
+          {tab === 'history' && (
             <ReportFavoriteTrashBar
               favoriteOnly={favoriteOnly}
               trashMode={trashMode}
@@ -402,18 +390,32 @@ export function ReportCenterPage() {
             />
           )}
 
-          {search.view === 'card' && !listQuery.isLoading ? (
+          {search.view === 'card' ? (
             <ReportCardGrid
               items={items}
+              isLoading={listQuery.isLoading}
+              hasError={listQuery.isError}
+              totalCount={total}
               trashMode={trashMode}
               hasPermission={hasPermission}
               onRowAction={handleRowAction}
               onCardClick={(report) => handleRowAction(report, 'view')}
+              onClearFilters={handleClearAll}
+              onRetry={() => void listQuery.refetch()}
+              emptyAction={
+                hasPermission('report:create') ? (
+                  <Button variant='secondary' size='sm' onClick={() => setGenerateOpen(true)}>
+                    <FilePlus2 data-icon='inline-start' />
+                    生成报告
+                  </Button>
+                ) : undefined
+              }
             />
           ) : (
             <ReportsTable
               items={items}
               isLoading={listQuery.isLoading}
+              hasError={listQuery.isError}
               totalCount={total}
               trashMode={trashMode}
               selectedIds={selectedIds}
@@ -423,6 +425,7 @@ export function ReportCenterPage() {
               onRowAction={handleRowAction}
               onRowClick={(report) => handleRowAction(report, 'view')}
               onClearFilters={handleClearAll}
+              onRetry={() => void listQuery.refetch()}
             />
           )}
 
@@ -451,18 +454,20 @@ export function ReportCenterPage() {
                   </Button>
                 )}
                 {trashMode ? (
-                  <>
-                    <Button size='sm' onClick={() => void batchActions.batchRestore(selectedIds)}>
-                      批量恢复
-                    </Button>
-                    <Button
-                      variant='destructive'
-                      size='sm'
-                      onClick={() => setBatchPurgeOpen(true)}
-                    >
-                      彻底删除
-                    </Button>
-                  </>
+                  hasPermission('report:delete') && (
+                    <>
+                      <Button size='sm' onClick={() => void batchActions.batchRestore(selectedIds)}>
+                        批量恢复
+                      </Button>
+                      <Button
+                        variant='destructive'
+                        size='sm'
+                        onClick={() => setBatchPurgeOpen(true)}
+                      >
+                        彻底删除
+                      </Button>
+                    </>
+                  )
                 ) : (
                   hasPermission('report:delete') && (
                     <Button variant='destructive' size='sm' onClick={() => setBatchDeleteOpen(true)}>

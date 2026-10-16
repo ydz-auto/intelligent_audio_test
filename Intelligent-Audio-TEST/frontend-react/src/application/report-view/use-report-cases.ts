@@ -4,7 +4,7 @@
  * 固定/展开状态本地维护；下载日志 → downloadCaseLogs（logs.zip Blob）+ 进度演示。
  */
 import { useQuery } from '@tanstack/react-query'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import {
   downloadCaseLogs,
@@ -28,25 +28,37 @@ export interface CaseFilters {
 
 export function useReportCases(reportId: number, fallbackCases: ReportCaseItem[] = []) {
   const [filters, setFilters] = useState<CaseFilters>({})
+  // 300ms 防抖（§3.3.7：筛选条件变化后延迟生效，避免每次按键即触发 search）
+  const [debouncedFilters, setDebouncedFilters] = useState<CaseFilters>({})
   const [page, setPage] = useState(1)
   const perPage = 10
   const [pinnedIds, setPinnedIds] = useState<string[]>([])
   const [expandedIds, setExpandedIds] = useState<string[]>([])
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedFilters(filters), 300)
+    return () => clearTimeout(timer)
+  }, [filters])
+
+  // 筛选条件生效后回到第一页
+  useEffect(() => {
+    setPage(1)
+  }, [debouncedFilters])
+
   const query: ReportSearchCasesRequest = useMemo(
     () => ({
-      keyword: filters.keyword,
-      categories: filters.categories,
-      tags: filters.tags,
-      metrics: filters.metrics,
-      sort_by: filters.sortBy,
-      sort_metric: filters.sortMetric,
-      sort_resource: filters.sortResource,
-      sort_order: filters.sortOrder ?? 'asc',
+      keyword: debouncedFilters.keyword,
+      categories: debouncedFilters.categories,
+      tags: debouncedFilters.tags,
+      metrics: debouncedFilters.metrics,
+      sort_by: debouncedFilters.sortBy,
+      sort_metric: debouncedFilters.sortMetric,
+      sort_resource: debouncedFilters.sortResource,
+      sort_order: debouncedFilters.sortOrder ?? 'asc',
       page,
       per_page: perPage,
     }),
-    [filters, page]
+    [debouncedFilters, page]
   )
 
   const listQuery = useQuery({
@@ -64,12 +76,15 @@ export function useReportCases(reportId: number, fallbackCases: ReportCaseItem[]
   )
 
   const applyFilters = useCallback((next: CaseFilters) => {
+    // 立即提交（「应用筛选」按钮语义：跳过防抖，马上生效）
     setFilters(next)
+    setDebouncedFilters(next)
     setPage(1)
   }, [])
 
   const resetFilters = useCallback(() => {
     setFilters({})
+    setDebouncedFilters({})
     setPage(1)
   }, [])
 

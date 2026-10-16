@@ -45,6 +45,8 @@ type AppHeaderProps = {
   showNotifications?: boolean
   showConfigDrawer?: boolean
   showProfileDropdown?: boolean
+  /** 右区全局算法切换器显隐（INT-344 §3.4 契约；报告展示页 /reports 置 false，INT-442） */
+  showGlobalAlgorithmSwitcher?: boolean
 }
 
 export function AppHeader({
@@ -56,6 +58,7 @@ export function AppHeader({
   showNotifications = true,
   showConfigDrawer = true,
   showProfileDropdown = true,
+  showGlobalAlgorithmSwitcher = true,
 }: AppHeaderProps) {
   const links = useTopNavLinks()
   const notifications = useNotifications()
@@ -85,7 +88,7 @@ export function AppHeader({
 
       {rightContent ?? (
         <div className='ms-auto flex max-w-full shrink-0 basis-full items-center justify-end gap-1 sm:gap-2 lg:basis-auto'>
-          <GlobalAlgorithmSwitcher />
+          {showGlobalAlgorithmSwitcher && <GlobalAlgorithmSwitcher />}
           {showSearch && (
             <Search className='w-8 flex-none px-0 sm:w-8 sm:pe-0 lg:w-8 xl:w-8 2xl:w-40 2xl:pe-12 [&>kbd]:hidden 2xl:[&>kbd]:flex [&>span]:hidden 2xl:[&>span]:inline' />
           )}

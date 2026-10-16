@@ -34,7 +34,11 @@ export function useReportAnalysis(reportId: number, currentAnalysis?: string) {
 
   const saveConclusion = useCallback(
     async (content: string) => {
-      await updateReport(reportId, { analysis: content })
+      // V9.7.31 ReportView 实测双写：PUT /reports/{id} 的 analysis + summary.analysisConclusion/conclusion
+      await updateReport(reportId, {
+        analysis: content,
+        summary: { analysisConclusion: content, conclusion: content },
+      })
       toast.success('结论保存成功')
     },
     [reportId]

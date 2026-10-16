@@ -65,12 +65,12 @@ export function ExecutionResults({
         </div>
       )}
 
-      {/* 用例参数（§3.5.4） */}
-      {Object.keys(caseItem.referenceParams ?? {}).length > 0 && (
+      {/* 用例参数（§3.5.4：算法输入参数 caseParams，按轮次展示；P2-8 不再误用 referenceParams） */}
+      {caseItem.caseParams && Object.keys(caseItem.caseParams).length > 0 && (
         <div>
           <p className='text-muted-foreground mb-1 text-xs font-medium'>用例参数</p>
           <div className='rounded-lg border'>
-            {Object.entries(caseItem.referenceParams ?? {}).map(([code, p]) => (
+            {Object.entries(caseItem.caseParams).map(([code, p]) => (
               <ResultField
                 key={code}
                 label={(p as ReportReferenceParam).code ?? code}

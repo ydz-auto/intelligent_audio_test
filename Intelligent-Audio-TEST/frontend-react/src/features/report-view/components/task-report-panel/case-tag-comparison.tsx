@@ -5,6 +5,7 @@
  */
 import { ChevronDown } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -119,7 +120,15 @@ export function CaseTagComparison({
             >
               重置
             </Button>
-            <Button size='sm'>应用筛选</Button>
+            <Button
+              size='sm'
+              onClick={() => {
+                // 标签/维度过滤为实时生效，此处显式提交并反馈
+                toast.success('筛选已应用')
+              }}
+            >
+              应用筛选
+            </Button>
           </div>
         </div>
 
@@ -139,6 +148,7 @@ export function CaseTagComparison({
                 resources={resources}
                 displayType={activeDisplayType}
                 onDisplayTypeChange={setActiveDisplayType}
+                isExporting={isExporting}
               />
             )
           })

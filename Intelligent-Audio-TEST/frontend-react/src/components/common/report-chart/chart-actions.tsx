@@ -1,5 +1,6 @@
 /**
  * ChartActions 对位（15_报告域.md §3.7：重置缩放 / 导出 PNG）。
+ * 共享平台件（INT-430 前置条件：报告域/工作台/benchmark 排行图表统一）。
  */
 import { Download, RotateCcw } from 'lucide-react'
 

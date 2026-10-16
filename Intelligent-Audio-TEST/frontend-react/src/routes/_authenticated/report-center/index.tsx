@@ -15,7 +15,7 @@ import { useAuthStore } from '@/infrastructure/stores/auth-store'
  */
 export const reportCenterSearchSchema = z
   .object({
-    tab: z.enum(['test', 'history']).catch('history'),
+    tab: z.enum(['test', 'history']).catch('test'),
     view: z.enum(['table', 'card']).catch('table'),
     page: z.coerce.number().int().min(1).catch(1),
     pageSize: z.coerce.number().int().min(1).catch(20),

@@ -3,9 +3,8 @@
  * 「共 {n} 个已发布报告」+ 排序 DropdownMenu（创建时间/报告名称/通过率/用例数）
  * + 表格/卡片视图切换。本页不渲染全局算法联动 chip（INT-442：算法切换已由「当前算法」大卡承载）。
  */
-import { ArrowDownAZ, ArrowUpAZ, ChevronDown, LayoutGrid, List, X } from 'lucide-react'
+import { ArrowDownAZ, ArrowUpAZ, ChevronDown, LayoutGrid, List } from 'lucide-react'
 
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -25,9 +24,6 @@ interface ReportShowcaseToolbarProps {
   onSortChange: (sortBy: ReportSortBy, sortOrder?: ReportSortOrder) => void
   viewMode: ReportViewMode
   onViewModeChange: (view: ReportViewMode) => void
-  /** 当前算法筛选（大卡写回全局 store 后列表附 algorithm_type；chip 展示用） */
-  algorithmLabel?: string
-  onClearAlgorithm?: () => void
 }
 
 export function ReportShowcaseToolbar({
@@ -37,32 +33,13 @@ export function ReportShowcaseToolbar({
   onSortChange,
   viewMode,
   onViewModeChange,
-  algorithmLabel,
-  onClearAlgorithm,
 }: ReportShowcaseToolbarProps) {
   const currentSort = REPORT_SORT_OPTIONS.find((o) => o.value === sortBy)
   return (
     <div className='flex flex-wrap items-center justify-between gap-2'>
-      <div className='flex flex-wrap items-center gap-2'>
-        <span className='text-muted-foreground tabular-nums text-sm'>
-          共 {filteredCount} 个已发布报告
-        </span>
-        {algorithmLabel && (
-          <Badge variant='secondary' className='gap-1.5'>
-            算法：{algorithmLabel}
-            {onClearAlgorithm && (
-              <button
-                type='button'
-                aria-label='清除算法筛选'
-                className='hover:text-foreground text-muted-foreground transition-colors'
-                onClick={onClearAlgorithm}
-              >
-                <X aria-hidden='true' className='size-3' />
-              </button>
-            )}
-          </Badge>
-        )}
-      </div>
+      <span className='text-muted-foreground tabular-nums text-sm'>
+        共 {filteredCount} 个已发布报告
+      </span>
 
       <div className='flex items-center gap-1.5'>
         <DropdownMenu modal={false}>

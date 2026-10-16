@@ -24,10 +24,10 @@ import {
 import { Badge } from '@/components/ui/badge'
 
 const EXPORT_FORMATS = [
-  { value: 'csv', label: 'CSV（批量摘要）' },
+  { value: 'csv', label: 'CSV' },
   { value: 'excel', label: 'Excel' },
   { value: 'pdf', label: 'PDF' },
-  { value: 'html', label: 'HTML（所见即所得）' },
+  { value: 'html', label: 'HTML' },
 ] as const
 
 interface ExportReportDialogProps {

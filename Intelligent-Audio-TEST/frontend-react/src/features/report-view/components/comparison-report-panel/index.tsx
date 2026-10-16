@@ -49,14 +49,18 @@ export function ComparisonReportPanel({
 
   const isSecondary = report.type === 'secondary_comparison'
 
+  // 二次对比差异矩阵（P3-9 转置修正：行=评估维度，列=各报告；最优 text-success / 最差 text-destructive）
   const secondaryDiff = useMemo(() => {
     if (!isSecondary) return null
-    // 二次对比：行=评估维度，列=各报告；最优 text-success / 最差 text-destructive
-    return report.summary.metric_data.map((group) => ({
-      dimension: group.metrics.map((m) => m.metric).join(' / ') || group.resource,
-      values: group.metrics.map((m) => ({ metric: m.metric, value: m.value })),
-    }))
-  }, [isSecondary, report.summary.metric_data])
+    const reports = report.summary.metric_data.map((g) => g.resource)
+    const dimensions = report.summary.all_metrics.map((m) => m.name)
+    if (reports.length === 0 || dimensions.length === 0) return null
+    const valueOf = (resource: string, metric: string): number | undefined => {
+      const group = report.summary.metric_data.find((g) => g.resource === resource)
+      return (group?.metrics ?? []).find((m) => m.metric === metric)?.value
+    }
+    return { reports, dimensions, valueOf }
+  }, [isSecondary, report.summary.metric_data, report.summary.all_metrics])
 
   return (
     <div className='space-y-6'>
@@ -104,40 +108,44 @@ export function ComparisonReportPanel({
               <thead>
                 <tr className='text-muted-foreground border-b bg-muted/30'>
                   <th className='px-3 py-2 text-left font-medium'>评估维度</th>
-                  {secondaryDiff.map((row, i) => (
-                    <th key={i} className='px-3 py-2 text-left font-medium'>
-                      {row.dimension}
+                  {secondaryDiff.reports.map((resource) => (
+                    <th key={resource} className='px-3 py-2 text-left font-medium'>
+                      {resource}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                <tr className='hover:bg-muted/30 border-b last:border-0'>
-                  <td className='px-3 py-2 text-sm font-medium'>指标值</td>
-                  {secondaryDiff.map((row, i) => {
-                    const values = row.values.map((v) => v.value)
-                    const max = Math.max(...values)
-                    const min = Math.min(...values)
-                    return (
-                      <td key={i} className='px-3 py-2 font-mono text-xs tabular-nums'>
-                        {row.values.map((v) => (
-                          <span
-                            key={v.metric}
-                            className={
-                              v.value === max
-                                ? 'text-success block'
-                                : v.value === min
-                                  ? 'text-destructive block'
-                                  : 'block'
-                            }
-                          >
-                            {v.metric}: {v.value.toFixed(2)}
-                          </span>
-                        ))}
-                      </td>
-                    )
-                  })}
-                </tr>
+                {secondaryDiff.dimensions.map((metric) => {
+                  const values = secondaryDiff.reports.map((r) => secondaryDiff.valueOf(r, metric))
+                  const numeric = values.filter((v): v is number => v !== undefined)
+                  const max = numeric.length ? Math.max(...numeric) : undefined
+                  const min = numeric.length ? Math.min(...numeric) : undefined
+                  return (
+                    <tr key={metric} className='hover:bg-muted/30 border-b last:border-0'>
+                      <td className='px-3 py-2 text-sm font-medium'>{metric}</td>
+                      {values.map((v, i) => (
+                        <td key={i} className='px-3 py-2 font-mono text-xs tabular-nums'>
+                          {v === undefined ? (
+                            <span className='text-muted-foreground/50'>—</span>
+                          ) : (
+                            <span
+                              className={
+                                v === max && numeric.length > 1
+                                  ? 'text-success'
+                                  : v === min && numeric.length > 1
+                                    ? 'text-destructive'
+                                    : ''
+                              }
+                            >
+                              {v.toFixed(2)}
+                            </span>
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

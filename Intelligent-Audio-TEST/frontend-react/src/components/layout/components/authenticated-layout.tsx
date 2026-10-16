@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useLocation } from '@tanstack/react-router'
 import { AnimatedOutlet } from '@/components/page-transition'
 import { SkipToMain } from '@/components/skip-to-main'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
@@ -33,6 +34,9 @@ type AuthenticatedLayoutProps = {
 
 export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
   const defaultOpen = getCookie('iatp:sidebar:v1:state') !== 'false'
+  const location = useLocation()
+  // INT-442：报告展示页 /reports 算法切换唯一入口=「当前算法」大卡，隐藏右区全局切换器
+  const showGlobalAlgorithmSwitcher = location.pathname !== '/reports'
 
   return (
     <LayoutProvider>
@@ -42,7 +46,7 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
           className='flex-col [--app-header-height:5.5rem] lg:[--app-header-height:3rem]'
         >
           <SkipToMain />
-          <AppHeader />
+          <AppHeader showGlobalAlgorithmSwitcher={showGlobalAlgorithmSwitcher} />
           <div className='flex min-h-0 w-full flex-1'>
             <AppSidebar />
             <SidebarInset

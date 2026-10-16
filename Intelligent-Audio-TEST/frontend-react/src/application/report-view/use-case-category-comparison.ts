@@ -10,7 +10,7 @@ import type {
   ReportDetailData,
   ReportMetricConfig,
 } from '@/domain/models/report'
-import { buildCaseMetricMatrix } from './case-matrix'
+import { buildCaseMetricMatrix, buildCategoryMatrixFromSummary } from './case-matrix'
 
 export type DisplayType = 'table' | 'bar' | 'line' | 'radar' | 'distribution'
 
@@ -36,13 +36,17 @@ export function useCaseCategoryComparison(report: ReportDetailData) {
   )
 
   const matrix: MetricMatrix = useMemo(() => {
+    // 优先级①：后端 metric_data categories[] 分类聚合（raw_data `{metric}_raw` 合并，§3.6）
+    const categoryMatrix = buildCategoryMatrixFromSummary(summary, allMetrics)
+    if (Object.keys(categoryMatrix).length > 0) return categoryMatrix
+    // 优先级②：summary.cases 重算（分组取 caseItem.category，缺省「未分类」）
     const cases = summary.cases ?? []
     return buildCaseMetricMatrix(
       cases,
       (item) => [item.category ?? '未分类'],
       allMetrics
     )
-  }, [summary.cases, allMetrics])
+  }, [summary, allMetrics])
 
   const filteredGroups = useMemo(() => {
     const all = Object.keys(matrix)

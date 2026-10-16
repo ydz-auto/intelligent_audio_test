@@ -42,7 +42,13 @@ export function TimelineComparison({
   }
 
   const speakers = timeline.speakers.filter((s) => s === '全部' || selectedSpeaker === '全部' || s === selectedSpeaker)
-  const resources = ['全部', ...new Set(caseItem.results.map((r) => r.resource))]
+  const resources = [
+    '全部',
+    ...new Set([
+      ...caseItem.results.map((r) => r.resource),
+      ...timeline.resultSegments.map((s) => s.resource ?? '').filter(Boolean),
+    ]),
+  ]
 
   const maxDuration = timeline.effectiveDuration * scale
 
@@ -93,13 +99,23 @@ export function TimelineComparison({
             {speakers.map((speaker) => {
               if (speaker === '全部') return null
               const refs = timeline.referenceSegments.filter((s) => s.speaker === speaker)
-              const results = timeline.resultSegments.filter((s) => s.speaker === speaker)
+              const results = timeline.resultSegments.filter(
+                (s) =>
+                  s.speaker === speaker &&
+                  (resource === '全部' || s.resource === resource)
+              )
               return (
                 <div key={speaker} className='space-y-1'>
                   <p className='text-muted-foreground text-xs font-medium'>{speaker}</p>
                   <div className='space-y-1'>
                     <SegmentRow label='参考' segments={refs} maxDuration={maxDuration} tone='bg-muted' />
-                    <SegmentRow label='结果' segments={results} maxDuration={maxDuration} tone='bg-primary/40' />
+                    <SegmentRow
+                      label='结果'
+                      segments={results}
+                      maxDuration={maxDuration}
+                      tone='bg-primary/40'
+                      matchTone='bg-primary/70'
+                    />
                   </div>
                 </div>
               )
@@ -120,11 +136,13 @@ function SegmentRow({
   segments,
   maxDuration,
   tone,
+  matchTone,
 }: {
   label: string
-  segments: { start: number; end: number; text: string }[]
+  segments: { start: number; end: number; text: string; isMatch?: boolean }[]
   maxDuration: number
   tone: string
+  matchTone?: string
 }) {
   return (
     <div className='flex items-center gap-2 text-xs'>
@@ -134,7 +152,7 @@ function SegmentRow({
         {segments.map((seg, i) => (
           <div
             key={i}
-            className={tone + ' absolute top-1 h-4 overflow-hidden rounded-sm px-1.5 text-[10px] leading-4'}
+            className={(seg.isMatch ? (matchTone ?? tone) : tone) + ' absolute top-1 h-4 overflow-hidden rounded-sm px-1.5 text-[10px] leading-4'}
             style={{
               left: `${(seg.start / maxDuration) * 100}%`,
               width: `${((seg.end - seg.start) / maxDuration) * 100}%`,

@@ -7,6 +7,7 @@ import type {
   ReportCaseItem,
   ReportMetricConfig,
   MetricMatrix,
+  ReportSummary,
 } from '@/domain/models/report'
 
 /** 用例指标读取（dict/list 双格式）→ 每资源指标值 */
@@ -17,7 +18,7 @@ export function extractCaseResourceMetrics(
     const result: Record<string, Record<string, number>> = {}
     for (const group of item.metrics) {
       result[group.resource] = {}
-      for (const m of group.metrics) result[group.resource][m.metric] = m.value
+      for (const m of group.metrics ?? []) result[group.resource][m.metric] = m.value
     }
     return result
   }
@@ -88,4 +89,61 @@ export function readMatrixCell(
     : []
   const average = typeof resourceCol[metric] === 'number' ? (resourceCol[metric] as number) : undefined
   return { average, raw }
+}
+
+/** 资源级原始值集合（raw_data → {metric: values[]}；供矩阵 _raw 合并，§3.6） */
+function rawDataForResource(
+  summary: ReportSummary,
+  resource: string
+): Record<string, number[]> {
+  const group = summary.raw_data.find((r) => r.resource === resource)
+  if (!group) return {}
+  const map: Record<string, number[]> = {}
+  for (const m of group.metrics) map[m.metric] = m.values
+  return map
+}
+
+/** 优先级①：按用例标签对比矩阵（§3.3.6）——tag_metric_data 数组行 + raw_data `{metric}_raw` 合并 */
+export function buildTagMatrixFromSummary(
+  summary: ReportSummary,
+  _allMetrics: ReportMetricConfig[]
+): MetricMatrix {
+  const matrix: MetricMatrix = {}
+  for (const group of summary.tag_metric_data) {
+    const resource = group.resource
+    const rawValues = rawDataForResource(summary, resource)
+    for (const tag of group.tags) {
+      const row = matrix[tag.tag_name] ?? (matrix[tag.tag_name] = {})
+      const col = row[resource] ?? (row[resource] = {})
+      for (const m of tag.metrics) {
+        col[m.metric] = m.value
+        const raw = rawValues[m.metric] ?? []
+        if (raw.length > 0) col[`${m.metric}_raw`] = raw
+      }
+    }
+  }
+  return matrix
+}
+
+/** 优先级①：按用例分组对比矩阵（§3.3.5）——metric_data categories[] 分类聚合 + raw_data 合并 */
+export function buildCategoryMatrixFromSummary(
+  summary: ReportSummary,
+  _allMetrics: ReportMetricConfig[]
+): MetricMatrix {
+  const matrix: MetricMatrix = {}
+  for (const group of summary.metric_data) {
+    if (!group.categories?.length) continue
+    const resource = group.resource
+    const rawValues = rawDataForResource(summary, resource)
+    for (const cat of group.categories) {
+      const row = matrix[cat.categoryName] ?? (matrix[cat.categoryName] = {})
+      const col = row[resource] ?? (row[resource] = {})
+      for (const m of cat.metrics) {
+        col[m.metric] = m.value
+        const raw = rawValues[m.metric] ?? []
+        if (raw.length > 0) col[`${m.metric}_raw`] = raw
+      }
+    }
+  }
+  return matrix
 }

@@ -19,9 +19,11 @@ import type {
   ReportListQuery,
   ReportSearchCasesRequest,
   ReportTabCounts,
+  ReportType,
 } from '@/domain/models/report'
 
 import {
+  MOCK_COMPLETED_TASKS,
   MOCK_REPORT_CASE_LIST_DATA,
   MOCK_REPORT_DETAILS,
   MOCK_REPORT_LIST_ITEMS,
@@ -51,12 +53,14 @@ export async function fetchReportList(
       }
     }
     if (algorithm_type && item.algorithm_type !== algorithm_type) return false
-    // 演示态覆盖（收藏/软删/彻底删除经 store 生效）；回收站态与正常态互斥
+    // 演示态覆盖（收藏/软删/彻底删除经 store 生效）；回收站态与正常态互斥。
+    // mock 原值 deleted 与 store 覆盖合并判定（INT-434 P2-2：回收站已发布报告不得泄漏进展示列表）。
     const flags = resolveReportUiFlags(item.id, item.is_favorite)
+    const mockDeleted = item.deleted === true
     if (deleted) {
-      if (!flags.deleted) return false
+      if (!flags.deleted && !mockDeleted) return false
     } else {
-      if (flags.deleted) return false
+      if (flags.deleted || mockDeleted) return false
       if (favorite && !flags.isFavorite) return false
     }
     if (start_time && item.created_at < start_time) return false
@@ -100,10 +104,45 @@ export async function fetchReportTabCounts(): Promise<ReportTabCounts> {
   return MOCK_REPORT_TAB_COUNTS
 }
 
+/** GET /tasks 已完成子集（生成/对比 Dialog 任务选择器数据源；mock 只读） */
+export async function fetchCompletedTasks(): Promise<typeof MOCK_COMPLETED_TASKS> {
+  return MOCK_COMPLETED_TASKS
+}
+
+/** Hero 类型 chips / 收藏计数（全量非回收站项；mock 常量经 API 桩消费，避免页面直 import mock） */
+export async function fetchReportTypeCounts(): Promise<{
+  typeCounts: Record<ReportType | 'all', number>
+  favoriteCount: number
+}> {
+  const data = await fetchReportList({
+    page: 1,
+    per_page: 1000,
+    sort_by: 'created_at',
+    order: 'desc',
+    favorite: false,
+    deleted: false,
+  })
+  const items = data.items
+  return {
+    typeCounts: {
+      all: items.length,
+      task: items.filter((i) => i.type === 'task').length,
+      comparison: items.filter((i) => i.type === 'comparison').length,
+      secondary_comparison: items.filter((i) => i.type === 'secondary_comparison').length,
+    },
+    favoriteCount: items.filter((i) => i.is_favorite).length,
+  }
+}
+
 export async function fetchReportDetail(
   reportId: number
 ): Promise<ReportDetailData> {
-  return MOCK_REPORT_DETAILS[reportId] ?? MOCK_REPORT_DETAILS[1201]
+  const detail = MOCK_REPORT_DETAILS[reportId]
+  if (!detail) {
+    // 未知 id → 404 语义（INT-434 P2-5：错误态需可达，不得静默回退 1201）
+    throw new Error(`报告 ${reportId} 不存在`)
+  }
+  return detail
 }
 
 export async function fetchReportCases(
@@ -116,7 +155,7 @@ export async function fetchReportCases(
 /** 用例 metrics 键提取（dict {resource:{metric}} 与 list [{resource,metrics}] 双格式） */
 function caseMetricKeys(item: ReportCaseItem): string[] {
   if (Array.isArray(item.metrics)) {
-    return item.metrics.flatMap((g) => g.metrics.map((m) => m.metric))
+    return item.metrics.flatMap((g) => (g.metrics ?? []).map((m) => m.metric))
   }
   const keys = new Set<string>()
   for (const resourceMetrics of Object.values(item.metrics)) {
@@ -187,7 +226,7 @@ function readCaseMetric(
 ): number | undefined {
   if (Array.isArray(item.metrics)) {
     const group = item.metrics.find((g) => !resource || g.resource === resource)
-    return group?.metrics.find((m) => m.metric === metric)?.value
+    return group?.metrics?.find((m) => m.metric === metric)?.value
   }
   const entries = Object.entries(item.metrics)
   const target = resource ? (item.metrics[resource] ?? {}) : (entries[0]?.[1] ?? {})
@@ -218,7 +257,12 @@ export async function getCaseAverages(
 
 export async function updateReport(
   _reportId: number,
-  _payload: { name?: string; description?: string; analysis?: string }
+  _payload: {
+    name?: string
+    description?: string
+    analysis?: string
+    summary?: { analysisConclusion?: string; conclusion?: string }
+  }
 ): Promise<{ success: boolean }> {
   return { success: true }
 }

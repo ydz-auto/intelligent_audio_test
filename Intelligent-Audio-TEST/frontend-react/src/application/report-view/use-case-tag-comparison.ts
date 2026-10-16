@@ -12,7 +12,7 @@ import type {
   ReportMetricConfig,
   ReportTag,
 } from '@/domain/models/report'
-import { buildCaseMetricMatrix } from './case-matrix'
+import { buildCaseMetricMatrix, buildTagMatrixFromSummary } from './case-matrix'
 import type { DisplayType } from './use-case-category-comparison'
 
 export { DISPLAY_TYPE_OPTIONS } from './use-case-category-comparison'
@@ -62,6 +62,10 @@ export function useCaseTagComparison(report: ReportDetailData) {
   }, [allTags])
 
   const matrix: MetricMatrix = useMemo(() => {
+    // 优先级①：后端 tag_metric_data（per-resource × tag，raw_data `{metric}_raw` 合并，§3.6）
+    const tagMatrix = buildTagMatrixFromSummary(summary, allMetrics)
+    if (Object.keys(tagMatrix).length > 0) return tagMatrix
+    // 优先级②：summary.cases 重算
     const cases = summary.cases ?? []
     const untagged = cases.filter((c) => c.tags.length === 0)
     const tagged = cases.filter((c) => c.tags.length > 0)
@@ -71,7 +75,7 @@ export function useCaseTagComparison(report: ReportDetailData) {
       Object.assign(matrix, fallback)
     }
     return matrix
-  }, [summary.cases, allMetrics])
+  }, [summary, allMetrics])
 
   const filteredTags = useMemo(() => {
     const all = Object.keys(matrix)

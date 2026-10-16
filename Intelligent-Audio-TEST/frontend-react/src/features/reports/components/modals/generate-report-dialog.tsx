@@ -18,7 +18,8 @@ import {
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { MOCK_COMPLETED_TASKS } from '@/infrastructure/mock/reports-mock'
+import { useCompletedTasks } from '@/application/reports/use-completed-tasks'
+import { useReportActions } from '@/application/reports/use-report-actions'
 import { cn } from '@/lib/utils'
 
 interface GenerateReportDialogProps {
@@ -37,16 +38,18 @@ export function GenerateReportDialog({
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const { data: tasks = [] } = useCompletedTasks()
+  const { generate } = useReportActions()
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return MOCK_COMPLETED_TASKS
-    return MOCK_COMPLETED_TASKS.filter(
+    if (!q) return tasks
+    return tasks.filter(
       (t) => t.name.toLowerCase().includes(q) || String(t.id).includes(q)
     )
-  }, [query])
+  }, [query, tasks])
 
-  const selectedTask = MOCK_COMPLETED_TASKS.find((t) => t.id === taskId)
+  const selectedTask = tasks.find((t) => t.id === taskId)
 
   const handleOpenChange = (next: boolean) => {
     if (!next) {
@@ -61,16 +64,14 @@ export function GenerateReportDialog({
   const handleSubmit = async () => {
     if (!taskId) return
     setSubmitting(true)
-    // TODO(API 接线): POST /reports/generate-task{task_id,name,description}
-    const { generateTaskReport } = await import('@/infrastructure/api/reports-api')
-    const result = await generateTaskReport({
-      task_id: taskId,
-      name: name || `${selectedTask?.name} 报告`,
-      description: description || undefined,
-    })
+    const resultId = await generate(
+      taskId,
+      name || `${selectedTask?.name} 报告`,
+      description || undefined
+    )
     setSubmitting(false)
     handleOpenChange(false)
-    onGenerated(result.report_id)
+    onGenerated(resultId)
   }
 
   return (

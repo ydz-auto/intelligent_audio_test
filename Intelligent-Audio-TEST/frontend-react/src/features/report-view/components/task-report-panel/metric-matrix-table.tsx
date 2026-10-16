@@ -14,7 +14,7 @@ import { formatMetricForDisplay, getMetricUnit } from '@/application/report-view
 import { readMatrixCell } from '@/application/report-view/case-matrix'
 import { DISPLAY_TYPE_OPTIONS } from '@/application/report-view/use-case-category-comparison'
 
-import { ReportChart } from '../report-chart'
+import { ReportChart } from '@/components/common/report-chart'
 
 interface MetricMatrixTableProps {
   metric: ReportMetricConfig
@@ -23,6 +23,8 @@ interface MetricMatrixTableProps {
   resources: string[]
   displayType: DisplayType
   onDisplayTypeChange: (type: DisplayType) => void
+  /** 导出模式（P2-12：强制展开 + 表格视图，canvas 图表不克隆进静态 HTML） */
+  isExporting?: boolean
   /** 表头/单元格重命名（分组名/资源 label 编辑） */
   onRename?: (group: string, resource: string | undefined, next: string) => void
 }
@@ -34,10 +36,13 @@ export function MetricMatrixTable({
   resources,
   displayType,
   onDisplayTypeChange,
+  isExporting,
   onRename,
 }: MetricMatrixTableProps) {
   const [collapsed, setCollapsed] = useState(false)
   const { series, distribution } = useReportCharts(matrix, groups, resources, metric.name, displayType)
+  const forceOpen = Boolean(isExporting)
+  const isDistribution = displayType === 'distribution' && !forceOpen
 
   const tableCells = useMemo(
     () =>
@@ -56,13 +61,15 @@ export function MetricMatrixTable({
         <button
           type='button'
           className='flex items-center gap-1 text-sm font-medium'
-          onClick={() => setCollapsed((v) => !v)}
+          onClick={() => !forceOpen && setCollapsed((v) => !v)}
         >
           {metric.name} 对比（单位：{unit || '—'}）
-          <ChevronDown
-            aria-hidden='true'
-            className={cn('text-muted-foreground size-4 transition-transform', collapsed && 'rotate-180')}
-          />
+          {!forceOpen && (
+            <ChevronDown
+              aria-hidden='true'
+              className={cn('text-muted-foreground size-4 transition-transform', collapsed && 'rotate-180')}
+            />
+          )}
         </button>
         <div className='flex flex-wrap gap-1'>
           {DISPLAY_TYPE_OPTIONS.map((option) => (
@@ -83,9 +90,9 @@ export function MetricMatrixTable({
         </div>
       </div>
 
-      {!collapsed && (
+      {(!collapsed || forceOpen) && (
         <div className='p-3'>
-          {displayType === 'table' ? (
+          {(displayType === 'table' || forceOpen) ? (
             <div className='overflow-x-auto rounded-lg border'>
               <table className='w-full min-w-[420px] text-sm'>
                 <thead>
@@ -133,11 +140,12 @@ export function MetricMatrixTable({
             </div>
           ) : (
             <ReportChart
-              title={`${metric.name} 对比`}
-              subtitle={`单位：${unit || '—'} · 每资源独立系列`}
+              title={isDistribution ? '正态分布分析' : `${metric.name} 对比`}
+              subtitle={isDistribution ? `不同区间的${metric.name}，每资源独立系列` : `单位：${unit || '—'} · 每资源独立系列`}
               type={displayType === 'distribution' ? 'distribution' : (displayType === 'bar' ? 'bar' : displayType === 'line' ? 'line' : 'radar')}
               series={series}
               distribution={distribution}
+              xAxisTitle={isDistribution ? `不同区间的${metric.name}` : undefined}
               height={280}
             />
           )}
