@@ -1,5 +1,5 @@
 <template>
-  <div class="home-page">
+  <div class="home-page" ref="homePageRef">
     <!-- Hero -->
     <section class="hero-section">
       <div class="hero-content">
@@ -55,6 +55,8 @@ const stats = ref({
   apis: { online: 0, offline: 0, total: 0 },
   dimensions: { total: 0, withEndpoints: 0, endpoints: 0 }
 })
+
+const homePageRef = ref<HTMLElement | null>(null)
 
 const animatedStats = ref<AnimatedStats>({
   testCasesTotal: 0,
@@ -149,13 +151,17 @@ function initScrollAnimations() {
     })
   }, observerOptions)
 
-  const sections = document.querySelectorAll('.hero-section, .quick-stats, .workflow-section, .detail-section, .features-section, .info-section')
+  // INT-279：.scroll-animate 动画只在 Home 根作用域内初始化，避免给其他页面同名元素挂类
+  const root = homePageRef.value
+  if (!root) return
+
+  const sections = root.querySelectorAll('.hero-section, .quick-stats, .workflow-section, .detail-section, .features-section, .info-section')
   sections.forEach(section => {
     section.classList.add('scroll-animate')
     observer.observe(section)
   })
 
-  const cards = document.querySelectorAll('.feature-card, .detail-main-card, .detail-side-card, .stat-card, .test-type-card')
+  const cards = root.querySelectorAll('.feature-card, .detail-main-card, .detail-side-card, .stat-card, .test-type-card')
   cards.forEach(card => {
     card.classList.add('scroll-animate')
     observer.observe(card)
