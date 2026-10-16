@@ -46,10 +46,19 @@ function ApiResources({ apis }: { apis: Array<{ id: number; name: string; status
 export function TaskDetailContent({
   taskId,
   compact = false,
+  mode = 'view',
+  onCaseSelect,
+  deviceTypesOverride,
 }: {
   taskId: number
   /** 快览弹窗态：底部不重复操作按钮组（§5.1 只加关闭钮） */
   compact?: boolean
+  /** execution 态（10_测试执行.md §3.7）：实时日志注入级别过滤/搜索/导出 + Realtime frame 增量条 */
+  mode?: 'view' | 'execution'
+  /** 关联用例行点击（→ 测试执行 §5.2 用例详情弹窗） */
+  onCaseSelect?: (caseId: string) => void
+  /** device_types 覆盖（测试执行流程启动时落定的混跑类型；未传用详情数据自身） */
+  deviceTypesOverride?: string[]
 }) {
   const { hasPermission } = usePermissions()
   const detailQuery = useTaskDetail(taskId)
@@ -58,7 +67,9 @@ export function TaskDetailContent({
   const detail = detailQuery.data
   if (!detail) return null
 
-  const isApi = detail.device_types.includes('http_api')
+  const effectiveDeviceTypes = deviceTypesOverride ?? detail.device_types
+  const isApi = effectiveDeviceTypes.includes('http_api')
+  const hasRealtimeDevice = effectiveDeviceTypes.includes('websocket_api')
   const isTerminal = ['completed', 'failed', 'stopped', 'merged', 'skipped'].includes(
     detail.execution_status ?? ''
   )
@@ -76,7 +87,7 @@ export function TaskDetailContent({
       <TaskInfoCard detail={detail} />
       <ProgressCard detail={detail} />
       {isApi && <ApiResources apis={detail.apis} />}
-      <CaseAssociation detail={detail} />
+      <CaseAssociation detail={detail} onCaseSelect={onCaseSelect} />
 
       {!compact && (
         <div className='flex flex-wrap items-center gap-2'>
@@ -146,7 +157,11 @@ export function TaskDetailContent({
         </div>
       )}
 
-      <RealtimeLogs taskId={taskId} />
+      <RealtimeLogs
+        taskId={taskId}
+        executionMode={mode === 'execution'}
+        hasRealtimeDevice={hasRealtimeDevice}
+      />
     </div>
   )
 }

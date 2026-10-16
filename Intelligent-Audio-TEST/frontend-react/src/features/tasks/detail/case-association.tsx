@@ -68,7 +68,14 @@ function CaseStatusBadge({ status }: { status: string | null }) {
   return <StatusBadge label={meta.label} variant={meta.variant} />
 }
 
-export function CaseAssociation({ detail }: { detail: TaskDetailData }) {
+export function CaseAssociation({
+  detail,
+  onCaseSelect,
+}: {
+  detail: TaskDetailData
+  /** 用例行点击回调（10_测试执行.md §3.7：步骤四关联用例行点击 → 用例详情弹窗 §5.2） */
+  onCaseSelect?: (caseId: string) => void
+}) {
   const [tab, setTab] = useState('cases')
   const [view, setView] = useState<ViewMode>('flat')
   const [status, setStatus] = useState('all')
@@ -215,7 +222,18 @@ export function CaseAssociation({ detail }: { detail: TaskDetailData }) {
                       />
                     </td>
                     <td className='max-w-56 px-3 py-2'>
-                      <span className='block truncate font-medium'>{c.name}</span>
+                      {onCaseSelect ? (
+                        <button
+                          type='button'
+                          className='block max-w-full truncate text-left font-medium hover:text-primary'
+                          title='查看用例详情'
+                          onClick={() => onCaseSelect(c.case_id)}
+                        >
+                          {c.name}
+                        </button>
+                      ) : (
+                        <span className='block truncate font-medium'>{c.name}</span>
+                      )}
                       <span className='text-muted-foreground block truncate text-xs'>
                         {c.group_name ?? ''}
                       </span>
