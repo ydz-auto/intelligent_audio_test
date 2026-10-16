@@ -1,7 +1,7 @@
 from sqlalchemy.orm import sessionmaker
 
 
-def test_taskcase_pending_claim_is_atomic():
+def test_taskcase_pending_claim_is_atomic(committed_rows):
     from backend.app import create_app
     from backend.models.database import db
     from backend.models.models import Task, TaskCase, TestCase, TestCaseGroup
@@ -15,6 +15,8 @@ def test_taskcase_pending_claim_is_atomic():
             task = Task(name="任务", type="api", status="running", total_cases=1, config={})
             db.session.add_all([group, case, task])
             db.session.commit()
+            # VEGA-49：本测试真 commit 了，登记自己建的行，收尾按 id 删（不再 drop_all）
+            committed_rows(task_id=task.id, case_ids=["tc-1"], group_ids=["g-1"])
 
             rel = TaskCase(task_id=task.id, test_case_id=case.id, status="pending", execution_status="pending")
             db.session.add(rel)
@@ -56,13 +58,12 @@ def test_taskcase_pending_claim_is_atomic():
                 s2.close()
         finally:
             db.session.remove()
-            db.drop_all()
 
         assert claimed1 == 1
         assert claimed2 == 0
 
 
-def test_api_executor_running_transition_is_idempotent():
+def test_api_executor_running_transition_is_idempotent(committed_rows):
     from backend.app import create_app
     from backend.models.database import db
     from backend.models.models import Task, TaskCase, TestCase, TestCaseGroup
@@ -76,6 +77,8 @@ def test_api_executor_running_transition_is_idempotent():
             task = Task(name="任务", type="api", status="running", total_cases=1, config={})
             db.session.add_all([group, case, task])
             db.session.commit()
+            # VEGA-49：登记本测试 commit 的行，收尾按 id 删（不再 drop_all）
+            committed_rows(task_id=task.id, case_ids=["tc-2"], group_ids=["g-2"])
 
             rel = TaskCase(task_id=task.id, test_case_id=case.id, status="running", execution_status="queued")
             db.session.add(rel)
@@ -117,7 +120,6 @@ def test_api_executor_running_transition_is_idempotent():
                 s2.close()
         finally:
             db.session.remove()
-            db.drop_all()
 
         assert updated1 == 1
         assert updated2 == 0

@@ -38,15 +38,31 @@ def _get_database_uri():
     return f'postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}'
 
 
+# 测试库名前缀。VEGA-49 起库名后面还会带上**进程标识**（见 _get_test_database_name），
+# 不再是一个所有会话共用的固定库名。
+TEST_DB_NAME_PREFIX = 'intelligent_audio_test_test'
+
+
+def _get_test_database_name():
+    """本进程专属的测试库名（VEGA-49）。
+
+    库名按 PID 唯一化：同一时刻只有一个进程能持有某个 PID，因此并发跑的两个
+    pytest 会话必然落到不同的库上，各自的 `create_all` / `drop_all` 只作用
+    于自己的库。此前所有会话共用一个固定库名（intelligent_audio_test_test），
+    任何一处 drop_all 都会清掉别人的表，表现为"失败集合每次不同"。
+    """
+    return f'{TEST_DB_NAME_PREFIX}_p{os.getpid()}'
+
+
 def _get_test_database_uri():
     """测试环境使用独立数据库，避免测试的清理逻辑污染生产库。
 
-    在 DATABASE_URI（或推导出的 URI）基础上仅替换库名为
-    intelligent_audio_test_test，其余连接参数保持一致。
+    在 DATABASE_URI（或推导出的 URI）基础上仅替换库名为**本进程专属**的
+    测试库名（见 _get_test_database_name），其余连接参数保持一致。
     """
     from sqlalchemy.engine import make_url
     url = make_url(_get_database_uri())
-    url = url.set(database='intelligent_audio_test_test')
+    url = url.set(database=_get_test_database_name())
     return url.render_as_string(hide_password=False)
 
 def _get_ffmpeg_path():
@@ -209,9 +225,20 @@ class TestingConfig(Config):
     # 测试进程也绝不启动任务调度器（VEGA-42）：它是 3s 轮询的守护线程，会自行
     # 拾取并推进 pending 任务；测试不需要它，显式关掉以防基类默认值被改动。
     TASK_SCHEDULER_ON_STARTUP = False
-    # 测试使用独立数据库（intelligent_audio_test_test），与生产库物理隔离，
-    # 避免 conftest 清空算法表的逻辑污染真实数据
+    # 测试进程里日志落库改用**独立引擎/独立连接**（VEGA-49）：log_worker 后台线程
+    # 与测试线程共用同一条连接时（StaticPool 全进程只有一条），它一次 commit 就会
+    # 把测试外层事务里尚未回滚的数据永久落库，后面的用例于是读到前面用例的残留行，
+    # 同一批用例时红时绿（实测 4 个用例文件连跑 4 次，失败数 0/1/3/1）。独立连接后
+    # 日志照常落库（轮询 logs 表的用例不受影响），但不再动测试那条连接。
+    DB_LOG_SEPARATE_ENGINE = True
+    # 测试使用本进程专属数据库（intelligent_audio_test_test_p<pid>，VEGA-49），
+    # 与生产库物理隔离，也与会话外的其它 pytest 进程物理隔离
     SQLALCHEMY_DATABASE_URI = _get_test_database_uri()
+    # 保持 StaticPool 不变（VEGA-49 实测记录）：StaticPool 只维护一条连接并把它发给
+    # 所有 checkout。测试进程里会写库的后台线程只剩 log_worker，已由
+    # DB_LOG_SEPARATE_ENGINE 挪到独立连接；换 poolclass 会让依赖"引擎永远返回同一条
+    # 连接"的既有测试失败（见 test_algorithm_case_params 的 scope 过滤用例，NullPool
+    # 下必然 FK 违例），故本卡不动它。
     SQLALCHEMY_ENGINE_OPTIONS = {
         "poolclass": StaticPool,
     }

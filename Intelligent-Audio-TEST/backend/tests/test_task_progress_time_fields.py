@@ -2,7 +2,7 @@ import re
 from datetime import datetime, timedelta
 
 
-def test_task_progress_used_time_is_string_when_not_started(monkeypatch):
+def test_task_progress_used_time_is_string_when_not_started(monkeypatch, committed_rows):
     from backend.app import create_app
     from backend.models.database import db
     from backend.models.models import Task, TaskCase, TestCase, TestCaseGroup
@@ -13,8 +13,11 @@ def test_task_progress_used_time_is_string_when_not_started(monkeypatch):
     emitted = {}
 
     def fake_emit(event, data, *args, **kwargs):
-        emitted["event"] = event
-        emitted["data"] = data
+        # 后台 log_worker 线程也会走 socketio.emit 推 task_log 事件，本测试只关心
+        # 进度事件，按事件名过滤，否则记录会被日志事件覆盖（VEGA-49 实测的时序抖动）
+        if event == "task_progress":
+            emitted["event"] = event
+            emitted["data"] = data
 
     monkeypatch.setattr("backend.utils.common.event_manager.socketio.emit", fake_emit)
 
@@ -25,6 +28,8 @@ def test_task_progress_used_time_is_string_when_not_started(monkeypatch):
             task = Task(name="任务", type="api", status="running", total_cases=1, config={})
             db.session.add_all([group, case, task])
             db.session.commit()
+            # VEGA-49：本测试真 commit 了，登记自己建的行，收尾按 id 删（不再 drop_all）
+            committed_rows(task_id=task.id, case_ids=["tc-tp-1"], group_ids=["g-tp-1"])
 
             rel = TaskCase(task_id=task.id, test_case_id=case.id, status="pending", execution_status="pending")
             db.session.add(rel)
@@ -34,14 +39,13 @@ def test_task_progress_used_time_is_string_when_not_started(monkeypatch):
             manager.emit_progress(task.id, force=True)
         finally:
             db.session.remove()
-            db.drop_all()
 
     assert emitted["event"] == "task_progress"
     assert emitted["data"]["taskId"] == str(task.id)
     assert emitted["data"]["usedTime"] == "0分钟"
 
 
-def test_task_progress_expected_times_are_emitted_after_first_completion(monkeypatch):
+def test_task_progress_expected_times_are_emitted_after_first_completion(monkeypatch, committed_rows):
     from backend.app import create_app
     from backend.models.database import db
     from backend.models.models import Task, TaskCase, TestCase, TestCaseGroup
@@ -52,8 +56,11 @@ def test_task_progress_expected_times_are_emitted_after_first_completion(monkeyp
     emitted = {}
 
     def fake_emit(event, data, *args, **kwargs):
-        emitted["event"] = event
-        emitted["data"] = data
+        # 后台 log_worker 线程也会走 socketio.emit 推 task_log 事件，本测试只关心
+        # 进度事件，按事件名过滤，否则记录会被日志事件覆盖（VEGA-49 实测的时序抖动）
+        if event == "task_progress":
+            emitted["event"] = event
+            emitted["data"] = data
 
     monkeypatch.setattr("backend.utils.common.event_manager.socketio.emit", fake_emit)
 
@@ -73,6 +80,12 @@ def test_task_progress_expected_times_are_emitted_after_first_completion(monkeyp
             )
             db.session.add_all([group, case1, case2, task])
             db.session.commit()
+            # VEGA-49：登记本测试 commit 的行，收尾按 id 删（不再 drop_all）
+            committed_rows(
+                task_id=task.id,
+                case_ids=["tc-tp-2-1", "tc-tp-2-2"],
+                group_ids=["g-tp-2"],
+            )
 
             rel1 = TaskCase(task_id=task.id, test_case_id=case1.id, status="completed", execution_status="completed")
             rel2 = TaskCase(task_id=task.id, test_case_id=case2.id, status="pending", execution_status="pending")
@@ -83,7 +96,6 @@ def test_task_progress_expected_times_are_emitted_after_first_completion(monkeyp
             manager.emit_progress(task.id, force=True)
         finally:
             db.session.remove()
-            db.drop_all()
 
     assert emitted["event"] == "task_progress"
     data = emitted["data"]

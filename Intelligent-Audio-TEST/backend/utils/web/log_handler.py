@@ -145,6 +145,9 @@ class DatabaseLogHandler(logging.Handler):
         self.enable_console_log = False
         self.socketio_instance = None
         self.flask_app = None
+        # 日志落库专用引擎（VEGA-49，见 _log_bind）：仅测试配置下启用
+        self._log_engine = None
+        self._log_engine_uri = None
         
         self._last_db_warning_time = 0
         self._last_ws_warning_time = 0
@@ -222,13 +225,39 @@ class DatabaseLogHandler(logging.Handler):
                 print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - CRITICAL ERROR - {str(e)}")
                 time.sleep(0.5)
     
+    def _log_bind(self, db):
+        """日志落库用的引擎（VEGA-49）。
+
+        默认复用 app 引擎（生产/开发）。但测试进程的 app 引擎是 StaticPool——
+        全进程只有一条连接，后台线程与测试线程共用它，后台线程一次 commit 就会
+        把测试外层事务里尚未回滚的数据永久落库，后面的用例于是读到前面用例的
+        残留行，同一批用例时红时绿（实测 4 个用例文件连跑 4 次，失败数 0/1/3/1）。
+
+        测试配置打开 DB_LOG_SEPARATE_ENGINE，日志线程改用独立引擎（独立连接、
+        独立事务）：日志照常落库，但不再碰测试那条连接。
+        """
+        if not self.flask_app.config.get('DB_LOG_SEPARATE_ENGINE', False):
+            return db.engine
+        uri = self.flask_app.config.get('SQLALCHEMY_DATABASE_URI')
+        if not uri:
+            return db.engine
+        if self._log_engine is None or self._log_engine_uri != uri:
+            from sqlalchemy import create_engine
+            from sqlalchemy.pool import NullPool
+            if self._log_engine is not None:
+                self._log_engine.dispose()
+            # NullPool：每次取用新开一条连接，日志线程不长期占着连接
+            self._log_engine = create_engine(uri, poolclass=NullPool)
+            self._log_engine_uri = uri
+        return self._log_engine
+
     def _init_db_components(self, Log, db, SessionLocal):
         if self.flask_app is None:
             global _cached_app
             if _cached_app:
                 self.flask_app = _cached_app
                 print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - INFO - Flask App instance acquired.")
-        
+
         if self.socketio_instance is None:
             global _cached_socketio
             if _cached_socketio:
@@ -238,10 +267,10 @@ class DatabaseLogHandler(logging.Handler):
                     self.socketio_instance = self.flask_app.extensions.get('socketio')
                 except:
                     pass
-        
+
         if self.flask_app is None:
             return None, None, None
-        
+
         try:
             with self.flask_app.app_context():
                 from backend.models.models import Log as LogModel
@@ -249,8 +278,9 @@ class DatabaseLogHandler(logging.Handler):
                 from sqlalchemy.orm import sessionmaker
                 Log = LogModel
                 db = db_instance
-                if db.engine:
-                    SessionLocal = sessionmaker(bind=db.engine)
+                bind = self._log_bind(db)
+                if bind is not None:
+                    SessionLocal = sessionmaker(bind=bind)
                     return Log, db, SessionLocal
                 return None, None, None
         except ImportError:
@@ -261,8 +291,9 @@ class DatabaseLogHandler(logging.Handler):
                     from sqlalchemy.orm import sessionmaker
                     Log = LogModel
                     db = db_instance
-                    if db.engine:
-                        SessionLocal = sessionmaker(bind=db.engine)
+                    bind = self._log_bind(db)
+                    if bind is not None:
+                        SessionLocal = sessionmaker(bind=bind)
                         return Log, db, SessionLocal
                     return None, None, None
             except Exception as e:
@@ -353,7 +384,7 @@ class DatabaseLogHandler(logging.Handler):
     def _check_and_archive(self, Log, SessionLocal):
         if not Log or not SessionLocal or not self.flask_app:
             return
-        
+
         try:
             with self.flask_app.app_context():
                 session = SessionLocal()
