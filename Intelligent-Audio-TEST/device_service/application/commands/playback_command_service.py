@@ -417,8 +417,9 @@ class PlaybackCommandService:
                 return re.sub(r'\((\d+)-\s+', '(', uid)
 
             devices = self.repo.get_all_playback_devices()
-            audio_service = self._get_audio_service()
-            physical_devices = audio_service.get_physical_devices()
+            # 经 ACL 仓储获取物理设备列表（INT-399：原 _get_audio_service 未定义，
+            # DDD 重构 5c5e35da 带入，被路由 422 掩盖；与兄弟查询服务 scan 同款引用）
+            physical_devices = self._get_physical_devices_via_grpc()
 
             results = []
             current_time = now_cst()
