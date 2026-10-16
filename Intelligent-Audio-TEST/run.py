@@ -4,16 +4,40 @@ import signal
 import time
 import subprocess
 
-# VEGA-35：本进程是真正的后端服务入口，显式打开"启动恢复扫描"
-# （遗留 pending/queued/running 任务在服务重启后必须收尾为 failed）。
-# 必须在导入 backend.app 之前设置——配置类在导入时求值。
-# 测试/迁移脚本/临时脚本不设置它，因此它们的 create_app() 不会改写共享库状态。
-os.environ.setdefault('RECOVERY_SWEEP_ON_STARTUP', 'true')
 
-# VEGA-42：任务调度器（3s 轮询、自行拾取并推进 pending 任务）同样是服务进程
-# 专属的启动副作用，只由本入口打开；测试/迁移脚本/临时脚本的 create_app()
-# 不会起这个守护线程。同样必须在导入 backend.app 之前设置。
-os.environ.setdefault('TASK_SCHEDULER_ON_STARTUP', 'true')
+# VEGA-35 / VEGA-42：本进程是真正的后端服务入口，两个"服务进程专属启动副作用"
+# 只由本入口打开，且必须在导入 backend.app 之前设置——配置类在导入时求值：
+#   * RECOVERY_SWEEP_ON_STARTUP：重启后把遗留 pending/queued/running 收尾为 failed；
+#   * TASK_SCHEDULER_ON_STARTUP：3s 轮询的调度器守护线程，自行拾取并推进 pending 任务。
+# 测试/迁移脚本/临时脚本不设置它们，因此它们的 create_app() 既不改写共享库状态，
+# 也不会对着共享库起调度线程。
+def _force_service_startup_switch(name):
+    """把服务启动开关强制打开，并把被覆盖的外部取值显式打出来（VEGA-60 / O4）。
+
+    这两个开关原用 ``os.environ.setdefault`` 打开，前提是"外部不会传这个变量"。
+    但调用 shell 里遗留一个 ``false/0`` 时 setdefault **不会覆盖**：真实服务起来后
+    调度器静默不启，没人拾取 pending 任务（违反 VEGA-42 红线），恢复扫描同样静默失效。
+    本入口就是这两个副作用的唯一权威，故直接赋值强制打开。
+
+    取舍（O4 二选一）：选"强制打开"而不是"识别到关闭值就拒绝启动"。拒绝启动会把
+    "外部遗留了一个开关变量"升级成"服务完全起不来"，而调用方的真实意图几乎总是
+    "把服务跑起来"；开关本身要拦的是测试/脚本进程，那由 backend.app 的
+    _service_startup_switch_enabled（含 _is_test_process 判据）负责，与外部环境变量无关。
+
+    覆盖前的外部取值原样打印：用户显式传了 false 却看到服务照常启用，是另一种静默，
+    必须留痕（本函数不判断该取值"算不算关闭"——on 值判据只有 backend/config/config.py
+    一份，避免这里再写一套）。
+    """
+    external = os.environ.get(name)
+    if external is not None:
+        print(f"[WARN] 外部已设置 {name}={external!r}，服务入口强制覆盖为 'true'："
+              f"该开关是服务进程专属的启动副作用，关闭会让真实服务静默丢失该语义")
+    os.environ[name] = 'true'
+
+
+# 两个开关用同一个函数打开，口径一致（VEGA-60：不得一个用 setdefault、另一个用赋值）。
+_force_service_startup_switch('RECOVERY_SWEEP_ON_STARTUP')
+_force_service_startup_switch('TASK_SCHEDULER_ON_STARTUP')
 
 from backend.app import create_app, socketio
 from backend.services.execution.execution_engine import execution_engine

@@ -134,6 +134,12 @@ class ExecutionEngine:
 
     def _stop_scheduler(self):
         """停止后台调度线程"""
+        # VEGA-60（VEGA-42 审计 O3）：闸关进程（测试/迁移脚本里的 create_app()）从不
+        # 调用 _init_scheduler()，scheduler_stop_event 恒为 None，此处直接 .set() 会抛
+        # AttributeError。与 _scheduler_loop 对同一属性的 None 保护同口径——同一属性
+        # 两处保护必须对称。不用 try/except 吞掉异常：那会把真问题藏起来。
+        if self.scheduler_stop_event is None:
+            return
         self.scheduler_stop_event.set()
         self.scheduler_event.set()  # 唤醒调度器以便快速退出
         if self.scheduler_thread is not None and self.scheduler_thread.is_alive():
