@@ -28,6 +28,7 @@ import {
   MOCK_REPORT_COUNTS,
   MOCK_REPORT_DETAILS,
   MOCK_REPORT_LIST_ITEMS,
+  getReportDetailMock,
 } from '../mock/reports-mock'
 import { resolveReportUiFlags } from '../stores/reports-ui-store'
 
@@ -138,7 +139,8 @@ export async function fetchReportTypeCounts(): Promise<{
 export async function fetchReportDetail(
   reportId: number
 ): Promise<ReportDetailData> {
-  const detail = MOCK_REPORT_DETAILS[reportId]
+  // INT-503：列表全部 ID 均可达——富详情优先，其余按列表项参数化生成；未知 id 仍走 404 语义
+  const detail = getReportDetailMock(reportId) ?? MOCK_REPORT_DETAILS[reportId]
   if (!detail) {
     // 未知 id → 404 语义（INT-434 P2-5：错误态需可达，不得静默回退 1201）
     throw new Error(`报告 ${reportId} 不存在`)

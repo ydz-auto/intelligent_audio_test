@@ -293,7 +293,73 @@ export const MOCK_REPORT_DETAILS: Record<number, ReportDetailData> = {
   1188: buildComparisonReportDetail('secondary_comparison'),
 }
 
-function buildTaskSummary(): ReportSummary {
+/**
+ * 任意列表 id → 详情 mock（INT-503 补齐：列表全部 ID 可点开，杜绝「报告不存在」）。
+ * 1201/1190/1188 走富详情；其余按列表项参数化生成等价形态（任务级 / 对比家族）。
+ */
+export function getReportDetailMock(reportId: number): ReportDetailData | undefined {
+  const fixed = MOCK_REPORT_DETAILS[reportId]
+  if (fixed) return fixed
+  const item = MOCK_REPORT_LIST_ITEMS.find((i) => i.id === reportId)
+  if (!item) return undefined
+  if (item.type === 'task') return buildTaskReportDetailFor(item)
+  return buildComparisonReportDetailFor(item)
+}
+
+/** 由列表项生成任务级报告详情（共享 buildTaskSummary 的指标/用例/设备数据，头部与计数按列表项覆盖） */
+function buildTaskReportDetailFor(item: ReportListItem): ReportDetailData {
+  const summary = buildTaskSummary({
+    total_cases: item.summary.total_cases,
+    completed_cases: item.summary.completed_cases,
+    failed_cases: item.summary.failed_cases,
+  })
+  return {
+    id: item.id,
+    name: item.name,
+    type: 'task',
+    task_id: item.task_id,
+    task_type: 'e2e',
+    task_name: item.task_name,
+    algorithm_type: item.algorithm_type,
+    description: item.description,
+    status: item.status,
+    analysis:
+      `「${item.name}」共执行 ${item.summary.total_cases} 条用例，完成 ${item.summary.completed_cases} 条、失败 ${item.summary.failed_cases} 条，整体通过率 ${item.summary.pass_rate}%。\n` +
+      'asr-streaming-v3 与 wakeword-detect-v2 双算法对比：流式识别平均响应 385ms，优于唤醒检测链路；入门机型识别准确率较旗舰低约 2.4 个百分点，属预期硬件差异。',
+    summary,
+    created_at: item.created_at,
+    updated_at: item.updated_at ?? item.created_at,
+  }
+}
+
+/** 由列表项生成对比/二次对比报告详情（复用对比家族 summary 装配，头部按列表项覆盖） */
+function buildComparisonReportDetailFor(item: ReportListItem): ReportDetailData {
+  const base = buildComparisonReportDetail(
+    item.type === 'secondary_comparison' ? 'secondary_comparison' : 'comparison'
+  )
+  const count = item.summary.task_count ?? (item.type === 'secondary_comparison' ? 3 : 2)
+  return {
+    ...base,
+    id: item.id,
+    name: item.name,
+    type: item.type,
+    task_id: undefined,
+    task_type: undefined,
+    task_name: `${count} 个任务对比`,
+    algorithm_type: item.algorithm_type,
+    description: item.description,
+    status: item.status,
+    summary: { ...base.summary, task_count: count, total_cases: item.summary.total_cases },
+    created_at: item.created_at,
+    updated_at: item.updated_at ?? item.created_at,
+  }
+}
+
+function buildTaskSummary(overrides?: {
+  total_cases?: number
+  completed_cases?: number
+  failed_cases?: number
+}): ReportSummary {
   const allMetrics: ReportMetricConfig[] = [
     { id: 101, name: '唤醒成功率', unit: '%', decimal_places: 1, dimension_type: 'main' },
     { id: 102, name: '误唤醒率', unit: '%', decimal_places: 1, dimension_type: 'sub', parent_dimension_id: 101, parent_dimension_name: '唤醒成功率' },
@@ -525,9 +591,9 @@ function buildTaskSummary(): ReportSummary {
   ]
 
   return {
-    total_cases: 48,
-    completed_cases: 48,
-    failed_cases: 3,
+    total_cases: overrides?.total_cases ?? 48,
+    completed_cases: overrides?.completed_cases ?? 48,
+    failed_cases: overrides?.failed_cases ?? 3,
     resources: ['device_1', 'device_2', 'device_3', 'api_101', 'api_102'],
     resource_headers: resourceHeaders,
     raw_data: rawData,
@@ -742,16 +808,18 @@ const MOCK_REPORT_CASES: ReportCaseItem[] = [
       { audio_id: 'a-9001', audio_name: '唤醒词-远场-客厅.wav', audio_type: 'wakeword', spl: 55, play_order: 1, noise_spl: 35, device_name: '智能音箱-旗舰-01' },
     ],
     referenceParams: {
-      asr_text: { code: 'asr_text', type: 'text', value: '小爱同学，今天天气怎么样？' },
+      asr_text: { code: 'asr_text', type: 'text', label: '识别文本', value: '小爱同学，今天天气怎么样？' },
     },
     caseParams: {
-      wakeword: { code: 'wakeword', type: 'text', value: '小爱同学' },
-      distance: { code: 'distance', type: 'number', value: 3 },
-      noise: { code: 'noise', type: 'number', value: 35 },
+      wakeword: { code: 'wakeword', type: 'text', label: '唤醒词', value: '小爱同学' },
+      distance: { code: 'distance', type: 'number', label: '距离', value: 3 },
+      noise: { code: 'noise', type: 'number', label: '环境噪声', value: 35 },
     },
     algorithmResults: [
       { paramCode: 'asr_text', paramType: 'text', label: '识别文本', value: '小爱同学，今天天气怎么样？', device: 'device_1' },
+      { paramCode: 'asr_text', paramType: 'text', label: '识别文本', value: '小爱同学，今天天气怎么样？', device: 'api_101' },
       { paramCode: 'wer_score', paramType: 'number', label: 'WER 评分', value: 2.1, device: 'device_1' },
+      { paramCode: 'wer_score', paramType: 'number', label: 'WER 评分', value: 1.8, device: 'api_101' },
     ],
     overall_status: 'pass',
     logs: '[2026-10-15 08:42:01] 唤醒词检测命中\n[2026-10-15 08:42:01] ASR 请求 -> asr-streaming-v3\n[2026-10-15 08:42:02] ASR 响应 418ms\n[2026-10-15 08:42:02] 文本匹配成功 (相似度 0.98)',
@@ -775,11 +843,13 @@ const MOCK_REPORT_CASES: ReportCaseItem[] = [
       { audio_id: 'a-9002', audio_name: '唤醒词-噪声-厨房.wav', audio_type: 'wakeword', spl: 58, play_order: 1, noise_spl: 60, device_name: '智能音箱-旗舰-01' },
     ],
     referenceParams: {
-      asr_text: { code: 'asr_text', type: 'text', value: '小爱同学，播放一首歌' },
+      asr_text: { code: 'asr_text', type: 'text', label: '识别文本', value: '小爱同学，播放一首歌' },
     },
     algorithmResults: [
       { paramCode: 'asr_text', paramType: 'text', label: '识别文本', value: '小爱同学，播放一首歌', device: 'device_1' },
+      { paramCode: 'asr_text', paramType: 'text', label: '识别文本', value: '小爱同学，播放一首歌', device: 'api_101' },
       { paramCode: 'wer_score', paramType: 'number', label: 'WER 评分', value: 12.4, device: 'device_1' },
+      { paramCode: 'wer_score', paramType: 'number', label: 'WER 评分', value: 10.2, device: 'api_101' },
     ],
     overall_status: 'fail',
     logs: '[2026-10-15 08:50:11] 唤醒词检测命中\n[2026-10-15 08:50:12] ASR 响应 536ms\n[2026-10-15 08:50:12] wakeword-detect-v2 转写超时，降级重试',
@@ -799,9 +869,9 @@ const MOCK_REPORT_CASES: ReportCaseItem[] = [
       识别准确率: '近场桌面识别存在轻微漏字，置信度 0.92，建议复核超长指令；已确认唤醒词命中率 100%。',
     },
     caseParams: {
-      wakeword: { code: 'wakeword', type: 'text', value: '小爱同学' },
-      distance: { code: 'distance', type: 'number', value: 0.5 },
-      environment: { code: 'environment', type: 'text', value: '安静室内' },
+      wakeword: { code: 'wakeword', type: 'text', label: '唤醒词', value: '小爱同学' },
+      distance: { code: 'distance', type: 'number', label: '距离', value: 0.5 },
+      environment: { code: 'environment', type: 'text', label: '环境', value: '安静室内' },
     },
     results: [
       { resource: 'device_2', status: 'completed', startTime: '2026-10-15T08:58:31', endTime: '2026-10-15T08:58:31' },
@@ -811,11 +881,13 @@ const MOCK_REPORT_CASES: ReportCaseItem[] = [
       { audio_id: 'a-9003', audio_name: '唤醒词-近场-桌面.wav', audio_type: 'wakeword', spl: 62, play_order: 1, noise_spl: 30, device_name: '智能音箱-旗舰-02' },
     ],
     referenceParams: {
-      asr_text: { code: 'asr_text', type: 'text', value: '小爱同学，明天早上叫我起床' },
+      asr_text: { code: 'asr_text', type: 'text', label: '识别文本', value: '小爱同学，明天早上叫我起床' },
     },
     algorithmResults: [
       { paramCode: 'asr_text', paramType: 'text', label: '识别文本', value: '小爱同学，明天早上叫我起床', device: 'device_2' },
+      { paramCode: 'asr_text', paramType: 'text', label: '识别文本', value: '小爱同学，明天早上叫我起床', device: 'api_101' },
       { paramCode: 'wer_score', paramType: 'number', label: 'WER 评分', value: 0.8, device: 'device_2' },
+      { paramCode: 'wer_score', paramType: 'number', label: 'WER 评分', value: 0.6, device: 'api_101' },
     ],
     overall_status: 'pass',
     logs: '[2026-10-15 08:58:31] 唤醒词检测命中\n[2026-10-15 08:58:31] ASR 响应 212ms',
@@ -837,11 +909,13 @@ const MOCK_REPORT_CASES: ReportCaseItem[] = [
     ],
     audios: [],
     referenceParams: {
-      asr_text: { code: 'asr_text', type: 'text', value: '帮我睇下听日天气' },
+      asr_text: { code: 'asr_text', type: 'text', label: '识别文本', value: '帮我睇下听日天气' },
     },
     algorithmResults: [
       { paramCode: 'asr_text', paramType: 'text', label: '识别文本', value: '帮我睇下听日天气', device: 'device_1' },
+      { paramCode: 'asr_text', paramType: 'text', label: '识别文本', value: '帮我睇下听日天气', device: 'api_101' },
       { paramCode: 'trans_result', paramType: 'text', label: '翻译结果', value: '帮我看看明天天气', device: 'device_1' },
+      { paramCode: 'trans_result', paramType: 'text', label: '翻译结果', value: '帮我看看明天天气', device: 'api_101' },
     ],
     overall_status: 'pass',
     logs: '[2026-10-15 09:02:01] ASR 请求 -> asr-streaming-v3\n[2026-10-15 09:02:02] 翻译链路启用 粤语→普通话',
@@ -882,9 +956,9 @@ const MOCK_REPORT_CASES: ReportCaseItem[] = [
       },
     ],
     caseParams: {
-      'prompt@round:1': { code: 'prompt@round:1', type: 'text', value: '请回答：今天天气怎么样？' },
-      'prompt@round:2': { code: 'prompt@round:2', type: 'text', value: '请回答：明天天气怎么样？' },
-      'prompt@round:3': { code: 'prompt@round:3', type: 'text', value: '请回答：还有什么需要帮忙的吗？' },
+      'prompt@round:1': { code: 'prompt@round:1', type: 'text', label: '第1轮提问', value: '请回答：今天天气怎么样？' },
+      'prompt@round:2': { code: 'prompt@round:2', type: 'text', label: '第2轮提问', value: '请回答：明天天气怎么样？' },
+      'prompt@round:3': { code: 'prompt@round:3', type: 'text', label: '第3轮提问', value: '请回答：还有什么需要帮忙的吗？' },
     },
     results: [
       { resource: 'device_1', status: 'completed', startTime: '2026-10-15T09:05:00', endTime: '2026-10-15T09:05:06' },
@@ -894,19 +968,28 @@ const MOCK_REPORT_CASES: ReportCaseItem[] = [
       { audio_id: 'a-9004', audio_name: '对话-第1轮.wav', audio_type: 'dialogue', spl: 58, play_order: 1, noise_spl: 32, device_name: '智能音箱-旗舰-01' },
     ],
     referenceParams: {
-      'answer@round:1': { code: 'answer@round:1', type: 'text', value: '好的，我已经记住今天的天气了。' },
-      'answer@round:2': { code: 'answer@round:2', type: 'text', value: '明天多云，出门记得带伞。' },
-      'answer@round:3': { code: 'answer@round:3', type: 'text', value: '好的，还有什么需要帮忙的吗？' },
+      'answer@round:1': { code: 'answer@round:1', type: 'text', label: '参考回答 (第1轮)', value: '好的，我已经记住今天的天气了。' },
+      'answer@round:2': { code: 'answer@round:2', type: 'text', label: '参考回答 (第2轮)', value: '明天多云，出门记得带伞。' },
+      'answer@round:3': { code: 'answer@round:3', type: 'text', label: '参考回答 (第3轮)', value: '好的，还有什么需要帮忙的吗？' },
     },
     algorithmResults: [
       {
         paramCode: 'answer@round:1', paramType: 'text', label: 'answer (第1轮)', roundNumber: 1, value: '好的，我已经记住今天的天气了。', device: 'device_1',
       },
       {
+        paramCode: 'answer@round:1', paramType: 'text', label: 'answer (第1轮)', roundNumber: 1, value: '好的，我已经记住今天的天气了。', device: 'api_101',
+      },
+      {
         paramCode: 'answer@round:2', paramType: 'text', label: 'answer (第2轮)', roundNumber: 2, value: '明天多云，出门记得带伞。', device: 'device_1',
       },
       {
+        paramCode: 'answer@round:2', paramType: 'text', label: 'answer (第2轮)', roundNumber: 2, value: '明天多云，出门记得带伞。', device: 'api_101',
+      },
+      {
         paramCode: 'answer@round:3', paramType: 'text', label: 'answer (第3轮)', roundNumber: 3, value: '好的，还有什么需要帮忙的吗？', device: 'device_1',
+      },
+      {
+        paramCode: 'answer@round:3', paramType: 'text', label: 'answer (第3轮)', roundNumber: 3, value: '好的，还有什么需要帮忙的吗？', device: 'api_101',
       },
       {
         paramCode: 'multi_round_result', paramType: 'json', label: '多轮结果', device: 'device_1',

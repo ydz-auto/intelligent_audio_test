@@ -5,7 +5,7 @@
  * 结论标签池默认折叠（性能优化/功能改进/稳定性问题/兼容性问题/建议改进）。
  */
 import { Check, ChevronDown, Pencil, X } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -44,6 +44,27 @@ export function AnalysisEditor({
   const [tagsOpen, setTagsOpen] = useState(false)
   const hasAnalysis = Boolean(analysis && sanitizeConclusion(analysis).trim())
 
+  // 报告头「保存」退出编辑模式时提交未保存草稿（INT-503：编辑/保存一致——退出编辑不再丢改动）；
+  // 「取消」置 cancelRef，跳过提交
+  const lastSavedRef = useRef<string | null>(null)
+  const cancelRef = useRef(false)
+  const prevEditingRef = useRef(editing)
+  useEffect(() => {
+    const wasEditing = prevEditingRef.current
+    prevEditingRef.current = editing
+    if (wasEditing && !editing) {
+      if (cancelRef.current) {
+        cancelRef.current = false
+        return
+      }
+      if (lastSavedRef.current !== draft) {
+        lastSavedRef.current = draft
+        onSaveAnalysis(draft)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing])
+
   const handleStartEditing = () => {
     setDraft(analysis ?? '')
     onStartEditing()
@@ -79,6 +100,7 @@ export function AnalysisEditor({
               <Button
                 size='sm'
                 onClick={() => {
+                  lastSavedRef.current = draft
                   onSaveAnalysis(draft)
                   onExitEditing()
                 }}
@@ -86,7 +108,14 @@ export function AnalysisEditor({
                 <Check aria-hidden='true' className='size-3.5' />
                 保存
               </Button>
-              <Button variant='ghost' size='sm' onClick={onExitEditing}>
+              <Button
+                variant='ghost'
+                size='sm'
+                onClick={() => {
+                  cancelRef.current = true
+                  onExitEditing()
+                }}
+              >
                 <X aria-hidden='true' className='size-3.5' />
                 取消
               </Button>

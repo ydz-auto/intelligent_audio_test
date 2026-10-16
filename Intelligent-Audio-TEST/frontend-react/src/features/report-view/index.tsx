@@ -121,11 +121,17 @@ export function ReportViewPage() {
 
   const handleBack = () => void navigate(backTarget)
 
-  if (detailQuery.isLoading || !report) {
+  if (detailQuery.isLoading) {
     return <DetailSkeleton />
   }
 
-  if (detailQuery.isError || !Number.isFinite(reportId) || reportId <= 0) {
+  // 空态/错误态（INT-503：isError 先于 !report 判定——加载失败不得落入骨架分支死区）
+  if (
+    detailQuery.isError ||
+    !report ||
+    !Number.isFinite(reportId) ||
+    reportId <= 0
+  ) {
     return (
       <Empty className='min-h-[420px]'>
         <EmptyHeader>

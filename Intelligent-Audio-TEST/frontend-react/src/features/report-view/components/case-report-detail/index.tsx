@@ -2,6 +2,7 @@
  * 用例级报告卡片（15_报告域.md §3.5，TestCaseReportDetail 对位——七块复杂结构）。
  * 块一评分指标 / 块二多轮对话结果 / 块三执行结果（含参考数据、用例参数、评估结果、
  * 设备·API 执行结果、时间轴对比、音频时间轴、结果音频）+ 用例描述 + 详细日志。
+ * 块一/块三共享轮次 Tab 状态（useCaseRoundTabs）。
  */
 import { FileText } from 'lucide-react'
 
@@ -10,6 +11,7 @@ import type { ReportCaseItem, ReportDetailData } from '@/domain/models/report'
 import { MetricTable } from './metric-table'
 import { MultiRoundResult } from './multi-round-result'
 import { ExecutionResults } from './execution-results'
+import { useCaseRoundTabs } from './use-case-round-tabs'
 
 interface CaseReportDetailProps {
   caseItem: ReportCaseItem
@@ -17,19 +19,34 @@ interface CaseReportDetailProps {
 }
 
 export function CaseReportDetail({ caseItem, report }: CaseReportDetailProps) {
+  const roundState = useCaseRoundTabs(caseItem)
+
   return (
     <div className='space-y-4'>
       {/* 块一：评分指标 */}
       <section className='space-y-1.5'>
         <p className='text-sm font-semibold'>评分指标</p>
-        <MetricTable caseItem={caseItem} report={report} />
+        <MetricTable
+          caseItem={caseItem}
+          report={report}
+          roundTabs={roundState.roundTabs}
+          activeRoundTab={roundState.activeRoundTab}
+          setActiveRoundTab={roundState.setActiveRoundTab}
+          currentRoundMetricKeys={roundState.currentRoundMetricKeys}
+        />
       </section>
 
       {/* 块二：多轮对话结果 */}
       <MultiRoundResult caseItem={caseItem} />
 
       {/* 块三：执行结果 */}
-      <ExecutionResults caseItem={caseItem} report={report} />
+      <ExecutionResults
+        caseItem={caseItem}
+        report={report}
+        roundTabs={roundState.roundTabs}
+        activeRoundTab={roundState.activeRoundTab}
+        activeRoundTag={roundState.activeRoundTag}
+      />
 
       {/* 用例描述 */}
       {caseItem.description && (

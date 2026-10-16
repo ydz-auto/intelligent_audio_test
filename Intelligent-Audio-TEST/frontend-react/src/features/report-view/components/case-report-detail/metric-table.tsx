@@ -1,9 +1,8 @@
 /**
  * 块一：评分指标（15_报告域.md §3.5.1，TestCaseReportDetail 块一对位）。
- * 单设备模式：四列（指标名称/指标数值/得分/详情·错误）+ score 五档徽章 + 长错误可折叠（>50 字）；
- * 对比模式：轮次横向 Tab（@round:N/@overall 提取）+ 主/子维度层级分组表格（每设备一列）。
- * P1-2：轮次 Tab 为真实交互——resourceMetrics 按 @round:N/@overall 分轮次装配，metricValue 读 activeRound。
- * P2-7：得分/错误走数据契约真实字段（ReportMetricValue.score/error + caseItem.metricScore/metricError），不再臆造公式。
+ * 对比模式：轮次横向 Tab（共享 useCaseRoundTabs）+ 主/子维度层级分组表格（每设备一列）；
+ * 单设备模式：DataTable 四列（指标名称/指标数值/得分/详情·错误）+ score 五档徽章 + 长错误可折叠（>50 字）。
+ * 指标 key 友好化（(第N轮)/(整体)）；数值按 metricConfigs[].decimalPlaces（默认 2）精度显示。
  */
 import { ChevronDown } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -17,6 +16,13 @@ import type {
 } from '@/domain/models/report'
 import { extractCaseResourceMetrics } from '@/application/report-view/case-matrix'
 import { cn } from '@/lib/utils'
+
+import {
+  parseMetricKey,
+  getDeviceName,
+  roundTagLabel,
+  type RoundTab,
+} from './case-report-utils'
 
 export function ScoreBadge({ score }: { score?: number }) {
   if (score === undefined) {
@@ -36,100 +42,63 @@ export function ScoreBadge({ score }: { score?: number }) {
           : 'secondary'
   return (
     <Badge variant={variant as never} className='font-mono tabular-nums'>
-      {score}
+      {score}分
     </Badge>
   )
 }
 
-/** 轮次 Tab 文案 → @round:N 数字（「第1轮」→ '1'；「整体」→ null） */
-function roundNumberFromTab(tab: string): string | null {
-  const m = tab.match(/^第(\d+)轮$/)
-  return m ? m[1] : null
+/** 指标 key 友好显示：`WER@round:1` → 「WER (第1轮)」；`WER@overall` → 「WER (整体)」 */
+export function formatMetricLabel(key: string): string {
+  const m = key.match(/^(.*)@round:(\d+)$/i)
+  if (m) return `${m[1]} (第${m[2]}轮)`
+  const m2 = key.match(/^(.*)@overall$/i)
+  if (m2) return `${m2[1]} (整体)`
+  return key
+}
+
+interface MetricTableProps {
+  caseItem: ReportCaseItem
+  report: ReportDetailData
+  roundTabs: RoundTab[]
+  activeRoundTab: string
+  setActiveRoundTab: (tab: string) => void
+  currentRoundMetricKeys: string[]
 }
 
 export function MetricTable({
   caseItem,
   report,
-}: {
-  caseItem: ReportCaseItem
-  report: ReportDetailData
-}) {
+  roundTabs,
+  activeRoundTab,
+  setActiveRoundTab,
+  currentRoundMetricKeys,
+}: MetricTableProps) {
   const allMetrics: ReportMetricConfig[] = report.summary.all_metrics
   const resourceMetrics = useMemo(() => extractCaseResourceMetrics(caseItem), [caseItem])
   const resources = Object.keys(resourceMetrics)
   const isComparison = resources.length > 1
+  const headers = report.summary.resource_headers ?? []
 
-  // 轮次 Tab：从指标 key @round:N/@overall 与 algorithmResults roundNumber/paramCode 提取
-  const roundTabs = useMemo(() => {
-    const rounds = new Set<string>()
-    for (const resource of Object.keys(resourceMetrics)) {
-      for (const key of Object.keys(resourceMetrics[resource])) {
-        const m = key.match(/@round:(\d+)/)
-        if (m) rounds.add(`第${m[1]}轮`)
-        if (key.includes('@overall')) rounds.add('整体')
-      }
+  const allMetricKeys = useMemo(() => {
+    const keys = new Set<string>()
+    for (const metrics of Object.values(resourceMetrics)) {
+      for (const key of Object.keys(metrics)) keys.add(key)
     }
-    for (const result of caseItem.algorithmResults ?? []) {
-      if (result.roundNumber !== undefined) rounds.add(`第${result.roundNumber}轮`)
-      if (result.paramCode?.includes('@round:')) {
-        rounds.add(`第${result.paramCode.split('@round:')[1]}轮`)
-      }
-    }
-    // 有轮次数据时始终提供「整体」（整体/未标注轮次值）
-    if (rounds.size === 0) rounds.add('整体')
-    else rounds.add('整体')
-    return [...rounds]
-  }, [caseItem.algorithmResults, resourceMetrics])
+    return [...keys]
+  }, [resourceMetrics])
 
-  const [activeRound, setActiveRound] = useState(roundTabs[0] ?? '整体')
-
-  // 按 activeRound 过滤后的资源指标（P1-2：真实轮次切换）
-  const roundScopedMetrics = useMemo(() => {
-    if (!isComparison) return resourceMetrics
-    const roundNum = roundNumberFromTab(activeRound)
-    const result: Record<string, Record<string, number>> = {}
-    for (const [resource, metrics] of Object.entries(resourceMetrics)) {
-      const out: Record<string, number> = {}
-      for (const [key, value] of Object.entries(metrics)) {
-        const rm = key.match(/@round:(\d+)/)
-        if (activeRound === '整体') {
-          if (!rm) out[key.replace('@overall', '')] = value
-        } else if (rm && roundNum && rm[1] === roundNum) {
-          out[key.replace(/@round:\d+/, '')] = value
-        }
-      }
-      if (Object.keys(out).length > 0) result[resource] = out
-    }
-    return result
-  }, [resourceMetrics, activeRound, isComparison])
-
-  // 主/子维度分组（isGroupHeader 加粗 + isSubDim 缩进）
-  const dimensionRows = useMemo(() => {
-    const main = allMetrics.filter((m) => m.dimension_type !== 'sub')
-    const sub = allMetrics.filter((m) => m.dimension_type === 'sub')
-    const rows: { key: string; name: string; metricName: string; isGroupHeader: boolean; isSubDim: boolean }[] = []
-    for (const m of main) {
-      const children = sub.filter(
-        (s) => s.parent_dimension_name === m.name || s.parent_dimension_id === m.id
-      )
-      rows.push({ key: `m-${m.id ?? m.name}`, name: m.name, metricName: m.name, isGroupHeader: false, isSubDim: false })
-      if (children.length > 0 && !children.some((c) => c.parent_dimension_name === m.name)) {
-        rows.push({ key: `g-${m.id ?? m.name}`, name: m.name, metricName: '', isGroupHeader: true, isSubDim: false })
-      }
-      for (const c of children) {
-        rows.push({ key: `s-${c.id ?? c.name}`, name: c.name, metricName: c.name, isGroupHeader: false, isSubDim: true })
-      }
-    }
-    for (const m of sub) {
-      if (!main.some((x) => x.name === m.parent_dimension_name)) {
-        rows.push({ key: `s-${m.id ?? m.name}`, name: m.name, metricName: m.name, isGroupHeader: false, isSubDim: true })
-      }
-    }
-    return rows
-  }, [allMetrics])
-
-  const decimalPlaces = (metricName: string) =>
-    allMetrics.find((m) => m.name === metricName)?.decimal_places ?? 2
+  const decimalPlaces = (metricName: string) => {
+    const base = metricName.replace(/@round:\d+$|@overall$/i, '')
+    return (
+      allMetrics.find((m) => m.name === base)?.decimal_places ??
+      allMetrics.find((m) => m.name === metricName)?.decimal_places ??
+      2
+    )
+  }
+  const metricUnit = (metricName: string) => {
+    const base = metricName.replace(/@round:\d+$|@overall$/i, '')
+    return allMetrics.find((m) => m.name === base)?.unit
+  }
 
   // 真实得分/错误字段读取（数组格式 ReportMetricValue.score/error；dict 格式 caseItem.metricScore/metricError）
   const getScore = (metricName: string): number | undefined => {
@@ -145,12 +114,81 @@ export function MetricTable({
     return caseItem.metricError?.[metricName]
   }
 
-  const metricValue = (metricName: string, resource?: string) => {
-    const source = isComparison ? roundScopedMetrics : resourceMetrics
-    if (resource) return source[resource]?.[metricName]
-    const first = Object.keys(source)[0]
-    return first ? source[first]?.[metricName] : undefined
+  const metricValue = (metricKey: string, resource?: string) => {
+    if (resource) return resourceMetrics[resource]?.[metricKey]
+    const first = resources[0]
+    return first ? resourceMetrics[first]?.[metricKey] : undefined
   }
+
+  // 对比模式：当前轮次 key → 主/子维度层级分组行（照 V9.7.10 groupedMetricsForCurrentRound + currentRoundTableData）
+  const dimensionRows = useMemo(() => {
+    const keys = isComparison ? currentRoundMetricKeys : allMetricKeys
+    type Group = {
+      groupLabel: string
+      mainItem: { metricKey: string; base: string } | null
+      subItems: { metricKey: string; base: string }[]
+    }
+    const groupMap = new Map<string, Group>()
+    const getDimInfo = (base: string) => {
+      const config = allMetrics.find((m) => m.name === base)
+      if (!config) return { dimType: 'main' as const, parentName: '' }
+      if (config.dimension_type === 'sub' && config.parent_dimension_name) {
+        return { dimType: 'sub' as const, parentName: config.parent_dimension_name }
+      }
+      return { dimType: 'main' as const, parentName: '' }
+    }
+    for (const key of keys) {
+      const { base } = parseMetricKey(key)
+      const { dimType, parentName } = getDimInfo(base)
+      let groupKey: string
+      let effectiveType = dimType
+      if (dimType === 'sub' && parentName) {
+        groupKey = parentName
+      } else {
+        effectiveType = 'main'
+        groupKey = base
+      }
+      let group = groupMap.get(groupKey)
+      if (!group) {
+        group = { groupLabel: groupKey, mainItem: null, subItems: [] }
+        groupMap.set(groupKey, group)
+      }
+      const item = { metricKey: key, base }
+      if (effectiveType === 'main') {
+        if (group.mainItem) group.subItems.push(item)
+        else group.mainItem = item
+      } else {
+        group.subItems.push(item)
+      }
+    }
+    const rows: {
+      key: string
+      name: string
+      isGroupHeader: boolean
+      isSubDim: boolean
+      metricKey: string
+    }[] = []
+    let seq = 0
+    for (const group of groupMap.values()) {
+      const mainIsHeader = group.mainItem !== null && group.mainItem.base === group.groupLabel
+      if (group.subItems.length > 0 && !mainIsHeader) {
+        rows.push({ key: `hdr-${seq++}`, name: group.groupLabel, isGroupHeader: true, isSubDim: false, metricKey: '' })
+      }
+      if (group.mainItem) {
+        rows.push({
+          key: `main-${seq++}`,
+          name: group.mainItem.base,
+          isGroupHeader: mainIsHeader,
+          isSubDim: false,
+          metricKey: group.mainItem.metricKey,
+        })
+      }
+      for (const sub of group.subItems) {
+        rows.push({ key: `sub-${seq++}`, name: sub.base, isGroupHeader: false, isSubDim: true, metricKey: sub.metricKey })
+      }
+    }
+    return rows
+  }, [allMetricKeys, currentRoundMetricKeys, isComparison, allMetrics])
 
   return (
     <div className='space-y-2'>
@@ -158,14 +196,19 @@ export function MetricTable({
         <div className='flex flex-wrap gap-1' role='tablist' aria-label='轮次切换'>
           {roundTabs.map((tab) => (
             <button
-              key={tab}
+              key={tab.key}
               type='button'
               role='tab'
-              aria-selected={activeRound === tab}
-              className={activeRound === tab ? 'bg-primary text-primary-foreground rounded-md px-2.5 py-1 text-xs' : 'text-muted-foreground hover:bg-muted rounded-md px-2.5 py-1 text-xs'}
-              onClick={() => setActiveRound(tab)}
+              aria-selected={activeRoundTab === tab.label}
+              className={cn(
+                'rounded-md px-2.5 py-1 text-xs transition-colors',
+                activeRoundTab === tab.label
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-muted'
+              )}
+              onClick={() => setActiveRoundTab(tab.label)}
             >
-              {tab}
+              {tab.label}
             </button>
           ))}
         </div>
@@ -178,22 +221,33 @@ export function MetricTable({
               <tr className='text-muted-foreground border-b bg-muted/30'>
                 <th className='px-3 py-2 text-left font-medium'>指标名称</th>
                 {resources.map((r) => (
-                  <th key={r} className='px-3 py-2 text-left font-medium'>{r}</th>
+                  <th key={r} className='px-3 py-2 text-left font-medium'>
+                    {getDeviceName(r, headers)}
+                  </th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {dimensionRows.map((row) => (
-                <tr key={row.key} className={row.isGroupHeader ? 'bg-muted/40 border-b font-semibold' : 'hover:bg-muted/30 border-b'}>
+                <tr
+                  key={row.key}
+                  className={row.isGroupHeader ? 'bg-muted/40 border-b font-semibold' : 'hover:bg-muted/30 border-b'}
+                >
                   <td className={row.isSubDim ? 'text-muted-foreground px-3 py-2 ps-8 text-sm' : 'px-3 py-2 text-sm'}>
                     {row.name}
+                    {row.metricKey && row.metricKey !== row.name && (
+                      <span className='text-muted-foreground ms-1 text-xs'>({roundTagLabel(parseMetricKey(row.metricKey).roundTag ?? '')})</span>
+                    )}
                   </td>
                   {resources.map((r) => {
-                    if (row.isGroupHeader) return <td key={r} />
-                    const v = metricValue(row.metricName, r)
+                    // 独立分组标题行（metricKey 为空）无值；主维度兼分组标题行照常渲染数值
+                    if (!row.metricKey) return <td key={r} />
+                    const v = metricValue(row.metricKey, r)
+                    const unit = metricUnit(row.metricKey)
                     return (
                       <td key={r} className='px-3 py-2 font-mono text-xs tabular-nums'>
-                        {v === undefined ? '—' : v.toFixed(decimalPlaces(row.metricName))}
+                        {v === undefined ? '—' : v.toFixed(decimalPlaces(row.metricKey))}
+                        {unit && <span className='text-muted-foreground ms-0.5'>{unit}</span>}
                       </td>
                     )
                   })}
@@ -217,20 +271,23 @@ export function MetricTable({
                 <th className='px-3 py-2 text-left font-medium'>指标名称</th>
                 <th className='px-3 py-2 text-left font-medium'>指标数值</th>
                 <th className='px-3 py-2 text-left font-medium'>得分</th>
-                <th className='px-3 py-2 text-left font-medium'>详情·错误</th>
+                <th className='px-3 py-2 text-left font-medium'>详情/错误</th>
               </tr>
             </thead>
             <tbody>
-              {allMetrics.map((m) => {
-                const v = metricValue(m.name)
+              {allMetricKeys.map((key) => {
+                const v = metricValue(key)
                 if (v === undefined) return null
-                const score = getScore(m.name)
-                const error = getError(m.name)
+                const base = parseMetricKey(key).base
+                const score = getScore(key) ?? getScore(base)
+                const error = getError(key) ?? getError(base)
+                const unit = metricUnit(key)
                 return (
-                  <tr key={m.id ?? m.name} className='hover:bg-muted/30 border-b last:border-0'>
-                    <td className='px-3 py-2 text-sm font-medium'>{m.name}</td>
+                  <tr key={key} className='hover:bg-muted/30 border-b last:border-0'>
+                    <td className='px-3 py-2 text-sm font-medium'>{formatMetricLabel(key)}</td>
                     <td className='px-3 py-2 font-mono text-xs tabular-nums'>
-                      {v.toFixed(decimalPlaces(m.name))}
+                      {v.toFixed(decimalPlaces(key))}
+                      {unit && <span className='text-muted-foreground ms-0.5'>{unit}</span>}
                     </td>
                     <td className='px-3 py-2'>
                       <ScoreBadge score={score} />
@@ -241,7 +298,7 @@ export function MetricTable({
                   </tr>
                 )
               })}
-              {allMetrics.length === 0 && (
+              {allMetricKeys.length === 0 && (
                 <tr>
                   <td colSpan={4} className='text-muted-foreground p-4 text-center text-sm'>暂无指标数据</td>
                 </tr>
@@ -254,7 +311,7 @@ export function MetricTable({
   )
 }
 
-/** 详情·错误文本（>50 字可折叠展开/收起，§3.5.1） */
+/** 详情/错误文本（>50 字可折叠展开/收起，§3.5.1） */
 function ErrorText({ text }: { text?: string }) {
   const [open, setOpen] = useState(false)
   if (!text) return <span>—</span>

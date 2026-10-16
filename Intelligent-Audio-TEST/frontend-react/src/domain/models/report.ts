@@ -281,6 +281,8 @@ export interface ReportAlgorithmResult {
 export interface ReportReferenceParam {
   code: string
   type?: string
+  /** 展示 label（参考/用例参数 kv 表 key；缺省回退 code） */
+  label?: string
   value?: unknown
   segments?: unknown
   text?: string
