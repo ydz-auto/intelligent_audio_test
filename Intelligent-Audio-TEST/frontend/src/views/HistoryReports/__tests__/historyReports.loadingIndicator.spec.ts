@@ -10,6 +10,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
+import { createPinia, setActivePinia } from 'pinia';
 
 const mocks = vi.hoisted(() => ({
   getAll: vi.fn(),
@@ -86,6 +87,7 @@ vi.mock('../../components/common/data/PaginationComponent.vue', () => ({
 }));
 
 import HistoryReports from '../HistoryReports.vue';
+import { useAuthStore } from '../../../store/authStore';
 
 const EMPTY_PAGE = { items: [], total: 0, page: 1, per_page: 10, pages: 1 };
 const ONE_PAGE = {
@@ -104,6 +106,9 @@ function deferred<T>() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // INT-483：组件 setup 新增 useAuthStore 权限显隐（benchmark:report:publish 发布入口），测试注入 Pinia 并置 admin 权限
+  setActivePinia(createPinia());
+  useAuthStore().setAuth('t', { id: 1, username: 'u', roleId: null, roleName: '', permissions: ['*'] });
   mocks.getAll.mockResolvedValue(EMPTY_PAGE);
   mocks.getTabCounts.mockResolvedValue({ all: 1, draft: 0, published: 1, comparison: 0 });
 });
