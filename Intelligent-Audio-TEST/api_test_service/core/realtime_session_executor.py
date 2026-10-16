@@ -27,9 +27,12 @@ import time
 import wave
 
 from shared.models.common_enums import (
+    AdapterProtocol,
+    AdapterVendor,
     RealtimeFrameType,
     RealtimePacingStrategy,
     RealtimeRoundMode,
+    VendorAdapterType,
 )
 from shared.utils.config_manager import config_manager
 from shared.utils.api_key_provider import resolver_from_config
@@ -43,6 +46,11 @@ from api_test_service.infrastructure.acl import (
     AudioConfigAclRepositoryImpl,
     AudioRenderACLRepositoryImpl,
     EvaluationAclRepositoryImpl,
+)
+from api_test_service.infrastructure.adapters import (
+    _ADAPTER_TYPE_CONFIG_KEY,
+    adapter_type_from_config,
+    vendor_adapter_registry,
 )
 from api_test_service.infrastructure.messaging import RealtimeStreamPublisher
 from api_test_service.infrastructure.vendor_ws import RealtimeWSClient
@@ -156,16 +164,13 @@ class RealtimeSessionExecutor:
                 api_config,
                 case_api_key=self._case_level_key(
                     data.get('api_specific_config'), case_config))
-            client = RealtimeWSClient(
-                url, headers=headers,
-                vendor=(getattr(api_config, 'vendor', None) or 'openai'),
-                event_listener=lambda frame: self._on_frame(
-                    task_id, test_case_id, session_id, frame),
-                chunk_duration_ms=chunk_ms,
-                # INT-839：被测 API 网络代理（websocket-client 代理参数注入）
+            client = self._resolve_realtime_transport(
+                api_config, case_config, data.get('api_specific_config'),
+                url, headers, chunk_ms, task_id, test_case_id, session_id,
+                # INT-839：被测 API 网络代理（websocket-client 代理参数注入，
+                # 适配器路径与 RealtimeWSClient 默认路径同口径透传）
                 proxy_type=getattr(api_config, 'proxy_type', None),
-                proxy_url=getattr(api_config, 'proxy_url', None),
-            )
+                proxy_url=getattr(api_config, 'proxy_url', None))
             if not client.connect():
                 raise ConnectionError(f"Realtime WS 连接失败: {url}")
 
@@ -258,6 +263,48 @@ class RealtimeSessionExecutor:
             if client is not None:
                 client.close()
             self._session_registry.release(task_id)
+
+    def _resolve_realtime_transport(self, api_config, case_config, api_specific_config,
+                                    url, headers, chunk_ms, task_id, test_case_id,
+                                    session_id, *, proxy_type=None, proxy_url=None):
+        """Realtime 传输对象工厂（INT-497 最小接线，仅替换构造对象一处）
+
+        配置了 REALTIME 品牌适配器（vendor_adapter=openai / openai_realtime，
+        方案审计 2026-10-16 拍板第 5 项）时经注册表严格分发（fallback=False：
+        resolve 失败必须抛错，不静默回退 RealtimeWSClient，防双通道语义歧义）；
+        否则保持既有 RealtimeWSClient 默认行为（api_driver / mock / 未配置，
+        向后兼容）。轮次编排零改动——适配器暴露 RealtimeWSClient 同形方法面。
+
+        配置来源与 HTTP 路径同口径：api_specific_config（API 级）优先，
+        回退 case_config（用例级），再经 api.meta（adapter_type_from_config 内置）。
+        proxy_type / proxy_url（INT-839）两条路径同口径透传，避免新适配器
+        路径静默丢失基线已具备的被测 API 网络代理能力。
+        """
+        sel_config = dict(api_specific_config or {})
+        if isinstance(case_config, dict):
+            for key in (_ADAPTER_TYPE_CONFIG_KEY,):
+                if key not in sel_config and case_config.get(key) is not None:
+                    sel_config[key] = case_config[key]
+        a_type = adapter_type_from_config(api_config, sel_config)
+        if a_type in (VendorAdapterType.OPENAI, VendorAdapterType.OPENAI_REALTIME):
+            adapter_cls = vendor_adapter_registry.resolve(
+                AdapterProtocol.REALTIME, AdapterVendor.OPENAI, fallback=False)
+            return adapter_cls(
+                api_config=api_config, case_config=case_config, endpoint=url,
+                headers=headers,
+                event_listener=lambda frame: self._on_frame(
+                    task_id, test_case_id, session_id, frame),
+                chunk_duration_ms=chunk_ms,
+                test_case_id=test_case_id, task_id=task_id,
+                proxy_type=proxy_type, proxy_url=proxy_url)
+        return RealtimeWSClient(
+            url, headers=headers,
+            vendor=(getattr(api_config, 'vendor', None) or 'openai'),
+            event_listener=lambda frame: self._on_frame(
+                task_id, test_case_id, session_id, frame),
+            chunk_duration_ms=chunk_ms,
+            proxy_type=proxy_type, proxy_url=proxy_url,
+        )
 
     # ── 轮次执行 ──
     def _execute_round(self, client, api_config, round_config, round_number,

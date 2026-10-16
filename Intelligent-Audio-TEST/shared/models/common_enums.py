@@ -197,14 +197,44 @@ class LabStatus(str, Enum):
     MAINTENANCE = 'maintenance'
 
 
-class VendorAdapterType(str, Enum):
-    """厂商适配器类型枚举 — api_test_service infrastructure/adapters 注册表 key（INT-62 新增）
+class AdapterProtocol(str, Enum):
+    """适配器协议维度枚举 — vendor_adapter_registry 多维 key（INT-497 新增）
 
-    新增厂商适配器 = 新增枚举成员 + @register_vendor_adapter 注册实现
-    + 用例配置 vendor_adapter 选择，执行链（core/）零改动。
+    语义域区别于 APIProtocol（传输协议分型）：AdapterProtocol 是适配器三级体系
+    （base_adaptor → 协议_base_adaptor → 品牌适配器）中协议级 base 的分型依据，
+    覆盖 HTTP / WEBSOCKET / REALTIME；ANY 为遗留适配器（仅 adapter_type）注册时的
+    协议通配维度。REALTIME 落本枚举，不复用/扩展 APIProtocol（方案审计 2026-10-16 拍板）。
     """
-    API_DRIVER = 'api_driver'  # 内置 HTTP/WS 协议适配器（原 clients/api_driver + api_client 迁移）
-    MOCK = 'mock'              # mock 厂商适配器（扩展性验证 / 测试替身）
+    HTTP = 'http'
+    WEBSOCKET = 'websocket'
+    REALTIME = 'realtime'
+    ANY = 'any'
+
+
+class AdapterVendor(str, Enum):
+    """适配器品牌维度枚举 — vendor_adapter_registry 多维 key（INT-497 新增）
+
+    API_DRIVER 为内置 HTTP/WS 协议适配器的品牌兜底，MOCK 为测试替身，
+    OPENAI 为 OpenAI 品牌适配器；ANY 为未声明品牌维度时的通配。
+    """
+    API_DRIVER = 'api_driver'
+    MOCK = 'mock'
+    OPENAI = 'openai'
+    ANY = 'any'
+
+
+class VendorAdapterType(str, Enum):
+    """厂商适配器类型枚举 — 用例配置 vendor_adapter 扁平 key 兼容层（INT-62 / INT-497）
+
+    注册表主 key 已升级为 (AdapterProtocol, AdapterVendor) 多维（INT-497 与设备驱动
+    注册表同构）；本枚举保留为用例配置的扁平 key 层，create_from_config 经
+    adapter_type_from_config 映射为多维 key。新增厂商适配器 = 新增本枚举扁平 key
+    + @register_vendor_adapter 注册实现 + 用例配置 vendor_adapter 选择。
+    """
+    API_DRIVER = 'api_driver'        # 内置 HTTP/WS 协议适配器（原 clients/api_driver + api_client 迁移）
+    MOCK = 'mock'                    # mock 厂商适配器（扩展性验证 / 测试替身）
+    OPENAI = 'openai'                # OpenAI 品牌扁平 key（首期 websocket_api 路径 → (REALTIME, OPENAI)）
+    OPENAI_REALTIME = 'openai_realtime'  # OpenAI Realtime 组合扁平 key → (REALTIME, OPENAI)
 
 
 class RealtimeChannel(str, Enum):
