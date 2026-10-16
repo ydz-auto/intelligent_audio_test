@@ -1,6 +1,7 @@
 import os
 import re
 import uuid
+import unicodedata
 import requests
 import time
 import shutil
@@ -58,6 +59,9 @@ def _sanitize_filename(filename):
     return cleaned
 
 logger = logging.getLogger(__name__)
+
+# 上传建用例时，取不到目录/自定义分组上下文所落的默认分组名
+DEFAULT_UPLOAD_GROUP_NAME = '音频上传生成'
 
 # 辅助函数：重试文件操作，解决 Windows 下的文件占用问题
 def retry_file_operation(func, *args, **kwargs):
@@ -1143,14 +1147,26 @@ class AudioController:
             user_tags = validated.tags
             
             # 计算实际分组名称
-            if group_name_type in ('custom', 'folder') and custom_group_name:
-                effective_group_name = custom_group_name
-            elif test_case_group_name:
-                effective_group_name = test_case_group_name
+            # 分组名派生自用户输入的目录名 / 自定义名，先做 strip + 全半角归一，
+            # 否则「拒识」与「拒识 」会各建一个分组
+            normalized_custom_group_name = AudioController._normalize_group_name(custom_group_name)
+            normalized_test_case_group_name = AudioController._normalize_group_name(test_case_group_name)
+            if group_name_type in ('custom', 'folder') and normalized_custom_group_name:
+                effective_group_name = normalized_custom_group_name
+            elif normalized_test_case_group_name:
+                effective_group_name = normalized_test_case_group_name
             elif algorithm_type:
-                effective_group_name = algorithm_type
+                effective_group_name = AudioController._normalize_group_name(algorithm_type)
             else:
-                effective_group_name = '音频上传生成'
+                # 缺省落默认分组不得静默：留日志便于回溯用例为何进了「音频上传生成」
+                # （不建用例时分组名用不上，不产生日志噪声）
+                effective_group_name = DEFAULT_UPLOAD_GROUP_NAME
+                if create_test_case:
+                    logger.warning(
+                        f'上传建用例未取到目录/自定义分组上下文'
+                        f'（group_name_type={group_name_type}, file_id={file_id}），'
+                        f'落默认分组「{DEFAULT_UPLOAD_GROUP_NAME}」'
+                    )
             
             prompt_device_id = validated.prompt_device_id
             prompt_source_language = validated.prompt_source_language
@@ -1726,6 +1742,60 @@ class AudioController:
 
         return raw_annotations_data or None
 
+    # 同名用例后缀重试上限：同秒并发上传时依次尝试 _HHMMSS / _HHMMSS_2 / _HHMMSS_3 ...
+    CASE_NAME_SUFFIX_MAX_ATTEMPTS = 100
+
+    # 分组名归一：全角转半角 + 连续空白压缩为单个空格 + 去首尾空白
+    @staticmethod
+    def _normalize_group_name(group_name):
+        """归一化分组名（strip + 全半角归一）。
+
+        分组名派生自用户上传时的目录名 / 自定义分组名，未归一会出现「拒识」与
+        「拒识 」（尾随全角空格）两个分组；同名分组的 get-or-create 也会因空白差异
+        重复建组。
+
+        :param group_name: 原始分组名（可为 None）
+        :return: 归一后的分组名；输入为空时返回空字符串
+        """
+        if not group_name:
+            return ''
+        # NFKC 覆盖全角字母/数字/标点与全角空格 U+3000 → 半角
+        normalized = unicodedata.normalize('NFKC', str(group_name))
+        return re.sub(r'\s+', ' ', normalized).strip()
+
+    # 取一个全局不冲突的用例名
+    @staticmethod
+    def _resolve_unique_case_name(base_name):
+        """取一个在「全部未删除用例」范围内不冲突的用例名。
+
+        判重范围**不含 group_id**：同一音频以「带目录 / 不带目录」两种方式上传时会落到
+        不同分组（带目录 → 目录名分组，不带目录 → 默认分组），若按 (name, group_id) 判重，
+        两行会逐字同名；而按编号/名字匹配用例时会命中配置不同的行（播放设备、评估比对
+        基准都可能不同）。跨分组重名的产品口径为「改名共存」，不做复用或合并——复用会把
+        新上传的配置悄悄挂到旧行上，正是本缺陷要避免的后果。
+
+        同一秒内两次上传：先试 _HHMMSS，仍冲突则递增 _HHMMSS_2 / _HHMMSS_3 ...
+
+        :param base_name: 基础用例名（如 测试用例_xxx.wav）
+        :return: 与所有未删除用例都不同名的用例名
+        """
+        if not TestCase.query.filter_by(name=base_name, deleted=False).first():
+            return base_name
+
+        suffix = now_cst().strftime('%H%M%S')
+        for seq in range(1, AudioController.CASE_NAME_SUFFIX_MAX_ATTEMPTS + 1):
+            candidate = f"{base_name}_{suffix}" if seq == 1 else f"{base_name}_{suffix}_{seq}"
+            if not TestCase.query.filter_by(name=candidate, deleted=False).first():
+                return candidate
+
+        # 极端并发下序号用尽：退化为 uuid 短后缀，保证名字不冲突
+        candidate = f"{base_name}_{suffix}_{uuid.uuid4().hex[:8]}"
+        logger.warning(
+            f'用例名「{base_name}」后缀重试 {AudioController.CASE_NAME_SUFFIX_MAX_ATTEMPTS} 次仍冲突，'
+            f'退化为「{candidate}」'
+        )
+        return candidate
+
     # 内部辅助方法：从音频创建测试用例
     @staticmethod
     def _create_test_case_from_audio(audio_id, test_types, audio_tags, playback_device_id=None, spl=65.0, noise_spl=60.0, noise_audio_id=None, group_name=None, dimensions_data=None, algorithm_type=None, algorithm_params=None, rounds_config=None, inherit_tags=True, raw_annotations=None, case_background_noise=None):
@@ -1758,8 +1828,17 @@ class AudioController:
         if not audio:
             return None
 
-        # 使用提供的分组名称，如果没有则使用默认值
-        effective_group_name = group_name if group_name else '音频上传生成'
+        # 使用提供的分组名称（归一后），如果没有则落默认分组
+        normalized_group_name = AudioController._normalize_group_name(group_name)
+        if normalized_group_name:
+            effective_group_name = normalized_group_name
+        else:
+            # 缺省落默认分组不得静默：留日志便于回溯用例为何进了「音频上传生成」
+            effective_group_name = DEFAULT_UPLOAD_GROUP_NAME
+            logger.warning(
+                f'音频建用例未取到分组名（audio_id={audio_id}），'
+                f'落默认分组「{DEFAULT_UPLOAD_GROUP_NAME}」'
+            )
 
         with db.session.no_autoflush:
             # 获取或创建分组（按 name + algorithm_type 联合查找）
@@ -1811,10 +1890,8 @@ class AudioController:
                 else:
                     test_case_name = base_name
 
-                # 同名时加时间戳避免冲突
-                existing = TestCase.query.filter_by(name=test_case_name, group_id=group.id, deleted=False).first()
-                if existing:
-                    test_case_name = f"{test_case_name}_{now_cst().strftime('%H%M%S')}"
+                # 同名时加后缀避免冲突；判重范围覆盖全部分组（见 _resolve_unique_case_name）
+                test_case_name = AudioController._resolve_unique_case_name(test_case_name)
 
                 # ===== 构建 config =====
                 # 统一走 rounds 架构，前端始终构建 rounds_config
