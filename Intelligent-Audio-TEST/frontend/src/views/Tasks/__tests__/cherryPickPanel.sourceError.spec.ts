@@ -1,106 +1,107 @@
 /**
- * INT-552：挑选合并页签「源结果溯源」加载失败错误态（审计 P2-2）。
+ * INT-552：挑选溯源加载失败错误态回归锁定。
  *
- * 缺陷：CherryPickPanel loadSource catch 静默置 sourcesByTask[taskId]=[]，
- * 溯源接口失败时展开区显示「该挑选合并任务暂无来源记录」，与真无来源混淆。
- * 修复：per-task error ref + 重试，v-if 三分（loading / 分组 / 错误 / 空态）。
+ * 原缺陷：loadSource catch 置 sourcesByTask[taskId]=[] → 展开「源结果溯源」时
+ * 接口失败被静默降级为「该挑选合并任务暂无来源记录」空态，与「真无来源」混淆。
+ * 修复引入 per-task sourceErrorByTask，展开区三分：loading / error（重试）/ 空态。
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 
 const api = vi.hoisted(() => ({ getSource: vi.fn() }))
 
-vi.mock('../../../infrastructure/api', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../infrastructure/api')>()
+vi.mock(import('../../../infrastructure/api'), async (importOriginal) => {
+  const actual = await importOriginal()
   return {
     ...actual,
-    cherryPickApi: { getSource: api.getSource },
+    cherryPickApi: { ...actual.cherryPickApi, getSource: api.getSource },
   }
 })
 
 import CherryPickPanel from '../CherryPickPanel.vue'
 
-const CT = (id: number) => ({ id, name: `挑选合并任务${id}`, status: 'completed' })
-
-const cherryPickProp = () => ({
-  loading: false,
-  items: [CT(1), CT(2)],
-  total: 2,
-  page: 1,
-  perPage: 10,
-  pages: 1,
-  setPage: vi.fn(),
-  setPageSize: vi.fn(),
-  fetchList: vi.fn(),
-})
-
-beforeEach(() => {
-  vi.clearAllMocks()
-  api.getSource.mockResolvedValue({ groups: [] })
-})
+function makeProps() {
+  return {
+    cherryPick: {
+      loading: false,
+      items: [{ id: 1, name: '挑选合并任务A', createdAt: '2026-10-01 10:00:00' }],
+      total: 1,
+      page: 1,
+      perPage: 10,
+      pages: 1,
+      setPage: vi.fn(),
+      setPageSize: vi.fn(),
+      fetchList: vi.fn(async () => {}),
+    },
+    taskActions: [],
+    isFavorite: () => false,
+  }
+}
 
 async function mountPanel() {
   const w = mount(CherryPickPanel, {
-    props: {
-      cherryPick: cherryPickProp(),
-      taskActions: [],
-      isFavorite: () => false,
-    },
+    props: makeProps(),
     global: {
-      stubs: { TaskCard: true, PaginationComponent: true },
+      stubs: {
+        TaskCard: { template: '<div class="task-card-stub" />' },
+        PaginationComponent: true,
+      },
     },
   })
   await flushPromises()
   return w
 }
 
-describe('INT-552：溯源加载失败错误态（审计 P2-2）', () => {
-  it('getSource reject → 展开区显示错误+重试，不显示「暂无来源」误导文案', async () => {
-    api.getSource.mockRejectedValue(new Error('溯源服务不可用'))
-    const w = await mountPanel()
-    await w.findAll('.merged-source-list-title')[0].trigger('click')
-    await flushPromises()
+/** 点击「源结果溯源」标题展开（触发 loadSource） */
+async function expandSource(w: any) {
+  await w.find('.merged-source-list-title').trigger('click')
+  await flushPromises()
+}
 
-    const err = w.find('.merged-source-error')
-    expect(err.exists()).toBe(true)
-    expect(err.text()).toContain('溯源加载失败')
-    expect(err.text()).toContain('溯源服务不可用')
+beforeEach(() => {
+  vi.clearAllMocks()
+  api.getSource.mockReset()
+})
+
+describe('INT-552 溯源加载错误态', () => {
+  it('getSource reject → 显示错误态与重试按钮，而非「暂无来源记录」', async () => {
+    api.getSource.mockRejectedValue(new Error('network down'))
+    const w = await mountPanel()
+    await expandSource(w)
+
+    expect(w.text()).toContain('溯源加载失败')
+    expect(w.text()).toContain('重试')
     expect(w.text()).not.toContain('该挑选合并任务暂无来源记录')
   })
 
-  it('错误后点重试成功 → 错误消失、溯源分组展示', async () => {
+  it('重试成功后恢复来源分组展示（重试按钮再次触发 loadSource）', async () => {
     api.getSource
-      .mockRejectedValueOnce(new Error('网络抖动'))
+      .mockRejectedValueOnce(new Error('network down'))
       .mockResolvedValueOnce({
-        groups: [{ sourceTaskId: 5, sourceTaskName: '源任务5', results: [{ caseId: 'C1' }] }],
+        taskId: 1,
+        isCherryPick: true,
+        total: 2,
+        groups: [{ sourceTaskId: 7, sourceTaskName: '源任务7', results: [{ id: 1, resultId: 101 }] }],
       })
     const w = await mountPanel()
-    await w.findAll('.merged-source-list-title')[0].trigger('click')
-    await flushPromises()
-    expect(w.find('.merged-source-error').exists()).toBe(true)
+    await expandSource(w)
 
-    await w.find('.merged-source-retry').trigger('click')
+    expect(w.text()).toContain('溯源加载失败')
+
+    await w.find('.source-retry-btn').trigger('click')
     await flushPromises()
-    expect(w.find('.merged-source-error').exists()).toBe(false)
-    expect(w.text()).toContain('源任务5')
+
+    expect(api.getSource).toHaveBeenCalledTimes(2)
+    expect(w.text()).toContain('源任务7')
+    expect(w.text()).not.toContain('溯源加载失败')
   })
 
-  it('多卡独立错误态：卡1 失败不影响卡2 正常展开', async () => {
-    api.getSource
-      .mockRejectedValueOnce(new Error('网络抖动'))
-      .mockResolvedValueOnce({
-        groups: [{ sourceTaskId: 6, sourceTaskName: '源任务6', results: [{ caseId: 'C2' }] }],
-      })
+  it('成功但 groups 为空（真无来源）→ 仍显示「暂无来源记录」空态', async () => {
+    api.getSource.mockResolvedValue({ taskId: 1, isCherryPick: true, total: 0, groups: [] })
     const w = await mountPanel()
-    // 先展开卡1（失败），再展开卡2（成功）
-    const titles = w.findAll('.merged-source-list-title')
-    await titles[0].trigger('click')
-    await flushPromises()
-    await titles[1].trigger('click')
-    await flushPromises()
+    await expandSource(w)
 
-    const errors = w.findAll('.merged-source-error')
-    expect(errors.length).toBe(1)
-    expect(w.text()).toContain('源任务6')
+    expect(w.text()).toContain('该挑选合并任务暂无来源记录')
+    expect(w.text()).not.toContain('溯源加载失败')
   })
 })

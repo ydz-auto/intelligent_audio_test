@@ -14,8 +14,32 @@
           @favorite-toggle="(task: any) => emit('task-action', { action: { id: isFavorite(Number(task.id)) ? 'unfavorite' : 'favorite' }, task })"
         />
 
-        <!-- 源结果溯源列表（默认收起，点击标题展开；验收 §12.2 溯源；INT-401：按卡独立缓存，多卡展开互不覆盖） -->
-        <div class="merged-source-list" v-if="(ct.id ?? null) !== null">
+        <!-- 源结果溯源列表（默认收起，点击展开；验收 §12.2 溯源；INT-401：按卡独立缓存，多卡展开互不覆盖） -->
+        <div class="merged-source-list" v-if="(ct.id ?? null) !== null && expanded.has(Number(ct.id))">
+          <div v-if="sourceLoadingByTask[Number(ct.id)]" class="loading-hint"><i class="fas fa-spinner fa-spin"></i> 正在加载溯源...</div>
+          <template v-else-if="sourceErrorByTask[Number(ct.id)]">
+            <div class="merged-source-row source-error">
+              <span class="merged-source-row-cases">溯源加载失败，请重试</span>
+              <button type="button" class="source-retry-btn" @click="loadSource(Number(ct.id))">
+                <i class="fas fa-redo-alt"></i> 重试
+              </button>
+            </div>
+          </template>
+          <template v-else-if="(sourcesByTask[Number(ct.id)]?.length ?? 0) > 0">
+            <div v-for="group in sourcesByTask[Number(ct.id)]" :key="group.sourceTaskId" class="merged-source-row">
+              <div class="merged-source-row-info">
+                <span class="merged-source-row-name" :title="group.sourceTaskName">
+                  <i class="fas fa-source-branch"></i> {{ group.sourceTaskName }}
+                </span>
+                <span class="merged-source-row-cases">结果 {{ group.results.length }} 条</span>
+              </div>
+            </div>
+          </template>
+          <div v-else class="merged-source-row">
+            <span class="merged-source-row-cases">该挑选合并任务暂无来源记录</span>
+          </div>
+        </div>
+        <div class="merged-source-list" v-else>
           <div class="merged-source-list-title" @click="toggleSource(Number(ct.id))">
             <i class="fas fa-source-branch"></i> 源结果溯源
             <i class="fas merged-source-toggle" :class="expanded.has(Number(ct.id)) ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
@@ -114,34 +138,33 @@ const emit = defineEmits<{
 const expanded = ref<Set<number>>(new Set());
 const sourceLoadingByTask = ref<Record<number, boolean>>({});
 const sourcesByTask = ref<Record<number, PickSource['groups']>>({});
-// INT-552：溯源加载失败错误态（原静默清空成「暂无来源」误导文案）
-const sourceErrorByTask = ref<Record<number, string>>({});
+/** INT-552：溯源加载失败错误态（按卡独立，与「真无来源」空态区分） */
+const sourceErrorByTask = ref<Record<number, boolean>>({});
 
 function toggleSource(taskId: number) {
   const next = new Set(expanded.value);
-  if (next.has(taskId)) {
-    next.delete(taskId);
-  } else {
+  const expanding = !next.has(taskId);
+  if (expanding) {
     next.add(taskId);
-    loadSource(taskId);
+  } else {
+    next.delete(taskId);
   }
   expanded.value = next;
+  if (expanding) {
+    loadSource(taskId);
+  }
 }
 
 async function loadSource(taskId: number) {
   sourceLoadingByTask.value = { ...sourceLoadingByTask.value, [taskId]: true };
-  const prevError = { ...sourceErrorByTask.value };
-  delete prevError[taskId];
-  sourceErrorByTask.value = prevError;
+  sourceErrorByTask.value = { ...sourceErrorByTask.value, [taskId]: false };
   try {
     const source = await cherryPickApi.getSource(taskId);
     sourcesByTask.value = { ...sourcesByTask.value, [taskId]: source.groups ?? [] };
   } catch (error: any) {
     // INT-552：失败保留旧数据 + 可见错误（含重试），空态文案仅真无来源展示
     console.error('Failed to load pick source:', error);
-    const err = { ...sourceErrorByTask.value };
-    err[taskId] = error?.message || '请重试';
-    sourceErrorByTask.value = err;
+    sourceErrorByTask.value = { ...sourceErrorByTask.value, [taskId]: true };
   } finally {
     sourceLoadingByTask.value = { ...sourceLoadingByTask.value, [taskId]: false };
   }
@@ -171,121 +194,20 @@ onMounted(() => {
   color: var(--color-slate-400, #94a3b8);
   font-size: 13px;
 }
-/* INT-552：溯源加载失败错误态（原静默空态文案误导） */
-.merged-source-error {
-  display: flex;
-  align-items: center;
+.source-error {
+  padding: 8px 16px;
   gap: 8px;
-  padding: 8px 12px;
-  background: var(--color-amber-100, #fef3c7);
-  color: var(--color-amber-800, #92400e);
-  border: 1px solid var(--color-amber-300, #fcd34d);
-  border-radius: var(--border-radius-md, 8px);
-  font-size: 13px;
 }
-.merged-source-error i { color: var(--color-amber-600, #d97706); }
-.merged-source-retry {
-  margin-left: auto;
-  border: none;
+.source-retry-btn {
+  padding: 2px 10px;
+  font-size: 12px;
+  color: var(--color-primary, #2563eb);
   background: transparent;
-  color: var(--primary, #ff6a00);
-  font-size: 13px;
+  border: 1px solid var(--color-slate-300, #cbd5e1);
+  border-radius: 4px;
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
 }
-.merged-source-retry:hover { text-decoration: underline; }
-/* INT-401：溯源明细（引用结果 + 缺失标注）样式自包含，与合并面板同视觉 token */
-.merged-source-list {
-  margin-top: 4px;
-  padding: 10px 12px;
-  background: var(--color-slate-50, #f8fafc);
-  border: 1px dashed var(--color-slate-200, #e2e8f0);
-  border-radius: 8px;
-}
-.merged-source-list-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-slate-600, #475569);
-  margin-bottom: 8px;
-  cursor: pointer;
-  user-select: none;
-}
-.merged-source-list-title:hover {
-  color: var(--primary, #ff6a00);
-}
-.merged-source-toggle {
-  margin-left: auto;
-  color: var(--color-slate-400, #94a3b8);
-  font-size: 12px;
-  transition: transform 0.2s ease;
-}
-.merged-source-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 6px 4px;
-  border-bottom: 1px solid var(--color-slate-100, #eef2f7);
-}
-.merged-source-row:last-child {
-  border-bottom: none;
-}
-.merged-source-row-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  min-width: 0;
-  flex: 1;
-}
-.merged-source-row-name {
-  font-weight: 500;
-  color: var(--color-slate-700, #334155);
-  max-width: 300px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.merged-source-row-cases {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--color-slate-500, #64748b);
-  font-size: 12px;
-}
-.cp-source-results {
-  flex-basis: 100%;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 12px;
-  padding: 4px 4px 2px;
-}
-.cp-source-result {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--color-slate-600, #475569);
-  background: var(--color-white, #fff);
-  border: 1px solid var(--color-slate-200, #e2e8f0);
-  border-radius: 6px;
-  padding: 2px 8px;
-}
-.cp-source-result.missing {
-  border-color: var(--color-red-300, #fca5a5);
-  background: var(--color-red-50, #fef2f2);
-}
-.cp-source-result .missing-badge {
-  color: var(--color-red-600, #dc2626);
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
+.source-retry-btn:hover {
+  border-color: var(--color-primary, #2563eb);
 }
 </style>
