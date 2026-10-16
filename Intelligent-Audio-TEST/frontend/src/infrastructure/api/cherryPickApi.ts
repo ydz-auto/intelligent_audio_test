@@ -159,11 +159,12 @@ export const cherryPickApi = {
       'DELETE', '/tasks/cherry-picks/cart/items', null, options);
   },
 
-  /** 购物车另存为挑选集 */
-  async saveAsSet(name: string, description?: string, options: RequestOptions = {}) {
-    return request<{ set_id: number; name: string; item_count: number }>(
+  /** 购物车另存为挑选集（DTO 经 toCamel 收敛：set_id→setId / item_count→itemCount，设计 §8 camelCase 边界） */
+  async saveAsSet(name: string, description?: string, options: RequestOptions = {}):
+    Promise<{ setId: number; name: string; itemCount: number }> {
+    return toCamel(await request<Record<string, unknown>>(
       'POST', '/tasks/cherry-picks/cart/save-as-set',
-      { name, description: description ?? '' }, options);
+      { name, description: description ?? '' }, options));
   },
 
   /** 挑选集列表 */

@@ -88,6 +88,34 @@ async function mountDialog(props = {}) {
   return w
 }
 
+describe('步骤1 挑选：筛选变更重置页码（P2-1）', () => {
+  it('设备/执行状态/评估状态变更回到第 1 页再查询（避免旧页码「无符合条件」误判）', async () => {
+    api.listCandidates.mockResolvedValue({ items: [], total: 0 })
+    const w = await mountDialog()
+    const vm = w.vm as any
+    vm.filters.page = 3
+
+    // 设备筛选变更
+    await w.findAll('select')[1].setValue('1')
+    await flushPromises()
+    expect(api.listCandidates.mock.calls[api.listCandidates.mock.calls.length - 1][0].page).toBe(1)
+    expect(vm.filters.page).toBe(1)
+
+    // 执行状态变更
+    vm.filters.page = 5
+    await w.findAll('select')[2].setValue('failed')
+    await flushPromises()
+    expect(api.listCandidates.mock.calls[api.listCandidates.mock.calls.length - 1][0].page).toBe(1)
+    expect(vm.filters.page).toBe(1)
+
+    // 评估状态变更
+    vm.filters.page = 7
+    await w.findAll('select')[3].setValue('evaluated')
+    await flushPromises()
+    expect(api.listCandidates.mock.calls[api.listCandidates.mock.calls.length - 1][0].page).toBe(1)
+  })
+})
+
 describe('步骤1 挑选：设备选项独立取设备列表（INT-401）', () => {
   it('设备下拉来自 devicesApi 独立列表（不从候选结果聚合）', async () => {
     const w = await mountDialog()

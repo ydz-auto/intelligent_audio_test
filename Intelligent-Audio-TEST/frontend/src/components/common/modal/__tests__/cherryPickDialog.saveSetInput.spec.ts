@@ -57,7 +57,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   api.listCandidates.mockResolvedValue({ items: [], total: 0 })
   api.tasksGetAll.mockResolvedValue({ items: [] })
-  cartApi.saveAsSet.mockResolvedValue({ name: '我的挑选集', item_count: 2 })
+  cartApi.saveAsSet.mockResolvedValue({ name: '我的挑选集', itemCount: 2 })
 })
 
 async function mountOnCartStep() {
