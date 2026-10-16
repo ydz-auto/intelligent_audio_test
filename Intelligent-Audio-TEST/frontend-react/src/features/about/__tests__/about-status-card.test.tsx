@@ -5,7 +5,7 @@
  * 且正文（AboutContent）不被阻断（06_关于.md §3.1.1/§4.4）。
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { ABOUT_DOCUMENT } from '@/infrastructure/content/aboutAssets'
@@ -41,6 +41,16 @@ function renderAboutWithStatus() {
   )
 }
 
+/** 状态卡根节点（data-slot=card），断言限域在卡内、避免与正文文案同名冲突 */
+function statusCardScope() {
+  // 正文 about.md 含「## 版本与服务状态」标题，取卡内 CardTitle 的卡根
+  const title = screen
+    .getAllByText('版本与服务状态')
+    .find((element) => element.closest('[data-slot="card"]'))
+  const root = title?.closest('[data-slot="card"]') as HTMLElement
+  return within(root)
+}
+
 describe('AboutStatusCard', () => {
   it('/health 成功 → 版本 V9.7.31 + 三徽章「正常」+ 数据库名，无提示条', async () => {
     gatewayFetch.mockResolvedValue({
@@ -52,11 +62,12 @@ describe('AboutStatusCard', () => {
     authFetch.mockResolvedValue({ status: 'ok', service: 'auth_service' })
     renderAboutWithStatus()
 
-    expect(await screen.findByText('V9.7.31')).toBeVisible()
-    expect(screen.getAllByText('正常')).toHaveLength(3)
-    expect(screen.getByText('intelligent_audio_test')).toBeInTheDocument()
+    const card = statusCardScope()
+    await waitFor(() => expect(card.getAllByText('正常')).toHaveLength(3))
+    expect(card.getByText('V9.7.31')).toBeVisible()
+    expect(card.getByText('intelligent_audio_test')).toBeInTheDocument()
     expect(
-      screen.queryByText('服务状态检测失败，请稍后重试或联系管理员。')
+      card.queryByText('服务状态检测失败，请稍后重试或联系管理员。')
     ).not.toBeInTheDocument()
   })
 
@@ -65,11 +76,12 @@ describe('AboutStatusCard', () => {
     authFetch.mockRejectedValue(new Error('auth down'))
     renderAboutWithStatus()
 
+    const card = statusCardScope()
+    await waitFor(() => expect(card.getAllByText('检测中')).toHaveLength(3))
+    expect(card.getAllByText('—')).toHaveLength(4)
     expect(
-      await screen.findByText('服务状态检测失败，请稍后重试或联系管理员。')
+      card.getByText('服务状态检测失败，请稍后重试或联系管理员。')
     ).toBeInTheDocument()
-    expect(screen.getAllByText('检测中')).toHaveLength(3)
-    expect(screen.getAllByText('—')).toHaveLength(4)
     // 正文不受影响（「不阻断正文」）
     expect(
       screen.getByRole('heading', { name: '关于智能语音测试平台', level: 1 })
@@ -81,10 +93,12 @@ describe('AboutStatusCard', () => {
     authFetch.mockResolvedValue({ status: 'ok', service: 'auth_service' })
     renderAboutWithStatus()
 
+    const card = statusCardScope()
+    await waitFor(() => expect(card.getAllByText('检测中')).toHaveLength(3))
+    expect(card.getAllByText('—')).toHaveLength(3)
     expect(
-      await screen.findByText('服务状态检测失败，请稍后重试或联系管理员。')
+      card.getByText('服务状态检测失败，请稍后重试或联系管理员。')
     ).toBeInTheDocument()
-    expect(screen.getAllByText('检测中')).toHaveLength(3)
   })
 
   it('认证失败但网关 ok → 仅认证行「检测中」，网关/版本保持正常，无提示条', async () => {
@@ -97,11 +111,13 @@ describe('AboutStatusCard', () => {
     authFetch.mockRejectedValue(new Error('auth down'))
     renderAboutWithStatus()
 
-    expect(await screen.findByText('V9.7.31')).toBeVisible()
-    expect(screen.getAllByText('正常')).toHaveLength(2)
-    expect(screen.getAllByText('检测中')).toHaveLength(1)
+    const card = statusCardScope()
+    await waitFor(() => expect(card.getAllByText('正常')).toHaveLength(2))
+    expect(card.getAllByText('检测中')).toHaveLength(1)
+    expect(card.getByText('V9.7.31')).toBeVisible()
+    expect(card.getByText('intelligent_audio_test')).toBeInTheDocument()
     expect(
-      screen.queryByText('服务状态检测失败，请稍后重试或联系管理员。')
+      card.queryByText('服务状态检测失败，请稍后重试或联系管理员。')
     ).not.toBeInTheDocument()
   })
 })
