@@ -1,0 +1,41 @@
+# docker/Dockerfile.service 瘦身（INT-272 增补）：负责人 2026-10-15 要求限制镜像大小
+# 现状 2.8GB/镜像（12 个同底座）→ 目标 ~1.2GB：
+#   ① 多阶段构建：gcc/libc6-dev/portaudio19-dev 只进 builder 阶段编译 pyaudio，运行阶段不带（-约650MB apt 层）
+#   ② hypium 从主 requirements 拆出（它传递依赖 opencv-python ~190MB，代码零直接使用；仅 device_service 鸿蒙链路需要，
+#      用 services_extra_requirements.txt 按需装——本统一镜像先不装，device_service 容器启动时装或后续拆独立镜像）
+#   ③ requirements 里 playwright 仅作 gRPC 排障用途时也可评估拆出（~140MB），本轮先保留
+
+ARG PY_IMAGE=python:3.11-slim
+
+FROM ${PY_IMAGE} AS builder
+WORKDIR /build
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        gcc libc6-dev libffi-dev portaudio19-dev \
+    && rm -rf /var/lib/apt/lists/*
+COPY requirements.txt ./requirements.txt
+# 编译 pyaudio 等需要编译的包到独立目录
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+FROM ${PY_IMAGE}
+WORKDIR /app
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUTF8=1
+
+# 运行阶段只装运行时库：ffmpeg + adb（二进制）+ curl（健康检查），不带编译器
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg \
+        adb \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# 从 builder 拷贝编译好的 Python 依赖（纯 site-packages，无编译器）
+COPY --from=builder /install /usr/local
+
+# 应用代码（.dockerignore 已排除 .env / logs / storage / doc / node_modules）
+COPY . .
+
+ENV PYTHONPATH=/app:/app/shared/proto
+EXPOSE 5000
+CMD ["python", "-m", "uvicorn", "api_gateway.app:app", "--host", "0.0.0.0", "--port", "5000"]

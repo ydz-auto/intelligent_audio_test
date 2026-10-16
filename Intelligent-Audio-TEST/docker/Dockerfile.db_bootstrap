@@ -1,0 +1,37 @@
+# INT-272：数据库结构引导镜像（一次性 job，docker/Dockerfile.db_bootstrap）
+#
+# 全新库初始化链（scripts/migrations/README.md 口径）：
+#   1. create_all_tables.py        —— Base.metadata.create_all() 建全部表
+#   2. 幂等迁移（结构 + 种子）      —— ①结构基线 ②实验室 ③审计列 ④⑧⑨⑩ ⑫-㉑ 等
+#   3. seed_rbac.py                —— RBAC 权限点/角色种子
+# 已初始化的库：全部脚本幂等（IF NOT EXISTS / 已存在即 SKIP），job 秒级完成退出。
+#
+# 迁移脚本经卷只读挂载（../scripts:/opt/scripts:ro）：运行期遮蔽镜像内 COPY 的
+# 同源 scripts/ 副本（.dockerignore 仅排除 __pycache__，镜像内含 scripts/，卷缺席
+# 亦可引导）。脚本依赖的模型代码在镜像内 /app。
+ARG PY_IMAGE=python:3.11-slim
+FROM ${PY_IMAGE}
+
+WORKDIR /app
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUTF8=1 \
+    PYTHONPATH=/app:/app/shared/proto
+
+# gcc + libc6-dev + portaudio19-dev：pyaudio 无 linux 轮子，源码编译期需要
+# （slim 基镜像不带 libc 头文件——stdlib.h 在 libc6-dev；引导 job 同 requirements 全量安装）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        gcc \
+        libc6-dev \
+        portaudio19-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+# 引导入口（幂等，任一步失败即非零退出，compose 以 service_completed_successfully 门控后端启动）
+COPY docker/db_bootstrap_entrypoint.py /opt/db_bootstrap_entrypoint.py
+CMD ["python", "/opt/db_bootstrap_entrypoint.py"]
