@@ -3,6 +3,8 @@
  * 10_测试执行.md §3.6）。工具行 + 分叉（E2E 设备网格 / API 表格）+ 执行参数区
  * （测试配置/并发/网络/报告四类，照 playground-parameter-panel 参数卡形态）。
  * readOnly（§3.1.1）：设备/API 列表只读可见；扫描/新增/连接测试/编辑/删除隐藏；参数只读展示。
+ * 多友商口径（负责人 2026-10-16 核心业务口径）：多被测主体同集同指标同时实测=本步
+ * API 多选（api-table 行 ☑ + 表头全选）+ 并发自动合计（「并发任务数」由所选 API 并发上限求和）。
  */
 import { Info, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
