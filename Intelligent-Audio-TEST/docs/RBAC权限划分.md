@@ -207,6 +207,8 @@
 ### 3.16 Benchmark 排行（benchmark）
 
 > INT-429 补定义（2026-10-16）：权限码以 [benchmark_bp.py](../api_gateway/routes/benchmark_bp.py) 实际挂载为准，冒号风格对齐现有编码（[报告Benchmark排行功能设计文档](../doc/功能设计文档/05_报告管理/报告Benchmark排行功能设计文档.md) §9 原预留点号形式废弃）。
+>
+> INT-481 补定义（2026-10-16）：`benchmark:report:read` / `benchmark:report:publish` 两码对应 Benchmark 报告发布/查询端点（[benchmark_bp.py](../api_gateway/routes/benchmark_bp.py) 报告节），授权 tester / algo_engineer（admin 经 `*` 全量持有）。
 
 | 权限点 | 说明 | 对应端点 |
 |---|---|---|
@@ -216,6 +218,8 @@
 | `benchmark:baseline:write` | 创建外部基线数据源 | `POST /api/v1/benchmarks/sources` |
 | `benchmark:baseline:publish` | 导入外部基线/发布基线版本 | `POST /api/v1/benchmarks/baselines`、`POST /benchmarks/baselines/version` |
 | `benchmark:mapping:manage` | 管理指标映射 | `POST /api/v1/benchmarks/metric-mappings`、`PUT /benchmarks/metric-mappings/{id}` |
+| `benchmark:report:read` | 查看 Benchmark 报告 | `GET /api/v1/benchmarks/reports`、`GET /benchmarks/reports/{report_id}` |
+| `benchmark:report:publish` | 发布 Benchmark 报告 | `POST /api/v1/benchmarks/reports` |
 
 ### 3.17 用户与权限管理（user/role/permission）
 
@@ -315,6 +319,8 @@
 | benchmark:baseline:write | ✓ | ✓ | ✓ | ✗ | ✗ |
 | benchmark:baseline:publish | ✓ | ✓ | ✓ | ✗ | ✗ |
 | benchmark:mapping:manage | ✓ | ✓ | ✓ | ✗ | ✗ |
+| benchmark:report:read | ✓ | ✓ | ✓ | ✗ | ✗ |
+| benchmark:report:publish | ✓ | ✓ | ✓ | ✗ | ✗ |
 | **评估** | | | | | |
 | evaluation:read | ✓ | ✓ | ✓ | ✗ | ✗ |
 | evaluation:execute | ✓ | ✓ | ✗ | ✗ | ✗ |

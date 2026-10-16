@@ -27,7 +27,7 @@ python scripts/migrations/202609/seed_voice_llm.py                        # ⑪ 
 
 # ── 202610 ──────────────────────────────────────────────
 python scripts/migrations/202610/add_timestamp_db_defaults.py             # ⑫ 时间戳列补 DB 级 DEFAULT（INT-47，既有库对齐；全新库为 no-op）
-python scripts/migrations/202610/add_benchmark_tables.py                  # ⑬ Benchmark 排行 4 表 + 指标映射种子（D1 双轨排行，INT-27）
+python scripts/migrations/202610/add_benchmark_tables.py                  # ⑬ Benchmark 排行 5 表 + 指标映射种子（D1 双轨排行，INT-27 + INT-481 五表缺口）
 python scripts/migrations/202610/fix_users_email_unique.py --apply        # ⑭ users 空邮箱归一化 + 非空 email 部分唯一索引（INT-84；默认 dry-run）
 python scripts/migrations/202610/add_device_management_tables.py          # ⑮ 设备管理 5 表 + 索引（INT-80：分组/状态历史/告警规则/告警记录）
 python scripts/migrations/202610/drop_task_type_and_testcase_test_type.py # ⑯ 废弃字段收尾：按 test_tasks.type 回填 device_type 并删 task.type / test_cases.test_type（INT-79；published_tasks.type 保留不删，INT-148；**回填被 test_tasks.type 列存在性门控，列已删即整体 SKIP——历史 NULL 行由 ㉝ INT-789 补齐**）
@@ -99,7 +99,7 @@ python scripts/migrations/202610/add_api_proxy_columns.py                 # ㊲ 
 | [add_reevaluated_at.py](202608/add_reevaluated_at.py) | 重新评估功能 | `test_tasks` 加 `reevaluated_at` / `reevaluation_count` |
 | [fix_audio_tags_types.py](202608/fix_audio_tags_types.py) | 类型修复 | `audio_tags` 审计列 VARCHAR(36) → BIGINT（历史临时脚本遗留）；⚠️ 连接串硬编码 |
 | [fix_partial_unique_indexes.py](202608/fix_partial_unique_indexes.py) | 唯一约束与软删除冲突 | 将 UniqueConstraint 替换为部分唯一索引（`WHERE deleted = false`），软删除记录不再占用唯一键；默认 dry-run，`--apply` 执行 |
-| [seed_rbac.py](202608/seed_rbac.py) | RBAC 种子数据 | 108 个权限点、5 个系统角色（admin/tester/algo_engineer/device_admin/guest）及角色-权限映射；依赖 RBAC 表已存在（① 已建） |
+| [seed_rbac.py](202608/seed_rbac.py) | RBAC 种子数据 | 110 个权限点、5 个系统角色（admin/tester/algo_engineer/device_admin/guest）及角色-权限映射；依赖 RBAC 表已存在（① 已建） |
 
 ### 202609 — 评估维度与算法种子
 
@@ -121,7 +121,7 @@ python scripts/migrations/202610/add_api_proxy_columns.py                 # ㊲ 
 | 脚本 | 用途 |
 |------|------|
 | [add_timestamp_db_defaults.py](202610/add_timestamp_db_defaults.py) | 时间戳列 DB 级 DEFAULT 对齐（INT-47）：以 ORM 元数据为准，对缺失 DB 级默认值的 created_at/updated_at 等时间戳列 `SET DEFAULT now()`；既有库对齐用，全新库（PO 已带 server_default）为 no-op；幂等，支持 `--dry-run` |
-| [add_benchmark_tables.py](202610/add_benchmark_tables.py) | 建 `benchmark_rankings`（排行 ReadModel）/ `benchmark_metric_mappings`（指标映射单一事实源，含设计文档 §5.1 默认映射种子 13 条）/ `benchmark_sources`（外部基线数据源）/ `benchmark_baselines`（外部基线条目，导入即不可变版本快照）四表及索引；支持 `--dry-run` |
+| [add_benchmark_tables.py](202610/add_benchmark_tables.py) | 建 `benchmark_rankings`（排行 ReadModel）/ `benchmark_metric_mappings`（指标映射单一事实源，含设计文档 §5.1 默认映射种子 13 条）/ `benchmark_sources`（外部基线数据源）/ `benchmark_baselines`（外部基线条目，导入即不可变版本快照）/ `benchmark_reports`（Benchmark 报告发布记录第五表，INT-481：发布即排行快照）五表及索引；支持 `--dry-run` |
 | [add_device_management_tables.py](202610/add_device_management_tables.py) | 建 `device_groups`（设备分组，含组名未删除部分唯一索引并发兜底）/ `device_group_members`（成员关联，组内设备唯一）/ `device_status_events`（状态历史：在线/离线/健康检查/操作事件）/ `device_alarm_rules`（告警规则：离线时长/健康失败次数/CPU/内存/电池阈值）/ `device_alarms`（告警记录与确认流）五表及索引，DDL 与 device_service ORM 元数据逐列对齐；支持 `--dry-run` |
 | [drop_task_type_and_testcase_test_type.py](202610/drop_task_type_and_testcase_test_type.py) | 废弃字段收尾（INT-79/差异#2） | 先按 `test_tasks.type` 回填 `task_case_relations.device_type`（api→http_api / e2e→physical / 其他→physical），再 DROP `test_tasks.type` / `test_cases.test_type`；`published_tasks.type` **保留不删**（INT-148 裁定，见 add_published_task_type_algorithm_type.py）；幂等（列已删即 SKIP）。⚠️ 回填被 `test_tasks.type` 列存在性门控——运行库该列先删即整体 SKIP，历史 NULL 行由 INT-789 ㉝ 按关系表补齐 |
 | [fix_leftover_foreign_keys_and_indexes.py](202610/fix_leftover_foreign_keys_and_indexes.py) | 修复 202608 基线未生效的残留约束（INT-88） | 动态枚举并删除全库残留外键（应用层管理引用完整性，含多轮 lock_timeout 重试，被长事务阻塞时跳过并汇总）；删 `test_case_groups.name` 单列唯一约束；补建 202608 Step 11 外键替代索引清单与 Step 12 `deleted_at` 部分索引（动态枚举含 deleted/deleted_at 列的表）。例外保留 `algorithm_definitions_type_key`；支持 `--dry-run` |
