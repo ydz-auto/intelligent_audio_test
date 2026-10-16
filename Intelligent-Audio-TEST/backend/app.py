@@ -58,17 +58,40 @@ def _is_test_process():
     return 'pytest' in sys.modules or bool(os.environ.get('PYTEST_CURRENT_TEST'))
 
 
-def _should_run_recovery_sweep(app):
-    """是否执行启动恢复扫描（VEGA-35）。
+def _service_startup_switch_enabled(app, switch_name):
+    """服务启动副作用的统一判据（VEGA-35 建立，VEGA-42 复用）。
 
-    双重把关：
-    1. 配置开关 RECOVERY_SWEEP_ON_STARTUP：只有真正的服务入口 run.py 会打开它
-       （测试/迁移脚本/临时脚本里的 create_app() 默认不扫）；
-    2. 非 pytest 进程：即使环境变量被显式打开，测试进程也不扫。
+    双重把关，两处入口共用这一份实现，避免出现第二套不一致的开关逻辑：
+    1. 配置开关：只有真正的服务入口 run.py 会打开它
+       （测试/迁移脚本/临时脚本里的 create_app() 默认关闭）；
+    2. 非 pytest 进程：即使环境变量被显式打开，测试进程也不生效。
     """
     if _is_test_process():
         return False
-    return bool(app.config.get('RECOVERY_SWEEP_ON_STARTUP'))
+    return bool(app.config.get(switch_name))
+
+
+def _should_run_recovery_sweep(app):
+    """是否执行启动恢复扫描（VEGA-35）。
+
+    开关 RECOVERY_SWEEP_ON_STARTUP：只有真正的服务入口 run.py 会打开它
+    （测试/迁移脚本/临时脚本里的 create_app() 默认不扫）。
+    """
+    return _service_startup_switch_enabled(app, 'RECOVERY_SWEEP_ON_STARTUP')
+
+
+def _should_start_task_scheduler(app):
+    """是否启动任务调度器线程（VEGA-42）。
+
+    开关 TASK_SCHEDULER_ON_STARTUP，判据与恢复扫描同构（同一个
+    _service_startup_switch_enabled）。
+
+    调度器比恢复扫描更主动：它 3s 轮询一次，会自行拾取并推进库里的 pending
+    任务。任何脚本/模块级裸 create_app() 一旦解析到
+    config['default'] = DevelopmentConfig → 生产库，就会对着生产库起这个守护
+    线程（VEGA-25 事故的同类机制，只是入口不同），所以只有服务入口才起。
+    """
+    return _service_startup_switch_enabled(app, 'TASK_SCHEDULER_ON_STARTUP')
 
 
 def _sweep_interrupted_tasks_on_startup(app):
@@ -307,12 +330,22 @@ def create_app(config_name='default'):
             db.session.rollback()
 
         # 启动任务调度器
+        # VEGA-42：调度器同样是"服务进程专属"的启动副作用——它 3s 轮询并自行拾取/
+        # 推进 pending 任务，测试/迁移脚本/临时脚本的裸 create_app() 落到共享库时
+        # 绝不能对着生产库起这个守护线程。判据见 _should_start_task_scheduler，
+        # 与恢复扫描同口径（开关 + 非 pytest 进程）。
         from backend.services.execution.execution_engine import execution_engine
         from backend.utils.common.config_manager import config_manager
         config_manager.set_flask_config(app.config)
         execution_engine.set_scheduler_app(app)
-        execution_engine._init_scheduler()
-        app.logger.info("任务调度器初始化完成")
+        if _should_start_task_scheduler(app):
+            execution_engine._init_scheduler()
+            app.logger.info("任务调度器初始化完成")
+        else:
+            app.logger.info(
+                "已跳过任务调度器启动（TASK_SCHEDULER_ON_STARTUP 未开启或当前是测试进程，"
+                "非服务进程不应自行拾取/推进共享库任务）"
+            )
 
     # 注册各模块蓝图 (Blueprints)
     from blueprints.testcase_bp import testcase_bp

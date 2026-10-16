@@ -164,6 +164,13 @@ class Config:
     # 因此默认关闭，只由真正的服务入口 run.py 显式打开（os.environ.setdefault）。
     RECOVERY_SWEEP_ON_STARTUP = os.environ.get('RECOVERY_SWEEP_ON_STARTUP', 'false').lower() in ('true', '1', 'yes')
 
+    # ---- 任务调度器启动开关（VEGA-42）----
+    # 调度器是 3s 轮询的守护线程，会自行拾取并推进库里的 pending 任务——比恢复扫描
+    # 更主动：恢复扫描只改写一次状态，调度器会持续把共享库里的任务真正跑起来。
+    # 任何脚本/模块级裸 create_app() 一旦落到共享库，就会对着生产库起这个线程。
+    # 因此与恢复扫描同口径默认关闭，只由真正的服务入口 run.py 显式打开。
+    TASK_SCHEDULER_ON_STARTUP = os.environ.get('TASK_SCHEDULER_ON_STARTUP', 'false').lower() in ('true', '1', 'yes')
+
     # ---- OSS / S3 兼容对象存储（单桶模式，开发环境为本地 MinIO）----
     OSS_ENDPOINT = os.environ.get('OSS_ENDPOINT', 'http://localhost:9000')
     OSS_REGION = os.environ.get('OSS_REGION', 'us-east-1')
@@ -193,6 +200,9 @@ class TestingConfig(Config):
     # 测试进程绝不执行启动恢复扫描（VEGA-35）：扫描会改写任务/用例/维度状态，
     # 即便测试库是隔离的也没有这个必要，显式关掉以防基类默认值被改动。
     RECOVERY_SWEEP_ON_STARTUP = False
+    # 测试进程也绝不启动任务调度器（VEGA-42）：它是 3s 轮询的守护线程，会自行
+    # 拾取并推进 pending 任务；测试不需要它，显式关掉以防基类默认值被改动。
+    TASK_SCHEDULER_ON_STARTUP = False
     # 测试使用独立数据库（intelligent_audio_test_test），与生产库物理隔离，
     # 避免 conftest 清空算法表的逻辑污染真实数据
     SQLALCHEMY_DATABASE_URI = _get_test_database_uri()

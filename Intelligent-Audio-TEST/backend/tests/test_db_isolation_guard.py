@@ -6,11 +6,13 @@
 → 生产库 ``intelligent_audio_test``，并顺带执行 app.py 的启动恢复扫描，
 把别人正在跑的评估刷成 ``error_message='服务重启导致评估中断'`` 的 failed。
 
-本文件是纯本地检查（不连数据库），拦两类回归：
+本文件是纯本地检查（不连数据库），拦三类回归：
 
 1. ``backend/tests/`` 下任何 ``create_app(...)`` 调用必须显式指定 ``"testing"``；
 2. 启动恢复扫描默认关闭（只由服务入口 run.py 打开），且 run.py 确实打开了它
-   —— 保证"测试不扫"的同时不削弱真实服务重启的收尾语义。
+   —— 保证"测试不扫"的同时不削弱真实服务重启的收尾语义；
+3. 任务调度器（VEGA-42）同样只在服务入口启动，且 run.py 确实打开了它
+   —— 调度器是 3s 轮询的守护线程，会自行拾取/推进共享库里的 pending 任务。
 """
 import ast
 import os
@@ -21,6 +23,8 @@ import pytest
 _TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(_TESTS_DIR))
 _TESTING_ARG = 'testing'
+_APP_PY = os.path.join(_PROJECT_ROOT, 'backend', 'app.py')
+_SCHEDULER_GATE = '_should_start_task_scheduler'
 
 
 def _iter_test_modules():
@@ -114,3 +118,94 @@ def test_service_entrypoint_enables_recovery_sweep():
     # 必须在导入 backend.app 之前设置（配置类在导入时求值）
     assert source.index('RECOVERY_SWEEP_ON_STARTUP') < source.index('from backend.app import'), \
         'RECOVERY_SWEEP_ON_STARTUP 必须在 import backend.app 之前设置'
+
+
+def _scheduler_init_calls_with_guards(tree):
+    """产出 app.py 里每个 ``_init_scheduler()`` 调用及其外层 ``if`` 条件源码。
+
+    只有 ``if`` 体算"被闸住"；``else`` 分支不算（那里执行等于没闸）。
+    """
+    found = []
+
+    def visit(node, guards):
+        if isinstance(node, ast.If):
+            test_src = ast.unparse(node.test)
+            for child in node.body:
+                visit(child, guards + [test_src])
+            for child in node.orelse:
+                visit(child, guards)
+            return
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+                and node.func.attr == '_init_scheduler':
+            found.append((node.lineno, list(guards)))
+        for child in ast.iter_child_nodes(node):
+            visit(child, guards)
+
+    visit(tree, [])
+    return found
+
+
+def test_task_scheduler_never_starts_outside_service_entry():
+    """非服务入口不启动调度器（VEGA-42）。
+
+    调度器是 3s 轮询的守护线程，会自行拾取并推进共享库里的 pending 任务，
+    比恢复扫描更主动；它必须和恢复扫描一样被闸住，绝不能无条件启动。
+
+    两重检查：
+    1. 接线（静态 AST）：``backend/app.py`` 里每个 ``_init_scheduler()`` 都必须
+       落在 ``_should_start_task_scheduler(...)`` 的 if 体内——把它改回无条件
+       调用，本检查立即失败；
+    2. 判据（运行期）：pytest 进程内即便开关被打开，判据也必须返回 False。
+    """
+    with open(_APP_PY, 'r', encoding='utf-8-sig') as f:
+        tree = ast.parse(f.read(), filename=_APP_PY)
+
+    calls = _scheduler_init_calls_with_guards(tree)
+    assert calls, (
+        f'{os.path.relpath(_APP_PY, _PROJECT_ROOT)} 里找不到 _init_scheduler() 调用，'
+        '本检查已失效（启动路径变了就请同步本用例）'
+    )
+
+    ungated = [lineno for lineno, guards in calls
+               if not any(_SCHEDULER_GATE in g for g in guards)]
+    assert not ungated, (
+        f'backend/app.py:{ungated} 的 _init_scheduler() 不在 {_SCHEDULER_GATE}(...) 闸门内，'
+        '裸 create_app() 会对着共享库起 3s 轮询的调度器线程（VEGA-42）'
+    )
+
+    from backend.app import _is_test_process, _should_start_task_scheduler
+
+    assert _is_test_process() is True
+
+    class _FakeApp:
+        config = {'TASK_SCHEDULER_ON_STARTUP': True}
+
+    assert _should_start_task_scheduler(_FakeApp()) is False
+
+
+def test_task_scheduler_is_off_by_default():
+    """任务调度器默认关闭：任何配置下都不该默认对着库起 3s 轮询线程。"""
+    if os.environ.get('TASK_SCHEDULER_ON_STARTUP'):
+        pytest.skip('本进程显式设置了 TASK_SCHEDULER_ON_STARTUP，跳过"默认关闭"断言')
+    from backend.config.config import config
+
+    for name in ('default', 'development', 'production', 'testing'):
+        assert config[name].TASK_SCHEDULER_ON_STARTUP is False, (
+            f'config[{name!r}].TASK_SCHEDULER_ON_STARTUP 应为 False（VEGA-42）'
+        )
+
+
+def test_service_entrypoint_enables_task_scheduler():
+    """唯一的服务入口 run.py 必须显式打开调度器开关。
+
+    否则真实服务起来后没人拾取 pending 任务（VEGA-42 红线：加闸只能是
+    "让测试/脚本不起"，不能变成"谁都不起"）。
+    """
+    with open(os.path.join(_PROJECT_ROOT, 'run.py'), 'r', encoding='utf-8') as f:
+        source = f.read()
+    assert re.search(
+        r"os\.environ\.setdefault\(\s*['\"]TASK_SCHEDULER_ON_STARTUP['\"]\s*,\s*['\"]true['\"]",
+        source, re.IGNORECASE,
+    ), 'run.py 未显式打开 TASK_SCHEDULER_ON_STARTUP，真实服务将不再拾取 pending 任务'
+    assert source.index('TASK_SCHEDULER_ON_STARTUP') < source.index('from backend.app import'), \
+        'TASK_SCHEDULER_ON_STARTUP 必须在 import backend.app 之前设置'

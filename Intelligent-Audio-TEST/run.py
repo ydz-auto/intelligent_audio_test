@@ -10,6 +10,11 @@ import subprocess
 # 测试/迁移脚本/临时脚本不设置它，因此它们的 create_app() 不会改写共享库状态。
 os.environ.setdefault('RECOVERY_SWEEP_ON_STARTUP', 'true')
 
+# VEGA-42：任务调度器（3s 轮询、自行拾取并推进 pending 任务）同样是服务进程
+# 专属的启动副作用，只由本入口打开；测试/迁移脚本/临时脚本的 create_app()
+# 不会起这个守护线程。同样必须在导入 backend.app 之前设置。
+os.environ.setdefault('TASK_SCHEDULER_ON_STARTUP', 'true')
+
 from backend.app import create_app, socketio
 from backend.services.execution.execution_engine import execution_engine
 from flask import request
