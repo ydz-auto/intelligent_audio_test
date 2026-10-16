@@ -438,7 +438,7 @@ def s2_create_case(token: str, created: dict) -> dict:
                                             'category': pres.get('category', 'audios')})
                     purl = resp_data(rr).get('url')
                 with open(f['path'], 'rb') as fh:
-                    pr = httpx.put(purl, content=fh.read(), timeout=60, **CK)
+                    pr = httpx.put(purl, content=fh.read(), **{**CK, 'timeout': 60})
                 if pr.status_code != 200:
                     raise GateFail(f'OSS PUT {pr.status_code}: {pr.text[:200]}')
                 uploaded.append({'PartNumber': pi + 1,
