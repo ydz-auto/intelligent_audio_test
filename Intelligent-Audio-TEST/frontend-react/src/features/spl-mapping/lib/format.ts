@@ -21,13 +21,19 @@ export function formatDateTime(value: string | null): string {
   }).format(new Date(value))
 }
 
+/** 线性增益列值格式化：整数补一位小数（1.0/10.0），其余保留至 3 位去尾零（0.001/3.162）。 */
+export function formatLinearGain(value: number): string {
+  const s = value.toFixed(3).replace(/\.?0+$/, '')
+  return s.includes('.') ? s : `${s}.0`
+}
+
 /** 数字域参考基准列（§4.3：「{reference_spl} dB / {reference_gain_linear}」） */
 export function formatReferenceBase(
   referenceSpl: number | null,
   referenceGainLinear: number | null
 ): string {
   if (referenceSpl == null && referenceGainLinear == null) return '—'
-  return `${referenceSpl ?? '-'} dB / ${referenceGainLinear ?? '-'}`
+  return `${referenceSpl ?? '-'} dB / ${referenceGainLinear == null ? '-' : formatLinearGain(referenceGainLinear)}`
 }
 
 /** 数字域增益限幅列（§4.3：「{min_gain_linear} ~ {max_gain_linear}」） */
@@ -36,7 +42,9 @@ export function formatGainClamp(
   maxGainLinear: number | null
 ): string {
   if (minGainLinear == null && maxGainLinear == null) return '—'
-  return `${minGainLinear ?? '-'} ~ ${maxGainLinear ?? '-'}`
+  const min = minGainLinear == null ? '-' : formatLinearGain(minGainLinear)
+  const max = maxGainLinear == null ? '-' : formatLinearGain(maxGainLinear)
+  return `${min} ~ ${max}`
 }
 
 /** 物理域测量距离列（§4.2：「{distance} 米」） */

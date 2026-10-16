@@ -39,7 +39,7 @@ import {
   DIGITAL_CALIBRATION_INFO_TEXT,
   DIGITAL_CALIBRATION_LOCK_TEXT,
 } from '@/features/spl-mapping/constants'
-import { gainToDb } from '@/features/spl-mapping/lib/format'
+import { gainToDb, formatGainClamp, formatLinearGain } from '@/features/spl-mapping/lib/format'
 import { buildDigitalGainCurveSpec } from '@/features/spl-mapping/lib/charts'
 import {
   useChartTheme,
@@ -133,14 +133,7 @@ export function ApiRmsSplCalibrationDialog(props: ApiRmsSplCalibrationDialogProp
       .replace('{refSpl}', String(refSpl))
   }, [mapping?.referenceGainLinear, mapping?.referenceSpl])
 
-  if (!mapping) return null
-
-  const minGain = mapping.minGainLinear ?? 0.001
-  const maxGain = mapping.maxGainLinear ?? 10.0
-
-  const errors = points.map((point) => validatePoint(point, minGain, maxGain))
-
-  /** 重复目标 SPL 拦截（§6.10：重复 x 拦截） */
+  /** 重复目标 SPL 拦截（§6.10：重复 x 拦截；mapping 空时无点集可校验，恒空集） */
   const duplicateIndexes = useMemo(() => {
     const seen = new Map<string, number[]>()
     points.forEach((point, index) => {
@@ -157,14 +150,6 @@ export function ApiRmsSplCalibrationDialog(props: ApiRmsSplCalibrationDialogProp
     return duplicated
   }, [points])
 
-  const validCount = points.filter((_, index) => {
-    const hasError = Object.keys(errors[index]).length > 0
-    const isDuplicate = duplicateIndexes.has(index)
-    const target = points[index].targetSpl.trim()
-    const gain = points[index].gainLinear.trim()
-    return !hasError && !isDuplicate && target !== '' && gain !== ''
-  }).length
-
   const curveSpec = useMemo(() => {
     const curvePoints = points
       .map((point) => ({
@@ -175,6 +160,21 @@ export function ApiRmsSplCalibrationDialog(props: ApiRmsSplCalibrationDialogProp
       .map((point) => ({ x: point.x, y: Number(20 * Math.log10(point.y)) }))
     return buildDigitalGainCurveSpec(curvePoints)
   }, [points])
+
+  if (!mapping) return null
+
+  const minGain = mapping.minGainLinear ?? 0.001
+  const maxGain = mapping.maxGainLinear ?? 10.0
+
+  const errors = points.map((point) => validatePoint(point, minGain, maxGain))
+
+  const validCount = points.filter((_, index) => {
+    const hasError = Object.keys(errors[index]).length > 0
+    const isDuplicate = duplicateIndexes.has(index)
+    const target = points[index].targetSpl.trim()
+    const gain = points[index].gainLinear.trim()
+    return !hasError && !isDuplicate && target !== '' && gain !== ''
+  }).length
 
   const addPoint = () => setPoints((prev) => [...prev, { targetSpl: '', gainLinear: '', rmsDbfs: '' }])
   const removePoint = (index: number) =>
@@ -252,13 +252,15 @@ export function ApiRmsSplCalibrationDialog(props: ApiRmsSplCalibrationDialogProp
             <div className='border-border/60 bg-muted/25 rounded-md border px-2.5 py-2'>
               <div className='text-muted-foreground text-xs'>参考线性增益</div>
               <div className='font-mono text-sm font-medium tabular-nums'>
-                {mapping.referenceGainLinear ?? 1.0}
+                {mapping.referenceGainLinear != null
+                  ? formatLinearGain(mapping.referenceGainLinear)
+                  : '1.0'}
               </div>
             </div>
             <div className='border-border/60 bg-muted/25 rounded-md border px-2.5 py-2'>
               <div className='text-muted-foreground text-xs'>增益限幅</div>
               <div className='font-mono text-sm font-medium tabular-nums'>
-                {minGain} ~ {maxGain}
+                {formatGainClamp(minGain, maxGain)}
               </div>
             </div>
             <div className='border-border/60 bg-muted/25 rounded-md border px-2.5 py-2'>

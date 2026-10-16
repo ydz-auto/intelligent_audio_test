@@ -50,24 +50,30 @@ export function buildCalibrationCurveSpec(points: CurvePoint[]): VChartSpec {
 
   const color = getSplChartColors(1)[0]
   return {
-    type: 'scatter',
+    type: 'common',
     data: [{ id: 'calibrationData', values }],
-    xField: 'gainOffset',
-    yField: 'spl',
-    color,
     series: [
       {
+        type: 'line',
+        name: '校准曲线',
+        xField: 'gainOffset',
+        yField: 'spl',
+        point: { visible: true, size: 8, style: { fill: color } },
+        line: {
+          style: {
+            lineWidth: 2,
+            curveType: 'monotone',
+          },
+        },
+      },
+      {
+        type: 'scatter',
         name: '校准点',
+        xField: 'gainOffset',
+        yField: 'spl',
         point: { size: 8, style: { fill: color } },
       },
     ],
-    line: {
-      style: {
-        lineWidth: 2,
-        curveType: 'monotone',
-      },
-    },
-    point: { visible: true, size: 8, style: { fill: color } },
     axes: [
       { orient: 'left', label: { formatMethod: (v: unknown) => `${v} dB` } },
       { orient: 'bottom', label: { formatMethod: (v: unknown) => `${v} dB` } },
