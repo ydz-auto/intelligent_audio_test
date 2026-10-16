@@ -140,6 +140,17 @@ class TaskQueryService:
             logger.error(f"获取任务进度失败: {e}", exc_info=True)
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 
+    def get_task_labs(self, task_id: int) -> dict:
+        """获取任务关联实验室（GET /api/tasks/{id}/labs，实验室扩展 INT-540）。"""
+        try:
+            result = task_read_model.get_task_labs(task_id)
+            if result is None:
+                return {'success': False, 'message': '未找到任务', 'data': None, 'code': 404}
+            return {'success': True, 'message': '', 'data': result}
+        except Exception as e:
+            logger.error(f"获取任务实验室失败: {e}", exc_info=True)
+            return {'success': False, 'message': str(e), 'data': None, 'code': 500}
+
     def get_task_stats(self, task_id: int) -> dict:
         """获取任务统计信息。"""
         try:

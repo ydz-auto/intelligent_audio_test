@@ -143,6 +143,7 @@ class TaskCommandHandler:
                 created_by=cmd.created_by,
                 now=now,
                 case_devices=cmd.case_devices,
+                lab_ids=cmd.lab_ids,
             )
 
             log_and_emit(

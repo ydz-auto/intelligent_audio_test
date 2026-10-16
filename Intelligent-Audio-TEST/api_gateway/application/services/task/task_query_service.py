@@ -18,6 +18,8 @@ from api_gateway.schemas.task import (
     TaskDeviceBrief,
     TaskApiBrief,
     TaskSourceBrief,
+    TaskLabBrief,
+    TaskLabsData,
     TaskReportItem,
     TaskReportsData,
     TaskListQuery,
@@ -95,6 +97,9 @@ class TaskQueryService:
             source_tasks = [
                 TaskSourceBrief(**st) for st in item.get('source_tasks', [])
             ]
+            labs = [
+                TaskLabBrief(**l) for l in item.get('labs', [])
+            ]
             items.append(
                 TaskListItem(
                     id=item.get('id'),
@@ -140,6 +145,7 @@ class TaskQueryService:
                     devices=devices,
                     apis=apis,
                     source_tasks=source_tasks,
+                    labs=labs,
                 )
             )
 
@@ -188,6 +194,9 @@ class TaskQueryService:
         apis = [
             TaskApiBrief(**a) for a in item.get('apis', [])
         ]
+        labs = [
+            TaskLabBrief(**l) for l in item.get('labs', [])
+        ]
 
         return success_response(
             TaskDetailData(
@@ -215,10 +224,27 @@ class TaskQueryService:
                 cases=cases,
                 devices=devices,
                 apis=apis,
+                labs=labs,
                 created_at=item.get('created_at'),
                 updated_at=item.get('updated_at'),
             )
         )
+
+    # 获取任务关联实验室（INT-540：GET /api/tasks/{id}/labs，多实验室 N:M）
+    @staticmethod
+    def get_task_labs(task_id):
+        from api_gateway.infrastructure.grpc_proxies.task_data_proxies import task_data_service
+
+        try:
+            data = task_data_service.get_task_labs(task_id)
+        except Exception as e:
+            logger.warning(f"获取任务实验室失败: {e}", exc_info=True)
+            return error_response('获取任务实验室失败', 500)
+
+        if data is None:
+            return error_response("未找到任务", code=ErrorCode.NOT_FOUND, http_code=404)
+        labs = [TaskLabBrief(**l) for l in data.get('labs', [])]
+        return success_response(TaskLabsData(task_id=data.get('task_id', task_id), labs=labs))
 
     # 获取单个用例的执行详情
     @staticmethod

@@ -847,6 +847,12 @@ service TaskDataService {
   // 活动行（execution_status IN pending/queued/running，device_type='physical'），
   // 出参 data JSON: {device_id: {occupied_status, task_id, case_id}}
   rpc GetDeviceOccupancy(GetDeviceOccupancyRequest) returns (TaskDataResponse);
+  // 用例 config lab_id 批量解析（实验室扩展 INT-540 §4.5，供 /api/tasks/validate）
+  // 入参 data JSON: {"case_ids": [str]}，出参 data JSON: {case_id: lab_id|None}
+  rpc GetTestCaseLabIds(GetTestCaseLabIdsRequest) returns (TaskDataResponse);
+  // 任务关联实验室查询（实验室扩展 INT-540，GET /api/tasks/{id}/labs）
+  // 入参 data JSON: {"task_id": int}，出参 data JSON: {task_id, labs:[{id,code,name}]}
+  rpc GetTaskLabs(GetTaskLabsRequest) returns (TaskDataResponse);
 }
 
 message GetTestResultByIdRequest {
@@ -997,6 +1003,16 @@ message TestCaseAggStatsRequest {
 // 设备占用聚合请求（INT-493 §4.3）——device_ids/lab_id 均可选，空 = 全物理设备
 message GetDeviceOccupancyRequest {
   string data = 1;  // JSON: {"device_ids": [int], "lab_id": int?}
+}
+
+// 用例 config lab_id 批量解析请求（INT-540 §4.5，供 /api/tasks/validate）
+message GetTestCaseLabIdsRequest {
+  string data = 1;  // JSON: {"case_ids": [str]}
+}
+
+// 任务关联实验室查询请求（INT-540，GET /api/tasks/{id}/labs）
+message GetTaskLabsRequest {
+  string data = 1;  // JSON: {"task_id": int}
 }
 
 // ===== Log CRUD RPC（P0-3 新增，替代 api_gateway/shared/utils 直连 DB）=====

@@ -20,6 +20,20 @@ def get_all(_: None = require_permission('task:read')):
 def domain_stats(_: None = require_permission('task:read')):
     return to_response(TaskQueryService.domain_stats())
 
+# INT-540：任务资源归属校验（实验室扩展 §5.4.4）——须先于 /{task_id} 注册，
+# 同 /stats 先例，否则被 int 路径参数抢先匹配 422
+@router.post('/validate')
+def validate_task(_: None = require_permission('task:create')):
+    return to_response(TaskCommandService.validate())
+
+# INT-540：任务关联实验室查询（实验室扩展 §5.3，多实验室 N:M）
+@router.get('/{task_id}/labs')
+def get_task_labs(task_id: int, _: None = require_permission('task:read')):
+    result = TaskQueryService.get_task_labs(task_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
+
 
 @router.get('/{task_id}')
 def get_one(task_id: int, _: None = require_permission('task:read')):

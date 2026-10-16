@@ -4,13 +4,16 @@ from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
 from api_gateway.utils.error_codes import ErrorCode
 from api_gateway.infrastructure.acl import TaskConfigAclRepositoryImpl
-from api_gateway.schemas.common import IdData
 from api_gateway.schemas.task import (
     TaskCreateRequest,
+    TaskCreateData,
     TaskUpdateCasesRequest,
     TaskBatchActionRequest,
     TaskUpdateCasesData,
     TaskBatchExportQuery,
+    TaskValidateRequest,
+    TaskValidateData,
+    TaskValidateError,
 )
 
 logger = logging.getLogger(__name__)
@@ -39,6 +42,13 @@ class TaskCommandService:
         except Exception as e:
             return error_response(f"请求数据验证失败: {str(e)}", 400)
 
+        # INT-540：lab_ids 存在性校验（软删过滤）——不存在 → 400 校验错误
+        if req.lab_ids:
+            missing = TaskCommandService._validate_lab_ids_exist(req.lab_ids)
+            if missing:
+                return error_response(
+                    f"实验室不存在或已删除: {', '.join(str(x) for x in missing)}", 400)
+
         data_dict = req.model_dump(by_alias=False, exclude_none=True)
 
         result = _task_acl.create(data_dict)
@@ -48,7 +58,120 @@ class TaskCommandService:
             return error_response(result.get('message', '创建任务失败'), code=code)
 
         new_id = (result.get('data') or {}).get('id')
-        return success_response(IdData(id=new_id), result.get('message', '任务创建成功'), http_code=201)
+        # INT-540：任务响应内联 labs（多实验室 N:M，取自 task_laboratory_relations）
+        labs = TaskCommandService._fetch_task_labs(new_id)
+        return success_response(
+            TaskCreateData(id=new_id, labs=labs),
+            result.get('message', '任务创建成功'), http_code=201)
+
+    # INT-540：任务资源归属校验（POST /api/tasks/validate，设计文档 §5.4.4）
+    @staticmethod
+    def validate():
+        try:
+            req = TaskValidateRequest.model_validate(request.get_json())
+        except Exception as e:
+            return error_response(f"请求数据验证失败: {str(e)}", 400)
+
+        lab_ids = [int(x) for x in (req.lab_ids or [])]
+        lab_set = set(lab_ids)
+        errors: list = []
+
+        # 1. lab_ids 存在性（软删过滤）
+        missing = TaskCommandService._validate_lab_ids_exist(lab_ids)
+        for lab_id in missing:
+            errors.append(TaskValidateError(
+                resource_type='laboratory', resource_id=lab_id,
+                reason='实验室不存在或已删除'))
+
+        # 2. 用例归属校验（口径③）：case 合法 ⇔ config lab_id IS NULL（通用用例）
+        #    OR config lab_id IN lab_ids；不存在用例视为非法
+        if req.case_ids:
+            from api_gateway.infrastructure.grpc_proxies.task_data_proxies import task_data_service
+            try:
+                case_lab_map = task_data_service.get_testcase_lab_ids(req.case_ids)
+            except Exception as e:
+                logger.error(f"用例 lab_id 查询失败: {e}", exc_info=True)
+                return error_response(f"用例 lab_id 查询失败: {e}", 500)
+            for case_id in req.case_ids:
+                cid = str(case_id)
+                if cid not in case_lab_map:
+                    errors.append(TaskValidateError(
+                        resource_type='test_case', resource_id=cid,
+                        reason='用例不存在'))
+                elif case_lab_map[cid] is not None and case_lab_map[cid] not in lab_set:
+                    errors.append(TaskValidateError(
+                        resource_type='test_case', resource_id=cid,
+                        reason='用例不属于已选实验室'))
+
+        # 3. 设备归属校验：device 合法 ⇔ lab_id IN lab_ids（未绑定=非法）
+        if req.device_ids:
+            from api_gateway.infrastructure.acl import DeviceAclRepositoryImpl
+            _device_acl = DeviceAclRepositoryImpl()
+            for device_id in req.device_ids:
+                res = _device_acl.get_one(device_id)
+                if not res.get('success'):
+                    errors.append(TaskValidateError(
+                        resource_type='device', resource_id=device_id,
+                        reason='设备不存在'))
+                    continue
+                dev_lab = (res.get('data') or {}).get('lab_id')
+                if dev_lab not in lab_set:
+                    errors.append(TaskValidateError(
+                        resource_type='device', resource_id=device_id,
+                        reason='设备不属于已选实验室'))
+
+        # 4. 播放设备归属校验（可选）：有值时校验，无值跳过
+        if req.playback_device_ids:
+            from api_gateway.infrastructure.acl import PlaybackConfigAclRepositoryImpl
+            _playback_acl = PlaybackConfigAclRepositoryImpl()
+            for pdev_id in req.playback_device_ids:
+                res = _playback_acl.get_one(pdev_id)
+                if not res.get('success'):
+                    errors.append(TaskValidateError(
+                        resource_type='playback_device', resource_id=pdev_id,
+                        reason='播放设备不存在'))
+                    continue
+                dev_lab = (res.get('data') or {}).get('lab_id')
+                if dev_lab not in lab_set:
+                    errors.append(TaskValidateError(
+                        resource_type='playback_device', resource_id=pdev_id,
+                        reason='播放设备不属于已选实验室'))
+
+        return success_response(
+            TaskValidateData(valid=not errors, errors=errors),
+            '校验通过' if not errors else '资源归属校验未通过')
+
+    @staticmethod
+    def _validate_lab_ids_exist(lab_ids):
+        """返回不存在的实验室 ID 列表（软删过滤，INT-540）。
+
+        实验室为网关自有域（设计文档 §7.2），经实验室仓储直读共享库
+        laboratories 表，同 INT-537 拆分① 先例。
+        """
+        from api_gateway.infrastructure.repositories.laboratory_repository import (
+            LaboratoryRepositoryImpl,
+        )
+        repo = LaboratoryRepositoryImpl()
+        return [
+            int(lab_id) for lab_id in lab_ids
+            if repo.get(int(lab_id)) is None
+        ]
+
+    @staticmethod
+    def _fetch_task_labs(task_id):
+        """获取任务关联实验室简报（INT-540，经 task_service GetTaskLabs RPC）。
+
+        创建后立即查询，失败降级为空列表（不阻塞创建响应）。
+        """
+        if task_id is None:
+            return []
+        try:
+            from api_gateway.infrastructure.grpc_proxies.task_data_proxies import task_data_service
+            data = task_data_service.get_task_labs(task_id)
+            return (data or {}).get('labs', []) or []
+        except Exception:
+            logger.warning("创建任务后获取 labs 失败 task_id=%s", task_id, exc_info=True)
+            return []
 
     # 动态调整用例
     @staticmethod

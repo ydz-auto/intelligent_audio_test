@@ -39,8 +39,9 @@ class TaskCrudMixin:
         created_by: Optional[int],
         now: Optional[datetime] = None,
         case_devices: Optional[List[Dict[str, Any]]] = None,
+        lab_ids: Optional[List[int]] = None,
     ) -> int:
-        """创建任务记录及其关联关系（用例/设备/API）。
+        """创建任务记录及其关联关系（用例/设备/API/实验室）。
 
         Args:
             name: 任务名称
@@ -55,6 +56,9 @@ class TaskCrudMixin:
             now: 创建时间（调用方传入，保证时区一致）
             case_devices: 用例级设备选择（执行域 P0）：
                 [{"case_id": str, "device_type": str, "device_id": str, "lab_id": int|None}, ...]
+            lab_ids: 关联实验室 ID 列表（实验室扩展 INT-493/INT-540，可选；
+                缺省/None = 不限定实验室，兼容现状）。按传入顺序写入
+                task_laboratory_relations.priority（1 起），N:M 多实验室。
 
         Returns:
             新任务 ID。
@@ -78,6 +82,7 @@ class TaskCrudMixin:
             task_id = task.id
 
             self._add_task_relations(session, task_id, case_ids, device_ids, api_ids, now, case_devices)
+            self._add_task_laboratory_relations(session, task_id, lab_ids, now)
 
             session.commit()
             return task_id
@@ -187,6 +192,30 @@ class TaskCrudMixin:
         # 关联 API
         for api_id in api_ids:
             session.add(TaskAPI(task_id=task_id, api_id=api_id))
+
+    @staticmethod
+    def _add_task_laboratory_relations(session, task_id: int,
+                                       lab_ids: Optional[List[int]],
+                                       now: datetime) -> None:
+        """批量添加任务-实验室关联记录（N:M，实验室扩展 INT-493/INT-540）。
+
+        priority 按 lab_ids 传入顺序 1 起，保留用户选择顺序；lab_ids 去重
+        （UNIQUE(task_id, lab_id) 兜底）。空/None = 不关联实验室（兼容现状）。
+        """
+        from task_service.infrastructure.persistence.models import TaskLaboratoryRelation
+        if not lab_ids:
+            return
+        seen = set()
+        for priority, lab_id in enumerate(lab_ids, start=1):
+            if lab_id is None or lab_id in seen:
+                continue
+            seen.add(lab_id)
+            session.add(TaskLaboratoryRelation(
+                task_id=task_id,
+                lab_id=int(lab_id),
+                priority=priority,
+                created_at=now,
+            ))
 
     def merge_tasks(
         self,

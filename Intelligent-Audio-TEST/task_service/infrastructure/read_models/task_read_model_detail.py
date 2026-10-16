@@ -163,6 +163,9 @@ class TaskDetailReadModelMixin:
                         .filter(TaskCase.task_id == task.id, TaskCase.device_type.isnot(None))
                         .distinct().all()]
 
+        # 实验室扩展（INT-540）：任务关联实验室 [{id, code, name}]（多实验室 N:M）
+        labs = self._fetch_labs_map(session, [task.id]).get(task.id, [])
+
         return {
             'id': task.id,
             'name': task.name,
@@ -183,6 +186,7 @@ class TaskDetailReadModelMixin:
             'cases': cases,
             'devices': devices,
             'apis': apis,
+            'labs': labs,
             'created_at': task.created_at.isoformat() if task.created_at else None,
             'updated_at': task.updated_at.isoformat() if task.updated_at else None,
         }

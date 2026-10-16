@@ -130,6 +130,21 @@ class TaskAPI(Base):
     api_id = Column(Integer, comment='关联 API ID')
 
 
+class TaskLaboratoryRelation(Base):
+    """任务-实验室关联模型 (Task-Laboratory Relation)
+
+    记录任务关联的实验室（N:M，INT-493/INT-540 拆分④）。
+    表已由 scripts/migrations/202608/add_laboratory_tables.py Step2 建立
+    （含 priority + UNIQUE(task_id, lab_id)）。
+    """
+    __tablename__ = 'task_laboratory_relations'
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment='主键ID')
+    task_id = Column(Integer, nullable=False, comment='关联测试任务ID')
+    lab_id = Column(Integer, nullable=False, comment='关联实验室ID')
+    priority = Column(Integer, nullable=False, default=1, comment='实验室优先级（按 lab_ids 传入顺序）')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+
+
 class TaskMergeRelation(Base):
     """任务合并关联模型 (Task Merge Relation)
     记录合并任务与源任务之间的多对多映射关系。

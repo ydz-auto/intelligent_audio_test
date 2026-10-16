@@ -101,6 +101,39 @@ class _TaskDataProxy:
             return json.loads(resp.data) if resp.data else {}
         return _grpc_call(_call, default_return={}, error_msg_prefix='GetDeviceOccupancy gRPC 失败')
 
+    def get_testcase_lab_ids(self, case_ids):
+        """通过 gRPC 批量解析用例 config lab_id（INT-540 §4.5，/api/tasks/validate 用）
+
+        返回 {case_id(str): lab_id(int|None)}（lab_id 缺失/空 = 通用用例，None）。
+        调用失败上抛（校验语义必须精确，不得吞异常假通过）。
+        """
+        def _call():
+            stub = get_task_data_service_stub()
+            resp = stub.GetTestCaseLabIds(task_pb.GetTestCaseLabIdsRequest(
+                data=json.dumps({'case_ids': list(case_ids or [])}, ensure_ascii=False, default=str),
+            ))
+            if not resp.success:
+                raise RuntimeError(f"GetTestCaseLabIds gRPC 失败: {resp.message}")
+            return json.loads(resp.data) if resp.data else {}
+        return _grpc_call(_call, default_return={}, error_msg_prefix='GetTestCaseLabIds gRPC 失败',
+                          reraise=True)
+
+    def get_task_labs(self, task_id):
+        """通过 gRPC 查询任务关联实验室（INT-540，GET /api/tasks/{id}/labs）
+
+        返回 {task_id, labs: [{id, code, name}]}（多实验室 N:M，按 priority 排序）。
+        任务不存在时 gRPC 返回 success=False（404 语义透传）。
+        """
+        def _call():
+            stub = get_task_data_service_stub()
+            resp = stub.GetTaskLabs(task_pb.GetTaskLabsRequest(
+                data=json.dumps({'task_id': int(task_id)}, ensure_ascii=False, default=str),
+            ))
+            if not resp.success:
+                raise RuntimeError(f"GetTaskLabs gRPC 失败: {resp.message}")
+            return json.loads(resp.data) if resp.data else None
+        return _grpc_call(_call, default_return=None, error_msg_prefix='GetTaskLabs gRPC 失败')
+
     # ---- TestCaseGroup 查询/创建 ----
 
     def list_testcase_groups(self, algorithm_type=None, search=None, reraise=False):

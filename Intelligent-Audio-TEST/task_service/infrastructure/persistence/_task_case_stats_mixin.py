@@ -449,3 +449,33 @@ class TaskCaseStatsMixin:
             return result
         finally:
             session.close()
+
+    def get_testcase_lab_ids(self, case_ids: List[str]) -> dict:
+        """按用例 ID 批量解析 config 中的 lab_id（实验室扩展 INT-493/INT-540）。
+
+        用例 lab 归属存 test_cases.config JSONB：`config->>'lab_id'` 缺失/空 =
+        通用用例（lab_id=None，任意实验室可选）；有值 = 专属用例。
+        返回 {case_id(str): lab_id(int|None)}。不存在的用例 ID 返回 None
+        （调用方校验语义：查不到视为不满足归属）。
+        """
+        from task_service.infrastructure.persistence.models import TestCase
+        if not case_ids:
+            return {}
+        session = get_db_session()
+        try:
+            rows = (session.query(TestCase.id, TestCase.config)
+                    .filter(TestCase.id.in_(list(case_ids))).all())
+            result: Dict[str, Optional[int]] = {}
+            for cid, config in rows:
+                lab_id = None
+                if config and isinstance(config, dict):
+                    raw = config.get('lab_id')
+                    if raw is not None and raw != '':
+                        try:
+                            lab_id = int(raw)
+                        except (TypeError, ValueError):
+                            lab_id = None
+                result[str(cid)] = lab_id
+            return result
+        finally:
+            session.close()

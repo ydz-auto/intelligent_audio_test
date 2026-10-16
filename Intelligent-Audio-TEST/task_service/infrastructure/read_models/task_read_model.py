@@ -59,6 +59,78 @@ class TaskReadModel(
         finally:
             session.close()
 
+    def get_task_labs(self, task_id: int) -> Optional[Dict[str, Any]]:
+        """查询任务关联实验室（GET /api/tasks/{id}/labs，实验室扩展 INT-540）。
+
+        返回 {task_id, labs: [{id, code, name}]}（多实验室 N:M，按 priority
+        排序，即创建时 lab_ids 传入顺序）；已软删实验室不计入。任务不存在
+        返回 None。
+        """
+        session = get_db_session()
+        try:
+            task = session.get(Task, task_id)
+            if task is None:
+                return None
+            labs = self._fetch_labs_map(session, [task_id]).get(task_id, [])
+            return {'task_id': task_id, 'labs': labs}
+        finally:
+            session.close()
+
+    @staticmethod
+    def _fetch_labs_map(session, task_ids) -> Dict[int, List[Dict[str, Any]]]:
+        """批量获取任务关联实验室映射 {task_id: [{id, code, name}]}（实验室扩展 INT-540）。
+
+        数据源 task_laboratory_relations（task_service 自有表，ORM 查询）join
+        laboratories（共享库表，raw SQL 只读——同 INT-537/INT-538 的共享库
+        join 先例，避免网关二次 RPC）。按 priority 升序 = 创建时 lab_ids
+        传入顺序；已软删实验室不计入（与 laboratory_repository.get 软删过滤
+        口径一致）。空 task_ids 返回 {}。
+
+        表缺失（旧测试夹具未建 task_laboratory_relations / laboratories）时
+        降级为空映射——失败语句已把 PostgreSQL 事务置为 aborted，必须先
+        rollback 恢复，否则后续查询（报告/设备/API 批量）连锁抛
+        InFailedSqlTransaction，整个列表接口 400（同 INT-339 挑选容器判定降级）。
+        """
+        if not task_ids:
+            return {}
+        from task_service.infrastructure.persistence.models import TaskLaboratoryRelation
+        try:
+            rel_rows = (
+                session.query(TaskLaboratoryRelation)
+                .filter(TaskLaboratoryRelation.task_id.in_(list(task_ids)))
+                .order_by(TaskLaboratoryRelation.task_id, TaskLaboratoryRelation.priority)
+                .all()
+            )
+            if not rel_rows:
+                return {}
+            lab_ids = sorted({r.lab_id for r in rel_rows if r.lab_id is not None})
+            lab_map: Dict[int, Dict[str, Any]] = {}
+            if lab_ids:
+                from sqlalchemy import bindparam, text
+                lab_rows = session.execute(
+                    text(
+                        'SELECT id, code, name FROM laboratories '
+                        'WHERE id IN :lab_ids AND deleted = FALSE'
+                    ).bindparams(bindparam('lab_ids', expanding=True)),
+                    {'lab_ids': lab_ids},
+                ).fetchall()
+                for row in lab_rows:
+                    lab_map[int(row[0])] = {'id': int(row[0]), 'code': row[1], 'name': row[2]}
+            labs_map: Dict[int, List[Dict[str, Any]]] = {}
+            for r in rel_rows:
+                lab = lab_map.get(r.lab_id)
+                if lab is None:
+                    continue
+                labs_map.setdefault(r.task_id, []).append(lab)
+            return labs_map
+        except Exception as e:
+            try:
+                session.rollback()
+            except Exception:
+                pass
+            logger.debug("任务关联实验室批量查询降级（表可能未建）: %s", e)
+            return {}
+
     def search(self,
                status: Optional[str] = None,
                algorithm_type: Optional[str] = None,
@@ -220,6 +292,8 @@ class TaskReadModel(
             # 批量获取合并任务来源（按 TaskMergeRelation 存在性判定合并容器，
             # task.type 已废弃），避免 N+1
             page_task_ids = [task.id for task in tasks]
+            # 实验室扩展（INT-540）：批量获取本页任务关联实验室（N:M，含已软删过滤）
+            labs_map = self._fetch_labs_map(session, page_task_ids)
             source_tasks_map = {}
             if page_task_ids:
                 relations = (session.query(TaskMergeRelation)
@@ -357,6 +431,8 @@ class TaskReadModel(
                     'devices': devices,
                     'apis': apis,
                     'source_tasks': source_tasks_map.get(task.id, []),
+                    # 实验室扩展（INT-540）：任务关联实验室 [{id, code, name}]（多实验室 N:M）
+                    'labs': labs_map.get(task.id, []),
                 })
 
             return {

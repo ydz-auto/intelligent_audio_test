@@ -36,6 +36,8 @@ class CreateTaskCommand(Command):
     # 执行域 P0：用例级设备选择 [{"case_id", "device_type", "device_id", "lab_id"}]，
     # device_type 为执行路由唯一依据（差异#2 收尾，task.type 已废弃）
     case_devices: List[Dict[str, Any]] = field(default_factory=list)
+    # 实验室扩展（INT-493/INT-540）：关联实验室 ID 列表（可选，缺省=不限定）
+    lab_ids: List[int] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

@@ -15,7 +15,7 @@ Algorithm* 已下沉到新建的 algorithm_service；Report* 下沉到 report_se
 User/OAuth 下沉到 auth_service；StatsCache 保留 api_gateway。
 """
 from .task_models import (
-    Task, TaskTag, TaskCase, TaskDevice, TaskAPI, TaskMergeRelation,
+    Task, TaskTag, TaskCase, TaskDevice, TaskAPI, TaskLaboratoryRelation, TaskMergeRelation,
 )
 from .published_task_models import PublishedTask
 from .result_models import TestResult
@@ -30,7 +30,8 @@ from .system_models import Log
 
 __all__ = [
     # 任务
-    'Task', 'TaskTag', 'TaskCase', 'TaskDevice', 'TaskAPI', 'TaskMergeRelation',
+    'Task', 'TaskTag', 'TaskCase', 'TaskDevice', 'TaskAPI',
+    'TaskLaboratoryRelation', 'TaskMergeRelation',
     # 已发布任务（任务发布功能）
     'PublishedTask',
     # 测试结果（不含 TestResultDimension，归属 evaluation_service）

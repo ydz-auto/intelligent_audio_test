@@ -69,6 +69,7 @@ class TaskCrudService:
                 api_ids=data.get('api_ids', []),
                 created_by=data.get('created_by'),
                 case_devices=data.get('case_devices'),
+                lab_ids=data.get('lab_ids'),
             )
             if task_id is None:
                 return {'success': False, 'message': '创建任务失败', 'data': None, 'code': 500}

@@ -5855,6 +5855,16 @@ class TaskDataServiceStub:
                 request_serializer=task__service__pb2.GetDeviceOccupancyRequest.SerializeToString,
                 response_deserializer=task__service__pb2.TaskDataResponse.FromString,
                 _registered_method=True)
+        self.GetTestCaseLabIds = channel.unary_unary(
+                '/task_service.TaskDataService/GetTestCaseLabIds',
+                request_serializer=task__service__pb2.GetTestCaseLabIdsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.GetTaskLabs = channel.unary_unary(
+                '/task_service.TaskDataService/GetTaskLabs',
+                request_serializer=task__service__pb2.GetTaskLabsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
 
 
 class TaskDataServiceServicer:
@@ -6109,6 +6119,22 @@ class TaskDataServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetTestCaseLabIds(self, request, context):
+        """用例 config lab_id 批量解析（实验室扩展 INT-540 §4.5，供 /api/tasks/validate）
+        入参 data JSON: {"case_ids": [str]}，出参 data JSON: {case_id: lab_id|None}
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTaskLabs(self, request, context):
+        """任务关联实验室查询（实验室扩展 INT-540，GET /api/tasks/{id}/labs）
+        入参 data JSON: {"task_id": int}，出参 data JSON: {task_id, labs:[{id,code,name}]}
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_TaskDataServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -6285,6 +6311,16 @@ def add_TaskDataServiceServicer_to_server(servicer, server):
             'GetDeviceOccupancy': grpc.unary_unary_rpc_method_handler(
                     servicer.GetDeviceOccupancy,
                     request_deserializer=task__service__pb2.GetDeviceOccupancyRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'GetTestCaseLabIds': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTestCaseLabIds,
+                    request_deserializer=task__service__pb2.GetTestCaseLabIdsRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'GetTaskLabs': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTaskLabs,
+                    request_deserializer=task__service__pb2.GetTaskLabsRequest.FromString,
                     response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
             ),
     }
@@ -7235,6 +7271,60 @@ class TaskDataService:
             target,
             '/task_service.TaskDataService/GetDeviceOccupancy',
             task__service__pb2.GetDeviceOccupancyRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTestCaseLabIds(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/GetTestCaseLabIds',
+            task__service__pb2.GetTestCaseLabIdsRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTaskLabs(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/GetTaskLabs',
+            task__service__pb2.GetTaskLabsRequest.SerializeToString,
             task__service__pb2.TaskDataResponse.FromString,
             options,
             channel_credentials,

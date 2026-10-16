@@ -447,6 +447,43 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
             logger.exception('GetDeviceOccupancy failed')
             return self._resp(False, str(e))
 
+    def GetTestCaseLabIds(self, request, context=None):
+        """用例 config lab_id 批量解析（实验室扩展 INT-540 §4.5，/api/tasks/validate 用）。
+
+        入参 data JSON {"case_ids": [str]}，出参 data JSON {case_id: lab_id|None}
+        （lab_id 缺失/空 = 通用用例，None；不存在用例 ID 返回 None）。
+        """
+        try:
+            data = _loads(request.data, {})
+            result = task_repository.get_testcase_lab_ids(
+                case_ids=data.get('case_ids') or [],
+            )
+            return self._resp(True, '', result)
+        except Exception as e:
+            logger.exception('GetTestCaseLabIds failed')
+            return self._resp(False, str(e))
+
+    def GetTaskLabs(self, request, context=None):
+        """任务关联实验室查询（实验室扩展 INT-540，GET /api/tasks/{id}/labs）。
+
+        入参 data JSON {"task_id": int}，出参 data JSON
+        {task_id, labs: [{id, code, name}]}（多实验室 N:M，按 priority 排序）。
+        """
+        try:
+            data = _loads(request.data, {})
+            task_id = int(data.get('task_id') or 0)
+            from task_service.application.task.task_query_service import task_query_service
+            result = task_query_service.get_task_labs(task_id)
+            if not result.get('success'):
+                if result.get('code') == 404:
+                    # 任务不存在：成功信封 + data=None，网关据此映射 404
+                    return self._resp(True, 'task not found', None)
+                return self._resp(False, result.get('message', '获取任务实验室失败'))
+            return self._resp(True, '', result.get('data'))
+        except Exception as e:
+            logger.exception('GetTaskLabs failed')
+            return self._resp(False, str(e))
+
     # ========== Log CRUD（P0-3 新增，替代 api_gateway/shared/utils 直连 DB）==========
 
     def BatchCreateLogs(self, request, context=None):
