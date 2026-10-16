@@ -322,6 +322,15 @@ def test_04_edit_sheet_five_tabs(drv):
     code = drv.find_element(By.XPATH, "//input[@id='algo-type']")
     assert code.get_attribute('disabled') is not None, '编辑态算法代码应禁用'
     assert code.get_attribute('value') == 'asr-v3', f'算法代码预填错误：{code.get_attribute("value")}'
+    # 保存可用性（INT-508 P1：保存按钮不得恒禁用；编辑态预填合法时应可用）
+    save_btn = drv.find_element(By.XPATH, "//button[normalize-space()='保存']")
+    assert save_btn.is_enabled(), '编辑态保存按钮应可用（P1 修复后，预填合法即解锁）'
+    # 保存链路：点击保存 → toast「算法已更新」+ 列表计数 7 不变
+    save_btn.click()
+    WebDriverWait(drv, 10).until(lambda d: '算法已更新' in _body_text(drv))
+    _wait_rows_retry(drv, 7)
+    txt = _body_text(drv)
+    assert '通用识别引擎' in txt, f'编辑保存后列表丢失原算法：{txt[-200:]}'
     # 取消关闭
     _press_esc(drv)
     WebDriverWait(drv, 5).until(lambda d: '编辑算法' not in _body_text(drv))
@@ -379,6 +388,21 @@ def test_06_clone_flow(drv):
     name = drv.find_element(By.XPATH, "//input[@id='algo-name']")
     assert name.get_attribute('value') == '通用识别引擎 (副本)', \
         f'副本显示名称应为「通用识别引擎 (副本)」：{name.get_attribute("value")}'
+    # 保存可用性 + 复制保存链路（INT-508 P1：复制态保存不得恒禁用）
+    save_btn = drv.find_element(By.XPATH, "//button[normalize-space()='保存']")
+    assert save_btn.is_enabled(), '复制态保存按钮应可用（P1 修复后，副本预填合法即解锁）'
+    save_btn.click()
+    WebDriverWait(drv, 10).until(lambda d: '算法已创建' in _body_text(drv))
+    WebDriverWait(drv, 10).until(lambda d: '共 8 个算法' in _body_text(drv))
+    txt = _body_text(drv)
+    assert '通用识别引擎 (副本)' in txt, f'副本未出现在列表：{txt[-200:]}'
+    # 还原基线：删除副本
+    _open_row_menu(drv, '通用识别引擎 (副本)')
+    _click_menu_item(drv, '删除')
+    WebDriverWait(drv, 6).until(lambda d: '确认删除' in _body_text(drv))
+    _alert_button(drv, '删除').click()
+    WebDriverWait(drv, 10).until(lambda d: '算法已删除' in _body_text(drv))
+    WebDriverWait(drv, 10).until(lambda d: '共 7 个算法' in _body_text(drv))
     _press_esc(drv)
 
 
