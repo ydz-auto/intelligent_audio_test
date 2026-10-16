@@ -858,37 +858,88 @@ class ReportControllerTask(ReportControllerBase):
         return list(device_ids), list(api_ids)
 
     @staticmethod
+    def _response_message(response_tuple, default='未知原因'):
+        """从 error_response 的返回值里取出 message（用于把既有失败原因透传到日志/新响应）"""
+        try:
+            payload = response_tuple[0].get_json()
+            message = (payload or {}).get('message')
+            return message or default
+        except Exception:
+            return default
+
+    @staticmethod
+    def _precondition_failure(task_id, reason):
+        """前置判定失败：写 error 级日志并返回统一形状的失败响应"""
+        log_and_emit(
+            'ERROR', 'report',
+            f'[generate_task_report] 报告生成终止：{reason} task_id={task_id}',
+            task_id=task_id
+        )
+        return error_response(f'无法生成报告：{reason}', ErrorCode.OPERATION_FAILED)
+
+    @staticmethod
     def _check_generation_preconditions(task, task_id):
         """报告生成前置校验（同步执行，把失败原因明确交回 HTTP 调用方）
 
         异步生成路径里的同类判定只能 emit WebSocket 事件，HTTP 调用方什么都看不到，
-        因此必须在同步入口先做一次等价判定，判定条件与异步路径保持一致，
-        不会误伤本可正常生成报告的任务。
+        因此同步入口必须先跑一遍**与异步逐条同源**的判定：调用的是同一批函数
+        （_validate_task_and_get_results / filter_results_by_case_evaluation /
+        _get_dimension_results_batch / _get_task_resources / _build_all_metrics），
+        判定顺序也与异步一致，保证「同步失败 ⟺ 异步失败」——
+        既不漏掉假成功，也不会误伤本可正常生成报告的任务。
+
+        ⚠️ 本函数的判定条件必须与 `_generate_task_report_async` 中的前置分支保持同步，
+        改动任一侧都要同时改另一侧。
 
         通过校验返回 None；不通过返回统一形状的 error_response。
         """
+        # ① 任务与结果校验 —— 与异步 _generate_task_report_async 的 `if error:` 分支同源
+        _task, results, error = ReportControllerTask._validate_task_and_get_results(task_id)
+        if error is not None:
+            return ReportControllerTask._precondition_failure(
+                task_id,
+                ReportControllerTask._response_message(error, '任务状态或测试结果不满足报告生成条件')
+            )
+
+        # ② 用例维度评估状态过滤 —— 与异步 filter_results_by_case_evaluation 调用点同源
+        results = ReportUtils.filter_results_by_case_evaluation(results)
+
         source_task_ids = ReportControllerTask._get_source_task_ids(task)
         task_ids_for_query = source_task_ids if source_task_ids else [task_id]
+        res_ids = [r.id for r in results]
 
+        # ③ 维度得分数据 —— 与异步 `if not dim_results_map:` 分支同源
+        dim_results_map, dim_stats = ReportControllerTask._get_dimension_results_batch(res_ids)
+        if not dim_results_map:
+            return ReportControllerTask._precondition_failure(
+                task_id, f'未找到维度得分数据（result_count={len(res_ids)}）'
+            )
+
+        # ④ 该任务可见维度 ∩ 启用维度 —— 与异步 all_dimensions 计算式同源
+        #    注意：不能用"全库是否有启用维度"代替，那会在"任务用到的维度全被停用/软删、
+        #    系统里还有其它启用维度"时错误放行，异步随后静默终止 → HTTP 假成功。
+        all_dimensions_all = Dimension.query.filter_by(status=True, deleted=False).order_by(Dimension.sort_order, Dimension.id).all()
+        if dim_stats:
+            all_dimensions = [d for d in all_dimensions_all if d.id in dim_stats]
+        else:
+            all_dimensions = all_dimensions_all
+
+        # ⑤ 设备/API 资源 —— 与异步 `if not devices_list and not apis_list:` 分支同源
         devices_list, apis_list, _device_ids, _api_ids = ReportControllerTask._get_task_resources(task_ids_for_query)
         if not devices_list and not apis_list:
-            reason = ('任务没有关联任何设备或API，无法生成报告'
-                      '（task_device_relations/task_api_relations 无记录，test_results 中亦无 device_id/api_id）')
-            log_and_emit(
-                'ERROR', 'report',
-                f'[generate_task_report] 报告生成终止：{reason} task_id={task_id}, task_ids={task_ids_for_query}',
-                task_id=task_id
+            return ReportControllerTask._precondition_failure(
+                task_id,
+                '任务没有关联任何设备或API（task_device_relations/task_api_relations 无记录，'
+                'test_results 中亦无 device_id/api_id）'
             )
-            return error_response(reason, ErrorCode.OPERATION_FAILED)
 
-        if Dimension.query.filter_by(status=True, deleted=False).count() == 0:
-            reason = '任务没有关联任何评估维度，无法生成报告（系统中不存在启用中的评估维度）'
-            log_and_emit(
-                'ERROR', 'report',
-                f'[generate_task_report] 报告生成终止：{reason} task_id={task_id}',
-                task_id=task_id
+        # ⑥ 评估维度 —— 与异步 `if not all_metrics:` 分支同源
+        if not ReportControllerTask._build_all_metrics(all_dimensions):
+            return ReportControllerTask._precondition_failure(
+                task_id,
+                f'任务没有关联任何评估维度（该任务用到的维度均已停用或删除，'
+                f'可见维度数=0, task_ids={task_ids_for_query}）'
             )
-            return error_response(reason, ErrorCode.OPERATION_FAILED)
 
         return None
 
@@ -1214,6 +1265,12 @@ class ReportControllerTask(ReportControllerBase):
 
                 task, results, error = ReportControllerTask._validate_task_and_get_results(task_id)
                 if error:
+                    log_and_emit(
+                        'ERROR', 'report',
+                        f'[generate_task_report_async] 报告生成终止：'
+                        f'{ReportControllerTask._response_message(error, "任务验证失败")}（task_id={task_id}）',
+                        task_id=task_id
+                    )
                     with _generating_lock:
                         _generating_tasks.discard(task_id)
                     socketio.emit('report_generated', {

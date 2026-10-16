@@ -1,14 +1,18 @@
 # -*- coding: utf-8 -*-
-"""报告生成：缺设备/API 关联时的行为回归（VEGA-36）
+"""报告生成：缺设备/API 关联、维度不可用时的行为回归（VEGA-36）
 
 背景：`_get_task_resources()` 原先只读配置侧的 task_device_relations / task_api_relations，
 而"直连库注入结果"型任务只写 test_results.device_id，两张关联表一行都没有，
 于是必然命中 report_controller_task 里的静默 return —— HTTP 调用方拿到成功、报告不落库、日志无记录。
 
-本文件覆盖三条：
+本文件覆盖六条：
 1. 关联表为空但 test_results 有 device_id → 回退取执行侧事实，报告能正常生成；
 2. 关联表为空且 test_results 也没有 device_id/api_id → HTTP 拿到明确失败 + error 级日志（不再静默）；
-3. 关联表有记录时以关联表为准（既有任务口径不变）。
+3. 关联表有记录时以关联表为准（既有任务口径不变）；
+4. P1：任务用到的维度全被停用/软删、但全库还有其它启用维度 → 明确失败
+   （旧实现用"全库是否有启用维度"代替"该任务可见维度是否为空"，这种情况会错误放行）；
+5. P2：有 test_results、但一条 test_result_dimensions 都没有 → 明确失败（旧实现无此判定，必然假成功）；
+6. 反向保障：正常任务必须能通过同步前置校验（同步失败 ⟺ 异步失败，不能误伤）。
 
 注意：controller 里的 db.session.commit() 会真正提交到独立测试库，
 因此本文件用唯一后缀造数并在结束时清理，可单独运行。
@@ -18,7 +22,6 @@ import uuid
 import pytest
 from sqlalchemy import text
 
-from backend.app import create_app
 from backend.models.database import db
 from backend.models.models import (
     Device, Dimension, Report, Task, TaskCase, TaskDevice,
@@ -27,6 +30,31 @@ from backend.models.models import (
 
 import backend.controllers.report_controller_task as rct_module
 from backend.controllers.report_controller_task import ReportControllerTask
+
+
+@pytest.fixture(autouse=True)
+def _neutralize_async_log_writer(monkeypatch):
+    """切断 log_handler 后台线程的写库链路（仅本文件，纯加固）
+
+    原因：DatabaseLogHandler 的写库线程用 `sessionmaker(bind=db.engine)` 自建 Session，
+    而 TestingConfig 走 StaticPool（`db.engine.connect()` 始终返回同一条物理连接），
+    于是后台线程与测试线程变成"一条连接上两个 Session"，各自 commit/rollback，
+    后台线程每 ~1s 冲一次批就可能把测试线程未落盘的 INSERT/UPDATE 一起回滚掉。
+    本文件断言的是"生产代码有没有以 ERROR 级、带 task_id 调用 log_and_emit"，
+    落库/推送由 log_handler 负责、不属于本 issue 验收范围，因此让后台线程跳过写库，
+    使断言只取决于被测代码本身。
+
+    注：本文件早期观察到的偶发失败（ObjectDeletedError、task_case_relations 外键冲突）
+    经排查主因是**并行跑测试的其它 pytest 进程共用同一个测试库**
+    （intelligent_audio_test_test，日志里能看到别人的任务在执行、并清掉本进程刚插入的行），
+    与本夹具无关；该夹具只消除进程内的连接争用。
+    """
+    from backend.utils.web import log_handler as lh
+
+    handler = lh.get_db_handler()
+    monkeypatch.setattr(handler, '_process_batch', lambda *args, **kwargs: None)
+    monkeypatch.setattr(handler, '_check_and_archive', lambda *args, **kwargs: None)
+    yield
 
 
 @pytest.fixture
@@ -59,7 +87,7 @@ def scaffold(app):
     suffix = uuid.uuid4().hex[:8]
     created = {}
 
-    def build(use_device_in_results=True):
+    def build(use_device_in_results=True, with_dimension_scores=True):
         device = Device(
             name=f'VEGA36设备_{suffix}', model='M1', type='phone', system='Android',
             system_version='14', app_name='App', app_version='1.0', status='online',
@@ -96,11 +124,12 @@ def scaffold(app):
         db.session.add(result)
         db.session.flush()
 
-        db.session.add(TestResultDimension(
-            test_result_id=result.id, dimension_id=dimension.id,
-            round_number=None, dimension_value=0.5, score=0.5,
-            status='passed', evaluation_status='completed',
-        ))
+        if with_dimension_scores:
+            db.session.add(TestResultDimension(
+                test_result_id=result.id, dimension_id=dimension.id,
+                round_number=None, dimension_value=0.5, score=0.5,
+                status='passed', evaluation_status='completed',
+            ))
         db.session.commit()
 
         created.update({
@@ -252,24 +281,58 @@ def _purge_extra_device(task_id, device_id):
             db.session.rollback()
 
 
-def test_no_active_dimension_returns_explicit_error(app, client, scaffold, captured_logs):
-    """无启用中的评估维度 → 同样给 HTTP 明确失败 + error 级日志"""
+def test_task_level_dimension_branch_returns_explicit_error(app, client, scaffold, captured_logs):
+    """P1：任务用到的维度全被停用/软删、系统里还有其它启用维度 → 必须明确失败
+
+    旧实现用「全库是否有启用维度」代替「该任务可见维度是否为空」，这种情况下会错误放行，
+    异步随后静默终止 → HTTP 假成功、报告不落库。本条锁定任务级判定口径。
+    """
     data = scaffold(use_device_in_results=True)
     task_id = data['task_id']
 
-    # 暂时停用全部维度，制造"没有评估维度"的判定
-    dims = Dimension.query.filter_by(status=True, deleted=False).all()
-    for d in dims:
-        d.status = False
+    # 只停用该任务用到的维度，保留系统里其它启用维度（制造"全库有启用维度但本任务没有"）
+    Dimension.query.filter(Dimension.id == data['dimension_id']).update(
+        {'status': False}, synchronize_session=False
+    )
     db.session.commit()
+
     try:
+        assert Dimension.query.filter_by(status=True, deleted=False).count() > 0, \
+            '用例前提：系统里必须还有其它启用维度，否则测不到任务级判定'
+
         resp = client.post('/api/v1/reports/generate-task', json={'taskId': task_id})
         payload = resp.get_json()
+
         assert payload['success'] is False, payload
         assert payload['code'] == 203, payload
         assert '没有关联任何评估维度' in payload['message'], payload
-        assert _error_logs(captured_logs, task_id)
+        assert _error_logs(captured_logs, task_id), captured_logs
+        assert Report.query.filter(Report.task_id == task_id, Report.deleted == False).count() == 0
     finally:
-        for d in dims:
-            d.status = True
+        Dimension.query.filter(Dimension.id == data['dimension_id']).update(
+            {'status': True}, synchronize_session=False
+        )
         db.session.commit()
+
+
+def test_no_dimension_scores_returns_explicit_error(app, client, scaffold, captured_logs):
+    """P2：有 test_results、但一条 test_result_dimensions 都没有 → 明确失败（不再假成功）"""
+    data = scaffold(use_device_in_results=True, with_dimension_scores=False)
+    task_id = data['task_id']
+
+    resp = client.post('/api/v1/reports/generate-task', json={'taskId': task_id})
+    payload = resp.get_json()
+
+    assert payload['success'] is False, payload
+    assert payload['code'] == 203, payload
+    assert '未找到维度得分数据' in payload['message'], payload
+    assert _error_logs(captured_logs, task_id), captured_logs
+    assert Report.query.filter(Report.task_id == task_id, Report.deleted == False).count() == 0
+
+
+def test_healthy_task_passes_sync_precheck(app, scaffold):
+    """反向保障：正常任务必须能通过同步判定（同步失败 ⟺ 异步失败，不能误伤）"""
+    data = scaffold(use_device_in_results=True)
+    with app.app_context():
+        task = db.session.get(Task, data['task_id'])
+        assert ReportControllerTask._check_generation_preconditions(task, data['task_id']) is None
