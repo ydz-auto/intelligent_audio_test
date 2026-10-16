@@ -121,17 +121,18 @@ def test_service_entrypoint_enables_recovery_sweep():
 
 
 def _scheduler_init_calls_with_guards(tree):
-    """产出 app.py 里每个 ``_init_scheduler()`` 调用及其外层 ``if`` 条件源码。
+    """产出 app.py 里每个 ``_init_scheduler()`` 调用及其外层 ``if`` 条件节点。
 
     只有 ``if`` 体算"被闸住"；``else`` 分支不算（那里执行等于没闸）。
+    条件以 **AST 节点**（而非源码字符串）返回，交给 :func:`_is_exact_scheduler_gate`
+    做严格比对——字符串包含式匹配会被 ``or True`` 这类包装绕过（见该函数说明）。
     """
     found = []
 
     def visit(node, guards):
         if isinstance(node, ast.If):
-            test_src = ast.unparse(node.test)
             for child in node.body:
-                visit(child, guards + [test_src])
+                visit(child, guards + [node.test])
             for child in node.orelse:
                 visit(child, guards)
             return
@@ -145,6 +146,25 @@ def _scheduler_init_calls_with_guards(tree):
     return found
 
 
+def _is_exact_scheduler_gate(test):
+    """该 ``if`` 条件是否**恰好**是一次 ``_should_start_task_scheduler(...)`` 调用。
+
+    不接受任何包装：``_should_start_task_scheduler(app) or True``、
+    ``True and _should_start_task_scheduler(app)``、``not _should_start_task_scheduler(app)``
+    的 if 体都会执行调度器启动，必须判为"未闸住"。
+
+    VEGA-42 审计观察 O1：原实现用 ``_SCHEDULER_GATE in ast.unparse(node.test)``
+    做子串匹配，上述包装写法都含该子串，于是被判成"已闸住"——接线检查静默失效
+    （运行期那半也拦不住：闸门函数本身仍返回 False，但 if 体照样执行）。
+    这里改为按节点严格比对，堵掉该绕过面。
+    """
+    return (
+        isinstance(test, ast.Call)
+        and isinstance(test.func, ast.Name)
+        and test.func.id == _SCHEDULER_GATE
+    )
+
+
 def test_task_scheduler_never_starts_outside_service_entry():
     """非服务入口不启动调度器（VEGA-42）。
 
@@ -153,8 +173,9 @@ def test_task_scheduler_never_starts_outside_service_entry():
 
     两重检查：
     1. 接线（静态 AST）：``backend/app.py`` 里每个 ``_init_scheduler()`` 都必须
-       落在 ``_should_start_task_scheduler(...)`` 的 if 体内——把它改回无条件
-       调用，本检查立即失败；
+       落在 ``_should_start_task_scheduler(...)`` 的 if 体内，且该条件必须**恰好**
+       是这次闸门调用（不接受 ``or True`` / ``True and ...`` 之类的包装）——
+       把它改回无条件调用、挪进 else、或给条件加包装，本检查立即失败；
     2. 判据（运行期）：pytest 进程内即便开关被打开，判据也必须返回 False。
     """
     with open(_APP_PY, 'r', encoding='utf-8-sig') as f:
@@ -167,10 +188,10 @@ def test_task_scheduler_never_starts_outside_service_entry():
     )
 
     ungated = [lineno for lineno, guards in calls
-               if not any(_SCHEDULER_GATE in g for g in guards)]
+               if not any(_is_exact_scheduler_gate(g) for g in guards)]
     assert not ungated, (
-        f'backend/app.py:{ungated} 的 _init_scheduler() 不在 {_SCHEDULER_GATE}(...) 闸门内，'
-        '裸 create_app() 会对着共享库起 3s 轮询的调度器线程（VEGA-42）'
+        f'backend/app.py:{ungated} 的 _init_scheduler() 不在 {_SCHEDULER_GATE}(...) 闸门内'
+        '（或闸门条件被包装过），裸 create_app() 会对着共享库起 3s 轮询的调度器线程（VEGA-42）'
     )
 
     from backend.app import _is_test_process, _should_start_task_scheduler
@@ -181,6 +202,45 @@ def test_task_scheduler_never_starts_outside_service_entry():
         config = {'TASK_SCHEDULER_ON_STARTUP': True}
 
     assert _should_start_task_scheduler(_FakeApp()) is False
+
+
+def test_scheduler_gate_predicate_rejects_wrapped_conditions():
+    """闸门判据自身反向可失败（VEGA-42 审计观察 O1）。
+
+    纯本地、不连库、不改仓库任何文件：直接喂合成源码片段给判据函数。
+    对每种写法断言"判据是否认为已闸住"，把 O1 那个绕过面钉死在用例里——
+    将来谁把 :func:`_is_exact_scheduler_gate` 退回子串匹配，本用例立即失败。
+    """
+    gate = '_should_start_task_scheduler(app)'
+    call = 'execution_engine._init_scheduler()'
+    gated_body = f'        {call}'      # if 体内（8 空格）
+    bare_body = f'    {call}'           # 裸调用（4 空格）
+
+    cases = {
+        f'if {gate}:': True,                        # 正确接线
+        f'if {gate} or True:': False,               # O1：or True 绕过
+        f'if True and {gate}:': False,              # O1 同类：and 包装
+        f'if not {gate}:': False,                   # 取反后 if 体照跑
+        f'if bool({gate}):': False,                 # 函数包装
+        'if True:': False,                          # 与闸门无关的条件
+    }
+
+    for header, expected in cases.items():
+        snippet = f'def _f():\n    {header}\n{gated_body}\n'
+        tree = ast.parse(snippet)
+        calls = _scheduler_init_calls_with_guards(tree)
+        assert len(calls) == 1, f'片段解析异常：{header}'
+        _, guards = calls[0]
+        actual = any(_is_exact_scheduler_gate(g) for g in guards)
+        assert actual is expected, (
+            f'判据对 {header!r} 的判定应为 {expected}，实际 {actual}'
+            '——包装过的条件必须判为未闸住（VEGA-42 O1）'
+        )
+
+    # 无条件调用：压根没有外层 if，必须判为未闸住
+    tree = ast.parse(f'def _f():\n{bare_body}\n')
+    _, guards = _scheduler_init_calls_with_guards(tree)[0]
+    assert not any(_is_exact_scheduler_gate(g) for g in guards)
 
 
 def test_task_scheduler_is_off_by_default():
