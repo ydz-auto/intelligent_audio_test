@@ -188,6 +188,8 @@ class TaskQueryService:
                 group_name=c.get('group_name'),
                 tags=c.get('tags', []),
                 evaluation_dimensions=c.get('evaluation_dimensions', []),
+                # INT-340：该用例下是否存在人工复核结果（read model 已计算，透传）
+                reviewed=c.get('reviewed'),
             )
             for c in item.get('cases', [])
         ]
@@ -223,6 +225,8 @@ class TaskQueryService:
                 device_count=len(devices),
                 completed_cases=item.get('completed_cases'),
                 failed_cases=item.get('failed_cases'),
+                # INT-340：任务下已复核结果条数（read model 已计算，透传——覆盖提醒/报告标记）
+                review_count=item.get('review_count'),
                 tags=item.get('tags', []),
                 cases=cases,
                 devices=devices,

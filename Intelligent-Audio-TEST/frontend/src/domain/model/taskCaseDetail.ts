@@ -20,6 +20,17 @@ export interface CaseDimensionResult {
   roundNumber?: number | null
 }
 
+/** 复核留痕条目（results[].reviewHistory[] 元素，snake_case → camelCase） */
+export interface ReviewHistoryItem {
+  id?: number
+  resultId?: number
+  fieldName?: 'execution_status' | 'evaluation_status' | (string & {})
+  oldValue?: string | null
+  newValue?: string | null
+  comment?: string | null
+  createdAt?: string | null
+}
+
 /** 设备/API 执行结果条目（getCaseResults results[] 元素） */
 export interface CaseExecutionResult {
   id: string | number
@@ -36,6 +47,13 @@ export interface CaseExecutionResult {
   errorMessage?: string | null
   dimensions?: CaseDimensionResult[]
   createdAt?: string | null
+  // INT-340：人工复核标记/最近动作/留痕历史（用例结果行「已复核」徽标 + 复核弹窗历史展示）
+  reviewed?: boolean
+  reviewedByUserId?: string | number | null
+  reviewedAt?: string | null
+  lastReviewComment?: string | null
+  lastReviewAction?: string | null
+  reviewHistory?: ReviewHistoryItem[]
 }
 
 /** 结果音频条目（result_audios 字典值数组元素） */

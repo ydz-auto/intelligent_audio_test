@@ -20,6 +20,7 @@ import type {
   CaseExecutionResult,
   CaseDimensionResult,
   CaseResultAudio,
+  ReviewHistoryItem,
 } from '../../domain/model/taskCaseDetail'
 import type { TaskStatusType } from '../../domain/enums'
 import type { ReportMetricConfig } from '../../domain/model/report'
@@ -204,6 +205,19 @@ function toDimensionResult(raw: Record<string, unknown>): CaseDimensionResult {
   }
 }
 
+/** 复核留痕行（results[].review_history[] 元素 → camelCase） */
+function toReviewHistoryItem(raw: Record<string, unknown>): ReviewHistoryItem {
+  return {
+    id: raw.id !== undefined && raw.id !== null ? Number(raw.id) : undefined,
+    resultId: raw.result_id !== undefined && raw.result_id !== null ? Number(raw.result_id) : undefined,
+    fieldName: raw.field_name !== undefined && raw.field_name !== null ? String(raw.field_name) : undefined,
+    oldValue: raw.old_value === null || raw.old_value === undefined ? null : String(raw.old_value),
+    newValue: raw.new_value === null || raw.new_value === undefined ? null : String(raw.new_value),
+    comment: raw.comment === null || raw.comment === undefined ? null : String(raw.comment),
+    createdAt: raw.created_at === null || raw.created_at === undefined ? null : s(raw.created_at),
+  }
+}
+
 /** 设备/API 执行结果（getCaseResults results[] 元素 → camelCase） */
 function toExecutionResult(raw: Record<string, unknown>): CaseExecutionResult {
   return {
@@ -227,6 +241,21 @@ function toExecutionResult(raw: Record<string, unknown>): CaseExecutionResult {
       ? (raw.dimensions as Array<Record<string, unknown>>).map(toDimensionResult)
       : undefined,
     createdAt: raw.created_at === null || raw.created_at === undefined ? null : s(raw.created_at),
+    // INT-340：人工复核标记/最近动作/留痕历史（用例结果行「已复核」徽标 + 复核弹窗历史展示）
+    reviewed: raw.reviewed !== undefined ? Boolean(raw.reviewed) : undefined,
+    reviewedByUserId: raw.reviewed_by_user_id === null || raw.reviewed_by_user_id === undefined
+      ? null
+      : (raw.reviewed_by_user_id as string | number),
+    reviewedAt: raw.reviewed_at === null || raw.reviewed_at === undefined ? null : s(raw.reviewed_at),
+    lastReviewComment: raw.last_review_comment === null || raw.last_review_comment === undefined
+      ? null
+      : s(raw.last_review_comment),
+    lastReviewAction: raw.last_review_action === null || raw.last_review_action === undefined
+      ? null
+      : s(raw.last_review_action),
+    reviewHistory: Array.isArray(raw.review_history)
+      ? (raw.review_history as Array<Record<string, unknown>>).map(toReviewHistoryItem)
+      : undefined,
   }
 }
 

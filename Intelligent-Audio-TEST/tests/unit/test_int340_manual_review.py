@@ -334,3 +334,50 @@ def test_review_count_excludes_removed_results(db):
     finally:
         remove_db_session()
     assert review_service.review_count(task_id)['data']['review_count'] == 0
+
+
+def test_gateway_get_one_passes_review_fields(db, monkeypatch):
+    """网关任务详情 DTO 透传 review_count 与用例级 reviewed（P1-2 回归）。
+
+    原缺陷：task_read_model_detail 已计算复核标记，但网关 TaskQueryService.get_one
+    组装 TaskDetailData / TaskCaseBrief 时漏透传 → 覆盖提醒计数恒 0、用例「人工复核」
+    标记不显示。本测试直测服务层 DTO 组装，防回归。
+    """
+    import api_gateway.application.services.task.task_query_service as tqs
+    from api_gateway.application.services.task.task_query_service import TaskQueryService
+
+    detail = {
+        'id': 1,
+        'name': 'INT340任务',
+        'status': 'completed',
+        'completed_cases': 0,
+        'failed_cases': 1,
+        'review_count': 2,
+        'cases': [{
+            'case_id': 'C1',
+            'name': '用例1',
+            'status': 'failed',
+            'execution_status': 'failed',
+            'evaluation_status': 'completed',
+            'reviewed': True,
+        }, {
+            'case_id': 'C2',
+            'name': '用例2',
+            'status': 'completed',
+            'execution_status': 'completed',
+            'evaluation_status': 'completed',
+            'reviewed': False,
+        }],
+    }
+    monkeypatch.setattr(tqs._task_acl, 'get_task_detail', lambda task_id: {
+        'success': True, 'data': detail})
+
+    payload, http_code = TaskQueryService.get_one(1)
+    assert http_code == 200
+    data = payload['data']
+    # 任务级复核计数透传（覆盖提醒）
+    assert data['review_count'] == 2
+    # 用例级复核标记透传（任务详情「人工复核」标记）
+    assert data['cases'][0]['reviewed'] is True
+    assert data['cases'][1]['reviewed'] is False
+
