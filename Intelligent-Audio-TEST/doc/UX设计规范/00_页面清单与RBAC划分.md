@@ -126,7 +126,8 @@
 | `/audio-import` | 音频管理（上传/列表/试听） | `audio:read` | AuthenticatedLayout | INT-361 ✅ |
 | `/devices` | 设备管理（被测/播放设备） | `device:read` | AuthenticatedLayout | INT-361 ✅ |
 | `/reports` | 报告展示页（导航栏「报告」直达；对外展示已发布报告，弱管理，行操作仅「查看/复制链接」） | `report:read` | AuthenticatedLayout | INT-439 ✅（INT-441/442） |
-| `/report-center` | 报告中心·管理页（侧栏「报告中心」直达；双页签 测试报告/历史报告，生成/编辑/发布/删除/批量/导出/收藏/回收站/草稿集中） | `report:read` | AuthenticatedLayout | INT-439 ✅（INT-441） |
+| `/report-center` | 报告中心·管理页（侧栏「报告中心」直达；**单一列表视图默认全部报告，报告类型=筛选条件非页面层级**，生成/编辑/发布/删除/批量/导出/收藏/回收站/草稿管理集中；INT-439 v2.6 回写，INT-500 确认） | `report:read` | AuthenticatedLayout | INT-439 ✅（INT-441） |
+| `/report-statistics` | 报告统计分析（报告中心工具栏「统计分析」入口；统计维度/统计结果/趋势分析/报表生成四标签页） | `report:read` | AuthenticatedLayout | INT-439 ✅（§2.2 路由定稿 INT-500） |
 | `/ai-chat` | 灵犀Agent（Agent 工作台：报告生成/对比/分析；单栏对话+报告工作模式双栏变体） | `report:read` | AuthenticatedLayout | INT-415 ✅ |
 | `/report/$reportId` | 报告查看（详情阅读页，返回按钮回退来源入口） | `report:read` | AuthenticatedLayout | INT-439 ✅ |
 | `/logs` | 日志查看 | `log:read` | AuthenticatedLayout | INT-362 ✅ |
@@ -154,8 +155,8 @@
 | `/tasks` | task:read | `/tasks` | 保留，四页签 |
 | `/tasks/:id` | task:read | `/tasks/$taskId` | 保留 |
 | `/published-tasks` | （redirect） | `/tasks?tab=published` | 延续 redirect（INT-298 口径不变） |
-| `/history-reports` | report:read | `/report-center`（历史报告页签） | 并入管理页「历史报告」页签，旧链 redirect（INT-441） |
-| `/test-reports` | report:read | `/report-center`（测试报告页签） | 并入管理页「测试报告」页签，旧链 redirect（INT-441） |
+| `/history-reports` | report:read | `/report-center` | 并入管理页报告列表（单一列表视图，类型=筛选条件非页签），旧链 redirect 不带 tab 语义（INT-441；INT-439 v2.6/INT-500 回写） |
+| `/test-reports` | report:read | `/report-center` | 并入管理页报告列表（单一列表视图，类型=筛选条件非页签），旧链 redirect 不带 tab 语义（INT-441；INT-439 v2.6/INT-500 回写） |
 | `/report/:id` | report:read | `/report/$reportId` | 保留（benchmark 行内「查看报告」同落此页） |
 | `/report?id=` | report:read | `/report/$reportId` | query 入口 redirect 兼容 |
 | `/TestCaseManager` | testcase:read | `/testcases` | 改名 redirect |
@@ -409,6 +410,7 @@ Channels（渠道）/ Keys（密钥）/ Redemption Codes（兑换码）/ Wallet�
 
 | 日期 | 版本 | 变更 |
 | --- | --- | --- |
+| 2026-10-16 | v1.17 | **INT-439 前置审核打回回写（INT-500）**：§2.1 `/report-center` 行改「**单一列表视图默认全部报告，报告类型=筛选条件非页面层级**」（原「双页签 测试报告/历史报告」废止，INT-439 v2.6 口径）并新增 `/report-statistics` 行（§2.2 路由定稿 INT-500，`report:read`）；§2.2 `/test-reports` `/history-reports` 两行 redirect 目标改「`/report-center`（单一列表视图，不带 tab 语义）」；跨卡契约=15_报告域.md v2.9（§1.1/§2/§2.1/§2.2/§3.8/§7/§8/§9） |
 | 2026-10-15 | v1.0 | 初稿（INT-353）：§0 文档地图、§1 RBAC 事实基线（seed_rbac 100 权限点/五角色实测 + benchmark 权限缺口发现）、§2 新路由总表与 19 旧路由全量映射、§3 导航结构（顶部六项/右上角/侧栏四组十项/设置树/全局算法切换器总口径/渲染规则）、§4 RBAC 总表（页面可见性矩阵+按钮级指针+守卫口径）、§5 newAPI→本平台映射（页面/不引入/机制）、§6 DDD 落位+实施清单、§7 待确认六项 |
 | 2026-10-15 | v1.1 | 负责人口径：**控制台更名工作台**——全表「控制台」字样逐处替换为「工作台」（§2.1 /dashboard 行、§3.2 顶部导航项、§3.3 侧栏树标题、§3.4 返回文案、§3.5 联动口径、§4 导航项结果行、§5 映射表、§6 实施清单）；路由 `/dashboard` 与侧栏结构不变，侧栏首项「工作台」与页面名并轨；02/03/04/05/08/09/10/11/12 各卡文档同步核改 |
 | 2026-10-15 | v1.1 | INT-344 产出后勘误回写：§0 文档地图 02 卡置「✅ 产出」；§3.2 右上角功能区次序定稿（切换器→搜索→通知→语言→主题→头像——对齐 newAPI app-header 实测相对次序）；§4.1 顶部导航项结果行修正（device_admin 4 项、guest 5 项含报告——guest 持 report:read 实测） |
