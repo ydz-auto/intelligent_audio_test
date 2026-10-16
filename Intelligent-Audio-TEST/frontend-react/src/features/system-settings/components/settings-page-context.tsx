@@ -16,7 +16,7 @@ import { RotateCcw, Save } from 'lucide-react'
 type SettingsPageContextValue = {
   actionsContainer: HTMLDivElement | null
   titleStatusContainer: HTMLSpanElement | null
-  /** 多分区表单页（母版 A）头部分节隐藏，标题即分区名 */
+  /** 分节标题（SettingsSection h3+说明）默认显示；需隐藏的页面显式传 true */
   suppressSectionHeader: boolean
 }
 
@@ -37,7 +37,7 @@ export function SettingsPageProvider(props: {
       value={{
         actionsContainer: props.actionsContainer,
         titleStatusContainer: props.titleStatusContainer ?? null,
-        suppressSectionHeader: props.suppressSectionHeader ?? true,
+        suppressSectionHeader: props.suppressSectionHeader ?? false,
       }}
     >
       {props.children}

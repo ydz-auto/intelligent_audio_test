@@ -14,9 +14,11 @@ export const MOCK_SYSTEM_OPTIONS: SystemOptions = {
   'site.notice': '',
 }
 
-/** 读取全量选项（KV 通道；TODO(API 接线): GET /api/option/ 或按域 REST） */
+/** 读取全量选项（KV 通道；TODO(API 接线): GET /api/option/ 或按域 REST）。
+ * 返回新对象副本而非原引用：保存写回后 refetch 产生新引用，React Query
+ * structural sharing 判定数据变化 → 分区页基线刷新 → isDirty 清零（INT-489 返修①）。 */
 export async function fetchSystemOptions(): Promise<SystemOptions> {
-  return MOCK_SYSTEM_OPTIONS
+  return { ...MOCK_SYSTEM_OPTIONS }
 }
 
 /** 写入单键（仅脏字段逐项 PUT；TODO(API 接线): PUT /api/option/ {key, value}） */

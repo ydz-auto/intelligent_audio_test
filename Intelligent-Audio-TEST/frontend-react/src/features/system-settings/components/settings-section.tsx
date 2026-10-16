@@ -1,7 +1,7 @@
 /**
  * 分节标题（interfaces 层，对齐 newAPI settings-section 实测）：
- * 母版 A 表单页（SettingsPage suppressSectionHeader=true）隐藏 h3，标题即分区名；
- * 母版 B/C 资源页显示分节标题 + 说明。
+ * 母版 B/C 资源页与多节页面显示分节标题 + 说明（默认显示，INT-489 返修②）；
+ * 需隐藏时（母版 A 标题即分区名）由 SettingsPageProvider 显式 suppressSectionHeader=true。
  */
 import type { HTMLAttributes, ReactNode } from 'react'
 

@@ -2,7 +2,8 @@
  * 母版 A KV 表单分区页装配（interfaces 层，INT-347 §4.1）：
  * useSettingsForm（基线/脏收集）→ 保存 mutation（仅脏字段逐项 PUT）→
  * 页头动作区（重置/保存）+ 脏徽标 + 离开守卫 全套接入；
- * 无差异 toast.info「没有需要保存的更改」、成功 toast「设置已更新」。
+ * 无差异 toast.info「没有需要保存的更改」、成功 toast「设置已更新」、
+ * 重置 toast「表单已重置为已保存的值」（INT-489 返修③）。
  */
 import type { ReactNode } from 'react'
 import { toast } from 'sonner'
@@ -42,12 +43,17 @@ export function SettingsFormPage<T extends Record<string, unknown>>(
     updateOption.mutate(changes)
   }
 
+  const handleReset = () => {
+    reset()
+    toast.success('表单已重置为已保存的值')
+  }
+
   return (
     <>
       <FormDirtyIndicator isDirty={isDirty} />
       <SettingsPageFormActions
         onSave={handleSave}
-        onReset={reset}
+        onReset={handleReset}
         isSaving={updateOption.isPending}
         isSaveDisabled={!isDirty || updateOption.isPending}
         isResetDisabled={!isDirty}

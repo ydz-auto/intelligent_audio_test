@@ -118,7 +118,7 @@ export function OAuthProvidersPage() {
             <code className='border-border/70 bg-muted/60 rounded px-1.5 py-0.5 font-mono text-xs'>
               {OAUTH_CALLBACK_TEMPLATE}
             </code>
-            <CopyButton value={OAUTH_CALLBACK_TEMPLATE} />
+            <CopyButton value={OAUTH_CALLBACK_TEMPLATE} aria-label='复制回调地址' />
           </span>
           注册自定义 OAuth 提供方时使用此回调地址。
         </AlertDescription>
