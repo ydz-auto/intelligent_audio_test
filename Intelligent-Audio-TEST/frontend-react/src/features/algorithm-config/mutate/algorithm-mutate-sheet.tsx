@@ -84,10 +84,19 @@ export function AlgorithmMutateSheet(props: AlgorithmMutateSheetProps) {
   }, [props.open, props.mode, props.algorithm])
 
   const form = useForm<AlgorithmFormValues>({
+    // mode:'onChange'：字段错误随输入即时显示（§6.2/6.3 行级校验文案）
+    mode: 'onChange',
     resolver: zodResolver(algorithmFormSchema),
     defaultValues: emptyFormValues(),
     values: defaultValues,
   })
+
+  // 保存可用性直接对全量表单值实时计算，不依赖 formState.isValid：
+  // RHF 的 setValue / useFieldArray 变更不会自动重算 isValid（onSubmit 模式须提交后才算，
+  // onChange 模式也只对 register 的原生输入生效），导致「选分组/切状态/选参数类型」等
+  // setValue 交互后保存按钮仍恒禁用（INT-508 P1 死锁）。同一 zod schema safeParse 覆盖全部变更路径。
+  const watchedValues = form.watch()
+  const isFormValid = algorithmFormSchema.safeParse(watchedValues).success
 
   // 关闭 Sheet 时重置表单，避免下次打开残留旧值
   useEffect(() => {
@@ -192,7 +201,7 @@ export function AlgorithmMutateSheet(props: AlgorithmMutateSheetProps) {
               <Button
                 type='submit'
                 form='algorithm-mutate-form'
-                disabled={save.isPending || !form.formState.isValid}
+                disabled={save.isPending || !isFormValid}
               >
                 {save.isPending ? '保存中…' : '保存'}
               </Button>
