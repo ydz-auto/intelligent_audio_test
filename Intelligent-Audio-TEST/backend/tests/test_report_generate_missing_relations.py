@@ -96,7 +96,14 @@ def scaffold(app):
             name=f'VEGA36维度_{suffix}', type='auto', result_type=1, weight=1,
             status=True, deleted=False, statistic_method='average',
         )
-        db.session.add_all([device, dimension])
+        # 一个与该任务无关的启用维度：P1 用例需要"全库还有其它启用维度"这个前提。
+        # 不能依赖测试库里恰好残留的维度（VEGA-49 起测试库按 pytest 进程全新创建，
+        # 库里除本用例造的行以外是空的），必须由用例自己造出来。
+        extra_dimension = Dimension(
+            name=f'VEGA36无关启用维度_{suffix}', type='auto', result_type=1, weight=1,
+            status=True, deleted=False, statistic_method='average',
+        )
+        db.session.add_all([device, dimension, extra_dimension])
         db.session.flush()
 
         task = Task(
@@ -134,6 +141,7 @@ def scaffold(app):
 
         created.update({
             'task_id': task.id, 'device_id': device.id, 'dimension_id': dimension.id,
+            'extra_dimension_id': extra_dimension.id,
             'test_case_id': test_case.id, 'result_id': result.id,
         })
         return created
@@ -174,6 +182,7 @@ def _purge(created):
         ('DELETE FROM test_cases WHERE id = :cid', {'cid': created.get('test_case_id')}),
         ('DELETE FROM test_tasks WHERE id = :tid', {'tid': task_id}),
         ('DELETE FROM dimensions WHERE id = :did', {'did': created.get('dimension_id')}),
+        ('DELETE FROM dimensions WHERE id = :did', {'did': created.get('extra_dimension_id')}),
         ('DELETE FROM devices WHERE id = :devid', {'devid': created.get('device_id')}),
     ]
     for sql, params in statements:
@@ -299,7 +308,6 @@ def test_task_level_dimension_branch_returns_explicit_error(app, client, scaffol
     try:
         assert Dimension.query.filter_by(status=True, deleted=False).count() > 0, \
             '用例前提：系统里必须还有其它启用维度，否则测不到任务级判定'
-
         resp = client.post('/api/v1/reports/generate-task', json={'taskId': task_id})
         payload = resp.get_json()
 
