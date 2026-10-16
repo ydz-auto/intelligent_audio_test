@@ -14,20 +14,20 @@
 | 01 | `01_全局基座.md`（基准稿 v2.0） | INT-343 | A | ✅ done |
 | 02 | `02_导航栏.md` | INT-344 | A | ✅ 产出 |
 | 03 | `03_首页.md` | INT-345 | A | ✅ in_review |
-| 04 | `04_控制台.md`（页面名已更名「工作台」，文件名沿用） | INT-346 | A | ✅ 产出 |
+| 04 | `04_控制台.md`（页面名已更名「工作台」，文件名沿用） | INT-346 | A | ✅ in_review |
 | 05 | `05_系统设置.md`（v1.1） | INT-347 | B | ✅ 产出 |
 | 06 | `06_关于.md` | INT-348 | B | ✅ 产出 |
 | 07 | `07_文档.md` | INT-349 | B | ✅ 产出 |
 | 08 | `08_AI对话页.md` | INT-415 | A | ✅ 产出 |
 | 09 | `09_任务域.md` | INT-354 | A | ✅ 产出 |
-| 10 | `10_测试执行.md` | INT-355 | A | ✅ 产出 |
-| 11 | `11_用例域.md` | INT-356 | A | ✅ 产出 |
+| 10 | `10_测试执行.md` | INT-355 | A | ✅ in_review |
+| 11 | `11_用例域.md` | INT-356 | A | ✅ in_review |
 | 12 | `12_登录与错误页.md` | INT-357 | A | ✅ 产出 |
 | 13 | `13_个人中心.md` | INT-358 | B | ✅ 产出 |
-| 14 | `14_benchmark排行.md` | INT-359 | B | ✅ 产出 |
-| 15 | `15_报告域.md` | INT-360 | D | ✅ 产出 |
-| 16 | `16_设备域.md` | INT-361 | B | ✅ 产出 |
-| 17 | `17_配置运维.md` | INT-362 | B | ✅ 产出 |
+| 14 | `14_benchmark排行.md` | INT-359 | B | ✅ in_review |
+| 15 | `15_报告域.md`（INT-360 产出 → **INT-439 重做 v2.3**，当前版为准） | INT-360→INT-439 | C | ✅ 产出 |
+| 16 | `16_设备域.md` | INT-361 | B | ✅ done |
+| 17 | `17_配置运维.md` | INT-362 | B | ✅ done |
 
 > 待产出卡的导航/RBAC 口径先按本总表执行；卡产出后若与本总表冲突，以产出卡为细节源并回写本表勘误（变更记录见 §8）。
 
@@ -40,20 +40,20 @@
 | 角色 name | 中文名 | 对应业务角色 | 权限范围概要 | 权限点数 |
 | --- | --- | --- | --- | --- |
 | `admin` | 超级管理员 | — | `*` 超级通配（seed_rbac.py:341），含用户/角色/权限管理 | 全部 |
-| `tester` | 测试工程师（含测试主管） | 测试工程师+测试主管 | 任务全链（含 task:publish/export/import）、已发布任务全链、用例/音频/分组/标签全链、api_config 全链、报告（read/create/update/delete/compare/download_log，**无 publish**）、评估全链、algorithm:read+case_param_manage、日志全链、device:read、home 全 | ~68 |
-| `algo_engineer` | 算法工程师（含质量负责人） | 算法工程师+质量负责人 | 报告（read/create/update/**publish**/compare/download_log）、评估（read/dim_manage/category_manage/import_export，**无 execute**）、算法全链（definition/group/param/case_param_manage）、task:read、testcase/audio/api_config/group/tag:read、log:read+websocket | ~45 |
-| `device_admin` | 设备管理员 | 设备管理员 | 被测设备/播放设备/SPL 物理/SPL 数字四域全链（read/create/update/delete/control）、home:read、sse:read；**无任务/用例/音频/报告/算法/日志** | ~28 |
-| `guest` | 游客 | — | report:read+report:compare、home:read、sse:read、认证五件；**不可看日志、无任何写操作** | ~9 |
+| `tester` | 测试工程师（含测试主管） | 测试工程师+测试主管 | 任务全链（含 task:publish/export/import/cherry_pick）、已发布任务全链、用例/音频/分组/标签全链、api_config 全链、报告（read/create/update/delete/compare/download_log，**无 publish**）、评估全链、algorithm:read+case_param_manage、日志全链、device:read、home 全 | 67（实测） |
+| `algo_engineer` | 算法工程师（含质量负责人） | 算法工程师+质量负责人 | 报告（read/create/update/**publish**/compare/download_log）、评估（read/dim_manage/category_manage/import_export，**无 execute**）、算法全链（definition/group/param/case_param_manage）、**task:read + published_task:read**、testcase/audio/api_config/group/tag:read、log:read+websocket | 31（实测） |
+| `device_admin` | 设备管理员 | 设备管理员 | 被测设备/播放设备/SPL 物理/SPL 数字四域全链（read/create/update/delete/control）、home:read、sse:read；**无任务/用例/音频/报告/算法/日志** | 26（实测） |
+| `guest` | 游客 | — | report:read+report:compare、home:read、sse:read、认证五件；**不可看日志、无任何写操作** | 9（实测） |
 
 > 精确权限串以 `scripts/migrations/202608/seed_rbac.py:187-253`（TESTER_PERMS / ALGO_ENGINEER_PERMS / DEVICE_ADMIN_PERMS / GUEST_PERMS）为唯一事实源；`docs/RBAC权限划分.md` §4.1 矩阵为设计文档（seed 为落地源，两者不一致处以 seed 为准——如 task:publish/export/import、published_task:*\、digital_spl:*\ 仅见于 seed）。
 
-### 1.2 权限点结构（seed_rbac.py:46-168 实测，共 100 个，22 模块）
+### 1.2 权限点结构（seed_rbac.py:46-168 实测，共 **101 个权限点 + `*` 通配，21 模块**）
 
 `资源:操作` 命名。本总表用到的页面门槛码全列：
 
 | 模块 | 权限串 |
 | --- | --- |
-| task（11） | read/create/update/delete/execute/merge/batch/reextract/publish/export/import |
+| task（12） | read/create/update/delete/execute/merge/batch/reextract/publish/export/import/**cherry_pick** |
 | published_task（4） | read/execute/version/archive |
 | testcase（7） | read/create/update/delete/copy/preview/import_export |
 | audio（6） | read/upload/update/delete/convert/folder |
@@ -66,7 +66,7 @@
 | log（3） | read/manage/websocket |
 | home（2） | read/refresh |
 | sse（1） | read |
-| 用户/角色/权限（11） | user:read/create/update/delete/assign_role/grant_permission、role:read/create/update/delete、permission:read、**auth:manage_provider** |
+| 用户（6）/ 角色（4）/ 权限（1）/ 认证提供方（1） | user:read/create/update/delete/assign_role/grant_permission、role:read/create/update/delete、permission:read、**auth:manage_provider**（seed 归「用户/角色/权限管理」段） |
 | auth（5） | login/callback/refresh/logout/me |
 | 通配（1） | `*` |
 
@@ -87,7 +87,7 @@
 
 | 域 | admin | tester | algo_engineer | device_admin | guest |
 | --- | --- | --- | --- | --- | --- |
-| 任务 task | ✓ | 全链（含 publish/export/import） | 仅 read | — | — |
+| 任务 task | ✓ | 全链（含 publish/export/import/cherry_pick） | 仅 read | — | — |
 | 已发布任务 published_task | ✓ | 全链 | 仅 read | — | — |
 | 用例 testcase / 分组 group / 标签 tag | ✓ | 全链 | 仅 read | — | — |
 | 音频 audio | ✓ | 全链 | 仅 read | — | — |
@@ -124,9 +124,10 @@
 | `/testcases` | 用例管理（双视图表格） | `testcase:read` | AuthenticatedLayout | INT-356 ✅ |
 | `/audio-import` | 音频管理（上传/列表/试听） | `audio:read` | AuthenticatedLayout | INT-361 ✅ |
 | `/devices` | 设备管理（被测/播放设备） | `device:read` | AuthenticatedLayout | INT-361 ✅ |
-| `/reports` | 报告中心（测试报告+历史报告页签） | `report:read` | AuthenticatedLayout | INT-360 ✅ |
+| `/reports` | 报告展示页（导航栏「报告」直达；对外展示已发布报告，弱管理，行操作仅「查看/复制链接」） | `report:read` | AuthenticatedLayout | INT-439 ✅（INT-441/442） |
+| `/report-center` | 报告中心·管理页（侧栏「报告中心」直达；双页签 测试报告/历史报告，生成/编辑/发布/删除/批量/导出/收藏/回收站/草稿集中） | `report:read` | AuthenticatedLayout | INT-439 ✅（INT-441） |
 | `/ai-chat` | AI 对话（Agent 工作台：报告生成/对比/分析；单栏对话+报告工作模式双栏变体） | `report:read` | AuthenticatedLayout | INT-415 ✅ |
-| `/report/$reportId` | 报告查看（详情页） | `report:read` | AuthenticatedLayout | INT-360 ✅ |
+| `/report/$reportId` | 报告查看（详情阅读页，返回按钮回退来源入口） | `report:read` | AuthenticatedLayout | INT-439 ✅ |
 | `/logs` | 日志查看 | `log:read` | AuthenticatedLayout | INT-362 ✅ |
 | `/AlgorithmConfig` | 算法配置（侧栏「测试域」组） | `algorithm:read` | AuthenticatedLayout | INT-362 ✅（内容规范）；导航落位 INT-417 |
 | `/Evaluation` | 评估维度（侧栏「测试域」组） | `evaluation:read` | AuthenticatedLayout | INT-356 ✅（11_用例域 §4.1）；导航落位 INT-417 |
@@ -151,8 +152,8 @@
 | `/tasks` | task:read | `/tasks` | 保留，四页签 |
 | `/tasks/:id` | task:read | `/tasks/$taskId` | 保留 |
 | `/published-tasks` | （redirect） | `/tasks?tab=published` | 延续 redirect（INT-298 口径不变） |
-| `/history-reports` | report:read | `/reports` | 并入报告中心「历史报告」页签，旧链 redirect |
-| `/test-reports` | report:read | `/reports` | 并入「测试报告」页签，旧链 redirect |
+| `/history-reports` | report:read | `/report-center`（历史报告页签） | 并入管理页「历史报告」页签，旧链 redirect（INT-441） |
+| `/test-reports` | report:read | `/report-center`（测试报告页签） | 并入管理页「测试报告」页签，旧链 redirect（INT-441） |
 | `/report/:id` | report:read | `/report/$reportId` | 保留（benchmark 行内「查看报告」同落此页） |
 | `/report?id=` | report:read | `/report/$reportId` | query 入口 redirect 兼容 |
 | `/TestCaseManager` | testcase:read | `/testcases` | 改名 redirect |
@@ -171,7 +172,7 @@
 
 ### 2.3 新增页（负责人 2026-10-14 拍板）
 
-`/dashboard`（工作台）、`/system-settings/*`（系统设置工作区）、`/profile`（个人中心）、`/about`（关于）、`/user-guide`（文档）、`/rankings`（Benchmark 排行）、`/register`（注册页，自登录双 Tab 拆出）、`/401 /403 /404 /500 /503`（错误页五件）。
+`/dashboard`（工作台）、`/system-settings/*`（系统设置工作区）、`/profile`（个人中心）、`/about`（关于）、`/user-guide`（文档）、`/rankings`（Benchmark 排行）、`/report-center`（报告中心·管理页，INT-441 自 `/reports` 拆分）、`/register`（注册页，自登录双 Tab 拆出）、`/401 /403 /404 /500 /503`（错误页五件）。
 
 ---
 
@@ -185,7 +186,7 @@
 | --- | --- | --- | --- |
 | 主页 | `/` | 全员 | 公开门户；当前页高亮（activeProps `bg-accent text-foreground`） |
 | 工作台 | `/dashboard` | 登录即可（home:read；未登录为受限项——点击弹「需要登录」Dialog，5 秒倒计时跳 `/login?redirect=`，`public-header.tsx:486-524` 机制照搬） | INT-345/346 同口径 |
-| 报告 | `/reports` | `report:read`（admin/tester/algo_engineer/guest；device_admin 隐藏） | **报告直达**（负责人口径）；INT-345 文案「报告」 |
+| 报告 | `/reports`（展示页） | `report:read`（admin/tester/algo_engineer/guest；device_admin 隐藏） | **报告直达**（负责人口径）；INT-441 双入口：导航「报告」→ 展示页 `/reports`、侧栏「报告中心」→ 管理页 `/report-center`；INT-345 文案「报告」 |
 | Benchmark 排行 | `/rankings` | `benchmark:ranking:read`（现仅 admin，§1.4；未登录隐藏） | **benchmark 直达**；不进侧栏（公开数据页走 PublicLayout，对齐 newAPI rankings 不在侧栏） |
 | 文档 | `/user-guide` | 全员 | 公开 |
 | 关于 | `/about` | 全员 | 公开 |
@@ -196,7 +197,7 @@
 
 **登录壳（AuthenticatedLayout 的 AppHeader 右区，INT-344 出组件）**，从左到右（次序按 INT-344 §3.1 定稿——newAPI 实测 Search→Notification→Language→Config→Profile 相对次序保留，签到/充值摘除，算法切换器插首位）：
 
-1. **全局算法切换器**（本平台特有，负责人口径；主案 INT-344）——总口径 §3.5。
+1. **全局算法切换器**（本平台特有，负责人口径；主案 INT-344）——总口径 §3.5；**INT-442 按路由显隐**：`/reports`（导航栏「报告」展示页）置 `showGlobalAlgorithmSwitcher=false`——该页算法切换唯一入口=页内「当前算法」大卡（INT-436 组件复用）；`/report-center` 与其余登录壳页面默认显示（02_导航栏 §3.4 契约）。
 2. 全局搜索（`bg-muted/25 h-8 rounded-md` + ⌘K CommandDialog，照 `search.tsx`；登录即可，命中范围按各域权限动态注册）。
 3. 通知（NotificationPopover 照搬；登录即可，数据流 `sse:read` 五角色全持）。
 4. 语言切换（LanguageSwitcher 照搬占位；默认中文，多语言包启用与否待负责人确认 §7）。
@@ -219,7 +220,7 @@
 | 测试资产 | 用例管理 | `/testcases` | ListChecks | `testcase:read` |
 | 测试资产 | 音频管理 | `/audio-import` | Music | `audio:read` |
 | 测试资产 | 设备管理 | `/devices` | Headphones | `device:read` |
-| 测试资产 | 报告中心 | `/reports` | FileBarChart | `report:read` |
+| 测试资产 | 报告中心 | `/report-center` | FileBarChart | `report:read` |
 | 测试域 | 算法配置 | `/AlgorithmConfig` | Box | `algorithm:read` |
 | 测试域 | 评估维度 | `/Evaluation` | Gauge | `evaluation:read` |
 | 测试域 | SPL 映射 | `/SPLMapping` | AudioWaveform | `spl:read`+`digital_spl:read`（与 INT-347 现口径一致；五角色中仅 device_admin 同时持有，与「任一」判定结果等价） |
@@ -227,7 +228,7 @@
 | 管理 | 日志查看 | `/logs` | FileText | `log:read` |
 | 管理 | 系统设置 | `/system-settings/site` | Settings | 任一设置域权限（§3.4 集合，INT-417 收窄） |
 
-对位 newAPI `use-sidebar-data.ts` 四组（AI 工具/常规/个人/管理员）→ 本平台重排为**总览/AI 工具/测试执行/测试资产/测试域/管理**六组；**INT-417 拍板（负责人 2026-10-15 口径）**：算法配置/评估维度/SPL 映射/标签管理四项提升为侧栏「测试域」组一级直达项（组序居「测试资产」之后、「管理」之前；路由保留现名，设置树对应分区收敛移除，**不留双入口**）；OAuth 提供方仍收编设置工作区「认证设置」域（INT-347 口径不变）；个人中心不走侧栏（头像下拉直达，对位 newAPI Profile 在「个人」组——本平台收进头像下拉，侧栏保持纯业务）。
+对位 newAPI `use-sidebar-data.ts` 四组（AI 工具/常规/个人/管理员）→ 本平台重排为**总览/AI 工具/测试执行/测试资产/测试域/管理**六组；**INT-417 拍板（负责人 2026-10-15 口径）**：算法配置/评估维度/SPL 映射/标签管理四项提升为侧栏「测试域」组一级直达项（组序居「测试资产」之后、「管理」之前；路由保留现名，设置树对应分区收敛移除，**不留双入口**）；OAuth 提供方仍收编设置工作区「认证设置」域（INT-347 口径不变）；个人中心不走侧栏（头像下拉直达，对位 newAPI Profile 在「个人」组——本平台收进头像下拉，侧栏保持纯业务）。**报告中心侧栏项落管理页 `/report-center`**（INT-441 双入口：侧栏「报告中心」=管理页、导航「报告」=展示页 `/reports`；旧链 redirect 见 §2.2）。
 
 ### 3.4 系统设置工作区 drill-in 树（INT-347 v1.1 拍板，URL `/system-settings/<域>/<分区>` 路径式；本卡汇总域级门槛）
 
@@ -246,7 +247,7 @@
 
 ### 3.5 全局算法切换器总口径（负责人 2026-10-14 拍板；跨卡契约，本卡固化）
 
-- **位置**：登录壳导航栏右上角（全局控制区首位，§3.2）；公共站头不出现。
+- **位置**：登录壳导航栏右上角（全局控制区首位，§3.2）；公共站头不出现。**INT-442 按路由显隐**：`/reports`（导航栏「报告」展示页）置 `showGlobalAlgorithmSwitcher=false`——该页算法切换唯一入口=页内「当前算法」大卡（INT-436 组件复用、写回同一全局 store）；`/report-center` 与其余登录壳页面默认显示；`/rankings` 公开页无 AppHeader 不渲染（02_导航栏 §3.4 / 04_控制台 §3.4「两页复用契约」）。
 - **行为**：切换一次全局生效——写 Zustand 全局算法 store（INT-344 主案）；工作台各业务页**不再各自做算法筛选**，页面内算法筛选与全局切换联动。
 - **联动规则**（各卡已落地）：业务列表页（任务/用例/音频/设备/API/报告/日志）工具栏渲染**只读联动 chip**（Badge secondary + × 清空）；请求自动附 `algorithm_type`（store 非空时）。测试执行两页（INT-355）步骤0 算法选择**即写回全局**（「测试流程算法是业务步骤而非筛选器」）；页内不提供取消（清空唯一入口=导航栏切换器）；列表过滤空态给「更换算法」+「查看全部（临时解除，仅本页）」。
 - **可见性**：`algorithm:read`（切换器数据源=算法定义清单 `GET /algorithm/definitions`）——admin/tester/algo_engineer 显，device_admin/guest 隐藏（隐藏而非置灰）。**本卡拍板**，INT-344 落组件时对齐。
@@ -275,7 +276,7 @@
 | `/testcases` | ✓ | ✓ | ✓（只读） | ✗ | ✗ | ↗ /login |
 | `/audio-import` | ✓ | ✓ | ✓（只读） | ✗ | ✗ | ↗ /login |
 | `/devices` | ✓ | ✓ | ✗ | ✓ | ✗ | ↗ /login |
-| `/reports` `/report/$id` | ✓ | ✓ | ✓ | ✗ | ✓（只读+对比） | ↗ /login |
+| `/reports`（展示页）`/report-center`（管理页）`/report/$id` | ✓ | ✓ | ✓ | ✗ | ✓（只读+对比） | ↗ /login |
 | `/ai-chat` AI 对话 | ✓ | ✓ | ✓ | ✗（无 report:read） | ✓（只读对话+对比，生成卡隐藏） | ↗ /login |
 | `/logs` | ✓ | ✓ | ✓ | ✗ | ✗ | ↗ /login |
 | `/AlgorithmConfig` 算法配置 | ✓ | ✓（read+case_param_manage） | ✓（全链） | ✗ | ✗ | ↗ /login |
@@ -300,7 +301,7 @@
 | 任务管理 | 新建/批量/重试 `task:create/batch/execute`；导出 `task:export`；发布 `task:publish` | INT-354 §RBAC ✅ |
 | 用例管理 | 新建/编辑/复制/删除 `testcase:*`；导入导出 `testcase:import_export`；预览 `testcase:preview`；分组/标签写 `group:*/tag:*` | INT-356 §RBAC ✅ |
 | 设备管理 | device/playback/api_config 全链码 + spl/digital_spl（SPL 页）+ 监控告警族（INT-361 落定，16_设备域 §8） | INT-361 ✅ |
-| 报告中心 | 生成 `report:create`；发布 `report:publish`（tester ✗ / algo ✓）；删除 `report:delete`；对比 `report:compare` | INT-360 ✅（15_报告域 §7） |
+| 报告中心（管理页 `/report-center`） | 生成 `report:create`；发布 `report:publish`（tester ✗ / algo ✓）；删除 `report:delete`；对比 `report:compare` | INT-439 ✅（15_报告域 §6）；展示页 `/reports` 行操作仅查看/复制链接（15_报告域 §2.1） |
 | 日志查看 | 标记/清空/归档 `log:manage`（tester ✓ / algo ✗） | INT-362 ✅（17_配置运维 §9.2） |
 | 设置工作区 | 各域写码见 §3.4 表 | INT-347 §RBAC ✅（全量矩阵已出） |
 | 算法配置/评估维度/SPL 映射/标签管理（侧栏「测试域」组四页） | 算法：definition_manage/group_manage/param_manage/case_param_manage；评估：dim_manage/category_manage/import_export（+execute）；SPL：spl:*/digital_spl:*；标签：tag:*（五角色可见性结论与收编前一致，仅入口层级变化） | INT-362 ✅（算法，17_配置运维 §9.1）/ INT-356 ✅（11_用例域 §RBAC）/ INT-361 ✅（SPL） |
@@ -329,7 +330,7 @@
 | Usage Logs `/usage-logs/*` | `features/usage-logs` | 任务管理 `/tasks`（四页签+详情） | 双视图表格版式（INT-354） |
 | Users `/users` | `features/users` | 用例管理 `/testcases`（用户管理本体→设置工作区） | 表格版式基准（INT-356 / INT-347） |
 | Models `/models/*` | `features/models` | 算法配置页 `/AlgorithmConfig`（侧栏「测试域」组，INT-417） | 分区注册器机制照搬；页面版式与 CRUD 规范随 INT-362（原设置工作区「算法配置」域方案废止） |
-| Model Pricing `/pricing` | `features/model-pricing` | 报告中心/报告查看 | **版式对位**（模型价格页版式，负责人拍板；LLM 定价内容不引入）（INT-360 ✅） |
+| Model Pricing `/pricing` | `features/model-pricing` | 报告展示页 `/reports` + 报告中心·管理页 `/report-center` + 报告查看 `/report/$reportId` | **版式对位**（模型价格页版式，负责人拍板；LLM 定价内容不引入）（INT-439 ✅，三页双入口照 pricing 版式已落） |
 | Rankings `/rankings` | `features/rankings` | Benchmark 排行 `/rankings` | 版式对位（官方排行榜页，负责人拍板）（INT-359） |
 | System Settings `/system-settings/*` | `features/system-settings` | 系统设置工作区 `/system-settings/*` | drill-in 机制+表单脏状态/离开守卫全套照搬；域树收敛为本平台四域（INT-347 拍板六域 → INT-417 移出「算法配置」「测试配置」两域→侧栏测试域组）（INT-347） |
 | Profile `/profile` | `features/profile` | 个人中心 `/profile` | 版式对位；并入现 `/AccountSettings`（INT-358） |
@@ -365,7 +366,7 @@ Channels（渠道）/ Keys（密钥）/ Redemption Codes（兑换码）/ Wallet�
 - **interfaces 层**：路由树（TanStack Router `routes/` 全目录——_public/_authenticated/_errors 组壳 + 页面路由）、四种布局壳组件、TopNav/AppSidebar/AppHeader、设置树注册器、导航项权限渲染组件。
 - **application 层**：`usePermissions`（hasPermission/hasAnyPermission 封装 + `/auth/me` 查询）、全局算法 store（Zustand，INT-344 契约：algorithm 全局态 + setAlgorithm/清除）、主题定制 hooks（基座卡）、侧栏视图解析 hook（use-sidebar-view 对位）、auth guards（useAuthGuards：登录/权限/反向守卫三分支）。
 - **infrastructure 层**：auth API client（login/register/oauth/me/refresh/encryption-key）、status/options API client、侧栏折叠 cookie 存取、主题 localStorage 存取、redirect 消毒纯函数（domain/lib）。
-- **domain 层**：权限码常量表（100 权限点枚举单一来源，对齐 seed）、角色枚举与中文名映射、路由 meta 权限契约（permission 码 ↔ 路由映射常量）。
+- **domain 层**：权限码常量表（101 权限点 + `*` 枚举单一来源，对齐 seed）、角色枚举与中文名映射、路由 meta 权限契约（permission 码 ↔ 路由映射常量）。
 
 ### 6.2 实施改造清单（供实施卡）
 
@@ -388,6 +389,8 @@ Channels（渠道）/ Keys（密钥）/ Redemption Codes（兑换码）/ Wallet�
 | 4 | 顶部导航站点级模块开关（newAPI nav-modules enabled/requireAuth）是否纳入设置工作区 | 待后端立项 | §5.3 |
 | 5 | ~~INT-361 卡描述含 `/SPLMapping` 独立页 vs INT-347/346 收编设置工作区拍板~~ **已裁定（INT-417）**：算法配置/评估维度/SPL 映射/标签管理四项提升侧栏「测试域」组、路由保留现名——INT-361 卡描述与此一致；11/16/17 卡产出时按 §2.2 注记收敛落位 | 已裁定（INT-417） | §2.2 注记 |
 | 6 | 首页门槛从 `home:read` 改公开路由（数据接口仍持码），规模条未登录降级文案——负责人拍板过的口径复核 | 已拍板（INT-345），本表登记 | §2.2 |
+| 7 | **测试结果人工复核权限码 `task.result.review` 后端立项**（人工复核功能设计文档 §5 预留码，seed 实测不存在）——立项后 09/10 卡复核入口/标记/统计矩阵才可落权限 | 待后端立项 | 09 §9 / 10 §RBAC |
+| 8 | **首页功能设计文档回写**（主库 `doc/功能设计文档/12_通信/首页功能设计文档.md`，只读禁改）：① 首页定位「登录后首先看到」→ 公开门户（未登录可见，规模条降级文案）；② 流程四步→五步（首位「选择算法」，INT-355 步骤0 口径）；③ 功能网格八类目「声压级映射→报告中心、评估系统→评估维度」（INT-417 测试域组）；④ 规模条整项可点击+统计细分（noise/prompt、running/failed、设备实时刷新、API 告警） | 待后端/文档回写立项 | 03 §3.2/§3.3/§3.5 |
 
 ---
 
@@ -404,4 +407,6 @@ Channels（渠道）/ Keys（密钥）/ Redemption Codes（兑换码）/ Wallet�
 | 2026-10-15 | v1.5 | INT-362 产出后回写：§0 文档地图 17 卡置「✅ 产出」；§2.1 `/logs` `/AlgorithmConfig` `/system-settings/*` 三行状态收敛（INT-362 ✅）；§4.2 日志查看行置 ✅（矩阵落点 17_配置运维 §9.2）、算法配置行置 ✅（矩阵落点 17_配置运维 §9.1）；三页落位=17 卡按 §2.2/§3.3 收敛（算法配置侧栏「测试域」组独立页、日志 `/logs` 改名 redirect、OAuth 收编认证设置域照 custom-oauth 母版 B 出全量规范）；§5.1 Models 对位行「页面版式与 CRUD 规范随 INT-362」已落地（算法编辑模态窗全数据 CRUD 重设计=17 卡 §6） |
 | 2026-10-15 | v1.6 | INT-360 产出后回写：§0 文档地图 15 卡置「✅ 产出」（卡负责人改记 D）；§2.1 `/reports` `/report/$reportId` 两行状态收敛（INT-360 ✅）；§4.2 报告中心行置 ✅（矩阵落点 15_报告域 §7）；§5.1 Model Pricing 对位行置 ✅（两页三入口照 pricing 版式已落：报告中心 `/reports` 双页签[测试报告/历史报告]+ 报告查看 `/report/$reportId` 阅读优先版式，LLM 定价内容不引入） |
 | 2026-10-15 | v1.7 | INT-424 前置审核打回修订：§4.1 侧栏树结果行 algo_engineer 可见项计数勘误 11→10（序列 15/14/10/3/3，与同格括注枚举、02 注 5「algo 10」一致——预 417 8 项 + 测试域 3 - 设置 1 = 10）；§3.4 设置树「配置运维」域统一为「运维设置」（§4.1 `/system-settings/*` 行、02 §5、04 §5、05 §4.5 并轨，对齐 05 系统设置 §3.2 树名；17_配置运维 卡名与文件不动） |
+| 2026-10-16 | v1.9 | INT-381 前置审核打回修订：§1.1 角色权限点数勘误（tester ~68→**67**、algo_engineer ~45→**31**、device_admin ~28→**26**、guest ~9→9，逐角色实测计数）；§1.2 权限点总数 100→**101**、模块数 22→**21**、task 11→**12**（补 `task:cherry_pick`）；§1.5 速查表 tester 任务行补 cherry_pick；§6.1 domain 权限点枚举 100→101；§7 新增 #7 `task.result.review` 待后端立项、#8 首页功能文档回写（定位/流程四→五/网格八类目/规模条）；§0 文档地图状态同步（03/04/10/11/14 置 in_review，16/17 置 done） |
 | 2026-10-16 | v1.8 | INT-358 产出后回写：§0 文档地图 13 卡置「✅ 产出」；`/profile` 行「归属卡」收敛（INT-358 ✅）；本卡内容规范=13_个人中心.md（用户身份卡+个人数据快捷区+个人信息卡+账号安全卡；后端能力缺口=自助改密/按用户过滤/邮箱展示等六项待后端立项，见 13 卡 §4.3） |
+| 2026-10-16 | v1.10 | INT-430 前置审核观察项回写：报告域双入口 + 算法口径——§0 文档地图 15 卡归属标注 INT-360 产出 → INT-439 重做 v2.3（负责人 C）；§2.1 `/reports` 行改**展示页**（导航栏「报告」，弱管理，行操作仅查看/复制链接）+ 新增 `/report-center` 行（侧栏「报告中心」管理页，双页签+管理操作集中，INT-441）+ `/report/$reportId` 行归属改 INT-439；§2.2 `/test-reports` `/history-reports` redirect 目标改 `/report-center` 对应页签；§2.3 新增页补 `/report-center`；§3.1 顶部导航「报告」行补双入口口径；§3.2/§3.5 全局算法切换器补 INT-442 按路由显隐（`/reports` 展示页 `showGlobalAlgorithmSwitcher=false`、改「当前算法」大卡）；§3.3 侧栏「报告中心」路由改 `/report-center`；§4.1/§4.2/§5.1 报告相关行同步（展示/管理分工、指针改 15_报告域 §6/§2.1） |
