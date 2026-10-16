@@ -191,10 +191,10 @@ class GroupController:
             try:
                 # 级联软删除分组下的所有未删除测试用例
                 # 走统一入口：bulk update 不经过 ORM before_flush，需显式写 deleted_at + 操作人
+                # （"只删未软删行"的幂等守卫已内聚在 bulk_soft_delete 内，调用方不再各自加）
                 from backend.models.models import TestCase
                 bulk_soft_delete(TestCase.query.filter(
-                    TestCase.group_id == group.id,
-                    TestCase.deleted == False
+                    TestCase.group_id == group.id
                 ))
             except Exception as e:
                 db.session.rollback()

@@ -18,13 +18,17 @@ import pytest
 from sqlalchemy import text
 
 from backend.models.database import db
-from backend.models.models import TestCase, TestCaseGroup, Tag, TestCaseTag, Task, TaskCase
+from backend.models.models import (
+    TestCase, TestCaseGroup, Tag, TestCaseTag, Task, TaskCase, TestResult, API,
+)
 from backend.models.soft_delete import bulk_soft_delete, include_deleted
 from backend.controllers.task_controller import TaskController
 from backend.controllers.published_task_controller import PublishedTaskController
 from backend.controllers.testcase_controller import TestCaseController
+from backend.controllers.report_controller_task import ReportControllerTask
 from backend.services.execution.execution_engine import ExecutionEngine
 from backend.services.execution.api_executor import APIExecutor
+from backend.utils.report.report_utils import ReportUtils
 
 UTC8 = timezone(timedelta(hours=8))
 OPERATOR_ID = 424242
@@ -42,7 +46,7 @@ def _new_case(group, deleted=False):
         id=str(uuid.uuid4()),
         name=f'软删测试用例-{uuid.uuid4().hex[:8]}',
         config={'rounds': []},
-        group_id=group.id,
+        group_id=group.id if group is not None else None,
         test_type='api',
         deleted=deleted,
     )
@@ -543,3 +547,191 @@ def test_api_execution_of_alive_case_regression(app):
     ), {'i': tc_rel_id}).fetchone()
     # 未软删用例：不会被误报为「找不到测试用例」（后续失败原因是缺 API 配置等真实原因）
     assert row[0] != '找不到测试用例', f'未软删用例被误判: {row[0]!r}'
+
+
+# ---------- 7. 报告域：软删用例不得静默改归（缺陷 D2 回归） ----------
+
+def _new_task_with_result(case, status='completed'):
+    """建一个含单条 TestResult 的任务（报告生成的最小前置）
+
+    TestResult 挂一个真实 API：报告层 `get_resource_name` 需要 api_id/device_id
+    才能定位资源（两者皆空会触发该函数内既有的一处 `base_resource` 未初始化问题，
+    与本卡无关，见交付评论的观察项）。
+    """
+    api = API(name=f'软删报告测试API-{uuid.uuid4().hex[:8]}', meta={}, api_endpoints=[])
+    db.session.add(api)
+    db.session.flush()
+    task = Task(name=f'软删报告测试任务-{uuid.uuid4().hex[:8]}', type='api',
+                status=status, total_cases=1)
+    db.session.add(task)
+    db.session.flush()
+    db.session.add(TaskCase(task_id=task.id, test_case_id=case.id, status='completed',
+                            execution_status='completed', evaluation_status='completed'))
+    result = TestResult(task_id=task.id, test_case_id=case.id, api_id=api.id,
+                        algorithm_type='asr', execution_status='completed')
+    db.session.add(result)
+    db.session.flush()
+    return task, result
+
+
+def test_report_generation_excludes_soft_deleted_case_result(app):
+    """报告生成门禁：软删用例的执行结果不得进入 results
+
+    缺陷 D2：`valid_case_ids` 原先取自 TaskCase（未接入软删过滤），软删用例的
+    TestResult 仍留在 results 里，报告层按 id 又取不到它的元数据 → 静默归到
+    default_group。上游收敛后，软删用例的结果根本不进报告，且是显式失败而非静默空报告。
+    """
+    group = _new_group()
+    case = _new_case(group)
+    task, _result = _new_task_with_result(case)
+    db.session.commit()
+    task_id = task.id
+
+    # 基线：未软删时结果正常进入报告
+    _task, results, error = ReportControllerTask._validate_task_and_get_results(task_id)
+    assert error is None, f'基线不应报错: {error}'
+    assert results is not None and len(results) == 1, f'基线应含 1 条结果，实际 {results!r}'
+
+    # 软删用例后：结果不得再进入报告，且必须显式失败
+    case.deleted = True
+    db.session.commit()
+
+    _task, results, error = ReportControllerTask._validate_task_and_get_results(task_id)
+    assert not results, f'软删用例的执行结果仍进入报告: {results!r}'
+    assert error is not None, '软删用例被剔除后应显式报错，不能静默产出空报告'
+
+
+def test_report_aggregation_skips_soft_deleted_case_instead_of_default_group(app):
+    """报告聚合：软删用例被显式跳过，不得凭空生成 default_group / default_tag 桶
+
+    缺陷 D2 的静默错分：原实现 `if not test_case` 走 `default_group` 兜底，
+    同一份数据出现在一个不存在的分组里、原分组少一个样本，全程无日志。
+    """
+    group = _new_group()
+    case = _new_case(group)
+    task, result = _new_task_with_result(case)
+    db.session.commit()
+    task_id, result_id = task.id, result.id
+
+    # 基线：未软删 → 分数归在真实分组下
+    alive_result = db.session.get(TestResult, result_id)
+    baseline = ReportUtils.calculate_core_metrics([alive_result], [], [], tasks_map={task_id: task})
+    assert group.id in baseline['case_type_stats'], '基线应归到真实分组'
+    assert 'default_group' not in baseline['case_type_stats']
+
+    # 软删该用例 → 不得凭空出现 default_group / default_tag
+    case.deleted = True
+    db.session.commit()
+    db.session.expire_all()
+
+    soft_deleted_result = db.session.get(TestResult, result_id)
+    assert soft_deleted_result is not None, 'TestResult 本身未软删，应仍可读'
+    payload = ReportUtils.calculate_core_metrics(
+        [soft_deleted_result], [], [], tasks_map={task_id: task}
+    )
+    assert 'default_group' not in payload['case_type_stats'], \
+        f"软删用例被静默归到 default_group: {payload['case_type_stats']!r}"
+    assert 'default_tag' not in payload['tag_metric_data'], \
+        f"软删用例被静默归到 default_tag: {payload['tag_metric_data']!r}"
+    assert payload['resources'] == [], \
+        f"软删用例仍被登记为报告资源: {payload['resources']!r}"
+
+
+def test_alive_ungrouped_case_still_uses_default_group(app):
+    """回归：用例**存在**但确实没有分组/标签时，default_group / default_tag 仍照旧
+
+    区分两种「取不到 test_case」：软删（跳过）vs 用例本就没有分组（合法桶，保留）。
+    """
+    case = _new_case(None)
+    task, result = _new_task_with_result(case)
+    db.session.commit()
+
+    payload = ReportUtils.calculate_core_metrics(
+        [db.session.get(TestResult, result.id)], [], [], tasks_map={task.id: task}
+    )
+    assert 'default_group' in payload['case_type_stats'], \
+        '无分组用例应仍归到 default_group（合法桶，不能被本次改动误伤）'
+    assert 'default_tag' in payload['tag_metric_data']
+
+
+# ---------- 8. 统一入口的幂等守卫（M3） ----------
+
+def test_bulk_soft_delete_is_idempotent(app):
+    """M3：重复软删不得覆盖首次的 deleted_at / 操作人（守卫内聚在统一入口）
+
+    标签级联删除的 case_ids 取自关联表（含已软删用例）→ 必然发生重复软删；
+    原实现会覆盖首次痕迹。守卫收敛进 `bulk_soft_delete` 后，调用方无需各自记得加。
+    """
+    group = _new_group()
+    case = _new_case(group)
+    db.session.commit()
+    case_id = case.id
+
+    affected = bulk_soft_delete(TestCase.query.filter(TestCase.id == case_id),
+                                operator_user_id=111111)
+    db.session.commit()
+    assert affected == 1, f'首次软删应命中 1 行，实际 {affected}'
+    first = _raw_case_operator(case_id)
+
+    affected_again = bulk_soft_delete(TestCase.query.filter(TestCase.id == case_id),
+                                      operator_user_id=222222)
+    db.session.commit()
+    assert affected_again == 0, f'重复软删不应再命中已软删行，实际 {affected_again}'
+    second = _raw_case_operator(case_id)
+
+    assert second[1] == first[1], f'deleted_at 被重复软删覆盖: {first[1]!r} → {second[1]!r}'
+    assert second[2] == first[2], f'操作人被重复软删覆盖: {first[2]!r} → {second[2]!r}'
+
+
+def test_tag_cascade_does_not_overwrite_existing_deleted_at(app, client):
+    """M3 真实路径：用例已软删后，删其标签的级联不得覆盖该用例的首次软删痕迹"""
+    group = _new_group()
+    case = _new_case(group)
+    tag = Tag(name=f'幂等守卫标签-{uuid.uuid4().hex[:8]}')
+    db.session.add(tag)
+    db.session.flush()
+    db.session.add(TestCaseTag(test_case_id=case.id, tag_id=tag.id))
+    db.session.commit()
+    case_id, tag_id = case.id, tag.id
+
+    # 先由单条删除接口软删该用例（留下首次痕迹）
+    resp = client.delete(f'/api/v1/testcases/{case_id}',
+                         headers={'X-User-Id': '111111'})
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    first = _raw_case_operator(case_id)
+    assert first[1] is not None and first[2] == 111111
+
+    # 再删标签触发级联：关联表里仍留着该已软删用例的 id
+    resp = client.delete(f'/api/v1/tags/{tag_id}?cascade=true',
+                         headers={'X-User-Id': '222222'})
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    second = _raw_case_operator(case_id)
+
+    assert second[1] == first[1], f'级联重复软删覆盖了 deleted_at: {first[1]!r} → {second[1]!r}'
+    assert second[2] == 111111, f'级联重复软删覆盖了操作人: {second[2]!r}'
+
+
+# ---------- 9. 操作人过渡期开关（M4） ----------
+
+def test_operator_header_ignored_when_auth_enabled(app, client):
+    """M4：认证落地（AUTH_ENABLED=true）后不再信任客户端自带的 X-User-Id
+
+    否则任何客户端都能伪造审计操作人——被污染的审计字段比 NULL 更坏。
+    """
+    group = _new_group()
+    case = _new_case(group)
+    db.session.commit()
+
+    original = app.config.get('AUTH_ENABLED', False)
+    app.config['AUTH_ENABLED'] = True
+    try:
+        resp = client.delete(f'/api/v1/testcases/{case.id}',
+                             headers={'X-User-Id': str(OPERATOR_ID)})
+        assert resp.status_code == 200, resp.get_data(as_text=True)
+    finally:
+        app.config['AUTH_ENABLED'] = original
+
+    deleted, deleted_at, operator = _raw_case_operator(case.id)
+    assert deleted is True
+    assert deleted_at is not None, '即使不认请求头，软删审计（deleted_at）仍须写入'
+    assert operator is None, f'认证落地后不应采信客户端自带的 X-User-Id，实际 {operator!r}'

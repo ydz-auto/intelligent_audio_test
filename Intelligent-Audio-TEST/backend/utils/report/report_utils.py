@@ -4,7 +4,10 @@ from backend.models.database import db
 from backend.utils.common.result_data_store import load_full_result_data
 from backend.schemas.testcase import ReportAudioItem, ReportTestCaseItem
 import json as _json
+import logging
 from collections import Counter
+
+_logger = logging.getLogger(__name__)
 
 
 def derive_algorithm_type(values):
@@ -478,18 +481,28 @@ class ReportUtils:
             test_cases_map = {tc.id: tc for tc in test_cases}
 
         for result in results:
+            # 3. 获取用例信息（使用预加载的映射）
+            test_case = test_cases_map.get(result.test_case_id)
+            if result.test_case_id and test_case is None:
+                # 用例已软删（或数据不一致）：既不拒绝也不跳过，会把它静默归到
+                # default_group / default_tag —— 报告里凭空多出一个不存在的分组，
+                # 原分组少一个样本，全程无日志。口径：软删即不可用，显式跳过并留痕。
+                _logger.warning(
+                    '[report] 核心指标统计跳过结果：用例 %s 不存在或已软删（test_result_id=%s）',
+                    result.test_case_id, result.id
+                )
+                continue
+
             task = tasks_map.get(result.task_id) if tasks_map else None
             resource = ReportUtils.get_resource_name(result, task, use_time_prefix)
-            
+
             if resource not in raw_data:
                 raw_data[resource] = {dim.name: [] for dim in all_dimensions}
                 if resource not in resources:
                     resources.append(resource)
-            
-            # 3. 获取用例信息（使用预加载的映射）
-            test_case = test_cases_map.get(result.test_case_id)
+
             if not test_case:
-                # test_case 未找到时使用默认值，不跳过累加器初始化
+                # 用例 id 缺失（历史脏数据）时的既有兜底
                 category = "default_group"
                 tags = ["default_tag"]
             else:
@@ -956,6 +969,13 @@ class ReportUtils:
 
         for result in results:
             test_case = test_cases_map.get(result.test_case_id)
+            if result.test_case_id and test_case is None:
+                # 同 calculate_core_metrics：软删用例显式跳过并留痕，不静默归到 default_group
+                _logger.warning(
+                    '[report] 用例分组统计跳过结果：用例 %s 不存在或已软删（test_result_id=%s）',
+                    result.test_case_id, result.id
+                )
+                continue
             if not test_case:
                 group_id = "default_group"
                 group_name = "default_group"
@@ -2010,6 +2030,13 @@ class ReportUtils:
                 continue
             for result in results:
                 if result.id not in dim_results_map:
+                    continue
+                if result.test_case_id and result.test_case_id not in test_cases_map:
+                    # 软删用例：元数据缺失会让轮次数分母静默退化为 0，改变该维度的统计口径
+                    _logger.warning(
+                        '[report] 维度聚合跳过结果：用例 %s 不存在或已软删（test_result_id=%s）',
+                        result.test_case_id, result.id
+                    )
                     continue
                 exclude_set = ReportUtils._resolve_exclude_rounds(result, dim_name, dim_results_map, dim_name_to_id, dim_exclude_rounds.get(dim_name))
                 overall_item = None

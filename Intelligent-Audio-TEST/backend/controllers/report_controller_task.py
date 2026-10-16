@@ -77,7 +77,18 @@ class ReportControllerTask(ReportControllerBase):
             results = [r for r in results if r.test_case_id in valid_case_ids]
         if not results:
             return None, None, error_response("生成失败: 任务没有测试结果数据")
-        
+
+        # 软删用例的执行结果同样不得进入报告：报告层按 id 取不到软删用例的元数据，
+        # 会把它静默归到不存在的 default_group / default_tag，使报告多出一个分组、
+        # 原分组少一个样本（口径：软删即不可用，见 backend/models/soft_delete.py）。
+        # TestCase 已登记全局软删过滤，此处查询天然只返回未软删用例。
+        live_case_ids = {c.id for c in TestCase.query.filter(
+            TestCase.id.in_({r.test_case_id for r in results if r.test_case_id})
+        ).all()}
+        results = [r for r in results if not r.test_case_id or r.test_case_id in live_case_ids]
+        if not results:
+            return None, None, error_response("生成失败: 任务没有测试结果数据")
+
         return task, results, None
 
     @staticmethod

@@ -129,6 +129,17 @@ def _apply_soft_delete_filter(execute_state):
     ])
 
 
+def _query_entity(query):
+    """取 legacy Query 的主体模型（取不到返回 None）。"""
+    try:
+        descriptions = query.column_descriptions
+    except Exception:
+        return None
+    if not descriptions:
+        return None
+    return descriptions[0].get('entity')
+
+
 def bulk_soft_delete(query, operator_user_id=None):
     """批量 / 级联软删的统一入口。
 
@@ -137,15 +148,24 @@ def bulk_soft_delete(query, operator_user_id=None):
     会让批量删除与级联删除成为审计盲区（`deleted_at` 永远为 NULL）。
     凡批量或级联软删一律走本函数，与单条删除留下同样的痕迹。
 
+    **幂等守卫内聚在本函数**：只打标 `deleted == False` 的行，重复软删（例如标签级联
+    时关联表里还留着已软删用例的 id）不会覆盖首次写入的 `deleted_at` 与操作人。
+    调用方**不需要**自己再加守卫——守卫只有一处，才不会再出现「同一张卡内三种写法」。
+
     用法::
 
         bulk_soft_delete(TestCase.query.filter(TestCase.id.in_(ids)))
 
     :param query: 待软删行的 legacy `Query`（调用方负责提交事务）
     :param operator_user_id: 操作人；默认按当前请求上下文解析（无认证体系时为 None，不伪造身份）
-    :return: 受影响行数
+    :return: 受影响行数（仅计本次真正由未删转为已删的行）
     """
     from backend.utils.web.operator import current_operator_user_id
+
+    entity = _query_entity(query)
+    if entity is not None and hasattr(entity, 'deleted'):
+        # 幂等守卫：重复软删不覆盖首次的 deleted_at / updated_by_user_id
+        query = query.filter(entity.deleted.is_(False))
 
     if operator_user_id is None:
         operator_user_id = current_operator_user_id()

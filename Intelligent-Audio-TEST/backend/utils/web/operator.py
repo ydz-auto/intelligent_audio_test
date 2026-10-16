@@ -6,8 +6,12 @@
 
 解析优先级：
 1. `flask.g.operator_user_id` —— 认证层（G 域 RBAC）落地后由中间件注入；
-2. 请求头 `X-User-Id` —— 过渡期由调用方显式携带；
+2. 请求头 `X-User-Id` —— **仅过渡期（`AUTH_ENABLED=false`）接受**，认证落地即失效；
 3. 都取不到 → 返回 None。
+
+⚠️ 第 2 条是**过渡期专用**：`AUTH_ENABLED=true` 后本模块不再读该请求头，否则任何客户端
+都能自带 `X-User-Id` 伪造审计操作人——被污染的审计字段比 NULL 更坏，与「无身份来源时
+不伪造操作人」的口径相悖。认证落地后操作人只认认证中间件注入的 `flask.g.operator_user_id`。
 
 V9.7.10 现状：无认证体系（`AUTH_ENABLED=false`、`users` 表为空、前端不携带任何身份），
 因此实际解析结果为 None。此处**不伪造操作人**（不写系统哨兵、不猜用户），
@@ -16,6 +20,14 @@ V9.7.10 现状：无认证体系（`AUTH_ENABLED=false`、`users` 表为空、�
 from flask import current_app, g, request
 
 OPERATOR_HEADER = 'X-User-Id'
+
+
+def _auth_enabled():
+    """认证体系是否已落地（AUTH_ENABLED=true）。无应用上下文时按未落地处理。"""
+    try:
+        return bool(current_app.config.get('AUTH_ENABLED', False))
+    except Exception:
+        return False
 
 
 def _from_context():
@@ -32,6 +44,10 @@ def _from_context():
         value = None
     if value is not None:
         return value
+
+    # 过渡期专用：认证落地后不再信任客户端自带的请求头
+    if _auth_enabled():
+        return None
 
     try:
         return request.headers.get(OPERATOR_HEADER)
