@@ -129,6 +129,7 @@ export function StepReport({ taskId, readOnly }: StepReportProps) {
           <ComparisonReportPanel
             report={report}
             editing={false}
+            canEdit={false}
             onStartEditing={() => {}}
             onExitEditing={() => {}}
             onSaveAnalysis={() => {}}
@@ -137,6 +138,7 @@ export function StepReport({ taskId, readOnly }: StepReportProps) {
           <TaskReportPanel
             report={report}
             editing={false}
+            canEdit={false}
             onStartEditing={() => {}}
             onExitEditing={() => {}}
             onSaveAnalysis={() => {}}

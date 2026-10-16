@@ -9,7 +9,6 @@ import { useMemo } from 'react'
 import type { MetricMatrix } from '@/domain/models/report'
 import {
   calculateDistributionStats,
-  CHART_COLORS,
   colorArray,
   type DistributionStats,
 } from '@/infrastructure/adapters/chartConfig'
