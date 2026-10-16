@@ -6,7 +6,7 @@
   padding: 0;
   margin: -32px;
   width: calc(100% + 64px);
-  background: white;
+  background: var(--color-white);
 }
 
 .rv-back-section {
@@ -56,7 +56,7 @@
 .rv-btn-primary {
   padding: 10px 24px;
   background: var(--secondary);
-  color: white;
+  color: var(--color-white);
   border: none;
   border-radius: 8px;
   font-size: 14px;
@@ -83,7 +83,7 @@
 
 .rv-btn-primary {
   background: var(--secondary);
-  color: white;
+  color: var(--color-white);
 }
 
 .rv-btn-primary:hover {
@@ -92,7 +92,7 @@
 
 .rv-btn-success {
   background: var(--success);
-  color: white;
+  color: var(--color-white);
 }
 
 .rv-btn-success:hover {
@@ -137,7 +137,7 @@
 
 /* 报告保存区域 / 分析结论卡片 */
 .rv-analysis-conclusion-card {
-  background: white;
+  background: var(--color-white);
   border: 1px solid var(--color-slate-200);
   border-radius: 12px;
   padding: 24px;
@@ -248,7 +248,7 @@
   border-radius: 6px;
   font-size: 14px;
   color: var(--color-slate-800);
-  background: white;
+  background: var(--color-white);
   transition: all 0.2s;
   font-family: inherit;
   box-sizing: border-box;
@@ -275,7 +275,7 @@
   border-radius: 6px;
   font-size: 14px;
   color: var(--color-slate-800);
-  background: white;
+  background: var(--color-white);
   resize: vertical;
   line-height: 1.8;
   font-family: inherit;
@@ -295,7 +295,7 @@
 
 /* 选择器 */
 .rv-comparison-selectors {
-  background: white;
+  background: var(--color-white);
   border: 1px solid var(--color-slate-200);
   border-radius: 12px;
   padding: 24px;
@@ -370,7 +370,7 @@
   border-radius: 10px;
   cursor: pointer;
   transition: all 0.2s;
-  background: white;
+  background: var(--color-white);
   position: relative;
   user-select: none;
 }
@@ -414,12 +414,12 @@
 
 .rv-device-select-item.rv-selected .rv-device-icon-wrapper {
   background: var(--secondary);
-  color: white;
+  color: var(--color-white);
 }
 
 .rv-device-select-item.rv-api-item.rv-selected .rv-device-icon-wrapper {
   background: var(--success);
-  color: white;
+  color: var(--color-white);
 }
 
 .rv-device-info {
@@ -471,7 +471,7 @@
   padding: 12px 20px;
   border-radius: 8px;
   font-size: 14px;
-  color: white;
+  color: var(--color-white);
   box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 15%, transparent);
   animation: rv-slideInRight 0.3s ease;
 }
@@ -553,7 +553,7 @@
   position: absolute;
   right: 0;
   bottom: calc(100% + 8px);
-  background: white;
+  background: var(--color-white);
   border-radius: 10px;
   box-shadow: 0 4px 20px color-mix(in srgb, var(--color-black) 15%, transparent);
   border: 1px solid var(--color-slate-200);
@@ -569,7 +569,7 @@
   width: 100%;
   padding: 12px 16px;
   border: none;
-  background: white;
+  background: var(--color-white);
   color: var(--color-slate-800);
   font-size: 14px;
   cursor: pointer;
@@ -593,7 +593,7 @@
   right: 24px;
   padding: 10px 16px;
   background: var(--success);
-  color: white;
+  color: var(--color-white);
   border-radius: 6px;
   font-size: 13px;
   z-index: 9999;

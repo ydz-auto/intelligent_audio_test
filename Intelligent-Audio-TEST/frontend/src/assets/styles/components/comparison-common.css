@@ -90,7 +90,7 @@
   border-radius: 6px;
   font-size: 14px;
   color: var(--color-slate-700);
-  background: white;
+  background: var(--color-white);
   transition: all 0.2s ease;
 }
 
@@ -124,7 +124,7 @@
 
 .case-type-item {
   padding: 6px 12px;
-  background: white ;
+  background: var(--color-white) ;
   color: var(--color-slate-500) ;
   border: 1px solid var(--color-slate-200) ;
   border-radius: 16px;
@@ -145,7 +145,7 @@
 
 .case-type-item.active {
   background: var(--secondary) ;
-  color: white ;
+  color: var(--color-white) ;
   border-color: var(--secondary) ;
   box-shadow: 0 2px 8px color-mix(in srgb, var(--secondary) 30%, transparent);
 }
@@ -177,7 +177,7 @@
 
 .metric-tag {
   padding: 6px 12px;
-  background: white ;
+  background: var(--color-white) ;
   color: var(--color-slate-500) ;
   border: 1px solid var(--color-slate-200) ;
   border-radius: 16px;
@@ -198,7 +198,7 @@
 
 .metric-tag.active {
   background: var(--secondary) ;
-  color: white ;
+  color: var(--color-white) ;
   border-color: var(--secondary) ;
   box-shadow: 0 2px 8px color-mix(in srgb, var(--secondary) 30%, transparent);
 }
@@ -232,13 +232,13 @@
 .report-data-table {
   width: 100%;
   border-collapse: collapse;
-  background: white;
+  background: var(--color-white);
   font-size: 14px;
   table-layout: fixed;
 }
 
 .report-data-table th {
-  background: white;
+  background: var(--color-white);
   font-weight: 500;
   padding: 12px 16px;
   text-align: left;
@@ -333,7 +333,7 @@
 
 .pagination-page{
   padding: 6px 12px;
-  background: white;
+  background: var(--color-white);
   border: 1px solid var(--color-slate-200);
   border-radius: 6px;
   color: var(--color-slate-500);
@@ -348,7 +348,7 @@
 .pagination-page-number.active {
   background: var(--secondary);
   border-color: var(--secondary);
-  color: white;
+  color: var(--color-white);
 }
 
 /* ==================== Button Styles ==================== */
@@ -375,7 +375,7 @@
 }
 
 .modal-content {
-  background: white;
+  background: var(--color-white);
   overflow: auto;
 }
 

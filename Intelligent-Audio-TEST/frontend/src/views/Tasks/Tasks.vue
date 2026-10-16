@@ -938,7 +938,7 @@ watch(activeTab, (tab, prev) => {
 }
 
 .stats-panel{
-    background: white;
+    background: var(--color-white);
     border-radius: 12px;
     padding: 24px;
     box-shadow: 0 2px 12px color-mix(in srgb, var(--color-black) 8%, transparent);

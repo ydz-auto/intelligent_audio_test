@@ -17,7 +17,7 @@
   padding: 6px 12px;
   border: 1px solid var(--color-slate-200);
   border-radius: 6px;
-  background: white;
+  background: var(--color-white);
   color: var(--color-slate-500);
   font-size: 14px;
   font-weight: 500;
@@ -36,7 +36,7 @@
 /* 时间按钮激活样式 */
 .time-btn.active {
   background: var(--primary);
-  color: white;
+  color: var(--color-white);
   border-color: var(--primary);
 }
 
@@ -98,7 +98,7 @@
   align-items: center;
   justify-content: center;
   box-shadow: 0 2px 4px color-mix(in srgb, var(--color-black) 5%, transparent);
-  background: white;
+  background: var(--color-white);
 }
 
 .analysis-content {
@@ -218,7 +218,7 @@
   padding: 16px;
   border: 2px solid var(--color-slate-200);
   border-radius: 12px;
-  background: white;
+  background: var(--color-white);
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   width: 130px;
@@ -370,7 +370,7 @@
 .log-item {
   margin-bottom: 12px;
   padding: 16px;
-  background: white;
+  background: var(--color-white);
   border-radius: 8px;
   border-left: 4px solid var(--color-slate-500);
   box-shadow: 0 1px 3px color-mix(in srgb, var(--color-black) 5%, transparent);
@@ -512,7 +512,7 @@
   border: 1px solid var(--color-slate-200);
   border-radius: 6px;
   font-size: 14px;
-  background-color: white;
+  background-color: var(--color-white);
   color: var(--color-slate-700);
   cursor: pointer;
   transition: all 0.3s ease;
