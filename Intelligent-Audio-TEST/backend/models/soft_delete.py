@@ -18,6 +18,8 @@
 3. 删除审计 —— `before_flush` 统一拦截：任何实例 `deleted` 由 false 翻转为 true 时，
    写 `deleted_at = utc8now()`（东八区）与操作人；恢复（true→false）时清空 `deleted_at`。
    删除动作由此在整个 schema 上留下痕迹，不再依赖各控制器自觉。
+   **注意**：bulk `Query.update()` 不走 ORM 事件，批量删除与级联删除必须改调
+   `bulk_soft_delete()`，否则会成为审计盲区。
 
 架构层次: Flask Model Layer（共享基础设施）
 """
@@ -125,6 +127,33 @@ def _apply_soft_delete_filter(execute_state):
         )
         for model in SOFT_DELETE_FILTERED_MODELS
     ])
+
+
+def bulk_soft_delete(query, operator_user_id=None):
+    """批量 / 级联软删的统一入口。
+
+    bulk `Query.update()` 直接构造 Core UPDATE，**不经过 ORM 的 `before_flush`**，
+    因此 `_apply_soft_delete_audit` 拦不到它——逐处手写 `update({"deleted": True})`
+    会让批量删除与级联删除成为审计盲区（`deleted_at` 永远为 NULL）。
+    凡批量或级联软删一律走本函数，与单条删除留下同样的痕迹。
+
+    用法::
+
+        bulk_soft_delete(TestCase.query.filter(TestCase.id.in_(ids)))
+
+    :param query: 待软删行的 legacy `Query`（调用方负责提交事务）
+    :param operator_user_id: 操作人；默认按当前请求上下文解析（无认证体系时为 None，不伪造身份）
+    :return: 受影响行数
+    """
+    from backend.utils.web.operator import current_operator_user_id
+
+    if operator_user_id is None:
+        operator_user_id = current_operator_user_id()
+
+    values = {'deleted': True, 'deleted_at': _utc8now()}
+    if operator_user_id is not None:
+        values['updated_by_user_id'] = operator_user_id
+    return query.update(values, synchronize_session=False)
 
 
 def _set_operator(obj, mapper, operator_user_id):

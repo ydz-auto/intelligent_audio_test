@@ -2,6 +2,7 @@ from flask import request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func
 from backend.models.models import Tag, TagCategory
+from backend.models.soft_delete import bulk_soft_delete
 from backend.models.database import db
 from backend.utils.web.response import success_response, error_response
 from backend.schemas.testcase import (
@@ -478,8 +479,8 @@ class TagController:
                 case_ids = [rel.test_case_id for rel in
                             TestCaseTag.query.filter_by(tag_id=tag_id).all()]
                 if case_ids:
-                    TestCase.query.filter(TestCase.id.in_(case_ids)).update(
-                        {"deleted": True}, synchronize_session=False)
+                    # 级联软删走统一入口：bulk update 不经过 ORM before_flush，需显式写 deleted_at + 操作人
+                    bulk_soft_delete(TestCase.query.filter(TestCase.id.in_(case_ids)))
 
             # 删除标签的所有关联记录
             TestCaseTag.query.filter_by(tag_id=tag_id).delete()

@@ -1,5 +1,6 @@
 from flask import request
 from backend.models.models import TestCaseGroup, TestCase
+from backend.models.soft_delete import bulk_soft_delete
 from backend.models.database import db
 from backend.utils.web.response import success_response, error_response
 from backend.schemas.group import GroupItem, GroupListData, GroupCreateRequest, GroupUpdateRequest, GroupMoveCasesRequest
@@ -189,11 +190,12 @@ class GroupController:
 
             try:
                 # 级联软删除分组下的所有未删除测试用例
+                # 走统一入口：bulk update 不经过 ORM before_flush，需显式写 deleted_at + 操作人
                 from backend.models.models import TestCase
-                TestCase.query.filter(
+                bulk_soft_delete(TestCase.query.filter(
                     TestCase.group_id == group.id,
                     TestCase.deleted == False
-                ).update({TestCase.deleted: True, TestCase.updated_at: now_cst()}, synchronize_session=False)
+                ))
             except Exception as e:
                 db.session.rollback()
                 return error_response(f"删除分组下的测试用例失败: {str(e)}")

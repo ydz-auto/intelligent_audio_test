@@ -15,10 +15,11 @@ import pytest
 from sqlalchemy import text
 
 from backend.models.database import db
-from backend.models.models import TestCase, TestCaseGroup, Task, TaskCase
-from backend.models.soft_delete import include_deleted
+from backend.models.models import TestCase, TestCaseGroup, Tag, TestCaseTag, Task, TaskCase
+from backend.models.soft_delete import bulk_soft_delete, include_deleted
 from backend.controllers.task_controller import TaskController
 from backend.controllers.published_task_controller import PublishedTaskController
+from backend.controllers.testcase_controller import TestCaseController
 
 
 def _new_group():
@@ -258,3 +259,102 @@ def test_soft_delete_audit_covers_other_models(app):
         'SELECT deleted_at FROM test_case_groups WHERE id = :i'
     ), {'i': group.id}).fetchone()
     assert stored is not None and stored[0] is not None
+
+
+# ---------- 4. 批量 / 级联软删的审计（bulk update 不走 ORM before_flush） ----------
+
+def _raw_case_audit(case_id):
+    """绕开 ORM 直接读软删痕迹（软删行对 ORM 查询不可见）"""
+    return db.session.execute(text(
+        'SELECT deleted, deleted_at FROM test_cases WHERE id = :i'
+    ), {'i': case_id}).fetchone()
+
+
+def test_raw_bulk_update_bypasses_audit_hook(app):
+    """边界（为什么必须走 bulk_soft_delete）：裸 bulk update 绕过 before_flush，不写 deleted_at。
+
+    这是 ORM 语义而非缺陷——正因如此，批量删除与级联删除必须显式改调统一入口，
+    否则它们会成为审计盲区。本用例把该边界固化下来。
+    """
+    group = _new_group()
+    case = _new_case(group)
+    db.session.commit()
+
+    TestCase.query.filter(TestCase.id == case.id).update(
+        {"deleted": True}, synchronize_session=False)
+
+    row = _raw_case_audit(case.id)
+    assert row[0] is True
+    assert row[1] is None
+
+
+def test_bulk_soft_delete_writes_deleted_at(app):
+    """批量软删统一入口：bulk update 同样写 deleted_at（before_flush 拦不到 bulk）"""
+    group = _new_group()
+    case_ids = [_new_case(group).id, _new_case(group).id]
+    db.session.commit()
+
+    affected = bulk_soft_delete(TestCase.query.filter(TestCase.id.in_(case_ids)))
+    assert affected == len(case_ids)
+
+    for case_id in case_ids:
+        row = _raw_case_audit(case_id)
+        assert row[0] is True
+        assert row[1] is not None
+
+
+def test_batch_delete_controller_writes_deleted_at(app):
+    """软删写入点②（批量删除接口）：走统一入口后 deleted_at 非空"""
+    group = _new_group()
+    case_ids = [_new_case(group).id, _new_case(group).id]
+    db.session.commit()
+
+    class _Req:
+        pass
+
+    req = _Req()
+    req.ids = case_ids
+    assert '2' in TestCaseController._batch_delete(req)
+
+    for case_id in case_ids:
+        row = _raw_case_audit(case_id)
+        assert row[0] is True
+        assert row[1] is not None
+
+
+def test_tag_cascade_soft_delete_writes_deleted_at(app, client):
+    """软删写入点③（删标签级联）：级联软删的用例 deleted_at 非空"""
+    group = _new_group()
+    case = _new_case(group)
+    tag = Tag(name=f'软删测试标签-{uuid.uuid4().hex[:8]}')
+    db.session.add(tag)
+    db.session.flush()
+    db.session.add(TestCaseTag(test_case_id=case.id, tag_id=tag.id))
+    db.session.commit()
+
+    resp = client.delete(f'/api/v1/tags/{tag.id}?cascade=true')
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+
+    row = _raw_case_audit(case.id)
+    assert row[0] is True
+    assert row[1] is not None
+
+
+def test_group_cascade_soft_delete_writes_deleted_at(app, client):
+    """软删写入点④（删分组级联）：分组与其下用例 deleted_at 均非空"""
+    group = _new_group()
+    case = _new_case(group)
+    db.session.commit()
+
+    resp = client.delete(f'/api/v1/groups/{group.id}?cascade=true')
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+
+    case_row = _raw_case_audit(case.id)
+    assert case_row[0] is True
+    assert case_row[1] is not None
+
+    group_row = db.session.execute(text(
+        'SELECT deleted, deleted_at FROM test_case_groups WHERE id = :i'
+    ), {'i': group.id}).fetchone()
+    assert group_row[0] is True
+    assert group_row[1] is not None

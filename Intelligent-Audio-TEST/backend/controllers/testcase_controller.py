@@ -2,7 +2,7 @@ import os
 from flask import request, send_file, current_app
 from backend.models.models import TestCase, TestCaseGroup, Tag, Dimension, Audio, PlaybackDevice
 from backend.models.database import db
-from backend.models.soft_delete import include_deleted
+from backend.models.soft_delete import bulk_soft_delete, include_deleted
 from backend.utils.web.response import success_response, error_response
 from backend.utils.web.log_handler import log_not_emit
 from backend.utils.common.task_utils import has_running_e2e_tasks
@@ -1207,7 +1207,7 @@ class TestCaseController:
     def _batch_delete(req_data):
         """批量删除用例"""
         ids = req_data.ids
-        TestCase.query.filter(TestCase.id.in_(ids)).update({"deleted": True}, synchronize_session=False)
+        bulk_soft_delete(TestCase.query.filter(TestCase.id.in_(ids)))
         return f"已成功批量删除 {len(ids)} 个用例"
 
     @staticmethod
