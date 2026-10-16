@@ -1,0 +1,803 @@
+/**
+ * 设备管理页（16_设备域.md §3；INT-491 可视稿）。
+ * SectionPageLayout fixedContent + Title「设备管理」徽标「在线 {n}/共 {m}」（当前页签）+
+ * 页头动作区（三开关+主按钮+更多操作）+ Content（Tabs 测试设备/播放设备/测试API →
+ * 监控告警面板（仅测试页签，开关②）→ 筛选工具栏 → 统计徽章行 → 页签表格 → 批量浮条）+
+ * Footer 分页 Portal。
+ * 弹窗群（§6）：新增/编辑抽屉（随页签三分叉）、详情、扫描、分组管理、告警规则、实验室管理
+ * （入口禁用 INT-487）、关联声压映射、删除/批量确认。
+ * mock 数据对齐 api_gateway/schemas（device.py/playback.py/api.py + INT-487 lab/occupied 补口）；
+ * 不接后端。全局算法联动（§2.2）：算法过滤走全局切换器（chip 只读 + ×），本页不重复筛选器。
+ */
+import { useNavigate } from '@tanstack/react-router'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
+
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { PageFooterPortal } from '@/components/layout/components/page-footer'
+import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ConfirmDialog } from '@/components/confirm-dialog'
+import { usePermissions } from '@/application/hooks/use-permissions'
+import {
+  useApiDevices,
+  useAlarmRules,
+  useDeviceAlarms,
+  useDeviceGroups,
+  useDeviceMutations,
+  useLaboratories,
+  usePlaybackDevices,
+  useStatusHistory,
+  useTestDevices,
+  useAlarmMutations,
+} from '@/application/devices/use-devices'
+import {
+  DEFAULT_PAGE_SIZE,
+  DEVICES_STATS_LABELS,
+  DEVICES_TABS,
+  PAGE_SIZE_OPTIONS,
+  type DevicesTabKey,
+} from '@/features/devices/constants'
+import type {
+  ApiDeviceFilters,
+  AssociateSplState,
+  DeviceDeleteTarget,
+  DeviceDetailState,
+  DeviceHeaderToggles,
+  DeviceMutateState,
+  DevicesFilters,
+  PlaybackDeviceFilters,
+  TestDeviceFilters,
+} from '@/features/devices/types'
+import { DevicesPrimaryButtons } from '@/features/devices/components/devices-primary-buttons'
+import { DevicesFilterToolbar } from '@/features/devices/components/devices-filter-toolbar'
+import { DevicesStatsRow } from '@/features/devices/components/devices-stats-row'
+import { TestDeviceTable } from '@/features/devices/components/test-device-table'
+import { PlaybackDeviceTable } from '@/features/devices/components/playback-device-table'
+import { ApiDeviceTable } from '@/features/devices/components/api-device-table'
+import { DeviceBulkActions } from '@/features/devices/components/device-bulk-actions'
+import { AlarmPanel } from '@/features/devices/components/monitor/alarm-panel'
+import { AlarmRuleDialog } from '@/features/devices/components/monitor/alarm-rule-dialog'
+import { DeviceMutateDrawer } from '@/features/devices/components/modals/device-mutate-drawer'
+import { ScanDevicesDialog } from '@/features/devices/components/modals/scan-devices-dialog'
+import { DeviceDetailDialog } from '@/features/devices/components/modals/device-detail-dialog'
+import { DeviceGroupManagerDialog } from '@/features/devices/components/modals/device-group-manager-dialog'
+import { LaboratoryManagerDialog } from '@/features/devices/components/modals/laboratory-manager-dialog'
+import { AssociateSplDialog } from '@/features/devices/components/modals/associate-spl-dialog'
+import type { TestDevice } from '@/domain/models/testDevice'
+import type { PlaybackDevice } from '@/domain/models/playbackDevice'
+import type { ApiDevice } from '@/domain/models/apiDevice'
+
+const DEFAULT_FILTERS: DevicesFilters = {
+  search: '',
+  status: null,
+  labId: null,
+  groupId: null,
+}
+
+const DEFAULT_TEST_FILTERS: TestDeviceFilters = { ...DEFAULT_FILTERS, connectionType: null }
+const DEFAULT_PLAYBACK_FILTERS: PlaybackDeviceFilters = { ...DEFAULT_FILTERS, deviceType: null }
+const DEFAULT_API_FILTERS: ApiDeviceFilters = {
+  search: '',
+  status: null,
+  protocol: null,
+  environment: null,
+}
+
+export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
+  const navigate = useNavigate()
+  const { hasPermission } = usePermissions()
+  const canCreate = hasPermission(
+    tab === 'test' ? 'device:create' : tab === 'playback' ? 'playback:create' : 'api_config:create'
+  )
+  const canUpdate = hasPermission(
+    tab === 'test' ? 'device:update' : tab === 'playback' ? 'playback:update' : 'api_config:update'
+  )
+  const canDelete = hasPermission(
+    tab === 'test' ? 'device:delete' : tab === 'playback' ? 'playback:delete' : 'api_config:delete'
+  )
+  const canControl = hasPermission(
+    tab === 'test' ? 'device:control' : tab === 'playback' ? 'playback:control' : 'api_config:test'
+  )
+  const canRead = hasPermission(
+    tab === 'test' ? 'device:read' : tab === 'playback' ? 'playback:read' : 'api_config:read'
+  )
+  const canGroupManage = hasPermission('device:read')
+  const canLabManage = hasPermission('device:read')
+
+  const testQuery = useTestDevices()
+  const playbackQuery = usePlaybackDevices()
+  const apiQuery = useApiDevices()
+  const labsQuery = useLaboratories()
+  const groupsQuery = useDeviceGroups()
+  const alarmsQuery = useDeviceAlarms()
+  const rulesQuery = useAlarmRules()
+  const historyQuery = useStatusHistory()
+  const { removeTest, removePlayback, removeApi, control, batch } = useDeviceMutations()
+  const { acknowledge } = useAlarmMutations()
+
+  const [testFilters, setTestFilters] = useState<TestDeviceFilters>(DEFAULT_TEST_FILTERS)
+  const [playbackFilters, setPlaybackFilters] = useState<PlaybackDeviceFilters>(DEFAULT_PLAYBACK_FILTERS)
+  const [apiFilters, setApiFilters] = useState<ApiDeviceFilters>(DEFAULT_API_FILTERS)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [toggles, setToggles] = useState<DeviceHeaderToggles>({
+    batchMode: false,
+    alarmsOpen: false,
+    idSort: false,
+  })
+
+  // 弹窗群
+  const [mutateState, setMutateState] = useState<DeviceMutateState>({
+    open: false,
+    mode: 'create',
+    kind: 'test',
+  })
+  const [mutatePrefill, setMutatePrefill] = useState<Partial<TestDevice> | null>(null)
+  const [scanOpen, setScanOpen] = useState(false)
+  const [detailState, setDetailState] = useState<DeviceDetailState>({
+    open: false,
+    kind: 'test',
+    device: null,
+  })
+  const [groupManagerOpen, setGroupManagerOpen] = useState(false)
+  const [labManagerOpen, setLabManagerOpen] = useState(false)
+  const [ruleDialogOpen, setRuleDialogOpen] = useState(false)
+  const [associateSplState, setAssociateSplState] = useState<AssociateSplState>({
+    open: false,
+    device: null,
+  })
+  const [deleteTarget, setDeleteTarget] = useState<DeviceDeleteTarget | null>(null)
+  const [batchConfirm, setBatchConfirm] = useState<{ action: string; count: number } | null>(null)
+  const [confirmPending, setConfirmPending] = useState(false)
+
+  // 页签切换重置筛选与选择
+  useEffect(() => {
+    setTestFilters(DEFAULT_TEST_FILTERS)
+    setPlaybackFilters(DEFAULT_PLAYBACK_FILTERS)
+    setApiFilters(DEFAULT_API_FILTERS)
+    setSelectedIds(new Set())
+    setPage(1)
+    setToggles((prev) => ({ ...prev, alarmsOpen: false }))
+  }, [tab])
+
+  const testDevices = testQuery.data ?? []
+  const playbackDevices = playbackQuery.data ?? []
+  const apiDevices = apiQuery.data ?? []
+  const labs = labsQuery.data ?? []
+  const groups = groupsQuery.data ?? []
+  const alarms = alarmsQuery.data?.alarms ?? []
+  const alarmStats = alarmsQuery.data?.stats ?? null
+  const rules = rulesQuery.data ?? []
+  const history = historyQuery.data ?? []
+
+  /* ───────── 过滤 / 排序 / 分页 ───────── */
+
+  const filteredRows = useMemo(() => {
+    if (tab === 'test') {
+      let rows = testDevices
+      const f = testFilters
+      const keyword = f.search.trim().toLowerCase()
+      if (keyword) {
+        rows = rows.filter(
+          (row) =>
+            row.name.toLowerCase().includes(keyword) ||
+            (row.model ?? '').toLowerCase().includes(keyword) ||
+            (row.serialNumber ?? '').toLowerCase().includes(keyword)
+        )
+      }
+      if (f.status) rows = rows.filter((row) => row.status === f.status)
+      if (f.connectionType) rows = rows.filter((row) => row.connectionType === f.connectionType)
+      if (f.groupId) {
+        const group = groups.find((g) => String(g.id) === f.groupId)
+        const memberIds = new Set(group?.members ?? [])
+        rows = rows.filter((row) => memberIds.has(row.id))
+      }
+      if (f.labId) rows = rows.filter((row) => String(row.labId) === f.labId)
+      return rows
+    }
+    if (tab === 'playback') {
+      let rows = playbackDevices
+      const f = playbackFilters
+      const keyword = f.search.trim().toLowerCase()
+      if (keyword) {
+        rows = rows.filter(
+          (row) =>
+            row.name.toLowerCase().includes(keyword) ||
+            (row.model ?? '').toLowerCase().includes(keyword)
+        )
+      }
+      if (f.status) rows = rows.filter((row) => row.status === f.status)
+      if (f.deviceType) rows = rows.filter((row) => row.deviceType === f.deviceType)
+      if (f.labId) rows = rows.filter((row) => String(row.labId) === f.labId)
+      return rows
+    }
+    let rows = apiDevices
+    const f = apiFilters
+    const keyword = f.search.trim().toLowerCase()
+    if (keyword) {
+      rows = rows.filter(
+        (row) =>
+          row.name.toLowerCase().includes(keyword) ||
+          (row.apiUrl ?? '').toLowerCase().includes(keyword) ||
+          row.endpoints.some((ep) => ep.endpoint.toLowerCase().includes(keyword))
+      )
+    }
+    if (f.status) rows = rows.filter((row) => row.status === f.status)
+    if (f.protocol) rows = rows.filter((row) => row.protocol === f.protocol)
+    if (f.environment) rows = rows.filter((row) => row.environment === f.environment)
+    return rows
+  }, [tab, testDevices, playbackDevices, apiDevices, testFilters, playbackFilters, apiFilters, groups])
+
+  const sortedRows = useMemo(() => {
+    const rows = [...filteredRows]
+    if (toggles.idSort) {
+      rows.sort((a, b) => a.id - b.id)
+    } else {
+      rows.sort((a, b) => {
+        const diff = new Date(b.updatedAt ?? 0).getTime() - new Date(a.updatedAt ?? 0).getTime()
+        return sortOrder === 'desc' ? diff : -diff
+      })
+    }
+    return rows
+  }, [filteredRows, toggles.idSort, sortOrder])
+
+  const pageCount = Math.max(1, Math.ceil(sortedRows.length / pageSize))
+  const safePage = Math.min(page, pageCount)
+  const pageRows = useMemo(
+    () => sortedRows.slice((safePage - 1) * pageSize, safePage * pageSize),
+    [sortedRows, safePage, pageSize]
+  )
+
+  const isFiltered = useMemo(() => {
+    const f =
+      tab === 'test' ? testFilters : tab === 'playback' ? playbackFilters : apiFilters
+    return Object.values(f).some((value) => value != null && value !== '' && value !== 'all')
+  }, [tab, testFilters, playbackFilters, apiFilters])
+
+  const activeFilters = tab === 'test' ? testFilters : tab === 'playback' ? playbackFilters : apiFilters
+  const setActiveFilters = (
+    next: TestDeviceFilters | PlaybackDeviceFilters | ApiDeviceFilters
+  ) => {
+    setPage(1)
+    if (tab === 'test') setTestFilters(next as TestDeviceFilters)
+    else if (tab === 'playback') setPlaybackFilters(next as PlaybackDeviceFilters)
+    else setApiFilters(next as ApiDeviceFilters)
+  }
+
+  /* ───────── 统计徽章（§9：总/在线/离线/异常；API 独立口径） ───────── */
+
+  const statsValues = useMemo(() => {
+    if (tab === 'api') {
+      const online = apiDevices.filter((d) => d.status === 'online').length
+      const offline = apiDevices.filter((d) => d.status === 'offline').length
+      const testing = apiDevices.filter((d) => d.occupied).length
+      return [apiDevices.length, online, offline, testing]
+    }
+    const devices = tab === 'test' ? testDevices : playbackDevices
+    const online = devices.filter((d) => d.status === 'online').length
+    const offline = devices.filter((d) => d.status === 'offline' || d.status === 'connecting' || d.status === 'disconnecting').length
+    const error = devices.filter((d) => d.status === 'error').length
+    return [devices.length, online, offline, error]
+  }, [tab, testDevices, playbackDevices, apiDevices])
+
+  /* ───────── 选择 ───────── */
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => {
+      if (pageRows.length > 0 && prev.size === pageRows.length) return new Set()
+      return new Set(pageRows.map((row) => row.id))
+    })
+  }
+
+  /* ───────── 行操作分派 ───────── */
+
+  const handleControl = async (action: string) => {
+    const result = await control.mutateAsync({ id: 0, action })
+    void result
+    toast.success('操作已提交')
+  }
+
+  const openMutate = (state: DeviceMutateState, prefill: Partial<TestDevice> | null = null) => {
+    setMutatePrefill(prefill)
+    setMutateState(state)
+  }
+
+  const handleDetailEdit = (kind: DevicesTabKey, device: TestDevice | PlaybackDevice | ApiDevice) => {
+    setMutateState({ open: true, mode: 'edit', kind, device })
+  }
+
+  const handleStopTest = (device: TestDevice) => {
+    toast.success(`已停止设备「${device.name}」的测试`)
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return
+    setConfirmPending(true)
+    try {
+      let result: { success: boolean; message?: string } = { success: true }
+      if (deleteTarget.kind === 'test') result = await removeTest.mutateAsync(deleteTarget.device.id)
+      else if (deleteTarget.kind === 'playback') result = await removePlayback.mutateAsync(deleteTarget.device.id)
+      else result = await removeApi.mutateAsync(deleteTarget.device.id)
+      if (result.success) toast.success('设备已删除')
+      else toast.error(result.message ?? '删除失败，请重试')
+      setDeleteTarget(null)
+    } catch {
+      toast.error('删除失败，请重试')
+    } finally {
+      setConfirmPending(false)
+    }
+  }
+
+  const handleBatchAction = async (action: string) => {
+    if (selectedIds.size === 0) {
+      toast.info('请先勾选需要操作的设备')
+      return
+    }
+    if (action === 'delete') {
+      setBatchConfirm({ action, count: selectedIds.size })
+      return
+    }
+    setBatchConfirm({ action, count: selectedIds.size })
+  }
+
+  const handleBatchConfirm = async () => {
+    if (!batchConfirm) return
+    setConfirmPending(true)
+    try {
+      if (batchConfirm.action === 'delete') {
+        // §3.8：delete 前端串行（batch 白名单不含 delete，§11-7）
+        for (const id of [...selectedIds]) {
+          if (tab === 'test') await removeTest.mutateAsync(id)
+          else if (tab === 'playback') await removePlayback.mutateAsync(id)
+          else await removeApi.mutateAsync(id)
+        }
+        toast.success(`批量删除完成：成功 ${selectedIds.size} 个`)
+      } else {
+        const result = await batch.mutateAsync({
+          action: batchConfirm.action,
+          ids: [...selectedIds],
+        })
+        const label = BATCH_ACTION_LABEL[batchConfirm.action] ?? batchConfirm.action
+        toast.success(
+          result.successCount === result.total
+            ? `${label}完成：成功 ${result.successCount}/${result.total}`
+            : `${label}完成：命中幂等回放，未重复执行`
+        )
+      }
+      setSelectedIds(new Set())
+      setBatchConfirm(null)
+    } catch {
+      toast.error('操作失败，请稍后重试')
+    } finally {
+      setConfirmPending(false)
+    }
+  }
+
+  const handleScanAdd = (kind: DevicesTabKey) => {
+    setScanOpen(false)
+    // §6.1：扫描「添加」→ 开新增抽屉并预填
+    openMutate({ open: true, mode: 'create', kind }, {
+      name: kind === 'test' ? '扫描新设备' : '扫描播放设备',
+      model: '待补充型号',
+      system: 'Android',
+      systemVersion: '未知',
+      serialNumber: kind === 'test' ? 'SN-SCAN-PREVIEW' : 'AUDIO-SCAN-PREVIEW',
+      appName: 'Default App',
+      appVersion: '1.0.0',
+    })
+  }
+
+  const tabRowCallbacks = {
+    test: {
+      canRead,
+      canUpdate,
+      canDelete,
+      canControl,
+      onDetail: (device: TestDevice) => setDetailState({ open: true, kind: 'test', device }),
+      onEdit: (device: TestDevice) => openMutate({ open: true, mode: 'edit', kind: 'test', device }),
+      onHealth: (device: TestDevice) => {
+        void handleControl('health_check')
+        toast.success(`健康检查已发起：${device.name}`)
+      },
+      onTest: (device: TestDevice) => toast.success(`已开始测试：${device.name}`),
+      onStopTest: (device: TestDevice) => handleStopTest(device),
+      onControl: (_device: TestDevice, action: string) => void handleControl(action),
+      onDelete: (device: TestDevice) => setDeleteTarget({ kind: 'test', device }),
+      onEmptyAdd: () => openMutate({ open: true, mode: 'create', kind: 'test' }),
+    },
+    playback: {
+      canRead,
+      canUpdate,
+      canDelete,
+      canControl,
+      onDetail: (device: PlaybackDevice) => setDetailState({ open: true, kind: 'playback', device }),
+      onEdit: (device: PlaybackDevice) => openMutate({ open: true, mode: 'edit', kind: 'playback', device }),
+      onAssociateSpl: (device: PlaybackDevice) => setAssociateSplState({ open: true, device }),
+      onPlayTest: (device: PlaybackDevice) => toast.success(`已开始播放测试：${device.name}`),
+      onStop: (device: PlaybackDevice) => toast.success(`已停止播放：${device.name}`),
+      onControl: (_device: PlaybackDevice, action: string) => void handleControl(action),
+      onResultAnalysis: (device: PlaybackDevice) => toast.success(`已生成播放测试结果分析：${device.name}`),
+      onDiagnose: (device: PlaybackDevice) => toast.success(`设备诊断完成：${device.name}`),
+      onDelete: (device: PlaybackDevice) => setDeleteTarget({ kind: 'playback', device }),
+      onEmptyAdd: () => openMutate({ open: true, mode: 'create', kind: 'playback' }),
+    },
+    api: {
+      canRead,
+      canUpdate,
+      canDelete,
+      canControl,
+      onDetail: (device: ApiDevice) => setDetailState({ open: true, kind: 'api', device }),
+      onEdit: (device: ApiDevice) => openMutate({ open: true, mode: 'edit', kind: 'api', device }),
+      onHealth: (device: ApiDevice) => toast.success(`健康检查已发起：${device.name}`),
+      onStopTest: (device: ApiDevice) => toast.success(`已停止测试：${device.name}`),
+      onDelete: (device: ApiDevice) => setDeleteTarget({ kind: 'api', device }),
+      onEmptyAdd: () => openMutate({ open: true, mode: 'create', kind: 'api' }),
+    },
+  }
+
+  /* ───────── 页面装配（§3.1 骨架） ───────── */
+
+  const onlineCount = tab === 'api'
+    ? apiDevices.filter((d) => d.status === 'online').length
+    : (tab === 'test' ? testDevices : playbackDevices).filter((d) => d.status === 'online').length
+  const totalCount = tab === 'api' ? apiDevices.length : (tab === 'test' ? testDevices : playbackDevices).length
+
+  return (
+    <>
+      <SectionPageLayout fixedContent>
+        <SectionPageLayout.Title>
+          <span className='flex flex-wrap items-center gap-2'>
+            设备管理
+            <Badge variant='outline' className='font-normal tabular-nums'>
+              {tab === 'api' ? '可用' : '在线'} {onlineCount}/共 {totalCount}
+            </Badge>
+          </span>
+        </SectionPageLayout.Title>
+
+        <SectionPageLayout.Actions>
+          <DevicesPrimaryButtons
+            tab={tab}
+            toggles={toggles}
+            onTogglesChange={setToggles}
+            canCreate={canCreate}
+            canControl={canControl}
+            canGroupManage={canGroupManage}
+            canLabManage={canLabManage}
+            onAdd={() => openMutate({ open: true, mode: 'create', kind: tab })}
+            onScan={() => setScanOpen(true)}
+            onGroupManage={() => setGroupManagerOpen(true)}
+            onLabManage={() => setLabManagerOpen(true)}
+            onBatchHealth={() => void handleBatchAction('health_check')}
+            onImport={() => toast.info('设备导入导出后端建设中')}
+            onExport={() => toast.info('设备导入导出后端建设中')}
+          />
+        </SectionPageLayout.Actions>
+
+        <SectionPageLayout.Content>
+          <div className='flex h-full min-h-0 flex-col gap-3'>
+            {/* 页签（§3.1 测试设备/播放设备/测试API；路径式 /devices/$tab） */}
+            <Tabs
+              value={tab}
+              onValueChange={(value) =>
+                void navigate({ to: '/devices/$tab', params: { tab: value } })
+              }
+            >
+              <TabsList className='max-w-full flex-wrap justify-start'>
+                {DEVICES_TABS.filter(
+                  (item) => item.value === tab || hasPermission(item.requiredPermission)
+                ).map((item) => (
+                  <TabsTrigger key={item.value} value={item.value}>
+                    {item.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+
+            {/* 监控告警面板（仅测试设备页签，开关②） */}
+            {tab === 'test' && (
+              <AlarmPanel
+                open={toggles.alarmsOpen}
+                onOpenChange={(alarmsOpen) => setToggles((prev) => ({ ...prev, alarmsOpen }))}
+                alarms={alarms}
+                stats={alarmStats}
+                statusHistory={history}
+                loading={alarmsQuery.isLoading}
+                canControl={canControl}
+                canUpdate={canUpdate}
+                onAcknowledge={(alarm) => {
+                  void acknowledge.mutateAsync(alarm.id)
+                  toast.success('告警已确认')
+                }}
+                onManageRules={() => setRuleDialogOpen(true)}
+              />
+            )}
+
+            <DevicesFilterToolbar
+              tab={tab}
+              searchValue={activeFilters.search}
+              onSearch={(value) => setActiveFilters({ ...activeFilters, search: value })}
+              status={activeFilters.status}
+              onStatus={(status) => setActiveFilters({ ...activeFilters, status })}
+              labs={labs}
+              labId={tab === 'api' ? null : tab === 'test' ? testFilters.labId : playbackFilters.labId}
+              onLabId={(labId) =>
+                tab === 'test'
+                  ? setTestFilters({ ...testFilters, labId })
+                  : tab === 'playback'
+                    ? setPlaybackFilters({ ...playbackFilters, labId })
+                    : undefined
+              }
+              groups={groups}
+              groupId={tab === 'test' ? testFilters.groupId : null}
+              onGroupId={(groupId) => setTestFilters({ ...testFilters, groupId })}
+              connectionType={testFilters.connectionType}
+              onConnectionType={(connectionType) =>
+                setActiveFilters({ ...testFilters, connectionType })
+              }
+              deviceType={playbackFilters.deviceType}
+              onDeviceType={(deviceType) =>
+                setActiveFilters({ ...playbackFilters, deviceType })
+              }
+              protocol={apiFilters.protocol}
+              onProtocol={(protocol) => setActiveFilters({ ...apiFilters, protocol })}
+              environment={apiFilters.environment}
+              onEnvironment={(environment) => setActiveFilters({ ...apiFilters, environment })}
+              isFiltered={isFiltered}
+              onReset={() => {
+                if (tab === 'test') setTestFilters(DEFAULT_TEST_FILTERS)
+                else if (tab === 'playback') setPlaybackFilters(DEFAULT_PLAYBACK_FILTERS)
+                else setApiFilters(DEFAULT_API_FILTERS)
+                setPage(1)
+              }}
+            />
+
+            <DevicesStatsRow
+              labels={DEVICES_STATS_LABELS[tab]}
+              values={statsValues}
+              loading={tab === 'test' ? testQuery.isLoading : tab === 'playback' ? playbackQuery.isLoading : apiQuery.isLoading}
+            />
+
+            <div className='min-h-0 flex-1 overflow-y-auto'>
+              {tab === 'test' && (
+                <TestDeviceTable
+                  rows={pageRows as TestDevice[]}
+                  loading={testQuery.isLoading}
+                  total={sortedRows.length}
+                  searchKeyword={testFilters.search}
+                  selectedIds={selectedIds}
+                  batchMode={toggles.batchMode}
+                  sortOrder={sortOrder}
+                  onSortChange={() => setSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
+                  onToggleSelect={toggleSelect}
+                  onToggleSelectAll={toggleSelectAll}
+                  {...tabRowCallbacks.test}
+                />
+              )}
+              {tab === 'playback' && (
+                <PlaybackDeviceTable
+                  rows={pageRows as PlaybackDevice[]}
+                  loading={playbackQuery.isLoading}
+                  total={sortedRows.length}
+                  searchKeyword={playbackFilters.search}
+                  selectedIds={selectedIds}
+                  batchMode={toggles.batchMode}
+                  sortOrder={sortOrder}
+                  onSortChange={() => setSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
+                  onToggleSelect={toggleSelect}
+                  onToggleSelectAll={toggleSelectAll}
+                  {...tabRowCallbacks.playback}
+                />
+              )}
+              {tab === 'api' && (
+                <ApiDeviceTable
+                  rows={pageRows as ApiDevice[]}
+                  loading={apiQuery.isLoading}
+                  total={sortedRows.length}
+                  searchKeyword={apiFilters.search}
+                  selectedIds={selectedIds}
+                  batchMode={toggles.batchMode}
+                  onToggleSelect={toggleSelect}
+                  onToggleSelectAll={toggleSelectAll}
+                  {...tabRowCallbacks.api}
+                />
+              )}
+            </div>
+
+            {/* 批量浮条（§3.8：勾选≥1 浮起；批量模式开启时亦可显） */}
+            <DeviceBulkActions
+              tab={tab}
+              count={selectedIds.size}
+              canControl={canControl}
+              canDelete={canDelete}
+              onClear={() => setSelectedIds(new Set())}
+              onAction={(action) => void handleBatchAction(action)}
+            />
+
+            {/* 分页 Portal（§3.9） */}
+            <PageFooterPortal>
+              <PaginationBar
+                page={safePage}
+                pageCount={pageCount}
+                pageSize={pageSize}
+                total={sortedRows.length}
+                onPageChange={setPage}
+                onPageSizeChange={(size) => {
+                  setPageSize(size)
+                  setPage(1)
+                }}
+              />
+            </PageFooterPortal>
+          </div>
+        </SectionPageLayout.Content>
+      </SectionPageLayout>
+
+      {/* 弹窗群（§6 Context Provider 挂页级） */}
+      <DeviceMutateDrawer
+        state={mutateState}
+        prefill={mutatePrefill}
+        onOpenChange={(open) =>
+          setMutateState((prev) => ({ ...prev, open, mode: open ? prev.mode : 'create' }))
+        }
+      />
+      <ScanDevicesDialog
+        open={scanOpen}
+        onOpenChange={setScanOpen}
+        tab={tab}
+        onAddToMutate={handleScanAdd}
+      />
+      <DeviceDetailDialog
+        state={detailState}
+        onOpenChange={(open) => setDetailState((prev) => ({ ...prev, open, device: open ? prev.device : null }))}
+        onEdit={handleDetailEdit}
+      />
+      <DeviceGroupManagerDialog
+        open={groupManagerOpen}
+        onOpenChange={setGroupManagerOpen}
+        groups={groups}
+        testDevices={testDevices}
+      />
+      <LaboratoryManagerDialog
+        open={labManagerOpen}
+        onOpenChange={setLabManagerOpen}
+        labs={labs}
+      />
+      <AlarmRuleDialog
+        open={ruleDialogOpen}
+        onOpenChange={setRuleDialogOpen}
+        rules={rules}
+      />
+      <AssociateSplDialog
+        state={associateSplState}
+        onOpenChange={(open) => setAssociateSplState((prev) => ({ ...prev, open }))}
+      />
+
+      {/* 删除确认（§3.4.1/§3.5/§3.6） */}
+      <ConfirmDialog
+        open={deleteTarget != null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title='删除设备'
+        desc={
+          deleteTarget
+            ? `确定要删除「${deleteTarget.device.name}」吗？此操作不可撤销。`
+            : ''
+        }
+        destructive
+        confirmText='删除'
+        isLoading={confirmPending}
+        handleConfirm={() => void handleDeleteConfirm()}
+      />
+
+      {/* 批量操作确认（§3.8） */}
+      <ConfirmDialog
+        open={batchConfirm != null}
+        onOpenChange={(open) => !open && setBatchConfirm(null)}
+        title='批量操作'
+        desc={
+          batchConfirm
+            ? `确定对选中的 ${batchConfirm.count} 个${tab === 'api' ? 'API' : '设备'}执行「${BATCH_ACTION_LABEL[batchConfirm.action] ?? batchConfirm.action}」？`
+            : ''
+        }
+        destructive={batchConfirm?.action === 'delete'}
+        confirmText={batchConfirm?.action === 'delete' ? '批量删除' : '确认执行'}
+        isLoading={confirmPending}
+        handleConfirm={() => void handleBatchConfirm()}
+      />
+    </>
+  )
+}
+
+/* ───────── 批量动作中文（§9 toast 口径） ───────── */
+
+const BATCH_ACTION_LABEL: Record<string, string> = {
+  connect: '连接',
+  disconnect: '断开',
+  reboot: '重启',
+  shutdown: '关机',
+  health_check: '健康检查',
+  delete: '删除',
+}
+
+/* ───────────────────────── 分页条（§3.9） ───────────────────────── */
+
+function PaginationBar({
+  page,
+  pageCount,
+  pageSize,
+  total,
+  onPageChange,
+  onPageSizeChange,
+}: {
+  page: number
+  pageCount: number
+  pageSize: number
+  total: number
+  onPageChange: (page: number) => void
+  onPageSizeChange: (size: number) => void
+}) {
+  return (
+    <div className='flex flex-wrap items-center justify-end gap-2 text-sm'>
+      <span className='text-muted-foreground tabular-nums'>共 {total} 条</span>
+      <Select
+        value={String(pageSize)}
+        onValueChange={(value) => onPageSizeChange(Number(value ?? DEFAULT_PAGE_SIZE))}
+      >
+        <SelectTrigger size='sm' className='w-24'>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {PAGE_SIZE_OPTIONS.map((size) => (
+            <SelectItem key={size} value={String(size)}>
+              {size} 条/页
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <div className='flex items-center gap-1'>
+        <Button
+          variant='outline'
+          size='sm'
+          className='h-8 min-w-8 px-2'
+          disabled={page <= 1}
+          onClick={() => onPageChange(page - 1)}
+          aria-label='上一页'
+        >
+          <ChevronLeft aria-hidden='true' className='size-3.5' />
+        </Button>
+        <span className='text-muted-foreground px-1 tabular-nums'>
+          {page} / {pageCount}
+        </span>
+        <Button
+          variant='outline'
+          size='sm'
+          className='h-8 min-w-8 px-2'
+          disabled={page >= pageCount}
+          onClick={() => onPageChange(page + 1)}
+          aria-label='下一页'
+        >
+          <ChevronRight aria-hidden='true' className='size-3.5' />
+        </Button>
+      </div>
+    </div>
+  )
+}
