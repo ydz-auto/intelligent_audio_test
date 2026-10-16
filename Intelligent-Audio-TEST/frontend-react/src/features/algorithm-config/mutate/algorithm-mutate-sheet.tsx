@@ -48,7 +48,10 @@ import {
   toFormValues,
   toSaveInput,
 } from '@/features/algorithm-config/mutate/form-converters'
-import { algorithmFormSchema } from '@/features/algorithm-config/mutate/algorithm-form-schema'
+import {
+  algorithmEditFormSchema,
+  algorithmFormSchema,
+} from '@/features/algorithm-config/mutate/algorithm-form-schema'
 import { BasicInfoSection } from '@/features/algorithm-config/mutate/basic-info-section'
 import { ParamsSection } from '@/features/algorithm-config/mutate/params-section'
 import { ReferenceParamsSection } from '@/features/algorithm-config/mutate/reference-params-section'
@@ -83,10 +86,14 @@ export function AlgorithmMutateSheet(props: AlgorithmMutateSheetProps) {
     return emptyFormValues()
   }, [props.open, props.mode, props.algorithm])
 
+  // 新建态走 §6.2 正则 schema；编辑/复制态代码为主键禁用不可改，用后端契约口径 schema
+  // （无正则，仅必填+长度，见 algorithm-form-schema.ts 顶部说明）
+  const schema = props.mode === 'create' ? algorithmFormSchema : algorithmEditFormSchema
+
   const form = useForm<AlgorithmFormValues>({
     // mode:'onChange'：字段错误随输入即时显示（§6.2/6.3 行级校验文案）
     mode: 'onChange',
-    resolver: zodResolver(algorithmFormSchema),
+    resolver: zodResolver(schema),
     defaultValues: emptyFormValues(),
     values: defaultValues,
   })
@@ -96,7 +103,7 @@ export function AlgorithmMutateSheet(props: AlgorithmMutateSheetProps) {
   // onChange 模式也只对 register 的原生输入生效），导致「选分组/切状态/选参数类型」等
   // setValue 交互后保存按钮仍恒禁用（INT-508 P1 死锁）。同一 zod schema safeParse 覆盖全部变更路径。
   const watchedValues = form.watch()
-  const isFormValid = algorithmFormSchema.safeParse(watchedValues).success
+  const isFormValid = schema.safeParse(watchedValues).success
 
   // 关闭 Sheet 时重置表单，避免下次打开残留旧值
   useEffect(() => {
