@@ -36,6 +36,9 @@
       />
     </div>
 
+    <!-- Benchmark 报告类型（INT-483：内嵌排行区块，chart.js 展示发布时点快照） -->
+    <BenchmarkReportPanel v-else-if="report && report.type === 'benchmark'" :report="report" />
+
     <!-- 对比报告类型 (comparison 家族：comparison / secondary_comparison 及历史遗留值) -->
     <ComparisonReportPanel
       v-else-if="report && isComparisonType"
@@ -65,7 +68,8 @@
     <!-- 底部浮动操作按钮 -->
     <teleport to="#global-fixed-elements" v-if="report">
       <div id="floating-report-actions" class="rv-floating-report-actions">
-        <button class="rv-btn rv-btn-primary" @click="saveReport">
+        <!-- INT-483：Benchmark 报告为发布时点定格快照，不提供编辑/保存 -->
+        <button v-if="!isBenchmarkType" class="rv-btn rv-btn-primary" @click="saveReport">
           <i class="fas fa-save"></i> 保存
         </button>
         <button class="rv-btn rv-btn-success" @click="publishReport" v-if="report.status === ReportStatus.DRAFT">
@@ -115,6 +119,7 @@ import type { ToastMessage } from '@/domain/model/ui'
 import { isComparisonReportType } from '@/domain/model/report'
 import TaskReportPanel from '../../components/report/TaskReportPanel.vue'
 import ComparisonReportPanel from './sections/ComparisonReportPanel.vue'
+import BenchmarkReportPanel from './sections/BenchmarkReportPanel.vue'
 import { reportsPort } from '@/composables/report/reportsPort'
 import { comparisonReport } from '../../store/reportComparisonStore'
 import { copyToClipboard } from '../../utils/utils'
@@ -148,6 +153,9 @@ function showToast(type: ToastMessage['type'], message: string): void {
 const isComparisonType = computed(() => {
   return isComparisonReportType(report.value?.type)
 })
+
+/** INT-483：Benchmark 报告类型（发布时点定格快照，不可编辑保存） */
+const isBenchmarkType = computed(() => report.value?.type === 'benchmark')
 
 const analysisContent = computed(() => {
   return report.value?.summary?.analysisConclusion || report.value?.analysisConclusion || report.value?.conclusion || ''

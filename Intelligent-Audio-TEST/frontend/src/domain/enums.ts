@@ -393,6 +393,10 @@ export const PermissionPoint = {
   PUBLISHED_TASK_VERSION: 'published_task:version',
   /** 归档已发布任务 */
   PUBLISHED_TASK_ARCHIVE: 'published_task:archive',
+  /** 查看 Benchmark 报告（GET /benchmarks/reports，INT-483） */
+  BENCHMARK_REPORT_READ: 'benchmark:report:read',
+  /** 发布 Benchmark 报告（POST /benchmarks/reports，INT-483） */
+  BENCHMARK_REPORT_PUBLISH: 'benchmark:report:publish',
 } as const
 
 /** 权限点类型（由 PermissionPoint 派生） */

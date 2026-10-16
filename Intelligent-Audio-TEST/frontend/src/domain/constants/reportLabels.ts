@@ -32,7 +32,8 @@ export const REPORT_TYPE_MAP: Record<string, string> = {
   'comparison': '对比报告',
   'secondary_comparison': '二次对比报告',
   'secondaryComparison': '二次对比报告',
-  'secondary': '二次对比报告'
+  'secondary': '二次对比报告',
+  'benchmark': 'Benchmark 报告'
 } as const;
 
 export const REPORT_STATUS_MAP: Record<string, string> = {

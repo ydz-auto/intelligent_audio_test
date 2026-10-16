@@ -17,6 +17,10 @@
         </h2>
         <p class="page-description">查看和管理所有历史报告</p>
       </div>
+      <!-- INT-483：发布 Benchmark 报告入口（权限 benchmark:report:publish 显隐） -->
+      <button v-if="canPublishBenchmarkReport" class="btn btn-primary benchmark-publish-btn" @click="openBenchmarkPublish">
+        <i class="fas fa-trophy"></i> 发布 Benchmark 报告
+      </button>
     </div>
 
     <!-- 视图 Tab 栏 -->
@@ -269,6 +273,13 @@
                 {{ report.summary?.taskCount || 0 }} 个任务对比
               </span>
             </template>
+            <template v-else-if="report.type === 'benchmark'">
+              <!-- INT-483：Benchmark 报告无用例统计，展示占位文案（快照详情在报告查看页） -->
+              <span class="report-card-meta-item">
+                <i class="fas fa-trophy"></i>
+                排行快照报告
+              </span>
+            </template>
             <template v-else>
               <span class="report-card-meta-item">
                 <i class="fas fa-list-check"></i>
@@ -291,7 +302,7 @@
     </div>
     
     <!-- 分页 -->
-    <PaginationComponent 
+    <PaginationComponent
       :current-page="currentPage"
       :page-size="pageSize"
       :total-items="totalItems"
@@ -300,14 +311,25 @@
       @go-to-page="handleGoToPage"
       @page-size-change="handlePageSizeChange"
     />
+
+    <!-- INT-483：发布 Benchmark 报告弹窗 -->
+    <BenchmarkReportPublishModal
+      v-if="benchmarkPublishVisible"
+      :submitting="benchmarkSubmitting"
+      @close="benchmarkPublishVisible = false"
+      @confirm="handleBenchmarkPublish"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
-import { ReportStatus } from '@/domain/enums';
+import { computed, ref } from 'vue';
+import { ReportStatus, PermissionPoint } from '@/domain/enums';
 import type { Report } from '../../domain';
 import { useHistoryReports, REPORT_TABS } from './historyReports';
+import { useAuthStore } from '../../store/authStore';
+import { benchmarkReportsPort } from '../../composables/benchmark/benchmarkReportsPort';
+import BenchmarkReportPublishModal from '../../components/benchmark-report/BenchmarkReportPublishModal.vue';
 import BadgeFilter from '../../components/common/BadgeFilter.vue';
 import FavoriteTrashBar from '../../components/common/FavoriteTrashBar.vue';
 import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
@@ -324,6 +346,7 @@ const {
   sort,
   algorithmOptions,
   toast,
+  showToast,
   formatDate,
   getReportTypeLabel,
   getAlgorithmTypeLabel,
@@ -363,11 +386,38 @@ const {
   // INT-215：收藏筛选切换（FavoriteTrashBar）
   handleReportFavoriteFilterChange,
   loadReports,
+  loadTabCounts,
   isFavorite,
   handleToggleFavorite,
   handleRestoreReport,
   handlePurgeReport
 } = useHistoryReports();
+
+// ===== INT-483：发布 Benchmark 报告（调子卡1 POST /benchmarks/reports）=====
+/** 发布入口按权限显隐（benchmark:report:publish；admin * 通配已放行） */
+const { hasPermission: can } = useAuthStore();
+const canPublishBenchmarkReport = computed(() => can(PermissionPoint.BENCHMARK_REPORT_PUBLISH));
+const benchmarkPublishVisible = ref(false);
+const benchmarkSubmitting = ref(false);
+
+function openBenchmarkPublish() {
+  benchmarkPublishVisible.value = true;
+}
+
+async function handleBenchmarkPublish(payload: { name: string; description?: string; suite?: string; category?: string; source?: string }) {
+  benchmarkSubmitting.value = true;
+  try {
+    await benchmarkReportsPort.publish(payload);
+    benchmarkPublishVisible.value = false;
+    showToast('success', 'Benchmark 报告发布成功');
+    // 跨组件状态同步：发布成功后报告列表刷新（新 benchmark 报告立即可见）+ Tab 计数刷新
+    await Promise.all([loadReports(), loadTabCounts()]);
+  } catch (e: any) {
+    showToast('error', '发布 Benchmark 报告失败: ' + (e?.message || '未知错误'));
+  } finally {
+    benchmarkSubmitting.value = false;
+  }
+}
 
 /** 当前激活 Tab 的元信息（用于统一列表的标题/图标） */
 const activeTabMeta = computed(
@@ -401,11 +451,13 @@ const reportSections = computed<ReportViewSection[]>(() => {
   }].filter(section => section.reports.length > 0);
 });
 
-// 报告类型选项（domain ReportType 后端原值，与 historyReports.ts COMPARISON_REPORT_TYPES 对齐）
+// 报告类型选项（domain ReportType 后端原值，与 historyReports.ts COMPARISON_REPORT_TYPES 对齐；
+// INT-483：新增 benchmark 类型筛选）
 const REPORT_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: 'comparison', label: '对比报告' },
   { value: 'secondary_comparison', label: '二次对比报告' },
   { value: 'task', label: '任务报告' },
+  { value: 'benchmark', label: 'Benchmark 报告' },
 ];
 
 const REPORT_STATUS_OPTIONS = [
@@ -465,6 +517,25 @@ function handleAlgorithmFilterChange(value: string | number) {
     border-top-color: var(--primary-color);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
+}
+
+/* INT-483：发布 Benchmark 报告按钮（页头右侧） */
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.benchmark-publish-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background-color: var(--primary-color, #ff6a00);
+  border-color: var(--primary-color, #ff6a00);
+  color: #fff;
+  white-space: nowrap;
 }
 
 .no-data{

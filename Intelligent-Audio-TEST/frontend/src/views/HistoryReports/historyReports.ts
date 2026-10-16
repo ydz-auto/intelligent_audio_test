@@ -58,7 +58,7 @@ const TAB_TO_FILTER: Record<ReportTabValue, { status?: ReportStatusFilter; type?
   [REPORT_TABS.COMPARISON]: { types: [...COMPARISON_REPORT_TYPES] },
 };
 
-type ReportTypeFilter = 'all' | 'comparison' | 'secondary_comparison' | 'task';
+type ReportTypeFilter = 'all' | 'comparison' | 'secondary_comparison' | 'task' | 'benchmark';
 type ReportStatusFilter = 'all' | 'draft' | 'published';
 type TimeRangeFilter = 'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom';
 
@@ -331,6 +331,9 @@ export function useHistoryReports() {
       return `共 ${totalCases} 个测试用例，通过 ${completedCases} 个，失败 ${failedCases} 个，通过率 ${successRate}%`;
     } else if (report.type === 'comparison') {
       return `共对比 ${summary.taskCount || 0} 个任务，包含 ${totalCases} 个测试用例`;
+    } else if (report.type === 'benchmark') {
+      // INT-483：Benchmark 报告无用例统计（计数入 benchmark_reports 快照），列表无快照字段，展示占位文案
+      return `Benchmark 排行快照报告（发布时点定格，点击查看详情）`;
     } else {
       return `共 ${totalCases} 个测试用例，通过 ${completedCases} 个，失败 ${failedCases} 个，通过率 ${successRate}%`;
     }
@@ -650,6 +653,7 @@ export function useHistoryReports() {
     sort,
     algorithmOptions,
     toast,
+    showToast,
     formatDate,
     getReportTypeLabel: getReportTypeLabelLocal,
     getAlgorithmTypeLabel,
