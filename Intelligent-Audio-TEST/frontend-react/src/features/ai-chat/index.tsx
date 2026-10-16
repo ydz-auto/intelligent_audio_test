@@ -127,7 +127,7 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
       {/* 顶部条（shrink-0，§3.1/§3.2） */}
       <div className='border-border/60 flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3 sm:px-6'>
         <div className='min-w-0'>
-          <h1 className='text-sm font-semibold sm:text-base'>AI 对话</h1>
+          <h1 className='text-sm font-semibold sm:text-base'>灵犀Agent</h1>
           <p className='text-muted-foreground hidden text-xs sm:block'>
             用自然语言生成、对比、解读测试报告
           </p>
