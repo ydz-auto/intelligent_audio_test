@@ -431,7 +431,10 @@ def test_07_group_manager(drv):
     cascade = drv.find_element(
         By.XPATH, "//*[@role='alertdialog'][contains(., '分组「语音识别」包含 3 个算法。删除分组不会删除算法（算法将变为未分组），确定删除吗？')]")
     assert cascade, '分组含算法删除 cascade 提示缺失'
-    _press_esc(drv)
+    # cascade 确认删除：分组删除成功、算法保留变未分组（§3.6 对齐后端 soft_delete 契约，无拦截）
+    _alert_button(drv, '删除').click()
+    WebDriverWait(drv, 6).until(lambda d: '分组已删除' in _body_text(drv))
+    WebDriverWait(drv, 6).until(lambda d: '语音识别' not in _body_text(drv))
     _press_esc(drv)
 
 

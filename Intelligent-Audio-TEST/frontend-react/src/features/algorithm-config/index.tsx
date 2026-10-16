@@ -25,6 +25,7 @@ import { usePermissions } from '@/application/hooks/use-permissions'
 import { toast } from 'sonner'
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -92,6 +93,11 @@ export function AlgorithmConfigPage() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+
+  // 搜索关键词提交时回到第一页（§3.4 与分组/状态 facet 口径一致，避免分页指示错位）
+  useEffect(() => {
+    setPage(1)
+  }, [searchKeyword])
 
   // 弹窗群
   const [mutateSheet, setMutateSheet] = useState<MutateSheetState>({

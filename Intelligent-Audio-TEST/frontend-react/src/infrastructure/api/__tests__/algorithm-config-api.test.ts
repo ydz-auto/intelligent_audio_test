@@ -1,6 +1,6 @@
 /**
  * 算法配置 API 桩单测（infrastructure/api；mock 内存库 CRUD 行为）。
- * 覆盖列表/分组读取、新建/编辑、删除引用中算法拦截、批量删除、分组删除含算法拦截。
+ * 覆盖列表/分组读取、新建/编辑、删除引用中算法拦截、批量删除、分组删除 cascade 语义。
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 
@@ -82,7 +82,7 @@ describe('algorithm-config-api（mock 桩）', () => {
     expect(definitions.some((d) => d.type === 'asr-v3')).toBe(true)
   })
 
-  it('分组 CRUD：新建计数为 0，删除含算法分组被拦截（§7.1 cascade 语义）', async () => {
+  it('分组 CRUD：新建计数为 0，删除含算法分组成功且算法变未分组（§3.6 cascade 语义）', async () => {
     const created = await createAlgorithmGroup({
       name: '新分组',
       description: '',
@@ -91,9 +91,22 @@ describe('algorithm-config-api（mock 桩）', () => {
     })
     expect(created.algorithmCount).toBe(0)
 
-    const deleted = await deleteAlgorithmGroup(1) // 语音识别组含算法
-    expect(deleted.success).toBe(false)
-    expect(deleted.message).toContain('包含')
+    // 含算法分组删除：对齐后端 soft_delete 契约（无算法存在性拦截），删除成功、算法保留并变未分组
+    const before = await fetchAlgorithmDefinitions()
+    const groupAlgos = before.filter((d) => d.groupId === 1) // 语音识别组含算法
+    expect(groupAlgos.length).toBeGreaterThan(0)
+
+    const deleted = await deleteAlgorithmGroup(1)
+    expect(deleted.success).toBe(true)
+
+    const after = await fetchAlgorithmDefinitions()
+    expect(after.some((d) => d.groupId === 1)).toBe(false) // 分组已删，无残留归属
+    for (const algo of groupAlgos) {
+      const kept = after.find((d) => d.type === algo.type)
+      expect(kept).toBeTruthy() // 算法保留在列表
+      expect(kept?.groupId).toBeNull() // 变未分组
+      expect(kept?.groupName).toBeNull()
+    }
 
     const emptyDeleted = await deleteAlgorithmGroup(created.id)
     expect(emptyDeleted.success).toBe(true)

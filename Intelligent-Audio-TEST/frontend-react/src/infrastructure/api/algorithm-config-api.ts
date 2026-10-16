@@ -324,10 +324,50 @@ export async function reloadAlgorithmConfig(): Promise<{
 
 /** 导入算法（§7.6；POST /algorithm/import） */
 export async function importAlgorithms(
-  _algorithms: unknown[]
+  algorithms: unknown[]
 ): Promise<{ importedCount: number }> {
   // TODO(API 接线): POST /api/v1/algorithm/import
-  return mockLatency({ importedCount: 1 }, 260)
+  // mock 阶段：按导出契约（AlgorithmDefinition 形态）校验后追加入库，返回实际导入数（type 主键去重）
+  const existingTypes = new Set(definitionsStore.map((d) => d.type))
+  const imported: AlgorithmDefinition[] = algorithms
+    .filter(
+      (row): row is AlgorithmDefinition =>
+        typeof row === 'object' &&
+        row !== null &&
+        typeof (row as AlgorithmDefinition).type === 'string' &&
+        (row as AlgorithmDefinition).type.trim() !== '' &&
+        !existingTypes.has((row as AlgorithmDefinition).type)
+    )
+    .map((row, index) => {
+      const group = groupsStore.find((g) => g.id === row.groupId)
+      return {
+        ...row,
+        id: freshId(),
+        type: row.type.trim(),
+        name: row.name || row.type,
+        groupId: row.groupId ?? null,
+        groupName: group?.name ?? null,
+        status: row.status === 'offline' ? 'offline' : 'online',
+        displayOrder:
+          typeof row.displayOrder === 'number' ? row.displayOrder : index + 1,
+        deviceParams: Array.isArray(row.deviceParams) ? row.deviceParams : [],
+        apiParams: Array.isArray(row.apiParams) ? row.apiParams : [],
+        caseParams: Array.isArray(row.caseParams) ? row.caseParams : [],
+        referenceParams: Array.isArray(row.referenceParams)
+          ? row.referenceParams
+          : [],
+        mappings: row.mappings ?? { device: [], api: [], evaluation: [] },
+        associatedDimensions: Array.isArray(row.associatedDimensions)
+          ? row.associatedDimensions
+          : [],
+        caseCount: typeof row.caseCount === 'number' ? row.caseCount : 0,
+        createdAt: row.createdAt ?? new Date().toISOString(),
+        updatedAt: row.updatedAt ?? new Date().toISOString(),
+      }
+    })
+  definitionsStore = [...definitionsStore, ...imported]
+  syncGroupCounts()
+  return mockLatency({ importedCount: imported.length }, 260)
 }
 
 /* ───────────────────────── 分组 CRUD（§7.1） ───────────────────────── */
@@ -378,20 +418,20 @@ export async function updateAlgorithmGroup(
   return mockLatency(updated, 100)
 }
 
-/** 删除分组（含算法时拦截；算法变为未分组） */
+/** 删除分组（§3.6 cascade 语义：删分组、其下算法保留并变未分组） */
 export async function deleteAlgorithmGroup(
   id: number
 ): Promise<{ success: boolean; message?: string }> {
   // TODO(API 接线): DELETE /api/v1/algorithm/groups/{id}
   const group = groupsStore.find((g) => g.id === id)
   if (!group) return mockLatency({ success: false, message: '分组不存在' }, 80)
-  if (group.algorithmCount > 0) {
-    return mockLatency(
-      { success: false, message: `分组「${group.name}」包含 ${group.algorithmCount} 个算法，请先迁移算法` },
-      80
-    )
-  }
+  // 对齐后端契约（algorithm_handlers.handle_delete_group → soft_delete，无算法存在性检查）
+  // 与 §3.6 cascade 语义：删除分组，其下算法保留并置为未分组（groupId/groupName 置空）。
   groupsStore = groupsStore.filter((g) => g.id !== id)
+  definitionsStore = definitionsStore.map((d) =>
+    d.groupId === id ? { ...d, groupId: null, groupName: null } : d
+  )
+  syncGroupCounts()
   return mockLatency({ success: true }, 80)
 }
 
