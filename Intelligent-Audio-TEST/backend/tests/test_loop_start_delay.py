@@ -20,7 +20,11 @@ from backend.app import create_app
 from backend.models import db
 from backend.models.models import Audio, PlaybackDevice
 
-app = create_app()
+# 必须显式传 "testing"：裸 create_app() 会落到 default=DevelopmentConfig，
+# 即生产库 intelligent_audio_test。pytest 收集阶段会 import 本模块，
+# 那次 create_app() 会顺带跑 app.py 的启动恢复扫描，把正在跑的评估刷成
+# '服务重启导致评估中断' failed（见 VEGA-25 留档 backend/app.py:184-232）。
+app = create_app("testing")
 app.app_context().push()
 
 
