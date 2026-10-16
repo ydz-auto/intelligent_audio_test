@@ -139,6 +139,9 @@ class TestCaseListItem(APIModel):
     deleted_at: Optional[str] = Field(None)
     deleted_by_user_id: Optional[int] = Field(None)
     total_duration: Optional[float] = Field(None)
+    # INT-539：lab 归属透出（config JSONB 解析；空/缺失 = 通用用例 → lab_id=null）
+    lab_id: Optional[int] = Field(None)
+    lab_name: Optional[str] = Field(None)
 
 
 class TestCaseListData(PaginatedData[TestCaseListItem]):
@@ -621,3 +624,5 @@ class TestCaseListQuery(APIModel):
     # 前端 QUERY_PARAM_MAP 将 testType 映射为 type，另兼容 test_type/testType 键
     type: Optional[str] = Field(None, validation_alias=AliasChoices('type', 'test_type', 'testType'))
     dimension_id: Optional[int] = Field(None, validation_alias=AliasChoices('dimension_id', 'dimensionId'))
+    # INT-539：按实验室过滤（含通用用例；config JSONB 无 lab_id 的用例任意实验室可见）
+    lab_id: Optional[int] = Field(None, validation_alias=AliasChoices('lab_id', 'labId'))

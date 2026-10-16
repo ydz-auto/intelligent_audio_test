@@ -115,6 +115,8 @@ class TestCaseConfigServiceServicer(task_grpc.TestCaseConfigServiceServicer):
                 favorite=request.favorite,
                 only_deleted=request.only_deleted,
                 user_id=user_id_from_context(context),
+                # INT-539：按实验室过滤（含通用用例；lab_ids 空 = 不过滤）
+                lab_ids=list(request.lab_ids) or None,
             )
             return self._resp(self.qry.handle_list_testcases(query))
         except Exception as e:

@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 
 @dataclass(frozen=True)
@@ -149,6 +149,8 @@ class ListTestCasesQuery(Query):
     only_deleted（可选，INT-141）：仅回收站软删除项（含删除人/删除时间）。
     test_type（可选，INT-193）：执行口径 api/e2e（proto ListTestCasesRequest.type，
     task_service 侧按配置形态派生过滤）；dimension_id：评估维度过滤。
+    lab_ids（可选，INT-539）：按实验室过滤（含通用用例）。config JSONB 无
+    lab_id 的用例视为通用用例，任意实验室下可见；有值则须属于本集合。
     """
     page: int = 1
     per_page: int = 10
@@ -163,6 +165,7 @@ class ListTestCasesQuery(Query):
     favorite: bool = False
     only_deleted: bool = False
     user_id: Optional[int] = None
+    lab_ids: Optional[List[int]] = None
 
 
 @dataclass(frozen=True)

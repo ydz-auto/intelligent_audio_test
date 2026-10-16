@@ -10,6 +10,7 @@ from shared.models.common_enums import TestType
 from task_service.infrastructure.persistence.models import Tag, TestCase, TestCaseGroup
 from task_service.infrastructure.persistence._testcase_repo_common import (
     build_dim_id_filter,
+    build_lab_id_filter,
 )
 
 
@@ -69,11 +70,13 @@ class TestCaseQueryMixin:
         favorite: bool = False,
         only_deleted: bool = False,
         user_id: int = None,
+        lab_ids: List[int] = None,
     ):
         """分页查询测试用例（带 group/tags 预加载）。
 
         favorite（INT-141）：仅当前用户收藏；only_deleted（INT-141）：仅回收站。
         test_type（INT-193）：执行口径 api/e2e，配置形态派生过滤（Python 侧）。
+        lab_ids（INT-539）：按实验室过滤（含通用用例；None/空 = 不过滤）。
         """
         session = get_db_session()
         # INT-228：同事务批量创建的用例 created_at 全同（Postgres now() 为事务级
@@ -108,6 +111,10 @@ class TestCaseQueryMixin:
         # 按评估维度过滤：搜索 config JSON 中包含该 dimension_id 的用例
         if dimension_id:
             query = query.filter(build_dim_id_filter(str(dimension_id)))
+
+        # INT-539：按实验室过滤（含通用用例；config JSONB 顶层 lab_id）
+        if lab_ids:
+            query = query.filter(build_lab_id_filter(lab_ids))
 
         # INT-141：仅当前用户收藏（user_id 来自 x-user-id metadata）
         if favorite:
@@ -171,6 +178,7 @@ class TestCaseQueryMixin:
         favorite: bool = False,
         only_deleted: bool = False,
         user_id: int = None,
+        lab_ids: List[int] = None,
     ) -> List[TestCase]:
         """按标签 ID 列表查询关联的测试用例（带 group/tags 预加载）。
 
@@ -178,6 +186,7 @@ class TestCaseQueryMixin:
         口径与 query_testcases 一致（user_id 来自 x-user-id metadata）。
         test_type（INT-193）：执行口径 api/e2e，Python 侧派生过滤（无分页诉求，
         标签视图分页在标签维度）。
+        lab_ids（INT-539）：按实验室过滤（含通用用例；None/空 = 不过滤）。
         """
         session = get_db_session()
         tc_query = self._query_testcases_with_preload(session) \
@@ -201,6 +210,10 @@ class TestCaseQueryMixin:
         # 按评估维度过滤
         if dimension_id:
             tc_query = tc_query.filter(build_dim_id_filter(str(dimension_id)))
+
+        # INT-539：按实验室过滤（含通用用例；config JSONB 顶层 lab_id）
+        if lab_ids:
+            tc_query = tc_query.filter(build_lab_id_filter(lab_ids))
 
         # INT-215：仅当前用户收藏（与 query_testcases 同口径）
         if favorite:

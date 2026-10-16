@@ -72,6 +72,8 @@ class TestCaseQueryService:
         # INT-193：执行口径（api/e2e）与评估维度过滤，下推 task_service 查询
         test_type = query.type
         dimension_id = query.dimension_id
+        # INT-539：按实验室过滤（含通用用例；下推 task_service lab_ids 过滤）
+        lab_id = query.lab_id
 
         result = _testcase_acl.list_testcases(
             page=page,
@@ -86,6 +88,7 @@ class TestCaseQueryService:
             dimension_id=dimension_id,
             favorite=favorite,
             only_deleted=only_deleted,
+            lab_ids=[lab_id] if lab_id is not None else None,
         )
 
         if not result.get('success'):
@@ -121,6 +124,9 @@ class TestCaseQueryService:
                     deleted_at=item.get('deleted_at'),
                     deleted_by_user_id=item.get('deleted_by_user_id'),
                     total_duration=item.get('total_duration'),
+                    # INT-539：lab 归属透出（config JSONB 解析，task_service 返回）
+                    lab_id=item.get('lab_id'),
+                    lab_name=item.get('lab_name'),
                 )
             )
 

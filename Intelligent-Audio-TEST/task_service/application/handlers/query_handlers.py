@@ -214,6 +214,7 @@ class TaskQueryHandler:
             favorite=query.favorite,
             only_deleted=query.only_deleted,
             user_id=query.user_id,
+            lab_ids=query.lab_ids,
         )
 
     # ==================================================================

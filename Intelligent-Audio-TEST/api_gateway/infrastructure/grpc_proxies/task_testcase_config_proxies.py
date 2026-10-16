@@ -605,7 +605,7 @@ class _TestCaseConfigProxy:
     def list_testcases(self, page=1, per_page=10, keyword=None, tag=None,
                        group_id=None, algorithm_type=None, test_type=None,
                        view=None, include_deleted=False, dimension_id=None,
-                       favorite=False, only_deleted=False):
+                       favorite=False, only_deleted=False, lab_ids=None):
         from shared.proto import task_service_pb2 as task_pb
 
         def _call():
@@ -625,6 +625,8 @@ class _TestCaseConfigProxy:
                 dimension_id=int(dimension_id) if dimension_id else 0,
                 favorite=bool(favorite),
                 only_deleted=bool(only_deleted),
+                # INT-539：按实验室过滤（含通用用例；None/空 = 不过滤）
+                lab_ids=[int(i) for i in (lab_ids or [])],
             ))
             return self._resp(resp)
 

@@ -15,6 +15,8 @@
 """
 from typing import Any, Dict, Optional
 
+import logging
+
 from shared.models.database import get_db_session
 from task_service.domain.repositories.testcase_group_repository import TestCaseGroupRepositoryABC
 from task_service.infrastructure.persistence._testcase_crud_query_mixin import (
@@ -29,6 +31,8 @@ from task_service.infrastructure.persistence._testcase_group_mixin import (
 from task_service.infrastructure.persistence._tag_repository_mixin import (
     TagRepositoryMixin,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class TestCaseRepository(
@@ -86,6 +90,31 @@ class TestCaseRepository(
 
         from task_service.infrastructure.acl.evaluation_config_acl_repository import evaluation_config_acl_repository
         return evaluation_config_acl_repository.list_dimensions_by_ids(dim_ids)
+
+    def list_laboratories_by_ids(self, lab_ids) -> Dict[int, str]:
+        """按 ID 集合批量查询实验室名称，返回 {lab_id: lab_name}（INT-539）。
+
+        laboratories 表归属 api_gateway 实验室域（共享库，INT-493 口径④），
+        本服务仅读展示用（lab_name join），不定义 ORM PO —— 避免跨服务同表
+        映射冲突；用原生 SQL 查询，软删行排除（引用已删实验室的用例
+        lab_name 返回 None，与设计文档「空 lab 返回 null」一致）。
+        失败（如表不存在 / DB 异常）返回空 dict，仅日志告警，不阻断用例列表。
+        """
+        if not lab_ids:
+            return {}
+        from sqlalchemy import bindparam, text
+
+        session = get_db_session()
+        try:
+            stmt = text(
+                "SELECT id, name FROM laboratories "
+                "WHERE deleted = false AND id IN :ids"
+            ).bindparams(bindparam('ids', expanding=True))
+            rows = session.execute(stmt, {'ids': [int(i) for i in lab_ids]}).fetchall()
+            return {row.id: row.name for row in rows}
+        except Exception as e:
+            logger.warning(f"按 ID 查询实验室名称失败: {e}")
+            return {}
 
     # ========== 事务控制 ==========
 

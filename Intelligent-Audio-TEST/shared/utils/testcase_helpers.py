@@ -56,6 +56,17 @@ def normalize_optional_int(value):
         return None
 
 
+def parse_config_lab_id(config: dict):
+    """从用例 config JSONB 解析 lab_id（INT-539）。
+
+    顶层 `lab_id` 键：空/缺失 = 通用用例（返回 None）；有值须为数值。
+    兼容 JSON 序列化后字符串形态（"3" / 3.0）与嵌套读取失败均回退 None。
+    """
+    if not config or not isinstance(config, dict):
+        return None
+    return normalize_optional_int(config.get('lab_id'))
+
+
 def has_overlap_param_changed(old_params: list, new_params: list) -> bool:
     overlap_fields = {'overlap_rate', 'overlap_time', 'overlapRate', 'overlapTime'}
 

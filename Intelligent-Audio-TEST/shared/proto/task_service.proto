@@ -443,6 +443,9 @@ message ListTestCasesRequest {
   int32 dimension_id = 10;  // 评估维度ID（按 config JSON 模糊匹配）
   bool favorite = 11;       // INT-141：仅当前用户收藏（x-user-id metadata）
   bool only_deleted = 12;   // INT-141：仅回收站（软删除项，含删除人/删除时间）
+  // INT-539：按实验室过滤（含通用用例）。config JSONB 无 lab_id 的用例
+  // 视为通用用例，任意实验室下均可见；有值则须属于本集合。
+  repeated int32 lab_ids = 13;
 }
 message GetTestCaseDetailRequest {
   string tc_id = 1;
