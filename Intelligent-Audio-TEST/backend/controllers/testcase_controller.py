@@ -2,6 +2,7 @@ import os
 from flask import request, send_file, current_app
 from backend.models.models import TestCase, TestCaseGroup, Tag, Dimension, Audio, PlaybackDevice
 from backend.models.database import db
+from backend.models.soft_delete import include_deleted
 from backend.utils.web.response import success_response, error_response
 from backend.utils.web.log_handler import log_not_emit
 from backend.utils.common.task_utils import has_running_e2e_tasks
@@ -286,8 +287,9 @@ class TestCaseController:
             joinedload(TestCase.group),
             joinedload(TestCase.tags)
         ).order_by(TestCase.created_at.desc())
-        if not include_deleted:
-            query = query.filter(TestCase.deleted == False)
+        # 软删过滤由 models.soft_delete 全局单一入口负责；include_deleted=true 时显式放开
+        if include_deleted:
+            query = query.execution_options(include_deleted=True)
 
         if keyword:
             query = query.filter(
@@ -418,8 +420,9 @@ class TestCaseController:
             joinedload(TestCase.tags),
         ).join(TestCase.tags).filter(Tag.id.in_(tag_ids))
 
-        if not include_deleted:
-            tc_query = tc_query.filter(TestCase.deleted == False)
+        # 软删过滤由 models.soft_delete 全局单一入口负责；include_deleted=true 时显式放开
+        if include_deleted:
+            tc_query = tc_query.execution_options(include_deleted=True)
         if keyword:
             tc_query = tc_query.filter(
                 (TestCase.id.like(f'%{keyword}%')) |
@@ -2081,10 +2084,10 @@ class TestCaseController:
             if not ids:
                 return error_response("未指定要导出的用例ID")
             
-            # 查询指定的测试用例
+            # 查询指定的测试用例（软删过滤由 models.soft_delete 全局单一入口负责）
             query = TestCase.query.filter(TestCase.id.in_(ids))
-            if not include_deleted:
-                query = query.filter(TestCase.deleted == False)
+            if include_deleted:
+                query = query.execution_options(include_deleted=True)
             test_cases = query.all()
             
             if not test_cases:
@@ -2676,7 +2679,10 @@ class TestCaseController:
                     tc_id = case_data.get('id')
                     existing_tc = None
                     if tc_id:
-                        existing_tc = db.session.get(TestCase, tc_id)
+                        # 导入是"恢复"语义：显式放开全局软删过滤，软删用例按 ID 命中后复活
+                        # （下方 existing_tc.deleted = False 由 soft_delete 统一清空 deleted_at）
+                        with include_deleted():
+                            existing_tc = db.session.get(TestCase, tc_id)
                         if not existing_tc:
                             raise Exception(f"UPDATE失败：未找到ID对应的用例: {tc_id}")
                     

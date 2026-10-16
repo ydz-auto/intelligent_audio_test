@@ -7,7 +7,8 @@
 架构层次: Flask Model Layer (MVC - Model)
 统一规范:
 - 时间戳统一使用东八区时间 (datetime.now(timezone(timedelta(hours=8))))
-- 逻辑删除使用 deleted 或 is_deleted 标志
+- 逻辑删除统一由 soft_delete.SoftDeleteMixin 提供 deleted/deleted_at/操作人列，
+  禁止在业务代码里逐处手写过滤与打标（口径漂移的根因）
 - 所有模型继承自 db.Model
 """
 from datetime import datetime, timezone, timedelta
@@ -15,6 +16,7 @@ from enum import Enum
 from sqlalchemy import Column, Integer, BigInteger, String, Text, DateTime, ForeignKey, Boolean, Float, JSON, Index, UniqueConstraint, text
 from sqlalchemy.orm import relationship
 from .database import db
+from .soft_delete import SoftDeleteMixin, register_soft_delete_filter
 
 
 class ReportStatus(str, Enum):
@@ -115,7 +117,7 @@ class Tag(db.Model):
 
 # 3. 测试用例管理 (Test Case Management)
 
-class TestCaseGroup(db.Model):
+class TestCaseGroup(db.Model, SoftDeleteMixin):
     """
     测试用例分组模型 (Test Case Group Model)
     用于对测试用例进行逻辑分类管理。
@@ -130,12 +132,11 @@ class TestCaseGroup(db.Model):
     name = Column(String(100), nullable=False, comment='分组显示名称')
     description = Column(Text, comment='分组详细描述')
     algorithm_type = Column(String(50), comment='关联算法类型 (如: translation, asr, speaker_recognition, tts)')
-    deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
     test_cases = relationship('TestCase', backref='group', lazy=True)
 
-class TestCase(db.Model):
+class TestCase(db.Model, SoftDeleteMixin):
     """
     测试用例模型 (Test Case Model)
     存储测试用例的核心配置信息，包括音频关联、背景噪音设置、算法配置等。
@@ -152,7 +153,6 @@ class TestCase(db.Model):
     test_type = Column(String(10), nullable=False, default='api', index=True, comment='测试类型 (api/e2e)')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
-    deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')
 
     tags = relationship('Tag', secondary='test_case_tags', backref='test_cases')
 
@@ -239,7 +239,7 @@ class DeviceTag(db.Model):
 
 # 5. 音频文件管理 (Audio Management)
 
-class Audio(db.Model):
+class Audio(db.Model, SoftDeleteMixin):
     """
     音频文件模型 (Audio Model)
     存储系统中所有音频文件的元数据及物理路径。
@@ -264,7 +264,6 @@ class Audio(db.Model):
     asr_text = Column(Text, comment='音频对应的 ASR 识别文本（参考值）')
     description = Column(Text, comment='详细描述')
     md5 = Column(String(32), comment='音频文件MD5值')
-    deleted = Column(Boolean, default=False, nullable=False, comment='逻辑删除标志')
     source_language = Column(String(32), comment='源语言')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
@@ -376,7 +375,7 @@ class API(db.Model):
 
 # 7. 测试任务管理 (Test Task Management)
 
-class Task(db.Model):
+class Task(db.Model, SoftDeleteMixin):
     """
     测试任务模型 (Test Task Model)
     代表一次完整的测试执行过程，关联了用例、设备、API、算法配置及最终结果。
@@ -406,7 +405,6 @@ class Task(db.Model):
     completed_at = Column(DateTime, comment='任务执行结束时间')
     estimated_time = Column(Integer, comment='预计执行耗时 (秒)')
     actual_duration = Column(Integer, comment='实际执行耗时 (秒)')
-    deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')
     # 已发布任务追溯字段（从已发布任务执行生成的日常任务回填）
     published_task_id = Column(Integer, comment='来源已发布任务 ID')
     published_task_version = Column(Integer, comment='来源已发布任务版本号')
@@ -935,3 +933,12 @@ class StatsCache(db.Model):
     updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='最后更新时间')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
 
+
+
+# 14. 软删除语义注册 (Soft Delete Semantics Registration)
+
+# 全局软删过滤登记：登记后 TestCase 的所有 ORM 查询（建任务 / 执行 / 报告 / 发布任务
+# 四条路径）自动同口径地排除软删行，不再依赖各控制器逐处手写 filter(deleted == False)。
+# 需要读取软删用例的场景（回收站列表 / 导入恢复 / 审计）显式用
+# backend.models.soft_delete.include_deleted() 放开。
+register_soft_delete_filter(TestCase)

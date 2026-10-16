@@ -865,6 +865,19 @@ class TaskController:
             return None
         return Counter(values).most_common(1)[0][0]
 
+    # 找出不可用的用例 ID（不存在或已软删）。软删过滤走 models.soft_delete 全局入口，
+    # 因此"查不到"即等价于"不存在或已软删"，与执行/报告路径天然同口径。
+    @staticmethod
+    def _find_unusable_case_ids(case_ids):
+        if not case_ids:
+            return []
+        ordered_ids = list(dict.fromkeys(case_ids))
+        found = {
+            cid for (cid,) in db.session.query(TestCase.id)
+            .filter(TestCase.id.in_(ordered_ids)).all()
+        }
+        return [cid for cid in ordered_ids if cid not in found]
+
     # 创建新任务
     @staticmethod
     def create():
@@ -875,6 +888,17 @@ class TaskController:
             device_ids = req.device_ids or []
             api_ids = req.api_ids or []
             tags = req.tags or []
+
+            # 软删口径：软删即不可用 —— 建任务阶段即拒绝不存在/已软删的用例，
+            # 避免出现「任务里挂了用例、执行/报告却看不到」的静默偏差
+            # （软删过滤由 models.soft_delete 全局单一入口提供，此处无需手写 deleted 条件）
+            missing_case_ids = TaskController._find_unusable_case_ids(case_ids)
+            if missing_case_ids:
+                return error_response(
+                    f"以下用例不存在或已被删除，无法创建任务：{', '.join(missing_case_ids)}",
+                    code=ErrorCode.INVALID_PARAMS,
+                    http_code=400,
+                )
 
             new_task = Task(
                 name=req.name,

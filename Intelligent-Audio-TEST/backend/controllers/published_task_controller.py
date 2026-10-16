@@ -187,7 +187,14 @@ class PublishedTaskController:
 
     @staticmethod
     def _validate_snapshot(snapshot):
-        """快照完整性校验：至少一个存在用例；已删除的用例 ID 自动过滤（历史报告兜底场景）"""
+        """快照完整性校验：至少一个存在用例；已删除的用例 ID 自动过滤（历史报告兜底场景）
+
+        软删过滤来自 backend/models/soft_delete.py 的全局单一入口：此处
+        `db.session.query(TestCase.id)` 已自动附加 `deleted = false`，
+        因此软删用例不会进入 existing 集合，会被下方 valid 列表过滤掉；
+        剩余用例全被过滤时返回「用例不存在（已删除），无法发布」。
+        与建任务（TaskController.create 直接拒绝）、执行、报告三条路径同口径。
+        """
         case_ids = snapshot.get('caseIds') or []
         if not case_ids:
             return None, error_response('已发布任务至少需要包含一个测试用例', code=ErrorCode.INVALID_PARAMS, http_code=400)
