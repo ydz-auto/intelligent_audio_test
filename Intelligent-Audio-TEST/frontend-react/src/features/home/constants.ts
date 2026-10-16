@@ -30,7 +30,7 @@ export const HOME_BRAND_NAME = '智能语音测试平台'
 
 /** ① 品牌区 */
 export const HERO = {
-  badge: '语音测试 · 多维评估 · 多友商对比',
+  badge: '算法可插拔 · 从 ASR 到实时语音大模型',
   titleLine1: '智能语音测试平台',
   titleLine2: '让每一次语音交互都可度量',
   // 负责人 2026-10-16 定稿：highlight 并入多友商横向对比核心价值（多友商同集同指标同时实测）
@@ -46,9 +46,9 @@ export const HERO = {
     '实时进度推送',
     '自动化评估引擎',
     '可视化对比报告',
-    '细粒度权限控制',
+    '多算法类型支持',
   ],
-  orbitCaption: '一个平台，覆盖用例、设备、执行、报告全流程',
+  orbitCaption: '一个平台，覆盖语音测试全流程',
   brandRow: ['Android 真机', '鸿蒙设备', '语音 API', '自动评估'],
   brandRowLink: '开始一次测试',
 } as const
