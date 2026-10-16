@@ -97,6 +97,7 @@ class PublishedTaskRepository:
         session = get_db_session()
         try:
             now = datetime.now(_UTC_PLUS_8)
+            from shared.infrastructure.user_context import get_current_user_id
             pt = PublishedTask(
                 task_group_id=task_group_id,
                 source_task_id=source_task_id,
@@ -112,6 +113,7 @@ class PublishedTaskRepository:
                 report_snapshot=report_snapshot,
                 publish_reason=publish_reason,
                 published_by=published_by,
+                created_by_user_id=get_current_user_id(),
                 published_at=now,
                 created_at=now,
                 updated_at=now,
@@ -169,8 +171,16 @@ class PublishedTaskRepository:
         """
         session = get_db_session()
         try:
+            from shared.infrastructure.visibility_filter import visible_condition
+            from task_service.infrastructure.visibility_context import visibility_identity
+            _vis_uid, _vis_admin = visibility_identity()
             query = session.query(PublishedTask).filter(
-                PublishedTask.is_current.is_(True)
+                PublishedTask.is_current.is_(True),
+                # INT-423：行级可见性过滤（共享 + 自己创建的私有行；admin 全量；
+                # 存量 NULL owner 行默认 shared 不受影响）
+                visible_condition(
+                    PublishedTask.created_by_user_id, PublishedTask.visibility,
+                    _vis_uid, _vis_admin),
             )
             if status:
                 query = query.filter(PublishedTask.status == status)
@@ -228,12 +238,20 @@ class PublishedTaskRepository:
             session.close()
 
     def get_group_versions(self, group_id: int):
-        """查询版本链全部版本（按版本号倒序）。"""
+        """查询版本链全部版本（按版本号倒序，INT-423 私有版本对非 owner 不可见）。"""
+        from shared.infrastructure.visibility_filter import visible_condition
+        from task_service.infrastructure.visibility_context import visibility_identity
+        _vis_uid, _vis_admin = visibility_identity()
         session = get_db_session()
         try:
             return (
                 session.query(PublishedTask)
-                .filter(PublishedTask.task_group_id == group_id)
+                .filter(
+                    PublishedTask.task_group_id == group_id,
+                    visible_condition(
+                        PublishedTask.created_by_user_id, PublishedTask.visibility,
+                        _vis_uid, _vis_admin),
+                )
                 .order_by(PublishedTask.version.desc())
                 .all()
             )
@@ -331,6 +349,7 @@ class PublishedTaskRepository:
         session = get_db_session()
         try:
             now = datetime.now(_UTC_PLUS_8)
+            from shared.infrastructure.user_context import get_current_user_id
             if demote_id is not None:
                 current = session.get(PublishedTask, demote_id)
                 if current is not None:
@@ -351,6 +370,7 @@ class PublishedTaskRepository:
                 report_snapshot=report_snapshot,
                 publish_reason=publish_reason,
                 published_by=published_by,
+                created_by_user_id=get_current_user_id(),
                 published_at=now,
                 created_at=now,
                 updated_at=now,
@@ -1113,6 +1133,7 @@ class PublishedTaskRepository:
         now = datetime.now(_UTC_PLUS_8)
         session = get_db_session()
         try:
+            from shared.infrastructure.user_context import get_current_user_id
             new_task = Task(
                 name=name,
                 description=description,
@@ -1123,6 +1144,7 @@ class PublishedTaskRepository:
                 total_cases=len(case_ids),
                 completed_cases=0,
                 failed_cases=0,
+                created_by_user_id=get_current_user_id(),
                 created_at=now,
                 updated_at=now,
             )

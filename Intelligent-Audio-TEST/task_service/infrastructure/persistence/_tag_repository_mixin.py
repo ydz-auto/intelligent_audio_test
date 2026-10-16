@@ -9,6 +9,8 @@ from sqlalchemy import func
 
 from shared.infrastructure.user_context import get_current_user_id
 from shared.models.database import get_db_session
+from shared.infrastructure.visibility_filter import filter_visible_owners, visible_condition
+from task_service.infrastructure.visibility_context import visibility_identity
 from task_service.infrastructure.persistence.models import Tag, TagCategory
 from task_service.infrastructure.persistence._testcase_repo_common import (
     _now,
@@ -27,7 +29,11 @@ class TagRepositoryMixin:
         return session.query(Tag).filter_by(name=name).first()
 
     def get_or_create_tag(self, name: str) -> Tag:
-        """查找或创建标签（含 flush，未 commit）。"""
+        """查找或创建标签（含 flush，未 commit）。
+
+        INT-423：新建标签 created_by_user_id 从 x-user-id 上下文取操作人。
+        """
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         tag = session.query(Tag).filter_by(name=name).first()
         if not tag:
@@ -37,17 +43,24 @@ class TagRepositoryMixin:
         return tag
 
     def list_tags_ordered_by_updated_at(self) -> List[Tag]:
-        """按更新时间倒序查询所有未删除标签。"""
+        """按更新时间倒序查询所有未删除标签（INT-423 私有标签对非 owner 不可见）。"""
+        _vis_uid, _vis_admin = visibility_identity()
         session = get_db_session()
         return session.query(Tag).filter(
-            Tag.deleted == False  # noqa: E712
+            Tag.deleted == False,  # noqa: E712
+            visible_condition(Tag.created_by_user_id, Tag.visibility, _vis_uid, _vis_admin),
         ).order_by(Tag.updated_at.desc()).all()
 
     def list_tags_paginated(self, page: int, per_page: int):
-        """分页查询未删除标签（view=tag 数据源，需剔除软删除标签）。"""
+        """分页查询未删除标签（view=tag 数据源，需剔除软删除标签）。
+
+        INT-423：私有标签对非 owner 不可见。
+        """
+        _vis_uid, _vis_admin = visibility_identity()
         session = get_db_session()
         return session.query(Tag).filter(
-            Tag.deleted == False  # noqa: E712
+            Tag.deleted == False,  # noqa: E712
+            visible_condition(Tag.created_by_user_id, Tag.visibility, _vis_uid, _vis_admin),
         ).order_by(Tag.name).paginate(
             page=page, per_page=per_page, error_out=False
         )
@@ -75,7 +88,11 @@ class TagRepositoryMixin:
     # ========== TagCategory CRUD（tag_crud_service 使用） ==========
 
     def create_tag_category(self, data: dict) -> TagCategory:
-        """创建标签分类（含 flush，未 commit）。"""
+        """创建标签分类（含 flush，未 commit）。
+
+        INT-423：created_by_user_id 从 x-user-id 上下文取操作人。
+        """
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         cat = TagCategory(
             name=data.get('name'),
@@ -113,19 +130,30 @@ class TagRepositoryMixin:
         return session.query(Tag).filter_by(category_id=category_id, deleted=False).count()
 
     def list_tag_categories_paginated(self, page: int, per_page: int, keyword: str = None):
-        """分页查询标签分类（带每分类标签计数）。"""
+        """分页查询标签分类（带每分类标签计数）。
+
+        INT-423：私有标签分类对非 owner 不可见。
+        """
+        _vis_uid, _vis_admin = visibility_identity()
         session = get_db_session()
         subquery = session.query(
             Tag.category_id,
             func.count(Tag.id).label('tag_count')
-        ).filter(Tag.deleted == False).group_by(Tag.category_id).subquery()  # noqa: E712
+        ).filter(
+            Tag.deleted == False,  # noqa: E712
+            visible_condition(Tag.created_by_user_id, Tag.visibility, _vis_uid, _vis_admin),
+        ).group_by(Tag.category_id).subquery()  # noqa: E712
 
         query = session.query(
             TagCategory,
             func.coalesce(subquery.c.tag_count, 0).label('tag_count')
         ).outerjoin(
             subquery, TagCategory.id == subquery.c.category_id
-        ).filter(TagCategory.deleted == False)  # noqa: E712
+        ).filter(
+            TagCategory.deleted == False,  # noqa: E712
+            visible_condition(
+                TagCategory.created_by_user_id, TagCategory.visibility, _vis_uid, _vis_admin),
+        )
 
         if keyword:
             query = apply_keyword_like(query, TagCategory.name, keyword.strip())
@@ -134,16 +162,23 @@ class TagRepositoryMixin:
         return query.paginate(page=page, per_page=per_page, error_out=False)
 
     def list_tag_categories_ordered(self) -> List[TagCategory]:
-        """按 sort_order/id 查询所有未删除分类。"""
+        """按 sort_order/id 查询所有未删除分类（INT-423 私有分类对非 owner 不可见）。"""
+        _vis_uid, _vis_admin = visibility_identity()
         session = get_db_session()
         return session.query(TagCategory).filter(
-            TagCategory.deleted == False  # noqa: E712
+            TagCategory.deleted == False,  # noqa: E712
+            visible_condition(
+                TagCategory.created_by_user_id, TagCategory.visibility, _vis_uid, _vis_admin),
         ).order_by(TagCategory.sort_order, TagCategory.id).all()
 
     # ========== Tag CRUD（tag_crud_service 使用） ==========
 
     def create_tag(self, data: dict) -> Tag:
-        """创建标签（含 flush，未 commit）。"""
+        """创建标签（含 flush，未 commit）。
+
+        INT-423：created_by_user_id 从 x-user-id 上下文取操作人。
+        """
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         tag = Tag(
             name=data.get('name'),
@@ -176,9 +211,20 @@ class TagRepositoryMixin:
         get_db_session().flush()
 
     def batch_update_tag_category(self, tag_ids: List[int], category_id) -> int:
-        """批量更新标签分类（含 flush，未 commit）。"""
+        """批量更新标签分类（含 flush，未 commit）。
+
+        INT-423：逐行可见性过滤——私有非 owner 标签跳过，不整批放行。
+        """
+        from shared.infrastructure.visibility_context import visibility_identity
         session = get_db_session()
         if not tag_ids:
+            return 0
+        uid, is_admin = visibility_identity()
+        rows = session.query(Tag.id, Tag.created_by_user_id, Tag.visibility).filter(
+            Tag.id.in_(tag_ids), Tag.deleted == False  # noqa: E712
+        ).all()
+        visible = filter_visible_owners([(r[0], r[1], r[2]) for r in rows], uid, is_admin)
+        if not visible:
             return 0
         update_data = {
             'category_id': category_id if category_id else None,
@@ -186,7 +232,7 @@ class TagRepositoryMixin:
             'updated_by_user_id': get_current_user_id(),
         }
         count = session.query(Tag).filter(
-            Tag.id.in_(tag_ids), Tag.deleted == False  # noqa: E712
+            Tag.id.in_(visible), Tag.deleted == False  # noqa: E712
         ).update(update_data, synchronize_session=False)
         session.flush()
         return count
@@ -232,9 +278,16 @@ class TagRepositoryMixin:
 
     def list_tags_paginated_with_filter(self, page: int, per_page: int,
                                         category_id: int = None, keyword: str = None):
-        """分页查询标签（支持按分类与关键字过滤，按更新时间倒序）。"""
+        """分页查询标签（支持按分类与关键字过滤，按更新时间倒序）。
+
+        INT-423：私有标签对非 owner 不可见。
+        """
+        _vis_uid, _vis_admin = visibility_identity()
         session = get_db_session()
-        query = session.query(Tag).filter(Tag.deleted == False)  # noqa: E712
+        query = session.query(Tag).filter(
+            Tag.deleted == False,  # noqa: E712
+            visible_condition(Tag.created_by_user_id, Tag.visibility, _vis_uid, _vis_admin),
+        )
 
         if category_id:
             query = query.filter_by(category_id=category_id)
@@ -246,9 +299,13 @@ class TagRepositoryMixin:
         return query.paginate(page=page, per_page=per_page, error_out=False)
 
     def list_tag_names_paginated(self, page: int, per_page: int, keyword: str = None):
-        """分页查询标签名称（按名称排序）。"""
+        """分页查询标签名称（按名称排序，INT-423 私有标签对非 owner 不可见）。"""
+        _vis_uid, _vis_admin = visibility_identity()
         session = get_db_session()
-        query = session.query(Tag).filter(Tag.deleted == False)  # noqa: E712
+        query = session.query(Tag).filter(
+            Tag.deleted == False,  # noqa: E712
+            visible_condition(Tag.created_by_user_id, Tag.visibility, _vis_uid, _vis_admin),
+        )
 
         if keyword and keyword.strip():
             query = apply_keyword_like(query, Tag.name, keyword.strip())
@@ -257,26 +314,36 @@ class TagRepositoryMixin:
         return query.paginate(page=page, per_page=per_page, error_out=False)
 
     def get_category_name_map(self, category_ids: set) -> Dict[int, str]:
-        """按 ID 集合批量查询分类名称，返回 {category_id: name}。"""
+        """按 ID 集合批量查询分类名称，返回 {category_id: name}。
+
+        INT-423：私有标签分类对非 owner 不返回名称（避免归属泄露）。
+        """
+        _vis_uid, _vis_admin = visibility_identity()
         session = get_db_session()
         if not category_ids:
             return {}
         cats = session.query(TagCategory).filter(
-            TagCategory.id.in_(category_ids), TagCategory.deleted == False  # noqa: E712
+            TagCategory.id.in_(category_ids),
+            TagCategory.deleted == False,  # noqa: E712
+            visible_condition(
+                TagCategory.created_by_user_id, TagCategory.visibility, _vis_uid, _vis_admin),
         ).all()
         return {c.id: c.name for c in cats}
 
     def get_category_name_by_id(self, category_id) -> Optional[str]:
-        """按 ID 查询分类名称（未删除）。"""
+        """按 ID 查询分类名称（未删除；INT-423 私有分类对非 owner 返回 None）。"""
+        from task_service.infrastructure.visibility_context import is_visible
         session = get_db_session()
         cat = session.get(TagCategory, category_id)
-        if cat and not cat.deleted:
+        if cat and not cat.deleted and is_visible(cat.created_by_user_id, cat.visibility):
             return cat.name
         return None
 
     def list_all_tags_ordered_by_name(self) -> List[Tag]:
-        """按名称排序查询所有未删除标签。"""
+        """按名称排序查询所有未删除标签（INT-423 私有标签对非 owner 不可见）。"""
+        _vis_uid, _vis_admin = visibility_identity()
         session = get_db_session()
         return session.query(Tag).filter(
-            Tag.deleted == False  # noqa: E712
+            Tag.deleted == False,  # noqa: E712
+            visible_condition(Tag.created_by_user_id, Tag.visibility, _vis_uid, _vis_admin),
         ).order_by(Tag.name).all()

@@ -73,8 +73,28 @@ class TestCaseCopyMoveMixin:
             logger.warning("复制用例时刷新参考文本失败 tc_id=%s", tc.id, exc_info=True)
         return new_tc
 
+    def _case_visible(self, tc) -> bool:
+        """INT-423 单资源可见性判定（复制源）：私有非 owner 跳过。
+
+        visibility/created_by_user_id 缺省的对象（测试替身/旧形态 PO）按
+        shared 放行——避免替身对象 AttributeError 阻断既有测试。
+        """
+        from shared.infrastructure.visibility_filter import check_visible
+        from task_service.infrastructure.visibility_context import visibility_identity
+        vis = getattr(tc, 'visibility', 'shared') or 'shared'
+        owner = getattr(tc, 'created_by_user_id', None)
+        uid, is_admin = visibility_identity()
+        try:
+            check_visible(owner, vis, uid, is_admin)
+            return True
+        except PermissionError:
+            return False
+
     def _batch_copy_to_group(self, data, common=None):
-        """批量复制用例到指定分组。"""
+        """批量复制用例到指定分组。
+
+        INT-423：私有非 owner 源用例跳过（_case_visible 逐行校验）。
+        """
         ids = data.get('ids', [])
         target_group_id = data.get('target_group_id')
         if not target_group_id:
@@ -87,18 +107,21 @@ class TestCaseCopyMoveMixin:
         copied_count = 0
         for tc_id in ids:
             tc = self.repo.get_testcase(tc_id)
-            if tc:
+            if tc and self._case_visible(tc):
                 self._copy_one_testcase(tc, target_group_id)
                 copied_count += 1
         return f"已成功复制 {copied_count} 个用例到分组 '{target_group.name}'"
 
     def _batch_copy(self, data, common=None):
-        """批量复制用例（保留原分组，名称追加 _copy）。"""
+        """批量复制用例（保留原分组，名称追加 _copy）。
+
+        INT-423：私有非 owner 源用例跳过（_case_visible 逐行校验）。
+        """
         ids = data.get('ids', [])
         copied_count = 0
         for tc_id in ids:
             tc = self.repo.get_testcase(tc_id)
-            if tc:
+            if tc and self._case_visible(tc):
                 new_tc = self._copy_one_testcase(tc, tc.group_id)
                 new_tc.name = f"{tc.name}_copy"
                 copied_count += 1

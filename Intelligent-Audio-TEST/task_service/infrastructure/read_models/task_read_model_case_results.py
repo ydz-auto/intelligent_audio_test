@@ -39,11 +39,25 @@ def resolve_container_source_map(task_id: int) -> Dict[int, Dict[str, Any]]:
 class TaskCaseResultsMixin:
     """任务用例结果读模型 Mixin：用例列表/详情/结果查询。"""
 
+    @staticmethod
+    def _task_visible(session, task_id: int) -> bool:
+        """任务行级可见性判定（INT-423：私有任务非 owner 视为不存在）。"""
+        from task_service.infrastructure.visibility_context import is_visible
+        task = session.get(Task, task_id)
+        if task is None:
+            return False
+        return is_visible(task.created_by_user_id, task.visibility)
+
     def list_cases(self, task_id: int, status: Optional[str] = None,
                    page: int = 1, page_size: int = 50) -> Dict[str, Any]:
-        """分页查询任务下用例列表。"""
+        """分页查询任务下用例列表。
+
+        INT-423：私有任务对非 owner 返回空列表。
+        """
         session = get_db_session()
         try:
+            if not self._task_visible(session, task_id):
+                return {'items': [], 'total': 0, 'page': page, 'page_size': page_size}
             q = session.query(TaskCase).filter(
                 TaskCase.task_id == task_id,
                 # INT-305：移除留痕行剔除
@@ -80,6 +94,8 @@ class TaskCaseResultsMixin:
 
         session = get_db_session()
         try:
+            if not self._task_visible(session, task_id):
+                return None
             tc = session.query(TaskCase).filter_by(
                 task_id=task_id, test_case_id=case_id
             ).first()
@@ -182,6 +198,8 @@ class TaskCaseResultsMixin:
 
         session = get_db_session()
         try:
+            if not self._task_visible(session, task_id):
+                return None
             tc = session.query(TaskCase).filter_by(
                 task_id=task_id, test_case_id=case_id
             ).first()

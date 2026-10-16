@@ -78,6 +78,16 @@ class TagCrudService:
             if not cat or cat.deleted:
                 return {'success': False, 'message': '未找到标签分类', 'code': 404}
 
+            # INT-423：私有分类非 owner 更新返回 403
+            from task_service.infrastructure.visibility_context import (
+                check_object_visible, visibility_identity,
+            )
+            _uid, _is_admin = visibility_identity()
+            try:
+                check_object_visible(cat, _uid, _is_admin)
+            except PermissionError as e:
+                return {'success': False, 'message': str(e), 'code': 403}
+
             if data.get('name') is not None:
                 name = (data['name'] or '').strip()
                 if not name:
@@ -123,6 +133,16 @@ class TagCrudService:
             if not cat or cat.deleted:
                 return {'success': False, 'message': '未找到标签分类', 'code': 404}
 
+            # INT-423：私有分类非 owner 删除返回 403
+            from task_service.infrastructure.visibility_context import (
+                check_object_visible, visibility_identity,
+            )
+            _uid, _is_admin = visibility_identity()
+            try:
+                check_object_visible(cat, _uid, _is_admin)
+            except PermissionError as e:
+                return {'success': False, 'message': str(e), 'code': 403}
+
             tag_count = self.repo.count_tags_by_category(category_id)
             if tag_count > 0:
                 return {'success': False, 'message': f'该分类下还有 {tag_count} 个标签，请先移除或迁移标签', 'code': 400}
@@ -152,6 +172,15 @@ class TagCrudService:
                 cat = self.repo.get_tag_category_by_id(category_id)
                 if not cat or cat.deleted:
                     return {'success': False, 'message': f'未找到标签分类: {category_id}', 'code': 400}
+                # INT-423：私有分类非 owner 不允许在其下建标签（越权写入 → 403）
+                from task_service.infrastructure.visibility_context import (
+                    check_object_visible, visibility_identity,
+                )
+                _uid, _is_admin = visibility_identity()
+                try:
+                    check_object_visible(cat, _uid, _is_admin)
+                except PermissionError as e:
+                    return {'success': False, 'message': str(e), 'code': 403}
 
             existing = self.repo.get_active_tag_by_name(name)
             if existing:
@@ -184,6 +213,16 @@ class TagCrudService:
             tag = self.repo.get_tag_by_id(tag_id)
             if not tag or tag.deleted:
                 return {'success': False, 'message': '未找到标签', 'code': 404}
+
+            # INT-423：私有标签非 owner 更新返回 403
+            from task_service.infrastructure.visibility_context import (
+                check_object_visible, visibility_identity,
+            )
+            _uid, _is_admin = visibility_identity()
+            try:
+                check_object_visible(tag, _uid, _is_admin)
+            except PermissionError as e:
+                return {'success': False, 'message': str(e), 'code': 403}
 
             category_id = data.get('category_id')
             if category_id is not None and category_id:
@@ -240,6 +279,16 @@ class TagCrudService:
             tag = self.repo.get_tag_by_id(tag_id)
             if not tag or tag.deleted:
                 return {'success': False, 'message': '未找到标签', 'code': 404}
+
+            # INT-423：私有标签非 owner 删除返回 403
+            from task_service.infrastructure.visibility_context import (
+                check_object_visible, visibility_identity,
+            )
+            _uid, _is_admin = visibility_identity()
+            try:
+                check_object_visible(tag, _uid, _is_admin)
+            except PermissionError as e:
+                return {'success': False, 'message': str(e), 'code': 403}
 
             if cascade:
                 # 级联删除：软删除标签下所有未删除用例后再删除标签
@@ -335,6 +384,17 @@ class TagCrudService:
             if not cat or cat.deleted:
                 return {'success': False, 'message': '未找到标签分类', 'code': 404}
 
+            # INT-423：私有分类对非 owner 视为不存在（404）
+            from shared.infrastructure.visibility_filter import VisibilityDenied
+            from task_service.infrastructure.visibility_context import (
+                check_object_visible, visibility_identity,
+            )
+            _uid, _is_admin = visibility_identity()
+            try:
+                check_object_visible(cat, _uid, _is_admin)
+            except VisibilityDenied:
+                return {'success': False, 'message': '未找到标签分类', 'code': 404}
+
             tag_count = self.repo.count_tags_by_category(cat.id)
             return {
                 'success': True,
@@ -400,6 +460,16 @@ class TagCrudService:
         try:
             tag = self.repo.get_tag_by_id(tag_id)
             if not tag or tag.deleted:
+                return {'success': False, 'message': '未找到标签', 'code': 404}
+            # INT-423：私有标签对非 owner 视为不存在（404）
+            from shared.infrastructure.visibility_filter import VisibilityDenied
+            from task_service.infrastructure.visibility_context import (
+                check_object_visible, visibility_identity,
+            )
+            _uid, _is_admin = visibility_identity()
+            try:
+                check_object_visible(tag, _uid, _is_admin)
+            except VisibilityDenied:
                 return {'success': False, 'message': '未找到标签', 'code': 404}
             return {
                 'success': True,

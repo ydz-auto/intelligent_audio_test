@@ -24,6 +24,8 @@ from shared.utils.status_constants import (
 )
 from shared.models.common_enums import TestType
 from sqlalchemy import and_, or_, String  # String: search_tasks 中 Task.id.cast(String) 需要
+from shared.infrastructure.visibility_filter import VisibilityDenied, check_visible, visible_condition
+from task_service.infrastructure.visibility_context import visibility_identity
 
 from task_service.infrastructure.read_models.task_read_model_detail import TaskDetailReadModelMixin
 from task_service.infrastructure.read_models.task_read_model_progress_stats import TaskProgressStatsMixin
@@ -49,11 +51,20 @@ class TaskReadModel(
     """
 
     def find_by_id(self, task_id: int) -> Optional[Dict[str, Any]]:
-        """按 ID 查询单个任务（扁平 DTO）。"""
+        """按 ID 查询单个任务（扁平 DTO）。
+
+        INT-423：私有任务对非 owner 视为不存在（返回 None → 网关 404），
+        不抛 VisibilityDenied 以免读路径 500。
+        """
         session = get_db_session()
         try:
             task = session.get(Task, task_id)
             if task is None:
+                return None
+            uid, is_admin = visibility_identity()
+            try:
+                check_visible(task.created_by_user_id, task.visibility, uid, is_admin)
+            except VisibilityDenied:
                 return None
             return self._to_dto(task, session)
         finally:
@@ -233,6 +244,11 @@ class TaskReadModel(
             # INT-141：回收站模式查软删除项，正常模式查活跃项（互斥）
             query = session.query(Task, EXECUTION_STATUS_EXPR, EVALUATION_STATUS_EXPR).filter(
                 Task.deleted == (True if deleted else False))  # noqa: E712
+            # INT-423：行级可见性过滤（共享 + 自己创建的私有行；admin 全量）。
+            # user_id 显式传参（收藏/回收站入口）优先，否则取用户上下文。
+            _vis_uid, _vis_admin = visibility_identity(user_id)
+            query = query.filter(visible_condition(
+                Task.created_by_user_id, Task.visibility, _vis_uid, _vis_admin))
             if status:
                 # INT-301 F1 兼容：历史入口的原始 Task.status 过滤保留原文匹配
                 # （evaluating 等过渡态值仍按原始态命中，行为不变；执行域筛选

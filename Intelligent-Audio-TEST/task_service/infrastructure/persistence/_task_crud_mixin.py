@@ -595,15 +595,23 @@ class TaskCrudMixin:
 
         Returns:
             实际删除的条数
+
+        INT-423：逐行可见性过滤——私有非 owner 任务跳过，不整批放行
+        （与应用层 filter_visible_task_ids 双保险）。
         """
         if not task_ids:
             return 0
-        from shared.infrastructure.user_context import get_current_user_id
+        from shared.infrastructure.user_context import get_current_user_id, get_current_user_is_admin
         from shared.models.database import utc8now
         session = get_db_session()
         try:
+            ids = self.filter_visible_task_ids(
+                task_ids, user_id=get_current_user_id(),
+                is_admin=get_current_user_is_admin())
+            if not ids:
+                return 0
             count = session.query(Task).filter(
-                Task.id.in_(task_ids)
+                Task.id.in_(ids)
             ).update({
                 Task.deleted: True,
                 Task.deleted_at: utc8now(),
@@ -617,6 +625,27 @@ class TaskCrudMixin:
         finally:
             session.close()
 
+    def filter_visible_task_ids(self, task_ids: List[int], user_id=None,
+                                is_admin: bool = False) -> List[int]:
+        """批量任务可见性逐行过滤（INT-423）：返回可见 id 子集。
+
+        私有非 owner 行跳过（共享 + owner 放行；admin 全量），
+        供 batch delete / batch export 等批量操作逐行收敛。
+        """
+        if not task_ids:
+            return []
+        from shared.infrastructure.visibility_filter import filter_visible_owners
+        session = get_db_session()
+        try:
+            ids = [int(i) for i in task_ids]
+            rows = session.query(Task.id, Task.created_by_user_id, Task.visibility).filter(
+                Task.id.in_(ids)).all()
+            visible = filter_visible_owners([(r[0], r[1], r[2]) for r in rows], user_id, is_admin)
+            visible_set = set(visible)
+            return [i for i in ids if i in visible_set]
+        finally:
+            session.close()
+
     def batch_restore(self, task_ids: List[int]) -> int:
         """批量恢复软删除任务（仅已删除行会恢复）。
 
@@ -625,13 +654,21 @@ class TaskCrudMixin:
 
         Returns:
             实际恢复的条数（已删除行数；未删除/不存在的 ID 不计入）
+
+        INT-423：仅恢复当前用户可见的行（共享 + 自己创建的私有行）。
         """
         if not task_ids:
             return 0
+        from shared.infrastructure.user_context import get_current_user_id, get_current_user_is_admin
         session = get_db_session()
         try:
+            ids = self.filter_visible_task_ids(
+                task_ids, user_id=get_current_user_id(),
+                is_admin=get_current_user_is_admin())
+            if not ids:
+                return 0
             count = session.query(Task).filter(
-                Task.id.in_(task_ids),
+                Task.id.in_(ids),
                 Task.deleted == True,  # noqa: E712
             ).update(
                 {Task.deleted: False, Task.deleted_at: None},

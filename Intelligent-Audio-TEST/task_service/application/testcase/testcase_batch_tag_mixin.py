@@ -45,6 +45,16 @@ class TestCaseTagMixin:
         if result is None:
             return (f"未找到标签: {old_tag_name}", True)
         old_tag, new_tag_exists = result
+        # INT-423：私有标签非 owner 不允许重命名（写操作 403 语义；
+        # 替身标签对象缺 owner/visibility 按共享放行）
+        from task_service.infrastructure.visibility_context import (
+            check_object_visible, visibility_identity,
+        )
+        _uid, _is_admin = visibility_identity()
+        try:
+            check_object_visible(old_tag, _uid, _is_admin)
+        except PermissionError as e:
+            return (str(e), True)
         if new_tag_exists:
             return (f"标签名 {new_tag_name} 已存在", True)
         self.repo.update_tag_name(old_tag, new_tag_name)

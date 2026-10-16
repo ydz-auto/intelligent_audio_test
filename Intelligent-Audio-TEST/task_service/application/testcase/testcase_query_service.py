@@ -297,12 +297,24 @@ class TestCaseQueryService:
         }
 
     def get_testcase_detail(self, tc_id: str) -> dict:
-        """获取单个测试用例详情。"""
+        """获取单个测试用例详情。
+
+        INT-423：私有用例对非 owner 视为不存在（404）。
+        """
         from shared.utils import testcase_helpers as common
+        from shared.infrastructure.visibility_filter import VisibilityDenied
+        from task_service.infrastructure.visibility_context import (
+            check_object_visible, visibility_identity,
+        )
 
         try:
             tc = self.repo.get_testcase(tc_id)
             if not tc:
+                return {'success': False, 'message': '未找到测试用例', 'data': None, 'code': 404}
+            _uid, _is_admin = visibility_identity()
+            try:
+                check_object_visible(tc, _uid, _is_admin)
+            except VisibilityDenied:
                 return {'success': False, 'message': '未找到测试用例', 'data': None, 'code': 404}
 
             config = tc.config or {}
@@ -458,6 +470,17 @@ class TestCaseQueryService:
         try:
             tc = self.repo.get_testcase(tc_id)
             if not tc:
+                return {'success': False, 'message': '未找到测试用例', 'data': None, 'code': 404}
+
+            # INT-423：私有用例对非 owner 视为不存在（404）
+            from shared.infrastructure.visibility_filter import VisibilityDenied
+            from task_service.infrastructure.visibility_context import (
+                check_object_visible, visibility_identity,
+            )
+            _uid, _is_admin = visibility_identity()
+            try:
+                check_object_visible(tc, _uid, _is_admin)
+            except VisibilityDenied:
                 return {'success': False, 'message': '未找到测试用例', 'data': None, 'code': 404}
 
             config = tc.config or {}

@@ -93,8 +93,22 @@ class TaskCrudService:
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 
     def update(self, task_id: int, data: dict) -> dict:
-        """更新任务名称/描述。"""
+        """更新任务名称/描述。
+
+        INT-423：私有任务非 owner 更新返回 403。
+        """
         try:
+            task = task_repository.get_task_orm(task_id)
+            if task is None:
+                return {'success': False, 'message': '未找到任务', 'data': None, 'code': 404}
+            from shared.infrastructure.visibility_filter import check_visible
+            from task_service.infrastructure.visibility_context import visibility_identity
+            uid, is_admin = visibility_identity()
+            try:
+                check_visible(task.created_by_user_id, task.visibility, uid, is_admin)
+            except PermissionError as e:
+                return {'success': False, 'message': str(e), 'data': None, 'code': 403}
+
             updated = task_repository.update_task(
                 task_id, name=data.get('name'), description=data.get('description')
             )
@@ -106,9 +120,23 @@ class TaskCrudService:
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 
     def delete(self, task_id: int) -> dict:
-        """软删除任务。"""
+        """软删除任务。
+
+        INT-423：私有任务非 owner 删除返回 403。
+        """
         try:
             from api_gateway.application.services.stats_cache import refresh_stats_cache
+
+            task = task_repository.get_task_orm(task_id)
+            if task is None:
+                return {'success': False, 'message': '未找到任务', 'data': None, 'code': 404}
+            from shared.infrastructure.visibility_filter import check_visible
+            from task_service.infrastructure.visibility_context import visibility_identity
+            uid, is_admin = visibility_identity()
+            try:
+                check_visible(task.created_by_user_id, task.visibility, uid, is_admin)
+            except PermissionError as e:
+                return {'success': False, 'message': str(e), 'data': None, 'code': 403}
 
             # 先停止运行中的任务
             task = self.query.get_task_detail(task_id)
@@ -159,10 +187,24 @@ class TaskCrudService:
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 
     def update_cases(self, task_id: int, data: dict) -> dict:
-        """动态添加/移除用例。"""
+        """动态添加/移除用例。
+
+        INT-423：私有任务非 owner 动态增删用例返回 403。
+        """
         try:
             action = data.get('action')
             case_ids = data.get('case_ids', [])
+
+            task = task_repository.get_task_orm(task_id)
+            if task is None:
+                return {'success': False, 'message': '任务 ID 不存在', 'data': None, 'code': 404}
+            from shared.infrastructure.visibility_filter import check_visible
+            from task_service.infrastructure.visibility_context import visibility_identity
+            uid, is_admin = visibility_identity()
+            try:
+                check_visible(task.created_by_user_id, task.visibility, uid, is_admin)
+            except PermissionError as e:
+                return {'success': False, 'message': str(e), 'data': None, 'code': 403}
 
             result = task_repository.update_cases(task_id, action, case_ids)
             if result is None:
@@ -180,10 +222,19 @@ class TaskCrudService:
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 
     def batch_action(self, data: dict, query_args: dict = None) -> dict:
-        """批量操作（delete/restore/export）。"""
+        """批量操作（delete/restore/export）。
+
+        INT-423：delete/export 逐行可见性过滤——私有非 owner 任务跳过，不整批放行。
+        """
         try:
             action = data.get('action')
             task_ids = data.get('task_ids', [])
+
+            from shared.infrastructure.user_context import get_current_user_id, get_current_user_is_admin
+            if action in ('delete', 'export'):
+                task_ids = task_repository.filter_visible_task_ids(
+                    task_ids, user_id=get_current_user_id(),
+                    is_admin=get_current_user_is_admin())
 
             if action == 'delete':
                 # 先停止运行中的任务：通过读模型查询状态，停止副作用由执行引擎处理
@@ -238,11 +289,29 @@ class TaskCrudService:
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 
     def merge(self, data: dict) -> dict:
-        """合并多个已完成任务。"""
+        """合并多个已完成任务。
+
+        INT-423：源任务私有非 owner 不允许合并（越权读取源数据 → 403）。
+        """
         try:
             task_ids = data.get('task_ids', [])
             if not task_ids or len(task_ids) < 2:
                 return {'success': False, 'message': '合并需要至少两个任务', 'data': None, 'code': 400}
+
+            from shared.infrastructure.visibility_filter import check_visible
+            from task_service.infrastructure.visibility_context import visibility_identity
+            uid, is_admin = visibility_identity()
+            # 替身仓储无 get_task_orm 时跳过逐行可见性校验（真实仓储必走）
+            _get_orm = getattr(task_repository, 'get_task_orm', None)
+            if _get_orm:
+                for tid in task_ids:
+                    src = _get_orm(tid)
+                    if src is None:
+                        return {'success': False, 'message': '未找到任务', 'data': None, 'code': 404}
+                    try:
+                        check_visible(src.created_by_user_id, src.visibility, uid, is_admin)
+                    except PermissionError as e:
+                        return {'success': False, 'message': str(e), 'data': None, 'code': 403}
 
             from datetime import datetime, timezone, timedelta
             _utc8 = timezone(timedelta(hours=8))

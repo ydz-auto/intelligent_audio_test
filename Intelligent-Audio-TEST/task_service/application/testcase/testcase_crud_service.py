@@ -186,16 +186,31 @@ class TestCaseCrudService:
                 return {'success': False, 'message': '缺少必要字段: name', 'data': None, 'code': 400}
 
             group_id = data.get('group_id')
+            resolved_group = None
             if group_id is None and data.get('group'):
                 group_name = data['group']
                 group = self.repo.get_group_by_name(group_name)
                 if group:
-                    group_id = group.id
+                    group_id = group.id if hasattr(group, 'id') else (group.get('id') if isinstance(group, dict) else None)
+                    resolved_group = group
                 else:
                     group_id = str(uuid.uuid4())
                     self.repo.create_group(
                         group_id, group_name, f"自动创建的分组: {group_name}"
                     )
+
+            # INT-423：私有分组非 owner 不允许在其下建用例（越权写入 → 403）。
+            # 仅按分组名解析得到分组对象时校验（避免额外 DB 查询破坏既有
+            # group_id 直传路径；替身分组对象缺 owner/visibility 按共享放行）。
+            if resolved_group is not None:
+                from task_service.infrastructure.visibility_context import (
+                    check_object_visible, visibility_identity,
+                )
+                _uid, _is_admin = visibility_identity()
+                try:
+                    check_object_visible(resolved_group, _uid, _is_admin)
+                except PermissionError as e:
+                    return {'success': False, 'message': str(e), 'data': None, 'code': 403}
 
             if group_id is None:
                 return {'success': False, 'message': '缺少必要字段: group_id 或 group', 'data': None, 'code': 400}
@@ -314,6 +329,16 @@ class TestCaseCrudService:
             tc = self.repo.get_testcase(tc_id)
             if not tc:
                 return {'success': False, 'message': '未找到测试用例', 'data': None, 'code': 404}
+
+            # INT-423：私有用例非 owner 更新返回 403
+            from task_service.infrastructure.visibility_context import (
+                check_object_visible, visibility_identity,
+            )
+            _uid, _is_admin = visibility_identity()
+            try:
+                check_object_visible(tc, _uid, _is_admin)
+            except PermissionError as e:
+                return {'success': False, 'message': str(e), 'data': None, 'code': 403}
 
             current_config = tc.config or {}
 
@@ -492,8 +517,23 @@ class TestCaseCrudService:
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 
     def delete(self, tc_id: str) -> dict:
-        """软删除测试用例。"""
+        """软删除测试用例。
+
+        INT-423：私有用例非 owner 删除返回 403。
+        """
         try:
+            tc = self.repo.get_testcase(tc_id)
+            if not tc:
+                return {'success': False, 'message': '未找到测试用例', 'data': None, 'code': 404}
+            from task_service.infrastructure.visibility_context import (
+                check_object_visible, visibility_identity,
+            )
+            _uid, _is_admin = visibility_identity()
+            try:
+                check_object_visible(tc, _uid, _is_admin)
+            except PermissionError as e:
+                return {'success': False, 'message': str(e), 'data': None, 'code': 403}
+
             if not self.repo.soft_delete_testcase(tc_id):
                 return {'success': False, 'message': '未找到测试用例', 'data': None, 'code': 404}
 
@@ -515,11 +555,22 @@ class TestCaseCrudService:
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 
     def copy(self, tc_id: str) -> dict:
-        """复制测试用例。"""
+        """复制测试用例。
+
+        INT-423：私有用例非 owner 不允许复制（越权读取源数据 → 403）。
+        """
         try:
             tc = self.repo.get_testcase(tc_id)
             if not tc:
                 return {'success': False, 'message': '未找到原始测试用例', 'data': None, 'code': 404}
+            from task_service.infrastructure.visibility_context import (
+                check_object_visible, visibility_identity,
+            )
+            _uid, _is_admin = visibility_identity()
+            try:
+                check_object_visible(tc, _uid, _is_admin)
+            except PermissionError as e:
+                return {'success': False, 'message': str(e), 'data': None, 'code': 403}
 
             try:
                 new_id = str(uuid.uuid4())
@@ -563,6 +614,16 @@ class TestCaseCrudService:
             tc = self.repo.get_testcase(tc_id)
             if not tc:
                 return {'success': False, 'message': '未找到测试用例', 'data': None, 'code': 404}
+
+            # INT-423：私有用例非 owner 更新参考参数返回 403
+            from task_service.infrastructure.visibility_context import (
+                check_object_visible, visibility_identity,
+            )
+            _uid, _is_admin = visibility_identity()
+            try:
+                check_object_visible(tc, _uid, _is_admin)
+            except PermissionError as e:
+                return {'success': False, 'message': str(e), 'data': None, 'code': 403}
 
             new_ref_params = data.get('referenceParams')
             if new_ref_params is None:

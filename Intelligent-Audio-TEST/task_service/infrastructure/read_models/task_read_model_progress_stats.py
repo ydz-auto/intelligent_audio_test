@@ -25,7 +25,11 @@ class TaskProgressStatsMixin:
     """任务进度/统计读模型 Mixin：进度查询 + 状态/标签统计。"""
 
     def get_progress(self, task_id: int) -> Optional[Dict[str, Any]]:
-        """查询任务进度（轻量级，仅进度字段）。"""
+        """查询任务进度（轻量级，仅进度字段）。
+
+        INT-423：私有任务对非 owner 视为不存在（返回 None → 404）。
+        """
+        from task_service.infrastructure.visibility_context import is_visible
         from task_service.infrastructure.read_models.task_dual_status_expr import (
             EXECUTION_STATUS_EXPR, EVALUATION_STATUS_EXPR,
         )
@@ -35,6 +39,7 @@ class TaskProgressStatsMixin:
                 Task.id, Task.status, Task.total_cases,
                 Task.completed_cases, Task.failed_cases,
                 Task.started_at, Task.completed_at, Task.actual_duration,
+                Task.created_by_user_id, Task.visibility,
                 EXECUTION_STATUS_EXPR, EVALUATION_STATUS_EXPR,
             ).filter(Task.id == task_id).first())
 
@@ -42,7 +47,10 @@ class TaskProgressStatsMixin:
                 return None
 
             (tid, status, total, completed, failed, started, completed_at, duration,
+             owner, vis,
              execution_status, evaluation_status) = result
+            if not is_visible(owner, vis):
+                return None
             total = total or 0
             completed = completed or 0
             failed = failed or 0
@@ -93,6 +101,10 @@ class TaskProgressStatsMixin:
             if row is None:
                 return None
             task, task_execution_status, task_evaluation_status = row
+            # INT-423：私有任务对非 owner 视为不存在（返回 None → 404）
+            from task_service.infrastructure.visibility_context import is_visible
+            if not is_visible(task.created_by_user_id, task.visibility):
+                return None
 
             current_case = session.query(TaskCase).filter_by(
                 task_id=task_id, execution_status=ExecutionStatus.RUNNING
@@ -272,7 +284,11 @@ class TaskProgressStatsMixin:
             session.close()
 
     def get_task_stats(self, task_id: int) -> Optional[Dict[str, Any]]:
-        """网关 stats 使用的完整统计（含标签统计）。"""
+        """网关 stats 使用的完整统计（含标签统计）。
+
+        INT-423：私有任务对非 owner 视为不存在（返回 None → 404）。
+        """
+        from task_service.infrastructure.visibility_context import is_visible
         from task_service.infrastructure.persistence.models import Tag, TestCase
 
         session = get_db_session()
@@ -281,6 +297,8 @@ class TaskProgressStatsMixin:
                 Task.id == task_id, Task.deleted == False  # noqa: E712
             ).first()
             if task is None:
+                return None
+            if not is_visible(task.created_by_user_id, task.visibility):
                 return None
 
             total = task.total_cases or 0

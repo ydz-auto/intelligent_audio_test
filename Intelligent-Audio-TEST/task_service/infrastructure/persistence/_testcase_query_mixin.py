@@ -7,6 +7,8 @@ from typing import List
 
 from shared.models.database import get_db_session
 from shared.models.common_enums import TestType
+from shared.infrastructure.visibility_filter import visible_condition
+from task_service.infrastructure.visibility_context import visibility_identity
 from task_service.infrastructure.persistence.models import Tag, TestCase, TestCaseGroup
 from task_service.infrastructure.persistence._testcase_repo_common import (
     build_dim_id_filter,
@@ -84,6 +86,12 @@ class TestCaseQueryMixin:
         # 追加 id 次级键强定序
         query = self._query_testcases_with_preload(session) \
             .order_by(TestCase.created_at.desc(), TestCase.id.asc())
+
+        # INT-423：行级可见性过滤（共享 + 自己创建的私有行；admin 全量）。
+        # user_id 显式传参（收藏/回收站入口）优先，否则取用户上下文。
+        _vis_uid, _vis_admin = visibility_identity(user_id)
+        query = query.filter(visible_condition(
+            TestCase.created_by_user_id, TestCase.visibility, _vis_uid, _vis_admin))
 
         # INT-141：回收站模式查软删除项，否则按 include_deleted 语义
         if only_deleted:
@@ -192,6 +200,11 @@ class TestCaseQueryMixin:
         tc_query = self._query_testcases_with_preload(session) \
             .join(TestCase.tags).filter(Tag.id.in_(tag_ids))
 
+        # INT-423：行级可见性过滤（与 query_testcases 同口径）
+        _vis_uid, _vis_admin = visibility_identity(user_id)
+        tc_query = tc_query.filter(visible_condition(
+            TestCase.created_by_user_id, TestCase.visibility, _vis_uid, _vis_admin))
+
         # INT-215：回收站模式查软删除项，否则按 include_deleted 语义
         if only_deleted:
             tc_query = tc_query.filter(TestCase.deleted == True)  # noqa: E712
@@ -263,6 +276,10 @@ class TestCaseQueryMixin:
             query = session.query(TestCase.id, TestCase.config).filter(TestCase.deleted == True)  # noqa: E712
         else:
             query = session.query(TestCase.id, TestCase.config).filter(TestCase.deleted == False)  # noqa: E712
+        # INT-423：行级可见性过滤（取用户上下文）
+        _vis_uid, _vis_admin = visibility_identity()
+        query = query.filter(visible_condition(
+            TestCase.created_by_user_id, TestCase.visibility, _vis_uid, _vis_admin))
 
         if group:
             group_obj = session.query(TestCaseGroup).filter_by(name=group).first()
@@ -299,25 +316,43 @@ class TestCaseQueryMixin:
         return [cid for cid, _config in rows]
 
     def count_testcases(self) -> int:
-        """统计未删除测试用例总数。"""
+        """统计未删除测试用例总数（INT-423：私有用例对非 owner 不计数）。"""
+        from task_service.infrastructure.visibility_context import visibility_identity
         session = get_db_session()
-        return session.query(TestCase).filter_by(deleted=False).count()
+        _vis_uid, _vis_admin = visibility_identity()
+        return session.query(TestCase).filter(
+            TestCase.deleted == False,  # noqa: E712
+            visible_condition(
+                TestCase.created_by_user_id, TestCase.visibility, _vis_uid, _vis_admin),
+        ).count()
 
     def count_testcases_by_group(self):
-        """按分组名统计用例数（join group）。"""
+        """按分组名统计用例数（join group，INT-423 私有用例不计数）。"""
         from sqlalchemy import func
 
+        from task_service.infrastructure.visibility_context import visibility_identity
         session = get_db_session()
+        _vis_uid, _vis_admin = visibility_identity()
         return session.query(
             TestCaseGroup.name, func.count(TestCase.id)
         ).join(TestCase, TestCase.group_id == TestCaseGroup.id) \
-         .filter(TestCase.deleted == False) \
+         .filter(
+             TestCase.deleted == False,  # noqa: E712
+             visible_condition(
+                 TestCase.created_by_user_id, TestCase.visibility, _vis_uid, _vis_admin),
+         ) \
          .group_by(TestCaseGroup.name).all()
 
     def list_recent_updated_testcases(self, limit: int = 5) -> List[TestCase]:
-        """查询最近更新的测试用例（未删除）。"""
+        """查询最近更新的测试用例（未删除，INT-423 私有用例对非 owner 不可见）。"""
+        from task_service.infrastructure.visibility_context import visibility_identity
         session = get_db_session()
-        return session.query(TestCase).filter_by(deleted=False) \
+        _vis_uid, _vis_admin = visibility_identity()
+        return session.query(TestCase).filter(
+            TestCase.deleted == False,  # noqa: E712
+            visible_condition(
+                TestCase.created_by_user_id, TestCase.visibility, _vis_uid, _vis_admin),
+        ) \
             .order_by(TestCase.updated_at.desc()) \
             .limit(limit).all()
 
@@ -347,13 +382,18 @@ class TestCaseQueryMixin:
     def _get_testcase_stats_impl(self, session, _func, algorithm_type, group_id,
                                  group_by, dimension_id, keyword, test_type,
                                  favorite=False, deleted=False, user_id=None) -> dict:
-        """get_testcase_stats 的实现（拆分大函数）。"""
+        """get_testcase_stats 的实现（拆分大函数，INT-423 私有用例不计数）。"""
+        from task_service.infrastructure.visibility_context import visibility_identity
+        _vis_uid, _vis_admin = visibility_identity()
         query = session.query(TestCase)
         # INT-528：回收站口径可统计软删除用例；默认与既有行为一致仅统计未删除
         if deleted:
             query = query.filter(TestCase.deleted == True)  # noqa: E712
         else:
             query = query.filter(TestCase.deleted == False)  # noqa: E712
+        # INT-423：私有非 owner 用例不计数（未删除/回收站统计都叠加可见性过滤）
+        query = query.filter(visible_condition(
+            TestCase.created_by_user_id, TestCase.visibility, _vis_uid, _vis_admin))
         if algorithm_type:
             query = query.filter(TestCase.algorithm_type == algorithm_type)
         if group_id:

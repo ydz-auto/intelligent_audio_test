@@ -111,6 +111,13 @@ def main(dry_run=False):
     # 2. published_tasks 补 created_by_user_id（存量不回填，保持共享现状）
     if _table_exists(cur, 'published_tasks'):
         _add_column(cur, conn, 'published_tasks', 'created_by_user_id', 'BIGINT NULL', dry_run)
+        # INT-463：published_tasks owner 索引（新建库由 PO __table_args__ 带出）
+        if _col_exists(cur, 'published_tasks', 'created_by_user_id'):
+            _ensure_index(
+                cur, conn, 'idx_published_task_created_by_user_id',
+                'CREATE INDEX IF NOT EXISTS idx_published_task_created_by_user_id '
+                'ON published_tasks (created_by_user_id)',
+                dry_run)
 
     # 3. 各表 visibility 单列索引（幂等）
     for table in VISIBILITY_TABLES:
