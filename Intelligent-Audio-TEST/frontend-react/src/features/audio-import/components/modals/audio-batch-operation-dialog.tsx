@@ -38,6 +38,8 @@ export type AudioBatchOperationDialogProps = {
   state: AudioBulkDialogState | null
   onOpenChange: (open: boolean) => void
   count: number
+  /** 已选中的音频 id（批量浮条「更多批量操作」触发时传入） */
+  ids: number[]
 }
 
 const BULK_KINDS = ['move', 'copy', 'rename', 'modify-properties'] as const
@@ -74,7 +76,7 @@ export function AudioBatchOperationDialog(props: AudioBatchOperationDialogProps)
     if (!bulkKind) return
     setPending(true)
     try {
-      const result = await batch.mutateAsync({ action: bulkKind, ids: [] })
+      const result = await batch.mutateAsync({ action: bulkKind, ids: props.ids })
       toast.success(
         `批量操作完成：成功 ${result.successCount} 失败 ${result.total - result.successCount}`
       )

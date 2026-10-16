@@ -27,9 +27,8 @@ export type AudioRowDialogState =
   | { kind: 'feature-analysis'; audioId: number }
   | { kind: 'playback-history'; audioId: number }
 
-/** 批量浮条弹窗分派态（§5.6 + §6.25） */
+/** 批量浮条弹窗分派态（§5.6 + §6.25；「批量设置标签」走独立 AudioBatchTagsDialog） */
 export type AudioBulkDialogState =
-  | { kind: 'tags' }
   | { kind: 'move' }
   | { kind: 'copy' }
   | { kind: 'rename' }

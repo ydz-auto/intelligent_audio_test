@@ -176,10 +176,19 @@ export function AudioImportPage() {
     })
   }
 
-  const toggleSelectAll = () => {
+  /** 全选/取消当前行集（列表视图传 pageRows、文件夹视图传其自身 folder pageRows，各表头态与真实选择一致） */
+  const toggleSelectAll = (ids: number[]) => {
     setSelectedIds((prev) => {
-      if (pageRows.length > 0 && prev.size === pageRows.length) return new Set()
-      return new Set(pageRows.map((row) => row.id))
+      if (ids.length === 0) return prev
+      const allSelected = ids.every((id) => prev.has(id))
+      if (allSelected) {
+        const next = new Set(prev)
+        ids.forEach((id) => next.delete(id))
+        return next
+      }
+      const next = new Set(prev)
+      ids.forEach((id) => next.add(id))
+      return next
     })
   }
 
@@ -337,20 +346,24 @@ export function AudioImportPage() {
                 <MoreHorizontal aria-hidden='true' />
               </DropdownMenuTrigger>
               <DropdownMenuContent align='end' className='w-44'>
-                <DropdownMenuItem
-                  disabled={selectedIds.size === 0}
-                  onClick={() => setBatchDeleteOpen(true)}
-                >
-                  <Trash2 aria-hidden='true' />
-                  批量删除
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  disabled={selectedIds.size === 0}
-                  onClick={handleExport}
-                >
-                  <Download aria-hidden='true' />
-                  批量导出
-                </DropdownMenuItem>
+                {canDelete && (
+                  <DropdownMenuItem
+                    disabled={selectedIds.size === 0}
+                    onClick={() => setBatchDeleteOpen(true)}
+                  >
+                    <Trash2 aria-hidden='true' />
+                    批量删除
+                  </DropdownMenuItem>
+                )}
+                {canUpdate && (
+                  <DropdownMenuItem
+                    disabled={selectedIds.size === 0}
+                    onClick={handleExport}
+                  >
+                    <Download aria-hidden='true' />
+                    批量导出
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => {
@@ -419,6 +432,8 @@ export function AudioImportPage() {
                   rows={sorted}
                   loading={audiosQuery.isLoading}
                   selectedIds={selectedIds}
+                  canUpload={canUpload}
+                  onFolderImport={() => setFolderImportOpen(true)}
                   {...audioTableCallbacks}
                 />
               </div>
@@ -432,6 +447,7 @@ export function AudioImportPage() {
               onClear={() => setSelectedIds(new Set())}
               onDelete={() => setBatchDeleteOpen(true)}
               onExport={handleExport}
+              onOpenTagsDialog={() => setBulkTagsOpen(true)}
               onOpenBulkDialog={(state) => setBulkDialog(state)}
             />
 
@@ -496,11 +512,13 @@ export function AudioImportPage() {
         open={bulkTagsOpen}
         onOpenChange={setBulkTagsOpen}
         count={selectedIds.size}
+        ids={[...selectedIds]}
       />
       <AudioBatchOperationDialog
         state={bulkDialog}
         onOpenChange={(open) => !open && setBulkDialog(null)}
         count={selectedIds.size}
+        ids={[...selectedIds]}
       />
 
       <ConfirmDialog

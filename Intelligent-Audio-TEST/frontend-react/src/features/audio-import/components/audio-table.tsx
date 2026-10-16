@@ -38,7 +38,8 @@ export type AudioTableProps = {
   searchKeyword: string
   selectedIds: Set<number>
   onToggleSelect: (id: number) => void
-  onToggleSelectAll: () => void
+  /** 全选当前页行集（由调用方传入当前表格的行 id，列表/文件夹视图各自计算） */
+  onToggleSelectAll: (ids: number[]) => void
   canUpdate: boolean
   canConvert: boolean
   canDelete: boolean
@@ -90,8 +91,11 @@ function TagsCell({ tags }: { tags: string[] }) {
 
 export function AudioTable(props: AudioTableProps) {
   const isEmpty = !props.loading && props.rows.length === 0
+  // 当前页全部行均被选中才视为「全选」（跨页选择不影响本页表头态）
   const allSelected =
-    !isEmpty && props.rows.length > 0 && props.selectedIds.size === props.rows.length
+    !isEmpty &&
+    props.rows.length > 0 &&
+    props.rows.every((row) => props.selectedIds.has(row.id))
 
   if (props.loading) {
     return (
@@ -145,7 +149,7 @@ export function AudioTable(props: AudioTableProps) {
                   <Checkbox
                     aria-label='全选当前页'
                     checked={allSelected}
-                    onCheckedChange={props.onToggleSelectAll}
+                    onCheckedChange={() => props.onToggleSelectAll(props.rows.map((row) => row.id))}
                   />
                 </span>
               </th>

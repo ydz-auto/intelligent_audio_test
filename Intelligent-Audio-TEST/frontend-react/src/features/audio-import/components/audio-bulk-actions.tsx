@@ -25,6 +25,9 @@ export type AudioBulkActionsProps = {
   onClear: () => void
   onDelete: () => void
   onExport: () => void
+  /** 批量设置标签（§5.6：开小 Dialog 输入标签 → AudioBatchTagsDialog） */
+  onOpenTagsDialog: () => void
+  /** 更多批量操作（移动/复制/重命名/修改属性 → AudioBatchOperationDialog） */
   onOpenBulkDialog: (state: AudioBulkDialogState) => void
 }
 
@@ -68,7 +71,7 @@ export function AudioBulkActions(props: AudioBulkActionsProps) {
             variant='outline'
             size='sm'
             className='gap-1.5'
-            onClick={() => props.onOpenBulkDialog({ kind: 'tags' })}
+            onClick={props.onOpenTagsDialog}
           >
             <Tags aria-hidden='true' className='size-3.5' />
             批量设置标签

@@ -49,16 +49,18 @@ type AudioUploadState = {
   clearTask: (id: string) => void
 }
 
-let uploadSeq = 0
-
 export const useAudioUploadStore = create<AudioUploadState>()(
   persist(
     (set, get) => ({
       tasks: [],
 
       enqueueTask: (input) => {
-        uploadSeq += 1
-        const id = `upload-${uploadSeq}`
+        // localStorage 恢复的任务保留原 id，故以现有任务最大序号为基准递增，避免刷新后撞号（P5）
+        const nextSeq = get().tasks.reduce((max, task) => {
+          const match = /^upload-(\d+)$/.exec(task.id)
+          return match ? Math.max(max, Number(match[1])) : max
+        }, 0) + 1
+        const id = `upload-${nextSeq}`
         const task: AudioUploadTask = {
           id,
           name: input.name,

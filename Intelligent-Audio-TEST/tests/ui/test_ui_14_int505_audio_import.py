@@ -285,7 +285,7 @@ def test_04_upload_dialog_and_progress(drv):
     assert '导入速度' in txt or '预计剩余' in txt, '上传进度卡当前文件行缺失'
 
 
-# ── 5. 批量浮条 + 批量删除 ───
+# ── 5. 批量浮条 + 批量设置标签（P1）+ 批量删除 ───
 def test_05_bulk_actions(drv):
     _goto(drv, '/audio-import')
     # 勾选首行（照 test_ui_13：role=checkbox + aria-label）
@@ -296,6 +296,16 @@ def test_05_bulk_actions(drv):
     txt = _body_text(drv)
     assert '批量删除' in txt and '批量导出' in txt, '批量浮条按钮缺失'
     assert '更多批量操作' in txt, '更多批量操作入口缺失'
+    # 批量设置标签（P1 返修：弹窗提交选中 ids，toast 与所选数量一致而非 0）
+    drv.find_element(By.XPATH, "//button[contains(., '批量设置标签')]").click()
+    WebDriverWait(drv, 6).until(
+        lambda d: '为选中的 1 个音频批量设置标签' in d.execute_script(
+            'return document.body.textContent || ""'))
+    drv.find_element(By.ID, 'batch-tags-input').send_keys('测试标签')
+    drv.find_element(By.XPATH, "//button[contains(., '确认设置')]").click()
+    WebDriverWait(drv, 6).until(
+        lambda d: '已为 1 个音频设置标签' in d.execute_script(
+            'return document.body.textContent || ""'))
     # 批量删除 ConfirmDialog
     drv.find_element(By.XPATH, "//button[contains(., '批量删除')]").click()
     WebDriverWait(drv, 6).until(
@@ -321,7 +331,7 @@ def test_06_import_dialogs(drv):
     _press_esc(drv)
 
 
-# ── 7. 文件夹视图：左树右表 ───
+# ── 7. 文件夹视图：左树右表 + 全选（P3）+ 批量从文件夹导入（P6） ───
 def test_07_folder_view(drv):
     _goto(drv, '/audio-import')
     drv.find_element(By.XPATH, "//button[contains(., '文件夹视图')]").click()
@@ -331,6 +341,17 @@ def test_07_folder_view(drv):
     for folder in ['dry', 'noise', 'prompt', 'mixed']:
         assert folder in txt, f'文件夹树节点「{folder}」缺失'
     assert '上传音频' in txt, '文件夹卡头部上传入口缺失'
+    assert '批量从文件夹导入' in txt, '文件夹卡头部「批量从文件夹导入」入口缺失（P6）'
+    # 文件夹视图全选（P3 返修：作用于当前文件夹表格行，而非列表视图页行）
+    row_count = len(drv.find_elements(By.CSS_SELECTOR, 'tbody tr'))
+    assert row_count >= 1, '文件夹视图表格无行'
+    drv.find_element(By.XPATH, "//*[@role='checkbox'][@aria-label='全选当前页']").click()
+    WebDriverWait(drv, 6).until(
+        lambda d: f'已选 {row_count} 个音频' in d.execute_script(
+            'return document.body.textContent || ""'))
+    txt = _body_text(drv)
+    assert f'已选 {row_count} 个音频' in txt, \
+        f'文件夹全选后批量浮条计数应为 {row_count}（作用于文件夹行集）'
     # 主题切换走查：ConfigDrawer 入口（导航栏）存在
     _drain_console(drv)
     assert not _CONSOLE_SEVERE, f'浏览器 console SEVERE 错误：{_CONSOLE_SEVERE[:3]}'

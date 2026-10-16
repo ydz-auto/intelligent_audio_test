@@ -23,6 +23,8 @@ export type AudioBatchTagsDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   count: number
+  /** 已选中的音频 id（批量浮条「批量设置标签」触发时传入） */
+  ids: number[]
 }
 
 export function AudioBatchTagsDialog(props: AudioBatchTagsDialogProps) {
@@ -37,7 +39,7 @@ export function AudioBatchTagsDialog(props: AudioBatchTagsDialogProps) {
     }
     setPending(true)
     try {
-      const result = await batch.mutateAsync({ action: 'tags', ids: [] })
+      const result = await batch.mutateAsync({ action: 'tags', ids: props.ids })
       toast.success(
         `已为 ${result.successCount} 个音频设置标签：${tagsText
           .split(',')

@@ -22,7 +22,11 @@ export type AudioFolderViewProps = {
   loading: boolean
   selectedIds: Set<number>
   onToggleSelect: (id: number) => void
-  onToggleSelectAll: () => void
+  /** 全选当前文件夹表格行集（文件夹视图按自身 pageRows 计算，而非列表视图行） */
+  onToggleSelectAll: (ids: number[]) => void
+  canUpload: boolean
+  /** 「批量从文件夹导入」入口（§5.5 文件夹卡头部两钮之一；页头同款弹窗） */
+  onFolderImport: () => void
   canUpdate: boolean
   canConvert: boolean
   canDelete: boolean
@@ -172,10 +176,18 @@ export function AudioFolderView(props: AudioFolderViewProps) {
             当前文件夹：
             <span className='text-foreground font-mono'>{selectedPath ?? '—'}</span>
           </div>
-          <Button variant='outline' size='sm' className='h-7 gap-1.5 px-2.5' onClick={props.onEmptyUpload}>
-            <Upload aria-hidden='true' className='size-3.5' />
-            上传音频
-          </Button>
+          {props.canUpload && (
+            <Button variant='outline' size='sm' className='h-7 gap-1.5 px-2.5' onClick={props.onEmptyUpload}>
+              <Upload aria-hidden='true' className='size-3.5' />
+              上传音频
+            </Button>
+          )}
+          {props.canUpload && (
+            <Button variant='outline' size='sm' className='h-7 gap-1.5 px-2.5' onClick={props.onFolderImport}>
+              <FolderOpen aria-hidden='true' className='size-3.5' />
+              批量从文件夹导入
+            </Button>
+          )}
         </div>
         <div className='min-h-0 flex-1 overflow-y-auto'>
           <AudioTable
