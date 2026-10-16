@@ -1,7 +1,9 @@
 /* INT-277：TagManagement 页面专属样式 —— 选择器一律 tg- 前缀（命名空间隔离，同 INT-250 pt- 方案）。
-   本文件经 <style src> 全局注入，禁止使用 .btn/.card 等无前缀通用类名，避免覆盖全站组件样式。 */
+   本文件经 <style src> 全局注入，禁止使用 .btn/.card 等无前缀通用类名，避免覆盖全站组件样式。
+   INT-295：间距/字号收敛到 --spacing/--font-size token（刻度无对应值时用 calc 保真），
+   色值一律走语义 token + 色板兜底，禁止裸 hex/px 魔法值。 */
 .tg-tag-management-view {
-  padding: 20px;
+  padding: calc(var(--spacing-md) + var(--spacing-xs));
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -13,42 +15,42 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 20px;
+  margin-bottom: calc(var(--spacing-md) + var(--spacing-xs));
 }
 
 .tg-header-left {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--spacing-xs);
 }
 
 .tg-page-title {
   margin: 0;
-  font-size: 24px;
+  font-size: var(--font-size-xxl);
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-weight: 600;
+  gap: calc(var(--spacing-sm) + var(--spacing-xs) / 2);
+  font-weight: var(--font-weight-semibold);
 }
 
 .tg-page-title i {
-  font-size: 24px;
+  font-size: var(--font-size-xxl);
 }
 
 .tg-page-description {
   margin: 0;
   color: var(--text-secondary, var(--color-slate-500));
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .tg-header-right {
   display: flex;
-  gap: 12px;
+  gap: calc(var(--spacing-sm) + var(--spacing-xs));
 }
 
 .tg-tag-content-layout {
   display: flex;
-  gap: 20px;
+  gap: calc(var(--spacing-md) + var(--spacing-xs));
   flex: 1;
   min-height: 0;
 }
@@ -73,7 +75,7 @@
 }
 
 .tg-card-header {
-  padding: 16px 20px;
+  padding: var(--spacing-md) calc(var(--spacing-md) + var(--spacing-xs));
   border-bottom: 1px solid var(--border-color, var(--color-slate-200));
   display: flex;
   justify-content: space-between;
@@ -82,12 +84,12 @@
 
 .tg-card-title {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--font-size-md);
   color: var(--text-primary, var(--color-slate-700));
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-weight: 600;
+  gap: var(--spacing-sm);
+  font-weight: var(--font-weight-semibold);
 }
 
 .tg-card-title i {
@@ -96,27 +98,27 @@
 
 .tg-total-count,
 .tg-tag-total-count {
-  font-size: 13px;
+  font-size: calc(var(--font-size-sm) - var(--border-width));
   color: var(--text-muted, var(--color-slate-400));
-  font-weight: 400;
-  margin-left: 8px;
+  font-weight: var(--font-weight-normal);
+  margin-left: var(--spacing-sm);
 }
 
 .tg-card-actions {
   display: flex;
-  gap: 12px;
+  gap: calc(var(--spacing-sm) + var(--spacing-xs));
   align-items: center;
 }
 
 .tg-card-search {
-  padding: 12px 16px;
+  padding: calc(var(--spacing-sm) + var(--spacing-xs)) var(--spacing-md);
   border-bottom: 1px solid var(--border-color, var(--color-slate-200));
 }
 
 .tg-card-body {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding: var(--spacing-md);
 }
 
 .tg-category-scroll-container {
@@ -130,11 +132,11 @@
 .tg-category-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--spacing-xs);
 }
 
 .tg-category-item {
-  padding: 12px 14px;
+  padding: calc(var(--spacing-sm) + var(--spacing-xs)) calc(var(--spacing-md) - var(--spacing-xs) / 2);
   border-radius: 6px;
   cursor: pointer;
   display: flex;
@@ -156,55 +158,55 @@
 .tg-category-info {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: calc(var(--spacing-sm) + var(--spacing-xs) / 2);
 }
 
 .tg-category-color {
-  width: 12px;
-  height: 12px;
+  width: calc(var(--spacing-sm) + var(--spacing-xs));
+  height: calc(var(--spacing-sm) + var(--spacing-xs));
   border-radius: 3px;
   flex-shrink: 0;
 }
 
 .tg-category-name {
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   color: var(--text-primary, var(--color-slate-700));
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .tg-tag-count-badge {
-  font-size: 11px;
+  font-size: calc(var(--font-size-xs) - var(--border-width));
   color: var(--text-muted, var(--color-slate-500));
   background: var(--badge-bg, var(--color-slate-100));
-  padding: 2px 8px;
+  padding: calc(var(--spacing-xs) / 2) var(--spacing-sm);
   border-radius: 10px;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 
 .tg-category-actions {
   display: flex;
-  gap: 4px;
+  gap: var(--spacing-xs);
 }
 
 .tg-loading-more-categories {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 16px;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
   color: var(--text-muted, var(--color-slate-400));
-  font-size: 13px;
+  font-size: calc(var(--font-size-sm) - var(--border-width));
 }
 
 .tg-loading-more-categories i {
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .tg-no-more-categories {
   text-align: center;
-  padding: 12px;
+  padding: calc(var(--spacing-sm) + var(--spacing-xs));
   color: var(--text-muted, var(--color-slate-400));
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 
 .tg-search-box {
@@ -216,16 +218,16 @@
 
 .tg-search-icon {
   position: absolute;
-  left: 12px;
-  font-size: 14px;
+  left: calc(var(--spacing-sm) + var(--spacing-xs));
+  font-size: var(--font-size-sm);
   color: var(--text-muted, var(--color-slate-400));
 }
 
 .tg-search-input {
-  padding: 8px 12px 8px 36px;
+  padding: var(--spacing-sm) calc(var(--spacing-sm) + var(--spacing-xs)) var(--spacing-sm) calc(var(--spacing-xl) + var(--spacing-xs));
   border: 1px solid var(--border-color, var(--color-slate-200));
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   width: 100%;
   transition: all 0.2s;
   background: var(--input-bg, var(--color-white));
@@ -240,25 +242,25 @@
 .tg-empty-state {
   text-align: center;
   color: var(--text-muted, var(--color-slate-400));
-  padding: 60px 20px;
+  padding: calc(var(--spacing-xxxl) - var(--spacing-xs)) calc(var(--spacing-md) + var(--spacing-xs));
 }
 
 .tg-empty-state i {
-  font-size: 48px;
-  margin-bottom: 16px;
+  font-size: calc(var(--font-size-xxxl) + var(--font-size-md));
+  margin-bottom: var(--spacing-md);
   display: block;
   color: var(--text-muted, var(--color-slate-300));
 }
 
 .tg-empty-state p {
-  margin-bottom: 20px;
-  font-size: 15px;
+  margin-bottom: calc(var(--spacing-md) + var(--spacing-xs));
+  font-size: calc(var(--font-size-sm) + var(--border-width));
 }
 
 .tg-tag-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 16px;
+  gap: var(--spacing-md);
 }
 
 .tg-tag-card {
@@ -275,29 +277,29 @@
 }
 
 .tg-tag-color-bar {
-  height: 4px;
+  height: var(--spacing-xs);
 }
 
 .tg-tag-card-content {
-  padding: 14px;
+  padding: calc(var(--spacing-md) - var(--spacing-xs) / 2);
 }
 
 .tg-tag-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 8px;
+  margin-bottom: var(--spacing-sm);
 }
 
 .tg-tag-name {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--text-primary, var(--color-slate-800));
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .tg-tag-actions {
   display: flex;
-  gap: 4px;
+  gap: var(--spacing-xs);
   opacity: 0;
   transition: opacity 0.2s;
 }
@@ -307,9 +309,9 @@
 }
 
 .tg-tag-description {
-  font-size: 13px;
+  font-size: calc(var(--font-size-sm) - var(--border-width));
   color: var(--text-secondary, var(--color-slate-500));
-  margin: 0 0 10px;
+  margin: 0 0 calc(var(--spacing-sm) + var(--spacing-xs) / 2);
   line-height: 1.5;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -319,15 +321,15 @@
 
 .tg-tag-meta {
   display: flex;
-  gap: 12px;
-  font-size: 12px;
+  gap: calc(var(--spacing-sm) + var(--spacing-xs));
+  font-size: var(--font-size-xs);
   color: var(--text-muted, var(--color-slate-400));
 }
 
 .tg-tag-category {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--spacing-xs);
 }
 
 .tg-loading-more {
@@ -335,39 +337,39 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 20px;
+  gap: var(--spacing-sm);
+  padding: calc(var(--spacing-md) + var(--spacing-xs));
   color: var(--text-muted, var(--color-slate-400));
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 
 .tg-loading-more i {
-  font-size: 16px;
+  font-size: var(--font-size-md);
 }
 
 .tg-no-more-data {
   grid-column: 1 / -1;
   text-align: center;
-  padding: 16px;
+  padding: var(--spacing-md);
   color: var(--text-muted, var(--color-slate-400));
-  font-size: 13px;
+  font-size: calc(var(--font-size-sm) - var(--border-width));
 }
 
 .tg-btn {
-  padding: 8px 16px;
+  padding: var(--spacing-sm) var(--spacing-md);
   border-radius: 6px;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
   border: none;
   transition: all 0.2s;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: calc(var(--spacing-sm) - var(--spacing-xs) / 2);
 }
 
 .tg-btn-icon {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 
 .tg-btn-primary {
@@ -405,7 +407,7 @@
 
 .tg-btn-text {
   background: transparent;
-  padding: 4px 8px;
+  padding: var(--spacing-xs) var(--spacing-sm);
 }
 
 .tg-btn-text.tg-btn-primary {

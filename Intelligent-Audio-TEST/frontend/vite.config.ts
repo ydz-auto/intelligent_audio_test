@@ -60,6 +60,21 @@ export default defineConfig(({ command, mode }) => {
         }
       }
     },
+    build: {
+      rollupOptions: {
+        output: {
+          // INT-295：主 chunk 超 500kB 警戒——按依赖族拆分 vendor chunk（非阻塞项），
+          // 让长期不变的第三方库独立成包、充分利用浏览器缓存。
+          manualChunks: {
+            'vendor-vue': ['vue', 'vue-router', 'pinia'],
+            'vendor-socket': ['socket.io-client'],
+            'vendor-chart': ['chart.js', 'chartjs-plugin-zoom'],
+            'vendor-archive': ['jszip'],
+            'vendor-crypto': ['jsencrypt', 'spark-md5'],
+          },
+        },
+      },
+    },
     test: {
       environment: 'jsdom',
       globals: true,

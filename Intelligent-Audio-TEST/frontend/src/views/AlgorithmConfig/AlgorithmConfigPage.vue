@@ -206,7 +206,7 @@
                             {{ param.required ? '是' : '否' }}
                           </span>
                         </td>
-                        <td><span class="status-tag" style="background-color: var(--secondary-light); color: var(--secondary-color);">{{ (param as any).component || '-' }}</span></td>
+                        <td><span class="status-tag component">{{ (param as any).component || '-' }}</span></td>
                         <td>{{ getGroupName((param as any).uiGroup) }}</td>
                         <td>{{ param.defaultValue || '-' }}</td>
                       </tr>

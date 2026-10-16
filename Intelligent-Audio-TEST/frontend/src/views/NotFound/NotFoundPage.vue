@@ -16,7 +16,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 60vh;
+  /* INT-295：按可视内容区高度居中，避免 60vh 留下的页脚大段留白 */
+  min-height: calc(100vh - var(--header-height) - var(--footer-height));
 }
 .content {
   text-align: center;

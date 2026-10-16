@@ -37,7 +37,7 @@
             @click="emit('select-category', cat.id)"
           >
             <div class="tg-category-info">
-              <span class="tg-category-color" :style="{ backgroundColor: cat.color || '#6366f1' }"></span>
+              <span class="tg-category-color" :style="{ backgroundColor: cat.color || 'var(--color-indigo-500)' }"></span>
               <span class="tg-category-name">{{ cat.name }}</span>
               <span class="tg-tag-count-badge">{{ cat.tagCount }}</span>
             </div>
@@ -56,7 +56,7 @@
             @click="emit('select-category', null)"
           >
             <div class="tg-category-info">
-              <span class="tg-category-color" :style="{ backgroundColor: '#94a3b8' }"></span>
+              <span class="tg-category-color" :style="{ backgroundColor: 'var(--color-slate-400)' }"></span>
               <span class="tg-category-name">未分类</span>
               <span class="tg-tag-count-badge">{{ uncategorizedCount }}</span>
             </div>

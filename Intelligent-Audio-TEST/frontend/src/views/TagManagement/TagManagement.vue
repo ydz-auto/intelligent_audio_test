@@ -112,7 +112,8 @@ async function loadAllCategories() {
     const res = await tagsPort.getCategories({ page: 1, perPage: 1000 });
     allCategories.value = res.items || [];
   } catch (e: any) {
-    console.error('加载全部分类失败:', e);
+    // INT-295：与 loadCategories/loadTags 一致，失败走 notification 提示（不再静默 console）
+    showNotification(e.message || '加载全部分类失败', 'error');
   }
 }
 

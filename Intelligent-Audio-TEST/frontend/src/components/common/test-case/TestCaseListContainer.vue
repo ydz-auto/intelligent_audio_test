@@ -285,21 +285,13 @@
         </div>
       </template>
     </div>
-    
+
   </div>
-  
-  <!-- 调试信息 -->
-  <!-- <div style="position: fixed; top: 60px; left: 10px; z-index: 99999; background: rgba(0,0,0,0.8); color: white; padding: 10px; font-size: 12px; border-radius: 4px;">
-    <div>showTestCaseModal: {{ props.showTestCaseModal }}</div>
-    <div>showGroupModal: {{ props.showGroupModal }}</div>
-    <div>showImportModal: {{ props.showImportModal }}</div>
-    <div>showExportModal: {{ props.showExportModal }}</div>
-  </div> -->
-  
+
   <!-- 模态窗现在使用全局模态窗系统，不再需要内联组件 -->
-  
+
   <teleport to="body">
-    <div class="modal-overlay" v-if="showAudioTypeModal" style="opacity: 1 !important; visibility: visible !important; pointer-events: auto !important; z-index: 9999 !important;">
+    <div class="modal-overlay" v-if="showAudioTypeModal">
       <div class="modal-container" @click.stop>
         <div class="modal-header">
           <h3 class="modal-title">选择测试音频类型</h3>

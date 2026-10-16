@@ -40,7 +40,7 @@
             :key="tag.id"
             class="tg-tag-card"
           >
-            <div class="tg-tag-color-bar" :style="{ backgroundColor: tag.color || '#6366f1' }"></div>
+            <div class="tg-tag-color-bar" :style="{ backgroundColor: tag.color || 'var(--color-indigo-500)' }"></div>
             <div class="tg-tag-card-content">
               <div class="tg-tag-header">
                 <span class="tg-tag-name">{{ tag.name }}</span>

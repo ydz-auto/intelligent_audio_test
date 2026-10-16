@@ -600,7 +600,11 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 1001;
+  /* INT-295：收敛到全局模态层级变量；显式可见以覆盖全局 .modal-overlay 隐藏态（test-case-manager.css） */
+  z-index: var(--z-index-modal);
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
   animation: fadeIn 0.3s ease;
 }
 

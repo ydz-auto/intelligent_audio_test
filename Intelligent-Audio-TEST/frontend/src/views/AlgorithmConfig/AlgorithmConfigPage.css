@@ -187,6 +187,12 @@
   color: var(--text-secondary);
 }
 
+/* INT-295：组件形态标签——内联 style 收敛为 CSS 类，色板走语义 token */
+.status-tag.component {
+  background-color: var(--secondary-light);
+  color: var(--secondary-color);
+}
+
 @media (max-width: 768px) {
   .info-grid {
     grid-template-columns: 1fr;

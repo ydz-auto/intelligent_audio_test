@@ -286,7 +286,7 @@ onMounted(async () => {
   margin-bottom: 10px;
 }
 .success-msg {
-  color: #1a7f37;
+  color: var(--success);
   font-size: 14px;
   margin-bottom: 10px;
 }
