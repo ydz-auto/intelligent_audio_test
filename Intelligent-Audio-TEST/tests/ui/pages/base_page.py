@@ -107,6 +107,16 @@ class BasePage:
         return WebDriverWait(self.driver, timeout).until(
             EC.visibility_of_element_located((By.CSS_SELECTOR, css)))
 
+    def wait_title_text(self, text: str, timeout: float = 15):
+        """等待 .page-title 元素内出现指定标题文本。
+
+        INT-467（测试时序修正）：hash 路由同文档跳转后，上一页的 .page-title 仍在 DOM 中，
+        仅 wait_visible('.page-title') 会命中残留标题；须按目标标题文本等待（
+        EC.text_to_be_present_in_element），避免读到上一页标题误判已导航完成。
+        """
+        return WebDriverWait(self.driver, timeout).until(
+            EC.text_to_be_present_in_element((By.CSS_SELECTOR, '.page-title'), text))
+
     def wait_gone(self, css: str, timeout: float = 10) -> bool:
         try:
             WebDriverWait(self.driver, timeout).until(

@@ -99,7 +99,10 @@ export function useTaskControl(
 
   const viewTaskDetails = async (taskId: string | number) => {
     try {
-      modalControl.open(MODAL_TYPES.TASK_DETAIL, { taskId });
+      modalControl.open(MODAL_TYPES.TASK_DETAIL, { taskId,
+        // INT-467：详情内切换可见性（PATCH /visibility）后即时刷新列表徽标
+        onSave: () => fetchTasks(),
+      });
     } catch (error) {
       console.error('Failed to view task details:', error);
     }
@@ -194,7 +197,10 @@ export function useTaskControl(
 
   const editTask = async (taskId: string | number) => {
     try {
-      modalControl.open(MODAL_TYPES.TASK_DETAIL, { taskId });
+      modalControl.open(MODAL_TYPES.TASK_DETAIL, { taskId,
+        // INT-467：详情内切换可见性后即时刷新列表徽标
+        onSave: () => fetchTasks(),
+      });
     } catch (error) {
       console.error('Failed to edit task:', error);
     }

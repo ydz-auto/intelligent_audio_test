@@ -204,7 +204,10 @@ export function useAudioList() {
         const total: number = Array.isArray(response) ? response.length : (response.total ?? items.length);
         const statsData = response.stats;
 
-        // items 已是 Domain 对象，此处仅做展示层默认值兜底
+        // items 已是 Domain 对象，此处仅做展示层默认值兜底。
+        // INT-467（审计 P1-1）：visibility / createdByUserId 必须透传——AudioListComponent
+        // 的 <VisibilityBadge :visibility="audio.visibility"> 与 useVisibility 的 owner 判定
+        // 依赖这两个字段，此前在固定形状映射中被丢弃导致私有徽标永不渲染。
         audioList.value = items.map((audio: any) => ({
           id: audio.id,
           name: audio.name,
@@ -225,7 +228,9 @@ export function useAudioList() {
           translations: audio.translations || [],
           annotations: audio.annotations || [],
           description: audio.description || '',
-          sourceLanguage: audio.sourceLanguage || ''
+          sourceLanguage: audio.sourceLanguage || '',
+          visibility: audio.visibility ?? undefined,
+          createdByUserId: audio.createdByUserId ?? undefined,
         }));
         totalAudios.value = total;
         if (statsData) {

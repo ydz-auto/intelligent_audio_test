@@ -46,7 +46,8 @@ export function isOwner(createdByUserId?: number | null): boolean {
 /**
  * 详情/编辑入口可见性（INT-423/467 前端口径）：
  * - 共享资源 → 回落既有权限点（页面既有 can() 承担，此处恒放行）
- * - 私有资源 → 仅 owner 可编辑/删除；admin 可见但入口隐藏（对非 owner 显示 403 提示）
+ * - 私有资源 → 仅 owner 可编辑/删除；admin 跨过 owner/visibility 过滤全量可操作
+ *   （对齐后端 INT-423 §4.6 admin 豁免，与 ReportView/Evaluation 页口径一致）
  * - 私有 + owner 缺失（AUTH_MODE=off 单用户开发态，owner 列 NULL）→ 视为当前用户资源放行
  */
 export function canEditResource(
@@ -54,6 +55,10 @@ export function canEditResource(
 ): boolean {
   if (!resource) return false
   if (resource.visibility !== Visibility.PRIVATE) return true
+  // INT-467 审计 P2-1：admin 豁免——设计 §五/INT-423 §4.6「admin 跨过 owner/visibility
+  // 过滤，全量可见全量可操作」，后端即按此实现；前端入口随之统一（此前 Tasks/用例页对
+  // admin 隐藏编辑/删除，与报告/评估页未门控的现状跨页不一致）。
+  if (isAdminUser()) return true
   if (resource.createdByUserId == null) return true
   return isOwner(resource.createdByUserId)
 }

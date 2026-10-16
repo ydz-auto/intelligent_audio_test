@@ -35,7 +35,29 @@
         @load-more-logs="loadMoreLogs"
       />
 
-      <!-- INT-339：挑选合并三步向导（挑选 → 购物车 → 下单三出口） -->
+      <!-- INT-467：任务可见性徽标 + 分享/设为私有切换（owner/admin 可切换；
+           非 owner 私有任务 403 提示；切换成功 emit save → 列表即时刷新徽标） -->
+      <div v-if="task" class="task-visibility-bar">
+        <span class="task-visibility-label"><i class="fas fa-eye"></i> 可见性</span>
+        <VisibilityBadge :visibility="taskVisibility" />
+        <span v-if="visibilityDenied" class="task-visibility-denied">
+          <i class="fas fa-lock"></i> 该任务为私有，仅创建者和管理员可切换
+        </span>
+        <button
+          v-else-if="canToggleVisibility"
+          type="button"
+          class="btn btn-secondary btn-sm"
+          :title="taskVisibility === Visibility.PRIVATE ? '将任务改为共享（所有有权限用户可见）' : '将任务设为私有（仅创建者和管理员可见）'"
+          @click="toggleVisibility"
+        >
+          <i class="fas" :class="taskVisibility === Visibility.PRIVATE ? 'fa-users' : 'fa-lock'"></i>
+          {{ taskVisibility === Visibility.PRIVATE ? '设为共享' : '设为私有' }}
+        </button>
+      </div>
+
+      <!-- INT-339：挑选合并三步向导（挑选 → 购物车 → 下单三出口）。
+           INT-401：presetTaskId 预筛选——任务详情「加入购物车」打开向导即定位本任务执行结果
+           （设计 §9 入口粒度：结果列表级勾选，非全局候选列表从头再筛） -->
       <CherryPickDialog
         v-if="cherryPickVisible"
         @close="cherryPickVisible = false"
@@ -52,16 +74,21 @@ import { logsPort } from '@/composables/task/logsPort';
 import { useTaskProgress } from '../../../composables/task/useTaskProgress';
 import { useModalControl, MODAL_TYPES } from '../../../composables/modal/useModal';
 import { useNotification } from '../../../composables/modal/useNotification';
-import { isNotFoundOrForbidden } from '@/composables/visibility/useVisibility';
+import { isNotFoundOrForbidden, canEditResource } from '@/composables/visibility/useVisibility';
 import { summarizeCaseStatuses } from '../../../utils/caseStatusSummary';
 import TestExecutionComponent from '../../layout/TestExecutionComponent.vue';
 import CherryPickDialog from './CherryPickDialog.vue';
+import VisibilityBadge from '../visibility/VisibilityBadge.vue';
 import type { Task, Log } from '../../../domain';
-import { TaskStatus } from '@/domain/enums';
+import { TaskStatus, Visibility } from '@/domain/enums';
 
 const props = defineProps({
   taskId: {type: [String, Number], required: true}
 });
+
+const emit = defineEmits<{
+  (e: 'save', payload: { taskId: string | number; visibilityOnly: true; visibility: string }): void
+}>();
 
 const modalControl = useModalControl();
 const notification = useNotification();
@@ -73,6 +100,49 @@ const task = ref<TaskDetail | null>(null);
 const activeTab = ref('cases');
 const isPaused = ref(false);
 const localLogs = ref<Log[]>([]);
+
+// ===== INT-467：任务可见性徽标 + 分享/设为私有切换 =====
+
+/** 当前任务的可见性（缺省 shared） */
+const taskVisibility = computed(() =>
+  task.value?.visibility || Visibility.SHARED);
+
+/** 403 守卫：私有任务且非 owner（admin 豁免，见 canEditResource） */
+const visibilityDenied = computed(() => {
+  if (!task.value) return false;
+  if (taskVisibility.value !== Visibility.PRIVATE) return false;
+  return !canEditResource({
+    visibility: taskVisibility.value,
+    createdByUserId: task.value.createdByUserId,
+  });
+});
+
+/** 是否可切换可见性（owner 或 admin；私有非 owner 无权限） */
+const canToggleVisibility = computed(() => {
+  if (!task.value) return false;
+  return canEditResource({
+    visibility: taskVisibility.value,
+    createdByUserId: task.value.createdByUserId,
+  });
+});
+
+/** 分享 / 设为私有：PATCH /tasks/{id}/visibility（需 task:share + owner 校验） */
+async function toggleVisibility() {
+  if (!task.value || !canToggleVisibility.value) return;
+  const next = taskVisibility.value === Visibility.SHARED
+    ? Visibility.PRIVATE
+    : Visibility.SHARED;
+  try {
+    await tasksPort.updateVisibility(props.taskId, next);
+    task.value.visibility = next;
+    notification.success(next === Visibility.SHARED ? '已改为共享' : '已设为私有');
+    // 列表语境（从任务列表打开）由 useTaskControl 注入的 onSave → fetchTasks 即时刷新徽标；
+    // 路由页语境（/tasks/:id）无 onSave 监听，仅本地状态更新
+    emit('save', { taskId: props.taskId, visibilityOnly: true, visibility: next });
+  } catch (error: any) {
+    notification.error(error?.message || '切换可见性失败，请确认您有该任务的分享权限');
+  }
+}
 
 // 日志分页状态
 const logPagination = ref({
@@ -680,5 +750,37 @@ onUnmounted(() => {
 
 .modal-content-wrapper {
   /* 移除滚动设置，由外层BasicModal控制滚动 */
+}
+
+/* INT-467：任务可见性徽标 + 分享/设为私有切换（token 化，与 VisibilityBadge 同色系） */
+.task-visibility-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  margin: 12px 0 0;
+  border-top: 1px solid var(--border-color);
+  background: var(--background-secondary);
+}
+
+.task-visibility-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.task-visibility-denied {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-red-700);
+}
+
+.task-visibility-denied i {
+  font-size: 12px;
 }
 </style>

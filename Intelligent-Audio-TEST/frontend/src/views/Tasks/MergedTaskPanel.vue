@@ -91,6 +91,7 @@ import { ref, onMounted } from 'vue';
 import TaskCard from '../../components/task/TaskCard.vue';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
 import { useMergedTasks } from '../../composables/task/useMergedTasks';
+import { canEditResource } from '../../composables/visibility/useVisibility';
 import { formatDate } from '@/utils/utils';
 import { getTaskStatusLabel } from '../../domain/constants/reportLabels';
 import type { Task } from '../../domain/model/task';
@@ -124,9 +125,11 @@ function toggleMergedSources(id: number) {
   expandedMergedSources.value = next;
 }
 
-/** 合并任务 → TaskCard 数据结构（来源数并入描述，保留完整执行统计，对齐 V9.7.10） */
+/** 合并任务 → TaskCard 数据结构（来源数并入描述，保留完整执行统计，对齐 V9.7.10）。
+ *  INT-467（UX 审计 P3）：透传 visibility/createdByUserId + canEdit——合并列表内
+ *  私有任务需展示锁徽标且删除/改名门控随行（此前固定形状映射丢弃了这些字段）。 */
 function mapMergedTask(mt: any): Task {
-  return {
+  const base = {
     id: mt.id,
     name: mt.name,
     description: mt.description || (mt.sourceTasks?.length ? `合并自 ${mt.sourceTasks.length} 个任务` : ''),
@@ -136,6 +139,12 @@ function mapMergedTask(mt: any): Task {
     caseCount: mt.totalCases ?? 0,
     totalCases: mt.totalCases ?? 0,
     completedCases: mt.completedCases ?? 0,
+  } as Task;
+  return {
+    ...base,
+    visibility: mt.visibility ?? undefined,
+    createdByUserId: mt.createdByUserId ?? undefined,
+    canEdit: canEditResource(mt),
   } as Task;
 }
 

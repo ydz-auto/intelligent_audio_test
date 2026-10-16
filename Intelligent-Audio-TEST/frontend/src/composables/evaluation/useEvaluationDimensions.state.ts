@@ -179,7 +179,11 @@ export function createEvalDimensionState() {
             ? algo === filterAlgorithm.value
             : algo?.algorithmType === filterAlgorithm.value
         );
-      // INT-423/467：可见性匹配（缺省视为 shared）
+      // INT-423/467：可见性匹配（缺省视为 shared）。
+      // 前端派生例外（INT-467 UX 审计 P3 口径说明）：本页列表为全量拉取 + 前端过滤模型
+      // （父/子维度必须同屏聚合，见 loaders.fetchData 注释），故可见性筛选与 filterStatus/
+      // filterCategory/filterAlgorithm 一致在前端派生；服务端 `?visibility=` 行级过滤仍由
+      // 后端 ACL 承担（只返回当前用户可见集，INT-465），二者叠加功能等价。
       const matchesVisibility = !filterVisibility.value ||
         (dim.visibility || 'shared') === filterVisibility.value;
       return matchesSearch && matchesStatus && matchesCategory && matchesAlgorithm && matchesVisibility;

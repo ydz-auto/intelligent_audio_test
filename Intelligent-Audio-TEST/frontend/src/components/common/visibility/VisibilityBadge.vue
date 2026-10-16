@@ -36,9 +36,10 @@ defineProps<{
 }
 
 .vis-badge--private {
-  border: 1px solid #fecaca;
-  background: #fef2f2;
-  color: #b91c1c;
+  /* INT-467（UX 审计 P3）：走 tokens 变量，对齐 tokens.css --color-red-* 色板 */
+  border: 1px solid var(--color-red-200);
+  background: var(--color-red-50);
+  color: var(--color-red-700);
 }
 
 .vis-badge--private i {

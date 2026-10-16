@@ -33,6 +33,9 @@ export function createEvalDimensionLoaders(state: EvalDimensionState) {
     error.value = null;
     try {
       // 一次拉全量，搜索/筛选改为前端过滤，保证主/子维度始终同屏聚合展示（对齐 V9.7.10）
+      // INT-467 例外口径：可见性筛选同样在前端派生（state.filteredDimensions），不传
+      // `?visibility=` 服务端过滤——服务端 ACL 仍只返回当前用户可见集（INT-465），
+      // 前端 chips 在可见集内做父/子联动的二次过滤，二者功能等价且不破坏同屏聚合。
       const params: Record<string, any> = { page: 1, perPage: DIMENSION_FETCH_ALL_PER_PAGE };
 
       const [dimsData, catsData, algosData] = await Promise.all([

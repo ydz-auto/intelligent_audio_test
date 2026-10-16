@@ -284,10 +284,14 @@ def test_d_list_badge_and_filter_smoke(page, owner_api, private_case):
     tc.settle(0.8)
 
     # ── 任务/报告/音频页：可见性筛选 chips 可达可用 ──
+    # 导航等待用 wait_title_text（hash 同文档跳转须等目标标题文本，避免读到上一页残留标题）。
+    # 注：音频页私有徽标的浏览器级断言依赖 INT-464 音频造数（upload 契约），后端未 merge 无法
+    # 造私有音频数据；P1-1 映射回归已由前端单测 useAudioList.visibility.spec 覆盖，待后端
+    # 就绪后可在复跑时补音频徽标行级断言。
     for route, title in [('/tasks', '测试任务记录'), ('/test-reports', '测试历史报告数据'),
                          ('/AudioImport', '导入音频管理')]:
         page.goto(route)
-        page.wait_visible('.page-title', timeout=25)
+        page.wait_title_text(title, timeout=25)
         assert _chip_clickable(page, VIS_FILTER_PRIVATE_LABEL), \
             f'{route} 页面应提供「私有」可见性筛选 chip'
         assert _chip_clickable(page, VIS_FILTER_SHARED_LABEL), \
@@ -300,7 +304,8 @@ def test_d_list_badge_and_filter_smoke(page, owner_api, private_case):
 def test_e_core_pages_navigation(page):
     """场景 E：核心页遍历——登录/任务/用例/报告/音频五页可见性控件可达。
 
-    admin（page fixture）逐页导航冒烟：页面标题 + 列表容器可达（不依赖具体数据）。
+    admin（page fixture）逐页导航冒烟：按目标标题文本等待（hash 同文档跳转后
+    .page-title 需包含新标题，避免命中上一页残留标题——INT-467 测试时序修正）。
     """
     pages = [
         ('/tasks', '测试任务记录'),
@@ -310,6 +315,4 @@ def test_e_core_pages_navigation(page):
     ]
     for route, title in pages:
         page.goto(route)
-        page.wait_visible('.page-title', timeout=25)
-        text = page.page_title_text()
-        assert text and title in text, f'页面 {route} 标题异常: {text!r}'
+        page.wait_title_text(title, timeout=25)

@@ -76,6 +76,7 @@ import { ref, reactive, onMounted } from 'vue';
 import TaskCard from '../../components/task/TaskCard.vue';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
 import { cherryPickApi } from '../../infrastructure/api';
+import { canEditResource } from '../../composables/visibility/useVisibility';
 import type { PickSource } from '../../infrastructure/api/cherryPickApi';
 import type { Task } from '../../domain/model/task';
 
@@ -120,12 +121,17 @@ async function loadSource(taskId: number) {
   }
 }
 
-/** 任务域映射（与合并面板 mapMergedTask 同构） */
+/** 任务域映射（与合并面板 mapMergedTask 同构）。
+ *  INT-467（UX 审计 P3）：显式透传 visibility/createdByUserId + canEdit——
+ *  挑选列表内私有任务需展示锁徽标且删除/改名门控随行（不能依赖 ...ct 隐式带过）。 */
 function mapCherryPickTask(ct: any): Task {
   return {
     ...ct,
     title: ct.name,
     createdAt: ct.createdAt,
+    visibility: ct.visibility ?? undefined,
+    createdByUserId: ct.createdByUserId ?? undefined,
+    canEdit: canEditResource(ct),
   } as Task;
 }
 

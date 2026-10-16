@@ -70,7 +70,10 @@
               >
               <i class="fas fa-file-audio file-icon"></i>
               <div class="file-info">
-                <div class="file-name">{{ file.filename || file.name }}</div>
+                <div class="file-name">
+                  {{ file.filename || file.name }}
+                  <VisibilityBadge :visibility="file.visibility" />
+                </div>
                 <div class="file-meta">
                   <span class="format-badge" :class="file.format">{{ (file.format || '').toUpperCase() }}</span>
                   <span class="file-size">{{ formatSize(file.size) }}</span>
@@ -117,7 +120,10 @@
             >
             <i class="fas fa-file-audio file-icon"></i>
             <div class="file-info">
-              <div class="file-name">{{ file.filename || file.name }}</div>
+              <div class="file-name">
+                {{ file.filename || file.name }}
+                <VisibilityBadge :visibility="file.visibility" />
+              </div>
               <div class="file-meta">
                 <span class="format-badge" :class="file.format">{{ (file.format || '').toUpperCase() }}</span>
                 <span class="file-size">{{ formatSize(file.size) }}</span>
@@ -157,6 +163,7 @@
 import { computed, ref, watch } from 'vue';
 import type { FolderNode as BaseFolderNode } from '../../../domain/model/audio';
 import { readCamel } from '../../../utils/keyTransform';
+import VisibilityBadge from '../visibility/VisibilityBadge.vue';
 
 // 后端遗留 snake_case（file_count / has_children）经 readCamel 兜底读取，收敛于 utils 层；
 // files 保持 any[]：模板直接迭代渲染文件元素（无类型化操作），domain 版为 unknown[] 需放宽
