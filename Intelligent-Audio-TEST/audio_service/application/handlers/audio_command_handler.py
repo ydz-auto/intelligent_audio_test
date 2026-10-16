@@ -18,6 +18,7 @@ from shared.infrastructure.storage import storage
 from audio_service.domain.repositories import AudioRepositoryInterface
 from audio_service.application.commands.audio_commands import (
     UpdateAudioMetadataCommand,
+    UpdateAudioVisibilityCommand,
     BatchUpdateAnnotationsCommand,
     BatchActionAudiosCommand,
     DeleteAudioCommand,
@@ -250,6 +251,32 @@ class AudioCommandHandler:
 
             self.repo.commit()
             return _ok(message='元数据更新成功')
+        except Exception as e:
+            self.repo.rollback()
+            return _fail(str(e))
+
+    def handle_update_audio_visibility(self, cmd: UpdateAudioVisibilityCommand) -> Dict[str, Any]:
+        """仅更新音频可见性（INT-464 跟随用例 gRPC 同步）。
+
+        内部通道：task_service 用例建/改后调用，经 ACL gRPC 同步，
+        不对外暴露独立可见性修改端点。visibility 取值校验对齐
+        shared/models/common_enums.py 的 Visibility 二值枚举。
+        """
+        from shared.models.common_enums import Visibility
+        try:
+            vis = cmd.visibility
+            if vis not in (Visibility.SHARED.value, Visibility.PRIVATE.value):
+                return _fail(f'非法的可见性取值: {vis!r}（合法值: shared/private）', 400)
+
+            audio = self.repo.get_audio(cmd.audio_id)
+            if not audio:
+                return _fail('未找到音频文件', 404)
+
+            if not self.repo.update_audio_visibility(cmd.audio_id, vis):
+                return _fail('未找到音频文件', 404)
+            self.repo.commit()
+            return _ok(data={'audio_id': cmd.audio_id, 'visibility': vis},
+                       message='音频可见性更新成功')
         except Exception as e:
             self.repo.rollback()
             return _fail(str(e))

@@ -95,7 +95,10 @@ class TestCase(Base):
     strategy_id = Column(String(50), ForeignKey('evaluation_strategies.id'), nullable=True, index=True, comment='评估策略ID（引用可复用策略，P1 不回灌）')
     strategy_overrides = Column(JSON, nullable=True, comment='评估策略覆盖 JSON（{dimensions, background_noise}，用例级覆盖语义）')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
-    visibility = Column(String(20), nullable=False, default='shared', server_default='shared', comment='数据可见性 (shared/private，INT-423)')
+    # INT-464 跟随用例同步的最小列（与迁移 add_visibility_columns_int423 对齐）：
+    # 用例建/改后 task_service 需按本列做「取最宽松」聚合，把引用音频可见性经 gRPC 同步
+    visibility = Column(String(20), nullable=False, default='shared', server_default='shared',
+                        comment='数据可见性（shared/private，INT-423）')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
     created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')

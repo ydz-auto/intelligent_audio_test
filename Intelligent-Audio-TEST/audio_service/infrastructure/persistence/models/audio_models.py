@@ -26,6 +26,8 @@ class Audio(Base):
         Index('idx_audios_deleted', 'deleted'),
         Index('idx_audios_created_at', 'created_at'),
         Index('idx_audios_deleted_created', 'deleted', 'created_at'),
+        # INT-423 数据可见性：行级过滤高频列表表复合索引（与迁移脚本对齐）
+        Index('idx_audios_created_visibility', 'created_by_user_id', 'visibility'),
     )
     id = Column(Integer, primary_key=True, autoincrement=True, comment='音频唯一ID')
     name = Column(String(255), nullable=False, comment='音频显示名称')
@@ -46,6 +48,8 @@ class Audio(Base):
     deleted_by_user_id = Column(BigInteger, nullable=True, comment='执行删除操作的用户ID（JWT，INT-299）')
     source_language = Column(String(32), comment='源语言')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
+    visibility = Column(String(20), nullable=False, default='shared', server_default='shared',
+                        comment='数据可见性（shared/private，INT-423）')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
     created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')

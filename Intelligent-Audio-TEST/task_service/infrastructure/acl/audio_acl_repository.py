@@ -100,6 +100,31 @@ class AudioAclRepository:
         from shared.clients.grpc_clients import get_audio_config_service_stub
         return get_audio_config_service_stub()
 
+    def update_audio_visibility(self, audio_id, visibility) -> bool:
+        """经 gRPC 同步音频可见性（INT-464 跟随用例同步）。
+
+        封装 audio_service.AudioConfigService.UpdateAudioVisibility RPC
+        （内部通道，不对外暴露端点）。返回是否成功；失败仅日志告警，
+        不抛出——用例建/改主流程不受音频同步失败影响。
+        """
+        if not audio_id:
+            return False
+        from shared.clients.grpc_clients import get_audio_config_service_stub
+        from shared.proto import audio_service_pb2 as e2e_pb
+        try:
+            stub = get_audio_config_service_stub()
+            resp = stub.UpdateAudioVisibility(e2e_pb.UpdateAudioVisibilityRequest(
+                audio_id=int(audio_id), visibility=str(visibility),
+            ))
+            if resp.success:
+                return True
+            _logger.warning("UpdateAudioVisibility gRPC 失败 (audio_id=%s, visibility=%s): %s",
+                            audio_id, visibility, resp.message)
+        except Exception as e:
+            _logger.warning("UpdateAudioVisibility gRPC 异常 (audio_id=%s, visibility=%s): %s",
+                            audio_id, visibility, e)
+        return False
+
 
 # 模块级单例
 audio_acl_repository = AudioAclRepository()

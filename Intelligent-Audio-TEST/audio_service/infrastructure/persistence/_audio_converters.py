@@ -12,6 +12,8 @@ P5+DOMAIN：仓储方法返回 domain entities（AudioAggregate 等）而非 PO�
 import logging
 from typing import Any, List
 
+from shared.models.common_enums import Visibility
+
 from audio_service.infrastructure.persistence.models import (
     Audio,
     AudioAnnotation,
@@ -74,6 +76,8 @@ def _audio_po_to_entity(po: Audio,
         description=po.description or "",
         source_language=po.source_language or "",
         bitrate=po.bitrate or 0,
+        created_by_user_id=po.created_by_user_id,
+        visibility=po.visibility or Visibility.SHARED.value,
         created_at=po.created_at,
         updated_at=po.updated_at,
         tags=[AudioTagEntity(id=t.id, audio_id=t.audio_id, tag_name=name)

@@ -57,6 +57,8 @@ class TestCaseCrudMixin:
             algorithm_type=data.get('algorithm_type'),
             strategy_id=data.get('strategy_id'),
             strategy_overrides=data.get('strategy_overrides'),
+            # INT-464 跟随用例同步最小列：建用例时落可见性（默认 shared，与迁移一致）
+            visibility=data.get('visibility') or 'shared',
             created_by_user_id=get_current_user_id(),
         )
         session.add(tc)

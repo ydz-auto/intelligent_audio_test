@@ -354,6 +354,18 @@ class AudioConfigServiceServicer(e2e_grpc.AudioConfigServiceServicer):
         except Exception as e:
             return e2e_pb.AudioConfigResponse(success=False, message=str(e), data="")
 
+    def UpdateAudioVisibility(self, request, context=None):
+        """仅更新音频可见性（INT-464 跟随用例 gRPC 同步，内部通道）。"""
+        try:
+            from audio_service.application.commands import UpdateAudioVisibilityCommand
+            result = self.cmd_handler.handle_update_audio_visibility(
+                UpdateAudioVisibilityCommand(audio_id=request.audio_id,
+                                             visibility=request.visibility)
+            )
+            return self._wrap(result)
+        except Exception as e:
+            return e2e_pb.AudioConfigResponse(success=False, message=str(e), data="")
+
     def BatchUpdateAnnotations(self, request, context=None):
         try:
             data = _loads(request.data, {})

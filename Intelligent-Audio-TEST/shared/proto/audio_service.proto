@@ -52,6 +52,8 @@ service PlaybackService {
 // ===== 音频配置 CRUD 服务 =====
 service AudioConfigService {
   rpc UpdateAudioMetadata(UpdateAudioMetadataRequest) returns (AudioConfigResponse);
+  // 仅更新音频可见性（INT-464：task_service 用例建/改后经 gRPC 跟随用例同步，内部通道，不对外暴露）
+  rpc UpdateAudioVisibility(UpdateAudioVisibilityRequest) returns (AudioConfigResponse);
   rpc BatchUpdateAnnotations(BatchUpdateAnnotationsRequest) returns (AudioConfigResponse);
   rpc BatchActionAudios(BatchActionAudiosRequest) returns (AudioConfigResponse);
   rpc DeleteAudio(DeleteAudioRequest) returns (AudioConfigResponse);
@@ -268,6 +270,11 @@ message AudioConfigResponse {
 message UpdateAudioMetadataRequest {
   int32 audio_id = 1;
   string data = 2;  // JSON: 更新字段
+}
+
+message UpdateAudioVisibilityRequest {
+  int32 audio_id = 1;
+  string visibility = 2;  // 'shared' / 'private'（INT-423 Visibility 枚举二值）
 }
 
 message BatchUpdateAnnotationsRequest {

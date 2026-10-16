@@ -306,6 +306,19 @@ class TestCaseCrudService:
 
                 self.repo.commit()
 
+                # INT-464 数据可见性：用例建后把引用音频 visibility 经 gRPC 同步过来
+                try:
+                    from task_service.application.testcase.audio_visibility_sync import (
+                        sync_case_audio_visibility,
+                    )
+                    sync_case_audio_visibility(
+                        tc_id,
+                        data.get('visibility'),
+                        merged_config,
+                    )
+                except Exception:
+                    logger.warning("创建测试用例后同步音频可见性失败", exc_info=True)
+
                 try:
                     from api_gateway.application.services.stats_cache import refresh_stats_cache
                     refresh_stats_cache()
@@ -478,6 +491,10 @@ class TestCaseCrudService:
 
             tc.config = merged_config
 
+            # INT-464 跟随用例同步最小列：改用例时同步落可见性（供其他用例取最宽松聚合）
+            if data.get('visibility') is not None:
+                tc.visibility = data['visibility']
+
             algorithm_type = data.get('algorithm_type')
             need_refresh_reference = False
 
@@ -508,6 +525,24 @@ class TestCaseCrudService:
 
             try:
                 self.repo.commit()
+
+                # INT-464 数据可见性：用例改后把引用音频 visibility 经 gRPC 同步过来。
+                # 用例可见性优先取请求载荷（前端新建/编辑选择器），PO 列补齐
+                # （INT-463）后回落读取，列缺失时按迁移默认 shared 聚合。
+                try:
+                    from task_service.application.testcase.audio_visibility_sync import (
+                        sync_case_audio_visibility,
+                    )
+                    case_visibility = data.get('visibility')
+                    if case_visibility is None:
+                        case_visibility = getattr(tc, 'visibility', None)
+                    sync_case_audio_visibility(
+                        tc_id,
+                        case_visibility,
+                        merged_config,
+                    )
+                except Exception:
+                    logger.warning("更新测试用例后同步音频可见性失败", exc_info=True)
 
                 try:
                     from api_gateway.application.services.stats_cache import refresh_stats_cache
@@ -604,6 +639,20 @@ class TestCaseCrudService:
                     logger.warning(f"刷新参考文本失败: {e}")
 
                 self.repo.commit()
+
+                # INT-464 数据可见性：复制用例同样触发引用音频可见性跟随同步
+                try:
+                    from task_service.application.testcase.audio_visibility_sync import (
+                        sync_case_audio_visibility,
+                    )
+                    sync_case_audio_visibility(
+                        new_id,
+                        getattr(tc, 'visibility', None),
+                        new_tc.config,
+                    )
+                except Exception:
+                    logger.warning("复制测试用例后同步音频可见性失败", exc_info=True)
+
                 return {'success': True, 'message': '测试用例复制成功', 'data': {'id': new_id}, 'code': 201}
             except Exception:
                 self.repo.rollback()

@@ -16,6 +16,16 @@ class UpdateAudioMetadataCommand:
 
 
 @dataclass(frozen=True)
+class UpdateAudioVisibilityCommand:
+    """仅更新音频可见性（INT-464 跟随用例 gRPC 同步）。
+
+    内部通道专用：task_service 用例建/改后调用，不对外暴露独立端点。
+    """
+    audio_id: int
+    visibility: str
+
+
+@dataclass(frozen=True)
 class BatchUpdateAnnotationsCommand:
     data: Dict[str, Any] = field(default_factory=dict)
 

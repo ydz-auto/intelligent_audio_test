@@ -811,6 +811,11 @@ class AudioConfigServiceStub:
                 request_serializer=audio__service__pb2.UpdateAudioMetadataRequest.SerializeToString,
                 response_deserializer=audio__service__pb2.AudioConfigResponse.FromString,
                 _registered_method=True)
+        self.UpdateAudioVisibility = channel.unary_unary(
+                '/audio_service.AudioConfigService/UpdateAudioVisibility',
+                request_serializer=audio__service__pb2.UpdateAudioVisibilityRequest.SerializeToString,
+                response_deserializer=audio__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
         self.BatchUpdateAnnotations = channel.unary_unary(
                 '/audio_service.AudioConfigService/BatchUpdateAnnotations',
                 request_serializer=audio__service__pb2.BatchUpdateAnnotationsRequest.SerializeToString,
@@ -979,6 +984,13 @@ class AudioConfigServiceServicer:
 
     def UpdateAudioMetadata(self, request, context):
         """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateAudioVisibility(self, request, context):
+        """仅更新音频可见性（INT-464：task_service 用例建/改后经 gRPC 跟随用例同步，内部通道，不对外暴露）
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -1187,6 +1199,11 @@ def add_AudioConfigServiceServicer_to_server(servicer, server):
                     request_deserializer=audio__service__pb2.UpdateAudioMetadataRequest.FromString,
                     response_serializer=audio__service__pb2.AudioConfigResponse.SerializeToString,
             ),
+            'UpdateAudioVisibility': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateAudioVisibility,
+                    request_deserializer=audio__service__pb2.UpdateAudioVisibilityRequest.FromString,
+                    response_serializer=audio__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
             'BatchUpdateAnnotations': grpc.unary_unary_rpc_method_handler(
                     servicer.BatchUpdateAnnotations,
                     request_deserializer=audio__service__pb2.BatchUpdateAnnotationsRequest.FromString,
@@ -1375,6 +1392,33 @@ class AudioConfigService:
             target,
             '/audio_service.AudioConfigService/UpdateAudioMetadata',
             audio__service__pb2.UpdateAudioMetadataRequest.SerializeToString,
+            audio__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateAudioVisibility(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/audio_service.AudioConfigService/UpdateAudioVisibility',
+            audio__service__pb2.UpdateAudioVisibilityRequest.SerializeToString,
             audio__service__pb2.AudioConfigResponse.FromString,
             options,
             channel_credentials,

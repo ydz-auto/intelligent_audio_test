@@ -57,6 +57,8 @@ def _audio_to_dict(audio, tags=None, annotations=None) -> dict:
         'description': audio.description,
         'source_language': audio.source_language,
         'md5': audio.md5,
+        'visibility': audio.visibility,
+        'created_by_user_id': audio.created_by_user_id,
         'tags': tags or [],
         'annotations': annotations or [],
         'created_at': audio.created_at.isoformat() if audio.created_at else None,

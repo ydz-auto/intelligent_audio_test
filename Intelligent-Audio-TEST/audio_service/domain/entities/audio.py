@@ -73,6 +73,8 @@ class AudioAggregate:
     description: str = ""
     source_language: str = ""
     bitrate: int = 0
+    created_by_user_id: Optional[int] = None
+    visibility: str = "shared"
     created_at: Any = None
     updated_at: Any = None
     annotations: List[AudioAnnotationEntity] = field(default_factory=list)
