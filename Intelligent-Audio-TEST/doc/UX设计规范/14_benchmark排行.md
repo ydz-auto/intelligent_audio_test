@@ -1,6 +1,6 @@
-# Benchmark 排行页 UX 设计规范（对齐 newAPI rankings）
+# 排行榜页 UX 设计规范（对齐 newAPI rankings）
 
-> 卡 INT-359 ｜ UX设计师B ｜ 2026-10-14（v1.1 修订 2026-10-15：算法切换口径改判 INT-442，见 §3.2）｜ 基准：newAPI 参照源码 `D:\00_code\new_api_xagents`（web/src/features/rankings 全目录、web/src/routes/rankings、web/src/hooks/use-top-nav-links.ts、web/src/lib/nav-modules.ts、web/src/lib/use-chart-theme.ts、web/src/components/layout/components/public-layout.tsx｜public-navigation.tsx），本平台后端实测 `report_service/interfaces/api/benchmark_routes.py`、`api_gateway/routes/benchmark_bp.py`、`api_gateway/application/services/benchmark/benchmark_service.py`、`report_service/infrastructure/persistence/models/benchmark_models.py`、`report_service/application/services/benchmark_ranking_service.py`、`report_service/domain/entities/benchmark.py`、`scripts/migrations/202608/seed_rbac.py`，全部取材自实测源码，无杜撰。
+> 卡 INT-359 ｜ UX设计师B ｜ 2026-10-14（v1.1 修订 2026-10-15：算法切换口径改判 INT-442，见 §3.2；v1.2 修订 2026-10-16：INT-391 审核放行条件——文案全量改「排行榜」+ DTO→Domain 映射 + 未登录对齐 INT-344 + 基座节号勘误 + 权限码计数 5→6，见修订表）｜ 基准：newAPI 参照源码 `D:\00_code\new_api_xagents`（web/src/features/rankings 全目录、web/src/routes/rankings、web/src/hooks/use-top-nav-links.ts、web/src/lib/nav-modules.ts、web/src/lib/use-chart-theme.ts、web/src/components/layout/components/public-layout.tsx｜public-navigation.tsx），本平台后端实测 `report_service/interfaces/api/benchmark_routes.py`、`api_gateway/routes/benchmark_bp.py`、`api_gateway/application/services/benchmark/benchmark_service.py`、`report_service/infrastructure/persistence/models/benchmark_models.py`、`report_service/application/services/benchmark_ranking_service.py`、`report_service/domain/entities/benchmark.py`、`scripts/migrations/202608/seed_rbac.py`，全部取材自实测源码，无杜撰。
 > 背景裁定：benchmark 排行页**恢复设计**（原 2026-10-10 搁置裁定由负责人 2026-10-14 恢复，仅设计阶段）；版式照 newAPI 官方排行榜页（rankings）；**数据以 B 域 benchmark 钩子现状为准，后端没有的数据不虚构，缺口一律标注「待后端立项」**。
 > 技术栈：React 19 + TS + Rsbuild + Tailwind 4 + shadcn 风格组件 + TanStack Router/Query + @visactor/react-vchart（newAPI 排行页图表同款依赖，`web/package.json:44-45` 实测 ^2.1.2）+ next-themes 深浅色（CSS/组件/交互件直接复用 newAPI 现成的，负责人 2026-10-14 裁定；多主题预设体系，lake-view 为默认参考预设——本文 token 均引基座卡 `01_全局基座.md` 的定义）。
 
@@ -93,7 +93,7 @@ newAPI 排行页（/rankings）是「**公共数据页**」：不走登录后的
 | `score100` | 归一化分 0-100（可空，单主体不归一化） | 次要指标（空显示「—」） |
 | `gap_best` / `gap_median` | 与排行最佳/中位数差距 | 次要指标（tooltip 展开） |
 | `delta_external` | 实测值与外部基线值的差异（**双轨并存时有值**） | 基线差徽章（对位 newAPI GrowthText 位置） |
-| `published_task_id` / `published_task_version` / `report_id` | 实测轨溯源（已发布任务/版本/来源报告） | 「v{version}」徽章 + 「查看报告」链接（→ `/report/{report_id}`，report:read 门控） |
+| `published_task_id` / `published_task_version` / `report_id` | 实测轨溯源（已发布任务/版本/来源报告） | 「v{version}」徽章 + 「查看报告」链接（→ `/report/{reportId}`，report:read 门控） |
 | `baseline_id` | 外部轨溯源基线 ID | 不显示（仅排障用） |
 | `scenario_key` | 排行场景键（默认「通用」，`Config.BENCHMARK_DEFAULT_SCENARIO`） | 场景分组/场景筛选（**前端派生**，接口无 scenario 参数） |
 | `computed_at` | 计算时间 | 组卡「计算于 {时间}」角标 |
@@ -129,15 +129,15 @@ newAPI 排行页（/rankings）是「**公共数据页**」：不走登录后的
 
 | newAPI rankings | 本平台现状（Vue，只读参考） | 映射进新前端 |
 | --- | --- | --- |
-| `/rankings` 公开排行页 | **无此页面**（benchmark 仅有后端接口与已发布任务上的徽章，站内无任何排行界面） | **新增「Benchmark 排行」页 `/rankings`**（公开路由，权限判定见 §6） |
+| `/rankings` 公开排行页 | **无此页面**（benchmark 仅有后端接口与已发布任务上的徽章，站内无任何排行界面） | **新增「排行榜」页 `/rankings`**（公开路由，权限判定见 §6） |
 | Hero 周期页签（today/week/month/year 下划线页签） | 无 | **类别维度下划线页签**：全部 / 语音识别 / 语音对话 / 语音合成 / 翻译（`category` 参数；周期切换待后端立项，见 §2.4） |
 | Top Models 主卡（堆叠柱 + LLM Leaderboard 双栏榜） | 无 | **指标组卡 ×N**（每组=category×metric×scenario 一个组）：组头（指标名+方向徽章+参与主体数+计算时间）+ 指标值对比条形图（前端派生）+ 双栏主体榜单 |
 | Market Share 厂商份额卡 | 无 | 不做（数据缺口，待后端立项） |
 | Pulse 升降榜双卡 | 无 | 不做（数据缺口，待后端立项） |
-| ModelLink → /pricing/$modelId | 无对应详情页 | **SubjectLink**（主体名→本页 `subjectName=` 筛选，同页联动）+ **ReportLink**（实测轨行→`/report/{report_id}`，`report:read` 门控；外部轨行无详情页，仅文字） |
-| GrowthText（↑↓ 环比） | 无 | **DeltaText**（基线差 `delta_external`：±值+单位，双轨并存时显示；正负色沿用 emerald/rose 语义——按 direction 语义定正负色，见 §5.4） |
+| ModelLink → /pricing/$modelId | 无对应详情页 | **SubjectLink**（主体名→本页 `subjectName=` 筛选，同页联动）+ **ReportLink**（实测轨行→`/report/{reportId}`，`report:read` 门控；外部轨行无详情页，仅文字） |
+| GrowthText（↑↓ 环比） | 无 | **DeltaText**（基线差 `deltaExternal`：±值+单位，双轨并存时显示；正负色沿用 emerald/rose 语义——按 direction 语义定正负色，见 §5.4） |
 | `GET /api/rankings?period=` 单快照 | `/api/v1/benchmarks/ranking`（六参数筛选，单页全量） | `GET /api/v1/benchmarks/ranking` + `/ranking/subjects` + `/metric-mappings?activeOnly=true`（指标下拉）三请求 |
-| 顶部导航 rankings 模块（本 fork 实测文案「Availability」→/platform；/rankings 不进导航，nav-modules 可控 enabled/requireAuth） | 无 | **顶部导航「Benchmark 排行」直达 `/rankings`**（负责人口径「顶部导航含 benchmark 排行、报告直达」；入口可见性按 `benchmark:ranking:read` 权限判定，导航树由导航栏卡 INT-344 统一落地。newAPI 的 enabled/requireAuth 站点级开关机制作参照，站点设置域纳入与否待后端立项） |
+| 顶部导航 rankings 模块（本 fork 实测文案「Availability」→/platform；/rankings 不进导航，nav-modules 可控 enabled/requireAuth） | 无 | **顶部导航「排行榜」直达 `/rankings`**（负责人口径「顶部导航含 benchmark 排行、报告直达」；入口可见性按 `benchmark:ranking:read` 权限判定，导航树由导航栏卡 INT-344 统一落地。newAPI 的 enabled/requireAuth 站点级开关机制作参照，站点设置域纳入与否待后端立项） |
 | PublicLayout 公共外壳 | 无（Vue 登录后单壳） | 复用 newAPI PublicLayout 骨架（站头+页脚），与首页/关于/文档页共用同一外壳——本卡只消费，外壳由导航栏卡 INT-344 / 关于页卡 INT-348 统一定义 |
 | 图表 VChart + useChartTheme 深浅色 | 无 | 同款引入 `@visactor/react-vchart` + `use-chart-theme.ts` 机制（照搬，chart 主题跟随 next-themes） |
 | （newAPI 无对位——算法切换为平台特有，INT-442 改判） | 无（原 §3.2 口径「不设算法筛选」） | **「当前算法」大卡片**（§4.5，INT-436 契约）：页内算法切换、页内独立不写回全局；榜单按算法过滤待后端立项（§2.4）。详情见 §3.2 |
@@ -147,7 +147,7 @@ newAPI 排行页（/rankings）是「**公共数据页**」：不走登录后的
 **改判**：本页**新增「当前算法」大卡片**（工作台概览算法大卡片形态），页面内切换算法——**不再用右上角全局切换器**。原「本页不设算法筛选、与全局切换器无联动」口径推翻（INT-442，2026-10-15）。
 
 - **形态与契约**：复用 INT-436 工作台概览算法大卡片组件契约（`04_控制台.md` §3.4）+ INT-355 §3.4 双通道选择器（Command 搜索 + 卡片网格）——当前算法显示（算法名/分组/描述）+「切换算法」入口；算法选择组件建议抽为平台件 `interfaces/components/algorithm/algorithm-selector.tsx`（导航栏切换器/测试执行步骤0/工作台概览/本页共用）。
-- **页内独立（不写回全局）**：本页为公开页（PublicLayout，未登录可看），算法切换**只过滤本页榜单、不写回全局算法 store**（INT-442 倾向：公开页不该污染全局）。页内 Zustand store `useRankingAlgorithmStore { algorithmType: string|null; setAlgorithm(type); clear() }`，localStorage `iatp:rankings:v1:algorithm`；URL `algorithm=` 可还原。
+- **页内独立（不写回全局）**：本页走公共壳（PublicLayout，URL 直达可打开——未登录导航隐藏、数据 403 空态，INT-344 口径，§6.2），算法切换**只过滤本页榜单、不写回全局算法 store**（INT-442 倾向：公开页不该污染全局）。页内 Zustand store `useRankingAlgorithmStore { algorithmType: string|null; setAlgorithm(type); clear() }`，localStorage `iatp:rankings:v1:algorithm`；URL `algorithm=` 可还原。
 - **数据缺口（待后端立项）**：排行 ReadModel 无算法维度字段，`/ranking` 无 `algorithm_type` 参数（§2.2 全字段实测）——**榜单按算法过滤/重算待后端立项**（ReadModel 增算法维度或查询附 algorithm_type）。就绪前：算法大卡片完整呈现（显示/切换可用），所选算法写入页内 store 与 URL，榜单数据仍全量展示，卡片内标注「按算法过滤待后端立项」。
 - **公开页权限降级**：`GET /algorithm/definitions` 与 `/algorithm/options` 门槛 `algorithm:read`（`algorithm_bp.py` 实测）——持 `algorithm:read` 者（admin/tester/algo_engineer）完整大卡（hero 详情 + 切换钮）；无权限者（device_admin/guest）与未登录访客**只读降级条**（仅显示「全部算法」，无切换钮，可正常浏览榜单）——照 INT-436 只读降级态契约，公开页首屏不空。
 
@@ -167,18 +167,18 @@ PublicLayout（站头 PublicHeader + main + 页脚 Footer，对位 newAPI public
       ├─ CurrentAlgorithmCard（「当前算法」大卡——INT-436 契约，页内独立切换，§4.5）
       ├─ 筛选行（测试集 / 指标 / 数据来源 Select + 主体搜索 Input；本平台扩展，参数全部实测存在）
       ├─ MetricGroupCard ×N（按 category×metric×scenario 分组，组内 rank 升序）
-      │  ├─ 卡头：图标+「{指标名} · {场景}」+ 方向徽章 ｜ 右侧：参与主体 N + 计算于 {computed_at}
+      │  ├─ 卡头：图标+「{指标名} · {场景}」+ 方向徽章 ｜ 右侧：参与主体 N + 计算于 {computedAt}
       │  ├─ 指标值对比条形图（VChart 横向条形，h-60 sm:h-72，前端派生）
       │  └─ border-t 榜单块：SubjectLeaderboard（双栏榜单，对位 ModelLeaderboard）
       └─ （空态/加载/错误三态见 §5.5）
 ```
 
 - 间距、断点、容器宽度全部照搬 newAPI 实测值（§1.2），不自研布局。
-- 组卡数量 = 当前筛选下的 `(metric_code × scenario_key)` 组数（category 由页签锁定）；组间 `space-y-8`。
+- 组卡数量 = 当前筛选下的 `(metricCode × scenarioKey)` 组数（category 由页签锁定）；组间 `space-y-8`。
 
 ### 4.2 RankingsHero（对位 rankings-hero.tsx）
 
-- 标题「Benchmark 排行」（`clamp(1.75rem,4vw,2.5rem)` bold tracking-tight）；副标题一句（`text-muted-foreground/80 max-w-2xl text-sm`）。
+- 标题「排行榜」（`clamp(1.75rem,4vw,2.5rem)` bold tracking-tight）；副标题一句（`text-muted-foreground/80 max-w-2xl text-sm`）。
 - 下划线页签（`role='tablist' aria-label='指标类别'`）：全部 / 语音识别 ASR / 语音对话 / 语音合成 TTS / 翻译——样式照 newAPI（`border-b` + 激活 `bg-foreground h-[2px]` 滑条，激活/未激活色同 §1.2）；写入 URL `category=`。
 - 页签切换不重置其他筛选（URL search 合并写入，照 newAPI `navigate({search: prev => ({...prev, …})})` 模式）。
 
@@ -186,8 +186,8 @@ PublicLayout（站头 PublicHeader + main + 页脚 Footer，对位 newAPI public
 
 - 布局：`flex flex-wrap items-center gap-2`，置于 Hero 之下、首张组卡之上；移动端换行堆叠。
 - 控件（全部对基座卡 §5 组件选型，h-8）：
-  - 「测试集」Select：选项=当前数据去重 `benchmark_suite`（默认「全部测试集」）→ `suite=`。
-  - 「指标」Select：选项=「全部指标」+ `metric-mappings?activeOnly=true` 清单（显示 `metric_name`，值 `metric_code`）→ `metricCode=`。映射接口失败时退化为纯文本输入（容错，不打断页面）。
+  - 「测试集」Select：选项=当前数据去重 `benchmarkSuite`（默认「全部测试集」）→ `suite=`。
+  - 「指标」Select：选项=「全部指标」+ `metric-mappings?activeOnly=true` 清单（显示 `metricName`，值 `metricCode`）→ `metricCode=`。映射接口失败时退化为纯文本输入（容错，不打断页面）。
   - 「数据来源」Select：全部来源 / 平台实测 / 外部基线 → `source=`（platform_test/external_import，接口仅接受这两值，`benchmark_service.py:25` 实测）。
   - 「搜索主体」Input（lucide `Search` 前缀图标 + placeholder）：防抖 300ms → `subjectName=`；下拉联想用 `/ranking/subjects`（有输入时出现，键盘可选，Escape 关闭）。
   - 右端「重置」ghost 按钮（任一筛选非默认时出现）。
@@ -198,7 +198,7 @@ PublicLayout（站头 PublicHeader + main + 页脚 Footer，对位 newAPI public
 
 - 卡容器：`bg-card overflow-hidden rounded-lg border`（radius-lg=12px 系，基座卡 §4.2）。
 - 卡头（`px-5 py-4`，两端对齐）：
-  - 左：lucide 图标（按 category 固定：asr=`AudioLines`、voice_llm=`MessagesSquare`、tts=`Volume2`、translation=`Languages`，`text-primary size-4`）+ 标题 `{指标名} · {场景}`（`text-base font-semibold`）+ 方向徽章（「越低越好」=neutral 软底 /「越高越好」=primary 软底，基座卡 §5.9 徽章）+ 说明行（`text-muted-foreground mt-1 text-sm`：「平台实测与外部基线按 {direction} 排名，共 {total} 个主体参与。」）。
+  - 左：lucide 图标（按 category 固定：asr=`AudioLines`、voice_llm=`MessagesSquare`、tts=`Volume2`、translation=`Languages`，`text-primary size-4`）+ 标题 `{指标名} · {场景}`（`text-base font-semibold`）+ 方向徽章（「越低越好」=neutral 软底 /「越高越好」=primary 软底，基座卡 §5 组件表 Badge 行）+ 说明行（`text-muted-foreground mt-1 text-sm`：「平台实测与外部基线按 {direction} 排名，共 {total} 个主体参与。」）。
   - 右（`text-right shrink-0`）：参与主体数 `font-mono text-2xl font-semibold tabular-nums`（对位 newAPI tokens 大数字位）+ 角标「个主体 · 计算于 {MM-DD HH:mm}」（`text-[10px] tracking-widest uppercase text-muted-foreground/80`，uppercase 仅作用于西文，中文原样）。
 - 图表区（`px-5 pb-5`，`h-60 sm:h-72`）：**指标值横向对比条形图**（VChart `bar`，横向，按 rank 升序自上而下）：
   - 单色 `--chart-1`（基座卡 §3.6）；实测轨与外部轨双色区分：实测 `--chart-1` / 外部 `--chart-2`，图例隐藏、行内徽章已区分，tooltip 标注来源。
@@ -207,13 +207,13 @@ PublicLayout（站头 PublicHeader + main + 页脚 Footer，对位 newAPI public
   - `themeReady` 前与数据为空时显示占位文案「暂无图表数据」（照 newAPI `No history data available` 位置与样式）。
   - **本图为前端派生（数据已存在），不属 §2.4 缺口。**
 - 榜单块（`border-t`）：
-  - 块头（`px-5 pt-4 pb-2`）：lucide `Trophy`（`size-3.5 text-amber-500`，照 newAPI）+「榜单」（`text-sm font-semibold`）+ 说明「按名次排列，实测轨取最新版本」（`text-muted-foreground/80 mt-0.5 text-xs`）；右端视图切换 Tabs（`line` 变体，基座卡 §5.10）：「列表」（默认，双栏）/「表格」（全字段，见 §5.3）。
+  - 块头（`px-5 pt-4 pb-2`）：lucide `Trophy`（`size-3.5 text-amber-500`，照 newAPI）+「榜单」（`text-sm font-semibold`）+ 说明「按名次排列，实测轨取最新版本」（`text-muted-foreground/80 mt-0.5 text-xs`）；右端视图切换 Tabs（`line` 变体，基座卡 §5 组件表 Tabs 行）：「列表」（默认，双栏）/「表格」（全字段，见 §5.3）。
   - 榜单双栏（对位 ModelLeaderboard）：`grid grid-cols-1 md:grid-cols-2 gap-x-8`，行数均分左右（`half = ceil(n/2)`，保持单榜视觉节奏）。
   - 榜单行（`flex items-center gap-3 py-2.5`）：
     - 名次：`w-6 text-right font-mono text-xs tabular-nums text-muted-foreground/80`（`{rank}.`，并列共享名次照实显示）。
-    - 主体列：主体名 **SubjectLink**（`font-mono text-sm font-medium` + 常驻细下划线，点击=本页 `subjectName` 筛选，同 newAPI「榜单即导航」）；下行徽章组（`text-xs italic` 位对位 newAPI 厂商行）：主体类型（开源/闭源/App，neutral 软底）+ 设备类型（有值才显示：实体设备/HTTP API/WebSocket API）+ `v{published_task_version}`（实测轨）+ 来源徽章（「平台实测」info 软底 /「外部基线」secondary 软底）。
-    - 右值列：主值 `{metric_value}{unit}`（`font-mono text-sm font-semibold tabular-nums`）；下行 DeltaText（`text-[11px]`）：实测轨双轨并存时显示「基线差 ±{delta_external}{unit}」（配色按 §5.4），否则显示 `score100`（有值：「{score100} 分」，空值「—」）。
-    - 实测轨行尾「查看报告」link 变体小按钮（lucide `FileText size-3` + 文字，`→ /report/{report_id}`，仅 `report:read` 持有者渲染）。
+    - 主体列：主体名 **SubjectLink**（`font-mono text-sm font-medium` + 常驻细下划线，点击=本页 `subjectName` 筛选，同 newAPI「榜单即导航」）；下行徽章组（`text-xs italic` 位对位 newAPI 厂商行）：主体类型（开源/闭源/App，neutral 软底）+ 设备类型（有值才显示：实体设备/HTTP API/WebSocket API）+ `v{publishedTaskVersion}`（实测轨）+ 来源徽章（「平台实测」info 软底 /「外部基线」secondary 软底）。
+    - 右值列：主值 `{metricValue}{unit}`（`font-mono text-sm font-semibold tabular-nums`）；下行 DeltaText（`text-[11px]`）：实测轨双轨并存时显示「基线差 ±{deltaExternal}{unit}」（配色按 §5.4），否则显示 `score100`（有值：「{score100} 分」，空值「—」）。
+    - 实测轨行尾「查看报告」link 变体小按钮（lucide `FileText size-3` + 文字，`→ /report/{reportId}`，仅 `report:read` 持有者渲染）。
   - 空组不渲染卡（全空时页面级空态，§5.5）。
 
 ### 4.5 「当前算法」大卡片（INT-442 改判——页面内算法切换，复用 INT-436 契约）
@@ -241,28 +241,29 @@ PublicLayout（站头 PublicHeader + main + 页脚 Footer，对位 newAPI public
 
 - 加载态（首次/切筛选 refetch 时 non-blocking 保留旧数据，TanStack Query `placeholderData: keepPreviousData`）：首访四段 Skeleton（对位 newAPI h-[420px]/h-[360px]/h-[180px] → 本页 Hero 骨架条 + 算法大卡骨架条（标题行/描述行两段，照 INT-436 骨架）+ 筛选行骨架 + 组卡骨架×2，`rounded-xl`）；`isFetching` 时筛选行右侧显示 `Loader2 size-4 animate-spin`。
 - 算法卡降级：`/algorithm/definitions` 失败整卡值区「--」+「算法详情暂不可用」（不报错 toast，ErrorState 卡内降级——对齐 INT-436 工作台逐卡容错）；无权限/未登录只读降级条（§4.5）。
-- 空态（查询成功但 0 行）：Empty 组件（基座卡 §5.11，border-dashed 圆角卡）：图标 `Trophy`、标题「暂无排行数据」、描述「尚未计算排行，或当前筛选条件下没有数据。」；持 `benchmark:ranking:compute` 者加主按钮「立即计算」（无权限者无按钮，描述后补一句「请联系管理员计算排行。」）。
+- 空态（查询成功但 0 行）：Empty 组件（基座卡 §5 组件表 Empty 行，border-dashed 圆角卡）：图标 `Trophy`、标题「暂无排行数据」、描述「尚未计算排行，或当前筛选条件下没有数据。」；持 `benchmark:ranking:compute` 者加主按钮「立即计算」（无权限者无按钮，描述后补一句「请联系管理员计算排行。」）。
+- 权限空态（403：未登录或已登录无 `benchmark:ranking:read`）：**不跳登录**（INT-344 定稿「URL 直达可达、数据 403 空态」）。同 Empty 卡形态：图标 `Lock`、标题「无法查看排行数据」、描述「当前账号无排行查看权限，请登录或联系管理员。」，**无「重试」按钮**（非请求失败，重试无意义）；AUTH_MODE=off（现状部署）不出现此态。
 - 错误态（请求失败）：`bg-card rounded-xl border border-dashed px-6 py-12 text-center`（照 newAPI RankingsError）+ 「重试」outline 按钮；`message` 取后端 detail（如「查询排行失败，请稍后重试」实测文案）。
 
 ### 5.2 「立即计算」（重算交互）
 
 - 可见性：`hasPermission('benchmark:ranking:compute')` 才渲染（无权限整钮隐藏，对齐 newAPI「隐藏而非置灰」）；位置：筛选行右端（与「重置」同组）。
-- 点击 → AlertDialog 确认（基座卡 §5.8）：标题「重新计算排行？」描述「将合并平台实测与外部基线全量重算，期间现有排行保持可查看。」按钮「开始计算」（default）/「取消」。
+- 点击 → AlertDialog 确认（基座卡 §5 组件表 AlertDialog 行）：标题「重新计算排行？」描述「将合并平台实测与外部基线全量重算，期间现有排行保持可查看。」按钮「开始计算」（default）/「取消」。
 - 进行中：按钮 loading（Spinner+「计算中…」），禁用重复点击；成功 `toast.success('排行计算完成')` + 失效 `rankings` 查询缓存自动刷新；失败 `toast.error('{message}')` + 附加说明「上一次排行结果仍可查看」（后端失败语义 §2.3）。
 - 计算是同步接口、低频操作，**不做轮询**（TanStack Query staleTime 5 分钟，同 newAPI）。
 
 ### 5.3 列表 / 表格双视图
 
 - 「列表」（默认）：§4.4 双栏榜单——快读名次与主值。
-- 「表格」：TanStack Table（基座卡 §5.6）：列=名次 / 主体 / 主体类型 / 来源 / 版本 / 指标值({unit}) / score100 / 百分位 / 与最佳差 / 与中位差 / 基线差 / 计算于；数值列右对齐 `tabular-nums`；方向提示在表头 tooltip（「该指标越低越好」）；空值统一「—」。
+- 「表格」：TanStack Table（基座卡 §5 组件表 Table 行）：列=名次 / 主体 / 主体类型 / 来源 / 版本 / 指标值({unit}) / score100 / 百分位 / 与最佳差 / 与中位差 / 基线差 / 计算于；数值列右对齐 `tabular-nums`；方向提示在表头 tooltip（「该指标越低越好」）；空值统一「—」。
 - 两视图共享同一组数据与筛选；视图选择存 localStorage（`iatp:rankings:v1:view`），不入 URL。
 
 ### 5.4 DeltaText 配色语义（对位 GrowthText，按 direction 定正负）
 
 newAPI 的 growth 是"越大越好"隐含语义；本平台 delta 方向随指标 `direction` 翻转：
 
-- `higher_is_better`：delta_external > 0（超基线）→ emerald `↑`；< 0 → rose `↓`。
-- `lower_is_better`：delta_external < 0（低于基线=更优）→ emerald `↓`；> 0 → rose `↑`。
+- `higher_is_better`：deltaExternal > 0（超基线）→ emerald `↑`；< 0 → rose `↓`。
+- `lower_is_better`：deltaExternal < 0（低于基线=更优）→ emerald `↓`；> 0 → rose `↑`。
 - 显示 `±{|delta| 保留 2 位}{unit}`，0 或空显示「—」（neutral）；色彩 token 用基座卡 §3.4 语义：涨=success 系文本色、跌=destructive 系文本色（emerald/rose 是 newAPI 实测用法，映射到本平台 `text-success / text-destructive`，多主题预设下自动联动）。
 
 ### 5.5 筛选联动与深浅色
@@ -281,23 +282,23 @@ newAPI 的 growth 是"越大越好"隐含语义；本平台 delta 方向随指�
 
 ### 6.1 权限事实（实测，非杜撰）
 
-- 网关为 benchmark 路由定义 5 个权限码：`benchmark:ranking:read / benchmark:ranking:compute / benchmark:baseline:read / benchmark:baseline:write / benchmark:baseline:publish / benchmark:mapping:manage`（`benchmark_bp.py` 实测）。
+- 网关为 benchmark 路由定义 6 个权限码：`benchmark:ranking:read / benchmark:ranking:compute / benchmark:baseline:read / benchmark:baseline:write / benchmark:baseline:publish / benchmark:mapping:manage`（`benchmark_bp.py` 实测）。
 - **缺口**：`scripts/migrations/202608/seed_rbac.py` 的 100 个权限码中**不含任何 `benchmark:*`**（全文 grep 实测）——即 AUTH_MODE=on 时，五个系统角色中**仅 admin（通配 `*`）可访问**，tester/algo_engineer/device_admin/guest 一律 403；AUTH_MODE=off（现状部署）时中间件注入 `['*']` 全员放行。**「待后端立项（RBAC 补码）」**：将 `benchmark:ranking:read` 补入种子并分发角色（建议见 §6.2 建议列，供后端立项参考，非现状）。
 
 ### 6.2 角色映射表
 
-| 角色（seed_rbac `ROLES`） | 现状权限判定 | 顶部导航「Benchmark 排行」 | 页面读取（榜单/筛选/搜索） | 「当前算法」大卡片 | 「立即计算」 | 「查看报告」行内链接 | 立项建议（待后端立项，非现状） |
+| 角色（seed_rbac `ROLES`） | 现状权限判定 | 顶部导航「排行榜」 | 页面读取（榜单/筛选/搜索） | 「当前算法」大卡片 | 「立即计算」 | 「查看报告」行内链接 | 立项建议（待后端立项，非现状） |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | admin 超级管理员（`*`） | `*` 通配 | 可见 | 可用 | 完整卡（algorithm:read∈`*`） | 可用（`benchmark:ranking:compute`） | 可用（report:read∈`*`） | 维持 |
-| tester 测试工程师 | 无 benchmark:* → AUTH_MODE=on 403；off 放行 | off 可见 / on 隐藏 | off 可用 / on 不可用 | 完整卡（algorithm:read） | 隐藏 | 可用（report:read） | 建议：补 `benchmark:ranking:read`（可读榜） |
+| tester 测试工程师 | 无 benchmark:* → AUTH_MODE=on 403；off 放行 | off 可见 / on 隐藏 | off 可用 / on 数据 403 空态（URL 直达） | 完整卡（algorithm:read） | 隐藏 | 可用（report:read） | 建议：补 `benchmark:ranking:read`（可读榜） |
 | algo_engineer 算法工程师 | 同上 | 同上 | 同上 | 完整卡（algorithm:read） | 隐藏 | 可用（report:read） | 建议：补 `benchmark:ranking:read` + `benchmark:ranking:compute`（算法侧负责重算） |
 | device_admin 设备管理员 | 同上 | 同上 | 同上 | 只读降级条（无 algorithm:read） | 隐藏 | 隐藏（无 report:read） | 建议：不补（职能无关，导航整项隐藏） |
 | guest 游客 | 同上 | 同上 | 同上 | 只读降级条（无 algorithm:read） | 隐藏 | 隐藏 | 建议：补 `benchmark:ranking:read`（公开榜可读，无溯源报告链接） |
-| 未登录访客（AUTH_MODE=on） | 无 | 可见（入口公开展示） | 跳 `/sign-in?redirect=/rankings`（守卫） | 只读降级条（未登录，两接口 403） | 隐藏 | 隐藏 | 建议：路由按 requireAuth 轴处理（对齐 newAPI rankings requireAuth 机制） |
+| 未登录访客（AUTH_MODE=on） | 无 | 隐藏（URL 直达可达——INT-344 定稿） | 数据 403 空态（不跳登录；榜单查询 403 → 权限空态，§5.1） | 只读降级条（未登录，两接口 403） | 隐藏 | 隐藏 | 无需立项（已按 INT-344 定稿：入口隐藏 + URL 直达 + 数据 403 空态） |
 
 > 注：「当前算法」大卡片页内独立（§3.2/§4.5），无 `algorithm:read` 时仅降级条不阻塞榜单浏览；AUTH_MODE=off（现状部署）时全员 `['*']`，大卡片全角色完整卡。
 
-- 前端判定对齐本平台惯例（`authStore.hasPermission` 含 `*` 通配，系统设置卡 §2.0 实测）：页面路由守卫 `hasPermission('benchmark:ranking:read')`，不满足且已登录 → 403 页；未登录 → `/sign-in?redirect=/rankings`；AUTH_MODE=off 放行（与现 Vue 守卫口径一致）。
+- 前端判定对齐本平台惯例（`authStore.hasPermission` 含 `*` 通配，系统设置卡 §2.0 实测）：**路由不设硬守卫**（公开可达，对齐 INT-344 §2.2「URL 直达可达、数据 403 空态」）——未登录与已登录无 `benchmark:ranking:read` 者，顶部导航入口隐藏，URL 直达时榜单数据 403 → 权限空态（§5.1，不跳登录）；已登录持码（现仅 admin/`*`）正常读；AUTH_MODE=off（现状部署）放行。
 - 导航按角色渲染的原则由导航栏卡 INT-344 统一实现：本页入口无权限时**整项隐藏**（不是置灰）。
 - 页面内无数据写操作按钮（除重算）；数据源/基线/映射管理入口不在本页（归配置运维卡 INT-362）。
 
@@ -307,11 +308,11 @@ newAPI 的 growth 是"越大越好"隐含语义；本平台 delta 方向随指�
 
 ### 顶部导航（入口，随导航栏卡统一）
 
-- 「Benchmark 排行」→ `/rankings`；移动端全屏菜单同项；当前页高亮。
+- 「排行榜」→ `/rankings`；移动端全屏菜单同项；当前页高亮。
 
 ### Hero
 
-- 标题：「Benchmark 排行」
+- 标题：「排行榜」
 - 副标题：「汇聚平台实测与业界公开基线的语音能力横向对比，按指标与场景生成名次。」
 - 页签（aria-label「指标类别」）：「全部」「语音识别」「语音对话」「语音合成」「翻译」
 - 页签 sr-only 状态：「{名称}，当前已选中」/「{名称}」
@@ -346,6 +347,7 @@ newAPI 的 growth 是"越大越好"隐含语义；本平台 delta 方向随指�
 ### 空态 / 错误态 / toast
 
 - 空态：标题「暂无排行数据」；描述「尚未计算排行，或当前筛选条件下没有数据。」（无计算权限追加：「请联系管理员计算排行。」）按钮「立即计算」（有权限时）
+- 权限空态（403）：标题「无法查看排行数据」；描述「当前账号无排行查看权限，请登录或联系管理员。」（无重试按钮）
 - 错误态：标题「排行加载失败」；描述=后端 message（默认「查询排行失败，请稍后重试」）；按钮「重试」
 - toast：成功「排行计算完成」；失败「{message}」+「上一次排行结果仍可查看」；联想加载失败不打断输入（静默）
 - 表格视图 aria（滚动容器）：「排行明细表：{列头拼接}」
@@ -355,7 +357,7 @@ newAPI 的 growth 是"越大越好"隐含语义；本平台 delta 方向随指�
 ## 8. 字体/色彩/组件 token 引用
 
 - **字体**：标题 sans semibold（本页无衬线大标题——newAPI rankings 标题即 sans bold）；主体名/数值列 `font-mono` + `tabular-nums`（newAPI 实测同款：主体名 font-mono、数值 font-mono tabular-nums）；角标 10px 大写字距仅作用西文。
-- **色彩**（全部引基座卡 `01_全局基座.md`）：表面 `--card/--border/--muted-foreground`；主色 `--primary`（图标/激活强调）；来源徽章 info/secondary 软底（基座卡 §5.9）；DeltaText `--success/--destructive`；图表 `--chart-1/--chart-2`（§3.6，深浅同值随预设联动）；骨架屏 `--skeleton-base/highlight`（§3.8）；算法大卡外框/光斑照 INT-436 §3.4（`rounded-2xl` + `--overview-accent-1..3` color-mix 径向渐变，非 default 预设映射 chart-1..3）。多主题预设（lake-view 默认参考、rose-garden、默认蓝等）+ 深浅色由基座机制驱动，本页零特判。
+- **色彩**（全部引基座卡 `01_全局基座.md`）：表面 `--card/--border/--muted-foreground`；主色 `--primary`（图标/激活强调）；来源徽章 info/secondary 软底（基座卡 §5 组件表 Badge 行）；DeltaText `--success/--destructive`；图表 `--chart-1/--chart-2`（§3.6，深浅同值随预设联动）；骨架屏 `--skeleton-base/highlight`（§3.3）；算法大卡外框/光斑照 INT-436 §3.4（`rounded-2xl` + `--overview-accent-1..3` color-mix 径向渐变，非 default 预设映射 chart-1..3）。多主题预设（lake-view 默认参考、rose-garden、默认蓝等）+ 深浅色由基座机制驱动，本页零特判。
 - **组件选型**（全部 newAPI 现成件，基座卡 §5）：Button（default/outline/ghost/link）、Select、Input+Search 图标组、Tabs（line 变体做视图切换 + 页签自绘下划线照 newAPI hero）、Badge、Card 结构、Empty/Skeleton/Spinner、AlertDialog（重算确认）、Tooltip（方向提示）、sonner toast、Table（表格视图）、Collapsible（移动端不做——本页无侧栏，无此依赖）。
 - **图表**：`@visactor/react-vchart ^2.1.2`（newAPI `web/package.json:44-45` 实测同版本）+ `use-chart-theme.ts` 照搬；轴/网格色 rgba 值照 §1.2。
 - **待基座卡落 token**：色值、字号阶梯已定稿（基座卡为基准稿），本卡语义 token 名零改动替换。
@@ -366,8 +368,9 @@ newAPI 的 growth 是"越大越好"隐含语义；本平台 delta 方向随指�
 
 ```
 interfaces/
-├─ routes/rankings/index.tsx             # /rankings 公开路由：validateSearch(zod) + 守卫
-│                                        #   （benchmark:ranking:read / AUTH_MODE=off 放行 / 未登录跳登录）
+├─ routes/rankings/index.tsx             # /rankings 公开路由：validateSearch(zod)（不设权限硬守卫）
+│                                        #   （未登录/无权限入口隐藏；URL 直达时榜单数据 403 空态——INT-344 口径；
+│                                        #    AUTH_MODE=off 放行）
 ├─ features/rankings/
 │  ├─ index.tsx                          # Rankings 页骨架（光晕层 + PageTransition 容器 + 三态路由）
 │  ├─ components/
@@ -391,25 +394,38 @@ application/
 ├─ rankings/useMetricMappings.ts         # 指标映射查询（指标下拉数据源，失败静默退化）
 ├─ rankings/useRankingSubjects.ts        # 主体联想查询（防抖 300ms，enabled=有输入）
 ├─ rankings/useComputeRanking.ts         # 重算 mutation（成功失效 rankings 缓存 + toast）
-├─ rankings/groupRankings.ts             # 纯函数：rows → (metric_code×scenario) 组，组内 rank 升序（单测）
+├─ rankings/groupRankings.ts             # 纯函数：rows → (metricCode×scenarioKey) 组，组内 rank 升序（单测）
 └─ rankings/rankingFilters.ts            # URL search ↔ 筛选状态（zod schema + 默认值合并）
 infrastructure/
-└─ api/benchmarkApi.ts                   # GET/POST /api/v1/benchmarks/ranking…（http 客户端封装）
+└─ api/benchmarkApi.ts                   # GET/POST /api/v1/benchmarks/ranking…（http 客户端封装 + DTO→Domain camelCase 转换唯一层，见下）
 domain/
 └─ model/benchmark.ts                    # RankingRow / RankingFilters / MetricMappingInfo / RankingGroup 类型
 ```
 
-- 组件树（routes/features/lib）在 **interfaces 层**；查询/分组/筛选纯逻辑在 **application 层**；HTTP 客户端在 **infrastructure 层**；类型在 **domain 层**——与整站 DDD 四层约定一致（基座卡 §9 依赖规则：interfaces → application → infrastructure 单向，ui 组件零反向依赖）。
+- 组件树（routes/features/lib）在 **interfaces 层**；查询/分组/筛选纯逻辑在 **application 层**；HTTP 客户端在 **infrastructure 层**；类型在 **domain 层**——与整站 DDD 四层约定一致（基座卡 §10 依赖规则：interfaces → application → infrastructure 单向，ui 组件零反向依赖）。路由组件属 interfaces，装配进基座卡 §10 组合根 `app/router.tsx`（beforeLoad 守卫统一在组合根挂），本页不另设 app/ 文件。
+- **DTO→Domain camelCase 映射（唯一转换层 = `infrastructure/api/benchmarkApi.ts`）**：后端 `GET /api/v1/benchmarks/ranking` 返回 **snake_case** 字段（`report_service/infrastructure/persistence/benchmark_repository.py:_row_dict` 实测），**interfaces 层组件只见 camelCase Domain 字段**——`benchmarkApi.ts` 取回后整体映射，组件规格（§4.4/§5.3）一律写 camelCase。全量映射表：
+
+| HTTP DTO 字段（snake_case，后端实测） | Domain 字段（camelCase，组件引用） |
+| --- | --- |
+| `id` / `source` / `category` / `metric_code` / `metric_name` / `unit` / `direction` / `rank` / `total` / `percentile` / `score100` | 同名（`id` / `source` / `category` / `metricCode` / `metricName` / `unit` / `direction` / `rank` / `total` / `percentile` / `score100`） |
+| `subject_name` / `subject_type` / `device_type` | `subjectName` / `subjectType` / `deviceType` |
+| `benchmark_suite` / `scenario_key` | `benchmarkSuite` / `scenarioKey` |
+| `metric_value` / `gap_best` / `gap_median` / `delta_external` | `metricValue` / `gapBest` / `gapMedian` / `deltaExternal` |
+| `published_task_id` / `published_task_version` / `report_id` / `baseline_id` | `publishedTaskId` / `publishedTaskVersion` / `reportId` / `baselineId`（`baselineId` 仅排障用不显示） |
+| `computed_at`（ISO 字符串） | `computedAt` |
+
+  - 查询参数：`GET /ranking` 的 `metricCode / publishedTaskId / subjectName` 后端 alias 兼容两拼写（`benchmark_routes.py:138-141` 实测），前端直接发 camelCase；`suite / category / source` 两拼写一致。
+  - 指标映射响应（`GET /metric-mappings`）：`dimension_name→dimensionName / metric_code→metricCode / metric_name→metricName / scenario_tags→scenarioTags`，同层转换。
 - 现有 Vue 前端无可平移逻辑（本页全新）；已发布任务 Benchmark 徽章→本页的入口链路由任务域卡 INT-354 落地。
 
 ### 实施改造清单（供实施卡）
 
 1. 引入 `@visactor/react-vchart@^2.1.2`（对齐 newAPI 版本）+ 照搬 `web/src/lib/use-chart-theme.ts`。
-2. 落 routes + features/rankings 全套组件（§4/§5 规格）；`groupRankings.ts`/`rankingFilters.ts` 配 vitest 单测（分组边界：并列名次/单主体不归一化 score100 为空/场景缺省「通用」）。
+2. 落 routes + features/rankings 全套组件（§4/§5 规格）；`groupRankings.ts`/`rankingFilters.ts` 配 vitest 单测（分组边界：并列名次/单主体不归一化 score100 为空/场景缺省「通用」）；`benchmarkApi.ts` DTO→Domain 映射配 vitest 单测（snake_case→camelCase 全字段，interfaces 层零 snake_case 断言）。
 3. 抽平台件 `algorithm-selector.tsx`（Command 搜索 + 卡片网格双通道，INT-355 §3.4 基准）与 `useRankingAlgorithm`（页内 store，**不写回全局**），落 `current-algorithm-card.tsx` 完整卡 + 只读降级条（INT-436 §3.4 契约）。
-4. 公开路由与站头/页脚接导航栏卡（INT-344）的 PublicLayout；导航入口「Benchmark 排行」由导航栏卡按 `benchmark:ranking:read` 渲染；主题切换/多预设接基座卡（INT-343）机制。
+4. 公开路由与站头/页脚接导航栏卡（INT-344）的 PublicLayout；导航入口「排行榜」由导航栏卡按 `benchmark:ranking:read` 渲染（未登录隐藏、URL 直达数据 403 空态）；主题切换/多预设接基座卡（INT-343）机制。
 5. 「待后端立项」四项随本页实施不做、不占位：时间维度周期页签、厂商份额卡、升降榜卡、**榜单按算法过滤**（§2.4，算法大卡先行落地为显示/切换）；RBAC 补码（§6.1）单独立项。
-6. 回归断言：URL 筛选刷新还原、并列名次显示、深浅色图表重建、无权限角色入口隐藏与 403、AUTH_MODE=off 全放行、**算法大卡完整/降级两态 + 页内切换不写全局**、移动端单栏塌缩。
+6. 回归断言：URL 筛选刷新还原、并列名次显示、深浅色图表重建、无权限角色入口隐藏 + URL 直达数据 403 空态（不跳登录）、AUTH_MODE=off 全放行、**算法大卡完整/降级两态 + 页内切换不写全局**、组件字段全 camelCase（零 snake_case 泄漏到 interfaces）、移动端单栏塌缩。
 
 ---
 
@@ -419,3 +435,4 @@ domain/
 | --- | --- |
 | 2026-10-14 | 初稿：newAPI rankings 版式对齐 + B 域 benchmark 双轨排行全量实测映射 + 数据缺口标注待后端立项 + RBAC 映射 + 中文文案 + React 组件树/DDD 落位。 |
 | 2026-10-15 | 负责人改判（INT-442 联动）：§3.2 算法口径推翻——原「本页不设算法筛选、与全局切换器无联动」改为**页面内「当前算法」大卡片**（复用 INT-436 工作台概览算法大卡片契约 + INT-355 §3.4 双通道选择器），**不再用右上角全局切换器**；页内独立不写回全局（公开页）；ReadModel 无算法维度 → 榜单按算法过滤标注待后端立项；新增 §4.5 大卡、§5.1/§5.6 交互、§6.2「当前算法」列、§7 文案、§9 组件树与清单同步。 |
+| 2026-10-16 | INT-391 审核放行条件修订（v1.2）：①文案口径全量「排行榜」——页内 H1（§4.2/§7）、组件文案、导航引用（§3.1/§6.2/§9 清单）改纯中文，站内不出现 Benchmark 字样（红线④，INT-344 定稿）；②§9 补 DTO→Domain camelCase 全量字段映射（唯一转换层 `benchmarkApi.ts`），§4.4 组件规格字段改 camelCase；③未登录行为对齐 INT-344——入口隐藏 + URL 直达 + 数据 403 空态（不跳登录，新增 §5.1 权限空态/§7 权限空态文案，§6.2 各角色行同步）；④基座节号勘误（§5.9/5.8/5.10/5.11/5.6→§5 组件表对应行、§3.8→§3.3、§9 依赖规则→§10）；⑤权限码计数 5→6（§6.1）。 |
