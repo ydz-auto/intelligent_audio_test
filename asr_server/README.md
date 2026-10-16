@@ -77,6 +77,67 @@ python asr_server.py
 | `ASR_MODELSCOPE_MODEL` | `iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch` | 主 ASR 模型 |
 | `ASR_VAD_MODEL` | `iic/speech_fsmn_vad_zh-cn-16k-common-pytorch` | VAD（语音活动检测）模型 |
 | `ASR_PUNC_MODEL` | `iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch` | 标点恢复模型 |
+| `ASR_THREAD_LIMIT` | `0` | 并发上限（同时在跑的 ASR 请求数）。`0` = 用 anyio 默认 40；>0 时改写线程池上限。见下「并发」 |
+
+### 并发
+
+服务**可以同时处理多个 ASR 请求**（同一进程、共享一份模型）。实现要点只有一条：
+**阻塞式推理端点必须是同步 `def`，不能是 `async def`。**
+
+`async def` 里直接调阻塞的同步函数（funasr 推理）会占死 uvicorn 的单事件循环，整个服务
+一次只能处理一个请求——后续请求全部排队，客户端先撞读超时（`ASR_TIMEOUT`）或平台先撞
+评估预算。FastAPI 对**同步 `def`** 端点会自动丢进 anyio 线程池并发执行；torch/funasr 在
+C++ 计算期间释放 GIL，所以多路推理能真重叠。
+
+**实测（本机 12 物理核 / 20 逻辑核，40.7s 的 wav，服务空闲）**
+
+| N 并发 | 改前 墙钟 | 改前 各请求耗时 | 改后 墙钟 | 改后 各请求耗时 |
+|--------|-----------|-----------------|-----------|-----------------|
+| 1 | 0.90s | [1.12] | 0.98s | [1.08] |
+| 2 | 1.83s | [1.83, 1.83] | 1.52s | [1.52, 1.53] |
+| 4 | 3.84s | [1.02, 2.83, 2.84, 3.81] | 2.99s | [2.55, 2.70, 2.75, 2.99] |
+| 8 | 7.95s | [1.0, 1.89, 3.8, 3.8, 4.76, 7.82, 7.84, 7.86] | 9.20s | [11.66 … 14.52] |
+
+看**各请求耗时的形状**最直观：改前 N=4 是**阶梯状**（第 k 个请求 ≈ k × 单发才完成）——
+这就是队头阻塞，长文件排在前面时后面全部饿死；改后 N=4 **齐平**（全部同时在跑，一起在
+~3s 收尾）。
+
+**整批规模实测**（138 个 wav / 8201s 音频，全量跑一遍 `/asr_word`）：
+
+| 客户端并发 | 墙钟 | 吞吐 | `Σ单请求耗时 / 墙钟` | 单请求 P95 / 最大 |
+|------------|------|------|----------------------|-------------------|
+| 1（= 改前行为） | 155.4s | 52.8×RT | 1.00 | 5.04s / 12.6s |
+| 2 | **106.1s** | **77.3×RT** | **2.00** | 6.75s / 16.3s |
+| 4 | 113.0s | 72.6×RT | 4.00 | 15.2s / 30.5s |
+| 8 | 139.8s | 58.7×RT | 7.67 | 37.5s / 103.6s |
+
+`Σ单请求耗时 / 墙钟` = 2.00 意味着**真的有两个请求在同时跑**（1.00 才是串行）。
+
+**调优建议：客户端并发取 2。** N=2 是墙钟最优（106s）且尾延迟最好；再往上收益被 CPU
+吃满抵消，N=8 甚至比串行还慢——本机 20 逻辑核在 N=1 时 torch 就已用到 ~3.8 核，N=4 时
+并行度到 12.2 核，单请求算力成本从 3.0 核·秒涨到 7.9 核·秒（线程超订）。**若还要继续
+提速，下一根杠杆是限制 torch 的 intra-op 线程数**（`torch.set_num_threads`，让 N × 线程
+≈ 物理核），本次未做——它会改变浮点归约顺序，属于「改计算」，需单独评审。
+
+**内存代价**：并发**不额外加载模型**，只是每路多一份音频缓冲与中间张量。实测空闲 RSS
+4.9GB，增量 N=1 +172MB / N=2 +310MB / N=4 +760MB / N=8 +1387MB（≈172MB/路）。
+对比方案 `uvicorn.run(workers=N)`：每个 worker 各加载一份模型（单份 ≈4.9GB RSS），
+N=2 就要 ~9.8GB——本机可用内存只剩 ~3.7GB，**该方案在本机不可行**，故选用线程池方案。
+
+### 就绪判定与启动时间
+
+启动时预加载全部模型（SenseVoice / Paraformer / Silero），**这是分钟级**，并发改造
+**不影响启动时间**（实测 58s / 63.9s / 70.9s / 77.8s，波动来自机器负载而非改动）。
+
+改后**如何验证就绪**——轮询 `/health`，三个 `*_loaded` 全为 `true` 才算就绪：
+
+```bash
+curl -s http://127.0.0.1:10095/health
+# {"status":"ok", "vad_loaded":true, "asr_loaded":true, "paraformer_loaded":true,
+#  "thread_limit":"anyio_default"}
+```
+
+`thread_limit` 回显实际生效的并发上限（未设 `ASR_THREAD_LIMIT` 时为 `"anyio_default"`）。
 
 ### 阿里云百炼云端转写 (asr_transcribe.py)
 
@@ -118,11 +179,16 @@ python asr_server.py
 ```json
 {
   "status": "ok",
-  "model_loaded": true
+  "engine": "sensevoice+silero + paraformer",
+  "vad_loaded": true,
+  "asr_loaded": true,
+  "paraformer_loaded": true,
+  "thread_limit": "anyio_default"
 }
 ```
 
-`model_loaded` 为 `false` 表示模型尚未加载完成。
+三个 `*_loaded` 为 `false` 表示对应模型尚未加载完成（启动预加载是分钟级，见下「就绪判定」）。
+`thread_limit` 是实际生效的并发上限。
 
 ---
 

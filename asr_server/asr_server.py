@@ -33,7 +33,9 @@ import os
 import re
 import logging
 import tempfile
+import threading
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 # ─── 加载 .env 文件 ───
@@ -124,46 +126,63 @@ _sv_model = None        # SenseVoice
 _paraformer_model = None  # Paraformer（词级时间戳）
 
 
+# ─── 并发：阻塞式推理端点必须是同步 def，不能是 async def ───
+# async def 里直接调阻塞的同步函数（funasr 推理）会占死 uvicorn 的单事件循环，
+# 整个服务一次只能处理一个 ASR 请求 —— 批量评估时后续请求被排队饿死，
+# 客户端先撞读超时（ASR_TIMEOUT）或平台先撞评估预算（600s）。见 VEGA-37。
+# FastAPI 对**同步 def** 端点会自动丢进 anyio 线程池并发执行；
+# torch/funasr 在 C++ 计算期间释放 GIL，所以多路推理能真重叠（实测见 README「并发」节）。
+ASR_THREAD_LIMIT = int(os.environ.get("ASR_THREAD_LIMIT", "0"))
+# 0 = 用 anyio 默认线程池上限（40）；>0 时在启动时改写，用于按 CPU/内存调优并发度。
+
+# 模型懒加载锁：同步端点在线程池里跑，多个请求可能同时首次触达同一个 _load_*，
+# 加锁避免同一份模型被并发加载两遍（正常路径启动时已预加载，这里只做兜底）。
+_model_load_lock = threading.Lock()
+
+
 def _load_silero_vad():
     global _silero_model
-    if _silero_model is None:
-        from silero_vad import load_silero_vad
-        logger.info("加载 Silero VAD")
-        _silero_model = load_silero_vad()
-        logger.info("Silero VAD 加载完成")
-    return _silero_model
+    with _model_load_lock:
+        if _silero_model is None:
+            from silero_vad import load_silero_vad
+            logger.info("加载 Silero VAD")
+            _silero_model = load_silero_vad()
+            logger.info("Silero VAD 加载完成")
+        return _silero_model
 
 
 def _load_sensevoice():
     global _sv_model
-    if _sv_model is None:
-        from funasr import AutoModel
-        logger.info(f"加载 SenseVoice 模型: {ASR_SENSEVOICE_MODEL}")
-        _sv_model = AutoModel(
-            model=ASR_SENSEVOICE_MODEL,
-            trust_remote_code=False,
-            disable_update=True,
-        )
-        logger.info("SenseVoice 模型加载完成")
-    return _sv_model
+    with _model_load_lock:
+        if _sv_model is None:
+            from funasr import AutoModel
+            logger.info(f"加载 SenseVoice 模型: {ASR_SENSEVOICE_MODEL}")
+            _sv_model = AutoModel(
+                model=ASR_SENSEVOICE_MODEL,
+                trust_remote_code=False,
+                disable_update=True,
+            )
+            logger.info("SenseVoice 模型加载完成")
+        return _sv_model
 
 
 def _load_paraformer():
     """加载 Paraformer-large-vad-punc（词级时间戳，false_takeover 用）"""
     global _paraformer_model
-    if _paraformer_model is None:
-        from funasr import AutoModel
-        logger.info(f"加载 Paraformer 模型: {ASR_PARAFORMER_MODEL}")
-        kwargs = dict(model=ASR_PARAFORMER_MODEL, model_revision="v2.0.4")
-        if ASR_PARAFORMER_VAD_MODEL:
-            kwargs["vad_model"] = ASR_PARAFORMER_VAD_MODEL
-            kwargs["vad_revision"] = "v2.0.4"
-        if ASR_PARAFORMER_PUNC_MODEL:
-            kwargs["punc_model"] = ASR_PARAFORMER_PUNC_MODEL
-            kwargs["punc_revision"] = "v2.0.4"
-        _paraformer_model = AutoModel(**kwargs)
-        logger.info("Paraformer 模型加载完成")
-    return _paraformer_model
+    with _model_load_lock:
+        if _paraformer_model is None:
+            from funasr import AutoModel
+            logger.info(f"加载 Paraformer 模型: {ASR_PARAFORMER_MODEL}")
+            kwargs = dict(model=ASR_PARAFORMER_MODEL, model_revision="v2.0.4")
+            if ASR_PARAFORMER_VAD_MODEL:
+                kwargs["vad_model"] = ASR_PARAFORMER_VAD_MODEL
+                kwargs["vad_revision"] = "v2.0.4"
+            if ASR_PARAFORMER_PUNC_MODEL:
+                kwargs["punc_model"] = ASR_PARAFORMER_PUNC_MODEL
+                kwargs["punc_revision"] = "v2.0.4"
+            _paraformer_model = AutoModel(**kwargs)
+            logger.info("Paraformer 模型加载完成")
+        return _paraformer_model
 
 
 # ─────────── 音频加载 ───────────
@@ -302,7 +321,31 @@ def parse_result(raw_res):
         "text": item.get("text", ""),
         "chunks": item.get("chunks", []),
     }
-app = FastAPI(title="ASR Service", version="3.0")
+
+
+def _configure_thread_pool():
+    """把 ASR 并发上限落到 anyio 线程池（同步端点靠它并发）。
+
+    ASR_THREAD_LIMIT=0 时保持 anyio 默认（40），仅记录实际生效值。
+    """
+    try:
+        import anyio.to_thread
+        limiter = anyio.to_thread.current_default_thread_limiter()
+        if ASR_THREAD_LIMIT > 0:
+            limiter.total_tokens = ASR_THREAD_LIMIT
+        logger.info(f"ASR 并发上限 = {limiter.total_tokens}（ASR_THREAD_LIMIT={ASR_THREAD_LIMIT or '未设/anyio默认'}）")
+    except Exception as e:      # 不影响服务可用性
+        logger.warning(f"设置 ASR 并发上限失败，沿用 anyio 默认: {e}")
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    """启动钩子：同步端点靠 anyio 线程池并发，这里定它的上限。"""
+    _configure_thread_pool()
+    yield
+
+
+app = FastAPI(title="ASR Service", version="3.0", lifespan=_lifespan)
 
 
 @app.get("/health")
@@ -314,18 +357,23 @@ def health():
         "vad_loaded": _silero_model is not None,
         "asr_loaded": _sv_model is not None,
         "paraformer_loaded": _paraformer_model is not None,
+        "thread_limit": ASR_THREAD_LIMIT or "anyio_default",
     }
 
 
 @app.post("/asr")
-async def asr(file: UploadFile = File(...)):
-    """接收上传的 wav 文件，返回 {text, chunks}（段级，SenseVoice+Silero）。"""
+def asr(file: UploadFile = File(...)):
+    """接收上传的 wav 文件，返回 {text, chunks}（段级，SenseVoice+Silero）。
+
+    同步 def（非 async def）：让 FastAPI 把这次阻塞推理丢进 anyio 线程池并发执行，
+    否则单事件循环被占死、整个服务串行。见文件头「并发」注释。
+    """
     if not file.filename.lower().endswith(".wav"):
         raise HTTPException(400, "只支持 wav 文件")
 
     suffix = os.path.splitext(file.filename)[1]
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        content = await file.read()
+        content = file.file.read()   # 同步端点：走 Starlette 的 SpooledTemporaryFile
         tmp.write(content)
         tmp_path = tmp.name
 
@@ -347,14 +395,17 @@ async def asr(file: UploadFile = File(...)):
 
 
 @app.post("/asr_word")
-async def asr_word(file: UploadFile = File(...)):
-    """接收上传的 wav 文件，返回 {text, chunks}（词级，Paraformer）。"""
+def asr_word(file: UploadFile = File(...)):
+    """接收上传的 wav 文件，返回 {text, chunks}（词级，Paraformer）。
+
+    同步 def（非 async def）：理由同 /asr。
+    """
     if not file.filename.lower().endswith(".wav"):
         raise HTTPException(400, "只支持 wav 文件")
 
     suffix = os.path.splitext(file.filename)[1]
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        content = await file.read()
+        content = file.file.read()   # 同步端点：走 Starlette 的 SpooledTemporaryFile
         tmp.write(content)
         tmp_path = tmp.name
 
