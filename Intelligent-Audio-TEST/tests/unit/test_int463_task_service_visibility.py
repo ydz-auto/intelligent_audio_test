@@ -91,6 +91,29 @@ def _set_visibility(table, row_id, visibility, owner=_UNSET):
         session.close()
 
 
+class _FakeIdempotencyStore:
+    """内存幂等仓储替身（对齐 test_int75 两态语义：processing 占位 / completed 回放）。"""
+
+    def __init__(self):
+        self.records = {}
+
+    def lookup(self, key):
+        record = self.records.get(key)
+        return dict(record) if record else None
+
+    def reserve(self, key, ttl_seconds):
+        if key in self.records:
+            return False
+        self.records[key] = {'status': 'processing'}
+        return True
+
+    def complete(self, key, response, ttl_seconds):
+        self.records[key] = {'status': 'completed', 'response': dict(response)}
+
+    def release(self, key):
+        self.records.pop(key, None)
+
+
 # ---------------- 1. 私有隔离：task ----------------
 
 class TestTaskVisibility:
@@ -330,6 +353,134 @@ class TestBatchRowFiltering:
             assert session.get(TestCase, cid_other).deleted is False
         finally:
             session.close()
+
+
+# ---------------- 3b. 批量配置更新 / 参考刷新逐行过滤（审计 P1 修复回归） ----------------
+
+def _get_tc_repo():
+    from task_service.infrastructure.persistence.testcase_repository import testcase_repository
+    return testcase_repository
+
+
+def _silence_ref_params(monkeypatch):
+    """屏蔽 create 内参考参数生成（避免测试环境触达 gRPC/OSS）。
+
+    task_service.application.testcase 包 __init__ 用同名单例遮蔽子模块，
+    import ... as x 拿到的可能是单例对象，故经 sys.modules 取真模块。
+    """
+    import sys
+    tcs_mod = sys.modules['task_service.application.testcase.testcase_crud_service']
+    monkeypatch.setattr(tcs_mod, '_apply_reference_params_to_config', lambda tc: None)
+
+
+class TestBatchConfigUpdateVisibility:
+    """批量配置写路径取数后逐行可见性过滤——他人私有用例不被改写（审计 P1）。"""
+
+    def _svc(self):
+        from task_service.application.testcase.testcase_batch_service import TestCaseBatchService
+        return TestCaseBatchService(repo=_get_tc_repo(), idempotency_store=_FakeIdempotencyStore())
+
+    def test_update_algorithm_params_skips_private_non_owner(self):
+        from task_service.infrastructure.persistence.models import TestCase
+        repo = _get_tc_repo()
+        _set_user(100)
+        gid = repo.create_group_and_commit('g-bc1', 'bc1', '', '')['id']
+        cid_own = repo.create_testcase({
+            'id': 'c-bc1', 'name': 'own', 'group_id': gid, 'config': {'rounds': []},
+            'algorithm_type': 'translation'}).id
+        repo.commit()
+        _set_visibility(TestCase, cid_own, 'private')
+        _set_user(200)
+        cid_other = repo.create_testcase({
+            'id': 'c-bc2', 'name': 'other', 'group_id': gid, 'config': {'rounds': []},
+            'algorithm_type': 'translation'}).id
+        repo.commit()
+        _set_visibility(TestCase, cid_other, 'private')
+
+        # user 100 批量更新包含他人私有用例：仅自己的可见行被更新
+        _set_user(100)
+        resp = self._svc().batch_action({
+            'action': 'update_algorithm_params',
+            'ids': [cid_own, cid_other],
+            'algorithm_params': [{'field_code': 'sample_rate', 'field_value': '16000'}],
+        })
+        assert resp['success'] is True
+        session = get_db_session()
+        try:
+            own = session.get(TestCase, cid_own)
+            other = session.get(TestCase, cid_other)
+            assert own.algorithm_params  # 自己的私有用例被更新
+            assert not other.algorithm_params  # 他人私有用例未被越权改写
+        finally:
+            session.close()
+
+    def test_refresh_reference_sync_skips_private_non_owner(self):
+        from task_service.infrastructure.persistence.models import TestCase
+        repo = _get_tc_repo()
+        _set_user(100)
+        gid = repo.create_group_and_commit('g-bc3', 'bc3', '', '')['id']
+        cid_own = repo.create_testcase({
+            'id': 'c-bc3', 'name': 'own', 'group_id': gid, 'config': {'rounds': []},
+            'algorithm_type': 'translation'}).id
+        repo.commit()
+        _set_visibility(TestCase, cid_own, 'private')
+        _set_user(200)
+        cid_other = repo.create_testcase({
+            'id': 'c-bc4', 'name': 'other', 'group_id': gid, 'config': {'rounds': []},
+            'algorithm_type': 'translation'}).id
+        repo.commit()
+        _set_visibility(TestCase, cid_other, 'private')
+
+        _set_user(100)
+        resp = self._svc()._batch_refresh_reference({'ids': [cid_own, cid_other]})
+        # 同步路径：仅可见行被刷新（他人私有用例不计入）
+        assert resp == '已成功刷新 1 个用例的参考参数'
+
+
+# ---------------- 3c. group_id 直传建用例分组可见性校验（审计 P2 修复回归） ----------------
+
+class TestCreateUnderPrivateGroup:
+    def _create_case(self, user_id, group_id):
+        from task_service.application.testcase.testcase_crud_service import testcase_crud_service
+        _set_user(user_id)
+        return testcase_crud_service.create({
+            'name': 'case-x', 'group_id': group_id, 'config': {},
+            'algorithm_type': 'translation',
+        })
+
+    def test_group_id_direct_private_non_owner_403(self, monkeypatch):
+        """group_id 直传他人私有分组 → 403（审计 P2 修复）。"""
+        from task_service.infrastructure.persistence.models import TestCaseGroup
+        repo = _get_tc_repo()
+        _set_user(100)
+        gid = repo.create_group_and_commit('g-priv1', 'priv1', '', '')['id']
+        _set_visibility(TestCaseGroup, gid, 'private')
+
+        _silence_ref_params(monkeypatch)
+        resp = self._create_case(200, gid)
+        assert resp['code'] == 403
+
+    def test_group_id_direct_private_owner_ok(self, monkeypatch):
+        """私有分组 owner 以 group_id 直传建用例 → 201。"""
+        from task_service.infrastructure.persistence.models import TestCaseGroup
+        repo = _get_tc_repo()
+        _set_user(100)
+        gid = repo.create_group_and_commit('g-priv2', 'priv2', '', '')['id']
+        _set_visibility(TestCaseGroup, gid, 'private')
+
+        _silence_ref_params(monkeypatch)
+        resp = self._create_case(100, gid)
+        assert resp['code'] == 201
+
+    def test_group_id_direct_shared_other_ok(self, monkeypatch):
+        """共享分组下他人建用例不受限（零回归）。"""
+        repo = _get_tc_repo()
+        _set_user(100)
+        gid = repo.create_group_and_commit('g-shr1', 'shr1', '', '')['id']
+
+        _silence_ref_params(monkeypatch)
+        resp = self._create_case(200, gid)
+        assert resp['code'] == 201
 
 
 # ---------------- 4. published_tasks ----------------

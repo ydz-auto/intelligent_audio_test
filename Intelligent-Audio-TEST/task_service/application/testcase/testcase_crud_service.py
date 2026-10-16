@@ -200,15 +200,22 @@ class TestCaseCrudService:
                     )
 
             # INT-423：私有分组非 owner 不允许在其下建用例（越权写入 → 403）。
-            # 仅按分组名解析得到分组对象时校验（避免额外 DB 查询破坏既有
-            # group_id 直传路径；替身分组对象缺 owner/visibility 按共享放行）。
-            if resolved_group is not None:
-                from task_service.infrastructure.visibility_context import (
-                    check_object_visible, visibility_identity,
-                )
+            # 按分组名解析（resolved_group）与 group_id 直传两条路径均先取分组
+            # 对象校验可见性；分组不存在沿用现状（不额外拦截）。
+            # getattr 防御：既有测试替身 repo 未实现 get_group_by_id 时跳过校验
+            #（生产 testcase_repository 恒有该方法，校验必达）。
+            from task_service.infrastructure.visibility_context import (
+                check_object_visible, visibility_identity,
+            )
+            group_to_check = resolved_group
+            if group_to_check is None and group_id is not None:
+                get_group_by_id = getattr(self.repo, 'get_group_by_id', None)
+                if get_group_by_id is not None:
+                    group_to_check = get_group_by_id(group_id)
+            if group_to_check is not None:
                 _uid, _is_admin = visibility_identity()
                 try:
-                    check_object_visible(resolved_group, _uid, _is_admin)
+                    check_object_visible(group_to_check, _uid, _is_admin)
                 except PermissionError as e:
                     return {'success': False, 'message': str(e), 'data': None, 'code': 403}
 

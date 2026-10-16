@@ -136,6 +136,8 @@ class TestThresholdConfig:
 
         monkeypatch.setattr(rr, 'submit_reference_refresh_task', fake_submit)
         repo = MagicMock()
+        # INT-463：批量刷新先取数再逐行可见性过滤，mock 取数返回替身用例（缺省 shared → 全部可见）
+        repo.list_testcases_by_ids.side_effect = lambda ids: [FakeTC(i) for i in ids]
         svc = BatchService(repo=repo, idempotency_store=FakeIdempotencyStore())
 
         result = svc._batch_refresh_reference({'ids': ['a', 'b', 'c', 'd']})
