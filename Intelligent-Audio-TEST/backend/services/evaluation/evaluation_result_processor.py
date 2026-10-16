@@ -5,7 +5,10 @@ from backend.models.models import Dimension, TestResultDimension, TaskCase, Test
 from backend.models.database import db
 from backend.services.evaluation.evaluation_utils import extract_by_path, calculate_score
 from backend.services.evaluation.round_aggregator import RoundAggregator
-from backend.services.evaluation.evaluation_mixin import update_task_case_status_in_db
+from backend.services.evaluation.evaluation_mixin import (
+    update_task_case_status_in_db,
+    sync_case_evaluation_status_from_dimensions,
+)
 
 # 延迟导入app，避免循环导入和app未初始化问题
 app = None
@@ -453,6 +456,34 @@ class EvaluationResultProcessor(RoundAggregator):
                         )
                         local_db_session.rollback()
 
+                    # VEGA-43：上面这条路径在「已采集结果数 < 期望设备/API 数」或
+                    # 「维度数 < 期望维度数」时会提前 return（实测 e2e 任务配 3 台设备、
+                    # 用例只落 1 个 TestResult ⇒ 永远 1/3），用例级会永久停在 calculating。
+                    # 此处按维度级终态兜底同步：本组维度刚判 failed，若该用例已无维度在算，
+                    # 用例级必须跟着到终态，否则 maybe_finalize 永不收尾、failed 重评通道不可达。
+                    try:
+                        advanced, new_status = sync_case_evaluation_status_from_dimensions(
+                            local_db_session, task_id, test_case_id
+                        )
+                        if advanced:
+                            self._log(
+                                level='INFO',
+                                category='database',
+                                content=f"维度级已全部到终态，同步推进用例级评估状态: "
+                                        f"id={test_case_id}, evaluation_status={new_status}",
+                                task_id=task_id,
+                                test_case_id=test_case_id
+                            )
+                    except Exception as e:
+                        self._log(
+                            level='ERROR',
+                            category='database',
+                            content=f"同步用例级评估状态失败: {str(e)}",
+                            task_id=task_id,
+                            test_case_id=test_case_id
+                        )
+                        local_db_session.rollback()
+
                 local_db_session.commit()
             finally:
                 local_db_session.close()
@@ -595,6 +626,32 @@ class EvaluationResultProcessor(RoundAggregator):
                 if result_id and test_case_id:
                     if self.check_all_dimensions_completed(result_id, task_id):
                         self.update_task_case_status(result_id, True, task_id, test_case_id, test_type)
+
+                    # VEGA-43：update_task_case_status 在「结果数/维度数未全」时会提前
+                    # return，用例级会永久停在 calculating。此处按维度级终态兜底同步，
+                    # 保证「维度全部到终态」的用例不会永远挂在评估中（任务随之收尾）。
+                    try:
+                        advanced, new_status = sync_case_evaluation_status_from_dimensions(
+                            local_db_session, task_id, test_case_id
+                        )
+                        if advanced:
+                            self._log(
+                                level='INFO',
+                                category='database',
+                                content=f"维度级已全部到终态，同步推进用例级评估状态: "
+                                        f"id={test_case_id}, evaluation_status={new_status}",
+                                task_id=task_id,
+                                test_case_id=test_case_id
+                            )
+                    except Exception as e:
+                        self._log(
+                            level='ERROR',
+                            category='database',
+                            content=f"同步用例级评估状态失败: {str(e)}",
+                            task_id=task_id,
+                            test_case_id=test_case_id
+                        )
+                        local_db_session.rollback()
             finally:
                 local_db_session.close()
 

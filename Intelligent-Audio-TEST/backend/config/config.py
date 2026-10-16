@@ -143,6 +143,12 @@ class Config:
     EVALUATION_SERVICE_MAX_QUEUE_SIZE = _get_int_env('EVALUATION_SERVICE_MAX_QUEUE_SIZE', 10)
     EVALUATION_SERVICE_MAX_WAIT_TIME = _get_int_env('EVALUATION_SERVICE_MAX_WAIT_TIME', 300)
 
+    # ---- 异步评估任务轮询等待上限（VEGA-43）----
+    # 提交异步评估任务后轮询等待其完成的上限（秒），过去是 wait_for_task_completion
+    # 的函数默认参数（魔法数字）。超时即把该维度组判 failed，并由用例级状态同步收尾
+    # （见 endpoint_worker → update_all_dimensions_in_group_failed）。
+    EVALUATION_TASK_MAX_WAIT_TIME = _get_int_env('EVALUATION_TASK_MAX_WAIT_TIME', 600)
+
     # ---- 事件化评估（eval_server 完成回调）----
     # EVAL_CALLBACK_BASE_URL：后端对外可达地址（如 http://192.168.x.x:5000），
     #   配置后提交异步评估任务时注入 callback_url，eval_server 算完主动回调，

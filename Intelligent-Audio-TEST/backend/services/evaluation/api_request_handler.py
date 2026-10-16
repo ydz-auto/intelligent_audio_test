@@ -6,6 +6,26 @@ import traceback
 from backend.services.evaluation.evaluation_mixin import EvaluationLoggerMixin
 
 
+# 评估任务轮询等待上限的兜底值（秒）：正常路径从
+# Config.EVALUATION_TASK_MAX_WAIT_TIME 读取，仅在取配置失败时兜底，
+# 避免退化成无上限等待。
+_DEFAULT_MAX_WAIT_TIME_FALLBACK = 600
+
+
+def get_evaluation_task_max_wait_time():
+    """评估任务轮询等待上限（秒），来自配置。
+
+    配置缺失/非法时回退到 _DEFAULT_MAX_WAIT_TIME_FALLBACK，
+    保证调用方永远拿到一个可用的正整数。
+    """
+    try:
+        from backend.config.config import Config
+        value = int(getattr(Config, 'EVALUATION_TASK_MAX_WAIT_TIME', 0) or 0)
+    except (ImportError, TypeError, ValueError):
+        value = 0
+    return value if value > 0 else _DEFAULT_MAX_WAIT_TIME_FALLBACK
+
+
 class ApiRequestHandler(EvaluationLoggerMixin):
     """
     负责发起HTTP请求、管理异步任务流程（创建、轮询、获取结果）
@@ -373,10 +393,18 @@ class ApiRequestHandler(EvaluationLoggerMixin):
         result_url = f"{url}/api/get_final_result/{eval_task_id}"
         return self.make_api_request(result_url, 'GET', {}, {}, timeout)
 
-    def wait_for_task_completion(self, url, eval_task_id, max_wait_time=600, poll_interval=5, test_case_id=None, api_id=None, task_id=None):
+    def wait_for_task_completion(self, url, eval_task_id, max_wait_time=None, poll_interval=5, test_case_id=None, api_id=None, task_id=None):
         """
         等待评估任务完成，定期查询状态
+
+        Args:
+            max_wait_time: 等待上限（秒）。为 None 时取配置
+                Config.EVALUATION_TASK_MAX_WAIT_TIME（默认 600），
+                不再把上限写成函数默认参数里的魔法数字（VEGA-43）。
         """
+        if max_wait_time is None:
+            max_wait_time = get_evaluation_task_max_wait_time()
+
         self._log('info', f'开始等待评估任务完成: eval_task_id={eval_task_id}, max_wait_time={max_wait_time}秒', task_id=task_id, test_case_id=test_case_id, api_id=api_id)
 
         start_time = time.time()

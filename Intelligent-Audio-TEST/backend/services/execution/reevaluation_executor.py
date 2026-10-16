@@ -4,6 +4,10 @@ from backend.models.models import Task, TaskCase, TestResult, TestResultDimensio
 from backend.models.database import db
 from backend.utils.web.log_handler import log_and_emit
 from backend.services.evaluation.evaluation_service import evaluation_service, get_app
+from backend.services.evaluation.evaluation_mixin import (
+    get_task_dimension_evaluation_states,
+    is_case_evaluation_finished,
+)
 from backend.utils.common.result_data_store import load_full_result_data
 from sqlalchemy import and_
 
@@ -920,6 +924,11 @@ class ReevaluationExecutor:
         仅当该任务确实是当前重新评估处理中的任务时才收尾，
         普通执行引擎评估任务不受影响。
 
+        收尾判据以**维度级**为准（VEGA-43）：用例级 evaluation_status 可能因
+        update_task_case_status 的「结果数/维度数未全」守卫永久停在 calculating
+        （实测 e2e 任务配 3 台设备、用例只落 1 个 TestResult ⇒ 永远 1/3），
+        只看用例级会让任务永久停在 running。判据细节见 is_case_evaluation_finished。
+
         服务重启兼容（修复）：app.py 启动恢复会把"重新评估中"的任务以及
         进行中的用例/维度置为 failed，但评估实际在远端 eval_server 继续执行，
         回调仍会把用例逐个置回 completed。这里在用例全部到达终态后统一收尾为
@@ -939,7 +948,13 @@ class ReevaluationExecutor:
                 return False
 
             # 仍有用例在评估，继续等待
-            if any(tc.evaluation_status in ('queued', 'running', 'calculating') for tc in tcs):
+            dim_states = get_task_dimension_evaluation_states(db.session, task_id)
+            if any(
+                not is_case_evaluation_finished(
+                    tc.evaluation_status, dim_states.get(tc.test_case_id)
+                )
+                for tc in tcs
+            ):
                 return False
 
             task = db.session.query(Task).get(task_id)
