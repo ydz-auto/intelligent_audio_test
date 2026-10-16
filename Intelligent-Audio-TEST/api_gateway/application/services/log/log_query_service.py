@@ -381,6 +381,9 @@ class LogQueryService:
     @staticmethod
     def export_logs():
         import os
+        # INT-274：导出条件走 POST body（doc/接口文档 6. 导出日志：log_ids + format），
+        # 修复 GET 空 body 下 format 落默认 excel、log_ids 落 None 的静默失真；
+        # level/module 从 body 或 query（GET 兼容）均可读取，body 优先。
         req = LogExportRequest.model_validate(request.get_json() or {})
         query = _parse_query_params(LogExportQuery)
 
@@ -388,8 +391,8 @@ class LogQueryService:
         from api_gateway.infrastructure.grpc_proxies import task_data_service
         resp = task_data_service.get_logs_for_export(
             log_ids=req.log_ids if req.log_ids else None,
-            level=query.level,
-            module=query.module,
+            level=req.level or query.level,
+            module=req.module or query.module,
         )
         logs = resp.get('items', [])
 

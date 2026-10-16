@@ -61,6 +61,10 @@ class LogClearRequest(APIModel):
 class LogExportRequest(APIModel):
     log_ids: Optional[List[int]] = None
     format: str = "excel"
+    # INT-274：导出条件从 POST body 读取（doc/接口文档 6. 导出日志），
+    # level/module 与 query（LogExportQuery，GET 兼容）可任一侧传入。
+    level: Optional[str] = None
+    module: Optional[str] = None
 
 
 class LogArchiveRequest(APIModel):
