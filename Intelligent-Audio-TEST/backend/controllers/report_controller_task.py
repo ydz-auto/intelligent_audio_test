@@ -82,14 +82,78 @@ class ReportControllerTask(ReportControllerBase):
         # 会把它静默归到不存在的 default_group / default_tag，使报告多出一个分组、
         # 原分组少一个样本（口径：软删即不可用，见 backend/models/soft_delete.py）。
         # TestCase 已登记全局软删过滤，此处查询天然只返回未软删用例。
-        live_case_ids = {c.id for c in TestCase.query.filter(
-            TestCase.id.in_({r.test_case_id for r in results if r.test_case_id})
-        ).all()}
-        results = [r for r in results if not r.test_case_id or r.test_case_id in live_case_ids]
+        # 目标 4「跳过必须记录可见原因」：留痕必须落在**真正做剔除的这一层**——
+        # 下游聚合层（report_utils）的兜底 WARNING 在结果已被本门禁摘掉时永远不会触发。
+        excluded_case_ids = ReportControllerTask._soft_deleted_case_ids(
+            valid_case_ids | {r.test_case_id for r in results if r.test_case_id}
+        )
+        results = [r for r in results if not r.test_case_id or r.test_case_id not in excluded_case_ids]
+        if excluded_case_ids:
+            ReportControllerTask._log_excluded_soft_deleted_cases(task_id, excluded_case_ids)
         if not results:
             return None, None, error_response("生成失败: 任务没有测试结果数据")
 
         return task, results, None
+
+    @staticmethod
+    def _soft_deleted_case_ids(case_ids):
+        """从给定用例 id 中挑出已被软删的（= 存活用例集合的补集）
+
+        `TestCase` 已登记全局软删过滤（`backend/models/soft_delete.py`），
+        因此「查得到」即存活、「查不到」即已软删（或该行已不存在）。
+
+        口径见本卡：**软删即不可用** —— 软删用例不属于任何任务，其执行结果不进报告，
+        也不进报告头计数的分母。返回值恒为 `set`。
+        """
+        ids = {cid for cid in case_ids if cid}
+        if not ids:
+            return set()
+        live_ids = {c.id for c in TestCase.query.filter(TestCase.id.in_(ids)).all()}
+        return ids - live_ids
+
+    @staticmethod
+    def _log_excluded_soft_deleted_cases(task_id, case_ids):
+        """逐条记录被剔除的软删用例，使「任务里 N 例、报告里 N-1 例」不再静默
+
+        仅把用例 id 写进日志正文，不写 `logs.test_case_id`：该列有指向 `test_cases`
+        的外键，而「查不到用例」既可能是软删、也可能是行已不存在，后者会撞外键
+        并连累日志批量落库。
+        """
+        for case_id in sorted(case_ids):
+            log_and_emit(
+                'WARNING', 'report',
+                f'[generate_task_report] 用例已被软删，按「软删即不可用」口径剔除，'
+                f'其执行结果不计入报告：test_case_id={case_id}（task_id={task_id}）',
+                task_id=task_id
+            )
+
+    @staticmethod
+    def _surviving_case_counts(task_ids, test_cases):
+        """按「任务中未软删的用例」口径给出报告头计数 (total, completed, failed)
+
+        - 分母 `total` = **存活用例数**，与明细 `cases` 同集合（明细由
+          `_get_task_test_cases` 的存活用例集合构建）；因此软删用例不进分母，
+          而「存活但无结果」的用例仍在分母里，会照常拉低完成率。
+        - `completed` / `failed` 取存活用例在任务关系表里的执行状态；
+          合并任务的同一用例可能挂在多个源任务下，按用例 id 去重后只计一次。
+        """
+        from backend.models.models import TaskCase
+
+        surviving_ids = {c.id for c in test_cases}
+        total = len(surviving_ids)
+        if not total:
+            return 0, 0, 0
+        rows = TaskCase.query.filter(
+            TaskCase.task_id.in_(task_ids),
+            TaskCase.deleted == False,
+            TaskCase.test_case_id.in_(surviving_ids)
+        ).all()
+        status_by_case = {}
+        for row in rows:
+            status_by_case.setdefault(row.test_case_id, row.status)
+        completed = sum(1 for status in status_by_case.values() if status == 'completed')
+        failed = sum(1 for status in status_by_case.values() if status == 'failed')
+        return total, completed, failed
 
     @staticmethod
     def _expand_leaf_source_task_ids(task_ids):
@@ -1315,11 +1379,6 @@ class ReportControllerTask(ReportControllerBase):
                 source_task_ids = ReportControllerTask._get_source_task_ids(task)
                 task_ids_for_query = source_task_ids if source_task_ids else [task_id]
 
-                total_cases = task.total_cases
-                completed_cases = task.completed_cases - task.failed_cases
-                failed_cases = task.failed_cases
-                success_rate = (completed_cases / total_cases * 100) if total_cases > 0 else 0
-
                 res_ids = [r.id for r in results]
                 
                 dim_results_map, dim_stats = ReportControllerTask._get_dimension_results_batch(res_ids)
@@ -1431,6 +1490,26 @@ class ReportControllerTask(ReportControllerBase):
                 cases = ReportControllerTask._build_case_data(
                     test_cases, results, all_dimensions, dim_results_map, task
                 )
+
+                # 报告头计数必须与明细**同集合**（口径裁定 2026-10-16）：分母取
+                # 「任务中未软删的用例数」。软删用例按已定口径（软删即不可用）已不属于
+                # 该任务，等价于从任务移除，故不进分母；**存活但无结果的用例仍在分母**
+                # （会照常拉低完成率），所以不能改用 `len(results)` —— 那是「有结果的
+                # 用例数」，会把存活但无结果的用例从分母抹掉、抬高 pass_rate，属另一种少报。
+                # 数据源取**存活用例集合**（`test_cases`，与明细同源、可复核），
+                # 而不是任务级计数器 `test_tasks.total_cases`：后者是任务快照（软删不改它）、
+                # 可能已漂移；历史回填归 VEGA-34，本卡只保证**报告自洽**。
+                # 不含软删用例的任务保持原任务计数器口径**逐字段不变**，
+                # 把改动面钉死在「含软删用例」这一种情况上。
+                excluded_case_ids = {cid for cid in test_case_ids if cid} - {c.id for c in test_cases}
+                if excluded_case_ids:
+                    total_cases, completed_cases, failed_cases = \
+                        ReportControllerTask._surviving_case_counts(task_ids_for_query, test_cases)
+                else:
+                    total_cases = task.total_cases
+                    completed_cases = task.completed_cases - task.failed_cases
+                    failed_cases = task.failed_cases
+                success_rate = (completed_cases / total_cases * 100) if total_cases > 0 else 0
 
                 case_categories_list, case_tags_list = ReportQueryBuilder.extract_case_categories_and_tags(test_cases)
 

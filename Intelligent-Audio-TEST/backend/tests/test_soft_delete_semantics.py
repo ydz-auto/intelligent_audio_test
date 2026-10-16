@@ -735,3 +735,219 @@ def test_operator_header_ignored_when_auth_enabled(app, client):
     assert deleted is True
     assert deleted_at is not None, '即使不认请求头，软删审计（deleted_at）仍须写入'
     assert operator is None, f'认证落地后不应采信客户端自带的 X-User-Id，实际 {operator!r}'
+
+
+# ---------- 10. 报告头计数与明细同集合（缺陷 B1 回归） ----------
+#
+# 口径裁定（总控 2026-10-16）：报告头计数分母取「任务中未软删的用例数」。
+# 不选 `len(results)`（那是「有结果的用例数」，会把存活但无结果的用例从分母抹掉、
+# 抬高 pass_rate，属另一种少报）；也不选「header 保持任务快照」（那正是本卡点名的
+# 「任务里 N 例、报告里 N-1 例」现象本身）。
+# 任务侧计数器（`test_tasks.total_cases` 等）**不动**，历史回填归 VEGA-34。
+
+def _new_reportable_task(case_specs, total_cases=None, completed_cases=None):
+    """造一个可生成任务报告的任务：设备 + 启用维度 + 每例一条带维度得分的结果
+
+    :param case_specs: [(TestCase, 是否产出结果)] 列表
+    :param total_cases: 显式指定任务级计数器（用于验证「不含软删用例时口径不变」）
+    """
+    from backend.models.models import Device, Dimension, TestResultDimension
+
+    suffix = uuid.uuid4().hex[:8]
+    device = Device(name=f'软删报告设备-{suffix}', model='M1', type='phone', system='Android',
+                    system_version='14', app_name='App', app_version='1.0', status='online')
+    dimension = Dimension(name=f'软删报告维度-{suffix}', type='auto', result_type=1, weight=1,
+                          status=True, deleted=False, statistic_method='average')
+    db.session.add_all([device, dimension])
+    db.session.flush()
+
+    n_with_result = sum(1 for _case, has_result in case_specs if has_result)
+    task = Task(name=f'软删报告任务-{suffix}', type='e2e', status='completed',
+                total_cases=total_cases if total_cases is not None else len(case_specs),
+                completed_cases=(completed_cases if completed_cases is not None else n_with_result),
+                failed_cases=0, algorithm_type='asr')
+    db.session.add(task)
+    db.session.flush()
+
+    for case, has_result in case_specs:
+        db.session.add(TaskCase(task_id=task.id, test_case_id=case.id, status='completed',
+                                execution_status='completed', evaluation_status='completed',
+                                deleted=False))
+        if not has_result:
+            continue
+        result = TestResult(task_id=task.id, test_case_id=case.id, device_id=device.id,
+                            api_id=None, execution_status='completed',
+                            result_data={'result_type': 'default'}, deleted=False)
+        db.session.add(result)
+        db.session.flush()
+        db.session.add(TestResultDimension(
+            test_result_id=result.id, dimension_id=dimension.id, round_number=None,
+            dimension_value=0.5, score=0.5, status='passed', evaluation_status='completed',
+        ))
+    db.session.commit()
+    return task.id
+
+
+_REPORT_CHILD_TABLES = [
+    'report_summaries', 'report_summary_meta', 'report_raw_data',
+    'report_cases', 'report_metric_stats', 'report_comparison_matrix',
+]
+
+
+def _drop_reports(task_id):
+    """清掉该任务的报告（含子表），使再次生成不走 `existing_report` 短路"""
+    scope = 'SELECT id FROM test_reports WHERE task_id = :tid'
+    for table in _REPORT_CHILD_TABLES:
+        db.session.execute(text(f'DELETE FROM {table} WHERE report_id IN ({scope})'),
+                           {'tid': task_id})
+    db.session.execute(text('DELETE FROM test_reports WHERE task_id = :tid'), {'tid': task_id})
+    db.session.commit()
+
+
+def _report_header_and_cases(task_id):
+    """读回最新报告的 (header 计数, 明细用例 id 列表)"""
+    from backend.models.models import Report, ReportCase, ReportSummary
+
+    report = Report.query.filter(Report.task_id == task_id, Report.deleted == False).first()
+    if report is None:
+        return None, None
+    summary = ReportSummary.query.filter_by(report_id=report.id).first()
+    cases = ReportCase.query.filter_by(report_id=report.id).all()
+    header = {
+        'total_cases': summary.total_cases,
+        'completed_cases': summary.completed_cases,
+        'failed_cases': summary.failed_cases,
+        'pass_rate': summary.pass_rate,
+    }
+    return header, [c.test_case_id for c in cases]
+
+
+def _snapshot_report_artifacts(task_id):
+    """报告三张表的逐字段快照（用于「不含软删用例时逐字段不变」不变量）"""
+    from backend.models.models import (
+        Report, ReportCase, ReportMetricStats, ReportSummary,
+    )
+
+    report = Report.query.filter(Report.task_id == task_id, Report.deleted == False).first()
+    assert report is not None, '报告未生成'
+    summary = ReportSummary.query.filter_by(report_id=report.id).first()
+    stats = ReportMetricStats.query.filter_by(report_id=report.id).first()
+
+    def _fields(obj):
+        return {c.name: getattr(obj, c.name) for c in obj.__table__.columns
+                if c.name not in ('id', 'report_id', 'created_at', 'updated_at')}
+
+    return {
+        'summary': _fields(summary),
+        'metric_stats': _fields(stats),
+        'cases': sorted(
+            (_fields(c) for c in ReportCase.query.filter_by(report_id=report.id).all()),
+            key=lambda item: item.get('test_case_id') or '',
+        ),
+    }
+
+
+def test_report_header_counts_follow_surviving_cases(app):
+    """B1 主回归：任务部分剔除时，报告头计数与明细同集合，且逐条留痕
+
+    缺陷 B1：任务里还有存活用例时，软删用例的结果被上游门禁静默摘掉 —— 日志里
+    没有一行提到它，且 header 的 `total_cases`/`completed_cases` 仍取自任务级
+    计数器，于是报告头写「2 例 / 通过 2 例 / 100%」而明细只有 1 行。
+    """
+    group = _new_group()
+    case_a, case_b = _new_case(group), _new_case(group)
+    task_id = _new_reportable_task([(case_a, True), (case_b, True)])
+
+    case_a.deleted = True
+    db.session.commit()
+    _drop_reports(task_id)
+
+    ReportControllerTask._generate_task_report_async(
+        task_id, f'B1部分剔除_{uuid.uuid4().hex[:6]}', None)
+
+    header, case_ids = _report_header_and_cases(task_id)
+    assert header is not None, '还有存活用例时报告应生成成功'
+    assert case_ids == [case_b.id], f'明细应只剩存活用例：{case_ids!r}'
+    assert header['total_cases'] == len(case_ids), (
+        f"报告头 total_cases={header['total_cases']} 与明细行数 {len(case_ids)} 不一致："
+        f"软删用例仍被计入报告头（pass_rate={header['pass_rate']}）"
+    )
+    assert header['completed_cases'] == len(case_ids), (
+        f"报告头 completed_cases={header['completed_cases']} 与明细行数 {len(case_ids)} 不一致"
+    )
+    assert header['pass_rate'] == 100.0
+
+    # 留痕：剔除必须落在真正做剔除的那一层，逐条给出用例 id
+    from backend.utils.web.log_handler import get_db_handler
+    import time
+    handler = get_db_handler()
+    deadline = time.time() + 10
+    while time.time() < deadline and not handler.queue.empty():
+        time.sleep(0.1)
+    time.sleep(1.5)
+    rows = db.session.execute(text(
+        'SELECT level, content FROM logs WHERE task_id = :tid'
+    ), {'tid': task_id}).fetchall()
+    trace = '\n'.join(f'{lvl}: {content}' for lvl, content in rows)
+    assert case_a.id in trace, f'软删用例被静默剔除，日志未提到它：\n{trace}'
+    assert any(lvl == 'WARNING' for lvl, _ in rows), f'剔除应以 WARNING 级别留痕：\n{trace}'
+
+
+def test_report_header_drops_soft_deleted_case_without_result(app):
+    """B1 边界：软删用例**没有执行结果**时，也必须从报告头分母里去掉
+
+    门禁只从 `results` 反推被剔除用例时，这条会漏 —— 用例从未跑过就被软删，
+    明细里没有它，分母却仍按任务计数器把它算进去。
+    """
+    group = _new_group()
+    case_a, case_b = _new_case(group), _new_case(group)
+    # A 不产出结果（从未执行即被软删）
+    task_id = _new_reportable_task([(case_a, False), (case_b, True)])
+
+    case_a.deleted = True
+    db.session.commit()
+    _drop_reports(task_id)
+
+    ReportControllerTask._generate_task_report_async(
+        task_id, f'B1无结果软删_{uuid.uuid4().hex[:6]}', None)
+
+    header, case_ids = _report_header_and_cases(task_id)
+    assert header is not None
+    assert case_ids == [case_b.id], f'明细应只剩存活用例：{case_ids!r}'
+    assert header['total_cases'] == 1, (
+        f"无结果的软删用例仍被计入报告头分母：total_cases={header['total_cases']}"
+    )
+    assert header['completed_cases'] == 1
+
+
+def test_report_artifacts_unchanged_when_no_soft_deleted_case(app):
+    """不变量（口径裁定第 3 条）：不含软删用例的任务，报告三表逐字段不变
+
+    把改动面钉死在「含软删用例」这一种情况上：这里刻意让任务级计数器
+    （`total_cases=5`）与关系表实际用例数（2）不一致 —— 不含软删用例时，
+    header 必须**仍然逐字段取任务计数器**（口径不变），改动前是什么样现在还是什么样。
+    """
+    group = _new_group()
+    case_a, case_b = _new_case(group), _new_case(group)
+    task_id = _new_reportable_task([(case_a, True), (case_b, True)],
+                                   total_cases=5, completed_cases=4)
+
+    ReportControllerTask._generate_task_report_async(
+        task_id, f'不变量基线_{uuid.uuid4().hex[:6]}', None)
+    first = _snapshot_report_artifacts(task_id)
+    assert first['summary']['total_cases'] == 5, (
+        '不含软删用例时 header 应保持任务计数器口径（total_cases=5），'
+        f"实际 {first['summary']['total_cases']}"
+    )
+    assert first['summary']['completed_cases'] == 4
+    assert first['summary']['pass_rate'] == 80.0
+
+    # 同一任务再生成一次：三表逐字段完全相同（改动面没有溢出到正常路径）
+    _drop_reports(task_id)
+    ReportControllerTask._generate_task_report_async(
+        task_id, f'不变量复跑_{uuid.uuid4().hex[:6]}', None)
+    second = _snapshot_report_artifacts(task_id)
+
+    assert first['summary'] == second['summary'], 'report_summaries 逐字段应完全相同'
+    assert first['metric_stats'] == second['metric_stats'], 'report_metric_stats 逐字段应完全相同'
+    assert first['cases'] == second['cases'], 'report_cases 逐字段应完全相同'
