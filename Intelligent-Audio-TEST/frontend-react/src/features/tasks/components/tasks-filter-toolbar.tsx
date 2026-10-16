@@ -378,7 +378,7 @@ export function TasksFilterToolbar({
         </div>
       </div>
 
-      {/* 高级筛选展开区（自定义日期 + 算法参数关键字） */}
+      {/* 高级筛选展开区（自定义日期；算法参数关键字筛选已删——INT-440/486 矩阵口径：业务页零页内算法筛选） */}
       {advancedOpen && (
         <div className='border-border/60 mt-2.5 grid gap-2 rounded-lg border p-2.5 sm:grid-cols-[repeat(auto-fit,minmax(10rem,1fr))]'>
           {filters.timeRange === 'custom' ? (
@@ -403,11 +403,6 @@ export function TasksFilterToolbar({
               选择「自定义」时间范围后，此处显示开始/结束日期
             </div>
           )}
-          <Input
-            placeholder='按算法参数关键字过滤（可选）'
-            className='h-8 w-full'
-            aria-label='算法参数过滤'
-          />
         </div>
       )}
     </div>

@@ -35,8 +35,9 @@ type AuthenticatedLayoutProps = {
 export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
   const defaultOpen = getCookie('iatp:sidebar:v1:state') !== 'false'
   const location = useLocation()
-  // INT-442：报告展示页 /reports 算法切换唯一入口=「当前算法」大卡，隐藏右区全局切换器
-  const showGlobalAlgorithmSwitcher = location.pathname !== '/reports'
+  // INT-442/486 跨卡契约（00 总表 §3.5 矩阵）：/reports、/rankings 算法切换唯一入口=页内算法大卡，隐藏右上角全局切换器
+  const showGlobalAlgorithmSwitcher =
+    location.pathname !== '/reports' && location.pathname !== '/rankings'
 
   return (
     <LayoutProvider>
