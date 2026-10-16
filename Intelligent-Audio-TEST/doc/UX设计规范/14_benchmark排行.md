@@ -114,7 +114,7 @@ newAPI 排行页（/rankings）是「**公共数据页**」：不走登录后的
 | 厂商市场份额（vendors + vendor_share_history） | 排行行无 vendor 字段（vendor 仅存在于基线表）；无厂商聚合接口 | 不做厂商份额卡。「待后端立项」（ReadModel 增厂商维度） |
 | 升降榜（top_movers/top_droppers） | 无跨期名次对比数据 | 不做升降榜卡。「待后端立项」 |
 | Token 体量角标（formatTokens 总量） | 无用量语义 | 角标位改放「参与主体 total + 计算于 computed_at」 |
-| 榜单按算法过滤（INT-442 改判需求） | ReadModel 无算法维度字段；`/ranking` 无 `algorithm_type` 参数（§2.2 全字段实测） | **「当前算法」大卡片先行落地**（显示/切换页内独立可用，§4.5）；榜单按算法过滤/重算**待后端立项**（ReadModel 增算法维度或查询附 algorithm_type） |
+| 榜单按算法过滤（INT-442 改判需求） | ReadModel 无算法维度字段；`/ranking` 无 `algorithm_type` 参数（§2.2 全字段实测） | **算法卡片网格先行落地**（每算法一张大卡：算法名+分组+参数摘要+描述，页内切换独立可用，§4.5）；榜单按算法过滤/重算**待后端立项**（ReadModel 增算法维度或查询附 algorithm_type） |
 
 ### 2.5 范围边界
 
@@ -140,16 +140,16 @@ newAPI 排行页（/rankings）是「**公共数据页**」：不走登录后的
 | 顶部导航 rankings 模块（本 fork 实测文案「Availability」→/platform；/rankings 不进导航，nav-modules 可控 enabled/requireAuth） | 无 | **顶部导航「排行榜」直达 `/rankings`**（负责人口径「顶部导航含 benchmark 排行、报告直达」；入口可见性按 `benchmark:ranking:read` 权限判定，导航树由导航栏卡 INT-344 统一落地。newAPI 的 enabled/requireAuth 站点级开关机制作参照，站点设置域纳入与否待后端立项） |
 | PublicLayout 公共外壳 | 无（Vue 登录后单壳） | 复用 newAPI PublicLayout 骨架（站头+页脚），与首页/关于/文档页共用同一外壳——本卡只消费，外壳由导航栏卡 INT-344 / 关于页卡 INT-348 统一定义 |
 | 图表 VChart + useChartTheme 深浅色 | 无 | 同款引入 `@visactor/react-vchart` + `use-chart-theme.ts` 机制（照搬，chart 主题跟随 next-themes） |
-| （newAPI 无对位——算法切换为平台特有，INT-442 改判） | 无（原 §3.2 口径「不设算法筛选」） | **「当前算法」大卡片**（§4.5，INT-436 契约）：页内算法切换、页内独立不写回全局；榜单按算法过滤待后端立项（§2.4）。详情见 §3.2 |
+| （newAPI 无对位——算法切换为平台特有，INT-442 改判） | 无（原 §3.2 口径「不设算法筛选」） | **算法卡片网格**（§4.5，INT-436 契约口径修正 2026-10-16）：每算法一张大卡（算法名+分组+参数摘要+描述），页内算法切换、页内独立不写回全局；榜单按算法过滤待后端立项（§2.4）。详情见 §3.2 |
 
-### 3.2 算法切换口径（负责人 2026-10-15 改判——INT-442 联动）
+### 3.2 算法切换口径（负责人 2026-10-15 改判 + 2026-10-16 口径修正——INT-442 联动）
 
-**改判**：本页**新增「当前算法」大卡片**（工作台概览算法大卡片形态），页面内切换算法——**不再用右上角全局切换器**。原「本页不设算法筛选、与全局切换器无联动」口径推翻（INT-442，2026-10-15）。
+**改判**：本页**新增「算法卡片网格」**（工作台概览算法卡片网格形态——**每算法一张大卡**，不是单张当前算法卡），页面内切换算法——**不再用右上角全局切换器**。原「本页不设算法筛选、与全局切换器无联动」口径推翻（INT-442，2026-10-15）。
 
-- **形态与契约**：复用 INT-436 工作台概览算法大卡片组件契约（`04_控制台.md` §3.4）+ INT-355 §3.4 双通道选择器（Command 搜索 + 卡片网格）——当前算法显示（算法名/分组/描述）+「切换算法」入口；算法选择组件建议抽为平台件 `interfaces/components/algorithm/algorithm-selector.tsx`（导航栏切换器/测试执行步骤0/工作台概览/本页共用）。
-- **页内独立（不写回全局）**：本页走公共壳（PublicLayout，URL 直达可打开——未登录导航隐藏、数据 403 空态，INT-344 口径，§6.2），算法切换**只过滤本页榜单、不写回全局算法 store**（INT-442 倾向：公开页不该污染全局）。页内 Zustand store `useRankingAlgorithmStore { algorithmType: string|null; setAlgorithm(type); clear() }`，localStorage `iatp:rankings:v1:algorithm`；URL `algorithm=` 可还原。
-- **数据缺口（待后端立项）**：排行 ReadModel 无算法维度字段，`/ranking` 无 `algorithm_type` 参数（§2.2 全字段实测）——**榜单按算法过滤/重算待后端立项**（ReadModel 增算法维度或查询附 algorithm_type）。就绪前：算法大卡片完整呈现（显示/切换可用），所选算法写入页内 store 与 URL，榜单数据仍全量展示，卡片内标注「按算法过滤待后端立项」。
-- **公开页权限降级**：`GET /algorithm/definitions` 与 `/algorithm/options` 门槛 `algorithm:read`（`algorithm_bp.py` 实测）——持 `algorithm:read` 者（admin/tester/algo_engineer）完整大卡（hero 详情 + 切换钮）；无权限者（device_admin/guest）与未登录访客**只读降级条**（仅显示「全部算法」，无切换钮，可正常浏览榜单）——照 INT-436 只读降级态契约，公开页首屏不空。
+- **形态与契约**：复用 INT-436 工作台概览算法卡片网格组件契约（`04_控制台.md` §3.4）+ 数据源 `GET /algorithm/definitions`（含描述/参数摘要字段，不用仅 value/name/group 的 `/options`）——每卡=算法名+分组+参数摘要+描述，点击选中=切换页内算法、选中态高亮，首卡「全部算法」；网格微布局复用 INT-355 §3.4 卡片网格通道。算法选择组件 `algorithm-selector.tsx` 仍由导航栏切换器/测试执行步骤0 使用（导航栏切换器/测试执行步骤0/工作台概览/本页共用同一数据源与 store 契约，不发明第二套）。
+- **页内独立（不写回全局）**：本页走公共壳（PublicLayout，URL 直达可打开——未登录导航隐藏、数据 403 空态，INT-344 口径，§6.2），算法切换**只过滤本页榜单、不写回全局算法 store**（INT-442 倾向：公开页不该污染全局；2026-10-16 口径修正仅改形态、不改 store 语义）。页内 Zustand store `useRankingAlgorithmStore { algorithmType: string|null; setAlgorithm(type); clear() }`，localStorage `iatp:rankings:v1:algorithm`；URL `algorithm=` 可还原。
+- **数据缺口（待后端立项）**：排行 ReadModel 无算法维度字段，`/ranking` 无 `algorithm_type` 参数（§2.2 全字段实测）——**榜单按算法过滤/重算待后端立项**（ReadModel 增算法维度或查询附 algorithm_type）。就绪前：算法卡片网格完整呈现（显示/切换可用），所选算法写入页内 store 与 URL，榜单数据仍全量展示，网格区标注「按算法过滤待后端立项」。
+- **公开页权限降级**：`GET /algorithm/definitions` 与 `/algorithm/options` 门槛 `algorithm:read`（`algorithm_bp.py` 实测）——持 `algorithm:read` 者（admin/tester/algo_engineer）完整网格（全量算法卡 + 选中高亮 + 点击切换）；无权限者（device_admin/guest）与未登录访客**只读降级条**（仅显示「全部算法」，无切换，可正常浏览榜单）——照 INT-436 只读降级态契约，公开页首屏不空。
 
 ---
 
@@ -164,7 +164,7 @@ PublicLayout（站头 PublicHeader + main + 页脚 Footer，对位 newAPI public
    │   色相换本平台主色系：163° 主绿 / 200° 青蓝 / 280° 点缀，浅色 opacity-20 / 深色 opacity-[0.10]）
    └─ PageTransition（mx-auto max-w-[1280px] space-y-8 px-3 pt-16 pb-10 sm:px-6 sm:pt-20 sm:pb-12 xl:px-8）
       ├─ RankingsHero（标题 + 说明 + 类别维度下划线页签）
-      ├─ CurrentAlgorithmCard（「当前算法」大卡——INT-436 契约，页内独立切换，§4.5）
+      ├─ AlgorithmCardGrid（算法卡片网格——INT-436 契约，每算法一张大卡 + 全部算法首卡，页内独立切换，§4.5）
       ├─ 筛选行（测试集 / 指标 / 数据来源 Select + 主体搜索 Input；本平台扩展，参数全部实测存在）
       ├─ MetricGroupCard ×N（按 category×metric×scenario 分组，组内 rank 升序）
       │  ├─ 卡头：图标+「{指标名} · {场景}」+ 方向徽章 ｜ 右侧：参与主体 N + 计算于 {computedAt}
@@ -192,7 +192,7 @@ PublicLayout（站头 PublicHeader + main + 页脚 Footer，对位 newAPI public
   - 「搜索主体」Input（lucide `Search` 前缀图标 + placeholder）：防抖 300ms → `subjectName=`；下拉联想用 `/ranking/subjects`（有输入时出现，键盘可选，Escape 关闭）。
   - 右端「重置」ghost 按钮（任一筛选非默认时出现）。
 - 全部筛选状态写入 URL search（zod validateSearch：`category/suite/metricCode/source/subjectName` 全 optional + catch），刷新/分享可还原——照 newAPI 路由 validateSearch 模式。
-- **算法切换不在筛选行**（Hero 下「当前算法」大卡片承担，§3.2 改判口径）；无场景独立筛选器（场景是分组键，组卡标题已带场景，同指标跨场景自然分卡）。
+- **算法切换不在筛选行**（Hero 下**算法卡片网格**承担，§3.2 改判口径）；无场景独立筛选器（场景是分组键，组卡标题已带场景，同指标跨场景自然分卡）。
 
 ### 4.4 指标组卡（对位 models-section.tsx）
 
@@ -216,18 +216,19 @@ PublicLayout（站头 PublicHeader + main + 页脚 Footer，对位 newAPI public
     - 实测轨行尾「查看报告」link 变体小按钮（lucide `FileText size-3` + 文字，`→ /report/{reportId}`，仅 `report:read` 持有者渲染）。
   - 空组不渲染卡（全空时页面级空态，§5.5）。
 
-### 4.5 「当前算法」大卡片（INT-442 改判——页面内算法切换，复用 INT-436 契约）
+### 4.5 算法卡片网格（INT-442 改判 + 2026-10-16 口径修正——页面内算法切换，复用 INT-436 契约）
 
-**定位**：Hero 之下、筛选行之上的**页面首卡**（主视觉位、整宽），展示**页内算法选择当前值**（算法名/分组/描述）+「切换算法」入口；切换链路**复用 INT-436 工作台概览算法大卡片组件契约**（`04_控制台.md` §3.4 实测：外框 `bg-card overflow-hidden rounded-2xl border shadow-xs` + 径向光斑 + eyebrow「当前算法」+ h3 算法名 + 分组/状态 Badge + 描述 + 右列切换钮），不发明第二套算法切换。
+**定位**：Hero 之下、筛选行之上的**算法选择区**（主视觉位、整宽），**每个算法一张大卡**的卡片网格（不是单张「当前算法」卡）：每卡含算法名/分组/参数摘要/描述，点击选中=切换页内算法、选中态高亮，选中卡即页内算法当前值；首卡「全部算法」。切换链路**复用 INT-436 工作台概览算法卡片网格组件契约**（`04_控制台.md` §3.4 实测：区壳 `bg-card overflow-hidden rounded-2xl border shadow-xs` + 径向光斑 + 区头 eyebrow「算法切换」+ 网格 `grid gap-3 sm:grid-cols-2 xl:grid-cols-3` + 每算法大卡 `rounded-xl border p-4` + 选中态 `border-primary ring-primary/20 ring-2`），不发明第二套算法切换。
 
-- **版式（照 INT-436 §3.4 完整卡）**：`grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]`：
-  - 左列 hero 详情（`flex flex-col gap-1.5 min-w-0`）：eyebrow「当前算法」（`text-muted-foreground text-xs font-medium tracking-wider uppercase`）+ IconBadge tone='primary' size='sm'（Box 图标）；算法名 h3「{algorithm.name}」（`text-xl font-semibold tracking-tight`；store 为 `null` 显示「全部算法」）+ 副行（分组 Badge outline「{group_name}」，无分组不显 + 状态 Badge outline「在线」仅具体算法）；描述（`text-sm text-muted-foreground line-clamp-2`）：`{algorithm.description}`；「全部算法」态换副文「当前未按算法筛选，榜单展示全部算法数据。」。
-  - 右列动作（`flex flex-col items-start gap-2 lg:items-end lg:justify-center`）：「切换算法」Button（default 主钮：`h-9 rounded-lg px-3 font-medium shadow-sm`，CpuIcon `size-4` +「切换算法」+ ChevronsUpDown `size-4 opacity-60`；`aria-haspopup='dialog'`）→ 算法选择 Dialog；副提示（`text-xs text-muted-foreground`）「仅影响本页榜单，不改变全局算法。」（**页内独立口径**）。
-- **数据源与权限（实测）**：当前算法详情 `GET /algorithm/definitions`（门槛 `algorithm:read`）→ `AlgorithmDefinitionDto`；切换面板选项 `GET /algorithm/options`（门槛 `algorithm:read`）→ `AlgorithmOptionDto`——均与 INT-436 同源同 query（`['algorithm','definitions']` / `['algorithm','options']`，staleTime 5min）。持 `algorithm:read`（admin/tester/algo_engineer）完整卡；无权限（device_admin/guest）与未登录访客**只读降级条**。
-- **只读降级态**：收敛为只读条 `bg-card rounded-2xl border shadow-xs` 单行 `flex items-center justify-between gap-2 px-4 py-3 sm:px-5`——左「当前算法」label（`text-muted-foreground text-xs font-medium`）+ 右「全部算法」（页内 store 默认 null，无描述/分组徽章/切换钮）+ Tooltip「切换算法需登录并具备算法查看权限」。**公开页首屏不空、榜单浏览不受影响**。
-- **切换交互（复用 INT-355 §3.4 双通道选择器基准，写回页内 store）**：「切换算法」→ 算法选择 Dialog（`sm:max-w-lg`；移动端 Drawer——vaul），内嵌**同一算法选择组件**（建议实施时抽平台件 `interfaces/components/algorithm/algorithm-selector.tsx`）：默认通道=Command 搜索选择器（CommandInput「搜索算法名称…」+ CommandList：首项「全部算法」（Layers 图标，value=null）+ 逐组算法项=名称 + 分组 Badge secondary 右浮；选中项 CheckIcon；CommandEmpty「未找到匹配算法」）；「浏览全部/收起」Toggle → 卡片网格 `grid gap-3 sm:grid-cols-2 lg:grid-cols-3`（算法卡 `rounded-xl border p-4`，选中态 `border-primary ring-primary/20 ring-2`）。选中项 → `setAlgorithm(value)` → 关面板 → toast「已切换榜单算法为 {名}」→ 卡片 hero 即时刷新（store 订阅）；「全部算法」→ `clear()` → toast「已恢复全部算法」。
-- **与全局切换器关系**：本页**不出现**右上角全局切换器组件（INT-442：导航栏「报告」页与「排行榜」页不再用右上角全局切换器）；本页大卡片**不订阅 `useGlobalAlgorithmStore`、不写回全局**——页内独立，避免公开页污染全局。
-- **榜单过滤生效条件（待后端立项）**：`/ranking` 支持 `algorithm_type` 参数（或 ReadModel 增算法维度）后，页内所选算法并入排行查询与 queryKey，榜单按算法过滤；就绪前榜单全量展示，卡片内标注「按算法过滤待后端立项」。
+- **版式（照 INT-436 §3.4 网格）**：
+  - 区壳 + 区头：eyebrow「算法切换」（`text-muted-foreground text-xs font-medium tracking-wider uppercase`）+ 副文（`text-xs text-muted-foreground`）「仅影响本页榜单，不改变全局算法。」（**页内独立口径**）。
+  - 网格 `grid gap-3 sm:grid-cols-2 xl:grid-cols-3`：**首卡「全部算法」**（Layers 图标，value=null，`rounded-xl border p-4` 图标位 + 名称「全部算法」+ 副文「不按算法筛选，展示全部算法数据。」——store 为 `null` 时选中态）；**每算法大卡** `rounded-xl border p-4 hover:border-primary/40 hover:shadow-sm`：图标位（`size-10 rounded-lg bg-primary/10 text-primary`）+ 名称 h3「{algorithm.name}」（`text-sm font-semibold tracking-tight`）+ 分组 Badge outline「{group_name}」（无分组不显）+ 状态 Badge outline「在线/离线」；**参数摘要行**（`text-xs text-muted-foreground`）「设备参数 {n} · API 参数 {m} · 用例参数 {k}」（由 `device_params/api_params/case_params` 长度派生，三项全 0/缺失隐藏）；描述（`text-sm text-muted-foreground line-clamp-2`）：`{algorithm.description}`。
+  - **选中态**（页内 store 命中该算法）：`border-primary ring-primary/20 ring-2 bg-primary/5` + 右上 CheckIcon + 「当前」Badge；离线算法卡置灰不可选（`opacity-60 pointer-events-none`，对齐 options 仅在线可切语义）。
+- **数据源与权限（实测）**：卡片网格数据源 `GET /algorithm/definitions`（门槛 `algorithm:read`，`algorithm_bp.py:14-16` 实测）→ `AlgorithmDefinitionDto.items`（含描述/参数摘要字段，`algorithmDto.ts:8-32` 实测；**不用仅 value/name/group 的 `/options`**）——与 INT-436 同源同 query（`['algorithm','definitions']`，staleTime 5min）。持 `algorithm:read`（admin/tester/algo_engineer）完整网格；无权限（device_admin/guest）与未登录访客**只读降级条**。
+- **只读降级态**：网格不渲染（definitions 403），收敛为只读条 `bg-card rounded-2xl border shadow-xs` 单行 `flex items-center justify-between gap-2 px-4 py-3 sm:px-5`——左「当前算法」label（`text-muted-foreground text-xs font-medium`）+ 右「全部算法」（页内 store 默认 null，无描述/分组徽章/切换）+ Tooltip「切换算法需登录并具备算法查看权限」。**公开页首屏不空、榜单浏览不受影响**。
+- **切换交互（点击卡片直选，写回页内 store）**：点击算法卡 → `setAlgorithm(algorithm.type)` → toast「已切换榜单算法为 {名}」→ 选中态即时高亮（store 订阅）；点击「全部算法」首卡 → `clear()` → toast「已恢复全部算法」→ 首卡选中态。Command 搜索通道仍由导航栏/测试执行的 `algorithm-selector` 承载（本网格即其「卡片网格」通道页内直显形态）。
+- **与全局切换器关系**：本页**不出现**右上角全局切换器组件（INT-442：导航栏「报告」页与「排行榜」页不再用右上角全局切换器）；本页网格**不订阅 `useGlobalAlgorithmStore`、不写回全局**——页内独立，避免公开页污染全局。
+- **榜单过滤生效条件（待后端立项）**：`/ranking` 支持 `algorithm_type` 参数（或 ReadModel 增算法维度）后，页内所选算法并入排行查询与 queryKey，榜单按算法过滤；就绪前榜单全量展示，网格区标注「按算法过滤待后端立项」。
 
 ### 4.6 页脚
 
@@ -239,7 +240,7 @@ PublicLayout（站头 PublicHeader + main + 页脚 Footer，对位 newAPI public
 
 ### 5.1 三态与加载
 
-- 加载态（首次/切筛选 refetch 时 non-blocking 保留旧数据，TanStack Query `placeholderData: keepPreviousData`）：首访四段 Skeleton（对位 newAPI h-[420px]/h-[360px]/h-[180px] → 本页 Hero 骨架条 + 算法大卡骨架条（标题行/描述行两段，照 INT-436 骨架）+ 筛选行骨架 + 组卡骨架×2，`rounded-xl`）；`isFetching` 时筛选行右侧显示 `Loader2 size-4 animate-spin`。
+- 加载态（首次/切筛选 refetch 时 non-blocking 保留旧数据，TanStack Query `placeholderData: keepPreviousData`）：首访四段 Skeleton（对位 newAPI h-[420px]/h-[360px]/h-[180px] → 本页 Hero 骨架条 + 算法卡片网格骨架条（图标/标题/描述行三段，照 INT-436 骨架）+ 筛选行骨架 + 组卡骨架×2，`rounded-xl`）；`isFetching` 时筛选行右侧显示 `Loader2 size-4 animate-spin`。
 - 算法卡降级：`/algorithm/definitions` 失败整卡值区「--」+「算法详情暂不可用」（不报错 toast，ErrorState 卡内降级——对齐 INT-436 工作台逐卡容错）；无权限/未登录只读降级条（§4.5）。
 - 空态（查询成功但 0 行）：Empty 组件（基座卡 §5 组件表 Empty 行，border-dashed 圆角卡）：图标 `Trophy`、标题「暂无排行数据」、描述「尚未计算排行，或当前筛选条件下没有数据。」；持 `benchmark:ranking:compute` 者加主按钮「立即计算」（无权限者无按钮，描述后补一句「请联系管理员计算排行。」）。
 - 权限空态（403：未登录或已登录无 `benchmark:ranking:read`）：**不跳登录**（INT-344 定稿「URL 直达可达、数据 403 空态」）。同 Empty 卡形态：图标 `Lock`、标题「无法查看排行数据」、描述「当前账号无排行查看权限，请登录或联系管理员。」，**无「重试」按钮**（非请求失败，重试无意义）；AUTH_MODE=off（现状部署）不出现此态。
@@ -274,7 +275,7 @@ newAPI 的 growth 是"越大越好"隐含语义；本平台 delta 方向随指�
 
 ### 5.6 移动端
 
-- 页签横向滚动（`overflow-x-auto`，不换行）；筛选行纵向堆叠；算法大卡左右列纵排（`grid-cols-1`，右列动作左对齐）；组卡图表 `h-60`；榜单双栏塌单栏（`grid-cols-1`，照 newAPI）；表格视图横向滚动包裹（`role='region'` + aria-label，文档页卡同款可聚焦容器）；算法选择 Dialog 移动端改 Drawer（vaul，照 INT-355 §3.4 移动态）。
+- 页签横向滚动（`overflow-x-auto`，不换行）；筛选行纵向堆叠；算法卡片网格单栏塌缩（`grid-cols-1`，首卡与各算法卡纵排）；组卡图表 `h-60`；榜单双栏塌单栏（`grid-cols-1`，照 newAPI）；表格视图横向滚动包裹（`role='region'` + aria-label，文档页卡同款可聚焦容器）。
 
 ---
 
@@ -287,16 +288,16 @@ newAPI 的 growth 是"越大越好"隐含语义；本平台 delta 方向随指�
 
 ### 6.2 角色映射表
 
-| 角色（seed_rbac `ROLES`） | 现状权限判定 | 顶部导航「排行榜」 | 页面读取（榜单/筛选/搜索） | 「当前算法」大卡片 | 「立即计算」 | 「查看报告」行内链接 | 立项结论（INT-429 已落地） |
+| 角色（seed_rbac `ROLES`） | 现状权限判定 | 顶部导航「排行榜」 | 页面读取（榜单/筛选/搜索） | 算法卡片网格 | 「立即计算」 | 「查看报告」行内链接 | 立项结论（INT-429 已落地） |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| admin 超级管理员（`*`） | `*` 通配 | 可见 | 可用 | 完整卡（algorithm:read∈`*`） | 可用（`benchmark:ranking:compute`） | 可用（report:read∈`*`） | 维持 |
-| tester 测试工程师 | `benchmark:*` 全 6 码（INT-429 已授） | 可见 | 可用 | 完整卡（algorithm:read） | 可用（`benchmark:ranking:compute`） | 可用（report:read） | 已落地（INT-429），无需再立项 |
-| algo_engineer 算法工程师 | `benchmark:*` 全 6 码（INT-429 已授） | 可见 | 可用 | 完整卡（algorithm:read） | 可用（`benchmark:ranking:compute`） | 可用（report:read） | 已落地（INT-429），无需再立项 |
-| device_admin 设备管理员 | 无 benchmark:* → AUTH_MODE=on 403；off 放行 | 隐藏 | 数据 403 空态（URL 直达） | 只读降级条（无 algorithm:read） | 隐藏 | 隐藏（无 report:read） | 维持不补（INT-429 未授） |
-| guest 游客 | 无 benchmark:* → AUTH_MODE=on 403；off 放行 | 隐藏 | 数据 403 空态（URL 直达） | 只读降级条（无 algorithm:read） | 隐藏 | 隐藏 | 维持不补（INT-429 未授） |
-| 未登录访客（AUTH_MODE=on） | 无 | 隐藏（URL 直达可达——INT-344 定稿） | 数据 403 空态（不跳登录；榜单查询 403 → 权限空态，§5.1） | 只读降级条（未登录，两接口 403） | 隐藏 | 隐藏 | 无需立项（已按 INT-344 定稿：入口隐藏 + URL 直达 + 数据 403 空态） |
+| admin 超级管理员（`*`） | `*` 通配 | 可见 | 可用 | 完整网格（algorithm:read∈`*`） | 可用（`benchmark:ranking:compute`） | 可用（report:read∈`*`） | 维持 |
+| tester 测试工程师 | `benchmark:*` 全 6 码（INT-429 已授） | 可见 | 可用 | 完整网格（algorithm:read） | 可用（`benchmark:ranking:compute`） | 可用（report:read） | 已落地（INT-429），无需再立项 |
+| algo_engineer 算法工程师 | `benchmark:*` 全 6 码（INT-429 已授） | 可见 | 可用 | 完整网格（algorithm:read） | 可用（`benchmark:ranking:compute`） | 可用（report:read） | 已落地（INT-429），无需再立项 |
+| device_admin 设备管理员 | 无 benchmark:* → AUTH_MODE=on 403；off 放行 | 隐藏 | 数据 403 空态（URL 直达） | 只读降级条（无 algorithm:read，网格不渲染） | 隐藏 | 隐藏（无 report:read） | 维持不补（INT-429 未授） |
+| guest 游客 | 无 benchmark:* → AUTH_MODE=on 403；off 放行 | 隐藏 | 数据 403 空态（URL 直达） | 只读降级条（无 algorithm:read，网格不渲染） | 隐藏 | 隐藏 | 维持不补（INT-429 未授） |
+| 未登录访客（AUTH_MODE=on） | 无 | 隐藏（URL 直达可达——INT-344 定稿） | 数据 403 空态（不跳登录；榜单查询 403 → 权限空态，§5.1） | 只读降级条（未登录，definitions/options 均 403） | 隐藏 | 隐藏 | 无需立项（已按 INT-344 定稿：入口隐藏 + URL 直达 + 数据 403 空态） |
 
-> 注：「当前算法」大卡片页内独立（§3.2/§4.5），无 `algorithm:read` 时仅降级条不阻塞榜单浏览；AUTH_MODE=off（现状部署）时全员 `['*']`，大卡片全角色完整卡。
+> 注：「算法卡片网格」页内独立（§3.2/§4.5），无 `algorithm:read` 时仅降级条不阻塞榜单浏览；AUTH_MODE=off（现状部署）时全员 `['*']`，网格全角色完整卡。
 
 - 前端判定对齐本平台惯例（`authStore.hasPermission` 含 `*` 通配，系统设置卡 §2.0 实测）：**路由不设硬守卫**（公开可达，对齐 INT-344 §2.2「URL 直达可达、数据 403 空态」）——未登录与已登录无 `benchmark:ranking:read` 者，顶部导航入口隐藏，URL 直达时榜单数据 403 → 权限空态（§5.1，不跳登录）；已登录持码（admin/`*`、tester、algo_engineer——INT-429 已授）正常读；AUTH_MODE=off（现状部署）放行。
 - 导航按角色渲染的原则由导航栏卡 INT-344 统一实现：本页入口无权限时**整项隐藏**（不是置灰）。
@@ -325,11 +326,10 @@ newAPI 的 growth 是"越大越好"隐含语义；本平台 delta 方向随指�
 - 「重置」；「立即计算」；确认弹窗：标题「重新计算排行？」描述「将合并平台实测与外部基线全量重算，期间现有排行保持可查看。」按钮「开始计算」「取消」
 - 主体联想空提示：「未找到匹配的主体」
 
-### 算法大卡片（INT-442 改判）
+### 算法卡片网格（INT-442 改判 + 2026-10-16 口径修正）
 
-- eyebrow「当前算法」；名称「{算法名}」/「全部算法」；分组徽章「{分组名}」；状态徽章「在线」；描述「{算法描述}」；「全部算法」态说明「当前未按算法筛选，榜单展示全部算法数据。」
-- 按钮「切换算法」；副提示「仅影响本页榜单，不改变全局算法。」；降级条 Tooltip「切换算法需登录并具备算法查看权限」；失败态「算法详情暂不可用」
-- 选择 Dialog「选择算法」/搜索占位「搜索算法名称…」/「浏览全部」「收起」/项「全部算法」/空态「未找到匹配算法」；toast「已切换榜单算法为 {名}」「已恢复全部算法」
+- 区头 eyebrow「算法切换」+ 副提示「仅影响本页榜单，不改变全局算法。」；首卡「全部算法」+ 副文「不按算法筛选，展示全部算法数据。」；每算法大卡：名称「{算法名}」+ 分组徽章「{分组名}」+ 状态徽章「在线/离线」+ 参数摘要「设备参数 {n} · API 参数 {m} · 用例参数 {k}」+ 描述「{算法描述}」；选中态「当前」Badge
+- 降级条 Tooltip「切换算法需登录并具备算法查看权限」；失败态「算法详情暂不可用」；toast「已切换榜单算法为 {名}」「已恢复全部算法」
 - 待后端立项标注：「按算法过滤待后端立项（排行数据暂无算法维度）」
 
 ### 组卡
@@ -357,7 +357,7 @@ newAPI 的 growth 是"越大越好"隐含语义；本平台 delta 方向随指�
 ## 8. 字体/色彩/组件 token 引用
 
 - **字体**：标题 sans semibold（本页无衬线大标题——newAPI rankings 标题即 sans bold）；主体名/数值列 `font-mono` + `tabular-nums`（newAPI 实测同款：主体名 font-mono、数值 font-mono tabular-nums）；角标 10px 大写字距仅作用西文。
-- **色彩**（全部引基座卡 `01_全局基座.md`）：表面 `--card/--border/--muted-foreground`；主色 `--primary`（图标/激活强调）；来源徽章 info/secondary 软底（基座卡 §5 组件表 Badge 行）；DeltaText `--success/--destructive`；图表 `--chart-1/--chart-2`（§3.6，深浅同值随预设联动）；骨架屏 `--skeleton-base/highlight`（§3.3）；算法大卡外框/光斑照 INT-436 §3.4（`rounded-2xl` + `--overview-accent-1..3` color-mix 径向渐变，非 default 预设映射 chart-1..3）。多主题预设（lake-view 默认参考、rose-garden、默认蓝等）+ 深浅色由基座机制驱动，本页零特判。
+- **色彩**（全部引基座卡 `01_全局基座.md`）：表面 `--card/--border/--muted-foreground`；主色 `--primary`（图标/激活强调）；来源徽章 info/secondary 软底（基座卡 §5 组件表 Badge 行）；DeltaText `--success/--destructive`；图表 `--chart-1/--chart-2`（§3.6，深浅同值随预设联动）；骨架屏 `--skeleton-base/highlight`（§3.3）；算法卡片网格区壳/光斑照 INT-436 §3.4（`rounded-2xl` + `--overview-accent-1..3` color-mix 径向渐变，非 default 预设映射 chart-1..3）。多主题预设（lake-view 默认参考、rose-garden、默认蓝等）+ 深浅色由基座机制驱动，本页零特判。
 - **组件选型**（全部 newAPI 现成件，基座卡 §5）：Button（default/outline/ghost/link）、Select、Input+Search 图标组、Tabs（line 变体做视图切换 + 页签自绘下划线照 newAPI hero）、Badge、Card 结构、Empty/Skeleton/Spinner、AlertDialog（重算确认）、Tooltip（方向提示）、sonner toast、Table（表格视图）、Collapsible（移动端不做——本页无侧栏，无此依赖）。
 - **图表**：`@visactor/react-vchart ^2.1.2`（newAPI `web/package.json:44-45` 实测同版本）+ `use-chart-theme.ts` 照搬；轴/网格色 rgba 值照 §1.2。
 - **待基座卡落 token**：色值、字号阶梯已定稿（基座卡为基准稿），本卡语义 token 名零改动替换。
@@ -375,8 +375,8 @@ interfaces/
 │  ├─ index.tsx                          # Rankings 页骨架（光晕层 + PageTransition 容器 + 三态路由）
 │  ├─ components/
 │  │  ├─ rankings-hero.tsx               # 标题 + 说明 + 类别下划线页签
-│  │  ├─ current-algorithm-card.tsx      # 「当前算法」大卡（INT-436 契约：hero 详情 + 切换钮 + 只读降级条；
-│  │  │                                  #   订阅 useRankingAlgorithmStore + 复用算法选择组件，页内独立）
+│  │  ├─ algorithm-card-grid.tsx        # 算法卡片网格（INT-436 契约：每算法一张大卡 + 全部算法首卡 + 选中态高亮 +
+│  │  │                                  #   参数摘要 + 只读降级条；订阅 useRankingAlgorithmStore + ['algorithm','definitions']，页内独立）
 │  │  ├─ ranking-filters.tsx             # 筛选行（Select×3 + 主体搜索联想 + 重置 + 立即计算）
 │  │  ├─ metric-group-card.tsx           # 组卡（卡头统计 + 图表区 + 榜单块）
 │  │  ├─ metric-bar-chart.tsx            # VChart 横向对比条形图（themeReady 门控 + 深浅重建）
@@ -394,7 +394,7 @@ application/
 ├─ rankings/useRankings.ts               # TanStack Query（queryKey=[benchmarks,ranking,filters]，
 │                                        #   staleTime 5min，keepPreviousData；对位 newAPI use-rankings.ts）
 ├─ rankings/useRankingAlgorithm.ts       # 页内算法 store 封装（useRankingAlgorithmStore Zustand +
-│                                        #   当前算法详情解析 ['algorithm','definitions']，algorithm:read 门控；不写回全局）
+│                                        #   ['algorithm','definitions'] 网格数据 + 参数摘要派生 + 选中态解析，algorithm:read 门控；不写回全局）
 ├─ rankings/useMetricMappings.ts         # 指标映射查询（指标下拉数据源，失败静默退化）
 ├─ rankings/useRankingSubjects.ts        # 主体联想查询（防抖 300ms，enabled=有输入）
 ├─ rankings/useComputeRanking.ts         # 重算 mutation（成功失效 rankings 缓存 + toast）
@@ -427,10 +427,10 @@ domain/
 
 1. 引入 `@visactor/react-vchart@^2.1.2`（对齐 newAPI 版本）+ 照搬 `web/src/lib/use-chart-theme.ts`。
 2. 落 routes + features/rankings 全套组件（§4/§5 规格）；`groupRankings.ts`/`rankingFilters.ts` 配 vitest 单测（分组边界：并列名次/单主体不归一化 score100 为空/场景缺省「通用」）；`adapters/benchmarkAdapter.ts` DTO→Domain 映射配 vitest 单测（snake_case→camelCase 全字段，interfaces 层零 snake_case 断言）。
-3. 抽平台件 `algorithm-selector.tsx`（Command 搜索 + 卡片网格双通道，INT-355 §3.4 基准）与 `useRankingAlgorithm`（页内 store，**不写回全局**），落 `current-algorithm-card.tsx` 完整卡 + 只读降级条（INT-436 §3.4 契约）。
+3. 抽平台件 `algorithm-selector.tsx`（Command 搜索 + 卡片网格双通道，INT-355 §3.4 基准）与 `useRankingAlgorithm`（页内 store，**不写回全局**），落 `algorithm-card-grid.tsx` 网格（每算法一张大卡 + 全部算法首卡 + 选中高亮 + 参数摘要 + 只读降级条，INT-436 §3.4 契约）。
 4. 公开路由与站头/页脚接导航栏卡（INT-344）的 PublicLayout；导航入口「排行榜」由导航栏卡按 `benchmark:ranking:read` 渲染（未登录隐藏、URL 直达数据 403 空态）；主题切换/多预设接基座卡（INT-343）机制。
-5. 「待后端立项」四项随本页实施不做、不占位：时间维度周期页签、厂商份额卡、升降榜卡、**榜单按算法过滤**（§2.4，算法大卡先行落地为显示/切换）；RBAC 补码已由 INT-429 落地（seed 补 6 码并授 tester+algo_engineer），不再单独立项（§6.1）。
-6. 回归断言：URL 筛选刷新还原、并列名次显示、深浅色图表重建、无权限角色入口隐藏 + URL 直达数据 403 空态（不跳登录）、AUTH_MODE=off 全放行、**算法大卡完整/降级两态 + 页内切换不写全局**、组件字段全 camelCase（零 snake_case 泄漏到 interfaces）、移动端单栏塌缩。
+5. 「待后端立项」四项随本页实施不做、不占位：时间维度周期页签、厂商份额卡、升降榜卡、**榜单按算法过滤**（§2.4，算法卡片网格先行落地为显示/切换）；RBAC 补码已由 INT-429 落地（seed 补 6 码并授 tester+algo_engineer），不再单独立项（§6.1）。
+6. 回归断言：URL 筛选刷新还原、并列名次显示、深浅色图表重建、无权限角色入口隐藏 + URL 直达数据 403 空态（不跳登录）、AUTH_MODE=off 全放行、**算法卡片网格完整/降级两态 + 页内切换不写全局**、组件字段全 camelCase（零 snake_case 泄漏到 interfaces）、移动端单栏塌缩。
 7. **INT-381 返修 + INT-344 v1.4 路由对齐**：落 `benchmark-ranking-block` 排行区块组件（供 15_报告域 §3.8 装配）；**不新建 `/benchmarks/*` 前端路由**——报告列表并入报告中心类型页签、详情复用 `/report/{reportId}`（落位实施卡基线裁定）；发布接口 `POST /api/v1/benchmarks/reports` 接入；DTO 转换并入 `adapters/benchmarkAdapter.ts`；回归断言：排行区块异步进度/来源筛选/版本标注/导出 HTML 含排行区块。
 
 ---
@@ -476,3 +476,4 @@ domain/
 | 2026-10-16 | 前置审核 INT-381 打回修订：补 Benchmark 报告域（新增 §10）——报告发布（入口/流程/report_type='benchmark'）、报告列表/详情（`/benchmarks/reports` + `:reportId`，接口与路由引用报告Benchmark排行功能设计文档.md:388-394/:446-457）、报告详情内嵌排行区块组件规格（14 定义、15_报告域 §3.8 消费联动）、导出 HTML 含排行；§9 组件树补 benchmarks 路由 + `benchmark-ranking-block` 组件 + `infrastructure/adapters/benchmarkAdapter.ts` 转换层（对齐整站 `infrastructure/adapters/*` 约定）；实施清单补 §9-7。 |
 | 2026-10-16 | INT-429 落地回写（总控放行条件 #1，回写归属 UX设计师A）：§6.1 权限事实改「6 码已定义并授 tester+algo_engineer（全 6 码）、guest/device_admin 未授」——原「缺口/待后端立项（RBAC 补码）」撤销；§6.2 角色映射表按当前 seed 重写（tester/algo 导航可见、可读榜、可触发重算；device_admin/guest 维持 403），「立项建议」列改「立项结论（已落地）」；§3.1 入口判定同步；实施清单 #5 RBAC 补码改注已落地。 |
 | 2026-10-16 | INT-391 复核收口对齐（UX设计师B）：§10.2 前端路由按 INT-344 v1.4 对齐——**不新建 `/benchmarks/*` 前端路由**（列表并入报告中心类型页签、详情复用 `/report/{reportId}`，落位实施卡基线裁定）；§9 组件树移除 `routes/benchmarks/*`、保留 `benchmark-ranking-block`；§2.1/§2.5/§6.2 写侧界面归属按总控裁决改注（另行立项「benchmark 配置写侧界面」，不归 INT-362）；§4.4 radius-lg=12px 笔误按基座卡 §5 组件表 Card 行 rounded-xl 校准。 |
+| 2026-10-16 | **INT-442 口径修正（负责人 2026-10-16）**：算法切换大卡片 = **每算法一张大卡**（算法卡片网格，不是单张当前算法卡）——§3.2/§4.5 由「「当前算法」大卡片」重做为「算法卡片网格」：数据源改 `GET /algorithm/definitions` 全量（含描述/参数摘要，不用仅 value/name/group 的 `/options`）、每卡=算法名+分组+参数摘要+描述、点击直选=切换页内算法、选中态高亮、首卡「全部算法」、离线卡置灰、只读降级条保留；**页内独立 store 语义不变**（公开页不污染全局，2026-10-16 修正仅改形态）；§2.1 映射表/§4.1/§5.1/§5.6/§6.2/§7 文案/§8 token/§9 组件树（algorithm-card-grid/useRankingAlgorithm）/实施清单同步；INT-486 可视稿按本口径修正（其卡单独落）。 |
