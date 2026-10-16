@@ -183,23 +183,25 @@ const handleStart = async () => {
   await new Promise(resolve => setTimeout(resolve, 500))
 
   try {
-    if (props.onConfirm) {
-      const calibrationData = {
-        points: calibrationPoints,
-        signalType: form.signalType,
-        testFrequency: form.testFrequency,
-        measurementDistance: form.measurementDistance,
-        testDevice: form.testDevice,
-        calibrationDate: new Date().toISOString(),
-        minDb,
-        maxDb,
-        mode: 'db_curve'
-      }
-
-      await props.onConfirm(calibrationData)
+    const calibrationData = {
+      points: calibrationPoints,
+      signalType: form.signalType,
+      testFrequency: form.testFrequency,
+      measurementDistance: form.measurementDistance,
+      testDevice: form.testDevice,
+      calibrationDate: new Date().toISOString(),
+      minDb,
+      maxDb,
+      mode: 'db_curve'
     }
-    emit('close')
+
+    // INT-558 P1：不能直接调 props.onConfirm —— GlobalModalContainer 在真实应用里经
+    // v-bind + @confirm 把 onConfirm 合并为数组（[原校准回调, 容器处理]），直接调用抛
+    // TypeError，校准数据永不落库、弹窗停留。只 emit('confirm', payload) 走容器链路：
+    // emit 依次触发数组内全部监听器 → 单次校准回调 + 容器 resolve/close（弹窗关闭）。
+    emit('confirm', calibrationData)
   } catch (error) {
+    // 同步异常防御（emit 自身极少抛错；原回调的异步失败已由容器侧 onConfirm 内通知）
     console.error('保存校准数据失败:', error)
     isCalibrating.value = false
   }
