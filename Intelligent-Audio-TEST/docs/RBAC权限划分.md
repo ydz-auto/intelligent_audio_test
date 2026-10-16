@@ -197,7 +197,20 @@
 | `sse:read` | 订阅 SSE 事件流 | `GET /api/v1/sse/events` |
 | `log:websocket` | 订阅 WebSocket 日志推送 | `WS /api/v1/logs`（websocket 路由） |
 
-### 3.16 用户与权限管理（user/role/permission）
+### 3.16 Benchmark 排行（benchmark）
+
+> INT-429 补定义（2026-10-16）：权限码以 [benchmark_bp.py](../api_gateway/routes/benchmark_bp.py) 实际挂载为准，冒号风格对齐现有编码（[报告Benchmark排行功能设计文档](../doc/功能设计文档/05_报告管理/报告Benchmark排行功能设计文档.md) §9 原预留点号形式废弃）。
+
+| 权限点 | 说明 | 对应端点 |
+|---|---|---|
+| `benchmark:ranking:read` | 查看 Benchmark 排行/被测主体/指标映射 | `GET /api/v1/benchmarks/ranking`、`GET /benchmarks/ranking/subjects`、`GET /benchmarks/metric-mappings` |
+| `benchmark:ranking:compute` | 触发排行计算 | `POST /api/v1/benchmarks/ranking/compute` |
+| `benchmark:baseline:read` | 查看外部基线数据源/基线 | `GET /api/v1/benchmarks/sources`、`GET /benchmarks/baselines` |
+| `benchmark:baseline:write` | 创建外部基线数据源 | `POST /api/v1/benchmarks/sources` |
+| `benchmark:baseline:publish` | 导入外部基线/发布基线版本 | `POST /api/v1/benchmarks/baselines`、`POST /benchmarks/baselines/version` |
+| `benchmark:mapping:manage` | 管理指标映射 | `POST /api/v1/benchmarks/metric-mappings`、`PUT /benchmarks/metric-mappings/{id}` |
+
+### 3.17 用户与权限管理（user/role/permission）
 
 > 以下权限点对应尚未实现的 `auth_bp` / `user_bp` / `role_bp` 路由，作为后续开发的设计依据。
 
@@ -284,6 +297,13 @@
 | report:publish | ✓ | ✗ | ✓ | ✗ | ✗ |
 | report:compare | ✓ | ✓ | ✓ | ✗ | ✓ |
 | report:download_log | ✓ | ✓ | ✓ | ✗ | ✗ |
+| **Benchmark 排行** | | | | | |
+| benchmark:ranking:read | ✓ | ✓ | ✓ | ✗ | ✗ |
+| benchmark:ranking:compute | ✓ | ✓ | ✓ | ✗ | ✗ |
+| benchmark:baseline:read | ✓ | ✓ | ✓ | ✗ | ✗ |
+| benchmark:baseline:write | ✓ | ✓ | ✓ | ✗ | ✗ |
+| benchmark:baseline:publish | ✓ | ✓ | ✓ | ✗ | ✗ |
+| benchmark:mapping:manage | ✓ | ✓ | ✓ | ✗ | ✗ |
 | **评估** | | | | | |
 | evaluation:read | ✓ | ✓ | ✓ | ✗ | ✗ |
 | evaluation:execute | ✓ | ✓ | ✗ | ✗ | ✗ |
@@ -339,8 +359,8 @@
 | 角色 | 权限范围 | 权限点数 |
 |---|---|---|
 | `admin` | 全部权限 | 全部（含用户/角色/权限管理） |
-| `tester` | 用例/音频/任务/报告/评估/算法参数的读写 + 执行，不含设备/SPL 管理、算法定义管理、报告发布、用户角色管理 | ~55 个 |
-| `algo_engineer` | 报告/评估/算法配置的读写 + 报告发布/对比，不含测试执行、设备管理、用户角色管理 | ~40 个 |
+| `tester` | 用例/音频/任务/报告/评估/算法参数/Benchmark 排行的读写 + 执行，不含设备/SPL 管理、算法定义管理、报告发布、用户角色管理 | 73 个 |
+| `algo_engineer` | 报告/评估/算法配置/Benchmark 排行的读写 + 报告发布/对比，不含测试执行、设备管理、用户角色管理 | 37 个 |
 | `device_admin` | 被测设备/播放设备/SPL/首页/SSE 的全权管理，不含用例/任务/报告/算法/用户角色管理 | ~25 个 |
 | `guest` | 报告只读 + 报告对比 + 首页统计 + SSE + 认证，不可看日志、不可执行任何写操作 | ~8 个 |
 
