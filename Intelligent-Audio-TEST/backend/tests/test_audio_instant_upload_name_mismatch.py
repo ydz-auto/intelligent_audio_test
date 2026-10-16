@@ -18,7 +18,8 @@ config.rounds[].audios[].audio_id 指向另一条音频（JS121）」的矛盾�
 3. 回归：md5 已存在且名称匹配（含「音频在库里改过名、原始文件名仍对得上」）的秒传
    路径必须照常建用例，且用例名 / description / audio_id 三者指向同一条音频。
 
-测试用独立测试库 intelligent_audio_test_test，由 conftest 的外层事务回滚隔离；
+测试用本进程专属测试库（VEGA-49：intelligent_audio_test_test_p<pid>），由 conftest
+的外层事务回滚隔离；
 接口内部 `db.session.commit()` 会穿透该回滚（conftest 已注明的已知限制），
 故用 `_NoCommitDB` 把 controller 的 commit 降级为 flush，并按精确 ID 兜底清理。
 """

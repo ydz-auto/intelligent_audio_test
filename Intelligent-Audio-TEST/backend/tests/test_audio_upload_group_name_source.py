@@ -22,9 +22,10 @@
 3. 两个分组各带自己的分组名 → 分别落两个不同分组（不得串组）
 4. 无 `tc_config.group_name` 时的兜底链回归（custom / 顶层 / 算法类型 / 缺省）
 
-测试用独立测试库 intelligent_audio_test_test，接口内部 `db.session.commit()` 会
-穿透 conftest 的外层事务回滚（conftest 已注明的已知限制），故用 `_NoCommitDB` 把
-controller 的 commit 降级为 flush，并按精确 ID 兜底清理，不污染共享测试库。
+测试用本进程专属测试库（VEGA-49：intelligent_audio_test_test_p<pid>）。接口内部
+`db.session.commit()` 会穿透 conftest 的外层事务回滚（conftest 已注明的已知限制），
+故用 `_NoCommitDB` 把 controller 的 commit 降级为 flush，并按精确 ID 兜底清理，
+不在库里留残留。
 用例名/分组名带本次运行的随机 tag，避免历史残留行干扰断言。
 """
 import uuid

@@ -45,9 +45,9 @@ def _neutralize_async_log_writer(monkeypatch):
     使断言只取决于被测代码本身。
 
     注：本文件早期观察到的偶发失败（ObjectDeletedError、task_case_relations 外键冲突）
-    经排查主因是**并行跑测试的其它 pytest 进程共用同一个测试库**
-    （intelligent_audio_test_test，日志里能看到别人的任务在执行、并清掉本进程刚插入的行），
-    与本夹具无关；该夹具只消除进程内的连接争用。
+    经排查是**并行跑测试的其它 pytest 进程共用同一个测试库名**造成的（VEGA-49 已改为
+    每进程一个库）；当时的真实机制是共享库里残留着历史 run 提交的写死 id 的行，
+    后来者撞主键 UniqueViolation。本夹具只消除进程内的连接争用。
     """
     from backend.utils.web import log_handler as lh
 

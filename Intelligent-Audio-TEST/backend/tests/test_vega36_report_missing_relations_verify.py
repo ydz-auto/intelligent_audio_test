@@ -12,7 +12,8 @@
 5. 多设备时回退口径取到的资源集合与关联表口径一致（set 语义，不看顺序）。
 
 说明：controller 内部会 db.session.commit()，造出的数据需显式清理；
-本文件按测试库物理隔离（intelligent_audio_test_test）运行，可单独执行。
+本文件按本进程专属测试库物理隔离（VEGA-49：intelligent_audio_test_test_p<pid>）运行，
+可单独执行。
 """
 import json
 import time

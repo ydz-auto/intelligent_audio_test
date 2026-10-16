@@ -5,13 +5,18 @@
 每个测试在事务中运行，测试结束后回滚，不影响数据库状态。
 
 VEGA-49：测试库按 pytest 会话（进程）唯一化——``intelligent_audio_test_test_p<pid>``。
-此前所有会话共用一个固定库名，任一测试文件的 ``db.drop_all()`` / ``create_all``
-都会打到别人正在跑的库上（库内还残留着历史 run 提交的行，制造稳定的
-UniqueViolation 假失败）。现在一个进程一套库：建库前回收遗留库、会话结束删库。
+此前所有会话共用一个固定库名，库里残留着历史 run 提交的、**写死 id** 的行（如
+``TestCaseGroup(id="g-1")``），于是后来者必然撞主键 UniqueViolation，成批失败且
+失败集合随残留状态漂移（VEGA-31 验收实测：共享库里 ``test_case_groups`` 仍留着
+``g-1``/``g-2``/``g-tp-*`` 等行）。现在一个进程一套库：建库前回收遗留库、会话结束删库。
+
+注：那 4 处 ``db.drop_all()`` 并非"清掉了别人的表"——它因循环外键必然抛
+CircularDependencyError、一张表都删不掉（详见 ``committed_rows`` 的说明）。
 """
 import os
 import re
 import sys
+import time
 import pytest
 
 # 确保 backend 目录在 sys.path 中
@@ -213,14 +218,37 @@ def _cleanup_algorithm_tables():
     db.session.flush()  # 用 flush 代替 commit，避免在嵌套事务中真正提交
 
 
-def _delete_committed_rows(registry):
-    """按显式 id 删掉本测试 commit 的行，顺序由内到外（先删关联表）。
+def _execute_cleanup_statements(conn, statements):
+    """在收尾连接上按顺序执行语句。
+
+    单独抽成函数只为让防回归用例能注入"后台线程在两条语句之间又落了一行"的交错
+    （见 ``test_committed_rows_fk_cleanup.py``），生产/测试路径行为不变。
+    """
+    for statement in statements:
+        conn.execute(statement)
+
+
+def _delete_committed_rows(registry, attempts=3):
+    """按显式 id 删掉本测试 commit 的行，顺序由内到外（先删引用方）。
 
     走独立连接执行（不经过 db.session），因此不会 expire 测试里的 ORM 实例——
     测试函数末尾还要用 `task.id` 这类属性做断言。
+
+    ``logs`` 必须先删：它的 ``task_id`` / ``test_case_id`` 有指向 test_tasks /
+    test_cases 的外键且**没有 ON DELETE CASCADE**，而后台 log_worker 线程会为本
+    测试的任务写带 task_id 的日志行（``EventManager.emit_progress`` →
+    ``log_and_emit`` → 队列 → 批量落库）。这些行本来就是本测试自己产生的，
+    不先删掉，收尾的 ``DELETE FROM test_tasks`` 就会抛 ForeignKeyViolation，
+    把"断言全过"的一次运行变成 teardown ERROR。
+
+    后台线程不受本函数控制，所以"我们删完 logs、线程才刷盘"这一次交错理论上
+    仍可能发生（刷盘周期 ``_batch_timeout = 1.0s``，见
+    ``backend/utils/web/log_handler.py``）。因此整串语句最多重跑 ``attempts`` 次：
+    线程每批只刷一次，重跑一遍即可把刚落下的行删掉，再删任务。
     """
     from sqlalchemy import create_engine, delete, or_
-    from backend.models.models import Task, TaskCase, TestCase, TestCaseGroup
+    from sqlalchemy.exc import IntegrityError
+    from backend.models.models import Log, Task, TaskCase, TestCase, TestCaseGroup
 
     task_ids = list(registry['task_ids'])
     case_ids = list(registry['case_ids'])
@@ -233,6 +261,14 @@ def _delete_committed_rows(registry):
         if case_ids:
             conditions.append(TaskCase.test_case_id.in_(case_ids))
         statements.append(delete(TaskCase).where(or_(*conditions)))
+    if task_ids or case_ids:
+        # 引用方：logs 指向 test_tasks / test_cases，必须先于两者删除
+        conditions = []
+        if task_ids:
+            conditions.append(Log.task_id.in_(task_ids))
+        if case_ids:
+            conditions.append(Log.test_case_id.in_(case_ids))
+        statements.append(delete(Log).where(or_(*conditions)))
     if case_ids:
         statements.append(delete(TestCase).where(TestCase.id.in_(case_ids)))
     if group_ids:
@@ -242,9 +278,16 @@ def _delete_committed_rows(registry):
 
     engine = create_engine(_get_test_database_uri())
     try:
-        with engine.begin() as conn:
-            for statement in statements:
-                conn.execute(statement)
+        for attempt in range(attempts):
+            try:
+                with engine.begin() as conn:
+                    _execute_cleanup_statements(conn, statements)
+                return
+            except IntegrityError:
+                # 只可能是后台日志线程在两次语句之间又落了引用行；重跑一遍即可
+                if attempt == attempts - 1:
+                    raise
+                time.sleep(0.05)
     finally:
         engine.dispose()
 
@@ -254,11 +297,14 @@ def committed_rows():
     """登记本测试真正 commit 的行，测试结束后按表删掉（VEGA-49，取代 db.drop_all()）。
 
     有些测试必须真的 commit（例如"原子抢占"要用两个独立会话验证），用不了 app
-    fixture 的外层事务回滚，因此原实现靠 `db.drop_all()` 收尾。但 drop_all 有两宗罪：
+    fixture 的外层事务回滚，因此原实现靠 `db.drop_all()` 收尾。drop_all 在这里是错的，
+    但错的理由**不是**"它清空了别人的表"（VEGA-31 验收实测证伪）：
 
-    1. 删的是**整个库**的表——并发会话共用一个库名时，等于把别人正在跑的表清掉；
-    2. 本仓库模型存在循环外键（playback_devices ↔ spl_mappings），drop_all 必然抛
-       CircularDependencyError，把真正的断言失败盖成"表排序失败"。
+    1. 本仓库模型存在循环外键（playback_devices ↔ spl_mappings），drop_all 必然抛
+       CircularDependencyError，**一张表都没删掉**（实测：库内表数 50 → 50）；
+    2. 正因为它从未真正执行，这些测试 commit 的行（含写死的 id，如 `g-1`）从来没被
+       清理，留在了会话间共用的库名里——下一次运行（或并发的另一个会话）撞主键
+       UniqueViolation，这才是"失败集合每次不同"的真实机制。
 
     本 fixture 只按登记到的 id 删本测试自己的行，不碰库里任何其它对象。
     收尾在测试函数**返回之后**执行，所以函数末尾的断言照旧能看到实例属性。

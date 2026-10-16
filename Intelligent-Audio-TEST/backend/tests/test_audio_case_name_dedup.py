@@ -22,7 +22,8 @@ JG0045 / JS135），按编号/名字匹配会命中配置不同的行（`playbac
 4. `_create_test_case_from_audio`：跨组重复被拦、同组重复改名、分组名归一、缺省分组告警
 5. 上传接口（`/api/v1/audios/upload/merge` 秒传分支）既有行为不被破坏
 
-测试用独立测试库 intelligent_audio_test_test，由 conftest 的外层事务回滚隔离。
+测试用本进程专属测试库（VEGA-49：intelligent_audio_test_test_p<pid>），由 conftest
+的外层事务回滚隔离。
 用例名/分组名带本次运行的随机 tag，避免测试库中历史残留行干扰断言。
 """
 import uuid

@@ -2,15 +2,19 @@
 """VEGA-49 防回归：并发 pytest 会话不得互相踩对方的测试库。
 
 背景（VEGA-31 验收时实测）：所有会话共用一个固定测试库名
-``intelligent_audio_test_test``，而库内操作并不隔离——
-`db.drop_all()` 删的是**整库所有表**，`create_all` 又会把别人正在用的表建回来。
-于是 A 会话跑到一半被 B 会话清表，报"库/表不存在"，失败集合每次都不一样。
+``intelligent_audio_test_test``，库内还残留着历史 run **真 commit** 的行（且带写死的
+id，如 ``TestCaseGroup(id="g-1")``），后来的会话必然撞主键 UniqueViolation——
+成批失败，且失败集合随残留状态漂移。
+
+顺带清掉的 4 处 ``db.drop_all()`` 并不是"清空了别人的表"：实测它们因循环外键
+（playback_devices ↔ spl_mappings）必抛 CircularDependencyError、**一张表都删不掉**；
+它们真正的害处是①把断言失败盖成"表排序失败"，②因此从不清理自己 commit 的残留。
 
 本文件是纯本地检查（不连数据库、不起 pytest 会话），把当时的判据固化下来：
 
 1. 测试库名必须按**进程**唯一，不再是一个所有会话共用的固定名；
 2. TestingConfig 必须指向这个进程专属库，且不等于生产库名；
-3. ``backend/tests/`` 下不得出现会清空整库对象的调用（drop_all / DROP DATABASE）——
+3. ``backend/tests/`` 下不得出现 drop_all / DROP DATABASE 这类调用——
    需要收尾就用 conftest 的 ``committed_rows`` fixture 按 id 删自己提交的行；
 4. conftest 必须在会话收尾时删掉本会话专属测试库（否则每跑一次多一个库）；
 5. 日志落库线程必须走自己的连接（见下），否则后台线程的 commit 会穿透测试事务。
@@ -96,8 +100,9 @@ def test_testing_config_points_at_the_process_scoped_database():
 def test_tests_never_drop_whole_database_objects():
     """backend/tests/ 下不得出现 drop_all / drop_database。
 
-    这类调用删的是**整个库**的表，并发会话共用库时等于把别人正在跑的表清掉。
-    需要收尾请用 conftest 的 committed_rows fixture 按 id 删自己提交的行。
+    这类调用删的是**整个库**的表（drop_database），或本身必错且从不清理残留
+    （drop_all 撞循环外键）。需要收尾请用 conftest 的 committed_rows fixture
+    按 id 删自己提交的行。
     """
     offenders = []
     for path in _iter_test_modules():

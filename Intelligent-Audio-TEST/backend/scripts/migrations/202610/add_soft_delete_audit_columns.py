@@ -14,8 +14,10 @@
 
 用法（在 Intelligent-Audio-TEST 目录下执行）：
     python backend/scripts/migrations/202610/add_soft_delete_audit_columns.py
-    # 测试库：
-    DATABASE_URI=postgresql://intelligent_audio_test:intelligent_audio_test666@localhost:5432/intelligent_audio_test_test \
+    # 测试库：VEGA-49 之后测试库是**每进程一次性**的 intelligent_audio_test_test_p<pid>
+    # （pytest 跑完即删），所以别再对着固定库名执行——要么指向当前会话那个 _p<pid> 库
+    # （pytest 运行期间它才存在），要么在测试里直接用 db.create_all() 建表。
+    DATABASE_URI=postgresql://intelligent_audio_test:intelligent_audio_test666@localhost:5432/intelligent_audio_test_test_p12345 \
         python backend/scripts/migrations/202610/add_soft_delete_audit_columns.py
 """
 import os
