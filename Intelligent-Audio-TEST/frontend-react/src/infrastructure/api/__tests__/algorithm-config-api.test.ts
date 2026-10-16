@@ -13,6 +13,7 @@ import {
   deleteAlgorithmGroup,
   fetchAlgorithmDefinitions,
   fetchAlgorithmGroups,
+  importAlgorithms,
   updateAlgorithm,
 } from '@/infrastructure/api/algorithm-config-api'
 import type { SaveAlgorithmInput } from '@/infrastructure/api/algorithm-config-api'
@@ -110,5 +111,30 @@ describe('algorithm-config-api（mock 桩）', () => {
 
     const emptyDeleted = await deleteAlgorithmGroup(created.id)
     expect(emptyDeleted.success).toBe(true)
+  })
+
+  it('导入算法：type 主键去重后追加入库，返回实际导入数（§7.6/P3-1）', async () => {
+    const before = await fetchAlgorithmDefinitions()
+    const baseline = before.length
+
+    // 2 个新类型 + 1 个与存量重复的 type（asr-v3）→ 仅实际导入 2 个，不再硬编码 1
+    const rows = [
+      { type: 'tts-import-a', name: '导入识别引擎A', groupId: 1, status: 'online', displayOrder: 99 },
+      { type: 'tts-import-b', name: '导入识别引擎B', groupId: null, status: 'offline', displayOrder: 100 },
+      { type: 'asr-v3', name: '重复类型不应再入库', groupId: 1, status: 'online' },
+    ]
+    const result = await importAlgorithms(rows)
+    expect(result.importedCount).toBe(2)
+
+    const after = await fetchAlgorithmDefinitions()
+    expect(after.length).toBe(baseline + 2)
+    const importedA = after.find((d) => d.type === 'tts-import-a')
+    expect(importedA).toBeTruthy()
+    expect(importedA?.groupId).toBe(1)
+    expect(importedA?.groupName).toBe('语音识别') // groupId 归属对齐分组
+    const importedB = after.find((d) => d.type === 'tts-import-b')
+    expect(importedB?.status).toBe('offline')
+    expect(importedB?.groupId).toBeNull() // 未指定分组 → 未分组
+    expect(after.filter((d) => d.type === 'asr-v3').length).toBe(1) // 存量 asr-v3 未被重复导入
   })
 })

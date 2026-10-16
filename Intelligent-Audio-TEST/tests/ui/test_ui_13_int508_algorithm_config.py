@@ -117,11 +117,9 @@ def drv():
         pass
 
 
-@pytest.hookimpl(hookwrapper=True, tryfirst=True)
+@pytest.hookimpl(tryfirst=True)
 def pytest_runtest_makereport(item, call):
-    outcome = yield
-    rep = outcome.get_result()
-    if rep.when == 'call' and rep.failed and _DRIVER is not None:
+    if call.when == 'call' and call.excinfo is not None and _DRIVER is not None:
         _save_evidence(item.name, _DRIVER)
 
 
@@ -182,6 +180,14 @@ def _click_menu_item(drv, label):
 
 
 def _click_more_action(drv, label):
+    # 先关闭可能残留的下拉菜单：前一项点击后菜单偶发未完全收起（toast/焦点竞争），
+    # 此时再次点击「更多操作」会变成开关而非打开，导致目标项不在菜单中（偶现 NoSuch/Assertion）。
+    try:
+        if drv.find_elements(By.XPATH, "//*[@role='menuitem']"):
+            webdriver.ActionChains(drv).send_keys(Keys.ESCAPE).perform()
+            time.sleep(0.3)
+    except Exception:
+        pass
     drv.find_element(By.XPATH, "//button[@aria-label='更多操作']").click()
     WebDriverWait(drv, 5).until(
         lambda d: d.find_elements(By.XPATH, "//*[@role='menuitem']"))
@@ -423,7 +429,12 @@ def test_07_group_manager(drv):
     drv.find_element(By.XPATH, "//button[contains(., '新建分组')]").click()
     WebDriverWait(drv, 5).until(
         lambda d: d.find_elements(By.XPATH, "//input[@id='group-name']"))
-    _press_esc(drv)
+    # 关闭小表单：点「取消」而非 ESC——嵌套 Dialog 打开动画期间 ESC 可能被外层捕获，
+    # 偶发连带关闭整个分组管理弹窗，导致下一步删除按钮找不到（NoSuchElement 偶现）
+    drv.find_element(
+        By.XPATH, "//*[@role='dialog'][.//input[@id='group-name']]//button[contains(., '取消')]").click()
+    WebDriverWait(drv, 5).until(
+        lambda d: not d.find_elements(By.XPATH, "//input[@id='group-name']"))
     # 删除 cascade 提示（分组含算法时，§7.1）
     del_btn = drv.find_element(By.XPATH, "//button[@aria-label='删除分组 语音识别']")
     del_btn.click()
@@ -451,6 +462,17 @@ def test_08_import_export_reload(drv):
     drv.find_element(By.XPATH, "//button[contains(., '导入')]").click()
     WebDriverWait(drv, 6).until(lambda d: 'JSON 格式错误' in _body_text(drv))
     _press_esc(drv)
+    # 有效 JSON 导入：2 个新类型 → toast「成功导入 2 个算法」+ 列表计数 7→9（§7.6/P3-1）
+    _click_more_action(drv, '导入算法')
+    WebDriverWait(drv, 8).until(lambda d: '支持 .json 文件，格式与导出算法一致' in _body_text(drv))
+    ta = drv.find_element(By.XPATH, "//textarea[@aria-label='算法定义 JSON']")
+    ta.send_keys('[{"type":"tts-import-a","name":"导入识别引擎A","groupId":1,"status":"online"},'
+                 '{"type":"tts-import-b","name":"导入识别引擎B","status":"offline"}]')
+    drv.find_element(By.XPATH, "//button[contains(., '导入')]").click()
+    WebDriverWait(drv, 6).until(lambda d: '成功导入 2 个算法' in _body_text(drv))
+    _wait_rows_retry(drv, 9)
+    txt = _body_text(drv)
+    assert '导入识别引擎A' in txt and '导入识别引擎B' in txt, f'导入算法未入列表：{txt[:200]}'
     # 导出算法（§7.14 直接下载 + toast）
     _click_more_action(drv, '导出算法')
     WebDriverWait(drv, 6).until(lambda d: '配置已导出' in _body_text(drv))
@@ -460,6 +482,9 @@ def test_08_import_export_reload(drv):
         lambda d: '将重载后端算法配置缓存，使最近变更立即生效。确定重载吗？' in _body_text(drv))
     _alert_button(drv, '重载').click()
     WebDriverWait(drv, 6).until(lambda d: '配置已重载' in _body_text(drv))
+    # 刷新还原基线（内存 mock 模块级 store 随整页刷新重置，不留测试残留）
+    _goto(drv, '/AlgorithmConfig')
+    _wait_rows_retry(drv, 7)
 
 
 # ── 9. 批量删除 + 全局算法切换器联动 ──
