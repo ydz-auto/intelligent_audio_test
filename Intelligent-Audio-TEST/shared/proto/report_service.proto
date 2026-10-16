@@ -201,6 +201,12 @@ service BenchmarkConfigService {
   rpc CreateBenchmarkMetricMapping(BenchmarkCommandRequest) returns (BenchmarkResponse);
   // 更新指标映射（写侧命令 + 审计）
   rpc UpdateBenchmarkMetricMapping(BenchmarkCommandRequest) returns (BenchmarkResponse);
+  // 发布 Benchmark 报告（INT-481：聚合排行快照 → 复用报告 7 表结构 → benchmark_reports 落库）
+  rpc CreateBenchmarkReport(BenchmarkCommandRequest) returns (BenchmarkResponse);
+  // Benchmark 报告发布记录列表（INT-481 读侧）
+  rpc ListBenchmarkReports(BenchmarkQueryRequest) returns (BenchmarkResponse);
+  // Benchmark 报告发布记录详情（INT-481 读侧）
+  rpc GetBenchmarkReport(BenchmarkQueryRequest) returns (BenchmarkResponse);
 }
 
 message BenchmarkCommandRequest {

@@ -13,6 +13,7 @@ import logging
 from report_service.application.commands.benchmark_commands import (
     ComputeBenchmarkRankingCommand,
     CreateBenchmarkMetricMappingCommand,
+    CreateBenchmarkReportCommand,
     CreateBenchmarkSourceCommand,
     ImportBenchmarkBaselinesCommand,
     UpdateBenchmarkMetricMappingCommand,
@@ -20,8 +21,10 @@ from report_service.application.commands.benchmark_commands import (
 from report_service.application.queries.benchmark_queries import (
     GetBenchmarkRankingQuery,
     GetBenchmarkRankingSubjectsQuery,
+    GetBenchmarkReportQuery,
     ListBenchmarkBaselinesQuery,
     ListBenchmarkMetricMappingsQuery,
+    ListBenchmarkReportsQuery,
     ListBenchmarkSourcesQuery,
 )
 from report_service.application.services.benchmark_baseline_service import (
@@ -31,6 +34,10 @@ from report_service.application.services.benchmark_baseline_service import (
 from report_service.application.services.benchmark_ranking_service import (
     BenchmarkRankingService,
     benchmark_ranking_service,
+)
+from report_service.application.services.benchmark_report_service import (
+    BenchmarkReportService,
+    benchmark_report_service,
 )
 from report_service.config.config import Config
 
@@ -48,9 +55,11 @@ class BenchmarkCommandHandler:
     """Benchmark 写侧处理器。"""
 
     def __init__(self, ranking_service: BenchmarkRankingService = None,
-                 baseline_service: BenchmarkBaselineService = None):
+                 baseline_service: BenchmarkBaselineService = None,
+                 report_service: BenchmarkReportService = None):
         self._ranking_service = ranking_service or benchmark_ranking_service
         self._baseline_service = baseline_service or benchmark_baseline_service
+        self._report_service = report_service or benchmark_report_service
 
     def handle_compute_ranking(self, command: ComputeBenchmarkRankingCommand) -> dict:
         return self._ranking_service.compute_ranking(command)
@@ -66,6 +75,10 @@ class BenchmarkCommandHandler:
 
     def handle_create_metric_mapping(self, command: CreateBenchmarkMetricMappingCommand) -> dict:
         return self._baseline_service.create_metric_mapping(command)
+
+    def handle_create_report(self, command: CreateBenchmarkReportCommand) -> dict:
+        """发布 Benchmark 报告（INT-481 写侧）。"""
+        return self._report_service.publish(command)
 
 
 class BenchmarkQueryHandler:
@@ -158,3 +171,35 @@ class BenchmarkQueryHandler:
         except Exception:
             logger.exception('查询 Benchmark 指标映射失败')
             return {'success': False, 'message': '查询指标映射失败，请稍后重试', 'data': None, 'code': 500}
+
+    # ---------- Benchmark 报告发布记录（INT-481 读侧） ----------
+
+    def handle_list_reports(self, query: ListBenchmarkReportsQuery) -> dict:
+        try:
+            data = self.repo.list_benchmark_reports(
+                {
+                    'suite': query.suite or '',
+                    'category': query.category or '',
+                    'source': query.source or '',
+                    'task_id': query.task_id,
+                },
+                page=max(int(query.page), 1),
+                per_page=min(max(int(query.per_page), 1), Config.BENCHMARK_MAX_PER_PAGE),
+            )
+            return {'success': True, 'message': 'ok', 'data': data, 'code': 0}
+        except Exception:
+            logger.exception('查询 Benchmark 报告列表失败')
+            return {'success': False, 'message': '查询 Benchmark 报告失败，请稍后重试',
+                    'data': None, 'code': 500}
+
+    def handle_get_report(self, query: GetBenchmarkReportQuery) -> dict:
+        try:
+            record = self.repo.get_benchmark_report(query.report_id)
+            if record is None:
+                return {'success': False, 'message': 'Benchmark 报告不存在',
+                        'data': None, 'code': 404}
+            return {'success': True, 'message': 'ok', 'data': record, 'code': 0}
+        except Exception:
+            logger.exception('查询 Benchmark 报告详情失败')
+            return {'success': False, 'message': '查询 Benchmark 报告失败，请稍后重试',
+                    'data': None, 'code': 500}

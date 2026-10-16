@@ -182,6 +182,53 @@ class _BenchmarkConfigProxy:
             error_msg_prefix='查询指标映射失败',
         )
 
+    # ---- Benchmark 报告发布（INT-481） ----
+
+    def create_report(self, params):
+        """发布 Benchmark 报告（聚合排行快照 → 复用报告 7 表结构 → benchmark_reports 落库）"""
+        def _call():
+            stub = get_benchmark_config_service_stub()
+            resp = stub.CreateBenchmarkReport(report_pb.BenchmarkCommandRequest(
+                data=json.dumps(params or {}, ensure_ascii=False, default=str),
+            ))
+            return self._resp(resp)
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'发布 Benchmark 报告失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='发布 Benchmark 报告失败',
+        )
+
+    def list_reports(self, params):
+        """Benchmark 报告发布记录列表"""
+        def _call():
+            stub = get_benchmark_config_service_stub()
+            resp = stub.ListBenchmarkReports(report_pb.BenchmarkQueryRequest(
+                data=json.dumps(params or {}, ensure_ascii=False, default=str),
+            ))
+            return self._resp(resp)
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'查询 Benchmark 报告失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='查询 Benchmark 报告失败',
+        )
+
+    def get_report(self, report_id):
+        """Benchmark 报告发布记录详情"""
+        def _call():
+            stub = get_benchmark_config_service_stub()
+            resp = stub.GetBenchmarkReport(report_pb.BenchmarkQueryRequest(
+                data=json.dumps({'report_id': int(report_id)}, ensure_ascii=False, default=str),
+            ))
+            return self._resp(resp)
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'查询 Benchmark 报告详情失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='查询 Benchmark 报告详情失败',
+        )
+
 
 # Benchmark 排行代理模块级单例
 benchmark_config_service = _BenchmarkConfigProxy()

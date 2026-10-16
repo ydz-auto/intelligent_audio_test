@@ -1,4 +1,4 @@
-"""Benchmark 排行路由 - BFF 路由层（D1 双轨排行）
+"""Benchmark 排行路由 - BFF 路由层（D1 双轨排行 + INT-481 报告发布）
 
 只做 HTTP 接入 + 权限校验，委托给 application/services/benchmark/benchmark_service：
 - BenchmarkService（写侧命令 + 读侧查询，gRPC 代理转发 report_service）
@@ -7,6 +7,7 @@
 - benchmark:ranking:read / benchmark:ranking:compute
 - benchmark:baseline:read / benchmark:baseline:write / benchmark:baseline:publish
 - benchmark:mapping:manage
+- benchmark:report:read / benchmark:report:publish（INT-481：报告发布/查询）
 """
 from fastapi import APIRouter
 
@@ -85,3 +86,20 @@ def create_metric_mapping(_: None = require_permission('benchmark:mapping:manage
 def update_metric_mapping(mapping_id: int,
                           _: None = require_permission('benchmark:mapping:manage')):
     return _handle(BenchmarkService.update_metric_mapping(mapping_id))
+
+
+# ---------- Benchmark 报告发布（INT-481 §7.3） ----------
+
+@router.post('/reports')
+def publish_report(_: None = require_permission('benchmark:report:publish')):
+    return _handle(BenchmarkService.create_report())
+
+
+@router.get('/reports')
+def list_reports(_: None = require_permission('benchmark:report:read')):
+    return _handle(BenchmarkService.list_reports())
+
+
+@router.get('/reports/{report_id}')
+def get_report(report_id: int, _: None = require_permission('benchmark:report:read')):
+    return _handle(BenchmarkService.get_report(report_id))

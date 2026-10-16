@@ -4,7 +4,7 @@ RBAC 种子数据初始化
 ===================================
 
 向 permissions / roles / role_permissions 表插入系统内置数据：
-  - 108 个权限点（permissions）
+  - 110 个权限点（permissions）
   - 5 个系统角色（roles: admin / tester / algo_engineer / device_admin / guest）
   - 超级通配权限 * → admin
   - tester / algo_engineer / device_admin / guest 各自的角色-权限映射
@@ -40,7 +40,7 @@ POSTGRES_URI = os.environ.get(
 
 
 # ========================================================================
-# 权限点定义（108 个）
+# 权限点定义（110 个）
 # ========================================================================
 
 PERMISSIONS = [
@@ -121,6 +121,9 @@ PERMISSIONS = [
     ('benchmark:baseline:write', '创建外部基线数据源'),
     ('benchmark:baseline:publish', '导入/发布外部基线版本'),
     ('benchmark:mapping:manage', '管理指标映射'),
+    # Benchmark 报告 (2)（INT-481：报告发布/查询）
+    ('benchmark:report:read', '查看 Benchmark 报告'),
+    ('benchmark:report:publish', '发布 Benchmark 报告'),
     # 评估 (5)
     ('evaluation:read', '查看评估维度'),
     ('evaluation:execute', '触发重新评估'),
@@ -211,6 +214,8 @@ TESTER_PERMS = [
     'benchmark:ranking:read', 'benchmark:ranking:compute',
     'benchmark:baseline:read', 'benchmark:baseline:write',
     'benchmark:baseline:publish', 'benchmark:mapping:manage',
+    # Benchmark 报告（INT-481：tester 可查看/发布）
+    'benchmark:report:read', 'benchmark:report:publish',
     'evaluation:read', 'evaluation:execute', 'evaluation:dim_manage',
     'evaluation:category_manage', 'evaluation:import_export',
     'algorithm:read', 'algorithm:case_param_manage',
@@ -235,6 +240,8 @@ ALGO_ENGINEER_PERMS = [
     'benchmark:ranking:read', 'benchmark:ranking:compute',
     'benchmark:baseline:read', 'benchmark:baseline:write',
     'benchmark:baseline:publish', 'benchmark:mapping:manage',
+    # Benchmark 报告（INT-481：质量负责人可查看/发布）
+    'benchmark:report:read', 'benchmark:report:publish',
     'evaluation:read', 'evaluation:dim_manage', 'evaluation:category_manage',
     'evaluation:import_export',
     'algorithm:read', 'algorithm:definition_manage', 'algorithm:group_manage',

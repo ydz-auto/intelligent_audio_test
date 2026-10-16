@@ -128,3 +128,39 @@ class BenchmarkRepository(ABC):
     ) -> List[Dict[str, Any]]:
         """列全部当前生效（is_current=True）的基线条目（排行计算读侧用，不分页）。"""
         ...
+
+    # ---------- Benchmark 报告发布记录（INT-481 第五表） ----------
+
+    @abstractmethod
+    def insert_benchmark_report(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """写入 Benchmark 报告发布记录（report_id 关联 test_reports 聚合根）。
+
+        Args:
+            data: {report_id, task_id, suite, category, source, algorithm_set,
+                   published_task_count, subject_count, metric_count,
+                   ranking_data, version, published_by}
+
+        Returns:
+            {id, report_id, ...}（含自增 id 与 created_at/published_at）
+        """
+        ...
+
+    @abstractmethod
+    def list_benchmark_reports(
+        self, filters: Dict[str, Any], page: int, per_page: int,
+    ) -> Dict[str, Any]:
+        """分页列 Benchmark 报告发布记录（可筛选 suite/category/source/task_id）。
+
+        返回 {items, total, page, per_page, pages}，items 按 published_at 倒序。
+        """
+        ...
+
+    @abstractmethod
+    def get_benchmark_report(self, report_id: int) -> Optional[Dict[str, Any]]:
+        """按发布记录 ID 查 Benchmark 报告详情（含 ranking_data 快照）。"""
+        ...
+
+    @abstractmethod
+    def max_benchmark_report_version(self, suite: str = '', category: str = '') -> int:
+        """查询某 suite/category 下已发布 Benchmark 报告的最大版本号（无记录返回 0）。"""
+        ...

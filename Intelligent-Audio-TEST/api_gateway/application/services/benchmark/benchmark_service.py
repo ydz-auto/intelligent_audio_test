@@ -15,6 +15,7 @@ from api_gateway.schemas.benchmark import (
     BenchmarkMetricMappingCreateRequest,
     BenchmarkMetricMappingUpdateRequest,
     BenchmarkRankingComputeRequest,
+    BenchmarkReportCreateRequest,
     BenchmarkSourceCreateRequest,
 )
 
@@ -123,6 +124,59 @@ class BenchmarkService:
                 result.get('message', '更新指标映射失败'),
                 code=result.get('code', ErrorCode.OPERATION_FAILED), http_code=400)
         return success_response(result.get('data'), result.get('message', '指标映射已更新'))
+
+    # ---------- Benchmark 报告发布（INT-481） ----------
+
+    @staticmethod
+    def create_report():
+        """发布 Benchmark 报告（聚合排行快照 → 复用报告 7 表结构 → benchmark_reports 落库）。"""
+        try:
+            req = BenchmarkReportCreateRequest.model_validate(request.get_json() or {})
+        except Exception as e:
+            return error_response(f"请求数据验证失败: {str(e)}", code=ErrorCode.INVALID_PARAMS, http_code=400)
+        payload = req.model_dump(by_alias=False, exclude_none=True)
+        # 审计发布人以网关认证身份为准（设计文档 §9）
+        payload['published_by'] = request.username
+        result = _benchmark_acl.create_report(payload)
+        if not result.get('success'):
+            return error_response(
+                result.get('message', '发布 Benchmark 报告失败'),
+                code=result.get('code', ErrorCode.OPERATION_FAILED),
+                http_code=400 if result.get('code') not in (404,) else 404)
+        return success_response(result.get('data'), result.get('message', 'Benchmark 报告发布成功'), http_code=201)
+
+    @staticmethod
+    def list_reports():
+        params = _parse_query_params()
+        source = (params.get('source') or '').strip()
+        if source and source not in _SOURCE_FILTER_VALUES:
+            return error_response(
+                'source 筛选参数仅支持 platform_test / external_import',
+                code=ErrorCode.INVALID_PARAMS, http_code=400)
+        result = _benchmark_acl.list_reports({
+            'suite': (params.get('suite') or '').strip(),
+            'category': (params.get('category') or '').strip(),
+            'source': source,
+            'task_id': params.get('taskId') or params.get('task_id'),
+            'page': params.get('page', 1),
+            'per_page': params.get('perPage', params.get('per_page', 20)),
+        })
+        if not result.get('success'):
+            return error_response(result.get('message', '查询 Benchmark 报告失败'),
+                                  code=result.get('code', 500))
+        return success_response(result.get('data'))
+
+    @staticmethod
+    def get_report(report_id: int):
+        result = _benchmark_acl.get_report(report_id)
+        if not result.get('success'):
+            code = result.get('code', 500)
+            if code == 404:
+                return error_response(result.get('message', 'Benchmark 报告不存在'),
+                                      code=ErrorCode.NOT_FOUND, http_code=404)
+            return error_response(result.get('message', '查询 Benchmark 报告详情失败'),
+                                  code=code, http_code=500)
+        return success_response(result.get('data'))
 
     # ---------- 读侧 ----------
 

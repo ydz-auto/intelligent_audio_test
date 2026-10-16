@@ -85,3 +85,30 @@ class UpdateBenchmarkMetricMappingCommand:
     direction: Optional[str] = None
     scenario_tags: Optional[List[str]] = None
     active: Optional[bool] = None
+
+
+@dataclass(frozen=True)
+class CreateBenchmarkReportCommand:
+    """发布 Benchmark 报告命令（INT-481：写侧，聚合排行快照入库 benchmark_reports）。
+
+    报告主记录复用报告 7 表结构（report_type='benchmark'），
+    ranking_data 为发布时点排行 ReadModel 快照，报告不随后续重算漂移。
+
+    Attributes:
+        task_id: 可选来源任务 ID（正式任务发布聚合）
+        suite: 可选测试集筛选（空 = 全量）
+        category: 可选被测类别筛选（asr / voice_llm / tts / translation）
+        source: 可选双轨来源筛选（platform_test / external_import，空 = 全量）
+        algorithm_set: 可选算法集标识（空 = 全量）
+        name: 报告名（空 = 自动生成）
+        description: 报告描述
+        published_by: 发布人（审计；网关注入认证身份）
+    """
+    task_id: Optional[int] = None
+    suite: str = ''
+    category: str = ''
+    source: str = ''
+    algorithm_set: str = ''
+    name: str = ''
+    description: str = ''
+    published_by: str = ''

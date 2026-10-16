@@ -70,3 +70,14 @@ class BenchmarkMetricMappingUpdateRequest(APIModel):
     direction: Optional[str] = Field(None)
     scenario_tags: Optional[List[str]] = Field(None)
     active: Optional[bool] = Field(None)
+
+
+class BenchmarkReportCreateRequest(APIModel):
+    """Benchmark 报告发布请求（INT-481：全字段可选 = 聚合当前全量排行快照）"""
+    task_id: Optional[int] = Field(None, description='来源任务 ID（正式任务发布聚合，可空）')
+    suite: str = Field('', description='测试集标识（空 = 全量）')
+    category: str = Field('', description='asr / voice_llm / tts / translation（空 = 全量）')
+    source: str = Field('', description='platform_test / external_import（空 = 全量）')
+    algorithm_set: str = Field('', description='算法集标识（空 = 全量）')
+    name: str = Field('', description='报告名（空 = 自动生成）')
+    description: str = Field('')

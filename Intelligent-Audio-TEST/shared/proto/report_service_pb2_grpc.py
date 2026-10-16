@@ -1395,6 +1395,21 @@ class BenchmarkConfigServiceStub:
                 request_serializer=report__service__pb2.BenchmarkCommandRequest.SerializeToString,
                 response_deserializer=report__service__pb2.BenchmarkResponse.FromString,
                 _registered_method=True)
+        self.CreateBenchmarkReport = channel.unary_unary(
+                '/report.BenchmarkConfigService/CreateBenchmarkReport',
+                request_serializer=report__service__pb2.BenchmarkCommandRequest.SerializeToString,
+                response_deserializer=report__service__pb2.BenchmarkResponse.FromString,
+                _registered_method=True)
+        self.ListBenchmarkReports = channel.unary_unary(
+                '/report.BenchmarkConfigService/ListBenchmarkReports',
+                request_serializer=report__service__pb2.BenchmarkQueryRequest.SerializeToString,
+                response_deserializer=report__service__pb2.BenchmarkResponse.FromString,
+                _registered_method=True)
+        self.GetBenchmarkReport = channel.unary_unary(
+                '/report.BenchmarkConfigService/GetBenchmarkReport',
+                request_serializer=report__service__pb2.BenchmarkQueryRequest.SerializeToString,
+                response_deserializer=report__service__pb2.BenchmarkResponse.FromString,
+                _registered_method=True)
 
 
 class BenchmarkConfigServiceServicer:
@@ -1471,6 +1486,27 @@ class BenchmarkConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def CreateBenchmarkReport(self, request, context):
+        """发布 Benchmark 报告（INT-481：聚合排行快照 → 复用报告 7 表结构 → benchmark_reports 落库）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListBenchmarkReports(self, request, context):
+        """Benchmark 报告发布记录列表（INT-481 读侧）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetBenchmarkReport(self, request, context):
+        """Benchmark 报告发布记录详情（INT-481 读侧）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_BenchmarkConfigServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -1522,6 +1558,21 @@ def add_BenchmarkConfigServiceServicer_to_server(servicer, server):
             'UpdateBenchmarkMetricMapping': grpc.unary_unary_rpc_method_handler(
                     servicer.UpdateBenchmarkMetricMapping,
                     request_deserializer=report__service__pb2.BenchmarkCommandRequest.FromString,
+                    response_serializer=report__service__pb2.BenchmarkResponse.SerializeToString,
+            ),
+            'CreateBenchmarkReport': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateBenchmarkReport,
+                    request_deserializer=report__service__pb2.BenchmarkCommandRequest.FromString,
+                    response_serializer=report__service__pb2.BenchmarkResponse.SerializeToString,
+            ),
+            'ListBenchmarkReports': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListBenchmarkReports,
+                    request_deserializer=report__service__pb2.BenchmarkQueryRequest.FromString,
+                    response_serializer=report__service__pb2.BenchmarkResponse.SerializeToString,
+            ),
+            'GetBenchmarkReport': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetBenchmarkReport,
+                    request_deserializer=report__service__pb2.BenchmarkQueryRequest.FromString,
                     response_serializer=report__service__pb2.BenchmarkResponse.SerializeToString,
             ),
     }
@@ -1795,6 +1846,87 @@ class BenchmarkConfigService:
             target,
             '/report.BenchmarkConfigService/UpdateBenchmarkMetricMapping',
             report__service__pb2.BenchmarkCommandRequest.SerializeToString,
+            report__service__pb2.BenchmarkResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateBenchmarkReport(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.BenchmarkConfigService/CreateBenchmarkReport',
+            report__service__pb2.BenchmarkCommandRequest.SerializeToString,
+            report__service__pb2.BenchmarkResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListBenchmarkReports(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.BenchmarkConfigService/ListBenchmarkReports',
+            report__service__pb2.BenchmarkQueryRequest.SerializeToString,
+            report__service__pb2.BenchmarkResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetBenchmarkReport(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.BenchmarkConfigService/GetBenchmarkReport',
+            report__service__pb2.BenchmarkQueryRequest.SerializeToString,
             report__service__pb2.BenchmarkResponse.FromString,
             options,
             channel_credentials,

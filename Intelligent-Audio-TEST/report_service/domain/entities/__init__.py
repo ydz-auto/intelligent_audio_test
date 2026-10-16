@@ -18,6 +18,7 @@ from report_service.domain.entities.report import (
 from report_service.domain.entities.benchmark import (
     BaselineDraftEntry,
     BenchmarkCategory,
+    BenchmarkReport,
     BenchmarkSourceType,
     MetricMapping,
     RankingDirection,
@@ -40,6 +41,7 @@ __all__ = [
     'ReportComparisonMatrixEntity',
     'BaselineDraftEntry',
     'BenchmarkCategory',
+    'BenchmarkReport',
     'BenchmarkSourceType',
     'MetricMapping',
     'RankingDirection',

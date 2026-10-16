@@ -27,6 +27,7 @@ from report_service.application.commands.report_commands import (
 from report_service.application.commands.benchmark_commands import (
     ComputeBenchmarkRankingCommand,
     CreateBenchmarkMetricMappingCommand,
+    CreateBenchmarkReportCommand,
     CreateBenchmarkSourceCommand,
     ImportBenchmarkBaselinesCommand,
     UpdateBenchmarkMetricMappingCommand,
@@ -38,8 +39,10 @@ from report_service.application.handlers.report_handlers import (
 from report_service.application.queries.benchmark_queries import (
     GetBenchmarkRankingQuery,
     GetBenchmarkRankingSubjectsQuery,
+    GetBenchmarkReportQuery,
     ListBenchmarkBaselinesQuery,
     ListBenchmarkMetricMappingsQuery,
+    ListBenchmarkReportsQuery,
     ListBenchmarkSourcesQuery,
 )
 from report_service.application.queries.report_queries import (
@@ -989,4 +992,59 @@ class BenchmarkServicer:
                               result.get('data'), result.get('code', 0))
         except Exception as e:
             logger.exception("ListBenchmarkMetricMappings failed")
+            return self._resp(False, str(e), {}, 500)
+
+    # ==================== Benchmark 报告发布（INT-481） ====================
+
+    def CreateBenchmarkReport(self, request, context=None):
+        """发布 Benchmark 报告（聚合排行快照 → 复用报告 7 表结构 → benchmark_reports 落库）。"""
+        try:
+            params = _loads(request.data, {}) or {}
+            command = CreateBenchmarkReportCommand(
+                task_id=params.get('task_id', params.get('taskId')),
+                suite=params.get('suite') or '',
+                category=params.get('category') or '',
+                source=params.get('source') or '',
+                algorithm_set=params.get('algorithm_set', params.get('algorithmSet')) or '',
+                name=params.get('name') or '',
+                description=params.get('description') or '',
+                published_by=params.get('published_by', params.get('publishedBy')) or '',
+            )
+            result = self.command_handler.handle_create_report(command)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("CreateBenchmarkReport failed")
+            return self._resp(False, str(e), {}, 500)
+
+    def ListBenchmarkReports(self, request, context=None):
+        """Benchmark 报告发布记录列表（读侧）。"""
+        try:
+            params = _loads(request.data, {}) or {}
+            query = ListBenchmarkReportsQuery(
+                suite=(params.get('suite') or '').strip() or None,
+                category=(params.get('category') or '').strip() or None,
+                source=(params.get('source') or '').strip() or None,
+                task_id=params.get('task_id', params.get('taskId')),
+                page=params.get('page', 1),
+                per_page=params.get('per_page', params.get('perPage', 20)),
+            )
+            result = self.query_handler.handle_list_reports(query)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("ListBenchmarkReports failed")
+            return self._resp(False, str(e), {}, 500)
+
+    def GetBenchmarkReport(self, request, context=None):
+        """Benchmark 报告发布记录详情（读侧，含排行快照）。"""
+        try:
+            params = _loads(request.data, {}) or {}
+            query = GetBenchmarkReportQuery(
+                report_id=params.get('report_id', params.get('reportId')))
+            result = self.query_handler.handle_get_report(query)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("GetBenchmarkReport failed")
             return self._resp(False, str(e), {}, 500)

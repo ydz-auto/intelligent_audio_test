@@ -2,12 +2,16 @@
 """report_service Benchmark 排行 PO 定义（D1 双轨排行）
 
 归属：report_service（报告上下文）
-表：benchmark_rankings / benchmark_metric_mappings / benchmark_sources / benchmark_baselines
+表：benchmark_rankings / benchmark_metric_mappings / benchmark_sources
+    / benchmark_baselines / benchmark_reports（INT-481 第五表）
 
-设计文档：《报告Benchmark排行功能设计文档》§6.3-§6.6。
+设计文档：《报告Benchmark排行功能设计文档》§6.3-§6.7。
 - benchmark_rankings 是排行 ReadModel 缓存：仅由排行计算（写侧命令）整体刷新，
   查询侧只读，不产生写副作用（严格 CQRS）。
 - benchmark_baselines 导入即不可变快照：版本行只插不改，重复导入幂等。
+- benchmark_reports 是 Benchmark 报告发布记录（INT-481）：report_id 关联
+  test_reports 报告 7 表聚合根，ranking_data 存发布时点排行 ReadModel 快照
+  JSON，报告不随后续重算漂移。
 """
 from shared.models.database import Base, utc8now
 from sqlalchemy import (
@@ -113,3 +117,38 @@ class BenchmarkBaseline(Base):
     version = Column(Integer, nullable=False, default=1, comment='基线版本号，从 1 开始')
     is_current = Column(Boolean, nullable=False, default=True, comment='是否当前版本')
     created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+
+
+class BenchmarkReport(Base):
+    """Benchmark 报告发布记录（INT-481 第五表）。
+
+    设计文档《报告Benchmark排行功能设计文档》§6.7 + INT-481 数据模型草案：
+    报告主记录复用 test_reports 报告 7 表结构（report_id 关联聚合根），
+    本表承载发布元数据与发布时点的排行快照（ranking_data JSON）。
+    """
+    __tablename__ = 'benchmark_reports'
+    __table_args__ = (
+        Index('idx_benchmark_reports_report_id', 'report_id'),
+        Index('idx_benchmark_reports_task_id', 'task_id'),
+        Index('idx_benchmark_reports_suite', 'suite'),
+        Index('idx_benchmark_reports_category', 'category'),
+        Index('idx_benchmark_reports_source', 'source'),
+        Index('idx_benchmark_reports_created_at', 'created_at'),
+        Index('idx_benchmark_reports_version', 'version'),
+    )
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment='发布记录 ID')
+    report_id = Column(BigInteger, comment='外键 → test_reports.id（Benchmark 报告聚合根）')
+    task_id = Column(BigInteger, comment='来源任务 ID（正式任务发布聚合，可空）')
+    suite = Column(String(120), comment='测试集标识')
+    category = Column(String(30), comment='asr / voice_llm / tts / translation')
+    source = Column(String(30), comment='双轨来源：platform_test / external_import（空=全量）')
+    algorithm_set = Column(String(120), comment='算法集标识（空=全量）')
+    published_task_count = Column(Integer, nullable=False, default=0, comment='参与排行的正式任务数')
+    subject_count = Column(Integer, nullable=False, default=0, comment='参与排行的被测主体数')
+    metric_count = Column(Integer, nullable=False, default=0, comment='参与排行的指标数')
+    ranking_data = Column(JSON, comment='指标数据快照（发布时点排行 ReadModel，报告不漂移）')
+    version = Column(Integer, nullable=False, default=1, comment='Benchmark 报告版本号')
+    published_by = Column(String(120), comment='发布人')
+    published_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='发布时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')

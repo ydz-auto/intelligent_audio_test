@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
-"""迁移脚本：Benchmark 排行 4 表 + 指标映射种子数据（D1 双轨排行，INT-27）
+"""迁移脚本：Benchmark 排行 5 表 + 指标映射种子数据（D1 双轨排行，INT-27 + INT-481 五表缺口）
 
 功能：
 - 建 benchmark_rankings 表（排行 ReadModel：查询侧只读，写侧整体刷新）
 - 建 benchmark_metric_mappings 表（指标映射单一事实源）+ 设计文档 §5.1 默认映射种子
 - 建 benchmark_sources 表（外部基线数据源）
 - 建 benchmark_baselines 表（外部基线条目，导入即不可变版本快照）
+- 建 benchmark_reports 表（Benchmark 报告发布记录第五表，INT-481：发布即排行快照）
 
 幂等，可重复执行。
 
@@ -148,6 +149,31 @@ TABLE_DDL = {
             created_at TIMESTAMP NOT NULL DEFAULT NOW()
         )
     """,
+    # 第五表（INT-481 五表缺口）：Benchmark 报告发布记录。
+    # 设计文档《报告Benchmark排行功能设计文档》§6.7 字段 + INT-481 数据模型草案
+    # （来源任务 / 双轨来源 / 算法集 / 指标数据快照 JSON）。
+    # ranking_data 为发布时点的排行 ReadModel 快照（JSONB），保证报告可追溯、
+    # 报告不随后续重算漂移。
+    'benchmark_reports': """
+        CREATE TABLE benchmark_reports (
+            id BIGSERIAL PRIMARY KEY,
+            report_id BIGINT,
+            task_id BIGINT,
+            suite VARCHAR(120),
+            category VARCHAR(30),
+            source VARCHAR(30),
+            algorithm_set VARCHAR(120),
+            published_task_count INTEGER NOT NULL DEFAULT 0,
+            subject_count INTEGER NOT NULL DEFAULT 0,
+            metric_count INTEGER NOT NULL DEFAULT 0,
+            ranking_data JSONB,
+            version INTEGER NOT NULL DEFAULT 1,
+            published_by VARCHAR(120),
+            published_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+    """,
 }
 
 INDEX_DDL = [
@@ -167,6 +193,21 @@ INDEX_DDL = [
      'CREATE INDEX idx_benchmark_baseline_current ON benchmark_baselines (source_id, category, is_current)'),
     ('idx_benchmark_baseline_metric',
      'CREATE INDEX idx_benchmark_baseline_metric ON benchmark_baselines (category, metric_code)'),
+    # INT-481：benchmark_reports 常用 where/join 列索引
+    ('idx_benchmark_reports_report_id',
+     'CREATE INDEX idx_benchmark_reports_report_id ON benchmark_reports (report_id)'),
+    ('idx_benchmark_reports_task_id',
+     'CREATE INDEX idx_benchmark_reports_task_id ON benchmark_reports (task_id)'),
+    ('idx_benchmark_reports_suite',
+     'CREATE INDEX idx_benchmark_reports_suite ON benchmark_reports (suite)'),
+    ('idx_benchmark_reports_category',
+     'CREATE INDEX idx_benchmark_reports_category ON benchmark_reports (category)'),
+    ('idx_benchmark_reports_source',
+     'CREATE INDEX idx_benchmark_reports_source ON benchmark_reports (source)'),
+    ('idx_benchmark_reports_created_at',
+     'CREATE INDEX idx_benchmark_reports_created_at ON benchmark_reports (created_at)'),
+    ('idx_benchmark_reports_version',
+     'CREATE INDEX idx_benchmark_reports_version ON benchmark_reports (version)'),
 ]
 
 
@@ -230,7 +271,7 @@ def main(dry_run=False):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Benchmark 排行 4 表 + 指标映射种子迁移')
+    parser = argparse.ArgumentParser(description='Benchmark 排行 5 表 + 指标映射种子迁移')
     parser.add_argument('--dry-run', action='store_true', help='只检查不执行')
     args = parser.parse_args()
     main(dry_run=args.dry_run)

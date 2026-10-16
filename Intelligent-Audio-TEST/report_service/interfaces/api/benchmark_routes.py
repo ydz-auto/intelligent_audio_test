@@ -18,6 +18,9 @@
     GET  /api/benchmarks/metric-mappings        指标映射列表
     POST /api/benchmarks/metric-mappings        创建指标映射（dimension_name 唯一）
     PUT  /api/benchmarks/metric-mappings/{id}   更新指标映射
+    POST /api/benchmarks/reports                发布 Benchmark 报告（INT-481 §7.3）
+    GET  /api/benchmarks/reports                Benchmark 报告列表（INT-481 §7.3）
+    GET  /api/benchmarks/reports/{id}           Benchmark 报告详情（INT-481 §7.3）
 """
 from __future__ import annotations
 
@@ -30,6 +33,7 @@ from pydantic import BaseModel, Field
 from report_service.application.commands.benchmark_commands import (
     ComputeBenchmarkRankingCommand,
     CreateBenchmarkMetricMappingCommand,
+    CreateBenchmarkReportCommand,
     CreateBenchmarkSourceCommand,
     ImportBenchmarkBaselinesCommand,
     UpdateBenchmarkMetricMappingCommand,
@@ -41,8 +45,10 @@ from report_service.application.handlers.benchmark_handlers import (
 from report_service.application.queries.benchmark_queries import (
     GetBenchmarkRankingQuery,
     GetBenchmarkRankingSubjectsQuery,
+    GetBenchmarkReportQuery,
     ListBenchmarkBaselinesQuery,
     ListBenchmarkMetricMappingsQuery,
+    ListBenchmarkReportsQuery,
     ListBenchmarkSourcesQuery,
 )
 from report_service.domain.entities.benchmark import BaselineDraftEntry
@@ -115,6 +121,19 @@ class BenchmarkMetricMappingUpdateRequest(BaseModel):
     direction: Optional[str] = None
     scenario_tags: Optional[List[str]] = Field(None, alias='scenarioTags')
     active: Optional[bool] = None
+
+    model_config = {'populate_by_name': True}
+
+
+class BenchmarkReportCreateRequest(BaseModel):
+    """Benchmark 报告发布请求（INT-481：全字段可选 = 聚合当前全量排行快照）。"""
+    task_id: Optional[int] = Field(None, alias='taskId')
+    suite: str = ''
+    category: str = ''
+    source: str = ''
+    algorithm_set: str = Field('', alias='algorithmSet')
+    name: str = ''
+    description: str = ''
 
     model_config = {'populate_by_name': True}
 
@@ -246,3 +265,35 @@ def update_metric_mapping(mapping_id: int, req: BenchmarkMetricMappingUpdateRequ
         direction=req.direction, scenario_tags=req.scenario_tags, active=req.active,
     )
     return _command_handler.handle_update_metric_mapping(command)
+
+
+# ---------- Benchmark 报告发布（INT-481 §7.3） ----------
+
+@router.post('/reports')
+def publish_report(req: BenchmarkReportCreateRequest):
+    """发布 Benchmark 报告：聚合当前排行快照 → 复用报告 7 表结构建主记录 →
+    benchmark_reports 落库 + REPORT_EVENTS 事件 + 审计。"""
+    command = CreateBenchmarkReportCommand(
+        task_id=req.task_id, suite=req.suite, category=req.category, source=req.source,
+        algorithm_set=req.algorithm_set, name=req.name, description=req.description,
+    )
+    return _command_handler.handle_create_report(command)
+
+
+@router.get('/reports')
+def list_reports(
+    suite: str = Query(''),
+    category: str = Query(''),
+    source: str = Query(''),
+    task_id: Optional[int] = Query(None, alias='taskId'),
+    page: int = Query(1),
+    per_page: int = Query(20, alias='perPage'),
+):
+    return _query_handler.handle_list_reports(ListBenchmarkReportsQuery(
+        suite=suite or None, category=category or None, source=source or None,
+        task_id=task_id, page=page, per_page=per_page))
+
+
+@router.get('/reports/{report_id}')
+def get_report(report_id: int):
+    return _query_handler.handle_get_report(GetBenchmarkReportQuery(report_id=report_id))

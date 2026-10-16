@@ -21,10 +21,32 @@ from report_service.infrastructure.persistence.models import (
     BenchmarkBaseline,
     BenchmarkMetricMapping,
     BenchmarkRanking,
+    BenchmarkReport,
     BenchmarkSource,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _benchmark_report_dict(po: BenchmarkReport) -> Dict[str, Any]:
+    return {
+        'id': po.id,
+        'report_id': po.report_id,
+        'task_id': po.task_id,
+        'suite': po.suite,
+        'category': po.category,
+        'source': po.source,
+        'algorithm_set': po.algorithm_set,
+        'published_task_count': po.published_task_count,
+        'subject_count': po.subject_count,
+        'metric_count': po.metric_count,
+        'ranking_data': po.ranking_data,
+        'version': po.version,
+        'published_by': po.published_by,
+        'published_at': po.published_at.isoformat() if po.published_at else None,
+        'created_at': po.created_at.isoformat() if po.created_at else None,
+        'updated_at': po.updated_at.isoformat() if po.updated_at else None,
+    }
 
 
 def _mapping_to_entity(po: BenchmarkMetricMapping) -> MetricMapping:
@@ -441,5 +463,93 @@ class BenchmarkRepositoryImpl(BenchmarkRepository):
                 BenchmarkBaseline.model_name,
             ).all()
             return [_baseline_row_dict(po) for po in rows]
+        finally:
+            session.close()
+
+    # ---------- Benchmark 报告发布记录（INT-481 第五表） ----------
+
+    def insert_benchmark_report(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        session = get_db_session()
+        try:
+            po = BenchmarkReport(
+                report_id=data.get('report_id'),
+                task_id=data.get('task_id'),
+                suite=data.get('suite') or '',
+                category=data.get('category') or '',
+                source=data.get('source') or '',
+                algorithm_set=data.get('algorithm_set') or '',
+                published_task_count=int(data.get('published_task_count') or 0),
+                subject_count=int(data.get('subject_count') or 0),
+                metric_count=int(data.get('metric_count') or 0),
+                ranking_data=data.get('ranking_data') or {},
+                version=int(data.get('version') or 1),
+                published_by=data.get('published_by') or '',
+            )
+            session.add(po)
+            session.commit()
+            session.refresh(po)
+            return _benchmark_report_dict(po)
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def list_benchmark_reports(
+        self, filters: Dict[str, Any], page: int, per_page: int,
+    ) -> Dict[str, Any]:
+        session = get_db_session()
+        try:
+            query = session.query(BenchmarkReport)
+            if filters.get('suite'):
+                query = query.filter(BenchmarkReport.suite == filters['suite'])
+            if filters.get('category'):
+                query = query.filter(BenchmarkReport.category == filters['category'])
+            if filters.get('source'):
+                query = query.filter(BenchmarkReport.source == filters['source'])
+            if filters.get('task_id') is not None:
+                query = query.filter(BenchmarkReport.task_id == int(filters['task_id']))
+            total = query.count()
+            rows = (
+                query.order_by(BenchmarkReport.published_at.desc(),
+                               BenchmarkReport.id.desc())
+                .offset((page - 1) * per_page)
+                .limit(per_page)
+                .all()
+            )
+            items = []
+            for po in rows:
+                item = _benchmark_report_dict(po)
+                # 列表不携带大体积排行快照，避免列表体积膨胀（详情接口再取）
+                item.pop('ranking_data', None)
+                items.append(item)
+            return {
+                'items': items,
+                'total': total,
+                'page': page,
+                'per_page': per_page,
+                'pages': (total + per_page - 1) // per_page if total else 0,
+            }
+        finally:
+            session.close()
+
+    def get_benchmark_report(self, report_id: int) -> Optional[Dict[str, Any]]:
+        session = get_db_session()
+        try:
+            po = session.query(BenchmarkReport).filter(
+                BenchmarkReport.id == int(report_id)).first()
+            return _benchmark_report_dict(po) if po else None
+        finally:
+            session.close()
+
+    def max_benchmark_report_version(self, suite: str = '', category: str = '') -> int:
+        session = get_db_session()
+        try:
+            query = session.query(func.max(BenchmarkReport.version))
+            if suite:
+                query = query.filter(BenchmarkReport.suite == suite)
+            if category:
+                query = query.filter(BenchmarkReport.category == category)
+            return int(query.scalar() or 0)
         finally:
             session.close()

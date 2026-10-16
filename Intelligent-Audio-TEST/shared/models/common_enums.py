@@ -45,6 +45,7 @@ class ReportType(str, Enum):
     TASK = 'task'
     COMPARISON = 'comparison'
     SECONDARY_COMPARISON = 'secondary_comparison'
+    BENCHMARK = 'benchmark'  # INT-481：Benchmark 报告（发布记录见 benchmark_reports 第五表）
 
 
 class TestType(str, Enum):
@@ -259,6 +260,7 @@ class AuditEvent(str, Enum):
     BENCHMARK_BASELINE_IMPORTED = 'BENCHMARK_BASELINE_IMPORTED'
     BENCHMARK_MAPPING_CREATED = 'BENCHMARK_MAPPING_CREATED'
     BENCHMARK_MAPPING_UPDATED = 'BENCHMARK_MAPPING_UPDATED'
+    BENCHMARK_REPORT_PUBLISHED = 'BENCHMARK_REPORT_PUBLISHED'  # INT-481：Benchmark 报告发布
     # 用户/角色/权限管理审计（INT-30，category='auth'）
     AUTH_USER_CREATED = 'AUTH_USER_CREATED'
     AUTH_USER_UPDATED = 'AUTH_USER_UPDATED'

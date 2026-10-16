@@ -58,3 +58,29 @@ class ListBenchmarkBaselinesQuery:
 class ListBenchmarkMetricMappingsQuery:
     """指标映射查询。"""
     active_only: bool = False
+
+
+@dataclass(frozen=True)
+class ListBenchmarkReportsQuery:
+    """Benchmark 报告发布记录分页查询（INT-481 读侧）。
+
+    Attributes:
+        suite: 测试集筛选
+        category: 被测类别筛选
+        source: 双轨来源筛选（platform_test / external_import）
+        task_id: 来源任务筛选
+        page: 页码（从 1 开始）
+        per_page: 每页数量
+    """
+    suite: Optional[str] = None
+    category: Optional[str] = None
+    source: Optional[str] = None
+    task_id: Optional[int] = None
+    page: int = 1
+    per_page: int = 20
+
+
+@dataclass(frozen=True)
+class GetBenchmarkReportQuery:
+    """Benchmark 报告发布记录详情查询（按发布记录 ID）。"""
+    report_id: int

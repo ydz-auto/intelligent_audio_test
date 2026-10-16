@@ -120,3 +120,28 @@ class BaselineDraftEntry:
     scenario_tags: List[str] = field(default_factory=list)
     sample_size: Optional[int] = None
     metric_date: str = ''
+
+
+@dataclass(frozen=True)
+class BenchmarkReport:
+    """Benchmark 报告发布记录领域对象（INT-481 第五表）。
+
+    报告主记录复用 test_reports 报告 7 表结构（report_id 关联聚合根），
+    本对象承载发布元数据与发布时点的排行快照。
+    """
+    id: Optional[int]
+    report_id: Optional[int] = None
+    task_id: Optional[int] = None
+    suite: str = ''
+    category: str = ''
+    source: str = ''
+    algorithm_set: str = ''
+    published_task_count: int = 0
+    subject_count: int = 0
+    metric_count: int = 0
+    ranking_data: Optional[Any] = None
+    version: int = 1
+    published_by: str = ''
+    published_at: Optional[Any] = None
+    created_at: Optional[Any] = None
+    updated_at: Optional[Any] = None
