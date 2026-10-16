@@ -1,12 +1,13 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { hasPermission } from '@/domain/models/user'
-import { PagePlaceholder } from '@/features/placeholder/page-placeholder'
 import { useAuthStore } from '@/infrastructure/stores/auth-store'
+import { TagManagementPage } from '@/features/tags/tags-page'
 
 /**
  * 标签管理 /TagManagement（侧栏「测试配置」组，INT-417 提升）。
- * 页面本体随 INT-356（用例域 §4.2）落地；本卡出导航落位占位。
+ * 11_用例域.md §4.2：左分类树 + 右标签表（categoryName 分组、INT-487 标签带分类）；
+ * TagEdit/TagCategory 模态窗随 §5.4。本卡替换占位路由为完整可视稿。
  * beforeLoad：tag:read 守卫 → 无码整页 /403。
  */
 export const Route = createFileRoute('/_authenticated/TagManagement')({
@@ -16,10 +17,5 @@ export const Route = createFileRoute('/_authenticated/TagManagement')({
       throw redirect({ to: '/403' })
     }
   },
-  component: () => (
-    <PagePlaceholder
-      title='标签管理'
-      note='标签分类与标签管理页面随 INT-356 卡落地'
-    />
-  ),
+  component: TagManagementPage,
 })
