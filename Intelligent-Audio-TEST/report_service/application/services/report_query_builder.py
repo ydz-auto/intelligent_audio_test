@@ -222,6 +222,10 @@ class ReportQueryBuilder:
 
     @staticmethod
     def extract_case_categories_and_tags(test_cases: List) -> tuple:
+        # INT-419：兼容 {id: dict} 映射入参（_grpc_list_testcases_by_ids 契约），
+        # 归一为 dict 值列表再迭代，避免 str 键被当用例静默丢分组/标签
+        if isinstance(test_cases, dict):
+            test_cases = list(test_cases.values())
         case_categories_list = []
         case_tags_list = []
         seen_categories = set()
