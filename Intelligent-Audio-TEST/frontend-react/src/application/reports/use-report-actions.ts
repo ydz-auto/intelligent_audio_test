@@ -88,7 +88,7 @@ export function useReportActions() {
   )
 
   const toggleFavorite = useCallback(async (id: number, nextFavorite: boolean) => {
-    useReportsUiStore.getState().toggleFavorite(id)
+    useReportsUiStore.getState().toggleFavorite(id, nextFavorite)
     await toggleReportFavorite(id).catch(() => {})
     toast.success(nextFavorite ? '已收藏' : '已取消收藏')
     refresh()

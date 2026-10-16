@@ -15,7 +15,7 @@ type ReportsUiState = {
   deletedIds: Set<number>
   /** 已彻底删除报告 id 集合 */
   purgedIds: Set<number>
-  toggleFavorite: (id: number) => void
+  toggleFavorite: (id: number, nextFavorite: boolean) => void
   softDelete: (ids: number[]) => void
   restore: (ids: number[]) => void
   purge: (ids: number[]) => void
@@ -26,16 +26,18 @@ export const useReportsUiStore = create<ReportsUiState>((set) => ({
   unfavoritedIds: new Set(),
   deletedIds: new Set(),
   purgedIds: new Set(),
-  toggleFavorite: (id) =>
+  toggleFavorite: (id, nextFavorite) =>
     set((state) => {
       const favoriteIds = new Set(state.favoriteIds)
       const unfavoritedIds = new Set(state.unfavoritedIds)
-      if (favoriteIds.has(id)) {
-        favoriteIds.delete(id)
-        unfavoritedIds.add(id)
-      } else {
+      if (nextFavorite) {
+        // 目标态：收藏（含从 base 已收藏经演示态取消后再收回，或从未收藏→收藏）
         favoriteIds.add(id)
         unfavoritedIds.delete(id)
+      } else {
+        // 目标态：取消收藏（含 base 已收藏→演示态取消；覆盖集合优先于 base 原值）
+        favoriteIds.delete(id)
+        unfavoritedIds.add(id)
       }
       return { favoriteIds, unfavoritedIds }
     }),

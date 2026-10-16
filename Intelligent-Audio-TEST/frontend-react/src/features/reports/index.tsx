@@ -302,7 +302,8 @@ export function ReportCenterPage() {
   const favoriteOnly = search.favorite ?? false
 
   return (
-    <SectionPageLayout fixedContent>
+    <>
+      <SectionPageLayout fixedContent>
       <SectionPageLayout.Title>
         <span className='inline-flex items-center gap-2'>
           报告中心
@@ -510,6 +511,7 @@ export function ReportCenterPage() {
           )}
         </div>
       </SectionPageLayout.Content>
+      </SectionPageLayout>
 
       {/* 弹窗群 */}
       <GenerateReportDialog
@@ -608,6 +610,6 @@ export function ReportCenterPage() {
         reportId={progressReportId}
         onComplete={handleProgressComplete}
       />
-    </SectionPageLayout>
+    </>
   )
 }
