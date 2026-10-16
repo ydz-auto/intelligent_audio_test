@@ -20,6 +20,7 @@ const routes: Array<RouteRecordRaw> = [
   { path: '/published-tasks', name: 'publishedTasks', redirect: { name: 'tasks', query: { tab: 'published' } } },
   { path: '/history-reports', name: 'historyReports', component: () => import('../views/HistoryReports/HistoryReports.vue'), meta: { permission: 'report:read', title: '历史报告' } },
   { path: '/test-reports', name: 'testReports', component: () => import('../views/TestReports/TestReports.vue'), meta: { permission: 'report:read', title: '测试报告' } },
+  { path: '/benchmarks', name: 'benchmarkRanking', component: () => import('../views/BenchmarkRanking/BenchmarkRanking.vue'), meta: { permission: 'benchmark:ranking:read', title: 'Benchmark 排行' } },
   { path: '/report/:id', name: 'reportView', component: () => import('../views/ReportView/ReportView.vue'), meta: { permission: 'report:read', title: '报告查看' } },
   { path: '/report', name: 'reportViewQuery', component: () => import('../views/ReportView/ReportView.vue'), meta: { permission: 'report:read', title: '报告查看' } },
   { path: '/TestCaseManager', name: 'testCaseManager', component: () => import('../views/TestCaseManager/TestCaseManager.vue'), meta: { permission: 'testcase:read', title: '用例管理' } },

@@ -274,6 +274,73 @@ export const BenchmarkCategoryLabels: Record<BenchmarkCategoryType, string> = {
   [BenchmarkCategory.TRANSLATION]: '翻译（Translation）',
 }
 
+/**
+ * Benchmark 被测类别页签标签（排行页 Hero 下划线页签，INT-359 文案口径：
+ * 全部/语音识别/语音对话/语音合成/翻译；空串 = 全部）。
+ * 与既有 BenchmarkCategoryLabels（完整名，用于发布任务等上下文）并存，互不影响。
+ */
+export const BenchmarkCategoryTabLabels: Record<'' | BenchmarkCategoryType, string> = {
+  '': '全部',
+  [BenchmarkCategory.ASR]: '语音识别',
+  [BenchmarkCategory.VOICE_LLM]: '语音对话',
+  [BenchmarkCategory.TTS]: '语音合成',
+  [BenchmarkCategory.TRANSLATION]: '翻译',
+}
+
+/** Benchmark 排行数据来源枚举（值 = 后端 benchmark_rankings.source 原值，禁止改动值） */
+export const BenchmarkSource = {
+  PLATFORM_TEST: 'platform_test',
+  EXTERNAL_IMPORT: 'external_import',
+} as const
+
+/** Benchmark 排行数据来源类型（由 BenchmarkSource 派生的字符串联合） */
+export type BenchmarkSourceType = typeof BenchmarkSource[keyof typeof BenchmarkSource]
+
+/** Benchmark 排行数据来源标签（展示用，与枚举值一一对应） */
+export const BenchmarkSourceLabels: Record<BenchmarkSourceType, string> = {
+  [BenchmarkSource.PLATFORM_TEST]: '平台实测',
+  [BenchmarkSource.EXTERNAL_IMPORT]: '外部基线',
+}
+
+/** Benchmark 排行方向枚举（值 = 后端 RankingDirection 原值，禁止改动值） */
+export const BenchmarkDirection = {
+  LOWER_IS_BETTER: 'lower_is_better',
+  HIGHER_IS_BETTER: 'higher_is_better',
+} as const
+
+/** Benchmark 排行方向类型（由 BenchmarkDirection 派生的字符串联合） */
+export type BenchmarkDirectionType = typeof BenchmarkDirection[keyof typeof BenchmarkDirection]
+
+/** Benchmark 排行方向标签（展示用，与枚举值一一对应） */
+export const BenchmarkDirectionLabels: Record<BenchmarkDirectionType, string> = {
+  [BenchmarkDirection.LOWER_IS_BETTER]: '越低越好',
+  [BenchmarkDirection.HIGHER_IS_BETTER]: '越高越好',
+}
+
+/** Benchmark 被测主体类型枚举（值 = 后端 benchmark_rankings.subject_type 原值，禁止改动值） */
+export const BenchmarkSubjectType = {
+  OPEN_SOURCE: 'open_source',
+  CLOSED_SOURCE: 'closed_source',
+  APP: 'app',
+} as const
+
+/** Benchmark 被测主体类型（由 BenchmarkSubjectType 派生的字符串联合） */
+export type BenchmarkSubjectTypeType = typeof BenchmarkSubjectType[keyof typeof BenchmarkSubjectType]
+
+/** Benchmark 被测主体类型标签（展示用，与枚举值一一对应） */
+export const BenchmarkSubjectTypeLabels: Record<BenchmarkSubjectTypeType, string> = {
+  [BenchmarkSubjectType.OPEN_SOURCE]: '开源',
+  [BenchmarkSubjectType.CLOSED_SOURCE]: '闭源',
+  [BenchmarkSubjectType.APP]: 'App',
+}
+
+/** Benchmark 被测设备类型标签（值 = 既有 DeviceType 枚举，展示用） */
+export const BenchmarkDeviceTypeLabels: Record<DeviceTypeType, string> = {
+  [DeviceType.PHYSICAL]: '实体设备',
+  [DeviceType.HTTP_API]: 'HTTP API',
+  [DeviceType.WEBSOCKET_API]: 'WebSocket API',
+}
+
 /** 认证模式枚举（值 = 后端 Config.AUTH_MODE 原值，禁止改动值；前端构建期同名变量 VITE_AUTH_MODE） */
 export const AuthMode = {
   /** 关闭认证（向后兼容）：后端注入 permissions=['*']，前端无 token 放行 */

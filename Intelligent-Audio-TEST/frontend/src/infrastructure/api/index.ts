@@ -24,6 +24,7 @@ export { groupsApi } from './groupsApi';
 export { testcasesApi } from './testcasesApi';
 export { evaluationApi } from './evaluationApi';
 export { reportsApi } from './reportsApi';
+export { benchmarkApi } from './benchmarkApi';
 export { splApi } from './splApi';
 export { apiRmsSplApi } from './apiRmsSplApi';
 export { statsApi } from './statsApi';
@@ -54,6 +55,7 @@ import { groupsApi } from './groupsApi';
 import { testcasesApi } from './testcasesApi';
 import { evaluationApi } from './evaluationApi';
 import { reportsApi } from './reportsApi';
+import { benchmarkApi } from './benchmarkApi';
 import { splApi } from './splApi';
 import { apiRmsSplApi } from './apiRmsSplApi';
 import { statsApi } from './statsApi';
@@ -71,6 +73,7 @@ export default {
   groups: groupsApi,
   testcases: testcasesApi,
   reports: reportsApi,
+  benchmark: benchmarkApi,
   spl: splApi,
   apiRmsSpl: apiRmsSplApi,
   evaluation: evaluationApi,
