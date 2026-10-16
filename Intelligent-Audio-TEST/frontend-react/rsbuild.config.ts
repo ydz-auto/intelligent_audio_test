@@ -52,6 +52,12 @@ export default defineConfig(({ envMode }) => {
             autoCodeSplitting: isProd,
           }),
         ],
+        module: {
+          rules: [
+            // 构建期 ?raw 文本资产（content/about.md 中文正文，06_关于.md §7）
+            { test: /\.md$/, type: 'asset/source' },
+          ],
+        },
       },
     },
   }

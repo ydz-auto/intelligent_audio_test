@@ -562,7 +562,7 @@ function buildTaskSummary(): ReportSummary {
         },
       },
     ],
-    cases: MOCK_REPORT_CASES,
+    get cases() { return MOCK_REPORT_CASES },
     detailed_results: [],
   }
 }
