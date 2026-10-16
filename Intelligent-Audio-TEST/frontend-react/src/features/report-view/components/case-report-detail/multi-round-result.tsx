@@ -59,6 +59,8 @@ export function MultiRoundResult({ caseItem }: { caseItem: ReportCaseItem }) {
           const roundNum = index + 1
           const open = expanded === index
           const det = round.interruption?.detected
+          const refValue = caseItem.referenceParams?.[`answer@round:${roundNum}`]?.value
+          const refText = typeof refValue === 'string' ? refValue : '—'
           return (
             <div key={index} className='rounded-lg border'>
               <button
@@ -80,7 +82,7 @@ export function MultiRoundResult({ caseItem }: { caseItem: ReportCaseItem }) {
                 <div className='grid gap-x-4 gap-y-1 border-t p-3 text-xs sm:grid-cols-2'>
                   <InfoRow label='输入音频' value={round.input?.audio_name ?? '—'} />
                   <InfoRow label='ASR 输出' value={round.output?.asr_text ?? '—'} mono />
-                  <InfoRow label='参考文本' value={caseItem.referenceParams?.[`answer@round:${roundNum}`]?.value ?? '—'} />
+                  <InfoRow label='参考文本' value={refText} />
                   <InfoRow label='延迟' value={round.evaluation?.latency !== undefined ? `${round.evaluation.latency}ms` : '—'} />
                   <InfoRow label='打断' value={det ? (round.interruption?.timestamp !== undefined ? `${round.interruption.timestamp}s` : '检测到打断') : '未检测到'} />
                   <div className='flex flex-wrap gap-1.5'>

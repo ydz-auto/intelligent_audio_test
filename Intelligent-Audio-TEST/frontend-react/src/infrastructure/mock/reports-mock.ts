@@ -295,11 +295,11 @@ export const MOCK_REPORT_DETAILS: Record<number, ReportDetailData> = {
 
 function buildTaskSummary(): ReportSummary {
   const allMetrics: ReportMetricConfig[] = [
-    { id: 'm-wakeup', name: '唤醒成功率', unit: '%', decimal_places: 1, dimension_type: 'main' },
-    { id: 'm-wakeup-false', name: '误唤醒率', unit: '%', decimal_places: 1, dimension_type: 'sub', parent_dimension_id: 'm-wakeup', parent_dimension_name: '唤醒成功率' },
-    { id: 'm-acc', name: '识别准确率', unit: '%', decimal_places: 1, dimension_type: 'main' },
-    { id: 'm-wer', name: '平均WER', unit: '%', decimal_places: 2, dimension_type: 'sub', parent_dimension_id: 'm-acc', parent_dimension_name: '识别准确率' },
-    { id: 'm-latency', name: '平均响应时间', unit: 'ms', decimal_places: 0, dimension_type: 'main' },
+    { id: 101, name: '唤醒成功率', unit: '%', decimal_places: 1, dimension_type: 'main' },
+    { id: 102, name: '误唤醒率', unit: '%', decimal_places: 1, dimension_type: 'sub', parent_dimension_id: 101, parent_dimension_name: '唤醒成功率' },
+    { id: 103, name: '识别准确率', unit: '%', decimal_places: 1, dimension_type: 'main' },
+    { id: 104, name: '平均WER', unit: '%', decimal_places: 2, dimension_type: 'sub', parent_dimension_id: 103, parent_dimension_name: '识别准确率' },
+    { id: 105, name: '平均响应时间', unit: 'ms', decimal_places: 0, dimension_type: 'main' },
   ]
 
   const deviceStats: ReportDeviceStat[] = [
@@ -391,59 +391,59 @@ function buildTaskSummary(): ReportSummary {
     {
       resource: 'device_1',
       metrics: [
-        { id: 'm-wakeup', metric: '唤醒成功率', value: 96.5 },
-        { id: 'm-wakeup-false', metric: '误唤醒率', value: 3.5 },
-        { id: 'm-acc', metric: '识别准确率', value: 94.2 },
-        { id: 'm-wer', metric: '平均WER', value: 5.8 },
-        { id: 'm-latency', metric: '平均响应时间', value: 412 },
+        { id: 101, metric: '唤醒成功率', value: 96.5 },
+        { id: 102, metric: '误唤醒率', value: 3.5 },
+        { id: 103, metric: '识别准确率', value: 94.2 },
+        { id: 104, metric: '平均WER', value: 5.8 },
+        { id: 105, metric: '平均响应时间', value: 412 },
       ],
     },
     {
       resource: 'device_2',
       metrics: [
-        { id: 'm-wakeup', metric: '唤醒成功率', value: 95.4 },
-        { id: 'm-wakeup-false', metric: '误唤醒率', value: 4.1 },
-        { id: 'm-acc', metric: '识别准确率', value: 93.1 },
-        { id: 'm-wer', metric: '平均WER', value: 6.9 },
-        { id: 'm-latency', metric: '平均响应时间', value: 428 },
+        { id: 101, metric: '唤醒成功率', value: 95.4 },
+        { id: 102, metric: '误唤醒率', value: 4.1 },
+        { id: 103, metric: '识别准确率', value: 93.1 },
+        { id: 104, metric: '平均WER', value: 6.9 },
+        { id: 105, metric: '平均响应时间', value: 428 },
       ],
     },
     {
       resource: 'device_3',
       metrics: [
-        { id: 'm-wakeup', metric: '唤醒成功率', value: 93.1 },
-        { id: 'm-wakeup-false', metric: '误唤醒率', value: 5.2 },
-        { id: 'm-acc', metric: '识别准确率', value: 91.8 },
-        { id: 'm-wer', metric: '平均WER', value: 8.2 },
-        { id: 'm-latency', metric: '平均响应时间', value: 486 },
+        { id: 101, metric: '唤醒成功率', value: 93.1 },
+        { id: 102, metric: '误唤醒率', value: 5.2 },
+        { id: 103, metric: '识别准确率', value: 91.8 },
+        { id: 104, metric: '平均WER', value: 8.2 },
+        { id: 105, metric: '平均响应时间', value: 486 },
       ],
     },
     {
       resource: 'api_101',
       metrics: [
-        { id: 'm-wakeup', metric: '唤醒成功率', value: 96.0 },
-        { id: 'm-wakeup-false', metric: '误唤醒率', value: 3.9 },
-        { id: 'm-acc', metric: '识别准确率', value: 94.5 },
-        { id: 'm-wer', metric: '平均WER', value: 5.5 },
-        { id: 'm-latency', metric: '平均响应时间', value: 385 },
+        { id: 101, metric: '唤醒成功率', value: 96.0 },
+        { id: 102, metric: '误唤醒率', value: 3.9 },
+        { id: 103, metric: '识别准确率', value: 94.5 },
+        { id: 104, metric: '平均WER', value: 5.5 },
+        { id: 105, metric: '平均响应时间', value: 385 },
       ],
     },
     {
       resource: 'api_102',
       metrics: [
-        { id: 'm-wakeup', metric: '唤醒成功率', value: 95.2 },
-        { id: 'm-wakeup-false', metric: '误唤醒率', value: 4.6 },
-        { id: 'm-acc', metric: '识别准确率', value: 92.7 },
-        { id: 'm-wer', metric: '平均WER', value: 7.3 },
-        { id: 'm-latency', metric: '平均响应时间', value: 201 },
+        { id: 101, metric: '唤醒成功率', value: 95.2 },
+        { id: 102, metric: '误唤醒率', value: 4.6 },
+        { id: 103, metric: '识别准确率', value: 92.7 },
+        { id: 104, metric: '平均WER', value: 7.3 },
+        { id: 105, metric: '平均响应时间', value: 201 },
       ],
     },
   ]
 
   const caseCategories: ReportCaseCategory[] = [
-    { category_id: 'grp-wakeup', category_name: '唤醒场景', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 95.8 }] },
-    { category_id: 'grp-noise', category_name: '噪声场景', metrics: [{ id: 'm-acc', metric: '识别准确率', value: 88.4 }] },
-    { category_id: 'grp-farfield', category_name: '远场场景', metrics: [{ id: 'm-acc', metric: '识别准确率', value: 90.2 }] },
+    { category_id: 'grp-wakeup', category_name: '唤醒场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 95.8 }] },
+    { category_id: 'grp-noise', category_name: '噪声场景', metrics: [{ id: 103, metric: '识别准确率', value: 88.4 }] },
+    { category_id: 'grp-farfield', category_name: '远场场景', metrics: [{ id: 103, metric: '识别准确率', value: 90.2 }] },
   ]
 
   const allCaseTags: ReportTag[] = [
@@ -458,26 +458,26 @@ function buildTaskSummary(): ReportSummary {
     {
       resource: 'device_1',
       tags: [
-        { tag_id: 't-01', tag_name: '远场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 94.8 }, { id: 'm-acc', metric: '识别准确率', value: 90.2 }] },
-        { tag_id: 't-02', tag_name: '近场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 98.2 }, { id: 'm-acc', metric: '识别准确率', value: 96.8 }] },
-        { tag_id: 't-03', tag_name: '噪声', category_id: 'tag-cat-env', category_name: '环境', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 88.4 }, { id: 'm-acc', metric: '识别准确率', value: 86.1 }] },
-        { tag_id: 't-04', tag_name: '唤醒', category_id: 'tag-cat-type', category_name: '用例类型', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 96.5 }, { id: 'm-latency', metric: '平均响应时间', value: 412 }] },
+        { tag_id: 't-01', tag_name: '远场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 94.8 }, { id: 103, metric: '识别准确率', value: 90.2 }] },
+        { tag_id: 't-02', tag_name: '近场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 98.2 }, { id: 103, metric: '识别准确率', value: 96.8 }] },
+        { tag_id: 't-03', tag_name: '噪声', category_id: 'tag-cat-env', category_name: '环境', metrics: [{ id: 101, metric: '唤醒成功率', value: 88.4 }, { id: 103, metric: '识别准确率', value: 86.1 }] },
+        { tag_id: 't-04', tag_name: '唤醒', category_id: 'tag-cat-type', category_name: '用例类型', metrics: [{ id: 101, metric: '唤醒成功率', value: 96.5 }, { id: 105, metric: '平均响应时间', value: 412 }] },
       ],
     },
     {
       resource: 'device_2',
       tags: [
-        { tag_id: 't-01', tag_name: '远场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 93.6 }, { id: 'm-acc', metric: '识别准确率', value: 88.9 }] },
-        { tag_id: 't-02', tag_name: '近场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 97.4 }, { id: 'm-acc', metric: '识别准确率', value: 95.2 }] },
-        { tag_id: 't-03', tag_name: '噪声', category_id: 'tag-cat-env', category_name: '环境', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 87.1 }, { id: 'm-acc', metric: '识别准确率', value: 84.6 }] },
+        { tag_id: 't-01', tag_name: '远场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 93.6 }, { id: 103, metric: '识别准确率', value: 88.9 }] },
+        { tag_id: 't-02', tag_name: '近场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 97.4 }, { id: 103, metric: '识别准确率', value: 95.2 }] },
+        { tag_id: 't-03', tag_name: '噪声', category_id: 'tag-cat-env', category_name: '环境', metrics: [{ id: 101, metric: '唤醒成功率', value: 87.1 }, { id: 103, metric: '识别准确率', value: 84.6 }] },
       ],
     },
     {
       resource: 'api_101',
       tags: [
-        { tag_id: 't-01', tag_name: '远场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 95.1 }, { id: 'm-acc', metric: '识别准确率', value: 91.5 }] },
-        { tag_id: 't-02', tag_name: '近场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 98.6 }, { id: 'm-acc', metric: '识别准确率', value: 97.1 }] },
-        { tag_id: 't-03', tag_name: '噪声', category_id: 'tag-cat-env', category_name: '环境', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 89.2 }, { id: 'm-acc', metric: '识别准确率', value: 87.4 }] },
+        { tag_id: 't-01', tag_name: '远场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 95.1 }, { id: 103, metric: '识别准确率', value: 91.5 }] },
+        { tag_id: 't-02', tag_name: '近场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 98.6 }, { id: 103, metric: '识别准确率', value: 97.1 }] },
+        { tag_id: 't-03', tag_name: '噪声', category_id: 'tag-cat-env', category_name: '环境', metrics: [{ id: 101, metric: '唤醒成功率', value: 89.2 }, { id: 103, metric: '识别准确率', value: 87.4 }] },
       ],
     },
   ]
@@ -538,9 +538,9 @@ function buildTaskSummary(): ReportSummary {
     all_tags: allCaseTags,
     all_metrics: allMetrics,
     case_type_stats: [
-      { group_id: 'grp-wakeup', group_name: '唤醒场景', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 95.8 }] },
-      { group_id: 'grp-noise', group_name: '噪声场景', metrics: [{ id: 'm-acc', metric: '识别准确率', value: 88.4 }] },
-      { group_id: 'grp-farfield', group_name: '远场场景', metrics: [{ id: 'm-acc', metric: '识别准确率', value: 90.2 }] },
+      { group_id: 'grp-wakeup', group_name: '唤醒场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 95.8 }] },
+      { group_id: 'grp-noise', group_name: '噪声场景', metrics: [{ id: 103, metric: '识别准确率', value: 88.4 }] },
+      { group_id: 'grp-farfield', group_name: '远场场景', metrics: [{ id: 103, metric: '识别准确率', value: 90.2 }] },
     ],
     device_stats: deviceStats,
     api_stats: apiStats,
@@ -612,19 +612,19 @@ function buildComparisonReportDetail(type: 'comparison' | 'secondary_comparison'
     ],
     raw_data: [],
     metric_data: [
-      { resource: 'task_1041', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 96.2 }, { id: 'm-acc', metric: '识别准确率', value: 92.1 }, { id: 'm-latency', metric: '平均响应时间', value: 205 }] },
-      { resource: 'task_1037', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 90.4 }, { id: 'm-acc', metric: '识别准确率', value: 84.7 }, { id: 'm-latency', metric: '平均响应时间', value: 390 }] },
-      { resource: 'task_1035', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 97.1 }, { id: 'm-acc', metric: '识别准确率', value: 96.9 }, { id: 'm-latency', metric: '平均响应时间', value: 402 }] },
-      { resource: 'task_1042', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 95.8 }, { id: 'm-acc', metric: '识别准确率', value: 93.8 }, { id: 'm-latency', metric: '平均响应时间', value: 412 }] },
+      { resource: 'task_1041', metrics: [{ id: 101, metric: '唤醒成功率', value: 96.2 }, { id: 103, metric: '识别准确率', value: 92.1 }, { id: 105, metric: '平均响应时间', value: 205 }] },
+      { resource: 'task_1037', metrics: [{ id: 101, metric: '唤醒成功率', value: 90.4 }, { id: 103, metric: '识别准确率', value: 84.7 }, { id: 105, metric: '平均响应时间', value: 390 }] },
+      { resource: 'task_1035', metrics: [{ id: 101, metric: '唤醒成功率', value: 97.1 }, { id: 103, metric: '识别准确率', value: 96.9 }, { id: 105, metric: '平均响应时间', value: 402 }] },
+      { resource: 'task_1042', metrics: [{ id: 101, metric: '唤醒成功率', value: 95.8 }, { id: 103, metric: '识别准确率', value: 93.8 }, { id: 105, metric: '平均响应时间', value: 412 }] },
     ],
     tag_metric_data: [],
     case_categories: [],
     all_case_tags: [],
     all_tags: [],
     all_metrics: [
-      { id: 'm-wakeup', name: '唤醒成功率', unit: '%', decimal_places: 1, dimension_type: 'main' },
-      { id: 'm-acc', name: '识别准确率', unit: '%', decimal_places: 1, dimension_type: 'main' },
-      { id: 'm-latency', name: '平均响应时间', unit: 'ms', decimal_places: 0, dimension_type: 'main' },
+      { id: 101, name: '唤醒成功率', unit: '%', decimal_places: 1, dimension_type: 'main' },
+      { id: 103, name: '识别准确率', unit: '%', decimal_places: 1, dimension_type: 'main' },
+      { id: 105, name: '平均响应时间', unit: 'ms', decimal_places: 0, dimension_type: 'main' },
     ],
     case_type_stats: [],
     device_stats: [
@@ -840,8 +840,8 @@ const MOCK_REPORT_CASES: ReportCaseItem[] = [
     tags: ['近场', '唤醒'],
     algorithmType: 'voice_llm',
     metrics: [
-      { resource: 'device_1', metrics: [{ id: 'm-wer', metric: '平均WER', value: 4.6 }, { id: 'm-latency', metric: '平均响应时间', value: 342 }] },
-      { resource: 'api_101', metrics: [{ id: 'm-wer', metric: '平均WER', value: 3.9 }, { id: 'm-latency', metric: '平均响应时间', value: 318 }] },
+      { resource: 'device_1', metrics: [{ id: 104, metric: '平均WER', value: 4.6 }, { id: 105, metric: '平均响应时间', value: 342 }] },
+      { resource: 'api_101', metrics: [{ id: 104, metric: '平均WER', value: 3.9 }, { id: 105, metric: '平均响应时间', value: 318 }] },
     ],
     results: [
       { resource: 'device_1', status: 'completed', startTime: '2026-10-15T09:05:00', endTime: '2026-10-15T09:05:06' },

@@ -7,7 +7,6 @@
 import { ChevronDown } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { MetricMatrix, ReportMetricConfig } from '@/domain/models/report'
 import { useReportCharts, type DisplayType } from '@/application/report-view/use-report-charts'

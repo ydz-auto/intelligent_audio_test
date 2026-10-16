@@ -57,7 +57,7 @@ export function ReportShowcaseHero({
     <div className='rounded-3xl border px-6 py-8'>
       <div className='flex flex-wrap items-center gap-2'>
         <Badge variant='outline'>报告</Badge>
-        {timeRange && timeRange !== 'all' && (
+        {timeRange && (
           <Badge variant='secondary'>{timeRange === 'custom' ? '自定义时间' : timeRange}</Badge>
         )}
         {hasActiveFilters && (

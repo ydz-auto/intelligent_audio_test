@@ -6,7 +6,6 @@
  *   - formatMetricForDisplay 固定 2 位小数（任务级不读 decimal_places，实测注释）
  */
 import type {
-  ReportDetailData,
   ReportMetricConfig,
   ReportResourceHeader,
   ReportSummary,

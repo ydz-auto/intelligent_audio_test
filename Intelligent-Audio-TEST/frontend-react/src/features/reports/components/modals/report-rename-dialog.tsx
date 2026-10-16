@@ -18,11 +18,14 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import type { ReportListItem } from '@/domain/models/report'
 
+/** 重命名只需 id/name/description——列表项与详情快照（ReportDetailData）均可传入 */
+type RenameTarget = Pick<ReportListItem, 'id' | 'name' | 'description'>
+
 interface ReportRenameDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  report?: ReportListItem
-  onConfirm: (report: ReportListItem, payload: { name: string; description?: string }) => void
+  report?: RenameTarget
+  onConfirm: (report: RenameTarget, payload: { name: string; description?: string }) => void
 }
 
 export function ReportRenameDialog({

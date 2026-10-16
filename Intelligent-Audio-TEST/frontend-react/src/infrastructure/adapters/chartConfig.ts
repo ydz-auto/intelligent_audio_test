@@ -4,7 +4,7 @@
  * 等价的 hex 常量（canvas 不能引用 CSS var）；calculateDistributionStats/rebinDistributionData
  * 照 shared/useReportShared.ts generateDistributionChartData 平移（15_报告域.md §3.7）。
  */
-import type { ChartConfiguration, ChartOptions } from 'chart.js'
+import type { ChartConfiguration, ChartDataset, ChartOptions } from 'chart.js'
 
 /** 图表语义色常量（照现前端 chartConfig.ts:11-18 实测值；与 tokens.css --chart-1..5 等价映射） */
 export const CHART_COLORS = {
@@ -178,8 +178,8 @@ export function getDefaultChartConfig(isDark: boolean): ChartOptions<'bar'> {
 /** 装配单一数据集配置（bar/line/radar 通用） */
 export function prepareChartData(
   labels: string[],
-  datasets: { label: string; data: number[]; type?: string }[]
-): ChartConfiguration {
+  datasets: ChartDataset<'bar', (number | null)[]>[]
+): ChartConfiguration<'bar', (number | null)[]> {
   return {
     type: 'bar',
     data: { labels, datasets },

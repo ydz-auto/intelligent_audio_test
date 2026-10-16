@@ -65,7 +65,7 @@ export function TimelineComparison({
       </div>
 
       <div className='flex flex-wrap items-center gap-2'>
-        <Select value={resource} onValueChange={setResource}>
+        <Select value={resource} onValueChange={(v) => setResource(v ?? '')}>
           <SelectTrigger className='h-8 w-44 text-xs'>
             <SelectValue />
           </SelectTrigger>
@@ -75,7 +75,7 @@ export function TimelineComparison({
             ))}
           </SelectContent>
         </Select>
-        <Select value={selectedSpeaker} onValueChange={setSelectedSpeaker}>
+        <Select value={selectedSpeaker} onValueChange={(v) => setSelectedSpeaker(v ?? '全部')}>
           <SelectTrigger className='h-8 w-32 text-xs'>
             <SelectValue />
           </SelectTrigger>

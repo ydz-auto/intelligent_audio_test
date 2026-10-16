@@ -15,6 +15,8 @@ import {
 import { readMatrixCell } from './case-matrix'
 import type { DisplayType } from './use-case-category-comparison'
 
+export type { DisplayType }
+
 export interface ChartSeriesData {
   labels: string[]
   datasets: { label: string; data: number[]; backgroundColor?: string; borderColor?: string; fill?: boolean; tension?: number }[]
@@ -59,7 +61,6 @@ export function buildDistributionChartData(
   metric: string
 ): DistributionChartData {
   const deviceRawDataMap: Record<string, number[]> = {}
-  const seenArrays = new Set<number[]>()
   const allRaw: number[] = []
   for (const resource of resources) {
     const values: number[] = []

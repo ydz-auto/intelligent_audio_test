@@ -94,53 +94,39 @@ export function ReportChart({
 
     const buildOptions = (): ChartOptions => {
       const isDistribution = type === 'distribution'
+      // zoom 插件类型不接受 zoom:false——禁用态用 enabled:false 等价
+      const zoomOptions = enableZoom
+        ? {
+            pan: { enabled: true, mode: 'x' },
+            zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
+          }
+        : { pan: { enabled: false }, zoom: { wheel: { enabled: false }, pinch: { enabled: false } } }
+
       if (isDistribution && distribution) {
-        const rebin = rebinDistributionData(
-          distribution.rawData,
-          distribution.labels,
-          distribution.stats?.min ?? 0,
-          distribution.stats?.max ?? 1
-        )
         return {
           ...base,
           indexAxis: 'x',
           scales: {
             x: {
-              ...base.scales?.x,
+              ...(base.scales?.x ?? {}),
               type: 'linear',
-              title: { display: true, text: `不同区间的${title}`, color: (base.scales?.x?.ticks as { color?: string })?.color },
+              title: { display: true, text: `不同区间的${title}`, color: (base.scales?.x?.ticks as { color?: string } | undefined)?.color },
               min: distribution.stats?.min,
               max: distribution.stats?.max,
             },
             y: {
-              ...base.scales?.y,
-              title: { display: true, text: '区间内用例数量', color: (base.scales?.y?.ticks as { color?: string })?.color },
-              ticks: { ...(base.scales?.y?.ticks as object), stepSize: 1 },
+              ...(base.scales?.y ?? {}),
+              title: { display: true, text: '区间内用例数量', color: (base.scales?.y?.ticks as { color?: string } | undefined)?.color },
+              ticks: { ...((base.scales?.y?.ticks ?? {}) as Record<string, unknown>), stepSize: 1 },
             },
           },
-          plugins: {
-            ...base.plugins,
-            zoom: enableZoom
-              ? {
-                  pan: { enabled: true, mode: 'x' },
-                  zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
-                }
-              : { zoom: false, pan: false },
-          },
-        }
+          plugins: { ...base.plugins, zoom: zoomOptions },
+        } as ChartOptions
       }
       return {
         ...base,
-        plugins: {
-          ...base.plugins,
-          zoom: enableZoom
-            ? {
-                pan: { enabled: true, mode: 'x' },
-                zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
-              }
-            : { zoom: false, pan: false },
-        },
-      }
+        plugins: { ...base.plugins, zoom: zoomOptions },
+      } as ChartOptions
     }
 
     // 装配 datasets（distribution 用重分箱直方图）

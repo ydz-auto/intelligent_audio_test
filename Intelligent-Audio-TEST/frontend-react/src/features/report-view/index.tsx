@@ -24,7 +24,7 @@ import { ComparisonReportPanel } from './components/comparison-report-panel'
 
 import '@/features/report-view/report-print.css'
 
-const NAV = {
+const NAV: Record<'task' | 'comparison', ReadingNavSection[]> = {
   task: [
     { id: 'report-overview', label: '总览' },
     { id: 'report-resource-stats', label: '设备与API' },
@@ -41,7 +41,7 @@ const NAV = {
     { id: 'report-case-tag', label: '用例标签' },
     { id: 'report-specific-cases', label: '具体用例' },
   ],
-} as const
+}
 
 function DetailSkeleton() {
   return (
@@ -75,10 +75,10 @@ export function ReportViewPage() {
 
   // 回退来源入口（15_报告域.md §3.1：管理页进→/report-center，展示页进→/reports，无来源默认 /reports）
   const backTarget = useMemo(() => {
-    if (search.from === 'showcase') return { to: '/reports' as const }
-    return { to: '/report-center' as const }
+    if (search.from === 'management') return { to: '/report-center' as const }
+    return { to: '/reports' as const }
   }, [search.from])
-  const backLabel = search.from === 'showcase' ? '← 返回报告展示' : '← 返回报告中心'
+  const backLabel = search.from === 'management' ? '← 返回报告中心' : '← 返回报告展示'
 
   const { saveConclusion: saveAnalysis } = useReportAnalysis(reportId, report?.analysis)
 

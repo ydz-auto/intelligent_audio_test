@@ -4,7 +4,7 @@
  * （computeOptimalSpeakerMapping 按重叠时间降序匹配，overlap ±0.5s 容差）。
  * 可视稿：以 mock segments 演示渲染；真实接入时按现前端 TimelineComparison.ts 平移。
  */
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 
 export interface TimelineSegment {
   speaker: string
@@ -88,7 +88,7 @@ export function computeOptimalSpeakerMapping(
     }
   }
   overlaps.sort((a, b) => b.overlap - a.overlap)
-  for (const { ref, res, overlap } of overlaps) {
+  for (const { ref, res } of overlaps) {
     if (mapping.has(ref) || used.has(res)) continue
     mapping.set(ref, res)
     used.add(res)

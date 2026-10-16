@@ -3,7 +3,7 @@
  * 筛选卡（名称搜索/分组/标签/维度/排序）+ 已固定用例区 + 用例列表（状态点 + 名称 + 分组徽标
  * + CaseIdBadge + 标签 + 下载日志 + 展开）+ 展开详情 = TestCaseReportDetail 七块（§3.5）。
  */
-import { ChevronDown, Download, FileText, Pin, PinOff } from 'lucide-react'
+import { ChevronDown, Download, Pin, PinOff } from 'lucide-react'
 import { useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
@@ -106,7 +106,7 @@ export function SpecificCaseComparison({
               <Select
                 value={filters.categories?.[0] ?? 'all'}
                 onValueChange={(v) =>
-                  setFilters({ ...filters, categories: v === 'all' ? undefined : [v] })
+                  setFilters({ ...filters, categories: v && v !== 'all' ? [v] : undefined })
                 }
               >
                 <SelectTrigger className='h-8 text-xs'>

@@ -32,7 +32,6 @@ export function buildCaseMetricMatrix(
   allMetrics: ReportMetricConfig[]
 ): MetricMatrix {
   const matrix: MetricMatrix = {}
-  const resourceHeaders: Record<string, number> = {}
   for (const item of cases) {
     const keys = groupKeyOf(item)
     if (keys.length === 0) continue
