@@ -65,6 +65,8 @@ class ListTasksConfigQuery(Query):
     evaluation_status（可选，INT-301）：按任务级评估状态过滤（与执行状态并列）。
     merged（可选，INT-298）：仅合并容器任务（对齐 V9.7.10 合并页签数据源）。
     cherry_pick（可选，INT-339）：仅挑选合并容器任务（专有关系表存在性判定）。
+    task_type（可选，INT-273）：按派生任务类型过滤（api/e2e/mixed；口径与
+        /tasks/stats type_counts 一致——用例级 device_type 派生）。
     """
     page: int = 1
     per_page: int = 10
@@ -81,6 +83,7 @@ class ListTasksConfigQuery(Query):
     merged: bool = False
     cherry_pick: bool = False
     execution_status: Optional[str] = None
+    task_type: Optional[str] = None
 
 
 @dataclass(frozen=True)

@@ -64,6 +64,8 @@ class TaskQueryService:
         cherry_pick = query.cherry_pick
         # INT-301 F1：执行状态过滤（复用派生口径，徽章与筛选一致）
         execution_status = query.execution_status
+        # INT-273：派生任务类型过滤（api/e2e/mixed）
+        task_type = query.task_type
 
         result = _task_acl.list_tasks(
             page=page,
@@ -79,6 +81,7 @@ class TaskQueryService:
             merged=merged,
             cherry_pick=cherry_pick,
             execution_status=execution_status,
+            task_type=task_type,
         )
 
         if not result.get('success'):

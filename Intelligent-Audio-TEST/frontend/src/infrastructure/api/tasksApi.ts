@@ -45,6 +45,8 @@ export interface TaskListQuery {
   executionStatus?: string
   // INT-423/467：可见性过滤（private|shared；服务端行级过滤）
   visibility?: string
+  // INT-273：派生任务类型过滤（api/e2e/mixed）
+  taskType?: string
 }
 
 /** camelCase 任务查询 → snake_case HTTP query（后端 TaskListQueryDto 契约） */
@@ -68,6 +70,8 @@ function toTaskListQueryDto(query: TaskListQuery): TaskListQueryDto {
   if (query.executionStatus !== undefined) dto.execution_status = query.executionStatus
   // INT-423/467：可见性过滤（同名透传；后端 TaskListQuery.visibility）
   if (query.visibility !== undefined) dto.visibility = query.visibility
+  // INT-273：派生任务类型过滤
+  if (query.taskType !== undefined) dto.task_type = query.taskType
   return dto
 }
 

@@ -21,6 +21,8 @@ export interface TaskFilters {
   /** INT-301：评估状态过滤（与执行状态并列） */
   evaluationStatus: string;
   algorithmType: string;
+  /** INT-273：任务类型过滤（api/e2e/mixed，服务端按派生 device_type 口径过滤） */
+  type: string;
   timeRange: string;
   dateRange: [Date | null, Date | null];
 }
@@ -47,6 +49,7 @@ export function useTaskList(options?: UseTaskListOptions) {
     status: '',
     evaluationStatus: '',
     algorithmType: '',
+    type: '',
     timeRange: 'all',
     dateRange: [null, null] as [Date | null, Date | null]
   });
@@ -164,6 +167,10 @@ export function useTaskList(options?: UseTaskListOptions) {
       }
       if (filters.value.algorithmType && filters.value.algorithmType !== 'all') {
         params.algorithmType = filters.value.algorithmType;
+      }
+      // INT-273：任务类型筛选（api/e2e/mixed，服务端按派生 device_type 口径过滤）
+      if (filters.value.type && filters.value.type !== 'all') {
+        params.taskType = filters.value.type;
       }
       // INT-301：评估状态过滤（与执行状态并列）
       if (filters.value.evaluationStatus && filters.value.evaluationStatus !== 'all') {
@@ -323,7 +330,7 @@ export function useTaskList(options?: UseTaskListOptions) {
   const resetAllStates = () => {
     searchTerm.value = '';
     selectedTags.value = [];
-    filters.value = { status: '', evaluationStatus: '', algorithmType: '', timeRange: 'all', dateRange: [null, null] };
+    filters.value = { status: '', evaluationStatus: '', algorithmType: '', type: '', timeRange: 'all', dateRange: [null, null] };
     customDateRange.value = { start: '', end: '' };
     currentPage.value = 1;
     applyFilters();

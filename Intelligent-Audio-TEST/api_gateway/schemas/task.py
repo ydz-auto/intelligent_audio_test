@@ -307,6 +307,8 @@ class TaskListQuery(APIModel):
     # INT-301 F1：执行状态过滤（pending/queued/running/paused/completed/failed/
     # stopped/merged；复用派生表达式，徽章展示与筛选命中同口径）
     execution_status: Optional[str] = Field(None)
+    # INT-273：按派生任务类型过滤（api/e2e/mixed；口径与 /tasks/stats type_counts 一致）
+    task_type: Optional[str] = Field(None)
 
 
 class TaskDomainStatsQuery(APIModel):

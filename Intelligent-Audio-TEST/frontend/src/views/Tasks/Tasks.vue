@@ -166,6 +166,16 @@
             @update:model-value="handleBadgeFilterChange('type', $event)"
           />
 
+          <!-- INT-273：任务类型筛选（日常视图；派生口径 api/e2e/mixed，对齐 V9.7.10 基线徽章） -->
+          <BadgeFilter
+            v-if="activeTab === 'daily'"
+            :options="TYPE_OPTIONS"
+            :model-value="currentFilter.type"
+            all-label="全部类型"
+            title="任务类型"
+            @update:model-value="handleBadgeFilterChange('type', $event)"
+          />
+
           <BadgeFilter
             :options="currentStatusOptions"
             :model-value="currentFilter.status"
@@ -447,6 +457,7 @@ import { ref, computed, reactive, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTasks } from './tasks';
 import { TaskStatus, TaskEvaluationStatus, FINISHED_STATUSES, PermissionPoint } from '@/domain/enums';
+import { TaskStatus, TaskEvaluationStatus, FINISHED_STATUSES, REEXECUTE_ELIGIBLE_STATUSES, PermissionPoint, TestType } from '@/domain/enums';
 import { useAuthStore } from '../../store/authStore';
 import { usePublishedTasks } from '../../composables/publishedTask/usePublishedTasks';
 import { useMergedTasks } from '../../composables/task/useMergedTasks';
@@ -540,6 +551,14 @@ const TIME_RANGE_OPTIONS = [
   { value: 'week', label: '近7天' },
   { value: 'month', label: '近30天' },
   { value: 'custom', label: '自定义' },
+];
+
+/** INT-273：任务类型选项（派生口径 api/e2e/mixed，对齐 /tasks/stats type_counts 分布；
+ *  V9.7.10 基线 TYPE_OPTIONS 为 e2e/api，mixed 为 device_type 派生新增类别） */
+const TYPE_OPTIONS = [
+  { value: TestType.E2E, label: '端到端测试' },
+  { value: TestType.API, label: 'API测试' },
+  { value: 'mixed', label: '混合测试' },
 ];
 
 const {
@@ -640,7 +659,9 @@ const taskActions = [
 const dailyFilterState = reactive({
   get search() { return searchTerm.value; },
   set search(v: string) { searchTerm.value = v; },
-  type: 'all',
+  // INT-273：任务类型（派生口径 api/e2e/mixed；'all' 归一为空串不下发）
+  get type() { return filters.value.type || 'all'; },
+  set type(v: string) { filters.value.type = v === 'all' ? '' : v; },
   get algorithmType() { return filters.value.algorithmType || 'all'; },
   set algorithmType(v: string) { filters.value.algorithmType = v === 'all' ? '' : v; },
   get status() { return filters.value.status; },

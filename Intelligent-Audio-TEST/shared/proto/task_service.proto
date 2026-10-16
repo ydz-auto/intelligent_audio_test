@@ -209,6 +209,7 @@ message ListTasksRequest {
   bool merged = 12;   // INT-298：仅合并容器任务（存在 TaskMergeRelation 的任务；对齐 V9.7.10 合并页签数据源）
   string execution_status = 13;  // INT-301 F1：按任务级执行状态过滤（pending/queued/running/paused/completed/failed/stopped/merged）
   bool cherry_pick = 14;  // INT-339：仅挑选合并容器任务（task_cherry_pick_relations 存在性判定，§5.4）
+  string task_type = 15;  // INT-273：按派生任务类型过滤（api/e2e/mixed；用例级 device_type 派生口径，与 /tasks/stats type_counts 一致）
 }
 message GetTaskDetailRequest {
   int32 task_id = 1;

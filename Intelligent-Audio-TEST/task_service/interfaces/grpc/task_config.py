@@ -120,6 +120,8 @@ class TaskConfigServiceServicer(task_grpc.TaskConfigServiceServicer):
                 merged=request.merged,
                 # INT-339：仅挑选合并容器任务（专有关系表存在性判定，§5.4）
                 cherry_pick=getattr(request, 'cherry_pick', False),
+                # INT-273：按派生任务类型过滤（api/e2e/mixed）
+                task_type=getattr(request, 'task_type', '') or None,
             )
             return self._resp(self.qry.handle_list_tasks_config(query))
         except Exception as e:

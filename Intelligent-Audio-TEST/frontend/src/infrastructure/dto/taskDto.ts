@@ -207,6 +207,8 @@ export interface TaskListQueryDto {
   execution_status?: string
   // INT-423/467：可见性过滤（private|shared；服务端行级过滤，私有仅当前用户可见）
   visibility?: string
+  // INT-273：派生任务类型过滤（api/e2e/mixed）
+  task_type?: string
 }
 
 // ===== 任务域全量聚合统计（GET /tasks/stats，INT-200）=====

@@ -146,7 +146,7 @@ class _TaskConfigProxy:
     def list_tasks(self, page=1, per_page=10, status=None, device_type=None,
                    algorithm_type=None, search=None, start_date=None, end_date=None,
                    favorite=False, deleted=False, evaluation_status=None, merged=False,
-                   cherry_pick=False, execution_status=None):
+                   cherry_pick=False, execution_status=None, task_type=None):
         """任务列表（device_type 经 proto type 字段承载：按用例级被测设备类型过滤）
 
         favorite/deleted（INT-141）：收藏/回收站过滤；操作人 user_id 经
@@ -156,6 +156,8 @@ class _TaskConfigProxy:
         cherry_pick（INT-339）：仅挑选合并容器任务（专有关系表存在性判定）。
         execution_status（INT-301 F1）：按任务级执行状态过滤（复用派生口径，
         徽章展示与筛选命中一致）。
+        task_type（INT-273）：按派生任务类型过滤（api/e2e/mixed；口径与
+        /tasks/stats type_counts 一致——用例级 device_type 派生）。
         """
         from shared.proto import task_service_pb2 as task_pb
 
@@ -176,6 +178,7 @@ class _TaskConfigProxy:
                 merged=bool(merged),
                 cherry_pick=bool(cherry_pick),
                 execution_status=execution_status or '',
+                task_type=task_type or '',
             ))
             return self._resp(resp)
 

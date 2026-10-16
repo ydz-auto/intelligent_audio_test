@@ -184,7 +184,8 @@ class TaskReadModel(
                      evaluation_status: Optional[str] = None,
                      merged: bool = False,
                      cherry_pick: bool = False,
-                     execution_status: Optional[str] = None) -> Dict[str, Any]:
+                     execution_status: Optional[str] = None,
+                     task_type: Optional[str] = None) -> Dict[str, Any]:
         """网关 get_all 使用的查询逻辑：含 Report 关联。
 
         device_type（可选）：按用例级被测设备类型过滤（任务下存在该类型用例）。
@@ -198,6 +199,9 @@ class TaskReadModel(
             存在性判定，§5.4 与 merged 容器判定同构）。
         execution_status（可选，INT-301 F1）：按任务级执行状态过滤（复用派生
             表达式，徽章展示与筛选命中同口径）。
+        task_type（可选，INT-273）：按派生任务类型过滤（api/e2e/mixed；口径与
+            /tasks/stats type_counts 一致——api=无物理设备用例、e2e=含物理且无
+            API 设备用例、mixed=物理与 API 设备用例兼有）。
         """
         from datetime import datetime
         from sqlalchemy import select as sa_select
@@ -239,6 +243,31 @@ class TaskReadModel(
                                             TaskCase.device_type == device_type)
                                      .correlate(Task)
                                      .exists())
+            if task_type:
+                # INT-273：按派生任务类型过滤（口径与 /tasks/stats type_counts 一致）：
+                #   api   = 无物理设备用例（含无 device_type 行与未知类型行）
+                #   e2e   = 含物理设备用例且无 API 设备用例
+                #   mixed = 物理设备用例与 API 设备用例兼有
+                from shared.models.common_enums import DeviceType
+                from task_service.infrastructure.persistence.models import TaskCase
+                physical_exists = sa_select(TaskCase.id).where(
+                    TaskCase.task_id == Task.id,
+                    TaskCase.device_type == DeviceType.PHYSICAL.value,
+                ).correlate(Task).exists()
+                api_exists = sa_select(TaskCase.id).where(
+                    TaskCase.task_id == Task.id,
+                    TaskCase.device_type.in_([
+                        DeviceType.HTTP_API.value, DeviceType.WEBSOCKET_API.value,
+                    ]),
+                ).correlate(Task).exists()
+                if task_type == 'mixed':
+                    query = query.filter(physical_exists, api_exists)
+                elif task_type == 'e2e':
+                    query = query.filter(physical_exists, ~api_exists)
+                elif task_type == 'api':
+                    query = query.filter(~physical_exists)
+                else:
+                    logger.debug("task_type 非法值已忽略: %r", task_type)
             if favorite:
                 from shared.models.common_enums import EntityType
                 from task_service.infrastructure.persistence.models import Favorite
