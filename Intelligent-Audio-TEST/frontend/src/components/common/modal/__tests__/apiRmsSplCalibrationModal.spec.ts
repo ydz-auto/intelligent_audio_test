@@ -10,6 +10,7 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { defineComponent, h, mergeProps, nextTick, ref } from 'vue'
 
 import ApiRmsSplCalibrationModal from '../ApiRmsSplCalibrationModal.vue'
 import type { ApiCalibrationPoint } from '../../../../domain'
@@ -81,11 +82,14 @@ describe('INT-330 缺陷1：行级校验阻塞提交', () => {
 
     await submitBtn(w).trigger('click')
     await flushPromises()
-    // onConfirm 仅一次（回归：emit('confirm') 会经 v-bind 透传的 onConfirm 监听器二次触发提交）
+    // onConfirm 仅一次（emit('confirm') 只触发一次监听器，不经二次调用）
     expect(onConfirm).toHaveBeenCalledTimes(1)
     expect(onConfirm).toHaveBeenCalledWith({ points: [{ targetSpl: 80, gainLinear: 1, rmsDbfs: undefined }] })
-    // 成功后关弹窗（对齐设备域：显式回调 + close 事件）
-    expect(w.emitted('close')).toBeTruthy()
+    // 容器关闭语义：提交走 confirm 事件（容器 @confirm 处理 resolve/close），
+    // 组件自身不再 emit('close') —— INT-330 P1（直接调 props.onConfirm 在容器
+    // v-bind+@confirm 合并为数组后抛 TypeError）回归口径
+    expect(w.emitted('confirm')).toBeTruthy()
+    expect(w.emitted('confirm')?.[0]).toEqual([{ points: [{ targetSpl: 80, gainLinear: 1, rmsDbfs: undefined }] }])
   })
 
   it('线性增益超限幅上限时阻塞提交', async () => {
@@ -169,5 +173,76 @@ describe('INT-330 缺陷2：按参考生成入口恒显示', () => {
     await genBtn.trigger('click')
     expect(dataRows(w)).toHaveLength(5)
     expect(genBtn.text()).not.toContain('再点一次确认覆盖')
+  })
+})
+
+/**
+ * INT-330 P1 回归：真实应用路径（GlobalModalContainer 渲染）下「提交校准」必须生效。
+ *
+ * GlobalModalContainer 模板 `<component v-bind="{...props}" @confirm="handler"/>` 经 Vue
+ * mergeProps 把 onConfirm 合并为数组 `[原校准回调, 容器处理]`；若 handleSubmit 直接调
+ * props.onConfirm 抛 TypeError（单测直挂单函数 props 拦不住这个集成缺陷）。这里用
+ * mergeProps 复刻容器合并，锁定提交走 emit('confirm') → 原回调单次 POST + 容器处理
+ * resolve/close。
+ */
+describe('INT-330 P1：容器集成路径（v-bind+@confirm 合并 onConfirm 数组）', () => {
+  /** 复刻 GlobalModalContainer：v-bind 透传 props（含 onConfirm 原回调）+ @confirm 容器处理 */
+  function mountViaContainer(
+    originalConfirm: ConfirmFn,
+    containerConfirm: (data: unknown) => void = () => {},
+  ) {
+    const open = ref(true)
+    const ContainerWrapper = defineComponent({
+      setup() {
+        return () =>
+          open.value
+            ? h(
+                ApiRmsSplCalibrationModal,
+                mergeProps(
+                  {
+                    mappingId: 1,
+                    mappingName: '映射A',
+                    apiId: 7,
+                    data: BASE_DATA,
+                    onConfirm: originalConfirm, // modalManager.open 传入的原校准回调
+                  },
+                  {
+                    // GlobalModalContainer :32-47 同款容器处理：resolve + close
+                    onConfirm: (data: unknown) => {
+                      containerConfirm(data)
+                      open.value = false
+                    },
+                  },
+                ) as any,
+              )
+            : null
+      },
+    })
+    return mount(ContainerWrapper)
+  }
+
+  it('onConfirm 合并为数组时提交仍单次 POST + 容器关闭（不再抛 TypeError）', async () => {
+    const originalConfirm = vi.fn().mockResolvedValue(undefined)
+    const containerConfirm = vi.fn()
+    const w = mountViaContainer(originalConfirm, containerConfirm)
+
+    await w.findAll('button').find(b => b.text().includes('添加校准点'))!.trigger('click')
+    const rows = dataRows(w)
+    await rowInputs(rows[0])[0].setValue('80')
+    await rowInputs(rows[0])[1].setValue('1')
+
+    const submit = submitBtn(w)
+    expect(submit.attributes('disabled')).toBeUndefined()
+    await submit.trigger('click')
+    await flushPromises()
+    await nextTick()
+
+    // 原回调（容器 props.onConfirm[0]）单次触发 = 单次校准 POST
+    expect(originalConfirm).toHaveBeenCalledTimes(1)
+    expect(originalConfirm).toHaveBeenCalledWith({ points: [{ targetSpl: 80, gainLinear: 1, rmsDbfs: undefined }] })
+    // 容器处理（props.onConfirm[1]）被 emit 触发 = resolve/close
+    expect(containerConfirm).toHaveBeenCalledTimes(1)
+    // 容器关闭语义生效：弹窗已被容器处理移除
+    expect(w.find('.api-rms-spl-calibration-modal').exists()).toBe(false)
   })
 })

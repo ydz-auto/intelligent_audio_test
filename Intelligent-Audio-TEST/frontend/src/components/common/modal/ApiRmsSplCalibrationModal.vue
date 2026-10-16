@@ -183,7 +183,7 @@ const props = defineProps<{
   title?: string
 }>()
 
-const emit = defineEmits(['close'])
+const emit = defineEmits(['close', 'confirm'])
 
 const submitting = ref(false)
 
@@ -349,16 +349,13 @@ async function handleSubmit() {
   if (!validPoints.value.every(pointInRange)) return
   submitting.value = true
   try {
-    const payload = { points: validPoints.value }
-    if (props.onConfirm) {
-      await props.onConfirm(payload)
-    }
-    // 成功后关弹窗（对齐设备域 SPLCalibrationModal：显式回调 + close 事件）。
-    // 不 emit('confirm')：onConfirm prop 本身就是 confirm 事件的监听器（GlobalModalContainer
-    // 经 v-bind 透传），emit 会二次触发 onConfirm → 校准接口重复提交（vitest 锁定）。
-    emit('close')
+    // INT-330 P1：不能直接调 props.onConfirm —— GlobalModalContainer 在真实应用里经
+    // v-bind + @confirm 把 onConfirm 合并为数组（[原校准回调, 容器处理]），直接调用抛
+    // TypeError，校准 POST 永不发出、弹窗停留。只 emit('confirm', payload) 走容器链路：
+    // emit 依次触发数组内全部监听器 → 单次校准 POST + 容器 resolve/close（弹窗关闭）。
+    emit('confirm', { points: validPoints.value })
   } catch (error) {
-    // onConfirm 内已通知错误；这里不关闭弹窗，用户可修正后重试
+    // 同步异常防御（emit 自身极少抛错；原回调的异步失败已由容器侧 onConfirm 内通知）
     console.error('[ApiRmsSplCalibration] 校准提交失败:', error)
   } finally {
     submitting.value = false
