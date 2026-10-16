@@ -192,7 +192,45 @@ export const MOCK_REPORT_LIST_ITEMS: ReportListItem[] = [
     deleted_at: '2026-10-07T16:20:00',
     created_at: '2026-09-28T09:30:00',
   },
+  // Benchmark 报告（INT-500 v2.9：report_type='benchmark'，列表并入报告中心类型筛选、详情复用 /report/$reportId）
+  {
+    id: 1185,
+    name: '唤醒性能 Benchmark 排行报告（2026-10）',
+    type: 'benchmark',
+    task_id: undefined,
+    task_name: '多友商横向能力对比',
+    algorithm_type: 'wakeword_detect',
+    summary: { total_cases: 96, completed_cases: 96, failed_cases: 4, pass_rate: 95.8, task_count: 6 },
+    description: '多厂商模型/APP/API 在同一标准化环境、同一测试集与指标下同时实测，按指标与场景生成名次。',
+    status: 'published',
+    is_favorite: true,
+    created_at: '2026-10-16T09:30:00',
+    updated_at: '2026-10-16T09:31:00',
+  },
 ] satisfies ReportListItem[]
+
+/**
+ * 高级搜索元信息（任务类型/设备类型/创建者；报告中心筛选 §2 实测 :186-188）。
+ * mock 确定性映射——列表项不带这些字段时按 id 合并；filter 可走查、接线后由后端查询参数承载。
+ */
+export const MOCK_REPORT_ADVANCED_META: Record<
+  number,
+  { task_type: string; device_type: string; creator: string }
+> = {
+  1201: { task_type: 'e2e', device_type: 'smart_speaker', creator: 'demo_admin' },
+  1200: { task_type: 'e2e', device_type: 'car_voice', creator: 'demo_admin' },
+  1199: { task_type: 'api', device_type: 'smart_speaker', creator: 'algo_engineer' },
+  1198: { task_type: 'e2e', device_type: 'headphone', creator: 'demo_admin' },
+  1197: { task_type: 'api', device_type: 'smart_speaker', creator: 'demo_admin' },
+  1196: { task_type: 'api', device_type: 'smart_speaker', creator: 'algo_engineer' },
+  1195: { task_type: 'mixed', device_type: 'smart_speaker', creator: 'demo_admin' },
+  1190: { task_type: 'mixed', device_type: 'smart_speaker', creator: 'algo_engineer' },
+  1188: { task_type: 'mixed', device_type: 'smart_speaker', creator: 'algo_engineer' },
+  1186: { task_type: 'mixed', device_type: 'headphone', creator: 'demo_admin' },
+  1180: { task_type: 'e2e', device_type: 'smart_speaker', creator: 'demo_admin' },
+  1179: { task_type: 'api', device_type: 'smart_speaker', creator: 'algo_engineer' },
+  1185: { task_type: 'benchmark', device_type: 'mixed', creator: 'algo_engineer' },
+}
 
 /** GET /reports 服务端分页响应 mock（useReportList 按 page/per_page 切片） */
 export const MOCK_REPORT_LIST_DATA: ReportListData = {
@@ -205,9 +243,9 @@ export const MOCK_REPORT_LIST_DATA: ReportListData = {
 
 /** GET /reports/counts（全量非回收站项分类计数；口径修正 2026-10-16 取消页签后仍作筛选 chips/徽章行计数源） */
 export const MOCK_REPORT_COUNTS: ReportCounts = {
-  all: 10,
+  all: 11,
   draft: 3,
-  published: 7,
+  published: 8,
   // P3-1 口径对齐：comparison 只计 type='comparison'（2 项：1190/1186），不含二次对比——
   // 与类型 chips 同源（对比2+二次1）、与快速筛选 type='comparison' 的实选结果一致
   comparison: 2,
@@ -293,17 +331,19 @@ export const MOCK_REPORT_DETAILS: Record<number, ReportDetailData> = {
   1201: buildTaskReportDetail(),
   1190: buildComparisonReportDetail('comparison'),
   1188: buildComparisonReportDetail('secondary_comparison'),
+  1185: buildBenchmarkReportDetail(),
 }
 
 /**
  * 任意列表 id → 详情 mock（INT-503 补齐：列表全部 ID 可点开，杜绝「报告不存在」）。
- * 1201/1190/1188 走富详情；其余按列表项参数化生成等价形态（任务级 / 对比家族）。
+ * 1201/1190/1188/1185 走富详情；其余按列表项参数化生成等价形态（任务级 / 对比家族 / Benchmark）。
  */
 export function getReportDetailMock(reportId: number): ReportDetailData | undefined {
   const fixed = MOCK_REPORT_DETAILS[reportId]
   if (fixed) return fixed
   const item = MOCK_REPORT_LIST_ITEMS.find((i) => i.id === reportId)
   if (!item) return undefined
+  if (item.type === 'benchmark') return buildBenchmarkReportDetailFor(item)
   if (item.type === 'task') return buildTaskReportDetailFor(item)
   return buildComparisonReportDetailFor(item)
 }
@@ -352,6 +392,57 @@ function buildComparisonReportDetailFor(item: ReportListItem): ReportDetailData 
     description: item.description,
     status: item.status,
     summary: { ...base.summary, task_count: count, total_cases: item.summary.total_cases },
+    created_at: item.created_at,
+    updated_at: item.updated_at ?? item.created_at,
+  }
+}
+
+/** Benchmark 报告详情（§3.8：报告头操作组 + 任务级分区复用 + 内嵌「Benchmark 排行」区块；summary 走任务级形态） */
+function buildBenchmarkReportDetail(): ReportDetailData {
+  const summary = buildTaskSummary()
+  summary.total_cases = 96
+  summary.completed_cases = 96
+  summary.failed_cases = 4
+  summary.resource_headers = summary.resource_headers.map((h) => ({
+    ...h,
+    label: h.label.replace('智能音箱-', '被测-'),
+  }))
+  summary.resources = ['device_1', 'device_2', 'device_3', 'api_101', 'api_102']
+  return {
+    id: 1185,
+    name: '唤醒性能 Benchmark 排行报告（2026-10）',
+    type: 'benchmark',
+    task_id: undefined,
+    task_type: 'benchmark',
+    task_name: '多友商横向能力对比',
+    algorithm_type: 'wakeword_detect',
+    description: '多厂商模型/APP/API 在同一标准化环境、同一测试集与指标下同时实测，按指标与场景生成名次。',
+    status: 'published',
+    analysis:
+      '多友商横向能力对比：6 个被测主体在统一唤醒测试集与评估指标下同时实测，整体通过率 95.8%。' +
+      '旗舰系列与开源基线差距最小（gap -1.2%），闭源商业 API 平均响应最短；第三方 APP 端因系统裁剪差异存在 ±0.5% 抖动。',
+    summary,
+    created_at: '2026-10-16T09:30:00',
+    updated_at: '2026-10-16T09:31:00',
+  }
+}
+
+/** 由列表项生成 Benchmark 报告详情（头部按列表项覆盖，summary 复用富详情任务级形态） */
+function buildBenchmarkReportDetailFor(item: ReportListItem): ReportDetailData {
+  const base = buildBenchmarkReportDetail()
+  return {
+    ...base,
+    id: item.id,
+    name: item.name,
+    description: item.description,
+    status: item.status,
+    summary: {
+      ...base.summary,
+      total_cases: item.summary.total_cases,
+      completed_cases: item.summary.completed_cases,
+      failed_cases: item.summary.failed_cases,
+      task_count: item.summary.task_count,
+    },
     created_at: item.created_at,
     updated_at: item.updated_at ?? item.created_at,
   }

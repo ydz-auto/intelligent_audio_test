@@ -24,6 +24,7 @@ import type {
 
 import {
   MOCK_COMPLETED_TASKS,
+  MOCK_REPORT_ADVANCED_META,
   MOCK_REPORT_CASE_LIST_DATA,
   MOCK_REPORT_COUNTS,
   MOCK_REPORT_DETAILS,
@@ -36,13 +37,18 @@ import { resolveReportUiFlags } from '../stores/reports-ui-store'
 export async function fetchReportList(
   query: ReportListQuery
 ): Promise<ReportListData> {
-  const { page, per_page, report_type, status, keyword, start_time, end_time, algorithm_type, sort_by, order, favorite, deleted } =
+  const { page, per_page, report_type, status, keyword, task_type, device_type, creator, start_time, end_time, algorithm_type, sort_by, order, favorite, deleted } =
     query
   const pageSize = per_page ?? 20
 
   let items = MOCK_REPORT_LIST_ITEMS.filter((item) => {
     if (report_type && item.type !== report_type) return false
     if (status && item.status !== status) return false
+    // 高级搜索：任务类型/设备类型/创建者（§2 :186-188；mock 元信息按 id 合并）
+    const adv = MOCK_REPORT_ADVANCED_META[item.id]
+    if (task_type && adv?.task_type !== task_type) return false
+    if (device_type && adv?.device_type !== device_type) return false
+    if (creator && adv?.creator !== creator) return false
     if (keyword) {
       const kw = keyword.toLowerCase()
       if (
@@ -92,7 +98,13 @@ export async function fetchReportList(
   return {
     items: items.slice(start, start + pageSize).map((item) => {
       const flags = resolveReportUiFlags(item.id, item.is_favorite)
-      return { ...item, is_favorite: flags.isFavorite, deleted: flags.deleted }
+      const adv = MOCK_REPORT_ADVANCED_META[item.id]
+      return {
+        ...item,
+        ...adv,
+        is_favorite: flags.isFavorite,
+        deleted: flags.deleted,
+      }
     }),
     total,
     page,
@@ -131,6 +143,7 @@ export async function fetchReportTypeCounts(): Promise<{
       task: items.filter((i) => i.type === 'task').length,
       comparison: items.filter((i) => i.type === 'comparison').length,
       secondary_comparison: items.filter((i) => i.type === 'secondary_comparison').length,
+      benchmark: items.filter((i) => i.type === 'benchmark').length,
     },
     favoriteCount: items.filter((i) => i.is_favorite).length,
   }
@@ -146,6 +159,28 @@ export async function fetchReportDetail(
     throw new Error(`报告 ${reportId} 不存在`)
   }
   return detail
+}
+
+/**
+ * Benchmark 报告列表（INT-500 v2.9：列表并入报告中心类型筛选，report_type='benchmark' 统一走 /reports 列表；
+ * 本桩保留后端独立端点形态，供接线替换）。TODO(API 接线): GET /api/v1/benchmarks/reports。
+ */
+export async function fetchBenchmarkReports(): Promise<ReportListData> {
+  return fetchReportList({
+    page: 1,
+    per_page: 100,
+    report_type: 'benchmark',
+    sort_by: 'created_at',
+    order: 'desc',
+    favorite: false,
+    deleted: false,
+  })
+}
+
+/** 发布 Benchmark 报告（§3.8；排行区块「发布 Benchmark 报告」→ POST /api/v1/benchmarks/reports）。TODO(API 接线)。 */
+export async function publishBenchmarkReport(): Promise<{ reportId: number }> {
+  // mock：返回 1185 关联 id（演示态）
+  return { reportId: 1185 }
 }
 
 export async function fetchReportCases(

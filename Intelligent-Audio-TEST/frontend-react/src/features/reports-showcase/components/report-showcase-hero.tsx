@@ -22,6 +22,7 @@ const TYPE_CHIPS: { value: ReportType | 'all'; label: string }[] = [
   { value: 'task', label: '任务报告' },
   { value: 'comparison', label: '对比报告' },
   { value: 'secondary_comparison', label: '二次对比报告' },
+  { value: 'benchmark', label: 'Benchmark 报告' },
 ]
 
 const TIME_RANGE_OPTIONS: { value: ReportTimeRange | 'all'; label: string }[] = [

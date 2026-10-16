@@ -27,7 +27,38 @@ export type { DistributionStats, RebinResult } from '@/infrastructure/adapters/c
 
 export interface ChartSeriesData {
   labels: string[]
-  datasets: { label: string; data: number[]; backgroundColor?: string; borderColor?: string; fill?: boolean; tension?: number }[]
+  /** 热力图 y 轴行标签（x=labels、y=yLabels；缺省复用 labels） */
+  yLabels?: string[]
+  datasets: ChartDatasetItem[]
+}
+
+/** 散点（scatter）：两个变量关系（§3.7，统计页 散点图） */
+export interface ChartPoint {
+  x: number
+  y: number
+}
+
+/** 热力格（heatmap）：密度分布矩阵格 {x 列, y 行, v 值}（§3.7，统计页 热力图） */
+export interface MatrixCell {
+  x: number
+  y: number
+  v: number
+}
+
+export type ChartDatasetData = number | ChartPoint | MatrixCell
+
+export interface ChartDatasetItem {
+  label: string
+  data: ChartDatasetData[]
+  backgroundColor?: string | ((context: { raw: MatrixCell }) => string)
+  borderColor?: string
+  fill?: boolean
+  tension?: number
+  borderRadius?: number
+  /** scatter：连线显示（默认 false 点图） */
+  showLine?: boolean
+  /** scatter 点半径 */
+  pointRadius?: number
 }
 
 export function createGroupChartData(

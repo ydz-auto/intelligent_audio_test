@@ -13,20 +13,33 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useReportDetail } from '@/application/report-view/use-report-detail'
 import { useReportAnalysis } from '@/application/report-view/use-report-analysis'
+import { useReportShare } from '@/application/report-view/use-report-share'
 import { useReportActions } from '@/application/reports/use-report-actions'
 import { ExportReportDialog } from '@/features/reports/components/modals/export-report-dialog'
 import { PublishReportDialog, RegenerateReportDialog } from '@/features/reports/components/modals/report-confirm-dialogs'
 import { ReportRenameDialog } from '@/features/reports/components/modals/report-rename-dialog'
+import { ReportShareDialog } from './components/modals/report-share-dialog'
 
 import { ReportHeader } from './components/report-header'
 import { ReportReadingNav, type ReadingNavSection } from './components/report-reading-nav'
 import { TaskReportPanel } from './components/task-report-panel'
 import { ComparisonReportPanel } from './components/comparison-report-panel'
+import { BenchmarkRankingBlock } from './components/benchmark-ranking-block'
 
 import '@/features/report-view/report-print.css'
 
-const NAV: Record<'task' | 'comparison', ReadingNavSection[]> = {
+const NAV: Record<'task' | 'comparison' | 'benchmark', ReadingNavSection[]> = {
   task: [
+    { id: 'report-overview', label: '总览' },
+    { id: 'report-resource-stats', label: '设备与API' },
+    { id: 'report-conclusion', label: '分析结论' },
+    { id: 'report-comparison-tables', label: '对比表格' },
+    { id: 'report-case-category', label: '用例分组' },
+    { id: 'report-case-tag', label: '用例标签' },
+    { id: 'report-specific-cases', label: '具体用例' },
+  ],
+  benchmark: [
+    { id: 'report-benchmark-ranking', label: 'Benchmark 排行' },
     { id: 'report-overview', label: '总览' },
     { id: 'report-resource-stats', label: '设备与API' },
     { id: 'report-conclusion', label: '分析结论' },
@@ -83,10 +96,14 @@ export function ReportViewPage() {
   const backLabel = search.from === 'management' ? '← 返回报告中心' : '← 返回报告展示'
 
   const { saveConclusion: saveAnalysis } = useReportAnalysis(reportId, report?.analysis)
+  const share = useReportShare(reportId, report?.name ?? '报告')
 
   const sections = useMemo<ReadingNavSection[]>(() => {
     const isComparison = report?.type === 'comparison' || report?.type === 'secondary_comparison'
-    const base = isComparison ? [...NAV.comparison] : [...NAV.task]
+    const base =
+      isComparison ? [...NAV.comparison]
+      : report?.type === 'benchmark' ? [...NAV.benchmark]
+      : [...NAV.task]
     if (isComparison && report?.type === 'secondary_comparison') {
       base.push({ id: 'report-compare-diff', label: '对比差异' })
     }
@@ -188,11 +205,15 @@ export function ReportViewPage() {
             void navigator.clipboard?.writeText(`${window.location.origin}/report/${report.id}`)
             toast.success('链接已复制')
           }}
+          onShare={() => share.openShare('link')}
           onClose={handleBack}
         />
 
         <div className='mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_220px]'>
           <main className='min-w-0 space-y-6'>
+            {report.type === 'benchmark' && (
+              <BenchmarkRankingBlock reportId={report.id} reportName={report.name} />
+            )}
             {isComparison ? (
               <ComparisonReportPanel
                 report={report}
@@ -270,6 +291,27 @@ export function ReportViewPage() {
         onOpenChange={setRenameOpen}
         report={report}
         onConfirm={(target, payload) => void reportActions.rename(target.id, payload)}
+      />
+      <ReportShareDialog
+        reportName={report.name}
+        state={share.shareState}
+        onOpenChange={(open) => {
+          if (open) share.openShare()
+          else share.closeShare()
+        }}
+        onMethodChange={(method) => share.patchShare({ method })}
+        onAccessChange={(access) => share.patchShare({ access })}
+        onExpiryChange={(expiry) => share.patchShare({ expiry })}
+        onPasswordChange={(password) => share.patchShare({ password })}
+        onGenerate={() => void share.generateShareLink()}
+        onRevoke={share.revokeShare}
+        onCopy={() => {
+          if (share.shareState.shareUrl) {
+            void navigator.clipboard?.writeText(share.shareState.shareUrl)
+            toast.success('链接已复制')
+          }
+        }}
+        onRecordVisit={share.recordVisit}
       />
     </div>
   )

@@ -144,7 +144,8 @@ export function ReportShowcaseList({
                     </span>
                   </td>
                   <td className='text-muted-foreground px-3 py-2.5 text-right tabular-nums'>
-                    {report.summary.task_count !== undefined
+                    {(report.type === 'comparison' || report.type === 'secondary_comparison') &&
+                    report.summary.task_count !== undefined
                       ? `${report.summary.task_count} 任务`
                       : report.summary.total_cases}
                   </td>

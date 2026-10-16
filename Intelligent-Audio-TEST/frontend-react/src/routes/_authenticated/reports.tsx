@@ -19,7 +19,7 @@ export const reportsShowcaseSearchSchema = z
     pageSize: z.coerce.number().int().min(1).catch(20),
     search: z.string().optional().catch(undefined),
     type: z
-      .enum(['task', 'comparison', 'secondary_comparison'])
+      .enum(['task', 'comparison', 'secondary_comparison', 'benchmark'])
       .optional()
       .catch(undefined),
     timeRange: z

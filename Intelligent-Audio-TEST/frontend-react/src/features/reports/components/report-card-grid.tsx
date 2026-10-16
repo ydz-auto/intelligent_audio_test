@@ -159,7 +159,7 @@ export function ReportCardGrid({
             <CardContent className='flex flex-col gap-2'>
               <div className='flex items-center justify-between gap-2 text-xs'>
                 <span className='text-muted-foreground truncate'>
-                  {report.type === 'task'
+                  {report.type === 'task' || report.type === 'benchmark'
                     ? report.task_name
                     : `${report.summary.task_count ?? 0} 个任务对比`}
                 </span>
@@ -186,7 +186,7 @@ export function ReportCardGrid({
                 </span>
                 <span className='text-muted-foreground ml-auto'>用例</span>
                 <span className='font-mono tabular-nums'>
-                  {report.type === 'task'
+                  {report.type === 'task' || report.type === 'benchmark'
                     ? report.summary.total_cases
                     : `${report.summary.task_count ?? 0} 任务`}
                 </span>

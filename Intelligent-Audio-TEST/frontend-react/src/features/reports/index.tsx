@@ -9,7 +9,7 @@
  * （features/reports/types.ts），页面以 navigate 回写。
  */
 import { useNavigate, useSearch } from '@tanstack/react-router'
-import { FilePlus2, MoreHorizontal, RefreshCw } from 'lucide-react'
+import { BarChart3, FilePlus2, MoreHorizontal, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -36,6 +36,7 @@ import { getLinkedAlgorithmLabel, toReportAlgorithmType } from '@/features/repor
 import { buildReportListQuery } from '@/features/reports/lib/search'
 
 import { ReportHero } from './components/report-hero'
+import { ReportAdvancedSearch } from './components/report-advanced-search'
 import { ReportStatsRow, type BadgeKind } from './components/report-stats-row'
 import { ReportFilterToolbar } from './components/report-filter-toolbar'
 import { ReportsTable } from './components/reports-table'
@@ -68,6 +69,7 @@ export function ReportCenterPage() {
     task: 0,
     comparison: 0,
     secondary_comparison: 0,
+    benchmark: 0,
   }
   const favoriteCount = summaryCountsQuery.data?.favoriteCount ?? 0
 
@@ -179,6 +181,9 @@ export function ReportCenterPage() {
         s.timeRange ||
         s.startTime ||
         s.endTime ||
+        s.taskType ||
+        s.deviceType ||
+        s.creator ||
         effectiveAlgorithmType
     )
   }, [search, effectiveAlgorithmType])
@@ -191,12 +196,22 @@ export function ReportCenterPage() {
       timeRange: undefined,
       startTime: undefined,
       endTime: undefined,
+      taskType: undefined,
+      deviceType: undefined,
+      creator: undefined,
       algorithmType: undefined,
       favorite: false,
       trash: false,
       page: 1,
     })
   }, [setSearch])
+
+  const handleAdvancedChange = useCallback(
+    (patch: { taskType?: string; deviceType?: string; creator?: string }) => {
+      setSearch({ ...patch, page: 1 })
+    },
+    [setSearch]
+  )
 
   // 勾选状态（查询变化时重置）
   const [selectedIds, setSelectedIds] = useState<number[]>([])
@@ -311,6 +326,12 @@ export function ReportCenterPage() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align='end' className='w-44'>
             <DropdownMenuItem
+              onClick={() => void navigate({ to: '/report-statistics' })}
+            >
+              <BarChart3 className='size-4' />
+              统计分析
+            </DropdownMenuItem>
+            <DropdownMenuItem
               onClick={() => {
                 if (selectedIds.length > 0) {
                   openExportDialog(selectedIds.length, `已选择 ${selectedIds.length} 个报告`)
@@ -353,6 +374,15 @@ export function ReportCenterPage() {
             }
             hasActiveFilters={hasActiveFilters}
             onClearAll={handleClearAll}
+          />
+
+          {/* 高级搜索（任务类型 × 设备类型 × 创建者，§2 实测 :173-193；INT-381 返修） */}
+          <ReportAdvancedSearch
+            taskType={search.taskType}
+            deviceType={search.deviceType}
+            creator={search.creator}
+            onChange={handleAdvancedChange}
+            onReset={() => setSearch({ taskType: undefined, deviceType: undefined, creator: undefined, page: 1 })}
           />
 
           <ReportStatsRow

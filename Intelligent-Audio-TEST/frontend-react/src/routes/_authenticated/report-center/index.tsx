@@ -22,7 +22,7 @@ export const reportCenterSearchSchema = z
     pageSize: z.coerce.number().int().min(1).catch(20),
     search: z.string().optional().catch(undefined),
     type: z
-      .enum(['task', 'comparison', 'secondary_comparison'])
+      .enum(['task', 'comparison', 'secondary_comparison', 'benchmark'])
       .optional()
       .catch(undefined),
     status: z.enum(['draft', 'published']).optional().catch(undefined),
@@ -32,6 +32,10 @@ export const reportCenterSearchSchema = z
       .catch(undefined),
     startTime: z.string().optional().catch(undefined),
     endTime: z.string().optional().catch(undefined),
+    /** 高级搜索：任务类型/设备类型/创建者（§2 :186-188） */
+    taskType: z.string().optional().catch(undefined),
+    deviceType: z.string().optional().catch(undefined),
+    creator: z.string().optional().catch(undefined),
     algorithmType: z.string().optional().catch(undefined),
     favorite: z
       .enum(['true', 'false'])

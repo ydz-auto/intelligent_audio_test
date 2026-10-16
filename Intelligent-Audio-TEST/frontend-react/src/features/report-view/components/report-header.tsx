@@ -11,6 +11,7 @@ import {
   Printer,
   RefreshCw,
   Rocket,
+  Share2,
   X,
 } from 'lucide-react'
 
@@ -26,6 +27,7 @@ import {
   REPORT_STATUS_META,
   REPORT_TYPE_META,
 } from '@/features/reports/constants'
+import { AiChatEntry } from './ai-chat-entry'
 
 interface ReportHeaderProps {
   report: ReportDetailData
@@ -41,6 +43,7 @@ interface ReportHeaderProps {
   onExport: () => void
   onRegenerate: () => void
   onCopyLink: () => void
+  onShare: () => void
   onClose: () => void
 }
 
@@ -57,6 +60,7 @@ export function ReportHeader({
   onExport,
   onRegenerate,
   onCopyLink,
+  onShare,
   onClose,
 }: ReportHeaderProps) {
   const typeMeta = REPORT_TYPE_META[report.type]
@@ -161,6 +165,12 @@ export function ReportHeader({
               <ExternalLink data-icon='inline-start' />
               复制链接
             </Button>
+            <Button variant='ghost' size='sm' onClick={onShare}>
+              <Share2 data-icon='inline-start' />
+              分享
+            </Button>
+            {/* §3.2.1 灵犀Agent生成报告入口（08 卡契约：/ai-chat?report={id}） */}
+            <AiChatEntry reportId={report.id} enabled={hasPermission('report:read')} />
             <Button variant='ghost' size='sm' onClick={onClose}>
               <X data-icon='inline-start' />
               关闭

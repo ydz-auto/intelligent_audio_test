@@ -177,7 +177,7 @@ export function ReportsTable({
                   <td className='max-w-[240px] px-3 py-3'>
                     <div className='truncate font-medium'>{report.name}</div>
                     <div className='text-muted-foreground truncate text-xs'>
-                      {report.type === 'task'
+                      {report.type === 'task' || report.type === 'benchmark'
                         ? report.task_name
                         : `${report.summary.task_count ?? 0} 个任务对比`}
                     </div>
@@ -196,7 +196,7 @@ export function ReportsTable({
                     )}
                   </td>
                   <td className='px-3 py-3'>
-                    {report.type === 'task' ? (
+                    {report.type === 'task' || report.type === 'benchmark' ? (
                       <span
                         className={cn(
                           'font-mono font-semibold tabular-nums',
@@ -216,7 +216,7 @@ export function ReportsTable({
                   </td>
                   <td className='px-3 py-3'>
                     <span className='font-mono tabular-nums'>
-                      {report.type === 'task'
+                      {report.type === 'task' || report.type === 'benchmark'
                         ? report.summary.total_cases
                         : `${report.summary.task_count ?? 0} 任务`}
                     </span>

@@ -73,7 +73,8 @@ export function ReportShowcaseCardGrid({
                       : '—'}
                   </span>
                   <span>
-                    {report.summary.task_count !== undefined
+                    {(report.type === 'comparison' || report.type === 'secondary_comparison') &&
+                    report.summary.task_count !== undefined
                       ? `${report.summary.task_count} 任务`
                       : `${report.summary.total_cases} 用例`}
                   </span>

@@ -10,7 +10,7 @@
  * mock 常量见 infrastructure/mock/reports-mock.ts，后续接线仅替换 api 桩，页面与 hook 不返工（红线④）。
  */
 
-export type ReportType = 'task' | 'comparison' | 'secondary_comparison'
+export type ReportType = 'task' | 'comparison' | 'secondary_comparison' | 'benchmark'
 export type ReportStatus = 'draft' | 'published'
 
 export type ReportViewMode = 'table' | 'card'
@@ -34,6 +34,12 @@ export interface ReportListItemSummary {
   task_id?: number
   task_name: string
   algorithm_type?: string
+  /** 任务类型（e2e/api/mixed；报告中心筛选 §2 实测 :186） */
+  task_type?: string
+  /** 设备类型（smart_speaker/car_voice/headphone；报告中心筛选 §2 实测 :187） */
+  device_type?: string
+  /** 创建者（报告中心筛选 §2 实测 :188） */
+  creator?: string
   summary: ReportListItemSummary
   description?: string
   status: ReportStatus
@@ -71,6 +77,12 @@ export interface ReportListQuery {
   status?: string
   task_id?: number
   keyword?: string
+  /** 高级搜索：任务类型（e2e/api/mixed，§2 :186） */
+  task_type?: string
+  /** 高级搜索：设备类型（§2 :187） */
+  device_type?: string
+  /** 高级搜索：创建者（§2 :188） */
+  creator?: string
   start_time?: string
   end_time?: string
   algorithm_type?: string

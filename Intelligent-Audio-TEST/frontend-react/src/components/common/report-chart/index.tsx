@@ -20,10 +20,13 @@ import {
   PointElement,
   RadialLinearScale,
   RadarController,
+  ScatterController,
   Tooltip,
   Filler,
+  type ChartDataset,
   type ChartOptions,
 } from 'chart.js'
+import { MatrixController } from 'chartjs-chart-matrix'
 import zoomPlugin from 'chartjs-plugin-zoom'
 import { useEffect, useRef, useState } from 'react'
 
@@ -47,17 +50,19 @@ ChartJS.register(
   LineController,
   LineElement,
   PointElement,
+  ScatterController,
   CategoryScale,
   LinearScale,
   RadialLinearScale,
   RadarController,
+  MatrixController,
   Legend,
   Tooltip,
   Filler,
   zoomPlugin
 )
 
-export type ChartKind = 'bar' | 'line' | 'radar' | 'distribution'
+export type ChartKind = 'bar' | 'line' | 'radar' | 'distribution' | 'scatter' | 'heatmap'
 export type ChartSubKind = 'bar' | 'line'
 
 interface ReportChartProps {
@@ -175,13 +180,68 @@ export function ReportChart({
           plugins: { ...base.plugins, zoom: zoomOptions },
         } as ChartOptions
       }
+      // 散点（§3.7）：两变量关系线性轴点图，zoom 可用
+      if (type === 'scatter') {
+        return {
+          ...base,
+          scales: {
+            x: { ...(base.scales?.x ?? {}), type: 'linear' },
+            y: { ...(base.scales?.y ?? {}), type: 'linear' },
+          },
+          plugins: { ...base.plugins, zoom: zoomOptions },
+        } as ChartOptions
+      }
+      // 热力（§3.7）：矩阵密度图，x=labels 列、y=yLabels 行；无 zoom（格子语义）
+      if (type === 'heatmap') {
+        const yLabels = series.yLabels ?? series.labels
+        const tickColor = (base.scales?.y?.ticks as { color?: string } | undefined)?.color
+        const gridColor = (base.scales?.y?.grid as { color?: string } | undefined)?.color
+        return {
+          ...base,
+          scales: {
+            x: {
+              type: 'linear',
+              offset: true,
+              ticks: { color: tickColor, stepSize: 1, callback: (value) => series.labels[Number(value)] ?? '' },
+              grid: { color: gridColor },
+            },
+            y: {
+              type: 'linear',
+              offset: true,
+              ticks: { color: tickColor, stepSize: 1, callback: (value) => yLabels[Number(value)] ?? '' },
+              grid: { color: gridColor },
+            },
+          },
+          plugins: {
+            ...base.plugins,
+            tooltip: {
+              ...(base.plugins?.tooltip ?? {}),
+              callbacks: {
+                label: (ctx: { raw?: unknown }) => {
+                  const raw = (ctx.raw ?? {}) as { x?: number; y?: number; v?: number }
+                  return `${series.labels[raw.x ?? 0] ?? ''} · ${yLabels[raw.y ?? 0] ?? ''}：${raw.v ?? 0}`
+                },
+              },
+            },
+            zoom: { pan: { enabled: false }, zoom: { wheel: { enabled: false }, pinch: { enabled: false } } },
+          },
+        } as ChartOptions
+      }
       return {
         ...base,
         plugins: { ...base.plugins, zoom: zoomOptions },
       } as ChartOptions
     }
 
-    // 装配 datasets（distribution 用重分箱直方图）
+    // 热力图色阶：v 值归一化到 chart 色板 alpha 分级（§3.7 色阶 --chart-1..5 alpha）
+    const heatmapColor = (v: number, min: number, max: number): string => {
+      const range = max - min || 1
+      const t = Math.min(1, Math.max(0, (v - min) / range))
+      const stops = ['rgba(25,118,210,0.18)', 'rgba(82,196,26,0.35)', 'rgba(255,169,64,0.6)', 'rgba(245,34,45,0.85)']
+      return stops[Math.min(stops.length - 1, Math.floor(t * stops.length))]
+    }
+
+    // 装配 datasets（distribution 用重分箱直方图；heatmap 补 width/height 与色阶）
     const isLine = chartSubType === 'line'
     const datasets = distribution && type === 'distribution'
       ? rebinDistributionData(
@@ -198,11 +258,44 @@ export function ReportChart({
           fill: isLine ? false : undefined,
           tension: isLine ? 0.3 : undefined,
         }))
-      : series.datasets
+      : type === 'heatmap'
+        ? series.datasets.map((d) => {
+            const cells = (d.data ?? []).filter((c): c is { x: number; y: number; v: number } =>
+              typeof c === 'object' && c !== null && 'v' in c)
+            const values = cells.map((c) => c.v)
+            const min = values.length ? Math.min(...values) : 0
+            const max = values.length ? Math.max(...values) : 1
+            return {
+              ...d,
+              data: cells,
+              backgroundColor:
+                typeof d.backgroundColor === 'function'
+                  ? d.backgroundColor
+                  : (ctx: { raw?: { v?: number } }) =>
+                      heatmapColor((ctx.raw?.v ?? 0), min, max),
+              width: 30,
+              height: 30,
+            }
+          })
+        : series.datasets
+
+    // scatter 数据集：显式 showLine=false（点图）
+    const scatterDatasets = type === 'scatter'
+      ? datasets.map((d) => ({ ...d, showLine: (d as { showLine?: boolean }).showLine ?? false }))
+      : datasets
 
     chartRef.current = new ChartJS(canvas, {
-      type: type === 'distribution' ? 'bar' : (type === 'radar' ? 'radar' : type),
-      data: { labels: type === 'distribution' ? undefined : series.labels, datasets },
+      type: type === 'distribution'
+        ? 'bar'
+        : type === 'radar'
+          ? 'radar'
+          : type === 'heatmap'
+            ? 'matrix'
+            : type,
+      data: {
+        labels: type === 'distribution' ? undefined : series.labels,
+        datasets: scatterDatasets as ChartDataset[],
+      },
       options: buildOptions(),
     })
 

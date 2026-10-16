@@ -20,6 +20,7 @@ export const REPORT_TYPE_OPTIONS: {
   { value: 'task', label: '任务报告' },
   { value: 'comparison', label: '对比报告' },
   { value: 'secondary_comparison', label: '二次对比报告' },
+  { value: 'benchmark', label: 'Benchmark 报告' },
 ]
 
 export const REPORT_STATUS_OPTIONS: {
@@ -65,6 +66,7 @@ export const REPORT_TYPE_META: Record<
   task: { label: '任务报告', variant: 'neutral' },
   comparison: { label: '对比报告', variant: 'info' },
   secondary_comparison: { label: '二次对比', variant: 'purple' },
+  benchmark: { label: 'Benchmark 报告', variant: 'info' },
 }
 
 export const REPORT_STATUS_META: Record<
