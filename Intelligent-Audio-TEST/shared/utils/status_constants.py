@@ -47,6 +47,9 @@ class ExecutionStatus(str):
     COMPLETED = 'completed'
     STOPPED = 'stopped'
     FAILED = 'failed'
+    # INT-340 人工复核：执行状态可改判 skipped（负责人 2026-10-15 拍板全集；
+    # 原执行流程不产出 skipped，仅复核改判可写入）
+    SKIPPED = 'skipped'
 
 
 class EvaluationStatus(str):
@@ -109,3 +112,14 @@ INTERRUPTED_TASK_STATUSES = frozenset({
 
 # 服务重启可安全判定为中断的执行状态集合（queued/running；PENDING 保留待自动拉起）
 INTERRUPTED_EXECUTION_STATUSES = frozenset({ExecutionStatus.QUEUED, ExecutionStatus.RUNNING})
+
+# INT-340 人工复核可改判状态集合（负责人 2026-10-15 拍板全集）：
+# - 执行状态：completed/failed/stopped/skipped（禁 pending/queued/running）
+# - 评估状态：completed/failed（双状态口径，对齐 status_fields_relationship.md §8.3）
+REVIEWABLE_EXECUTION_STATUSES = frozenset({
+    ExecutionStatus.COMPLETED, ExecutionStatus.FAILED,
+    ExecutionStatus.STOPPED, ExecutionStatus.SKIPPED,
+})
+REVIEWABLE_EVALUATION_STATUSES = frozenset({
+    EvaluationStatus.COMPLETED, EvaluationStatus.FAILED,
+})

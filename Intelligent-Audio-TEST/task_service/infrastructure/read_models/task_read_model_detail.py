@@ -112,8 +112,20 @@ class TaskDetailReadModelMixin:
 
     def _to_detail_dto(self, task: Task, session) -> Dict[str, Any]:
         """含关联的详情 DTO。"""
-        from task_service.infrastructure.persistence.models import TestCase, TaskDevice, TaskAPI
+        from task_service.infrastructure.persistence.models import TestCase, TaskDevice, TaskAPI, TestResult
         from task_service.infrastructure.persistence.models.testcase_models import TestCaseGroup
+        from task_service.infrastructure.persistence.review_repository import review_repository
+
+        # INT-340：人工复核标注（任务级复核计数 + 用例级是否含复核结果，覆盖提醒/标记展示用）
+        reviewed_ids = review_repository.reviewed_result_ids(task.id, session)
+        review_count = len(reviewed_ids)
+        case_reviewed: Dict[str, bool] = {}
+        if reviewed_ids:
+            for (_rid, cid) in session.query(TestResult.id, TestResult.test_case_id).filter(
+                    TestResult.task_id == task.id,
+                    TestResult.id.in_(list(reviewed_ids)),
+            ).all():
+                case_reviewed[cid] = True
 
         cases = []
         # INT-305：移除留痕行（error_message = '用例已被移除'）从详情剔除
@@ -146,6 +158,8 @@ class TaskDetailReadModelMixin:
                 # INT-302/F3：本任务用例聚合的评估维度（重评估维度勾选候选集）
                 'evaluation_dimensions': self.extract_case_evaluation_dimensions(
                     case_info.config if case_info else None),
+                # INT-340：该用例下是否存在人工复核结果（任务详情「人工复核」标记）
+                'reviewed': bool(case_reviewed.get(tc.test_case_id)),
             })
 
         # P3 改造：task.devices / task.apis 关系已移除，
@@ -182,6 +196,7 @@ class TaskDetailReadModelMixin:
             'device_count': len(devices),
             'completed_cases': task.completed_cases,
             'failed_cases': task.failed_cases,
+            'review_count': review_count,
             'tags': tag_names,
             'cases': cases,
             'devices': devices,

@@ -132,6 +132,31 @@ class EvaluationConfigAclRepository:
         from shared.clients.grpc_clients import get_evaluation_data_service_stub
         return get_evaluation_data_service_stub()
 
+    def set_dimension_review_status(self, result_ids, evaluation_status, status) -> dict:
+        """人工复核改判 TRD 评估状态（INT-340）。
+
+        封装 evaluation_service.EvaluationDataService.SetDimensionReviewStatusByResultIds RPC。
+        Returns:
+            {'success': bool, 'message': str, 'data': dict|None}
+        """
+        if not result_ids:
+            return {'success': True, 'message': 'no-op', 'data': {'updated': 0}}
+        from shared.clients.grpc_clients import get_evaluation_data_service_stub
+        from shared.proto import evaluation_service_pb2 as eval_pb
+        try:
+            stub = get_evaluation_data_service_stub()
+            resp = stub.SetDimensionReviewStatusByResultIds(
+                eval_pb.SetDimensionReviewStatusByResultIdsRequest(
+                    result_ids=json.dumps(list(result_ids)),
+                    evaluation_status=evaluation_status or '',
+                    status=status or '',
+                ))
+            return {'success': resp.success, 'message': resp.message,
+                    'data': json.loads(resp.data) if resp.data else {}}
+        except Exception as e:
+            _logger.warning("SetDimensionReviewStatusByResultIds gRPC 异常: %s", e)
+            return {'success': False, 'message': str(e), 'data': None}
+
 
 # 模块级单例
 evaluation_config_acl_repository = EvaluationConfigAclRepository()

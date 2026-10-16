@@ -397,6 +397,8 @@ export const PermissionPoint = {
   TASK_PUBLISH: 'task:publish',
   /** 挑选合并（购物车/下单三出口，INT-339 seed_rbac task:cherry_pick） */
   TASK_CHERRY_PICK: 'task:cherry_pick',
+  /** 人工复核测试结果（INT-340 seed_rbac task.result.review） */
+  TASK_RESULT_REVIEW: 'task.result.review',
   /** 查看已发布任务 */
   PUBLISHED_TASK_READ: 'published_task:read',
   /** 执行已发布任务 */

@@ -338,3 +338,26 @@ class DimensionOpsMixin(DimensionParamsMixin):
         except Exception as e:
             logger.error(f"批量删除维度评估记录失败: {e}")
             return command_error(str(e))
+
+    # ==================== 人工复核评估状态改判（INT-340） ====================
+
+    def set_dimension_review_status_by_result_ids(
+        self, result_ids: list, evaluation_status: str, status: str
+    ) -> Dict[str, Any]:
+        """按 result_id 列表批量改判 TRD 评估状态（供 task_service 人工复核 gRPC 调用）。
+
+        evaluation_status 取 completed/failed；status（维度结论）取 passed/failed。
+        跨服务无原子事务：失败返回错误，由调用方（task_service 复核命令）按
+        post_evaluation.py 既有「日志告警」口径降级（复核留痕已落 task_service，
+        维度侧未同步仅告警，不影响主流程）。
+        """
+        try:
+            from evaluation_service.infrastructure.persistence.evaluation_dimension_repository import (
+                evaluation_dimension_repository,
+            )
+            count = evaluation_dimension_repository.set_review_status_by_result_ids(
+                result_ids, evaluation_status, status)
+            return command_ok('', data={'updated': count})
+        except Exception as e:
+            logger.error(f"人工复核改判维度评估状态失败: {e}")
+            return command_error(str(e))

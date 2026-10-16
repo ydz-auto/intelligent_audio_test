@@ -40,6 +40,8 @@ import TaskDetailModal from './TaskDetailModal.vue'
 // INT-302/F4：ReevaluateSelectModal（旧重评估类型选择）由 ReexecuteOptionsModal
 // 范围选择取代（含"重新提取设备输出"勾选恢复），死注册与死组件一并清理
 import ReexecuteOptionsModal from './ReexecuteOptionsModal.vue'
+// INT-340：测试结果人工复核（单条/批量改判 + 备注必填 + 复核历史展示）
+import ResultReviewModal from './ResultReviewModal.vue'
 
 export function registerGlobalModals() {
   const manager = getModalManager();
@@ -222,6 +224,15 @@ export function registerGlobalModals() {
       content: '请选择执行范围',
       actionType: 'retry',
       width: '640px'
+    }
+  });
+
+  // INT-340：测试结果人工复核（单条/批量改判执行/评估状态 + 备注必填 + 历史展示）
+  manager.registerModal(MODAL_TYPES.RESULT_REVIEW, {
+    component: ResultReviewModal,
+    defaultConfig: {
+      title: '人工复核',
+      width: '480px'
     }
   });
 

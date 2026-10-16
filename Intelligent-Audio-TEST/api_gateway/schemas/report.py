@@ -144,6 +144,8 @@ class ReportListItemSummary(APIModel):
     completed_cases: int = Field(0)
     failed_cases: int = Field(0)
     pass_rate: float = Field(0)
+    # INT-340：人工复核条数（报告页「人工复核」标记）
+    review_count: int = Field(0)
     task_count: Optional[int] = Field(None)
 
 

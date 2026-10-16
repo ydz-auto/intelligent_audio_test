@@ -331,6 +331,25 @@ message CherryPickSourceRequest {
   int32 task_id = 1;
 }
 
+// ===== 测试结果人工复核（INT-340）=====
+// 终态任务结果改判留痕 + 覆盖提醒计数 + 复核历史。operator 走 x-user-id metadata。
+service ReviewService {
+  // 复核提交（单条/批量）：result_ids + execution_status/evaluation_status + comment
+  rpc SubmitReview(ReviewSubmitRequest) returns (TaskConfigResponse);
+  // 覆盖提醒计数：任务下已复核结果条数（任务详情查询挂点）
+  rpc GetReviewCount(ReviewTaskRequest) returns (TaskConfigResponse);
+  // 复核历史（多次复核追加不覆盖）
+  rpc ListReviewHistory(ReviewTaskRequest) returns (TaskConfigResponse);
+}
+
+message ReviewSubmitRequest {
+  string data = 1;  // JSON: {result_ids: [int], execution_status?, evaluation_status?,
+                    //       comment: str（必填）}
+}
+message ReviewTaskRequest {
+  int32 task_id = 1;
+}
+
 // ===== 已发布任务配置服务（任务发布功能）=====
 service PublishedTaskConfigService {
   // ---- 写操作 ----

@@ -5,6 +5,7 @@ RBAC 种子数据初始化
 
 向 permissions / roles / role_permissions 表插入系统内置数据：
   - 110 个权限点（permissions）
+  - 109 个权限点（permissions）
   - 5 个系统角色（roles: admin / tester / algo_engineer / device_admin / guest）
   - 超级通配权限 * → admin
   - tester / algo_engineer / device_admin / guest 各自的角色-权限映射
@@ -41,6 +42,7 @@ POSTGRES_URI = os.environ.get(
 
 # ========================================================================
 # 权限点定义（110 个）
+# 权限点定义（109 个）
 # ========================================================================
 
 PERMISSIONS = [
@@ -57,6 +59,7 @@ PERMISSIONS = [
     ('task:export', '导出任务数据'),
     ('task:import', '导入任务数据'),
     ('task:cherry_pick', '挑选合并（购物车/下单三出口，INT-339）'),
+    ('task.result.review', '人工复核测试结果（终态改判留痕，INT-340）'),
     # 已发布任务 (4)
     ('published_task:read', '查看已发布任务'),
     ('published_task:execute', '执行已发布任务'),
@@ -202,7 +205,7 @@ ROLES = [
 TESTER_PERMS = [
     'task:read', 'task:create', 'task:update', 'task:delete', 'task:execute',
     'task:merge', 'task:batch', 'task:reextract', 'task:publish',
-    'task:export', 'task:import', 'task:cherry_pick',
+    'task:export', 'task:import', 'task:cherry_pick', 'task.result.review',
     'published_task:read', 'published_task:execute', 'published_task:version',
     'published_task:archive',
     'testcase:read', 'testcase:create', 'testcase:update', 'testcase:delete',

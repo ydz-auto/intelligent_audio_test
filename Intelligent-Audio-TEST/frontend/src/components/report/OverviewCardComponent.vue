@@ -2,6 +2,10 @@
   <div class="overview-card">
     <div class="section-header" @click="toggleCollapse">
       <h3 class="section-title">总览卡片 (Overview)</h3>
+      <!-- INT-340：报告页「人工复核」标记（复核后已生成报告不自动重算，提示重新生成） -->
+      <span v-if="reviewCount > 0" class="reviewed-badge" title="该报告统计按人工复核后判定生成；复核后需重新生成报告以反映最新改判">
+        <i class="fas fa-clipboard-check"></i> 人工复核 {{ reviewCount }} 条
+      </span>
       <button class="collapse-btn" :class="{ collapsed: isCollapsed }" title="折叠/展开">
         <i class="fas fa-chevron-up" v-if="isCollapsed"></i>
         <i class="fas fa-chevron-down" v-else></i>
@@ -240,6 +244,8 @@ const actualAllMetrics = computed(() => {
 const totalCases = computed(() => readCamel(readCamel(props.reportData, 'summary'), 'totalCases') ?? 0)
 const metricsCount = computed(() => actualAllMetrics.value.length)
 const devicesCount = computed(() => devices.value.length)
+/** INT-340：报告摘要中的人工复核条数（summary.review_count） */
+const reviewCount = computed(() => readCamel(readCamel(props.reportData, 'summary'), 'reviewCount') ?? 0)
 
 const tableColumns = computed(() => {
   const columns = [
@@ -385,6 +391,20 @@ const getAverageValue = (metricName, device) => {
   padding: 0;
   margin-bottom: 24px;
   width: 100%;
+}
+
+/* INT-340：报告页「人工复核」标记 */
+.reviewed-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
 }
 
 .section-content {

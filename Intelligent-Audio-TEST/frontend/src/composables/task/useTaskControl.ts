@@ -4,6 +4,7 @@ import { tasksPort } from './tasksPort';
 import { reportsPort } from '../report/reportsPort';
 import { viewTaskReport as viewTaskReportCase, regenerateTaskReport } from '../report/useReportComparison';
 import { getTaskStatusLabel } from '../../domain/constants/reportLabels';
+import { confirmReviewOverwrite } from './useReviewOverwrite';
 import type { Task } from '../../domain';
 import { TaskStatus } from '../../domain/enums';
 import { useModalControl, MODAL_TYPES } from '../modal/useModal';
@@ -242,6 +243,10 @@ export function useTaskControl(
     });
     if (!selection?.mode) return;
 
+    // INT-340：存在人工复核结果时硬确认覆盖提醒（不做静默覆盖）
+    const reviewOk = await confirmReviewOverwrite(modalControl, taskId, selection, '重新执行');
+    if (!reviewOk) return;
+
     isControlling.value.add(taskId);
     try {
       await tasksPort.retry(taskId, selection.mode === 'all' ? undefined : {
@@ -269,6 +274,10 @@ export function useTaskControl(
       taskId,
     });
     if (!selection?.mode) return;
+
+    // INT-340：存在人工复核结果时硬确认覆盖提醒（不做静默覆盖）
+    const reviewOk = await confirmReviewOverwrite(modalControl, taskId, selection, '重新评估');
+    if (!reviewOk) return;
 
     // F4：重新提取设备输出恢复为模态窗勾选项（默认 false 与旧默认一致）
     const reextractDeviceOutput = selection.reextractDeviceOutput === true;

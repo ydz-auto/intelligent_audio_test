@@ -8,6 +8,7 @@ import logging
 from typing import List, Optional
 
 from sqlalchemy import case, or_
+from sqlalchemy.exc import OperationalError
 
 from shared.models.database import get_db_session
 from shared.utils.status_utils import derive_task_case_status, task_case_not_removed
@@ -268,15 +269,41 @@ class TaskLifecycleMixin:
     @staticmethod
     def _delete_test_results(session, task_id: int, case_ids: list,
                              preserve_test_result: bool) -> None:
-        """删除 TestResult 记录（preserve_test_result=True 时仅清 algorithm_result）。"""
-        from task_service.infrastructure.persistence.models import TestResult
+        """删除 TestResult 记录（preserve_test_result=True 时仅清 algorithm_result）。
+
+        INT-340：重执行/重启覆盖人工复核——复核留痕行随旧结果清退，
+        复核标记列随行重置（覆盖提醒已在前端硬确认，此处落地覆盖语义：
+        重新执行后旧的人工复核结果不再生效）。
+        """
+        from task_service.infrastructure.persistence.models import TestResult, TestResultReview
+        result_ids = [
+            rid for (rid,) in session.query(TestResult.id).filter(
+                TestResult.task_id == task_id,
+                TestResult.test_case_id.in_(list(case_ids)),
+            ).all()
+        ]
+        if result_ids:
+            # 复核留痕随旧结果清退；表未建（迁移未应用/精简测试库）时降级忽略
+            try:
+                session.query(TestResultReview).filter(
+                    TestResultReview.result_id.in_(result_ids),
+                ).delete(synchronize_session=False)
+            except OperationalError:
+                logger.warning("test_result_reviews 表不存在，跳过复核留痕清理", exc_info=True)
         query = session.query(TestResult).filter(
             TestResult.task_id == task_id,
             TestResult.test_case_id.in_(list(case_ids)),
         )
         if preserve_test_result:
-            # 只清理 algorithm_result，保留 result_data
-            query.update({TestResult.algorithm_result: None}, synchronize_session=False)
+            # 只清理 algorithm_result + 复核标记，保留 result_data
+            query.update({
+                TestResult.algorithm_result: None,
+                TestResult.reviewed: 0,
+                TestResult.reviewed_by_user_id: None,
+                TestResult.reviewed_at: None,
+                TestResult.last_review_comment: None,
+                TestResult.last_review_action: None,
+            }, synchronize_session=False)
         else:
             query.delete(synchronize_session=False)
 

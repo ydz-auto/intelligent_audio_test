@@ -20,6 +20,7 @@ def derive_task_case_status(execution_status: str, evaluation_status: str) -> st
 
     推导规则：
     - execution_status=failed/stopped → failed
+    - execution_status=skipped → skipped（INT-340 人工复核改判；原执行流程不产出）
     - execution_status=completed AND evaluation_status=completed → completed
     - execution_status=completed AND evaluation_status=failed/stopped → failed
     - execution_status=completed AND evaluation_status IN (queued/running/calculating/pending) → evaluating
@@ -28,6 +29,8 @@ def derive_task_case_status(execution_status: str, evaluation_status: str) -> st
     """
     if execution_status in (ExecutionStatus.FAILED, ExecutionStatus.STOPPED):
         return TaskCaseStatus.FAILED
+    if execution_status == ExecutionStatus.SKIPPED:
+        return TaskCaseStatus.SKIPPED
     if execution_status == ExecutionStatus.COMPLETED:
         if evaluation_status == EvaluationStatus.COMPLETED:
             return TaskCaseStatus.COMPLETED

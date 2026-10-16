@@ -174,6 +174,13 @@ def get_cherry_pick_service_stub():
 
 
 @lru_cache(maxsize=1)
+def get_review_service_stub():
+    """ReviewService stub（INT-340）：测试结果人工复核（提交/计数/历史）"""
+    from shared.proto import task_service_pb2_grpc
+    return task_service_pb2_grpc.ReviewServiceStub(_get_task_channel())
+
+
+@lru_cache(maxsize=1)
 def get_evaluation_service_stub():
     """EvaluationService stub：评估单个用例（EvaluateCase）、重新评估（Reevaluate / ReevaluateMultiRound / ReevaluateSingle）
 

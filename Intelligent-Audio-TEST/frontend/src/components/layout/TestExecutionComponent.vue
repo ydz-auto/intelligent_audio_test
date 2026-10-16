@@ -276,6 +276,10 @@
                         <i class="fas task-indicator" :class="getCaseEvaluationBadgeIcon(testCase.evaluationStatus)"></i>
                         {{ getCaseEvaluationStatusText(testCase.evaluationStatus) }}
                       </span>
+                      <!-- INT-340：人工复核标记（该用例存在复核结果） -->
+                      <span v-if="testCase.reviewed" class="reviewed-badge" title="存在人工复核结果">
+                        <i class="fas fa-clipboard-check"></i> 已复核
+                      </span>
                     </div>
                     <!-- INT-305：移除用例（执行详情模态窗四阶段全允许；点击不冒泡触发用例详情） -->
                     <button v-if="canRemoveCase"
@@ -761,6 +765,20 @@ const scrollToBottom = () => {
   font-size: 12px;
   font-weight: 500;
   border: none;
+}
+
+/* INT-340：人工复核标记（用例存在复核结果） */
+.reviewed-badge{
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
 }
 
 /* 取值配色与 TaskCard.css 同源同值（int-301 F2/F3 统一 tokens 口径）。

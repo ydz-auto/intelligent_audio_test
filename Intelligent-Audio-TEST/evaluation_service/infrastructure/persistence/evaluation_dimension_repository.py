@@ -495,6 +495,30 @@ class EvaluationDimensionRepository(EvaluationDimensionRepositoryABC):
             session.rollback()
             raise
 
+    def set_review_status_by_result_ids(
+        self, result_ids: List[int], evaluation_status: str, status: str
+    ) -> int:
+        """人工复核评估状态改判（INT-340）：按 result_id 列表批量更新 TRD。
+
+        evaluation_status 取 completed/failed（双状态口径）；
+        status（维度评估结论）取 passed/failed（completed→passed，failed→failed）。
+        仅更新已有维度行；无维度行（未评估结果）不创建。
+        返回更新行数。
+        """
+        session = get_db_session()
+        try:
+            count = session.query(TestResultDimensionPO).filter(
+                TestResultDimensionPO.test_result_id.in_(result_ids)
+            ).update({
+                'evaluation_status': evaluation_status,
+                'status': status,
+            }, synchronize_session=False)
+            session.commit()
+            return count
+        except Exception:
+            session.rollback()
+            raise
+
 
 # 模块级单例（与 evaluation_repository.py 风格一致）
 evaluation_dimension_repository = EvaluationDimensionRepository()

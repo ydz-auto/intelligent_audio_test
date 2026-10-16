@@ -40,6 +40,12 @@ class TestResult(Base):
     excluded = Column(Integer, nullable=False, default=0, server_default='0', comment='结果排除标记 (0=正常 1=被删用例排除，报告/聚合剔除)')
     excluded_by_user_id = Column(BigInteger, nullable=True, comment='标记排除的操作人（INT-305，JWT 透传）')
     excluded_at = Column(DateTime, nullable=True, comment='排除标记时间')
+    # INT-340：人工复核标记（0=未复核 1=已复核；复核动作/备注/原值留痕在 test_result_reviews 表逐条追加）
+    reviewed = Column(Integer, nullable=False, default=0, server_default='0', comment='人工复核标记 (0=未复核 1=已复核)')
+    reviewed_by_user_id = Column(BigInteger, nullable=True, comment='最近一次复核操作人（JWT 透传）')
+    reviewed_at = Column(DateTime, nullable=True, comment='最近一次复核时间')
+    last_review_comment = Column(Text, nullable=True, comment='最近一次复核备注')
+    last_review_action = Column(String(255), nullable=True, comment='最近一次复核动作摘要（如 execution_status:failed→completed）')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
     created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='生成时间')

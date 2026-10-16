@@ -86,6 +86,8 @@ def _summary_po_to_entity(po: ReportSummary) -> ReportSummaryEntity:
         'completed_cases': po.completed_cases or 0,
         'failed_cases': po.failed_cases or 0,
         'pass_rate': po.pass_rate or 0.0,
+        # INT-340：人工复核条数（报告页「人工复核」标记）
+        'review_count': po.review_count or 0,
         'duration': po.duration or 0.0,
         'started_at': po.started_at.isoformat() if po.started_at else None,
         'completed_at': po.completed_at.isoformat() if po.completed_at else None,

@@ -54,6 +54,8 @@ class ReportChildrenWriteMixin:
             completed_cases=summary_data.get('completed_cases', 0),
             failed_cases=summary_data.get('failed_cases', 0),
             pass_rate=summary_data.get('pass_rate', 0) or summary_data.get('overall_success_rate', 0),
+            # INT-340：人工复核条数（报告页「人工复核」标记）
+            review_count=summary_data.get('review_count', 0),
             duration=summary_data.get('duration', 0),
             started_at=summary_data.get('started_at'),
             completed_at=summary_data.get('completed_at'),

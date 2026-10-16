@@ -45,6 +45,8 @@ export interface TaskCaseBrief {
   tags?: string[]
   /** INT-302/F3：本任务用例聚合的评估维度（重评估维度勾选候选集） */
   evaluationDimensions?: Array<{ id: number; name: string }>
+  /** INT-340：该用例下是否存在人工复核结果（任务详情「人工复核」标记） */
+  reviewed?: boolean
 }
 
 /** 用例移除结果（INT-305：执行详情模态窗删除用例；DELETE /tasks/{id}/cases/{caseId}） */
@@ -89,6 +91,8 @@ export interface Task {
   deviceCount?: number
   completedCases?: number
   failedCases?: number
+  /** INT-340：任务下已复核结果条数（覆盖提醒硬确认 + 报告页「人工复核」标记） */
+  reviewCount?: number
   tags?: string[]
   createdAt?: string
   updatedAt?: string

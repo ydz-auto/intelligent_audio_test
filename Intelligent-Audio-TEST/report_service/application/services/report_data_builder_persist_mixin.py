@@ -50,6 +50,9 @@ class ReportDataPersistMixin:
             'completed_cases': completed_cases,
             'failed_cases': summary.get('failed_cases', 0),
             'pass_rate': round((completed_cases / total_cases * 100), 2) if total_cases > 0 else 0,
+            # INT-340：人工复核条数（报告页「人工复核」标记；复核后已生成报告
+            # 不自动重算——重新生成时统计按复核后判定）
+            'review_count': summary.get('review_count', 0),
             'duration': task.get('actual_duration') if isinstance(task, dict) else task.actual_duration,
             'started_at': task.get('started_at') if isinstance(task, dict) else task.started_at,
             'completed_at': task.get('completed_at') if isinstance(task, dict) else task.completed_at,

@@ -63,6 +63,25 @@ class EvaluationDataServiceServicer(eval_grpc.EvaluationDataServiceServicer):
         except Exception as e:
             return self._resp(False, str(e))
 
+    def SetDimensionReviewStatusByResultIds(self, request, context=None):
+        """人工复核评估状态改判（INT-340）：按 result_id 列表批量更新 TRD。
+
+        evaluation_status 取 completed/failed；status（维度结论）取 passed/failed。
+        task_service 复核命令跨服务联动调用；无原子事务，失败由调用方告警降级。
+        """
+        try:
+            result_ids = _loads(request.result_ids, [])
+            if not isinstance(result_ids, list) or not result_ids:
+                return self._resp(True, 'no-op', {'updated': 0})
+            from evaluation_service.application.commands.evaluation_command_service import (
+                evaluation_command_service,
+            )
+            result = evaluation_command_service.set_dimension_review_status_by_result_ids(
+                result_ids, request.evaluation_status, request.status)
+            return self._resp(*self._from_result(result))
+        except Exception as e:
+            return self._resp(False, str(e))
+
     # ==================== 任务数据导入导出（INT-25） ====================
 
     def ExportDimensionsForTasks(self, request, context=None):

@@ -71,6 +71,8 @@ export interface TaskDto {
   device_count?: number | null
   completed_cases?: number | null
   failed_cases?: number | null
+  /** INT-340：任务下已复核结果条数（覆盖提醒 + 报告页「人工复核」标记） */
+  review_count?: number
   tags: string[]
   created_at?: string | null
   updated_at?: string | null
@@ -108,6 +110,8 @@ export interface TaskCaseBriefDto {
   tags: string[]
   /** INT-302/F3：本任务用例聚合的评估维度 [{id, name}]（重评估维度勾选候选集） */
   evaluation_dimensions?: Array<{ id: number | string; name?: string | null } | null> | null
+  /** INT-340：该用例下是否存在人工复核结果 */
+  reviewed?: boolean
 }
 
 /** 任务详情（TaskDetailData；在列表项字段之上新增 cases） */

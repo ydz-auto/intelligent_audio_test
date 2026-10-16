@@ -221,6 +221,8 @@ class ReportAggregate:
             'completed_cases': merged.get('completed_cases', 0),
             'failed_cases': merged.get('failed_cases', 0),
             'pass_rate': merged.get('pass_rate', 0.0),
+            # INT-340：人工复核条数（报告页「人工复核」标记）
+            'review_count': merged.get('review_count', 0),
             'task_count': len(task_ids) if isinstance(task_ids, list) else 0,
         }
 

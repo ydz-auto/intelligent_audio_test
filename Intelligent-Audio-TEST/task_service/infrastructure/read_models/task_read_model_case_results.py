@@ -102,6 +102,10 @@ class TaskCaseResultsMixin:
             result_ids = [r.id for r in results]
             dim_map = self._fetch_dim_results_grouped(result_ids)
 
+            # INT-340：人工复核标注（结果复核标记 + 多次复核历史追加不覆盖）
+            review_summaries = self._fetch_review_summaries(result_ids, session)
+            review_histories = self._fetch_review_histories(result_ids, session)
+
             # P3 改造：收集 device_id / api_id，通过 gRPC 批量查询名称，替代直连 PO
             device_name_map = self._fetch_device_names({r.device_id for r in results if r.device_id})
             api_name_map = self._fetch_api_names({r.api_id for r in results if r.api_id})
@@ -115,6 +119,7 @@ class TaskCaseResultsMixin:
                 api_name = api_name_map.get(result.api_id) if result.api_id else None
 
                 dim_data = dim_map.get(result.id, [])
+                review_summary = review_summaries.get(result.id, {})
 
                 full_result_data = load_full_result_data(
                     result.result_data, getattr(result, 'result_data_path', None)
@@ -138,6 +143,13 @@ class TaskCaseResultsMixin:
                     "error_message": result.error_message,
                     "dimensions": dim_data,
                     "created_at": result.created_at.isoformat(),
+                    # INT-340：人工复核标记/最近动作/复核历史（结果详情页展示）
+                    "reviewed": bool(review_summary.get('reviewed')),
+                    "reviewed_by_user_id": review_summary.get('reviewed_by_user_id'),
+                    "reviewed_at": review_summary.get('reviewed_at'),
+                    "last_review_comment": review_summary.get('last_review_comment'),
+                    "last_review_action": review_summary.get('last_review_action'),
+                    "review_history": review_histories.get(result.id, []),
                     # INT-339：来源任务溯源（普通任务即自身 task_id）
                     "source_task_id": (trace or {}).get('source_task_id', task_id),
                     "source_task_name": (trace or {}).get('source_task_name'),
@@ -183,6 +195,10 @@ class TaskCaseResultsMixin:
             result_ids = [r.id for r in results]
             dim_map = self._fetch_dim_results_grouped(result_ids)
 
+            # INT-340：人工复核标注（结果复核标记 + 多次复核历史追加不覆盖）
+            review_summaries = self._fetch_review_summaries(result_ids, session)
+            review_histories = self._fetch_review_histories(result_ids, session)
+
             # P3 改造：收集 device_id / api_id，通过 gRPC 批量查询名称，替代直连 PO
             device_name_map = self._fetch_device_names({r.device_id for r in results if r.device_id})
             api_name_map = self._fetch_api_names({r.api_id for r in results if r.api_id})
@@ -196,6 +212,7 @@ class TaskCaseResultsMixin:
                 api_name = api_name_map.get(result.api_id) if result.api_id else None
 
                 dim_data = dim_map.get(result.id, [])
+                review_summary = review_summaries.get(result.id, {})
 
                 # 兼容历史双重序列化数据：algorithm_result 可能是 str
                 algo_result = result.algorithm_result
@@ -216,6 +233,13 @@ class TaskCaseResultsMixin:
                     "error_message": result.error_message,
                     "dimensions": dim_data,
                     "created_at": result.created_at.isoformat(),
+                    # INT-340：人工复核标记/最近动作/复核历史（结果列表批量回填）
+                    "reviewed": bool(review_summary.get('reviewed')),
+                    "reviewed_by_user_id": review_summary.get('reviewed_by_user_id'),
+                    "reviewed_at": review_summary.get('reviewed_at'),
+                    "last_review_comment": review_summary.get('last_review_comment'),
+                    "last_review_action": review_summary.get('last_review_action'),
+                    "review_history": review_histories.get(result.id, []),
                     # INT-339：来源任务溯源（普通任务即自身 task_id）
                     "source_task_id": (trace or {}).get('source_task_id', task_id),
                     "source_task_name": (trace or {}).get('source_task_name'),
@@ -301,6 +325,29 @@ class TaskCaseResultsMixin:
         from task_service.infrastructure.acl.evaluation_config_acl_repository import evaluation_config_acl_repository
 
         return evaluation_config_acl_repository.get_dimension_results_by_result_ids(result_ids)
+
+    # ---- INT-340：人工复核标注（结果复核标记 / 多次复核历史） ----
+
+    @staticmethod
+    def _fetch_review_summaries(result_ids, session=None):
+        """批量读结果复核摘要（reviewed 标记/最近动作/最近时间），{result_id: {...}}。"""
+        if not result_ids:
+            return {}
+        from task_service.infrastructure.persistence.review_repository import review_repository
+        return review_repository.list_reviewed_summaries(result_ids, session)
+
+    @staticmethod
+    def _fetch_review_histories(result_ids, session=None):
+        """批量读结果复核历史（多次复核追加不覆盖），{result_id: [review, ...]}。"""
+        if not result_ids:
+            return {}
+        from task_service.infrastructure.persistence.review_repository import review_repository
+        out = {}
+        for rid in result_ids:
+            items = review_repository.review_history_by_result(rid, session)
+            if items:
+                out[rid] = items
+        return out
 
     @staticmethod
     def _case_to_dto(tc: TaskCase) -> Dict[str, Any]:

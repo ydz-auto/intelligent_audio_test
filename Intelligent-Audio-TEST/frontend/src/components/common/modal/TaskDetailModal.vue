@@ -70,6 +70,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import { tasksPort } from '@/composables/task/tasksPort';
+import { confirmReviewOverwrite } from '@/composables/task/useReviewOverwrite';
 import { logsPort } from '@/composables/task/logsPort';
 import { useTaskProgress } from '../../../composables/task/useTaskProgress';
 import { useModalControl, MODAL_TYPES } from '../../../composables/modal/useModal';
@@ -509,6 +510,9 @@ async function retryTask() {
       taskId: props.taskId,
     });
     if (!selection?.mode) return;
+    // INT-340：存在人工复核结果时硬确认覆盖提醒（不做静默覆盖）
+    const reviewOk = await confirmReviewOverwrite(modalControl, props.taskId, selection, '重新执行');
+    if (!reviewOk) return;
     await tasksPort.retry(props.taskId, selection.mode === 'all' ? undefined : {
       caseIds: selection.caseIds,
       mode: selection.mode,
@@ -528,6 +532,9 @@ async function reevaluateTask() {
       taskId: props.taskId,
     });
     if (!selection?.mode) return;
+    // INT-340：存在人工复核结果时硬确认覆盖提醒（不做静默覆盖）
+    const reviewOk = await confirmReviewOverwrite(modalControl, props.taskId, selection, '重新评估');
+    if (!reviewOk) return;
     // INT-302 范围 → 既有 reevaluate_type 口径映射（同 useTaskControl.reevaluateTask）：
     // failed_only → 'failed'；selected → 'all' + caseIds；all → 'all' 无 selection。
     // dimensionIds 为空数组 = 维度全选（不过滤）。

@@ -2168,6 +2168,173 @@ class CherryPickService:
             _registered_method=True)
 
 
+class ReviewServiceStub:
+    """===== 测试结果人工复核（INT-340）=====
+    终态任务结果改判留痕 + 覆盖提醒计数 + 复核历史。operator 走 x-user-id metadata。
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.SubmitReview = channel.unary_unary(
+                '/task_service.ReviewService/SubmitReview',
+                request_serializer=task__service__pb2.ReviewSubmitRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.GetReviewCount = channel.unary_unary(
+                '/task_service.ReviewService/GetReviewCount',
+                request_serializer=task__service__pb2.ReviewTaskRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.ListReviewHistory = channel.unary_unary(
+                '/task_service.ReviewService/ListReviewHistory',
+                request_serializer=task__service__pb2.ReviewTaskRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+
+
+class ReviewServiceServicer:
+    """===== 测试结果人工复核（INT-340）=====
+    终态任务结果改判留痕 + 覆盖提醒计数 + 复核历史。operator 走 x-user-id metadata。
+    """
+
+    def SubmitReview(self, request, context):
+        """复核提交（单条/批量）：result_ids + execution_status/evaluation_status + comment
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetReviewCount(self, request, context):
+        """覆盖提醒计数：任务下已复核结果条数（任务详情查询挂点）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListReviewHistory(self, request, context):
+        """复核历史（多次复核追加不覆盖）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_ReviewServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'SubmitReview': grpc.unary_unary_rpc_method_handler(
+                    servicer.SubmitReview,
+                    request_deserializer=task__service__pb2.ReviewSubmitRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'GetReviewCount': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetReviewCount,
+                    request_deserializer=task__service__pb2.ReviewTaskRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'ListReviewHistory': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListReviewHistory,
+                    request_deserializer=task__service__pb2.ReviewTaskRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'task_service.ReviewService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('task_service.ReviewService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class ReviewService:
+    """===== 测试结果人工复核（INT-340）=====
+    终态任务结果改判留痕 + 覆盖提醒计数 + 复核历史。operator 走 x-user-id metadata。
+    """
+
+    @staticmethod
+    def SubmitReview(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.ReviewService/SubmitReview',
+            task__service__pb2.ReviewSubmitRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetReviewCount(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.ReviewService/GetReviewCount',
+            task__service__pb2.ReviewTaskRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListReviewHistory(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.ReviewService/ListReviewHistory',
+            task__service__pb2.ReviewTaskRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+
 class PublishedTaskConfigServiceStub:
     """===== 已发布任务配置服务（任务发布功能）=====
     """

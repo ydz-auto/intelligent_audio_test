@@ -26,6 +26,7 @@ from .favorite_models import Favorite
 from .cherry_pick_models import (
     CherryPickCartItem, TaskCherryPickRelation, CherryPickSet, CherryPickSetItem,
 )
+from .review_models import TestResultReview
 from .system_models import Log
 
 __all__ = [
@@ -42,6 +43,8 @@ __all__ = [
     'Favorite',
     # 挑选合并（INT-339：购物车 / 容器关系 / 挑选集）
     'CherryPickCartItem', 'TaskCherryPickRelation', 'CherryPickSet', 'CherryPickSetItem',
+    # 人工复核留痕（INT-340）
+    'TestResultReview',
     # 系统日志
     'Log',
 ]

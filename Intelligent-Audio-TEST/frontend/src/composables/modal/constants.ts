@@ -57,7 +57,9 @@ export const MODAL_TYPES = {
   BATCH_TAGS: 'batchTags',
   BATCH_REFRESH_REFERENCE: 'batchRefreshReference',
   TAG_CATEGORY: 'tagCategory',
-  TAG_EDIT: 'tagEdit'
+  TAG_EDIT: 'tagEdit',
+  /** INT-340：测试结果人工复核（单条/批量改判 + 备注必填 + 复核历史展示） */
+  RESULT_REVIEW: 'resultReview'
 } as const
 
 export type ModalTypeKey = keyof typeof MODAL_TYPES

@@ -69,6 +69,8 @@ class ReportSummary(Base):
     completed_cases = Column(Integer, default=0, comment='完成用例数')
     failed_cases = Column(Integer, default=0, comment='失败用例数')
     pass_rate = Column(Float, default=0, comment='通过率')
+    # INT-340：人工复核条数（报告页「人工复核」标记；复核后已生成报告不自动重算）
+    review_count = Column(Integer, nullable=False, default=0, server_default='0', comment='人工复核结果条数')
     duration = Column(Float, default=0, comment='任务执行时长(秒)')
     started_at = Column(DateTime, comment='任务开始时间')
     completed_at = Column(DateTime, comment='任务完成时间')

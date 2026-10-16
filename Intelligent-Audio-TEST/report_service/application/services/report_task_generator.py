@@ -672,6 +672,12 @@ class ReportTaskGenerator:
             "completed_cases": data_dict["completed_cases"],
             "failed_cases": data_dict["failed_cases"],
             "overall_success_rate": round(data_dict["success_rate"], 2),
+            # INT-340：人工复核标记（复核后已生成报告不自动重算——详情页提示重新生成；
+            # 重新生成时 summary 按复核后判定统计，review_count 随行展示）
+            "review_count": sum(
+                1 for r in results
+                if (r.get('reviewed') if isinstance(r, dict) else getattr(r, 'reviewed', 0))
+            ),
             "dimension_values": data_dict["summary_dim_values"],
             "duration": actual_duration,
             "started_at": _fmt_time(started_at),

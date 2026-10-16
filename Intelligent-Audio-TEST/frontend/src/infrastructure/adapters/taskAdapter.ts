@@ -69,6 +69,8 @@ export function toTaskCaseBrief(raw: TaskCaseBriefDto): TaskCaseBrief {
       .filter((d): d is { id: number | string; name?: string | null } =>
         !!d && d.id !== undefined && d.id !== null)
       .map(d => ({ id: Number(d.id), name: d.name ?? String(d.id) })),
+    // INT-340：该用例下是否存在人工复核结果
+    reviewed: raw.reviewed ?? false,
   }
 }
 
@@ -98,6 +100,8 @@ export function toTask(dto: TaskDto | TaskDetailDto): Task {
     deviceCount: d.device_count ?? undefined,
     completedCases: d.completed_cases ?? undefined,
     failedCases: d.failed_cases ?? undefined,
+    // INT-340：任务下已复核结果条数（覆盖提醒 + 报告页「人工复核」标记）
+    reviewCount: d.review_count ?? 0,
     tags: d.tags ?? [],
     createdAt: d.created_at ?? undefined,
     updatedAt: d.updated_at ?? undefined,

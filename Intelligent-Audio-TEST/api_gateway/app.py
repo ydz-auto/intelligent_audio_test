@@ -119,6 +119,7 @@ def create_app(config_name='default') -> FastAPI:
     from api_gateway.routes.report_bp import router as report_router
     from api_gateway.routes.task_bp import router as task_router
     from api_gateway.routes.cherry_pick_bp import router as cherry_pick_router
+    from api_gateway.routes.review_bp import router as review_router
     from api_gateway.routes.published_task_bp import router as published_task_router
     from api_gateway.routes.api_bp import router as api_router
     from api_gateway.routes.execution_bp import router as execution_router
@@ -150,6 +151,8 @@ def create_app(config_name='default') -> FastAPI:
     app.include_router(task_router, prefix='/api/v1/tasks', tags=['tasks'])
     # INT-339 挑选合并：/tasks/cherry-picks 前缀（设计文档 §8 契约路径）
     app.include_router(cherry_pick_router, prefix='/api/v1/tasks/cherry-picks', tags=['cherry-picks'])
+    # INT-340 人工复核：/tasks/results 前缀（复核提交/计数/历史）
+    app.include_router(review_router, prefix='/api/v1/tasks/results', tags=['task-review'])
     app.include_router(published_task_router, prefix='/api/v1/published-tasks', tags=['published-tasks'])
     app.include_router(api_router, prefix='/api/v1/apis', tags=['apis'])
     app.include_router(execution_router, prefix='/api/v1/execution', tags=['execution'])

@@ -947,6 +947,11 @@ class EvaluationDataServiceStub:
                 request_serializer=evaluation__service__pb2.DeleteDimensionResultsByResultIdsRequest.SerializeToString,
                 response_deserializer=evaluation__service__pb2.EvaluationDataResponse.FromString,
                 _registered_method=True)
+        self.SetDimensionReviewStatusByResultIds = channel.unary_unary(
+                '/evaluation_service.EvaluationDataService/SetDimensionReviewStatusByResultIds',
+                request_serializer=evaluation__service__pb2.SetDimensionReviewStatusByResultIdsRequest.SerializeToString,
+                response_deserializer=evaluation__service__pb2.EvaluationDataResponse.FromString,
+                _registered_method=True)
         self.ExportDimensionsForTasks = channel.unary_unary(
                 '/evaluation_service.EvaluationDataService/ExportDimensionsForTasks',
                 request_serializer=evaluation__service__pb2.ExportDimensionsForTasksRequest.SerializeToString,
@@ -978,6 +983,13 @@ class EvaluationDataServiceServicer:
 
     def DeleteDimensionResultsByResultIds(self, request, context):
         """按 result_id 列表批量删除维度评估记录（用于 task_service 清理用例结果时联动）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetDimensionReviewStatusByResultIds(self, request, context):
+        """人工复核评估状态改判（INT-340）：按 result_id 列表批量更新 TRD 的 evaluation_status/status
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -1016,6 +1028,11 @@ def add_EvaluationDataServiceServicer_to_server(servicer, server):
             'DeleteDimensionResultsByResultIds': grpc.unary_unary_rpc_method_handler(
                     servicer.DeleteDimensionResultsByResultIds,
                     request_deserializer=evaluation__service__pb2.DeleteDimensionResultsByResultIdsRequest.FromString,
+                    response_serializer=evaluation__service__pb2.EvaluationDataResponse.SerializeToString,
+            ),
+            'SetDimensionReviewStatusByResultIds': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetDimensionReviewStatusByResultIds,
+                    request_deserializer=evaluation__service__pb2.SetDimensionReviewStatusByResultIdsRequest.FromString,
                     response_serializer=evaluation__service__pb2.EvaluationDataResponse.SerializeToString,
             ),
             'ExportDimensionsForTasks': grpc.unary_unary_rpc_method_handler(
@@ -1089,6 +1106,33 @@ class EvaluationDataService:
             target,
             '/evaluation_service.EvaluationDataService/DeleteDimensionResultsByResultIds',
             evaluation__service__pb2.DeleteDimensionResultsByResultIdsRequest.SerializeToString,
+            evaluation__service__pb2.EvaluationDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetDimensionReviewStatusByResultIds(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/evaluation_service.EvaluationDataService/SetDimensionReviewStatusByResultIds',
+            evaluation__service__pb2.SetDimensionReviewStatusByResultIdsRequest.SerializeToString,
             evaluation__service__pb2.EvaluationDataResponse.FromString,
             options,
             channel_credentials,

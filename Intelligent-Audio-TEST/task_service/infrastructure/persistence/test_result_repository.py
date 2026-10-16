@@ -25,6 +25,7 @@ def _test_result_po_to_dict(po: TestResult) -> Dict[str, Any]:
 
     序列化所有业务字段，created_at 转为 isoformat 字符串。
     INT-305：excluded 排除标记随行透出（报告/聚合按此剔除被删用例结果）。
+    INT-340：reviewed 复核标记列随行透出（结果详情/跨服务读复核状态）。
     """
     return {
         'id': po.id,
@@ -41,6 +42,11 @@ def _test_result_po_to_dict(po: TestResult) -> Dict[str, Any]:
         'result_data_path': po.result_data_path,
         'error_message': po.error_message,
         'excluded': int(po.excluded or 0),
+        'reviewed': int(po.reviewed or 0),
+        'reviewed_by_user_id': po.reviewed_by_user_id,
+        'reviewed_at': po.reviewed_at.isoformat() if po.reviewed_at else None,
+        'last_review_comment': po.last_review_comment,
+        'last_review_action': po.last_review_action,
         'created_at': po.created_at.isoformat() if po.created_at else None,
     }
 

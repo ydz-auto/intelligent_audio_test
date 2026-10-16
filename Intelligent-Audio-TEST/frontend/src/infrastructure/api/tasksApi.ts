@@ -22,6 +22,20 @@ import type { Task, TaskCreateDraft, TaskDomainStats, TaskCaseRemoveResult } fro
 import type { CaseDetail, CaseResults } from '../../domain/model/taskCaseDetail';
 import type { TaskProgress } from '../../domain/model/taskProgress';
 
+/** 人工复核历史条目（INT-340：原值/新值/备注/操作人/时间） */
+export interface ReviewHistoryItem {
+  id: number
+  resultId: number
+  taskId: number
+  testCaseId?: string | null
+  fieldName: 'execution_status' | 'evaluation_status'
+  oldValue?: string | null
+  newValue: string
+  comment: string
+  createdByUserId?: number | null
+  createdAt?: string | null
+}
+
 /** 任务列表查询参数（camelCase 域契约；snake_case 化在本文件内部完成） */
 export interface TaskListQuery {
   page?: number
@@ -241,5 +255,29 @@ export const tasksApi = {
   /** 切换任务可见性（INT-423/467：PATCH /{id}/visibility，需 task:share + owner 校验） */
   async updateVisibility(id: string | number, visibility: string) {
     return request('PATCH', `/tasks/${id}/visibility`, { visibility });
+  /** 人工复核提交（INT-340）：result_ids + execution_status/evaluation_status + comment（备注必填） */
+  async reviewResults(resultIds: (string | number)[], payload: {
+    executionStatus?: string
+    evaluationStatus?: string
+    comment: string
+  }) {
+    return request('POST', '/tasks/results/review', {
+      result_ids: resultIds,
+      execution_status: payload.executionStatus,
+      evaluation_status: payload.evaluationStatus,
+      comment: payload.comment,
+    });
+  },
+
+  /** 覆盖提醒计数（INT-340）：任务下已复核结果条数 */
+  async getReviewCount(taskId: string | number): Promise<number> {
+    const raw = await request<{ review_count?: number }>('GET', `/tasks/results/${taskId}/review-count`);
+    return raw?.review_count ?? 0;
+  },
+
+  /** 复核历史（INT-340）：多次复核追加不覆盖 */
+  async getReviewHistory(taskId: string | number): Promise<ReviewHistoryItem[]> {
+    const raw = await request<{ items?: ReviewHistoryItem[] }>('GET', `/tasks/results/${taskId}/review-history`);
+    return raw?.items ?? [];
   }
 };
