@@ -40,16 +40,22 @@ def _make_lab(api, code):
 
 
 def _make_case(api, case_id, lab_id=None):
-    """经用例 CRUD 建用例；lab_id 写进 config JSONB（专属/通用）。"""
+    """经用例 CRUD 建用例；lab_id 写进 config JSONB（专属/通用）。
+
+    后端强制 group_id/group（创建时缺少直接 400，见 tests/ui/utils/api_client.py
+    create_testcase 同口径），此处补默认分组。
+    """
     config = {'rounds': []}
     if lab_id is not None:
         config['lab_id'] = lab_id
     resp = api.post('/testcases', json={
         'name': f'INT-540 用例 {case_id}',
         'config': config,
+        'group': 'INT-540 冒烟分组',
     }, headers=_base_headers())
     assert resp.status_code == 201, f'建用例失败: {resp.text[:300]}'
-    return case_id
+    # 返回 API 实际生成的用例 ID（UUID），不是入参 name 片段
+    return resp.json()['data']['id']
 
 
 def test_task_create_with_lab_ids_returns_labs(api):
@@ -95,37 +101,40 @@ def test_validate_generic_case_passes_cross_domain_device_rejected(api):
     uid = uuid.uuid4().hex[:8]
     lab = _make_lab(api, f'INT540V-{uid}')
     case_id = _make_case(api, f'INT540-c-{uid}', lab_id=None)  # 通用用例
+    try:
+        # 正例：通用用例 + 无设备 → valid
+        resp = api.post('/tasks/validate', json={
+            'lab_ids': [lab],
+            'case_ids': [case_id],
+            'device_ids': [],
+        }, headers=_base_headers())
+        assert resp.status_code == 200, resp.text[:300]
+        assert resp.json()['data']['valid'] is True
+        assert resp.json()['data']['errors'] == []
 
-    # 正例：通用用例 + 无设备 → valid
-    resp = api.post('/tasks/validate', json={
-        'lab_ids': [lab],
-        'case_ids': [case_id],
-        'device_ids': [],
-    }, headers=_base_headers())
-    assert resp.status_code == 200, resp.text[:300]
-    assert resp.json()['data']['valid'] is True
-    assert resp.json()['data']['errors'] == []
+        # 反例：越域设备（未绑定 lab_id → 拒绝）
+        resp = api.post('/tasks/validate', json={
+            'lab_ids': [lab],
+            'device_ids': [999999],
+        }, headers=_base_headers())
+        assert resp.status_code == 200, resp.text[:300]
+        data = resp.json()['data']
+        assert data['valid'] is False
+        assert any(e['resource_type'] == 'device' for e in data['errors'])
 
-    # 反例：越域设备（未绑定 lab_id → 拒绝）
-    resp = api.post('/tasks/validate', json={
-        'lab_ids': [lab],
-        'device_ids': [999999],
-    }, headers=_base_headers())
-    assert resp.status_code == 200, resp.text[:300]
-    data = resp.json()['data']
-    assert data['valid'] is False
-    assert any(e['resource_type'] == 'device' for e in data['errors'])
-
-    # 反例：lab_ids 不存在
-    resp = api.post('/tasks/validate', json={
-        'lab_ids': [999999],
-        'case_ids': [],
-        'device_ids': [],
-    }, headers=_base_headers())
-    assert resp.status_code == 200, resp.text[:300]
-    data = resp.json()['data']
-    assert data['valid'] is False
-    assert any(e['resource_type'] == 'laboratory' for e in data['errors'])
+        # 反例：lab_ids 不存在
+        resp = api.post('/tasks/validate', json={
+            'lab_ids': [999999],
+            'case_ids': [],
+            'device_ids': [],
+        }, headers=_base_headers())
+        assert resp.status_code == 200, resp.text[:300]
+        data = resp.json()['data']
+        assert data['valid'] is False
+        assert any(e['resource_type'] == 'laboratory' for e in data['errors'])
+    finally:
+        # 测试数据卫生：软删本用例创建的实验室（INT-540 隔离库不留残留）
+        api.delete(f'/laboratories/{lab}', headers=_base_headers())
 
 
 def test_task_create_without_lab_ids_regression(api):
