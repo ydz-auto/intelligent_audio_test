@@ -416,7 +416,9 @@
       <button v-if="shouldShowRetryButton" class="btn btn-success" :disabled="isControlling" @click="$emit('retryTask')">
         <i class="fas fa-redo"></i> 重新执行
       </button>
-      <button v-if="shouldShowPickButton" class="btn btn-info" :disabled="isControlling" @click="$emit('pickResults')">
+      <!-- INT-401：挑选入口权限可见性（task:cherry_pick，seed_rbac tester 已授；
+           与 Tasks 头部全局购物车入口同口径，无权角色不渲染） -->
+      <button v-if="shouldShowPickButton && canPickCherry" class="btn btn-info" :disabled="isControlling" @click="$emit('pickResults')">
         <i class="fas fa-shopping-cart"></i> 加入购物车
       </button>
       <button v-if="shouldShowReevaluateButton" class="btn btn-warning" :disabled="isControlling" @click="$emit('reevaluateTask')">
@@ -436,7 +438,8 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
-import { TaskStatus, ExecutionStatus, EvaluationStatus, ViewMode, DeviceStatus } from '@/domain/enums';
+import { TaskStatus, ExecutionStatus, EvaluationStatus, ViewMode, DeviceStatus, REEXECUTE_ELIGIBLE_STATUSES, PermissionPoint } from '@/domain/enums';
+import { useAuthStore } from '../../store/authStore';
 // INT-301 F3：双徽章图标/文案单一定义源 utils/taskStatusBadge.ts；配色单一定义源 TaskCard.css
 
 const props = defineProps({
@@ -505,6 +508,11 @@ const shouldShowReevaluateButton = computed(() => finishedTaskStatuses.includes(
 
 // INT-339：挑选加购入口（终态任务可见——§10 默认仅终态任务可挑选）
 const shouldShowPickButton = computed(() => finishedTaskStatuses.includes(props.taskStatus));
+
+// INT-401：挑选入口权限可见性（task:cherry_pick；seed_rbac tester 已授，见 INT-429 benchmark
+// 同型缺口先例——权限码定义 ≠ 已授，入口必须经 can() 门控）
+const { hasPermission: can } = useAuthStore();
+const canPickCherry = computed(() => can(PermissionPoint.TASK_CHERRY_PICK));
 
 // ===== INT-305：移除用例（执行详情模态窗四阶段全允许） =====
 

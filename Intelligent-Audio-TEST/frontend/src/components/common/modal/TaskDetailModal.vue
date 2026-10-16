@@ -571,10 +571,13 @@ function openCherryPick() {
   cherryPickVisible.value = true;
 }
 
-/** 下单成功后跳转（merge 出口跳新任务详情，其余刷新当前详情） */
+/** 下单成功后跳转（设计 §9：下单成功 → 购物车出清 → 按出口跳转。
+ *  merge 跳新任务详情；reexecute 跳重执行任务详情；reevaluate 跳首个来源任务详情
+ *  查看评估进度。与 Tasks.vue handlePickCheckedOut 同口径；无 taskId（如空来源）
+ *  则仅关闭弹窗停留当前页。） */
 function handleCheckedOut(payload: { action: string; taskId?: number }) {
   cherryPickVisible.value = false;
-  if (payload.action === 'merge' && payload.taskId) {
+  if (payload.taskId) {
     const routeData = routerResolveTaskDetail(Number(payload.taskId));
     if (routeData) window.open(routeData, '_self');
   }

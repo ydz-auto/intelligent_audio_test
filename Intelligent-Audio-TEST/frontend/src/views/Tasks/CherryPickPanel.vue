@@ -23,6 +23,15 @@
                 </span>
                 <span class="merged-source-row-cases">结果 {{ group.results.length }} 条</span>
               </div>
+              <!-- INT-401：引用结果明细 + 缺失标注（引用方案 A 的 missing 场景，§10） -->
+              <div class="cp-source-results">
+                <div v-for="res in group.results" :key="res.resultId" class="cp-source-result" :class="{ missing: res.missing }">
+                  <span class="cp-source-case">{{ res.sourceCaseId ?? `结果 #${res.resultId}` }}</span>
+                  <span v-if="res.missing" class="cp-row-badge missing-badge" title="源结果已被删除，此条引用不可达">
+                    <i class="fas fa-exclamation-triangle"></i> 源结果已缺失
+                  </span>
+                </div>
+              </div>
             </div>
           </template>
           <div v-else class="merged-source-row">
@@ -149,5 +158,97 @@ onMounted(() => {
   padding: 8px 16px;
   color: var(--color-slate-400, #94a3b8);
   font-size: 13px;
+}
+/* INT-401：溯源明细（引用结果 + 缺失标注）样式自包含，与合并面板同视觉 token */
+.merged-source-list {
+  margin-top: 4px;
+  padding: 10px 12px;
+  background: var(--color-slate-50, #f8fafc);
+  border: 1px dashed var(--color-slate-200, #e2e8f0);
+  border-radius: 8px;
+}
+.merged-source-list-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-slate-600, #475569);
+  margin-bottom: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.merged-source-list-title:hover {
+  color: var(--primary, #ff6a00);
+}
+.merged-source-toggle {
+  margin-left: auto;
+  color: var(--color-slate-400, #94a3b8);
+  font-size: 12px;
+  transition: transform 0.2s ease;
+}
+.merged-source-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--color-slate-100, #eef2f7);
+}
+.merged-source-row:last-child {
+  border-bottom: none;
+}
+.merged-source-row-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+  flex: 1;
+}
+.merged-source-row-name {
+  font-weight: 500;
+  color: var(--color-slate-700, #334155);
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.merged-source-row-cases {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-slate-500, #64748b);
+  font-size: 12px;
+}
+.cp-source-results {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 4px 4px 2px;
+}
+.cp-source-result {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-slate-600, #475569);
+  background: var(--color-white, #fff);
+  border: 1px solid var(--color-slate-200, #e2e8f0);
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+.cp-source-result.missing {
+  border-color: var(--color-red-300, #fca5a5);
+  background: var(--color-red-50, #fef2f2);
+}
+.cp-source-result .missing-badge {
+  color: var(--color-red-600, #dc2626);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
 }
 </style>

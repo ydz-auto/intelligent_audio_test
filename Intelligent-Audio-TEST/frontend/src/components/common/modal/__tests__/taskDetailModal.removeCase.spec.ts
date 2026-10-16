@@ -42,11 +42,15 @@ vi.mock('../../../../composables/modal/useModal', () => {
   return {
     useModalControl: () => ({ open }),
     MODAL_TYPES: { BASIC_CONFIRM: 'BASIC_CONFIRM', TEST_CASE_DETAIL: 'TEST_CASE_DETAIL', REEXECUTE_OPTIONS: 'REEXECUTE_OPTIONS' },
-  }
-})
+  }})
 
 vi.mock('../../../../composables/modal/useNotification', () => ({
   useNotification: () => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }),
+}))
+
+// INT-401：挑选入口权限门控（task:cherry_pick）——测试环境无 Pinia，mock 授权为全放行
+vi.mock('../../../../store/authStore', () => ({
+  useAuthStore: () => ({ hasPermission: () => true }),
 }))
 
 import TestExecutionComponent from '../../../layout/TestExecutionComponent.vue'
