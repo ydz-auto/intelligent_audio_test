@@ -112,6 +112,8 @@ export interface AssociatedCase {
   tags?: string[] | { id: number; name: string }[]
   /** 算法类型 */
   algorithmType?: string
+  /** INT-340：该用例下是否存在人工复核结果（用例行「已复核」徽章依据） */
+  reviewed?: boolean
 }
 
 /** API 资源并发状态（任务执行页展示使用） */

@@ -401,7 +401,9 @@ async function fetchTaskDetails() {
         evaluationStatus: tc.evaluationStatus || '',
         groupName: tc.groupName,
         tags: tc.tags,
-        algorithmType: tc.algorithmType
+        algorithmType: tc.algorithmType,
+        // INT-340：透传人工复核标记（用例行「已复核」徽章依赖）
+        reviewed: tc.reviewed || false
       };
     });
   }
