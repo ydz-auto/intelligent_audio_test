@@ -384,6 +384,26 @@
 | `device_admin` | 被测设备/播放设备/SPL/首页/SSE 的全权管理，不含用例/任务/报告/算法/用户角色管理 | ~25 个 |
 | `guest` | 报告只读 + 报告对比 + 首页统计 + SSE + 认证，不可看日志、不可执行任何写操作 | ~8 个 |
 
+### 4.3 行级可见性（visibility 与 RBAC 正交叠加）
+
+> 负责人裁定 2026-10-15（INT-423 数据可见性体系）：共享范围由 **RBAC 角色承载**，
+> 不另建平行 teams/groups 机制；`visibility` 与 RBAC **正交叠加**。
+
+| 口径 | 说明 |
+|---|---|
+| `visibility` 只回答 | 「owner 之外是否可见」，是 RBAC 权限点维度之上的**行级**再过滤 |
+| `private` | 仅 **owner + admin（豁免）** 可访问；非 owner 拒绝（网关层 403/404） |
+| `shared` | 回落 RBAC 权限点语义：`资源:read` 可见，行为与现状一致（默认） |
+| 列表查询侧 | Repository/ReadModel 加 `WHERE visibility='shared' OR owner=me OR admin`
+  （`shared/infrastructure/visibility_filter.py` `visible_condition`），不可见行不进结果集 |
+| 详情/CRUD 命令侧 | Application 层 `check_visible` owner 校验，私有非 owner 一律拒绝 |
+| 操作人来源 | `x-user-id` / `x-user-is-admin`（`shared/infrastructure/user_context.py`），禁止从业务表反查 |
+| 改可见性 | `PATCH /{id}/visibility`，`require_permission('资源:share')` + owner 校验（admin 豁免），成功后写审计 |
+| 审计 | admin 访问/修改私有资源落 `PRIVATE_RESOURCE_ACCESS` 审计事件（AuditEvent） |
+
+> 各资源行级可见性的完整模型 / 引用连带 / 音频跟随用例 / 迁移口径见
+> [数据可见性设计文档](../doc/功能设计文档/00_新功能总览/数据可见性设计文档.md)。
+
 ## 五、数据模型映射
 
 ### 5.1 表结构对应
