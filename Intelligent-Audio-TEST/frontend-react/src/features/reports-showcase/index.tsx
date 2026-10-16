@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
 import { usePublishedReportList } from '@/application/reports-showcase/use-published-report-list'
 import { useGlobalAlgorithm } from '@/application/hooks/use-global-algorithm'
-import { toReportAlgorithmType } from '@/features/reports/lib/algorithm'
+import { toGlobalAlgorithmId, toReportAlgorithmType } from '@/features/reports/lib/algorithm'
 import { buildShowcaseQuery } from '@/infrastructure/adapters/reportAdapter'
 import { ReportsPagination } from '@/features/reports/components/reports-pagination'
 import type { ShowcaseSearch } from '@/features/reports-showcase/types'
@@ -72,6 +72,18 @@ export function ReportShowcasePage() {
       if (search.algorithmType === 'none' && globalAlgorithmId) {
         setAlgorithmId(ALL_ALGORITHMS_SENTINEL)
       }
+    }
+  }, [search.algorithmType, globalAlgorithmId, setAlgorithmId])
+
+  // P3-3：首入时 URL 显式算法值（非 'none'）写回全局 store，保证大卡选中态与列表过滤一致
+  const urlExplicitInitializedRef = useRef(false)
+  useEffect(() => {
+    if (urlExplicitInitializedRef.current) return
+    urlExplicitInitializedRef.current = true
+    const explicit = search.algorithmType
+    if (explicit && explicit !== 'none') {
+      const id = toGlobalAlgorithmId(explicit)
+      if (id && globalAlgorithmId !== id) setAlgorithmId(id)
     }
   }, [search.algorithmType, globalAlgorithmId, setAlgorithmId])
 

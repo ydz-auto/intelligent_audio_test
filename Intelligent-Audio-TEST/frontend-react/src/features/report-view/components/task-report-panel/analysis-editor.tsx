@@ -1,6 +1,6 @@
 /**
  * 分析结论（15_报告域.md §3.3.3，AnalysisEditorComponent 对位）。
- * 非编辑态 sanitizeConclusion 清洗后渲染（空则占位「暂无分析结论...」）；
+ * 非编辑态 React 文本渲染（自动转义，杜绝 XSS；P1-1 审计修复）；
  * 编辑态 Textarea field-sizing-content；保存 → PUT /reports/{id} analysis（双写兼容）。
  * 结论标签池默认折叠（性能优化/功能改进/稳定性问题/兼容性问题/建议改进）。
  */
@@ -15,10 +15,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  DEFAULT_CONCLUSION_TAGS,
-  sanitizeConclusion,
-} from '@/application/report-view/use-report-analysis'
+import { DEFAULT_CONCLUSION_TAGS } from '@/application/report-view/use-report-analysis'
 import { cn } from '@/lib/utils'
 
 interface AnalysisEditorProps {
@@ -42,7 +39,7 @@ export function AnalysisEditor({
 }: AnalysisEditorProps) {
   const [draft, setDraft] = useState(analysis ?? '')
   const [tagsOpen, setTagsOpen] = useState(false)
-  const hasAnalysis = Boolean(analysis && sanitizeConclusion(analysis).trim())
+  const hasAnalysis = Boolean(analysis && analysis.trim())
 
   // 报告头「保存」退出编辑模式时提交未保存草稿（INT-503：编辑/保存一致——退出编辑不再丢改动）；
   // 「取消」置 cancelRef，跳过提交
@@ -143,10 +140,9 @@ export function AnalysisEditor({
             )}
           </div>
         ) : hasAnalysis ? (
-          <div
-            className='text-muted-foreground text-sm leading-relaxed whitespace-pre-wrap'
-            dangerouslySetInnerHTML={{ __html: sanitizeConclusion(analysis) }}
-          />
+          <div className='text-muted-foreground text-sm leading-relaxed whitespace-pre-wrap'>
+            {analysis}
+          </div>
         ) : (
           <div className='text-muted-foreground flex h-20 items-center justify-center rounded-lg border text-xs'>
             暂无分析结论，点击编辑按钮添加分析内容

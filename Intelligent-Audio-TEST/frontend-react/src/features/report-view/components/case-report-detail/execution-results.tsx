@@ -50,6 +50,12 @@ const META_CODES = new Set([
 ])
 const DISPLAY_TYPES = new Set(['text', 'timestamp', 'number', 'boolean', 'json', 'audio_file'])
 
+/** 音频外链 scheme 白名单（P3：拒绝 javascript:/data: 等危险 scheme 作 href） */
+function isSafeHttpUrl(url?: string): url is string {
+  if (!url) return false
+  return /^https?:\/\//i.test(url)
+}
+
 interface ResultTextField {
   paramCode: string
   label: string
@@ -477,7 +483,7 @@ export function ExecutionResults({
                   {audios.map((audio, idx) => (
                     <Badge key={String(audio.audio_id)} variant='outline' className='gap-1'>
                       {audio.audio_name ?? `音频 ${idx + 1}`}
-                      {audio.url ? (
+                      {isSafeHttpUrl(audio.url) ? (
                         <a href={audio.url} target='_blank' rel='noreferrer' className='text-primary underline-offset-2 hover:underline'>
                           播放
                         </a>

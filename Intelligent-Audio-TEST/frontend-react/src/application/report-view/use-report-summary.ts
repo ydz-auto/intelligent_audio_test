@@ -24,17 +24,6 @@ export function buildResourceHeaderMap(
   return map
 }
 
-/** 资源名兜底（/^t\d+-\d{12}-/ 取后段 / _ 拆分 14 位数字前缀格式化，照实测） */
-export function formatResourceFallback(key: string): string {
-  const cleaned = key.replace(/^t\d+-\d{12}-/, '')
-  const digits = key.match(/(\d{14})/)
-  if (digits) {
-    const d = digits[1]
-    return cleaned.replace(d, `${d.slice(0, 4)}-${d.slice(4, 8)}-${d.slice(8)}`)
-  }
-  return cleaned.replace(/_/g, ' ')
-}
-
 /** 六重取值链取有效资源键（getValidResources） */
 export function getValidResources(summary: ReportSummary | undefined): string[] {
   if (!summary) return []

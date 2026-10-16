@@ -68,7 +68,8 @@ export function useReportCases(reportId: number, fallbackCases: ReportCaseItem[]
     placeholderData: (prev) => prev,
   })
 
-  const items = listQuery.data?.items?.length ? listQuery.data.items : fallbackCases
+  // P2-5：仅当 data 未返回（加载/占位）时回退 fallbackCases；合法空结果（items=[]）进入空态分支
+  const items = listQuery.data ? listQuery.data.items : fallbackCases
 
   const pinnedCases = useMemo(
     () => fallbackCases.filter((c) => pinnedIds.includes(c.id)),

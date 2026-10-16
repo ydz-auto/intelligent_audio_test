@@ -61,13 +61,13 @@ export async function fetchReportList(
     }
     if (algorithm_type && item.algorithm_type !== algorithm_type) return false
     // 演示态覆盖（收藏/软删/彻底删除经 store 生效）；回收站态与正常态互斥。
-    // mock 原值 deleted 与 store 覆盖合并判定（INT-434 P2-2：回收站已发布报告不得泄漏进展示列表）。
-    const flags = resolveReportUiFlags(item.id, item.is_favorite)
-    const mockDeleted = item.deleted === true
+    // P2-3：store 的 restore/purge 集合优先于 mock 原值 deleted（base 软删行可恢复/彻底删除）。
+    const flags = resolveReportUiFlags(item.id, item.is_favorite, item.deleted === true)
     if (deleted) {
-      if (!flags.deleted && !mockDeleted) return false
+      if (flags.purged) return false
+      if (!flags.deleted) return false
     } else {
-      if (flags.deleted || mockDeleted) return false
+      if (flags.purged || flags.deleted) return false
       if (favorite && !flags.isFavorite) return false
     }
     if (start_time && item.created_at < start_time) return false
@@ -87,8 +87,15 @@ export async function fetchReportList(
         return item.created_at
     }
   }
+  // P2-1 数值排序：pass_rate/total_cases 走数值减法；name/created_at 走字典序（ISO 时间串字典序=时间序）
+  const cmpValue = (a: ReportListItem, b: ReportListItem): number => {
+    const av = sortValue(a)
+    const bv = sortValue(b)
+    if (typeof av === 'number' && typeof bv === 'number') return av - bv
+    return String(av).localeCompare(String(bv))
+  }
   items = [...items].sort((a, b) => {
-    const cmp = String(sortValue(a)).localeCompare(String(sortValue(b)))
+    const cmp = cmpValue(a, b)
     return order === 'asc' ? cmp : -cmp
   })
 
@@ -97,7 +104,7 @@ export async function fetchReportList(
   const start = (page - 1) * pageSize
   return {
     items: items.slice(start, start + pageSize).map((item) => {
-      const flags = resolveReportUiFlags(item.id, item.is_favorite)
+      const flags = resolveReportUiFlags(item.id, item.is_favorite, item.deleted === true)
       const adv = MOCK_REPORT_ADVANCED_META[item.id]
       return {
         ...item,
@@ -346,11 +353,4 @@ export async function restoreReport(_reportId: number): Promise<{ success: boole
 
 export async function purgeReport(_reportId: number): Promise<{ success: boolean }> {
   return { success: true }
-}
-
-export async function fetchReportProgress(_reportId: number): Promise<{
-  status: 'pending' | 'generating' | 'completed' | 'failed'
-  progress: number
-}> {
-  return { status: 'generating', progress: 60 }
 }

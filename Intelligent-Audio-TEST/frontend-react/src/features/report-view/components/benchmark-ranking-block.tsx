@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useBenchmarkRanking, type BenchmarkSourceFilter } from '@/application/report-view/use-benchmark-ranking'
-import { CHART_COLORS } from '@/infrastructure/adapters/chartConfig'
+import { CHART_COLORS } from '@/application/report-view/use-report-charts'
 import { cn } from '@/lib/utils'
 
 const SOURCE_FILTERS: { value: BenchmarkSourceFilter; label: string }[] = [

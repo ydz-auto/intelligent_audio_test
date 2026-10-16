@@ -26,6 +26,7 @@ import { useGlobalAlgorithm } from '@/application/hooks/use-global-algorithm'
 import { useReportList } from '@/application/reports/use-report-list'
 import { useReportCounts } from '@/application/reports/use-report-counts'
 import { useReportSummaryCounts } from '@/application/reports/use-report-summary-counts'
+import { useReportExportAll } from '@/application/reports/use-report-export-all'
 import {
   useBatchReportActions,
   useReportActions,
@@ -63,6 +64,7 @@ export function ReportCenterPage() {
   const { algorithmId: globalAlgorithmId } = useGlobalAlgorithm()
   const reportActions = useReportActions()
   const batchActions = useBatchReportActions()
+  const fetchExportAllIds = useReportExportAll()
   const summaryCountsQuery = useReportSummaryCounts()
   const typeCounts = summaryCountsQuery.data?.typeCounts ?? {
     all: 0,
@@ -237,6 +239,8 @@ export function ReportCenterPage() {
   const [exportOpen, setExportOpen] = useState(false)
   const [exportCount, setExportCount] = useState(1)
   const [exportScope, setExportScope] = useState('')
+  /** 导出目标 id 集（已选 或 当前筛选全量；P2-2：不得仅当前页） */
+  const [exportIds, setExportIds] = useState<number[]>([])
   const [publishTarget, setPublishTarget] = useState<ReportListItem>()
   const [deleteTarget, setDeleteTarget] = useState<ReportListItem>()
   const [purgeTarget, setPurgeTarget] = useState<ReportListItem>()
@@ -278,13 +282,24 @@ export function ReportCenterPage() {
   )
 
   const openExportDialog = useCallback(
-    (count: number, scope: string) => {
+    (count: number, scope: string, ids: number[]) => {
       setExportCount(count)
       setExportScope(scope)
+      setExportIds(ids)
       setExportOpen(true)
     },
     []
   )
+
+  // P2-2：导出范围与文案一致——已选 → 所选 id；未选 → 当前筛选全量 id（非仅当前页）
+  const handleExportCsv = useCallback(async () => {
+    if (selectedIds.length > 0) {
+      openExportDialog(selectedIds.length, `已选择 ${selectedIds.length} 个报告`, selectedIds)
+      return
+    }
+    const allIds = await fetchExportAllIds(query)
+    openExportDialog(allIds.length, '当前筛选列表全部报告', allIds)
+  }, [query, selectedIds, openExportDialog, fetchExportAllIds])
 
   const handleProgressComplete = useCallback(
     (reportId: number) => {
@@ -333,13 +348,7 @@ export function ReportCenterPage() {
               统计分析
             </DropdownMenuItem>
             <DropdownMenuItem
-              onClick={() => {
-                if (selectedIds.length > 0) {
-                  openExportDialog(selectedIds.length, `已选择 ${selectedIds.length} 个报告`)
-                } else {
-                  openExportDialog(items.length, '当前筛选列表全部报告')
-                }
-              }}
+              onClick={() => void handleExportCsv()}
             >
               导出 CSV
             </DropdownMenuItem>
@@ -527,7 +536,7 @@ export function ReportCenterPage() {
         onOpenChange={setExportOpen}
         scope={exportScope}
         count={exportCount}
-        onExport={(format) => reportActions.exportReport(selectedIds.length ? selectedIds : (items.map((i) => i.id)), format)}
+        onExport={(format) => reportActions.exportReport(exportIds, format)}
       />
       <ReportCompareDialog
         open={compareOpen}

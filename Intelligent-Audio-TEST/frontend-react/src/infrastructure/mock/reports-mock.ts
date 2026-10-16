@@ -17,7 +17,6 @@ import type {
   ReportDeviceInfo,
   ReportDeviceStat,
   ReportListItem,
-  ReportListData,
   ReportMetricConfig,
   ReportRawDataGroup,
   ReportSummary,
@@ -230,15 +229,6 @@ export const MOCK_REPORT_ADVANCED_META: Record<
   1180: { task_type: 'e2e', device_type: 'smart_speaker', creator: 'demo_admin' },
   1179: { task_type: 'api', device_type: 'smart_speaker', creator: 'algo_engineer' },
   1185: { task_type: 'benchmark', device_type: 'mixed', creator: 'algo_engineer' },
-}
-
-/** GET /reports 服务端分页响应 mock（useReportList 按 page/per_page 切片） */
-export const MOCK_REPORT_LIST_DATA: ReportListData = {
-  items: MOCK_REPORT_LIST_ITEMS,
-  total: MOCK_REPORT_LIST_ITEMS.length,
-  page: 1,
-  per_page: 20,
-  pages: 1,
 }
 
 /** GET /reports/counts（全量非回收站项分类计数；口径修正 2026-10-16 取消页签后仍作筛选 chips/徽章行计数源） */

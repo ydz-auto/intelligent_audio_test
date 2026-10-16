@@ -18,6 +18,17 @@ export function toReportAlgorithmType(globalAlgorithmId?: string): string | unde
   return GLOBAL_ALGORITHM_TO_REPORT_TYPE[globalAlgorithmId]
 }
 
+const REPORT_TYPE_TO_GLOBAL_ALGORITHM: Record<string, string> = {
+  asr_streaming: 'asr-v3',
+  tts_eval: 'eval-ensemble',
+}
+
+/** 报告 algorithm_type → 全局算法 id（反向映射；URL 分享链首入写回 store 用） */
+export function toGlobalAlgorithmId(reportAlgorithmType?: string): string | undefined {
+  if (!reportAlgorithmType) return undefined
+  return REPORT_TYPE_TO_GLOBAL_ALGORITHM[reportAlgorithmType]
+}
+
 /** 联动 chip 文案（算法类型中文标签；无映射回退全局算法名） */
 export function getLinkedAlgorithmLabel(globalAlgorithmId?: string): string | undefined {
   const type = toReportAlgorithmType(globalAlgorithmId)

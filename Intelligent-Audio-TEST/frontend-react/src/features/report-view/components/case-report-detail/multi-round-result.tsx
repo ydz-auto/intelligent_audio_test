@@ -79,14 +79,15 @@ export function MultiRoundResult({ caseItem }: { caseItem: ReportCaseItem }) {
     }
   }, [caseItem.algorithmResults])
 
+  // 聚合卡：优先后端 aggregated，兜底前端自算
+  // P2-6：hooks 置于早退 return 之前（遵守 Rules-of-Hooks），useAggregated 内部对 null 兜底
+  const aggregated = useAggregated(multiRound)
+  const [expanded, setExpanded] = useState<number>()
+
   if (!multiRound || multiRound.rounds.length === 0) return null
 
   const rounds = multiRound.rounds
   const totalRounds = rounds.length
-
-  // 聚合卡：优先后端 aggregated，兜底前端自算
-  const aggregated = useAggregated(multiRound)
-  const [expanded, setExpanded] = useState<number>()
 
   return (
     <div className='space-y-2'>
@@ -194,8 +195,16 @@ function getRoundReferenceText(caseItem: ReportCaseItem, roundNum: number): stri
 }
 
 /** 聚合卡计算（优先后端 aggregated；兜底由各轮 evaluation/latency/interruption 自算） */
-function useAggregated(data: { aggregated?: Record<string, number>; rounds: RoundData[] }) {
+function useAggregated(data: MultiRoundResultData | null) {
   return useMemo(() => {
+    if (!data) {
+      return {
+        avg_wer: undefined,
+        avg_llm_judge: undefined,
+        avg_latency: undefined,
+        interruption_count: undefined,
+      }
+    }
     if (data.aggregated && Object.keys(data.aggregated).length > 0) {
       return {
         avg_wer: data.aggregated.avg_wer,

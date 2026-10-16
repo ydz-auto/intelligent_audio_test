@@ -162,22 +162,28 @@ export function ReportHeader({
                 重新生成
               </Button>
             )}
-            <Button variant='outline' size='sm' onClick={onExport}>
-              <FileDown data-icon='inline-start' />
-              导出
-            </Button>
+            {hasPermission('report:read') && (
+              <Button variant='outline' size='sm' onClick={onExport}>
+                <FileDown data-icon='inline-start' />
+                导出
+              </Button>
+            )}
             <Button variant='ghost' size='sm' onClick={() => window.print()}>
               <Printer data-icon='inline-start' />
               打印
             </Button>
-            <Button variant='ghost' size='sm' onClick={onCopyLink}>
-              <ExternalLink data-icon='inline-start' />
-              复制链接
-            </Button>
-            <Button variant='ghost' size='sm' onClick={onShare}>
-              <Share2 data-icon='inline-start' />
-              分享
-            </Button>
+            {hasPermission('report:read') && (
+              <Button variant='ghost' size='sm' onClick={onCopyLink}>
+                <ExternalLink data-icon='inline-start' />
+                复制链接
+              </Button>
+            )}
+            {hasPermission('report:read') && (
+              <Button variant='ghost' size='sm' onClick={onShare}>
+                <Share2 data-icon='inline-start' />
+                分享
+              </Button>
+            )}
             {/* §3.2.1 灵犀Agent生成报告入口（08 卡契约：/ai-chat?report={id}） */}
             <AiChatEntry reportId={report.id} enabled={hasPermission('report:read')} />
             <Button variant='ghost' size='sm' onClick={onClose}>
