@@ -789,22 +789,108 @@ class ReportControllerTask(ReportControllerBase):
 
     @staticmethod
     def _get_task_resources(task_ids):
+        """解析任务在报告中使用的设备/API 资源
+
+        口径优先级：
+        1. 配置侧意图 —— task_device_relations / task_api_relations；
+        2. 配置侧为空时回退到执行侧事实 —— test_results.device_id / api_id。
+
+        回退只在两张关联表**都**为空时发生，绝不与关联表取并集：
+        凡关联表有记录的任务（既有能出报告的任务）口径完全不变。
+        缺少该回退时，"直连库注入结果"型任务（只写 test_results、不写关联表）
+        会因为取不到资源而生成不出报告。
+        """
         from backend.models.models import TaskDevice, Device, TaskAPI, API
-        
+
         if isinstance(task_ids, int):
             task_ids = [task_ids]
-        
+
         task_devices = TaskDevice.query.filter(TaskDevice.task_id.in_(task_ids)).all()
         device_ids = list(set([td.device_id for td in task_devices]))
-        devices = Device.query.filter(Device.id.in_(device_ids)).all() if device_ids else []
-        devices_list = [ReportUtils.serialize_device(d) for d in devices if d]
-        
+
         task_apis = TaskAPI.query.filter(TaskAPI.task_id.in_(task_ids)).all()
         api_ids = list(set([ta.api_id for ta in task_apis]))
+
+        if not device_ids and not api_ids:
+            fallback_device_ids, fallback_api_ids = ReportControllerTask._get_resource_ids_from_results(task_ids)
+            if fallback_device_ids or fallback_api_ids:
+                log_and_emit(
+                    'WARNING', 'report',
+                    f'[get_task_resources] 任务 {task_ids} 无 task_device_relations/task_api_relations 记录，'
+                    f'回退取 test_results 实际使用资源 device_ids={sorted(fallback_device_ids)}, '
+                    f'api_ids={sorted(fallback_api_ids)}'
+                )
+                device_ids, api_ids = fallback_device_ids, fallback_api_ids
+
+        devices = Device.query.filter(Device.id.in_(device_ids)).all() if device_ids else []
+        devices_list = [ReportUtils.serialize_device(d) for d in devices if d]
+
         apis = API.query.filter(API.id.in_(api_ids)).all() if api_ids else []
         apis_list = [ReportUtils.serialize_api(a) for a in apis if a]
-        
+
         return devices_list, apis_list, device_ids, api_ids
+
+    @staticmethod
+    def _get_resource_ids_from_results(task_ids):
+        """从 test_results 反查任务实际使用过的设备/API ID（执行侧事实）
+
+        只取未删除且外键非空的执行记录，并与 Device/API 表求交，
+        避免把已被删除、已不存在的资源 ID 带进报告。
+        """
+        from backend.models.models import Device, API
+
+        if isinstance(task_ids, int):
+            task_ids = [task_ids]
+
+        rows = db.session.query(TestResult.device_id, TestResult.api_id).filter(
+            TestResult.task_id.in_(task_ids),
+            TestResult.deleted == False
+        ).all()
+
+        device_ids = {r.device_id for r in rows if r.device_id}
+        api_ids = {r.api_id for r in rows if r.api_id}
+
+        if device_ids:
+            device_ids = {d.id for d in Device.query.filter(Device.id.in_(device_ids)).all()}
+        if api_ids:
+            api_ids = {a.id for a in API.query.filter(API.id.in_(api_ids)).all()}
+
+        return list(device_ids), list(api_ids)
+
+    @staticmethod
+    def _check_generation_preconditions(task, task_id):
+        """报告生成前置校验（同步执行，把失败原因明确交回 HTTP 调用方）
+
+        异步生成路径里的同类判定只能 emit WebSocket 事件，HTTP 调用方什么都看不到，
+        因此必须在同步入口先做一次等价判定，判定条件与异步路径保持一致，
+        不会误伤本可正常生成报告的任务。
+
+        通过校验返回 None；不通过返回统一形状的 error_response。
+        """
+        source_task_ids = ReportControllerTask._get_source_task_ids(task)
+        task_ids_for_query = source_task_ids if source_task_ids else [task_id]
+
+        devices_list, apis_list, _device_ids, _api_ids = ReportControllerTask._get_task_resources(task_ids_for_query)
+        if not devices_list and not apis_list:
+            reason = ('任务没有关联任何设备或API，无法生成报告'
+                      '（task_device_relations/task_api_relations 无记录，test_results 中亦无 device_id/api_id）')
+            log_and_emit(
+                'ERROR', 'report',
+                f'[generate_task_report] 报告生成终止：{reason} task_id={task_id}, task_ids={task_ids_for_query}',
+                task_id=task_id
+            )
+            return error_response(reason, ErrorCode.OPERATION_FAILED)
+
+        if Dimension.query.filter_by(status=True, deleted=False).count() == 0:
+            reason = '任务没有关联任何评估维度，无法生成报告（系统中不存在启用中的评估维度）'
+            log_and_emit(
+                'ERROR', 'report',
+                f'[generate_task_report] 报告生成终止：{reason} task_id={task_id}',
+                task_id=task_id
+            )
+            return error_response(reason, ErrorCode.OPERATION_FAILED)
+
+        return None
 
     @staticmethod
     def _get_task_test_cases(task_ids):
@@ -1031,6 +1117,12 @@ class ReportControllerTask(ReportControllerBase):
         if task.status not in [TaskStatus.COMPLETED.value, TaskStatus.FAILED.value, TaskStatus.MERGED.value]:
             return error_response("只有任务状态为completed、failed或merged时才能生成报告")
 
+        # 同步前置校验：异步路径里的同类判定只能 emit WebSocket 事件，
+        # HTTP 调用方会"看起来成功"却拿不到报告，这里必须先给出明确失败响应
+        precondition_error = ReportControllerTask._check_generation_preconditions(task, task_id)
+        if precondition_error is not None:
+            return precondition_error
+
         with _generating_lock:
             if task_id in _generating_tasks:
                 return success_response({"taskId": task_id, "status": "generating"}, "报告正在生成中", ErrorCode.SUCCESS)
@@ -1065,6 +1157,14 @@ class ReportControllerTask(ReportControllerBase):
         # 获取原报告名称和描述
         name = report.name
         description = report.description
+
+        # 前置校验必须在软删除旧报告之前：否则校验不通过时旧报告已被删掉
+        task = db.session.get(Task, task_id)
+        if not task:
+            return error_response("报告未关联有效任务，无法重新生成")
+        precondition_error = ReportControllerTask._check_generation_preconditions(task, task_id)
+        if precondition_error is not None:
+            return precondition_error
 
         # 检查是否正在生成
         with _generating_lock:
@@ -1157,6 +1257,12 @@ class ReportControllerTask(ReportControllerBase):
                 dim_results_map, dim_stats = ReportControllerTask._get_dimension_results_batch(res_ids)
                 
                 if not dim_results_map:
+                    log_and_emit(
+                        'ERROR', 'report',
+                        f'[generate_task_report_async] 报告生成终止：未找到维度得分数据'
+                        f'（task_id={task_id}, result_count={len(res_ids)}）',
+                        task_id=task_id
+                    )
                     socketio.emit('report_generated', {
                         'taskId': task_id,
                         'success': False,
@@ -1188,6 +1294,13 @@ class ReportControllerTask(ReportControllerBase):
                 all_metrics = ReportControllerTask._build_all_metrics(all_dimensions)
 
                 if not devices_list and not apis_list:
+                    log_and_emit(
+                        'ERROR', 'report',
+                        f'[generate_task_report_async] 报告生成终止：任务没有关联任何设备或API'
+                        f'（task_id={task_id}, task_ids={task_ids_for_query}；'
+                        f'task_device_relations/task_api_relations 无记录，test_results 中亦无 device_id/api_id）',
+                        task_id=task_id
+                    )
                     socketio.emit('report_generated', {
                         'taskId': task_id,
                         'success': False,
@@ -1196,6 +1309,12 @@ class ReportControllerTask(ReportControllerBase):
                     return
 
                 if not all_metrics:
+                    log_and_emit(
+                        'ERROR', 'report',
+                        f'[generate_task_report_async] 报告生成终止：任务没有关联任何评估维度'
+                        f'（task_id={task_id}, task_ids={task_ids_for_query}, active_dimension_count=0）',
+                        task_id=task_id
+                    )
                     socketio.emit('report_generated', {
                         'taskId': task_id,
                         'success': False,
