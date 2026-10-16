@@ -71,6 +71,35 @@ def _cleanup_algorithm_tables():
     db.session.flush()  # 用 flush 代替 commit，避免在嵌套事务中真正提交
 
 
+@pytest.fixture(autouse=True)
+def _release_db_connections():
+    """每个测试结束后释放该测试创建的数据库引擎连接（VEGA-35 连接泄漏治理）。
+
+    测试文件普遍在**每个测试**里 create_app("testing")，而 TestingConfig 用
+    StaticPool（单连接常驻）。引擎不 dispose，那条连接就一直挂在测试库上：
+    全量跑一遍会累积上百条 idle 连接，把 max_connections 额度吃光，
+    导致无关脚本/服务连不上库（实测出现过
+    "remaining connection slots are reserved for roles with the SUPERUSER attribute"）。
+
+    autouse + 目录级 conftest ⇒ 本文件下所有测试（含直接调用 create_app 的）
+    都会在收尾时被清理。teardown 顺序：autouse fixture 最后收尾，
+    因此这里跑在 app fixture 的 session.remove()/rollback 之后。
+    """
+    yield
+    try:
+        db.session.remove()
+    except Exception:
+        pass
+    # db._app_engines: Flask-SQLAlchemy 按 app 登记的引擎表（每个 create_app 一份）
+    app_engines = getattr(db, '_app_engines', None) or {}
+    for engines in list(app_engines.values()):
+        for engine in list(engines.values()):
+            try:
+                engine.dispose()
+            except Exception:
+                pass
+
+
 @pytest.fixture
 def app():
     """创建测试用 Flask 应用
@@ -108,6 +137,12 @@ def app():
         session.remove()
         trans.rollback()
         connection.close()
+        # VEGA-35：TestingConfig 用 StaticPool，引擎不 dispose 就会一直占着一条到测试库的
+        # 连接（每个测试建一个 app ⇒ 一条连接），全量跑一遍足以耗尽 max_connections。
+        try:
+            db.engine.dispose()
+        except Exception:
+            pass
 
 
 @pytest.fixture

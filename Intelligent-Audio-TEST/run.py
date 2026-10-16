@@ -1,10 +1,17 @@
-from backend.app import create_app, socketio
-from backend.services.execution.execution_engine import execution_engine
 import os
 import sys
 import signal
 import time
 import subprocess
+
+# VEGA-35：本进程是真正的后端服务入口，显式打开"启动恢复扫描"
+# （遗留 pending/queued/running 任务在服务重启后必须收尾为 failed）。
+# 必须在导入 backend.app 之前设置——配置类在导入时求值。
+# 测试/迁移脚本/临时脚本不设置它，因此它们的 create_app() 不会改写共享库状态。
+os.environ.setdefault('RECOVERY_SWEEP_ON_STARTUP', 'true')
+
+from backend.app import create_app, socketio
+from backend.services.execution.execution_engine import execution_engine
 from flask import request
 
 config_name = os.getenv('FLASK_CONFIG') or 'default'

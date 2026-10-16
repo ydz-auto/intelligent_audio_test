@@ -48,6 +48,106 @@ socketio = SocketIO(
 # 全局应用实例，用于在后台线程中创建应用上下文
 app = None
 
+
+def _is_test_process():
+    """当前进程是否是 pytest 进程（收集或运行测试）。
+
+    VEGA-35：测试进程绝不执行启动恢复扫描——扫描会把 pending/queued/running/
+    calculating 的任务、用例、维度改写为 failed，落到共享库就会打断别人正在跑的评估。
+    """
+    return 'pytest' in sys.modules or bool(os.environ.get('PYTEST_CURRENT_TEST'))
+
+
+def _should_run_recovery_sweep(app):
+    """是否执行启动恢复扫描（VEGA-35）。
+
+    双重把关：
+    1. 配置开关 RECOVERY_SWEEP_ON_STARTUP：只有真正的服务入口 run.py 会打开它
+       （测试/迁移脚本/临时脚本里的 create_app() 默认不扫）；
+    2. 非 pytest 进程：即使环境变量被显式打开，测试进程也不扫。
+    """
+    if _is_test_process():
+        return False
+    return bool(app.config.get('RECOVERY_SWEEP_ON_STARTUP'))
+
+
+def _sweep_interrupted_tasks_on_startup(app):
+    """服务重启后，把遗留的进行中任务/用例/维度收尾为 failed。
+
+    必须在已进入 app_context 的情况下调用（create_app 内已进入）。
+    真实服务重启时本语义必须保留：遗留的 pending/queued/running/calculating
+    不会再有执行线程/评估回调来收尾，不收尾就会永远卡在"进行中"。
+    """
+    try:
+        # 服务重启时，将所有待执行和运行中的任务设置为失败状态
+        # 注意：这里必须显式 import backend.models.models —— 原代码在 create_app 内部，
+        # 那次 import 只绑定在函数局部；抽到模块级函数后要靠本行拿到 backend 名字。
+        import backend.models.models as models_module
+        from backend.models.models import Task, TaskCase, TestResult, TestResultDimension
+
+        # 更新Task状态：将pending/queued/running/evaluating/reevaluate_queued/reevaluating状态的任务设置为failed
+        # 重新评估队列为内存态，重启后已丢失，遗留的重新评估中/排队中任务必须收尾为failed，否则永远卡在"重新评估中"
+        task_update_count = db.session.query(Task).filter(
+            Task.status.in_(['pending', 'queued', 'running', 'evaluating', 'paused', 'reevaluate_queued', 'reevaluating'])
+        ).update({
+            Task.status: 'failed',
+            Task.completed_at: models_module.utc8now()
+        }, synchronize_session=False)
+
+        # 更新TaskCase执行状态：将pending/queued/running/evaluating状态的执行设置为failed
+        task_case_exec_update_count = db.session.query(TaskCase).filter(
+            TaskCase.execution_status.in_(['pending', 'queued', 'running', 'evaluating'])
+        ).update({
+            TaskCase.execution_status: 'failed',
+            TaskCase.status: 'failed',
+            TaskCase.error_message: '服务重启导致任务中断',
+            TaskCase.completed_at: models_module.utc8now()
+        }, synchronize_session=False)
+
+        # 更新TaskCase评估状态：将遗留的 queued/pending/running/calculating 状态评估设置为failed
+        # 注意：evaluation_status 合法值为 queued/pending/running/calculating/completed/stopped/failed，
+        # 必须覆盖 calculating（评估已提交、正在计算），否则重启后用例会永远停留在"进行中"
+        task_case_eval_update_count = db.session.query(TaskCase).filter(
+            TaskCase.evaluation_status.in_(['pending', 'queued', 'running', 'calculating'])
+        ).update({
+            TaskCase.evaluation_status: 'failed',
+            TaskCase.status: 'failed',
+            TaskCase.error_message: '服务重启导致任务中断',
+            TaskCase.completed_at: models_module.utc8now()
+        }, synchronize_session=False)
+
+        # 更新TestResult执行状态：将pending/queued/running/evaluating状态的结果设置为failed
+        test_result_update_count = db.session.query(TestResult).filter(
+            TestResult.execution_status.in_(['pending', 'queued', 'running', 'evaluating'])
+        ).update({
+            TestResult.execution_status: 'failed',
+            TestResult.error_message: '服务重启导致任务中断'
+        }, synchronize_session=False)
+
+        # 更新TestResultDimension评估状态：将遗留的 queued/pending/running/calculating 维度设置为failed。
+        # 服务重启后评估线程已丢失，未完成的维度不会再有回调，必须主动收尾为failed，
+        # 否则维度/用例会永远停留在"进行中"
+        test_result_dimension_update_count = db.session.query(TestResultDimension).filter(
+            TestResultDimension.evaluation_status.in_(['pending', 'queued', 'running', 'calculating'])
+        ).update({
+            TestResultDimension.evaluation_status: 'failed',
+            TestResultDimension.error_message: '服务重启导致评估中断'
+        }, synchronize_session=False)
+
+        db.session.commit()
+
+        app.logger.info(f"服务重启后任务状态更新：")
+        app.logger.info(f"- 更新任务状态数: {task_update_count} (pending/queued/running/evaluating/paused/reevaluate_queued/reevaluating → failed)")
+        app.logger.info(f"- 更新任务用例执行状态数: {task_case_exec_update_count} (pending/queued/running/evaluating → failed)")
+        app.logger.info(f"- 更新任务用例评估状态数: {task_case_eval_update_count} (pending/queued/running/calculating → failed)")
+        app.logger.info(f"- 更新测试结果执行状态数: {test_result_update_count} (pending/queued/running/evaluating → failed)")
+        app.logger.info(f"- 更新测试结果维度评估状态数: {test_result_dimension_update_count} (pending/queued/running/calculating → failed)")
+
+    except Exception as e:
+        app.logger.error(f"服务重启时更新任务状态失败: {str(e)}")
+        db.session.rollback()
+
+
 # 应用工厂函数：负责创建和配置 Flask 应用实例
 def create_app(config_name='default'):
     global app
@@ -179,72 +279,17 @@ def create_app(config_name='default'):
         
         db.create_all() # 创建所有定义的表 (如果不存在)
         
-        try:
-            # 服务重启时，将所有待执行和运行中的任务设置为失败状态
-            from backend.models.models import Task, TaskCase, TestResult, TestResultDimension
-            
-            # 更新Task状态：将pending/queued/running/evaluating/reevaluate_queued/reevaluating状态的任务设置为failed
-            # 重新评估队列为内存态，重启后已丢失，遗留的重新评估中/排队中任务必须收尾为failed，否则永远卡在"重新评估中"
-            task_update_count = db.session.query(Task).filter(
-                Task.status.in_(['pending', 'queued', 'running', 'evaluating', 'paused', 'reevaluate_queued', 'reevaluating'])
-            ).update({
-                Task.status: 'failed',
-                Task.completed_at: backend.models.models.utc8now()
-            }, synchronize_session=False)
-            
-            # 更新TaskCase执行状态：将pending/queued/running/evaluating状态的执行设置为failed
-            task_case_exec_update_count = db.session.query(TaskCase).filter(
-                TaskCase.execution_status.in_(['pending', 'queued', 'running', 'evaluating'])
-            ).update({
-                TaskCase.execution_status: 'failed',
-                TaskCase.status: 'failed',
-                TaskCase.error_message: '服务重启导致任务中断',
-                TaskCase.completed_at: backend.models.models.utc8now()
-            }, synchronize_session=False)
-            
-            # 更新TaskCase评估状态：将遗留的 queued/pending/running/calculating 状态评估设置为failed
-            # 注意：evaluation_status 合法值为 queued/pending/running/calculating/completed/stopped/failed，
-            # 必须覆盖 calculating（评估已提交、正在计算），否则重启后用例会永远停留在"进行中"
-            task_case_eval_update_count = db.session.query(TaskCase).filter(
-                TaskCase.evaluation_status.in_(['pending', 'queued', 'running', 'calculating'])
-            ).update({
-                TaskCase.evaluation_status: 'failed',
-                TaskCase.status: 'failed',
-                TaskCase.error_message: '服务重启导致任务中断',
-                TaskCase.completed_at: backend.models.models.utc8now()
-            }, synchronize_session=False)
-            
-            # 更新TestResult执行状态：将pending/queued/running/evaluating状态的结果设置为failed
-            test_result_update_count = db.session.query(TestResult).filter(
-                TestResult.execution_status.in_(['pending', 'queued', 'running', 'evaluating'])
-            ).update({
-                TestResult.execution_status: 'failed',
-                TestResult.error_message: '服务重启导致任务中断'
-            }, synchronize_session=False)
+        # VEGA-35：启动恢复扫描只在真正的服务进程里执行，由 run.py 显式打开
+        # （RECOVERY_SWEEP_ON_STARTUP=true）；测试/迁移脚本/临时脚本默认不扫。
+        # 判据见 _should_run_recovery_sweep：开关 + 非 pytest 进程双重把关。
+        if _should_run_recovery_sweep(app):
+            _sweep_interrupted_tasks_on_startup(app)
+        else:
+            app.logger.info(
+                "已跳过服务重启恢复扫描（RECOVERY_SWEEP_ON_STARTUP 未开启或当前是测试进程，"
+                "非服务进程不应改写共享库任务状态）"
+            )
 
-            # 更新TestResultDimension评估状态：将遗留的 queued/pending/running/calculating 维度设置为failed。
-            # 服务重启后评估线程已丢失，未完成的维度不会再有回调，必须主动收尾为failed，
-            # 否则维度/用例会永远停留在"进行中"
-            test_result_dimension_update_count = db.session.query(TestResultDimension).filter(
-                TestResultDimension.evaluation_status.in_(['pending', 'queued', 'running', 'calculating'])
-            ).update({
-                TestResultDimension.evaluation_status: 'failed',
-                TestResultDimension.error_message: '服务重启导致评估中断'
-            }, synchronize_session=False)
-            
-            db.session.commit()
-            
-            app.logger.info(f"服务重启后任务状态更新：")
-            app.logger.info(f"- 更新任务状态数: {task_update_count} (pending/queued/running/evaluating/paused/reevaluate_queued/reevaluating → failed)")
-            app.logger.info(f"- 更新任务用例执行状态数: {task_case_exec_update_count} (pending/queued/running/evaluating → failed)")
-            app.logger.info(f"- 更新任务用例评估状态数: {task_case_eval_update_count} (pending/queued/running/calculating → failed)")
-            app.logger.info(f"- 更新测试结果执行状态数: {test_result_update_count} (pending/queued/running/evaluating → failed)")
-            app.logger.info(f"- 更新测试结果维度评估状态数: {test_result_dimension_update_count} (pending/queued/running/calculating → failed)")
-            
-        except Exception as e:
-            app.logger.error(f"服务重启时更新任务状态失败: {str(e)}")
-            db.session.rollback()
-        
         try:
             # 预置种子数据 (如果表为空)
             dimension_count = db.session.query(backend.models.models.Dimension).count()

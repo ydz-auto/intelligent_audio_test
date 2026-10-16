@@ -156,6 +156,14 @@ class Config:
     CONSOLE_LOG_ENABLED = _get_console_log_enabled()
     SOCKETIO_DEBUG = False
 
+    # ---- 启动恢复扫描开关（VEGA-35）----
+    # app.py 启动时会把遗留的 pending/queued/running/calculating 任务、用例、维度
+    # 收尾为 failed（服务重启语义，必须保留）。但这段逻辑过去对**任何** create_app()
+    # 都生效：测试/脚本里一次裸 create_app() 就会落到共享库，把别人正在跑的评估
+    # 刷成 '服务重启导致评估中断' failed（VEGA-25 实测事故）。
+    # 因此默认关闭，只由真正的服务入口 run.py 显式打开（os.environ.setdefault）。
+    RECOVERY_SWEEP_ON_STARTUP = os.environ.get('RECOVERY_SWEEP_ON_STARTUP', 'false').lower() in ('true', '1', 'yes')
+
     # ---- OSS / S3 兼容对象存储（单桶模式，开发环境为本地 MinIO）----
     OSS_ENDPOINT = os.environ.get('OSS_ENDPOINT', 'http://localhost:9000')
     OSS_REGION = os.environ.get('OSS_REGION', 'us-east-1')
@@ -182,6 +190,9 @@ class TestingConfig(Config):
     LOG_LEVEL = os.environ.get('LOG_LEVEL', 'DEBUG').upper()
     CONSOLE_LOG_ENABLED = _get_console_log_enabled()
     SOCKETIO_DEBUG = True
+    # 测试进程绝不执行启动恢复扫描（VEGA-35）：扫描会改写任务/用例/维度状态，
+    # 即便测试库是隔离的也没有这个必要，显式关掉以防基类默认值被改动。
+    RECOVERY_SWEEP_ON_STARTUP = False
     # 测试使用独立数据库（intelligent_audio_test_test），与生产库物理隔离，
     # 避免 conftest 清空算法表的逻辑污染真实数据
     SQLALCHEMY_DATABASE_URI = _get_test_database_uri()
