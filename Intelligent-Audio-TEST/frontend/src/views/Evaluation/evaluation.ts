@@ -67,6 +67,9 @@ export function useEvaluation() {
     loading: dimensionsModule.loading,
     error: dimensionsModule.error,
 
+    // 数据获取（加载/错误态重试按钮使用）
+    fetchData: dimensionsModule.fetchData,
+
     // UI 引用（来自批量操作模块）
     batchMenuRef: batchOpsModule.batchMenuRef,
     importExportMenuRef: batchOpsModule.importExportMenuRef,

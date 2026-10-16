@@ -172,6 +172,12 @@
       </div>
     </div>
     
+    <!-- INT-290 加载指示（对齐 A/B 域 loading bar 方案；重载期间保留旧列表不闪空） -->
+    <div v-if="loading" class="history-reports-loading-bar">
+      <span class="loading-spinner"></span>
+      正在加载报告...
+    </div>
+
     <!-- 报告列表：按当前视图 Tab 分组展示（全部=已发布+草稿分区；其余=单组统一列表） -->
     <div
       v-for="section in reportSections"
@@ -278,8 +284,8 @@
       </div>
     </div>
 
-    <!-- 无数据提示：按当前视图 Tab 判断 -->
-    <div v-if="reportSections.length === 0" class="no-data">
+    <!-- 无数据提示：按当前视图 Tab 判断（加载中不显示，避免与加载条并存误导） -->
+    <div v-if="!loading && reportSections.length === 0" class="no-data">
       <i class="fas fa-inbox"></i>
       <p>{{ activeTab === REPORT_TABS.ALL ? '暂无报告数据' : `暂无${activeTabMeta.label}数据` }}</p>
     </div>
@@ -437,6 +443,29 @@ function handleAlgorithmFilterChange(value: string | number) {
 </script>
 
 <style scoped>@import './HistoryReports.css';
+
+/* INT-290 加载指示（对齐 A/B 域 loading bar 方案） */
+.history-reports-loading-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    margin-bottom: var(--spacing-lg);
+    background: color-mix(in srgb, var(--primary-color) 5%, transparent);
+    border-radius: var(--border-radius-lg);
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.history-reports-loading-bar .loading-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
 
 .no-data{
 display: flex;

@@ -100,6 +100,20 @@
               <i class="fas fa-info-circle"></i>
               同一分类下、评估服务与请求模板一致的维度，评估时会自动合并为一次请求，共用一次判定结果。
             </div>
+            <!-- INT-290：加载/错误态（对齐 A/B 域 Device 错误条方案；列表/分组视图统一消费 loading/error）。
+                 交互决策（INT-290 记录）：列表视图不再使用基线 InfiniteScrollList 无限滚动（组件已移除），
+                 INT-281 起全量拉取 + 前端过滤，列表直接平铺渲染全部维度（维度量级小，千条内无需分页/无限滚动）。 -->
+            <div v-if="loading" class="evaluation-loading-bar">
+              <span class="loading-spinner"></span>
+              正在加载评估维度...
+            </div>
+            <div v-else-if="error" class="evaluation-error-banner">
+              <i class="fas fa-exclamation-triangle"></i>
+              <span class="evaluation-error-text">{{ error }}</span>
+              <button class="btn btn-primary btn-sm" @click="fetchData">
+                <i class="fas fa-sync-alt"></i> 重试
+              </button>
+            </div>
             <!-- 列表视图 -->
             <template v-if="viewMode === 'list'">
               <EvaluationDimensionTable
@@ -119,7 +133,7 @@
                 @weight-change="(payload) => updateWeight(payload.id, payload.weight)"
                 @move="(payload) => moveDimension(payload.id, payload.direction)"
               />
-              <div v-if="!loading && hierarchicalDimensions.length === 0" class="empty-dimensions">
+              <div v-if="!loading && !error && hierarchicalDimensions.length === 0" class="empty-dimensions">
                 <i class="fas fa-inbox"></i>
                 <p>暂无评估维度数据</p>
               </div>
@@ -127,64 +141,58 @@
 
             <!-- 分组视图：按分类聚合，分类内保留主/子维度层级 -->
             <template v-else>
-              <div v-if="loading" class="empty-dimensions">
-                <i class="fas fa-spinner fa-spin"></i>
-                <p>加载中...</p>
+              <div
+                v-for="group in groupedDimensions"
+                :key="group.key"
+                class="group-card"
+              >
+                <div class="group-header" @click="toggleGroupExpanded(group.key)">
+                  <div class="group-header-left">
+                    <input
+                      type="checkbox"
+                      class="group-checkbox"
+                      :checked="groupAllSelected(group)"
+                      @click.stop
+                      @change="toggleGroupSelectAll(group)"
+                      title="全选该分组"
+                    >
+                    <i class="fas fa-chevron-down group-toggle" :class="{ expanded: isGroupExpanded(group.key) }"></i>
+                    <i :class="group.category?.icon || 'fas fa-folder'" class="group-icon"></i>
+                    <h4 class="group-title">{{ group.category?.name || '未分类' }}</h4>
+                    <span class="group-count">{{ group.items.length }}</span>
+                    <span v-if="group.category?.description" class="group-desc">{{ group.category.description }}</span>
+                  </div>
+                  <div class="group-header-actions" @click.stop>
+                    <button class="btn btn-text btn-primary btn-sm" @click="openAddModal(group.category?.id)">
+                      <i class="fas fa-plus btn-icon"></i>
+                      添加维度
+                    </button>
+                  </div>
+                </div>
+                <div v-show="isGroupExpanded(group.key)" class="group-content">
+                  <EvaluationDimensionTable
+                    :items="group.items"
+                    :selected-dimensions="selectedDimensions"
+                    :show-header-checkbox="false"
+                    :can-move-up="canMoveUp"
+                    :can-move-down="canMoveDown"
+                    :get-algorithm-label="getAlgorithmLabel"
+                    :is-llm-judge="isLlmJudge"
+                    @toggle-selection="toggleDimensionSelection"
+                    @edit="openEditModal"
+                    @test-api="testAPIHealth"
+                    @delete="deleteDimension"
+                    @add-sub="(payload) => openAddModal(payload.categoryId, payload.id)"
+                    @weight-change="(payload) => updateWeight(payload.id, payload.weight)"
+                    @move="(payload) => moveDimension(payload.id, payload.direction)"
+                  />
+                </div>
               </div>
-              <template v-else>
-                <div
-                  v-for="group in groupedDimensions"
-                  :key="group.key"
-                  class="group-card"
-                >
-                  <div class="group-header" @click="toggleGroupExpanded(group.key)">
-                    <div class="group-header-left">
-                      <input
-                        type="checkbox"
-                        class="group-checkbox"
-                        :checked="groupAllSelected(group)"
-                        @click.stop
-                        @change="toggleGroupSelectAll(group)"
-                        title="全选该分组"
-                      >
-                      <i class="fas fa-chevron-down group-toggle" :class="{ expanded: isGroupExpanded(group.key) }"></i>
-                      <i :class="group.category?.icon || 'fas fa-folder'" class="group-icon"></i>
-                      <h4 class="group-title">{{ group.category?.name || '未分类' }}</h4>
-                      <span class="group-count">{{ group.items.length }}</span>
-                      <span v-if="group.category?.description" class="group-desc">{{ group.category.description }}</span>
-                    </div>
-                    <div class="group-header-actions" @click.stop>
-                      <button class="btn btn-text btn-primary btn-sm" @click="openAddModal(group.category?.id)">
-                        <i class="fas fa-plus btn-icon"></i>
-                        添加维度
-                      </button>
-                    </div>
-                  </div>
-                  <div v-show="isGroupExpanded(group.key)" class="group-content">
-                    <EvaluationDimensionTable
-                      :items="group.items"
-                      :selected-dimensions="selectedDimensions"
-                      :show-header-checkbox="false"
-                      :can-move-up="canMoveUp"
-                      :can-move-down="canMoveDown"
-                      :get-algorithm-label="getAlgorithmLabel"
-                      :is-llm-judge="isLlmJudge"
-                      @toggle-selection="toggleDimensionSelection"
-                      @edit="openEditModal"
-                      @test-api="testAPIHealth"
-                      @delete="deleteDimension"
-                      @add-sub="(payload) => openAddModal(payload.categoryId, payload.id)"
-                      @weight-change="(payload) => updateWeight(payload.id, payload.weight)"
-                      @move="(payload) => moveDimension(payload.id, payload.direction)"
-                    />
-                  </div>
-                </div>
 
-                <div v-if="groupedDimensions.length === 0" class="empty-dimensions">
-                  <i class="fas fa-inbox"></i>
-                  <p>暂无评估维度数据</p>
-                </div>
-              </template>
+              <div v-if="!loading && !error && groupedDimensions.length === 0" class="empty-dimensions">
+                <i class="fas fa-inbox"></i>
+                <p>暂无评估维度数据</p>
+              </div>
             </template>
           </div>
         </div>
@@ -248,6 +256,9 @@ const {
   importDimensions,
   exportDimensions,
   loading,
+  // INT-290：加载/错误态（错误横幅渲染 + 重试按钮）
+  error,
+  fetchData,
   isLlmJudge,
 } = useEvaluation();
 
@@ -298,5 +309,49 @@ function setCategoryFilter(value) {
 
 /* evaluation-view - 自全局样式就近迁移 */
 
+/* INT-290 加载/错误态（对齐 A/B 域 Device 错误条方案） */
+.evaluation-loading-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    margin-bottom: var(--spacing-lg);
+    background: color-mix(in srgb, var(--primary-color) 5%, transparent);
+    border-radius: var(--border-radius-lg);
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.evaluation-loading-bar .loading-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+.evaluation-error-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    margin-bottom: var(--spacing-lg);
+    background: color-mix(in srgb, var(--danger-color, #f5222d) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--danger-color, #f5222d) 30%, transparent);
+    border-radius: var(--border-radius-lg);
+    color: var(--danger-color, #f5222d);
+    font-size: 14px;
+}
+
+.evaluation-error-text {
+    flex: 1;
+}
+
+.evaluation-error-banner .btn-sm {
+    padding: 4px 12px;
+    font-size: 12px;
+}
 
 </style>
