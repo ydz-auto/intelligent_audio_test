@@ -577,7 +577,7 @@
 }
 
 .rv-export-menu-item:hover {
-  background: #fff4e6;
+  background: var(--color-orange-50);
 }
 
 .rv-export-menu-item i {

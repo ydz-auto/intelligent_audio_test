@@ -901,7 +901,7 @@ watch(activeTab, (tab, prev) => {
   padding: 0 6px;
   border-radius: 9px;
   background: var(--primary, #ff6a00);
-  color: #fff;
+  color: var(--color-white);
   font-size: 11px;
   font-weight: 600;
 }
@@ -1069,7 +1069,7 @@ align-items: center;
   padding: 0 6px;
   border-radius: 9px;
   background: var(--primary, #ff6a00);
-  color: #fff;
+  color: var(--color-white);
   font-size: 11px;
   font-weight: 600;
 }

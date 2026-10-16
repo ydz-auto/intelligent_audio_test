@@ -61,27 +61,27 @@
 }
 
 .task-status.pending, .task-status-pending {
-    color: #1677ff;
-    border-color: #1677ff;
+    color: var(--secondary);
+    border-color: var(--secondary);
 }
 
 .task-status.in-progress, .task-status-in-progress {
-    color: #fa8c16;
-    border-color: #fa8c16;
+    color: var(--primary);
+    border-color: var(--primary);
     animation: statusPulse 2s infinite;
 }
 
 .task-status.completed, .task-status-completed {
-    color: #52c41a;
-    border-color: #52c41a;
+    color: var(--success);
+    border-color: var(--success);
 }
 
 .task-status.failed, .task-status-failed {
-    color: #ff4d4f;
-    border-color: #ff4d4f;
+    color: var(--destructive);
+    border-color: var(--destructive);
 }
 
 .task-status.deleted, .task-status-deleted {
-    color: #8c8c8c;
-    border-color: #8c8c8c;
+    color: var(--gray);
+    border-color: var(--gray);
 }

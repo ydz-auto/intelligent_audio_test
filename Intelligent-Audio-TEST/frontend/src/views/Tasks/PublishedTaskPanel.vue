@@ -503,7 +503,7 @@ defineExpose({ openPublishModal });
 
 .btn-primary {
   background-color: var(--primary-color, #ff6a00);
-  color: #fff;
+  color: var(--color-white);
 }
 
 .btn-primary:hover {
@@ -511,26 +511,26 @@ defineExpose({ openPublishModal });
 }
 
 .btn-primary:disabled {
-  background-color: #d9d9d9;
+  background-color: var(--color-gray-300);
   cursor: not-allowed;
 }
 
 .btn-secondary {
   background-color: var(--background-secondary, #f0f0f0);
-  color: #333;
+  color: var(--foreground);
 }
 
 .btn-secondary:hover {
-  background-color: #e0e0e0;
+  background-color: var(--color-gray-300);
 }
 
 .btn-danger {
-  background-color: #fee2e2;
-  color: #dc2626;
+  background-color: var(--color-red-100);
+  color: var(--color-red-600);
 }
 
 .btn-danger:hover {
-  background-color: #fecaca;
+  background-color: var(--color-red-200);
 }
 
 .pt-list {
@@ -544,7 +544,7 @@ defineExpose({ openPublishModal });
   border: 1px solid var(--border-color, #e5e7eb);
   border-radius: 10px;
   padding: 14px 16px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--color-black) 4%, transparent);
 }
 
 .pt-card-head {
@@ -563,7 +563,7 @@ defineExpose({ openPublishModal });
 
 .pt-version-badge {
   display: inline-block;
-  background: #fff1e6;
+  background: var(--color-orange-100);
   color: var(--primary-color, #ff6a00);
   font-size: 12px;
   font-weight: 700;
@@ -583,40 +583,40 @@ defineExpose({ openPublishModal });
   font-size: 12px;
   padding: 2px 8px;
   border-radius: 10px;
-  background: #eef2f7;
-  color: #64748b;
+  background: var(--color-slate-100);
+  color: var(--color-slate-500);
 }
 
 .pt-card-status.published,
 .pt-card-status.completed {
-  background: #dcfce7;
-  color: #16a34a;
+  background: var(--color-green-100);
+  color: var(--color-green-600);
 }
 
 .pt-card-status.archived {
-  background: #f1f5f9;
-  color: #94a3b8;
+  background: var(--color-slate-100);
+  color: var(--color-slate-400);
 }
 
 .pt-card-status.failed {
-  background: #fee2e2;
-  color: #dc2626;
+  background: var(--color-red-100);
+  color: var(--color-red-600);
 }
 
 .pt-card-status.running {
-  background: #dbeafe;
-  color: #2563eb;
+  background: var(--color-blue-100);
+  color: var(--color-blue-600);
 }
 
 .pt-card-version-count {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--color-slate-400);
 }
 
 .pt-card-current {
   font-size: 11px;
-  color: #16a34a;
-  background: #dcfce7;
+  color: var(--color-green-600);
+  background: var(--color-green-100);
   border-radius: 8px;
   padding: 1px 6px;
 }
@@ -627,15 +627,15 @@ defineExpose({ openPublishModal });
   font-weight: 700;
   padding: 2px 8px;
   border-radius: 10px;
-  background: #ede9fe;
-  color: #7c3aed;
+  background: var(--color-purple-100);
+  color: var(--color-purple-600);
   white-space: nowrap;
 }
 
 .pt-card-desc {
   margin-top: 6px;
   font-size: 13px;
-  color: #6b7280;
+  color: var(--color-gray-500);
 }
 
 .pt-card-meta {
@@ -644,7 +644,7 @@ defineExpose({ openPublishModal });
   gap: 14px;
   margin-top: 8px;
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--color-gray-400);
 }
 
 .pt-card-actions {
@@ -688,25 +688,25 @@ defineExpose({ openPublishModal });
   align-items: center;
   gap: 10px;
   font-size: 13px;
-  color: #4b5563;
+  color: var(--color-gray-600);
   padding: 5px 8px;
-  background: #f8fafc;
+  background: var(--color-slate-50);
   border-radius: 6px;
   flex-wrap: wrap;
 }
 
 .pt-detail-name {
   font-weight: 500;
-  color: #1f2937;
+  color: var(--color-gray-800);
 }
 
 .pt-detail-time {
-  color: #9ca3af;
+  color: var(--color-gray-400);
   font-size: 12px;
 }
 
 .pt-detail-source {
-  color: #94a3b8;
+  color: var(--color-slate-400);
   font-size: 12px;
 }
 
@@ -716,23 +716,23 @@ defineExpose({ openPublishModal });
   align-items: baseline;
   gap: 6px;
   padding: 6px 10px;
-  background: #fffbeb;
-  border: 1px solid #fde68a;
+  background: var(--color-amber-50);
+  border: 1px solid var(--color-amber-200);
   border-radius: 6px;
   font-size: 12px;
-  color: #92400e;
+  color: var(--color-amber-800);
 }
 
 .pt-legacy-banner i {
-  color: #f59e0b;
+  color: var(--color-amber-500);
 }
 
 .pt-empty {
   text-align: center;
   padding: 48px 16px;
-  color: #9ca3af;
-  background: #f8fafc;
-  border: 1px dashed #e2e8f0;
+  color: var(--color-gray-400);
+  background: var(--color-slate-50);
+  border: 1px dashed var(--color-slate-200);
   border-radius: 10px;
 }
 
@@ -756,6 +756,6 @@ defineExpose({ openPublishModal });
 
 .pt-page-info {
   font-size: 13px;
-  color: #6b7280;
+  color: var(--color-gray-500);
 }
 </style>

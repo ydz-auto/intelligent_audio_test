@@ -286,17 +286,17 @@ onMounted(() => {
 }
 
 .merged-source-status.merged {
-  background: #fff7ed;
-  color: #ea580c;
+  background: var(--color-orange-50);
+  color: var(--color-orange-600);
 }
 
 .merged-source-status.completed {
-  background: #ecfdf5;
-  color: #059669;
+  background: var(--color-green-50);
+  color: var(--color-emerald-600);
 }
 
 .merged-source-status.failed {
-  background: #fee2e2;
-  color: #dc2626;
+  background: var(--color-red-100);
+  color: var(--color-red-600);
 }
 </style>
