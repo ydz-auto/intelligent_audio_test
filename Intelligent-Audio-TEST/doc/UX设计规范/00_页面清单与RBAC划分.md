@@ -127,7 +127,7 @@
 | `/devices` | 设备管理（被测/播放设备） | `device:read` | AuthenticatedLayout | INT-361 ✅ |
 | `/reports` | 报告展示页（导航栏「报告」直达；对外展示已发布报告，弱管理，行操作仅「查看/复制链接」） | `report:read` | AuthenticatedLayout | INT-439 ✅（INT-441/442） |
 | `/report-center` | 报告中心·管理页（侧栏「报告中心」直达；双页签 测试报告/历史报告，生成/编辑/发布/删除/批量/导出/收藏/回收站/草稿集中） | `report:read` | AuthenticatedLayout | INT-439 ✅（INT-441） |
-| `/ai-chat` | AI 对话（Agent 工作台：报告生成/对比/分析；单栏对话+报告工作模式双栏变体） | `report:read` | AuthenticatedLayout | INT-415 ✅ |
+| `/ai-chat` | 灵犀Agent（Agent 工作台：报告生成/对比/分析；单栏对话+报告工作模式双栏变体） | `report:read` | AuthenticatedLayout | INT-415 ✅ |
 | `/report/$reportId` | 报告查看（详情阅读页，返回按钮回退来源入口） | `report:read` | AuthenticatedLayout | INT-439 ✅ |
 | `/logs` | 日志查看 | `log:read` | AuthenticatedLayout | INT-362 ✅ |
 | `/AlgorithmConfig` | 算法配置（侧栏「测试域」组） | `algorithm:read` | AuthenticatedLayout | INT-362 ✅（内容规范）；导航落位 INT-417 |
@@ -215,7 +215,7 @@
 | 组（SidebarGroupLabel） | 菜单项 | 路由 | 图标（lucide） | 可见性权限 |
 | --- | --- | --- | --- | --- |
 | 总览 | 工作台 | `/dashboard` | Activity | 登录即可（home:read） |
-| AI 工具 | AI 对话 | `/ai-chat` | MessagesSquare | `report:read` |
+| AI 工具 | 灵犀Agent | `/ai-chat` | MessagesSquare | `report:read` |
 | 测试执行 | 端到端测试 | `/E2ETest` | Smartphone | `task:execute`（algo_engineer 只读观察，INT-449） |
 | 测试执行 | API 测试 | `/APITest` | ArrowLeftRight | `task:execute`（algo_engineer 只读观察，INT-449） |
 | 测试执行 | 任务管理 | `/tasks` | ClipboardList | `task:read` |
@@ -288,7 +288,7 @@
 | `/audio-import` | ✓ | ✓ | ✓（只读） | ✗ | ✗ | ↗ /login |
 | `/devices` | ✓ | ✓ | ✗ | ✓ | ✗ | ↗ /login |
 | `/reports`（展示页）`/report-center`（管理页）`/report/$id` | ✓ | ✓ | ✓ | ✗ | ✓（只读+对比） | ↗ /login |
-| `/ai-chat` AI 对话 | ✓ | ✓ | ✓ | ✗（无 report:read） | ✓（只读对话+对比，生成卡隐藏） | ↗ /login |
+| `/ai-chat` 灵犀Agent | ✓ | ✓ | ✓ | ✗（无 report:read） | ✓（只读对话+对比，生成卡隐藏） | ↗ /login |
 | `/logs` | ✓ | ✓ | ✓ | ✗ | ✗ | ↗ /login |
 | `/AlgorithmConfig` 算法配置 | ✓ | ✓（read+case_param_manage） | ✓（全链） | ✗ | ✗ | ↗ /login |
 | `/Evaluation` 评估维度 | ✓ | ✓（全链含 execute） | ✓（无 execute，其余全链） | ✗ | ✗ | ↗ /login |
@@ -300,7 +300,7 @@
 | `/user-guide` `/user-guide-api` `/about` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓（公开） |
 | 错误页五件 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓（公开） |
 | 顶部导航项结果 | 六项全显 | 六项全显（Benchmark 已授，INT-429） | 六项全显（同左） | 四项（主页/工作台/文档/关于——无报告、无 Benchmark） | 五项（主页/工作台/报告/文档/关于，无 Benchmark） | 主页/文档/关于 + 受限项弹登录 Dialog |
-| 侧栏树结果 | 全部 15 项（六组全显） | 14 项（总览+AI 对话+执行 3+资产 4+测试域 3〔算法配置/评估维度/标签管理〕+日志+设置〔log:manage 命中〕；SPL 映射隐藏） | 12 项（总览+AI 对话+任务管理（只读）+**执行 2（只读观察，INT-449）**+用例+音频+报告+测试域 3+日志；设置入口隐藏——守卫集合收窄后无剩余域权限；无设备、无 SPL） | 3 项（工作台+设备管理+SPL 映射；设置入口隐藏——spl:create 移出守卫集合） | 3 项（工作台+AI 对话+报告中心；「管理」「测试域」组空→整组隐藏） | —（未登录不进壳） |
+| 侧栏树结果 | 全部 15 项（六组全显） | 14 项（总览+灵犀Agent+执行 3+资产 4+测试域 3〔算法配置/评估维度/标签管理〕+日志+设置〔log:manage 命中〕；SPL 映射隐藏） | 12 项（总览+灵犀Agent+任务管理（只读）+**执行 2（只读观察，INT-449）**+用例+音频+报告+测试域 3+日志；设置入口隐藏——守卫集合收窄后无剩余域权限；无设备、无 SPL） | 3 项（工作台+设备管理+SPL 映射；设置入口隐藏——spl:create 移出守卫集合） | 3 项（工作台+灵犀Agent+报告中心；「管理」「测试域」组空→整组隐藏） | —（未登录不进壳） |
 
 > AUTH_MODE=off：一切页面全放行全显（permissions=['*']，`authStore.ts` + `router/index.ts` 守卫实测）；`/login` 渲染开放模式 Alert（INT-357 §3.1）。
 
@@ -426,3 +426,4 @@ Channels（渠道）/ Keys（密钥）/ Redemption Codes（兑换码）/ Wallet�
 | 2026-10-16 | v1.13 | INT-429（8e5ab2e6）落地回写（总控放行条件 #1）：§1.1 tester 67→**73**、algo_engineer 31→**37**（均补 benchmark 全 6 码，INT-429 授）——device_admin 26/guest 9 已对；§1.2 权限点总数 101→**107**（107 实码 + `*`）、模块表补 benchmark（6）行；§1.4 重写为「benchmark 权限码现状（INT-429 已落地）」——原「缺口/待 seed 立项」撤销；§1.5 速查表 benchmark 行改「✓ 全 6 码（tester/algo）／—（device_admin/guest）」；§3.1/§4.1/§4.2 Benchmark 行改「tester/algo_engineer 持码」、顶部导航项结果行 tester/algo 五项→**六项全显**；§6.1 domain 权限点枚举 101→107；§7 #1 改注「已落地（INT-429）」 |
 | 2026-10-16 | v1.14 | **INT-442 口径修正（负责人 2026-10-16）**：算法切换大卡片 = **每算法一张大卡**（算法卡片网格，不是单张当前算法卡）——§3.5 适用范围矩阵「页内算法大卡片」改「页内**算法卡片网格**」并加注（每算法一张大卡：算法名+分组+参数摘要+描述，点击选中=切换全局算法、选中态高亮、首卡「全部算法」；形态对齐 newAPI 模型价格页 model list）；INT-436（工作台概览）/INT-442（报告展示/排行榜）三页同改，INT-486 可视稿按此修正（其卡单独落）。 |
 | 2026-10-16 | v1.15 | **INT-442 口径定稿收尾（负责人 2026-10-16 适用范围矩阵）**：§3.2 右上角功能区项1「/reports 页算法切换唯一入口」由「页内「当前算法」大卡」并轨为「页内**算法卡片网格**（每算法一张大卡）」（v1.14 修正后残留的旧措辞）；§3.5 矩阵保持不变。02_导航栏 §3.4 同并轨。 |
+| 2026-10-16 | v1.16 | 命名定稿（负责人 2026-10-16）：「AI 对话」更名「**灵犀Agent**」——§2.1 `/ai-chat` 路由行、§3.3 侧栏「AI 工具」组项、§4.1 `/ai-chat` 可见性行与侧栏树结果行全量更名；路由 `/ai-chat` 保留不改；08_AI对话页/04 工作台/15 报告域/02 导航栏各卡文档同步核改 |
