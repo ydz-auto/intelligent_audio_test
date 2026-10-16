@@ -431,3 +431,113 @@ def test_reevaluate_partial_failure_keeps_cart(db):
 
     assert resp['success'] is False
     assert cherry_pick_service.cart_get()['data']['total'] == 1
+
+
+def test_purge_container_task_cleans_cherry_relations(db):
+    """purge 容器任务须先清 task_cherry_pick_relations（INT-401 返工）。
+
+    回归：cherry_pick_task_id REFERENCES test_tasks(id)，purge_tasks 若不清
+    专有关系，PG 上 DELETE test_tasks 触发 FK 违约 500，容器任务不可彻底删除。
+    """
+    from task_service.application.task.cherry_pick_service import cherry_pick_service
+    from task_service.infrastructure.persistence.trash_repository import trash_repository
+    from task_service.infrastructure.persistence.models import (
+        Task, TaskCherryPickRelation, Log,
+    )
+    # purge_tasks 级联需 test_result_dimensions / logs 表（INT-337 口径；本文件
+    # _ensure_tables 未含，补建缺失表，create_all 幂等）
+    from evaluation_service.infrastructure.persistence.models import TestResultDimension
+    Base.metadata.create_all(bind=get_engine(),
+                             tables=[Log.__table__, TestResultDimension.__table__])
+
+    _src, results = _seed_source_task(name='INT339溯源清理源')
+    set_current_user_id(42)
+    cherry_pick_service.cart_add({'result_ids': [r[1] for r in results]})
+    resp = cherry_pick_service.checkout({'action': 'merge', 'name': '待purge容器'})
+    assert resp['success'] is True, resp.get('message')
+    container_id = resp['data']['task_id']
+
+    session = get_db_session()
+    try:
+        rel_count = session.query(TaskCherryPickRelation).filter_by(
+            cherry_pick_task_id=container_id).count()
+        assert rel_count == 2, f'容器任务应有 2 条关系引用：实际 {rel_count}'
+        # 软删（deleted=TRUE）→ purge 前置条件（活跃行 purge 会跳过）
+        container = session.get(Task, container_id)
+        container.deleted = True
+        container.deleted_by_user_id = 42
+        session.commit()
+    finally:
+        remove_db_session()
+
+    # owner（创建人=删除人=42）purge → 返回 1 行，容器与关系表同清
+    assert trash_repository.purge_tasks([container_id], user_id=42, is_admin=False) == 1
+    session = get_db_session()
+    try:
+        assert session.get(Task, container_id) is None
+        assert session.query(TaskCherryPickRelation).filter_by(
+            cherry_pick_task_id=container_id).count() == 0
+    finally:
+        remove_db_session()
+
+    # 源任务侧引用保留（容器对已删源结果的「缺失」标注依赖 relation 行）：
+    # purge 源任务不应连带删其它容器对它的引用
+    src_b, results_b = _seed_source_task(name='INT339另一源')
+    set_current_user_id(42)
+    cherry_pick_service.cart_add({'result_ids': [results_b[0][1]]})
+    resp_b = cherry_pick_service.checkout({'action': 'merge', 'name': '引用源B容器'})
+    container_b = resp_b['data']['task_id']
+    session = get_db_session()
+    try:
+        src_row = session.get(Task, src_b)
+        src_row.deleted = True
+        src_row.deleted_by_user_id = 42
+        session.commit()
+    finally:
+        remove_db_session()
+
+    assert trash_repository.purge_tasks([src_b], user_id=42, is_admin=False) == 1
+    session = get_db_session()
+    try:
+        assert session.query(TaskCherryPickRelation).filter_by(
+            cherry_pick_task_id=container_b).count() == 1
+    finally:
+        remove_db_session()
+
+
+
+def test_source_trace_marks_deleted_results_missing(db):
+    """溯源查询：源结果物理删除后 source_trace 逐条标注 missing（§10 引用方案 A）。
+
+    INT-401 复验：P1-2 溯源展开的缺失标注链路——后端 source_trace 对已删
+    test_results 行仍返回引用并置 missing=true（容器对已删源结果的「源结果
+    已缺失」标注依赖 relation 行保留 + 此标记；前端 missing-badge 渲染由
+    cherryPickPanel.sourceToggle.spec 覆盖）。本测试锁后端行为。
+    """
+    from task_service.application.task.cherry_pick_service import cherry_pick_service
+    from task_service.infrastructure.persistence.models import TestResult
+
+    src_id, results = _seed_source_task(name='INT339缺失标注源')
+    set_current_user_id(42)
+    cherry_pick_service.cart_add({'result_ids': [r[1] for r in results]})
+    resp = cherry_pick_service.checkout({'action': 'merge', 'name': '缺失标注容器'})
+    assert resp['success'] is True, resp.get('message')
+    container_id = resp['data']['task_id']
+
+    # 物理删除其中一条源结果（missing 场景构造：引用方案 A 的源结果被删）
+    deleted_result_id = results[0][1]
+    session = get_db_session()
+    try:
+        session.query(TestResult).filter(TestResult.id == deleted_result_id).delete()
+        session.commit()
+    finally:
+        remove_db_session()
+
+    trace = cherry_pick_service.source_trace(container_id)
+    assert trace['success'] is True, trace.get('message')
+    assert trace['data']['total'] == 2, '关系行应保留（引用不随源结果删除）'
+    by_id = {r['result_id']: r for g in trace['data']['groups'] for r in g['results']}
+    assert by_id[deleted_result_id]['missing'] is True, \
+        f'已删源结果应标 missing：实际 {by_id[deleted_result_id]}'
+    assert by_id[results[1][1]]['missing'] is False, \
+        '未删源结果不应标 missing'

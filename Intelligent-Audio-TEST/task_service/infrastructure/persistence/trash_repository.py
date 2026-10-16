@@ -90,6 +90,13 @@ class TrashRepository:
             "DELETE FROM task_merge_relations "
             "WHERE merged_task_id IN :ids OR source_task_id IN :ids").bindparams(
             bindparam('ids', expanding=True)), {"ids": purgeable})
+        # INT-401 返工：cherry-pick 容器任务 purge 须先清专有关系（cherry_pick_task_id
+        # REFERENCES test_tasks(id)，不清则 DELETE test_tasks 触发 FK 违约 500，
+        # 容器任务不可彻底删除；源任务侧引用不清——容器对已删源结果的
+        # 「源结果已缺失」标注依赖 relation 行保留）
+        session.execute(text(
+            "DELETE FROM task_cherry_pick_relations WHERE cherry_pick_task_id IN :ids").bindparams(
+            bindparam('ids', expanding=True)), {"ids": purgeable})
         # INT-337：孙代下探——先删 TRD（test_result_dimensions，归属
         # evaluation_service 的表但与 test_results 同库，purge 作为同步用户操作
         # 须即时清理，不等评估侧 24h 周期的孤儿兜底扫描），再删 test_results

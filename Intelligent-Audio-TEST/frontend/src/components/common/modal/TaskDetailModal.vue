@@ -69,6 +69,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { tasksPort } from '@/composables/task/tasksPort';
 import { confirmReviewOverwrite } from '@/composables/task/useReviewOverwrite';
 import { logsPort } from '@/composables/task/logsPort';
@@ -81,7 +82,7 @@ import TestExecutionComponent from '../../layout/TestExecutionComponent.vue';
 import CherryPickDialog from './CherryPickDialog.vue';
 import VisibilityBadge from '../visibility/VisibilityBadge.vue';
 import type { Task, Log } from '../../../domain';
-import { TaskStatus, Visibility } from '@/domain/enums';
+import { TaskStatus, Visibility, type TaskStatusType } from '@/domain/enums';
 
 const props = defineProps({
   taskId: {type: [String, Number], required: true}
@@ -375,6 +376,15 @@ async function fetchTaskDetails() {
       evaluationStatus.value = String(taskData.evaluationStatus);
     }
 
+    // INT-401 P1-3：以 GET /tasks/{id} 返回的 status 初始化 taskStatus。
+    // socket 对已终态任务订阅后不重发 task_progress，HTTP 兜底进度又可能被
+    // generation 竞态丢弃（见 useTaskProgress 修复）——不初始化会停在 PENDING，
+    // 终态任务挑选入口不显示、暂停/停止误显。终态任务一开即正确，活跃任务由
+    // 后续 socket/轮询事件覆盖。
+    if (taskData.status) {
+      taskStatus.value = taskData.status as TaskStatusType;
+    }
+
     // 用后端返回的时间字段更新显示
     if (taskData.expectedTotalTime) {
       estimatedTime.value = String(taskData.expectedTotalTime);
@@ -557,6 +567,7 @@ async function reevaluateTask() {
 // ===== INT-339：挑选合并入口（加入购物车 → 下单三出口） =====
 
 const cherryPickVisible = ref(false);
+const router = useRouter();
 
 /** 终态任务才展示挑选入口（§10 默认仅终态任务可挑选） */
 const PICKABLE_STATUSES: readonly string[] = ['completed', 'failed', 'stopped'];
@@ -573,22 +584,13 @@ function openCherryPick() {
 
 /** 下单成功后跳转（设计 §9：下单成功 → 购物车出清 → 按出口跳转。
  *  merge 跳新任务详情；reexecute 跳重执行任务详情；reevaluate 跳首个来源任务详情
- *  查看评估进度。与 Tasks.vue handlePickCheckedOut 同口径；无 taskId（如空来源）
- *  则仅关闭弹窗停留当前页。） */
+ *  查看评估进度。与 Tasks.vue handlePickCheckedOut 同口径——前端为 hash 路由，
+ *  必须走 router.push（裸 path window.open 会把 hash 读空落到首页，INT-401 验收 P1-1）；
+ *  无 taskId（如空来源）则仅关闭弹窗停留当前页。） */
 function handleCheckedOut(payload: { action: string; taskId?: number }) {
   cherryPickVisible.value = false;
   if (payload.taskId) {
-    const routeData = routerResolveTaskDetail(Number(payload.taskId));
-    if (routeData) window.open(routeData, '_self');
-  }
-}
-
-function routerResolveTaskDetail(taskId: number): string | null {
-  try {
-    // 详情路由：/tasks/:id（router/index.ts meta taskDetail）；弹窗语境直接整页跳转
-    return `/tasks/${taskId}`;
-  } catch {
-    return null;
+    router.push(`/tasks/${Number(payload.taskId)}`);
   }
 }
 

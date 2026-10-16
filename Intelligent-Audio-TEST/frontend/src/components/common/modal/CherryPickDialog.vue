@@ -40,6 +40,12 @@
           </select>
         </div>
 
+        <!-- INT-551：设备选项加载失败可见错误提示（原静默空下拉，用户误以为无设备） -->
+        <div v-if="deviceError" class="cp-filter-error">
+          <i class="fas fa-exclamation-triangle"></i> 设备列表加载失败
+          <button class="cp-btn cp-btn-sm" @click="loadOptions"><i class="fas fa-redo"></i> 重试</button>
+        </div>
+
         <!-- 工具栏：正选/反选（§4.1）+ 批量粒度 -->
         <div class="cp-toolbar">
           <span class="cp-toolbar-info">已选 {{ selectedResultIds.size }} 条 / 共 {{ candidates.length }} 条（本页）</span>
@@ -50,29 +56,39 @@
 
         <!-- 候选列表（结果粒度；按来源任务分组展示） -->
         <div class="cp-list">
+          <!-- INT-551：候选加载失败可见错误条（含重试）；旧数据保留，空态仅真无数据展示 -->
+          <div v-if="candidatesError" class="cp-error-bar">
+            <i class="fas fa-exclamation-triangle"></i>
+            <span>{{ candidatesError }}</span>
+            <button class="cp-btn cp-btn-sm" @click="loadCandidates"><i class="fas fa-redo"></i> 重试</button>
+          </div>
           <div v-if="loadingCandidates" class="cp-empty"><i class="fas fa-spinner fa-spin"></i> 正在加载执行结果...</div>
-          <div v-else-if="candidates.length === 0" class="cp-empty">
+          <template v-else-if="groupedCandidates.length > 0">
+            <div v-for="group in groupedCandidates" :key="group.taskId">
+              <div class="cp-group-title">
+                <i class="fas fa-source-branch"></i> {{ group.taskName }}
+                <span class="cp-group-count">{{ group.items.length }} 条</span>
+                <!-- INT-401：整组勾选/整组取消双向（三档粒度之二，原仅单向加选） -->
+                <button class="cp-btn cp-btn-sm" @click="selectGroup(group)">整组勾选</button>
+                <button class="cp-btn cp-btn-sm" @click="unselectGroup(group)">整组取消</button>
+              </div>
+              <label v-for="item in group.items" :key="item.resultId" class="cp-row">
+                <input type="checkbox" class="cp-checkbox"
+                       :checked="selectedResultIds.has(item.resultId)"
+                       @change="toggleResult(item.resultId)" />
+                <span class="cp-row-case">{{ item.caseId }}</span>
+                <span class="cp-row-meta">设备 {{ item.deviceId ?? '-' }}</span>
+                <span class="cp-row-badge" :class="item.executionStatus">{{ executionText(item.executionStatus) }}</span>
+                <span class="cp-row-badge" :class="item.evaluated ? 'evaluated' : 'pending-eval'">
+                  {{ item.evaluated ? '已评估' : '未评估' }}
+                </span>
+                <span class="cp-row-time">{{ formatTime(item.createdAt) }}</span>
+              </label>
+            </div>
+          </template>
+          <div v-else-if="!candidatesError" class="cp-empty">
             <i class="fas fa-inbox"></i> 无符合条件的执行结果（仅终态任务可挑选）
           </div>
-          <template v-for="group in groupedCandidates" :key="group.taskId">
-            <div class="cp-group-title">
-              <i class="fas fa-source-branch"></i> {{ group.taskName }}
-              <span class="cp-group-count">{{ group.items.length }} 条</span>
-              <button class="cp-btn cp-btn-sm" @click="selectGroup(group)">整组勾选</button>
-            </div>
-            <label v-for="item in group.items" :key="item.resultId" class="cp-row">
-              <input type="checkbox" class="cp-checkbox"
-                     :checked="selectedResultIds.has(item.resultId)"
-                     @change="toggleResult(item.resultId)" />
-              <span class="cp-row-case">{{ item.caseId }}</span>
-              <span class="cp-row-meta">设备 {{ item.deviceId ?? '-' }}</span>
-              <span class="cp-row-badge" :class="item.executionStatus">{{ executionText(item.executionStatus) }}</span>
-              <span class="cp-row-badge" :class="item.evaluated ? 'evaluated' : 'pending-eval'">
-                {{ item.evaluated ? '已评估' : '未评估' }}
-              </span>
-              <span class="cp-row-time">{{ formatTime(item.createdAt) }}</span>
-            </label>
-          </template>
         </div>
         <div class="cp-pagination" v-if="candidateTotal > candidates.length">
           <button class="cp-btn" :disabled="filters.page <= 1" @click="filters.page--; loadCandidates()">上一页</button>
@@ -144,9 +160,24 @@
                 <div class="cp-preview-row warn" v-if="invalidCount > 0">
                   <span>失效条目</span><b>{{ invalidCount }} 条（下单时自动跳过）</b>
                 </div>
+                <!-- INT-401：跨任务配置不一致提示（§5.2/§11-③ 拍板强制确认，提交前弹确认） -->
+                <div class="cp-preview-row warn" v-if="preview && preview.configInconsistent">
+                  <span>配置差异</span>
+                  <b>{{ preview.sourceTaskCount }} 个来源任务的任务级配置（{{ (preview.configFields || []).join('、') || '算法参数' }}）不一致，默认取首个来源任务，提交需确认</b>
+                </div>
               </div>
               <input v-model="mergeName" class="cp-input" placeholder="新任务名称（必填）" />
               <input v-model="mergeDescription" class="cp-input" placeholder="新任务描述（可选）" />
+              <!-- INT-401：merge 出口任务级配置表单（§5.2 创建弹窗允许编辑算法参数/标签等任务级配置） -->
+              <div class="cp-config-toggle" @click="showMergeConfig = !showMergeConfig">
+                <i class="fas" :class="showMergeConfig ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                任务级配置（可选，默认取首个来源任务）
+              </div>
+              <div v-if="showMergeConfig" class="cp-config-fields">
+                <input v-model="mergeAlgorithmType" class="cp-input" placeholder="算法类型覆盖（如 asr / tts / translation）" />
+                <textarea v-model="mergeAlgorithmParams" class="cp-input cp-textarea" placeholder='算法参数覆盖（JSON，如 {"model":"xx"}）' rows="2"></textarea>
+                <textarea v-model="mergeConfig" class="cp-input cp-textarea" placeholder='任务配置覆盖（JSON，可选）' rows="2"></textarea>
+              </div>
             </div>
           </div>
 
@@ -181,7 +212,7 @@
         <button v-else-if="step === 'cart'" class="cp-btn cp-btn-primary" :disabled="cartCount === 0" @click="goStep('checkout')">
           <i class="fas fa-flag-checkered"></i> 去下单
         </button>
-        <button v-else class="cp-btn cp-btn-primary" :disabled="!action || submitting" @click="submitCheckout">
+        <button v-else class="cp-btn cp-btn-primary" :disabled="!action || submitting || cartCount === 0" @click="submitCheckout">
           <i class="fas" :class="submitting ? 'fa-spinner fa-spin' : 'fa-paper-plane'"></i>
           {{ submitting ? '下单中...' : '提交下单' }}
         </button>
@@ -200,12 +231,17 @@
  * 页面文案一律中文（§1.2：站内不出现 Cherry-Pick 字样）。
  */
 import { ref, reactive, computed, onMounted, watch } from 'vue';
-import { cherryPickApi, tasksApi } from '../../../infrastructure/api';
+import { cherryPickApi, tasksApi, devicesApi } from '../../../infrastructure/api';
 import type { PickCandidate, PickPreview, PickCheckoutAction } from '../../../infrastructure/api/cherryPickApi';
 import { usePickCart } from '../../../composables/task/usePickCart';
 import { useNotification } from '../../../composables/modal/useNotification';
 import { useModalControl } from '../../../composables/modal/useModal';
 import { MODAL_TYPES } from '../../../composables/modal/constants';
+
+const props = defineProps<{
+  /** INT-401：入口预筛选（任务详情「加入购物车」→ 打开向导直接定位该任务的执行结果） */
+  presetTaskId?: number | string;
+}>();
 
 const emit = defineEmits<{
   (e: 'close'): void;
@@ -252,7 +288,16 @@ const caseKeyword = ref('');
 const candidates = ref<PickCandidate[]>([]);
 const candidateTotal = ref(0);
 const loadingCandidates = ref(false);
+// INT-551：候选/设备加载失败错误态（原静默清空成误导性空态）
+const candidatesError = ref('');
+const deviceError = ref('');
 const selectedResultIds = ref<Set<number>>(new Set());
+
+// INT-401：任务详情「加入购物车」入口预筛选——打开向导即定位该任务的执行结果
+// （设计 §9 入口应为结果列表级；设置早于 watch 注册，初始 loadCandidates 直接命中）
+if (props.presetTaskId != null) {
+  filters.taskId = String(props.presetTaskId);
+}
 
 /** 按来源任务分组（§3 挑选按任务分组展示） */
 const groupedCandidates = computed(() => {
@@ -276,11 +321,13 @@ function debouncedLoad() {
 
 async function loadCandidates() {
   loadingCandidates.value = true;
+  candidatesError.value = '';
   try {
     const page = await cherryPickApi.listCandidates({
       taskIds: filters.taskId ? [Number(filters.taskId)] : [],
       deviceIds: filters.deviceId ? [Number(filters.deviceId)] : [],
-      caseIds: caseKeyword.value ? [caseKeyword.value] : [],
+      caseIds: [],
+      caseKeyword: caseKeyword.value.trim() || undefined,
       executionStatus: filters.executionStatus || undefined,
       evaluationStatus: filters.evaluationStatus || undefined,
       page: filters.page,
@@ -288,9 +335,10 @@ async function loadCandidates() {
     });
     candidates.value = page.items ?? [];
     candidateTotal.value = page.total ?? 0;
-  } catch (error) {
+  } catch (error: any) {
+    // INT-551：失败保留旧数据 + 可见错误条（原静默清空成「无结果」误导空态）
     console.error('Failed to load pick candidates:', error);
-    candidates.value = [];
+    candidatesError.value = error?.message ? `执行结果加载失败：${error.message}` : '执行结果加载失败，请重试';
   } finally {
     loadingCandidates.value = false;
   }
@@ -304,14 +352,19 @@ async function loadOptions() {
     pickableTasks.value = (data.items ?? [])
       .filter((t: any) => FINISHED.includes(String(t.status)))
       .map((t: any) => ({ id: Number(t.id), name: t.name }));
-    // 设备选项从候选结果聚合（点名维度：某台设备的执行结果）
-    const deviceMap = new Map<number, string>();
-    for (const item of candidates.value) {
-      if (item.deviceId != null && !deviceMap.has(item.deviceId)) {
-        deviceMap.set(item.deviceId, `设备 ${item.deviceId}`);
-      }
+    // INT-401：设备下拉独立取设备列表（设计 §4 设备为筛选条件——点名维度；
+    // 原实现从当前候选结果聚合，先有结果才有设备选项且跨任务筛选互相污染）
+    try {
+      deviceError.value = '';
+      const devices = await devicesApi.getAllFlat({ per_page: 100 });
+      deviceOptions.value = (devices ?? []).map((d: any) => ({
+        id: Number(d.id), name: d.name ?? `设备 ${d.id}`,
+      }));
+    } catch (deviceErr: any) {
+      // INT-551：设备选项失败可见错误提示（原静默空下拉，用户误以为无设备）
+      console.error('Failed to load device options:', deviceErr);
+      deviceError.value = deviceErr?.message ? `设备列表加载失败：${deviceErr.message}` : '设备列表加载失败，请重试';
     }
-    deviceOptions.value = [...deviceMap.entries()].map(([id, name]) => ({ id, name }));
   } catch (error) {
     console.error('Failed to load pick options:', error);
   }
@@ -331,10 +384,12 @@ function selectAllVisible() {
   selectedResultIds.value = next;
 }
 
+/** INT-401：反选（§4.1 正选后反选剔除）——只反选当前页候选，保留其他页已选项。
+ *  原实现从当前页重建集合，会丢掉跨页已选（分页场景缺陷）。 */
 function invertSelection() {
-  const next = new Set<number>();
+  const next = new Set(selectedResultIds.value);
   for (const item of candidates.value) {
-    if (!selectedResultIds.value.has(item.resultId)) next.add(item.resultId);
+    if (next.has(item.resultId)) next.delete(item.resultId); else next.add(item.resultId);
   }
   selectedResultIds.value = next;
 }
@@ -347,6 +402,13 @@ function clearSelection() {
 function selectGroup(group: { items: PickCandidate[] }) {
   const next = new Set(selectedResultIds.value);
   for (const item of group.items) next.add(item.resultId);
+  selectedResultIds.value = next;
+}
+
+/** INT-401：整组取消（三档粒度双向，原仅单向加选） */
+function unselectGroup(group: { items: PickCandidate[] }) {
+  const next = new Set(selectedResultIds.value);
+  for (const item of group.items) next.delete(item.resultId);
   selectedResultIds.value = next;
 }
 
@@ -446,6 +508,11 @@ const mergeName = ref('');
 const mergeDescription = ref('');
 const reexecuteName = ref('');
 const submitting = ref(false);
+// INT-401：merge 出口任务级配置（§5.2 创建弹窗允许编辑算法参数/配置）
+const showMergeConfig = ref(false);
+const mergeAlgorithmType = ref('');
+const mergeAlgorithmParams = ref('');
+const mergeConfig = ref('');
 
 async function loadPreview() {
   try {
@@ -464,10 +531,44 @@ async function submitCheckout() {
         notification.warning('请填写新任务名称');
         return;
       }
+      // §5.2/§11-③（INT-400 #14）：跨任务配置不一致强制确认提示——比默认取首源严
+      if (preview.value?.configInconsistent) {
+        let confirmed = false;
+        try {
+          confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+            title: '跨任务配置不一致',
+            content: `所选结果来自 ${preview.value.sourceTaskCount} 个来源任务，其任务级配置（${(preview.value.configFields ?? []).join('、') || '算法参数'}）不一致。合并新任务将默认取首个来源任务配置，您可展开「任务级配置」覆盖。是否继续合并？`,
+            confirmText: '继续合并',
+            cancelText: '返回修改',
+          });
+        } catch {
+          return; // 用户取消
+        }
+        if (!confirmed) return;
+      }
+      let algorithmParams: Record<string, unknown> | undefined;
+      let config: Record<string, unknown> | undefined;
+      try {
+        algorithmParams = mergeAlgorithmParams.value.trim()
+          ? JSON.parse(mergeAlgorithmParams.value)
+          : undefined;
+      } catch {
+        notification.warning('算法参数需为合法 JSON');
+        return;
+      }
+      try {
+        config = mergeConfig.value.trim() ? JSON.parse(mergeConfig.value) : undefined;
+      } catch {
+        notification.warning('任务配置需为合法 JSON');
+        return;
+      }
       const result = await cherryPickApi.checkout({
         action: 'merge',
         name: mergeName.value.trim(),
         description: mergeDescription.value || undefined,
+        algorithm_type: mergeAlgorithmType.value.trim() || undefined,
+        algorithm_params: algorithmParams,
+        config,
       });
       notification.success(`挑选合并任务已创建（ID ${result.taskId}），可手动生成报告`);
       await refreshCart();
@@ -495,7 +596,8 @@ async function submitCheckout() {
         notification.success(`已对 ${result.submittedTaskIds?.length ?? 0} 个来源任务发起重新评估`);
       }
       await refreshCart();
-      emit('checked-out', { action: 'reevaluate' });
+      // INT-401：重新评估出口携带首个来源任务 ID，宿主跳转该任务详情查看评估进度（§9）
+      emit('checked-out', { action: 'reevaluate', taskId: result.submittedTaskIds?.[0] });
       emit('close');
     }
   } catch (error: any) {

@@ -224,6 +224,32 @@
 
 .cp-empty i { font-size: 32px; }
 
+/* INT-551：候选/设备加载失败错误态（原静默清空成误导性空态） */
+.cp-error-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--color-amber-100, #fef3c7);
+  color: var(--color-amber-800, #92400e);
+  border: 1px solid var(--color-amber-300, #fcd34d);
+  border-radius: var(--border-radius-md, 8px);
+  font-size: 13px;
+}
+
+.cp-error-bar i { color: var(--color-amber-600, #d97706); }
+.cp-error-bar .cp-btn { margin-left: auto; }
+
+.cp-filter-error {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-amber-700, #b45309);
+}
+
+.cp-filter-error i { color: var(--color-amber-600, #d97706); }
+
 .cp-pagination {
   display: flex;
   align-items: center;

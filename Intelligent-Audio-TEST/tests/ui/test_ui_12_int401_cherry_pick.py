@@ -190,11 +190,13 @@ def _open_detail_and_pick(bp: BasePage, task_name: str):
     assert view, '源任务卡片应有「查看详情」入口'
     bp.driver.execute_script('arguments[0].click();', view[0])
     bp.wait_visible(TASK_DETAIL_MODAL, timeout=20)
-    bp.settle(0.6)
 
-    pick = [b for b in bp.find_all(f'{TASK_DETAIL_MODAL} button')
-            if b.is_displayed() and '加入购物车' in (b.text or '')]
-    assert pick, '任务详情模态窗应展示「加入购物车」入口（仅终态任务可见）'
+    # 「加入购物车」按钮依赖详情异步进度态（终态任务才可见，实测约 1-3s 出现），
+    # 固定 settle 断言偶发误失败 → 改 WebDriverWait 等待按钮出现（INT-401 返工）；
+    # 栈负载高时权限/状态加载可达 15s+，放宽到 30s（INT-401 复验实测）
+    pick = WebDriverWait(bp.driver, 30).until(
+        lambda d: [b for b in d.find_elements(By.CSS_SELECTOR, f'{TASK_DETAIL_MODAL} button')
+                   if b.is_displayed() and '加入购物车' in (b.text or '')])
     bp.driver.execute_script('arguments[0].click();', pick[0])
 
     WebDriverWait(bp.driver, 20).until(
@@ -203,16 +205,44 @@ def _open_detail_and_pick(bp: BasePage, task_name: str):
     return bp.find_visible(CP_DIALOG, timeout=10)
 
 
+def _extract_current_task_id(bp: BasePage):
+    """从当前路由提取任务 id（下单成功后跳转 /tasks/{id}）。"""
+    route = bp.current_route() or ''
+    parts = route.strip('/').split('/')
+    if len(parts) >= 2 and parts[0] == 'tasks' and parts[1].isdigit():
+        return int(parts[1])
+    return None
+
+
+def _cleanup_container_task(api_client, task_id):
+    """容器任务清理（软删回收站 → 彻底删除 purge；INT-401 返工：purge 已清
+    task_cherry_pick_relations，PG FK 不再违约，容器可彻底删除）。"""
+    try:
+        api_client.request('POST', '/tasks/batch-action',
+                           {'action': 'delete', 'task_ids': [int(task_id)]})
+    except Exception:
+        pass
+    try:
+        api_client.request('DELETE', f'/tasks/{task_id}/purge')
+    except Exception:
+        pass
+
+
 @pytest.fixture()
 def cherry_pick_source(api_client):
     """造 2 用例 1 源任务 + 隔离库直写终态与执行结果（挑选数据源）。
 
-    teardown 全量回收（零残留）。
+    teardown 全量回收（零残留）：源任务/用例/标签/分组 + 测试内下单创建的
+    容器任务（container_task_ids 由用例下单后回填）。
     """
     task_id, case_ids, handles = _create_source_task(api_client, n_cases=2)
     result_ids = _seed_terminal_results(api_client, task_id)
+    container_task_ids = []
     yield {'task_id': task_id, 'case_ids': case_ids, 'result_ids': result_ids,
-           'name': handles['task_name'], **handles}
+           'container_task_ids': container_task_ids, 'name': handles['task_name'],
+           **handles}
+    for cid in container_task_ids:
+        _cleanup_container_task(api_client, cid)
     _cleanup_task_and_cases(api_client, task_id, handles)
 
 
@@ -265,6 +295,10 @@ def test_cherry_pick_main_chain_merge(page, cherry_pick_source):
     page.settle(0.8)
     assert '/tasks/' in page.current_route(), \
         f'merge 下单后应跳转新任务详情路由: {page.current_route()}'
+    # 记录容器任务 id（teardown 清理，避免挑选合并页签旧容器卡残留干扰后续用例）
+    cid = _extract_current_task_id(page)
+    if cid:
+        cherry_pick_source['container_task_ids'].append(cid)
 
 
 def test_cherry_pick_tab_source_trace_and_missing(page, api_client, cherry_pick_source):
@@ -291,28 +325,44 @@ def test_cherry_pick_tab_source_trace_and_missing(page, api_client, cherry_pick_
     name_input = dialog.find_elements(By.CSS_SELECTOR,
                                       'input[placeholder="新任务名称（必填）"]')
     assert name_input, 'merge 出口应渲染新任务名称输入框'
+    container_name = 'ui401_溯源任务_' + unique_suffix()
     page.driver.execute_script(
         "arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input', {bubbles:true}));",
-        name_input[0], 'ui401_溯源任务_' + unique_suffix())
+        name_input[0], container_name)
     page.settle(0.2)
     _click_footer_button(page, '提交下单')
     # 跳转详情后回列表进「挑选合并」页签
     WebDriverWait(page.driver, 25).until(
         EC.visibility_of_element_located((By.CSS_SELECTOR, TASK_DETAIL_MODAL)))
     page.settle(0.5)
+    # 记录容器任务 id（teardown 清理）
+    cid = _extract_current_task_id(page)
+    if cid:
+        cherry_pick_source['container_task_ids'].append(cid)
 
     page.goto(f'{TASKS_ROUTE}?tab=cherryPick')
     page.wait_visible('.task-card', timeout=25)
     page.settle(0.5)
 
-    # 溯源展开：来源任务分组可见（源任务名 + 结果 N 条）
-    source_toggle = [b for b in page.find_all(SOURCE_LIST + ' .merged-source-list-title')
-                     if b.is_displayed()]
-    assert source_toggle, '挑选合并容器任务卡片应有「源结果溯源」展开入口'
-    page.driver.execute_script('arguments[0].click();', source_toggle[0])
-    page.settle(1.0)
+    def _container_wrap():
+        """定位本次创建的容器任务卡片 wrap（按名称精确命中，避免旧容器卡误点）。"""
+        for wrap in page.find_all('.published-card-wrap'):
+            titles = wrap.find_elements(By.CSS_SELECTOR, '.task-title')
+            if titles and container_name in (titles[0].text or ''):
+                return wrap
+        return None
 
-    source_rows = page.find_all(SOURCE_LIST + ' .merged-source-row')
+    # 溯源展开：来源任务分组可见（源任务名 + 结果 N 条）
+    # 防陈旧点击：卡片刷新后旧引用点击无事件，未展开则重试（INT-401 复验实测）
+    for attempt in range(4):
+        wrap = WebDriverWait(page.driver, 15).until(lambda d: _container_wrap())
+        toggle = wrap.find_element(By.CSS_SELECTOR, SOURCE_LIST + ' .merged-source-list-title')
+        page.driver.execute_script('arguments[0].click();', toggle)
+        page.settle(1.0)
+        if wrap.find_elements(By.CSS_SELECTOR, SOURCE_LIST + ' .merged-source-row'):
+            break
+
+    source_rows = wrap.find_elements(By.CSS_SELECTOR, SOURCE_LIST + ' .merged-source-row')
     assert any(cherry_pick_source['name'] in (r.text or '')
                for r in source_rows if r.is_displayed()), \
         f'溯源应显示来源任务分组: {cherry_pick_source["name"]}'
@@ -322,15 +372,18 @@ def test_cherry_pick_tab_source_trace_and_missing(page, api_client, cherry_pick_
     page.goto(f'{TASKS_ROUTE}?tab=cherryPick')
     page.wait_visible('.task-card', timeout=25)
     page.settle(0.5)
-    source_toggle = [b for b in page.find_all(SOURCE_LIST + ' .merged-source-list-title')
-                     if b.is_displayed()]
-    assert source_toggle, '刷新后容器任务卡片仍有溯源展开入口'
-    page.driver.execute_script('arguments[0].click();', source_toggle[0])
-    page.settle(1.2)
+    for attempt in range(4):
+        wrap = WebDriverWait(page.driver, 15).until(lambda d: _container_wrap())
+        toggle = wrap.find_element(By.CSS_SELECTOR, SOURCE_LIST + ' .merged-source-list-title')
+        page.driver.execute_script('arguments[0].click();', toggle)
+        page.settle(1.0)
+        if wrap.find_elements(By.CSS_SELECTOR, SOURCE_LIST + ' .merged-source-row'):
+            break
 
-    missing = [r for r in page.find_all(SOURCE_RESULTS)
+    missing = [r for r in wrap.find_elements(By.CSS_SELECTOR, SOURCE_RESULTS)
                if r.is_displayed() and '源结果已缺失' in (r.text or '')]
-    assert missing, f'源结果删除后溯源应标注「源结果已缺失」：实际={[r.text for r in page.find_all(SOURCE_RESULTS) if r.is_displayed()]}'
+    assert missing, \
+        f'源结果删除后溯源应标注「源结果已缺失」：实际={[r.text for r in wrap.find_elements(By.CSS_SELECTOR, SOURCE_RESULTS) if r.is_displayed()]}'
 
 
 def test_pick_entry_hidden_for_pending_task(page, api_client, cherry_pick_source):

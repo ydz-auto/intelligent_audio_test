@@ -6,43 +6,51 @@
         <TaskCard
           :task="mapCherryPickTask(ct)"
           :actions="taskActions"
+          :is-favorite="isFavorite(Number(ct.id)) || false"
           :show-checkbox="false"
           :show-config="false"
           @action="(event: any) => emit('task-action', event)"
           @name-updated="(payload: any) => emit('name-updated', payload)"
+          @favorite-toggle="(task: any) => emit('task-action', { action: { id: isFavorite(Number(task.id)) ? 'unfavorite' : 'favorite' }, task })"
         />
 
-        <!-- 源结果溯源列表（默认收起，点击展开；验收 §12.2 溯源） -->
-        <div class="merged-source-list" v-if="(ct.id ?? null) !== null && expanded.has(Number(ct.id))">
-          <div v-if="sourceLoading" class="loading-hint"><i class="fas fa-spinner fa-spin"></i> 正在加载溯源...</div>
-          <template v-else-if="sourceGroups.length > 0">
-            <div v-for="group in sourceGroups" :key="group.sourceTaskId" class="merged-source-row">
-              <div class="merged-source-row-info">
-                <span class="merged-source-row-name" :title="group.sourceTaskName">
-                  <i class="fas fa-source-branch"></i> {{ group.sourceTaskName }}
-                </span>
-                <span class="merged-source-row-cases">结果 {{ group.results.length }} 条</span>
-              </div>
-              <!-- INT-401：引用结果明细 + 缺失标注（引用方案 A 的 missing 场景，§10） -->
-              <div class="cp-source-results">
-                <div v-for="res in group.results" :key="res.resultId" class="cp-source-result" :class="{ missing: res.missing }">
-                  <span class="cp-source-case">{{ res.sourceCaseId ?? `结果 #${res.resultId}` }}</span>
-                  <span v-if="res.missing" class="cp-row-badge missing-badge" title="源结果已被删除，此条引用不可达">
-                    <i class="fas fa-exclamation-triangle"></i> 源结果已缺失
-                  </span>
-                </div>
-              </div>
-            </div>
-          </template>
-          <div v-else class="merged-source-row">
-            <span class="merged-source-row-cases">该挑选合并任务暂无来源记录</span>
-          </div>
-        </div>
-        <div class="merged-source-list" v-else>
+        <!-- 源结果溯源列表（默认收起，点击标题展开；验收 §12.2 溯源；INT-401：按卡独立缓存，多卡展开互不覆盖） -->
+        <div class="merged-source-list" v-if="(ct.id ?? null) !== null">
           <div class="merged-source-list-title" @click="toggleSource(Number(ct.id))">
             <i class="fas fa-source-branch"></i> 源结果溯源
             <i class="fas merged-source-toggle" :class="expanded.has(Number(ct.id)) ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
           </div>
+          <template v-if="expanded.has(Number(ct.id))">
+            <div v-if="sourceLoadingByTask[Number(ct.id)]" class="loading-hint"><i class="fas fa-spinner fa-spin"></i> 正在加载溯源...</div>
+            <template v-else-if="(sourcesByTask[Number(ct.id)]?.length ?? 0) > 0">
+              <div v-for="group in sourcesByTask[Number(ct.id)]" :key="group.sourceTaskId" class="merged-source-row">
+                <div class="merged-source-row-info">
+                  <span class="merged-source-row-name" :title="group.sourceTaskName">
+                    <i class="fas fa-source-branch"></i> {{ group.sourceTaskName }}
+                  </span>
+                  <span class="merged-source-row-cases">结果 {{ group.results.length }} 条</span>
+                </div>
+                <!-- INT-401：引用结果明细 + 缺失标注（引用方案 A 的 missing 场景，§10） -->
+                <div class="cp-source-results">
+                  <div v-for="res in group.results" :key="res.resultId" class="cp-source-result" :class="{ missing: res.missing }">
+                    <span class="cp-source-case">{{ res.sourceCaseId ?? `结果 #${res.resultId}` }}</span>
+                    <span v-if="res.missing" class="cp-row-badge missing-badge" title="源结果已被删除，此条引用不可达">
+                      <i class="fas fa-exclamation-triangle"></i> 源结果已缺失
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </template>
+            <!-- INT-552：溯源加载失败可见错误（含重试），与「暂无来源」真实空态区分 -->
+            <div v-else-if="sourceErrorByTask[Number(ct.id)]" class="merged-source-error">
+              <i class="fas fa-exclamation-triangle"></i>
+              <span>溯源加载失败：{{ sourceErrorByTask[Number(ct.id)] }}</span>
+              <button class="merged-source-retry" @click="loadSource(Number(ct.id))"><i class="fas fa-redo"></i> 重试</button>
+            </div>
+            <div v-else class="merged-source-row">
+              <span class="merged-source-row-cases">该挑选合并任务暂无来源记录</span>
+            </div>
+          </template>
         </div>
       </div>
 
@@ -85,7 +93,6 @@ import { ref, reactive, onMounted } from 'vue';
 import TaskCard from '../../components/task/TaskCard.vue';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
 import { cherryPickApi } from '../../infrastructure/api';
-import { canEditResource } from '../../composables/visibility/useVisibility';
 import type { PickSource } from '../../infrastructure/api/cherryPickApi';
 import type { Task } from '../../domain/model/task';
 
@@ -94,6 +101,8 @@ const props = defineProps<{
   cherryPick: any;
   /** 任务操作定义（与日常任务卡片共用；事件由宿主分发） */
   taskActions: any[];
+  /** INT-401：收藏行内星标态判定函数（宿主注入 useFavorites.isFavorite） */
+  isFavorite: (id: string | number) => boolean;
 }>();
 
 const emit = defineEmits<{
@@ -101,46 +110,49 @@ const emit = defineEmits<{
   (e: 'name-updated', payload: { taskId: string | number; newName: string }): void;
 }>();
 
-/** 溯源展开状态（默认收起） */
+/** 溯源展开状态（默认收起；INT-401：数据按卡独立缓存，多卡同时展开互不覆盖） */
 const expanded = ref<Set<number>>(new Set());
-const sourceLoading = ref(false);
-const sourceGroups = ref<PickSource['groups']>([]);
+const sourceLoadingByTask = ref<Record<number, boolean>>({});
+const sourcesByTask = ref<Record<number, PickSource['groups']>>({});
+// INT-552：溯源加载失败错误态（原静默清空成「暂无来源」误导文案）
+const sourceErrorByTask = ref<Record<number, string>>({});
 
 function toggleSource(taskId: number) {
   const next = new Set(expanded.value);
   if (next.has(taskId)) {
     next.delete(taskId);
-    expanded.value = next;
-    return;
+  } else {
+    next.add(taskId);
+    loadSource(taskId);
   }
   expanded.value = next;
-  loadSource(taskId);
 }
 
 async function loadSource(taskId: number) {
-  sourceLoading.value = true;
+  sourceLoadingByTask.value = { ...sourceLoadingByTask.value, [taskId]: true };
+  const prevError = { ...sourceErrorByTask.value };
+  delete prevError[taskId];
+  sourceErrorByTask.value = prevError;
   try {
     const source = await cherryPickApi.getSource(taskId);
-    sourceGroups.value = source.groups ?? [];
-  } catch (error) {
+    sourcesByTask.value = { ...sourcesByTask.value, [taskId]: source.groups ?? [] };
+  } catch (error: any) {
+    // INT-552：失败保留旧数据 + 可见错误（含重试），空态文案仅真无来源展示
     console.error('Failed to load pick source:', error);
-    sourceGroups.value = [];
+    const err = { ...sourceErrorByTask.value };
+    err[taskId] = error?.message || '请重试';
+    sourceErrorByTask.value = err;
   } finally {
-    sourceLoading.value = false;
+    sourceLoadingByTask.value = { ...sourceLoadingByTask.value, [taskId]: false };
   }
 }
 
-/** 任务域映射（与合并面板 mapMergedTask 同构）。
- *  INT-467（UX 审计 P3）：显式透传 visibility/createdByUserId + canEdit——
- *  挑选列表内私有任务需展示锁徽标且删除/改名门控随行（不能依赖 ...ct 隐式带过）。 */
+/** 任务域映射（与合并面板 mapMergedTask 同构） */
 function mapCherryPickTask(ct: any): Task {
   return {
     ...ct,
     title: ct.name,
     createdAt: ct.createdAt,
-    visibility: ct.visibility ?? undefined,
-    createdByUserId: ct.createdByUserId ?? undefined,
-    canEdit: canEditResource(ct),
   } as Task;
 }
 
@@ -159,6 +171,31 @@ onMounted(() => {
   color: var(--color-slate-400, #94a3b8);
   font-size: 13px;
 }
+/* INT-552：溯源加载失败错误态（原静默空态文案误导） */
+.merged-source-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--color-amber-100, #fef3c7);
+  color: var(--color-amber-800, #92400e);
+  border: 1px solid var(--color-amber-300, #fcd34d);
+  border-radius: var(--border-radius-md, 8px);
+  font-size: 13px;
+}
+.merged-source-error i { color: var(--color-amber-600, #d97706); }
+.merged-source-retry {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--primary, #ff6a00);
+  font-size: 13px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.merged-source-retry:hover { text-decoration: underline; }
 /* INT-401：溯源明细（引用结果 + 缺失标注）样式自包含，与合并面板同视觉 token */
 .merged-source-list {
   margin-top: 4px;

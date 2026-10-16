@@ -44,6 +44,7 @@ def _ensure_tables():
         from task_service.infrastructure.persistence.models import (
             Task, TaskTag, TaskCase, TaskDevice, TaskAPI, TaskMergeRelation,
             TestResult, Favorite, Log, TestCase, TestCaseTag,
+            TaskCherryPickRelation,
         )
         from evaluation_service.infrastructure.persistence.models import (
             TestResultDimension,
@@ -51,7 +52,7 @@ def _ensure_tables():
         _TABLES = [t.__table__ for t in (
             Task, TaskTag, TaskCase, TaskDevice, TaskAPI, TaskMergeRelation,
             TestResult, TestResultDimension, Favorite, Log, TestCase,
-            TestCaseTag,
+            TestCaseTag, TaskCherryPickRelation,
         )]
         Base.metadata.create_all(bind=get_engine(), tables=_TABLES)
     return _TABLES

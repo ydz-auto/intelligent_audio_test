@@ -157,6 +157,12 @@ export function useTaskProgress(options: TaskProgressOptions) {
       return
     }
 
+    // INT-401 P1-3：socket 事件到达即标记，用于判定在途 HTTP 兜底结果是否仍可应用
+    // （socket 已成为权威源后，旧的在途轮询结果不得再覆盖，防终态→运行态回退）
+    if (source === 'socket') {
+      socketProgressSinceFallbackStart = true
+    }
+
     if (progressData.status) {
       taskStatus.value = progressData.status
       if (progressData.status === TaskStatus.FAILED && onFailed && !hasCalledFailedCallback.value) {
@@ -267,6 +273,10 @@ export function useTaskProgress(options: TaskProgressOptions) {
   let fallbackPollGeneration = 0
   let fallbackPollTimer: ReturnType<typeof setTimeout> | null = null
   let fallbackPollInFlight = false
+  /** INT-401 P1-3：本轮降级开始后 socket 是否已送达进度事件（决定在途 HTTP 结果是否仍可应用） */
+  let socketProgressSinceFallbackStart = false
+  /** 组件已卸载：卸载后不再应用任何在途轮询结果（防 INT-100 僵尸回调） */
+  let disposed = false
 
   const stopFallbackPolling = () => {
     fallbackPollGeneration++
@@ -299,7 +309,11 @@ export function useTaskProgress(options: TaskProgressOptions) {
       const taskId = currentTaskId.value
       if (taskId) {
         const progress = await tasksPort.getProgress(taskId)
-        if (generation === fallbackPollGeneration) {
+        // INT-401 P1-3：generation 在 await 期间被重连++时不再直接丢弃在途结果——
+        // socket 连接后若仍未送达任何进度事件（终态任务订阅后不重发），该 HTTP 结果
+        // 是唯一的状态来源，必须应用（否则 taskStatus 停在 PENDING）；若 socket 已送达
+        // 事件则视为权威源，丢弃在途旧结果防回退。卸载后一律不应用（防僵尸回调）。
+        if (!disposed && (generation === fallbackPollGeneration || !socketProgressSinceFallbackStart)) {
           await handleTaskProgress(progress, 'http')
           reachedTerminal = (FINISHED_STATUSES as readonly string[]).includes(progress.status)
         }
@@ -321,6 +335,7 @@ export function useTaskProgress(options: TaskProgressOptions) {
     if (!currentTaskId.value) return
     // isProgressPolling 为当前活跃标志；generation 仅作在途 tick 失效令牌（单调递增）
     if (isProgressPolling.value || fallbackPollTimer !== null) return
+    socketProgressSinceFallbackStart = false
     fallbackPollGeneration++
     isProgressPolling.value = true
     addLog({ content: '实时连接已断开，进度已切换为 HTTP 轮询刷新，正在自动重连...', level: 'warn' })
@@ -364,6 +379,7 @@ export function useTaskProgress(options: TaskProgressOptions) {
   })
 
   onUnmounted(() => {
+    disposed = true
     if (unsubscribeProgress) unsubscribeProgress()
     if (unsubscribeLog) unsubscribeLog()
     if (unsubscribeConnection) unsubscribeConnection()

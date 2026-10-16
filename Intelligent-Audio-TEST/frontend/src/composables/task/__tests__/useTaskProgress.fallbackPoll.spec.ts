@@ -245,3 +245,63 @@ describe('INT-203：HTTP 兜底轮询', () => {
     expect(mockedGetProgress).toHaveBeenCalledTimes(3)
   })
 })
+
+describe('INT-401 P1-3：重连在途 HTTP 兜底结果不丢弃（终态任务 socket 不重发进度）', () => {
+  /** 触发最近一次挂载注册的 onTaskProgress 处理器（模拟 socket 进度事件） */
+  const emitSocketProgress = (progress: TaskProgress) => {
+    const handler = mocks.onTaskProgress.mock.calls.at(-1)?.[0]
+    if (typeof handler === 'function') {
+      void handler(progress)
+    }
+  }
+
+  it('socket 在 HTTP 在途时重连：终态结果仍应用 → taskStatus 置为 completed', async () => {
+    mocks.isConnected.mockReturnValue(false)
+    let resolveProgress!: (v: TaskProgress) => void
+    mockedGetProgress.mockImplementation(
+      () => new Promise<TaskProgress>(resolve => { resolveProgress = resolve }),
+    )
+    const { api } = mountWithProgress('42')
+
+    // 挂载即断连 → 首轮 HTTP 在途（getProgress 未返回）
+    await vi.advanceTimersByTimeAsync(0)
+    expect(api.isProgressPolling.value).toBe(true)
+
+    // socket 在 HTTP 请求 await 期间重连（stopFallbackPolling → generation++），
+    // 终态任务订阅后服务端不重发 task_progress —— 在途结果不得被 generation 丢弃
+    emitConnection(true)
+    await vi.advanceTimersByTimeAsync(0)
+
+    resolveProgress(httpProgress({ status: 'completed' }))
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(api.taskStatus.value).toBe('completed')
+    expect(api.isProgressPolling.value).toBe(false)
+    // 应用后不再继续轮询
+    await vi.advanceTimersByTimeAsync(POLL_MS * 3)
+    expect(mockedGetProgress).toHaveBeenCalledTimes(1)
+  })
+
+  it('socket 已送达进度事件 → 在途 HTTP 旧结果丢弃（防终态→运行态回退）', async () => {
+    mocks.isConnected.mockReturnValue(false)
+    let resolveProgress!: (v: TaskProgress) => void
+    mockedGetProgress.mockImplementation(
+      () => new Promise<TaskProgress>(resolve => { resolveProgress = resolve }),
+    )
+    const { api } = mountWithProgress('42')
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(api.isProgressPolling.value).toBe(true)
+
+    // socket 重连并送达较新的终态事件（权威源）
+    emitConnection(true)
+    emitSocketProgress(httpProgress({ status: 'completed' }))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(api.taskStatus.value).toBe('completed')
+
+    // 在途旧 HTTP 结果返回 running：socket 已送达，不得覆盖回退
+    resolveProgress(httpProgress({ status: 'running' }))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(api.taskStatus.value).toBe('completed')
+  })
+})
