@@ -1,5 +1,7 @@
 /**
- * 测试执行流程常量（interfaces/features/test-execution 层；10_测试执行.md §10）。
+ * 测试执行流程常量（interfaces/features/test-execution 层；10_测试执行.md §10，
+ * INT-486 合并口径：不再有「选择算法」步骤——算法切换已全局化（INT-436/442 概览大卡
+ * + 导航栏切换器），流程首步即选择测试用例；端到端+API 合并 /start-test 单入口内部两模式）。
  * TEST_FLOW_CONFIG：testType 分叉声明式常量（步骤定义/文案/校验规则），
  * 照 setup-wizard STEPS / playground-parameter-controls 形态。
  */
@@ -32,11 +34,10 @@ export const TEST_FLOW_CONFIG: Record<'e2e' | 'api', TestFlowConfig> = {
     title: '端到端测试',
     subtitle: '通过完整的测试流程验证语音产品的功能和性能',
     steps: [
-      { index: 0, title: '选择算法', description: '选择本次测试使用的算法' },
-      { index: 1, title: '选择测试用例', description: '勾选要执行的用例集' },
-      { index: 2, title: '选择测试设备', description: '选择在线设备与执行参数' },
-      { index: 3, title: '执行测试', description: '监控执行进度与结果' },
-      { index: 4, title: '查看结果', description: '查看与导出测试报告' },
+      { index: 0, title: '选择测试用例', description: '勾选要执行的用例集' },
+      { index: 1, title: '选择测试设备', description: '选择在线设备与执行参数' },
+      { index: 2, title: '执行测试', description: '监控执行进度与结果' },
+      { index: 3, title: '查看结果', description: '查看与导出测试报告' },
     ],
     lockedTypeBadge: '端到端测试',
     resourceNoun: '设备',
@@ -48,11 +49,10 @@ export const TEST_FLOW_CONFIG: Record<'e2e' | 'api', TestFlowConfig> = {
     title: 'API 测试',
     subtitle: '测试语音服务 API 的功能和性能，验证接口响应和数据正确性',
     steps: [
-      { index: 0, title: '选择算法', description: '选择本次测试使用的算法' },
-      { index: 1, title: '选择测试用例', description: '勾选要执行的用例集' },
-      { index: 2, title: '选择被测 API', description: '选择在线 API 与执行参数' },
-      { index: 3, title: '执行测试', description: '监控执行进度与结果' },
-      { index: 4, title: '查看结果', description: '查看与导出测试报告' },
+      { index: 0, title: '选择测试用例', description: '勾选要执行的用例集' },
+      { index: 1, title: '选择被测 API', description: '选择在线 API 与执行参数' },
+      { index: 2, title: '执行测试', description: '监控执行进度与结果' },
+      { index: 3, title: '查看结果', description: '查看与导出测试报告' },
     ],
     lockedTypeBadge: 'API测试',
     resourceNoun: 'API',
@@ -64,6 +64,29 @@ export const TEST_FLOW_CONFIG: Record<'e2e' | 'api', TestFlowConfig> = {
 
 /** 网络环境选项（E2E 执行参数，对齐端到端测试功能设计文档 :338） */
 export const NETWORK_OPTIONS = ['默认', 'Wi-Fi', '移动网络', '飞行模式'] as const
+
+/** 被测对象系统类型筛选（INT-486 口径 2026-10-16：Android/鸿蒙/播放设备等；数据来自 device.system/type） */
+export const RESOURCE_SYSTEM_OPTIONS = [
+  { value: 'all', label: '全部系统' },
+  { value: 'android', label: 'Android' },
+  { value: 'harmony', label: '鸿蒙' },
+  { value: 'api', label: 'API 网关' },
+] as const
+
+/**
+ * 实验室-被测对象绑定 mock（INT-487 设备-实验室绑定待接线；本页演示过滤口径）。
+ * 默认「全部实验室」不筛；选择实验室后设备/API 列表按 lab 成员过滤。
+ */
+export const MOCK_RESOURCE_LABS: {
+  id: string
+  name: string
+  deviceIds: number[]
+  apiIds: number[]
+}[] = [
+  { id: 'lab-a', name: '旗舰实验室', deviceIds: [1, 2, 4, 5], apiIds: [11, 12] },
+  { id: 'lab-b', name: '车载实验室', deviceIds: [6], apiIds: [13] },
+  { id: 'lab-c', name: '入门实验室', deviceIds: [3], apiIds: [12] },
+]
 
 /** 报告模板选项（对齐 15_报告域 §5 模板清单） */
 export const REPORT_TEMPLATE_OPTIONS = [

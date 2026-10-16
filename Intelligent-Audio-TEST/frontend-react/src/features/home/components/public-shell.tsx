@@ -37,7 +37,7 @@ export function PublicHeader({ className }: { className?: string }) {
         <div className='ms-auto flex shrink-0 items-center gap-1 sm:gap-2'>
           {user ? (
             <Button size='sm' render={<Link to='/dashboard' />}>
-              进入控制台
+              进入工作台
             </Button>
           ) : (
             <Button size='sm' onClick={() => void navigate({ to: '/login' })}>

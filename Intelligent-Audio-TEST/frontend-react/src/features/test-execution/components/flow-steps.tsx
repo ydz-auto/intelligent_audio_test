@@ -1,6 +1,7 @@
 /**
  * FlowSteps 流程步骤条（interfaces/features/test-execution/components；平台件，10_测试执行.md §6）。
- * 照 setup-wizard STEPS 卡格通用化：`ol grid gap-2.5 sm:grid-cols-5`，每格 rounded-xl border p-3；
+ * 照 setup-wizard STEPS 卡格通用化：`ol grid gap-2.5`，每格 rounded-xl border p-3；
+ * 列数随步骤数（4 步 sm:grid-cols-4 / 5 步 sm:grid-cols-5，INT-486 合并后为四步）；
  * 三态——当前 border-primary ring-primary/20 ring-2 / 已完成 border-primary/40 bg-primary/5 /
  * 未到 border-muted bg-card；数字圆标 size-6 rounded-md border，已完成位换 CheckCircle2。
  * 只读观察态（§3.1.1）：步骤条可点击翻页浏览，但不触发校验/解锁语义。
@@ -21,6 +22,13 @@ interface FlowStepsProps {
   readOnly?: boolean
 }
 
+const GRID_COLS: Record<number, string> = {
+  2: 'sm:grid-cols-2',
+  3: 'sm:grid-cols-3',
+  4: 'sm:grid-cols-4',
+  5: 'sm:grid-cols-5',
+}
+
 export function FlowSteps({
   steps,
   current,
@@ -29,8 +37,9 @@ export function FlowSteps({
   disabledHint,
   readOnly = false,
 }: FlowStepsProps) {
+  const gridCols = GRID_COLS[steps.length] ?? 'sm:grid-cols-4'
   return (
-    <ol className='grid grid-cols-2 gap-2.5 sm:grid-cols-5 sm:gap-3'>
+    <ol className={cn('grid grid-cols-2 gap-2.5 sm:gap-3', gridCols)}>
       {steps.map((step) => {
         const isCurrent = step.index === current
         const isDone = done(step.index) && !isCurrent

@@ -1,23 +1,31 @@
 import {
   Activity,
-  ArrowLeftRight,
+  AudioWaveform,
+  Box,
   ClipboardList,
   FileBarChart,
   FileText,
+  Gauge,
   Headphones,
   ListChecks,
   MessagesSquare,
   Music,
+  Play,
   Settings,
-  Smartphone,
+  Tags,
 } from 'lucide-react'
 
 import type { NavGroup } from '../types'
 
 /**
- * 控制台侧栏树（04_控制台.md §3.2 定稿：总览/测试执行/测试资产/管理 四组十项；
- * 08_AI对话页.md §3.1 回写：新增「AI 工具」组 → 五组十一项）。
+ * 工作台侧栏树（04_控制台.md §3.2 定稿 + INT-486 负责人口径 2026-10-16 对齐）：
+ * 终态六组十五项——总览（概览）/AI 工具（灵犀Agent）/测试执行（开始测试+任务管理）/
+ * 测试资产（用例+音频+设备+报告中心）/测试配置（算法配置+评估维度+SPL 映射+标签管理，
+ * INT-417 自设置工作区提升；组名取中文业务名「测试配置」，非内部名「测试域」）/
+ * 管理（日志+系统设置）。
  * 权限码与图标均为规范定稿值；系统设置入口点击进入 drill-in 视图。
+ * 开始测试=端到端+API 合并入口（INT-486：一个入口内部两模式）；algo_engineer
+ * 只读观察（INT-449）经 algorithm:read 命中（与 task:execute 任一）。
  */
 export const ROOT_SIDEBAR_NAV: NavGroup[] = [
   {
@@ -25,10 +33,22 @@ export const ROOT_SIDEBAR_NAV: NavGroup[] = [
     title: '总览',
     items: [
       {
-        title: '工作台',
+        title: '概览',
         url: '/dashboard',
         icon: Activity,
         requiredPermission: 'home:read',
+      },
+    ],
+  },
+  {
+    id: 'ai-tools',
+    title: 'AI 工具',
+    items: [
+      {
+        title: '灵犀Agent',
+        url: '/ai-chat',
+        icon: MessagesSquare,
+        requiredPermission: 'report:read',
       },
     ],
   },
@@ -37,16 +57,10 @@ export const ROOT_SIDEBAR_NAV: NavGroup[] = [
     title: '测试执行',
     items: [
       {
-        title: '端到端测试',
-        url: '/E2ETest',
-        icon: Smartphone,
-        requiredPermission: 'task:execute',
-      },
-      {
-        title: 'API 测试',
-        url: '/APITest',
-        icon: ArrowLeftRight,
-        requiredPermission: 'task:execute',
+        title: '开始测试',
+        url: '/start-test',
+        icon: Play,
+        requiredPermissions: ['task:execute', 'algorithm:read'],
       },
       {
         title: '任务管理',
@@ -89,14 +103,32 @@ export const ROOT_SIDEBAR_NAV: NavGroup[] = [
     ],
   },
   {
-    id: 'ai-tools',
-    title: 'AI 工具',
+    id: 'test-config',
+    title: '测试配置',
     items: [
       {
-        title: 'AI 对话',
-        url: '/ai-chat',
-        icon: MessagesSquare,
-        requiredPermission: 'report:read',
+        title: '算法配置',
+        url: '/AlgorithmConfig',
+        icon: Box,
+        requiredPermission: 'algorithm:read',
+      },
+      {
+        title: '评估维度',
+        url: '/Evaluation',
+        icon: Gauge,
+        requiredPermission: 'evaluation:read',
+      },
+      {
+        title: 'SPL 映射',
+        url: '/SPLMapping',
+        icon: AudioWaveform,
+        requiredPermissions: ['spl:read', 'digital_spl:read'],
+      },
+      {
+        title: '标签管理',
+        url: '/TagManagement',
+        icon: Tags,
+        requiredPermission: 'tag:read',
       },
     ],
   },
@@ -116,12 +148,9 @@ export const ROOT_SIDEBAR_NAV: NavGroup[] = [
         icon: Settings,
         requiredPermissions: [
           'user:read',
+          'role:read',
           'auth:manage_provider',
-          'algorithm:definition_manage',
-          'evaluation:dim_manage',
-          'tag:create',
-          'spl:create',
-          'digital_spl:create',
+          'log:manage',
         ],
       },
     ],

@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 /**
  * 入场动效（移植自 newAPI web/src/components/page-transition.tsx 的 FadeIn + CardStagger；
- * 页面件随控制台卡落位——基座未移植共享版，变体复用基座 lib/motion.ts 同源常量）。
+ * 页面件随工作台卡落位——基座未移植共享版，变体复用基座 lib/motion.ts 同源常量）。
  */
 import { motion, useReducedMotion } from 'motion/react'
 import type { ReactNode } from 'react'

@@ -5,7 +5,7 @@ import { useAuthStore } from '@/infrastructure/stores/auth-store'
 
 /**
  * 认证守卫（12_登录与错误页.md §3.1）：
- * 未登录 → /login（携带 sanitize 前置的回跳地址）；已登录渲染控制台布局壳。
+ * 未登录 → /login（携带 sanitize 前置的回跳地址）；已登录渲染工作台布局壳。
  * mock 会话取自 zustand persist（红线④）。
  */
 export const Route = createFileRoute('/_authenticated')({

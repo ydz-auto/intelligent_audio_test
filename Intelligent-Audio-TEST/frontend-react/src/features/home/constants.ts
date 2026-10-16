@@ -30,7 +30,7 @@ export const HERO = {
   description:
     '面向语音团队的端到端测试与 API 测试解决方案：多设备并行执行、自动化任务调度、多维度评估与可视化报告，一个平台全部完成。',
   primaryAction: '立即开始测试',
-  primaryActionAuthed: '进入控制台',
+  primaryActionAuthed: '进入工作台',
   secondaryAction: '查看文档',
   checks: [
     '多设备并行测试',
@@ -201,14 +201,14 @@ export const WHY_CHOOSE_US = {
   ],
 }
 
-/** ④ 控制台功能入口（八卡；bg-chart-N/12 语义软底，§3.5） */
+/** ④ 工作台功能入口（八卡；bg-chart-N/12 语义软底，§3.5） */
 export const CONSOLE_ENTRIES = {
   eyebrow: '02 / 功能入口',
   heading: '八个模块，覆盖测试全生命周期。',
-  consoleLink: '进入控制台',
+  consoleLink: '进入工作台',
   emptyText: '登录后可查看全部功能入口',
   footnote:
-    '声压级映射、标签管理、算法配置、日志查看在控制台内可直达；页面入口随角色权限渲染。',
+    '声压级映射、标签管理、算法配置、日志查看在工作台内可直达；页面入口随角色权限渲染。',
   cards: [
     {
       key: 'tasks',
@@ -362,7 +362,7 @@ export const DATA_RELIABILITY = {
   ],
   chainLabel: '全流程可追溯',
   chain: ['任务提交', '设备执行', '实时进度', '自动评估', '报告生成'],
-  footnote: '评估指标口径与权重在控制台「评估维度」中配置。',
+  footnote: '评估指标口径与权重在工作台「评估维度」中配置。',
 } as const
 
 /** ⑦ 部署与数据边界 */
@@ -395,7 +395,7 @@ export const DEPLOYMENT_TRUST = {
       { label: 'Python', value: '3.12' },
       { label: '接口版本', value: 'API v1' },
     ],
-    action: '进入控制台',
+    action: '进入工作台',
     anonymousAction: '立即体验',
     manualLink: '阅读使用手册',
   },
@@ -449,7 +449,7 @@ export const FAQ = {
 export const CTA_BAND = {
   eyebrow: '智能语音测试平台 / 一次切换，全局生效',
   heading: '准备好开始下一次测试了吗？',
-  primaryAction: '进入控制台',
+  primaryAction: '进入工作台',
   primaryActionAnonymous: '立即体验',
   secondaryAction: '查看文档',
 } as const

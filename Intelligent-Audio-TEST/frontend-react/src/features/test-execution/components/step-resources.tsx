@@ -38,7 +38,7 @@ import { DeviceCard } from '@/features/test-execution/components/device-card'
 import { ApiTable } from '@/features/test-execution/components/api-table'
 import { ParamCard } from '@/features/test-execution/components/param-card'
 import { SelectionSummary } from '@/features/test-execution/components/selection-summary'
-import { NETWORK_OPTIONS, REPORT_INCLUDE_OPTIONS, REPORT_TEMPLATE_OPTIONS } from '@/features/test-execution/constants'
+import { NETWORK_OPTIONS, REPORT_INCLUDE_OPTIONS, REPORT_TEMPLATE_OPTIONS, RESOURCE_SYSTEM_OPTIONS, MOCK_RESOURCE_LABS } from '@/features/test-execution/constants'
 import type { ApiConfig } from '@/domain/models/apiConfig'
 import type { Device } from '@/domain/models/device'
 
@@ -71,6 +71,9 @@ export function StepResources({
   const setParams = useExecutionStore((s) => s.setParams)
   const [keyword, setKeyword] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline'>('all')
+  // INT-486 口径 2026-10-16：实验室/系统类型筛选（INT-487 设备-实验室绑定待接线）
+  const [labFilter, setLabFilter] = useState('all')
+  const [systemFilter, setSystemFilter] = useState<'all' | 'android' | 'harmony' | 'api'>('all')
   const [testingIds, setTestingIds] = useState<Set<number>>(new Set())
 
   const isApi = type === 'api'
@@ -81,30 +84,49 @@ export function StepResources({
   const canApiEdit = hasPermission('api_config:update')
   const canApiDelete = hasPermission('api_config:delete')
 
-  /** 关键词/状态筛选（视觉稿演示；数据 mock 全量返回，前端过滤口径） */
+  /** 实验室成员（INT-487 绑定 mock；'all' 不筛） */
+  const labDeviceIds = useMemo(() => {
+    if (labFilter === 'all') return null
+    return MOCK_RESOURCE_LABS.find((l) => l.id === labFilter)?.deviceIds ?? []
+  }, [labFilter])
+  const labApiIds = useMemo(() => {
+    if (labFilter === 'all') return null
+    return MOCK_RESOURCE_LABS.find((l) => l.id === labFilter)?.apiIds ?? []
+  }, [labFilter])
+
+  /** 关键词/状态/实验室/系统类型筛选（视觉稿演示；数据 mock 全量返回，前端过滤口径） */
   const visibleDevices = useMemo(() => {
     const q = keyword.trim().toLowerCase()
     return resources.devices.filter((d) => {
       if (statusFilter !== 'all' && (d.status ?? 'offline') !== statusFilter) return false
+      if (labDeviceIds !== null && !labDeviceIds.includes(d.id)) return false
+      if (systemFilter === 'android' || systemFilter === 'harmony') {
+        if ((d.system ?? '').toLowerCase() !== systemFilter) return false
+      } else if (systemFilter === 'api') {
+        if (d.type !== 'http_api' && d.type !== 'websocket_api') return false
+      }
       if (q) {
         const haystack = `${d.name} ${d.model ?? ''}`.toLowerCase()
         if (!haystack.includes(q)) return false
       }
       return true
     })
-  }, [resources.devices, keyword, statusFilter])
+  }, [resources.devices, keyword, statusFilter, labDeviceIds, systemFilter])
 
   const visibleApis = useMemo(() => {
     const q = keyword.trim().toLowerCase()
     return resources.apis.filter((a) => {
       if (statusFilter !== 'all' && (a.status ?? 'offline') !== statusFilter) return false
+      if (labApiIds !== null && !labApiIds.includes(a.id)) return false
+      // API 均为网关：系统类型仅「全部/API 网关」有效，物理系统筛选对 API 无命中
+      if (systemFilter === 'android' || systemFilter === 'harmony') return false
       if (q) {
         const haystack = `${a.name} ${a.apiUrl ?? ''}`.toLowerCase()
         if (!haystack.includes(q)) return false
       }
       return true
     })
-  }, [resources.apis, keyword, statusFilter])
+  }, [resources.apis, keyword, statusFilter, labApiIds, systemFilter])
 
   /** API 并发自动求和（§3.6.3 并发数参数卡；现 apiTest.steps.ts:154-158 口径） */
   const apiConcurrencySum = useMemo(
@@ -181,6 +203,40 @@ export function StepResources({
             <SelectItem value='offline'>离线</SelectItem>
           </SelectContent>
         </Select>
+
+        {/* 实验室 facet（INT-486 口径；INT-487 设备-实验室绑定待接线） */}
+        <Select value={labFilter} onValueChange={(v) => setLabFilter(v ?? 'all')}>
+          <SelectTrigger className='h-8 w-32 text-xs'>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value='all'>全部实验室</SelectItem>
+            {MOCK_RESOURCE_LABS.map((lab) => (
+              <SelectItem key={lab.id} value={lab.id}>
+                {lab.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* 系统类型 facet（E2E 设备按 system/type；API 均为网关） */}
+        {!isApi && (
+          <Select
+            value={systemFilter}
+            onValueChange={(v) => setSystemFilter(v as 'all' | 'android' | 'harmony' | 'api')}
+          >
+            <SelectTrigger className='h-8 w-32 text-xs'>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {RESOURCE_SYSTEM_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
         {/* 右端操作（权限显隐；readOnly 隐藏） */}
         {!readOnly && (

@@ -20,7 +20,7 @@ import { StatsBar } from '../stats-bar'
 /**
  * ① 品牌区（03_首页.md §3.2）：左文右枢纽图 + 4 卖点卡 + 平台规模条。
  * Hero 软底 bg-muted/40（不写死 newAPI 的 #f4f6fb，多预设联动）；
- * 已登录主按钮变「进入控制台」（hero-buttons.tsx isAuthenticated 分支对位）。
+ * 已登录主按钮变「进入工作台」（hero-buttons.tsx isAuthenticated 分支对位）。
  */
 export function HeroSection({ className }: { className?: string }) {
   const { user } = usePermissions()

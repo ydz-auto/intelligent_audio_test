@@ -1,5 +1,5 @@
 /**
- * 控制台工作台 mock 常量（红线④：数据一律 mock，不接真实后端）。
+ * 工作台工作台 mock 常量（红线④：数据一律 mock，不接真实后端）。
  * 字段形态对照 api_gateway/schemas/home.py + task.py 实测 schema（见 domain/models/stats.ts 注释），
  * 后续接线时仅替换 infrastructure/api 桩实现，页面与 hook 不返工。
  * 数字口径与基座 MOCK_HOME_STATS（infrastructure/api/home.ts）对齐：任务 342/已完成 297、

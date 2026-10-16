@@ -13,7 +13,7 @@ const loginSearchSchema = z.object({
 
 /**
  * 登录页 /login（12_登录与错误页.md §3.1）：
- * search 携带 redirect / username；已登录直接进控制台，不重复渲染表单。
+ * search 携带 redirect / username；已登录直接进工作台，不重复渲染表单。
  */
 export const Route = createFileRoute('/_public/login')({
   validateSearch: loginSearchSchema,

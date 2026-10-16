@@ -1,8 +1,9 @@
 /**
  * /reports 报告展示页（INT-434 重实施 / INT-441 双入口拆分；15_报告域.md §2.1）。
  * 导航栏「报告」直达：对外展示已发布报告成果，弱管理——行操作仅「查看/复制链接」。
- * 「当前算法」大卡（INT-442）承载算法切换（写回全局 store，本页不渲染右上角联动 chip）。
- * URL 态经 validateSearch（features/reports-showcase/types.ts），页面以 navigate 回写。
+ * 算法切换经「算法卡片网格」（INT-486 口径：每算法一张大卡点击选中，写回全局 store，
+ * 本页不渲染右上角联动 chip，INT-442）。URL 态经 validateSearch
+ * （features/reports-showcase/types.ts），页面以 navigate 回写。
  */
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -16,7 +17,7 @@ import { buildShowcaseQuery } from '@/features/reports-showcase/lib/search'
 import { ReportsPagination } from '@/features/reports/components/reports-pagination'
 import type { ShowcaseSearch } from '@/features/reports-showcase/types'
 
-import { CurrentAlgorithmCard } from './components/current-algorithm-card'
+import { AlgorithmCardGrid } from '@/components/algorithm-card-grid'
 import { ReportShowcaseHero } from './components/report-showcase-hero'
 import { ReportShowcaseToolbar } from './components/report-showcase-toolbar'
 import { ReportShowcaseList } from './components/report-showcase-list'
@@ -167,8 +168,8 @@ export function ReportShowcasePage() {
             onClearAll={handleClearAll}
           />
 
-          {/* INT-442：「当前算法」大卡——写回全局 store，列表自动附 algorithm_type */}
-          <CurrentAlgorithmCard />
+          {/* INT-486 算法卡片网格（INT-442 口径）：写回全局 store，列表自动附 algorithm_type */}
+          <AlgorithmCardGrid title='选择算法' />
 
           <ReportShowcaseToolbar
             filteredCount={total}

@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils'
 import { CONSOLE_ENTRIES } from '../../constants'
 
 /**
- * ④ 控制台功能入口（03_首页.md §3.5）：八张四色卡 + RBAC 权限过滤。
+ * ④ 工作台功能入口（03_首页.md §3.5）：八张四色卡 + RBAC 权限过滤。
  * 未登录/无任何可显卡 → 整区替换为引导行（RBAC 未登录降级文案）；
  * 有权限卡时逐卡渲染（mock 管理员 '*' 全显）。
  */

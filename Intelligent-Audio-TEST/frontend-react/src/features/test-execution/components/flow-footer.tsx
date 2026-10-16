@@ -1,10 +1,7 @@
 /**
- * FlowFooter 底部动作条（interfaces/features/test-execution/components；10_测试执行.md §3.1）。
- * 照 StepNavigation + PromptInputFooter 语义：`border-t bg-background/95 dark:bg-background/80
- * backdrop-blur px-4 py-2.5 flex items-center justify-between gap-3`。
- * 左=上下文提示区（voice_llm 提示/校验错误摘要）；右=随步骤按钮组：
- * 步骤0 仅「下一步」/ 步骤1「上一步+下一步」/ 步骤2「上一步+开始测试→任务名称弹窗」/
- * 步骤3 无按钮（执行控制在内容区）/ 步骤4 报告动作组（上一步隐藏）；
+ * FlowFooter 底部动作条（interfaces/features/test-execution/components；10_测试执行.md §3.1，
+ * INT-486 四步流程步骤位：步骤0 仅「下一步」/ 步骤1「上一步+开始测试→任务名称弹窗」/
+ * 步骤2 无按钮（执行控制在内容区）/ 步骤3 报告动作组（上一步隐藏）；
  * 只读观察态（§3.1.1）：仅 info 文案「当前为只读观察模式，不可执行测试」，无任何按钮。
  */
 import { ChevronLeft, FileBarChart, Rocket } from 'lucide-react'
@@ -19,12 +16,12 @@ interface FlowFooterProps {
   /** 左区上下文提示 */
   hint?: string
   onPrev: () => void
-  /** 步骤 0-1：下一步 */
+  /** 步骤 0：下一步 */
   onNext: () => void
-  /** 步骤 2：开始测试（打开任务名称弹窗） */
+  /** 步骤 1：开始测试（打开任务名称弹窗） */
   onStart: () => void
   startPending?: boolean
-  /** 步骤 4 报告动作组 */
+  /** 步骤 3 报告动作组 */
   canSaveReport: boolean
   onSaveReport: () => void
   savingReport?: boolean
@@ -52,7 +49,7 @@ export function FlowFooter({
   onGoReportCenter,
   onNewTest,
 }: FlowFooterProps) {
-  const showPrev = step === 1 || step === 2
+  const showPrev = step === 0 || step === 1
 
   return (
     <div className='bg-background/95 supports-[backdrop-filter]:bg-background/80 shrink-0 border-t px-4 py-2.5 backdrop-blur'>
@@ -78,12 +75,12 @@ export function FlowFooter({
                 上一步
               </Button>
             )}
-            {(step === 0 || step === 1) && (
+            {(step === 0) && (
               <Button size='sm' onClick={onNext}>
                 下一步
               </Button>
             )}
-            {step === 2 && (
+            {step === 1 && (
               <Button size='sm' disabled={startPending} onClick={onStart}>
                 {startPending ? (
                   <>
@@ -98,7 +95,7 @@ export function FlowFooter({
                 )}
               </Button>
             )}
-            {step === 4 && (
+            {step === 3 && (
               <>
                 {canSaveReport && (
                   <Button variant='outline' size='sm' disabled={savingReport} onClick={onSaveReport}>

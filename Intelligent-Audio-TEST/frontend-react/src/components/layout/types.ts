@@ -4,7 +4,7 @@ import type { LinkProps } from '@tanstack/react-router'
 /**
  * 导航类型（本平台适配版，照 newAPI layout/types 结构裁剪）：
  * - 去除 i18n（文案直接用中文常量，红线③）；
- * - 去除 chat-presets 动态项与后端角色阈值，权限码对齐 doc/UX设计规范/04_控制台.md §3.2。
+ * - 去除 chat-presets 动态项与后端角色阈值，权限码对齐 doc/UX设计规范/04_工作台.md §3.2。
  */
 
 type BaseNavItem = {
@@ -55,7 +55,7 @@ export type TopNavLink = {
 export type SidebarViewParent = {
   /** 返回按钮目标 */
   to: LinkProps['to'] | (string & {})
-  /** 可见文案（已本地化，如「返回控制台」） */
+  /** 可见文案（已本地化，如「返回工作台」） */
   label: string
 }
 

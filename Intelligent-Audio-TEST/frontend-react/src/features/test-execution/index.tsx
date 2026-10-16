@@ -1,6 +1,8 @@
 /**
- * 测试执行页（interfaces/features/test-execution/index.tsx；10_测试执行.md §3.1）。
- * /E2ETest 与 /APITest 共用同一组件树（testType prop 分叉文案/数据源）。
+ * 测试执行页（interfaces/features/test-execution/index.tsx；10_测试执行.md §3.1，
+ * INT-486 合并口径）：/start-test 单入口，内部端到端/API 两模式（顶部 Tabs 切换）。
+ * 四步流程（INT-486：不再有「选择算法」步骤——算法切换已全局化 INT-436/442，
+ * 测试流程不再单独选算法，用例/资源列表按全局算法自动过滤）。
  * 三段式全高骨架（照 playground/index.tsx）：顶部条 / 流程步骤条 / 内容区 / 底部动作条。
  * readOnly（§3.1.1）：骨架照常渲染，动作钮/控制/提交整体投影隐藏。
  */
@@ -21,6 +23,7 @@ import { useCaseSelectionStore } from '@/infrastructure/stores/case-selection-st
 import { useResourceSelectionStore } from '@/infrastructure/stores/resource-selection-store'
 import { MOCK_TESTCASES } from '@/infrastructure/mock/test-execution-mock'
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { cn } from '@/lib/utils'
@@ -29,7 +32,6 @@ import { navigateWithSearch } from '@/features/test-execution/lib/navigate-searc
 import { TEST_FLOW_CONFIG, type TestFlowConfig } from '@/features/test-execution/constants'
 import { FlowSteps } from '@/features/test-execution/components/flow-steps'
 import { FlowFooter } from '@/features/test-execution/components/flow-footer'
-import { StepAlgorithm } from '@/features/test-execution/components/step-algorithm'
 import { StepCases } from '@/features/test-execution/components/step-cases'
 import { StepResources } from '@/features/test-execution/components/step-resources'
 import { StepExecuting } from '@/features/test-execution/components/step-executing'
@@ -44,6 +46,8 @@ import type { ApiHealthCheckResult } from '@/domain/models/apiConfig'
 
 interface TestExecutionPageProps {
   testType: 'e2e' | 'api'
+  /** 模式切换（/start-test URL mode 参数回写） */
+  onModeChange: (mode: 'e2e' | 'api') => void
   /** 初始视图（URL validateSearch view） */
   initialView?: 'table' | 'card'
   onViewChange: (view: 'table' | 'card') => void
@@ -51,6 +55,7 @@ interface TestExecutionPageProps {
 
 export function TestExecutionPage({
   testType,
+  onModeChange,
   initialView = 'table',
   onViewChange,
 }: TestExecutionPageProps) {
@@ -58,7 +63,7 @@ export function TestExecutionPage({
   const readOnly = useReadOnlyMode()
   const { hasPermission } = usePermissions()
   const { step, goToStep, nextStep, prevStep, canBrowseStep, hasProgress } = useFlowSteps()
-  const { algorithmType, current: currentAlgorithm } = useAlgorithmChannel()
+  const { algorithmType } = useAlgorithmChannel()
   const reportStep = useReportStep()
   const launch = useTestLaunch()
   const resources = useResourceSelection(testType, algorithmType)
@@ -92,10 +97,10 @@ export function TestExecutionPage({
   const canPublishReport = hasPermission('report:publish')
   const canSaveReport = hasPermission('report:update')
 
-  /** 步骤 1-2 上下文提示（voice_llm 场景 / 校验错误摘要） */
+  /** 步骤 0-1 上下文提示（voice_llm 场景 / 校验错误摘要） */
   const footerHint = useMemo(() => {
-    if (step === 1 && algorithmType === 'tts_eval') return config.voiceLlmAlert
-    if (step === 2 && testType === 'e2e' && algorithmType === 'tts_eval')
+    if (step === 0 && algorithmType === 'tts_eval') return config.voiceLlmAlert
+    if (step === 1 && testType === 'e2e' && algorithmType === 'tts_eval')
       return 'voice_llm 多轮对话测试建议并发数为 2（默认 4），以获得更稳定的结果。'
     return undefined
   }, [step, algorithmType, config.voiceLlmAlert, testType])
@@ -104,6 +109,13 @@ export function TestExecutionPage({
     resetFlow()
     clearCases()
     clearResources()
+  }
+
+  const handleModeChange = (next: 'e2e' | 'api') => {
+    if (next === testType) return
+    // 切换模式清空本流程选择（用例/设备/API 按模式分叉）
+    clearFlowState()
+    onModeChange(next)
   }
 
   const handleResetConfirm = () => {
@@ -131,7 +143,7 @@ export function TestExecutionPage({
     }, 600)
   }
 
-  /** 步骤三「开始测试」校验链（§3.7：失败 toast.warning，通过才开任务名称弹窗） */
+  /** 步骤一「开始测试」校验链（§3.7：失败 toast.warning，通过才开任务名称弹窗） */
   const handleStartTest = () => {
     const caseState = useCaseSelectionStore.getState()
     // 用例校验：filterAll（未手动选择按筛选全量圈定）或已勾选任一用例
@@ -164,11 +176,27 @@ export function TestExecutionPage({
       {/* 顶部条 */}
       <div className='shrink-0 border-b px-4 py-3 sm:px-6'>
         <div className='flex flex-wrap items-center justify-between gap-2'>
-          <div className='min-w-0'>
-            <h1 className='text-sm font-semibold sm:text-base'>{config.title}</h1>
-            <p className='text-muted-foreground mt-0.5 hidden text-xs sm:block'>
-              {config.subtitle}
-            </p>
+          <div className='flex min-w-0 items-center gap-3'>
+            {/* 端到端/API 模式切换（INT-486 合并入口） */}
+            <Tabs
+              value={testType}
+              onValueChange={(v) => handleModeChange(v as 'e2e' | 'api')}
+            >
+              <TabsList className='h-8'>
+                <TabsTrigger value='e2e' className='text-xs'>
+                  端到端测试
+                </TabsTrigger>
+                <TabsTrigger value='api' className='text-xs'>
+                  API 测试
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <div className='min-w-0'>
+              <h1 className='text-sm font-semibold sm:text-base'>{config.title}</h1>
+              <p className='text-muted-foreground mt-0.5 hidden text-xs sm:block'>
+                {config.subtitle}
+              </p>
+            </div>
           </div>
           {!readOnly && hasProgress && (
             <Button variant='ghost' size='sm' onClick={() => setResetOpen(true)}>
@@ -189,9 +217,8 @@ export function TestExecutionPage({
           readOnly={readOnly}
           disabledHint={(index) => {
             if (index <= step) return null
-            if ((index === 1 || index === 2) && !currentAlgorithm) return '请先选择算法'
-            if (index === 3 && taskId == null) return '请先启动测试任务'
-            if (index === 4 && reportStatus !== 'ready') return '请等待报告生成完成'
+            if (index === 2 && taskId == null) return '请先启动测试任务'
+            if (index === 3 && reportStatus !== 'ready') return '请等待报告生成完成'
             return null
           }}
         />
@@ -203,24 +230,10 @@ export function TestExecutionPage({
           key={step}
           className={cn(
             'mx-auto w-full animate-in fade-in-0 duration-250',
-            step === 3 || step === 4 ? 'max-w-none' : 'max-w-5xl'
+            step === 2 || step === 3 ? 'max-w-none' : 'max-w-5xl'
           )}
         >
           {step === 0 && (
-            <StepAlgorithm
-              readOnly={readOnly}
-              onOpenAlgorithmDetail={() => {
-                // 算法详情弹窗归 INT-362（算法配置域只读视图）；本卡入口占位
-                toast.info('算法详情弹窗随算法配置域卡落地')
-              }}
-              onGoAlgorithmConfig={() => {
-                // 步骤0「新增算法」→ 算法配置页 /AlgorithmConfig（INT-417 测试域组，路由待落地）
-                ;(navigate as (opts: { to: string }) => void)({ to: '/algorithm-config' })
-              }}
-            />
-          )}
-
-          {step === 1 && (
             <StepCases
               type={testType}
               lockedTypeBadge={config.lockedTypeBadge}
@@ -230,7 +243,7 @@ export function TestExecutionPage({
             />
           )}
 
-          {step === 2 && (
+          {step === 1 && (
             <StepResources
               type={testType}
               resourceNoun={config.resourceNoun}
@@ -262,11 +275,11 @@ export function TestExecutionPage({
             />
           )}
 
-          {step === 3 && (taskId != null || readOnly) && (
+          {step === 2 && (taskId != null || readOnly) && (
             <StepExecuting
               taskId={taskId ?? 1042}
               readOnly={readOnly}
-              onBackToResources={() => goToStep(2, { force: true })}
+              onBackToResources={() => goToStep(1, { force: true })}
               onCaseSelect={(caseId) => setCaseDetail({ caseId })}
               deviceTypes={
                 taskId != null ? taskDeviceTypes : ['smart_speaker', 'http_api', 'websocket_api']
@@ -274,7 +287,7 @@ export function TestExecutionPage({
             />
           )}
 
-          {step === 3 && taskId == null && !readOnly && (
+          {step === 2 && taskId == null && !readOnly && (
             <div className='flex justify-center py-12'>
               <Alert className='max-w-lg py-3'>
                 <AlertDescription className='text-sm'>
@@ -292,7 +305,7 @@ export function TestExecutionPage({
             </div>
           )}
 
-          {step === 4 && taskId != null && <StepReport taskId={taskId} readOnly={readOnly} />}
+          {step === 3 && taskId != null && <StepReport taskId={taskId} readOnly={readOnly} />}
         </div>
       </div>
 
@@ -310,7 +323,7 @@ export function TestExecutionPage({
         onExportReport={() => void reportStep.doExport('csv')}
         canPublishReport={canPublishReport}
         onPublishReport={() => setPublishOpen(true)}
-        onGoReportCenter={() => void navigate({ to: '/reports' })}
+        onGoReportCenter={() => void navigate({ to: '/report-center' })}
         onNewTest={() => setNewTestOpen(true)}
       />
 
@@ -377,7 +390,7 @@ export function TestExecutionPage({
         onConfirm={handleResetConfirm}
       />
 
-      {/* 步骤四「开始新测试」确认（§3.8：将开始新的测试流程，当前报告不受影响） */}
+      {/* 步骤三「开始新测试」确认（§3.8：将开始新的测试流程，当前报告不受影响） */}
       <ResetFlowConfirm
         open={newTestOpen}
         onOpenChange={setNewTestOpen}

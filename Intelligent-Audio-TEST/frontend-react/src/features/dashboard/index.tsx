@@ -1,7 +1,8 @@
 /**
- * /dashboard 工作台（04_控制台.md §3.3，INT-378 视觉稿四分区 mock 实现）：
- * ① 开始使用引导卡（双形态）② 平台概览卡（三 StatCard + 设备状态）
- * ③ 双面板行（最近任务 ｜ 用例分组排行）④ 任务统计图表区（#task-charts）。
+ * /dashboard 工作台（04_控制台.md §3.3，INT-378 视觉稿四分区 mock 实现 + INT-486 补算法大卡）：
+ * ① 算法卡片网格（INT-436：每算法一张大卡，点击切换全局算法；双入口——右上角切换器+页内大卡）
+ * ② 开始使用引导卡（双形态）③ 平台概览卡（三 StatCard + 设备状态）
+ * ④ 双面板行（最近任务 ｜ 用例分组排行）⑤ 任务统计图表区（#task-charts）。
  * 数据一律 mock 常量（红线④），query 桩见 infrastructure/api。
  */
 import { useIsFetching, useQueryClient } from '@tanstack/react-query'
@@ -10,6 +11,7 @@ import { LoaderCircle, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
+import { AlgorithmCardGrid } from '@/components/algorithm-card-grid'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useSetupGuide } from '@/application/dashboard/use-setup-guide'
 import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
@@ -80,6 +82,11 @@ export function DashboardPage() {
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
         <div className='flex flex-col gap-4'>
+          <FadeIn>
+            {/* ① 算法卡片网格（INT-436/486：每算法一张大卡，点击切换全局算法；双入口） */}
+            <AlgorithmCardGrid title='当前算法' />
+          </FadeIn>
+
           <FadeIn>
             <SetupGuide
               steps={setupGuide.steps}
