@@ -35,10 +35,14 @@ from shared.constants.database import ISOLATED_TEST_DB_NAME  # noqa: E402
 
 BASE_DIR = PROJECT_ROOT
 FRONTEND_DIR = os.path.join(BASE_DIR, 'frontend')
-PID_FILE = os.path.join(BASE_DIR, 'tests', 'ui', '_ui_stack.pid')
-LOG_DIR = os.path.join(BASE_DIR, 'logs', 'ui_stack')
 
-SHIFT = 1000
+# 端口偏移可配置（UI_STACK_SHIFT，默认 1000）：6000 段被并发 run 占用且其
+# audio_service 带 INT-95 影子夹具（无法真机放音）时，可用 2000 起 7000 段
+# 独立栈（真实音频驱动）互不干扰。PID/日志按偏移隔离，避免串栈清理。
+SHIFT = int(os.environ.get('UI_STACK_SHIFT', '1000'))
+_suffix = '' if SHIFT == 1000 else f'_{SHIFT}'
+PID_FILE = os.path.join(BASE_DIR, 'tests', 'ui', f'_ui_stack{_suffix}.pid')
+LOG_DIR = os.path.join(BASE_DIR, 'logs', f'ui_stack{_suffix}')
 
 # name, dir, base_http_port(None=gRPC-only), base_grpc_port
 SERVICES = [
@@ -72,7 +76,7 @@ CLIENT_GRPC_ENVS = {
 }
 
 GATEWAY_HTTP = 5000 + SHIFT
-FRONTEND_PORT = 6273
+FRONTEND_PORT = GATEWAY_HTTP + 273
 
 # INT-363：门禁默认认证模式。dev=本地 OAuth（表单登录），进程 env 是 vite
 # env 优先级最高层，显式注入使 served VITE_AUTH_MODE 不再随
