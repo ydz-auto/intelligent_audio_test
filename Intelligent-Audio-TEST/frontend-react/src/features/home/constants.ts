@@ -28,8 +28,9 @@ export const HERO = {
   titleLine2: '让每一次语音交互都可度量',
   // 负责人 2026-10-16 定稿：highlight 并入多友商横向对比核心价值（多友商同集同指标同时实测）
   highlight: '真实设备、真实链路、真实指标，多友商横向对比，看清真实用户体验。',
+  // 负责人 2026-10-16 文案基准：HERO 描述以 V9.7.10 为最终基准（白话讲功能，无 marketing 腔）
   description:
-    '面向语音团队的端到端测试与 API 测试解决方案：多设备并行执行、自动化任务调度、多维度评估与可视化报告，一个平台全部完成。',
+    '专业的端到端测试与 API 测试解决方案，支持多维度语音评估，提供完整的测试任务管理、报告分析功能。',
   primaryAction: '立即开始测试',
   primaryActionAuthed: '进入工作台',
   secondaryAction: '查看文档',
@@ -40,7 +41,7 @@ export const HERO = {
     '可视化对比报告',
     '细粒度权限控制',
   ],
-  orbitCaption: '一个平台，覆盖语音测试全流程',
+  orbitCaption: '一个平台，覆盖端到端测试、API 测试与报告分析',
   brandRow: ['Android 真机', '鸿蒙设备', '语音 API', '自动评估'],
   brandRowLink: '选择你的测试类型',
 } as const
@@ -203,7 +204,8 @@ export const WHY_CHOOSE_US = {
 /** ④ 工作台功能入口（八卡；bg-chart-N/12 语义软底，§3.5） */
 export const CONSOLE_ENTRIES = {
   eyebrow: '02 / 功能入口',
-  heading: '八个模块，覆盖测试全生命周期。',
+  // 负责人 2026-10-16 文案基准：去「覆盖测试全生命周期」营销腔，白话讲功能模块
+  heading: '八个功能模块，覆盖从用例到报告的测试流程。',
   consoleLink: '进入工作台',
   emptyText: '登录后可查看全部功能入口',
   footnote:
@@ -222,7 +224,7 @@ export const CONSOLE_ENTRIES = {
       key: 'e2e',
       icon: Smartphone,
       name: '端到端测试',
-      summary: '真机执行五步流程，进度实时推送。',
+      summary: '真机执行四步流程，进度实时推送。',
       to: '/E2ETest',
       permission: 'task:execute',
       color: 'bg-chart-2/12 text-chart-2 dark:bg-chart-2/20',
@@ -291,8 +293,8 @@ export const CONSOLE_ENTRIES = {
 export const DATA_RELIABILITY = {
   eyebrow: '数据与可靠性',
   heading: '任务交给平台，结果实时可查。',
-  subtext:
-    '异步调度保证吞吐，事件推送保证时效，失败重试保证完整——三层机制托底每一次测试。',
+  // 负责人 2026-10-16 文案基准：去「三层机制托底」营销腔，白话讲三个真实机制干什么
+  subtext: '异步调度让任务提交即返回，事件推送让进度实时可见，失败重试保证结果完整。',
   cards: [
     {
       title: '异步执行',
