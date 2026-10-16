@@ -1,6 +1,6 @@
 # 报告 Benchmark 排行功能设计文档
 
-> 【负责人裁定 2026-10-10：搁置，不计完成度】本功能暂缓实施，当前进度不纳入 V9.7.31 完成度统计。
+> 【实现演进裁定 2026-10-15（INT-400 #8）：已恢复实施】Benchmark 排行前端 UI 恢复设计（原 2026-10-10 搁置裁定由负责人 2026-10-15 撤销），主库 Vue 版由 INT-476/INT-482 落地，后端报告发布端点+五表缺口由 INT-481 补齐（2026-10-16）。
 
 ## 1. 文档说明
 
@@ -344,18 +344,26 @@
 
 ### 6.7 `benchmark_reports`（Benchmark 报告发布记录）
 
+> 【实现演进裁定 2026-10-16（INT-481）】按 INT-481 落地列口径回写：原 §6.7 仅含报告元数据列，实现新增 `task_id`/`source`/`algorithm_set`/`metric_count`/`ranking_data`（发布时点排行快照 JSON）/`updated_at`，用于报告可追溯与快照不漂移。
+
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `id` | bigint | 发布记录 ID |
 | `report_id` | bigint | 外键 → test_reports.id |
+| `task_id` | bigint | 来源任务 ID（正式任务发布聚合，可空） |
 | `suite` | varchar | 测试集标识 |
 | `category` | varchar | 被测类别 |
+| `source` | varchar | 双轨来源：platform_test / external_import（空=全量） |
+| `algorithm_set` | varchar | 算法集标识（空=全量） |
 | `published_task_count` | int | 参与排行的正式任务数 |
 | `subject_count` | int | 参与排行的被测主体数 |
+| `metric_count` | int | 参与排行的指标数 |
+| `ranking_data` | json | 排行 ReadModel 快照（发布时点定格，报告不随后续重算漂移） |
 | `version` | int | Benchmark 报告版本号 |
 | `published_by` | varchar | 发布人 |
 | `published_at` | datetime | 发布时间 |
 | `created_at` | datetime | 创建时间 |
+| `updated_at` | datetime | 更新时间 |
 
 ## 7. 接口设计
 
@@ -486,16 +494,18 @@ frontend/src/infrastructure/api/benchmarkApi.ts
 
 ## 9. 权限与审计
 
+> 【实现演进裁定 2026-10-16（INT-429 / INT-481）】权限码以 `资源:操作` 冒号风格对齐现有编码（原预留点号形式废弃，见 `docs/RBAC权限划分.md` §3.16 注）。INT-481 补 `benchmark:report:read/publish` 两码并授 tester / algo_engineer。
+
 预留权限编码：
 
-- `benchmark.ranking.read` — 查看排行
-- `benchmark.ranking.compute` — 触发排行计算
-- `benchmark.baseline.read` — 查看外部基线数据
-- `benchmark.baseline.write` — 导入/录入外部基线
-- `benchmark.baseline.publish` — 发布基线版本
-- `benchmark.report.read` — 查看 Benchmark 报告
-- `benchmark.report.publish` — 发布 Benchmark 报告
-- `benchmark.mapping.manage` — 管理指标映射
+- `benchmark:ranking:read` — 查看排行
+- `benchmark:ranking:compute` — 触发排行计算
+- `benchmark:baseline:read` — 查看外部基线数据
+- `benchmark:baseline:write` — 导入/录入外部基线
+- `benchmark:baseline:publish` — 发布基线版本
+- `benchmark:report:read` — 查看 Benchmark 报告
+- `benchmark:report:publish` — 发布 Benchmark 报告
+- `benchmark:mapping:manage` — 管理指标映射
 
 审计事件：
 
