@@ -19,7 +19,7 @@ export type FlowStep = 0 | 1 | 2 | 3
 
 const STEP_HINT: Record<FlowStep, string> = {
   0: '请先选择测试用例',
-  1: '请先选择测试资源',
+  1: '请先选择设备/API',
   2: '请先启动测试任务',
   3: '请等待报告生成完成',
 }

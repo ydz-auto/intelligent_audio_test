@@ -31,7 +31,7 @@ export const TEST_FLOW_CONFIG: TestFlowConfig = {
   subtitle: '选择用例与设备/API，在同一流程内完成语音测试与报告生成',
   steps: [
     { index: 0, title: '选择测试用例', description: '勾选要执行的用例集' },
-    { index: 1, title: '选择测试资源', description: '同屏选择设备与 API（混合执行）' },
+    { index: 1, title: '选择设备/API', description: '同屏选择设备与 API（混合执行）' },
     { index: 2, title: '执行测试', description: '监控执行进度与结果' },
     { index: 3, title: '查看结果', description: '查看与导出测试报告' },
   ],

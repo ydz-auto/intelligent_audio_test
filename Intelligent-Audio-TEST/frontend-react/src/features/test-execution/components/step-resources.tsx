@@ -1,5 +1,5 @@
 /**
- * 步骤三：选择资源与执行参数（interfaces/features/test-execution/components；
+ * 步骤二：选择设备/API 与执行参数（interfaces/features/test-execution/components；
  * 10_测试执行.md §3.6；INT-486 2026-10-16 追加口径：开始测试不再分 E2E/API——
  * 本步同屏同选设备 + API（混合执行），筛选按设备/API 维度组合）。
  * 工具行（搜索/状态/实验室/系统类型 + API 厂商/协议筛选）+ 设备网格 + 被测 API 表格

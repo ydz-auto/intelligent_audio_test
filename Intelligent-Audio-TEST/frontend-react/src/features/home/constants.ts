@@ -185,7 +185,7 @@ export const QUICK_START = {
   subtext: '选好用例和设备/API 就能开始测试，执行进度实时可见，跑完自动评估并生成报告。',
   steps: [
     { name: '选择用例', description: '创建或选择测试用例' },
-    { name: '选择资源', description: '同屏选择设备与 API' },
+    { name: '选择设备/API', description: '同屏选择设备与 API' },
     { name: '执行测试', description: '运行语音测试流程' },
     { name: '查看结果', description: '分析测试评估报告' },
   ],
