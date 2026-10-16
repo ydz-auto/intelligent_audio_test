@@ -1,13 +1,20 @@
 import {
+  AppWindow,
   ArrowLeftRight,
+  AudioLines,
+  AudioWaveform,
+  BrainCircuit,
   ClipboardList,
   DatabaseZap,
   FileBarChart,
   Gauge,
   Headphones,
+  Languages,
   Layers,
   ListChecks,
+  Mic,
   Music,
+  PhoneCall,
   ShieldCheck,
   Smartphone,
   Star,
@@ -23,14 +30,14 @@ export const HOME_BRAND_NAME = '智能语音测试平台'
 
 /** ① 品牌区 */
 export const HERO = {
-  badge: '端到端测试 · API 测试 · 多维评估',
+  badge: '语音测试 · 多维评估 · 多友商对比',
   titleLine1: '智能语音测试平台',
   titleLine2: '让每一次语音交互都可度量',
   // 负责人 2026-10-16 定稿：highlight 并入多友商横向对比核心价值（多友商同集同指标同时实测）
   highlight: '真实设备、真实链路、真实指标，多友商横向对比，看清真实用户体验。',
   // 负责人 2026-10-16 文案基准：HERO 描述以 V9.7.10 为最终基准（白话讲功能，无 marketing 腔）
   description:
-    '专业的端到端测试与 API 测试解决方案，支持多维度语音评估，提供完整的测试任务管理、报告分析功能。',
+    '一站式语音测试与评估解决方案，支持多维度语音评估，提供完整的测试任务管理、报告分析功能。',
   primaryAction: '立即开始测试',
   primaryActionAuthed: '进入工作台',
   secondaryAction: '查看文档',
@@ -41,9 +48,9 @@ export const HERO = {
     '可视化对比报告',
     '细粒度权限控制',
   ],
-  orbitCaption: '一个平台，覆盖端到端测试、API 测试与报告分析',
+  orbitCaption: '一个平台，覆盖用例、设备、执行、报告全流程',
   brandRow: ['Android 真机', '鸿蒙设备', '语音 API', '自动评估'],
-  brandRowLink: '选择你的测试类型',
+  brandRowLink: '开始一次测试',
 } as const
 
 /** 枢纽图四节点（四色取图表色板 chart-1~4，只上图标色） */
@@ -54,13 +61,13 @@ export const ORBIT_NODES: {
   position: string
 }[] = [
   {
-    name: '端到端测试',
-    icon: Smartphone,
+    name: '测试用例',
+    icon: ListChecks,
     color: 'text-chart-1',
     position: 'top-8 left-0 sm:left-4',
   },
   {
-    name: 'API 测试',
+    name: '被测 API',
     icon: ArrowLeftRight,
     color: 'text-chart-2',
     position: 'top-14 right-0 sm:right-4',
@@ -76,6 +83,62 @@ export const ORBIT_NODES: {
     icon: FileBarChart,
     color: 'text-chart-4',
     position: 'bottom-8 right-0 sm:right-4',
+  },
+]
+
+/**
+ * 算法能力 floating 节点（INT-421 负责人口径：四角节点卡与连线不变，算法能力项
+ * 不接 SVG 连线、不进四象限几何，浮置环绕）——虚线描边 + 半透明底弱连接感，
+ * 尺寸小于主节点卡，浮置于外圈环带（上下中/左右中）与四角节点间隙。
+ * 算法名以 08_算法配置/智能语音算法配置适配/智能语音算法配置化方案.md §2.3 种子数据
+ * + voice_llm改造方案.md 为准；「说话人分割」「通话」「会议纪要」无独立算法类型，
+ * 按应用场景叙事，不立独立算法条目。
+ */
+export const ORBIT_ALGORITHM_NODES: {
+  name: string
+  icon: LucideIcon
+  color: string
+  position: string
+  /** 旗舰强调：实时语音大模型（voice_llm），ring-1 ring-primary/30 */
+  flagship?: boolean
+}[] = [
+  {
+    name: '实时语音大模型',
+    icon: BrainCircuit,
+    color: 'text-chart-1',
+    position: 'top-0 left-1/2 -translate-x-1/2',
+    flagship: true,
+  },
+  {
+    name: '语音识别 ASR',
+    icon: Mic,
+    color: 'text-chart-2',
+    position: 'top-1/2 right-0 sm:right-2 -translate-y-1/2',
+  },
+  {
+    name: '语音合成 TTS',
+    icon: AudioLines,
+    color: 'text-chart-3',
+    position: 'top-1/2 left-0 sm:left-2 -translate-y-1/2',
+  },
+  {
+    name: '翻译',
+    icon: Languages,
+    color: 'text-chart-4',
+    position: 'bottom-0 left-1/2 -translate-x-1/2',
+  },
+  {
+    name: '声纹识别 · 说话人分割',
+    icon: AudioWaveform,
+    color: 'text-chart-5',
+    // 对角间隙（左上/右下）仅 lg+ 展示——小屏断点容纳不下六枚且不遮挡四角节点（03_首页.md §7 断言）
+    position: 'top-[24%] left-0 sm:left-2 hidden lg:flex',
+  },
+  {
+    name: '通话与会话场景',
+    icon: PhoneCall,
+    color: 'text-muted-foreground',
+    position: 'bottom-[24%] right-0 sm:right-2 hidden lg:flex',
   },
 ]
 
@@ -119,35 +182,35 @@ export const QUICK_START = {
   eyebrow: '01 / 开始测试',
   heading: '四步跑通一次语音测试。',
   // 负责人 2026-10-16 文案重写：流程不选算法（算法已全局化），subtext 直白讲真实流程
-  subtext: '选好用例和设备就能开始测试，执行进度实时可见，跑完自动评估并生成报告。',
+  subtext: '选好用例和设备/API 就能开始测试，执行进度实时可见，跑完自动评估并生成报告。',
   steps: [
     { name: '选择用例', description: '创建或选择测试用例' },
-    { name: '选择设备', description: '配置测试设备参数' },
+    { name: '选择资源', description: '同屏选择设备与 API' },
     { name: '执行测试', description: '运行语音测试流程' },
     { name: '查看结果', description: '分析测试评估报告' },
   ],
   cards: [
     {
-      key: 'e2e',
+      key: 'start',
       icon: Smartphone,
       color: 'bg-primary/10 text-primary',
-      title: '端到端测试',
+      title: '开始测试',
       description:
-        '在真实设备上执行端到端语音测试，支持多设备并行与实时进度监控。',
-      badges: ['多设备并行', '实时监控', '自动化流程'],
-      action: '开始端到端测试',
-      to: '/E2ETest',
+        '选择用例与设备/API，在同一流程内完成语音测试与报告生成，多设备并行实时监控。',
+      badges: ['设备+API 混合', '实时监控', '自动评估'],
+      action: '开始测试',
+      to: '/start-test',
     },
     {
-      key: 'api',
-      icon: ArrowLeftRight,
+      key: 'reports',
+      icon: FileBarChart,
       color: 'bg-secondary/10 text-secondary',
-      title: 'API 测试',
+      title: '报告中心',
       description:
-        '测试语音识别和翻译 API 的性能与准确率，支持批量测试与结果对比分析。',
-      badges: ['性能测试', '批量执行', '对比分析'],
-      action: '开始 API 测试',
-      to: '/APITest',
+        '单任务报告与跨任务对比报告，多格式导出，历史结果随时回溯与横向排名。',
+      badges: ['对比报告', '多格式导出', '历史回溯'],
+      action: '查看报告',
+      to: '/reports',
     },
   ],
 } as const
@@ -195,17 +258,17 @@ export const WHY_CHOOSE_US = {
     },
   ],
   footerLinks: [
-    { label: '查看测试类型', to: '#console-entries' },
+    { label: '开始一次测试', to: '/start-test' },
     { label: '阅读使用手册', to: '/user-guide' },
     { label: '了解权限体系', to: '/user-guide' },
   ],
 }
 
-/** ④ 工作台功能入口（八卡；bg-chart-N/12 语义软底，§3.5） */
+/** ④ 工作台功能入口（七卡；bg-chart-N/12 语义软底，§3.5；e2e/api 已并入开始测试） */
 export const CONSOLE_ENTRIES = {
   eyebrow: '02 / 功能入口',
   // 负责人 2026-10-16 文案基准：去「覆盖测试全生命周期」营销腔，白话讲功能模块
-  heading: '八个功能模块，覆盖从用例到报告的测试流程。',
+  heading: '七个功能模块，覆盖从用例到报告的测试流程。',
   consoleLink: '进入工作台',
   emptyText: '登录后可查看全部功能入口',
   footnote:
@@ -221,22 +284,13 @@ export const CONSOLE_ENTRIES = {
       color: 'bg-chart-1/12 text-chart-1 dark:bg-chart-1/20',
     },
     {
-      key: 'e2e',
+      key: 'start-test',
       icon: Smartphone,
-      name: '端到端测试',
-      summary: '真机执行四步流程，进度实时推送。',
-      to: '/E2ETest',
+      name: '开始测试',
+      summary: '选用例 + 设备/API 混合执行，进度实时推送，自动评估。',
+      to: '/start-test',
       permission: 'task:execute',
       color: 'bg-chart-2/12 text-chart-2 dark:bg-chart-2/20',
-    },
-    {
-      key: 'api',
-      icon: ArrowLeftRight,
-      name: 'API 测试',
-      summary: '批量测试语音 API，响应时间与成功率一目了然。',
-      to: '/APITest',
-      permission: 'task:execute',
-      color: 'bg-chart-3/12 text-chart-3 dark:bg-chart-3/20',
     },
     {
       key: 'testcases',
@@ -287,7 +341,112 @@ export const CONSOLE_ENTRIES = {
   ],
 }
 
-/** ⑤ 平台架构演示已删除（负责人 2026-10-16 文案重写：本平台不支持外部开发者接入，REST/SSE 开发者友好内容虚构；接入测试对象三对象卡+演示 Tabs 按 03_首页.md §3.6 待立项实施） */
+/** ⑤ 接入测试对象（03_首页.md §3.6，INT-420 负责人口径：被测设备/被测APP/被测API 三对象卡 + 接入演示三页签，示例值一律标注「示例数据」） */
+export const TEST_OBJECT_ACCESS = {
+  eyebrow: '03 / 接入测试对象',
+  heading: '把被测对象接进平台。',
+  subtext:
+    '被测设备、被测应用与被测 API 三类对象都可以接进平台——接入后统一调度、统一执行、统一评估，测试从一台真机或一个端点开始。',
+  objects: [
+    {
+      key: 'device',
+      icon: Smartphone,
+      name: '被测设备',
+      description: 'Android（ADB）/ 鸿蒙（HDC）真机接入，在线状态自动巡检。',
+      action: '去设备管理',
+      to: '/devices',
+    },
+    {
+      key: 'app',
+      icon: AppWindow,
+      name: '被测 APP',
+      description:
+        '在设备卡内安装 APK/HAP、启动/停止应用、清理应用数据——测试前先装载目标应用。',
+      action: '去装载应用',
+      to: '/devices',
+    },
+    {
+      key: 'api',
+      icon: ArrowLeftRight,
+      name: '被测 API',
+      description:
+        'HTTP / HTTP 流式 / Realtime WebSocket 三类端点统一管理，连接测试与健康分实时可见。',
+      action: '去配置 API',
+      to: '/APITest',
+    },
+  ],
+  guideLink: '查看接入指引',
+  demoNote:
+    '示例中的设备地址、序列号、包名与 API 值均为示例数据；实际接入以你的真实环境为准，完整说明见文档。',
+  /** 接入演示三页签（access-demo.tsx 消费；命令与响应对照 device_service/前端实测，值为示例数据） */
+  demoTabs: [
+    {
+      id: 'device-connect',
+      label: '设备连接',
+      group: 'ADB / HDC',
+      method: 'GET',
+      endpoint: 'adb devices -l',
+      code: `# Android 真机接入（示例数据）
+adb connect <设备IP>:5555
+adb devices -l
+# 鸿蒙真机接入（示例数据）
+hdc list targets
+hdc -t <设备序列号> shell power-shell wakeup`,
+    },
+    {
+      id: 'app-install',
+      label: '应用装卸',
+      group: '平台内操作',
+      method: '—',
+      endpoint: '/devices 设备管理',
+      code: `/devices 设备管理
+  └─ 设备卡 ▸ 操作菜单「安装应用」
+     └─ 输入服务器侧安装包路径（APK/HAP）→ 确认执行
+  └─ 设备卡 ▸ 操作菜单「卸载应用」
+     └─ 输入应用包名 → 确认执行
+
+# 底层命令（示例数据，device_operation_executor 实测）
+adb install -r -t <服务器侧APK路径>
+adb uninstall <应用包名>
+hdc -t <设备序列号> install -r <服务器侧HAP路径>
+hdc -t <设备序列号> shell bm uninstall -n <应用包名>`,
+    },
+    {
+      id: 'api-health',
+      label: 'API 连接测试',
+      group: 'TestAPIConnection',
+      method: 'POST',
+      endpoint: '/api/v1/apis/:id/health',
+      code: `POST /api/v1/apis/:id/health
+
+{
+  "code": 0,
+  "message": "连接测试完成",
+  "data": {
+    "id": 1,
+    "status": "online",
+    "health_score": 95,
+    "api_url_status": "true",
+    "endpoints_status": "true",
+    "status_code": 200,
+    "response_time": "120.50ms",
+    "error": null,
+    "warning": null
+  }
+}`,
+    },
+  ],
+  /** 尾行「常用入口」（03_首页.md §3.6 尾部：首次使用资产准备顺序） */
+  tail: {
+    heading: '常用入口',
+    note: '首次使用按 配置维度 → 配置设备 → 导入音频 的顺序准备资产。',
+    actions: [
+      { label: '配置播放设备', to: '/devices' },
+      { label: '配置评估维度', to: '/Evaluation' },
+      { label: '导入测试音频', to: '/audio-import' },
+    ],
+  },
+} as const
 
 /** ⑥ 数据与可靠性 */
 export const DATA_RELIABILITY = {
@@ -375,9 +534,9 @@ export const FAQ = {
     },
     {
       id: 'choose',
-      question: '端到端测试和 API 测试怎么选？',
+      question: '一次测试能同时覆盖设备和 API 吗？',
       answer:
-        '要验证整机语音链路（唤醒、识别、播报）选端到端测试；只验证识别/翻译服务的指标选 API 测试。两者可复用同一套用例与标签。',
+        '可以。开始测试中同一流程可同时选择设备与 API（混合执行），同一套用例可由物理设备、HTTP API、WebSocket API 链路消费。',
     },
     {
       id: 'debug',
@@ -406,7 +565,7 @@ export const CTA_BAND = {
 
 /** 页脚（§6 页脚文案；公开壳随导航栏卡定稿后合并） */
 export const FOOTER = {
-  description: '面向语音团队的端到端测试与 API 测试平台。',
+  description: '面向语音团队的一站式测试与评估平台。',
   copyright: (year: number) => `© ${year} 智能语音测试平台. 保留所有权利。`,
 } as const
 
