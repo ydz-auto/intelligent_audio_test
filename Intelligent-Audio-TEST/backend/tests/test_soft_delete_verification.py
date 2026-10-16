@@ -13,13 +13,14 @@
 运行（在 Intelligent-Audio-TEST 目录下，需本机 PostgreSQL 已启动）：
     python -m pytest backend/tests/test_soft_delete_verification.py -v
 """
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import text
 
-from backend.models.soft_delete import bulk_soft_delete
+from backend.models.soft_delete import bulk_soft_delete, include_deleted
 from backend.models.database import db
 from backend.models.models import TestCase, TestCaseGroup, Tag, TestCaseTag, Task, TaskCase
 from backend.services.execution.execution_engine import ExecutionEngine
@@ -340,3 +341,94 @@ def test_api_execution_of_soft_deleted_case_is_not_silent(app):
     assert execution_status == 'failed', \
         f'期望 execution_status=failed，实际 {execution_status!r}（停留在该状态会让任务无法收敛）'
     assert error_message, '期望 error_message 记录可见失败原因，实际为空（静默失败）'
+
+
+# ---------- 复验轮（commit 387917a6 之后）：从执行引擎真正 submit 的可调用对象上再验一遍 ----------
+
+def test_engine_submitted_callable_marks_case_failed_immediately(app):
+    """复验：走执行引擎真正提交给线程池的那个可调用对象，软删用例同样**立即**落 failed。
+
+    `execution_engine.py:1071` 提交的是 `self._execute_api_case`（引擎自己的包装方法，
+    `:1661-1720`），上一轮的锚点用例只覆盖到 executor 入口。这里补上引擎层，
+    并断言耗时远小于 `test_case_wait_time`（配置 3000 秒），确保是**显式失败**
+    而不是等超时兜底 —— 后者会给出笼统的「未处理的用例被标记为失败」。
+    """
+    group = _new_group()
+    case = _new_case(group)
+    task, tc_rel = _build_task_with_case(case)
+    task_id, tc_rel_id = task.id, tc_rel.id
+
+    case.deleted = True
+    db.session.commit()
+
+    started = time.monotonic()
+    ExecutionEngine()._execute_api_case(app, task_id, tc_rel_id)
+    elapsed = time.monotonic() - started
+
+    row = db.session.execute(text(
+        'SELECT status, execution_status, error_message, completed_at '
+        'FROM task_case_relations WHERE id = :i'
+    ), {'i': tc_rel_id}).fetchone()
+    status, execution_status, error_message, completed_at = row
+
+    assert (status, execution_status) == ('failed', 'failed'), row
+    assert error_message == '找不到测试用例', \
+        f'期望与 E2E 路径（base_executor.py:497）一致的措辞，实际 {error_message!r}'
+    assert completed_at is not None, '未写 completed_at，任务收敛统计会缺时间'
+    assert elapsed < 60, f'耗时 {elapsed:.1f}s，疑似仍在等超时兜底而非显式失败'
+
+
+def test_validate_contract_returns_visible_failure_instead_of_raising(app):
+    """复验：修复后 `_validate_and_get_data` 的契约 —— 取不到数据一律返回 (False, 可见原因)。
+
+    本次改动共动了三个 not-found 分支，但「找不到 TaskCase / 找不到任务」两个分支经
+    `execute_api_case` **不可达**：`_claim_tc_rel_running`（`api_executor.py:89-106`）已按
+    `tc_rel_id + task_id + execution_status in (pending, queued)` 预筛过一遍，且
+    `task_case_relations.task_id` 有指向 `test_tasks` 的外键、`Task` 未登记进全局过滤器
+    （软删任务仍取得到）⇒ 只能直调私有方法验契约本身，证明它不再抛异常。
+    """
+    executor = APIExecutor(ExecutionEngine())
+    with app.app_context():
+        ok, msg = executor._validate_and_get_data(app, 999999, 999999)
+    assert ok is False, f'期望 (False, 原因)，实际 ok={ok!r}'
+    assert msg and '找不到' in msg, f'期望可见原因，实际 {msg!r}'
+
+
+def test_import_revive_escape_hatch_reaches_soft_deleted_row(app):
+    """复验：验收标准 4 的「恢复类功能不被误伤」—— 导入按 ID 复活。
+
+    `testcase_controller.py:2746-2749` 的写法是
+    `with include_deleted(): existing_tc = db.session.get(TestCase, tc_id)`。
+    这里复现同一构造（同一 Session 形态、同一上下文管理器），确认软删行**能取到**、
+    且改回 `deleted = False` 后 `deleted_at` 被统一清空 —— 否则回收站/导入复活会
+    静默报「未找到ID对应的用例」，或复活后仍留着删除时间戳。
+
+    说明：不做真实 xlsx 上传。仓库既有端到端用例
+    `test_testcase_export_xlsx.py::test_import_update_restores_deleted_testcase` 覆盖了
+    接口层，但该文件因共享测试库残留行（`test_case_groups_pkey (id)=(group-1)`）整文件
+    6 failed，属已知环境问题，故本用例退到控制器实际使用的同一构造上验证。
+    """
+    group = _new_group()
+    case = _new_case(group)
+    db.session.commit()
+    case_id = case.id
+
+    case.deleted = True
+    db.session.commit()
+    db.session.expunge_all()
+
+    # 不带逃生舱：取不到（先证明过滤器确实在起作用）
+    assert db.session.get(TestCase, case_id) is None, '前置条件不成立：全局过滤没生效'
+
+    # 带逃生舱：取得到
+    with include_deleted():
+        revived = db.session.get(TestCase, case_id)
+    assert revived is not None, '逃生舱未放开全局过滤 → 导入复活会静默失败'
+
+    # 复活：deleted 置回 False，deleted_at 应由统一打标清空
+    revived.deleted = False
+    db.session.commit()
+
+    deleted, deleted_at, _operator = _raw(case_id)
+    assert deleted is False, '复活后 deleted 仍为 True'
+    assert deleted_at is None, f'复活后 deleted_at 未清空：{deleted_at!r}'
