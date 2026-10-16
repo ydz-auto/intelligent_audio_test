@@ -1,0 +1,414 @@
+/**
+ * 算法配置 API 桩（infrastructure 层；17_配置运维.md §11 组件树落位）。
+ * 红线④：全部返回 mock 常量（algorithm-config-mock），接线时替换为真实请求：
+ *   GET    /api/v1/algorithm/definitions            列表（全量返回，前端分页，§12-4）
+ *   GET    /api/v1/algorithm/definitions/{type}     详情（编辑/复制预填，§6.1）
+ *   POST   /api/v1/algorithm/definitions            新建（参数/映射/维度随定义聚合落库）
+ *   PUT    /api/v1/algorithm/definitions/{type}     编辑
+ *   DELETE /api/v1/algorithm/definitions/{type}     删除
+ *   GET    /api/v1/algorithm/groups                 分组列表
+ *   POST   /api/v1/algorithm/groups                 新建分组
+ *   PUT    /api/v1/algorithm/groups/{id}            编辑分组
+ *   DELETE /api/v1/algorithm/groups/{id}            删除分组
+ *   POST   /api/v1/algorithm/import                 导入（JSON 数组）
+ *   POST   /api/v1/algorithm/reload                 重载配置缓存
+ *   POST   /api/v1/algorithm/bulk-delete            批量删除
+ */
+import type {
+  AlgorithmDefinition,
+  AlgorithmGroup,
+  AlgorithmMappings,
+  CaseParam,
+  DeviceApiParam,
+  ParamMapping,
+  DimensionRelation,
+  ReferenceParam,
+} from '@/domain/models/algorithmConfig'
+import {
+  MOCK_ALGORITHM_DEFINITIONS,
+  MOCK_ALGORITHM_GROUPS,
+} from '../mock/algorithm-config-mock'
+
+/** 模拟网络延迟（视觉稿演示用；接线后删除） */
+function mockLatency<T>(value: T, ms = 180): Promise<T> {
+  return new Promise((resolve) => setTimeout(() => resolve(value), ms))
+}
+
+/** 生成新 id（mock 阶段自增；接线后走后端自增） */
+let nextId = 1000
+let nextGroupId = 500
+
+function freshId(): number {
+  nextId += 1
+  return nextId
+}
+
+/** mock 内存库（页面内增删改操作在运行时可变） */
+let definitionsStore: AlgorithmDefinition[] = [...MOCK_ALGORITHM_DEFINITIONS]
+let groupsStore: AlgorithmGroup[] = [...MOCK_ALGORITHM_GROUPS]
+
+function syncGroupCounts(): void {
+  groupsStore = groupsStore.map((group) => ({
+    ...group,
+    algorithmCount: definitionsStore.filter(
+      (d) => d.groupId === group.id
+    ).length,
+  }))
+}
+
+/** 算法列表全量（§3.2 现接口无分页参数，前端分页） */
+export async function fetchAlgorithmDefinitions(): Promise<AlgorithmDefinition[]> {
+  // TODO(API 接线): GET /api/v1/algorithm/definitions
+  return mockLatency(definitionsStore)
+}
+
+/** 算法详情（§6.1 编辑/复制预填） */
+export async function fetchAlgorithmDetail(
+  type: string
+): Promise<AlgorithmDefinition | undefined> {
+  // TODO(API 接线): GET /api/v1/algorithm/definitions/{type}
+  return mockLatency(definitionsStore.find((d) => d.type === type))
+}
+
+/** 分组列表（facet 选项 + §7.1 分组管理 + 编辑 Sheet 所属分组 Select 共用） */
+export async function fetchAlgorithmGroups(): Promise<AlgorithmGroup[]> {
+  // TODO(API 接线): GET /api/v1/algorithm/groups
+  syncGroupCounts()
+  return mockLatency(groupsStore)
+}
+
+export type SaveAlgorithmInput = {
+  id?: number
+  type: string
+  name: string
+  groupId: number | null
+  displayOrder: number
+  status: 'online' | 'offline'
+  description: string
+  deviceParams: Array<Record<string, unknown>>
+  apiParams: Array<Record<string, unknown>>
+  caseParams: Array<Record<string, unknown>>
+  referenceParams: Array<Record<string, unknown>>
+  mappings: { device: unknown[]; api: unknown[]; evaluation: unknown[] }
+  associatedDimensions: Array<Record<string, unknown>>
+}
+
+/** 表单行 → 域模型（mock 阶段补行级 id；接线后走后端字段契约） */
+function rowsToDomain(
+  rows: Array<Record<string, unknown>>,
+  kind: 'device' | 'api' | 'case' | 'reference'
+): unknown[] {
+  let paramCounter = 20000
+  return rows.map((row) => {
+    paramCounter += 1
+    const base: Record<string, unknown> = { id: paramCounter }
+    if (kind === 'device' || kind === 'api') {
+      base.paramCode = row.paramCode
+      base.paramName = row.paramName || null
+      base.label = row.paramName || null
+      base.paramType = row.paramType
+      base.direction = row.direction
+      base.required = Boolean(row.required)
+      base.defaultValue = null
+      base.helpText = row.helpText || null
+      base.uiOrder = paramCounter
+      base.hidden = false
+    } else if (kind === 'case') {
+      base.paramCode = row.paramCode
+      base.paramName = row.paramName || null
+      base.label = row.paramName || null
+      base.paramType = row.paramType
+      base.required = Boolean(row.required)
+      base.defaultValue = row.defaultValue || null
+      base.helpText = row.helpText || null
+      base.uiOrder = paramCounter
+      base.hidden = false
+      base.scope = row.scope ?? 'common'
+      base.minValue = row.minValue ? Number(row.minValue) : null
+      base.maxValue = row.maxValue ? Number(row.maxValue) : null
+      base.step = row.step ? Number(row.step) : null
+      base.unit = row.unit || null
+      base.annotationCode = row.annotationCode || null
+      base.fieldPath = row.fieldPath || null
+    } else {
+      base.code = row.code
+      base.name = row.name
+      base.type = row.type
+      base.annotationCode = row.annotationCode || null
+      base.annotationFormat = row.annotationFormat || null
+      base.fieldPath = row.fieldPath || null
+      base.mergeMode = row.mergeMode || null
+      base.helpText = row.helpText || null
+    }
+    return base
+  })
+}
+
+/** 映射行 → 域模型 */
+function mappingsToDomain(mappings: {
+  device: unknown[]
+  api: unknown[]
+  evaluation: unknown[]
+}): AlgorithmMappings {
+  let counter = 30000
+  const map = (rows: unknown[]): ParamMapping[] =>
+    rows.map((row) => {
+      counter += 1
+      const r = row as Record<string, unknown>
+      return {
+        id: counter,
+        sourceParam: String(r.sourceParam ?? ''),
+        targetParam: String(r.targetParam ?? ''),
+        transformType: (r.transformType ?? 'none') as ParamMapping['transformType'],
+      }
+    })
+  return {
+    device: map(mappings.device),
+    api: map(mappings.api),
+    evaluation: map(mappings.evaluation),
+  }
+}
+
+/** 维度关联行 → 域模型 */
+function dimensionsToDomain(
+  rows: Array<Record<string, unknown>>
+): DimensionRelation[] {
+  let counter = 40000
+  return rows.map((row) => {
+    counter += 1
+    return {
+      id: counter,
+      dimensionId: Number(row.dimensionId),
+      dimensionName: String(row.dimensionName ?? ''),
+      weight: row.weight ? Number(row.weight) : 1,
+      isDefault: Boolean(row.isDefault),
+    }
+  })
+}
+
+/** 新建算法（§6.1 create；聚合提交） */
+export async function createAlgorithm(
+  input: SaveAlgorithmInput
+): Promise<AlgorithmDefinition> {
+  // TODO(API 接线): POST /api/v1/algorithm/definitions
+  const group = groupsStore.find((g) => g.id === input.groupId)
+  const definition: AlgorithmDefinition = {
+    id: input.id ?? freshId(),
+    type: input.type,
+    name: input.name,
+    groupId: input.groupId,
+    groupName: group?.name ?? null,
+    category: null,
+    description: input.description || null,
+    status: input.status,
+    icon: null,
+    displayOrder: input.displayOrder,
+    deviceParams: rowsToDomain(input.deviceParams, 'device') as DeviceApiParam[],
+    apiParams: rowsToDomain(input.apiParams, 'api') as DeviceApiParam[],
+    caseParams: rowsToDomain(input.caseParams, 'case') as CaseParam[],
+    referenceParams: rowsToDomain(input.referenceParams, 'reference') as ReferenceParam[],
+    mappings: mappingsToDomain(input.mappings),
+    associatedDimensions: dimensionsToDomain(input.associatedDimensions),
+    caseCount: 0,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }
+  definitionsStore = [...definitionsStore, definition]
+  syncGroupCounts()
+  return mockLatency(definition, 120)
+}
+
+/** 编辑算法（§6.1 edit；聚合提交） */
+export async function updateAlgorithm(
+  type: string,
+  input: SaveAlgorithmInput
+): Promise<AlgorithmDefinition> {
+  // TODO(API 接线): PUT /api/v1/algorithm/definitions/{type}
+  const existing = definitionsStore.find((d) => d.type === type)
+  const group = groupsStore.find((g) => g.id === input.groupId)
+  const updated: AlgorithmDefinition = existing
+    ? {
+        ...existing,
+        name: input.name,
+        groupId: input.groupId,
+        groupName: group?.name ?? null,
+        description: input.description || null,
+        status: input.status,
+        displayOrder: input.displayOrder,
+        deviceParams: rowsToDomain(input.deviceParams, 'device') as DeviceApiParam[],
+        apiParams: rowsToDomain(input.apiParams, 'api') as DeviceApiParam[],
+        caseParams: rowsToDomain(input.caseParams, 'case') as CaseParam[],
+        referenceParams: rowsToDomain(input.referenceParams, 'reference') as ReferenceParam[],
+        mappings: mappingsToDomain(input.mappings),
+        associatedDimensions: dimensionsToDomain(input.associatedDimensions),
+        updatedAt: new Date().toISOString(),
+      }
+    : {
+        id: freshId(),
+        type,
+        name: input.name,
+        groupId: input.groupId,
+        groupName: group?.name ?? null,
+        category: null,
+        description: input.description || null,
+        status: input.status,
+        icon: null,
+        displayOrder: input.displayOrder,
+        deviceParams: rowsToDomain(input.deviceParams, 'device') as DeviceApiParam[],
+        apiParams: rowsToDomain(input.apiParams, 'api') as DeviceApiParam[],
+        caseParams: rowsToDomain(input.caseParams, 'case') as CaseParam[],
+        referenceParams: rowsToDomain(input.referenceParams, 'reference') as ReferenceParam[],
+        mappings: mappingsToDomain(input.mappings),
+        associatedDimensions: dimensionsToDomain(input.associatedDimensions),
+        caseCount: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+  definitionsStore = definitionsStore.map((d) =>
+    d.type === type ? updated : d
+  )
+  syncGroupCounts()
+  return mockLatency(updated, 120)
+}
+
+/** 删除算法（§7.5；后端引用中算法返回 400/409） */
+export async function deleteAlgorithm(
+  type: string
+): Promise<{ success: boolean; message?: string }> {
+  // TODO(API 接线): DELETE /api/v1/algorithm/definitions/{type}
+  const target = definitionsStore.find((d) => d.type === type)
+  if (!target) return mockLatency({ success: false, message: '算法不存在' }, 80)
+  if (target.caseCount > 0) {
+    return mockLatency(
+      { success: false, message: '该算法已被测试任务/用例引用，无法删除' },
+      80
+    )
+  }
+  definitionsStore = definitionsStore.filter((d) => d.type !== type)
+  syncGroupCounts()
+  return mockLatency({ success: true }, 80)
+}
+
+/** 批量删除（§7.8；POST /algorithm/bulk-delete） */
+export async function bulkDeleteAlgorithms(types: string[]): Promise<{
+  successCount: number
+  failedCount: number
+}> {
+  // TODO(API 接线): POST /api/v1/algorithm/bulk-delete
+  let successCount = 0
+  let failedCount = 0
+  for (const type of types) {
+    const target = definitionsStore.find((d) => d.type === type)
+    if (target && target.caseCount === 0) {
+      definitionsStore = definitionsStore.filter((d) => d.type !== type)
+      successCount += 1
+    } else {
+      failedCount += 1
+    }
+  }
+  syncGroupCounts()
+  return mockLatency({ successCount, failedCount }, 100)
+}
+
+/** 重载配置（§7.7；POST /algorithm/reload） */
+export async function reloadAlgorithmConfig(): Promise<{
+  success: boolean
+  reloadTime: string
+}> {
+  // TODO(API 接线): POST /api/v1/algorithm/reload
+  return mockLatency(
+    { success: true, reloadTime: new Date().toISOString() },
+    260
+  )
+}
+
+/** 导入算法（§7.6；POST /algorithm/import） */
+export async function importAlgorithms(
+  _algorithms: unknown[]
+): Promise<{ importedCount: number }> {
+  // TODO(API 接线): POST /api/v1/algorithm/import
+  return mockLatency({ importedCount: 1 }, 260)
+}
+
+/* ───────────────────────── 分组 CRUD（§7.1） ───────────────────────── */
+
+export type SaveGroupInput = {
+  name: string
+  description: string
+  icon: string
+  displayOrder: number
+}
+
+/** 新建分组 */
+export async function createAlgorithmGroup(
+  input: SaveGroupInput
+): Promise<AlgorithmGroup> {
+  // TODO(API 接线): POST /api/v1/algorithm/groups
+  const group: AlgorithmGroup = {
+    id: freshGroupId(),
+    name: input.name,
+    description: input.description || null,
+    icon: input.icon || null,
+    displayOrder: input.displayOrder,
+    algorithmCount: 0,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }
+  groupsStore = [...groupsStore, group]
+  return mockLatency(group, 100)
+}
+
+/** 编辑分组 */
+export async function updateAlgorithmGroup(
+  id: number,
+  input: SaveGroupInput
+): Promise<AlgorithmGroup> {
+  // TODO(API 接线): PUT /api/v1/algorithm/groups/{id}
+  const existing = groupsStore.find((g) => g.id === id)
+  if (!existing) return mockLatency({ ...(input as unknown as AlgorithmGroup) }, 80)
+  const updated: AlgorithmGroup = {
+    ...existing,
+    name: input.name,
+    description: input.description || null,
+    icon: input.icon || null,
+    displayOrder: input.displayOrder,
+    updatedAt: new Date().toISOString(),
+  }
+  groupsStore = groupsStore.map((g) => (g.id === id ? updated : g))
+  return mockLatency(updated, 100)
+}
+
+/** 删除分组（含算法时拦截；算法变为未分组） */
+export async function deleteAlgorithmGroup(
+  id: number
+): Promise<{ success: boolean; message?: string }> {
+  // TODO(API 接线): DELETE /api/v1/algorithm/groups/{id}
+  const group = groupsStore.find((g) => g.id === id)
+  if (!group) return mockLatency({ success: false, message: '分组不存在' }, 80)
+  if (group.algorithmCount > 0) {
+    return mockLatency(
+      { success: false, message: `分组「${group.name}」包含 ${group.algorithmCount} 个算法，请先迁移算法` },
+      80
+    )
+  }
+  groupsStore = groupsStore.filter((g) => g.id !== id)
+  return mockLatency({ success: true }, 80)
+}
+
+function freshGroupId(): number {
+  nextGroupId += 1
+  return nextGroupId
+}
+
+/** 供测试清理内存库（vitest 用例内独立初始化） */
+export function __resetAlgorithmMock(): void {
+  definitionsStore = [...MOCK_ALGORITHM_DEFINITIONS]
+  groupsStore = [...MOCK_ALGORITHM_GROUPS]
+  nextId = 1000
+  nextGroupId = 500
+}
+
+/** 当前 mock 内存库（供 feature 内读取导出/复制用；接线后删除） */
+export function peekAlgorithmDefinitions(): AlgorithmDefinition[] {
+  return definitionsStore
+}
