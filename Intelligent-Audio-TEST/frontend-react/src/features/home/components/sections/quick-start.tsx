@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils'
 import { QUICK_START } from '../../constants'
 
 /**
- * ② 从这里开始（03_首页.md §3.3）：五步流程条 + 双入口卡。
+ * ② 从这里开始（03_首页.md §3.3）：四步流程条 + 双入口卡。
  */
 export function QuickStartSection({ className }: { className?: string }) {
   return (
@@ -52,11 +52,6 @@ export function QuickStartSection({ className }: { className?: string }) {
                     <p className='text-sm font-medium'>{step.name}</p>
                     <p className='text-muted-foreground text-xs'>
                       {step.description}
-                      {i === 0 && (
-                        <span className='ms-1 hidden text-xs lg:inline'>
-                          （{QUICK_START.algorithmNote}）
-                        </span>
-                      )}
                     </p>
                   </div>
                 </div>

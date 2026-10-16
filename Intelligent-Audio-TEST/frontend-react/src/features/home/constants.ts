@@ -116,12 +116,10 @@ export const STATS_BAR = {
 /** ② 从这里开始 */
 export const QUICK_START = {
   eyebrow: '01 / 开始测试',
-  heading: '五步跑通一次语音测试。',
-  subtext:
-    '从选择算法到查看报告，平台把流程拆成五步——每一步都有页面承接。',
-  algorithmNote: '全局算法可在导航栏右上角一次切换',
+  heading: '四步跑通一次语音测试。',
+  // 负责人 2026-10-16 文案重写：流程不选算法（算法已全局化），subtext 直白讲真实流程
+  subtext: '选好用例和设备就能开始测试，执行进度实时可见，跑完自动评估并生成报告。',
   steps: [
-    { name: '选择算法', description: '配置测试算法参数' },
     { name: '选择用例', description: '创建或选择测试用例' },
     { name: '选择设备', description: '配置测试设备参数' },
     { name: '执行测试', description: '运行语音测试流程' },
@@ -287,59 +285,7 @@ export const CONSOLE_ENTRIES = {
   ],
 }
 
-/** ⑤ 平台架构演示（终端示例逐字取自 doc/接口文档/07_任务管理.md §7.11 与 sse_bp.py 实测格式） */
-export const PLATFORM_DEMO = {
-  eyebrow: '03 / 开发者友好',
-  heading: '工具照常用，平台接进来。',
-  description:
-    '测试执行、进度查询、日志订阅全部走 REST 与 SSE 标准接口——脚本化集成与平台操作同样简单。',
-  checks: ['REST API 全域覆盖', 'SSE 实时事件推送', '接口文档站内可读'],
-  apiManualLink: '阅读 API 手册',
-  terminalFooter:
-    '示例中的地址与任务 ID 请替换为你的实际环境；完整错误码见 API 手册。',
-  commonEntries: {
-    title: '常用入口',
-    description: '首次使用按 配置维度 → 配置设备 → 导入音频 的顺序准备资产。',
-    buttons: [
-      { label: '配置播放设备', to: '/devices' },
-      { label: '配置评估维度', to: '/Evaluation' },
-      { label: '导入测试音频', to: '/audio-import' },
-    ],
-  },
-}
-
-export const PROGRESS_EXAMPLE = {
-  id: 'progress',
-  label: '进度轮询',
-  method: 'GET',
-  endpoint: '/api/v1/tasks/{id}/progress',
-  code: `curl "/api/v1/tasks/{id}/progress" \\
-  -H "Authorization: Bearer $TOKEN"
-
-# 响应（示例数据）
-{
-  "total": 100,
-  "completed": 50,
-  "failed": 5,
-  "progress": 50,
-  "current_case": "case_001",
-  "status": "running"
-}`,
-}
-
-export const SSE_EXAMPLE = {
-  id: 'sse',
-  label: '实时事件',
-  method: 'GET',
-  endpoint: '/api/v1/sse/events',
-  code: `curl -N "/api/v1/sse/events" \\
-  -H "Authorization: Bearer $TOKEN" \\
-  -H "Accept: text/event-stream"
-
-# 事件流（示例数据）
-event: task_progress
-data: {"task_id":1,"progress":50,"status":"running"}`,
-}
+/** ⑤ 平台架构演示已删除（负责人 2026-10-16 文案重写：本平台不支持外部开发者接入，REST/SSE 开发者友好内容虚构；接入测试对象三对象卡+演示 Tabs 按 03_首页.md §3.6 待立项实施） */
 
 /** ⑥ 数据与可靠性 */
 export const DATA_RELIABILITY = {
@@ -369,17 +315,18 @@ export const DATA_RELIABILITY = {
 /** ⑦ 部署与数据边界 */
 export const DEPLOYMENT_TRUST = {
   eyebrow: '05 / 部署与边界',
-  heading: '数据留在本地，权限各归其位。',
+  // 负责人 2026-10-16 文案重写：去 newAPI 腔，白话讲本地部署 + RBAC 五角色 + 操作审计日志
+  heading: '本地部署，数据与权限自己掌控。',
   subtext:
-    '面向企业内网的部署形态：数据不出域，权限有边界，操作有痕迹。',
+    '平台部署在你的内网环境：测试数据、音频库与报告都留在本地；账号按管理员、测试工程师、算法工程师、设备管理员、游客五类角色划分权限；登录、任务执行与配置变更都记录审计日志。',
   commitments: [
     {
       title: '本地化部署',
-      description: '平台与全部测试数据运行在内网环境，音频库与报告不出域。',
+      description: '平台与测试数据运行在你的内网环境，音频库与报告存在本地。',
     },
     {
-      title: '账号与角色隔离',
-      description: 'RBAC 五角色 + 权限串逐页逐按钮控制可见与可操作。',
+      title: '账号与角色权限',
+      description: '五类角色各管各的权限，页面与操作按权限串逐项控制。',
     },
     {
       title: '操作留痕',
@@ -416,8 +363,7 @@ export const FAQ = {
     {
       id: 'code',
       question: '需要写代码才能用吗？',
-      answer:
-        '不需要。在页面上完成 选择用例 → 选择设备 → 执行 的三步操作即可发起测试；开发同学也可以走 REST API 与 SSE 集成（见 API 手册）。',
+      answer: '不需要。在页面上完成 选择用例 → 选择设备 → 执行 的三步操作即可发起测试。',
     },
     {
       id: 'prepare',
