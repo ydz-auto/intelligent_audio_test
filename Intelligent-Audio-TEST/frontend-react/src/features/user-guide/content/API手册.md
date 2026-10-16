@@ -52,7 +52,7 @@ curl -X POST "{{API_BASE_URL}}/auth/login" \
 }
 ```
 
-> 说明：登录密码按 RSA 公钥加密传输——先调 `GET {{API_BASE_URL}}/auth/login/encryption-key` 获取公钥与公钥 ID；加密开关开启时仅接受 `password_encrypted` / `encryption_key_id`。凭证错误统一回 401，以错误码区分加密载荷无效与凭证错误。
+> 说明：登录密码按 RSA 公钥加密传输——先调 `GET {{API_BASE_URL}}/auth/login/encryption-key` 获取公钥与公钥 ID；加密开关开启时仅接受 `password_encrypted` / `encryption_key_id`。凭证错误统一回 401，以错误码区分：加密载荷无效回 105（AUTH_ENCRYPTION_INVALID），凭证错误回 106（AUTH_CREDENTIALS_INVALID）。
 
 ### 刷新与登出
 
@@ -96,17 +96,29 @@ curl -X POST "{{API_BASE_URL}}/auth/logout" \
 | 错误码 | 枚举值 | 描述 |
 | --- | --- | --- |
 | 0 | SUCCESS | 操作成功 |
-| 101 | PARAM_INVALID | 参数校验失败（格式、类型或必填项缺失） |
-| 102 | UNSUPPORTED_FORMAT | 不支持的文件格式 |
-| 103 | RESOURCE_READ_FAIL | 文件或资源读取失败 |
-| 201 | RESOURCE_LOCKED | 资源（设备、任务）已被锁定或占用 |
-| 202 | NOT_FOUND | 目标对象不存在 |
-| 203 | INVALID_STATE | 当前状态下无法执行该操作 |
-| 204 | ENGINE_EXCEPTION | 转换引擎或评分引擎执行异常 |
-| 205 | REMOTE_FAIL | 远程资源下载或调用失败 |
+| 100 | INVALID_PARAMS | 参数校验失败（格式、类型或必填项缺失） |
+| 101 | MISSING_PARAMS | 缺少必填参数 |
+| 102 | INVALID_TYPE | 参数类型错误 |
+| 103 | UNAUTHORIZED | 未认证或凭证无效 |
+| 104 | FORBIDDEN | 权限不足 |
+| 105 | AUTH_ENCRYPTION_INVALID | 登录加密载荷无效 |
+| 106 | AUTH_CREDENTIALS_INVALID | 登录凭证错误 |
+| 200 | BUSINESS_ERROR | 通用业务错误 |
+| 201 | NOT_FOUND | 目标对象不存在 |
+| 202 | ALREADY_EXISTS | 对象已存在（重复创建） |
+| 203 | OPERATION_FAILED | 操作执行失败 |
+| 204 | CONFLICT | 状态冲突（当前状态不允许该操作） |
+| 205 | TASK_ALREADY_RUNNING | 任务已在运行中 |
+| 206 | TASK_NOT_FOUND | 任务不存在 |
+| 210 | CALIBRATION_FAILED | 校准失败 |
+| 220 | TASK_EXECUTION_ERROR | 任务执行异常 |
+| 300 | SYSTEM_ERROR | 通用系统错误 |
 | 301 | DATABASE_ERROR | 数据库操作异常 |
-| 302 | HARDWARE_TIMEOUT | 硬件设备响应超时 |
-| 303 | SYSTEM_BUSY | 系统资源耗尽或正在处理高优先级任务 |
+| 302 | FILE_IO_ERROR | 文件读写错误 |
+| 303 | NETWORK_ERROR | 网络错误 |
+| 304 | INTERNAL_SERVER_ERROR | 服务器内部错误 |
+| 305 | INTERNAL_ERROR | 内部错误 |
+| 306 | EXTERNAL_SERVICE_ERROR | 外部服务调用失败 |
 
 ## 任务接口
 
@@ -197,7 +209,7 @@ curl -X POST "{{API_BASE_URL}}/testcases" \
 
 ## 实时推送
 
-- **SSE 事件流**：`GET /api/v1/sse`（需 `sse:read` 权限），订阅 EventBus 通道实时推送日志/进度/报告事件。
+- **SSE 事件流**：`GET /api/v1/sse/events`（需 `sse:read` 权限），订阅 EventBus 通道实时推送日志/进度/报告事件。
 - **WebSocket 日志**：`/ws/logs`（socket.io），实时推送日志；亦支持轮询 `POST /api/v1/logs/refresh` 兜底。
 
 ## 错误处理与重试
@@ -205,7 +217,7 @@ curl -X POST "{{API_BASE_URL}}/testcases" \
 - **429/5xx**：使用指数退避重试（如 1s、2s、4s…，最多 5 次），避免打满服务端。
 - **幂等与重复提交**：创建类请求重复提交可能生成重复资源；以响应 `code` 判断是否成功，提交前确认任务/资源状态。
 - **流式断开**：SSE/WebSocket 连接断开后应自动重连，并注意消息去重。
-- **业务错误码**：201 资源锁定时等待释放后重试；202 确认目标存在；203 确认状态允许该操作；303 稍后重试或降低并发。
+- **业务错误码**：201 确认目标存在；202 重复创建时确认对象是否已存在；204 确认状态允许该操作；303 检查网络连通性后重试。
 
 ## 常见问题
 
@@ -213,10 +225,10 @@ curl -X POST "{{API_BASE_URL}}/testcases" \
 | --- | --- | --- |
 | 401 | 令牌缺失或过期 | 重新登录或刷新令牌 |
 | 403 | 权限不足 | 确认角色权限（`docs/RBAC权限划分.md`） |
-| 202 | 目标不存在 | 检查用例/设备/任务 ID |
-| 203 | 状态冲突 | 确认任务当前状态允许该操作 |
-| 302 | 硬件超时 | 检查设备连接与占用 |
-| 303 | 系统繁忙 | 稍后重试或降低并发 |
+| 201 | 目标不存在 | 检查用例/设备/任务 ID |
+| 204 | 状态冲突 | 确认任务当前状态允许该操作 |
+| 302 | 文件读写错误 | 检查文件路径、磁盘空间与访问权限 |
+| 303 | 网络错误 | 检查网络连通性后重试 |
 
 ## Windows 与调用环境
 

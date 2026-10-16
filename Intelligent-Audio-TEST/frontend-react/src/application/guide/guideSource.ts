@@ -2,6 +2,15 @@ import { lexer } from 'marked'
 
 import type { GuideEntry } from '@/domain/models/guide'
 
+/** 锚点解码：非法 `%` 转义时原样返回，避免 URIError 使目录提取崩溃。 */
+function safeDecodeURIComponent(encoded: string): string {
+  try {
+    return decodeURIComponent(encoded)
+  } catch {
+    return encoded
+  }
+}
+
 /** 手册正文 → 目录条目（07_文档.md §7 application/guide/guideSource.ts）。
  * 目录提取正则照搬 newAPI guide-document.tsx：`## 目录` 段 + `- [标题](#锚点)` 列表；
  * 每条目按全文标题层级决定是否三级以下缩进（depth>3 → 缩进展示）。 */
@@ -16,7 +25,7 @@ export function extractTocEntries(content: string): GuideEntry[] {
     directory.matchAll(/^- \[([^\]]+)\]\(#([^)]+)\)/gm),
     (match) => ({
       title: match[1],
-      id: decodeURIComponent(match[2]),
+      id: safeDecodeURIComponent(match[2]),
       nested: (headingDepths.get(match[1]) ?? 2) > 3,
     })
   )
