@@ -6,14 +6,17 @@
 """
 import json
 import logging
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+from shared.models.common_enums import Visibility
 
 logger = logging.getLogger(__name__)
 
 # 维度参数映射的默认算法类型（与 evaluation_repository_abc 的 gRPC 契约默认值保持一致）
 DEFAULT_ALGORITHM_TYPE = 'voice_llm'
 
-# Dimension 模型可赋值字段
+# Dimension 模型可赋值字段（不含 visibility——可见性修改走专用 share 端点 INT-466，
+# 更新 payload 不得改可见性；新建可见性在 create_dimension 显式设置）
 DIMENSION_MODEL_FIELDS = [
     'name', 'keywords', 'description', 'category_id', 'api_url',
     'api_endpoints', 'type', 'result_type', 'result_min',
@@ -39,6 +42,43 @@ def command_ok(message: str, data: Any = None, code: int = 200) -> Dict[str, Any
 def command_error(message: str, code: int = 500) -> Dict[str, Any]:
     """构造失败响应 dict"""
     return {'success': False, 'message': message, 'code': code}
+
+
+def parse_visibility(value) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+    """解析/校验 visibility（INT-423）：'shared'/'private'，空值默认 shared。
+
+    Returns:
+        (值, 错误响应 dict)：校验通过时错误为 None。
+    """
+    if value is None or value == '':
+        return Visibility.SHARED.value, None
+    if value in (Visibility.SHARED.value, Visibility.PRIVATE.value):
+        return value, None
+    return None, command_error('visibility 仅支持 shared/private', code=400)
+
+
+def check_visible_or_error(owner, vis) -> Optional[Dict[str, Any]]:
+    """命令侧可见性校验（INT-423）：私有资源非 owner 写操作返回 403 响应。
+
+    共享 / owner / admin 放行返回 None；user_id/is_admin 取 x-user-id context
+    （get_current_user_id / get_current_user_is_admin），禁止从业务表反查。
+    """
+    from shared.infrastructure.user_context import (
+        get_current_user_id,
+        get_current_user_is_admin,
+    )
+    from shared.infrastructure.visibility_filter import (
+        VisibilityDenied,
+        check_visible,
+    )
+
+    try:
+        check_visible(
+            owner, vis,
+            get_current_user_id(), get_current_user_is_admin())
+    except VisibilityDenied:
+        return command_error('资源不存在或无权访问', code=403)
+    return None
 
 
 def parse_json_field(value: Any, error_message: str) -> Tuple[bool, Any]:

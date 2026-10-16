@@ -10,6 +10,15 @@ from __future__ import annotations
 
 from typing import List, Optional
 
+from shared.infrastructure.user_context import (
+    get_current_user_id,
+    get_current_user_is_admin,
+)
+from shared.infrastructure.visibility_filter import (
+    VisibilityDenied,
+    check_visible,
+    visible_condition,
+)
 from shared.models.database import get_db_session
 from shared.utils.db_session import with_session
 
@@ -28,11 +37,18 @@ class ReportQueryMixin:
         """按 ID 加载报告聚合根（不含子实体集合）。
 
         Returns:
-            ReportAggregate 或 None（报告不存在或已软删除）。
+            ReportAggregate 或 None（报告不存在 / 已软删除 / 私有非 owner 不可见）。
         """
         session = get_db_session()
         po = session.get(self.PO_CLASS, report_id)
         if po is None or po.deleted:
+            return None
+        # INT-423 行级可见性：私有报告仅 owner/admin 可见，越权按不存在处理（防探测）
+        try:
+            check_visible(
+                po.created_by_user_id, po.visibility,
+                get_current_user_id(), get_current_user_is_admin())
+        except VisibilityDenied:
             return None
         return _report_po_to_entity(po)
 
@@ -50,6 +66,13 @@ class ReportQueryMixin:
             .first()
         )
         if po is None:
+            return None
+        # INT-423 行级可见性：私有报告仅 owner/admin 可见，越权按不存在处理
+        try:
+            check_visible(
+                po.created_by_user_id, po.visibility,
+                get_current_user_id(), get_current_user_is_admin())
+        except VisibilityDenied:
             return None
         return _report_po_to_entity(po)
 
@@ -87,6 +110,13 @@ class ReportQueryMixin:
         session = get_db_session()
         query = session.query(self.PO_CLASS).filter(
             self.PO_CLASS.deleted == (True if deleted else False))  # noqa: E712
+        # INT-423 行级过滤：admin 全量 / 共享全可见 / 私有仅 owner（user_id 取 x-user-id context）
+        query = query.filter(visible_condition(
+            self.PO_CLASS.created_by_user_id,
+            self.PO_CLASS.visibility,
+            get_current_user_id(),
+            get_current_user_is_admin(),
+        ))
         if status:
             query = query.filter(self.PO_CLASS.status == status)
         if report_types:
@@ -134,6 +164,13 @@ class ReportQueryMixin:
         session = get_db_session()
         query = session.query(self.PO_CLASS).filter(
             self.PO_CLASS.deleted == (True if deleted else False))  # noqa: E712
+        # INT-423 行级过滤：与 list_reports 同一套可见性口径（分页 total 对齐）
+        query = query.filter(visible_condition(
+            self.PO_CLASS.created_by_user_id,
+            self.PO_CLASS.visibility,
+            get_current_user_id(),
+            get_current_user_is_admin(),
+        ))
         if status:
             query = query.filter(self.PO_CLASS.status == status)
         if report_types:
@@ -151,6 +188,44 @@ class ReportQueryMixin:
                                  .correlate(self.PO_CLASS)
                                  .exists())
         return query.count()
+
+    # ---- 可见性辅助（INT-423，供命令侧 check_visible / 批量 filter_visible_owners） ----
+
+    @with_session
+    def get_report_visibility_info(self, report_id: int) -> Optional[tuple]:
+        """按 ID 查询报告可见性三元信息（未删除行）。
+
+        Returns:
+            (created_by_user_id, visibility) 或 None（报告不存在/已软删除）。
+            命令侧（update/delete）先取本信息做 check_visible：私有非 owner
+            抛 VisibilityDenied（网关映射 403），区别于不存在（返回 False → 404）。
+        """
+        session = get_db_session()
+        row = (
+            session.query(self.PO_CLASS.created_by_user_id, self.PO_CLASS.visibility)
+            .filter(self.PO_CLASS.id == report_id,
+                    self.PO_CLASS.deleted == False)  # noqa: E712
+            .first()
+        )
+        return (row[0], row[1]) if row else None
+
+    @with_session
+    def list_report_visibility_rows(self, report_ids: List[int]) -> List[tuple]:
+        """批量查询报告可见性三元组 [(id, created_by_user_id, visibility), ...]。
+
+        供批量操作（BatchActionReports）逐行过滤：不可见行跳过，不整批放行。
+        """
+        session = get_db_session()
+        if not report_ids:
+            return []
+        rows = (
+            session.query(self.PO_CLASS.id, self.PO_CLASS.created_by_user_id,
+                          self.PO_CLASS.visibility)
+            .filter(self.PO_CLASS.id.in_(report_ids),
+                    self.PO_CLASS.deleted == False)  # noqa: E712
+            .all()
+        )
+        return [tuple(r) for r in rows]
 
     # ---- 原始 PO 查询（供报告生成引擎直接使用 PO） ----
 

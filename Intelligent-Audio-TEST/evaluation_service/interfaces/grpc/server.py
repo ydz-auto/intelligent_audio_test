@@ -41,6 +41,7 @@ def start_grpc_server(port=EVALUATION_SERVICE_GRPC_PORT):
     _max_workers = config_manager.get_value('grpc', 'evaluation_service_workers', 10)
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=_max_workers),
+        # INT-423：注册 user context 拦截器，供行级可见性过滤读取 x-user-id / x-user-is-admin
         interceptors=[server_db_scope_interceptor, server_log_interceptor,
                       server_user_context_interceptor],
     )

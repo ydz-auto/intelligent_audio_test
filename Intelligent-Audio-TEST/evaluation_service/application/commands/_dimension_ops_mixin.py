@@ -19,6 +19,7 @@ from evaluation_service.application.commands._command_utils import (
     command_error,
     parse_json_field,
     publish_dimension_config_changed,
+    check_visible_or_error,
 )
 from evaluation_service.application.commands._dimension_params_mixin import (
     DimensionParamsMixin,
@@ -163,6 +164,10 @@ class DimensionOpsMixin(DimensionParamsMixin):
             dim = self.repo.get_dimension(dim_id)
             if not dim:
                 return command_error('未找到评分维度', code=404)
+            # INT-423 命令侧 owner 校验：私有维度非 owner 删除 403
+            err = check_visible_or_error(dim.created_by_user_id, dim.visibility)
+            if err:
+                return err
 
             self._soft_delete_tree(dim_id)
             self.repo.commit()
@@ -214,17 +219,38 @@ class DimensionOpsMixin(DimensionParamsMixin):
             return command_error('缺少必要参数: ids, action', code=400)
 
         try:
+            # INT-423 批量逐行过滤：私有非 owner 行跳过（镜像 purge filter 口径，不整批放行）
+            from shared.infrastructure.user_context import (
+                get_current_user_id,
+                get_current_user_is_admin,
+            )
+            from shared.infrastructure.visibility_filter import filter_visible_owners
+            rows = self.repo.list_dimension_visibility_rows(ids)
+            existing_ids = {r[0] for r in rows}
+            visible_ids = set(filter_visible_owners(
+                rows, get_current_user_id(), get_current_user_is_admin()))
+
             if action == 'delete':
-                for dim_id in ids:
+                for dim_id in visible_ids:
                     self._soft_delete_tree(dim_id)
             elif action in ('enable', 'disable'):
                 # 主/子联动：选中主维度时，其全部子维度一并启用/禁用
-                target_ids = self.repo.list_descendant_ids(ids)
+                target_ids = self.repo.list_descendant_ids(visible_ids)
                 self.repo.batch_update_dimensions(target_ids, {'status': action == 'enable'})
             elif action == 'reorder':
                 if not ids or not isinstance(ids, list):
                     return command_error('缺少必要参数: ids (维度ID数组，顺序即新排序)', code=400)
-                missing = self.repo.reorder_dimensions(ids)
+                # 缺失 ID 校验（可见性过滤前）：不存在的 id 拒绝（原语义）
+                id_list = [int(i) for i in ids]
+                missing_ids = [i for i in id_list if i not in existing_ids]
+                if missing_ids:
+                    self.repo.rollback()
+                    return command_error(f'存在不存在的维度ID: {missing_ids}', code=400)
+                # 仅重排可见维度（私有非 owner 维度维持原 sort_order）
+                ordered_ids = [i for i in id_list if i in visible_ids]
+                if not ordered_ids:
+                    return command_error('缺少可操作的维度ID', code=400)
+                missing = self.repo.reorder_dimensions(ordered_ids)
                 if missing:
                     self.repo.rollback()
                     return command_error(f'存在不存在的维度ID: {missing}', code=400)
@@ -234,7 +260,7 @@ class DimensionOpsMixin(DimensionParamsMixin):
                 publish_dimension_config_changed('reorder')
                 return command_ok('维度排序已更新')
             elif action == 'export':
-                return self._export_dimensions(ids)
+                return self._export_dimensions(sorted(visible_ids))
             else:
                 return command_error(f'不支持的操作: {action}', code=400)
 
@@ -277,6 +303,21 @@ class DimensionOpsMixin(DimensionParamsMixin):
             dim = self.repo.get_dimension(dim_id)
             if not dim or dim.deleted:
                 return command_error('维度不存在', code=404)
+            # INT-423 详情可见性：私有维度非 owner 按不存在处理（404，防探测）
+            from shared.infrastructure.user_context import (
+                get_current_user_id,
+                get_current_user_is_admin,
+            )
+            from shared.infrastructure.visibility_filter import (
+                VisibilityDenied,
+                check_visible,
+            )
+            try:
+                check_visible(
+                    dim.created_by_user_id, dim.visibility,
+                    get_current_user_id(), get_current_user_is_admin())
+            except VisibilityDenied:
+                return command_error('维度不存在', code=404)
 
             test_value = data.get('value')
             rule_data = dim.rule
@@ -301,6 +342,10 @@ class DimensionOpsMixin(DimensionParamsMixin):
             dim = self.repo.get_dimension(dim_id)
             if not dim or dim.deleted:
                 return command_error('维度不存在', code=404)
+            # INT-423 命令侧 owner 校验：私有维度非 owner 探测 403
+            err = check_visible_or_error(dim.created_by_user_id, dim.visibility)
+            if err:
+                return err
 
             if not (dim.api_endpoints and isinstance(dim.api_endpoints, list) and len(dim.api_endpoints) > 0):
                 dim.api_status = 'offline'

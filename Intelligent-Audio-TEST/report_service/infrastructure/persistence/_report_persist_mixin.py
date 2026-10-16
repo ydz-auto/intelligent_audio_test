@@ -56,6 +56,7 @@ class ReportPersistMixin:
             status=aggregate.status,
             analysis=_safe_json_dumps(aggregate.config) or '',
             deleted=aggregate.deleted,
+            visibility=aggregate.visibility or 'shared',
             created_by_user_id=get_current_user_id(),
         )
         session.add(po)

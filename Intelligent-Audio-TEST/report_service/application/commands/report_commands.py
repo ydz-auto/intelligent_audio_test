@@ -28,6 +28,8 @@ class CreateReportCommand:
     task_id: int
     report_type: str = ReportType.STANDARD.value
     config: Dict[str, Any] = field(default_factory=dict)
+    # INT-423 数据可见性：新建时可指定 private/shared，默认 shared
+    visibility: Optional[str] = None
 
 
 @dataclass(frozen=True)

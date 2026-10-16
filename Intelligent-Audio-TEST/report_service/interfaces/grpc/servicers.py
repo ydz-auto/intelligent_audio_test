@@ -90,6 +90,9 @@ def _aggregate_to_dict(aggregate: Optional[ReportAggregate]) -> Optional[Dict[st
         'analysis': config.get('analysis') or '',
         'conclusion': config.get('conclusion') or config.get('analysis') or '',
         'created_at': str(aggregate.created_at) if aggregate.created_at is not None else None,
+        # INT-423 数据可见性：透出 visibility/owner，供网关路由级 owner 校验与前端徽标
+        'visibility': getattr(aggregate, 'visibility', None) or 'shared',
+        'created_by_user_id': getattr(aggregate, 'created_by_user_id', None),
         # INT-141：回收站展示字段
         'deleted': bool(getattr(aggregate, 'deleted', False)),
         'deleted_at': str(aggregate.deleted_at) if getattr(aggregate, 'deleted_at', None) else None,
@@ -197,6 +200,7 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
                 task_id=data.get('task_id'),
                 report_type=data.get('report_type') or 'standard',
                 config=data.get('config') or {},
+                visibility=data.get('visibility'),
             )
             report_id = self.command_handler.handle_create(command)
             return self._resp(True, 'ok', {'report_id': report_id})
@@ -293,8 +297,23 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
                 return self._resp(False, '单次最多删除100个报告', {})
 
             hard = bool(data.get('hard_delete', False))
+            # INT-423 批量逐行过滤：私有非 owner 行跳过（镜像 purge filter 口径，
+            # 不整批放行）；被跳过行按 deleted=False 记入 items
+            from shared.infrastructure.user_context import (
+                get_current_user_id,
+                get_current_user_is_admin,
+            )
+            from shared.infrastructure.visibility_filter import filter_visible_owners
+            visible_ids = set(filter_visible_owners(
+                self.query_handler.repository.list_report_visibility_rows(report_ids),
+                get_current_user_id(),
+                get_current_user_is_admin(),
+            ))
             results = []
             for rid in report_ids:
+                if rid not in visible_ids:
+                    results.append({'report_id': rid, 'deleted': False})
+                    continue
                 command = DeleteReportCommand(report_id=rid, hard=hard)
                 ok = self.command_handler.handle_delete(command)
                 results.append({'report_id': rid, 'deleted': ok})

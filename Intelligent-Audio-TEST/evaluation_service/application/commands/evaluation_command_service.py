@@ -38,8 +38,10 @@ from evaluation_service.application.commands._command_utils import (
     DIMENSION_MODEL_FIELDS,
     command_ok,
     command_error,
+    check_visible_or_error,
     extract_associated_relations,
     get_default_algorithm_type,
+    parse_visibility,
     publish_dimension_config_changed,
 )
 from evaluation_service.application.commands._category_commands_mixin import (
@@ -86,12 +88,22 @@ class EvaluationCommandService(CategoryCommandsMixin, DimensionOpsMixin):
         if not data or 'name' not in data:
             return command_error('缺少名称(name)', code=400)
 
+        # INT-423 新建可见性：可指定 private/shared，非法值 400
+        if 'visibility' in data:
+            vis, verr = parse_visibility(data.get('visibility'))
+            if verr:
+                return verr
+            data['visibility'] = vis
+
         err = self._parse_dimension_payload(data, strict_rule=False)
         if err:
             return err
 
         try:
             create_data = self._extract_model_fields(data)
+            # 显式携带新建可见性（不入 DIMENSION_MODEL_FIELDS：更新路径经 payload
+            # 不得改可见性——可见性修改走专用 share 端点 INT-466）
+            create_data['visibility'] = data.get('visibility') or 'shared'
 
             # 未指定排序时，按层级追加到末尾（主/子分段编码，对齐旧库）：
             # 有父维度 → 挂到父维度段内末尾；否则主维度新开一段（段末 + SORT_STEP）
@@ -133,6 +145,10 @@ class EvaluationCommandService(CategoryCommandsMixin, DimensionOpsMixin):
             dim = self.repo.get_dimension(dim_id)
             if not dim or dim.deleted:
                 return command_error('未找到评分维度', code=404)
+            # INT-423 命令侧 owner 校验：私有维度非 owner 更新 403
+            err = check_visible_or_error(dim.created_by_user_id, dim.visibility)
+            if err:
+                return err
 
             err = self._parse_dimension_payload(data)
             if err:

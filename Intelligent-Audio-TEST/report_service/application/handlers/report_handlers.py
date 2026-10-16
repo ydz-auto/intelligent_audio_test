@@ -121,6 +121,7 @@ class ReportCommandHandler:
             report_type=command.report_type,
             status=ReportStatus.PENDING.value,
             config=dict(command.config),
+            visibility=command.visibility or 'shared',
         )
         return self.repository.add(aggregate)
 
@@ -179,6 +180,31 @@ class ReportCommandHandler:
         """
         self.repository.update_status(command.report_id, command.status)
 
+    def _ensure_report_visible(self, report_id: int) -> None:
+        """命令侧可见性校验（INT-423）。
+
+        私有非 owner 的 update/delete 抛 VisibilityDenied（网关映射 403）；
+        报告不存在（含已软删）不抛——由后续 update/delete 返回 False（404 语义）。
+        """
+        from shared.infrastructure.user_context import (
+            get_current_user_id,
+            get_current_user_is_admin,
+        )
+        from shared.infrastructure.visibility_filter import (
+            VisibilityDenied,
+            check_visible,
+        )
+
+        info = self.repository.get_report_visibility_info(report_id)
+        if info is None:
+            return
+        try:
+            check_visible(
+                info[0], info[1],
+                get_current_user_id(), get_current_user_is_admin())
+        except VisibilityDenied:
+            raise
+
     def handle_update(self, command: UpdateReportCommand) -> bool:
         """处理更新报告命令（对齐旧库 PUT /reports/{id}）。
 
@@ -193,6 +219,8 @@ class ReportCommandHandler:
         Returns:
             True 表示更新成功，False 表示报告不存在或无可更新字段
         """
+        # INT-423 命令侧 owner 校验：私有非 owner 更新抛 VisibilityDenied
+        self._ensure_report_visible(command.report_id)
         fields = {
             'name': command.name,
             'description': command.description,
@@ -222,6 +250,8 @@ class ReportCommandHandler:
             True 表示删除成功，False 表示报告不存在
         """
         from shared.infrastructure.user_context import get_current_user_id
+        # INT-423 命令侧 owner 校验：私有非 owner 删除抛 VisibilityDenied（网关映射 403）
+        self._ensure_report_visible(command.report_id)
         if command.hard:
             return self.repository.hard_delete(command.report_id)
         return self.repository.soft_delete(

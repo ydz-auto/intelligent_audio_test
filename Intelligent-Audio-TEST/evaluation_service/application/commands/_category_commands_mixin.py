@@ -13,6 +13,8 @@ from shared.utils.query_utils import now_cst
 from evaluation_service.application.commands._command_utils import (
     command_ok,
     command_error,
+    check_visible_or_error,
+    parse_visibility,
 )
 
 logger = logging.getLogger(__name__)
@@ -32,10 +34,16 @@ class CategoryCommandsMixin:
             if existing:
                 return command_error(f'分类名称已存在: {name}', code=400)
 
+            # INT-423 新建可见性：可指定 private/shared，非法值 400
+            vis, verr = parse_visibility(data.get('visibility'))
+            if verr:
+                return verr
+
             new_cat = self.repo.create_category({
                 'name': name,
                 'description': data.get('description'),
                 'icon': data.get('icon'),
+                'visibility': vis,
             })
             self.repo.commit()
 
@@ -51,6 +59,10 @@ class CategoryCommandsMixin:
             cat = self.repo.get_category_by_id(cat_id)
             if not cat or cat.deleted:
                 return command_error('未找到分类', code=404)
+            # INT-423 命令侧 owner 校验：私有分类非 owner 更新 403
+            err = check_visible_or_error(cat.created_by_user_id, cat.visibility)
+            if err:
+                return err
 
             if data.get('name') is not None:
                 name = data['name']
@@ -80,6 +92,10 @@ class CategoryCommandsMixin:
             cat = self.repo.get_category_by_id(cat_id)
             if not cat or cat.deleted:
                 return command_error('未找到分类', code=404)
+            # INT-423 命令侧 owner 校验：私有分类非 owner 删除 403
+            err = check_visible_or_error(cat.created_by_user_id, cat.visibility)
+            if err:
+                return err
 
             now = now_cst()
             cat.deleted = True
