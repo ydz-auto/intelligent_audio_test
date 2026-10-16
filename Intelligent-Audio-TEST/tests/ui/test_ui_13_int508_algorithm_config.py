@@ -325,9 +325,9 @@ def test_04_edit_sheet_five_tabs(drv):
     # 保存可用性（INT-508 P1：保存按钮不得恒禁用；编辑态预填合法时应可用）
     save_btn = drv.find_element(By.XPATH, "//button[normalize-space()='保存']")
     assert save_btn.is_enabled(), '编辑态保存按钮应可用（P1 修复后，预填合法即解锁）'
-    # 保存链路：点击保存 → toast「算法已更新」+ 列表计数 7 不变
+    # 保存链路：点击保存 → toast「算法已保存」（§6.3/§7.6 编辑态口径）+ 列表计数 7 不变
     save_btn.click()
-    WebDriverWait(drv, 10).until(lambda d: '算法已更新' in _body_text(drv))
+    WebDriverWait(drv, 10).until(lambda d: '算法已保存' in _body_text(drv))
     _wait_rows_retry(drv, 7)
     txt = _body_text(drv)
     assert '通用识别引擎' in txt, f'编辑保存后列表丢失原算法：{txt[-200:]}'
