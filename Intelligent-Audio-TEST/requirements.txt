@@ -64,7 +64,9 @@ pymodbus>=3.6.0
 pyserial>=3.5
 # INT-272：PyPI 实际最高 0.3.0（宿主现装即 0.3.0），原 >=1.0.0 永远装不上（容器构建不可复现）
 wda>=0.3.0
-hypium>=6.0.0
+# hypium 已拆至 requirements-device.txt（2026-10-15 拍板：device_service 鸿蒙链路专属依赖，
+# 传递依赖 opencv-python ~190MB + xdevice 与主 requirements 冲突；容器统一镜像不装，启动时
+# 懒加载兜底 "Failed to import hypium → UiDriver=None"，宿主环境亦无此包）
 filelock>=3.12.0
 
 # ===== Cryptography =====

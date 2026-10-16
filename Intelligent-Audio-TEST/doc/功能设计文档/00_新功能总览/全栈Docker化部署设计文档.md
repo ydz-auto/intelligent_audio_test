@@ -1,9 +1,20 @@
-# 全栈 Docker 化部署设计文档（INT-272 / INT-333 审计回写）
+# 全栈 Docker 化部署设计文档（INT-272 / INT-333 审计回写 / INT-472 落地）
 
-> **状态**：已实施并验收（INT-272 done 2026-10-14；24/24 端点实测全绿）。
-> **裁定来源**：成员裁定 2026-10-13/14，根治方案 C——全栈服务 Docker 化（INT-220 需求入口）。
-> **回写说明**：本章节由 INT-333 后向一致性审计于 2026-10-14 回写，基线为 `docker/docker-compose.yml` 实态（实现演进裁定，文档跟代码库走）。
+> **状态**：容器化部署落地（2026-10-16，INT-472：compose 全栈 up + 健康验证 + 四步冒烟 + 双栈过渡验证通过；落地缺陷修复见 §7）。
+> **裁定来源**：成员裁定 2026-10-13/14，根治方案 C——全栈服务 Docker 化（INT-220 需求入口）；负责人 2026-10-16 拍板「新的测试服务容器化部署」——宿主直起切换到 docker compose 容器形态。
+> **回写说明**：本章节由 INT-333 后向一致性审计于 2026-10-14 回写，基线为 `docker/docker-compose.yml` 实态（实现演进裁定，文档跟代码库走）；2026-10-16 由 INT-472 补充落地实施结果。
 > **部署手册**（操作指南）：代码库 `docs/docker-compose.md`；本文为设计契约与运行纪律基线。
+
+## 0. 容器化落地拍板与实施结果（2026-10-16，INT-472）
+
+- **拍板**：负责人 2026-10-16：「新的测试服务容器化部署」——从宿主直起（run_all.py / parallel_stack.py python 进程）切换到 docker compose 容器形态。
+- **实施结果**（本机实测）：
+  - `python docker/run_stack.py up --build` 拉起全栈（infra postgres/redis/rustfs + db_bootstrap 一次性引导 + 11 后端 + 前端）；`docker ps` 全部 healthy。
+  - 健康探测全绿：`python docker/run_stack.py health`（13+ 端点：10 HTTP /health + 前端 + 11 gRPC TCP + 3 infra）。
+  - 四步冒烟通过：登录（RSA-OAEP）→ 建用例（dry 样例上传 + voice_llm 用例 + turn_eval 绑定）→ dry 执行（mock 适配器，执行/评估双 completed）→ 报告（generate-task 完成 + summary）；自建自清零残留。
+  - 双栈过渡：落地时宿主旧栈 infra（5432/6379/9000）被其它 run 常驻，容器栈后端/前端保持标准端口（5000-5010/5173，当时空闲），infra 宿主端口用 `*_PORT` 覆盖改 scratch 段（POSTGRES_PORT=15432/REDIS_PORT=16379/RUSTFS_PORT=19000/RUSTFS_CONSOLE_PORT=19001）与宿主 infra 并存互不击穿；`*_PORT` 覆盖切换口径见 §5。
+- **落地缺陷修复**（§7）：`.dockerignore` 排除 `frontend/` 导致 `Dockerfile.frontend` 构建失败 → 新增前端专用 ignore 文件；`PIP_INDEX_URL` 构建参数未接线（pip 走默认源）→ Dockerfile 阶段内补 ARG + `--index-url`；OSS presign 直传 URL 宿主为容器网络名 `rustfs` 宿主侧不可解析 → 冒烟脚本改写连接目标保留 Host 头（部署建议见 §7）。
+- **测试栈口径**（§5 增补）：parallel_stack.py（测试 agent UI 隔离栈，端口 +1000）服务进程仍宿主形态，infra（postgres/redis/rustfs）复用容器栈——隔离测试库 `intelligent_audio_test_test` 需在容器 postgres 预建。
 
 ## 1. 背景与裁定
 
@@ -77,9 +88,31 @@
 - **并存形态**：宿主旧栈（标准端口 5000-5010 / 5173 / 50052-50053）与 compose 栈并存；第二套 compose 栈用 `*_PORT` 覆盖（scratch 段，如 15xxx）拉起，互不击穿。
 - **切换窗口**：停宿主旧栈仅限负责人口令，切换时点待负责人裁定。
 - **宿主形态边界**：`run_all.py` 宿主形态保留仅限本地调试（且不再清场）；生产/验收形态一律 compose。
+- **测试栈口径（2026-10-16 INT-472 确认）**：测试 agent 的并行隔离栈（`tests/ui/utils/parallel_stack.py`，端口 +1000、隔离库 `intelligent_audio_test_test`）**服务进程仍宿主形态**——门禁（smoke_gate/run_gate/conftest）硬编码 +1000 网关与隔离库语义，转第二套 compose 栈需另做引导链与门禁常量改造；其 **infra 复用容器栈**（postgres 5432 / redis 6379 / rustfs 9000，隔离库与共享库同容器 postgres 分库共存）。隔离库在容器 postgres 需预建（`CREATE DATABASE intelligent_audio_test_test` + 建表/迁移链）。
 - **容器形态例外**：device_service 物理设备链路——Linux 容器无宿主 USB 栈，容器内 adb/hdc 无法触达宿主实机；容器形态覆盖设备管理面全链路（CRUD/状态/告警），E2E 真机验收时该服务可保留宿主形态例外（成员保留裁定权）。
 - **mock_services（INT-137/182）**：仅联调/验收用、默认关闭，不进生产编排与镜像。
 
 ## 6. 实现锚点
 
 `docker/docker-compose.yml`（编排）· `docker/run_stack.py`（薄封装）· `docker/Dockerfile.service`（12 后端统一镜像，单镜像多 CMD，含 ffmpeg/adb/portaudio）· `docker/Dockerfile.frontend` · `docker/Dockerfile.db_bootstrap` · `docker/db_bootstrap_entrypoint.py`（引导链）· `docker/nginx-frontend.conf`（反代契约）· `docker/.env.compose.example`（变量清单）· `run_all.py:524`（只读端口检查）· `shared/config/service_ports.py`（端口注册表）
+
+## 7. 落地缺陷与修复（2026-10-16，INT-472 实测发现）
+
+1. **`frontend/` 被根 `.dockerignore` 排除 → `Dockerfile.frontend` 构建失败**
+   - 现象：`compose up --build` 在 frontend `COPY frontend/ ./` 报 `"/frontend": not found`。
+   - 根因：2026-10-15 后端镜像瘦身把 `frontend/`、`tests/` 加进根 `.dockerignore`（后端 `COPY . .` 不需要），但 `Dockerfile.frontend` 依赖 `frontend/` 进构建上下文——同一忽略文件无法同时满足两种构建。
+   - 修复：新增 `docker/Dockerfile.frontend.dockerignore`（前端专用忽略文件 = 根 .dockerignore 移除 `frontend/` 行，BuildKit 对命名 Dockerfile 取同目录 `<名>.dockerignore` 替代根忽略）；后端镜像瘦身不受影响。
+2. **OSS presign 直传 URL 宿主侧不可解析**
+   - 现象：容器内 `OSS_ENDPOINT=http://rustfs:9000`（容器网络名），presign 返回的直传 URL 宿主为 `rustfs`——宿主侧脚本/浏览器无法解析，前端直传链路在容器形态下断裂。
+   - 处置（本次冒烟）：脚本把 presign URL 的 netloc 改写为发布端口
+     `127.0.0.1:9000`，并保留原 `Host: rustfs:9000` 头（S3 SigV4 签名覆盖
+     Host 头，改连接目标不改 Host 则签名仍有效）。
+   - 部署建议（后续）：宿主 hosts 加 `127.0.0.1 rustfs`（浏览器/宿主直传可达发布端口），或引入「公网 OSS 端点」配置分离 service-to-service 与 client 直传两种 base URL。
+3. **测试栈 infra 复用容器栈后的隔离库预建**
+   - compose postgres 占 5432 后，宿主 postgres 不再起（parallel_stack `_ensure_postgres` 探测 5432 已监听即跳过）；parallel_stack 服务连接 127.0.0.1:5432 的隔离库 `intelligent_audio_test_test` 需在容器 postgres 预建（CREATE DATABASE + 建表/迁移），见 §5。
+4. **`PIP_INDEX_URL` 构建参数未接线**
+   - compose 声明了 `PIP_INDEX_URL` build-arg（`.env.compose.example` 有模板注释），但 `Dockerfile.service` / `Dockerfile.db_bootstrap` 的 `pip install` 未消费它，且 FROM 前声明的 `ARG` 在构建阶段内不生效 → 镜像内 pip 固定走默认源（内网/镜像源加速失效）。
+   - 修复：两 Dockerfile 在阶段内补 `ARG PIP_INDEX_URL` + `pip install --index-url "${PIP_INDEX_URL}"`；仓库根 .env 配 `PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple`。
+5. **requirements.txt 残留 `hypium` 阻断容器 pip 解析**
+   - 2026-10-15 已拍板把 `hypium` 拆出主 requirements（`requirements-device.txt`，device_service 鸿蒙链路专属），但主 requirements.txt 未实际移除（line 63 仍在）——容器内全新 pip 解析触发 hypium→xdevice 依赖与主 requirements 的 `ResolutionImpossible` 冲突（宿主 env 无 hypium，代码懒加载兜底不受影响）。
+   - 修复：主 requirements.txt 移除 `hypium>=6.0.0`（注释标明已拆至 requirements-device.txt），容器构建恢复。
