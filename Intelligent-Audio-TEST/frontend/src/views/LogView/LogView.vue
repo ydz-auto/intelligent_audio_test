@@ -123,6 +123,9 @@
       </div>
     </div>
 
+    <!-- 日志归档管理面板（INT-548：对接后端 5 个归档端点） -->
+    <LogArchivePanel />
+
     <!-- 单栏布局 -->
     <div class="single-column-layout">
       <!-- 日志内容区 -->
@@ -255,6 +258,7 @@
 import { ref, onMounted } from 'vue';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
 import LogFilterPanel from './LogFilterPanel.vue';
+import LogArchivePanel from './LogArchivePanel.vue';
 import { useLogView } from './logView';
 
 // 日期时间选择器的引用（由 LogFilterPanel 暴露的 DOM 元素同步填充）

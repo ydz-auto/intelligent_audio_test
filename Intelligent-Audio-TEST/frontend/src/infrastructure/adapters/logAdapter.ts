@@ -9,6 +9,10 @@ import type {
   LogStatsData,
   LogRefreshResult,
   LogArchiveStatus,
+  LogArchiveResult,
+  LogArchiveList,
+  LogArchiveQuery,
+  LogArchiveInput,
   LogQuery,
   LogExportQuery,
   LogMarkInput,
@@ -20,6 +24,9 @@ import type {
   LogStatsDto,
   LogRefreshDto,
   LogArchiveStatusDto,
+  LogArchiveListDto,
+  LogArchiveResultDto,
+  LogArchiveRequestDto,
   LogMarkDto,
   LogClearDto,
   LogRefreshRequestDto,
@@ -75,14 +82,38 @@ export function toLogRefreshResult(dto: LogRefreshDto | null | undefined): LogRe
   }
 }
 
-/** 归档状态 → LogArchiveStatus */
+/** 归档状态 → LogArchiveStatus（后端 raw dict 即 camelCase，显式逐字段映射） */
 export function toLogArchiveStatus(dto: LogArchiveStatusDto | null | undefined): LogArchiveStatus {
   return {
-    totalLogs: dto?.total_logs ?? 0,
-    hotLogs: dto?.hot_logs ?? 0,
-    coldLogs: dto?.cold_logs ?? 0,
-    archiveFiles: dto?.archive_files ?? [],
-    archiveDir: dto?.archive_dir ?? '',
+    totalLogs: toNum(dto?.totalLogs),
+    hotLogs: toNum(dto?.hotLogs),
+    coldLogs: toNum(dto?.coldLogs),
+    archiveDir: dto?.archiveDir ?? '',
+    taskArchives: toNum(dto?.taskArchives),
+    caseArchives: toNum(dto?.caseArchives),
+    otherArchives: toNum(dto?.otherArchives),
+  }
+}
+
+/** 已归档日志列表 → LogArchiveList（复用 toLog 逐条目映射） */
+export function toLogArchiveList(dto: LogArchiveListDto | null | undefined): LogArchiveList {
+  return {
+    items: (dto?.items ?? []).map(toLog),
+    total: dto?.total ?? 0,
+    source: dto?.source ?? 'archive',
+  }
+}
+
+/** 触发归档结果 → LogArchiveResult（dry_run 预览与真实归档两形态字段归一） */
+export function toLogArchiveResult(dto: LogArchiveResultDto | null | undefined): LogArchiveResult {
+  return {
+    message: dto?.message,
+    archivedCount: dto?.archived_count ?? 0,
+    deletedCount: dto?.deleted_count ?? 0,
+    archiveFile: dto?.archive_file ?? null,
+    remainingCount: dto?.remaining_count ?? 0,
+    coldLogsCount: dto?.cold_logs_count,
+    cutoffDate: dto?.cutoff_date,
   }
 }
 
@@ -143,4 +174,20 @@ export function toLogClearDto(input: LogClearInput): LogClearDto {
 /** 刷新请求体：lastId → LogRefreshRequestDto */
 export function toLogRefreshRequestDto(lastId: string | number): LogRefreshRequestDto {
   return { last_id: Number(lastId) || 0 }
+}
+
+/** 归档日志查询 → snake_case query（后端 LogArchiveQuery：task_id / test_case_id） */
+export function toLogArchiveQueryDto(query: LogArchiveQuery): Record<string, string | number> {
+  const params: Record<string, string | number> = {}
+  if (query.taskId !== undefined) params.task_id = Number(query.taskId)
+  if (query.testCaseId) params.test_case_id = String(query.testCaseId)
+  return params
+}
+
+/** 触发归档入参 → 请求体（后端 LogArchiveRequest：days / dry_run） */
+export function toLogArchiveRequestDto(input: LogArchiveInput): LogArchiveRequestDto {
+  return {
+    days: input.days ?? 7,
+    dry_run: input.dryRun ?? false,
+  }
 }

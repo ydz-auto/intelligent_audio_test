@@ -5,6 +5,15 @@
   width: 100%;
 }
 
+/* 日志归档管理面板（INT-548）：与统计概览同距，占满页宽 */
+.log-view .log-archive-panel {
+  margin-bottom: var(--spacing-xl);
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
 .logs-content {
   width: 100%;
 }

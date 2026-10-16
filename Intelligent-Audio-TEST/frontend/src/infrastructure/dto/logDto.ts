@@ -44,13 +44,36 @@ export interface LogRefreshDto {
   last_id: number
 }
 
-/** 对应后端 LogArchiveStatus */
+/** 对应后端 GET /logs/archive/status 返回体。
+ *  注意：该端点后端实现为 raw dict（success_response({totalLogs,...})），
+ *  字段即 camelCase，不经 APIModel 序列化——DTO 按实际 wire 格式声明。
+ */
 export interface LogArchiveStatusDto {
-  total_logs: number
-  hot_logs: number
-  cold_logs: number
-  archive_files: string[]
-  archive_dir: string
+  totalLogs?: number
+  hotLogs?: number
+  coldLogs?: number
+  archiveDir?: string
+  taskArchives?: number
+  caseArchives?: number
+  otherArchives?: number
+}
+
+/** 已归档日志列表（对应后端 GET /logs/archive/logs 返回体 {items,total,source}） */
+export interface LogArchiveListDto {
+  items: LogItemDto[]
+  total: number
+  source: string
+}
+
+/** 触发归档结果（对应后端 POST /logs/archive 返回体；dry_run 预览与真实归档两种形态） */
+export interface LogArchiveResultDto {
+  message?: string
+  archived_count?: number
+  deleted_count?: number
+  archive_file?: string | null
+  remaining_count?: number
+  cold_logs_count?: number
+  cutoff_date?: string
 }
 
 // ===== 请求体（snake_case） =====

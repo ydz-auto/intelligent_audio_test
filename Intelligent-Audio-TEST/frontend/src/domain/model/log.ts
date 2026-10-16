@@ -113,13 +113,41 @@ export interface LogExportQuery {
   perPage?: number
 }
 
-/** 归档状态（对应后端 LogArchiveStatus） */
+/** 归档状态（对应后端 GET /logs/archive/status 返回体；后端为 raw dict，字段即 camelCase） */
 export interface LogArchiveStatus {
   totalLogs: number
   hotLogs: number
   coldLogs: number
-  archiveFiles: string[]
   archiveDir: string
+  /** 归档文件分组计数（OSS archives 桶内 task/case/other 前缀下的 JSON 文件数） */
+  taskArchives: number
+  caseArchives: number
+  otherArchives: number
+}
+
+/** 触发归档入参（对应后端 LogArchiveRequest：保留最近 N 天热数据 + dry_run 预览） */
+export interface LogArchiveInput {
+  days?: number
+  dryRun?: boolean
+}
+
+/** 触发归档结果（对应后端 LogArchiveResult 及 dry_run 预览返回；字段按实际返回体可选） */
+export interface LogArchiveResult {
+  message?: string
+  archivedCount?: number
+  deletedCount?: number
+  archiveFile?: string | null
+  remainingCount?: number
+  /** dry_run 预览字段 */
+  coldLogsCount?: number
+  cutoffDate?: string
+}
+
+/** 已归档日志列表（对应后端 GET /logs/archive/logs 返回体 {items,total,source}） */
+export interface LogArchiveList {
+  items: Log[]
+  total: number
+  source: string
 }
 
 /** 归档日志查询（对应后端 LogArchiveQuery） */

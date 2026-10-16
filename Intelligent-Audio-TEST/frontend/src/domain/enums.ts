@@ -411,6 +411,10 @@ export const PermissionPoint = {
   BENCHMARK_REPORT_READ: 'benchmark:report:read',
   /** 发布 Benchmark 报告（POST /benchmarks/reports，INT-483） */
   BENCHMARK_REPORT_PUBLISH: 'benchmark:report:publish',
+  /** 查看日志/统计/归档状态/归档列表/归档文件（GET /logs 系列，RBAC 口径） */
+  LOG_READ: 'log:read',
+  /** 标记/刷新/清空/触发归档/删除归档（写操作，RBAC 口径） */
+  LOG_MANAGE: 'log:manage',
 } as const
 
 /** 权限点类型（由 PermissionPoint 派生） */
