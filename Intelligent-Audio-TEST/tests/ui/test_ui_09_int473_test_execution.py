@@ -1,18 +1,20 @@
 # -*- coding: utf-8 -*-
 """INT-473 测试执行 React 可视稿浏览器走查（真实 Chrome headless，按 test_ui_06 先例）。
 
-针对 frontend-react/ mock 稿（无后端依赖，直接驱动 dev server，默认 5274）：
-1. /E2ETest 五步向导渲染：标题/副文 + 步骤条五格（选择算法/选择测试用例/选择测试设备/
-   执行测试/查看结果）+ 底部动作条「下一步」
-2. 步骤一算法双通道写回：选择测试算法 → 选「流式识别引擎」→ 汇总行「已同步全局算法」
-   + localStorage iatp:algorithm:v1 algorithmId=asr-stream
-3. 步骤二用例正反选：全选结果（全量圈定 toast）+ 反选（对称差补齐）+ 已选汇总行
-4. 步骤三设备混跑徽章：真机/HTTP API/Realtime WS 三类型 + 离线禁选
-5. 【负责人 2026-10-16 核心口径】多友商横向能力对比——执行流程支持多被测主体同用例并发：
-   /APITest 在线 API 全选（表头全选在线）+ 离线行禁选 + 并发自动合计 + 任务名称弹窗启动；
-   /E2ETest 三型设备（真机/HTTP API/Realtime WS）混跑多选 → 已选 3 台设备（多被测主体同用例并发）
-6. 主题抽屉：10 预设齐全 + lake-view 默认（本页零硬编码色值）
-7. algo_engineer 只读观察态：注入无 task:execute 权限快照 → 只读提示 + 动作钮隐藏 + 步骤条可浏览
+针对 frontend-react/ mock 稿（无后端依赖，直接驱动 dev server，默认 5274）。
+本文件断言随返工同步更新为新口径（负责人 2026-10-16 三条定稿）：
+  1. 【口径定稿】开始测试不再分 E2E/API——单流程直启 /start-test，/E2ETest、/APITest
+     旧链 redirect（不带 mode）；页面无「端到端测试/API 测试」模式切换。
+  2. 【命名定稿】第二步步骤名 = 「选择设备/API」；设备网格 + API 表格同屏混选（一个
+     任务同时含设备链路 + API 链路），已选汇总设备+API 双计数。
+  3. 【口径确认】第二步无报告参数配置；启动校验设备/API 分别检查在线（至少选一）；
+     任务名/执行摘要统一不按模式分叉。
+  4. 用例不分类型：用例列表不再按 e2e/api 类型过滤（同一用例可被物理设备/HTTP API/
+     WebSocket API 三种链路消费）。
+  5. 分维筛选：设备（实验室/在线离线/系统类型）+ API（厂商/协议/在线状态）。
+  6. 【负责人核心业务口径】多友商横向对比保留验证：多被测主体（设备+API）同用例并发，
+     启动摘要设备+API 双计数 + API 并发上限自动合计。
+  7. algo_engineer 只读观察态 + 主题抽屉深浅两套（本页零硬编码色值）。
 
 失败落 tests/ui/artifacts/int473_test_execution/<用例>/（截图+console+source）。
 """
@@ -136,7 +138,18 @@ def _login(drv, username='demo_admin'):
     time.sleep(1.0)
 
 
+def _wait_toasts_clear(drv, timeout=6):
+    """sonner toast 右下角会盖住底部动作条；等 toast 自动消失后再点底部按钮，避免 ElementClickIntercepted。"""
+    try:
+        WebDriverWait(drv, timeout).until(
+            lambda d: len([t for t in d.find_elements(By.CSS_SELECTOR, '[data-sonner-toast]')
+                           if t.is_displayed()]) == 0)
+    except Exception:
+        pass
+
+
 def _click_next(drv):
+    _wait_toasts_clear(drv)
     btn = [b for b in drv.find_elements(By.TAG_NAME, 'button')
            if b.text.strip() == '下一步' and b.is_displayed()]
     assert btn, '底部「下一步」按钮未找到'
@@ -144,161 +157,255 @@ def _click_next(drv):
     time.sleep(0.8)
 
 
-# ── 1. /E2ETest 五步向导渲染 ─────────────────────────────────
-def test_01_e2e_wizard_renders(drv):
+def _click_start(drv):
+    _wait_toasts_clear(drv)
+    btn = [b for b in drv.find_elements(By.TAG_NAME, 'button')
+           if b.text.strip() == '开始测试' and b.is_displayed()]
+    assert btn, '底部「开始测试」按钮未找到'
+    btn[0].click()
+    time.sleep(0.6)
+
+
+def _click_checkbox(drv, aria_label):
+    """点勾选框（Base UI Checkbox：设备卡=button[data-slot=checkbox]；API 行经
+    TooltipTrigger render 注入 data-slot=tooltip-trigger，统一按 [aria-label][role=checkbox] 定位）。"""
+    els = [e for e in drv.find_elements(By.CSS_SELECTOR, f"[aria-label='{aria_label}']")
+           if e.get_attribute('role') == 'checkbox']
+    assert els, f'checkbox 「{aria_label}」未找到'
+    target = els[0]
+    assert not _is_disabled(target), f'checkbox 「{aria_label}」处于禁用态（离线禁选）'
+    target.click()
+    time.sleep(0.4)
+
+
+def _is_disabled(el):
+    # 仅看 disabled / aria-disabled（Tailwind 类名含 disabled:… 子串，不能按 class 判定）
+    return bool(el.get_attribute('disabled')) or (el.get_attribute('aria-disabled') == 'true')
+
+
+def _toggle_device(drv, name):
+    _click_checkbox(drv, f'选择设备 {name}')
+
+
+def _toggle_api(drv, name):
+    _click_checkbox(drv, f'选择 {name}')
+
+
+def _select_filter(drv, index, option_text):
+    """Base UI Select：按工具行固定索引定位触发器（SelectValue 渲染原始 value，
+    故按位 0=状态 1=实验室 2=系统类型 3=厂商 4=协议），再点选项（data-slot=select-item）。"""
+    triggers = [t for t in drv.find_elements(By.CSS_SELECTOR, "[data-slot='select-trigger']")
+                if t.is_displayed()]
+    assert index < len(triggers), f'Select 触发器不足 {index + 1} 个（现有 {len(triggers)} 个）'
+    triggers[index].click()
+    time.sleep(0.5)
+    opts = [o for o in drv.find_elements(By.CSS_SELECTOR, "[data-slot='select-item']")
+            if o.is_displayed()]
+    opt = next((o for o in opts if o.text.strip() == option_text), None)
+    assert opt, f'Select 选项「{option_text}」未找到（现有：{[o.text.strip() for o in opts]}）'
+    opt.click()
+    time.sleep(0.4)
+
+
+def _goto_step1_loaded(drv):
+    """下一步 → 步骤一（选择设备/API），等待 mock 数据加载（音箱-客厅位=默认算法可见设备）。"""
+    _click_next(drv)
+    WebDriverWait(drv, 10).until(
+        lambda d: '音箱-客厅位' in _body_text(d))
+
+
+# ── 1. 单流程直启：无 E2E/API 模式切换 + 旧链 redirect ─────────
+def test_01_single_flow_no_mode_switch(drv):
     _login(drv)
-    _goto(drv, '/E2ETest')
+    _goto(drv, '/start-test')
     txt = _body_text(drv)
-    assert '端到端测试' in txt, f'页标题缺失：{txt[:150]}'
-    # 五格步骤条（10_测试执行.md v1.4 交付口径）
-    for step_name in ['选择算法', '选择测试用例', '选择测试设备', '执行测试', '查看结果']:
+    assert '开始测试' in txt, f'页标题缺失：{txt[:150]}'
+    # 四格步骤条（INT-486 合并后：选择测试用例/选择设备/API/执行测试/查看结果）
+    for step_name in ['选择测试用例', '选择设备/API', '执行测试', '查看结果']:
         assert step_name in txt, f'步骤条缺「{step_name}」'
+    # 无「端到端测试/API 测试」模式切换（页面内不再出现两模式表述）
+    assert '端到端测试' not in txt, f'页面仍出现「端到端测试」模式：{txt[:200]}'
+    assert 'API 测试' not in txt, f'页面仍出现「API 测试」模式：{txt[:200]}'
     # 步骤条当前态 ring 已挂载（当前格 aria-current=step）
     current = drv.find_elements(By.CSS_SELECTOR, "[aria-current='step']")
     assert current, '当前步骤未标记 aria-current'
     # 底部动作条：步骤 0 仅「下一步」
     btns = [b.text.strip() for b in drv.find_elements(By.TAG_NAME, 'button') if b.is_displayed()]
     assert '下一步' in btns, f'步骤 0 缺「下一步」：{btns}'
+    # 旧链 redirect：/E2ETest、/APITest → /start-test（收藏夹/外部链接不断链）
+    _goto(drv, '/E2ETest')
+    assert 'start-test' in drv.current_url, f'/E2ETest 未 redirect 到 /start-test：{drv.current_url}'
+    _goto(drv, '/APITest')
+    assert 'start-test' in drv.current_url, f'/APITest 未 redirect 到 /start-test：{drv.current_url}'
 
 
-# ── 2. 步骤一算法写回全局 store ─────────────────────────────
-def test_02_algorithm_channel_writeback(drv):
+# ── 2. 用例不分类型：e2e 型 + api 型同列表，无类型过滤 ─────────
+def test_02_cases_no_type_filter(drv):
     _login(drv)
-    _goto(drv, '/E2ETest')
-    # 清除持久化算法，回到默认 asr-v3
-    drv.execute_script("window.localStorage.removeItem('iatp:algorithm:v1')")
-    _goto(drv, '/E2ETest')
-    drv.find_element(By.CSS_SELECTOR, "button[aria-label='选择测试算法']").click()
-    time.sleep(0.8)
-    # 选择「流式识别引擎」（asr-stream）
-    opts = drv.find_elements(By.CSS_SELECTOR, "div[data-slot='popover-content'] button, [role='listbox'] button")
-    target = None
-    for b in drv.find_elements(By.TAG_NAME, 'button'):
-        if b.is_displayed() and '流式识别引擎' in b.text:
-            target = b
-            break
-    assert target, '算法选择浮层未找到「流式识别引擎」'
-    target.click()
-    time.sleep(0.8)
-    # 汇总行「已同步全局算法」可见
+    _goto(drv, '/start-test')
     txt = _body_text(drv)
-    assert '已同步全局算法' in txt, f'汇总行未出现「已同步全局算法」：{txt[:200]}'
-    # localStorage 写回（iatp:algorithm:v1 → asr-stream）
-    algo = json.loads(drv.execute_script(
-        "return window.localStorage.getItem('iatp:algorithm:v1')") or '{}')
-    stored = (algo.get('state') or {}).get('algorithmId')
-    assert stored == 'asr-stream', f'全局算法未写回 store：{algo}'
+    assert '选择测试用例' in txt, f'步骤一未渲染：{txt[:150]}'
+    # e2e 型（c-001 远场唤醒）与 api 型（a-001 ASR 流式转写）同列表展示——用例不分类型
+    assert '远场唤醒' in txt, f'e2e 型用例缺失：{txt[:200]}'
+    assert 'ASR 流式转写正确性' in txt, f'api 型用例缺失（应同列表展示）：{txt[:200]}'
+    # 无「类型」facet/列（不再按 e2e/api 过滤）；工具栏仅有 分组/标签/评估维度
+    for facet in ['分组', '标签', '评估维度']:
+        assert facet in txt, f'用例工具栏缺「{facet}」facet'
+    # 默认算法 asr_streaming 过滤下：tts_eval 用例不出现（算法过滤仍在，非类型过滤）
+    assert 'TTS 音质 MOS 评估' not in txt, f'tts_eval 用例应被默认算法过滤：{txt[:200]}'
 
 
-# ── 3. 步骤二用例正反选 ─────────────────────────────────────
-def test_03_cases_positive_negative_select(drv):
+# ── 3. 用例正反选：全量圈定 + 对称差补齐 + 表格/卡片双模式 ─────
+def test_03_case_positive_negative_select(drv):
     _login(drv)
-    _goto(drv, '/E2ETest')
-    _click_next(drv)  # → 步骤一（选择测试用例）
-    txt = _body_text(drv)
-    assert '选择测试用例' in txt or '全选结果' in txt, f'步骤二未渲染：{txt[:150]}'
-    # 正选：全选结果（POST /testcases/ids 全量圈定 toast）
+    _goto(drv, '/start-test')
+    assert '选择测试用例' in _body_text(drv)
+    # 全量圈定（POST /testcases/ids）：当前筛选 asr_streaming 共 7 条
     drv.find_element(By.XPATH, "//button[contains(., '全选结果')]").click()
-    WebDriverWait(drv, 10).until(
-        lambda d: '已全选' in _body_text(drv))
+    WebDriverWait(drv, 10).until(lambda d: '已全选' in _body_text(d))
     summary = _body_text(drv)
-    assert '已选' in summary, f'已选汇总行未出现：{summary[:200]}'
-    # 反选：对称差补齐
+    assert '已选 7 条用例' in summary, f'全选汇总错误：{summary[:200]}'
+    # 清空后手动勾选 2 条 → 反选 = 对称差补齐（全量 7 − 已选 2 = 5）
+    drv.find_element(By.XPATH, "//button[contains(., '清空选择')]").click()
+    time.sleep(0.4)
+    _click_checkbox(drv, '选择 远场唤醒 · 3 米距离')
+    _click_checkbox(drv, '选择 连续对话 · 多轮上下文保持')
     drv.find_element(By.XPATH, "//button[contains(., '反选')]").click()
     WebDriverWait(drv, 10).until(
-        lambda d: '已反选' in _body_text(drv) or '补齐' in _body_text(drv))
+        lambda d: '已反选' in _body_text(d) or '补齐' in _body_text(d))
+    summary = _body_text(drv)
+    assert '反选补齐 5' in summary, f'反选对称差计数错误：{summary[:200]}'
     # 表格/卡片双模式切换
     drv.find_element(By.XPATH, "//button[contains(., '卡片')]").click()
     time.sleep(0.6)
     assert '卡片' in _body_text(drv), '卡片视图未切换'
 
 
-# ── 4. 步骤三设备混跑徽章 ───────────────────────────────────
-def test_04_device_mixed_badges(drv):
+# ── 4. 步骤二「选择设备/API」：设备+API 同屏混选双计数 ─────────
+def test_04_resource_mixed_selection(drv):
     _login(drv)
-    _goto(drv, '/E2ETest')
-    _click_next(drv)  # → 步骤一
-    _click_next(drv)  # → 步骤二（选择测试设备）
+    _goto(drv, '/start-test')
+    _goto_step1_loaded(drv)
     txt = _body_text(drv)
-    assert '选择测试设备' in txt, f'步骤三未渲染：{txt[:150]}'
-    # 三类型混跑徽章（10_测试执行.md §3.6.1：physical/http_api/websocket_api）
+    # 命名定稿：步骤标题 = 「选择设备/API」（不是「选择资源」）
+    assert '选择设备/API' in txt, f'步骤条第二步未显示「选择设备/API」：{txt[:150]}'
+    assert '选择资源' not in txt, f'仍出现旧表述「选择资源」：{txt[:200]}'
+    # 设备网格 + 被测 API 表格同屏渲染
+    assert '设备' in txt and '被测 API' in txt, f'设备+API 未同屏渲染：{txt[:200]}'
+    # 设备三型混跑徽章
     for badge in ['真机', 'HTTP API', 'Realtime WS']:
         assert badge in txt, f'设备区缺「{badge}」徽章'
-    # 离线设备禁选：入门-03（offline）不可选
-    offline_cards = drv.find_elements(By.XPATH, "//button[contains(., '音箱-入门-03')]")
-    if offline_cards:
-        for card in offline_cards:
-            assert card.get_attribute('disabled') or 'opacity-60' in card.get_attribute('class'), \
-                '离线设备卡未被禁用'
+    # 第二步无报告参数配置（负责人口径确认：报告内容/导出在报告阶段）
+    assert '报告参数' not in txt and '报告模板' not in txt, f'第二步不应有报告参数配置：{txt[:300]}'
+    # 同屏混选：1 设备 + 1 API → 已选汇总双计数 + API 并发上限自动合计
+    _toggle_device(drv, '音箱-客厅位')
+    _toggle_api(drv, 'ASR HTTP API')
+    time.sleep(0.4)
+    summary = _body_text(drv)
+    assert '已选 1 台设备 · 1 个 API' in summary, f'已选汇总未双计数：{summary[:300]}'
+    assert '并发上限 32' in summary, f'API 并发上限合计缺失：{summary[:300]}'
 
 
-# ── 5. 【核心口径】/APITest 多被测 API 同用例并发（多友商同时测试）──
-def test_05_api_multi_vendor_concurrent(drv):
+# ── 5. 设备分维筛选：实验室 / 在线离线 / 系统类型 ──────────────
+def test_05_device_filters(drv):
     _login(drv)
-    _goto(drv, '/APITest')
+    _goto(drv, '/start-test')
+    _goto_step1_loaded(drv)
+    # 在线离线：仅在线 → 离线设备「音箱-入门-03」隐藏
+    _select_filter(drv, 0, '在线')
     txt = _body_text(drv)
-    assert 'API 测试' in txt, f'/APITest 未渲染：{txt[:150]}'
-    _click_next(drv)  # → 步骤一（选择测试用例，默认算法 asr-v3 已解锁）
-    _click_next(drv)  # → 步骤二（选择被测 API）
+    assert '音箱-客厅位' in txt, '在线设备应保留'
+    assert '音箱-入门-03' not in txt, '离线设备「音箱-入门-03」应被在线筛选隐藏'
+    # 系统类型 = 鸿蒙（复位状态；API 区随系统筛选同步过滤无影响设备断言）
+    _select_filter(drv, 0, '全部状态')
+    _select_filter(drv, 2, '鸿蒙')
     txt = _body_text(drv)
-    assert '选择被测 API' in txt or '最大并发' in txt, f'API 资源步未渲染：{txt[:150]}'
-    # 表头全选在线 API（Base UI Checkbox 渲染为 button，data-slot=checkbox）：
-    # asr-v3 过滤下在线 ASR HTTP API 被选中、离线 Wakeword 行禁选
-    drv.find_element(By.CSS_SELECTOR, "[data-slot='checkbox'][aria-label='全选在线 API']").click()
-    time.sleep(0.8)
+    assert '音箱-客厅位' in txt, '鸿蒙设备缺失'
+    assert '音箱-卧室位' not in txt, 'Android 设备应被鸿蒙筛选隐藏'
+    assert 'ASR HTTP 网关' not in txt, 'http_api 设备应被鸿蒙筛选隐藏'
+    # 实验室 = 旗舰实验室（复位系统；lab-a 成员=客厅位/卧室位/ASR网关/WS网关）
+    _select_filter(drv, 2, '全部系统')
+    _select_filter(drv, 1, '旗舰实验室')
     txt = _body_text(drv)
-    # 已选汇总行：1 个 API（在线被选）+ 并发上限自动合计 32
-    assert '1 个 API' in txt, f'已选汇总未显示 1 个 API：{txt[:300]}'
-    assert '并发上限' in txt and '32' in txt, f'已选汇总缺并发上限 32：{txt[:300]}'
-    # 离线 API（Wakeword）行禁选：勾选态不增加
-    offline_row = drv.find_elements(By.XPATH, "//tr[contains(., 'Wakeword')]")
-    if offline_row:
-        row = offline_row[0]
-        checkbox = row.find_elements(By.CSS_SELECTOR, "[data-slot='checkbox']")
-        if checkbox:
-            cb = checkbox[0]
-            assert cb.get_attribute('disabled') or 'disabled' in (
-                cb.get_attribute('aria-disabled') or '') or 'disabled' in (
-                cb.get_attribute('class') or ''), '离线 API 行未被禁选'
-    # 启动校验链：已选在线 API 时开始测试通过（任务名称弹窗出现）
-    drv.find_element(By.XPATH, "//button[contains(., '开始测试')]").click()
+    assert '音箱-客厅位' in txt and '音箱-卧室位' in txt, '旗舰实验室设备缺失'
+    assert '音箱-入门-03' not in txt, '非旗舰实验室设备「音箱-入门-03」应被隐藏'
+
+
+# ── 6. API 分维筛选：厂商 / 协议 / 在线状态 ────────────────────
+def test_06_api_filters(drv):
+    _login(drv)
+    _goto(drv, '/start-test')
+    _goto_step1_loaded(drv)
+    # 厂商 = 内部 ASR 组：仅 ASR HTTP API；Wakeword（内部唤醒组）隐藏
+    _select_filter(drv, 3, '内部 ASR 组')
+    txt = _body_text(drv)
+    assert 'ASR HTTP API' in txt, '内部 ASR 组 API 缺失'
+    assert 'Wakeword HTTP API' not in txt, '非 ASR 组 API 应被厂商筛选隐藏'
+    # 协议 = WebSocket：mock API 全为 HTTP → 0 命中（复位厂商）
+    _select_filter(drv, 3, '全部厂商')
+    _select_filter(drv, 4, 'WebSocket')
+    txt = _body_text(drv)
+    assert 'ASR HTTP API' not in txt, 'HTTP API 应被协议筛选隐藏'
+    assert '0 个可执行 API' in txt, f'WebSocket 筛选应显示 0 个可执行 API：{txt[:250]}'
+    # 在线状态 = 离线（复位协议）：仅 Wakeword（离线）可见，ASR HTTP API（在线）隐藏
+    _select_filter(drv, 4, '全部协议')
+    _select_filter(drv, 0, '离线')
+    txt = _body_text(drv)
+    assert 'Wakeword HTTP API' in txt, '离线 API 缺失'
+    assert 'ASR HTTP API' not in txt, '在线 API 应被离线筛选隐藏'
+
+
+# ── 7. 启动校验：设备/API 分别检查在线（至少选一）──────────────
+def test_07_launch_validation_online(drv):
+    _login(drv)
+    _goto(drv, '/start-test')
+    _goto_step1_loaded(drv)
+    # 1) 至少选一：无任何选择 → toast 拦截
+    _click_start(drv)
     WebDriverWait(drv, 10).until(
-        lambda d: '任务名称' in _body_text(drv))
+        lambda d: '请至少选择一台在线设备或一个在线 API' in _body_text(d))
+    # 2) 离线禁选（UI 层在线检查）：离线设备/离线 API checkbox 均 disabled
+    off_dev = drv.find_elements(By.CSS_SELECTOR,
+                                "[role='checkbox'][aria-label='选择设备 音箱-入门-03']")
+    assert off_dev and _is_disabled(off_dev[0]), '离线设备 checkbox 未被禁选'
+    off_api = drv.find_elements(By.CSS_SELECTOR,
+                                "[role='checkbox'][aria-label='选择 Wakeword HTTP API']")
+    assert off_api and _is_disabled(off_api[0]), '离线 API 行 checkbox 未被禁选'
+    # 3) 选一台在线设备 → 校验链通过 → 任务名称弹窗（摘要统一不按模式分叉）
+    _toggle_device(drv, '音箱-客厅位')
+    _click_start(drv)
+    WebDriverWait(drv, 10).until(lambda d: '任务名称' in _body_text(d))
     txt = _body_text(drv)
-    assert '任务名称' in txt, f'任务名称弹窗未打开：{txt[:200]}'
-    # 弹窗执行摘要：所选 API 进入任务启动（apiIds 同用例集并发下发——代码层证据见验收结论）
-    assert '1 个' in txt or '并发' in txt, f'任务名称弹窗缺执行摘要：{txt[:300]}'
+    assert '0 条 · 1 台 · 0 个 · 并发 4' in txt, f'任务名称弹窗摘要未按统一口径：{txt[:300]}'
+    # 4) 任务名称默认值统一（不按 E2E/API 分叉）
+    name_input = drv.find_element(By.ID, 'task-name')
+    assert '测试任务_' in name_input.get_attribute('value'), '默认任务名未按统一口径「测试任务_」'
 
 
-# ── 5b. E2E 多被测主体（真机/HTTP API/Realtime WS 三型混跑）同用例并发 ──
-def test_05b_e2e_multi_subject_mixed_run(drv):
-    """负责人 2026-10-16 口径：多友商同时测试=多被测主体同用例并发。
-    E2E 资源步跨类型多选（真机 音箱-客厅位 + ASR HTTP 网关 + Realtime WS 网关
-    三型同时可勾选）→ 已选 3 台设备，验证执行流程支持混合类型并发。"""
+# ── 8. 【负责人核心口径】多友商横向对比：多被测主体同用例并发 ──
+def test_08_multi_vendor_concurrent(drv):
     _login(drv)
-    _goto(drv, '/E2ETest')
-    _click_next(drv)  # → 步骤一
-    _click_next(drv)  # → 步骤二（选择测试设备）
-    # 三型设备卡同时勾选（真机/HTTP API/Realtime WS）
-    for name in ['音箱-客厅位', 'ASR HTTP 网关', 'Realtime WS 网关']:
-        drv.find_element(By.CSS_SELECTOR, f"[data-slot='checkbox'][aria-label='选择设备 {name}']").click()
-        time.sleep(0.4)
+    _goto(drv, '/start-test')
+    _goto_step1_loaded(drv)
+    # 多被测主体：2 台在线设备 + 在线 API 全选（表头全选在线）
+    _toggle_device(drv, '音箱-客厅位')
+    _toggle_device(drv, '音箱-卧室位')
+    _click_checkbox(drv, '全选在线 API')
+    time.sleep(0.4)
+    summary = _body_text(drv)
+    assert '已选 2 台设备 · 1 个 API' in summary, f'混选汇总错误：{summary[:300]}'
+    assert '并发上限 32' in summary, f'API 并发上限自动合计缺失：{summary[:300]}'
+    # 启动 → 任务名称弹窗执行摘要设备+API 双计数（同一用例集，多被测主体并发）
+    _click_start(drv)
+    WebDriverWait(drv, 10).until(lambda d: '任务名称' in _body_text(d))
     txt = _body_text(drv)
-    assert '3 台设备' in txt, f'已选汇总未显示 3 台设备：{txt[:300]}'
-    assert '真机' in txt and 'HTTP API' in txt and 'Realtime WS' in txt, \
-        f'设备混跑三型徽章缺失：{txt[:300]}'
-    # 离线设备（音箱-入门-03）禁选
-    offline_cards = drv.find_elements(By.XPATH, "//button[contains(., '音箱-入门-03')]")
-    if offline_cards:
-        for card in offline_cards:
-            assert card.get_attribute('disabled') or 'opacity-60' in card.get_attribute('class'), \
-                '离线设备卡未被禁用'
+    assert '0 条 · 2 台 · 1 个 · 并发 4' in txt, f'任务摘要未设备+API 双计数：{txt[:300]}'
 
 
-# ── 6. 主题抽屉可用性（本页零硬编码色值）────────────────────
-def test_06_theme_drawer_available(drv):
+# ── 9. 主题抽屉可用性（本页零硬编码色值）────────────────────
+def test_09_theme_drawer_available(drv):
     _login(drv)
-    _goto(drv, '/E2ETest')
+    _goto(drv, '/start-test')
     drv.find_element(By.CSS_SELECTOR, "button[aria-label='打开主题设置']").click()
     time.sleep(1.0)
     sheet = drv.find_element(By.CSS_SELECTOR, "[data-slot='sheet-content']")
@@ -313,11 +420,11 @@ def test_06_theme_drawer_available(drv):
     drv.find_element(By.TAG_NAME, 'body').send_keys(Keys.ESCAPE)
 
 
-# ── 7. algo_engineer 只读观察态（§3.1.1：动作钮/控制/提交隐藏）──
-def test_07_readonly_observer_state(drv):
+# ── 10. algo_engineer 只读观察态（§3.1.1：动作钮/控制/提交隐藏）──
+def test_10_readonly_observer_state(drv):
     """注入 algo_engineer 权限快照（有 algorithm:read、无 task:execute）：
     路由放行 → 只读观察模式——底部「只读」提示可见、开始测试/下一步等动作钮隐藏、
-    设备勾选 checkbox 隐藏；步骤条仍可翻页浏览。"""
+    设备/API 勾选 checkbox 隐藏；步骤条仍可翻页浏览。"""
     # 先清会话再注入只读权限快照
     drv.get(BASE + '/login')
     time.sleep(1.2)
@@ -337,9 +444,9 @@ def test_07_readonly_observer_state(drv):
     drv.execute_script(
         "window.localStorage.setItem('iatp:auth:v1', arguments[0])",
         json.dumps(snapshot, ensure_ascii=False))
-    _goto(drv, '/E2ETest')
+    _goto(drv, '/start-test')
     txt = _body_text(drv)
-    assert '端到端测试' in txt, f'只读态页面未渲染：{txt[:150]}'
+    assert '开始测试' in txt, f'只读态页面未渲染：{txt[:150]}'
     # 底部只读提示
     assert '只读' in txt and '当前为只读观察模式，不可执行测试' in txt, \
         f'只读观察提示缺失：{txt[:200]}'
@@ -347,8 +454,10 @@ def test_07_readonly_observer_state(drv):
     btns = [b.text.strip() for b in drv.find_elements(By.TAG_NAME, 'button') if b.is_displayed()]
     for forbidden in ['开始测试', '下一步', '重置流程']:
         assert forbidden not in btns, f'只读态不应出现「{forbidden}」：{btns}'
-    # 步骤条仍可浏览（五个步骤格存在）
-    for step_name in ['选择算法', '选择测试用例', '选择测试设备', '执行测试', '查看结果']:
+    # 步骤条仍可浏览（四个步骤格存在）
+    for step_name in ['选择测试用例', '选择设备/API', '执行测试', '查看结果']:
         assert step_name in txt, f'只读态步骤条缺「{step_name}」'
+    # 只读态步骤条可浏览；动作钮已由上述断言覆盖（开始测试/下一步/重置流程隐藏）
+    assert '下一步' not in btns, '只读态不应有「下一步」'
     # 恢复 admin 会话（后续用例隔离）
     drv.execute_script("window.localStorage.clear()")
