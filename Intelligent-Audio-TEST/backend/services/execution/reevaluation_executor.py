@@ -5,6 +5,7 @@ from backend.models.database import db
 from backend.utils.web.log_handler import log_and_emit
 from backend.services.evaluation.evaluation_service import evaluation_service, get_app
 from backend.services.evaluation.evaluation_mixin import (
+    EXECUTION_SETTLED_STATUSES,
     get_task_dimension_evaluation_states,
     is_case_evaluation_finished,
 )
@@ -935,20 +936,30 @@ class ReevaluationExecutor:
         completed；当当前进程已不再跟踪该任务（如重启后 running_task_id 清空）时，
         仅对确系被重启恢复误标过的重新评估任务（整任务执行均已完成 + 用例带
         "服务重启"标记）兜底收尾，避免误改普通执行中被中断/真实失败的任务。
+
+        用例集口径（VEGA-54）：纳入「执行侧已收尾」的全部取值
+        （EXECUTION_SETTLED_STATUSES：completed/failed/stopped/skipped），
+        而非只认 completed。人工 stop 过的任务，其未完成用例被停止路径置为
+        execution_status='stopped'；而「先 stop 解锁提交入口 → 再重评」是被明确
+        认可的标准操作（重评提交白名单含 stopped），重评不重跑执行、该值保持
+        'stopped'。若继续只认 completed，这类任务在重评收敛后用例集查空 ⇒
+        直接 return False ⇒ 任务永久 running、报告门禁不过，只能靠重启触发恢复
+        扫描解锁（重副作用通道，见 VEGA-35）。仍在执行的用例（execution_status
+        = 'running'）不在该口径内，不会被提前收尾。
         """
         current_app = get_app()
         with current_app.app_context():
-            # 只检查已执行完成的用例（未执行用例不参与重新评估）
-            tcs = db.session.query(TaskCase).filter_by(
-                task_id=task_id,
-                execution_status='completed',
-                deleted=False
+            # 只检查执行侧已收尾的用例（未执行/仍在执行的用例不参与重新评估）
+            tcs = db.session.query(TaskCase).filter(
+                TaskCase.task_id == task_id,
+                TaskCase.execution_status.in_(EXECUTION_SETTLED_STATUSES),
+                TaskCase.deleted == False
             ).all()
             if not tcs:
                 return False
 
             # 仍有用例在评估，继续等待
-            # （tcs 已按 execution_status='completed' 过滤，这里显式传入同一口径，
+            # （tcs 已按「执行侧已收尾」过滤，这里显式传入同一口径，
             #  与 is_case_evaluation_finished 的「轮次完整性」前置保持一致）
             dim_states = get_task_dimension_evaluation_states(db.session, task_id)
             if any(
@@ -974,6 +985,12 @@ class ReevaluationExecutor:
                 # 服务重启后进程态丢失：仅当该任务确为被重启恢复误标的重新评估任务时才兜底收尾。
                 # 重新评估不重跑执行，其用例 execution_status 应全部为 completed；
                 # 普通执行任务被重启中断时会有执行失败的用例，不会被误收尾。
+                # 注意：这里**有意**保持严格只认 'completed'，不跟随上面的
+                # EXECUTION_SETTLED_STATUSES 口径（VEGA-54）。该分支的作用是区分
+                # 「重评任务」与「被重启中断的普通执行任务」，放宽到 stopped/skipped 会让
+                # 「停止后重启、远端评估回调仍到达」的任务从恢复扫描判定的 failed 被翻回
+                # completed，与 VEGA-35 的恢复语义冲突。人工 stop 过的任务在本进程内
+                # （running_task_id 匹配）走上面的正常收尾路径，不受此限制影响。
                 all_tcs = db.session.query(TaskCase).filter_by(
                     task_id=task_id, deleted=False).all()
                 all_exec_completed = all(tc.execution_status == 'completed' for tc in all_tcs)

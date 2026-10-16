@@ -26,7 +26,15 @@ EVALUATION_IN_PROGRESS_STATUSES = (
 # 'failed' 同属收尾：某轮执行失败会 break 掉剩余轮次，剩余轮次的维度永不创建；
 # 且执行失败的用例仍可走 reevaluate_type='failed' 重评，重评期间该值保持 'failed'
 # （重评不重跑执行），若只认 'completed' 会让这类用例重评后永久停在 calculating。
-EXECUTION_SETTLED_STATUSES = ('completed', 'failed')
+# 'stopped'/'skipped' 同属收尾（VEGA-54）：人工停止（任务级 stop 把未完成用例置
+# execution_status='stopped'，单用例 skip 走同一分支）之后执行侧不会再有新轮次派发，
+# 轮次完整性成立。二者必须计入，否则「先 stop 解锁提交入口 → 再重评」这条被明确
+# 认可的标准操作（stopped 本就在重评提交白名单内）会留下一个无人收尾的任务：
+# 重评收敛后 maybe_finalize 的用例集查空 ⇒ 任务永久 running、报告门禁（只放行
+# completed/failed/merged）不过，只能靠重启触发恢复扫描解锁（重副作用通道）。
+# 注：'skipped' 当前不会写进 execution_status（停止路径写的是 'stopped'），
+# 一并纳入只为口径完整与历史数据兼容；两者语义同为「执行侧已终结」。
+EXECUTION_SETTLED_STATUSES = ('completed', 'failed', 'stopped', 'skipped')
 
 # ---- 用例状态口径（TaskCase.status）：表示「用例已被人工停止」的取值 ----
 # 停止路径实际写的是 'skipped'（execution_engine 停止分支：status='skipped'
@@ -148,13 +156,16 @@ def is_case_evaluation_finished(evaluation_status, state, execution_status=None)
     e2e 任务配 3 台设备、用例只落 1 个 TestResult ⇒ 永远 1/3）。
 
     判据：
-    - 执行未收尾（execution_status 不在 completed/failed 内）⇒ 轮次不完整，
+    - 执行未收尾（execution_status 不在 EXECUTION_SETTLED_STATUSES 内）⇒ 轮次不完整，
       不认定评估结束（VEGA-52 D1：多轮用例每轮的维度是在**该轮评估派发时**才创建
       （evaluation_service._create_dimension_results ← e2e_executor 每轮结束派发），
       且某轮执行失败会 break 掉剩余轮次、剩余轮次维度**永不创建**。于是
       「现有维度都到终态」在轮次间隙等价于「上一轮算完、下一轮还没派发」，
       并非评估结束；只有执行收尾后才能保证所有会派发的轮次维度都已建出。
-      重评路径不重跑执行、该值本就是 completed/failed，不影响 VEGA-43 要救的卡死场景。
+      重评路径不重跑执行、该值本就是收尾态，不影响 VEGA-43 要救的卡死场景。
+      VEGA-54 补充：收尾态含人工停止（'stopped'/'skipped'）——停止后同样不会再有
+      新轮次派发；若把它们排除在外，「先 stop → 再重评」场景在重评收敛后既进不了
+      maybe_finalize 的用例集、也过不了本前置，任务永久 running（详见常量注释）。
       边界（VEGA-52 遗留窗口）：本前置只覆盖「执行侧」轮次完整性。重评路径
       （_run_reevaluation 先清空 TRD、再逐轮重建维度）在逐轮派发尚未走完时，
       用例级已可能是 calculating 而只有部分轮次的维度——该窗口需按「所有已配置
@@ -195,17 +206,24 @@ def sync_case_evaluation_status_from_dimensions(local_db_session, task_id, test_
       completed/failed/stopped/paused/skipped）被锁死；
     - reevaluate_type='failed' 要求用例级 == 'failed' ⇒ 唯一的补救通道不可达。
 
-    只做「推进」不做「回退」：仅在用例级处于 calculating、执行已收尾（completed/failed，
-    保证轮次完整）且该用例已有维度记录、且没有任何维度仍在评估中时生效
-    （is_case_evaluation_finished 的口径），保证不会误改「真在算」的用例。
+    只做「推进」不做「回退」：仅在用例级处于 calculating、执行已收尾（见
+    EXECUTION_SETTLED_STATUSES，保证轮次完整）且该用例已有维度记录、且没有任何维度
+    仍在评估中时生效（is_case_evaluation_finished 的口径），保证不会误改「真在算」的用例。
 
     以下用例一律不碰（VEGA-52 D2：此前只要用例级不在评估中就会按维度重算终态并写库，
     会把已停止/已终态/执行失败的用例改写掉，与函数自述契约不符）：
     - 用例级不是 calculating（stopped/skipped/completed/failed 等）⇒ 直接不推进；
       只允许从 calculating 推进，可避免把 execution_status='failed' 的用例
       （e2e_aggregator 置 evaluation_status='failed'）在维度恰好全 completed 时改判 completed；
-    - 用例已被人工停止（status 为 stopped/skipped）⇒ 由 update_task_case_status_in_db
-      的 exclude_stopped 兜底过滤。
+    - 用例已被人工停止（status 为 stopped/skipped）且**评估已不在进行中** ⇒ 由
+      update_task_case_status_in_db 的 exclude_stopped 兜底过滤（保持停止语义）。
+
+    人工停止 + 评估进行中（VEGA-54）：用例被停止后又被显式提交重新评估时，重评入口
+    会先把 evaluation_status 从 'stopped' 置回 queued/running/calculating（用例级已不再是
+    「已停止」的终态，而是用户主动重新驱动的在算状态）。这类用例只收敛 evaluation_status，
+    status 保持 stopped/skipped 不变——既不把人为停止改写成 completed/failed（停止语义
+    要保留给报告），也不让用例级永久停在 calculating（那正是 VEGA-43 要治的症状，
+    只是换到了「先 stop → 再重评」这条路径上）。
 
     Returns:
         (是否推进, 新状态)；未推进时新状态为 None
@@ -238,6 +256,13 @@ def sync_case_evaluation_status_from_dimensions(local_db_session, task_id, test_
     new_status = (
         EVALUATION_STATUS_FAILED if state['failed'] else EVALUATION_STATUS_COMPLETED
     )
+
+    if tc.status in CASE_STATUS_STOPPED:
+        # 人工停止的用例：只收敛评估状态，status/completed_at 保留停止语义
+        tc.evaluation_status = new_status
+        local_db_session.commit()
+        return True, new_status
+
     # 复用统一更新函数：同步写 status + evaluation_status + completed_at，
     # 并保留「已 stopped 的用例不覆盖」语义
     update_count = update_task_case_status_in_db(
