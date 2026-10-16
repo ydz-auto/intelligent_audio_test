@@ -142,6 +142,17 @@ class DeviceSystem(str, Enum):
         return cls[member_name]
 
 
+class LabStatus(str, Enum):
+    """实验室状态枚举（INT-493/INT-537 实验室扩展）
+
+    对齐 laboratories.status 列（migration 202608 add_laboratory_tables 默认 'active'）；
+    网关 laboratory 路由 create/update 及列表过滤均以本枚举校验，拒绝魔法字符串。
+    """
+    ACTIVE = 'active'
+    INACTIVE = 'inactive'
+    MAINTENANCE = 'maintenance'
+
+
 class VendorAdapterType(str, Enum):
     """厂商适配器类型枚举 — api_test_service infrastructure/adapters 注册表 key（INT-62 新增）
 

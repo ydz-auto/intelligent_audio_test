@@ -25,8 +25,8 @@ APP_ROOT = '/app'
 # 排除项（数据回填/清洗/一次性修复）：backfill_*、cleanup_*、
 # drop_task_type_and_testcase_test_type（破坏性收尾，全新库无此列）、
 # fix_audio_tags_types（历史临时脚本遗留 + 硬编码连接串）、
-# fix_partial_unique_indexes（可选项，沿用运行库现状）、
-# add_laboratory_tables（实验室扩展，可选功能）。
+# fix_partial_unique_indexes（可选项，沿用运行库现状）。
+# （add_laboratory_tables 已于 INT-537 纳入：实验室扩展随 ① 落地，全新库须建表）
 BOOTSTRAP_STEPS = [
     # ① 初始建表（69 表）
     ('python', 'scripts/create_all_tables.py'),
@@ -36,7 +36,10 @@ BOOTSTRAP_STEPS = [
     ('python', 'scripts/migrations/202608/add_audit_columns.py'),
     # ④ 重新评估列
     ('python', 'scripts/migrations/202608/add_reevaluated_at.py'),
-    # ⑦ RBAC 种子（96 权限点 + 5 角色）
+    # ④.1 实验室扩展：laboratories 主表 + task_laboratory_relations + 各表 lab_id 列
+    #     （INT-493/INT-537 拆分①；脚本幂等，全步骤 CREATE IF NOT EXISTS / 列存在跳过）
+    ('python', 'scripts/migrations/202608/add_laboratory_tables.py'),
+    # ⑦ RBAC 种子（权限点 + 5 角色，含 INT-537 lab:* 三码）
     ('python', 'scripts/migrations/202608/seed_rbac.py'),
     # ⑧ 评估阈值列
     ('python', 'scripts/migrations/202609/add_pass_threshold_to_eval_params.py'),

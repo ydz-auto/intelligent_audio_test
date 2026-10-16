@@ -11,6 +11,7 @@ from api_gateway.domain.repositories.acl import (
     TaskConfigAclRepository,
     TestCaseConfigAclRepository,
 )
+from api_gateway.domain.repositories.laboratory_repository import LaboratoryRepository
 
 __all__ = [
     'AlgorithmConfigAclRepository',
@@ -18,6 +19,7 @@ __all__ = [
     'AudioAclRepository',
     'DeviceAclRepository',
     'EvaluationConfigAclRepository',
+    'LaboratoryRepository',
     'PlaybackConfigAclRepository',
     'TagConfigAclRepository',
     'TaskConfigAclRepository',

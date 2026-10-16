@@ -136,6 +136,7 @@ def create_app(config_name='default') -> FastAPI:
     from api_gateway.routes.user_bp import router as user_router
     from api_gateway.routes.role_bp import router as role_router
     from api_gateway.routes.oauth_bp import router as oauth_router
+    from api_gateway.routes.laboratory_bp import router as laboratory_router
 
     app.include_router(auth_router, prefix='/api/v1/auth', tags=['auth'])
     app.include_router(user_router, prefix='/api/v1/auth', tags=['auth-management'])
@@ -163,6 +164,8 @@ def create_app(config_name='default') -> FastAPI:
     app.include_router(sse_router, prefix='/api/v1/sse', tags=['sse'])
     app.include_router(data_transfer_router, prefix='/api/v1/data-transfer', tags=['data-transfer'])
     app.include_router(benchmark_router, prefix='/api/v1/benchmarks', tags=['benchmarks'])
+    # 实验室（INT-493/INT-537 拆分①：CRUD+列表+summary+资源查询）
+    app.include_router(laboratory_router, prefix='/api/v1/laboratories', tags=['laboratories'])
 
     # 收藏 / 回收站（INT-141）：favorite/restore/purge 动作路由与 GET /favorites
     from api_gateway.routes.favorite_trash_bp import router as favorite_trash_router

@@ -153,6 +153,10 @@ PERMISSIONS = [
     # 首页 (2)
     ('home:read', '查看首页统计'),
     ('home:refresh', '刷新首页统计'),
+    # 实验室 (3)（INT-493/INT-537 拆分①：查看复用 device:read，不新立查看码）
+    ('lab:create', '创建实验室'),
+    ('lab:update', '修改实验室'),
+    ('lab:delete', '删除实验室'),
     # SSE (1)
     ('sse:read', '订阅 SSE 事件流'),
     # 用户/角色/权限管理 (11)
@@ -262,6 +266,8 @@ DEVICE_ADMIN_PERMS = [
     'playback:control',
     'spl:read', 'spl:create', 'spl:update', 'spl:delete', 'spl:test_tone',
     'digital_spl:read', 'digital_spl:create', 'digital_spl:update', 'digital_spl:delete',
+    # 实验室写权限（INT-493/INT-537：设备管理员负责物理资源组织管理；查看复用 device:read）
+    'lab:create', 'lab:update', 'lab:delete',
     'home:read',
     'sse:read',
     'auth:login', 'auth:callback', 'auth:refresh', 'auth:logout', 'auth:me',
