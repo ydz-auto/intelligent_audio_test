@@ -344,3 +344,63 @@ def test_06_console_no_severe(drv):
     _drain_console(drv)
     global _CONSOLE_SEVERE
     assert not _CONSOLE_SEVERE, f'浏览器 console SEVERE：\n' + '\n'.join(_CONSOLE_SEVERE[:5])
+
+
+# ── 7. P2 回归：数字校准提交排除无效行（审计 01a14625） ───
+def test_07_calibration_excludes_invalid_rows(drv):
+    _goto_spl(drv)
+    _switch_tab(drv, 'API/Realtime RMS-SPL')
+
+    # 打开数字校准弹窗（§6.10）
+    _open_row_menu(drv, '客服ASR_WebSocket_默认')
+    _click_menu_item(drv, '校准')
+    WebDriverWait(drv, 10).until(
+        lambda d: d.find_elements(By.XPATH, "//*[contains(@role,'dialog')]"))
+    time.sleep(0.8)
+
+    # 按参考生成 5 个基准点（§6.10：以 refSpl 为中心 ±20dB 每 10dB 一点；两步确认覆盖）
+    drv.find_element(By.XPATH, "//button[contains(., '按参考生成')]").click()
+    time.sleep(0.5)
+    try:
+        drv.find_element(By.XPATH, "//button[contains(., '确认覆盖')]").click()
+        time.sleep(0.5)
+    except Exception:
+        pass
+    targets = drv.find_elements(By.XPATH, "//input[contains(@aria-label, '目标 SPL')]")
+    assert len(targets) == 5, f'按参考生成后应有 5 个校准点，实际 {len(targets)}'
+
+    # 把第 1 行目标 SPL 改为越界 999 → 行级红标「范围 0~120」（§6.10 pointErrors）
+    first = drv.find_element(By.XPATH, "//input[contains(@aria-label, '目标 SPL')]")
+    first.send_keys(Keys.CONTROL + 'a')
+    first.send_keys('999')
+    time.sleep(0.6)
+    txt = _body_text(drv)
+    assert '范围 0~120' in txt, '越界行未显示行级校验错误「范围 0~120」'
+
+    # 有效行仍 ≥1 → 提交钮可用；提交后无效行不得落库（P2 修复：payload 与 validCount 同源）
+    submit = drv.find_element(By.XPATH, "//button[contains(., '提交校准')]")
+    assert submit.is_enabled(), '含 4 个有效行时提交钮应可用'
+    submit.click()
+    WebDriverWait(drv, 15).until(
+        lambda d: '校准完成：校准点已落库并置为已校准' in _body_text(drv))
+    WebDriverWait(drv, 10).until(
+        lambda d: 'RMS-SPL 数字校准' not in _body_text(drv))
+    time.sleep(1.0)
+
+    # 重开弹窗 → 校准点应为 4 个（999 行被排除，未以 Number('999') 落库）
+    _open_row_menu(drv, '客服ASR_WebSocket_默认')
+    _click_menu_item(drv, '校准')
+    WebDriverWait(drv, 10).until(
+        lambda d: d.find_elements(By.XPATH, "//*[contains(@role,'dialog')]"))
+    time.sleep(0.8)
+    targets = drv.find_elements(By.XPATH, "//input[contains(@aria-label, '目标 SPL')]")
+    assert len(targets) == 4, f'无效行未被排除，重开后仍有 {len(targets)} 个校准点'
+    txt = _body_text(drv)
+    assert '999' not in txt, '越界点 999 混入提交落库'
+    _press_esc(drv)
+
+    # 本用例 console 无新增 SEVERE
+    _drain_console(drv)
+    global _CONSOLE_SEVERE
+    assert not _CONSOLE_SEVERE, f'校准提交用例 console SEVERE：\n' + '\n'.join(_CONSOLE_SEVERE[:5])
+

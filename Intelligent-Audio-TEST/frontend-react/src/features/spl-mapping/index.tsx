@@ -9,7 +9,7 @@
  */
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { AudioWaveform, Plus, UploadCloud } from 'lucide-react'
+import { AudioWaveform, ChevronsLeft, ChevronsRight, Plus, UploadCloud } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -555,6 +555,15 @@ function PaginationBar({
         <Button
           variant='outline'
           size='sm'
+          aria-label='第一页'
+          disabled={page <= 1}
+          onClick={() => onPageChange(1)}
+        >
+          <ChevronsLeft aria-hidden='true' className='size-3.5' />
+        </Button>
+        <Button
+          variant='outline'
+          size='sm'
           disabled={page <= 1}
           onClick={() => onPageChange(page - 1)}
         >
@@ -570,6 +579,15 @@ function PaginationBar({
           onClick={() => onPageChange(page + 1)}
         >
           下一页
+        </Button>
+        <Button
+          variant='outline'
+          size='sm'
+          aria-label='最后一页'
+          disabled={page >= pageCount}
+          onClick={() => onPageChange(pageCount)}
+        >
+          <ChevronsRight aria-hidden='true' className='size-3.5' />
         </Button>
       </div>
     </div>

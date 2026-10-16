@@ -39,6 +39,13 @@ import {
   DIGITAL_CALIBRATION_INFO_TEXT,
   DIGITAL_CALIBRATION_LOCK_TEXT,
 } from '@/features/spl-mapping/constants'
+import {
+  buildCalibrationPayload,
+  countValidCalibrationRows,
+  detectDuplicateIndexes,
+  validatePoint,
+  type CalibrationPointDraft,
+} from '@/features/spl-mapping/lib/calibration'
 import { gainToDb, formatGainClamp, formatLinearGain } from '@/features/spl-mapping/lib/format'
 import { buildDigitalGainCurveSpec } from '@/features/spl-mapping/lib/charts'
 import {
@@ -53,38 +60,7 @@ export type ApiRmsSplCalibrationDialogProps = {
   mapping: ApiRmsSplMapping | null
 }
 
-interface PointDraft {
-  targetSpl: string
-  gainLinear: string
-  rmsDbfs: string
-}
-
-/** 行级校验错误（§6.10：SPL 范围/增益正数/限幅） */
-interface PointError {
-  targetSpl?: string
-  gainLinear?: string
-}
-
-function validatePoint(
-  point: PointDraft,
-  minGain: number,
-  maxGain: number
-): PointError {
-  const errors: PointError = {}
-  const target = Number(point.targetSpl)
-  const gain = Number(point.gainLinear)
-  if (point.targetSpl === '' || Number.isNaN(target)) {
-    errors.targetSpl = '请输入目标 SPL'
-  } else if (target < CALIBRATION_TARGET_SPL_MIN || target > CALIBRATION_TARGET_SPL_MAX) {
-    errors.targetSpl = `范围 ${CALIBRATION_TARGET_SPL_MIN}~${CALIBRATION_TARGET_SPL_MAX}`
-  }
-  if (point.gainLinear === '' || Number.isNaN(gain) || gain <= 0) {
-    errors.gainLinear = '请输入正数增益'
-  } else if (gain < minGain || gain > maxGain) {
-    errors.gainLinear = `限幅 ${minGain}~${maxGain}`
-  }
-  return errors
-}
+type PointDraft = CalibrationPointDraft
 
 /** 按参考生成点集（§6.10：以 refSpl 为中心 ±20dB 每 10dB 一点=5 点） */
 function generateByReference(refSpl: number, refGain: number): PointDraft[] {
@@ -133,22 +109,8 @@ export function ApiRmsSplCalibrationDialog(props: ApiRmsSplCalibrationDialogProp
       .replace('{refSpl}', String(refSpl))
   }, [mapping?.referenceGainLinear, mapping?.referenceSpl])
 
-  /** 重复目标 SPL 拦截（§6.10：重复 x 拦截；mapping 空时无点集可校验，恒空集） */
-  const duplicateIndexes = useMemo(() => {
-    const seen = new Map<string, number[]>()
-    points.forEach((point, index) => {
-      const target = point.targetSpl.trim()
-      if (target === '') return
-      const list = seen.get(target) ?? []
-      list.push(index)
-      seen.set(target, list)
-    })
-    const duplicated = new Set<number>()
-    seen.forEach((indexes) => {
-      if (indexes.length > 1) indexes.forEach((i) => duplicated.add(i))
-    })
-    return duplicated
-  }, [points])
+  /** 重复目标 SPL 拦截（§6.10：重复 x 拦截；按数值判重，'65' 与 '65.0' 视为重复） */
+  const duplicateIndexes = detectDuplicateIndexes(points)
 
   const curveSpec = useMemo(() => {
     const curvePoints = points
@@ -168,13 +130,7 @@ export function ApiRmsSplCalibrationDialog(props: ApiRmsSplCalibrationDialogProp
 
   const errors = points.map((point) => validatePoint(point, minGain, maxGain))
 
-  const validCount = points.filter((_, index) => {
-    const hasError = Object.keys(errors[index]).length > 0
-    const isDuplicate = duplicateIndexes.has(index)
-    const target = points[index].targetSpl.trim()
-    const gain = points[index].gainLinear.trim()
-    return !hasError && !isDuplicate && target !== '' && gain !== ''
-  }).length
+  const validCount = countValidCalibrationRows(points, errors, duplicateIndexes)
 
   const addPoint = () => setPoints((prev) => [...prev, { targetSpl: '', gainLinear: '', rmsDbfs: '' }])
   const removePoint = (index: number) =>
@@ -205,21 +161,21 @@ export function ApiRmsSplCalibrationDialog(props: ApiRmsSplCalibrationDialogProp
     }
     setPending(true)
     try {
-      const payload = points
-        .filter((_, index) => !duplicateIndexes.has(index))
-        .map((point) => ({
-          targetSpl: Number(point.targetSpl),
-          gainLinear: Number(point.gainLinear),
-          rmsDbfs: point.rmsDbfs === '' || Number.isNaN(Number(point.rmsDbfs))
-            ? null
-            : Number(point.rmsDbfs),
-        }))
+      // P2 修复：payload 与 validCount 判据同源——排除行级校验错误/重复/空值行，
+      // 避免空 targetSpl 序列化为 Number('')=0、越界点混入提交（§6.10 行级校验口径）
+      const payload = buildCalibrationPayload(points, errors, duplicateIndexes)
       await calibrate.mutateAsync({ id: mapping.id, points: payload })
       toast.success('校准完成：校准点已落库并置为已校准')
       props.onOpenChange(false)
-    } catch {
-      // 409：同 API 并发校准互斥（§6.10；mock 阶段走成功路径，接线后由后端返 409）
-      toast.error('校准失败（409）：API 正在执行校准，请稍后重试')
+    } catch (err) {
+      // 409：同 API 并发校准互斥（§6.10；mock 阶段走成功路径，接线后由后端返 409）。
+      // 仅 409（分布式锁冲突）用该文案，其他失败用通用文案避免误导（审计 P3-2）
+      const status = (err as { status?: number })?.status
+      toast.error(
+        status === 409
+          ? '校准失败（409）：API 正在执行校准，请稍后重试'
+          : '校准失败，请稍后重试'
+      )
     } finally {
       setPending(false)
     }
