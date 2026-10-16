@@ -116,7 +116,7 @@ class BaseCalculator:
             except Exception as e:
                 logger.warning(f"[_calculate_per_round] round={i} 失败: {e}")
                 result = {}
-            result['round_number'] = rd.get('round', i)
+            result['round_number'] = self._per_round_number(task_params, rd, i)
             per_round.append(result)
         return per_round
 
@@ -142,6 +142,26 @@ class BaseCalculator:
             return int(str(value).strip())
         except (TypeError, ValueError):
             return None
+
+    @classmethod
+    def _per_round_number(cls, task_params, rd, i):
+        """计算 per_round 条目应携带的用例级轮号（0-indexed）。
+
+        平台逐轮评估（round_number 有值）时会把 rounds 切成单轮后重发，
+        本地下标 i 恒为 0，不代表用例级轮号；若回退 i 会把该轮结果错标为
+        round_number=0，平台 _overwrite_round_results 据此落库到 round 0 的 TRD
+        （拒识 JS059 第一轮 is_reject=false 仍显示拒识数据的回归根因）。
+
+        取值优先级：
+        1. rd['round']：平台 _build_rounds_list 注入的用例级索引（整体评估全轮列表时即轮序）
+        2. 请求级 round_number：逐轮评估（rounds 已切单轮）时的用例级索引
+        3. 本地下标 i：整体评估（rounds 即全轮列表）时的轮序
+        """
+        rn = rd.get('round')
+        if rn is not None:
+            return rn
+        req_rn = cls._round_index((task_params or {}).get('round_number'))
+        return req_rn if req_rn is not None else i
 
     @classmethod
     def _get_target_round_index(cls, task_params):

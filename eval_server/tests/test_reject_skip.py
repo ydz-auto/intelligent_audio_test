@@ -19,19 +19,36 @@ from app.services.task_service import TaskService
 
 @pytest.fixture
 def fake_llm(monkeypatch):
-    """拦截拒识裁判的 LLM 调用：返回固定 behavior=回应，calls 记录调用次数。"""
+    """拦截拒识裁判的 LLM/ASR 调用：返回固定判定，calls 记录调用次数。
+
+    ASR 按文件名返回假词级 chunks（user.wav=意图段+1 个干扰段，ai.wav=模型段），
+    使文本整体评估的轮次切分（参考打断）能产出 1 个拒识轮。
+    LLM 返回 round_details（timing+behavior+reason，新文本模态契约）。
+    """
     monkeypatch.setattr(rj_mod.os.path, 'isfile', lambda path: bool(path))
     monkeypatch.setattr(rj_mod, 'get_llm_config',
                         lambda: {'max_tokens': 100, 'temperature': 0.0})
     monkeypatch.setattr(rj_mod, 'resolve_model', lambda **kw: 'test-model')
-    monkeypatch.setattr(rj_mod, 'get_asr_chunks', lambda *a, **k: [])
+
+    def _chunks(path):
+        name = str(path or '')
+        if 'ai' in name:
+            return [{'text': '好的', 'timestamp': [2.0, 4.0]},
+                    {'text': '没问题', 'timestamp': [6.0, 8.0]}]
+        return [{'text': '你好', 'timestamp': [0.0, 1.0]},
+                {'text': '嗯', 'timestamp': [5.0, 5.5]}]
+
+    monkeypatch.setattr(rj_mod, 'get_asr_chunks', _chunks)
     monkeypatch.setattr(rj_mod, 'build_interaction_text', lambda *a, **k: '')
     monkeypatch.setattr(rj_mod, 'get_asr_text', lambda *a, **k: '')
 
     def fake(**kwargs):
         fake.calls += 1
         return {'content': json.dumps(
-            getattr(fake, 'content', {'behavior': '回应', 'reason': 'mock'}),
+            getattr(fake, 'content', {'behavior': '回应', 'reason': 'mock',
+                                      'round_details': [
+                                          {'round': 1, 'timing': '回复过程中',
+                                           'behavior': '回应', 'reason': 'mock'}]}),
             ensure_ascii=False),
             'tokens_used': 10, 'input_token': 5, 'output_token': 5}
 
@@ -106,6 +123,31 @@ def test_string_false_also_skips(fake_llm):
     result = TaskService.calculate(
         'reject_judge', _params([_rd('false')], round_number=0))
     assert result.get('message') == '跳过: 非拒识轮(is_reject=false)'
+    assert fake_llm.calls == 0
+
+
+def test_per_round_labels_request_round_number(fake_llm):
+    """逐轮评估（round_number 有值、rounds 被平台切成单轮）：
+    per_round 的 round_number 必须用请求级 round_number（用例级索引），
+    不能用切片本地下标 0——否则该轮结果被标成 0，平台 _overwrite_round_results
+    落库到 round_number=0 的 TRD，导致 is_reject=false 的第一轮误显示拒识数据。
+
+    rounds 里没有 'round' 字段（multipart 渲染模板不含该键），
+    rd.get('round') 取不到时必须回退请求级 round_number。
+    """
+    result = TaskService.calculate(
+        'reject_judge', _params([_rd(True)], round_number=1))
+    assert result.get('per_round', [{}])[0].get('round_number') == 1
+    assert result.get('n_reject_rounds') == 1
+    assert fake_llm.calls >= 1
+
+
+def test_per_round_skipped_labels_request_round_number(fake_llm):
+    """逐轮评估且该轮 is_reject=false：跳过占位项的 round_number 同样用请求级轮号。"""
+    result = TaskService.calculate(
+        'reject_judge', _params([_rd(False)], round_number=1))
+    assert result.get('per_round', [{}])[0] == {
+        'round_number': 1, 'message': '跳过: 非拒识轮(is_reject=false)'}
     assert fake_llm.calls == 0
 
 
