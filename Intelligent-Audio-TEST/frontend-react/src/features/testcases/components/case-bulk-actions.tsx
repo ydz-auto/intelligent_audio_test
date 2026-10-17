@@ -7,6 +7,7 @@
  * 批量复制/批量删除；回收站态：批量恢复/批量彻底删除。mock 态动作全部页面级弹窗/toast 演示。
  */
 import { X } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { Badge } from '@/components/ui/badge'
@@ -42,6 +43,17 @@ export function CaseBulkActions({
 }) {
   const { hasPermission } = usePermissions()
   const count = selectedIds.length
+
+  // aria-live 播报照搬 newAPI DataTableBulkActions：勾选变化（含 X/ESC 清选）向读屏播报
+  const [announcement, setAnnouncement] = useState('')
+  useEffect(() => {
+    if (count > 0) {
+      setAnnouncement(`已选择 ${count} 个用例，批量操作可用`)
+      const timer = setTimeout(() => setAnnouncement(''), 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [count])
+
   if (count === 0) return null
 
   const canUpdate = hasPermission('testcase:update')
@@ -68,40 +80,51 @@ export function CaseBulkActions({
       ]
 
   return (
-    <div className='fixed bottom-6 left-1/2 z-50 w-max max-w-[calc(100vw-2rem)] -translate-x-1/2'>
-      <div className='bg-background/95 supports-backdrop-filter:bg-background/60 flex items-center gap-1 rounded-xl border p-2 shadow-xl backdrop-blur-lg'>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant='ghost'
-                size='icon-sm'
-                aria-label='清除选择 (Esc)'
-                onClick={onClear}
-              />
-            }
-          >
-            <X aria-hidden='true' />
-          </TooltipTrigger>
-          <TooltipContent>清除选择 (Esc)</TooltipContent>
-        </Tooltip>
-        <Separator orientation='vertical' className='h-5' />
-        <Badge className='min-w-8 justify-center rounded-lg'>{count}</Badge>
-        <span className='text-sm'>个用例已选择</span>
-        <Separator orientation='vertical' className='h-5' />
-        {actions
-          .filter((a) => a.renderIf)
-          .map((action) => (
-            <Button
-              key={action.key}
-              size='sm'
-              variant={action.variant ?? 'outline'}
-              onClick={() => onBatchAction(action.key, selectedIds)}
-            >
-              {action.label}
-            </Button>
-          ))}
+    <>
+      {/* Live region for screen reader announcements（照搬 newAPI bulk-actions） */}
+      <div
+        aria-live='polite'
+        aria-atomic='true'
+        role='status'
+        className='sr-only'
+      >
+        {announcement}
       </div>
-    </div>
+      <div className='fixed bottom-6 left-1/2 z-50 w-max max-w-[calc(100vw-2rem)] -translate-x-1/2'>
+        <div className='bg-background/95 supports-backdrop-filter:bg-background/60 flex items-center gap-1 rounded-xl border p-2 shadow-xl backdrop-blur-lg'>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant='ghost'
+                  size='icon-sm'
+                  aria-label='清除选择 (Esc)'
+                  onClick={onClear}
+                />
+              }
+            >
+              <X aria-hidden='true' />
+            </TooltipTrigger>
+            <TooltipContent>清除选择 (Esc)</TooltipContent>
+          </Tooltip>
+          <Separator orientation='vertical' className='h-5' />
+          <Badge className='min-w-8 justify-center rounded-lg'>{count}</Badge>
+          <span className='text-sm'>个用例已选择</span>
+          <Separator orientation='vertical' className='h-5' />
+          {actions
+            .filter((a) => a.renderIf)
+            .map((action) => (
+              <Button
+                key={action.key}
+                size='sm'
+                variant={action.variant ?? 'outline'}
+                onClick={() => onBatchAction(action.key, selectedIds)}
+              >
+                {action.label}
+              </Button>
+            ))}
+        </div>
+      </div>
+    </>
   )
 }

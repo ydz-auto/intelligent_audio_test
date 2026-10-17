@@ -7,7 +7,7 @@
  */
 import { Link, useNavigate } from '@tanstack/react-router'
 import { FileDown, FileSpreadsheet, FileUp, Plus } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
@@ -99,6 +99,47 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   )
 
   const clearSelection = useCallback(() => setSelected(new Set()), [])
+
+  // ESC 清选（11_用例域.md §3.7「X 清选钮 + ESC 清选 + aria-live 播报照搬」）：
+  // 批量浮条可见时页面级 keydown Escape → 清空勾选、浮条消失。
+  // 弹窗/抽屉打开时 ESC 归其消费（base-ui dialog 在 document 层 stopPropagation，此处再兜底）；
+  // 文本输入/IME 组合输入内 ESC 不清选。
+  useEffect(() => {
+    if (selected.size === 0) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing)
+        return
+      if (
+        mutateOpen ||
+        importExport.open ||
+        groupDialog.open ||
+        previewCase != null ||
+        batchDialog != null ||
+        confirm != null
+      )
+        return
+      const target = event.target as HTMLElement | null
+      if (
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        target?.tagName === 'SELECT' ||
+        target?.isContentEditable
+      )
+        return
+      clearSelection()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [
+    selected.size,
+    clearSelection,
+    mutateOpen,
+    importExport.open,
+    groupDialog.open,
+    previewCase,
+    batchDialog,
+    confirm,
+  ])
 
   const toggleSelect = useCallback((id: string, checked: boolean) => {
     setSelected((prev) => {
