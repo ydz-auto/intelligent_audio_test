@@ -115,3 +115,17 @@ export function toApiUpsertDto(config: Partial<APIConfig>): ApiUpsertDto {
     rms_spl_mapping_id: config.rmsSplMappingId ?? null,
   }
 }
+
+/**
+ * API 列表查询参数：camelCase Domain → snake_case query
+ * 对应后端 ApiListQuery（page / per_page / keyword / status / algorithm_type）
+ */
+export function toApiQueryDto(query: Record<string, any>): Record<string, any> {
+  const params: Record<string, any> = {}
+  if (query.page !== undefined) params.page = query.page
+  if (query.perPage !== undefined) params.per_page = query.perPage
+  if (query.keyword) params.keyword = query.keyword
+  if (query.status) params.status = query.status
+  if (query.algorithmType) params.algorithm_type = query.algorithmType
+  return params
+}

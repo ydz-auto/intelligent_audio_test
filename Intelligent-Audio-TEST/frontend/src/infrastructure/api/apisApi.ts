@@ -1,17 +1,17 @@
 /**
  * APIs (external API services) API module
- * 出口契约：Domain（camelCase）
+ * 出口契约：Domain（camelCase）；查询参数/请求体显式 snake_case（page/per_page/…）。
  */
 import { request, type RequestOptions } from '../http/client';
-import { toAPIConfig, toApiUpsertDto, toApiHealthCheckResult } from '../adapters/apiConfigAdapter';
+import { toAPIConfig, toApiUpsertDto, toApiHealthCheckResult, toApiQueryDto } from '../adapters/apiConfigAdapter';
 import { toArrayOrPaginated } from '../adapters/commonAdapter';
 import type { APIConfigDto, PaginatedDto, ApiHealthCheckDto } from '../dto';
 import type { APIConfig, ApiHealthCheckResult } from '../../domain/model/apiConfig';
 
 export const apisApi = {
-  /** API 列表（兼容分页对象/数组/裸 data 三种响应）→ APIConfig[] */
+  /** API 列表 → APIConfig[]；查询参数 camelCase Domain → snake_case query（对齐 ApiListQuery） */
   async getAll(params: Record<string, any> = {}, options: RequestOptions = {}): Promise<APIConfig[]> {
-    const raw = await request<PaginatedDto<APIConfigDto> | APIConfigDto[]>('GET', '/apis', null, { ...options, params });
+    const raw = await request<PaginatedDto<APIConfigDto> | APIConfigDto[]>('GET', '/apis', null, { ...options, params: toApiQueryDto(params) });
     return toArrayOrPaginated(raw, toAPIConfig);
   },
 
