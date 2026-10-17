@@ -38,14 +38,14 @@ export const reportCenterSearchSchema = z
     creator: z.string().optional().catch(undefined),
     algorithmType: z.string().optional().catch(undefined),
     favorite: z
-      .enum(['true', 'false'])
+      .union([z.boolean(), z.enum(['true', 'false'])])
       .optional()
-      .transform((v) => v === 'true')
+      .transform((v) => v === true || v === 'true')
       .catch(false),
     trash: z
-      .enum(['true', 'false'])
+      .union([z.boolean(), z.enum(['true', 'false'])])
       .optional()
-      .transform((v) => v === 'true')
+      .transform((v) => v === true || v === 'true')
       .catch(false),
     sortBy: z
       .enum(['created_at', 'name', 'status', 'algorithm', 'pass_rate', 'total_cases'])

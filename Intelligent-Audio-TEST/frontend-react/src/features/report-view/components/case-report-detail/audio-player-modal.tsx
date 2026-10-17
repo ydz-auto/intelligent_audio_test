@@ -1,10 +1,11 @@
 /**
- * 音频播放 Modal（15_报告域.md §4.11，AudioPlayerModal 平移——照 V9.7.10 播放器交互抄写）。
- * 结构：音频标题 + 类型徽标 + 播放设备 → 进度条（点击/拖拽 seek）+ 当前/总时长
- * + 播放·暂停 / 停止 / 关闭 控制组 + 元信息（SPL/噪声级/播放顺序/音频 ID）。
- * 红线④ mock：无真实音频流，播放进度按音频时长模拟推进（audio_id 派生时长，seek 即时生效）。
+ * 音频播放 Modal（15_报告域.md §4.11，AudioPlayerModal 平移——照 V9.7.10 AudioPlayerModal.vue 抄写）。
+ * 结构：音频标题 + 类型徽标 + 播放设备列表 → 进度条（点击/拖拽 seek）+ 当前/总时长
+ * + 播放·暂停 / 停止 / 关闭 控制组 + 元信息（SPL/噪声级/播放顺序/音频 ID）+ 错误提示（可关闭）。
+ * 真实 `<audio>`：audio.url 存在时走真实音频流（timeupdate/ended/error 驱动进度）；红线④ mock
+ * 下多数音频无 url，退化为按 audio_id 派生时长模拟推进（seek 即时生效）。
  */
-import { Pause, Play, Square } from 'lucide-react'
+import { Pause, Play, Square, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
@@ -15,6 +16,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { cn } from '@/lib/utils'
+
+export interface PlaybackDeviceInfo {
+  name?: string
+  status?: string
+}
 
 export interface AudioItemMeta {
   audio_id: number | string
@@ -24,6 +31,10 @@ export interface AudioItemMeta {
   play_order?: number
   noise_spl?: number
   device_name?: string
+  /** 真实音频流地址（红线④：mock 一般无 url → 模拟推进；接线后填） */
+  url?: string
+  /** 播放设备列表（照 V9.7.10 selectedDevices；缺省按 device_name 兜底单设备） */
+  playback_devices?: PlaybackDeviceInfo[]
   /** mock 时长（秒；缺省按 audio_id 派生演示值） */
   duration?: number
 }
@@ -48,7 +59,7 @@ function audioTypeLabel(audioType?: string): string {
   return map[audioType ?? ''] ?? '未知类型'
 }
 
-/** 演示时长（秒）：audio_id 数字哈希派生 8~42s，保证同 id 恒定；显式 duration 优先 */
+/** 演示时长（秒）：audio_id 数字哈希派生 8~42s，保证同 id 恒定；显式 duration/真实流优先 */
 function mockDuration(audio?: AudioItemMeta): number {
   if (audio?.duration && audio.duration > 0) return audio.duration
   const id = String(audio?.audio_id ?? '')
@@ -69,24 +80,67 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
   const [playing, setPlaying] = useState(false)
   const [current, setCurrent] = useState(0)
   const [dragging, setDragging] = useState(false)
+  const [playError, setPlayError] = useState('')
   const barRef = useRef<HTMLDivElement>(null)
+  const audioRef = useRef<HTMLAudioElement>(null)
 
   const stop = useCallback(() => {
     setPlaying(false)
     setCurrent(0)
+    const el = audioRef.current
+    if (el) {
+      el.pause()
+      el.currentTime = 0
+    }
   }, [])
 
-  // 打开时重置播放态；关闭时停止
+  // 打开时重置播放态 + 错误；关闭时停止
   useEffect(() => {
     if (!open) {
       setPlaying(false)
       setCurrent(0)
+      setPlayError('')
+    } else {
+      setCurrent(0)
+      setPlayError('')
     }
   }, [open])
 
-  // mock 播放推进：playing 时 200ms 步进，到末尾自动停止（无真实流，红④）
+  const isRealStream = Boolean(audio?.url)
+
+  // 真实流事件接线（timeupdate/ended/error → 进度/时长/错误）
   useEffect(() => {
-    if (!playing) return
+    const el = audioRef.current
+    if (!el || !isRealStream) return
+    const onTimeUpdate = () => {
+      if (!dragging) setCurrent(el.currentTime)
+    }
+    const onLoadedMeta = () => {
+      if (Number.isFinite(el.duration) && el.duration > 0) setCurrent(0)
+    }
+    const onEnded = () => {
+      setPlaying(false)
+      setCurrent(0)
+    }
+    const onError = () => {
+      setPlaying(false)
+      setPlayError('音频播放失败，请检查音频文件是否有效')
+    }
+    el.addEventListener('timeupdate', onTimeUpdate)
+    el.addEventListener('loadedmetadata', onLoadedMeta)
+    el.addEventListener('ended', onEnded)
+    el.addEventListener('error', onError)
+    return () => {
+      el.removeEventListener('timeupdate', onTimeUpdate)
+      el.removeEventListener('loadedmetadata', onLoadedMeta)
+      el.removeEventListener('ended', onEnded)
+      el.removeEventListener('error', onError)
+    }
+  }, [isRealStream, dragging])
+
+  // mock 播放推进：无真实流时 playing 200ms 步进，到末尾自动停止（红④ 模拟）
+  useEffect(() => {
+    if (!playing || isRealStream) return
     const timer = setInterval(() => {
       setCurrent((prev) => {
         if (prev + 0.2 >= duration) {
@@ -97,16 +151,49 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
       })
     }, 200)
     return () => clearInterval(timer)
-  }, [playing, duration])
+  }, [playing, duration, isRealStream])
+
+  const togglePlay = () => {
+    setPlayError('')
+    if (playing) {
+      setPlaying(false)
+      audioRef.current?.pause()
+      return
+    }
+    setPlaying(true)
+    const el = audioRef.current
+    if (isRealStream && el && audio?.url) {
+      try {
+        if (el.src !== audio.url) el.src = audio.url
+        void el.play().catch(() => {
+          setPlaying(false)
+          setPlayError('音频播放失败，请检查音频文件是否有效')
+        })
+      } catch {
+        setPlaying(false)
+        setPlayError('音频播放失败，请重试')
+      }
+    }
+  }
 
   const seekFromClientX = (clientX: number) => {
     const rect = barRef.current?.getBoundingClientRect()
     if (!rect || rect.width <= 0) return
     const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
-    setCurrent(ratio * duration)
+    const next = ratio * duration
+    setCurrent(next)
+    const el = audioRef.current
+    if (isRealStream && el) el.currentTime = next
   }
 
   const progress = duration > 0 ? Math.min(100, (current / duration) * 100) : 0
+
+  // 播放设备列表（照 V9.7.10 selectedDevices；缺省按 device_name 兜底）
+  const devices = useMemo(() => {
+    if (audio?.playback_devices && audio.playback_devices.length > 0) return audio.playback_devices
+    if (audio?.device_name) return [{ name: audio.device_name, status: 'online' }]
+    return []
+  }, [audio])
 
   return (
     <Dialog
@@ -122,7 +209,25 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
         </DialogHeader>
         {audio ? (
           <div className='space-y-4'>
-            {/* 音频标题 + 类型/设备徽标 */}
+            {/* 真实 <audio>（无 url 时不挂 src，仅作为结构/事件载体；接线后填 url） */}
+            <audio ref={audioRef} preload='metadata' className='hidden' />
+
+            {/* 错误提示（照 V9.7.10 error-message，可关闭） */}
+            {playError && (
+              <div className='flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-600 dark:border-red-900 dark:bg-red-950/40 dark:text-red-400'>
+                <span className='min-w-0 flex-1'>{playError}</span>
+                <button
+                  type='button'
+                  aria-label='关闭错误提示'
+                  className='text-red-500 hover:text-red-700'
+                  onClick={() => setPlayError('')}
+                >
+                  <X aria-hidden='true' className='size-3.5' />
+                </button>
+              </div>
+            )}
+
+            {/* 音频标题 + 类型徽标 */}
             <div className='text-center'>
               <p className='truncate text-base font-semibold'>
                 {audio.audio_name ?? `音频 ${audio.audio_id}`}
@@ -170,7 +275,7 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
                   size='sm'
                   className='h-8 gap-1 px-4'
                   aria-label={playing ? '暂停' : '播放'}
-                  onClick={() => setPlaying((v) => !v)}
+                  onClick={togglePlay}
                 >
                   {playing ? (
                     <Pause aria-hidden='true' className='size-3.5' />
@@ -192,6 +297,27 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
               </div>
             </div>
 
+            {/* 播放设备列表（照 V9.7.10 device-info） */}
+            {devices.length > 0 && (
+              <div className='rounded-lg border p-3'>
+                <p className='text-muted-foreground mb-1 text-xs font-medium'>播放设备</p>
+                <ul className='space-y-0.5'>
+                  {devices.map((device, index) => (
+                    <li key={`${device.name ?? index}`} className='flex items-center gap-2 text-sm'>
+                      <span
+                        aria-hidden='true'
+                        className={cn(
+                          'size-1.5 rounded-full',
+                          device.status === 'offline' ? 'bg-destructive' : 'bg-success'
+                        )}
+                      />
+                      <span className='font-medium'>{device.name ?? '未知设备'}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {/* 元信息 */}
             <div className='text-muted-foreground grid grid-cols-2 gap-x-4 gap-y-1 text-xs'>
               <span>声压级 (SPL)：<span className='font-mono'>{audio.spl ?? '—'} dB</span></span>
@@ -201,7 +327,11 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
             </div>
 
             <p className='text-muted-foreground text-center text-xs'>
-              {playing ? '播放中…' : '点击播放按钮预览音频（mock，进度为模拟播放）'}
+              {playing
+                ? '播放中…'
+                : isRealStream
+                  ? '点击播放按钮预览音频'
+                  : '点击播放按钮预览音频（mock，进度为模拟播放）'}
             </p>
           </div>
         ) : (
