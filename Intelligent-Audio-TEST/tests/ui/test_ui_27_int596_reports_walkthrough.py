@@ -74,6 +74,36 @@ def _driver():
     service = Service(executable_path=drv_path) if drv_path else Service()
     drv = webdriver.Chrome(options=options, service=service)
     drv.set_page_load_timeout(45)
+    # INT-606 认证接线后：拦截 /auth/me（getMe）返回预置超级用户，配合 localStorage 预置登录态
+    drv.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+        'source': r'''
+window.__iatpMockAuth = {
+  user_id: 'demo_admin',
+  username: 'demo_admin',
+  permissions: ['*'],
+};
+const __origFetch = window.fetch;
+window.fetch = function(input, init) {
+  const url = (typeof input === 'string' ? input : (input && input.url) || '') || '';
+  if (url.indexOf('/auth/me') !== -1) {
+    return Promise.resolve(new Response(JSON.stringify(window.__iatpMockAuth), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    }));
+  }
+  if (url.indexOf('/auth/mode') !== -1) {
+    return Promise.resolve(new Response(JSON.stringify({ auth_mode: 'off' }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    }));
+  }
+  if (url.indexOf('/auth/oauth/providers') !== -1) {
+    return Promise.resolve(new Response('[]', {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    }));
+  }
+  return __origFetch.apply(this, arguments);
+};
+'''
+    })
     return drv
 
 
@@ -142,14 +172,18 @@ def _body_text(drv):
 
 
 def _login(drv, username='demo_admin'):
+    """预置登录态（INT-606 后 mock 表单登录不可用）：落 origin → 写 localStorage → 首导航校验。"""
     _goto(drv, '/login')
-    drv.execute_script('try { window.localStorage.clear() } catch (e) {}')
-    _goto(drv, '/login')
-    drv.find_element(By.ID, 'username').send_keys(username)
-    drv.find_element(By.ID, 'password').send_keys('mock-pass-001')
-    drv.find_element(By.XPATH, "//button[contains(., '登 录')]").click()
-    WebDriverWait(drv, 15).until(lambda d: '/login' not in d.current_url)
-    time.sleep(1.0)
+    drv.execute_script(
+        'try { window.localStorage.clear() } catch (e) {};'
+        'window.localStorage.setItem("iatp:auth:token:v1", "retest-fake-token");'
+        'window.localStorage.setItem("iatp:auth:v1", JSON.stringify({state:{user:{'
+        'id:"demo_admin",username:"demo_admin",displayName:"演示管理员",roleName:"管理员",'
+        'permissions:["*"]}},version:0}));'
+        'window.localStorage.setItem("iatp:algorithm:v1", JSON.stringify({state:{algorithmId:""},version:0}));'
+    )
+    _goto(drv, '/report-center')
+    _wait_text(drv, '报告中心', timeout=20)
 
 
 def _wait_text(drv, text, timeout=15):
@@ -284,12 +318,27 @@ def test_report_comparison_table_export(drv):
 
 
 def test_case_category_tag_comparison_multi_select(drv):
-    """按用例分组对比「用例标签多选」/ 按用例标签对比「用例分组多选」（§3.3.5/§3.3.6）。"""
+    """按用例分组对比「用例标签多选」/ 按用例标签对比「用例分组多选」（§3.3.5/§3.3.6）。
+
+    INT-596 P3 后筛选卡为 MultiSelectFilter（搜索 + 分页 + checkbox 多选），断言新形态。
+    """
     _goto(drv, '/report/1201')
     _wait_text(drv, '按用例分组对比')
-    _wait_text(drv, '选择用例标签（可多选）')
     _wait_text(drv, '按用例标签对比')
-    _wait_text(drv, '选择用例分组（可多选）')
+    time.sleep(0.8)
+    text = _body_text(drv)
+    # 按用例分组对比段：用例分组/用例标签/评估维度 多选组（§3.3.5）
+    assert '用例分组' in text and '用例标签' in text and '评估维度' in text, \
+        '按用例分组对比筛选卡缺多选组（用例分组/用例标签/评估维度）'
+    # 分组/标签对比含「已选条件 (N)」条（§3.3.8；选择一项后出现）
+    grp_spans = drv.find_elements(By.XPATH, "//span[normalize-space(.)='用例分组']")
+    assert grp_spans, '筛选卡缺「用例分组」label'
+    root = grp_spans[0].find_element(By.XPATH, "./ancestor::div[contains(@class, 'flex-col')][1]")
+    cbs = root.find_elements(By.XPATH, ".//span[@data-slot='checkbox']")
+    assert cbs, '按用例分组对比「用例分组」多选 checkbox 缺失'
+    drv.execute_script("arguments[0].click();", cbs[0])
+    time.sleep(0.6)
+    _wait_text(drv, '已选条件 (1)', timeout=8)
 
 
 def test_specific_case_cards_seven_blocks(drv):
