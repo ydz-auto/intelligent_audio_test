@@ -125,22 +125,38 @@ def _body_text(drv):
     return drv.find_element(By.TAG_NAME, 'body').text
 
 
-def _login(drv, username='demo_admin'):
+def _login(drv, username='admin'):
+    """INT-605 接线后登录页走真实后端（/api/v1/auth/* 代理 localhost:5000）；后端未起时
+    表单登录不可用。改为 localStorage 注入 admin 会话（iatp:auth:v1 + token，权限 '*'），
+    test_ui_29 同口径。"""
     drv.get(BASE + '/login')
     time.sleep(1.2)
     drv.execute_script('try { window.localStorage.clear() } catch (e) {}')
-    _goto(drv, '/login')
-    drv.find_element(By.ID, 'username').send_keys(username)
-    drv.find_element(By.ID, 'password').send_keys('mock-pass-001')
-    drv.find_element(By.XPATH, "//button[contains(., '登 录')]").click()
-    WebDriverWait(drv, 15).until(lambda d: '/login' not in d.current_url)
-    time.sleep(1.0)
+    snapshot = {
+        'state': {
+            'user': {
+                'id': 'mock-admin-001',
+                'username': username,
+                'displayName': '演示管理员',
+                'roleName': '超级管理员',
+                'permissions': ['*'],
+            }
+        },
+        'version': 0,
+    }
+    drv.execute_script(
+        "window.localStorage.setItem('iatp:auth:v1', arguments[0])",
+        json.dumps(snapshot, ensure_ascii=False))
+    _goto(drv, '/testcases/by-group')
+    time.sleep(0.6)
 
 
 # ── 定位工具 ────────────────────────────────────────────
 def _select_case(drv, index=0):
     """点第 index 张用例卡头 checkbox（aria-label^='选择 '）勾选该用例。"""
-    boxes = drv.find_elements(By.CSS_SELECTOR, "[role='checkbox'][aria-label^='选择 ']")
+    boxes = WebDriverWait(drv, 12).until(
+        lambda d: d.find_elements(
+            By.CSS_SELECTOR, "[role='checkbox'][aria-label^='选择 ']"))
     assert boxes, '未找到用例勾选 checkbox'
     boxes[index].click()
     time.sleep(0.6)
@@ -555,8 +571,11 @@ def test_10_no_demo_toast_and_no_console_errors(drv):
         dlg = _dialog_by_title(drv, title)
         dlg.find_element(By.XPATH, ".//div[@data-slot='dialog-footer']//button[contains(., '取消')]").click()
         time.sleep(0.5)
-    # 页面无抛错级 console
+    # 页面无抛错级 console（后端未起时 /api/v1/auth/me 504 属网络环境噪音，不算 JS 运行时错误——
+    # test_ui_29 同口径：'Failed to load resource' 且无 'Uncaught' 跳过）
     errors = [e for e in drv.get_log('browser')
-              if e.get('level') == 'SEVERE' and 'favicon' not in str(e.get('message', ''))]
+              if e.get('level') == 'SEVERE' and 'favicon' not in str(e.get('message', ''))
+              and not ('Failed to load resource' in str(e.get('message', ''))
+                       and 'Uncaught' not in str(e.get('message', '')))]
     assert not errors, f'页面 console SEVERE 报错：{errors[:5]}'
     _save_evidence('10_no_demo_toast_final', drv)
