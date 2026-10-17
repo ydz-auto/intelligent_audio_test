@@ -48,6 +48,19 @@ def _make_wav(path, rate, channels=1, frames=1600, amp=1000):
     return str(path)
 
 
+def _make_ramp_wav(path, rate, channels, frames, base=100, step=7):
+    """写入样本值逐位置递增的 PCM wav（确定性边界：任何样本/帧游标错位都会在
+    逐字节比较中暴露；INT-593 P1-1 多声道预解码回归用）。"""
+    values = [(base + i * step) % 32000 for i in range(frames * channels)]
+    samples = struct.pack('<' + 'h' * len(values), *values)
+    with wave.open(str(path), 'wb') as w:
+        w.setnchannels(channels)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(samples)
+    return str(path)
+
+
 # NumPy 2.x 扩展模块每进程只允许动态加载一次；driver_env 复用
 # test_path_b_pre_resample 的进程级缓存模式，避免跨用例重载报错。
 _REAL_MODULES: dict = {}
@@ -268,6 +281,160 @@ class TestCallbackPredecode:
         vals = drv_mod.np.frombuffer(out_bytes, dtype='<i2')[0::2]
         assert abs(int(vals[0]) - 8000) <= 1
         assert metrics['callback_max_ms'] > 0.0, '回调最大耗时已采集'
+
+    def test_predecode_stereo_matches_reference_mix(self, driver_env, tmp_path):
+        """stereo（2 声道）预解码路径 == 每回调解析参考路径（逐字节一致，P1-1 回归）。
+
+        缺陷版本：预解码路径 take=min(frame_count, ...) 按样本取，stereo 每回调只混入
+        1/2 内容（源半速推进 + 输出块后半段静音）。ramp 样本使任何游标错位逐字节可见。
+        """
+        drv_mod, drv = driver_env
+        wav = _make_ramp_wav(tmp_path / 'stereo.wav', 16000, channels=2, frames=3200, base=100, step=7)
+        wf = self._open_wav(wav, 2, 16000)
+        effective_gains = [2.0]
+        bufs = drv._predecode_audio_buffers([wf], effective_gains)
+        assert bufs is not None and bufs[0].size == 3200 * 2
+
+        metrics = {'overflows': 0, 'callback_max_ms': 0.0, 'start_latency_ms': None}
+        cb = drv._create_multi_callback(
+            stream_channels=2, stream_rate=16000,
+            audio_gains=[1.0], gain_compensations=[2.0],
+            file_channels_list=[2], file_rates_list=[16000],
+            channel_indices=[0], wave_files=[wf],
+            parent_stop_event=None, loop=False,
+            audio_is_noise_list=[False], audio_delays=[0.0], audio_loops_list=[False],
+            effective_gains=effective_gains, decoded_buffers=bufs,
+            play_metrics=metrics,
+        )
+        # 驱动 2 次回调覆盖整文件：stereo 游标跨首个回调边界后必须与参考逐字节一致
+        for k in range(2):
+            out_bytes, flag = cb(None, 1600, None, None)
+            assert flag == drv_mod.pyaudio.paContinue
+            ref = drv_mod.AudioFormatAdapter.to_int16_scale(wf.readframes(1600), 2) * 2.0
+            out_ref = drv_mod.np.zeros(1600 * 2, dtype='float32')
+            out_ref[0:1600 * 2:2] += ref[0:1600 * 2:2]
+            out_ref[1:1600 * 2:2] += ref[1:1600 * 2:2]
+            out_ref = drv_mod.np.clip(out_ref, -32768, 32767).astype('<i2')
+            assert out_bytes == out_ref.tobytes(), f'stereo 预解码与参考路径不一致（回调 {k + 1}）'
+        # 首回调非静音尾段（缺陷版本后半静音）：帧 800-1599 均有内容
+        assert not all(s == 0 for s in drv_mod.np.frombuffer(out_bytes, dtype='<i2')[3200 - 100:3200])
+
+    def test_predecode_stereo_loop_matches_reference_mix(self, driver_env, tmp_path):
+        """stereo + loop（use_loop）预解码路径 == 参考路径（跨循环边界逐字节一致，P1-1 回归）。"""
+        drv_mod, drv = driver_env
+        wav = _make_ramp_wav(tmp_path / 'stereo_loop.wav', 16000, channels=2, frames=3200, base=200, step=5)
+        wf = self._open_wav(wav, 2, 16000)
+        effective_gains = [1.5]
+        bufs = drv._predecode_audio_buffers([wf], effective_gains)
+        assert bufs is not None
+
+        metrics = {'overflows': 0, 'callback_max_ms': 0.0, 'start_latency_ms': None}
+        cb = drv._create_multi_callback(
+            stream_channels=2, stream_rate=16000,
+            audio_gains=[1.0], gain_compensations=[1.5],
+            file_channels_list=[2], file_rates_list=[16000],
+            channel_indices=[0], wave_files=[wf],
+            parent_stop_event=None, loop=False,
+            audio_is_noise_list=[True], audio_delays=[0.0], audio_loops_list=[True],
+            effective_gains=effective_gains, decoded_buffers=bufs,
+            play_metrics=metrics,
+        )
+        # 4 次回调 = 2 个完整循环周期（3200 帧文件 / 1600 帧回调），覆盖循环回卷边界
+        for k in range(4):
+            out_bytes, flag = cb(None, 1600, None, None)
+            assert flag == drv_mod.pyaudio.paContinue
+            data = wf.readframes(1600)
+            if not data:  # 循环回卷（与回调内 rewind 语义一致）
+                wf.rewind()
+                data = wf.readframes(1600)
+            ref = drv_mod.AudioFormatAdapter.to_int16_scale(data, 2) * 1.5
+            out_ref = drv_mod.np.zeros(1600 * 2, dtype='float32')
+            out_ref[0:1600 * 2:2] += ref[0:1600 * 2:2]
+            out_ref[1:1600 * 2:2] += ref[1:1600 * 2:2]
+            out_ref = drv_mod.np.clip(out_ref, -32768, 32767).astype('<i2')
+            assert out_bytes == out_ref.tobytes(), f'stereo+loop 预解码不一致（回调 {k + 1}）'
+
+    def test_predecode_4ch_progress_matches_reference(self, driver_env, tmp_path):
+        """4 声道源：预解码/参考路径输出一致且以同速推进至 dry（P1-1 样本/帧游标回归）。
+
+        现有混音仅承载 mono/stereo（file_ch<=2），4 声道在两条路径中都不混入输出；
+        但游标推进速度必须一致——缺陷版本按样本取帧，源以 1/4 速度推进，dry 前
+        空放拍数翻 4 倍。
+        """
+        drv_mod, drv = driver_env
+        wav = _make_ramp_wav(tmp_path / 'quad.wav', 16000, channels=4, frames=1600, base=100, step=3)
+
+        def _drain_cb(extra_kwargs):
+            metrics = {'overflows': 0, 'callback_max_ms': 0.0, 'start_latency_ms': None}
+            cb = drv._create_multi_callback(
+                stream_channels=2, stream_rate=16000,
+                audio_gains=[1.0], gain_compensations=[1.0],
+                file_channels_list=[4], file_rates_list=[16000],
+                channel_indices=[0], wave_files=[wf],
+                parent_stop_event=None, loop=False,
+                audio_is_noise_list=[False], audio_delays=[0.0], audio_loops_list=[False],
+                play_metrics=metrics, **extra_kwargs,
+            )
+            outs = []
+            for _ in range(20):
+                out_bytes, flag = cb(None, 1600, None, None)
+                outs.append(out_bytes)
+                if flag == drv_mod.pyaudio.paComplete:
+                    break
+            return outs, flag
+
+        wf = self._open_wav(wav, 4, 16000)
+        ref_outs, ref_flag = _drain_cb({})
+        wf = self._open_wav(wav, 4, 16000)
+        bufs = drv._predecode_audio_buffers([wf], [1.0])
+        assert bufs is not None
+        pd_outs, pd_flag = _drain_cb({'effective_gains': [1.0], 'decoded_buffers': bufs})
+
+        assert ref_flag == drv_mod.pyaudio.paComplete
+        assert pd_flag == drv_mod.pyaudio.paComplete
+        assert len(pd_outs) == len(ref_outs), (
+            f'预解码路径 dry 前拍数 {len(pd_outs)} != 参考 {len(ref_outs)}（游标单位错位，'
+            f'多声道源未按同速推进）')
+        assert pd_outs == ref_outs, '4 声道两路径输出应逐拍一致（均不混入，静音）'
+
+    def test_play_multi_stereo_predecode_output_integrity(self, driver_env, tmp_path, monkeypatch):
+        """端到端：play_multi 预解码路径播放 stereo 源，回调输出与每回调解析参考逐字节一致。"""
+        drv_mod, drv = driver_env
+        wav = _make_ramp_wav(tmp_path / 'stereo_e2e.wav', 16000, channels=2, frames=3200, base=300, step=4)
+        drv.pa.get_device_info_by_index = lambda idx: {
+            'maxOutputChannels': 2, 'defaultSampleRate': 16000, 'name': 'stub'}
+        stream = mock.MagicMock()
+        calls = {'n': 0}
+
+        def _is_active():
+            calls['n'] += 1
+            return calls['n'] == 1
+        stream.is_active = _is_active
+        drv.pa.open = mock.MagicMock(return_value=stream)
+        # 增益补偿固定 1.0（Ramp 文件 RMS 补偿会引入非 1 增益，参考侧复算复杂且与
+        # 预解码路径无关，这里锁定有效增益=1 只验证回调路径正确性）
+        monkeypatch.setattr(drv, 'calculate_gain_compensation', lambda p: 1.0)
+        monkeypatch.setattr(drv_mod, 'log_and_emit', lambda *a, **k: None)
+
+        import time as _t
+        drv.play_multi(
+            [{'file': wav, 'channel': 0, 'gain': 1.0, 'is_noise': False}],
+            device_index=0,
+            started_monotonic=_t.monotonic(),
+        )
+        assert drv.pa.open.called
+        callback = drv.pa.open.call_args[1]['stream_callback']
+        wf_ref = wave.open(wav, 'rb')
+        for k in range(2):
+            out_bytes, flag = callback(None, 1600, None, None)
+            assert flag == drv_mod.pyaudio.paContinue
+            ref = drv_mod.AudioFormatAdapter.to_int16_scale(wf_ref.readframes(1600), 2) * 1.0
+            out_ref = drv_mod.np.zeros(1600 * 2, dtype='float32')
+            out_ref[0:1600 * 2:2] += ref[0:1600 * 2:2]
+            out_ref[1:1600 * 2:2] += ref[1:1600 * 2:2]
+            out_ref = drv_mod.np.clip(out_ref, -32768, 32767).astype('<i2')
+            assert out_bytes == out_ref.tobytes(), f'play_multi stereo 端到端不一致（回调 {k + 1}）'
+        wf_ref.close()
 
     def test_callback_counts_output_overflow(self, driver_env, tmp_path):
         """PortAudio callback status paOutputOverflow → overflow 计数（量化采集）。"""

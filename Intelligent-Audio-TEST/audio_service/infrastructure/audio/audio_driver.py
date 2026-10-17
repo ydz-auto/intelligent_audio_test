@@ -495,6 +495,7 @@ class PyAudioDriver(AudioDriver):
                     is_noise = audio_is_noise_list[i] if i < len(audio_is_noise_list) else False
                     audio_loop = audio_loops_list[i] if (audio_loops_list and i < len(audio_loops_list)) else False
                     use_loop = is_noise or audio_loop
+                    file_ch = file_channels_list[i]
 
                     delay = audio_delays[i] if i < len(audio_delays) else 0
                     if delay > 0:
@@ -519,7 +520,11 @@ class PyAudioDriver(AudioDriver):
                             dry_finished_list[i] = True
                             continue
                         start = positions[i] % n if use_loop else positions[i]
-                        take = min(frame_count, n - start)
+                        # INT-593 审计 P1-1 修复：游标为样本计数（交织），PortAudio 回调
+                        # frame_count 为帧计数——mono 1帧=1样本恰好相等；stereo/多声道
+                        # 每回调须取 frame_count * file_ch 个样本，否则只混入 1/file_ch
+                        # 内容（播放拉伸 + 输出块剩余静音），且源按 1/file_ch 速度推进。
+                        take = min(frame_count * file_ch, n - start)
                         audio_data = buf[start:start + take]
                         positions[i] += take
                         if take == 0:
@@ -556,7 +561,6 @@ class PyAudioDriver(AudioDriver):
                             audio_data = audio_data * (
                                 audio_gains[i] * self.GLOBAL_SAFE_GAIN * gain_compensations[i])
 
-                    file_ch = file_channels_list[i]
                     actual_frames = len(audio_data) // file_ch
                     if actual_frames <= 0:
                         continue
