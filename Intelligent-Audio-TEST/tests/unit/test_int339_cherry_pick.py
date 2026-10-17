@@ -297,6 +297,45 @@ def test_candidates_container_filter_and_evaluation(db):
     assert {i['result_id'] for i in resp['data']['items']} == {results[0][1]}
 
 
+def test_candidates_non_pickable_container_only_empty(db):
+    """INT-657：不可再挑容器（merged，§10）单独筛选 → 无候选命中（早退分支），
+    与可挑容器混选时仅可挑容器引用结果命中。"""
+    from task_service.application.task.cherry_pick_service import cherry_pick_service
+    from task_service.infrastructure.persistence.models import Task
+
+    src_a, results_a = _seed_source_task(name='INT657不可挑源A')
+    _src_b, results_b = _seed_source_task(name='INT657不可挑源B')
+    set_current_user_id(42)
+    # 两个容器：A-C1 + B-C1 → 容器1；A-C1 → 容器2
+    cherry_pick_service.cart_add({'result_ids': [results_a[0][1], results_b[0][1]]})
+    out1 = cherry_pick_service.checkout({'action': 'merge', 'name': 'INT657不可挑容器1'})
+    merged_container = out1['data']['task_id']
+    cherry_pick_service.cart_clear()
+    cherry_pick_service.cart_add({'result_ids': [results_a[0][1]]})
+    out2 = cherry_pick_service.checkout({'action': 'merge', 'name': 'INT657不可挑容器2'})
+    pickable_container = out2['data']['task_id']
+
+    # 把容器1标记 merged（不可再挑，§10）
+    session = get_db_session()
+    try:
+        session.query(Task).filter(Task.id == merged_container).update({'status': 'merged'})
+        session.commit()
+    finally:
+        remove_db_session()
+
+    set_current_user_id(None)
+    # 仅 merged 容器 → 早退返回空
+    only_merged = cherry_pick_service.list_candidates({'task_ids': [merged_container]})
+    assert only_merged['success'] is True
+    assert only_merged['data']['items'] == [] and only_merged['data']['total'] == 0
+
+    # merged + 可挑容器混选 → 仅可挑容器引用结果命中
+    mixed = cherry_pick_service.list_candidates(
+        {'task_ids': [merged_container, pickable_container]})
+    assert mixed['success'] is True
+    assert {i['result_id'] for i in mixed['data']['items']} == {results_a[0][1]}
+    assert all(i['task_id'] == pickable_container for i in mixed['data']['items'])
+
 # ==================== S3 容器任务 / 读链路引用解析 ====================
 
 def test_checkout_merge_container_and_reference_resolution(db):
