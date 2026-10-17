@@ -88,7 +88,10 @@ describe('client 统一 fetch 封装', () => {
   })
 
   it('未传 basePath 时沿用默认 /api/v1（回归：auth/home/tasks URL 不变）', async () => {
-    queueResponses(jsonResponse({ success: true, code: 0, data: { ok: 1 } }))
+    queueResponses(
+      jsonResponse({ success: true, code: 0, data: { ok: 1 } }),
+      jsonResponse({ success: true, code: 0, data: { saved: true } })
+    )
     await request('GET', '/home/stats')
     await request('POST', '/tasks', { name: 't' })
     expect(fetchMock.mock.calls[0][0]).toBe(`${API_BASE_URL}/home/stats`)
