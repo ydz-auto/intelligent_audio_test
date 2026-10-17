@@ -111,6 +111,16 @@ service SPLConfigService {
   rpc StopTestTone(StopTestToneRequest) returns (StopTestToneResponse);
 }
 
+// ===== 实验室 CRUD 服务（INT-655，实验室扩展功能设计.md §5.1） =====
+service LaboratoryConfigService {
+  rpc CreateLaboratory(CreateLaboratoryRequest) returns (CreateLaboratoryResponse);
+  rpc UpdateLaboratory(UpdateLaboratoryRequest) returns (UpdateLaboratoryResponse);
+  rpc DeleteLaboratory(DeleteLaboratoryRequest) returns (DeleteLaboratoryResponse);
+  rpc ListLaboratories(ListLaboratoriesRequest) returns (ListLaboratoriesResponse);
+  rpc GetLaboratory(GetLaboratoryRequest) returns (GetLaboratoryResponse);
+  rpc GetLaboratorySummary(GetLaboratorySummaryRequest) returns (GetLaboratorySummaryResponse);
+}
+
 // ==================== DeviceService Messages ====================
 
 message CreateDriverRequest {
@@ -766,4 +776,71 @@ message StopTestToneResponse {
   bool success = 1;
   string message = 2;
   string data = 3;
+}
+
+// ==================== LaboratoryConfigService Messages（INT-655） ====================
+
+message CreateLaboratoryRequest {
+  string data = 1;  // JSON: {code, name, building?, floor?, room_number?, description?, status?}
+}
+message CreateLaboratoryResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 实验室详情（含 id）
+  // 业务码（INT-655，proto README 约定）：200=成功；404=不存在；409=code 冲突
+  int32 code = 4;
+}
+
+message UpdateLaboratoryRequest {
+  int32 lab_id = 1;
+  string data = 2;  // JSON: {code?, name?, building?, floor?, room_number?, description?, status?}
+}
+message UpdateLaboratoryResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+  int32 code = 4;
+}
+
+message DeleteLaboratoryRequest {
+  int32 lab_id = 1;
+}
+message DeleteLaboratoryResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+  int32 code = 4;
+}
+
+message ListLaboratoriesRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  string keyword = 3;
+  string status = 4;
+}
+message ListLaboratoriesResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 分页列表（含 device_count/playback_device_count/test_case_count）
+  int32 code = 4;
+}
+
+message GetLaboratoryRequest {
+  int32 lab_id = 1;
+}
+message GetLaboratoryResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+  int32 code = 4;
+}
+
+message GetLaboratorySummaryRequest {
+  int32 lab_id = 1;
+}
+message GetLaboratorySummaryResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON: {device_count, playback_device_count, test_case_count}
+  int32 code = 4;
 }

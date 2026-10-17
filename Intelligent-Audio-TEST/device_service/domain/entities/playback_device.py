@@ -30,6 +30,7 @@ class PlaybackDeviceAggregate:
     description: str = ""
     status: str = "online"
     current_spl_mapping_id: Optional[int] = None
+    lab_id: Optional[int] = None
     created_at: Any = None
     updated_at: Any = None
 
@@ -67,6 +68,7 @@ class PlaybackDeviceAggregate:
             'description': self.description,
             'status': self.status,
             'current_spl_mapping_id': self.current_spl_mapping_id,
+            'lab_id': self.lab_id,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'lab_id': self.config.get('lab_id'),

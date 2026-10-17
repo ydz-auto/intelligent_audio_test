@@ -13,6 +13,7 @@ from device_service.infrastructure.persistence.models.device_models import (
     DeviceStatusEvent,
     DeviceAlarmRule,
     DeviceAlarm,
+    Laboratory,
 )
 from device_service.infrastructure.persistence.models.spl_models import (
     CalibrationHistory,
@@ -28,6 +29,7 @@ __all__ = [
     "DeviceStatusEvent",
     "DeviceAlarmRule",
     "DeviceAlarm",
+    "Laboratory",
     "SPLMapping",
     "CalibrationHistory",
 ]

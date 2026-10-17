@@ -37,6 +37,9 @@ from api_gateway.infrastructure.acl.evaluation_strategy_acl_repository import (
 from api_gateway.infrastructure.acl.execution_acl_repository import (
     ExecutionAclRepositoryImpl,
 )
+from api_gateway.infrastructure.acl.laboratory_acl_repository import (
+    LaboratoryAclRepositoryImpl,
+)
 from api_gateway.infrastructure.acl.playback_acl_repository import (
     PlaybackAclRepositoryImpl,
 )
@@ -60,6 +63,7 @@ __all__ = [
     'EvaluationConfigAclRepositoryImpl',
     'EvaluationStrategyAclRepositoryImpl',
     'ExecutionAclRepositoryImpl',
+    'LaboratoryAclRepositoryImpl',
     'PlaybackAclRepositoryImpl',
     'PlaybackConfigAclRepositoryImpl',
     'ReevaluationAclRepositoryImpl',

@@ -40,6 +40,7 @@ class PlaybackRepository(PlaybackRepositoryInterface):
             device_unique_id=data['device_unique_id'],
             description=data.get('description'),
             status=data.get('status', 'online'),
+            lab_id=data.get('lab_id'),
             created_by_user_id=get_current_user_id(),
         )
         session.add(new_device)

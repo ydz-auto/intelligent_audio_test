@@ -116,6 +116,7 @@ def create_app(config_name='default') -> FastAPI:
     from api_gateway.routes.group_bp import router as group_router
     from api_gateway.routes.device_bp import router as device_router
     from api_gateway.routes.playback_bp import router as playback_router
+    from api_gateway.routes.laboratory_bp import router as laboratory_router
     from api_gateway.routes.report_bp import router as report_router
     from api_gateway.routes.task_bp import router as task_router
     from api_gateway.routes.cherry_pick_bp import router as cherry_pick_router
@@ -138,7 +139,6 @@ def create_app(config_name='default') -> FastAPI:
     from api_gateway.routes.user_bp import router as user_router
     from api_gateway.routes.role_bp import router as role_router
     from api_gateway.routes.oauth_bp import router as oauth_router
-    from api_gateway.routes.laboratory_bp import router as laboratory_router
     # INT-620：站点状态 / 系统选项 KV（对位 newAPI /api/status、/api/option/，
     # 根级挂载无 /api/v1 前缀；权限码 status:read / option:read|write）
     from api_gateway.routes.status_bp import router as status_router
@@ -152,6 +152,8 @@ def create_app(config_name='default') -> FastAPI:
     app.include_router(group_router, prefix='/api/v1/groups', tags=['groups'])
     app.include_router(device_router, prefix='/api/v1/test-devices', tags=['devices'])
     app.include_router(playback_router, prefix='/api/v1/playback-devices', tags=['playback'])
+    # INT-655 实验室管理（设备页「更多操作」→「实验室管理」；实验室扩展功能设计.md §5.1）
+    app.include_router(laboratory_router, prefix='/api/v1/laboratories', tags=['laboratories'])
     app.include_router(report_router, prefix='/api/v1/reports', tags=['reports'])
     app.include_router(task_router, prefix='/api/v1/tasks', tags=['tasks'])
     # INT-339 挑选合并：/tasks/cherry-picks 前缀（设计文档 §8 契约路径）
@@ -174,8 +176,6 @@ def create_app(config_name='default') -> FastAPI:
     app.include_router(sse_router, prefix='/api/v1/sse', tags=['sse'])
     app.include_router(data_transfer_router, prefix='/api/v1/data-transfer', tags=['data-transfer'])
     app.include_router(benchmark_router, prefix='/api/v1/benchmarks', tags=['benchmarks'])
-    # 实验室（INT-493/INT-537 拆分①：CRUD+列表+summary+资源查询）
-    app.include_router(laboratory_router, prefix='/api/v1/laboratories', tags=['laboratories'])
 
     # INT-620：站点状态 / 系统选项 KV —— 对位 newAPI 根级路径（无 /api/v1 前缀）
     app.include_router(status_router, prefix='/api', tags=['status'])

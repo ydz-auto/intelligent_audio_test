@@ -59,6 +59,7 @@ def _playback_to_dict(device: PlaybackDevice, lab_name: str = None) -> dict:
         'description': device.description,
         'status': device.status,
         'current_spl_mapping_id': device.current_spl_mapping_id,
+        'lab_id': getattr(device, 'lab_id', None),
         'created_at': device.created_at.isoformat() if device.created_at else None,
         'updated_at': device.updated_at.isoformat() if device.updated_at else None,
         'lab_id': getattr(device, 'lab_id', None),

@@ -19,6 +19,9 @@ from device_service.domain.entities.playback_device import (
 from device_service.domain.entities.device_group import (
     DeviceGroupEntity,
 )
+from device_service.domain.entities.laboratory import (
+    LaboratoryAggregate,
+)
 from device_service.domain.entities.spl import (
     CalibrationHistoryEntity,
     SPLMappingEntity,
@@ -34,6 +37,8 @@ __all__ = [
     "PlaybackDeviceSnapshot",
     # 设备分组（INT-80）
     "DeviceGroupEntity",
+    # 实验室（INT-655）
+    "LaboratoryAggregate",
     # 声压级映射与校准
     "SPLMappingEntity",
     "CalibrationHistoryEntity",

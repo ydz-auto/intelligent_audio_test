@@ -63,6 +63,7 @@ from shared.clients._grpc_stubs import (
     get_device_config_service_stub,
     get_playback_config_service_stub,
     get_spl_config_service_stub,
+    get_laboratory_config_service_stub,
     get_execution_service_stub,
     get_task_config_service_stub,
     get_published_task_config_service_stub,

@@ -53,6 +53,7 @@ class DeviceAggregate:
     ip: Optional[str] = None
     last_online_at: Any = None
     supported_algorithms: List[str] = field(default_factory=list)
+    lab_id: Optional[int] = None
     created_at: Any = None
     updated_at: Any = None
 

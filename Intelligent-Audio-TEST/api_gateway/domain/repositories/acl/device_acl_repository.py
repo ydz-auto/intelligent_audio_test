@@ -146,3 +146,27 @@ class PlaybackConfigAclRepository(ABC):
 
     @abstractmethod
     def check_status(self) -> CommandResultDTO: ...
+
+
+class LaboratoryAclRepository(ABC):
+    """laboratory 实体 ACL 接口（INT-655 实验室管理）。"""
+
+    # ---- 写操作 ----
+    @abstractmethod
+    def create(self, data) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def update(self, lab_id, data) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def delete(self, lab_id) -> CommandResultDTO: ...
+
+    # ---- 读操作 ----
+    @abstractmethod
+    def get_all(self, page=1, per_page=10, keyword=None, status=None) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def get_one(self, lab_id) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def get_summary(self, lab_id) -> CommandResultDTO: ...

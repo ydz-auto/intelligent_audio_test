@@ -5,6 +5,7 @@ from shared.clients.grpc_clients import (
     get_device_service_stub,
     get_device_result_service_stub,
     get_device_config_service_stub,
+    get_laboratory_config_service_stub,
 )
 
 from ._common import _grpc_call
@@ -893,5 +894,151 @@ class _DeviceConfigProxy:
         )
 
 
+class _LaboratoryConfigProxy:
+    """实验室配置 CRUD 代理（INT-655）：转发到 gRPC LaboratoryConfigService。
+
+    与 _DeviceConfigProxy 同构，但响应携带业务码 code（404/409 语义由
+    网关 service 层按 code 区分，见 proto README 约定）。
+    """
+
+    def create(self, data):
+        """创建实验室"""
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_laboratory_config_service_stub()
+            resp = stub.CreateLaboratory(device_pb.CreateLaboratoryRequest(
+                data=json.dumps(data or {}, ensure_ascii=False, default=str),
+            ))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+                'code': int(resp.code or (200 if resp.success else 400)),
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'创建实验室失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='创建实验室失败',
+        )
+
+    def update(self, lab_id, data):
+        """更新实验室"""
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_laboratory_config_service_stub()
+            resp = stub.UpdateLaboratory(device_pb.UpdateLaboratoryRequest(
+                lab_id=int(lab_id),
+                data=json.dumps(data or {}, ensure_ascii=False, default=str),
+            ))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+                'code': int(resp.code or (200 if resp.success else 400)),
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'更新实验室失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='更新实验室失败',
+        )
+
+    def delete(self, lab_id):
+        """删除实验室（软删除）"""
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_laboratory_config_service_stub()
+            resp = stub.DeleteLaboratory(device_pb.DeleteLaboratoryRequest(
+                lab_id=int(lab_id),
+            ))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+                'code': int(resp.code or (200 if resp.success else 400)),
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'删除实验室失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='删除实验室失败',
+        )
+
+    def get_all(self, page=1, per_page=10, keyword=None, status=None):
+        """分页查询实验室列表（含资源统计）"""
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_laboratory_config_service_stub()
+            resp = stub.ListLaboratories(device_pb.ListLaboratoriesRequest(
+                page=int(page or 1),
+                per_page=int(per_page or 10),
+                keyword=keyword or '',
+                status=status or '',
+            ))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+                'code': int(resp.code or (200 if resp.success else 400)),
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'查询实验室列表失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='查询实验室列表失败',
+        )
+
+    def get_one(self, lab_id):
+        """查询实验室详情（含资源统计）"""
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_laboratory_config_service_stub()
+            resp = stub.GetLaboratory(device_pb.GetLaboratoryRequest(
+                lab_id=int(lab_id),
+            ))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+                'code': int(resp.code or (200 if resp.success else 400)),
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'查询实验室详情失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='查询实验室详情失败',
+        )
+
+    def get_summary(self, lab_id):
+        """查询实验室资源统计（GET /{id}/summary）"""
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_laboratory_config_service_stub()
+            resp = stub.GetLaboratorySummary(device_pb.GetLaboratorySummaryRequest(
+                lab_id=int(lab_id),
+            ))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+                'code': int(resp.code or (200 if resp.success else 400)),
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'查询实验室统计失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='查询实验室统计失败',
+        )
+
+
 # Device 配置 CRUD 模块级单例
 device_config_service = _DeviceConfigProxy()
+# 实验室配置 CRUD 模块级单例（INT-655）
+laboratory_config_service = _LaboratoryConfigProxy()

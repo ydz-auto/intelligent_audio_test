@@ -1,8 +1,13 @@
 # -*- coding: utf-8 -*-
-"""api_gateway 实验室（Laboratory）Schemas —— 契约对照设计文档 §5.1/§5.4.1 与父卡 §4.1
+"""api_gateway 实验室（Laboratory）Schemas —— INT-655 契约（设计文档 §5.1/§5.4.1）
 
 字段以 snake_case 定义（APIModel 序列化输出 snake_case，请求体兼容 camelCase）。
-status 用 shared.models.common_enums.LabStatus 枚举校验，拒绝魔法字符串。
+status 用 shared.models.common_enums.LaboratoryStatus 枚举校验，拒绝魔法字符串。
+
+注（集成合并，INT-680）：文件同时保留 INT-493/537 旧实现的只读侧 schema 类
+（LaboratoryResourcesQuery / LaboratoryCreateRequest / LaboratoryUpdateRequest /
+LaboratoryIdData），供旧应用层服务（api_gateway/application/services/laboratory/）
+在替换过渡期内保持可导入；新路由（INT-655）不消费这些旧类。
 """
 from typing import List, Optional
 
@@ -10,11 +15,28 @@ from pydantic import Field, AliasChoices, field_validator
 
 from api_gateway.schemas.base import APIModel
 from api_gateway.schemas.common import PaginatedData
-from shared.models.common_enums import LabStatus
+from shared.models.common_enums import LaboratoryStatus, LabStatus
+
+
+class LaboratoryListQuery(APIModel):
+    page: int = Field(1)
+    per_page: int = Field(10)
+    keyword: Optional[str] = Field(None)
+    status: Optional[str] = Field(None)
+
+    @field_validator('status', mode='before')
+    @classmethod
+    def _validate_status(cls, value):
+        """status 枚举校验：空/未知值 → None（不过滤）；非法显式值 → ValidationError → 400"""
+        if value is None or value == '':
+            return None
+        try:
+            return LaboratoryStatus(value).value
+        except ValueError:
+            raise ValueError(f"状态 status 非法: {value!r}，合法值: {[s.value for s in LaboratoryStatus]}")
 
 
 class LaboratoryItem(APIModel):
-    """实验室列表/详情项（含 gRPC 聚合三计数）"""
     id: int = Field(...)
     code: str = Field(...)
     name: str = Field(...)
@@ -22,21 +44,65 @@ class LaboratoryItem(APIModel):
     floor: Optional[str] = Field(None)
     room_number: Optional[str] = Field(None)
     description: Optional[str] = Field(None)
-    status: str = Field(...)
+    status: Optional[str] = Field(None)
     device_count: int = Field(0)
     playback_device_count: int = Field(0)
     test_case_count: int = Field(0)
+    created_at: Optional[str] = Field(None)
+    updated_at: Optional[str] = Field(None)
 
 
 class LaboratoryListData(PaginatedData[LaboratoryItem]):
     pass
 
 
+class LaboratoryCreateSchema(APIModel):
+    code: str = Field(...)
+    name: str = Field(...)
+    building: Optional[str] = Field(None)
+    floor: Optional[str] = Field(None)
+    room_number: Optional[str] = Field(None)
+    description: Optional[str] = Field(None)
+    status: Optional[str] = Field('active')
+
+    @field_validator('status', mode='before')
+    @classmethod
+    def _validate_status(cls, value):
+        if value is None or value == '':
+            return LaboratoryStatus.ACTIVE.value
+        try:
+            return LaboratoryStatus(value).value
+        except ValueError:
+            raise ValueError(f"状态 status 非法: {value!r}，合法值: {[s.value for s in LaboratoryStatus]}")
+
+
+class LaboratoryUpdateSchema(APIModel):
+    code: Optional[str] = Field(None)
+    name: Optional[str] = Field(None)
+    building: Optional[str] = Field(None)
+    floor: Optional[str] = Field(None)
+    room_number: Optional[str] = Field(None)
+    description: Optional[str] = Field(None)
+    status: Optional[str] = Field(None)
+
+    @field_validator('status', mode='before')
+    @classmethod
+    def _validate_status(cls, value):
+        if value is None or value == '':
+            return None
+        try:
+            return LaboratoryStatus(value).value
+        except ValueError:
+            raise ValueError(f"状态 status 非法: {value!r}，合法值: {[s.value for s in LaboratoryStatus]}")
+
+
 class LaboratorySummaryData(APIModel):
-    """实验室资源统计（设计文档 §5.1 summary）"""
     device_count: int = Field(0)
     playback_device_count: int = Field(0)
     test_case_count: int = Field(0)
+
+
+# ============ 以下为 INT-493/INT-537 旧实现保留的 schema（过渡期可导入） ============
 
 
 class LaboratoryIdData(APIModel):
@@ -61,27 +127,6 @@ class LaboratoryUpdateRequest(APIModel):
     room_number: Optional[str] = Field(None)
     description: Optional[str] = Field(None)
     status: Optional[LabStatus] = Field(None)
-
-
-class LaboratoryListQuery(APIModel):
-    status: Optional[LabStatus] = Field(None)
-    page: int = Field(1)
-    per_page: Optional[int] = Field(
-        None,
-        validation_alias=AliasChoices('per_page', 'perPage', 'page_size', 'pageSize'),
-    )
-
-    @field_validator('page', mode='before')
-    @classmethod
-    def _coerce_page(cls, v):
-        return int(v) if v is not None and str(v).isdigit() else v
-
-    @field_validator('per_page', mode='before')
-    @classmethod
-    def _coerce_per_page(cls, v):
-        if v is None:
-            return None
-        return int(v) if str(v).isdigit() else v
 
 
 class LaboratoryResourcesQuery(APIModel):

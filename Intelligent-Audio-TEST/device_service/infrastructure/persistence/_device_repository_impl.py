@@ -53,6 +53,7 @@ class DeviceRepository(DeviceRepositoryInterface):
             ip=data.get('ip'),
             status=data.get('status') or 'offline',
             supported_algorithms=data.get('supported_algorithms') or [],
+            lab_id=data.get('lab_id'),
             created_by_user_id=get_current_user_id(),
         )
         session.add(new_device)

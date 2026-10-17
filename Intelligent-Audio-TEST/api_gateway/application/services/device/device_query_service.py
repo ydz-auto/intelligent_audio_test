@@ -67,7 +67,10 @@ class DeviceQueryService:
         if isinstance(data, dict):
             items = data.get('items') or []
             DeviceQueryService._inject_occupancy(items)
-            data['items'] = items
+            # INT-655：lab_name 由网关装饰（device_service 只返回 lab_id）
+            from api_gateway.application.services.device.lab_name_decorator import _decorate_lab_names
+            data['items'] = _decorate_lab_names(items)
+        return success_response(data)
         return success_response(data)
 
     # 批量获取设备状态 (用于 HTTP 轮询降级)
@@ -151,6 +154,9 @@ class DeviceQueryService:
         data = result.get('data')
         if isinstance(data, dict):
             DeviceQueryService._inject_occupancy([data])
+            # INT-655：lab_name 由网关装饰（device_service 只返回 lab_id）
+            from api_gateway.application.services.device.lab_name_decorator import _decorate_lab_names
+            data = _decorate_lab_names([data])[0]
         return success_response(data)
 
     @staticmethod

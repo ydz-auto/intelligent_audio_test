@@ -18,9 +18,9 @@ class PlaybackDeviceItem(APIModel):
     current_spl_mapping_id: Optional[int] = Field(None)
     created_at: Optional[str] = Field(None)
     updated_at: Optional[str] = Field(None)
-    # 实验室扩展（INT-493 §4.2）：所属实验室（未绑定为 null，前端渲染「未绑定」）
-    lab_id: Optional[int] = Field(None)
-    lab_name: Optional[str] = Field(None)
+    # 实验室扩展：所属实验室（未绑定为 null，前端渲染「未绑定」；lab_name 由网关装饰）
+    lab_id: Optional[int] = Field(None, description='所属实验室ID')
+    lab_name: Optional[str] = Field(None, description='所属实验室名称（网关装饰）')
 
 
 class PlaybackDeviceListQuery(APIModel):

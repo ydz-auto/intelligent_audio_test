@@ -15,6 +15,9 @@ from device_service.domain.repositories.device_group_repository_abc import (
     DeviceGroupRepositoryInterface,
     DeviceMonitorRepositoryInterface,
 )
+from device_service.domain.repositories.laboratory_repository_abc import (
+    LaboratoryRepositoryInterface,
+)
 
 __all__ = [
     'DeviceRepositoryInterface',
@@ -22,4 +25,5 @@ __all__ = [
     'SPLRepositoryInterface',
     'DeviceGroupRepositoryInterface',
     'DeviceMonitorRepositoryInterface',
+    'LaboratoryRepositoryInterface',
 ]

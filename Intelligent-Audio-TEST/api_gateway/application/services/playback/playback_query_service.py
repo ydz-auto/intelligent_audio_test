@@ -55,7 +55,12 @@ class PlaybackQueryService:
         if not result.get('success'):
             return error_response(result.get('message', '查询失败'))
 
-        return success_response(result.get('data'))
+        data = result.get('data')
+        if isinstance(data, dict) and data.get('items'):
+            # INT-655：lab_name 由网关装饰（device_service 只返回 lab_id）
+            from api_gateway.application.services.device.lab_name_decorator import _decorate_lab_names
+            data['items'] = _decorate_lab_names(data['items'])
+        return success_response(data)
 
     # 获取单个播放设备详情
     @staticmethod
@@ -68,7 +73,12 @@ class PlaybackQueryService:
                 return error_response(result.get('message', '未找到播放设备'), 404)
             return error_response(result.get('message', '查询失败'))
 
-        return success_response(result.get('data'))
+        data = result.get('data')
+        if isinstance(data, dict):
+            # INT-655：lab_name 由网关装饰（device_service 只返回 lab_id）
+            from api_gateway.application.services.device.lab_name_decorator import _decorate_lab_names
+            data = _decorate_lab_names([data])[0]
+        return success_response(data)
 
     @staticmethod
     def scan():

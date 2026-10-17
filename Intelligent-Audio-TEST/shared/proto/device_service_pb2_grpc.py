@@ -3030,3 +3030,293 @@ class SPLConfigService:
             timeout,
             metadata,
             _registered_method=True)
+
+
+class LaboratoryConfigServiceStub:
+    """===== 实验室 CRUD 服务（INT-655，实验室扩展功能设计.md §5.1） =====
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.CreateLaboratory = channel.unary_unary(
+                '/device_service.LaboratoryConfigService/CreateLaboratory',
+                request_serializer=device__service__pb2.CreateLaboratoryRequest.SerializeToString,
+                response_deserializer=device__service__pb2.CreateLaboratoryResponse.FromString,
+                _registered_method=True)
+        self.UpdateLaboratory = channel.unary_unary(
+                '/device_service.LaboratoryConfigService/UpdateLaboratory',
+                request_serializer=device__service__pb2.UpdateLaboratoryRequest.SerializeToString,
+                response_deserializer=device__service__pb2.UpdateLaboratoryResponse.FromString,
+                _registered_method=True)
+        self.DeleteLaboratory = channel.unary_unary(
+                '/device_service.LaboratoryConfigService/DeleteLaboratory',
+                request_serializer=device__service__pb2.DeleteLaboratoryRequest.SerializeToString,
+                response_deserializer=device__service__pb2.DeleteLaboratoryResponse.FromString,
+                _registered_method=True)
+        self.ListLaboratories = channel.unary_unary(
+                '/device_service.LaboratoryConfigService/ListLaboratories',
+                request_serializer=device__service__pb2.ListLaboratoriesRequest.SerializeToString,
+                response_deserializer=device__service__pb2.ListLaboratoriesResponse.FromString,
+                _registered_method=True)
+        self.GetLaboratory = channel.unary_unary(
+                '/device_service.LaboratoryConfigService/GetLaboratory',
+                request_serializer=device__service__pb2.GetLaboratoryRequest.SerializeToString,
+                response_deserializer=device__service__pb2.GetLaboratoryResponse.FromString,
+                _registered_method=True)
+        self.GetLaboratorySummary = channel.unary_unary(
+                '/device_service.LaboratoryConfigService/GetLaboratorySummary',
+                request_serializer=device__service__pb2.GetLaboratorySummaryRequest.SerializeToString,
+                response_deserializer=device__service__pb2.GetLaboratorySummaryResponse.FromString,
+                _registered_method=True)
+
+
+class LaboratoryConfigServiceServicer:
+    """===== 实验室 CRUD 服务（INT-655，实验室扩展功能设计.md §5.1） =====
+    """
+
+    def CreateLaboratory(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateLaboratory(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteLaboratory(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListLaboratories(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetLaboratory(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetLaboratorySummary(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_LaboratoryConfigServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'CreateLaboratory': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateLaboratory,
+                    request_deserializer=device__service__pb2.CreateLaboratoryRequest.FromString,
+                    response_serializer=device__service__pb2.CreateLaboratoryResponse.SerializeToString,
+            ),
+            'UpdateLaboratory': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateLaboratory,
+                    request_deserializer=device__service__pb2.UpdateLaboratoryRequest.FromString,
+                    response_serializer=device__service__pb2.UpdateLaboratoryResponse.SerializeToString,
+            ),
+            'DeleteLaboratory': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteLaboratory,
+                    request_deserializer=device__service__pb2.DeleteLaboratoryRequest.FromString,
+                    response_serializer=device__service__pb2.DeleteLaboratoryResponse.SerializeToString,
+            ),
+            'ListLaboratories': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListLaboratories,
+                    request_deserializer=device__service__pb2.ListLaboratoriesRequest.FromString,
+                    response_serializer=device__service__pb2.ListLaboratoriesResponse.SerializeToString,
+            ),
+            'GetLaboratory': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetLaboratory,
+                    request_deserializer=device__service__pb2.GetLaboratoryRequest.FromString,
+                    response_serializer=device__service__pb2.GetLaboratoryResponse.SerializeToString,
+            ),
+            'GetLaboratorySummary': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetLaboratorySummary,
+                    request_deserializer=device__service__pb2.GetLaboratorySummaryRequest.FromString,
+                    response_serializer=device__service__pb2.GetLaboratorySummaryResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'device_service.LaboratoryConfigService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('device_service.LaboratoryConfigService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class LaboratoryConfigService:
+    """===== 实验室 CRUD 服务（INT-655，实验室扩展功能设计.md §5.1） =====
+    """
+
+    @staticmethod
+    def CreateLaboratory(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.LaboratoryConfigService/CreateLaboratory',
+            device__service__pb2.CreateLaboratoryRequest.SerializeToString,
+            device__service__pb2.CreateLaboratoryResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateLaboratory(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.LaboratoryConfigService/UpdateLaboratory',
+            device__service__pb2.UpdateLaboratoryRequest.SerializeToString,
+            device__service__pb2.UpdateLaboratoryResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteLaboratory(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.LaboratoryConfigService/DeleteLaboratory',
+            device__service__pb2.DeleteLaboratoryRequest.SerializeToString,
+            device__service__pb2.DeleteLaboratoryResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListLaboratories(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.LaboratoryConfigService/ListLaboratories',
+            device__service__pb2.ListLaboratoriesRequest.SerializeToString,
+            device__service__pb2.ListLaboratoriesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetLaboratory(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.LaboratoryConfigService/GetLaboratory',
+            device__service__pb2.GetLaboratoryRequest.SerializeToString,
+            device__service__pb2.GetLaboratoryResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetLaboratorySummary(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.LaboratoryConfigService/GetLaboratorySummary',
+            device__service__pb2.GetLaboratorySummaryRequest.SerializeToString,
+            device__service__pb2.GetLaboratorySummaryResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)

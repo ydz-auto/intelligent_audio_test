@@ -112,9 +112,9 @@ class DeviceItem(APIModel):
     updated_at: Optional[str] = Field(None)
     driver_name: Optional[str] = Field(None)
     supported_algorithms: Optional[List[str]] = Field(None)
-    # 实验室扩展（INT-493 §4.2/§4.3）：所属实验室 + 占用状态（null=无占用）
-    lab_id: Optional[int] = Field(None)
-    lab_name: Optional[str] = Field(None)
+    # 实验室扩展：所属实验室 + 占用状态（null=无占用；lab_name 由网关装饰）
+    lab_id: Optional[int] = Field(None, description='所属实验室ID')
+    lab_name: Optional[str] = Field(None, description='所属实验室名称（网关装饰）')
     occupied_status: Optional[str] = Field(None)
     occupied_task_id: Optional[int] = Field(None)
 

@@ -102,6 +102,13 @@ def get_spl_config_service_stub():
     return device_service_pb2_grpc.SPLConfigServiceStub(_get_device_channel())
 
 
+@lru_cache(maxsize=1)
+def get_laboratory_config_service_stub():
+    """LaboratoryConfigService stub（INT-655）：实验室 CRUD（创建/更新/删除/列表/详情/资源统计）"""
+    from shared.proto import device_service_pb2_grpc
+    return device_service_pb2_grpc.LaboratoryConfigServiceStub(_get_device_channel())
+
+
 # ==================== task_service stubs ====================
 
 @lru_cache(maxsize=1)

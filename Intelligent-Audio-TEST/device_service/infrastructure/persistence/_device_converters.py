@@ -19,6 +19,7 @@ from device_service.infrastructure.persistence.models import (
     PlaybackDevice,
     SPLMapping,
     CalibrationHistory,
+    Laboratory,
 )
 from device_service.domain.entities import (
     DeviceAggregate,
@@ -26,6 +27,7 @@ from device_service.domain.entities import (
     PlaybackDeviceAggregate,
     SPLMappingEntity,
     CalibrationHistoryEntity,
+    LaboratoryAggregate,
 )
 
 
@@ -89,6 +91,7 @@ def _device_po_to_entity(po: Device, tags: List[DeviceTagEntity] = None, lab_nam
         ip=getattr(po, 'ip', None),
         last_online_at=po.last_online_at,
         supported_algorithms=po.supported_algorithms or [],
+        lab_id=getattr(po, 'lab_id', None),
         created_at=po.created_at,
         updated_at=po.updated_at,
     )
@@ -123,6 +126,8 @@ def _apply_device_entity_to_po(aggregate: DeviceAggregate, po: Device) -> None:
     if 'ip' in cfg:
         po.ip = cfg.get('ip')
     po.supported_algorithms = cfg.get('supported_algorithms', po.supported_algorithms)
+    if aggregate.lab_id is not None:
+        po.lab_id = aggregate.lab_id
 
 
 def _device_tag_po_to_entity(po: DeviceTag, name: str = "") -> DeviceTagEntity:
@@ -169,6 +174,7 @@ def _playback_po_to_entity(po: PlaybackDevice, lab_name: str = None) -> Playback
         description=po.description or "",
         status=po.status or "online",
         current_spl_mapping_id=po.current_spl_mapping_id,
+        lab_id=getattr(po, 'lab_id', None),
         created_at=po.created_at,
         updated_at=po.updated_at,
     )
@@ -194,6 +200,8 @@ def _apply_playback_entity_to_po(aggregate: PlaybackDeviceAggregate, po: Playbac
         po.status = cfg.get('status')
     if 'current_spl_mapping_id' in cfg:
         po.current_spl_mapping_id = cfg.get('current_spl_mapping_id')
+    if aggregate.lab_id is not None:
+        po.lab_id = aggregate.lab_id
 
 
 # ========== SPLMapping / CalibrationHistory PO ↔ Entity ==========
@@ -255,3 +263,34 @@ def _calibration_history_po_to_entity(po: CalibrationHistory) -> CalibrationHist
         result=str(po.calibration_data) if po.calibration_data is not None else "",
         operator="",
     )
+
+
+# ========== Laboratory PO ↔ Entity（INT-655） ==========
+
+def _laboratory_po_to_entity(po: Laboratory) -> LaboratoryAggregate:
+    """Laboratory PO → LaboratoryAggregate 聚合根。"""
+    return LaboratoryAggregate(
+        id=po.id,
+        code=po.code or "",
+        name=po.name or "",
+        building=po.building,
+        floor=po.floor,
+        room_number=po.room_number,
+        description=po.description,
+        status=po.status or "active",
+        deleted=po.deleted or False,
+        created_at=po.created_at,
+        updated_at=po.updated_at,
+    )
+
+
+def _apply_laboratory_entity_to_po(aggregate: LaboratoryAggregate, po: Laboratory) -> None:
+    """将 LaboratoryAggregate 的可写字段映射回 PO。"""
+    po.code = aggregate.code
+    po.name = aggregate.name
+    po.building = aggregate.building
+    po.floor = aggregate.floor
+    po.room_number = aggregate.room_number
+    po.description = aggregate.description
+    po.status = aggregate.status
+    po.deleted = aggregate.deleted

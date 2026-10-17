@@ -386,6 +386,13 @@ class DeviceGroupType(str, Enum):
     PLAYBACK = 'playback'  # 播放设备组
 
 
+class LaboratoryStatus(str, Enum):
+    """实验室状态枚举（INT-655 实验室管理；实验室扩展功能设计.md §4.1/§6.26）"""
+    ACTIVE = 'active'          # 启用
+    INACTIVE = 'inactive'      # 停用
+    MAINTENANCE = 'maintenance'  # 维护中
+
+
 class AlarmMetricType(str, Enum):
     """设备告警指标枚举（INT-80 监控告警）"""
     OFFLINE_DURATION = 'offline_duration'    # 离线时长（秒）

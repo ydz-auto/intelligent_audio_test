@@ -46,6 +46,8 @@ from device_service.infrastructure.persistence._device_converters import (  # no
     _spl_mapping_po_to_entity,
     _apply_spl_mapping_entity_to_po,
     _calibration_history_po_to_entity,
+    _laboratory_po_to_entity,
+    _apply_laboratory_entity_to_po,
 )
 from device_service.infrastructure.persistence._device_serializers import (  # noqa: F401
     _device_to_dict,

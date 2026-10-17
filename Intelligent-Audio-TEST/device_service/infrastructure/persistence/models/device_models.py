@@ -2,9 +2,10 @@
 """device_service 设备管理 PO 定义
 
 归属：device_service（e2e 测试上下文，物理设备所有权）
-表：devices / playback_devices / device_tags
+表：devices / playback_devices / device_tags / laboratories
 INT-80 新增表：device_groups / device_group_members / device_status_events /
                device_alarm_rules / device_alarms
+INT-655 新增表：laboratories（实验室，见 scripts/migrations/202608/add_laboratory_tables.py）
 
 P5 改造：从 shared/models/models/device_models.py 真正下沉到本服务。
 """
@@ -13,6 +14,28 @@ from sqlalchemy import (
     func, Column, Integer, BigInteger, String, Text, DateTime, Boolean, Float, JSON,
     Index, text,
 )
+
+
+class Laboratory(Base):
+    """实验室模型（INT-655，实验室扩展功能设计.md §4.1）
+
+    承载物理实验室信息；devices/playback_devices 通过 lab_id 归属到实验室。
+    """
+    __tablename__ = 'laboratories'
+    id = Column(Integer, primary_key=True, autoincrement=True, comment='实验室ID')
+    code = Column(String(50), unique=True, nullable=False, comment='实验室代码，如 LAB-A-01')
+    name = Column(String(100), nullable=False, comment='实验室名称')
+    building = Column(String(50), comment='所在楼栋')
+    floor = Column(String(20), comment='所在楼层')
+    room_number = Column(String(50), comment='房间号')
+    description = Column(Text, comment='实验室描述')
+    status = Column(String(20), nullable=False, default='active', comment='状态 (active/inactive/maintenance)')
+    deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')
+    deleted_at = Column(DateTime, nullable=True, comment='逻辑删除时间')
+    created_by_user_id = Column(BigInteger, nullable=True, comment='创建者用户ID')
+    updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
 
 
 class Device(Base):
@@ -40,7 +63,7 @@ class Device(Base):
     status = Column(String(20), nullable=False, default='offline', index=True, comment='在线状态 (online/offline)')
     last_online_at = Column(DateTime, comment='最后一次在线时间')
     supported_algorithms = Column(JSON, default=list, comment='支持的算法类型列表')
-    lab_id = Column(Integer, nullable=True, index=True, comment='关联实验室ID (实验室扩展, INT-493)')
+    lab_id = Column(Integer, nullable=True, index=True, comment='关联实验室ID (实验室扩展)')
     deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')
     deleted_at = Column(DateTime, nullable=True, comment='逻辑删除时间（60天后硬删除）')
     deleted_by_user_id = Column(BigInteger, nullable=True, comment='执行删除操作的用户ID（JWT，INT-299）')
@@ -70,7 +93,7 @@ class PlaybackDevice(Base):
     status = Column(String(10), nullable=False, default='online', comment='运行状态 (online: 在线 / offline: 离线)')
     is_deleted = Column(Integer, nullable=False, default=0, comment='逻辑删除标志 (0: 否 / 1: 是)')
     current_spl_mapping_id = Column(Integer, comment='当前生效的声压级映射ID')
-    lab_id = Column(Integer, nullable=True, index=True, comment='关联实验室ID (实验室扩展, INT-493)')
+    lab_id = Column(Integer, nullable=True, index=True, comment='关联实验室ID (实验室扩展)')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
     deleted_by_user_id = Column(BigInteger, nullable=True, comment='执行删除操作的用户ID（JWT，INT-299）')
