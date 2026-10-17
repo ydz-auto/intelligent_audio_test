@@ -80,7 +80,7 @@ export function DocumentPanel({
         <Response>{content}</Response>
       </div>
       <div className='border-t px-4 py-2 text-xs text-muted-foreground'>
-        AI 只起草不算数：文档数值全部来自报告七表；每次修改自动保存版本快照。
+        [Demo] AI 只起草不算数：文档数值全部来自报告七表；每次修改自动保存版本快照。
       </div>
     </div>
   )

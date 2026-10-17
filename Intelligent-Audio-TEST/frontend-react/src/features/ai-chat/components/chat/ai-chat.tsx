@@ -42,6 +42,8 @@ type AiChatProps = {
   onCancelEdit?: (open: boolean) => void
   onSaveEdit?: (newContent: string) => void
   onSaveEditAndSubmit?: (newContent: string) => void
+  /** 全局 Agent 工作台浮窗紧凑形态（§3.1B：高度受限更紧凑间距） */
+  compact?: boolean
 }
 
 export function AiChat({
@@ -58,6 +60,7 @@ export function AiChat({
   onCancelEdit,
   onSaveEdit,
   onSaveEditAndSubmit,
+  compact = false,
 }: AiChatProps) {
   const [editText, setEditText] = useState('')
   const [originalText, setOriginalText] = useState('')
@@ -151,7 +154,11 @@ export function AiChat({
 
   if (visibleMessages.length === 0 && onFillPrompt) {
     chatContent = [
-      <AiChatEmptyState key='empty' onFillPrompt={onFillPrompt} />,
+      <AiChatEmptyState
+        compact={compact}
+        key='empty'
+        onFillPrompt={onFillPrompt}
+      />,
     ]
   }
 
@@ -170,7 +177,15 @@ export function AiChat({
   return (
     <Conversation>
       <ConversationContent className='p-0'>
-        <div className='mx-auto w-full max-w-4xl px-4 py-4'>{chatContent}</div>
+        <div
+          className={
+            compact
+              ? 'mx-auto w-full max-w-full px-3 py-2'
+              : 'mx-auto w-full max-w-4xl px-4 py-4'
+          }
+        >
+          {chatContent}
+        </div>
       </ConversationContent>
       <ConversationScrollButton />
     </Conversation>

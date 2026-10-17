@@ -1,7 +1,8 @@
 /**
  * 输入区工具行（interfaces 层 ai-chat/input；08_AI对话页.md §3.5）：
- * 生成参数面板 + 清空对话（Trash2 + ConfirmDialog destructive + toast「对话已清空」）；
- * 附件/搜索钮不引入（§2.2 Agent 域无对位能力）。
+ * 模型/供应商切换器 + 清空对话（Trash2 + ConfirmDialog destructive + toast「对话已清空」）；
+ * 附件/搜索钮不引入（§2.2 Agent 域无对位能力）；参数面板整块移除
+ * （2026-10-17 负责人口径：仅允许切换模型与供应商）。
  */
 import { Trash2 } from 'lucide-react'
 import { useState } from 'react'
@@ -15,30 +16,29 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 
-import type { ChatConfig, ChatParameterKey } from '@/domain/models/aiChat'
-import { AgentParameterPanel } from './agent-parameter-panel'
+import type { ChatConfig, LlmProvider } from '@/domain/models/aiChat'
+import { ModelProviderSwitcher } from './model-provider-switcher'
 
 type AiChatInputToolsProps = {
   config: ChatConfig
+  providers: LlmProvider[]
   disabled?: boolean
   hasMessages?: boolean
   onClearMessages?: () => void
-  onConfigChange: <K extends keyof ChatConfig>(
-    key: K,
-    value: ChatConfig[K]
-  ) => void
-  onParameterEnabledChange: (key: ChatParameterKey, value: boolean) => void
-  parameterEnabled: Record<ChatParameterKey, boolean>
+  onSelectProvider: (providerId: string) => void
+  onSelectModel: (providerId: string, modelId: string) => void
+  onManageProviders: () => void
 }
 
 export function AiChatInputTools({
   config,
+  providers,
   disabled,
   hasMessages = false,
   onClearMessages,
-  onConfigChange,
-  onParameterEnabledChange,
-  parameterEnabled,
+  onSelectProvider,
+  onSelectModel,
+  onManageProviders,
 }: AiChatInputToolsProps) {
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
 
@@ -51,12 +51,14 @@ export function AiChatInputTools({
   return (
     <>
       <PromptInputTools className='bg-background/70 border-border/60 rounded-lg border p-1 shadow-xs'>
-        <AgentParameterPanel
+        <ModelProviderSwitcher
+          className='bg-transparent shadow-none'
           config={config}
           disabled={disabled}
-          onConfigChange={onConfigChange}
-          onParameterEnabledChange={onParameterEnabledChange}
-          parameterEnabled={parameterEnabled}
+          onManageProviders={onManageProviders}
+          onSelectModel={onSelectModel}
+          onSelectProvider={onSelectProvider}
+          providers={providers}
         />
 
         <Tooltip>

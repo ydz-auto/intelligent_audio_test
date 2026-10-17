@@ -1,7 +1,9 @@
 /**
  * 输入区（interfaces 层 ai-chat/input；08_AI对话页.md §3.5 照 playground-input 逐值）：
  * PromptInput 卡壳（focus-within 主色描边 + 大阴影）+ Textarea + Footer
- * （工具行 / 报告上下文选择器 / 发送·停止）；移动端选择器独立行。
+ * （工具行=模型/供应商切换器 + 清空对话；右区=发送/停止）。
+ * Demo 态：报告上下文选择器整块不渲染（§3.10/§3.5），右区仅发送/停止。
+ * compact：全局 Agent 工作台浮窗紧凑形态（§3.1B，输入区 min-h-14）。
  */
 import { Send, Square } from 'lucide-react'
 import { type KeyboardEvent, type RefObject } from 'react'
@@ -14,11 +16,9 @@ import {
 } from '@/components/ai-elements/prompt-input'
 
 import { getInputControlState, getSubmittableInputText } from '@/features/ai-chat/lib/input'
-import type { ChatConfig, ChatParameterKey, ReportContextOption } from '@/domain/models/aiChat'
-import type { ReportContextGroup } from '@/features/ai-chat/hooks/use-report-context'
+import type { ChatConfig, LlmProvider } from '@/domain/models/aiChat'
 
 import { AiChatInputTools } from './ai-chat-input-tools'
-import { ReportContextSelector, type SelectedContext } from './report-context-selector'
 
 type AiChatInputProps = {
   config: ChatConfig
@@ -27,21 +27,18 @@ type AiChatInputProps = {
   disabled?: boolean
   isGenerating?: boolean
   hasMessages?: boolean
-  groups: ReportContextGroup[]
-  selectedContext: SelectedContext | null
-  onSelectContext: (option: ReportContextOption) => void
-  onConfigChange: <K extends keyof ChatConfig>(
-    key: K,
-    value: ChatConfig[K]
-  ) => void
+  providers: LlmProvider[]
+  onSelectProvider: (providerId: string) => void
+  onSelectModel: (providerId: string, modelId: string) => void
+  onManageProviders: () => void
   onClearMessages?: () => void
-  onParameterEnabledChange: (key: ChatParameterKey, value: boolean) => void
-  parameterEnabled: Record<ChatParameterKey, boolean>
   /** 受控文本（页面持有：starter 回填 / 任务 URL 预填 / 提交后清空） */
   value: string
   onValueChange: (text: string) => void
   /** 输入框聚焦句柄（starter 回填后聚焦） */
   textareaRef?: RefObject<HTMLTextAreaElement | null>
+  /** 全局 Agent 工作台浮窗紧凑形态（§3.1B） */
+  compact?: boolean
 }
 
 export function AiChatInput({
@@ -51,16 +48,15 @@ export function AiChatInput({
   disabled,
   isGenerating = false,
   hasMessages = false,
-  groups,
-  selectedContext,
-  onSelectContext,
-  onConfigChange,
+  providers,
+  onSelectProvider,
+  onSelectModel,
+  onManageProviders,
   onClearMessages,
-  onParameterEnabledChange,
-  parameterEnabled,
   value,
   onValueChange,
   textareaRef,
+  compact = false,
 }: AiChatInputProps) {
   const { canSubmit, shouldShowStop } = getInputControlState({
     disabled,
@@ -68,9 +64,12 @@ export function AiChatInput({
     hasStopHandler: Boolean(onStop),
     text: value,
   })
+  /** 无供应商时发送钮 disabled（§3.11 行为：对话由用户自配 LLM 供应商驱动） */
+  const effectiveCanSubmit = canSubmit && providers.length > 0
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
+    if (providers.length === 0) return
     const submittableText = getSubmittableInputText(value, disabled)
     if (!submittableText) return
     onSubmit(submittableText)
@@ -80,21 +79,13 @@ export function AiChatInput({
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault()
+      if (providers.length === 0) return
       const submittableText = getSubmittableInputText(value, disabled)
       if (!submittableText) return
       onSubmit(submittableText)
       onValueChange('')
     }
   }
-
-  const renderSelector = () => (
-    <ReportContextSelector
-      disabled={disabled}
-      groups={groups}
-      onSelect={onSelectContext}
-      value={selectedContext}
-    />
-  )
 
   const renderSubmitButton = () =>
     shouldShowStop ? (
@@ -110,7 +101,7 @@ export function AiChatInput({
     ) : (
       <PromptInputButton
         className='bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground h-8 px-3 font-medium shadow-sm'
-        disabled={!canSubmit}
+        disabled={!effectiveCanSubmit}
         type='submit'
         variant='default'
       >
@@ -121,7 +112,7 @@ export function AiChatInput({
     )
 
   return (
-    <div className='grid shrink-0 gap-4 px-1 md:pb-4'>
+    <div className={compact ? 'grid shrink-0 gap-2 px-1 md:pb-2' : 'grid shrink-0 gap-4 px-1 md:pb-4'}>
       <PromptInput
         className='border-border/70 bg-background/95 dark:bg-background/80 ring-foreground/5 shadow-[0_18px_60px_-32px_rgba(0,0,0,0.65)] ring-1 rounded-xl overflow-hidden transition-all duration-200 focus-within:border-primary/45 focus-within:ring-primary/15 focus-within:shadow-[0_22px_70px_-34px_rgba(0,0,0,0.75)]'
         onSubmit={handleSubmit}
@@ -130,7 +121,11 @@ export function AiChatInput({
           autoCapitalize='off'
           autoComplete='off'
           autoCorrect='off'
-          className='min-h-20 px-5 pt-4 pb-3 leading-7 md:min-h-24 md:text-base'
+          className={
+            compact
+              ? 'min-h-14 px-4 pt-3 pb-2 leading-6 text-[0.9rem]'
+              : 'min-h-20 px-5 pt-4 pb-3 leading-7 md:min-h-24 md:text-base'
+          }
           disabled={disabled}
           onChange={(event) => onValueChange(event.target.value)}
           onKeyDown={handleKeyDown}
@@ -142,27 +137,24 @@ export function AiChatInput({
 
         <PromptInputFooter className='border-border/60 bg-muted/20 dark:bg-muted/10 border-t px-3 py-2.5 backdrop-blur'>
           <div className='flex w-full flex-col gap-2.5 md:flex-row md:items-center md:justify-between'>
-            <div className='flex min-w-0 items-center justify-end md:hidden'>
-              {renderSelector()}
-            </div>
-
             <div className='flex items-center justify-between gap-2 md:justify-start'>
               <AiChatInputTools
                 config={config}
                 disabled={disabled}
                 hasMessages={hasMessages}
                 onClearMessages={onClearMessages}
-                onConfigChange={onConfigChange}
-                onParameterEnabledChange={onParameterEnabledChange}
-                parameterEnabled={parameterEnabled}
+                onManageProviders={onManageProviders}
+                onSelectModel={onSelectModel}
+                onSelectProvider={onSelectProvider}
+                providers={providers}
               />
               <div className='flex items-center gap-1.5 md:hidden'>
                 {renderSubmitButton()}
               </div>
             </div>
 
+            {/* Demo 态：报告上下文选择器整块不渲染（§3.10/§3.5），右区仅发送/停止 */}
             <div className='hidden min-w-0 items-center gap-2 md:flex'>
-              {renderSelector()}
               {renderSubmitButton()}
             </div>
           </div>

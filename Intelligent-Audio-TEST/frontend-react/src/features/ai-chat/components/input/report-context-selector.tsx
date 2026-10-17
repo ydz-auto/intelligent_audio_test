@@ -1,6 +1,8 @@
 /**
  * 报告上下文选择器（interfaces 层 ai-chat/input；08_AI对话页.md §3.5 对位 newAPI
  * ModelGroupSelector，换形不换件：左列类型分组 / 右列搜索列表，layout 类值照搬）。
+ * 前置审核定稿（INT-598 方案A）：组件树先落；Demo 态——Agent 后端立项前——
+ * 整块不渲染（§3.5/§3.10），本组件当前不被页面装配；立项后放开渲染并接线现有端点。
  * 桌面 Popover 双列；移动 Sheet bottom（Drawer 依赖 vaul 未引入，用 Sheet 等价版式）。
  */
 import { Check, ChevronsUpDown, FileBarChart } from 'lucide-react'

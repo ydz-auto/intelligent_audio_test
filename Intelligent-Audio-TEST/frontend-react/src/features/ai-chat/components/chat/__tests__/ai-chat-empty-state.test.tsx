@@ -20,10 +20,11 @@ afterEach(() => {
 })
 
 describe('AiChatEmptyState', () => {
-  it('渲染标题与描述', () => {
+  it('渲染标题与描述（含 Demo 说明尾注 §3.10）', () => {
     render(<AiChatEmptyState onFillPrompt={vi.fn()} />)
-    expect(screen.getByText('开始与 AI 助手对话')).toBeInTheDocument()
-    expect(screen.getByText(/AI 基于报告数据起草文档/)).toBeInTheDocument()
+    expect(screen.getByText('开始与灵犀Agent对话')).toBeInTheDocument()
+    expect(screen.getByText(/灵犀Agent基于报告数据起草文档/)).toBeInTheDocument()
+    expect(screen.getByText(/当前为 Demo 预览/)).toBeInTheDocument()
   })
 
   it('未登录权限全失：starter 不渲染', () => {

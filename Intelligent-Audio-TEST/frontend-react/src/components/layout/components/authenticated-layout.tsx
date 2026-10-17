@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils'
 
 import { AppHeader } from './app-header'
 import { AppSidebar } from './app-sidebar'
+import { AgentWorkbench } from '@/features/agent-workbench/agent-workbench'
 
 type AuthenticatedLayoutProps = {
   children?: React.ReactNode
@@ -61,6 +62,8 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
               {props.children ?? <AnimatedOutlet />}
             </SidebarInset>
           </div>
+          {/* 全局 Agent 工作台浮窗（§3.1B）：渲染在壳根部，createPortal 到 body，不随路由卸载 */}
+          <AgentWorkbench />
         </SidebarProvider>
       </SearchProvider>
     </LayoutProvider>

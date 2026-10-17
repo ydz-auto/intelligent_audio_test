@@ -1,14 +1,11 @@
 /**
- * AI 对话页常量（interfaces 层；08_AI对话页.md §6 中文文案全量 + §3.3/§3.4/§3.5 注册表）。
+ * AI 对话页常量（interfaces 层；08_AI对话页.md §6 中文文案全量 + §3.3/§3.5/§3.11）。
+ * 2026-10-17 新口径：模型参数六项注册表整块移除（无参数面板），仅保留模型/供应商切换。
  */
 import { FileBarChart, GitCompareArrows, BarChart3, MessageCircleQuestion } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
-import type {
-  ChatConfig,
-  ChatParameterEnabled,
-  ChatParameterKey,
-} from '@/domain/models/aiChat'
+import type { ChatConfig } from '@/domain/models/aiChat'
 import { AGENT_CAPABILITY_PERMISSIONS, AI_CHAT_STORAGE_KEYS } from '@/domain/models/aiChat'
 
 export { AI_CHAT_STORAGE_KEYS as STORAGE_KEYS }
@@ -28,93 +25,11 @@ export const MESSAGE_STATUS = {
 
 export const MAX_RENDERED_HISTORY_MESSAGES = 24
 
-/** 生成参数默认值（§3.5 注册表，照 newAPI DEFAULT_CONFIG 全值） */
+/** 会话配置默认值（§3.5/§3.11：模型/供应商选择；无模型参数） */
 export const DEFAULT_CONFIG: ChatConfig = {
-  temperature: 0.7,
-  top_p: 1,
-  max_tokens: 4096,
-  frequency_penalty: 0,
-  presence_penalty: 0,
-  seed: null,
+  providerId: undefined,
+  modelId: undefined,
 }
-
-/** 参数默认启用态（照 newAPI DEFAULT_PARAMETER_ENABLED） */
-export const DEFAULT_PARAMETER_ENABLED: ChatParameterEnabled = {
-  temperature: true,
-  top_p: true,
-  max_tokens: false,
-  frequency_penalty: true,
-  presence_penalty: true,
-  seed: false,
-}
-
-/** 六参数注册表（§3.5 表；label/description 中文文案 §6） */
-export type AgentParameterControl = {
-  key: ChatParameterKey
-  label: string
-  description: string
-  valueType: 'slider' | 'number'
-  min: number
-  max: number
-  step: number
-}
-
-export const AGENT_PARAMETER_CONTROLS: readonly AgentParameterControl[] = [
-  {
-    key: 'temperature',
-    label: '温度',
-    description: '控制输出的随机性和创造性',
-    valueType: 'slider',
-    min: 0.1,
-    max: 1,
-    step: 0.1,
-  },
-  {
-    key: 'top_p',
-    label: 'Top P',
-    description: '按概率质量限制词元选择范围',
-    valueType: 'slider',
-    min: 0.1,
-    max: 1,
-    step: 0.1,
-  },
-  {
-    key: 'frequency_penalty',
-    label: '频率惩罚',
-    description: '减少重复措辞',
-    valueType: 'slider',
-    min: -2,
-    max: 2,
-    step: 0.1,
-  },
-  {
-    key: 'presence_penalty',
-    label: '存在惩罚',
-    description: '鼓励讨论新话题',
-    valueType: 'slider',
-    min: -2,
-    max: 2,
-    step: 0.1,
-  },
-  {
-    key: 'max_tokens',
-    label: '最大 Tokens',
-    description: '限制回复长度',
-    valueType: 'number',
-    min: 0,
-    max: 200000,
-    step: 1,
-  },
-  {
-    key: 'seed',
-    label: '随机种子',
-    description: '让兼容模型的回复更可复现',
-    valueType: 'number',
-    min: 0,
-    max: 2147483647,
-    step: 1,
-  },
-] as const satisfies readonly AgentParameterControl[]
 
 /** 空态四 starter（§3.3 表；权限过滤，隐藏而非置灰） */
 export type StarterPrompt = {
@@ -205,11 +120,57 @@ export const ERROR_MESSAGES = {
   interrupted: '生成已中断',
 } as const
 
-/** 空态文案（§6） */
+/** 空态文案（§6；Demo 说明尾注 §3.10——上线为 Demo 预览版，Agent 报告能力接入后完整开放） */
 export const EMPTY_STATE_COPY = {
-  title: '开始与 AI 助手对话',
+  title: '开始与灵犀Agent对话',
   description:
-    'AI 基于报告数据起草文档、对比结果、解读指标——所有数值均来自报告七表，AI 只起草不算数。',
+    '灵犀Agent基于报告数据起草文档、对比结果、解读指标——所有数值均来自报告七表，AI 只起草不算数。当前为 Demo 预览，Agent 报告能力接入后完整开放。',
   placeholder: '描述你的报告需求，例如：帮我把任务 #320 的测试结果生成一份报告',
   loading: '正在加载对话...',
+} as const
+
+/** Demo 标注文案（§3.10；顶部条/全局浮窗头行） */
+export const DEMO_COPY = {
+  badge: 'Demo',
+  tooltip: '演示版：Agent 能力待接入，对话使用你配置的 LLM 供应商',
+  floatingTooltip: '演示版，未接入实际后端',
+} as const
+
+/** 模型/供应商切换器文案（§3.5/§6） */
+export const MODEL_PROVIDER_COPY = {
+  selectModel: '选择模型',
+  selectProvider: '选择供应商',
+  noProvider: '未配置 LLM 供应商 → 点击配置',
+  manageProviders: '管理供应商',
+} as const
+
+/** 供应商管理弹窗文案（§3.11/§6） */
+export const PROVIDER_MANAGER_COPY = {
+  title: 'LLM 供应商管理',
+  description: '配置你自己的 AI 对话连接：填写供应商名称、API 地址与密钥。密钥仅保存在本机。',
+  addProvider: '添加供应商',
+  name: '名称',
+  baseUrl: 'API Base URL',
+  apiKey: 'API Key',
+  showHide: '显示/隐藏',
+  modelList: '模型列表',
+  fetchModels: '自动获取模型列表',
+  testConnection: '测试连接',
+  setDefault: '设为默认',
+  default: '默认',
+  keyConfigured: '已配置 Key',
+  keyMissing: '未配置 Key',
+  save: '保存',
+  delete: '删除',
+  edit: '编辑',
+  cancel: '取消',
+  testSuccess: '连接成功 · {n} 个模型',
+  testFail: '无法连接该供应商',
+  fetchSuccess: '已获取 {n} 个模型',
+  deleteTitle: '删除供应商？',
+  deleteDesc: '该供应商的密钥将从本机移除，确定继续？',
+  footerHint: 'Demo 预览：供应商仅存本机，不上传平台；切换模型/供应商后新对话生效。',
+  baseUrlPlaceholder: 'https://api.openai.com/v1',
+  addEditTitle: '添加供应商',
+  editTitle: '编辑供应商',
 } as const

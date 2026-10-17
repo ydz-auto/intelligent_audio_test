@@ -1,11 +1,13 @@
 /**
  * AI 对话本地持久化（infrastructure 层；08_AI对话页.md §3.7）。
- * localStorage 三键 + envelope{version,data}，上限与截断照 newAPI lib/storage 平移。
+ * localStorage 三键（config/messages/providers，命名空间 iatp:ai-chat:v1）+ envelope{version,data}，
+ * 上限与截断照 newAPI lib/storage 平移。2026-10-17 新口径：parameter-enabled 键废弃
+ * （模型参数六项注册表整块移除），providers 为用户自管 LLM 供应商清单（§3.11，Demo 态）。
  */
 import type {
   ChatConfig,
   ChatMessage,
-  ChatParameterEnabled,
+  LlmProvider,
 } from '@/domain/models/aiChat'
 import { AI_CHAT_STORAGE_KEYS } from '@/domain/models/aiChat'
 
@@ -89,12 +91,10 @@ export const aiChatPrefs = {
     const clipped = messages.slice(-MAX_STORED_MESSAGES)
     writeEnvelope(AI_CHAT_STORAGE_KEYS.messages, clipped)
   },
-  loadParameterEnabled(): ChatParameterEnabled | null {
-    return readEnvelope<ChatParameterEnabled>(
-      AI_CHAT_STORAGE_KEYS.parameterEnabled
-    )
+  loadProviders(): LlmProvider[] | null {
+    return readEnvelope<LlmProvider[]>(AI_CHAT_STORAGE_KEYS.providers)
   },
-  saveParameterEnabled(enabled: ChatParameterEnabled): void {
-    writeEnvelope(AI_CHAT_STORAGE_KEYS.parameterEnabled, enabled)
+  saveProviders(providers: LlmProvider[]): void {
+    writeEnvelope(AI_CHAT_STORAGE_KEYS.providers, providers)
   },
 }

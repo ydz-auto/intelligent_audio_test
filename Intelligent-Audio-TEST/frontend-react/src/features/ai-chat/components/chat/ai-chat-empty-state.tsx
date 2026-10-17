@@ -1,7 +1,7 @@
 /**
  * 空态四 starter（interfaces 层 ai-chat/chat；08_AI对话页.md §3.3 照 playground-empty-state 逐值）：
- * 图标位 + 标题「开始与 AI 助手对话」+ 描述 + starter 组；点击回填输入框不自动发送；
- * 按权限逐卡过滤（隐藏而非置灰）。
+ * 图标位 + 标题「开始与灵犀Agent对话」+ 描述（含 Demo 说明尾注 §3.10 落点③）+ starter 组；
+ * 点击回填输入框不自动发送；按权限逐卡过滤（隐藏而非置灰）。
  */
 import { MessagesSquare } from 'lucide-react'
 
@@ -15,10 +15,13 @@ import { useChatPermissions } from '@/application/ai-chat/useChatPermissions'
 type AiChatEmptyStateProps = {
   /** 点击 starter 只回填输入框并聚焦，不自动发送（§3.3） */
   onFillPrompt: (prompt: string) => void
+  /** 全局 Agent 工作台浮窗紧凑形态（§3.1B） */
+  compact?: boolean
 }
 
 export function AiChatEmptyState({
   onFillPrompt,
+  compact = false,
 }: AiChatEmptyStateProps) {
   const permissions = useChatPermissions()
   const permissionChecks: Record<string, boolean> = {
@@ -34,7 +37,13 @@ export function AiChatEmptyState({
   )
 
   return (
-    <div className='flex min-h-[min(520px,calc(100svh-18rem))] items-center justify-center px-1 py-8 md:py-12'>
+    <div
+      className={
+        compact
+          ? 'flex min-h-[min(320px,calc(100svh-22rem))] items-center justify-center px-1 py-4'
+          : 'flex min-h-[min(520px,calc(100svh-18rem))] items-center justify-center px-1 py-8 md:py-12'
+      }
+    >
       <div className='grid w-full max-w-2xl gap-5 text-center'>
         <div className='bg-muted/50 text-muted-foreground mx-auto flex size-11 items-center justify-center rounded-xl border'>
           <MessagesSquare className='size-5' aria-hidden='true' />

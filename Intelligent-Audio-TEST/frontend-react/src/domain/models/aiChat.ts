@@ -85,28 +85,36 @@ export interface ReportContextOption {
   description?: string
 }
 
-/** 生成参数配置（六参数，§3.5 注册表） */
+/**
+ * 会话配置（2026-10-17 负责人口径：模型参数六项注册表整块移除，仅保留模型/供应商切换）。
+ * config 含模型/供应商选择（§3.5/§3.11）与报告上下文 id（§3.7 URL 契约）；
+ * 报告上下文选择器 Demo 态整块不渲染（§3.5/§3.10），字段保留供立项后接线。
+ */
 export interface ChatConfig {
-  temperature: number
-  top_p: number
-  max_tokens: number
-  frequency_penalty: number
-  presence_penalty: number
-  seed: number | null
+  /** 当前 LLM 供应商 id（用户自管，§3.11；localStorage iatp:ai-chat:v1:providers） */
+  providerId?: string
+  /** 当前模型 id（供应商可用模型列表内） */
+  modelId?: string
   reportContextId?: string
   reportContextLabel?: string
   reportContextType?: ReportContextType
 }
 
-export type ChatParameterKey =
-  | 'temperature'
-  | 'top_p'
-  | 'max_tokens'
-  | 'frequency_penalty'
-  | 'presence_penalty'
-  | 'seed'
-
-export type ChatParameterEnabled = Record<ChatParameterKey, boolean>
+/**
+ * LLM API 供应商（§3.11 用户自管，chatbox 式；Demo 态存 localStorage 明文，
+ * 不上传平台后端；正式版密钥管理待后端立项）。
+ */
+export interface LlmProvider {
+  id: string
+  name: string
+  baseUrl: string
+  /** 密钥仅存用户本地；Demo 态 localStorage 明文（§3.11 安全注记） */
+  apiKey: string
+  /** 该供应商可用模型 id 列表（用户手动登记或自动拉取） */
+  models: string[]
+  /** 默认供应商标记；默认=首个添加（§3.11 行为） */
+  isDefault?: boolean
+}
 
 /**
  * 能力 → 权限码映射（§5 表单一来源，对齐 seed_rbac.py 实测；report:update 为过渡口径，
@@ -119,9 +127,10 @@ export const AGENT_CAPABILITY_PERMISSIONS = {
   update: 'report:update',
 } as const
 
-/** 会话持久化键名（§3.7 照 playground 三键，命名空间 iatp:ai-chat:v1） */
+/** 会话持久化键名（§3.7 照 playground 三键，命名空间 iatp:ai-chat:v1；
+ * 2026-10-17 新口径：parameter-enabled 键废弃——无模型参数设置） */
 export const AI_CHAT_STORAGE_KEYS = {
   config: 'iatp:ai-chat:v1:config',
   messages: 'iatp:ai-chat:v1:messages',
-  parameterEnabled: 'iatp:ai-chat:v1:parameter-enabled',
+  providers: 'iatp:ai-chat:v1:providers',
 } as const

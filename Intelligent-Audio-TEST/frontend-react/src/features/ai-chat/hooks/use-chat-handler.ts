@@ -1,7 +1,9 @@
 /**
  * AI 对话发送/停止（interfaces 层 hooks；照 newAPI use-chat-handler/use-stream-request
- * 平移流式骨架——先本地回显 mock 流式，DSH 接线待后端立项）。
+ * 平移流式骨架——Demo 态先本地回显 mock 流式，/chat/completions 直连用户供应商留
+ * llmProviderApi TODO 桩（红线④ 不接真实后端；§3.8 占位，Agent 后端立项后换 DSH 契约）。
  * 流程：追加 user 消息 + loading 占位 → 推理 → 工具卡 → 内容逐块流式 → complete。
+ * 2026-10-17 新口径：无模型参数（仅模型/供应商切换），发送体不带 parameterEnabled。
  */
 import { useCallback, useRef, useState } from 'react'
 
@@ -9,7 +11,6 @@ import type {
   AgentToolCall,
   ChatConfig,
   ChatMessage,
-  ChatParameterEnabled,
 } from '@/domain/models/aiChat'
 import { MESSAGE_STATUS } from '@/features/ai-chat/constants'
 import {
@@ -78,11 +79,9 @@ function buildLoadingMessage(key: string): ChatMessage {
 
 export function useChatHandler({
   config,
-  parameterEnabled,
   onMessageUpdate,
 }: {
   config: ChatConfig
-  parameterEnabled: ChatParameterEnabled
   onMessageUpdate: UpdateMessagesFn
 }) {
   const [isGenerating, setIsGenerating] = useState(false)
@@ -223,7 +222,8 @@ export function useChatHandler({
     sendChat,
     stopGeneration,
     isGenerating,
-    // 生成参数随会话请求透传 DSH（§3.8 占位；仅形态声明，mock 阶段不参与流式）
-    pendingParameters: { config, parameterEnabled },
+    // Demo 态对话由用户自配 LLM 供应商驱动（§3.11）；/chat/completions 直连留
+    // llmProviderApi TODO 桩（红线④），当前 mock 流式回显。
+    pendingRequest: { config },
   }
 }

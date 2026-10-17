@@ -1,7 +1,9 @@
 /**
  * 报告上下文选择器数据（interfaces 层 hooks；08_AI对话页.md §3.5）。
- * 数据源 GET /reports（report:read 可先行）+ GET /tasks（task:read）；
- * mock 常量（红线④），后续接线换 reports-api/tasks-api。
+ * 数据源 GET /reports（report:read）+ GET /tasks（task:read）。
+ * 前置审核定稿（INT-598 方案A）：组件树先落；Demo 态——Agent 后端立项前——
+ * 整块不渲染（§3.5/§3.10），本 hook 不接线；立项后放开渲染并接线现有端点。
+ * 当前 mock 常量仅供组件树（红线④），页面未调用。
  */
 import { useMemo } from 'react'
 

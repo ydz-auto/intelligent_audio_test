@@ -1,6 +1,7 @@
 /**
  * AI 对话会话状态（interfaces 层 hooks；照 newAPI use-playground-state 平移）。
- * config/messages/parameterEnabled 三态 + 500ms 防抖持久化（§3.7 本地三键）。
+ * config/messages 两态 + 500ms 防抖持久化（§3.7 本地键；2026-10-17 新口径：
+ * parameter-enabled 键废弃，config 改存模型/供应商选择 §3.5/§3.11）。
  * 首访无存档走规范空态（四 starter，§3.1/§3.3）；「清空对话」后同样回空态。
  * URL 契约：/ai-chat?report={id} 绑定报告上下文、/ai-chat?task={id} 绑定任务上下文并预填指令（§3.7）。
  */
@@ -9,12 +10,8 @@ import { useEffect, useRef, useState } from 'react'
 import type {
   ChatConfig,
   ChatMessage,
-  ChatParameterEnabled,
 } from '@/domain/models/aiChat'
-import {
-  DEFAULT_CONFIG,
-  DEFAULT_PARAMETER_ENABLED,
-} from '@/features/ai-chat/constants'
+import { DEFAULT_CONFIG } from '@/features/ai-chat/constants'
 import { aiChatPrefs } from '@/infrastructure/storage/aiChatPrefs'
 import { MOCK_REPORTS } from '@/infrastructure/mock/ai-chat-mock'
 
@@ -69,9 +66,6 @@ export function useChatState(context?: InitialContext) {
   const [config, setConfig] = useState<ChatConfig>(() =>
     buildInitialConfig(context)
   )
-  const [parameterEnabled, setParameterEnabled] = useState<ChatParameterEnabled>(
-    () => aiChatPrefs.loadParameterEnabled() ?? { ...DEFAULT_PARAMETER_ENABLED }
-  )
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     const saved = aiChatPrefs.loadMessages()
     return saved && saved.length > 0 ? saved : []
@@ -102,10 +96,6 @@ export function useChatState(context?: InitialContext) {
     aiChatPrefs.saveConfig(config)
   }, [config])
 
-  useEffect(() => {
-    aiChatPrefs.saveParameterEnabled(parameterEnabled)
-  }, [parameterEnabled])
-
   const updateMessages = (updater: (prev: ChatMessage[]) => ChatMessage[]) => {
     setMessages((prev) => updater(prev))
   }
@@ -117,23 +107,17 @@ export function useChatState(context?: InitialContext) {
     setConfig((prev) => ({ ...prev, [key]: value }))
   }
 
-  const updateParameterEnabled = (key: keyof ChatParameterEnabled, value: boolean) => {
-    setParameterEnabled((prev) => ({ ...prev, [key]: value }))
-  }
-
   const clearMessages = () => {
     setMessages([])
   }
 
   return {
     config,
-    parameterEnabled,
     messages,
     initialPrompt,
     isLoadingMessages,
     updateMessages,
     updateConfig,
-    updateParameterEnabled,
     clearMessages,
   }
 }
