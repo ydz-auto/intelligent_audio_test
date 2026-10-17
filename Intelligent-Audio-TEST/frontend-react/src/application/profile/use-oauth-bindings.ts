@@ -9,7 +9,7 @@ import { toast } from 'sonner'
 
 import type { OAuthProvider } from '@/domain/models/auth'
 import type { OAuthBinding } from '@/domain/models/profile'
-import { listPublicOAuthProviders } from '@/infrastructure/api/auth'
+import { authApi } from '@/infrastructure/api/authApi'
 import {
   completeOAuthBinding,
   listOAuthBindings,
@@ -22,7 +22,7 @@ export function useOAuthBindings() {
 
   const providersQuery = useQuery({
     queryKey: ['auth', 'oauth', 'providers'],
-    queryFn: listPublicOAuthProviders,
+    queryFn: () => authApi.listPublicOAuthProviders(),
     staleTime: 30_000,
   })
   const bindingsQuery = useQuery({

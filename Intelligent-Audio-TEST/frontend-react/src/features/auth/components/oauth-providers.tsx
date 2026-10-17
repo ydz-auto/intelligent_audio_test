@@ -1,9 +1,9 @@
-import { useState } from 'react'
 import { toast } from 'sonner'
 import { Fingerprint } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { beginOAuthAuthorize, MOCK_OAUTH_PROVIDERS } from '@/infrastructure/api/auth'
+import { usePublicOAuthProviders } from '@/application/auth/use-public-oauth-providers'
+import { authApi } from '@/infrastructure/api/authApi'
 import type { OAuthProvider } from '@/domain/models/auth'
 
 import { OAUTH_DIVIDER_TEXT } from '../constants'
@@ -11,9 +11,8 @@ import { OAUTH_DIVIDER_TEXT } from '../constants'
 /**
  * OAuth 提供方区（对位 newAPI oauth-providers.tsx 版式，
  * 12_登录与错误页.md §3.5）：分离式分隔线 + 纵列 outline 按钮。
- * mock 2 个提供方（GitHub / 企业统一认证）；零提供方整区不渲染。
- * TODO(API 接线): 数据源 GET /auth/oauth/providers；点击整页 302 跳
- * /api/v1/auth/oauth/{slug}/authorize；回调 /#/login?oauth_token=… 由登录页消化。
+ * 认证接线 INT-606：数据源 GET /auth/oauth/providers 真实渲染；
+ * 点击整页 302 跳 /api/v1/auth/oauth/{slug}/authorize；空列表整区不渲染。
  */
 
 /** 内联品牌图标（lucide v1 无品牌图标；github 走公版 SVG，其余回退 Fingerprint） */
@@ -35,15 +34,17 @@ export function OAuthProviders({
   disabled?: boolean
   className?: string
 }) {
-  const [providers] = useState<OAuthProvider[]>(MOCK_OAUTH_PROVIDERS)
+  const { data: providers = [] } = usePublicOAuthProviders()
 
   if (providers.length === 0) return null
 
   function handleClick(provider: OAuthProvider) {
-    // TODO(API 接线): 整页 302 跳 authorize（本页跳转不新标签，INT-285 口径③）
-    void beginOAuthAuthorize(provider.slug).catch(() => {
-      toast.info(`演示环境：「使用 ${provider.name} 登录」跳转未接线`)
-    })
+    // 整页 302 跳 authorize（本页跳转不新标签，INT-285 口径③）
+    try {
+      authApi.beginOAuthAuthorize(provider.slug)
+    } catch {
+      toast.error('第三方登录暂不可用，请稍后重试')
+    }
   }
 
   return (

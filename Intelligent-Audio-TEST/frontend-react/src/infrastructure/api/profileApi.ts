@@ -4,8 +4,8 @@
  *  - 绑定列表 GET /auth/oauth/bindings（登录即可，端点内自验用户态）
  *  - 绑定 POST /auth/oauth/bindings body { bind_ticket }（幂等 no-op）
  *  - 解绑 DELETE /auth/oauth/bindings/{provider_id}（幂等，无绑定行也成功）
- *  - 提供方列表 GET /auth/oauth/providers（公开）→ 复用 auth.ts listPublicOAuthProviders
- *  TODO(API 接线): 以上端点落真实实现；绑定授权跳转 beginOAuthAuthorize（auth.ts）。
+ *  - 提供方列表 GET /auth/oauth/providers（公开）→ 复用 authApi.listPublicOAuthProviders
+ *  TODO(API 接线): 以上端点落真实实现；绑定授权跳转 authApi.beginOAuthAuthorize（slug,'bind'）。
  */
 import type { OAuthBinding } from '@/domain/models/profile'
 import { MOCK_OAUTH_BINDINGS } from '@/infrastructure/mock/profile-mock'

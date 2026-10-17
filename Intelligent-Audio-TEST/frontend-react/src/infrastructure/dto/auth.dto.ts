@@ -1,10 +1,12 @@
 /**
  * 认证 DTO（infrastructure/dto 层；snake_case ↔ camelCase 唯一转换层）。
- * 对照 api_gateway auth_bp.py / auth_service.py 响应契约
+ * 对照 api_gateway auth_bp.py / user_bp.py / oauth_bp.py 响应契约
  * （POST /auth/login → { access_token, token_type, user }；
- * GET /auth/me → { user_id, username, role_id, permissions }）。
+ * GET /auth/me → { user_id, username, role_id, permissions }；
+ * GET /auth/oauth/providers → { providers: [...] }）。
  */
 import type { AuthUser } from '@/domain/models/user'
+import type { OAuthProvider } from '@/domain/models/auth'
 
 export interface AuthUserDto {
   id: number
@@ -29,6 +31,23 @@ export interface AuthMeResultDto {
 
 export interface AuthModeResultDto {
   auth_mode: string
+}
+
+/** 自助注册响应（POST /auth/register；成功回包 user_id） */
+export interface RegisterResultDto {
+  user_id?: number
+}
+
+/** 已启用 OAuth 提供方（GET /auth/oauth/providers，公开端点无凭证字段） */
+export interface OAuthProviderPublicDto {
+  id: number
+  name: string
+  slug: string
+  icon: string
+}
+
+export interface PublicOAuthProvidersResultDto {
+  providers: OAuthProviderPublicDto[]
 }
 
 export interface PasswordEncryptionKeyDto {
@@ -68,4 +87,16 @@ export function toAuthUserFromMe(raw: AuthMeResultDto): AuthUser {
     roleName: '',
     permissions: raw.permissions ?? [],
   }
+}
+
+/** GET /auth/oauth/providers 内嵌列表 → Domain OAuthProvider（id 数值转字符串） */
+export function toOAuthProviderPublicList(
+  raw: OAuthProviderPublicDto[]
+): OAuthProvider[] {
+  return (raw ?? []).map((provider) => ({
+    id: String(provider.id),
+    name: provider.name ?? '',
+    slug: provider.slug ?? '',
+    icon: provider.icon ?? '',
+  }))
 }

@@ -1,12 +1,6 @@
 import { Link } from '@tanstack/react-router'
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-} from '@/components/ui/card'
-import { MOCK_LOGIN_HINT } from '../constants'
+import { Card, CardContent } from '@/components/ui/card'
 import { UserRegisterForm } from './components/user-register-form'
 import { cn } from '@/lib/utils'
 
@@ -36,11 +30,6 @@ export function SignUp({
         </p>
       </div>
       <Card className='ring-border shadow-primary/5 w-full max-w-[480px] gap-0 py-0 shadow-xl'>
-        <CardHeader className='space-y-1'>
-          <CardDescription className='text-sm'>
-            {MOCK_LOGIN_HINT}
-          </CardDescription>
-        </CardHeader>
         <CardContent>
           <UserRegisterForm />
         </CardContent>

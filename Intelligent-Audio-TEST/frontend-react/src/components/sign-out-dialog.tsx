@@ -23,19 +23,19 @@ import { useAuthStore } from '@/infrastructure/stores/auth-store'
 
 /**
  * 登出确认弹窗（本平台适配版）。
- * TODO(API 接线): 先调真实登出接口（吊销会话），成功后再清本地会话并跳登录页。
+ * 认证接线 INT-606：真实登出（POST /auth/logout 审计旁路 + 清 token/user）。
  */
 export function SignOutDialog(props: {
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
   const navigate = useNavigate()
-  const setAuth = useAuthStore((s) => s.setAuth)
 
   const handleSignOut = () => {
-    setAuth(null)
     props.onOpenChange(false)
-    void navigate({ to: '/login' })
+    void useAuthStore.getState().logout().then(() => {
+      void navigate({ to: '/login' })
+    })
   }
 
   return (

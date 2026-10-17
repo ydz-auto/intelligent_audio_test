@@ -1,12 +1,12 @@
 /**
  * 第三方账号绑定（13_个人中心.md §3.5.2）：对位 newAPI account-bindings.tsx 版式，
  * 数据源为本平台动态 OAuth 提供方（公开）+ 绑定列表；绑定/解绑交互 + 解绑确认框。
- * 绑定流程 mock 态：点「绑定」→ beginOAuthAuthorize 桩 → toast「未接线」（照登录页口径）；
- * 解绑流程可用：ConfirmDialog → unbind mutation → toast + invalidate。
+ * 认证接线 INT-606：绑定走真实 OAuth 授权跳转（intent=bind）；回调携
+ * bind_ticket 回个人中心（INT-358 消化）；解绑流程可用：
+ * ConfirmDialog → unbind mutation → toast + invalidate。
  */
 import { Link2, Unlink } from 'lucide-react'
 import { useState } from 'react'
-import { toast } from 'sonner'
 
 import { useOAuthBindings } from '@/application/profile/use-oauth-bindings'
 import { ConfirmDialog } from '@/components/confirm-dialog'
@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Empty, EmptyContent, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
-import { beginOAuthAuthorize } from '@/infrastructure/api/auth'
+import { authApi } from '@/infrastructure/api/authApi'
 
 import {
   BINDINGS_EMPTY_DESCRIPTION,
@@ -51,14 +51,13 @@ export function AccountBindings() {
   const unbindingProvider = rows.find((row) => row.provider.id === unbindTarget)
     ?.provider
 
-  function handleBind(providerId: string, providerName: string) {
+  function handleBind(providerId: string) {
     if (bindingsLocked) return
     const provider = rows.find((row) => row.provider.id === providerId)?.provider
     if (!provider) return
-    // TODO(API 接线): 整页 302 → /auth/oauth/{slug}/authorize?intent=bind（state 签名）
-    void beginOAuthAuthorize(provider.slug).catch(() => {
-      toast.info(`演示环境：「使用 ${providerName} 绑定」授权跳转未接线`)
-    })
+    // 整页 302 → /auth/oauth/{slug}/authorize?intent=bind（state 签名；回调携
+    // bind_ticket 回 /#/AccountSettings?bind_ticket=… 由个人中心卡消化）
+    authApi.beginOAuthAuthorize(provider.slug, 'bind')
   }
 
   function handleConfirmUnbind() {
@@ -154,7 +153,7 @@ export function AccountBindings() {
                 aria-label={
                   bindingsLocked ? BINDING_PROCESSING_ARIA : `绑定 ${provider.name}`
                 }
-                onClick={() => handleBind(provider.id, provider.name)}
+                onClick={() => handleBind(provider.id)}
                 className='h-7 shrink-0 px-2.5 text-xs'
               >
                 {BIND_BUTTON}

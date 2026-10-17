@@ -28,13 +28,12 @@ import { useAuthStore } from '@/infrastructure/stores/auth-store'
 export function ForbiddenError({ from }: { from?: string }) {
   const navigate = useNavigate()
   const { history } = useRouter()
-  const setAuth = useAuthStore((s) => s.setAuth)
 
   function handleSwitchAccount() {
     // 登出并跳登录页（服务角色变更/权限收紧场景，§4.3 第三钮）
-    // TODO(API 接线): 登出接口 + 会话清理随 API 接线卡落
-    setAuth(null)
-    void navigate({ to: '/login' })
+    void useAuthStore.getState().logout().then(() => {
+      void navigate({ to: '/login' })
+    })
   }
 
   return (

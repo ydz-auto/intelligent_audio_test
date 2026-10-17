@@ -38,10 +38,13 @@ function resolveUserMessage(payload: {
   isNetworkError: boolean
 }): string {
   if (payload.isNetworkError) return NETWORK_FAILED_COPY
+  // 服务端 message/detail 已是中文时优先用服务端文案（INT-606 认证卡对照
+  // §3.4：其他 detail → 「登录失败：{detail}」）；本映射用于服务端文案
+  // 缺失/过于笼统时的统一收敛，故 message > 已知错误码兜底 > detail。
+  if (payload.message) return payload.message
   if (payload.code != null && API_ERROR_COPY[payload.code]) {
     return API_ERROR_COPY[payload.code]!
   }
-  if (payload.message) return payload.message
   if (typeof payload.detail === 'string' && payload.detail) return payload.detail
   if (payload.httpStatus != null && HTTP_STATUS_COPY[payload.httpStatus]) {
     return HTTP_STATUS_COPY[payload.httpStatus]

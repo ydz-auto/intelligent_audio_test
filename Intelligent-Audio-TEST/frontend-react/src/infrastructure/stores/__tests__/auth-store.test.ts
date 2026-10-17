@@ -79,6 +79,20 @@ describe('auth-store 真实登录态', () => {
     expect(useAuthStore.getState().user).toBeNull()
   })
 
+  it('loginWithToken：OAuth 回调 token 落 storage + GET /auth/me 回填 user', async () => {
+    authTokenStore.set('oauth-prefill')
+    vi.mocked(authApi.getMe).mockResolvedValue({
+      id: '3',
+      username: 'oauth_user',
+      displayName: 'oauth_user',
+      roleName: '',
+      permissions: ['home:read'],
+    })
+    await useAuthStore.getState().loginWithToken('oauth-token-1')
+    expect(authTokenStore.get()).toBe('oauth-token-1')
+    expect(useAuthStore.getState().user?.username).toBe('oauth_user')
+  })
+
   it('logout：清 token 与 user（登出接口旁路）', async () => {
     authTokenStore.set('t1')
     useAuthStore.setState({ user: demoUser })

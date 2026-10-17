@@ -9,9 +9,9 @@ import { PasswordInput } from '@/components/password-input'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { submitRegisterMock } from '@/infrastructure/api/auth'
+import { ApiError } from '@/infrastructure/api/api-error'
+import { authApi } from '@/infrastructure/api/authApi'
 import {
-  MOCK_ERROR_HINT,
   registerFormSchema,
   type RegisterForm,
 } from '@/features/auth/constants'
@@ -20,7 +20,8 @@ import { cn } from '@/lib/utils'
 /**
  * 注册表单（对位 newAPI sign-up-form，12_登录与错误页.md §3.6）：
  * 四字段 RHF+zod；成功 toast + 切回 /login 预填用户名；
- * 403（注册开关关闭）切引导态；密码与登录同链（RSA 桩平移）。
+ * 403（注册开关关闭）切引导态；密码与登录同链（RSA 加密）。
+ * 认证接线 INT-606：提交走 authApi.register（真实接口）。
  */
 export function UserRegisterForm({
   className,
@@ -40,19 +41,27 @@ export function UserRegisterForm({
 
   async function onSubmit(values: RegisterForm) {
     try {
-      // TODO(API 接线): 密码 RSA 加密同登录链；POST /auth/register
-      await submitRegisterMock(values.username)
+      // 真实注册：密码 RSA 加密同登录链；POST /auth/register（JSON）
+      await authApi.register({
+        username: values.username,
+        email: values.email,
+        password: values.password,
+      })
       toast.success('注册成功，请登录')
       await navigate({ to: '/login', search: { username: values.username } })
-    } catch {
-      if (form.getValues('username') === 'closed') {
+    } catch (error) {
+      if (error instanceof ApiError && error.httpStatus === 403) {
         // 403：注册开关关闭 → 引导态（§3.6）
         toast.error('当前站点未开放注册，请联系管理员开通账号')
         setClosed(true)
         return
       }
-      // 400/409：detail 文案（mock 统一口径）
-      toast.error('注册失败：用户名或邮箱已被使用')
+      // 400/409 等：服务端 message/detail 文案（§3.6「注册失败：{detail}」）
+      toast.error(
+        error instanceof ApiError
+          ? `注册失败：${error.userMessage}`
+          : '注册失败：用户名或邮箱已被使用'
+      )
     }
   }
 
@@ -156,9 +165,6 @@ export function UserRegisterForm({
             </>
           )}
         </Button>
-        <p className='text-muted-foreground text-center text-xs'>
-          {MOCK_ERROR_HINT}
-        </p>
       </form>
     </div>
   )

@@ -7,7 +7,7 @@ import {
 } from '@/domain/models/auth'
 
 /**
- * 登录/注册表单校验与文案（红线④：mock 常量；文案对齐
+ * 登录/注册表单校验与文案（文案对齐
  * doc/UX设计规范/12_登录与错误页.md §3.3/§3.6/§7）。
  */
 
@@ -36,10 +36,6 @@ export type RegisterForm = z.infer<typeof registerFormSchema>
 /** 登录页品牌文案 */
 export const LOGIN_BRAND_NAME = '智能语音测试平台'
 export const LOGIN_BRAND_SLOGAN = '端到端测试 · API 测试 · 多维评估'
-/** 演示环境提示（mock 登录口径） */
-export const MOCK_LOGIN_HINT = '演示环境：任意账号密码均可登录'
-/** 演示触发词说明（105/106 错误码映射可视化用） */
-export const MOCK_ERROR_HINT = '演示触发词：error_105 / error_106 / closed'
 
 /** 服务端错误呈现文案（§3.4 三层分离：字段校验内联 / 服务端 toast / 加密失败 Alert） */
 export const LOGIN_ERROR_COPY = {
@@ -47,6 +43,10 @@ export const LOGIN_ERROR_COPY = {
   encryptionInit: ENCRYPTION_INIT_FAILED_COPY,
   network: NETWORK_FAILED_COPY,
 } as const
+
+/** AUTH_MODE=off 开放模式 Alert 文案（§3.1：后端关闭认证时前端无登录流程） */
+export const AUTH_MODE_OFF_ALERT_TEXT = '当前为开放模式：无需登录即可使用全部功能'
+export const AUTH_MODE_OFF_ENTER_ACTION = '进入工作台'
 
 /** OAuth 分隔线文案（newAPI「或继续使用」本地化） */
 export const OAUTH_DIVIDER_TEXT = '或使用账号登录'

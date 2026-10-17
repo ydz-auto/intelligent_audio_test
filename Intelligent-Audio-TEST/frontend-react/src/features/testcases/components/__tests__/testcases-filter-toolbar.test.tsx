@@ -11,8 +11,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EvaluationDimensionItem } from '@/domain/models/evaluationDimension'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import { MOCK_TAGS, MOCK_TEST_CASES } from '@/infrastructure/mock/testcases-mock'
-import { MOCK_USER, useAuthStore } from '@/infrastructure/stores/auth-store'
+import { useAuthStore } from '@/infrastructure/stores/auth-store'
 import { TestCasesFilterToolbar } from '@/features/testcases/components/testcases-filter-toolbar'
+
+/** 本地演示管理员（permissions '*'）：标签操作入口依赖写权限判定 */
+const ADMIN_USER = {
+  id: 'mock-user-001',
+  username: 'demo_admin',
+  displayName: '演示管理员',
+  roleName: '超级管理员',
+  permissions: ['*'],
+}
 
 const GROUPS: TestCaseGroup[] = [
   {
@@ -64,7 +73,7 @@ const setupUser = () => userEvent.setup()
 describe('TestCasesFilterToolbar', () => {
   beforeEach(() => {
     // 默认登录态：演示管理员（permissions '*'），标签操作入口依赖写权限判定
-    useAuthStore.setState({ user: MOCK_USER })
+    useAuthStore.setState({ user: ADMIN_USER })
   })
 
   it('无标签筛选时不出现「标签操作」入口', () => {
@@ -158,7 +167,7 @@ describe('TestCasesFilterToolbar', () => {
       onRestoreAll: vi.fn(),
     }
     const { rerender } = render(<TestCasesFilterToolbar {...props} />)
-    // 写权限用户（MOCK_USER '*'）：下拉出现
+    // 写权限用户（ADMIN_USER '*'）：下拉出现
     expect(screen.getByRole('button', { name: /标签操作/ })).toBeInTheDocument()
 
     // 权限态变化（登出/角色切换 → 写权限全失）：挂载不崩（P2-1 早退跳过 hook 会抛

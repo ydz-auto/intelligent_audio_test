@@ -7,7 +7,7 @@
  */
 import type { OAuthBinding, FavoriteCounts } from '@/domain/models/profile'
 
-/** mock：当前演示账号的第三方绑定（提供方 id 对齐 auth.ts MOCK_OAUTH_PROVIDERS） */
+/** mock：当前演示账号的第三方绑定（提供方 id 对齐 infrastructure/mock/oauth-mock.ts 提供方） */
 export const MOCK_OAUTH_BINDINGS: OAuthBinding[] = [
   {
     providerId: '1',
