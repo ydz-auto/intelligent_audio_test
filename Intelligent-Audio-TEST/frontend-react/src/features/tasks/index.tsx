@@ -1,8 +1,9 @@
 /**
- * 任务域页（09_任务域.md §3，SectionPageLayout fixedContent + 四页签 + DataTablePage 骨架）。
+ * 任务域页（09_任务域.md §3 + 18_挑选合并交互重设计.md §2.2，SectionPageLayout fixedContent + 三页签 + DataTablePage 骨架）。
  * 装配：Title「任务管理」/ Actions（创建新任务·导入数据·查看统计图表）/
  * Content（Tabs → 筛选工具栏 → 页签表格 → 批量浮条）/ Footer（分页 Portal）。
- * 页签路径式 /tasks/$tab（白名单校验在路由层），本组件消费 tab 参数分发。
+ * 页签路径式 /tasks/$tab（白名单校验在路由层）；「挑选合并」页签由 CherryPickTab 自持
+ * （统一容器列表 + 四步向导），旧「合并」页签已收编（§2.2 裁定①）。
  */
 import { Link, useNavigate } from '@tanstack/react-router'
 import { ChartLine, FileDown, Plus } from 'lucide-react'
@@ -10,11 +11,12 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useTasksList, type TaskListFilters } from '@/application/tasks/use-tasks-list'
+import { useCherryPickContainers } from '@/application/tasks/cherry-pick/use-cherry-pick-containers'
 import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
-import type { CherryPickTask, PublishedTaskItem, TaskListItem } from '@/domain/models/task'
+import type { PublishedTaskItem, TaskListItem } from '@/domain/models/task'
 import {
   TASKS_TABS,
   type TasksTabKey,
@@ -22,14 +24,19 @@ import {
 import { TasksFilterToolbar } from '@/features/tasks/components/tasks-filter-toolbar'
 import { DailyTaskTable } from '@/features/tasks/components/daily-task-table'
 import { PublishedTaskTable } from '@/features/tasks/components/published-task-table'
-import { MergedTaskTable } from '@/features/tasks/components/merged-task-table'
-import { CherryPickTab } from '@/features/tasks/components/cherry-pick-tab'
+import { CherryPickTab } from '@/features/tasks/cherry-pick'
+import type { WizardStepKey } from '@/features/tasks/cherry-pick/constants'
 import { TasksPagination } from '@/features/tasks/components/tasks-pagination'
 import { QuickViewDialog } from '@/features/tasks/components/quick-view-dialog'
 import { PublishTaskDialog } from '@/features/tasks/components/publish-task-dialog'
 import { TaskTypeDialog } from '@/features/tasks/components/task-type-dialog'
 
 const EMPTY_FILTERS: TaskListFilters = {}
+
+export interface WizardState {
+  step: WizardStepKey
+  taskIds?: number[]
+}
 
 export function TasksPage({ tab }: { tab: TasksTabKey }) {
   const { hasPermission } = usePermissions()
@@ -40,6 +47,7 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
   const [quickViewTask, setQuickViewTask] = useState<TaskListItem | null>(null)
   const [typeDialogOpen, setTypeDialogOpen] = useState(false)
   const [publishTask, setPublishTask] = useState<TaskListItem | null>(null)
+  const [wizard, setWizard] = useState<WizardState | null>(null)
 
   // 页签切换重置筛选（URL 态回归：接线后 page/search/… 进 search，随 useTableUrlState）
   useEffect(() => {
@@ -51,6 +59,9 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
     ...filters,
     algorithmType: filters.algorithmType ?? algorithmType,
   })
+  // 「挑选合并」页签计数 = 两类合并容器总数（§2.3/§11-1）
+  const cherryContainers = useCherryPickContainers({})
+  const cherryTotal = tab === 'cherry-picks' ? cherryContainers.data?.total ?? 0 : 0
 
   const items = listQuery.data?.items ?? []
   const total = listQuery.data?.total ?? 0
@@ -76,6 +87,17 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
   const handleBatchPublish = (tasks: TaskListItem[]) => {
     // 批量发布：接首个选中任务打开 §5.2 发布弹窗（完整 BatchPublish 确认留待接线）
     setPublishTask(tasks[0] ?? null)
+  }
+
+  /** 批量浮条「加入挑选」（§2.2 裁定②：原「合并任务」钮撤销，吸收为任务级挑选） */
+  const handleJoinPick = (tasks: TaskListItem[]) => {
+    setWizard({ step: 'pick', taskIds: tasks.map((t) => t.id) })
+    void navigate({ to: '/tasks/$tab', params: { tab: 'cherry-picks' } })
+  }
+
+  const tabCount = (t: TasksTabKey) => {
+    if (t === 'cherry-picks') return cherryTotal
+    return total
   }
 
   return (
@@ -146,20 +168,22 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
               }).map((t) => (
                 <TabsTrigger key={t.key} value={t.key} className='px-3'>
                   {t.label}
-                  {t.key !== 'daily' && <span className='text-muted-foreground font-mono text-[11px] tabular-nums'>{total > 0 ? total : 0}</span>}
+                  {t.key !== 'daily' && <span className='text-muted-foreground font-mono text-[11px] tabular-nums'>{tabCount(t.key) > 0 ? tabCount(t.key) : 0}</span>}
                 </TabsTrigger>
               ))}
             </TabsList>
           </Tabs>
 
-          <TasksFilterToolbar
-            tab={tab}
-            filters={filters}
-            onChange={setFilters}
-            onReset={() => setFilters(EMPTY_FILTERS)}
-            onSearch={() => listQuery.refetch()}
-            isFiltered={isFiltered}
-          />
+          {tab !== 'cherry-picks' && (
+            <TasksFilterToolbar
+              tab={tab}
+              filters={filters}
+              onChange={setFilters}
+              onReset={() => setFilters(EMPTY_FILTERS)}
+              onSearch={() => listQuery.refetch()}
+              isFiltered={isFiltered}
+            />
+          )}
 
           <div className='min-h-0 flex-1 overflow-auto'>
             {tab === 'published' ? (
@@ -167,17 +191,11 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
                 tasks={items as PublishedTaskItem[]}
                 loading={listQuery.isLoading}
               />
-            ) : tab === 'merged' ? (
-              <MergedTaskTable
-                tasks={items as TaskListItem[]}
-                loading={listQuery.isLoading}
-                onQuickView={handleQuickView}
-                onPublish={handlePublish}
-              />
             ) : tab === 'cherry-picks' ? (
               <CherryPickTab
-                tasks={items as CherryPickTask[]}
-                loading={listQuery.isLoading}
+                wizard={wizard}
+                onWizardOpen={(step, taskIds) => setWizard({ step, taskIds })}
+                onWizardClose={() => setWizard(null)}
               />
             ) : (
               <DailyTaskTable
@@ -187,13 +205,14 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
                 onQuickView={handleQuickView}
                 onPublish={handlePublish}
                 onBatchPublish={handleBatchPublish}
+                onJoinPick={handleJoinPick}
                 onCreate={() => setTypeDialogOpen(true)}
               />
             )}
           </div>
         </div>
 
-        <TasksPagination total={total} />
+        {tab !== 'cherry-picks' && <TasksPagination total={total} />}
       </SectionPageLayout.Content>
     </SectionPageLayout>
 

@@ -38,7 +38,6 @@ import type { TaskListFilters } from '@/application/tasks/use-tasks-list'
 import {
   EVALUATION_STATUS_OPTIONS,
   EXECUTION_STATUS_OPTIONS,
-  MERGE_STATUS_OPTIONS,
   PUBLISHED_STATUS_OPTIONS,
   PUBLISHED_TYPE_OPTIONS,
   TASK_TAG_OPTIONS,
@@ -257,7 +256,6 @@ export function TasksFilterToolbar({
 
   const isDaily = tab === 'daily'
   const isPublished = tab === 'published'
-  const isMerged = tab === 'merged'
 
   return (
     <div className='bg-card/50 rounded-lg border p-2.5 sm:p-3'>
@@ -317,14 +315,6 @@ export function TasksFilterToolbar({
             value={filters.ptStatus}
             options={PUBLISHED_STATUS_OPTIONS}
             onChange={(v) => update({ ptStatus: v })}
-          />
-        )}
-        {isMerged && (
-          <SingleFacet
-            label='合并状态'
-            value={filters.mergeStatus}
-            options={MERGE_STATUS_OPTIONS}
-            onChange={(v) => update({ mergeStatus: v })}
           />
         )}
         {hasPermission('task:read') && <GlobalAlgorithmChip />}

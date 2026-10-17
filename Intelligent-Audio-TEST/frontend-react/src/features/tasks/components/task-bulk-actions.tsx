@@ -1,9 +1,10 @@
 /**
- * 批量操作浮条（09_任务域.md §3.10 DataTableBulkActions 照搬）：
+ * 批量操作浮条（09_任务域.md §3.10 DataTableBulkActions 照搬；
+ * 18_挑选合并交互重设计.md §2.2 裁定②：原「合并任务」钮撤销，吸收为「加入挑选」）：
  * `fixed bottom-6 left-1/2 z-50 w-max max-w-[calc(100vw-2rem)] -translate-x-1/2` +
  * 内层 `p-2 shadow-xl rounded-xl border bg-background/95 supports-[backdrop-filter]:bg-background/60 backdrop-blur-lg`。
  * 左起：X 清选钮（Tooltip「清除选择 (Esc)」）｜分隔｜计数 Badge +「个任务已选择」｜按钮组。
- * 日常（普通态）：批量删除/发布/任务对比（≥2）/合并任务（仅已完成·已合并）/导出数据；
+ * 日常（普通态）：批量删除/发布/任务对比（≥2）/加入挑选（task:cherry_pick，等价旧「合并任务」）/导出数据；
  * 日常（回收站态）：批量恢复/批量彻底删除。mock 态动作全部 toast 演示。
  */
 import { X } from 'lucide-react'
@@ -22,12 +23,15 @@ export function TaskBulkActions({
   onClear,
   trash,
   onBatchPublish,
+  onJoinPick,
 }: {
   tasks: TaskListItem[]
   selected: Set<number>
   onClear: () => void
   trash: boolean
   onBatchPublish?: (tasks: TaskListItem[]) => void
+  /** 加入挑选（§2.2 裁定②：打开挑选向导并预选该批任务，等价旧「合并任务」入口） */
+  onJoinPick?: (tasks: TaskListItem[]) => void
 }) {
   const { hasPermission } = usePermissions()
   const count = selected.size
@@ -122,7 +126,7 @@ export function TaskBulkActions({
                 任务对比
               </Button>
             )}
-            {hasPermission('task:merge') && (
+            {hasPermission('task:cherry_pick') && (
               <Tooltip>
                 <TooltipTrigger
                   render={
@@ -130,15 +134,19 @@ export function TaskBulkActions({
                       size='sm'
                       variant='outline'
                       disabled={!selectedTasks.every((t) =>
-                        ['completed', 'merged'].includes(t.execution_status ?? '')
+                        ['completed', 'failed', 'stopped'].includes(t.execution_status ?? '')
                       )}
-                      onClick={() => toast.success('已创建合并任务')}
+                      onClick={() =>
+                        onJoinPick
+                          ? onJoinPick(selectedTasks)
+                          : toast.success('已加入挑选向导（任务级预选）')
+                      }
                     />
                   }
                 >
-                  合并任务
+                  加入挑选
                 </TooltipTrigger>
-                <TooltipContent>仅已完成/已合并任务可合并</TooltipContent>
+                <TooltipContent>仅已完成/执行失败/已停止的终态任务可挑选（等价旧「合并任务」）</TooltipContent>
               </Tooltip>
             )}
             {hasPermission('task:export') && (

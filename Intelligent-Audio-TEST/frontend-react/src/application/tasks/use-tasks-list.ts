@@ -1,13 +1,13 @@
 /**
  * 任务域列表 query（application 层，09_任务域.md §3.2 URL 态 → queryKey）。
- * 四页签共用同一 useQuery 骨架：tab + search + 各页签专属筛选 进 queryKey。
+ * 日常/已发布共用同一 useQuery 骨架：tab + search + 各页签专属筛选 进 queryKey。
+ * 「挑选合并」页签列表由 features/tasks/cherry-pick/index.tsx 自持
+ * （统一容器列表 merged ∪ cherry_pick，§11-1；本 hook 不再承载）。
  * mock 桩见 infrastructure/api/tasks-list-api.ts（接线后仅替换桩实现）。
  */
 import { useQuery } from '@tanstack/react-query'
 
 import {
-  fetchCherryPickList,
-  fetchMergedTaskList,
   fetchPublishedTaskList,
   fetchTaskList,
 } from '@/infrastructure/api/tasks-list-api'
@@ -41,10 +41,9 @@ export function useTasksList(tab: TasksTabKey, filters: TaskListFilters) {
             type: filters.type,
             ptStatus: filters.ptStatus,
           })
-        case 'merged':
-          return fetchMergedTaskList({ search: filters.search })
         case 'cherry-picks':
-          return fetchCherryPickList({ search: filters.search })
+          // 统一容器列表由 CherryPickTab 自持（§11-1 客户端双查询合并）
+          return { items: [], total: 0 }
         case 'daily':
         default:
           return fetchTaskList({

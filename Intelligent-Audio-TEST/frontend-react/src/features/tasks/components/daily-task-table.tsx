@@ -150,6 +150,7 @@ export function DailyTaskTable({
   onQuickView,
   onPublish,
   onBatchPublish,
+  onJoinPick,
   onCreate,
 }: {
   tasks: TaskListItem[]
@@ -158,6 +159,8 @@ export function DailyTaskTable({
   onQuickView: (task: TaskListItem) => void
   onPublish: (task: TaskListItem) => void
   onBatchPublish: (tasks: TaskListItem[]) => void
+  /** 加入挑选（§2.2 裁定②） */
+  onJoinPick?: (tasks: TaskListItem[]) => void
   onCreate: () => void
 }) {
   const { hasPermission } = usePermissions()
@@ -413,6 +416,7 @@ export function DailyTaskTable({
         onClear={() => setSelected(new Set())}
         trash={trash}
         onBatchPublish={onBatchPublish}
+        onJoinPick={onJoinPick}
       />
     </div>
   )

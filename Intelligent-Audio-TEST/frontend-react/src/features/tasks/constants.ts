@@ -4,17 +4,21 @@
  */
 import type { StatusVariant } from '@/features/dashboard/components/ui/status-badge'
 
-/** 四页签（§3.4；白名单值，路由 /tasks/$tab） */
+/** 三页签（§2.2 裁定①：旧「合并」页签收编进「挑选合并」；白名单值，路由 /tasks/$tab） */
 export const TASKS_TABS = [
   { key: 'daily', label: '日常' },
   { key: 'published', label: '已发布' },
-  { key: 'merged', label: '合并' },
   { key: 'cherry-picks', label: '挑选合并' },
 ] as const
 
 export type TasksTabKey = (typeof TASKS_TABS)[number]['key']
 
 export const TASKS_TAB_WHITELIST: string[] = TASKS_TABS.map((t) => t.key)
+
+/** 旧路径 redirect（§2.2 裁定①）：/tasks/merged 与旧 ?tab=merged 均到 /tasks/cherry-picks */
+export const TASKS_TAB_REDIRECTS: Record<string, string> = {
+  merged: 'cherry-picks',
+}
 
 /** 执行状态 → 中文 + 徽章色（§3.6.1；对齐工作台 constants.ts TASK_STATUS_META） */
 export const EXECUTION_STATUS_META: Record<
