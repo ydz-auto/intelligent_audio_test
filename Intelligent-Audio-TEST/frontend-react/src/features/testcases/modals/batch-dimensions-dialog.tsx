@@ -1,9 +1,11 @@
 /**
- * 批量设置评价维度弹窗（11_用例域.md §5.3.5，Dialog sm:max-w-3xl）。
- * 轮次范围三档「所有轮次（统一设置）/指定轮次（统一设置）/逐轮设置（每轮可不同）」；
- * 逐轮模式轮次 Tab 交互体系（§5.3.5 ②：Tab 角标=该轮已选维度数、× 关闭至少保留 1 轮、
- * 末尾「+ 添加轮次」、最后一轮 Tab 语义 -1）+ 维度勾选网格（按当前算法过滤）。
- * 可视稿演示态：提交走 toast；数据契约 roundMode/roundDimensions 序列化留接线批次。
+ * 批量设置评估维度弹窗（11_用例域.md §5.3.5，Dialog sm:max-w-3xl；标题按负责人口径与产品全域「评估维度」对齐）。
+ * 轮次范围三档「所有轮次（统一设置）/指定轮次（统一设置）/逐轮设置（每轮可不同）」：
+ * 「指定轮次」展开轮次号 Checkbox 组「第{n}轮」（与 §5.3.1~5.3.4 RoundScopeField 同口径，
+ * 所有批量设置均可指定轮次/设定所有轮次）；逐轮模式轮次 Tab 交互体系（§5.3.5 ②：
+ * Tab 角标=该轮已选维度数、× 关闭至少保留 1 轮、末尾「+ 添加轮次」、最后一轮 Tab 语义 -1）
+ * + 维度勾选网格（按当前算法过滤）。
+ * 可视稿演示态：提交走 toast；数据契约 roundMode/rounds/roundDimensions 序列化留接线批次。
  */
 import { Plus, X } from 'lucide-react'
 import { useState } from 'react'
@@ -28,6 +30,9 @@ type RoundMode = 'all' | 'specific' | 'per_round'
 /** 轮次键：数字轮号或最后一轮 -1（§5.3.5 ④ 语义） */
 type RoundKey = number | -1
 
+/** mock 轮次数（§5.3.1~5.3.4 演示第 1~N 轮同口径；接线后按选中用例实际轮次） */
+const MOCK_ROUND_COUNT = 4
+
 export function BatchDimensionsDialog({
   open,
   onOpenChange,
@@ -43,6 +48,8 @@ export function BatchDimensionsDialog({
   const [rounds, setRounds] = useState<RoundKey[]>([1, 2, -1])
   const [activeRound, setActiveRound] = useState<RoundKey>(1)
   const [selected, setSelected] = useState<Record<RoundKey, number[]>>({})
+  /** 「指定轮次」勾选的轮次号（§5.3.5 与 §5.3.1~5.3.4 同口径） */
+  const [specificRounds, setSpecificRounds] = useState<number[]>([1])
 
   const roundLabels = (key: RoundKey) => (key === -1 ? '最后一轮' : `第 ${key} 轮`)
 
@@ -58,14 +65,40 @@ export function BatchDimensionsDialog({
     })
   }
 
+  /** 当前模式下勾选网格实际作用的轮次集合 */
+  const gridKeys: RoundKey[] =
+    roundMode === 'all' ? rounds : roundMode === 'specific' ? specificRounds : [activeRound]
+
+  const isDimensionChecked = (dimId: number) =>
+    gridKeys.some((k) => (selected[k] ?? []).includes(dimId))
+
+  const toggleDimension = (dimId: number) => {
+    setSelected((prev) => {
+      const next = { ...prev }
+      gridKeys.forEach((k) => {
+        const current = next[k] ?? []
+        next[k] = current.includes(dimId)
+          ? current.filter((id) => id !== dimId)
+          : [...current, dimId]
+      })
+      return next
+    })
+  }
+
+  const toggleSpecificRound = (round: number) => {
+    setSpecificRounds((prev) =>
+      prev.includes(round) ? prev.filter((r) => r !== round) : [...prev, round]
+    )
+  }
+
   const mainDimensions = dimensions.filter((d) => d.dimensionType !== 'sub')
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='sm:max-w-3xl'>
         <DialogHeader>
-          <DialogTitle>批量设置评价维度</DialogTitle>
-          <DialogDescription>您勾选了 {count} 个用例，将为其设置评价维度</DialogDescription>
+          <DialogTitle>批量设置评估维度</DialogTitle>
+          <DialogDescription>您勾选了 {count} 个用例，将为其设置评估维度</DialogDescription>
         </DialogHeader>
 
         <div className='space-y-4'>
@@ -99,6 +132,27 @@ export function BatchDimensionsDialog({
               逐轮设置（每轮可不同）
             </label>
           </div>
+
+          {/* 指定轮次：轮次号 Checkbox 组（§5.3.5 与 §5.3.1~5.3.4 RoundScopeField 同口径） */}
+          {roundMode === 'specific' && (
+            <div className='space-y-1.5'>
+              <span className='text-sm font-medium'>指定轮次</span>
+              <div className='border-border/60 flex flex-wrap gap-1.5 rounded-lg border p-2'>
+                {Array.from({ length: MOCK_ROUND_COUNT }, (_, i) => i + 1).map((round) => (
+                  <label
+                    key={round}
+                    className='hover:bg-accent flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm'
+                  >
+                    <Checkbox
+                      checked={specificRounds.includes(round)}
+                      onCheckedChange={() => toggleSpecificRound(round)}
+                    />
+                    第{round}轮
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* 逐轮模式轮次 Tab（§5.3.5 ②） */}
           {roundMode === 'per_round' && (
@@ -154,7 +208,9 @@ export function BatchDimensionsDialog({
           {/* 维度勾选网格 */}
           <div>
             <p className='text-muted-foreground mb-2 text-xs'>
-              已按当前算法过滤可用维度；不选任何维度点确定即清除所选轮次的评估维度
+              {roundMode === 'per_round'
+                ? '已按当前算法过滤可用维度；未选维度的轮次将被清空'
+                : '已按当前算法过滤可用维度；不选任何维度点确定即清除所选轮次的评估维度'}
             </p>
             <div className='grid max-h-56 grid-cols-2 gap-1.5 overflow-y-auto sm:grid-cols-3'>
               {mainDimensions.map((dim) => (
@@ -163,16 +219,8 @@ export function BatchDimensionsDialog({
                   className='hover:bg-accent flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1.5 text-sm transition-colors'
                 >
                   <Checkbox
-                    checked={(selected[activeRound] ?? []).includes(dim.id)}
-                    onCheckedChange={() => {
-                      const current = selected[activeRound] ?? []
-                      setSelected((prev) => ({
-                        ...prev,
-                        [activeRound]: current.includes(dim.id)
-                          ? current.filter((id) => id !== dim.id)
-                          : [...current, dim.id],
-                      }))
-                    }}
+                    checked={isDimensionChecked(dim.id)}
+                    onCheckedChange={() => toggleDimension(dim.id)}
                   />
                   <span className='truncate'>{dim.name}</span>
                 </label>

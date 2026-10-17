@@ -70,7 +70,7 @@ export function CaseBulkActions({
         { key: 'device', label: '批量设置播放设备', renderIf: canUpdate },
         { key: 'spl', label: '批量设置声压', renderIf: canUpdate },
         { key: 'noise', label: '批量设置噪声', renderIf: canUpdate },
-        { key: 'dimensions', label: '批量设置维度', renderIf: canUpdate },
+        { key: 'dimensions', label: '批量设置评估维度', renderIf: canUpdate },
         { key: 'group', label: '批量调整分组', renderIf: canUpdate },
         { key: 'tags', label: '批量管理标签', renderIf: canUpdate },
         { key: 'name', label: '自动生成名称', renderIf: canUpdate },
