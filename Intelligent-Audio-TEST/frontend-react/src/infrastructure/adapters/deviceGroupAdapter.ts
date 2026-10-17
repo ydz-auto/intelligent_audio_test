@@ -8,7 +8,8 @@ import type { DeviceGroupItemDto } from '@/infrastructure/dto/device-group.dto'
 
 export function deviceGroupFromDto(dto: DeviceGroupItemDto): DeviceGroup {
   return {
-    id: Number(dto.id),
+    // 后端 device_groups.id 为 UUID 字符串，保持字符串语义（Number(uuid) 恒 NaN，P1 返修）
+    id: String(dto.id),
     name: dto.name,
     description: dto.description ?? null,
     groupType: dto.group_type === 'playback' ? 'playback' : 'test',
