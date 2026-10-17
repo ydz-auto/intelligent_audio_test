@@ -244,21 +244,22 @@ function statusText(status?: string | null): string {
   font-family: var(--font-mono, monospace);
   font-size: 11px;
 }
+/* P3（UX 审计）：状态徽章改走 tokens 与 TaskCard exec-status-badge 同源，去硬编码 hex */
 .pt-leaf-status {
   padding: 1px 6px;
   border-radius: 4px;
   font-size: 11px;
 }
-.pt-leaf-status.completed { background: #dcfce7; color: #166534; }
-.pt-leaf-status.failed { background: #fee2e2; color: #991b1b; }
-.pt-leaf-status.stopped { background: #fef3c7; color: #92400e; }
+.pt-leaf-status.completed { background: var(--color-emerald-100); color: var(--color-emerald-600); }
+.pt-leaf-status.failed { background: var(--color-red-100); color: var(--color-red-600); }
+.pt-leaf-status.stopped { background: var(--color-gray-100); color: var(--color-gray-500); }
 .pt-leaf-eval {
   padding: 1px 6px;
   border-radius: 4px;
   font-size: 11px;
 }
-.pt-leaf-eval.evaluated { background: #dbeafe; color: #1e40af; }
-.pt-leaf-eval.pending-eval { background: #f1f5f9; color: #64748b; }
+.pt-leaf-eval.evaluated { background: var(--color-blue-100); color: var(--color-blue-600); }
+.pt-leaf-eval.pending-eval { background: var(--color-slate-100); color: var(--color-slate-500); }
 .pt-leaf-added {
   color: var(--primary, #ff6a00);
   font-size: 11px;

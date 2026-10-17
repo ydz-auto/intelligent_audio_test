@@ -66,7 +66,7 @@
           <button class="cpw-btn" @click="expandAll"><i class="fas fa-angles-down"></i> 全部展开</button>
           <button class="cpw-btn" @click="collapseAll"><i class="fas fa-angles-up"></i> 全部收起</button>
         </div>
-        <span class="cpw-toolbar-info">已选 {{ selectedResultIds.size }} 条 / 共 {{ candidateTotal }} 条</span>
+        <span class="cpw-toolbar-info">已选 {{ selectedResultIds.size }} 条 / 共 {{ visibleTotal }} 条</span>
       </div>
 
       <!-- 树形 / 平铺 -->
@@ -84,12 +84,12 @@
       </div>
       <div v-else class="cpw-flat">
         <div v-if="loadingCandidates" class="cpw-empty"><i class="fas fa-spinner fa-spin"></i> 正在加载执行结果…</div>
-        <div v-else-if="candidates.length === 0" class="cpw-empty">
+        <div v-else-if="filteredCandidates.length === 0" class="cpw-empty">
           <i class="fas fa-inbox"></i>
           <p>无符合条件的执行结果</p>
           <p class="cpw-empty-hint">仅已完成、执行失败、已停止的终态任务可挑选，默认剔除已删除用例的结果</p>
         </div>
-        <label v-for="item in candidates" :key="item.resultId" class="cpw-leaf">
+        <label v-for="item in filteredCandidates" :key="item.resultId" class="cpw-leaf">
           <input type="checkbox" class="cpw-checkbox"
                  :checked="selectedResultIds.has(item.resultId)"
                  @change="onToggleLeaf(item.resultId)" />
@@ -419,7 +419,18 @@ const selectedResultIds = ref<Set<number>>(new Set());
 const expandedKeys = ref<Set<string>>(new Set());
 const viewMode = ref<'tree' | 'flat'>('tree');
 
-const treeRoots = computed(() => buildPickTree(candidates.value));
+/** 结果类型客户端过滤（UX 审计 P2 修复）：后端候选查询不下发 result_type 参数，
+ * 取审计建议方案①——loadCandidates 后按 filters.resultTypes 过滤候选行/树；
+ * 筛选与勾选解耦（§6.2）不变，已选项跨筛选保留。 */
+const filteredCandidates = computed(() => {
+  if (!filters.resultTypes.length) return candidates.value;
+  return candidates.value.filter((c) => filters.resultTypes.includes(c.resultType ?? 'default'));
+});
+/** 展示计数：结果类型客户端过滤时以过滤后当前页为准（跨页全选降级口径），否则后端 total */
+const visibleTotal = computed(() =>
+  filters.resultTypes.length ? filteredCandidates.value.length : candidateTotal.value);
+
+const treeRoots = computed(() => buildPickTree(filteredCandidates.value));
 /** 累计候选元数据（跨页累加不清理：跨页已选结果的任务/设备计数、R10 标记均可用） */
 const knownMeta = ref<Map<number, PickCandidate>>(new Map());
 const leafMeta = computed(() => knownMeta.value);
@@ -574,12 +585,18 @@ function clearSelection() {
 function invertCurrent() {
   const leaves = viewMode.value === 'tree'
     ? collectLeafResultIds(treeRoots.value)
-    : candidates.value.map((c) => c.resultId);
+    : filteredCandidates.value.map((c) => c.resultId);
   selectedResultIds.value = invertSelection(leaves, selectedResultIds.value);
 }
 
-/** R9 全选当前筛选：跨页全选（§11-4 select-all，未落地前降级当前已加载） */
+/** R9 全选当前筛选：跨页全选（§11-4 select-all，未落地前降级当前已加载）。
+ * 结果类型为客户端过滤（P2 修复口径）：后端 select-all 不支持 result_type 下发，
+ * 命中集合以当前已加载且已过滤的树为准（跨页全选降级，与展示一致）。 */
 async function selectAllCurrentFilter() {
+  if (filters.resultTypes.length) {
+    selectedResultIds.value = selectAll(collectLeafResultIds(treeRoots.value), selectedResultIds.value);
+    return;
+  }
   try {
     const res = await cherryPickApi.selectAllCandidates({
       taskIds: filters.taskIds.length ? filters.taskIds.map(Number) : [],
@@ -964,8 +981,8 @@ watch(() => cartRevision.value, () => {
   color: #fff;
 }
 .cpw-step.done {
-  background: #dcfce7;
-  color: #166534;
+  background: var(--color-emerald-100);
+  color: var(--color-emerald-600);
 }
 .cpw-back {
   border: none;
@@ -1125,21 +1142,22 @@ watch(() => cartRevision.value, () => {
   font-family: var(--font-mono, monospace);
   font-size: 11px;
 }
+/* P3（UX 审计）：状态徽章改走 tokens 与 TaskCard exec-status-badge 同源，去硬编码 hex */
 .cpw-leaf-status {
   padding: 1px 6px;
   border-radius: 4px;
   font-size: 11px;
 }
-.cpw-leaf-status.completed { background: #dcfce7; color: #166534; }
-.cpw-leaf-status.failed { background: #fee2e2; color: #991b1b; }
-.cpw-leaf-status.stopped { background: #fef3c7; color: #92400e; }
+.cpw-leaf-status.completed { background: var(--color-emerald-100); color: var(--color-emerald-600); }
+.cpw-leaf-status.failed { background: var(--color-red-100); color: var(--color-red-600); }
+.cpw-leaf-status.stopped { background: var(--color-gray-100); color: var(--color-gray-500); }
 .cpw-leaf-eval {
   padding: 1px 6px;
   border-radius: 4px;
   font-size: 11px;
 }
-.cpw-leaf-eval.evaluated { background: #dbeafe; color: #1e40af; }
-.cpw-leaf-eval.pending-eval { background: #f1f5f9; color: #64748b; }
+.cpw-leaf-eval.evaluated { background: var(--color-blue-100); color: var(--color-blue-600); }
+.cpw-leaf-eval.pending-eval { background: var(--color-slate-100); color: var(--color-slate-500); }
 .cpw-leaf-added {
   color: var(--primary, #ff6a00);
   font-size: 11px;
@@ -1224,7 +1242,7 @@ watch(() => cartRevision.value, () => {
 .cpw-cart-row-case { color: var(--foreground, #1e293b); min-width: 90px; }
 .cpw-cart-row-dim { color: var(--color-slate-500, #64748b); min-width: 80px; }
 .cpw-cart-row-invalid {
-  color: #b91c1c;
+  color: var(--danger-color, #dc2626);
   font-size: 11px;
 }
 .cpw-sets {

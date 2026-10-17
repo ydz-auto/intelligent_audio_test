@@ -234,13 +234,14 @@ function statusText(status?: string | null): string {
   font-family: var(--font-mono, monospace);
   font-size: 11px;
 }
+/* P3（UX 审计）：状态徽章改走 tokens 与 TaskCard exec-status-badge 同源，去硬编码 hex */
 .ctr-leaf-status {
   padding: 1px 6px;
   border-radius: 4px;
   font-size: 11px;
 }
-.ctr-leaf-status.completed { background: #dcfce7; color: #166534; }
-.ctr-leaf-status.failed { background: #fee2e2; color: #991b1b; }
-.ctr-leaf-status.stopped { background: #fef3c7; color: #92400e; }
-.ctr-leaf-invalid { color: #b91c1c; font-size: 11px; }
+.ctr-leaf-status.completed { background: var(--color-emerald-100); color: var(--color-emerald-600); }
+.ctr-leaf-status.failed { background: var(--color-red-100); color: var(--color-red-600); }
+.ctr-leaf-status.stopped { background: var(--color-gray-100); color: var(--color-gray-500); }
+.ctr-leaf-invalid { color: var(--danger-color, #dc2626); font-size: 11px; }
 </style>

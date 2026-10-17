@@ -419,7 +419,7 @@ async function restoreSet(setId: number) {
   font-family: var(--font-mono, monospace);
   font-size: 11px;
 }
-.cd-row-invalid { color: #b91c1c; font-size: 11px; }
+.cd-row-invalid { color: var(--danger-color, #dc2626); font-size: 11px; }
 .cd-sets {
   padding: 12px 16px;
   border-top: 1px solid var(--color-slate-100, #f1f5f9);
