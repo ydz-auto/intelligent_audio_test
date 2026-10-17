@@ -3437,6 +3437,260 @@ class TestCaseConfigService:
             _registered_method=True)
 
 
+class EvaluationStrategyServiceStub:
+    """===== 评估策略配置 CRUD 服务（INT-590：整体评估维度+全局背景噪声 抽为可复用策略） =====
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.CreateEvaluationStrategy = channel.unary_unary(
+                '/task_service.EvaluationStrategyService/CreateEvaluationStrategy',
+                request_serializer=task__service__pb2.CreateEvaluationStrategyRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.UpdateEvaluationStrategy = channel.unary_unary(
+                '/task_service.EvaluationStrategyService/UpdateEvaluationStrategy',
+                request_serializer=task__service__pb2.UpdateEvaluationStrategyRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.DeleteEvaluationStrategy = channel.unary_unary(
+                '/task_service.EvaluationStrategyService/DeleteEvaluationStrategy',
+                request_serializer=task__service__pb2.DeleteEvaluationStrategyRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.ListEvaluationStrategies = channel.unary_unary(
+                '/task_service.EvaluationStrategyService/ListEvaluationStrategies',
+                request_serializer=task__service__pb2.ListEvaluationStrategiesRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.GetEvaluationStrategy = channel.unary_unary(
+                '/task_service.EvaluationStrategyService/GetEvaluationStrategy',
+                request_serializer=task__service__pb2.GetEvaluationStrategyRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+
+
+class EvaluationStrategyServiceServicer:
+    """===== 评估策略配置 CRUD 服务（INT-590：整体评估维度+全局背景噪声 抽为可复用策略） =====
+    """
+
+    def CreateEvaluationStrategy(self, request, context):
+        """---- 写操作 ----
+        创建评估策略（config JSON: {dimensions:[{id,name,weight,threshold,round_scope?,llmJudgeConfig?}], background_noise:{...}}，
+        与用例 config.dimensions / config.background_noise 同构）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateEvaluationStrategy(self, request, context):
+        """更新评估策略（P1：编辑不回灌已引用用例，用例/任务均快照语义）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteEvaluationStrategy(self, request, context):
+        """删除评估策略（被用例引用时拒绝，返回 referenced_case_count）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListEvaluationStrategies(self, request, context):
+        """---- 读操作 ----
+        策略列表（含 referenced_case_count 关联用例计数，列表展示 + 删保护同源）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetEvaluationStrategy(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_EvaluationStrategyServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'CreateEvaluationStrategy': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateEvaluationStrategy,
+                    request_deserializer=task__service__pb2.CreateEvaluationStrategyRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'UpdateEvaluationStrategy': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateEvaluationStrategy,
+                    request_deserializer=task__service__pb2.UpdateEvaluationStrategyRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'DeleteEvaluationStrategy': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteEvaluationStrategy,
+                    request_deserializer=task__service__pb2.DeleteEvaluationStrategyRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'ListEvaluationStrategies': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListEvaluationStrategies,
+                    request_deserializer=task__service__pb2.ListEvaluationStrategiesRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'GetEvaluationStrategy': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetEvaluationStrategy,
+                    request_deserializer=task__service__pb2.GetEvaluationStrategyRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'task_service.EvaluationStrategyService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('task_service.EvaluationStrategyService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class EvaluationStrategyService:
+    """===== 评估策略配置 CRUD 服务（INT-590：整体评估维度+全局背景噪声 抽为可复用策略） =====
+    """
+
+    @staticmethod
+    def CreateEvaluationStrategy(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.EvaluationStrategyService/CreateEvaluationStrategy',
+            task__service__pb2.CreateEvaluationStrategyRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateEvaluationStrategy(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.EvaluationStrategyService/UpdateEvaluationStrategy',
+            task__service__pb2.UpdateEvaluationStrategyRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteEvaluationStrategy(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.EvaluationStrategyService/DeleteEvaluationStrategy',
+            task__service__pb2.DeleteEvaluationStrategyRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListEvaluationStrategies(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.EvaluationStrategyService/ListEvaluationStrategies',
+            task__service__pb2.ListEvaluationStrategiesRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetEvaluationStrategy(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.EvaluationStrategyService/GetEvaluationStrategy',
+            task__service__pb2.GetEvaluationStrategyRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+
 class TagConfigServiceStub:
     """===== 标签配置 CRUD 服务 =====
     """

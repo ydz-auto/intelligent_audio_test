@@ -9,6 +9,7 @@ from .task_data_service import TaskDataServiceServicer
 from .data_transfer import DataTransferServiceServicer
 from .cherry_pick import CherryPickServiceServicer
 from .review import ReviewServiceServicer
+from .evaluation_strategy_config import EvaluationStrategyServiceServicer
 # 注：EvaluationConfigServiceServicer 已迁移至 evaluation_service
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     'DataTransferServiceServicer',
     'CherryPickServiceServicer',
     'ReviewServiceServicer',
+    'EvaluationStrategyServiceServicer',
 ]

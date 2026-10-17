@@ -27,11 +27,11 @@ def _import_all_models():
 
     每个服务 infrastructure/persistence/models/__init__.py 导入即注册。
     """
-    # task_service: 14 张表
+    # task_service: 15 张表
     from task_service.infrastructure.persistence.models import (  # noqa: F401
         Task, TaskTag, TaskCase, TaskDevice, TaskAPI, TaskMergeRelation,
         TestResult, TagCategory, Tag, TestCaseGroup, TestCase, TestCaseTag,
-        Log, Favorite,
+        EvaluationStrategy, Log, Favorite,
     )
     # evaluation_service: 3 张表
     from evaluation_service.infrastructure.persistence.models import (  # noqa: F401

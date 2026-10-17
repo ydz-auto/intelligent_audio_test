@@ -22,6 +22,7 @@ from .result_models import TestResult
 from .testcase_models import (
     TagCategory, Tag, TestCaseGroup, TestCase, TestCaseTag,
 )
+from .evaluation_strategy_models import EvaluationStrategy
 from .favorite_models import Favorite
 from .cherry_pick_models import (
     CherryPickCartItem, TaskCherryPickRelation, CherryPickSet, CherryPickSetItem,
@@ -39,6 +40,8 @@ __all__ = [
     'TestResult',
     # 标签与用例
     'TagCategory', 'Tag', 'TestCaseGroup', 'TestCase', 'TestCaseTag',
+    # 评估策略（INT-590：整体评估维度+全局背景噪声 可复用包）
+    'EvaluationStrategy',
     # 收藏（task|testcase，INT-141）
     'Favorite',
     # 挑选合并（INT-339：购物车 / 容器关系 / 挑选集）

@@ -181,6 +181,17 @@ def get_review_service_stub():
 
 
 @lru_cache(maxsize=1)
+def get_evaluation_strategy_service_stub():
+    """EvaluationStrategyService stub（INT-590）：评估策略 CRUD（创建/更新/删除/列表/详情）
+
+    策略实体归 task_service（用例域）：整体评估维度+全局背景噪声抽为可复用策略，
+    列表含 referenced_case_count（列表展示 + 删保护同源）。
+    """
+    from shared.proto import task_service_pb2_grpc
+    return task_service_pb2_grpc.EvaluationStrategyServiceStub(_get_task_channel())
+
+
+@lru_cache(maxsize=1)
 def get_evaluation_service_stub():
     """EvaluationService stub：评估单个用例（EvaluateCase）、重新评估（Reevaluate / ReevaluateMultiRound / ReevaluateSingle）
 

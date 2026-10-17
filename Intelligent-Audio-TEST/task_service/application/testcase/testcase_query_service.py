@@ -122,6 +122,9 @@ class TestCaseQueryService:
                     'algorithm_params': tc.algorithm_params,
                     'reference_params': tc.reference_params,
                     'algorithm_type': tc.algorithm_type,
+                    # INT-590：评估策略引用（列表页展示引用策略名/覆盖标记）
+                    'strategy_id': getattr(tc, 'strategy_id', None),
+                    'strategy_overrides': getattr(tc, 'strategy_overrides', None),
                     'created_at': tc.created_at.isoformat() if tc.created_at else None,
                     'updated_at': tc.updated_at.isoformat() if tc.updated_at else None,
                     'is_favorite': tc.id in favorite_ids,
@@ -260,6 +263,9 @@ class TestCaseQueryService:
                     "algorithmParams": tc.algorithm_params,
                     "referenceParams": tc.reference_params,
                     "algorithmType": tc.algorithm_type,
+                    # INT-590：评估策略引用（标签视图对齐普通列表口径）
+                    "strategyId": getattr(tc, 'strategy_id', None),
+                    "strategyOverrides": getattr(tc, 'strategy_overrides', None),
                     "createdAt": tc.created_at.isoformat() if tc.created_at else None,
                     "updatedAt": tc.updated_at.isoformat() if tc.updated_at else None,
                     # INT-215：收藏标记 / 回收站字段（与普通列表对齐）
@@ -355,6 +361,9 @@ class TestCaseQueryService:
                 'algorithm_params': getattr(tc, 'algorithm_params', None),
                 'reference_params': getattr(tc, 'reference_params', None),
                 'algorithm_type': tc.algorithm_type,
+                # INT-590：评估策略引用（详情回显引用策略 + 覆盖源，前端可编辑覆盖）
+                'strategy_id': getattr(tc, 'strategy_id', None),
+                'strategy_overrides': getattr(tc, 'strategy_overrides', None),
                 'tags': [tag.name for tag in tc.tags],
                 'audios': audios,
                 'dimensions': dimensions,

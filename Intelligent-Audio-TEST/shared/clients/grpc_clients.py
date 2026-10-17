@@ -73,6 +73,7 @@ from shared.clients._grpc_stubs import (
     get_task_data_service_stub,
     get_cherry_pick_service_stub,
     get_review_service_stub,
+    get_evaluation_strategy_service_stub,
     get_evaluation_service_stub,
     get_evaluation_config_service_stub,
     get_evaluation_data_service_stub,

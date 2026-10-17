@@ -12,6 +12,7 @@
 """
 from __future__ import annotations
 
+import copy
 import logging
 import uuid
 
@@ -55,6 +56,10 @@ class TestCaseCopyMoveMixin:
             'group_id': group_id,
             'config': tc.config.copy() if tc.config else {},
             'algorithm_type': tc.algorithm_type,
+            # INT-590：批量复制保留策略引用（config 已含解析后快照，引用列随拷贝，
+            # 与单用例 copy 口径一致）
+            'strategy_id': getattr(tc, 'strategy_id', None),
+            'strategy_overrides': copy.deepcopy(getattr(tc, 'strategy_overrides', None)),
         })
         # 复制标签关联
         for tag in tc.tags:

@@ -17,6 +17,7 @@ from task_service.infrastructure.persistence.models import (
     Task, TaskTag, TaskCase, TaskDevice, TaskAPI, TaskMergeRelation,
     TestResult,
     TagCategory, Tag, TestCaseGroup, TestCase, TestCaseTag,
+    EvaluationStrategy,
     Log,
 )
 
@@ -24,5 +25,6 @@ __all__ = [
     'Task', 'TaskTag', 'TaskCase', 'TaskDevice', 'TaskAPI', 'TaskMergeRelation',
     'TestResult',
     'TagCategory', 'Tag', 'TestCaseGroup', 'TestCase', 'TestCaseTag',
+    'EvaluationStrategy',
     'Log',
 ]

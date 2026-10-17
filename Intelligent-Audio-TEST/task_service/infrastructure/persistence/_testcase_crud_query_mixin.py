@@ -21,6 +21,8 @@ class TestCaseCrudMixin:
         """创建测试用例记录（含 flush，未 commit）。
 
         data 需含 id/name/group_id/config/algorithm_params/algorithm_type。
+        strategy_id/strategy_overrides（INT-590）：用例引用评估策略，写时物化
+        解析结果已并入 config，引用与覆盖源另列落库。
         用例是纯数据载体（差异#2 收尾）：不再存储 test_type。
         created_by_user_id（INT-141）：从 x-user-id 上下文取 JWT 操作人。
         """
@@ -34,6 +36,8 @@ class TestCaseCrudMixin:
             config=data.get('config'),
             algorithm_params=data.get('algorithm_params'),
             algorithm_type=data.get('algorithm_type'),
+            strategy_id=data.get('strategy_id'),
+            strategy_overrides=data.get('strategy_overrides'),
             created_by_user_id=get_current_user_id(),
         )
         session.add(tc)

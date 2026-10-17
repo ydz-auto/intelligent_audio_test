@@ -84,6 +84,10 @@ class TestCase(Base):
     reference_params = Column(JSON, comment='参考参数路径（按轮分组 [{round_number, reference_params_path}]，内容存文件）')
     group_id = Column(String(50), ForeignKey('test_case_groups.id'), comment='所属分组ID')
     algorithm_type = Column(String(50), comment='关联算法类型 (如: translation, asr, speaker_recognition, tts)')
+    # INT-590：评估策略引用 + 覆盖（写时物化——保存用例时按维度 id 逐字段覆盖，
+    # 解析结果落库 config.dimensions / config.background_noise，本列另存引用与覆盖源）
+    strategy_id = Column(String(50), ForeignKey('evaluation_strategies.id'), nullable=True, index=True, comment='评估策略ID（引用可复用策略，P1 不回灌）')
+    strategy_overrides = Column(JSON, nullable=True, comment='评估策略覆盖 JSON（{dimensions, background_noise}，用例级覆盖语义）')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
     created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')

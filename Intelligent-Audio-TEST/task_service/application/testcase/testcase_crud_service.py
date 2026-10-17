@@ -47,6 +47,54 @@ def _build_ref_params_key(case_id, round_number, filename=None):
     return f"{case_id}/{filename}"
 
 
+def _resolve_strategy_config(data, config, current_strategy_id=None, current_overrides=None):
+    """INT-590：评估策略引用 + 覆盖（写时物化）。
+
+    保存用例时合并策略 config 与用例级 strategy_overrides，解析结果写回
+    config.dimensions / config.background_noise（下游 e2e/评估/报告零改动，
+    任务创建快照天然含解析后配置）。strategy_id + overrides 另列落库由调用方完成。
+
+    Returns:
+        (error_message_or_None, strategy_id_or_None, overrides_or_None)
+    """
+    from task_service.domain.services.evaluation_strategy_merge import (
+        evaluation_strategy_merge_service,
+    )
+
+    strategy_id = data.get('strategy_id')
+    overrides = data.get('strategy_overrides')
+
+    # 显式清空引用（空字符串）：保留当前 config 快照（P1 不回灌）
+    if strategy_id is not None and str(strategy_id) == '':
+        return None, None, None
+
+    if not strategy_id:
+        # 未传 strategy_id：沿用既有引用（用例编辑抽屉仅改音频/参数时不动策略）
+        strategy_id = current_strategy_id
+        if overrides is None:
+            overrides = current_overrides
+
+    if not strategy_id:
+        return None, None, None
+
+    if overrides is not None:
+        err = evaluation_strategy_merge_service.validate_overrides(overrides)
+        if err:
+            return err, None, None
+
+    from task_service.infrastructure.persistence.testcase_repository import testcase_repository
+    strategy = testcase_repository.get_evaluation_strategy(strategy_id)
+    if not strategy:
+        return f"评估策略不存在或已删除: {strategy_id}", None, None
+
+    resolved = evaluation_strategy_merge_service.resolve(strategy.config, overrides)
+    if resolved.get('dimensions'):
+        config['dimensions'] = resolved['dimensions']
+    if resolved.get('background_noise'):
+        config['background_noise'] = resolved['background_noise']
+    return None, strategy_id, overrides
+
+
 def _apply_reference_params_to_config(test_case) -> None:
     """为 test_case 逐轮生成参考参数并写入 OSS，路径存入 reference_params 独立列。
 
@@ -196,6 +244,13 @@ class TestCaseCrudService:
 
                 merged_config = common.convert_flat_config_to_rounds(merged_config)
 
+            # INT-590：评估策略引用 + 覆盖（写时物化，解析结果并入 config.dimensions /
+            # config.background_noise；strategy_id + overrides 另列落库）
+            strategy_error, strategy_id_val, strategy_overrides_val = _resolve_strategy_config(
+                data, merged_config)
+            if strategy_error is not None:
+                return {'success': False, 'message': strategy_error, 'data': None, 'code': 400}
+
             algo_params_col = data.get('algorithm_params')
             if algo_params_col:
                 first = algo_params_col[0] if isinstance(algo_params_col[0], dict) else {}
@@ -212,6 +267,8 @@ class TestCaseCrudService:
                     'config': merged_config,
                     'algorithm_params': algo_params_col,
                     'algorithm_type': data.get('algorithm_type'),
+                    'strategy_id': strategy_id_val,
+                    'strategy_overrides': strategy_overrides_val,
                 })
 
                 # 处理标签
@@ -372,6 +429,21 @@ class TestCaseCrudService:
             if tags_data is not None:
                 self.repo.set_testcase_tags(tc, tags_data)
 
+            # INT-590：评估策略引用 + 覆盖（写时物化，解析结果并入 config.dimensions /
+            # config.background_noise；strategy_id + overrides 另列落库）。
+            # 未传 strategy_id 时沿用既有引用（仅改音频/参数不动策略），
+            # 显式传空字符串则清空引用（保留当前 config 快照，P1 不回灌）。
+            strategy_error, strategy_id_val, strategy_overrides_val = _resolve_strategy_config(
+                data, merged_config,
+                current_strategy_id=tc.strategy_id,
+                current_overrides=tc.strategy_overrides,
+            )
+            if strategy_error is not None:
+                return {'success': False, 'message': strategy_error, 'data': None, 'code': 400}
+
+            tc.strategy_id = strategy_id_val
+            tc.strategy_overrides = strategy_overrides_val
+
             tc.config = merged_config
 
             algorithm_type = data.get('algorithm_type')
@@ -460,6 +532,9 @@ class TestCaseCrudService:
                     'algorithm_params': copy.deepcopy(tc.algorithm_params) if tc.algorithm_params else None,
                     'reference_params': copy.deepcopy(tc.reference_params) if tc.reference_params else None,
                     'algorithm_type': tc.algorithm_type,
+                    # INT-590：复制用例保留策略引用（config 已含解析后快照，引用列随拷贝）
+                    'strategy_id': getattr(tc, 'strategy_id', None),
+                    'strategy_overrides': copy.deepcopy(getattr(tc, 'strategy_overrides', None)),
                 })
 
                 for tag in tc.tags:

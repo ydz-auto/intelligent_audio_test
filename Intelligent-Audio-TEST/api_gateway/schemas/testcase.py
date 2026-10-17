@@ -83,11 +83,21 @@ class TestCaseBackgroundNoiseItem(APIModel):
 
 
 class TestCaseDimensionItem(APIModel):
+    # INT-590 必改：APIModel 基类 extra='ignore'（base.py:17），未声明字段会在
+    # 列表/详情响应被静默丢弃。维度项额外字段 round_scope/llmJudgeConfig 需显式
+    # 声明（策略覆盖若携带这些字段必须完整回显）。extra='allow' 兜底未来新增字段。
+    model_config = ConfigDict(extra='allow')
+
     id: int = Field(...)
     name: str = Field(...)
     weight: Optional[float] = Field(None)
     threshold: Optional[float] = Field(None)
     test_type: Optional[str] = Field(None)
+    # 多轮整体评估口径：multi=整体评估（config.dimensions 口径），
+    # single/per_round=逐轮口径（rounds[].evaluation.dimensions）
+    round_scope: Optional[str] = Field(None, validation_alias=AliasChoices('round_scope', 'roundScope'))
+    # LLM Judge 配置（{model, promptTemplate}；仅前端 UI 概念，后端评估未消费，标注）
+    llmJudgeConfig: Optional[Dict[str, Any]] = Field(None)
 
 
 class RoundConfigItem(APIModel):
@@ -131,6 +141,9 @@ class TestCaseListItem(APIModel):
     algorithm_params: Optional[Any] = Field(None)
     reference_params: Optional[Any] = Field(None)
     algorithm_type: Optional[str] = Field(None)
+    # INT-590：评估策略引用（列表页展示引用策略 + 覆盖标记）
+    strategy_id: Optional[str] = Field(None)
+    strategy_overrides: Optional[Any] = Field(None)
     created_at: Optional[str] = Field(None)
     updated_at: Optional[str] = Field(None)
     # INT-141：收藏标记 / 回收站字段
@@ -169,6 +182,9 @@ class TestCaseDetailData(APIModel):
     audios: List[TestCaseAudioConfigItem] = Field(default_factory=list)
     dimensions: List[TestCaseDimensionBrief] = Field(default_factory=list)
     algorithm_type: Optional[str] = Field(None)
+    # INT-590：评估策略引用（详情回显引用策略 + 覆盖源，前端可编辑覆盖）
+    strategy_id: Optional[str] = Field(None)
+    strategy_overrides: Optional[Any] = Field(None)
     created_at: Optional[str] = Field(None)
     updated_at: Optional[str] = Field(None)
     total_duration: Optional[float] = Field(None)
@@ -432,6 +448,10 @@ class TestCaseCreateSchema(APIModel):
     algorithm_params: Optional[Any] = Field(None)
     # 按轮分组：[{round_number, reference_params_path}]，兼容旧格式
     reference_params: Optional[Any] = Field(None)
+    # INT-590：评估策略引用 + 覆盖（写时物化——保存时合并策略 config 与 overrides，
+    # 解析结果落库 config.dimensions / config.background_noise，引用与覆盖源另列）
+    strategy_id: Optional[str] = Field(None)
+    strategy_overrides: Optional[Dict[str, Any]] = Field(None)
 
     @field_validator('algorithm_params', mode='before')
     @classmethod
@@ -565,6 +585,9 @@ class TestCaseUpdateSchema(APIModel):
     algorithm_params: Optional[Any] = Field(None)
     # 按轮分组：[{round_number, reference_params_path}]
     reference_params: Optional[Any] = Field(None)
+    # INT-590：评估策略引用 + 覆盖（写时物化；显式传空字符串清空引用）
+    strategy_id: Optional[str] = Field(None)
+    strategy_overrides: Optional[Dict[str, Any]] = Field(None)
 
     @field_validator('algorithm_params', mode='before')
     @classmethod

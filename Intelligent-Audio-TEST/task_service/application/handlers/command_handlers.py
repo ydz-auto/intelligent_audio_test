@@ -47,6 +47,9 @@ from task_service.application.commands.task_commands import (
     UpdateTagCommand,
     DeleteTagCommand,
     BatchUpdateTagCategoryCommand,
+    CreateEvaluationStrategyCommand,
+    UpdateEvaluationStrategyCommand,
+    DeleteEvaluationStrategyCommand,
     ExportTasksCommand,
     PreviewImportCommand,
     ExecuteImportCommand,
@@ -75,6 +78,7 @@ class TaskCommandHandler:
         self._task_lifecycle_service = None
         self._testcase_crud_service = None
         self._tag_crud_service = None
+        self._evaluation_strategy_crud_service = None
 
     @property
     def task_repository(self):
@@ -120,6 +124,16 @@ class TaskCommandHandler:
             from task_service.application.testcase.tag_crud_service import tag_crud_service
             self._tag_crud_service = tag_crud_service
         return self._tag_crud_service
+
+    @property
+    def evaluation_strategy_crud_service(self):
+        """延迟加载 evaluation_strategy_crud_service（INT-590 评估策略命令侧）。"""
+        if self._evaluation_strategy_crud_service is None:
+            from task_service.application.evaluation_strategy.evaluation_strategy_crud_service import (
+                evaluation_strategy_crud_service,
+            )
+            self._evaluation_strategy_crud_service = evaluation_strategy_crud_service
+        return self._evaluation_strategy_crud_service
 
     # ---- 命令处理 ----
 
@@ -493,6 +507,23 @@ class TaskCommandHandler:
     def handle_batch_update_tag_category(self, cmd: BatchUpdateTagCategoryCommand) -> Dict:
         """处理批量更新标签分类命令。委托 tag_crud_service.batch_update_category。"""
         return self.tag_crud_service.batch_update_category(cmd.data)
+
+    # ==================================================================
+    # 评估策略命令（INT-590，gRPC servicer 入口）
+    # 委托 evaluation_strategy_crud_service（命令侧）
+    # ==================================================================
+
+    def handle_create_evaluation_strategy(self, cmd: CreateEvaluationStrategyCommand) -> Dict:
+        """处理创建评估策略命令。委托 evaluation_strategy_crud_service.create。"""
+        return self.evaluation_strategy_crud_service.create(cmd.data)
+
+    def handle_update_evaluation_strategy(self, cmd: UpdateEvaluationStrategyCommand) -> Dict:
+        """处理更新评估策略命令（P1 不回灌已引用用例）。委托 crud_service.update。"""
+        return self.evaluation_strategy_crud_service.update(cmd.strategy_id, cmd.data)
+
+    def handle_delete_evaluation_strategy(self, cmd: DeleteEvaluationStrategyCommand) -> Dict:
+        """处理删除评估策略命令（被引用时拒绝并返回引用数）。委托 crud_service.delete。"""
+        return self.evaluation_strategy_crud_service.delete(cmd.strategy_id)
 
 
 # 模块级单例

@@ -20,6 +20,9 @@ from api_gateway.domain.repositories.acl.device_acl_repository import (
     DeviceAclRepository,
     PlaybackConfigAclRepository,
 )
+from api_gateway.domain.repositories.acl.evaluation_strategy_acl_repository import (
+    EvaluationStrategyAclRepository,
+)
 from api_gateway.domain.repositories.acl.execution_acl_repository import (
     ExecutionAclRepository,
 )
@@ -36,6 +39,7 @@ __all__ = [
     'AudioAclRepository',
     'DeviceAclRepository',
     'EvaluationConfigAclRepository',
+    'EvaluationStrategyAclRepository',
     'ExecutionAclRepository',
     'PlaybackAclRepository',
     'PlaybackConfigAclRepository',

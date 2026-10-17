@@ -130,6 +130,7 @@ def create_app(config_name='default') -> FastAPI:
     from api_gateway.routes.digital_spl_bp import router as digital_spl_router
     from api_gateway.routes.algorithm_bp import router as algorithm_router
     from api_gateway.routes.tag_bp import router as tag_router
+    from api_gateway.routes.evaluation_strategy_bp import router as evaluation_strategy_router
     from api_gateway.routes.home_bp import router as home_router
     from api_gateway.routes.sse_bp import router as sse_router
     from api_gateway.routes.data_transfer_bp import router as data_transfer_router
@@ -163,6 +164,8 @@ def create_app(config_name='default') -> FastAPI:
     app.include_router(digital_spl_router, prefix='/api/v1/digital-spl', tags=['digital-spl'])
     app.include_router(algorithm_router, prefix='/api/v1/algorithm', tags=['algorithm'])
     app.include_router(tag_router, prefix='/api/v1/tags', tags=['tags'])
+    # INT-590 评估策略：/evaluation-strategies 前缀（策略归用例域）
+    app.include_router(evaluation_strategy_router, prefix='/api/v1/evaluation-strategies', tags=['evaluation-strategies'])
     app.include_router(home_router, prefix='/api/v1/home', tags=['home'])
     app.include_router(sse_router, prefix='/api/v1/sse', tags=['sse'])
     app.include_router(data_transfer_router, prefix='/api/v1/data-transfer', tags=['data-transfer'])

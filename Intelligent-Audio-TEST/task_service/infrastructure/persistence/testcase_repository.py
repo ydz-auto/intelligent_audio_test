@@ -46,6 +46,20 @@ class TestCaseRepository(
 
     # ========== 跨域查询：Audio / Dimension ==========
 
+    def get_evaluation_strategy(self, strategy_id):
+        """按 ID 查询单个未删除评估策略（INT-590 用例引用策略）。
+
+        策略实体归 task_service 本地（evaluation_strategies 表），经
+        evaluation_strategy_repository 读取，供用例创建/更新时写时物化合并。
+        返回 PO 或 None（策略不存在/已删除）。
+        """
+        if not strategy_id:
+            return None
+        from task_service.infrastructure.persistence.evaluation_strategy_repository import (
+            evaluation_strategy_repository,
+        )
+        return evaluation_strategy_repository.get_strategy(strategy_id)
+
     def get_audio_by_id(self, audio_id) -> Optional[dict]:
         """按 ID 查询单个音频，返回 dict（含 id/name/duration 等字段）。
 

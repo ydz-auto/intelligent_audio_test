@@ -117,6 +117,9 @@ class TestCaseQueryService:
                     algorithm_params=item.get('algorithm_params'),
                     reference_params=item.get('reference_params'),
                     algorithm_type=item.get('algorithm_type'),
+                    # INT-590：评估策略引用
+                    strategy_id=item.get('strategy_id'),
+                    strategy_overrides=item.get('strategy_overrides'),
                     created_at=item.get('created_at'),
                     updated_at=item.get('updated_at'),
                     is_favorite=item.get('is_favorite'),
@@ -191,6 +194,8 @@ class TestCaseQueryService:
                 tags=item.get('tags', []),
                 audios=audios,
                 dimensions=dimensions,
+                strategy_id=item.get('strategy_id'),
+                strategy_overrides=item.get('strategy_overrides'),
                 created_at=item.get('created_at'),
                 updated_at=item.get('updated_at'),
                 total_duration=item.get('total_duration'),

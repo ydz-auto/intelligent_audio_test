@@ -525,6 +525,9 @@ class TestCaseConfigUpdateMixin:
                     'threshold': dim.get('threshold', 60)
                 })
             return result
+        # 注意（INT-590）：_build_dim_list 仅保留 id/name/weight/threshold，
+        # 会丢 round_scope/llmJudgeConfig——若批量操作需注意字段归一。本卡不做批量套用
+        # （批量套用评估策略另开增强卡），此处仅标注，保持既有行为不变。
 
         def _get_round_dims(rn, last_rn):
             """获取轮次对应的维度列表，支持 -1 = 最后一轮"""

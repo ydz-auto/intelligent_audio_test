@@ -202,6 +202,29 @@ class FetchCaseIdsQuery(Query):
     data: dict = None
 
 
+# ==================== 评估策略查询（INT-590） ====================
+# 委托 evaluation_strategy_query_service，返回 dict: {success, message, data, code?}
+
+
+@dataclass(frozen=True)
+class ListEvaluationStrategiesQuery(Query):
+    """评估策略列表查询（含 referenced_case_count）。
+
+    enabled 过滤三态：None 不过滤，True/False 按启用状态过滤。
+    """
+    page: int = 1
+    per_page: int = 10
+    keyword: Optional[str] = None
+    algorithm_type: Optional[str] = None
+    enabled: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class GetEvaluationStrategyQuery(Query):
+    """获取单个评估策略详情查询（含 referenced_case_count）。"""
+    strategy_id: str = ''
+
+
 # ==================== tag 域查询（gRPC servicer 用） ====================
 
 

@@ -274,6 +274,36 @@ class UpdateTestCaseRefParamsCommand(Command):
     data: Dict[str, Any] = field(default_factory=dict)
 
 
+# ==================== 评估策略命令（INT-590） ====================
+# 策略实体归 task_service（用例域）。委托 evaluation_strategy_crud_service，
+# 返回 dict: {success, message, data, code?}
+
+
+@dataclass(frozen=True)
+class CreateEvaluationStrategyCommand(Command):
+    """创建评估策略命令。委托 evaluation_strategy_crud_service.create。"""
+    data: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class UpdateEvaluationStrategyCommand(Command):
+    """更新评估策略命令。委托 evaluation_strategy_crud_service.update。
+
+    P1：编辑不回灌已引用用例（用例/任务均快照语义）。
+    """
+    strategy_id: str
+    data: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class DeleteEvaluationStrategyCommand(Command):
+    """删除评估策略命令。委托 evaluation_strategy_crud_service.delete。
+
+    被用例引用时拒绝并返回 referenced_case_count（409）。
+    """
+    strategy_id: str
+
+
 # ==================== tag 域命令（gRPC servicer 用） ====================
 
 

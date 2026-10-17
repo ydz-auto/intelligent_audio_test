@@ -31,6 +31,8 @@ from task_service.application.queries.task_queries import (
     ListTagNamesQuery,
     GetTagQuery,
     GetTagsByCategoryQuery,
+    ListEvaluationStrategiesQuery,
+    GetEvaluationStrategyQuery,
 )
 from task_service.infrastructure.persistence.task_repository import task_repository
 from task_service.infrastructure.read_models.task_read_model import task_read_model
@@ -81,6 +83,7 @@ class TaskQueryHandler:
         self._task_query_service = None
         self._testcase_query_service = None
         self._tag_crud_service = None
+        self._evaluation_strategy_query_service = None
 
     @property
     def task_query_service(self):
@@ -105,6 +108,16 @@ class TaskQueryHandler:
             from task_service.application.testcase.tag_crud_service import tag_crud_service
             self._tag_crud_service = tag_crud_service
         return self._tag_crud_service
+
+    @property
+    def evaluation_strategy_query_service(self):
+        """延迟加载 evaluation_strategy_query_service（INT-590 评估策略读侧）。"""
+        if self._evaluation_strategy_query_service is None:
+            from task_service.application.evaluation_strategy.evaluation_strategy_query_service import (
+                evaluation_strategy_query_service,
+            )
+            self._evaluation_strategy_query_service = evaluation_strategy_query_service
+        return self._evaluation_strategy_query_service
 
     def handle_get_task(self, query: GetTaskQuery) -> Optional[Dict[str, Any]]:
         """处理获取单个任务详情查询。
@@ -260,6 +273,25 @@ class TaskQueryHandler:
     def handle_fetch_case_ids(self, query: FetchCaseIdsQuery) -> Dict[str, Any]:
         """处理按筛选条件返回全量用例ID查询。委托 testcase_crud_service.fetch_case_ids。"""
         return self.testcase_query_service.fetch_case_ids(query.data or {})
+
+    # ==================================================================
+    # 评估策略查询（INT-590，gRPC servicer 入口）
+    # 委托 evaluation_strategy_query_service（读侧，只读 ReadModel）
+    # ==================================================================
+
+    def handle_list_evaluation_strategies(self, query: ListEvaluationStrategiesQuery) -> Dict[str, Any]:
+        """处理评估策略列表查询（含 referenced_case_count）。委托 query_service.list_strategies。"""
+        return self.evaluation_strategy_query_service.list_strategies(
+            page=query.page,
+            per_page=query.per_page,
+            keyword=query.keyword,
+            algorithm_type=query.algorithm_type,
+            enabled=query.enabled,
+        )
+
+    def handle_get_evaluation_strategy(self, query: GetEvaluationStrategyQuery) -> Dict[str, Any]:
+        """处理评估策略详情查询（含 referenced_case_count）。委托 query_service.get_strategy。"""
+        return self.evaluation_strategy_query_service.get_strategy(query.strategy_id)
 
     # ==================================================================
     # tag 域查询（gRPC servicer 入口）

@@ -31,6 +31,9 @@ from api_gateway.infrastructure.acl.device_acl_repository import (
     DeviceMonitorAclRepositoryImpl,
     PlaybackConfigAclRepositoryImpl,
 )
+from api_gateway.infrastructure.acl.evaluation_strategy_acl_repository import (
+    EvaluationStrategyAclRepositoryImpl,
+)
 from api_gateway.infrastructure.acl.execution_acl_repository import (
     ExecutionAclRepositoryImpl,
 )
@@ -55,6 +58,7 @@ __all__ = [
     'DeviceGroupAclRepositoryImpl',
     'DeviceMonitorAclRepositoryImpl',
     'EvaluationConfigAclRepositoryImpl',
+    'EvaluationStrategyAclRepositoryImpl',
     'ExecutionAclRepositoryImpl',
     'PlaybackAclRepositoryImpl',
     'PlaybackConfigAclRepositoryImpl',

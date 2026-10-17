@@ -36,6 +36,7 @@ from task_service.interfaces.grpc import (
     DataTransferServiceServicer,
     CherryPickServiceServicer,
     ReviewServiceServicer,
+    EvaluationStrategyServiceServicer,
 )
 
 logger = logging.getLogger(__name__)
@@ -67,6 +68,7 @@ def start_grpc_server(port=TASK_SERVICE_GRPC_PORT):
     task_grpc.add_DataTransferServiceServicer_to_server(DataTransferServiceServicer(), server)
     task_grpc.add_CherryPickServiceServicer_to_server(CherryPickServiceServicer(), server)
     task_grpc.add_ReviewServiceServicer_to_server(ReviewServiceServicer(), server)
+    task_grpc.add_EvaluationStrategyServiceServicer_to_server(EvaluationStrategyServiceServicer(), server)
     server.add_insecure_port(f'[::]:{port}')
     server.start()
     logger.info("task_service gRPC server started on port %s", port)

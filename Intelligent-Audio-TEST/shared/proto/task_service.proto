@@ -497,6 +497,44 @@ message PurgeTestCasesRequest {
   repeated string case_ids = 1;  // 彻底删除（物理删除，权限收敛在网关 admin/owner）
 }
 
+// ===== 评估策略配置 CRUD 服务（INT-590：整体评估维度+全局背景噪声 抽为可复用策略） =====
+service EvaluationStrategyService {
+  // ---- 写操作 ----
+  // 创建评估策略（config JSON: {dimensions:[{id,name,weight,threshold,round_scope?,llmJudgeConfig?}], background_noise:{...}}，
+  // 与用例 config.dimensions / config.background_noise 同构）
+  rpc CreateEvaluationStrategy(CreateEvaluationStrategyRequest) returns (TaskConfigResponse);
+  // 更新评估策略（P1：编辑不回灌已引用用例，用例/任务均快照语义）
+  rpc UpdateEvaluationStrategy(UpdateEvaluationStrategyRequest) returns (TaskConfigResponse);
+  // 删除评估策略（被用例引用时拒绝，返回 referenced_case_count）
+  rpc DeleteEvaluationStrategy(DeleteEvaluationStrategyRequest) returns (TaskConfigResponse);
+
+  // ---- 读操作 ----
+  // 策略列表（含 referenced_case_count 关联用例计数，列表展示 + 删保护同源）
+  rpc ListEvaluationStrategies(ListEvaluationStrategiesRequest) returns (TaskConfigResponse);
+  rpc GetEvaluationStrategy(GetEvaluationStrategyRequest) returns (TaskConfigResponse);
+}
+
+message CreateEvaluationStrategyRequest {
+  string data = 1;  // JSON: {name, description, algorithm_type, enabled, config}
+}
+message UpdateEvaluationStrategyRequest {
+  string strategy_id = 1;
+  string data = 2;  // JSON: {name, description, algorithm_type, enabled, config}
+}
+message DeleteEvaluationStrategyRequest {
+  string strategy_id = 1;
+}
+message ListEvaluationStrategiesRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  string keyword = 3;          // 可选，按 name 模糊匹配
+  string algorithm_type = 4;   // 可选，策略适用算法类型过滤
+  string enabled = 5;          // 可选，启用状态过滤：""=全部，"true"/"false"
+}
+message GetEvaluationStrategyRequest {
+  string strategy_id = 1;
+}
+
 // ===== 标签配置 CRUD 服务 =====
 service TagConfigService {
   // ---- TagCategory 写操作 ----
