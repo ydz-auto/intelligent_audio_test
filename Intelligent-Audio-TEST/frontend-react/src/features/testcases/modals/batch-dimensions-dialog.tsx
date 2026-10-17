@@ -4,7 +4,8 @@
  * 「指定轮次」展开轮次号 Checkbox 组「第{n}轮」（与 §5.3.1~5.3.4 同口径，
  * 所有批量设置均可指定轮次/设定所有轮次）；逐轮模式轮次 Tab 交互体系（§5.3.5 ②：
  * Tab 角标=该轮已选维度数、× 关闭至少保留 1 轮、末尾「+ 添加轮次」、最后一轮 Tab 语义 -1）。
- * 维度选择用 DimensionPicker（主/子层级云，参考 V9.7.10 DimensionCloud；勾选主维度联动子维度）。
+ * 维度选择用 DimensionPicker（V9.7.10 平铺 chips 云，搜索+已选计数；主/子维度同屏平铺各自独立
+ * 勾选，不做主/子联动分组——照 V9.7.10 BatchDimensionModal 实测口径）。
  * 可视稿演示态：提交走 toast；数据契约 roundMode/rounds/roundDimensions 序列化留接线批次。
  */
 import { Plus, X } from 'lucide-react'
@@ -13,6 +14,7 @@ import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,

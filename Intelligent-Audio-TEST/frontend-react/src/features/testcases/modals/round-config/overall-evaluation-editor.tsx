@@ -2,9 +2,9 @@
  * 整体评估维度节（11_用例域.md §5.1.2 常驻节，case 级 config.dimensions）。
  * V9.7.10 OverallEvaluationEditor 逐字平移换壳。
  * 节头「整体评估维度」+ 徽章「所有轮次」+ 副标题 + 描述文案（逐字平移）；启用整体评估 Switch
- * （默认开；已有维度数据时自动启用；关闭即清空维度数组 emit 空数组）；维度多选按主/子层级分组
- * （勾选主维度联动勾选/取消全部子维度）；已选维度参数卡（权重 0-100 默认 50 + 阈值 0-100 默认 80
- * 非 LLM Judge；LLM Judge 时 模型 Select + Prompt 模板 Select）。
+ * （默认开；已有维度数据时自动启用；关闭即清空维度数组 emit 空数组）；维度多选用 DimensionPicker
+ * （V9.7.10 平铺 chips 云，搜索+已选计数，不做主/子联动分组）；已选维度参数卡（权重 0-100 默认 50
+ * + 阈值 0-100 默认 80 非 LLM Judge；LLM Judge 时 模型 Select + Prompt 模板 Select）。
  * 数据契约 config.dimensions = [{ id, name, weight, threshold, (llmJudgeConfig: {model, promptTemplate}) }]
  * ——TestCaseDimensionItem {id,name,weight,threshold,test_type}（schemas/testcase.py:85-90）；
  * 触发条件=顶层数组非空；报告取值整体优先、无整体结果取各轮算术平均。
@@ -112,9 +112,6 @@ export function OverallEvaluationEditor({
             selected={selected}
             onToggle={handleToggle}
           />
-          <p className='text-muted-foreground text-xs'>
-            已选 {selected.length} 项
-          </p>
           {selected.length === 0 ? (
             <p className='text-muted-foreground py-3 text-center text-sm'>
               未选择评估维度——不选任何维度点保存即清除整体评估维度

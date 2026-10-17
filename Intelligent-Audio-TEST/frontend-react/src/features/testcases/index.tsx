@@ -1,7 +1,8 @@
 /**
  * 用例管理页（11_用例域.md §3.1 页面总骨架，SectionPageLayout fixedContent + 双视图表格）。
- * 装配：Breadcrumb 工作台/用例管理｜Title「用例管理」｜Actions（+新增用例/导入/导出/模板下载）｜
+ * 装配：Breadcrumb 工作台/用例管理｜Title「用例管理」｜Actions（+新增用例/导入用例/导出/模板下载）｜
  * Content（视图页签 line → 筛选工具栏 → 分组/平铺表格 → 批量浮条）/ Footer（分页 Portal）。
+ * 「导入用例」为单入口（负责人 2026-10-17 口径：只走音频导入页生成，照 V9.7.10 跳 /AudioImport）。
  * 路由 /testcases/$view（by-group/by-tag 白名单在路由层）；mock 态全部弹窗/toast 演示，
  * 接线后替换为 application/testcases mutations + URL 态 useTableUrlState。
  */
@@ -21,12 +22,6 @@ import {
 } from '@/application/testcases/use-testcases-list'
 import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
 import type { TestCaseListItem } from '@/domain/models/testCase'
@@ -41,7 +36,7 @@ import { TagCaseList } from '@/features/testcases/components/tag-case-list'
 import { CaseBulkActions, type BatchActionKey } from '@/features/testcases/components/case-bulk-actions'
 import type { CaseCardCallbacks } from '@/features/testcases/components/case-card'
 import { CaseMutateDrawer } from '@/features/testcases/modals/case-mutate-drawer'
-import { ImportExportDialog } from '@/features/testcases/modals/import-export-dialog'
+import { ExportDialog } from '@/features/testcases/modals/export-dialog'
 import { GroupMutateDialog } from '@/features/testcases/modals/group-mutate-dialog'
 import { BatchDimensionsDialog } from '@/features/testcases/modals/batch-dimensions-dialog'
 import { BatchAdjustGroupDialog } from '@/features/testcases/modals/batch-adjust-group-dialog'
@@ -68,7 +63,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   const [mutateCase, setMutateCase] = useState<TestCaseListItem | null>(null)
   const [mutateOpen, setMutateOpen] = useState(false)
   const [presetGroupId, setPresetGroupId] = useState<string | null>(null)
-  const [importExport, setImportExport] = useState<{ open: boolean; mode: 'import' | 'export' }>({ open: false, mode: 'import' })
+  const [exportOpen, setExportOpen] = useState(false)
   const [groupDialog, setGroupDialog] = useState<{ open: boolean; group: TestCaseGroup | null }>({ open: false, group: null })
   const [previewCase, setPreviewCase] = useState<TestCaseListItem | null>(null)
   const [batchDialog, setBatchDialog] = useState<{
@@ -126,7 +121,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
         return
       if (
         mutateOpen ||
-        importExport.open ||
+        exportOpen ||
         groupDialog.open ||
         previewCase != null ||
         batchDialog != null ||
@@ -149,7 +144,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
     selected.size,
     clearSelection,
     mutateOpen,
-    importExport.open,
+    exportOpen,
     groupDialog.open,
     previewCase,
     batchDialog,
@@ -338,35 +333,22 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
             </Button>
           )}
           {hasPermission('testcase:import_export') && (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button size='sm' variant='outline' className='h-7 gap-1.5' />
-                }
-              >
-                <FileUp aria-hidden='true' className='size-3.5' />
-                导入
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align='end' className='w-44'>
-                <DropdownMenuItem
-                  onSelect={() => setImportExport({ open: true, mode: 'import' })}
-                >
-                  导入用例文件
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => void navigate({ to: '/audio-import' })}
-                >
-                  去音频导入页生成
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <Button
+              size='sm'
+              variant='outline'
+              className='h-7 gap-1.5'
+              onClick={() => void navigate({ to: '/audio-import' })}
+            >
+              <FileUp aria-hidden='true' className='size-3.5' />
+              导入用例
+            </Button>
           )}
           {hasPermission('testcase:import_export') && (
             <Button
               size='sm'
               variant='outline'
               className='h-7 gap-1.5'
-              onClick={() => setImportExport({ open: true, mode: 'export' })}
+              onClick={() => setExportOpen(true)}
             >
               <FileSpreadsheet aria-hidden='true' className='size-3.5' />
               导出
@@ -460,10 +442,10 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
         tags={tags}
         presetGroupId={presetGroupId}
       />
-      <ImportExportDialog
-        open={importExport.open}
-        onOpenChange={(open) => setImportExport((prev) => ({ ...prev, open }))}
-        mode={importExport.mode}
+      <ExportDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        selectedCount={selected.size}
       />
       <GroupMutateDialog
         open={groupDialog.open}

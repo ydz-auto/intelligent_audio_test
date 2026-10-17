@@ -1,9 +1,9 @@
 /**
  * 轮次步骤④：评估维度（11_用例域.md §5.1 RoundEvaluationEditor 平移）。
- * 顶部单轮描述条 + 过滤提示条（当前算法有关联维度时才显示）+ DimensionPicker（主/子层级、
- * 勾选主维度联动子维度）+ 已选维度参数卡（权重 0-100 默认 50 + 阈值 0-100 默认 80 非 LLM Judge；
- * LLM Judge 时 模型 Select + Prompt 模板 Select，不含「最大 Token/Temperature」——属维度定义 §5.5）
- * + 底部「启用本轮评估」Checkbox。
+ * 顶部单轮描述条 + 过滤提示条（当前算法有关联维度时才显示）+ DimensionPicker（V9.7.10
+ * 平铺 chips 云，搜索+已选计数）+ 已选维度参数卡（权重 0-100 默认 50 + 阈值 0-100 默认 80
+ * 非 LLM Judge；LLM Judge 时 模型 Select + Prompt 模板 Select，不含「最大 Token/Temperature」
+ * ——属维度定义 §5.5）+ 底部「启用本轮评估」Checkbox。
  * 受控组件：value=RoundEvaluationDraft（enabled/selectedIds/params），onChange 回写轮次草稿，
  * 供 addRound 复制上一轮 evaluation（⚠️ 实施注意②）。
  */
@@ -83,10 +83,6 @@ export function EvaluationStep({
         selected={value.selectedIds}
         onToggle={handleToggle}
       />
-
-      <div className='flex items-center justify-between'>
-        <p className='text-muted-foreground text-xs'>已选 {value.selectedIds.length} 项</p>
-      </div>
 
       {value.selectedIds.length === 0 ? (
         <p className='text-muted-foreground py-4 text-center text-sm'>

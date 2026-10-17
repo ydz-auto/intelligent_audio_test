@@ -1,16 +1,16 @@
 /**
- * 评估维度多选区（用例编辑抽屉 §5.1 轮次评估步骤 / §5.1.2 整体评估维度共用）。
- * 维度 chips 按主/子层级分组：主维度=描边 chip +「主」徽章 + 子维度数角标 + 展开/收起钮；
- * 子维度=「子」徽章；勾选主维度联动勾选/取消全部子维度；requiresAudio 维度带音乐图标。
+ * 评估维度多选区（用例编辑抽屉 §5.1 轮次评估步骤 / §5.1.3.1 整体评估 / 批量设置评估维度
+ * / 音频导入上传选项共用）。照 V9.7.10 DimensionConfigPanel/RoundEvaluationEditor 的
+ * **平铺 chips 云**形态：搜索框「搜索评估维度」+「已选 {n} 项」计数 + 平铺维度 chip
+ * （未选 Plus / 已选 Check 图标），点击单个维度即勾选/取消（主/子维度同屏平铺，各自独立勾选，
+ * 不做主/子联动分组——V9.7.10 实测口径）。
+ * requiresAudio 维度带音乐图标（title「该维度需要音频文件，将随多轮音频一起上传」）。
  * 空态三态：「没有匹配的评估维度」/「暂无可用维度（当前算法类型无关联维度）」/「暂无可用维度」。
- * 搜索命中主维度带出整组、命中子维度带出父维度并自动展开（§5.1.2 交互）。
  * 注：Dimension.id 为 number|string，mock 全为 number——组件内部统一 Number() 归一。
  */
-import { ChevronDown, Music4 } from 'lucide-react'
+import { Check, Music4, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import type { Dimension } from '@/domain/models/evaluationDimension'
@@ -38,7 +38,6 @@ export function DimensionPicker({
   showSearch?: boolean
 }) {
   const [search, setSearch] = useState('')
-  const [expanded, setExpanded] = useState<Set<number>>(new Set())
 
   /** 按当前算法过滤可用维度（associated_algorithms 口径；无算法=全量） */
   const algoFiltered = useMemo(() => {
@@ -50,7 +49,7 @@ export function DimensionPicker({
 
   const keyword = search.trim().toLowerCase()
 
-  /** 原始搜索命中（主/子维度都算；渲染集合见 mainDims「带出整组」逻辑） */
+  /** 搜索命中（名称/描述/keywords，与 §5.1.3.1 搜索口径一致） */
   const searched = useMemo(() => {
     if (!keyword) return algoFiltered
     return algoFiltered.filter((d) => {
@@ -61,181 +60,61 @@ export function DimensionPicker({
     })
   }, [algoFiltered, keyword])
 
-  /** 全部子维度按父维度索引（搜索「带出整组」取完整子维度集，非仅命中项） */
-  const allSubsByParent = useMemo(() => {
-    const map = new Map<number, Dimension[]>()
-    for (const d of algoFiltered) {
-      if (d.dimensionType === 'sub' && d.parentDimensionId != null) {
-        const p = Number(d.parentDimensionId)
-        map.set(p, [...(map.get(p) ?? []), d])
-      }
-    }
-    return map
-  }, [algoFiltered])
-
-  /** 渲染主维度集（§5.1.2 搜索交互：命中主维度带出整组、命中子维度带出父维度） */
-  const mainDims = useMemo(() => {
-    if (!keyword) return algoFiltered.filter((d) => d.dimensionType !== 'sub')
-    const kept = new Map<number, Dimension>()
-    for (const d of searched) {
-      if (d.dimensionType !== 'sub') {
-        kept.set(dimId(d), d)
-      } else if (d.parentDimensionId != null) {
-        const pid = Number(d.parentDimensionId)
-        if (!kept.has(pid)) {
-          const parent = algoFiltered.find((dd) => dimId(dd) === pid)
-          if (parent) kept.set(pid, parent)
-        }
-      }
-    }
-    return [...kept.values()]
-  }, [algoFiltered, searched, keyword])
-
-  /** 渲染子维度集：搜索态=已渲染主维度的整组子维度；非搜索态=全量子维度索引 */
-  const subsByParent = useMemo(() => {
-    if (!keyword) return allSubsByParent
-    const map = new Map<number, Dimension[]>()
-    for (const m of mainDims) {
-      const subs = allSubsByParent.get(dimId(m))
-      if (subs) map.set(dimId(m), subs)
-    }
-    return map
-  }, [allSubsByParent, mainDims, keyword])
-
-  /** 搜索态自动展开全部已渲染主组（先并入渲染集合再展开：带出整组/父维度可见） */
-  const effectiveExpanded = useMemo(() => {
-    if (!keyword) return expanded
-    const next = new Set(expanded)
-    for (const m of mainDims) next.add(dimId(m))
-    return next
-  }, [expanded, mainDims, keyword])
-
-  const toggleSubs = (mainId: number) => {
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      if (next.has(mainId)) next.delete(mainId)
-      else next.add(mainId)
-      return next
-    })
-  }
-
-  const isMainChecked = (mainId: number) => {
-    const subs = subsByParent.get(mainId) ?? []
-    return subs.length > 0
-      ? subs.every((s) => selected.includes(dimId(s)))
-      : selected.includes(mainId)
-  }
-
-  const handleMainToggle = (mainId: number, checked: boolean) => {
-    const subs = subsByParent.get(mainId) ?? []
-    onToggle([mainId, ...subs.map((s) => dimId(s))], checked)
-  }
-
-  // 空态三态（§5.1.2）：搜索无结果（以渲染主维度集为准）→ 算法无关联 → 全量无维度
+  // 空态三态（V9.7.10 口径）：搜索无结果 → 算法无关联 → 全量无维度
   let empty: string | null = null
-  if (keyword && mainDims.length === 0) empty = '没有匹配的评估维度'
+  if (keyword && searched.length === 0) empty = '没有匹配的评估维度'
   else if (algoFiltered.length === 0 && algorithmType) empty = '暂无可用维度（当前算法类型无关联维度）'
   else if (dimensions.length === 0) empty = '暂无可用维度'
 
   return (
     <div className='space-y-2'>
       {showSearch && (
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder='搜索评估维度'
-          className='h-8'
-          aria-label='搜索评估维度'
-        />
+        <div className='flex items-center gap-2'>
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder='搜索评估维度'
+            className='h-8'
+            aria-label='搜索评估维度'
+          />
+          <span className='text-muted-foreground shrink-0 text-xs tabular-nums'>
+            已选 {selected.length} 项
+          </span>
+        </div>
       )}
       {empty ? (
         <p className='text-muted-foreground py-3 text-center text-sm'>{empty}</p>
       ) : (
-        <div className='space-y-1.5'>
-          {mainDims.map((dim) => {
-            const mainId = dimId(dim)
-            const subs = subsByParent.get(mainId) ?? []
-            const isExpanded = effectiveExpanded.has(mainId)
-            const checked = isMainChecked(mainId)
-            const requiresAudio = REQUIRES_AUDIO_DIMENSION_IDS.has(mainId)
+        <div className='flex flex-wrap gap-1.5'>
+          {searched.map((dim) => {
+            const id = dimId(dim)
+            const checked = selected.includes(id)
+            const requiresAudio = REQUIRES_AUDIO_DIMENSION_IDS.has(id)
             return (
-              <div key={mainId} className='space-y-1'>
-                <div
-                  className={cn(
-                    'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
-                    checked
-                      ? 'bg-primary/10 border-primary/40 text-primary font-medium'
-                      : 'hover:bg-accent border-border'
-                  )}
-                >
-                  <button
-                    type='button'
-                    className='flex min-w-0 items-center gap-1.5'
-                    aria-pressed={checked}
-                    onClick={() => handleMainToggle(mainId, !checked)}
-                  >
-                    <span className='truncate'>{dim.name}</span>
-                    <Badge variant='secondary' className='rounded-sm px-1 text-[10px]'>
-                      主
-                    </Badge>
-                    {requiresAudio && (
-                      <span title='该维度需要音频文件，将随多轮音频一起上传'>
-                        <Music4 aria-hidden='true' className='size-3.5 shrink-0' />
-                      </span>
-                    )}
-                  </button>
-                  {subs.length > 0 && (
-                    <>
-                      <Badge className='rounded-sm px-1 font-mono text-[10px] tabular-nums'>
-                        {subs.length}
-                      </Badge>
-                      <Button
-                        type='button'
-                        variant='ghost'
-                        size='icon-sm'
-                        className='size-5 rounded-full p-0'
-                        aria-label={`展开/收起 ${dim.name} 子维度`}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          toggleSubs(mainId)
-                        }}
-                      >
-                        <ChevronDown
-                          aria-hidden='true'
-                          className={cn('size-3.5 transition-transform', !isExpanded && '-rotate-90')}
-                        />
-                      </Button>
-                    </>
-                  )}
-                </div>
-                {isExpanded && subs.length > 0 && (
-                  <div className='flex flex-wrap gap-1.5 ps-4'>
-                    {subs.map((sub) => {
-                      const subId = dimId(sub)
-                      const subChecked = selected.includes(subId)
-                      return (
-                        <button
-                          key={subId}
-                          type='button'
-                          onClick={() => onToggle([subId], !subChecked)}
-                          aria-pressed={subChecked}
-                          className={cn(
-                            'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
-                            subChecked
-                              ? 'bg-primary/10 border-primary/40 text-primary font-medium'
-                              : 'hover:bg-accent border-border'
-                          )}
-                        >
-                          <span className='truncate'>{sub.name}</span>
-                          <Badge variant='outline' className='rounded-sm px-1 text-[10px]'>
-                            子
-                          </Badge>
-                        </button>
-                      )
-                    })}
-                  </div>
+              <button
+                key={id}
+                type='button'
+                onClick={() => onToggle([id], !checked)}
+                aria-pressed={checked}
+                className={cn(
+                  'flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-colors',
+                  checked
+                    ? 'bg-primary/10 border-primary/40 text-primary font-medium'
+                    : 'hover:bg-accent border-border text-muted-foreground'
                 )}
-              </div>
+              >
+                {checked ? (
+                  <Check aria-hidden='true' className='size-3' />
+                ) : (
+                  <Plus aria-hidden='true' className='size-3' />
+                )}
+                <span className='truncate'>{dim.name}</span>
+                {requiresAudio && (
+                  <span title='该维度需要音频文件，将随多轮音频一起上传'>
+                    <Music4 aria-hidden='true' className='size-3.5 shrink-0' />
+                  </span>
+                )}
+              </button>
             )
           })}
         </div>
