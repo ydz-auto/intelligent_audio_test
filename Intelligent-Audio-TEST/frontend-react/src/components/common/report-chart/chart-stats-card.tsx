@@ -38,7 +38,7 @@ export function ChartStatsCard({ stats, deviceStats }: ChartStatsCardProps) {
       <div className='flex items-center justify-between gap-2'>
         <p className='text-sm font-medium'>统计信息</p>
         <div className='flex flex-wrap gap-1'>
-          {['全部', ...deviceStats.map((d) => d.label)].slice(0, 5).map((tab) => (
+          {['全部', ...deviceStats.map((d) => d.label)].map((tab) => (
             <button
               key={tab}
               type='button'

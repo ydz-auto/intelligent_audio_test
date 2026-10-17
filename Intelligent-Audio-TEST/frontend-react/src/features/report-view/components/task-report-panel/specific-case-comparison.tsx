@@ -29,6 +29,7 @@ import { cn } from '@/lib/utils'
 import { CaseReportDetail } from '../case-report-detail'
 import { CaseDetailDialog } from '../modals/case-detail-dialog'
 import { LogDownloadProgressDialog } from '../modals/log-download-progress-dialog'
+import { MultiSelectFilter, SelectedConditionsBar } from './multi-select-filter'
 
 export function SpecificCaseComparison({
   report,
@@ -213,94 +214,73 @@ export function SpecificCaseComparison({
           </div>
 
           <div className='mt-2 space-y-1.5 border-t pt-2'>
-            <div className='flex flex-wrap items-center gap-1.5'>
-              <span className='text-muted-foreground w-16 shrink-0 text-xs'>用例分组</span>
-              {availableGroups.map((g) => {
-                const active = filters.categories?.includes(g) ?? false
-                return (
-                  <button
-                    key={g}
-                    type='button'
-                    aria-pressed={active}
-                    className={cn(
-                      'rounded-md px-2 py-0.5 text-xs transition-colors',
-                      active
-                        ? 'bg-primary text-primary-foreground'
-                        : 'hover:bg-muted text-muted-foreground'
-                    )}
-                    onClick={() =>
-                      setFilters({
-                        ...filters,
-                        categories: active
-                          ? (filters.categories ?? []).filter((x) => x !== g)
-                          : [...(filters.categories ?? []), g],
-                      })
-                    }
-                  >
-                    {g}
-                  </button>
-                )
-              })}
-            </div>
-            <div className='flex flex-wrap items-center gap-1.5'>
-              <span className='text-muted-foreground w-16 shrink-0 text-xs'>用例标签</span>
-              {availableTags.map((t) => {
-                const active = filters.tags?.includes(t) ?? false
-                return (
-                  <button
-                    key={t}
-                    type='button'
-                    aria-pressed={active}
-                    className={cn(
-                      'rounded-md px-2 py-0.5 text-xs transition-colors',
-                      active
-                        ? 'bg-primary text-primary-foreground'
-                        : 'hover:bg-muted text-muted-foreground'
-                    )}
-                    onClick={() =>
-                      setFilters({
-                        ...filters,
-                        tags: active
-                          ? (filters.tags ?? []).filter((x) => x !== t)
-                          : [...(filters.tags ?? []), t],
-                      })
-                    }
-                  >
-                    {t}
-                  </button>
-                )
-              })}
-            </div>
-            <div className='flex flex-wrap items-center gap-1.5'>
-              <span className='text-muted-foreground w-16 shrink-0 text-xs'>评估维度</span>
-              {availableMetrics.map((m) => {
-                const active = filters.metrics?.includes(m) ?? false
-                return (
-                  <button
-                    key={m}
-                    type='button'
-                    aria-pressed={active}
-                    className={cn(
-                      'rounded-md px-2 py-0.5 text-xs transition-colors',
-                      active
-                        ? 'bg-primary text-primary-foreground'
-                        : 'hover:bg-muted text-muted-foreground'
-                    )}
-                    onClick={() =>
-                      setFilters({
-                        ...filters,
-                        metrics: active
-                          ? (filters.metrics ?? []).filter((x) => x !== m)
-                          : [...(filters.metrics ?? []), m],
-                      })
-                    }
-                  >
-                    {m}
-                  </button>
-                )
-              })}
-            </div>
+            {/* 分组/标签/评估维度多选：搜索 + 分页（§3.3.7/3.3.8；原全铺 chip 无界） */}
+            <MultiSelectFilter
+              label='用例分组'
+              options={availableGroups}
+              selected={filters.categories ?? []}
+              onToggle={(g) =>
+                setFilters({
+                  ...filters,
+                  categories: (filters.categories ?? []).includes(g)
+                    ? (filters.categories ?? []).filter((x) => x !== g)
+                    : [...(filters.categories ?? []), g],
+                })
+              }
+            />
+            <MultiSelectFilter
+              label='用例标签'
+              options={availableTags}
+              selected={filters.tags ?? []}
+              onToggle={(t) =>
+                setFilters({
+                  ...filters,
+                  tags: (filters.tags ?? []).includes(t)
+                    ? (filters.tags ?? []).filter((x) => x !== t)
+                    : [...(filters.tags ?? []), t],
+                })
+              }
+            />
+            <MultiSelectFilter
+              label='评估维度'
+              options={availableMetrics}
+              selected={filters.metrics ?? []}
+              onToggle={(m) =>
+                setFilters({
+                  ...filters,
+                  metrics: (filters.metrics ?? []).includes(m)
+                    ? (filters.metrics ?? []).filter((x) => x !== m)
+                    : [...(filters.metrics ?? []), m],
+                })
+              }
+            />
           </div>
+          <SelectedConditionsBar
+            conditions={[
+              ...(filters.categories ?? []).map((g) => ({ key: `group:${g}`, label: `分组·${g}` })),
+              ...(filters.tags ?? []).map((t) => ({ key: `tag:${t}`, label: `标签·${t}` })),
+              ...(filters.metrics ?? []).map((m) => ({ key: `metric:${m}`, label: `维度·${m}` })),
+            ]}
+            onRemove={(key) => {
+              const [kind, ...rest] = key.split(':')
+              const value = rest.join(':')
+              setFilters({
+                ...filters,
+                categories:
+                  kind === 'group'
+                    ? (filters.categories ?? []).filter((x) => x !== value)
+                    : filters.categories,
+                tags:
+                  kind === 'tag'
+                    ? (filters.tags ?? []).filter((x) => x !== value)
+                    : filters.tags,
+                metrics:
+                  kind === 'metric'
+                    ? (filters.metrics ?? []).filter((x) => x !== value)
+                    : filters.metrics,
+              })
+            }}
+          />
 
           <div className='mt-2 flex items-center justify-end gap-2 border-t pt-2'>
             <Button
@@ -360,8 +340,17 @@ export function SpecificCaseComparison({
           {isLoading && items.length === 0 ? (
             <p className='text-muted-foreground p-4 text-center text-sm'>正在加载用例数据...</p>
           ) : isError && items.length === 0 ? (
-            <div className='text-muted-foreground flex h-20 items-center justify-center rounded-lg border text-xs'>
-              加载失败
+            // §7 加载失败 + 请重试（同 reports-table/card-grid/showcase 错误态一致；refetch 可重拉）
+            <div className='flex h-20 flex-col items-center justify-center gap-2 rounded-lg border text-xs'>
+              <span className='text-muted-foreground'>加载失败</span>
+              <Button
+                variant='outline'
+                size='sm'
+                className='h-7 px-3 text-xs'
+                onClick={() => void refetch()}
+              >
+                请重试
+              </Button>
             </div>
           ) : items.length === 0 ? (
             <div className='text-muted-foreground flex h-20 items-center justify-center rounded-lg border text-xs'>
@@ -407,6 +396,8 @@ export function SpecificCaseComparison({
                       size='sm'
                       className='text-muted-foreground h-7 px-1.5'
                       aria-pressed={pinned}
+                      aria-label={pinned ? '取消固定' : '固定'}
+                      title={pinned ? '取消固定' : '固定'}
                       onClick={() => togglePin(c.id)}
                     >
                       <Pin aria-hidden='true' className={cn('size-3.5', pinned && 'text-primary fill-primary/20')} />
@@ -414,7 +405,14 @@ export function SpecificCaseComparison({
                     <Button variant='ghost' size='sm' className='h-7 px-1.5' onClick={() => setDetailCase(c)}>
                       详情
                     </Button>
-                    <Button variant='ghost' size='sm' className='h-7 px-1.5' onClick={() => toggleExpand(c.id)}>
+                    <Button
+                      variant='ghost'
+                      size='sm'
+                      className='h-7 px-1.5'
+                      aria-label={expanded ? '收起详情' : '展开详情'}
+                      aria-expanded={expanded}
+                      onClick={() => toggleExpand(c.id)}
+                    >
                       <ChevronDown
                         aria-hidden='true'
                         className={cn('size-4 transition-transform', expanded && 'rotate-180')}

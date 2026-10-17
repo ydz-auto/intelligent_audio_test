@@ -58,6 +58,8 @@ interface ReportShareDialogProps {
   onAccessChange: (access: ShareAccess) => void
   onExpiryChange: (expiry: ShareExpiry) => void
   onPasswordChange: (password: string) => void
+  onRecipientsChange: (recipients: string) => void
+  onEmailToChange: (emailTo: string) => void
   onGenerate: () => void
   onRevoke: () => void
   onCopy: () => void
@@ -72,6 +74,8 @@ export function ReportShareDialog({
   onAccessChange,
   onExpiryChange,
   onPasswordChange,
+  onRecipientsChange,
+  onEmailToChange,
   onGenerate,
   onRevoke,
   onCopy,
@@ -149,7 +153,12 @@ export function ReportShareDialog({
           {state.access === 'specific' && (
             <div className='flex flex-col gap-1.5'>
               <Label className='text-xs'>指定访问人</Label>
-              <Input placeholder='输入用户名或邮箱，多个用逗号分隔' className='h-9' />
+              <Input
+                value={state.recipients}
+                onChange={(e) => onRecipientsChange(e.target.value)}
+                placeholder='输入用户名或邮箱，多个用逗号分隔'
+                className='h-9'
+              />
             </div>
           )}
 
@@ -189,7 +198,12 @@ export function ReportShareDialog({
           {state.method === 'email' && (
             <div className='flex flex-col gap-1.5'>
               <Label className='text-xs'>收件人</Label>
-              <Input placeholder='name@example.com' className='h-9' />
+              <Input
+                value={state.emailTo}
+                onChange={(e) => onEmailToChange(e.target.value)}
+                placeholder='name@example.com'
+                className='h-9'
+              />
               <Button size='sm' variant='outline' onClick={onGenerate}>
                 <Mail data-icon='inline-start' />
                 发送邮件分享

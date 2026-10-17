@@ -181,7 +181,8 @@ export function ComparisonTable({
                 </thead>
                 <tbody>
                   {visible.map((row, index) => (
-                    <tr key={index} className='hover:bg-muted/30 border-b last:border-0'>
+                    // P3：弃纯 index key——排序/过滤后行身份变化；内容指纹为主 + index 消歧（并列名次 key 冲突）
+                    <tr key={`${Object.values(row).join('|')}-${index}`} className='hover:bg-muted/30 border-b last:border-0'>
                       {table.columns.map((col) => (
                         <td key={col.key} className='px-3 py-2'>
                           {renderCell(row[col.key], col.type)}

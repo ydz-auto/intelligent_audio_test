@@ -16,8 +16,19 @@ import { REPORT_STATUS_META } from '@/features/reports/constants'
 export function ReportSaveCard({ report }: { report: ReportDetailData }) {
   const [name, setName] = useState(report.name)
   const [description, setDescription] = useState(report.description ?? '')
+  const [saving, setSaving] = useState(false)
   const statusMeta = REPORT_STATUS_META[report.status]
   const { rename } = useReportActions()
+
+  const handleSave = async () => {
+    if (!name.trim() || saving) return
+    setSaving(true)
+    try {
+      await rename(report.id, { name: name.trim(), description })
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div className='bg-card rounded-2xl border shadow-xs p-4'>
@@ -40,13 +51,8 @@ export function ReportSaveCard({ report }: { report: ReportDetailData }) {
         />
       </div>
       <div className='mt-3 flex items-center gap-2'>
-        <Button
-          size='sm'
-          onClick={() => {
-            void rename(report.id, { name, description })
-          }}
-        >
-          保存
+        <Button size='sm' disabled={!name.trim() || saving} onClick={() => void handleSave()}>
+          {saving ? '保存中...' : '保存'}
         </Button>
         {report.type === 'secondary_comparison' && (
           <Badge variant='outline'>二次对比</Badge>

@@ -5,15 +5,16 @@
  * 异步计算 + 进度轮询 + 来源筛选（仅实测/仅导入/全部/仅看有差异的）+ 版本标注 + 发布 Benchmark 报告。
  * 报告详情页内嵌于总览分区前（§3.1 type=benchmark 分发）。
  */
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import * as echarts from 'echarts'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { useBenchmarkRanking, type BenchmarkSourceFilter } from '@/application/report-view/use-benchmark-ranking'
-import { CHART_COLORS } from '@/application/report-view/use-report-charts'
+import { CHART_COLORS, getChartAxisColors } from '@/application/report-view/use-report-charts'
 import { cn } from '@/lib/utils'
 
 const SOURCE_FILTERS: { value: BenchmarkSourceFilter; label: string }[] = [
@@ -42,6 +43,7 @@ export function BenchmarkRankingBlock({ reportId, reportName }: BenchmarkRanking
   const rows = data ? filteredRows(data.rows) : []
   const chartRef = useRef<HTMLDivElement>(null)
   const echartsRef = useRef<echarts.ECharts | null>(null)
+  const [publishOpen, setPublishOpen] = useState(false)
 
   // ECharts 横向柱状图 + 中位数/最佳参考线（排行区块独立模块；深浅色随主题 token 近似）
   useEffect(() => {
@@ -50,8 +52,10 @@ export function BenchmarkRankingBlock({ reportId, reportName }: BenchmarkRanking
     if (!echartsRef.current) echartsRef.current = echarts.init(dom)
     const chart = echartsRef.current
     const isDark = document.documentElement.classList.contains('dark')
-    const textColor = isDark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.55)'
-    const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'
+    // 轴色/网格色与域图表 chartConfig 同源（P3：rgba 魔数经 application 再导出复用）
+    const axisColors = getChartAxisColors(isDark)
+    const textColor = axisColors.tickColor
+    const gridColor = axisColors.gridColor
 
     const list = rows
       .map((r) => ({ name: r.subjectName, value: r.metricValue }))
@@ -138,6 +142,7 @@ export function BenchmarkRankingBlock({ reportId, reportName }: BenchmarkRanking
   }, [])
 
   const handlePublish = useCallback(async () => {
+    setPublishOpen(false)
     const result = await publishBenchmarkReport()
     if (result) toast.success('Benchmark 报告已发布')
   }, [publishBenchmarkReport])
@@ -182,7 +187,7 @@ export function BenchmarkRankingBlock({ reportId, reportName }: BenchmarkRanking
           <Badge variant='outline' className='font-mono'>实测轨 {data.version}</Badge>
           <Badge variant='secondary'>{data.metricName}</Badge>
         </div>
-        <Button size='sm' onClick={handlePublish}>
+        <Button size='sm' onClick={() => setPublishOpen(true)}>
           发布 Benchmark 报告
         </Button>
       </div>
@@ -282,6 +287,17 @@ export function BenchmarkRankingBlock({ reportId, reportName }: BenchmarkRanking
       <p className='text-muted-foreground mt-3 text-xs leading-5'>
         {reportName}：发布后将当前排行结果生成独立 Benchmark 报告，可查看与导出。
       </p>
+
+      {/* 发布确认（§4.13 ConfirmDialog：生成并发布为落库不可逆动作，确认后执行，主钮 destructive） */}
+      <ConfirmDialog
+        open={publishOpen}
+        onOpenChange={setPublishOpen}
+        title='发布 Benchmark 报告'
+        desc='将当前排行结果生成独立 Benchmark 报告，可查看与导出。'
+        confirmText='发布'
+        destructive
+        handleConfirm={() => void handlePublish()}
+      />
     </section>
   )
 }

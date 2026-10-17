@@ -20,6 +20,7 @@ export type { DisplayType }
 // interfaces 层不直 import infrastructure/adapters（P2-20：经 application 层再导出，依赖单向）
 export {
   getDefaultChartConfig,
+  getChartAxisColors,
   rebinDistributionData,
   calculateDistributionStats,
   colorArray,

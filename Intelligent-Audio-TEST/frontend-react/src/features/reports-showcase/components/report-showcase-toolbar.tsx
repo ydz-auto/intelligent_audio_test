@@ -1,7 +1,8 @@
 /**
  * 报告展示页工具栏（15_报告域.md §2.1：PricingToolbar 同款裁剪）。
- * 「共 {n} 个已发布报告」+ 排序 DropdownMenu（创建时间/报告名称/通过率/用例数）
- * + 表格/卡片视图切换。本页不渲染全局算法联动 chip（INT-442：算法切换已由「当前算法」大卡承载）。
+ * 「共 {n} 个已发布报告」+ 排序 DropdownMenu（创建时间/报告名称/状态/算法/通过率/用例数，
+ * REPORT_SORT_OPTIONS 全量）+ 表格/卡片视图切换。本页不渲染全局算法联动 chip
+ * （INT-442：算法切换已由「算法卡片网格」承载）。
  */
 import { ArrowDownAZ, ArrowUpAZ, ChevronDown, LayoutGrid, List } from 'lucide-react'
 

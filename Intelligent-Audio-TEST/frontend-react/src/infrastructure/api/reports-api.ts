@@ -13,6 +13,7 @@
 import type {
   ReportCaseListData,
   ReportCaseItem,
+  ReportCompareConfig,
   ReportCounts,
   ReportDetailData,
   ReportListData,
@@ -330,6 +331,8 @@ export async function compareReports(_payload: {
   task_ids: number[]
   name?: string
   description?: string
+  /** §4.6 对比配置（对比维度/指标/方式；mock 不消费，留待接线） */
+  config?: ReportCompareConfig
 }): Promise<{ report_id: number }> {
   return { report_id: 1190 }
 }
@@ -337,6 +340,8 @@ export async function compareReports(_payload: {
 export async function secondaryCompareReports(_payload: {
   report_ids: number[]
   description?: string
+  /** §4.6 对比配置（对比维度/指标/方式；mock 不消费，留待接线） */
+  config?: ReportCompareConfig
 }): Promise<{ report_id: number }> {
   return { report_id: 1188 }
 }

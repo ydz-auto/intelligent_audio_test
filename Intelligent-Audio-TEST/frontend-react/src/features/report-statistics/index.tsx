@@ -70,36 +70,48 @@ export function ReportStatisticsPage() {
             onRun={handleRun}
           />
 
-          {/* 统计卡（报告数量/用例执行/评估指标/设备性能） */}
-          <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
-            {STATISTIC_SUMMARY_CARDS.map((card) => {
-              const item = summary.find((s) => s.key === card.key)
-              return (
-                <div
-                  key={card.key}
-                  className='bg-card flex flex-col gap-1 rounded-2xl border p-4 shadow-xs'
-                >
-                  <span className='text-muted-foreground text-xs font-medium'>{card.label}</span>
-                  <span className='font-mono text-2xl font-semibold tabular-nums'>
-                    {item?.value ?? 0}
-                  </span>
-                  <span className='text-muted-foreground text-xs leading-5'>{item?.hint}</span>
-                </div>
-              )
-            })}
-          </div>
+          {statsQuery.isError ? (
+            // P3：查询失败不得落空态误导——错误态 + 请重试
+            <div className='flex h-40 flex-col items-center justify-center gap-2 rounded-2xl border'>
+              <span className='text-muted-foreground text-sm'>统计加载失败，请重试</span>
+              <Button variant='outline' size='sm' onClick={() => void statsQuery.refetch()}>
+                请重试
+              </Button>
+            </div>
+          ) : (
+            <>
+              {/* 统计卡（报告数量/用例执行/评估指标/设备性能） */}
+              <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
+                {STATISTIC_SUMMARY_CARDS.map((card) => {
+                  const item = summary.find((s) => s.key === card.key)
+                  return (
+                    <div
+                      key={card.key}
+                      className='bg-card flex flex-col gap-1 rounded-2xl border p-4 shadow-xs'
+                    >
+                      <span className='text-muted-foreground text-xs font-medium'>{card.label}</span>
+                      <span className='font-mono text-2xl font-semibold tabular-nums'>
+                        {item?.value ?? 0}
+                      </span>
+                      <span className='text-muted-foreground text-xs leading-5'>{item?.hint}</span>
+                    </div>
+                  )
+                })}
+              </div>
 
-          <StatBadge
-            label='统计维度'
-            value={dimension === 'time' ? '时间' : dimension === 'task_type' ? '任务类型' : dimension === 'device_type' ? '设备类型' : '评估维度'}
-            colorClass='bg-info'
-          />
+              <StatBadge
+                label='统计维度'
+                value={dimension === 'time' ? '时间' : dimension === 'task_type' ? '任务类型' : dimension === 'device_type' ? '设备类型' : '评估维度'}
+                colorClass='bg-info'
+              />
 
-          <StatisticsTabs
-            data={data}
-            loading={statsQuery.isLoading}
-            onExport={handleExport}
-          />
+              <StatisticsTabs
+                data={data}
+                loading={statsQuery.isLoading}
+                onExport={handleExport}
+              />
+            </>
+          )}
         </div>
       </SectionPageLayout.Content>
     </SectionPageLayout>

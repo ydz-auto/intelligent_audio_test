@@ -1,9 +1,32 @@
 /**
  * 报告查看打印样式（规范 §4.9）：@media print 隐藏右导航/操作组/底部浮条，
  * 展开全部 Collapsible 分区，纸张 A4、正文 12px、分节不跨页断裂（break-inside: avoid）。
- * 深浅同源：打印强制浅色底（print:bg-white print:text-black 语义走 CSS）。
+ * 深浅同源：打印强制浅色底/深色字（语义 print:bg-white print:text-black）——
+ * INT-596 P3：原实现仅头注释宣称、无实际规则，暗色打印保深底（耗墨+可读性差），
+ * 现补 print 下语义 token 固定浅色覆盖 + body 显式白底深字。
  */
 @media print {
+  /* 打印强制浅色语义（覆盖 .dark 深色 token；语义=print:bg-white / print:text-black） */
+  :root {
+    --background: #ffffff;
+    --foreground: #111827;
+    --card: #ffffff;
+    --card-foreground: #111827;
+    --primary: #2563eb;
+    --primary-foreground: #ffffff;
+    --secondary: #f3f4f6;
+    --secondary-foreground: #1f2937;
+    --muted: #f3f4f6;
+    --muted-foreground: #4b5563;
+    --border: #e5e7eb;
+  }
+
+  body {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+    font-size: 12px;
+  }
+
   .report-view-container {
     max-width: none;
     padding: 0;
@@ -20,10 +43,6 @@
   /* 展开全部折叠分区 */
   .report-view-container [data-slot='collapsible-panel'] {
     display: block !important;
-  }
-
-  body {
-    font-size: 12px;
   }
 
   .report-view-container section,

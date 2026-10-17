@@ -157,10 +157,17 @@ export function rebinDistributionData(
   }
 }
 
+/** 图表轴色/网格色（深浅两套；INT-596 P3：与 getDefaultChartConfig 同源，供 ECharts 等独立模块复用，消除 rgba 魔数重复） */
+export function getChartAxisColors(isDark: boolean): { gridColor: string; tickColor: string } {
+  return {
+    gridColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+    tickColor: isDark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.55)',
+  }
+}
+
 /** Chart.js 默认配置（深浅两套：图例/网格/tooltip 色随主题；实施按基座语义 token 常量） */
 export function getDefaultChartConfig(isDark: boolean): ChartOptions<'bar'> {
-  const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'
-  const tickColor = isDark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.55)'
+  const { gridColor, tickColor } = getChartAxisColors(isDark)
   return {
     responsive: true,
     maintainAspectRatio: false,

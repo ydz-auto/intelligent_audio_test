@@ -34,7 +34,7 @@ import {
 import type { ReportListItem } from '@/domain/models/report'
 import type { ReportsSearch } from '@/features/reports/types'
 import { getLinkedAlgorithmLabel, toReportAlgorithmType } from '@/features/reports/lib/algorithm'
-import { buildReportListQuery } from '@/infrastructure/adapters/reportAdapter'
+import { buildReportListQuery } from '@/application/reports/report-query'
 
 import { ReportHero } from './components/report-hero'
 import { ReportAdvancedSearch } from './components/report-advanced-search'
@@ -97,10 +97,7 @@ export function ReportCenterPage() {
       : (search.algorithmType ?? linkedAlgorithmType)
 
   const query = useMemo(
-    () => ({
-      ...buildReportListQuery(search),
-      algorithm_type: effectiveAlgorithmType,
-    }),
+    () => buildReportListQuery(search, effectiveAlgorithmType),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [JSON.stringify(search), effectiveAlgorithmType]
   )
@@ -215,11 +212,25 @@ export function ReportCenterPage() {
     [setSearch]
   )
 
-  // 勾选状态（查询变化时重置）
+  // 勾选状态（筛选/视图条件变化时重置，P2-2：favorite/trash/高级搜索三条件 + 排序分页 + 全局算法
+  // 任一变化即清空勾选，避免批量操作作用于非当前视图项）
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   useEffect(() => {
     setSelectedIds([])
-  }, [search.page, search.pageSize, JSON.stringify(search.search), search.type, search.status, search.timeRange, effectiveAlgorithmType])
+  }, [
+    search.page,
+    search.pageSize,
+    JSON.stringify(search.search),
+    search.type,
+    search.status,
+    search.timeRange,
+    search.favorite,
+    search.trash,
+    search.taskType,
+    search.deviceType,
+    search.creator,
+    effectiveAlgorithmType,
+  ])
 
   const handleToggleRow = useCallback((id: number) => {
     setSelectedIds((prev) =>

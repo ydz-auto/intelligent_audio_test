@@ -25,7 +25,8 @@ export function AudioTimeline({ audioList }: AudioTimelineProps) {
         {audioList.map((audio, index) => (
           <div
             key={String(audio.audio_id)}
-            className='bg-primary/30 hover:bg-primary/50 flex h-full flex-1 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-sm text-center transition-colors'
+            // 纯展示时间轴分段（无点击行为，不用 cursor-pointer 伪可点；P3-8）
+            className='bg-primary/30 flex h-full flex-1 flex-col items-center justify-center overflow-hidden rounded-sm text-center transition-colors'
             title={`${audio.audio_name ?? `音频 ${audio.audio_id}`} · SPL ${audio.spl ?? '—'}dB`}
           >
             <span className='px-1 text-[10px] leading-tight'>{index + 1}</span>

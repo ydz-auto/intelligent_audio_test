@@ -16,6 +16,10 @@ export interface ReportShareState {
   access: ShareAccess
   expiry: ShareExpiry
   password: string
+  /** 指定访问人（access='specific' 时；逗号分隔用户名/邮箱，INT-596 P3：落 state 不丢弃） */
+  recipients: string
+  /** 邮件分享收件人（method='email' 时） */
+  emailTo: string
   /** 生成的分享链接（mock 形态） */
   shareUrl: string | null
   /** 分享统计 */
@@ -29,6 +33,8 @@ const initialState: ReportShareState = {
   access: 'login',
   expiry: 'none',
   password: '',
+  recipients: '',
+  emailTo: '',
   shareUrl: null,
   visits: 0,
   lastVisitedAt: null,

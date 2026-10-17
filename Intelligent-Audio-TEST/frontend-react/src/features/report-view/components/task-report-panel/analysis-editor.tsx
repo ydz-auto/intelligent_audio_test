@@ -132,7 +132,14 @@ export function AnalysisEditor({
             {tagsOpen && (
               <div className='flex flex-wrap gap-1.5 pt-1'>
                 {DEFAULT_CONCLUSION_TAGS.map((tag) => (
-                  <Badge key={tag} variant='outline' className='cursor-pointer'>
+                  // 结论标签点击插入编辑内容（P3：消除 cursor-pointer 死控件；render 为 button 保证键盘可达）
+                  <Badge
+                    key={tag}
+                    variant='outline'
+                    render={<button type='button' />}
+                    className='cursor-pointer transition-colors hover:bg-muted'
+                    onClick={() => setDraft((prev) => (prev.trim() ? `${prev.trim()}\n${tag}` : tag))}
+                  >
                     {tag}
                   </Badge>
                 ))}

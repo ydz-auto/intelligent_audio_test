@@ -259,6 +259,16 @@ export interface ReportComparisonColumn {
   type?: 'status' | 'percentage' | 'number' | 'text' | 'icon'
 }
 
+/** §4.6 对比配置（对比维度 × 对比指标 × 对比方式；INT-596 P3 补全「对比配置」页签） */
+export interface ReportCompareConfig {
+  /** 对比维度：test_cases / metrics / devices / execution_time */
+  dimension: string
+  /** 对比指标多选 */
+  metrics: string[]
+  /** 对比方式：horizontal / vertical */
+  mode: string
+}
+
 /** §1.2 field_mappings（用例卡片字段映射） */
 export interface ReportFieldMappings {
   algorithmType: { result: string[]; reference: string[] }

@@ -23,6 +23,13 @@ interface TaskReportPanelProps {
   onSaveAnalysis: (content: string) => void
 }
 
+/** 对比表格稳定 key（P3：弃 index key，避免表格排序/过滤后 React 状态串用；标题+列+首行内容指纹） */
+function comparisonTableKey(table: { title: string; columns: { key: string }[]; data: Record<string, unknown>[] }): string {
+  const columns = table.columns.map((c) => c.key).join(',')
+  const head = table.data[0] ? Object.values(table.data[0]).join('|') : ''
+  return `${table.title}:${columns}:${table.data.length}:${head}`
+}
+
 export function TaskReportPanel({
   report,
   isExporting,
@@ -64,8 +71,8 @@ export function TaskReportPanel({
       {tables.length > 0 && (
         <section id='report-comparison-tables' className='scroll-mt-20 space-y-3'>
           <h3 className='text-sm font-semibold'>对比表格</h3>
-          {tables.map((table, index) => (
-            <ComparisonTable key={index} table={table} isExporting={isExporting} />
+          {tables.map((table) => (
+            <ComparisonTable key={comparisonTableKey(table)} table={table} isExporting={isExporting} />
           ))}
         </section>
       )}

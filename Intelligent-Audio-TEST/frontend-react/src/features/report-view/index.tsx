@@ -18,6 +18,7 @@ import { useReportActions } from '@/application/reports/use-report-actions'
 import { ExportReportDialog } from '@/features/reports/components/modals/export-report-dialog'
 import { PublishReportDialog, RegenerateReportDialog } from '@/features/reports/components/modals/report-confirm-dialogs'
 import { ReportRenameDialog } from '@/features/reports/components/modals/report-rename-dialog'
+import { ReportProgressDialog } from '@/features/reports/components/modals/report-progress-dialog'
 import { ReportShareDialog } from './components/modals/report-share-dialog'
 
 import { ReportHeader } from './components/report-header'
@@ -83,6 +84,8 @@ export function ReportViewPage() {
   const [exportOpen, setExportOpen] = useState(false)
   const [publishOpen, setPublishOpen] = useState(false)
   const [regenerateOpen, setRegenerateOpen] = useState(false)
+  const [regenerateProgressOpen, setRegenerateProgressOpen] = useState(false)
+  const [regenerateProgressId, setRegenerateProgressId] = useState(0)
   const [renameOpen, setRenameOpen] = useState(false)
   const [activeSection, setActiveSection] = useState('report-overview')
   const [progress, setProgress] = useState(0)
@@ -152,17 +155,39 @@ export function ReportViewPage() {
 
   const handleBack = () => void navigate(backTarget)
 
+  // 空态/错误态（INT-503：isError 先于 !report 判定——加载失败不得落入骨架分支死区；
+  // INT-596 P2-4：404/无效 ID →「报告不存在」，网络/500 →「加载失败 + 请重试」分叉，不合并误导）
+  const isInvalidId = !Number.isFinite(reportId) || reportId <= 0
+  const notFoundError =
+    detailQuery.isError &&
+    typeof detailQuery.error?.message === 'string' &&
+    detailQuery.error.message.includes('不存在')
+
   if (detailQuery.isLoading) {
     return <DetailSkeleton />
   }
 
-  // 空态/错误态（INT-503：isError 先于 !report 判定——加载失败不得落入骨架分支死区）
-  if (
-    detailQuery.isError ||
-    !report ||
-    !Number.isFinite(reportId) ||
-    reportId <= 0
-  ) {
+  if (detailQuery.isError && !notFoundError) {
+    return (
+      <Empty className='min-h-[420px]'>
+        <EmptyHeader>
+          <EmptyMedia variant='icon' />
+          <EmptyTitle>加载失败</EmptyTitle>
+          <EmptyDescription>报告数据加载失败，请重试</EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          <Button variant='secondary' size='sm' onClick={() => void detailQuery.refetch()}>
+            请重试
+          </Button>
+          <Button variant='outline' size='sm' onClick={() => void navigate({ to: '/report-center' })}>
+            返回报告中心
+          </Button>
+        </EmptyContent>
+      </Empty>
+    )
+  }
+
+  if (isInvalidId || notFoundError || !report) {
     return (
       <Empty className='min-h-[420px]'>
         <EmptyHeader>
@@ -301,7 +326,18 @@ export function ReportViewPage() {
         report={report}
         onConfirm={(target) => {
           setRegenerateOpen(false)
+          // §4.8 重新生成确认后 → 进度弹窗（报告中心生成/对比路径同款 ReportProgressDialog）
+          setRegenerateProgressId(target.id)
+          setRegenerateProgressOpen(true)
           void reportActions.regenerate(target.id)
+        }}
+      />
+      <ReportProgressDialog
+        open={regenerateProgressOpen}
+        onOpenChange={setRegenerateProgressOpen}
+        reportId={regenerateProgressId}
+        onComplete={() => {
+          setRegenerateProgressOpen(false)
         }}
       />
       <ReportRenameDialog
@@ -321,6 +357,8 @@ export function ReportViewPage() {
         onAccessChange={(access) => share.patchShare({ access })}
         onExpiryChange={(expiry) => share.patchShare({ expiry })}
         onPasswordChange={(password) => share.patchShare({ password })}
+        onRecipientsChange={(recipients) => share.patchShare({ recipients })}
+        onEmailToChange={(emailTo) => share.patchShare({ emailTo })}
         onGenerate={() => void share.generateShareLink()}
         onRevoke={share.revokeShare}
         onCopy={() => {

@@ -13,7 +13,7 @@ import { SectionPageLayout } from '@/components/layout/components/section-page-l
 import { usePublishedReportList } from '@/application/reports-showcase/use-published-report-list'
 import { useGlobalAlgorithm } from '@/application/hooks/use-global-algorithm'
 import { toGlobalAlgorithmId, toReportAlgorithmType } from '@/features/reports/lib/algorithm'
-import { buildShowcaseQuery } from '@/infrastructure/adapters/reportAdapter'
+import { buildShowcaseQuery } from '@/application/reports/report-query'
 import { ReportsPagination } from '@/features/reports/components/reports-pagination'
 import type { ShowcaseSearch } from '@/features/reports-showcase/types'
 
@@ -88,10 +88,7 @@ export function ReportShowcasePage() {
   }, [search.algorithmType, globalAlgorithmId, setAlgorithmId])
 
   const query = useMemo(
-    () => ({
-      ...buildShowcaseQuery(search),
-      algorithm_type: effectiveAlgorithmType,
-    }),
+    () => buildShowcaseQuery(search, effectiveAlgorithmType),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [JSON.stringify(search), effectiveAlgorithmType]
   )

@@ -5,8 +5,7 @@
  * 口径修正 2026-10-16：取消双页签，report_type 一律由 URL type 透传（默认 undefined=全部）。
  */
 import type { ReportListQuery } from '@/domain/models/report'
-import type { ReportsSearch } from '@/features/reports/types'
-import type { ShowcaseSearch } from '@/features/reports-showcase/types'
+import type { ReportsSearch, ShowcaseSearch } from '@/domain/models/report-search'
 
 /** 时间范围 → start_time/end_time（本地推算，today/yesterday/week/month/custom） */
 export function computeTimeRange(

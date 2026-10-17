@@ -24,6 +24,7 @@ import type { ReportDetailData, ReportTag } from '@/domain/models/report'
 import { cn } from '@/lib/utils'
 
 import { MetricMatrixTable } from './metric-matrix-table'
+import { MultiSelectFilter, SelectedConditionsBar } from './multi-select-filter'
 
 export function CaseTagComparison({
   report,
@@ -130,42 +131,45 @@ export function CaseTagComparison({
               </div>
             ))}
           </div>
-          <div className='mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 border-t pt-2'>
-            <span className='text-muted-foreground text-xs'>选择用例分组（可多选）：</span>
-            {groupKeys.length > 0 ? (
-              groupKeys.map((g) => (
-                <label key={g} className='flex items-center gap-1.5 text-xs'>
-                  <Checkbox
-                    checked={selectedGroups.includes(g)}
-                    onCheckedChange={(checked) => {
-                      setSelectedGroups((prev) =>
-                        checked ? [...prev, g] : prev.filter((x) => x !== g)
-                      )
-                    }}
-                  />
-                  {g}
-                </label>
-              ))
-            ) : (
-              <span className='text-muted-foreground text-xs'>暂无可用的用例分组</span>
-            )}
+          <div className='mt-2 space-y-1.5 border-t pt-2'>
+            {/* 多选组带搜索+分页（§3.3.7/3.3.8；原全铺 checkbox 无界） */}
+            <MultiSelectFilter
+              label='用例分组'
+              options={groupKeys}
+              selected={selectedGroups}
+              variant='checkbox'
+              onToggle={(g) =>
+                setSelectedGroups((prev) =>
+                  prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]
+                )
+              }
+            />
+            <MultiSelectFilter
+              label='评估维度'
+              options={availableMetrics}
+              selected={selectedMetrics}
+              variant='checkbox'
+              onToggle={(m) =>
+                setSelectedMetrics((prev) =>
+                  prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]
+                )
+              }
+            />
           </div>
-          <div className='mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 border-t pt-2'>
-            <span className='text-muted-foreground text-xs'>选择评估维度（可多选）：</span>
-            {availableMetrics.map((m) => (
-              <label key={m} className='flex items-center gap-1.5 text-xs'>
-                <Checkbox
-                  checked={selectedMetrics.includes(m)}
-                  onCheckedChange={(checked) => {
-                    setSelectedMetrics((prev) =>
-                      checked ? [...prev, m] : prev.filter((x) => x !== m)
-                    )
-                  }}
-                />
-                {m}
-              </label>
-            ))}
-          </div>
+          <SelectedConditionsBar
+            conditions={[
+              ...selectedTags.map((t) => ({ key: `tag:${t}`, label: `标签·${renames[t] ?? t}` })),
+              ...selectedGroups.map((g) => ({ key: `group:${g}`, label: `分组·${g}` })),
+              ...selectedMetrics.map((m) => ({ key: `metric:${m}`, label: `维度·${m}` })),
+            ]}
+            onRemove={(key) => {
+              const [kind, ...rest] = key.split(':')
+              const value = rest.join(':')
+              if (kind === 'tag') setSelectedTags((prev) => prev.filter((x) => x !== value))
+              else if (kind === 'group') setSelectedGroups((prev) => prev.filter((x) => x !== value))
+              else if (kind === 'metric') setSelectedMetrics((prev) => prev.filter((x) => x !== value))
+            }}
+          />
           <div className='mt-2 flex items-center justify-end gap-2'>
             <Button
               variant='ghost'

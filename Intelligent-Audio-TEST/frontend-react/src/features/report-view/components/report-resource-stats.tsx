@@ -97,7 +97,7 @@ function DeviceApiCard({
       </div>
       {metrics && Object.keys(metrics).length > 0 && (
         <div className='mt-2 grid grid-cols-2 gap-x-3 gap-y-1 border-t pt-2 text-xs'>
-          {Object.entries(metrics).slice(0, 4).map(([key, value]) => (
+          {Object.entries(metrics).map(([key, value]) => (
             <div key={key} className='flex items-center justify-between gap-1'>
               <span className='text-muted-foreground truncate'>{key}</span>
               <span className='font-mono tabular-nums'>
