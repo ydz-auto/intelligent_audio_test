@@ -15,6 +15,10 @@ const routes: Array<RouteRecordRaw> = [
   { path: '/E2ETest', name: 'e2eTest', component: () => import('../views/E2ETest/E2ETest.vue'), meta: { permission: 'task:execute', title: '端到端测试' } },
   { path: '/APITest', name: 'apiTest', component: () => import('../views/APITest/APITest.vue'), meta: { permission: 'task:execute', title: 'API测试' } },
   { path: '/tasks', name: 'tasks', component: () => import('../views/Tasks/Tasks.vue'), meta: { permission: 'task:read', title: '测试任务记录' } },
+  // INT-577 §2.2 裁定①：旧路径式页签 redirect——「合并」页签收编进「挑选合并」，
+  // /tasks/merged 与 /tasks/cherry-picks 均归一到 /tasks?tab=cherry-picks（query 态页签）
+  { path: '/tasks/merged', name: 'tasksMergedLegacy', redirect: { name: 'tasks', query: { tab: 'cherry-picks' } } },
+  { path: '/tasks/cherry-picks', name: 'tasksCherryPicks', redirect: { name: 'tasks', query: { tab: 'cherry-picks' } } },
   { path: '/tasks/:id(\\d+)', name: 'taskDetail', component: () => import('../views/Tasks/TaskDetailView.vue'), meta: { permission: 'task:read', title: '任务详情' } },
   // INT-298：已发布任务并入任务页「已发布任务」页签；独立路由重定向保留旧链接/收藏夹兼容
   { path: '/published-tasks', name: 'publishedTasks', redirect: { name: 'tasks', query: { tab: 'published' } } },

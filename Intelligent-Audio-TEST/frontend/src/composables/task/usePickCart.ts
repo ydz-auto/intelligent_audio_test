@@ -16,15 +16,21 @@ const cartLoading = ref(false);
 const savingSet = ref(false);
 const sets = ref<PickSetSummary[]>([]);
 
-/** 购物车条目总数（全局角标计数） */
+/** INT-577：购物车条目总数（全局角标计数） */
 const cartCount = computed(() => cart.value.total);
-/** 失效条目数（下单前校验提示，§10） */
+/** INT-577：失效条目数（下单前校验提示，§10） */
 const invalidCount = computed(() => cart.value.invalidItemIds.length);
+/** INT-577：购物车 result_id 集合（R10 已加购标记 / 重复加购幂等判断；移除后同步消失） */
+const resultIdSet = computed(() => new Set(cart.value.groups.flatMap((g: PickCartGroup) => g.items.map((it: PickCartItem) => it.resultId))));
+/** INT-577：购物车版本号（加购/移除/清空/下单后递增；复核摘要 preview 依赖 cart revision 失效重拉） */
+const cartRevision = ref(0);
 
 async function refreshCart() {
   cartLoading.value = true;
   try {
     cart.value = await cherryPickApi.getCart();
+    // INT-577：购物车版本号递增（复核摘要等依赖 cart revision 的 query 失效重拉）
+    cartRevision.value += 1;
   } catch (error) {
     console.error('Failed to load pick cart:', error);
   } finally {
@@ -104,6 +110,8 @@ export function usePickCart() {
   return {
     // 状态
     cart, cartLoading, cartCount, invalidCount, savingSet, sets,
+    // INT-577：R10 已加购标记数据源 + 购物车版本号
+    resultIdSet, cartRevision,
     // 购物车
     refreshCart, addToCart, removeItem, removeItems, clearCart, allItems,
     // 挑选集

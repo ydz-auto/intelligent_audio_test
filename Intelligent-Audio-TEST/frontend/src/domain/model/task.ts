@@ -121,6 +121,13 @@ export interface Task {
   cases?: TaskCaseBrief[]
 }
 
+/** INT-577：合并容器统计（GET /tasks stats 块；merged ∪ cherry_pick 并集，供「挑选合并」页签计数/facet） */
+export interface TaskContainerStats {
+  total: number
+  whole: number
+  picked: number
+}
+
 /** 任务创建表单/请求（前端 Domain → adapter 转 DTO；对齐 TaskCreateRequest 契约） */
 export interface TaskCreateDraft {
   name: string

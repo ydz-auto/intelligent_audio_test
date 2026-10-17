@@ -128,6 +128,12 @@ class CherryPickService:
         try:
             user_id = self._current_user_id()
             items = self._repo.cart_list(user_id)
+            # INT-577 §11-5：购物车树形分组到 result_type 级需补齐来源用例/设备名
+            # （候选行 §11-2 同源；缺名容错显示 ID，可用性优先于严格契约）
+            case_ids = {str(it.get('source_case_id')) for it in items if it.get('source_case_id')}
+            device_ids = {int(it['source_device_id']) for it in items if it.get('source_device_id') is not None}
+            case_names = self._case_name_map(case_ids) if case_ids else {}
+            device_names = self._fetch_device_names(list(device_ids)) if device_ids else {}
             grouped: Dict[int, List[Dict[str, Any]]] = {}
             invalid_item_ids: List[int] = []
             result_ids = [it['result_id'] for it in items]
@@ -136,6 +142,10 @@ class CherryPickService:
                 it['invalid'] = it['result_id'] not in existing_results
                 if it['invalid']:
                     invalid_item_ids.append(it['item_id'])
+                if it.get('source_case_id'):
+                    it['source_case_name'] = case_names.get(it['source_case_id'])
+                if it.get('source_device_id') is not None:
+                    it['source_device_name'] = device_names.get(it['source_device_id'])
                 grouped.setdefault(it['source_task_id'], []).append(it)
             groups = [{
                 'source_task_id': task_id,

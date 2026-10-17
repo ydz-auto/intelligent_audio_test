@@ -3,7 +3,7 @@
  * 出口契约：Domain（camelCase）；DTO 转换全部收敛在 adapters。
  */
 import { request, type RequestOptions } from '../http/client';
-import { toTask, toTaskList, toTaskCreateDto, toCaseDetail, toCaseResults, toTaskDomainStats, toTaskCaseRemoveResult } from '../adapters/taskAdapter';
+import { toTask, toTaskList, toTaskCreateDto, toCaseDetail, toCaseResults, toTaskDomainStats, toTaskCaseRemoveResult, toContainerStats } from '../adapters/taskAdapter';
 import { toTaskProgressHttp, toTaskStartResult } from '../adapters/taskProgressAdapter';
 import { toPaginated } from '../adapters/commonAdapter';
 import type {
@@ -16,6 +16,7 @@ import type {
   TaskUpdateCasesRequestDto,
   TaskListQueryDto,
   TaskDomainStatsDto,
+  TaskContainerStatsDto,
 } from '../dto';
 import type { TaskProgressHttpDto } from '../dto/taskProgressDto';
 import type { Task, TaskCreateDraft, TaskDomainStats, TaskCaseRemoveResult } from '../../domain/model/task';
@@ -123,13 +124,13 @@ function fromHttpToFullProgress(raw: TaskProgressHttpDto): TaskProgress {
 }
 
 export const tasksApi = {
-  /** 分页任务列表 → Paginated<Task>（入参 camelCase，snake_case 化在内部完成） */
+  /** 分页任务列表 → Paginated<Task>（入参 camelCase，snake_case 化在内部完成；INT-577 stats 块透传） */
   async getAll(params: TaskListQuery = {}, options: RequestOptions = {}) {
-    const dto = await request<PaginatedDto<TaskDto> | TaskDto[]>('GET', '/tasks', null, { ...options, params: toTaskListQueryDto(params) });
+    const dto = await request<PaginatedDto<TaskDto> & { stats?: TaskContainerStatsDto } | TaskDto[]>('GET', '/tasks', null, { ...options, params: toTaskListQueryDto(params) });
     if (Array.isArray(dto)) {
-      return { items: toTaskList(dto), total: dto.length, page: 1, perPage: dto.length, pages: 1 };
+      return { items: toTaskList(dto), total: dto.length, page: 1, perPage: dto.length, pages: 1, stats: null };
     }
-    return toPaginated(dto, toTask);
+    return { ...toPaginated(dto, toTask), stats: toContainerStats(dto.stats) };
   },
 
   /** 单个任务 → Task（TaskDetailData，含 cases） */
