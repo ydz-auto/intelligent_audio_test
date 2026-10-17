@@ -331,12 +331,19 @@ class PlaybackOrchestrator:
             for device_index, audio_list_with_delays in device_configs_map.items():
                 stop_event = threading.Event()
                 playback_started_event = threading.Event()
+                # INT-593 量化采集：提交时刻 + 线程池队列深度打点
+                submit_t0 = time.monotonic()
+                q_depth = self.audio_service.audio_pool_queue_depth()
+                log_and_emit('DEBUG', 'playback_orchestrator',
+                             f"[bg_noise] submit device={device_index}, "
+                             f"audio_pool_queue_depth={q_depth}", category='audio')
                 future = pool.submit(
                     self.audio_service._play_device_audios,
                     device_index,
                     audio_list_with_delays,
                     0, 0, True, stop_event, False, None,
                     playback_started_event, None,
+                    submit_t0,
                 )
                 player_key = f'{self._bg_noise_player_type}_{device_index}'
                 self.audio_service.active_players[task_id_key][player_key] = {

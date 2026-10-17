@@ -49,10 +49,10 @@ class RenderAudioStream:
                 src = context.sources[src_idx]
                 if src.samples is None or src.samples.size == 0:
                     continue
-                gained = src.samples * src.gain_linear
                 if src.kind == AudioKind.NOISE and src.loop:
                     # loop 噪声：整缓冲平铺的模块索引窗口切片
-                    n = gained.size
+                    # INT-593 P1：仅对窗口内切片乘增益，不再每窗整源数组乘法
+                    n = src.samples.size
                     if n == 0:
                         continue
                     lo = (w0 - start_frame) * channels
@@ -63,21 +63,22 @@ class RenderAudioStream:
                         # 起始帧落在窗口内：前段补零，其余从平铺流取
                         pad = -lo
                         take = min(hi, n)
-                        window[pad:pad + take] += gained[:take]
+                        window[pad:pad + take] += src.samples[:take] * src.gain_linear
                         rest_start, rest_len = take, hi - take
                         if rest_len > 0:
                             idx = np.arange(rest_start, rest_start + rest_len) % n
-                            window[pad + take:pad + hi] += gained[idx]
+                            window[pad + take:pad + hi] += src.samples[idx] * src.gain_linear
                     else:
                         idx = np.arange(lo, hi) % n
-                        window[:hi - lo] += gained[idx]
+                        window[:hi - lo] += src.samples[idx] * src.gain_linear
                 else:
                     lo = (w0 - start_frame) * channels
                     hi = (w1 - start_frame) * channels
-                    if hi <= 0 or lo >= gained.size:
+                    if hi <= 0 or lo >= src.samples.size:
                         continue
                     src_lo = max(0, lo)
-                    seg = gained[src_lo:min(hi, gained.size)]
+                    # INT-593 P1：仅切片后乘增益（每窗只乘所需段，不再整源数组乘法）
+                    seg = src.samples[src_lo:min(hi, src.samples.size)] * src.gain_linear
                     if seg.size:
                         window[src_lo - lo:src_lo - lo + seg.size] += seg
 

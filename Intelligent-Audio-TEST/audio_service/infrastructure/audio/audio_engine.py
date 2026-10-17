@@ -14,6 +14,7 @@
 """
 
 import threading
+from shared.utils.log_handler import log_and_emit
 from audio_service.infrastructure.audio._engine_device_comm_mixin import EngineDeviceCommMixin
 from audio_service.infrastructure.audio._engine_playback_mixin import EnginePlaybackMixin
 from audio_service.infrastructure.audio._engine_audio_prepare_mixin import EngineAudioPrepareMixin
@@ -49,13 +50,35 @@ class AudioService(EngineDeviceCommMixin,
 
         微服务化后：音频播放完全由 audio_service 本地管理，
         不再通过 gRPC 向 task_service 请求线程池大小。
-        扩容至 10 个线程：全局背景噪声（最多4设备）+ 轮次内 play_round
-        （主讲人/干扰人/噪声，最多4-6设备）需要足够容量避免排队死锁。
+        容量配置化（INT-593 P2）：读取 concurrency_config.json
+        execution_engine.audio_playback_max_workers（V9.7.10 遗留语义 =
+        每声道/每设备 1 个播放 worker，默认 12），拒绝硬编码魔法数字
+        （架构红线）。背景噪声（最多4设备）+ 轮次内 play_round
+        （主讲人/干扰人/噪声，最多4-6设备）+ 试听并发需要足够容量避免排队。
         """
         if self._audio_pool is None:
             from concurrent.futures import ThreadPoolExecutor
-            self._audio_pool = ThreadPoolExecutor(max_workers=10, thread_name_prefix='audio_play_')
+            from shared.utils.config_manager import config_manager
+            max_workers = config_manager.get_value(
+                'execution_engine', 'audio_playback_max_workers', 12)
+            self._audio_pool = ThreadPoolExecutor(
+                max_workers=max_workers, thread_name_prefix='audio_play_')
+            log_and_emit('INFO', 'audio_engine',
+                         f"[audio_pool] created max_workers={max_workers} (config "
+                         f"execution_engine.audio_playback_max_workers)",
+                         category='audio')
         return self._audio_pool
+
+    def audio_pool_queue_depth(self):
+        """音频播放线程池当前排队深度（INT-593 量化采集）。
+
+        播放任务提交时打点：深度 > 0 表示已满员排队 → 起播延迟风险信号。
+        ThreadPoolExecutor 队列不对外暴露，读取私有 _work_queue 仅供观测。
+        """
+        if self._audio_pool is None:
+            return 0
+        queue = getattr(self._audio_pool, '_work_queue', None)
+        return queue.qsize() if queue is not None else 0
 
 
 audio_service = AudioService()

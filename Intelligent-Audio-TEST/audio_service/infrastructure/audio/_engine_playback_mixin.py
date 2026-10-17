@@ -8,6 +8,7 @@
 - stop_task_audio / stop_task_audio_by_pattern：停止播放控制
 """
 import threading
+import time
 import wave
 
 from shared.utils.log_handler import log_and_emit
@@ -36,10 +37,17 @@ class EnginePlaybackMixin:
         }]
 
         pool = self._get_audio_pool()
+        # INT-593 量化采集：提交时刻 + 线程池队列深度（起播延迟/排队风险打点）
+        t0 = time.monotonic()
+        q_depth = self.audio_pool_queue_depth()
         future = pool.submit(
             self._get_driver().play_multi,
-            audio_configs, device_index, stop_event, offset, loop
+            audio_configs, device_index, stop_event, offset, loop,
+            started_monotonic=t0,
         )
+        log_and_emit('DEBUG', 'audio_engine',
+                     f"[play_audio] submit task_id={task_id}, player_type={player_type}, "
+                     f"audio_pool_queue_depth={q_depth}", category='audio')
 
         if task_id not in self.active_players:
             self.active_players[task_id] = {}
@@ -65,7 +73,8 @@ class EnginePlaybackMixin:
 
     def _play_device_audios(self, device_index, audio_list_with_delays, initial_delay,
                             offset=0, loop=False, stop_event=None, is_overlap=False, app=None,
-                            playback_started_event=None, playback_finished_event=None):
+                            playback_started_event=None, playback_finished_event=None,
+                            started_monotonic=None):
         """在单个设备上播放多个音频（线程池任务函数）。"""
         try:
             audio_list = [c for c, d in audio_list_with_delays]
@@ -94,7 +103,7 @@ class EnginePlaybackMixin:
                 })
 
             log_and_emit('DEBUG', 'audio_engine', f"[play_device_audios] Before play_multi: configs count={len(multi_configs)}, delays={[c.get('delay') for c in multi_configs]}, files={[c.get('file', '').split('\\\\')[-1] for c in multi_configs]}", category='audio')
-            self._get_driver().play_multi(multi_configs, device_index, stop_event, loop=loop, app=app, playback_started_event=playback_started_event, playback_finished_event=playback_finished_event)
+            self._get_driver().play_multi(multi_configs, device_index, stop_event, loop=loop, app=app, playback_started_event=playback_started_event, playback_finished_event=playback_finished_event, started_monotonic=started_monotonic)
 
             log_and_emit('DEBUG', 'audio_engine', f"[play_device_audios] Device {device_index} done")
         except Exception as e:
@@ -182,6 +191,12 @@ class EnginePlaybackMixin:
         playback_started_events = []
         playback_finished_events = []
         pool = self._get_audio_pool()
+        # INT-593 量化采集：提交时刻 + 线程池队列深度打点
+        submit_t0 = time.monotonic()
+        q_depth = self.audio_pool_queue_depth()
+        log_and_emit('DEBUG', 'audio_engine',
+                     f"[play_overlap] submit task_id={task_id}, devices={len(device_audio_map)}, "
+                     f"audio_pool_queue_depth={q_depth}", category='audio')
 
         for dev_idx in device_audio_map:
             audio_list_with_delays = device_audio_map[dev_idx]
@@ -192,7 +207,8 @@ class EnginePlaybackMixin:
             future = pool.submit(
                 self._play_device_audios,
                 dev_idx, audio_list_with_delays, 0, offset, loop, device_stop_event, is_overlap, app,
-                playback_started_event, playback_finished_event
+                playback_started_event, playback_finished_event,
+                submit_t0,
             )
 
             self.active_players[task_id][f'device_{dev_idx}'] = {
