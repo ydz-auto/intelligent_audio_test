@@ -12,10 +12,8 @@ export const dataTransferApi = {
   async exportTasks(taskIds: Array<number | string>, options: DataTransferOptions): Promise<Blob> {
     const body: TaskDataExportDto = {
       task_ids: taskIds,
-      options: {
-        include_ref_params: options.includeRefParams,
-        include_audios: options.includeAudios,
-      },
+      include_ref_params: options.includeRefParams,
+      include_audios: options.includeAudios,
     };
     return request<Blob>('POST', '/data-transfer/export', body, { responseType: 'blob' });
   },

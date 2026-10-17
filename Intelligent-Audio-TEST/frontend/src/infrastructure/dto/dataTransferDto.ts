@@ -3,13 +3,11 @@
  * snake_case，与 api_gateway /data-transfer 契约一一对应（header 注释同 taskDto.ts）。
  */
 
-/** POST /data-transfer/export 请求体 */
+/** POST /data-transfer/export 请求体（契约：api_gateway TaskDataExportRequest，平铺 snake_case） */
 export interface TaskDataExportDto {
   task_ids: Array<number | string>
-  options: {
-    include_ref_params: boolean
-    include_audios: boolean
-  }
+  include_ref_params: boolean
+  include_audios: boolean
 }
 
 /** manifest 内单任务摘要（ZIP 包文件格式，字段为 camelCase） */
