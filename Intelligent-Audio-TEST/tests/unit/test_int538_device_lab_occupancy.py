@@ -54,7 +54,8 @@ def sqlite_db():
 
 
 def _create_laboratories(session):
-    """创建 laboratories 表（无 PO，测试直建；对齐迁移脚本 DDL）。"""
+    """创建 laboratories 表（INT-655 起由 device_service Laboratory PO 经 create_all 建表；
+    此处仅为测试数据直插，status 显式补默认值满足 PO NOT NULL）。"""
     session.execute(text(
         "CREATE TABLE IF NOT EXISTS laboratories ("
         " id INTEGER PRIMARY KEY, code VARCHAR(50) UNIQUE NOT NULL,"
@@ -62,10 +63,12 @@ def _create_laboratories(session):
         " deleted BOOLEAN DEFAULT FALSE)"
     ))
     session.execute(text(
-        "INSERT INTO laboratories (id, code, name) VALUES (1, 'L1', 'A楼101')"
+        "INSERT INTO laboratories (id, code, name, status, deleted) "
+        "VALUES (1, 'L1', 'A楼101', 'active', FALSE)"
     ))
     session.execute(text(
-        "INSERT INTO laboratories (id, code, name) VALUES (2, 'L2', 'B楼201')"
+        "INSERT INTO laboratories (id, code, name, status, deleted) "
+        "VALUES (2, 'L2', 'B楼201', 'active', FALSE)"
     ))
     session.commit()
 
