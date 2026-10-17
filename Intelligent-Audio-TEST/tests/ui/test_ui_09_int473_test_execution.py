@@ -271,8 +271,9 @@ def test_03_case_positive_negative_select(drv):
     _click_checkbox(drv, '选择 远场唤醒 · 3 米距离')
     _click_checkbox(drv, '选择 连续对话 · 多轮上下文保持')
     drv.find_element(By.XPATH, "//button[contains(., '反选')]").click()
+    # 反选=全量集−当前选中集（对称差），等待补齐计数落定（mock latency 120ms 后更新）
     WebDriverWait(drv, 10).until(
-        lambda d: '已反选' in _body_text(d) or '补齐' in _body_text(d))
+        lambda d: '反选补齐 5' in _body_text(d))
     summary = _body_text(drv)
     assert '反选补齐 5' in summary, f'反选对称差计数错误：{summary[:200]}'
     # 表格/卡片双模式切换

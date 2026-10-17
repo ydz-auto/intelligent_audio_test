@@ -172,8 +172,8 @@ def _login(drv, username='demo_admin'):
 def test_01_hero_copy_and_orbit(drv):
     _goto(drv, '/')
     txt = _body_text(drv)
-    # 定稿文案逐条（负责人 2026-10-16）
-    assert '语音测试 · 多维评估 · 多友商对比' in txt, f'badge 缺失：{txt[:120]}'
+    # 定稿文案逐条（负责人 2026-10-16；badge 随 f6207251 INT-492 审计 P3 定稿为「算法可插拔」）
+    assert '算法可插拔 · 从 ASR 到实时语音大模型' in txt, f'badge 缺失：{txt[:120]}'
     assert '智能语音测试平台' in txt, '标题第一行缺失'
     assert '让每一次语音交互都可度量' in txt, '标题第二行（slogan）缺失'
     assert '真实设备、真实链路、真实指标，多友商横向对比，看清真实用户体验。' in txt, \
