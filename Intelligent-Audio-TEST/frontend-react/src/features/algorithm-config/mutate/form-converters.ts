@@ -28,6 +28,7 @@ export function toFormValues(algorithm: AlgorithmDefinition): AlgorithmFormValue
     displayOrder: algorithm.displayOrder,
     status: algorithm.status,
     description: algorithm.description ?? '',
+    revision: algorithm.revision,
     deviceParams: algorithm.deviceParams.map<DeviceApiParamRow>((param) => ({
       key: nextKey('d'),
       paramCode: param.paramCode,
@@ -35,6 +36,7 @@ export function toFormValues(algorithm: AlgorithmDefinition): AlgorithmFormValue
       direction: param.direction,
       paramType: param.paramType,
       required: param.required,
+      defaultValue: param.defaultValue ?? '',
       helpText: param.helpText ?? '',
     })),
     apiParams: algorithm.apiParams.map<DeviceApiParamRow>((param) => ({
@@ -44,6 +46,7 @@ export function toFormValues(algorithm: AlgorithmDefinition): AlgorithmFormValue
       direction: param.direction,
       paramType: param.paramType,
       required: param.required,
+      defaultValue: param.defaultValue ?? '',
       helpText: param.helpText ?? '',
     })),
     caseParams: algorithm.caseParams.map<CaseParamRow>((param) => ({

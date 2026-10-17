@@ -113,17 +113,81 @@ export const DIMENSIONS_DESCRIPTION =
 export const IMPORT_DIALOG_DESCRIPTION =
   '粘贴或上传算法定义 JSON（与导出格式一致），导入后立即生效。'
 
-/** 自动保存倒计时秒数（§6.1a；30 秒档位同 newAPI EMAIL_VERIFICATION_COUNTDOWN/PASSWORD_RESET_COUNTDOWN = 30） */
+/** 自动保存倒计时秒数（§6.2；30 秒档位同 newAPI EMAIL_VERIFICATION_COUNTDOWN/PASSWORD_RESET_COUNTDOWN = 30） */
 export const AUTO_SAVE_COUNTDOWN_SECONDS = 30
 
-/** §6.1a 30s 自动保存文案组（§10 指定文案，全中文硬编码） */
-export const AUTO_SAVE_MESSAGES = {
-  /** footer 常驻倒计时「将在 {n} 秒后自动保存」（n 30→0 递减） */
-  countdown: (secondsLeft: number) => `将在 ${secondsLeft} 秒后自动保存`,
-  /** 归零自动保存成功 toast */
-  success: '已自动保存',
-  /** 自动保存失败 toast（失败转手动，不自动重试） */
-  failure: '自动保存失败，已恢复手动保存',
-  /** 校验不过暂停 Alert（不可手动关闭） */
-  validationBlocked: '有校验未通过，请修正后再自动保存',
+/** 参数行失焦防抖保存毫秒（§6.2；对照旧 Vue useAlgorithmParamOps.ts:114 实测 1500ms） */
+export const PARAM_BLUR_DEBOUNCE_MS = 1500
+
+/** 作用域 chips（§6.4 统一参数表过滤；ToggleGroup 单选计数，默认「全部」） */
+export const PARAM_SCOPE_CHIPS = [
+  { value: 'all', label: '全部' },
+  { value: 'device', label: '设备' },
+  { value: 'api', label: 'API' },
+  { value: 'case', label: '用例' },
+] as const
+
+export type ParamScopeChip = (typeof PARAM_SCOPE_CHIPS)[number]['value']
+
+/** 统一参数表列头（§6.4 桌面 min-w-[1100px] 横向滚动） */
+export const PARAM_TABLE_COLUMN_HEADERS = {
+  scope: '作用域',
+  paramCode: '参数代码',
+  paramName: '参数名称',
+  paramType: '参数类型',
+  direction: '方向',
+  applicableScope: '适用范围',
+  required: '必填',
+  defaultValue: '默认值',
+  range: '范围约束',
+  annotationCode: '标注代码',
+  fieldPath: '字段路径',
+  helpText: '帮助文本',
+} as const
+
+/** §6.2 草稿保存文案组（§10 指定文案，全中文硬编码） */
+export const DRAFT_MESSAGES = {
+  /** footer 倒计时「将在 {n} 秒后自动保存草稿」（n 30→0 递减） */
+  countdown: (secondsLeft: number) => `将在 ${secondsLeft} 秒后自动保存草稿`,
+  /** 保存中形态（footer Spinner） */
+  saving: '正在保存草稿…',
+  /** 成功时间戳形态（footer 常驻「上次保存 HH:mm:ss」） */
+  lastSaved: (time: string) => `上次保存 ${time}`,
+  /** 手动/失焦草稿保存成功 toast；30s 自动保存静默（仅时间戳更新） */
+  saved: '草稿已保存',
+  /** 结构校验不过 → 倒计时暂停 + footer 内联 Alert（不可手动关闭） */
+  validationBlocked: '有校验未通过，草稿暂存暂停',
+  /** 失败 toast/内联 Alert（不自动重试，防重试风暴；保留编辑态转手动） */
+  failure: '草稿保存失败，请检查网络后重试',
+  /** 乐观锁冲突 footer inline Alert（§6.2a） */
+  conflict: '草稿已过期：该算法已被他人修改',
+  /** 冲突就地动作 */
+  refresh: '立即刷新',
+  continueEdit: '继续编辑',
+  /** 刷新前确认（§6.2a：刷新丢弃当前草稿） */
+  refreshConfirm: '刷新将丢弃当前草稿，确定？',
+  /** 刷新成功 toast */
+  refreshed: '已刷新为最新版本',
+  /** 编辑打开时草稿存在提示（§6.1，后端 has_draft 语义） */
+  hasUnpublishedDraft: '该算法存在未发布的草稿',
+} as const
+
+/** §6.2 发布文案组（§10 指定文案，全中文硬编码） */
+export const PUBLISH_MESSAGES = {
+  /** 发布成功 toast（新建态走「算法已创建」） */
+  published: '算法已发布',
+  created: '算法已创建',
+  /** 发布中按钮文案 */
+  publishing: '发布中…',
+  /** 发布失败 toast/内联 Alert */
+  failure: '发布失败，请重试',
+  /** 发布冲突 AlertDialog（§6.2a） */
+  conflictTitle: '发布冲突',
+  conflictDescription: '发布冲突：该算法已被他人修改。',
+  refreshDiscard: '刷新并丢弃我的更改',
+  continueEdit: '继续编辑',
+  /** 后端 RPC force 参数支持后启用（未定则隐藏） */
+  forcePublish: '强制发布覆盖',
+  /** 后端 409 算法代码已存在 */
+  codeExists: '算法代码已存在',
 } as const

@@ -446,9 +446,127 @@ export function __resetAlgorithmMock(): void {
   groupsStore = [...MOCK_ALGORITHM_GROUPS]
   nextId = 1000
   nextGroupId = 500
+  __resetAlgorithmDraftMock()
 }
 
 /** 当前 mock 内存库（供 feature 内读取导出/复制用；接线后删除） */
 export function peekAlgorithmDefinitions(): AlgorithmDefinition[] {
   return definitionsStore
+}
+
+/* ───────────────────────── INT-591 草稿/发布 RPC（§6.2/§12-10，mock 形态） ─────────────────────────
+ * 后端「算法定义全量保存事务 RPC」（主项目后端卡，草稿分支 + 发布事务 + 乐观锁 revision/force + has_draft）
+ * 落定后按契约平移；落定前以下按 §6.2 UI 契约出 mock 形态，供前端走查验收。
+ * 乐观锁冲突：revision 条件更新，不匹配抛 AlgorithmConflictError（409 语义，携带服务端最新版本）。
+ */
+
+/** 草稿保存成功结果（footer「上次保存 HH:mm:ss」时间戳 + 乐观锁版本号） */
+export type DraftSaveResult = {
+  revision: number
+  savedAt: string
+}
+
+/** 乐观锁冲突错误（§6.2a：409 + 服务端最新版本；发布冲突与草稿冲突共用） */
+export class AlgorithmConflictError extends Error {
+  status = 409
+  latestRevision: number
+  constructor(latestRevision: number) {
+    super('算法定义已被他人修改')
+    this.name = 'AlgorithmConflictError'
+    this.latestRevision = latestRevision
+  }
+}
+
+/** mock 冲突演示开关：'none' 正常 / 'draft' 草稿保存恒冲突 / 'publish' 发布恒冲突（接线后删除） */
+let algorithmConflictMode: 'none' | 'draft' | 'publish' = 'none'
+
+export function __setAlgorithmConflictMode(
+  mode: 'none' | 'draft' | 'publish'
+): void {
+  algorithmConflictMode = mode
+}
+
+/** mock 草稿内存库（key=算法 type；revision 自增） */
+const draftRevisionMap = new Map<string, number>()
+/** mock 发布版乐观锁版本号（key=算法 type；每次发布递增） */
+const publishRevisionMap = new Map<string, number>()
+
+/** 取当前发布版乐观锁版本号（无记录默认 0） */
+function currentPublishedRevision(type: string): number {
+  return publishRevisionMap.get(type) ?? 0
+}
+
+/** 草稿保存（§6.2 draft 分支；宽松结构校验由前端 schema 把关，此处 mock 落库 + 冲突模拟） */
+export async function saveAlgorithmDraft(
+  input: SaveAlgorithmInput,
+  revision?: number
+): Promise<DraftSaveResult> {
+  // TODO(API 接线): 后端定义全量保存 RPC draft 分支
+  const type = input.type.trim() || '__new__'
+  if (algorithmConflictMode === 'draft') {
+    await mockLatency(undefined, 120)
+    throw new AlgorithmConflictError(Math.max(currentPublishedRevision(type), 1))
+  }
+  // 乐观锁：请求 revision 落后于发布版 → 409 冲突（§6.2a 草稿已过期）
+  const published = currentPublishedRevision(type)
+  if (revision != null && revision < published) {
+    await mockLatency(undefined, 120)
+    throw new AlgorithmConflictError(published)
+  }
+  const next = (draftRevisionMap.get(type) ?? 0) + 1
+  draftRevisionMap.set(type, next)
+  return mockLatency({ revision: next, savedAt: new Date().toISOString() }, 120)
+}
+
+/** 发布（§6.2 发布事务；全量校验由前端 schema 把关，此处执行聚合落库 + 乐观锁冲突模拟） */
+export async function publishAlgorithm(
+  input: SaveAlgorithmInput,
+  revision?: number
+): Promise<AlgorithmDefinition> {
+  // TODO(API 接线): 后端定义全量保存 RPC 发布事务（草稿分支 + 乐观锁 + has_draft 回写）
+  const isNew = !definitionsStore.some((d) => d.type === input.type)
+  if (isNew && input.type.trim() === '') {
+    await mockLatency(undefined, 120)
+    throw new Error('算法代码已存在')
+  }
+  if (isNew && definitionsStore.some((d) => d.type === input.type)) {
+    // 后端 409「算法代码已存在」（§6.6 错误态）
+    await mockLatency(undefined, 120)
+    const err = new Error('算法代码已存在')
+    Object.assign(err, { status: 409 })
+    throw err
+  }
+  if (algorithmConflictMode === 'publish') {
+    await mockLatency(undefined, 120)
+    throw new AlgorithmConflictError(
+      Math.max(currentPublishedRevision(input.type), 1)
+    )
+  }
+  const published = currentPublishedRevision(input.type)
+  if (revision != null && revision < published) {
+    await mockLatency(undefined, 120)
+    throw new AlgorithmConflictError(published)
+  }
+  const definition = isNew
+    ? await createAlgorithm(input)
+    : await updateAlgorithm(input.type, input)
+  publishRevisionMap.set(input.type, currentPublishedRevision(input.type) + 1)
+  draftRevisionMap.delete(input.type)
+  return definition
+}
+
+/** 供测试重置草稿/发布内存态 */
+export function __resetAlgorithmDraftMock(): void {
+  draftRevisionMap.clear()
+  publishRevisionMap.clear()
+  algorithmConflictMode = 'none'
+}
+
+/* 演示/走查钩子：mock 阶段暴露冲突模式开关（window.__iatpAlgo.setConflictMode），
+ * 供浏览器走查驱动「发布冲突/草稿已过期」UI；接线后随 mock 一并删除。 */
+if (typeof window !== 'undefined') {
+  ;(window as unknown as Record<string, unknown>).__iatpAlgo = {
+    setConflictMode: (mode: 'none' | 'draft' | 'publish') =>
+      __setAlgorithmConflictMode(mode),
+  }
 }

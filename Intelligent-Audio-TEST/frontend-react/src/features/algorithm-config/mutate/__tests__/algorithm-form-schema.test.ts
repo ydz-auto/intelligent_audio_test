@@ -1,10 +1,14 @@
 /**
  * §6 编辑表单 zod schema 单测（features/algorithm-config/mutate）。
- * 必填校验 + 算法代码正则 + 参数代码同页签唯一性。
+ * 必填校验 + 算法代码正则 + 参数代码同页签唯一性；INT-591 §6.2 双门槛：
+ * 草稿宽松（algorithmDraftFormSchema：仅参数代码结构级）vs 发布严格（名称/分组必填 + 范围 min≤max）。
  */
 import { describe, expect, it } from 'vitest'
 
-import { algorithmFormSchema } from '@/features/algorithm-config/mutate/algorithm-form-schema'
+import {
+  algorithmDraftFormSchema,
+  algorithmFormSchema,
+} from '@/features/algorithm-config/mutate/algorithm-form-schema'
 import type { AlgorithmFormValues } from '@/features/algorithm-config/types'
 
 function validBase(): AlgorithmFormValues {
@@ -58,6 +62,7 @@ describe('algorithmFormSchema', () => {
         direction: 'input',
         paramType: 'text',
         required: false,
+        defaultValue: '',
         helpText: '',
       },
       {
@@ -67,6 +72,7 @@ describe('algorithmFormSchema', () => {
         direction: 'input',
         paramType: 'text',
         required: false,
+        defaultValue: '',
         helpText: '',
       },
     ]
@@ -88,6 +94,7 @@ describe('algorithmFormSchema', () => {
         direction: 'input',
         paramType: 'text',
         required: false,
+        defaultValue: '',
         helpText: '',
       },
     ]
@@ -99,6 +106,7 @@ describe('algorithmFormSchema', () => {
         direction: 'input',
         paramType: 'text',
         required: false,
+        defaultValue: '',
         helpText: '',
       },
     ]
@@ -132,5 +140,67 @@ describe('algorithmFormSchema', () => {
       const issue = result.error.issues.find((i) => i.path[0] === 'caseParams')
       expect(issue).toBeTruthy()
     }
+  })
+
+  /* ───────── INT-591 §6.2 草稿宽松 vs 发布严格双门槛 ───────── */
+
+  it('草稿宽松：算法代码/名称/分组可空（中间态暂存）', () => {
+    const values = { ...validBase(), type: '', name: '', groupId: '' }
+    const draft = algorithmDraftFormSchema.safeParse(values)
+    expect(draft.success).toBe(true)
+    // 发布严格：同值被拦
+    const publish = algorithmFormSchema.safeParse(values)
+    expect(publish.success).toBe(false)
+  })
+
+  it('草稿宽松：参数代码非空 + 同作用域唯一仍拦截（结构级门槛）', () => {
+    const duplicate = validBase()
+    duplicate.deviceParams = [
+      { key: 'd-1', paramCode: '', paramName: '', direction: 'input', paramType: 'text', required: false, defaultValue: '', helpText: '' },
+    ]
+    expect(algorithmDraftFormSchema.safeParse(duplicate).success).toBe(false)
+
+    const unique = validBase()
+    unique.apiParams = [
+      { key: 'a-1', paramCode: 'good_code', paramName: '', direction: 'input', paramType: 'text', required: false, defaultValue: '', helpText: '' },
+      { key: 'a-2', paramCode: 'good_code', paramName: '', direction: 'input', paramType: 'text', required: false, defaultValue: '', helpText: '' },
+    ]
+    const result = algorithmDraftFormSchema.safeParse(unique)
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.issues.some((i) => i.message === '参数代码重复')).toBe(true)
+    }
+  })
+
+  it('发布严格：范围 min>max 拦截（草稿不校验范围）', () => {
+    const badRange = validBase()
+    badRange.caseParams = [
+      {
+        key: 'c-1',
+        paramCode: 'volume',
+        paramName: '音量',
+        paramType: 'number',
+        scope: 'common',
+        required: false,
+        defaultValue: '5',
+        minValue: '10',
+        maxValue: '1',
+        step: '1',
+        unit: '',
+        annotationCode: '',
+        fieldPath: '',
+        helpText: '',
+      },
+    ]
+    const publish = algorithmFormSchema.safeParse(badRange)
+    expect(publish.success).toBe(false)
+    if (!publish.success) {
+      expect(
+        publish.error.issues.some((i) => i.message.includes('最小'))
+      ).toBe(true)
+    }
+    // 草稿宽松：范围不校验，可通过
+    const draft = algorithmDraftFormSchema.safeParse(badRange)
+    expect(draft.success).toBe(true)
   })
 })

@@ -230,7 +230,15 @@ export function AlgorithmsTable(props: AlgorithmTableProps) {
                     {row.caseCount}
                   </td>
                   <td className='px-3 py-2'>
-                    <AlgorithmStatusBadge status={row.status} />
+                    <div className='flex items-center gap-1.5'>
+                      <AlgorithmStatusBadge status={row.status} />
+                      {/* §3.4 草稿 Badge（INT-591：后端 has_draft 字段返回后渲染） */}
+                      {row.hasDraft && (
+                        <Badge variant='warning' className='gap-1 px-1.5 text-[11px]'>
+                          有草稿
+                        </Badge>
+                      )}
+                    </div>
                   </td>
                   <td className='px-3 py-2 font-mono text-xs tabular-nums'>
                     {formatDateTime(row.updatedAt)}

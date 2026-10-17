@@ -212,6 +212,7 @@ export const MOCK_ALGORITHM_DEFINITIONS: AlgorithmDefinition[] = [
       dimensionRelation(602, 4, '平均WER', 0.8),
     ],
     caseCount: 50,
+    hasDraft: true,
     createdAt: '2026-08-10T08:30:00Z',
     updatedAt: '2026-10-12T16:40:00Z',
   },

@@ -10,6 +10,9 @@ import type {
 /** 弹窗/抽屉统一状态（页级 Context Provider 语义，§3.1） */
 export type MutateMode = 'create' | 'edit' | 'clone'
 
+/** 统一参数表作用域（§6.4 作用域 chips：全部/设备/API/用例；行来源 device/api/case） */
+export type ParamScope = 'all' | 'device' | 'api' | 'case'
+
 export type MutateSheetState = {
   open: boolean
   mode: MutateMode
@@ -39,6 +42,8 @@ export type DeviceApiParamRow = {
   direction: 'input' | 'output'
   paramType: string
   required: boolean
+  /** §6.4 默认值列恒显（设备/API 亦支持 defaultValue） */
+  defaultValue: string
   helpText: string
 }
 
@@ -94,6 +99,8 @@ export type AlgorithmFormValues = {
   displayOrder: number
   status: 'online' | 'offline'
   description: string
+  /** 乐观锁版本号（§6.2/§12-10；编辑态取发布版 revision，草稿/发布请求携带做条件更新） */
+  revision?: number
   deviceParams: DeviceApiParamRow[]
   apiParams: DeviceApiParamRow[]
   caseParams: CaseParamRow[]

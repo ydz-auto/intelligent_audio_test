@@ -405,8 +405,9 @@ function PaginationBar({
 }) {
   return (
     <div className='flex flex-wrap items-center justify-end gap-2 text-sm'>
+      {/* §3.7/§10 页码与计数展示「共 {n} 个算法 · {page}/{pageCount} 页」 */}
       <span className='text-muted-foreground tabular-nums'>
-        共 {total} 条
+        共 {total} 个算法 · {page}/{pageCount} 页
       </span>
       <Select
         value={String(pageSize)}
@@ -432,9 +433,6 @@ function PaginationBar({
         >
           上一页
         </Button>
-        <span className='text-muted-foreground px-1 tabular-nums'>
-          {page} / {pageCount}
-        </span>
         <Button
           variant='outline'
           size='sm'
