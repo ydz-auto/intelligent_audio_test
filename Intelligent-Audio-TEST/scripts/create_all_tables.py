@@ -2,7 +2,7 @@
 """
 数据库表重建脚本
 
-通过 ``Base.metadata.create_all()`` 重建全部 67 张表。
+通过 ``Base.metadata.create_all()`` 重建全部 72 张表。
 
 使用方式：
     python scripts/create_all_tables.py          # 使用 .env 中的 DATABASE_URL
@@ -73,6 +73,8 @@ def _import_all_models():
     )
     # api_test_service: 1 张表
     from api_test_service.infrastructure.persistence.models import API  # noqa: F401
+    # api_gateway: 1 张表（INT-620 系统选项 KV；api_gateway 直管，无独立 config 微服务）
+    from api_gateway.infrastructure.models.system_option_model import SystemOption  # noqa: F401
 
 
 def create_all_tables(dry_run=False):
@@ -96,8 +98,8 @@ def create_all_tables(dry_run=False):
     for name in table_names:
         print(f"  - {name}")
 
-    if len(table_names) != 67:
-        print(f"\n⚠️ 警告: 预期 67 张表，实际注册 {len(table_names)} 张")
+    if len(table_names) != 72:
+        print(f"\n⚠️ 警告: 预期 72 张表，实际注册 {len(table_names)} 张")
 
     if dry_run:
         print("\n--dry-run 模式，未执行 DDL")

@@ -139,6 +139,10 @@ def create_app(config_name='default') -> FastAPI:
     from api_gateway.routes.role_bp import router as role_router
     from api_gateway.routes.oauth_bp import router as oauth_router
     from api_gateway.routes.laboratory_bp import router as laboratory_router
+    # INT-620：站点状态 / 系统选项 KV（对位 newAPI /api/status、/api/option/，
+    # 根级挂载无 /api/v1 前缀；权限码 status:read / option:read|write）
+    from api_gateway.routes.status_bp import router as status_router
+    from api_gateway.routes.option_bp import router as option_router
 
     app.include_router(auth_router, prefix='/api/v1/auth', tags=['auth'])
     app.include_router(user_router, prefix='/api/v1/auth', tags=['auth-management'])
@@ -172,6 +176,10 @@ def create_app(config_name='default') -> FastAPI:
     app.include_router(benchmark_router, prefix='/api/v1/benchmarks', tags=['benchmarks'])
     # 实验室（INT-493/INT-537 拆分①：CRUD+列表+summary+资源查询）
     app.include_router(laboratory_router, prefix='/api/v1/laboratories', tags=['laboratories'])
+
+    # INT-620：站点状态 / 系统选项 KV —— 对位 newAPI 根级路径（无 /api/v1 前缀）
+    app.include_router(status_router, prefix='/api', tags=['status'])
+    app.include_router(option_router, prefix='/api', tags=['option'])
 
     # 收藏 / 回收站（INT-141）：favorite/restore/purge 动作路由与 GET /favorites
     from api_gateway.routes.favorite_trash_bp import router as favorite_trash_router

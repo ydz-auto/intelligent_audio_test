@@ -4,8 +4,7 @@ RBAC 种子数据初始化
 ===================================
 
 向 permissions / roles / role_permissions 表插入系统内置数据：
-  - 110 个权限点（permissions）
-  - 109 个权限点（permissions）
+  - 117 个权限点（permissions）
   - 5 个系统角色（roles: admin / tester / algo_engineer / device_admin / guest）
   - 超级通配权限 * → admin
   - tester / algo_engineer / device_admin / guest 各自的角色-权限映射
@@ -41,8 +40,7 @@ POSTGRES_URI = os.environ.get(
 
 
 # ========================================================================
-# 权限点定义（110 个）
-# 权限点定义（109 个）
+# 权限点定义（117 个）
 # ========================================================================
 
 PERMISSIONS = [
@@ -160,6 +158,10 @@ PERMISSIONS = [
     ('lab:create', '创建实验室'),
     ('lab:update', '修改实验室'),
     ('lab:delete', '删除实验室'),
+    # 站点状态 / 系统选项（INT-620：对位 newAPI /api/status、/api/option/）
+    ('status:read', '查看站点状态'),
+    ('option:read', '查看系统选项'),
+    ('option:write', '修改系统选项'),
     # SSE (1)
     ('sse:read', '订阅 SSE 事件流'),
     # 用户/角色/权限管理 (11)
@@ -230,6 +232,7 @@ TESTER_PERMS = [
     'tag:read', 'tag:create', 'tag:update', 'tag:delete',
     'log:read', 'log:manage', 'log:websocket',
     'home:read', 'home:refresh',
+    'status:read', 'option:read', 'option:write',
     'sse:read',
     'auth:login', 'auth:callback', 'auth:refresh', 'auth:logout', 'auth:me',
 ]
@@ -257,6 +260,7 @@ ALGO_ENGINEER_PERMS = [
     'tag:read',
     'log:read', 'log:websocket',
     'home:read',
+    'status:read', 'option:read',
     'sse:read',
     'auth:login', 'auth:callback', 'auth:refresh', 'auth:logout', 'auth:me',
 ]
@@ -272,6 +276,7 @@ DEVICE_ADMIN_PERMS = [
     # 实验室写权限（INT-493/INT-537：设备管理员负责物理资源组织管理；查看复用 device:read）
     'lab:create', 'lab:update', 'lab:delete',
     'home:read',
+    'status:read', 'option:read',
     'sse:read',
     'auth:login', 'auth:callback', 'auth:refresh', 'auth:logout', 'auth:me',
 ]
@@ -280,6 +285,7 @@ DEVICE_ADMIN_PERMS = [
 GUEST_PERMS = [
     'report:read', 'report:compare',
     'home:read',
+    'status:read',
     'sse:read',
     'auth:login', 'auth:callback', 'auth:refresh', 'auth:logout', 'auth:me',
 ]

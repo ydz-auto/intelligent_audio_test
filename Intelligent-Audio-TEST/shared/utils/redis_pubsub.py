@@ -60,6 +60,7 @@ class EventType(str, Enum):
     API_CONFIG_CHANGED = 'api_config_changed'          # 被测 API 配置变更（UC-0901）
     SPL_MAPPING_CONFIG_CHANGED = 'spl_mapping_config_changed'  # API RMS→SPL 映射变更（UC-0902）
     LABORATORY_CONFIG_CHANGED = 'laboratory_config_changed'  # 实验室配置变更（INT-493/INT-537）
+    SYSTEM_OPTION_CHANGED = 'system_option_changed'    # 系统选项 KV 变更（INT-620）
 
 
 # ========== Redis Pub/Sub 封装 ==========
