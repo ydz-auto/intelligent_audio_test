@@ -13,6 +13,9 @@
  *   POST   /audios/url-import               单条 URL 导入（§6.18；批量由本层循环）
  *   POST   /audios/batch/annotations        批量更新标注（§6.19）
  *   POST   /audios/batch-action             批量 action（§5.6，body { action, audio_ids }）
+ *   GET    /audios/{id}/stream              预签名 URL（§6.14 浏览器播放 + §5.3.1 下载二次取流）
+ *   POST   /audios/{id}/preview             实验室播放（BatchPlaybackRequest，§6.14）
+ *   POST   /audios/{id}/stop-preview        停止实验室播放（§6.14）
  *
  * snake_case 契约：infrastructure 是唯一 snake→camel 转换层（adapters/audioAdapter.ts），
  * application/domain 层只见 camelCase Domain，展示层不感知 wire 字段。
@@ -111,6 +114,64 @@ export async function downloadAudio(id: number): Promise<Blob> {
     responseType: 'blob',
   })
   return data instanceof Blob ? data : new Blob([data as unknown as BlobPart])
+}
+
+/**
+ * 音频流 URL（§6.14 浏览器播放）：GET /audios/{id}/stream 返回 JSON 预签名 URL
+ * （V9.7.31 契约，非裸字节流），前端 <audio> 直接以该 URL 播放。
+ */
+export async function stream(id: number): Promise<string> {
+  const result = await request<{ url?: string }>('GET', `/audios/${id}/stream`)
+  const url = result?.url
+  if (!url) throw new ApiError({ message: '获取音频播放地址失败' })
+  return url
+}
+
+/** 实验室播放载荷（BatchPlaybackRequest，api_gateway/schemas/audio.py:207；
+ * playback_device_id | playback_device_ids | device_unique_ids 三选一 + spl + offset） */
+export interface AudioPreviewPayload {
+  playbackDeviceId?: number | null
+  playbackDeviceIds?: number[]
+  deviceUniqueIds?: string[]
+  spl?: number | null
+  offset?: number
+}
+
+/** 实验室播放（POST /audios/{id}/preview → 后端扬声器播放；请求成功即设备端输出） */
+export async function preview(
+  id: number,
+  payload: AudioPreviewPayload
+): Promise<{ success: boolean; message?: string }> {
+  try {
+    await request('POST', `/audios/${id}/preview`, {
+      playback_device_id: payload.playbackDeviceId ?? undefined,
+      playback_device_ids: payload.playbackDeviceIds,
+      device_unique_ids: payload.deviceUniqueIds,
+      spl: payload.spl ?? undefined,
+      offset: payload.offset ?? 0,
+    })
+    return { success: true }
+  } catch (err) {
+    return {
+      success: false,
+      message: err instanceof ApiError ? err.userMessage : '试听启动失败，请重试',
+    }
+  }
+}
+
+/** 停止实验室播放（POST /audios/{id}/stop-preview） */
+export async function stopPreview(
+  id: number
+): Promise<{ success: boolean; message?: string }> {
+  try {
+    await request('POST', `/audios/${id}/stop-preview`)
+    return { success: true }
+  } catch (err) {
+    return {
+      success: false,
+      message: err instanceof ApiError ? err.userMessage : '停止试听失败，请重试',
+    }
+  }
 }
 
 /**
