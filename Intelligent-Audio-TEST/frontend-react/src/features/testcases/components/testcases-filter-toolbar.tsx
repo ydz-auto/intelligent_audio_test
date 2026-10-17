@@ -2,7 +2,8 @@
  * 用例筛选工具栏（11_用例域.md §3.4 DataTableToolbar 形态）：
  * 搜索（debounce 500ms）+ 分组/标签/评估维度 facet chips + 全局算法联动 chip
  * + 收藏/回收站工具条（回收站态「全部恢复」ghost 钮）+ 重置。
- * 标签 facet 按分类分组呈现（INT-487：选项组头=分类名，数据源 GET /tags/by-category）。
+ * 标签 facet 按分类分组呈现（INT-487：选项组头=分类名，数据源 GET /tags/by-category），
+ * singleSelect + Command 搜索（INT-592 裁定由多选改单选——后端 tag 参数为单值）。
  * INT-486 用例不分类型口径（负责人 2026-10-16）：测试类型 facet 移除——用例无 api/e2e 之分。
  */
 import { Check, ChevronDown, FilterX, Search, Tag } from 'lucide-react'
@@ -10,7 +11,6 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -116,31 +116,64 @@ function SingleFacet({
   )
 }
 
-/** 标签 facet（INT-487 按分类分组：选项组头=分类名 + 色点；多选 + 计数） */
+/** 标签下用例数（mock 源派生；§3.4 客户端从已加载集聚合计数 + §3.6 删除/复制级联计数，接线后随列表查询） */
+const TAG_CASE_COUNTS: Record<string, number> = (() => {
+  const m = new Map<string, number>()
+  for (const c of MOCK_TEST_CASES) {
+    for (const t of c.tags) m.set(t, (m.get(t) ?? 0) + 1)
+  }
+  return Object.fromEntries(m)
+})()
+
+/**
+ * 标签 facet（11_用例域.md §3.4/§3.6，INT-592 裁定单选）：
+ * singleSelect + Command 搜索（输入过滤标签名）+ 选项按分类分组展示
+ * （组头=分类名，数据源 GET /tags/by-category，INT-487 口径）+ 色点 +
+ * 客户端聚合计数（§3.4：/tags/by-category 未返回 count，暂从已加载集聚合）。
+ * 空态「暂无标签」；选中项再点 = 取消（清空标签筛选，与重置联动）。
+ */
 function TagFacet({
   value,
   tags,
   onChange,
 }: {
-  value: string[]
+  value: string | null
   tags: TagItem[]
-  onChange: (value: string[]) => void
+  onChange: (value: string | null) => void
 }) {
   const [open, setOpen] = useState(false)
-  const activeCount = value.length
+  const [query, setQuery] = useState('')
 
-  // 按分类分组（未分类兜底）
-  const grouped = useCallback(() => {
+  // Command 搜索过滤 + 按分类分组（未分类兜底）
+  const grouped = useMemo(() => {
+    const kw = query.trim().toLowerCase()
+    const source = kw
+      ? tags.filter(
+          (t) =>
+            t.name.toLowerCase().includes(kw) ||
+            (t.categoryName ?? '').toLowerCase().includes(kw)
+        )
+      : tags
     const map = new Map<string, TagItem[]>()
-    for (const tag of tags) {
+    for (const tag of source) {
       const key = tag.categoryName ?? '未分类'
       map.set(key, [...(map.get(key) ?? []), tag])
     }
-    return [...map.entries()].sort(([a], [b]) => (a === '未分类' ? 1 : b === '未分类' ? -1 : a.localeCompare(b, 'zh-CN')))
-  }, [tags])
+    return [...map.entries()].sort(([a], [b]) =>
+      a === '未分类' ? 1 : b === '未分类' ? -1 : a.localeCompare(b, 'zh-CN')
+    )
+  }, [tags, query])
+
+  const selectedTag = tags.find((t) => t.name === value)
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o)
+        if (!o) setQuery('')
+      }}
+    >
       <PopoverTrigger
         render={
           <Button
@@ -151,8 +184,17 @@ function TagFacet({
         }
       >
         <span className='text-muted-foreground'>标签</span>
-        {activeCount > 0 ? (
-          <Badge className='rounded-sm px-1 font-normal'>{activeCount}</Badge>
+        {selectedTag ? (
+          <span className='flex min-w-0 items-center gap-1.5'>
+            <span
+              aria-hidden='true'
+              className='size-2 shrink-0 rounded-full'
+              style={{ backgroundColor: selectedTag.color ?? '#94a3b8' }}
+            />
+            <span className='max-w-28 truncate font-medium'>
+              {selectedTag.name}
+            </span>
+          </span>
         ) : (
           <span className='max-w-28 truncate font-medium'>全部</span>
         )}
@@ -168,67 +210,98 @@ function TagFacet({
           </p>
         ) : (
           <>
+            {/* Command 搜索（§3.4：FacetedFilter singleSelect 同款） */}
+            <div className='relative mb-1'>
+              <Search
+                aria-hidden='true'
+                className='text-muted-foreground absolute top-1/2 start-2 size-3.5 -translate-y-1/2'
+              />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder='搜索标签...'
+                aria-label='搜索标签'
+                className='h-8 ps-7'
+              />
+            </div>
             <div className='border-border/60 mb-1 flex max-h-60 flex-col gap-1 overflow-y-auto'>
-              {grouped().map(([categoryName, items]) => (
-                <div key={categoryName}>
-                  <p className='text-muted-foreground px-2 pt-1 pb-0.5 text-xs font-medium'>
-                    {categoryName}
-                  </p>
-                  {items.map((tag) => {
-                    const checked = value.includes(tag.name)
-                    return (
-                      <label
-                        key={tag.id}
-                        className='hover:bg-accent flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors'
-                      >
-                        <Checkbox
-                          checked={checked}
-                          onCheckedChange={() =>
-                            onChange(
-                              checked
-                                ? value.filter((v) => v !== tag.name)
-                                : [...value, tag.name]
-                            )
-                          }
-                        />
-                        <span
-                          aria-hidden='true'
-                          className='size-2 shrink-0 rounded-full'
-                          style={{ backgroundColor: tag.color ?? '#94a3b8' }}
-                        />
-                        <span className='min-w-0 flex-1 truncate'>
-                          {tag.name}
-                        </span>
-                      </label>
-                    )
-                  })}
-                </div>
-              ))}
+              {grouped.length === 0 ? (
+                <p className='text-muted-foreground px-3 py-4 text-center text-sm'>
+                  没有找到匹配的标签
+                </p>
+              ) : (
+                grouped.map(([categoryName, items]) => (
+                  <div key={categoryName}>
+                    <p className='text-muted-foreground px-2 pt-1 pb-0.5 text-xs font-medium'>
+                      {categoryName}
+                    </p>
+                    {items.map((tag) => {
+                      const checked = value === tag.name
+                      const count = TAG_CASE_COUNTS[tag.name] ?? 0
+                      return (
+                        <button
+                          key={tag.id}
+                          type='button'
+                          onClick={() => {
+                            onChange(checked ? null : tag.name)
+                            setOpen(false)
+                            setQuery('')
+                          }}
+                          className={cn(
+                            'hover:bg-accent flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm transition-colors',
+                            checked && 'bg-accent'
+                          )}
+                        >
+                          <span
+                            aria-hidden='true'
+                            className='size-2 shrink-0 rounded-full'
+                            style={{ backgroundColor: tag.color ?? '#94a3b8' }}
+                          />
+                          <span className='min-w-0 flex-1 truncate'>
+                            {tag.name}
+                          </span>
+                          {count > 0 && (
+                            <span
+                              aria-hidden='true'
+                              className='text-muted-foreground shrink-0 text-xs tabular-nums'
+                            >
+                              {count}
+                            </span>
+                          )}
+                          {checked && (
+                            <Check
+                              aria-hidden='true'
+                              className='size-4 shrink-0'
+                            />
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                ))
+              )}
             </div>
-            <div className='border-t pt-1'>
-              <button
-                type='button'
-                className='text-muted-foreground hover:text-foreground text-xs font-medium transition-colors'
-                onClick={() => onChange([])}
-              >
-                清空选择
-              </button>
-            </div>
+            {value != null && (
+              <div className='border-t pt-1'>
+                <button
+                  type='button'
+                  className='text-muted-foreground hover:text-foreground text-xs font-medium transition-colors'
+                  onClick={() => {
+                    onChange(null)
+                    setOpen(false)
+                    setQuery('')
+                  }}
+                >
+                  清空选择
+                </button>
+              </div>
+            )}
           </>
         )}
       </PopoverContent>
     </Popover>
   )
 }
-
-/** 标签下用例数（mock 源派生；删除/复制级联计数口径 §3.6，接线后随列表查询） */
-const TAG_CASE_COUNTS: Record<string, number> = (() => {
-  const m = new Map<string, number>()
-  for (const c of MOCK_TEST_CASES) {
-    for (const t of c.tags) m.set(t, (m.get(t) ?? 0) + 1)
-  }
-  return Object.fromEntries(m)
-})()
 
 const fallbackTag = (name: string): TagItem => ({
   id: -1,
@@ -242,17 +315,17 @@ const fallbackTag = (name: string): TagItem => ({
 })
 
 /**
- * 标签操作 DropdownMenu（11_用例域.md §3.6 收编①：标签 facet 选中态后工具栏右端出现）。
- * 入口：编辑标签 / 删除标签（级联删除用例，destructive）/ 复制标签下用例；
- * 另一入口=标签管理页（§4.2）。批量已单轨收勾选浮条（§3.7.1，组头/标签下拉不再挂批量）。
- * 多标签选中态下编辑/删除语义二义 → 禁用 + Tooltip（INT-592 改单选后为防御性保留）。
+ * 标签操作 DropdownMenu（11_用例域.md §3.6 收编①：标签 facet 单选选中态后工具栏右端出现）。
+ * 三项操作逐钮按权限过滤：编辑标签（tag:update → §5.4）/ 删除标签（tag:delete，级联确认
+ * destructive）/ 复制标签下用例（testcase:copy）；批量已单轨收勾选浮条（§3.7），下拉不挂批量。
+ * 一等管理位=标签管理页（§4.2，对齐 INT-417 口径）。
  * 权限口径（§7 注 1）：写权限禁用+Tooltip；缺全部写权限时整组隐藏。
  */
 function TagActionsDropdown({
-  tagNames,
+  tagName,
   tags,
 }: {
-  tagNames: string[]
+  tagName: string
   tags: TagItem[]
 }) {
   const { hasPermission } = usePermissions()
@@ -270,10 +343,8 @@ function TagActionsDropdown({
   if (!canEdit && !canDelete && !canCopy) return null
 
   const registry = useMemo(() => new Map(tags.map((t) => [t.name, t])), [tags])
-  const primary = registry.get(tagNames[0]) ?? fallbackTag(tagNames[0])
-  const multi = tagNames.length > 1
-  const count = TAG_CASE_COUNTS[primary.name] ?? 0
-  const singleTooltip = multi ? '请先单选一个标签' : undefined
+  const tag = registry.get(tagName) ?? fallbackTag(tagName)
+  const count = TAG_CASE_COUNTS[tag.name] ?? 0
 
   const disabledItem = (reason: string, label: string) => (
     <DropdownMenuItem disabled title={reason}>
@@ -303,18 +374,15 @@ function TagActionsDropdown({
         <DropdownMenuContent align='end' className='w-44'>
           <DropdownMenuGroup>
             <DropdownMenuLabel className='truncate'>
-              标签「{primary.name}」
-              {multi && ` 等 ${tagNames.length} 个`}
+              标签「{tag.name}」
             </DropdownMenuLabel>
           </DropdownMenuGroup>
           <DropdownMenuSeparator />
           {canEdit ? (
             <DropdownMenuItem
-              disabled={multi}
-              title={singleTooltip}
               onSelect={() => {
                 setOpen(false)
-                toast.success(`编辑标签「${primary.name}」（演示）`)
+                toast.success(`编辑标签「${tag.name}」（演示）`)
               }}
             >
               编辑标签
@@ -325,11 +393,9 @@ function TagActionsDropdown({
           {canDelete ? (
             <DropdownMenuItem
               variant='destructive'
-              disabled={multi}
-              title={singleTooltip}
               onSelect={() => {
                 setOpen(false)
-                setConfirm({ kind: 'delete', tag: primary, count })
+                setConfirm({ kind: 'delete', tag, count })
               }}
             >
               删除标签
@@ -339,11 +405,9 @@ function TagActionsDropdown({
           )}
           {canCopy ? (
             <DropdownMenuItem
-              disabled={multi}
-              title={singleTooltip}
               onSelect={() => {
                 setOpen(false)
-                setConfirm({ kind: 'copy', tag: primary, count })
+                setConfirm({ kind: 'copy', tag, count })
               }}
             >
               复制标签下用例
@@ -453,9 +517,9 @@ export function TestCasesFilterToolbar({
           onChange={(v) => update({ groupId: v ?? null })}
         />
         <TagFacet
-          value={filters.tags ?? []}
+          value={filters.tag ?? null}
           tags={tags}
-          onChange={(tagNames) => update({ tags: tagNames })}
+          onChange={(tag) => update({ tag })}
         />
         <SingleFacet
           label='评估维度'
@@ -483,9 +547,9 @@ export function TestCasesFilterToolbar({
           </Button>
         )}
 
-        {/* §3.6 收编①：标签 facet 选中态后工具栏右端出现标签操作入口 */}
-        {!isTrash && (filters.tags?.length ?? 0) > 0 && (
-          <TagActionsDropdown tagNames={filters.tags ?? []} tags={tags} />
+        {/* §3.6 收编①：标签 facet 单选选中态后工具栏右端出现标签操作入口 */}
+        {!isTrash && filters.tag != null && (
+          <TagActionsDropdown tagName={filters.tag} tags={tags} />
         )}
 
         {isFiltered && (

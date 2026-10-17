@@ -17,7 +17,8 @@ export interface TestCaseListQuery {
   perPage?: number
   search?: string
   groupId?: string | null
-  tags?: string[]
+  /** 标签筛选（INT-592 单选：后端 tag 参数为单值） */
+  tag?: string | null
   dimensionId?: number | null
   algorithmType?: string | null
   favorite?: boolean
@@ -54,7 +55,7 @@ export async function fetchTestCases(
   query: TestCaseListQuery
 ): Promise<TestCaseListResult> {
   // TODO(API 接线): GET /api/v1/testcases?…
-  const { search, groupId, tags, dimensionId, favorite, trash } = query
+  const { search, groupId, tag, dimensionId, favorite, trash } = query
 
   let items = MOCK_TEST_CASES
   if (trash) items = items.filter((c) => c.deleted)
@@ -64,8 +65,8 @@ export async function fetchTestCases(
   // 未分组虚拟组（INT-249 口径）：facet 值 '__ungrouped__' → groupId 为空
   if (groupId === '__ungrouped__') items = items.filter((c) => c.groupId === null)
   else if (groupId) items = items.filter((c) => c.groupId === groupId)
-  if (tags && tags.length > 0)
-    items = items.filter((c) => tags.every((tag) => c.tags.includes(tag)))
+  // 标签单选（INT-592：后端 tag 单值，Tag.name == tag SQL join；与分组组合为交集）
+  if (tag) items = items.filter((c) => c.tags.includes(tag))
   // dimensionId 过滤：mock 按关联评估维度近似（dimension id < 5 时命中主维度集，演示用）
   if (dimensionId)
     items = items.filter((c) =>

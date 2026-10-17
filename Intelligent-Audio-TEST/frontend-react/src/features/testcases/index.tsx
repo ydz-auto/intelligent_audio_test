@@ -93,7 +93,6 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
     () =>
       Object.entries(filters).some(([key, value]) => {
         if (key === 'algorithmType') return false
-        if (Array.isArray(value)) return value.length > 0
         return value != null && value !== '' && value !== false
       }),
     [filters]

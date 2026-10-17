@@ -1,9 +1,10 @@
 /**
  * 用例筛选工具栏测试（11_用例域.md §3.4/§3.6）：
- * 搜索防抖 + facet + 收藏/回收站 + 重置；标签 facet 选中态后工具栏右端
- * 「标签操作」下拉（收编①：编辑/删除/复制标签下用例/按标签批量修改，§3.6）。
+ * 搜索防抖 + facet + 收藏/回收站 + 重置；标签 facet 单选按分类分组
+ * （INT-592 由多选改单选）+ Command 搜索 + 客户端聚合计数；选中态后
+ * 工具栏右端「标签操作」下拉（收编①：编辑/删除/复制标签下用例，§3.6）。
  */
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -43,14 +44,14 @@ const DIMENSIONS: EvaluationDimensionItem[] = [
 const tagCount = (name: string) =>
   MOCK_TEST_CASES.filter((c) => c.tags.includes(name)).length
 
-function renderToolbar(filters: Record<string, unknown> = {}) {
+function renderToolbar(filters: Record<string, unknown> = {}, tags = MOCK_TAGS) {
   const props = {
     filters: filters as never,
     onChange: vi.fn(),
     onReset: vi.fn(),
     isFiltered: false,
     groups: GROUPS,
-    tags: MOCK_TAGS,
+    tags,
     dimensions: DIMENSIONS,
     onRestoreAll: vi.fn(),
   }
@@ -71,14 +72,59 @@ describe('TestCasesFilterToolbar', () => {
     expect(screen.queryByRole('button', { name: /标签操作/ })).not.toBeInTheDocument()
   })
 
+  it('标签 facet 选项按分类分组展示（§3.4 组头=分类名）且带聚合计数', async () => {
+    const user = setupUser()
+    renderToolbar()
+    await user.click(screen.getByRole('button', { name: '标签全部' }))
+    // 组头=分类名（INT-487：GET /tags/by-category）
+    expect(screen.getByText('人数')).toBeInTheDocument()
+    expect(screen.getByText('场景')).toBeInTheDocument()
+    expect(screen.getByText('设备类型')).toBeInTheDocument()
+    // 选项计数从已加载集聚合（§3.4 客户端聚合口径）
+    const speakerOption = screen.getByRole('button', { name: '音箱' })
+    expect(within(speakerOption).getByText(String(tagCount('音箱')))).toBeInTheDocument()
+  })
+
+  it('标签 facet 单选：选中单个标签 → onChange({ tag })', async () => {
+    const user = setupUser()
+    const props = renderToolbar()
+    await user.click(screen.getByRole('button', { name: '标签全部' }))
+    await user.click(screen.getByRole('button', { name: '音箱' }))
+    expect(props.onChange).toHaveBeenCalledWith(expect.objectContaining({ tag: '音箱' }))
+  })
+
+  it('标签 facet 单选：选中标签再点 = 取消（清空标签筛选）', async () => {
+    const user = setupUser()
+    const props = renderToolbar({ tag: '音箱' })
+    await user.click(screen.getByRole('button', { name: '标签音箱' }))
+    await user.click(screen.getByRole('button', { name: '音箱' }))
+    expect(props.onChange).toHaveBeenCalledWith(expect.objectContaining({ tag: null }))
+  })
+
+  it('标签 facet Command 搜索过滤选项（§3.4）', async () => {
+    const user = setupUser()
+    renderToolbar()
+    await user.click(screen.getByRole('button', { name: '标签全部' }))
+    await user.type(screen.getByRole('textbox', { name: '搜索标签' }), '音箱')
+    expect(screen.getByRole('button', { name: '音箱' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '1人' })).not.toBeInTheDocument()
+  })
+
+  it('标签 facet 数据源为空时显示「暂无标签」（§3.4 空态）', async () => {
+    const user = setupUser()
+    renderToolbar({}, [])
+    await user.click(screen.getByRole('button', { name: '标签全部' }))
+    expect(screen.getByText('暂无标签')).toBeInTheDocument()
+  })
+
   it('§3.6 收编①：标签 facet 选中态后工具栏右端出现「标签操作」下拉', () => {
-    renderToolbar({ tags: ['音箱'] })
+    renderToolbar({ tag: '音箱' })
     expect(screen.getByRole('button', { name: /标签操作/ })).toBeInTheDocument()
   })
 
   it('删除标签 → 级联删除确认（§3.6 destructive 文案逐字 + 计数），确认后关闭', async () => {
     const user = setupUser()
-    renderToolbar({ tags: ['音箱'] })
+    renderToolbar({ tag: '音箱' })
     await user.click(screen.getByRole('button', { name: /标签操作/ }))
     await user.click(await screen.findByText('删除标签'))
     expect(
@@ -92,19 +138,10 @@ describe('TestCasesFilterToolbar', () => {
 
   it('复制标签下用例 → 确认含「同时复制到新分组」Checkbox', async () => {
     const user = setupUser()
-    renderToolbar({ tags: ['音箱'] })
+    renderToolbar({ tag: '音箱' })
     await user.click(screen.getByRole('button', { name: /标签操作/ }))
     await user.click(await screen.findByText('复制标签下用例'))
     expect(screen.getByText(/复制后将生成新标签：音箱_copy/)).toBeInTheDocument()
     expect(screen.getByText('同时复制到新分组')).toBeInTheDocument()
-  })
-
-  it('多标签选中时编辑/删除禁用（Tooltip「请先单选一个标签」）', async () => {
-    const user = setupUser()
-    renderToolbar({ tags: ['音箱', '中文'] })
-    await user.click(screen.getByRole('button', { name: /标签操作/ }))
-    const editItem = await screen.findByText('编辑标签')
-    expect(editItem).toHaveAttribute('data-disabled')
-    expect(editItem).toHaveAttribute('title', '请先单选一个标签')
   })
 })

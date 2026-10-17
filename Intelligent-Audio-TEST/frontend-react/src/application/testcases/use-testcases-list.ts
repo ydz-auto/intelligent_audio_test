@@ -16,7 +16,8 @@ import type { TestCasesViewKey } from '@/features/testcases/constants'
 export interface TestCaseListFilters {
   search?: string
   groupId?: string | null
-  tags?: string[]
+  /** 标签筛选（INT-592 单选：后端 tag 参数为单值，Tag.name == tag SQL join） */
+  tag?: string | null
   dimensionId?: number | null
   favorite?: boolean
   trash?: boolean
@@ -37,7 +38,7 @@ export function useTestCasesList(
       const query: TestCaseListQuery = {
         search: filters.search,
         groupId: filters.groupId,
-        tags: filters.tags,
+        tag: filters.tag,
         dimensionId: filters.dimensionId,
         favorite: filters.favorite,
         trash: filters.trash,
