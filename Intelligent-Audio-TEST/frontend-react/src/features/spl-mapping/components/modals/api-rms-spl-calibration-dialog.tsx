@@ -168,9 +168,9 @@ export function ApiRmsSplCalibrationDialog(props: ApiRmsSplCalibrationDialogProp
       toast.success('校准完成：校准点已落库并置为已校准')
       props.onOpenChange(false)
     } catch (err) {
-      // 409：同 API 并发校准互斥（§6.10；mock 阶段走成功路径，接线后由后端返 409）。
+      // 409：同 API 并发校准互斥（§6.10；接线后由后端返 409，ApiError.httpStatus 承载）。
       // 仅 409（分布式锁冲突）用该文案，其他失败用通用文案避免误导（审计 P3-2）
-      const status = (err as { status?: number })?.status
+      const status = (err as { httpStatus?: number | null })?.httpStatus
       toast.error(
         status === 409
           ? '校准失败（409）：API 正在执行校准，请稍后重试'

@@ -88,13 +88,7 @@ export function useSplMutations() {
   })
 
   const calibrate = useMutation({
-    mutationFn: ({
-      id,
-      points,
-    }: {
-      id: number
-      points: Array<{ spl: number; gainOffset: number }>
-    }) => calibrateSplMapping(id, points),
+    mutationFn: ({ id }: { id: number }) => calibrateSplMapping(id),
     onSuccess: invalidate,
   })
 

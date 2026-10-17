@@ -1,167 +1,138 @@
 /**
- * 物理域 SPL 映射 API 桩（infrastructure 层；16_设备域.md §10 组件树落位）。
- * 红线④：全部返回 mock 常量（spl-mock），接线时替换为真实请求：
- *   GET    /api/v1/spl                            列表（keyword/calibration_status/device_id/page/per_page）
- *   GET    /api/v1/spl/stats                       统计（SplStatsData 四字段）
- *   GET    /api/v1/spl/{id}                        详情
- *   GET    /api/v1/spl/{id}/history                校准历史（SplHistoryItem）
- *   POST   /api/v1/spl                             新增映射
- *   PUT    /api/v1/spl/{id}                        编辑映射（距离/频率变更重置校准，§6.7）
- *   DELETE /api/v1/spl/{id}                        删除映射
- *   POST   /api/v1/spl/{id}/calibrate              执行校准（现状后端为模拟校准，§11-12）
- *   GET    /api/v1/playback-devices                关联播放设备 facet 选项
+ * 物理域 SPL 映射真实 API（infrastructure/api 层；16_设备域.md §10 组件树落位，接线卡 INT-649）。
+ * 经基座 client.ts 统一 fetch（INT-605）：baseURL /api/v1、JWT 注入、错误码归一。
+ * 契约对照 api_gateway/routes/spl_bp.py + schemas/spl.py 实测：
+ *   GET    /spl                            列表（keyword/calibration_status/device_id/page/per_page）
+ *   GET    /spl/stats                       统计（SplStatsData）
+ *   GET    /spl/{id}                        详情
+ *   GET    /spl/{id}/history                校准历史（SplHistoryData items+total）
+ *   POST   /spl                             新增映射（SPLMappingCreateRequest → IdData）
+ *   PUT    /spl/{id}                        编辑映射（SPLMappingUpdateRequest；距离/频率变更重置校准在 feature 内处理）
+ *   DELETE /spl/{id}                        删除映射
+ *   POST   /spl/{id}/calibrate              执行校准（现状后端为模拟校准 §11-12，请求体忽略，返回 SplCalibrationResult）
+ *   GET    /playback-devices                关联播放设备 facet 选项（分页信封，取 items 子集）
+ * 列表接口返回分页信封；页面为前端过滤分页（§4.2「接线后 URL 态化」前保持全量取回）。
  */
+import { request, type ApiRequestOptions } from '@/infrastructure/api/client'
 import type {
   PlaybackDeviceRef,
   SplHistoryItem,
   SplMapping,
   SplStats,
 } from '@/domain/models/splMapping'
+import type {
+  SplCalibrationResultDto,
+  SplHistoryDto,
+  SplMappingListDto,
+  SplStatsDto,
+} from '@/infrastructure/dto/spl.dto'
+import type { PlaybackDeviceItemDto } from '@/infrastructure/dto/playback-device.dto'
 import {
-  MOCK_PLAYBACK_DEVICE_REFS,
-  MOCK_SPL_HISTORY,
-  MOCK_SPL_MAPPINGS,
-  MOCK_SPL_STATS,
-} from '../mock/spl-mock'
+  playbackDeviceRefFromPlaybackDto,
+  splCalibrationResultFromDto,
+  splHistoryItemFromDto,
+  splMappingCreateRequestFromDomain,
+  splMappingFromDto,
+  splMappingUpdateRequestFromDomain,
+  splStatsFromDto,
+} from '@/infrastructure/adapters/splAdapter'
 
-/** 模拟网络延迟（视觉稿演示用；接线后删除） */
-function mockLatency<T>(value: T, ms = 180): Promise<T> {
-  return new Promise((resolve) => setTimeout(() => resolve(value), ms))
-}
+/** 物理域全量取回分页上限（后端无钳制；页面前端过滤分页） */
+const SPL_LIST_PAGE_SIZE = 1000
+/** 播放设备 facet 全量取回分页上限 */
+const PLAYBACK_DEVICE_PAGE_SIZE = 1000
 
-/** mock 内存库（页面内增删改操作在运行时可变） */
-let splStore: SplMapping[] = [...MOCK_SPL_MAPPINGS]
-let historyStore: SplHistoryItem[] = [...MOCK_SPL_HISTORY]
-
-/** 新 id（mock 阶段自增；接线后走后端自增） */
-let nextSplId = 1000
-function freshId(): number {
-  nextSplId += 1
-  return nextSplId
-}
-
-/** 当前 mock 内存库（供 feature 内读取；接线后删除） */
-export function peekSplMappings(): SplMapping[] {
-  return splStore
-}
-
-/** 列表（§4.2；GET /spl；mock 阶段全量返回，前端过滤分页） */
-export async function fetchSplMappings(): Promise<SplMapping[]> {
-  // TODO(API 接线): GET /api/v1/spl
-  return mockLatency([...splStore])
-}
-
-/** 统计（§4.1.2；GET /spl/stats，SplStatsData） */
-export async function fetchSplStats(): Promise<SplStats> {
-  // TODO(API 接线): GET /api/v1/spl/stats
-  const calibrated = splStore.filter((m) => m.calibrationStatus === 'calibrated').length
-  return mockLatency({
-    ...MOCK_SPL_STATS,
-    total: splStore.length,
-    calibrated,
-    uncalibrated: splStore.length - calibrated,
-    associatedDevices: new Set(splStore.map((m) => m.deviceId).filter((id): id is number => id != null)).size,
+/** 列表（§4.2；GET /spl → SplMappingListDto，取 items 映射为 SplMapping[]） */
+export async function fetchSplMappings(
+  options: ApiRequestOptions = {}
+): Promise<SplMapping[]> {
+  const dto = await request<SplMappingListDto>('GET', '/spl', undefined, {
+    ...options,
+    params: { page: 1, per_page: SPL_LIST_PAGE_SIZE },
   })
+  return (dto?.items ?? []).map(splMappingFromDto)
 }
 
-/** 关联播放设备 facet 选项（§4.1.1；GET /playback-devices） */
-export async function fetchPlaybackDeviceRefs(): Promise<PlaybackDeviceRef[]> {
-  // TODO(API 接线): GET /api/v1/playback-devices
-  return mockLatency([...MOCK_PLAYBACK_DEVICE_REFS])
+/** 统计（§4.1.2；GET /spl/stats → SplStatsData） */
+export async function fetchSplStats(
+  options: ApiRequestOptions = {}
+): Promise<SplStats> {
+  const dto = await request<SplStatsDto>('GET', '/spl/stats', undefined, options)
+  return splStatsFromDto(dto)
 }
 
-/** 校准历史（§6.9；GET /spl/{id}/history） */
-export async function fetchSplHistory(_id: number): Promise<SplHistoryItem[]> {
-  // TODO(API 接线): GET /api/v1/spl/{id}/history
-  return mockLatency([...historyStore])
+/** 关联播放设备 facet 选项（§4.1.1；GET /playback-devices → items 映射为 PlaybackDeviceRef[]） */
+export async function fetchPlaybackDeviceRefs(
+  options: ApiRequestOptions = {}
+): Promise<PlaybackDeviceRef[]> {
+  const dto = await request<{ items: PlaybackDeviceItemDto[]; total: number }>(
+    'GET',
+    '/playback-devices',
+    undefined,
+    { ...options, params: { page: 1, per_page: PLAYBACK_DEVICE_PAGE_SIZE } }
+  )
+  return (dto?.items ?? []).map(playbackDeviceRefFromPlaybackDto)
 }
 
-/** 新增映射（§6.7；POST /spl；deviceName/deviceModel 由关联播放设备派生） */
+/** 校准历史（§6.9；GET /spl/{id}/history → SplHistoryData，取 items 映射） */
+export async function fetchSplHistory(
+  id: number,
+  options: ApiRequestOptions = {}
+): Promise<SplHistoryItem[]> {
+  const dto = await request<SplHistoryDto>(
+    'GET',
+    `/spl/${id}/history`,
+    undefined,
+    options
+  )
+  return (dto?.items ?? []).map(splHistoryItemFromDto)
+}
+
+/** 新增映射（§6.7；POST /spl；deviceName/deviceModel 由后端按 device_id 关联派生，返回 IdData） */
 export async function createSplMapping(
-  input: Omit<SplMapping, 'id' | 'createdAt' | 'updatedAt' | 'deviceName' | 'deviceModel'>
-): Promise<SplMapping> {
-  // TODO(API 接线): POST /api/v1/spl
-  const now = new Date().toISOString()
-  const device = MOCK_PLAYBACK_DEVICE_REFS.find((d) => d.id === input.deviceId)
-  const mapping: SplMapping = {
-    ...input,
-    deviceName: device?.name ?? null,
-    deviceModel: device?.model ?? null,
-    id: freshId(),
-    createdAt: now,
-    updatedAt: now,
-  }
-  splStore = [mapping, ...splStore]
-  return mockLatency(mapping, 160)
+  input: Omit<
+    SplMapping,
+    'id' | 'createdAt' | 'updatedAt' | 'deviceName' | 'deviceModel'
+  >,
+  options: ApiRequestOptions = {}
+): Promise<{ id: number }> {
+  const body = splMappingCreateRequestFromDomain(input)
+  const dto = await request<{ id: number }>('POST', '/spl', body, options)
+  return { id: dto?.id ?? 0 }
 }
 
 /** 编辑映射（§6.7；PUT /spl/{id}；距离/频率变更重置为未校准在 feature 内处理） */
 export async function updateSplMapping(
   id: number,
-  patch: Partial<SplMapping>
-): Promise<SplMapping | undefined> {
-  // TODO(API 接线): PUT /api/v1/spl/{id}
-  const target = splStore.find((m) => m.id === id)
-  if (!target) return mockLatency(undefined, 80)
-  const updated: SplMapping = {
-    ...target,
-    ...patch,
-    updatedAt: new Date().toISOString(),
-  }
-  splStore = splStore.map((m) => (m.id === id ? updated : m))
-  return mockLatency(updated, 120)
+  patch: Partial<SplMapping>,
+  options: ApiRequestOptions = {}
+): Promise<void> {
+  const body = splMappingUpdateRequestFromDomain(patch)
+  await request('PUT', `/spl/${id}`, body, options)
 }
 
-/** 删除映射（§4.2.1；DELETE /spl/{id}） */
+/** 删除映射（§4.2.1；DELETE /spl/{id}；成功返回 success=true，失败由 ApiError 承载） */
 export async function deleteSplMapping(
-  id: number
+  id: number,
+  options: ApiRequestOptions = {}
 ): Promise<{ success: boolean; message?: string }> {
-  // TODO(API 接线): DELETE /api/v1/spl/{id}
-  const target = splStore.find((m) => m.id === id)
-  if (!target) return mockLatency({ success: false, message: '映射不存在' }, 80)
-  splStore = splStore.filter((m) => m.id !== id)
-  return mockLatency({ success: true }, 120)
+  await request('DELETE', `/spl/${id}`, undefined, options)
+  return { success: true }
 }
 
-/** 执行校准（§4.2.1；POST /spl/{id}/calibrate；现状后端为模拟校准 §11-12） */
+/** 执行校准（§4.2.1；POST /spl/{id}/calibrate；现状后端为模拟校准 §11-12，请求体忽略） */
 export async function calibrateSplMapping(
   id: number,
-  points: Array<{ spl: number; gainOffset: number }>
+  options: ApiRequestOptions = {}
 ): Promise<{ success: boolean; calibrationStatus: string; message?: string }> {
-  // TODO(API 接线): POST /api/v1/spl/{id}/calibrate
-  const target = splStore.find((m) => m.id === id)
-  if (!target) return mockLatency({ success: false, calibrationStatus: 'uncalibrated', message: '映射不存在' }, 80)
-  const updated: SplMapping = {
-    ...target,
-    calibrationStatus: 'calibrated',
-    calibrationData: {
-      points: points.map((p) => ({
-        spl: p.spl,
-        gainOffset: p.gainOffset,
-        digitalGain: p.gainOffset,
-        baseLevel: -30,
-        finalLevel: -30 + (p.gainOffset ?? 0),
-      })),
-    },
-    updatedAt: new Date().toISOString(),
-  }
-  splStore = splStore.map((m) => (m.id === id ? updated : m))
-  historyStore = [
-    {
-      id: freshId(),
-      calibrationData: updated.calibrationData,
-      distance: updated.distance,
-      testFrequency: updated.testFrequency,
-      createdAt: updated.updatedAt,
-    },
-    ...historyStore,
-  ]
-  return mockLatency({ success: true, calibrationStatus: 'calibrated' }, 200)
+  const dto = await request<SplCalibrationResultDto>(
+    'POST',
+    `/spl/${id}/calibrate`,
+    undefined,
+    options
+  )
+  return splCalibrationResultFromDto(dto)
 }
 
-/** 供测试清理内存库（vitest 用例内独立初始化） */
-export function __resetSplMock(): void {
-  splStore = [...MOCK_SPL_MAPPINGS]
-  historyStore = [...MOCK_SPL_HISTORY]
-  nextSplId = 1000
-}
+/** 供测试/组件读取用的类型重导出（domain 模型口径一致） */
+export type { PlaybackDeviceRef, SplHistoryItem, SplMapping, SplStats }
