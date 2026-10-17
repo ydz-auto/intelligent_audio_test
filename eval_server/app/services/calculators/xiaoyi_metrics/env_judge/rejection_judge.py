@@ -821,7 +821,8 @@ def _text_judgment_fields(timing: str, behavior: str, reason: str) -> Dict[str, 
 def evaluate_rejection_judge_text(user_wav: str, ai_wav: str, model: str = '',
                                   max_tokens: Optional[int] = None,
                                   temperature: Optional[float] = None,
-                                  has_intent: bool = True) -> Dict[str, Any]:
+                                  has_intent: bool = True,
+                                  configured_rounds: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """文本模态整体拒识裁判：最终轮双路 wav → ASR 全时间线 → 轮次切分 → 一次 LLM 逐轮判定。
 
     Args:
@@ -851,6 +852,34 @@ def evaluate_rejection_judge_text(user_wav: str, ai_wav: str, model: str = '',
         return {'enabled': False, 'message': '用户侧 ASR 无词级结果，无法轮次切分', 'rounds': []}
     if not model_chunks:
         return {'enabled': False, 'message': '模型侧 ASR 无词级结果', 'rounds': []}
+
+    if configured_rounds is not None:
+        from .rejection_rounds_v3 import build_packet, judge
+        try:
+            packet = build_packet(user_chunks, model_chunks, configured_rounds)
+            rows, response = judge(packet, call_llm_api, model, max_tokens, temperature)
+        except Exception as exc:
+            logger.exception('[reject_judge_rounds_v3] 轮次裁判失败')
+            return {'enabled': False, 'message': f'LLM 输出解析失败/轮次校验失败: {exc}', 'rounds': []}
+        judged = []
+        ordinal = 0
+        for row in rows:
+            if not row['evaluate_rejection']:
+                continue
+            ordinal += 1
+            if row['evaluation_status'] == 'evaluated':
+                item = _text_judgment_fields(row['timing'], row['behavior'], row['reason'])
+            else:
+                item = {'evaluation_status': 'unjudgeable', 'behavior': None, 'rate': None,
+                        'message': '不可判定: ' + row['reason']}
+            item.update(row)
+            item['round'] = ordinal
+            judged.append(item)
+        return {'enabled': True, 'model': model, 'rounds': judged,
+                'round_alignment': rows, 'prompt_version': 'rounds_v3',
+                'tokens_used': response.get('tokens_used', 0),
+                'input_token': response.get('input_token', 0),
+                'output_token': response.get('output_token', 0), 'message': 'OK'}
 
     from app.services.calculators.xiaoyi_metrics.interruptibility.interruption import (
         _to_segments, USER_SEG_MERGE_GAP_S, MODEL_SEG_MERGE_GAP_S,

@@ -278,12 +278,23 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
         llm_config = self._extract_llm_config(task_params, last)
         first = rounds[0] if rounds and isinstance(rounds[0], dict) else {}
         has_intent = not self._is_reject_round(task_params, first)
+        # 明确传递原始轮号及全部轮角色；不再依赖ASR停顿切段后顺序映射。
+        configured_rounds = []
+        for i, rd in enumerate(rounds):
+            if not isinstance(rd, dict):
+                continue
+            configured_rounds.append({
+                'configured_round_number': self._per_round_number(task_params, rd, i),
+                'evaluate_rejection': self._is_reject_round(task_params, rd),
+                'script_text': rd.get('query') if isinstance(rd.get('query'), str) else None,
+            })
         judged = evaluate_rejection_judge_text(
             user_wav=user_wav, ai_wav=ai_wav,
             model=llm_config['model'],
             # 文本裁判一次处理整条时间线，输出轮次判定，放宽 max_tokens 防截断
             max_tokens=max(int(llm_config['max_tokens'] or 0), 8192),
             temperature=llm_config['temperature'], has_intent=has_intent,
+            configured_rounds=configured_rounds,
         )
         judged_items = sorted(judged.get('rounds') or [], key=lambda j: j.get('round', 0))
 
@@ -306,6 +317,12 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
                     'message': '未检测到对应拒识干扰(无文本段)，不计入统计',
                 })
                 continue
+            if j.get('evaluation_status') == 'unjudgeable':
+                per_round.append({'round_number': rn, 'rate': None,
+                                  'evaluation_status': 'unjudgeable',
+                                  'round_id': j.get('round_id'),
+                                  'message': j.get('message'), 'reason': j.get('reason')})
+                continue
             item = dict(j)
             item['round_number'] = rn
             for field in _SUM_FIELDS:
@@ -317,9 +334,12 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
         if not reject_results:
             return {
                 'enabled': True,
-                'message': judged.get('message') or '未检测到拒识干扰',
+                'message': ('所有拒识轮不可判定' if any(r.get('evaluation_status') == 'unjudgeable' for r in per_round) else judged.get('message') or '未检测到拒识干扰'),
                 'rate': None,
                 'per_round': per_round,
+                'round_alignment': judged.get('round_alignment', []),
+                'prompt_version': judged.get('prompt_version', ''),
+                'n_unjudgeable_rounds': sum(r.get('evaluation_status') == 'unjudgeable' for r in per_round),
             }
 
         # 聚合（与 _calculate_per_round 同构：数量 + 占比 + count 合并）
@@ -349,6 +369,9 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
         agg['input_token'] = sum(r.get('input_token', 0) for r in reject_results)
         agg['output_token'] = sum(r.get('output_token', 0) for r in reject_results)
         agg['model'] = judged.get('model', '')
+        agg['round_alignment'] = judged.get('round_alignment', [])
+        agg['prompt_version'] = judged.get('prompt_version', '')
+        agg['n_unjudgeable_rounds'] = sum(r.get('evaluation_status') == 'unjudgeable' for r in per_round)
         agg['message'] = judged.get('message') or 'OK'
         agg['per_round'] = per_round
         logger.info(
