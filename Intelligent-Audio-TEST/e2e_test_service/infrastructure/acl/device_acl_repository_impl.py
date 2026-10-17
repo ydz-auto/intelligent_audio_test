@@ -126,13 +126,17 @@ class DeviceAclRepositoryImpl(DeviceAclRepository):
         initialize False 等原因必须可达调用方，不得吞成 bool 掩盖）。
         """
         from shared.clients.grpc_clients import get_device_service_stub
+        from shared.infrastructure.config import BaseConfig
         from shared.proto import device_service_pb2 as device_pb
         try:
             stub = get_device_service_stub()
+            # 显式放宽 deadline（INT-616）：CreateDriver 按 action 分发，post_process
+            # 含回复等待（BASE_REPLY_END_TIMEOUT=60s）+ 录屏收尾，pre_process 含唤醒/
+            # 解锁/录屏启动——结构性可超默认 60s deadline；显式传长 deadline 不依赖全局默认。
             resp = stub.CreateDriver(device_pb.CreateDriverRequest(
                 task_id=str(task_id),
                 device_config=json.dumps(device_config),
-            ))
+            ), timeout=BaseConfig.GRPC_DEVICE_OP_DEADLINE_SECONDS)
         except Exception as e:
             logger.error("create_driver 失败: %s", e)
             raise
@@ -150,13 +154,16 @@ class DeviceAclRepositoryImpl(DeviceAclRepository):
         失败语义与 create_driver 一致（上抛异常携带真因）。
         """
         from shared.clients.grpc_clients import get_device_service_stub
+        from shared.infrastructure.config import BaseConfig
         from shared.proto import device_service_pb2 as device_pb
         try:
             stub = get_device_service_stub()
+            # 显式放宽 deadline（INT-616）：initialize 在真机上执行 hypium/UI RPC，
+            # 慢设备可逼近默认 60s deadline；显式传长 deadline 避免误杀合法慢初始化。
             resp = stub.CreateDriver(device_pb.CreateDriverRequest(
                 task_id=str(task_id),
                 device_config=json.dumps(device_config),
-            ))
+            ), timeout=BaseConfig.GRPC_DEVICE_OP_DEADLINE_SECONDS)
         except Exception as e:
             logger.error("initialize_driver 失败: %s", e)
             raise

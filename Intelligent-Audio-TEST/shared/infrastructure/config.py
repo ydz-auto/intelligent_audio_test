@@ -170,6 +170,13 @@ class BaseConfig:
     # SendRound 同步执行被测请求：deadline = 请求单轮上限（request.timeout，
     # 即 session_timeout，默认 60s）+ 本余量；余量覆盖适配器渲染/序列化/网络开销。
     GRPC_SENDROUND_DEADLINE_MARGIN_SECONDS: int = _get_int('GRPC_SENDROUND_DEADLINE_MARGIN_SECONDS', 30)
+    # 设备长时操作 gRPC 显式 deadline（INT-616）：device_service 侧 post_process
+    # 含回复等待（BASE_REPLY_END_TIMEOUT 默认 60s）+ 录屏收尾，initialize/pre_process
+    # 含 UI RPC/唤醒解锁，CollectResult(mode=round) 含 OSS 上传——均结构性可超默认
+    # deadline（60s），默认 deadline 与之相等会竞态击杀合法慢轮次（真机走查实测
+    # post_process 60,016ms 被 DEADLINE_EXCEEDED 掐断）。已知长耗时设备操作调用点
+    # 显式传本值；其余调用维持默认 deadline（INT-54 防假死悬挂的失败收敛路径不变）。
+    GRPC_DEVICE_OP_DEADLINE_SECONDS: int = _get_int('GRPC_DEVICE_OP_DEADLINE_SECONDS', 180)
 
     # --- 回收站保留期（INT-141）：软删除记录保留天数，过期由各服务
     # SoftDeleteCleaner 守护线程硬清理（定时调度走既有执行引擎/守护线程，

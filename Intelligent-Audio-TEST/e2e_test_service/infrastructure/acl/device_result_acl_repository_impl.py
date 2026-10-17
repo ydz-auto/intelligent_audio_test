@@ -47,6 +47,7 @@ class DeviceResultAclRepositoryImpl(DeviceResultAclRepository):
                         **kwargs) -> List[CollectedResultDTO]:
         """采集设备原始结果"""
         from shared.clients.grpc_clients import get_device_result_service_stub
+        from shared.infrastructure.config import BaseConfig
         from shared.proto import device_service_pb2 as device_pb
         try:
             stub = get_device_result_service_stub()
@@ -69,10 +70,13 @@ class DeviceResultAclRepositoryImpl(DeviceResultAclRepository):
                 'extra_params': extra_params,
                 'kwargs': {k: v for k, v in kwargs.items() if k != 'mode'},
             }
+            # 显式放宽 deadline（INT-616）：CollectResult(mode=round) 内含
+            # driver.get_results（录屏拉取/转码/OSS 上传），大文件慢链路可超默认
+            # 60s deadline；显式传长 deadline 避免误杀合法慢采集轮次。
             resp = stub.CollectResult(device_pb.CollectResultRequest(
                 task_id=str(task_id),
                 collect_config=json.dumps(collect_config, default=str),
-            ))
+            ), timeout=BaseConfig.GRPC_DEVICE_OP_DEADLINE_SECONDS)
             if not resp.success or not resp.data:
                 return []
             result = json.loads(resp.data)

@@ -273,3 +273,75 @@ class TestExplicitLongCallSites:
             _execute_e2e_case_via_grpc,
         )
         assert _execute_e2e_case_via_grpc(1, 2) is False
+
+    # --- INT-616：设备长时操作（post_process/initialize/CollectResult mode=round）
+    # 显式传 GRPC_DEVICE_OP_DEADLINE_SECONDS，不落入默认 60s deadline ---
+
+    def test_create_driver_passes_explicit_device_op_deadline(self, monkeypatch):
+        """post_process/pre_process/teardown 共用 CreateDriver 调用点，必须显式放宽。
+        真机走查：post_process 回复等待 60s == 默认 deadline 60s → DEADLINE_EXCEEDED。
+        """
+        import types
+
+        import shared.clients.grpc_clients as gc
+
+        captured = {}
+
+        class _Stub:
+            def CreateDriver(self, request, **kwargs):
+                captured.update(kwargs)
+                return types.SimpleNamespace(success=True, message='ok', data='{}')
+
+        monkeypatch.setattr(gc, 'get_device_service_stub', lambda: _Stub())
+        from e2e_test_service.infrastructure.acl.device_acl_repository_impl import (
+            DeviceAclRepositoryImpl,
+        )
+        assert DeviceAclRepositoryImpl().create_driver('t1', [{'action': 'post_process'}]) is True
+        assert captured['timeout'] == BaseConfig.GRPC_DEVICE_OP_DEADLINE_SECONDS
+        # 显式 deadline 必须严格大于默认 deadline（60s），否则慢回复仍被掐断
+        assert captured['timeout'] > BaseConfig.GRPC_CLIENT_DEADLINE_SECONDS
+
+    def test_initialize_driver_passes_explicit_device_op_deadline(self, monkeypatch):
+        """initialize 在真机上执行 hypium/UI RPC，慢设备可逼近默认 60s deadline。"""
+        import types
+
+        import shared.clients.grpc_clients as gc
+
+        captured = {}
+
+        class _Stub:
+            def CreateDriver(self, request, **kwargs):
+                captured.update(kwargs)
+                return types.SimpleNamespace(success=True, message='ok', data='{}')
+
+        monkeypatch.setattr(gc, 'get_device_service_stub', lambda: _Stub())
+        from e2e_test_service.infrastructure.acl.device_acl_repository_impl import (
+            DeviceAclRepositoryImpl,
+        )
+        assert DeviceAclRepositoryImpl().initialize_driver('t1', [{'action': 'initialize'}]) == {}
+        assert captured['timeout'] == BaseConfig.GRPC_DEVICE_OP_DEADLINE_SECONDS
+        assert captured['timeout'] > BaseConfig.GRPC_CLIENT_DEADLINE_SECONDS
+
+    def test_collect_results_passes_explicit_device_op_deadline(self, monkeypatch):
+        """CollectResult(mode=round) 含 driver.get_results（录屏拉取/OSS 上传），
+        大文件慢链路可超默认 60s deadline。"""
+        import types
+
+        import shared.clients.grpc_clients as gc
+
+        captured = {}
+
+        class _Stub:
+            def CollectResult(self, request, **kwargs):
+                captured.update(kwargs)
+                return types.SimpleNamespace(success=True, message='ok',
+                                             data='{"results": []}')
+
+        monkeypatch.setattr(gc, 'get_device_result_service_stub', lambda: _Stub())
+        from e2e_test_service.infrastructure.acl.device_result_acl_repository_impl import (
+            DeviceResultAclRepositoryImpl,
+        )
+        assert DeviceResultAclRepositoryImpl().collect_results(
+            't1', 'c1', [{'device_id': 1}], {}, mode='round') == []
+        assert captured['timeout'] == BaseConfig.GRPC_DEVICE_OP_DEADLINE_SECONDS
+        assert captured['timeout'] > BaseConfig.GRPC_CLIENT_DEADLINE_SECONDS
