@@ -156,7 +156,7 @@ export function BatchAlgoParamsDialog({
     resetValue: resetParams,
   } = usePerRoundValue<Record<string, string | boolean>>({}, scope)
 
-  const handleAlgorithmChange = (v: string | undefined) => {
+  const handleAlgorithmChange = (v: string | null) => {
     setAlgorithmType(v ?? '')
     resetParams()
   }

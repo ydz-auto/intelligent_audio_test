@@ -6,7 +6,6 @@
 import { useQuery } from '@tanstack/react-query'
 
 import { authApi } from '@/infrastructure/api/authApi'
-import { AUTH_MODE } from '@/domain/models/auth'
 
 /** 认证模式枚举单一来源在 domain/models/auth.ts（auth-store 守卫判 off 同源引用） */
 export { AUTH_MODE } from '@/domain/models/auth'

@@ -31,10 +31,6 @@ const devUser = {
   permissions: ['*'],
 }
 
-type BeforeLoadCtx = {
-  location: { href: string }
-}
-
 /** 守卫抛出的 redirect 为 Response(307)，目标落在 options.to */
 function redirectTarget(err: unknown): unknown {
   const options = (err as { options?: { to?: string } }).options
@@ -42,9 +38,11 @@ function redirectTarget(err: unknown): unknown {
 }
 
 function runGuard() {
-  return AuthenticatedRoute.options.beforeLoad?.({
+  const beforeLoad = AuthenticatedRoute.options.beforeLoad
+  if (!beforeLoad) return Promise.resolve(undefined)
+  return beforeLoad({
     location: { href: '/dashboard' },
-  } as BeforeLoadCtx) as Promise<unknown>
+  } as Parameters<typeof beforeLoad>[0]) as Promise<unknown>
 }
 
 describe('_authenticated 守卫 AUTH_MODE=off 放行', () => {
