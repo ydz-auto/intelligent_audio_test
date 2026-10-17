@@ -1,16 +1,17 @@
 /**
- * 用例列表/详情 API 桩（infrastructure 层，11_用例域.md §3.3）。
- * 全部返回 mock 常量（红线④），接线时替换为真实请求：
- *   GET /api/v1/testcases（testcase.py TestCaseListQuery：page/per_page/keyword/tag/group_id/
- *       algorithm_type/view/include_deleted/favorite/only_deleted/dimension_id；
- *       type 为残留参数——INT-486 用例不分类型口径前端不再发送）
- *   GET /api/v1/testcases/{id}            （TestCaseDetailData）
- *   GET /api/v1/testcases/stats           （TestCaseStatsData）
- * 本桩在 application 层 use-testcases-list 分发：view=by-group 走 fetchCaseGroupView（分组行聚合），
- * view=by-tag 走 fetchTagGroupView（后端 view=tag 契约保留，前端拍平为行集合）。
+ * 用例列表 API（infrastructure/api 层；接线 INT-639，经统一 client.ts）。
+ * 对照后端 api_gateway/routes/testcase_bp.py + schemas/testcase.py TestCaseListQuery：
+ *   GET /api/v1/testcases?page&per_page&keyword&tag&group_id&algorithm_type&
+ *       favorite&only_deleted&dimension_id&type（INT-486 口径：前端不再发送 type）
+ * 普通视图返回 TestCaseListData（PaginatedData 内 TestCaseListItem snake_case）；
+ * view=tag 为后端契约保留项（Vue 端用），本前端标签视图由平铺行按 tag 客户端聚合
+ * （11_用例域.md §3.6），故一律走普通列表（不传 view）。
+ * snake→camel 转换收敛在 adapters/dto；application/domain 层只见 camelCase Domain。
  */
+import { apiClient } from './client'
 import type { TestCaseListItem } from '@/domain/models/testCase'
-import { MOCK_TEST_CASES } from '../mock/testcases-mock'
+import { testCaseListItemFromDto } from '@/infrastructure/adapters/testCaseAdapter'
+import type { TestCaseListDataDto } from '@/infrastructure/dto/testcase.dto'
 
 export interface TestCaseListQuery {
   page?: number
@@ -23,7 +24,7 @@ export interface TestCaseListQuery {
   algorithmType?: string | null
   favorite?: boolean
   trash?: boolean
-  /** 分组聚合 / 标签聚合视图 */
+  /** 分组聚合 / 标签聚合视图（前端拍平；后端 view=tag 契约不消费，见文件头） */
   view?: string | null
 }
 
@@ -32,62 +33,47 @@ export interface TestCaseListResult {
   total: number
 }
 
-/** 模拟网络延迟（视觉稿演示用；接线后删除） */
-function mockLatency<T>(value: T): Promise<T> {
-  return new Promise((resolve) => setTimeout(() => resolve(value), 120))
-}
-
-/** 行级过滤（用例名称/描述/标签 LIKE，对齐 TestCaseListQuery.keyword 语义） */
-function matchKeyword(item: TestCaseListItem, keyword: string): boolean {
-  const kw = keyword.trim().toLowerCase()
-  return (
-    item.name.toLowerCase().includes(kw) ||
-    (item.description ?? '').toLowerCase().includes(kw) ||
-    item.tags.some((tag) => tag.toLowerCase().includes(kw))
-  )
-}
+/** 列表页当前为客户端懒加载分页（§3.3「已显示 n / 总 条 · 加载更多」），拉大页供前端切分 */
+const LIST_PAGE_SIZE = 100
 
 /**
- * 用例列表（mock 不做服务端分页，返回全量；收藏/回收站互斥守卫：
- * 进回收站清空收藏态——favoriteOnly && !trashMode 才携带 favorite，INT-215/320 口径）。
+ * 用例列表（真实 GET /testcases）。
+ * 未分组虚拟组（INT-249）：后端 group_id 为精确匹配、无 '__ungrouped__' 哨兵，
+ * 照 Vue fetchCasesByGroup('__ungrouped__') 口径——不携带 group_id 拉大页后前端过滤；
+ * 收藏/回收站互斥守卫：trash 时仅 only_deleted（favorite 清空，INT-215/320 口径）。
  */
 export async function fetchTestCases(
   query: TestCaseListQuery
 ): Promise<TestCaseListResult> {
-  // TODO(API 接线): GET /api/v1/testcases?…
-  const { search, groupId, tag, dimensionId, favorite, trash } = query
-
-  let items = MOCK_TEST_CASES
-  if (trash) items = items.filter((c) => c.deleted)
-  else items = items.filter((c) => !c.deleted)
-  if (favorite && !trash) items = items.filter((c) => c.isFavorite)
-  if (search) items = items.filter((c) => matchKeyword(c, search))
-  // 未分组虚拟组（INT-249 口径）：facet 值 '__ungrouped__' → groupId 为空
-  if (groupId === '__ungrouped__') items = items.filter((c) => c.groupId === null)
-  else if (groupId) items = items.filter((c) => c.groupId === groupId)
-  // 标签单选（INT-592：后端 tag 单值，Tag.name == tag SQL join；与分组组合为交集）
-  if (tag) items = items.filter((c) => c.tags.includes(tag))
-  // dimensionId 过滤：mock 按关联评估维度近似（dimension id < 5 时命中主维度集，演示用）
-  if (dimensionId)
-    items = items.filter((c) =>
-      c.algorithmType !== null ? dimensionId % 4 + 1 > 0 : false
-    )
-
-  return mockLatency({ items, total: items.length })
+  const ungrouped = query.groupId === '__ungrouped__'
+  const dto = await apiClient.get<TestCaseListDataDto>('/testcases', {
+    params: {
+      page: query.page ?? 1,
+      per_page: query.perPage ?? LIST_PAGE_SIZE,
+      keyword: query.search,
+      group_id: ungrouped ? undefined : query.groupId,
+      tag: query.tag,
+      dimension_id: query.dimensionId,
+      algorithm_type: query.algorithmType,
+      favorite: query.favorite && !query.trash ? true : undefined,
+      only_deleted: query.trash ? true : undefined,
+    },
+  })
+  let items = (dto.items ?? []).map(testCaseListItemFromDto)
+  if (ungrouped) items = items.filter((c) => c.groupId === null)
+  return { items, total: dto.total }
 }
 
-/** 分组视图数据（grouped-case-list 消费：分组卡 + 组内用例卡） */
+/** 分组视图数据（grouped-case-list 消费：分组卡 + 组内用例卡；客户端按 groupId 聚合） */
 export async function fetchGroupedTestCases(
   query: TestCaseListQuery
 ): Promise<TestCaseListResult> {
-  const result = await fetchTestCases({ ...query, view: 'by-group' })
-  return result
+  return fetchTestCases(query)
 }
 
-/** 标签视图数据（tag-case-list 消费；后端 view=tag 契约保留，前端按标签聚合为标签卡） */
+/** 标签视图数据（tag-case-list 消费：前端按 tag 聚合为标签卡；后端 view=tag 契约不消费） */
 export async function fetchTagGroupedTestCases(
   query: TestCaseListQuery
 ): Promise<TestCaseListResult> {
-  const result = await fetchTestCases({ ...query, view: 'by-tag' })
-  return result
+  return fetchTestCases(query)
 }

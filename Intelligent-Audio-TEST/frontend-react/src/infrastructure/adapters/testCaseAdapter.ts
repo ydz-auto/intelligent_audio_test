@@ -6,7 +6,7 @@ import type {
   CaseDeviceResult,
   CaseExecutionDetail,
 } from '@/domain/models/testExecution'
-import type { TestCase } from '@/domain/models/testCase'
+import type { TestCase, TestCaseListItem } from '@/domain/models/testCase'
 import type {
   CaseDetailDto,
   TestCaseListItemDto,
@@ -25,7 +25,39 @@ export function testCaseFromDto(dto: TestCaseListItemDto): TestCase {
     algorithmType: dto.algorithm_type,
     rounds,
     totalDuration: dto.total_duration,
-    updatedAt: dto.updated_at,
+    updatedAt: dto.updated_at ?? null,
+  }
+}
+
+/** 用例列表项 DTO → Domain（11_用例域.md §3.3 表格版式；INT-141 收藏/回收站字段） */
+export function testCaseListItemFromDto(
+  dto: TestCaseListItemDto
+): TestCaseListItem {
+  const rounds = dto.config.rounds?.length ?? 1
+  // 音频条数由 config.rounds[].audios 派生（schemas/testcase.py RoundConfigItem.audios
+  // 实测；0=无关联音频 → 预览钮置灰，11_用例域.md §3.3.2）
+  const audioCount = (dto.config.rounds ?? []).reduce(
+    (sum, round) => sum + ((round as { audios?: unknown[] }).audios?.length ?? 0),
+    0
+  )
+  return {
+    id: dto.id,
+    name: dto.name,
+    description: dto.description,
+    groupId: dto.group_id,
+    groupName: dto.group_name,
+    type: dto.type === 'api' ? 'api' : dto.type === 'e2e' ? 'e2e' : null,
+    tags: dto.tags ?? [],
+    algorithmType: dto.algorithm_type,
+    createdAt: dto.created_at ?? null,
+    updatedAt: dto.updated_at ?? null,
+    isFavorite: dto.is_favorite ?? null,
+    deleted: dto.deleted ?? null,
+    deletedAt: dto.deleted_at ?? null,
+    deletedByUserId: dto.deleted_by_user_id ?? null,
+    totalDuration: dto.total_duration,
+    rounds,
+    audioCount,
   }
 }
 

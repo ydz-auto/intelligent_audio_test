@@ -14,11 +14,26 @@ export interface TestCaseListItemDto {
   tags: string[]
   algorithm_type: string | null
   total_duration: number | null
-  updated_at: string | null
+  /** INT-141 收藏 / 回收站（对照 Vue TestCaseDto 同款可选；mock/partial 源兼容） */
+  created_at?: string | null
+  updated_at?: string | null
+  is_favorite?: boolean | null
+  deleted?: boolean | null
+  deleted_at?: string | null
+  deleted_by_user_id?: number | null
   config: {
     rounds: Array<Record<string, unknown>> | null
     dimensions: Array<{ id: number; name: string; weight: number | null; test_type: string | null }>
   }
+}
+
+/** GET /testcases 列表响应（testcase.py TestCaseListData：PaginatedData 信封内 items） */
+export interface TestCaseListDataDto {
+  items: TestCaseListItemDto[]
+  total: number
+  page: number
+  per_page: number
+  pages: number
 }
 
 /** 用例执行详情（task_bp.py GET /tasks/{id}/cases/{cid}/detail） */
