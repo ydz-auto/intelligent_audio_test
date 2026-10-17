@@ -1,103 +1,142 @@
 /**
- * 用户管理 API 桩（infrastructure 层，红线④：mock 常量）。
- * 契约对照 user_bp.py 实测（INT-30 已落，INT-347 §2.0）：
- * GET /users（分页 ≤100 + status/keyword/role_id 过滤）、POST /users、
- * PUT /users/{id}、POST /users/{id}/role、POST+DELETE /users/{id}/permissions、
- * DELETE /users/{id}；权限门槛 user:read/create/update/assign_role/grant_permission/delete。
- * TODO(API 接线): fetch 换真实 client；mock 写操作仅本地数组变更。
+ * 用户管理真实 API（infrastructure/api 层；接线 INT-651）。
+ * 对照 api_gateway user_bp.py 契约（全部挂 /api/v1/auth 前缀）：
+ * GET /users（分页 ≤100 + status/keyword/role_id 过滤）、GET /users/{id}（详情含
+ * overrides 附加权限明细）、POST /users、PUT /users/{id}、POST /users/{id}/role、
+ * POST /users/{id}/permissions（单条授予）、DELETE /users/{id}/permissions/{permission_id}、
+ * DELETE /users/{id}。
+ * 说明：displayName 后端无字段（兜底 username）；列表响应不含 overrides（附加权限
+ * 需详情端点承载）；角色分配按 role_id（前端 roleCode → role_id 由调用方解析）。
  */
 import type { PlatformUser, PlatformUserStatus } from '@/domain/models/user'
-import { MOCK_PLATFORM_USERS } from '@/infrastructure/mock/iam-mock'
+import { apiClient } from '@/infrastructure/api/client'
+import {
+  toBackendStatus,
+  toPlatformUser,
+  type UserDto,
+  type UserListResultDto,
+} from '@/infrastructure/dto/user.dto'
 
 export const USERS_QUERY_KEY = ['iam', 'users'] as const
 
 export type UserListFilter = {
   keyword?: string
   status?: PlatformUserStatus | 'all'
-  /** 多选角色码（FacetedFilter 多选口径，INT-347 §4.4.1） */
+  /** 多选角色码（FacetedFilter 多选口径；后端仅支持单 role_id，多选在 API 层按 role_name 过滤） */
   roleCodes?: string[]
 }
 
+/**
+ * 用户列表（GET /auth/users；status/keyword 交后端，多选角色按 role_name 过滤——
+ * 后端仅单 role_id，列表 ≤100 窗口内过滤保持 FacetedFilter 多选语义）。
+ */
 export async function getUsers(filter: UserListFilter = {}): Promise<PlatformUser[]> {
-  return MOCK_PLATFORM_USERS.filter((user) => {
-    if (filter.status && filter.status !== 'all' && user.status !== filter.status) {
-      return false
-    }
-    if (
-      filter.roleCodes &&
-      filter.roleCodes.length > 0 &&
-      !filter.roleCodes.includes(user.roleCode)
-    ) {
-      return false
-    }
-    if (filter.keyword) {
-      const kw = filter.keyword.toLowerCase()
-      if (
-        !user.username.toLowerCase().includes(kw) &&
-        !user.email.toLowerCase().includes(kw)
-      ) {
-        return false
-      }
-    }
-    return true
-  })
+  const params: Record<string, unknown> = { page: 1, page_size: 100 }
+  if (filter.keyword) params.keyword = filter.keyword
+  if (filter.status && filter.status !== 'all') {
+    params.status = toBackendStatus(filter.status)
+  }
+  const data = await apiClient.get<UserListResultDto>('/auth/users', { params })
+  let users = (data.items ?? []).map(toPlatformUser)
+  if (filter.roleCodes && filter.roleCodes.length > 0) {
+    const codes = new Set(filter.roleCodes)
+    users = users.filter((user) => codes.has(user.roleCode))
+  }
+  return users
 }
 
-export async function createMockUser(input: {
+/** 用户详情（GET /auth/users/{id}；overrides → extraPermissions，供抽屉回填） */
+export async function getUser(userId: string): Promise<PlatformUser> {
+  const data = await apiClient.get<UserDto>(`/auth/users/${userId}`)
+  return toPlatformUser(data)
+}
+
+/** 创建用户（POST /auth/users；role_id 由调用方按 roleCode 解析，缺省 0=默认角色） */
+export async function createUser(input: {
   username: string
   displayName?: string
   email: string
   password: string
-  roleCode: string
+  roleId?: number
   status: PlatformUserStatus
 }): Promise<PlatformUser> {
-  const user: PlatformUser = {
-    id: `mock-${Date.now()}`,
+  const data = await apiClient.post<{ user_id?: number }>('/auth/users', {
+    username: input.username,
+    email: input.email,
+    password: input.password,
+    role_id: input.roleId ?? 0,
+  })
+  return {
+    id: data.user_id != null ? String(data.user_id) : `user-${Date.now()}`,
     username: input.username,
     displayName: input.displayName || input.username,
     email: input.email,
-    roleCode: input.roleCode,
-    roleName: input.roleCode,
+    roleCode: '',
+    roleName: '',
     status: input.status,
     extraPermissions: [],
     createdAt: new Date().toISOString(),
   }
-  MOCK_PLATFORM_USERS.unshift(user)
-  return user
 }
 
-export async function updateMockUser(
+/** 更新用户（PUT /auth/users/{id}；email/status 落库，displayName 后端无字段不发送） */
+export async function updateUser(
   userId: string,
-  patch: Partial<Pick<PlatformUser, 'displayName' | 'email' | 'status' | 'roleCode' | 'roleName'>>
+  patch: Partial<
+    Pick<PlatformUser, 'displayName' | 'email' | 'status' | 'roleCode' | 'roleName'>
+  >
 ): Promise<PlatformUser> {
-  const index = MOCK_PLATFORM_USERS.findIndex((user) => user.id === userId)
-  if (index === -1) throw new Error(`用户不存在：${userId}`)
-  MOCK_PLATFORM_USERS[index] = { ...MOCK_PLATFORM_USERS[index], ...patch }
-  return MOCK_PLATFORM_USERS[index]
+  const body: Record<string, unknown> = {}
+  if (patch.email !== undefined) body.email = patch.email
+  if (patch.status !== undefined) body.status = toBackendStatus(patch.status)
+  await apiClient.put(`/auth/users/${userId}`, body)
+  return {
+    id: userId,
+    username: '',
+    displayName: patch.displayName ?? '',
+    email: patch.email ?? '',
+    roleCode: patch.roleCode ?? '',
+    roleName: patch.roleName ?? '',
+    status: patch.status ?? 'active',
+    extraPermissions: [],
+    createdAt: '',
+  }
 }
 
-export async function deleteMockUser(userId: string): Promise<void> {
-  const index = MOCK_PLATFORM_USERS.findIndex((user) => user.id === userId)
-  if (index !== -1) MOCK_PLATFORM_USERS.splice(index, 1)
+/** 删除/软删除用户（DELETE /auth/users/{id}；不可删自己由后端 403 兜底） */
+export async function deleteUser(userId: string): Promise<void> {
+  await apiClient.delete(`/auth/users/${userId}`)
 }
 
-export async function assignMockRole(
-  userId: string,
-  roleCode: string,
-  roleName: string
-): Promise<void> {
-  await updateMockUser(userId, { roleCode, roleName })
+/** 分配用户角色（POST /auth/users/{id}/role；role_id 必填） */
+export async function assignRole(userId: string, roleId: number): Promise<void> {
+  await apiClient.post(`/auth/users/${userId}/role`, { role_id: roleId })
 }
 
-export async function grantMockPermissions(
+/**
+ * 授予/撤销用户附加权限（差量同步目标权限码集合）：
+ * 以详情 overrides（granted=true 的 permission_id）为基线——新增码逐条 POST
+ * /users/{id}/permissions，撤销码按 permission_id DELETE /users/{id}/permissions/{id}。
+ */
+export async function grantPermissions(
   userId: string,
   permissions: string[]
 ): Promise<void> {
-  const index = MOCK_PLATFORM_USERS.findIndex((user) => user.id === userId)
-  if (index !== -1) {
-    MOCK_PLATFORM_USERS[index] = {
-      ...MOCK_PLATFORM_USERS[index],
-      extraPermissions: permissions,
+  const detail = await apiClient.get<UserDto>(`/auth/users/${userId}`)
+  const current = (detail.overrides ?? []).filter((override) => override.granted)
+  const currentCodes = new Set(current.map((override) => override.code))
+  const target = new Set(permissions)
+
+  for (const code of permissions) {
+    if (!currentCodes.has(code)) {
+      await apiClient.post(`/auth/users/${userId}/permissions`, { permission: code })
+    }
+  }
+  for (const override of current) {
+    if (!target.has(override.code)) {
+      await apiClient.delete(
+        `/auth/users/${userId}/permissions/${override.permission_id}`
+      )
     }
   }
 }

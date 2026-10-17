@@ -157,8 +157,14 @@ export function UserMutateDrawer(props: UserMutateDrawerProps) {
                   id='user-display-name'
                   placeholder='留空则使用用户名'
                   value={displayName}
+                  disabled={!isCreate}
                   onChange={(event) => setDisplayName(event.target.value)}
                 />
+                {!isCreate && (
+                  <p className='text-muted-foreground text-xs'>
+                    后端暂不支持修改显示名，保存后仍显示用户名
+                  </p>
+                )}
               </div>
               <div className='grid gap-1.5'>
                 <label className='text-sm font-medium' htmlFor='user-email'>

@@ -16,10 +16,9 @@ import {
 import { cn } from '@/lib/utils'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
-import { useUsersQuery, useUserMutations } from '@/application/iam/use-users-query'
+import { useUsersQuery, useUserDetail, useUserMutations } from '@/application/iam/use-users-query'
 import { useRolesQuery, usePermissionCatalogQuery } from '@/application/iam/use-roles-query'
 import { useAuthStore } from '@/infrastructure/stores/auth-store'
-import { ROLE_META, type RoleCode } from '@/domain/models/role'
 import {
   USER_STATUS_META,
   type PlatformUser,
@@ -64,14 +63,6 @@ import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import { SettingsSection } from '../components/settings-section'
 import { UserMutateDrawer } from './user-mutate-drawer'
 
-const ROLE_CODES: RoleCode[] = [
-  'admin',
-  'tester',
-  'algo_engineer',
-  'device_admin',
-  'guest',
-]
-
 const STATUS_VALUES: Array<PlatformUserStatus | 'all'> = [
   'all',
   'active',
@@ -100,6 +91,14 @@ export function UsersPage() {
     [keyword, status, roleCodes]
   )
   const usersQuery = useUsersQuery(filter)
+  // 编辑态拉取详情（列表响应不含 overrides，抽屉附加权限矩阵需详情端点回填）
+  const detailQuery = useUserDetail(drawerMode === 'edit' ? drawerUser?.id ?? null : null)
+
+  // 角色码 → role_id 解析（角色分配/新建用户走后端 role_id 契约，INT-651）
+  const roleIdOf = (roleCode: string): number | undefined => {
+    const role = rolesQuery.data?.find((item) => item.code === roleCode)
+    return role ? Number(role.id) : undefined
+  }
 
   const canCreate = hasPermission('user:create')
   const canUpdate = hasPermission('user:update')
@@ -196,11 +195,12 @@ export function UsersPage() {
             />
             <PopoverContent className='w-56'>
               <div className='grid gap-1'>
-                {ROLE_CODES.map((code) => {
-                  const checked = roleCodes.includes(code)
+                {/* 角色筛选选项来自真实角色列表（含自定义角色，P3-3），不再固定 5 系统角色 */}
+                {(rolesQuery.data ?? []).map((role) => {
+                  const checked = roleCodes.includes(role.code)
                   return (
                     <label
-                      key={code}
+                      key={role.code}
                       className='hover:bg-muted flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm'
                     >
                       <Checkbox
@@ -208,12 +208,12 @@ export function UsersPage() {
                         onCheckedChange={() =>
                           setRoleCodes((prev) =>
                             checked
-                              ? prev.filter((c) => c !== code)
-                              : [...prev, code]
+                              ? prev.filter((c) => c !== role.code)
+                              : [...prev, role.code]
                           )
                         }
                       />
-                      {ROLE_META[code].name}
+                      {role.name}
                     </label>
                   )
                 })}
@@ -413,20 +413,20 @@ export function UsersPage() {
       <UserMutateDrawer
         open={drawerOpen}
         mode={drawerMode}
-        user={drawerUser}
+        user={drawerMode === 'edit' ? (detailQuery.data ?? drawerUser) : drawerUser}
         roles={rolesQuery.data ?? []}
         permissionModules={permissionCatalogQuery.data ?? []}
         onOpenChange={closeDrawer}
         onCreate={(input) => {
-          mutations.createUser.mutate(input)
+          mutations.createUser.mutate({ ...input, roleId: roleIdOf(input.roleCode) })
           closeDrawer()
         }}
         onUpdate={(userId, patch) => {
           mutations.updateUser.mutate({ userId, patch })
           closeDrawer()
         }}
-        onAssignRole={(userId, roleCode, roleName) => {
-          mutations.assignRole.mutate({ userId, roleCode, roleName })
+        onAssignRole={(userId, roleCode) => {
+          mutations.assignRole.mutate({ userId, roleId: roleIdOf(roleCode) ?? 0 })
           closeDrawer()
         }}
         onGrantPermissions={(userId, permissions) => {
