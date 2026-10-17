@@ -1,31 +1,45 @@
 /**
- * 测试执行域 API 桩（infrastructure/api 层；红线④：不接真实后端）。
- * 全部函数 TODO(API 接线) 标注对应真实端点；当前返回 mock 常量（经 adapters 产出 domain）。
- * 端点对照：POST /tasks（task:create）+ POST /tasks/{id}/start（task:execute）；
- * POST /testcases/ids（全量圈定）；GET /logs?task_id&test_case_id；
- * POST /reports/generate-task（report:create）；GET /apis（无后端门槛，前端 api_config:read 判定）。
+ * 测试执行域 API（infrastructure/api 层；10_测试执行.md §9）。
+ * 已接线（INT-646）：全部经 client.ts 统一 fetch 封装走真实后端，端点对照
+ * api_gateway/routes 实测（testcase_bp / group_bp / task_bp / execution_bp / log_bp /
+ * api_bp / algorithm_bp / report_bp）：
+ *   GET /testcases（TestCaseListQuery；执行选择列表，per_page=1000 全量）
+ *   POST /testcases/ids（按筛选条件圈定全量 id）
+ *   GET /testcases/tags（TagListData → string[]）
+ *   GET /groups（GroupListData → {value,label}[]）
+ *   GET /test-devices（DeviceListData；device:read）
+ *   GET /apis（ApiListData；无后端门槛）
+ *   POST /apis/{id}/health（api_config:read）
+ *   POST/PUT/DELETE /apis、/apis/{id}（api_config:create/update/delete）
+ *   POST /apis/{id}/stop-test（api_config:test）
+ *   POST /tasks + POST /tasks/{id}/start（task:create/execute）
+ *   POST /reports/generate-task + POST /reports/export（report:create/read）
+ *   GET /tasks/{taskId}/cases/{caseId}/detail（task:read）
+ *   GET /logs?task_id&test_case_id（log:read）
+ *   GET /reports/{id}（report:read；15_报告域 domain 模型即后端 snake_case 同构）
+ * snake_case 契约只在 infrastructure/dto/ 出现，本层与 domain 只见 camelCase。
  */
-import { request } from '@/infrastructure/api/client'
-import type { TaskLaunchInput } from '@/domain/models/testExecution'
+import type { CaseExecutionDetail, TaskLaunchInput } from '@/domain/models/testExecution'
 import type { ApiConfig, ApiHealthCheckResult } from '@/domain/models/apiConfig'
 import type { Device } from '@/domain/models/device'
 import type { TestCase, EvaluationDimension } from '@/domain/models/testCase'
+import type { ReportDetailData } from '@/domain/models/report'
+import { request } from '@/infrastructure/api/client'
+import { apiConfigFromDto, apiHealthFromDto } from '@/infrastructure/adapters/apiConfigAdapter'
+import { deviceFromDto } from '@/infrastructure/adapters/deviceAdapter'
+import { caseDetailFromDto, testCaseFromDto } from '@/infrastructure/adapters/testCaseAdapter'
+import type { CaseDetailDto, TestCaseListItemDto } from '@/infrastructure/dto/testcase.dto'
+import type { ApiHealthCheckDataDto, ApiItemDto } from '@/infrastructure/dto/apis.dto'
+import type { DeviceItemDto } from '@/infrastructure/dto/device.dto'
 import {
-  MOCK_APIS,
-  MOCK_CASE_EXECUTION_DETAIL,
-  MOCK_CASE_GROUPS,
-  MOCK_CASE_TAGS,
-  MOCK_DEVICES,
-  MOCK_EVAL_DIMENSIONS,
-  MOCK_FLOW_REPORT,
-  MOCK_TEST_ALGORITHMS,
-  MOCK_TESTCASES,
-} from '@/infrastructure/mock/test-execution-mock'
-import type { TestAlgorithmOption } from '@/infrastructure/mock/test-execution-mock'
-
-function mockLatency<T>(value: T): Promise<T> {
-  return new Promise((resolve) => setTimeout(() => resolve(value), 120))
-}
+  type GroupListDataDto,
+  type LogListDataDto,
+  type TaskStartDataDto,
+  type TestCaseIdsResultDto,
+  type TestCaseTagListDataDto,
+  toGroupFacetOptions,
+  toLogItems,
+} from '@/infrastructure/dto/test-execution.dto'
 
 export interface TestCaseFilter {
   keyword?: string
@@ -36,101 +50,104 @@ export interface TestCaseFilter {
   algorithmType?: string | null
 }
 
-function filterTestCases(filter: TestCaseFilter): TestCase[] {
-  const keyword = filter.keyword?.trim().toLowerCase()
-  return MOCK_TESTCASES.filter((item) => {
-    if (filter.type && item.type !== filter.type) return false
-    if (filter.groupId === 'ungrouped') {
-      if (item.groupId != null) return false
-    } else if (filter.groupId && item.groupId !== filter.groupId) return false
-    if (filter.algorithmType && item.algorithmType !== filter.algorithmType) return false
-    if (filter.tags?.length && !filter.tags.every((t) => item.tags.includes(t))) return false
-    if (keyword) {
-      const haystack = `${item.name} ${item.description ?? ''}`.toLowerCase()
-      if (!haystack.includes(keyword)) return false
-    }
-    return true
-  })
+/** 用例选择列表查询参数（camelCase → snake_case；INT-193 执行口径 type 由后端派生） */
+function toTestCaseQuery(filter: TestCaseFilter): Record<string, unknown> {
+  return {
+    keyword: filter.keyword?.trim() || undefined,
+    group_id: filter.groupId || undefined,
+    tag: filter.tags?.length ? filter.tags[0] : undefined,
+    dimension_id: filter.dimensionId ?? undefined,
+    type: filter.type ?? undefined,
+    algorithm_type: filter.algorithmType || undefined,
+  }
 }
 
-/** 算法选择项（步骤一；GET /algorithm/options 平移，algorithm:read） */
-export async function fetchAlgorithmOptions(): Promise<TestAlgorithmOption[]> {
-  // TODO(API 接线): GET /algorithm/options（algorithm_bp.py:165-167 = algorithm:read）
-  return mockLatency(MOCK_TEST_ALGORITHMS)
-}
-
-/** 用例列表（步骤二；POST /testcases 平移） */
+/** 用例列表（步骤二；GET /testcases，per_page=1000 全量拉取由前端过滤语义保留） */
 export async function fetchTestCases(filter: TestCaseFilter): Promise<TestCase[]> {
-  // TODO(API 接线): GET /testcases（TestCaseListQuery：page/per_page/keyword/tag/group_id/algorithm_type/type/dimension_id）
-  return mockLatency(filterTestCases(filter))
+  const dto = await request<{ items: TestCaseListItemDto[] }>('GET', '/testcases', undefined, {
+    params: { ...toTestCaseQuery(filter), per_page: 1000 },
+  })
+  return (dto?.items ?? []).map(testCaseFromDto)
 }
 
-/** 全量圈定（步骤二「全选结果」；POST /testcases/ids 平移，testcase_bp.py:72-75） */
+/** 全量圈定（步骤二「全选结果」；POST /testcases/ids 按筛选条件圈定全量 id） */
 export async function fetchCaseIdsByFilter(
   filter: TestCaseFilter
 ): Promise<{ ids: string[]; total: number }> {
-  // TODO(API 接线): POST /testcases/ids（按筛选条件圈定全量 id）
-  const all = filterTestCases(filter)
-  return mockLatency({ ids: all.map((c) => c.id), total: all.length })
+  const dto = await request<TestCaseIdsResultDto>('POST', '/testcases/ids', toTestCaseQuery(filter))
+  return { ids: dto?.ids ?? [], total: dto?.total ?? (dto?.ids ?? []).length }
 }
 
-/** 用例分组 facet */
+/** 用例分组 facet（GET /groups，per_page=100） */
 export async function fetchCaseGroups(): Promise<{ value: string; label: string }[]> {
-  return mockLatency(MOCK_CASE_GROUPS)
-}
-
-/** 标签 facet（TagNameListQuery 平移） */
-export async function fetchCaseTags(): Promise<string[]> {
-  return mockLatency(MOCK_CASE_TAGS)
-}
-
-/** 评估维度 facet（TestCaseDimensionBrief 列表） */
-export async function fetchEvaluationDimensions(): Promise<EvaluationDimension[]> {
-  return mockLatency(MOCK_EVAL_DIMENSIONS)
-}
-
-/** 设备列表（E2E 步骤三；GET /devices 平移，device:read） */
-export async function fetchDevices(): Promise<Device[]> {
-  // TODO(API 接线): GET /devices（DeviceListQuery：keyword/status/type/algorithm_type）
-  return mockLatency(MOCK_DEVICES)
-}
-
-/** 被测 API 列表（API 步骤三；GET /apis 实测无后端门槛，前端 api_config:read 判定） */
-export async function fetchApis(): Promise<ApiConfig[]> {
-  // TODO(API 接线): GET /apis（ApiListQuery）
-  return mockLatency(MOCK_APIS)
-}
-
-/** API 连接测试（§5.4；POST /apis/{id}/health 平移，api_config:test） */
-export async function fetchApiHealth(apiId: number): Promise<ApiHealthCheckResult> {
-  // TODO(API 接线): POST /apis/{id}/health
-  return mockLatency({
-    id: apiId,
-    status: 'online',
-    healthScore: 92,
-    apiUrlStatus: 'online',
-    endpointsStatus: 'online',
-    statusCode: 200,
-    responseTime: '214ms',
-    error: null,
-    warning: null,
+  const dto = await request<GroupListDataDto>('GET', '/groups', undefined, {
+    params: { per_page: 100 },
   })
+  return toGroupFacetOptions(dto)
 }
 
-/** 报告详情（步骤五嵌入式装配；15_报告域 domain 模型，本地 mock 源） */
-export async function fetchFlowReport(_reportId: number): Promise<typeof MOCK_FLOW_REPORT> {
-  // TODO(API 接线): GET /reports/{id}（report.py ReportDetailData）
-  return mockLatency(MOCK_FLOW_REPORT)
+/** 标签 facet（GET /testcases/tags；TagNameListQuery 平移） */
+export async function fetchCaseTags(): Promise<string[]> {
+  const dto = await request<TestCaseTagListDataDto>('GET', '/testcases/tags', undefined, {
+    params: { per_page: 100 },
+  })
+  return dto?.items ?? []
 }
 
-/** 创建任务（步骤三开始测试；POST /tasks，task:create，task_bp.py TaskCreateRequest 契约） */
+/** 评估维度 facet（GET /evaluation/dimensions，per_page=1000；TestCaseDimensionBrief 主/子平铺） */
+export async function fetchEvaluationDimensions(): Promise<EvaluationDimension[]> {
+  const dto = await request<{ items: Array<{ id: number; name: string; dimension_type: string | null }> }>(
+    'GET',
+    '/evaluation/dimensions',
+    undefined,
+    { params: { per_page: 1000 } }
+  )
+  return (dto?.items ?? []).map((item) => ({
+    id: item.id,
+    name: item.name ?? '',
+    type: item.dimension_type ?? null,
+  }))
+}
+
+/** 设备列表（步骤三；GET /test-devices，device:read） */
+export async function fetchDevices(): Promise<Device[]> {
+  const dto = await request<{ items: DeviceItemDto[] }>('GET', '/test-devices', undefined, {
+    params: { per_page: 1000 },
+  })
+  return (dto?.items ?? []).map(deviceFromDto)
+}
+
+/** 被测 API 列表（步骤三；GET /apis 实测无后端门槛，前端 api_config:read 判定） */
+export async function fetchApis(): Promise<ApiConfig[]> {
+  const dto = await request<{ items: ApiItemDto[] }>('GET', '/apis', undefined, {
+    params: { per_page: 1000 },
+  })
+  return (dto?.items ?? []).map(apiConfigFromDto)
+}
+
+/** API 连接测试（§5.4；POST /apis/{id}/health，api_config:test） */
+export async function fetchApiHealth(apiId: number): Promise<ApiHealthCheckResult> {
+  const dto = await request<ApiHealthCheckDataDto>('POST', `/apis/${apiId}/health`)
+  return apiHealthFromDto({ ...(dto ?? {}), id: dto?.id ?? apiId })
+}
+
+/** 报告详情（步骤五嵌入式装配；GET /reports/{id}；15_报告域 domain 模型即后端 snake_case 同构） */
+export async function fetchFlowReport(reportId: number): Promise<ReportDetailData> {
+  const data = await request<ReportDetailData>('GET', `/reports/${reportId}`)
+  return data
+}
+
+/** 创建任务（步骤三开始测试；POST /tasks，task:create；filter-all 口径显性化） */
 export async function createTask(input: TaskLaunchInput): Promise<{ id: number }> {
+  const caseIds = input.filterAllMode
+    ? (await fetchCaseIdsByFilter({ algorithmType: input.algorithmType })).ids
+    : input.testCaseIds
   const body: Record<string, unknown> = {
     name: input.name,
-    case_ids: input.testCaseIds,
+    algorithm_type: input.algorithmType || undefined,
+    case_ids: caseIds,
     device_ids: input.deviceIds,
     api_ids: input.apiIds,
-    algorithm_type: input.algorithmType,
     config: {
       rounds: input.params.rounds,
       timeout: input.params.timeout,
@@ -143,84 +160,117 @@ export async function createTask(input: TaskLaunchInput): Promise<{ id: number }
       include_reference_params: input.params.includeReferenceParams,
     },
   }
-  const dto = await request<{ id?: number }>('POST', '/tasks', body)
+  const dto = await request<{ id: number }>('POST', '/tasks', body)
   return { id: dto?.id ?? 0 }
 }
 
-/** 启动任务（POST /tasks/{id}/start，task:execute，task_bp.py TaskStartData 契约） */
+/** 启动任务（POST /tasks/{id}/start，task:execute） */
 export async function startTask(taskId: number): Promise<void> {
-  await request<{ task_id?: number }>('POST', `/tasks/${taskId}/start`)
+  await request<TaskStartDataDto>('POST', `/tasks/${taskId}/start`)
 }
 
 /** 报告生成（步骤五；POST /reports/generate-task，report:create） */
 export async function generateTaskReport(
-  _taskId: number
+  taskId: number
 ): Promise<{ reportId: number; status: string }> {
-  // TODO(API 接线): POST /reports/generate-task
-  return mockLatency({ reportId: 1205, status: 'generated' })
+  const dto = await request<{ report_id: number; status: string }>(
+    'POST',
+    '/reports/generate-task',
+    { task_id: taskId }
+  )
+  return { reportId: dto?.report_id ?? 0, status: dto?.status ?? 'generated' }
 }
 
-/** 报告导出（步骤五；POST /reports/export，report:read，format csv/excel/pdf/html） */
+/** 报告导出（步骤五；POST /reports/export，report:read，format csv/excel/pdf/html；blob 下载） */
 export async function exportReport(
   reportIds: number[],
   format: string
 ): Promise<{ filename: string }> {
-  // TODO(API 接线): POST /reports/export（ReportExportRequestDto；zip_base64→Blob 下载）
-  return mockLatency({ filename: `report-${reportIds[0]}.${format}` })
+  const blob = await request<Blob>('POST', '/reports/export', { ids: reportIds, format }, {
+    responseType: 'blob',
+  })
+  const filename = `report-${reportIds[0]}.${format}`
+  triggerBlobDownload(blob, filename)
+  return { filename }
 }
 
-/** 用例执行详情（§5.2；GET /tasks/{taskId}/cases/{caseId}/detail + /results） */
+/** 用例执行详情（§5.2；GET /tasks/{taskId}/cases/{caseId}/detail，task:read） */
 export async function fetchCaseExecutionDetail(
-  _taskId: number,
-  _caseId: string
-): Promise<typeof MOCK_CASE_EXECUTION_DETAIL> {
-  // TODO(API 接线): GET /tasks/{taskId}/cases/{caseId}/detail + /results（task_bp.py:32-39）
-  return mockLatency(MOCK_CASE_EXECUTION_DETAIL)
+  taskId: number,
+  caseId: string
+): Promise<CaseExecutionDetail> {
+  const dto = await request<CaseDetailDto>('GET', `/tasks/${taskId}/cases/${caseId}/detail`)
+  return caseDetailFromDto(dto ?? ({} as CaseDetailDto))
 }
 
-/** 用例日志（§5.2 日志分页 100 条/页；GET /logs?task_id&test_case_id） */
+/** 用例日志（§5.2 日志分页；GET /logs?task_id&test_case_id，log:read） */
 export async function fetchCaseLogs(
-  _taskId: number,
-  _caseId: string,
+  taskId: number,
+  caseId: string,
   page: number
 ): Promise<{ items: Array<{ id: number; timestamp: string; level: 'info' | 'warn' | 'error'; message: string }>; total: number; page: number }> {
-  // TODO(API 接线): GET /logs?task_id&test_case_id（log_bp.py 查询字段实测）
-  const perPage = 100
-  const total = 100
-  const start = (page - 1) * perPage
-  const items = Array.from({ length: total }, (_, i) => {
-    const id = total - start - i
-    return {
-      id,
-      timestamp: `10-15 09:${String(Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}.${String((id * 7) % 999).padStart(3, '0')}`,
-      level: (i % 5 === 2 ? 'warn' : i % 7 === 3 ? 'error' : 'info') as 'info' | 'warn' | 'error',
-      message:
-        i === 0
-          ? '[评估] 用例 c-001 评估完成，综合得分 94.2'
-          : i % 4 === 0
-            ? `[执行器] 用例 c-001 第 ${i / 4 + 1} 轮执行中，当前并发 4/4`
-            : `[音频] round ${(i % 3) + 1} 播放完成，设备返回码 200`,
-    }
+  const dto = await request<LogListDataDto>('GET', '/logs', undefined, {
+    params: { task_id: taskId, test_case_id: caseId, page, per_page: 100 },
   })
-  return mockLatency({ items, total, page })
+  return toLogItems(dto)
 }
 
-/** 新增/更新 API（§5.3；POST/PUT /apis，api_config:create/update） */
+/** 新增/更新 API（§5.3；POST/PUT /apis，api_config:create/update；camelCase→snake_case 本层收敛） */
 export async function saveApi(
-  _input: Partial<ApiConfig> & { name: string }
+  input: Partial<ApiConfig> & { name: string }
 ): Promise<{ id: number }> {
-  // TODO(API 接线): POST/PUT /apis（ApiCreateInput/ApiUpdateInput）
-  return mockLatency({ id: 99 })
+  const body = toApiInputDto(input)
+  if (input.id != null) {
+    await request('PUT', `/apis/${input.id}`, body)
+    return { id: input.id }
+  }
+  const dto = await request<{ id: number }>('POST', '/apis', body)
+  return { id: dto?.id ?? 0 }
 }
 
-/** 删除 API（api_config:delete） */
-export async function deleteApi(_apiId: number): Promise<void> {
-  // TODO(API 接线): DELETE /apis/{id}
-  return mockLatency(undefined)
+/** 删除 API（DELETE /apis/{id}；api_config:delete） */
+export async function deleteApi(apiId: number): Promise<void> {
+  await request('DELETE', `/apis/${apiId}`)
 }
 
-/** API 停止测试（api_config:test，api_bp.py stop-test 实测） */
-export async function stopApiTest(_apiId: number): Promise<void> {
-  // TODO(API 接线): POST /apis/{id}/stop-test
-  return mockLatency(undefined)
+/** API 停止测试（POST /apis/{id}/stop-test，api_config:test） */
+export async function stopApiTest(apiId: number): Promise<void> {
+  await request('POST', `/apis/${apiId}/stop-test`)
+}
+
+/** Partial<ApiConfig>（camelCase）→ ApiCreateInput/ApiUpdateInput 请求体 */
+function toApiInputDto(input: Partial<ApiConfig> & { name: string }): Record<string, unknown> {
+  const result: Record<string, unknown> = { name: input.name }
+  if (input.vendor !== undefined) result.vendor = input.vendor
+  if (input.apiUrl !== undefined) result.api_url = input.apiUrl
+  if (input.description !== undefined) result.description = input.description
+  if (input.algorithmType !== undefined) result.algorithm_type = input.algorithmType
+  if (input.defaultMaxProcess !== undefined) result.default_max_process = input.defaultMaxProcess
+  if (input.defaultMaxTimeout !== undefined) result.default_max_timeout = input.defaultMaxTimeout
+  if (input.defaultMaxAudioDuration !== undefined) result.default_max_audio_duration = input.defaultMaxAudioDuration
+  if (input.status !== undefined) result.status = input.status
+  if (input.endpoints !== undefined) {
+    result.endpoints = input.endpoints.map((endpoint) => ({
+      endpoint: endpoint.endpoint,
+      name: endpoint.name,
+      max_process: endpoint.maxProcess,
+      max_timeout: endpoint.maxTimeout,
+      max_audio_duration: undefined,
+      status: endpoint.status,
+      priority: undefined,
+      description: endpoint.description,
+    }))
+  }
+  if (input.deviceType !== undefined) result.device_type = input.deviceType
+  return result
+}
+
+/** 触发浏览器下载（Blob → <a download> 统一走；导出响应 Content-Disposition 缺省按默认名） */
+function triggerBlobDownload(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
 }

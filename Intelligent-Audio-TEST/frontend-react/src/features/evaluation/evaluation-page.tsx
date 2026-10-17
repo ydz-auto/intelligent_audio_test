@@ -398,7 +398,7 @@ export function EvaluationPage() {
       )
     )
     void reorder
-      .mutateAsync({ id: dimension.id, direction })
+      .mutateAsync(ids)
       .then(() => toast.success(direction === -1 ? '已上移' : '已下移'))
       .catch(() => toast.error('排序失败，请重试'))
   }
