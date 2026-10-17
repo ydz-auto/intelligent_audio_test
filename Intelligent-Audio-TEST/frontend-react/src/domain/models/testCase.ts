@@ -55,7 +55,8 @@ export interface TestCaseListItem {
   /**
    * 音频条数（mock 阶段派生字段：0=无关联音频 → 预览钮置灰 + Tooltip
    * 「该测试用例没有关联音频文件」，11_用例域.md §3.3.2；
-   * 接线后由 TestCaseListItem.config.rounds[].audio_files 派生，不再占位）
+   * 接线后由 TestCaseListItem.config.rounds[].audios 派生（schemas/testcase.py:104
+   * RoundConfigItem.audios 实测），不再占位）
    */
   audioCount?: number | null
 }

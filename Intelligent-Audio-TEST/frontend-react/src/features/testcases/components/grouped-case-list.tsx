@@ -72,6 +72,7 @@ export function GroupedCaseList({
   cases,
   loading,
   trash,
+  hasQueryFilters,
   selected,
   tagRegistry,
   callbacks,
@@ -84,6 +85,8 @@ export function GroupedCaseList({
   cases: TestCaseListItem[]
   loading: boolean
   trash: boolean
+  /** 非回收站筛选是否激活（搜索/分组/标签/维度）——回收站空态区分「真空」与「筛选无匹配」 */
+  hasQueryFilters: boolean
   selected: Set<string>
   tagRegistry: TagItem[]
   callbacks: CaseCardCallbacks
@@ -196,11 +199,17 @@ export function GroupedCaseList({
           </EmptyMedia>
           <EmptyHeader>
             <EmptyTitle>
-              {trash ? '回收站为空' : '没有找到符合条件的测试用例'}
+              {trash
+                ? hasQueryFilters
+                  ? '没有找到符合条件的回收站用例'
+                  : '回收站为空'
+                : '没有找到符合条件的测试用例'}
             </EmptyTitle>
             <EmptyDescription>
               {trash
-                ? '回收站中的用例已被恢复或彻底删除'
+                ? hasQueryFilters
+                  ? '尝试清空「分组」「标签」等筛选条件'
+                  : '回收站中的用例已被恢复或彻底删除'
                 : groups.length === 0
                   ? '请调整筛选条件或点击右上角「新增用例」创建第一条用例'
                   : '尝试清空「分组」「标签」筛选'}

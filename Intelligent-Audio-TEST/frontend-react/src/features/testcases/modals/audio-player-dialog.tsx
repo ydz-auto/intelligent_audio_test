@@ -39,16 +39,15 @@ export function AudioPlayerPanel({
   useEffect(() => {
     if (!playing) return
     const timer = window.setInterval(() => {
-      setCurrent((c) => {
-        if (c >= MOCK_DURATION) {
-          setPlaying(false)
-          return MOCK_DURATION
-        }
-        return c + 1
-      })
+      setCurrent((c) => (c >= MOCK_DURATION ? MOCK_DURATION : c + 1))
     }, 1000)
     return () => window.clearInterval(timer)
   }, [playing])
+
+  // 播完自动停止（副作用不放进 state updater——StrictMode 下 updater 双调用安全）
+  useEffect(() => {
+    if (playing && current >= MOCK_DURATION) setPlaying(false)
+  }, [playing, current])
 
   return (
     <div className='space-y-4'>

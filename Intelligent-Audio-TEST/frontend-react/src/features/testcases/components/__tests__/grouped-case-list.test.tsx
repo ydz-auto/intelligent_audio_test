@@ -103,10 +103,12 @@ function Harness({
   loading = false,
   cases = CASES,
   trash = false,
+  hasQueryFilters = false,
 }: {
   loading?: boolean
   cases?: TestCaseListItem[]
   trash?: boolean
+  hasQueryFilters?: boolean
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   return (
@@ -116,6 +118,7 @@ function Harness({
         cases={loading ? [] : cases}
         loading={loading}
         trash={trash}
+        hasQueryFilters={hasQueryFilters}
         selected={selected}
         tagRegistry={MOCK_TAGS as TagItem[]}
         callbacks={noopCallbacks}
@@ -252,5 +255,12 @@ describe('GroupedCaseList', () => {
     render(<Harness cases={[]} trash />)
     expect(screen.getByText('回收站为空')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /新增用例/ })).not.toBeInTheDocument()
+  })
+
+  it('INT-595 空态补：回收站态筛选无匹配时区分「筛选无匹配」而非「回收站为空」', () => {
+    render(<Harness cases={[]} trash hasQueryFilters />)
+    expect(screen.getByText('没有找到符合条件的回收站用例')).toBeInTheDocument()
+    expect(screen.getByText('尝试清空「分组」「标签」等筛选条件')).toBeInTheDocument()
+    expect(screen.queryByText('回收站为空')).not.toBeInTheDocument()
   })
 })

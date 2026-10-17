@@ -42,7 +42,7 @@ const DIMENSIONS: EvaluationDimensionItem[] = [
 ]
 
 const tagCount = (name: string) =>
-  MOCK_TEST_CASES.filter((c) => c.tags.includes(name)).length
+  MOCK_TEST_CASES.filter((c) => !c.deleted && c.tags.includes(name)).length
 
 function renderToolbar(filters: Record<string, unknown> = {}, tags = MOCK_TAGS) {
   const props = {
@@ -143,5 +143,41 @@ describe('TestCasesFilterToolbar', () => {
     await user.click(await screen.findByText('复制标签下用例'))
     expect(screen.getByText(/复制后将生成新标签：音箱_copy/)).toBeInTheDocument()
     expect(screen.getByText('同时复制到新分组')).toBeInTheDocument()
+  })
+
+  it('P2-1 回归：权限态变化时无 hook 早退——只读角色「标签操作」整组保留、逐钮禁用（§7 注 1）', async () => {
+    const user = setupUser()
+    const props = {
+      filters: { tag: '音箱' } as never,
+      onChange: vi.fn(),
+      onReset: vi.fn(),
+      isFiltered: false,
+      groups: GROUPS,
+      tags: MOCK_TAGS,
+      dimensions: DIMENSIONS,
+      onRestoreAll: vi.fn(),
+    }
+    const { rerender } = render(<TestCasesFilterToolbar {...props} />)
+    // 写权限用户（MOCK_USER '*'）：下拉出现
+    expect(screen.getByRole('button', { name: /标签操作/ })).toBeInTheDocument()
+
+    // 权限态变化（登出/角色切换 → 写权限全失）：挂载不崩（P2-1 早退跳过 hook 会抛
+    // 「Rendered fewer hooks」）；§7 注 1 整组保留、写钮逐钮置灰 + Tooltip
+    useAuthStore.setState({
+      user: {
+        id: 'readonly-user-001',
+        username: 'algo_engineer',
+        displayName: '算法工程师',
+        roleName: '算法工程师',
+        permissions: ['testcase:read'],
+      },
+    })
+    rerender(<TestCasesFilterToolbar {...props} />)
+    expect(screen.getByRole('button', { name: /标签操作/ })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /标签操作/ }))
+    // 写钮逐钮 aria-disabled + Tooltip（§7 注 1 口径；jest-dom toBeDisabled 不认 aria-disabled）
+    expect(screen.getByRole('menuitem', { name: '编辑标签' })).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('menuitem', { name: '删除标签' })).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('menuitem', { name: '复制标签下用例' })).toHaveAttribute('aria-disabled', 'true')
   })
 })

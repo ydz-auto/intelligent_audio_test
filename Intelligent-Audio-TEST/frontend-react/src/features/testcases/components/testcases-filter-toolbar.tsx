@@ -116,10 +116,12 @@ function SingleFacet({
   )
 }
 
-/** 标签下用例数（mock 源派生；§3.4 客户端从已加载集聚合计数 + §3.6 删除/复制级联计数，接线后随列表查询） */
+/** 标签下在用（未删除）用例数（mock 源派生；§3.4 客户端从已加载集聚合计数 +
+ *  §3.6 删除/复制级联计数，接线后随列表查询；回收站项不计入——级联作用于在用集） */
 const TAG_CASE_COUNTS: Record<string, number> = (() => {
   const m = new Map<string, number>()
   for (const c of MOCK_TEST_CASES) {
+    if (c.deleted) continue
     for (const t of c.tags) m.set(t, (m.get(t) ?? 0) + 1)
   }
   return Object.fromEntries(m)
@@ -319,7 +321,8 @@ const fallbackTag = (name: string): TagItem => ({
  * 三项操作逐钮按权限过滤：编辑标签（tag:update → §5.4）/ 删除标签（tag:delete，级联确认
  * destructive）/ 复制标签下用例（testcase:copy）；批量已单轨收勾选浮条（§3.7），下拉不挂批量。
  * 一等管理位=标签管理页（§4.2，对齐 INT-417 口径）。
- * 权限口径（§7 注 1）：写权限禁用+Tooltip；缺全部写权限时整组隐藏。
+ * 权限口径（§7 注 1）：写权限逐钮禁用+Tooltip，不整组隐藏——只读角色
+ * （algo_engineer 等）无标签写能力时下拉保留、三项逐钮置灰（无 hook 早退）。
  */
 function TagActionsDropdown({
   tagName,
@@ -339,9 +342,7 @@ function TagActionsDropdown({
   const canEdit = hasPermission('tag:update')
   const canDelete = hasPermission('tag:delete')
   const canCopy = hasPermission('testcase:copy')
-  // §7 注 1：读权限隐藏——只读角色（algo_engineer 等）无标签写能力时整组不出现
-  if (!canEdit && !canDelete && !canCopy) return null
-
+  // §7 注 1：不整组隐藏——写权限逐钮禁用 + Tooltip（hook 调用保持无条件）
   const registry = useMemo(() => new Map(tags.map((t) => [t.name, t])), [tags])
   const tag = registry.get(tagName) ?? fallbackTag(tagName)
   const count = TAG_CASE_COUNTS[tag.name] ?? 0

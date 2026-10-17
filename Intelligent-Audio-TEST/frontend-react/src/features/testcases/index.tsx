@@ -98,6 +98,17 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
     [filters]
   )
 
+  /** 非回收站筛选（搜索/分组/标签/维度）是否激活——回收站空态区分「真空」与「筛选无匹配」 */
+  const hasQueryFilters = useMemo(
+    () =>
+      Object.entries(filters).some(([key, value]) => {
+        if (key === 'algorithmType' || key === 'trash' || key === 'favorite')
+          return false
+        return value != null && value !== '' && value !== false
+      }),
+    [filters]
+  )
+
   const clearSelection = useCallback(() => setSelected(new Set()), [])
 
   // ESC 清选（11_用例域.md §3.7「X 清选钮 + ESC 清选 + aria-live 播报照搬」）：
@@ -402,6 +413,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
                   cases={items}
                   loading={listQuery.isLoading}
                   trash={filters.trash ?? false}
+                  hasQueryFilters={hasQueryFilters}
                   selected={selected}
                   tagRegistry={tags}
                   callbacks={rowCallbacks}
