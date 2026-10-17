@@ -387,6 +387,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
               groups={groups}
               tags={tags}
               dimensions={dimensions}
+              cases={items}
               onRestoreAll={() =>
                 setConfirm({ kind: 'restore-all', count: trashCount })
               }
