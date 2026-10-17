@@ -108,3 +108,64 @@ def test_concurrent_put_same_version_loser_gets_409_not_500(sqlite_db):
     versions = svc.list_versions({'doc_id': doc_id})['data']
     assert versions['total'] == 2
     assert [v['version'] for v in versions['items']] == [1, 2]
+
+
+def test_concurrent_restore_same_version_loser_gets_409_not_500(sqlite_db):
+    """两个并发 restore 同 expected_version=1：败者应 409，不得 500/覆盖。
+
+    restore_version 与 update_document 走同一条件写修复机制（WHERE
+    current_version=:expected，rowcount==0 → None → 409），本用例覆盖该
+    第二代码路径，防止修复只覆盖 PUT 不覆盖 restore。
+    """
+    session = database.get_db_session()
+    report = Report(name='并发恢复测试', type='standard', status='completed', task_id=1)
+    session.add(report)
+    session.commit()
+    report_id = report.id
+    session.close()
+
+    svc = report_studio_service
+    doc_id = svc.create_document({'report_id': report_id, 'markdown_content': '# v1'})['data']['doc_id']
+
+    orig_get = ReportStudioRepositoryImpl.get_document
+    barrier = threading.Barrier(2)
+    read_count = {'n': 0}
+
+    def synced_get(self, doc_id):
+        read_count['n'] += 1
+        if read_count['n'] <= 2:
+            barrier.wait(timeout=5)
+        return orig_get(self, doc_id)
+
+    ReportStudioRepositoryImpl.get_document = synced_get
+
+    results = {}
+
+    def restore(tag):
+        r = svc.restore_version({'doc_id': doc_id, 'version': 1, 'expected_version': 1})
+        results[tag] = r
+
+    t1 = threading.Thread(target=restore, args=('T1',))
+    t2 = threading.Thread(target=restore, args=('T2',))
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+    ReportStudioRepositoryImpl.get_document = orig_get
+
+    codes = {tag: r['code'] for tag, r in results.items()}
+    assert sorted(codes.values()) == [0, 409], (
+        f'真并发 restore 下败者未返回 409，实际码 {codes}；'
+        f'败者 message={next(r["message"] for r in results.values() if r["code"] != 0)}')
+
+    # 败者 409 应带 current_version（§15.4，restore 冲突无逐行 diff）
+    loser = next(r for r in results.values() if r['code'] != 0)
+    assert loser['data'].get('current_version') == 2
+
+    # 胜者恢复为 v1 内容的新版本，current_version=2；历史版本仍只读两版
+    cur = svc.get_document({'doc_id': doc_id})
+    assert cur['data']['current_version'] == 2
+    assert cur['data']['markdown_content'] == '# v1'
+    versions = svc.list_versions({'doc_id': doc_id})['data']
+    assert versions['total'] == 2
+    assert [v['version'] for v in versions['items']] == [1, 2]
