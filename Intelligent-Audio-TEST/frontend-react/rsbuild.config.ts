@@ -32,7 +32,14 @@ export default defineConfig(({ envMode }) => {
       // React 可视稿 dev server 钉死 5273（避开 5173 Vue 主前端家族与 6xxx UI 测试栈）；strictPort 失败即报错，禁止静默漂移。
       port: 5273,
       strictPort: true,
-      // TODO(API 接线): 接真实后端时在此配置 /api 代理（红线④：当前一律 mock，不起后端）
+      // 接线基座（INT-605）：/api 代理到 api_gateway（service_ports.py gateway=5000；
+      // 旧 Vue .env.development VITE_API_TARGET=http://localhost:5000 同款）。
+      proxy: {
+        '/api': {
+          target: 'http://localhost:5000',
+          changeOrigin: true,
+        },
+      },
     },
     output: {
       minify: isProd,
