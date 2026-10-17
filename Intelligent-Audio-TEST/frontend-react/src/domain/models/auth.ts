@@ -23,6 +23,15 @@ export const ENCRYPTION_INIT_FAILED_COPY =
 /** 网络失败/超时统一文案 */
 export const NETWORK_FAILED_COPY = '网络异常，请检查连接后重试'
 
+/** 认证模式枚举（对照后端 Config.AUTH_MODE 原值；off 模式前端无 token 放行） */
+export const AUTH_MODE = {
+  OFF: 'off',
+  DEV: 'dev',
+  PROD: 'prod',
+} as const
+
+export type AuthMode = (typeof AUTH_MODE)[keyof typeof AUTH_MODE]
+
 /** OAuth 提供方（对照 GET /auth/oauth/providers 返回：{ id, name, slug, icon }） */
 export type OAuthProvider = {
   id: string

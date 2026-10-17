@@ -8,7 +8,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '@/infrastructure/api/api-error'
 import { request, setSessionExpiredHandler } from '@/infrastructure/api/client'
 import { authTokenStore } from '@/infrastructure/storage/auth-token'
-import { useAuthStore } from '@/infrastructure/stores/auth-store'
+import {
+  resetAuthSessionBootstrap,
+  useAuthStore,
+  ensureAuthSession,
+} from '@/infrastructure/stores/auth-store'
 
 vi.mock('@/infrastructure/api/authApi', () => ({
   authApi: {
@@ -40,12 +44,14 @@ describe('auth-store 真实登录态', () => {
   beforeEach(() => {
     useAuthStore.setState({ user: null })
     authTokenStore.clear()
+    resetAuthSessionBootstrap()
     vi.clearAllMocks()
   })
 
   afterEach(() => {
     vi.unstubAllGlobals()
     authTokenStore.clear()
+    resetAuthSessionBootstrap()
     setSessionExpiredHandler(null)
   })
 
@@ -73,10 +79,85 @@ describe('auth-store 真实登录态', () => {
     expect(useAuthStore.getState().user?.username).toBe('tester')
   })
 
-  it('hydrateSession：无 token 不发请求', async () => {
+  it('hydrateSession：无 token 且 AUTH_MODE=off → GET /auth/me 回填 dev_user（§3.1 开放模式放行）', async () => {
+    vi.mocked(authApi.getAuthMode).mockResolvedValue('off')
+    vi.mocked(authApi.getMe).mockResolvedValue({
+      id: '0',
+      username: 'dev_user',
+      displayName: 'dev_user',
+      roleName: '',
+      permissions: ['*'],
+    })
     await useAuthStore.getState().hydrateSession()
+    expect(authApi.getAuthMode).toHaveBeenCalledTimes(1)
+    expect(authApi.getMe).toHaveBeenCalledWith({ skipAuthRedirect: true })
+    expect(useAuthStore.getState().user?.username).toBe('dev_user')
+    expect(useAuthStore.getState().user?.permissions).toEqual(['*'])
+  })
+
+  it('hydrateSession：无 token 且非 off 模式 → 不发 /auth/me，保持未登录态', async () => {
+    vi.mocked(authApi.getAuthMode).mockResolvedValue('prod')
+    await useAuthStore.getState().hydrateSession()
+    expect(authApi.getAuthMode).toHaveBeenCalledTimes(1)
     expect(authApi.getMe).not.toHaveBeenCalled()
     expect(useAuthStore.getState().user).toBeNull()
+  })
+
+  it('ensureAuthSession：无 token 且 AUTH_MODE=off → dev_user 放行（守卫/挂载共用引导）', async () => {
+    vi.mocked(authApi.getAuthMode).mockResolvedValue('off')
+    vi.mocked(authApi.getMe).mockResolvedValue({
+      id: '0',
+      username: 'dev_user',
+      displayName: 'dev_user',
+      roleName: '',
+      permissions: ['*'],
+    })
+    await ensureAuthSession()
+    expect(useAuthStore.getState().user?.username).toBe('dev_user')
+    expect(authApi.getMe).toHaveBeenCalledTimes(1)
+  })
+
+  it('ensureAuthSession：并发调用共享同一次引导，不重复请求', async () => {
+    vi.mocked(authApi.getAuthMode).mockResolvedValue('off')
+    vi.mocked(authApi.getMe).mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, 5))
+      return {
+        id: '0',
+        username: 'dev_user',
+        displayName: 'dev_user',
+        roleName: '',
+        permissions: ['*'],
+      }
+    })
+    await Promise.all([ensureAuthSession(), ensureAuthSession(), ensureAuthSession()])
+    expect(authApi.getAuthMode).toHaveBeenCalledTimes(1)
+    expect(authApi.getMe).toHaveBeenCalledTimes(1)
+    expect(useAuthStore.getState().user?.username).toBe('dev_user')
+  })
+
+  it('ensureAuthSession：登出后复位，允许重新引导（off 模式再放行）', async () => {
+    vi.mocked(authApi.getAuthMode).mockResolvedValue('off')
+    vi.mocked(authApi.getMe).mockResolvedValue({
+      id: '0',
+      username: 'dev_user',
+      displayName: 'dev_user',
+      roleName: '',
+      permissions: ['*'],
+    })
+    vi.mocked(authApi.logout).mockResolvedValue(undefined)
+
+    // 首次引导 → dev_user 放行
+    await ensureAuthSession()
+    expect(useAuthStore.getState().user?.username).toBe('dev_user')
+
+    // 登出清态并复位引导
+    await useAuthStore.getState().logout()
+    expect(useAuthStore.getState().user).toBeNull()
+
+    // 登出后再次引导 → 重新判 off 模式并放行
+    await ensureAuthSession()
+    expect(useAuthStore.getState().user?.username).toBe('dev_user')
+    expect(authApi.getAuthMode).toHaveBeenCalledTimes(2)
   })
 
   it('loginWithToken：OAuth 回调 token 落 storage + GET /auth/me 回填 user', async () => {
