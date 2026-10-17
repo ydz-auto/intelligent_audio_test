@@ -1,11 +1,18 @@
 # -*- coding: utf-8 -*-
-"""UI 专用并行隔离栈（INT-260）：端口整体 +1000，隔离库 intelligent_audio_test_test。
+"""UI 专用并行隔离栈（INT-260）：端口整体偏移，隔离库 intelligent_audio_test_test。
 
 背景：共享栈常被其它在途 run 占用（INT-261 UX 走查等），不可重启切换
 --test-db；本启动器以全偏移端口并行起一套栈，DATABASE_URL 直指隔离库，
 与共享栈互不干扰（端口/Redis DB/日志根全隔离）。
 
-端口表（shift=+1000）：网关 6000，HTTP 服务 6001-6010，gRPC 51051-51101，
+并发换段（INT-581）：同一端口段只能由一个栈占用（启动前逐端口探测，被占
+即拒绝，绝不 kill 占用者）。并发 run（如 INT-569 前端回归日巡与功能卡验收
+同时实测）经 --shift 显式换到空闲段，前端随段偏移（5273+shift）无需单独
+指定；默认 shift=1000（网关 6000 / HTTP 6001-6010 / 前端 6273），向后兼容。
+非默认段 PID/日志按 shift 分目录（_ui_stack<shift>.pid / logs/ui_stack/
+shift<shift>），stop/status 需传相同 --shift（status 无参按 PID 文件记录段）。
+
+端口表（shift=+1000）：网关 6000，HTTP 服务 6001-6010，gRPC 偏移后段，
 前端 vite 6273（VITE_API_TARGET=http://127.0.0.1:6000）。
 
 安全红线：
@@ -14,9 +21,12 @@
 - DATABASE_URL 强制指向隔离库，启动后 /health database 字段复核。
 
 用法（建议经 run_gate.py 以 WMI 脱离 agent 进程树启动；start 常驻监督）：
-    python tests/ui/utils/parallel_stack.py start
-    python tests/ui/utils/parallel_stack.py stop
-    python tests/ui/utils/parallel_stack.py status
+    python tests/ui/utils/parallel_stack.py start                           # 默认段（网关 6000/前端 6273）
+    python tests/ui/utils/parallel_stack.py start --shift 2000              # 换段（网关 7000/前端 7273）
+    python tests/ui/utils/parallel_stack.py start --shift 5000 --frontend-port 8273  # 显式前端（INT-553 变体）
+    python tests/ui/utils/parallel_stack.py stop --shift 2000               # 停指定段（不带参数停默认段）
+    python tests/ui/utils/parallel_stack.py status                          # 按 PID 文件记录段探测
+    # 等价环境变量：UI_STACK_SHIFT / UI_STACK_FRONTEND_PORT（CLI 参数优先级更高）
 """
 import argparse
 import os
@@ -42,6 +52,9 @@ FRONTEND_DIR = os.path.join(BASE_DIR, 'frontend')
 # INT-401 验收：端口段可经 UI_STACK_SHIFT 覆盖（默认 1000 行为不变），
 # 供并发多 run 共享 6000 段时错峰起本 run 独立栈（纪律 3：不复用别 run 的栈）。
 # INT-528 验收：前端 vite 端口可经 UI_STACK_FRONTEND_PORT 覆盖（默认 6273）。
+# INT-581：并发 run 经 --shift / --frontend-port 显式换段，configure() 按
+# CLI > env > 默认 解析并重算派生项（服务 HTTP/gRPC/网关随偏移，前端默认
+# 5273+shift）；非默认段 PID/日志按 shift 分目录，stop/status 各管各段。
 SHIFT = int(os.environ.get('UI_STACK_SHIFT', '1000'))
 _suffix = '' if SHIFT == 1000 else f'_{SHIFT}'
 
@@ -50,8 +63,76 @@ _suffix = '' if SHIFT == 1000 else f'_{SHIFT}'
 # UI_STACK_DATABASE_NAME 时才覆盖库名，用于「开认证验证真实库用户」类解阻卡，
 # 用法：UI_STACK_DATABASE_NAME=intelligent_audio_test python .../parallel_stack.py start
 DB_NAME = os.environ.get('UI_STACK_DATABASE_NAME', ISOLATED_TEST_DB_NAME)
+
+GATEWAY_HTTP = 5000 + SHIFT
+FRONTEND_PORT = int(os.environ.get('UI_STACK_FRONTEND_PORT', str(GATEWAY_HTTP + 273)))
+
 PID_FILE = os.path.join(BASE_DIR, 'tests', 'ui', f'_ui_stack{_suffix}.pid')
 LOG_DIR = os.path.join(BASE_DIR, 'logs', f'ui_stack{_suffix}')
+
+
+def _env_int(key: str, default: int) -> int:
+    """读环境变量整数；缺失/非法回退 default（并发 run 兼容 UI_STACK_* 历史口径）。"""
+    raw = os.environ.get(key)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        print(f'[UI-STACK][WARN] {key}={raw!r} 非整数，使用默认 {default}', flush=True)
+        return default
+
+
+def configure(shift: int | None = None, frontend_port: int | None = None) -> None:
+    """按显式参数配置端口段（并发 run 换段，避免争用）。
+
+    优先级：CLI 参数 > UI_STACK_SHIFT / UI_STACK_FRONTEND_PORT 环境变量 > 默认。
+    - shift 默认 1000（网关 6000 / 前端 6273，向后兼容）；前端默认随段偏移
+      （5273+shift → 6273），显式 frontend_port 覆盖时以显式值为准。
+    - 非默认段 PID/日志按 shift 分目录（_ui_stack<shift>.pid / logs/ui_stack/
+      shift<shift>），并发多栈互不踩——stop 只停本段 launcher 进程树。
+    """
+    global SHIFT, GATEWAY_HTTP, FRONTEND_PORT, PID_FILE, LOG_DIR
+    SHIFT = shift if shift is not None else _env_int('UI_STACK_SHIFT', 1000)
+    fe = frontend_port if frontend_port is not None else _env_int('UI_STACK_FRONTEND_PORT', 0)
+    GATEWAY_HTTP = 5000 + SHIFT
+    FRONTEND_PORT = fe if fe else 5273 + SHIFT
+    if SHIFT == 1000:
+        PID_FILE = os.path.join(BASE_DIR, 'tests', 'ui', '_ui_stack.pid')
+        LOG_DIR = os.path.join(BASE_DIR, 'logs', 'ui_stack')
+    else:
+        PID_FILE = os.path.join(BASE_DIR, 'tests', 'ui', f'_ui_stack{SHIFT}.pid')
+        LOG_DIR = os.path.join(BASE_DIR, 'logs', 'ui_stack', f'shift{SHIFT}')
+
+
+def _read_pid_cfg(path: str | None = None) -> dict:
+    """读 PID 文件记录的 (pid, shift, frontend)；解析失败返回 {}。
+
+    PID 文件首行为 launcher pid（历史兼容），次行起 shift=/frontend= 键值
+    （INT-581 起写）；status 无参时据此探测对应端口段。
+    """
+    cfg: dict = {}
+    path = path or PID_FILE
+    if not os.path.exists(path):
+        return cfg
+    try:
+        with open(path, encoding='ascii') as fh:
+            first = True
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                if first:
+                    if line.lstrip('-').isdigit():
+                        cfg['pid'] = int(line)
+                    first = False
+                    continue
+                k, _, v = line.partition('=')
+                if k in ('shift', 'frontend') and v.lstrip('-').isdigit():
+                    cfg[k] = int(v)
+    except Exception:
+        return {}
+    return cfg
 
 # name, dir, base_http_port(None=gRPC-only), base_grpc_port
 SERVICES = [
@@ -82,9 +163,6 @@ CLIENT_GRPC_ENVS = {
     'TRANSFER_AGENT_GRPC_PORT': 51101,
 }
 
-GATEWAY_HTTP = 5000 + SHIFT
-FRONTEND_PORT = int(os.environ.get('UI_STACK_FRONTEND_PORT', str(GATEWAY_HTTP + 273)))
-
 # INT-363：门禁默认认证模式。dev=本地 OAuth（表单登录），进程 env 是 vite
 # env 优先级最高层，显式注入使 served VITE_AUTH_MODE 不再随
 # frontend/.env.development（=off）与 .env.local（=dev）的文件级优先级
@@ -112,7 +190,9 @@ def _base_env() -> dict:
         (parts.scheme, parts.netloc, '/' + DB_NAME, '', ''))
     # Redis 独立 DB index，避免与共享栈缓存互踩
     env['REDIS_URL'] = 'redis://localhost:6379/1'
-    env['LOG_ROOT_DIR'] = os.path.join('logs', 'ui_stack')
+    # 服务日志根随段偏移（logs/ui_stack/shift<shift>），并发多栈日志互不踩
+    env['LOG_ROOT_DIR'] = (os.path.join('logs', 'ui_stack', f'shift{SHIFT}')
+                           if SHIFT != 1000 else os.path.join('logs', 'ui_stack'))
     proto_dir = os.path.join(BASE_DIR, 'shared', 'proto')
     env['PYTHONPATH'] = BASE_DIR + os.pathsep + proto_dir + os.pathsep + env.get('PYTHONPATH', '')
     for env_name, base in CLIENT_GRPC_ENVS.items():
@@ -230,13 +310,15 @@ def start():
            cwd=FRONTEND_DIR)
 
     with open(PID_FILE, 'w', encoding='ascii') as fh:
-        fh.write(str(os.getpid()))
+        # 首行 launcher pid（stop 兼容旧单行文件）；次行起记录端口段供 status 无参探测
+        fh.write(f'{os.getpid()}\nshift={SHIFT}\nfrontend={FRONTEND_PORT}\n')
     print(f'[UI-STACK] 已启动 {len(procs)} 个进程（launcher pid {os.getpid()}），'
           f'网关 :{GATEWAY_HTTP}，前端 :{FRONTEND_PORT}，日志 {LOG_DIR}', flush=True)
 
     try:
         wait_ready()
-        print('[UI-STACK] 监督中（stop: python tests/ui/utils/parallel_stack.py stop）', flush=True)
+        stop_hint = '' if SHIFT == 1000 else f' --shift {SHIFT}'
+        print(f'[UI-STACK] 监督中（stop: python tests/ui/utils/parallel_stack.py stop{stop_hint}）', flush=True)
         while True:
             time.sleep(3)
             for name, p in procs:
@@ -265,7 +347,7 @@ def wait_ready(timeout: int = 90):
         except Exception:
             pass
         time.sleep(2)
-    print('[UI-STACK][WARN] 网关就绪探测超时（详见 logs/ui_stack/ui_stack.log）', flush=True)
+    print(f'[UI-STACK][WARN] 网关就绪探测超时（详见 {LOG_DIR}/ui_stack.log）', flush=True)
     return False
 
 
@@ -308,12 +390,7 @@ def _verify_auth_mode():
 
 
 def stop():
-    pid = None
-    if os.path.exists(PID_FILE):
-        try:
-            pid = int(open(PID_FILE, encoding='ascii').read().strip())
-        except Exception:
-            pid = None
+    pid = _read_pid_cfg().get('pid')
     if pid:
         # taskkill 输出为 GBK，errors=replace 避免 UTF-8 侧解码炸线程
         subprocess.run(['taskkill', '/F', '/T', '/PID', str(pid)],
@@ -343,15 +420,50 @@ def status():
 
 
 def pid_status() -> str:
-    if os.path.exists(PID_FILE):
-        return f'pid-file={open(PID_FILE, encoding="ascii").read().strip()}'
-    return 'pid-file=none'
+    cfg = _read_pid_cfg()
+    if not cfg:
+        return 'pid-file=none'
+    parts = [f"pid-file={cfg.get('pid', '?')}"]
+    if 'shift' in cfg:
+        parts.append(f'shift={cfg["shift"]}')
+    if 'frontend' in cfg:
+        parts.append(f'frontend={cfg["frontend"]}')
+    return ' '.join(parts)
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='UI 专用并行隔离栈（端口+1000，隔离库）')
+    parser = argparse.ArgumentParser(
+        description='UI 专用并行隔离栈（默认端口+1000：网关 6000/前端 6273，隔离库）；'
+                    '并发 run 经 --shift 显式换段避免端口争用')
     parser.add_argument('action', choices=['start', 'stop', 'status'])
+    parser.add_argument('--shift', type=int, default=None,
+                        help='端口段偏移量（服务 HTTP/gRPC/网关随偏移，前端默认 5273+shift）；'
+                             '默认 1000 向后兼容；优先级高于环境变量 UI_STACK_SHIFT')
+    parser.add_argument('--frontend-port', type=int, default=None,
+                        help='前端 vite 端口显式覆盖（默认随 shift 派生 5273+shift → 6273）；'
+                             '优先级高于环境变量 UI_STACK_FRONTEND_PORT')
     args = parser.parse_args()
+
+    if args.action == 'status':
+        # status 无参时按 PID 文件记录的端口段探测（并发多栈各看各段）
+        cfg = _read_pid_cfg()
+        if args.shift is None and cfg.get('shift') is not None:
+            args.shift = cfg['shift']
+        if args.frontend_port is None and cfg.get('frontend') is not None:
+            args.frontend_port = cfg['frontend']
+    elif args.action == 'stop' and args.shift is None:
+        # 无参 stop：默认段 PID 不存在时，若只剩一个偏移段则自动对准；多个则报错
+        import glob as _glob
+        candidates = _glob.glob(os.path.join(BASE_DIR, 'tests', 'ui', '_ui_stack*.pid'))
+        if len(candidates) == 1:
+            cfg = _read_pid_cfg(candidates[0])
+            if cfg.get('shift') is not None:
+                args.shift = cfg['shift']
+        elif len(candidates) > 1:
+            raise SystemExit('[UI-STACK] 多个端口段栈在跑，stop 请显式 --shift <段> 指定：'
+                             + ', '.join(os.path.basename(p) for p in candidates))
+
+    configure(args.shift, args.frontend_port)
     if args.action == 'start':
         start()
     elif args.action == 'stop':
