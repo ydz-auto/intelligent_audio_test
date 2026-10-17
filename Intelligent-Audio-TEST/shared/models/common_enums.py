@@ -553,3 +553,34 @@ class PickableTaskStatus(str, Enum):
     COMPLETED = 'completed'
     FAILED = 'failed'
     STOPPED = 'stopped'
+
+
+class StudioExportFormat(str, Enum):
+    """Report Studio 导出格式（INT-673，设计文档 §15.6）
+
+    HTML/MD 为本卡落地格式；PPTX/PDF 属 S3 增强候选技术（需实测后定）。
+    """
+    HTML = 'html'
+    MD = 'md'
+    PPTX = 'pptx'
+    PDF = 'pdf'
+
+
+class StudioExportStatus(str, Enum):
+    """Report Studio 导出作业状态（INT-673，设计文档 §15.5）"""
+    PENDING = 'pending'
+    RUNNING = 'running'
+    DONE = 'done'
+    FAILED = 'failed'
+
+
+class StudioSnapshotReason(str, Enum):
+    """Report Studio 文档版本快照原因（INT-673，设计文档 §15.3）
+
+    每次编辑在同一数据库事务落不可变历史版本；snapshot_reason 记录
+    版本产生方式：ai_edit（AI 结构化编辑）/ manual_edit（人工编辑）/
+    restore（历史版本恢复为新版本）。
+    """
+    AI_EDIT = 'ai_edit'
+    MANUAL_EDIT = 'manual_edit'
+    RESTORE = 'restore'

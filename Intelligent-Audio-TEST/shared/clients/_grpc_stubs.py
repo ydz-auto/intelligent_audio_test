@@ -340,6 +340,20 @@ def get_benchmark_config_service_stub():
     return report_service_pb2_grpc.BenchmarkConfigServiceStub(_get_report_channel())
 
 
+@lru_cache(maxsize=1)
+def get_report_studio_service_stub():
+    """ReportStudioService stub：Report Studio 业务资产（INT-673）
+
+    RPC（与 report_service/interfaces/grpc/servicers.StudioServicer 对齐）：
+    CreateStudioDocument / GetStudioDocument / UpdateStudioDocument /
+    ListStudioDocumentVersions / RestoreStudioDocumentVersion /
+    GetStudioChartData / CreateStudioExportJob / GetStudioExportJob /
+    DownloadStudioExport
+    """
+    from shared.proto import report_service_pb2_grpc
+    return report_service_pb2_grpc.ReportStudioServiceStub(_get_report_channel())
+
+
 # ==================== auth_service stubs ====================
 
 @lru_cache(maxsize=1)

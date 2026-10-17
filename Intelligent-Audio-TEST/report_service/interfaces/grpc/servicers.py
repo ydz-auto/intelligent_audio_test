@@ -1048,3 +1048,132 @@ class BenchmarkServicer:
         except Exception as e:
             logger.exception("GetBenchmarkReport failed")
             return self._resp(False, str(e), {}, 500)
+
+
+class StudioServicer(report_grpc.ReportStudioServiceServicer):
+    """Report Studio 业务资产 gRPC Servicer（INT-673）。
+
+    每个方法委托 application 层 ReportStudioCommandHandler /
+    ReportStudioQueryHandler（严格 CQRS：写侧只写并自动落版本快照，
+    读侧只读 ReadModel/事实表）。
+    """
+
+    def __init__(self):
+        from report_service.application.handlers.report_studio_handlers import (
+            ReportStudioCommandHandler,
+            ReportStudioQueryHandler,
+        )
+        self.command_handler = ReportStudioCommandHandler()
+        self.query_handler = ReportStudioQueryHandler()
+
+    @staticmethod
+    def _resp(success: bool, message: str = '', data: Any = None, code: int = 0) -> report_pb.StudioResponse:
+        return report_pb.StudioResponse(
+            success=success,
+            message=message,
+            data=_dumps(data) if data is not None else '',
+            code=code,
+        )
+
+    # ---- 写侧 ----
+
+    def CreateStudioDocument(self, request, context=None):
+        """用现有 reportId 创建草稿（可绑定 agentSessionId）。"""
+        try:
+            data = _loads(request.data, {}) or {}
+            result = self.command_handler.handle_create_document(data)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("CreateStudioDocument failed")
+            return self._resp(False, str(e), {}, 500)
+
+    def UpdateStudioDocument(self, request, context=None):
+        """人工编辑（expected_version 乐观锁，冲突 409 + 差异）。"""
+        try:
+            data = _loads(request.data, {}) or {}
+            result = self.command_handler.handle_update_document(data)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("UpdateStudioDocument failed")
+            return self._resp(False, str(e), {}, 500)
+
+    def RestoreStudioDocumentVersion(self, request, context=None):
+        """选定历史版本恢复为新版本（不覆盖）。"""
+        try:
+            data = _loads(request.data, {}) or {}
+            result = self.command_handler.handle_restore_version(data)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("RestoreStudioDocumentVersion failed")
+            return self._resp(False, str(e), {}, 500)
+
+    def CreateStudioExportJob(self, request, context=None):
+        """固定文档版本 + 格式 + 主题，创建导出异步作业。"""
+        try:
+            data = _loads(request.data, {}) or {}
+            result = self.command_handler.handle_create_export_job(data)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("CreateStudioExportJob failed")
+            return self._resp(False, str(e), {}, 500)
+
+    # ---- 读侧 ----
+
+    def GetStudioDocument(self, request, context=None):
+        """当前版本、Markdown、图表引用、ETag。"""
+        try:
+            data = _loads(request.data, {}) or {}
+            result = self.query_handler.handle_get_document(data)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("GetStudioDocument failed")
+            return self._resp(False, str(e), {}, 500)
+
+    def ListStudioDocumentVersions(self, request, context=None):
+        """不可变版本列表。"""
+        try:
+            data = _loads(request.data, {}) or {}
+            result = self.query_handler.handle_list_versions(data)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("ListStudioDocumentVersions failed")
+            return self._resp(False, str(e), {}, 500)
+
+    def GetStudioChartData(self, request, context=None):
+        """按当前报告数据 + ChartSpec 返回图表数据。"""
+        try:
+            data = _loads(request.data, {}) or {}
+            result = self.query_handler.handle_get_chart_data(data)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("GetStudioChartData failed")
+            return self._resp(False, str(e), {}, 500)
+
+    def GetStudioExportJob(self, request, context=None):
+        """作业状态轮询 + 下载引用。"""
+        try:
+            data = _loads(request.data, {}) or {}
+            result = self.query_handler.handle_get_export_job(data)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("GetStudioExportJob failed")
+            return self._resp(False, str(e), {}, 500)
+
+    def DownloadStudioExport(self, request, context=None):
+        """已完成产物鉴权下载。"""
+        try:
+            data = _loads(request.data, {}) or {}
+            result = self.query_handler.handle_download_export(data)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("DownloadStudioExport failed")
+            return self._resp(False, str(e), {}, 500)

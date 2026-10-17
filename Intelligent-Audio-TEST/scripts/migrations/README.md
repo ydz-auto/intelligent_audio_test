@@ -44,6 +44,9 @@ python scripts/migrations/202610/seed_interruption_v2.py                # ㉕ �
 python scripts/migrations/202610/backfill_report_snapshot_freeze.py --apply  # ㉖ 存量已发布任务 report_snapshot 补冻结（INT-258；默认 dry-run）
 python scripts/migrations/202610/cleanup_reeval_ghost_round_rows.py --apply  # ㉗ failed 重评幽灵失败逐轮行清理（INT-364；默认 dry-run）
 python scripts/migrations/202610/add_uq_task_case_route_int604.py           # ㉘ task_case_relations (task, case, 路由) 唯一索引（INT-604；建索引前先查重，存在重复即中止）
+python scripts/migrations/202610/add_published_task_type_algorithm_type.py # ㉙ published_tasks 补 type/algorithm_type 两列 + idx_published_task_algorithm_type 索引 + 历史快照回填（INT-148 已发布任务类型列，INT-659 落地运行库）
+python scripts/migrations/202610/add_system_options_table.py                  # ㉚ 建 system_options 表 + 系统选项默认值种子（INT-620；全新库 create_all 已含，执行为全 SKIP）
+python scripts/migrations/202610/add_report_studio_tables.py                 # ㉛ Report Studio 业务资产 4 表（INT-673：documents/versions/chart_specs/export_jobs；全新库 create_all 已含，执行为全 SKIP）
 ```
 
 > ✅ **2026-09-07 全量迁移记录**：当前环境已执行 ①③④⑧（`remove_foreign_keys_and_soft_delete` 12 步 + `add_audit_columns` 补 24 处 + `add_reevaluated_at` + `add_pass_threshold_to_eval_params`），执行后 `UndefinedColumn` 类报错全部消除。②⑤⑥⑦⑨ 视功能需要执行。
@@ -55,6 +58,8 @@ python scripts/migrations/202610/add_uq_task_case_route_int604.py           # �
 > ✅ **2026-10-12 修复记录（INT-147 打回 F1）**：UserOAuthBinding PO 新增后存量部署缺 `user_oauth_bindings` 表，`GET/DELETE /oauth/bindings` 直接 500（UndefinedTable）。已补执行 ㉒：运行库执行为全 [SKIP]（验收方当日已按 PO 模型补建该表，脚本回读确认 5 列 + `uq_provider_user` + 双索引与 ORM 一致）；另在临时库完成建表路径验证（dry-run 不落 DDL / 首次执行建表 / 重复执行全 SKIP / 结构与 ORM 逐列比对一致）。
 
 > ✅ **2026-10-18 修复记录（INT-659）**：已发布任务列表 `GET /api/v1/published-tasks` 恒 400（`published_tasks.type` 不存在，INT-638 接线实测发现）。已执行 ㉘：补 `type` 列 [EXEC]（`algorithm_type` 列此前已存在 [SKIP]）、建 `idx_published_task_algorithm_type`、历史快照回填 13 行（type 按快照用例级 device_type 派生 api/e2e，algorithm_type 取快照 algorithmType）。重复执行全列 [SKIP]、回填仅触碰 algorithm_type 为 NULL 的行（快照无 algorithmType 的行写出 NULL 值无变化，幂等无报错）。同批修正 ⑯ `drop_task_type_and_testcase_test_type.py` 反向冲突：`DROP_COLUMNS` 移除 `('published_tasks', 'type')`（INT-148 裁定该列保留），dry-run 确认不再尝试删除该列；本次运行库实测该脚本 dry-run 全 [SKIP]（test_tasks.type / test_cases.test_type 此前已删除）。验收实测：真实后端带/不带 `type` 筛选参数 `GET /api/v1/published-tasks` 均恢复 200。
+
+> ✅ **2026-10-18 执行记录（INT-673）**：Report Studio 业务资产 4 表已执行 ㉚（全新库 create_all 已含，执行为全 SKIP；运行库本次全部 APPLY 11 步：4 表 + 7 索引）。同批执行 ⑦ seed_rbac.py 注册 `report:studio:create/edit/undo/export` 4 码 + tester/algo_engineer 授权矩阵（幂等，重跑 0 新增）。临时库红-绿自测：建表路径 APPLY → 重复执行全 SKIP → 结构逐列与 ORM 对齐 → 销毁。
 
 > ✅ **2026-10-13 移植记录（INT-192）**：补齐三族维度 seed（㉓ turn_eval / ㉔ env_judge / ㉕ interruption_v2，V9.7.10 蓝本金标对齐后移植）。运行库执行实测零插入（全原地更新/SKIP，仅 updated_at 移动，逐字段前后比对无差）；临时库（create_all + seed_voice_llm）fresh 路径实测：首轮 25 维/322 参数/110 映射全插入、重跑全 SKIP/更新零插入，临时库终态与运行库金标逐字段等价（含 api_settings deep-equal）后销毁。UPDATE 不写 status：运行库「逐轮三分类评估」status=FALSE 为现状保留（fresh 库该维为启用态，验收方如判定需对齐可手工关闭）。三个脚本依赖 ⑪ seed_voice_llm 先行（param_mappings/关联外键引用 algorithm_definitions）。
 

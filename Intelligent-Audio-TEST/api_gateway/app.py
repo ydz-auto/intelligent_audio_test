@@ -118,6 +118,7 @@ def create_app(config_name='default') -> FastAPI:
     from api_gateway.routes.playback_bp import router as playback_router
     from api_gateway.routes.laboratory_bp import router as laboratory_router
     from api_gateway.routes.report_bp import router as report_router
+    from api_gateway.routes.report_studio_bp import router as report_studio_router
     from api_gateway.routes.task_bp import router as task_router
     from api_gateway.routes.cherry_pick_bp import router as cherry_pick_router
     from api_gateway.routes.review_bp import router as review_router
@@ -155,6 +156,8 @@ def create_app(config_name='default') -> FastAPI:
     # INT-655 实验室管理（设备页「更多操作」→「实验室管理」；实验室扩展功能设计.md §5.1）
     app.include_router(laboratory_router, prefix='/api/v1/laboratories', tags=['laboratories'])
     app.include_router(report_router, prefix='/api/v1/reports', tags=['reports'])
+    # INT-673：Report Studio 业务资产（documents/versions/charts/exports）
+    app.include_router(report_studio_router, prefix='/api/v1/report-studio', tags=['report-studio'])
     app.include_router(task_router, prefix='/api/v1/tasks', tags=['tasks'])
     # INT-339 挑选合并：/tasks/cherry-picks 前缀（设计文档 §8 契约路径）
     app.include_router(cherry_pick_router, prefix='/api/v1/tasks/cherry-picks', tags=['cherry-picks'])
