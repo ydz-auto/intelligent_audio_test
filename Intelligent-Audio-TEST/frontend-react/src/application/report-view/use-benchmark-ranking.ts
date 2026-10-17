@@ -104,7 +104,7 @@ export function useBenchmarkRanking(reportId: number) {
     [source]
   )
 
-  /** 发布 Benchmark 报告（§3.8；POST /api/v1/benchmarks/reports 生成并发布；mock 走 API 桩） */
+  /** 发布 Benchmark 报告（§3.8；POST /api/v1/benchmarks/reports 生成并发布） */
   const publishBenchmarkReport = useCallback(async () => {
     return publishBenchmarkApi()
   }, [])

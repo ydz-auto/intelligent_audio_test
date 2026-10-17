@@ -16,8 +16,10 @@
  * 收藏/回收站（favorite_trash_bp.py:110-137，INT-215 口径）：
  *   POST/DELETE /reports/{report_id}/favorite、POST /reports/{report_id}/restore、
  *   DELETE /reports/{report_id}/purge。
- * 已知后端缺口（本卡评论留证据）：POST /benchmarks/reports 不存在（publishBenchmarkReport
- * 保持桩）；report-studio 端点不存在（reportStudioApi.ts 桩，FEAT 卡已开）。
+ * 批量（favorite_trash_bp.py _IdsBody {ids}，与 task/testcase 同款批量契约）：
+ *   POST /reports/restore、POST /reports/purge。
+ * Benchmark 发布：POST /benchmarks/reports（benchmark_bp.py:93，权限 benchmark:report:publish）。
+ * 已知后端缺口（本卡评论留证据）：report-studio 端点不存在（reportStudioApi.ts 桩，FEAT 卡已开）。
  */
 import type {
   ReportAlgorithmDefinition,
@@ -168,11 +170,13 @@ export async function fetchBenchmarkReports(): Promise<ReportListData> {
 
 /**
  * 发布 Benchmark 报告（§3.8；排行区块「发布 Benchmark 报告」）。
- * 后端缺口：POST /api/v1/benchmarks/reports 不存在（benchmark_bp.py 无此路由），
- * 保持桩并返回演示态 reportId；待主项目后端立项后替换（证据见本卡交付评论）。
+ * POST /api/v1/benchmarks/reports（benchmark_bp.py:93，权限 benchmark:report:publish；
+ * INT-481）：空 payload = 聚合当前全量排行快照，落 benchmark_reports 库。
+ * 响应 data（_benchmark_report_dict 实测序列化）含 report_id → { reportId }。
  */
 export async function publishBenchmarkReport(): Promise<{ reportId: number }> {
-  return { reportId: 1185 }
+  const data = await request<{ report_id: number }>('POST', '/benchmarks/reports', {})
+  return { reportId: data.report_id }
 }
 
 // ---------------------------------------------------------------------------
@@ -420,6 +424,18 @@ export async function restoreReport(reportId: number): Promise<{ success: boolea
 /** DELETE /reports/{id}/purge（彻底删除） */
 export async function purgeReport(reportId: number): Promise<{ success: boolean }> {
   await request('DELETE', `/reports/${reportId}/purge`)
+  return { success: true }
+}
+
+/** POST /reports/restore（批量恢复；_IdsBody {ids}，回收站浮条多选走此端点） */
+export async function restoreReports(ids: number[]): Promise<{ success: boolean }> {
+  await request('POST', '/reports/restore', { ids })
+  return { success: true }
+}
+
+/** POST /reports/purge（批量彻底删除；_IdsBody {ids}，回收站浮条多选走此端点） */
+export async function purgeReports(ids: number[]): Promise<{ success: boolean }> {
+  await request('POST', '/reports/purge', { ids })
   return { success: true }
 }
 
