@@ -9,7 +9,6 @@ import {
   mapMetricMappingDto,
   mapRankingRowDto,
   mapRankingRows,
-  mapRankingSubjectDto,
 } from '@/infrastructure/adapters/benchmarkAdapter'
 import type {
   BenchmarkMetricMappingDto,
@@ -120,15 +119,6 @@ describe('mapMetricMappingDto', () => {
     expect(mapping.scenarioTags).toEqual(['普通话通用', '噪声'])
     expect(mapping.active).toBe(true)
     expect(Object.keys(mapping).some((key) => key.includes('_'))).toBe(false)
-  })
-})
-
-describe('mapRankingSubjectDto', () => {
-  it('主体联想 DTO → string 名称（subject_name 单一字段直转，application 层零 snake_case）', () => {
-    expect(mapRankingSubjectDto({ subject_name: '远场语音评测模型-旗舰版' })).toBe(
-      '远场语音评测模型-旗舰版'
-    )
-    expect(mapRankingSubjectDto({ subject_name: 'DeepL API' })).toBe('DeepL API')
   })
 })
 

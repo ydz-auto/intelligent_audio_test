@@ -20,11 +20,11 @@ export function useMetricMappings(): MetricMappingsResult {
   const query = useQuery({
     queryKey: ['benchmarks', 'metric-mappings'],
     queryFn: async () => {
-      const envelope = await fetchBenchmarkMetricMappings(true)
-      if (!envelope.success || !envelope.data) {
-        throw new Error(envelope.message || '查询指标映射失败')
+      const data = await fetchBenchmarkMetricMappings(true)
+      if (!data) {
+        throw new Error('查询指标映射失败')
       }
-      return envelope.data.items.map(mapMetricMappingDto)
+      return data.items.map(mapMetricMappingDto)
     },
     staleTime: 5 * 60_000,
     retry: 1,

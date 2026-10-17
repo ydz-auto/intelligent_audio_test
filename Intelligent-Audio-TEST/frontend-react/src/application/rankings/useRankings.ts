@@ -2,7 +2,9 @@
  * 排行榜主查询 hook（application 层，对位 newAPI use-rankings.ts）。
  * queryKey=['benchmarks','ranking',filters]；staleTime 5min；
  * placeholderData: keepPreviousData（切筛选 non-blocking 保留旧数据）。
- * mock 阶段：api 桩全量返回 → adapter 映射 → 前端筛选 → 分组。
+ * 接线 INT-642：后端按 suite/category/metricCode/source 精确筛选（查询参数透传）；
+ * 主体搜索为联想输入（局部串），不发给后端（后端精确匹配会打空列表），
+ * 子串筛选仍由 filterRankingRows 在 Domain 行上承担（与 mock 阶段同口径）。
  */
 import { useQuery } from '@tanstack/react-query'
 
@@ -35,17 +37,16 @@ export function useRankings(
   const query = useQuery({
     queryKey: ['benchmarks', 'ranking', filters],
     queryFn: async () => {
-      const envelope = await fetchBenchmarkRanking({
+      const data = await fetchBenchmarkRanking({
         suite: filters.suite || undefined,
         category: filters.category || undefined,
         metricCode: filters.metricCode || undefined,
         source: filters.source || undefined,
-        subjectName: filters.subjectName || undefined,
       })
-      if (!envelope.success || !envelope.data) {
-        throw new Error(envelope.message || '查询排行失败，请稍后重试')
+      if (!data) {
+        throw new Error('查询排行失败，请稍后重试')
       }
-      return envelope.data.items.map(mapRankingRowDto)
+      return data.items.map(mapRankingRowDto)
     },
     staleTime: 5 * 60_000,
     placeholderData: (previous) => previous,
@@ -64,6 +65,18 @@ export function useRankings(
     isFetching: query.isFetching,
     isLoading: query.isLoading && !query.data,
     isError: query.isError,
-    errorMessage: query.error instanceof Error ? query.error.message : null,
+    errorMessage: resolveErrorMessage(query.error),
   }
+}
+
+/** ApiError 优先展示中文 userMessage（服务端 message 可能为空，如 403 detail 兜底） */
+function resolveErrorMessage(error: unknown): string | null {
+  if (error instanceof Error) {
+    const apiError = error as { userMessage?: string }
+    if (typeof apiError.userMessage === 'string' && apiError.userMessage) {
+      return apiError.userMessage
+    }
+    return error.message || null
+  }
+  return null
 }

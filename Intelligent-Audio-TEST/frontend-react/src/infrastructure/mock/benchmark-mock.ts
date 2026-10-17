@@ -54,11 +54,6 @@ export interface BenchmarkMetricMappingDto {
   active: boolean
 }
 
-/** 被测主体联想 DTO（GET /ranking/subjects 返回形态） */
-export interface BenchmarkSubjectDto {
-  subject_name: string
-}
-
 /** INT-297 列表信封（单页全量：page=1, pages=1） */
 export interface BenchmarkEnvelope<T> {
   success: boolean
@@ -407,8 +402,8 @@ export const MOCK_BENCHMARK_RANKING_RESPONSE: BenchmarkEnvelope<BenchmarkRanking
   code: 0,
 }
 
-/** GET /api/v1/benchmarks/ranking/subjects 被测主体去重清单 mock（搜索联想用） */
-export const MOCK_BENCHMARK_SUBJECTS: BenchmarkSubjectDto[] = [
+/** GET /api/v1/benchmarks/ranking/subjects 被测主体去重清单 mock（后端返回纯字符串数组） */
+export const MOCK_BENCHMARK_SUBJECTS: string[] = [
   '远场语音评测模型-旗舰版',
   '灵犀语音引擎 V3',
   '开源 Whisper-Large-v3',
@@ -434,7 +429,7 @@ export const MOCK_BENCHMARK_SUBJECTS: BenchmarkSubjectDto[] = [
   'DeepL API',
   '开源 NLLB-200',
   '基础翻译服务',
-].map((name) => ({ subject_name: name }))
+]
 
 /** 排行页算法卡 mock（GET /algorithm/definitions 形态 + 参数摘要字段——
  * 照 _algorithm_definition_schemas.py 实测：device_params/api_params/case_params
