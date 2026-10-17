@@ -3,7 +3,8 @@
  * 列：版本/名称·说明/状态/类型/Benchmark/版本数/发布人·发布时间/操作（行内按钮组）。
  * 展开行五个 DetailSection（照 log-detail-layout 键值行）：版本历史 / Benchmark 标记 /
  * 任务详情（发布时冻结）/ 冻结报告 / 执行记录。
- * 数据源：mock 见 MOCK_PUBLISHED_TASKS + MOCK_PUBLISHED_DETAIL。
+ * 数据源：列表 fetchPublishedTaskList（GET /published-tasks）；展开版本链行
+ * fetchPublishedTaskDetail（GET /published-tasks/{id}）真实详情。
  */
 import { ChevronDown, ChevronRight, Package, Trophy } from 'lucide-react'
 import { useEffect, useState } from 'react'
