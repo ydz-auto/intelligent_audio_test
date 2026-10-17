@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """任务数据导出应用服务（M1 导出引擎编排）
 
-流程：校验入参 → 清理过期临时 ZIP → 读 task_service 段 7 表 → 收集用例引用 →
+流程：校验入参 → 清理过期临时 ZIP → 读 task_service 段 8 表 → 收集用例引用 →
 gRPC 拉维度评分（evaluation_service）与报告 7 表（report_service）→
 经存储抽象收集文件 → 流式打包 ZIP 落盘 DATA_TRANSFER_TMP_DIR/export/。
 ZIP 不走 gRPC，由网关 FileResponse 直接从共享盘返回下载。
@@ -89,7 +89,7 @@ class DataTransferExportService:
 
         _sweep_expired_exports()
 
-        # 1) task_service 段 7 表
+        # 1) task_service 段 8 表（含 cherry-pick 容器关系表与内联结果，INT-656）
         rows_by_table = transfer_repository.fetch_export_rows(clean_ids)
         exported_task_rows = rows_by_table.get(TransferTable.TEST_TASKS.value) or []
         found_ids = {row['id'] for row in exported_task_rows}

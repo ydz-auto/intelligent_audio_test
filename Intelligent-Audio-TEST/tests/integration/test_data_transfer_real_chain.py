@@ -144,7 +144,7 @@ class TestGatewayHttpRealChain:
             manifest = json.loads(zf.read('manifest.json'))
             assert manifest['version'] == '1.0'
             assert manifest['stats']['taskCount'] == 2
-            assert len([n for n in zf.namelist() if n.startswith('db/')]) == 15
+            assert len([n for n in zf.namelist() if n.startswith('db/')]) == 16  # INT-656：新增容器关系表
 
         # ---- POST /import/preview：同库导入 → 任务 ID 冲突清单
         resp = gateway_client.post(

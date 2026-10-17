@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
-"""任务数据导入导出仓储（task_service 段 7 表批量读写 + 补偿删除）
+"""任务数据导入导出仓储（task_service 段 8 表批量读写 + 补偿删除 + 容器内联）
 
-导出（读侧，无副作用）：批量读 7 表 + 测试用例引用信息。
-导入（写侧）：单事务写入 task_service 段 7 表，flush 捕获冲突行新 ID 构建映射；
+导出（读侧，无副作用）：批量读 8 表 + 测试用例引用信息 + cherry-pick 容器任务
+内联所选结果（INT-656：容器自身无 test_results 行，按 task_id 直查为空壳，
+导出需内联被引用源结果并携带专有关系表，导入侧可重建容器及其所选结果）。
+导入（写侧）：单事务写入 task_service 段 8 表，flush 捕获冲突行新 ID 构建映射；
 补偿回滚按批次主键逆依赖删除。显式 ID 插入后同步 Postgres 序列。
 """
 import logging
@@ -15,6 +17,7 @@ from task_service.infrastructure.persistence.models import (
     Task,
     TaskAPI,
     TaskCase,
+    TaskCherryPickRelation,
     TaskDevice,
     TaskMergeRelation,
     TaskTag,
@@ -26,12 +29,14 @@ logger = logging.getLogger(__name__)
 
 _MODULE_NAME = 'transfer_repository'
 
-# 子表写入顺序（依赖序）：关联表 → 结果表（主表由 import_task_segment 先写）
+# 子表写入顺序（依赖序）：关联表 → 结果表 → cherry-pick 关系表（引用结果，
+# 须在结果表 flush 拿到 test_results 映射后重写外键；主表由 import_task_segment 先写）
 _CHILD_TABLES = ('task_case_relations', 'task_device_relations', 'task_api_relations',
-                 'task_tags', 'task_merge_relations', 'test_results')
+                 'task_tags', 'task_merge_relations', 'test_results',
+                 'task_cherry_pick_relations')
 # 补偿删除顺序（逆依赖）
-_ROLLBACK_ORDER = ('test_results', 'task_merge_relations', 'task_tags',
-                   'task_api_relations', 'task_device_relations',
+_ROLLBACK_ORDER = ('task_cherry_pick_relations', 'test_results', 'task_merge_relations',
+                   'task_tags', 'task_api_relations', 'task_device_relations',
                    'task_case_relations', 'test_tasks')
 
 _TABLE_PO = {
@@ -41,6 +46,7 @@ _TABLE_PO = {
     'task_api_relations': TaskAPI,
     'task_tags': TaskTag,
     'task_merge_relations': TaskMergeRelation,
+    'task_cherry_pick_relations': TaskCherryPickRelation,
     'test_results': TestResult,
 }
 
@@ -99,10 +105,11 @@ class TransferRepository:
     # ---------- 导出（读侧，查询不产生副作用） ----------
 
     def fetch_export_rows(self, task_ids: List[int]) -> Dict[str, List[dict]]:
-        """批量读取 task_service 段 7 表（Task 仅取未删除）。
+        """批量读取 task_service 段 8 表（Task 仅取未删除）。
 
         task_merge_relations 仅取 merged_task_id 与 source_task_id 都在导出集内的
-        记录（防悬空外键，见 INT-25 规格第 6 条）。
+        记录（防悬空外键，见 INT-25 规格第 6 条）；task_cherry_pick_relations 与
+        内联结果由 _inline_cherry_pick_results 追加（INT-656）。
         返回 {表名: 行列表}
         """
         session = get_db_session()
@@ -114,8 +121,8 @@ class TransferRepository:
             rows['test_tasks'] = [_po_to_row(po) for po in tasks]
             found_ids = [po.id for po in tasks]
             for table, po_cls in _TABLE_PO.items():
-                if table == 'test_tasks':
-                    continue
+                if table in ('test_tasks', 'task_cherry_pick_relations'):
+                    continue  # 容器关系表按 cherry_pick_task_id 由内联分支处理
                 if not found_ids:
                     rows[table] = []
                     continue
@@ -127,9 +134,50 @@ class TransferRepository:
                 else:
                     pos = session.query(po_cls).filter(po_cls.task_id.in_(found_ids)).all()
                 rows[table] = [_po_to_row(po) for po in pos]
+            self._inline_cherry_pick_results(session, rows, found_ids)
             return rows
         finally:
             session.close()
+
+    def _inline_cherry_pick_results(self, session, rows: Dict[str, List[dict]],
+                                    found_ids: List[int]) -> None:
+        """cherry-pick 容器任务导出内联（INT-656，引用方案 A）。
+
+        容器任务（task_cherry_pick_relations.cherry_pick_task_id 存在性判定）自身无
+        test_results 行，7 表按 task_id 直查导出为空壳。此处：
+        - 携带容器任务的专有关系表行（导入侧重建引用关系，维持引用方案 A）
+        - 内联被引用源结果：源任务同批导出时结果已随源任务在包内（按 result_id
+          去重不重复内联）；源任务未导出时把结果行 task_id 重写为引用它的容器任务
+          （导入可重建且不产生悬空/串挂任务外键）。存储 key 首段保持源任务 id，
+          文件条目按容器 id 归档——见 file_transfer.iter_result_file_entries 与
+          导入侧 _update_result_paths 的对应处理。
+        """
+        rows.setdefault('task_cherry_pick_relations', [])
+        if not found_ids:
+            return
+        relations = (session.query(TaskCherryPickRelation)
+                     .filter(TaskCherryPickRelation.cherry_pick_task_id.in_(found_ids))
+                     .order_by(TaskCherryPickRelation.id).all())
+        rows['task_cherry_pick_relations'] = [_po_to_row(r) for r in relations]
+        if not relations:
+            return
+        existing_result_ids = {
+            row['id'] for row in rows.get('test_results', []) if row.get('id') is not None
+        }
+        inlined: List[dict] = []
+        for relation in relations:
+            rid = relation.result_id
+            if rid is None or rid in existing_result_ids:
+                continue
+            po = session.get(TestResult, rid)
+            if po is None:
+                continue
+            row = _po_to_row(po)
+            row['task_id'] = relation.cherry_pick_task_id  # 归入引用它的容器任务
+            existing_result_ids.add(rid)
+            inlined.append(row)
+        if inlined:
+            rows.setdefault('test_results', []).extend(inlined)
 
     def fetch_case_configs(self, case_ids: List[str]) -> Dict[str, dict]:
         """按用例 ID 批量读取引用信息（参考参数路径 + 配置，导出收集文件用）"""
@@ -183,18 +231,21 @@ class TransferRepository:
     def import_task_segment(self,
                             rows_by_table: Dict[str, List[dict]],
                             conflicts_by_table: Dict[str, List[int]],
-                            rewrite_fk_fn: Callable[[str, List[dict], Dict[int, int]], List[dict]],
+                            rewrite_fk_fn: Callable[[str, List[dict], Dict[str, Dict[int, int]]], List[dict]],
                             progress_fn: Callable[[str, int], None] = None,
                             ) -> Tuple[Dict[str, Dict[int, int]], Dict[str, List[int]]]:
-        """单事务写入 task_service 段 7 表。
+        """单事务写入 task_service 段 8 表。
 
         Args:
             rows_by_table: 表名 → 已剥离冲突 id 的待插入行（行序与导出包一致；
                 冲突行无 'id' 键，与 conflicts_by_table 按序一一对应）
             conflicts_by_table: 表名 → 被剥离的原主键列表（行序）
-            rewrite_fk_fn: (table, rows, tasks_mapping) → 按 FK 规则重写后的行
-                （tasks 映射 flush 后才可知，子表外键必须在插入前于同一事务内重写；
-                实现为 domain 层 rewrite_fk_rows 的包装）
+            rewrite_fk_fn: (table, rows, mappings) → 按 FK 规则重写后的行
+                （mappings 为演进中的 old→new 主键映射：'tasks' 在 flush 后可用，
+                子表外键须在插入前于同一事务内重写；'test_results' 在结果表 flush
+                后可用——task_cherry_pick_relations 在 _CHILD_TABLES 中位于结果表
+                之后，其 result_id 重写依赖该映射；实现为 domain 层 rewrite_fk_rows
+                的包装）
             progress_fn: (table, processed_rows) 每表 flush 后回调（进度推送用）
 
         Returns:
@@ -216,14 +267,13 @@ class TransferRepository:
                 conflicts_by_table.get('test_tasks') or [])
             mappings['tasks'] = {old_id: po.id for old_id, po in task_pairs}
             inserted_pks['test_tasks'] = [po.id for _, po in task_pairs]
-            task_map = mappings['tasks']
             if progress_fn:
                 progress_fn('test_tasks', len(task_pairs))
 
-            # 2) 关联表 + test_results：先按规则重写外键再插入
+            # 2) 关联表 + test_results + cherry-pick 关系表：先按规则重写外键再插入
             for table in _CHILD_TABLES:
                 rows = rows_by_table.get(table) or []
-                rewritten = rewrite_fk_fn(table, rows, task_map)
+                rewritten = rewrite_fk_fn(table, rows, mappings)
                 po_cls = _TABLE_PO[table]
                 pairs = self._insert_two_pass(
                     session, po_cls, table, rewritten,

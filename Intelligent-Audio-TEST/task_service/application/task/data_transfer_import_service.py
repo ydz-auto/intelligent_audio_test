@@ -2,7 +2,7 @@
 """任务数据导入应用服务（M4 导入执行编排）
 
 分段提交 + 补偿回滚（跨服务无单事务，架构红线禁止直写他服务表）：
-  1. task_service 单事务写入自身 7 表（ID 重映射 + 外键改写 + 批次主键登记）
+  1. task_service 单事务写入自身 8 表（ID 重映射 + 外键改写 + 批次主键登记）
   2. gRPC evaluation_service.ImportDimensions（单事务 + 自登记批次）
   3. gRPC report_service.ImportReports（单事务 + 自登记批次）
   4. 文件经存储抽象回写（放最后：DB 全部成功后才动文件）
@@ -193,15 +193,16 @@ class DataTransferImportService:
             dims_rows = rows_by_table.get(TransferTable.TEST_RESULT_DIMENSIONS.value) or []
             report_tables_rows = {t.value: rows_by_table.get(t.value) or []
                                   for t in _REPORT_TABLES}
-            # plan 覆盖全部 15 表（含经 gRPC 转交的维度/报告段），总行数一次计足
+            # plan 覆盖全部 16 表（含经 gRPC 转交的维度/报告段），总行数一次计足
             reporter.set_total_rows(plan.total_rows())
 
-            # ===== 段 1：task_service 7 表（单事务）=====
+            # ===== 段 1：task_service 8 表（单事务，含容器关系表）=====
             reporter.report(ImportProgressStep.WRITING_DB, '开始写入任务数据')
 
-            def _rewrite_fn(table: str, rows: List[dict], task_map: Dict[int, int]) -> List[dict]:
+            def _rewrite_fn(table: str, rows: List[dict],
+                           mappings: Dict[str, Dict[int, int]]) -> List[dict]:
                 return rewrite_fk_rows(
-                    rows, fk_rules_of(TransferTable(table)), {FkMappingKey.TASKS: task_map})
+                    rows, fk_rules_of(TransferTable(table)), mappings)
 
             mappings, inserted_pks = transfer_repository.import_task_segment(
                 {name: p.rows for name, p in plan.tables.items()},
@@ -367,12 +368,23 @@ class DataTransferImportService:
             if not old_path or old_task_id is None or old_result_id is None:
                 continue
             new_task_id = tasks_mapping.get(old_task_id, old_task_id)
-            if new_task_id == old_task_id:
-                continue  # 任务 ID 未变，key 不变
             new_result_id = results_mapping.get(old_result_id, old_result_id)
             _category, key = parse_storage_path(old_path)
             if not key:
                 continue
+            key_head = key.split('/', 1)[0]
+            # INT-656：cherry-pick 容器导出内联——内联结果行 task_id 已重写为引用它的
+            # 容器任务，存储 key 首段仍是源任务 id；文件按容器路径回写，即使任务 id
+            # 未重映射（fresh 导入）也须把 result_data_path 更新到实际落盘位置
+            if key_head.isdigit() and str(old_task_id) != key_head:
+                new_key = remap_task_id_in_key(key, new_task_id)
+                stored_path = written_paths.get(new_key)
+                if not stored_path:
+                    continue
+                changes.append((new_result_id, stored_path))
+                continue
+            if new_task_id == old_task_id:
+                continue  # 任务 ID 未变，key 不变
             new_key = remap_task_id_in_key(key, new_task_id)
             stored_path = written_paths.get(new_key)
             if not stored_path:

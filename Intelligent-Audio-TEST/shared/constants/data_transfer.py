@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
 """任务数据导入导出（Data Transfer）共享常量
 
-15 张表、外键转换规则、ZIP 包结构、进度步骤的唯一配置来源。
+16 张表、外键转换规则、ZIP 包结构、进度步骤的唯一配置来源。
 设计依据：《任务数据导入导出功能设计文档》4.1/4.2/4.7.2（V9.7.10）+
 V9.7.31 微服务适配规格（INT-25）。
 
 表归属（同一 Postgres 库，但服务边界必须遵守）：
-- task_service（7 张）：test_tasks / task_case_relations / task_device_relations /
+- task_service（8 张）：test_tasks / task_case_relations / task_device_relations /
   task_api_relations / task_tags / task_merge_relations / test_results
+  / task_cherry_pick_relations（INT-656：cherry-pick 容器任务导出内联——容器自身
+  无 test_results 行，导出需内联所选结果并携带专有关系表，导入侧可重建容器）
 - evaluation_service（1 张）：test_result_dimensions
 - report_service（7 张）：test_reports / report_summaries / report_summary_meta /
   report_raw_data / report_cases / report_metric_stats / report_comparison_matrix
@@ -26,13 +28,14 @@ SUPPORTED_MANIFEST_VERSIONS = {ManifestVersion.V1_0.value}
 
 
 class TransferTable(str, Enum):
-    """导出包内的 15 张表（值 = 表名 = db/ 目录下的 JSON 文件名）"""
+    """导出包内的 16 张表（值 = 表名 = db/ 目录下的 JSON 文件名）"""
     TEST_TASKS = 'test_tasks'
     TASK_CASE_RELATIONS = 'task_case_relations'
     TASK_DEVICE_RELATIONS = 'task_device_relations'
     TASK_API_RELATIONS = 'task_api_relations'
     TASK_TAGS = 'task_tags'
     TASK_MERGE_RELATIONS = 'task_merge_relations'
+    TASK_CHERRY_PICK_RELATIONS = 'task_cherry_pick_relations'
     TEST_RESULTS = 'test_results'
     TEST_RESULT_DIMENSIONS = 'test_result_dimensions'
     TEST_REPORTS = 'test_reports'
@@ -59,6 +62,7 @@ TABLE_OWNERS = {
     TransferTable.TASK_API_RELATIONS: TransferOwner.TASK_SERVICE,
     TransferTable.TASK_TAGS: TransferOwner.TASK_SERVICE,
     TransferTable.TASK_MERGE_RELATIONS: TransferOwner.TASK_SERVICE,
+    TransferTable.TASK_CHERRY_PICK_RELATIONS: TransferOwner.TASK_SERVICE,
     TransferTable.TEST_RESULTS: TransferOwner.TASK_SERVICE,
     TransferTable.TEST_RESULT_DIMENSIONS: TransferOwner.EVALUATION_SERVICE,
     TransferTable.TEST_REPORTS: TransferOwner.REPORT_SERVICE,
@@ -87,7 +91,7 @@ class FkRule:
     mapping: FkMappingKey
 
 
-# 15 条外键转换规则 —— 全部规则的唯一配置表，禁止散落硬编码。
+# 18 条外键转换规则 —— 全部规则的唯一配置表，禁止散落硬编码。
 # 表达式统一为 mapping.get(old_id, old_id)（无冲突记录映射到自身）。
 FK_RULES: Tuple[FkRule, ...] = (
     FkRule(TransferTable.TASK_CASE_RELATIONS, 'task_id', FkMappingKey.TASKS),
@@ -96,6 +100,10 @@ FK_RULES: Tuple[FkRule, ...] = (
     FkRule(TransferTable.TASK_TAGS, 'task_id', FkMappingKey.TASKS),
     FkRule(TransferTable.TASK_MERGE_RELATIONS, 'merged_task_id', FkMappingKey.TASKS),
     FkRule(TransferTable.TASK_MERGE_RELATIONS, 'source_task_id', FkMappingKey.TASKS),
+    # INT-656：cherry-pick 容器关系三外键（容器任务 / 引用结果 / 溯源来源任务）
+    FkRule(TransferTable.TASK_CHERRY_PICK_RELATIONS, 'cherry_pick_task_id', FkMappingKey.TASKS),
+    FkRule(TransferTable.TASK_CHERRY_PICK_RELATIONS, 'result_id', FkMappingKey.TEST_RESULTS),
+    FkRule(TransferTable.TASK_CHERRY_PICK_RELATIONS, 'source_task_id', FkMappingKey.TASKS),
     FkRule(TransferTable.TEST_RESULTS, 'task_id', FkMappingKey.TASKS),
     FkRule(TransferTable.TEST_RESULT_DIMENSIONS, 'test_result_id', FkMappingKey.TEST_RESULTS),
     FkRule(TransferTable.TEST_REPORTS, 'task_id', FkMappingKey.TASKS),

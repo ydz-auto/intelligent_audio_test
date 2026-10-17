@@ -7,7 +7,7 @@
 - 跨服务 gRPC 段以「进程内直调真实应用服务」的假 ACL 替身接入
 - Redis 以内存假 RedisStore 替身（批次登记语义不变）
 
-覆盖：导出包结构 → 同库导入（全量 ID 冲突 → 自动重映射）→ 15 表外键一致性 →
+覆盖：导出包结构 → 同库导入（全量 ID 冲突 → 自动重映射）→ 16 表外键一致性 →
 文件路径重映射 → 维度导入段失败注入 → 全量补偿回滚。
 """
 import json
@@ -308,7 +308,7 @@ class TestRoundtrip:
         with zipfile.ZipFile(zip_path) as zf:
             names = zf.namelist()
             db_files = {n for n in names if n.startswith('db/')}
-            assert len(db_files) == 15
+            assert len(db_files) == 16  # INT-656：新增 task_cherry_pick_relations 表（无容器任务时为空数组）
             manifest = json.loads(zf.read('manifest.json'))
             assert manifest['version'] == '1.0'
             assert manifest['stats']['taskCount'] == 2
@@ -325,7 +325,7 @@ class TestRoundtrip:
         assert seeded
 
     def test_import_same_db_full_remap(self, db, storage_env, patched_acl, fake_redis):
-        """同库导入：全部主键冲突 → 自动重映射；15 表外键与文件路径一致"""
+        """同库导入：全部主键冲突 → 自动重映射；16 表外键与文件路径一致"""
         _seed(db, storage_env)
         data = _export_zip(storage_env, patched_acl, fake_redis)
 
@@ -456,7 +456,7 @@ class TestRoundtrip:
         且自增新 ID 不与本批次显式 ID 撞 UNIQUE。"""
         _seed(db, storage_env)
         data = _export_zip(storage_env, patched_acl, fake_redis)
-        _hard_delete_all_15_tables()
+        _hard_delete_all_16_tables()
 
         # 目标库放置与包内冲突的维度/报告/摘要占位行（悬空外键，无 FK 约束可插入）
         from datetime import datetime
@@ -635,8 +635,8 @@ class TestRoundtrip:
             session.close()
 
 
-def _hard_delete_all_15_tables():
-    """清空目标库 15 张迁移表（模拟"另一套部署"或已清空的目标库）"""
+def _hard_delete_all_16_tables():
+    """清空目标库 16 张迁移表（模拟"另一套部署"或已清空的目标库；INT-656 新增容器关系表）"""
     from shared.models.database import get_db_session
     from evaluation_service.infrastructure.persistence.models import TestResultDimension
     from report_service.infrastructure.persistence.models import (
@@ -644,16 +644,178 @@ def _hard_delete_all_15_tables():
         ReportRawData, ReportSummary, ReportSummaryMeta,
     )
     from task_service.infrastructure.persistence.models import (
-        Task, TaskAPI, TaskCase, TaskDevice, TaskMergeRelation, TaskTag, TestResult,
+        Task, TaskAPI, TaskCase, TaskCherryPickRelation, TaskDevice,
+        TaskMergeRelation, TaskTag, TestResult,
     )
     session = get_db_session()
     try:
         for model in (TaskCase, TaskDevice, TaskAPI, TaskTag, TaskMergeRelation,
-                      TestResultDimension, ReportSummary, ReportSummaryMeta,
-                      ReportRawData, ReportCase, ReportMetricStats,
+                      TaskCherryPickRelation, TestResultDimension, ReportSummary,
+                      ReportSummaryMeta, ReportRawData, ReportCase, ReportMetricStats,
                       ReportComparisonMatrix, Report, TestResult, Task):
             session.query(model).delete()
         session.commit()
     finally:
         session.close()
+
+
+# ==================== INT-656：cherry-pick 容器任务导出内联 ====================
+
+def _seed_cherry_source(db, storage_env, task_id=1):
+    """种子：1 个终态源任务 + 1 个带落盘文件的结果（INT-656 内联测试用）。"""
+    from datetime import datetime
+
+    from shared.infrastructure.storage import storage
+    from shared.models.database import get_db_session
+    from task_service.infrastructure.persistence.models import (
+        Task, TaskCase, TestCase, TestResult,
+    )
+
+    now = datetime.now()
+    session = get_db_session()
+    try:
+        session.add(Task(id=task_id, name='INT656源任务', description='src', status='completed',
+                         config={}, algorithm_type='translation', algorithm_params={},
+                         total_cases=1, completed_cases=1, failed_cases=0,
+                         created_by_user_id=None, created_at=now, updated_at=now,
+                         deleted=False, reevaluation_count=0, execution_source='manual'))
+        session.add(TestCase(id='tc_a', name='INT656用例A', config={},
+                             reference_params=[], created_at=now, updated_at=now, deleted=False))
+        session.add(TaskCase(id=11, task_id=task_id, test_case_id='tc_a', status='completed',
+                             execution_status='completed', evaluation_status='completed',
+                             device_type='physical', device_id='7', lab_id=5, created_at=now))
+        stored = storage.save_bytes(
+            json.dumps({'score': 1}).encode(), 'case_result',
+            f'{task_id}/tc_a/dev7/result_data.json', content_type='application/json')
+        session.add(TestResult(id=100, task_id=task_id, test_case_id='tc_a', device_id=7,
+                               api_id=8, algorithm_type='translation',
+                               execution_status='completed', result_data={'score': 1},
+                               result_data_path=stored, created_at=now))
+        session.commit()
+    finally:
+        session.close()
+    return stored
+
+
+def _create_cherry_container(result_id=100):
+    """下单 merge 生成 cherry-pick 容器任务（引用方案 A），返回容器任务 id。"""
+    from shared.infrastructure.user_context import set_current_user_id
+    from task_service.application.task.cherry_pick_service import cherry_pick_service
+
+    set_current_user_id(42)
+    try:
+        add = cherry_pick_service.cart_add({'result_ids': [result_id]})
+        assert add['success'], add.get('message')
+        resp = cherry_pick_service.checkout({'action': 'merge', 'name': 'INT656容器任务'})
+        assert resp['success'], resp.get('message')
+        return resp['data']['task_id']
+    finally:
+        set_current_user_id(None)
+
+
+class TestCherryPickExportInline:
+    """容器任务导出内联（INT-656）：导出非空壳、导入侧可重建容器及其所选结果。"""
+
+    def test_export_container_only_inlines_results_and_import_rebuilds(
+            self, db, storage_env, patched_acl, fake_redis):
+        """仅导出容器任务：包内含所选结果（task_id 重写为容器）+ 关系表；
+        同库导入重建容器及其所选结果（cherry-pick 身份保留、读链路可解析）。"""
+        _seed_cherry_source(db, storage_env)
+        container_id = _create_cherry_container()
+
+        from task_service.application.task.data_transfer_export_service import (
+            data_transfer_export_service)
+        export = data_transfer_export_service.export_tasks(
+            [container_id], {'include_ref_params': True, 'include_audios': False})
+        assert export['success'], export.get('message')
+        zip_path = export['data']['zip_path']
+
+        # ---- 导出包结构：非空壳 + 关系表 + 文件按容器路径归档
+        import zipfile
+        with zipfile.ZipFile(zip_path) as zf:
+            db_tables = {n[len('db/'):-len('.json')]: json.loads(zf.read(n))
+                         for n in zf.namelist() if n.startswith('db/') and n.endswith('.json')}
+            assert [t['id'] for t in db_tables['test_tasks']] == [container_id]
+            result_rows = db_tables['test_results']
+            assert [r['id'] for r in result_rows] == [100]
+            assert all(r['task_id'] == container_id for r in result_rows), \
+                '内联结果行 task_id 重写为引用它的容器任务（导入可重建，无悬空/串挂外键）'
+            rel_rows = db_tables['task_cherry_pick_relations']
+            assert len(rel_rows) == 1
+            assert rel_rows[0]['cherry_pick_task_id'] == container_id
+            assert rel_rows[0]['result_id'] == 100
+            assert rel_rows[0]['source_task_id'] == 1
+            assert f'files/case_results/{container_id}/tc_a/dev7/result_data.json' in zf.namelist(), \
+                '内联结果文件条目按容器 id 归档（防源任务 id 与目标库文件互覆盖）'
+            manifest = json.loads(zf.read('manifest.json'))
+            assert manifest['stats']['resultCount'] == 1
+
+        # ---- 同库导入（全量冲突重映射）→ 重建容器 + 所选结果 + 关系
+        from task_service.application.task.data_transfer_import_service import (
+            data_transfer_import_service)
+        result = data_transfer_import_service.execute_import(zip_path)
+        assert result['success'], result.get('message')
+        assert result['data']['importedTasks'] == 1
+        assert result['data']['importedResults'] == 1
+
+        from shared.infrastructure.storage import storage
+        from shared.models.database import get_db_session
+        from task_service.infrastructure.persistence.models import (
+            Task, TaskCherryPickRelation, TestResult,
+        )
+        session = get_db_session()
+        try:
+            new_container = (session.query(Task)
+                             .filter(Task.name == 'INT656容器任务',
+                                     Task.id != container_id)
+                             .first())
+            assert new_container is not None and new_container.status == 'completed'
+            rel = session.query(TaskCherryPickRelation).filter(
+                TaskCherryPickRelation.cherry_pick_task_id == new_container.id).first()
+            assert rel is not None, '导入后容器关系重建（cherry-pick 身份保留）'
+            new_result = session.query(TestResult).filter(TestResult.id != 100).first()
+            assert new_result is not None
+            assert rel.result_id == new_result.id
+            assert rel.source_task_id == 1  # 溯源快照保留
+            assert rel.source_case_id == 'tc_a'
+            # 结果文件按容器路径落盘且可读
+            assert new_result.result_data_path and storage.exists(new_result.result_data_path)
+            assert f'/{new_container.id}/' in new_result.result_data_path
+            # 读链路引用解析：容器 get_case_results 返回所选结果（验收 §12.2 溯源）
+            from task_service.infrastructure.read_models.task_read_model_case_results import (
+                TaskCaseResultsMixin,
+            )
+            resolved = TaskCaseResultsMixin().get_case_results(new_container.id, 'tc_a')
+            assert resolved is not None
+            assert [r['id'] for r in resolved['results']] == [new_result.id]
+            assert resolved['results'][0]['source_task_id'] == 1
+            assert resolved['results'][0]['source_task_name'] == 'INT656源任务'
+        finally:
+            session.close()
+
+    def test_export_container_with_source_task_does_not_duplicate_results(
+            self, db, storage_env, patched_acl, fake_redis):
+        """容器与源任务同批导出：被引用结果仅出现一次、归属源任务（不重复内联）。"""
+        _seed_cherry_source(db, storage_env)
+        container_id = _create_cherry_container()
+
+        from task_service.application.task.data_transfer_export_service import (
+            data_transfer_export_service)
+        export = data_transfer_export_service.export_tasks(
+            [1, container_id], {'include_ref_params': True, 'include_audios': False})
+        assert export['success'], export.get('message')
+
+        import zipfile
+        with zipfile.ZipFile(export['data']['zip_path']) as zf:
+            db_tables = {n[len('db/'):-len('.json')]: json.loads(zf.read(n))
+                         for n in zf.namelist() if n.startswith('db/') and n.endswith('.json')}
+            result_rows = db_tables['test_results']
+            assert len(result_rows) == 1 and result_rows[0]['id'] == 100, \
+                f'源任务同批导出时结果不重复内联: {result_rows}'
+            assert result_rows[0]['task_id'] == 1, '结果归属源任务（保持原状）'
+            assert len(db_tables['task_cherry_pick_relations']) == 1
+            # 文件条目按源任务 id 归档（与 result.task_id 一致，不走内联重写）
+            names = zf.namelist()
+            assert f'files/case_results/1/tc_a/dev7/result_data.json' in names
+
 

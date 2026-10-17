@@ -92,8 +92,8 @@ class TestPlanTaskSegment:
 
 
 class TestFkRules:
-    def test_15_rules_total(self):
-        assert len(FK_RULES) == 15
+    def test_18_rules_total(self):
+        assert len(FK_RULES) == 18
 
     def test_rules_reference_only_three_mappings(self):
         # 维度评分表自身无出站外键规则（其 test_result_id 归属 evaluation 段被引用方向相反）
@@ -104,6 +104,10 @@ class TestFkRules:
         assert len(fk_rules_of(TransferTable.TASK_MERGE_RELATIONS)) == 2
         assert len(fk_rules_of(TransferTable.TEST_RESULTS)) == 1
         assert fk_rules_of(TransferTable.TEST_RESULT_DIMENSIONS)[0].column == 'test_result_id'
+        # INT-656：cherry-pick 容器关系表三外键（容器任务 / 引用结果 / 溯源来源任务）
+        assert len(fk_rules_of(TransferTable.TASK_CHERRY_PICK_RELATIONS)) == 3
+        assert {r.column for r in fk_rules_of(TransferTable.TASK_CHERRY_PICK_RELATIONS)} == {
+            'cherry_pick_task_id', 'result_id', 'source_task_id'}
         # report 子表 6 张都是 report_id → TEST_REPORTS
         report_children = [t for t in TransferTable if t.value.startswith('report_')]
         assert len(report_children) == 6

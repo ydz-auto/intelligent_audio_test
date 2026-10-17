@@ -40,8 +40,8 @@ from shared.constants.data_transfer import REDIS_PROGRESS_KEY
 
 # ---------- 通用工具 ----------
 
-def _hard_delete_all_15_tables():
-    """清空目标库 15 张迁移表（模拟"另一套部署"或已清空的目标库）"""
+def _hard_delete_all_16_tables():
+    """清空目标库 16 张迁移表（模拟"另一套部署"或已清空的目标库；INT-656 新增容器关系表）"""
     from shared.models.database import get_db_session
     from evaluation_service.infrastructure.persistence.models import TestResultDimension
     from report_service.infrastructure.persistence.models import (
@@ -49,13 +49,14 @@ def _hard_delete_all_15_tables():
         ReportRawData, ReportSummary, ReportSummaryMeta,
     )
     from task_service.infrastructure.persistence.models import (
-        Task, TaskAPI, TaskCase, TaskDevice, TaskMergeRelation, TaskTag, TestResult,
+        Task, TaskAPI, TaskCase, TaskCherryPickRelation, TaskDevice,
+        TaskMergeRelation, TaskTag, TestResult,
     )
     session = get_db_session()
     try:
         for model in (TaskCase, TaskDevice, TaskAPI, TaskTag, TaskMergeRelation,
-                      TestResultDimension, ReportSummary, ReportSummaryMeta,
-                      ReportRawData, ReportCase, ReportMetricStats,
+                      TaskCherryPickRelation, TestResultDimension, ReportSummary,
+                      ReportSummaryMeta, ReportRawData, ReportCase, ReportMetricStats,
                       ReportComparisonMatrix, Report, TestResult, Task):
             session.query(model).delete()
         session.commit()
@@ -212,7 +213,7 @@ class TestImportIdStrategy:
         """同库导入无 ID 冲突 → 全部原 ID 保留、无 remappedIds"""
         _seed(db, storage_env)
         data = _export_zip(storage_env, patched_acl, fake_redis)
-        _hard_delete_all_15_tables()
+        _hard_delete_all_16_tables()
 
         from shared.models.database import get_db_session
         from evaluation_service.infrastructure.persistence.models import TestResultDimension
@@ -259,7 +260,7 @@ class TestImportIdStrategy:
         """
         _seed(db, storage_env)
         data = _export_zip(storage_env, patched_acl, fake_redis)
-        _hard_delete_all_15_tables()
+        _hard_delete_all_16_tables()
 
         # 目标库仅存在一个与包内冲突的任务 id=1
         from datetime import datetime

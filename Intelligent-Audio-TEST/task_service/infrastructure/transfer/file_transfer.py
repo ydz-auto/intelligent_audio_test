@@ -13,7 +13,7 @@ from shared.constants.data_transfer import (
     STORAGE_CATEGORY_REF_PARAMS,
 )
 from shared.infrastructure.storage import storage
-from shared.utils.data_transfer import parse_storage_path, safe_storage_key
+from shared.utils.data_transfer import parse_storage_path, remap_task_id_in_key, safe_storage_key
 from shared.utils.log_handler import log_not_emit
 from shared.utils.result_data_store import _RESULT_BUCKET
 
@@ -27,6 +27,10 @@ def iter_result_file_entries(result_rows: List[dict]) -> Iterator[Tuple[str, byt
 
     name 形如 case_results/{task_id}/{case_id}/{device_sn}/result_data.json。
     单个文件缺失记 warning 跳过（不中断导出，manifest fileCount 反映实际打包数）。
+
+    INT-656：cherry-pick 容器导出内联——内联结果行的 task_id 已重写为引用它的容器
+    任务，存储 key 首段仍是源任务 id；文件条目按容器 id 归档（读取仍走原路径，
+    导入侧按容器路径回写，防源任务 id 在目标库与无关任务文件互相覆盖）。
     """
     for row in result_rows:
         path = row.get('result_data_path')
@@ -41,6 +45,10 @@ def iter_result_file_entries(result_rows: List[dict]) -> Iterator[Tuple[str, byt
             log_not_emit('WARNING', _MODULE_NAME,
                          f'结果文件读取失败，跳过: {path}: {e}', category='system')
             continue
+        if category == _RESULT_BUCKET and row.get('task_id') is not None:
+            head = key.split('/', 1)[0]
+            if head.isdigit() and head != str(row['task_id']):
+                key = remap_task_id_in_key(key, row['task_id'])
         if category and category != _RESULT_BUCKET:
             # 非 case_result 类别的路径按原类别归档，避免覆盖混淆
             name = f'case_results/__other__/{category}/{key}'

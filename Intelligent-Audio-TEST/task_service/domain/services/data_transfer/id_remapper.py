@@ -3,10 +3,10 @@
 
 设计规格（INT-25）：导入时系统逐条自动判断 ID 策略——
 原 ID 在目标库不存在则保持原值；已存在则去 id 交由 DB 自增分配新 ID 并记录映射。
-全自动无用户选项。15 条外键转换规则来自 shared/constants/data_transfer.FK_RULES。
+全自动无用户选项。18 条外键转换规则来自 shared/constants/data_transfer.FK_RULES。
 
 跨服务职责边界：
-- 本模块负责 task_service 段（7 表）的规划；evaluation/report 段在各自服务的
+- 本模块负责 task_service 段（8 表）的规划；evaluation/report 段在各自服务的
   导入器内用 shared/utils/data_transfer 的原语做同构处理（服务边界禁止反向导入）。
 """
 from dataclasses import dataclass, field
@@ -48,7 +48,7 @@ class TablePlan:
 
 @dataclass
 class ImportPlan:
-    """一次导入的 15 表规划（task_service 段 + 转交远端服务的段）"""
+    """一次导入的 16 表规划（task_service 段 + 转交远端服务的段）"""
     tables: Dict[str, TablePlan] = field(default_factory=dict)
 
     def get(self, table: TransferTable) -> TablePlan:
@@ -60,7 +60,7 @@ class ImportPlan:
 
 def plan_task_segment(rows_by_table: Dict[str, List[dict]],
                       existing_ids_by_table: Dict[str, Set[int]]) -> ImportPlan:
-    """对导出包内 task_service 段 7 表做冲突检测与 id 剥离（纯函数）。
+    """对导出包内 task_service 段 8 表做冲突检测与 id 剥离（纯函数）。
 
     Args:
         rows_by_table: 表名 → 行列表（来自 ZIP db/*.json）
