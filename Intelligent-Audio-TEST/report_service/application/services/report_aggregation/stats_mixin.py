@@ -11,6 +11,9 @@ from __future__ import annotations
 import logging
 
 from shared.utils.audio_path_utils import normalize_audio_path
+from report_service.application.handlers._report_case_filters import (
+    filter_results_by_case_evaluation,
+)
 from report_service.application.services.report_aggregation.common import _r_get
 from report_service.application.services.report_helpers import ReportHelpers
 from report_service.infrastructure.clients.grpc_clients import (
@@ -53,6 +56,11 @@ class _AggregationStatsMixin:
         # 1.6 批量查询维度评估结果（含每轮记录，供按轮次口径/排除轮次聚合）
         res_ids = [rid for rid in (_r_get(r, 'id') for r in test_results) if rid is not None]
         dim_results_map = _grpc_get_dim_results(res_ids) if res_ids else {}
+
+        # 1.7 统计前置过滤：用例任一维度评估状态非 completed → 该用例所有结果不参与统计
+        # （对齐 V9.7.10 ReportUtils.filter_results_by_case_evaluation；filtered_case_ids
+        #   保持 category/tags 过滤口径不变，仅参与统计的结果集被收窄）
+        test_results = filter_results_by_case_evaluation(test_results, dim_results_map)
 
         # 2. 收集维度得分并计算全局加权平均
         averages_map, overall_averages = cls._compute_weighted_averages(

@@ -113,3 +113,55 @@ def find_result_by_case_id(test_results, case_id) -> Optional[Any]:
         if tr_tc_id is not None and str(tr_tc_id) == str(case_id):
             return tr
     return None
+
+
+def filter_results_by_case_evaluation(test_results, dim_results_map) -> List[Any]:
+    """按用例评估状态过滤测试结果（统计前置过滤，对齐 V9.7.10 ReportUtils.filter_results_by_case_evaluation）。
+
+    语义：若某用例（test_case_id）的任一维度评估结果 evaluation_status 非 'completed'，
+    则该用例的所有测试结果都不参与统计。evaluation_status 为 None（旧数据/无评估行）不排除，
+    对齐 V9.7.10 SQL 语义（NULL != 'completed' 在 SQL 中不命中）。
+
+    Args:
+        test_results: 测试结果列表（dict 或对象载荷）
+        dim_results_map: {result_id: [维度评估结果 dict, ...]}，每项含
+            evaluation_status / dimension_id 等字段（来自 _grpc_get_dim_results）
+
+    Returns:
+        过滤后的测试结果列表；无排除或空输入时原样返回。
+    """
+    if not test_results or not dim_results_map:
+        return test_results
+
+    # result_id -> test_case_id 映射（test_results 可能为 dict / 对象混合）
+    result_to_case = {}
+    for tr in test_results:
+        tr_id = tr.get('id') if isinstance(tr, dict) else getattr(tr, 'id', None)
+        if tr_id is None:
+            continue
+        tr_tc_id = tr.get('test_case_id') if isinstance(tr, dict) else getattr(tr, 'test_case_id', None)
+        result_to_case[tr_id] = tr_tc_id
+
+    # 统计「任一维度评估状态非 completed」的用例集合（对齐 V9.7.10 按 case 排除，
+    # 而非按单条结果排除；None 状态与 SQL NULL 同语义不排除）
+    excluded_case_ids = set()
+    for rid, items in dim_results_map.items():
+        tc_id = result_to_case.get(rid)
+        if tc_id is None:
+            continue
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            ev_status = it.get('evaluation_status')
+            if ev_status is not None and ev_status != 'completed':
+                excluded_case_ids.add(tc_id)
+                break
+
+    if not excluded_case_ids:
+        return test_results
+
+    return [
+        tr for tr in test_results
+        if (tr.get('test_case_id') if isinstance(tr, dict) else getattr(tr, 'test_case_id', None))
+        not in excluded_case_ids
+    ]

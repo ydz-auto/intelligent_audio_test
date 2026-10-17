@@ -71,6 +71,12 @@ def collect_dim_items(result_id, dim_id, dim_results_map: dict, exclude_set) -> 
       有排除配置或无整体 → 取各轮独立 item（跳过被排除轮次）；否则整体兜底。
     每项含 dimension_value / api_raw_response / test_result_id / round_count
     （round_count = 该用例该维度有值轮次数，ratio 策略按轮次口径用）。
+
+    口径留档（INT-614）：round_count 取「有值轮次数」而非 V9.7.10 的「用例配置轮次数」
+    （_get_dimension_configured_rounds，读取 test_case.config.rounds）。本实现与设计文档
+    《多轮评估维度隔离与报告聚合设计文档》§3.9「分母 = Σ各用例该维度有值轮次数」一致；
+    配置 3 轮只执行 2 轮时 分母取 2（分子只含已执行轮，口径自洽），而 V9.7.10 回退路径
+    取 3。此为有意口径选择，不做对齐修改。
     """
     exclude_set = resolve_exclude_rounds(result_id, dim_id, dim_results_map, exclude_set)
     if not dim_results_map or result_id not in dim_results_map:

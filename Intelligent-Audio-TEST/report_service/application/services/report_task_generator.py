@@ -19,6 +19,9 @@ from concurrent.futures import ThreadPoolExecutor
 from report_service.application.services.report_utils import ReportUtils
 from report_service.application.services.report_query_builder import ReportQueryBuilder
 from report_service.application.services.report_data_builder import ReportDataBuilder
+from report_service.application.handlers._report_case_filters import (
+    filter_results_by_case_evaluation,
+)
 from report_service.config.config import Config
 from report_service.domain.entities.report import GenerationStage
 from report_service.infrastructure.clients.grpc_clients import (
@@ -526,6 +529,16 @@ class ReportTaskGenerator:
         res_ids = [r.get('id') if isinstance(r, dict) else r.id for r in results]
 
         dim_results_map, dim_stats = ReportDataBuilder._get_dimension_results_batch(res_ids)
+
+        # 统计前置过滤（对齐 V9.7.10 ReportUtils.filter_results_by_case_evaluation）：
+        # 用例任一维度评估状态非 completed → 该用例所有结果不参与统计。
+        # 过滤后重取 res_ids / dim_results_map / dim_stats，保证下游（all_dimensions /
+        # summary_dim_values / core_metrics 等）口径与 V9.7.10 过滤后一致。
+        filtered_results = filter_results_by_case_evaluation(results, dim_results_map)
+        if len(filtered_results) != len(results):
+            results = filtered_results
+            res_ids = [r.get('id') if isinstance(r, dict) else r.id for r in results]
+            dim_results_map, dim_stats = ReportDataBuilder._get_dimension_results_batch(res_ids)
 
         if not dim_results_map:
             _emit_report_event('report_generated', {
