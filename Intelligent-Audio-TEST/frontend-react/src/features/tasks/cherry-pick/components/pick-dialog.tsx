@@ -3,7 +3,7 @@
  * 任务详情关联用例结果行 / 对比报告结果行入口；复用多级挑选树，预筛来源任务=当前任务。
  * 加购后可「继续挑选」或「去购物车」。
  */
-import { ShoppingCart } from 'lucide-react'
+import { ShoppingCart, TriangleAlert } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -109,6 +109,19 @@ export function PickDialog({
             {Array.from({ length: 4 }).map((_, i) => (
               <Skeleton key={i} className='h-9 w-full' />
             ))}
+          </div>
+        ) : candidatesQuery.isError ? (
+          <div className='flex flex-col items-center gap-2 px-2 py-6 text-center'>
+            <TriangleAlert aria-hidden='true' className='text-destructive size-6' />
+            <p className='text-muted-foreground text-sm'>候选加载失败，请重试</p>
+            <Button
+              variant='outline'
+              size='sm'
+              className='mt-1'
+              onClick={() => void candidatesQuery.refetch()}
+            >
+              重试
+            </Button>
           </div>
         ) : tree.length === 0 ? (
           <p className='text-muted-foreground px-2 py-6 text-center text-sm'>

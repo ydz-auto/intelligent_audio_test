@@ -205,7 +205,11 @@ export function PickFilterBar({
         }
       >
         <SelectTrigger size='sm' aria-label='执行状态'>
-          <SelectValue placeholder='执行状态' />
+          <SelectValue placeholder='执行状态'>
+            {PICK_EXECUTION_STATUS_OPTIONS.find(
+              (o) => o.value === (filters.executionStatus[0] ?? '')
+            )?.label ?? '执行状态'}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           {PICK_EXECUTION_STATUS_OPTIONS.map((opt) => (
@@ -225,7 +229,11 @@ export function PickFilterBar({
         }
       >
         <SelectTrigger size='sm' aria-label='评估状态'>
-          <SelectValue placeholder='评估状态' />
+          <SelectValue placeholder='评估状态'>
+            {PICK_EVALUATION_STATUS_OPTIONS.find(
+              (o) => o.value === (filters.evaluationStatus[0] ?? '')
+            )?.label ?? '评估状态'}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           {PICK_EVALUATION_STATUS_OPTIONS.map((opt) => (
@@ -240,7 +248,10 @@ export function PickFilterBar({
         onValueChange={(value) => onChange({ ...filters, timeRange: value ?? 'all' })}
       >
         <SelectTrigger size='sm' aria-label='时间范围'>
-          <SelectValue placeholder='时间范围' />
+          <SelectValue placeholder='时间范围'>
+            {PICK_TIME_RANGE_OPTIONS.find((o) => o.value === filters.timeRange)?.label ??
+              '时间范围'}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           {PICK_TIME_RANGE_OPTIONS.map((opt) => (

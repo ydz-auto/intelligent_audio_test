@@ -16,6 +16,7 @@ import {
 } from '@/application/tasks/cherry-pick/use-cherry-pick-containers'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -191,6 +192,7 @@ export function CherryPickTab({
             <table className='w-full min-w-[860px] text-[13px]'>
               <thead>
                 <tr className='bg-[var(--table-header)] text-xs'>
+                  <th className='w-9 px-3 py-2 text-left font-medium'>☑ 选择</th>
                   <th className='px-3 py-2 text-left font-medium'>任务名称</th>
                   <th className='px-3 py-2 text-left font-medium'>合并方式</th>
                   <th className='px-3 py-2 text-left font-medium'>执行状态</th>
@@ -242,6 +244,14 @@ function ContainerRow({
   return (
     <>
       <tr className='hover:bg-muted/40 border-border/60 border-b transition-colors'>
+        <td className='px-3 py-2'>
+          <Checkbox
+            aria-label={`选择合并容器「${container.name}」`}
+            title='容器级批量操作待接线'
+            disabled
+            className='opacity-40'
+          />
+        </td>
         <td className='max-w-64 px-3 py-2'>
           <span className='flex items-center gap-1.5 truncate font-medium'>
             {container.isFavorite && (
@@ -327,7 +337,7 @@ function ContainerRow({
         </td>
       </tr>
       <tr className='border-border/60 border-b'>
-        <td colSpan={8}>
+        <td colSpan={9}>
           <SourceTraceRow container={container} />
         </td>
       </tr>

@@ -11,17 +11,9 @@ import { usePickCartStore } from '@/application/tasks/cherry-pick/use-pick-cart-
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/confirm-dialog'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import type { CartTreeBranch, CartTreeLeaf } from '@/domain/models/cherryPick'
 import { CartTree } from '@/features/tasks/cherry-pick/components/cart-tree'
+import { SavePickSetDialog } from '@/features/tasks/cherry-pick/components/save-pick-set-dialog'
 
 interface ConfirmState {
   open: boolean
@@ -56,12 +48,10 @@ export function CartPanel({
   const removeEntries = usePickCartStore((s) => s.removeEntries)
   const removeInvalid = usePickCartStore((s) => s.removeInvalid)
   const clearCart = usePickCartStore((s) => s.clearCart)
-  const saveAsPickSet = usePickCartStore((s) => s.saveAsPickSet)
 
   const [selectedEntryIds, setSelectedEntryIds] = useState<Set<string>>(new Set())
   const [confirm, setConfirm] = useState<ConfirmState | null>(null)
   const [saveOpen, setSaveOpen] = useState(false)
-  const [setName, setSetName] = useState('')
 
   const selectedCount = selectedEntryIds.size
 
@@ -217,10 +207,7 @@ export function CartPanel({
                 size='sm'
                 className='gap-1.5'
                 disabled={total === 0}
-                onClick={() => {
-                  setSetName('')
-                  setSaveOpen(true)
-                }}
+                onClick={() => setSaveOpen(true)}
               >
                 <Save aria-hidden='true' className='size-3.5' />
                 另存为挑选集
@@ -255,41 +242,7 @@ export function CartPanel({
         }}
       />
 
-      <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
-        <DialogContent className='sm:max-w-sm'>
-          <DialogHeader>
-            <DialogTitle>另存为挑选集</DialogTitle>
-            <DialogDescription>
-              为当前购物车内容命名，之后可从「管理挑选集」恢复进购物车
-            </DialogDescription>
-          </DialogHeader>
-          <Input
-            value={setName}
-            onChange={(e) => setSetName(e.target.value)}
-            placeholder='挑选集名称（例如：远场高置信度候选集）'
-            maxLength={40}
-          />
-          <DialogFooter>
-            <Button variant='outline' onClick={() => setSaveOpen(false)}>
-              取消
-            </Button>
-            <Button
-              disabled={!setName.trim()}
-              onClick={async () => {
-                const pick = await saveAsPickSet(setName.trim())
-                setSaveOpen(false)
-                toast.success(
-                  pick
-                    ? `挑选集「${pick.name}」已保存（${pick.itemCount} 条）`
-                    : '挑选集已保存'
-                )
-              }}
-            >
-              保存
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <SavePickSetDialog open={saveOpen} onOpenChange={setSaveOpen} />
     </div>
   )
 }

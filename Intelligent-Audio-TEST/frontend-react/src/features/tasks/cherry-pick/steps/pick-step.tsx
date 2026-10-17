@@ -2,7 +2,13 @@
  * 挑选步骤（Step 1/4，18_挑选合并交互重设计.md §3.3/§5.1，INT-600）。
  * 筛选栏 + 树形/平铺切换 + 全部展开/收起 + 多级挑选树 + 已选汇总条（sticky）。
  */
-import { ChevronsDownUp, ChevronsUpDown, List, TreePine } from 'lucide-react'
+import {
+  ChevronsDownUp,
+  ChevronsUpDown,
+  List,
+  TreePine,
+  TriangleAlert,
+} from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -26,6 +32,8 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import { Badge } from '@/components/ui/badge'
+import { formatPickDateTime } from '@/features/tasks/cherry-pick/constants'
+import { getEvaluationStatusMeta } from '@/features/tasks/constants'
 import { PickFilterBar } from '@/features/tasks/cherry-pick/components/pick-filter-bar'
 import { PickTree } from '@/features/tasks/cherry-pick/components/pick-tree'
 import { SelectedSummaryBar } from '@/features/tasks/cherry-pick/components/selected-summary-bar'
@@ -166,6 +174,19 @@ export function PickStep({
               <Skeleton key={i} className='h-9 w-full' />
             ))}
           </div>
+        ) : candidatesQuery.isError ? (
+          <div className='flex flex-col items-center gap-2 py-10 text-center'>
+            <TriangleAlert aria-hidden='true' className='text-destructive size-6' />
+            <p className='text-muted-foreground text-sm'>候选加载失败，请重试</p>
+            <Button
+              variant='outline'
+              size='sm'
+              className='mt-1'
+              onClick={() => void candidatesQuery.refetch()}
+            >
+              重试
+            </Button>
+          </div>
         ) : tree.length === 0 ? (
           <div className='flex flex-col items-center gap-1 py-10 text-center'>
             <p className='text-muted-foreground text-sm'>无符合条件的执行结果</p>
@@ -184,50 +205,61 @@ export function PickStep({
           />
         ) : (
           <div className='flex flex-col p-2'>
-            {flatLeaves.map((leaf) => (
-              <div
-                key={leaf.key}
-                className='hover:bg-muted/40 flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-[13px] transition-colors'
-              >
-                <input
-                  type='checkbox'
-                  checked={selectedIds.has(leaf.resultId)}
-                  onChange={() => handleToggleLeaf(leaf)}
-                  className='accent-primary size-3.5'
-                  aria-label={`结果 ${leaf.resultId}`}
-                />
-                <span className='min-w-0 flex-1 truncate font-medium'>
-                  {leaf.caseName}
-                </span>
-                <span className='text-muted-foreground min-w-0 max-w-40 truncate'>
-                  {leaf.deviceName ?? leaf.apiName ?? '—'}
-                </span>
-                <Badge variant='outline' className='font-mono text-[10px]'>
-                  {leaf.resultType}
-                </Badge>
-                <StatusBadge
-                  label={
-                    leaf.executionStatus === 'completed'
-                      ? '已完成'
-                      : leaf.executionStatus === 'failed'
-                        ? '执行失败'
-                        : '已停止'
-                  }
-                  variant={
-                    leaf.executionStatus === 'completed'
-                      ? 'success'
-                      : leaf.executionStatus === 'failed'
-                        ? 'danger'
-                        : 'neutral'
-                  }
-                />
-                {leaf.added && (
-                  <span className='text-muted-foreground/70 shrink-0 text-xs'>
-                    已加购
+            {flatLeaves.map((leaf) => {
+              const evalMeta = getEvaluationStatusMeta(leaf.evaluationStatus)
+              return (
+                <div
+                  key={leaf.key}
+                  className='hover:bg-muted/40 flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-[13px] transition-colors'
+                >
+                  <input
+                    type='checkbox'
+                    checked={selectedIds.has(leaf.resultId)}
+                    onChange={() => handleToggleLeaf(leaf)}
+                    className='accent-primary size-3.5'
+                    aria-label={`结果 ${leaf.resultId}`}
+                  />
+                  <span className='min-w-0 flex-1 truncate font-medium'>
+                    {leaf.caseName}
                   </span>
-                )}
-              </div>
-            ))}
+                  <span className='text-muted-foreground min-w-0 max-w-40 truncate'>
+                    {leaf.deviceName ?? leaf.apiName ?? '—'}
+                  </span>
+                  <Badge variant='outline' className='font-mono text-[10px]'>
+                    {leaf.resultType}
+                  </Badge>
+                  <StatusBadge
+                    label={
+                      leaf.executionStatus === 'completed'
+                        ? '已完成'
+                        : leaf.executionStatus === 'failed'
+                          ? '执行失败'
+                          : '已停止'
+                    }
+                    variant={
+                      leaf.executionStatus === 'completed'
+                        ? 'success'
+                        : leaf.executionStatus === 'failed'
+                          ? 'danger'
+                          : 'neutral'
+                    }
+                  />
+                  <StatusBadge
+                    label={evalMeta.label}
+                    variant={evalMeta.variant}
+                    pulse={evalMeta.pulse}
+                  />
+                  <span className='text-muted-foreground shrink-0 font-mono text-[10px] whitespace-nowrap tabular-nums'>
+                    {formatPickDateTime(leaf.createdAt)}
+                  </span>
+                  {leaf.added && (
+                    <span className='text-muted-foreground/70 shrink-0 text-xs'>
+                      已加购
+                    </span>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
       </div>

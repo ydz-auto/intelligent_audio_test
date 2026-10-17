@@ -24,7 +24,9 @@ export function MergeTypeFacet({
   return (
     <Select value={value} onValueChange={(v) => onChange(v as 'all' | MergeType)}>
       <SelectTrigger size='sm' aria-label='合并方式'>
-        <SelectValue placeholder='合并方式' />
+        <SelectValue placeholder='合并方式'>
+          {MERGE_TYPE_OPTIONS.find((o) => o.value === value)?.label ?? '合并方式'}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent>
         {MERGE_TYPE_OPTIONS.map((opt) => (

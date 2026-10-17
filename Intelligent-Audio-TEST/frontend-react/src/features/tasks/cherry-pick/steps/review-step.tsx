@@ -3,14 +3,18 @@
  * 清单核对摘要（3 StatBadge）+ 失效/重复/配置差异 Alert + 购物车树（编辑态）+ 确认下单。
  * 复核摘要 = POST /cart/preview 实测返回（零新增接口）。
  */
-import { ClipboardCheck, Layers, TriangleAlert } from 'lucide-react'
+import { ClipboardCheck, Layers, Save, TriangleAlert } from 'lucide-react'
+import { useState } from 'react'
+import { toast } from 'sonner'
 
 import { useCherryPickPreview } from '@/application/tasks/cherry-pick/use-cherry-pick-preview'
 import { usePickCartStore } from '@/application/tasks/cherry-pick/use-pick-cart-store'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { CartPanel } from '@/features/tasks/cherry-pick/components/cart-panel'
+import { SavePickSetDialog } from '@/features/tasks/cherry-pick/components/save-pick-set-dialog'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 
 export function ReviewStep({
@@ -23,6 +27,8 @@ export function ReviewStep({
   const preview = useCherryPickPreview()
   const total = usePickCartStore((s) => s.total)
   const data = preview.data
+  const [clearOpen, setClearOpen] = useState(false)
+  const [saveOpen, setSaveOpen] = useState(false)
 
   return (
     <div className='flex min-h-0 flex-1 flex-col gap-3'>
@@ -102,11 +108,19 @@ export function ReviewStep({
           size='sm'
           className='text-destructive hover:text-destructive'
           disabled={total === 0}
-          onClick={() => {
-            void usePickCartStore.getState().clearCart().then(() => {})
-          }}
+          onClick={() => setClearOpen(true)}
         >
           清空购物车
+        </Button>
+        <Button
+          variant='outline'
+          size='sm'
+          className='gap-1.5'
+          disabled={total === 0}
+          onClick={() => setSaveOpen(true)}
+        >
+          <Save aria-hidden='true' className='size-3.5' />
+          另存为挑选集
         </Button>
         <div className='ml-auto'>
           <Button size='sm' disabled={total === 0} onClick={onGoCheckout}>
@@ -114,6 +128,21 @@ export function ReviewStep({
           </Button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={clearOpen}
+        onOpenChange={setClearOpen}
+        title='清空购物车'
+        desc={`将清空购物车全部 ${total} 条结果，是否继续？`}
+        destructive
+        confirmText='继续'
+        handleConfirm={async () => {
+          await usePickCartStore.getState().clearCart()
+          setClearOpen(false)
+          toast.success('购物车已清空')
+        }}
+      />
+      <SavePickSetDialog open={saveOpen} onOpenChange={setSaveOpen} />
     </div>
   )
 }

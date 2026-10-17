@@ -4,6 +4,7 @@
  * 挑选页与购物车（CartTree）共用行呈现形态；本件用于挑选工作区。
  */
 import {
+  ArrowLeftRight,
   ChevronDown,
   ChevronRight,
   ClipboardList,
@@ -28,6 +29,8 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
+import { formatPickDateTime } from '@/features/tasks/cherry-pick/constants'
+import { getEvaluationStatusMeta } from '@/features/tasks/constants'
 import { cn } from '@/lib/utils'
 
 const LEVEL_ICONS = {
@@ -53,6 +56,7 @@ function LeafRow({
   selected: boolean
   onToggle: (leaf: PickTreeLeaf) => void
 }) {
+  const evalMeta = getEvaluationStatusMeta(leaf.evaluationStatus)
   return (
     <div
       data-testid={`pick-leaf-${leaf.resultId}`}
@@ -86,6 +90,10 @@ function LeafRow({
               : 'neutral'
         }
       />
+      <StatusBadge label={evalMeta.label} variant={evalMeta.variant} pulse={evalMeta.pulse} />
+      <span className='text-muted-foreground shrink-0 font-mono text-[10px] whitespace-nowrap tabular-nums'>
+        {formatPickDateTime(leaf.createdAt)}
+      </span>
       {leaf.added && (
         <span className='text-muted-foreground/70 shrink-0 text-xs' title='已在购物车'>
           已加购
@@ -113,7 +121,10 @@ function BranchRow({
   onToggleBranch: (branch: PickTreeBranch, select: boolean) => void
 }) {
   const state = getBranchSelectionState(branch, selectedIds)
-  const Icon = LEVEL_ICONS[branch.level]
+  const Icon =
+    branch.level === 'device' && branch.key.startsWith('api:')
+      ? ArrowLeftRight
+      : LEVEL_ICONS[branch.level]
   const hasChildren = branch.children.length > 0
   const open = openKeys.has(branch.key)
   const indent = depth * 14 + 4
