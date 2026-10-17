@@ -15,31 +15,7 @@
         />
 
         <!-- 源结果溯源列表（默认收起，点击展开；验收 §12.2 溯源；INT-401：按卡独立缓存，多卡展开互不覆盖） -->
-        <div class="merged-source-list" v-if="(ct.id ?? null) !== null && expanded.has(Number(ct.id))">
-          <div v-if="sourceLoadingByTask[Number(ct.id)]" class="loading-hint"><i class="fas fa-spinner fa-spin"></i> 正在加载溯源...</div>
-          <template v-else-if="sourceErrorByTask[Number(ct.id)]">
-            <div class="merged-source-row source-error">
-              <span class="merged-source-row-cases">溯源加载失败，请重试</span>
-              <button type="button" class="source-retry-btn" @click="loadSource(Number(ct.id))">
-                <i class="fas fa-redo-alt"></i> 重试
-              </button>
-            </div>
-          </template>
-          <template v-else-if="(sourcesByTask[Number(ct.id)]?.length ?? 0) > 0">
-            <div v-for="group in sourcesByTask[Number(ct.id)]" :key="group.sourceTaskId" class="merged-source-row">
-              <div class="merged-source-row-info">
-                <span class="merged-source-row-name" :title="group.sourceTaskName">
-                  <i class="fas fa-source-branch"></i> {{ group.sourceTaskName }}
-                </span>
-                <span class="merged-source-row-cases">结果 {{ group.results.length }} 条</span>
-              </div>
-            </div>
-          </template>
-          <div v-else class="merged-source-row">
-            <span class="merged-source-row-cases">该挑选合并任务暂无来源记录</span>
-          </div>
-        </div>
-        <div class="merged-source-list" v-else>
+        <div class="merged-source-list" v-if="(ct.id ?? null) !== null">
           <div class="merged-source-list-title" @click="toggleSource(Number(ct.id))">
             <i class="fas fa-source-branch"></i> 源结果溯源
             <i class="fas merged-source-toggle" :class="expanded.has(Number(ct.id)) ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
@@ -68,8 +44,8 @@
             <!-- INT-552：溯源加载失败可见错误（含重试），与「暂无来源」真实空态区分 -->
             <div v-else-if="sourceErrorByTask[Number(ct.id)]" class="merged-source-error">
               <i class="fas fa-exclamation-triangle"></i>
-              <span>溯源加载失败：{{ sourceErrorByTask[Number(ct.id)] }}</span>
-              <button class="merged-source-retry" @click="loadSource(Number(ct.id))"><i class="fas fa-redo"></i> 重试</button>
+              <span>溯源加载失败，请重试</span>
+              <button class="merged-source-retry source-retry-btn" @click="loadSource(Number(ct.id))"><i class="fas fa-redo"></i> 重试</button>
             </div>
             <div v-else class="merged-source-row">
               <span class="merged-source-row-cases">该挑选合并任务暂无来源记录</span>

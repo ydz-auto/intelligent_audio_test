@@ -499,9 +499,10 @@ const shouldShowPauseResumeButton = computed(() => !finishedTaskStatuses.include
 
 const shouldShowStopButton = computed(() => !finishedTaskStatuses.includes(props.taskStatus));
 
-// INT-302：重执行入口与任务卡片口径一致（pending/failed/completed/stopped 可见）
+// INT-410：重执行入口三态准入（completed/failed/stopped；pending 不允许，需先停止）。
+// 与任务列表/卡片同源 REEXECUTE_ELIGIBLE_STATUSES，禁止散落字面量。
 const shouldShowRetryButton = computed(() =>
-  [TaskStatus.PENDING, TaskStatus.FAILED, TaskStatus.COMPLETED, TaskStatus.STOPPED].includes(props.taskStatus));
+  [...REEXECUTE_ELIGIBLE_STATUSES].includes(props.taskStatus));
 
 // INT-302：重评估入口与任务卡片口径一致（终态任务可见）
 const shouldShowReevaluateButton = computed(() => finishedTaskStatuses.includes(props.taskStatus));

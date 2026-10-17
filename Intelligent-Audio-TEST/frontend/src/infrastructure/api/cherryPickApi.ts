@@ -78,6 +78,10 @@ export interface PickPreview {
   caseCount: number
   executionStatusCounts: Record<string, number>
   duplicates: Array<{ deviceId: number | null; caseId: string | null; count: number }>
+  /** INT-401：所选来源任务的任务级配置是否不一致（跨任务合并提示） */
+  configInconsistent?: boolean
+  /** INT-401：不一致的配置字段名（algorithm_type/algorithm_params 等，供提示列出） */
+  configFields?: string[]
 }
 
 /** 下单出口（枚举化，拒绝魔法字符串——与后端 CherryPickCheckoutAction 对齐） */
@@ -191,6 +195,8 @@ export const cherryPickApi = {
     taskIds?: number[]
     deviceIds?: number[]
     caseIds?: string[]
+    /** INT-401：用例关键字模糊搜索（命中用例名/用例ID，与 case_ids 精确 IN 语义区分） */
+    caseKeyword?: string
     executionStatus?: string
     evaluationStatus?: string
     startDate?: string
@@ -202,6 +208,7 @@ export const cherryPickApi = {
     if (query.taskIds?.length) params.task_ids = query.taskIds.join(',');
     if (query.deviceIds?.length) params.device_ids = query.deviceIds.join(',');
     if (query.caseIds?.length) params.case_ids = query.caseIds.join(',');
+    if (query.caseKeyword) params.case_keyword = query.caseKeyword;
     if (query.executionStatus) params.execution_status = query.executionStatus;
     if (query.evaluationStatus) params.evaluation_status = query.evaluationStatus;
     if (query.startDate) params.start_date = query.startDate;

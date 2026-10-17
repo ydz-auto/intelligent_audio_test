@@ -391,6 +391,7 @@
           <CherryPickPanel
             :cherry-pick="cherryPickTasks"
             :task-actions="taskActions"
+            :is-favorite="isFavorite"
             @task-action="handleTaskAction"
             @name-updated="handleMergedNameUpdated"
           />
@@ -456,7 +457,6 @@
 import { ref, computed, reactive, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTasks } from './tasks';
-import { TaskStatus, TaskEvaluationStatus, FINISHED_STATUSES, PermissionPoint } from '@/domain/enums';
 import { TaskStatus, TaskEvaluationStatus, FINISHED_STATUSES, REEXECUTE_ELIGIBLE_STATUSES, PermissionPoint, TestType } from '@/domain/enums';
 import { useAuthStore } from '../../store/authStore';
 import { usePublishedTasks } from '../../composables/publishedTask/usePublishedTasks';

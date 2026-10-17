@@ -168,14 +168,14 @@ describe('步骤1 挑选：任务详情入口预筛选（INT-401）', () => {
 })
 
 describe('INT-551：候选加载失败错误态（审计 P2-1）', () => {
-  it('listCandidates reject → 展示错误条（含重试），空态文案不出现', async () => {
+  it('listCandidates reject → 展示错误态（含重试），空态文案不出现', async () => {
     api.listCandidates.mockRejectedValue(new Error('网关超时'))
     const w = await mountDialog()
-    const errorBar = w.find('.cp-error-bar')
-    expect(errorBar.exists()).toBe(true)
-    expect(errorBar.text()).toContain('执行结果加载失败')
-    expect(errorBar.text()).toContain('网关超时')
-    expect(errorBar.text()).toContain('重试')
+    const errorState = w.find('.cp-error')
+    expect(errorState.exists()).toBe(true)
+    expect(errorState.text()).toContain('加载执行结果失败')
+    expect(errorState.text()).toContain('网关超时')
+    expect(errorState.text()).toContain('重试')
     expect(w.text()).not.toContain('无符合条件的执行结果')
   })
 
@@ -193,15 +193,15 @@ describe('INT-551：候选加载失败错误态（审计 P2-1）', () => {
     expect(w.text()).toContain('C1')
   })
 
-  it('错误后点重试成功 → 错误条消失、候选列表正常展示', async () => {
+  it('错误后点重试成功 → 错误态消失、候选列表正常展示', async () => {
     api.listCandidates
       .mockRejectedValueOnce(new Error('网关超时'))
       .mockResolvedValueOnce({ items: [CANDIDATE(101, 2, 'C2')], total: 1 })
     const w = await mountDialog()
-    expect(w.find('.cp-error-bar').exists()).toBe(true)
-    await w.find('.cp-error-bar .cp-btn').trigger('click')
+    expect(w.find('.cp-error').exists()).toBe(true)
+    await w.find('.cp-error .cp-btn').trigger('click')
     await flushPromises()
-    expect(w.find('.cp-error-bar').exists()).toBe(false)
+    expect(w.find('.cp-error').exists()).toBe(false)
     expect(w.text()).toContain('C2')
   })
 })
@@ -210,7 +210,7 @@ describe('INT-551：设备选项加载失败错误提示（审计 P2-1）', () =
   it('devicesApi reject → 显示设备列表加载失败提示（原静默空下拉）', async () => {
     api.devicesGetAllFlat.mockRejectedValue(new Error('设备服务不可用'))
     const w = await mountDialog()
-    const hint = w.find('.cp-filter-error')
+    const hint = w.find('.cp-error-bar')
     expect(hint.exists()).toBe(true)
     expect(hint.text()).toContain('设备列表加载失败')
   })

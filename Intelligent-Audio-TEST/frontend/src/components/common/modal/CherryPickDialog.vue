@@ -40,10 +40,10 @@
           </select>
         </div>
 
-        <!-- INT-551：设备选项加载失败 → 可见降级提示 + 重试（原仅 console.error 无 UI 反馈） -->
-        <div v-if="deviceLoadError" class="cp-error-bar">
+        <!-- INT-551：设备选项加载失败可见错误提示（原静默空下拉，用户误以为无设备） -->
+        <div v-if="deviceError" class="cp-error-bar">
           <i class="fas fa-exclamation-triangle"></i>
-          <span>{{ deviceLoadError }}</span>
+          <span>{{ deviceError }}</span>
           <button class="cp-btn cp-btn-sm" @click="loadOptions"><i class="fas fa-redo"></i> 重试</button>
         </div>
 
@@ -57,51 +57,45 @@
 
         <!-- 候选列表（结果粒度；按来源任务分组展示） -->
         <div class="cp-list">
-          <!-- INT-551：候选加载失败可见错误条（含重试）；旧数据保留，空态仅真无数据展示 -->
-          <div v-if="candidatesError" class="cp-error-bar">
+          <!-- INT-551：候选加载失败保留旧数据 → 顶部可见错误条（INT-289 先例），不丢旧列表 -->
+          <div v-if="candidatesError && candidates.length > 0" class="cp-error-bar">
             <i class="fas fa-exclamation-triangle"></i>
             <span>{{ candidatesError }}</span>
             <button class="cp-btn cp-btn-sm" @click="loadCandidates"><i class="fas fa-redo"></i> 重试</button>
           </div>
           <div v-if="loadingCandidates" class="cp-empty"><i class="fas fa-spinner fa-spin"></i> 正在加载执行结果...</div>
           <!-- INT-551：候选加载失败且无旧数据 → 错误态（含重试），不再误导为空态 -->
-          <div v-else-if="loadError && candidates.length === 0" class="cp-error">
+          <div v-else-if="candidatesError && candidates.length === 0" class="cp-error">
             <i class="fas fa-exclamation-triangle"></i>
-            <span>{{ loadError }}</span>
+            <span>{{ candidatesError }}</span>
             <button class="cp-btn" @click="loadCandidates"><i class="fas fa-redo"></i> 重试</button>
           </div>
-          <div v-else-if="candidates.length === 0" class="cp-empty">
+          <template v-else-if="groupedCandidates.length > 0">
+            <div v-for="group in groupedCandidates" :key="group.taskId">
+              <div class="cp-group-title">
+                <i class="fas fa-source-branch"></i> {{ group.taskName }}
+                <span class="cp-group-count">{{ group.items.length }} 条</span>
+                <!-- INT-401：整组勾选/整组取消双向（三档粒度之二，原仅单向加选） -->
+                <button class="cp-btn cp-btn-sm" @click="selectGroup(group)">整组勾选</button>
+                <button class="cp-btn cp-btn-sm" @click="unselectGroup(group)">整组取消</button>
+              </div>
+              <label v-for="item in group.items" :key="item.resultId" class="cp-row">
+                <input type="checkbox" class="cp-checkbox"
+                       :checked="selectedResultIds.has(item.resultId)"
+                       @change="toggleResult(item.resultId)" />
+                <span class="cp-row-case">{{ item.caseId }}</span>
+                <span class="cp-row-meta">设备 {{ item.deviceId ?? '-' }}</span>
+                <span class="cp-row-badge" :class="item.executionStatus">{{ executionText(item.executionStatus) }}</span>
+                <span class="cp-row-badge" :class="item.evaluated ? 'evaluated' : 'pending-eval'">
+                  {{ item.evaluated ? '已评估' : '未评估' }}
+                </span>
+                <span class="cp-row-time">{{ formatTime(item.createdAt) }}</span>
+              </label>
+            </div>
+          </template>
+          <div v-else class="cp-empty">
             <i class="fas fa-inbox"></i> 无符合条件的执行结果（仅终态任务可挑选）
           </div>
-          <template v-else>
-            <!-- INT-551：加载失败保留旧数据 → 顶部可见错误条（INT-289 先例），不丢旧列表 -->
-            <div v-if="loadError" class="cp-error-bar">
-              <i class="fas fa-exclamation-triangle"></i>
-              <span>{{ loadError }}</span>
-              <button class="cp-btn cp-btn-sm" @click="loadCandidates"><i class="fas fa-redo"></i> 重试</button>
-            </div>
-            <template v-for="group in groupedCandidates" :key="group.taskId">
-            <div class="cp-group-title">
-              <i class="fas fa-source-branch"></i> {{ group.taskName }}
-              <span class="cp-group-count">{{ group.items.length }} 条</span>
-              <!-- INT-401：整组勾选/整组取消双向（三档粒度之二，原仅单向加选） -->
-              <button class="cp-btn cp-btn-sm" @click="selectGroup(group)">整组勾选</button>
-              <button class="cp-btn cp-btn-sm" @click="unselectGroup(group)">整组取消</button>
-            </div>
-            <label v-for="item in group.items" :key="item.resultId" class="cp-row">
-              <input type="checkbox" class="cp-checkbox"
-                     :checked="selectedResultIds.has(item.resultId)"
-                     @change="toggleResult(item.resultId)" />
-              <span class="cp-row-case">{{ item.caseId }}</span>
-              <span class="cp-row-meta">设备 {{ item.deviceId ?? '-' }}</span>
-              <span class="cp-row-badge" :class="item.executionStatus">{{ executionText(item.executionStatus) }}</span>
-              <span class="cp-row-badge" :class="item.evaluated ? 'evaluated' : 'pending-eval'">
-                {{ item.evaluated ? '已评估' : '未评估' }}
-              </span>
-              <span class="cp-row-time">{{ formatTime(item.createdAt) }}</span>
-            </label>
-            </template>
-          </template>
         </div>
         <div class="cp-pagination" v-if="candidateTotal > candidates.length">
           <button class="cp-btn" :disabled="filters.page <= 1" @click="filters.page--; loadCandidates()">上一页</button>
@@ -301,9 +295,9 @@ const caseKeyword = ref('');
 const candidates = ref<PickCandidate[]>([]);
 const candidateTotal = ref(0);
 const loadingCandidates = ref(false);
-// INT-551：候选/设备加载失败可见错误态——失败不静默降级为误导性空态
-const loadError = ref('');
-const deviceLoadError = ref('');
+// INT-551：候选/设备加载失败错误态（原静默清空成误导性空态）
+const candidatesError = ref('');
+const deviceError = ref('');
 const selectedResultIds = ref<Set<number>>(new Set());
 
 // INT-401：任务详情「加入购物车」入口预筛选——打开向导即定位该任务的执行结果
@@ -334,7 +328,7 @@ function debouncedLoad() {
 
 async function loadCandidates() {
   loadingCandidates.value = true;
-  loadError.value = '';
+  candidatesError.value = '';
   try {
     const page = await cherryPickApi.listCandidates({
       taskIds: filters.taskId ? [Number(filters.taskId)] : [],
@@ -351,9 +345,7 @@ async function loadCandidates() {
   } catch (error: any) {
     // INT-551：失败保留旧数据 + 可见错误条（原静默清空成「无结果」误导空态）
     console.error('Failed to load pick candidates:', error);
-    // INT-551：失败不再静默置空降级为误导性空态——保留旧数据 + 可见错误条；
-    // 无旧数据时模板展示错误态（含重试），空态仅真无数据时展示
-    loadError.value = '加载执行结果失败，请重试';
+    candidatesError.value = error?.message ? `加载执行结果失败：${error.message}` : '加载执行结果失败，请重试';
   } finally {
     loadingCandidates.value = false;
   }
@@ -375,11 +367,10 @@ async function loadOptions() {
       deviceOptions.value = (devices ?? []).map((d: any) => ({
         id: Number(d.id), name: d.name ?? `设备 ${d.id}`,
       }));
-      deviceLoadError.value = '';
-    } catch (deviceErr) {
+    } catch (deviceErr: any) {
+      // INT-551：设备选项失败可见错误提示（原静默空下拉，用户误以为无设备）
       console.error('Failed to load device options:', deviceErr);
-      // INT-551：设备选项加载失败提供可见降级提示 + 重试（原仅 console.error 无 UI 反馈）
-      deviceLoadError.value = '设备列表加载失败，可重试或使用「全部设备」';
+      deviceError.value = deviceErr?.message ? `设备列表加载失败：${deviceErr.message}` : '设备列表加载失败，请重试';
     }
   } catch (error) {
     console.error('Failed to load pick options:', error);

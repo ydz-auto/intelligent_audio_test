@@ -255,6 +255,8 @@ export const tasksApi = {
   /** 切换任务可见性（INT-423/467：PATCH /{id}/visibility，需 task:share + owner 校验） */
   async updateVisibility(id: string | number, visibility: string) {
     return request('PATCH', `/tasks/${id}/visibility`, { visibility });
+  },
+
   /** 人工复核提交（INT-340）：result_ids + execution_status/evaluation_status + comment（备注必填） */
   async reviewResults(resultIds: (string | number)[], payload: {
     executionStatus?: string

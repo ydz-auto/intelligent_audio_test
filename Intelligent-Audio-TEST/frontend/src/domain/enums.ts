@@ -46,6 +46,17 @@ export const FINISHED_STATUSES = [
   TaskStatus.MERGED,
 ] as const
 
+/**
+ * 可重执行任务状态集合（INT-410，任务重新执行功能设计文档 §5 约束#1，负责人裁定 2026-10-15）。
+ * 重执行准入 = completed/failed/stopped 三态；pending 不允许（需先停止），
+ * queued/running/paused 亦不可见。区别于 FINISHED_STATUSES（含 paused/skipped/merged）。
+ */
+export const REEXECUTE_ELIGIBLE_STATUSES = [
+  TaskStatus.COMPLETED,
+  TaskStatus.FAILED,
+  TaskStatus.STOPPED,
+] as const
+
 /** 用例执行状态枚举 */
 export const ExecutionStatus = {
   PENDING: 'pending',

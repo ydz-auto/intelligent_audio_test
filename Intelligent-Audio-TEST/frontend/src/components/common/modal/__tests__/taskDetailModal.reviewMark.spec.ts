@@ -42,6 +42,11 @@ vi.mock('../../../../composables/modal/useNotification', () => ({
   useNotification: () => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }),
 }))
 
+// INT-401：挑选入口权限门控（task:cherry_pick）——测试环境无 Pinia，mock 授权为全放行
+vi.mock('../../../../store/authStore', () => ({
+  useAuthStore: () => ({ hasPermission: () => true }),
+}))
+
 import TaskDetailModal from '../TaskDetailModal.vue'
 
 const CASES_WITH_REVIEW = [
