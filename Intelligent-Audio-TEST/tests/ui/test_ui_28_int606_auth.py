@@ -26,10 +26,15 @@ CHROME_BINARY = r'C:\Program Files\Google\Chrome\Application\chrome.exe'
 ARTIFACTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                          'tests', 'ui', 'artifacts', 'int606_auth')
 
-# 5000 段 run_all.py 栈（INT-321 并发 run 起，--test-db 隔离库）实际 DATABASE_URL 指向
-# 127.0.0.1:15433/intelligent_audio_test_test —— 验收只读探测该栈，provider fixture 写这里并 teardown。
-DB_DSN = dict(host='127.0.0.1', port=15433, user='intelligent_audio_test',
-              password='intelligent_audio_test666', dbname='intelligent_audio_test_test')
+# 5000 段 run_all.py 栈（--test-db 隔离库）实际 DATABASE_URL 指向
+# intelligent_audio_test_test；DSN 可由环境变量覆盖（本 run 起自己的栈时后端库
+# 在 5432），默认值兼容 15433（旧共享栈）。provider fixture 写测试库并 teardown。
+DB_DSN = dict(
+    host=os.environ.get('TEST_DB_HOST', '127.0.0.1'),
+    port=int(os.environ.get('TEST_DB_PORT', '15433')),
+    user='intelligent_audio_test',
+    password='intelligent_audio_test666',
+    dbname=os.environ.get('TEST_DB_NAME', 'intelligent_audio_test_test'))
 
 # OAuth 提供方渲染临时 fixture（验收只读探测共享 5000 段栈；写隔离测试库，用后删除）
 _OAUTH_FIXTURE = {
@@ -252,6 +257,25 @@ def test_auth_mode_off_open_alert(drv):
     _wait_text(drv, '当前为开放模式：无需登录即可使用全部功能')
     btn = drv.find_element(By.XPATH, "//button[contains(., '进入工作台')]")
     assert btn.is_displayed(), '开放模式「进入工作台」按钮未渲染'
+
+
+def test_auth_mode_off_enter_workbench_direct(drv):
+    """打回项复测（INT-606 P2）：AUTH_MODE=off 清空 localStorage 后点「进入工作台」
+    应直达 /dashboard（dev_user 放行），不再回跳 /login?redirect=%2Fdashboard。
+
+    _authenticated 守卫先 await ensureAuthSession()：无 token 时 hydrateSession
+    GET /auth/mode 判 off → GET /auth/me 回填后端注入 dev_user → user 就绪后放行。
+    """
+    _clear_storage(drv)
+    _goto(drv, '/login')
+    _wait_text(drv, '当前为开放模式：无需登录即可使用全部功能')
+    drv.find_element(By.XPATH, "//button[contains(., '进入工作台')]").click()
+    WebDriverWait(drv, 15).until(lambda d: '/dashboard' in d.current_url)
+    _wait_text(drv, '工作台', timeout=15)
+    url = drv.current_url
+    assert '/dashboard' in url, f'点「进入工作台」后未到达工作台：{url}'
+    assert '/login' not in url, (
+        f'回跳登录页（期望直达 /dashboard）：{url}')
 
 
 def test_oauth_providers_real_render(drv):
