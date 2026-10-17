@@ -76,6 +76,9 @@ llm_brand_keywords:
 llm_judge:
   api_base_url: https://az.gptplus5.com/v1
   default_model: gemini-3.8-flash
+  # 传给 LLM 裁判的音频预处理：off=原文件直传；16k_mono=降采样到 16kHz 单声道 WAV
+  # （语义无损，请求体约降为 1/6，规避中转 nginx ~20MB 请求体上限的 413/断连）
+  audio_compress: 16k_mono
   dimension_models:
     high_freq_llm_judge: ''
     false_takeover: ''
