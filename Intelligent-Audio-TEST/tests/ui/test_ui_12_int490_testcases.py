@@ -327,19 +327,22 @@ def test_08_create_drawer_full_fields(drv):
     txt = sheet.text
     for f in ['背景噪声', '声纹注册配置', '干扰人配置', '添加干扰人']:
         assert f in txt, f'噪声与干扰步骤缺「{f}」'
-    # 评估维度步骤：权重 Slider + 阈值 + LLM Judge（点「语义理解」chip 展示 LLM 配置卡）
+    # 评估维度步骤：权重/阈值 0-100 number + LLM Judge（点「语义理解」chip 展示 LLM 配置卡；
+    # INT-584 修正：权重/阈值 0-100，删「最大 Token/Temperature」，LLM=模型+Prompt Select）
     step_tab('评估维度').click()
     time.sleep(0.6)
     txt = sheet.text
-    for f in ['权重（1-10）', '阈值']:
+    for f in ['权重', '阈值']:
         assert f in txt, f'评估维度步骤缺「{f}」'
     try:
         sheet.find_element(By.XPATH, ".//button[contains(., '语义理解')]").click()
         time.sleep(0.6)
         txt = sheet.text
         assert 'LLM Judge' in txt, '评估维度 LLM Judge 配置卡缺失'
-        for f in ['模型', '最大 Token 数', 'Prompt 模板', 'Temperature']:
+        for f in ['模型', 'Prompt 模板']:
             assert f in txt, f'LLM Judge 配置缺「{f}」'
+        for banned in ['最大 Token', 'Temperature']:
+            assert banned not in txt, f'「{banned}」应随 INT-584 移除（属维度定义 §5.5）'
     except Exception as e:  # 语义理解 chip 未命中时降级：仅断言维度过滤机制存在
         assert '识别准确率' in txt, f'评估维度 chips 缺失：{txt[:200]}'
     # 参考参数步骤
