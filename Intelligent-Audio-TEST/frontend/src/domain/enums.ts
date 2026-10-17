@@ -441,3 +441,19 @@ export const PermissionPoint = {
 
 /** 权限点类型（由 PermissionPoint 派生） */
 export type PermissionPointValue = typeof PermissionPoint[keyof typeof PermissionPoint]
+
+/**
+ * 列表加载失败分类（INT-255：错误态与空态分离；前端 UI 状态枚举，值非后端契约，禁止魔法字符串）。
+ * 供列表类 composable 在请求失败时以枚举表达错误类型，视图据此渲染错误提示与重试入口。
+ */
+export const ListLoadErrorType = {
+  /** 网络不可达（后端离线 / fetch 无响应 / http=000） */
+  NETWORK: 'network',
+  /** 服务端错误（HTTP 5xx / 业务系统错误码 3xx） */
+  SERVER: 'server',
+  /** 其它 / 未分类错误 */
+  UNKNOWN: 'unknown',
+} as const
+
+/** 列表加载失败分类类型（由 ListLoadErrorType 派生） */
+export type ListLoadErrorTypeValue = typeof ListLoadErrorType[keyof typeof ListLoadErrorType]
