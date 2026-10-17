@@ -41,11 +41,14 @@ export function TagConfirmDialog({
   onOpenChange,
   state,
   onConfirm,
+  pending = false,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   state: TagConfirmState | null
   onConfirm: (state: TagConfirmState) => void
+  /** 请求进行中禁用确认钮（真实 DELETE 接线后防重复提交） */
+  pending?: boolean
 }) {
   if (!state) return null
   const copy = buildTagConfirmCopy(state.kind, state.name)
@@ -57,6 +60,7 @@ export function TagConfirmDialog({
       desc={copy.desc}
       confirmText={copy.confirmText}
       destructive={copy.destructive}
+      isLoading={pending}
       handleConfirm={() => onConfirm(state)}
     />
   )

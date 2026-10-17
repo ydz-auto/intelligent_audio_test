@@ -4,11 +4,19 @@
  * 分类名称/描述/颜色/排序（number min 0，新建默认=末位+1）。
  * INT-504 标签分类体系口径：新建/编辑标签**必须选分类**（负责人 2026-10-16 需求，
  * canSubmit 校验 categoryId 非空；Select 不再提供「未分类」逃逸项，占位「请选择所属分类」）。
- * 全部 mock 态：主钮提交后 toast + 关闭，接线后替换为 tagsApi create/update。
+ * 接线 INT-648：主钮提交走真实 POST/PUT /tags（分类走 /tags/categories），
+ * 提交回调由页面装配（mutation），错误经 setError 呈现 + toast。
  */
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
+import type {
+  TagCategory,
+  TagCategoryDraft,
+  TagDraft,
+  TagItem,
+} from '@/domain/models/testTag'
+import { ApiError } from '@/infrastructure/api/api-error'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -29,7 +37,6 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import type { TagCategory, TagItem } from '@/domain/models/testTag'
 import {
   DEFAULT_CATEGORY_COLOR,
   DEFAULT_TAG_COLOR,
@@ -108,6 +115,7 @@ export function TagEditDialog({
   tag,
   categories,
   presetCategoryId,
+  onSubmit,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -115,6 +123,8 @@ export function TagEditDialog({
   categories: TagCategory[]
   /** 新建时预填所属分类（当前选中分类；未分类视图=null） */
   presetCategoryId: number | null
+  /** 提交回调（页面装配真实 POST/PUT mutation；成功即关闭） */
+  onSubmit?: (draft: TagDraft, id?: number) => Promise<void>
 }) {
   const isEdit = tag != null
   const [name, setName] = useState(tag?.name ?? '')
@@ -141,16 +151,25 @@ export function TagEditDialog({
     name.trim().length <= TAG_NAME_MAX_LENGTH &&
     categoryId != null
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!canSubmit || saving) return
     setError('')
     setSaving(true)
-    // TODO(API 接线): POST/PUT /api/v1/tags（schemas/testcase.py TagCreate/Update）
-    window.setTimeout(() => {
-      setSaving(false)
+    try {
+      await onSubmit?.(
+        { name: name.trim(), description, color, categoryId },
+        tag?.id
+      )
       toast.success(isEdit ? '标签更新成功' : '标签创建成功')
       onOpenChange(false)
-    }, 400)
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.userMessage : '保存失败，请稍后重试'
+      setError(message)
+      toast.error(message)
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -248,12 +267,15 @@ export function TagCategoryDialog({
   onOpenChange,
   category,
   nextSortOrder,
+  onSubmit,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   category: TagCategory | null
   /** 新建默认排序=末位+1（现 openCategoryModal 口径） */
   nextSortOrder: number
+  /** 提交回调（页面装配真实 POST/PUT mutation；成功即关闭） */
+  onSubmit?: (draft: TagCategoryDraft, id?: number) => Promise<void>
 }) {
   const isEdit = category != null
   const [name, setName] = useState(category?.name ?? '')
@@ -276,16 +298,25 @@ export function TagCategoryDialog({
   const canSubmit =
     name.trim().length > 0 && name.trim().length <= TAG_NAME_MAX_LENGTH
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!canSubmit || saving) return
     setError('')
     setSaving(true)
-    // TODO(API 接线): POST/PUT /api/v1/tags/categories
-    window.setTimeout(() => {
-      setSaving(false)
+    try {
+      await onSubmit?.(
+        { name: name.trim(), description, color, sortOrder },
+        category?.id
+      )
       toast.success(isEdit ? '分类更新成功' : '分类创建成功')
       onOpenChange(false)
-    }, 400)
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.userMessage : '保存失败，请稍后重试'
+      setError(message)
+      toast.error(message)
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (

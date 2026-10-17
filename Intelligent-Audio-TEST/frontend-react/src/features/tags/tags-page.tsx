@@ -19,6 +19,7 @@ import { toast } from 'sonner'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import {
   useTagCategories,
+  useTagMutations,
   useTags,
 } from '@/application/tags/useTags'
 import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
@@ -47,6 +48,7 @@ import {
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import type { TagCategory, TagItem } from '@/domain/models/testTag'
+import { ApiError } from '@/infrastructure/api/api-error'
 import {
   SCROLL_LOAD_MORE_THRESHOLD,
   TAG_LIST_PAGE_SIZE,
@@ -113,6 +115,17 @@ export function TagManagementPage() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(
     null
   )
+  const [confirmPending, setConfirmPending] = useState(false)
+
+  // 标签/分类 mutation（invalidate ['tags'] 前缀，三页联动刷新）
+  const {
+    createTagMutation,
+    updateTagMutation,
+    deleteTagMutation,
+    createCategoryMutation,
+    updateCategoryMutation,
+    deleteCategoryMutation,
+  } = useTagMutations()
 
   // 搜索（防抖提交值驱动 query；输入值受控随提交同步）
   const [categoryInput, handleCategorySearch, categoryKeyword] = useDebouncedSearch()
@@ -155,19 +168,31 @@ export function TagManagementPage() {
   /** 新建分类默认排序 = 末位 + 1（现 openCategoryModal 口径） */
   const nextSortOrder = (allCategories.data?.length ?? 0) + 1
 
-  const handleConfirm = (state: TagConfirmState) => {
-    if (state.kind === 'delete-tag') {
-      // TODO(API 接线): DELETE /api/v1/tags/{id}?cascade=false（软删不级联）
-      toast.success('标签删除成功')
-    } else {
-      // TODO(API 接线): DELETE /api/v1/tags/categories/{id}（空分类才可删）
-      toast.success('分类删除成功')
-      // 选中分类被删时回到未分类视图（现实现口径）
-      if (state.id != null && selectedCategoryId === state.id) {
-        setSelectedCategoryId(null)
+  const handleConfirm = async (state: TagConfirmState) => {
+    if (confirmPending) return
+    setConfirmPending(true)
+    try {
+      if (state.kind === 'delete-tag') {
+        // DELETE /api/v1/tags/{id}?cascade=false（软删不级联）
+        await deleteTagMutation.mutateAsync(state.id!)
+        toast.success('标签删除成功')
+      } else {
+        // DELETE /api/v1/tags/categories/{id}（空分类才可删）
+        await deleteCategoryMutation.mutateAsync(state.id!)
+        toast.success('分类删除成功')
+        // 选中分类被删时回到未分类视图（现实现口径）
+        if (state.id != null && selectedCategoryId === state.id) {
+          setSelectedCategoryId(null)
+        }
       }
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.userMessage : '删除失败，请稍后重试'
+      toast.error(message)
+    } finally {
+      setConfirmPending(false)
+      setConfirm(null)
     }
-    setConfirm(null)
   }
 
   const selectCategory = (id: number | null) => setSelectedCategoryId(id)
@@ -244,7 +269,7 @@ export function TagManagementPage() {
               onCreate={() => setTagDialog({ open: true, tag: null })}
               onEdit={(tag) => setTagDialog({ open: true, tag })}
               onDelete={(tag) =>
-                setConfirm({ kind: 'delete-tag', name: tag.name })
+                setConfirm({ kind: 'delete-tag', name: tag.name, id: tag.id })
               }
             />
           </div>
@@ -261,6 +286,10 @@ export function TagManagementPage() {
         tag={tagDialog.tag}
         categories={allCategories.data ?? []}
         presetCategoryId={selectedCategoryId}
+        onSubmit={async (draft, id) => {
+          if (id != null) await updateTagMutation.mutateAsync({ id, draft })
+          else await createTagMutation.mutateAsync(draft)
+        }}
       />
       <TagCategoryDialog
         open={categoryDialog.open}
@@ -270,11 +299,17 @@ export function TagManagementPage() {
         }}
         category={categoryDialog.category}
         nextSortOrder={nextSortOrder}
+        onSubmit={async (draft, id) => {
+          if (id != null)
+            await updateCategoryMutation.mutateAsync({ id, draft })
+          else await createCategoryMutation.mutateAsync(draft)
+        }}
       />
       <TagConfirmDialog
         open={confirm != null}
         onOpenChange={(open) => !open && setConfirm(null)}
         state={confirm}
+        pending={confirmPending}
         onConfirm={handleConfirm}
       />
     </>

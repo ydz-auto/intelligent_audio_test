@@ -27,3 +27,19 @@ export interface TagItem {
   createdAt: string | null
   updatedAt: string | null
 }
+
+/** 标签分类创建/更新入参（Domain，camelCase；infrastructure 层转 snake_case 请求体） */
+export interface TagCategoryDraft {
+  name: string
+  description?: string | null
+  color?: string | null
+  sortOrder?: number
+}
+
+/** 标签创建/更新入参（Domain，camelCase；infrastructure 层转 snake_case 请求体） */
+export interface TagDraft {
+  name: string
+  description?: string | null
+  color?: string | null
+  categoryId?: number | null
+}
