@@ -2,6 +2,8 @@
  * 标签/分类表单弹窗（11_用例域.md §5.4，Dialog sm:max-w-md，字段逐字照现
  * TagEditModal/TagCategoryModal）：标签名称/所属分类/描述/颜色（预设色板 8 色 + 自定义）；
  * 分类名称/描述/颜色/排序（number min 0，新建默认=末位+1）。
+ * INT-504 标签分类体系口径：新建/编辑标签**必须选分类**（负责人 2026-10-16 需求，
+ * canSubmit 校验 categoryId 非空；Select 不再提供「未分类」逃逸项，占位「请选择所属分类」）。
  * 全部 mock 态：主钮提交后 toast + 关闭，接线后替换为 tagsApi create/update。
  */
 import { useEffect, useState } from 'react'
@@ -134,7 +136,10 @@ export function TagEditDialog({
     setError('')
   }, [open, tag, presetCategoryId])
 
-  const canSubmit = name.trim().length > 0 && name.trim().length <= TAG_NAME_MAX_LENGTH
+  const canSubmit =
+    name.trim().length > 0 &&
+    name.trim().length <= TAG_NAME_MAX_LENGTH &&
+    categoryId != null
 
   const handleSubmit = () => {
     if (!canSubmit || saving) return
@@ -173,7 +178,9 @@ export function TagEditDialog({
             </p>
           </div>
           <div className='space-y-1.5'>
-            <Label htmlFor='tag-category'>所属分类</Label>
+            <Label htmlFor='tag-category' required>
+              所属分类
+            </Label>
             <Select
               value={categoryId != null ? String(categoryId) : 'none'}
               onValueChange={(value) =>
@@ -181,10 +188,9 @@ export function TagEditDialog({
               }
             >
               <SelectTrigger size='sm' className='h-8 w-full'>
-                <SelectValue placeholder='未分类' />
+                <SelectValue placeholder='请选择所属分类' />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value='none'>未分类</SelectItem>
                 {categories.map((cat) => (
                   <SelectItem key={cat.id} value={String(cat.id)}>
                     {cat.name}
@@ -192,6 +198,11 @@ export function TagEditDialog({
                 ))}
               </SelectContent>
             </Select>
+            {categoryId == null && (
+              <p className='text-muted-foreground text-xs'>
+                请选择所属分类，标签将按分类分组展示
+              </p>
+            )}
           </div>
           <div className='space-y-1.5'>
             <Label htmlFor='tag-desc'>描述</Label>

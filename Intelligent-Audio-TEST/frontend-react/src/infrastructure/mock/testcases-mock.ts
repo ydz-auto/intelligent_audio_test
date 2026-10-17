@@ -12,10 +12,11 @@ import type { TagCategory, TagItem } from '@/domain/models/testTag'
 /** 标签分类（testcase.py TagCategoryItem：id/name/description/color/sort_order/tag_count） */
 export const MOCK_TAG_CATEGORIES: TagCategory[] = [
   { id: 1, name: '人数', description: '按参与人数区分测试场景', color: '#f97316', sortOrder: 1, tagCount: 3, createdAt: '2026-09-01 10:00', updatedAt: '2026-09-01 10:00' },
-  { id: 2, name: '场景', description: '按使用场景区分', color: '#06b6d4', sortOrder: 2, tagCount: 3, createdAt: '2026-09-01 10:05', updatedAt: '2026-09-01 10:05' },
+  { id: 2, name: '场景', description: '按使用场景区分', color: '#06b6d4', sortOrder: 2, tagCount: 5, createdAt: '2026-09-01 10:05', updatedAt: '2026-09-01 10:05' },
   { id: 3, name: '语种', description: '测试语种', color: '#8b5cf6', sortOrder: 3, tagCount: 2, createdAt: '2026-09-01 10:10', updatedAt: '2026-09-01 10:10' },
   { id: 4, name: '噪声环境', description: '背景噪声条件', color: '#84cc16', sortOrder: 4, tagCount: 3, createdAt: '2026-09-01 10:15', updatedAt: '2026-09-01 10:15' },
   { id: 5, name: '设备类型', description: '被测设备形态', color: '#14b8a6', sortOrder: 5, tagCount: 2, createdAt: '2026-09-01 10:20', updatedAt: '2026-09-01 10:20' },
+  { id: 6, name: '距离', description: '按测试距离区分远场近场', color: '#6366f1', sortOrder: 6, tagCount: 3, createdAt: '2026-09-01 10:25', updatedAt: '2026-09-01 10:25' },
 ]
 
 /** 标签（testcase.py TagItem：id/name/description/color/category_id/category_name） */
@@ -26,6 +27,8 @@ export const MOCK_TAGS: TagItem[] = [
   { id: 21, name: '客厅', description: null, color: '#06b6d4', categoryId: 2, categoryName: '场景', createdAt: '2026-09-01 10:05', updatedAt: '2026-09-01 10:05' },
   { id: 22, name: '车内', description: null, color: '#0ea5e9', categoryId: 2, categoryName: '场景', createdAt: '2026-09-01 10:05', updatedAt: '2026-09-01 10:05' },
   { id: 23, name: '会议室', description: null, color: '#38bdf8', categoryId: 2, categoryName: '场景', createdAt: '2026-09-01 10:05', updatedAt: '2026-09-01 10:05' },
+  { id: 24, name: '车载', description: null, color: '#22d3ee', categoryId: 2, categoryName: '场景', createdAt: '2026-09-01 10:05', updatedAt: '2026-09-01 10:05' },
+  { id: 25, name: '会议', description: null, color: '#67e8f9', categoryId: 2, categoryName: '场景', createdAt: '2026-09-01 10:05', updatedAt: '2026-09-01 10:05' },
   { id: 31, name: '中文', description: null, color: '#8b5cf6', categoryId: 3, categoryName: '语种', createdAt: '2026-09-01 10:10', updatedAt: '2026-09-01 10:10' },
   { id: 32, name: '英文', description: null, color: '#a78bfa', categoryId: 3, categoryName: '语种', createdAt: '2026-09-01 10:10', updatedAt: '2026-09-01 10:10' },
   { id: 41, name: '安静', description: null, color: '#84cc16', categoryId: 4, categoryName: '噪声环境', createdAt: '2026-09-01 10:15', updatedAt: '2026-09-01 10:15' },
@@ -33,6 +36,9 @@ export const MOCK_TAGS: TagItem[] = [
   { id: 43, name: '音乐', description: null, color: '#bef264', categoryId: 4, categoryName: '噪声环境', createdAt: '2026-09-01 10:15', updatedAt: '2026-09-01 10:15' },
   { id: 51, name: '音箱', description: null, color: '#14b8a6', categoryId: 5, categoryName: '设备类型', createdAt: '2026-09-01 10:20', updatedAt: '2026-09-01 10:20' },
   { id: 52, name: '手机', description: null, color: '#2dd4bf', categoryId: 5, categoryName: '设备类型', createdAt: '2026-09-01 10:20', updatedAt: '2026-09-01 10:20' },
+  { id: 61, name: '1m', description: null, color: '#6366f1', categoryId: 6, categoryName: '距离', createdAt: '2026-09-01 10:25', updatedAt: '2026-09-01 10:25' },
+  { id: 62, name: '2m', description: null, color: '#818cf8', categoryId: 6, categoryName: '距离', createdAt: '2026-09-01 10:25', updatedAt: '2026-09-01 10:25' },
+  { id: 63, name: '3m', description: null, color: '#a5b4fc', categoryId: 6, categoryName: '距离', createdAt: '2026-09-01 10:25', updatedAt: '2026-09-01 10:25' },
 ]
 
 /** 用例分组（group.py GroupItem：id/name/description/algorithm_type/created_at/updated_at/test_case_count） */
@@ -76,7 +82,7 @@ export const MOCK_CASE_DIMENSIONS: Dimension[] = [
 export const MOCK_TEST_CASES: TestCaseListItem[] = [
   {
     id: 'tc-001', name: '智能音箱-播放音乐-中文-客厅', description: '客厅环境播放中文音乐，验证连续指令', groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e',
-    tags: ['音箱', '中文', '客厅', '音乐'], algorithmType: 'asr-v3', createdAt: '2026-09-10 10:00', updatedAt: '2026-10-15 09:32',
+    tags: ['音箱', '中文', '客厅', '音乐', '1m'], algorithmType: 'asr-v3', createdAt: '2026-09-10 10:00', updatedAt: '2026-10-15 09:32',
     isFavorite: true, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 156, rounds: 2,
   },
   {
@@ -91,17 +97,17 @@ export const MOCK_TEST_CASES: TestCaseListItem[] = [
   },
   {
     id: 'tc-004', name: '智能音箱-天气查询-1人', description: '单人天气查询 API 通道', groupId: 'g1', groupName: '智能音箱功能测试', type: 'api',
-    tags: ['音箱', '1人', '安静'], algorithmType: 'asr-v3', createdAt: '2026-09-13 10:30', updatedAt: '2026-10-13 09:50',
+    tags: ['音箱', '1人', '安静', '2m'], algorithmType: 'asr-v3', createdAt: '2026-09-13 10:30', updatedAt: '2026-10-13 09:50',
     isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 12, rounds: 1,
   },
   {
     id: 'tc-005', name: '智能音箱-闹钟设置-音乐干扰', description: '音乐背景下的闹钟设置指令', groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e',
-    tags: ['音箱', '2人', '音乐'], algorithmType: 'asr-v3', createdAt: '2026-09-14 08:00', updatedAt: '2026-10-12 11:30',
+    tags: ['音箱', '2人', '音乐', '3m'], algorithmType: 'asr-v3', createdAt: '2026-09-14 08:00', updatedAt: '2026-10-12 11:30',
     isFavorite: true, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 132, rounds: 2,
   },
   {
     id: 'tc-006', name: '车载-导航指令-车内-1人', description: '车内导航指令识别', groupId: 'g2', groupName: '车载语音交互', type: 'e2e',
-    tags: ['车载', '车内', '1人', '嘈杂'], algorithmType: 'asr-v3', createdAt: '2026-09-15 09:00', updatedAt: '2026-10-12 15:10',
+    tags: ['车载', '车内', '1人', '嘈杂', '1m'], algorithmType: 'asr-v3', createdAt: '2026-09-15 09:00', updatedAt: '2026-10-12 15:10',
     isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 96, rounds: 2,
   },
   {
@@ -116,7 +122,7 @@ export const MOCK_TEST_CASES: TestCaseListItem[] = [
   },
   {
     id: 'tc-009', name: '手机-语音助手-唤醒', description: '手机语音助手唤醒成功率专项', groupId: 'g3', groupName: '手机助手场景', type: 'e2e',
-    tags: ['手机', '1人', '安静'], algorithmType: 'asr-stream', createdAt: '2026-09-18 09:30', updatedAt: '2026-10-11 10:40',
+    tags: ['手机', '1人', '安静', '2m'], algorithmType: 'asr-stream', createdAt: '2026-09-18 09:30', updatedAt: '2026-10-11 10:40',
     isFavorite: true, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 60, rounds: 2,
   },
   {
@@ -131,7 +137,7 @@ export const MOCK_TEST_CASES: TestCaseListItem[] = [
   },
   {
     id: 'tc-012', name: '会议-双人转写-中文', description: '双人中文会议转写评估', groupId: 'g4', groupName: '会议转写测试', type: 'e2e',
-    tags: ['会议', '2人', '中文', '会议室'], algorithmType: 'eval-ensemble', createdAt: '2026-09-21 10:00', updatedAt: '2026-10-10 18:05',
+    tags: ['会议', '2人', '中文', '会议室', '3m'], algorithmType: 'eval-ensemble', createdAt: '2026-09-21 10:00', updatedAt: '2026-10-10 18:05',
     isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 180, rounds: 2,
   },
   {

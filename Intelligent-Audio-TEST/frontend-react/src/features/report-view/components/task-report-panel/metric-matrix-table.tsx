@@ -30,6 +30,11 @@ interface MetricMatrixTableProps {
   groupLabels?: Record<string, string>
   /** 表头/单元格重命名（分组名/资源 label 编辑） */
   onRename?: (group: string, resource: string | undefined, next: string) => void
+  /**
+   * 表格行按组头分区（INT-504 标签分类体系）：分类段头行 + 组内标签行；
+   * 仅影响表格渲染（图表 series 仍按 groups 平铺、每标签独立均值）。
+   */
+  groupSections?: Array<{ label: string; groups: string[] }>
 }
 
 export function MetricMatrixTable({
@@ -42,6 +47,7 @@ export function MetricMatrixTable({
   isExporting,
   groupLabels,
   onRename,
+  groupSections,
 }: MetricMatrixTableProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [editingGroup, setEditingGroup] = useState<string | null>(null)
@@ -82,14 +88,32 @@ export function MetricMatrixTable({
     setEditingResource(null)
   }
 
-  const tableCells = useMemo(
-    () =>
-      groups.map((group) => ({
+  /** 表格行模型（INT-504 分类段头 / 标签行；无 groupSections 时全为标签行） */
+  const tableRows = useMemo(() => {
+    if (!groupSections) {
+      return groups.map((group) => ({
+        section: null as string | null,
         group,
-        cells: resources.map((resource) => readMatrixCell(matrix, group, resource, metric.name)),
-      })),
-    [matrix, groups, resources, metric.name]
-  )
+        cells: resources.map((resource) =>
+          readMatrixCell(matrix, group, resource, metric.name)
+        ),
+      }))
+    }
+    return groupSections.flatMap((section) =>
+      section.groups.length === 0
+        ? []
+        : [
+            { section: section.label, group: null as string | null, cells: [] as ReturnType<typeof readMatrixCell>[] },
+            ...section.groups.map((group) => ({
+              section: null as string | null,
+              group,
+              cells: resources.map((resource) =>
+                readMatrixCell(matrix, group, resource, metric.name)
+              ),
+            })),
+          ]
+    )
+  }, [groupSections, groups, matrix, resources, metric.name])
 
   const unit = metric.unit ?? getMetricUnit([], metric.name)
 
@@ -170,46 +194,64 @@ export function MetricMatrixTable({
                   </tr>
                 </thead>
                 <tbody>
-                  {tableCells.map(({ group, cells }) => (
-                    <tr key={group} className='hover:bg-muted/30 border-b last:border-0'>
-                      <td className='px-3 py-2 text-sm font-medium'>
-                        {editingGroup === group ? (
-                          <Input
-                            autoFocus
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            onBlur={commitRename}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') commitRename()
-                              if (e.key === 'Escape') setEditingGroup(null)
-                            }}
-                            aria-label='重命名分组'
-                            className='h-7 w-44 text-xs'
-                          />
-                        ) : onRename ? (
-                          <button
-                            type='button'
-                            className='hover:text-foreground text-muted-foreground text-left transition-colors'
-                            onClick={() => startRename(group)}
-                            title='点击重命名分组'
+                  {tableRows.map((row, index) => {
+                    if (row.section != null) {
+                      return (
+                        <tr
+                          key={`section:${row.section}`}
+                          className='border-b bg-muted/40 last:border-0'
+                        >
+                          <td
+                            colSpan={resources.length + 1}
+                            className='px-3 py-1.5 text-xs font-semibold'
                           >
-                            {groupLabels?.[group] ?? group}
-                          </button>
-                        ) : (
-                          groupLabels?.[group] ?? group
-                        )}
-                      </td>
-                      {cells.map((cell, i) => (
-                        <td key={i} className='px-3 py-2 font-mono text-xs tabular-nums'>
-                          {formatMetricForDisplay(cell.average)}
-                          {unit && <span className='text-muted-foreground ms-0.5'>{unit}</span>}
+                            {row.section}
+                          </td>
+                        </tr>
+                      )
+                    }
+                    const group = row.group!
+                    return (
+                      <tr key={group ?? index} className='hover:bg-muted/30 border-b last:border-0'>
+                        <td className='px-3 py-2 text-sm font-medium'>
+                          {editingGroup === group ? (
+                            <Input
+                              autoFocus
+                              value={editValue}
+                              onChange={(e) => setEditValue(e.target.value)}
+                              onBlur={commitRename}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') commitRename()
+                                if (e.key === 'Escape') setEditingGroup(null)
+                              }}
+                              aria-label='重命名分组'
+                              className='h-7 w-44 text-xs'
+                            />
+                          ) : onRename ? (
+                            <button
+                              type='button'
+                              className='hover:text-foreground text-muted-foreground text-left transition-colors'
+                              onClick={() => startRename(group)}
+                              title='点击重命名分组'
+                            >
+                              {groupLabels?.[group] ?? group}
+                            </button>
+                          ) : (
+                            groupLabels?.[group] ?? group
+                          )}
                         </td>
-                      ))}
-                    </tr>
-                  ))}
+                        {row.cells.map((cell, i) => (
+                          <td key={i} className='px-3 py-2 font-mono text-xs tabular-nums'>
+                            {formatMetricForDisplay(cell.average)}
+                            {unit && <span className='text-muted-foreground ms-0.5'>{unit}</span>}
+                          </td>
+                        ))}
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
-              {tableCells.length === 0 && (
+              {tableRows.length === 0 && (
                 <p className='text-muted-foreground p-6 text-center text-sm'>暂无数据</p>
               )}
             </div>

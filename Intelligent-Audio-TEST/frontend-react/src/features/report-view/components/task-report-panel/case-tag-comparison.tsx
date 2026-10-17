@@ -34,6 +34,7 @@ export function CaseTagComparison({
   isExporting?: boolean
 }) {
   const {
+    allTags,
     tagGroups,
     groupKeys,
     matrix,
@@ -85,6 +86,20 @@ export function CaseTagComparison({
   )
 
   const showTags = useMemo(() => filteredTags, [filteredTags])
+
+  /** 矩阵行按分类分区（INT-504：组头=分类名，组内每标签独立均值；无分类兜底「其他」） */
+  const matrixSections = useMemo(() => {
+    const catOf = new Map<string, string>()
+    for (const tag of allTags) catOf.set(tag.tag_name, tag.category_name ?? '其他')
+    const map = new Map<string, string[]>()
+    for (const tag of showTags) {
+      const cat = catOf.get(tag) ?? '其他'
+      const list = map.get(cat) ?? []
+      list.push(tag)
+      map.set(cat, list)
+    }
+    return [...map.entries()].map(([label, tags]) => ({ label, groups: tags }))
+  }, [allTags, showTags])
 
   return (
     <Collapsible open={!collapsed || isExporting} onOpenChange={setCollapsed} className='space-y-3'>
@@ -206,6 +221,7 @@ export function CaseTagComparison({
                 metric={metric}
                 matrix={matrix}
                 groups={showTags}
+                groupSections={matrixSections}
                 resources={resources}
                 displayType={activeDisplayType}
                 onDisplayTypeChange={setActiveDisplayType}

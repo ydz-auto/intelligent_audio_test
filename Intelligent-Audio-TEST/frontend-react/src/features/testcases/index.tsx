@@ -15,7 +15,7 @@ import { usePermissions } from '@/application/hooks/use-permissions'
 import { useEvaluationDimensions } from '@/application/evaluation/use-dimensions'
 import { useDimensionOptions } from '@/application/testcases/use-evaluation-dimensions'
 import { useCaseGroups } from '@/application/testcases/use-case-groups'
-import { useCaseTags } from '@/application/testcases/use-case-tags'
+import { useCaseTags, useTagCategories } from '@/application/testcases/use-case-tags'
 import {
   useTestCasesList,
   type TestCaseListFilters,
@@ -78,6 +78,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   })
   const groupsQuery = useCaseGroups()
   const tagsQuery = useCaseTags()
+  const tagCategoriesQuery = useTagCategories()
   const dimsQuery = useDimensionOptions(algorithmId)
   /** 全量评估维度（含子维度；批量设置评估维度 DimensionPicker 主/子层级用，参考 V9.7.10） */
   const allDimsQuery = useEvaluationDimensions()
@@ -85,6 +86,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   const items = listQuery.data?.items ?? []
   const groups = groupsQuery.data ?? []
   const tags = tagsQuery.data ?? []
+  const tagCategories = tagCategoriesQuery.data ?? []
   const dimensions = dimsQuery.data ?? []
   const allDimensions = allDimsQuery.data ?? []
 
@@ -414,6 +416,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
                   loading={listQuery.isLoading}
                   selected={selected}
                   tagRegistry={tags}
+                  categories={tagCategories}
                   callbacks={rowCallbacks}
                   onToggleSelect={toggleSelect}
                   onToggleAll={toggleAll}

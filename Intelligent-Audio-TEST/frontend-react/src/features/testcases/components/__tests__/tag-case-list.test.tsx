@@ -1,5 +1,6 @@
 /**
- * 标签卡片流测试（11_用例域.md §3.6）：
+ * 标签卡片流测试（11_用例域.md §3.6 + INT-504 标签分类体系）：
+ * 组头=分类名（段头：分类色点 + 分类名 + 标签/用例计数），组内=该分类下标签及其用例；
  * 审计 P3-1 移动端（≤640px）子视图切换收进「显示方式」下拉——组头不渲染 Tabs，
  * 下拉选择「按用例分组」后客户端聚合（分组子组头 + 未分组桶）。
  */
@@ -11,15 +12,18 @@ import { useState } from 'react'
 
 import { useSessionMap } from '@/application/testcases/use-session-map'
 import type { TestCaseListItem } from '@/domain/models/testCase'
-import type { TagItem } from '@/domain/models/testTag'
-import { MOCK_TAGS } from '@/infrastructure/mock/testcases-mock'
+import type { TagCategory, TagItem } from '@/domain/models/testTag'
+import {
+  MOCK_TAG_CATEGORIES,
+  MOCK_TAGS,
+} from '@/infrastructure/mock/testcases-mock'
 import { TagCaseList } from '@/features/testcases/components/tag-case-list'
 import type { CaseCardCallbacks } from '@/features/testcases/components/case-card'
 
 const CASES: TestCaseListItem[] = [
-  { id: 'tc-001', name: '智能音箱-播放音乐', description: null, groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e', tags: ['音箱'], algorithmType: 'asr-v3', createdAt: '2026-09-10 10:00', updatedAt: '2026-10-15 09:32', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 156, rounds: 2 },
+  { id: 'tc-001', name: '智能音箱-播放音乐', description: null, groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e', tags: ['音箱', '1m'], algorithmType: 'asr-v3', createdAt: '2026-09-10 10:00', updatedAt: '2026-10-15 09:32', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 156, rounds: 2 },
   { id: 'tc-002', name: '智能音箱-调节音量', description: null, groupId: null, groupName: null, type: 'e2e', tags: ['音箱'], algorithmType: 'asr-v3', createdAt: '2026-09-11 09:00', updatedAt: '2026-10-14 16:20', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 48, rounds: 1 },
-  { id: 'tc-003', name: '车载-导航指令', description: null, groupId: 'g2', groupName: '车载语音交互', type: 'e2e', tags: ['中文'], algorithmType: 'asr-v3', createdAt: '2026-09-15 09:00', updatedAt: '2026-10-12 15:10', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 96, rounds: 2 },
+  { id: 'tc-003', name: '车载-导航指令', description: null, groupId: 'g2', groupName: '车载语音交互', type: 'e2e', tags: ['中文', '2m'], algorithmType: 'asr-v3', createdAt: '2026-09-15 09:00', updatedAt: '2026-10-12 15:10', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 96, rounds: 2 },
 ]
 
 const noopCallbacks: CaseCardCallbacks = {
@@ -71,6 +75,7 @@ function Harness({ cases = CASES }: { cases?: TestCaseListItem[] }) {
         loading={false}
         selected={selected}
         tagRegistry={MOCK_TAGS as TagItem[]}
+        categories={MOCK_TAG_CATEGORIES as TagCategory[]}
         callbacks={noopCallbacks}
         onCreate={vi.fn()}
         onToggleSelect={(id, c) =>
@@ -96,6 +101,21 @@ function Harness({ cases = CASES }: { cases?: TestCaseListItem[] }) {
 describe('TagCaseList', () => {
   beforeEach(() => {
     useSessionMap.setState({ groupSubView: {}, tagSubView: {} })
+  })
+
+  it('INT-504：组头=分类名——多标签同分类归入同一分类段（距离：1m/2m）', () => {
+    const distanceCases: TestCaseListItem[] = [
+      { ...CASES[0], tags: ['1m'] },
+      { ...CASES[1], tags: ['2m'] },
+      { ...CASES[2], tags: ['2m'] },
+    ]
+    render(<Harness cases={distanceCases} />)
+    // 分类段头「距离」（1m/2m 两标签同分类；分类名亦出现在用例卡徽章角标，取多次出现）
+    expect(screen.getAllByText('距离').length).toBeGreaterThan(0)
+    expect(screen.getByText(/共 2 个标签/)).toBeInTheDocument()
+    // 组内标签卡（标签名同时出现在标签卡头与用例卡行内徽章，取多次出现）
+    expect(screen.getAllByText('1m').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('2m').length).toBeGreaterThan(0)
   })
 
   it('桌面端渲染 Tabs 胶囊「平铺｜按用例分组」', () => {

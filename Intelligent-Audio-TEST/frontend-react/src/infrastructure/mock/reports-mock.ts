@@ -605,8 +605,11 @@ function buildTaskSummary(overrides?: {
     { tag_id: 't-01', tag_name: '远场', category_id: 'tag-cat-scene', category_name: '场景' },
     { tag_id: 't-02', tag_name: '近场', category_id: 'tag-cat-scene', category_name: '场景' },
     { tag_id: 't-03', tag_name: '噪声', category_id: 'tag-cat-env', category_name: '环境' },
-    { tag_id: 't-04', tag_name: '唤醒', category_id: 'tag-cat-type', category_name: '用例类型' },
-    { tag_id: 't-05', tag_name: '方言', category_id: 'tag-cat-type', category_name: '用例类型' },
+    { tag_id: 't-04', tag_name: '唤醒', category_id: 'tag-cat-func', category_name: '功能类型' },
+    { tag_id: 't-05', tag_name: '方言', category_id: 'tag-cat-func', category_name: '功能类型' },
+    { tag_id: 't-11', tag_name: '1m', category_id: 'tag-cat-dist', category_name: '距离' },
+    { tag_id: 't-12', tag_name: '2m', category_id: 'tag-cat-dist', category_name: '距离' },
+    { tag_id: 't-13', tag_name: '3m', category_id: 'tag-cat-dist', category_name: '距离' },
   ]
 
   const tagMetricData: ReportTagMetricGroup[] = [
@@ -616,7 +619,10 @@ function buildTaskSummary(overrides?: {
         { tag_id: 't-01', tag_name: '远场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 94.8 }, { id: 103, metric: '识别准确率', value: 90.2 }] },
         { tag_id: 't-02', tag_name: '近场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 98.2 }, { id: 103, metric: '识别准确率', value: 96.8 }] },
         { tag_id: 't-03', tag_name: '噪声', category_id: 'tag-cat-env', category_name: '环境', metrics: [{ id: 101, metric: '唤醒成功率', value: 88.4 }, { id: 103, metric: '识别准确率', value: 86.1 }] },
-        { tag_id: 't-04', tag_name: '唤醒', category_id: 'tag-cat-type', category_name: '用例类型', metrics: [{ id: 101, metric: '唤醒成功率', value: 96.5 }, { id: 105, metric: '平均响应时间', value: 412 }] },
+        { tag_id: 't-04', tag_name: '唤醒', category_id: 'tag-cat-func', category_name: '功能类型', metrics: [{ id: 101, metric: '唤醒成功率', value: 96.5 }, { id: 105, metric: '平均响应时间', value: 412 }] },
+        { tag_id: 't-11', tag_name: '1m', category_id: 'tag-cat-dist', category_name: '距离', metrics: [{ id: 101, metric: '唤醒成功率', value: 97.6 }, { id: 103, metric: '识别准确率', value: 95.4 }] },
+        { tag_id: 't-12', tag_name: '2m', category_id: 'tag-cat-dist', category_name: '距离', metrics: [{ id: 101, metric: '唤醒成功率', value: 93.2 }, { id: 103, metric: '识别准确率', value: 91.6 }] },
+        { tag_id: 't-13', tag_name: '3m', category_id: 'tag-cat-dist', category_name: '距离', metrics: [{ id: 101, metric: '唤醒成功率', value: 88.9 }, { id: 103, metric: '识别准确率', value: 87.2 }] },
       ],
     },
     {
@@ -625,6 +631,9 @@ function buildTaskSummary(overrides?: {
         { tag_id: 't-01', tag_name: '远场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 93.6 }, { id: 103, metric: '识别准确率', value: 88.9 }] },
         { tag_id: 't-02', tag_name: '近场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 97.4 }, { id: 103, metric: '识别准确率', value: 95.2 }] },
         { tag_id: 't-03', tag_name: '噪声', category_id: 'tag-cat-env', category_name: '环境', metrics: [{ id: 101, metric: '唤醒成功率', value: 87.1 }, { id: 103, metric: '识别准确率', value: 84.6 }] },
+        { tag_id: 't-11', tag_name: '1m', category_id: 'tag-cat-dist', category_name: '距离', metrics: [{ id: 101, metric: '唤醒成功率', value: 96.8 }, { id: 103, metric: '识别准确率', value: 94.1 }] },
+        { tag_id: 't-12', tag_name: '2m', category_id: 'tag-cat-dist', category_name: '距离', metrics: [{ id: 101, metric: '唤醒成功率', value: 92.4 }, { id: 103, metric: '识别准确率', value: 90.3 }] },
+        { tag_id: 't-13', tag_name: '3m', category_id: 'tag-cat-dist', category_name: '距离', metrics: [{ id: 101, metric: '唤醒成功率', value: 87.6 }, { id: 103, metric: '识别准确率', value: 85.9 }] },
       ],
     },
     {
