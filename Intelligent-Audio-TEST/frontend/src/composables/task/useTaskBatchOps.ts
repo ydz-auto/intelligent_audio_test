@@ -109,6 +109,13 @@ export function useTaskBatchOps(
 
   const batchRestore = async () => {
     if (selectedTasks.value.size === 0) return;
+    const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+      title: '批量恢复任务',
+      content: `确定要恢复选中的 ${selectedTasks.value.size} 个任务吗？`,
+      confirmText: '恢复',
+      cancelText: '取消'
+    });
+    if (!confirmed) return;
     try {
       const ids = Array.from(selectedTasks.value);
       await tasksPort.batchAction('restore', ids as any);
