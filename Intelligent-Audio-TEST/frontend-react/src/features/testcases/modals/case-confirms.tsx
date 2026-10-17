@@ -15,6 +15,7 @@ export type CaseConfirmKind =
   | 'batch-restore'
   | 'batch-purge'
   | 'auto-name'
+  | 'refresh'
 
 export interface CaseConfirmState {
   kind: CaseConfirmKind
@@ -93,6 +94,12 @@ export function buildCaseConfirmCopy(
       return {
         title: '自动生成名称',
         desc: `将对 ${count ?? 0} 个用例自动生成名称（按标签长度排序，用"-"连接）。是否继续？`,
+        confirmText: '确定',
+      }
+    case 'refresh':
+      return {
+        title: '刷新参考参数',
+        desc: `将对 ${count ?? 0} 个用例刷新参考参数，是否继续？`,
         confirmText: '确定',
       }
   }

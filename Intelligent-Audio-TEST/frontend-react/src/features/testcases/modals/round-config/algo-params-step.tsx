@@ -19,7 +19,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 
-interface AlgorithmParamField {
+export interface AlgorithmParamField {
   code: string
   label: string
   type: 'text' | 'number' | 'select' | 'switch'
@@ -28,12 +28,13 @@ interface AlgorithmParamField {
   default?: string | number | boolean
 }
 
-interface ParamGroup {
+export interface ParamGroup {
   title: string
   fields: AlgorithmParamField[]
 }
 
-const ALGO_SCHEMAS: Record<string, ParamGroup[]> = {
+/** 算法参数 schema 登记表（§5.3.1 批量专属参数弹窗复用同一数据源） */
+export const ALGO_SCHEMAS: Record<string, ParamGroup[]> = {
   'asr-v3': [
     {
       title: '基础识别',

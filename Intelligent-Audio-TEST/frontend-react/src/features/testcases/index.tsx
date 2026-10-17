@@ -45,6 +45,10 @@ import { GroupMutateDialog } from '@/features/testcases/modals/group-mutate-dial
 import { BatchDimensionsDialog } from '@/features/testcases/modals/batch-dimensions-dialog'
 import { BatchAdjustGroupDialog } from '@/features/testcases/modals/batch-adjust-group-dialog'
 import { BatchManageTagsDialog } from '@/features/testcases/modals/batch-manage-tags-dialog'
+import { BatchAlgoParamsDialog } from '@/features/testcases/modals/batch-algo-params-dialog'
+import { BatchDeviceDialog } from '@/features/testcases/modals/batch-device-dialog'
+import { BatchSplDialog } from '@/features/testcases/modals/batch-spl-dialog'
+import { BatchNoiseDialog } from '@/features/testcases/modals/batch-noise-dialog'
 import { AudioPreviewConfigDialog } from '@/features/testcases/modals/audio-preview-config-dialog'
 import {
   CaseConfirmDialog,
@@ -66,7 +70,10 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   const [importExport, setImportExport] = useState<{ open: boolean; mode: 'import' | 'export' }>({ open: false, mode: 'import' })
   const [groupDialog, setGroupDialog] = useState<{ open: boolean; group: TestCaseGroup | null }>({ open: false, group: null })
   const [previewCase, setPreviewCase] = useState<TestCaseListItem | null>(null)
-  const [batchDialog, setBatchDialog] = useState<{ kind: 'dimensions' | 'group' | 'tags'; count: number } | null>(null)
+  const [batchDialog, setBatchDialog] = useState<{
+    kind: 'dimensions' | 'group' | 'tags' | 'params' | 'device' | 'spl' | 'noise'
+    count: number
+  } | null>(null)
   const [confirm, setConfirm] = useState<CaseConfirmState | null>(null)
 
   const listQuery = useTestCasesList(view, {
@@ -162,6 +169,10 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
       case 'dimensions':
       case 'group':
       case 'tags':
+      case 'params':
+      case 'device':
+      case 'spl':
+      case 'noise':
         setBatchDialog({ kind: action, count })
         break
       case 'copy':
@@ -178,6 +189,9 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
         break
       case 'name':
         setConfirm({ kind: 'auto-name', count })
+        break
+      case 'refresh':
+        setConfirm({ kind: 'refresh', count })
         break
       default:
         toast.success('批量操作执行成功（演示：完整弹窗随接线批次落地）')
@@ -215,6 +229,9 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
         break
       case 'auto-name':
         toast.success('自动生成名称完成')
+        break
+      case 'refresh':
+        toast.success('已提交刷新任务')
         break
     }
     clearSelection()
@@ -424,6 +441,34 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
           onOpenChange={(open) => !open && setBatchDialog(null)}
           count={batchDialog.count}
           tags={tags}
+        />
+      )}
+      {batchDialog?.kind === 'params' && (
+        <BatchAlgoParamsDialog
+          open
+          onOpenChange={(open) => !open && setBatchDialog(null)}
+          count={batchDialog.count}
+        />
+      )}
+      {batchDialog?.kind === 'device' && (
+        <BatchDeviceDialog
+          open
+          onOpenChange={(open) => !open && setBatchDialog(null)}
+          count={batchDialog.count}
+        />
+      )}
+      {batchDialog?.kind === 'spl' && (
+        <BatchSplDialog
+          open
+          onOpenChange={(open) => !open && setBatchDialog(null)}
+          count={batchDialog.count}
+        />
+      )}
+      {batchDialog?.kind === 'noise' && (
+        <BatchNoiseDialog
+          open
+          onOpenChange={(open) => !open && setBatchDialog(null)}
+          count={batchDialog.count}
         />
       )}
       <CaseConfirmDialog
