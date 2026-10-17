@@ -138,34 +138,19 @@
 
       <div v-if="cartLoading" class="cpw-empty"><i class="fas fa-spinner fa-spin"></i> 正在加载购物车…</div>
       <div v-else-if="cartCount === 0" class="cpw-empty"><i class="fas fa-shopping-cart"></i> 购物车为空</div>
-      <div v-else class="cpw-cart-groups">
-        <div v-for="group in cartGroupsTree" :key="group.taskId" class="cpw-cart-group">
-          <div class="cpw-cart-group-head">
-            <label class="pt-check" @click.stop>
-              <input type="checkbox" class="cpw-checkbox"
-                     :checked="group.state === 'checked'"
-                     :indeterminate="group.state === 'indeterminate'"
-                     @change="toggleCartGroup(group)" />
-            </label>
-            <i class="fas fa-tasks cpw-cart-group-icon"></i>
-            <span class="cpw-cart-group-name" :title="group.taskName">{{ group.taskName }}</span>
-            <span class="pt-count">{{ group.items.length }} 条</span>
-            <button class="cpw-btn cpw-btn-sm cpw-btn-danger" @click="removeCartGroup(group)"><i class="fas fa-trash"></i> 移除整组</button>
-          </div>
-          <div v-for="item in group.items" :key="item.itemId" class="cpw-cart-row" :class="{ invalid: item.invalid }">
-            <label class="pt-check" @click.stop>
-              <input type="checkbox" class="cpw-checkbox"
-                     :checked="selectedItemIds.has(item.itemId)"
-                     @change="toggleCartItem(item.itemId)" />
-            </label>
-            <span class="cpw-cart-row-case">{{ item.sourceCaseName || item.sourceCaseId || '#' + item.resultId }}</span>
-            <span class="cpw-cart-row-dim">{{ item.sourceDeviceId != null ? (item.sourceDeviceName || `设备 ${item.sourceDeviceId}`) : (item.sourceApiId != null ? `API ${item.sourceApiId}` : '-') }}</span>
-            <span v-if="item.sourceResultType" class="cpw-leaf-rt">{{ item.sourceResultType }}</span>
-            <span class="cpw-leaf-status" :class="item.executionStatus">{{ statusText(item.executionStatus) }}</span>
-            <span v-if="item.invalid" class="cpw-cart-row-invalid"><i class="fas fa-triangle-exclamation"></i> 已失效（源结果已删除）</span>
-            <button class="cpw-btn cpw-btn-sm" @click="removeOne(item.itemId)"><i class="fas fa-times"></i> 移除</button>
-          </div>
-        </div>
+      <div v-else class="cpw-cart-tree">
+        <CartTree
+          :roots="cartTreeRoots"
+          :selected="selectedItemIds"
+          :expanded-keys="cartExpandedKeys"
+          :leaf-meta="cartLeafMeta"
+          :manageable="true"
+          @toggle-node="onToggleCartNode"
+          @toggle-expand="onToggleCartExpand"
+          @toggle-leaf="toggleCartItem"
+          @remove-leaf="onRemoveCartLeaf"
+          @remove-group="onRemoveCartGroupNode"
+        />
       </div>
 
       <div class="cpw-sets" v-if="sets.length > 0">
@@ -203,22 +188,19 @@
       </div>
 
       <div v-if="cartCount === 0" class="cpw-empty"><i class="fas fa-shopping-cart"></i> 购物车为空</div>
-      <div v-else class="cpw-cart-groups">
-        <div v-for="group in cartGroupsTree" :key="group.taskId" class="cpw-cart-group">
-          <div class="cpw-cart-group-head">
-            <i class="fas fa-tasks cpw-cart-group-icon"></i>
-            <span class="cpw-cart-group-name" :title="group.taskName">{{ group.taskName }}</span>
-            <span class="pt-count">{{ group.items.length }} 条</span>
-          </div>
-          <div v-for="item in group.items" :key="item.itemId" class="cpw-cart-row" :class="{ invalid: item.invalid }">
-            <span class="cpw-cart-row-case">{{ item.sourceCaseName || item.sourceCaseId || '#' + item.resultId }}</span>
-            <span class="cpw-cart-row-dim">{{ item.sourceDeviceId != null ? (item.sourceDeviceName || `设备 ${item.sourceDeviceId}`) : (item.sourceApiId != null ? `API ${item.sourceApiId}` : '-') }}</span>
-            <span v-if="item.sourceResultType" class="cpw-leaf-rt">{{ item.sourceResultType }}</span>
-            <span class="cpw-leaf-status" :class="item.executionStatus">{{ statusText(item.executionStatus) }}</span>
-            <span v-if="item.invalid" class="cpw-cart-row-invalid"><i class="fas fa-triangle-exclamation"></i> 已失效（源结果已删除）</span>
-            <button class="cpw-btn cpw-btn-sm" @click="removeOne(item.itemId)"><i class="fas fa-times"></i> 移除</button>
-          </div>
-        </div>
+      <div v-else class="cpw-cart-tree">
+        <CartTree
+          :roots="cartTreeRoots"
+          :selected="selectedItemIds"
+          :expanded-keys="cartExpandedKeys"
+          :leaf-meta="cartLeafMeta"
+          :manageable="true"
+          @toggle-node="onToggleCartNode"
+          @toggle-expand="onToggleCartExpand"
+          @toggle-leaf="toggleCartItem"
+          @remove-leaf="onRemoveCartLeaf"
+          @remove-group="onRemoveCartGroupNode"
+        />
       </div>
     </div>
 
@@ -313,13 +295,15 @@
  */
 import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { cherryPickApi, tasksApi, devicesApi } from '../../../infrastructure/api';
-import type { PickCandidate, PickPreview, PickCheckoutAction } from '../../../infrastructure/api/cherryPickApi';
+import type { PickCandidate, PickPreview, PickCheckoutAction, PickCartItem } from '../../../infrastructure/api/cherryPickApi';
 import { usePickCart } from '../../../composables/task/usePickCart';
 import { useNotification } from '../../../composables/modal/useNotification';
 import { useModalControl } from '../../../composables/modal/useModal';
 import { MODAL_TYPES } from '../../../composables/modal/constants';
 import PickTree from './PickTree.vue';
+import CartTree from './CartTree.vue';
 import { buildPickTree, toggleNode, selectAll, invertSelection, collectLeafResultIds, type PickTreeNode } from './pickTree';
+import { buildCartTree, toggleCartNode, type CartTreeNode } from './cartTree';
 
 const props = defineProps<{
   /** INT-577 §2.2：批量「加入挑选」预选任务（任务级粒度整任务加购，等价旧合并任务入口） */
@@ -645,28 +629,22 @@ function resetFilters() {
 
 // ===== 步骤 2/3：购物车 =====
 
-/** 购物车按来源任务分组（§4.2 组头 + 条目；result_type 级分组依赖快照字段，未补前平铺于任务组） */
-const cartGroupsTree = computed(() => {
-  const groups: Array<{
-    taskId: number;
-    taskName: string;
-    items: Array<{ itemId: number; resultId: number; sourceCaseName?: string | null; sourceCaseId?: string | null; sourceDeviceId?: number | null; sourceDeviceName?: string | null; sourceApiId?: number | null; sourceResultType?: string | null; executionStatus?: string | null; invalid?: boolean }>;
-    state: 'checked' | 'indeterminate' | 'unchecked';
-  }> = [];
+/** 购物车树（§4.2 任务→用例→设备/API→result_type 分组，与挑选页同构） */
+const cartTreeRoots = computed(() => buildCartTree(cart.value.groups));
+const cartLeafMeta = computed(() => {
+  const m = new Map<number, PickCartItem>();
   for (const g of cart.value.groups) {
-    const items = g.items;
-    const state = selectedItemIds.value.size === 0 ? 'unchecked'
-      : items.every((it) => selectedItemIds.value.has(it.itemId)) ? 'checked'
-        : items.some((it) => selectedItemIds.value.has(it.itemId)) ? 'indeterminate' : 'unchecked';
-    groups.push({
-      taskId: g.sourceTaskId,
-      taskName: g.sourceTaskName || `任务 ${g.sourceTaskId}`,
-      items,
-      state,
-    });
+    for (const it of g.items) m.set(it.itemId, it);
   }
-  return groups;
+  return m;
 });
+const cartExpandedKeys = ref<Set<string>>(new Set());
+/** 购物车树节点自动展开（进入步骤即展开一层便于核对） */
+watch(cartTreeRoots, (roots) => {
+  const next = new Set(cartExpandedKeys.value);
+  for (const r of roots) next.add(r.key);
+  cartExpandedKeys.value = next;
+}, { immediate: true });
 
 const selectedItemIds = ref<Set<number>>(new Set());
 
@@ -676,13 +654,14 @@ function toggleCartItem(itemId: number) {
   selectedItemIds.value = next;
 }
 
-function toggleCartGroup(group: { items: Array<{ itemId: number }>; state: string }) {
-  const next = new Set(selectedItemIds.value);
-  const allSelected = group.items.every((it) => next.has(it.itemId));
-  for (const it of group.items) {
-    if (allSelected) next.delete(it.itemId); else next.add(it.itemId);
-  }
-  selectedItemIds.value = next;
+function onToggleCartNode(node: CartTreeNode) {
+  selectedItemIds.value = toggleCartNode(node, selectedItemIds.value);
+}
+
+function onToggleCartExpand(key: string) {
+  const next = new Set(cartExpandedKeys.value);
+  if (next.has(key)) next.delete(key); else next.add(key);
+  cartExpandedKeys.value = next;
 }
 
 async function removeOne(itemId: number) {
@@ -693,22 +672,19 @@ async function removeOne(itemId: number) {
   }
 }
 
-async function removeSelectedItems() {
-  try {
-    await removeItems([...selectedItemIds.value]);
-    selectedItemIds.value = new Set();
-    notification.success('已移除');
-  } catch (error: any) {
-    notification.error(error?.message || '移除失败');
-  }
+/** 叶单条移除（CartTree remove-leaf） */
+function onRemoveCartLeaf(itemId: number) {
+  removeOne(itemId);
 }
 
-async function removeCartGroup(group: { items: Array<{ itemId: number }>; taskName: string }) {
+/** 节点「移除该组」（CartTree remove-group；将移除该节点下全部条目，确认后批量） */
+async function onRemoveCartGroupNode(node: CartTreeNode) {
+  const label = node.level === 'task' ? '来源任务' : node.level === 'case' ? '用例' : node.level === 'device' ? (node.kind === 'api' ? 'API' : '设备') : '结果类型';
   let confirmed = false;
   try {
     confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
-      title: '移除整组',
-      content: `将移除来源任务「${group.taskName}」下的 ${group.items.length} 条结果，是否继续？`,
+      title: '移除该组',
+      content: `将移除该${label}「${node.name}」下的 ${node.count} 条结果，是否继续？`,
       confirmText: '移除',
       cancelText: '取消',
     });
@@ -717,7 +693,21 @@ async function removeCartGroup(group: { items: Array<{ itemId: number }>; taskNa
   }
   if (!confirmed) return;
   try {
-    await removeItems(group.items.map((it) => it.itemId));
+    await removeItems([...node.itemIds]);
+    // 该节点 item_id 已移除，从选中集剔除残留
+    const next = new Set(selectedItemIds.value);
+    for (const id of node.itemIds) next.delete(id);
+    selectedItemIds.value = next;
+    notification.success(`已移除 ${node.count} 条`);
+  } catch (error: any) {
+    notification.error(error?.message || '移除失败');
+  }
+}
+
+async function removeSelectedItems() {
+  try {
+    await removeItems([...selectedItemIds.value]);
+    selectedItemIds.value = new Set();
     notification.success('已移除');
   } catch (error: any) {
     notification.error(error?.message || '移除失败');

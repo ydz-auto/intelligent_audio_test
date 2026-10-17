@@ -23,40 +23,26 @@
           </template>
         </div>
 
-        <!-- 购物车树（任务分组 → 条目；§4.2 同级口径，result_type 级分组依赖快照字段） -->
+        <!-- 购物车树（任务→用例→设备→result_type 分组；manageable 随 RBAC） -->
         <div v-if="cartLoading" class="cd-empty"><i class="fas fa-spinner fa-spin"></i> 正在加载购物车…</div>
         <div v-else-if="cartCount === 0" class="cd-empty">
           <i class="fas fa-shopping-cart"></i>
           <p>购物车为空</p>
           <p class="cd-empty-hint">在任务详情或挑选合并页勾选执行结果，加入购物车后复核合并</p>
         </div>
-        <div v-else class="cd-groups">
-            <div v-for="group in cartGroupsTree" :key="group.taskId" class="cd-group">
-            <div class="cd-group-head">
-              <label v-if="canWrite" class="cd-check" @click.stop>
-                <input type="checkbox" class="cd-checkbox"
-                       :checked="group.state === 'checked'"
-                       :indeterminate="group.state === 'indeterminate'"
-                       @change="toggleCartGroup(group)" />
-              </label>
-              <i class="fas fa-tasks cd-group-icon"></i>
-              <span class="cd-group-name" :title="group.taskName">{{ group.taskName }}</span>
-              <span class="cd-count">{{ group.items.length }} 条</span>
-              <button v-if="canWrite" class="cd-btn cd-btn-sm cd-btn-danger" @click="removeCartGroup(group)"><i class="fas fa-trash"></i> 移除整组</button>
-            </div>
-            <div v-for="item in group.items" :key="item.itemId" class="cd-row" :class="{ invalid: item.invalid }">
-              <label v-if="canWrite" class="cd-check" @click.stop>
-                <input type="checkbox" class="cd-checkbox"
-                       :checked="selectedItemIds.has(item.itemId)"
-                       @change="toggleCartItem(item.itemId)" />
-              </label>
-              <span class="cd-row-case">{{ item.sourceCaseName || item.sourceCaseId || '#' + item.resultId }}</span>
-              <span class="cd-row-dim">{{ item.sourceDeviceId != null ? (item.sourceDeviceName || `设备 ${item.sourceDeviceId}`) : (item.sourceApiId != null ? `API ${item.sourceApiId}` : '-') }}</span>
-              <span v-if="item.sourceResultType" class="cd-row-rt">{{ item.sourceResultType }}</span>
-              <span v-if="item.invalid" class="cd-row-invalid"><i class="fas fa-triangle-exclamation"></i> 已失效</span>
-              <button v-if="canWrite" class="cd-btn cd-btn-sm" @click="removeOne(item.itemId)"><i class="fas fa-times"></i> 移除</button>
-            </div>
-          </div>
+        <div v-else class="cd-tree">
+          <CartTree
+            :roots="cartTreeRoots"
+            :selected="selectedItemIds"
+            :expanded-keys="cartExpandedKeys"
+            :leaf-meta="cartLeafMeta"
+            :manageable="canWrite"
+            @toggle-node="onToggleCartNode"
+            @toggle-expand="onToggleCartExpand"
+            @toggle-leaf="toggleCartItem"
+            @remove-leaf="onRemoveCartLeaf"
+            @remove-group="onRemoveCartGroupNode"
+          />
         </div>
 
         <!-- 挑选集 -->
@@ -99,6 +85,9 @@ import { useModalControl } from '../../../composables/modal/useModal';
 import { MODAL_TYPES } from '../../../composables/modal/constants';
 import { useAuthStore } from '../../../store/authStore';
 import { PermissionPoint } from '../../../domain/enums';
+import CartTree from './CartTree.vue';
+import { buildCartTree, toggleCartNode, type CartTreeNode } from './cartTree';
+import type { PickCartItem } from '../../../infrastructure/api/cherryPickApi';
 
 const props = defineProps<{
   visible: boolean;
@@ -122,22 +111,16 @@ const {
 
 const selectedItemIds = ref<Set<number>>(new Set());
 
-const cartGroupsTree = computed(() => {
-  const groups: Array<{
-    taskId: number;
-    taskName: string;
-    items: typeof cart.value.groups[number]['items'];
-    state: 'checked' | 'indeterminate' | 'unchecked';
-  }> = [];
+/** 购物车树（§4.2 任务→用例→设备/API→result_type 分组，与挑选页同构） */
+const cartTreeRoots = computed(() => buildCartTree(cart.value.groups));
+const cartLeafMeta = computed(() => {
+  const m = new Map<number, PickCartItem>();
   for (const g of cart.value.groups) {
-    const items = g.items;
-    const state = selectedItemIds.value.size === 0 ? 'unchecked'
-      : items.every((it) => selectedItemIds.value.has(it.itemId)) ? 'checked'
-        : items.some((it) => selectedItemIds.value.has(it.itemId)) ? 'indeterminate' : 'unchecked';
-    groups.push({ taskId: g.sourceTaskId, taskName: g.sourceTaskName, items, state });
+    for (const it of g.items) m.set(it.itemId, it);
   }
-  return groups;
+  return m;
 });
+const cartExpandedKeys = ref<Set<string>>(new Set());
 
 function toggleCartItem(itemId: number) {
   const next = new Set(selectedItemIds.value);
@@ -145,13 +128,44 @@ function toggleCartItem(itemId: number) {
   selectedItemIds.value = next;
 }
 
-function toggleCartGroup(group: { items: Array<{ itemId: number }>; state: string }) {
-  const next = new Set(selectedItemIds.value);
-  const allSelected = group.items.every((it) => next.has(it.itemId));
-  for (const it of group.items) {
-    if (allSelected) next.delete(it.itemId); else next.add(it.itemId);
+function onToggleCartNode(node: CartTreeNode) {
+  selectedItemIds.value = toggleCartNode(node, selectedItemIds.value);
+}
+
+function onToggleCartExpand(key: string) {
+  const next = new Set(cartExpandedKeys.value);
+  if (next.has(key)) next.delete(key); else next.add(key);
+  cartExpandedKeys.value = next;
+}
+
+function onRemoveCartLeaf(itemId: number) {
+  removeOne(itemId);
+}
+
+/** 节点「移除该组」（任务/用例/设备/结果类型；将移除该节点下全部条目） */
+async function onRemoveCartGroupNode(node: CartTreeNode) {
+  const label = node.level === 'task' ? '来源任务' : node.level === 'case' ? '用例' : node.level === 'device' ? (node.kind === 'api' ? 'API' : '设备') : '结果类型';
+  let confirmed = false;
+  try {
+    confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+      title: '移除该组',
+      content: `将移除该${label}「${node.name}」下的 ${node.count} 条结果，是否继续？`,
+      confirmText: '移除',
+      cancelText: '取消',
+    });
+  } catch {
+    return;
   }
-  selectedItemIds.value = next;
+  if (!confirmed) return;
+  try {
+    await removeItems([...node.itemIds]);
+    const next = new Set(selectedItemIds.value);
+    for (const id of node.itemIds) next.delete(id);
+    selectedItemIds.value = next;
+    notification.success(`已移除 ${node.count} 条`);
+  } catch (error: any) {
+    notification.error(error?.message || '移除失败');
+  }
 }
 
 async function removeOne(itemId: number) {
@@ -166,27 +180,6 @@ async function removeSelectedItems() {
   try {
     await removeItems([...selectedItemIds.value]);
     selectedItemIds.value = new Set();
-    notification.success('已移除');
-  } catch (error: any) {
-    notification.error(error?.message || '移除失败');
-  }
-}
-
-async function removeCartGroup(group: { items: Array<{ itemId: number }>; taskName: string }) {
-  let confirmed = false;
-  try {
-    confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
-      title: '移除整组',
-      content: `将移除来源任务「${group.taskName}」下的 ${group.items.length} 条结果，是否继续？`,
-      confirmText: '移除',
-      cancelText: '取消',
-    });
-  } catch {
-    return;
-  }
-  if (!confirmed) return;
-  try {
-    await removeItems(group.items.map((it) => it.itemId));
     notification.success('已移除');
   } catch (error: any) {
     notification.error(error?.message || '移除失败');
