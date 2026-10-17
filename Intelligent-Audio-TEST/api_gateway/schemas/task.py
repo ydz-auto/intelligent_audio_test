@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from pydantic import Field, field_validator, model_validator
 
 from api_gateway.schemas.base import APIModel
@@ -46,6 +46,16 @@ class TaskSourceBrief(APIModel):
     created_at: Optional[str] = Field(None)
 
 
+class TaskLabBrief(APIModel):
+    """任务关联实验室简报（实验室扩展 INT-493/INT-540，多实验室 N:M）。
+
+    内联于 TaskListItem / TaskDetailData 的 labs 字段，及 GET /tasks/{id}/labs 返回。
+    """
+    id: int = Field(...)
+    code: str = Field(...)
+    name: str = Field(...)
+
+
 class TaskListItem(APIModel):
     id: int = Field(...)
     name: str = Field(...)
@@ -84,6 +94,8 @@ class TaskListItem(APIModel):
     devices: List[TaskDeviceBrief] = Field(default_factory=list)
     apis: List[TaskApiBrief] = Field(default_factory=list)
     source_tasks: List[TaskSourceBrief] = Field(default_factory=list)
+    # 实验室扩展（INT-493/INT-540）：任务关联实验室（多实验室 N:M，供「关联实验室」列）
+    labs: List[TaskLabBrief] = Field(default_factory=list)
 
 
 class TaskListData(PaginatedData[TaskListItem]):
@@ -105,6 +117,8 @@ class TaskCaseBrief(APIModel):
     tags: List[str] = Field(default_factory=list)
     # INT-302/F3：本任务用例聚合的评估维度 [{id, name}]（重评估维度勾选候选集）
     evaluation_dimensions: List[Dict[str, Any]] = Field(default_factory=list)
+    # INT-340：该用例下是否存在人工复核结果（任务详情「人工复核」标记）
+    reviewed: bool = Field(False)
 
 
 class TaskDetailData(APIModel):
@@ -129,10 +143,13 @@ class TaskDetailData(APIModel):
     device_count: Optional[int] = Field(None)
     completed_cases: Optional[int] = Field(None)
     failed_cases: Optional[int] = Field(None)
+    review_count: int = Field(0)
     tags: List[str] = Field(default_factory=list)
     cases: List[TaskCaseBrief] = Field(default_factory=list)
     devices: List[TaskDeviceBrief] = Field(default_factory=list)
     apis: List[TaskApiBrief] = Field(default_factory=list)
+    # 实验室扩展（INT-493/INT-540）：任务关联实验室（多实验室 N:M，信息格展示）
+    labs: List[TaskLabBrief] = Field(default_factory=list)
     created_at: Optional[str] = Field(None)
     updated_at: Optional[str] = Field(None)
 
@@ -213,6 +230,51 @@ class TaskCreateRequest(APIModel):
     algorithm_type: Optional[str] = Field(None)
     algorithm_params: Optional[Dict[str, Any]] = Field(None)
     case_devices: Optional[List[TaskCaseDeviceAssignment]] = Field(None)
+    # 实验室扩展（INT-493/INT-540）：关联实验室 ID 列表（可选，缺省=不限定实验室，兼容现状）
+    lab_ids: Optional[List[int]] = Field(None)
+
+
+class TaskValidateError(APIModel):
+    """任务资源归属校验错误项（实验室扩展 INT-540 §4.5）。
+
+    resource_type 取值：test_case / device / playback_device / laboratory。
+    resource_id 保留资源原生 ID 类型（用例为字符串 ID，设备/播放设备/实验室为 int）。
+    """
+    resource_type: str = Field(...)
+    resource_id: Union[int, str] = Field(...)
+    reason: str = Field(...)
+
+
+class TaskValidateData(APIModel):
+    """任务资源归属校验结果（POST /api/tasks/validate，设计文档 §5.4.4）。"""
+    valid: bool = Field(...)
+    errors: List[TaskValidateError] = Field(default_factory=list)
+
+
+class TaskValidateRequest(APIModel):
+    """任务资源归属校验请求体（实验室扩展 INT-540 §4.5）。
+
+    lab_ids 为空/缺省时：通用用例（config 无 lab_id）视为合法，
+    专属用例/设备/播放设备因无归属实验室全部非法。
+    playback_device_ids 可选：有值校验播放设备 lab_id 归属，无值跳过
+    （当前系统任务无播放设备级关联，契约保留该可选字段）。
+    """
+    lab_ids: Optional[List[int]] = Field(None)
+    case_ids: Optional[List[str]] = Field(None)
+    device_ids: Optional[List[int]] = Field(None)
+    playback_device_ids: Optional[List[int]] = Field(None)
+
+
+class TaskCreateData(APIModel):
+    """任务创建响应（实验室扩展 INT-540：响应内联 labs）。"""
+    id: int = Field(...)
+    labs: List[TaskLabBrief] = Field(default_factory=list)
+
+
+class TaskLabsData(APIModel):
+    """任务关联实验室查询响应（GET /api/tasks/{id}/labs，实验室扩展 INT-540）。"""
+    task_id: int = Field(...)
+    labs: List[TaskLabBrief] = Field(default_factory=list)
 
 
 class TaskControlRequest(APIModel):
@@ -259,6 +321,8 @@ class TaskListQuery(APIModel):
     # INT-301 F1：执行状态过滤（pending/queued/running/paused/completed/failed/
     # stopped/merged；复用派生表达式，徽章展示与筛选命中同口径）
     execution_status: Optional[str] = Field(None)
+    # INT-273：按派生任务类型过滤（api/e2e/mixed；口径与 /tasks/stats type_counts 一致）
+    task_type: Optional[str] = Field(None)
 
 
 class TaskDomainStatsQuery(APIModel):

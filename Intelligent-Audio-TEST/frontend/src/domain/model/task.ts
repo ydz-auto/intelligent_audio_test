@@ -104,6 +104,11 @@ export interface Task {
   deletedByUserId?: number | null
   /** INT-339：挑选合并容器标记（专有关系表存在性判定） */
   isCherryPick?: boolean
+  /** INT-577：统一合并容器「合并方式」（whole=整任务合并 / picked=结果挑选） */
+  mergeType?: 'whole' | 'picked' | null
+  /** INT-577：容器来源任务数 / 来源结果数（列表次行「来源 {n} 任务 · 结果 {m} 条」） */
+  sourceTaskCount?: number | null
+  sourceResultCount?: number | null
   /** INT-423/467：资源可见性（shared/private；私有仅 owner+admin 可见） */
   visibility?: VisibilityType
   /** INT-423/467：资源归属人 user_id（owner 判定；缺失时按非私有处理） */

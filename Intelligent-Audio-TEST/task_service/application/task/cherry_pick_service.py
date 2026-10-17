@@ -280,14 +280,19 @@ class CherryPickService:
         - task_ids: 来源任务（多选，仅终态任务可挑选 §10）
         - device_ids: 设备（TestResult.device_id，点名维度）
         - case_ids: 用例（点名维度）
+        - case_keyword: 用例关键字模糊搜索（命中用例名/用例ID；INT-401 修复——
+          与 case_ids 精确语义区分，前端「按用例搜索」改走此参数）
         - execution_status / evaluation_status: 结果执行/评估状态
         - start_date / end_date: 结果执行时间范围（TestResult.created_at）
         - excluded=True 时返回被删用例排除行（缺省剔除，对齐 INT-305 口径）
+        - select_all=True（INT-577）：不翻页，返回当前筛选命中全部 result_id 集合
+          （跨页全选语义 §11-4；与候选行查询同一条件口径）
         """
         try:
             task_ids = [int(t) for t in (data.get('task_ids') or [])]
             device_ids = [int(d) for d in (data.get('device_ids') or [])]
             case_ids = [str(c) for c in (data.get('case_ids') or [])]
+            case_keyword = (data.get('case_keyword') or '').strip() or None
             execution_status = data.get('execution_status') or None
             evaluation_status = data.get('evaluation_status') or None
             start_date = data.get('start_date') or None
@@ -295,8 +300,24 @@ class CherryPickService:
             page = max(1, int(data.get('page') or 1))
             per_page = min(200, max(1, int(data.get('per_page') or 50)))
 
+            select_all = bool(data.get('select_all'))
+            if select_all:
+                # INT-577 §11-4：跨页全选——不翻页，命中全部 result_id 集合
+                rows = self._query_candidate_results(
+                    task_ids=task_ids, device_ids=device_ids, case_ids=case_ids,
+                    case_keyword=case_keyword,
+                    execution_status=execution_status,
+                    evaluation_status=evaluation_status,
+                    start_date=start_date, end_date=end_date,
+                    page=1, per_page=2 ** 31 - 1,  # 一次拉全（有界 by 命中量）
+                )[0]
+                return {'success': True, 'message': 'ok', 'data': {
+                    'result_ids': [r['result_id'] for r in rows],
+                }}
+
             rows, total = self._query_candidate_results(
                 task_ids=task_ids, device_ids=device_ids, case_ids=case_ids,
+                case_keyword=case_keyword,
                 execution_status=execution_status,
                 evaluation_status=evaluation_status,
                 start_date=start_date, end_date=end_date,
@@ -312,7 +333,7 @@ class CherryPickService:
             logger.error(f"挑选候选结果查询失败: {e}", exc_info=True)
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 
-    def _query_candidate_results(self, task_ids, device_ids, case_ids,
+    def _query_candidate_results(self, task_ids, device_ids, case_ids, case_keyword,
                                  execution_status, evaluation_status,
                                  start_date, end_date, page, per_page) -> tuple:
         """挑选候选结果查询核心（只读，CQRS 查询侧无副作用）。
@@ -356,6 +377,14 @@ class CherryPickService:
                 q = q.filter(TestResult.device_id.in_(device_ids))
             if case_ids:
                 q = q.filter(TestResult.test_case_id.in_(case_ids))
+            if case_keyword:
+                # INT-401：用例关键字模糊搜索——命中用例名/用例ID（与 case_ids 精确 IN 语义区分）
+                from task_service.infrastructure.persistence.models import TestCase
+                from sqlalchemy import select
+                kw = f'%{case_keyword}%'
+                matched_case_ids = select(TestCase.id).where(
+                    or_(TestCase.name.like(kw), TestCase.id.like(kw)))
+                q = q.filter(TestResult.test_case_id.in_(matched_case_ids))
             if execution_status:
                 q = q.filter(TestResult.execution_status == execution_status)
             if evaluation_status:
@@ -407,6 +436,14 @@ class CherryPickService:
             row_result_ids = [r.id for r, _t in rows]
             evaluated_map = self._evaluated_result_ids(row_result_ids) if row_result_ids else {}
 
+            # INT-577 §11-2：候选行补展示字段——case_name / device_name / api_name /
+            # result_type（多级挑选树节点命名与 result_type 分组/筛选数据源）
+            case_names = self._case_name_map({r.test_case_id for r, _t in rows if r.test_case_id})
+            device_ids_in_page = {r.device_id for r, _t in rows if r.device_id is not None}
+            api_ids_in_page = {r.api_id for r, _t in rows if r.api_id is not None}
+            device_names = self._fetch_device_names(list(device_ids_in_page)) if device_ids_in_page else {}
+            api_names = self._fetch_api_names(list(api_ids_in_page)) if api_ids_in_page else {}
+
             # INT-657：容器引用命中的结果标注为容器任务（与源任务口径一致）；
             # 同结果同时被源任务直查命中的保留源任务标注（直查优先，不混淆归属）
             direct_task_ids_set = set(direct_task_ids)
@@ -421,8 +458,15 @@ class CherryPickService:
                     'task_name': label['task_name'] if use_container else task.name,
                     'task_status': label['task_status'] if use_container else task.status,
                     'case_id': result.test_case_id,
+                    # INT-577 §11-2：用例名（缺省显示 ID，容错口径）
+                    'case_name': case_names.get(result.test_case_id) or result.test_case_id,
                     'device_id': result.device_id,
                     'api_id': result.api_id,
+                    # INT-577 §11-2：设备/API 名（TestResult 归属二选一，缺省 None）
+                    'device_name': device_names.get(result.device_id),
+                    'api_name': api_names.get(result.api_id),
+                    # INT-577 §11-2：result_type（result_data/result_data_path 解析，缺省 default）
+                    'result_type': self._extract_result_type(result.result_data, result.result_data_path),
                     'algorithm_type': result.algorithm_type,
                     'execution_status': result.execution_status,
                     'evaluated': result.id in evaluated_map,
@@ -985,6 +1029,47 @@ class CherryPickService:
         except Exception as e:
             logger.warning(f"批量查询设备名称失败: {e}")
             return {}
+
+    # ==================== INT-577 §11-2 候选补字段辅助 ====================
+
+    @staticmethod
+    def _case_name_map(case_ids) -> Dict[str, Optional[str]]:
+        """批量查询用例名称（test_cases 为用例目录，id 主键）。"""
+        ids = [str(c) for c in (case_ids or []) if c]
+        if not ids:
+            return {}
+        from task_service.infrastructure.persistence.models import TestCase
+        from shared.models.database import get_db_session
+        session = get_db_session()
+        try:
+            rows = session.query(TestCase.id, TestCase.name).filter(
+                TestCase.id.in_(ids)).all()
+            return {str(r[0]): r[1] for r in rows}
+        except Exception as e:
+            logger.warning(f"批量查询用例名称失败: {e}")
+            return {}
+        finally:
+            session.close()
+
+    def _fetch_api_names(self, api_ids: List[int]) -> Dict[int, Optional[str]]:
+        """通过 gRPC 批量获取 API 名称（失败返回空 dict，仅日志告警）。"""
+        if not api_ids:
+            return {}
+        try:
+            from task_service.infrastructure.acl.report_acl_repository import api_test_acl_repository
+            return {int(k): v for k, v in (api_test_acl_repository.fetch_api_names(api_ids) or {}).items()}
+        except Exception as e:
+            logger.warning(f"批量查询 API 名称失败: {e}")
+            return {}
+
+    @staticmethod
+    def _extract_result_type(result_data, result_data_path=None) -> str:
+        """结果级 result_type 解析（口径对齐 report_data_builder_task_mixin._extract_result_type，
+        缺省 'default'）；委托 shared.utils.result_data_store.extract_result_type，
+        与购物车快照（§11-5）共用同一实现。
+        """
+        from shared.utils.result_data_store import extract_result_type
+        return extract_result_type(result_data, result_data_path)
 
 
 def task_lifecycle_start(task_id: int) -> dict:

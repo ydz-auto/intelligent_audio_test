@@ -762,7 +762,7 @@ async function openSaveSet() {
   if (!name) return;
   try {
     const outcome = await saveAsSet(name);
-    notification.success(`挑选集「${outcome.name}」已保存（${outcome.item_count} 条）`);
+    notification.success(`挑选集「${outcome.name}」已保存（${outcome.itemCount} 条）`);
   } catch (error: any) {
     notification.error(error?.message || '另存挑选集失败');
   }

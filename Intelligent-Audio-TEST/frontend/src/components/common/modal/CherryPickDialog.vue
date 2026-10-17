@@ -22,18 +22,18 @@
             <option value="">全部来源任务</option>
             <option v-for="t in pickableTasks" :key="t.id" :value="String(t.id)">{{ t.name }}</option>
           </select>
-          <select v-model="filters.deviceId" class="cp-input" @change="loadCandidates">
+          <select v-model="filters.deviceId" class="cp-input" @change="onFilterChange">
             <option value="">全部设备</option>
             <option v-for="d in deviceOptions" :key="d.id" :value="String(d.id)">{{ d.name }}</option>
           </select>
           <input v-model="caseKeyword" class="cp-input" placeholder="按用例搜索" @input="debouncedLoad" />
-          <select v-model="filters.executionStatus" class="cp-input" @change="loadCandidates">
+          <select v-model="filters.executionStatus" class="cp-input" @change="onFilterChange">
             <option value="">全部执行状态</option>
             <option value="completed">执行完成</option>
             <option value="failed">执行失败</option>
             <option value="stopped">已停止</option>
           </select>
-          <select v-model="filters.evaluationStatus" class="cp-input" @change="loadCandidates">
+          <select v-model="filters.evaluationStatus" class="cp-input" @change="onFilterChange">
             <option value="">全部评估状态</option>
             <option value="evaluated">已评估</option>
             <option value="pending">未评估</option>
@@ -323,7 +323,17 @@ const groupedSelection = computed(() => groupedCandidates.value.filter(g => g.it
 let loadTimer: ReturnType<typeof setTimeout> | null = null;
 function debouncedLoad() {
   if (loadTimer) clearTimeout(loadTimer);
-  loadTimer = setTimeout(loadCandidates, 300);
+  loadTimer = setTimeout(() => {
+    // P2-1：筛选变更重置页码（防旧页码「无符合条件」误判）
+    filters.page = 1;
+    loadCandidates();
+  }, 300);
+}
+
+/** P2-1：筛选变更重置页码到第 1 页再查询（设备/执行状态/评估状态共用） */
+function onFilterChange() {
+  filters.page = 1;
+  loadCandidates();
 }
 
 async function loadCandidates() {
@@ -483,7 +493,7 @@ async function openSaveSet() {
   if (!name) return;
   try {
     const outcome = await saveAsSet(name);
-    notification.success(`挑选集「${outcome.name}」已保存（${outcome.item_count} 条）`);
+    notification.success(`挑选集「${outcome.name}」已保存（${outcome.itemCount} 条）`);
   } catch (error: any) {
     notification.error(error?.message || '另存挑选集失败');
   }

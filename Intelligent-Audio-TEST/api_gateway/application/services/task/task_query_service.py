@@ -62,6 +62,15 @@ class TaskQueryService:
         merged = query.merged
         # INT-339：挑选合并容器任务过滤（挑选合并页签数据源）
         cherry_pick = query.cherry_pick
+        # INT-577：合并方式快捷筛选（whole|picked）——映射为 merged/cherry_pick 布尔；
+        # 与显式布尔并存时以 merge_type 为准
+        merge_type = (query.merge_type or '').strip() or None
+        if merge_type == 'whole':
+            merged, cherry_pick = True, False
+        elif merge_type == 'picked':
+            merged, cherry_pick = False, True
+        # INT-577：页签计数统计（merged=true ∪ cherry_pick=true 并集）
+        stats = bool(query.stats)
         # INT-301 F1：执行状态过滤（复用派生口径，徽章与筛选一致）
         execution_status = query.execution_status
         # INT-273：派生任务类型过滤（api/e2e/mixed）
@@ -81,6 +90,8 @@ class TaskQueryService:
             merged=merged,
             cherry_pick=cherry_pick,
             execution_status=execution_status,
+            merge_type=merge_type,
+            stats=stats,
             task_type=task_type,
         )
 
@@ -129,6 +140,10 @@ class TaskQueryService:
                     is_favorite=item.get('is_favorite'),
                     # INT-339：挑选合并容器标记（read model 批量判定，此处透传）
                     is_cherry_pick=item.get('is_cherry_pick'),
+                    # INT-577：合并方式 / 来源任务·结果计数（read model 计算，此处透传）
+                    merge_type=item.get('merge_type'),
+                    source_task_count=item.get('source_task_count'),
+                    source_result_count=item.get('source_result_count'),
                     deleted=item.get('deleted'),
                     deleted_at=item.get('deleted_at'),
                     deleted_by_user_id=item.get('deleted_by_user_id'),
@@ -159,6 +174,7 @@ class TaskQueryService:
                 page=raw.get('page', page),
                 per_page=raw.get('per_page', per_page),
                 pages=raw.get('pages', 0),
+                stats=raw.get('stats'),
             )
         )
 
