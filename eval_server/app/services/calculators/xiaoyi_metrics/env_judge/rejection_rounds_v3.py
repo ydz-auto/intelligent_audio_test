@@ -17,12 +17,14 @@ def build_packet(user_chunks, model_chunks, configured_rounds):
     for i, rd in enumerate(configured_rounds):
         number = rd['configured_round_number']
         rid = f'round_{number}'
-        reject = rd['evaluate_rejection']
+        reject = rd['is_reject']
+        if not isinstance(reject, bool):
+            raise ValueError('is_reject must be normalized to boolean by caller')
         if not reject:
             parent = rid
         rounds.append(dict(round_id=rid, sequence=i + 1, configured_round_number=number,
             role='rejection' if reject else 'intent', role_source='platform_config',
-            evaluate_rejection=reject, parent_intent_round_id=parent if reject else None,
+            is_reject=reject, evaluate_rejection=reject, parent_intent_round_id=parent if reject else None,
             script_text=rd.get('script_text'), asr_hint=None))
     if len({r['round_id'] for r in rounds}) != len(rounds):
         raise ValueError('Duplicate configured round numbers')
@@ -51,7 +53,9 @@ def judge(packet, call, model, max_tokens, temperature):
         raise ValueError('Round IDs changed, duplicated, reordered or missing')
     words = {w['word_id']: w for w in packet['full_word_timeline']}
     for row, config in zip(rows, expected):
-        for field in ('sequence', 'configured_round_number', 'role', 'evaluate_rejection', 'parent_intent_round_id'):
+        for field in ('sequence', 'configured_round_number', 'role', 'is_reject', 'evaluate_rejection', 'parent_intent_round_id'):
+            if field in ('is_reject', 'evaluate_rejection') and not isinstance(row.get(field), bool):
+                raise ValueError('Configured rejection flags must be JSON booleans')
             if row.get(field) != config[field]:
                 raise ValueError('Changed configured round field: ' + field)
         if row.get('alignment_status') not in ('matched', 'partial', 'ambiguous', 'not_found', 'source_mismatch'):
@@ -71,7 +75,7 @@ def judge(packet, call, model, max_tokens, temperature):
             raise ValueError('Reversed user word range')
         if any(wid not in words for wid in row.get('evidence_word_ids', [])):
             raise ValueError('Invented evidence word ID')
-        if not config['evaluate_rejection']:
+        if not config['is_reject']:
             if row['evaluation_status'] != 'not_applicable' or row.get('behavior') is not None or row.get('timing') is not None:
                 raise ValueError('Normal intent round was scored')
         elif row['evaluation_status'] == 'evaluated':

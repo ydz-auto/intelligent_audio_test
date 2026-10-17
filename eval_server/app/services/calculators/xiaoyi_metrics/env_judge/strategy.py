@@ -298,7 +298,7 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
                 continue
             configured_rounds.append({
                 'configured_round_number': self._per_round_number(task_params, rd, i),
-                'evaluate_rejection': self._is_reject_round(task_params, rd),
+                'is_reject': self._is_reject_round(task_params, rd),
                 'script_text': rd.get('query') if isinstance(rd.get('query'), str) else None,
             })
         judged = evaluate_rejection_judge_text(
