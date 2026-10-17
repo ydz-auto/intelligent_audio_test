@@ -71,6 +71,7 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
     updateProvider,
     removeProvider,
     setDefaultProvider,
+    defaultProvider,
     testConnection,
     fetchModels,
   } = useLlmProviders()
@@ -86,8 +87,16 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
     textareaRef.current?.focus()
   }
 
+  /** 当前会话供应商（config.providerId 命中或默认；§3.11 Demo 直连驱动对话） */
+  const currentProvider =
+    providers.find((p) => p.id === config.providerId) ??
+    defaultProvider ??
+    null
+
   const { sendChat, stopGeneration, isGenerating } = useChatHandler({
     config,
+    provider: currentProvider,
+    messages,
     onMessageUpdate: updateMessages,
   })
 

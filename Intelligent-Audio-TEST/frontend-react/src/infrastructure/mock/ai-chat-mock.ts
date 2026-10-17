@@ -5,7 +5,7 @@
  * report.status ∈ ReportStatus 枚举（draft/published）、summary.pass_rate 为百分比 0-100
  * （report_data_builder_persist_mixin.py 实测 round(completed/total*100,2)），后续接线字段不返工。
  */
-import type { ChatMessage, ReportContextType } from '@/domain/models/aiChat'
+import type { ReportContextType } from '@/domain/models/aiChat'
 
 export type MockReportListItem = {
   id: number
@@ -139,91 +139,3 @@ export const MOCK_TASKS: MockTaskListItem[] = [
     created_at: '2026-10-10T14:30:00Z',
   },
 ]
-
-/** 流式回复素材：解读报告指标（rich：推理 + 工具 + 表格 + 来源） */
-export const MOCK_AGENT_REPLY =
-  '已为你解读这份报告的核心指标。\n\n' +
-  '## 通过率\n\n' +
-  '报告 #320 共执行 **156** 个用例，通过 **144** 个，通过率 **92.3%**。\n\n' +
-  '| 指标 | 数值 | 上版（T315） | 变化 |\n' +
-  '| --- | --- | --- | --- |\n' +
-  '| 通过率 | 92.3% | 97.9% | -5.6pp |\n' +
-  '| 首唤醒延迟 P50 | 412ms | 388ms | +24ms |\n' +
-  '| 误唤醒率 | 1.8% | 1.2% | +0.6pp |\n\n' +
-  '## 异常项\n\n' +
-  '- **远场 3m + 55dB 噪声**：通过率仅 **61%**，为主要退步来源；\n' +
-  '- **设备 A（Android 13）**：误唤醒率 2.4%，显著高于均值；\n' +
-  '- **连续唤醒 10 次**：存在 2 例静音误触发。\n\n' +
-  '> 所有数值均来自报告七表，AI 只起草不算数；无法证明来源的指标已标注「待核实」。\n\n' +
-  '可以继续追问：需要我把这些退步项按信噪比分层展开吗？'
-
-/** 流式回复素材：简短确认（追问类） */
-export const MOCK_AGENT_SHORT_REPLY =
-  '本次测试通过率为 **92.3%**（144/156）。对比上一版 T315（97.9%），**下降了 5.6 个百分点**，主要退步集中在远场噪声场景（详见上方表格）。需要我按设备/信噪比维度进一步展开吗？'
-
-/** 首访演示会话（可视稿展示用；「清空对话」后回到规范空态） */
-export const DEMO_MESSAGES: ChatMessage[] = [
-  {
-    key: 'demo-user-1',
-    from: 'user',
-    versions: [{ id: 'demo-user-1-v1', content: '解读这份报告的核心指标，指出异常项' }],
-    createdAt: 1730000000000,
-  },
-  {
-    key: 'demo-assistant-1',
-    from: 'assistant',
-    versions: [{ id: 'demo-assistant-1-v1', content: MOCK_AGENT_REPLY }],
-    createdAt: 1730000000500,
-    completedAt: 1730000009500,
-    durationMs: 9000,
-    status: 'complete',
-    reasoning: {
-      content: '用户要求解读报告 #320 核心指标并指出异常项。先读取报告事实表，再按通过率/延迟/误唤醒率三维度组织回答。',
-      duration: 3,
-    },
-    toolCalls: [
-      {
-        id: 'demo-tool-1',
-        tool: 'report_get_facts',
-        label: '读取报告数据',
-        status: 'completed',
-        summary: '报告 #320（T320 唤醒词识别回归）：156 用例，通过 144，通过率 92.3%。',
-      },
-      {
-        id: 'demo-tool-2',
-        tool: 'report_query_metrics',
-        label: '查询报告指标',
-        status: 'completed',
-        summary: '首唤醒延迟 P50=412ms；误唤醒率 1.8%；远场 3m+55dB 通过率 61%。',
-      },
-    ],
-    sourceRefs: [
-      { reportId: 320, metricId: 'pass_rate', dataVersion: 'v3', verified: true },
-      { reportId: 320, metricId: 'p50_latency', dataVersion: 'v3', verified: true },
-      { reportId: 320, metricId: 'farfield_55db', dataVersion: 'v2', verified: false },
-    ],
-  },
-  {
-    key: 'demo-user-2',
-    from: 'user',
-    versions: [{ id: 'demo-user-2-v1', content: '这次测试的通过率是多少？和上一版比怎么样？' }],
-    createdAt: 1730000010000,
-  },
-  {
-    key: 'demo-assistant-2',
-    from: 'assistant',
-    versions: [{ id: 'demo-assistant-2-v1', content: MOCK_AGENT_SHORT_REPLY }],
-    createdAt: 1730000010500,
-    completedAt: 1730000014500,
-    durationMs: 4000,
-    status: 'complete',
-    sourceRefs: [
-      { reportId: 320, metricId: 'pass_rate', dataVersion: 'v3', verified: true },
-      { reportId: 315, metricId: 'pass_rate', dataVersion: 'v1', verified: true },
-    ],
-  },
-]
-
-/** 展示用推理/思考素材 */
-export const MOCK_REASONING_CONTENT =
-  '用户要求解读报告核心指标并指出异常项。先读取报告事实表（report_get_facts），再按通过率/延迟/误唤醒率三维度组织回答，异常项按退步幅度排序。'

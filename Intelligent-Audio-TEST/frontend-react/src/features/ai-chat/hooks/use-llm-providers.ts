@@ -73,13 +73,13 @@ export function useLlmProviders() {
     )
   }, [])
 
-  /** 测试连接（§3.11 表单；Demo 态返回 mock 结果，不接真实后端——红线④） */
+  /** 测试连接（§3.11 表单「测试连接」；真实 GET {baseUrl}/models——2026-10-17 审计 P2-1 返修） */
   const handleTestConnection = useCallback(
     (draft: Pick<LlmProvider, 'baseUrl' | 'apiKey'>) => testProviderConnection(draft),
     []
   )
 
-  /** 自动获取模型列表（§3.11 表单；Demo 态 mock 回填） */
+  /** 自动获取模型列表（§3.11 表单「自动获取模型列表」；真实 GET {baseUrl}/models） */
   const handleFetchModels = useCallback(
     (draft: Pick<LlmProvider, 'baseUrl' | 'apiKey'>) => fetchProviderModels(draft),
     []

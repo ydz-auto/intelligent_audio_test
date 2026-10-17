@@ -118,6 +118,9 @@ export const ERROR_MESSAGES = {
   network: '网络连接失败或服务无响应',
   fallback: 'AI 助手暂时不可用，您仍可在报告中心查看标准报告',
   interrupted: '生成已中断',
+  /** 2026-10-17 审计返修（P1）：对话由用户自配 LLM 供应商驱动（§3.11），无供应商/无模型时语义化引导 */
+  noProviderChat: '未配置 LLM 供应商，请先在「管理供应商」中添加',
+  noModel: '请先在模型/供应商切换器中选择模型',
 } as const
 
 /** 空态文案（§6；Demo 说明尾注 §3.10——上线为 Demo 预览版，Agent 报告能力接入后完整开放） */

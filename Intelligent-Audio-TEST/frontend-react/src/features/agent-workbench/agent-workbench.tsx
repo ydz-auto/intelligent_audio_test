@@ -57,6 +57,7 @@ function AgentWorkbenchSession({
     updateProvider,
     removeProvider,
     setDefaultProvider,
+    defaultProvider,
     testConnection,
     fetchModels,
   } = useLlmProviders()
@@ -64,8 +65,16 @@ function AgentWorkbenchSession({
 
   const [draftText, setDraftText] = useState('')
 
+  /** 当前会话供应商（config.providerId 命中或默认；§3.11 Demo 直连驱动对话） */
+  const currentProvider =
+    providers.find((p) => p.id === config.providerId) ??
+    defaultProvider ??
+    null
+
   const { sendChat, stopGeneration, isGenerating } = useChatHandler({
     config,
+    provider: currentProvider,
+    messages,
     onMessageUpdate: updateMessages,
   })
   const {
