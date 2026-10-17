@@ -93,7 +93,7 @@ export function AppHeader({
           <AgentWorkbenchButton />
           {showGlobalAlgorithmSwitcher && <GlobalAlgorithmSwitcher />}
           {showSearch && (
-            <Search className='w-8 flex-none px-0 sm:w-8 sm:pe-0 lg:w-8 xl:w-8 2xl:w-40 2xl:pe-12 [&>kbd]:hidden 2xl:[&>kbd]:flex [&>span]:hidden 2xl:[&>span]:inline' />
+            <Search className='!w-8 !flex-none !px-0 sm:!w-8 sm:!pe-0 lg:!w-8 xl:!w-8 2xl:!w-40 2xl:!pe-12 [&>kbd]:hidden 2xl:[&>kbd]:flex [&>span]:hidden 2xl:[&>span]:inline' />
           )}
           {showNotifications && (
             <NotificationPopover

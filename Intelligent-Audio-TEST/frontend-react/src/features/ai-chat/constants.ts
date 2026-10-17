@@ -129,11 +129,16 @@ export const EMPTY_STATE_COPY = {
   loading: '正在加载对话...',
 } as const
 
-/** Demo 标注文案（§3.10；顶部条/全局浮窗头行） */
+/** Demo 标注文案（§3.10；顶部条/全局浮窗头行 + §3.1B 本页能力条） */
 export const DEMO_COPY = {
   badge: 'Demo',
   tooltip: '演示版：Agent 能力待接入，对话使用你配置的 LLM 供应商',
   floatingTooltip: '演示版，未接入实际后端',
+  /** 全局浮窗「本页 Agent 能力」条（2026-10-17 负责人口径：每页 agent 可做的事不同） */
+  pageCapabilityTitle: '本页 Agent 能力',
+  pageCapabilityBadge: 'Demo 待接入',
+  pageCapabilityTooltip:
+    '演示版：此处仅展示本页 Agent 可做的事与快捷指令，能力接入后开放执行',
 } as const
 
 /** 模型/供应商切换器文案（§3.5/§6） */

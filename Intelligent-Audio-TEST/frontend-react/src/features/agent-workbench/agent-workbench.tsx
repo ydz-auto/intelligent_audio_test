@@ -9,7 +9,7 @@
 import { Maximize2, Minus, Sparkles, X } from 'lucide-react'
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useNavigate } from '@tanstack/react-router'
+import { useLocation, useNavigate } from '@tanstack/react-router'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -31,9 +31,18 @@ import { DEMO_COPY } from '@/features/ai-chat/constants'
 import { useAgentWorkbench } from '@/infrastructure/stores/agentWorkbenchStore'
 
 import { AgentWorkbenchCapsule } from './agent-workbench-capsule'
+import {
+  getPageAgentCapability,
+  type PageAgentCapability,
+} from './page-agent-capabilities'
 
 /** 浮窗内嵌会话（minimized 时卸载；重新展开从 localStorage 恢复，切换形态不丢会话） */
-function AgentWorkbenchSession() {
+function AgentWorkbenchSession({
+  pageCtx,
+}: {
+  /** 本页 Agent 能力（§3.1B 2026-10-17 负责人口径：每页可做的事不同；null=不渲染专页条） */
+  pageCtx: PageAgentCapability | null
+}) {
   const {
     config,
     messages,
@@ -85,6 +94,39 @@ function AgentWorkbenchSession() {
 
   return (
     <>
+      {pageCtx && (
+        <div className='border-border/60 bg-muted/20 dark:bg-muted/10 border-b px-3 py-2 shrink-0'>
+          <div className='flex items-center gap-1.5'>
+            <span className='text-muted-foreground text-xs font-medium'>
+              {DEMO_COPY.pageCapabilityTitle} · {pageCtx.domainLabel}
+            </span>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Badge variant='warning' className='cursor-help'>
+                    {DEMO_COPY.pageCapabilityBadge}
+                  </Badge>
+                }
+              />
+              <TooltipContent>
+                <p>{DEMO_COPY.pageCapabilityTooltip}</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+          <div className='mt-1.5 flex flex-wrap gap-1'>
+            {pageCtx.quickPrompts.map((prompt) => (
+              <button
+                key={prompt}
+                className='text-muted-foreground hover:text-foreground hover:bg-accent h-6 cursor-pointer rounded-md border px-2 text-[11px] transition-colors'
+                onClick={() => setDraftText(prompt)}
+                type='button'
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
         <AiChat
           compact
@@ -138,11 +180,15 @@ function AgentWorkbenchSession() {
 
 export function AgentWorkbench() {
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   const { hasPermission } = usePermissions()
   const open = useAgentWorkbench((s) => s.open)
   const minimized = useAgentWorkbench((s) => s.minimized)
   const setMinimized = useAgentWorkbench((s) => s.setMinimized)
   const setOpen = useAgentWorkbench((s) => s.setOpen)
+
+  // 本页 Agent 能力（§3.1B：每页可做的事不同，路由命中即展示；登录壳兜底为 null）
+  const pageCtx = getPageAgentCapability(pathname)
 
   // RBAC（§5）：device_admin 无 report:read 时魔法按钮与浮窗均不渲染
   if (!hasPermission('report:read') || !open) return null
@@ -204,7 +250,7 @@ export function AgentWorkbench() {
 
       {/* 会话区 + 输入区（浮窗内高度受限用更紧凑间距，§3.1B） */}
       <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
-        <AgentWorkbenchSession />
+        <AgentWorkbenchSession pageCtx={pageCtx} />
       </div>
     </div>
   )
