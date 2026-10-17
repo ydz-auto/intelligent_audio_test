@@ -13,6 +13,11 @@ full_word_timeline包含word_id、speaker(query/answer)、text、start、end，�
 先读完整时间线，识别原任务及模型回复归属，再逐轮判断。未列入配置的用户内容只作为未分配证据，不能自行认定为正常轮或拒识轮。
 不得把首段正常提问自动算作干扰，也不得把下一轮回答归给本轮。脚本或预设不能补出ASR中不存在的声音。无法对齐、非语音噪声没有文字证据、缺少必要上下文时输出不可判定。
 
+【音频覆盖信息】
+audio_info.query和audio_info.answer分别说明两路录音的audio_duration_s、duration_source、asr_status、voice_activity_status。时长由实际文件头读取，不是最后一个ASR词时间；null表示未知。ASR成功只表示转写请求成功，success_nonempty表示本次获得非空词结果，都不保证每一句识别完整。
+时长只用于确认可见词时间线所在录音的覆盖上限，不能证明真实静默，不能用start_ms/end_ms代替音频时长。末轮无下一用户输入时，可将模型录音总时长作为观察结束上限；时长未知时不得自行延长观察范围。两路时钟未核验一致时不得仅用时长推断精确同步。
+即使覆盖完整、ASR成功，干扰后无模型词也只代表“观察范围内ASR未检出回复”。voice_activity_status=not_measured时，不得声称已通过声学确认静默；无其他充分证据则behavior=null并说明。存在明确回应或正常续答文字时，增加时长不得改变原有行为判定，也不得改变is_reject适用性。
+
 【轮次清单与编号——必须遵守】
 round_inventory包含source(platform_config/historical_log)、configuration_complete(bool)、configured_round_count(整数或null)。只有平台配置来源且清单完整时，才能声称已知原用例总轮数；历史日志只能说明本次可见范围。
 all_rounds每项字段：

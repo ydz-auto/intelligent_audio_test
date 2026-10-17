@@ -136,6 +136,8 @@ def call_modelscope_asr(wav_path, language=None):
         )
 
     result = resp.json()
+    from app.utils.audio_metadata import audio_metadata
+    result.update(audio_metadata(wav_path, asr_status='success'))
     logger.info(f"远程 ASR 完成 ({elapsed:.2f}s): {result.get('text', '')[:80]}")
 
     # 落盘：保存 ASR 结果 JSON（目录结构保留 pcm_case/pcm_case/{case_id}/{session_id}）
@@ -174,6 +176,8 @@ def call_modelscope_asr_word(wav_path, language=None):
         )
 
     result = resp.json()
+    from app.utils.audio_metadata import audio_metadata
+    result.update(audio_metadata(wav_path, asr_status='success'))
     logger.info(f"远程 ASR(词级) 完成 ({elapsed:.2f}s, {len(result.get('chunks', []))} 字): {result.get('text', '')[:80]}")
 
     # 落盘：保存词级 ASR 结果 JSON（目录结构保留 pcm_case/pcm_case/{case_id}/{session_id}）
@@ -192,4 +196,8 @@ def parse_result(raw_res):
     return {
         "text": item.get("text", ""),
         "chunks": item.get("chunks", []),
+        "audio_duration_s": item.get("audio_duration_s"),
+        "duration_source": item.get("duration_source"),
+        "asr_status": item.get("asr_status", "unknown"),
+        "voice_activity_status": item.get("voice_activity_status", "not_measured"),
     }

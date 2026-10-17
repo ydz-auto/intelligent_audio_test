@@ -4,7 +4,7 @@ import math
 from pathlib import Path
 
 
-def build_packet(user_chunks, model_chunks, configured_rounds):
+def build_packet(user_chunks, model_chunks, configured_rounds, audio_info=None):
     words = []
     for prefix, speaker, chunks in [('U', 'query', user_chunks), ('M', 'answer', model_chunks)]:
         for i, chunk in enumerate(chunks or []):
@@ -30,6 +30,7 @@ def build_packet(user_chunks, model_chunks, configured_rounds):
         raise ValueError('Duplicate configured round numbers')
     return dict(round_inventory=dict(source='platform_config', configuration_complete=True,
         configured_round_count=len(rounds)), all_rounds=rounds,
+        audio_info=audio_info or {},
         full_word_timeline=sorted(words, key=lambda w: (w['start'], w['end'], w['word_id'])))
 
 

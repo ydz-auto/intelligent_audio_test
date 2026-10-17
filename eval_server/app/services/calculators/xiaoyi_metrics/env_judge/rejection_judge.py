@@ -856,7 +856,12 @@ def evaluate_rejection_judge_text(user_wav: str, ai_wav: str, model: str = '',
     if configured_rounds is not None:
         from .rejection_rounds_v3 import build_packet, judge
         try:
-            packet = build_packet(user_chunks, model_chunks, configured_rounds)
+            from app.utils.audio_metadata import audio_metadata
+            audio_info = {
+                'query': audio_metadata(user_wav, 'success_nonempty' if user_chunks else 'unknown'),
+                'answer': audio_metadata(ai_wav, 'success_nonempty' if model_chunks else 'unknown'),
+            }
+            packet = build_packet(user_chunks, model_chunks, configured_rounds, audio_info=audio_info)
             rows, response = judge(packet, call_llm_api, model, max_tokens, temperature)
         except Exception as exc:
             logger.exception('[reject_judge_rounds_v3] 轮次裁判失败')
@@ -876,7 +881,7 @@ def evaluate_rejection_judge_text(user_wav: str, ai_wav: str, model: str = '',
             item['round'] = ordinal
             judged.append(item)
         return {'enabled': True, 'model': model, 'rounds': judged,
-                'round_alignment': rows, 'prompt_version': 'rounds_v3',
+                'round_alignment': rows, 'audio_info': audio_info, 'prompt_version': 'rounds_v3',
                 'tokens_used': response.get('tokens_used', 0),
                 'input_token': response.get('input_token', 0),
                 'output_token': response.get('output_token', 0), 'message': 'OK'}

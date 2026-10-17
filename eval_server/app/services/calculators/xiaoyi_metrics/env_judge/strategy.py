@@ -351,6 +351,7 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
                 'rate': None,
                 'per_round': per_round,
                 'round_alignment': judged.get('round_alignment', []),
+                'audio_info': judged.get('audio_info', {}),
                 'prompt_version': judged.get('prompt_version', ''),
                 'n_unjudgeable_rounds': sum(r.get('evaluation_status') == 'unjudgeable' for r in per_round),
             }
@@ -383,6 +384,7 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
         agg['output_token'] = sum(r.get('output_token', 0) for r in reject_results)
         agg['model'] = judged.get('model', '')
         agg['round_alignment'] = judged.get('round_alignment', [])
+        agg['audio_info'] = judged.get('audio_info', {})
         agg['prompt_version'] = judged.get('prompt_version', '')
         agg['n_unjudgeable_rounds'] = sum(r.get('evaluation_status') == 'unjudgeable' for r in per_round)
         agg['message'] = judged.get('message') or 'OK'
