@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>灵犀Agent（Agent 工作台）可视稿 — INT-415 2026-10-17</title>
+<style>
+  :root {
+    --primary: #00d294; --primary-fg: #000; --secondary: #138187; --secondary-fg: #fff;
+    --bg: #f7f9fc; --card: #f1f9f5; --popover: #eef8f4; --sidebar: #f0f9f4;
+    --muted: #eaf8f2; --muted-fg: #5e6c82; --border: #d1f3ec; --input: #cdf2ec;
+    --accent: #ddf5ee; --accent-fg: #0c3f36; --destructive: #dc2626; --warning: #f59e0b;
+    --radius: 0.75rem;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'Public Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: #e6ebf2; color:#1a2433; padding: 32px 40px 60px;
+  }
+  .doc-head { max-width: 1280px; margin: 0 auto 28px; }
+  .doc-head h1 { font-size: 22px; color:#0f172a; }
+  .doc-head p { color:#64748b; font-size: 13px; margin-top:6px; line-height:1.6; }
+  .doc-head .badges { margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; }
+  .badges span { font-size:12px; padding:3px 10px; border-radius:999px; background:#e2f6ef; color:#065f46; border:1px solid #a7f3d0; }
+
+  .scene { max-width: 1280px; margin: 0 auto 44px; }
+  .scene-label {
+    display:flex; align-items:center; gap:10px; margin-bottom:14px;
+  }
+  .scene-label .num {
+    width:26px; height:26px; border-radius:8px; background:var(--primary); color:#00332a;
+    display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px;
+  }
+  .scene-label h2 { font-size:16px; color:#0f172a; }
+  .scene-label .note { color:#64748b; font-size:12px; }
+  .frame {
+    background:#fff; border-radius:16px; box-shadow:0 8px 30px rgba(2,8,23,.08);
+    overflow:hidden; border:1px solid #e2e8f0;
+  }
+
+  /* ===== Scene 1: 整页形态 /ai-chat ===== */
+  .app-shell { display:flex; height: 640px; background:var(--bg); }
+  .sidebar {
+    width:208px; background:var(--sidebar); border-right:1px solid var(--border);
+    padding:12px 10px; display:flex; flex-direction:column; gap:2px;
+  }
+  .brand { display:flex; align-items:center; gap:8px; padding:8px 10px 14px; border-bottom:1px solid var(--border); margin-bottom:8px; }
+  .brand .logo { width:22px; height:22px; border-radius:6px; background:var(--primary); display:flex; align-items:center; justify-content:center; font-size:12px; color:#00332a; }
+  .brand b { font-size:13px; color:#0f172a; }
+  .group { font-size:10px; color:var(--muted-fg); text-transform:uppercase; letter-spacing:.06em; padding:10px 10px 4px; font-weight:600; }
+  .nav-item { display:flex; align-items:center; gap:8px; padding:7px 10px; border-radius:8px; font-size:13px; color:#334155; cursor:pointer; }
+  .nav-item .ico { width:16px; height:16px; border-radius:4px; background:#cbd5e1; flex:none; }
+  .nav-item.active { background:var(--primary); color:#00332a; font-weight:600; }
+  .nav-item.active .ico { background:rgba(0,51,42,.25); }
+  .nav-item.ai { background:var(--accent); color:var(--accent-fg); font-weight:600; }
+
+  .main { flex:1; display:flex; flex-direction:column; min-width:0; }
+  .topbar {
+    height:48px; background:#fff; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between; padding:0 16px; flex:none;
+  }
+  .topbar .left { display:flex; align-items:center; gap:10px; }
+  .topbar .burger { width:28px; height:28px; border-radius:8px; background:var(--muted); display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--muted-fg); }
+  .topbar .tabs { display:flex; gap:4px; }
+  .topbar .tab { padding:5px 12px; border-radius:8px; font-size:12px; color:var(--muted-fg); }
+  .topbar .tab.on { background:var(--accent); color:var(--accent-fg); font-weight:600; }
+  .topbar .right { display:flex; align-items:center; gap:6px; }
+  .tb-item { width:28px; height:28px; border-radius:8px; background:var(--muted); display:flex; align-items:center; justify-content:center; font-size:11px; color:var(--muted-fg); }
+  .tb-avatar { width:28px; height:28px; border-radius:50%; background:#94a3b8; color:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; }
+  /* 魔法按钮 */
+  .magic {
+    position:relative; isolation:isolate; overflow:hidden;
+    display:inline-flex; align-items:center; gap:6px; height:30px; padding:0 14px;
+    border:0; border-radius:999px; font-weight:700; font-size:12px; color:#fff; cursor:pointer;
+    background:linear-gradient(115deg,#4f7cff,#9145ee 55%,#cd4bdb);
+    text-shadow:0 1px 2px rgb(0 0 0 / 35%); box-shadow:0 2px 8px rgba(145,69,238,.35);
+  }
+  .magic::before {
+    content:''; position:absolute; inset:-60%; z-index:-2; pointer-events:none;
+    background:
+      radial-gradient(ellipse at 72% 26%, rgb(255 87 211 / 85%) 0 10%, transparent 55%),
+      radial-gradient(ellipse at 26% 38%, rgb(45 157 255 / 100%) 0 14%, transparent 62%),
+      radial-gradient(ellipse at 74% 72%, rgb(158 42 255 / 95%) 0 12%, transparent 60%),
+      radial-gradient(ellipse at 36% 78%, rgb(93 207 255 / 55%), transparent 58%);
+    filter: blur(6px); animation: rot 2.4s linear infinite;
+  }
+  .magic::after {
+    content:''; position:absolute; inset:0 auto 0 0; width:200%; z-index:-1; pointer-events:none;
+    background-image:
+      radial-gradient(circle at 5% 28%, #fff 0 0.7px, transparent 1.3px),
+      radial-gradient(circle at 12% 68%, #fff 0 0.6px, transparent 1.2px),
+      radial-gradient(circle at 22% 18%, #fff 0 0.6px, transparent 1.3px),
+      radial-gradient(circle at 30% 77%, #fff 0 0.8px, transparent 1.6px),
+      radial-gradient(circle at 42% 33%, #fff 0 0.6px, transparent 1.2px),
+      radial-gradient(circle at 51% 83%, #fff 0 0.6px, transparent 1.3px),
+      radial-gradient(circle at 60% 20%, #fff 0 0.7px, transparent 1.3px),
+      radial-gradient(circle at 73% 65%, #fff 0 0.9px, transparent 1.8px),
+      radial-gradient(circle at 84% 30%, #fff 0 0.6px, transparent 1.3px),
+      radial-gradient(circle at 94% 77%, #fff 0 0.6px, transparent 1.2px);
+    background-size: 50% 100%; opacity:.65;
+    animation: star 4s linear infinite, dust 7s ease-in-out infinite alternate;
+  }
+  @keyframes rot { from{transform:rotate(0)} to{transform:rotate(360deg)} }
+  @keyframes star { from{transform:translateX(0)} to{transform:translateX(-50%)} }
+  @keyframes dust { 0%{opacity:.45} 45%{opacity:.8} 100%{opacity:.6} }
+
+  /* 对话页 */
+  .chat-page { flex:1; display:flex; flex-direction:column; min-height:0; background:var(--bg); }
+  .chat-top {
+    flex:none; border-bottom:1px solid var(--border); background:#fff;
+    display:flex; align-items:center; justify-content:space-between; padding:12px 20px;
+  }
+  .chat-top .h1 { font-size:15px; font-weight:600; color:#0f172a; display:flex; align-items:center; gap:8px; }
+  .chat-top .sub { font-size:11px; color:var(--muted-fg); margin-top:2px; }
+  .demo-badge {
+    font-size:10px; font-weight:700; padding:2px 8px; border-radius:999px;
+    background:#fef3c7; color:#92400e; border:1px solid #fde68a; letter-spacing:.02em;
+  }
+  .chat-top .actions { display:flex; gap:6px; align-items:center; }
+  .ghost-btn { height:30px; padding:0 12px; border-radius:8px; border:1px solid var(--border); background:#fff; color:#334155; font-size:12px; display:flex; align-items:center; gap:6px; cursor:pointer; }
+  .ghost-btn .i { width:14px; height:14px; border-radius:4px; background:var(--muted); }
+
+  .chat-body { flex:1; overflow-y:auto; padding:24px 20px; display:flex; flex-direction:column; }
+  .empty { max-width:640px; margin:0 auto; text-align:center; }
+  .empty .icon { width:44px; height:44px; border-radius:12px; border:1px solid var(--border); background:var(--muted); margin:0 auto 14px; display:flex; align-items:center; justify-content:center; font-size:20px; color:var(--secondary); }
+  .empty h3 { font-size:20px; color:#0f172a; margin-bottom:8px; }
+  .empty p { font-size:13px; color:var(--muted-fg); line-height:1.7; margin-bottom:22px; }
+  .starters { display:grid; grid-template-columns:1fr 1fr; gap:10px; text-align:left; }
+  .starter {
+    border:1px solid var(--border); border-radius:12px; padding:12px 14px; background:#fff;
+    display:flex; align-items:center; gap:12px; cursor:pointer; box-shadow:0 2px 8px rgba(2,8,23,.04);
+  }
+  .starter .s-ico { width:36px; height:36px; border-radius:9px; background:var(--accent); color:var(--accent-fg); display:flex; align-items:center; justify-content:center; font-size:16px; flex:none; }
+  .starter b { font-size:13px; color:#0f172a; display:block; }
+  .starter span { font-size:11px; color:var(--muted-fg); }
+
+  .chat-input { flex:none; padding:0 20px 18px; }
+  .input-card {
+    max-width:720px; margin:0 auto; background:#fff; border:1px solid var(--border);
+    border-radius:12px; box-shadow:0 18px 60px -32px rgba(0,0,0,.4); overflow:hidden;
+    outline:2px solid transparent; transition:all .2s;
+  }
+  .input-card.focus { outline:2px solid rgba(0,210,148,.35); border-color:rgba(0,210,148,.5); }
+  .input-card textarea {
+    width:100%; border:0; resize:none; min-height:64px; padding:16px 18px 8px; font-size:14px;
+    font-family:inherit; color:#0f172a; background:transparent; outline:none; line-height:1.6;
+  }
+  .input-card textarea::placeholder { color:#94a3b8; }
+  .input-foot {
+    border-top:1px solid var(--border); background:var(--muted); padding:8px 10px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .input-foot .tools { display:flex; gap:6px; align-items:center; }
+  .tool-btn { height:28px; padding:0 10px; border-radius:8px; border:0; background:transparent; color:var(--muted-fg); font-size:11px; display:flex; align-items:center; gap:5px; cursor:pointer; }
+  .tool-btn:hover { background:var(--accent); color:var(--accent-fg); }
+  .provider-btn {
+    height:28px; padding:0 8px; border-radius:8px; border:1px solid var(--border); background:#fff;
+    color:#334155; font-size:11px; display:flex; align-items:center; gap:6px; cursor:pointer;
+  }
+  .provider-btn .chip { background:var(--muted); color:var(--muted-fg); border-radius:999px; padding:1px 8px; font-size:10px; }
+  .send-btn { height:30px; padding:0 14px; border-radius:8px; border:0; background:var(--primary); color:var(--primary-fg); font-weight:600; font-size:12px; display:flex; align-items:center; gap:6px; cursor:pointer; }
+
+  /* ===== Scene 2: 全局工作台浮窗 ===== */
+  .gw-shell { position:relative; height:560px; background:var(--bg); overflow:hidden; }
+  .gw-page { position:absolute; inset:0; padding:20px; }
+  .gw-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+  .gw-card { background:#fff; border:1px solid var(--border); border-radius:12px; height:120px; }
+  .gw-card.h { grid-column:span 2; }
+  .gw-top {
+    position:absolute; top:0; left:0; right:0; height:46px; background:#fff;
+    border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:flex-end; gap:6px; padding:0 16px;
+  }
+  /* 浮窗 */
+  .float-win {
+    position:absolute; right:20px; bottom:20px; width:380px; height:470px;
+    background:#fff; border:1px solid var(--border); border-radius:14px;
+    box-shadow:0 24px 70px -20px rgba(2,8,23,.35); display:flex; flex-direction:column; overflow:hidden;
+  }
+  .float-head {
+    flex:none; display:flex; align-items:center; gap:8px; padding:10px 12px;
+    border-bottom:1px solid var(--border); background:#fff;
+  }
+  .float-head .spark { width:20px; height:20px; border-radius:6px; background:var(--accent); color:var(--accent-fg); display:flex; align-items:center; justify-content:center; font-size:12px; }
+  .float-head b { font-size:13px; color:#0f172a; }
+  .float-head .spacer { flex:1; }
+  .float-head .fbtn { width:26px; height:26px; border-radius:7px; border:0; background:var(--muted); color:var(--muted-fg); display:flex; align-items:center; justify-content:center; font-size:11px; cursor:pointer; }
+  .float-body { flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:10px; }
+  .msg { max-width:86%; }
+  .msg.user { align-self:flex-end; background:var(--muted); border:1px solid var(--border); border-radius:12px 12px 4px 12px; padding:9px 12px; font-size:12px; color:#0f172a; }
+  .msg.ai { align-self:flex-start; font-size:12px; color:#1a2433; line-height:1.7; width:88%; }
+  .msg.ai .label { font-weight:600; color:#0f172a; margin-bottom:3px; font-size:12px; }
+  .msg .r { margin-top:6px; padding-top:6px; border-top:1px dashed var(--border); font-size:10px; color:var(--muted-fg); }
+  .float-input { flex:none; padding:10px; border-top:1px solid var(--border); }
+  .fi-card { border:1px solid var(--border); border-radius:10px; background:#fff; }
+  .fi-card textarea { width:100%; border:0; resize:none; min-height:44px; padding:10px 12px; font-size:12px; font-family:inherit; outline:none; color:#0f172a; }
+  .fi-foot { display:flex; align-items:center; justify-content:space-between; padding:6px 8px; border-top:1px solid var(--border); background:var(--muted); border-radius:0 0 10px 10px; }
+
+  /* 最小化胶囊 */
+  .capsule {
+    position:absolute; right:20px; bottom:20px; width:44px; height:44px; border-radius:50%;
+    background:linear-gradient(115deg,#4f7cff,#9145ee 55%,#cd4bdb);
+    color:#fff; display:flex; align-items:center; justify-content:center; font-size:18px;
+    box-shadow:0 8px 24px rgba(145,69,238,.4); cursor:pointer; border:0;
+  }
+
+  /* ===== Scene 3: 供应商/模型切换器 ===== */
+  .sel-shell { display:flex; gap:40px; align-items:flex-start; justify-content:center; padding:24px; background:var(--bg); }
+  .sel-pop {
+    width:520px; background:#fff; border:1px solid var(--border); border-radius:12px; overflow:hidden;
+    box-shadow:0 18px 50px -20px rgba(2,8,23,.3);
+  }
+  .sel-pop .search { padding:10px 12px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; }
+  .sel-pop .search input { border:0; outline:0; font-size:13px; color:#0f172a; width:100%; background:transparent; }
+  .sel-cols { display:grid; grid-template-columns:9.5rem minmax(0,1fr); height:280px; }
+  .sel-left { border-right:1px solid var(--border); overflow-y:auto; padding:6px; }
+  .sel-right { overflow-y:auto; padding:6px; }
+  .sel-head { font-size:10px; color:var(--muted-fg); text-transform:uppercase; letter-spacing:.05em; padding:6px 10px 2px; font-weight:700; }
+  .sel-item { display:flex; align-items:center; gap:8px; padding:7px 10px; border-radius:8px; font-size:12px; color:#334155; cursor:pointer; }
+  .sel-item.on { background:var(--accent); color:var(--accent-fg); font-weight:600; position:relative; }
+  .sel-item .tag { margin-left:auto; background:var(--muted); color:var(--muted-fg); border-radius:999px; padding:0 7px; font-size:9px; }
+  .sel-item .check { margin-left:auto; color:var(--primary); font-weight:700; }
+  .sel-foot { border-top:1px solid var(--border); padding:8px 12px; display:flex; justify-content:center; }
+  .sel-foot a { font-size:12px; color:var(--secondary); text-decoration:none; font-weight:600; }
+
+  /* ===== Scene 4: 供应商管理弹窗 ===== */
+  .pm-shell { display:flex; justify-content:center; padding:24px; background:var(--bg); }
+  .pm-dialog { width:560px; background:#fff; border-radius:14px; overflow:hidden; box-shadow:0 24px 70px -20px rgba(2,8,23,.35); border:1px solid var(--border); }
+  .pm-head { padding:16px 20px 10px; border-bottom:1px solid var(--border); }
+  .pm-head h3 { font-size:16px; color:#0f172a; }
+  .pm-head p { font-size:12px; color:var(--muted-fg); margin-top:4px; line-height:1.6; }
+  .pm-body { padding:16px 20px; }
+  .provider-row { display:flex; align-items:center; gap:12px; padding:11px 12px; border:1px solid var(--border); border-radius:10px; margin-bottom:10px; background:#fbfdfe; }
+  .provider-row .p-ico { width:34px; height:34px; border-radius:9px; background:var(--accent); color:var(--accent-fg); display:flex; align-items:center; justify-content:center; font-size:15px; flex:none; }
+  .provider-row .p-name b { font-size:13px; color:#0f172a; display:block; }
+  .provider-row .p-name span { font-size:11px; color:var(--muted-fg); font-family:ui-monospace,monospace; }
+  .provider-row .p-actions { margin-left:auto; display:flex; gap:4px; }
+  .mini-btn { width:26px; height:26px; border-radius:7px; border:1px solid var(--border); background:#fff; color:var(--muted-fg); display:flex; align-items:center; justify-content:center; font-size:11px; cursor:pointer; }
+  .def-badge { background:var(--accent); color:var(--accent-fg); border-radius:999px; padding:1px 8px; font-size:10px; font-weight:600; }
+  .pm-add { border:1px dashed var(--border); border-radius:10px; padding:11px; color:var(--secondary); font-size:12px; font-weight:600; text-align:center; cursor:pointer; background:var(--accent); }
+  .pm-form { border:1px solid var(--border); border-radius:10px; padding:14px; margin-top:10px; background:#fbfdfe; }
+  .pm-form .fg { margin-bottom:10px; }
+  .pm-form label { display:block; font-size:11px; color:#334155; margin-bottom:5px; font-weight:600; }
+  .pm-form input { width:100%; border:1px solid var(--input); border-radius:8px; padding:8px 10px; font-size:12px; color:#0f172a; background:#fff; }
+  .pm-form .hint { font-size:10px; color:var(--muted-fg); margin-top:3px; }
+  .pm-foot { padding:14px 20px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:10px; align-items:center; }
+  .pm-foot .test { height:30px; padding:0 12px; border-radius:8px; border:1px solid var(--border); background:#fff; color:#334155; font-size:12px; margin-right:auto; cursor:pointer; }
+  .pm-foot .cancel { height:30px; padding:0 12px; border-radius:8px; border:1px solid var(--border); background:#fff; color:#334155; font-size:12px; cursor:pointer; }
+  .pm-foot .save { height:30px; padding:0 16px; border-radius:8px; border:0; background:var(--primary); color:var(--primary-fg); font-weight:600; font-size:12px; cursor:pointer; }
+  .pm-note { display:flex; align-items:center; gap:8px; margin-top:12px; font-size:11px; color:var(--muted-fg); background:var(--muted); border-radius:8px; padding:8px 10px; }
+
+  /* 双栏报告工作模式 */
+  .studio { display:flex; height:420px; background:var(--bg); }
+  .studio .left { flex:2; display:flex; flex-direction:column; min-width:0; border-right:1px solid var(--border); }
+  .studio .right { flex:3; background:#fff; border-left:1px solid var(--border); display:flex; flex-direction:column; min-width:0; }
+  .studio .r-head { padding:10px 14px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; }
+  .studio .r-body { flex:1; padding:16px; overflow-y:auto; }
+  .doc-line { display:flex; align-items:center; gap:10px; padding:9px 12px; border:1px solid var(--border); border-radius:8px; margin-bottom:8px; background:#fbfdfe; }
+  .doc-line .d-ico { width:26px; height:26px; border-radius:7px; background:var(--muted); color:var(--secondary); display:flex; align-items:center; justify-content:center; font-size:13px; }
+  .doc-line b { font-size:12px; color:#0f172a; }
+  .doc-line .dim { margin-left:auto; font-size:10px; color:var(--muted-fg); }
+</style>
+</head>
+<body>
+
+<div class="doc-head">
+  <h1>灵犀Agent（Agent 工作台）可视稿 — INT-415 修订 2026-10-17</h1>
+  <p>Demo 预览版 · 不接实际后端 ｜ 全局 Agent 工作台浮窗 + 炫彩魔法按钮 ｜ 模型/供应商切换（无模型参数） ｜ LLM 供应商用户自管（chatbox 式）</p>
+  <div class="badges">
+    <span>Demo 态全程注明</span>
+    <span>任意页面可开 · 切页不关闭</span>
+    <span>仅切换模型/供应商 · 无温度等参数</span>
+    <span>供应商密钥仅存本机</span>
+  </div>
+</div>
+
+<!-- ========== Scene 1: 整页形态 ========== -->
+<div class="scene">
+  <div class="scene-label"><span class="num">1</span><h2>整页形态 /ai-chat（顶部条 Demo 徽标 + 空态四 starter + 输入区模型/供应商切换器）</h2><span class="note">三段式单栏照 newAPI playground</span></div>
+  <div class="frame"><div class="app-shell">
+    <div class="sidebar">
+      <div class="brand"><div class="logo">⌂</div><b>智能语音测试平台</b></div>
+      <div class="group">总览</div>
+      <div class="nav-item active"><span class="ico"></span>工作台</div>
+      <div class="group">AI 工具</div>
+      <div class="nav-item ai"><span class="ico"></span>灵犀Agent</div>
+      <div class="group">测试执行</div>
+      <div class="nav-item"><span class="ico"></span>端到端测试</div>
+      <div class="nav-item"><span class="ico"></span>API 测试</div>
+      <div class="nav-item"><span class="ico"></span>任务管理</div>
+      <div class="group">测试资产</div>
+      <div class="nav-item"><span class="ico"></span>用例管理</div>
+      <div class="nav-item"><span class="ico"></span>报告中心</div>
+      <div class="group">管理</div>
+      <div class="nav-item"><span class="ico"></span>系统设置</div>
+    </div>
+    <div class="main">
+      <div class="topbar">
+        <div class="left">
+          <div class="burger">≡</div>
+          <div class="tabs">
+            <div class="tab">主页</div><div class="tab on">工作台</div><div class="tab">报告</div><div class="tab">排行榜</div><div class="tab">文档</div><div class="tab">关于</div>
+          </div>
+        </div>
+        <div class="right">
+          <div class="magic">✦ 灵犀Agent</div>
+          <div class="tb-item">⌘K</div>
+          <div class="tb-item">🔔</div>
+          <div class="tb-item">🌙</div>
+          <div class="tb-avatar">测</div>
+        </div>
+      </div>
+      <div class="chat-page">
+        <div class="chat-top">
+          <div>
+            <div class="h1">灵犀Agent <span class="demo-badge">Demo</span></div>
+            <div class="sub">用自然语言生成、对比、解读测试报告</div>
+          </div>
+          <div class="actions">
+            <div class="ghost-btn"><span class="i"></span>报告工作模式</div>
+          </div>
+        </div>
+        <div class="chat-body">
+          <div class="empty">
+            <div class="icon">💬</div>
+            <h3>开始与灵犀Agent对话</h3>
+            <p>灵犀Agent基于报告数据起草文档、对比结果、解读指标——所有数值均来自报告七表，AI 只起草不算数。<br>当前为 Demo 预览，Agent 报告能力接入后完整开放。</p>
+            <div class="starters">
+              <div class="starter"><div class="s-ico">📊</div><div><b>生成测试报告</b><span>帮我把最近的测试任务生成一份测试报告</span></div></div>
+              <div class="starter"><div class="s-ico">⚖️</div><div><b>对比多份报告</b><span>对比最近两次测试的报告，找出差异和退步项</span></div></div>
+              <div class="starter"><div class="s-ico">📈</div><div><b>解读报告指标</b><span>解读这份报告的核心指标，指出异常项</span></div></div>
+              <div class="starter"><div class="s-ico">❓</div><div><b>追问报告数据</b><span>这次测试的通过率是多少？和上一版比怎么样？</span></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="chat-input">
+          <div class="input-card focus">
+            <textarea placeholder="描述你的报告需求，例如：帮我把任务 #320 的测试结果生成一份报告"></textarea>
+            <div class="input-foot">
+              <div class="tools">
+                <div class="provider-btn">⚙️ 模型：gpt-4o <span class="chip">OpenAI</span> ▾</div>
+                <div class="tool-btn">🗑 清空对话</div>
+              </div>
+              <div class="send-btn">发送 ↑</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+</div>
+
+<!-- ========== Scene 2: 全局工作台浮窗 ========== -->
+<div class="scene">
+  <div class="scene-label"><span class="num">2</span><h2>全局 Agent 工作台浮窗（任意页面右下悬浮 · 切页不关闭 · 头行 Demo 徽标）</h2><span class="note">照 Cloudflare dash 面板跨页驻留行为；右上角魔法按钮唤起</span></div>
+  <div class="frame"><div class="gw-shell">
+    <div class="gw-top">
+      <div class="magic">✦ 灵犀Agent</div>
+      <div class="tb-item">⌘K</div>
+      <div class="tb-item">🔔</div>
+      <div class="tb-item">🌙</div>
+      <div class="tb-avatar">测</div>
+    </div>
+    <div class="gw-page">
+      <div class="gw-grid">
+        <div class="gw-card h"></div>
+        <div class="gw-card"></div>
+        <div class="gw-card"></div>
+        <div class="gw-card"></div>
+        <div class="gw-card"></div>
+        <div class="gw-card h"></div>
+      </div>
+    </div>
+    <div class="float-win">
+      <div class="float-head">
+        <div class="spark">✦</div><b>灵犀Agent</b>
+        <span class="demo-badge">Demo</span>
+        <div class="spacer"></div>
+        <div class="fbtn">—</div>
+        <div class="fbtn">⤢</div>
+        <div class="fbtn">✕</div>
+      </div>
+      <div class="float-body">
+        <div class="msg user">帮我把任务 #320 的测试结果生成一份报告</div>
+        <div class="msg ai">
+          <div class="label">灵犀Agent（Demo 预览）</div>
+          好的，我先读取任务 #320 的测试数据。当前为 Demo 预览版：报告生成能力待接入，以下仅演示对话流程。
+          <div class="r">思考中... ｜ 响应时间：3.2s</div>
+        </div>
+        <div class="msg ai"><div class="label">灵犀Agent</div>已为你整理核心指标：通过率 96.2%、完成用例 48/50。需要我展开哪一部分？<div class="r">已使用 2 处数据来源</div></div>
+      </div>
+      <div class="float-input">
+        <div class="fi-card">
+          <textarea placeholder="继续对话…"></textarea>
+          <div class="fi-foot">
+            <div class="provider-btn">⚙️ gpt-4o <span class="chip">OpenAI</span> ▾</div>
+            <div class="send-btn">发送</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+</div>
+
+<!-- ========== Scene 2b: 最小化胶囊 ========== -->
+<div class="scene">
+  <div class="scene-label"><span class="num">2b</span><h2>最小化态（右下角悬浮胶囊）</h2><span class="note">点胶囊还原浮窗；不随路由卸载</span></div>
+  <div class="frame"><div class="gw-shell">
+    <div class="gw-top"><div class="magic">✦ 灵犀Agent</div></div>
+    <div class="gw-page"><div class="gw-grid"><div class="gw-card h"></div><div class="gw-card"></div><div class="gw-card"></div></div></div>
+    <div class="capsule">✦</div>
+  </div></div>
+</div>
+
+<!-- ========== Scene 3: 模型/供应商切换器 ========== -->
+<div class="scene">
+  <div class="scene-label"><span class="num">3</span><h2>模型/供应商切换器（双列选择器 · 无模型参数面板）</h2><span class="note">左列=用户自管供应商，右列=该供应商可用模型；底部「管理供应商」</span></div>
+  <div class="frame"><div class="sel-shell">
+    <div class="sel-pop">
+      <div class="search">🔍 <input placeholder="搜索模型…"></div>
+      <div class="sel-cols">
+        <div class="sel-left">
+          <div class="sel-head">供应商</div>
+          <div class="sel-item on">✦ OpenAI<span class="check">✓</span></div>
+          <div class="sel-item">☁ Azure OpenAI<span class="tag">默认</span></div>
+          <div class="sel-item">🧠 DeepSeek</div>
+          <div class="sel-item">🚀 硅基流动</div>
+          <div class="sel-item">＋ 添加供应商…</div>
+        </div>
+        <div class="sel-right">
+          <div class="sel-head">OpenAI · 模型</div>
+          <div class="sel-item on">gpt-4o<span class="check">✓</span></div>
+          <div class="sel-item">gpt-4o-mini</div>
+          <div class="sel-item">gpt-4.1</div>
+          <div class="sel-item">o1</div>
+          <div class="sel-item">o3-mini</div>
+        </div>
+      </div>
+      <div class="sel-foot"><a href="#">管理供应商 →</a></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;max-width:300px;padding-top:6px">
+      <div style="font-size:12px;color:#334155;font-weight:600">触发钮形态（输入区）</div>
+      <div class="provider-btn" style="height:32px;padding:0 12px">⚙️ 模型：gpt-4o <span class="chip">OpenAI</span> ▾</div>
+      <div style="font-size:11px;color:var(--muted-fg);line-height:1.7">无温度/Top P/频率惩罚等参数面板——负责人口径「不允许设置模型参数，只允许切换模型与供应商」。</div>
+    </div>
+  </div></div>
+</div>
+
+<!-- ========== Scene 4: 供应商管理弹窗 ========== -->
+<div class="scene">
+  <div class="scene-label"><span class="num">4</span><h2>LLM 供应商管理弹窗（chatbox 式用户自管）</h2><span class="note">名称/Base URL/API Key/模型列表/测试连接/设为默认/删除 · 密钥仅存本机</span></div>
+  <div class="frame"><div class="pm-shell">
+    <div class="pm-dialog">
+      <div class="pm-head">
+        <h3>LLM 供应商管理</h3>
+        <p>配置你自己的 AI 对话连接：填写供应商名称、API 地址与密钥。密钥仅保存在本机。</p>
+      </div>
+      <div class="pm-body">
+        <div class="provider-row">
+          <div class="p-ico">✦</div>
+          <div class="p-name"><b>OpenAI <span class="def-badge">默认</span></b><span>https://api.openai.com/v1</span></div>
+          <div class="p-actions">
+            <div class="mini-btn" title="设为默认">★</div>
+            <div class="mini-btn" title="编辑">✎</div>
+            <div class="mini-btn" title="删除">🗑</div>
+          </div>
+        </div>
+        <div class="provider-row">
+          <div class="p-ico">🧠</div>
+          <div class="p-name"><b>DeepSeek</b><span>https://api.deepseek.com/v1</span></div>
+          <div class="p-actions">
+            <div class="mini-btn" title="设为默认">★</div>
+            <div class="mini-btn" title="编辑">✎</div>
+            <div class="mini-btn" title="删除">🗑</div>
+          </div>
+        </div>
+        <div class="pm-form">
+          <div class="fg"><label>名称 *</label><input value="硅基流动"></div>
+          <div class="fg"><label>API Base URL *</label><input value="https://api.siliconflow.cn/v1"></div>
+          <div class="fg"><label>API Key</label><input value="sk-••••••••••••••••" style="font-family:ui-monospace,monospace"><div class="hint">仅保存在本机浏览器，不上传平台。</div></div>
+          <div class="fg"><label>模型列表</label><input value="Qwen2.5-72B, DeepSeek-V3" style="font-family:ui-monospace,monospace"><div class="hint">逗号分隔；可点「自动获取模型列表」试探 /models 接口。</div></div>
+        </div>
+        <div class="pm-add">＋ 添加供应商</div>
+        <div class="pm-note">⚠️ Demo 预览：供应商仅存本机（localStorage `iatp:ai-chat:v1:providers`），不上传平台；切换模型/供应商后新对话生效。正式版密钥托管待后端立项。</div>
+      </div>
+      <div class="pm-foot">
+        <div class="test">测试连接</div>
+        <div class="cancel">取消</div>
+        <div class="save">保存</div>
+      </div>
+    </div>
+  </div></div>
+</div>
+
+<!-- ========== Scene 5: 报告工作模式双栏（Demo 待接入） ========== -->
+<div class="scene">
+  <div class="scene-label"><span class="num">5</span><h2>报告工作模式（双栏增强态 · Agent 后端立项前标注「待接入」）</h2><span class="note">左对话 + 右文档预览（WYSIWYG/源码双态、版本/导出/编辑/关闭）</span></div>
+  <div class="frame"><div class="studio">
+    <div class="left">
+      <div class="chat-top">
+        <div><div class="h1">灵犀Agent <span class="demo-badge">Demo</span></div><div class="sub">报告工作模式</div></div>
+        <div class="actions"><div class="ghost-btn"><span class="i"></span>关闭</div></div>
+      </div>
+      <div class="chat-body" style="padding:14px">
+        <div class="msg user" style="max-width:86%;align-self:flex-end;background:var(--muted);border:1px solid var(--border);border-radius:12px 12px 4px 12px;padding:9px 12px;font-size:12px">帮我把任务 #320 的测试结果生成一份可交付报告</div>
+        <div class="msg ai" style="font-size:12px;color:#1a2433;line-height:1.7;width:88%;margin-top:10px"><b>灵犀Agent（Demo 预览）</b><br>正在创建报告草稿… 此能力待接入实际后端。</div>
+        <div class="doc-line" style="margin-top:12px"><div class="d-ico">📄</div><b>任务 #320 测试报告 · 版本 1</b><div class="dim">待接入</div></div>
+      </div>
+      <div class="chat-input" style="padding:0 14px 14px">
+        <div class="input-card"><textarea placeholder="继续编辑报告…" style="min-height:44px;padding:12px 14px"></textarea><div class="input-foot"><div class="provider-btn">⚙️ gpt-4o <span class="chip">OpenAI</span></div><div class="send-btn">发送</div></div></div>
+      </div>
+    </div>
+    <div class="right">
+      <div class="r-head">
+        <div class="d-ico" style="width:26px;height:26px;border-radius:7px;background:var(--muted);color:var(--secondary);display:flex;align-items:center;justify-content:center">📄</div>
+        <b style="font-size:13px">文档预览</b>
+        <span style="font-size:11px;color:var(--muted-fg)">任务 #320 测试报告 · 版本 1</span>
+        <span class="def-badge">Demo</span>
+        <span style="flex:1"></span>
+        <div class="ghost-btn" style="height:26px;padding:0 8px;font-size:11px">历史版本</div>
+        <div class="ghost-btn" style="height:26px;padding:0 8px;font-size:11px">导出</div>
+        <div class="ghost-btn" style="height:26px;padding:0 8px;font-size:11px">编辑</div>
+      </div>
+      <div class="r-body">
+        <div style="font-size:18px;font-weight:700;color:#0f172a;margin-bottom:8px">任务 #320 测试报告</div>
+        <div style="font-size:12px;color:var(--muted-fg);margin-bottom:14px">生成时间：2026-10-17 ｜ 算法：默认 ｜ 设备：Pixel 7 / 播放器 A</div>
+        <div style="font-size:13px;color:#334155;line-height:1.8;margin-bottom:12px"><b>一、执行概况</b></div>
+        <div style="font-size:12px;color:#475569;line-height:1.8;margin-bottom:12px">本次测试共执行用例 50 条，完成 48 条，通过率 96.2%。2 条用例因设备占用跳过。</div>
+        <div style="font-size:13px;color:#334155;line-height:1.8;margin-bottom:12px"><b>二、指标摘要</b></div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px">
+          <div style="border:1px solid var(--border);border-radius:10px;padding:10px;background:#fbfdfe"><div style="font-size:10px;color:var(--muted-fg)">通过率</div><div style="font-size:20px;font-weight:700;color:var(--primary);font-family:ui-monospace,monospace">96.2%</div></div>
+          <div style="border:1px solid var(--border);border-radius:10px;padding:10px;background:#fbfdfe"><div style="font-size:10px;color:var(--muted-fg)">完成用例</div><div style="font-size:20px;font-weight:700;color:#0f172a;font-family:ui-monospace,monospace">48/50</div></div>
+          <div style="border:1px solid var(--border);border-radius:10px;padding:10px;background:#fbfdfe"><div style="font-size:10px;color:var(--muted-fg)">测试时长</div><div style="font-size:20px;font-weight:700;color:#0f172a;font-family:ui-monospace,monospace">2h 14m</div></div>
+        </div>
+        <div style="border:1px solid var(--border);border-radius:10px;padding:10px;background:#fbfdfe;display:flex;align-items:center;gap:10px"><div style="width:140px;height:64px;border-radius:8px;background:var(--muted);display:flex;align-items:center;justify-content:center;color:var(--muted-fg);font-size:11px">[chart] 任务完成趋势</div><div style="font-size:11px;color:var(--muted-fg)">图表由后端按 ChartSpec 渲染——数值全部来自报告七表，AI 只起草不算数。</div></div>
+      </div>
+    </div>
+  </div></div>
+</div>
+
+</body>
+</html>
