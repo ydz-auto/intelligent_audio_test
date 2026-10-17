@@ -111,6 +111,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # VITE_AUTH_MODE 与后端 AUTH_MODE，拿 mode 本身不得先登录
         '/api/v1/auth/mode',
         '/api/v1/auth/oauth',  # INT-51：提供方列表 / 授权跳转 / 授权回调
+        # INT-674：站点配置（公开展示数据，登录页品牌角标需未登录态可取）
+        '/api/v1/home/site',
         '/docs',
         '/openapi.json',
         '/redoc',

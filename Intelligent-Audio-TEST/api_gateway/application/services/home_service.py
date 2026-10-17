@@ -12,6 +12,8 @@ from api_gateway.schemas.home import HomeStatsDetails, HomeStatsRefreshRequest
 from api_gateway.utils.response import success_response, error_response
 from api_gateway.application.services.stats_cache import refresh_stats_cache, _CACHE_KEY
 from shared.infrastructure.config import BaseConfig
+from api_gateway.application.services.system_option_service import SystemOptionService
+from api_gateway.domain.entities.system_option import SYSTEM_OPTION_DEFAULTS
 from api_gateway.infrastructure.grpc_proxies import task_data_service
 from shared.config.query_constants import QueryConstants
 
@@ -186,3 +188,27 @@ class HomeService:
 
         except Exception as e:
             return error_response(message=f"获取汇总统计失败: {str(e)}")
+
+    @staticmethod
+    def get_site_config():
+        """站点配置读侧（公开端点 GET /api/v1/home/site 数据源，INT-674）。
+
+        字段为公开展示数据：system_name / logo / support_email 取系统选项 KV
+        （SystemOptionService.get_all() 全量 KV = 领域默认基线 ∪ 库内覆盖，
+        显式空值覆盖默认），version 取平台版本常量（只读展示，不可配）。
+        读侧，无副作用；数据源与 /api/option/ 同源（system_options KV），
+        设置页改 KV → 壳品牌同源生效。
+        """
+        try:
+            result, http = SystemOptionService.get_all()
+            if http != 200:
+                return error_response(message="读取站点配置失败")
+            kv = result.get('data') or {}
+            return success_response(data={
+                'system_name': kv.get('site.name', SYSTEM_OPTION_DEFAULTS.get('site.name', '')),
+                'version': BaseConfig.PLATFORM_VERSION,
+                'logo': kv.get('site.logo', ''),
+                'support_email': kv.get('site.support_email', ''),
+            })
+        except Exception as e:
+            return error_response(message=f"读取站点配置失败: {str(e)}")

@@ -20,6 +20,8 @@ SYSTEM_OPTION_DEFAULTS: Dict[str, SystemOptionValue] = {
     'site.name': '智能语音测试平台',
     'site.logo': '',
     'site.footer': '© 2026 智能语音测试平台',
+    # INT-674：站点配置端点 /home/site 预留键（公开展示邮箱，缺省空）
+    'site.support_email': '',
     # 站点设置 · 站点公告
     'site.notice': '',
     # 站点设置 · 导航模块
