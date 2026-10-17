@@ -7,9 +7,10 @@
  * 「未分组」虚拟组（INT-249：计数=可见数据集中 groupId 为空的用例数；收藏/回收站态不挂载）。
  * 展开态持久化：本会话内存；默认全展开（groups 异步加载后补齐展开集——INT-490 P2 修复）。
  */
-import { ChevronDown, Clock3, FolderOpen, ArrowUpDown } from 'lucide-react'
+import { ArrowUpDown, ChevronDown, Clock3, FolderOpen, Tags } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
+import { useSessionMap } from '@/application/testcases/use-session-map'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -32,12 +33,18 @@ import {
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
+import { groupCasesByTag } from '@/domain/lib/sub-view-aggregation'
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import type { TagItem } from '@/domain/models/testTag'
 import { formatCaseDuration } from '@/features/testcases/constants'
 import { CaseCard, type CaseCardCallbacks } from '@/features/testcases/components/case-card'
 import { CaseGroupActions } from '@/features/testcases/components/case-group-actions'
+import {
+  CaseSubViewToggle,
+  GROUP_SUB_VIEW_OPTIONS,
+} from '@/features/testcases/components/case-sub-view-toggle'
+import { CaseSubGroupHeader } from '@/features/testcases/components/case-sub-group-header'
 import type { BatchActionKey } from '@/features/testcases/components/case-bulk-actions'
 
 /** 组内懒加载每页条数（V9.7.10 itemsPerPage=5 语义平移） */
@@ -87,6 +94,9 @@ export function GroupedCaseList({
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc')
   /** 组内懒加载已显示计数（每页 GROUP_INLINE_PAGE；未记录=首页） */
   const [inlineCounts, setInlineCounts] = useState<Record<string, number>>({})
+  /** 分组卡子视图（§3.5 会话内存 per-group，缺省 flat） */
+  const groupSubView = useSessionMap((s) => s.groupSubView)
+  const setGroupSubView = useSessionMap((s) => s.setGroupSubView)
 
   // INT-490 P2 修复：groups 异步到达后补齐展开集（默认全展开），保留用户手动折叠
   useEffect(() => {
@@ -179,17 +189,47 @@ export function GroupedCaseList({
     )
   }
 
-  const renderCaseCards = (list: TestCaseListItem[]) =>
-    list.map((c) => (
-      <CaseCard
-        key={c.id}
-        caseItem={c}
-        selected={selected.has(c.id)}
-        tagRegistry={tagRegistry}
-        callbacks={callbacks}
-        onToggleSelect={onToggleSelect}
-      />
-    ))
+  const renderCaseCard = (c: TestCaseListItem) => (
+    <CaseCard
+      key={c.id}
+      caseItem={c}
+      selected={selected.has(c.id)}
+      tagRegistry={tagRegistry}
+      callbacks={callbacks}
+      onToggleSelect={onToggleSelect}
+    />
+  )
+
+  /** 组内内容区：平铺（懒加载分页）或 按标签子视图（§3.5 客户端聚合；「未设置标签」桶末尾弱化） */
+  const renderGroupBody = (list: TestCaseListItem[], subView: 'flat' | 'byTag') => {
+    if (subView === 'byTag') {
+      if (list.every((c) => c.tags.length === 0)) {
+        return (
+          <Empty className='py-8'>
+            <EmptyMedia variant='icon'>
+              <Tags aria-hidden='true' />
+            </EmptyMedia>
+            <EmptyHeader>
+              <EmptyTitle>该分组下用例均未设置标签</EmptyTitle>
+              <EmptyDescription>切换回「平铺」可查看该分组全部用例</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        )
+      }
+      const groups = groupCasesByTag(list, tagRegistry)
+      return (
+        <div className='space-y-2'>
+          {groups.map((g) => (
+            <div key={g.key} className='space-y-2'>
+              <CaseSubGroupHeader group={g} muted={g.key === '__untagged__'} />
+              <div className='space-y-2'>{g.cases.map(renderCaseCard)}</div>
+            </div>
+          ))}
+        </div>
+      )
+    }
+    return <div className='space-y-2'>{list.map(renderCaseCard)}</div>
+  }
 
   const renderGroupCard = (group: TestCaseGroup) => {
     const list = groupCases.get(group.id) ?? []
@@ -199,6 +239,8 @@ export function GroupedCaseList({
     const shownCount = Math.min(inlineCount, list.length)
     const groupDuration = list.reduce((sum, c) => sum + (c.totalDuration ?? 0), 0)
     const groupSelected = list.filter((c) => selected.has(c.id)).length
+    const subView = groupSubView[group.id] ?? 'flat'
+    const visibleList = list.slice(0, shownCount)
 
     return (
       <div key={group.id} className='bg-card ring-foreground/10 overflow-hidden rounded-xl ring-1'>
@@ -227,30 +269,29 @@ export function GroupedCaseList({
               </Badge>
             )}
           </div>
-          <CaseGroupActions
-            name={group.name}
-            caseIds={list.map((x) => x.id)}
-            selectedIds={list.filter((x) => selected.has(x.id)).map((x) => x.id)}
-            trash={trash}
-            onEditGroup={() => actionCallbacks.onEditGroup(group)}
-            onDeleteGroup={() => actionCallbacks.onDeleteGroup(group)}
-            onCreateInGroup={() => actionCallbacks.onCreateInGroup(group)}
-            onCopyGroup={() => actionCallbacks.onCopyGroup(group)}
-            onBatchAction={onBatchAction}
-          />
+          {/* 组头右区：子视图切换（计数/时长徽章之后、CaseGroupActions 之前，常显） */}
+          <div className='flex shrink-0 flex-wrap items-center gap-1.5' onClick={(e) => e.stopPropagation()}>
+            <CaseSubViewToggle
+              value={subView}
+              onValueChange={(v) => setGroupSubView(group.id, v as 'flat' | 'byTag')}
+              options={GROUP_SUB_VIEW_OPTIONS}
+            />
+            <CaseGroupActions
+              name={group.name}
+              caseIds={list.map((x) => x.id)}
+              selectedIds={list.filter((x) => selected.has(x.id)).map((x) => x.id)}
+              trash={trash}
+              onEditGroup={() => actionCallbacks.onEditGroup(group)}
+              onDeleteGroup={() => actionCallbacks.onDeleteGroup(group)}
+              onCreateInGroup={() => actionCallbacks.onCreateInGroup(group)}
+              onCopyGroup={() => actionCallbacks.onCopyGroup(group)}
+              onBatchAction={onBatchAction}
+            />
+          </div>
         </div>
         {isExpanded && (
           <div className='space-y-2 border-t px-3 py-3'>
-            {list.slice(0, shownCount).map((c) => (
-              <CaseCard
-                key={c.id}
-                caseItem={c}
-                selected={selected.has(c.id)}
-                tagRegistry={tagRegistry}
-                callbacks={callbacks}
-                onToggleSelect={onToggleSelect}
-              />
-            ))}
+            {renderGroupBody(visibleList, subView)}
             {list.length > shownCount && (
               <button
                 type='button'
@@ -325,7 +366,7 @@ export function GroupedCaseList({
 
       {paginatedGroups.map(renderGroupCard)}
 
-      {/* 未分组虚拟组 */}
+      {/* 未分组虚拟组（INT-249；同样支持子视图切换 §3.5） */}
       {ungroupedCases.length > 0 && (
         <div className='bg-card ring-foreground/10 overflow-hidden rounded-xl ring-1'>
           <div className='flex cursor-pointer items-center justify-between gap-2 px-3 py-2'>
@@ -340,17 +381,24 @@ export function GroupedCaseList({
                 {ungroupedCases.length} 条
               </Badge>
             </div>
-            <CaseGroupActions
-              name='未分组'
-              caseIds={ungroupedCases.map((x) => x.id)}
-              selectedIds={ungroupedCases.filter((x) => selected.has(x.id)).map((x) => x.id)}
-              trash={trash}
-              onCreateInGroup={() => actionCallbacks.onCreateInGroup(null)}
-              onBatchAction={onBatchAction}
-            />
+            <div className='flex shrink-0 flex-wrap items-center gap-1.5'>
+              <CaseSubViewToggle
+                value={groupSubView['__ungrouped__'] ?? 'flat'}
+                onValueChange={(v) => setGroupSubView('__ungrouped__', v as 'flat' | 'byTag')}
+                options={GROUP_SUB_VIEW_OPTIONS}
+              />
+              <CaseGroupActions
+                name='未分组'
+                caseIds={ungroupedCases.map((x) => x.id)}
+                selectedIds={ungroupedCases.filter((x) => selected.has(x.id)).map((x) => x.id)}
+                trash={trash}
+                onCreateInGroup={() => actionCallbacks.onCreateInGroup(null)}
+                onBatchAction={onBatchAction}
+              />
+            </div>
           </div>
           <div className='space-y-2 border-t px-3 py-3'>
-            {renderCaseCards(ungroupedCases)}
+            {renderGroupBody(ungroupedCases, groupSubView['__ungrouped__'] ?? 'flat')}
           </div>
         </div>
       )}

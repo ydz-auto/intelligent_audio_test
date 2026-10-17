@@ -6,9 +6,10 @@
  * （同一用例命中多个标签时多卡呈现，对齐 V9.7.10 tagViewData Record<tagName, cases>）。
  * INT-487 按分类呈现：标签色点/角标走 TagItem.color/categoryName 数据驱动色。
  */
-import { ArrowUpDown, ChevronDown, Tags } from 'lucide-react'
+import { ArrowUpDown, ChevronDown, FolderOpen, Tags } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
+import { useSessionMap } from '@/application/testcases/use-session-map'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -31,9 +32,15 @@ import {
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
+import { groupCasesByCaseGroup } from '@/domain/lib/sub-view-aggregation'
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TagItem } from '@/domain/models/testTag'
 import { CaseCard, type CaseCardCallbacks } from '@/features/testcases/components/case-card'
+import {
+  CaseSubViewToggle,
+  TAG_SUB_VIEW_OPTIONS,
+} from '@/features/testcases/components/case-sub-view-toggle'
+import { CaseSubGroupHeader } from '@/features/testcases/components/case-sub-group-header'
 
 /** 标签分页每页数（V9.7.10 itemsPerPage=5 语义平移） */
 const TAG_LIST_PAGE = 5
@@ -71,6 +78,9 @@ export function TagCaseList({
   const [tagPage, setTagPage] = useState(1)
   const [sortKey, setSortKey] = useState<TagSortKey>('count')
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc')
+  /** 标签卡子视图（§3.6 会话内存 per-tag，缺省 flat） */
+  const tagSubView = useSessionMap((s) => s.tagSubView)
+  const setTagSubView = useSessionMap((s) => s.setTagSubView)
 
   // INT-490 P2 同源修复：标签卡默认全展开（标签分组由平铺用例聚合派生，加载后补齐）
   useEffect(() => {
@@ -223,6 +233,7 @@ export function TagCaseList({
       {paginatedTags.map((group) => {
         const isExpanded = expanded.has(group.name)
         const groupSelected = group.cases.filter((c) => selected.has(c.id)).length
+        const subView = tagSubView[group.name] ?? 'flat'
         return (
           <div key={group.name} className='bg-card ring-foreground/10 overflow-hidden rounded-xl ring-1'>
             <div
@@ -252,19 +263,61 @@ export function TagCaseList({
                   {group.cases.length} 条
                 </Badge>
               </div>
+              {/* 标签卡组头右区：子视图切换（§3.6，常显） */}
+              <div className='flex shrink-0 flex-wrap items-center gap-1.5' onClick={(e) => e.stopPropagation()}>
+                <CaseSubViewToggle
+                  value={subView}
+                  onValueChange={(v) => setTagSubView(group.name, v as 'flat' | 'byGroup')}
+                  options={TAG_SUB_VIEW_OPTIONS}
+                />
+              </div>
             </div>
             {isExpanded && (
               <div className='space-y-2 border-t px-3 py-3'>
-                {group.cases.map((c) => (
-                  <CaseCard
-                    key={c.id}
-                    caseItem={c}
-                    selected={selected.has(c.id)}
-                    tagRegistry={tagRegistry}
-                    callbacks={callbacks}
-                    onToggleSelect={onToggleSelect}
-                  />
-                ))}
+                {subView === 'byGroup' ? (
+                  group.cases.every((c) => !c.groupId) ? (
+                    <Empty className='py-8'>
+                      <EmptyMedia variant='icon'>
+                        <FolderOpen aria-hidden='true' />
+                      </EmptyMedia>
+                      <EmptyHeader>
+                        <EmptyTitle>该标签下用例均未设置分组</EmptyTitle>
+                        <EmptyDescription>切换回「平铺」可查看该标签全部用例</EmptyDescription>
+                      </EmptyHeader>
+                    </Empty>
+                  ) : (
+                    <div className='space-y-2'>
+                      {groupCasesByCaseGroup(group.cases).map((g) => (
+                        <div key={g.key} className='space-y-2'>
+                          <CaseSubGroupHeader group={g} muted={g.key === '__ungrouped__'} />
+                          <div className='space-y-2'>
+                            {g.cases.map((c) => (
+                              <CaseCard
+                                key={c.id}
+                                caseItem={c}
+                                selected={selected.has(c.id)}
+                                tagRegistry={tagRegistry}
+                                callbacks={callbacks}
+                                onToggleSelect={onToggleSelect}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                ) : (
+                  group.cases.map((c) => (
+                    <CaseCard
+                      key={c.id}
+                      caseItem={c}
+                      selected={selected.has(c.id)}
+                      tagRegistry={tagRegistry}
+                      callbacks={callbacks}
+                      onToggleSelect={onToggleSelect}
+                    />
+                  ))
+                )}
               </div>
             )}
           </div>

@@ -5,9 +5,10 @@
  */
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useState } from 'react'
 
+import { useSessionMap } from '@/application/testcases/use-session-map'
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import type { TagItem } from '@/domain/models/testTag'
@@ -99,6 +100,11 @@ function Harness({ loading = false }: { loading?: boolean }) {
 }
 
 describe('GroupedCaseList', () => {
+  beforeEach(() => {
+    // 会话级 per-card 子视图状态复位（用例间隔离）
+    useSessionMap.setState({ groupSubView: {}, tagSubView: {} })
+  })
+
   it('INT-490 P2：分组异步到达后默认展开，首屏组内用例可见（无需手动展开）', async () => {
     const { rerender } = render(<Harness loading />)
     // 首帧 groups 为空（React Query 未返回）→ 骨架态
@@ -143,5 +149,32 @@ describe('GroupedCaseList', () => {
     expect(await screen.findByText('按用例数量')).toBeInTheDocument()
     expect(screen.getByText('按分组名称')).toBeInTheDocument()
     expect(screen.getByText('按创建时间')).toBeInTheDocument()
+  })
+
+  it('INT-584 子视图切换：默认平铺；切「按标签」客户端聚合（标签子组 + 未设置标签桶，per-card 会话保留）', async () => {
+    const user = setupUser()
+    render(<Harness />)
+    // 默认态 = 平铺：用例卡直接渲染，无子分组头
+    expect(screen.getByText('智能音箱-播放音乐')).toBeInTheDocument()
+    expect(screen.queryByText('未设置标签')).not.toBeInTheDocument()
+    // 点击第一个分组卡（g1）组头的「按标签」切换
+    const toggles = screen.getAllByText('按标签')
+    await user.click(toggles[0])
+    // g1 可见用例含 tc-001（音箱）与 4 条无标签 → 标签子组「音箱」（组头 + 卡内 TagBadge 多处出现）
+    // + 末尾「未设置标签」桶
+    expect(screen.getAllByText('音箱').length).toBeGreaterThan(0)
+    expect(screen.getByText('未设置标签')).toBeInTheDocument()
+    // g2 分组卡仍为平铺（per-card 状态独立）：其组内用例无子分组头
+    expect(screen.getByText('车载-导航指令')).toBeInTheDocument()
+  })
+
+  it('INT-584 子视图空态：组内可见用例全部无标签时显示空态，切换控件保持选中', async () => {
+    useSessionMap.getState().setGroupSubView('g2', 'byTag')
+    render(<Harness />)
+    // g2 用例全部无标签 → 按标签子视图空态
+    expect(screen.getByText('该分组下用例均未设置标签')).toBeInTheDocument()
+    expect(screen.getByText('切换回「平铺」可查看该分组全部用例')).toBeInTheDocument()
+    // 切换控件保持「按标签」选中态（不自动跳变）
+    expect(screen.getAllByText('按标签').length).toBeGreaterThan(0)
   })
 })

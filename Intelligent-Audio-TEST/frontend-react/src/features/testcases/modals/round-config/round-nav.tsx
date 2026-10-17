@@ -2,6 +2,9 @@
  * 轮次导航（11_用例域.md §5.1 RoundConfigEditor 结构平移，左 180px）。
  * 轮次列表项「第 {n} 轮 + {x}音频·{y}维度」摘要；空轮次（0 音频 0 维度）标 destructive 色；
  * 底部「添加轮次/复制当前轮次」；行内删除钮（仅 1 轮禁用，删除前确认）。
+ * RoundDraft 携带 evaluation（enabled + selectedIds + params，§5.1「启用本轮评估」）——
+ * ⚠️ 实施注意②：addRound 已有轮次时复制上一轮 evaluation（V9.7.10 RoundConfigEditor.vue:252-254
+ * 语义），「新轮次默认关闭」严格仅首轮成立，不额外重置 enabled。
  */
 import { Copy, Plus, X } from 'lucide-react'
 import { useState } from 'react'
@@ -10,10 +13,29 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
+/** 单轮评估草稿（§5.1 评估维度步骤；params 按维度 id 存权重/阈值/LLM 配置） */
+export interface RoundEvaluationDraft {
+  /** 启用本轮评估（首轮默认开；addRound 复制上一轮 enabled） */
+  enabled: boolean
+  selectedIds: number[]
+  params: Record<
+    number,
+    { weight: number; threshold: number; model?: string; promptTemplate?: string }
+  >
+}
+
+/** 默认新轮评估草稿（enabled=false：新轮次默认关闭，首轮由调用方置 true） */
+export const newRoundEvaluation = (): RoundEvaluationDraft => ({
+  enabled: false,
+  selectedIds: [],
+  params: {},
+})
+
 export interface RoundDraft {
   number: number
   audioCount: number
   dimensionCount: number
+  evaluation: RoundEvaluationDraft
 }
 
 export function RoundNav({

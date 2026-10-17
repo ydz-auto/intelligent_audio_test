@@ -385,7 +385,6 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
         caseItem={mutateCase}
         groups={groups}
         tags={tags}
-        dimensions={dimensions}
         presetGroupId={presetGroupId}
       />
       <ImportExportDialog

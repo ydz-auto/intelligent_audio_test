@@ -1,159 +1,134 @@
 /**
- * 轮次步骤④：评估维度（11_用例域.md §5.1）。
- * 维度 chips 多选区（按当前算法过滤可用维度，过滤时提示条）+ 已选维度参数卡
- * （每维度：权重 1-10 Slider + 阈值 Input + LLM Judge 时 模型/Prompt 模板/最大 Token/Temperature 字段卡）。
+ * 轮次步骤④：评估维度（11_用例域.md §5.1 RoundEvaluationEditor 平移）。
+ * 顶部单轮描述条 + 过滤提示条（当前算法有关联维度时才显示）+ DimensionPicker（主/子层级、
+ * 勾选主维度联动子维度）+ 已选维度参数卡（权重 0-100 默认 50 + 阈值 0-100 默认 80 非 LLM Judge；
+ * LLM Judge 时 模型 Select + Prompt 模板 Select，不含「最大 Token/Temperature」——属维度定义 §5.5）
+ * + 底部「启用本轮评估」Checkbox。
+ * 受控组件：value=RoundEvaluationDraft（enabled/selectedIds/params），onChange 回写轮次草稿，
+ * 供 addRound 复制上一轮 evaluation（⚠️ 实施注意②）。
  */
-import { SlidersHorizontal } from 'lucide-react'
-import { useMemo, useState } from 'react'
-
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
-import { Slider } from '@/components/ui/slider'
-import { Textarea } from '@/components/ui/textarea'
-import { cn } from '@/lib/utils'
-import type { EvaluationDimensionItem } from '@/domain/models/evaluationDimension'
+import type { Dimension } from '@/domain/models/evaluationDimension'
 import { getAlgorithmLabel } from '@/features/testcases/constants'
+import type { RoundEvaluationDraft } from '@/features/testcases/modals/round-config/round-nav'
+import {
+  DimensionParamCard,
+  type DimensionParamValue,
+} from '@/features/testcases/modals/round-config/dimension-param-card'
+import { DimensionPicker } from '@/features/testcases/modals/round-config/dimension-picker'
 
-/** mock LLM Judge 判定（接线后按 DimensionItem.resultType === 'llm_judge' 实测） */
-const LLM_JUDGE_DIMENSION_IDS = new Set([2])
-
-/** 各算法的可用维度过滤（mock 演示；接线后按算法-维度关联表实测） */
-const ALGO_DIMENSION_FILTER: Record<string, number[]> = {
-  'asr-v3': [1, 2],
-  'asr-stream': [3, 4],
-  'eval-ensemble': [1, 2, 3, 4],
-}
+const defaultParams = (): DimensionParamValue => ({
+  weight: 50,
+  threshold: 80,
+})
 
 export function EvaluationStep({
   dimensions,
   algorithmType,
+  value,
+  onChange,
 }: {
-  dimensions: EvaluationDimensionItem[]
+  dimensions: Dimension[]
   algorithmType?: string | null
+  value: RoundEvaluationDraft
+  onChange: (next: RoundEvaluationDraft) => void
 }) {
-  const available = useMemo(() => {
-    const filter = algorithmType ? (ALGO_DIMENSION_FILTER[algorithmType] ?? null) : null
-    const main = dimensions.filter((d) => d.dimensionType !== 'sub')
-    return filter ? main.filter((d) => filter.includes(d.id)) : main
-  }, [dimensions, algorithmType])
-
-  const [selected, setSelected] = useState<number[]>([1])
-
-  const toggle = (id: number) =>
-    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
-
   const dimensionOf = (id: number) => dimensions.find((d) => d.id === id)
+
+  const handleToggle = (ids: number[], checked: boolean) => {
+    onChange({
+      ...value,
+      selectedIds: (() => {
+        const next = new Set(value.selectedIds)
+        ids.forEach((id) => (checked ? next.add(id) : next.delete(id)))
+        return [...next]
+      })(),
+      params: ids.reduce(
+        (acc, id) => {
+          if (checked && !acc[id]) acc[id] = defaultParams()
+          return acc
+        },
+        { ...value.params }
+      ),
+    })
+  }
+
+  const handleRemove = (id: number) => {
+    onChange({
+      ...value,
+      selectedIds: value.selectedIds.filter((x) => x !== id),
+      params: (() => {
+        const { [id]: _removed, ...rest } = value.params
+        return rest
+      })(),
+    })
+  }
 
   return (
     <div className='space-y-3'>
+      <p className='text-muted-foreground text-xs leading-relaxed'>
+        单轮评估对每一轮独立提交、独立打分；若同一维度也配置在整体评估中，整体评估返回的逐轮结果
+        会覆盖对应轮次的记录。
+      </p>
       {algorithmType && (
         <p className='rounded-md bg-muted/60 px-2 py-1.5 text-xs'>
           已根据算法类型「{getAlgorithmLabel(algorithmType)}」过滤可用维度
         </p>
       )}
-      <div className='flex flex-wrap gap-1.5'>
-        {available.map((d) => {
-          const checked = selected.includes(d.id)
-          return (
-            <button
-              key={d.id}
-              type='button'
-              onClick={() => toggle(d.id)}
-              className={cn(
-                'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
-                checked
-                  ? 'bg-primary/10 border-primary/40 text-primary font-medium'
-                  : 'hover:bg-accent border-border'
-              )}
-              aria-pressed={checked}
-            >
-              {d.name}
-            </button>
-          )
-        })}
-        {available.length === 0 && (
-          <p className='text-muted-foreground text-sm'>该算法下暂无可用评估维度</p>
-        )}
+
+      <DimensionPicker
+        dimensions={dimensions}
+        algorithmType={algorithmType}
+        selected={value.selectedIds}
+        onToggle={handleToggle}
+      />
+
+      <div className='flex items-center justify-between'>
+        <p className='text-muted-foreground text-xs'>已选 {value.selectedIds.length} 项</p>
       </div>
 
-      {selected.length === 0 ? (
+      {value.selectedIds.length === 0 ? (
         <p className='text-muted-foreground py-4 text-center text-sm'>
           未选择评估维度——不选任何维度点保存即清除当前轮次的评估维度
         </p>
       ) : (
-        selected.map((id) => {
-          const dim = dimensionOf(id)
-          const llmJudge = LLM_JUDGE_DIMENSION_IDS.has(id)
-          return (
-            <div key={id} className='bg-background ring-foreground/10 rounded-lg p-3 ring-1'>
-              <div className='flex items-center gap-2'>
-                <SlidersHorizontal aria-hidden='true' className='text-muted-foreground size-4' />
-                <span className='text-sm font-medium'>{dim?.name ?? `维度 #${id}`}</span>
-                {llmJudge && (
-                  <Badge variant='outline' className='gap-1 rounded-md px-1.5 text-[11px]'>
-                    LLM Judge
-                  </Badge>
-                )}
-                <Button
-                  type='button'
-                  variant='ghost'
-                  size='icon-sm'
-                  aria-label={`移除维度 ${dim?.name ?? id}`}
-                  className='hover:text-destructive ms-auto size-7'
-                  onClick={() => toggle(id)}
-                >
-                  ✕
-                </Button>
-              </div>
-              <div className='mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-2'>
-                <div className='space-y-2'>
-                  <div className='flex items-center justify-between'>
-                    <Label className='text-sm'>权重（1-10）</Label>
-                    <span className='font-mono text-xs tabular-nums'>{dim?.weight ?? 5}</span>
-                  </div>
-                  <Slider
-                    defaultValue={[dim?.weight ?? 5]}
-                    min={1}
-                    max={10}
-                    step={1}
-                    aria-label={`${dim?.name ?? id} 权重`}
-                  />
-                </div>
-                <div className='space-y-1.5'>
-                  <Label className='text-sm'>阈值</Label>
-                  <Input type='number' defaultValue={0.6} min={0} max={1} step={0.05} className='h-8' />
-                </div>
-              </div>
-              {llmJudge && (
-                <div className='mt-3 grid gap-x-6 gap-y-3 border-t pt-3 sm:grid-cols-2'>
-                  <div className='space-y-1.5'>
-                    <Label className='text-sm'>模型</Label>
-                    <Input defaultValue='claude-sonnet-5-5' className='h-8' />
-                  </div>
-                  <div className='space-y-1.5'>
-                    <Label className='text-sm'>最大 Token 数</Label>
-                    <Input type='number' defaultValue={1024} min={1} max={8192} className='h-8' />
-                  </div>
-                  <div className='space-y-1.5 sm:col-span-2'>
-                    <Label className='text-sm'>Prompt 模板</Label>
-                    <Textarea
-                      rows={2}
-                      defaultValue='请根据 {{asr_result}} 与参考文本 {{asr_ref}} 评估语义理解正确性，返回 0-100 分。'
-                      className='font-mono text-xs'
-                    />
-                  </div>
-                  <div className='space-y-1.5'>
-                    <Label className='text-sm'>Temperature</Label>
-                    <Input type='number' defaultValue={0.7} min={0} max={2} step={0.1} className='h-8' />
-                  </div>
-                </div>
-              )}
-            </div>
-          )
-        })
+        <div className='space-y-2'>
+          {value.selectedIds.map((id) => {
+            const dim = dimensionOf(id)
+            if (!dim) return null
+            return (
+              <DimensionParamCard
+                key={id}
+                dimension={dim}
+                params={value.params[id] ?? defaultParams()}
+                onChange={(patch) =>
+                  onChange({
+                    ...value,
+                    params: {
+                      ...value.params,
+                      [id]: { ...(value.params[id] ?? defaultParams()), ...patch },
+                    },
+                  })
+                }
+                onRemove={() => handleRemove(id)}
+              />
+            )
+          })}
+        </div>
       )}
+
+      {/* 底部「启用本轮评估」 */}
+      <div className='flex items-center gap-2 border-t pt-3'>
+        <Checkbox
+          checked={value.enabled}
+          aria-label='启用本轮评估'
+          onCheckedChange={(c) => onChange({ ...value, enabled: c })}
+        />
+        <Label htmlFor='round-evaluation-enabled' className='text-sm font-normal'>
+          启用本轮评估
+        </Label>
+      </div>
     </div>
   )
 }

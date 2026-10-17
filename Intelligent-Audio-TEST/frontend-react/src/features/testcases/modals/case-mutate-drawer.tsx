@@ -2,11 +2,14 @@
  * 新增/编辑用例抽屉（11_用例域.md §5.1，Sheet `sm:max-w-[1280px]`，testcase:create/update）。
  * 单栏纵向分节（节间 border-b）：基本信息（双列栅格）/标签（TagInput chips + 已有标签建议）/
  * 描述/关联算法/轮次配置（左 RoundNav 180px + 右步骤区横向锚点 Tabs line：
- * 算法参数→音频列表→噪声与干扰→评估维度→参考参数，五步全字段表单）/全局背景噪声与整体评估维度
- * （多轮 >1 时追加两节）。
+ * 算法参数→音频列表→噪声与干扰→评估维度→参考参数，五步全字段表单）/全局背景噪声
+ * （§5.1.1 常驻节 GlobalNoiseEditor）/整体评估维度（§5.1.2 常驻节 OverallEvaluationEditor）——
+ * INT-579 裁定两节常驻渲染、不随轮次数隐藏（V9.7.10 CaseForm 实测）。
  * INT-486 用例不分类型口径：头部类型切换（API/E2E）移除——正式类型维度=关联算法。
  * 轮次载荷形态对照 api_gateway/schemas/testcase.py TestCaseConfig.rounds 实测（mock 桩，
  * 接线后替换为 application/testcases mutations）。
+ * ⚠️ 实施注意②：addRound 已有轮次时复制上一轮 evaluation（RoundConfigEditor.vue:252-254），
+ * 「新轮次默认关闭」严格仅首轮成立——本卡等价移植保持复制行为、不额外重置 enabled。
  */
 import { Sparkles } from 'lucide-react'
 import { useState } from 'react'
@@ -32,20 +35,26 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { MOCK_ALGORITHMS } from '@/domain/models/algorithm'
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import type { TagItem } from '@/domain/models/testTag'
-import type { EvaluationDimensionItem } from '@/domain/models/evaluationDimension'
-import { RoundNav, type RoundDraft } from '@/features/testcases/modals/round-config/round-nav'
+import { MOCK_CASE_DIMENSIONS } from '@/infrastructure/mock/testcases-mock'
+import {
+  RoundNav,
+  newRoundEvaluation,
+  type RoundDraft,
+  type RoundEvaluationDraft,
+} from '@/features/testcases/modals/round-config/round-nav'
 import { AlgorithmParamsStep } from '@/features/testcases/modals/round-config/algo-params-step'
 import { AudioListStep } from '@/features/testcases/modals/round-config/audio-list-step'
 import { NoiseInterferenceStep } from '@/features/testcases/modals/round-config/noise-interference-step'
 import { EvaluationStep } from '@/features/testcases/modals/round-config/evaluation-step'
 import { ReferenceStep } from '@/features/testcases/modals/round-config/reference-step'
+import { GlobalNoiseEditor } from '@/features/testcases/modals/round-config/global-noise-editor'
+import { OverallEvaluationEditor } from '@/features/testcases/modals/round-config/overall-evaluation-editor'
 
 const STEPS = ['算法参数', '音频列表', '噪声与干扰', '评估维度', '参考参数'] as const
 
@@ -137,7 +146,6 @@ export function CaseMutateDrawer({
   caseItem,
   groups,
   tags,
-  dimensions,
   presetGroupId,
 }: {
   open: boolean
@@ -145,7 +153,6 @@ export function CaseMutateDrawer({
   caseItem: TestCaseListItem | null
   groups: TestCaseGroup[]
   tags: TagItem[]
-  dimensions: EvaluationDimensionItem[]
   /** 新建态预填分组（分组视图「新增用例到此分组」入口；编辑态忽略） */
   presetGroupId?: string | null
 }) {
@@ -156,8 +163,22 @@ export function CaseMutateDrawer({
   const [newGroupName, setNewGroupName] = useState('')
   const [algorithmType, setAlgorithmType] = useState(caseItem?.algorithmType ?? '')
   const [rounds, setRounds] = useState<RoundDraft[]>([
-    { number: 1, audioCount: 2, dimensionCount: 1 },
-    { number: 2, audioCount: 1, dimensionCount: 2 },
+    {
+      number: 1,
+      audioCount: 2,
+      dimensionCount: 1,
+      evaluation: { enabled: true, selectedIds: [1], params: { 1: { weight: 50, threshold: 80 } } },
+    },
+    {
+      number: 2,
+      audioCount: 1,
+      dimensionCount: 2,
+      evaluation: {
+        enabled: true,
+        selectedIds: [1, 11],
+        params: { 1: { weight: 50, threshold: 80 }, 11: { weight: 50, threshold: 80 } },
+      },
+    },
   ])
   const [activeRound, setActiveRound] = useState(1)
 
@@ -171,7 +192,18 @@ export function CaseMutateDrawer({
 
   const addRound = () => {
     const number = nextRoundNumber()
-    setRounds((prev) => [...prev, { number, audioCount: 0, dimensionCount: 0 }])
+    setRounds((prev) => {
+      // ⚠️ 实施注意②：已有轮次时复制上一轮 evaluation（含 enabled），不额外重置
+      const src = prev.length > 0 ? prev[prev.length - 1].evaluation : null
+      const evaluation: RoundEvaluationDraft = src
+        ? {
+            ...src,
+            selectedIds: [...src.selectedIds],
+            params: { ...src.params },
+          }
+        : newRoundEvaluation()
+      return [...prev, { number, audioCount: 0, dimensionCount: 0, evaluation }]
+    })
     setActiveRound(number)
   }
 
@@ -179,7 +211,18 @@ export function CaseMutateDrawer({
     const src = rounds.find((r) => r.number === activeRound)
     if (!src) return
     const number = nextRoundNumber()
-    setRounds((prev) => [...prev, { ...src, number }])
+    setRounds((prev) => [
+      ...prev,
+      {
+        ...src,
+        number,
+        evaluation: {
+          ...src.evaluation,
+          selectedIds: [...src.evaluation.selectedIds],
+          params: { ...src.evaluation.params },
+        },
+      },
+    ])
     setActiveRound(number)
   }
 
@@ -189,6 +232,17 @@ export function CaseMutateDrawer({
       if (activeRound === number) setActiveRound(next[0]?.number ?? 1)
       return next
     })
+  }
+
+  const updateEvaluation = (number: number | undefined, evaluation: RoundEvaluationDraft) => {
+    if (number == null) return
+    setRounds((prev) =>
+      prev.map((r) =>
+        r.number === number
+          ? { ...r, evaluation, dimensionCount: evaluation.selectedIds.length }
+          : r
+      )
+    )
   }
 
   const activeRoundDraft = rounds.find((r) => r.number === activeRound) ?? rounds[0]
@@ -333,7 +387,9 @@ export function CaseMutateDrawer({
                         step={step}
                         activeRound={activeRoundDraft}
                         algorithmType={algorithmType}
-                        dimensions={dimensions}
+                        onEvaluationChange={(evaluation) =>
+                          updateEvaluation(activeRoundDraft?.number, evaluation)
+                        }
                       />
                     </div>
                   </div>
@@ -341,39 +397,18 @@ export function CaseMutateDrawer({
               </div>
             </section>
 
-            {/* 全局背景噪声 / 整体评估维度（多轮 >1 时追加两节） */}
-            {rounds.length > 1 && (
-              <section className='border-border/60 space-y-4 border-t pt-4'>
-                <div className='space-y-2'>
-                  <div className='flex items-center justify-between'>
-                    <Label className='text-base font-medium'>全局背景噪声</Label>
-                    <Switch aria-label='启用全局背景噪声' defaultChecked />
-                  </div>
-                  <Select defaultValue='粉红噪声_94dB.wav'>
-                    <SelectTrigger size='sm' className='h-8 w-full sm:w-80'>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {['粉红噪声_94dB.wav', '白噪声_85dB.wav', '街道环境音.wav'].map((n) => (
-                        <SelectItem key={n} value={n}>
-                          {n}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className='text-muted-foreground text-xs'>
-                    启用后应用于全部轮次（case 级背景噪声，轮次内未配置时生效）。
-                  </p>
-                </div>
-                <div className='space-y-2'>
-                  <Label className='text-base font-medium'>整体评估维度</Label>
-                  <EvaluationStep dimensions={dimensions} algorithmType={algorithmType} />
-                  <p className='text-muted-foreground text-xs'>
-                    跨轮次聚合评估维度，权重/阈值配置对所有轮次生效。
-                  </p>
-                </div>
-              </section>
-            )}
+            {/* 全局背景噪声（§5.1.1 常驻节） */}
+            <section className='border-border/60 border-t pt-4'>
+              <GlobalNoiseEditor />
+            </section>
+
+            {/* 整体评估维度（§5.1.2 常驻节） */}
+            <section className='border-border/60 border-t pt-4'>
+              <OverallEvaluationEditor
+                dimensions={MOCK_CASE_DIMENSIONS}
+                algorithmType={algorithmType}
+              />
+            </section>
           </div>
         </ScrollArea>
 
@@ -401,12 +436,12 @@ function StepBody({
   step,
   activeRound,
   algorithmType,
-  dimensions,
+  onEvaluationChange,
 }: {
   step: (typeof STEPS)[number]
   activeRound: RoundDraft | undefined
   algorithmType: string
-  dimensions: EvaluationDimensionItem[]
+  onEvaluationChange: (evaluation: RoundEvaluationDraft) => void
 }) {
   switch (step) {
     case '算法参数':
@@ -416,7 +451,14 @@ function StepBody({
     case '噪声与干扰':
       return <NoiseInterferenceStep />
     case '评估维度':
-      return <EvaluationStep dimensions={dimensions} algorithmType={algorithmType || null} />
+      return (
+        <EvaluationStep
+          dimensions={MOCK_CASE_DIMENSIONS}
+          algorithmType={algorithmType || null}
+          value={activeRound?.evaluation ?? newRoundEvaluation()}
+          onChange={onEvaluationChange}
+        />
+      )
     case '参考参数':
       return <ReferenceStep generated={activeRound !== undefined && activeRound.audioCount > 0} />
   }
