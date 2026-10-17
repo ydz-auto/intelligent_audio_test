@@ -20,10 +20,16 @@ class Laboratory(Base):
     """实验室模型（INT-655，实验室扩展功能设计.md §4.1）
 
     承载物理实验室信息；devices/playback_devices 通过 lab_id 归属到实验室。
+    code 唯一性仅约束未删除行（部分唯一索引，软删后同 code 可复用——
+    对齐 device_groups.uq_device_group_name_active，INT-655 审计 P2 修复）。
     """
     __tablename__ = 'laboratories'
+    __table_args__ = (
+        Index('uq_laboratories_code_active', 'code', unique=True,
+              postgresql_where=text('deleted = false')),
+    )
     id = Column(Integer, primary_key=True, autoincrement=True, comment='实验室ID')
-    code = Column(String(50), unique=True, nullable=False, comment='实验室代码，如 LAB-A-01')
+    code = Column(String(50), nullable=False, comment='实验室代码，如 LAB-A-01')
     name = Column(String(100), nullable=False, comment='实验室名称')
     building = Column(String(50), comment='所在楼栋')
     floor = Column(String(20), comment='所在楼层')

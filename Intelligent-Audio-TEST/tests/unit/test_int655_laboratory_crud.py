@@ -9,6 +9,8 @@
   详情 + 统计、summary、未知实验室 404
 - servicer：proto 新服务 LaboratoryConfigService 各 RPC 的 {success,message,data,code}
   信封契约（data 为 JSON 串、code 携带业务码）
+- 审计 P2 修复：软删后同 code 可复用（部分唯一索引语义）、DB IntegrityError
+  映射为显式 409（不泄漏 SQL 报错）
 """
 import os
 
@@ -169,6 +171,38 @@ class TestCreateLaboratory:
         result = command.create({'code': 'LAB-D', 'name': 'D'})
         assert result['data']['status'] == 'active'
 
+    def test_create_same_code_after_soft_delete_allowed(self, command, repo):
+        """审计 P2 修复：软删后同 code 可复用（部分唯一索引语义，对齐 device_group）。"""
+        lab_id = command.create({'code': 'LAB-A-01', 'name': '一'})['data']['id']
+        assert command.delete(lab_id)['success'] is True
+        result = command.create({'code': 'LAB-A-01', 'name': '二'})
+        assert result['success'] is True
+        assert result['code'] == 201
+        assert result['data']['name'] == '二'
+        assert result['data']['id'] != lab_id
+
+
+class TestCreateLaboratoryIntegrityErrorMapping:
+    """审计 P2 修复：DB 层唯一冲突（TOCTOU 并发 / 旧库未迁移）→ 显式 409。"""
+
+    class _IntegrityErrorRepo(FakeLaboratoryRepository):
+        def create_laboratory(self, data):
+            from sqlalchemy.exc import IntegrityError
+            raise IntegrityError(
+                'INSERT INTO laboratories (code) VALUES (?)',
+                {'code': data['code']},
+                Exception('UNIQUE constraint failed: laboratories.code'),
+            )
+
+    def test_integrity_error_mapped_to_409(self):
+        cmd = LaboratoryCommandService(repo=self._IntegrityErrorRepo())
+        result = cmd.create({'code': 'LAB-A-01', 'name': 'A'})
+        assert result['success'] is False
+        assert result['code'] == 409
+        assert '占用' in result['message']
+        assert 'UNIQUE' not in result['message']
+        assert 'sqlite' not in result['message'].lower()
+
 
 class TestUpdateLaboratory:
     def test_update_partial(self, command):
@@ -195,6 +229,16 @@ class TestUpdateLaboratory:
         lab_id = command.create({'code': 'LAB-A-01', 'name': 'A'})['data']['id']
         result = command.update(lab_id, {'code': 'LAB-A-01'})
         assert result['success'] is True
+
+    def test_update_code_to_deleted_lab_code_allowed(self, command):
+        """审计 P2 修复：更新到已软删实验室的 code 应成功（软删行不参与唯一性）。"""
+        a_id = command.create({'code': 'LAB-A-01', 'name': 'A'})['data']['id']
+        b_id = command.create({'code': 'LAB-A-02', 'name': 'B'})['data']['id']
+        command.delete(a_id)
+        result = command.update(b_id, {'code': 'LAB-A-01'})
+        assert result['success'] is True
+        assert result['code'] == 200
+        assert result['data']['code'] == 'LAB-A-01'
 
     def test_update_invalid_status_rejected(self, command):
         lab_id = command.create({'code': 'LAB-A-01', 'name': 'A'})['data']['id']

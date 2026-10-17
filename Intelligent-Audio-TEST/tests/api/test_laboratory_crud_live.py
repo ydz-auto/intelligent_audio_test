@@ -8,7 +8,8 @@
 - POST /laboratories — 创建（201 + id）
 - PUT /laboratories/{id} — 编辑
 - DELETE /laboratories/{id} — 删除
-- 边界：重复 code → 409；更新未知 id → 404；非法 status → 400
+- 边界：重复 code → 409；更新未知 id → 404；非法 status → 400；
+  软删后同 code 重建 → 201（审计 P2 修复，需迁移 Step 9 后生效）
 
 前置（tests/api/conftest.py 统一把关）：RUN_LIVE_STACK=1 且实机栈已切隔离测试库。
 
@@ -124,3 +125,29 @@ def test_laboratory_invalid_status_400(api_client, require_backend):
     r = api_client.post('/laboratories', json={
         'code': _lab_code('D'), 'name': 'x', 'status': 'bogus'})
     assert r.status_code == 400, f'非法 status 未返回 400: {r.status_code} {r.text[:300]}'
+
+
+def test_laboratory_recreate_same_code_after_delete(api_client, require_backend):
+    """审计 P2 修复：软删后同 code 可复用（部分唯一索引；旧库需先跑迁移 Step 9）。"""
+    code = _lab_code('E')
+    r1 = api_client.post('/laboratories', json={'code': code, 'name': '旧实验室'})
+    assert r1.status_code == 201, f'首次创建失败: {r1.status_code} {r1.text[:300]}'
+    lab_id = r1.json()['data']['id']
+    try:
+        r2 = api_client.delete(f'/laboratories/{lab_id}')
+        assert r2.status_code == 200, f'删除失败: {r2.status_code} {r2.text[:300]}'
+
+        # 删除后详情 404
+        r3 = api_client.get(f'/laboratories/{lab_id}')
+        assert r3.status_code == 404, f'软删后仍可读: {r3.status_code}'
+
+        # 同 code 重建 → 201（不允许 400/SQL 报错泄漏，也不应 409）
+        r4 = api_client.post('/laboratories', json={'code': code, 'name': '新实验室'})
+        assert r4.status_code == 201, (
+            f'软删后同 code 重建未返回 201: {r4.status_code} {r4.text[:300]}')
+        new_lab_id = r4.json()['data']['id']
+        assert new_lab_id != lab_id
+        assert r4.json()['data']['name'] == '新实验室'
+        _cleanup_lab(api_client, new_lab_id)
+    finally:
+        _cleanup_lab(api_client, lab_id)

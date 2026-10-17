@@ -16,6 +16,8 @@ P5+DOMAIN：通过 PO ↔ Entity 显式转换，仓储方法返回 domain entiti
 """
 from typing import Dict, List, Optional
 
+from sqlalchemy import func
+
 from shared.models.database import get_db_session
 from device_service.infrastructure.persistence.models import (
     Laboratory,
@@ -141,36 +143,30 @@ class LaboratoryRepository(LaboratoryRepositoryInterface):
         }
 
     def count_devices(self, lab_ids: List[int]) -> Dict[int, int]:
-        """统计各实验室的未删除被测设备数（devices.lab_id）。"""
+        """统计各实验室的未删除被测设备数（devices.lab_id，GROUP BY 聚合）。"""
         if not lab_ids:
             return {}
         session = get_db_session()
         rows = (
-            session.query(Device.lab_id, Device.id)
+            session.query(Device.lab_id, func.count(Device.id))
             .filter(Device.lab_id.in_(lab_ids), Device.deleted == False)  # noqa: E712
+            .group_by(Device.lab_id)
             .all()
         )
-        counts: Dict[int, int] = {}
-        for lab_id, _device_id in rows:
-            if lab_id is not None:
-                counts[lab_id] = counts.get(lab_id, 0) + 1
-        return counts
+        return {lab_id: cnt for lab_id, cnt in rows if lab_id is not None}
 
     def count_playback_devices(self, lab_ids: List[int]) -> Dict[int, int]:
-        """统计各实验室的未删除播放设备数（playback_devices.lab_id）。"""
+        """统计各实验室的未删除播放设备数（playback_devices.lab_id，GROUP BY 聚合）。"""
         if not lab_ids:
             return {}
         session = get_db_session()
         rows = (
-            session.query(PlaybackDevice.lab_id, PlaybackDevice.id)
+            session.query(PlaybackDevice.lab_id, func.count(PlaybackDevice.id))
             .filter(PlaybackDevice.lab_id.in_(lab_ids), PlaybackDevice.is_deleted == 0)
+            .group_by(PlaybackDevice.lab_id)
             .all()
         )
-        counts: Dict[int, int] = {}
-        for lab_id, _device_id in rows:
-            if lab_id is not None:
-                counts[lab_id] = counts.get(lab_id, 0) + 1
-        return counts
+        return {lab_id: cnt for lab_id, cnt in rows if lab_id is not None}
 
     def count_test_cases(self, lab_ids: List[int]) -> Dict[int, int]:
         """统计各实验室的用例数（task_service test_cases.config JSONB 中 lab_id，跨域 gRPC）。
