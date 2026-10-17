@@ -8,10 +8,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
 
+import { useAlgorithmAutoSave } from '@/application/algorithm-config/useAlgorithmAutoSave'
 import {
   useAlgorithmGroupMutations,
   useAlgorithmMutations,
 } from '@/application/algorithm-config/useAlgorithmDefinitions'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,6 +59,7 @@ import { ParamsSection } from '@/features/algorithm-config/mutate/params-section
 import { ReferenceParamsSection } from '@/features/algorithm-config/mutate/reference-params-section'
 import { MappingsSection } from '@/features/algorithm-config/mutate/mappings-section'
 import { DimensionsSection } from '@/features/algorithm-config/mutate/dimensions-section'
+import { AUTO_SAVE_MESSAGES } from '@/features/algorithm-config/constants'
 
 export type AlgorithmMutateSheetProps = {
   open: boolean
@@ -98,12 +101,19 @@ export function AlgorithmMutateSheet(props: AlgorithmMutateSheetProps) {
     values: defaultValues,
   })
 
-  // 保存可用性直接对全量表单值实时计算，不依赖 formState.isValid：
+  // 保存可用性/自动保存校验直接对全量表单值实时计算，不依赖 formState.isValid：
   // RHF 的 setValue / useFieldArray 变更不会自动重算 isValid（onSubmit 模式须提交后才算，
   // onChange 模式也只对 register 的原生输入生效），导致「选分组/切状态/选参数类型」等
   // setValue 交互后保存按钮仍恒禁用（INT-508 P1 死锁）。同一 zod schema safeParse 覆盖全部变更路径。
-  const watchedValues = form.watch()
-  const isFormValid = schema.safeParse(watchedValues).success
+  // §6.1a 30s 自动保存编排同层挂载（首次变脏启动/变更重置/校验不过暂停/归零聚合提交）。
+  const autoSave = useAlgorithmAutoSave({
+    open: props.open,
+    form,
+    mode: props.mode,
+    schema,
+    save,
+  })
+  const isFormValid = autoSave.isFormValid
 
   // 关闭 Sheet 时重置表单，避免下次打开残留旧值
   useEffect(() => {
@@ -196,22 +206,38 @@ export function AlgorithmMutateSheet(props: AlgorithmMutateSheetProps) {
           </form>
 
           <SheetFooter className='border-t px-4 py-3'>
-            <div className='flex items-center justify-end gap-2'>
-              <Button
-                variant='outline'
-                type='button'
-                disabled={save.isPending}
-                onClick={() => handleOpenChange(false)}
-              >
-                取消
-              </Button>
-              <Button
-                type='submit'
-                form='algorithm-mutate-form'
-                disabled={save.isPending || !isFormValid}
-              >
-                {save.isPending ? '保存中…' : '保存'}
-              </Button>
+            <div className='flex items-center justify-between gap-4'>
+              {/* §6.1a 自动保存提醒（左端）：倒计时/校验不过 Alert，不可手动关闭 */}
+              <div className='flex min-w-0 items-center gap-2'>
+                {autoSave.isValidationBlocked ? (
+                  <Alert variant='destructive' className='py-1.5'>
+                    <AlertDescription className='text-sm'>
+                      {AUTO_SAVE_MESSAGES.validationBlocked}
+                    </AlertDescription>
+                  </Alert>
+                ) : autoSave.isActive ? (
+                  <span className='text-muted-foreground text-xs font-mono tabular-nums'>
+                    {AUTO_SAVE_MESSAGES.countdown(autoSave.secondsLeft)}
+                  </span>
+                ) : null}
+              </div>
+              <div className='flex shrink-0 items-center gap-2'>
+                <Button
+                  variant='outline'
+                  type='button'
+                  disabled={save.isPending}
+                  onClick={() => handleOpenChange(false)}
+                >
+                  取消
+                </Button>
+                <Button
+                  type='submit'
+                  form='algorithm-mutate-form'
+                  disabled={save.isPending || !isFormValid}
+                >
+                  {save.isPending ? '保存中…' : '保存'}
+                </Button>
+              </div>
             </div>
           </SheetFooter>
         </SheetContent>

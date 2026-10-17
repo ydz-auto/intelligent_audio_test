@@ -112,3 +112,18 @@ export const DIMENSIONS_DESCRIPTION =
 /** 导入算法说明（§7.6） */
 export const IMPORT_DIALOG_DESCRIPTION =
   '粘贴或上传算法定义 JSON（与导出格式一致），导入后立即生效。'
+
+/** 自动保存倒计时秒数（§6.1a；30 秒档位同 newAPI EMAIL_VERIFICATION_COUNTDOWN/PASSWORD_RESET_COUNTDOWN = 30） */
+export const AUTO_SAVE_COUNTDOWN_SECONDS = 30
+
+/** §6.1a 30s 自动保存文案组（§10 指定文案，全中文硬编码） */
+export const AUTO_SAVE_MESSAGES = {
+  /** footer 常驻倒计时「将在 {n} 秒后自动保存」（n 30→0 递减） */
+  countdown: (secondsLeft: number) => `将在 ${secondsLeft} 秒后自动保存`,
+  /** 归零自动保存成功 toast */
+  success: '已自动保存',
+  /** 自动保存失败 toast（失败转手动，不自动重试） */
+  failure: '自动保存失败，已恢复手动保存',
+  /** 校验不过暂停 Alert（不可手动关闭） */
+  validationBlocked: '有校验未通过，请修正后再自动保存',
+} as const
