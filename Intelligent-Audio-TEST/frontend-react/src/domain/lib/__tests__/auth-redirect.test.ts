@@ -1,10 +1,10 @@
 /**
- * features/auth/lib/auth-redirect 纯函数测试（照 newAPI 纯函数粒度；
+ * domain/lib/auth-redirect 纯函数测试（照 newAPI 纯函数粒度；
  * 对位 12_登录与错误页.md §1.1：拒绝 // 协议相对、反斜杠、非 http(s)、跨源）。
  */
 import { describe, expect, it } from 'vitest'
 
-import { sanitizeAuthRedirect } from '@/features/auth/lib/auth-redirect'
+import { sanitizeAuthRedirect } from '@/domain/lib/auth-redirect'
 
 const ORIGIN = 'https://example.com'
 

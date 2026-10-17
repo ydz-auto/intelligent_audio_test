@@ -6,7 +6,7 @@ import { useAuthStore } from '@/infrastructure/stores/auth-store'
 import AuthLayout from '@/features/auth/auth-layout'
 import { SignIn } from '@/features/auth/sign-in'
 import { useOAuthCallback } from '@/application/auth/use-oauth-callback'
-import { sanitizeAuthRedirect } from '@/features/auth/lib/auth-redirect'
+import { sanitizeAuthRedirect } from '@/domain/lib/auth-redirect'
 import { OAUTH_PROCESSING_TEXT } from '@/features/auth/constants'
 
 const loginSearchSchema = z.object({

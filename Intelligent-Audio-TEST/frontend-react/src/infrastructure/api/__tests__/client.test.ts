@@ -191,6 +191,42 @@ describe('client 统一 fetch 封装', () => {
     setSessionExpiredHandler(null)
   })
 
+  it('401 + refresh 失败且未注册 handler：默认整页跳登录（P2-1 回归）', async () => {
+    authTokenStore.set('expired-token')
+    setSessionExpiredHandler(null)
+    // jsdom 的 window.location.assign 不可 spy（Location 实例非扩展），
+    // 整体重定义 window.location 为桩观察默认跳转
+    const originalLocation = window.location
+    const assignMock = vi.fn()
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        pathname: '/',
+        search: '',
+        origin: 'http://localhost:3000',
+        assign: assignMock,
+      },
+    })
+
+    try {
+      queueResponses(
+        jsonResponse({ detail: 'token 已过期' }, 401),
+        jsonResponse({ detail: '刷新失败' }, 401)
+      )
+      const error = await request('GET', '/tasks/9').catch((e: unknown) => e)
+
+      expect(error).toBeInstanceOf(ApiError)
+      expect(authTokenStore.get()).toBeNull()
+      expect(assignMock).toHaveBeenCalledTimes(1)
+      expect(assignMock).toHaveBeenCalledWith('/login?redirect=%2F')
+    } finally {
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        value: originalLocation,
+      })
+    }
+  })
+
   it('网络失败 → ApiError 统一网络文案', async () => {
     fetchMock.mockRejectedValue(new TypeError('Failed to fetch'))
     const error = await request('GET', '/tasks').catch((e: unknown) => e)

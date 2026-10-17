@@ -10,7 +10,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 
 import { useAuthStore } from '@/infrastructure/stores/auth-store'
-import { sanitizeAuthRedirect } from '@/features/auth/lib/auth-redirect'
+import { sanitizeAuthRedirect } from '@/domain/lib/auth-redirect'
 
 export function useOAuthCallback(params: {
   oauthToken?: string

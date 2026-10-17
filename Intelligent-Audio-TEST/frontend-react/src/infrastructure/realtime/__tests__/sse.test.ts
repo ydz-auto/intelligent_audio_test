@@ -29,6 +29,37 @@ function sseResponse(stream: ReadableStream<Uint8Array>, status = 200): Response
   })
 }
 
+/**
+ * 构造「连接 OPEN 后 read() 持续挂起」的 SSE 响应：首帧立即吐出、之后等待
+ * 外部 abort 信号，abort 时以 AbortError 终止挂起的 read——精确模拟浏览器中
+ * fetch 的 AbortController.abort() 对响应体流的传播（mock fetch 不会自动接线，
+ * 故由 wireAbort 手工把 init.signal 连到流的 error）。
+ */
+function hangingSseStream(): {
+  response: Response
+  wireAbort: (signal: AbortSignal) => void
+} {
+  let resolveAbort!: () => void
+  const aborted = new Promise<void>((resolve) => {
+    resolveAbort = resolve
+  })
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(
+        new TextEncoder().encode('event: task_log\ndata: {"msg":"a"}\n\n')
+      )
+      aborted.then(() => {
+        controller.error(new DOMException('aborted', 'AbortError'))
+      })
+    },
+  })
+  return {
+    response: sseResponse(stream),
+    wireAbort: (signal) =>
+      signal.addEventListener('abort', () => resolveAbort(), { once: true }),
+  }
+}
+
 function flush(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0))
 }
@@ -163,6 +194,35 @@ describe('subscribeSse', () => {
     off()
     await flush()
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('连接 OPEN 且 read 挂起时 unsubscribe：立即终止、不再重连、无后续状态/事件回调（P1-1 回归）', async () => {
+    vi.useFakeTimers()
+    const { response, wireAbort } = hangingSseStream()
+    fetchMock.mockImplementation((_url: string, init?: RequestInit) => {
+      if (init?.signal) wireAbort(init.signal)
+      return Promise.resolve(response)
+    })
+
+    const events: string[] = []
+    const statuses: string[] = []
+    const off = subscribeSse({
+      onEvent: (e) => events.push(e.eventType),
+      onStatusChange: (s) => statuses.push(s),
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(events).toEqual(['task_log'])
+    expect(statuses).toContain('open')
+
+    const statusesAtOff = statuses.length
+    off()
+    // 若 teardown 未置 stopped（P1-1 缺陷）：abort → read 抛 AbortError → catch
+    // 排重连 → 退避窗口内必再次 fetch 且补发 reconnecting 状态；修复后两者皆不发生
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(events).toEqual(['task_log'])
+    expect(statuses.slice(statusesAtOff)).toEqual([])
   })
 
   it('外部 signal.abort 终止连接且不再重连', async () => {

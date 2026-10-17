@@ -21,7 +21,7 @@ import {
   loginFormSchema,
   type LoginForm,
 } from '@/features/auth/constants'
-import { sanitizeAuthRedirect } from '@/features/auth/lib/auth-redirect'
+import { sanitizeAuthRedirect } from '@/domain/lib/auth-redirect'
 import { cn } from '@/lib/utils'
 
 import { AuthAlert, AuthAlertTitle } from '../../components/auth-alert'

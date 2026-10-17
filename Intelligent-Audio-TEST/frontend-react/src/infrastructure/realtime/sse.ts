@@ -144,6 +144,8 @@ export function subscribeSse(options: SseSubscribeOptions): () => void {
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null
   let lastFrameAt = Date.now()
+  /** 当前 connect 注册在外部 signal 上的 abort 监听（重连/teardown 时摘除） */
+  let signalAbortListener: (() => void) | null = null
 
   function setStatus(status: SseStatus): void {
     if (!stopped) onStatusChange?.(status)
@@ -203,15 +205,22 @@ export function subscribeSse(options: SseSubscribeOptions): () => void {
   async function connect(): Promise<void> {
     if (stopped) return
     controller = new AbortController()
-    const onAbort = () => {
-      stopped = true
-      teardown()
-    }
     if (signal) {
+      // 重连会再次 connect：先摘旧监听，避免同 signal 重复注册累积
+      if (signalAbortListener) {
+        signal.removeEventListener('abort', signalAbortListener)
+        signalAbortListener = null
+      }
       if (signal.aborted) {
-        onAbort()
+        stopped = true
+        teardown()
         return
       }
+      const onAbort = (): void => {
+        stopped = true
+        teardown()
+      }
+      signalAbortListener = onAbort
       signal.addEventListener('abort', onAbort, { once: true })
     }
 
@@ -268,13 +277,20 @@ export function subscribeSse(options: SseSubscribeOptions): () => void {
   }
 
   function teardown(): void {
+    // 首行置 stopped（置于 abort 之前）：杜绝「连接 OPEN 且 read 挂起时解绑 →
+    // controller.abort() 抛 AbortError → catch 分支误排重连」的终止失效路径；
+    // scheduleReconnect 的 if (stopped) return 共同兜底。
+    stopped = true
+    if (signal && signalAbortListener) {
+      signal.removeEventListener('abort', signalAbortListener)
+      signalAbortListener = null
+    }
     stopHeartbeat()
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
     }
     controller?.abort()
-    setStatus('closed')
   }
 
   void connect()

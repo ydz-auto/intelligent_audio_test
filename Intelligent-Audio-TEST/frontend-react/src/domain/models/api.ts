@@ -36,6 +36,26 @@ export enum ApiErrorCode {
 }
 
 /**
+ * HTTP 状态码枚举（对照旧 Vue frontend/src/domain/enums.ts HttpStatus；
+ * 信封成功码判定 / HTTP 兜底文案键引用，拒绝魔法数字）。
+ */
+export enum HttpStatus {
+  OK = 200,
+  CREATED = 201,
+  NO_CONTENT = 204,
+  PARTIAL_CONTENT = 206,
+  BAD_REQUEST = 400,
+  UNAUTHORIZED = 401,
+  FORBIDDEN = 403,
+  NOT_FOUND = 404,
+  TOO_MANY_REQUESTS = 429,
+  INTERNAL_SERVER_ERROR = 500,
+  BAD_GATEWAY = 502,
+  SERVICE_UNAVAILABLE = 503,
+  GATEWAY_TIMEOUT = 504,
+}
+
+/**
  * 已知业务错误码 → 中文文案兜底（error_response 的 message/detail 已是中文时
  * 优先用服务端文案；本映射用于服务端文案缺失/过于笼统时的统一收敛）。
  * 引用 ApiErrorCode 枚举成员，拒绝魔法数字。
@@ -59,15 +79,15 @@ export const API_ERROR_COPY: Partial<Record<ApiErrorCode, string>> = {
   [ApiErrorCode.EXTERNAL_SERVICE_ERROR]: '外部服务异常，请稍后重试',
 }
 
-/** HTTP 状态码兜底文案（响应无业务错误码时使用） */
+/** HTTP 状态码兜底文案（响应无业务错误码时使用；键引用 HttpStatus 枚举） */
 export const HTTP_STATUS_COPY: Record<number, string> = {
-  400: '请求参数有误，请检查后重试',
-  401: '登录已过期，请重新登录',
-  403: '无权限执行此操作',
-  404: '请求的资源不存在',
-  429: '请求过于频繁，请稍后重试',
-  500: '服务器内部错误，请稍后重试',
-  502: '网关错误，请稍后重试',
-  503: '服务暂不可用，请稍后重试',
-  504: '网关超时，请稍后重试',
+  [HttpStatus.BAD_REQUEST]: '请求参数有误，请检查后重试',
+  [HttpStatus.UNAUTHORIZED]: '登录已过期，请重新登录',
+  [HttpStatus.FORBIDDEN]: '无权限执行此操作',
+  [HttpStatus.NOT_FOUND]: '请求的资源不存在',
+  [HttpStatus.TOO_MANY_REQUESTS]: '请求过于频繁，请稍后重试',
+  [HttpStatus.INTERNAL_SERVER_ERROR]: '服务器内部错误，请稍后重试',
+  [HttpStatus.BAD_GATEWAY]: '网关错误，请稍后重试',
+  [HttpStatus.SERVICE_UNAVAILABLE]: '服务暂不可用，请稍后重试',
+  [HttpStatus.GATEWAY_TIMEOUT]: '网关超时，请稍后重试',
 }

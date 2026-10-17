@@ -14,7 +14,8 @@
  * - SSE：/api/v1/sse 订阅封装见 infrastructure/realtime/sse.ts（本层请求出口共用）。
  */
 import { ApiError } from './api-error'
-import { ApiErrorCode } from '@/domain/models/api'
+import { ApiErrorCode, HttpStatus } from '@/domain/models/api'
+import { sanitizeAuthRedirect } from '@/domain/lib/auth-redirect'
 import { authTokenStore } from '@/infrastructure/storage/auth-token'
 
 /** 网关统一挂载前缀（api_gateway/app.py 全路由 /api/v1/*；dev 经代理到 localhost:5000） */
@@ -70,6 +71,13 @@ function sessionExpired(): void {
   }
   if (sessionExpiredHandler) {
     sessionExpiredHandler(redirectTo)
+    return
+  }
+  // 默认整页跳登录（对照旧 Vue http/client.ts 401 即清态+跳 #/login?redirect=）；
+  // 仅在无 handler 注册时兜底，redirect 经 sanitizeAuthRedirect 校验防注入
+  const safeRedirect = sanitizeAuthRedirect(redirectTo, window.location.origin)
+  if (safeRedirect) {
+    window.location.assign(safeRedirect)
   }
 }
 
@@ -134,7 +142,10 @@ function unwrapEnvelope(data: unknown): unknown {
       const code = typeof record.code === 'number' ? record.code : undefined
       const success = record.success === true
       const isOk =
-        code === ApiErrorCode.SUCCESS || code === 200 || code === 201 || success
+        code === ApiErrorCode.SUCCESS ||
+        code === HttpStatus.OK ||
+        code === HttpStatus.CREATED ||
+        success
       if (!isOk) {
         throw new ApiError({
           code,
