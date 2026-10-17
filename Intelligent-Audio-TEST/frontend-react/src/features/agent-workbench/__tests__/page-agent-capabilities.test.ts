@@ -27,10 +27,13 @@ describe('getPageAgentCapability', () => {
     expect(getPageAgentCapability('/report-statistics')?.pageLabel).toBe('报告域')
   })
 
-  it('/ai-chat → 灵犀Agent（整页即本体，报告三件）', () => {
+  it('/ai-chat → 灵犀Agent（整页即本体，全能力 61 工具 / 11 域分组）', () => {
     const cap = getPageAgentCapability('/ai-chat')
     expect(cap?.pageLabel).toBe('灵犀Agent')
-    expect(cap?.tools).toEqual(['报告生成', '报告对比', '报告分析'])
+    expect(cap?.domainLabel).toContain('全能力')
+    // 全能力域清单与 CAPABILITY_GROUPS §3.3 区二同源（不杜撰能力名）
+    expect(cap?.tools.length).toBeGreaterThanOrEqual(11)
+    expect(cap?.quickPrompts.length).toBeGreaterThanOrEqual(6)
   })
 
   it('带子路径命中设备域', () => {

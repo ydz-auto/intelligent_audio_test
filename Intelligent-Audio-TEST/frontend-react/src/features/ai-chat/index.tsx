@@ -153,7 +153,7 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
             </Tooltip>
           </div>
           <p className='text-muted-foreground hidden text-xs sm:block'>
-            用自然语言生成、对比、解读测试报告
+            用自然语言驱动平台全部能力：报告、用例、任务、设备、日志
           </p>
         </div>
         {REPORT_WORK_MODE_ENABLED && (
