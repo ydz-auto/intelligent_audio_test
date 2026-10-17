@@ -41,6 +41,7 @@ FRONTEND_DIR = os.path.join(BASE_DIR, 'frontend')
 # 独立栈（真实音频驱动）互不干扰。PID/日志按偏移隔离，避免串栈清理。
 # INT-401 验收：端口段可经 UI_STACK_SHIFT 覆盖（默认 1000 行为不变），
 # 供并发多 run 共享 6000 段时错峰起本 run 独立栈（纪律 3：不复用别 run 的栈）。
+# INT-528 验收：前端 vite 端口可经 UI_STACK_FRONTEND_PORT 覆盖（默认 6273）。
 SHIFT = int(os.environ.get('UI_STACK_SHIFT', '1000'))
 _suffix = '' if SHIFT == 1000 else f'_{SHIFT}'
 PID_FILE = os.path.join(BASE_DIR, 'tests', 'ui', f'_ui_stack{_suffix}.pid')
@@ -78,10 +79,7 @@ CLIENT_GRPC_ENVS = {
 }
 
 GATEWAY_HTTP = 5000 + SHIFT
-FRONTEND_PORT = GATEWAY_HTTP + 273
-# INT-401 验收：pid 文件随 shift 区分，避免错峰段 stop 互相误杀
-PID_FILE = os.path.join(BASE_DIR, 'tests', 'ui',
-                        f'_ui_stack{"" if SHIFT == 1000 else SHIFT}.pid')
+FRONTEND_PORT = int(os.environ.get('UI_STACK_FRONTEND_PORT', str(GATEWAY_HTTP + 273)))
 
 # INT-363：门禁默认认证模式。dev=本地 OAuth（表单登录），进程 env 是 vite
 # env 优先级最高层，显式注入使 served VITE_AUTH_MODE 不再随
