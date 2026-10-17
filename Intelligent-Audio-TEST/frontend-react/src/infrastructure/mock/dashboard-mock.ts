@@ -180,7 +180,7 @@ export const MOCK_TASK_QUALITY: TaskQualityStats = {
   scored_reports: 142,
 }
 
-/** 通过率近 7 日 mock 序列（task.py TaskStatsData.pass_rate 时序扩展，接口立项前 mock） */
+/** 完成率/通过率近 7 日 mock 序列（task.py TaskStatsData.pass_rate 时序扩展，接口立项前 mock；完成率卡沿用） */
 export const MOCK_PASS_RATE_TREND = [78, 80, 79, 82, 83, 84, 86.8]
 
 /** 平均得分近 7 日 mock 序列（同上，仅可视化用） */

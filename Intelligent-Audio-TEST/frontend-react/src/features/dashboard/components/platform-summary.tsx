@@ -1,21 +1,29 @@
 /**
  * ② 平台概览卡（04_控制台.md §3.6，照 newAPI SummaryCards 双区版式）：
- * 左区三枚 StatCard（任务总数/通过率/平均得分，mock + sparkline）+ 右区设备状态面板。
- * sparkline mock 序列经 application hook 透出（useTaskQualityStats），feature 层不直触 infrastructure。
+ * 左区三枚 StatCard（任务总数/完成率/最近任务，mock + sparkline）+ 右区设备状态面板。
+ * 点击口径（负责人 2026-10-17 拍板）：任务总数 → 任务列表 /tasks；
+ * 完成率、最近任务 → 最近一个任务详情 /tasks/:id（task:read 缺失时降级纯展示）。
+ * sparkline mock 序列经 application hook 透出（useTaskDomainStats/useTaskQualityStats），
+ * feature 层不直触 infrastructure。
  */
 import { Link } from '@tanstack/react-router'
-import { ChartLine, ClipboardList, Music, Server, Star } from 'lucide-react'
+import { ChartLine, ClipboardList, Clock, Music, Server } from 'lucide-react'
+import type { ReactNode } from 'react'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useDashboardStats } from '@/application/dashboard/use-dashboard-stats'
-import {
-  useTaskDomainStats,
-} from '@/application/dashboard/use-task-domain-stats'
+import { useTaskDomainStats } from '@/application/dashboard/use-task-domain-stats'
 import { useTaskQualityStats } from '@/application/dashboard/use-task-quality-stats'
+import { useDashboardSummary } from '@/application/dashboard/use-dashboard-summary'
+import { useLatestTaskDetail } from '@/application/dashboard/use-latest-task-detail'
 import {
   CardStaggerContainer as StaggerContainer,
   CardStaggerItem as StaggerItem,
 } from '@/features/dashboard/components/page-transition'
+import {
+  formatDateTime,
+  getTaskStatusLabel,
+} from '@/features/dashboard/constants'
 import { StatCard } from '@/features/dashboard/components/ui/stat-card'
 import { cn } from '@/lib/utils'
 
@@ -40,17 +48,59 @@ const HEALTH_CONFIG: Record<HealthLevel, { dotClass: string; label: string }> =
     none: { dotClass: 'bg-muted-foreground', label: '暂无设备' },
   }
 
+/** 概览卡点击目标：任务列表 / 最近任务详情（task:read 缺失不渲染 Link，降级纯展示） */
+type OverviewTileLink =
+  | { kind: 'tasks-list' }
+  | { kind: 'task-detail'; taskId: number }
+
+const TILE_BASE_CLASS =
+  'bg-background/60 rounded-lg border px-2 py-1.5 sm:rounded-xl sm:p-3'
+
+function OverviewTile(props: { link?: OverviewTileLink; children: ReactNode }) {
+  if (!props.link) {
+    return <div className={TILE_BASE_CLASS}>{props.children}</div>
+  }
+  const clickableClass = cn(
+    TILE_BASE_CLASS,
+    'block h-full transition-colors hover:bg-muted/40'
+  )
+  if (props.link.kind === 'tasks-list') {
+    return (
+      <Link to='/tasks' className={clickableClass}>
+        {props.children}
+      </Link>
+    )
+  }
+  return (
+    <Link
+      to='/tasks/$tab'
+      params={{ tab: String(props.link.taskId) }}
+      className={clickableClass}
+    >
+      {props.children}
+    </Link>
+  )
+}
+
 export function PlatformSummary() {
   const { hasPermission } = usePermissions()
   const statsQuery = useDashboardStats()
   const qualityQuery = useTaskQualityStats()
   // 任务卡 sparkline：trend 12 桶（无 task:read 时接口 403 降级——mock 阶段恒有数据）
   const domainStatsQuery = useTaskDomainStats('day')
+  const summaryQuery = useDashboardSummary()
+  const latestTaskId = summaryQuery.data?.recent_tasks[0]?.id
+  const latestTaskQuery = useLatestTaskDetail(latestTaskId)
 
   const details = statsQuery.data
-  const quality = qualityQuery.data
+  const latestTask = latestTaskQuery.data
+  const canOpenTask = hasPermission('task:read')
   const loading =
-    statsQuery.isLoading || qualityQuery.isLoading || domainStatsQuery.isLoading
+    statsQuery.isLoading ||
+    qualityQuery.isLoading ||
+    domainStatsQuery.isLoading ||
+    summaryQuery.isLoading ||
+    latestTaskQuery.isLoading
 
   const devices = details?.devices
   const healthLevel = getDeviceHealthLevel(
@@ -63,6 +113,12 @@ export function PlatformSummary() {
       ? `${devices?.offline ?? 0} 台离线`
       : HEALTH_CONFIG[healthLevel].label
 
+  // 完成率 = 已完成任务 / 任务总数（task.py TaskStatsData 同源口径；与 MOCK_HOME_STATS 297/342 一致）
+  const completionRate =
+    details && details.tasks.total > 0
+      ? `${((details.tasks.completed / details.tasks.total) * 100).toFixed(1)}%`
+      : '--'
+
   return (
     <div className='bg-card overflow-hidden rounded-2xl border shadow-xs'>
       <div className='grid xl:grid-cols-[minmax(0,1fr)_19rem]'>
@@ -74,57 +130,95 @@ export function PlatformSummary() {
             </p>
           </div>
           <StaggerContainer className='grid grid-cols-3 gap-1.5 sm:gap-3'>
-            <StaggerItem className='bg-background/60 rounded-lg border px-2 py-1.5 sm:rounded-xl sm:p-3'>
-              <StatCard
-                title='任务总数'
-                value={details?.tasks.total ?? 0}
-                description={`${details?.tasks.completed ?? 0} 个已完成`}
-                icon={ClipboardList}
-                tone='accent-1'
-                sparkline={domainStatsQuery.taskTrendSparkline}
-                sparklineVariant='line'
-                loading={loading}
-                error={statsQuery.isError}
-                compactMobile
-              />
+            <StaggerItem>
+              <OverviewTile link={canOpenTask ? { kind: 'tasks-list' } : undefined}>
+                <StatCard
+                  title='任务总数'
+                  value={details?.tasks.total ?? 0}
+                  description={`${details?.tasks.completed ?? 0} 个已完成`}
+                  icon={ClipboardList}
+                  tone='accent-1'
+                  sparkline={domainStatsQuery.taskTrendSparkline}
+                  sparklineVariant='line'
+                  loading={loading}
+                  error={statsQuery.isError}
+                  compactMobile
+                />
+              </OverviewTile>
             </StaggerItem>
-            <StaggerItem className='bg-background/60 rounded-lg border px-2 py-1.5 sm:rounded-xl sm:p-3'>
-              <StatCard
-                title='通过率'
-                value={
-                  quality
-                    ? `${quality.pass_rate.toFixed(1)}%`
-                    : '--'
+            <StaggerItem>
+              <OverviewTile
+                link={
+                  canOpenTask && latestTaskId != null
+                    ? { kind: 'task-detail', taskId: latestTaskId }
+                    : undefined
                 }
-                description={
-                  details
-                    ? `${details.tasks.completed}/${details.tasks.total} 执行完成`
-                    : '统计暂不可用'
-                }
-                icon={ChartLine}
-                tone='accent-2'
-                sparkline={qualityQuery.passRateTrend}
-                sparklineVariant='line'
-                loading={loading}
-                error={qualityQuery.isError}
-                compactMobile
-              />
+              >
+                <StatCard
+                  title='完成率'
+                  value={completionRate}
+                  description={
+                    details
+                      ? `${details.tasks.completed}/${details.tasks.total} 执行完成`
+                      : '统计暂不可用'
+                  }
+                  icon={ChartLine}
+                  tone='accent-2'
+                  sparkline={qualityQuery.passRateTrend}
+                  sparklineVariant='line'
+                  loading={loading}
+                  error={statsQuery.isError || qualityQuery.isError}
+                  compactMobile
+                />
+              </OverviewTile>
             </StaggerItem>
-            <StaggerItem className='bg-background/60 rounded-lg border px-2 py-1.5 sm:rounded-xl sm:p-3'>
-              <StatCard
-                title='平均得分'
-                value={quality ? quality.average_score.toFixed(1) : '--'}
-                description={
-                  quality ? `${quality.scored_reports} 份报告参与评分` : '统计暂不可用'
+            <StaggerItem>
+              <OverviewTile
+                link={
+                  canOpenTask && latestTaskId != null
+                    ? { kind: 'task-detail', taskId: latestTaskId }
+                    : undefined
                 }
-                icon={Star}
-                tone='accent-3'
-                sparkline={qualityQuery.averageScoreTrend}
-                sparklineVariant='line'
-                loading={loading}
-                error={qualityQuery.isError}
-                compactMobile
-              />
+              >
+                <StatCard
+                  title='最近任务'
+                  value={
+                    latestTask
+                      ? getTaskStatusLabel(
+                          latestTask.execution_status ?? latestTask.status
+                        )
+                      : '--'
+                  }
+                  description={latestTask?.name ?? '统计暂不可用'}
+                  icon={Clock}
+                  tone='accent-3'
+                  details={
+                    latestTask
+                      ? [
+                          {
+                            label: '完成时间',
+                            value: latestTask.completed_at
+                              ? formatDateTime(latestTask.completed_at)
+                              : '进行中',
+                          },
+                          {
+                            label: '预计完成时间',
+                            value: formatDateTime(
+                              latestTask.expected_complete_time
+                            ),
+                          },
+                          {
+                            label: '测试所用时间',
+                            value: latestTask.used_time ?? '—',
+                          },
+                        ]
+                      : undefined
+                  }
+                  loading={loading}
+                  error={summaryQuery.isError || latestTaskQuery.isError}
+                  compactMobile
+                />
+              </OverviewTile>
             </StaggerItem>
           </StaggerContainer>
         </div>
