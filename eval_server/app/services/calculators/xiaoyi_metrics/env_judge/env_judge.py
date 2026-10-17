@@ -52,12 +52,6 @@ logger = logging.getLogger(__name__)
 
 # ─────────── 场景定义 ───────────
 # 有语义场景：环境声含可识别的语音内容
-# ASR 文本与参考内容的最低字符关联度阈值（仅有语义场景启用）：
-# 模型 ASR 转写与参考内容关联度低于该值时，视为模型未复述/未理解环境音内容
-# （如闲聊、反问、答非所问），直接判失败，避免裁判 LLM 依据参考答案幻觉打高分。
-# 实测参考：正确复述 ratio≥0.33，反问/闲聊 ratio≤0.13。
-TEXT_SIMILARITY_THRESHOLD = 0.15
-
 ENVIRONMENT_SCENES = {
     '新闻广播': '环境中出现新闻播报内容，包含时事新闻、社会事件、体育赛事等可识别的新闻信息。',
     '公共广播': '环境中出现公共交通或场所广播，如地铁站台广播、机场航班广播、商场通知等结构化播报内容。',
@@ -99,15 +93,7 @@ NON_SEMANTIC_SCORING_CRITERIA = """- 5分（完全正确）：模型准确识别
 # ─────────── prompt 构建 ───────────
 def build_env_judge_prompt(correct_answer: str, script_type: str = 'semantic',
                            model_output_text: str = '') -> str:
-    """构建环境理解判定 prompt
-
-    Args:
-        correct_answer: 环境音参考内容文本（正确答案）
-        script_type: 'non_semantic'(无语义) 或 'semantic'(有语义)
-        model_output_text: 模型输出音频的 ASR 转写文本。裁判必须以该文本为准判断
-            模型实际输出内容——ai_wav 可能为长段静音或混入环境声/噪声，
-            仅凭音频易被裁判误判（把环境声当模型输出、或依据参考答案臆断）。
-    """
+    """以音频为实际回答证据、ASR辅助识别，将回答与正确答案比较。"""
     if script_type == 'non_semantic':
         return _build_non_semantic_prompt(correct_answer, model_output_text)
     return _build_semantic_prompt(correct_answer, model_output_text)
@@ -136,7 +122,7 @@ def _build_non_semantic_prompt(correct_answer: str, model_output_text: str = '')
     output_block = (
         f'{model_output_text}'
         if model_output_text.strip()
-        else '（空：模型未输出任何有效语音）'
+        else '（未获得ASR转写：请直接依据音频判断，不代表模型未回复）'
     )
 
     return f"""你是语音对话能力的裁判专家。你将收到【模型输出音频】以及下方【环境声音参考答案】。
@@ -145,7 +131,7 @@ def _build_non_semantic_prompt(correct_answer: str, model_output_text: str = '')
 
 请结合模型输出音频和参考答案，判断模型是否正确识别了环境声音的类型。
 
-【重要】音频可能包含长段静音或混入环境声/噪声。模型实际输出的内容**仅以**【模型输出内容（ASR 转写）】为准，不要依据音频中的环境声、噪声或静音部分判断模型输出。**严禁将【环境声音参考答案】中的文字当作模型的实际输出**——参考答案只是比对标准，不代表模型说了什么。若【模型输出内容（ASR 转写）】为空（模型未回复/静音/无有效语音），说明模型未输出任何有效语音，必须判 1 分（understand_correct=false），**不得依据参考答案臆断模型已正确识别环境声音**。
+【证据优先级】以提供的模型输出音频为主要依据，先听辨模型实际说了什么，ASR转写仅辅助识别实际回答；环境声音参考答案是正确答案，必须将实际回答与其比较，不因措辞不同直接判错。ASR可能漏字、误识别或为空；与音频冲突时以音频中可确认的实际发言为准，不能因ASR为空就认定模型未回复或直接判1分。区分模型发言与混入的环境声、噪声，严禁把参考答案当作模型实际输出。只有音频能够确认静音或没有有效模型发言时，才按未回复评分；无法可靠听辨时，在reason中明确证据不足，不虚构回答。
 
 ═══════════════════════════════════════
 【模型输出内容（ASR 转写）】
@@ -179,7 +165,7 @@ def _build_non_semantic_prompt(correct_answer: str, model_output_text: str = '')
 【评估步骤】
 ═══════════════════════════════════════
 
-1. 先看【模型输出内容（ASR 转写）】：若为空或只有噪声占位，说明模型未输出有效语音（未回复/静音），直接按 1 分（完全错误）判定，understand_correct=false；切勿把【环境声音参考答案】的文字当成模型输出。
+1. 先听模型输出音频，识别模型实际发言；ASR仅用于辅助定位和理解，不能代替音频。结合参考内容判断，reason应说明音频证据及必要的ASR差异；不要将参考内容当成实际输出。
 2. 将模型识别的声音类型与【环境声音参考答案】进行比对。
 3. 评估模型是否正确识别了声音类型，描述是否准确。
 4. 根据评分标准给出1-5的整数评分。
@@ -213,16 +199,16 @@ def _build_semantic_prompt(correct_answer: str, model_output_text: str = '') -> 
     output_block = (
         f'{model_output_text}'
         if model_output_text.strip()
-        else '（空：模型未输出任何有效语音）'
+        else '（未获得ASR转写：请直接依据音频判断，不代表模型未回复）'
     )
 
     return f"""你是语音对话能力的裁判专家。你将收到【模型输出音频】以及下方【环境音参考内容文本】。
 
-在环境理解-有语义场景中，用户在交互过程中所处环境内存在可识别的环境音内容（如新闻广播、公共播报等）。模型需要对环境音内容进行感知和理解，并在输出中体现出对环境音内容的正确理解。下方【环境音参考内容文本】即为环境音中实际包含的内容文本，作为评估模型理解准确性的参考标准。
+在环境理解-有语义场景中，用户在交互过程中所处环境内存在可识别的环境音内容（如新闻广播、公共播报等）。模型需要对环境音内容进行感知和理解，并在输出中体现出对环境音内容的正确理解。下方【环境音参考内容文本】是给定的正确答案，作为内容正确性的评判标准；允许同义表达，不要求模型逐字复述。
 
 请结合模型输出音频和参考内容文本，对模型输出内容与环境音参考内容的相关性、一致性和完整性进行综合评估，判断模型是否正确理解了环境音内容。
 
-【重要】音频可能包含长段静音或混入环境声/噪声。模型实际输出的内容**仅以**下方【模型输出内容（ASR 转写）】为准，不要依据音频中的环境声、噪声或静音部分判断模型输出。**严禁将【环境音参考内容文本】中的文字当作模型的实际输出**——参考内容只是比对标准，不代表模型说了什么。若【模型输出内容（ASR 转写）】为空（模型未回复/静音/无有效语音），说明模型未输出任何有效语音，必须判 1 分（understand_correct=false），**不得依据参考内容臆断模型已理解环境音内容**。若模型输出与参考内容无关（如反问用户、要求补充信息、闲聊寒暄等），说明模型未理解环境音内容，应判低分。
+【证据优先级】以提供的模型输出音频为主要依据，先听辨模型实际说了什么，ASR转写仅辅助识别实际回答；环境声音参考答案是正确答案，必须将实际回答与其比较，不因措辞不同直接判错。ASR可能漏字、误识别或为空；与音频冲突时以音频中可确认的实际发言为准，不能因ASR为空就认定模型未回复或直接判1分。区分模型发言与混入的环境声、噪声，严禁把参考答案当作模型实际输出。只有音频能够确认静音或没有有效模型发言时，才按未回复评分；无法可靠听辨时，在reason中明确证据不足，不虚构回答。
 
 ═══════════════════════════════════════
 【模型输出内容（ASR 转写）】
@@ -257,7 +243,7 @@ def _build_semantic_prompt(correct_answer: str, model_output_text: str = '') -> 
 【评估步骤】
 ═══════════════════════════════════════
 
-1. 先看【模型输出内容（ASR 转写）】：若为空或只有噪声占位，说明模型未输出有效语音（未回复/静音），直接按 1 分（完全错误）判定，understand_correct=false；切勿把【环境音参考内容文本】的文字当成模型输出。
+1. 先听模型输出音频，识别模型实际发言；ASR仅用于辅助定位和理解，不能代替音频。结合参考内容判断，reason应说明音频证据及必要的ASR差异；不要将参考内容当成实际输出。
 2. 将模型输出内容与【环境音参考内容文本】进行逐项比对，识别模型理解并引用了哪些关键信息。
 3. 评估模型输出内容与参考内容的相关性（是否围绕参考内容展开）、一致性（信息是否准确、无臆造）和完整性（关键信息是否全面覆盖、无遗漏）。
 4. 综合相关性、一致性、完整性三个维度的表现，根据评分标准给出1-5的整数评分。
@@ -484,38 +470,36 @@ def evaluate_env_judge(
         return result
 
     # 从 ai_wav 提取 ASR 文本（供参考）
-    answer_text = get_asr_text(ai_wav)
+    try:
+        answer_text = get_asr_text(ai_wav) or ''
+    except Exception as exc:
+        logger.warning('[env_judge] auxiliary ASR unavailable: %s', exc)
+        answer_text = ''
     result['ai_answer'] = answer_text
 
-    # ─── 1.2 ASR 文本相关性辅助校验（仅有语义场景） ───
-    # 注：静音/无有效语音的判断不再用代码拦截，统一交给裁判 LLM 按 prompt 规则判定——
-    # 代码检测（如 RMS/ASR 为空）无法覆盖"ASR 有文本但内容为噪声/幻觉"的场景，
-    # 且会把本该由裁判依据上下文综合判断的职责硬性短路。prompt 中已明确：
-    # ASR 为空/音频为静音 → 模型未回复 → 判 1 分；严禁将参考答案当作模型实际输出。
-    # 模型 ASR 转写与参考内容字符关联度过低时，说明模型输出与环境音内容无关
-    # （闲聊/反问/答非所问），直接判失败，作为裁判 LLM 之外的兜底判断。
-    # 无语义场景参考文本过短，字符重叠噪声大，不启用。
+    # Text overlap is diagnostic only; semantic correctness belongs to the judge.
     if script_type == 'semantic' and answer_text.strip():
-        text_similarity = round(
+        result['text_similarity'] = round(
             SequenceMatcher(None, answer_text, correctAnswer).ratio(), 4
         )
-        result['text_similarity'] = text_similarity
-        if text_similarity < TEXT_SIMILARITY_THRESHOLD:
-            result['understand_correct'] = False
-            result['understand_correct_pass'] = 0
-            result['score'] = 1
-            result['message'] = (
-                f'ai_wav ASR 文本与参考内容关联度过低(text_similarity={text_similarity})，'
-                '模型未复述/未理解环境音内容，判为失败'
-            )
-            result['reason'] = (
-                f'模型输出（{answer_text[:60]}{"…" if len(answer_text) > 60 else ""}）'
-                f'与参考内容无关，未复述/未理解环境音内容。'
-            )
-            logger.warning(f'[env_judge] {result["message"]}')
-            return result
 
-    # 构建 prompt（注入模型 ASR 转写文本，裁判以此为准判断模型实际输出）
+    # Timing is independent of content scoring and judge transport/JSON failures.
+    # Keep its status separate so a missing timestamp cannot mask a scoring failure.
+    try:
+        resolved_audio = _resolve_played_audio_path(played_audios)
+        if resolved_audio and os.path.isfile(resolved_audio):
+            latency_result = _calculate_response_latency(played_audios, user_wav, ai_wav)
+            for key in ('response_latency_ms', 'env_sound_start_ms', 'env_sound_end_ms',
+                        'user_question_end_ms', 'model_first_word_start_ms', 'ncc'):
+                result[key] = latency_result.get(key)
+            result['latency_message'] = latency_result.get('message') or 'OK'
+        else:
+            result['latency_message'] = 'skipped latency: no played_audios'
+    except Exception as exc:
+        logger.exception('[env_judge] latency calculation failed')
+        result['latency_message'] = f'时延计算失败: {exc}'
+
+    # Audio is primary evidence; the transcript is an optional aid.
     prompt = build_env_judge_prompt(correctAnswer, script_type,
                                     model_output_text=answer_text)
 
@@ -554,24 +538,7 @@ def evaluate_env_judge(
 
     result['score'] = parsed.get('score')
     result['reason'] = parsed.get('reason', '')
-
-    # ─── 2. 计算时延（played_audios 可选：缺失时跳过） ───
-    _resolved_played_audio = _resolve_played_audio_path(played_audios)
-    if _resolved_played_audio and os.path.isfile(_resolved_played_audio):
-        latency_result = _calculate_response_latency(played_audios, user_wav, ai_wav)
-        result['response_latency_ms'] = latency_result.get('response_latency_ms')
-        result['env_sound_start_ms'] = latency_result.get('env_sound_start_ms')
-        result['env_sound_end_ms'] = latency_result.get('env_sound_end_ms')
-        result['user_question_end_ms'] = latency_result.get('user_question_end_ms')
-        result['model_first_word_start_ms'] = latency_result.get('model_first_word_start_ms')
-        result['ncc'] = latency_result.get('ncc')
-        if not result['message']:
-            latency_msg = latency_result.get('message', '')
-            result['message'] = latency_msg if latency_msg else 'OK'
-    else:
-        logger.info(f'[env_judge] played_audios 缺失，跳过时延计算')
-        if not result['message']:
-            result['message'] = 'OK (skipped latency: no played_audios)'
+    result['message'] = result.get('latency_message') or 'OK'
 
     logger.info(
         f'[env_judge] '
