@@ -6,6 +6,7 @@ import { AUTH_MODE } from '@/domain/models/auth'
 import { authApi } from '@/infrastructure/api/authApi'
 import { onSessionExpired } from '@/infrastructure/api/client'
 import { authTokenStore } from '@/infrastructure/storage/auth-token'
+import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
 
 /**
  * 认证 store（infrastructure/stores 层；接线基座 INT-605 落真实登录态、
@@ -62,6 +63,8 @@ export const useAuthStore = create<AuthState>()(
         set({ user: null })
         // 复位引导：登出后再导航允许重新判 AUTH_MODE（off 模式重新 dev_user 放行）
         resetAuthSessionBootstrap()
+        // 全局算法过滤随登出清空（02_导航栏.md §3.4 契约 6：多账号切换不串值）
+        useAlgorithmStore.getState().clear()
       },
       hydrateSession: async () => {
         // 有 token：真实会话恢复

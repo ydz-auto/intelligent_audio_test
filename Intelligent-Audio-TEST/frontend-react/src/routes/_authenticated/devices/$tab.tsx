@@ -1,8 +1,7 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { z } from 'zod'
 
-import { hasPermission } from '@/domain/models/user'
-import { useAuthStore } from '@/infrastructure/stores/auth-store'
+import { requirePermission } from '@/application/auth/route-guards'
 import { DEVICES_TAB_WHITELIST, type DevicesTabKey } from '@/features/devices/constants'
 import { DevicesPage } from '@/features/devices'
 
@@ -11,7 +10,7 @@ import { DevicesPage } from '@/features/devices'
  * 页签白名单 ['test','playback','api']，非法 beforeLoad 重定向 test；
  * 页签级权限守卫——test 需 device:read、playback 需 playback:read、api 需 api_config:read；
  * 无对应码者该页签整项隐藏（§3.2，页面内 Tabs 过滤），三者皆无不进 /devices（侧栏由
- * device:read 过滤）；整页 URL 直达且无任何码 → /403。
+ * device:read 过滤）；整页 URL 直达且无任何码 → /403?from。
  */
 const devicesSearchSchema = z.object({
   page: z.number().optional().catch(1),
@@ -36,16 +35,13 @@ const TAB_PERMISSION: Record<string, string> = {
 }
 
 export const Route = createFileRoute('/_authenticated/devices/$tab')({
-  beforeLoad: ({ params }) => {
-    const user = useAuthStore.getState().user
+  beforeLoad: ({ params, location }) => {
     const tab = params.tab
     if (!DEVICES_TAB_WHITELIST.includes(tab)) {
       throw redirect({ to: '/devices/$tab', params: { tab: 'test' } })
     }
     const required = TAB_PERMISSION[tab]
-    if (!hasPermission(user, required)) {
-      throw redirect({ to: '/403' })
-    }
+    requirePermission(required, location)
   },
   validateSearch: devicesSearchSchema,
   component: DevicesTabPage,

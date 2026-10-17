@@ -1,8 +1,7 @@
-import { createFileRoute, redirect, useNavigate, useSearch } from '@tanstack/react-router'
+import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router'
 import { z } from 'zod'
 
-import { hasPermission } from '@/domain/models/user'
-import { useAuthStore } from '@/infrastructure/stores/auth-store'
+import { requireAnyPermission } from '@/application/auth/route-guards'
 import { TestExecutionPage } from '@/features/test-execution'
 import { navigateWithSearch } from '@/features/test-execution/lib/navigate-search'
 
@@ -39,11 +38,10 @@ function StartTestPageRoute() {
 
 export const Route = createFileRoute('/_authenticated/start-test')({
   validateSearch: startTestSearchSchema,
-  beforeLoad: () => {
-    const user = useAuthStore.getState().user
-    if (hasPermission(user, 'task:execute')) return
-    if (hasPermission(user, 'algorithm:read')) return
-    throw redirect({ to: '/403' })
+  beforeLoad: ({ location }) => {
+    // task:execute 完整交互态 / algorithm:read（INT-449 algo 只读观察）任一放行；
+    // 其余无权限角色（device_admin/guest）整页 /403?from
+    requireAnyPermission(['task:execute', 'algorithm:read'], location)
   },
   component: StartTestPageRoute,
 })

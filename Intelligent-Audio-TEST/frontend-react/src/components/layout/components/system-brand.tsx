@@ -24,6 +24,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
+import { useSiteConfig } from '@/application/hooks/use-site-config'
 import { cn } from '@/lib/utils'
 
 type SystemBrandProps = {
@@ -39,12 +40,15 @@ type SystemBrandProps = {
 
 /**
  * 系统品牌组件（本平台适配版）：Headphones 图标 + 「智能语音测试平台」。
- * 去 newAPI 的 status/logo 远程配置依赖（红线④：品牌常量本地化）。
+ * systemName/version 取站点配置 store（壳 INT-607 接线）；props 传值优先于
+ * store（页面级定制），store 缺失回落缺省常量（红线④：品牌常量本地化）。
  */
 export function SystemBrand(props: SystemBrandProps) {
   const variant = props.variant ?? 'sidebar'
-  const name = props.defaultName ?? '智能语音测试平台'
-  const version = props.defaultVersion ?? '演示版'
+  const { config } = useSiteConfig()
+  const name = props.defaultName ?? config.systemName ?? '智能语音测试平台'
+  const version =
+    props.defaultVersion ?? config.version ?? '演示版'
 
   if (variant === 'inline') {
     return (

@@ -1,8 +1,7 @@
-import { createFileRoute, redirect } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod'
 
-import { hasPermission } from '@/domain/models/user'
-import { useAuthStore } from '@/infrastructure/stores/auth-store'
+import { requirePermission } from '@/application/auth/route-guards'
 import { AiChatPage } from '@/features/ai-chat'
 
 const aiChatSearchSchema = z.object({
@@ -14,16 +13,13 @@ const aiChatSearchSchema = z.object({
 
 /**
  * /ai-chat AI 对话页（08_AI对话页.md §3.1）：
- * report:read 守卫（无权限 → /403?from=/ai-chat）；validateSearch 携带 report/task；
+ * report:read 守卫（无权限 → /403?from）；validateSearch 携带 report/task；
  * key={report ?? ''} 换报告上下文即重开会话（照 playground key 语义）。
  */
 export const Route = createFileRoute('/_authenticated/ai-chat')({
   validateSearch: aiChatSearchSchema,
-  beforeLoad: () => {
-    const user = useAuthStore.getState().user
-    if (!hasPermission(user, 'report:read')) {
-      throw redirect({ to: '/403', search: { from: '/ai-chat' } })
-    }
+  beforeLoad: ({ location }) => {
+    requirePermission('report:read', location)
   },
   component: AiChatPageRouteComponent,
 })

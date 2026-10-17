@@ -45,7 +45,7 @@ function filterNavItems(items: NavItem[], hasPermission: (p: string) => boolean,
  * 解析当前侧栏视图（drill-in 机制，application 层）。
  * - URL 命中注册的嵌套视图（如系统设置）→ 返回该视图导航组（同样按权限码过滤）；
  * - 否则返回根导航，按权限码过滤，空组整组隐藏（04_控制台.md §5 guest 行为）。
- * TODO(API 接线): 权限码换真实会话数据（mock 会话 permissions=['*'] 全通过）。
+ * 权限码取自真实会话数据（useAuthStore.user.permissions；壳 INT-607 接线确认）。
  */
 export function useSidebarView(): ResolvedSidebarView {
   const pathname = useLocation({ select: (l) => l.pathname })

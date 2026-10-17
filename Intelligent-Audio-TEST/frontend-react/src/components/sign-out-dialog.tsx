@@ -17,23 +17,31 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useNavigate } from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { useAuthStore } from '@/infrastructure/stores/auth-store'
+import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
 
 /**
  * 登出确认弹窗（本平台适配版）。
  * 认证接线 INT-606：真实登出（POST /auth/logout 审计旁路 + 清 token/user）。
+ * 壳 INT-607 跨组件状态同步：登出后清全局算法 store + Query 缓存
+ * （02_导航栏.md §3.4 契约 6「登出清空，多账号切换不串值」；同 newAPI
+ * clearAuthenticatedClientState 语义），避免旧账号数据/过滤值残留。
  */
 export function SignOutDialog(props: {
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   const handleSignOut = () => {
     props.onOpenChange(false)
     void useAuthStore.getState().logout().then(() => {
+      useAlgorithmStore.getState().clear()
+      queryClient.clear()
       void navigate({ to: '/login' })
     })
   }

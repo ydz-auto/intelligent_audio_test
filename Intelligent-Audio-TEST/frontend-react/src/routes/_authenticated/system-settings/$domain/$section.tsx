@@ -30,7 +30,7 @@ export const Route = createFileRoute(
       (domain.requiredPermissions &&
         !hasAnyPermission(user, domain.requiredPermissions))
     ) {
-      throw redirect({ to: '/403', search: { from: location.href } })
+      throw redirect({ to: '/403', search: { from: location.pathname } })
     }
 
     const section = domain.sections.find((s) => s.id === params.section)
@@ -47,7 +47,7 @@ export const Route = createFileRoute(
       (section.requiredPermissions &&
         !hasAnyPermission(user, section.requiredPermissions))
     ) {
-      throw redirect({ to: '/403', search: { from: location.href } })
+      throw redirect({ to: '/403', search: { from: location.pathname } })
     }
   },
   component: SettingsSectionRoute,
