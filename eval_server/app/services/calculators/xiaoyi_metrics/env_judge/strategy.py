@@ -234,7 +234,20 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
 
     def run(self, task_params):
         """覆写：is_reject=false 跳过；整体评估走文本模态全时间线评判（原生 per_round）。"""
-        if not self._is_reject_round(task_params):
+        # 多轮整体评估：只要任一配置轮 is_reject=true 就继续（_run_overall_text 内部只评拒识轮、
+        # 非拒识轮留跳过占位）；仅当全部轮 is_reject=false 才整例跳过。
+        # 不能用 _is_reject_round(task_params)（多轮时按目标轮=最后一轮取数）——最后一轮为
+        # 意图轮(is_reject=false)但前面有拒识轮时会把整例误判为跳过，整体 TRD 为空而逐轮切片
+        # 照常评估，导致整体/逐轮数据不一致，报告主/子维度口径错乱。
+        if self._is_multi_round(task_params):
+            rounds = (task_params or {}).get('rounds') or []
+            if not any(isinstance(rd, dict) and self._is_reject_round(task_params, rd) for rd in rounds):
+                return {
+                    'enabled': True,
+                    'message': '跳过: 非拒识轮(is_reject=false)',
+                    'rate': None,
+                }
+        elif not self._is_reject_round(task_params):
             return {
                 'enabled': True,
                 'message': '跳过: 非拒识轮(is_reject=false)',
