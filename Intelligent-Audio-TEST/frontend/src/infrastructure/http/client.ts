@@ -253,11 +253,20 @@ async function handleResponse(response: Response, responseType: string = 'json',
     if (response.status === HttpStatus.UNAUTHORIZED && !skipAuthRedirect) {
       const authMode = getEffectiveAuthMode()
       if (authMode !== AuthMode.OFF) {
-        import('../../store/authStore').then(({ useAuthStore }) => {
+        import('../../store/authStore').then(async ({ useAuthStore }) => {
           const auth = useAuthStore()
-          auth.logout()
-          const redirect = window.location.hash.slice(1) || '/'
-          window.location.hash = `#/login?redirect=${encodeURIComponent(redirect)}`
+          // authApi.logout 携带 skipAuthRedirect，登出请求自身 401 不会再进入本分支，
+          // 故不会因 token 失效触发无限 POST /auth/logout 循环（INT-622 回归）。
+          // 先 await 完成本地清理再跳转，避免跳转后残留登录态。
+          await auth.logout()
+          const current = window.location.hash.slice(1) || '/'
+          // 已在登录页时不再叠加 redirect 参数（防嵌套膨胀：
+          // #/login?redirect=/login?redirect=... 无界递归）
+          if (current.split('?')[0] === '/login') {
+            window.location.hash = '#/login'
+          } else {
+            window.location.hash = `#/login?redirect=${encodeURIComponent(current)}`
+          }
         })
       }
     }

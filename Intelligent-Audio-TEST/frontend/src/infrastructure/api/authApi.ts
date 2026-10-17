@@ -100,6 +100,19 @@ export const authApi = {
     return toCurrentUserInfo(dto);
   },
 
+  /**
+   * 登出（POST /auth/logout；JWT 无状态，服务端审计旁路 INT-406，失败不阻断本地清理）。
+   * skipAuthRedirect 为 Vue 侧安全偏离（相对 React 基准，见
+   * frontend-react/src/infrastructure/api/authApi.ts logout 无该标记）：
+   * Vue client.ts 的 401 拦截器会重入 authStore.logout()，若登出请求自身 401
+   * （token 已失效/缺失）不带跳过标记，将触发拦截器再次登出 → 无限 POST /auth/logout
+   * 401 循环（INT-622 回归）。React client 的 401 处理只清本地、不重入登出 API，
+   * 故无此风险、无需跳过；Vue 必须跳过。
+   */
+  async logout(options: RequestOptions = {}): Promise<void> {
+    await request('POST', '/auth/logout', undefined, { ...options, skipAuthRedirect: true });
+  },
+
   // ===== 登录体系改造（INT-51）=====
 
   /**

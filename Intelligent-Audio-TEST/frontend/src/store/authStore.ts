@@ -102,12 +102,35 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  /** 登出 */
-  function logout() {
-    token.value = ''
-    user.value = null
-    localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(USER_KEY)
+  /**
+   * 登出（POST /auth/logout 服务端审计旁路 INT-406；失败不阻断本地清理）。
+   * 与 React 基准 auth-store logout 同义：先 await authPort.logout()（best-effort）
+   * 再清 token/user + localStorage。
+   * 401 循环防护：authApi.logout 携带 skipAuthRedirect（Vue 侧安全偏离），登出
+   * 请求自身 401 不再触发 client.ts 401 拦截器，从根上阻断失效 token 的无限登出
+   * 循环（INT-622 回归）。此处另以 in-flight promise 归并并发重入——401 拦截器对
+   * 多个并发 401 请求均会调用本方法，in-flight 期间重入 await 同一 promise，
+   * 保证只发一次 POST /auth/logout。
+   */
+  let logoutTask: Promise<void> | null = null
+  function logout(): Promise<void> {
+    if (logoutTask) return logoutTask
+    logoutTask = (async () => {
+      try {
+        try {
+          await authPort.logout()
+        } catch {
+          // 审计旁路（INT-406）：失败不阻断本地清理
+        }
+        token.value = ''
+        user.value = null
+        localStorage.removeItem(TOKEN_KEY)
+        localStorage.removeItem(USER_KEY)
+      } finally {
+        logoutTask = null
+      }
+    })()
+    return logoutTask
   }
 
   /**
