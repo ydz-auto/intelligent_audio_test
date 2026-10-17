@@ -100,6 +100,15 @@
                 <span class="pt-detail-name">{{ pt.detail?.sourceTaskName }}</span>
                 <span class="pt-card-status" :class="pt.detail?.sourceTaskStatus">{{ statusText(pt.detail?.sourceTaskStatus || '') }}</span>
                 <span class="pt-detail-time" v-if="pt.detail?.sourceTaskTotalCases != null">用例 {{ pt.detail?.sourceTaskCompletedCases ?? 0 }}/{{ pt.detail?.sourceTaskTotalCases }}</span>
+                <!-- INT-283：跳转来源日常任务详情/报告（对齐基线 V9.7.10 行尾按钮） -->
+                <span class="pt-detail-actions">
+                  <button class="btn btn-secondary btn-sm" :disabled="pt.actionLoading" @click="emitTaskAction('view-details', { id: sourceTaskId })">
+                    <i class="fas fa-eye"></i> 详情
+                  </button>
+                  <button class="btn btn-primary btn-sm" :disabled="pt.actionLoading" @click="emitTaskAction('view-report', { id: sourceTaskId, name: pt.detail?.sourceTaskName })">
+                    <i class="fas fa-file-alt"></i> 报告
+                  </button>
+                </span>
               </div>
               <div class="pt-legacy-banner">
                 <i class="fas fa-clock-rotate-left"></i>
@@ -129,6 +138,15 @@
               <span class="pt-card-status" :class="exec.status">{{ statusText(exec.status) }}</span>
               <span class="pt-detail-time">用例 {{ exec.completedCases }}/{{ exec.totalCases }}</span>
               <span class="pt-detail-time">{{ formatDate(exec.createdAt) }}</span>
+              <!-- INT-283：跳转执行生成的日常任务详情/报告（对齐基线 V9.7.10 行尾按钮） -->
+              <span class="pt-detail-actions">
+                <button class="btn btn-secondary btn-sm" :disabled="pt.actionLoading" @click="emitTaskAction('view-details', { id: exec.taskId })">
+                  <i class="fas fa-eye"></i> 详情
+                </button>
+                <button class="btn btn-primary btn-sm" :disabled="pt.actionLoading" @click="emitTaskAction('view-report', { id: exec.taskId, name: exec.taskName })">
+                  <i class="fas fa-file-alt"></i> 报告
+                </button>
+              </span>
             </div>
           </div>
         </div>
@@ -213,6 +231,11 @@ import PublishedTaskNameModal from '../../components/published-task/PublishedTas
 const props = defineProps<{
   /** 宿主注入的已发布任务 Application 状态（Tasks 页共享筛选栏与面板同源） */
   pt: ReturnType<typeof usePublishedTasks>;
+}>();
+
+/** INT-283：行内详情/报告跳转透传给宿主（对齐 MergedTaskPanel/CherryPickPanel 的 task-action 契约） */
+const emit = defineEmits<{
+  (e: 'task-action', payload: { action: { id: string }; task: any }): void;
 }>();
 
 const router = useRouter();
@@ -509,6 +532,17 @@ function handleRename(ptItem: PublishedTaskItem) {
   });
 }
 
+// ---------- 详情/报告跳转（INT-283） ----------
+
+/**
+ * 行内跳转入口（对齐基线 V9.7.10 已发布 Tab 行尾按钮）：透传给宿主 Tasks.vue 的
+ * handleTaskAction（view-details → 任务详情模态 TaskDetailModal，view-report → /report/:id），
+ * 与日常任务列表/合并任务源行共用同一动作分发，行为一致。
+ */
+function emitTaskAction(actionId: 'view-details' | 'view-report', task: { id: number | string | null | undefined; name?: string | null }) {
+  emit('task-action', { action: { id: actionId }, task });
+}
+
 onMounted(() => {
   pt.fetchList();
 });
@@ -743,6 +777,13 @@ defineExpose({ openPublishModal });
 .pt-detail-source {
   color: var(--color-slate-400);
   font-size: 12px;
+}
+
+/* INT-283：行内详情/报告跳转按钮（对齐基线 V9.7.10 已发布 Tab 行尾按钮，右对齐） */
+.pt-detail-actions {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
 }
 
 /* INT-303：存量版本（发布时未冻结任务详情）历史标注 */
