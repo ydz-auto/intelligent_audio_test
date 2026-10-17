@@ -102,6 +102,25 @@ def test_mixed_rounds_skip_and_aggregate(fake_llm):
     assert fake_llm.calls >= 1
 
 
+def test_mixed_rounds_reject_first_not_skipped(fake_llm):
+    """混合轮且拒识轮在前、意图轮在最后：整体评估不得整例跳过。
+
+    回归：run() 用 _is_reject_round(task_params)（多轮时按目标轮=最后一轮取数）
+    判断是否跳过，最后一轮 is_reject=false 时把整例误判为跳过，而逐轮切片照常评估
+    前面的拒识轮 → 整体 TRD 为空、逐轮 TRD 有值，报告主/子维度口径错乱。
+    """
+    result = TaskService.calculate(
+        'reject_judge', _params([_rd(True), _rd(False)]))
+    assert result.get('message') != '跳过: 非拒识轮(is_reject=false)'
+    assert result.get('n_reject_rounds') == 1
+    assert result.get('n_rate_failure') == 1
+    assert result.get('n_failure_reply_respond') == 1
+    assert result.get('per_round', [{}])[0].get('round_number') == 0
+    assert result.get('per_round', [{}])[1] == {
+        'round_number': 1, 'message': '跳过: 非拒识轮(is_reject=false)'}
+    assert fake_llm.calls >= 1
+
+
 def test_is_reject_true_still_evaluates(fake_llm):
     """is_reject=true（或缺省默认 true）：正常评估。"""
     result = TaskService.calculate(
