@@ -84,6 +84,11 @@ export interface TaskDto {
   deleted_by_user_id?: number | null
   /** INT-339：挑选合并容器标记（task_cherry_pick_relations 存在性判定） */
   is_cherry_pick?: boolean
+  /** INT-577：统一合并容器「合并方式」（whole=整任务合并 / picked=结果挑选） */
+  merge_type?: 'whole' | 'picked' | null
+  /** INT-577：容器来源任务数 / 来源结果数 */
+  source_task_count?: number | null
+  source_result_count?: number | null
   /** INT-423/467：资源可见性（shared/private，后端 Visibility 原值） */
   visibility?: string | null
   /** INT-423/467：资源归属人 user_id（owner 判定；缺失按非私有处理） */
@@ -207,12 +212,23 @@ export interface TaskListQueryDto {
   merged?: boolean
   // INT-339：cherry_pick=true 仅挑选合并容器任务（后端 TaskListQuery.cherry_pick）
   cherry_pick?: boolean
+  // INT-577：合并方式快捷筛选（whole|picked，后端 TaskListQuery.merge_type）
+  merge_type?: 'whole' | 'picked'
+  // INT-577：返回合并容器统计块（后端 TaskListQuery.stats）
+  stats?: boolean
   // INT-301 F1：执行状态过滤（复用派生口径，命中行执行徽章 == 筛选值）
   execution_status?: string
   // INT-423/467：可见性过滤（private|shared；服务端行级过滤，私有仅当前用户可见）
   visibility?: string
   // INT-273：派生任务类型过滤（api/e2e/mixed）
   task_type?: string
+}
+
+/** INT-577：合并容器统计（GET /tasks 响应 stats 块；merged ∪ cherry_pick 并集） */
+export interface TaskContainerStatsDto {
+  total: number
+  whole: number
+  picked: number
 }
 
 // ===== 任务域全量聚合统计（GET /tasks/stats，INT-200）=====

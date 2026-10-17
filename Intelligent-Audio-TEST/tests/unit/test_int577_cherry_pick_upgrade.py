@@ -333,3 +333,25 @@ def test_cart_snapshot_source_result_type(db):
     detail = cherry_pick_service.set_detail(set_id)['data']
     assert len(detail['items']) == 2
     assert {it['source_result_type'] for it in detail['items']} == {'real-time', 'final'}
+
+
+# ==================== 网关契约回归（§11-1 stats/merge_type 查询参数） ====================
+
+def test_gateway_task_list_query_accepts_int577_params():
+    """§11-1 网关契约回归：TaskListQuery 必须接受 stats / merge_type 参数。
+
+    APIModel extra=ignore 会静默丢弃未声明字段；若 schema 缺字段，服务侧
+    query.stats 将 AttributeError → 500。此用例锁定前端下发参数可解析。
+    """
+    from api_gateway.schemas.task import TaskListQuery
+
+    q = TaskListQuery.model_validate({
+        'stats': 'true', 'merge_type': 'whole', 'merged': True, 'cherry_pick': True,
+    })
+    assert q.stats is True
+    assert q.merge_type == 'whole'
+    assert q.merged is True and q.cherry_pick is True
+
+    q2 = TaskListQuery.model_validate({'stats': True, 'merge_type': 'picked'})
+    assert q2.stats is True
+    assert q2.merge_type == 'picked'

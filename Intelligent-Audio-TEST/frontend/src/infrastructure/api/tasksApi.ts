@@ -56,6 +56,10 @@ export interface TaskListQuery {
   merged?: boolean
   // INT-339：cherry_pick=true 仅挑选合并容器任务（挑选合并页签数据源）
   cherryPick?: boolean
+  // INT-577：合并方式快捷筛选（whole|picked）
+  mergeType?: 'whole' | 'picked'
+  // INT-577：返回合并容器统计块（merged ∪ cherry_pick 并集；挑选合并页签计数/facet 数据源）
+  stats?: boolean
   // INT-301 F1：执行状态过滤（复用派生口径，命中行执行徽章 == 筛选值）
   executionStatus?: string
   // INT-423/467：可见性过滤（private|shared；服务端行级过滤）
@@ -81,6 +85,10 @@ function toTaskListQueryDto(query: TaskListQuery): TaskListQueryDto {
   if (query.merged !== undefined) dto.merged = query.merged
   // INT-339：挑选合并容器任务过滤
   if (query.cherryPick !== undefined) dto.cherry_pick = query.cherryPick
+  // INT-577：合并方式快捷筛选（whole|picked；后端映射为 merged/cherry_pick 布尔）
+  if (query.mergeType !== undefined) dto.merge_type = query.mergeType
+  // INT-577：合并容器统计块（后端 TaskListQuery.stats）
+  if (query.stats !== undefined) dto.stats = query.stats
   // INT-301 F1：执行状态过滤（复用派生口径，徽章与筛选一致）
   if (query.executionStatus !== undefined) dto.execution_status = query.executionStatus
   // INT-423/467：可见性过滤（同名透传；后端 TaskListQuery.visibility）

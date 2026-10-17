@@ -79,6 +79,8 @@ export function useCherryPickContainers() {
         perPage: perPage.value,
         merged: true,
         cherryPick: true,
+        // INT-577：恒返回合并容器统计块（页签计数/facet 徽章数据源）
+        stats: true,
         // INT-577：合并方式 facet（whole|picked）走后端 merge_type 快捷筛选
         ...(filters.mergeType !== 'all' ? { mergeType: filters.mergeType } : {}),
       };
