@@ -301,10 +301,21 @@ class CherryPickService:
         - 默认剔除 excluded=1 行（被删用例排除，INT-305 聚合口径）
         - 评估状态取自 evaluation_service（TestResultDimension 存在性），
           经 gRPC 批量查询（P1.7 先例），跨服务不直连
+        - INT-657：task_ids 命中容器任务时经 task_cherry_pick_relations
+          解析其引用的源结果参与候选命中（容器自身无 test_results 行，
+          引用方案 A §5.1），命中项标注为容器任务（与源任务口径一致）
         """
         from task_service.infrastructure.persistence.models import Task, TestResult
         from shared.models.database import get_db_session
-        from sqlalchemy import func as sa_func
+        from sqlalchemy import func as sa_func, or_
+
+        direct_task_ids = list(task_ids)
+        container_result_map = {}
+        if task_ids:
+            direct_task_ids, container_result_map = self._resolve_container_task_ids(task_ids)
+            if not direct_task_ids and not container_result_map:
+                # 所选来源任务全部为不可再挑容器任务（§10）：无候选命中（INT-657）
+                return [], 0
 
         session = get_db_session()
         try:
@@ -314,7 +325,13 @@ class CherryPickService:
             q = q.filter(Task.status.in_([s.value for s in PickableTaskStatus]),
                          Task.deleted == False)  # noqa: E712
             if task_ids:
-                q = q.filter(TestResult.task_id.in_(task_ids))
+                # INT-657：容器任务经引用关系解析命中（源任务直查 ∪ 容器引用结果）
+                conds = []
+                if direct_task_ids:
+                    conds.append(TestResult.task_id.in_(direct_task_ids))
+                if container_result_map:
+                    conds.append(TestResult.id.in_(list(container_result_map.keys())))
+                q = q.filter(conds[0] if len(conds) == 1 else or_(*conds))
             if device_ids:
                 q = q.filter(TestResult.device_id.in_(device_ids))
             if case_ids:
@@ -325,12 +342,24 @@ class CherryPickService:
                 # 评估状态过滤（已评估/未评估）：评估维度行归属 evaluation_service，
                 # 经 gRPC 批量解析命中范围内的已评估结果 ID 集（限定范围控制批量化成本；
                 # 未指定 task_ids 时以全部可挑选终态任务为范围）
-                scope_ids = task_ids or [t.id for t in session.query(Task.id).filter(
-                    Task.status.in_([s.value for s in PickableTaskStatus]),
-                    Task.deleted == False).all()]  # noqa: E712
-                result_ids_in_scope = [r[0] for r in session.query(TestResult.id).filter(
-                    TestResult.task_id.in_(scope_ids),
-                    TestResult.excluded == 0).all()] if scope_ids else []
+                result_ids_in_scope = []
+                if task_ids:
+                    # INT-657：容器命中范围含引用结果（源任务直查结果 ∪ 容器引用结果）
+                    if direct_task_ids:
+                        result_ids_in_scope += [r[0] for r in session.query(TestResult.id).filter(
+                            TestResult.task_id.in_(direct_task_ids),
+                            TestResult.excluded == 0).all()]
+                    if container_result_map:
+                        result_ids_in_scope += [r[0] for r in session.query(TestResult.id).filter(
+                            TestResult.id.in_(list(container_result_map.keys())),
+                            TestResult.excluded == 0).all()]
+                else:
+                    scope_ids = [t.id for t in session.query(Task.id).filter(
+                        Task.status.in_([s.value for s in PickableTaskStatus]),
+                        Task.deleted == False).all()]  # noqa: E712
+                    result_ids_in_scope = [r[0] for r in session.query(TestResult.id).filter(
+                        TestResult.task_id.in_(scope_ids),
+                        TestResult.excluded == 0).all()] if scope_ids else []
                 evaluated = self._evaluated_result_ids(result_ids_in_scope)
                 if evaluation_status == EvaluationStatus.PENDING:
                     # 未评估：不在已评估集合（含维度行缺失场景）
@@ -358,13 +387,19 @@ class CherryPickService:
             row_result_ids = [r.id for r, _t in rows]
             evaluated_map = self._evaluated_result_ids(row_result_ids) if row_result_ids else {}
 
+            # INT-657：容器引用命中的结果标注为容器任务（与源任务口径一致）；
+            # 同结果同时被源任务直查命中的保留源任务标注（直查优先，不混淆归属）
+            direct_task_ids_set = set(direct_task_ids)
             items = []
             for result, task in rows:
+                label = container_result_map.get(result.id) if container_result_map else None
+                use_container = label is not None and (
+                    not direct_task_ids_set or result.task_id not in direct_task_ids_set)
                 items.append({
                     'result_id': result.id,
-                    'task_id': task.id,
-                    'task_name': task.name,
-                    'task_status': task.status,
+                    'task_id': label['task_id'] if use_container else task.id,
+                    'task_name': label['task_name'] if use_container else task.name,
+                    'task_status': label['task_status'] if use_container else task.status,
                     'case_id': result.test_case_id,
                     'device_id': result.device_id,
                     'api_id': result.api_id,
@@ -376,6 +411,48 @@ class CherryPickService:
             return items, int(total)
         finally:
             session.close()
+
+    def _resolve_container_task_ids(self, task_ids: List[int]) -> tuple:
+        """候选查询容器命中解析（INT-657）。
+
+        容器任务自身无 test_results 行（引用方案 A，§5.1），须经
+        task_cherry_pick_relations 把容器任务解析为其引用的源结果 ID，
+        使容器任务在「来源任务」候选下拉中可命中再挑（与源任务口径一致）。
+
+        返回 (direct_task_ids, container_result_map)：
+        - direct_task_ids：非容器任务（原 TestResult.task_id 直查）+ 不可
+          再挑选的容器任务（merged/已删除容器 §10 口径，退回直查恒无命中）
+        - container_result_map：{result_id: 容器任务标注 dict}（容器命中时
+          task_id/task_name/task_status 标注为容器任务）
+        """
+        ids = [int(t) for t in (task_ids or [])]
+        if not ids:
+            return [], {}
+        container_ids = self._repo.container_ids_in(ids)
+        direct_ids = [t for t in ids if t not in set(container_ids)]
+        result_map: Dict[int, Dict[str, Any]] = {}
+        if container_ids:
+            # §10：容器任务自身也须为可挑选终态（merged/已删除容器不可再挑选，
+            # 退回 direct 直查——容器自身无结果行，不命中）
+            from task_service.infrastructure.persistence.models import Task
+            from shared.models.database import get_db_session
+            session = get_db_session()
+            try:
+                pickable = {t[0] for t in session.query(Task.id).filter(
+                    Task.id.in_(container_ids),
+                    Task.status.in_([s.value for s in PickableTaskStatus]),
+                    Task.deleted == False).all()}  # noqa: E712
+            finally:
+                session.close()
+            direct_ids += [t for t in container_ids if t not in pickable]
+            if pickable:
+                for rel in self._repo.relations_by_containers(sorted(pickable)):
+                    result_map.setdefault(rel['result_id'], {
+                        'task_id': rel['cherry_pick_task_id'],
+                        'task_name': rel['container_task_name'],
+                        'task_status': rel['container_task_status'],
+                    })
+        return direct_ids, result_map
 
     def _evaluated_result_ids(self, result_ids: Optional[List[int]]) -> set:
         """经 evaluation_service gRPC 批量查询已评估结果 ID 集合（P1.7 先例口径）。"""

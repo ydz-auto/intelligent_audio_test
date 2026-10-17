@@ -304,6 +304,34 @@ class CherryPickRepository:
         } for r in rows]
 
     @with_session(auto_commit=False)
+    def relations_by_containers(self, container_ids: List[int]) -> List[Dict[str, Any]]:
+        """批量取容器任务的引用关系（候选查询容器命中解析，INT-657）。
+
+        返回含容器任务名/状态标注（候选命中项归属展示用），避免逐容器 N+1。
+        """
+        ids = [int(t) for t in (container_ids or [])]
+        if not ids:
+            return []
+        session = get_db_session()
+        rows = (session.query(TaskCherryPickRelation, Task)
+                .join(Task, Task.id == TaskCherryPickRelation.cherry_pick_task_id)
+                .filter(TaskCherryPickRelation.cherry_pick_task_id.in_(ids))
+                .order_by(TaskCherryPickRelation.id).all())
+        return [{
+            'id': r.id,
+            'cherry_pick_task_id': r.cherry_pick_task_id,
+            'container_task_name': task.name if task else None,
+            'container_task_status': task.status if task else None,
+            'result_id': r.result_id,
+            'source_task_id': r.source_task_id,
+            'source_task_name': r.source_task_name,
+            'source_case_id': r.source_case_id,
+            'source_device_id': r.source_device_id,
+            'source_api_id': r.source_api_id,
+            'created_at': r.created_at.isoformat() if r.created_at else None,
+        } for r, task in rows]
+
+    @with_session(auto_commit=False)
     def container_ids_by_source(self, source_task_id: int) -> List[int]:
         """按来源任务反查引用它的容器任务（源任务删除/审计用）。"""
         session = get_db_session()

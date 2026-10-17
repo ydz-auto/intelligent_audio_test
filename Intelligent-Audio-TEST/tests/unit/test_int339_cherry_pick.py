@@ -198,6 +198,105 @@ def test_candidates_terminal_tasks_only_and_filters(db):
     assert by_status['data']['items'] == []
 
 
+def test_candidates_container_task_hit(db):
+    """INT-657：容器任务经引用关系参与候选命中——
+    按容器 task_ids 筛选返回其引用的源结果，且命中项标注为容器任务
+    （与源任务口径一致，候选下拉中容器可选后再挑）。"""
+    from task_service.application.task.cherry_pick_service import cherry_pick_service
+
+    src_a, results_a = _seed_source_task(name='INT657容器源A')
+    src_b, results_b = _seed_source_task(name='INT657容器源B')
+    set_current_user_id(42)
+    # 跨任务加购下单 merge → 容器引用 A-C1 + B-C2（引用方案 A，源行不搬）
+    cherry_pick_service.cart_add({'result_ids': [results_a[0][1], results_b[1][1]]})
+    out = cherry_pick_service.checkout({'action': 'merge', 'name': 'INT657容器'})
+    assert out['success'] is True, out.get('message')
+    container_id = out['data']['task_id']
+
+    set_current_user_id(None)  # 查询侧不要求用户
+    # 验收 1/2：按容器筛选命中其引用结果，标注为容器任务
+    resp = cherry_pick_service.list_candidates({'task_ids': [container_id]})
+    assert resp['success'] is True
+    assert {i['result_id'] for i in resp['data']['items']} == {
+        results_a[0][1], results_b[1][1]}
+    for i in resp['data']['items']:
+        assert i['task_id'] == container_id
+        assert i['task_name'] == 'INT657容器'
+        assert i['task_status'] == 'completed'
+
+    # 容器 + 源任务混选：源任务直查结果保留源任务标注，容器引用结果并入（无重复计数）
+    mixed = cherry_pick_service.list_candidates({'task_ids': [src_a, container_id]})
+    assert mixed['success'] is True
+    assert {i['result_id'] for i in mixed['data']['items']} == {
+        results_a[0][1], results_a[1][1], results_b[1][1]}
+    # A 的结果直查命中 → 源任务标注；B-C2 仅容器引用 → 容器标注
+    by_task = {}  # {task_id: set(result_id)}
+    for i in mixed['data']['items']:
+        by_task.setdefault(i['task_id'], set()).add(i['result_id'])
+    assert by_task[src_a] == {results_a[0][1], results_a[1][1]}
+    assert by_task[container_id] == {results_b[1][1]}
+    assert all(i['task_name'] == 'INT657容器源A'
+               for i in mixed['data']['items'] if i['task_id'] == src_a)
+
+    # 无过滤候选仍不含容器标注（容器结果经源任务可再挑，避免重复计数）
+    all_resp = cherry_pick_service.list_candidates({})
+    assert all(i['task_id'] != container_id for i in all_resp['data']['items'])
+
+
+def test_candidates_container_reexecute_repick_flow(db):
+    """INT-657：容器引用的结果再挑后可直接下单重执行（候选 → 加购 → 下单闭环）。"""
+    from task_service.application.task.cherry_pick_service import cherry_pick_service
+
+    _src, results = _seed_source_task(name='INT657重挑源')
+    set_current_user_id(42)
+    cherry_pick_service.cart_add({'result_ids': [results[0][1], results[1][1]]})
+    out = cherry_pick_service.checkout({'action': 'merge', 'name': 'INT657重挑容器'})
+    container_id = out['data']['task_id']
+
+    # 经容器命中再挑：结果加入购物车（溯源快照仍取源行）→ 下单重执行
+    set_current_user_id(42)
+    set_current_user_id(None)
+    resp = cherry_pick_service.list_candidates({'task_ids': [container_id]})
+    picked = [i['result_id'] for i in resp['data']['items']]
+    assert picked == [results[0][1], results[1][1]]
+
+    set_current_user_id(42)
+    added = cherry_pick_service.cart_add({'result_ids': picked})
+    assert added['success'] is True and len(added['data']['added']) == 2
+    cart = cherry_pick_service.cart_get()
+    assert cart['data']['total'] == 2
+    # 溯源快照仍指向真实源任务（候选标注容器不影响购物车来源归属）
+    assert all(g['source_task_id'] == _src for g in cart['data']['groups'])
+
+    import task_service.application.task.cherry_pick_service as cp_module
+    original_start = cp_module.task_lifecycle_start
+    cp_module.task_lifecycle_start = lambda tid: {'success': True, 'message': 'ok', 'data': None}
+    try:
+        out2 = cherry_pick_service.checkout({'action': 'reexecute', 'name': 'INT657再执行'})
+    finally:
+        cp_module.task_lifecycle_start = original_start
+    assert out2['success'] is True
+    assert out2['data']['case_count'] == 2
+
+
+def test_candidates_container_filter_and_evaluation(db):
+    """INT-657：容器命中与评估状态过滤并存——评估范围含容器引用结果。"""
+    from task_service.application.task.cherry_pick_service import cherry_pick_service
+
+    _src, results = _seed_source_task(name='INT657评估源')
+    set_current_user_id(42)
+    cherry_pick_service.cart_add({'result_ids': [results[0][1]]})
+    out = cherry_pick_service.checkout({'action': 'merge', 'name': 'INT657评估容器'})
+    container_id = out['data']['task_id']
+
+    set_current_user_id(None)
+    # 评估状态过滤（gRPC 维度行缺失 → 全部未评估降级）：容器命中范围含引用结果
+    resp = cherry_pick_service.list_candidates(
+        {'task_ids': [container_id], 'evaluation_status': 'pending'})
+    assert resp['success'] is True
+    assert {i['result_id'] for i in resp['data']['items']} == {results[0][1]}
+
+
 # ==================== S3 容器任务 / 读链路引用解析 ====================
 
 def test_checkout_merge_container_and_reference_resolution(db):
