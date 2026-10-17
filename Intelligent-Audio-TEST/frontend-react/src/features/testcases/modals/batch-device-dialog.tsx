@@ -1,7 +1,8 @@
 /**
  * 批量设置播放设备弹窗（11_用例域.md §5.3.2，Dialog sm:max-w-lg）。
  * 「重新扫描」ghost 钮（扫描中 Spinner「正在扫描可用设备...」，失败红字）+ 播放设备* Select
- * （「{设备名} (通道 {n}) [干声/噪声]」，空态「暂无可用的播放设备」）+ 轮次范围 + 应用层级多选。
+ * （「{设备名} (通道 {n}) [干声/噪声]」，空态「暂无可用的播放设备」）+ 轮次范围三档
+ * （所有轮次统一/指定轮次统一/逐轮设置每轮可不同，§5.3.5 口径）+ 应用层级多选。
  * mock 扫描演示：每次重扫在成功/失败间轮换，失败态红字 + 设备清空（空态可走查）；
  * 数据契约 deviceId/roundMode/rounds/appliedLayers 留接线批次。
  */
@@ -27,7 +28,9 @@ import {
 import { Spinner } from '@/components/ui/spinner'
 import {
   ApplyLayerField,
-  RoundScopeField,
+  createRoundScope,
+  RoundScopeThreeField,
+  usePerRoundValue,
 } from '@/features/testcases/modals/batch-shared'
 
 /** mock 可用播放设备（§5.3.2「{设备名} (通道 {n}) [干声/噪声]」口径） */
@@ -51,9 +54,10 @@ export function BatchDeviceDialog({
   count: number
 }) {
   const [scanState, setScanState] = useState<ScanState>('ready')
-  const [deviceId, setDeviceId] = useState('')
   const [scanRound, setScanRound] = useState(0)
   const timerRef = useRef<number | null>(null)
+  const [scope, setScope] = useState(createRoundScope())
+  const { current: deviceId, setCurrent: setDeviceId } = usePerRoundValue('', scope)
 
   useEffect(() => () => {
     if (timerRef.current != null) window.clearTimeout(timerRef.current)
@@ -89,7 +93,9 @@ export function BatchDeviceDialog({
 
         <div className='space-y-4'>
           <div className='space-y-1.5'>
-            <span className='text-sm font-medium'>播放设备 *</span>
+            <span className='text-sm font-medium'>
+              {scope.mode === 'per_round' ? `第 ${scope.activeRound} 轮播放设备 *` : '播放设备 *'}
+            </span>
             <Select
               value={deviceId}
               onValueChange={(v) => setDeviceId(v ?? '')}
@@ -124,7 +130,11 @@ export function BatchDeviceDialog({
             </div>
           </div>
 
-          <RoundScopeField name='batch-device-round' />
+          <RoundScopeThreeField
+            name='batch-device-round'
+            value={scope}
+            onChange={setScope}
+          />
           <ApplyLayerField />
         </div>
 

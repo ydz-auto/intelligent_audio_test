@@ -2,7 +2,8 @@
  * 批量设置噪声弹窗（11_用例域.md §5.3.4，Dialog sm:max-w-xl）。
  * 噪声音频（选择器卡「点击选择噪声音频」→ 打开音频选择弹窗；已选显名 + 重新选择/清除）
  * + 噪声声压级 dB（number 0-140，提示「建议值：94 dB（1kHz 校准点）」）
- * + 播放设备（多选选择器卡）+ 轮次范围 + 应用层级多选（默认勾选 case级/segment级背景噪声）。
+ * + 播放设备（多选选择器卡）+ 轮次范围三档（所有轮次统一/指定轮次统一/逐轮设置每轮可不同，
+ * §5.3.5 口径）+ 应用层级多选（默认勾选 case级/segment级背景噪声）。
  * 可视稿演示态：提交走 toast；数据契约 noiseAudio/spl/deviceIds/roundMode/rounds/appliedLayers 留接线批次。
  */
 import { AudioWaveform } from 'lucide-react'
@@ -23,7 +24,9 @@ import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import {
   ApplyLayerField,
-  RoundScopeField,
+  createRoundScope,
+  RoundScopeThreeField,
+  usePerRoundValue,
 } from '@/features/testcases/modals/batch-shared'
 
 /** mock 噪声音频（§5.3.4 音频选择弹窗，audioType='noise' 单选；形态对齐 AudioAsset 简版） */
@@ -35,6 +38,13 @@ const MOCK_NOISE_AUDIOS = [
 ]
 
 type NoiseAudio = (typeof MOCK_NOISE_AUDIOS)[number]
+
+/** 单轮噪声配置值（逐轮设置时每轮一份；统一/指定轮次共用一份） */
+type NoiseValue = {
+  audio: NoiseAudio | null
+  spl: string
+  devices: Set<string>
+}
 
 /** mock 播放设备（§5.3.4 多选选择器卡） */
 const MOCK_PLAYBACK_DEVICES = [
@@ -115,21 +125,29 @@ export function BatchNoiseDialog({
   onOpenChange: (open: boolean) => void
   count: number
 }) {
-  const [audio, setAudio] = useState<NoiseAudio | null>(null)
+  const [scope, setScope] = useState(createRoundScope())
   const [pickingAudio, setPickingAudio] = useState(false)
-  const [spl, setSpl] = useState('94')
-  const [deviceIds, setDeviceIds] = useState<Set<string>>(
-    () => new Set(['dev-1', 'dev-3'])
+  const { current: noise, setCurrent: setNoise } = usePerRoundValue<NoiseValue>(
+    { audio: null, spl: '94', devices: new Set(['dev-1', 'dev-3']) },
+    scope
   )
 
-  const toggleDevice = (id: string) => {
-    setDeviceIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
+  const setAudio = (audio: NoiseAudio | null) => setNoise({ ...noise, audio })
+  const setSpl = (spl: string) => setNoise({ ...noise, spl })
+  const toggleDevice = (id: string) =>
+    setNoise({
+      ...noise,
+      devices: (() => {
+        const next = new Set(noise.devices)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return next
+      })(),
     })
-  }
+
+  const audio = noise.audio
+  const spl = noise.spl
+  const deviceIds = noise.devices
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -193,7 +211,11 @@ export function BatchNoiseDialog({
 
           {/* 噪声声压级 */}
           <div className='space-y-1.5'>
-            <span className='text-sm font-medium'>噪声声压级 dB</span>
+            <span className='text-sm font-medium'>
+              {scope.mode === 'per_round'
+                ? `第 ${scope.activeRound} 轮噪声声压级 dB`
+                : '噪声声压级 dB'}
+            </span>
             <Input
               type='number'
               min={0}
@@ -237,7 +259,11 @@ export function BatchNoiseDialog({
             </p>
           </div>
 
-          <RoundScopeField name='batch-noise-round' />
+          <RoundScopeThreeField
+            name='batch-noise-round'
+            value={scope}
+            onChange={setScope}
+          />
 
           {/* 应用层级（默认勾选 case级/segment级背景噪声） */}
           <ApplyLayerField defaultChecked={['case-bg', 'segment-bg']} />

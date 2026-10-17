@@ -1,7 +1,8 @@
 /**
  * 批量设置声压级弹窗（11_用例域.md §5.3.3，Dialog sm:max-w-md）。
  * 声压级 dB*（number，占位「请输入声压级，例如：65」）+ 应用层级多选（五项，可多选）
- * + 轮次范围 RadioGroup「所有轮次/指定轮次」。
+ * + 轮次范围三档「所有轮次（统一设置）/指定轮次（统一设置）/逐轮设置（每轮可不同）」
+ * （§5.3.5 口径；负责人反馈「其他批量操作也是三档轮次范围逐项可用」）。
  * 可视稿演示态：提交走 toast；数据契约 spl/roundMode/rounds/appliedLayers 留接线批次。
  */
 import { useState } from 'react'
@@ -19,7 +20,9 @@ import {
 import { Input } from '@/components/ui/input'
 import {
   ApplyLayerField,
-  RoundScopeField,
+  createRoundScope,
+  RoundScopeThreeField,
+  usePerRoundValue,
 } from '@/features/testcases/modals/batch-shared'
 
 export function BatchSplDialog({
@@ -31,7 +34,8 @@ export function BatchSplDialog({
   onOpenChange: (open: boolean) => void
   count: number
 }) {
-  const [spl, setSpl] = useState('')
+  const [scope, setScope] = useState(createRoundScope())
+  const { current: spl, setCurrent: setSpl } = usePerRoundValue('', scope)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -45,7 +49,9 @@ export function BatchSplDialog({
 
         <div className='space-y-4'>
           <div className='space-y-1.5'>
-            <span className='text-sm font-medium'>声压级 dB *</span>
+            <span className='text-sm font-medium'>
+              {scope.mode === 'per_round' ? `第 ${scope.activeRound} 轮声压级 dB *` : '声压级 dB *'}
+            </span>
             <Input
               type='number'
               min={0}
@@ -59,7 +65,11 @@ export function BatchSplDialog({
           </div>
 
           <ApplyLayerField />
-          <RoundScopeField name='batch-spl-round' />
+          <RoundScopeThreeField
+            name='batch-spl-round'
+            value={scope}
+            onChange={setScope}
+          />
         </div>
 
         <DialogFooter>

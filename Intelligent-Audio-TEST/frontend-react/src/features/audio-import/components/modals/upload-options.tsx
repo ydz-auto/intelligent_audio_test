@@ -6,9 +6,9 @@
  * + API/E2E 评估维度勾选必填（DimensionConfigPanel 对位）。
  */
 import { Check, Info } from 'lucide-react'
+import { useState } from 'react'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -91,6 +91,22 @@ export function UploadOptions(props: UploadOptionsProps) {
       ? props.testTypes.filter((v) => v !== value)
       : [...props.testTypes, value]
     props.onTestTypesChange(next)
+  }
+
+  // 评估维度勾选（参考 V9.7.10 DimensionCloud 点选交互；默认勾选必填项）
+  const [selectedUploadDims, setSelectedUploadDims] = useState<Set<number>>(
+    () =>
+      new Set(
+        UPLOAD_EVALUATION_DIMENSIONS.filter((d) => d.required).map((d) => d.id)
+      )
+  )
+  const toggleUploadDim = (id: number) => {
+    setSelectedUploadDims((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
   return (
@@ -217,18 +233,33 @@ export function UploadOptions(props: UploadOptionsProps) {
           </Alert>
 
           <div className='space-y-2'>
-            <Label>评估维度（必填项带 *）</Label>
+            <Label>评估维度（必填项带 *，可点选调整）</Label>
             <div className='flex flex-wrap gap-1.5'>
-              {UPLOAD_EVALUATION_DIMENSIONS.map((dimension) => (
-                <Badge
-                  key={dimension.id}
-                  variant='outline'
-                  className='gap-1 rounded-md px-1.5 font-normal'
-                >
-                  {dimension.name}
-                  {dimension.required && <span className='text-[var(--destructive)]'>*</span>}
-                </Badge>
-              ))}
+              {UPLOAD_EVALUATION_DIMENSIONS.map((dimension) => {
+                const checked = selectedUploadDims.has(dimension.id)
+                return (
+                  <button
+                    key={dimension.id}
+                    type='button'
+                    aria-pressed={checked}
+                    onClick={() => toggleUploadDim(dimension.id)}
+                    className={cn(
+                      'flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs transition-colors',
+                      checked
+                        ? 'bg-primary/10 border-primary/40 text-primary font-medium'
+                        : 'hover:bg-accent border-border text-muted-foreground'
+                    )}
+                  >
+                    {dimension.name}
+                    {dimension.required && (
+                      <span className='text-[var(--destructive)]'>*</span>
+                    )}
+                    {checked && (
+                      <Check aria-hidden='true' className='size-3' />
+                    )}
+                  </button>
+                )
+              })}
             </div>
           </div>
         </>

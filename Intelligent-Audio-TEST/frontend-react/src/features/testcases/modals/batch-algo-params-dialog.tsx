@@ -1,7 +1,8 @@
 /**
  * 批量设置用例专属参数弹窗（11_用例域.md §5.3.1，Dialog sm:max-w-2xl）。
  * 算法类型*（Select，MOCK_ALGORITHMS）→ 参数配置 DynamicForm（按该算法 schema，
- * 空态「该算法暂无参数配置」）+ 轮次范围 RadioGroup「所有轮次/指定轮次」。
+ * 空态「该算法暂无参数配置」）+ 轮次范围三档（所有轮次统一/指定轮次统一/逐轮设置每轮可不同，
+ * §5.3.5 口径；负责人反馈「其他批量操作也是三档轮次范围逐项可用」）。
  * 可视稿演示态：提交走 toast；数据契约 algorithmType/params/roundMode/rounds 留接线批次。
  */
 import { useState } from 'react'
@@ -27,7 +28,11 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { MOCK_ALGORITHMS } from '@/domain/models/algorithm'
-import { RoundScopeField } from '@/features/testcases/modals/batch-shared'
+import {
+  createRoundScope,
+  RoundScopeThreeField,
+  usePerRoundValue,
+} from '@/features/testcases/modals/batch-shared'
 import {
   ALGO_SCHEMAS,
   type AlgorithmParamField,
@@ -91,10 +96,17 @@ function AlgoParamInput({
   )
 }
 
-/** 参数配置节（key=algorithmType 强制重置，避免算法切换残留旧字段值） */
-function AlgoParamForm({ algorithmType }: { algorithmType: string }) {
+/** 参数配置节（受控；key=algorithmType 强制重置，避免算法切换残留旧字段值） */
+function AlgoParamForm({
+  algorithmType,
+  value,
+  onChange,
+}: {
+  algorithmType: string
+  value: Record<string, string | boolean>
+  onChange: (v: Record<string, string | boolean>) => void
+}) {
   const schema = ALGO_SCHEMAS[algorithmType]
-  const [values, setValues] = useState<Record<string, string | boolean>>({})
 
   if (!schema) {
     return (
@@ -116,8 +128,8 @@ function AlgoParamForm({ algorithmType }: { algorithmType: string }) {
               <AlgoParamInput
                 key={f.code}
                 field={f}
-                value={values[f.code]}
-                onChange={(v) => setValues((prev) => ({ ...prev, [f.code]: v }))}
+                value={value[f.code]}
+                onChange={(v) => onChange({ ...value, [f.code]: v })}
               />
             ))}
           </div>
@@ -137,6 +149,17 @@ export function BatchAlgoParamsDialog({
   count: number
 }) {
   const [algorithmType, setAlgorithmType] = useState('')
+  const [scope, setScope] = useState(createRoundScope())
+  const {
+    current: params,
+    setCurrent: setParams,
+    resetValue: resetParams,
+  } = usePerRoundValue<Record<string, string | boolean>>({}, scope)
+
+  const handleAlgorithmChange = (v: string | undefined) => {
+    setAlgorithmType(v ?? '')
+    resetParams()
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -151,7 +174,7 @@ export function BatchAlgoParamsDialog({
         <div className='space-y-4'>
           <div className='space-y-1.5'>
             <span className='text-sm font-medium'>算法类型 *</span>
-            <Select value={algorithmType} onValueChange={(v) => setAlgorithmType(v ?? '')}>
+            <Select value={algorithmType} onValueChange={handleAlgorithmChange}>
               <SelectTrigger size='sm' className='h-8 w-full'>
                 <SelectValue placeholder='请选择算法' />
               </SelectTrigger>
@@ -166,7 +189,19 @@ export function BatchAlgoParamsDialog({
           </div>
 
           {algorithmType ? (
-            <AlgoParamForm key={algorithmType} algorithmType={algorithmType} />
+            <>
+              {scope.mode === 'per_round' && (
+                <p className='rounded-md bg-muted/60 px-2 py-1.5 text-xs'>
+                  当前编辑第 {scope.activeRound} 轮参数，可逐轮分别配置
+                </p>
+              )}
+              <AlgoParamForm
+                key={algorithmType}
+                algorithmType={algorithmType}
+                value={params}
+                onChange={setParams}
+              />
+            </>
           ) : (
             <div className='border-border/60 rounded-lg border border-dashed px-3 py-6 text-center'>
               <p className='text-muted-foreground text-sm'>
@@ -175,7 +210,11 @@ export function BatchAlgoParamsDialog({
             </div>
           )}
 
-          <RoundScopeField name='batch-algo-params-round' />
+          <RoundScopeThreeField
+            name='batch-algo-params-round'
+            value={scope}
+            onChange={setScope}
+          />
         </div>
 
         <DialogFooter>

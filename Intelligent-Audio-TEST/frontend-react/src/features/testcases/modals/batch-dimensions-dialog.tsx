@@ -1,19 +1,18 @@
 /**
  * 批量设置评估维度弹窗（11_用例域.md §5.3.5，Dialog sm:max-w-3xl；标题按负责人口径与产品全域「评估维度」对齐）。
  * 轮次范围三档「所有轮次（统一设置）/指定轮次（统一设置）/逐轮设置（每轮可不同）」：
- * 「指定轮次」展开轮次号 Checkbox 组「第{n}轮」（与 §5.3.1~5.3.4 RoundScopeField 同口径，
+ * 「指定轮次」展开轮次号 Checkbox 组「第{n}轮」（与 §5.3.1~5.3.4 同口径，
  * 所有批量设置均可指定轮次/设定所有轮次）；逐轮模式轮次 Tab 交互体系（§5.3.5 ②：
- * Tab 角标=该轮已选维度数、× 关闭至少保留 1 轮、末尾「+ 添加轮次」、最后一轮 Tab 语义 -1）
- * + 维度勾选网格（按当前算法过滤）。
+ * Tab 角标=该轮已选维度数、× 关闭至少保留 1 轮、末尾「+ 添加轮次」、最后一轮 Tab 语义 -1）。
+ * 维度选择用 DimensionPicker（主/子层级云，参考 V9.7.10 DimensionCloud；勾选主维度联动子维度）。
  * 可视稿演示态：提交走 toast；数据契约 roundMode/rounds/roundDimensions 序列化留接线批次。
  */
 import { Plus, X } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -23,7 +22,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
-import type { EvaluationDimensionItem } from '@/domain/models/evaluationDimension'
+import type { Dimension } from '@/domain/models/evaluationDimension'
+import { DimensionPicker } from '@/features/testcases/modals/round-config/dimension-picker'
 
 type RoundMode = 'all' | 'specific' | 'per_round'
 
@@ -38,11 +38,13 @@ export function BatchDimensionsDialog({
   onOpenChange,
   count,
   dimensions,
+  algorithmType,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   count: number
-  dimensions: EvaluationDimensionItem[]
+  dimensions: Dimension[]
+  algorithmType?: string | null
 }) {
   const [roundMode, setRoundMode] = useState<RoundMode>('all')
   const [rounds, setRounds] = useState<RoundKey[]>([1, 2, -1])
@@ -69,17 +71,21 @@ export function BatchDimensionsDialog({
   const gridKeys: RoundKey[] =
     roundMode === 'all' ? rounds : roundMode === 'specific' ? specificRounds : [activeRound]
 
-  const isDimensionChecked = (dimId: number) =>
-    gridKeys.some((k) => (selected[k] ?? []).includes(dimId))
+  /** 传给 DimensionPicker 的已选集合（gridKeys 并集，主维度联动子维度） */
+  const gridSelected = useMemo(
+    () => [...new Set(gridKeys.flatMap((k) => selected[k] ?? []))],
+    [gridKeys, selected]
+  )
 
-  const toggleDimension = (dimId: number) => {
+  /** DimensionPicker 勾选（含主维度联动子维度）应用到 gridKeys 各轮次 */
+  const handleDimensionToggle = (ids: number[], checked: boolean) => {
     setSelected((prev) => {
       const next = { ...prev }
       gridKeys.forEach((k) => {
         const current = next[k] ?? []
-        next[k] = current.includes(dimId)
-          ? current.filter((id) => id !== dimId)
-          : [...current, dimId]
+        next[k] = checked
+          ? [...new Set([...current, ...ids])]
+          : current.filter((id) => !ids.includes(id))
       })
       return next
     })
@@ -90,8 +96,6 @@ export function BatchDimensionsDialog({
       prev.includes(round) ? prev.filter((r) => r !== round) : [...prev, round]
     )
   }
-
-  const mainDimensions = dimensions.filter((d) => d.dimensionType !== 'sub')
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -205,26 +209,21 @@ export function BatchDimensionsDialog({
             </div>
           )}
 
-          {/* 维度勾选网格 */}
+          {/* 维度选择（DimensionPicker 主/子层级云，参考 V9.7.10 DimensionCloud） */}
           <div>
             <p className='text-muted-foreground mb-2 text-xs'>
               {roundMode === 'per_round'
                 ? '已按当前算法过滤可用维度；未选维度的轮次将被清空'
                 : '已按当前算法过滤可用维度；不选任何维度点确定即清除所选轮次的评估维度'}
             </p>
-            <div className='grid max-h-56 grid-cols-2 gap-1.5 overflow-y-auto sm:grid-cols-3'>
-              {mainDimensions.map((dim) => (
-                <label
-                  key={dim.id}
-                  className='hover:bg-accent flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1.5 text-sm transition-colors'
-                >
-                  <Checkbox
-                    checked={isDimensionChecked(dim.id)}
-                    onCheckedChange={() => toggleDimension(dim.id)}
-                  />
-                  <span className='truncate'>{dim.name}</span>
-                </label>
-              ))}
+            <div className='max-h-72 overflow-y-auto rounded-lg border p-2'>
+              <DimensionPicker
+                dimensions={dimensions}
+                algorithmType={algorithmType}
+                selected={gridSelected}
+                onToggle={handleDimensionToggle}
+                showSearch
+              />
             </div>
           </div>
         </div>

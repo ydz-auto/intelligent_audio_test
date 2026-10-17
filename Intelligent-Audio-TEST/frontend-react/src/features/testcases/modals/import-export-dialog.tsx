@@ -8,6 +8,7 @@ import { FileUp, UploadCloud } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
+import { useEvaluationDimensions } from '@/application/evaluation/use-dimensions'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -25,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { DimensionPicker } from '@/features/testcases/modals/round-config/dimension-picker'
 
 const IMPORT_PREVIEW_ROWS = [
   { name: '智能音箱-播放音乐-中文-客厅', group: '智能音箱功能测试', algorithm: '通用识别引擎', rounds: '2 轮' },
@@ -42,6 +44,18 @@ export function ImportExportDialog({
   mode: 'import' | 'export'
 }) {
   const [format, setFormat] = useState('json')
+  /** 导入后评估维度选择（参考 V9.7.10 DimensionCloud 主/子层级；mock 演示） */
+  const [importDimIds, setImportDimIds] = useState<number[]>([])
+  const allDimsQuery = useEvaluationDimensions()
+  const allDimensions = allDimsQuery.data ?? []
+
+  const handleImportDimToggle = (ids: number[], checked: boolean) => {
+    setImportDimIds((prev) =>
+      checked
+        ? [...new Set([...prev, ...ids])]
+        : prev.filter((id) => !ids.includes(id))
+    )
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -104,6 +118,23 @@ export function ImportExportDialog({
                   </tbody>
                 </table>
               </div>
+            </div>
+
+            {/* ③ 导入后评估维度（参考 V9.7.10 DimensionCloud 主/子层级） */}
+            <div className='space-y-2'>
+              <span className='text-sm font-medium'>
+                导入后评估维度（可选）
+              </span>
+              <div className='max-h-64 overflow-y-auto rounded-lg border p-2'>
+                <DimensionPicker
+                  dimensions={allDimensions}
+                  selected={importDimIds}
+                  onToggle={handleImportDimToggle}
+                />
+              </div>
+              <p className='text-muted-foreground/70 text-xs'>
+                不选表示导入用例沿用文件内评估维度配置
+              </p>
             </div>
           </div>
         ) : (
