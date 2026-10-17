@@ -128,7 +128,7 @@
 | `/reports` | 报告展示页（导航栏「报告」直达；对外展示已发布报告，弱管理，行操作仅「查看/复制链接」） | `report:read` | AuthenticatedLayout | INT-439 ✅（INT-441/442） |
 | `/report-center` | 报告中心·管理页（侧栏「报告中心」直达；**单一列表视图默认全部报告，报告类型=筛选条件非页面层级**，生成/编辑/发布/删除/批量/导出/收藏/回收站/草稿管理集中；INT-439 v2.6 回写，INT-500 确认） | `report:read` | AuthenticatedLayout | INT-439 ✅（INT-441） |
 | `/report-statistics` | 报告统计分析（报告中心工具栏「统计分析」入口；统计维度/统计结果/趋势分析/报表生成四标签页） | `report:read` | AuthenticatedLayout | INT-439 ✅（§2.2 路由定稿 INT-500） |
-| `/ai-chat` | 灵犀Agent（Agent 工作台：报告生成/对比/分析；单栏对话+报告工作模式双栏变体） | `report:read` | AuthenticatedLayout | INT-415 ✅ |
+| `/ai-chat` | 灵犀Agent（Agent 工作台：报告生成/对比/分析；单栏对话+报告工作模式双栏变体；**2026-10-17 起含全局 Agent 工作台浮窗形态 + Demo 预览版口径**——见 08_AI对话页 §3.1B/§3.10/§3.11） | `report:read` | AuthenticatedLayout | INT-415 ✅ |
 | `/report/$reportId` | 报告查看（详情阅读页，返回按钮回退来源入口） | `report:read` | AuthenticatedLayout | INT-439 ✅ |
 | `/logs` | 日志查看 | `log:read` | AuthenticatedLayout | INT-362 ✅ |
 | `/AlgorithmConfig` | 算法配置（侧栏「测试域」组） | `algorithm:read` | AuthenticatedLayout | INT-362 ✅（内容规范）；导航落位 INT-417 |
@@ -198,14 +198,15 @@
 
 ### 3.2 右上角功能区
 
-**登录壳（AuthenticatedLayout 的 AppHeader 右区，INT-344 出组件）**，从左到右（次序按 INT-344 §3.1 定稿——newAPI 实测 Search→Notification→Language→Config→Profile 相对次序保留，签到/充值摘除，算法切换器插首位）：
+**登录壳（AuthenticatedLayout 的 AppHeader 右区，INT-344 出组件）**，从左到右（次序按 INT-344 §3.1 定稿——newAPI 实测 Search→Notification→Language→Config→Profile 相对次序保留，签到/充值摘除，算法切换器插首位；**2026-10-17 INT-415 增「全局 Agent 工作台魔法按钮」建议置于算法切换器之前**，最终落位次序以 INT-344 装配为准）：
 
-1. **全局算法切换器**（本平台特有，负责人口径；主案 INT-344）——总口径 §3.5；**INT-442 按路由显隐**：`/reports`（导航栏「报告」展示页）置 `showGlobalAlgorithmSwitcher=false`——该页算法切换唯一入口=页内「算法卡片网格」（INT-436 组件复用，每算法一张大卡）；`/report-center` 与其余登录壳页面默认显示（02_导航栏 §3.4 契约）。
-2. 全局搜索（`bg-muted/25 h-8 rounded-md` + ⌘K CommandDialog，照 `search.tsx`；登录即可，命中范围按各域权限动态注册）。
-3. 通知（NotificationPopover 照搬；登录即可，数据流 `sse:read` 五角色全持）。
-4. 语言切换（LanguageSwitcher 照搬占位；默认中文，多语言包启用与否待负责人确认 §7）。
-5. 主题切换（ConfigDrawer：深浅色 + 多主题预设 lake-view/rose-garden/默认蓝…，照 `config-drawer.tsx` + 基座卡机制；全员）。
-6. 头像下拉（ProfileDropdown `w-56` 照搬：用户卡[头像+用户名+角色名] → 个人中心 `/profile` → 系统设置（入口判定同 §3.4，不满足隐藏）→ 登出 destructive）。
+1. **全局 Agent 工作台魔法按钮**（2026-10-17 新口径，INT-415 定义组件与契约）：`ai-discount-core` 炫彩渐变钮（Sparkles + 「灵犀Agent」），点击开/关**全局 Agent 工作台浮窗**——登录壳任意页面可开、切换页面不关闭（照 Cloudflare dash 面板跨页驻留行为）；浮窗内嵌灵犀Agent 对话会话，`report:read` 门槛同 `/ai-chat`；Demo 预览版口径见 08_AI对话页 §3.1B/§3.10。**公共站头不渲染**（登录专属）。
+2. **全局算法切换器**（本平台特有，负责人口径；主案 INT-344）——总口径 §3.5；**INT-442 按路由显隐**：`/reports`（导航栏「报告」展示页）置 `showGlobalAlgorithmSwitcher=false`——该页算法切换唯一入口=页内「算法卡片网格」（INT-436 组件复用，每算法一张大卡）；`/report-center` 与其余登录壳页面默认显示（02_导航栏 §3.4 契约）。
+3. 全局搜索（`bg-muted/25 h-8 rounded-md` + ⌘K CommandDialog，照 `search.tsx`；登录即可，命中范围按各域权限动态注册）。
+4. 通知（NotificationPopover 照搬；登录即可，数据流 `sse:read` 五角色全持）。
+5. 语言切换（LanguageSwitcher 照搬占位；默认中文，多语言包启用与否待负责人确认 §7）。
+6. 主题切换（ConfigDrawer：深浅色 + 多主题预设 lake-view/rose-garden/默认蓝…，照 `config-drawer.tsx` + 基座卡机制；全员）。
+7. 头像下拉（ProfileDropdown `w-56` 照搬：用户卡[头像+用户名+角色名] → 个人中心 `/profile` → 系统设置（入口判定同 §3.4，不满足隐藏）→ 登出 destructive）。
 
 **公共站头（PublicHeader）**：语言切换 → 主题切换 → 通知 → 分隔线 → 「登录」按钮（未登录）/ 头像下拉（已登录）——`public-header.tsx` 实测顺序（INT-345 §站头实测点）。**全局算法切换器不在公共站头出现**（仅登录壳，INT-359 同口径）。
 
@@ -289,7 +290,7 @@
 | `/audio-import` | ✓ | ✓ | ✓（只读） | ✗ | ✗ | ↗ /login |
 | `/devices` | ✓ | ✓ | ✗ | ✓ | ✗ | ↗ /login |
 | `/reports`（展示页）`/report-center`（管理页）`/report/$id` | ✓ | ✓ | ✓ | ✗ | ✓（只读+对比） | ↗ /login |
-| `/ai-chat` 灵犀Agent | ✓ | ✓ | ✓ | ✗（无 report:read） | ✓（只读对话+对比，生成卡隐藏） | ↗ /login |
+| `/ai-chat` 灵犀Agent（含全局 Agent 工作台浮窗，`report:read` 门槛同整页；Demo 预览版口径 2026-10-17） | ✓ | ✓ | ✓ | ✗（无 report:read，魔法按钮与浮窗同隐藏） | ✓（只读对话+对比，生成卡隐藏） | ↗ /login |
 | `/logs` | ✓ | ✓ | ✓ | ✗ | ✗ | ↗ /login |
 | `/AlgorithmConfig` 算法配置 | ✓ | ✓（read+case_param_manage） | ✓（全链） | ✗ | ✗ | ↗ /login |
 | `/Evaluation` 评估维度 | ✓ | ✓（全链含 execute） | ✓（无 execute，其余全链） | ✗ | ✗ | ↗ /login |
