@@ -14,7 +14,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import type { ReportTimeRange } from '@/domain/models/report'
 import { cn } from '@/lib/utils'
+
+import { TIME_RANGE_OPTIONS } from '@/features/reports/constants'
 
 const TASK_TYPE_OPTIONS = [
   { value: 'e2e', label: 'e2e 端到端' },
@@ -39,6 +42,9 @@ interface ReportAdvancedSearchProps {
   taskType?: string
   deviceType?: string
   creator?: string
+  /** 高级搜索时间范围（§2 :117：任务类型 × 设备类型 × 创建者 × 时间范围多条件表单） */
+  timeRange?: ReportTimeRange | 'all'
+  onTimeRangeChange: (value: ReportTimeRange | 'all') => void
   onChange: (patch: { taskType?: string; deviceType?: string; creator?: string }) => void
   onReset: () => void
 }
@@ -47,11 +53,13 @@ export function ReportAdvancedSearch({
   taskType,
   deviceType,
   creator,
+  timeRange,
+  onTimeRangeChange,
   onChange,
   onReset,
 }: ReportAdvancedSearchProps) {
   const [open, setOpen] = useState(false)
-  const hasActive = Boolean(taskType || deviceType || creator)
+  const hasActive = Boolean(taskType || deviceType || creator || (timeRange && timeRange !== 'all'))
 
   return (
     <div className='mt-2'>
@@ -71,7 +79,7 @@ export function ReportAdvancedSearch({
         />
         {hasActive && (
           <span className='bg-primary text-primary-foreground ms-1 rounded-full px-1.5 text-[10px] tabular-nums'>
-            {[taskType, deviceType, creator].filter(Boolean).length}
+            {[taskType, deviceType, creator, timeRange && timeRange !== 'all' ? timeRange : undefined].filter(Boolean).length}
           </span>
         )}
       </button>
@@ -136,6 +144,27 @@ export function ReportAdvancedSearch({
               <SelectContent align='start'>
                 <SelectItem value='all'>全部</SelectItem>
                 {CREATOR_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className='flex flex-col gap-1.5'>
+            <label htmlFor='adv-time-range' className='text-muted-foreground text-xs font-medium'>
+              时间范围
+            </label>
+            <Select
+              value={timeRange ?? 'all'}
+              onValueChange={(v) => onTimeRangeChange(v as ReportTimeRange | 'all')}
+            >
+              <SelectTrigger id='adv-time-range' className='h-9 w-36'>
+                <SelectValue placeholder='全部时间' />
+              </SelectTrigger>
+              <SelectContent align='start'>
+                {TIME_RANGE_OPTIONS.map((option) => (
                   <SelectItem key={option.value} value={option.value}>
                     {option.label}
                   </SelectItem>

@@ -14,7 +14,14 @@ export type ReportType = 'task' | 'comparison' | 'secondary_comparison' | 'bench
 export type ReportStatus = 'draft' | 'published'
 
 export type ReportViewMode = 'table' | 'card'
-export type ReportSortBy = 'created_at' | 'name' | 'pass_rate' | 'total_cases'
+/** 主排序维度（15_报告域.md §2/§2.1：创建时间/报告名称/状态/算法为主，通过率/用例数保留；类型不提供排序） */
+export type ReportSortBy =
+  | 'created_at'
+  | 'name'
+  | 'status'
+  | 'algorithm'
+  | 'pass_rate'
+  | 'total_cases'
 export type ReportSortOrder = 'asc' | 'desc'
 export type ReportTimeRange = 'today' | 'yesterday' | 'week' | 'month' | 'custom'
 

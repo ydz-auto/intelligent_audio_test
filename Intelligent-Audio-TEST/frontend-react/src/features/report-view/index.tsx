@@ -93,7 +93,7 @@ export function ReportViewPage() {
     if (search.from === 'management') return { to: '/report-center' as const }
     return { to: '/reports' as const }
   }, [search.from])
-  const backLabel = search.from === 'management' ? '← 返回报告中心' : '← 返回报告展示'
+  const backLabel = '返回'
 
   const { saveConclusion: saveAnalysis } = useReportAnalysis(reportId, report?.analysis)
   const share = useReportShare(reportId, report?.name ?? '报告')
@@ -248,9 +248,24 @@ export function ReportViewPage() {
           </aside>
         </div>
 
-        {/* 底部操作条（sticky bottom） */}
+        {/* 底部操作条（sticky bottom；15_报告域.md §3.1：保存 report:update / 发布 report:publish / 导出 / 打印 / 关闭） */}
         <div className='print:hidden sticky bottom-3 z-10 mt-8'>
           <div className='bg-background/95 supports-[backdrop-filter]:bg-background/60 flex flex-wrap items-center justify-end gap-2 rounded-xl border p-2 shadow-lg backdrop-blur-lg'>
+            {editing && hasPermission('report:update') && (
+              <Button variant='secondary' size='sm' onClick={() => setEditing(false)}>
+                保存
+              </Button>
+            )}
+            {hasPermission('report:publish') && report.status === 'draft' && (
+              <Button variant='secondary' size='sm' onClick={() => setPublishOpen(true)}>
+                发布
+              </Button>
+            )}
+            {hasPermission('report:publish') && report.status === 'published' && (
+              <Button variant='outline' size='sm' onClick={() => void reportActions.unpublish(report.id, report.name)}>
+                取消发布
+              </Button>
+            )}
             <Button variant='outline' size='sm' onClick={() => setExportOpen(true)}>
               导出
             </Button>

@@ -26,12 +26,17 @@ export interface CaseFilters {
   sortOrder?: ReportSearchCasesRequest['sort_order']
 }
 
-export function useReportCases(reportId: number, fallbackCases: ReportCaseItem[] = []) {
+export function useReportCases(
+  reportId: number,
+  fallbackCases: ReportCaseItem[] = [],
+  /** 导出模式强制全量（§3.1：分页强制全量，showPagination && !isExporting 判定） */
+  exporting = false
+) {
   const [filters, setFilters] = useState<CaseFilters>({})
   // 300ms 防抖（§3.3.7：筛选条件变化后延迟生效，避免每次按键即触发 search）
   const [debouncedFilters, setDebouncedFilters] = useState<CaseFilters>({})
   const [page, setPage] = useState(1)
-  const perPage = 10
+  const perPage = exporting ? 10000 : 10
   const [pinnedIds, setPinnedIds] = useState<string[]>([])
   const [expandedIds, setExpandedIds] = useState<string[]>([])
 

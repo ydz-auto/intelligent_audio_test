@@ -44,12 +44,15 @@ export const TIME_RANGE_OPTIONS: {
   { value: 'custom', label: '自定义' },
 ]
 
+/** 主排序维度（15_报告域.md §2/§2.1：创建时间/报告名称/状态/算法为主，通过率/用例数保留；类型不提供排序） */
 export const REPORT_SORT_OPTIONS: {
   value: ReportSortBy
   label: string
 }[] = [
   { value: 'created_at', label: '创建时间' },
   { value: 'name', label: '报告名称' },
+  { value: 'status', label: '状态' },
+  { value: 'algorithm', label: '算法' },
   { value: 'pass_rate', label: '通过率' },
   { value: 'total_cases', label: '用例数' },
 ]

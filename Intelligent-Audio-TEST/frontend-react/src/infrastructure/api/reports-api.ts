@@ -79,6 +79,11 @@ export async function fetchReportList(
     switch (sort_by) {
       case 'name':
         return item.name
+      // §2/§2.1 主排序维度补 状态/算法（状态 draft→published 字典序；算法无值回退空串）
+      case 'status':
+        return item.status
+      case 'algorithm':
+        return item.algorithm_type ?? ''
       case 'pass_rate':
         return item.summary.pass_rate
       case 'total_cases':

@@ -66,7 +66,9 @@ function useHarness(props: { open: boolean; mode?: 'edit' | 'create'; save: Save
     form,
     mode: props.mode ?? 'edit',
     schema: algorithmEditFormSchema,
-    save: props.save,
+    // vitest Mock 与 hook 签名（mutateAsync 具体入参）不直接兼容：断言需 Mock 的 .mock 元数据，
+    // 传参边界做一次类型收窄（INT-585 遗留 typecheck 错误修复）
+    save: props.save as unknown as Parameters<typeof useAlgorithmAutoSave>[0]['save'],
   })
   return { form, ...autoSave }
 }

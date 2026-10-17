@@ -46,6 +46,8 @@ interface ReportsTableProps {
   onRowClick: (report: ReportListItem) => void
   onClearFilters: () => void
   onRetry?: () => void
+  /** 空态补充 CTA（§2：空态「暂无报告」「未找到匹配报告」+「生成报告」） */
+  emptyAction?: React.ReactNode
 }
 
 export function ReportsTable({
@@ -62,6 +64,7 @@ export function ReportsTable({
   onRowClick,
   onClearFilters,
   onRetry,
+  emptyAction,
 }: ReportsTableProps) {
   const allVisibleSelected = items.length > 0 && items.every((i) => selectedIds.includes(i.id))
 
@@ -118,9 +121,12 @@ export function ReportsTable({
           </EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
-          <Button variant='outline' size='sm' onClick={onClearFilters}>
-            清除全部筛选
-          </Button>
+          <div className='flex flex-wrap items-center justify-center gap-2'>
+            <Button variant='outline' size='sm' onClick={onClearFilters}>
+              清除全部筛选
+            </Button>
+            {emptyAction}
+          </div>
         </EmptyContent>
       </Empty>
     )

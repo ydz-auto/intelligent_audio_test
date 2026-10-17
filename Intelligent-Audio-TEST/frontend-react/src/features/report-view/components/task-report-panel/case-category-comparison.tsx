@@ -34,6 +34,7 @@ export function CaseCategoryComparison({
 }) {
   const {
     groupKeys,
+    allTags,
     matrix,
     filteredGroups,
     allMetrics,
@@ -42,6 +43,8 @@ export function CaseCategoryComparison({
     setSelectedMetrics,
     selectedGroups,
     setSelectedGroups,
+    selectedTags,
+    setSelectedTags,
     keyword,
     setKeyword,
     activeDisplayType,
@@ -58,7 +61,18 @@ export function CaseCategoryComparison({
   const [renames, setRenames] = useState<Record<string, string>>({})
 
   const handleRename = useCallback(
-    (group: string, _resource: string | undefined, next: string) => {
+    (group: string, resource: string | undefined, next: string) => {
+      // 资源表头 label 编辑（§3.6 commitEditResource → resourceHeaders[].label → 防抖 PUT）
+      if (resource !== undefined) {
+        scheduleSaveSummary({
+          resourceHeaders: report.summary.resource_headers.map((h) =>
+            h.key === resource || h.label === resource || h.name === resource
+              ? { ...h, label: next }
+              : h
+          ),
+        })
+        return
+      }
       setRenames((prev) => ({ ...prev, [group]: next }))
       // 持久化：更新源 case_categories 中对应分组名 → 200ms 防抖 → PUT /reports/{id}
       scheduleSaveSummary({
@@ -67,7 +81,7 @@ export function CaseCategoryComparison({
         ),
       })
     },
-    [report.summary.case_categories, scheduleSaveSummary]
+    [report.summary.case_categories, report.summary.resource_headers, scheduleSaveSummary]
   )
 
   const showGroups = useMemo(() => filteredGroups, [filteredGroups])
@@ -110,6 +124,10 @@ export function CaseCategoryComparison({
                 <span className='text-foreground ms-1 font-mono tabular-nums'>{selectedGroups.length}</span>
               </label>
               <label className='text-muted-foreground block text-xs'>
+                用例标签
+                <span className='text-foreground ms-1 font-mono tabular-nums'>{selectedTags.length}</span>
+              </label>
+              <label className='text-muted-foreground block text-xs'>
                 评估维度
                 <span className='text-foreground ms-1 font-mono tabular-nums'>{selectedMetrics.length}</span>
               </label>
@@ -130,6 +148,26 @@ export function CaseCategoryComparison({
                 {renames[g] ?? g}
               </label>
             ))}
+          </div>
+          <div className='mt-2 flex flex-wrap items-center gap-x-4 gap-y-1'>
+            <span className='text-muted-foreground text-xs'>选择用例标签（可多选）：</span>
+            {allTags.length > 0 ? (
+              allTags.map((tag) => (
+                <label key={tag} className='flex items-center gap-1.5 text-xs'>
+                  <Checkbox
+                    checked={selectedTags.includes(tag)}
+                    onCheckedChange={(checked) => {
+                      setSelectedTags((prev) =>
+                        checked ? [...prev, tag] : prev.filter((x) => x !== tag)
+                      )
+                    }}
+                  />
+                  {tag}
+                </label>
+              ))
+            ) : (
+              <span className='text-muted-foreground text-xs'>暂无可用的用例标签</span>
+            )}
           </div>
           <div className='mt-2 flex flex-wrap items-center gap-x-4 gap-y-1'>
             <span className='text-muted-foreground text-xs'>选择评估维度（可多选）：</span>

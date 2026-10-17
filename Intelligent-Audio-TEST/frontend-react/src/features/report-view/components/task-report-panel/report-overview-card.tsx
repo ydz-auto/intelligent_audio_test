@@ -13,7 +13,6 @@ import {
   getMetricUnit,
   getNormalizedMetricData,
   getValidResources,
-  groupMetricsByDimension,
   buildResourceHeaderMap,
 } from '@/application/report-view/use-report-summary'
 
@@ -21,30 +20,70 @@ interface ReportOverviewCardProps {
   report: ReportDetailData
 }
 
-/** 维度行（主维度为组头，子维度缩进归组） */
+/** 维度行（15_报告域.md §3.3.1 / V9.7.31 OverviewCardComponent 实测）：
+ *  主维度按 parent_dimension_name 归组；主维度名与组名相同时主维度行直接作为分组标题行
+ * （isGroupHeader 加粗），避免同名重复行；仅当组内有子维度且主维度名与组名不同时
+ *  才插入独立分组标题行；子维度行 isSubDim 缩进归入父维度组。 */
 function buildDimensionRows(allMetrics: ReportMetricConfig[]) {
-  const { mainMetrics, subMetrics } = groupMetricsByDimension(allMetrics)
-  const rows: { key: string; name: string; group: string; isGroupHeader: boolean; isSubDim: boolean; metricName: string }[] = []
-
-  for (const main of mainMetrics) {
-    const children = subMetrics.filter(
-      (s) => s.parent_dimension_name === main.name || s.parent_dimension_id === main.id
-    )
-    rows.push({ key: `m-${main.id ?? main.name}`, name: main.name, group: main.name, isGroupHeader: false, isSubDim: false, metricName: main.name })
-    // 组内有子维度且主维度名≠组名时插分组标题行（isGroupHeader 加粗）
-    if (children.length > 0) {
-      rows.push({ key: `g-${main.id ?? main.name}`, name: main.name, group: main.name, isGroupHeader: true, isSubDim: false, metricName: '' })
-    }
-    for (const child of children) {
-      rows.push({ key: `s-${child.id ?? child.name}`, name: child.name, group: main.name, isGroupHeader: false, isSubDim: true, metricName: child.name })
+  const groupMap = new Map<
+    string,
+    { label: string; main?: ReportMetricConfig; subs: ReportMetricConfig[] }
+  >()
+  for (const metric of allMetrics) {
+    if (metric.dimension_type === 'sub') {
+      const label = metric.parent_dimension_name || metric.name
+      const group = groupMap.get(label) ?? { label, subs: [] }
+      group.subs.push(metric)
+      groupMap.set(label, group)
+    } else {
+      const label = metric.name
+      const group = groupMap.get(label) ?? { label, subs: [] }
+      if (!group.main) group.main = metric
+      else group.subs.push(metric)
+      groupMap.set(label, group)
     }
   }
-  // 无父分组的子维度兜底（按中文名排序）
-  const orphans = subMetrics.filter(
-    (s) => !mainMetrics.some((m) => m.name === s.parent_dimension_name)
-  )
-  for (const orphan of orphans.sort((a, b) => a.name.localeCompare(b.name))) {
-    rows.push({ key: `s-${orphan.id ?? orphan.name}`, name: orphan.name, group: '', isGroupHeader: false, isSubDim: true, metricName: orphan.name })
+  // 分组按中文名排序，组内子维度按名称排序
+  const groups = [...groupMap.values()].sort((a, b) => a.label.localeCompare(b.label, 'zh'))
+  for (const group of groups) {
+    group.subs.sort((a, b) => a.name.localeCompare(b.name, 'zh'))
+  }
+
+  const rows: { key: string; name: string; group: string; isGroupHeader: boolean; isSubDim: boolean; metricName: string }[] = []
+  let rowSeq = 0
+  for (const group of groups) {
+    // 主维度名与组名相同时主维度行即分组标题行；不同且组内有子维度才插独立分组标题行
+    const mainIsHeader = Boolean(group.main && group.main.name === group.label)
+    if (group.subs.length > 0 && !mainIsHeader) {
+      rows.push({
+        key: `hdr-${rowSeq++}`,
+        name: group.label,
+        group: group.label,
+        isGroupHeader: true,
+        isSubDim: false,
+        metricName: '',
+      })
+    }
+    if (group.main) {
+      rows.push({
+        key: `main-${rowSeq++}`,
+        name: group.main.name,
+        group: group.label,
+        isGroupHeader: mainIsHeader,
+        isSubDim: false,
+        metricName: group.main.name,
+      })
+    }
+    for (const sub of group.subs) {
+      rows.push({
+        key: `sub-${rowSeq++}`,
+        name: sub.name,
+        group: group.label,
+        isGroupHeader: false,
+        isSubDim: true,
+        metricName: sub.name,
+      })
+    }
   }
   return rows
 }

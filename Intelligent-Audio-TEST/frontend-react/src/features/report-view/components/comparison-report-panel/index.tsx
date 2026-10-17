@@ -7,6 +7,8 @@ import { useMemo, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import type { ReportDetailData } from '@/domain/models/report'
+import { ReportChart } from '@/components/common/report-chart'
+import { colorArray } from '@/application/report-view/use-report-charts'
 
 import { ReportResourceStats } from '../report-resource-stats'
 import { ReportSaveCard } from './report-save-card'
@@ -152,6 +154,24 @@ export function ComparisonReportPanel({
               </tbody>
             </table>
           </div>
+          {/* 趋势折线（§3.4 二次对比差异：各报告时序/维度趋势，INT-360 §4.8 保留；预测虚线 AI 搁置） */}
+          <ReportChart
+            title='对比趋势'
+            subtitle='各报告评估维度走势'
+            type='line'
+            series={{
+              labels: secondaryDiff.dimensions,
+              datasets: secondaryDiff.reports.map((resource, i) => ({
+                label: resource,
+                data: secondaryDiff.dimensions.map((m) => secondaryDiff.valueOf(resource, m) ?? 0),
+                borderColor: colorArray(i),
+                backgroundColor: colorArray(i, 'B3'),
+                fill: false,
+                tension: 0.3,
+              })),
+            }}
+            height={280}
+          />
         </section>
       )}
     </div>

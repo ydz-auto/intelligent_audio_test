@@ -25,9 +25,16 @@ export function useCaseTagComparison(report: ReportDetailData) {
   // 表单草稿态（筛选卡绑定；「应用筛选」提交后才生效）
   const [selectedMetrics, setSelectedMetrics] = useState<string[]>([])
   const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([])
   // 已应用态（驱动结果）
   const [appliedMetrics, setAppliedMetrics] = useState<string[]>([])
   const [appliedTags, setAppliedTags] = useState<string[]>([])
+  const [appliedGroups, setAppliedGroups] = useState<string[]>([])
+
+  const groupKeys = useMemo(
+    () => summary.case_categories.map((c) => c.category_name ?? c.category_id ?? ''),
+    [summary.case_categories]
+  )
 
   /** 标签来源合并（updateData 平移：allTags + allCaseTags + tag_metric_data + cases.tags） */
   const allTags = useMemo(() => {
@@ -65,6 +72,19 @@ export function useCaseTagComparison(report: ReportDetailData) {
   }, [allTags])
 
   const matrix: MetricMatrix = useMemo(() => {
+    // 分组筛选激活：从 summary.cases 按分组过滤后按标签重算（§3.3.6 筛选卡「用例分组多选」）
+    if (appliedGroups.length > 0) {
+      const filteredCases = (summary.cases ?? []).filter(
+        (item) => item.category && appliedGroups.includes(item.category)
+      )
+      const tagged = filteredCases.filter((c) => c.tags.length > 0)
+      const untagged = filteredCases.filter((c) => c.tags.length === 0)
+      const rebuilt = buildCaseMetricMatrix(tagged, (item) => item.tags, allMetrics)
+      if (untagged.length > 0) {
+        Object.assign(rebuilt, buildCaseMetricMatrix(untagged, () => ['未标记'], allMetrics))
+      }
+      return rebuilt
+    }
     // 优先级①：后端 tag_metric_data（per-resource × tag，raw_data `{metric}_raw` 合并，§3.6）
     const tagMatrix = buildTagMatrixFromSummary(summary, allMetrics)
     if (Object.keys(tagMatrix).length > 0) return tagMatrix
@@ -78,7 +98,7 @@ export function useCaseTagComparison(report: ReportDetailData) {
       Object.assign(matrix, fallback)
     }
     return matrix
-  }, [summary, allMetrics])
+  }, [summary, allMetrics, appliedGroups])
 
   const filteredTags = useMemo(() => {
     const all = Object.keys(matrix)
@@ -96,20 +116,24 @@ export function useCaseTagComparison(report: ReportDetailData) {
   /** 「应用筛选」：把表单草稿提交为生效条件（立即生效） */
   const applyFilters = () => {
     setAppliedTags(selectedTags)
+    setAppliedGroups(selectedGroups)
     setAppliedMetrics(selectedMetrics)
   }
 
   /** 「重置」：清空草稿与已应用条件 */
   const resetFilters = () => {
     setSelectedTags([])
+    setSelectedGroups([])
     setSelectedMetrics([])
     setAppliedTags([])
+    setAppliedGroups([])
     setAppliedMetrics([])
   }
 
   return {
     allTags,
     tagGroups,
+    groupKeys,
     matrix,
     filteredTags,
     allMetrics,
@@ -118,6 +142,8 @@ export function useCaseTagComparison(report: ReportDetailData) {
     setSelectedMetrics,
     selectedTags,
     setSelectedTags,
+    selectedGroups,
+    setSelectedGroups,
     activeDisplayType,
     setActiveDisplayType,
     effectiveMetrics,

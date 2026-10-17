@@ -34,6 +34,7 @@ export function CaseTagComparison({
 }) {
   const {
     tagGroups,
+    groupKeys,
     matrix,
     filteredTags,
     allMetrics,
@@ -42,6 +43,8 @@ export function CaseTagComparison({
     setSelectedMetrics,
     selectedTags,
     setSelectedTags,
+    selectedGroups,
+    setSelectedGroups,
     activeDisplayType,
     setActiveDisplayType,
     effectiveMetrics,
@@ -56,7 +59,18 @@ export function CaseTagComparison({
   const [renames, setRenames] = useState<Record<string, string>>({})
 
   const handleRename = useCallback(
-    (tag: string, _resource: string | undefined, next: string) => {
+    (tag: string, resource: string | undefined, next: string) => {
+      // 资源表头 label 编辑（§3.6 commitEditResource → resourceHeaders[].label → 防抖 PUT）
+      if (resource !== undefined) {
+        scheduleSaveSummary({
+          resourceHeaders: report.summary.resource_headers.map((h) =>
+            h.key === resource || h.label === resource || h.name === resource
+              ? { ...h, label: next }
+              : h
+          ),
+        })
+        return
+      }
       setRenames((prev) => ({ ...prev, [tag]: next }))
       const renameIn = (list: ReportTag[]) =>
         list.map((t) => (t.tag_name === tag ? { ...t, tag_name: next } : t))
@@ -66,7 +80,7 @@ export function CaseTagComparison({
         allTags: renameIn(report.summary.all_tags ?? []),
       })
     },
-    [report.summary.all_case_tags, report.summary.all_tags, scheduleSaveSummary]
+    [report.summary.all_case_tags, report.summary.all_tags, report.summary.resource_headers, scheduleSaveSummary]
   )
 
   const showTags = useMemo(() => filteredTags, [filteredTags])
@@ -91,7 +105,7 @@ export function CaseTagComparison({
       </div>
 
       <CollapsibleContent className='space-y-3'>
-        {/* 标签筛选卡（按分类分组） */}
+        {/* 标签筛选卡（按分类分组）+ 用例分组多选（§3.3.6 筛选卡） */}
         <div className='rounded-xl border p-3'>
           <p className='text-muted-foreground text-xs'>用例标签（按分类分组）：</p>
           <div className='mt-2 space-y-2'>
@@ -115,6 +129,26 @@ export function CaseTagComparison({
                 </div>
               </div>
             ))}
+          </div>
+          <div className='mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 border-t pt-2'>
+            <span className='text-muted-foreground text-xs'>选择用例分组（可多选）：</span>
+            {groupKeys.length > 0 ? (
+              groupKeys.map((g) => (
+                <label key={g} className='flex items-center gap-1.5 text-xs'>
+                  <Checkbox
+                    checked={selectedGroups.includes(g)}
+                    onCheckedChange={(checked) => {
+                      setSelectedGroups((prev) =>
+                        checked ? [...prev, g] : prev.filter((x) => x !== g)
+                      )
+                    }}
+                  />
+                  {g}
+                </label>
+              ))
+            ) : (
+              <span className='text-muted-foreground text-xs'>暂无可用的用例分组</span>
+            )}
           </div>
           <div className='mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 border-t pt-2'>
             <span className='text-muted-foreground text-xs'>选择评估维度（可多选）：</span>

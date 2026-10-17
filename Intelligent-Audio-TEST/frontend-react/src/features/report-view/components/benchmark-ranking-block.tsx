@@ -96,13 +96,24 @@ export function BenchmarkRankingBlock({ reportId, reportName }: BenchmarkRanking
             color: textColor,
             fontSize: 11,
           },
-          // 中位数与最佳参考线（§3.8 实测）
+          // 中位数与最佳参考线（§3.8 实测：中位数 dashed warning + 最佳 dashed success）
           markLine: {
             silent: true,
             symbol: 'none',
-            lineStyle: { type: 'dashed', color: CHART_COLORS.warning, width: 1.5 },
-            label: { formatter: '中位数 {c}', color: CHART_COLORS.warning, fontSize: 10 },
-            data: [{ xAxis: data.median, label: { formatter: '中位数' } }],
+            lineStyle: { type: 'dashed', width: 1.5 },
+            label: { fontSize: 10 },
+            data: [
+              {
+                xAxis: data.median,
+                lineStyle: { color: CHART_COLORS.warning },
+                label: { formatter: '中位数 {c}', color: CHART_COLORS.warning },
+              },
+              {
+                xAxis: data.best,
+                lineStyle: { color: CHART_COLORS.success },
+                label: { formatter: '最佳 {c}', color: CHART_COLORS.success },
+              },
+            ],
           },
         },
       ],

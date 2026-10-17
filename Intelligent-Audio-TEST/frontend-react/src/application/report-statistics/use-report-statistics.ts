@@ -101,6 +101,9 @@ export function computeStatistics(dimension: StatisticDimension): ReportStatisti
         data: dimension === 'time' ? [286, 298, 312, 334, 328, 342] : [1186, 1092, 54, 342, 92.1, 412].slice(0, labels.length),
         backgroundColor: colorArray(0, '59'),
         borderColor: CHART_COLORS.primary,
+        // §3.7 line：tension 0.3 / fill false
+        fill: false,
+        tension: 0.3,
       },
     ],
   }

@@ -9,15 +9,19 @@
  * INT-430 前置条件：本组件为共享平台件，驻留 components/common/report-chart（dashboard/benchmark 复用）。
  */
 import {
+  ArcElement,
   BarController,
   BarElement,
   CategoryScale,
   Chart as ChartJS,
+  DoughnutController,
   Legend,
   LinearScale,
   LineController,
   LineElement,
+  PieController,
   PointElement,
+  PolarAreaController,
   RadialLinearScale,
   RadarController,
   ScatterController,
@@ -28,7 +32,7 @@ import {
 } from 'chart.js'
 import { MatrixController } from 'chartjs-chart-matrix'
 import zoomPlugin from 'chartjs-plugin-zoom'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Skeleton } from '@/components/ui/skeleton'
 import type {
@@ -46,12 +50,16 @@ import { ChartActions } from './chart-actions'
 import { ChartStatsCard } from './chart-stats-card'
 
 ChartJS.register(
+  ArcElement,
   BarController,
   BarElement,
   LineController,
   LineElement,
   PointElement,
   ScatterController,
+  PieController,
+  DoughnutController,
+  PolarAreaController,
   CategoryScale,
   LinearScale,
   RadialLinearScale,
@@ -63,7 +71,16 @@ ChartJS.register(
   zoomPlugin
 )
 
-export type ChartKind = 'bar' | 'line' | 'radar' | 'distribution' | 'scatter' | 'heatmap'
+export type ChartKind =
+  | 'bar'
+  | 'line'
+  | 'pie'
+  | 'doughnut'
+  | 'polarArea'
+  | 'radar'
+  | 'distribution'
+  | 'scatter'
+  | 'heatmap'
 export type ChartSubKind = 'bar' | 'line'
 
 interface ReportChartProps {
@@ -103,6 +120,14 @@ export function ReportChart({
   const isDark = typeof document !== 'undefined'
     ? (document.documentElement.classList.contains('dark') ?? false)
     : false
+
+  /** 空数据态（§3.7「暂无数据」：distribution 看 rawData，其余看 datasets 是否有数据） */
+  const hasData = useMemo(() => {
+    if (type === 'distribution') {
+      return Boolean(distribution && Object.keys(distribution.rawData ?? {}).length > 0)
+    }
+    return series.datasets.some((d) => d.data.length > 0)
+  }, [type, series, distribution])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -178,7 +203,25 @@ export function ReportChart({
               ticks: { ...((base.scales?.y?.ticks ?? {}) as Record<string, unknown>), stepSize: 1 },
             },
           },
-          plugins: { ...base.plugins, zoom: zoomOptions },
+          plugins: {
+            ...base.plugins,
+            // 分布图 tooltip：显 [start, end) 区间 +「N 个」（§3.7）
+            tooltip: {
+              ...(base.plugins?.tooltip ?? {}),
+              callbacks: {
+                title: (items: { label?: unknown }[]) => {
+                  const label = typeof items[0]?.label === 'string' ? items[0].label : ''
+                  const [start, end] = label.split('~')
+                  return start !== undefined && end !== undefined ? `[${start}, ${end})` : label
+                },
+                label: (ctx: { dataset?: { label?: string }; formattedValue?: string }) => {
+                  const count = ctx.formattedValue ?? '0'
+                  return ctx.dataset?.label ? `${ctx.dataset.label}：${count} 个` : `${count} 个`
+                },
+              },
+            },
+            zoom: zoomOptions,
+          },
         } as ChartOptions
       }
       // 散点（§3.7）：两变量关系线性轴点图，zoom 可用
@@ -224,6 +267,17 @@ export function ReportChart({
                 },
               },
             },
+            zoom: { pan: { enabled: false }, zoom: { wheel: { enabled: false }, pinch: { enabled: false } } },
+          },
+        } as ChartOptions
+      }
+      // 饼/环形/极区（§3.7 全类型）：图例右置、无缩放
+      if (type === 'pie' || type === 'doughnut' || type === 'polarArea') {
+        return {
+          ...base,
+          plugins: {
+            ...base.plugins,
+            legend: { ...(base.plugins?.legend ?? {}), position: 'right' },
             zoom: { pan: { enabled: false }, zoom: { wheel: { enabled: false }, pinch: { enabled: false } } },
           },
         } as ChartOptions
@@ -380,6 +434,10 @@ export function ReportChart({
           <div className='flex h-full items-center justify-center'>
             <Skeleton className='h-4 w-28' />
             <span className='text-muted-foreground ms-2 text-sm'>图表加载中...</span>
+          </div>
+        ) : !hasData ? (
+          <div className='text-muted-foreground flex h-full items-center justify-center text-sm'>
+            暂无数据
           </div>
         ) : (
           <canvas ref={canvasRef} />

@@ -57,7 +57,7 @@ export function SpecificCaseComparison({
     expandedIds,
     toggleExpand,
     downloadLogs,
-  } = useReportCases(report.id, fallbackCases)
+  } = useReportCases(report.id, fallbackCases, isExporting)
 
   // 筛选卡可选项（分组/标签/评估维度；标签合并自用例 + summary 标签池）
   const availableGroups = useMemo(
@@ -331,8 +331,15 @@ export function SpecificCaseComparison({
             <p className='text-muted-foreground text-xs font-medium'>已固定用例</p>
             <div className='mt-2 flex flex-wrap gap-2'>
               {pinnedCases.map((c) => (
-                <div key={c.id} className='bg-muted/40 flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs'>
+                <div key={c.id} className='bg-muted/40 flex flex-wrap items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs'>
                   <span className='font-medium'>{c.name}</span>
+                  {/* 各资源状态徽标（§3.3.7：固定卡片行 = 名称 + 各资源状态徽标 + 取消固定） */}
+                  {c.results.map((r) => (
+                    <Badge key={r.resource} variant={resourceStatusVariant(r.status)} className='gap-1'>
+                      <StatusDot status={resourceStatus(r.status)} />
+                      {r.resource} · {resourceStatusLabel(r.status)}
+                    </Badge>
+                  ))}
                   <Button
                     variant='ghost'
                     size='sm'
@@ -471,6 +478,35 @@ function overallStatusOf(c: ReportCaseItem): 'pass' | 'fail' | 'warning' | 'skip
   if (statuses.some((s) => s === 'skipped')) return 'skip'
   if (statuses.some((s) => s === 'warning')) return 'warning'
   return statuses.length > 0 ? 'pass' : 'unknown'
+}
+
+/** 资源执行状态 → 语义点（completed/通过、failed/失败、warning/警告、其余 neutral） */
+function resourceStatus(status?: string): string {
+  const s = status ?? ''
+  if (s === 'completed') return 'pass'
+  if (s === 'failed') return 'fail'
+  if (s === 'warning') return 'warning'
+  return 'unknown'
+}
+
+/** 资源执行状态中文（§3.3.4 STATUS_LABELS 同源） */
+function resourceStatusLabel(status?: string): string {
+  const map: Record<string, string> = {
+    completed: '已完成',
+    failed: '执行失败',
+    warning: '警告',
+    running: '执行中',
+    pending: '排队中',
+    skipped: '跳过',
+  }
+  return map[status ?? ''] ?? (status ?? '未知')
+}
+
+function resourceStatusVariant(status?: string): 'secondary' | 'destructive' | 'warning' | 'outline' {
+  if (status === 'completed') return 'secondary'
+  if (status === 'failed') return 'destructive'
+  if (status === 'warning') return 'warning'
+  return 'outline'
 }
 
 function StatusDot({ status }: { status: string }) {

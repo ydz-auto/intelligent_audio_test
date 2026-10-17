@@ -29,10 +29,12 @@ export function useCaseCategoryComparison(report: ReportDetailData) {
   // 表单草稿态（筛选卡绑定；「应用筛选」提交后才生效）
   const [selectedMetrics, setSelectedMetrics] = useState<string[]>([])
   const [selectedGroups, setSelectedGroups] = useState<string[]>([])
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [keyword, setKeyword] = useState('')
   // 已应用态（驱动结果）
   const [appliedMetrics, setAppliedMetrics] = useState<string[]>([])
   const [appliedGroups, setAppliedGroups] = useState<string[]>([])
+  const [appliedTags, setAppliedTags] = useState<string[]>([])
   const [appliedKeyword, setAppliedKeyword] = useState('')
 
   const groupKeys = useMemo(
@@ -40,7 +42,29 @@ export function useCaseCategoryComparison(report: ReportDetailData) {
     [summary.case_categories]
   )
 
+  /** 全量标签（all_case_tags[含分类] + all_tags 兼容旧名 + tag_metric_data 提取；去重） */
+  const allTags = useMemo(() => {
+    const set = new Set<string>()
+    for (const t of summary.all_case_tags ?? []) set.add(t.tag_name)
+    for (const t of summary.all_tags ?? []) set.add(t.tag_name)
+    for (const group of summary.tag_metric_data) {
+      for (const tag of group.tags) set.add(tag.tag_name)
+    }
+    return [...set]
+  }, [summary])
+
   const matrix: MetricMatrix = useMemo(() => {
+    // 标签筛选激活：从 summary.cases 按标签过滤后按分组重算（§3.3.5 筛选卡「用例标签多选」）
+    if (appliedTags.length > 0) {
+      const filteredCases = (summary.cases ?? []).filter((item) =>
+        item.tags.some((t) => appliedTags.includes(t))
+      )
+      return buildCaseMetricMatrix(
+        filteredCases,
+        (item) => [item.category ?? '未分类'],
+        allMetrics
+      )
+    }
     // 优先级①：后端 metric_data categories[] 分类聚合（raw_data `{metric}_raw` 合并，§3.6）
     const categoryMatrix = buildCategoryMatrixFromSummary(summary, allMetrics)
     if (Object.keys(categoryMatrix).length > 0) return categoryMatrix
@@ -51,7 +75,7 @@ export function useCaseCategoryComparison(report: ReportDetailData) {
       (item) => [item.category ?? '未分类'],
       allMetrics
     )
-  }, [summary, allMetrics])
+  }, [summary, allMetrics, appliedTags])
 
   const filteredGroups = useMemo(() => {
     const all = Object.keys(matrix)
@@ -71,6 +95,7 @@ export function useCaseCategoryComparison(report: ReportDetailData) {
   const applyFilters = () => {
     setAppliedKeyword(keyword)
     setAppliedGroups(selectedGroups)
+    setAppliedTags(selectedTags)
     setAppliedMetrics(selectedMetrics)
   }
 
@@ -78,14 +103,17 @@ export function useCaseCategoryComparison(report: ReportDetailData) {
   const resetFilters = () => {
     setKeyword('')
     setSelectedGroups([])
+    setSelectedTags([])
     setSelectedMetrics([])
     setAppliedKeyword('')
     setAppliedGroups([])
+    setAppliedTags([])
     setAppliedMetrics([])
   }
 
   return {
     groupKeys,
+    allTags,
     matrix,
     filteredGroups,
     allMetrics,
@@ -94,6 +122,8 @@ export function useCaseCategoryComparison(report: ReportDetailData) {
     setSelectedMetrics,
     selectedGroups,
     setSelectedGroups,
+    selectedTags,
+    setSelectedTags,
     keyword,
     setKeyword,
     activeDisplayType,

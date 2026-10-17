@@ -47,7 +47,9 @@ export const reportCenterSearchSchema = z
       .optional()
       .transform((v) => v === 'true')
       .catch(false),
-    sortBy: z.enum(['created_at', 'name', 'pass_rate', 'total_cases']).catch('created_at'),
+    sortBy: z
+      .enum(['created_at', 'name', 'status', 'algorithm', 'pass_rate', 'total_cases'])
+      .catch('created_at'),
     sortOrder: z.enum(['asc', 'desc']).catch('desc'),
   })
   .partial()

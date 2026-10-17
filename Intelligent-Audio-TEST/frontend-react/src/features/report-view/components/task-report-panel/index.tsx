@@ -44,7 +44,7 @@ export function TaskReportPanel({
 
       {/* §3.3.2 设备与 API */}
       <section id='report-resource-stats' className='scroll-mt-20'>
-        <ReportResourceStats report={report} />
+        <ReportResourceStats report={report} isExporting={isExporting} />
       </section>
 
       {/* §3.3.3 分析结论 */}

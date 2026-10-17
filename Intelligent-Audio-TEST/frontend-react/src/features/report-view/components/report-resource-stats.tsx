@@ -28,6 +28,7 @@ function successVariant(rate: number) {
 }
 
 function DeviceApiCard({
+  kind,
   name,
   subtitle,
   status,
@@ -38,6 +39,8 @@ function DeviceApiCard({
   metrics,
   metricUnits,
 }: {
+  /** device=在线/离线；api=活跃/离线（规范 §3.3.2 状态文案实测） */
+  kind: 'device' | 'api'
   name: string
   subtitle?: string
   status?: string
@@ -48,6 +51,17 @@ function DeviceApiCard({
   metrics?: Record<string, unknown>
   metricUnits?: Record<string, string>
 }) {
+  const statusLabel =
+    kind === 'api'
+      ? status === 'active'
+        ? '活跃'
+        : '离线'
+      : status === 'online'
+        ? '在线'
+        : '离线'
+  const statusVariant =
+    kind === 'api' ? (status === 'active' ? 'success' : 'neutral') : status === 'online' ? 'success' : 'neutral'
+
   return (
     <div className='bg-background rounded-lg border p-3'>
       <div className='flex items-start justify-between gap-2'>
@@ -57,11 +71,7 @@ function DeviceApiCard({
             <div className='text-muted-foreground truncate text-xs'>{subtitle}</div>
           )}
         </div>
-        <StatusBadge
-          label={status === 'online' || status === 'active' ? '在线' : status === 'offline' ? '离线' : '离线'}
-          variant={status === 'online' || status === 'active' ? 'success' : 'neutral'}
-          size='sm'
-        />
+        <StatusBadge label={statusLabel} variant={statusVariant} size='sm' />
       </div>
       <div className='text-muted-foreground mt-3 grid grid-cols-3 gap-2 border-b pb-2 text-xs'>
         <div>
@@ -114,8 +124,9 @@ function DeviceStatsGrid({ report }: { report: ReportDetailData }) {
       {devices.map((device) => (
         <DeviceApiCard
           key={`device-${device.id}`}
+          kind='device'
           name={device.name}
-          subtitle={[device.model, device.type].filter(Boolean).join(' · ')}
+          subtitle={[device.model, device.type].filter(Boolean).join(' · ') || '设备'}
           status={device.status}
           totalCases={device.total_cases}
           completedCases={device.completed_cases}
@@ -128,6 +139,7 @@ function DeviceStatsGrid({ report }: { report: ReportDetailData }) {
       {apis.map((api) => (
         <DeviceApiCard
           key={`api-${api.id}`}
+          kind='api'
           name={api.name}
           subtitle='API'
           status={api.status}
@@ -143,14 +155,23 @@ function DeviceStatsGrid({ report }: { report: ReportDetailData }) {
   )
 }
 
-export function ReportResourceStats({ report }: { report: ReportDetailData }) {
+export function ReportResourceStats({
+  report,
+  isExporting,
+}: {
+  report: ReportDetailData
+  /** 导出模式强制展开（§3.1 isExporting 口径） */
+  isExporting?: boolean
+}) {
   const [open, setOpen] = useState(true)
   const deviceCount = report.summary.device_stats.length
   const apiCount = report.summary.api_stats.length
   const empty = deviceCount === 0 && apiCount === 0
+  // 导出模式强制展开（导出为静态 HTML 快照，折叠分区内容会丢失）
+  const resolvedOpen = isExporting ? true : open
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className='space-y-3'>
+    <Collapsible open={resolvedOpen} onOpenChange={setOpen} className='space-y-3'>
       <div className='flex items-center justify-between'>
         <CollapsibleTrigger
           render={<Button variant='ghost' size='sm' className='text-foreground -ml-2 h-8' />}
@@ -164,7 +185,7 @@ export function ReportResourceStats({ report }: { report: ReportDetailData }) {
           </span>
           <ChevronDown
             aria-hidden='true'
-            className={cn('text-muted-foreground size-4 transition-transform', open && 'rotate-180')}
+            className={cn('text-muted-foreground size-4 transition-transform', resolvedOpen && 'rotate-180')}
           />
         </CollapsibleTrigger>
       </div>

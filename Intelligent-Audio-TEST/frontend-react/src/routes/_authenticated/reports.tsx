@@ -29,7 +29,9 @@ export const reportsShowcaseSearchSchema = z
     startTime: z.string().optional().catch(undefined),
     endTime: z.string().optional().catch(undefined),
     algorithmType: z.string().optional().catch(undefined),
-    sortBy: z.enum(['created_at', 'name', 'pass_rate', 'total_cases']).catch('created_at'),
+    sortBy: z
+      .enum(['created_at', 'name', 'status', 'algorithm', 'pass_rate', 'total_cases'])
+      .catch('created_at'),
     sortOrder: z.enum(['asc', 'desc']).catch('desc'),
   })
   .partial()

@@ -3,6 +3,7 @@
  * 标题(font-mono) + CopyButton + 类型/状态徽标 + 任务信息 + 算法徽标 + 时间 + 描述 + 操作组。
  * 只读快照语义：报告算法为快照值，不随全局切换联动（§2.2）。
  */
+import { Link } from '@tanstack/react-router'
 import {
   ArrowLeft,
   ExternalLink,
@@ -85,7 +86,12 @@ export function ReportHeader({
               <h1 className='font-mono max-w-full text-2xl leading-tight font-bold tracking-tight break-all'>
                 {report.name}
               </h1>
-              <CopyButton value={report.name} aria-label='复制报告名称' />
+              {/* 复制报告 ID/名称（规范 §3.2：CopyButton 复制报告 ID/名称） */}
+              <CopyButton
+                value={`${report.id} · ${report.name}`}
+                aria-label='复制报告ID与名称'
+                tooltip='复制报告ID与名称'
+              />
             </div>
             <div className='mt-2 flex flex-wrap items-center gap-2 text-sm'>
               <StatusBadge label={typeMeta.label} variant={typeMeta.variant} />
@@ -101,7 +107,19 @@ export function ReportHeader({
                 <span>{report.summary.task_count ?? report.summary.resources.length} 个任务对比</span>
               ) : (
                 <span className='flex items-center gap-1'>
-                  任务：{report.task_name}
+                  任务：
+                  {/* 任务名点击进任务详情（规范 §3.2：次行 taskName 点击进 /tasks/$taskId） */}
+                  {report.task_id ? (
+                    <Link
+                      to='/tasks/$tab'
+                      params={{ tab: String(report.task_id) }}
+                      className='hover:text-foreground underline decoration-muted underline-offset-2 transition-colors'
+                    >
+                      {report.task_name}
+                    </Link>
+                  ) : (
+                    report.task_name
+                  )}
                   <span className='font-mono'>#{report.task_id ?? ''}</span>
                 </span>
               )}
@@ -168,10 +186,12 @@ export function ReportHeader({
                 导出
               </Button>
             )}
-            <Button variant='ghost' size='sm' onClick={() => window.print()}>
-              <Printer data-icon='inline-start' />
-              打印
-            </Button>
+            {hasPermission('report:read') && (
+              <Button variant='ghost' size='sm' onClick={() => window.print()}>
+                <Printer data-icon='inline-start' />
+                打印
+              </Button>
+            )}
             {hasPermission('report:read') && (
               <Button variant='ghost' size='sm' onClick={onCopyLink}>
                 <ExternalLink data-icon='inline-start' />

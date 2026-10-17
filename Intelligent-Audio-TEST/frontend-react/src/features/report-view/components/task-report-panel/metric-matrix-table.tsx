@@ -46,6 +46,8 @@ export function MetricMatrixTable({
   const [collapsed, setCollapsed] = useState(false)
   const [editingGroup, setEditingGroup] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
+  const [editingResource, setEditingResource] = useState<string | null>(null)
+  const [editResourceValue, setEditResourceValue] = useState('')
   const { series, distribution } = useReportCharts(matrix, groups, resources, metric.name, displayType)
   const forceOpen = Boolean(isExporting)
   const isDistribution = displayType === 'distribution' && !forceOpen
@@ -63,6 +65,21 @@ export function MetricMatrixTable({
       }
     }
     setEditingGroup(null)
+  }
+
+  /** 资源表头 label 编辑（§3.6：commitEditResource → resourceHeaders[].label） */
+  const startResourceRename = (resource: string) => {
+    if (!onRename) return
+    setEditingResource(resource)
+    setEditResourceValue(resource)
+  }
+  const commitResourceRename = () => {
+    if (editingResource && onRename && editResourceValue.trim()) {
+      if (editResourceValue.trim() !== editingResource) {
+        onRename(editingResource, editingResource, editResourceValue.trim())
+      }
+    }
+    setEditingResource(null)
   }
 
   const tableCells = useMemo(
@@ -123,7 +140,31 @@ export function MetricMatrixTable({
                     </th>
                     {resources.map((resource) => (
                       <th key={resource} className='px-3 py-2 text-left font-medium'>
-                        {resource}
+                        {editingResource === resource ? (
+                          <Input
+                            autoFocus
+                            value={editResourceValue}
+                            onChange={(e) => setEditResourceValue(e.target.value)}
+                            onBlur={commitResourceRename}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') commitResourceRename()
+                              if (e.key === 'Escape') setEditingResource(null)
+                            }}
+                            aria-label='重命名资源'
+                            className='h-7 w-36 text-xs'
+                          />
+                        ) : onRename ? (
+                          <button
+                            type='button'
+                            className='hover:text-foreground text-muted-foreground text-left transition-colors'
+                            onClick={() => startResourceRename(resource)}
+                            title='点击重命名资源'
+                          >
+                            {resource}
+                          </button>
+                        ) : (
+                          resource
+                        )}
                       </th>
                     ))}
                   </tr>

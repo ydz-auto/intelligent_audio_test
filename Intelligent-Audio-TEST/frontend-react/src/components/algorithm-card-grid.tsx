@@ -5,12 +5,13 @@
  * 含「全部算法」sentinel 卡（store 空串=全部算法态，列表不附 algorithm_type 过滤）。
  * 无 algorithm:read（device_admin/guest）只读降级：仅显示当前存储值，卡片不可点。
  */
-import { Check, Cpu, Layers } from 'lucide-react'
+import { AlertTriangle, Check, Cpu, Layers } from 'lucide-react'
 import { useMemo } from 'react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
 import { IconBadge } from '@/components/ui/icon-badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useCurrentAlgorithm } from '@/application/reports-showcase/use-current-algorithm'
 import { MOCK_ALGORITHM_DEFINITIONS } from '@/infrastructure/mock/reports-mock'
 import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
@@ -29,7 +30,8 @@ export function AlgorithmCardGrid({
   title = '选择算法',
   className,
 }: AlgorithmCardGridProps) {
-  const { algorithmType, isReadonly, isAllAlgorithms } = useCurrentAlgorithm()
+  const { algorithmType, isLoading, isReadonly, isFailed, isAllAlgorithms } =
+    useCurrentAlgorithm()
   const setAlgorithmId = useAlgorithmStore((s) => s.setAlgorithmId)
 
   const selectedType = isAllAlgorithms ? null : algorithmType
@@ -79,6 +81,28 @@ export function AlgorithmCardGrid({
             当前算法：{isAllAlgorithms ? '全部算法' : algorithmType}
           </span>
           <span className='text-muted-foreground text-xs'>无算法查看权限，仅显示存储值</span>
+        </div>
+      ) : isLoading ? (
+        <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div
+              key={index}
+              className='border-border flex flex-col gap-2 rounded-2xl border p-4'
+            >
+              <Skeleton className='size-10 rounded-lg' />
+              <Skeleton className='h-4 w-24 rounded-md' />
+              <Skeleton className='h-3 w-36 rounded-md' />
+              <Skeleton className='h-3 w-full rounded-md' />
+            </div>
+          ))}
+        </div>
+      ) : isFailed ? (
+        <div className='bg-card rounded-2xl border shadow-xs flex items-center gap-2 px-4 py-3'>
+          <AlertTriangle aria-hidden='true' className='text-warning size-4 shrink-0' />
+          <span className='text-sm'>算法详情暂不可用</span>
+          <span className='text-muted-foreground text-xs'>
+            当前算法：{isAllAlgorithms ? '全部算法' : algorithmType}
+          </span>
         </div>
       ) : (
         <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>

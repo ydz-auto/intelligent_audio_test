@@ -386,13 +386,32 @@ export function ReportCenterPage() {
             onClearAll={handleClearAll}
           />
 
-          {/* 高级搜索（任务类型 × 设备类型 × 创建者，§2 实测 :173-193；INT-381 返修） */}
+          {/* 高级搜索（任务类型 × 设备类型 × 创建者 × 时间范围，§2 实测 :173-193；INT-381 返修） */}
           <ReportAdvancedSearch
             taskType={search.taskType}
             deviceType={search.deviceType}
             creator={search.creator}
+            timeRange={search.timeRange}
+            onTimeRangeChange={(value) =>
+              setSearch({
+                timeRange: value === 'all' ? undefined : value,
+                startTime: undefined,
+                endTime: undefined,
+                page: 1,
+              })
+            }
             onChange={handleAdvancedChange}
-            onReset={() => setSearch({ taskType: undefined, deviceType: undefined, creator: undefined, page: 1 })}
+            onReset={() =>
+              setSearch({
+                taskType: undefined,
+                deviceType: undefined,
+                creator: undefined,
+                timeRange: undefined,
+                startTime: undefined,
+                endTime: undefined,
+                page: 1,
+              })
+            }
           />
 
           <ReportStatsRow
@@ -463,6 +482,14 @@ export function ReportCenterPage() {
               onRowClick={(report) => handleRowAction(report, 'view')}
               onClearFilters={handleClearAll}
               onRetry={() => void listQuery.refetch()}
+              emptyAction={
+                hasPermission('report:create') ? (
+                  <Button variant='secondary' size='sm' onClick={() => setGenerateOpen(true)}>
+                    <FilePlus2 data-icon='inline-start' />
+                    生成报告
+                  </Button>
+                ) : undefined
+              }
             />
           )}
 

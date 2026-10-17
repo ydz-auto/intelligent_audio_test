@@ -5,6 +5,7 @@
  */
 import { ChevronDown, Download, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -90,6 +91,27 @@ export function ComparisonTable({
     }
   }
 
+  // 导出当前表（CSV，含表头；规范 §3.3.4 export 事件，mock 阶段前端生成；TODO(API 接线) 换服务端导出）
+  const handleExport = () => {
+    const header = table.columns.map((col) => col.label)
+    const body = sorted.map((row) =>
+      table.columns.map((col) => {
+        const value = row[col.key]
+        return typeof value === 'number' ? String(value) : String(value ?? '')
+      })
+    )
+    const csv = [header, ...body]
+      .map((cells) => cells.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(','))
+      .join('\r\n')
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    link.download = `${table.title}.csv`
+    link.href = URL.createObjectURL(blob)
+    link.click()
+    URL.revokeObjectURL(link.href)
+    toast.success('表格已导出')
+  }
+
   return (
     <Collapsible open={open || isExporting} onOpenChange={setOpen} className='space-y-2'>
       <div className='flex items-center justify-between'>
@@ -127,7 +149,7 @@ export function ComparisonTable({
                 className='h-8 w-40 ps-7 text-xs'
               />
             </div>
-            <Button variant='ghost' size='sm' className='h-8 gap-1 px-2 text-xs'>
+            <Button variant='ghost' size='sm' className='h-8 gap-1 px-2 text-xs' onClick={handleExport}>
               <Download aria-hidden='true' className='size-3.5' />
               导出
             </Button>
@@ -176,11 +198,17 @@ export function ComparisonTable({
                   第 {page} 页，共 {pages} 页，总计 {total} 条数据
                 </span>
                 <div className='flex items-center gap-1'>
+                  <Button variant='ghost' size='sm' className='h-7 px-2 text-xs' disabled={page <= 1} onClick={() => setPage(1)}>
+                    首页
+                  </Button>
                   <Button variant='ghost' size='sm' className='h-7 px-2 text-xs' disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
                     上一页
                   </Button>
                   <Button variant='ghost' size='sm' className='h-7 px-2 text-xs' disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
                     下一页
+                  </Button>
+                  <Button variant='ghost' size='sm' className='h-7 px-2 text-xs' disabled={page >= pages} onClick={() => setPage(pages)}>
+                    末页
                   </Button>
                 </div>
               </div>
