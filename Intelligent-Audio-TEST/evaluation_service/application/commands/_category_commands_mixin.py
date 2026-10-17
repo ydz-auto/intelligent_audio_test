@@ -64,6 +64,15 @@ class CategoryCommandsMixin:
             if err:
                 return err
 
+            # INT-567：更新路径透传可见性（None 不更新；值校验对齐 Visibility 二值）。
+            # 与 update_dimension（INT-466）口径一致：payload 显式携带时落库，
+            # 前端常规编辑不携带则保持原值。
+            if data.get('visibility') is not None:
+                vis, verr = parse_visibility(data['visibility'])
+                if verr:
+                    return verr
+                cat.visibility = vis
+
             if data.get('name') is not None:
                 name = data['name']
                 existing = self.repo.get_category_by_name(name)

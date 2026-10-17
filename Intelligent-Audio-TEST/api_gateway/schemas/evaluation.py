@@ -61,6 +61,9 @@ class DimensionInput(APIModel):
     output_fields: Optional[Any] = Field(None)
     associated_algorithms: Optional[List[Dict[str, Any]]] = Field(None)
     status: Optional[bool] = Field(None)
+    # INT-567：新建/更新维度透传可见性（列已由基座迁移 INT-462 加好；网关此前
+    # extra=ignore 丢弃未知字段，visibility 被吞 → 落库恒 shared）
+    visibility: Optional[str] = Field(None)
 
     @field_validator('rule', mode='before')
     @classmethod
@@ -150,12 +153,16 @@ class CategoryCreateInput(APIModel):
     name: str = Field(..., validation_alias=AliasChoices('name', 'categoryName'))
     description: Optional[str] = Field(None, validation_alias=AliasChoices('description', 'categoryDescription'))
     icon: Optional[str] = Field('default-icon', validation_alias=AliasChoices('icon', 'categoryIcon'))
+    # INT-567：新建分类透传可见性（同维度口径，列已由 INT-462 加好）
+    visibility: Optional[str] = Field(None)
 
 
 class CategoryUpdateInput(APIModel):
     name: Optional[str] = Field(None, validation_alias=AliasChoices('name', 'categoryName'))
     description: Optional[str] = Field(None, validation_alias=AliasChoices('description', 'categoryDescription'))
     icon: Optional[str] = Field(None, validation_alias=AliasChoices('icon', 'categoryIcon'))
+    # INT-567：更新分类透传可见性（None 不更新；与 update_dimension 口径一致）
+    visibility: Optional[str] = Field(None)
 
 
 class ScoreCalculateInput(APIModel):
