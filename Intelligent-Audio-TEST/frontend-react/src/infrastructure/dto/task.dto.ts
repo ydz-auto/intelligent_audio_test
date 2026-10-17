@@ -159,6 +159,46 @@ export interface PublishedTaskItemDto {
   created_at: string | null
 }
 
+/** 已发布任务执行记录 DTO（published_task.py PublishedTaskExecutionItem 实测） */
+export interface PublishedTaskExecutionDto {
+  task_id: number
+  task_name: string
+  version: number
+  status: string
+  total_cases: number
+  completed_cases: number
+  created_at: string | null
+  completed_at: string | null
+}
+
+/** 已发布任务详情 DTO（published_task.py PublishedTaskDetailData 实测；GET /published-tasks/{id}） */
+export interface PublishedTaskDetailDto {
+  id: number
+  task_group_id: number | null
+  source_task_id: number | null
+  name: string
+  description: string | null
+  status: string
+  benchmark: boolean
+  version: number
+  is_current: boolean
+  snapshot_config: Record<string, unknown>
+  has_task_snapshot: boolean
+  publish_reason: string | null
+  published_by: string | null
+  published_at: string | null
+  archived_by: string | null
+  archived_at: string | null
+  source_task_name: string | null
+  source_task_status: string | null
+  source_task_total_cases: number | null
+  source_task_completed_cases: number | null
+  report_snapshot: Record<string, unknown> | null
+  has_report_snapshot: boolean
+  versions: PublishedTaskItemDto[]
+  execution_history: PublishedTaskExecutionDto[]
+}
+
 /** 日志行 DTO（log.py LogEntry 实测；GET /logs?task_id= 任务日志数据源） */
 export interface TaskLogEntryDto {
   id: number

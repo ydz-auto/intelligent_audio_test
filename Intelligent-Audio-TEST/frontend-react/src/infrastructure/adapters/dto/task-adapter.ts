@@ -8,6 +8,7 @@
 import type { CherryPickContainer } from '@/domain/models/cherryPick'
 import type {
   CherryPickTask,
+  PublishedTaskDetail,
   PublishedTaskItem,
   TaskDetailData,
   TaskListItem,
@@ -15,6 +16,7 @@ import type {
 } from '@/domain/models/task'
 import type {
   PaginatedDto,
+  PublishedTaskDetailDto,
   PublishedTaskItemDto,
   TaskDetailDto,
   TaskListItemDto,
@@ -114,6 +116,14 @@ export function toPublishedTaskListPage(
   return {
     items: (dto.items ?? []).map(toPublishedTaskItem),
     total: dto.total ?? 0,
+  }
+}
+
+/** 已发布任务详情（GET /published-tasks/{id} → PublishedTaskDetail；纯透传 + versions 行转换） */
+export function toPublishedTaskDetail(dto: PublishedTaskDetailDto): PublishedTaskDetail {
+  return {
+    ...dto,
+    versions: (dto.versions ?? []).map(toPublishedTaskItem),
   }
 }
 

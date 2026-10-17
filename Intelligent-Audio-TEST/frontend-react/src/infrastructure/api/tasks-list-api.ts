@@ -14,6 +14,7 @@
 import type { CherryPickContainer } from '@/domain/models/cherryPick'
 import type {
   CherryPickTask,
+  PublishedTaskDetail,
   PublishedTaskItem,
   TaskDetailData,
   TaskListItem,
@@ -22,6 +23,7 @@ import type {
 import {
   toCherryPickContainer,
   toCherryPickTask,
+  toPublishedTaskDetail,
   toPublishedTaskListPage,
   toTaskDetail,
   toTaskListPage,
@@ -30,6 +32,7 @@ import {
 import { request } from '@/infrastructure/api/client'
 import type {
   PaginatedDto,
+  PublishedTaskDetailDto,
   PublishedTaskItemDto,
   TaskDetailDto,
   TaskListItemDto,
@@ -101,6 +104,42 @@ export async function fetchPublishedTaskList(
     { params }
   )
   return toPublishedTaskListPage(dto)
+}
+
+/** 已发布任务详情（GET /published-tasks/{id}；展开版本链行数据源，真实版本历史/冻结快照） */
+export async function fetchPublishedTaskDetail(
+  publishedTaskId: number
+): Promise<PublishedTaskDetail> {
+  const dto = await request<PublishedTaskDetailDto>(
+    'GET',
+    `/published-tasks/${publishedTaskId}`
+  )
+  return toPublishedTaskDetail(dto)
+}
+
+/** 发布已发布任务入参（published_task.py PublishedTaskCreateRequest snake_case 契约） */
+export interface PublishTaskInput {
+  sourceTaskId: number
+  name: string
+  description?: string | null
+  publishReason?: string | null
+  benchmark?: boolean
+  benchmarkSuite?: string | null
+  benchmarkCategory?: string | null
+}
+
+/** 发布已发布任务（POST /published-tasks；返回 201 IdData{ id }） */
+export async function publishTask(input: PublishTaskInput): Promise<{ id: number }> {
+  const dto = await request<{ id: number }>('POST', '/published-tasks', {
+    source_task_id: input.sourceTaskId,
+    name: input.name,
+    description: input.description ?? null,
+    publish_reason: input.publishReason ?? null,
+    benchmark: input.benchmark ?? false,
+    benchmark_suite: input.benchmarkSuite ?? null,
+    benchmark_category: input.benchmarkCategory ?? null,
+  })
+  return { id: dto.id }
 }
 
 /** 合并任务列表（GET /tasks?merged=true；整任务合并容器数据源） */
