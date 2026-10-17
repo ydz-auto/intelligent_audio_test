@@ -159,6 +159,9 @@ class CherryPickService:
             'task_ids': _split_ints(query.task_ids),
             'device_ids': _split_ints(query.device_ids),
             'case_ids': _split_strs(query.case_ids),
+            # INT-401：用例关键字模糊搜索透传（与 select_all_candidates 同口径，
+            # 网关不得静默丢弃——审计 P1 回归锁定）
+            'case_keyword': (query.case_keyword or '').strip() or None,
             'execution_status': query.execution_status,
             'evaluation_status': query.evaluation_status,
             'start_date': query.start_date,

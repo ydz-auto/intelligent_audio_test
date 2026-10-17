@@ -20,6 +20,7 @@ os.environ.setdefault('OSS_SECRET_KEY', 'test')
 os.environ.setdefault('DATABASE_URL', 'sqlite:///./TEMP/int577_proc.db')
 
 import pytest
+from types import SimpleNamespace
 
 from shared.models.database import (
     Base, init_db, get_engine, get_db_session, remove_db_session,
@@ -213,7 +214,7 @@ def test_search_tasks_merge_type_filter(db):
 
 
 def test_search_tasks_stats_block(db):
-    """§11-1：stats 块返回并集 total / whole / picked 计数。"""
+    """§11-1：stats=true 时返回并集 total / whole / picked 计数；未请求时 stats=None（审计 P2 门控）。"""
     from task_service.infrastructure.read_models.task_read_model import task_read_model
 
     _a, _b, merged_id = _seed_merge_container()
@@ -224,12 +225,17 @@ def test_search_tasks_stats_block(db):
     picked_id = cherry_pick_service.checkout_merge({'name': 'INT577结果挑选容器3'})['data']['task_id']
     _plain = _seed_plain_task()
 
-    result = task_read_model.search_tasks(page=1, per_page=10)
+    result = task_read_model.search_tasks(page=1, per_page=10, stats=True)
     stats = result['stats']
     assert stats is not None
     assert stats['total'] == 2
     assert stats['whole'] == 1
     assert stats['picked'] == 1
+
+    # 审计 P2 门控：stats=False（日常/已发布/收藏页签缺省）不再执行 3 次 COUNT，
+    # stats 返回 None（参数不再形同虚设）
+    no_stats = task_read_model.search_tasks(page=1, per_page=10)
+    assert no_stats['stats'] is None
 
 
 # ==================== §11-2 候选行补字段 ====================
@@ -280,6 +286,35 @@ def test_candidates_result_type_default(db):
     item = resp['data']['items'][0]
     assert item['result_id'] == rid
     assert item['result_type'] == 'default'
+
+
+def test_candidates_case_keyword_hit_and_exclude(db):
+    """审计 P1 回归：case_keyword 用例关键字模糊搜索命中/排除（命中用例名或用例 ID，
+    与 case_ids 精确 IN 语义区分；网关透传回归见 test_gateway_candidates_payload_passes_case_keyword）。"""
+    from task_service.application.task.cherry_pick_service import cherry_pick_service
+
+    _task_id, results = _seed_source_task('INT577关键字源', status='completed',
+                                          result_types=('real-time', 'final'))
+    c1_rid = next(r[1] for r in results if r[0] == 'INT577-C1')
+    c2_rid = next(r[1] for r in results if r[0] == 'INT577-C2')
+
+    # 命中用例名关键词 → 仅 C1 行
+    hit_name = cherry_pick_service.list_candidates(
+        {'task_ids': [_task_id], 'case_keyword': '用例1', 'page': 1, 'per_page': 50})
+    assert hit_name['success'] is True
+    assert [i['result_id'] for i in hit_name['data']['items']] == [c1_rid]
+
+    # 命中用例 ID 关键词 → 仅 C2 行
+    hit_id = cherry_pick_service.list_candidates(
+        {'task_ids': [_task_id], 'case_keyword': 'INT577-C2', 'page': 1, 'per_page': 50})
+    assert hit_id['success'] is True
+    assert [i['result_id'] for i in hit_id['data']['items']] == [c2_rid]
+
+    # 无命中关键词 → 空
+    miss = cherry_pick_service.list_candidates(
+        {'task_ids': [_task_id], 'case_keyword': 'NOMATCHXYZ', 'page': 1, 'per_page': 50})
+    assert miss['success'] is True
+    assert miss['data']['items'] == []
 
 
 # ==================== §11-4 select-all ====================
@@ -355,3 +390,64 @@ def test_gateway_task_list_query_accepts_int577_params():
     q2 = TaskListQuery.model_validate({'stats': True, 'merge_type': 'picked'})
     assert q2.stats is True
     assert q2.merge_type == 'picked'
+
+
+# ==================== 审计 P1 网关链路 case_keyword 回归 ====================
+
+class _State:
+    def __init__(self, json_body):
+        self._json_body = json_body
+        self.username = ''
+
+
+class _FakeRequest:
+    def __init__(self, query_params):
+        # request_adapter._QueryParams 接受 dict（else 分支 multi_items 探测）
+        self.query_params = dict(query_params)
+        self.state = _State(None)
+
+
+def test_gateway_candidates_payload_passes_case_keyword(monkeypatch):
+    """网关链路回归（审计 P1 阻断项）：CherryPickCandidatesQuery 接受 case_keyword，
+    list_candidates 组装 payload 透传 case_keyword（对齐 select_all_candidates 口径），
+    不再被 pydantic extra=ignore 静默丢弃——前端「搜索用例名称或 ID」恢复生效。
+    """
+    from api_gateway.schemas.cherry_pick import CherryPickCandidatesQuery
+
+    # ① schema 契约：case_keyword 字段必须可解析（缺字段时 pydantic extra=ignore 静默丢参）
+    q = CherryPickCandidatesQuery.model_validate({
+        'task_ids': '7,8', 'case_keyword': 'INT577-C1',
+    })
+    assert q.case_keyword == 'INT577-C1'
+
+    # ② 网关服务 payload 组装：case_keyword 透传（含空白清洗为 None，与 select-all 同口径）
+    from api_gateway.infrastructure import request_adapter
+    import api_gateway.application.services.task.cherry_pick_service as gw_cp
+
+    captured = {}
+
+    def _list_candidates(payload):
+        captured['payload'] = dict(payload)
+        return {'success': True, 'message': 'ok',
+                'data': {'items': [], 'total': 0, 'page': 1, 'per_page': 50}}
+
+    monkeypatch.setattr(gw_cp, '_cherry_pick_acl', SimpleNamespace(list_candidates=_list_candidates))
+
+    request_adapter.set_current_request(_FakeRequest({
+        'task_ids': '7,8', 'case_keyword': 'INT577-C1',
+    }))
+    try:
+        resp, _http = gw_cp.CherryPickService.list_candidates()
+        assert resp['success'] is True
+        assert captured['payload']['case_keyword'] == 'INT577-C1'
+        assert captured['payload']['task_ids'] == [7, 8]
+    finally:
+        request_adapter.set_current_request(None)
+
+    # 空白关键词清洗为 None（与 select_all_candidates 同口径，不传空串）
+    request_adapter.set_current_request(_FakeRequest({'case_keyword': '   '}))
+    try:
+        gw_cp.CherryPickService.list_candidates()
+        assert captured['payload']['case_keyword'] is None
+    finally:
+        request_adapter.set_current_request(None)

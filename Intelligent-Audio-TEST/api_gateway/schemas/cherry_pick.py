@@ -36,6 +36,7 @@ class CherryPickCandidatesQuery(BaseModel):
     task_ids: str = Field('', description='来源任务 ID（逗号分隔）')
     device_ids: str = Field('', description='被测设备 ID（逗号分隔，点名维度）')
     case_ids: str = Field('', description='用例 ID（逗号分隔，点名维度）')
+    case_keyword: Optional[str] = Field(None, description='用例关键字模糊搜索（INT-401：命中用例名/用例ID，与 case_ids 精确 IN 语义区分）')
     execution_status: Optional[str] = Field(None, description='结果执行状态过滤')
     evaluation_status: Optional[str] = Field(None, description='评估状态（evaluated/pending）')
     start_date: Optional[str] = Field(None, description='结果执行时间起（ISO）')

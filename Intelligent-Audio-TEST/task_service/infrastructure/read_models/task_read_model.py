@@ -203,8 +203,10 @@ class TaskReadModel(
             表达式，徽章展示与筛选命中同口径）。
         merge_type（可选，INT-577）：合并方式快捷筛选（whole|picked），网关已
             映射为 merged/cherry_pick 布尔，此处透传（供兼容/审计）。
-        stats（可选，INT-577）：恒返回合并容器统计块（merged ∪ cherry_pick 并集，
-            供「挑选合并」页签计数/facet）。合并容器计数独立于列表分页。
+        stats（可选，INT-577）：仅 stats=true 时计算合并容器统计块
+            （merged ∪ cherry_pick 并集，供「挑选合并」页签计数/facet），
+            否则 stats 返回 None——日常/已发布页签不付 3 次 COUNT 开销。
+            合并容器计数独立于列表分页。
         task_type（可选，INT-273）：按派生任务类型过滤（api/e2e/mixed；口径与
             /tasks/stats type_counts 一致——api=无物理设备用例、e2e=含物理且无
             API 设备用例、mixed=物理与 API 设备用例兼有）。
@@ -512,32 +514,35 @@ class TaskReadModel(
 
             # INT-577：合并容器统计（merged ∪ cherry_pick 并集，供「挑选合并」页签
             # 计数/facet；独立于列表分页，仅统计未删除容器任务）。表缺失降级 None。
+            # 审计 P2：仅 stats=true（「挑选合并」页签）执行 3 次 COUNT，日常/已发布/
+            # 收藏页签不再多付容器关系表计数开销（stats 形参门控，参数不再形同虚设）。
             container_stats: Optional[Dict[str, int]] = None
-            try:
-                from sqlalchemy import func as sa_func, union as sa_union
-                _deleted_flag = (True if deleted else False)
-                whole_q = (session.query(TaskMergeRelation.merged_task_id)
-                           .join(Task, Task.id == TaskMergeRelation.merged_task_id)
-                           .filter(Task.deleted == _deleted_flag)  # noqa: E712
-                           .distinct())
-                picked_q = (session.query(TaskCherryPickRelation.cherry_pick_task_id)
-                            .join(Task, Task.id == TaskCherryPickRelation.cherry_pick_task_id)
-                            .filter(Task.deleted == _deleted_flag)  # noqa: E712
-                            .distinct())
-                whole_count = int(whole_q.count() or 0)
-                picked_count = int(picked_q.count() or 0)
-                union_sub = sa_union(whole_q, picked_q).subquery()
-                union_count = int(session.query(sa_func.count()).select_from(union_sub).scalar() or 0)
-                container_stats = {
-                    'total': union_count,
-                    'whole': whole_count,
-                    'picked': picked_count,
-                }
-            except Exception as cp_err:
-                # 表缺失（旧测试夹具未建表）时降级 None；失败语句已把事务置为
-                # aborted，必须 rollback 恢复，否则 return 后会话清理连锁抛错。
-                session.rollback()
-                logger.debug("合并容器统计降级（表可能未建）: %s", cp_err)
+            if stats:
+                try:
+                    from sqlalchemy import func as sa_func, union as sa_union
+                    _deleted_flag = (True if deleted else False)
+                    whole_q = (session.query(TaskMergeRelation.merged_task_id)
+                               .join(Task, Task.id == TaskMergeRelation.merged_task_id)
+                               .filter(Task.deleted == _deleted_flag)  # noqa: E712
+                               .distinct())
+                    picked_q = (session.query(TaskCherryPickRelation.cherry_pick_task_id)
+                                .join(Task, Task.id == TaskCherryPickRelation.cherry_pick_task_id)
+                                .filter(Task.deleted == _deleted_flag)  # noqa: E712
+                                .distinct())
+                    whole_count = int(whole_q.count() or 0)
+                    picked_count = int(picked_q.count() or 0)
+                    union_sub = sa_union(whole_q, picked_q).subquery()
+                    union_count = int(session.query(sa_func.count()).select_from(union_sub).scalar() or 0)
+                    container_stats = {
+                        'total': union_count,
+                        'whole': whole_count,
+                        'picked': picked_count,
+                    }
+                except Exception as cp_err:
+                    # 表缺失（旧测试夹具未建表）时降级 None；失败语句已把事务置为
+                    # aborted，必须 rollback 恢复，否则 return 后会话清理连锁抛错。
+                    session.rollback()
+                    logger.debug("合并容器统计降级（表可能未建）: %s", cp_err)
 
             return {
                 'items': items,

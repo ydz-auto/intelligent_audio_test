@@ -188,3 +188,31 @@ def load_full_result_data(result_data_from_db, result_data_path):
             category='system'
         )
         return result_data_from_db if isinstance(result_data_from_db, dict) else {}
+<<<<<<< HEAD
+=======
+
+
+def extract_result_type(result_data_from_db, result_data_path=None) -> str:
+    """结果级 result_type 解析（口径对齐 report_data_builder_task_mixin._extract_result_type，
+    缺省 'default'）。先取 DB 轻量 result_data（dict 直接取键 / string JSON 解析），
+    未命中再读 result_data_path 指向的完整结果文件作兜底（report_query_builder
+    口径；先读文件会让候选/购物车每行触发 N+1 文件 I/O，审计 P2 修复）。
+
+    供 task_service 购物车快照（INT-577 §11-5）与候选行补字段（§11-2）共用，
+    避免各服务重复实现口径漂移。
+    """
+    import json as _json
+    try:
+        if isinstance(result_data_from_db, dict) and result_data_from_db.get('result_type'):
+            return str(result_data_from_db['result_type'])
+        if isinstance(result_data_from_db, str) and result_data_from_db.strip():
+            parsed = _json.loads(result_data_from_db)
+            if isinstance(parsed, dict) and parsed.get('result_type'):
+                return str(parsed['result_type'])
+        full_data = load_full_result_data(result_data_from_db, result_data_path)
+        if isinstance(full_data, dict) and full_data.get('result_type'):
+            return str(full_data['result_type'])
+        return 'default'
+    except Exception:
+        return 'default'
+>>>>>>> 64b779d1c (INT-577: 审计打回修复——case_keyword 网关透传恢复（P1 用例关键字搜索回归）+ result_type DB 先读/stats 门控/迁移脚本登记/独立 session（P2/P3）)
