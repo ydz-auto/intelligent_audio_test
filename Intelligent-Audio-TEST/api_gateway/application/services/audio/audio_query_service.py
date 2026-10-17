@@ -157,6 +157,25 @@ class AudioQueryService:
         if result.get('success'):
             data = result.get('data')
             if data:
+                # INT-564：audio_bp 直连详情端点叠加 owner 校验（数据可见性
+                # 设计文档 §四.4）——私有音频非 owner 按不存在处理（404）。
+                # 宿主语境（用例 preview/playback、用例导出）走宿主端点经
+                # gRPC 直连，不经过本边界，维持宿主优先只读豁免。
+                from shared.infrastructure.visibility_filter import check_visible
+                from api_gateway.application.services.visibility.visibility_service import (
+                    VisibilityService,
+                )
+                uid, is_admin = VisibilityService.get_identity()
+                if isinstance(data, dict):
+                    try:
+                        check_visible(
+                            data.get('created_by_user_id'),
+                            data.get('visibility') or 'shared',
+                            uid,
+                            is_admin,
+                        )
+                    except PermissionError:
+                        return error_response('音频文件不存在', code=404, http_code=404)
                 # INT-466：admin 访问私有音频详情落 PRIVATE_RESOURCE_ACCESS 审计（旁路）
                 from api_gateway.application.services.visibility.visibility_audit import (
                     maybe_audit_private_detail,
@@ -304,6 +323,14 @@ class AudioQueryService:
         # 路径安全：拒绝目录穿越段
         if '..' in oss_key.replace(chr(92), '/').split('/'):
             return error_response("路径不合法", code=403, http_code=403)
+
+        # INT-564：下载为 audio_bp 直连读路径，私有音频非 owner → 404。
+        # 复用 stream-by-path 的路径反查 + 可见性校验（命中私有非 owner 404）；
+        # 本地降级模式仅服务 stream 校验后发出的回退 URL，此处为纵深防御。
+        # gRPC 不可达（code=400）回落原字节流路径，保持既有下载行为。
+        pre = _audio_acl.stream_audio_by_path({'path': oss_key})
+        if not pre.get('success') and pre.get('code') == 404:
+            return error_response("音频文件不存在", code=404, http_code=404)
 
         if os.path.isabs(oss_key):
             # 绝对路径仅允许音频存储目录（上传合并输出）与本地降级存储根目录

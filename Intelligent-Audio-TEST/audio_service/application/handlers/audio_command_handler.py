@@ -180,6 +180,58 @@ def _relocate_audio_file(audio, target_folder: str, copy_mode: bool) -> _Relocat
     return _RelocationResult(new_path, new_path, stale_source)
 
 
+# ========== 数据可见性（INT-564）工具函数 ==========
+
+def _owner_check_fail(audio, denied_code: int = 403):
+    """音频写路径 owner 校验（INT-564）：私有非 owner 返回 403，其余返回 None。
+
+    与数据可见性设计文档 §三命令侧口径一致：Application 层先取资源 →
+    check_visible owner 校验；私有资源非 owner 一律拒绝，共享资源回落
+    require_permission 既有语义。admin 豁免（check_visible 内部短路）。
+    写路径一律 owner+admin，不设宿主豁免（规划师裁定 INT-564 §4）。
+    """
+    from shared.infrastructure.visibility_filter import check_visible
+    from shared.infrastructure.user_context import (
+        get_current_user_id,
+        get_current_user_is_admin,
+    )
+    try:
+        check_visible(
+            getattr(audio, 'created_by_user_id', None),
+            getattr(audio, 'visibility', 'shared') or 'shared',
+            get_current_user_id(),
+            get_current_user_is_admin(),
+        )
+        return None
+    except PermissionError as e:
+        return _fail(str(e), denied_code)
+
+
+def _filter_visible_audios(audios):
+    """批量写取数后逐行可见性过滤（INT-564）：私有非 owner 行跳过，不整批放行。
+
+    镜像 task_service 批量写（_filter_visible_testcases）逐行口径：visibility /
+    created_by_user_id 缺省的对象按 shared 放行（零回归）。
+    """
+    from shared.infrastructure.visibility_filter import check_visible
+    from shared.infrastructure.user_context import (
+        get_current_user_id,
+        get_current_user_is_admin,
+    )
+    uid = get_current_user_id()
+    is_admin = get_current_user_is_admin()
+    visible = []
+    for audio in audios:
+        vis = getattr(audio, 'visibility', 'shared') or 'shared'
+        owner = getattr(audio, 'created_by_user_id', None)
+        try:
+            check_visible(owner, vis, uid, is_admin)
+            visible.append(audio)
+        except PermissionError:
+            continue
+    return visible
+
+
 class AudioCommandHandler:
     """音频写命令处理器。
 
@@ -264,6 +316,9 @@ class AudioCommandHandler:
         audio = self.repo.get_audio(cmd.audio_id)
         if not audio:
             return _fail('未找到音频文件', 404)
+        denied = _owner_check_fail(audio)
+        if denied:
+            return denied
 
         try:
             data = cmd.data
@@ -368,6 +423,10 @@ class AudioCommandHandler:
                 if not audio:
                     failed_count += 1
                     continue
+                # INT-564：批量写逐行可见性过滤——私有非 owner 行跳过，不整批放行
+                if _owner_check_fail(audio) is not None:
+                    failed_count += 1
+                    continue
 
                 self.annotation_service.persist_annotations_and_raw(audio_id, annotations, algorithm_type)
                 updated_audio_ids.append(audio_id)
@@ -429,7 +488,14 @@ class AudioCommandHandler:
                     return _ok(message='没有可删除的音频文件，所有音频都被其他资源引用')
 
                 audios = self.repo.get_audios_by_ids(deletable_audio_ids)
-                for audio in audios:
+                # INT-564：批量删除逐行可见性过滤——私有非 owner 行跳过（写路径
+                # 一律 owner+admin，无宿主豁免），其余行正常删除
+                visible_audios = _filter_visible_audios(audios)
+                deletable_audio_ids = [a.id for a in visible_audios]
+                if not deletable_audio_ids:
+                    return _ok(message='没有可删除的音频文件，所有音频均无权访问')
+
+                for audio in visible_audios:
                     # INT-1306：物理文件删除改后台尽力执行，OSS 不可达时不阻塞响应
                     self._delete_audio_file_best_effort(audio.file_path)
                     self.repo.delete_audio_annotations(audio.id)
@@ -448,6 +514,8 @@ class AudioCommandHandler:
                 import zipfile
                 from io import BytesIO
                 audios = self.repo.get_audios_by_ids(audio_ids)
+                # INT-564：批量导出逐行可见性过滤——私有非 owner 行不进入导出包
+                audios = _filter_visible_audios(audios)
                 memory_file = BytesIO()
                 with zipfile.ZipFile(memory_file, 'w') as zf:
                     for audio in audios:
@@ -468,7 +536,7 @@ class AudioCommandHandler:
             elif action == 'tags':
                 for audio_id in audio_ids:
                     audio = self.repo.get_audio(audio_id)
-                    if audio:
+                    if audio and _owner_check_fail(audio) is None:
                         self.repo.delete_audio_tags(audio_id)
                         for tag_name in tags:
                             tag = self.repo.get_or_create_tag(tag_name)
@@ -676,6 +744,9 @@ class AudioCommandHandler:
         audio = self.repo.get_audio(cmd.audio_id)
         if not audio:
             return _fail('未找到音频文件', 404)
+        denied = _owner_check_fail(audio)
+        if denied:
+            return denied
 
         try:
             # INT-1306：引用检查改 task_service 批量 gRPC（DB 侧单次扫描），
@@ -721,6 +792,9 @@ class AudioCommandHandler:
         audio = self.repo.get_audio(cmd.audio_id)
         if not audio:
             return _fail('音频不存在', 404)
+        denied = _owner_check_fail(audio)
+        if denied:
+            return denied
 
         algorithms = cmd.data.get('algorithms', [])
         try:
@@ -742,6 +816,9 @@ class AudioCommandHandler:
             for audio_id in audio_ids:
                 audio = self.repo.get_audio(audio_id)
                 if not audio:
+                    continue
+                # INT-564：批量写逐行可见性过滤——私有非 owner 行跳过，不整批放行
+                if _owner_check_fail(audio) is not None:
                     continue
                 self.repo.soft_delete_audio_algorithm_relations(audio_id)
                 for item in algorithms:

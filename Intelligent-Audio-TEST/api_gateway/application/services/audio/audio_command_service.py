@@ -14,6 +14,16 @@ logger = logging.getLogger(__name__)
 _audio_acl = AudioAclRepositoryImpl()
 
 
+def _write_http_code(result):
+    """写路径下游错误码 → HTTP 状态映射（INT-564）：403/404 原样透出。
+
+    下游 audio_service 命令侧已做 owner 校验（私有非 owner 403），网关须把
+    code=403 映射为 HTTP 403，避免统一落 400。
+    """
+    code = result.get('code', 400)
+    return code if code in (403, 404) else 400
+
+
 class AudioCommandService:
     # 元数据管理
     @staticmethod
@@ -37,7 +47,9 @@ class AudioCommandService:
         if result.get('success'):
             maybe_audit_private_write('audio', audio_id, 'update', pre_data)
             return success_response(result.get('data'), result.get('message', '元数据更新成功'))
-        return error_response(result.get('message', '更新失败'), code=result.get('code', 400))
+        return error_response(result.get('message', '更新失败'),
+                              code=result.get('code', 400),
+                              http_code=_write_http_code(result))
 
     # 批量更新标注
     @staticmethod
@@ -93,7 +105,9 @@ class AudioCommandService:
         if result.get('success'):
             maybe_audit_private_write('audio', audio_id, 'delete', pre_data)
             return success_response(result.get('data'), result.get('message', '音频文件已删除'))
-        return error_response(result.get('message', '删除失败'), code=result.get('code', 400))
+        return error_response(result.get('message', '删除失败'),
+                              code=result.get('code', 400),
+                              http_code=_write_http_code(result))
 
     # 更新音频关联的算法
     @staticmethod
@@ -118,7 +132,9 @@ class AudioCommandService:
         if result.get('success'):
             maybe_audit_private_write('audio', audio_id, 'update', pre_data)
             return success_response(result.get('data'), result.get('message', '算法关联更新成功'))
-        return error_response(result.get('message', '更新失败'), code=result.get('code', 400))
+        return error_response(result.get('message', '更新失败'),
+                              code=result.get('code', 400),
+                              http_code=_write_http_code(result))
 
     # 批量更新音频算法关联
     @staticmethod
