@@ -32,9 +32,12 @@ export function BatchSplPanel({
   const [spl, setSpl] = useState(65)
   const [scope, setScope] = useState<BatchScope>('all')
 
+  /** 输入合法才可确认：40-100（与 input min/max 一致；越界/空输入时禁用确定） */
+  const splValid = !Number.isNaN(Number(spl)) && Number(spl) >= 40 && Number(spl) <= 100
+
   const confirm = () => {
     const value = Number(spl)
-    if (Number.isNaN(value) || value < 40 || value > 100) return
+    if (!splValid) return
     onConfirm(value, scope)
     setSpl(65)
     setScope('all')
@@ -94,7 +97,9 @@ export function BatchSplPanel({
           <Button variant='outline' onClick={() => onOpenChange(false)}>
             取消
           </Button>
-          <Button onClick={confirm}>确定</Button>
+          <Button disabled={!splValid} onClick={confirm}>
+            确定
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

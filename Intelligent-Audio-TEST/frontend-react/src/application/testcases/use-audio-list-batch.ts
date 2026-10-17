@@ -23,10 +23,11 @@ interface RoundAudioLike {
 }
 
 export interface AudioListBatchActions {
-  /** 标签交错：按所选标签顺序分段排序（多标签音频每段各现一次） */
+  /** 标签交错：按所选标签顺序分段排序（多标签音频每段各现一次，各次出现经 newId 克隆独立行身份） */
   tagInterleave: <T extends RoundAudioLike>(
     rows: readonly T[],
-    tags: readonly string[]
+    tags: readonly string[],
+    newId: () => string
   ) => T[]
   /** 标签设备：命中指定标签的音频批量设置播放设备 */
   tagDevice: <T extends RoundAudioLike>(rows: readonly T[], tag: string, deviceId: string) => T[]
@@ -57,7 +58,8 @@ export function useAudioListBatch(
   return useMemo(() => {
     const tagsOf = (r: RoundAudioLike) => tagsByFile.get(r.fileId) ?? []
     return {
-      tagInterleave: (rows, tags) => interleaveByTags(rows, tagsOf, tags),
+      tagInterleave: (rows, tags, newId) =>
+        interleaveByTags(rows, tagsOf, tags, (r) => ({ ...r, id: newId() })),
       tagDevice: (rows, tag, deviceId) =>
         patchByTag(rows, tagsOf, tag, (r) => ({ ...r, deviceId })),
       batchDevice: (rows, deviceId, scope, selectedIds) =>

@@ -307,7 +307,7 @@ export function AudioListStep({ presetCount = 2 }: { presetCount?: number }) {
         onOpenChange={closePanel}
         tags={MOCK_TAGS}
         onConfirm={(tags) => {
-          replaceAudios(() => batch.tagInterleave(audios, tags))
+          replaceAudios(() => batch.tagInterleave(audios, tags, nextId))
           toast.success(`已按标签「${tags.join(' / ')}」交错排序`)
         }}
       />

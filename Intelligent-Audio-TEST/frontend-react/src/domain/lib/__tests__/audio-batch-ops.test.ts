@@ -69,6 +69,31 @@ describe('interleaveByTags', () => {
   it('未命中任何标签时返回原列表副本（排序不改丢数据）', () => {
     expect(interleaveByTags(rows, tagsOf, ['不存在'])).toEqual(rows)
   })
+
+  it('传入 clone 时多标签音频各段各现一次且各行独立（唯一 id、互不耦合）', () => {
+    const rows = [row('a', 'au-01'), row('b', 'au-02'), row('c', 'au-03')]
+    let seq = 0
+    const out = interleaveByTags(rows, tagsOf, ['中文', '客厅'], (r) => ({
+      ...r,
+      id: `clone-${++seq}`,
+    }))
+    // 中文段：au-01、au-03；客厅段：au-01（多标签各段各现一次）；未命中 au-02 追加末尾
+    expect(out.map((r) => r.fileId)).toEqual(['au-01', 'au-03', 'au-01', 'au-02'])
+    // 多标签音频两次出现均为独立行：唯一 id、不同引用
+    const [first, second] = out.filter((r) => r.fileId === 'au-01')
+    expect(first.id).not.toBe(second.id)
+    expect(first).not.toBe(second)
+    // 独立编辑：改其中一行的 deviceId，另一行不受影响
+    const edited = out.map((r) => (r.id === first.id ? { ...r, deviceId: 'dev-2' } : r))
+    expect(edited.find((r) => r.id === first.id)?.deviceId).toBe('dev-2')
+    expect(edited.find((r) => r.id === second.id)?.deviceId).toBe('dev-1')
+    // 独立删除：删除其中一行，另一行仍保留
+    const removed = edited.filter((r) => r.id !== first.id)
+    expect(removed).toHaveLength(3)
+    expect(removed.some((r) => r.id === second.id)).toBe(true)
+    // 未命中条目保持原引用（排序不改身份）
+    expect(out.some((r) => r.id === 'b')).toBe(true)
+  })
 })
 
 describe('assignRoundRobin', () => {

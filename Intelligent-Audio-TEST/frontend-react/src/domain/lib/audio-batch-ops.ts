@@ -16,20 +16,24 @@ export type BatchScope = 'all' | 'selected'
  * 每个标签一段，命中该标签的条目按原列表顺序入段（同一多标签条目在每个命中段各现一次）；
  * 未命中任何所选标签的条目按原列表顺序追加到末尾（排序不改丢数据）。
  * tags 为空时返回原列表副本（不改序）。
+ * clone 传入时为每段出现克隆新行身份（保留内容、分配新 id），保证多标签条目各段出现互不耦合
+ * （界面可独立勾选/编辑/删除且 React key 不重复）；缺省时按原引用返回（纯排序视图）。
  */
 export function interleaveByTags<T>(
   items: readonly T[],
   tagsOf: (item: T) => readonly string[],
-  tags: readonly string[]
+  tags: readonly string[],
+  clone?: (item: T) => T
 ): T[] {
   if (tags.length === 0) return [...items]
   const matched = new Set<number>()
   const out: T[] = []
+  const emit = clone ?? ((item: T) => item)
   for (const tag of tags) {
     for (let i = 0; i < items.length; i++) {
       const item = items[i]
       if (tagsOf(item).includes(tag)) {
-        out.push(item)
+        out.push(emit(item))
         matched.add(i)
       }
     }

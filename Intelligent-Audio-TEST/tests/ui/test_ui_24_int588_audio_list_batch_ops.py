@@ -29,6 +29,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -193,6 +194,17 @@ def _card_spl(drv, n):
         .get_attribute('value')
 
 
+def _card_checked(drv, n):
+    """第 n 张音频卡勾选态（base-ui Checkbox 根钮 aria-checked）。"""
+    return _audio_card(drv, n).find_element(
+        By.XPATH, ".//*[starts-with(@aria-label, '勾选音频')]").get_attribute('aria-checked')
+
+
+def _console_severe(drv):
+    return [e for e in drv.get_log('browser')
+            if e.get('level') == 'SEVERE' and 'favicon' not in str(e.get('message', ''))]
+
+
 def _add_audios(drv, times):
     btn = drv.find_element(By.XPATH, "//button[contains(., '添加音频')]")
     for _ in range(times):
@@ -303,6 +315,21 @@ def test_02_tag_interleave(drv):
     ], f'标签交错排序不符：{names}'
     t = _toast_text(drv)
     assert '已按标签「中文 / 客厅」交错排序' in t, f'交错 toast 缺失：{t}'
+    # P2 修复验收：多标签音频各段各现一次须为独立行——勾选第 1 行，第 3 行（客厅段同一音频）不应联动勾选
+    assert _card_checked(drv, 1) == 'false', f'交错后第 1 行初始应未勾选：{_card_checked(drv, 1)}'
+    _audio_card(drv, 1).find_element(By.XPATH, ".//*[starts-with(@aria-label, '勾选音频')]").click()
+    time.sleep(0.4)
+    assert _card_checked(drv, 1) == 'true', '第 1 行勾选后应为已勾选'
+    assert _card_checked(drv, 3) == 'false', \
+        f'P2 状态耦合：勾选第 1 行不应联动第 3 行（同一音频不同段应独立）：{_card_checked(drv, 3)}'
+    # 独立编辑：改第 1 行声压，第 3 行不变
+    _audio_card(drv, 1).find_element(By.CSS_SELECTOR, "input[type='number']").clear()
+    _audio_card(drv, 1).find_element(By.CSS_SELECTOR, "input[type='number']").send_keys('90')
+    time.sleep(0.4)
+    assert _card_spl(drv, 1) == '90', '第 1 行声压应更新为 90'
+    assert _card_spl(drv, 3) == '65', f'P2 状态耦合：第 1 行声压更新不应联动第 3 行：{_card_spl(drv, 3)}'
+    # 标签交错确认渲染后控制台零 SEVERE（审计清单第 3 条；test_10 面板开/关路径不覆盖此路径）
+    assert not _console_severe(drv), f'标签交错确认后 console SEVERE：{_console_severe(drv)[:5]}'
     _save_evidence('02c_tag_interleave_result', drv)
 
 
@@ -435,9 +462,27 @@ def test_07_batch_spl_all_and_selected(drv):
     assert spl.get_attribute('min') == '40' and spl.get_attribute('max') == '100', \
         '批量声压 40-100 约束缺失'
     assert '范围 40-100，默认 65' in dlg.text, '范围说明缺失'
-    spl.clear()
+    # P3 修复验收：越界/空输入时「确定」禁用，合法时可用（与其它面板一致）
+    ok_btn = dlg.find_element(By.XPATH, ".//button[contains(., '确定')]")
+    assert ok_btn.get_attribute('disabled') is None, '默认 65 时确定应可用'
+    # 空输入：真实用户式全选+退格（Selenium clear() 不触发 React onChange，不能代表真实清空）
+    spl.send_keys(Keys.CONTROL, 'a')
+    spl.send_keys(Keys.BACK_SPACE)
+    time.sleep(0.3)
+    assert dlg.find_element(By.XPATH, ".//button[contains(., '确定')]").get_attribute('disabled') is not None, \
+        '空输入时确定应禁用（P3）'
+    # 越界 120
+    spl.send_keys(Keys.CONTROL, 'a')
+    spl.send_keys('120')
+    time.sleep(0.3)
+    assert dlg.find_element(By.XPATH, ".//button[contains(., '确定')]").get_attribute('disabled') is not None, \
+        '越界 120 时确定应禁用（P3）'
+    # 合法 80
+    spl.send_keys(Keys.CONTROL, 'a')
     spl.send_keys('80')
     time.sleep(0.3)
+    assert dlg.find_element(By.XPATH, ".//button[contains(., '确定')]").get_attribute('disabled') is None, \
+        '输入 80 时确定应可用'
     _save_evidence('07a_batch_spl_panel', drv)
     dlg = _dialog_by_title(drv, '批量设置声压级')
     dlg.find_element(By.XPATH, ".//button[contains(., '确定')]").click()
