@@ -87,6 +87,8 @@ coverage/
 CLAUDE.md
 .qoder/
 AGENTS.md
+# INT-480 负责人裁定 A：UX 重设计 frontend-react 开发规范入库版本化（逐节移植 newAPI web/AGENTS.md）
+!Intelligent-Audio-TEST/frontend-react/AGENTS.md
 .agent_context/
 .multica/
 .traecli/
