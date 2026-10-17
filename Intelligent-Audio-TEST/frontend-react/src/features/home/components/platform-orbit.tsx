@@ -7,7 +7,9 @@ import { cn } from '@/lib/utils'
  * 平台枢纽图（照 newAPI hero.tsx 枢纽图几何，03_首页.md §3.2）：
  * 双同心圆 + SVG 四象限连线 + 中心平台卡 + 四角功能节点卡（只上图标色）。
  * INT-421 口径：四角主节点与连线不变，外圈新增算法能力 floating 节点——
- * 虚线描边 + 半透明底（弱连接感），不接 SVG 连线、不进四象限几何。
+ * INT-635（2026-10-17）重新设计为「圆形玻璃徽章 + 悬浮文字标签」：
+ * 徽章 `rounded-full border bg-card/90 shadow-md`（图标上图表色板 chart-1~5 / 场景
+ * 语义灰、卡面中性、带同源辉光阴影），不接 SVG 连线、不进四象限几何。
  */
 export function PlatformOrbit({ className }: { className?: string }) {
   return (
@@ -61,16 +63,23 @@ export function PlatformOrbit({ className }: { className?: string }) {
           <div
             key={node.name}
             className={cn(
-              'bg-card/60 border-dashed absolute flex w-20 flex-col items-center gap-1 rounded-xl border px-2 py-2 text-[11px] font-medium leading-none backdrop-blur-sm sm:w-24 sm:px-3 sm:py-2.5 sm:text-xs',
-              node.position,
-              node.color,
-              node.flagship && 'ring-primary/30 ring-1'
+              'absolute flex w-20 flex-col items-center gap-1.5 sm:w-24',
+              node.position
             )}
           >
-            <span className='flex size-5 shrink-0 items-center justify-center'>
-              <node.icon aria-hidden='true' className='size-4' />
+            <span
+              className={cn(
+                'border-border/70 bg-card/90 flex size-8 items-center justify-center rounded-full border shadow-md backdrop-blur-sm sm:size-9',
+                node.color,
+                node.glow,
+                node.flagship && 'ring-primary/40 ring-2'
+              )}
+            >
+              <node.icon aria-hidden='true' className='size-3.5 sm:size-4' />
             </span>
-            <span className='text-center'>{node.name}</span>
+            <span className='text-muted-foreground text-center text-[11px] leading-tight font-medium sm:text-xs'>
+              {node.name}
+            </span>
           </div>
         ))}
       </div>

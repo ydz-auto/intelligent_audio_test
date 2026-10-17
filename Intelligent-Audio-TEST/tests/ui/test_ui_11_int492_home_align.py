@@ -194,10 +194,21 @@ def test_01_hero_copy_and_orbit(drv):
     # 单条 path 内含 4 个 M 起点（四象限 C 曲线子路径）；算法芯片不进 SVG
     m_starts = d.count('M')
     assert m_starts == 4, f'枢纽图连线应为 4 段 C 曲线（4 个 M 起点），实际 {m_starts}'
-    # 算法芯片为独立 div（border-dashed），不属于 SVG 连线图元
-    chip_divs = drv.find_elements(
-        By.CSS_SELECTOR, 'div.border-dashed')
-    assert chip_divs, '算法能力 floating 节点（虚线描边 div）未找到'
+    # 算法芯片为独立 HTML 元素（非 SVG 连线图元）；INT-635（2026-10-17）样式重做：
+    # 圆形玻璃徽章（span.rounded-full，bg-card/90 中性卡面 + 图标色 + 同源辉光）
+    # + 悬浮文字标签，弃原「虚线描边盒」；四角节点卡与 SVG 连线不变。
+    # 作用域限定枢纽图（aria-label='平台总览'）：徽章共 6 枚、仅旗舰带 ring-2 强调
+    orbit = drv.find_element(By.CSS_SELECTOR, "div[aria-label='平台总览']")
+    medallions = orbit.find_elements(By.CSS_SELECTOR, 'span.rounded-full')
+    assert len(medallions) == 6, \
+        f'算法能力徽章应为 6 枚圆形徽章，实际 {len(medallions)}'
+    assert any(m.get_attribute('class') and 'bg-card/90' in m.get_attribute('class')
+               for m in medallions), '算法能力徽章缺中性卡面 bg-card/90'
+    # 旗舰「实时语音大模型」强调：仅一枚带 ring-2 ring-primary/40
+    flagship = orbit.find_elements(By.CSS_SELECTOR, 'span.rounded-full.ring-2')
+    assert len(flagship) == 1, '旗舰芯片应恰有一枚带 ring-2 强调'
+    assert 'ring-primary/40' in flagship[0].get_attribute('class'), \
+        '旗舰强调光晕缺 ring-primary/40'
 
 
 # ── 2. 分区⑤ 接入测试对象：三对象卡 + 三页签切换 + 示例数据 + 复制 ──

@@ -88,7 +88,10 @@ export const ORBIT_NODES: {
 
 /**
  * 算法能力 floating 节点（INT-421 负责人口径：四角节点卡与连线不变，算法能力项
- * 不接 SVG 连线、不进四象限几何，浮置环绕）——虚线描边 + 半透明底弱连接感，
+ * 不接 SVG 连线、不进四象限几何，浮置环绕）——2026-10-17 INT-635 重新设计：
+ * 圆形玻璃徽章 + 悬浮文字标签（徽章 `rounded-full border bg-card/90 shadow-md`，
+ * 图标上图表色板 chart-1~5 / 场景语义灰，卡面中性；每枚带与图标色同源的辉光阴影），
+ * 弃原「虚线描边 + 半透明底」盒式（与四角实线卡视觉同质，负责人反馈）。
  * 尺寸小于主节点卡，浮置于外圈环带（上下中/左右中）与四角节点间隙。
  * 算法名以 08_算法配置/智能语音算法配置适配/智能语音算法配置化方案.md §2.3 种子数据
  * + voice_llm改造方案.md 为准；「说话人分割」「通话」「会议纪要」无独立算法类型，
@@ -99,13 +102,16 @@ export const ORBIT_ALGORITHM_NODES: {
   icon: LucideIcon
   color: string
   position: string
-  /** 旗舰强调：实时语音大模型（voice_llm），ring-1 ring-primary/30 */
+  /** 辉光阴影色（与图标色同源：chart-N 对应 / 场景语义灰 neutral），浮动粒子感 */
+  glow: string
+  /** 旗舰强调：实时语音大模型（voice_llm），ring-2 ring-primary/40 + shadow-primary/20 */
   flagship?: boolean
 }[] = [
   {
     name: '实时语音大模型',
     icon: BrainCircuit,
     color: 'text-chart-1',
+    glow: 'shadow-primary/20',
     position: 'top-0 left-1/2 -translate-x-1/2',
     flagship: true,
   },
@@ -113,24 +119,28 @@ export const ORBIT_ALGORITHM_NODES: {
     name: '语音识别 ASR',
     icon: Mic,
     color: 'text-chart-2',
+    glow: 'shadow-chart-2/25',
     position: 'top-1/2 right-0 sm:right-2 -translate-y-1/2',
   },
   {
     name: '语音合成 TTS',
     icon: AudioLines,
     color: 'text-chart-3',
+    glow: 'shadow-chart-3/25',
     position: 'top-1/2 left-0 sm:left-2 -translate-y-1/2',
   },
   {
     name: '翻译',
     icon: Languages,
     color: 'text-chart-4',
+    glow: 'shadow-chart-4/25',
     position: 'bottom-0 left-1/2 -translate-x-1/2',
   },
   {
     name: '声纹识别 · 说话人分割',
     icon: AudioWaveform,
     color: 'text-chart-5',
+    glow: 'shadow-chart-5/25',
     // 对角间隙（左上/右下）仅 lg+ 展示——小屏断点容纳不下六枚且不遮挡四角节点（03_首页.md §7 断言）
     position: 'top-[24%] left-0 sm:left-2 hidden lg:flex',
   },
@@ -138,6 +148,7 @@ export const ORBIT_ALGORITHM_NODES: {
     name: '通话与会话场景',
     icon: PhoneCall,
     color: 'text-muted-foreground',
+    glow: 'shadow-neutral/15',
     position: 'bottom-[24%] right-0 sm:right-2 hidden lg:flex',
   },
 ]
