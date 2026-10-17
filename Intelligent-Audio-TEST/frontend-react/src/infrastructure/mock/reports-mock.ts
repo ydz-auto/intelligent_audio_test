@@ -509,6 +509,22 @@ function buildTaskSummary(overrides?: {
       ],
     },
     {
+      resource: 'device_1_realtime',
+      metrics: [
+        { metric: '唤醒成功率', values: [98.5, 95.1, 92.0, 98.0, 87.9, 96.4, 91.6, 94.0, 98.2, 90.4] },
+        { metric: '识别准确率', values: [95.2, 92.6, 89.4, 94.0, 87.5, 93.2, 91.4, 95.8, 90.0, 92.6] },
+        { metric: '平均响应时间', values: [412, 419, 436, 405, 458, 428, 416, 424, 452, 409] },
+      ],
+    },
+    {
+      resource: 'device_1_final',
+      metrics: [
+        { metric: '唤醒成功率', values: [100, 97.2, 94.0, 100, 89.1, 98.4, 93.1, 95.8, 100, 92.0] },
+        { metric: '识别准确率', values: [97.4, 94.0, 90.8, 96.2, 88.9, 95.6, 93.1, 98.0, 91.6, 94.6] },
+        { metric: '平均响应时间', values: [400, 406, 425, 394, 447, 415, 404, 410, 439, 397] },
+      ],
+    },
+    {
       resource: 'device_2',
       metrics: [
         { metric: '唤醒成功率', values: [95.4, 92.8, 97.1, 94.5, 90.6, 96.2, 93.8, 98.0, 91.9, 95.7] },
@@ -533,6 +549,22 @@ function buildTaskSummary(overrides?: {
       ],
     },
     {
+      resource: 'api_101_realtime',
+      metrics: [
+        { metric: '唤醒成功率', values: [95.4, 94.1, 96.4, 94.8, 92.5, 96.0, 93.6, 97.0, 94.3, 95.6] },
+        { metric: '识别准确率', values: [93.9, 92.1, 94.9, 92.7, 90.2, 94.2, 91.5, 95.5, 92.9, 94.0] },
+        { metric: '平均响应时间', values: [392, 400, 385, 408, 403, 389, 397, 382, 405, 393] },
+      ],
+    },
+    {
+      resource: 'api_101_final',
+      metrics: [
+        { metric: '唤醒成功率', values: [96.6, 95.4, 97.8, 96.1, 93.8, 97.4, 94.8, 98.6, 95.7, 97.0] },
+        { metric: '识别准确率', values: [95.1, 93.4, 96.2, 94.0, 91.4, 95.5, 92.7, 96.8, 94.1, 95.3] },
+        { metric: '平均响应时间', values: [378, 384, 371, 394, 389, 375, 383, 368, 391, 379] },
+      ],
+    },
+    {
       resource: 'api_102',
       metrics: [
         { metric: '唤醒成功率', values: [95.2, 93.8, 96.4, 94.1, 91.6, 95.8, 93.2, 97.0, 94.4, 95.6] },
@@ -552,6 +584,41 @@ function buildTaskSummary(overrides?: {
         { id: 104, metric: '平均WER', value: 5.8 },
         { id: 105, metric: '平均响应时间', value: 412 },
       ],
+      categories: [
+        { categoryId: 'grp-wakeup', categoryName: '唤醒场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 98.0 }, { id: 102, metric: '误唤醒率', value: 3.1 }, { id: 103, metric: '识别准确率', value: 94.7 }, { id: 104, metric: '平均WER', value: 5.5 }, { id: 105, metric: '平均响应时间', value: 400 }] },
+        { categoryId: 'grp-noise', categoryName: '噪声场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 89.5 }, { id: 102, metric: '误唤醒率', value: 6.1 }, { id: 103, metric: '识别准确率', value: 89.2 }, { id: 104, metric: '平均WER', value: 8.2 }, { id: 105, metric: '平均响应时间', value: 478 }] },
+        { categoryId: 'grp-farfield', categoryName: '远场场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 95.3 }, { id: 102, metric: '误唤醒率', value: 4.0 }, { id: 103, metric: '识别准确率', value: 91.8 }, { id: 104, metric: '平均WER', value: 7.1 }, { id: 105, metric: '平均响应时间', value: 437 }] },
+      ],
+    },
+    {
+      resource: 'device_1_realtime',
+      metrics: [
+        { id: 101, metric: '唤醒成功率', value: 96.2 },
+        { id: 102, metric: '误唤醒率', value: 3.8 },
+        { id: 103, metric: '识别准确率', value: 93.8 },
+        { id: 104, metric: '平均WER', value: 6.2 },
+        { id: 105, metric: '平均响应时间', value: 418 },
+      ],
+      categories: [
+        { categoryId: 'grp-wakeup', categoryName: '唤醒场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 97.7 }, { id: 102, metric: '误唤醒率', value: 3.4 }, { id: 103, metric: '识别准确率', value: 94.3 }, { id: 104, metric: '平均WER', value: 5.9 }, { id: 105, metric: '平均响应时间', value: 406 }] },
+        { categoryId: 'grp-noise', categoryName: '噪声场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 89.2 }, { id: 102, metric: '误唤醒率', value: 6.4 }, { id: 103, metric: '识别准确率', value: 88.8 }, { id: 104, metric: '平均WER', value: 8.6 }, { id: 105, metric: '平均响应时间', value: 485 }] },
+        { categoryId: 'grp-farfield', categoryName: '远场场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 95.0 }, { id: 102, metric: '误唤醒率', value: 4.3 }, { id: 103, metric: '识别准确率', value: 91.4 }, { id: 104, metric: '平均WER', value: 7.5 }, { id: 105, metric: '平均响应时间', value: 443 }] },
+      ],
+    },
+    {
+      resource: 'device_1_final',
+      metrics: [
+        { id: 101, metric: '唤醒成功率', value: 96.8 },
+        { id: 102, metric: '误唤醒率', value: 3.2 },
+        { id: 103, metric: '识别准确率', value: 94.6 },
+        { id: 104, metric: '平均WER', value: 5.4 },
+        { id: 105, metric: '平均响应时间', value: 405 },
+      ],
+      categories: [
+        { categoryId: 'grp-wakeup', categoryName: '唤醒场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 98.3 }, { id: 102, metric: '误唤醒率', value: 2.8 }, { id: 103, metric: '识别准确率', value: 95.1 }, { id: 104, metric: '平均WER', value: 5.1 }, { id: 105, metric: '平均响应时间', value: 393 }] },
+        { categoryId: 'grp-noise', categoryName: '噪声场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 89.8 }, { id: 102, metric: '误唤醒率', value: 5.8 }, { id: 103, metric: '识别准确率', value: 89.6 }, { id: 104, metric: '平均WER', value: 7.8 }, { id: 105, metric: '平均响应时间', value: 470 }] },
+        { categoryId: 'grp-farfield', categoryName: '远场场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 95.6 }, { id: 102, metric: '误唤醒率', value: 3.7 }, { id: 103, metric: '识别准确率', value: 92.2 }, { id: 104, metric: '平均WER', value: 6.7 }, { id: 105, metric: '平均响应时间', value: 429 }] },
+      ],
     },
     {
       resource: 'device_2',
@@ -561,6 +628,11 @@ function buildTaskSummary(overrides?: {
         { id: 103, metric: '识别准确率', value: 93.1 },
         { id: 104, metric: '平均WER', value: 6.9 },
         { id: 105, metric: '平均响应时间', value: 428 },
+      ],
+      categories: [
+        { categoryId: 'grp-wakeup', categoryName: '唤醒场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 96.9 }, { id: 102, metric: '误唤醒率', value: 3.7 }, { id: 103, metric: '识别准确率', value: 93.6 }, { id: 104, metric: '平均WER', value: 6.6 }, { id: 105, metric: '平均响应时间', value: 415 }] },
+        { categoryId: 'grp-noise', categoryName: '噪声场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 88.4 }, { id: 102, metric: '误唤醒率', value: 6.7 }, { id: 103, metric: '识别准确率', value: 88.1 }, { id: 104, metric: '平均WER', value: 9.3 }, { id: 105, metric: '平均响应时间', value: 496 }] },
+        { categoryId: 'grp-farfield', categoryName: '远场场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 94.2 }, { id: 102, metric: '误唤醒率', value: 4.6 }, { id: 103, metric: '识别准确率', value: 90.7 }, { id: 104, metric: '平均WER', value: 8.2 }, { id: 105, metric: '平均响应时间', value: 454 }] },
       ],
     },
     {
@@ -572,6 +644,11 @@ function buildTaskSummary(overrides?: {
         { id: 104, metric: '平均WER', value: 8.2 },
         { id: 105, metric: '平均响应时间', value: 486 },
       ],
+      categories: [
+        { categoryId: 'grp-wakeup', categoryName: '唤醒场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 94.6 }, { id: 102, metric: '误唤醒率', value: 4.8 }, { id: 103, metric: '识别准确率', value: 92.3 }, { id: 104, metric: '平均WER', value: 7.9 }, { id: 105, metric: '平均响应时间', value: 471 }] },
+        { categoryId: 'grp-noise', categoryName: '噪声场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 86.1 }, { id: 102, metric: '误唤醒率', value: 7.8 }, { id: 103, metric: '识别准确率', value: 86.8 }, { id: 104, metric: '平均WER', value: 10.6 }, { id: 105, metric: '平均响应时间', value: 564 }] },
+        { categoryId: 'grp-farfield', categoryName: '远场场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 91.9 }, { id: 102, metric: '误唤醒率', value: 5.7 }, { id: 103, metric: '识别准确率', value: 89.4 }, { id: 104, metric: '平均WER', value: 9.5 }, { id: 105, metric: '平均响应时间', value: 515 }] },
+      ],
     },
     {
       resource: 'api_101',
@@ -582,6 +659,41 @@ function buildTaskSummary(overrides?: {
         { id: 104, metric: '平均WER', value: 5.5 },
         { id: 105, metric: '平均响应时间', value: 385 },
       ],
+      categories: [
+        { categoryId: 'grp-wakeup', categoryName: '唤醒场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 97.5 }, { id: 102, metric: '误唤醒率', value: 3.5 }, { id: 103, metric: '识别准确率', value: 95.0 }, { id: 104, metric: '平均WER', value: 5.2 }, { id: 105, metric: '平均响应时间', value: 373 }] },
+        { categoryId: 'grp-noise', categoryName: '噪声场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 89.0 }, { id: 102, metric: '误唤醒率', value: 6.5 }, { id: 103, metric: '识别准确率', value: 89.5 }, { id: 104, metric: '平均WER', value: 7.9 }, { id: 105, metric: '平均响应时间', value: 447 }] },
+        { categoryId: 'grp-farfield', categoryName: '远场场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 94.8 }, { id: 102, metric: '误唤醒率', value: 4.4 }, { id: 103, metric: '识别准确率', value: 92.1 }, { id: 104, metric: '平均WER', value: 6.8 }, { id: 105, metric: '平均响应时间', value: 408 }] },
+      ],
+    },
+    {
+      resource: 'api_101_realtime',
+      metrics: [
+        { id: 101, metric: '唤醒成功率', value: 95.6 },
+        { id: 102, metric: '误唤醒率', value: 4.2 },
+        { id: 103, metric: '识别准确率', value: 94.1 },
+        { id: 104, metric: '平均WER', value: 5.9 },
+        { id: 105, metric: '平均响应时间', value: 392 },
+      ],
+      categories: [
+        { categoryId: 'grp-wakeup', categoryName: '唤醒场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 97.1 }, { id: 102, metric: '误唤醒率', value: 3.8 }, { id: 103, metric: '识别准确率', value: 94.6 }, { id: 104, metric: '平均WER', value: 5.6 }, { id: 105, metric: '平均响应时间', value: 380 }] },
+        { categoryId: 'grp-noise', categoryName: '噪声场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 88.6 }, { id: 102, metric: '误唤醒率', value: 6.8 }, { id: 103, metric: '识别准确率', value: 89.1 }, { id: 104, metric: '平均WER', value: 8.3 }, { id: 105, metric: '平均响应时间', value: 455 }] },
+        { categoryId: 'grp-farfield', categoryName: '远场场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 94.4 }, { id: 102, metric: '误唤醒率', value: 4.7 }, { id: 103, metric: '识别准确率', value: 91.7 }, { id: 104, metric: '平均WER', value: 7.2 }, { id: 105, metric: '平均响应时间', value: 416 }] },
+      ],
+    },
+    {
+      resource: 'api_101_final',
+      metrics: [
+        { id: 101, metric: '唤醒成功率', value: 96.4 },
+        { id: 102, metric: '误唤醒率', value: 3.6 },
+        { id: 103, metric: '识别准确率', value: 94.8 },
+        { id: 104, metric: '平均WER', value: 5.1 },
+        { id: 105, metric: '平均响应时间', value: 378 },
+      ],
+      categories: [
+        { categoryId: 'grp-wakeup', categoryName: '唤醒场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 97.9 }, { id: 102, metric: '误唤醒率', value: 3.2 }, { id: 103, metric: '识别准确率', value: 95.3 }, { id: 104, metric: '平均WER', value: 4.8 }, { id: 105, metric: '平均响应时间', value: 367 }] },
+        { categoryId: 'grp-noise', categoryName: '噪声场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 89.4 }, { id: 102, metric: '误唤醒率', value: 6.2 }, { id: 103, metric: '识别准确率', value: 89.8 }, { id: 104, metric: '平均WER', value: 7.5 }, { id: 105, metric: '平均响应时间', value: 438 }] },
+        { categoryId: 'grp-farfield', categoryName: '远场场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 95.2 }, { id: 102, metric: '误唤醒率', value: 4.1 }, { id: 103, metric: '识别准确率', value: 92.4 }, { id: 104, metric: '平均WER', value: 6.4 }, { id: 105, metric: '平均响应时间', value: 401 }] },
+      ],
     },
     {
       resource: 'api_102',
@@ -591,6 +703,11 @@ function buildTaskSummary(overrides?: {
         { id: 103, metric: '识别准确率', value: 92.7 },
         { id: 104, metric: '平均WER', value: 7.3 },
         { id: 105, metric: '平均响应时间', value: 201 },
+      ],
+      categories: [
+        { categoryId: 'grp-wakeup', categoryName: '唤醒场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 96.7 }, { id: 102, metric: '误唤醒率', value: 4.2 }, { id: 103, metric: '识别准确率', value: 93.2 }, { id: 104, metric: '平均WER', value: 7.0 }, { id: 105, metric: '平均响应时间', value: 195 }] },
+        { categoryId: 'grp-noise', categoryName: '噪声场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 88.2 }, { id: 102, metric: '误唤醒率', value: 7.2 }, { id: 103, metric: '识别准确率', value: 87.7 }, { id: 104, metric: '平均WER', value: 9.7 }, { id: 105, metric: '平均响应时间', value: 233 }] },
+        { categoryId: 'grp-farfield', categoryName: '远场场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 94.0 }, { id: 102, metric: '误唤醒率', value: 5.1 }, { id: 103, metric: '识别准确率', value: 90.3 }, { id: 104, metric: '平均WER', value: 8.6 }, { id: 105, metric: '平均响应时间', value: 213 }] },
       ],
     },
   ]
@@ -626,14 +743,51 @@ function buildTaskSummary(overrides?: {
       ],
     },
     {
+      resource: 'device_1_realtime',
+      tags: [
+        { tag_id: 't-01', tag_name: '远场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 94.2 }, { id: 103, metric: '识别准确率', value: 89.6 }] },
+        { tag_id: 't-02', tag_name: '近场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 97.6 }, { id: 103, metric: '识别准确率', value: 96.1 }] },
+        { tag_id: 't-03', tag_name: '噪声', category_id: 'tag-cat-env', category_name: '环境', metrics: [{ id: 101, metric: '唤醒成功率', value: 87.8 }, { id: 103, metric: '识别准确率', value: 85.4 }] },
+        { tag_id: 't-04', tag_name: '唤醒', category_id: 'tag-cat-func', category_name: '功能类型', metrics: [{ id: 101, metric: '唤醒成功率', value: 96.2 }, { id: 105, metric: '平均响应时间', value: 418 }] },
+        { tag_id: 't-11', tag_name: '1m', category_id: 'tag-cat-dist', category_name: '距离', metrics: [{ id: 101, metric: '唤醒成功率', value: 97.0 }, { id: 103, metric: '识别准确率', value: 94.8 }] },
+        { tag_id: 't-12', tag_name: '2m', category_id: 'tag-cat-dist', category_name: '距离', metrics: [{ id: 101, metric: '唤醒成功率', value: 92.6 }, { id: 103, metric: '识别准确率', value: 90.9 }] },
+        { tag_id: 't-13', tag_name: '3m', category_id: 'tag-cat-dist', category_name: '距离', metrics: [{ id: 101, metric: '唤醒成功率', value: 88.2 }, { id: 103, metric: '识别准确率', value: 86.4 }] },
+      ],
+    },
+    {
+      resource: 'device_1_final',
+      tags: [
+        { tag_id: 't-01', tag_name: '远场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 95.4 }, { id: 103, metric: '识别准确率', value: 90.8 }] },
+        { tag_id: 't-02', tag_name: '近场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 98.8 }, { id: 103, metric: '识别准确率', value: 97.4 }] },
+        { tag_id: 't-03', tag_name: '噪声', category_id: 'tag-cat-env', category_name: '环境', metrics: [{ id: 101, metric: '唤醒成功率', value: 89.0 }, { id: 103, metric: '识别准确率', value: 86.8 }] },
+        { tag_id: 't-04', tag_name: '唤醒', category_id: 'tag-cat-func', category_name: '功能类型', metrics: [{ id: 101, metric: '唤醒成功率', value: 96.8 }, { id: 105, metric: '平均响应时间', value: 405 }] },
+        { tag_id: 't-11', tag_name: '1m', category_id: 'tag-cat-dist', category_name: '距离', metrics: [{ id: 101, metric: '唤醒成功率', value: 98.2 }, { id: 103, metric: '识别准确率', value: 96.0 }] },
+        { tag_id: 't-12', tag_name: '2m', category_id: 'tag-cat-dist', category_name: '距离', metrics: [{ id: 101, metric: '唤醒成功率', value: 93.8 }, { id: 103, metric: '识别准确率', value: 92.2 }] },
+        { tag_id: 't-13', tag_name: '3m', category_id: 'tag-cat-dist', category_name: '距离', metrics: [{ id: 101, metric: '唤醒成功率', value: 89.5 }, { id: 103, metric: '识别准确率', value: 87.8 }] },
+      ],
+    },
+    {
       resource: 'device_2',
       tags: [
         { tag_id: 't-01', tag_name: '远场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 93.6 }, { id: 103, metric: '识别准确率', value: 88.9 }] },
         { tag_id: 't-02', tag_name: '近场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 97.4 }, { id: 103, metric: '识别准确率', value: 95.2 }] },
         { tag_id: 't-03', tag_name: '噪声', category_id: 'tag-cat-env', category_name: '环境', metrics: [{ id: 101, metric: '唤醒成功率', value: 87.1 }, { id: 103, metric: '识别准确率', value: 84.6 }] },
+        { tag_id: 't-04', tag_name: '唤醒', category_id: 'tag-cat-func', category_name: '功能类型', metrics: [{ id: 101, metric: '唤醒成功率', value: 96.8 }, { id: 105, metric: '平均响应时间', value: 415 }] },
         { tag_id: 't-11', tag_name: '1m', category_id: 'tag-cat-dist', category_name: '距离', metrics: [{ id: 101, metric: '唤醒成功率', value: 96.8 }, { id: 103, metric: '识别准确率', value: 94.1 }] },
         { tag_id: 't-12', tag_name: '2m', category_id: 'tag-cat-dist', category_name: '距离', metrics: [{ id: 101, metric: '唤醒成功率', value: 92.4 }, { id: 103, metric: '识别准确率', value: 90.3 }] },
         { tag_id: 't-13', tag_name: '3m', category_id: 'tag-cat-dist', category_name: '距离', metrics: [{ id: 101, metric: '唤醒成功率', value: 87.6 }, { id: 103, metric: '识别准确率', value: 85.9 }] },
+      ],
+    },
+    {
+      resource: 'device_3',
+      tags: [
+        { tag_id: 't-01', tag_name: '远场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 90.5 }, { id: 103, metric: '识别准确率', value: 86.1 }] },
+        { tag_id: 't-02', tag_name: '近场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 95.2 }, { id: 103, metric: '识别准确率', value: 93.4 }] },
+        { tag_id: 't-03', tag_name: '噪声', category_id: 'tag-cat-env', category_name: '环境', metrics: [{ id: 101, metric: '唤醒成功率', value: 83.6 }, { id: 103, metric: '识别准确率', value: 81.2 }] },
+        { tag_id: 't-04', tag_name: '唤醒', category_id: 'tag-cat-func', category_name: '功能类型', metrics: [{ id: 101, metric: '唤醒成功率', value: 94.6 }, { id: 105, metric: '平均响应时间', value: 471 }] },
+        { tag_id: 't-11', tag_name: '1m', category_id: 'tag-cat-dist', category_name: '距离', metrics: [{ id: 101, metric: '唤醒成功率', value: 93.9 }, { id: 103, metric: '识别准确率', value: 91.6 }] },
+        { tag_id: 't-12', tag_name: '2m', category_id: 'tag-cat-dist', category_name: '距离', metrics: [{ id: 101, metric: '唤醒成功率', value: 89.8 }, { id: 103, metric: '识别准确率', value: 88.1 }] },
+        { tag_id: 't-13', tag_name: '3m', category_id: 'tag-cat-dist', category_name: '距离', metrics: [{ id: 101, metric: '唤醒成功率', value: 85.2 }, { id: 103, metric: '识别准确率', value: 83.6 }] },
       ],
     },
     {
@@ -642,6 +796,34 @@ function buildTaskSummary(overrides?: {
         { tag_id: 't-01', tag_name: '远场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 95.1 }, { id: 103, metric: '识别准确率', value: 91.5 }] },
         { tag_id: 't-02', tag_name: '近场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 98.6 }, { id: 103, metric: '识别准确率', value: 97.1 }] },
         { tag_id: 't-03', tag_name: '噪声', category_id: 'tag-cat-env', category_name: '环境', metrics: [{ id: 101, metric: '唤醒成功率', value: 89.2 }, { id: 103, metric: '识别准确率', value: 87.4 }] },
+        { tag_id: 't-04', tag_name: '唤醒', category_id: 'tag-cat-func', category_name: '功能类型', metrics: [{ id: 101, metric: '唤醒成功率', value: 97.5 }, { id: 105, metric: '平均响应时间', value: 373 }] },
+      ],
+    },
+    {
+      resource: 'api_101_realtime',
+      tags: [
+        { tag_id: 't-01', tag_name: '远场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 94.5 }, { id: 103, metric: '识别准确率', value: 90.9 }] },
+        { tag_id: 't-02', tag_name: '近场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 98.0 }, { id: 103, metric: '识别准确率', value: 96.4 }] },
+        { tag_id: 't-03', tag_name: '噪声', category_id: 'tag-cat-env', category_name: '环境', metrics: [{ id: 101, metric: '唤醒成功率', value: 88.6 }, { id: 103, metric: '识别准确率', value: 86.7 }] },
+        { tag_id: 't-04', tag_name: '唤醒', category_id: 'tag-cat-func', category_name: '功能类型', metrics: [{ id: 101, metric: '唤醒成功率', value: 97.1 }, { id: 105, metric: '平均响应时间', value: 380 }] },
+      ],
+    },
+    {
+      resource: 'api_101_final',
+      tags: [
+        { tag_id: 't-01', tag_name: '远场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 95.7 }, { id: 103, metric: '识别准确率', value: 92.1 }] },
+        { tag_id: 't-02', tag_name: '近场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 99.0 }, { id: 103, metric: '识别准确率', value: 97.6 }] },
+        { tag_id: 't-03', tag_name: '噪声', category_id: 'tag-cat-env', category_name: '环境', metrics: [{ id: 101, metric: '唤醒成功率', value: 89.8 }, { id: 103, metric: '识别准确率', value: 88.0 }] },
+        { tag_id: 't-04', tag_name: '唤醒', category_id: 'tag-cat-func', category_name: '功能类型', metrics: [{ id: 101, metric: '唤醒成功率', value: 97.9 }, { id: 105, metric: '平均响应时间', value: 367 }] },
+      ],
+    },
+    {
+      resource: 'api_102',
+      tags: [
+        { tag_id: 't-01', tag_name: '远场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 94.4 }, { id: 103, metric: '识别准确率', value: 90.8 }] },
+        { tag_id: 't-02', tag_name: '近场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 101, metric: '唤醒成功率', value: 98.1 }, { id: 103, metric: '识别准确率', value: 96.5 }] },
+        { tag_id: 't-03', tag_name: '噪声', category_id: 'tag-cat-env', category_name: '环境', metrics: [{ id: 101, metric: '唤醒成功率', value: 88.0 }, { id: 103, metric: '识别准确率', value: 86.5 }] },
+        { tag_id: 't-04', tag_name: '唤醒', category_id: 'tag-cat-func', category_name: '功能类型', metrics: [{ id: 101, metric: '唤醒成功率', value: 96.7 }, { id: 105, metric: '平均响应时间', value: 195 }] },
       ],
     },
   ]
