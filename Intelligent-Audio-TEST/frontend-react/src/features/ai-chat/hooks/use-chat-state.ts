@@ -1,59 +1,29 @@
 /**
- * AI 对话会话状态（interfaces 层 hooks；照 newAPI use-playground-state 平移）。
- * config/messages 两态 + 500ms 防抖持久化（§3.7 本地键；2026-10-17 新口径：
- * parameter-enabled 键废弃，config 改存模型/供应商选择 §3.5/§3.11）。
- * 首访无存档走规范空态（四 starter，§3.1/§3.3）；「清空对话」后同样回空态。
- * URL 契约：/ai-chat?report={id} 绑定报告上下文、/ai-chat?task={id} 绑定任务上下文并预填指令（§3.7）。
+ * AI 对话会话状态（interfaces 层 hooks；08_AI对话页.md §3.1B/§3.7）。
+ * 整页（/ai-chat）与全局浮窗两形态共用 infrastructure/stores/aiChatSessionStore 单一会话
+ * 实例——§3.1B「两形态同 store 不分裂会话」（浮窗全局驻留含 /ai-chat，各持独立实例会以
+ * 500ms 防抖互覆写 iatp:ai-chat:v1:* 键、丢消息）。config/messages 由 store 持有并订阅持久化。
+ * URL 契约：/ai-chat?report={id} / /ai-chat?task={id} 绑定上下文并预填指令（§3.7）。
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 
-import type {
-  ChatConfig,
-  ChatMessage,
-} from '@/domain/models/aiChat'
-import { DEFAULT_CONFIG } from '@/features/ai-chat/constants'
-import { aiChatPrefs } from '@/infrastructure/storage/aiChatPrefs'
-import { MOCK_REPORTS } from '@/infrastructure/mock/ai-chat-mock'
+import {
+  useAiChatSession,
+  type AiChatInitialContext,
+} from '@/infrastructure/stores/aiChatSessionStore'
 
-type InitialContext = {
-  report?: string
-  task?: string
-}
+type InitialContext = AiChatInitialContext
 
-function buildInitialConfig(context?: InitialContext): ChatConfig {
-  const saved = aiChatPrefs.loadConfig()
-  if (saved) return saved
-
-  // URL 契约：/ai-chat?report={id} / /ai-chat?task={id}（§3.7）
-  const report = context?.report
-  const task = context?.task
-  const reportId = Number(report)
-  const taskId = Number(task)
-
-  if (report && Number.isFinite(reportId)) {
-    const found = MOCK_REPORTS.find((item) => item.id === reportId)
-    if (found) {
-      return {
-        ...DEFAULT_CONFIG,
-        reportContextId: String(found.id),
-        reportContextLabel: found.name,
-        reportContextType: found.type,
-      }
-    }
-  }
-  if (task && Number.isFinite(taskId)) {
-    return {
-      ...DEFAULT_CONFIG,
-      reportContextId: String(taskId),
-      reportContextLabel: `任务 #${taskId}`,
-      reportContextType: 'task_context',
-    }
-  }
-  return { ...DEFAULT_CONFIG }
-}
-
-/** URL 任务入口预填指令（§3.7：/ai-chat?task={id} 进入即预填「帮我把任务 #{id} 的测试结果生成一份报告」） */
+/**
+ * URL 入口预填指令（§3.7）：/ai-chat?report={id} 进入即预填「帮我把报告 #{id} 的测试结果
+ * 生成一份可交付报告」；/ai-chat?task={id} 预填「帮我把任务 #{id} 的测试结果生成一份报告」。
+ */
 function buildInitialPrompt(context?: InitialContext): string | undefined {
+  const report = context?.report
+  const reportId = Number(report)
+  if (report && Number.isFinite(reportId)) {
+    return `帮我把报告 #${reportId} 的测试结果生成一份可交付报告`
+  }
   const task = context?.task
   const taskId = Number(task)
   if (task && Number.isFinite(taskId)) {
@@ -63,53 +33,21 @@ function buildInitialPrompt(context?: InitialContext): string | undefined {
 }
 
 export function useChatState(context?: InitialContext) {
-  const [config, setConfig] = useState<ChatConfig>(() =>
-    buildInitialConfig(context)
-  )
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    const saved = aiChatPrefs.loadMessages()
-    return saved && saved.length > 0 ? saved : []
-  })
+  const config = useAiChatSession((s) => s.config)
+  const messages = useAiChatSession((s) => s.messages)
+  const updateMessages = useAiChatSession((s) => s.updateMessages)
+  const updateConfig = useAiChatSession((s) => s.updateConfig)
+  const clearMessages = useAiChatSession((s) => s.clearMessages)
+  const applyInitialContext = useAiChatSession((s) => s.applyInitialContext)
+
+  // URL 契约（§3.7）：挂载时绑定 report/task 上下文（store 内做已存 config 优先/同上下文保持）
+  useEffect(() => {
+    applyInitialContext(context)
+  }, [applyInitialContext, context])
+
+  // 预填指令（页面级草稿，不入共享会话：浮窗无 URL 上下文，仅 /ai-chat 整页使用）
   const [initialPrompt] = useState(() => buildInitialPrompt(context))
   const [isLoadingMessages] = useState(false)
-  const [isHydrated] = useState(true)
-
-  const saveTimerRef = useRef<number | null>(null)
-
-  // 500ms 防抖持久化（照 use-playground-state）
-  useEffect(() => {
-    if (!isHydrated) return
-    if (saveTimerRef.current !== null) {
-      window.clearTimeout(saveTimerRef.current)
-    }
-    saveTimerRef.current = window.setTimeout(() => {
-      aiChatPrefs.saveMessages(messages)
-    }, 500)
-    return () => {
-      if (saveTimerRef.current !== null) {
-        window.clearTimeout(saveTimerRef.current)
-      }
-    }
-  }, [messages, isHydrated])
-
-  useEffect(() => {
-    aiChatPrefs.saveConfig(config)
-  }, [config])
-
-  const updateMessages = (updater: (prev: ChatMessage[]) => ChatMessage[]) => {
-    setMessages((prev) => updater(prev))
-  }
-
-  const updateConfig = <K extends keyof ChatConfig>(
-    key: K,
-    value: ChatConfig[K]
-  ) => {
-    setConfig((prev) => ({ ...prev, [key]: value }))
-  }
-
-  const clearMessages = () => {
-    setMessages([])
-  }
 
   return {
     config,

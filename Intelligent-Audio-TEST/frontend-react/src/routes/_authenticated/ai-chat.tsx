@@ -7,9 +7,9 @@ import { AiChatPage } from '@/features/ai-chat'
 
 const aiChatSearchSchema = z.object({
   /** URL 契约：/ai-chat?report={id}（报告中心/详情入口，INT-360 声明） */
-  report: z.string().optional().catch(undefined),
+  report: z.coerce.string().optional().catch(undefined),
   /** URL 契约：/ai-chat?task={id}（任务详情入口，INT-354 声明；进入即预填指令） */
-  task: z.string().optional().catch(undefined),
+  task: z.coerce.string().optional().catch(undefined),
 })
 
 /**

@@ -7,6 +7,8 @@
  * 图标+文案换行修复（负责人 2026-10-17 反馈）：照 newAPI LocalSetupGuide 实测结构——
  * 图标与文案收进 `ai-discount-word` 内层 `inline-flex items-center justify-center gap-2` 容器，
  * 避免外层按钮无 flex 布局时 CJK 文本换行/失垂直居中。
+ * hover 预加载（§3.1B 照 LocalSetupGuide preload 模式）未引入：浮窗内容为纯前端会话组件，
+ * 无后端资源可预取（唯一网络面是发送时用户自配 LLM 直连），按需渲染开销可忽略。
  * RBAC（§5）：`report:read` 门槛同整页——device_admin 无 report:read 时整钮不渲染。
  */
 import { Sparkles } from 'lucide-react'
@@ -38,9 +40,6 @@ export function AgentWorkbenchButton() {
         open && 'ring-2 ring-primary/40'
       )}
       data-slot='button'
-      onMouseEnter={() => {
-        // TODO(INT-598)：hover 预加载浮窗内容（照 LocalSetupGuide preloadLocalSetupGuideContent 懒加载模式）
-      }}
       onClick={handleClick}
       type='button'
     >

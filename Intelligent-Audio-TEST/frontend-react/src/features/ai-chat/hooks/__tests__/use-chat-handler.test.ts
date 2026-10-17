@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ERROR_MESSAGES, MESSAGE_STATUS } from '@/features/ai-chat/constants'
 import { useChatHandler } from '@/features/ai-chat/hooks/use-chat-handler'
+import { useChatConversation } from '@/features/ai-chat/hooks/use-chat-conversation'
 import type { ChatConfig, ChatMessage, LlmProvider } from '@/domain/models/aiChat'
 
 const PROVIDER: LlmProvider = {
@@ -44,6 +45,28 @@ async function waitAssistantSettled(
     }
   }
   return latestRef.current[1]
+}
+
+/** 等待「最后一条渲染中的 assistant」落到终态（重新生成场景消息位置不定） */
+async function waitRegeneratedAssistantSettled(
+  latestRef: { current: ChatMessage[] }
+): Promise<ChatMessage> {
+  for (let i = 0; i < 60; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 40))
+    const assistants = latestRef.current.filter(
+      (m) => m.from === 'assistant' && m.key.startsWith('assistant-')
+    )
+    const latest = assistants[assistants.length - 1]
+    if (
+      latest &&
+      (latest.status === MESSAGE_STATUS.COMPLETE ||
+        latest.status === MESSAGE_STATUS.ERROR)
+    ) {
+      return latest
+    }
+  }
+  const assistants = latestRef.current.filter((m) => m.from === 'assistant')
+  return assistants[assistants.length - 1]
 }
 
 describe('useChatHandler（供应商驱动 Demo 对话，P1 返修）', () => {
@@ -151,5 +174,80 @@ describe('useChatHandler（供应商驱动 Demo 对话，P1 返修）', () => {
     expect(assistant.versions[0].content).toContain('认证失败')
     expect(assistant.toolCalls).toBeUndefined()
     expect(assistant.sourceRefs).toBeUndefined()
+  })
+
+  it('重新生成（historyMessages override）：请求体用截断后历史，不含旧 assistant 回复与重复 user 指令（P2-4）', async () => {
+    const replyText = '重新生成的回复'
+    const fetchMock = vi.fn().mockResolvedValue(
+      makeJsonResponse({
+        choices: [{ message: { content: replyText } }],
+      })
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const makeMsg = (
+      key: string,
+      from: 'user' | 'assistant',
+      content: string,
+      status = MESSAGE_STATUS.COMPLETE
+    ): ChatMessage => ({
+      key,
+      from,
+      versions: [{ id: `${key}-v1`, content }],
+      status,
+      createdAt: Date.now(),
+    })
+    const initialMessages = [
+      makeMsg('u1', 'user', '第一问'),
+      makeMsg('a1', 'assistant', '第一答'),
+      makeMsg('u2', 'user', '第二问'),
+      makeMsg('a2', 'assistant', '旧第二答'),
+    ]
+
+    const latestRef: { current: ChatMessage[] } = { current: initialMessages }
+    const { result } = renderHook(() => {
+      const handler = useChatHandler({
+        config: CONFIG,
+        provider: PROVIDER,
+        messages: initialMessages,
+        onMessageUpdate: (updater) => {
+          latestRef.current = updater(latestRef.current)
+        },
+      })
+      const conversation = useChatConversation({
+        messages: initialMessages,
+        updateMessages: (updater) => {
+          latestRef.current = updater(latestRef.current)
+        },
+        sendChat: handler.sendChat,
+      })
+      return { ...handler, ...conversation }
+    })
+
+    await act(async () => {
+      result.current.handleRegenerateMessage(initialMessages[3])
+    })
+    const assistant = await waitRegeneratedAssistantSettled(latestRef)
+
+    // 重新生成的 assistant 回复完整渲染
+    expect(assistant.versions[0].content).toBe(replyText)
+
+    // 请求体校验：截断后历史 + 当前指令，无旧 assistant 回复、无重复指令
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [, init] = fetchMock.mock.calls[0]
+    const body = JSON.parse(String(init?.body))
+    const contents = body.messages.map((m: { role: string; content: string }) => m.content)
+    expect(contents).not.toContain('旧第二答')
+    // 「第二问」仅作为当前指令出现一次
+    expect(contents.filter((c: string) => c === '第二问')).toHaveLength(1)
+    // 首条为系统提示，末条为当前 user 指令，中间为第一轮完整交换
+    expect(body.messages[0].role).toBe('system')
+    expect(body.messages.at(-1)).toEqual({ role: 'user', content: '第二问' })
+    expect(body.messages.map((m: { role: string }) => m.role)).toEqual([
+      'system',
+      'user',
+      'assistant',
+      'user',
+    ])
   })
 })

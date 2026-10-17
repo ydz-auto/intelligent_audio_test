@@ -38,20 +38,14 @@ type AiChatPageProps = {
 /** 报告工作模式开关：Agent 后端（DSH + Report Studio）立项后置 true（§3.6） */
 const REPORT_WORK_MODE_ENABLED = false
 
-/** 演示文档内容（报告工作模式右栏骨架；仅开关放开后可看） */
+/** 报告工作模式右栏骨架（§3.6 Agent 后端立项前整块不渲染；组件树先落）。
+ * Demo 占位不载杜撰数值（红线：不杜撰数据交互面）——翻转开关后仅显空文档骨架与演示注记。 */
 const DEMO_DOCUMENT = [
-  '# T320 唤醒词识别回归测试报告',
+  '# 报告文档预览',
   '',
-  '## 摘要',
+  '> 仅演示占位：Agent 后端（DSH + Report Studio）立项后，此处渲染报告工作台文档。',
   '',
-  '本次回归共执行 156 个用例，通过率 **92.3%**。',
-  '',
-  '| 指标 | 数值 |',
-  '| --- | --- |',
-  '| 通过率 | 92.3% |',
-  '| 首唤醒延迟 P50 | 412ms |',
-  '',
-  '[chart:pass-rate]',
+  'AI 只起草不算数：文档数值全部来自报告七表。',
 ].join('\n')
 
 export function AiChatPage({ initialContext }: AiChatPageProps) {
@@ -214,9 +208,9 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
             <div className='hidden min-h-0 min-w-0 lg:block'>
               <DocumentPanel
                 content={DEMO_DOCUMENT}
-                documentName='T320 唤醒词识别回归测试报告'
+                documentName='报告文档预览'
                 onClose={() => setWorkModeOpen(false)}
-                version={3}
+                version={1}
               />
             </div>
           </div>

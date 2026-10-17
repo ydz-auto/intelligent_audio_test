@@ -3,7 +3,8 @@
  * chatbox 式用户自管：名称/Base URL/API Key/模型列表/测试连接/默认/删除；
  * 供应商仅存本机 localStorage（iatp:ai-chat:v1:providers），不上传平台后端。
  * 表单校验：name/baseUrl 必填；apiKey 首供应商必填（§3.11）。
- * Demo 态「测试连接/自动获取模型列表」返回 mock 结果（红线④ 不接真实后端）。
+ * 「测试连接/自动获取模型列表」走真实 GET {baseUrl}/models（2026-10-17 审计 P2-1 返修；
+ * 密钥直连用户自配 Base URL，不上传平台后端）。
  */
 import { Eye, EyeOff, PenLine, Plus, Settings2, Star, Trash2 } from 'lucide-react'
 import { useState } from 'react'

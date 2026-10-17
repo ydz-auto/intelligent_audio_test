@@ -6,6 +6,7 @@ import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
 
 import type { ChatMessage } from '@/domain/models/aiChat'
+import type { SendChatOptions } from '@/features/ai-chat/hooks/use-chat-handler'
 import {
   getCurrentMessageContent,
   getPreviousUserMessage,
@@ -20,7 +21,7 @@ export function useChatConversation({
 }: {
   messages: ChatMessage[]
   updateMessages: UpdateMessagesFn
-  sendChat: (text: string) => void
+  sendChat: (text: string, options?: SendChatOptions) => void
 }) {
   const [editingMessageKey, setEditingMessageKey] = useState<string | null>(null)
 
@@ -38,9 +39,19 @@ export function useChatConversation({
       if (index < 0) return
       const previousUser = getPreviousUserMessage(messages, index)
       if (!previousUser) return
+      const previousUserIndex = messages.findIndex(
+        (item) => item.key === previousUser.key
+      )
+      if (previousUserIndex < 0) return
       const text = getCurrentMessageContent(previousUser)
+      // 重新生成=截断重建（§3.4）：UI 截断到该条 assistant 的上一条 user 消息；
+      // 请求体用截断后历史（不含旧 assistant 回复与重复指令）构造——sendChat 支持 history
+      // override，且不追加新 user 消息（原指令已在截断数组内）。
       updateMessages((prev) => prev.slice(0, index))
-      sendChat(text)
+      sendChat(text, {
+        historyMessages: messages.slice(0, previousUserIndex),
+        appendUserMessage: false,
+      })
     },
     [messages, sendChat, updateMessages]
   )

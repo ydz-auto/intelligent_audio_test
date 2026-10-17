@@ -22,6 +22,14 @@ import {
 
 type UpdateMessagesFn = (updater: (prev: ChatMessage[]) => ChatMessage[]) => void
 
+/** sendChat 选项（重新生成=截断重建 §3.4：请求体用截断后数组构造，不残留旧 assistant 回复） */
+export type SendChatOptions = {
+  /** 请求体历史覆盖：传截断后数组，缺省用当前 messages（重新生成专用） */
+  historyMessages?: ChatMessage[]
+  /** 是否追加新 user 消息（重新生成时 false：原 user 指令已在截断数组内，只补 assistant 占位） */
+  appendUserMessage?: boolean
+}
+
 /** Demo 系统提示（中文；主推全部能力——2026-10-17 08:06 负责人口径：灵犀Agent 主工作台
  * 主推全部能力、不只报告三件；不注入杜撰报告事实，数值一律由真实回复承载） */
 const SYSTEM_PROMPT =
@@ -136,9 +144,10 @@ export function useChatHandler({
   }, [cancelTimers, onMessageUpdate])
 
   const sendChat = useCallback(
-    (text: string) => {
+    (text: string, options?: SendChatOptions) => {
       if (runRef.current !== null) return
 
+      const appendUserMessage = options?.appendUserMessage ?? true
       const userKey = `user-${Date.now()}`
       const assistantKey = `assistant-${Date.now()}`
       const userMessage: ChatMessage = {
@@ -148,7 +157,11 @@ export function useChatHandler({
         createdAt: Date.now(),
       }
       const loadingMessage = buildLoadingMessage(assistantKey)
-      onMessageUpdate((prev) => [...prev, userMessage, loadingMessage])
+      // 重新生成时原 user 指令已在截断数组内，只补 assistant 占位（§3.4 截断重建）
+      onMessageUpdate((prev) => [
+        ...(appendUserMessage ? [...prev, userMessage] : prev),
+        loadingMessage,
+      ])
       setIsGenerating(true)
 
       const runId = Date.now()
@@ -202,7 +215,11 @@ export function useChatHandler({
             baseUrl: currentProvider.baseUrl,
             apiKey: currentProvider.apiKey,
             model: currentModel,
-            messages: buildChatHistory(messagesRef.current, text),
+            // 重新生成=截断重建（§3.4）：请求体用截断后历史构造，旧 assistant 回复不残留
+            messages: buildChatHistory(
+              options?.historyMessages ?? messagesRef.current,
+              text
+            ),
             signal: abort.signal,
           })
           if (isInterrupted()) return
