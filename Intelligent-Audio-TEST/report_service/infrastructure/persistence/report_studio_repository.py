@@ -10,9 +10,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import func
+from sqlalchemy import func, update
 
-from shared.models.database import get_db_session
+from shared.models.database import get_db_session, utc8now
 from report_service.domain.entities.report_studio import (
     ReportStudioChartSpec,
     ReportStudioDocument,
@@ -141,19 +141,32 @@ class ReportStudioRepositoryImpl(ReportStudioRepository):
                         markdown: str, chart_refs: List[str], style_prefs: Dict[str, Any],
                         etag_hash: str, new_version: int,
                         snapshot: ReportStudioVersion) -> Optional[int]:
-        """乐观锁更新：current_version 与 expected_version 不一致 → 返回 None。"""
+        """乐观锁更新：带版本谓词的条件写（WHERE current_version=:expected）。
+
+        原子性（验收标准 2）：并发 PUT 同 expected_version 时，后提交者的条件
+        UPDATE 匹配 0 行 → 返回 None → 服务层转 409 + diff，不再依赖版本快照
+        UNIQUE(doc_id, version) 兜底把 IntegrityError 原样上抛成 500。每次写
+        操作同一事务落不可变版本快照（§15.3）。
+        """
         session = get_db_session()
         try:
-            po = session.query(DocumentPO).filter(DocumentPO.doc_id == doc_id).first()
-            if po is None:
+            result = session.execute(
+                update(DocumentPO)
+                .where(DocumentPO.doc_id == doc_id)
+                .where(DocumentPO.current_version == expected_version)
+                .values(
+                    markdown_content=markdown,
+                    chart_refs=chart_refs or [],
+                    style_prefs=style_prefs or {},
+                    current_version=new_version,
+                    etag_hash=etag_hash,
+                    updated_at=utc8now(),
+                )
+            )
+            if result.rowcount == 0:
+                # 文档不存在（服务层已先查 404，且无删除路径）或版本已被他人推进 → 冲突
+                session.rollback()
                 return None
-            if po.current_version != expected_version:
-                return None
-            po.markdown_content = markdown
-            po.chart_refs = chart_refs or []
-            po.style_prefs = style_prefs or {}
-            po.current_version = new_version
-            po.etag_hash = etag_hash
             session.add(VersionPO(
                 doc_id=snapshot.doc_id,
                 version=snapshot.version,
@@ -194,18 +207,32 @@ class ReportStudioRepositoryImpl(ReportStudioRepository):
     def restore_version(self, doc_id: str, expected_version: int,
                         target: ReportStudioVersion, new_version: int,
                         new_etag: str) -> Optional[int]:
-        """恢复目标版本为新版本（同事务；历史版本只读不可变）。"""
+        """恢复目标版本为新版本（同事务；历史版本只读不可变）。
+
+        与 update_document 同为带版本谓词的条件写：并发 restore 同 expected_version
+        时后提交者匹配 0 行 → 返回 None → 服务层 409，不依赖 UNIQUE 兜底。
+        """
         session = get_db_session()
         try:
             po = session.query(DocumentPO).filter(DocumentPO.doc_id == doc_id).first()
             if po is None:
                 return None
-            if po.current_version != expected_version:
+            result = session.execute(
+                update(DocumentPO)
+                .where(DocumentPO.doc_id == doc_id)
+                .where(DocumentPO.current_version == expected_version)
+                .values(
+                    markdown_content=target.markdown_content,
+                    chart_refs=list((target.chart_specs or {}).get('chart_refs')
+                                    or po.chart_refs or []),
+                    current_version=new_version,
+                    etag_hash=new_etag,
+                    updated_at=utc8now(),
+                )
+            )
+            if result.rowcount == 0:
+                session.rollback()
                 return None
-            po.markdown_content = target.markdown_content
-            po.chart_refs = list((target.chart_specs or {}).get('chart_refs') or po.chart_refs or [])
-            po.current_version = new_version
-            po.etag_hash = new_etag
             session.add(VersionPO(
                 doc_id=doc_id,
                 version=new_version,
