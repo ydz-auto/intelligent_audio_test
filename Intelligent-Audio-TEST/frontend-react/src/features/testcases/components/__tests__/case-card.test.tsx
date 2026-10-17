@@ -101,6 +101,26 @@ describe('CaseCard', () => {
     expect(callbacks.onEdit).toHaveBeenCalledTimes(1)
   })
 
+  it('INT-595 §3.3.2：无关联音频（audioCount=0）时预览钮置灰，Tooltip 说明，点击不触发回调', () => {
+    const callbacks: CaseCardCallbacks = { ...noopCallbacks, onPreview: vi.fn() }
+    render(
+      <CaseCard
+        caseItem={makeCase({ audioCount: 0 })}
+        selected={false}
+        tagRegistry={MOCK_TAGS}
+        callbacks={callbacks}
+        onToggleSelect={vi.fn()}
+      />
+    )
+    const previewBtn = screen.getByLabelText('预览音频')
+    expect(previewBtn).toBeDisabled()
+    expect(previewBtn).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(previewBtn)
+    expect(callbacks.onPreview).not.toHaveBeenCalled()
+    // 其余四钮仍可用
+    expect(screen.getByLabelText('复制用例')).not.toBeDisabled()
+  })
+
   it('回收站态：删除元信息 + 恢复/彻底删除两钮，不渲染普通五钮', () => {
     render(
       <CaseCard

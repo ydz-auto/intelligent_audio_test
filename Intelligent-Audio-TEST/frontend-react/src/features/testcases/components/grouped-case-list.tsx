@@ -7,8 +7,9 @@
  * 「未分组」虚拟组（INT-249：计数=可见数据集中 groupId 为空的用例数；收藏/回收站态不挂载）。
  * 展开态持久化：本会话内存；默认全展开（groups 异步加载后补齐展开集——INT-490 P2 修复）。
  */
-import { ArrowUpDown, ChevronDown, Clock3, FolderOpen, Tags } from 'lucide-react'
+import { ArrowUpDown, ChevronDown, Clock3, FolderOpen, SearchX, Tags, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { useIsFetching } from '@tanstack/react-query'
 
 import { useSessionMap } from '@/application/testcases/use-session-map'
 import { Badge } from '@/components/ui/badge'
@@ -97,6 +98,9 @@ export function GroupedCaseList({
   /** 分组卡子视图（§3.5 会话内存 per-group，缺省 flat） */
   const groupSubView = useSessionMap((s) => s.groupSubView)
   const setGroupSubView = useSessionMap((s) => s.setGroupSubView)
+  /** §3.3.3：isFetching 时列表不消失、降透明度（placeholderData 保上一帧） */
+  const fetching = useIsFetching({ queryKey: ['testcases'] })
+  const dimmed = fetching > 0 && !loading
 
   // INT-490 P2 修复：groups 异步到达后补齐展开集（默认全展开），保留用户手动折叠
   useEffect(() => {
@@ -168,22 +172,42 @@ export function GroupedCaseList({
     )
   }
 
-  if (groups.length === 0 && ungroupedCases.length === 0) {
+  /**
+   * 空态三态（§3.3 INT-592 平铺流文案）：回收站空 → 筛选无匹配 → 全空。
+   * 以可见用例集为准——筛选把全部用例排除后即使分组列表非空也走空态（INT-595 补）。
+   */
+  if (cases.length === 0) {
     return (
       <div className='bg-card ring-foreground/10 rounded-xl py-8 ring-1'>
         <Empty className='h-[400px]'>
           <EmptyMedia variant='icon'>
-            <FolderOpen aria-hidden='true' />
+            {trash ? (
+              <Trash2 aria-hidden='true' />
+            ) : groups.length === 0 ? (
+              <FolderOpen aria-hidden='true' />
+            ) : (
+              <SearchX aria-hidden='true' />
+            )}
           </EmptyMedia>
           <EmptyHeader>
-            <EmptyTitle>没有找到测试用例分组</EmptyTitle>
-            <EmptyDescription>请尝试添加新的测试用例或创建分组</EmptyDescription>
+            <EmptyTitle>
+              {trash ? '回收站为空' : '没有找到符合条件的测试用例'}
+            </EmptyTitle>
+            <EmptyDescription>
+              {trash
+                ? '回收站中的用例已被恢复或彻底删除'
+                : groups.length === 0
+                  ? '请调整筛选条件或点击右上角「新增用例」创建第一条用例'
+                  : '尝试清空「分组」「标签」筛选'}
+            </EmptyDescription>
           </EmptyHeader>
-          <EmptyContent>
-            <Button size='sm' onClick={() => actionCallbacks.onCreateInGroup(null)}>
-              + 新增用例
-            </Button>
-          </EmptyContent>
+          {!trash && (
+            <EmptyContent>
+              <Button size='sm' onClick={() => actionCallbacks.onCreateInGroup(null)}>
+                + 新增用例
+              </Button>
+            </EmptyContent>
+          )}
         </Empty>
       </div>
     )
@@ -313,7 +337,7 @@ export function GroupedCaseList({
   }
 
   return (
-    <div className='space-y-3'>
+    <div className={cn('space-y-3 transition-opacity', dimmed && 'opacity-60')}>
       {/* 列表头：全选 + 已选择计数 + 排序 */}
       <div className='flex items-center justify-between gap-2'>
         <div className='flex items-center gap-2'>

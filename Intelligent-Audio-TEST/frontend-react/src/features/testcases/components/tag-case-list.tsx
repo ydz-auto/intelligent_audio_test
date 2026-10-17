@@ -8,6 +8,7 @@
  */
 import { ArrowUpDown, ChevronDown, FolderOpen, Tags } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { useIsFetching } from '@tanstack/react-query'
 
 import { useSessionMap } from '@/application/testcases/use-session-map'
 import { Badge } from '@/components/ui/badge'
@@ -81,6 +82,9 @@ export function TagCaseList({
   /** 标签卡子视图（§3.6 会话内存 per-tag，缺省 flat） */
   const tagSubView = useSessionMap((s) => s.tagSubView)
   const setTagSubView = useSessionMap((s) => s.setTagSubView)
+  /** §3.3.3：isFetching 时列表不消失、降透明度（placeholderData 保上一帧） */
+  const fetching = useIsFetching({ queryKey: ['testcases'] })
+  const dimmed = fetching > 0 && !loading
 
   // INT-490 P2 同源修复：标签卡默认全展开（标签分组由平铺用例聚合派生，加载后补齐）
   useEffect(() => {
@@ -180,7 +184,7 @@ export function TagCaseList({
   }
 
   return (
-    <div className='space-y-3'>
+    <div className={cn('space-y-3 transition-opacity', dimmed && 'opacity-60')}>
       {/* 列表头：全选 + 已选择计数 + 标签排序 */}
       <div className='flex items-center justify-between gap-2'>
         <div className='flex items-center gap-2'>

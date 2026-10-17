@@ -52,6 +52,12 @@ export interface TestCaseListItem {
   totalDuration: number | null
   /** 轮次数（由 config.rounds 长度派生；展示「{n} 轮」） */
   rounds: number
+  /**
+   * 音频条数（mock 阶段派生字段：0=无关联音频 → 预览钮置灰 + Tooltip
+   * 「该测试用例没有关联音频文件」，11_用例域.md §3.3.2；
+   * 接线后由 TestCaseListItem.config.rounds[].audio_files 派生，不再占位）
+   */
+  audioCount?: number | null
 }
 
 /** 评估维度简报（testcase.py TestCaseDimensionBrief） */

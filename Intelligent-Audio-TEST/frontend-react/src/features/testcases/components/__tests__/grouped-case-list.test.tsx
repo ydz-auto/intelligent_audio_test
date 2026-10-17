@@ -3,6 +3,7 @@
  * INT-490 P2 回归——groups 异步加载后分组卡默认展开（首屏组内用例可见）；
  * 组头勾选全选/全不选；组内懒加载「已显示 {n} / {总} 条 · 加载更多」。
  */
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -66,36 +67,51 @@ const actionCallbacks = {
 
 const setupUser = () => userEvent.setup()
 
+/** React Query 上下文（useIsFetching §3.3.3 降透明度依赖，INT-595 补） */
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false, gcTime: 0 } },
+})
+
 /** 受控外壳：模拟 React Query 异步返回 groups（首帧空数组，加载后补齐） */
-function Harness({ loading = false }: { loading?: boolean }) {
+function Harness({
+  loading = false,
+  cases = CASES,
+  trash = false,
+}: {
+  loading?: boolean
+  cases?: TestCaseListItem[]
+  trash?: boolean
+}) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   return (
-    <GroupedCaseList
-      groups={loading ? [] : GROUPS}
-      cases={loading ? [] : CASES}
-      loading={loading}
-      trash={false}
-      selected={selected}
-      tagRegistry={MOCK_TAGS as TagItem[]}
-      callbacks={noopCallbacks}
-      onBatchAction={vi.fn()}
-      actionCallbacks={actionCallbacks}
-      onToggleSelect={(id, c) =>
-        setSelected((prev) => {
-          const next = new Set(prev)
-          if (c) next.add(id)
-          else next.delete(id)
-          return next
-        })
-      }
-      onToggleAll={(ids, c) =>
-        setSelected((prev) => {
-          const next = new Set(prev)
-          ids.forEach((id) => (c ? next.add(id) : next.delete(id)))
-          return next
-        })
-      }
-    />
+    <QueryClientProvider client={queryClient}>
+      <GroupedCaseList
+        groups={loading ? [] : GROUPS}
+        cases={loading ? [] : cases}
+        loading={loading}
+        trash={trash}
+        selected={selected}
+        tagRegistry={MOCK_TAGS as TagItem[]}
+        callbacks={noopCallbacks}
+        onBatchAction={vi.fn()}
+        actionCallbacks={actionCallbacks}
+        onToggleSelect={(id, c) =>
+          setSelected((prev) => {
+            const next = new Set(prev)
+            if (c) next.add(id)
+            else next.delete(id)
+            return next
+          })
+        }
+        onToggleAll={(ids, c) =>
+          setSelected((prev) => {
+            const next = new Set(prev)
+            ids.forEach((id) => (c ? next.add(id) : next.delete(id)))
+            return next
+          })
+        }
+      />
+    </QueryClientProvider>
   )
 }
 
@@ -176,5 +192,19 @@ describe('GroupedCaseList', () => {
     expect(screen.getByText('切换回「平铺」可查看该分组全部用例')).toBeInTheDocument()
     // 切换控件保持「按标签」选中态（不自动跳变）
     expect(screen.getAllByText('按标签').length).toBeGreaterThan(0)
+  })
+
+  it('INT-595 空态补：筛选排除全部用例时分页区不再空白，显「没有找到符合条件的测试用例」', () => {
+    render(<Harness cases={[]} />)
+    expect(screen.getByText('没有找到符合条件的测试用例')).toBeInTheDocument()
+    expect(screen.getByText('尝试清空「分组」「标签」筛选')).toBeInTheDocument()
+    // 空态下仍提供「+ 新增用例」入口
+    expect(screen.getByRole('button', { name: /新增用例/ })).toBeInTheDocument()
+  })
+
+  it('INT-595 空态补：回收站空态文案「回收站为空」且不出现新增入口', () => {
+    render(<Harness cases={[]} trash />)
+    expect(screen.getByText('回收站为空')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /新增用例/ })).not.toBeInTheDocument()
   })
 })

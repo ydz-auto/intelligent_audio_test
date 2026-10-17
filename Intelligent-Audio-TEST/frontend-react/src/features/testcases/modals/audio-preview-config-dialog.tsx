@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { AudioPlayerPanel } from '@/features/testcases/modals/audio-player-dialog'
 import type { TestCaseListItem } from '@/domain/models/testCase'
 
 export function AudioPreviewConfigDialog({
@@ -30,74 +31,98 @@ export function AudioPreviewConfigDialog({
 }) {
   const [mode, setMode] = useState<'frontend' | 'backend'>('frontend')
   const [offset, setOffset] = useState('0')
+  /** 试听编排阶段：config=播放模式/偏移量配置；playing=音频播放器（§5.2） */
+  const [stage, setStage] = useState<'config' | 'playing'>('config')
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='sm:max-w-md'>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        onOpenChange(o)
+        if (!o) setStage('config')
+      }}
+    >
+      <DialogContent className={stage === 'playing' ? 'sm:max-w-lg' : 'sm:max-w-md'}>
         <DialogHeader>
-          <DialogTitle>音频试听配置</DialogTitle>
+          <DialogTitle>
+            {stage === 'playing' && caseItem
+              ? `测试用例预览｜${caseItem.name} 音频`
+              : '音频试听配置'}
+          </DialogTitle>
           <DialogDescription>
-            {caseItem ? `用例「${caseItem.name}」` : '预览所选用例的音频'}
+            {stage === 'playing'
+              ? '浏览器播放或实验室扬声器试听中'
+              : caseItem
+                ? `用例「${caseItem.name}」`
+                : '预览所选用例的音频'}
           </DialogDescription>
         </DialogHeader>
-        <div className='space-y-4'>
-          <div className='space-y-1.5'>
-            <span className='text-sm font-medium'>播放模式</span>
-            <div className='flex flex-col gap-1.5'>
-              <label className='hover:bg-accent flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-sm'>
-                <input
-                  type='radio'
-                  name='preview-mode'
-                  checked={mode === 'frontend'}
-                  onChange={() => setMode('frontend')}
-                />
-                <span>
-                  浏览器播放
-                  <span className='text-muted-foreground block text-xs'>
-                    音频将通过浏览器前端直接播放
+
+        {stage === 'playing' ? (
+          <AudioPlayerPanel mode={mode} onBack={() => setStage('config')} />
+        ) : (
+          <div className='space-y-4'>
+            <div className='space-y-1.5'>
+              <span className='text-sm font-medium'>播放模式</span>
+              <div className='flex flex-col gap-1.5'>
+                <label className='hover:bg-accent flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-sm'>
+                  <input
+                    type='radio'
+                    name='preview-mode'
+                    checked={mode === 'frontend'}
+                    onChange={() => setMode('frontend')}
+                  />
+                  <span>
+                    浏览器播放
+                    <span className='text-muted-foreground block text-xs'>
+                      音频将通过浏览器前端直接播放
+                    </span>
                   </span>
-                </span>
-              </label>
-              <label className='hover:bg-accent flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-sm'>
-                <input
-                  type='radio'
-                  name='preview-mode'
-                  checked={mode === 'backend'}
-                  onChange={() => setMode('backend')}
-                />
-                <span>
-                  实验室播放
-                  <span className='text-muted-foreground block text-xs'>
-                    音频将通过用例配置中的播放设备在实验室播放
+                </label>
+                <label className='hover:bg-accent flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-sm'>
+                  <input
+                    type='radio'
+                    name='preview-mode'
+                    checked={mode === 'backend'}
+                    onChange={() => setMode('backend')}
+                  />
+                  <span>
+                    实验室播放
+                    <span className='text-muted-foreground block text-xs'>
+                      音频将通过用例配置中的播放设备在实验室播放
+                    </span>
                   </span>
-                </span>
-              </label>
+                </label>
+              </div>
+            </div>
+            <div className='flex items-center gap-2'>
+              <span className='text-sm font-medium'>偏移量（秒）</span>
+              <Input
+                type='number'
+                value={offset}
+                onChange={(e) => setOffset(e.target.value)}
+                className='h-8 w-32'
+                aria-label='偏移量秒数'
+              />
             </div>
           </div>
-          <div className='flex items-center gap-2'>
-            <span className='text-sm font-medium'>偏移量（秒）</span>
-            <Input
-              type='number'
-              value={offset}
-              onChange={(e) => setOffset(e.target.value)}
-              className='h-8 w-32'
-              aria-label='偏移量秒数'
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant='outline' onClick={() => onOpenChange(false)}>
-            取消
-          </Button>
-          <Button
-            onClick={() => {
-              toast.success('已开始试听（演示：音频播放器随接线批次落地）')
-              onOpenChange(false)
-            }}
-          >
-            开始试听
-          </Button>
-        </DialogFooter>
+        )}
+
+        {stage !== 'playing' && (
+          <DialogFooter>
+            <Button variant='outline' onClick={() => onOpenChange(false)}>
+              取消
+            </Button>
+            <Button
+              onClick={() => {
+                toast.success('已开始试听（演示）')
+                setStage('playing')
+              }}
+            >
+              开始试听
+            </Button>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   )

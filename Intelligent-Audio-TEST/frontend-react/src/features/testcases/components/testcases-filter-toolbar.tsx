@@ -5,19 +5,32 @@
  * 标签 facet 按分类分组呈现（INT-487：选项组头=分类名，数据源 GET /tags/by-category）。
  * INT-486 用例不分类型口径（负责人 2026-10-16）：测试类型 facet 移除——用例无 api/e2e 之分。
  */
-import { Check, ChevronDown, FilterX, Search } from 'lucide-react'
-import { useCallback, useRef, useState } from 'react'
+import { Check, ChevronDown, FilterX, Search, Tag } from 'lucide-react'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
+import { usePermissions } from '@/application/hooks/use-permissions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { cn } from '@/lib/utils'
+import { MOCK_TEST_CASES } from '@/infrastructure/mock/testcases-mock'
 import type { TestCaseListFilters } from '@/application/testcases/use-testcases-list'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import type { EvaluationDimensionItem } from '@/domain/models/evaluationDimension'
@@ -208,6 +221,175 @@ function TagFacet({
   )
 }
 
+/** 标签下用例数（mock 源派生；删除/复制级联计数口径 §3.6，接线后随列表查询） */
+const TAG_CASE_COUNTS: Record<string, number> = (() => {
+  const m = new Map<string, number>()
+  for (const c of MOCK_TEST_CASES) {
+    for (const t of c.tags) m.set(t, (m.get(t) ?? 0) + 1)
+  }
+  return Object.fromEntries(m)
+})()
+
+const fallbackTag = (name: string): TagItem => ({
+  id: -1,
+  name,
+  description: null,
+  color: null,
+  categoryId: null,
+  categoryName: null,
+  createdAt: null,
+  updatedAt: null,
+})
+
+/**
+ * 标签操作 DropdownMenu（11_用例域.md §3.6 收编①：标签 facet 选中态后工具栏右端出现）。
+ * 入口：编辑标签 / 删除标签（级联删除用例，destructive）/ 复制标签下用例；
+ * 另一入口=标签管理页（§4.2）。批量已单轨收勾选浮条（§3.7.1，组头/标签下拉不再挂批量）。
+ * 多标签选中态下编辑/删除语义二义 → 禁用 + Tooltip（INT-592 改单选后为防御性保留）。
+ * 权限口径（§7 注 1）：写权限禁用+Tooltip；缺全部写权限时整组隐藏。
+ */
+function TagActionsDropdown({
+  tagNames,
+  tags,
+}: {
+  tagNames: string[]
+  tags: TagItem[]
+}) {
+  const { hasPermission } = usePermissions()
+  const [open, setOpen] = useState(false)
+  const [confirm, setConfirm] = useState<{
+    kind: 'delete' | 'copy'
+    tag: TagItem
+    count: number
+  } | null>(null)
+
+  const canEdit = hasPermission('tag:update')
+  const canDelete = hasPermission('tag:delete')
+  const canCopy = hasPermission('testcase:copy')
+  // §7 注 1：读权限隐藏——只读角色（algo_engineer 等）无标签写能力时整组不出现
+  if (!canEdit && !canDelete && !canCopy) return null
+
+  const registry = useMemo(() => new Map(tags.map((t) => [t.name, t])), [tags])
+  const primary = registry.get(tagNames[0]) ?? fallbackTag(tagNames[0])
+  const multi = tagNames.length > 1
+  const count = TAG_CASE_COUNTS[primary.name] ?? 0
+  const singleTooltip = multi ? '请先单选一个标签' : undefined
+
+  const disabledItem = (reason: string, label: string) => (
+    <DropdownMenuItem disabled title={reason}>
+      {label}
+    </DropdownMenuItem>
+  )
+
+  return (
+    <>
+      <DropdownMenu open={open} onOpenChange={setOpen}>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant='outline'
+              size='sm'
+              className='h-8 gap-1.5 px-2.5 font-normal'
+            />
+          }
+        >
+          <Tag aria-hidden='true' className='size-3.5' />
+          <span className='text-muted-foreground'>标签操作</span>
+          <ChevronDown
+            aria-hidden='true'
+            className={cn('size-3.5 transition-transform', open && 'rotate-180')}
+          />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align='end' className='w-44'>
+          <DropdownMenuGroup>
+            <DropdownMenuLabel className='truncate'>
+              标签「{primary.name}」
+              {multi && ` 等 ${tagNames.length} 个`}
+            </DropdownMenuLabel>
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          {canEdit ? (
+            <DropdownMenuItem
+              disabled={multi}
+              title={singleTooltip}
+              onSelect={() => {
+                setOpen(false)
+                toast.success(`编辑标签「${primary.name}」（演示）`)
+              }}
+            >
+              编辑标签
+            </DropdownMenuItem>
+          ) : (
+            disabledItem('无 tag:update 权限', '编辑标签')
+          )}
+          {canDelete ? (
+            <DropdownMenuItem
+              variant='destructive'
+              disabled={multi}
+              title={singleTooltip}
+              onSelect={() => {
+                setOpen(false)
+                setConfirm({ kind: 'delete', tag: primary, count })
+              }}
+            >
+              删除标签
+            </DropdownMenuItem>
+          ) : (
+            disabledItem('无 tag:delete 权限', '删除标签')
+          )}
+          {canCopy ? (
+            <DropdownMenuItem
+              disabled={multi}
+              title={singleTooltip}
+              onSelect={() => {
+                setOpen(false)
+                setConfirm({ kind: 'copy', tag: primary, count })
+              }}
+            >
+              复制标签下用例
+            </DropdownMenuItem>
+          ) : (
+            disabledItem('无 testcase:copy 权限', '复制标签下用例')
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <ConfirmDialog
+        open={confirm != null}
+        onOpenChange={(o) => !o && setConfirm(null)}
+        title={confirm?.kind === 'delete' ? '删除标签' : '复制标签下用例'}
+        desc={
+          confirm?.kind === 'delete'
+            ? `确定要删除标签「${confirm.tag.name}」吗？该操作将级联删除标签下的 ${confirm.count} 个用例，不可恢复！`
+            : `确定要复制标签「${confirm?.tag.name ?? ''}」下的 ${confirm?.count ?? 0} 个用例吗？复制后将生成新标签：${confirm?.tag.name ?? ''}_copy`
+        }
+        confirmText={confirm?.kind === 'delete' ? '删除' : '复制'}
+        destructive={confirm?.kind === 'delete'}
+        handleConfirm={() => {
+          if (!confirm) return
+          if (confirm.kind === 'delete') {
+            toast.success('标签已删除', {
+              description: `已级联删除 ${confirm.count} 个用例`,
+            })
+          } else {
+            toast.success('已复制标签下用例', {
+              description: `新标签：${confirm.tag.name}_copy`,
+            })
+          }
+          setConfirm(null)
+        }}
+      >
+        {confirm?.kind === 'copy' && (
+          <label className='flex items-center gap-2 text-sm'>
+            <Checkbox defaultChecked />
+            同时复制到新分组
+          </label>
+        )}
+      </ConfirmDialog>
+    </>
+  )
+}
+
 export function TestCasesFilterToolbar({
   filters,
   onChange,
@@ -299,6 +481,11 @@ export function TestCasesFilterToolbar({
           >
             全部恢复
           </Button>
+        )}
+
+        {/* §3.6 收编①：标签 facet 选中态后工具栏右端出现标签操作入口 */}
+        {!isTrash && (filters.tags?.length ?? 0) > 0 && (
+          <TagActionsDropdown tagNames={filters.tags ?? []} tags={tags} />
         )}
 
         {isFiltered && (

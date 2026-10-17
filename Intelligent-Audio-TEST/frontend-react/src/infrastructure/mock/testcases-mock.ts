@@ -143,6 +143,8 @@ export const MOCK_TEST_CASES: TestCaseListItem[] = [
     id: 'tc-014', name: '临时-接口稳定性回归', description: 'API 通道稳定性回归用例', groupId: null, groupName: null, type: 'api',
     tags: [], algorithmType: 'asr-stream', createdAt: '2026-09-23 09:00', updatedAt: '2026-10-07 10:00',
     isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 20, rounds: 1,
+    // §3.3.2 预览置灰演示：无关联音频文件
+    audioCount: 0,
   },
   {
     id: 'tc-015', name: '临时-唤醒率对比', description: '不同环境唤醒率对比', groupId: null, groupName: null, type: 'e2e',

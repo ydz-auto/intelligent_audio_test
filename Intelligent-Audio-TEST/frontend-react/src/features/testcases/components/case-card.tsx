@@ -80,25 +80,53 @@ export function CaseCard({
     label: string,
     icon: React.ReactNode,
     onClick: () => void,
-    opts?: { destructive?: boolean }
-  ) => (
-    <Tooltip key={label}>
-      <TooltipTrigger
-        render={
-          <Button
-            variant='ghost'
-            size='icon-sm'
-            className={cn('size-7', opts?.destructive && 'text-destructive hover:text-destructive')}
-            aria-label={label}
-            onClick={onClick}
-          />
-        }
-      >
-        {icon}
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
-  )
+    opts?: { destructive?: boolean; disabled?: boolean; tooltip?: string }
+  ) => {
+    const disabled = opts?.disabled ?? false
+    const content = opts?.tooltip ?? label
+    const btnClass = cn(
+      'size-7',
+      opts?.destructive && 'text-destructive hover:text-destructive',
+      disabled && 'cursor-not-allowed opacity-50'
+    )
+    return (
+      <Tooltip key={label}>
+        {disabled ? (
+          <TooltipTrigger render={<span className='inline-flex' />}>
+            <Button
+              variant='ghost'
+              size='icon-sm'
+              className={btnClass}
+              aria-label={label}
+              aria-disabled
+              tabIndex={-1}
+              disabled
+            >
+              {icon}
+            </Button>
+          </TooltipTrigger>
+        ) : (
+          <TooltipTrigger
+            render={
+              <Button
+                variant='ghost'
+                size='icon-sm'
+                className={btnClass}
+                aria-label={label}
+                onClick={onClick}
+              />
+            }
+          >
+            {icon}
+          </TooltipTrigger>
+        )}
+        <TooltipContent>{content}</TooltipContent>
+      </Tooltip>
+    )
+  }
+
+  /** §3.3.2 预览置灰：audioCount=0 时无关联音频（Tooltip 说明） */
+  const hasAudio = caseItem.audioCount == null || caseItem.audioCount > 0
 
   return (
     <div
@@ -177,7 +205,11 @@ export function CaseCard({
                   {actionBtn(
                     '预览音频',
                     <Play aria-hidden='true' className='size-4' />,
-                    () => callbacks.onPreview(caseItem)
+                    () => callbacks.onPreview(caseItem),
+                    {
+                      disabled: !hasAudio,
+                      tooltip: hasAudio ? undefined : '该测试用例没有关联音频文件',
+                    }
                   )}
                   {actionBtn(
                     '复制用例',
