@@ -1,14 +1,16 @@
 /**
- * 物理域 SPL DTO（infrastructure/dto 层；snake_case 与 api_gateway/schemas/spl.py 对齐）。
+ * 物理域 SPL DTO（infrastructure/dto 层；顶层字段 snake_case 与 api_gateway/schemas/spl.py 对齐）。
  * 展示层不感知 snake_case；字段映射统一在 adapters/splAdapter.ts。
+ * 例外：calibration_data.points 实机 wire 契约为 camelCase（后端 device_service
+ * `_spl_mapping_to_dict` 直传 DB JSONB，且不含 digital_gain），与 Vue 侧 useSplMapping 消费口径一致。
  */
 
 export interface CalibrationPointDto {
   spl: number | null
-  gain_offset: number | null
-  digital_gain: number | null
-  base_level: number | null
-  final_level: number | null
+  gainOffset: number | null
+  digitalGain: number | null
+  baseLevel: number | null
+  finalLevel: number | null
 }
 
 export interface CalibrationDataDto {

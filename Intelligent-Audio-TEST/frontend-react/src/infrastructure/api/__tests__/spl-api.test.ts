@@ -1,7 +1,8 @@
 /**
  * spl-api 真实接口单测（接线卡 INT-649）：
  * 列表/统计/播放设备引用/校准历史 URL 与 per_page 契约、snake→camel 映射、
- * 创建/编辑/删除/校准请求体 snake_case 契约。fetch 走统一 client（INT-605 基座）。
+ * 创建/编辑/删除/校准请求体契约（顶层 snake_case，calibration_data.points 实机 camelCase）。
+ * fetch 走统一 client（INT-605 基座）。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -55,8 +56,8 @@ const SPL_ITEM = {
   test_frequency: 1000,
   calibration_data: {
     points: [
-      { spl: 55, gain_offset: -10, digital_gain: -10, base_level: -30, final_level: -40 },
-      { spl: 65, gain_offset: 0, digital_gain: 0, base_level: -30, final_level: -30 },
+      { spl: 55, gainOffset: -10, digitalGain: -10, baseLevel: -30, finalLevel: -40 },
+      { spl: 65, gainOffset: 0, digitalGain: 0, baseLevel: -30, finalLevel: -30 },
     ],
   },
   is_current: true,
@@ -165,7 +166,7 @@ describe('spl-api 真实接口（INT-649）', () => {
               {
                 id: 11,
                 calibration_data: {
-                  points: [{ spl: 65, gain_offset: 0, digital_gain: 0, base_level: -30, final_level: -30 }],
+                  points: [{ spl: 65, gainOffset: 0, digitalGain: 0, baseLevel: -30, finalLevel: -30 }],
                 },
                 distance: 1,
                 test_frequency: 1000,
@@ -189,7 +190,7 @@ describe('spl-api 真实接口（INT-649）', () => {
   })
 
   describe('createSplMapping', () => {
-    it('POST /spl 提交 snake_case 请求体，返回 IdData', async () => {
+    it('POST /spl 提交 snake_case 顶层 + camelCase 校准点请求体，返回 IdData', async () => {
       queueResponses(
         jsonResponse({ success: true, code: 0, message: 'SPL 映射记录创建成功', data: { id: 17 } }, 201)
       )
@@ -222,7 +223,7 @@ describe('spl-api 真实接口（INT-649）', () => {
         digital_gain: 2.5,
         test_frequency: 1000,
         calibration_data: {
-          points: [{ spl: 55, gain_offset: -10, digital_gain: -10, base_level: -30, final_level: -40 }],
+          points: [{ spl: 55, gainOffset: -10, digitalGain: -10, baseLevel: -30, finalLevel: -40 }],
         },
       })
       expect(body).not.toHaveProperty('is_current')
@@ -230,7 +231,7 @@ describe('spl-api 真实接口（INT-649）', () => {
   })
 
   describe('updateSplMapping', () => {
-    it('PUT /spl/{id} 提交 snake_case 请求体（校准数据键转 snake_case）', async () => {
+    it('PUT /spl/{id} 提交 snake_case 顶层 + camelCase 校准点请求体', async () => {
       queueResponses(
         jsonResponse({ success: true, code: 0, message: 'SPL 映射记录更新成功' })
       )
@@ -251,7 +252,7 @@ describe('spl-api 真实接口（INT-649）', () => {
         name: '改名',
         distance: 1.5,
         calibration_status: 'uncalibrated',
-        calibration_data: { points: [{ spl: 65, gain_offset: 0 }] },
+        calibration_data: { points: [{ spl: 65, gainOffset: 0 }] },
       })
       expect(body).toHaveProperty('is_current')
     })

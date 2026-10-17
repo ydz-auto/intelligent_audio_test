@@ -45,10 +45,10 @@ export function calibrationPointFromDto(
 ): CalibrationPoint {
   return {
     spl: dto.spl,
-    gainOffset: dto.gain_offset,
-    digitalGain: dto.digital_gain,
-    baseLevel: dto.base_level,
-    finalLevel: dto.final_level,
+    gainOffset: dto.gainOffset,
+    digitalGain: dto.digitalGain,
+    baseLevel: dto.baseLevel,
+    finalLevel: dto.finalLevel,
   }
 }
 
@@ -124,7 +124,7 @@ export function splCalibrationResultFromDto(
 
 /* ───────────────────── Domain → DTO（请求体 snake_case） ───────────────────── */
 
-/** 校准点集：camelCase 表单 → snake_case 存储键（gain_offset/digital_gain/base_level/final_level） */
+/** 校准点集：camelCase 表单 → 存储键（与读侧 wire 契约一致：后端 calibration_data.points 为 camelCase JSONB 透传，Vue 亦写 camelCase） */
 export function calibrationDataToDto(
   data: SplCalibrationData | null | undefined
 ): CalibrationDataDto | null {
@@ -132,10 +132,10 @@ export function calibrationDataToDto(
   return {
     points: (data.points ?? []).map((point) => ({
       spl: point.spl,
-      gain_offset: point.gainOffset,
-      digital_gain: point.digitalGain,
-      base_level: point.baseLevel,
-      final_level: point.finalLevel,
+      gainOffset: point.gainOffset,
+      digitalGain: point.digitalGain,
+      baseLevel: point.baseLevel,
+      finalLevel: point.finalLevel,
     })),
   }
 }
