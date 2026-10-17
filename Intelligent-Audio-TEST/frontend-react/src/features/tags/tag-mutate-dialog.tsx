@@ -182,13 +182,17 @@ export function TagEditDialog({
               所属分类
             </Label>
             <Select
-              value={categoryId != null ? String(categoryId) : 'none'}
+              value={categoryId != null ? String(categoryId) : null}
               onValueChange={(value) =>
-                setCategoryId(value === 'none' ? null : Number(value))
+                setCategoryId(value == null ? null : Number(value))
               }
             >
               <SelectTrigger size='sm' className='h-8 w-full'>
-                <SelectValue placeholder='请选择所属分类' />
+                <SelectValue placeholder='请选择所属分类'>
+                  {categoryId != null
+                    ? (categories.find((c) => c.id === categoryId)?.name ?? null)
+                    : null}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {categories.map((cat) => (
