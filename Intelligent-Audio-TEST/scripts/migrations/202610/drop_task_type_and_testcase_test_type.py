@@ -1,14 +1,16 @@
 # -*- coding: utf-8 -*-
-"""迁移脚本：废弃字段收尾 —— 回填用例级路由列并删除 task.type / test_type / published_tasks.type
+"""迁移脚本：废弃字段收尾 —— 回填用例级路由列并删除 task.type / test_type（published_tasks.type 保留）
 
 背景（差异#2 收尾，见 doc/功能设计文档/01_测试执行/01_UseCase总览.md §0.1/§0.7 适配说明
 与 UC-0903 验收"废弃字段不再读写"）：
 - task_case_relations.device_type：执行路由唯一依据。历史行为 NULL 时按源任务
   test_tasks.type 回填（api → http_api / e2e → physical / 其他 → physical），
   回填后执行链路不再读取 task.type。
-- test_tasks.type / test_cases.test_type / published_tasks.type：整体废弃，直接删除列。
+- test_tasks.type / test_cases.test_type：整体废弃，直接删除列。
   合并容器任务改由 task_merge_relations(merged_task_id) 存在性标识，
   用例不再区分类型（用例纯数据原则，07_用例管理/用例管理功能设计文档.md §1.1）。
+- published_tasks.type：**保留不删**（INT-148 裁定该列继续承载已发布任务类型 api/e2e，
+  由快照用例级 device_type 派生；详见 add_published_task_type_algorithm_type.py）。
 
 用法:
     python scripts/migrations/202610/drop_task_type_and_testcase_test_type.py [--dry-run]
@@ -33,10 +35,10 @@ DB_USER = parsed.username
 DB_PASS = parsed.password
 
 # 待删除列: (table, column)
+# 注意：published_tasks.type 不在其中（INT-148 裁定保留，删除见反向冲突风险）
 DROP_COLUMNS = [
     ('test_tasks', 'type'),
     ('test_cases', 'test_type'),
-    ('published_tasks', 'type'),
 ]
 
 # device_type 回填映射（源任务 test_tasks.type → 用例级 device_type）

@@ -30,7 +30,7 @@ python scripts/migrations/202610/add_timestamp_db_defaults.py             # ⑫ 
 python scripts/migrations/202610/add_benchmark_tables.py                  # ⑬ Benchmark 排行 4 表 + 指标映射种子（D1 双轨排行，INT-27）
 python scripts/migrations/202610/fix_users_email_unique.py --apply        # ⑭ users 空邮箱归一化 + 非空 email 部分唯一索引（INT-84；默认 dry-run）
 python scripts/migrations/202610/add_device_management_tables.py          # ⑮ 设备管理 5 表 + 索引（INT-80：分组/状态历史/告警规则/告警记录）
-python scripts/migrations/202610/drop_task_type_and_testcase_test_type.py # ⑯ 废弃字段收尾：回填 device_type 并删 task.type / test_cases.test_type / published_tasks.type（INT-79）
+python scripts/migrations/202610/drop_task_type_and_testcase_test_type.py # ⑯ 废弃字段收尾：回填 device_type 并删 task.type / test_cases.test_type（INT-79；published_tasks.type 保留不删，INT-148）
 python scripts/migrations/202610/fix_leftover_foreign_keys_and_indexes.py # ⑯ 修复 202608 基线未生效的残留约束（INT-88：补删 FK / test_case_groups.name 唯一约束 / 外键替代索引 / deleted_at 部分索引）
 python scripts/migrations/202610/add_api_rms_spl_mappings.py             # ⑰ 建 api_rms_spl_mappings 表 + apis.rms_spl_mapping_id 列（INT-61 数字域灵敏度映射，UC-0902）
 python scripts/migrations/202610/add_api_output_types.py                 # ⑱ apis 加 output_types 列（INT-74 多模态输出类型）
@@ -43,6 +43,7 @@ python scripts/migrations/202610/seed_env_judge.py                      # ㉔ �
 python scripts/migrations/202610/seed_interruption_v2.py                # ㉕ 打断指标 v2 维度种子（INT-192，11 主 + 时延容器 + 3 子；依赖 ⑪ seed_voice_llm）
 python scripts/migrations/202610/backfill_report_snapshot_freeze.py --apply  # ㉖ 存量已发布任务 report_snapshot 补冻结（INT-258；默认 dry-run）
 python scripts/migrations/202610/cleanup_reeval_ghost_round_rows.py --apply  # ㉗ failed 重评幽灵失败逐轮行清理（INT-364；默认 dry-run）
+python scripts/migrations/202610/add_published_task_type_algorithm_type.py # ㉘ published_tasks 补 type/algorithm_type 两列 + idx_published_task_algorithm_type 索引 + 历史快照回填（INT-148 已发布任务类型列，INT-659 落地运行库）
 ```
 
 > ✅ **2026-09-07 全量迁移记录**：当前环境已执行 ①③④⑧（`remove_foreign_keys_and_soft_delete` 12 步 + `add_audit_columns` 补 24 处 + `add_reevaluated_at` + `add_pass_threshold_to_eval_params`），执行后 `UndefinedColumn` 类报错全部消除。②⑤⑥⑦⑨ 视功能需要执行。
@@ -52,6 +53,8 @@ python scripts/migrations/202610/cleanup_reeval_ghost_round_rows.py --apply  # �
 > ✅ **2026-10-12 修复记录（INT-156）**：快照恢复库 users 表为旧 schema（`password_hash`/`email` NOT NULL + legacy `role` NOT NULL，表 0 行），dev 登录引导建号必败（NotNullViolation，阻塞 INT-144 推送）。已对运行库执行 ㉑ `--apply`：password_hash/email 置 nullable、legacy role 列删除（表空无数据，0 行需回填）、种子 dev_user（role_id=1 admin，bcrypt 哈希）。验收实测 12:49：加密登录 200 + access_token、带 token `GET /api/v1/published-tasks` 200、重复登录幂等（users 保持 1 行）。同批在临时库完成红-绿自测（迁移前真实 handler 复现 NotNullViolation / 迁移后 OAuth 建号、bcrypt 校验、三遍幂等全过）。
 
 > ✅ **2026-10-12 修复记录（INT-147 打回 F1）**：UserOAuthBinding PO 新增后存量部署缺 `user_oauth_bindings` 表，`GET/DELETE /oauth/bindings` 直接 500（UndefinedTable）。已补执行 ㉒：运行库执行为全 [SKIP]（验收方当日已按 PO 模型补建该表，脚本回读确认 5 列 + `uq_provider_user` + 双索引与 ORM 一致）；另在临时库完成建表路径验证（dry-run 不落 DDL / 首次执行建表 / 重复执行全 SKIP / 结构与 ORM 逐列比对一致）。
+
+> ✅ **2026-10-18 修复记录（INT-659）**：已发布任务列表 `GET /api/v1/published-tasks` 恒 400（`published_tasks.type` 不存在，INT-638 接线实测发现）。已执行 ㉘：补 `type` 列 [EXEC]（`algorithm_type` 列此前已存在 [SKIP]）、建 `idx_published_task_algorithm_type`、历史快照回填 13 行（type 按快照用例级 device_type 派生 api/e2e，algorithm_type 取快照 algorithmType）。重复执行全列 [SKIP]、回填仅触碰 algorithm_type 为 NULL 的行（快照无 algorithmType 的行写出 NULL 值无变化，幂等无报错）。同批修正 ⑯ `drop_task_type_and_testcase_test_type.py` 反向冲突：`DROP_COLUMNS` 移除 `('published_tasks', 'type')`（INT-148 裁定该列保留），dry-run 确认不再尝试删除该列；本次运行库实测该脚本 dry-run 全 [SKIP]（test_tasks.type / test_cases.test_type 此前已删除）。验收实测：真实后端带/不带 `type` 筛选参数 `GET /api/v1/published-tasks` 均恢复 200。
 
 > ✅ **2026-10-13 移植记录（INT-192）**：补齐三族维度 seed（㉓ turn_eval / ㉔ env_judge / ㉕ interruption_v2，V9.7.10 蓝本金标对齐后移植）。运行库执行实测零插入（全原地更新/SKIP，仅 updated_at 移动，逐字段前后比对无差）；临时库（create_all + seed_voice_llm）fresh 路径实测：首轮 25 维/322 参数/110 映射全插入、重跑全 SKIP/更新零插入，临时库终态与运行库金标逐字段等价（含 api_settings deep-equal）后销毁。UPDATE 不写 status：运行库「逐轮三分类评估」status=FALSE 为现状保留（fresh 库该维为启用态，验收方如判定需对齐可手工关闭）。三个脚本依赖 ⑪ seed_voice_llm 先行（param_mappings/关联外键引用 algorithm_definitions）。
 
@@ -103,7 +106,7 @@ python scripts/migrations/202610/cleanup_reeval_ghost_round_rows.py --apply  # �
 | [add_timestamp_db_defaults.py](202610/add_timestamp_db_defaults.py) | 时间戳列 DB 级 DEFAULT 对齐（INT-47）：以 ORM 元数据为准，对缺失 DB 级默认值的 created_at/updated_at 等时间戳列 `SET DEFAULT now()`；既有库对齐用，全新库（PO 已带 server_default）为 no-op；幂等，支持 `--dry-run` |
 | [add_benchmark_tables.py](202610/add_benchmark_tables.py) | 建 `benchmark_rankings`（排行 ReadModel）/ `benchmark_metric_mappings`（指标映射单一事实源，含设计文档 §5.1 默认映射种子 13 条）/ `benchmark_sources`（外部基线数据源）/ `benchmark_baselines`（外部基线条目，导入即不可变版本快照）四表及索引；支持 `--dry-run` |
 | [add_device_management_tables.py](202610/add_device_management_tables.py) | 建 `device_groups`（设备分组，含组名未删除部分唯一索引并发兜底）/ `device_group_members`（成员关联，组内设备唯一）/ `device_status_events`（状态历史：在线/离线/健康检查/操作事件）/ `device_alarm_rules`（告警规则：离线时长/健康失败次数/CPU/内存/电池阈值）/ `device_alarms`（告警记录与确认流）五表及索引，DDL 与 device_service ORM 元数据逐列对齐；支持 `--dry-run` |
-| [drop_task_type_and_testcase_test_type.py](202610/drop_task_type_and_testcase_test_type.py) | 废弃字段收尾（INT-79/差异#2） | 先按 `test_tasks.type` 回填 `task_case_relations.device_type`（api→http_api / e2e→physical / 其他→physical），再 DROP `test_tasks.type` / `test_cases.test_type` / `published_tasks.type`；幂等（列已删即 SKIP） |
+| [drop_task_type_and_testcase_test_type.py](202610/drop_task_type_and_testcase_test_type.py) | 废弃字段收尾（INT-79/差异#2） | 先按 `test_tasks.type` 回填 `task_case_relations.device_type`（api→http_api / e2e→physical / 其他→physical），再 DROP `test_tasks.type` / `test_cases.test_type`；`published_tasks.type` **保留不删**（INT-148 裁定，见 add_published_task_type_algorithm_type.py）；幂等（列已删即 SKIP） |
 | [fix_leftover_foreign_keys_and_indexes.py](202610/fix_leftover_foreign_keys_and_indexes.py) | 修复 202608 基线未生效的残留约束（INT-88） | 动态枚举并删除全库残留外键（应用层管理引用完整性，含多轮 lock_timeout 重试，被长事务阻塞时跳过并汇总）；删 `test_case_groups.name` 单列唯一约束；补建 202608 Step 11 外键替代索引清单与 Step 12 `deleted_at` 部分索引（动态枚举含 deleted/deleted_at 列的表）。例外保留 `algorithm_definitions_type_key`；支持 `--dry-run` |
 | [add_api_rms_spl_mappings.py](202610/add_api_rms_spl_mappings.py) | 建 `api_rms_spl_mappings` 表 + `apis.rms_spl_mapping_id` 列（INT-61，UC-0902） | 被测 API 数字域 RMS→SPL 灵敏度映射表（API 1:N，与 E2E SPLMapping 物理域对称）及默认映射指针列；幂等，支持 `--dry-run` |
 | [add_api_output_types.py](202610/add_api_output_types.py) | `apis` 加 `output_types` 列（INT-74） | 多模态输出类型 JSON 数组（OutputType 枚举值子集）；幂等，支持 `--dry-run` |
@@ -117,6 +120,7 @@ python scripts/migrations/202610/cleanup_reeval_ghost_round_rows.py --apply  # �
 | [seed_interruption_v2.py](202610/seed_interruption_v2.py) | 打断指标 v2 维度种子（INT-192，移植 V9.7.10 202609） | 11 主维度（8 数量类 COUNT 模板 + 3 评分类 SCORE 模板）+「打断时延」容器 + 3 时延子维度；Step 0 物理清理旧代 interruption_metrics 树（interruption_judge 属 seed_env_sound_judge 另一族不动）；分类→打断；同上幂等口径 |
 | [backfill_report_snapshot_freeze.py](202610/backfill_report_snapshot_freeze.py) | 存量已发布任务 `report_snapshot` 补冻结（INT-258） | 发布快照语义修正为「引用 + 冻结双轨」（冻结报告管理生成的真实报告 7 表渲染数据 + sourceReportId 引用）：report_snapshot 为空且源任务有未删报告 → 补冻结；存量 v1 旧结构且源报告仍在 → 升级 v2；无报告/无源任务 → 保持空态（v1 快照且报告已不在的保留原数据）；复用 task_service `freeze_report_snapshot` 单一事实源；幂等（schemaVersion=2 一律 SKIP）；默认 dry-run，`--apply` 执行 |
 | [cleanup_reeval_ghost_round_rows.py](202610/cleanup_reeval_ghost_round_rows.py) | failed 重评幽灵失败逐轮行清理（INT-364，移植 V9.7.10 f02ba75e 同名脚本） | 删除「逐轮失败（round_number 非空 + failed）+ 同 (result, dimension) 整体行已 completed」的幽灵行——E2E 每轮未配评估维度 + per_round 投影残留 failed 行场景下用例被永久判 failed；随附将不再有失败维度行的用例 TaskCase 恢复 completed、限定 `--task-id` 时同步任务统计；代码侧修复（failed 重评提交前清幽灵行）已随实现落地，本脚本处理存量历史数据；缺省全库扫描（任务过滤 `%(task_id)s IS NULL OR 列 = %(task_id)s`，None 绑定 NULL 恒假的静默失效已修，审计 P3 回归 tests/unit/test_int364_cleanup_script_full_db_mode.py）；幂等，默认 dry-run，`--apply` 执行 |
+| [add_published_task_type_algorithm_type.py](202610/add_published_task_type_algorithm_type.py) | published_tasks 补类型列 + 历史回填（INT-148/INT-659） | 补 `type`（任务类型 api/e2e，发布时由快照用例级 device_type 派生：http_api/websocket_api → api，否则 e2e，无 caseDevices 回退 apiIds）/ `algorithm_type`（发布时从快照 algorithmType 冻结的冗余列）两列 + `idx_published_task_algorithm_type` 索引（对齐 ORM `__table_args__`），历史行仅回填两列为 NULL 者；幂等（列已存在即 [SKIP]），支持 `--dry-run` |
 
 ## 新增迁移脚本约定
 
