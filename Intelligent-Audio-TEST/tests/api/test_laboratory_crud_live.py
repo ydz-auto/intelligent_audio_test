@@ -147,7 +147,10 @@ def test_laboratory_recreate_same_code_after_delete(api_client, require_backend)
             f'软删后同 code 重建未返回 201: {r4.status_code} {r4.text[:300]}')
         new_lab_id = r4.json()['data']['id']
         assert new_lab_id != lab_id
-        assert r4.json()['data']['name'] == '新实验室'
+        # create 响应仅返回 {id}（网关 IdData 契约），name 经详情校验
+        r5 = api_client.get(f'/laboratories/{new_lab_id}')
+        assert r5.status_code == 200, f'重建后详情不可读: {r5.status_code} {r5.text[:300]}'
+        assert r5.json()['data']['name'] == '新实验室'
         _cleanup_lab(api_client, new_lab_id)
     finally:
         _cleanup_lab(api_client, lab_id)
