@@ -1,161 +1,212 @@
 /**
- * 音频管理 API 桩（infrastructure 层；16_设备域.md §10 组件树落位）。
- * 红线④：全部返回 mock 常量（audio-mock），接线时替换为真实请求：
- *   GET    /api/v1/audios                          列表（含 data.stats）+ 分页/facet/跨页 ids
- *   GET    /api/v1/audios/tags                     标签列表（facet 选项）
- *   POST   /api/v1/audios/folder-tree              文件夹树（depth 1/10 增量）
- *   GET    /api/v1/audios/{id}                     详情（下载二次取流）
- *   DELETE /api/v1/audios/{id}                     删除（引用四路拦截）
- *   PUT    /api/v1/audios/{id}                     编辑元数据（§6.13）
- *   POST   /api/v1/audios/{id}/convert             格式转换（§6.15）
- *   POST   /api/v1/audios/url-import               URL 导入（§6.18）
- *   POST   /api/v1/audios/batch-action             批量 action（§5.6）
- *   POST   /api/v1/audios/batch/annotations        批量更新标注（§6.19）
+ * 音频管理 API（infrastructure 层；16_设备域.md §10 组件树落位）。
+ * 【接线·React·音频】INT-645：从 mock 切真实后端端点，全部经 client.ts 统一 fetch 封装
+ * （baseURL /api/v1、JWT 自动注入、信封解包、错误码归一为 ApiError）。
+ *
+ * 端点契约对照 api_gateway/routes/audio_bp.py + api_gateway/schemas/audio.py：
+ *   GET    /audios                          列表（分页/facet；响应信封内 data.stats）
+ *   GET    /audios/tags                     标签列表（PaginatedData 信封）
+ *   POST   /audios/folder-tree              文件夹树（depth 增量）
+ *   DELETE /audios/{id}                     删除（引用四路拦截文案由后端错误响应带回）
+ *   PUT    /audios/{id}/metadata            编辑元数据（§6.13）
+ *   POST   /audios/{id}/convert             格式转换（§6.15，body { format }）
+ *   POST   /audios/url-import               单条 URL 导入（§6.18；批量由本层循环）
+ *   POST   /audios/batch/annotations        批量更新标注（§6.19）
+ *   POST   /audios/batch-action             批量 action（§5.6，body { action, audio_ids }）
+ *
+ * snake_case 契约：infrastructure 是唯一 snake→camel 转换层（adapters/audioAdapter.ts），
+ * application/domain 层只见 camelCase Domain，展示层不感知 wire 字段。
  */
 import type {
   AudioAsset,
   AudioFolderNode,
   AudioListStats,
 } from '@/domain/models/audio'
+import { request } from '@/infrastructure/api/client'
+import { ApiError } from '@/infrastructure/api/api-error'
 import {
-  MOCK_AUDIOS,
-  MOCK_AUDIO_STATS,
-  MOCK_AUDIO_TAGS,
-  MOCK_FOLDER_TREE,
-} from '../mock/audio-mock'
-
-/** 模拟网络延迟（视觉稿演示用；接线后删除） */
-function mockLatency<T>(value: T, ms = 180): Promise<T> {
-  return new Promise((resolve) => setTimeout(() => resolve(value), ms))
-}
-
-/** mock 内存库（页面内增删改操作在运行时可变） */
-let audiosStore: AudioAsset[] = [...MOCK_AUDIOS]
-
-/** 新 id（mock 阶段自增；接线后走后端自增） */
-let nextAudioId = 1000
-function freshId(): number {
-  nextAudioId += 1
-  return nextAudioId
-}
-
-/** 当前 mock 内存库（供 feature 内读取；接线后删除） */
-export function peekAudios(): AudioAsset[] {
-  return audiosStore
-}
+  audioFromDto,
+  audioStatsFromDto,
+  folderNodeFromDto,
+} from '@/infrastructure/adapters/audioAdapter'
+import type {
+  AudioItemDto,
+  AudioListDto,
+  AudioTagListDto,
+  FolderTreeDto,
+} from '@/infrastructure/dto/audio.dto'
 
 export type AudioListResult = {
   items: AudioAsset[]
   stats: AudioListStats
 }
 
-/** 音频列表（§5.3；GET /audios，响应含 data.stats） */
+const EMPTY_STATS: AudioListStats = {
+  totalFiles: 0,
+  totalSize: '0 B',
+  totalDuration: '0:00',
+  todayUploads: 0,
+}
+
+/**
+ * 音频列表（GET /audios；响应信封内 data = { items, total, page, per_page, pages, stats }）。
+ * 页面当前为前端过滤/排序/分页（§5.2「接线后 URL 态化」前的过渡态），故以 per_page=10000
+ * 拉全量由页面 useMemo 本地派生；URL 态化后改为把 filters 传后端分页/facet。
+ */
 export async function fetchAudios(): Promise<AudioListResult> {
-  // TODO(API 接线): GET /api/v1/audios
-  return mockLatency({ items: audiosStore, stats: MOCK_AUDIO_STATS })
+  const dto = await request<AudioListDto>('GET', '/audios', undefined, {
+    params: { page: 1, per_page: 10_000 },
+  })
+  return {
+    items: (dto?.items ?? []).map(audioFromDto),
+    stats: dto?.stats ? audioStatsFromDto(dto.stats) : EMPTY_STATS,
+  }
 }
 
-/** 标签列表（§5.3.2 标签 facet 选项；GET /audios/tags） */
+/** 标签列表（GET /audios/tags；INT-297 PaginatedData 信封，取 data.items） */
 export async function fetchAudioTags(): Promise<string[]> {
-  // TODO(API 接线): GET /api/v1/audios/tags
-  return mockLatency(MOCK_AUDIO_TAGS)
+  const dto = await request<AudioTagListDto>('GET', '/audios/tags')
+  return dto?.items ?? []
 }
 
-/** 文件夹树（§5.5；POST /audios/folder-tree，depth 1 根节点） */
+/** 文件夹树（POST /audios/folder-tree；depth=10 全量渲染，响应信封内 data.tree.folders 为顶层节点） */
 export async function fetchFolderTree(): Promise<AudioFolderNode[]> {
-  // TODO(API 接线): POST /api/v1/audios/folder-tree
-  return mockLatency(MOCK_FOLDER_TREE)
+  const dto = await request<FolderTreeDto>('POST', '/audios/folder-tree', {
+    depth: 10,
+  })
+  return (dto?.tree?.folders ?? []).map((node) => folderNodeFromDto(node, 1))
 }
 
-/** 删除音频（§5.3.1；DELETE /audios/{id}，引用四路拦截文案见 §9） */
+/** 删除音频（DELETE /audios/{id}；引用四路拦截文案由后端错误响应带回） */
 export async function deleteAudio(
   id: number
 ): Promise<{ success: boolean; message?: string }> {
-  // TODO(API 接线): DELETE /api/v1/audios/{id}
-  const target = audiosStore.find((a) => a.id === id)
-  if (!target) return mockLatency({ success: false, message: '音频不存在' }, 80)
-  audiosStore = audiosStore.filter((a) => a.id !== id)
-  return mockLatency({ success: true }, 120)
+  try {
+    await request('DELETE', `/audios/${id}`)
+    return { success: true }
+  } catch (err) {
+    return {
+      success: false,
+      message: err instanceof ApiError ? err.userMessage : '删除失败，请重试',
+    }
+  }
 }
 
-/** 编辑元数据（§6.13；PUT /audios/{id}） */
+/**
+ * 下载音频（§5.3.1 二次取流）：GET /audios/{id}/stream 返 OSS 预签名 URL，
+ * 前端再取字节流；网关相对路径（本地降级 /api/v1/audios/download?path=…）经
+ * client 注入 JWT 取 blob。
+ */
+export async function downloadAudio(id: number): Promise<Blob> {
+  const result = await request<{ url?: string }>('GET', `/audios/${id}/stream`)
+  const url = result?.url
+  if (!url) throw new ApiError({ message: '获取音频下载地址失败' })
+  if (/^https?:\/\//i.test(url)) {
+    const resp = await fetch(url)
+    if (!resp.ok) throw new ApiError({ message: `下载音频失败: ${resp.status}` })
+    return await resp.blob()
+  }
+  const relative = url.replace(/^\/api\/v1\//i, '')
+  const data = await request<Blob>('GET', relative, undefined, {
+    responseType: 'blob',
+  })
+  return data instanceof Blob ? data : new Blob([data as unknown as BlobPart])
+}
+
+/**
+ * 编辑元数据（PUT /audios/{id}/metadata；patch 为 camelCase Domain，出参按 UpdateMetadataRequest
+ * snake_case 化；tags 为逗号分隔字符串——后端 update_metadata 按 split(',') 重建标签）。
+ * 后端仅回 message 不回完整对象，由 queryClient invalidate 刷新列表。
+ */
 export async function updateAudioMetadata(
   id: number,
   patch: Partial<AudioAsset>
 ): Promise<AudioAsset | undefined> {
-  // TODO(API 接线): PUT /api/v1/audios/{id}
-  const target = audiosStore.find((a) => a.id === id)
-  if (!target) return mockLatency(undefined, 80)
-  const updated: AudioAsset = {
-    ...target,
-    ...patch,
-    updatedAt: new Date().toISOString(),
-  }
-  audiosStore = audiosStore.map((a) => (a.id === id ? updated : a))
-  return mockLatency(updated, 120)
+  const body: Record<string, unknown> = {}
+  if (patch.name !== undefined) body.name = patch.name
+  if (patch.audioType !== undefined) body.audio_type = patch.audioType
+  if (patch.asrText !== undefined) body.asr_text = patch.asrText
+  if (patch.description !== undefined) body.description = patch.description
+  if (patch.sourceLanguage !== undefined) body.source_language = patch.sourceLanguage
+  if (patch.tags !== undefined) body.tags = patch.tags.join(', ')
+  if (patch.annotations !== undefined) body.annotations = patch.annotations
+  const dto = await request<AudioItemDto | null>(
+    'PUT',
+    `/audios/${id}/metadata`,
+    body
+  )
+  return dto ? audioFromDto(dto) : undefined
 }
 
-/** 格式转换（§6.15；POST /audios/{id}/convert{format}） */
+/** 格式转换（POST /audios/{id}/convert；body { format } 对照 ConvertFormatRequest） */
 export async function convertAudio(
-  _id: number,
+  id: number,
   format: string
 ): Promise<{ success: boolean; message?: string }> {
-  // TODO(API 接线): POST /api/v1/audios/{id}/convert
-  return mockLatency({ success: true, message: `已提交转换为 ${format}` }, 200)
+  await request('POST', `/audios/${id}/convert`, { format })
+  return { success: true, message: `已提交转换为 ${format}` }
 }
 
-/** URL 导入（§6.18；POST /audios/url-import） */
+/**
+ * URL 导入（POST /audios/url-import；后端为单条契约 URLImportRequest{ url, audio_type }，
+ * 批量由本层循环逐条提交并统计成功/失败）。
+ */
 export async function urlImportAudios(
-  urls: string[]
+  urls: string[],
+  audioType = 'dry'
 ): Promise<{ successCount: number; failedCount: number }> {
-  // TODO(API 接线): POST /api/v1/audios/url-import
   let successCount = 0
   let failedCount = 0
   for (const url of urls) {
-    if (!/^https?:\/\//i.test(url)) {
+    try {
+      await request('POST', '/audios/url-import', { url, audio_type: audioType })
+      successCount += 1
+    } catch {
       failedCount += 1
-      continue
     }
-    const name = url.split('/').filter(Boolean).pop() ?? 'url-audio'
-    audiosStore = [
-      {
-        id: freshId(),
-        name,
-        originalFilename: name,
-        filePath: url,
-        duration: null,
-        size: null,
-        sampleRate: null,
-        channels: null,
-        bitrate: null,
-        format: null,
-        audioType: 'dry',
-        asrText: null,
-        description: null,
-        sourceLanguage: null,
-        tags: [],
-        annotations: [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      ...audiosStore,
-    ]
-    successCount += 1
   }
-  return mockLatency({ successCount, failedCount }, 200)
+  return { successCount, failedCount }
 }
 
-/** 批量更新标注（§6.19；POST /audios/batch/annotations） */
-export async function batchUpdateAnnotations(): Promise<{
-  success: number
-  failed: number
-  refreshed: number
-}> {
-  // TODO(API 接线): POST /api/v1/audios/batch/annotations
-  return mockLatency({ success: 4, failed: 1, refreshed: 3 }, 220)
+/** 批量更新标注请求条目（camelCase 域契约；snake_case 化在本层完成） */
+export interface BatchAnnotationItem {
+  audioId: number
+  annotations: unknown[]
 }
 
-/** 批量 action（§5.6；POST /audios/batch-action） */
+/**
+ * 批量更新标注（POST /audios/batch/annotations；body 对照 BatchUpdateAnnotationsRequest，
+ * 响应 data = { updated_count, failed_count, refreshed_test_case_ids } 归一为页面 toast 计数）。
+ * items 缺省为空（对话框文件解析/匹配流尚未接线，本卡只切 infra；传空后端回「标注列表不能为空」）。
+ */
+export async function batchUpdateAnnotations(
+  payload: {
+    items?: BatchAnnotationItem[]
+    algorithmType?: string
+    refreshTestCases?: boolean
+  } = {}
+): Promise<{ success: number; failed: number; refreshed: number }> {
+  const body = {
+    items: (payload.items ?? []).map((item) => ({
+      audio_id: item.audioId,
+      annotations: item.annotations ?? [],
+    })),
+    algorithm_type: payload.algorithmType,
+    refresh_test_cases: payload.refreshTestCases,
+  }
+  const result = await request<{
+    updated_count?: number
+    failed_count?: number
+    refreshed_test_case_ids?: number[]
+  }>('POST', '/audios/batch/annotations', body)
+  return {
+    success: result?.updated_count ?? 0,
+    failed: result?.failed_count ?? 0,
+    refreshed: result?.refreshed_test_case_ids?.length ?? 0,
+  }
+}
+
+/** 批量 action（§5.6；POST /audios/batch-action，body { action, audio_ids }） */
 export type AudioBatchAction =
   | 'delete'
   | 'export'
@@ -165,22 +216,34 @@ export type AudioBatchAction =
   | 'rename'
   | 'modify-properties'
 
-export async function batchActionAudios(
-  _action: AudioBatchAction,
-  ids: number[]
-): Promise<{ action: AudioBatchAction; total: number; successCount: number }> {
-  // TODO(API 接线): POST /api/v1/audios/batch-action
-  if (_action === 'delete') {
-    audiosStore = audiosStore.filter((a) => !ids.includes(a.id))
-  }
-  return mockLatency(
-    { action: _action, total: ids.length, successCount: ids.length },
-    160
-  )
+export type BatchActionResult = {
+  action: AudioBatchAction
+  total: number
+  successCount: number
+  /** 后端消息（delete/tags 仅回 message 不回逐项计数；页面 toast 优先呈现） */
+  message?: string
+  /** export 响应 data（zip_base64/filename）透传，供页面解码下载 */
+  zipBase64?: string
+  filename?: string
 }
 
-/** 供测试清理内存库（vitest 用例内独立初始化） */
-export function __resetAudioMock(): void {
-  audiosStore = [...MOCK_AUDIOS]
-  nextAudioId = 1000
+export async function batchActionAudios(
+  action: AudioBatchAction,
+  ids: number[]
+): Promise<BatchActionResult> {
+  // unwrapResponse: false 保留信封 message（delete/tags 的引用跳过明细以 message 呈现，
+  // 后端不回逐项计数）；错误信封仍由 client 在非 2xx 时抛 ApiError。
+  const envelope = await request<{
+    message?: string
+    data?: { zip_base64?: string; filename?: string }
+  }>('POST', '/audios/batch-action', { action, audio_ids: ids }, { unwrapResponse: false })
+  return {
+    action,
+    total: ids.length,
+    // 后端 delete/tags 不回逐项计数；整批成功即按 ids.length 计（引用跳过明细以 message 呈现）
+    successCount: ids.length,
+    message: envelope?.message,
+    zipBase64: envelope?.data?.zip_base64,
+    filename: envelope?.data?.filename,
+  }
 }

@@ -5,12 +5,14 @@
  */
 import type {
   AudioAsset,
+  AudioFolderNode,
   AudioListStats,
   AudioType,
 } from '@/domain/models/audio'
 import type {
   AudioItemDto,
   AudioListStatsDto,
+  FolderTreeNodeDto,
 } from '@/infrastructure/dto/audio.dto'
 
 const AUDIO_TYPE_SET: ReadonlySet<string> = new Set([
@@ -55,5 +57,20 @@ export function audioStatsFromDto(dto: AudioListStatsDto): AudioListStats {
     totalSize: dto.total_size,
     totalDuration: dto.total_duration,
     todayUploads: dto.today_uploads,
+  }
+}
+
+/** 文件夹树节点 DTO→Domain（后端 folder-tree 节点 file_count/folders → fileCount/children；depth 按递归层级显式传递） */
+export function folderNodeFromDto(
+  dto: FolderTreeNodeDto,
+  depth: number
+): AudioFolderNode {
+  return {
+    path: dto.path ?? '',
+    name: dto.name ?? '',
+    count: dto.count ?? 0,
+    fileCount: dto.file_count ?? 0,
+    depth,
+    children: (dto.folders ?? []).map((child) => folderNodeFromDto(child, depth + 1)),
   }
 }
