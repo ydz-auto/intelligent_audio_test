@@ -91,7 +91,8 @@ class TaskDataAclRepositoryImpl(TaskDataAclRepository):
     def update_task_case_status(self, task_id, case_id, status=None,
                                 execution_status=None, evaluation_status=None,
                                 error_message=None,
-                                started_at=None, completed_at=None) -> bool:
+                                started_at=None, completed_at=None,
+                                tc_rel_id: Optional[int] = None) -> bool:
         from shared.clients.grpc_clients import update_task_case_status as _update
         return bool(_update(
             task_id=task_id,
@@ -102,6 +103,8 @@ class TaskDataAclRepositoryImpl(TaskDataAclRepository):
             error_message=error_message,
             started_at=started_at,
             completed_at=completed_at,
+            # INT-604：多路由下按路由行精确命中
+            tc_rel_id=tc_rel_id,
         ))
 
     def submit_result(self, task_id, result_data) -> Optional[int]:

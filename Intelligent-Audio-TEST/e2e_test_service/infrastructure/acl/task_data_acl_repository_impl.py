@@ -16,6 +16,16 @@ from shared.utils.dto_utils import dict_to_dto, dict_list_to_dto
 logger = logging.getLogger(__name__)
 
 
+def _coerce_tc_rel_id(value):
+    """将 tc_rel_id 归一为 int；空/非数字 → None（INT-604，防御转换）。"""
+    if value in (None, '', 0):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 class TaskDataAclRepositoryImpl(TaskDataAclRepository):
     """TaskDataService ACL 仓储实现"""
 
@@ -182,8 +192,12 @@ class TaskDataAclRepositoryImpl(TaskDataAclRepository):
                                 status: str = '', execution_status: str = '',
                                 evaluation_status: str = '',
                                 error_message: str = '',
-                                started_at=None, completed_at=None) -> bool:
-        """更新 TaskCase 状态（status 为空由 task_service 推导复合状态，对齐服务端契约）"""
+                                started_at=None, completed_at=None,
+                                tc_rel_id: Optional[int] = None) -> bool:
+        """更新 TaskCase 状态（status 为空由 task_service 推导复合状态，对齐服务端契约）
+
+        INT-604：tc_rel_id 可选——多路由下按路由行精确命中，避免兄弟路由互相覆盖。
+        """
         from shared.clients.grpc_clients import get_task_data_service_stub
         from shared.proto import task_service_pb2 as task_pb
         try:
@@ -197,6 +211,7 @@ class TaskDataAclRepositoryImpl(TaskDataAclRepository):
                 error_message=error_message,
                 started_at=self._to_iso8601(started_at),
                 completed_at=self._to_iso8601(completed_at),
+                tc_rel_id=_coerce_tc_rel_id(tc_rel_id) or 0,
             ))
             if not resp.success:
                 logger.error("update_task_case_status 失败: %s", resp.message)

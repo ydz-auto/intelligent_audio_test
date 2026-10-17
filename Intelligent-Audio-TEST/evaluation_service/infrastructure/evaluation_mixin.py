@@ -16,12 +16,15 @@ from shared.utils.status_constants import ExecutionStatus
 def update_task_case_status_with_retry(task_id, case_id, status='',
                                        execution_status='',
                                        evaluation_status='',
-                                       error_message=''):
+                                       error_message='',
+                                       tc_rel_id=None):
     """带可靠性的 TaskCase 状态写库（INT-116）。
 
     ACL 仓储内已对传输级失败做内联重试；本包装在其仍失败（task_service
     持续不可用等）时转入延迟重试队列，由后台线程按指数退避持续补写，
     杜绝 task_case_relations 永久停留在 evaluating/queued 等中间态。
+
+    INT-604：tc_rel_id 可选——多路由下按路由行精确命中。
 
     Returns:
         bool: 是否已确认落库成功（False 表示已入延迟队列，最终落库与否见日志）
@@ -40,6 +43,7 @@ def update_task_case_status_with_retry(task_id, case_id, status='',
             execution_status=execution_status,
             evaluation_status=evaluation_status,
             error_message=error_message,
+            tc_rel_id=tc_rel_id,
         )
     except Exception:
         pass
@@ -89,7 +93,7 @@ def update_task_status_with_retry(task_id, status):
 
 def update_task_case_status_in_db(local_db_session, task_id, test_case_id, status,
                                   evaluation_status=None, execution_status=ExecutionStatus.COMPLETED,
-                                  exclude_stopped=True, error_message=''):
+                                  exclude_stopped=True, error_message='', tc_rel_id=None):
     """
     统一更新 TaskCase 状态（P1.4 改造：通过 gRPC 调 task_service.UpdateTaskCaseStatus）
 
@@ -99,10 +103,13 @@ def update_task_case_status_in_db(local_db_session, task_id, test_case_id, statu
         test_case_id: 用例ID
         status: 新状态（仅作向后兼容参数，实际由 derive_task_case_status 推导）
         evaluation_status: 评估状态，默认与 status 一致
-        execution_status: 执行状态，默认 'completed'（评估服务调用时执行已完成）
+        execution_status: 执行状态，默认 'completed'（评估服务调用时执行已完成）；
+            INT-604 显式传 None 表示「不回写 execution_status」——多路由下兄弟
+            路由可能仍在执行中，由 task_service 按行自身执行状态推导复合 status
         exclude_stopped: 是否排除已停止的任务（gRPC 接口暂未支持，服务端处理）
         error_message: 失败原因（INT-107：评估失败时写入 task_case_relations.error_message，
             服务端仅在非空时写入，不会覆盖已有值）
+        tc_rel_id: INT-604 可选，task_case_relations.id——多路由下按路由行精确命中
 
     Returns:
         int: 影响行数（gRPC 调用成功返回 1，失败转延迟队列返回 0）
@@ -117,13 +124,27 @@ def update_task_case_status_in_db(local_db_session, task_id, test_case_id, statu
     if evaluation_status is None:
         evaluation_status = status
 
+    if execution_status is None:
+        # INT-604：仅回写评估终态，status 交由 task_service 按行自身 exec 推导
+        success = update_task_case_status_with_retry(
+            task_id=task_id,
+            case_id=str(test_case_id),
+            status='',
+            evaluation_status=evaluation_status,
+            error_message=error_message or '',
+            tc_rel_id=tc_rel_id,
+        )
+        return 1 if success else 0
+
     derived_status = derive_task_case_status(execution_status, evaluation_status)
 
     success = update_task_case_status_with_retry(
         task_id=task_id,
         case_id=str(test_case_id),
         status=derived_status,
+        execution_status=execution_status,
         evaluation_status=evaluation_status,
         error_message=error_message or '',
+        tc_rel_id=tc_rel_id,
     )
     return 1 if success else 0

@@ -117,6 +117,27 @@ class APIProtocol(str, Enum):
     WEBSOCKET = 'websocket'
 
 
+class ExecutionMode(str, Enum):
+    """任务执行模式枚举 — 同一用例在设备侧与 API 侧目标间的时序编排（INT-604）
+
+    - PARALLEL  并行（默认/现行为）：设备侧与 API 侧各自独立并发分发、互不等待
+    - SERIAL    串行（逐用例）：同一用例两侧执行不重叠——先跑用户指定优先侧，
+                完成后再跑另一侧；该用例两侧全部到达终态后才执行下一个用例
+    """
+    PARALLEL = 'parallel'
+    SERIAL = 'serial'
+
+
+class SerialFirst(str, Enum):
+    """串行优先侧枚举 — serial 模式下先执行的目标侧（INT-604）
+
+    - DEVICE  设备先：physical 路由优先，API 路由等设备侧全部终态后启动
+    - API     API 先：http_api/websocket_api 路由优先，设备侧等 API 全部终态后启动
+    """
+    DEVICE = 'device'
+    API = 'api'
+
+
 # 设备系统输入别名 → 规范成员（小写键）。harmony 为前端注册/扫描表单实际写入的别名（INT-206）
 _DEVICE_SYSTEM_ALIASES = {
     'android': 'ANDROID',

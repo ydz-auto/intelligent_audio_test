@@ -124,9 +124,11 @@ class TestInt103FinalizeWriteBack:
             algorithm_type='voice_llm', aggregated=_aggregated(True), success=True)
 
         assert result_id == 4851
+        # INT-604：多路由写回按路由行精确命中（tc_rel_id 随请求下发）
         acl_mock.update_task_case_status.assert_called_once_with(
             task_id=478, case_id='case-1',
             execution_status=ExecutionStatus.COMPLETED,
+            tc_rel_id=8989,
         )
         engine._emit_progress.assert_called_once_with(478, force=True)
         engine.notify_case_completed.assert_called_once_with(478)

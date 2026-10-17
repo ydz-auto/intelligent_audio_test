@@ -170,6 +170,8 @@ class APIExecutor(BaseExecutor):
                 case_id=str(test_case_id),
                 execution_status=ExecutionStatus.RUNNING,
                 started_at=now_cst().isoformat(),
+                # INT-604：多路由下按路由行精确命中，避免兄弟路由被打成同一终态
+                tc_rel_id=tc_rel_id,
             )
             self.execution_engine._emit_progress(task_id, force=True)
             return True
@@ -249,6 +251,8 @@ class APIExecutor(BaseExecutor):
                     case_id=str(tc_rel.get('test_case_id', test_case_id)),
                     execution_status=ExecutionStatus.RUNNING,
                     started_at=now_cst().isoformat(),
+                    # INT-604：多路由下按路由行精确命中
+                    tc_rel_id=tc_rel_id,
                 )
                 self.execution_engine._emit_progress(task_id, force=True)
         except Exception as e:
@@ -389,7 +393,8 @@ class APIExecutor(BaseExecutor):
 
             result_id = self._result_processor.create_test_result(
                 task_id, test_case_id, api_config.id, success, error_msg,
-                algo_result_dict, latency, final_result_result, algorithm_type
+                algo_result_dict, latency, final_result_result, algorithm_type,
+                tc_rel_id=tc_rel_id,
             )
         finally:
             if api_task_id:
@@ -799,6 +804,8 @@ class APIExecutor(BaseExecutor):
                 error_message=error_msg,
                 started_at=now_cst().isoformat(),
                 completed_at=now_cst().isoformat(),
+                # INT-604：多路由下按路由行精确命中
+                tc_rel_id=tc_rel_id,
             )
 
             # 发布用例失败事件：唤醒 task_service 主循环并聚合任务级计数

@@ -43,9 +43,7 @@ python scripts/migrations/202610/seed_env_judge.py                      # ㉔ �
 python scripts/migrations/202610/seed_interruption_v2.py                # ㉕ 打断指标 v2 维度种子（INT-192，11 主 + 时延容器 + 3 子；依赖 ⑪ seed_voice_llm）
 python scripts/migrations/202610/backfill_report_snapshot_freeze.py --apply  # ㉖ 存量已发布任务 report_snapshot 补冻结（INT-258；默认 dry-run）
 python scripts/migrations/202610/cleanup_reeval_ghost_round_rows.py --apply  # ㉗ failed 重评幽灵失败逐轮行清理（INT-364；默认 dry-run）
-python scripts/migrations/202610/add_published_task_type_algorithm_type.py # ㉘ published_tasks 补 type/algorithm_type 两列 + idx_published_task_algorithm_type 索引 + 历史快照回填（INT-148 已发布任务类型列，INT-659 落地运行库）
-python scripts/migrations/202610/add_system_options_table.py                  # ㉙ 建 system_options 表 + 系统选项默认值种子（INT-620；全新库 create_all 已含，执行为全 SKIP）
-python scripts/migrations/202610/add_users_display_name.py                   # ㉚ users 表加 display_name 显示名列（INT-697；全新库 create_all 已含，执行为全 SKIP）
+python scripts/migrations/202610/add_uq_task_case_route_int604.py           # ㉘ task_case_relations (task, case, 路由) 唯一索引（INT-604；建索引前先查重，存在重复即中止）
 ```
 
 > ✅ **2026-09-07 全量迁移记录**：当前环境已执行 ①③④⑧（`remove_foreign_keys_and_soft_delete` 12 步 + `add_audit_columns` 补 24 处 + `add_reevaluated_at` + `add_pass_threshold_to_eval_params`），执行后 `UndefinedColumn` 类报错全部消除。②⑤⑥⑦⑨ 视功能需要执行。
@@ -122,10 +120,7 @@ python scripts/migrations/202610/add_users_display_name.py                   # �
 | [seed_interruption_v2.py](202610/seed_interruption_v2.py) | 打断指标 v2 维度种子（INT-192，移植 V9.7.10 202609） | 11 主维度（8 数量类 COUNT 模板 + 3 评分类 SCORE 模板）+「打断时延」容器 + 3 时延子维度；Step 0 物理清理旧代 interruption_metrics 树（interruption_judge 属 seed_env_sound_judge 另一族不动）；分类→打断；同上幂等口径 |
 | [backfill_report_snapshot_freeze.py](202610/backfill_report_snapshot_freeze.py) | 存量已发布任务 `report_snapshot` 补冻结（INT-258） | 发布快照语义修正为「引用 + 冻结双轨」（冻结报告管理生成的真实报告 7 表渲染数据 + sourceReportId 引用）：report_snapshot 为空且源任务有未删报告 → 补冻结；存量 v1 旧结构且源报告仍在 → 升级 v2；无报告/无源任务 → 保持空态（v1 快照且报告已不在的保留原数据）；复用 task_service `freeze_report_snapshot` 单一事实源；幂等（schemaVersion=2 一律 SKIP）；默认 dry-run，`--apply` 执行 |
 | [cleanup_reeval_ghost_round_rows.py](202610/cleanup_reeval_ghost_round_rows.py) | failed 重评幽灵失败逐轮行清理（INT-364，移植 V9.7.10 f02ba75e 同名脚本） | 删除「逐轮失败（round_number 非空 + failed）+ 同 (result, dimension) 整体行已 completed」的幽灵行——E2E 每轮未配评估维度 + per_round 投影残留 failed 行场景下用例被永久判 failed；随附将不再有失败维度行的用例 TaskCase 恢复 completed、限定 `--task-id` 时同步任务统计；代码侧修复（failed 重评提交前清幽灵行）已随实现落地，本脚本处理存量历史数据；缺省全库扫描（任务过滤 `%(task_id)s IS NULL OR 列 = %(task_id)s`，None 绑定 NULL 恒假的静默失效已修，审计 P3 回归 tests/unit/test_int364_cleanup_script_full_db_mode.py）；幂等，默认 dry-run，`--apply` 执行 |
-| [add_published_task_type_algorithm_type.py](202610/add_published_task_type_algorithm_type.py) | published_tasks 补类型列 + 历史回填（INT-148/INT-659） | 补 `type`（任务类型 api/e2e，发布时由快照用例级 device_type 派生：http_api/websocket_api → api，否则 e2e，无 caseDevices 回退 apiIds）/ `algorithm_type`（发布时从快照 algorithmType 冻结的冗余列）两列 + `idx_published_task_algorithm_type` 索引（对齐 ORM `__table_args__`），历史行仅回填两列为 NULL 者；幂等（列已存在即 [SKIP]），支持 `--dry-run` |
-| [add_system_options_table.py](202610/add_system_options_table.py) | 建 `system_options` 表 + 系统选项默认值种子（INT-620） | api_gateway 直管的系统选项 KV 表（key VARCHAR(255) 主键 / value JSONB / updated_at，DDL 与 api_gateway `SystemOption` ORM 元数据对齐）；种子前端 settings-mock 当前可视稿基线 11 键（站点信息/公告/导航/认证/安全/运维域）；幂等（表已存在即 SKIP、种子按 key 去重 + ON CONFLICT DO NOTHING），支持 `--dry-run`；全新库 create_all 已含该表，执行为全 SKIP |
-| [add_users_display_name.py](202610/add_users_display_name.py) | users 表加 `display_name` 显示名列（INT-697） | `ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name VARCHAR(100) NULL`，DDL 与 auth_service `User` ORM 元数据逐列对齐；显示名允许重复（不做唯一约束/索引），长度由 VARCHAR(100) 兜底；幂等（列已存在即 SKIP），支持 `--dry-run`；全新库 create_all 已含该列，执行为全 SKIP |
-
+| [add_uq_task_case_route_int604.py](202610/add_uq_task_case_route_int604.py) | task_case_relations (task, case, 路由) 唯一索引（INT-604 混选前置 + 评审①补录） | 同一用例可同时存在设备侧/API 侧多条 TaskCase，但 (task_id, test_case_id, COALESCE(device_type,''), COALESCE(device_id,'')) 不得重复；**建索引前先查重**——历史无 DB 唯一约束，理论存在 (task,case) 重复行，检测到即 ABORT 并列出重复行（交人工去重），避免唯一索引创建失败；幂等（索引已存在即 SKIP），支持 `--dry-run` |
 
 ## 新增迁移脚本约定
 

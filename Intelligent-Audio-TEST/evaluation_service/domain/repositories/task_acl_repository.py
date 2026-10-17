@@ -72,8 +72,12 @@ class TaskAclRepository(ABC):
         execution_status: str = '',
         evaluation_status: str = '',
         error_message: str = '',
+        tc_rel_id: Optional[int] = None,
     ) -> bool:
-        """更新 TaskCase 状态。返回是否成功。"""
+        """更新 TaskCase 状态。返回是否成功。
+
+        INT-604：tc_rel_id 可选——多路由下按路由行精确命中。
+        """
         ...
 
     @abstractmethod

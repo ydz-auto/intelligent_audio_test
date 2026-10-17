@@ -139,7 +139,8 @@ def submit_result(task_id, result_data):
 
 def update_task_case_status(task_id, case_id, status=None, execution_status=None,
                             evaluation_status=None, error_message=None,
-                            started_at=None, completed_at=None):
+                            started_at=None, completed_at=None,
+                            tc_rel_id=None):
     """通过 gRPC 调用 task_service.TaskDataService.UpdateTaskCaseStatus 更新 TaskCase 状态
 
     供 api_test_service / e2e_test_service 执行完成后更新 TaskCase 执行状态，
@@ -154,6 +155,7 @@ def update_task_case_status(task_id, case_id, status=None, execution_status=None
         error_message: 可选，错误信息
         started_at: 可选，开始执行时间（datetime / ISO8601 字符串，空则不更新）
         completed_at: 可选，结束执行时间（datetime / ISO8601 字符串，空则不更新）
+        tc_rel_id: INT-604 可选，task_case_relations.id——多路由下按路由行精确命中
 
     Returns:
         bool: 是否有字段被更新
@@ -170,12 +172,27 @@ def update_task_case_status(task_id, case_id, status=None, execution_status=None
         error_message=error_message or '',
         started_at=_to_iso8601(started_at),
         completed_at=_to_iso8601(completed_at),
+        tc_rel_id=_coerce_tc_rel_id(tc_rel_id) or 0,
     )
     resp = stub.UpdateTaskCaseStatus(req)
     if not resp.success:
         raise RuntimeError(f"UpdateTaskCaseStatus gRPC 调用失败: {resp.message}")
     data = _json.loads(resp.data) if resp.data else {}
     return data.get('updated', False)
+
+
+def _coerce_tc_rel_id(value):
+    """将 tc_rel_id 归一为 int；空/非数字（测试桩常见 'tc1' 等）→ None。
+
+    INT-604：tc_rel_id 为 task_case_relations.id（DB 自增 int），调用链上层
+    传原始值即可，统一在本收口处归一，避免中间层 int() 转换炸掉执行链。
+    """
+    if value in (None, '', 0):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _to_iso8601(value):

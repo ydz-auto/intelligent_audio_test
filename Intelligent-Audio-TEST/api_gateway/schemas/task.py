@@ -232,6 +232,26 @@ class TaskCreateRequest(APIModel):
     case_devices: Optional[List[TaskCaseDeviceAssignment]] = Field(None)
     # 实验室扩展（INT-493/INT-540）：关联实验室 ID 列表（可选，缺省=不限定实验室，兼容现状）
     lab_ids: Optional[List[int]] = Field(None)
+    # INT-604：任务执行模式（同一用例在设备/API 目标间 并行/串行）。默认并行（现行为）。
+    # 由网关显式字段承接，task_service 合并进 Task.config 落库；取值见 ExecutionMode/SerialFirst 枚举。
+    execution_mode: Optional[str] = Field('parallel')
+    serial_first: Optional[str] = Field('device')
+
+    @field_validator('execution_mode')
+    @classmethod
+    def _validate_execution_mode(cls, v):
+        from shared.models.common_enums import ExecutionMode
+        if v is not None and v not in tuple(item.value for item in ExecutionMode):
+            raise ValueError(f"execution_mode 合法值: {[item.value for item in ExecutionMode]}")
+        return v
+
+    @field_validator('serial_first')
+    @classmethod
+    def _validate_serial_first(cls, v):
+        from shared.models.common_enums import SerialFirst
+        if v is not None and v not in tuple(item.value for item in SerialFirst):
+            raise ValueError(f"serial_first 合法值: {[item.value for item in SerialFirst]}")
+        return v
 
 
 class TaskValidateError(APIModel):

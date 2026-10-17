@@ -8,10 +8,11 @@
 - _handle_e2e_failure / _handle_device_check_failed：失败处理
 """
 from datetime import datetime
+from typing import Dict, List
 
 from sqlalchemy.exc import InvalidRequestError
 
-from task_service.infrastructure.persistence.models import TaskCase
+from task_service.infrastructure.persistence.models import Task, TaskCase
 from shared.utils.status_utils import (
     derive_task_case_status, task_case_not_removed, REMOVED_CASE_MESSAGE,
 )
@@ -29,15 +30,128 @@ class TaskDispatchMixin:
     """用例分发：领取 / 原子占用 / 按类型分发 / 失败处理"""
 
     def _get_next_pending_case(self, task_id, session):
-        """获取下一个待执行的测试用例（INT-305：移除留痕行不参与领取）"""
+        """获取下一个待执行的测试用例（INT-305：移除留痕行不参与领取）
+
+        INT-604：serial 模式按逐用例门控——同一用例设备侧/API 侧不重叠，
+        优先侧全终态后另一侧才派发、两侧全终态后才进入下一用例；parallel
+        模式维持现行为（最早 PENDING 先取）。
+        """
+        if self._is_serial_task(task_id, session):
+            return self._get_next_pending_case_serial(task_id, session)
         return session.query(TaskCase).filter(
             TaskCase.task_id == task_id,
             TaskCase.execution_status == ExecutionStatus.PENDING,
             task_case_not_removed(TaskCase),
         ).order_by(TaskCase.created_at.asc()).first()
 
+    # ---- INT-604 serial 逐用例门控 ----
+
+    def _task_execution_mode(self, task_id, session):
+        """读取任务执行模式（Task.config.execution_mode，缺省 parallel）"""
+        from shared.models.common_enums import ExecutionMode
+        task = session.get(Task, task_id)
+        if task is None or not task.config:
+            return ExecutionMode.PARALLEL.value
+        return task.config.get('execution_mode') or ExecutionMode.PARALLEL.value
+
+    def _task_serial_first(self, task_id, session):
+        """读取任务串行优先侧（Task.config.serial_first，缺省 device）"""
+        from shared.models.common_enums import SerialFirst
+        task = session.get(Task, task_id)
+        if task is None or not task.config:
+            return SerialFirst.DEVICE.value
+        return task.config.get('serial_first') or SerialFirst.DEVICE.value
+
+    def _is_serial_task(self, task_id, session):
+        """是否 serial 执行模式"""
+        from shared.models.common_enums import ExecutionMode
+        return self._task_execution_mode(task_id, session) == ExecutionMode.SERIAL.value
+
+    @staticmethod
+    def _is_preferred_side(tc_rel, serial_first):
+        """按 serial_first 判定该路由行是否属于优先侧。
+
+        路由身份 = device_type（NULL 兜底 physical）。device 侧=physical；
+        api 侧=http_api/websocket_api。serial_first=api 时取反。
+        """
+        from shared.models.common_enums import DeviceType
+        is_device = (tc_rel.device_type or DeviceType.PHYSICAL.value) == DeviceType.PHYSICAL.value
+        return is_device if serial_first == 'device' else not is_device
+
+    @staticmethod
+    def _is_case_row_terminal(tc_rel):
+        """用例行是否全终态（exec + eval 均终态，status ∈ FINISHED_CASE_STATUSES）。
+
+        停止/移除留痕行分别由 stop_event 与 task_case_not_removed 兜底，
+        这里以推导 status 判定（derive(stopped, stopped)=failed → 终态）。
+        """
+        from shared.utils.status_constants import FINISHED_CASE_STATUSES
+        return (tc_rel.status or '') in FINISHED_CASE_STATUSES
+
+    def _get_next_pending_case_serial(self, task_id, session):
+        """serial 模式逐用例门控选行。
+
+        门控规则（按用例 min(created_at) 排序取第一个可派发用例）：
+        - 在途用例（任一行未全终态）：优先侧行可继续并行派发（同侧多行不互等）；
+          优先侧已无 PENDING 行且全部终态后，才派发另一侧 PENDING 行；
+          否则返回 None 等待（主循环 _handle_no_pending_case 收尾）。
+        - 无 PENDING 行但在途（执行/评估中）：返回 None 等待，后续用例不得启动。
+        - 已全终态的用例：无残留 PENDING 行则跳过，进入下一用例。
+        - 新用例（全部行仍 PENDING）：先派发优先侧最早 PENDING 行；
+          无优先侧行（单侧用例）直接派发最早 PENDING 行。
+        """
+        serial_first = self._task_serial_first(task_id, session)
+        rows = session.query(TaskCase).filter(
+            TaskCase.task_id == task_id,
+            task_case_not_removed(TaskCase),
+        ).order_by(TaskCase.created_at.asc()).all()
+        if not rows:
+            return None
+
+        groups: Dict[str, List[TaskCase]] = {}
+        for r in rows:
+            groups.setdefault(r.test_case_id, []).append(r)
+        ordered_cases = sorted(
+            groups.items(),
+            key=lambda kv: (min((r.created_at or datetime.min) for r in kv[1]), kv[0]),
+        )
+
+        for _case_id, case_rows in ordered_cases:
+            pending = [r for r in case_rows if r.execution_status == ExecutionStatus.PENDING]
+            started = any(r.execution_status != ExecutionStatus.PENDING for r in case_rows)
+            in_flight = any(not self._is_case_row_terminal(r) for r in case_rows)
+
+            if not pending:
+                # 无 PENDING 行：仍在途（执行/评估中）则等待，已终态则跳过
+                if in_flight:
+                    return None
+                continue
+
+            if not started:
+                # 新用例：优先侧先行；单侧用例直接取最早 PENDING
+                pref_pending = [r for r in pending if self._is_preferred_side(r, serial_first)]
+                return (pref_pending or pending)[0]
+
+            # 已开始且在途：优先侧内部并行派发，全终态后才放行另一侧
+            pref_pending = [r for r in pending if self._is_preferred_side(r, serial_first)]
+            if pref_pending:
+                return pref_pending[0]
+            pref_rows = [r for r in case_rows if self._is_preferred_side(r, serial_first)]
+            if all(self._is_case_row_terminal(r) for r in pref_rows):
+                other_pending = [r for r in pending if not self._is_preferred_side(r, serial_first)]
+                if other_pending:
+                    return other_pending[0]
+            return None
+        return None
+
     def _handle_no_pending_case(self, task_id, task, session, stop_event=None):
         """没有待执行用例时的处理，返回 True 表示需要继续循环"""
+        # INT-604：serial 模式逐用例门控——用例两侧全终态前主循环不得退出
+        # （否则纯 physical 任务在评估等待期退出后，后续用例的 PENDING 行
+        #  会被 _update_post_loop_status 提前收敛，串行编排失效）
+        if self._is_serial_task(task_id, session):
+            return self._handle_no_pending_case_serial(task_id, session, stop_event=stop_event)
+
         if not self._task_uses_api_async(task_id, task, session):
             self._log(level='INFO', content=f"任务 {task_id} 所有用例执行完成，退出主循环", task_id=task_id)
             return False
@@ -52,6 +166,21 @@ class TaskDispatchMixin:
             self._wait_active_cases_with_backoff(task_id, stop_event=stop_event)
             return True
 
+        self._log(level='INFO', content=f"任务 {task_id} 所有用例执行完成，退出主循环", task_id=task_id)
+        return False
+
+    def _handle_no_pending_case_serial(self, task_id, session, stop_event=None):
+        """serial 模式：仍有用例行未全终态（含评估中）时继续等待，不退出主循环。"""
+        from shared.utils.status_constants import FINISHED_CASE_STATUSES
+        remaining = session.query(TaskCase).filter(
+            TaskCase.task_id == task_id,
+            task_case_not_removed(TaskCase),
+            TaskCase.status.notin_(FINISHED_CASE_STATUSES),
+        ).count()
+        if remaining > 0:
+            session.close()
+            self._wait_active_cases_with_backoff(task_id, stop_event=stop_event)
+            return True
         self._log(level='INFO', content=f"任务 {task_id} 所有用例执行完成，退出主循环", task_id=task_id)
         return False
 

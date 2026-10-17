@@ -139,16 +139,23 @@ class TaskCaseStatsMixin:
                                 status: str = '', execution_status: str = '',
                                 evaluation_status: str = '',
                                 error_message: str = '',
-                                started_at=None, completed_at=None) -> bool:
+                                started_at=None, completed_at=None,
+                                tc_rel_id: Optional[int] = None) -> bool:
         """更新 TaskCase 状态，返回是否有更新。
 
         started_at / completed_at 为 datetime 或 ISO8601 字符串，非 None 才写入。
         与 V9.7.10 行为对齐：开始执行时写 started_at，结束时写 completed_at。
+
+        INT-604：多路由下同一用例存在设备/API 多行 TaskCase，写回必须按路由行
+        精确命中——tc_rel_id 优先（执行器/评估已知 task_case_relations.id 时
+        传入，避免 (task_id, test_case_id) 全量更新把兄弟路由打成同一终态）；
+        tc_rel_id 为空时维持旧口径（单行场景零回归）。
         """
         session = get_db_session()
         try:
             status = self._derive_case_status(
-                session, task_id, case_id, status, execution_status, evaluation_status)
+                session, task_id, case_id, status, execution_status, evaluation_status,
+                tc_rel_id=tc_rel_id)
             started_at = self._coerce_cst_datetime(started_at)
             completed_at = self._coerce_cst_datetime(completed_at)
 
@@ -167,10 +174,12 @@ class TaskCaseStatsMixin:
                 update_fields['completed_at'] = completed_at
 
             if update_fields:
-                session.query(TaskCase).filter(
-                    TaskCase.task_id == task_id,
-                    TaskCase.test_case_id == case_id,
-                ).update(update_fields, synchronize_session=False)
+                q = session.query(TaskCase).filter(TaskCase.task_id == task_id)
+                if tc_rel_id is not None:
+                    q = q.filter(TaskCase.id == tc_rel_id)
+                else:
+                    q = q.filter(TaskCase.test_case_id == case_id)
+                q.update(update_fields, synchronize_session=False)
                 session.commit()
             return bool(update_fields)
         except Exception:
@@ -194,14 +203,20 @@ class TaskCaseStatsMixin:
 
     @staticmethod
     def _derive_case_status(session, task_id: int, case_id: str, status: str,
-                            execution_status: str, evaluation_status: str) -> str:
-        """未显式传 status 时，由 execution/evaluation 状态推导复合状态。"""
+                            execution_status: str, evaluation_status: str,
+                            tc_rel_id: Optional[int] = None) -> str:
+        """未显式传 status 时，由 execution/evaluation 状态推导复合状态。
+
+        INT-604：tc_rel_id 优先精确取路由行（多行时避免 .first() 取错行）。
+        """
         if status or not (execution_status or evaluation_status):
             return status
-        tc = session.query(TaskCase).filter(
-            TaskCase.task_id == task_id,
-            TaskCase.test_case_id == case_id,
-        ).first()
+        q = session.query(TaskCase).filter(TaskCase.task_id == task_id)
+        if tc_rel_id is not None:
+            q = q.filter(TaskCase.id == tc_rel_id)
+        else:
+            q = q.filter(TaskCase.test_case_id == case_id)
+        tc = q.first()
         if not tc:
             return status
         cur_exec = execution_status or tc.execution_status or 'pending'
