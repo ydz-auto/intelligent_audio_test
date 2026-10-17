@@ -12,7 +12,7 @@
  * 「新轮次默认关闭」严格仅首轮成立——本卡等价移植保持复制行为、不额外重置 enabled。
  */
 import { Sparkles } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -158,6 +158,7 @@ export function CaseMutateDrawer({
 }) {
   const isEdit = caseItem != null
   const [step, setStep] = useState<(typeof STEPS)[number]>('算法参数')
+  const [nameValue, setNameValue] = useState(caseItem?.name ?? '')
   const [tagValue, setTagValue] = useState<string[]>(caseItem?.tags ?? [])
   const [groupValue, setGroupValue] = useState(caseItem?.groupId ?? presetGroupId ?? '')
   const [newGroupName, setNewGroupName] = useState('')
@@ -247,6 +248,16 @@ export function CaseMutateDrawer({
 
   const activeRoundDraft = rounds.find((r) => r.number === activeRound) ?? rounds[0]
 
+  // INT-588：自动生成需真实读写名称框。抽屉组件常驻渲染（弹窗群内，Sheet 内容关闭时才卸载），
+  // useState 初始值在页面加载（caseItem=null）时已定格；打开时按 caseItem 回填名称/标签，
+  // 编辑态原名与既有标签不丢（等价 defaultValue 装载时机的行为）。
+  useEffect(() => {
+    if (open) {
+      setNameValue(caseItem?.name ?? '')
+      setTagValue(caseItem?.tags ?? [])
+    }
+  }, [open, caseItem])
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className='w-full sm:max-w-[1280px]'>
@@ -272,7 +283,8 @@ export function CaseMutateDrawer({
                 <div className='flex gap-2'>
                   <Input
                     id='case-name'
-                    defaultValue={caseItem?.name ?? ''}
+                    value={nameValue}
+                    onChange={(e) => setNameValue(e.target.value)}
                     placeholder='请输入用例名称'
                     className='h-8'
                   />
@@ -281,7 +293,17 @@ export function CaseMutateDrawer({
                     variant='ghost'
                     size='sm'
                     className='h-8 shrink-0 gap-1'
-                    onClick={() => toast.success('已按标签升序自动生成名称（演示）')}
+                    onClick={() => {
+                      if (tagValue.length === 0) {
+                        toast.warning('请先添加标签后再自动生成名称')
+                        return
+                      }
+                      const generated = [...tagValue]
+                        .sort((a, b) => a.localeCompare(b, 'zh-CN'))
+                        .join('-')
+                      setNameValue(generated)
+                      toast.success(`已按标签升序自动生成名称「${generated}」`)
+                    }}
                   >
                     <Sparkles aria-hidden='true' className='size-3.5' />
                     自动生成
