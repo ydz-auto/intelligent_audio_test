@@ -127,10 +127,13 @@ class ApiClient:
     def delete_tag(self, tag_id) -> None:
         self.request('DELETE', f'/tags/{tag_id}')
 
-    def create_testcase(self, name: str, group: str = '', tags=None, description: str = '') -> str:
+    def create_testcase(self, name: str, group: str = '', tags=None, description: str = '',
+                        config: dict | None = None) -> str:
         # 后端强制 group_id/group（创建时缺少直接 400）；id 为 UUID 字符串
         body = {'name': name, 'description': description, 'tags': tags or [],
                 'group': group}
+        if config:
+            body['config'] = config
         data = self.request('POST', '/testcases', body)
         return str((data.get('data') or {}).get('id', ''))
 

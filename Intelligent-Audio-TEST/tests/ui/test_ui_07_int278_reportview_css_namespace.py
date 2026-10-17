@@ -28,8 +28,11 @@ id #rv-unified-selector），``<style src>`` 全局注入保留但不再含任�
 环境口径：tests/ui 门禁三件套沿用（RUN_LIVE_STACK=1 显式纳入、隔离库
 守卫、引导自举），并行隔离栈跑（run_gate.py，:6000/:6273）。
 
-测试数据卫生：报告数据用隔离库既有 smoke 报告（回收站恢复一条置 live，
-teardown 原样放回回收站），零写入残留。
+测试数据卫生：报告数据按名称/属性探测隔离库可用 published 报告（优先 live
+published，退化为 live 任意状态，再无则回收站恢复一条），不再硬编码
+INT-314 smoke 报告 id=10（INT-569 日巡实证隔离库已无该报告，3 例 setup
+ERROR）；teardown 仅把「回收站恢复来的」原样放回回收站，本就 live 的不动，
+零写入残留。
 """
 import os
 
@@ -38,9 +41,9 @@ import pytest
 from tests.ui.pages.base_page import BasePage
 
 # ── 被测页路由 ────────────────────────────────────────────────
-REPORT_ROUTE = '/report/10'      # 隔离库既有 INT-314 smoke 任务报告（published）
-# 跨页探针：直接命中 Tasks 页真实 .btn-primary 批量操作按钮——修复前
-# reportView.css 泄漏的 .btn/.btn-primary 规则（padding/background/
+# 报告 id 由 report_live fixture 动态探测（不再硬编码 id=10，INT-569 日巡实证
+# 隔离库已无该报告）；跨页探针：直接命中 Tasks 页真实 .btn-primary 批量操作
+# 按钮——修复前 reportView.css 泄漏的 .btn/.btn-primary 规则（padding/background/
 # border-radius/box-shadow）恰好覆盖其计算样式，探针属性取缺陷规则
 # 声明体里与全站基线值不同的字段（padding 10px 24px vs 基线 5px 10px）。
 PROBE_PAGES = [
@@ -115,28 +118,48 @@ def _leaked_bare_rules(selectors) -> list:
     return sorted(leaked)
 
 
+def _report_route(report_id) -> str:
+    """被测报告页路由（report_live fixture 动态探测出的报告 id）。"""
+    return f'/report/{report_id}'
+
+
 @pytest.fixture(scope='module')
 def report_live(api_client):
-    """把隔离库回收站的 INT-314 smoke 报告(id=10)恢复到 live 供 UI 打开。
+    """按名称/属性探测隔离库可用的 published 报告供 UI 打开（不再硬编码 id=10）。
 
-    teardown 原样放回回收站（该报告本就是此前 smoke 测试的回收站残留，
-    验收零新增数据）。若隔离库无此报告，显式 fail 提示数据前置。
+    探测顺序（INT-569 日巡实证 /report/2 正常渲染后确定）：
+    1. live + status=published（首选：完整数据的正式报告，报告页可正常渲染）；
+    2. live 任意状态（draft/completed 报告同样可渲染）；
+    3. 回收站（deleted=true）恢复第一条可用报告。
+    teardown 只把「回收站恢复来的」原样放回回收站（零新增残留）；本就 live
+    的不动。三者皆无 → 显式 fail（隔离库空报告态，非本卡可自愈的数据前置）。
     """
-    r = api_client.request('GET', '/reports')
-    live_ids = [i['id'] for i in r['data']['items']]
-    if 10 in live_ids:
-        yield 10
+    def _ids(resp) -> list:
+        data = resp.get('data') or {}
+        items = data.get('items') or []
+        return [it for it in items if it.get('id')]
+
+    # 1) live published
+    items = _ids(api_client.request('GET', '/reports?status=published'))
+    if items:
+        yield int(items[0]['id'])
         return
-    trash = api_client.request('GET', '/reports?deleted=true')
-    trash_ids = [i['id'] for i in trash['data']['items']]
-    if 10 not in trash_ids:
-        pytest.fail('隔离库缺少预期 smoke 报告 id=10（live 与回收站均无）。'
+    # 2) live 任意状态
+    items = _ids(api_client.request('GET', '/reports'))
+    if items:
+        yield int(items[0]['id'])
+        return
+    # 3) 回收站恢复一条
+    items = _ids(api_client.request('GET', '/reports?deleted=true'))
+    if not items:
+        pytest.fail('隔离库无任何可打开的报告（live published / live / 回收站均空）。'
                     '请以 python tests/ui/run_gate.py 依赖的隔离栈数据为准，'
-                    '或先在隔离库重放 smoke 种子。')
-    api_client.request('POST', '/reports/10/restore')
-    yield 10
+                    '或先在隔离库重放报告种子。')
+    restored = int(items[0]['id'])
+    api_client.request('POST', f'/reports/{restored}/restore')
+    yield restored
     # teardown：放回回收站（恢复原状，不引入残留）
-    api_client.request('DELETE', '/reports/10')
+    api_client.request('DELETE', f'/reports/{restored}')
 
 
 class TestInt278CssNamespace:
@@ -182,7 +205,7 @@ class TestInt278CssNamespace:
         page.wait_visible('.main-content', timeout=15)
         before = _collect_selectors(page.driver)
 
-        page.goto(REPORT_ROUTE)
+        page.goto(_report_route(report_live))
         # 报告页自身渲染完成标志：rv- 容器或 loading/error 态出现
         page.wait_visible('.rv-report-view-page, .rv-loading-state, .rv-error-state',
                           timeout=20)
@@ -218,7 +241,7 @@ class TestInt278CssNamespace:
         baseline = {route: probe(route, sel) for route, sel in PROBE_PAGES}
 
         # 访问报告页（全局注入 reportView.css）
-        page.goto(REPORT_ROUTE)
+        page.goto(_report_route(report_live))
         page.wait_visible('.rv-report-view-page, .rv-loading-state, .rv-error-state',
                           timeout=20)
         page.settle(1.0)
@@ -233,7 +256,7 @@ class TestInt278CssNamespace:
 
     def test_report_page_own_style_applied(self, page, report_live):
         """反向回归：报告页自身 rv- 样式正常生效（容器渲染 + 标题/按钮）。"""
-        page.goto(REPORT_ROUTE)
+        page.goto(_report_route(report_live))
         el = page.wait_visible('.rv-report-view-page', timeout=20)
         page.settle(0.8)
         bg = page.driver.execute_script(
