@@ -408,6 +408,15 @@ class EvaluationResultProcessor(RoundAggregator):
             # 使用单个会话
             local_db_session = db.session()
             try:
+                # A failed takeover re-evaluation must not expose prior success details.
+                from backend.services.evaluation.takeover_persistence import is_takeover_group, invalidate
+                if group_items and is_takeover_group(group_items):
+                    first = local_db_session.query(TestResultDimension).get(group_items[0][1])
+                    if first:
+                        result = local_db_session.query(TestResult).filter(TestResult.id == first.test_result_id).with_for_update().one()
+                        invalidate(local_db_session, result, group_items, error_message,
+                                   api_raw_response, api_request_body)
+
                 for dim_data, dimension_result_id in group_items:
                     dim_id = dim_data['id']
                     dim_name = dim_data['name']
@@ -488,6 +497,28 @@ class EvaluationResultProcessor(RoundAggregator):
             finally:
                 local_db_session.close()
 
+    def _persist_full_takeover(self, calc, group_items, task_id, test_case_id,
+                              result_id, api_request_body, test_type):
+        from backend.services.evaluation.takeover_persistence import persist
+        from backend.controllers.report_controller_base import ReportControllerBase
+        with get_app().app_context():
+            session = db.session()
+            try:
+                result = session.query(TestResult).filter(TestResult.id == result_id).with_for_update().one()
+                task = session.query(Task).get(task_id) if task_id else None
+                resource = ReportControllerBase.get_resource_name(result, task, use_time_prefix=False)
+                persist(self, session, result, calc, group_items, api_request_body, resource)
+                session.commit()
+                if test_case_id:
+                    self.update_task_case_status(result_id, True, task_id, test_case_id, test_type)
+                    sync_case_evaluation_status_from_dimensions(session, task_id, test_case_id)
+                    session.commit()
+            except Exception:
+                session.rollback()
+                raise
+            finally:
+                session.close()
+
     def process_group_dimension_results(self, resp_data, group_items, task_id, test_case_id, result_id, api_request_body, test_type='api'):
         """
         处理一组维度的评估结果
@@ -501,6 +532,11 @@ class EvaluationResultProcessor(RoundAggregator):
             api_request_body: API请求体
             test_type: 测试类型 (api 或 e2e)
         """
+        calc = self._unwrap_calc_result(resp_data)
+        if calc.get('evaluation_mode') == 'full_timeline':
+            return self._persist_full_takeover(calc, group_items, task_id, test_case_id,
+                                               result_id, api_request_body, test_type)
+
         # 使用应用上下文确保可以访问数据库
         current_app = get_app()
         with current_app.app_context():

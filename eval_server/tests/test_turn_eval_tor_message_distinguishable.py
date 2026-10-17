@@ -90,7 +90,7 @@ def test_top_level_tor_fallback_message(monkeypatch):
         calc, '_eval_one_round',
         lambda *a, **kw: ([_misunderstand_turn()], 0, 0, 1, list(_USER_CHUNKS), []),
     )
-    result = calc.calculate({'task_params': {'rounds': [{}]}, '_shared_asr': {'_injected': True}})
+    result = calc.calculate({'task_params': {'rounds': [{}], 'turn_eval_full_timeline': False}, '_shared_asr': {'_injected': True}})
 
     tor = result['tor']
     assert '无 AI 回复' not in tor['message']

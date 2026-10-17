@@ -6,7 +6,10 @@
   2. 仅对"接管"轮计算接管时延
   3. 仅对"接管"轮评分回复质量
 
-ASR 共享：优先复用上层编排器（XiaoyiMetricsCalculator）注入的 _shared_asr，
+整体评估默认由 full_timeline_judge 基于原始累计双路ASR决定边界，代码仅校验与投影。
+turn_eval_full_timeline=False 可显式运行旧流程；裁判失败不会自动回退。
+
+旧流程的 ASR 共享：优先复用上层编排器（XiaoyiMetricsCalculator）注入的 _shared_asr，
 独立调用时自行调 ASR + 音频对齐。
 
 多轮模式：整体评估时以末轮（rounds[-1]）的 user_wav + ai_wav 为评估对象，
@@ -459,7 +462,7 @@ class TurnEvalCalculator(BaseCalculator):
         return merged, round_of
 
     def calculate(self, params):
-        """新流程：多轮合并 / 单轮处理，逐轮三分类 → 接管时延 → 回复质量 → 汇总输出
+        """整体评估默认使用完整时间线裁判；以下为显式关闭新模式后的兼容流程。
 
         多轮模式（整体评估）：以末轮（rounds[-1]）的 user_wav + ai_wav 为评估对象，
         合并**所有轮次**的 played_audios 一次性对齐 + ASR。对齐成功后**锚点定轮次**：
@@ -476,6 +479,12 @@ class TurnEvalCalculator(BaseCalculator):
         rounds = task_params.get('rounds') or []
         is_multi = self._is_multi_round(task_params)
         shared_asr_injected = params.get('_shared_asr')
+
+        # Whole-case semantic segmentation. No automatic fallback to local windows.
+        # Explicit single-round requests retain the legacy slice contract.
+        if rounds and task_params.get('round_number') is None and task_params.get('turn_eval_full_timeline', True):
+            from app.services.calculators.xiaoyi_metrics.turn_eval.full_timeline_judge import evaluate
+            return evaluate(self, task_params)
 
         all_turn_results = []
         all_user_chunks = []
