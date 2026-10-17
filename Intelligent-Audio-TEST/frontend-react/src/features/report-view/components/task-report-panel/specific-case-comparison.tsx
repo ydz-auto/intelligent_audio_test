@@ -27,6 +27,7 @@ import type { ReportCaseItem, ReportDetailData } from '@/domain/models/report'
 import { cn } from '@/lib/utils'
 
 import { CaseReportDetail } from '../case-report-detail'
+import { getDeviceName } from '../case-report-detail/case-report-utils'
 import { CaseDetailDialog } from '../modals/case-detail-dialog'
 import { LogDownloadProgressDialog } from '../modals/log-download-progress-dialog'
 import { MultiSelectFilter, SelectedConditionsBar } from './multi-select-filter'
@@ -317,7 +318,13 @@ export function SpecificCaseComparison({
                   {c.results.map((r) => (
                     <Badge key={r.resource} variant={resourceStatusVariant(r.status)} className='gap-1'>
                       <StatusDot status={resourceStatus(r.status)} />
-                      {r.resource} · {resourceStatusLabel(r.status)}
+                      <span className='flex items-center gap-1'>
+                        {getDeviceName(r.resource, report.summary.resource_headers)}
+                        {r.result_type && (
+                          <span className='font-mono text-[10px] opacity-70'>{resultTypeLabel(r.result_type)}</span>
+                        )}
+                      </span>
+                      {resourceStatusLabel(r.status)}
                     </Badge>
                   ))}
                   <Button
@@ -505,6 +512,17 @@ function resourceStatusVariant(status?: string): 'secondary' | 'destructive' | '
   if (status === 'failed') return 'destructive'
   if (status === 'warning') return 'warning'
   return 'outline'
+}
+
+/** 结果类型中文（V9.7.10 result_type 后缀：realtime→实时/final→最终，缺省原样） */
+function resultTypeLabel(resultType?: string) {
+  const map: Record<string, string> = {
+    realtime: '实时',
+    final: '最终',
+    recording: '录音',
+    default: '默认',
+  }
+  return map[resultType ?? ''] ?? resultType ?? ''
 }
 
 function StatusDot({ status }: { status: string }) {

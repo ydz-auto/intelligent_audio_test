@@ -448,13 +448,18 @@ export function ExecutionResults({
               )}
             </div>
           )}
-          {/* 执行状态行（caseItem.results） */}
+          {/* 执行状态行（caseItem.results：每资源友好名 + 结果类型徽标 + 状态 + 时间） */}
           {caseItem.results.length > 0 && (
             <div className='mt-1 rounded-lg border'>
               {caseItem.results.map((r) => (
                 <div key={r.resource} className='flex items-center justify-between gap-2 border-b px-3 py-1.5 text-xs last:border-0'>
-                  <span className='font-medium'>{r.resource}</span>
-                  <span className='text-muted-foreground'>
+                  <span className='flex min-w-0 items-center gap-1.5'>
+                    <span className='truncate font-medium'>{getDeviceName(r.resource, headers)}</span>
+                    {r.result_type && (
+                      <Badge variant='outline' className='font-mono text-[10px]'>{resultTypeLabel(r.result_type)}</Badge>
+                    )}
+                  </span>
+                  <span className='text-muted-foreground shrink-0'>
                     {statusLabel(r.status)}
                     {r.startTime && <span className='ms-2 font-mono'>{r.startTime}</span>}
                   </span>
@@ -535,4 +540,15 @@ function statusLabel(status?: string) {
     'in-progress': '执行中',
   }
   return map[status ?? ''] ?? status ?? '—'
+}
+
+/** 结果类型中文（V9.7.10 result_type 后缀：realtime→实时/final→最终，缺省原样） */
+function resultTypeLabel(resultType?: string) {
+  const map: Record<string, string> = {
+    realtime: '实时',
+    final: '最终',
+    recording: '录音',
+    default: '默认',
+  }
+  return map[resultType ?? ''] ?? resultType ?? ''
 }

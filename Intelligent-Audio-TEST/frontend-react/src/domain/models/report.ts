@@ -177,6 +177,8 @@ export interface ReportResourceHeader {
   name?: string
   version?: string
   editable?: boolean
+  /** 结果类型（V9.7.10 资源名 result_type 后缀：realtime/final/…；resource label 展示） */
+  result_type?: string
 }
 
 /** metric_data 扁平格式（§1.2：[{resource, metrics:[{id,metric,value}]}]，双格式兼容） */
@@ -291,6 +293,8 @@ export interface ReportAudioItem {
 export interface ReportCaseResult {
   resource: string
   status?: string
+  /** 结果类型（V9.7.10 资源名 result_type 后缀：realtime/final/…；设备/API 执行结果行徽标） */
+  result_type?: string
   startTime?: string
   endTime?: string
 }
