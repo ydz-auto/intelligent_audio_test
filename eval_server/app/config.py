@@ -121,6 +121,8 @@ class Config:
         'max_tokens': _env_int('LLM_JUDGE_MAX_TOKENS', int(_lj.get('max_tokens', 4096))),
         'temperature': float(_env('LLM_JUDGE_TEMPERATURE', str(_lj.get('temperature', 0.1)))),
         'timeout': _env_int('LLM_JUDGE_TIMEOUT', int(_lj.get('timeout', 120))),
+        # 传给 LLM 裁判的音频预处理：off / 16k_mono（.env 用 LLM_JUDGE_AUDIO_COMPRESS 覆盖）
+        'audio_compress': _env('LLM_JUDGE_AUDIO_COMPRESS', _lj.get('audio_compress', '16k_mono')),
         'prompt_template': _lj.get('prompt_template', ''),
     }
 

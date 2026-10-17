@@ -14,6 +14,8 @@ import json
 import os
 import re
 import time
+import io
+import wave
 import base64
 import logging
 import threading
@@ -144,6 +146,68 @@ def encode_file_to_base64(file_path: str) -> str:
         return base64.b64encode(f.read()).decode()
 
 
+def _compress_to_16k_mono_wav(file_path: str) -> Optional[bytes]:
+    """将 WAV 降采样为 16kHz 单声道 16bit PCM，返回内存 WAV 字节。
+
+    - 只处理 16bit PCM WAV（wave 模块可读）；其他位宽/格式回退 None（原文件直传）。
+    - 语义无损：语音内容频带 0-8kHz，16kHz 采样率完整保留；
+      48kHz 立体声 → 16kHz 单声道后体积约降为 1/6，规避中转 nginx ~20MB 请求体上限。
+    - 任何异常（文件损坏/库缺失等）都回退 None，绝不阻断评估。
+    """
+    try:
+        import numpy as np
+        from scipy.signal import resample_poly
+    except Exception:
+        return None
+    try:
+        with wave.open(file_path, 'rb') as w:
+            nch, sampwidth, framerate, nframes = (
+                w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes())
+            raw = w.readframes(nframes)
+        if sampwidth != 2 or framerate <= 0 or nframes <= 0:
+            return None
+        a = np.frombuffer(raw, dtype=np.int16).astype(np.float32)
+        if nch > 1:
+            a = a.reshape(-1, nch).mean(axis=1)
+        if framerate != 16000:
+            a = resample_poly(a, 16000, framerate)
+        pcm = np.clip(a, -32768, 32767).astype(np.int16)
+        buf = io.BytesIO()
+        with wave.open(buf, 'wb') as out:
+            out.setnchannels(1)
+            out.setsampwidth(2)
+            out.setframerate(16000)
+            out.writeframes(pcm.tobytes())
+        return buf.getvalue()
+    except Exception:
+        return None
+
+
+def _prepare_audio_data(file_path: str) -> tuple:
+    """按配置预处理音频，返回 (base64_data, format)。
+
+    - audio_compress=16k_mono 且为 .wav 且文件较大时 → 降采样后编码；
+    - 其余情况（off / 非 WAV / 压缩失败 / 小文件）→ 原文件直传，保证兼容性。
+    """
+    fmt = get_audio_format(file_path)
+    try:
+        cfg = get_llm_config()
+        mode = str(cfg.get('audio_compress', '') or '').strip().lower()
+    except Exception:
+        mode = ''
+    try:
+        fsize = os.path.getsize(file_path)
+    except OSError:
+        fsize = 0
+    if mode == '16k_mono' and os.path.splitext(file_path)[1].lower() == '.wav':
+        # 小文件本就不构成超限风险，跳过压缩省 CPU
+        if fsize > 1024 * 1024:
+            compressed = _compress_to_16k_mono_wav(file_path)
+            if compressed is not None:
+                return base64.b64encode(compressed).decode(), 'wav'
+    return encode_file_to_base64(file_path), fmt
+
+
 def encode_video_to_data_uri(file_path: str) -> str:
     """将视频文件编码为带 MIME 的 base64 data URI（用于 image_url）。"""
     ext = os.path.splitext(file_path)[1].lower()
@@ -183,8 +247,7 @@ def build_content(prompt: str, file_paths: Optional[List[str]] = None) -> list:
                 video_parts.append(fp)
 
     for ap in audio_parts:
-        b64_data = encode_file_to_base64(ap)
-        audio_fmt = get_audio_format(ap)
+        b64_data, audio_fmt = _prepare_audio_data(ap)
         content.append({
             'type': 'input_audio',
             'input_audio': {'data': b64_data, 'format': audio_fmt},
