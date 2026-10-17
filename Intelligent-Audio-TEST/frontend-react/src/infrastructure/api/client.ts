@@ -32,6 +32,11 @@ export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
    * basePath: '/api' → GET /api/status；basePath: '' → GET /health。
    */
   basePath?: string
+  /**
+   * 根级路径（不走 /api/v1 前缀，改用 /api）：INT-620 /api/option/、/api/status
+   * 根级挂载端点对位 newAPI 契约；仍经本客户端注入 token/统一信封解包。
+   */
+  rootPath?: boolean
   /** 跳过 401 自动登出/跳转（login/register/encryption-key 等公开端点） */
   skipAuthRedirect?: boolean
   /** 响应类型（默认 json） */
@@ -92,8 +97,8 @@ function sessionExpired(): void {
 // ===== URL / 请求体 / 请求头 =====
 
 function buildUrl(path: string, options: ApiRequestOptions): string {
-  // INT-672：basePath 覆盖网关统一前缀；默认 undefined → API_BASE_URL（/api/v1）不变
-  const base = options.basePath ?? API_BASE_URL
+  // INT-672：basePath 覆盖网关统一前缀；rootPath 简写固定根级 /api；默认 API_BASE_URL（/api/v1）
+  const base = options.basePath ?? (options.rootPath ? '/api' : API_BASE_URL)
   let url = `${base}${path.startsWith('/') ? path : `/${path}`}`
   if (options.params) {
     const query = new URLSearchParams(
