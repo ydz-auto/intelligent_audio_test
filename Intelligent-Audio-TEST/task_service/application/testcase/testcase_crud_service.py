@@ -435,8 +435,8 @@ class TestCaseCrudService:
             # 显式传空字符串则清空引用（保留当前 config 快照，P1 不回灌）。
             strategy_error, strategy_id_val, strategy_overrides_val = _resolve_strategy_config(
                 data, merged_config,
-                current_strategy_id=tc.strategy_id,
-                current_overrides=tc.strategy_overrides,
+                current_strategy_id=getattr(tc, 'strategy_id', None),
+                current_overrides=getattr(tc, 'strategy_overrides', None),
             )
             if strategy_error is not None:
                 return {'success': False, 'message': strategy_error, 'data': None, 'code': 400}
