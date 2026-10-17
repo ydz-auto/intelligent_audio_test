@@ -203,4 +203,51 @@ describe('algorithmFormSchema', () => {
     const draft = algorithmDraftFormSchema.safeParse(badRange)
     expect(draft.success).toBe(true)
   })
+
+  it('草稿宽松：参数代码含连字符/大写 + 参数类型未选仍放行（§6.2 正则/类型草稿阶段不校验），发布严格双门槛拦截', () => {
+    const values = validBase()
+    values.deviceParams = [
+      {
+        key: 'd-1',
+        paramCode: 'input-audio-V1', // 发布正则 ^[a-z][a-z0-9_]*$ 非法（连字符+大写）
+        paramName: '',
+        direction: 'input',
+        paramType: '', // 发布类型必填拦截；草稿允许暂存
+        required: false,
+        defaultValue: '',
+        helpText: '',
+      },
+    ]
+    const draft = algorithmDraftFormSchema.safeParse(values)
+    expect(draft.success).toBe(true)
+    const publish = algorithmFormSchema.safeParse(values)
+    expect(publish.success).toBe(false)
+  })
+
+  it('草稿宽松：映射/参考参数/关联维度未填完仍可暂存（§6.2 中间态），发布严格拦截', () => {
+    const values = validBase()
+    values.referenceParams = [
+      {
+        key: 'r-1',
+        code: 'ref_code',
+        name: '',
+        type: '', // 参考类型未选：草稿放行
+        annotationCode: '',
+        annotationFormat: '',
+        fieldPath: '',
+        mergeMode: '',
+        helpText: '',
+      },
+    ]
+    values.mappings.device = [
+      { key: 'md-1', sourceParam: 'input_audio', targetParam: '', transformType: '' },
+    ]
+    values.associatedDimensions = [
+      { key: 'dim-1', dimensionId: '', dimensionName: '', weight: '', isDefault: false },
+    ]
+    const draft = algorithmDraftFormSchema.safeParse(values)
+    expect(draft.success).toBe(true)
+    const publish = algorithmFormSchema.safeParse(values)
+    expect(publish.success).toBe(false)
+  })
 })

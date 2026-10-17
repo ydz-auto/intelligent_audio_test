@@ -157,10 +157,10 @@ describe('useAlgorithmDraft', () => {
     act(() => result.current.form.setValue('name', '语音识别-v2', { shouldDirty: true }))
     expect(result.current.isActive).toBe(true)
 
-    // 参数代码非法（非小写字母开头）→ 草稿结构校验不过 → 暂停
+    // 结构级门槛不满足（§6.2：参数代码非空）→ 草稿校验不过 → 暂停
     act(() =>
       result.current.form.setValue('deviceParams', [
-        { key: 'd-1', paramCode: 'Bad Code', paramName: '', direction: 'input', paramType: 'text', required: false, defaultValue: '', helpText: '' },
+        { key: 'd-1', paramCode: '', paramName: '', direction: 'input', paramType: 'text', required: false, defaultValue: '', helpText: '' },
       ], { shouldDirty: true })
     )
     expect(result.current.isActive).toBe(false)
@@ -175,6 +175,23 @@ describe('useAlgorithmDraft', () => {
     )
     expect(result.current.isActive).toBe(true)
     expect(result.current.isValidationBlocked).toBe(false)
+  })
+
+  it('正则不符/类型未选的参数代码不再阻断草稿（§6.2 草稿宽松：正则/类型草稿阶段不校验）', () => {
+    const draft = createDraftMock()
+    const { result } = renderHook(() => useHarness({ open: true, draft }))
+
+    act(() => result.current.form.setValue('name', '语音识别-v2', { shouldDirty: true }))
+    expect(result.current.isActive).toBe(true)
+
+    // 参数代码含连字符/大写（发布正则非法）且参数类型未选（发布必填）——草稿宽松放行
+    act(() =>
+      result.current.form.setValue('deviceParams', [
+        { key: 'd-1', paramCode: 'input-audio-V1', paramName: '', direction: 'input', paramType: '', required: false, defaultValue: '', helpText: '' },
+      ], { shouldDirty: true })
+    )
+    expect(result.current.isValidationBlocked).toBe(false)
+    expect(result.current.isActive).toBe(true)
   })
 
   it('保存失败：toast「草稿保存失败，请检查网络后重试」且不自动重试', async () => {

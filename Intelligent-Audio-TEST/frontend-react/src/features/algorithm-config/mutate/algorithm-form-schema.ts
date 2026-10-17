@@ -18,12 +18,26 @@ import { z } from 'zod'
 /** 算法代码正则（§6.2 新建校验 ^[a-z][a-z0-9_]*$） */
 export const ALGORITHM_TYPE_PATTERN = /^[a-z][a-z0-9_]*$/
 
-/** 参数代码（同作用域内唯一，行级） */
-function paramCodeField() {
-  return z
-    .string()
-    .min(1, '参数代码不能为空')
-    .regex(ALGORITHM_TYPE_PATTERN, '参数代码需小写字母开头')
+/**
+ * 参数代码字段（§6.2 双门槛）：
+ * - 发布（enforcePattern=true）= 正则（小写字母开头），设备/API/用例参数行级；
+ * - 草稿（enforcePattern=false）= 仅非空（正则草稿阶段不校验，草稿是中间态允许暂存未完备内容）。
+ */
+function paramCodeField(enforcePattern: boolean) {
+  const base = z.string().min(1, '参数代码不能为空')
+  return enforcePattern
+    ? base.regex(ALGORITHM_TYPE_PATTERN, '参数代码需小写字母开头')
+    : base
+}
+
+/**
+ * 参数类型字段（§6.2 双门槛）：
+ * - 发布（enforceRequired=true）= 必填（「请选择参数类型」）；
+ * - 草稿（enforceRequired=false）= 可暂缺（类型草稿阶段不校验，允许暂存未完备内容）。
+ */
+function paramTypeField(enforceRequired: boolean) {
+  const base = z.string()
+  return enforceRequired ? base.min(1, '请选择参数类型') : base
 }
 
 /** 算法代码字段：新建态走 §6.2 正则；编辑/复制态仅必填+长度（后端契约 min 1 / max 50） */
@@ -45,10 +59,10 @@ const baseObjectFields = {
   deviceParams: z.array(
     z.object({
       key: z.string(),
-      paramCode: paramCodeField(),
+      paramCode: paramCodeField(true),
       paramName: z.string(),
       direction: z.enum(['input', 'output']),
-      paramType: z.string().min(1, '请选择参数类型'),
+      paramType: paramTypeField(true),
       required: z.boolean(),
       defaultValue: z.string(),
       helpText: z.string(),
@@ -57,10 +71,10 @@ const baseObjectFields = {
   apiParams: z.array(
     z.object({
       key: z.string(),
-      paramCode: paramCodeField(),
+      paramCode: paramCodeField(true),
       paramName: z.string(),
       direction: z.enum(['input', 'output']),
-      paramType: z.string().min(1, '请选择参数类型'),
+      paramType: paramTypeField(true),
       required: z.boolean(),
       defaultValue: z.string(),
       helpText: z.string(),
@@ -69,9 +83,9 @@ const baseObjectFields = {
   caseParams: z.array(
     z.object({
       key: z.string(),
-      paramCode: paramCodeField(),
+      paramCode: paramCodeField(true),
       paramName: z.string(),
-      paramType: z.string().min(1, '请选择参数类型'),
+      paramType: paramTypeField(true),
       scope: z.enum(['common', 'api', 'e2e']),
       required: z.boolean(),
       defaultValue: z.string(),
@@ -135,12 +149,81 @@ const baseObjectFields = {
 }
 
 /**
+ * 草稿宽松字段集（§6.2 结构级门槛：仅参数代码非空 + 同作用域唯一）。
+ * 在严格字段集（baseObjectFields）基础上仅放宽：参数代码去正则、
+ * 参数类型/参考类型/映射源目/维度去非空——草稿是中间态，允许暂存未完备内容；
+ * 发布 schema（buildPublishAlgorithmFormSchema）另行保持严格双门槛。
+ */
+const draftObjectFields = {
+  ...baseObjectFields,
+  deviceParams: z.array(
+    z.object({
+      ...baseObjectFields.deviceParams.element.shape,
+      paramCode: paramCodeField(false),
+      paramType: paramTypeField(false),
+    })
+  ),
+  apiParams: z.array(
+    z.object({
+      ...baseObjectFields.apiParams.element.shape,
+      paramCode: paramCodeField(false),
+      paramType: paramTypeField(false),
+    })
+  ),
+  caseParams: z.array(
+    z.object({
+      ...baseObjectFields.caseParams.element.shape,
+      paramCode: paramCodeField(false),
+      paramType: paramTypeField(false),
+    })
+  ),
+  referenceParams: z.array(
+    z.object({
+      ...baseObjectFields.referenceParams.element.shape,
+      type: z.string(), // 参考类型草稿阶段不校验（发布严格门）
+    })
+  ),
+  mappings: z.object({
+    device: z.array(
+      z.object({
+        ...baseObjectFields.mappings.shape.device.element.shape,
+        sourceParam: z.string(),
+        targetParam: z.string(),
+        transformType: z.string(),
+      })
+    ),
+    api: z.array(
+      z.object({
+        ...baseObjectFields.mappings.shape.api.element.shape,
+        sourceParam: z.string(),
+        targetParam: z.string(),
+        transformType: z.string(),
+      })
+    ),
+    evaluation: z.array(
+      z.object({
+        ...baseObjectFields.mappings.shape.evaluation.element.shape,
+        sourceParam: z.string(),
+        targetParam: z.string(),
+        transformType: z.string(),
+      })
+    ),
+  }),
+  associatedDimensions: z.array(
+    z.object({
+      ...baseObjectFields.associatedDimensions.element.shape,
+      dimensionId: z.string(), // 维度草稿阶段不校验（发布严格门）
+    })
+  ),
+}
+
+/**
  * 草稿宽松 schema（§6.2 结构级门槛）：仅参数代码非空 + 同作用域唯一。
- * 算法代码/名称/分组等可空（中间态暂存），范围/正则/类型在草稿阶段不校验。
- * （baseObjectFields 中 type/name/groupId 即宽松形态，发布 schema 另行收紧。）
+ * 算法代码/名称/分组/参数类型/映射/维度等可空或未完备（草稿是中间态，允许暂存），
+ * 正则/类型/范围等发布严格门槛草稿阶段不校验。
  */
 export const algorithmDraftFormSchema = z
-  .object({ ...baseObjectFields })
+  .object({ ...draftObjectFields })
   .superRefine((values, ctx) => {
     // 同作用域内参数代码唯一（§6.4：统一表行带 scope 标记，唯一性按 device/api/case 各数组）
     checkUnique(ctx, 'deviceParams', 'paramCode', values.deviceParams.map((p) => p.paramCode))
