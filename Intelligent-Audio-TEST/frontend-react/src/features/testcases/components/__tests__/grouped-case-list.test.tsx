@@ -4,7 +4,7 @@
  * 组头勾选全选/全不选；组内懒加载「已显示 {n} / {总} 条 · 加载更多」。
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useState } from 'react'
@@ -71,6 +71,32 @@ const setupUser = () => userEvent.setup()
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false, gcTime: 0 } },
 })
+
+/** 测试内覆盖 matchMedia 模拟移动端视口（≤640px；审计 P3-1），并随测试结束还原 */
+const ORIGINAL_MATCH_MEDIA = window.matchMedia
+function mockMobile(active: boolean) {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    value: (query: string): MediaQueryList => ({
+      matches:
+        query.includes('prefers-reduced-motion') ||
+        (active && query.includes('max-width: 640px')),
+      media: query,
+      onchange: null,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      dispatchEvent: () => false,
+    }),
+  })
+}
+function restoreMatchMedia() {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    value: ORIGINAL_MATCH_MEDIA,
+  })
+}
 
 /** 受控外壳：模拟 React Query 异步返回 groups（首帧空数组，加载后补齐） */
 function Harness({
@@ -192,6 +218,26 @@ describe('GroupedCaseList', () => {
     expect(screen.getByText('切换回「平铺」可查看该分组全部用例')).toBeInTheDocument()
     // 切换控件保持「按标签」选中态（不自动跳变）
     expect(screen.getAllByText('按标签').length).toBeGreaterThan(0)
+  })
+
+  it('审计 P3-1：移动端（≤640px）组头不渲染 Tabs，子视图切换收进 CaseGroupActions 下拉首项「显示方式」', async () => {
+    mockMobile(true)
+    try {
+      const user = setupUser()
+      render(<Harness />)
+      // Tabs 胶囊不渲染（组头空间收紧）
+      expect(screen.queryAllByRole('tab')).toHaveLength(0)
+      // 打开第一个分组卡（g1）的「批量修改」下拉 → 首项「显示方式」子菜单
+      await user.click(screen.getAllByRole('button', { name: /批量修改/ })[0])
+      // base-ui 子菜单触发器 hover 展开；jsdom 指针几何为零，子项点击用 fireEvent（绕过 pointer-events 守卫）
+      await user.hover(await screen.findByText('显示方式'))
+      await screen.findByText('按标签')
+      fireEvent.click(screen.getByText('按标签'))
+      // 选择「按标签」→ g1 按标签客户端聚合（「未设置标签」桶出现）
+      expect(screen.getByText('未设置标签')).toBeInTheDocument()
+    } finally {
+      restoreMatchMedia()
+    }
   })
 
   it('INT-595 空态补：筛选排除全部用例时分页区不再空白，显「没有找到符合条件的测试用例」', () => {

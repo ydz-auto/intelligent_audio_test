@@ -15,7 +15,11 @@ import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import type { Dimension } from '@/domain/models/evaluationDimension'
 
-/** requiresAudio 维度（mock 侧：随多轮音频一起上传，音乐图标 + title 提示） */
+/**
+ * requiresAudio 维度（mock 侧：随多轮音频一起上传，音乐图标 + title 提示）。
+ * 注：当前按维度 id 硬编码（审计 P4-1，mock 阶段可接受）；接线后改随维度模型数据驱动——
+ * 建议 Dimension 增 requiresAudio 布尔字段，由 d.requiresAudio 判断，不再维护 id 集合。
+ */
 const REQUIRES_AUDIO_DIMENSION_IDS = new Set<number>([11])
 
 const dimId = (d: Dimension) => Number(d.id)
@@ -46,6 +50,7 @@ export function DimensionPicker({
 
   const keyword = search.trim().toLowerCase()
 
+  /** 原始搜索命中（主/子维度都算；渲染集合见 mainDims「带出整组」逻辑） */
   const searched = useMemo(() => {
     if (!keyword) return algoFiltered
     return algoFiltered.filter((d) => {
@@ -56,31 +61,54 @@ export function DimensionPicker({
     })
   }, [algoFiltered, keyword])
 
-  const mainDims = searched.filter((d) => d.dimensionType !== 'sub')
-  const subDims = searched.filter((d) => d.dimensionType === 'sub')
-  const subsByParent = useMemo(() => {
+  /** 全部子维度按父维度索引（搜索「带出整组」取完整子维度集，非仅命中项） */
+  const allSubsByParent = useMemo(() => {
     const map = new Map<number, Dimension[]>()
-    for (const s of subDims) {
-      const p = s.parentDimensionId == null ? 0 : Number(s.parentDimensionId)
-      map.set(p, [...(map.get(p) ?? []), s])
+    for (const d of algoFiltered) {
+      if (d.dimensionType === 'sub' && d.parentDimensionId != null) {
+        const p = Number(d.parentDimensionId)
+        map.set(p, [...(map.get(p) ?? []), d])
+      }
     }
     return map
-  }, [subDims])
+  }, [algoFiltered])
 
-  /** 命中子维度 → 带出父维度并自动展开 */
+  /** 渲染主维度集（§5.1.2 搜索交互：命中主维度带出整组、命中子维度带出父维度） */
+  const mainDims = useMemo(() => {
+    if (!keyword) return algoFiltered.filter((d) => d.dimensionType !== 'sub')
+    const kept = new Map<number, Dimension>()
+    for (const d of searched) {
+      if (d.dimensionType !== 'sub') {
+        kept.set(dimId(d), d)
+      } else if (d.parentDimensionId != null) {
+        const pid = Number(d.parentDimensionId)
+        if (!kept.has(pid)) {
+          const parent = algoFiltered.find((dd) => dimId(dd) === pid)
+          if (parent) kept.set(pid, parent)
+        }
+      }
+    }
+    return [...kept.values()]
+  }, [algoFiltered, searched, keyword])
+
+  /** 渲染子维度集：搜索态=已渲染主维度的整组子维度；非搜索态=全量子维度索引 */
+  const subsByParent = useMemo(() => {
+    if (!keyword) return allSubsByParent
+    const map = new Map<number, Dimension[]>()
+    for (const m of mainDims) {
+      const subs = allSubsByParent.get(dimId(m))
+      if (subs) map.set(dimId(m), subs)
+    }
+    return map
+  }, [allSubsByParent, mainDims, keyword])
+
+  /** 搜索态自动展开全部已渲染主组（先并入渲染集合再展开：带出整组/父维度可见） */
   const effectiveExpanded = useMemo(() => {
     if (!keyword) return expanded
     const next = new Set(expanded)
-    for (const s of subDims) {
-      const hay = [s.name, s.description ?? '', s.keywords ?? '']
-        .join(' ')
-        .toLowerCase()
-      if (hay.includes(keyword) && s.parentDimensionId != null) {
-        next.add(Number(s.parentDimensionId))
-      }
-    }
+    for (const m of mainDims) next.add(dimId(m))
     return next
-  }, [expanded, subDims, keyword])
+  }, [expanded, mainDims, keyword])
 
   const toggleSubs = (mainId: number) => {
     setExpanded((prev) => {
@@ -103,9 +131,9 @@ export function DimensionPicker({
     onToggle([mainId, ...subs.map((s) => dimId(s))], checked)
   }
 
-  // 空态三态（§5.1.2）：搜索无结果 → 算法无关联 → 全量无维度
+  // 空态三态（§5.1.2）：搜索无结果（以渲染主维度集为准）→ 算法无关联 → 全量无维度
   let empty: string | null = null
-  if (keyword && searched.length === 0) empty = '没有匹配的评估维度'
+  if (keyword && mainDims.length === 0) empty = '没有匹配的评估维度'
   else if (algoFiltered.length === 0 && algorithmType) empty = '暂无可用维度（当前算法类型无关联维度）'
   else if (dimensions.length === 0) empty = '暂无可用维度'
 

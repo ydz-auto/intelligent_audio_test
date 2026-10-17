@@ -18,9 +18,16 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import type { BatchActionKey } from '@/features/testcases/components/case-bulk-actions'
+import type {
+  SubViewOption,
+  SubViewValue,
+} from '@/features/testcases/components/case-sub-view-toggle'
 
 /** 批量修改九项（对齐 V9.7.10 TestCaseGroupActions.vue 逐字文案） */
 export const GROUP_BATCH_ITEMS: Array<{ key: BatchActionKey; label: string }> = [
@@ -48,6 +55,12 @@ export interface CaseGroupActionsProps {
   onCreateInGroup?: () => void
   onCopyGroup?: () => void
   onBatchAction?: (action: BatchActionKey, ids: string[]) => void
+  /** 移动端（≤640px）子视图切换收编（§3.5：下拉首项「显示方式」两子项；传入=渲染） */
+  subViewMenu?: {
+    value: SubViewValue
+    onValueChange: (value: SubViewValue) => void
+    options: SubViewOption[]
+  }
 }
 
 export function CaseGroupActions({
@@ -60,6 +73,7 @@ export function CaseGroupActions({
   onCreateInGroup,
   onCopyGroup,
   onBatchAction,
+  subViewMenu,
 }: CaseGroupActionsProps) {
   const [open, setOpen] = useState(false)
   if (trash) return null
@@ -116,6 +130,30 @@ export function CaseGroupActions({
               <DropdownMenuLabel className='truncate'>批量修改 · {name}</DropdownMenuLabel>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
+            {subViewMenu && (
+              <>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>显示方式</DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent alignOffset={-3}>
+                    {subViewMenu.options.map((o) => (
+                      <DropdownMenuItem
+                        key={o.key}
+                        onSelect={() => {
+                          subViewMenu.onValueChange(o.key)
+                          setOpen(false)
+                        }}
+                      >
+                        {o.label}
+                        {subViewMenu.value === o.key && (
+                          <span className='ms-auto font-medium'>✓</span>
+                        )}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+                <DropdownMenuSeparator />
+              </>
+            )}
             {GROUP_BATCH_ITEMS.map((item) => (
               <DropdownMenuItem
                 key={item.key}

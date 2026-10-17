@@ -4,6 +4,8 @@
  *   多标签用例在命中的每个标签子组各呈现一次；无标签用例归入「未设置标签」桶（末尾）。
  * groupCasesByCaseGroup：标签卡内「按用例分组」子视图——对标签下已加载用例按 group_id/group_name
  *   客户端聚合（单用例单分组→单次呈现）；无分组用例归入「未分组」桶（末尾）。
+ *   防御（审计 P3-2）：groupId 非空但 groupName 缺失时 label 以 groupId 兜底，
+ *   避免与真「未分组」桶（key='__ungrouped__'）文案混淆。
  * 两条纯函数可单测；数据源均为列表 DTO 自带字段（TestCaseListItem.tags / groupId / groupName），
  * 不新增后端请求。
  */
@@ -105,7 +107,7 @@ export function groupCasesByCaseGroup(
     } else {
       buckets.set(key, {
         key,
-        label: c.groupName ?? '未分组',
+        label: c.groupName ?? c.groupId ?? '未分组',
         cases: [c],
         color: null,
         categoryName: null,

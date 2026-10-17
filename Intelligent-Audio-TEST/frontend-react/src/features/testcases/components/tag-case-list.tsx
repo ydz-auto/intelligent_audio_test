@@ -33,12 +33,14 @@ import {
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
+import { useMediaQuery } from '@/hooks/use-media-query'
 import { groupCasesByCaseGroup } from '@/domain/lib/sub-view-aggregation'
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TagItem } from '@/domain/models/testTag'
 import { CaseCard, type CaseCardCallbacks } from '@/features/testcases/components/case-card'
 import {
   CaseSubViewToggle,
+  SubViewDisplayMenu,
   TAG_SUB_VIEW_OPTIONS,
 } from '@/features/testcases/components/case-sub-view-toggle'
 import { CaseSubGroupHeader } from '@/features/testcases/components/case-sub-group-header'
@@ -85,6 +87,8 @@ export function TagCaseList({
   /** §3.3.3：isFetching 时列表不消失、降透明度（placeholderData 保上一帧） */
   const fetching = useIsFetching({ queryKey: ['testcases'] })
   const dimmed = fetching > 0 && !loading
+  /** §3.6 移动端（≤640px）子视图切换收进「显示方式」下拉（组头右区空间收紧） */
+  const isMobile = useMediaQuery('(max-width: 640px)')
 
   // INT-490 P2 同源修复：标签卡默认全展开（标签分组由平铺用例聚合派生，加载后补齐）
   useEffect(() => {
@@ -267,13 +271,21 @@ export function TagCaseList({
                   {group.cases.length} 条
                 </Badge>
               </div>
-              {/* 标签卡组头右区：子视图切换（§3.6，常显） */}
+              {/* 标签卡组头右区：子视图切换（§3.6，常显；移动端收「显示方式」下拉） */}
               <div className='flex shrink-0 flex-wrap items-center gap-1.5' onClick={(e) => e.stopPropagation()}>
-                <CaseSubViewToggle
-                  value={subView}
-                  onValueChange={(v) => setTagSubView(group.name, v as 'flat' | 'byGroup')}
-                  options={TAG_SUB_VIEW_OPTIONS}
-                />
+                {isMobile ? (
+                  <SubViewDisplayMenu
+                    value={subView}
+                    onValueChange={(v) => setTagSubView(group.name, v as 'flat' | 'byGroup')}
+                    options={TAG_SUB_VIEW_OPTIONS}
+                  />
+                ) : (
+                  <CaseSubViewToggle
+                    value={subView}
+                    onValueChange={(v) => setTagSubView(group.name, v as 'flat' | 'byGroup')}
+                    options={TAG_SUB_VIEW_OPTIONS}
+                  />
+                )}
               </div>
             </div>
             {isExpanded && (

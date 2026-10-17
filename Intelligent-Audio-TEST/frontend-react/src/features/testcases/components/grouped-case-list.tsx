@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
+import { useMediaQuery } from '@/hooks/use-media-query'
 import { groupCasesByTag } from '@/domain/lib/sub-view-aggregation'
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
@@ -44,6 +45,8 @@ import { CaseGroupActions } from '@/features/testcases/components/case-group-act
 import {
   CaseSubViewToggle,
   GROUP_SUB_VIEW_OPTIONS,
+  SubViewDisplayMenu,
+  type SubViewValue,
 } from '@/features/testcases/components/case-sub-view-toggle'
 import { CaseSubGroupHeader } from '@/features/testcases/components/case-sub-group-header'
 import type { BatchActionKey } from '@/features/testcases/components/case-bulk-actions'
@@ -101,6 +104,8 @@ export function GroupedCaseList({
   /** §3.3.3：isFetching 时列表不消失、降透明度（placeholderData 保上一帧） */
   const fetching = useIsFetching({ queryKey: ['testcases'] })
   const dimmed = fetching > 0 && !loading
+  /** §3.5 移动端（≤640px）子视图切换收进 CaseGroupActions 下拉首项「显示方式」 */
+  const isMobile = useMediaQuery('(max-width: 640px)')
 
   // INT-490 P2 修复：groups 异步到达后补齐展开集（默认全展开），保留用户手动折叠
   useEffect(() => {
@@ -295,11 +300,21 @@ export function GroupedCaseList({
           </div>
           {/* 组头右区：子视图切换（计数/时长徽章之后、CaseGroupActions 之前，常显） */}
           <div className='flex shrink-0 flex-wrap items-center gap-1.5' onClick={(e) => e.stopPropagation()}>
-            <CaseSubViewToggle
-              value={subView}
-              onValueChange={(v) => setGroupSubView(group.id, v as 'flat' | 'byTag')}
-              options={GROUP_SUB_VIEW_OPTIONS}
-            />
+            {!isMobile && (
+              <CaseSubViewToggle
+                value={subView}
+                onValueChange={(v) => setGroupSubView(group.id, v as 'flat' | 'byTag')}
+                options={GROUP_SUB_VIEW_OPTIONS}
+              />
+            )}
+            {/* 移动端回收站态 CaseGroupActions 隐藏，子视图切换仍保「显示方式」下拉（不回归桌面态） */}
+            {isMobile && trash && (
+              <SubViewDisplayMenu
+                value={subView}
+                onValueChange={(v) => setGroupSubView(group.id, v as 'flat' | 'byTag')}
+                options={GROUP_SUB_VIEW_OPTIONS}
+              />
+            )}
             <CaseGroupActions
               name={group.name}
               caseIds={list.map((x) => x.id)}
@@ -310,6 +325,15 @@ export function GroupedCaseList({
               onCreateInGroup={() => actionCallbacks.onCreateInGroup(group)}
               onCopyGroup={() => actionCallbacks.onCopyGroup(group)}
               onBatchAction={onBatchAction}
+              subViewMenu={
+                isMobile && !trash
+                  ? {
+                      value: subView as SubViewValue,
+                      onValueChange: (v) => setGroupSubView(group.id, v as 'flat' | 'byTag'),
+                      options: GROUP_SUB_VIEW_OPTIONS,
+                    }
+                  : undefined
+              }
             />
           </div>
         </div>
@@ -406,11 +430,20 @@ export function GroupedCaseList({
               </Badge>
             </div>
             <div className='flex shrink-0 flex-wrap items-center gap-1.5'>
-              <CaseSubViewToggle
-                value={groupSubView['__ungrouped__'] ?? 'flat'}
-                onValueChange={(v) => setGroupSubView('__ungrouped__', v as 'flat' | 'byTag')}
-                options={GROUP_SUB_VIEW_OPTIONS}
-              />
+              {!isMobile && (
+                <CaseSubViewToggle
+                  value={groupSubView['__ungrouped__'] ?? 'flat'}
+                  onValueChange={(v) => setGroupSubView('__ungrouped__', v as 'flat' | 'byTag')}
+                  options={GROUP_SUB_VIEW_OPTIONS}
+                />
+              )}
+              {isMobile && trash && (
+                <SubViewDisplayMenu
+                  value={groupSubView['__ungrouped__'] ?? 'flat'}
+                  onValueChange={(v) => setGroupSubView('__ungrouped__', v as 'flat' | 'byTag')}
+                  options={GROUP_SUB_VIEW_OPTIONS}
+                />
+              )}
               <CaseGroupActions
                 name='未分组'
                 caseIds={ungroupedCases.map((x) => x.id)}
@@ -418,6 +451,15 @@ export function GroupedCaseList({
                 trash={trash}
                 onCreateInGroup={() => actionCallbacks.onCreateInGroup(null)}
                 onBatchAction={onBatchAction}
+                subViewMenu={
+                  isMobile && !trash
+                    ? {
+                        value: (groupSubView['__ungrouped__'] ?? 'flat') as SubViewValue,
+                        onValueChange: (v) => setGroupSubView('__ungrouped__', v as 'flat' | 'byTag'),
+                        options: GROUP_SUB_VIEW_OPTIONS,
+                      }
+                    : undefined
+                }
               />
             </div>
           </div>

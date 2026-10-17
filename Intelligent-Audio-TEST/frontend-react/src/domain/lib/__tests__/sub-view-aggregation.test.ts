@@ -110,4 +110,17 @@ describe('groupCasesByCaseGroup', () => {
     expect(groups).toHaveLength(1)
     expect(groups[0].label).toBe('未分组')
   })
+
+  it('审计 P3-2 防御：groupId 非空但 groupName 缺失时 label 以 groupId 兜底，不与真「未分组」桶混淆', () => {
+    const groups = groupCasesByCaseGroup([
+      base('tc-1', { groupId: 'g1', groupName: null }),
+      base('tc-2', { groupId: null, groupName: null }),
+    ])
+    const g1 = groups.find((g) => g.key === 'g1')
+    expect(g1?.label).toBe('g1')
+    // 真「未分组」桶保持 key/label 固定，置于末尾
+    const last = groups[groups.length - 1]
+    expect(last.key).toBe('__ungrouped__')
+    expect(last.label).toBe('未分组')
+  })
 })
