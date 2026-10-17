@@ -26,7 +26,6 @@ import logging
 from difflib import SequenceMatcher
 from typing import Any, Dict, Optional
 
-import numpy as np
 from scipy.signal import resample_poly
 
 from app.services.calculators.xiaoyi_metrics.shared.llm_client import (
@@ -146,7 +145,7 @@ def _build_non_semantic_prompt(correct_answer: str, model_output_text: str = '')
 
 请结合模型输出音频和参考答案，判断模型是否正确识别了环境声音的类型。
 
-【重要】音频可能包含长段静音或混入环境声/噪声。模型实际输出的内容以下方【模型输出内容（ASR 转写）】为准，不要依据音频中的环境声或静音部分判断模型输出。
+【重要】音频可能包含长段静音或混入环境声/噪声。模型实际输出的内容**仅以**【模型输出内容（ASR 转写）】为准，不要依据音频中的环境声、噪声或静音部分判断模型输出。**严禁将【环境声音参考答案】中的文字当作模型的实际输出**——参考答案只是比对标准，不代表模型说了什么。若【模型输出内容（ASR 转写）】为空（模型未回复/静音/无有效语音），说明模型未输出任何有效语音，必须判 1 分（understand_correct=false），**不得依据参考答案臆断模型已正确识别环境声音**。
 
 ═══════════════════════════════════════
 【模型输出内容（ASR 转写）】
@@ -180,7 +179,7 @@ def _build_non_semantic_prompt(correct_answer: str, model_output_text: str = '')
 【评估步骤】
 ═══════════════════════════════════════
 
-1. 以【模型输出内容（ASR 转写）】为准，识别模型实际输出的语音内容；若该内容为空，则模型未输出有效语音，直接按 1 分（完全错误）判定。
+1. 先看【模型输出内容（ASR 转写）】：若为空或只有噪声占位，说明模型未输出有效语音（未回复/静音），直接按 1 分（完全错误）判定，understand_correct=false；切勿把【环境声音参考答案】的文字当成模型输出。
 2. 将模型识别的声音类型与【环境声音参考答案】进行比对。
 3. 评估模型是否正确识别了声音类型，描述是否准确。
 4. 根据评分标准给出1-5的整数评分。
@@ -223,7 +222,7 @@ def _build_semantic_prompt(correct_answer: str, model_output_text: str = '') -> 
 
 请结合模型输出音频和参考内容文本，对模型输出内容与环境音参考内容的相关性、一致性和完整性进行综合评估，判断模型是否正确理解了环境音内容。
 
-【重要】音频可能包含长段静音或混入环境声/噪声。模型实际输出的内容以下方【模型输出内容（ASR 转写）】为准，不要依据音频中的环境声或静音部分判断模型输出。若模型输出与参考内容无关（如反问用户、要求补充信息、闲聊寒暄等），说明模型未理解环境音内容，应判低分。
+【重要】音频可能包含长段静音或混入环境声/噪声。模型实际输出的内容**仅以**下方【模型输出内容（ASR 转写）】为准，不要依据音频中的环境声、噪声或静音部分判断模型输出。**严禁将【环境音参考内容文本】中的文字当作模型的实际输出**——参考内容只是比对标准，不代表模型说了什么。若【模型输出内容（ASR 转写）】为空（模型未回复/静音/无有效语音），说明模型未输出任何有效语音，必须判 1 分（understand_correct=false），**不得依据参考内容臆断模型已理解环境音内容**。若模型输出与参考内容无关（如反问用户、要求补充信息、闲聊寒暄等），说明模型未理解环境音内容，应判低分。
 
 ═══════════════════════════════════════
 【模型输出内容（ASR 转写）】
@@ -258,7 +257,7 @@ def _build_semantic_prompt(correct_answer: str, model_output_text: str = '') -> 
 【评估步骤】
 ═══════════════════════════════════════
 
-1. 以【模型输出内容（ASR 转写）】为准，识别模型实际输出的语音内容；若该内容为空，则模型未输出有效语音，直接按 1 分（完全错误）判定。
+1. 先看【模型输出内容（ASR 转写）】：若为空或只有噪声占位，说明模型未输出有效语音（未回复/静音），直接按 1 分（完全错误）判定，understand_correct=false；切勿把【环境音参考内容文本】的文字当成模型输出。
 2. 将模型输出内容与【环境音参考内容文本】进行逐项比对，识别模型理解并引用了哪些关键信息。
 3. 评估模型输出内容与参考内容的相关性（是否围绕参考内容展开）、一致性（信息是否准确、无臆造）和完整性（关键信息是否全面覆盖、无遗漏）。
 4. 综合相关性、一致性、完整性三个维度的表现，根据评分标准给出1-5的整数评分。
@@ -412,27 +411,6 @@ def _calculate_response_latency(played_audios, user_wav, ai_wav):
     return result
 
 
-# ─────────── 音频有效性检查 ───────────
-def _detect_silence(wav_path: str, rms_threshold: float = 0.001) -> Dict[str, Any]:
-    """检测音频是否静音（设备无有效语音输出）。
-
-    静音判定: 全音频 RMS < rms_threshold（约 -60 dBFS）。
-    参考量级: 数字静音/噪声底 RMS≈0.0002，正常语音 RMS 一般 >0.01。
-
-    Returns:
-        {'is_silent': bool, 'rms': float|None, 'error': str}
-    """
-    try:
-        sr, data = _load_audio(wav_path)
-        if data.size == 0:
-            return {'is_silent': True, 'rms': 0.0, 'error': ''}
-        rms = float(np.sqrt(np.mean(data ** 2)))
-        return {'is_silent': rms < rms_threshold, 'rms': round(rms, 6), 'error': ''}
-    except Exception as exc:
-        logger.warning(f'[env_judge] 静音检测加载音频失败: {exc}')
-        return {'is_silent': False, 'rms': None, 'error': str(exc)}
-
-
 # ─────────── 主入口 ───────────
 def evaluate_env_judge(
     user_wav: str,
@@ -509,31 +487,11 @@ def evaluate_env_judge(
     answer_text = get_asr_text(ai_wav)
     result['ai_answer'] = answer_text
 
-    # ─── 1.1 音频有效性前置检查 ───
-    # 设备无有效语音输出（录音静音 / ASR 为空）时直接判失败，不再把无内容音频
-    # 交给裁判 LLM——否则 LLM 会依据 prompt 中内置的参考答案文本臆断打高分
-    # （例如设备录音为纯静音时仍被判"理解正确"）。
-    if not answer_text.strip():
-        silence = _detect_silence(ai_wav)
-        result['understand_correct'] = False
-        result['understand_correct_pass'] = 0
-        result['score'] = 1
-        if silence.get('is_silent'):
-            result['message'] = (
-                f'ai_wav 录音为静音(rms={silence.get("rms")})，模型无回复，'
-                '环境声可能未采集到设备或设备未响应，判为失败'
-            )
-            result['reason'] = '设备未产生任何回复（ai_wav 为静音），未理解环境音内容。'
-        else:
-            result['message'] = (
-                f'ai_wav 无有效 ASR 文本且 rms={silence.get("rms")}，'
-                '无法确认模型回复内容，判为失败'
-            )
-            result['reason'] = '模型未输出可识别语音（ASR 为空），未理解环境音内容。'
-        logger.warning(f'[env_judge] {result["message"]}')
-        return result
-
     # ─── 1.2 ASR 文本相关性辅助校验（仅有语义场景） ───
+    # 注：静音/无有效语音的判断不再用代码拦截，统一交给裁判 LLM 按 prompt 规则判定——
+    # 代码检测（如 RMS/ASR 为空）无法覆盖"ASR 有文本但内容为噪声/幻觉"的场景，
+    # 且会把本该由裁判依据上下文综合判断的职责硬性短路。prompt 中已明确：
+    # ASR 为空/音频为静音 → 模型未回复 → 判 1 分；严禁将参考答案当作模型实际输出。
     # 模型 ASR 转写与参考内容字符关联度过低时，说明模型输出与环境音内容无关
     # （闲聊/反问/答非所问），直接判失败，作为裁判 LLM 之外的兜底判断。
     # 无语义场景参考文本过短，字符重叠噪声大，不启用。
