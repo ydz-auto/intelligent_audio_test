@@ -9,13 +9,18 @@ import { useAuthStore } from '@/infrastructure/stores/auth-store'
  * 数据源 GET /algorithm/options（algorithm:read）；无权限（device_admin/guest）
  * 不发起请求（切换器整钮隐藏，此处仅返回空列表供权限判定用）。
  * staleTime 5min（02_导航栏.md §3.4 数据源契约）。
+ *
+ * queryKey 用独立前缀 ['shell', ...]：评估域的「关联算法」facet 仍持
+ * ['algorithm','options']（evaluation-api mock → {value,label}），两者契约不同，
+ * React Query 按 key 共享缓存，共 key 会导致先填充的一方决定 data 形态、另一方
+ * 字段读空白（代码审计 INT-607 P2）。
  */
 export function useAlgorithmOptions() {
   const user = useAuthStore((s) => s.user)
   const canRead = hasPermission(user, 'algorithm:read')
 
   const query = useQuery({
-    queryKey: ['algorithm', 'options'],
+    queryKey: ['shell', 'algorithm', 'options'],
     queryFn: fetchAlgorithmOptions,
     staleTime: 5 * 60_000,
     enabled: canRead,

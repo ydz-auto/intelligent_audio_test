@@ -2,7 +2,8 @@
  * 全局算法切换器（导航栏右区；02_导航栏.md §2.3/§3.4）。
  * 接线壳 INT-607：数据源换 GET /algorithm/options（algorithm:read，仅在线算法）；
  * 无 algorithm:read（device_admin/guest）整钮隐藏（隐藏而非置灰，基座卡 §9.2）。
- * 切换写回 useAlgorithmStore（localStorage iatp:algorithm:v1），一次切换全局生效。
+ * 切换写回 useAlgorithmStore（经 application 层 useGlobalAlgorithm 封装，
+ * localStorage iatp:algorithm:v1），一次切换全局生效。
  */
 import { useMemo, useState } from 'react'
 import { Check, ChevronsUpDown, Search } from 'lucide-react'
@@ -15,14 +16,13 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
-import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
+import { useGlobalAlgorithm } from '@/application/hooks/use-global-algorithm'
 import { cn } from '@/lib/utils'
 
 export function GlobalAlgorithmSwitcher() {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const algorithmId = useAlgorithmStore((s) => s.algorithmId)
-  const setAlgorithmId = useAlgorithmStore((s) => s.setAlgorithmId)
+  const { algorithmId, setAlgorithmId } = useGlobalAlgorithm()
   const { options, isLoading, isError, refetch, canRead } = useAlgorithmOptions()
 
   const filtered = useMemo(() => {

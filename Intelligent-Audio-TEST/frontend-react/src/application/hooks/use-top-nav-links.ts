@@ -12,7 +12,8 @@ import type { TopNavLink } from '@/components/layout/types'
  * - 报告：`report:read`（admin/tester/algo_engineer/guest；device_admin 隐藏）；
  * - 排行榜：`benchmark:ranking:read`（admin 通配/tester/algo_engineer，INT-429 已授；
  *   device_admin/guest/未登录隐藏）。
- * 站点级模块开关（enabled/requireAuth）待后端立项，前端常量驱动（top-nav.config.ts 兜底）。
+ * 站点级模块开关（enabled/requireAuth）待后端立项，前端常量驱动（本文件唯一源；
+ * 原 components/layout/config/top-nav.config.ts 同值副本已删除，避免双份漂移）。
  */
 const TOP_NAV_DEFS: TopNavLink[] = [
   { title: '主页', href: '/' },
