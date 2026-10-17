@@ -33,11 +33,11 @@ BASE = os.environ.get('REACT_DEV_BASE', 'http://localhost:5273')
 CHROME_BINARY = r'C:\Program Files\Google\Chrome\Application\chrome.exe'
 
 
-def _driver():
+def _driver(width=1680):
     options = Options()
     options.binary_location = CHROME_BINARY
     options.add_argument('--headless=new')
-    options.add_argument('--window-size=1680,1050')
+    options.add_argument(f'--window-size={width},1050')
     options.add_argument('--disable-gpu')
     options.add_argument('--no-sandbox')
     options.add_argument('--lang=zh-CN')
@@ -99,6 +99,18 @@ def drv():
         pass
 
 
+@pytest.fixture(scope='session')
+def mdrv():
+    """移动端（≤640px）专用浏览器会话：§3.5/§3.6 移动端「显示方式」收编验证。"""
+    global _DRIVER
+    _DRIVER = _driver(width=480)
+    yield _DRIVER
+    try:
+        _DRIVER.quit()
+    except Exception:
+        pass
+
+
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)
 def pytest_runtest_makereport(item, call):
     outcome = yield
@@ -119,15 +131,27 @@ def _body_text(drv):
 
 
 def _login(drv, username='demo_admin'):
-    drv.get(BASE + '/login')
-    time.sleep(1.2)
-    drv.execute_script('try { window.localStorage.clear() } catch (e) {}')
+    """INT-606 接线后 mock 表单登录不可用（登录页走真实后端 /api/v1/auth，未起时无登录态）。
+    改为 localStorage 注入会话（iatp:auth:v1 + token，权限 '*'），test_ui_23/29 同口径。"""
     _goto(drv, '/login')
-    drv.find_element(By.ID, 'username').send_keys(username)
-    drv.find_element(By.ID, 'password').send_keys('mock-pass-001')
-    drv.find_element(By.XPATH, "//button[contains(., '登 录')]").click()
-    WebDriverWait(drv, 15).until(lambda d: '/login' not in d.current_url)
-    time.sleep(1.0)
+    drv.execute_script('try { window.localStorage.clear() } catch (e) {}')
+    snapshot = {
+        'state': {
+            'user': {
+                'id': 'mock-admin-001',
+                'username': username,
+                'displayName': '演示管理员',
+                'roleName': '超级管理员',
+                'permissions': ['*'],
+            }
+        },
+        'version': 0,
+    }
+    drv.execute_script(
+        "window.localStorage.setItem('iatp:auth:v1', arguments[0])",
+        json.dumps(snapshot, ensure_ascii=False))
+    _goto(drv, '/testcases/by-group')
+    time.sleep(0.6)
 
 
 # ── 定位工具 ────────────────────────────────────────────
@@ -389,4 +413,131 @@ def test_06_sub_group_header_readonly_no_conflict(drv):
     assert '批量修改' in txt, '勾选用例后批量浮条「批量修改」缺失'
     _save_evidence('06_subgroup_header_readonly', drv)
     drv.find_element(By.TAG_NAME, 'body').send_keys(Keys.ESCAPE)
+    time.sleep(0.4)
+
+
+# ── ⑥ 移动端（≤640px）「显示方式」收编（INT-584 审计返修 P3-1）──────
+def _open_group_display_submenu(mdrv, group_name):
+    """移动端分组卡：CaseGroupActions「批量修改」下拉 → 首项「显示方式」子菜单。"""
+    card = _group_card(mdrv, group_name)
+    bm = card.find_element(By.XPATH, ".//button[contains(@aria-label,'批量修改')]")
+    bm.click()
+    time.sleep(0.8)
+    # 子菜单触发器「显示方式」
+    sub = None
+    for el in mdrv.find_elements(By.XPATH, "//*[contains(., '显示方式')]"):
+        if el.is_displayed() and (el.text or '').strip() == '显示方式':
+            sub = el
+            break
+    assert sub is not None, '移动端批量修改下拉首项「显示方式」子菜单缺失'
+    sub.click()
+    time.sleep(0.7)
+    return card
+
+
+def _menu_item(mdrv, label):
+    """下拉菜单中指定 label 的 menuitem（当前值带 ✓）。"""
+    for el in mdrv.find_elements(By.XPATH, "//*[@role='menuitem']"):
+        if (el.text or '').strip().split('\n')[0] == label:
+            return el
+    return None
+
+
+def test_07_mobile_group_card_subview_in_casegroup_actions(mdrv):
+    """移动端（480px）分组卡：Tabs 不渲染；子视图切换收进 CaseGroupActions 下拉首项「显示方式」；
+    选「按标签」后客户端聚合生效、选中态 ✓ 保留。"""
+    _login(mdrv)
+    _goto(mdrv, '/testcases/by-group')
+    g1 = _group_card(mdrv, '智能音箱功能测试')
+    # 移动端不渲染 Tabs（role=tab 的 平铺/按标签 胶囊不应存在）
+    tabs = g1.find_elements(By.XPATH, ".//button[@role='tab']")
+    assert not tabs, f'移动端分组卡不应渲染 Tabs 胶囊：{len(tabs)}'
+    # 打开 批量修改 → 显示方式 子菜单（首项），默认平铺 ✓
+    _open_group_display_submenu(mdrv, '智能音箱功能测试')
+    flat_item = _menu_item(mdrv, '平铺')
+    assert flat_item is not None, '显示方式子菜单「平铺」缺失'
+    assert '✓' in (flat_item.text or ''), '移动端子菜单默认应选中「平铺」'
+    # 选「按标签」→ 客户端聚合生效（音箱 5 条 设备类型 / 中文 3 条 语种 子分组头出现）
+    tag_item = _menu_item(mdrv, '按标签')
+    assert tag_item is not None, '显示方式子菜单「按标签」缺失'
+    tag_item.click()
+    time.sleep(1.0)
+    g1 = _group_card(mdrv, '智能音箱功能测试')
+    subs = g1.find_elements(By.XPATH, ".//div[contains(@class,'px-1 py-1.5') or contains(@class,'bg-muted/40')]")
+    assert subs, '移动端选「按标签」后子分组头缺失'
+    labels = [s.text.split('\n')[0] for s in subs]
+    assert '音箱' in labels and '中文' in labels, f'移动端按标签聚合子分组缺失：{labels}'
+    # 选中态 ✓ 保留：再开下拉，按标签带 ✓
+    _open_group_display_submenu(mdrv, '智能音箱功能测试')
+    by_tag = _menu_item(mdrv, '按标签')
+    assert by_tag is not None and '✓' in (by_tag.text or ''), '移动端选「按标签」后选中态 ✓ 未保留'
+    _save_evidence('07_mobile_group_subview_in_casegroup_actions', mdrv)
+    mdrv.find_element(By.TAG_NAME, 'body').send_keys(Keys.ESCAPE)
+    time.sleep(0.4)
+
+
+def test_08_mobile_tag_card_subview_dropdown(mdrv):
+    """移动端（480px）标签卡：子视图切换收进 SubViewDisplayMenu「显示方式」下拉；
+    选「按用例分组」后客户端聚合生效、选中态 ✓ 保留。"""
+    _login(mdrv)
+    _goto(mdrv, '/testcases/by-tag')
+    spk = _tag_card(mdrv, '音箱')
+    # 标签卡移动端：独立「显示方式」下拉（SubViewDisplayMenu）
+    dm = spk.find_element(By.XPATH, ".//button[@aria-label='显示方式']")
+    assert dm.is_displayed(), '移动端标签卡「显示方式」下拉缺失'
+    dm.click()
+    time.sleep(0.7)
+    flat_item = _menu_item(mdrv, '平铺')
+    assert flat_item is not None and '✓' in (flat_item.text or ''), '标签卡下拉默认应选中「平铺」'
+    by_group = _menu_item(mdrv, '按用例分组')
+    assert by_group is not None, '标签卡下拉「按用例分组」缺失'
+    by_group.click()
+    time.sleep(1.0)
+    spk = _tag_card(mdrv, '音箱')
+    subs = spk.find_elements(By.XPATH, ".//div[contains(@class,'px-1 py-1.5') or contains(@class,'bg-muted/40')]")
+    assert subs, '移动端标签卡选「按用例分组」后子分组头缺失'
+    labels = [s.text.split('\n')[0] for s in subs]
+    assert '智能音箱功能测试' in labels, f'移动端按用例分组聚合缺失：{labels}'
+    # 选中态 ✓ 保留
+    dm = spk.find_element(By.XPATH, ".//button[@aria-label='显示方式']")
+    dm.click()
+    time.sleep(0.7)
+    by_group = _menu_item(mdrv, '按用例分组')
+    assert by_group is not None and '✓' in (by_group.text or ''), '标签卡选「按用例分组」后 ✓ 未保留'
+    _save_evidence('08_mobile_tag_subview_dropdown', mdrv)
+    mdrv.find_element(By.TAG_NAME, 'body').send_keys(Keys.ESCAPE)
+    time.sleep(0.4)
+
+
+def test_09_mobile_trash_fallback_display_menu(mdrv):
+    """移动端回收站态：CaseGroupActions 隐藏（无批量修改/编辑/删除），
+    子视图切换回退独立 SubViewDisplayMenu「显示方式」下拉（不回归桌面态）。"""
+    _login(mdrv)
+    _goto(mdrv, '/testcases/by-group')
+    # 进回收站（title=回收站 toggle）
+    trash_toggle = mdrv.find_element(By.XPATH, "//button[@title='回收站']")
+    trash_toggle.click()
+    time.sleep(1.2)
+    # 回收站态分组卡：CaseGroupActions 隐藏 → 无 批量修改/编辑/删除（精确按钮文案判断）
+    g1 = _group_card(mdrv, '智能音箱功能测试')
+    btns = g1.find_elements(By.XPATH, ".//button")
+    btn_labels = [(b.text or '').strip() or (b.get_attribute('aria-label') or '').strip()
+                  for b in btns]
+    banned = {'批量修改', '编辑', '删除', '新增用例', '复制'}
+    hit = [lb for lb in btn_labels if lb in banned]
+    assert not hit, f'移动端回收站态 CaseGroupActions 应隐藏：{btn_labels}'
+    # 独立 SubViewDisplayMenu 回退存在且可用
+    dm = g1.find_element(By.XPATH, ".//button[@aria-label='显示方式']")
+    assert dm.is_displayed(), '移动端回收站态「显示方式」回退下拉缺失'
+    dm.click()
+    time.sleep(0.7)
+    by_tag = _menu_item(mdrv, '按标签')
+    assert by_tag is not None, '回收站态「显示方式」下拉「按标签」缺失'
+    by_tag.click()
+    time.sleep(1.0)
+    g1 = _group_card(mdrv, '智能音箱功能测试')
+    subs = g1.find_elements(By.XPATH, ".//div[contains(@class,'px-1 py-1.5') or contains(@class,'bg-muted/40')]")
+    assert subs, '移动端回收站态选「按标签」后子分组头缺失'
+    _save_evidence('09_mobile_trash_fallback_display_menu', mdrv)
+    mdrv.find_element(By.TAG_NAME, 'body').send_keys(Keys.ESCAPE)
     time.sleep(0.4)
