@@ -68,10 +68,10 @@ class PlaybackDeviceAggregate:
             'description': self.description,
             'status': self.status,
             'current_spl_mapping_id': self.current_spl_mapping_id,
-            'lab_id': self.lab_id,
+            # lab_id 优先取字段（INT-655），兼容旧路径经 config 注入（INT-493）
+            'lab_id': self.lab_id if self.lab_id is not None else self.config.get('lab_id'),
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
-            'lab_id': self.config.get('lab_id'),
             'lab_name': self.config.get('lab_name'),
         }
 
