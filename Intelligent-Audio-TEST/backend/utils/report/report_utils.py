@@ -303,13 +303,22 @@ class ReportUtils:
                         if dr.dimension_value is not None:
                             dim_rounds[dim_id].append(dr.dimension_value)
 
+        # 维度统计方式映射：average 维度沿用 positive_average（0 视为无值，不拉低平均）；
+        # 非 average 维度（pass_rate/ratio/weighted_sum_ratio）0 是合法失败值，必须保留（普通平均），
+        # 否则失败用例得分变 None，与 report_controller_base.extract_dimension_values（保留 0）口径冲突。
+        dim_id_to_method = {dim.id: (getattr(dim, 'statistic_method', 'average') or 'average') for dim in all_dimensions}
+
         values = {}
         for dim_id, dim_name in dim_id_to_name.items():
             if dim_id in dim_overall and dim_overall[dim_id] is not None:
                 values[dim_name] = dim_overall[dim_id]
             elif dim_id in dim_rounds and dim_rounds[dim_id]:
                 scores = dim_rounds[dim_id]
-                values[dim_name] = (round(mean, 4) if (mean := positive_average(scores)) is not None else None)
+                if dim_id_to_method.get(dim_id, 'average') != 'average':
+                    # 非平均维度：保留 0，失败轮作为合法数据点
+                    values[dim_name] = round(sum(scores) / len(scores), 4) if scores else None
+                else:
+                    values[dim_name] = (round(mean, 4) if (mean := positive_average(scores)) is not None else None)
             else:
                 values[dim_name] = None
 
@@ -597,79 +606,82 @@ class ReportUtils:
                             tag_accumulator[tag][resource][dim_name]['sum'] += sum(acc_vals)
                             tag_accumulator[tag][resource][dim_name]['count'] += len(acc_vals)
 
-                    # Raw Data
-                    if dim_name in raw_data[resource]:
+                    # Raw Data（非 average 维度统一在下方收集 item 时写入，含失败轮 0 值）
+                    if dim_name in raw_data[resource] and dim_name not in custom_agg_dims:
                         raw_data[resource][dim_name].extend(acc_vals)
 
-                    # 对非 average 维度收集完整 item，用于后续策略聚合
-                    if dim_name in custom_agg_dims:
-                        # 从 dim_results_map 取该用例该维度的记录
-                        # 优先级：无排除配置且整体存在 → 只取 overall 1 个 item
-                        #         有排除配置或无整体 → 取各轮独立 item（跳过被排除的轮次）
-                        target_dim_id = dim_name_to_id.get(dim_name)
-                        exclude_set = ReportUtils._resolve_exclude_rounds(result, dim_name, dim_results_map, dim_name_to_id, dim_exclude_rounds.get(dim_name))
+            # 对非 average 维度收集完整 item，用于后续策略聚合
+            # 独立于 score 判断：值=0 的失败轮/需回补的结果也必须进入分子分母，
+            # 否则 pass_rate 等策略只统计达标样本 → 误报 100%（与 case_type_stats/device_stats 口径一致）
+            if dim_results_map and result.id in dim_results_map:
+                for dim_name in custom_agg_dims:
+                    # 从 dim_results_map 取该用例该维度的记录
+                    # 优先级：无排除配置且整体存在 → 只取 overall 1 个 item
+                    #         有排除配置或无整体 → 取各轮独立 item（跳过被排除的轮次）
+                    target_dim_id = dim_name_to_id.get(dim_name)
+                    if not target_dim_id:
+                        continue
+                    exclude_set = ReportUtils._resolve_exclude_rounds(result, dim_name, dim_results_map, dim_name_to_id, dim_exclude_rounds.get(dim_name))
+                    collected_items = []
+                    overall_item = None
+                    round_items = []
+                    for dr in dim_results_map[result.id]:
+                        dr_dim_id = getattr(dr, 'dimension_id', None) or (dr.get('id') if isinstance(dr, dict) else None)
+                        if dr_dim_id and dr_dim_id == target_dim_id:
+                            dr_val = getattr(dr, 'dimension_value', None) if not isinstance(dr, dict) else dr.get('value')
+                            dr_round = getattr(dr, 'round_number', None) if not isinstance(dr, dict) else dr.get('round_number')
+                            raw_resp = getattr(dr, 'api_raw_response', None) or (dr.get('api_raw_response') if isinstance(dr, dict) else None)
+                            if dr_val is None:
+                                # reject_judge 子维度回补：从 count 字典提取 dimension_value
+                                field_path = dim_id_to_field_path.get(target_dim_id)
+                                if field_path:
+                                    dr_val = _extract_sub_dim_from_counts(raw_resp, field_path)
+                                if dr_val is None:
+                                    continue
+                            item = {'dimension_value': dr_val, 'api_raw_response': raw_resp, 'test_result_id': result.id}
+                            if dr_round is None:
+                                overall_item = item
+                            else:
+                                if exclude_set and dr_round in exclude_set:
+                                    continue  # 排除轮次不参与分子/分母
+                                round_items.append(item)
+                    if overall_item and (not exclude_set or dim_statistic_method.get(dim_name) in ('ratio', 'weighted_sum_ratio')):
+                        # ratio/加权：分子用整体值（不随排除轮次扣减；整体计数本就只含已判定轮），
+                        # 排除轮次只作用于分母（round_count）
+                        collected_items = [overall_item]
+                    elif round_items:
+                        collected_items = round_items
+                    elif overall_item:
+                        collected_items = [overall_item]
+                    else:
                         collected_items = []
-                        if dim_results_map and result.id in dim_results_map:
-                            overall_item = None
-                            round_items = []
-                            for dr in dim_results_map[result.id]:
-                                dr_dim_id = getattr(dr, 'dimension_id', None) or (dr.get('id') if isinstance(dr, dict) else None)
-                                if dr_dim_id and dr_dim_id == target_dim_id:
-                                    dr_val = getattr(dr, 'dimension_value', None) if not isinstance(dr, dict) else dr.get('value')
-                                    dr_round = getattr(dr, 'round_number', None) if not isinstance(dr, dict) else dr.get('round_number')
-                                    raw_resp = getattr(dr, 'api_raw_response', None) or (dr.get('api_raw_response') if isinstance(dr, dict) else None)
-                                    if dr_val is None:
-                                        # reject_judge 子维度回补：从 count 字典提取 dimension_value
-                                        field_path = dim_id_to_field_path.get(target_dim_id)
-                                        if field_path:
-                                            dr_val = _extract_sub_dim_from_counts(raw_resp, field_path)
-                                        if dr_val is None:
-                                            continue
-                                    item = {'dimension_value': dr_val, 'api_raw_response': raw_resp, 'test_result_id': result.id}
-                                    if dr_round is None:
-                                        overall_item = item
-                                    else:
-                                        if exclude_set and dr_round in exclude_set:
-                                            continue  # 排除轮次不参与分子/分母
-                                        round_items.append(item)
-                            if overall_item and (not exclude_set or dim_statistic_method.get(dim_name) in ('ratio', 'weighted_sum_ratio')):
-                                # ratio/加权：分子用整体值（不随排除轮次扣减；整体计数本就只含已判定轮），
-                                # 排除轮次只作用于分母（round_count）
-                                collected_items = [overall_item]
-                            elif round_items:
-                                collected_items = round_items
-                            elif overall_item:
-                                collected_items = [overall_item]
-                            # 分母轮次数：ratio 优先取实际打断轮数（eval 返回 success+failure+inquiry_count，与分子同源；未打断/判定失败轮不计），否则取配置轮次数
-                            if collected_items:
-                                round_count = None
-                                if dim_statistic_method.get(dim_name) == 'ratio' and overall_item:
-                                    round_count = _actual_interruption_rounds(overall_item.get('api_raw_response'))
-                                if round_count is None:
-                                    round_count = ReportUtils._get_dimension_configured_rounds(
-                                        test_case, target_dim_id, dim_name,
-                                        dim_exclude_rounds.get(dim_name))
-                                for it in collected_items:
-                                    it['round_count'] = round_count
-
-                        if collected_items:
-                            for item in collected_items:
-                                category_agg_items.setdefault(dim_name, {}).setdefault(category, {}).setdefault(resource, []).append(item)
-                                resource_agg_items.setdefault(dim_name, {}).setdefault(resource, []).append(item)
-                                for tag in tags:
-                                    tag_agg_items.setdefault(dim_name, {}).setdefault(tag, {}).setdefault(resource, []).append(item)
-                        elif score is not None:
-                            agg_item = {
+                    if not collected_items:
+                        # 无 TRD 记录（如纯整体结果）时回退用例得分作为 1 个样本
+                        score = dim_values.get(dim_name)
+                        if score is not None:
+                            collected_items = [{
                                 'dimension_value': score, 'api_raw_response': None,
                                 'test_result_id': result.id,
-                                'round_count': ReportUtils._get_dimension_configured_rounds(
-                                    test_case, target_dim_id, dim_name,
-                                    dim_exclude_rounds.get(dim_name)),
-                            }
-                            category_agg_items.setdefault(dim_name, {}).setdefault(category, {}).setdefault(resource, []).append(agg_item)
-                            resource_agg_items.setdefault(dim_name, {}).setdefault(resource, []).append(agg_item)
+                            }]
+                    if collected_items:
+                        # 分母轮次数：ratio 优先取实际打断轮数（eval 返回 success+failure+inquiry_count，与分子同源；未打断/判定失败轮不计），否则取配置轮次数
+                        round_count = None
+                        if dim_statistic_method.get(dim_name) == 'ratio' and overall_item:
+                            round_count = _actual_interruption_rounds(overall_item.get('api_raw_response'))
+                        if round_count is None:
+                            round_count = ReportUtils._get_dimension_configured_rounds(
+                                test_case, target_dim_id, dim_name,
+                                dim_exclude_rounds.get(dim_name))
+                        for it in collected_items:
+                            it['round_count'] = round_count
+                        for item in collected_items:
+                            category_agg_items.setdefault(dim_name, {}).setdefault(category, {}).setdefault(resource, []).append(item)
+                            resource_agg_items.setdefault(dim_name, {}).setdefault(resource, []).append(item)
                             for tag in tags:
-                                tag_agg_items.setdefault(dim_name, {}).setdefault(tag, {}).setdefault(resource, []).append(agg_item)
+                                tag_agg_items.setdefault(dim_name, {}).setdefault(tag, {}).setdefault(resource, []).append(item)
+                        # Raw Data：非 average 维度写入全部 item 值（含失败轮 0），避免原始数据只显示达标样本
+                        if dim_name in raw_data[resource]:
+                            raw_data[resource][dim_name].extend(item['dimension_value'] for item in collected_items)
 
         # 9. 计算平均值 (Metric Data & Tag Metric Data)
         # metric_data 改为 resource 级别全局平均（不按 category 分组，与 device_stats 口径一致）
