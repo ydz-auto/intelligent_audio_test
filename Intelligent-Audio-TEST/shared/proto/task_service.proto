@@ -210,6 +210,7 @@ message ListTasksRequest {
   string execution_status = 13;  // INT-301 F1：按任务级执行状态过滤（pending/queued/running/paused/completed/failed/stopped/merged）
   bool cherry_pick = 14;  // INT-339：仅挑选合并容器任务（task_cherry_pick_relations 存在性判定，§5.4）
   string task_type = 15;  // INT-273：按派生任务类型过滤（api/e2e/mixed；用例级 device_type 派生口径，与 /tasks/stats type_counts 一致）
+  bool stats = 16;  // INT-577：仅「挑选合并」页签（stats=true）计算合并容器统计块（merged ∪ cherry_pick 并集，total/whole/picked），否则 None
 }
 message GetTaskDetailRequest {
   int32 task_id = 1;

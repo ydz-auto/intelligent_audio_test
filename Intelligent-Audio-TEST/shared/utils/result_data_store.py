@@ -188,8 +188,6 @@ def load_full_result_data(result_data_from_db, result_data_path):
             category='system'
         )
         return result_data_from_db if isinstance(result_data_from_db, dict) else {}
-<<<<<<< HEAD
-=======
 
 
 def extract_result_type(result_data_from_db, result_data_path=None) -> str:
@@ -215,4 +213,3 @@ def extract_result_type(result_data_from_db, result_data_path=None) -> str:
         return 'default'
     except Exception:
         return 'default'
->>>>>>> 64b779d1c (INT-577: 审计打回修复——case_keyword 网关透传恢复（P1 用例关键字搜索回归）+ result_type DB 先读/stats 门控/迁移脚本登记/独立 session（P2/P3）)

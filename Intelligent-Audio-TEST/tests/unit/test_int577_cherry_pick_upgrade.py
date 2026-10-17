@@ -451,3 +451,76 @@ def test_gateway_candidates_payload_passes_case_keyword(monkeypatch):
         assert captured['payload']['case_keyword'] is None
     finally:
         request_adapter.set_current_request(None)
+
+
+# ==================== 审计 P2 全链 stats 透传回归 ====================
+
+def test_stats_full_chain_gateway_to_handler_passthrough(monkeypatch):
+    """审计 P2 全链透传回归：stats 标志 网关 proxy → gRPC ListTasksRequest →
+    servicer → ListTasksConfigQuery → task_query_service.list_tasks 全链携带。
+
+    测试实证：审计 P2 在 task_read_model 加 `if stats:` 门控后，stats 未在
+    网关→gRPC→task_service 全链透传（proto 无字段/proxy 未携带/handler 未接），
+    「挑选合并」页签 stats=true 恒拿到 None → `.cpp-stats` 徽章行永不渲染。
+    本用例锁定网关 proxy 组装 proto 请求、servicer 读 request.stats、query
+    handler 委托 task_query_service 三段逐段断言（补 test_search_tasks_stats_block
+    仅直连 read_model 未覆盖链路的缺口）。
+    """
+    from shared.proto import task_service_pb2 as task_pb
+
+    # ① 网关 proxy：list_tasks(stats=True) → proto ListTasksRequest.stats=True
+    from api_gateway.infrastructure.grpc_proxies.task_testcase_config_proxies import task_config_service
+    captured = {}
+
+    class _FakeStub:
+        def ListTasks(self, req):
+            captured['proto'] = req
+            return SimpleNamespace(success=True, message='ok', data='{}')
+
+    monkeypatch.setattr(
+        'api_gateway.infrastructure.grpc_proxies.task_testcase_config_proxies.get_task_config_service_stub',
+        lambda: _FakeStub(),
+    )
+    task_config_service.list_tasks(page=1, per_page=10, merged=True, cherry_pick=True, stats=True)
+    assert captured['proto'].stats is True
+    assert captured['proto'].merged is True and captured['proto'].cherry_pick is True
+
+    # 缺省 stats=False 时 proto 亦为 False（日常/已发布/收藏页签不付计数开销）
+    task_config_service.list_tasks(page=1, per_page=10)
+    assert captured['proto'].stats is False
+
+    # ② gRPC servicer：request.stats → ListTasksConfigQuery.stats
+    from task_service.interfaces.grpc.task_config import TaskConfigServiceServicer
+    servicer = TaskConfigServiceServicer()
+    seen = {}
+
+    def _fake_handle_list(query):
+        seen['stats'] = query.stats
+        seen['merged'] = query.merged
+        seen['cherry_pick'] = query.cherry_pick
+        return {'success': True, 'message': '', 'data': {'items': [], 'total': 0, 'pages': 1}}
+
+    servicer._qry = SimpleNamespace(handle_list_tasks_config=_fake_handle_list)
+    req = task_pb.ListTasksRequest(page=1, per_page=10, merged=True, cherry_pick=True, stats=True)
+    resp = servicer.ListTasks(req)
+    assert resp.success is True
+    assert seen['stats'] is True and seen['merged'] is True and seen['cherry_pick'] is True
+
+    # ③ query handler：ListTasksConfigQuery.stats → task_query_service.list_tasks(stats=...)
+    from task_service.application.handlers.query_handlers import TaskQueryHandler
+    from task_service.application.queries.task_queries import ListTasksConfigQuery
+    handler = TaskQueryHandler()
+    called = {}
+
+    def _fake_list_tasks(**kwargs):
+        called['stats'] = kwargs.get('stats')
+        return {'success': True, 'message': '', 'data': None}
+
+    handler._task_query_service = SimpleNamespace(list_tasks=_fake_list_tasks)
+    r = handler.handle_list_tasks_config(ListTasksConfigQuery(stats=True, merged=True, cherry_pick=True))
+    assert r['success'] is True
+    assert called['stats'] is True
+
+    # 缺省 False 不破坏旧调用（不传 stats 的既有入口）
+    handler.handle_list_tasks_config(ListTasksConfigQuery())
+    assert called['stats'] is False
