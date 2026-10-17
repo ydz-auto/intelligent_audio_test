@@ -413,3 +413,38 @@ class CaseAlgorithmParam(Base):
             'annotation_code': self.annotation_code,
             'field_path': self.field_path
         }
+
+
+class AlgorithmDefinitionDraft(Base):
+    """算法定义草稿表（INT-589 草稿存储模型）。
+
+    仅 1 表、JSON 快照：30s 自动保存写快照、恢复时物化、显式发布才写正式
+    六表（algorithm_definitions + 5 张子表）。依据：
+    - algorithm_definitions.type 全表唯一，草稿与已发布同 type 无法共存；
+    - config_cache 只加载 online，同行置 draft 会让执行链路失服；
+    - INT-582/585 编辑模态窗针对已发布算法，自动保存草稿必须与线上版本分离。
+
+    只按 algorithm_type 存一份快照（upsert），不做版本历史。
+    snapshot 为完整定义 JSON（与 SaveAlgorithmDefinitionRequest.data 同构，
+    含基础字段 + 六类子实体），恢复时整体物化为正式六表。
+    """
+    __tablename__ = 'algorithm_definition_drafts'
+    __table_args__ = (
+        Index('uq_algorithm_definition_draft_type', 'algorithm_type', unique=True),
+    )
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    algorithm_type = Column(String(50), nullable=False, comment='算法类型代码（草稿唯一键）')
+    snapshot = Column(Text, comment='完整定义 JSON 快照（INT-589）')
+    created_by_user_id = Column(BigInteger, nullable=True, comment='创建者用户ID')
+    updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
+    created_at = Column(DateTime, default=datetime.now, server_default=func.now(), comment='创建时间')
+    updated_at = Column(DateTime, default=datetime.now, server_default=func.now(), onupdate=datetime.now, comment='更新时间')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'algorithm_type': self.algorithm_type,
+            'snapshot': parse_json_or_raw(self.snapshot),
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }

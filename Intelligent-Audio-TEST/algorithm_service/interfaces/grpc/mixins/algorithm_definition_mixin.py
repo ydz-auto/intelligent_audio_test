@@ -3,19 +3,122 @@
 
 从 _param_mixin.py 拆分，包含以下 RPC 方法：
 - 算法定义写操作（create/update attrs/soft delete）
+- 算法定义全量保存（SaveAlgorithmDefinition + 草稿保存/恢复，INT-589）
 - 算法分组写操作（create/update attrs/soft delete）
 - 导入/重载（ImportAlgorithms/ReloadAlgorithmConfig）
 - 事务控制（commit/rollback/flush）
 """
 from __future__ import annotations
 
-from shared.utils.grpc_json import loads as _loads
+from typing import Any, Dict
+
+from shared.proto import algorithm_service_pb2 as _pb
+from shared.utils.grpc_json import loads as _loads, dumps as _dumps
 
 from algorithm_service.interfaces.grpc.mixins.param_helpers import _success, _failure, _ParamBaseMixin
+from algorithm_service.domain.value_objects.algorithm_save_code import AlgorithmSaveCode
+
+
+def _success_with_code(data: Any, message: str, code: str):
+    """成功响应（带机器可读 code）。"""
+    return _pb.AlgorithmResponse(
+        success=True,
+        message=message,
+        data=_dumps(data) if data is not None else "",
+        code=code,
+    )
+
+
+def _failure_with_code(message: str, code: str, data: Any = None):
+    """失败响应（带机器可读 code）。"""
+    return _pb.AlgorithmResponse(
+        success=False,
+        message=message,
+        data=_dumps(data) if data is not None else "",
+        code=code,
+    )
 
 
 class _AlgorithmDefinitionMixin(_ParamBaseMixin):
-    """算法定义/分组 CRUD + 导入/重载 + 事务控制方法 mixin。"""
+    """算法定义/分组 CRUD + 导入/重载 + 全量保存 + 事务控制方法 mixin。"""
+
+    # ---- 算法定义全量保存（INT-589）----
+
+    def SaveAlgorithmDefinition(self, request, context=None):
+        """算法定义全量保存（聚合事务 + 乐观锁）。
+
+        请求字段（SaveAlgorithmDefinitionRequest.data JSON）：
+        id（可选）/ algorithm_type / name / group_id / description / status /
+        icon / display_order / device_params / api_params / case_params /
+        reference_params / mappings / associated_dimensions /
+        expected_updated_at（更新路径必填，乐观锁版本）
+
+        返回 AlgorithmResponse.code：
+        - SAVED：新建成功
+        - OK：更新成功
+        - CONFLICT：乐观锁冲突（并发双写，前端提示「有他人改动，请刷新」）
+        - VALIDATION_FAILED：校验失败（必填缺失 / 维度不存在 / type 已存在）
+        """
+        try:
+            data = _loads(request.data, {}) if not isinstance(request, dict) else request
+            from algorithm_service.application.commands.algorithm_commands import (
+                SaveAlgorithmDefinitionCommand,
+            )
+            cmd = SaveAlgorithmDefinitionCommand(
+                id=data.get('id'),
+                algorithm_type=data.get('algorithm_type') or data.get('type') or '',
+                name=data.get('name', ''),
+                group_id=data.get('group_id'),
+                description=data.get('description'),
+                status=data.get('status'),
+                icon=data.get('icon'),
+                display_order=data.get('display_order'),
+                device_params=data.get('device_params') or [],
+                api_params=data.get('api_params') or [],
+                case_params=data.get('case_params') or [],
+                reference_params=data.get('reference_params') or [],
+                mappings=data.get('mappings'),
+                associated_dimensions=data.get('associated_dimensions') or [],
+                expected_updated_at=data.get('expected_updated_at'),
+            )
+            result = self.command_handler.handle_save_definition(cmd)
+            code = result.get('code')
+            if code == AlgorithmSaveCode.CONFLICT.value:
+                return _failure_with_code(
+                    '有他人改动，请刷新后重试', AlgorithmSaveCode.CONFLICT.value, result
+                )
+            self._invalidate_cache()
+            return _success_with_code(result, 'ok', code)
+        except Exception as e:
+            return _failure_with_code(
+                str(e), AlgorithmSaveCode.VALIDATION_FAILED.value
+            )
+
+    def SaveAlgorithmDefinitionDraft(self, request, context=None):
+        """草稿自动保存（30s 快照，不落正式六表）。
+
+        请求字段（SaveAlgorithmDefinitionDraftRequest.data JSON）：
+        algorithm_type + 完整定义快照（基础字段 + 六类子实体）。
+        """
+        try:
+            data = _loads(request.data, {}) if not isinstance(request, dict) else request
+            algorithm_type = data.get('algorithm_type') or data.get('type') or ''
+            self.command_handler.handle_save_draft(algorithm_type, data)
+            return _success({'saved': True, 'algorithm_type': algorithm_type})
+        except Exception as e:
+            return _failure(str(e))
+
+    def GetAlgorithmDefinitionDraft(self, request, context=None):
+        """草稿恢复：读取草稿快照（data 为快照 JSON，无草稿返回空对象）。"""
+        try:
+            if isinstance(request, dict):
+                algorithm_type = request.get('algorithm_type', '')
+            else:
+                algorithm_type = getattr(request, 'algorithm_type', '')
+            snapshot = self.query_handler.handle_get_definition_draft(algorithm_type)
+            return _success(snapshot if snapshot is not None else {})
+        except Exception as e:
+            return _failure(str(e))
 
     # ---- 导入/重载 ----
 

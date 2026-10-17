@@ -13,7 +13,7 @@
 """
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from algorithm_service.domain.entities.algorithm_group import AlgorithmGroupAggregate
 from algorithm_service.domain.entities.algorithm_definition import (
@@ -23,6 +23,7 @@ from algorithm_service.domain.entities.algorithm_definition import (
 from algorithm_service.infrastructure.persistence.algorithm_repository import (
     algorithm_group_repository,
     algorithm_definition_repository,
+    algorithm_definition_draft_repository,
 )
 from algorithm_service.application.commands.algorithm_commands import (
     CreateAlgorithmDefinitionCommand,
@@ -33,6 +34,7 @@ from algorithm_service.application.commands.algorithm_commands import (
     UpdateAlgorithmDefinitionCommand,
     UpdateAlgorithmGroupCommand,
     ActivateAlgorithmCommand,
+    SaveAlgorithmDefinitionCommand,
 )
 from algorithm_service.application.queries.algorithm_queries import (
     GetAlgorithmDefinitionByTypeQuery,
@@ -41,6 +43,10 @@ from algorithm_service.application.queries.algorithm_queries import (
     ListActiveAlgorithmDefinitionsQuery,
     ListAlgorithmDefinitionsByGroupQuery,
     ListAlgorithmGroupsQuery,
+)
+from algorithm_service.domain.value_objects.algorithm_save_code import AlgorithmSaveCode
+from algorithm_service.infrastructure.acl.algorithm_acl_gateway import (
+    validate_dimension_ids_exist,
 )
 
 
@@ -54,6 +60,31 @@ _STATUS_STR_TO_ENUM = {
 
 def _status_str_to_enum(status: str) -> AlgorithmStatus:
     return _STATUS_STR_TO_ENUM.get(status, AlgorithmStatus.DRAFT)
+
+
+def _normalize_mappings(mappings: Any) -> List[Dict[str, Any]]:
+    """映射 payload 归一为平铺列表。
+
+    兼容两种形态（与旧 Vue 保存路径 payload 口径一致）：
+    - dict 按 source 分组：{"device": [{...}, ...], "api": [...]} →
+      展开为 item 自带 source 的列表
+    - list 平铺：[{"source": "device", ...}, ...] 原样返回
+    """
+    if not mappings:
+        return []
+    if isinstance(mappings, dict):
+        result = []
+        for source, items in mappings.items():
+            for item in items or []:
+                if not isinstance(item, dict):
+                    continue
+                row = dict(item)
+                row.setdefault('source', source)
+                result.append(row)
+        return result
+    if isinstance(mappings, list):
+        return [dict(item) for item in mappings if isinstance(item, dict)]
+    return []
 
 
 class AlgorithmCommandHandler:
@@ -179,6 +210,108 @@ class AlgorithmCommandHandler:
         aggregate.deprecate()
         algorithm_definition_repository.save(aggregate)
 
+    # ========== 算法定义全量保存（INT-589） ==========
+
+    def handle_save_definition(
+        self, cmd: SaveAlgorithmDefinitionCommand
+    ) -> Dict[str, Any]:
+        """处理算法定义全量保存命令（聚合事务 + 乐观锁）。
+
+        一次提交完整定义 + 六类子实体，原子落库。发布路径校验
+        associated_dimensions 维度存在性（草稿保存不做）。
+
+        - 校验失败（algorithm_type/name 缺失、维度不存在、type 已存在）
+          抛 ValueError → 上层映射 VALIDATION_FAILED
+        - 乐观锁冲突返回 {"code": "CONFLICT"}（不抛异常）
+        - 成功返回 {"code": "SAVED"/"OK", "id": ..., "algorithm_type": ...}
+        - 发布成功后清除草稿快照（清除失败不阻断发布结果）
+        """
+        if not cmd.algorithm_type:
+            raise ValueError('algorithm_type 必填')
+        if not cmd.name:
+            raise ValueError('name 必填')
+        if cmd.id and not cmd.expected_updated_at:
+            raise ValueError('更新算法定义必须携带 expected_updated_at（乐观锁版本）')
+
+        mappings = _normalize_mappings(cmd.mappings)
+        sub_entities = {
+            'device_params': cmd.device_params or [],
+            'api_params': cmd.api_params or [],
+            'case_params': cmd.case_params or [],
+            'reference_params': cmd.reference_params or [],
+            'mappings': mappings,
+            'associated_dimensions': cmd.associated_dimensions or [],
+        }
+
+        # 发布校验：associated_dimensions 的 dimension_id 存在性
+        dimension_ids = _as_dimension_ids(cmd.associated_dimensions)
+        missing = validate_dimension_ids_exist(dimension_ids)
+        if missing:
+            raise ValueError(f'关联评估维度不存在，请先创建: {missing}')
+
+        aggregate = AlgorithmDefinitionAggregate(
+            id=cmd.id or 0,
+            group_id=cmd.group_id,
+            name=cmd.name,
+            algorithm_type=cmd.algorithm_type,
+            description=cmd.description,
+            status=(
+                _status_str_to_enum(cmd.status)
+                if cmd.status else AlgorithmStatus.ACTIVE
+            ),
+            icon=cmd.icon,
+            display_order=cmd.display_order or 0,
+        )
+        code = algorithm_definition_repository.save_full(
+            aggregate,
+            sub_entities,
+            expected_updated_at=cmd.expected_updated_at,
+        )
+
+        if code in (AlgorithmSaveCode.SAVED.value, AlgorithmSaveCode.OK.value):
+            try:
+                algorithm_definition_draft_repository.clear_snapshot(
+                    cmd.algorithm_type
+                )
+            except Exception:
+                # 草稿清除失败不阻断发布结果（快照残留可下次发布覆盖）
+                pass
+            return {
+                'code': code,
+                'id': aggregate.id,
+                'algorithm_type': cmd.algorithm_type,
+            }
+        # CONFLICT
+        return {'code': code, 'id': cmd.id or 0, 'algorithm_type': cmd.algorithm_type}
+
+    def handle_save_draft(self, algorithm_type: str, snapshot: Any) -> None:
+        """处理草稿自动保存（30s 快照，不落正式六表）。"""
+        if not algorithm_type:
+            raise ValueError('algorithm_type 必填')
+        if snapshot is None:
+            raise ValueError('草稿快照不能为空')
+        algorithm_definition_draft_repository.save_snapshot(algorithm_type, snapshot)
+
+    def handle_clear_draft(self, algorithm_type: str) -> bool:
+        """发布成功后清除草稿快照，返回是否清除。"""
+        if not algorithm_type:
+            return False
+        return algorithm_definition_draft_repository.clear_snapshot(algorithm_type)
+
+
+def _as_dimension_ids(associated_dimensions: Any) -> List[int]:
+    """从 associated_dimensions payload 提取维度 ID 整数列表。"""
+    result = []
+    for item in associated_dimensions or []:
+        dim_id = item.get('dimension_id') if isinstance(item, dict) else None
+        if dim_id is None:
+            continue
+        try:
+            result.append(int(dim_id))
+        except (TypeError, ValueError):
+            continue
+    return result
+
 
 class AlgorithmQueryHandler:
     """算法查询处理器。
@@ -236,3 +369,11 @@ class AlgorithmQueryHandler:
     ) -> List[AlgorithmDefinitionAggregate]:
         """查询全部上线状态的算法定义聚合根列表。"""
         return algorithm_definition_repository.list_all_active()
+
+    def handle_get_definition_draft(
+        self, algorithm_type: str
+    ) -> Optional[Dict[str, Any]]:
+        """读取算法定义草稿快照（前端编辑恢复），不存在返回 None。"""
+        if not algorithm_type:
+            return None
+        return algorithm_definition_draft_repository.get_snapshot(algorithm_type)

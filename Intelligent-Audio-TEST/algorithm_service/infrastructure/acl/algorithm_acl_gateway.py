@@ -144,3 +144,43 @@ def call_algo_config_rpc(method_name: str, **kwargs) -> Any:
         log_not_emit('ERROR', 'algorithm_acl_gateway',
                      f'gRPC {method_name} exception: {e}', category='algorithm')
         return None
+
+
+# ==================== evaluation_service gRPC（INT-589 跨服务校验） ====================
+
+def validate_dimension_ids_exist(dimension_ids: List[int]) -> List[int]:
+    """校验评估维度存在性（evaluation_service.EvaluationConfigService.GetDimensionByIds）。
+
+    发布全量保存时对 associated_dimensions 的 dimension_id 做存在性校验
+    （草稿保存不做）。对端不可用/查询失败时保守返回全部 ID（视为缺失），
+    由应用层将其映射为 VALIDATION_FAILED。
+
+    Returns:
+        缺失的维度 ID 列表（空 = 全部存在）
+    """
+    ids = [int(d) for d in (dimension_ids or []) if d is not None]
+    if not ids:
+        return []
+    try:
+        from shared.clients.grpc_clients import get_evaluation_config_service_stub
+        from shared.proto import evaluation_service_pb2 as eval_pb
+        from shared.utils.grpc_json import loads as _loads
+        stub = get_evaluation_config_service_stub()
+        resp = stub.GetDimensionByIds(eval_pb.GetDimensionByIdsRequest(
+            dim_ids=json.dumps(ids, ensure_ascii=False, default=str),
+        ))
+        if not resp.success:
+            return list(ids)
+        data = _loads(resp.data, {})
+        items = data.get('items', []) if isinstance(data, dict) else (
+            data if isinstance(data, list) else []
+        )
+        found = {
+            int(d.get('id'))
+            for d in items if isinstance(d, dict) and d.get('id') is not None
+        }
+        return [d for d in ids if d not in found]
+    except Exception as e:
+        log_not_emit('ERROR', 'algorithm_acl_gateway',
+                     f'validate_dimension_ids_exist failed: {e}', category='algorithm')
+        return list(ids)

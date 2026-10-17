@@ -37,11 +37,12 @@ def _import_all_models():
     from evaluation_service.infrastructure.persistence.models import (  # noqa: F401
         Category, Dimension, TestResultDimension,
     )
-    # algorithm_service: 9 张表
+    # algorithm_service: 10 张表（含 INT-589 algorithm_definition_drafts）
     from algorithm_service.infrastructure.persistence.models import (  # noqa: F401
         AlgorithmGroup, AlgorithmDefinition, AlgorithmDeviceParam,
         AlgorithmApiParam, AlgorithmReferenceParam, EvaluationDimensionParam,
         ParamMapping, AlgorithmDimensionRelation, CaseAlgorithmParam,
+        AlgorithmDefinitionDraft,
     )
     # report_service: 7 张表
     from report_service.infrastructure.persistence.models import (  # noqa: F401

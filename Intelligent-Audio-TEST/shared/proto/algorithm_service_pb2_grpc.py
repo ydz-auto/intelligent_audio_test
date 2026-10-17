@@ -632,6 +632,21 @@ class AlgorithmDefinitionServiceStub:
                 request_serializer=algorithm__service__pb2.FlushTransactionRequest.SerializeToString,
                 response_deserializer=algorithm__service__pb2.AlgorithmResponse.FromString,
                 _registered_method=True)
+        self.SaveAlgorithmDefinition = channel.unary_unary(
+                '/algorithm.AlgorithmDefinitionService/SaveAlgorithmDefinition',
+                request_serializer=algorithm__service__pb2.SaveAlgorithmDefinitionRequest.SerializeToString,
+                response_deserializer=algorithm__service__pb2.AlgorithmResponse.FromString,
+                _registered_method=True)
+        self.SaveAlgorithmDefinitionDraft = channel.unary_unary(
+                '/algorithm.AlgorithmDefinitionService/SaveAlgorithmDefinitionDraft',
+                request_serializer=algorithm__service__pb2.SaveAlgorithmDefinitionDraftRequest.SerializeToString,
+                response_deserializer=algorithm__service__pb2.AlgorithmResponse.FromString,
+                _registered_method=True)
+        self.GetAlgorithmDefinitionDraft = channel.unary_unary(
+                '/algorithm.AlgorithmDefinitionService/GetAlgorithmDefinitionDraft',
+                request_serializer=algorithm__service__pb2.GetAlgorithmDefinitionDraftRequest.SerializeToString,
+                response_deserializer=algorithm__service__pb2.AlgorithmResponse.FromString,
+                _registered_method=True)
 
 
 class AlgorithmDefinitionServiceServicer:
@@ -1074,6 +1089,32 @@ class AlgorithmDefinitionServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def SaveAlgorithmDefinition(self, request, context):
+        """算法定义全量保存（INT-589：聚合事务 + 乐观锁 + 草稿能力）
+        SaveAlgorithmDefinition：完整定义（基础字段 + 六类子实体）一次原子落库；
+        data JSON 含 id（有则更新、无则创建）、expected_updated_at（乐观锁版本）。
+        AlgorithmResponse.code：SAVED（新建）/ OK（更新）/ CONFLICT（乐观锁冲突）/
+        VALIDATION_FAILED（校验失败，含维度不存在/必填缺失等）。
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SaveAlgorithmDefinitionDraft(self, request, context):
+        """SaveAlgorithmDefinitionDraft：30s 自动保存写草稿快照（不落正式六表），
+        data JSON 为完整定义快照（含 algorithm_type），按 algorithm_type upsert。
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetAlgorithmDefinitionDraft(self, request, context):
+        """GetAlgorithmDefinitionDraft：读取草稿快照（前端编辑恢复），data 为快照 JSON。
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_AlgorithmDefinitionServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -1425,6 +1466,21 @@ def add_AlgorithmDefinitionServiceServicer_to_server(servicer, server):
             'FlushTransaction': grpc.unary_unary_rpc_method_handler(
                     servicer.FlushTransaction,
                     request_deserializer=algorithm__service__pb2.FlushTransactionRequest.FromString,
+                    response_serializer=algorithm__service__pb2.AlgorithmResponse.SerializeToString,
+            ),
+            'SaveAlgorithmDefinition': grpc.unary_unary_rpc_method_handler(
+                    servicer.SaveAlgorithmDefinition,
+                    request_deserializer=algorithm__service__pb2.SaveAlgorithmDefinitionRequest.FromString,
+                    response_serializer=algorithm__service__pb2.AlgorithmResponse.SerializeToString,
+            ),
+            'SaveAlgorithmDefinitionDraft': grpc.unary_unary_rpc_method_handler(
+                    servicer.SaveAlgorithmDefinitionDraft,
+                    request_deserializer=algorithm__service__pb2.SaveAlgorithmDefinitionDraftRequest.FromString,
+                    response_serializer=algorithm__service__pb2.AlgorithmResponse.SerializeToString,
+            ),
+            'GetAlgorithmDefinitionDraft': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetAlgorithmDefinitionDraft,
+                    request_deserializer=algorithm__service__pb2.GetAlgorithmDefinitionDraftRequest.FromString,
                     response_serializer=algorithm__service__pb2.AlgorithmResponse.SerializeToString,
             ),
     }
@@ -3318,6 +3374,87 @@ class AlgorithmDefinitionService:
             target,
             '/algorithm.AlgorithmDefinitionService/FlushTransaction',
             algorithm__service__pb2.FlushTransactionRequest.SerializeToString,
+            algorithm__service__pb2.AlgorithmResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SaveAlgorithmDefinition(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/algorithm.AlgorithmDefinitionService/SaveAlgorithmDefinition',
+            algorithm__service__pb2.SaveAlgorithmDefinitionRequest.SerializeToString,
+            algorithm__service__pb2.AlgorithmResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SaveAlgorithmDefinitionDraft(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/algorithm.AlgorithmDefinitionService/SaveAlgorithmDefinitionDraft',
+            algorithm__service__pb2.SaveAlgorithmDefinitionDraftRequest.SerializeToString,
+            algorithm__service__pb2.AlgorithmResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetAlgorithmDefinitionDraft(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/algorithm.AlgorithmDefinitionService/GetAlgorithmDefinitionDraft',
+            algorithm__service__pb2.GetAlgorithmDefinitionDraftRequest.SerializeToString,
             algorithm__service__pb2.AlgorithmResponse.FromString,
             options,
             channel_credentials,

@@ -13,11 +13,12 @@
 - 算法分组：CreateAlgorithmGroupCommand / UpdateAlgorithmGroupCommand / DeleteAlgorithmGroupCommand
 - 算法定义：CreateAlgorithmDefinitionCommand / UpdateAlgorithmDefinitionCommand / DeleteAlgorithmDefinitionCommand
 - 算法状态：ActivateAlgorithmCommand / DeprecateAlgorithmCommand
+- 算法全量保存：SaveAlgorithmDefinitionCommand（INT-589）
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
 
 # ========== 算法分组命令 ==========
@@ -110,6 +111,38 @@ class DeleteAlgorithmDefinitionCommand:
     """
 
     id: int
+
+
+@dataclass(frozen=True)
+class SaveAlgorithmDefinitionCommand:
+    """算法定义全量保存命令（INT-589）。
+
+    一次提交完整定义（基础字段 + 六类子实体），聚合事务原子落库。
+    - id: 定义ID（None/0 → 新建；有值 → 按 id 更新）
+    - algorithm_type: 算法类型代码
+    - name / group_id / description / status / icon / display_order: 基础字段
+    - device_params / api_params / case_params / reference_params: 参数列表
+    - mappings: 参数映射（平铺列表或按 source 分组的 dict，见 handler 归一）
+    - associated_dimensions: 关联评估维度列表
+    - expected_updated_at: 乐观锁版本（ISO 字符串，更新路径必填，由前端
+      从上一次读取的 definition.updated_at 带回）
+    """
+
+    id: Optional[int] = None
+    algorithm_type: str = ""
+    name: str = ""
+    group_id: Optional[int] = None
+    description: Optional[str] = None
+    status: Optional[str] = "online"
+    icon: Optional[str] = None
+    display_order: Optional[int] = 0
+    device_params: List[Dict[str, Any]] = field(default_factory=list)
+    api_params: List[Dict[str, Any]] = field(default_factory=list)
+    case_params: List[Dict[str, Any]] = field(default_factory=list)
+    reference_params: List[Dict[str, Any]] = field(default_factory=list)
+    mappings: Any = field(default_factory=list)
+    associated_dimensions: List[Dict[str, Any]] = field(default_factory=list)
+    expected_updated_at: Optional[str] = None
 
 
 # ========== 算法状态变更命令 ==========

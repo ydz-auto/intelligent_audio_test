@@ -16,6 +16,24 @@ def get_definitions(_: None = require_permission('algorithm:read')):
     return to_response(AlgorithmQueryService.list_algorithms())
 
 
+# 算法定义全量保存 / 草稿（INT-589）。
+# 静态段（save/draft）必须先于参数段 /definitions/{algo_type} 注册，
+# 否则 FastAPI 会把 save/draft 当作 algo_type 走旧更新路由。
+@router.put('/definitions/save')
+def put_definition_save(_: None = require_permission('algorithm:definition_manage')):
+    return to_response(AlgorithmCommandService.save_definition())
+
+
+@router.put('/definitions/draft')
+def put_definition_draft(_: None = require_permission('algorithm:definition_manage')):
+    return to_response(AlgorithmCommandService.save_definition_draft())
+
+
+@router.get('/definitions/draft/{algo_type}')
+def get_definition_draft(algo_type: str, _: None = require_permission('algorithm:read')):
+    return to_response(AlgorithmQueryService.get_definition_draft(algo_type))
+
+
 @router.get('/definitions/{algo_type}')
 def get_definition(algo_type: str, _: None = require_permission('algorithm:read')):
     return to_response(AlgorithmQueryService.get_algorithm(algo_type))

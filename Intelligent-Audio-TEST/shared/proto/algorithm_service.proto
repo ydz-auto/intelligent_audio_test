@@ -114,6 +114,18 @@ service AlgorithmDefinitionService {
   rpc CommitTransaction(CommitTransactionRequest) returns (AlgorithmResponse);
   rpc RollbackTransaction(RollbackTransactionRequest) returns (AlgorithmResponse);
   rpc FlushTransaction(FlushTransactionRequest) returns (AlgorithmResponse);
+
+  // 算法定义全量保存（INT-589：聚合事务 + 乐观锁 + 草稿能力）
+  // SaveAlgorithmDefinition：完整定义（基础字段 + 六类子实体）一次原子落库；
+  //   data JSON 含 id（有则更新、无则创建）、expected_updated_at（乐观锁版本）。
+  //   AlgorithmResponse.code：SAVED（新建）/ OK（更新）/ CONFLICT（乐观锁冲突）/
+  //   VALIDATION_FAILED（校验失败，含维度不存在/必填缺失等）。
+  rpc SaveAlgorithmDefinition(SaveAlgorithmDefinitionRequest) returns (AlgorithmResponse);
+  // SaveAlgorithmDefinitionDraft：30s 自动保存写草稿快照（不落正式六表），
+  //   data JSON 为完整定义快照（含 algorithm_type），按 algorithm_type upsert。
+  rpc SaveAlgorithmDefinitionDraft(SaveAlgorithmDefinitionDraftRequest) returns (AlgorithmResponse);
+  // GetAlgorithmDefinitionDraft：读取草稿快照（前端编辑恢复），data 为快照 JSON。
+  rpc GetAlgorithmDefinitionDraft(GetAlgorithmDefinitionDraftRequest) returns (AlgorithmResponse);
 }
 
 // ===== 算法领域查询服务（CQRS 读侧，迁移自 shared/algorithm）=====
@@ -167,6 +179,8 @@ message AlgorithmResponse {
   bool success = 1;
   string message = 2;
   string data = 3;  // JSON 序列化的结果
+  string code = 4;  // 机器可读结果码（SAVED/OK/CONFLICT/VALIDATION_FAILED，INT-589）
+  // 旧 servicer 未填为空串；网关按 success 回退，不依赖 code。
 }
 
 // ===== 分组请求 =====
@@ -446,6 +460,19 @@ message ListDimensionParamsRequest {
 message CommitTransactionRequest {}
 message RollbackTransactionRequest {}
 message FlushTransactionRequest {}
+
+// ===== 算法定义全量保存（INT-589）=====
+message SaveAlgorithmDefinitionRequest {
+  string data = 1;  // JSON: 完整定义（基础字段 + device/api/case 参数 +
+                    // mappings + associated_dimensions + reference_params +
+                    // expected_updated_at）
+}
+message SaveAlgorithmDefinitionDraftRequest {
+  string data = 1;  // JSON: 完整定义快照（含 algorithm_type）
+}
+message GetAlgorithmDefinitionDraftRequest {
+  string algorithm_type = 1;
+}
 
 // ===== 算法领域查询服务请求（迁移自 shared/algorithm）=====
 

@@ -54,6 +54,33 @@ class AlgorithmDefinitionUpdate(APIModel):
     associated_dimensions: Optional[List[Dict[str, Any]]] = Field(None)
 
 
+class AlgorithmDefinitionSaveRequest(APIModel):
+    """算法定义全量保存请求（INT-589，聚合事务 + 乐观锁）。
+
+    - id: 定义ID（None → 新建；有值 → 按 id 更新）
+    - expected_updated_at: 乐观锁版本（更新路径必填，取自最近一次
+      AlgorithmDetailResponse.updated_at）；并发覆盖返回 CONFLICT
+    - 六类子实体随定义整体落库（幂等，不产生重复子实体）
+    """
+    id: Optional[int] = Field(None, description='算法定义ID（新建为空）')
+    type: Optional[str] = Field(None, max_length=50, description='算法类型代码（新建必填）')
+    algorithm_type: Optional[str] = Field(None, max_length=50, description='算法类型代码（与 type 二选一）')
+    name: str = Field(..., min_length=1, max_length=100, description='算法显示名称')
+    category: Optional[str] = Field(None, max_length=50)
+    description: Optional[str] = Field(None)
+    status: Optional[str] = Field('online', description='状态：online/offline/draft')
+    icon: Optional[str] = Field(None, max_length=200)
+    display_order: Optional[int] = Field(0, ge=0)
+    group_id: Optional[int] = Field(None)
+    expected_updated_at: Optional[str] = Field(None, description='乐观锁版本（更新必填）')
+    device_params: Optional[List[Dict[str, Any]]] = Field(None)
+    api_params: Optional[List[Dict[str, Any]]] = Field(None)
+    case_params: Optional[List[Dict[str, Any]]] = Field(None)
+    reference_params: Optional[List[Dict[str, Any]]] = Field(None)
+    mappings: Optional[Any] = Field(None, description='参数映射（平铺列表或按 source 分组的 dict）')
+    associated_dimensions: Optional[List[Dict[str, Any]]] = Field(None, description='关联评估维度')
+
+
 class AlgorithmDetailResponse(APIModel):
     """算法详情响应"""
     id: int

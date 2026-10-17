@@ -6,6 +6,7 @@
      / algorithm_api_params / algorithm_reference_params
      / evaluation_dimension_params / param_mappings
      / algorithm_dimension_relations / case_algorithm_params
+     / algorithm_definition_drafts（INT-589 草稿快照）
 
 P5 改造：PO 定义真正下沉到本包，shared/models/algorithm_models.py
 改为从这里 re-export。
@@ -20,10 +21,12 @@ from .algorithm_models import (
     ParamMapping,
     AlgorithmDimensionRelation,
     CaseAlgorithmParam,
+    AlgorithmDefinitionDraft,
 )
 
 __all__ = [
     'AlgorithmGroup', 'AlgorithmDefinition', 'AlgorithmDeviceParam',
     'AlgorithmApiParam', 'AlgorithmReferenceParam', 'EvaluationDimensionParam',
     'ParamMapping', 'AlgorithmDimensionRelation', 'CaseAlgorithmParam',
+    'AlgorithmDefinitionDraft',
 ]

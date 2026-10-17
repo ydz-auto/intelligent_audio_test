@@ -6,6 +6,9 @@
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response, wrap_grpc_response
 from api_gateway.infrastructure.acl import AlgorithmConfigAclRepositoryImpl
+from api_gateway.infrastructure.grpc_proxies.algorithm_proxies import (
+    algorithm_query_service as _algorithm_service_proxy,
+)
 
 from api_gateway.schemas.algorithm import (
     AlgorithmListQuery,
@@ -55,6 +58,15 @@ class AlgorithmQueryService:
     def get_algorithm(algo_type: str):
         """获取算法详情"""
         result = _algorithm_acl.get_algorithm(algo_type)
+
+        if result.get('success'):
+            return success_response(result.get('data'))
+        return wrap_grpc_response(result, default_error_msg='查询失败')
+
+    @staticmethod
+    def get_definition_draft(algo_type: str):
+        """获取算法定义草稿快照（前端编辑恢复）"""
+        result = _algorithm_service_proxy.get_algorithm_definition_draft(algo_type)
 
         if result.get('success'):
             return success_response(result.get('data'))

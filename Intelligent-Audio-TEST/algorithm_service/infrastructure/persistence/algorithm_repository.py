@@ -38,6 +38,7 @@ from __future__ import annotations
 from algorithm_service.infrastructure.persistence._algorithm_aggregate_repositories import (
     AlgorithmGroupRepository,
     AlgorithmDefinitionRepository,
+    AlgorithmDefinitionDraftRepository,
 )
 from algorithm_service.infrastructure.persistence._algorithm_query_repositories import (
     AlgorithmDefinitionQueryRepository,
@@ -56,6 +57,7 @@ from shared.models.database import get_db_session
 
 algorithm_group_repository = AlgorithmGroupRepository()
 algorithm_definition_repository = AlgorithmDefinitionRepository()
+algorithm_definition_draft_repository = AlgorithmDefinitionDraftRepository()
 algorithm_definition_query_repository = AlgorithmDefinitionQueryRepository()
 algorithm_group_query_repository = AlgorithmGroupQueryRepository()
 device_param_repository = DeviceParamRepository()

@@ -10,6 +10,7 @@ from api_gateway.infrastructure.acl import AlgorithmConfigAclRepositoryImpl
 
 from api_gateway.schemas.algorithm import (
     AlgorithmDefinitionCreate,
+    AlgorithmDefinitionSaveRequest,
     AlgorithmDefinitionUpdate,
     AlgorithmDeviceParamCreate,
     AlgorithmDeviceParamUpdate,
@@ -27,6 +28,9 @@ from api_gateway.schemas.algorithm import (
     ExtractParamsRequest,
     AlgorithmImportRequest,
     BulkDeleteRequest,
+)
+from api_gateway.infrastructure.grpc_proxies.algorithm_proxies import (
+    algorithm_query_service as _algorithm_service_proxy,
 )
 
 
@@ -73,6 +77,52 @@ class AlgorithmCommandService:
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', 'Algorithm deleted'))
+        return error_response(result.get('message', '操作失败'), result.get('code', 400))
+
+    # ========== 算法定义全量保存 / 草稿（INT-589）==========
+
+    @staticmethod
+    def save_definition():
+        """算法定义全量保存（聚合事务 + 乐观锁）。
+
+        一次提交完整定义 + 六类子实体原子落库；并发覆盖返回 CONFLICT。
+        """
+        try:
+            req = AlgorithmDefinitionSaveRequest.model_validate(request.get_json())
+        except Exception as e:
+            return error_response(f"请求数据验证失败: {str(e)}", 400)
+
+        data = req.model_dump(by_alias=False, exclude_none=True)
+        if not data.get('algorithm_type'):
+            data['algorithm_type'] = data.get('type')
+        result = _algorithm_service_proxy.save_algorithm_definition(data)
+
+        if result.get('success'):
+            return success_response(result.get('data'), result.get('message', 'Algorithm saved'))
+
+        # 乐观锁冲突：409 + 机器可读 code 供前端分支提示
+        if result.get('code') == 'CONFLICT':
+            return error_response(
+                '有他人改动，请刷新后重试',
+                code=409, http_code=409, detail={'code': 'CONFLICT'},
+            )
+        if result.get('code') == 'VALIDATION_FAILED':
+            return error_response(
+                result.get('message', '校验失败'),
+                code=422, http_code=422, detail={'code': 'VALIDATION_FAILED'},
+            )
+        return error_response(result.get('message', '操作失败'), result.get('code', 400))
+
+    @staticmethod
+    def save_definition_draft():
+        """草稿自动保存（30s 快照，不落正式六表）。"""
+        json_data = request.get_json() or {}
+        if not (json_data.get('algorithm_type') or json_data.get('type')):
+            return error_response('algorithm_type 必填', 400)
+        result = _algorithm_service_proxy.save_algorithm_definition_draft(json_data)
+
+        if result.get('success'):
+            return success_response(result.get('data'), result.get('message', 'Draft saved'))
         return error_response(result.get('message', '操作失败'), result.get('code', 400))
 
     # ========== 参数 CRUD ==========
