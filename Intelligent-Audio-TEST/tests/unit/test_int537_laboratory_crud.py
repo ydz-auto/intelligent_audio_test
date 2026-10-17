@@ -265,8 +265,13 @@ class TestLaboratoryCommandService:
             set_current_request(None)
         assert http_code == 409
 
-    def test_delete_success_and_soft(self):
+    def test_delete_success_and_soft(self, monkeypatch):
         lab_id = _make_lab('LAB-D-01', '待删')
+        # counts 已就绪（INT-655 proto 落地 lab_id 过滤）→ 无引用时置零，避免依赖实机 gRPC
+        monkeypatch.setattr(
+            LaboratoryResourceReadModel, 'counts',
+            staticmethod(lambda lab_id_: {
+                'device_count': 0, 'playback_device_count': 0, 'test_case_count': 0}))
         set_current_request(_fake_request())
         try:
             payload, http_code = LaboratoryCommandService.delete(lab_id)
@@ -308,13 +313,18 @@ class TestLaboratoryQueryService:
         _ensure_db()
         _cleanup()
 
-    def test_list_envelope_and_item_fields(self):
+    def test_list_envelope_and_item_fields(self, monkeypatch):
         # 全字段填充：响应经 success_response（model_dump exclude_none=True），
         # 空字段会被省略（网关既有行为），故用非空值断言字段结构完整
         repo = LaboratoryRepositoryImpl()
         repo.create({'code': 'LAB-A-01', 'name': '音频测试实验室1',
                      'building': 'A栋', 'floor': '2楼', 'room_number': '201',
                      'description': '主实验室', 'status': 'active'})
+        # counts 已就绪（INT-655 proto 落地 lab_id 过滤）→ 置零断言，避免依赖实机 gRPC
+        monkeypatch.setattr(
+            LaboratoryResourceReadModel, 'counts',
+            staticmethod(lambda lab_id_: {
+                'device_count': 0, 'playback_device_count': 0, 'test_case_count': 0}))
         get_db_session().commit()
         remove_db_session()
         set_current_request(_fake_request(query={'page': '1', 'per_page': '20'}))
@@ -333,7 +343,7 @@ class TestLaboratoryQueryService:
         assert item['code'] == 'LAB-A-01'
         assert item['status'] == 'active'
         assert item['building'] == 'A栋' and item['room_number'] == '201'
-        # counts 未就绪容错为 0（拆分②③ RPC lab_id 过滤未合入）
+        # counts 无引用时为 0
         assert item['device_count'] == 0
         assert item['playback_device_count'] == 0
         assert item['test_case_count'] == 0
