@@ -679,3 +679,45 @@ def test_source_trace_marks_deleted_results_missing(db):
         f'已删源结果应标 missing：实际 {by_id[deleted_result_id]}'
     assert by_id[results[1][1]]['missing'] is False, \
         '未删源结果不应标 missing'
+
+def test_read_side_none_user_empty_states(db):
+    """INT-660：AUTH_MODE=off（user_id=None）读侧返回空态，对齐收藏「未收藏语义」。
+
+    读侧 cart_get/sets_list/set_detail/preview 在 None 用户下不再 401，走仓储
+    None 容忍分支产出空态/未找到（仓储零改动）；写侧保持未认证拒绝（INT-141 红线）。
+    """
+    from task_service.application.task.cherry_pick_service import cherry_pick_service
+
+    set_current_user_id(None)
+
+    # 读侧：购物车空态（仓储 cart_list(None)→[] 自然产出）
+    cart = cherry_pick_service.cart_get()
+    assert cart['success'] is True
+    assert cart['data'] == {'groups': [], 'total': 0, 'invalid_item_ids': []}
+
+    # 读侧：挑选集列表空态（仓储 set_list(None)→[]）
+    sets = cherry_pick_service.sets_list()
+    assert sets['success'] is True
+    assert sets['data'] == {'items': []}
+
+    # 读侧：挑选集详情未找到（仓储 set_detail(None,id)→None → 404）
+    detail = cherry_pick_service.set_detail(999)
+    assert detail['success'] is False
+    assert '未找到挑选集' in detail['message']
+    assert detail['code'] == 404
+
+    # 读侧：合并预览空购物车（仓储 cart_list(None)→[] → 400）
+    preview = cherry_pick_service.preview()
+    assert preview['success'] is False
+    assert '购物车为空' in preview['message']
+    assert preview['code'] == 400
+
+    # 写侧回归：None 用户仍拒绝（INT-141 红线，0/None 不充当真实用户）
+    for resp in (
+        cherry_pick_service.cart_add({'result_ids': [1]}),
+        cherry_pick_service.cart_save_as_set({'name': '未认证另存'}),
+        cherry_pick_service.set_to_cart(999),
+        cherry_pick_service.checkout({'action': 'merge', 'name': '未认证下单'}),
+    ):
+        assert resp['success'] is False and resp['code'] == 401
+

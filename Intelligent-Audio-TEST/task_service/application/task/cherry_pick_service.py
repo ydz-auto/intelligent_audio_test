@@ -51,7 +51,11 @@ class CherryPickService:
         return get_current_user_id()
 
     def _require_user(self) -> tuple:
-        """per-user 操作入口的用户校验（未认证拒绝，红线：0/None 不充当真实用户）。"""
+        """写侧 per-user 操作入口的用户校验（未认证拒绝，红线：0/None 不充当真实用户）。
+
+        INT-660：读侧方法（cart_get/sets_list/set_detail/preview）不调本方法，
+        直接取 _current_user_id() 且 None 容忍（AUTH_MODE=off 空态，对齐收藏）。
+        """
         user_id = self._current_user_id()
         if not user_id:
             return None, ({'success': False, 'message': '未认证用户，禁止使用挑选购物车',
@@ -116,11 +120,13 @@ class CherryPickService:
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 
     def cart_get(self) -> dict:
-        """当前用户购物车内容（按来源任务分组 + 失效标注，设计文档 §3/§10）。"""
+        """当前用户购物车内容（按来源任务分组 + 失效标注，设计文档 §3/§10）。
+
+        INT-660：读侧 None 用户（AUTH_MODE=off）不再 401，走仓储
+        cart_list(None)→[] 空态（对齐收藏「未收藏语义」）。
+        """
         try:
-            user_id, err = self._require_user()
-            if err:
-                return err
+            user_id = self._current_user_id()
             items = self._repo.cart_list(user_id)
             grouped: Dict[int, List[Dict[str, Any]]] = {}
             invalid_item_ids: List[int] = []
@@ -183,11 +189,13 @@ class CherryPickService:
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 
     def sets_list(self) -> dict:
-        """挑选集列表（当前用户）。"""
+        """挑选集列表（当前用户）。
+
+        INT-660：读侧 None 用户（AUTH_MODE=off）不再 401，走仓储
+        set_list(None)→[] 空态。
+        """
         try:
-            user_id, err = self._require_user()
-            if err:
-                return err
+            user_id = self._current_user_id()
             sets = self._repo.set_list(user_id)
             return {'success': True, 'message': 'ok', 'data': {'items': sets}}
         except ValueError as e:
@@ -197,11 +205,13 @@ class CherryPickService:
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 
     def set_detail(self, set_id: int) -> dict:
-        """挑选集详情。"""
+        """挑选集详情。
+
+        INT-660：读侧 None 用户（AUTH_MODE=off）不再 401，走仓储
+        set_detail(None,id)→None → 404 未找到挑选集。
+        """
         try:
-            user_id, err = self._require_user()
-            if err:
-                return err
+            user_id = self._current_user_id()
             detail = self._repo.set_detail(user_id, set_id)
             if detail is None:
                 return {'success': False, 'message': '未找到挑选集',
@@ -473,11 +483,11 @@ class CherryPickService:
         """合并预览（下单前统计/失效校验，设计文档 §3/§10）。
 
         预览只读购物车 + 引用结果行，不产生任何副作用（CQRS 查询侧）。
+        INT-660：读侧 None 用户（AUTH_MODE=off）不再 401，走仓储
+        cart_list(None)→[] → 空购物车分支。
         """
         try:
-            user_id, err = self._require_user()
-            if err:
-                return err
+            user_id = self._current_user_id()
             items = self._repo.cart_list(user_id)
             if not items:
                 return {'success': False, 'message': '购物车为空',
