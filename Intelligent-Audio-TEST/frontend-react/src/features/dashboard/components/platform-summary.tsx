@@ -113,7 +113,7 @@ export function PlatformSummary() {
       ? `${devices?.offline ?? 0} 台离线`
       : HEALTH_CONFIG[healthLevel].label
 
-  // 完成率 = 已完成任务 / 任务总数（task.py TaskStatsData 同源口径；与 MOCK_HOME_STATS 297/342 一致）
+  // 完成率 = 已完成任务 / 任务总数（task.py TaskStatsData 同源口径）
   const completionRate =
     details && details.tasks.total > 0
       ? `${((details.tasks.completed / details.tasks.total) * 100).toFixed(1)}%`

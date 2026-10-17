@@ -2,7 +2,7 @@
  * 任务域 mock 常量（红线④：数据一律 mock，不接真实后端）。
  * 字段形态对照 api_gateway/schemas/task.py + published_task.py 实测 schema
  * （见 domain/models/task.ts 注释），后续接线仅替换 infrastructure/api 桩实现。
- * 数字口径与基座 MOCK_HOME_STATS 对齐：任务总量 342、已完成 297、设备 8 在线/2 离线；
+ * 数字口径与 dashboard-mock.ts 任务域 mock 对齐：任务总量 342、已完成 297；
  * 列表 mock 为「视觉稿演示子集」（覆盖全部状态徽章五色 + 双状态 + 收藏/回收站态）。
  */
 import type {

@@ -1,11 +1,10 @@
 /**
  * ③ 最近任务面板（04_控制台.md §3.6，PanelWrapper 形态）。
- * mock 8 行覆盖状态徽章五色（success/info/warning/danger/neutral + merged=chart-4）；
- * 头部「状态演示」切换为视觉稿两态演示控件（loading Skeleton / 空态）——接线后移除。
+ * 列表行经 summaryQuery 渲染真实最近任务（状态徽章按任务状态取色，算法标签取算法类型）；
+ * loading Skeleton / 空态由 PanelWrapper 按查询状态驱动。
  */
 import { Link } from '@tanstack/react-router'
 import { ClipboardList } from 'lucide-react'
-import { useState } from 'react'
 
 import { useDashboardSummary } from '@/application/dashboard/use-dashboard-summary'
 import { Badge } from '@/components/ui/badge'
@@ -21,51 +20,13 @@ import { PanelWrapper } from '@/features/dashboard/components/ui/panel-wrapper'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import { cn } from '@/lib/utils'
 
-type DemoState = 'data' | 'loading' | 'empty'
-
-const DEMO_STATE_OPTIONS: Array<{ value: DemoState; label: string }> = [
-  { value: 'data', label: '数据' },
-  { value: 'loading', label: '加载中' },
-  { value: 'empty', label: '空态' },
-]
-
-function DemoStateSwitch(props: {
-  value: DemoState
-  onChange: (value: DemoState) => void
-}) {
-  return (
-    <div className='bg-muted/60 inline-flex h-7 items-center rounded-lg border p-0.5'>
-      <span className='text-muted-foreground px-2 text-[11px] font-medium'>
-        状态演示
-      </span>
-      {DEMO_STATE_OPTIONS.map((option) => (
-        <button
-          key={option.value}
-          type='button'
-          onClick={() => props.onChange(option.value)}
-          className={cn(
-            'shrink-0 rounded-md px-2.5 text-xs font-medium transition-colors',
-            props.value === option.value
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
-          )}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
 export function RecentTasksPanel() {
   const { hasPermission } = usePermissions()
   const summaryQuery = useDashboardSummary()
-  // 两态演示控件默认「数据」——React Query 侧另有 loading 分支（mock 即时返回，不触发）
-  const [demoState, setDemoState] = useState<DemoState>('data')
 
   const tasks = summaryQuery.data?.recent_tasks ?? []
-  const loading = demoState === 'loading' || summaryQuery.isLoading
-  const empty = demoState === 'empty' || (!loading && tasks.length === 0)
+  const loading = summaryQuery.isLoading
+  const empty = !loading && tasks.length === 0
 
   return (
     <PanelWrapper
@@ -85,7 +46,6 @@ export function RecentTasksPanel() {
       contentClassName='p-0'
       headerActions={
         <div className='flex flex-wrap items-center gap-2'>
-          <DemoStateSwitch value={demoState} onChange={setDemoState} />
           {hasPermission('task:read') && (
             <Link
               to='/tasks'
