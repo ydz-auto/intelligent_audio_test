@@ -25,6 +25,7 @@ export function useAlgorithmOptions() {
     options: query.data ?? [],
     isLoading: query.isLoading,
     isError: query.isError,
+    refetch: query.refetch,
     canRead,
   }
 }

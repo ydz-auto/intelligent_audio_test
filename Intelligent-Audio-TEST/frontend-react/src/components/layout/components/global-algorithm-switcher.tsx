@@ -23,7 +23,7 @@ export function GlobalAlgorithmSwitcher() {
   const [query, setQuery] = useState('')
   const algorithmId = useAlgorithmStore((s) => s.algorithmId)
   const setAlgorithmId = useAlgorithmStore((s) => s.setAlgorithmId)
-  const { options, isLoading, canRead } = useAlgorithmOptions()
+  const { options, isLoading, isError, refetch, canRead } = useAlgorithmOptions()
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -79,7 +79,19 @@ export function GlobalAlgorithmSwitcher() {
           </div>
         </div>
         <div className='max-h-64 overflow-auto p-1'>
-          {isLoading ? (
+          {isError ? (
+            <div className='px-3 py-6 text-center'>
+              <p className='text-muted-foreground text-sm'>加载失败</p>
+              <Button
+                variant='ghost'
+                size='sm'
+                className='mt-2'
+                onClick={() => void refetch()}
+              >
+                重试
+              </Button>
+            </div>
+          ) : isLoading ? (
             <p className='text-muted-foreground px-3 py-6 text-center text-sm'>
               加载中…
             </p>

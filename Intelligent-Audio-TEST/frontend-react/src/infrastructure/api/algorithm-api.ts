@@ -14,5 +14,5 @@ import {
 /** 算法选项（下拉框；value=算法类型码，与 useAlgorithmStore.algorithmId 同源） */
 export async function fetchAlgorithmOptions(): Promise<AlgorithmSwitchOption[]> {
   const dto = await apiClient.get<AlgorithmOptionsResultDto>('/algorithm/options')
-  return (dto?.options ?? []).map(toAlgorithmOption)
+  return (dto?.algorithms ?? []).map(toAlgorithmOption)
 }

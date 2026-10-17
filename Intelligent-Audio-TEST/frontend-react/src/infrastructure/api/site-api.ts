@@ -22,8 +22,12 @@ export async function fetchSiteConfig(): Promise<SiteConfig> {
   try {
     const dto = await apiClient.get<SiteConfigDto>('/home/site')
     return toSiteConfig(dto ?? {})
-  } catch {
-    // 站点配置端点未落（待 INT-FEAT）：回落缺省，静默不报错
+  } catch (err) {
+    // 站点配置端点未落（待 INT-FEAT）：回落缺省，不阻断壳渲染；留痕便于端点落地前排障
+    console.warn(
+      '[site-config] GET /home/site 失败，回落缺省「智能语音测试平台」：',
+      err
+    )
     return DEFAULT_SITE_CONFIG
   }
 }
