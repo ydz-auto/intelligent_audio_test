@@ -350,7 +350,11 @@ def test_draft_save_and_restore(db, clean_tables, monkeypatch):
         AlgorithmQueryHandler,
     )
     payload = _full_payload()
-    AlgorithmCommandHandler().handle_save_draft('voice_llm', payload)
+    saved_at = AlgorithmCommandHandler().handle_save_draft('voice_llm', payload)
+
+    # INT-683：草稿保存返回服务端最后保存时间（供响应补 saved_at）
+    assert saved_at is not None
+    assert hasattr(saved_at, 'isoformat')
 
     snapshot = AlgorithmQueryHandler().handle_get_definition_draft('voice_llm')
     assert snapshot is not None
@@ -360,6 +364,27 @@ def test_draft_save_and_restore(db, clean_tables, monkeypatch):
     session = get_db_session()
     assert _count(session, 'AlgorithmDefinition') == 0
     assert _count(session, 'AlgorithmDeviceParam') == 0
+
+
+def test_draft_save_updates_saved_at(db, clean_tables, monkeypatch):
+    """重复保存草稿：saved_at 随时间推进（upsert 更新路径）。"""
+    from algorithm_service.application.handlers.algorithm_handlers import (
+        AlgorithmCommandHandler,
+    )
+    payload = _full_payload()
+    first = AlgorithmCommandHandler().handle_save_draft('voice_llm', payload)
+    second = AlgorithmCommandHandler().handle_save_draft('voice_llm', payload)
+
+    assert first is not None and second is not None
+    assert second >= first
+    # 仍只有一份快照（按 algorithm_type upsert）
+    from algorithm_service.infrastructure.persistence.models import (
+        AlgorithmDefinitionDraft as AlgorithmDefinitionDraftPO,
+    )
+    session = get_db_session()
+    assert session.query(AlgorithmDefinitionDraftPO).filter_by(
+        algorithm_type='voice_llm'
+    ).count() == 1
 
 
 def test_publish_clears_draft_snapshot(db, clean_tables, monkeypatch):
@@ -459,6 +484,12 @@ def test_rpc_draft_save_and_get(db, clean_tables):
     payload = _full_payload()
     resp = servicer.SaveAlgorithmDefinitionDraft(payload)
     assert resp.success is True
+    # INT-683：草稿保存响应 data 含 saved_at（ISO 时间戳）
+    data = __import__('json').loads(resp.data)
+    assert data['saved'] is True
+    assert data['algorithm_type'] == 'voice_llm'
+    assert 'saved_at' in data
+    assert 'T' in data['saved_at'], 'saved_at 应为 ISO 时间戳'
 
     get_resp = servicer.GetAlgorithmDefinitionDraft({'algorithm_type': 'voice_llm'})
     assert get_resp.success is True

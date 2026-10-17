@@ -99,12 +99,22 @@ class _AlgorithmDefinitionMixin(_ParamBaseMixin):
 
         请求字段（SaveAlgorithmDefinitionDraftRequest.data JSON）：
         algorithm_type + 完整定义快照（基础字段 + 六类子实体）。
+
+        响应 data：{saved: true, algorithm_type, saved_at}，
+        saved_at 为服务端最后保存时间（draft PO.updated_at，ISO，INT-683），
+        供前端 footer「上次保存 HH:mm:ss」消费。
         """
         try:
             data = _loads(request.data, {}) if not isinstance(request, dict) else request
             algorithm_type = data.get('algorithm_type') or data.get('type') or ''
-            self.command_handler.handle_save_draft(algorithm_type, data)
-            return _success({'saved': True, 'algorithm_type': algorithm_type})
+            saved_at = self.command_handler.handle_save_draft(algorithm_type, data)
+            resp = {'saved': True, 'algorithm_type': algorithm_type}
+            if saved_at is not None:
+                resp['saved_at'] = (
+                    saved_at.isoformat()
+                    if hasattr(saved_at, 'isoformat') else str(saved_at)
+                )
+            return _success(resp)
         except Exception as e:
             return _failure(str(e))
 
