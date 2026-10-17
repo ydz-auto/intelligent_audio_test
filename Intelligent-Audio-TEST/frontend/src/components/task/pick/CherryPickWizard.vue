@@ -305,9 +305,19 @@ import CartTree from './CartTree.vue';
 import { buildPickTree, toggleNode, selectAll, invertSelection, collectLeafResultIds, type PickTreeNode } from './pickTree';
 import { buildCartTree, toggleCartNode, type CartTreeNode } from './cartTree';
 
+const STEPS = [
+  { key: 'pick', label: '挑选', icon: 'fas fa-hand-pointer' },
+  { key: 'cart', label: '购物车', icon: 'fas fa-cart-shopping' },
+  { key: 'review', label: '复核', icon: 'fas fa-clipboard-check' },
+  { key: 'checkout', label: '下单', icon: 'fas fa-paper-plane' },
+] as const;
+type StepKey = (typeof STEPS)[number]['key'];
+
 const props = defineProps<{
   /** INT-577 §2.2：批量「加入挑选」预选任务（任务级粒度整任务加购，等价旧合并任务入口） */
   presetTaskIds?: (number | string)[];
+  /** 直达步骤（购物车抽屉「去复核」→ review；缺省 pick） */
+  initialStep?: StepKey;
 }>();
 
 const emit = defineEmits<{
@@ -323,14 +333,7 @@ const {
   refreshSets, saveAsSet, restoreSetToCart, deleteSet,
 } = usePickCart();
 
-const STEPS = [
-  { key: 'pick', label: '挑选', icon: 'fas fa-hand-pointer' },
-  { key: 'cart', label: '购物车', icon: 'fas fa-cart-shopping' },
-  { key: 'review', label: '复核', icon: 'fas fa-clipboard-check' },
-  { key: 'checkout', label: '下单', icon: 'fas fa-paper-plane' },
-] as const;
-type StepKey = (typeof STEPS)[number]['key'];
-const step = ref<StepKey>('pick');
+const step = ref<StepKey>(props.initialStep ?? 'pick');
 const stepIndex = computed(() => STEPS.findIndex((s) => s.key === step.value));
 
 function goStep(key: StepKey) {

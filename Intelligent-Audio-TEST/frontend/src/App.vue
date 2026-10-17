@@ -76,6 +76,7 @@ import { provideNotification, type NotificationInstance } from './composables/mo
 import CartDrawer from './components/task/pick/CartDrawer.vue'
 import { usePickCart } from './composables/task/usePickCart'
 import { useCartDrawerState } from './composables/task/cartDrawerState'
+import { requestPickWizard } from './composables/task/usePickWizardRequest'
 import { PermissionPoint } from './domain/enums'
 
 // ===== 导航配置 =====
@@ -120,7 +121,12 @@ const canViewCart = computed(() => authStore.isLoggedIn && authStore.hasPermissi
 
 function goCartReview() {
   cartDrawerState.close()
-  router.push({ path: '/tasks', query: { tab: 'cherry-picks', wizard: 'review' } })
+  // P0 修复同款机制：经共享请求自开复核向导（:key=fullPath 重挂载下 URL 参数方案
+  // 会在清参时再次重挂载丢向导态）；query 保留现有参数只归一 tab
+  requestPickWizard({ step: 'review' })
+  const query: Record<string, string> = { ...route.query, tab: 'cherry-picks' } as Record<string, string>
+  delete query.wizard
+  router.push({ path: '/tasks', query })
 }
 
 // provide() 必须在 setup 同步阶段调用，提供模态框管理器供子孙组件 inject
