@@ -37,17 +37,15 @@ import type {
   ParamScope,
 } from '@/features/algorithm-config/types'
 import {
+  CASE_PARAM_CODE_PRESETS,
   CASE_PARAM_SCOPE_OPTIONS,
   CASE_PARAM_TYPE_OPTIONS,
   DEVICE_PARAM_TYPE_OPTIONS,
+  FEATURE_BUNDLES,
   FEATURE_BUNDLES_HINT,
   PARAM_DIRECTION_OPTIONS,
 } from '@/features/algorithm-config/constants'
 import { ParamScopeChips, type FeatureBundleItem } from './param-scope-chips'
-import {
-  MOCK_CASE_PARAM_CODE_PRESETS,
-  MOCK_FEATURE_BUNDLES,
-} from '@/infrastructure/mock/algorithm-config-mock'
 
 const PRESET_DATALIST_ID = 'case-param-code-presets'
 
@@ -101,7 +99,7 @@ export function ParamsTable({
 
   const featureBundles: FeatureBundleItem[] = useMemo(() => {
     const watchCase = watchParams.caseParams
-    return MOCK_FEATURE_BUNDLES.map((bundle) => ({
+    return FEATURE_BUNDLES.map((bundle) => ({
       key: bundle.key,
       label: bundle.label,
       params: bundle.params,
@@ -112,7 +110,7 @@ export function ParamsTable({
   }, [watchParams.caseParams])
 
   const toggleBundle = (key: string) => {
-    const bundle = MOCK_FEATURE_BUNDLES.find((b) => b.key === key)
+    const bundle = FEATURE_BUNDLES.find((b) => b.key === key)
     if (!bundle) return
     const active = bundle.params.every((code) =>
       watchParams.caseParams.some((param) => param.paramCode === code)
@@ -259,7 +257,7 @@ export function ParamsTable({
       )}
 
       <datalist id={PRESET_DATALIST_ID}>
-        {MOCK_CASE_PARAM_CODE_PRESETS.map((code) => (
+        {CASE_PARAM_CODE_PRESETS.map((code) => (
           <option key={code} value={code} />
         ))}
       </datalist>

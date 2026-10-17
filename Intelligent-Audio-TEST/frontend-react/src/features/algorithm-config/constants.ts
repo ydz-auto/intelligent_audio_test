@@ -113,6 +113,44 @@ export const DIMENSIONS_DESCRIPTION =
 export const IMPORT_DIALOG_DESCRIPTION =
   '粘贴或上传算法定义 JSON（与导出格式一致），导入后立即生效。'
 
+/** 功能特性快捷开关（§6.3 用例参数页签；勾选自动批量添加/删除对应参数；前端 UI 常量非接口数据） */
+export const FEATURE_BUNDLES = [
+  {
+    key: 'translation',
+    label: '翻译',
+    params: ['source_language', 'target_language'],
+  },
+  {
+    key: 'noise',
+    label: '噪声',
+    params: ['noise_level'],
+  },
+  {
+    key: 'speaker',
+    label: '说话人',
+    params: ['speaker_count', 'max_idle_ms'],
+  },
+  {
+    key: 'streaming',
+    label: '流式',
+    params: ['vad_sensitivity', 'continuity_mode'],
+  },
+]
+
+/** 用例参数代码预设（§6.3 datalist 预设，新建用例参数 placeholder 建议；前端 UI 常量非接口数据） */
+export const CASE_PARAM_CODE_PRESETS = [
+  'source_language',
+  'target_language',
+  'noise_level',
+  'speaker_count',
+  'audio_file',
+  'vad_sensitivity',
+  'max_idle_ms',
+  'continuity_mode',
+  'wake_word',
+  'speech_speed',
+]
+
 /** 自动保存倒计时秒数（§6.2；30 秒档位同 newAPI EMAIL_VERIFICATION_COUNTDOWN/PASSWORD_RESET_COUNTDOWN = 30） */
 export const AUTO_SAVE_COUNTDOWN_SECONDS = 30
 
