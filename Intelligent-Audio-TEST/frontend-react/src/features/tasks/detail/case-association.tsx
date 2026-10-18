@@ -152,6 +152,11 @@ export function CaseAssociation({
     setReviewLoading(true)
     try {
       const res = await fetchCaseResults(detail.id, c.case_id)
+      // 无执行结果的用例不打开可提交的复核弹窗（旧 Vue 基线 TestCaseDetailModal 同口径收口，INT-795 P2-1）
+      if (res.results.length === 0) {
+        toast.error('该用例无执行结果，无法复核')
+        return
+      }
       setReviewTarget({
         caseId: c.case_id,
         caseName: res.caseName || c.name,
@@ -172,6 +177,11 @@ export function CaseAssociation({
     setReviewLoading(true)
     try {
       const res = await fetchCaseResults(detail.id, c.case_id)
+      // 无执行结果不发起 AI 复核（§5.2 可发起对象须有结果；INT-795 P2-1）
+      if (res.results.length === 0) {
+        toast.error('该用例无执行结果，无法复核')
+        return
+      }
       setAiReviewTarget({
         caseId: c.case_id,
         caseName: res.caseName || c.name,
@@ -206,10 +216,16 @@ export function CaseAssociation({
       for (const e of entries) {
         for (const r of e.results) caseNameByResultId[r.id] = e.caseName
       }
+      const results = entries.flatMap((e) => e.results)
+      // 勾选用例均无执行结果时不打开可提交的批量复核弹窗（INT-795 P2-1）
+      if (results.length === 0) {
+        toast.error('勾选用例均无执行结果，无法复核')
+        return
+      }
       setReviewTarget({
         caseId: '',
         caseName: undefined,
-        results: entries.flatMap((e) => e.results),
+        results,
         evaluationStatus: null,
         caseNameByResultId,
       })
