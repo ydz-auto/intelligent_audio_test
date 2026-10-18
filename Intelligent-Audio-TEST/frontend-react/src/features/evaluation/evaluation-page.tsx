@@ -4,7 +4,7 @@
  * 列表视图=平铺层级表格；分组视图=按分类聚合卡（组内嵌同款表格）。
  * 交互：筛选（搜索/状态/分类/关联算法 + 全局算法联动 chip）→ 本地派生；权重滑杆
  * onValueCommitted 提交 + toast；行操作（上移/下移/编辑/复制/启停/添加子维度/测试 API/
- * 规则试算/删除）；批量操作浮条；导入导出 mock。
+ * 规则试算/删除）；批量操作浮条；导入导出接真实接口。
  * RBAC：写权限缺失时写钮禁用 + Tooltip「无 {code} 权限」（基座 §9.2 规则 3）。
  */
 import { Link } from '@tanstack/react-router'
@@ -65,9 +65,6 @@ import { CategoryMutateDialog } from '@/features/evaluation/modals/category-muta
 import { RuleCalcDialog } from '@/features/evaluation/modals/dimension-rule-calc-dialog'
 import { HealthTestDialog } from '@/features/evaluation/modals/health-test-dialog'
 import { EvaluationConfirmDialog } from '@/features/evaluation/modals/evaluation-confirms'
-import {
-  buildExportRowsExcelHtml,
-} from '@/features/evaluation/export-dimensions'
 import { downloadBlob } from '@/features/evaluation/download-blob'
 import type {
   CategoryDialogState,
@@ -531,20 +528,21 @@ export function EvaluationPage() {
 
   const handleExport = (format: 'json' | 'excel') => {
     // §4.1 导出维度（JSON/Excel 二选一下拉项）；GET /evaluation/dimensions/export?format= 真实数据
+    // excel：后端返回二进制 XLSX 直接落盘（对照旧 Vue blob 口径）；json：行数组由前端序列化
     const date = new Date().toISOString().slice(0, 10)
     const extension = format === 'excel' ? 'xlsx' : 'json'
     const filename = `evaluation-dimensions-${date}.${extension}`
     void importExport.export
       .mutateAsync(format)
-      .then((rows) => {
-        if (format === 'json') {
-          downloadBlob(JSON.stringify(rows, null, 2), filename, 'application/json')
-        } else {
+      .then((result) => {
+        if (result.format === 'excel') {
           downloadBlob(
-            buildExportRowsExcelHtml(rows),
+            result.blob,
             filename,
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
           )
+        } else {
+          downloadBlob(JSON.stringify(result.rows, null, 2), filename, 'application/json')
         }
         toast.success('维度导出成功')
       })

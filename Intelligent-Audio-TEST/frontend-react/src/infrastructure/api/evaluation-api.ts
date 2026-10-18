@@ -315,15 +315,31 @@ export async function importEvaluationDimensions(
   return { imported: data?.imported ?? 0, updated: data?.updated ?? 0 }
 }
 
-/** 导出维度（GET /evaluation/dimensions/export?format=json|excel → 维度数据数组，前端落盘） */
+/** 导出维度结果（excel 为后端二进制 XLSX，json 为行数组） */
+export type DimensionExportResult =
+  | { format: 'json'; rows: Array<Record<string, unknown>> }
+  | { format: 'excel'; blob: Blob }
+
+/** 导出维度（GET /evaluation/dimensions/export?format=json|excel）。
+ * json：后端返回 JSON 信封（data=行数组，camel 键），前端序列化落盘；
+ * excel：后端返回二进制 XLSX（Response 字节流，中文列名），须 blob 直落
+ * （对照旧 Vue responseType:'blob' 口径，evaluation_command_service.py export_to_file excel 分支） */
 export async function exportEvaluationDimensions(
   format: 'json' | 'excel'
-): Promise<Array<Record<string, unknown>>> {
+): Promise<DimensionExportResult> {
+  if (format === 'excel') {
+    const blob = await apiClient.get<Blob>('/evaluation/dimensions/export', {
+      params: { format: 'excel' },
+      responseType: 'blob',
+      unwrapResponse: false,
+    })
+    return { format: 'excel', blob }
+  }
   const dto = await apiClient.get<Array<Record<string, unknown>>>(
     '/evaluation/dimensions/export',
-    { params: { format } }
+    { params: { format: 'json' } }
   )
-  return Array.isArray(dto) ? dto : []
+  return { format: 'json', rows: Array.isArray(dto) ? dto : [] }
 }
 
 /** 分类保存请求体（Partial<EvaluationCategory> camelCase → CategoryCreateInput/UpdateInput） */
