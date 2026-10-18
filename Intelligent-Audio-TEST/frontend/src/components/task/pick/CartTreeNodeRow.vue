@@ -149,7 +149,7 @@ function statusText(status?: string | null): string {
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
-  border-radius: 6px;
+  border-radius: var(--border-radius-md);
 }
 .ctr-row:hover {
   background: var(--color-slate-50, #f8fafc);
@@ -193,7 +193,7 @@ function statusText(status?: string | null): string {
 .ctr-count {
   flex-shrink: 0;
   padding: 1px 8px;
-  border-radius: 10px;
+  border-radius: var(--border-radius-full);
   background: var(--color-slate-100, #f1f5f9);
   color: var(--color-slate-500, #64748b);
   font-size: 11px;
@@ -205,7 +205,7 @@ function statusText(status?: string | null): string {
   gap: 4px;
   padding: 3px 8px;
   border: 1px solid var(--color-slate-300, #cbd5e1);
-  border-radius: 6px;
+  border-radius: var(--border-radius-md);
   background: #fff;
   font-size: 12px;
   cursor: pointer;
@@ -228,7 +228,7 @@ function statusText(status?: string | null): string {
 .ctr-leaf-dim { color: var(--color-slate-500, #64748b); min-width: 70px; }
 .ctr-leaf-rt {
   padding: 0 6px;
-  border-radius: 4px;
+  border-radius: var(--border-radius-sm);
   background: var(--color-amber-50, #fffbeb);
   color: #b45309;
   font-family: var(--font-mono, monospace);
@@ -237,7 +237,7 @@ function statusText(status?: string | null): string {
 /* P3（UX 审计）：状态徽章改走 tokens 与 TaskCard exec-status-badge 同源，去硬编码 hex */
 .ctr-leaf-status {
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--border-radius-full);
   font-size: 11px;
 }
 .ctr-leaf-status.completed { background: var(--color-emerald-100); color: var(--color-emerald-600); }

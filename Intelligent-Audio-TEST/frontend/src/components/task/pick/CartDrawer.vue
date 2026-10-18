@@ -315,7 +315,7 @@ async function restoreSet(setId: number) {
   gap: 6px;
   padding: 6px 12px;
   border: 1px solid var(--color-slate-300, #cbd5e1);
-  border-radius: 6px;
+  border-radius: var(--border-radius-md);
   background: #fff;
   font-size: 13px;
   cursor: pointer;
@@ -364,7 +364,7 @@ async function restoreSet(setId: number) {
 .cd-empty-hint { font-size: 12px !important; color: var(--color-slate-400, #94a3b8); }
 .cd-group {
   border: 1px solid var(--color-slate-200, #e2e8f0);
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   overflow: hidden;
 }
 .cd-group-head {
@@ -387,7 +387,7 @@ async function restoreSet(setId: number) {
 .cd-count {
   flex-shrink: 0;
   padding: 1px 8px;
-  border-radius: 10px;
+  border-radius: var(--border-radius-full);
   background: var(--color-slate-100, #f1f5f9);
   color: var(--color-slate-500, #64748b);
   font-size: 11px;
@@ -413,7 +413,7 @@ async function restoreSet(setId: number) {
 .cd-row-dim { color: var(--color-slate-500, #64748b); min-width: 70px; }
 .cd-row-rt {
   padding: 0 6px;
-  border-radius: 4px;
+  border-radius: var(--border-radius-sm);
   background: var(--color-amber-50, #fffbeb);
   color: #b45309;
   font-family: var(--font-mono, monospace);

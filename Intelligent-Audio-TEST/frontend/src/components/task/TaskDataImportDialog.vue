@@ -220,7 +220,7 @@ onUnmounted(stopWatching);
   max-height: 84vh;
   overflow-y: auto;
   background: var(--bg-color, #fff);
-  border-radius: 10px;
+  border-radius: var(--border-radius-xl);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
   display: flex;
   flex-direction: column;
@@ -249,7 +249,7 @@ onUnmounted(stopWatching);
 .dt-info { color: var(--text-secondary, #666); font-size: 13px; margin-top: 8px; }
 .dt-progress-track {
   height: 10px;
-  border-radius: 5px;
+  border-radius: var(--border-radius-full);
   background: var(--border-color, #e5e7eb);
   overflow: hidden;
   margin-bottom: 6px;
@@ -270,7 +270,7 @@ onUnmounted(stopWatching);
 }
 .dt-btn {
   padding: 7px 16px;
-  border-radius: 6px;
+  border-radius: var(--border-radius-md);
   border: 1px solid var(--border-color, #ddd);
   background: transparent;
   color: inherit;

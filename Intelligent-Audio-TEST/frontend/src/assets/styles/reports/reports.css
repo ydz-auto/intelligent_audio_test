@@ -20,7 +20,7 @@
 /* 确保历史报告页面的搜索框样式正确应用 */
 .filter-sort-section .search-input{
     border: 2px solid var(--color-gray-300) ;
-    border-radius: var(--border-radius-lg) ;
+    border-radius: var(--border-radius-md) ;
     padding: var(--spacing-sm) var(--spacing-md) ;
     font-size: var(--font-size-md) ;
     background-color: white ;

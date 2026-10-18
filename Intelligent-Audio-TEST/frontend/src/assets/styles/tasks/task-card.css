@@ -2,7 +2,7 @@
 .task-card, .card{
     background: linear-gradient(135deg, var(--color-white) 0%, var(--color-slate-50) 100%);
     border: 2px solid transparent;
-    border-radius: 16px;
+    border-radius: var(--border-radius-xl);
     padding: 24px;
     margin-bottom: 20px;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
