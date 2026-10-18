@@ -259,7 +259,7 @@
                   <i class="fas fa-info-circle" style="font-size: 24px; margin-bottom: 12px; display: block;"></i>
                   暂无关联用例
                 </div>
-                <div v-for="testCase in visibleCases" :key="testCase.id" class="progress-item-small" :class="testCase.status" style="padding: 12px; border-radius: 8px; background-color: var(--background-secondary); display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; min-height: 52px; box-sizing: border-box; cursor: pointer;" @click="handleTestCaseClick(testCase)">
+                <div v-for="testCase in visibleCases" :key="testCase.id" class="progress-item-small" :class="testCase.status" style="padding: 12px; border-radius: var(--radius-control); background-color: var(--background-secondary); display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; min-height: 52px; box-sizing: border-box; cursor: pointer;" @click="handleTestCaseClick(testCase)">
                   <!-- INT-796 §3.1：批量复核勾选（终态任务 + task.result.review；点击不冒泡） -->
                   <label
                     v-if="canReview && isTerminal"
@@ -283,8 +283,8 @@
                       <span style="font-size: 11px; color: var(--text-secondary); white-space: nowrap;">
                         第 {{ testCase.roundProgress.current }}/{{ testCase.roundProgress.total }} 轮
                       </span>
-                      <div style="flex: 1; height: 3px; background: var(--border-color); border-radius: 2px; overflow: hidden; min-width: 40px;">
-                        <div style="height: 100%; background: var(--primary-color); border-radius: 2px; transition: width 0.3s ease;"
+                      <div style="flex: 1; height: 3px; background: var(--border-color); border-radius: var(--radius-2); overflow: hidden; min-width: 40px;">
+                        <div style="height: 100%; background: var(--primary-color); border-radius: var(--radius-2); transition: width 0.3s ease;"
                              :style="{ width: (testCase.roundProgress.current / testCase.roundProgress.total * 100) + '%' }">
                         </div>
                       </div>
@@ -351,10 +351,10 @@
                 <i v-if="caseViewMode === ViewMode.TAG" class="fas fa-tag" style="color: var(--primary-color); font-size: 13px;"></i>
                 <i v-else class="fas fa-folder" style="color: var(--primary-color); font-size: 13px;"></i>
                 <span style="font-weight: 500; color: var(--text-primary);">{{ key }}</span>
-                <span style="background-color: var(--primary-color); color: white; font-size: 12px; padding: 2px 8px; border-radius: 12px; min-width: 20px; text-align: center;">{{ cases.length }}</span>
+                <span style="background-color: var(--primary-color); color: var(--color-white); font-size: 12px; padding: 2px 8px; border-radius: var(--radius-pill); min-width: 20px; text-align: center;">{{ cases.length }}</span>
               </div>
               <div v-if="expandedCaseGroups[key]" class="case-group-content" style="padding: 0 12px 12px 12px; display: flex; flex-direction: column; gap: 2px;">
-                <div v-for="testCase in cases" :key="testCase.id" class="progress-item-small" :class="testCase.status" style="padding: 10px; border-radius: 8px; background-color: var(--background-primary); display: flex; justify-content: space-between; align-items: center; min-height: 48px; box-sizing: border-box; cursor: pointer;" @click="handleTestCaseClick(testCase)">
+                <div v-for="testCase in cases" :key="testCase.id" class="progress-item-small" :class="testCase.status" style="padding: 10px; border-radius: var(--radius-control); background-color: var(--background-primary); display: flex; justify-content: space-between; align-items: center; min-height: 48px; box-sizing: border-box; cursor: pointer;" @click="handleTestCaseClick(testCase)">
                   <!-- INT-796 §3.1：批量复核勾选（标签/分组视图同款） -->
                   <label
                     v-if="canReview && isTerminal"
@@ -378,8 +378,8 @@
                       <span style="font-size: 11px; color: var(--text-secondary); white-space: nowrap;">
                         第 {{ testCase.roundProgress.current }}/{{ testCase.roundProgress.total }} 轮
                       </span>
-                      <div style="flex: 1; height: 3px; background: var(--border-color); border-radius: 2px; overflow: hidden; min-width: 40px;">
-                        <div style="height: 100%; background: var(--primary-color); border-radius: 2px; transition: width 0.3s ease;"
+                      <div style="flex: 1; height: 3px; background: var(--border-color); border-radius: var(--radius-2); overflow: hidden; min-width: 40px;">
+                        <div style="height: 100%; background: var(--primary-color); border-radius: var(--radius-2); transition: width 0.3s ease;"
                              :style="{ width: (testCase.roundProgress.current / testCase.roundProgress.total * 100) + '%' }">
                         </div>
                       </div>
@@ -440,7 +440,7 @@
               <i class="fas fa-info-circle" style="font-size: 24px; margin-bottom: 12px; display: block;"></i>
               暂无关联{{ testType === 'API' ? 'API' : '设备' }}
             </div>
-            <div v-for="device in associatedDevices" :key="device.id" class="associated-device-item" style="padding: 12px; border-radius: 8px; background-color: var(--background-secondary); display: flex; justify-content: space-between; align-items: center;">
+            <div v-for="device in associatedDevices" :key="device.id" class="associated-device-item" style="padding: 12px; border-radius: var(--radius-control); background-color: var(--background-secondary); display: flex; justify-content: space-between; align-items: center;">
               <div class="device-info">
                 <div class="device-name" style="font-weight: 500; margin-bottom: 4px;">{{ device.name }}</div>
                 <div class="device-status" :class="`status-${device.status}`" style="font-size: 12px;">
@@ -1096,7 +1096,7 @@ const scrollToBottom = () => {
   align-items: center;
   gap: 6px;
   padding: 4px 12px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   font-size: 12px;
   font-weight: 500;
   border: none;
@@ -1108,7 +1108,7 @@ const scrollToBottom = () => {
   align-items: center;
   gap: 4px;
   padding: 3px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-10);
   font-size: 11px;
   font-weight: 500;
   color: var(--primary-color);
@@ -1283,7 +1283,7 @@ const scrollToBottom = () => {
 .association-content{
     padding: 24px;
     background-color: var(--background-primary);
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--border-color);
     margin: 20px 0;
@@ -1305,7 +1305,7 @@ const scrollToBottom = () => {
 .associated-items-list .progress-item-small{
     cursor: pointer;
     padding: 12px;
-    border-radius: 8px;
+    border-radius: var(--radius-control);
     background-color: var(--background-secondary);
     display: flex;
     justify-content: space-between;

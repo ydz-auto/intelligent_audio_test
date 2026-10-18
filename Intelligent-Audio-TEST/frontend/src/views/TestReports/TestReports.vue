@@ -219,7 +219,7 @@ const {
   height: 40px;
   border: 3px solid var(--color-slate-200);
   border-top-color: var(--secondary);
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   animation: tr-spin 1s linear infinite;
   margin-bottom: 16px;
 }

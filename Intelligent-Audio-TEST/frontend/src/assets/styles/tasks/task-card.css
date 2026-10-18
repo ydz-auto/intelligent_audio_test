@@ -31,10 +31,11 @@
     box-shadow: 0 12px 32px color-mix(in srgb, var(--primary) 15%, transparent);
 }
 
-/* 确保卡片内容区域也应用选中背景色 - 仅应用于任务卡片 */
+/* 确保卡片内容区域也应用选中背景色 - 仅应用于任务卡片
+   （important 已去：本文件晚于 components/card.css 加载，同/更高特异性下透明背景仍覆盖） */
 .task-card.card-selected .card__body,
 .task-card:has(input[type="checkbox"].test-task-checkbox:checked) .card__body{
-    background: transparent !important;
+    background: transparent;
 }
 
 /* 修复卡片右边被遮住的问题 */
@@ -95,11 +96,11 @@
     border: 1px solid var(--success-color);
 }
 
-/* 选中状态下的任务描述背景 */
+/* 选中状态下的任务描述背景（important 已去：特异性/加载序仍覆盖 card.css 同款规则） */
 .task-card.selected .task-description,
 .task-card.card-selected .task-description,
 .task-card:has(input[type="checkbox"].test-task-checkbox:checked) .task-description{
-    background: color-mix(in srgb, var(--primary) 5%, transparent) !important;
+    background: color-mix(in srgb, var(--primary) 5%, transparent);
     box-shadow: inset 0 1px 3px color-mix(in srgb, var(--color-black) 5%, transparent);
 }
 

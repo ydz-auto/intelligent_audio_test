@@ -149,7 +149,7 @@ onMounted(() => {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 4%, transparent);
   padding: 16px;
 }
 .ag-head {
@@ -189,7 +189,7 @@ onMounted(() => {
 }
 .ag-card:hover:not(:disabled) {
   border-color: var(--primary);
-  box-shadow: 0 2px 10px rgba(255, 106, 0, 0.08);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--primary) 8%, transparent);
 }
 .ag-card.selected {
   border-color: var(--primary);
@@ -234,7 +234,7 @@ onMounted(() => {
 .ag-badge {
   font-size: 11px;
   padding: 1px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--border);
   color: var(--muted-foreground);
 }
@@ -269,7 +269,7 @@ onMounted(() => {
   right: 10px;
   font-size: 11px;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--primary);
   color: var(--primary-foreground);
 }

@@ -108,7 +108,11 @@ const userMenuRef = ref<HTMLElement | null>(null)
 /** 头像：用户名首字符大写 + 哈希底色（对齐总表 §2.4 头像下拉） */
 const avatarChar = computed(() => (authStore.username || '?').charAt(0).toUpperCase())
 const avatarBg = computed(() => {
-  const AVATAR_COLORS = ['#ff6a00', '#1976d2', '#52c41a', '#722ed1', '#d48806', '#13c2c2', '#eb2f96']
+  // 身份色令牌（深浅同值，不随主题换色）
+  const AVATAR_COLORS = [
+    'var(--avatar-1)', 'var(--avatar-2)', 'var(--avatar-3)', 'var(--avatar-4)',
+    'var(--avatar-5)', 'var(--avatar-6)', 'var(--avatar-7)',
+  ]
   let hash = 0
   const name = authStore.username || ''
   for (let i = 0; i < name.length; i += 1) hash = (hash * 31 + name.charCodeAt(i)) >>> 0
@@ -212,7 +216,7 @@ onBeforeUnmount(() => {
 }
 .brand-name {
   font-size: 16px;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 .public-nav {
   display: flex;
@@ -301,10 +305,10 @@ onBeforeUnmount(() => {
 .user-avatar {
   width: 28px;
   height: 28px;
-  border-radius: 50%;
-  color: #fff;
+  border-radius: var(--radius-pill);
+  color: var(--color-white);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -332,7 +336,7 @@ onBeforeUnmount(() => {
   background: var(--popover);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--color-black) 8%, transparent);
   padding: 6px;
   z-index: 50;
 }

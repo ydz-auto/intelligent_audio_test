@@ -36,8 +36,8 @@
   display: inline-block;
   padding: 8px 24px;
   background: var(--secondary);
-  color: white;
-  border-radius: 4px;
+  color: var(--color-white);
+  border-radius: var(--radius-tag);
   text-decoration: none;
 }
 .back-link:hover {

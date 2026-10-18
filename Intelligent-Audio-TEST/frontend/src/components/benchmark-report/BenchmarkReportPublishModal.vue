@@ -127,20 +127,20 @@ function handleConfirm() {
   left: 0;
   width: 100vw;
   height: 100vh;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: color-mix(in srgb, var(--color-black) 50%, transparent);
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 13000;
+  z-index: var(--z-index-modal-top);
   overflow: hidden;
   opacity: 1;
   visibility: visible;
 }
 
 .modal {
-  background-color: #fff;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  background-color: var(--background);
+  border-radius: var(--radius-control);
+  box-shadow: 0 4px 20px color-mix(in srgb, var(--color-black) 15%, transparent);
   max-height: 90vh;
   overflow: hidden;
   display: flex;
@@ -158,35 +158,35 @@ function handleConfirm() {
   justify-content: space-between;
   align-items: center;
   padding: 16px 20px;
-  border-bottom: 1px solid #e9ecef;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-bottom: 1px solid var(--modal-border-color);
+  background: linear-gradient(135deg, var(--modal-surface-top) 0%, var(--modal-border-color) 100%);
 }
 
 .modal-title {
   margin: 0;
   font-size: 17px;
-  font-weight: 600;
-  color: #343a40;
+  font-weight: var(--font-weight-semibold);
+  color: var(--modal-title-color);
 }
 
 .modal-close {
   background: none;
   border: none;
-  font-size: 18px;
+  font-size: var(--font-size-lg);
   cursor: pointer;
-  color: #6c757d;
+  color: var(--modal-muted);
   width: 30px;
   height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
-  transition: all 0.2s;
+  border-radius: var(--radius-pill);
+  transition: all var(--transition-fast);
 }
 
 .modal-close:hover {
-  color: #343a40;
-  background-color: #e9ecef;
+  color: var(--modal-title-color);
+  background-color: var(--modal-border-color);
 }
 
 .modal-scroll-container {
@@ -197,7 +197,7 @@ function handleConfirm() {
 
 .modal-body {
   padding: 20px 24px;
-  background-color: #fff;
+  background-color: var(--background);
 }
 
 .modal-footer {
@@ -206,41 +206,41 @@ function handleConfirm() {
   align-items: center;
   gap: 12px;
   padding: 14px 24px;
-  border-top: 1px solid #e9ecef;
-  background-color: #f8f9fa;
+  border-top: 1px solid var(--modal-border-color);
+  background-color: var(--modal-surface-top);
 }
 
 .btn {
   padding: 8px 18px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  transition: all 0.2s;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  transition: all var(--transition-fast);
 }
 
 .btn-primary {
-  background-color: #ff6a00;
-  color: #fff;
+  background-color: var(--primary);
+  color: var(--color-white);
 }
 
 .btn-primary:hover {
-  background-color: #ff8c40;
+  background-color: var(--btn-primary-hover-color);
 }
 
 .btn-primary:disabled {
-  background-color: #d9d9d9;
+  background-color: var(--btn-primary-disabled-bg);
   cursor: not-allowed;
 }
 
 .btn-secondary {
-  background-color: #f0f0f0;
-  color: #333;
+  background-color: var(--gray-light);
+  color: var(--foreground);
 }
 
 .btn-secondary:hover {
-  background-color: #e0e0e0;
+  background-color: var(--btn-secondary-hover-bg);
 }
 
 .form-group {
@@ -251,12 +251,12 @@ function handleConfirm() {
   display: block;
   margin-bottom: 6px;
   font-size: 13px;
-  font-weight: 600;
-  color: #1f2937;
+  font-weight: var(--font-weight-semibold);
+  color: var(--modal-text);
 }
 
 .required {
-  color: #e53e3e;
+  color: var(--danger-required);
 }
 
 .form-select,
@@ -264,11 +264,11 @@ function handleConfirm() {
 .form-textarea {
   width: 100%;
   padding: 8px 10px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
+  border: 1px solid var(--color-gray-300);
+  border-radius: var(--radius-6);
   font-size: 13px;
-  background: #fff;
-  color: #1f2937;
+  background: var(--background);
+  color: var(--modal-text);
   box-sizing: border-box;
 }
 
@@ -276,13 +276,13 @@ function handleConfirm() {
 .form-input:focus,
 .form-textarea:focus {
   outline: none;
-  border-color: #ff6a00;
-  box-shadow: 0 0 0 2px rgba(255, 106, 0, 0.15);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 15%, transparent);
 }
 
 .form-hint {
   margin-top: 6px;
-  font-size: 12px;
-  color: #9ca3af;
+  font-size: var(--font-size-xs);
+  color: var(--color-gray-400);
 }
 </style>

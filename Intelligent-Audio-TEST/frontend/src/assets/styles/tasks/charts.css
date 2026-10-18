@@ -45,7 +45,7 @@
     background: color-mix(in srgb, var(--primary) 10%, transparent);
     color: var(--primary);
     padding: 6px 12px;
-    border-radius: 16px;
+    border-radius: var(--radius-card);
     font-size: 14px;
     cursor: pointer;
     transition: all 0.3s ease;
@@ -58,13 +58,13 @@
 
 .tag-item.active{
     background: var(--primary);
-    color: white;
+    color: var(--color-white);
 }
 
 /* 标签分页样式 */
 
 .tag-page-btn{
-    background-color: white;
+    background-color: var(--background);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -94,7 +94,7 @@
 /* 时间按钮激活样式 */
 .time-btn.active{
     background: var(--primary);
-    color: white;
+    color: var(--color-white);
     border-color: var(--primary);
 }
 
