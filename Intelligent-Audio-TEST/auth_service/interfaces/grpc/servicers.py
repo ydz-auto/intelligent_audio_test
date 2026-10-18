@@ -368,6 +368,28 @@ class AuthServicer(auth_grpc.AuthServiceServicer):
             self._rollback()
             return self._error_response(e, 'UpdateUser')
 
+    def UpdateSelfProfile(self, request, context=None) -> auth_pb.AuthResponse:
+        """更新当前登录用户自我资料（INT-792：仅 email）。
+
+        服务端字段白名单：请求消息只含 email，无 username/status/password，
+        防网关白名单漏配导致经 admin UpdateUser 路径改非开放字段。
+        """
+        try:
+            from auth_service.application.commands.auth_commands import (
+                UpdateSelfProfileCommand,
+            )
+            cmd = UpdateSelfProfileCommand(
+                user_id=getattr(request, 'user_id', 0),
+                email=getattr(request, 'email', '') or None,
+                operator_id=getattr(request, 'operator_id', 0),
+            )
+            self.command_handler.handle_update_self_profile(cmd)
+            self._commit()
+            return _ok({}, '更新成功')
+        except Exception as e:
+            self._rollback()
+            return self._error_response(e, 'UpdateSelfProfile')
+
     def UpdateLastLogin(self, request, context=None) -> auth_pb.AuthResponse:
         """更新最后登录时间/IP"""
         try:

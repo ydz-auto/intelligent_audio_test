@@ -192,7 +192,7 @@ def logout(request: Request):
 
 @router.get('/me')
 def me(request: Request):
-    """获取当前用户信息"""
+    """获取当前用户信息（INT-792：扩展 email，经 auth_service 实时合并）"""
     return to_response(AuthService.get_current_user_info(request.state))
 
 
@@ -213,3 +213,13 @@ def change_password(request: Request):
         UserManagementService,
     )
     return to_response(UserManagementService.change_password())
+
+
+@router.put('/self')
+def update_self(request: Request):
+    """更新当前登录用户自我资料（INT-792：仅 email；username 平台口径不可改）。
+
+    鉴权取 request.state.user_id 为本人（operator_id 同值），不要求
+    user:update（那是 admin 管他人）；body 携带 username 等其他字段 → 400。
+    """
+    return to_response(AuthService.update_self_profile(request.state))
