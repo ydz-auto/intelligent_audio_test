@@ -12,6 +12,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useReportDetail } from '@/application/report-view/use-report-detail'
+import { useReportReviews } from '@/application/report-view/useReportReviews'
 import { useReportAnalysis } from '@/application/report-view/use-report-analysis'
 import { useReportShare } from '@/application/report-view/use-report-share'
 import { useReportActions } from '@/application/reports/use-report-actions'
@@ -79,6 +80,8 @@ export function ReportViewPage() {
   const reportActions = useReportActions()
   const detailQuery = useReportDetail(reportId)
   const report = detailQuery.data
+  // 报告源任务复核数据（§4.1 统计徽章；仅任务型报告，源任务 review_count 驱动）
+  const reportReviews = useReportReviews(report)
 
   const [editing, setEditing] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
@@ -233,6 +236,12 @@ export function ReportViewPage() {
           }}
           onShare={() => share.openShare('link')}
           onClose={handleBack}
+          reviewCount={reportReviews.reviewCount}
+          onReviewStatsClick={() =>
+            containerRef.current
+              ?.querySelector<HTMLElement>('#report-specific-cases')
+              ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }
         />
 
         <div className='mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_220px]'>
