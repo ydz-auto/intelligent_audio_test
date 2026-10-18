@@ -954,7 +954,7 @@ watch(() => cartRevision.value, () => {
   gap: 12px;
   padding: 12px 16px;
   background: var(--color-slate-50, #f8fafc);
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   border: 1px solid var(--color-slate-200, #e2e8f0);
 }
 .cpw-steps {
@@ -968,7 +968,7 @@ watch(() => cartRevision.value, () => {
   align-items: center;
   gap: 6px;
   padding: 6px 14px;
-  border-radius: 16px;
+  border-radius: var(--border-radius-md);
   background: var(--color-slate-100, #f1f5f9);
   color: var(--color-slate-500, #64748b);
   font-size: 13px;
@@ -1007,7 +1007,7 @@ watch(() => cartRevision.value, () => {
   flex-wrap: wrap;
   padding: 12px;
   background: var(--color-slate-50, #f8fafc);
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   border: 1px solid var(--color-slate-200, #e2e8f0);
   margin-bottom: 12px;
 }
@@ -1015,7 +1015,7 @@ watch(() => cartRevision.value, () => {
   height: 34px;
   padding: 0 10px;
   border: 1px solid var(--color-slate-300, #cbd5e1);
-  border-radius: 6px;
+  border-radius: var(--border-radius-md);
   font-size: 13px;
   background: #fff;
   color: var(--foreground, #1e293b);
@@ -1053,7 +1053,7 @@ watch(() => cartRevision.value, () => {
   gap: 6px;
   padding: 7px 14px;
   border: 1px solid var(--color-slate-300, #cbd5e1);
-  border-radius: 6px;
+  border-radius: var(--border-radius-md);
   background: #fff;
   color: var(--foreground, #1e293b);
   font-size: 13px;
@@ -1097,14 +1097,14 @@ watch(() => cartRevision.value, () => {
   max-height: 420px;
   overflow-y: auto;
   border: 1px solid var(--color-slate-200, #e2e8f0);
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   padding: 8px 0;
 }
 .cpw-flat {
   max-height: 420px;
   overflow-y: auto;
   border: 1px solid var(--color-slate-200, #e2e8f0);
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   padding: 8px 0;
 }
 .cpw-empty {
@@ -1136,7 +1136,7 @@ watch(() => cartRevision.value, () => {
 .cpw-leaf-dim { color: var(--color-slate-500, #64748b); min-width: 80px; }
 .cpw-leaf-rt {
   padding: 0 6px;
-  border-radius: 4px;
+  border-radius: var(--border-radius-sm);
   background: var(--color-amber-50, #fffbeb);
   color: #b45309;
   font-family: var(--font-mono, monospace);
@@ -1145,7 +1145,7 @@ watch(() => cartRevision.value, () => {
 /* P3（UX 审计）：状态徽章改走 tokens 与 TaskCard exec-status-badge 同源，去硬编码 hex */
 .cpw-leaf-status {
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--border-radius-full);
   font-size: 11px;
 }
 .cpw-leaf-status.completed { background: var(--color-emerald-100); color: var(--color-emerald-600); }
@@ -1153,7 +1153,7 @@ watch(() => cartRevision.value, () => {
 .cpw-leaf-status.stopped { background: var(--color-gray-100); color: var(--color-gray-500); }
 .cpw-leaf-eval {
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--border-radius-full);
   font-size: 11px;
 }
 .cpw-leaf-eval.evaluated { background: var(--color-blue-100); color: var(--color-blue-600); }
@@ -1187,7 +1187,7 @@ watch(() => cartRevision.value, () => {
   padding: 10px 12px;
   background: #fff;
   border: 1px solid var(--color-slate-200, #e2e8f0);
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   box-shadow: 0 -2px 8px rgb(0 0 0 / 0.04);
   margin-top: 12px;
 }
@@ -1203,7 +1203,7 @@ watch(() => cartRevision.value, () => {
 }
 .cpw-cart-group {
   border: 1px solid var(--color-slate-200, #e2e8f0);
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   overflow: hidden;
 }
 .cpw-cart-group-head {
@@ -1276,7 +1276,7 @@ watch(() => cartRevision.value, () => {
   min-width: 100px;
   padding: 12px;
   border: 1px solid var(--color-slate-200, #e2e8f0);
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   background: var(--color-slate-50, #f8fafc);
   text-align: center;
 }
@@ -1294,7 +1294,7 @@ watch(() => cartRevision.value, () => {
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   font-size: 13px;
   margin-bottom: 8px;
   flex-wrap: wrap;
@@ -1316,7 +1316,7 @@ watch(() => cartRevision.value, () => {
 }
 .cpw-checkout-card {
   border: 1px solid var(--color-slate-200, #e2e8f0);
-  border-radius: 8px;
+  border-radius: var(--border-radius-xl);
   padding: 12px 16px;
   cursor: pointer;
   transition: all 0.15s ease;

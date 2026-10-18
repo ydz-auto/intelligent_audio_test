@@ -14,6 +14,16 @@
             <i class="fas fa-plus btn-icon"></i>
             新建算法
           </button>
+          <!-- INT-743：分组管理（algorithm:group_manage） -->
+          <button class="btn btn-secondary" @click="groupModalVisible = true">
+            <i class="fas fa-layer-group btn-icon"></i>
+            分组管理
+          </button>
+          <!-- INT-743：重载配置（algorithm:definition_manage） -->
+          <button class="btn btn-secondary" @click="handleReload">
+            <i class="fas fa-sync-alt btn-icon"></i>
+            重载配置
+          </button>
         </div>
       </div>
     </div>
@@ -267,17 +277,52 @@
       @select="handleSelect"
       @success="loadAlgorithms"
     />
+
+    <AlgorithmGroupManagerModal
+      v-model:visible="groupModalVisible"
+      @success="loadAlgorithms"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import AlgorithmConfigModal from '../../components/algorithm/AlgorithmConfigModal.vue'
+import AlgorithmGroupManagerModal from '../../components/algorithm/AlgorithmGroupManagerModal.vue'
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue'
+import { ref } from 'vue'
 import { useAlgorithmConfigPage } from './AlgorithmConfigPage'
+import { algorithmPort } from '@/composables/algorithm/algorithmPort'
+import { useModalControl } from '@/composables/modal/useModal'
+import { MODAL_TYPES } from '@/composables/modal/constants'
+import { useNotification } from '@/composables/modal/useNotification'
 import { ApiEndpointStatus } from '@/domain/enums'
 
 // 模板中 mappings 的键名收窄类型（device/api/evaluation，与页面 composable 定义一致）
 type MappingKey = 'device' | 'api' | 'evaluation'
+
+const modalControl = useModalControl()
+const notification = useNotification()
+const groupModalVisible = ref(false)
+
+/** INT-743：重载后端算法配置缓存 */
+async function handleReload() {
+  try {
+    await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+      title: '确认重载',
+      content: '将重载后端算法配置缓存，使最近变更立即生效。确定重载吗？',
+      confirmText: '重载',
+      cancelText: '取消',
+    })
+  } catch {
+    return
+  }
+  try {
+    const result = await algorithmPort.reloadConfig()
+    notification.success(result?.message || '配置已重载')
+  } catch (e: any) {
+    notification.error(e?.detail || e?.message || '重载失败')
+  }
+}
 
 const {
   tabs,

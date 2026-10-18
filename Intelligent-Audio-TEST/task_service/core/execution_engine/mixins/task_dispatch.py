@@ -189,7 +189,8 @@ class TaskDispatchMixin:
 
         差异#2 收尾：路由判定完全由用例级 device_type 承载
         （http_api / websocket_api 为异步 API 流程）。
-        历史 NULL 行已由 202610 迁移回填（api→http_api / e2e→physical），
+        历史 NULL 行已由 INT-789 回填迁移按关系表补齐
+        （api→http_api / device→physical），
         仍为 NULL 的行按物理流程处理（同步执行，不进入异步等待）。
         """
         from shared.models.common_enums import DeviceType
@@ -244,7 +245,7 @@ class TaskDispatchMixin:
         """根据用例级 device_type 分发用例执行
 
         差异#2 收尾：路由判定完全由 task_case_relations.device_type 承载
-        （task.type 已废弃）。历史 NULL 行已由 202610 迁移回填，
+        （task.type 已废弃）。历史 NULL 行已由 INT-789 回填迁移补齐，
         仍为 NULL 的行兜底按物理设备流程处理。
         """
         from shared.models.common_enums import DeviceType

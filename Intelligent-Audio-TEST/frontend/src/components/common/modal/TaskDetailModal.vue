@@ -9,6 +9,19 @@
       <p>{{ error }}</p>
     </div>
     <div v-else class="modal-content-wrapper">
+      <!-- INT-738：任务详情「生成 AI 报告」入口——随 08_灵犀Agent 卡落地 /ai-chat 路由，
+           先留按钮契约（→ /ai-chat?task={id}）；路由未注册前点击落 404 兜底，注册后直达灵犀Agent 工作台 -->
+      <div class="task-detail-actions">
+        <button
+          class="btn btn-primary"
+          :disabled="!task"
+          :title="!task ? '任务信息加载中' : '基于本任务生成 AI 报告（灵犀Agent）'"
+          @click="openAiChat"
+        >
+          <i class="fas fa-robot"></i> 生成 AI 报告
+        </button>
+      </div>
+
       <TestExecutionComponent
         :test-type="taskType"
         :task-info="taskInfoData"
@@ -594,6 +607,14 @@ function handleCheckedOut(payload: { action: string; taskId?: number }) {
   }
 }
 
+// ===== INT-738：生成 AI 报告入口（随 08_灵犀Agent 落地 /ai-chat 路由；先留按钮契约） =====
+
+/** 跳转灵犀Agent 工作台并携带本任务 ID（→ /ai-chat?task={id}） */
+function openAiChat() {
+  if (!props.taskId) return;
+  router.push({ path: '/ai-chat', query: { task: String(props.taskId) } });
+}
+
 // ===== INT-305：移除用例（四阶段全允许，按任务阶段说明删除后果） =====
 
 interface RemoveCaseEvent {
@@ -764,6 +785,20 @@ onUnmounted(() => {
 
 .modal-content-wrapper {
   /* 移除滚动设置，由外层BasicModal控制滚动 */
+}
+
+/* INT-738：任务详情头部动作区（「生成 AI 报告」入口，对齐任务详情页主形态） */
+.task-detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 0 16px;
+}
+
+.task-detail-actions .btn {
+  min-height: 32px;
 }
 
 /* INT-467：任务可见性徽标 + 分享/设为私有切换（token 化，与 VisibilityBadge 同色系） */

@@ -175,10 +175,10 @@ function select(value: string | number) {
   justify-content: center !important;
   gap: 6px !important;
   padding: 5px 14px !important;
-  border: 1px solid #d0d5dd !important;
+  border: 1px solid var(--border) !important;
   border-radius: var(--radius-pill) !important;
-  background: #f8fafc !important;
-  color: #475569 !important;
+  background: var(--muted) !important;
+  color: var(--muted-foreground) !important;
   font-size: 13px !important;
   font-weight: 500 !important;
   line-height: 1.4 !important;
@@ -196,13 +196,13 @@ function select(value: string | number) {
 .badge-filter__badge:hover {
   border-color: var(--primary-color, #ff6a00) !important;
   color: var(--primary-color, #ff6a00) !important;
-  background: #fff7ed !important;
+  background: color-mix(in srgb, var(--primary-color) 12%, transparent) !important;
 }
 
 .badge-filter__badge--active {
   border-color: var(--primary-color, #ff6a00) !important;
   background: var(--primary-color, #ff6a00) !important;
-  color: #fff !important;
+  color: var(--primary-foreground) !important;
   box-shadow: 0 2px 6px rgba(255, 106, 0, 0.25) !important;
 }
 

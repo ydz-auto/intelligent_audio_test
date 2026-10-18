@@ -134,7 +134,7 @@
     <teleport to="#global-fixed-elements">
       <div
         id="floating-report-actions"
-        style="position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; justify-content: center; gap: 16px; z-index: 14000; padding: 16px 24px; background: color-mix(in srgb, var(--color-white) 95%, transparent); border-radius: 12px; box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 15%, transparent); backdrop-filter: blur(10px); border: 1px solid color-mix(in srgb, var(--color-slate-200) 80%, transparent);"
+        style="position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; justify-content: center; gap: 16px; z-index: 14000; padding: 16px 24px; background: color-mix(in srgb, var(--color-white) 95%, transparent); border-radius: var(--border-radius-lg); box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 15%, transparent); backdrop-filter: blur(10px); border: 1px solid color-mix(in srgb, var(--color-slate-200) 80%, transparent);"
       >
         <button class="btn btn-primary" id="keep-report-btn" @click="$emit('save-report')">
           <i class="fas fa-save"></i> 保存

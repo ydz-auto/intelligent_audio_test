@@ -1,14 +1,17 @@
 /**
- * 系统选项 API（INT-620 对齐 newAPI `/api/option/` KV 通道）
+ * 系统选项 KV API —— GET/PUT /api/option/
  *
- * - GET /api/option/：全量 KV 拉取（领域默认基线 ∪ 库中已存覆盖）
- * - PUT /api/option/：单键写入 `{ key, value }`
+ * 后端 option_bp 挂根前缀 `/api`（非 `/api/v1`，见 api_gateway/app.py INT-620），
+ * 与前端 API 基址 `/api/v1` 不同前缀；故以 `/../option/` 让 URL 归一化为 `/api/option/`
+ * （浏览器 fetch / Node fetch 均按 URL 规范合并 `..`，dev/prod 一致）。
  *
- * 注意：option 路由为**根级挂载无 /api/v1 前缀**（api_gateway/app.py INT-620），
- * 而 request client 默认 baseUrl 为 /api/v1，故此处构造显式绝对 URL 绕过前缀。
- * 权限码：option:read / option:write。
+ * 双形态导出（INT-808 集成合并）：
+ * - `optionsApi` 对象（INT-743 配置运维，optionsPort 直通封装，系统设置六域用）；
+ * - 函数式 `getSystemOptions/getSiteNotice/getSiteName/putSystemOption`（INT-620 壳层，
+ *   SystemBrand/NotificationPopover 等布局组件用）。
  */
 import { request } from '../http/client'
+import type { SystemOptions } from '../../domain/model/system'
 
 /** 构造 /api/option/ 显式绝对 URL（浏览器与 Electron 主进程均可用） */
 function optionBaseUrl(): string {
@@ -47,4 +50,16 @@ export async function getSiteName(): Promise<string> {
 /** 单键写入系统选项（PUT /api/option/ { key, value }；option:write） */
 export async function putSystemOption(key: string, value: unknown): Promise<void> {
   await request('PUT', optionBaseUrl(), { key, value })
+}
+
+export const optionsApi = {
+  /** 全量 KV 拉取（领域默认基线 ∪ 库中已存覆盖） */
+  async getAll(): Promise<SystemOptions> {
+    return request<SystemOptions>('GET', '/../option/')
+  },
+
+  /** 单键写入 */
+  async update(key: string, value: string | number | boolean | string[]): Promise<string> {
+    return request<string>('PUT', '/../option/', { key, value })
+  },
 }

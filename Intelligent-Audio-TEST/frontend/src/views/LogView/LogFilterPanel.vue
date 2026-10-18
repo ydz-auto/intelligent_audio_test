@@ -256,3 +256,10 @@ const endContainer = ref<HTMLElement | null>(null)
 
 defineExpose({ startInput, endInput, startContainer, endContainer })
 </script>
+
+<style scoped>
+/* INT-743 深色：全局遗留 slate 标签色不随 .dark 切换，筛选标签深色下走语义 token */
+.dark .filter-label {
+  color: var(--text-secondary);
+}
+</style>

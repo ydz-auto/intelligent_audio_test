@@ -156,7 +156,7 @@ function statusText(status?: string | null): string {
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
-  border-radius: 6px;
+  border-radius: var(--border-radius-md);
   cursor: pointer;
 }
 .pt-row:hover {
@@ -217,7 +217,7 @@ function statusText(status?: string | null): string {
 .pt-count {
   flex-shrink: 0;
   padding: 1px 8px;
-  border-radius: 10px;
+  border-radius: var(--border-radius-full);
   background: var(--color-slate-100, #f1f5f9);
   color: var(--color-slate-500, #64748b);
   font-size: 11px;
@@ -238,7 +238,7 @@ function statusText(status?: string | null): string {
 .pt-leaf-dim { color: var(--color-slate-500, #64748b); min-width: 80px; }
 .pt-leaf-rt {
   padding: 0 6px;
-  border-radius: 4px;
+  border-radius: var(--border-radius-sm);
   background: var(--color-amber-50, #fffbeb);
   color: #b45309;
   font-family: var(--font-mono, monospace);
@@ -247,7 +247,7 @@ function statusText(status?: string | null): string {
 /* P3（UX 审计）：状态徽章改走 tokens 与 TaskCard exec-status-badge 同源，去硬编码 hex */
 .pt-leaf-status {
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--border-radius-full);
   font-size: 11px;
 }
 .pt-leaf-status.completed { background: var(--color-emerald-100); color: var(--color-emerald-600); }
@@ -255,7 +255,7 @@ function statusText(status?: string | null): string {
 .pt-leaf-status.stopped { background: var(--color-gray-100); color: var(--color-gray-500); }
 .pt-leaf-eval {
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--border-radius-full);
   font-size: 11px;
 }
 .pt-leaf-eval.evaluated { background: var(--color-blue-100); color: var(--color-blue-600); }

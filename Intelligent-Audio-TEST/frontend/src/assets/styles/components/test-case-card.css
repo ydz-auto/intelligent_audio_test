@@ -4,7 +4,7 @@
 .case-card {
     background-color: var(--color-white);
     border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-md);
+    border-radius: var(--radius-card);
     padding: 20px;
     box-shadow: var(--shadow-sm);
     transition: all 0.3s ease;

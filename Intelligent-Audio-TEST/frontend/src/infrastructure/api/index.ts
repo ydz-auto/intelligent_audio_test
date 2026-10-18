@@ -33,6 +33,11 @@ export { apiRmsSplApi } from './apiRmsSplApi';
 export { statsApi } from './statsApi';
 export { algorithmApi } from './algorithmApi';
 export { tagsApi } from './tagsApi';
+export { llmProviderApi } from './llmProviderApi';
+export { agentApi, AGENT_BACKEND_STATUS } from './agentApi';
+export { optionsApi } from './optionsApi';
+export { usersApi } from './usersApi';
+export { rolesApi } from './rolesApi';
 
 // Shared types (re-exported for backward compatibility with existing imports)
 // TagCategory/TagItem 单一来源已收敛到 domain/model/tag.ts（businessTypes 链路）
@@ -65,6 +70,9 @@ import { apiRmsSplApi } from './apiRmsSplApi';
 import { statsApi } from './statsApi';
 import { algorithmApi } from './algorithmApi';
 import { tagsApi } from './tagsApi';
+import { optionsApi } from './optionsApi';
+import { usersApi } from './usersApi';
+import { rolesApi } from './rolesApi';
 
 export default {
   tasks: tasksApi,
@@ -84,5 +92,8 @@ export default {
   evaluation: evaluationApi,
   stats: statsApi,
   algorithm: algorithmApi,
-  tags: tagsApi
+  tags: tagsApi,
+  options: optionsApi,
+  users: usersApi,
+  roles: rolesApi
 };

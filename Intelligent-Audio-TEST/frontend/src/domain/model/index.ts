@@ -8,6 +8,7 @@ export * from './common'
 
 // 实体
 export * from './auth'
+export * from './profile'
 export * from './task'
 export * from './taskProgress'
 export * from './publishedTask'
@@ -29,3 +30,5 @@ export * from './log'
 export * from './logTypes'
 export * from './stats'
 export * from './ui'
+export * from './aiChat'
+export * from './system'

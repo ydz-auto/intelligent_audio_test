@@ -1,7 +1,7 @@
 /* 测试用例列表容器样式 */
 .test-case-list-container {
   padding: 24px;
-  background-color: var(--color-white);
+  background-color: var(--card);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
 }
@@ -58,7 +58,7 @@
   flex-wrap: wrap;
   margin-bottom: var(--spacing-lg);
   padding: var(--spacing-lg);
-  background: var(--color-white);
+  background: var(--card);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--gray-light-color);
@@ -127,7 +127,7 @@
   gap: var(--spacing-md);
   align-items: stretch;
   flex-wrap: nowrap;
-  background-color: white;
+  background-color: var(--card);
   padding: var(--spacing-md);
   border-radius: var(--radius-control);
   border: 1px solid var(--border-color);
@@ -456,7 +456,7 @@
 
 /* 类别卡片样式 */
 .category-card {
-  background-color: var(--color-white);
+  background-color: var(--card);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   overflow: visible;
@@ -609,7 +609,7 @@
 }
 
 .modal-container {
-  background-color: white;
+  background-color: var(--card);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-lg);
   width: 90%;

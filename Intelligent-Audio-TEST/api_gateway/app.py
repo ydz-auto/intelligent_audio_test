@@ -184,6 +184,10 @@ def create_app(config_name='default') -> FastAPI:
     app.include_router(status_router, prefix='/api', tags=['status'])
     app.include_router(option_router, prefix='/api', tags=['option'])
 
+    # INT-766/INT-787：系统健康汇总（网关 + 认证服务），供「关于」页版本与服务状态卡真实接线
+    from api_gateway.routes.system_bp import router as system_router
+    app.include_router(system_router, prefix='/api/v1/system', tags=['system'])
+
     # 收藏 / 回收站（INT-141）：favorite/restore/purge 动作路由与 GET /favorites
     from api_gateway.routes.favorite_trash_bp import router as favorite_trash_router
     app.include_router(favorite_trash_router, prefix='/api/v1', tags=['favorites-trash'])

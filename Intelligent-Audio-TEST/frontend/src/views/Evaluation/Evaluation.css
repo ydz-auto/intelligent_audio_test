@@ -108,7 +108,7 @@
 
 .view-switcher .btn-toggle.active {
   background: var(--primary-color);
-  color: #fff;
+  color: var(--primary-foreground);
 }
 
 /* 确保筛选区域的样式正确应用 */
@@ -371,11 +371,11 @@ select.form-input.filter-select:focus {
 
 .group-count {
   background-color: var(--primary-color);
-  color: #fff;
+  color: var(--primary-foreground);
   font-size: 12px;
   font-weight: 500;
   padding: 2px 10px;
-  border-radius: 12px;
+  border-radius: var(--border-radius-lg);
   min-width: 20px;
   text-align: center;
   flex-shrink: 0;
@@ -426,7 +426,7 @@ select.form-input.filter-select:focus {
   color: var(--primary);
   background: var(--accent);
   border: 1px solid color-mix(in srgb, var(--primary) 35%, transparent);
-  border-radius: 6px;
+  border-radius: var(--border-radius-md);
 }
 
 .auto-merge-hint i {
@@ -444,7 +444,7 @@ select.form-input.filter-select:focus {
   color: var(--color-slate-500);
   background-color: var(--color-slate-50);
   border: 1px dashed var(--color-slate-300);
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   width: 100%;
   margin: 0 auto;
 }
@@ -463,4 +463,20 @@ select.form-input.filter-select:focus {
 /* 页面标题品牌色（原内联 style 迁入） */
 .page-title-primary {
   color: var(--primary-color);
+}
+
+/* INT-739 暗色收编：覆盖全局 .card 渐变泄漏（tasks/task-card.css 的
+   白→slate 渐变，深浅两套统一走 card token）；空态同样收编语义令牌 */
+.evaluation-view .card {
+  background: var(--card);
+}
+
+.empty-dimensions {
+  background-color: var(--muted);
+  border-color: var(--border);
+}
+
+.empty-dimensions i,
+.empty-dimensions p {
+  color: var(--muted-foreground);
 }

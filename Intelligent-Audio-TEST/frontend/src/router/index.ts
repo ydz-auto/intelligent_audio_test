@@ -40,7 +40,8 @@ const routes: Array<RouteRecordRaw> = [
   { path: '/benchmarks', name: 'benchmarkRankingLegacy', redirect: '/rankings' },
 
   // ===== 工作台壳 AuthenticatedLayout =====
-  { path: '/dashboard', name: 'dashboard', component: () => import('../views/Placeholder/PlaceholderPage.vue'), props: { title: '工作台概览', description: '工作台聚合页建设中（工作台卡 02 落地：算法卡片网格 + 引导卡 + 平台概览 + 任务统计）' }, meta: { permission: 'home:read', layout: 'authenticated', title: '工作台' } },
+  // INT-736：工作台概览聚合页实页（算法卡片网格 + 引导卡 + 平台概览 + 双面板 + 任务统计图表区）
+  { path: '/dashboard', name: 'dashboard', component: () => import('../views/Dashboard/Dashboard.vue'), meta: { permission: 'home:read', layout: 'authenticated', title: '工作台' } },
   // INT-737：开始测试合并入口 /start-test（E2E+API 单流程，四步，无选算法步骤）
   { path: '/start-test', name: 'startTest', component: () => import('../views/StartTest/StartTest.vue'), meta: { permissions: ['task:execute', 'algorithm:read'], layout: 'authenticated', title: '开始测试' } },
   { path: '/ai-chat', name: 'aiChat', component: () => import('../views/Placeholder/PlaceholderPage.vue'), props: { title: '灵犀Agent', description: 'AI 对话工作台建设中（灵犀Agent 卡 08 落地，后端待立项）' }, meta: { permission: 'report:read', layout: 'authenticated', title: '灵犀Agent' } },
@@ -75,23 +76,33 @@ const routes: Array<RouteRecordRaw> = [
   { path: '/AlgorithmConfig', name: 'algorithmConfig', component: () => import('../views/AlgorithmConfig/AlgorithmConfigPage.vue'), meta: { permission: 'algorithm:read', layout: 'authenticated', title: '算法配置' } },
   { path: '/logs', name: 'logs', component: () => import('../views/LogView/LogView.vue'), meta: { permission: 'log:read', layout: 'authenticated', title: '日志查看' } },
   { path: '/LogView', name: 'logView', redirect: '/logs' },
-  // 系统设置 drill-in（六域；域级门槛由侧栏树过滤，路由仅需登录）
+  // 系统设置 drill-in（INT-743 六域；域级门槛由侧栏树过滤，路由仅需登录）
   {
-    path: '/system-settings/:domain/:section',
-    name: 'systemSettingsSection',
-    component: () => import('../views/SystemSettings/SystemSettingsPage.vue'),
+    path: '/system-settings',
+    name: 'systemSettings',
+    component: () => import('../views/SystemSettings/SystemSettingsLayout.vue'),
     meta: { layout: 'authenticated', title: '系统设置' },
+    children: [
+      { path: '', redirect: { path: '/system-settings/site/info' } },
+      { path: 'site/info', name: 'systemSettingsSiteInfo', component: () => import('../views/SystemSettings/site/SiteInfoSection.vue'), meta: { title: '站点信息' } },
+      { path: 'site/notice', name: 'systemSettingsSiteNotice', component: () => import('../views/SystemSettings/site/SiteNoticeSection.vue'), meta: { title: '站点公告' } },
+      { path: 'site/navigation', name: 'systemSettingsSiteNavigation', component: () => import('../views/SystemSettings/site/SiteNavigationSection.vue'), meta: { title: '导航模块' } },
+      { path: 'iam/users', name: 'systemSettingsUsers', component: () => import('../views/SystemSettings/iam/UsersSection.vue'), meta: { title: '用户管理' } },
+      { path: 'iam/roles', name: 'systemSettingsRoles', component: () => import('../views/SystemSettings/iam/RolesSection.vue'), meta: { title: '角色权限管理' } },
+      { path: 'auth/methods', name: 'systemSettingsAuthMethods', component: () => import('../views/SystemSettings/auth/AuthMethodsSection.vue'), meta: { title: '认证方式' } },
+      { path: 'auth/oauth-providers', name: 'systemSettingsOAuthProviders', component: () => import('../views/SystemSettings/auth/OAuthProvidersSection.vue'), meta: { title: 'OAuth 提供方' } },
+      { path: 'appearance/presets', name: 'systemSettingsAppearancePresets', component: () => import('../views/SystemSettings/appearance/PresetsSection.vue'), meta: { title: '主题预设' } },
+      { path: 'appearance/fine-tuning', name: 'systemSettingsAppearanceFineTuning', component: () => import('../views/SystemSettings/appearance/FineTuningSection.vue'), meta: { title: '外观微调' } },
+      { path: 'security/access-control', name: 'systemSettingsSecurityAccessControl', component: () => import('../views/SystemSettings/security/AccessControlSection.vue'), meta: { title: '访问控制' } },
+      { path: 'operations/log-maintenance', name: 'systemSettingsLogMaintenance', component: () => import('../views/SystemSettings/operations/LogMaintenanceSection.vue'), meta: { title: '日志维护' } },
+    ],
   },
-  {
-    path: '/system-settings/:domain',
-    name: 'systemSettingsDomain',
-    component: () => import('../views/SystemSettings/SystemSettingsPage.vue'),
-    meta: { layout: 'authenticated', title: '系统设置' },
-  },
-  { path: '/OAuthProviders', name: 'oauthProviders', redirect: '/system-settings/auth/oauth-providers' },
+  // OAuth 提供方收编认证设置域（旧链 redirect）
+  { path: '/OAuthProviders', name: 'oauthProvidersLegacy', redirect: '/system-settings/auth/oauth-providers' },
   // 个人中心
-  { path: '/profile', name: 'profile', component: () => import('../views/Account/AccountSettings.vue'), meta: { layout: 'authenticated', title: '个人中心' } },
-  { path: '/AccountSettings', name: 'accountSettings', redirect: '/profile' },
+  // INT-744：个人中心 /profile（承接 /AccountSettings 并入；旧链用组件内 router.replace 保留 query 供 OAuth 绑定回调）
+  { path: '/profile', name: 'profile', component: () => import('../views/Profile/ProfileView.vue'), meta: { layout: 'authenticated', title: '个人中心' } },
+  { path: '/AccountSettings', name: 'accountSettings', component: () => import('../views/Account/AccountSettings.vue'), meta: { layout: 'authenticated', title: '账号设置' } },
   // 测试执行旧链（INT-737 合并入口落地后翻转 redirect：侧栏「测试执行 → 开始测试」单入口）
   { path: '/E2ETest', name: 'e2eTest', redirect: '/start-test', meta: { permission: 'task:execute', layout: 'authenticated', title: '开始测试' } },
   { path: '/APITest', name: 'apiTest', redirect: '/start-test', meta: { permission: 'task:execute', layout: 'authenticated', title: '开始测试' } },
