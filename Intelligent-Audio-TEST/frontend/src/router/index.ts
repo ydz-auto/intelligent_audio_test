@@ -22,8 +22,13 @@ const routes: Array<RouteRecordRaw> = [
   { path: '/tasks/:id(\\d+)', name: 'taskDetail', component: () => import('../views/Tasks/TaskDetailView.vue'), meta: { permission: 'task:read', title: '任务详情' } },
   // INT-298：已发布任务并入任务页「已发布任务」页签；独立路由重定向保留旧链接/收藏夹兼容
   { path: '/published-tasks', name: 'publishedTasks', redirect: { name: 'tasks', query: { tab: 'published' } } },
-  { path: '/history-reports', name: 'historyReports', component: () => import('../views/HistoryReports/HistoryReports.vue'), meta: { permission: 'report:read', title: '历史报告' } },
-  { path: '/test-reports', name: 'testReports', component: () => import('../views/TestReports/TestReports.vue'), meta: { permission: 'report:read', title: '测试报告' } },
+  // INT-741：报告域三页（展示页 / 报告中心 / 统计分析）。路由与菜单项最终并入基座卡（INT-735）路由总表
+  { path: '/reports', name: 'reportShowcase', component: () => import('../views/Reports/ReportShowcase.vue'), meta: { permission: 'report:read', title: '报告' } },
+  { path: '/report-center', name: 'reportCenter', component: () => import('../views/ReportCenter/ReportCenter.vue'), meta: { permission: 'report:read', title: '报告中心' } },
+  { path: '/report-statistics', name: 'reportStatistics', component: () => import('../views/ReportStatistics/ReportStatistics.vue'), meta: { permission: 'report:read', title: '报告统计分析' } },
+  // G02：旧链 redirect 不带 tab 语义（INT-439 v2.6）
+  { path: '/history-reports', name: 'historyReports', redirect: '/report-center' },
+  { path: '/test-reports', name: 'testReports', redirect: '/report-center' },
   { path: '/benchmarks', name: 'benchmarkRanking', component: () => import('../views/BenchmarkRanking/BenchmarkRanking.vue'), meta: { permission: 'benchmark:ranking:read', title: 'Benchmark 排行' } },
   { path: '/report/:id', name: 'reportView', component: () => import('../views/ReportView/ReportView.vue'), meta: { permission: 'report:read', title: '报告查看' } },
   { path: '/report', name: 'reportViewQuery', component: () => import('../views/ReportView/ReportView.vue'), meta: { permission: 'report:read', title: '报告查看' } },

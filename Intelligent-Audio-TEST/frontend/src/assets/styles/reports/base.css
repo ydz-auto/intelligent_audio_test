@@ -16,7 +16,7 @@
 
 /* 通用卡片 */
 .card{
-    background: white;
+    background: var(--background-primary);
     border-radius: var(--border-radius-lg);
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--border-color);
@@ -41,7 +41,7 @@
 
 /* 卡片头部 */
 .card-header{
-    background: white;
+    background: var(--background-primary);
 }
 
 /* 卡片操作按钮 */
@@ -68,7 +68,7 @@
 .pagination button{
     padding: var(--spacing-sm) var(--spacing-lg);
     border: 1px solid var(--border-color);
-    background: white;
+    background: var(--background-primary);
     border-radius: var(--border-radius-md);
     cursor: pointer;
     transition: all var(--transition-normal);
@@ -105,7 +105,7 @@
 }
 
 .btn-secondary{
-    background: white;
+    background: var(--background-primary);
 }
 
 .btn-success{
