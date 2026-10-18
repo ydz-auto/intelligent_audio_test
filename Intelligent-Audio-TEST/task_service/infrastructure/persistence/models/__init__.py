@@ -28,6 +28,7 @@ from .cherry_pick_models import (
     CherryPickCartItem, TaskCherryPickRelation, CherryPickSet, CherryPickSetItem,
 )
 from .review_models import TestResultReview
+from .ai_review_models import AiReview
 from .system_models import Log
 
 __all__ = [
@@ -48,6 +49,8 @@ __all__ = [
     'CherryPickCartItem', 'TaskCherryPickRelation', 'CherryPickSet', 'CherryPickSetItem',
     # 人工复核留痕（INT-340）
     'TestResultReview',
+    # AI 复核记录（INT-821/INT-800：机器判定，独立表）
+    'AiReview',
     # 系统日志
     'Log',
 ]
