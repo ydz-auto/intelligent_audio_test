@@ -1,6 +1,7 @@
 /**
  * 任务域组件测试——TasksPagination（09_任务域.md §3.11）：总数文案、
  * 首页/上一页/下一页/末页边界禁用、页码翻页与每页条数切换。
+ * 受控分页（page/pageSize 由页面态持有，INT-711 接线）：切换即回调。
  */
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -15,10 +16,18 @@ function Fixture({ total }: { total: number }) {
   const [footerContainer, setFooterContainer] = useState<HTMLDivElement | null>(
     null
   )
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
   return (
     <>
       <PageFooterProvider container={footerContainer}>
-        <TasksPagination total={total} />
+        <TasksPagination
+          total={total}
+          page={page}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+        />
       </PageFooterProvider>
       <div ref={setFooterContainer} data-testid='footer' />
     </>

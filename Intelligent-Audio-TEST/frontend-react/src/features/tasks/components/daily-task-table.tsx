@@ -30,6 +30,7 @@ import { cn } from '@/lib/utils'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import type { TaskListItem } from '@/domain/models/task'
 import {
+  deriveTaskType,
   formatDateTime,
   getEvaluationStatusMeta,
   getExecutionStatusMeta,
@@ -359,13 +360,7 @@ export function DailyTaskTable({
                   {col('type') && (
                     <td className='px-3 py-2'>
                       <Badge variant='outline' className='rounded-md px-1.5'>
-                        {getTaskTypeLabel(
-                          task.device_types.includes('http_api')
-                            ? task.device_types.length > 1
-                              ? 'mixed'
-                              : 'api'
-                            : 'e2e'
-                        )}
+                        {getTaskTypeLabel(deriveTaskType(task.device_types))}
                       </Badge>
                     </td>
                   )}
