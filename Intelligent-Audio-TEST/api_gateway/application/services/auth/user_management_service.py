@@ -18,6 +18,7 @@ from api_gateway.application.services.auth.management_common import (
 )
 from api_gateway.utils.error_codes import ErrorCode
 from api_gateway.utils.response import error_response, success_response
+from shared.models.common_enums import AuthErrorCode
 from shared.proto import auth_service_pb2 as auth_pb
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,13 @@ REGISTER_ERR_MISSING_CIPHERTEXT = (
     '请先经 /auth/login/encryption-key 获取公钥，对密码 RSA 加密后提交'
 )
 REGISTER_ERR_MISSING_BASIC_FIELDS = 'username 与 password 为必填项'
+
+# 自助改密缺失密文字段文案（INT-794，对齐 INT-186 注册缺密文逐字段点名口径）
+CHANGE_PASSWORD_ERR_MISSING_CIPHERTEXT = (
+    '原密码与新密码需加密提交：缺少加密后的密码密文字段（{fields}）；'
+    '请先经 /auth/login/encryption-key 获取公钥，对密码 RSA 加密后提交'
+)
+CHANGE_PASSWORD_ERR_MISSING_FIELDS = '当前密码与新密码为必填项'
 
 # 注册口径（INT-285 成员裁定，对齐 V9.7.10 基线回归口径）：
 # ① 邮箱必填（注册后可按邮箱登录，旧库 New API 同语义）；
@@ -209,6 +217,87 @@ class UserManagementService:
         if fail:
             return fail
         return with_notice(success_response(None, '更新成功'))
+
+    @staticmethod
+    def change_password() -> Tuple[Dict, int]:
+        """当前登录用户自助修改密码（INT-794 方案 A）。
+
+        鉴权为「当前登录用户本人」（JWT user_id 注入，不走 admin user:update）。
+        - body：current_password_encrypted + new_password_encrypted +
+          encryption_key_id（复用登录 RSA 公钥体系；加密开关关闭时回退明文
+          current_password / new_password，与注册/登录同口径）；
+        - 两密文经 PasswordEncryptionService 解密，缺失/解密失败 → 400；
+        - 新密码最短长度复用 AUTH_PASSWORD_MIN_LENGTH（默认 6）→ 400；
+        - 调 auth_service ChangePassword RPC（服务端 bcrypt 校验原密码并哈希
+          落库）；原密码错误 → 401 + code:106 AUTH_CREDENTIALS_INVALID
+          （code_overrides 覆盖，与登录链防枚举语义一致）；
+        - 成功 → 200 + PASSWORD_CHANGE_NOTICE（提示清 token 重新登录）。
+        """
+        from api_gateway.application.services.auth.management_common import (
+            PASSWORD_CHANGE_NOTICE,
+        )
+        from api_gateway.config.config import Config
+        body = _json_body()
+        user_id = current_operator_id()
+        if not user_id:
+            return error_response('未登录或令牌已过期',
+                                  code=ErrorCode.UNAUTHORIZED, http_code=401)
+        current_password_encrypted = body.get('current_password_encrypted') or ''
+        new_password_encrypted = body.get('new_password_encrypted') or ''
+        encryption_key_id = body.get('encryption_key_id') or ''
+        if Config.AUTH_PASSWORD_ENCRYPTION_ENABLED:
+            from api_gateway.application.services.auth.password_encryption import (
+                PasswordEncryptionError, PasswordEncryptionService,
+            )
+            missing_cipher = [name for name, value in (
+                ('current_password_encrypted', current_password_encrypted),
+                ('new_password_encrypted', new_password_encrypted),
+                ('encryption_key_id', encryption_key_id),
+            ) if not value]
+            if missing_cipher:
+                return error_response(
+                    CHANGE_PASSWORD_ERR_MISSING_CIPHERTEXT.format(
+                        fields='、'.join(missing_cipher)),
+                    code=ErrorCode.INVALID_PARAMS, http_code=400)
+            try:
+                current_password = PasswordEncryptionService.decrypt_password(
+                    current_password_encrypted, encryption_key_id,
+                    Config.AUTH_RSA_KEY_PATH,
+                    Config.AUTH_RSA_FALLBACK_KEY_PATH)
+                new_password = PasswordEncryptionService.decrypt_password(
+                    new_password_encrypted, encryption_key_id,
+                    Config.AUTH_RSA_KEY_PATH,
+                    Config.AUTH_RSA_FALLBACK_KEY_PATH)
+            except PasswordEncryptionError:
+                return error_response('加密载荷无效',
+                                      code=ErrorCode.INVALID_PARAMS,
+                                      http_code=400)
+        else:
+            current_password = body.get('current_password') or ''
+            new_password = body.get('new_password') or ''
+        if not current_password or not new_password:
+            return error_response(CHANGE_PASSWORD_ERR_MISSING_FIELDS,
+                                  code=ErrorCode.INVALID_PARAMS, http_code=400)
+        if len(new_password) < AUTH_PASSWORD_MIN_LENGTH:
+            # INT-285 口径①：密码最短长度（默认 6，与注册/前端 minlength 同源）
+            return error_response(REGISTER_ERR_PASSWORD_TOO_SHORT,
+                                  code=ErrorCode.INVALID_PARAMS, http_code=400)
+        data, fail = call_auth_rpc(
+            'ChangePassword', auth_pb.ChangePasswordRequest(
+                user_id=user_id,
+                current_password=current_password,
+                new_password=new_password,
+            ), default_error='修改密码失败',
+            code_overrides={
+                AuthErrorCode.AUTH_CREDENTIALS_INVALID:
+                    (ErrorCode.AUTH_CREDENTIALS_INVALID, 401),
+            })
+        if fail:
+            return fail
+        return with_notice(
+            success_response(None, '密码修改成功，请重新登录'),
+            notice=PASSWORD_CHANGE_NOTICE,
+        )
 
     @staticmethod
     def delete_user(user_id: int) -> Tuple[Dict, int]:

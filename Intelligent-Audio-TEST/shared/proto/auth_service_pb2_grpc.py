@@ -105,6 +105,11 @@ class AuthServiceStub:
                 request_serializer=auth__service__pb2.SetUserRoleRequest.SerializeToString,
                 response_deserializer=auth__service__pb2.AuthResponse.FromString,
                 _registered_method=True)
+        self.ChangePassword = channel.unary_unary(
+                '/auth.AuthService/ChangePassword',
+                request_serializer=auth__service__pb2.ChangePasswordRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.AuthResponse.FromString,
+                _registered_method=True)
         self.GetRole = channel.unary_unary(
                 '/auth.AuthService/GetRole',
                 request_serializer=auth__service__pb2.GetRoleRequest.SerializeToString,
@@ -290,6 +295,13 @@ class AuthServiceServicer:
 
     def SetUserRole(self, request, context):
         """设置用户角色
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ChangePassword(self, request, context):
+        """当前登录用户自助修改密码（INT-794 方案 A：校验原密码 → 更新 → 审计）
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -488,6 +500,11 @@ def add_AuthServiceServicer_to_server(servicer, server):
             'SetUserRole': grpc.unary_unary_rpc_method_handler(
                     servicer.SetUserRole,
                     request_deserializer=auth__service__pb2.SetUserRoleRequest.FromString,
+                    response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
+            ),
+            'ChangePassword': grpc.unary_unary_rpc_method_handler(
+                    servicer.ChangePassword,
+                    request_deserializer=auth__service__pb2.ChangePasswordRequest.FromString,
                     response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
             ),
             'GetRole': grpc.unary_unary_rpc_method_handler(
@@ -954,6 +971,33 @@ class AuthService:
             target,
             '/auth.AuthService/SetUserRole',
             auth__service__pb2.SetUserRoleRequest.SerializeToString,
+            auth__service__pb2.AuthResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ChangePassword(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/ChangePassword',
+            auth__service__pb2.ChangePasswordRequest.SerializeToString,
             auth__service__pb2.AuthResponse.FromString,
             options,
             channel_credentials,
