@@ -421,6 +421,51 @@ def test_gateway_get_one_null_review_fields_defaults(db, monkeypatch):
     assert data['cases'][0]['reviewed'] is False
 
 
+def test_gateway_get_one_reviewed_none_ok(db, monkeypatch):
+    """INT-755 回归：历史任务（reviewed 字段落地前创建）上游缺省/None 不得 422。
+
+    常驻后端任务详情曾对全量任务返回 422
+    （`reviewed: Input should be a valid boolean`）：
+    TaskCaseBrief.reviewed 显式 bool 拒绝 None。修复后 schema 容错 Optional、
+    网关归一 False，本测试直测服务层 DTO 组装，防回归。
+    """
+    import api_gateway.application.services.task.task_query_service as tqs
+    from api_gateway.application.services.task.task_query_service import TaskQueryService
+
+    detail = {
+        'id': 1,
+        'name': 'INT755任务',
+        'status': 'completed',
+        'completed_cases': 0,
+        'failed_cases': 0,
+        'review_count': 0,
+        'cases': [{
+            'case_id': 'C1',
+            'name': '历史用例1',
+            'status': 'completed',
+            'execution_status': 'completed',
+            'evaluation_status': 'completed',
+            # reviewed 键缺失（字段落地前创建）——c.get('reviewed') → None
+        }, {
+            'case_id': 'C2',
+            'name': '历史用例2',
+            'status': 'failed',
+            'execution_status': 'failed',
+            'evaluation_status': 'completed',
+            'reviewed': None,
+        }],
+    }
+    monkeypatch.setattr(tqs._task_acl, 'get_task_detail', lambda task_id: {
+        'success': True, 'data': detail})
+
+    payload, http_code = TaskQueryService.get_one(1)
+    assert http_code == 200
+    data = payload['data']
+    # 缺省/None 均归一 False，响应恒为 bool（不向前端泄漏 null）
+    assert data['cases'][0]['reviewed'] is False
+    assert data['cases'][1]['reviewed'] is False
+
+
 def test_gateway_schemas_accept_null_review_fields():
     """网关响应 schema 对 null 复核字段不抛校验错误（INT-734 回归，schema 层直测）。
 
@@ -437,5 +482,4 @@ def test_gateway_schemas_accept_null_review_fields():
     # 字段缺省（上游完全未提供）→ 缺省 False/0（未复核语义）
     assert TaskCaseBrief(case_id='C2', name='用例2').reviewed is False
     assert TaskDetailData(id=2, name='任务2', status='completed').review_count == 0
-
 
