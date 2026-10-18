@@ -1,9 +1,10 @@
 /**
- * 用户管理分区（interfaces 层，INT-347 §4.4.1 母版 C DataTable）：
- * 搜索 + 状态/角色筛选 → DataTable（勾选/用户名/邮箱/角色/状态/附加权限数/注册时间/操作）
+ * 用户管理分区（interfaces 层，INT-347 §4.4.1 母版 C DataTable，INT-729 真实数据）：
+ * 搜索 + 状态/角色筛选 → DataTable（勾选/用户名/邮箱/角色/状态/生效权限数/注册时间/操作）
  * → 行操作（编辑/分配角色/附加权限/启停/删除，按钮级权限 + 自保护）→ Sheet 抽屉
  * （基本信息 / 角色与状态 / 附加权限 PermissionMatrix）→ 删除 ConfirmDialog。
- * 数据流：GET /users（分页 ≤100 + status/keyword/role_id 过滤）→ useUsersQuery；
+ * 数据流：GET /auth/users（status/keyword 下推 + roleCodes 客户端过滤）→
+ * useUsersQuery；编辑抽屉打开时 GET /auth/users/{id} 取 overrides 附加权限回填；
  * 行操作走 user:update/assign_role/grant_permission/delete。
  */
 import { useMemo, useState } from 'react'
@@ -16,7 +17,12 @@ import {
 import { cn } from '@/lib/utils'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
-import { useUsersQuery, useUserMutations } from '@/application/iam/use-users-query'
+import {
+  useUsersQuery,
+  useUserDetailQuery,
+  useUserMutations,
+  type CreateUserInput,
+} from '@/application/iam/use-users-query'
 import { useRolesQuery, usePermissionCatalogQuery } from '@/application/iam/use-roles-query'
 import { useAuthStore } from '@/infrastructure/stores/auth-store'
 import { ROLE_META, type RoleCode } from '@/domain/models/role'
@@ -93,6 +99,7 @@ export function UsersPage() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMode, setDrawerMode] = useState<'create' | 'edit'>('create')
   const [drawerUser, setDrawerUser] = useState<PlatformUser | null>(null)
+  const [drawerUserId, setDrawerUserId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<PlatformUser | null>(null)
 
   const filter = useMemo(
@@ -100,6 +107,8 @@ export function UsersPage() {
     [keyword, status, roleCodes]
   )
   const usersQuery = useUsersQuery(filter)
+  // 编辑抽屉回填 overrides 附加权限基线（列表接口不含 overrides）
+  const detailQuery = useUserDetailQuery(drawerUserId)
 
   const canCreate = hasPermission('user:create')
   const canUpdate = hasPermission('user:update')
@@ -124,16 +133,19 @@ export function UsersPage() {
   const openCreate = () => {
     setDrawerMode('create')
     setDrawerUser(null)
+    setDrawerUserId(null)
     setDrawerOpen(true)
   }
   const openEdit = (user: PlatformUser) => {
     setDrawerMode('edit')
     setDrawerUser(user)
+    setDrawerUserId(user.id)
     setDrawerOpen(true)
   }
   const closeDrawer = () => {
     setDrawerOpen(false)
     setDrawerUser(null)
+    setDrawerUserId(null)
   }
 
   const handleRowAction = (
@@ -146,6 +158,30 @@ export function UsersPage() {
       const next = user.status === 'active' ? 'disabled' : 'active'
       mutations.updateUser.mutate({ userId: user.id, patch: { status: next } })
     }
+  }
+
+  /** 编辑抽屉目标：详情数据（含 overrides）优先，未取到时用列表行 */
+  const drawerTarget = detailQuery.data ?? drawerUser
+
+  const handleCreate = (input: {
+    username: string
+    displayName?: string
+    email: string
+    password: string
+    roleCode: string
+    status: PlatformUserStatus
+  }) => {
+    const role = (rolesQuery.data ?? []).find((r) => r.code === input.roleCode)
+    const createInput: CreateUserInput = {
+      username: input.username,
+      displayName: input.displayName,
+      email: input.email,
+      password: input.password,
+      status: input.status,
+      roleId: role ? Number(role.id) : undefined,
+    }
+    mutations.createUser.mutate(createInput)
+    closeDrawer()
   }
 
   return (
@@ -281,7 +317,7 @@ export function UsersPage() {
                   <th className='px-3 py-2.5 text-left font-medium'>邮箱</th>
                   <th className='px-3 py-2.5 text-left font-medium'>角色</th>
                   <th className='px-3 py-2.5 text-left font-medium'>状态</th>
-                  <th className='px-3 py-2.5 text-left font-medium'>附加权限数</th>
+                  <th className='px-3 py-2.5 text-left font-medium'>生效权限数</th>
                   <th className='px-3 py-2.5 text-left font-medium'>注册时间</th>
                   <th className='w-12 px-3 py-2.5' />
                 </tr>
@@ -338,7 +374,7 @@ export function UsersPage() {
                       </td>
                       <td className='px-3 py-3'>
                         <span className='font-mono tabular-nums'>
-                          {user.extraPermissions.length}
+                          {user.permissions.length}
                         </span>
                       </td>
                       <td className='px-3 py-3'>
@@ -413,24 +449,25 @@ export function UsersPage() {
       <UserMutateDrawer
         open={drawerOpen}
         mode={drawerMode}
-        user={drawerUser}
+        user={drawerTarget}
         roles={rolesQuery.data ?? []}
         permissionModules={permissionCatalogQuery.data ?? []}
         onOpenChange={closeDrawer}
-        onCreate={(input) => {
-          mutations.createUser.mutate(input)
-          closeDrawer()
-        }}
+        onCreate={handleCreate}
         onUpdate={(userId, patch) => {
           mutations.updateUser.mutate({ userId, patch })
           closeDrawer()
         }}
-        onAssignRole={(userId, roleCode, roleName) => {
-          mutations.assignRole.mutate({ userId, roleCode, roleName })
+        onAssignRole={(userId, roleCode) => {
+          mutations.assignRole.mutate({ userId, roleCode })
           closeDrawer()
         }}
         onGrantPermissions={(userId, permissions) => {
-          mutations.grantPermissions.mutate({ userId, permissions })
+          mutations.grantPermissions.mutate({
+            userId,
+            permissions,
+            previousPermissions: drawerTarget?.extraPermissions ?? [],
+          })
           closeDrawer()
         }}
       />

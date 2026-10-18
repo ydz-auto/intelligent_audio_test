@@ -24,6 +24,8 @@ export const API_BASE_URL = '/api/v1'
 export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
   /** query 参数（任意方法生效；undefined/null 值剔除） */
   params?: Record<string, unknown>
+  /** baseURL 覆盖（默认 /api/v1；根级挂载端点如 /api/option/ 传 '/api'） */
+  baseURL?: string
   /** 跳过 401 自动登出/跳转（login/register/encryption-key 等公开端点） */
   skipAuthRedirect?: boolean
   /** 响应类型（默认 json） */
@@ -84,7 +86,8 @@ function sessionExpired(): void {
 // ===== URL / 请求体 / 请求头 =====
 
 function buildUrl(path: string, options: ApiRequestOptions): string {
-  let url = `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`
+  const base = options.baseURL ?? API_BASE_URL
+  let url = `${base}${path.startsWith('/') ? path : `/${path}`}`
   if (options.params) {
     const query = new URLSearchParams(
       Object.entries(options.params)

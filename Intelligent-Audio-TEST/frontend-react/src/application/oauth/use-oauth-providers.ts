@@ -1,19 +1,19 @@
 /**
- * OAuth 提供方 query/mutations（application 层，INT-347 §4.2 母版 B）：
- * 列表 GET /oauth-providers；CRUD + 自动发现三件套；保存后 invalidate（对齐
- * newAPI custom-oauth 缓存失效模式）。
+ * OAuth 提供方 query/mutations（application 层，INT-729 接线后）：
+ * 列表 GET /auth/oauth-providers；CRUD + 自动发现三件套；保存后 invalidate
+ * （对齐 newAPI custom-oauth 缓存失效模式）。
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import type { OAuthProvider } from '@/domain/models/oauth-provider'
 import {
-  createMockProvider,
-  deleteMockProvider,
+  createProvider,
+  deleteProvider,
   discoverEndpoints,
   getOAuthProviders,
   OAUTH_PROVIDERS_QUERY_KEY,
-  updateMockProvider,
+  updateProvider,
 } from '@/infrastructure/api/oauthProviderApi'
 
 export function useOAuthProvidersQuery() {
@@ -30,8 +30,8 @@ export function useOAuthProviderMutations() {
   const invalidate = () =>
     void queryClient.invalidateQueries({ queryKey: OAUTH_PROVIDERS_QUERY_KEY })
 
-  const createProvider = useMutation({
-    mutationFn: createMockProvider,
+  const createProviderMutation = useMutation({
+    mutationFn: createProvider,
     onSuccess: () => {
       toast.success('提供方已创建')
       invalidate()
@@ -39,9 +39,9 @@ export function useOAuthProviderMutations() {
     onError: () => toast.error('操作失败，请稍后重试'),
   })
 
-  const updateProvider = useMutation({
+  const updateProviderMutation = useMutation({
     mutationFn: (args: { providerId: string; patch: Partial<OAuthProvider> }) =>
-      updateMockProvider(args.providerId, args.patch),
+      updateProvider(args.providerId, args.patch),
     onSuccess: () => {
       toast.success('提供方已更新')
       invalidate()
@@ -49,8 +49,8 @@ export function useOAuthProviderMutations() {
     onError: () => toast.error('操作失败，请稍后重试'),
   })
 
-  const deleteProvider = useMutation({
-    mutationFn: deleteMockProvider,
+  const deleteProviderMutation = useMutation({
+    mutationFn: (providerId: string) => deleteProvider(providerId),
     onSuccess: () => {
       toast.success('提供方已删除')
       invalidate()
@@ -58,5 +58,10 @@ export function useOAuthProviderMutations() {
     onError: () => toast.error('操作失败，请稍后重试'),
   })
 
-  return { createProvider, updateProvider, deleteProvider, discoverEndpoints }
+  return {
+    createProvider: createProviderMutation,
+    updateProvider: updateProviderMutation,
+    deleteProvider: deleteProviderMutation,
+    discoverEndpoints,
+  }
 }

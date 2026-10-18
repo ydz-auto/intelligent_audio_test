@@ -1,16 +1,21 @@
 /**
  * 日志归档领域模型（domain 层）。
- * 形态对照 api_gateway/schemas/log.py 实测：
- * LogArchiveStatus(total_logs/hot_logs/cold_logs/archive_files/archive_dir)、
- * LogArchiveResult(archived_count/deleted_count/archive_file/remaining_count)。
+ * 形态对照 api_gateway/log_query_service.get_archive_status 实测（INT-729）：
+ * { totalLogs, hotLogs, coldLogs, archiveDir, taskArchives, caseArchives,
+ * otherArchives }——归档文件按 任务/用例/其他 前缀计数，无全局文件清单接口。
  */
 
 export type LogArchiveStatus = {
   totalLogs: number
   hotLogs: number
   coldLogs: number
-  archiveFiles: string[]
   archiveDir: string
+  /** 任务归档文件数 */
+  taskArchives: number
+  /** 用例归档文件数 */
+  caseArchives: number
+  /** 其他归档文件数 */
+  otherArchives: number
 }
 
 export type LogArchiveItem = {
@@ -25,8 +30,19 @@ export const EMPTY_ARCHIVE_STATUS: LogArchiveStatus = {
   totalLogs: 0,
   hotLogs: 0,
   coldLogs: 0,
-  archiveFiles: [],
   archiveDir: '',
+  taskArchives: 0,
+  caseArchives: 0,
+  otherArchives: 0,
+}
+
+/** 归档总数（已归档文件数；状态卡「已归档/未归档」判定口径） */
+export function archiveFileCount(status: LogArchiveStatus): number {
+  return (
+    (status.taskArchives ?? 0) +
+    (status.caseArchives ?? 0) +
+    (status.otherArchives ?? 0)
+  )
 }
 
 export function formatBytes(bytes: number): string {

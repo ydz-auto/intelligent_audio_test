@@ -1,22 +1,23 @@
 /**
- * 角色/权限目录 query + 角色 mutation（application 层，INT-347 §4.4.2）：
- * GET /roles（role:read，回 permissions 码列表 + is_system）、GET /permissions
- * （permission:read，权限点目录只读）；POST /roles/{id}/permissions 全量替换；
- * 角色变更后 invalidate roles 缓存联动用户抽屉角色下拉。
+ * 角色/权限目录 query + 角色 mutation（application 层，INT-729 接线后）：
+ * GET /auth/roles（role:read，回 permissions 码列表 + is_system）、
+ * GET /auth/permissions（permission:read，权限点目录只读）；
+ * POST /auth/roles/{id}/permissions 全量替换；角色变更后 invalidate roles 缓存
+ * 联动用户抽屉角色下拉。
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import type { PlatformRole } from '@/domain/models/role'
 import {
-  createMockRole,
-  deleteMockRole,
+  createRole,
+  deleteRole,
   getPermissionCatalog,
   getRoles,
   PERMISSION_CATALOG_QUERY_KEY,
   ROLES_QUERY_KEY,
-  setMockRolePermissions,
-  updateMockRole,
+  setRolePermissions,
+  updateRole,
 } from '@/infrastructure/api/roleApi'
 
 export function useRolesQuery() {
@@ -41,8 +42,9 @@ export function useRoleMutations() {
   const invalidateRoles = () =>
     void queryClient.invalidateQueries({ queryKey: ROLES_QUERY_KEY })
 
-  const createRole = useMutation({
-    mutationFn: createMockRole,
+  const createRoleMutation = useMutation({
+    mutationFn: (input: { name: string; description: string; permissions: string[] }) =>
+      createRole(input),
     onSuccess: () => {
       toast.success('角色已创建')
       invalidateRoles()
@@ -50,9 +52,9 @@ export function useRoleMutations() {
     onError: () => toast.error('角色保存失败'),
   })
 
-  const updateRole = useMutation({
+  const updateRoleMutation = useMutation({
     mutationFn: (args: { roleId: string; patch: { name?: string; description?: string } }) =>
-      updateMockRole(args.roleId, args.patch),
+      updateRole(args.roleId, args.patch),
     onSuccess: () => {
       toast.success('角色权限已更新')
       invalidateRoles()
@@ -60,9 +62,9 @@ export function useRoleMutations() {
     onError: () => toast.error('角色保存失败'),
   })
 
-  const setPermissions = useMutation({
+  const setPermissionsMutation = useMutation({
     mutationFn: (args: { roleId: string; permissions: string[] }) =>
-      setMockRolePermissions(args.roleId, args.permissions),
+      setRolePermissions(args.roleId, args.permissions),
     onSuccess: () => {
       toast.success('角色权限已更新')
       invalidateRoles()
@@ -70,8 +72,8 @@ export function useRoleMutations() {
     onError: () => toast.error('角色保存失败'),
   })
 
-  const deleteRole = useMutation({
-    mutationFn: deleteMockRole,
+  const deleteRoleMutation = useMutation({
+    mutationFn: (roleId: string) => deleteRole(roleId),
     onSuccess: () => {
       toast.success('角色已删除')
       invalidateRoles()
@@ -85,7 +87,12 @@ export function useRoleMutations() {
     },
   })
 
-  return { createRole, updateRole, setPermissions, deleteRole }
+  return {
+    createRole: createRoleMutation,
+    updateRole: updateRoleMutation,
+    setPermissions: setPermissionsMutation,
+    deleteRole: deleteRoleMutation,
+  }
 }
 
 export type { PlatformRole }
