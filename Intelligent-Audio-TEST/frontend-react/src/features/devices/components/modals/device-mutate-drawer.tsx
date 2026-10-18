@@ -2,7 +2,7 @@
  * 设备新增/编辑抽屉（16_设备域.md §6.2；Sheet sideDrawer `sm:max-w-[600px]`）。
  * 分节「基本信息」（名称/描述）+ 分节随页签分叉：
  * - 测试设备：型号/设备类型/设备系统/系统版本/API级别（随系统切换）/应用名称/应用版本/连接方式/
- *   设备序列号/IP·端口(conditional remote)/是否需要提示词/算法类型/状态采集（只读）/
+ *   设备序列号/IP·端口(conditional remote)/驱动关键字（V9.7.10 keywords select）/是否需要提示词/算法类型/状态采集（只读）/
  *   高级设置（备注/标签/自定义属性/优先级）
  * - 播放设备：型号/设备类型/系统唯一标识/通道索引/支持的通道数/支持的格式/采样率/声压映射
  * - 测试 API：API名称/供应商/API端点/关联算法（默认全局算法）/协议/环境/最大进程数/超时/音频时长/
@@ -72,6 +72,16 @@ const HARMONY_API_LEVELS = ['3.0', '3.1', '3.2', '4.0', '4.2']
 const FORMAT_OPTIONS = ['WAV', 'MP3', 'FLAC', 'AAC', 'OGG', 'WMA']
 /** 测试设备算法类型（对照 mock supported_algorithms 值，device.py supported_algorithms 实测） */
 const ALGORITHM_OPTIONS = ['asr_streaming', 'wakeword_detect', 'tts_eval']
+/** 驱动关键字（V9.7.10 添加测试设备 keywords 选项来源 loadDriverKeywords；INT-721 对照后端
+ *  GET /test-devices/driver-keywords 实测值；INT-725 接线后切真实数据源） */
+const MOCK_DRIVER_KEYWORDS: Array<{ name: string; keywords: string; system: string }> = [
+  { name: '豆包 Android ASR v1', keywords: 'android.doubao_asr.v1', system: 'Android' },
+  { name: 'Plaud AI 录音 v1', keywords: 'android.plaud.v1', system: 'Android' },
+  { name: '小艺通话聊天 v2', keywords: 'harmony.xiaoyi_livechat.v2', system: 'HarmonyOS' },
+  { name: '小艺同声传译 v1', keywords: 'harmony.xiaoyi_simultaneous.v1', system: 'HarmonyOS' },
+  { name: 'ChatGPT语音通话 v1', keywords: 'harmony.chatgpt.v1', system: 'HarmonyOS' },
+  { name: '豆包语音通话 v1', keywords: 'harmony.doubao.v1', system: 'HarmonyOS' },
+]
 const PROTOCOL_OPTIONS = ['http', 'https', 'ws', 'wss']
 const ENV_OPTIONS = [
   { value: 'development', label: '开发' },
@@ -134,6 +144,7 @@ function buildDefaults(
       appVersion: device?.appVersion ?? '',
       connectionType: device?.connectionType ?? 'usb',
       serialNumber: device?.serialNumber ?? scanPrefill?.serialNumber ?? '',
+      keywords: device?.keywords ?? scanPrefill?.keywords ?? '',
       ip: device?.ip ?? scanPrefill?.ip ?? '',
       port: '5555',
       needsPromptAudio: device?.needsPromptAudio ?? false,
@@ -306,6 +317,7 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
           name: values.name.trim(),
           description: values.description?.trim() || null,
           remark: values.remark?.trim() || null,
+          keywords: values.keywords?.trim() || null,
           model: values.model.trim(),
           type: values.deviceType,
           system: values.system,
@@ -341,7 +353,6 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
             driverName: null,
             maxAudioDuration: null,
             location: null,
-            keywords: null,
             lastOnlineAt: null,
           })
         }
@@ -567,6 +578,25 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                       </Field>
                     </>
                   )}
+                  {/* 驱动关键字（V9.7.10 添加测试设备 keywords 选填；INT-725 接线后走 GET /test-devices/driver-keywords） */}
+                  <Field label='驱动关键字' className='col-span-2'>
+                    <Select
+                      value={form.watch('keywords') ?? ''}
+                      onValueChange={(value) => form.setValue('keywords', value ?? '')}
+                    >
+                      <SelectTrigger size='sm' className='w-full'>
+                        <SelectValue placeholder='请选择驱动匹配关键字' />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value=''>不使用驱动关键字</SelectItem>
+                        {MOCK_DRIVER_KEYWORDS.map((kw) => (
+                          <SelectItem key={kw.keywords} value={kw.keywords}>
+                            {kw.name}（{kw.system}）
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
                 </div>
                 <label className='flex items-center gap-2 text-sm'>
                   <Switch
