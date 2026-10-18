@@ -35,6 +35,7 @@ import {
 } from '@/infrastructure/api/algorithm-form-api'
 import {
   batchTestcaseAction,
+  type TestcaseBatchPayload,
   type TestcaseRoundMode,
 } from '@/infrastructure/api/testcases-batch-api'
 import {
@@ -200,6 +201,7 @@ export function BatchAlgoParamsDialog({
     current: params,
     setCurrent: setParams,
     resetValue: resetParams,
+    perRound,
   } = usePerRoundValue<Record<string, string | boolean>>({}, scope)
 
   const schemaQuery = useQuery({
@@ -223,16 +225,32 @@ export function BatchAlgoParamsDialog({
 
   const handleSubmit = async () => {
     if (!algorithmType) return
-    setSubmitting(true)
-    try {
-      await batchTestcaseAction('update_algorithm_params', ids, {
+    let payload: TestcaseBatchPayload
+    if (scope.mode === 'per_round') {
+      // 逐轮设置：round_values = {轮次号: {params: {...}}}，仅含用户实际编辑过的轮次
+      const roundValues: Record<string, unknown> = {}
+      for (const [roundKey, roundParams] of Object.entries(perRound)) {
+        if (!roundParams || Object.keys(roundParams).length === 0) continue
+        roundValues[roundKey] = { params: roundParams }
+      }
+      if (Object.keys(roundValues).length === 0) {
+        toast.error('请至少为一个轮次填写专属参数')
+        return
+      }
+      payload = { roundMode: 'per_round', roundNumbers: [], roundValues }
+    } else {
+      payload = {
         algorithmParams: { ...params },
         roundMode: scope.mode as TestcaseRoundMode,
         roundNumbers:
           scope.mode === 'specific'
             ? scope.specificRounds
             : undefined,
-      })
+      }
+    }
+    setSubmitting(true)
+    try {
+      await batchTestcaseAction('update_algorithm_params', ids, payload)
       toast.success(`批量操作执行成功（更新 ${count} 个）`)
       onOpenChange(false)
     } catch (error) {
@@ -241,6 +259,12 @@ export function BatchAlgoParamsDialog({
       setSubmitting(false)
     }
   }
+
+  /** 逐轮模式：任一编辑过的轮次有参数即可提交 */
+  const canSubmit =
+    scope.mode === 'per_round'
+      ? Object.values(perRound).some((p) => Object.keys(p).length > 0)
+      : Boolean(algorithmType)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -283,6 +307,19 @@ export function BatchAlgoParamsDialog({
                   <Spinner className='size-4' />
                   正在加载算法参数表单...
                 </div>
+              ) : schemaQuery.isError ? (
+                <div className='rounded-lg border px-3 py-6 text-center'>
+                  <p className='text-destructive text-sm'>加载算法参数表单失败</p>
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='sm'
+                    className='mt-2 h-7'
+                    onClick={() => void schemaQuery.refetch()}
+                  >
+                    重试
+                  </Button>
+                </div>
               ) : (
                 <>
                   {scope.mode === 'per_round' && (
@@ -318,7 +355,7 @@ export function BatchAlgoParamsDialog({
           <Button variant='outline' onClick={() => onOpenChange(false)} disabled={submitting}>
             取消
           </Button>
-          <Button onClick={() => void handleSubmit()} disabled={submitting || !algorithmType}>
+          <Button onClick={() => void handleSubmit()} disabled={submitting || !canSubmit}>
             {submitting && <Spinner className='size-3.5' />}
             确定
           </Button>

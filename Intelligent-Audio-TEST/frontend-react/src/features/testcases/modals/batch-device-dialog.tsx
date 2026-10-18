@@ -33,13 +33,16 @@ import {
 } from '@/infrastructure/api/playback-api'
 import {
   batchTestcaseAction,
+  type TestcaseBatchPayload,
   type TestcaseRoundMode,
 } from '@/infrastructure/api/testcases-batch-api'
 import {
+  applyLayerToTargets,
   ApplyLayerField,
   createRoundScope,
   RoundScopeThreeField,
   usePerRoundValue,
+  type ApplyLayerId,
 } from '@/features/testcases/modals/batch-shared'
 
 type ScanState = 'ready' | 'scanning' | 'error'
@@ -60,7 +63,12 @@ export function BatchDeviceDialog({
   const [scanError, setScanError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [scope, setScope] = useState(createRoundScope())
-  const { current: deviceId, setCurrent: setDeviceId } = usePerRoundValue('', scope)
+  const [layers, setLayers] = useState<ApplyLayerId[]>([])
+  const {
+    current: deviceId,
+    setCurrent: setDeviceId,
+    perRound,
+  } = usePerRoundValue('', scope)
 
   const devicesQuery = useQuery({
     queryKey: ['playback-devices', 'real'],
@@ -101,16 +109,35 @@ export function BatchDeviceDialog({
   })
 
   const handleSubmit = async () => {
-    if (!deviceId) return
-    setSubmitting(true)
-    try {
-      await batchTestcaseAction('update_playback_devices', ids, {
+    const targets = applyLayerToTargets(layers)
+    let payload: TestcaseBatchPayload
+    if (scope.mode === 'per_round') {
+      // 逐轮设置：round_values = {轮次号: {deviceId, targets}}，仅含用户实际编辑过的轮次
+      const roundValues: Record<string, unknown> = {}
+      for (const [roundKey, roundDeviceId] of Object.entries(perRound)) {
+        if (roundDeviceId === '') continue
+        const numeric = Number(roundDeviceId)
+        if (Number.isNaN(numeric)) continue
+        roundValues[roundKey] = { deviceId: numeric, targets }
+      }
+      if (Object.keys(roundValues).length === 0) {
+        toast.error('请至少为一个轮次选择播放设备')
+        return
+      }
+      payload = { roundMode: 'per_round', roundNumbers: [], roundValues }
+    } else {
+      if (!deviceId) return
+      payload = {
         playbackDevices: { deviceId: Number(deviceId) },
-        targets: ['audio'],
+        targets,
         roundMode: scope.mode as TestcaseRoundMode,
         roundNumbers:
           scope.mode === 'specific' ? scope.specificRounds : undefined,
-      })
+      }
+    }
+    setSubmitting(true)
+    try {
+      await batchTestcaseAction('update_playback_devices', ids, payload)
       toast.success(`批量操作执行成功（更新 ${count} 个）`)
       onOpenChange(false)
     } catch (error) {
@@ -119,6 +146,12 @@ export function BatchDeviceDialog({
       setSubmitting(false)
     }
   }
+
+  /** 逐轮模式：任一编辑过的轮次选了设备即可提交 */
+  const canSubmit =
+    scope.mode === 'per_round'
+      ? Object.values(perRound).some((v) => v !== '')
+      : Boolean(deviceId)
 
   const available = scanState !== 'error'
 
@@ -153,11 +186,16 @@ export function BatchDeviceDialog({
                 ))}
               </SelectContent>
             </Select>
-            {devices.length === 0 && scanState !== 'scanning' && (
+            {devicesQuery.isLoading ? (
+              <p className='text-muted-foreground/70 inline-flex items-center gap-1.5 pt-1 text-xs'>
+                <Spinner className='size-3.5' />
+                正在加载播放设备...
+              </p>
+            ) : devices.length === 0 && scanState !== 'scanning' ? (
               <p className='text-muted-foreground/70 pt-1 text-xs'>
                 暂无可用的播放设备
               </p>
-            )}
+            ) : null}
             <div className='flex items-center gap-3'>
               <Button
                 type='button'
@@ -186,14 +224,18 @@ export function BatchDeviceDialog({
             value={scope}
             onChange={setScope}
           />
-          <ApplyLayerField />
+          <ApplyLayerField
+            value={layers}
+            onChange={setLayers}
+            hint='可多选；留空时默认应用到目标人音频'
+          />
         </div>
 
         <DialogFooter>
           <Button variant='outline' onClick={() => onOpenChange(false)} disabled={submitting}>
             取消
           </Button>
-          <Button onClick={() => void handleSubmit()} disabled={submitting || !deviceId}>
+          <Button onClick={() => void handleSubmit()} disabled={submitting || !canSubmit}>
             {submitting && <Spinner className='size-3.5' />}
             确定
           </Button>

@@ -30,6 +30,7 @@ import { fetchRealAudios } from '@/infrastructure/api/audio-list-api'
 import { fetchRealPlaybackDevices } from '@/infrastructure/api/playback-api'
 import {
   batchTestcaseAction,
+  type TestcaseBatchPayload,
   type TestcaseRoundMode,
 } from '@/infrastructure/api/testcases-batch-api'
 import {
@@ -86,6 +87,19 @@ function NoiseAudioPickerDialog({
           <div className='flex h-24 items-center justify-center gap-2 text-sm text-muted-foreground'>
             <Spinner className='size-4' />
             正在加载噪声音频...
+          </div>
+        ) : audiosQuery.isError ? (
+          <div className='px-3 py-6 text-center'>
+            <p className='text-destructive text-sm'>加载噪声音频失败</p>
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              className='mt-2 h-7'
+              onClick={() => void audiosQuery.refetch()}
+            >
+              重试
+            </Button>
           </div>
         ) : audios.length === 0 ? (
           <p className='text-muted-foreground px-3 py-6 text-center text-sm'>
@@ -146,7 +160,11 @@ export function BatchNoiseDialog({
   const [pickingAudio, setPickingAudio] = useState(false)
   const [layers, setLayers] = useState<ApplyLayerId[]>(['case-bg', 'segment-bg'])
   const [submitting, setSubmitting] = useState(false)
-  const { current: noise, setCurrent: setNoise } = usePerRoundValue<NoiseValue>(
+  const {
+    current: noise,
+    setCurrent: setNoise,
+    perRound,
+  } = usePerRoundValue<NoiseValue>(
     { audio: null, spl: '94', devices: new Set() },
     scope
   )
@@ -177,19 +195,47 @@ export function BatchNoiseDialog({
   const deviceIds = noise.devices
 
   const handleSubmit = async () => {
-    const splValue = Number(spl)
-    if (!audio || Number.isNaN(splValue)) return
-    setSubmitting(true)
-    try {
-      await batchTestcaseAction('update_noise', ids, {
+    const targets = applyLayerToTargets(layers)
+    let payload: TestcaseBatchPayload
+    if (scope.mode === 'per_round') {
+      // 逐轮设置：round_values = {轮次号: {audioId, spl, deviceIds, targets}}，仅含用户实际编辑过的轮次
+      const roundValues: Record<string, unknown> = {}
+      for (const [roundKey, nv] of Object.entries(perRound)) {
+        if (!nv.audio) continue
+        const roundSpl = Number(nv.spl)
+        if (Number.isNaN(roundSpl)) continue
+        roundValues[roundKey] = {
+          audioId: nv.audio.id,
+          spl: roundSpl,
+          deviceIds: [...nv.devices]
+            .map((id) => Number(id))
+            .filter((n) => !Number.isNaN(n)),
+          targets,
+        }
+      }
+      if (Object.keys(roundValues).length === 0) {
+        toast.error('请至少为一个轮次选择噪声音频')
+        return
+      }
+      payload = { roundMode: 'per_round', roundNumbers: [], roundValues }
+    } else {
+      const splValue = Number(spl)
+      if (!audio || Number.isNaN(splValue)) return
+      payload = {
         noiseAudioId: audio.id,
         noiseSpl: splValue,
-        noiseDeviceIds: [...deviceIds].map((id) => Number(id)).filter((n) => !Number.isNaN(n)),
-        targets: applyLayerToTargets(layers),
+        noiseDeviceIds: [...deviceIds]
+          .map((id) => Number(id))
+          .filter((n) => !Number.isNaN(n)),
+        targets,
         roundMode: scope.mode as TestcaseRoundMode,
         roundNumbers:
           scope.mode === 'specific' ? scope.specificRounds : undefined,
-      })
+      }
+    }
+    setSubmitting(true)
+    try {
+      await batchTestcaseAction('update_noise', ids, payload)
       toast.success(`批量操作执行成功（更新 ${count} 个）`)
       onOpenChange(false)
     } catch (error) {
@@ -198,6 +244,12 @@ export function BatchNoiseDialog({
       setSubmitting(false)
     }
   }
+
+  /** 逐轮模式：任一编辑过的轮次已选噪声音频即可提交 */
+  const canSubmit =
+    scope.mode === 'per_round'
+      ? Object.values(perRound).some((nv) => nv.audio != null)
+      : Boolean(audio) && !Number.isNaN(Number(spl))
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -317,7 +369,12 @@ export function BatchNoiseDialog({
           />
 
           {/* 应用层级（默认勾选 case级/segment级背景噪声） */}
-          <ApplyLayerField defaultChecked={['case-bg', 'segment-bg']} value={layers} onChange={setLayers} />
+          <ApplyLayerField
+            defaultChecked={['case-bg', 'segment-bg']}
+            value={layers}
+            onChange={setLayers}
+            hint='可多选；留空时默认应用到 case级/segment级背景噪声'
+          />
         </div>
 
         <DialogFooter>
@@ -326,7 +383,7 @@ export function BatchNoiseDialog({
           </Button>
           <Button
             onClick={() => void handleSubmit()}
-            disabled={submitting || !audio || Number.isNaN(Number(spl))}
+            disabled={submitting || !canSubmit}
           >
             {submitting && <Spinner className='size-3.5' />}
             确定

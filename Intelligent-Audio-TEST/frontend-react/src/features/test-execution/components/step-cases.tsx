@@ -108,6 +108,8 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
       })
       store.getState().selectMany(ids)
       toast.success(`已全选 ${count} 条用例`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '全选用例失败，请重试')
     } finally {
       setPendingSelectAll(false)
     }
@@ -115,14 +117,18 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
 
   /** 反选（对称差） */
   const handleInvert = async () => {
-    const { ids } = await fetchCaseIdsByFilter({
-      search: filters.search,
-      groupId: filters.groupId,
-      tag: filters.tag,
-      dimensionId: filters.dimensionId,
-      algorithmType: filters.algorithmType ?? algorithmType,
-    })
-    store.getState().invertWith(ids)
+    try {
+      const { ids } = await fetchCaseIdsByFilter({
+        search: filters.search,
+        groupId: filters.groupId,
+        tag: filters.tag,
+        dimensionId: filters.dimensionId,
+        algorithmType: filters.algorithmType ?? algorithmType,
+      })
+      store.getState().invertWith(ids)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '反选用例失败，请重试')
+    }
   }
 
   const handleReset = () => setFilters({})
