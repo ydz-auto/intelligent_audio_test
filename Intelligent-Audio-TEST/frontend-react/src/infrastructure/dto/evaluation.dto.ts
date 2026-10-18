@@ -10,6 +10,29 @@ export interface DimensionAlgorithmAssociationDto {
   weight?: number
 }
 
+/**
+ * 维度参数项（EvaluationDimensionParam 序列化；required_inputs / output_fields 列表项）。
+ * 字段对照 evaluation_service/application/queries/evaluation_query_service.py
+ * `_serialize_dimension_param`；param_direction 区分 input / output。
+ */
+export interface DimensionParamDto {
+  id?: number | null
+  dimension_id?: number | null
+  param_code?: string | null
+  param_name?: string | null
+  label?: string | null
+  field_type?: string | null
+  param_direction?: string | null
+  field_path?: string | null
+  agg_role?: string | null
+  output_role?: string | null
+  visible_in_report?: boolean
+  required?: boolean | null
+  default_value?: unknown
+  help_text?: string | null
+  ui_order?: number | null
+}
+
 /** 维度项（DimensionItem 实测；字段多为 Optional，逐字段宽松） */
 export interface DimensionItemDto {
   id: number
@@ -33,8 +56,9 @@ export interface DimensionItemDto {
   sort_order?: number | null
   estimated_exec_time?: number | null
   rule?: unknown | string | null
-  required_inputs?: unknown[] | null
-  output_fields?: unknown[] | null
+  /** 列表接口不下发（恒 []），详情接口返回全量；兼容字符串 JSON（parseNestedList） */
+  required_inputs?: DimensionParamDto[] | string | null
+  output_fields?: DimensionParamDto[] | string | null
   statistic_method?: string | null
   agg_denominator?: string | null
   exclude_rounds?: number[] | null

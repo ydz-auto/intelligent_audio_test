@@ -34,20 +34,64 @@ import type {
 
 const API_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'] as const
 
+/** 输入参数字段类型（后端契约原值；照 V9.7.10 RequiredInputsEditor） */
+const INPUT_FIELD_TYPE_OPTIONS = [
+  { value: 'text', label: '文本' },
+  { value: 'number', label: '数字' },
+  { value: 'audio', label: '音频' },
+  { value: 'boolean', label: '布尔' },
+  { value: 'json', label: 'JSON' },
+  { value: 'timestamp', label: '时间戳' },
+]
+
+/** 输出字段类型（照 V9.7.10 OutputFieldsEditor：无音频） */
+const OUTPUT_FIELD_TYPE_OPTIONS = [
+  { value: 'number', label: '数字' },
+  { value: 'text', label: '文本' },
+  { value: 'boolean', label: '布尔' },
+  { value: 'json', label: 'JSON' },
+  { value: 'timestamp', label: '时间戳' },
+]
+
+/** 输出字段角色（output_role；照 V9.7.10） */
+const OUTPUT_ROLE_OPTIONS = [
+  { value: 'main', label: '主结果' },
+  { value: 'aux', label: '辅助字段' },
+]
+
+/** 输出聚合角色（agg_role；照 V9.7.10：无/直接值/分子/分母/达标线≤/达标线≥/精确匹配==） */
+const AGG_ROLE_OPTIONS = [
+  { value: '', label: '无' },
+  { value: 'value', label: '直接值' },
+  { value: 'numerator', label: '分子' },
+  { value: 'denominator', label: '分母' },
+  { value: 'pass_le', label: '达标线(≤)' },
+  { value: 'pass_ge', label: '达标线(≥)' },
+  { value: 'pass_eq', label: '精确匹配(==)' },
+]
+
 const NEW_INPUT_ROW: RequiredInputRow = {
-  key: '',
+  paramCode: '',
+  paramName: '',
   label: '',
-  fieldType: '文本',
+  fieldType: 'text',
   required: false,
   defaultValue: '',
-  description: '',
+  helpText: '',
+  uiOrder: 1,
 }
 const NEW_OUTPUT_ROW: OutputFieldRow = {
-  name: '',
+  paramCode: '',
+  paramName: '',
   label: '',
-  outputRole: '主结果',
-  aggRole: '直接值',
+  fieldPath: '',
+  fieldType: 'number',
+  outputRole: 'main',
+  aggRole: 'value',
   defaultValue: '',
+  visibleInReport: true,
+  helpText: '',
+  uiOrder: 1,
 }
 const NEW_ENDPOINT_ROW: ApiEndpointRow = {
   url: '',
@@ -149,7 +193,12 @@ export function ApiSection({
             variant='outline'
             size='sm'
             className='h-7 gap-1.5'
-            onClick={() => inputs.append({ ...NEW_INPUT_ROW })}
+            onClick={() =>
+              inputs.append({
+                ...NEW_INPUT_ROW,
+                uiOrder: inputs.fields.length + 1,
+              })
+            }
           >
             <Plus aria-hidden='true' className='size-3.5' />
             添加输入
@@ -162,21 +211,21 @@ export function ApiSection({
               className='border-border/60 flex flex-wrap items-center gap-2 rounded-lg border px-2 py-1.5'
             >
               <Input
-                aria-label={`输入参数名 ${index + 1}`}
+                aria-label={`输入参数键名 ${index + 1}`}
                 placeholder='参数键名 (如: asr_result)'
-                {...register(`requiredInputs.${index}.key`)}
+                {...register(`requiredInputs.${index}.paramCode`)}
                 className='h-8 w-40'
               />
               <Input
                 aria-label={`输入显示标签 ${index + 1}`}
                 placeholder='显示标签'
-                {...register(`requiredInputs.${index}.label`)}
+                {...register(`requiredInputs.${index}.paramName`)}
                 className='h-8 w-32'
               />
               <Select
                 value={watch(`requiredInputs.${index}.fieldType`)}
                 onValueChange={(value) =>
-                  setValue(`requiredInputs.${index}.fieldType`, value ?? '文本', {
+                  setValue(`requiredInputs.${index}.fieldType`, value ?? 'text', {
                     shouldDirty: true,
                   })
                 }
@@ -185,9 +234,9 @@ export function ApiSection({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {['文本', '数字', '音频', '布尔', 'JSON', '时间戳'].map((type) => (
-                    <SelectItem key={type} value={type}>
-                      {type}
+                  {INPUT_FIELD_TYPE_OPTIONS.map((type) => (
+                    <SelectItem key={type.value} value={type.value}>
+                      {type.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -204,6 +253,28 @@ export function ApiSection({
                 />
                 必填
               </label>
+              <Input
+                aria-label={`输入默认值 ${index + 1}`}
+                placeholder='默认值'
+                {...register(`requiredInputs.${index}.defaultValue`)}
+                className='h-8 w-24'
+              />
+              <Input
+                aria-label={`输入描述 ${index + 1}`}
+                placeholder='描述'
+                {...register(`requiredInputs.${index}.helpText`)}
+                className='h-8 w-36'
+              />
+              <Input
+                aria-label={`输入排序 ${index + 1}`}
+                type='number'
+                min={0}
+                {...register(`requiredInputs.${index}.uiOrder`, {
+                  valueAsNumber: true,
+                })}
+                className='h-8 w-14'
+                title='展示顺序'
+              />
               <Button
                 type='button'
                 variant='ghost'
@@ -228,7 +299,12 @@ export function ApiSection({
             variant='outline'
             size='sm'
             className='h-7 gap-1.5'
-            onClick={() => outputs.append({ ...NEW_OUTPUT_ROW })}
+            onClick={() =>
+              outputs.append({
+                ...NEW_OUTPUT_ROW,
+                uiOrder: outputs.fields.length + 1,
+              })
+            }
           >
             <Plus aria-hidden='true' className='size-3.5' />
             添加字段
@@ -244,32 +320,57 @@ export function ApiSection({
               className='border-border/60 flex flex-wrap items-center gap-2 rounded-lg border px-2 py-1.5'
             >
               <Input
-                aria-label={`输出字段名 ${index + 1}`}
-                placeholder='字段名'
-                {...register(`outputFields.${index}.name`)}
+                aria-label={`输出字段代码 ${index + 1}`}
+                placeholder='字段代码 (如: wer)'
+                {...register(`outputFields.${index}.paramCode`)}
                 className='h-8 w-32'
               />
               <Input
                 aria-label={`输出显示名 ${index + 1}`}
                 placeholder='显示名'
-                {...register(`outputFields.${index}.label`)}
-                className='h-8 w-32'
+                {...register(`outputFields.${index}.paramName`)}
+                className='h-8 w-28'
+              />
+              <Input
+                aria-label={`输出提取路径 ${index + 1}`}
+                placeholder='提取路径 (如: data.result.wer)'
+                {...register(`outputFields.${index}.fieldPath`)}
+                className='h-8 w-40'
               />
               <Select
-                value={watch(`outputFields.${index}.outputRole`)}
+                value={watch(`outputFields.${index}.fieldType`)}
                 onValueChange={(value) =>
-                  setValue(`outputFields.${index}.outputRole`, value ?? '主结果', {
+                  setValue(`outputFields.${index}.fieldType`, value ?? 'number', {
                     shouldDirty: true,
                   })
                 }
               >
-                <SelectTrigger size='sm' className='w-28'>
+                <SelectTrigger size='sm' className='w-24'>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {['主结果', '辅助字段'].map((role) => (
-                    <SelectItem key={role} value={role}>
-                      {role}
+                  {OUTPUT_FIELD_TYPE_OPTIONS.map((type) => (
+                    <SelectItem key={type.value} value={type.value}>
+                      {type.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={watch(`outputFields.${index}.outputRole`)}
+                onValueChange={(value) =>
+                  setValue(`outputFields.${index}.outputRole`, value ?? 'main', {
+                    shouldDirty: true,
+                  })
+                }
+              >
+                <SelectTrigger size='sm' className='w-24'>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {OUTPUT_ROLE_OPTIONS.map((role) => (
+                    <SelectItem key={role.value} value={role.value}>
+                      {role.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -277,22 +378,56 @@ export function ApiSection({
               <Select
                 value={watch(`outputFields.${index}.aggRole`)}
                 onValueChange={(value) =>
-                  setValue(`outputFields.${index}.aggRole`, value ?? '直接值', {
+                  setValue(`outputFields.${index}.aggRole`, value ?? '', {
                     shouldDirty: true,
                   })
                 }
               >
-                <SelectTrigger size='sm' className='w-28'>
-                  <SelectValue />
+                <SelectTrigger size='sm' className='w-32'>
+                  <SelectValue>
+                    {AGG_ROLE_OPTIONS.find(
+                      (o) => o.value === watch(`outputFields.${index}.aggRole`)
+                    )?.label ?? ''}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {['无', '直接值', '分子', '分母'].map((role) => (
-                    <SelectItem key={role} value={role}>
-                      {role}
+                  {AGG_ROLE_OPTIONS.map((role) => (
+                    <SelectItem key={role.value} value={role.value}>
+                      {role.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              <Input
+                aria-label={`输出默认值 ${index + 1}`}
+                placeholder='默认值'
+                {...register(`outputFields.${index}.defaultValue`)}
+                className='h-8 w-20'
+              />
+              <label className='flex items-center gap-1.5 text-xs'>
+                <Checkbox
+                  aria-label={`输出报告可见 ${index + 1}`}
+                  checked={watch(`outputFields.${index}.visibleInReport`)}
+                  onCheckedChange={(checked) =>
+                    setValue(
+                      `outputFields.${index}.visibleInReport`,
+                      !!checked,
+                      { shouldDirty: true }
+                    )
+                  }
+                />
+                显示
+              </label>
+              <Input
+                aria-label={`输出排序 ${index + 1}`}
+                type='number'
+                min={0}
+                {...register(`outputFields.${index}.uiOrder`, {
+                  valueAsNumber: true,
+                })}
+                className='h-8 w-14'
+                title='展示顺序'
+              />
               <Button
                 type='button'
                 variant='ghost'

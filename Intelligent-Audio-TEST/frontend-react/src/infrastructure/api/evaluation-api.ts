@@ -86,12 +86,24 @@ export async function fetchDimensionOptions(
     }))
 }
 
-/** 评估维度全量（列表/分组双视图；GET /evaluation/dimensions?per_page=1000 主/子同屏） */
+/** 评估维度全量（列表/分组双视图；GET /evaluation/dimensions?per_page=1000 主/子同屏；列表不下发 required_inputs/output_fields） */
 export async function fetchEvaluationDimensions(): Promise<Dimension[]> {
   const dto = await apiClient.get<DimensionListDataDto>('/evaluation/dimensions', {
     params: { page: 1, per_page: 1000 },
   })
   return (dto?.items ?? []).map(dimensionFromDto)
+}
+
+/**
+ * 维度详情（编辑用；GET /evaluation/dimensions/{id}）。
+ * 列表接口不下发 required_inputs/output_fields（恒 []），编辑反填必须走详情
+ * （对照 Vue openEditModal → evaluationPort.getOne(id) 口径）。
+ */
+export async function fetchEvaluationDimensionDetail(
+  id: number | string
+): Promise<Dimension> {
+  const dto = await apiClient.get<DimensionItemDto>(`/evaluation/dimensions/${id}`)
+  return dimensionFromDto(dto)
 }
 
 /** 评估分类（分类 facet + 分组视图组头；GET /evaluation/categories） */
@@ -141,22 +153,30 @@ function toDimensionInputDto(data: Partial<Dimension>): Record<string, unknown> 
   if (data.requiredInputs !== undefined) {
     const inputs = Array.isArray(data.requiredInputs) ? data.requiredInputs : []
     result.required_inputs = inputs.map((item) => ({
-      key: item.key,
-      label: item.label,
+      param_code: item.paramCode,
+      param_name: item.paramName || item.label,
+      label: item.label || item.paramName,
       field_type: item.fieldType,
       required: item.required,
-      default_value: item.defaultValue,
-      description: item.description,
+      default_value: item.defaultValue != null ? item.defaultValue : undefined,
+      help_text: item.helpText || undefined,
+      ui_order: item.uiOrder ?? undefined,
     }))
   }
   if (data.outputFields !== undefined) {
     const fields = Array.isArray(data.outputFields) ? data.outputFields : []
     result.output_fields = fields.map((item) => ({
-      name: item.name,
-      label: item.label,
+      param_code: item.paramCode,
+      param_name: item.paramName || item.label,
+      label: item.label || item.paramName,
+      field_path: item.fieldPath,
+      field_type: item.fieldType,
       output_role: item.outputRole,
       agg_role: item.aggRole,
-      default_value: item.defaultValue,
+      default_value: item.defaultValue != null ? item.defaultValue : undefined,
+      visible_in_report: item.visibleInReport,
+      help_text: item.helpText || undefined,
+      ui_order: item.uiOrder ?? undefined,
     }))
   }
   if (data.statisticMethod !== undefined) result.statistic_method = data.statisticMethod
@@ -278,6 +298,32 @@ export async function duplicateDimension(
   })
   await apiClient.post<WriteEnvelope>('/evaluation/dimensions', body)
   return { success: true }
+}
+
+/** 导入维度（POST /evaluation/dimensions/import；multipart：file + updateExisting；返回 { imported, updated }） */
+export async function importEvaluationDimensions(
+  file: File,
+  updateExisting: boolean
+): Promise<{ imported: number; updated: number }> {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('updateExisting', updateExisting ? 'true' : 'false')
+  const data = await apiClient.post<{
+    imported?: number
+    updated?: number
+  }>('/evaluation/dimensions/import', formData)
+  return { imported: data?.imported ?? 0, updated: data?.updated ?? 0 }
+}
+
+/** 导出维度（GET /evaluation/dimensions/export?format=json|excel → 维度数据数组，前端落盘） */
+export async function exportEvaluationDimensions(
+  format: 'json' | 'excel'
+): Promise<Array<Record<string, unknown>>> {
+  const dto = await apiClient.get<Array<Record<string, unknown>>>(
+    '/evaluation/dimensions/export',
+    { params: { format } }
+  )
+  return Array.isArray(dto) ? dto : []
 }
 
 /** 分类保存请求体（Partial<EvaluationCategory> camelCase → CategoryCreateInput/UpdateInput） */

@@ -26,31 +26,64 @@ function toRule(value: unknown): DimensionRule | string | null {
   return value as DimensionRule
 }
 
-function toRequiredInputs(value: unknown[] | null | undefined): DimensionRequiredInput[] | null {
-  if (!Array.isArray(value)) return null
-  return value.map((item) => {
+/** 嵌套列表归一：数组原样；字符串 JSON 解析为数组（旧数据兼容，照 Vue parseNestedList） */
+function parseNestedList(value: unknown): Record<string, unknown>[] | undefined {
+  if (Array.isArray(value)) return value as Record<string, unknown>[]
+  if (typeof value !== 'string' || !value.trim()) return undefined
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function toRequiredInputs(value: unknown): DimensionRequiredInput[] | null {
+  const list = parseNestedList(value)
+  if (!list) return null
+  return list.map((item) => {
     const record = item as Record<string, unknown>
     return {
-      key: String(record.key ?? ''),
-      label: String(record.label ?? ''),
-      fieldType: String(record.field_type ?? record.fieldType ?? ''),
-      required: Boolean(record.required),
+      id: (record.id as number) ?? null,
+      dimensionId: (record.dimension_id ?? record.dimensionId) as number | null,
+      paramCode: String(record.param_code ?? record.paramCode ?? record.key ?? ''),
+      paramName: String(record.param_name ?? record.paramName ?? record.label ?? ''),
+      label: String(record.label ?? record.param_name ?? record.paramName ?? ''),
+      fieldType: String(record.field_type ?? record.fieldType ?? 'text'),
+      required: record.required === undefined ? true : Boolean(record.required),
       defaultValue: record.default_value ?? record.defaultValue,
-      description: record.description ? String(record.description) : undefined,
+      helpText: record.help_text
+        ? String(record.help_text)
+        : record.description
+          ? String(record.description)
+          : undefined,
+      uiOrder: (record.ui_order ?? record.uiOrder) as number | null,
     }
   })
 }
 
-function toOutputFields(value: unknown[] | null | undefined): DimensionOutputField[] | null {
-  if (!Array.isArray(value)) return null
-  return value.map((item) => {
+function toOutputFields(value: unknown): DimensionOutputField[] | null {
+  const list = parseNestedList(value)
+  if (!list) return null
+  return list.map((item) => {
     const record = item as Record<string, unknown>
     return {
-      name: String(record.name ?? ''),
-      label: String(record.label ?? ''),
-      outputRole: String(record.output_role ?? record.outputRole ?? ''),
+      id: (record.id as number) ?? null,
+      dimensionId: (record.dimension_id ?? record.dimensionId) as number | null,
+      paramCode: String(record.param_code ?? record.paramCode ?? record.name ?? ''),
+      paramName: String(record.param_name ?? record.paramName ?? record.label ?? ''),
+      label: String(record.label ?? record.param_name ?? record.paramName ?? ''),
+      fieldPath: String(
+        record.field_path ?? record.fieldPath ?? record.param_code ?? record.paramCode ?? ''
+      ),
+      fieldType: String(record.field_type ?? record.fieldType ?? 'number'),
+      outputRole: String(record.output_role ?? record.outputRole ?? 'main'),
       aggRole: String(record.agg_role ?? record.aggRole ?? ''),
       defaultValue: record.default_value ?? record.defaultValue,
+      visibleInReport:
+        record.visible_in_report === undefined ? true : Boolean(record.visible_in_report),
+      helpText: record.help_text ? String(record.help_text) : undefined,
+      uiOrder: (record.ui_order ?? record.uiOrder) as number | null,
     }
   })
 }

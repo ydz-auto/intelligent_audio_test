@@ -18,6 +18,7 @@ import {
   useEvaluationCategories,
   useEvaluationCategoryMutations,
   useEvaluationDimensions,
+  useEvaluationImportExport,
   useEvaluationMutations,
   useAlgorithmOptions,
   useTestHealth,
@@ -65,9 +66,9 @@ import { RuleCalcDialog } from '@/features/evaluation/modals/dimension-rule-calc
 import { HealthTestDialog } from '@/features/evaluation/modals/health-test-dialog'
 import { EvaluationConfirmDialog } from '@/features/evaluation/modals/evaluation-confirms'
 import {
-  buildDimensionExcelHtml,
-  downloadBlob,
+  buildExportRowsExcelHtml,
 } from '@/features/evaluation/export-dimensions'
+import { downloadBlob } from '@/features/evaluation/download-blob'
 import type {
   CategoryDialogState,
   EvaluationConfirmState,
@@ -116,6 +117,7 @@ export function EvaluationPage() {
   const categoryMutations = useEvaluationCategoryMutations()
   const calculate = useCalculateScore()
   const healthTest = useTestHealth()
+  const importExport = useEvaluationImportExport()
 
   const globalAlgorithmId = useAlgorithmStore((s) => s.algorithmId)
   const setGlobalAlgorithmId = useAlgorithmStore((s) => s.setAlgorithmId)
@@ -528,29 +530,48 @@ export function EvaluationPage() {
   }
 
   const handleExport = (format: 'json' | 'excel') => {
-    // §4.1 导出维度（JSON/Excel 二选一下拉项）；mock 阶段 Blob 下载
+    // §4.1 导出维度（JSON/Excel 二选一下拉项）；GET /evaluation/dimensions/export?format= 真实数据
     const date = new Date().toISOString().slice(0, 10)
-    const filename = `evaluation-dimensions-${date}.${format === 'json' ? 'json' : 'xls'}`
-    if (format === 'json') {
-      downloadBlob(
-        JSON.stringify(dimensions, null, 2),
-        filename,
-        'application/json'
-      )
-    } else {
-      downloadBlob(
-        buildDimensionExcelHtml(dimensions, categories, algorithmLabels),
-        filename,
-        'application/vnd.ms-excel',
-        true
-      )
-    }
-    toast.success(`导出完成（${format === 'json' ? 'JSON' : 'Excel'}）`)
+    const extension = format === 'excel' ? 'xlsx' : 'json'
+    const filename = `evaluation-dimensions-${date}.${extension}`
+    void importExport.export
+      .mutateAsync(format)
+      .then((rows) => {
+        if (format === 'json') {
+          downloadBlob(JSON.stringify(rows, null, 2), filename, 'application/json')
+        } else {
+          downloadBlob(
+            buildExportRowsExcelHtml(rows),
+            filename,
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          )
+        }
+        toast.success('维度导出成功')
+      })
+      .catch(() => toast.error('导出维度失败'))
   }
 
   const handleImport = () => {
-    // 导入暂为前端占位（后端导入接口未接线）：成功统计 toast（§4.1 导入维度）
-    toast.success('导入完成：新增 2 · 更新 1')
+    // §4.1 导入维度；POST /evaluation/dimensions/import multipart（file + updateExisting=true）
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.xlsx,.xls,.json'
+    input.style.display = 'none'
+    input.addEventListener('change', (event) => {
+      const file = (event.target as HTMLInputElement).files?.[0]
+      input.remove()
+      if (!file) return
+      void importExport.import
+        .mutateAsync({ file, updateExisting: true })
+        .then((result) =>
+          toast.success(
+            `导入完成: 新增 ${result.imported} 条, 更新 ${result.updated} 条`
+          )
+        )
+        .catch(() => toast.error('导入维度失败'))
+    })
+    document.body.appendChild(input)
+    input.click()
   }
 
   const openAddSub = (dimension: Dimension) => {

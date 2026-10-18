@@ -9,7 +9,10 @@ import { useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
 
-import { useEvaluationMutations } from '@/application/evaluation/use-dimensions'
+import {
+  useEvaluationDimensionDetail,
+  useEvaluationMutations,
+} from '@/application/evaluation/use-dimensions'
 import { Button } from '@/components/ui/button'
 import {
   Sheet,
@@ -62,10 +65,17 @@ export function DimensionMutateDrawer({
   canManage: boolean
 }) {
   const { save } = useEvaluationMutations()
+  // 编辑反填必须走详情（列表不下发 required_inputs/output_fields）：
+  // 抽屉先以列表数据渲染基础字段，详情返回后 RHF `values` 重同步全量配置
+  const { data: detailDimension } = useEvaluationDimensionDetail(
+    open && mode === 'edit' && dimension ? dimension.id : null
+  )
+  const effectiveDimension = detailDimension ?? dimension
 
   const defaultValues = useMemo(() => {
     if (!open) return undefined
-    if (mode === 'edit' && dimension) return toDimensionFormValues(dimension)
+    if (mode === 'edit' && effectiveDimension)
+      return toDimensionFormValues(effectiveDimension)
     const base = emptyDimensionFormValues()
     if (presetParentId != null) {
       base.dimensionType = 'sub'
@@ -75,7 +85,7 @@ export function DimensionMutateDrawer({
       base.categoryId = String(presetCategoryId)
     }
     return base
-  }, [open, mode, dimension, presetParentId, presetCategoryId])
+  }, [open, mode, effectiveDimension, presetParentId, presetCategoryId])
 
   const form = useForm<DimensionFormValues>({
     resolver: zodResolver(dimensionFormSchema),

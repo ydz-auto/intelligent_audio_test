@@ -20,23 +20,45 @@ export interface RuleRow {
   score: number
 }
 
-/** 所需输入配置行（API配置节「所需输入配置」编辑器行；对齐 DimensionRequiredInput） */
+/**
+ * 所需输入配置行（API配置节「所需输入配置」编辑器行；对齐 DimensionRequiredInput：
+ * paramCode / paramName / label / fieldType / required / defaultValue / helpText / uiOrder）。
+ */
 export interface RequiredInputRow {
-  key: string
+  paramCode: string
+  paramName: string
   label: string
+  /** 字段类型（后端契约原值：text/number/audio/boolean/json/timestamp） */
   fieldType: string
   required: boolean
   defaultValue: string
-  description: string
+  /** 帮助文本（help_text；兼容旧数据 description） */
+  helpText: string
+  /** 展示顺序（ui_order；缺省按行序） */
+  uiOrder: number
 }
 
-/** 输出字段配置行（API配置节「输出字段配置」编辑器行；对齐 DimensionOutputField） */
+/**
+ * 输出字段配置行（API配置节「输出字段配置」编辑器行；对齐 DimensionOutputField：
+ * paramCode / paramName / label / fieldPath / fieldType / outputRole / aggRole /
+ * defaultValue / visibleInReport / helpText / uiOrder）。
+ */
 export interface OutputFieldRow {
-  name: string
+  paramCode: string
+  paramName: string
   label: string
+  /** 提取路径（field_path，如 wer 或 data.result.wer） */
+  fieldPath: string
+  fieldType: string
+  /** 字段角色（output_role：main 主结果 / aux 辅助字段） */
   outputRole: string
+  /** 聚合角色（agg_role：'' 无 / value 直接值 / numerator 分子 / denominator 分母 / pass_* 达标线） */
   aggRole: string
   defaultValue: string
+  /** 是否在报告中可见（visible_in_report） */
+  visibleInReport: boolean
+  helpText: string
+  uiOrder: number
 }
 
 /** API 端点配置行（API配置节「API 端点配置」编辑器行；对齐 DimensionApiEndpoint） */
@@ -58,19 +80,27 @@ const ruleRowSchema = z.object({
 
 /** 所需输入/输出字段/API 端点子编辑器行 zod（P3-2 收敛进表单载荷，编辑态可反填） */
 const requiredInputRowSchema = z.object({
-  key: z.string(),
+  paramCode: z.string(),
+  paramName: z.string(),
   label: z.string(),
   fieldType: z.string(),
   required: z.boolean(),
   defaultValue: z.string(),
-  description: z.string(),
+  helpText: z.string(),
+  uiOrder: z.number(),
 })
 const outputFieldRowSchema = z.object({
-  name: z.string(),
+  paramCode: z.string(),
+  paramName: z.string(),
   label: z.string(),
+  fieldPath: z.string(),
+  fieldType: z.string(),
   outputRole: z.string(),
   aggRole: z.string(),
   defaultValue: z.string(),
+  visibleInReport: z.boolean(),
+  helpText: z.string(),
+  uiOrder: z.number(),
 })
 const apiEndpointRowSchema = z.object({
   url: z.string(),
@@ -176,29 +206,39 @@ export function emptyDimensionFormValues(): DimensionFormValues {
     associatedAlgorithms: [],
     requiredInputs: [
       {
-        key: 'asr_result',
+        paramCode: 'asr_result',
+        paramName: 'ASR识别结果',
         label: 'ASR识别结果',
-        fieldType: '文本',
+        fieldType: 'text',
         required: true,
         defaultValue: '',
-        description: 'ASR算法识别出的文本',
+        helpText: 'ASR算法识别出的文本',
+        uiOrder: 1,
       },
       {
-        key: 'asr_ref',
+        paramCode: 'asr_ref',
+        paramName: '参考文本',
         label: '参考文本',
-        fieldType: '文本',
+        fieldType: 'text',
         required: true,
         defaultValue: '',
-        description: '标准参考文本',
+        helpText: '标准参考文本',
+        uiOrder: 2,
       },
     ],
     outputFields: [
       {
-        name: 'score',
+        paramCode: 'score',
+        paramName: '评分结果',
         label: '评分结果',
-        outputRole: '主结果',
-        aggRole: '直接值',
+        fieldPath: 'score',
+        fieldType: 'number',
+        outputRole: 'main',
+        aggRole: 'value',
         defaultValue: '',
+        visibleInReport: true,
+        helpText: '',
+        uiOrder: 1,
       },
     ],
     apiEndpoints: [
@@ -228,19 +268,27 @@ export function toDimensionFormValues(dimension: Dimension): DimensionFormValues
   }))
   // 子编辑器反填（P3-2）：缺省（null/空）时回退默认行，保证编辑态可继续编辑
   const requiredInputs = (dimension.requiredInputs ?? []).map((ri) => ({
-    key: ri.key ?? '',
-    label: ri.label ?? '',
-    fieldType: ri.fieldType ?? '文本',
-    required: !!ri.required,
+    paramCode: ri.paramCode ?? '',
+    paramName: ri.paramName ?? ri.label ?? '',
+    label: ri.label ?? ri.paramName ?? '',
+    fieldType: ri.fieldType ?? 'text',
+    required: ri.required === undefined ? true : !!ri.required,
     defaultValue: ri.defaultValue != null ? String(ri.defaultValue) : '',
-    description: ri.description ?? '',
+    helpText: ri.helpText ?? '',
+    uiOrder: ri.uiOrder ?? 0,
   }))
   const outputFields = (dimension.outputFields ?? []).map((of) => ({
-    name: of.name ?? '',
-    label: of.label ?? '',
-    outputRole: of.outputRole ?? '主结果',
-    aggRole: of.aggRole ?? '直接值',
+    paramCode: of.paramCode ?? '',
+    paramName: of.paramName ?? of.label ?? '',
+    label: of.label ?? of.paramName ?? '',
+    fieldPath: of.fieldPath ?? of.paramCode ?? '',
+    fieldType: of.fieldType ?? 'number',
+    outputRole: of.outputRole ?? 'main',
+    aggRole: of.aggRole ?? '',
     defaultValue: of.defaultValue != null ? String(of.defaultValue) : '',
+    visibleInReport: of.visibleInReport === undefined ? true : !!of.visibleInReport,
+    helpText: of.helpText ?? '',
+    uiOrder: of.uiOrder ?? 0,
   }))
   const apiEndpoints = (dimension.apiEndpoints ?? []).map((ep) => ({
     url: ep.url ?? '',
@@ -378,21 +426,29 @@ export function toDimensionSaveInput(values: DimensionFormValues): Partial<Dimen
     requiredInputs: isSub
       ? undefined
       : values.requiredInputs.map((ri) => ({
-          key: ri.key,
-          label: ri.label,
+          paramCode: ri.paramCode,
+          paramName: ri.paramName || ri.label,
+          label: ri.label || ri.paramName,
           fieldType: ri.fieldType,
           required: ri.required,
           defaultValue: ri.defaultValue || undefined,
-          description: ri.description || undefined,
+          helpText: ri.helpText || undefined,
+          uiOrder: ri.uiOrder,
         })),
     outputFields: isSub
       ? undefined
       : values.outputFields.map((of) => ({
-          name: of.name,
-          label: of.label,
+          paramCode: of.paramCode,
+          paramName: of.paramName || of.label,
+          label: of.label || of.paramName,
+          fieldPath: of.fieldPath,
+          fieldType: of.fieldType,
           outputRole: of.outputRole,
           aggRole: of.aggRole,
           defaultValue: of.defaultValue || undefined,
+          visibleInReport: of.visibleInReport,
+          helpText: of.helpText || undefined,
+          uiOrder: of.uiOrder,
         })),
     apiEndpoints: isSub
       ? undefined

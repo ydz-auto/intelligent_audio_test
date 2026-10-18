@@ -38,10 +38,10 @@ const mockDimension: Dimension = {
     ],
   },
   requiredInputs: [
-    { key: 'asr_result', label: 'ASR识别结果', fieldType: '文本', required: true, description: 'ASR算法识别出的文本' },
+    { paramCode: 'asr_result', paramName: 'ASR识别结果', label: 'ASR识别结果', fieldType: 'text', required: true, helpText: 'ASR算法识别出的文本', uiOrder: 1 },
   ],
   outputFields: [
-    { name: 'score', label: '评分结果', outputRole: '主结果', aggRole: '直接值' },
+    { paramCode: 'score', paramName: '评分结果', label: '评分结果', fieldPath: 'score', fieldType: 'number', outputRole: 'main', aggRole: 'value', visibleInReport: true, uiOrder: 1 },
   ],
   apiEndpoints: [
     { url: 'https://api.example.com/evaluation/accuracy', name: '主评估端点', priority: 1, maxProcess: 5, maxTimeout: 30, maxAudioDuration: 60 },
@@ -67,7 +67,7 @@ describe('emptyDimensionFormValues', () => {
   it('所需输入/输出字段/API 端点带默认行（P3-2 子编辑器收敛进表单）', () => {
     const values = emptyDimensionFormValues()
     expect(values.requiredInputs.length).toBeGreaterThan(0)
-    expect(values.requiredInputs[0].key).toBe('asr_result')
+    expect(values.requiredInputs[0].paramCode).toBe('asr_result')
     expect(values.outputFields.length).toBeGreaterThan(0)
     expect(values.apiEndpoints.length).toBeGreaterThan(0)
     expect(values.apiEndpoints[0].priority).toBe(1)
@@ -99,14 +99,14 @@ describe('toDimensionFormValues', () => {
     const values = toDimensionFormValues(mockDimension)
     expect(values.requiredInputs).toHaveLength(1)
     expect(values.requiredInputs[0]).toMatchObject({
-      key: 'asr_result',
-      label: 'ASR识别结果',
+      paramCode: 'asr_result',
+      paramName: 'ASR识别结果',
       required: true,
     })
     expect(values.outputFields[0]).toMatchObject({
-      name: 'score',
-      outputRole: '主结果',
-      aggRole: '直接值',
+      paramCode: 'score',
+      outputRole: 'main',
+      aggRole: 'value',
     })
     expect(values.apiEndpoints[0]).toMatchObject({
       url: 'https://api.example.com/evaluation/accuracy',
@@ -133,15 +133,17 @@ describe('toDimensionSaveInput', () => {
     const input = toDimensionSaveInput(toDimensionFormValues(mockDimension))
     expect(input.requiredInputs).toEqual([
       {
-        key: 'asr_result',
+        paramCode: 'asr_result',
+        paramName: 'ASR识别结果',
         label: 'ASR识别结果',
-        fieldType: '文本',
+        fieldType: 'text',
         required: true,
         defaultValue: undefined,
-        description: 'ASR算法识别出的文本',
+        helpText: 'ASR算法识别出的文本',
+        uiOrder: 1,
       },
     ])
-    expect(input.outputFields?.[0].name).toBe('score')
+    expect(input.outputFields?.[0].paramCode).toBe('score')
     expect(input.apiEndpoints?.[0].priority).toBe(1)
   })
 
