@@ -24,8 +24,8 @@ import type { ReportListItem } from '@/domain/models/report'
 import {
   formatDateTime,
   getAlgorithmLabel,
+  getReportTypeMeta,
   getSuccessRateVariant,
-  REPORT_TYPE_META,
 } from '@/features/reports/constants'
 
 interface ReportShowcaseListProps {
@@ -115,7 +115,7 @@ export function ReportShowcaseList({
           </thead>
           <tbody>
             {items.map((report) => {
-              const typeMeta = REPORT_TYPE_META[report.type]
+              const typeMeta = getReportTypeMeta(report.type)
               const rateVariant = getSuccessRateVariant(report.summary.pass_rate)
               return (
                 <tr

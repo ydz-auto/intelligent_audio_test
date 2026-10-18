@@ -26,8 +26,8 @@ import type { ReportDetailData } from '@/domain/models/report'
 import {
   formatDateTime,
   getAlgorithmLabel,
-  REPORT_STATUS_META,
-  REPORT_TYPE_META,
+  getReportStatusMeta,
+  getReportTypeMeta,
 } from '@/features/reports/constants'
 import { AiChatEntry } from './ai-chat-entry'
 
@@ -67,8 +67,8 @@ export function ReportHeader({
   onShare,
   onClose,
 }: ReportHeaderProps) {
-  const typeMeta = REPORT_TYPE_META[report.type]
-  const statusMeta = REPORT_STATUS_META[report.status]
+  const typeMeta = getReportTypeMeta(report.type)
+  const statusMeta = getReportStatusMeta(report.status)
   const isComparison =
     report.type === 'comparison' || report.type === 'secondary_comparison'
 

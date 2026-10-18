@@ -11,13 +11,13 @@ import { Textarea } from '@/components/ui/textarea'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import { useReportActions } from '@/application/reports/use-report-actions'
 import type { ReportDetailData } from '@/domain/models/report'
-import { REPORT_STATUS_META } from '@/features/reports/constants'
+import { getReportStatusMeta } from '@/features/reports/constants'
 
 export function ReportSaveCard({ report }: { report: ReportDetailData }) {
   const [name, setName] = useState(report.name)
   const [description, setDescription] = useState(report.description ?? '')
   const [saving, setSaving] = useState(false)
-  const statusMeta = REPORT_STATUS_META[report.status]
+  const statusMeta = getReportStatusMeta(report.status)
   const { rename } = useReportActions()
 
   const handleSave = async () => {
