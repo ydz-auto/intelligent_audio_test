@@ -41,7 +41,8 @@ const routes: Array<RouteRecordRaw> = [
 
   // ===== 工作台壳 AuthenticatedLayout =====
   { path: '/dashboard', name: 'dashboard', component: () => import('../views/Placeholder/PlaceholderPage.vue'), props: { title: '工作台概览', description: '工作台聚合页建设中（工作台卡 02 落地：算法卡片网格 + 引导卡 + 平台概览 + 任务统计）' }, meta: { permission: 'home:read', layout: 'authenticated', title: '工作台' } },
-  { path: '/start-test', name: 'startTest', component: () => import('../views/StartTest/StartTestPage.vue'), meta: { permissions: ['task:execute', 'algorithm:read'], layout: 'authenticated', title: '开始测试' } },
+  // INT-737：开始测试合并入口 /start-test（E2E+API 单流程，四步，无选算法步骤）
+  { path: '/start-test', name: 'startTest', component: () => import('../views/StartTest/StartTest.vue'), meta: { permissions: ['task:execute', 'algorithm:read'], layout: 'authenticated', title: '开始测试' } },
   { path: '/ai-chat', name: 'aiChat', component: () => import('../views/Placeholder/PlaceholderPage.vue'), props: { title: '灵犀Agent', description: 'AI 对话工作台建设中（灵犀Agent 卡 08 落地，后端待立项）' }, meta: { permission: 'report:read', layout: 'authenticated', title: '灵犀Agent' } },
   { path: '/tasks', name: 'tasks', component: () => import('../views/Tasks/Tasks.vue'), meta: { permission: 'task:read', layout: 'authenticated', title: '任务管理' } },
   // INT-577 §2.2 裁定①：旧路径式页签 redirect——「合并」页签收编进「挑选合并」，
@@ -91,9 +92,9 @@ const routes: Array<RouteRecordRaw> = [
   // 个人中心
   { path: '/profile', name: 'profile', component: () => import('../views/Account/AccountSettings.vue'), meta: { layout: 'authenticated', title: '个人中心' } },
   { path: '/AccountSettings', name: 'accountSettings', redirect: '/profile' },
-  // 测试执行旧链（合并入口卡 03 落地后翻转 redirect；现保留工作视图直达）
-  { path: '/E2ETest', name: 'e2eTest', component: () => import('../views/E2ETest/E2ETest.vue'), meta: { permission: 'task:execute', layout: 'authenticated', title: '端到端测试' } },
-  { path: '/APITest', name: 'apiTest', component: () => import('../views/APITest/APITest.vue'), meta: { permission: 'task:execute', layout: 'authenticated', title: 'API 测试' } },
+  // 测试执行旧链（INT-737 合并入口落地后翻转 redirect：侧栏「测试执行 → 开始测试」单入口）
+  { path: '/E2ETest', name: 'e2eTest', redirect: '/start-test', meta: { permission: 'task:execute', layout: 'authenticated', title: '开始测试' } },
+  { path: '/APITest', name: 'apiTest', redirect: '/start-test', meta: { permission: 'task:execute', layout: 'authenticated', title: '开始测试' } },
 
   // ===== 无壳错误页五件 =====
   { path: '/401', name: 'error401', component: () => import('../views/Error/ErrorPage.vue'), props: { code: 401 }, meta: { public: true, title: '未登录' } },

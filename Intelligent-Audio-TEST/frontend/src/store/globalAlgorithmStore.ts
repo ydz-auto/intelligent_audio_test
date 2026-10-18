@@ -6,6 +6,9 @@
  * 持久化：localStorage `iatp:algorithm:v1`（只存 type 值，切换器回显经 /algorithm/options 解析）。
  * 按路由显隐：/reports 与 /rankings 不渲染右上角切换器（页内算法卡片网格），
  * /dashboard 工作台两者都要——显隐判定由布局组件按 route.path 处理，本 store 只管状态。
+ *
+ * INT-803 集成：INT-737 useMergedTestFlow 按 B03 契约读 `algorithmType`（null=全部），
+ * 本 store 以 computed 别名暴露同一语义（selectedType 空串 ⇄ algorithmType null）。
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
@@ -62,11 +65,15 @@ export const useGlobalAlgorithmStore = defineStore('globalAlgorithm', () => {
     return found?.name || selectedType.value
   })
 
+  /** B03 契约别名（INT-737 /start-test 合并流程读）：null = 未选择/全部 */
+  const algorithmType = computed<string | null>(() => selectedType.value || null)
+
   return {
     selectedType,
     algorithmList,
     loaded,
     selectedName,
+    algorithmType,
     init,
     loadAlgorithms,
     setAlgorithm,
