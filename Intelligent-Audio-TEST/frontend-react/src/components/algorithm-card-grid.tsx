@@ -13,7 +13,6 @@ import { Badge } from '@/components/ui/badge'
 import { IconBadge } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useCurrentAlgorithm } from '@/application/reports-showcase/use-current-algorithm'
-import { MOCK_ALGORITHM_DEFINITIONS } from '@/infrastructure/mock/reports-mock'
 import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
 import { cn } from '@/lib/utils'
 
@@ -30,7 +29,7 @@ export function AlgorithmCardGrid({
   title = '选择算法',
   className,
 }: AlgorithmCardGridProps) {
-  const { algorithmType, isLoading, isReadonly, isFailed, isAllAlgorithms } =
+  const { algorithmType, definitions, isLoading, isReadonly, isFailed, isAllAlgorithms } =
     useCurrentAlgorithm()
   const setAlgorithmId = useAlgorithmStore((s) => s.setAlgorithmId)
 
@@ -41,22 +40,22 @@ export function AlgorithmCardGrid({
       setAlgorithmId(ALL_ALGORITHMS_SENTINEL)
       toast.success('已恢复全部算法')
     } else {
-      const option = MOCK_ALGORITHM_DEFINITIONS.find((o) => o.type === value)
+      const option = definitions.find((o) => o.type === value)
       setAlgorithmId(value)
       toast.success(`已切换全局算法为 ${option?.name ?? value}`)
     }
   }
 
   const groups = useMemo(() => {
-    const map = new Map<string, typeof MOCK_ALGORITHM_DEFINITIONS>()
-    for (const option of MOCK_ALGORITHM_DEFINITIONS) {
-      const key = option.group_name ?? '其他'
+    const map = new Map<string, typeof definitions>()
+    for (const option of definitions) {
+      const key = option.groupName ?? '其他'
       const list = map.get(key) ?? []
       list.push(option)
       map.set(key, list)
     }
     return [...map.entries()]
-  }, [])
+  }, [definitions])
 
   return (
     <section

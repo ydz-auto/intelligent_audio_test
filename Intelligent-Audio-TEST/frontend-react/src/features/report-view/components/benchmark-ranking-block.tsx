@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import * as echarts from 'echarts'
 
+import { ApiError } from '@/infrastructure/api/api-error'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -143,8 +144,12 @@ export function BenchmarkRankingBlock({ reportId, reportName }: BenchmarkRanking
 
   const handlePublish = useCallback(async () => {
     setPublishOpen(false)
-    const result = await publishBenchmarkReport()
-    if (result) toast.success('Benchmark 报告已发布')
+    try {
+      await publishBenchmarkReport()
+      toast.success('Benchmark 报告已发布')
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.userMessage : '发布失败，请重试')
+    }
   }, [publishBenchmarkReport])
 
   if (computing) {

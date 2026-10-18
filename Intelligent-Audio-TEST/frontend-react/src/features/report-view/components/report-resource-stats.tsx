@@ -21,10 +21,20 @@ import type {
 } from '@/domain/models/report'
 import { cn } from '@/lib/utils'
 
-function successVariant(rate: number) {
+function successVariant(rate: number | null | undefined) {
+  if (rate == null || !Number.isFinite(rate)) return 'neutral' as const
   if (rate >= 80) return 'success' as const
   if (rate >= 50) return 'warning' as const
   return 'danger' as const
+}
+
+/** 指标值格式化（对齐旧 Vue TaskReportPanel.formatMetricWithUnit 口径：null→'—'，数值 2 位小数 + 单位） */
+function formatMetricWithUnit(value: unknown, unit: string | undefined): string {
+  if (value === null || value === undefined) return '—'
+  const num = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(num)) return String(value)
+  const formatted = num.toFixed(2)
+  return unit ? `${formatted}${unit}` : formatted
 }
 
 function DeviceApiCard({
@@ -47,7 +57,7 @@ function DeviceApiCard({
   totalCases: number
   completedCases: number
   failedCases: number
-  successRate: number
+  successRate: number | null | undefined
   metrics?: Record<string, unknown>
   metricUnits?: Record<string, string>
 }) {
@@ -90,7 +100,11 @@ function DeviceApiCard({
       <div className='mt-2 flex items-center justify-between text-xs'>
         <span className='text-muted-foreground'>成功率</span>
         <StatusBadge
-          label={`${successRate.toFixed(1)}%`}
+          label={
+            successRate == null || !Number.isFinite(successRate)
+              ? '—'
+              : `${successRate.toFixed(1)}%`
+          }
           variant={successVariant(successRate)}
           size='sm'
         />
@@ -101,8 +115,7 @@ function DeviceApiCard({
             <div key={key} className='flex items-center justify-between gap-1'>
               <span className='text-muted-foreground truncate'>{key}</span>
               <span className='font-mono tabular-nums'>
-                {typeof value === 'number' ? value.toFixed(1) : String(value)}
-                {metricUnits?.[key] ? <span className='text-muted-foreground ms-0.5'>{metricUnits[key]}</span> : null}
+                {formatMetricWithUnit(value, metricUnits?.[key])}
               </span>
             </div>
           ))}

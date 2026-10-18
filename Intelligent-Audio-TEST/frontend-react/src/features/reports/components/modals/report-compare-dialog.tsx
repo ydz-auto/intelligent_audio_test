@@ -3,7 +3,8 @@
  * ①基于任务（勾选任务 ≥2 → POST /reports/compare{task_ids}）
  * ②基于已选报告（列表勾选 ≥2 → POST /reports/secondary-compare{report_ids}）
  * ③对比配置（§4.6：对比维度 × 对比指标 × 对比方式 × 报告配置，INT-596 P3 补全）。
- * 提交后生成对比报告并跳转查看（mock 直接 resolve 报告 id；配置随批透传 TODO(API 接线)）。
+ * 提交后生成对比报告并跳转查看（经 reports-api.compareReports / secondaryCompareReports 真实端点，
+ * 返回 report_id 后跳转；对比配置 §4.6 后端未立项，不随批透传）。
  */
 import { GitCompareArrows } from 'lucide-react'
 import { useState } from 'react'

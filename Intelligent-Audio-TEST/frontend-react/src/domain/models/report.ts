@@ -7,10 +7,25 @@
  * INT-434 重实施（v2.2）：按 15_报告域.md §1 实测层级补 raw_data / all_metrics 配置数组 /
  * tag_metric_data / case_type_stats / tables / field_mappings / detailed_results /
  * 用例级全量字段（results/referenceParams/algorithmResults/audios）。
- * mock 常量见 infrastructure/mock/reports-mock.ts，后续接线仅替换 api 桩，页面与 hook 不返工（红线④）。
+ * 接线卡 INT-643：报告域 infra 已切真实接口（reports-api/favoritesApi 经 client.ts），
+ * mock 常量（infrastructure/mock/reports-mock.ts）已删除，字段转换只在 infrastructure 层。
  */
 
 export type ReportType = 'task' | 'comparison' | 'secondary_comparison' | 'benchmark'
+
+/** 算法定义（报告展示/工作台「当前算法」卡数据源；GET /algorithm/definitions 子集映射，snake_case 转换见 reports-api） */
+export type ReportAlgorithmDefinition = {
+  /** 算法类型代码（主键，全局算法 store 存值） */
+  type: string
+  /** 显示名称 */
+  name: string
+  groupName?: string | null
+  category?: string | null
+  description?: string | null
+  /** online / offline（卡片「在线/离线」徽章） */
+  status?: string
+  icon?: string | null
+}
 export type ReportStatus = 'draft' | 'published'
 
 export type ReportViewMode = 'table' | 'card'
