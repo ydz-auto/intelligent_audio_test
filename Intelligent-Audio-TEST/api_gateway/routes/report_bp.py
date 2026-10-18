@@ -48,6 +48,25 @@ def get_by_task(task_id: int, _: None = require_permission('report:read')):
     return _handle(ReportQueryService.get_by_task(task_id))
 
 
+# ---- 报告统计分析（INT-791：G04 报告统计分析页）----
+# 注意：GET /statistics 必须注册在 GET /{report_id} 之前，否则被 {report_id}
+# 捕获返回 422（FEAT 契约审查 INT-754 实施注意事项 #1）
+
+@router.get('/statistics')
+def get_statistics(_: None = require_permission('report:read')):
+    return _handle(ReportQueryService.get_statistics())
+
+
+@router.get('/statistics/trend')
+def get_statistics_trend(_: None = require_permission('report:read')):
+    return _handle(ReportQueryService.get_statistics_trend())
+
+
+@router.post('/statistics/report')
+def generate_statistics_report(_: None = require_permission('report:read')):
+    return _handle(ReportQueryService.generate_statistics_report())
+
+
 @router.get('/{report_id}')
 def get_one(report_id: int, _: None = require_permission('report:read')):
     return _handle(ReportQueryService.get_one(report_id))

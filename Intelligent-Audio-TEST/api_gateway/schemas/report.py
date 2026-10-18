@@ -331,3 +331,41 @@ class ReportSearchCasesRequest(APIModel):
 class ReportExportQuery(APIModel):
     ids: str = Field('')
     format: str = Field('csv')
+
+
+# ===== 报告统计分析（INT-791：G04 报告统计分析页） =====
+
+
+class ReportStatisticsQuery(APIModel):
+    """GET /reports/statistics 查询参数。"""
+    # 统计维度：time | task_type | device_type | evaluation_metric
+    dimension: str = Field('time')
+    start_time: Optional[str] = Field(None)
+    end_time: Optional[str] = Field(None)
+    algorithm_type: Optional[str] = Field(None)
+
+
+class ReportStatisticsTrendQuery(APIModel):
+    """GET /reports/statistics/trend 查询参数。"""
+    # 趋势类型：time | dimension
+    trend_type: str = Field('time')
+    metric: Optional[str] = Field(None)
+    start_time: Optional[str] = Field(None)
+    end_time: Optional[str] = Field(None)
+
+
+class StatisticsReportTimeRange(APIModel):
+    """POST /reports/statistics/report 时间范围。"""
+    start_time: Optional[str] = Field(None)
+    end_time: Optional[str] = Field(None)
+
+
+class GenerateStatisticsReportRequest(APIModel):
+    """POST /reports/statistics/report 请求体。"""
+    # 报表类型：report_count | case_execution | evaluation_metric | device_performance
+    report_type: str = Field('report_count')
+    # 报表内容（可空，§2.2 口径，预留扩展）
+    content: Optional[str] = Field(None)
+    # 格式：csv | excel | pdf | html
+    format: str = Field('csv')
+    time_range: StatisticsReportTimeRange = Field(default_factory=StatisticsReportTimeRange)

@@ -15,6 +15,9 @@ from api_gateway.schemas.report import (
     ReportExportRequest,
     GetCaseAveragesRequest,
     ReportExportQuery,
+    ReportStatisticsQuery,
+    ReportStatisticsTrendQuery,
+    GenerateStatisticsReportRequest,
 )
 from api_gateway.infrastructure.grpc_proxies import report_config_service
 from shared.models.common_enums import ReportStatus, ReportType
@@ -297,6 +300,77 @@ class ReportQueryService:
             return success_response(data)
         except Exception as e:
             return error_response(f'获取用例平均值失败: {str(e)}')
+
+    # ------------------------------------------------------------------
+    # 报告统计分析（INT-791：/reports/statistics*，供 G04 报告统计分析页）
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def get_statistics():
+        try:
+            params = {k: v[0] if isinstance(v, list) else v
+                      for k, v in request.args.to_dict().items()}
+            query = ReportStatisticsQuery.model_validate(params)
+        except Exception as e:
+            return error_response(f'参数错误: {str(e)}', 400)
+
+        try:
+            stub = report_config_service.stub
+            resp = stub.GetStatistics(report_pb.GetStatisticsRequest(
+                data=_dumps(query.model_dump(by_alias=False, exclude_none=True))))
+            if not resp.success:
+                return error_response(resp.message or '统计分析失败')
+            data = _loads(resp.data, {}) or {}
+            return success_response(data)
+        except Exception as e:
+            return error_response(f'统计分析失败: {str(e)}')
+
+    @staticmethod
+    def get_statistics_trend():
+        try:
+            params = {k: v[0] if isinstance(v, list) else v
+                      for k, v in request.args.to_dict().items()}
+            query = ReportStatisticsTrendQuery.model_validate(params)
+        except Exception as e:
+            return error_response(f'参数错误: {str(e)}', 400)
+
+        try:
+            stub = report_config_service.stub
+            resp = stub.GetStatisticsTrend(report_pb.GetStatisticsTrendRequest(
+                data=_dumps(query.model_dump(by_alias=False, exclude_none=True))))
+            if not resp.success:
+                return error_response(resp.message or '趋势分析失败')
+            data = _loads(resp.data, {}) or {}
+            return success_response(data)
+        except Exception as e:
+            return error_response(f'趋势分析失败: {str(e)}')
+
+    @staticmethod
+    def generate_statistics_report():
+        try:
+            body = request.get_json() or {}
+            req = GenerateStatisticsReportRequest.model_validate(body)
+        except Exception as e:
+            return error_response(f'参数错误: {str(e)}', 400)
+
+        try:
+            stub = report_config_service.stub
+            resp = stub.GenerateStatisticsReport(report_pb.GenerateStatisticsReportRequest(
+                data=_dumps(req.model_dump(by_alias=False, exclude_none=True))))
+            if not resp.success:
+                return error_response(resp.message or '报表生成失败')
+            data = _loads(resp.data, {}) or {}
+            # 复用 binary 下载链路：zip_base64 → Blob 下载（对齐 export 链路）
+            if data.get('content_base64'):
+                return {
+                    'binary': True,
+                    'content': base64.b64decode(data['content_base64']),
+                    'mime_type': data.get('mime_type', 'application/octet-stream'),
+                    'filename': data.get('filename', 'statistics_report'),
+                }
+            return success_response(data)
+        except Exception as e:
+            return error_response(f'报表生成失败: {str(e)}')
 
     # ------------------------------------------------------------------
     # 下载用例日志
