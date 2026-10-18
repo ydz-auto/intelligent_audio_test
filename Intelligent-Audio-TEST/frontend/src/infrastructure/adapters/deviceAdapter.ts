@@ -118,6 +118,8 @@ export function toDevice(dto: DeviceItemDto): Device {
     updatedAt: dto?.updated_at,
     driverName: dto?.driver_name,
     supportedAlgorithms: dto?.supported_algorithms,
+    labId: dto?.lab_id,
+    labName: dto?.lab_name,
   }
 }
 
@@ -198,6 +200,8 @@ export function toPlaybackDevice(dto: PlaybackDeviceItemDto): PlaybackDevice {
     currentSplMappingId: dto?.current_spl_mapping_id,
     createdAt: dto?.created_at,
     updatedAt: dto?.updated_at,
+    labId: dto?.lab_id,
+    labName: dto?.lab_name,
   }
 }
 

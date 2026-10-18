@@ -1,5 +1,6 @@
 import { devicesPort, BATCH_LIST_PARAMS } from '../../composables/device/devicesPort';
 import { playbackPort } from '../../composables/device/playbackPort';
+import { laboratoriesPort } from '../../composables/device/laboratoriesPort';
 import { apisPort } from '../../composables/apiTest/apisPort';
 import { audiosPort } from '../../composables/audio/audiosPort';
 import type { PlaybackDevice } from '../../domain';
@@ -15,8 +16,19 @@ import {
   apiDevices,
   playbackDevices,
   promptAudios,
+  laboratories,
   getDeviceManagement
 } from './deviceState';
+
+/** 加载实验室列表（INT-655：「实验室」facet 选项数据源，失败静默降级为无实验室选项） */
+export async function loadLaboratories() {
+  try {
+    const labs = await laboratoriesPort.getAllFlat({ page: 1, per_page: 500 });
+    laboratories.value = labs;
+  } catch (err) {
+    console.error('Failed to fetch laboratories:', err);
+  }
+}
 
 export async function fetchAllDevices() {
   loading.value = true;

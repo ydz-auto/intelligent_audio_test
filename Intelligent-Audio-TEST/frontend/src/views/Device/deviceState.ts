@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue';
 import { useModalControl } from '../../composables/modal/useModal';
-import type { PlaybackDevice, Audio } from '../../domain';
+import type { PlaybackDevice, Audio, Laboratory } from '../../domain';
 import type { TestDeviceView, ApiDeviceView, DeviceUnion } from '@/domain';
 // 引入视图模式/页签枚举，消除魔法字符串
 import { ViewMode, DeviceTabType } from '@/domain/enums';
@@ -25,6 +25,9 @@ export const statusFilter = ref(ViewMode.ALL);
 export const playbackTypeFilter = ref(ViewMode.ALL);
 export const algorithmFilter = ref(ViewMode.ALL);
 export const algorithmTypeFilter = ref(ViewMode.ALL);
+/** 实验室筛选（INT-655：测试/播放设备页签按所属实验室过滤；值为 labId 字符串，ALL=全部） */
+export const laboratoryFilter = ref<string | number>(ViewMode.ALL);
+export const laboratories = ref<Laboratory[]>([]);
 export const selectedDevices = ref<(string | number)[]>([]);
 export const playbackDevices = ref<PlaybackDevice[]>([]);
 export const testDevices = ref<TestDeviceView[]>([]);
