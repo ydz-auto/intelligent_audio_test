@@ -67,7 +67,7 @@ export const MODAL_TYPES = {
   /** INT-744：个人中心·修改密码对话框壳（自助改密 F2 待 FEAT，端点未落前提交提示待后端立项） */
   CHANGE_PASSWORD: 'changePassword',
   /** INT-744：个人中心·编辑资料对话框壳（自我资料更新 F3 待 FEAT，端点未落前提交提示待后端立项） */
-  EDIT_PROFILE: 'editProfile' (INT-744: 个人中心 /profile —— 身份卡 + 个人数据快捷区 + 个人信息卡(F3 编辑壳) + 账号安全卡(F2 改密壳/会话壳/OAuth 绑定))
+  EDIT_PROFILE: 'editProfile'
 } as const
 
 export type ModalTypeKey = keyof typeof MODAL_TYPES

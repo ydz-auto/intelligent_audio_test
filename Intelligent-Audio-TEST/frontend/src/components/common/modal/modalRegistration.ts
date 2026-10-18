@@ -48,7 +48,7 @@ import ResultReviewModal from './ResultReviewModal.vue'
 import LoginRequiredModal from './LoginRequiredModal.vue'
 // INT-744：个人中心·修改密码 / 编辑资料对话框壳（自助改密 F2 / 自我资料更新 F3 待 FEAT）
 import ChangePasswordModal from './ChangePasswordModal.vue'
-import EditProfileModal from './EditProfileModal.vue' (INT-744: 个人中心 /profile —— 身份卡 + 个人数据快捷区 + 个人信息卡(F3 编辑壳) + 账号安全卡(F2 改密壳/会话壳/OAuth 绑定))
+import EditProfileModal from './EditProfileModal.vue'
 
 export function registerGlobalModals() {
   const manager = getModalManager();
@@ -356,7 +356,7 @@ export function registerGlobalModals() {
     component: EditProfileModal,
     defaultConfig: {
       title: '编辑资料',
-      width: '480px' (INT-744: 个人中心 /profile —— 身份卡 + 个人数据快捷区 + 个人信息卡(F3 编辑壳) + 账号安全卡(F2 改密壳/会话壳/OAuth 绑定))
+      width: '480px'
     }
   });
 }

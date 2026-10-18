@@ -37,7 +37,7 @@ export { llmProviderApi } from './llmProviderApi';
 export { agentApi, AGENT_BACKEND_STATUS } from './agentApi';
 export { optionsApi } from './optionsApi';
 export { usersApi } from './usersApi';
-export { rolesApi } from './rolesApi'; (INT-743: 配置运维实施——算法配置分组CRUD + 日志/路由迁移 + 系统设置六域工作区)
+export { rolesApi } from './rolesApi';
 
 // Shared types (re-exported for backward compatibility with existing imports)
 // TagCategory/TagItem 单一来源已收敛到 domain/model/tag.ts（businessTypes 链路）
