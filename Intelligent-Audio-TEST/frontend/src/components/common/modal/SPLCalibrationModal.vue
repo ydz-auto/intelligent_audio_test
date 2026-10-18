@@ -245,7 +245,7 @@ const handleStart = async () => {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   box-sizing: border-box;
 }
@@ -259,7 +259,7 @@ const handleStart = async () => {
 .calibration-info {
   background-color: var(--color-secondary-light);
   padding: 12px;
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -293,7 +293,7 @@ const handleStart = async () => {
 .progress-bar-container {
   height: 8px;
   background-color: var(--muted);
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   overflow: hidden;
   margin-bottom: 15px;
 }
@@ -315,7 +315,7 @@ const handleStart = async () => {
   height: 40px;
   border: 4px solid color-mix(in srgb, var(--color-black) 10%, transparent);
   border-left-color: var(--primary-color);
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   animation: spin 1s linear infinite;
 }
 
@@ -340,7 +340,7 @@ const handleStart = async () => {
 .btn {
   padding: 10px 24px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -375,7 +375,7 @@ const handleStart = async () => {
   margin-top: 15px;
   padding: 15px;
   background-color: var(--muted);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
 }
 
 .d-curve-preview > label {
@@ -399,7 +399,7 @@ const handleStart = async () => {
   height: 80px;
   padding: 5px;
   background-color: var(--background);
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   border: 1px solid var(--color-slate-200);
 }
 
@@ -407,7 +407,7 @@ const handleStart = async () => {
   width: 8px;
   min-width: 4px;
   background-color: var(--primary-color);
-  border-radius: 2px 2px 0 0;
+  border-radius: var(--radius-tag) var(--radius-tag) 0 0;
   transition: height 0.2s ease;
   cursor: pointer;
 }

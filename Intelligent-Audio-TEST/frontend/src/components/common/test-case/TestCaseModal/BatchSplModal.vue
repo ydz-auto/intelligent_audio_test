@@ -123,7 +123,7 @@ function handleConfirm() {
 
 .modal-container {
   background-color: white;
-  border-radius: var(--border-radius-xl);
+  border-radius: var(--radius-card);
   box-shadow: var(--shadow-lg);
   max-height: 90vh;
   overflow-y: auto;
@@ -147,7 +147,7 @@ function handleConfirm() {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   transition: all 0.2s;
 }
 
@@ -178,13 +178,13 @@ function handleConfirm() {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-control);
   font-size: 14px;
 }
 
 .btn {
   padding: 10px 20px;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-control);
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s;
@@ -261,7 +261,7 @@ function handleConfirm() {
 .btn-quick {
   padding: 6px 12px;
   font-size: 12px;
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-pill);
   background: var(--secondary-light);
   color: var(--secondary-color);
   border: 1px solid transparent;

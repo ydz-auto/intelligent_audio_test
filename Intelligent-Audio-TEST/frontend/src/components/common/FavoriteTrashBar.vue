@@ -75,7 +75,7 @@ const onFavoriteChange = (event: Event) => {
   gap: 6px;
   padding: 4px 12px;
   border: 1px solid var(--border-color);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--background-primary);
   cursor: pointer;
   user-select: none;

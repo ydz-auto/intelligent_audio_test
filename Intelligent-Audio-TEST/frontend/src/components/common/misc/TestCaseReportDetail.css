@@ -6,7 +6,7 @@
 
 .detail-section {
   background: white;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 
 .result-audio-container {
@@ -18,7 +18,7 @@
 .result-audio-group {
   padding: 10px;
   border: 1px solid var(--border-color);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
 }
 
 .result-audio-title {
@@ -40,7 +40,7 @@
   gap: 8px;
   padding: 6px 12px;
   background: var(--background-secondary);
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   font-size: 13px;
 }
 
@@ -82,7 +82,7 @@
   border-collapse: collapse;
   font-size: 13px;
   border: 1px solid var(--border-color);
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   overflow: hidden;
   table-layout: auto;
 }
@@ -154,7 +154,7 @@
 
 .score-badge {
   padding: 2px 10px;
-  border-radius: 12px;
+  border-radius: var(--radius-pill);
   font-size: 11px;
   font-weight: 600;
 }
@@ -217,7 +217,7 @@
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   font-size: 11px;
   font-weight: 500;
 }
@@ -265,7 +265,7 @@
   height: 48px;
   background: linear-gradient(135deg, var(--secondary-light) 0%, var(--color-blue-50) 100%);
   border: 2px dashed var(--secondary-light);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   transition: all 0.3s ease;
   margin-top: 8px;
@@ -300,7 +300,7 @@
   color: var(--gray);
   padding: 2px 8px;
   background: color-mix(in srgb, var(--color-black) 5%, transparent);
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
 }
 
 .audio-item-header {
@@ -345,7 +345,7 @@
   gap: 4px;
   padding: 6px 12px;
   border: 1px solid var(--border-color);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   background: white;
   color: var(--text-primary);
   font-size: 13px;
@@ -378,7 +378,7 @@
 .kv-table {
   width: 100%;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   overflow: hidden;
   background: var(--color-white);
 }
@@ -455,7 +455,7 @@
   font-size: 12px;
   background: var(--muted);
   padding: 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   max-height: 400px;
   overflow-y: auto;
   line-height: 1.5;
@@ -493,7 +493,7 @@
   align-items: center;
   padding: 12px 20px;
   background: var(--background-secondary);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   min-width: 120px;
 }
 
@@ -517,7 +517,7 @@
 
 .round-item {
   border: 1px solid var(--border-color);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   overflow: hidden;
 }
 
@@ -553,7 +553,7 @@
 .round-interruption-badge {
   font-size: 11px;
   padding: 1px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-pill);
   background: var(--destructive-light);
   color: var(--destructive);
   font-weight: 500;
@@ -601,7 +601,7 @@
   display: inline-flex;
   align-items: center;
   padding: 2px 10px;
-  border-radius: 12px;
+  border-radius: var(--radius-pill);
   font-size: 12px;
   background: var(--secondary-light);
   color: var(--secondary);
@@ -631,7 +631,7 @@
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  border-radius: 4px 4px 0 0;
+  border-radius: var(--radius-control) var(--radius-control) 0 0;
   transition: all 0.2s;
   display: flex;
   align-items: center;
@@ -669,7 +669,7 @@
   background: var(--color-neutral-50);
   color: var(--text-secondary);
   cursor: pointer;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   transition: all 0.2s ease;
   appearance: none;
   -webkit-appearance: none;
@@ -696,7 +696,7 @@
 .dim-tab-btn.sub {
   padding: 4px 10px;
   font-size: 12px;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--border);
   border-bottom: none;
   margin-bottom: -1px;
@@ -731,7 +731,7 @@
   color: var(--primary-color);
   background: var(--secondary-light);
   padding: 4px 10px;
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   display: inline-block;
   margin-bottom: 6px;
 }
@@ -761,7 +761,7 @@
   color: var(--gray);
   background: var(--muted);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   transition: all 0.2s;
 }

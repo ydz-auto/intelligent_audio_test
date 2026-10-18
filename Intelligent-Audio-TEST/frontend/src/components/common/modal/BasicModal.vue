@@ -154,7 +154,7 @@ onUnmounted(() => {
 
 .modal {
   background-color: white;
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   box-shadow: 0 4px 20px color-mix(in srgb, var(--color-black) 15%, transparent);
   max-height: 90vh;
   overflow: hidden;
@@ -199,7 +199,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   transition: all 0.2s;
 }
 
@@ -233,7 +233,7 @@ onUnmounted(() => {
 .btn {
   padding: 10px 20px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
@@ -259,7 +259,7 @@ onUnmounted(() => {
   width: 16px;
   height: 16px;
   border: 2px solid color-mix(in srgb, var(--color-white) 30%, transparent);
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   border-top-color: white;
   animation: spin 1s ease-in-out infinite;
   margin-right: 8px;

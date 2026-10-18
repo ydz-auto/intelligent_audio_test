@@ -16,7 +16,7 @@
 
 .rce-tag {
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-pill);
   font-size: 10px;
   font-weight: 500;
 }
@@ -36,7 +36,7 @@
   margin-bottom: 10px;
   padding: 6px 10px;
   background: var(--background-secondary, var(--muted));
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   flex-wrap: wrap;
 }
 .rce-tool-btn {
@@ -46,7 +46,7 @@
   padding: 4px 10px;
   font-size: 12px;
   border: 1px solid var(--border-color, var(--border));
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   background: var(--background-primary, var(--color-white));
   color: var(--text-secondary, var(--color-gray-500));
   cursor: pointer;
@@ -74,7 +74,7 @@
   padding: 10px 12px;
   background: var(--background-primary, var(--color-white));
   border: 1px solid var(--border-color, var(--border));
-  border-radius: 6px;
+  border-radius: var(--radius-control);
 }
 .rce-tag-selector-hint,
 .rce-tag-device-hint {
@@ -93,7 +93,7 @@
   font-size: 12px;
   background: var(--secondary-light, var(--gray-light));
   color: var(--text-secondary, var(--color-gray-500));
-  border-radius: 12px;
+  border-radius: var(--radius-pill);
   cursor: pointer;
   border: 1px solid transparent;
   transition: all 0.15s ease;
@@ -152,7 +152,7 @@
 
 .rce-audio-card {
   border: 1px solid var(--border-color, var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   overflow: hidden;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
@@ -207,7 +207,7 @@
   width: 24px;
   height: 24px;
   border: 1px solid var(--border-color, var(--border));
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--text-secondary, var(--color-gray-500));
   cursor: pointer;
@@ -252,7 +252,7 @@
   margin-top: 4px;
   padding: 4px 6px;
   background: var(--background-secondary, var(--color-neutral-50));
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   flex-wrap: wrap;
 }
 .rce-audio-tags-label {
@@ -265,7 +265,7 @@
   font-size: 11px;
   background: var(--primary-light, #fff0e6);
   color: var(--primary-color, var(--primary));
-  border-radius: 10px;
+  border-radius: var(--radius-pill);
 }
 
 .rce-add-btn { align-self: flex-start; margin-top: 4px; }
@@ -278,7 +278,7 @@
   font-size: 11px;
   background: var(--background-secondary, var(--gray-light));
   color: var(--text-secondary, var(--color-gray-500));
-  border-radius: 10px;
+  border-radius: var(--radius-control);
   white-space: nowrap;
 }
 .rce-audio-duration i {

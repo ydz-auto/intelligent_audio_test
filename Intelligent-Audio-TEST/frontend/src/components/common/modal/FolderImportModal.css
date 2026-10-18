@@ -36,7 +36,7 @@ h3 {
   overflow: auto;
   padding: 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--color-white);
   pointer-events: auto;
 }
@@ -46,7 +46,7 @@ h3 {
   background: var(--color-slate-50);
   color: var(--color-slate-700);
   padding: 6px 12px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-size: 13px;
   cursor: pointer;
   transition: background-color 0.15s ease;
@@ -79,7 +79,7 @@ h3 {
 /* 拖放区域 */
 .drop-zone {
   border: 2px dashed var(--color-slate-300);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   padding: 40px 20px;
   text-align: center;
   transition: all 0.2s ease;
@@ -130,7 +130,7 @@ h3 {
   padding: 10px 20px;
   background-color: var(--color-blue-500);
   color: white;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -150,7 +150,7 @@ h3 {
 .file-stats {
   background-color: var(--color-sky-50);
   border: 1px solid var(--color-blue-200);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   padding: 16px;
   margin: 16px 0;
 }
@@ -183,7 +183,7 @@ h3 {
 .upload-options {
   background-color: var(--color-slate-50);
   padding: 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 
 .upload-options h4 {
@@ -278,7 +278,7 @@ h3 {
 .form-input {
   padding: 8px 12px;
   border: 1px solid var(--color-slate-200);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   color: var(--color-slate-700);
   transition: border-color 0.2s ease;
@@ -337,14 +337,14 @@ h3 {
 .upload-progress {
   background-color: var(--color-slate-50);
   padding: 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 
 .progress-bar-container {
   width: 100%;
   height: 8px;
   background-color: var(--color-slate-200);
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   overflow: hidden;
   margin-bottom: 8px;
 }
@@ -352,7 +352,7 @@ h3 {
 .progress-bar {
   height: 100%;
   background-color: var(--color-blue-500);
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   transition: width 0.3s ease;
 }
 
@@ -378,7 +378,7 @@ h3 {
   background-color: var(--color-blue-500);
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -399,7 +399,7 @@ h3 {
   background-color: white;
   color: var(--color-gray-700);
   border: 1px solid var(--color-gray-300);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -421,7 +421,7 @@ h3 {
   width: 16px;
   height: 16px;
   border: 2px solid color-mix(in srgb, var(--color-white) 30%, transparent);
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   border-top-color: white;
   animation: spin 0.8s linear infinite;
   margin-right: 8px;
@@ -435,7 +435,7 @@ h3 {
 .folder-groups {
   background-color: var(--color-slate-50);
   padding: 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   margin: 16px 0;
 }
 
@@ -459,7 +459,7 @@ h3 {
   padding: 12px;
   background-color: white;
   border: 1px solid var(--color-slate-200);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
 }
 
 .folder-name {
@@ -501,7 +501,7 @@ h3 {
   margin-top: 16px;
   padding: 16px;
   background-color: var(--color-slate-50);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--color-slate-200);
 }
 

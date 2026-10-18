@@ -73,7 +73,7 @@ defineEmits<{
   justify-content: space-between;
   padding: 12px 14px;
   background: var(--background-secondary, var(--muted));
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   margin-bottom: 16px;
 }
 
@@ -86,7 +86,7 @@ defineEmits<{
 .rce-round-num {
   width: 36px;
   height: 36px;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background: var(--primary-color, var(--primary));
   color: var(--background);
   font-size: 16px;
@@ -129,7 +129,7 @@ defineEmits<{
   width: 26px;
   height: 26px;
   border: 1px solid var(--border-color, var(--border));
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   background: var(--background-primary, var(--background));
   cursor: pointer;
   display: flex;
@@ -156,7 +156,7 @@ defineEmits<{
   width: 28px;
   height: 28px;
   border: 1px solid var(--border-color, var(--border));
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: transparent;
   cursor: pointer;
   display: flex;

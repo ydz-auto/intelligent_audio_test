@@ -49,7 +49,7 @@ defineEmits(['prev', 'next']);
 .step-panel{
 background: var(--color-white);
 border: 2px solid var(--border-color);
-border-radius: var(--border-radius-xl);
+border-radius: var(--radius-card);
 padding: var(--spacing-xl);
 margin-bottom: var(--spacing-lg);
 box-shadow: var(--shadow-md);

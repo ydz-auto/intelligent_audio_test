@@ -343,7 +343,7 @@ onMounted(() => {
 .form-control {
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   color: var(--muted-foreground);
   transition: border-color 0.2s, box-shadow 0.2s;
@@ -381,7 +381,7 @@ select.form-control {
   background-color: var(--secondary-light);
   color: var(--secondary-color);
   padding: 4px 10px;
-  border-radius: 16px;
+  border-radius: var(--radius-pill);
   font-size: 12px;
   display: inline-flex;
   align-items: center;
@@ -459,7 +459,7 @@ select.form-control {
 
 .btn {
   padding: 8px 20px;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   cursor: pointer;
   border: none;
@@ -495,7 +495,7 @@ select.form-control {
   height: 28px;
   border: 1px solid var(--border);
   background: var(--background);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   display: flex;
   align-items: center;

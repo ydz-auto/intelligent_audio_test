@@ -15,7 +15,7 @@
   height: 40px;
   border: 4px solid var(--color-gray-100);
   border-top: 4px solid var(--color-blue-500);
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   animation: spin 1s linear infinite;
 }
 
@@ -45,7 +45,7 @@
 .info-card {
   background-color: var(--color-slate-50);
   padding: 20px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 
 .info-card h4 {
@@ -86,7 +86,7 @@
 .data-table-section {
   background-color: var(--color-slate-50);
   padding: 20px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 
 .data-table-section h4 {
@@ -99,7 +99,7 @@
 .table-container {
   overflow-x: auto;
   background-color: white;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--color-slate-200);
 }
 
@@ -146,7 +146,7 @@ td {
 .context-card {
   background-color: var(--color-slate-50);
   padding: 20px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 
 .content-card h4,
@@ -160,7 +160,7 @@ td {
 .log-content {
   background-color: white;
   padding: 16px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--color-slate-200);
   font-size: 14px;
   line-height: 1.6;
@@ -172,7 +172,7 @@ td {
 .log-context {
   background-color: white;
   padding: 16px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--color-slate-200);
   font-size: 13px;
   line-height: 1.5;
@@ -184,7 +184,7 @@ td {
 /* 支持日志级别样式 */
 .log-level {
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
@@ -221,7 +221,7 @@ td {
   border-collapse: collapse;
   margin: 8px 0;
   background-color: white;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   box-shadow: 0 1px 3px color-mix(in srgb, var(--color-black) 10%, transparent);
   font-size: 13px;
 }
@@ -269,7 +269,7 @@ td {
   padding: 6px 8px;
   font-size: 13px;
   border: 1px solid var(--color-slate-200);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   box-sizing: border-box;
   transition: border-color 0.2s ease;
 }
@@ -325,7 +325,7 @@ td {
   border-collapse: collapse;
   margin: 8px 0;
   background-color: white;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   box-shadow: 0 1px 3px color-mix(in srgb, var(--color-black) 10%, transparent);
   font-size: 13px;
 }
@@ -355,7 +355,7 @@ td {
   padding: 6px 8px;
   font-size: 13px;
   border: 1px solid var(--color-slate-200);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   box-sizing: border-box;
   transition: border-color 0.2s ease;
 }
@@ -439,7 +439,7 @@ td {
 .annotation-card {
   background-color: var(--color-slate-50);
   padding: 20px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
   .annotation-card h4 {
     margin: 0 0 16px 0;
@@ -450,7 +450,7 @@ td {
 /* ASR信息区域样式 */
 .asr-info-section {
   background-color: white;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--color-slate-200);
   margin-bottom: 16px;
 }
@@ -491,7 +491,7 @@ td {
   padding: 8px 12px;
   font-size: 13px;
   border: 1px solid var(--color-slate-200);
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   resize: vertical;
   font-family: inherit;
   box-sizing: border-box;
@@ -513,7 +513,7 @@ td {
   width: 280px;
   flex-shrink: 0;
   background-color: white;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--color-slate-200);
   display: flex;
   flex-direction: column;
@@ -537,7 +537,7 @@ td {
 
 .annotation-item {
   padding: 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   border: 1px solid transparent;
   margin-bottom: 8px;
@@ -565,7 +565,7 @@ td {
   font-size: 10px;
   font-weight: 600;
   padding: 2px 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-tag);
   text-transform: uppercase;
 }
 
@@ -621,7 +621,7 @@ td {
 .annotation-edit-panel {
   flex: 1;
   background-color: white;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--color-slate-200);
   display: flex;
   flex-direction: column;
@@ -636,7 +636,7 @@ td {
   color: var(--color-slate-400);
   font-style: italic;
   background-color: white;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--color-slate-200);
 }
 
@@ -662,7 +662,7 @@ td {
   color: var(--color-slate-500);
   font-size: 13px;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   transition: all 0.2s ease;
 }
 
@@ -749,7 +749,7 @@ td {
   margin-top: 12px;
   padding: 12px;
   background-color: var(--color-slate-50);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--color-slate-200);
 }
 
@@ -818,7 +818,7 @@ td {
   padding: 4px 8px;
   font-size: 13px;
   border: 1px solid var(--color-slate-200);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
 }
 
 .input-tiny:focus {
@@ -843,7 +843,7 @@ td {
   font-size: 13px;
   line-height: 1.5;
   border: 1px solid var(--color-slate-200);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   resize: vertical;
   box-sizing: border-box;
 }
@@ -857,7 +857,7 @@ td {
 .translation-section {
   margin-top: 20px;
   background-color: white;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--color-slate-200);
 }
 
@@ -884,7 +884,7 @@ td {
   padding: 6px 8px;
   font-size: 13px;
   border: 1px solid var(--color-slate-200);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   box-sizing: border-box;
 }
 

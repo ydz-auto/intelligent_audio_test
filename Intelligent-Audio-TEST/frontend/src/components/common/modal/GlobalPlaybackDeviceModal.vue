@@ -248,7 +248,7 @@ const handleConfirm = () => {
 
 .modal-container {
   background-color: white;
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   box-shadow: 0 4px 20px color-mix(in srgb, var(--color-black) 15%, transparent);
   width: 90%;
   max-width: 700px;
@@ -289,7 +289,7 @@ const handleConfirm = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   transition: all 0.2s;
 }
 
@@ -315,7 +315,7 @@ const handleConfirm = () => {
 .scan-status {
   flex: 1;
   padding: 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   display: flex;
   align-items: center;
@@ -349,7 +349,7 @@ const handleConfirm = () => {
   padding: 16px;
   background-color: var(--color-white);
   border: 1px solid var(--muted);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
 }
 
 .device-group h5 {
@@ -373,7 +373,7 @@ const handleConfirm = () => {
   padding: 8px 12px;
   background-color: var(--muted);
   border: 1px solid var(--muted);
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -427,7 +427,7 @@ const handleConfirm = () => {
 .btn {
   padding: 10px 24px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -468,7 +468,7 @@ const handleConfirm = () => {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   box-sizing: border-box;
 }

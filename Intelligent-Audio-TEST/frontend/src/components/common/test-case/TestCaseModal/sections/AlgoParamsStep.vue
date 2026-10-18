@@ -209,7 +209,7 @@ function onDynamicFormUpdate(values: Record<string, any>) {
 
 .rce-tag {
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-pill);
   font-size: 10px;
   font-weight: 500;
 }
@@ -235,7 +235,7 @@ function onDynamicFormUpdate(values: Record<string, any>) {
   gap: 8px;
   padding: 8px 12px;
   border: 1px solid var(--color-indigo-100);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--muted);
 }
 .rce-audio-card-info { display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -256,7 +256,7 @@ function onDynamicFormUpdate(values: Record<string, any>) {
   gap: 6px;
   padding: 16px;
   border: 1px dashed var(--color-gray-300);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   color: var(--color-gray-400);
   font-size: 13px;

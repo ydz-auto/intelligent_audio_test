@@ -94,12 +94,12 @@
 
 .modal::-webkit-scrollbar-track {
     background: var(--background-secondary);
-    border-radius: 4px;
+    border-radius: var(--radius-card);
 }
 
 .modal::-webkit-scrollbar-thumb {
     background: var(--gray-color);
-    border-radius: 4px;
+    border-radius: var(--radius-card);
 }
 
 .modal::-webkit-scrollbar-thumb:hover {

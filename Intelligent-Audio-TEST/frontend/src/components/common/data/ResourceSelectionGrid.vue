@@ -138,7 +138,7 @@ const getDisplaySpecs = (item) => {
 
 .resource-card{
   background: white;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--color-slate-200);
   padding: 16px;
   display: flex;
@@ -202,7 +202,7 @@ const getDisplaySpecs = (item) => {
   color: var(--color-slate-500);
   cursor: pointer;
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   transition: all 0.2s;
 }
 
@@ -249,7 +249,7 @@ const getDisplaySpecs = (item) => {
   flex: 1;
   text-align: center;
   padding: 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--color-slate-50);
   border: 1px solid var(--color-slate-200);
   font-size: 14px;

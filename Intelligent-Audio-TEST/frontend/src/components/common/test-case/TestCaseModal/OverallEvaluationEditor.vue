@@ -284,7 +284,7 @@ watch(enabled, () => {
 .overall-icon{
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: color-mix(in srgb, var(--primary) 10%, transparent);
   color: var(--primary);
   display: flex;
@@ -311,7 +311,7 @@ watch(enabled, () => {
   padding: 2px 8px;
   background: color-mix(in srgb, var(--primary) 10%, transparent);
   color: var(--primary);
-  border-radius: 100px;
+  border-radius: var(--radius-pill);
   font-size: 11px;
   font-weight: 600;
   margin-left: 8px;
@@ -326,7 +326,7 @@ watch(enabled, () => {
   font-size: 12px;
   color: var(--color-gray-500);
   background: var(--muted);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   padding: 8px 16px;
   line-height: 1.6;
   border-left: 3px solid var(--primary);
@@ -360,7 +360,7 @@ watch(enabled, () => {
   left: 2px;
   width: 16px;
   height: 16px;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background: white;
   transition: transform 0.2s;
   box-shadow: 0 1px 3px color-mix(in srgb, var(--color-black) 20%, transparent);
@@ -388,7 +388,7 @@ watch(enabled, () => {
   gap: 4px;
   padding: 4px 16px;
   border: 1px solid var(--border);
-  border-radius: 100px;
+  border-radius: var(--radius-pill);
   font-size: 12px;
   color: var(--color-gray-500);
   cursor: pointer;
@@ -447,7 +447,7 @@ watch(enabled, () => {
 }
 .eval-dim-card{
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   padding: 12px;
   background: var(--background);
   display: flex;
@@ -493,7 +493,7 @@ watch(enabled, () => {
 .form-control-sm{
   padding: 4px 8px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 12px;
   color: var(--foreground);
   background: var(--background);

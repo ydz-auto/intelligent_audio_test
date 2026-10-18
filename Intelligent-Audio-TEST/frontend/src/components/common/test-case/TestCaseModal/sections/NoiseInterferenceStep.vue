@@ -305,7 +305,7 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
 
 .rce-tag {
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-pill);
   font-size: 10px;
   font-weight: 500;
 }
@@ -320,7 +320,7 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   padding: 10px 14px;
   background: var(--background-secondary, var(--muted));
   border: 1px solid var(--border-color, var(--border));
-  border-radius: 8px 8px 0 0;
+  border-radius: var(--radius-control) var(--radius-control) 0 0;
   border-bottom: none;
 }
 .rce-noise-title {
@@ -337,7 +337,7 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   padding: 4px 10px;
   font-size: 12px;
   border: 1px solid var(--danger-color, var(--destructive));
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--danger-color, var(--destructive));
   cursor: pointer;
@@ -358,7 +358,7 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   gap: 6px;
   padding: 16px;
   border: 1px dashed var(--color-gray-300);
-  border-radius: 0 0 8px 8px;
+  border-radius: 0 0 var(--radius-control) var(--radius-control);
   color: var(--color-gray-400);
   font-size: 13px;
 }
@@ -366,7 +366,7 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
 .rce-noise-body {
   background: var(--background-primary, var(--background));
   border: 1px solid var(--border-color, var(--border));
-  border-radius: 0 0 8px 8px;
+  border-radius: 0 0 var(--radius-control) var(--radius-control);
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -381,7 +381,7 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   gap: 8px;
   padding: 8px 12px;
   border: 1px solid var(--color-indigo-100);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--muted);
 }
 .rce-noise-card-info { flex: 1; min-width: 0; }
@@ -397,7 +397,7 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
 }
 .rce-noise-card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .rce-noise-tag {
-  font-size: 10px; padding: 1px 6px; border-radius: 8px;
+  font-size: 10px; padding: 1px 6px; border-radius: var(--radius-control);
   background: var(--color-indigo-100); color: var(--color-indigo-600);
 }
 .rce-noise-card-actions { display: flex; gap: 4px; flex-shrink: 0; }
@@ -414,7 +414,7 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   gap: 4px;
   padding: 4px 10px;
   border: 1px solid var(--color-slate-300);
-  border-radius: 16px;
+  border-radius: var(--radius-pill);
   background: var(--color-slate-50);
   font-size: 12px;
   cursor: pointer;
@@ -434,7 +434,7 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   gap: 4px;
   padding: 4px 10px;
   border: 1px solid var(--color-orange-200);
-  border-radius: 16px;
+  border-radius: var(--radius-card);
   background: var(--color-amber-50);
   color: var(--warning-dark);
   font-size: 12px;
@@ -480,7 +480,7 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   flex: 1;
   -webkit-appearance: none;
   height: 4px;
-  border-radius: 2px;
+  border-radius: var(--radius-tag);
   background: var(--border-color, var(--border));
   outline: none;
 }
@@ -488,7 +488,7 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   -webkit-appearance: none;
   width: 14px;
   height: 14px;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background: var(--primary-color, var(--primary));
   cursor: pointer;
 }

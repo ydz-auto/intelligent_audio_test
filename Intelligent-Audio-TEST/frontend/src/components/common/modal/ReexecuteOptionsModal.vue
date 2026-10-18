@@ -325,7 +325,7 @@ onMounted(async () => {
   gap: 14px;
   padding: 14px 16px;
   border: 2px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-control);
   background-color: var(--background);
   cursor: pointer;
   transition: all 0.2s ease;
@@ -352,7 +352,7 @@ onMounted(async () => {
   width: 20px;
   height: 20px;
   border: 2px solid var(--color-gray-300);
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   transition: all 0.2s ease;
 }
 
@@ -395,7 +395,7 @@ onMounted(async () => {
   gap: 10px;
   padding: 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background-color: var(--color-gray-50);
 }
 
@@ -446,7 +446,7 @@ onMounted(async () => {
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background-color: var(--background);
   border: 1px solid var(--border);
   cursor: pointer;
@@ -488,7 +488,7 @@ onMounted(async () => {
   gap: 10px;
   padding: 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background-color: var(--color-gray-50);
 }
 
@@ -512,7 +512,7 @@ onMounted(async () => {
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background-color: var(--background);
   border: 1px solid var(--border);
   cursor: pointer;
@@ -538,7 +538,7 @@ onMounted(async () => {
   gap: 4px;
   padding: 12px 16px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background-color: var(--color-gray-50);
 }
 

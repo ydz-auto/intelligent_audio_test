@@ -356,13 +356,13 @@ onUnmounted(() => {
   margin-bottom: 20px;
   padding: 15px;
   background: var(--muted);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 
 .progress-bar-container {
   height: 8px;
   background: var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   overflow: hidden;
   margin-bottom: 10px;
 }
@@ -414,7 +414,7 @@ onUnmounted(() => {
   padding: 12px 15px;
   background: var(--color-neutral-50);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   transition: all 0.2s ease;
 }
 
@@ -461,7 +461,7 @@ onUnmounted(() => {
 .btn {
   padding: 8px 16px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;

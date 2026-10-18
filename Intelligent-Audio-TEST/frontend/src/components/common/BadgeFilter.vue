@@ -176,7 +176,7 @@ function select(value: string | number) {
   gap: 6px !important;
   padding: 5px 14px !important;
   border: 1px solid #d0d5dd !important;
-  border-radius: 999px !important;
+  border-radius: var(--radius-pill) !important;
   background: #f8fafc !important;
   color: #475569 !important;
   font-size: 13px !important;

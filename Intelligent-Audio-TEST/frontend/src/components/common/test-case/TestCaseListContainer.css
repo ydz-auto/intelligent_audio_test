@@ -2,7 +2,7 @@
 .test-case-list-container {
   padding: 24px;
   background-color: var(--color-white);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
 }
 
@@ -59,7 +59,7 @@
   margin-bottom: var(--spacing-lg);
   padding: var(--spacing-lg);
   background: var(--color-white);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--gray-light-color);
   overflow: visible;
@@ -129,7 +129,7 @@
   flex-wrap: nowrap;
   background-color: white;
   padding: var(--spacing-md);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-control);
   border: 1px solid var(--border-color);
   box-shadow: var(--shadow-sm);
   width: 100%;
@@ -286,7 +286,7 @@
   height: 40px;
   box-sizing: border-box;
   border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-control);
   background-color: var(--background-primary);
   font-size: var(--font-size-md);
   margin: 0;
@@ -405,12 +405,12 @@
 
 .single-column-layout::-webkit-scrollbar-track {
   background: var(--background-tertiary);
-  border-radius: 3px;
+  border-radius: var(--radius-tag);
 }
 
 .single-column-layout::-webkit-scrollbar-thumb {
   background: var(--border-color);
-  border-radius: 3px;
+  border-radius: var(--radius-tag);
 }
 
 .single-column-layout::-webkit-scrollbar-thumb:hover {
@@ -457,7 +457,7 @@
 /* 类别卡片样式 */
 .category-card {
   background-color: var(--color-white);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   overflow: visible;
   border: 1px solid var(--border-color);
@@ -505,7 +505,7 @@
   font-size: 12px;
   font-weight: 500;
   padding: 4px 8px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   min-width: 20px;
   text-align: center;
 }
@@ -521,7 +521,7 @@
 .group-duration-tags .duration-tag {
   display: inline-block;
   padding: 4px 8px !important;
-  border-radius: 12px !important;
+  border-radius: var(--radius-pill) !important;
   font-size: 12px !important;
   font-weight: 500 !important;
   color: white !important;
@@ -565,7 +565,7 @@
   padding: 64px 24px;
   text-align: center;
   background-color: var(--background-secondary);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   margin-top: 16px;
   margin-bottom: 16px;
@@ -610,7 +610,7 @@
 
 .modal-container {
   background-color: white;
-  border-radius: var(--border-radius-xl);
+  border-radius: var(--radius-card);
   box-shadow: var(--shadow-lg);
   width: 90%;
   max-width: 400px;
@@ -624,8 +624,8 @@
   padding: 20px 24px;
   border-bottom: 1px solid var(--muted);
   background: linear-gradient(135deg, var(--muted) 0%, var(--muted) 100%);
-  border-top-left-radius: var(--border-radius-xl);
-  border-top-right-radius: var(--border-radius-xl);
+  border-top-left-radius: var(--radius-card);
+  border-top-right-radius: var(--radius-card);
 }
 
 .modal-title {
@@ -646,7 +646,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   transition: all 0.2s;
 }
 
@@ -658,8 +658,8 @@
 
 .modal-body {
   padding: 24px;
-  border-bottom-left-radius: var(--border-radius-xl);
-  border-bottom-right-radius: var(--border-radius-xl);
+  border-bottom-left-radius: var(--radius-card);
+  border-bottom-right-radius: var(--radius-card);
 }
 
 /* 音频类型选择样式 */
@@ -675,7 +675,7 @@
   gap: 12px;
   padding: 16px;
   border: 2px solid var(--muted);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   transition: all 0.2s;
   background-color: var(--muted);

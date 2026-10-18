@@ -236,7 +236,7 @@ function emitUpdate() {
   padding: 8px 12px;
   background: var(--info-light, var(--color-blue-50));
   color: var(--info-color, var(--secondary));
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 12px;
 }
 
@@ -249,7 +249,7 @@ function emitUpdate() {
 
 .eval-chip {
   padding: 7px 14px;
-  border-radius: 20px;
+  border-radius: var(--radius-pill);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -321,7 +321,7 @@ function emitUpdate() {
   max-width: 280px;
   background: var(--background-primary, var(--background));
   border: 1px solid var(--border-color, var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   overflow: hidden;
 }
 
@@ -344,7 +344,7 @@ function emitUpdate() {
   width: 22px;
   height: 22px;
   border: 1px solid var(--destructive-light);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--danger-color, var(--destructive));
   cursor: pointer;

@@ -172,7 +172,7 @@ const handleJump = () => {
     width: 50px;
     padding: var(--spacing-xs) var(--spacing-sm);
     border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-sm);
+    border-radius: var(--radius-control);
     background-color: var(--background-primary);
     font-size: var(--font-size-sm);
     color: var(--text-primary);

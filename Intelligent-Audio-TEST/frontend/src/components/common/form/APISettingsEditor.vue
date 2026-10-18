@@ -121,7 +121,7 @@ function handleChange() {
 <style scoped>
 .api-settings-editor {
   border: 1px solid var(--color-slate-200);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   padding: 16px;
   background: var(--color-neutral-50);
 }
@@ -147,7 +147,7 @@ function handleChange() {
 .editor-section {
   background: white;
   border: 1px solid var(--color-slate-200);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -196,7 +196,7 @@ function handleChange() {
 .config-item textarea {
   padding: 8px 12px;
   border: 1px solid var(--color-slate-200);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   transition: all 0.2s;
   width: 100%;
@@ -226,7 +226,7 @@ function handleChange() {
   background: var(--color-slate-800);
   color: var(--color-slate-200);
   padding: 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-family: monospace;
   font-size: 12px;
   overflow-x: auto;

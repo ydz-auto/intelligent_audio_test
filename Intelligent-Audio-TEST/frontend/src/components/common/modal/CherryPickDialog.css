@@ -12,7 +12,7 @@
 
 .cp-dialog {
   background: var(--background-primary, #fff);
-  border-radius: var(--border-radius-lg, 12px);
+  border-radius: var(--radius-card);
   width: min(880px, 94vw);
   max-height: 88vh;
   display: flex;
@@ -49,7 +49,7 @@
 
 .cp-step {
   padding: 4px 14px;
-  border-radius: 14px;
+  border-radius: var(--radius-pill);
   font-size: 12px;
   color: var(--color-slate-500, #64748b);
   background: var(--color-slate-50, #f8fafc);
@@ -102,7 +102,7 @@
 .cp-input {
   padding: 6px 10px;
   border: 1px solid var(--border-color, #e2e8f0);
-  border-radius: var(--border-radius-md, 8px);
+  border-radius: var(--radius-control);
   font-size: 13px;
   background: var(--background-primary, #fff);
   color: var(--foreground);
@@ -129,7 +129,7 @@
 .cp-btn {
   padding: 5px 12px;
   border: 1px solid var(--border-color, #e2e8f0);
-  border-radius: var(--border-radius-md, 8px);
+  border-radius: var(--radius-control);
   background: var(--background-primary, #fff);
   color: var(--color-slate-600, #475569);
   font-size: 13px;
@@ -160,7 +160,7 @@
   gap: 8px;
   padding: 8px 10px;
   background: var(--color-slate-50, #f8fafc);
-  border-radius: var(--border-radius-md, 8px);
+  border-radius: var(--radius-control);
   font-size: 13px;
   font-weight: 600;
   color: var(--color-slate-600, #475569);
@@ -200,7 +200,7 @@
 
 .cp-row-badge {
   padding: 1px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-pill);
   font-size: 11px;
   background: var(--color-slate-100, #f1f5f9);
   color: var(--color-slate-500, #64748b);
@@ -244,7 +244,7 @@
   padding: 8px 12px;
   background: #fef2f2;
   border: 1px solid #fecaca;
-  border-radius: var(--border-radius-md, 8px);
+  border-radius: var(--radius-control);
   color: #dc2626;
   font-size: 13px;
 }
@@ -292,7 +292,7 @@
 
 .cp-checkout-card {
   border: 1px solid var(--border-color, #e2e8f0);
-  border-radius: var(--border-radius-md, 8px);
+  border-radius: var(--radius-control);
   padding: 12px 16px;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -330,7 +330,7 @@
 /* 预览统计 */
 .cp-preview {
   background: var(--color-slate-50, #f8fafc);
-  border-radius: var(--border-radius-md, 8px);
+  border-radius: var(--radius-control);
   padding: 10px 14px;
   display: flex;
   flex-direction: column;

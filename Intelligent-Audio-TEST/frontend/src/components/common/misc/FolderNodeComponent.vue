@@ -332,7 +332,7 @@ function getTypeLabel(type: string): string {
   gap: var(--spacing-sm, 8px);
   padding: var(--spacing-sm, 8px) var(--spacing-md, 12px);
   cursor: pointer;
-  border-radius: var(--border-radius-md, 6px);
+  border-radius: var(--radius-control);
   transition: background-color 0.15s;
 }
 
@@ -375,7 +375,7 @@ function getTypeLabel(type: string): string {
   gap: var(--spacing-md, 12px);
   padding: var(--spacing-sm, 8px) var(--spacing-md, 12px);
   border: 1px solid var(--border-color, var(--border));
-  border-radius: var(--border-radius-md, 6px);
+  border-radius: var(--radius-control);
   margin-bottom: var(--spacing-xs, 4px);
   transition: all 0.15s;
   cursor: pointer;
@@ -436,7 +436,7 @@ function getTypeLabel(type: string): string {
 .format-badge {
   display: inline-block;
   padding: 1px 6px;
-  border-radius: 10px;
+  border-radius: var(--radius-pill);
   font-size: 11px;
   font-weight: 500;
   text-transform: uppercase;
@@ -452,7 +452,7 @@ function getTypeLabel(type: string): string {
 .audio-type-badge {
   display: inline-block;
   padding: 1px 6px;
-  border-radius: 10px;
+  border-radius: var(--radius-pill);
   font-size: 11px;
   font-weight: 500;
 }
@@ -478,7 +478,7 @@ function getTypeLabel(type: string): string {
   font-size: 12px;
   min-width: auto;
   height: auto;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   border: none;
   transition: all 0.15s;

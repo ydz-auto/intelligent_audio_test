@@ -266,7 +266,7 @@ defineExpose({
 
 .file-upload {
   border: 2px dashed var(--border-color, var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   padding: 24px;
   text-align: center;
   cursor: pointer;
@@ -300,7 +300,7 @@ defineExpose({
 .stat-item {
   background: var(--muted);
   padding: 4px 12px;
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
 }
 
 .preview-table-container {
@@ -327,7 +327,7 @@ defineExpose({
 
 .badge {
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   font-size: 12px;
 }
 

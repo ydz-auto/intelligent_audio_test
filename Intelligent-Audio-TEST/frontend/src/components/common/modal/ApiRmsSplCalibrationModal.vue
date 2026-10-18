@@ -381,7 +381,7 @@ async function handleSubmit() {
   padding: 10px 12px;
   background: var(--background-secondary, #f7f8fa);
   border-left: 3px solid var(--primary-color, #4080ff);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   margin-bottom: 14px;
 }
 
@@ -406,7 +406,7 @@ async function handleSubmit() {
   padding: 8px 10px;
   background: var(--background-primary, #fff);
   border: 1px solid var(--border-color, #e5e6eb);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 
 .ref-label {
@@ -443,7 +443,7 @@ async function handleSubmit() {
   text-align: center;
   color: var(--text-light, #999);
   border: 1px dashed var(--border-color, #ddd);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 
 .empty-points p {
@@ -472,7 +472,7 @@ async function handleSubmit() {
   width: 100%;
   padding: 6px 8px;
   border: 1px solid var(--border-color, #ddd);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 13px;
   box-sizing: border-box;
 }
@@ -509,7 +509,7 @@ async function handleSubmit() {
   color: var(--text-light, #999);
   cursor: pointer;
   padding: 4px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
 }
 
 .icon-btn:hover:not(:disabled) {
@@ -538,7 +538,7 @@ async function handleSubmit() {
 
 .preview-table {
   border: 1px solid var(--border-color, #eee);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   overflow: hidden;
   max-height: 180px;
   overflow-y: auto;
@@ -586,7 +586,7 @@ async function handleSubmit() {
   height: 12px;
   border: 2px solid rgba(255, 255, 255, 0.4);
   border-top-color: #fff;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   animation: spin 0.8s linear infinite;
   margin-right: 4px;
 }

@@ -1,7 +1,7 @@
 .upload-options {
   padding: 20px;
   background: var(--background-primary);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border-color);
 }
 
@@ -42,7 +42,7 @@
 .form-input {
   padding: 10px 14px;
   border: 2px solid var(--border-color);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-control);
   font-size: 14px;
   outline: none;
   transition: all var(--transition-fast);
@@ -82,7 +82,7 @@
   font-size: 14px;
   color: var(--text-primary);
   padding: 8px 12px;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-tag);
   transition: all var(--transition-fast);
 }
 
@@ -131,7 +131,7 @@
   padding: 8px 12px;
   background: var(--secondary-light);
   border: 1px solid #d0e3ff;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 12px;
   color: #1e40af;
 }
@@ -156,7 +156,7 @@
   padding: 10px 14px;
   background: var(--white-color);
   border: 2px dashed var(--border-color);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-control);
   color: var(--secondary-color);
   font-weight: 500;
   transition: all var(--transition-fast);
@@ -172,7 +172,7 @@
   color: var(--text-light);
   font-size: 13px;
   padding: 8px 12px;
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-control);
   transition: all var(--transition-fast);
 }
 
@@ -196,7 +196,7 @@
   margin-top: 20px;
   padding: 20px;
   background-color: var(--background-primary);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border-color);
   box-shadow: var(--shadow-sm);
 }
@@ -222,7 +222,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-control);
 }
 
 .api-config {
@@ -249,7 +249,7 @@
   justify-content: center;
   gap: 8px;
   padding: 10px 18px;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-control);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -289,7 +289,7 @@
 .btn-text:hover {
   color: var(--secondary-color);
   background: var(--secondary-light);
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-control);
 }
 
 .btn-icon {

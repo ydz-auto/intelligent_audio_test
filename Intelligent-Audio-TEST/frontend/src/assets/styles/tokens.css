@@ -60,6 +60,13 @@
   --radius-xl: calc(var(--radius) * 2);
   --radius-xxl: calc(var(--radius) * 3);
   --radius-full: 9999px;
+
+  /* 圆角语义令牌（基准：首页卡片 16px = --radius-xl，INT-756 收编）
+     值对齐上方 --radius 标度，不另起一套；Tailwind 原子类 rounded-card/control/tag/pill */
+  --radius-card: var(--radius-xl); /* 16px：卡片/模态窗/抽屉/表格容器等大表面 */
+  --radius-control: var(--radius-md); /* 8px：输入框/按钮/下拉/分页等控件 */
+  --radius-tag: var(--radius-sm); /* 4px：小标签/徽章/复选框/滚动条等小元素 */
+  --radius-pill: var(--radius-full); /* 9999px：胶囊标签/状态徽章/进度条 */
 }
 
 :root {
@@ -120,6 +127,11 @@
 
   /* ── 布局 ── */
   --radius: 8px;
+  /* 圆角语义令牌（与 @theme inline 同值，供 plain CSS var() 消费；基准见 00 总表 §1.4） */
+  --radius-card: var(--radius-xl);
+  --radius-control: var(--radius-md);
+  --radius-tag: var(--radius-sm);
+  --radius-pill: var(--radius-full);
   --header-height: 64px;
   --footer-height: 60px;
   --sidebar-width: 240px;

@@ -375,7 +375,7 @@ onMounted(() => {
   min-height: 400px;
   gap: 0;
   border: 1px solid var(--border-color, var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   overflow: hidden;
 }
 
@@ -414,7 +414,7 @@ onMounted(() => {
 
 .rce-tag {
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-pill);
   font-size: 10px;
   font-weight: 500;
 }
