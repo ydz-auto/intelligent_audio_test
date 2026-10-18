@@ -6,6 +6,7 @@ import {
   playbackTypeFilter,
   algorithmFilter,
   algorithmTypeFilter,
+  laboratoryFilter,
   testDevices,
   playbackDevices,
   apiDevices,
@@ -77,7 +78,11 @@ export const allFilteredPlaybackDevices = computed(() => {
     const matchesAlgorithm = algorithmFilter.value === ViewMode.ALL ||
       ((device as any).supportedAlgorithms && (device as any).supportedAlgorithms.includes(algorithmFilter.value));
 
-    return matchesSearch && matchesStatus && matchesPlaybackType && matchesAlgorithm;
+    // INT-655：实验室筛选（lab_id 匹配，未绑定设备恒不命中具体实验室）
+    const matchesLab = laboratoryFilter.value === ViewMode.ALL ||
+      String((device as any).labId ?? '') === String(laboratoryFilter.value);
+
+    return matchesSearch && matchesStatus && matchesPlaybackType && matchesAlgorithm && matchesLab;
   });
 });
 
@@ -104,7 +109,12 @@ export const allFilteredTestDevices = computed(() => {
     const matchesStatus = statusFilter.value === ViewMode.ALL || device.status === statusFilter.value;
     const matchesAlgorithm = algorithmFilter.value === ViewMode.ALL ||
       (device.supportedAlgorithms && device.supportedAlgorithms.includes(algorithmFilter.value));
-    return matchesSearch && matchesStatus && matchesAlgorithm;
+
+    // INT-655：实验室筛选（lab_id 匹配，未绑定设备恒不命中具体实验室）
+    const matchesLab = laboratoryFilter.value === ViewMode.ALL ||
+      String(device.labId ?? '') === String(laboratoryFilter.value);
+
+    return matchesSearch && matchesStatus && matchesAlgorithm && matchesLab;
   });
 });
 

@@ -18,7 +18,7 @@
 .modal-container {
   background-color: white;
   border: var(--card-border);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-card);
   box-shadow: var(--shadow-sm);
   width: 95%;
   max-width: 1400px;
@@ -55,7 +55,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-pill);
   transition: all 0.2s;
 }
 

@@ -126,7 +126,7 @@ const handleRetry = () => {
   margin: 15px 0;
   padding: 10px;
   background-color: var(--background-secondary);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
 }
 
@@ -165,7 +165,7 @@ const handleRetry = () => {
 .progress-container {
   height: 8px;
   background-color: var(--secondary-color);
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-pill);
   overflow: hidden;
   margin-bottom: var(--spacing-sm);
 }
@@ -173,7 +173,7 @@ const handleRetry = () => {
 .progress-bar {
   height: 100%;
   background: var(--primary-gradient);
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-pill);
   transition: width 0.3s ease;
 }
 
@@ -181,7 +181,7 @@ const handleRetry = () => {
   margin-top: var(--spacing-md);
   padding: var(--spacing-md);
   background-color: var(--background-primary);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-control);
   border: 1px solid var(--border-color);
   box-shadow: var(--shadow-sm);
 }
@@ -206,7 +206,7 @@ const handleRetry = () => {
   margin-bottom: var(--spacing-md);
   padding: var(--spacing-sm);
   background-color: var(--background-secondary);
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-tag);
   transition: all var(--transition-normal);
 }
 
@@ -240,7 +240,7 @@ const handleRetry = () => {
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
   padding: 2px 8px;
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-pill);
   white-space: nowrap;
 }
 
@@ -283,14 +283,14 @@ const handleRetry = () => {
   flex: 1;
   height: 6px;
   background-color: var(--secondary-color);
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-pill);
   overflow: hidden;
 }
 
 .file-progress-fill {
   height: 100%;
   background: var(--primary-gradient);
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-pill);
   transition: width 0.3s ease;
 }
 

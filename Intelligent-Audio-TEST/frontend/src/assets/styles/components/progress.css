@@ -6,7 +6,7 @@
     width: 100%;
     height: 8px;
     background-color: var(--secondary-color);
-    border-radius: var(--border-radius-full);
+    border-radius: var(--radius-pill);
     overflow: hidden;
     position: relative;
     margin: var(--spacing-sm) 0;
@@ -17,7 +17,7 @@
 .progress-fill {
     height: 100%;
     background: var(--primary-gradient);
-    border-radius: var(--border-radius-full);
+    border-radius: var(--radius-pill);
     transition: width var(--transition-normal);
     position: relative;
     overflow: hidden;

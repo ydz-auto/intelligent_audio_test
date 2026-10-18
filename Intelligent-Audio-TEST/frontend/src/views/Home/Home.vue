@@ -15,8 +15,7 @@
       </div>
     </section>
 
-    <!-- 快速统计 -->
-    <QuickStats :animated-stats="animatedStats" />
+    <!-- INT-745：业务统计已移交工作台 /dashboard（02_工作台卡），公共门户不再展示 -->
 
     <!-- 开始测试 + 流程 -->
     <WorkflowSection />
@@ -39,98 +38,15 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { statsPort } from '@/composables/report/statsPort'
-import QuickStats from './sections/QuickStats.vue'
 import WorkflowSection from './sections/WorkflowSection.vue'
 import DetailSection from './sections/DetailSection.vue'
 import FeaturesSection from './sections/FeaturesSection.vue'
 import InfoSection from './sections/InfoSection.vue'
-import { detailSections, type AnimatedStats } from './homeData'
-
-const stats = ref({
-  testCases: { total: 0, groups: 0 },
-  tasks: { total: 0, completed: 0, running: 0, failed: 0 },
-  devices: { online: 0, offline: 0, total: 0 },
-  audioFiles: { total: 0, dry: 0, noise: 0, prompt: 0, duration: { total: 0, dry: 0, noise: 0, prompt: 0 } },
-  apis: { online: 0, offline: 0, total: 0 },
-  dimensions: { total: 0, withEndpoints: 0, endpoints: 0 }
-})
+import { detailSections } from './homeData'
 
 const homePageRef = ref<HTMLElement | null>(null)
 
-const animatedStats = ref<AnimatedStats>({
-  testCasesTotal: 0,
-  testCasesGroups: 0,
-  tasksTotal: 0,
-  tasksCompleted: 0,
-  devicesOnline: 0,
-  devicesOffline: 0,
-  audioFilesTotal: 0,
-  audioFilesDry: 0,
-  audioFilesDuration: 0,
-  apisOnline: 0,
-  apisTotal: 0,
-  dimensionsTotal: 0,
-  dimensionsEndpoints: 0
-})
-
-function animateNumber(targetValue: number, duration = 1200, onUpdate?: (val: number) => void) {
-  const startValue = 0
-  const startTime = performance.now()
-
-  function update(currentTime: number) {
-    const elapsed = currentTime - startTime
-    const progress = Math.min(elapsed / duration, 1)
-    const easeOutQuart = 1 - Math.pow(1 - progress, 4)
-    const currentValue = Math.round(startValue + (targetValue - startValue) * easeOutQuart)
-
-    if (onUpdate) {
-      onUpdate(currentValue)
-    }
-
-    if (progress < 1) {
-      requestAnimationFrame(update)
-    }
-  }
-
-  requestAnimationFrame(update)
-}
-
-onMounted(async () => {
-  try {
-    const statsData = await statsPort.getStatsDetails()
-    const getCaseInsensitive = (obj: any, key: string) => {
-      if (!obj) return undefined
-      return obj[key] || obj[key.toLowerCase()] || obj[key.charAt(0).toUpperCase() + key.slice(1).toLowerCase()]
-    }
-    const newStats = {
-      testCases: getCaseInsensitive(statsData, 'testCases') || { total: 0, groups: 0 },
-      tasks: statsData.tasks || { total: 0, completed: 0, running: 0, failed: 0 },
-      devices: statsData.devices || { online: 0, offline: 0, total: 0 },
-      audioFiles: getCaseInsensitive(statsData, 'audioFiles') || { total: 0, dry: 0, noise: 0, prompt: 0, duration: { total: 0, dry: 0, noise: 0, prompt: 0 } },
-      apis: statsData.apis || { online: 0, offline: 0, total: 0 },
-      dimensions: statsData.dimensions || { total: 0, withendpoints: 0, endpoints: 0 }
-    }
-
-    stats.value = newStats
-
-    animateNumber(newStats.testCases.total, 1200, val => animatedStats.value.testCasesTotal = val)
-    animateNumber(newStats.testCases.groups || 0, 1200, val => animatedStats.value.testCasesGroups = val)
-    animateNumber(newStats.tasks.total, 1200, val => animatedStats.value.tasksTotal = val)
-    animateNumber(newStats.tasks.completed || 0, 1200, val => animatedStats.value.tasksCompleted = val)
-    animateNumber(newStats.devices.online, 1200, val => animatedStats.value.devicesOnline = val)
-    animateNumber(newStats.devices.offline, 1200, val => animatedStats.value.devicesOffline = val)
-    animateNumber(newStats.audioFiles.total, 1200, val => animatedStats.value.audioFilesTotal = val)
-    animateNumber(newStats.audioFiles.dry || 0, 1200, val => animatedStats.value.audioFilesDry = val)
-    animateNumber(newStats.audioFiles.duration?.total || 0, 1200, val => animatedStats.value.audioFilesDuration = val)
-    animateNumber(newStats.apis.online, 1200, val => animatedStats.value.apisOnline = val)
-    animateNumber(newStats.apis.total, 1200, val => animatedStats.value.apisTotal = val)
-    animateNumber(newStats.dimensions.total || 0, 1200, val => animatedStats.value.dimensionsTotal = val)
-    animateNumber(newStats.dimensions.endpoints || 0, 1200, val => animatedStats.value.dimensionsEndpoints = val)
-  } catch (error) {
-    console.error('获取统计数据失败:', error)
-  }
-
+onMounted(() => {
   initScrollAnimations()
 })
 
@@ -155,7 +71,7 @@ function initScrollAnimations() {
   const root = homePageRef.value
   if (!root) return
 
-  const sections = root.querySelectorAll('.hero-section, .quick-stats, .workflow-section, .detail-section, .features-section, .info-section')
+  const sections = root.querySelectorAll('.hero-section, .workflow-section, .detail-section, .features-section, .info-section')
   sections.forEach(section => {
     section.classList.add('scroll-animate')
     observer.observe(section)

@@ -146,7 +146,7 @@ onBeforeUnmount(() => {
   color: var(--text-tertiary, #999);
   cursor: pointer;
   padding: 2px 3px;
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   transition: color 0.15s, background-color 0.15s;
   line-height: 1;
 }
@@ -165,7 +165,7 @@ onBeforeUnmount(() => {
   width: 180px;
   background: #fff;
   border: 1px solid var(--border-color, #e5e7eb);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
   padding: 8px;
   box-sizing: border-box;

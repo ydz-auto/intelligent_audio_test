@@ -56,7 +56,7 @@ defineEmits<{
   width: 0;
   height: 2px;
   background: var(--primary-color, var(--primary));
-  border-radius: 1px;
+  border-radius: var(--radius-tag);
   transform: translateX(-50%);
   transition: width 0.2s ease;
 }
@@ -74,7 +74,7 @@ defineEmits<{
 .rce-toc-num {
   width: 22px;
   height: 22px;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background: var(--gray-light);
   color: var(--text-secondary, var(--color-gray-400));
   font-size: 12px;

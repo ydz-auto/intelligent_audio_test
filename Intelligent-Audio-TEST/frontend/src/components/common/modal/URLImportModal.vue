@@ -222,7 +222,7 @@ h3 {
 .form-input {
   padding: 10px 12px;
   border: 1px solid var(--color-gray-300);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   color: var(--color-gray-700);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
@@ -243,7 +243,7 @@ h3 {
 .upload-options {
   background-color: var(--color-slate-50);
   padding: 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   margin-top: 8px;
 }
 
@@ -317,7 +317,7 @@ h3 {
   background-color: var(--color-blue-500);
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -341,7 +341,7 @@ h3 {
   background-color: white;
   color: var(--color-gray-700);
   border: 1px solid var(--color-gray-300);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -362,7 +362,7 @@ h3 {
   width: 16px;
   height: 16px;
   border: 2px solid color-mix(in srgb, var(--color-white) 30%, transparent);
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   border-top-color: white;
   animation: spin 0.8s linear infinite;
   margin-right: 8px;

@@ -126,7 +126,7 @@ function handleChange() {
 <style scoped>
 .rule-editor {
   border: 1px solid var(--color-slate-200);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   padding: 16px;
   background: var(--color-neutral-50);
 }
@@ -151,7 +151,7 @@ function handleChange() {
   background: var(--color-blue-500);
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   font-size: 14px;
   transition: all 0.2s;
@@ -165,7 +165,7 @@ function handleChange() {
   display: flex;
   flex-direction: column;
   border: 1px solid var(--color-slate-200);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   overflow: hidden;
   background: white;
   margin-bottom: 16px;
@@ -225,7 +225,7 @@ function handleChange() {
 .condition-select {
   padding: 8px 12px;
   border: 1px solid var(--color-slate-200);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   flex: 1;
   min-width: 120px;
@@ -235,7 +235,7 @@ function handleChange() {
   width: 100px;
   padding: 8px 12px;
   border: 1px solid var(--color-slate-200);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
 }
 
@@ -243,7 +243,7 @@ function handleChange() {
   width: 100px;
   padding: 8px 12px;
   border: 1px solid var(--color-slate-200);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
 }
 
@@ -263,7 +263,7 @@ function handleChange() {
   height: 32px;
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   color: var(--color-red-500);
   cursor: pointer;
   transition: all 0.2s;
@@ -280,7 +280,7 @@ function handleChange() {
   color: var(--color-slate-400);
   background: white;
   border: 1px dashed var(--color-slate-200);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   margin-bottom: 16px;
 }
 
@@ -314,7 +314,7 @@ function handleChange() {
 .default-input {
   padding: 8px 12px;
   border: 1px solid var(--color-slate-200);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   width: 100px;
 }

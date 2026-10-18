@@ -42,6 +42,8 @@ import TaskDetailModal from './TaskDetailModal.vue'
 import ReexecuteOptionsModal from './ReexecuteOptionsModal.vue'
 // INT-340：测试结果人工复核（单条/批量改判 + 备注必填 + 复核历史展示）
 import ResultReviewModal from './ResultReviewModal.vue'
+// INT-745：公开页「需要登录」引导（受限项 Dialog，5 秒倒计时跳登录）
+import LoginRequiredModal from './LoginRequiredModal.vue'
 
 export function registerGlobalModals() {
   const manager = getModalManager();
@@ -314,6 +316,15 @@ export function registerGlobalModals() {
     component: TagEditModal,
     defaultConfig: {
       title: '标签'
+    }
+  });
+
+  // INT-745：公开页「需要登录」引导（受限项 Dialog，5 秒倒计时跳登录）
+  manager.registerModal(MODAL_TYPES.LOGIN_REQUIRED, {
+    component: LoginRequiredModal,
+    defaultConfig: {
+      title: '需要登录',
+      width: '420px'
     }
   });
 }

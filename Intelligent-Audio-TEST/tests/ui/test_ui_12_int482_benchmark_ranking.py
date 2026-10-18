@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
-"""INT-482 UI 实测：Benchmark 排行页（Vue 主库版，/benchmarks）。
+"""INT-482 UI 实测：Benchmark 排行页（Vue 主库版，INT-745 后路由 /rankings）。
 
 覆盖卡面验收标准②（tests/ui 实测三件套）：
-1. 登录 → 侧栏「排行榜」入口 → /benchmarks 页遍历：Hero（标题/副标题）+ 类别
-   下划线页签（全部/语音识别/语音对话/语音合成/翻译）+ 筛选行（测试集/指标/
-   数据来源/搜索主体）+ 指标组卡 + 双栏榜单（列表/表格双视图）+ chart.js 对比
-   条形图 + 全量中文文案；侧栏入口高亮随路由联动（验收③）。
+1. 登录 → 顶导航「排行榜」入口 → /rankings 页遍历：Hero（标题「排行榜」/副标题）+
+   类别下划线页签（全部/语音识别/语音对话/语音合成/翻译）+ 筛选行（测试集/指标/
+   数据来源/搜索主体）+ 页内算法卡片网格（INT-745：首卡「全部算法」）+ 指标组卡 +
+   双栏榜单（列表/表格双视图）+ chart.js 对比条形图 + 全量中文文案。
 2. 榜单数据按双轨来源（platform_test / external_import）正确展示与筛选：来源
    徽章（平台实测/外部基线）就位、来源筛选联动榜单+图表、URL query 同步可还原。
-3. 权限不足角色（guest，INT-429 未授 benchmark:*）页面不可达：侧栏入口隐藏 +
-   直达 /benchmarks 被路由守卫弹回首页（meta.permission=benchmark:ranking:read
-   生效）；并附 API 层 403 佐证。
+3. 权限不足角色（guest，INT-429 未授 benchmark:*）：INT-745 后 /rankings 为公开
+   路由（公开可达不弹回），但数据 403 门控（API 403 + 页面错误/空态）+ 顶导航
+   「排行榜」入口按权限隐藏；并附 API 层 403 佐证。
 
 数据卫生（硬规则）：benchmark_rankings 为隔离库直插 fixture（subject_name 前缀
 int482_），teardown 按 id 硬删零残留；guest 账号经 API 注册、teardown API 软删 +
@@ -35,10 +35,6 @@ API_ROOT = os.environ.get('UI_API_BASE', 'http://127.0.0.1:6000')
 FRONTEND = os.environ.get('UI_FRONTEND_BASE', 'http://127.0.0.1:5173')
 
 # ---- 选择器 ----
-SIDEBAR_LINK_XPATH = (
-    "//aside[contains(@class,'sidebar')]//a[contains(@class,'navLink') "
-    "and contains(normalize-space(.),'{label}')]"
-)
 HERO = '.rankings-hero'
 HERO_TITLE = '.hero-title'
 CATEGORY_TABS = '.category-tab'
@@ -180,11 +176,11 @@ def _inject_login(driver, base_url: str, token: str, user: dict):
     driver.refresh()
 
 
-def _click_sidebar_entry(page: BasePage, label: str):
-    """人手等价：hover 展开折叠侧栏 → 点击指定菜单项。"""
-    page.hover('.sidebar', timeout=10)
-    page.settle(0.3)
-    page.click_xpath(SIDEBAR_LINK_XPATH.format(label=label), timeout=10)
+def _click_topnav_entry(page: BasePage, label: str):
+    """人手等价：点公共站头顶导航项（INT-745 排行榜挂 PublicLayout 公共壳）。"""
+    page.click_xpath(
+        f"//nav[contains(@class,'public-nav')]//*[contains(@class,'public-nav-link') "
+        f"and normalize-space(.)='{label}']", timeout=10)
 
 
 def _wait_group_cards(page: BasePage, n: int, timeout: float = 20):
@@ -193,28 +189,25 @@ def _wait_group_cards(page: BasePage, n: int, timeout: float = 20):
     page.settle(0.4)
 
 
-def test_sidebar_entry_and_page_traversal(page, int482_benchmark_rows):
-    """登录 → 侧栏「排行榜」入口 → /benchmarks 页遍历（Hero/页签/筛选行/组卡/榜单/图表）。"""
+def test_topnav_entry_and_page_traversal(page, int482_benchmark_rows):
+    """登录 → 顶导航「排行榜」入口 → /rankings 页遍历（Hero/页签/算法网格/筛选行/组卡/榜单/图表）。"""
     page.goto('/')
-    page.wait_visible('.main-content', timeout=15)
+    page.wait_visible('.public-header', timeout=15)
     page.settle(0.5)
 
-    # 侧栏「排行榜」入口可见（admin 通配 * 持 benchmark:ranking:read）
-    page.hover('.sidebar', timeout=10)
-    page.settle(0.3)
-    entries = [a for a in page.find_all('aside.sidebar a.navLink')
-               if '排行榜' in (a.text or '')]
-    assert entries, '侧栏未见「排行榜」入口（admin 应持 benchmark:ranking:read）'
+    # 顶导航「排行榜」入口可见（admin 通配 * 持 benchmark:ranking:read）
+    nav_labels = [a.text.strip() for a in page.find_all('.public-nav .public-nav-link')]
+    assert '排行榜' in nav_labels, f'顶导航未见「排行榜」入口: {nav_labels}'
 
-    _click_sidebar_entry(page, '排行榜')
-    page.wait.until(lambda d: '/benchmarks' in d.current_url.split('#')[-1])
+    _click_topnav_entry(page, '排行榜')
+    page.wait.until(lambda d: '/rankings' in d.current_url.split('#')[-1])
     page.wait_visible(GROUP_CARDS, timeout=25)
     page.settle(0.5)
 
-    # ① Hero 区：标题/副标题 + 类别下划线页签（全量中文文案）
+    # ① Hero 区：标题「排行榜」+ 类别下划线页签（全量中文文案）
     hero = page.find_visible(HERO, timeout=10)
-    assert 'Benchmark 排行' in hero.text, f'Hero 标题异常: {hero.text[:60]!r}'
-    assert '横向对比' in hero.text and '名次' in hero.text, \
+    assert '排行榜' in hero.text, f'Hero 标题异常: {hero.text[:60]!r}'
+    assert '横向看清业界水平' in hero.text and '名次' in hero.text, \
         f'Hero 副标题异常: {hero.text[:80]!r}'
     tabs = page.find_all(CATEGORY_TABS)
     labels = [t.text.strip() for t in tabs]
@@ -222,7 +215,16 @@ def test_sidebar_entry_and_page_traversal(page, int482_benchmark_rows):
         f'类别页签文案异常: {labels}'
     assert tabs[0].get_attribute('aria-selected') == 'true', '默认应选中「全部」页签'
 
-    # ② 筛选行：测试集 / 指标 / 数据来源 / 搜索主体
+    # ② 页内算法卡片网格（INT-745：首卡「全部算法」+ 每算法一张大卡，不渲染右上角切换器）
+    grid = page.find_visible('.algorithm-card-grid', timeout=10)
+    grid_text = grid.text
+    assert '全部算法' in grid_text, f'算法网格首卡「全部算法」缺失: {grid_text[:40]!r}'
+    ag_cards = page.find_all('.ag-card')
+    assert len(ag_cards) >= 2, f'算法网格应 ≥2 张卡（全部算法 + ≥1 算法），实际 {len(ag_cards)}'
+    assert not page.exists('.public-header .algorithm-switcher'), \
+        '公共站头不应渲染右上角算法切换器'
+
+    # ③ 筛选行：测试集 / 指标 / 数据来源 / 搜索主体
     filters_text = page.find_visible(FILTERS, timeout=10).text
     for kw in ('测试集', '指标', '数据来源', '搜索主体'):
         assert kw in filters_text, f'筛选行缺「{kw}」'
@@ -268,18 +270,15 @@ def test_sidebar_entry_and_page_traversal(page, int482_benchmark_rows):
     page.click('.view-switch-btn:first-child', timeout=10)  # 回「列表」
     page.wait_visible(LEADERBOARD_ROWS, timeout=15)
 
-    # ⑦ 验收③：侧栏入口高亮随路由一致（router-link-active）
-    # 侧栏默认折叠（标签 span v-if=!collapsed），先 hover 展开再断言高亮
-    page.hover('.sidebar', timeout=10)
-    page.settle(0.3)
-    active = [a for a in page.find_all('aside.sidebar a.navLink')
+    # ⑦ 验收③：顶导航「排行榜」入口高亮随路由一致（router-link-active）
+    active = [a for a in page.find_all('.public-nav .public-nav-link')
               if '排行榜' in (a.text or '') and 'router-link-active' in (a.get_attribute('class') or '')]
-    assert active, '侧栏「排行榜」入口未高亮（当前路由 /benchmarks 应 active）'
+    assert active, '顶导航「排行榜」入口未高亮（当前路由 /rankings 应 active）'
 
 
 def test_dual_source_display_and_filter_linkage(page, int482_benchmark_rows):
     """双轨来源展示与筛选联动：来源筛选 ↔ 榜单/图表一致，URL query 同步还原。"""
-    page.goto('/benchmarks')
+    page.goto('/rankings')
     _wait_group_cards(page, 2)
 
     # 默认「全部来源」：双轨并存
@@ -322,7 +321,7 @@ def test_dual_source_display_and_filter_linkage(page, int482_benchmark_rows):
         f'URL query 未写入 category=asr: {page.current_route()}'
 
     # 验收③：URL query 直达/刷新可还原（onMounted applyQueryToFilters 读取）
-    page.goto('/benchmarks?source=platform_test&category=asr')
+    page.goto('/rankings?source=platform_test&category=asr')
     _wait_group_cards(page, 1)
     text = page.find_visible('.group-list', timeout=10).text
     assert '词错误率' in text and '接管时延' not in text, 'URL 还原后组卡未按 category 过滤'
@@ -336,10 +335,11 @@ def test_dual_source_display_and_filter_linkage(page, int482_benchmark_rows):
     assert '暂无排行数据' in empty.text, f'空态文案异常: {empty.text[:60]!r}'
 
 
-def test_permission_denied_role_page_unreachable(page, int482_benchmark_rows, int482_guest):
-    """权限不足角色（guest）页面不可达：侧栏入口隐藏 + 直达被守卫弹回首页。
+def test_permission_denied_role_data_gated(page, int482_benchmark_rows, int482_guest):
+    """权限不足角色（guest）：/rankings 公开可达但数据 403 门控（INT-745 公开路由口径）。
 
-    meta.permission=benchmark:ranking:read 生效；附 API 层 403 佐证。
+    INT-745 把 /rankings 改为公开路由（meta.public，未登录/无权限均可达），
+    数据权限由接口层门控；附 API 层 403 佐证。
     """
     # API 层佐证：guest token 请求排行接口 403
     r = httpx.get(f'{API_ROOT}/api/v1/benchmarks/ranking',
@@ -349,22 +349,22 @@ def test_permission_denied_role_page_unreachable(page, int482_benchmark_rows, in
 
     # 浏览器注入 guest 登录态（用 page.base_url，随 run_gate/验收 vite 端口自适应）
     _inject_login(page.driver, page.base_url, int482_guest['token'], int482_guest['user'])
-    page.wait_visible('.main-content', timeout=15)
-    page.settle(0.5)
+    page.goto('/rankings')
+    page.wait_visible('.public-header', timeout=15)
+    page.settle(0.8)
 
-    # 侧栏「排行榜」入口隐藏（guest 无 benchmark:ranking:read）
-    page.hover('.sidebar', timeout=10)
-    page.settle(0.3)
-    entries = [a for a in page.find_all('aside.sidebar a.navLink')
-               if '排行榜' in (a.text or '')]
-    assert not entries, 'guest 侧栏不应出现「排行榜」入口（meta.permission 未生效）'
-
-    # 直达 /benchmarks → 路由守卫弹回首页（页面不可达）
-    page.goto('/benchmarks')
-    page.wait.until(
-        lambda d: d.current_url.split('#')[-1] in ('/', '') or '/benchmarks' not in d.current_url.split('#')[-1],
-        message='guest 直达 /benchmarks 未被守卫弹回')
-    page.settle(0.5)
+    # 公开路由可达：停留 /rankings（不弹回首页/登录页）
     route = page.current_route()
-    assert '/benchmarks' not in route, \
-        f'guest 应无法停留在 /benchmarks，实际路由: {route}'
+    assert '/rankings' in route, f'guest 应可停留在 /rankings，实际路由: {route}'
+
+    # 顶导航「排行榜」入口按权限隐藏（guest 无 benchmark:ranking:read）
+    nav_labels = [a.text.strip() for a in page.find_all('.public-nav .public-nav-link')]
+    assert '排行榜' not in nav_labels, \
+        f'guest 顶导航不应显示「排行榜」入口（permission 未生效）: {nav_labels}'
+
+    # 算法卡片只读降级条（guest 无 algorithm:read）+ 排行数据 403 → 错误/空态
+    assert page.exists('.ag-readonly'), 'guest 应见算法卡片只读降级条'
+    ro = page.find_visible('.ag-readonly', timeout=10).text
+    assert '全部算法' in ro, f'只读降级条应显示「全部算法」: {ro[:40]!r}'
+    assert page.exists('.error-state') or page.exists('.empty-state'), \
+        'guest 排行数据应呈现错误/空态（403 门控）'

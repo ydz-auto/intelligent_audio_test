@@ -50,6 +50,9 @@ export interface DeviceItemDto {
   updated_at?: string
   driver_name?: string
   supported_algorithms?: string[]
+  /** 所属实验室（INT-655：lab_id 后端原值，lab_name 网关装饰） */
+  lab_id?: number
+  lab_name?: string
 }
 
 /** 对应 DeviceListData（PaginatedData[DeviceItem]） */
@@ -121,6 +124,9 @@ export interface PlaybackDeviceItemDto {
   current_spl_mapping_id?: number
   created_at?: string
   updated_at?: string
+  /** 所属实验室（INT-655：lab_id 后端原值，lab_name 网关装饰） */
+  lab_id?: number
+  lab_name?: string
 }
 
 /** 对应 PlaybackDeviceListData（PaginatedData[PlaybackDeviceItem]） */

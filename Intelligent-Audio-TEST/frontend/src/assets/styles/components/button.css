@@ -3,13 +3,15 @@
 .btn{
 }
 
-/* 按钮样式 - 统一为文本和SVG有颜色，背景无颜色 */
-button:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only),
+/* 按钮样式 - 统一为文本和SVG有颜色，背景无颜色
+   [data-layout-btn] 退出此 catch-all：新布局壳（顶栏/侧栏）按钮自带 scoped 样式，
+   不被本规则压色/压圆角/压间距（INT-735 基座壳，opt-out 属性，不改 legacy 行为）。 */
+button:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only):not([data-layout-btn]),
 .btn:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only),
 label.btn:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only) {
     padding: var(--spacing-sm) var(--spacing-md);
     border: none;
-    border-radius: var(--border-radius-md);
+    border-radius: var(--radius-control);
     cursor: pointer;
     font-family: var(--font-family);
     font-size: var(--font-size-md);
@@ -76,7 +78,7 @@ label.btn:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only) {
 .btn.btn-sm.btn-secondary:not(.btn-text):not(.btn-icon-only),
 .btn.btn-sm.btn-primary:not(.btn-text):not(.btn-icon-only),
 .btn.btn-sm.btn-danger:not(.btn-text):not(.btn-icon-only) {
-    border-radius: var(--border-radius-md);
+    border-radius: var(--radius-control);
     padding: var(--spacing-xs) var(--spacing-sm);
     width: auto;
     height: auto;
@@ -115,7 +117,7 @@ label.btn:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only) {
 .svg-btn-only.btn-sm, .svg-btn-only.btn-small,
 .icon-btn-only.btn-sm, .icon-btn-only.btn-small {
     padding: 2px;
-    border-radius: var(--border-radius-md);
+    border-radius: var(--radius-control);
     width: 24px;
     height: 24px;
 }
@@ -139,7 +141,7 @@ label.btn:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only) {
 .btn-text.svg-btn-only.btn-sm, .btn-text.svg-btn-only.btn-small,
 .btn-text.icon-btn-only.btn-sm, .btn-text.icon-btn-only.btn-small {
     padding: var(--spacing-xs) var(--spacing-sm);
-    border-radius: var(--border-radius-md);
+    border-radius: var(--radius-control);
 }
 
 /* 2k 屏幕适配 - 图标按钮 */
@@ -282,7 +284,7 @@ button.secondary:hover,
 .btn-sm:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only) {
     padding: 6px 8px;
     font-size: 12px;
-    border-radius: var(--border-radius-lg);
+    border-radius: var(--radius-lg);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -355,7 +357,7 @@ button.secondary:hover,
     width: 20px;
     height: 20px;
     border: 2px solid var(--border-color);
-    border-radius: var(--border-radius-sm);
+    border-radius: var(--radius-tag);
     background-color: var(--background-primary);
     transition: all var(--transition-normal);
     box-shadow: 0 1px 2px color-mix(in srgb, var(--color-black) 5%, transparent);
@@ -633,7 +635,7 @@ button.text:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only):hover,
 .btn-text:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only):hover {
     background: var(--primary-light);
     color: var(--primary-dark);
-    border-radius: var(--border-radius-md);
+    border-radius: var(--radius-control);
     transform: translateY(-2px);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -761,7 +763,7 @@ button.large:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only),
     padding: 0;
     width: 36px;
     height: 36px;
-    border-radius: var(--border-radius-md);
+    border-radius: var(--radius-control);
 }
 
 .btn-icon-only.btn-md, .btn-icon-only.btn-medium,
@@ -770,7 +772,7 @@ button.large:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only),
     padding: 0;
     width: 40px;
     height: 40px;
-    border-radius: var(--border-radius-md);
+    border-radius: var(--radius-control);
 }
 
 .btn-icon-only.btn-lg, .btn-icon-only.btn-large,
@@ -779,7 +781,7 @@ button.large:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only),
     padding: 0;
     width: 48px;
     height: 48px;
-    border-radius: var(--border-radius-md);
+    border-radius: var(--radius-control);
 }
 
 /* 按钮图标尺寸适配 */

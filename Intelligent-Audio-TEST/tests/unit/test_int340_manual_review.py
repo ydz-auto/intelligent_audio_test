@@ -381,3 +381,105 @@ def test_gateway_get_one_passes_review_fields(db, monkeypatch):
     assert data['cases'][0]['reviewed'] is True
     assert data['cases'][1]['reviewed'] is False
 
+
+def test_gateway_get_one_null_review_fields_defaults(db, monkeypatch):
+    """网关任务详情 DTO 对上游 null 复核字段容错（INT-734 回归）。
+
+    原缺陷：DB 复核表无记录时上游透传 reviewed/review_count 为 null，
+    网关非空 bool/int schema 校验失败 → GET /api/v1/tasks/{id} 全量 422。
+    修复后：schema 放宽为 Optional，服务组装时缺省归一 False/0，
+    响应恒为 bool/int（「未复核」语义），不再触发校验错误。
+    """
+    import api_gateway.application.services.task.task_query_service as tqs
+    from api_gateway.application.services.task.task_query_service import TaskQueryService
+
+    detail = {
+        'id': 1,
+        'name': 'INT734任务',
+        'status': 'completed',
+        'completed_cases': 0,
+        'failed_cases': 1,
+        'review_count': None,  # 复核表无记录 → 上游 null
+        'cases': [{
+            'case_id': 'C1',
+            'name': '用例1',
+            'status': 'failed',
+            'execution_status': 'failed',
+            'evaluation_status': 'completed',
+            'reviewed': None,  # 复核表无记录 → 上游 null
+        }],
+    }
+    monkeypatch.setattr(tqs._task_acl, 'get_task_detail', lambda task_id: {
+        'success': True, 'data': detail})
+
+    payload, http_code = TaskQueryService.get_one(1)
+    assert http_code == 200
+    data = payload['data']
+    # 归一：review_count 恒为整数 0（验收：review_count 为整数）
+    assert data['review_count'] == 0
+    # 归一：用例级 reviewed 恒为 bool False（验收：reviewed 为 bool 或 null）
+    assert data['cases'][0]['reviewed'] is False
+
+
+def test_gateway_get_one_reviewed_none_ok(db, monkeypatch):
+    """INT-755 回归：历史任务（reviewed 字段落地前创建）上游缺省/None 不得 422。
+
+    常驻后端任务详情曾对全量任务返回 422
+    （`reviewed: Input should be a valid boolean`）：
+    TaskCaseBrief.reviewed 显式 bool 拒绝 None。修复后 schema 容错 Optional、
+    网关归一 False，本测试直测服务层 DTO 组装，防回归。
+    """
+    import api_gateway.application.services.task.task_query_service as tqs
+    from api_gateway.application.services.task.task_query_service import TaskQueryService
+
+    detail = {
+        'id': 1,
+        'name': 'INT755任务',
+        'status': 'completed',
+        'completed_cases': 0,
+        'failed_cases': 0,
+        'review_count': 0,
+        'cases': [{
+            'case_id': 'C1',
+            'name': '历史用例1',
+            'status': 'completed',
+            'execution_status': 'completed',
+            'evaluation_status': 'completed',
+            # reviewed 键缺失（字段落地前创建）——c.get('reviewed') → None
+        }, {
+            'case_id': 'C2',
+            'name': '历史用例2',
+            'status': 'failed',
+            'execution_status': 'failed',
+            'evaluation_status': 'completed',
+            'reviewed': None,
+        }],
+    }
+    monkeypatch.setattr(tqs._task_acl, 'get_task_detail', lambda task_id: {
+        'success': True, 'data': detail})
+
+    payload, http_code = TaskQueryService.get_one(1)
+    assert http_code == 200
+    data = payload['data']
+    # 缺省/None 均归一 False，响应恒为 bool（不向前端泄漏 null）
+    assert data['cases'][0]['reviewed'] is False
+    assert data['cases'][1]['reviewed'] is False
+
+
+def test_gateway_schemas_accept_null_review_fields():
+    """网关响应 schema 对 null 复核字段不抛校验错误（INT-734 回归，schema 层直测）。
+
+    原 422 的触发点：上游 null 传入非空 bool/int 字段 → ValidationError。
+    放宽为 Optional 后 null 合法通过；字段缺省（未复核）时为 False/0。
+    """
+    from api_gateway.schemas.task import TaskCaseBrief, TaskDetailData
+
+    # 显式 null 不抛校验错误（网关不再 422）
+    case = TaskCaseBrief(case_id='C1', name='用例1', reviewed=None)
+    assert case.reviewed is None
+    detail = TaskDetailData(id=1, name='任务', status='completed', review_count=None)
+    assert detail.review_count is None
+    # 字段缺省（上游完全未提供）→ 缺省 False/0（未复核语义）
+    assert TaskCaseBrief(case_id='C2', name='用例2').reviewed is False
+    assert TaskDetailData(id=2, name='任务2', status='completed').review_count == 0
+

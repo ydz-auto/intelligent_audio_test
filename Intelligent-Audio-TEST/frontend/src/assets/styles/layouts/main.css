@@ -7,12 +7,12 @@
 
 .sidebar::-webkit-scrollbar-track {
     background: var(--background-secondary);
-    border-radius: 3px;
+    border-radius: var(--radius-tag);
 }
 
 .sidebar::-webkit-scrollbar-thumb {
     background: var(--gray-color);
-    border-radius: 3px;
+    border-radius: var(--radius-tag);
 }
 
 .sidebar::-webkit-scrollbar-thumb:hover {
@@ -106,7 +106,7 @@
     margin-bottom: 24px;
     padding: 20px;
     background: white;
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 5%, transparent);
     flex-wrap: wrap;
     gap: 16px;
@@ -161,7 +161,7 @@
 
 .middle-content, .content-middle{
     background-color: var(--background-primary);
-    border-radius: var(--border-radius-lg);
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
     overflow: visible;
     min-width: 0;
@@ -211,7 +211,7 @@
 .task-indicator {
     width: 12px;
     height: 12px;
-    border-radius: 50%;
+    border-radius: var(--radius-pill);
     margin-right: var(--spacing-sm);
     flex-shrink: 0;
     margin-top: var(--spacing-xs);
@@ -334,7 +334,7 @@
     margin-bottom: var(--spacing-lg);
     padding: var(--spacing-md);
     background-color: var(--background-secondary);
-    border-radius: var(--border-radius-lg);
+    border-radius: var(--radius-lg);
     flex-wrap: wrap;
     gap: var(--spacing-md);
 }

@@ -89,7 +89,7 @@ function getRoundSummary(round: RoundConfigItem): string {
   color: var(--text-light, var(--color-gray-400));
   background: var(--background-primary, var(--background));
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
 }
 
 .rce-nav-list {
@@ -103,7 +103,7 @@ function getRoundSummary(round: RoundConfigItem): string {
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   transition: background 0.15s;
   margin-bottom: 2px;
@@ -119,7 +119,7 @@ function getRoundSummary(round: RoundConfigItem): string {
 .rce-nav-num {
   width: 22px;
   height: 22px;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background: var(--border-color, var(--border));
   color: var(--text-secondary, var(--color-gray-500));
   font-size: 11px;
@@ -161,7 +161,7 @@ function getRoundSummary(round: RoundConfigItem): string {
   padding: 6px 10px;
   font-size: 12px;
   border: 1px solid var(--border-color, var(--border));
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--background-primary, var(--background));
   color: var(--text-secondary, var(--color-gray-500));
   cursor: pointer;

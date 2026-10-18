@@ -181,6 +181,52 @@ class TestLegalPathRegression:
         assert body['data']['total'] == 0
 
 
+class TestTaskListConstructionFailure500:
+    """INT-755：/tasks 列表嵌套模型校验失败 → 结构化 500（不再裸 500 无日志）。
+
+    常驻后端 /tasks 恒 500 的根因为响应构造未捕获异常（嵌套模型字段
+    None 触发 pydantic ValidationError 直接冒出 FastAPI）。修复后网关
+    在构造处捕获并打全栈日志，返回可读 500，本测试直测真实路由端到端。
+    """
+
+    def test_list_bad_nested_device_returns_500(self, client, monkeypatch):
+        class _BadAcl:
+            def list_tasks(self, **kwargs):
+                return {'success': True, 'data': {
+                    'items': [{
+                        'id': 1, 'name': '坏任务', 'status': 'running',
+                        'devices': [{'id': None, 'name': '坏设备'}],
+                        'reports': {}, 'apis': [], 'source_tasks': [], 'labs': [],
+                    }],
+                    'total': 1, 'page': 1, 'per_page': 10, 'pages': 1,
+                }}
+        monkeypatch.setattr(task_query_service, '_task_acl', _BadAcl())
+
+        resp = client.get('/api/v1/tasks')
+        assert resp.status_code == 500
+        body = resp.json()
+        assert body['success'] is False
+        assert '任务列表' in body['message']
+
+    def test_list_valid_items_returns_200(self, client, monkeypatch):
+        """合法嵌套数据不回归：列表正常 200。"""
+        class _OkAcl:
+            def list_tasks(self, **kwargs):
+                return {'success': True, 'data': {
+                    'items': [{
+                        'id': 1, 'name': '好任务', 'status': 'running',
+                        'devices': [], 'reports': {}, 'apis': [],
+                        'source_tasks': [], 'labs': [],
+                    }],
+                    'total': 1, 'page': 1, 'per_page': 10, 'pages': 1,
+                }}
+        monkeypatch.setattr(task_query_service, '_task_acl', _OkAcl())
+
+        resp = client.get('/api/v1/tasks')
+        assert resp.status_code == 200
+        assert resp.json()['data']['total'] == 1
+
+
 class TestPublishedTaskPagination:
     """published-tasks 手动 int() 解析同族 500 修复（INT-233）。"""
 

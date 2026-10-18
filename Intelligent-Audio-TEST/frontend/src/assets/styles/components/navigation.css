@@ -74,7 +74,7 @@ nav a {
     padding: var(--spacing-md) var(--spacing-lg);
     text-decoration: none;
     color: var(--text-secondary);
-    border-radius: var(--border-radius-md);
+    border-radius: var(--radius-control);
     transition: all var(--transition-normal);
     font-weight: var(--font-weight-medium);
     position: relative;
@@ -148,7 +148,7 @@ nav a:hover .nav-icon, nav a.active .nav-icon, nav .router-link-active .nav-icon
     margin: var(--spacing-lg);
     padding: var(--spacing-md);
     background: var(--color-white);
-    border-radius: var(--border-radius-lg);
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--border-color);
 }
@@ -167,7 +167,7 @@ nav a:hover .nav-icon, nav a.active .nav-icon, nav .router-link-active .nav-icon
 .progress-step-number {
     width: 48px;
     height: 48px;
-    border-radius: 50%;
+    border-radius: var(--radius-pill);
     background-color: var(--background-tertiary);
     color: var(--text-secondary);
     display: flex;
@@ -195,7 +195,7 @@ nav a:hover .nav-icon, nav a.active .nav-icon, nav .router-link-active .nav-icon
     flex: 1;
     height: 4px;
     background-color: var(--background-tertiary);
-    border-radius: 2px;
+    border-radius: var(--radius-tag);
     transition: all var(--transition-normal);
     position: relative;
     overflow: hidden;
@@ -209,7 +209,7 @@ nav a:hover .nav-icon, nav a.active .nav-icon, nav .router-link-active .nav-icon
     height: 100%;
     width: 0;
     background: linear-gradient(90deg, var(--primary-color));
-    border-radius: 2px;
+    border-radius: var(--radius-tag);
     transition: width var(--transition-normal);
 }
 
@@ -275,7 +275,7 @@ nav a:hover .nav-icon, nav a.active .nav-icon, nav .router-link-active .nav-icon
     background-color: var(--text-primary);
     color: white;
     padding: 8px 12px;
-    border-radius: var(--border-radius-md);
+    border-radius: var(--radius-control);
     font-size: var(--font-size-sm);
     white-space: nowrap;
     z-index: 100;
@@ -371,12 +371,12 @@ nav a:hover .nav-icon, nav a.active .nav-icon, nav .router-link-active .nav-icon
 
 .tab-nav::-webkit-scrollbar-track {
     background: var(--background-tertiary);
-    border-radius: 2px;
+    border-radius: var(--radius-tag);
 }
 
 .tab-nav::-webkit-scrollbar-thumb {
     background: var(--gray-color);
-    border-radius: 2px;
+    border-radius: var(--radius-tag);
 }
 
 /* 标签页 */

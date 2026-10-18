@@ -119,6 +119,14 @@
                     title="播放类型"
                     @update:model-value="setPlaybackTypeFilter"
                   />
+                  <!-- 实验室筛选（INT-655：后端 /laboratories 已具，按 lab_id 过滤播放设备） -->
+                  <BadgeFilter
+                    :options="laboratoryOptions"
+                    :model-value="laboratoryFilter"
+                    all-label="所有实验室"
+                    title="实验室"
+                    @update:model-value="setLaboratoryFilter"
+                  />
                 </div>
                 <!-- 算法筛选（徽章单选，对齐 V9.7.10） -->
                 <div class="algorithm-filter-row">
@@ -150,6 +158,7 @@
                       <span class="meta-item"><i class="fas fa-tags"></i> {{ device.category }}</span>
                       <span class="meta-item"><i class="fas fa-volume-up"></i> {{ device.type }}</span>
                       <span class="meta-item"><i class="fas fa-wifi"></i> {{ device.ip }}</span>
+                      <span class="meta-item" :title="device.labId ? `所属实验室：${device.labName}` : '未绑定实验室'"><i class="fas fa-flask"></i> {{ device.labName || '未绑定' }}</span>
                     </div>
                   </template>
                   <template #specs="{ device }">
@@ -199,6 +208,14 @@
                     title="状态"
                     @update:model-value="setStatusFilter"
                   />
+                  <!-- 实验室筛选（INT-655：后端 /laboratories 已具，按 lab_id 过滤测试设备） -->
+                  <BadgeFilter
+                    :options="laboratoryOptions"
+                    :model-value="laboratoryFilter"
+                    all-label="所有实验室"
+                    title="实验室"
+                    @update:model-value="setLaboratoryFilter"
+                  />
                   <!-- 算法筛选（徽章单选，对齐 V9.7.10） -->
                   <AlgorithmFilter :options="algorithmTypeOptions" v-model="algorithmFilter" title="支持算法" />
                 </div>
@@ -232,6 +249,7 @@
                       <span class="meta-item"><i class="fas fa-wifi"></i> {{ device.ip }}</span>
                       <span class="meta-item"><i class="fas fa-serial"></i> {{ device.serialNumber }}</span>
                       <span class="meta-item" v-if="device.driverName || device.keywords"><i class="fas fa-key"></i> {{ device.driverName || device.keywords }}</span>
+                      <span class="meta-item" :title="device.labId ? `所属实验室：${device.labName}` : '未绑定实验室'"><i class="fas fa-flask"></i> {{ device.labName || '未绑定' }}</span>
                     </div>
                   </template>
                   <template #specs="{ device }">
@@ -349,6 +367,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useDevice } from './device';
 import { DeviceStatus, DeviceTabType } from '../../domain/enums';
 import BadgeFilter from '../../components/common/BadgeFilter.vue';
@@ -371,6 +390,9 @@ const {
   algorithmTypeFilter,
   algorithmTypeOptions,
   getAlgorithmTypeName,
+  laboratoryFilter,
+  laboratories,
+  setLaboratoryFilter,
   deviceStatusText,
   playbackDevices,
   testDevices,
@@ -443,6 +465,11 @@ const PLAYBACK_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: '干声', label: '干声' },
   { value: '噪声', label: '噪声' },
 ];
+
+// ===== 实验室筛选选项（INT-655：GET /laboratories → BadgeFilter 选项） =====
+const laboratoryOptions = computed(() =>
+  laboratories.value.map(lab => ({ value: String(lab.id), label: lab.name }))
+);
 
 function setStatusFilter(value: string | number) {
   // deviceState 中 statusFilter 类型收窄为 ViewMode.ALL 字面量，实际运行值为设备状态字符串，此处显式放宽

@@ -63,6 +63,10 @@ export interface Device {
   driverName?: string
   /** 支持的算法类型列表 */
   supportedAlgorithms?: string[]
+  /** 所属实验室 ID（INT-655，后端 DeviceItem.lab_id） */
+  labId?: number
+  /** 所属实验室名称（INT-655，网关装饰 lab_name） */
+  labName?: string
   /** 前端本地选中态（非后端契约） */
   selected?: boolean
 }
@@ -123,6 +127,10 @@ export interface PlaybackDevice {
   currentSplMappingId?: number
   createdAt?: string
   updatedAt?: string
+  /** 所属实验室 ID（INT-655，后端 PlaybackDeviceItem.lab_id） */
+  labId?: number
+  /** 所属实验室名称（INT-655，网关装饰 lab_name） */
+  labName?: string
   /** 设备唯一标识兜底来源（serial / serialNumber / deviceId / deviceUniqueId / id，非后端契约） */
   identifierField?: DeviceIdentifierField
 }

@@ -17,6 +17,8 @@ export { publishedTasksApi } from './publishedTasksApi';
 export { logsApi } from './logsApi';
 export { devicesApi, BATCH_LIST_PARAMS } from './devicesApi';
 export type { DeviceListQueryParams } from './devicesApi';
+export { laboratoriesApi } from './laboratoriesApi';
+export type { LaboratoryListQueryParams } from './laboratoriesApi';
 export { playbackApi } from './playbackApi';
 export { apisApi } from './apisApi';
 export { audiosApi } from './audiosApi';
@@ -49,6 +51,7 @@ import { tasksApi } from './tasksApi';
 import { publishedTasksApi } from './publishedTasksApi';
 import { logsApi } from './logsApi';
 import { devicesApi } from './devicesApi';
+import { laboratoriesApi } from './laboratoriesApi';
 import { playbackApi } from './playbackApi';
 import { apisApi } from './apisApi';
 import { audiosApi } from './audiosApi';
@@ -69,6 +72,7 @@ export default {
   logs: logsApi,
   devices: devicesApi,
   playback: playbackApi,
+  laboratories: laboratoriesApi,
   apis: apisApi,
   audios: audiosApi,
   groups: groupsApi,

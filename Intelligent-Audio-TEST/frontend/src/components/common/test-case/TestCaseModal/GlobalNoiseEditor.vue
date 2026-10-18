@@ -176,7 +176,7 @@ function previewNoise() {
 <style scoped>
 .global-noise-editor {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   padding: 16px;
   background: var(--color-neutral-50);
 }
@@ -189,7 +189,7 @@ function previewNoise() {
 .global-noise-icon {
   width: 36px;
   height: 36px;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background: var(--color-secondary-light);
   display: flex;
   align-items: center;
@@ -211,7 +211,7 @@ function previewNoise() {
 .global-noise-badge {
   font-size: 11px;
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-pill);
   background: var(--success-light);
   color: var(--success-dark);
 }
@@ -227,7 +227,7 @@ function previewNoise() {
   margin-bottom: 12px;
   padding: 8px 12px;
   background: var(--warning-light);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
 }
 .global-noise-description .highlight {
   color: var(--color-orange-700);
@@ -261,7 +261,7 @@ function previewNoise() {
   justify-content: space-between;
   padding: 8px 12px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--background);
 }
 .global-noise-card-info {

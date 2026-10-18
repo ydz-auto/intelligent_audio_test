@@ -2,11 +2,11 @@
    全部选择器必须以 .home-page 命名空间前缀隔离（.home-page 根规则除外），禁止裸类名全局泄漏。 */
 .home-page {
   min-height: 100%;
-  background: white;
+  background: var(--background);
   scroll-behavior: smooth;
   overscroll-behavior: contain;
   scrollbar-width: thin;
-  scrollbar-color: var(--border-color) white;
+  scrollbar-color: var(--border-color) var(--background);
   transition: scroll-position 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -15,7 +15,7 @@
 }
 
 .home-page::-webkit-scrollbar-track {
-  background: white;
+  background: var(--background);
   border-radius: 3px;
 }
 
@@ -124,7 +124,7 @@
   grid-template-columns: repeat(6, 1fr);
   gap: 24px;
   padding: 3rem calc((100% - 61.25rem) / 2);
-  background: white;
+  background: var(--card);
   width: calc(100% + 2 * var(--spacing-xl));
   box-sizing: border-box;
   margin-left: calc(-1 * var(--spacing-xl));
@@ -138,7 +138,7 @@
 }
 
 .home-page .quick-stats .stat-card {
-  background-color: white;
+  background-color: var(--card);
   border: none;
   border-radius: var(--border-radius-lg);
   box-shadow: none;
@@ -285,7 +285,7 @@
 
 .home-page .feature-card {
   position: relative;
-  background: white;
+  background: var(--card);
   border-radius: 16px;
   padding: 32px;
   text-decoration: none;
@@ -424,7 +424,7 @@
 /* 工作流 */
 .home-page .workflow-section {
   padding: 3rem calc((100% - 61.25rem) / 2);
-  background: white;
+  background: var(--card);
 }
 
 @media (min-width: 2560px) {
@@ -486,7 +486,7 @@
   align-items: center;
   gap: 24px;
   padding: 28px;
-  background: white;
+  background: var(--card);
   border: 1px solid var(--border-color);
   border-radius: 12px;
   text-decoration: none;
@@ -636,7 +636,7 @@
 
 .home-page .detail-section {
   padding: 3rem calc((100% - 61.25rem) / 2);
-  background: white;
+  background: var(--card);
 }
 
 @media (min-width: 2560px) {
@@ -670,7 +670,7 @@
   display: flex;
   flex-direction: column;
   padding: 40px;
-  background: white;
+  background: var(--card);
   border-radius: 20px;
   border: 1px solid var(--border-color);
   transition: all 0.3s ease;
@@ -794,7 +794,7 @@
 
 .home-page .detail-side-card {
   padding: 24px;
-  background: white;
+  background: var(--card);
   border: 1px solid var(--border-color);
   border-radius: 16px;
   transition: all 0.3s ease;
@@ -984,7 +984,7 @@
 
 .home-page .info-card {
   flex: 1;
-  background: white;
+  background: var(--card);
   border-radius: 16px;
   padding: 32px;
   border: 1px solid var(--border-color);
@@ -1116,4 +1116,12 @@
   .home-page .info-section {
     flex-direction: column;
   }
+}
+
+/* INT-745：深色模式适配——首页门户深浅两套成立（tokens.css .dark 启用） */
+.dark .home-page {
+  background: var(--background);
+}
+.dark .home-page .hero-section {
+  background: linear-gradient(180deg, var(--muted) 0%, var(--background) 100%);
 }

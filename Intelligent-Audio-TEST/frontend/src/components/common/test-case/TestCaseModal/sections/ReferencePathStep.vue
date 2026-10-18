@@ -128,7 +128,7 @@ async function saveRefParams() {
 
 .rce-tag {
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-pill);
   font-size: 10px;
   font-weight: 500;
 }
@@ -140,7 +140,7 @@ async function saveRefParams() {
   gap: 8px;
   padding: 10px 14px;
   background: var(--background-secondary, var(--muted));
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 12px;
   color: var(--text-secondary, var(--color-gray-500));
 }
@@ -150,7 +150,7 @@ async function saveRefParams() {
   margin-left: auto;
   padding: 4px 10px;
   border: 1px solid var(--border-color, var(--border));
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--background-primary, var(--background));
   color: var(--text-secondary, var(--color-gray-500));
   font-size: 12px;
@@ -180,7 +180,7 @@ async function saveRefParams() {
   min-height: 200px;
   padding: 10px;
   border: 1px solid var(--border-color, var(--border));
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-family: monospace;
   font-size: 12px;
   line-height: 1.5;

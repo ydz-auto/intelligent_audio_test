@@ -10,14 +10,15 @@ import type { TestCase, TestCaseFormData } from '../../domain'
 import { TestType } from '@/domain/enums'
 
 interface UseTestCaseOpsOptions {
-  testType: typeof TestType[keyof typeof TestType]
+  /** 'all' = 合并流程（/start-test INT-486 口径）：用例不分类型，走 store 路径且不附 test_type */
+  testType: typeof TestType[keyof typeof TestType] | 'all'
   selectedAlgorithmType: Ref<string | null>
   addLog: (log: any) => void
 }
 
 /**
  * 测试用例通用操作：删除分组/用例、保存、编辑模态窗、标签筛选
- * 内部根据 testType 自动选择 e2e 或 api 的用例来源
+ * 内部根据 testType 自动选择 e2e 或 api 的用例来源；'all'（合并流程）走 store 路径、不附类型过滤
  */
 export function useTestCaseOps(options: UseTestCaseOpsOptions) {
   const { testType, selectedAlgorithmType, addLog } = options
@@ -40,9 +41,11 @@ export function useTestCaseOps(options: UseTestCaseOpsOptions) {
     handleTestCaseAction,
   } = useTestCaseCard()
 
-  // e2e 模式使用 useE2eTest；api 模式直接使用 store
+  // e2e 模式使用 useE2eTest；api / all（合并流程）模式直接使用 store
   const e2eTest = testType === TestType.E2E ? useE2eTest() : null
-  const storeRefs = testType === TestType.API ? storeToRefs(testCaseStore) : null
+  const storeRefs = testType !== TestType.E2E ? storeToRefs(testCaseStore) : null
+  /** 合并流程（'all'）请求不附 test_type：后端返回全类型用例 */
+  const filterTestType = testType === 'all' ? undefined : testType
 
   // 统一的访问器
   const testCaseGroups = computed<Record<string, TestCase[]>>(() => {
@@ -120,7 +123,7 @@ export function useTestCaseOps(options: UseTestCaseOpsOptions) {
   const handleTagFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }) => {
     fetchTagView({
       keyword: filters.keyword,
-      testType,
+      testType: filterTestType,
       algorithmType: filters.algorithmType || selectedAlgorithmType.value || undefined,
       dimensionId: filters.dimensionId,
     })
@@ -137,7 +140,7 @@ export function useTestCaseOps(options: UseTestCaseOpsOptions) {
     } else {
       testCaseStore.fetchTestCases({
         keyword: filters.keyword,
-        testType,
+        testType: filterTestType,
         algorithmType: filters.algorithmType || selectedAlgorithmType.value || undefined,
         dimensionId: filters.dimensionId,
       })

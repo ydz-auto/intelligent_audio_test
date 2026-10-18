@@ -169,7 +169,7 @@ function handleConfirm() {
   width: 100%;
   padding: 8px 12px;
   border: 1px solid var(--color-gray-300);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   background: var(--background);
   color: var(--foreground);
@@ -178,7 +178,7 @@ function handleConfirm() {
   width: 100%;
   padding: 8px 12px;
   border: 1px solid var(--color-gray-300);
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   font-size: 14px;
   box-sizing: border-box;
   resize: vertical;
@@ -194,7 +194,7 @@ function handleConfirm() {
   margin-top: 10px;
   padding: 10px 12px;
   background: color-mix(in srgb, var(--muted) 30%, transparent);
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
 }
 .history-title {
   margin: 0 0 6px;
@@ -226,7 +226,7 @@ function handleConfirm() {
 .btn {
   padding: 8px 20px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   cursor: pointer;
 }

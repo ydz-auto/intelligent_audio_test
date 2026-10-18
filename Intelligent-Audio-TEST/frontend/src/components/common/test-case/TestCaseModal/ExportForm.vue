@@ -317,7 +317,7 @@ defineExpose({
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   transition: all 0.2s;
   box-sizing: border-box;
@@ -348,7 +348,7 @@ defineExpose({
 .stat-item {
   background: var(--muted);
   padding: 4px 12px;
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
 }
 
 .preview-table-container {

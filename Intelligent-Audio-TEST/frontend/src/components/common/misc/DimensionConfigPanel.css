@@ -17,7 +17,7 @@
 .dimension-summary {
   padding: 10px 14px;
   background-color: var(--muted);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 13px;
   color: var(--color-slate-500);
   white-space: nowrap;
@@ -39,7 +39,7 @@
   padding: 16px;
   background-color: var(--muted);
   border: 1px solid var(--muted);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   max-height: 180px;
   overflow-y: auto;
 }
@@ -50,7 +50,7 @@
   background-color: var(--color-secondary-light);
   color: var(--secondary);
   border: 1px solid var(--secondary-light);
-  border-radius: 20px;
+  border-radius: var(--radius-pill);
   cursor: pointer;
   font-size: 14px;
   transition: all 0.2s ease;
@@ -118,7 +118,7 @@
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   transition: all 0.2s;
   box-sizing: border-box;
@@ -142,7 +142,7 @@
   padding: 16px;
   background-color: white;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
 }
 
 .dimension-config-header {
@@ -187,7 +187,7 @@
 .btn {
   padding: 10px 20px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
@@ -243,7 +243,7 @@
 .scope-section {
   background: var(--color-slate-50);
   border: 1px solid var(--color-slate-200);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   padding: 16px;
   margin-bottom: 16px;
 }
@@ -296,7 +296,7 @@
   cursor: pointer;
   padding: 4px 12px;
   border: 1px solid var(--color-gray-300);
-  border-radius: 20px;
+  border-radius: var(--radius-pill);
   background: var(--color-white);
 }
 
@@ -316,7 +316,7 @@
 /* 逐轮设置模式 */
 .per-round-container {
   border: 1px solid var(--color-slate-200);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   overflow: hidden;
 }
 
@@ -364,7 +364,7 @@
   width: 16px;
   height: 16px;
   margin-left: 2px;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   font-size: 10px;
   color: var(--color-slate-400);
   transition: all 0.2s;
@@ -405,7 +405,7 @@
   padding: 0 5px;
   background: var(--secondary);
   color: var(--color-white);
-  border-radius: 9px;
+  border-radius: var(--radius-control);
   font-size: 11px;
   font-weight: 600;
 }
@@ -445,7 +445,7 @@
   padding: 8px 12px;
   background: var(--secondary-light);
   border: 1px solid var(--color-blue-300);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 12px;
   color: var(--secondary-deep);
 }
@@ -465,7 +465,7 @@
   padding: 1px 8px;
   background: var(--color-green-100);
   color: var(--color-green-800);
-  border-radius: 10px;
+  border-radius: var(--radius-pill);
   font-size: 11px;
   font-weight: normal;
   margin-left: 6px;

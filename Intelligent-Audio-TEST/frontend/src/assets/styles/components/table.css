@@ -232,7 +232,7 @@
     width: 100%;
     padding: var(--spacing-xs) var(--spacing-sm);
     border: 1px solid var(--gray-light-color);
-    border-radius: var(--border-radius-sm);
+    border-radius: var(--radius-control);
     font-size: var(--font-size-sm);
     background-color: var(--background-primary);
 }

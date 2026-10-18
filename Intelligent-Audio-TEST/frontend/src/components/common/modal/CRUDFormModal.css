@@ -7,7 +7,7 @@
 .form-group-section {
   background: var(--muted);
   border: 1px solid var(--muted);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   padding: 20px;
   margin-bottom: 20px;
 }
@@ -39,7 +39,7 @@
   color: white;
   border: none;
   padding: 10px 20px;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
@@ -65,7 +65,7 @@
   color: white;
   border: none;
   padding: 10px 20px;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
@@ -91,7 +91,7 @@
   width: 16px;
   height: 16px;
   border: 2px solid color-mix(in srgb, var(--color-white) 30%, transparent);
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   border-top-color: var(--color-white);
   animation: spin 1s ease-in-out infinite;
   margin-right: 8px;

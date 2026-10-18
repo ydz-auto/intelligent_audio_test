@@ -187,6 +187,30 @@ def test_search_tasks_union_merge_and_cherry_pick(db):
     assert plain_item['source_task_count'] is None
 
 
+def test_search_tasks_cherry_pick_container_source_tasks(db):
+    """INT-774 ⑤：cherry-pick 容器行 source_tasks 非空（与 merge 容器同构，
+    按 cherry_pick_task_id 分组取去重源任务 briefs）。"""
+    from task_service.infrastructure.read_models.task_read_model import task_read_model
+
+    set_current_user_id(42)
+    pick_task_a, results_a = _seed_source_task('INT774挑选源A', status='completed')
+    pick_task_b, results_b = _seed_source_task('INT774挑选源B', status='completed')
+    from task_service.application.task.cherry_pick_service import cherry_pick_service
+    cherry_pick_service.cart_add({'result_ids': [results_a[0][1], results_b[0][1]]})
+    picked_id = cherry_pick_service.checkout_merge({'name': 'INT774结果挑选容器'})['data']['task_id']
+
+    result = task_read_model.search_tasks(page=1, per_page=50, cherry_pick=True)
+    picked_item = next(i for i in result['items'] if i['id'] == picked_id)
+    assert picked_item['merge_type'] == 'picked'
+    assert {s['id'] for s in picked_item['source_tasks']} == {pick_task_a, pick_task_b}
+    # 与 merge 容器同构：briefs 含名称/状态/计数
+    src_brief = next(s for s in picked_item['source_tasks'] if s['id'] == pick_task_a)
+    assert src_brief['name'] == 'INT774挑选源A'
+    assert src_brief['status'] == 'completed'
+    assert src_brief['total_cases'] == 2
+    assert src_brief['created_at'] is not None
+
+
 def test_search_tasks_merge_type_filter(db):
     """§11-1：merge_type=whole / picked 快捷筛选分别命中各自容器族。"""
     from task_service.infrastructure.read_models.task_read_model import task_read_model

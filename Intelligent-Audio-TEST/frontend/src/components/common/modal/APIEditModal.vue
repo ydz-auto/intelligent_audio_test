@@ -175,7 +175,7 @@ const handleSave = () => {
   padding: 10px 12px;
   font-size: 14px;
   border: 1px solid var(--color-slate-200);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -201,7 +201,7 @@ const handleSave = () => {
   padding: 10px 20px;
   font-size: 14px;
   font-weight: 500;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   transition: all 0.2s ease;
 }

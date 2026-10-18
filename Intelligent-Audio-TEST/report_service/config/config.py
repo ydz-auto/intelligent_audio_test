@@ -10,10 +10,10 @@ class Config(BaseConfig):
 
     端口规划：
     - HTTP (FastAPI): 5006（避免与 api_adapter_service 的 5008 冲突）
-    - gRPC: 50068
+    - gRPC: 51068
     """
     PORT = int(os.environ.get('PORT', 5006))
-    GRPC_PORT = int(os.environ.get('GRPC_PORT', 50068))
+    GRPC_PORT = int(os.environ.get('GRPC_PORT', 51068))
     SERVICE_NAME = 'report_service'
     # 静态文件根路径，用于 audio_file 路径规范化
     STATIC_BASE_PATH = os.environ.get('STATIC_BASE_PATH', '')

@@ -74,7 +74,7 @@ const selectTestType = (type) => {
   gap: 12px;
   padding: 24px;
   border: none;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
