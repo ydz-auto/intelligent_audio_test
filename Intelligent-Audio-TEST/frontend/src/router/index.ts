@@ -40,7 +40,8 @@ const routes: Array<RouteRecordRaw> = [
   { path: '/benchmarks', name: 'benchmarkRankingLegacy', redirect: '/rankings' },
 
   // ===== 工作台壳 AuthenticatedLayout =====
-  { path: '/dashboard', name: 'dashboard', component: () => import('../views/Placeholder/PlaceholderPage.vue'), props: { title: '工作台概览', description: '工作台聚合页建设中（工作台卡 02 落地：算法卡片网格 + 引导卡 + 平台概览 + 任务统计）' }, meta: { permission: 'home:read', layout: 'authenticated', title: '工作台' } },
+  // INT-736：工作台概览聚合页实页（算法卡片网格 + 引导卡 + 平台概览 + 双面板 + 任务统计图表区）
+  { path: '/dashboard', name: 'dashboard', component: () => import('../views/Dashboard/Dashboard.vue'), meta: { permission: 'home:read', layout: 'authenticated', title: '工作台' } },
   // INT-737：开始测试合并入口 /start-test（E2E+API 单流程，四步，无选算法步骤）
   { path: '/start-test', name: 'startTest', component: () => import('../views/StartTest/StartTest.vue'), meta: { permissions: ['task:execute', 'algorithm:read'], layout: 'authenticated', title: '开始测试' } },
   { path: '/ai-chat', name: 'aiChat', component: () => import('../views/Placeholder/PlaceholderPage.vue'), props: { title: '灵犀Agent', description: 'AI 对话工作台建设中（灵犀Agent 卡 08 落地，后端待立项）' }, meta: { permission: 'report:read', layout: 'authenticated', title: '灵犀Agent' } },
