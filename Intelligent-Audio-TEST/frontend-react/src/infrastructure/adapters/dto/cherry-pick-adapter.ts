@@ -2,8 +2,9 @@
  * 挑选合并 DTO→Domain 转换器（infrastructure/adapters/dto，18_挑选合并交互重设计.md §7.3，INT-713）。
  * snake_case 唯一出现层；前端只见 camelCase Domain。
  * 对照契约：cherry_pick_bp.py + task_service/application/task/cherry_pick_service.py 实测响应。
- * 名称装饰：candidates/cart 缺 case_name/device_name/api_name/result_type（§11-2/§11-5 后端未返），
- * 由 api 层经真实设备/API/用例列表构建 name map 注入本层；缺名降级显示 ID，result_type 折叠待补充。
+ * §11-2/§11-5 落地后（INT-762 审计）：candidates 已返 case_name/device_name/api_name/
+ * result_type/algorithm_type，购物车快照已返 source_result_type——adapter 直取；
+ * 缺名（后端返回 null / case_id 兜底）时经 name map 二次装饰，仍缺则降级显示 ID。
  */
 import type {
   CherryPickCandidate,
@@ -42,17 +43,27 @@ export function fromCandidateDto(
   dto: CherryPickCandidateDto,
   names: PickNameMaps = EMPTY_NAME_MAPS
 ): CherryPickCandidate {
+  // §11-2：后端缺名时 case_name 兜底返回 case_id 原文 → 判等降级（不裸显 UUID，
+  // 走「用例不可用 {前 8 位 id}…」友好文案）；name map 仅作二次装饰补充。
+  const caseName =
+    dto.case_name && dto.case_name !== dto.case_id
+      ? dto.case_name
+      : names.cases.get(dto.case_id) ?? null
   return {
     resultId: dto.result_id,
     taskId: dto.task_id,
     taskName: dto.task_name,
     caseId: dto.case_id,
-    caseName: names.cases.get(dto.case_id) ?? null,
+    caseName,
     deviceId: dto.device_id,
-    deviceName: dto.device_id != null ? names.devices.get(dto.device_id) ?? null : null,
+    deviceName:
+      dto.device_name ??
+      (dto.device_id != null ? names.devices.get(dto.device_id) ?? null : null),
     apiId: dto.api_id,
-    apiName: dto.api_id != null ? names.apis.get(dto.api_id) ?? null : null,
-    resultType: null, // §11-2 后端候选未返 result_type → 折叠「结果类型待补充」
+    apiName:
+      dto.api_name ?? (dto.api_id != null ? names.apis.get(dto.api_id) ?? null : null),
+    resultType: dto.result_type && dto.result_type.trim() ? dto.result_type : null,
+    algorithmType: dto.algorithm_type && dto.algorithm_type.trim() ? dto.algorithm_type : null,
     executionStatus: dto.execution_status,
     evaluationStatus: dto.evaluated ? 'completed' : 'pending',
     evaluated: dto.evaluated,
@@ -78,7 +89,10 @@ export function fromCartEntryDto(
     sourceApiId: dto.source_api_id,
     sourceApiName:
       dto.source_api_id != null ? names.apis.get(dto.source_api_id) ?? null : null,
-    sourceResultType: null, // §11-5 购物车快照未返 source_result_type
+    sourceResultType:
+      dto.source_result_type && dto.source_result_type.trim()
+        ? dto.source_result_type
+        : null, // §11-5 历史快照缺 source_result_type → 折叠「结果类型待补充」
     executionStatus: dto.execution_status,
     evaluationStatus: null, // 快照未含评估状态 → 显示「—」
     invalid: dto.invalid,

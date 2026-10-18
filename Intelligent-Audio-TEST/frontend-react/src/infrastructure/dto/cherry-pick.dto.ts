@@ -3,9 +3,10 @@
  * 对照 api_gateway/routes/cherry_pick_bp.py + task_service/application/task/cherry_pick_service.py
  * + task_service/infrastructure/persistence/cherry_pick_repository.py 实测响应形态。
  * snake_case 唯一出现层；经 adapters/dto/cherry-pick-adapter.ts 转 camelCase Domain。
- * 后端缺口（§11-2/§11-5，INT-713 开 FEAT）：candidates 未返 case_name/device_name/api_name/
- * result_type；cart 快照未返 source_result_type/source_case_name/source_device_name——
- * 前端按设计降级（缺名显示 ID、result_type 折叠为「结果类型待补充」），不写兼容层。
+ * INT-577 §11-2/§11-5 落地后（INT-762 审计逐条对位）：候选行已返 case_name/device_name/
+ * api_name/result_type/algorithm_type；购物车快照已返 source_result_type。缺名时后端返回
+ * case_id 兜底（case_name）或 null（device_name/api_name），前端按设计降级展示
+ * （§3.7.1「用例不可用/设备不可用/API不可用 {前 8 位 id}…」），不写兼容层。
  */
 
 /** 候选行（GET /tasks/cherry-picks/candidates，list_candidates 实测） */
@@ -15,8 +16,16 @@ export interface CherryPickCandidateDto {
   task_name: string
   task_status: string
   case_id: string
+  /** §11-2：用例名（缺名时后端兜底返回 case_id 原文，adapter 判等降级） */
+  case_name: string | null
   device_id: number | null
+  /** §11-2：设备名（TestResult 归属二选一，缺省 null） */
+  device_name: string | null
   api_id: number | null
+  /** §11-2：API 名（缺省 null） */
+  api_name: string | null
+  /** §11-2：result_type（result_data 内解析，缺省 'default'；前端 PENDING 口径兜底空串） */
+  result_type: string | null
   algorithm_type: string | null
   execution_status: string
   /** 结果级已评估（评估维度行存在性，_evaluated_result_ids 批量解析） */
@@ -33,6 +42,8 @@ export interface CherryPickCartItemDto {
   source_case_id: string | null
   source_device_id: number | null
   source_api_id: number | null
+  /** §11-5：购物车快照 source_result_type（历史条目缺省 null → result_type 级折叠「结果类型待补充」） */
+  source_result_type: string | null
   execution_status: string
   created_at: string | null
   /** 源结果已删除标注（cart_get 逐行 _results_exist 判定） */

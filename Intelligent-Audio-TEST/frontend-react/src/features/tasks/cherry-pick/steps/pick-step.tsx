@@ -5,6 +5,7 @@
 import {
   ChevronsDownUp,
   ChevronsUpDown,
+  Layers,
   List,
   TreePine,
   TriangleAlert,
@@ -15,6 +16,7 @@ import { toast } from 'sonner'
 import type { PickFilters } from '@/application/tasks/cherry-pick/use-cherry-pick-candidates'
 import {
   useCherryPickCandidates,
+  useCherryPickCaseView,
   useCherryPickTree,
   usePickFilterOptions,
 } from '@/application/tasks/cherry-pick/use-cherry-pick-candidates'
@@ -54,10 +56,11 @@ export function PickStep({
   const options = usePickFilterOptions()
   const candidatesQuery = useCherryPickCandidates(filters)
   const tree = useCherryPickTree(candidatesQuery.data)
+  const caseTree = useCherryPickCaseView(candidatesQuery.data)
   const addEntries = usePickCartStore((s) => s.addEntries)
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
-  const [view, setView] = useState<'tree' | 'flat'>('tree')
+  const [view, setView] = useState<'tree' | 'case' | 'flat'>('tree')
   const [expandSignal, setExpandSignal] = useState<{ all: boolean; tick: number }>({
     all: false,
     tick: 0,
@@ -139,6 +142,15 @@ export function PickStep({
             树形
           </Button>
           <Button
+            variant={view === 'case' ? 'default' : 'ghost'}
+            size='sm'
+            className='h-6 gap-1 px-2 text-xs'
+            onClick={() => setView('case')}
+          >
+            <Layers aria-hidden='true' className='size-3.5' />
+            用例视角
+          </Button>
+          <Button
             variant={view === 'flat' ? 'default' : 'ghost'}
             size='sm'
             className='h-6 gap-1 px-2 text-xs'
@@ -206,6 +218,15 @@ export function PickStep({
           <PickTree
             className='p-2'
             items={tree}
+            selectedIds={selectedIds}
+            onToggleLeaf={handleToggleLeaf}
+            onToggleBranch={handleToggleBranch}
+            expandSignal={expandSignal}
+          />
+        ) : view === 'case' ? (
+          <PickTree
+            className='p-2'
+            items={caseTree}
             selectedIds={selectedIds}
             onToggleLeaf={handleToggleLeaf}
             onToggleBranch={handleToggleBranch}

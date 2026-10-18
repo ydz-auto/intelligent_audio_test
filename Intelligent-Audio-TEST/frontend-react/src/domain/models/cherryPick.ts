@@ -26,6 +26,8 @@ export interface CherryPickCandidate {
   apiName: string | null
   /** 结果类型（result_data 内解析；后端候选未返 §11-2 → null 折叠为「结果类型待补充」） */
   resultType: string | null
+  /** 算法类型（§11-2 候选行实测返回；用例级算法徽章数据源） */
+  algorithmType: string | null
   executionStatus: string
   /** 结果级评估状态（候选仅返 evaluated 布尔，转换后 completed/pending） */
   evaluationStatus: string
@@ -43,6 +45,10 @@ export interface PickTreeBranch {
   /** 本节点全部子孙结果 id 快照（勾选/取消整组用） */
   resultIds: number[]
   children: PickTreeItem[]
+  /** 用例级：case_id（CaseIdBadge 复制展示，§3.7.1） */
+  caseId?: string
+  /** 用例级：算法类型（§3.7.1 算法徽章；§11-7 tags/时长等落地后补全卡片级元信息） */
+  algorithmType?: string | null
 }
 
 /** 挑选树节点——叶（执行结果行） */

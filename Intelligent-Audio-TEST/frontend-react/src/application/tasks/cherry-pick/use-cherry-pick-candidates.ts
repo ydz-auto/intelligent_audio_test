@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { usePickCartStore } from '@/application/tasks/cherry-pick/use-pick-cart-store'
 import type { CherryPickCandidate } from '@/domain/models/cherryPick'
-import { buildPickTree } from '@/domain/lib/cherry-pick-tree'
+import { buildPickCaseView, buildPickTree } from '@/domain/lib/cherry-pick-tree'
 import type { CherryPickFilters } from '@/infrastructure/api/cherry-pick-api'
 import {
   fetchCherryPickCandidates,
@@ -119,6 +119,15 @@ export function useCherryPickTree(candidates: CherryPickCandidate[] | undefined)
   const resultIdSet = usePickCartStore((s) => s.resultIdSet)
   return useMemo(
     () => buildPickTree(candidates ?? [], resultIdSet),
+    [candidates, resultIdSet]
+  )
+}
+
+/** 用例视角树（§3.7.3：用例→来源任务→设备/API→result_type→结果行；与任务视角共享 selectedResultIds） */
+export function useCherryPickCaseView(candidates: CherryPickCandidate[] | undefined) {
+  const resultIdSet = usePickCartStore((s) => s.resultIdSet)
+  return useMemo(
+    () => buildPickCaseView(candidates ?? [], resultIdSet),
     [candidates, resultIdSet]
   )
 }
