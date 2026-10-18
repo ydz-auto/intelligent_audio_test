@@ -397,3 +397,17 @@ export interface PickSet {
   createdAt: string
   entries: CartEntry[]
 }
+
+/** 重新执行发起结果（POST /tasks/{id}/retry 响应；camelCase Domain） */
+export interface TaskRetryResult {
+  taskId: string | number
+  status: string
+}
+
+/** 重新评估发起结果（POST /evaluation/task/reevaluate 响应；camelCase Domain） */
+export interface TaskReevaluateResult {
+  totalCases: number
+  queuedCases: number
+  reextractedCases: number
+  message: string
+}

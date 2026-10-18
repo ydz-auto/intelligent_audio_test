@@ -4,34 +4,33 @@
  *   POST /tasks/{task_id}/retry        （task:execute；INT-302 按用例选择：body {case_ids, mode}）
  *   POST /evaluation/task/reevaluate   （evaluation:execute；TaskReevaluateInput：
  *       task_id/reevaluate_type/reextract_device_output/case_ids/dimension_ids/mode）
- * 请求一律经 infrastructure/api/client.ts；页面层只见 camelCase。
+ * 请求一律经 infrastructure/api/client.ts；snake_case 只在 infrastructure/dto 层出现，
+ * DTO→Domain 转换收敛在 adapters/dto/task-adapter，页面层只见 camelCase。
  */
+import type { TaskReevaluateResult, TaskRetryResult } from '@/domain/models/task'
 import { apiClient } from '@/infrastructure/api/client'
+import {
+  toTaskReevaluateResult,
+  toTaskRetryResult,
+} from '@/infrastructure/adapters/dto/task-adapter'
+import type {
+  TaskReevaluateResultDto,
+  TaskRetryResultDto,
+} from '@/infrastructure/dto/task.dto'
 
 /** 重新执行范围（§5.7 三选项） */
 export type ReexecuteScopeMode = 'all' | 'failed_only' | 'selected'
-
-export interface RetryTaskResult {
-  task_id: string | number
-  status: string
-}
-
-export interface ReevaluateTaskResult {
-  total_cases: number
-  queued_cases: number
-  reextracted_cases: number
-  message: string
-}
 
 /** 重新执行：POST /tasks/{id}/retry（缺省整任务语义；caseIds 仅 mode=selected 携带） */
 export async function retryTask(
   taskId: number,
   payload: { mode: ReexecuteScopeMode; caseIds?: string[] }
-): Promise<RetryTaskResult> {
-  return apiClient.post<RetryTaskResult>(`/tasks/${taskId}/retry`, {
+): Promise<TaskRetryResult> {
+  const dto = await apiClient.post<TaskRetryResultDto>(`/tasks/${taskId}/retry`, {
     case_ids: payload.mode === 'selected' ? (payload.caseIds ?? []) : [],
     mode: payload.mode,
   })
+  return toTaskRetryResult(dto)
 }
 
 /** 重新评估：POST /evaluation/task/reevaluate（dimensionIds 空数组 = 不过滤全量；reextract 默认 false） */
@@ -44,8 +43,8 @@ export async function reevaluateTask(
     dimensionIds?: number[]
     reextractDeviceOutput?: boolean
   }
-): Promise<ReevaluateTaskResult> {
-  return apiClient.post<ReevaluateTaskResult>('/evaluation/task/reevaluate', {
+): Promise<TaskReevaluateResult> {
+  const dto = await apiClient.post<TaskReevaluateResultDto>('/evaluation/task/reevaluate', {
     task_id: taskId,
     reevaluate_type: payload.mode,
     reextract_device_output: payload.reextractDeviceOutput ?? false,
@@ -53,4 +52,5 @@ export async function reevaluateTask(
     dimension_ids: payload.dimensionIds ?? [],
     mode: payload.mode,
   })
+  return toTaskReevaluateResult(dto)
 }

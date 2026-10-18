@@ -112,6 +112,18 @@ export function ReexecuteScopeDialog({
   const selectedCaseSet = useMemo(() => new Set(selectedCaseIds.map(String)), [selectedCaseIds])
   const selectedDimensionSet = useMemo(() => new Set(selectedDimensionIds), [selectedDimensionIds])
 
+  // 弹窗每次打开重置选择域（§5.7 默认「全部用例」、勾选/过滤/维度/提取开关清空）：
+  // 选择域只属于当前打开的任务，上一任务的 scope/caseIds 不得残留到下一任务（代码审计 P2-1）。
+  // 必须在维度默认全选 effect 之前声明——先清空再初始化，避免重开同任务时被旧维度覆盖。
+  useEffect(() => {
+    if (!open) return
+    setScope(SCOPE_ALL)
+    setSelectedCaseIds([])
+    setCaseFilter('all')
+    setSelectedDimensionIds([])
+    setReextractDeviceOutput(false)
+  }, [open])
+
   // 重评估维度默认全选（§5.7）：候选集就绪后初始化一次，用户改动不被后续渲染覆盖
   useEffect(() => {
     if (!open) {

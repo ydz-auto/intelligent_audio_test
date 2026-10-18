@@ -214,3 +214,17 @@ export interface TaskLogEntryDto {
   task_id: number | null
   test_case_id: string | null
 }
+
+/** 重新执行响应 DTO（task_bp.retry 实测；POST /tasks/{id}/retry） */
+export interface TaskRetryResultDto {
+  task_id: string | number
+  status: string
+}
+
+/** 重新评估响应 DTO（evaluation_bp.reevaluate 实测；POST /evaluation/task/reevaluate） */
+export interface TaskReevaluateResultDto {
+  total_cases: number
+  queued_cases: number
+  reextracted_cases: number
+  message: string
+}

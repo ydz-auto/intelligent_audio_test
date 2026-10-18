@@ -13,6 +13,8 @@ import type {
   TaskDetailData,
   TaskListItem,
   TaskLogEntry,
+  TaskReevaluateResult,
+  TaskRetryResult,
 } from '@/domain/models/task'
 import type {
   PaginatedDto,
@@ -21,6 +23,8 @@ import type {
   TaskDetailDto,
   TaskListItemDto,
   TaskLogEntryDto,
+  TaskReevaluateResultDto,
+  TaskRetryResultDto,
 } from '@/infrastructure/dto/task.dto'
 
 /** TaskListItem：后端同构字段 + api_count 派生 */
@@ -184,5 +188,20 @@ export function toTaskLogEntry(dto: TaskLogEntryDto): TaskLogEntry {
     timestamp: dto.time ?? '',
     level: (dto.level === 'warn' || dto.level === 'error' ? dto.level : 'info') as TaskLogEntry['level'],
     message: dto.content ?? '',
+  }
+}
+
+/** 重新执行响应（POST /tasks/{id}/retry → TaskRetryResult，snake_case→camelCase） */
+export function toTaskRetryResult(dto: TaskRetryResultDto): TaskRetryResult {
+  return { taskId: dto.task_id, status: dto.status }
+}
+
+/** 重新评估响应（POST /evaluation/task/reevaluate → TaskReevaluateResult，snake_case→camelCase） */
+export function toTaskReevaluateResult(dto: TaskReevaluateResultDto): TaskReevaluateResult {
+  return {
+    totalCases: dto.total_cases,
+    queuedCases: dto.queued_cases,
+    reextractedCases: dto.reextracted_cases,
+    message: dto.message,
   }
 }

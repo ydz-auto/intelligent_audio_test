@@ -94,6 +94,11 @@ export function DataImportDialog({
   const [result, setResult] = useState<ImportResult | null>(null)
   const [errorMessage, setErrorMessage] = useState('')
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  /** progress 最新值镜像（pollProgress 闭包读 ref 而非渲染期快照，避免守卫读旧值） */
+  const progressRef = useRef(progress)
+  useEffect(() => {
+    progressRef.current = progress
+  }, [progress])
 
   const progressPercent = phase === 'done' ? 100 : Math.min(Math.max(progress.percentage || 0, 0), 100)
   const progressText = (() => {
@@ -169,8 +174,8 @@ export function DataImportDialog({
   const pollProgress = async () => {
     try {
       const snapshot = await getImportProgress()
-      // 快照兜底：仅在进度尚未推进时更新（避免回退旧值）
-      if (snapshot && (progress.percentage === 0 || progress.step === 'parsing')) {
+      // 快照兜底：仅推进不回退（对照最新 progress 而非渲染期闭包快照，防止瞬时旧快照覆盖）
+      if (snapshot && snapshot.percentage >= progressRef.current.percentage) {
         setProgress(snapshot)
       }
     } catch {

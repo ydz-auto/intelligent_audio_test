@@ -7,7 +7,8 @@ P2 导出数据弹窗（§5.12）：勾选任务 → 批量浮条「导出数据
 P3 导入数据弹窗（§5.12）：Actions「导入数据」→ 选文件段（.zip accept）
 P4 冻结任务详情弹窗（§5.13）：已发布展开行真实详情（legacy 历史版本态或快照弹窗三节）
 P5 冻结报告弹窗（§5.13）：已发布展开行「查看冻结报告」→ 查看源报告 # link + 真实统计行
-P6 重新评估手动选择：任务详情失败显示错误态+重试（P2-1；硬确认层依赖真实复核数据，后端阻塞时跳过）
+P6 重新评估手动选择：任务详情可用时用例列表+维度网格；详情失败显示错误态+重试（P2-1；硬确认层依赖真实复核数据，后端阻塞时跳过）
+P7 重新执行范围跨任务状态不泄漏（代码审计 P2-1 回归）：任务A 勾选/切手动选择 → 取消 → 再开默认回「全部用例」、勾选集清空
 
 失败落 tests/ui/artifacts/int694_task_dialogs/<用例>/（截图+console+source）。
 """
@@ -295,11 +296,113 @@ def test_06_reevaluate_scope_and_error_state(drv):
     time.sleep(1.5)
     dlg = ' '.join(_texts(drv, By.XPATH, "//*[@data-slot='dialog-content']"))
     assert '重新评估' in dlg
-    # 手动选择用例 → 任务详情查询失败时显示错误态 + 重试（P2-1），不得误显示为空态
+    # 手动选择用例：详情可用→用例列表+维度网格；详情失败（如 INT-734 复现）→错误态+重试，不得误显示为空态
     _click(drv, By.CSS_SELECTOR, '[data-testid="reexecute-scope-selected"]')
     time.sleep(1.5)
     dlg2 = ' '.join(_texts(drv, By.XPATH, "//*[@data-slot='dialog-content']"))
-    assert '加载失败' in dlg2 and '重试' in dlg2, \
-        f'任务详情失败应显示错误态+重试而非空态 {dlg2[:200]}'
-    assert '暂无已执行用例' not in dlg2, '错误态不应误显示为空态'
+    case_checkboxes = drv.find_elements(
+        By.CSS_SELECTOR,
+        '[data-slot="dialog-content"] [data-slot="scroll-area"] [data-slot="checkbox"]')
+    if not case_checkboxes:
+        assert '加载失败' in dlg2 and '重试' in dlg2, \
+            f'任务详情失败应显示错误态+重试而非空态 {dlg2[:200]}'
+        assert '暂无已执行用例' not in dlg2, '错误态不应误显示为空态'
+    else:
+        assert '全选' in dlg2, f'详情可用时手动选择区应渲染用例列表 {dlg2[:200]}'
+        assert '评估维度' in dlg2, f'重新评估应渲染维度勾选网格 {dlg2[:200]}'
     # 硬确认层：真实复核数据（review_count>0）可用时才断言；后端 422 阻塞时跳过（INT-694 后端缺陷卡）
+
+
+def test_07_reexecute_scope_reset_across_open(drv):
+    """P7 重新执行弹窗跨任务状态不泄漏（代码审计 P2-1 回归）：
+    任务A 开弹窗→切「手动选择用例」→取消；再开弹窗（同任务或下一行）应回到默认「全部用例」，
+    手动选择区不展开、确认钮无残留选中计数。"""
+    _login(drv)
+    _goto(drv, '/tasks/daily')
+    # 找含「重新执行」的行并打开
+    opened_row = -1
+    for i in range(8):
+        _wait(drv, By.CSS_SELECTOR, 'button[aria-label="任务操作"]')
+        btns = drv.find_elements(By.CSS_SELECTOR, 'button[aria-label="任务操作"]')
+        if i >= len(btns):
+            break
+        btns[i].click()
+        time.sleep(0.8)
+        items = drv.find_elements(By.CSS_SELECTOR, "[data-slot='dropdown-menu-item']")
+        rerun = [it for it in items if '重新执行' in it.text]
+        if rerun:
+            rerun[0].click()
+            opened_row = i
+            break
+        drv.find_element(By.TAG_NAME, 'body').send_keys('')
+        time.sleep(0.4)
+    assert opened_row >= 0, '应至少有一行提供「重新执行」菜单项'
+    time.sleep(0.8)
+    # 切到「手动选择用例」制造非默认状态；详情可用时再勾选一个用例（模拟审计复现的选中残留）
+    _click(drv, By.CSS_SELECTOR, '[data-testid="reexecute-scope-selected"]')
+    time.sleep(0.8)
+    dlg_a = ' '.join(_texts(drv, By.XPATH, "//*[@data-slot='dialog-content']"))
+    assert '全选' in dlg_a, f'手动选择区应展开 {dlg_a[:120]}'
+    selected_on_a = False
+    case_checks = drv.find_elements(
+        By.CSS_SELECTOR,
+        '[data-slot="dialog-content"] [data-slot="scroll-area"] [data-slot="checkbox"]')
+    if case_checks:
+        case_checks[-1].click()
+        time.sleep(0.4)
+        selected_on_a = True
+        confirm_a = _texts(drv, By.XPATH, "//button[contains(., '确认')]")
+        assert any('已选 1 个用例' in t for t in confirm_a), \
+            f'任务A 勾选后确认钮应带计数 {confirm_a}'
+    # 取消
+    _click(drv, By.XPATH, "//button[contains(., '取消')]")
+    time.sleep(0.8)
+    # 再开弹窗：优先下一行「重新执行」（跨任务）；无则同任务重开（同实例状态泄漏同样可测）
+    reopened = False
+    for i in range(opened_row + 1, 8):
+        _wait(drv, By.CSS_SELECTOR, 'button[aria-label="任务操作"]')
+        btns = drv.find_elements(By.CSS_SELECTOR, 'button[aria-label="任务操作"]')
+        if i >= len(btns):
+            break
+        btns[i].click()
+        time.sleep(0.8)
+        items = drv.find_elements(By.CSS_SELECTOR, "[data-slot='dropdown-menu-item']")
+        rerun = [it for it in items if '重新执行' in it.text]
+        if rerun:
+            rerun[0].click()
+            reopened = True
+            break
+        drv.find_element(By.TAG_NAME, 'body').send_keys('')
+        time.sleep(0.4)
+    if not reopened:
+        # 无第二行「重新执行」：重开同一行（同一对话框实例跨次打开，状态泄漏同样可测）
+        btns2 = drv.find_elements(By.CSS_SELECTOR, 'button[aria-label="任务操作"]')
+        if opened_row < len(btns2):
+            btns2[opened_row].click()
+        else:
+            btns2[-1].click()
+        time.sleep(0.8)
+        items = drv.find_elements(By.CSS_SELECTOR, "[data-slot='dropdown-menu-item']")
+        rerun = [it for it in items if '重新执行' in it.text]
+        assert rerun, '重开行应仍提供「重新执行」'
+        rerun[0].click()
+    time.sleep(0.8)
+    dlg_b = ' '.join(_texts(drv, By.XPATH, "//*[@data-slot='dialog-content']"))
+    assert '全选' not in dlg_b, f'重开后手动选择区不应展开（scope 未复位）: {dlg_b[:160]}'
+    confirm_texts = _texts(drv, By.XPATH, "//button[contains(., '确认')]")
+    assert all('已选' not in t for t in confirm_texts), f'确认钮不应带残留选中计数: {confirm_texts}'
+    all_btn = drv.find_element(By.CSS_SELECTOR, '[data-testid="reexecute-scope-all"]')
+    assert 'bg-primary' in (all_btn.get_attribute('class') or ''), \
+        '「全部用例」应为默认激活态'
+    # 若任务A已勾选用例，切回「手动选择用例」验证任务B勾选集已清空（确认钮 0 计数，非任务A残留）
+    if selected_on_a:
+        _click(drv, By.CSS_SELECTOR, '[data-testid="reexecute-scope-selected"]')
+        time.sleep(0.8)
+        case_checks_b = drv.find_elements(
+            By.CSS_SELECTOR,
+            '[data-slot="dialog-content"] [data-slot="scroll-area"] [data-slot="checkbox"]')
+        if case_checks_b:
+            confirm_b = _texts(drv, By.XPATH, "//button[contains(., '确认')]")
+            assert any('已选 0 个用例' in t for t in confirm_b), \
+                f'任务B 勾选集应为空（非任务A残留），实际 {confirm_b}'
+
