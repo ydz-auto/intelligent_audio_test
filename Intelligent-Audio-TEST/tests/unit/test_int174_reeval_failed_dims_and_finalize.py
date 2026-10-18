@@ -433,7 +433,12 @@ class TestReevaluateFailedDims:
         eval_svc.evaluate_case.assert_not_called()
 
     def test_all_rounds_skipped_finalizes_failed(self, patched_acl):
-        """全部轮次因无失败维度被跳过（失败轮评估已停用）→ 用例按评估失败收口"""
+        """全部轮次因无失败维度被跳过（失败轮评估已停用）→ 用例按评估失败收口。
+
+        INT-632 口径更新：返回值从「已处理」改为「确有评估提交」——全部轮次跳过
+        时无任何评估在途（用例已就地收口为 failed），返回 False 使零提交分支主动
+        收敛任务终态，不再伪装有在途评估导致任务卡 running。
+        """
         patched_acl.list_scores.return_value = [
             _trd(7, 0, EvaluationStatus.FAILED, 'round-0 mock fail'),
         ]
@@ -450,7 +455,7 @@ class TestReevaluateFailedDims:
                     reevaluate_type='failed',
                 )
 
-        assert ok is True
+        assert ok is False
         eval_svc.evaluate_case.assert_not_called()
         # 收尾：evaluation_status=failed 终态（防 TaskCase 悬挂 queued）
         failed_calls = [c for c in patched_acl.upd_tc.call_args_list
@@ -986,16 +991,53 @@ class TestZeroSubmissionConvergence:
         ex._check_queue.assert_called_once()
 
     def test_some_submitted_still_holds_queue(self):
-        """确有评估在途：维持 running + 队列占用，由 maybe_finalize 收敛（既有语义）"""
+        """确有评估在途：维持 running + 队列占用，由 maybe_finalize 收敛（既有语义）。
+
+        INT-632：_on_complete 成功路径在提交窗口关闭后补一次 maybe_finalize 收敛
+        检查——用例评估仍在途时返回 False，任务保持 running、队列保持占用、不提前
+        收敛（后续由端点回调触发收敛）。
+        """
         ex = self._running_executor()
 
-        with patch('evaluation_service.infrastructure.evaluation_mixin.update_task_status_with_retry') as upd:
+        with patch('evaluation_service.infrastructure.evaluation_mixin.update_task_status_with_retry') as upd, \
+             patch.object(task_acl_repository, 'get_task_case_by_ids',
+                          MagicMock(return_value=[
+                              SimpleNamespace(test_case_id='c1',
+                                              execution_status=ExecutionStatus.COMPLETED,
+                                              evaluation_status=EvaluationStatus.RUNNING),
+                          ])):
             ex._on_complete(491, True, submitted_cases=2)
 
         upd.assert_called_once_with(491, TaskStatus.RUNNING)
         assert ex.running_task_id == 491
         assert ex.is_reevaluating is True
         ex._check_queue.assert_not_called()
+
+    def test_submit_success_with_all_eval_terminal_converges_immediately(self):
+        """INT-632 竞态修复：提交完成时评估已全部到终态（快速端点）→ 直接收敛 completed。
+
+        端点回调在提交窗口（still_submitting）内到达被拒后不会再有回调；_on_complete
+        成功路径补一次 maybe_finalize，快速评估已完成时任务不再卡 running。
+        """
+        ex = self._running_executor()
+
+        with patch('evaluation_service.infrastructure.evaluation_mixin.update_task_status_with_retry') as upd, \
+             patch.object(task_acl_repository, 'get_task_case_by_ids',
+                          MagicMock(return_value=[
+                              SimpleNamespace(test_case_id='c1',
+                                              execution_status=ExecutionStatus.COMPLETED,
+                                              evaluation_status=EvaluationStatus.COMPLETED),
+                          ])), \
+             patch.object(task_acl_repository, 'get_task_by_id',
+                          MagicMock(return_value=SimpleNamespace(id=491, status=TaskStatus.RUNNING))):
+            ex._on_complete(491, True, submitted_cases=1)
+
+        # RUNNING 先写，maybe_finalize 再收敛为 COMPLETED 并释放队列
+        upd.assert_any_call(491, TaskStatus.RUNNING)
+        upd.assert_any_call(491, TaskStatus.COMPLETED)
+        assert ex.running_task_id is None
+        assert ex.is_reevaluating is False
+        ex._check_queue.assert_called_once()
 
     def test_form_b_zero_cases_converges_end_to_end(self):
         """形态B（收集到 0 个用例）：_run_reevaluation 全链收敛为 completed"""

@@ -210,6 +210,7 @@ message ListTasksRequest {
   string execution_status = 13;  // INT-301 F1：按任务级执行状态过滤（pending/queued/running/paused/completed/failed/stopped/merged）
   bool cherry_pick = 14;  // INT-339：仅挑选合并容器任务（task_cherry_pick_relations 存在性判定，§5.4）
   string task_type = 15;  // INT-273：按派生任务类型过滤（api/e2e/mixed；用例级 device_type 派生口径，与 /tasks/stats type_counts 一致）
+  bool stats = 16;  // INT-577：仅「挑选合并」页签（stats=true）计算合并容器统计块（merged ∪ cherry_pick 并集，total/whole/picked），否则 None
 }
 message GetTaskDetailRequest {
   int32 task_id = 1;
@@ -935,13 +936,16 @@ message SubmitResultRequest {
 }
 message UpdateTaskCaseStatusRequest {
   int32 task_id = 1;
-  string case_id = 2;
+  string case_id = 2;          // 实为 test_case_id（兼容旧调用）；tc_rel_id 优先时精确命中路由行
   string status = 3;          // pending/completed/failed/skipped
   string execution_status = 4;  // pending/running/completed/stopped/failed
   string evaluation_status = 5; // queued/pending/running/calculating/completed/stopped/failed
   string error_message = 6;
   string started_at = 7;      // ISO8601，用例开始执行时间（空则不更新）
   string completed_at = 8;    // ISO8601，用例结束执行时间（空则不更新）
+  int32 tc_rel_id = 9;        // INT-604：task_case_relations.id（可选）。多路由下同一用例
+                              // 存在设备/API 多行，执行/评估写回必须按路由行精确命中，
+                              // 避免 (task_id, test_case_id) 全量更新把兄弟路由打成同一终态。
 }
 message UpdateTestResultAlgorithmResultRequest {
   int32 result_id = 1;
@@ -955,6 +959,8 @@ message UpdateTestResultDataRequest {
 message GetTestResultsByTaskAndCaseRequest {
   int32 task_id = 1;
   string test_case_id = 2;  // 可选，为空返回该 task 下所有
+  string device_type = 3;   // INT-604：可选路由过滤（physical/http_api/websocket_api）
+  string device_id = 4;     // INT-604：可选路由过滤（device_id / api_id）
 }
 message UpdateTestResultStatusRequest {
   int32 result_id = 1;

@@ -48,6 +48,16 @@ def _norm_result_id(result_id) -> int:
     return to_int_id('result_id', result_id)
 
 
+def _coerce_tc_rel_id(value):
+    """将 tc_rel_id 归一为 int；空/非数字 → None（INT-604，防御转换）。"""
+    if value in (None, '', 0):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _with_transient_retry(desc, call):
     """带内联重试的 gRPC 调用（INT-116）。
 
@@ -220,12 +230,14 @@ class TaskAclRepository(_TaskAclRepositoryABC):
         execution_status: str = '',
         evaluation_status: str = '',
         error_message: str = '',
+        tc_rel_id: Optional[int] = None,
     ) -> bool:
         """更新 TaskCase 状态。返回是否成功。
 
         INT-116: 传输级失败内联重试（终态/进度推进写库，瞬时失败曾导致
         task_case_relations 永久停留 evaluating）。持久失败由调用方决定
         是否转延迟重试队列。
+        INT-604: tc_rel_id 可选——多路由下按路由行精确命中，避免兄弟路由互相覆盖。
         """
         task_id = _norm_task_id(task_id)
 
@@ -238,6 +250,7 @@ class TaskAclRepository(_TaskAclRepositoryABC):
                 execution_status=execution_status,
                 evaluation_status=evaluation_status,
                 error_message=error_message,
+                tc_rel_id=_coerce_tc_rel_id(tc_rel_id) or 0,
             ))
             if not resp.success:
                 return False, None

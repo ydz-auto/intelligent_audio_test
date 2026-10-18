@@ -37,6 +37,7 @@ class UserAggregate:
     deleted: bool = False
     oauth_provider: Optional[str] = None
     oauth_subject: Optional[str] = None
+    display_name: Optional[str] = None  # 显示名（INT-697，可空；空=前端兜底 username）
     # 展示字段（仓储从 roles 表 join / PO 时间戳透出，聚合根不负责修改）
     role_name: str = ''
     created_at: Optional[datetime] = None

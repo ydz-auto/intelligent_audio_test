@@ -18,6 +18,11 @@ class Config(BaseConfig):
     # 静态文件根路径，用于 audio_file 路径规范化
     STATIC_BASE_PATH = os.environ.get('STATIC_BASE_PATH', '')
 
+    # ===== Report Studio 导出（INT-673）=====
+    # 导出产物落盘目录（作业记录持久化；文件路径存 export_jobs.file_path）
+    REPORT_STUDIO_EXPORT_DIR = os.environ.get(
+        'REPORT_STUDIO_EXPORT_DIR', 'report_studio_exports')
+
     # ===== Benchmark 排行（D1）配置 =====
     # 平台实测轨 suite/category 缺省值（published_tasks.snapshot_config 未指定时回退）
     BENCHMARK_DEFAULT_SUITE = os.environ.get('BENCHMARK_DEFAULT_SUITE', 'general')

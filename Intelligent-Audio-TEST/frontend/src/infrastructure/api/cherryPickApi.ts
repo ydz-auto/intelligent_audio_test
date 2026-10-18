@@ -17,6 +17,11 @@ export interface PickCartItem {
   sourceCaseId?: string | null
   sourceDeviceId?: number | null
   sourceApiId?: number | null
+  /** INT-577 §11-5：来源结果类型快照（result_data 解析，缺省 default；购物车树分组到 result_type 级） */
+  sourceResultType?: string | null
+  /** INT-577 §11-5 可选：来源用例/设备名（缺名容错显示 ID） */
+  sourceCaseName?: string | null
+  sourceDeviceName?: string | null
   executionStatus?: string | null
   createdAt?: string | null
   /** 下单前校验：源结果已删除时 true（§10） */
@@ -43,8 +48,15 @@ export interface PickCandidate {
   taskName: string
   taskStatus: string
   caseId: string
+  /** INT-577 §11-2：用例名（缺名显示 ID，容错口径） */
+  caseName?: string | null
   deviceId?: number | null
   apiId?: number | null
+  /** INT-577 §11-2：被测设备/API 名（TestResult 归属二选一，缺省 None） */
+  deviceName?: string | null
+  apiName?: string | null
+  /** INT-577 §11-2：结果类型（result_data/result_data_path 解析，缺省 default） */
+  resultType?: string | null
   algorithmType?: string | null
   executionStatus: string
   evaluated?: boolean
@@ -218,6 +230,30 @@ export const cherryPickApi = {
     if (query.perPage) params.per_page = query.perPage;
     return toCamel(await request<Record<string, unknown>>(
       'GET', '/tasks/cherry-picks/candidates', null, { ...options, params }));
+  },
+
+  /** INT-577 §11-4：全选当前筛选——返回当前筛选命中全部 result_id 集合（跨页全选语义） */
+  async selectAllCandidates(query: {
+    taskIds?: number[]
+    deviceIds?: number[]
+    caseIds?: string[]
+    caseKeyword?: string
+    executionStatus?: string
+    evaluationStatus?: string
+    startDate?: string
+    endDate?: string
+  }, options: RequestOptions = {}): Promise<{ resultIds: number[] }> {
+    const body: Record<string, unknown> = {};
+    if (query.taskIds?.length) body.task_ids = query.taskIds;
+    if (query.deviceIds?.length) body.device_ids = query.deviceIds;
+    if (query.caseIds?.length) body.case_ids = query.caseIds;
+    if (query.caseKeyword) body.case_keyword = query.caseKeyword;
+    if (query.executionStatus) body.execution_status = query.executionStatus;
+    if (query.evaluationStatus) body.evaluation_status = query.evaluationStatus;
+    if (query.startDate) body.start_date = query.startDate;
+    if (query.endDate) body.end_date = query.endDate;
+    return toCamel(await request<Record<string, unknown>>(
+      'POST', '/tasks/cherry-picks/candidates/select-all', body, options));
   },
 
   /** 合并预览（下单前统计/失效校验） */

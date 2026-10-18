@@ -58,10 +58,18 @@ class TaskCrudService:
         try:
             from api_gateway.application.services.stats_cache import refresh_stats_cache
 
+            # INT-604：执行模式 / 串行优先侧透传进 config 落库（显式字段与 config 同源，
+            # 查询侧统一从 Task.config 读取；避免 config 魔法键散落）
+            config = dict(data.get('config') or {})
+            if data.get('execution_mode') is not None:
+                config['execution_mode'] = data['execution_mode']
+            if data.get('serial_first') is not None:
+                config['serial_first'] = data['serial_first']
+
             task_id = task_repository.create_task_with_relations(
                 name=data.get('name'),
                 description=data.get('description'),
-                config=data.get('config'),
+                config=config or None,
                 algorithm_type=data.get('algorithm_type'),
                 algorithm_params=data.get('algorithm_params'),
                 case_ids=data.get('case_ids', []),

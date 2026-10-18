@@ -74,13 +74,16 @@ class TestResultRepository(TestResultRepositoryABC):
             session.close()
 
     def get_by_task_and_case(
-        self, task_id: int, test_case_id: str = ''
+        self, task_id: int, test_case_id: str = '',
+        device_type: Optional[str] = None, device_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """按 task_id + test_case_id 批量读取 TestResult。
 
         Args:
             task_id: 任务 ID
             test_case_id: 用例 ID，为空则返回该任务下全部结果
+            device_type: INT-604 可选路由过滤（physical/http_api/websocket_api）
+            device_id: INT-604 可选路由过滤（physical=device_id / api=api_id）
 
         Returns:
             TestResult dict 列表。
@@ -94,10 +97,31 @@ class TestResultRepository(TestResultRepositoryABC):
             )
             if test_case_id:
                 q = q.filter(TestResult.test_case_id == test_case_id)
+            if device_type:
+                q = q.filter(self._route_result_filter(device_type, device_id))
             pos = q.all()
             return [_test_result_po_to_dict(po) for po in pos]
         finally:
             session.close()
+
+    @staticmethod
+    def _route_result_filter(device_type: str, device_id: Optional[str]):
+        """构造路由结果过滤条件：physical→device_id 匹配，api→api_id 匹配。
+
+        TestResult 无 device_type 列，路由身份由 device_id/api_id 承载
+        （physical 结果 device_id=设备ID；api 结果 api_id=api.id，INT-604）。
+        """
+        from shared.models.common_enums import DeviceType
+        if device_type == DeviceType.PHYSICAL.value:
+            try:
+                return TestResult.device_id == int(device_id) if device_id else TestResult.device_id.isnot(None)
+            except (TypeError, ValueError):
+                return TestResult.device_id.isnot(None)
+        # http_api / websocket_api：api_id 匹配
+        try:
+            return TestResult.api_id == int(device_id) if device_id else TestResult.api_id.isnot(None)
+        except (TypeError, ValueError):
+            return TestResult.api_id.isnot(None)
 
     def submit(self, task_id: int, data: Dict[str, Any]) -> int:
         """写入测试结果，返回 result_id。

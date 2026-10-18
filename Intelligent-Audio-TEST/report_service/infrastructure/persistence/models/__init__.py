@@ -29,6 +29,12 @@ from .benchmark_models import (
     BenchmarkReport,
 )
 from .favorite_models import ReportFavorite
+from .report_studio_models import (
+    ReportStudioChartSpec,
+    ReportStudioDocument,
+    ReportStudioDocumentVersion,
+    ReportStudioExportJob,
+)
 
 __all__ = [
     'Report', 'ReportSummary', 'ReportSummaryMeta', 'ReportRawData',
@@ -37,4 +43,7 @@ __all__ = [
     'BenchmarkBaseline', 'BenchmarkReport',
     # 收藏（report，INT-141）
     'ReportFavorite',
+    # Report Studio（INT-673）
+    'ReportStudioDocument', 'ReportStudioDocumentVersion',
+    'ReportStudioChartSpec', 'ReportStudioExportJob',
 ]

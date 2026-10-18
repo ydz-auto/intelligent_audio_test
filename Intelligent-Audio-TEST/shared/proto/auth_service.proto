@@ -28,7 +28,8 @@ service AuthService {
   rpc RevokePermission(RevokePermissionRequest) returns (AuthResponse);
   // 软删除用户
   rpc DeleteUser(DeleteUserRequest) returns (AuthResponse);
-  // 更新用户资料（username/email/status/password，空串字段不修改）
+  // 更新用户资料（username/email/status/password，空串字段不修改；
+  // display_name 未传=不修改、空串=清空，INT-697）
   rpc UpdateUser(UpdateUserRequest) returns (AuthResponse);
   // 设置用户角色
   rpc SetUserRole(SetUserRoleRequest) returns (AuthResponse);
@@ -94,6 +95,7 @@ message CreateUserRequest {
   string password = 7;   // 明文密码（本地注册用户），为空表示无密码（OAuth 用户）
   int32 operator_id = 8; // 操作者用户 ID（审计归因，自注册为 0）
   bool registered = 9;   // true=自助注册（审计事件 AUTH_USER_REGISTERED，INT-51）
+  string display_name = 10; // 显示名（可选，空串/未传=不填，落 NULL；与 oauth_nickname 相互独立）
 }
 message UpdateLastLoginRequest {
   int32 user_id = 1;
@@ -137,6 +139,9 @@ message UpdateUserRequest {
   string status = 4;      // 空串=不修改；active/inactive/locked
   string password = 5;    // 空串=不修改；明文密码，服务端哈希落库
   int32 operator_id = 6;  // 操作者用户 ID（审计归因）
+  // display_name 更新语义与 username/email 的「空串=不修改」不同（INT-697）：
+  // 未传（HasField=false）=不修改；空串=清空落 NULL；非空=设置
+  optional string display_name = 7;
 }
 message SetUserRoleRequest {
   int32 user_id = 1;

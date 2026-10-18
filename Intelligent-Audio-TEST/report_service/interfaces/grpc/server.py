@@ -21,7 +21,11 @@ from shared.infrastructure.grpc_interceptors import (
 )
 from shared.utils.config_manager import config_manager
 from shared.config.service_ports import REPORT_SERVICE_GRPC_PORT
-from report_service.interfaces.grpc.servicers import ReportServicer, BenchmarkServicer
+from report_service.interfaces.grpc.servicers import (
+    ReportServicer,
+    BenchmarkServicer,
+    StudioServicer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +53,7 @@ def start_grpc_server(port: int = REPORT_SERVICE_GRPC_PORT) -> grpc.Server:
 
     report_grpc.add_ReportConfigServiceServicer_to_server(ReportServicer(), server)
     report_grpc.add_BenchmarkConfigServiceServicer_to_server(BenchmarkServicer(), server)
+    report_grpc.add_ReportStudioServiceServicer_to_server(StudioServicer(), server)
 
     server.add_insecure_port(f'[::]:{port}')
     server.start()

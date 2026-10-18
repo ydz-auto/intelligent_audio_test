@@ -61,11 +61,13 @@ class TaskDataAclRepository(ABC):
                                 status: str = '', execution_status: str = '',
                                 evaluation_status: str = '',
                                 error_message: str = '',
-                                started_at=None, completed_at=None) -> bool:
+                                started_at=None, completed_at=None,
+                                tc_rel_id: Optional[int] = None) -> bool:
         """更新 TaskCase 状态（started_at/completed_at 为 datetime 或 ISO8601 字符串，None 不更新）
 
         status 为空时由 task_service 按 execution/evaluation 状态推导复合状态
         （derive_task_case_status），与 task_service 服务端契约对齐。
+        INT-604：tc_rel_id 可选——多路由下按路由行精确命中。
         """
 
     @abstractmethod

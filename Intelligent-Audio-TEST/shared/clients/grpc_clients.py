@@ -86,6 +86,7 @@ from shared.clients._grpc_stubs import (
     get_algorithm_query_service_stub,
     get_report_config_service_stub,
     get_benchmark_config_service_stub,
+    get_report_studio_service_stub,
     get_auth_service_stub,
 )
 

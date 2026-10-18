@@ -67,6 +67,8 @@ class ListTasksConfigQuery(Query):
     cherry_pick（可选，INT-339）：仅挑选合并容器任务（专有关系表存在性判定）。
     task_type（可选，INT-273）：按派生任务类型过滤（api/e2e/mixed；口径与
         /tasks/stats type_counts 一致——用例级 device_type 派生）。
+    stats（可选，INT-577）：仅「挑选合并」页签（stats=true）计算合并容器统计块
+        （merged ∪ cherry_pick 并集，total/whole/picked），否则 None。
     """
     page: int = 1
     per_page: int = 10
@@ -84,6 +86,7 @@ class ListTasksConfigQuery(Query):
     cherry_pick: bool = False
     execution_status: Optional[str] = None
     task_type: Optional[str] = None
+    stats: bool = False
 
 
 @dataclass(frozen=True)

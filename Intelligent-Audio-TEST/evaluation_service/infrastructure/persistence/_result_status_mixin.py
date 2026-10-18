@@ -74,20 +74,31 @@ class ResultStatusMixin:
 
         差异#2 收尾：由用例级 device_type 判定（task.type 已废弃）——
         物理用例按被测设备数、API 用例按关联 API 数预期。
+
+        INT-604 多路由：预期数按路由行求和——路由级绑定行（device_id 非空）
+        每行预期 1 个结果；legacy 未绑定行（device_id 空）按该路由类型的
+        len(devices)/len(apis) 预期，勿沿用首行 device_type（避免多路由下
+        只按单侧设备数/API 数推导导致用例永不收敛或过早收敛）。
         """
         from shared.models.common_enums import DeviceType
         expected_count = 0
-        device_type = None
+        tc_dtos = []
         if test_case_id:
             tc_dtos = task_acl_repository.get_task_case_by_ids(task_id, [str(test_case_id)])
-            device_type = tc_dtos[0].device_type if tc_dtos else None
-        if (device_type or DeviceType.PHYSICAL.value) == DeviceType.PHYSICAL.value:
-            devices = task_acl_repository.get_task_devices(task_id=task_id)
-            expected_count = len(devices)
-        else:
-            # API 用例通常按选中的 API 数量执行
-            apis = task_acl_repository.get_task_apis(task_id=task_id)
-            expected_count = len(apis)
+        if not tc_dtos:
+            return 1
+        devices = task_acl_repository.get_task_devices(task_id=task_id)
+        apis = task_acl_repository.get_task_apis(task_id=task_id)
+        for tc in tc_dtos:
+            device_type = getattr(tc, 'device_type', None) or DeviceType.PHYSICAL.value
+            tc_device_id = getattr(tc, 'device_id', None)
+            if tc_device_id:
+                # 路由级绑定：每路由预期 1 个结果
+                expected_count += 1
+            elif device_type == DeviceType.PHYSICAL.value:
+                expected_count += len(devices)
+            else:
+                expected_count += len(apis)
 
         # 兜底逻辑：如果未找到关联，至少预期 1 个结果
         if expected_count == 0:
@@ -234,6 +245,8 @@ class ResultStatusMixin:
         """
         # 更新TaskCase状态（P1.4: 通过 gRPC）
         # INT-107: 失败时把维度失败原因聚合写入 task_case_relations.error_message
+        # INT-604: 多路由下不回写 execution_status（execution_status=None）——
+        # 兄弟路由可能仍在执行中，复合 status 由 task_service 按行自身 exec 推导
         from evaluation_service.infrastructure.evaluation_mixin import update_task_case_status_in_db
         from evaluation_service.domain.services.evaluation_utils import compose_case_error_message
         error_message = ''
@@ -241,7 +254,8 @@ class ResultStatusMixin:
             error_message = compose_case_error_message(failed_reasons)
         update_count = update_task_case_status_in_db(
             None, task_id, test_case_id, new_status, new_evaluation_status,
-            error_message=error_message
+            execution_status=None,
+            error_message=error_message,
         )
 
         self._log(

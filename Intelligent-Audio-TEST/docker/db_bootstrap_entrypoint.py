@@ -88,6 +88,8 @@ BOOTSTRAP_STEPS = [
     ('python', 'scripts/migrations/202610/add_published_task_type_algorithm_type.py'),
     # 自定义 OAuth 提供方种子（INT-147 数据行形态）
     ('python', 'scripts/migrations/202610/seed_custom_oauth_providers.py'),
+    # ㉘ task_case_relations (task, case, 路由) 唯一索引（INT-604；建索引前先查重）
+    ('python', 'scripts/migrations/202610/add_uq_task_case_route_int604.py'),
 ]
 
 

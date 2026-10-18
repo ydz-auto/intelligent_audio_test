@@ -14,6 +14,7 @@ from shared.utils.status_constants import (
     ExecutionStatus, EvaluationStatus, TaskCaseStatus, TaskStatus,
     FINISHED_EXECUTION_STATUSES, FINISHED_CASE_STATUSES, ACTIVE_EVALUATION_STATUSES,
 )
+from shared.utils.status_utils import derive_task_case_status
 
 
 class PostEvaluationMixin:
@@ -52,7 +53,11 @@ class PostEvaluationMixin:
         for tc in tc_rels:
             if (tc.evaluation_status in [EvaluationStatus.QUEUED, EvaluationStatus.PENDING]
                     and tc.execution_status in FINISHED_EXECUTION_STATUSES):
-                new_status = tc.execution_status if tc.status == TaskCaseStatus.PENDING else tc.status
+                # INT-632：评估收口为 completed 时 status 必须按 execution+evaluation
+                # 重新推导。原实现保留 tc.status（无维度收尾/重评跳过路径下停留在
+                # evaluating），导致 execution/evaluation 均已 completed 而 status
+                # 仍卡 evaluating——任务详情/列表持续显示"进行中"假象。
+                new_status = derive_task_case_status(tc.execution_status, EvaluationStatus.COMPLETED)
                 ok = self._task_acl_repo.update_task_case_status(
                     task_id=task_id,
                     case_id=str(tc.test_case_id),

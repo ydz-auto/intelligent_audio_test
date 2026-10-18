@@ -284,13 +284,18 @@ class AlgorithmCommandHandler:
         # CONFLICT
         return {'code': code, 'id': cmd.id or 0, 'algorithm_type': cmd.algorithm_type}
 
-    def handle_save_draft(self, algorithm_type: str, snapshot: Any) -> None:
-        """处理草稿自动保存（30s 快照，不落正式六表）。"""
+    def handle_save_draft(self, algorithm_type: str, snapshot: Any) -> Optional[Any]:
+        """处理草稿自动保存（30s 快照，不落正式六表）。
+
+        Returns:
+            服务端最后保存时间（draft PO.updated_at，datetime），供草稿
+            保存响应补 saved_at（INT-683）；无则返回 None。
+        """
         if not algorithm_type:
             raise ValueError('algorithm_type 必填')
         if snapshot is None:
             raise ValueError('草稿快照不能为空')
-        algorithm_definition_draft_repository.save_snapshot(algorithm_type, snapshot)
+        return algorithm_definition_draft_repository.save_snapshot(algorithm_type, snapshot)
 
     def handle_clear_draft(self, algorithm_type: str) -> bool:
         """发布成功后清除草稿快照，返回是否清除。"""

@@ -82,6 +82,11 @@ class TaskListItem(APIModel):
     is_favorite: Optional[bool] = Field(None)
     # INT-339：挑选合并容器标记（task_cherry_pick_relations 存在性判定）
     is_cherry_pick: Optional[bool] = Field(None)
+    # INT-577：统一合并容器「合并方式」（whole=整任务合并 / picked=结果挑选 / both）
+    merge_type: Optional[str] = Field(None)
+    # INT-577：容器来源任务数 / 来源结果数（列表次行「来源 {n} 任务 · 结果 {m} 条」）
+    source_task_count: Optional[int] = Field(None)
+    source_result_count: Optional[int] = Field(None)
     deleted: Optional[bool] = Field(None)
     deleted_at: Optional[str] = Field(None)
     deleted_by_user_id: Optional[int] = Field(None)
@@ -94,7 +99,8 @@ class TaskListItem(APIModel):
 
 
 class TaskListData(PaginatedData[TaskListItem]):
-    pass
+    # INT-577：合并容器统计（merged=true ∪ cherry_pick=true 并集；供「挑选合并」页签计数/facet）
+    stats: Optional[Dict[str, Any]] = Field(None)
 
 
 class TaskCaseBrief(APIModel):
@@ -226,6 +232,26 @@ class TaskCreateRequest(APIModel):
     case_devices: Optional[List[TaskCaseDeviceAssignment]] = Field(None)
     # 实验室扩展（INT-493/INT-540）：关联实验室 ID 列表（可选，缺省=不限定实验室，兼容现状）
     lab_ids: Optional[List[int]] = Field(None)
+    # INT-604：任务执行模式（同一用例在设备/API 目标间 并行/串行）。默认并行（现行为）。
+    # 由网关显式字段承接，task_service 合并进 Task.config 落库；取值见 ExecutionMode/SerialFirst 枚举。
+    execution_mode: Optional[str] = Field('parallel')
+    serial_first: Optional[str] = Field('device')
+
+    @field_validator('execution_mode')
+    @classmethod
+    def _validate_execution_mode(cls, v):
+        from shared.models.common_enums import ExecutionMode
+        if v is not None and v not in tuple(item.value for item in ExecutionMode):
+            raise ValueError(f"execution_mode 合法值: {[item.value for item in ExecutionMode]}")
+        return v
+
+    @field_validator('serial_first')
+    @classmethod
+    def _validate_serial_first(cls, v):
+        from shared.models.common_enums import SerialFirst
+        if v is not None and v not in tuple(item.value for item in SerialFirst):
+            raise ValueError(f"serial_first 合法值: {[item.value for item in SerialFirst]}")
+        return v
 
 
 class TaskValidateError(APIModel):
@@ -307,6 +333,11 @@ class TaskListQuery(APIModel):
     merged: bool = Field(False)
     # INT-339：cherry_pick=true 仅挑选合并容器任务（专有关系表存在性判定，§5.4）
     cherry_pick: bool = Field(False)
+    # INT-577：合并方式快捷筛选（whole|picked）——网关映射为 merged/cherry_pick 布尔；
+    # 与 merged/cherry_pick 并存时以 merge_type 为准
+    merge_type: Optional[str] = Field(None)
+    # INT-577：返回合并容器统计块（merged ∪ cherry_pick 并集，供「挑选合并」页签计数/facet）
+    stats: bool = Field(False)
     # INT-301 F1：执行状态过滤（pending/queued/running/paused/completed/failed/
     # stopped/merged；复用派生表达式，徽章展示与筛选命中同口径）
     execution_status: Optional[str] = Field(None)

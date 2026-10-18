@@ -36,6 +36,9 @@ class TaskCaseDTO:
     evaluation_status: Optional[str] = None
     error_message: Optional[str] = None
     result_data: Any = None
+    # INT-604：路由级绑定设备/API ID（多路由下区分设备侧与 API 侧）
+    device_type: Optional[str] = None
+    device_id: Optional[str] = None
 
 
 @dataclass

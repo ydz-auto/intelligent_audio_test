@@ -221,3 +221,48 @@ message BenchmarkResponse {
   string data = 3;  // JSON 序列化的结果
   int32 code = 4;
 }
+
+// ===== Report Studio 业务资产（INT-673，设计文档 §15.4/§15.5）=====
+// documents / document_versions / chart_specs / export_jobs 四聚合，
+// DSH Session/Run/SSE（/api/v1/agent/*）不在本服务；文档仅预留可空
+// agent_session_id 绑定字段。
+service ReportStudioService {
+  // 用现有 reportId 创建草稿（可绑定已有 agentSessionId，可空）
+  rpc CreateStudioDocument(StudioDocumentRequest) returns (StudioResponse);
+  // 当前版本、Markdown、图表引用、ETag
+  rpc GetStudioDocument(StudioDocumentRequest) returns (StudioResponse);
+  // 人工编辑，expected_version + 幂等键；冲突 409 + 差异
+  rpc UpdateStudioDocument(StudioDocumentRequest) returns (StudioResponse);
+  // 不可变版本列表
+  rpc ListStudioDocumentVersions(StudioDocumentRequest) returns (StudioResponse);
+  // 选定历史版本恢复为新版本（不覆盖），带 expected_version
+  rpc RestoreStudioDocumentVersion(StudioDocumentRequest) returns (StudioResponse);
+  // 按当前报告数据 + ChartSpec 返回图表数据
+  rpc GetStudioChartData(StudioChartDataRequest) returns (StudioResponse);
+  // 固定文档版本 + 格式 + 主题，创建导出异步作业
+  rpc CreateStudioExportJob(StudioExportJobRequest) returns (StudioResponse);
+  // 作业状态轮询（pending/running/done/failed）+ 下载引用
+  rpc GetStudioExportJob(StudioExportJobRequest) returns (StudioResponse);
+  // 已完成产物鉴权下载
+  rpc DownloadStudioExport(StudioExportJobRequest) returns (StudioResponse);
+}
+
+message StudioDocumentRequest {
+  string data = 1;  // JSON：doc_id/report_id/agent_session_id/title/markdown_content/
+                    // chart_refs/style_prefs/expected_version/idempotency_key/version
+}
+
+message StudioChartDataRequest {
+  string data = 1;  // JSON：{doc_id, chart_id}
+}
+
+message StudioExportJobRequest {
+  string data = 1;  // JSON：{doc_id, version, format, theme, export_id}
+}
+
+message StudioResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的结果
+  int32 code = 4;   // HTTP 语义业务码（404/403/409/400/500；0 = 200）
+}

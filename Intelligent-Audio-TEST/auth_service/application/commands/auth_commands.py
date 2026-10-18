@@ -66,6 +66,7 @@ class CreateUserCommand:
     password: str = ''
     operator_id: int = 0
     registered: bool = False  # 自助注册（INT-51）：审计事件区分管理员建号
+    display_name: str = ''    # 显示名（INT-697，空串/未传=不填，落 NULL）
 
 
 @dataclass(frozen=True)
@@ -77,12 +78,16 @@ class DeleteUserCommand:
 
 @dataclass(frozen=True)
 class UpdateUserCommand:
-    """更新用户资料（username/email/status/password，None=不修改）。"""
+    """更新用户资料（username/email/status/password，None=不修改）。
+
+    display_name（INT-697）：None=不修改、''=清空、非空=设置。
+    """
     user_id: int
     username: Optional[str] = None
     email: Optional[str] = None
     status: Optional[str] = None
     password: Optional[str] = None
+    display_name: Optional[str] = None
     operator_id: int = 0
 
 

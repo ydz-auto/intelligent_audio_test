@@ -218,6 +218,7 @@ class E2EAggregator:
                     execution_status=ExecutionStatus.FAILED,
                     evaluation_status=EvaluationStatus.FAILED,
                     error_message='没有采集到设备结果',
+                    tc_rel_id=tc_rel_id,
                 )
                 return False
 
@@ -243,6 +244,7 @@ class E2EAggregator:
                         status=derive_task_case_status(ExecutionStatus.COMPLETED, EvaluationStatus.PENDING),
                         execution_status=ExecutionStatus.COMPLETED,
                         evaluation_status=EvaluationStatus.PENDING,
+                        tc_rel_id=tc_rel_id,
                     )
                 else:
                     self._task_data_repo.update_task_case_status(
@@ -250,6 +252,7 @@ class E2EAggregator:
                         status=derive_task_case_status(ExecutionStatus.FAILED, EvaluationStatus.FAILED),
                         execution_status=ExecutionStatus.FAILED,
                         evaluation_status=EvaluationStatus.FAILED,
+                        tc_rel_id=tc_rel_id,
                     )
 
                 _publish_case_event(execution_success)
@@ -278,6 +281,7 @@ class E2EAggregator:
                         status=derive_task_case_status(ExecutionStatus.COMPLETED, eval_status or EvaluationStatus.PENDING),
                         execution_status=ExecutionStatus.COMPLETED,
                         evaluation_status=eval_status,
+                        tc_rel_id=tc_rel_id,
                     )
                 else:
                     self._task_data_repo.update_task_case_status(
@@ -286,6 +290,7 @@ class E2EAggregator:
                         execution_status=ExecutionStatus.FAILED,
                         evaluation_status=EvaluationStatus.FAILED,
                         completed_at=now_cst().isoformat(),
+                        tc_rel_id=tc_rel_id,
                     )
 
                 if execution_success and all_eval_items:

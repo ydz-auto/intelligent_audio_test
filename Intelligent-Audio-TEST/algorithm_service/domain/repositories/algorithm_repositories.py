@@ -79,8 +79,13 @@ class IAlgorithmDefinitionDraftRepository(ABC):
     """算法定义草稿仓储接口（INT-589，JSON 快照表）。"""
 
     @abstractmethod
-    def save_snapshot(self, algorithm_type: str, snapshot: Any) -> None:
-        """保存草稿快照（按 algorithm_type upsert，不落正式六表）。"""
+    def save_snapshot(self, algorithm_type: str, snapshot: Any) -> Optional[Any]:
+        """保存草稿快照（按 algorithm_type upsert，不落正式六表）。
+
+        Returns:
+            保存后 PO 的 updated_at（datetime），供草稿响应补 saved_at
+            （前端 footer「上次保存」消费，INT-683）；失败抛异常。
+        """
         ...
 
     @abstractmethod

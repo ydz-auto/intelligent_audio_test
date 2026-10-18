@@ -84,6 +84,11 @@ class TaskCrudMixin:
             self._add_task_relations(session, task_id, case_ids, device_ids, api_ids, now, case_devices)
             self._add_task_laboratory_relations(session, task_id, lab_ids, now)
 
+            # INT-604：total_cases 以 task_case_relations 行数为准（混选多路由下
+            # 按「用例×路由」行数统计，与进度/报告口径一致）
+            task.total_cases = session.query(TaskCase).filter(
+                TaskCase.task_id == task_id).count()
+
             session.commit()
             return task_id
         except Exception:
@@ -129,9 +134,10 @@ class TaskCrudMixin:
         """批量添加任务关联记录（用例/设备/API）。
 
         Args:
-            case_devices: 用例级设备选择（执行域 P0 新增）：
+            case_devices: 用例级设备选择（执行域 P0 + INT-604 混选前置）：
                 [{"case_id": str, "device_type": str, "device_id": str, "lab_id": int|None}, ...]，
-                按 case_id 归一化后写入 TaskCase.device_type / device_id / lab_id。
+                按 (case_id, device_type, device_id) 归一化后写入 TaskCase——同一用例可落
+                多条 TaskCase（设备侧 + API 侧），使「同个用例在设备与 API 间执行」成立。
 
         说明（INT-104）：未显式指定 device_type 的用例由配置形态派生，
         与 PATCH 用例路径 _apply_case_action 口径一致——device_type 是
@@ -139,19 +145,28 @@ class TaskCrudMixin:
         API 任务误路由到 E2E 执行器。
         派生时传入用例名（INT-129）：上传双变体配置形态相同，仅
         用例名 _api/_e2e 后缀可区分变体（见 derive_case_test_type）。
-        """
-        # 归一化用例级设备选择: {case_id: {device_type, device_id, lab_id}}
-        device_map: Dict[str, Dict[str, Any]] = {}
-        for item in case_devices or []:
-            case_id = item.get('case_id')
-            if case_id is not None:
-                device_map[str(case_id)] = item
 
+        INT-604 幂等：应用层拒绝同一 (task, case, route) 重复提交——
+        路由键按 (case_id, device_type 归一, device_id 归一)，NULL device_type
+        归一为 physical、NULL device_id 归一为空串，与 DB 唯一索引
+        uq_task_case_route 口径一致（见 202611 迁移）。
+        """
         from shared.models.common_enums import DeviceType
         from shared.utils.testcase_helpers import derive_case_test_type
         from task_service.infrastructure.persistence.models import TestCase
-        missing_type_ids = [str(c) for c in case_ids
-                            if not device_map.get(str(c), {}).get('device_type')]
+
+        # 归一化用例级设备选择: {case_id: [item, ...]}（INT-604：同一用例可多条路由）
+        device_map: Dict[str, List[Dict[str, Any]]] = {}
+        for item in case_devices or []:
+            case_id = item.get('case_id')
+            if case_id is not None:
+                device_map.setdefault(str(case_id), []).append(item)
+
+        # 派生兜底：未显式指定 device_type 的用例由配置形态派生（INT-104）
+        missing_type_ids = [
+            str(c) for c in case_ids
+            if not any(dev.get('device_type') for dev in device_map.get(str(c), []))
+        ]
         case_config_map: Dict[str, Any] = {}
         case_name_map: Dict[str, Any] = {}
         if missing_type_ids:
@@ -162,9 +177,18 @@ class TaskCrudMixin:
                 case_config_map[str(cid)] = cfg
                 case_name_map[str(cid)] = name
 
-        # 关联用例
-        for case_id in case_ids:
-            dev = device_map.get(str(case_id), {})
+        # 应用层幂等（INT-604）：任务内已存在的 (case, route) 不再重复提交
+        existing_routes = set()
+        for tc_case_id, tc_device_type, tc_device_id in session.query(
+                TaskCase.test_case_id, TaskCase.device_type, TaskCase.device_id
+        ).filter(TaskCase.task_id == task_id).all():
+            existing_routes.add((
+                str(tc_case_id),
+                (tc_device_type or DeviceType.PHYSICAL.value),
+                (tc_device_id or ''),
+            ))
+
+        def _derive_device_type(case_id: str, dev: Dict[str, Any]) -> str:
             device_type = dev.get('device_type') or None
             if device_type is None:
                 derived = derive_case_test_type(
@@ -173,6 +197,16 @@ class TaskCrudMixin:
                 )
                 device_type = (DeviceType.PHYSICAL.value if derived == 'e2e'
                                else DeviceType.HTTP_API.value)
+            return device_type
+
+        def _add_case_row(case_id: str, device_type: str,
+                          device_id: Optional[str], lab_id: Optional[int]) -> None:
+            route_key = (str(case_id),
+                         (device_type or DeviceType.PHYSICAL.value),
+                         (device_id or ''))
+            if route_key in existing_routes:
+                return
+            existing_routes.add(route_key)
             session.add(TaskCase(
                 task_id=task_id,
                 test_case_id=case_id,
@@ -180,10 +214,27 @@ class TaskCrudMixin:
                 execution_status=ExecutionStatus.PENDING,
                 evaluation_status=EvaluationStatus.PENDING,
                 device_type=device_type,
-                device_id=str(dev['device_id']) if dev.get('device_id') is not None else None,
-                lab_id=dev.get('lab_id') or None,
+                device_id=str(device_id) if device_id is not None else None,
+                lab_id=lab_id or None,
                 created_at=now,
             ))
+
+        # 关联用例（INT-604：按 (case_id, device_type, device_id) 多维度落行）
+        for case_id in case_ids:
+            entries = device_map.get(str(case_id), [])
+            if entries:
+                for dev in entries:
+                    device_type = _derive_device_type(str(case_id), dev)
+                    _add_case_row(str(case_id), device_type, dev.get('device_id'), dev.get('lab_id'))
+            else:
+                # 旧调用（无 case_devices）：按既有派生口径生成单条 TaskCase，零回归
+                derived = derive_case_test_type(
+                    case_config_map.get(str(case_id)),
+                    case_name=case_name_map.get(str(case_id)),
+                )
+                device_type = (DeviceType.PHYSICAL.value if derived == 'e2e'
+                               else DeviceType.HTTP_API.value)
+                _add_case_row(str(case_id), device_type, None, None)
 
         # 关联设备
         for device_id in device_ids:

@@ -13,7 +13,7 @@ P5 改造：从 shared/models/models/task_models.py 真正下沉到本服务。
 from shared.models.database import Base, utc8now
 from sqlalchemy import (
     func, Column, Integer, BigInteger, String, Text, DateTime, Boolean, JSON,
-    Index, ForeignKey,
+    Index, ForeignKey, text,
 )
 from sqlalchemy.orm import relationship
 
@@ -90,6 +90,15 @@ class TaskCase(Base):
     记录特定任务中每个用例的执行状态和耗时。
     """
     __tablename__ = 'task_case_relations'
+    __table_args__ = (
+        # INT-604：任务内 (case, 路由) 唯一——同一用例可同时存在设备侧 + API 侧
+        # 多行（混选前置），但同一路由不得重复。COALESCE 与 202611 迁移
+        # add_uq_task_case_route_int604.py 口径一致（NULL device_type/device_id
+        # 归一为空串，Postgres 唯一索引默认 NULL 互异，裸列索引拦不住 NULL 行）。
+        Index('uq_task_case_route', 'task_id', 'test_case_id',
+              text("COALESCE(device_type, '')"), text("COALESCE(device_id, '')"),
+              unique=True),
+    )
     id = Column(Integer, primary_key=True, autoincrement=True, comment='主键ID')
     task_id = Column(BigInteger, comment='关联测试任务ID')
     test_case_id = Column(String(50), comment='关联测试用例ID')

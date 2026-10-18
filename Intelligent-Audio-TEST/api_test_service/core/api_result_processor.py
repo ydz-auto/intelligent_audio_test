@@ -32,8 +32,12 @@ class APIResultProcessor:
         return self._executor._log
 
     def create_test_result(self, task_id, test_case_id, api_config_id, success, error_msg,
-                           algo_result_dict, latency, final_result_result, algorithm_type='translation'):
-        """创建测试结果记录"""
+                           algo_result_dict, latency, final_result_result, algorithm_type='translation',
+                           tc_rel_id=None):
+        """创建测试结果记录
+
+        INT-604：tc_rel_id 可选——多路由下按路由行精确回写 TaskCase。
+        """
         self._log(level='DEBUG', category='database',
                   content=f"开始创建测试结果记录: task_id={task_id}, test_case_id={test_case_id}, "
                           f"api_config_id={api_config_id}, success={success}",
@@ -86,10 +90,15 @@ class APIResultProcessor:
                       task_id=task_id, test_case_id=test_case_id)
 
         # 同步更新 TaskCase 状态（stopped 保护：任务停止后不回写状态、不广播事件，避免覆盖停止态）
+        # INT-604：tc_rel_id 已知时按主键精确命中路由行（多路由下避免兄弟行被覆盖）
         tc_rel = None
         try:
-            tcs = [dto_to_dict(d) for d in _task_data_acl.get_task_case_by_ids(task_id)]
-            tc_rel = next((tc for tc in tcs if str(tc.get('test_case_id')) == str(test_case_id)), None)
+            if tc_rel_id:
+                tcs = [dto_to_dict(d) for d in _task_data_acl.get_task_case_by_ids(task_id)]
+                tc_rel = next((tc for tc in tcs if tc.get('id') == tc_rel_id), None)
+            else:
+                tcs = [dto_to_dict(d) for d in _task_data_acl.get_task_case_by_ids(task_id)]
+                tc_rel = next((tc for tc in tcs if str(tc.get('test_case_id')) == str(test_case_id)), None)
         except Exception as e:
             self._log(level='WARNING', category='database',
                       content=f"查询 TaskCase 失败: {e}",
@@ -106,6 +115,7 @@ class APIResultProcessor:
                         task_id=task_id,
                         case_id=test_case_id,
                         execution_status=ExecutionStatus.COMPLETED,
+                        tc_rel_id=tc_rel_id,
                     )
                 else:
                     # INT-161：失败即用例终态、评估不会再提交——补写评估终态与
@@ -119,6 +129,7 @@ class APIResultProcessor:
                         evaluation_status=EvaluationStatus.COMPLETED,
                         error_message=error_msg,
                         completed_at=now_cst().isoformat(),
+                        tc_rel_id=tc_rel_id,
                     )
                 if self._executor.execution_engine:
                     self._executor.execution_engine._emit_progress(task_id, force=True)
@@ -270,6 +281,7 @@ class APIResultProcessor:
                       content=f"查询 TaskCase 失败: {e}",
                       task_id=task_id, test_case_id=test_case_id)
 
+        tc_rel_id = tc_rel.get('id') if tc_rel else None
         if tc_rel and tc_rel.get('execution_status') in [ExecutionStatus.STOPPED]:
             self._log(level='INFO', category='database',
                       content=f"任务已停止，跳过 TaskCase 状态回写: task_id={task_id}, test_case_id={test_case_id}",
@@ -282,6 +294,7 @@ class APIResultProcessor:
                     task_id=task_id,
                     case_id=test_case_id,
                     execution_status=ExecutionStatus.COMPLETED,
+                    tc_rel_id=tc_rel_id,
                 )
             else:
                 # 失败且评估不会被提交：评估状态补写终态，失败由 execution_status 承载
@@ -292,6 +305,7 @@ class APIResultProcessor:
                     evaluation_status=EvaluationStatus.COMPLETED,
                     error_message=error_msg,
                     completed_at=now_cst().isoformat(),
+                    tc_rel_id=tc_rel_id,
                 )
             if self._executor.execution_engine:
                 self._executor.execution_engine._emit_progress(task_id, force=True)
@@ -349,6 +363,8 @@ class APIResultProcessor:
                 evaluation_status=EvaluationStatus.COMPLETED,
                 error_message=error_msg,
                 completed_at=now_cst().isoformat(),
+                # INT-604：多路由下按路由行精确命中
+                tc_rel_id=tc_rel_id,
             )
         except Exception as e:
             self._log(level='WARNING', content=f"更新 TaskCase 失败状态失败: {e}",

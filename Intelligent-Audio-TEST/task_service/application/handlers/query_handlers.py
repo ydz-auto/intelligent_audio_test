@@ -185,6 +185,7 @@ class TaskQueryHandler:
             cherry_pick=query.cherry_pick,
             execution_status=query.execution_status,
             task_type=query.task_type,
+            stats=query.stats,
         )
 
     def handle_get_task_detail(self, query: GetTaskDetailQuery) -> Dict[str, Any]:

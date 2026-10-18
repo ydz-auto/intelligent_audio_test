@@ -171,6 +171,30 @@ class CherryPickService:
             return error_response(result.get('message', '查询挑选候选失败'))
         return success_response(result.get('data') or {})
 
+    # INT-577 §11-4：全选当前筛选（POST body 携带与 candidates 相同筛选条件，
+    # 返回命中全部 result_id 集合；网关不做页码分页，task_service 端拉全量）
+    @staticmethod
+    def select_all_candidates():
+        try:
+            body = request.get_json() or {}
+        except Exception:
+            body = {}
+        payload = {
+            'task_ids': _split_ints(body.get('task_ids')),
+            'device_ids': _split_ints(body.get('device_ids')),
+            'case_ids': _split_strs(body.get('case_ids')),
+            'case_keyword': (body.get('case_keyword') or '').strip() or None,
+            'execution_status': body.get('execution_status'),
+            'evaluation_status': body.get('evaluation_status'),
+            'start_date': body.get('start_date'),
+            'end_date': body.get('end_date'),
+            'select_all': True,
+        }
+        result = _cherry_pick_acl.list_candidates(payload)
+        if not result.get('success'):
+            return error_response(result.get('message', '全选当前筛选失败'))
+        return success_response(result.get('data') or {})
+
     # ---- 下单（三出口 + 预览）----
 
     @staticmethod

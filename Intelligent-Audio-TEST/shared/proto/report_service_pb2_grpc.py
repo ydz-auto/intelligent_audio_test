@@ -1937,3 +1937,440 @@ class BenchmarkConfigService:
             timeout,
             metadata,
             _registered_method=True)
+
+
+class ReportStudioServiceStub:
+    """===== Report Studio 业务资产（INT-673，设计文档 §15.4/§15.5）=====
+    documents / document_versions / chart_specs / export_jobs 四聚合，
+    DSH Session/Run/SSE（/api/v1/agent/*）不在本服务；文档仅预留可空
+    agent_session_id 绑定字段。
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.CreateStudioDocument = channel.unary_unary(
+                '/report.ReportStudioService/CreateStudioDocument',
+                request_serializer=report__service__pb2.StudioDocumentRequest.SerializeToString,
+                response_deserializer=report__service__pb2.StudioResponse.FromString,
+                _registered_method=True)
+        self.GetStudioDocument = channel.unary_unary(
+                '/report.ReportStudioService/GetStudioDocument',
+                request_serializer=report__service__pb2.StudioDocumentRequest.SerializeToString,
+                response_deserializer=report__service__pb2.StudioResponse.FromString,
+                _registered_method=True)
+        self.UpdateStudioDocument = channel.unary_unary(
+                '/report.ReportStudioService/UpdateStudioDocument',
+                request_serializer=report__service__pb2.StudioDocumentRequest.SerializeToString,
+                response_deserializer=report__service__pb2.StudioResponse.FromString,
+                _registered_method=True)
+        self.ListStudioDocumentVersions = channel.unary_unary(
+                '/report.ReportStudioService/ListStudioDocumentVersions',
+                request_serializer=report__service__pb2.StudioDocumentRequest.SerializeToString,
+                response_deserializer=report__service__pb2.StudioResponse.FromString,
+                _registered_method=True)
+        self.RestoreStudioDocumentVersion = channel.unary_unary(
+                '/report.ReportStudioService/RestoreStudioDocumentVersion',
+                request_serializer=report__service__pb2.StudioDocumentRequest.SerializeToString,
+                response_deserializer=report__service__pb2.StudioResponse.FromString,
+                _registered_method=True)
+        self.GetStudioChartData = channel.unary_unary(
+                '/report.ReportStudioService/GetStudioChartData',
+                request_serializer=report__service__pb2.StudioChartDataRequest.SerializeToString,
+                response_deserializer=report__service__pb2.StudioResponse.FromString,
+                _registered_method=True)
+        self.CreateStudioExportJob = channel.unary_unary(
+                '/report.ReportStudioService/CreateStudioExportJob',
+                request_serializer=report__service__pb2.StudioExportJobRequest.SerializeToString,
+                response_deserializer=report__service__pb2.StudioResponse.FromString,
+                _registered_method=True)
+        self.GetStudioExportJob = channel.unary_unary(
+                '/report.ReportStudioService/GetStudioExportJob',
+                request_serializer=report__service__pb2.StudioExportJobRequest.SerializeToString,
+                response_deserializer=report__service__pb2.StudioResponse.FromString,
+                _registered_method=True)
+        self.DownloadStudioExport = channel.unary_unary(
+                '/report.ReportStudioService/DownloadStudioExport',
+                request_serializer=report__service__pb2.StudioExportJobRequest.SerializeToString,
+                response_deserializer=report__service__pb2.StudioResponse.FromString,
+                _registered_method=True)
+
+
+class ReportStudioServiceServicer:
+    """===== Report Studio 业务资产（INT-673，设计文档 §15.4/§15.5）=====
+    documents / document_versions / chart_specs / export_jobs 四聚合，
+    DSH Session/Run/SSE（/api/v1/agent/*）不在本服务；文档仅预留可空
+    agent_session_id 绑定字段。
+    """
+
+    def CreateStudioDocument(self, request, context):
+        """用现有 reportId 创建草稿（可绑定已有 agentSessionId，可空）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetStudioDocument(self, request, context):
+        """当前版本、Markdown、图表引用、ETag
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateStudioDocument(self, request, context):
+        """人工编辑，expected_version + 幂等键；冲突 409 + 差异
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListStudioDocumentVersions(self, request, context):
+        """不可变版本列表
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RestoreStudioDocumentVersion(self, request, context):
+        """选定历史版本恢复为新版本（不覆盖），带 expected_version
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetStudioChartData(self, request, context):
+        """按当前报告数据 + ChartSpec 返回图表数据
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreateStudioExportJob(self, request, context):
+        """固定文档版本 + 格式 + 主题，创建导出异步作业
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetStudioExportJob(self, request, context):
+        """作业状态轮询（pending/running/done/failed）+ 下载引用
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DownloadStudioExport(self, request, context):
+        """已完成产物鉴权下载
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_ReportStudioServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'CreateStudioDocument': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateStudioDocument,
+                    request_deserializer=report__service__pb2.StudioDocumentRequest.FromString,
+                    response_serializer=report__service__pb2.StudioResponse.SerializeToString,
+            ),
+            'GetStudioDocument': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetStudioDocument,
+                    request_deserializer=report__service__pb2.StudioDocumentRequest.FromString,
+                    response_serializer=report__service__pb2.StudioResponse.SerializeToString,
+            ),
+            'UpdateStudioDocument': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateStudioDocument,
+                    request_deserializer=report__service__pb2.StudioDocumentRequest.FromString,
+                    response_serializer=report__service__pb2.StudioResponse.SerializeToString,
+            ),
+            'ListStudioDocumentVersions': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListStudioDocumentVersions,
+                    request_deserializer=report__service__pb2.StudioDocumentRequest.FromString,
+                    response_serializer=report__service__pb2.StudioResponse.SerializeToString,
+            ),
+            'RestoreStudioDocumentVersion': grpc.unary_unary_rpc_method_handler(
+                    servicer.RestoreStudioDocumentVersion,
+                    request_deserializer=report__service__pb2.StudioDocumentRequest.FromString,
+                    response_serializer=report__service__pb2.StudioResponse.SerializeToString,
+            ),
+            'GetStudioChartData': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetStudioChartData,
+                    request_deserializer=report__service__pb2.StudioChartDataRequest.FromString,
+                    response_serializer=report__service__pb2.StudioResponse.SerializeToString,
+            ),
+            'CreateStudioExportJob': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateStudioExportJob,
+                    request_deserializer=report__service__pb2.StudioExportJobRequest.FromString,
+                    response_serializer=report__service__pb2.StudioResponse.SerializeToString,
+            ),
+            'GetStudioExportJob': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetStudioExportJob,
+                    request_deserializer=report__service__pb2.StudioExportJobRequest.FromString,
+                    response_serializer=report__service__pb2.StudioResponse.SerializeToString,
+            ),
+            'DownloadStudioExport': grpc.unary_unary_rpc_method_handler(
+                    servicer.DownloadStudioExport,
+                    request_deserializer=report__service__pb2.StudioExportJobRequest.FromString,
+                    response_serializer=report__service__pb2.StudioResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'report.ReportStudioService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('report.ReportStudioService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class ReportStudioService:
+    """===== Report Studio 业务资产（INT-673，设计文档 §15.4/§15.5）=====
+    documents / document_versions / chart_specs / export_jobs 四聚合，
+    DSH Session/Run/SSE（/api/v1/agent/*）不在本服务；文档仅预留可空
+    agent_session_id 绑定字段。
+    """
+
+    @staticmethod
+    def CreateStudioDocument(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportStudioService/CreateStudioDocument',
+            report__service__pb2.StudioDocumentRequest.SerializeToString,
+            report__service__pb2.StudioResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetStudioDocument(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportStudioService/GetStudioDocument',
+            report__service__pb2.StudioDocumentRequest.SerializeToString,
+            report__service__pb2.StudioResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateStudioDocument(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportStudioService/UpdateStudioDocument',
+            report__service__pb2.StudioDocumentRequest.SerializeToString,
+            report__service__pb2.StudioResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListStudioDocumentVersions(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportStudioService/ListStudioDocumentVersions',
+            report__service__pb2.StudioDocumentRequest.SerializeToString,
+            report__service__pb2.StudioResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RestoreStudioDocumentVersion(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportStudioService/RestoreStudioDocumentVersion',
+            report__service__pb2.StudioDocumentRequest.SerializeToString,
+            report__service__pb2.StudioResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetStudioChartData(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportStudioService/GetStudioChartData',
+            report__service__pb2.StudioChartDataRequest.SerializeToString,
+            report__service__pb2.StudioResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateStudioExportJob(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportStudioService/CreateStudioExportJob',
+            report__service__pb2.StudioExportJobRequest.SerializeToString,
+            report__service__pb2.StudioResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetStudioExportJob(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportStudioService/GetStudioExportJob',
+            report__service__pb2.StudioExportJobRequest.SerializeToString,
+            report__service__pb2.StudioResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DownloadStudioExport(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportStudioService/DownloadStudioExport',
+            report__service__pb2.StudioExportJobRequest.SerializeToString,
+            report__service__pb2.StudioResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
