@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """report_service gRPC server 启动模块。
 
-端口：50068
+端口：51068
 注册 servicer：
 - ReportConfigService（报告 CRUD / 生成 / 查询：CreateReport / UpdateReport /
   DeleteReport / BatchActionReports / ListReports / GetReportDetail /
@@ -34,7 +34,7 @@ def start_grpc_server(port: int = REPORT_SERVICE_GRPC_PORT) -> grpc.Server:
     """启动 report_service 的 gRPC server。
 
     Args:
-        port: gRPC 监听端口，默认 50068
+        port: gRPC 监听端口，默认 51068
 
     Returns:
         grpc.Server: 已启动的 server 实例，调用方持有引用以防被 GC 回收

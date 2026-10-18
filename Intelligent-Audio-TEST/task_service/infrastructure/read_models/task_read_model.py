@@ -386,6 +386,32 @@ class TaskReadModel(
                             'source_task_count': len({r.source_task_id for r in rels}),
                             'source_result_count': len(rels),
                         }
+                    # INT-774 ⑤：cherry-pick 容器来源任务 briefs（与 merge 容器同构）——
+                    # 按 cherry_pick_task_id 分组取去重源任务（relation 行 source_task_id
+                    # 指真实源任务，briefs 从 Task 表当前行构建，已删源任务跳过）
+                    cp_source_ids = sorted({r.source_task_id for r in cp_rows})
+                    cp_source_map = {t.id: t for t in session.query(Task).filter(
+                        Task.id.in_(cp_source_ids)).all()} if cp_source_ids else {}
+                    for cid in cherry_pick_container_ids:
+                        seen_ids: set = set()
+                        briefs: List[Dict[str, Any]] = []
+                        for rel in [r for r in cp_rows if r.cherry_pick_task_id == cid]:
+                            if rel.source_task_id in seen_ids:
+                                continue
+                            seen_ids.add(rel.source_task_id)
+                            st = cp_source_map.get(rel.source_task_id)
+                            if st:
+                                briefs.append({
+                                    'id': st.id,
+                                    'name': st.name,
+                                    'status': st.status,
+                                    'total_cases': st.total_cases,
+                                    'completed_cases': st.completed_cases,
+                                    'failed_cases': st.failed_cases,
+                                    'created_at': st.created_at.isoformat() if st.created_at else None,
+                                })
+                        # 与 merge 容器同构：填 source_tasks_map（merge 已填的保留）
+                        source_tasks_map.setdefault(cid, briefs)
                 except Exception as cp_err:
                     logger.debug("挑选合并容器批量判定降级（表可能未建）: %s", cp_err)
             # 批量取页面任务的用例级被测设备类型集合（差异#2 收尾：取代 task.type 输出）

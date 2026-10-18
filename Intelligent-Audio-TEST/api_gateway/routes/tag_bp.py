@@ -64,6 +64,11 @@ def create_tag(_: None = require_permission('tag:create')):
     return to_response(TagCommandService.create())
 
 
+@router.put('/batch-category')
+def batch_update_category(_: None = require_permission('tag:update')):
+    return to_response(TagCommandService.batch_update_category())
+
+
 @router.put('/{tag_id}')
 def update_tag(tag_id: int, _: None = require_permission('tag:update')):
     return to_response(TagCommandService.update(tag_id))
@@ -72,8 +77,3 @@ def update_tag(tag_id: int, _: None = require_permission('tag:update')):
 @router.delete('/{tag_id}')
 def delete_tag(tag_id: int, cascade: bool = Query(False), _: None = require_permission('tag:delete')):
     return to_response(TagCommandService.delete(tag_id, cascade))
-
-
-@router.put('/batch-category')
-def batch_update_category(_: None = require_permission('tag:update')):
-    return to_response(TagCommandService.batch_update_category())
