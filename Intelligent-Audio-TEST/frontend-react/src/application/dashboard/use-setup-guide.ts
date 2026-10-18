@@ -53,7 +53,7 @@ export function useSetupGuide(details?: HomeStatsDetails) {
         title: '配置用例',
         description: '创建或导入测试用例',
         icon: ListChecks,
-        completed: (details?.test_cases.total ?? 0) > 0,
+        completed: (details?.testCases.total ?? 0) > 0,
       },
       {
         key: 'devices',

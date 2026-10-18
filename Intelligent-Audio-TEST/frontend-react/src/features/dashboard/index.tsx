@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { AlgorithmCardGrid } from '@/components/algorithm-card-grid'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useSetupGuide } from '@/application/dashboard/use-setup-guide'
+import { useDashboardSummary } from '@/application/dashboard/use-dashboard-summary'
 import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
 import { FadeIn } from '@/features/dashboard/components/page-transition'
 import { PlatformSummary } from '@/features/dashboard/components/platform-summary'
@@ -27,6 +28,7 @@ export function DashboardPage() {
   const { hasPermission } = usePermissions()
   const queryClient = useQueryClient()
   const statsQuery = useDashboardStats()
+  const summaryQuery = useDashboardSummary()
   const setupGuide = useSetupGuide(statsQuery.data)
   // 最近任务/图表区同门控（§3.7/§3.8：task:read 整面板隐藏）
   const taskRead = hasPermission('task:read')
@@ -93,6 +95,7 @@ export function DashboardPage() {
               completedCount={setupGuide.completedCount}
               expanded={setupGuide.expanded}
               details={statsQuery.data}
+              latestTaskId={summaryQuery.data?.recentTasks[0]?.id}
               onToggle={setupGuide.toggle}
             />
           </FadeIn>

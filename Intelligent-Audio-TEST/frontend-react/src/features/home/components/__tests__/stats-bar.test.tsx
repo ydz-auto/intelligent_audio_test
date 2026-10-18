@@ -1,6 +1,7 @@
 /**
  * 首页门户组件测试——StatsBar（INT-379 门户）：未登录/无权限降级登录引导、
  * 登录态渲染平台规模六项（03_首页.md §3.2 尾部）。
+ * useHomeStats 为真实接口 query（INT-728 接线后），组件测试 mock hook 供稳态数据。
  */
 import {
   createMemoryHistory,
@@ -9,10 +10,34 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { render, screen } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { StatsBar } from '@/features/home/components/stats-bar'
 import { useAuthStore } from '@/infrastructure/stores/auth-store'
+import type { HomeStatsDetails } from '@/domain/models/home'
+
+const { MOCK_HOME_STATS } = vi.hoisted<{ MOCK_HOME_STATS: HomeStatsDetails }>(
+  () => ({
+    MOCK_HOME_STATS: {
+      testCases: { total: 579, groups: 6 },
+      tasks: { total: 124, completed: 74, running: 1, failed: 38 },
+      devices: { online: 3, offline: 0, total: 3 },
+      audioFiles: { total: 1953, dry: 1953, noise: 0, prompt: 0 },
+      playbackDevices: 12,
+      apis: { online: 1, offline: 0, total: 1 },
+      reports: 55,
+      dimensions: { total: 37, withEndpoints: 0, endpoints: 0 },
+      updatedAt: '2026-10-18T11:05:08',
+    },
+  })
+)
+
+vi.mock('@/application/hooks/use-home-stats', () => ({
+  useHomeStats: () => ({
+    data: MOCK_HOME_STATS,
+    isLoading: false,
+  }),
+}))
 
 const initialAuth = useAuthStore.getState()
 
