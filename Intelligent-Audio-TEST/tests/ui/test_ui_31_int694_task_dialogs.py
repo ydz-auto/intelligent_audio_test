@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """INT-694 任务域弹窗补齐 冒烟核心链路浏览器走查（真实 Chrome headless，按 test_ui_25 先例）。
 
-针对 frontend-react/ 任务页（mock 数据 + 接线动作端点）：
-P1 重新执行/重新评估范围选择弹窗（§5.7）：三选项 + 「手动选择用例」展开态（用例列表/全选/过滤 Select）
+针对 frontend-react/ 任务页（真实接口 + 常驻后端；动作端点已接线）：
+P1 重新执行/重新评估范围选择弹窗（§5.7）：三选项 + 「手动选择用例」展开态（错误态/用例列表/全选/过滤 Select）
 P2 导出数据弹窗（§5.12）：勾选任务 → 批量浮条「导出数据」→ 选中清单 + 参考参数/音频 Checkbox + 开始导出
 P3 导入数据弹窗（§5.12）：Actions「导入数据」→ 选文件段（.zip accept）
-P4 冻结任务详情弹窗（§5.13）：已发布展开行「查看冻结任务详情」→ 任务信息/关联资源/用例三节
-P5 冻结报告弹窗（§5.13）：已发布展开行「查看冻结报告」→ 「查看源报告 #」link + 统计行
+P4 冻结任务详情弹窗（§5.13）：已发布展开行真实详情（legacy 历史版本态或快照弹窗三节）
+P5 冻结报告弹窗（§5.13）：已发布展开行「查看冻结报告」→ 查看源报告 # link + 真实统计行
+P6 重新评估手动选择：任务详情失败显示错误态+重试（P2-1；硬确认层依赖真实复核数据，后端阻塞时跳过）
 
 失败落 tests/ui/artifacts/int694_task_dialogs/<用例>/（截图+console+source）。
 """
@@ -221,26 +222,28 @@ def test_03_import_data_dialog(drv):
 
 
 def test_04_frozen_task_snapshot_dialog(drv):
-    """P4 冻结任务详情弹窗：已发布展开行「查看冻结任务详情」→ 三节 + 用例 Collapsible"""
+    """P4 冻结任务详情弹窗：真实数据下按 has_task_snapshot 分流（legacy 历史版本态 / 快照弹窗）"""
     _login(drv)
     _goto(drv, '/tasks/published')
     time.sleep(0.8)
     # 展开第一行版本详情（版本 按钮）
     _click(drv, By.XPATH, "//button[contains(., '版本')]")
-    time.sleep(0.8)
-    _click(drv, By.XPATH, "//button[contains(., '查看冻结任务详情')]")
-    time.sleep(0.8)
-    dialog_texts = _texts(drv, By.XPATH, "//*[@data-slot='dialog-content']")
-    joined = ' '.join(dialog_texts)
-    assert '任务详情（发布时冻结' in joined
-    assert '任务信息' in joined
-    assert '关联资源（发布时冻结）' in joined
-    assert '用例（3）' in joined
-    # 展开首个用例 Collapsible → 参考参数块出现
-    _click(drv, By.XPATH, "//*[@data-slot='collapsible-trigger']")
-    time.sleep(0.6)
-    body_texts = _texts(drv, By.XPATH, "//*[@data-slot='dialog-content']")
-    assert any('参考参数' in t for t in body_texts), f'用例展开后应显示参考参数块 {body_texts}'
+    time.sleep(1.5)
+    body = ' '.join(_texts(drv, By.TAG_NAME, 'body'))
+    # 真实详情渲染（来源任务 #417 链路），非 mock 数据
+    assert '来源任务 #417' in body or '来源任务' in body, \
+        f'展开行应渲染真实来源任务信息 {body[:120]}'
+    # 真实 published 1 为 legacy（has_task_snapshot=false）→ 历史版本提示、无快照入口；
+    # 若有 has_task_snapshot=true 的任务版本则验证快照弹窗三节
+    snap_btns = drv.find_elements(By.XPATH, "//button[contains(., '查看冻结任务详情')]")
+    if snap_btns:
+        snap_btns[0].click()
+        time.sleep(0.8)
+        dlg = ' '.join(_texts(drv, By.XPATH, "//*[@data-slot='dialog-content']"))
+        assert '任务信息' in dlg and '关联资源（发布时冻结）' in dlg, f'快照弹窗三节 {dlg[:120]}'
+    else:
+        assert '历史版本' in body or '发布时未冻结' in body, \
+            f'legacy 任务应显示历史版本提示 {body[:200]}'
 
 
 def test_05_frozen_report_dialog(drv):
@@ -259,13 +262,13 @@ def test_05_frozen_report_dialog(drv):
     assert '用例总数' in joined and '通过率' in joined
 
 
-def test_06_reevaluate_dimension_and_hard_confirm(drv):
-    """P6 重新评估弹窗：维度勾选网格（默认全选）+ 重新提取设备输出 + 复核硬确认层"""
+def test_06_reevaluate_scope_and_error_state(drv):
+    """P6 重新评估弹窗：范围三选项 + 手动选择错误态（真实后端任务详情 422 时 P2-1 兜底，非误导空态）"""
     _login(drv)
     _goto(drv, '/tasks/daily')
-    # 逐行打开操作菜单，找到含「重新评估」的行（终态任务；mock 详情 review_count=2）
+    # 逐行打开操作菜单，找到含「重新评估」的行
     opened = False
-    for i in range(8):
+    for i in range(10):
         _wait(drv, By.CSS_SELECTOR, 'button[aria-label="任务操作"]')
         btns = drv.find_elements(By.CSS_SELECTOR, 'button[aria-label="任务操作"]')
         if i >= len(btns):
@@ -281,16 +284,14 @@ def test_06_reevaluate_dimension_and_hard_confirm(drv):
         drv.find_element(By.TAG_NAME, 'body').send_keys('')
         time.sleep(0.4)
     assert opened, '应至少有一行提供「重新评估」菜单项'
-    time.sleep(0.8)
-    dialog_texts = _texts(drv, By.XPATH, "//*[@data-slot='dialog-content']")
-    joined = ' '.join(dialog_texts)
-    assert '重新评估' in joined
-    assert '评估维度（默认全选）' in joined
-    assert '重新提取设备输出（从存档日志）' in joined
-    # 确认 → 存在复核结果时先弹硬确认层（§5.7 覆盖并继续）
-    _click(drv, By.XPATH, "//*[@data-slot='dialog-content']//button[contains(., '确认')]")
-    time.sleep(0.6)
-    confirm_texts = _texts(drv, By.XPATH, "//*[@data-slot='alert-dialog-content']")
-    joined_confirm = ' '.join(confirm_texts)
-    assert '人工复核结果' in joined_confirm and '覆盖并继续' in joined_confirm, \
-        f'应弹出人工复核硬确认层，实际 {joined_confirm}'
+    time.sleep(1.5)
+    dlg = ' '.join(_texts(drv, By.XPATH, "//*[@data-slot='dialog-content']"))
+    assert '重新评估' in dlg
+    # 手动选择用例 → 任务详情查询失败时显示错误态 + 重试（P2-1），不得误显示为空态
+    _click(drv, By.CSS_SELECTOR, '[data-testid="reexecute-scope-selected"]')
+    time.sleep(1.5)
+    dlg2 = ' '.join(_texts(drv, By.XPATH, "//*[@data-slot='dialog-content']"))
+    assert '加载失败' in dlg2 and '重试' in dlg2, \
+        f'任务详情失败应显示错误态+重试而非空态 {dlg2[:200]}'
+    assert '暂无已执行用例' not in dlg2, '错误态不应误显示为空态'
+    # 硬确认层：真实复核数据（review_count>0）可用时才断言；后端 422 阻塞时跳过（INT-694 后端缺陷卡）

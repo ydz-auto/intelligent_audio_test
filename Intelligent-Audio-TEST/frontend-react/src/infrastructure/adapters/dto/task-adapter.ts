@@ -101,6 +101,7 @@ export function toTaskDetail(dto: TaskDetailDto): TaskDetailData {
     apis: dto.apis ?? [],
     created_at: dto.created_at,
     updated_at: dto.updated_at,
+    review_count: dto.review_count ?? 0,
   }
 }
 

@@ -10,10 +10,11 @@ import {
   fetchTaskLogs,
 } from '@/infrastructure/api/tasks-list-api'
 
-export function useTaskDetail(taskId: number) {
+export function useTaskDetail(taskId: number, enabled = true) {
   return useQuery({
     queryKey: ['tasks', 'detail', taskId],
     queryFn: () => fetchTaskDetail(taskId),
+    enabled,
     staleTime: 30_000,
   })
 }

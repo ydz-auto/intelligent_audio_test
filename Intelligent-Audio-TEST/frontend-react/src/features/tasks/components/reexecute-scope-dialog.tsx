@@ -60,7 +60,7 @@ export function ReexecuteScopeDialog({
   taskName: string
   actionType: ActionType
 }) {
-  const detailQuery = useTaskDetail(taskId)
+  const detailQuery = useTaskDetail(taskId, open && taskId > 0)
   const detail = detailQuery.data
 
   const [scope, setScope] = useState<ReexecuteScopeMode>(SCOPE_ALL)
@@ -313,6 +313,18 @@ export function ReexecuteScopeDialog({
                   <div className='flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground'>
                     <Spinner size={14} />
                     正在加载本任务用例...
+                  </div>
+                ) : detailQuery.isError ? (
+                  <div className='flex flex-col items-center gap-2 py-6 text-xs'>
+                    <span className='text-destructive'>本任务用例加载失败，请重试</span>
+                    <Button
+                      size='sm'
+                      variant='outline'
+                      className='h-7'
+                      onClick={() => void detailQuery.refetch()}
+                    >
+                      重试
+                    </Button>
                   </div>
                 ) : filteredCases.length === 0 ? (
                   <p className='text-muted-foreground py-6 text-center text-xs'>

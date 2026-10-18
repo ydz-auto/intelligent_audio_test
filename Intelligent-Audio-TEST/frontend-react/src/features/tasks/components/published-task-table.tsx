@@ -4,10 +4,11 @@
  * 展开行五个 DetailSection（照 log-detail-layout 键值行）：版本历史 / Benchmark 标记 /
  * 任务详情（发布时冻结）/ 冻结报告 / 执行记录。
  * 「查看冻结任务详情」→ TaskSnapshotDialog（§5.13）；「查看冻结报告」→ ReportSnapshotDialog（§5.13）。
- * 数据源：mock 见 MOCK_PUBLISHED_TASKS + MOCK_PUBLISHED_DETAIL。
+ * 数据源：列表 fetchPublishedTaskList（GET /published-tasks）；展开版本链行
+ * fetchPublishedTaskDetail（GET /published-tasks/{id}）真实详情。
  */
 import { ChevronDown, ChevronRight, Package, Trophy } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { Badge } from '@/components/ui/badge'
@@ -24,9 +25,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
+import { fetchPublishedTaskDetail } from '@/infrastructure/api/tasks-list-api'
 import type { PublishedTaskDetail, PublishedTaskItem } from '@/domain/models/task'
 import { readReportSnapshot, readReportSummary, readTaskSnapshot } from '@/domain/models/task'
-import { MOCK_PUBLISHED_DETAIL } from '@/infrastructure/mock/tasks-mock'
 import { formatDateTime, getTaskTypeLabel } from '@/features/tasks/constants'
 import { TaskSnapshotDialog } from '@/features/tasks/components/task-snapshot-dialog'
 import { ReportSnapshotDialog } from '@/features/tasks/components/report-snapshot-dialog'
@@ -206,7 +207,35 @@ export function PublishedTaskTable({
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [snapshotOpen, setSnapshotOpen] = useState(false)
   const [reportOpen, setReportOpen] = useState(false)
-  const detail = MOCK_PUBLISHED_DETAIL
+  const [detail, setDetail] = useState<PublishedTaskDetail | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailError, setDetailError] = useState<string | null>(null)
+
+  // 展开版本链：取 GET /published-tasks/{id} 真实详情（版本历史/冻结快照/执行记录）
+  useEffect(() => {
+    if (expandedId == null) {
+      setDetail(null)
+      setDetailError(null)
+      return
+    }
+    let cancelled = false
+    setDetailLoading(true)
+    setDetailError(null)
+    fetchPublishedTaskDetail(expandedId)
+      .then((d) => {
+        if (cancelled) return
+        setDetail(d)
+        setDetailLoading(false)
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setDetailError(err instanceof Error ? err.message : '已发布任务详情加载失败')
+        setDetailLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [expandedId])
 
   if (loading) {
     return (
@@ -267,6 +296,8 @@ export function PublishedTaskTable({
                     expanded={expanded}
                     onToggle={() => setExpandedId(expanded ? null : task.id)}
                     detail={detail}
+                    detailLoading={detailLoading}
+                    detailError={detailError}
                     hasPermission={hasPermission}
                     onOpenSnapshot={() => setSnapshotOpen(true)}
                     onOpenReport={() => setReportOpen(true)}
@@ -278,16 +309,20 @@ export function PublishedTaskTable({
         </div>
       </div>
 
-      <TaskSnapshotDialog
-        open={snapshotOpen}
-        onOpenChange={setSnapshotOpen}
-        snapshot={readTaskSnapshot(detail.snapshot_config)}
-      />
-      <ReportSnapshotDialog
-        open={reportOpen}
-        onOpenChange={setReportOpen}
-        report={readReportSnapshot(detail.report_snapshot)}
-      />
+      {detail && (
+        <>
+          <TaskSnapshotDialog
+            open={snapshotOpen}
+            onOpenChange={setSnapshotOpen}
+            snapshot={readTaskSnapshot(detail.snapshot_config)}
+          />
+          <ReportSnapshotDialog
+            open={reportOpen}
+            onOpenChange={setReportOpen}
+            report={readReportSnapshot(detail.report_snapshot)}
+          />
+        </>
+      )}
     </>
   )
 }
@@ -298,6 +333,8 @@ function ExpandedRows({
   expanded,
   onToggle,
   detail,
+  detailLoading,
+  detailError,
   hasPermission,
   onOpenSnapshot,
   onOpenReport,
@@ -306,7 +343,9 @@ function ExpandedRows({
   meta: { label: string; variant: 'success' | 'neutral' }
   expanded: boolean
   onToggle: () => void
-  detail: PublishedTaskDetail
+  detail: PublishedTaskDetail | null
+  detailLoading: boolean
+  detailError: string | null
   hasPermission: (permission: string) => boolean
   onOpenSnapshot: () => void
   onOpenReport: () => void
@@ -438,12 +477,33 @@ function ExpandedRows({
       {expanded && (
         <tr className='border-border/60 border-b'>
           <td colSpan={9} className='p-0'>
-            <PublishedExpandRow
-              detail={{ ...detail, id: task.id, versions: [task, ...detail.versions.filter((v) => v.id !== task.id)] }}
-              onOpenSnapshot={onOpenSnapshot}
-              onOpenReport={onOpenReport}
-            />
-            <Separator className='mt-1' />
+            {detailLoading ? (
+              <div className='bg-muted/20 px-4 py-3'>
+                <Skeleton className='h-12 w-full' />
+                <Skeleton className='mt-3 h-20 w-full' />
+                <Skeleton className='mt-3 h-12 w-full' />
+              </div>
+            ) : detailError ? (
+              <div className='bg-muted/20 px-4 py-3 text-sm text-destructive'>
+                {detailError}
+              </div>
+            ) : detail ? (
+              <>
+                <PublishedExpandRow
+                  detail={{
+                    ...detail,
+                    id: task.id,
+                    versions: [
+                      task,
+                      ...detail.versions.filter((v) => v.id !== task.id),
+                    ],
+                  }}
+                  onOpenSnapshot={onOpenSnapshot}
+                  onOpenReport={onOpenReport}
+                />
+                <Separator className='mt-1' />
+              </>
+            ) : null}
           </td>
         </tr>
       )}
