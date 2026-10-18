@@ -35,6 +35,11 @@ import type {
   ReportSummaryUpdate,
   ReportTag,
 } from '@/domain/models/report'
+import type {
+  ReportCaseAverageMetric,
+  ReportCaseAverageMetricGroup,
+  ReportCaseAveragesData,
+} from '@/domain/models/report-statistics'
 
 import { request } from './client'
 
@@ -55,7 +60,8 @@ export interface CompletedTaskOption {
 export async function fetchReportList(
   query: ReportListQuery
 ): Promise<ReportListData> {
-  return request<ReportListData>('GET', '/reports', undefined, { params: query })
+  const params: Record<string, unknown> = { ...query }
+  return request<ReportListData>('GET', '/reports', undefined, { params })
 }
 
 /** GET /reports/tab-counts 全量分类计数（all/draft/published/comparison 四键服务端聚合） */
@@ -312,6 +318,80 @@ export async function secondaryCompareReports(payload: {
     report_ids: payload.report_ids,
     description: payload.description,
   })
+}
+
+/** POST /reports/case-averages（GetCaseAveragesRequest；任务用例平均值统计，Vue
+ * reportsApi.getCaseAveragesByFilters 同套契约）。统计页「评估维度」/散点·热力图/
+ * 评估指标·设备性能卡数据源；响应 snake_case → 域模型（本层唯一转换点）。 */
+export async function fetchCaseAverages(
+  taskId: number,
+  filters?: {
+    category?: string
+    tags?: string[]
+    categories?: string[]
+    includeUntagged?: boolean
+  }
+): Promise<ReportCaseAveragesData> {
+  const body: Record<string, unknown> = { task_id: taskId }
+  if (filters?.category !== undefined) body.category = filters.category
+  if (filters?.tags !== undefined) body.tags = filters.tags
+  if (filters?.categories !== undefined) body.categories = filters.categories
+  if (filters?.includeUntagged !== undefined) body.include_untagged = filters.includeUntagged
+  return toReportCaseAveragesData(await request<unknown>('POST', '/reports/case-averages', body))
+}
+
+/** case-averages 响应 snake_case → 域模型（overall_averages/metric_data/resources 逐字段转换） */
+function toReportCaseAveragesData(raw: unknown): ReportCaseAveragesData {
+  const rec = (raw ?? {}) as Record<string, unknown>
+  const toMetric = (m: unknown): ReportCaseAverageMetric => {
+    const item = (m ?? {}) as Record<string, unknown>
+    return {
+      id:
+        item.id === undefined || item.id === null
+          ? undefined
+          : typeof item.id === 'number'
+            ? item.id
+            : String(item.id),
+      metric: str(item.metric ?? item.name ?? '') ?? '',
+      value: num(item.value) ?? 0,
+    }
+  }
+  return {
+    totalCases: num(rec.total_cases ?? rec.totalCases) ?? 0,
+    totalResults: num(rec.total_results ?? rec.totalResults) ?? 0,
+    overallAverages: Array.isArray(rec.overall_averages)
+      ? (rec.overall_averages as unknown[]).map(toMetric)
+      : [],
+    metricData: Array.isArray(rec.metric_data)
+      ? (rec.metric_data as unknown[]).map((g) => {
+          const group = (g ?? {}) as Record<string, unknown>
+          const out: ReportCaseAverageMetricGroup = {
+            resource: str(group.resource) ?? '',
+          }
+          if (Array.isArray(group.metrics)) {
+            out.metrics = (group.metrics as unknown[]).map(toMetric)
+          }
+          if (Array.isArray(group.categories)) {
+            out.categories = (group.categories as unknown[]).map((c) => {
+              const cat = (c ?? {}) as Record<string, unknown>
+              return {
+                categoryId: (cat.category_id ?? cat.categoryId) as number | string | undefined,
+                categoryName: str(cat.category_name ?? cat.categoryName ?? '') ?? '',
+                metrics: Array.isArray(cat.metrics) ? (cat.metrics as unknown[]).map(toMetric) : [],
+              }
+            })
+          }
+          return out
+        })
+      : [],
+    resources: Array.isArray(rec.resources) ? (rec.resources as unknown[]).map(String) : [],
+    resourceHeaders: Array.isArray(rec.resource_headers)
+      ? (rec.resource_headers as unknown[]).map(String)
+      : undefined,
+    rawData: rec.raw_data,
+    normalDistribution: rec.normal_distribution,
+    filters: rec.filters as ReportCaseAveragesData['filters'],
+  }
 }
 
 /** POST /reports/export（ReportExportRequest；后端返回二进制文件，调用方触发下载） */

@@ -1,14 +1,29 @@
 /**
  * 报告统计分析（application 层；15_报告域.md §2.2，INT-381 返修补全）。
  * 维度 Select × 时间范围 → 执行统计分析 → 统计卡/表格/图表/异常识别。
- * 数据 mock 常量（红线④），后续接线替换 API 桩即可，页面层不返工。
+ * INT-643 接线：数据源从 mock 常量切真实端点——
+ *   GET /reports/tab-counts（报告数量卡）+ GET /reports（时间/任务类型/设备类型维度聚合、
+ *   case-averages 任务上下文取最近任务报告 task_id）
+ *   + POST /reports/case-averages（评估维度/散点·热力图/指标·设备卡）。
+ *   snake→camel 转换只在 infrastructure 层（reports-api），本层只见 camelCase 域数据；
+ *   异常识别后端无接口 → 空态（不虚构）；统计导出见 use-statistics-export。
  * 对应报告管理功能设计文档.md §3.6.1/:318-340 + §5.2.4/:570-594。
  */
 import { useQuery } from '@tanstack/react-query'
 
 import type { ChartSeriesData } from '@/application/report-view/use-report-charts'
 import { CHART_COLORS, colorArray } from '@/application/report-view/use-report-charts'
-import type { StatisticDimension } from '@/domain/models/report-statistics'
+import type { ReportCounts, ReportListItem } from '@/domain/models/report'
+import type {
+  ReportCaseAveragesData,
+  ReportCaseAverageMetric,
+  StatisticDimension,
+} from '@/domain/models/report-statistics'
+import {
+  fetchCaseAverages,
+  fetchReportCounts,
+  fetchReportList,
+} from '@/infrastructure/api/reports-api'
 
 export interface StatisticsTimeRange {
   start?: string
@@ -45,117 +60,344 @@ export interface ReportStatisticsData {
   heatmap: ChartSeriesData
 }
 
-/** 按维度生成统计 mock（确定性：维度不同 → 行/图不同，可走查；纯函数，供测试） */
-export function computeStatistics(dimension: StatisticDimension): ReportStatisticsData {
-  const rowsByDimension: Record<StatisticDimension, StatisticTableRow[]> = {
-    time: [
-      { dimension: '今日', value: 12, ratio: 10.8, change: 2, status: 'up' },
-      { dimension: '近7天', value: 86, ratio: 77.5, change: 5, status: 'up' },
-      { dimension: '近30天', value: 342, ratio: 11.7, change: -3, status: 'down' },
-      { dimension: '自定义', value: 18, ratio: 0.0, change: 0, status: 'normal' },
-    ],
-    task_type: [
-      { dimension: 'e2e 端到端', value: 186, ratio: 54.4, change: 8, status: 'up' },
-      { dimension: 'api 接口', value: 112, ratio: 32.7, change: -2, status: 'down' },
-      { dimension: 'mixed 混合', value: 44, ratio: 12.9, change: 1, status: 'normal' },
-    ],
-    device_type: [
-      { dimension: '智能音箱', value: 168, ratio: 49.1, change: 6, status: 'up' },
-      { dimension: '车载助手', value: 96, ratio: 28.1, change: -1, status: 'down' },
-      { dimension: '耳机', value: 78, ratio: 22.8, change: 3, status: 'up' },
-    ],
-    metric: [
-      { dimension: '唤醒成功率', value: 95.8, ratio: 0.0, change: 0.4, status: 'up' },
-      { dimension: '识别准确率', value: 93.1, ratio: 0.0, change: -0.2, status: 'down' },
-      { dimension: '平均响应时间', value: 412, ratio: 0.0, change: -8, status: 'up' },
-    ],
+const DAY_MS = 24 * 60 * 60 * 1000
+
+const TASK_TYPE_LABELS: Record<string, string> = {
+  e2e: 'e2e 端到端',
+  api: 'api 接口',
+  mixed: 'mixed 混合',
+  task: '任务报告',
+  comparison: '对比报告',
+  secondary_comparison: '二次对比报告',
+  benchmark: 'Benchmark 报告',
+}
+
+const DEVICE_TYPE_LABELS: Record<string, string> = {
+  smart_speaker: '智能音箱',
+  car_voice: '车载助手',
+  headphone: '耳机',
+}
+
+/** 今日 0 点时间戳 */
+function dayStart(ts: number): number {
+  const d = new Date(ts)
+  d.setHours(0, 0, 0, 0)
+  return d.getTime()
+}
+
+/** 报告列表按维度分组计数（时间/任务类型/设备类型维度数据源，全部来自 GET /reports 真实项） */
+function groupedRows(
+  reports: ReportListItem[],
+  keyOf: (r: ReportListItem) => string | undefined,
+  labels: Record<string, string>
+): StatisticTableRow[] {
+  const map = new Map<string, number>()
+  for (const r of reports) {
+    const key = keyOf(r) || 'unknown'
+    map.set(key, (map.get(key) ?? 0) + 1)
   }
+  const total = reports.length || 1
+  return [...map.entries()].map(([key, value]) => ({
+    dimension: labels[key] ?? key,
+    value,
+    ratio: Math.round((value / total) * 1000) / 10,
+    change: 0,
+    status: 'normal' as const,
+  }))
+}
 
-  const summary: StatisticSummaryItem[] = [
-    { key: 'reports', label: '报告数量', value: 42, hint: '近30天 32 · 草稿 8 · 已发布 2' },
-    { key: 'cases', label: '测试用例执行统计', value: 1186, hint: '完成 1092 · 失败 54 · 通过率 92.1%' },
-    { key: 'metrics', label: '评估指标', value: 24, hint: '主维度 8 · 子维度 16' },
-    { key: 'devices', label: '设备性能', value: 8, hint: '在线 6 · 离线 2 · 平均延迟 412ms' },
+/** 时间维度行：报告按创建时间落入 今日/近7天/近30天（+自定义时间范围） */
+function timeRows(reports: ReportListItem[], range: StatisticsTimeRange): StatisticTableRow[] {
+  const now = Date.now()
+  const startTs = range.start ? new Date(range.start).getTime() : null
+  const endTs = range.end ? new Date(range.end).getTime() : null
+  const created = (r: ReportListItem): number => {
+    const t = new Date(r.created_at).getTime()
+    return Number.isFinite(t) ? t : NaN
+  }
+  const buckets = [
+    { key: '今日', in: (t: number) => t >= dayStart(now) },
+    { key: '近7天', in: (t: number) => t >= now - 7 * DAY_MS },
+    { key: '近30天', in: (t: number) => t >= now - 30 * DAY_MS },
   ]
+  const total = reports.length || 1
+  const rows: StatisticTableRow[] = buckets.map((b) => {
+    const value = reports.filter((r) => {
+      const t = created(r)
+      return Number.isFinite(t) && b.in(t)
+    }).length
+    return {
+      dimension: b.key,
+      value,
+      ratio: Math.round((value / total) * 1000) / 10,
+      change: 0,
+      status: 'normal' as const,
+    }
+  })
+  if (startTs !== null && endTs !== null) {
+    const value = reports.filter((r) => {
+      const t = created(r)
+      return Number.isFinite(t) && t >= startTs && t <= endTs
+    }).length
+    rows.push({
+      dimension: '自定义',
+      value,
+      ratio: Math.round((value / total) * 1000) / 10,
+      change: 0,
+      status: 'normal' as const,
+    })
+  }
+  return rows
+}
 
-  const anomalyRows: StatisticAnomalyRow[] = [
-    { dimension: '识别准确率', value: 93.1, reason: '入门机型低于旗舰约 2.4 个百分点' },
-    { dimension: '平均响应时间', value: 486, reason: '入门机型延迟偏高，超过基线 15%' },
-    { dimension: 'e2e 端到端', value: 186, reason: '周环比显著上升（+8），需关注回归覆盖' },
-  ]
+/** 评估维度行：case-averages overall_averages（真实指标均值） */
+function metricRows(averages: ReportCaseAveragesData | null): StatisticTableRow[] {
+  return (averages?.overallAverages ?? []).map((m: ReportCaseAverageMetric) => ({
+    dimension: m.metric,
+    value: m.value,
+    ratio: 0,
+    change: 0,
+    status: 'normal' as const,
+  }))
+}
 
-  const labels =
-    dimension === 'time'
-      ? ['10-11', '10-12', '10-13', '10-14', '10-15', '10-16']
-      : dimension === 'task_type'
-        ? ['e2e 端到端', 'api 接口', 'mixed 混合']
-        : dimension === 'device_type'
-          ? ['智能音箱', '车载助手', '耳机']
-          : ['唤醒成功率', '识别准确率', '平均响应时间']
-
-  const trend: ChartSeriesData = {
+/** 近 7 天报告创建数折线（时间趋势数据源；全部来自 GET /reports 真实创建时间） */
+function buildTrend(reports: ReportListItem[]): ChartSeriesData {
+  const labels: string[] = []
+  const data: number[] = []
+  const now = new Date()
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now)
+    d.setDate(d.getDate() - i)
+    labels.push(`${d.getMonth() + 1}-${d.getDate()}`)
+    const start = new Date(d)
+    start.setHours(0, 0, 0, 0)
+    const end = new Date(d)
+    end.setHours(23, 59, 59, 999)
+    data.push(
+      reports.filter((r) => {
+        const t = new Date(r.created_at).getTime()
+        return Number.isFinite(t) && t >= start.getTime() && t <= end.getTime()
+      }).length
+    )
+  }
+  return {
     labels,
     datasets: [
       {
-        label: '执行用例数',
-        data: dimension === 'time' ? [286, 298, 312, 334, 328, 342] : [1186, 1092, 54, 342, 92.1, 412].slice(0, labels.length),
+        label: '报告数量（近7天）',
+        data,
         backgroundColor: colorArray(0, '59'),
         borderColor: CHART_COLORS.primary,
-        // §3.7 line：tension 0.3 / fill false
         fill: false,
         tension: 0.3,
       },
     ],
   }
+}
 
-  // 散点图：通过率 × 平均响应（两个变量关系）
-  const scatter: ChartSeriesData = {
-    labels: [],
-    datasets: [
-      {
-        label: '设备-通过率×延迟',
-        data: [
-          { x: 96.5, y: 412 },
-          { x: 95.4, y: 428 },
-          { x: 93.1, y: 486 },
-          { x: 97.2, y: 385 },
-          { x: 91.8, y: 502 },
-          { x: 94.7, y: 455 },
-          { x: 98.1, y: 398 },
-          { x: 90.2, y: 520 },
-        ],
-        backgroundColor: CHART_COLORS.primary,
-        pointRadius: 5,
-      },
-    ],
+/** 资源×指标矩阵（case-averages metric_data → {resources, metrics, matrix}） */
+function buildMetricMatrix(averages: ReportCaseAveragesData | null): {
+  resources: string[]
+  metrics: string[]
+  matrix: Record<string, Record<string, number>>
+} {
+  const matrix: Record<string, Record<string, number>> = {}
+  const metricSet = new Set<string>()
+  const resourceSet = new Set<string>()
+  for (const g of averages?.metricData ?? []) {
+    const res = g.resource || '未知资源'
+    resourceSet.add(res)
+    const cells: Record<string, number> = {}
+    for (const m of g.metrics ?? []) {
+      cells[m.metric] = m.value
+      metricSet.add(m.metric)
+    }
+    for (const c of g.categories ?? []) {
+      for (const m of c.metrics ?? []) {
+        cells[m.metric] = m.value
+        metricSet.add(m.metric)
+      }
+    }
+    matrix[res] = cells
+  }
+  return { resources: [...resourceSet], metrics: [...metricSet], matrix }
+}
+
+/** 散点·热力图（数据源 case-averages metric_data；无数据 → 空态由图表组件呈现） */
+function buildCharts(
+  averages: ReportCaseAveragesData | null
+): { scatter: ChartSeriesData; heatmap: ChartSeriesData } {
+  const { resources, metrics, matrix } = buildMetricMatrix(averages)
+  const empty: ChartSeriesData = { labels: [], datasets: [] }
+
+  // 散点：每个资源取前两个指标值作 x/y（「通过率 × 平均响应时间」两变量关系语义）
+  const scatterPoints: ChartSeriesData =
+    resources.length > 0 && metrics.length > 0
+      ? {
+          labels: [],
+          datasets: [
+            {
+              label: '资源-指标关系',
+              data: resources
+                .map((r) => {
+                  const x = matrix[r]?.[metrics[0]]
+                  const y = matrix[r]?.[metrics[1] ?? metrics[0]]
+                  return x !== undefined && y !== undefined ? { x, y } : null
+                })
+                .filter((p): p is { x: number; y: number } => p !== null),
+              backgroundColor: CHART_COLORS.primary,
+              pointRadius: 5,
+            },
+          ],
+        }
+      : empty
+
+  // 热力：资源(y) × 指标(x) 值矩阵
+  const heatmapCells: { x: number; y: number; v: number }[] = []
+  metrics.forEach((m, mi) => {
+    resources.forEach((r, ri) => {
+      const v = matrix[r]?.[m]
+      if (v !== undefined) heatmapCells.push({ x: mi, y: ri, v })
+    })
+  })
+  const heatmap: ChartSeriesData =
+    heatmapCells.length > 0
+      ? {
+          labels: metrics,
+          yLabels: resources,
+          datasets: [
+            {
+              label: '评估维度分布',
+              data: heatmapCells,
+              backgroundColor: CHART_COLORS.primary,
+            },
+          ],
+        }
+      : empty
+
+  return { scatter: scatterPoints, heatmap }
+}
+
+/** 统计任务上下文（case-averages 数据源；来自报告列表最近任务报告的 task_id） */
+export interface StatisticsTaskContext {
+  id: number
+  name: string
+  type?: string
+}
+
+/** 真实数据 → 页面统计形态（纯函数；统计卡四枚 + 维度行 + 趋势/散点/热力） */
+export function toReportStatisticsData(input: {
+  counts: ReportCounts
+  reports: ReportListItem[]
+  averages: ReportCaseAveragesData | null
+  task?: StatisticsTaskContext | null
+  dimension: StatisticDimension
+  range: StatisticsTimeRange
+}): ReportStatisticsData {
+  const { counts, reports, averages, task, dimension, range } = input
+  const totalCases = reports.reduce((acc, r) => acc + (r.summary?.total_cases ?? 0), 0)
+  const completed = reports.reduce((acc, r) => acc + (r.summary?.completed_cases ?? 0), 0)
+  const failed = reports.reduce((acc, r) => acc + (r.summary?.failed_cases ?? 0), 0)
+  const passRate = reports.length
+    ? Math.round(reports.reduce((acc, r) => acc + (r.summary?.pass_rate ?? 0), 0) / reports.length)
+    : 0
+  const metricCount = averages?.overallAverages.length ?? 0
+  const deviceCount = averages?.resources.length ?? 0
+
+  const summary: StatisticSummaryItem[] = [
+    {
+      key: 'reports',
+      label: '报告数量',
+      value: counts.all,
+      hint: `草稿 ${counts.draft} · 已发布 ${counts.published} · 对比 ${counts.comparison}`,
+    },
+    {
+      key: 'cases',
+      label: '测试用例执行统计',
+      value: totalCases,
+      hint: `完成 ${completed} · 失败 ${failed} · 通过率 ${passRate}%`,
+    },
+    {
+      key: 'metrics',
+      label: '评估指标',
+      value: metricCount,
+      hint: averages ? `任务「${task?.name ?? ''}」评估指标` : '暂无任务执行数据',
+    },
+    {
+      key: 'devices',
+      label: '设备性能',
+      value: deviceCount,
+      hint: averages ? `资源 ${deviceCount} 个` : '暂无任务执行数据',
+    },
+  ]
+
+  let rows: StatisticTableRow[]
+  switch (dimension) {
+    case 'time':
+      rows = timeRows(reports, range)
+      break
+    case 'task_type':
+      rows = groupedRows(reports, (r) => r.task_type ?? r.type, TASK_TYPE_LABELS)
+      break
+    case 'device_type':
+      rows = groupedRows(reports, (r) => r.device_type, DEVICE_TYPE_LABELS)
+      break
+    case 'metric':
+      rows = metricRows(averages)
+      break
   }
 
-  // 热力图：设备 × 评估维度 值矩阵
-  const heatmap: ChartSeriesData = {
-    labels: ['唤醒成功率', '识别准确率', '平均响应时间', '误唤醒率'],
-    yLabels: ['旗舰-01', '旗舰-02', '入门-03', 'asr-streaming-v3', 'wakeword-detect-v2'],
-    datasets: [
-      {
-        label: '评估维度分布',
-        data: [
-          { x: 0, y: 0, v: 96.5 }, { x: 1, y: 0, v: 94.2 }, { x: 2, y: 0, v: 412 }, { x: 3, y: 0, v: 3.2 },
-          { x: 0, y: 1, v: 95.4 }, { x: 1, y: 1, v: 93.1 }, { x: 2, y: 1, v: 428 }, { x: 3, y: 1, v: 2.8 },
-          { x: 0, y: 2, v: 93.1 }, { x: 1, y: 2, v: 91.8 }, { x: 2, y: 2, v: 486 }, { x: 3, y: 2, v: 4.1 },
-          { x: 0, y: 3, v: 97.2 }, { x: 1, y: 3, v: 95.6 }, { x: 2, y: 3, v: 385 }, { x: 3, y: 3, v: 2.1 },
-          { x: 0, y: 4, v: 94.8 }, { x: 1, y: 4, v: 92.4 }, { x: 2, y: 4, v: 201 }, { x: 3, y: 4, v: 2.4 },
-        ],
-      },
-    ],
-  }
+  const { scatter, heatmap } = buildCharts(averages)
 
   return {
     summary,
-    rows: rowsByDimension[dimension],
-    anomalyRows,
-    trend,
+    rows,
+    // 异常统计识别：后端无接口 → 空态（「未识别到统计异常」），不虚构判定逻辑
+    anomalyRows: [],
+    trend: buildTrend(reports),
     scatter,
     heatmap,
   }
+}
+
+/** 统计数据装配（真实端点；GET tab-counts + GET /reports + POST case-averages） */
+async function loadReportStatistics(
+  dimension: StatisticDimension,
+  range: StatisticsTimeRange
+): Promise<ReportStatisticsData> {
+  const [counts, list] = await Promise.all([
+    fetchReportCounts(),
+    fetchReportList({
+      page: 1,
+      per_page: 1000,
+      sort_by: 'created_at',
+      order: 'desc',
+      deleted: false,
+      favorite: false,
+    }),
+  ])
+  const reports = list.items
+  // case-averages 需要任务上下文：取最近一份任务报告关联的 task_id（报告统计语义：
+  // 统计该报告任务下的用例平均值；对比/二次对比/benchmark 报告无 task_id → 评估维度空态）
+  const taskReport = reports.find((r) => typeof r.task_id === 'number' && r.task_id > 0)
+  let averages: ReportCaseAveragesData | null = null
+  let task: StatisticsTaskContext | null = null
+  if (taskReport) {
+    task = {
+      id: taskReport.task_id as number,
+      name: taskReport.task_name,
+      type: taskReport.task_type,
+    }
+    try {
+      averages = await fetchCaseAverages(task.id)
+    } catch {
+      // 单端点失败（后端缺口/任务无数据）不拖垮整页：统计卡仍来自 tab-counts/报告列表，
+      // 评估维度/散点·热力呈空态；缺口证据见本卡交付评论 + FEAT 卡
+      averages = null
+    }
+  }
+  return toReportStatisticsData({ counts, reports, averages, task, dimension, range })
 }
 
 export function useReportStatistics(
@@ -166,7 +408,7 @@ export function useReportStatistics(
 ) {
   return useQuery({
     queryKey: ['report-statistics', dimension, seq, range.start ?? '', range.end ?? ''],
-    queryFn: () => computeStatistics(dimension),
+    queryFn: () => loadReportStatistics(dimension, range),
     staleTime: 60_000,
   })
 }
