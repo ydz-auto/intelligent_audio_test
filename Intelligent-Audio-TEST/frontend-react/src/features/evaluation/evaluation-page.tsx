@@ -687,6 +687,27 @@ export function EvaluationPage() {
                   <Skeleton className='h-11 w-full rounded-xl' />
                   <Skeleton className='h-11 w-full rounded-xl' />
                 </div>
+              ) : dimensionsQuery.isError ? (
+                <div className='bg-card ring-foreground/10 rounded-xl ring-1'>
+                  <Empty className='h-72'>
+                    <EmptyMedia variant='icon'>
+                      <ListChecks aria-hidden='true' className='size-4' />
+                    </EmptyMedia>
+                    <EmptyHeader>
+                      <EmptyTitle>加载失败</EmptyTitle>
+                      <EmptyDescription>评估维度加载失败，请重试</EmptyDescription>
+                    </EmptyHeader>
+                    <EmptyContent>
+                      <Button
+                        variant='outline'
+                        size='sm'
+                        onClick={() => void dimensionsQuery.refetch()}
+                      >
+                        请重试
+                      </Button>
+                    </EmptyContent>
+                  </Empty>
+                </div>
               ) : hierarchicalDimensions.length === 0 ? (
                 <div className='bg-card ring-foreground/10 rounded-xl ring-1'>
                   <Empty className='h-72'>

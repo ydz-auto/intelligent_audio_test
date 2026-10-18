@@ -290,6 +290,8 @@ export function AlgorithmConfigPage() {
               <AlgorithmsTable
                 rows={pageRows}
                 loading={definitionsQuery.isLoading}
+                error={definitionsQuery.isError}
+                onRetry={() => void definitionsQuery.refetch()}
                 total={filtered.length}
                 searchKeyword={searchKeyword}
                 selectedIds={selectedIds}

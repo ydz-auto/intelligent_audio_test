@@ -92,7 +92,7 @@ export const dimensionFormSchema = z
     parentDimensionId: z.string(),
     keywords: z.string(),
     scoreUnit: z.string(),
-    resultType: z.enum(['1', '2', '3', 'llm_judge']),
+    resultType: z.enum(['0', '1', '2', '3', 'llm_judge']),
     resultMin: z.number(),
     resultMax: z.number(),
     decimalPlaces: z.number().min(0).max(4, '小数位数 0-4'),
