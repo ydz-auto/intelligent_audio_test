@@ -212,12 +212,6 @@ export function BatchDimensionsDialog({
   }
 
   /** 逐轮快捷操作 */
-  const copyFromRound = () => {
-    const otherRounds = rounds.filter((r) => r !== activeRound)
-    if (otherRounds.length === 0) return
-    setCopySource(otherRounds[0])
-    setCopyOpen(true)
-  }
   const doCopyFromRound = () => {
     setSelected((prev) => ({ ...prev, [activeRound]: [...(prev[copySource] ?? [])] }))
     setParams((prev) => ({
@@ -417,7 +411,17 @@ export function BatchDimensionsDialog({
 
               {/* 快捷操作工具栏三件（§5.3.5 ③） */}
               <div className='flex flex-wrap items-center gap-2'>
-                <Popover open={copyOpen} onOpenChange={setCopyOpen}>
+                <Popover
+                  open={copyOpen}
+                  onOpenChange={(open) => {
+                    // 打开即把源默认为首个其他轮次（逐轮默认第 1 轮时不再是「复制到自身」）
+                    if (open) {
+                      const otherRounds = rounds.filter((r) => r !== activeRound)
+                      if (otherRounds.length > 0) setCopySource(otherRounds[0])
+                    }
+                    setCopyOpen(open)
+                  }}
+                >
                   <PopoverTrigger
                     render={
                       <Button
@@ -444,7 +448,8 @@ export function BatchDimensionsDialog({
                           onValueChange={(v) => setCopySource(Number(v) as RoundKey)}
                         >
                           <SelectTrigger size='sm' className='h-8'>
-                            <SelectValue />
+                            {/* 直接渲染轮次标签：列表未展开时 base-ui Value 只解析已挂载项，避免显示裸值 */}
+                            <SelectValue>{roundLabels(copySource)}</SelectValue>
                           </SelectTrigger>
                           <SelectContent>
                             {rounds

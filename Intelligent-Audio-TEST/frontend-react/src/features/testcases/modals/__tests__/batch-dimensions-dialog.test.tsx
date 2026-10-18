@@ -139,4 +139,19 @@ describe('BatchDimensionsDialog（§5.3.5）', () => {
     await user.click(popover.getByRole('button', { name: '确定' }))
     expect(roundCloud().getByText('已选 3 项')).toBeInTheDocument()
   })
+
+  it('逐轮模式停留在默认第 1 轮时，「从其他轮次复制」源默认为首个其他轮次（第 2 轮）而非自身', async () => {
+    const user = userEvent.setup()
+    setup()
+    await goPerRound(user)
+    // 保持默认第 1 轮，打开复制弹窗
+    await user.click(screen.getByRole('button', { name: /从其他轮次复制/ }))
+    const popover = within(screen.getByTestId('batch-dim-copy-source'))
+    // 源 Select 默认「第 2 轮」（首个其他轮次），不显示自身「第 1 轮」为源
+    expect(popover.getByText('第 2 轮')).toBeInTheDocument()
+    expect(popover.queryByText('第 1 轮')).not.toBeInTheDocument()
+    // 复制到第 1 轮确认后仍为空（第 2 轮未配置，复制空选择）
+    await user.click(popover.getByRole('button', { name: '确定' }))
+    expect(roundCloud().getByText('已选 0 项')).toBeInTheDocument()
+  })
 })
