@@ -213,6 +213,8 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
               <PublishedTaskTable
                 tasks={items as PublishedTaskItem[]}
                 loading={listQuery.isLoading}
+                error={listQuery.isError}
+                onRetry={() => listQuery.refetch()}
               />
             ) : tab === 'cherry-picks' ? (
               <CherryPickTab
@@ -224,6 +226,8 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
               <DailyTaskTable
                 tasks={items as TaskListItem[]}
                 loading={listQuery.isLoading}
+                error={listQuery.isError}
+                onRetry={() => listQuery.refetch()}
                 trash={filters.trash ?? false}
                 onQuickView={handleQuickView}
                 onPublish={handlePublish}

@@ -4,7 +4,7 @@
  * stats 徽章行 + 开始挑选（页内四步向导，替换列表区）/打开购物车/管理挑选集。
  * 旧「合并」页签收编本页（§2.2 裁定①）；algo_engineer 列表只读可见、挑选链整链隐藏（§8）。
  */
-import { Plus, ShoppingCart } from 'lucide-react'
+import { Plus, RefreshCw, ShoppingCart } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import {
   Empty,
+  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
@@ -159,6 +160,23 @@ export function CherryPickTab({
           {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className='h-12 w-full rounded-none border-b' />
           ))}
+        </div>
+      ) : containersQuery.isError ? (
+        <div className='bg-card ring-foreground/10 rounded-xl py-8 ring-1'>
+          <Empty className='h-[400px]'>
+            <EmptyMedia variant='icon'>
+              <RefreshCw aria-hidden='true' className='size-4' />
+            </EmptyMedia>
+            <EmptyHeader>
+              <EmptyTitle>挑选合并任务加载失败</EmptyTitle>
+              <EmptyDescription>请检查网络或后端服务后重试</EmptyDescription>
+              <EmptyContent>
+                <Button variant='outline' size='sm' onClick={() => containersQuery.refetch()}>
+                  重试
+                </Button>
+              </EmptyContent>
+            </EmptyHeader>
+          </Empty>
         </div>
       ) : containers.length === 0 ? (
         <div className='bg-card ring-foreground/10 rounded-xl py-8 ring-1'>

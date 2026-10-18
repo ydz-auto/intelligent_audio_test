@@ -4,7 +4,7 @@
  * 单元格 `py-2`、字号 13px；数值列 mono tabular-nums；回收站行 DISABLED_ROW（muted 底 + 左标线）。
  * 排序头/列显隐为演示控件（接线后接服务端 sortBy/sortOrder + useTableUrlState）。
  */
-import { ClipboardList, Star, Trash2 } from 'lucide-react'
+import { ClipboardList, RefreshCw, Star, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 
@@ -147,6 +147,8 @@ function ViewOptions({
 export function DailyTaskTable({
   tasks,
   loading,
+  error,
+  onRetry,
   trash,
   onQuickView,
   onPublish,
@@ -156,6 +158,9 @@ export function DailyTaskTable({
 }: {
   tasks: TaskListItem[]
   loading: boolean
+  /** 列表请求失败（P1-3：错误态 + 重试，不再渲染空态） */
+  error?: boolean
+  onRetry?: () => void
   trash: boolean
   onQuickView: (task: TaskListItem) => void
   onPublish: (task: TaskListItem) => void
@@ -194,6 +199,30 @@ export function DailyTaskTable({
         {Array.from({ length: 6 }).map((_, i) => (
           <Skeleton key={i} className='h-12 w-full rounded-none border-b' />
         ))}
+      </div>
+    )
+  }
+
+  // P1-3：请求失败渲染错误态 + 重试（不再误示为空态）
+  if (error) {
+    return (
+      <div className='bg-card ring-foreground/10 rounded-xl py-8 ring-1'>
+        <Empty className='h-[400px]'>
+          <EmptyMedia variant='icon'>
+            <RefreshCw aria-hidden='true' className='size-4' />
+          </EmptyMedia>
+          <EmptyHeader>
+            <EmptyTitle>任务列表加载失败</EmptyTitle>
+            <EmptyDescription>请检查网络或后端服务后重试</EmptyDescription>
+            {onRetry && (
+              <EmptyContent>
+                <Button variant='outline' size='sm' onClick={onRetry}>
+                  重试
+                </Button>
+              </EmptyContent>
+            )}
+          </EmptyHeader>
+        </Empty>
       </div>
     )
   }

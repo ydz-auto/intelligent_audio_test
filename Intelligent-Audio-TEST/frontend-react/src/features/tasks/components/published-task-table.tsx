@@ -6,7 +6,7 @@
  * 数据源：列表 fetchPublishedTaskList（GET /published-tasks）；展开版本链行
  * fetchPublishedTaskDetail（GET /published-tasks/{id}）真实详情。
  */
-import { ChevronDown, ChevronRight, Package, Trophy } from 'lucide-react'
+import { ChevronDown, ChevronRight, Package, RefreshCw, Trophy } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Empty,
+  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
@@ -188,9 +189,14 @@ function PublishedExpandRow({ detail }: { detail: PublishedTaskDetail }) {
 export function PublishedTaskTable({
   tasks,
   loading,
+  error,
+  onRetry,
 }: {
   tasks: PublishedTaskItem[]
   loading: boolean
+  /** 列表请求失败（P1-3：错误态 + 重试，不再渲染空态） */
+  error?: boolean
+  onRetry?: () => void
 }) {
   const { hasPermission } = usePermissions()
   const [expandedId, setExpandedId] = useState<number | null>(null)
@@ -231,6 +237,30 @@ export function PublishedTaskTable({
         {Array.from({ length: 4 }).map((_, i) => (
           <Skeleton key={i} className='h-12 w-full rounded-none border-b' />
         ))}
+      </div>
+    )
+  }
+
+  // P1-3：请求失败渲染错误态 + 重试（不再误示为空态）
+  if (error) {
+    return (
+      <div className='bg-card ring-foreground/10 rounded-xl py-8 ring-1'>
+        <Empty className='h-[400px]'>
+          <EmptyMedia variant='icon'>
+            <RefreshCw aria-hidden='true' className='size-4' />
+          </EmptyMedia>
+          <EmptyHeader>
+            <EmptyTitle>已发布任务列表加载失败</EmptyTitle>
+            <EmptyDescription>请检查网络或后端服务后重试</EmptyDescription>
+            {onRetry && (
+              <EmptyContent>
+                <Button variant='outline' size='sm' onClick={onRetry}>
+                  重试
+                </Button>
+              </EmptyContent>
+            )}
+          </EmptyHeader>
+        </Empty>
       </div>
     )
   }
