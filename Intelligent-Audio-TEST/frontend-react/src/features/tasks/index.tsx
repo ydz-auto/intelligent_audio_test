@@ -62,14 +62,19 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
   // 「挑选合并」页签计数 = 两类合并容器总数（§2.3/§11-1；各页签常取，供角标）
   const cherryContainers = useCherryPickContainers({})
   const cherryTotal = cherryContainers.data?.total ?? 0
-  // 「已发布」页签计数 = published 列表 total（各页签常取，供角标；无权限隐藏页签不取）
+  // 「已发布」页签计数 = published 列表 total（各页签常取，供角标；无权限隐藏页签不取）。
+  // 本页签直接复用列表 query 的 total（与列表条数同源，口径一致）；其他页签由独立 count
+  // query 提供（per_page=1 取 total，staleTime 与列表 query 对齐）。
   const publishedCountQuery = useQuery({
     queryKey: ['tasks', 'count', 'published'],
     queryFn: async () => (await fetchPublishedTaskList({ perPage: 1 })).total,
     enabled: hasPermission('published_task:read'),
-    staleTime: 30_000,
+    staleTime: 15_000,
   })
-  const publishedTotal = publishedCountQuery.data ?? 0
+  const publishedTotal =
+    tab === 'published'
+      ? (listQuery.data?.total ?? publishedCountQuery.data ?? 0)
+      : (publishedCountQuery.data ?? 0)
 
   const items = listQuery.data?.items ?? []
   const total = listQuery.data?.total ?? 0
