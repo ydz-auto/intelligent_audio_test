@@ -58,6 +58,8 @@ export const MODAL_TYPES = {
   BATCH_REFRESH_REFERENCE: 'batchRefreshReference',
   TAG_CATEGORY: 'tagCategory',
   TAG_EDIT: 'tagEdit',
+  // INT-739：标签管理页批量改分类（PUT /tags/batch-category）
+  BATCH_TAG_CATEGORY: 'batchTagCategory',
   /** INT-340：测试结果人工复核（单条/批量改判 + 备注必填 + 复核历史展示） */
   RESULT_REVIEW: 'resultReview',
   /** INT-745：公开页「需要登录」引导（受限项 Dialog，5 秒倒计时跳登录） */

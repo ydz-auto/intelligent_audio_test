@@ -307,7 +307,7 @@ input[type="checkbox"].test-case-checkbox{
     cursor: pointer ;
     -webkit-appearance: none ;
     appearance: none ;
-    background-color: var(--color-white) !important;
+    background-color: var(--card) !important;
     border: 2px solid var(--border-color) !important;
     border-radius: var(--radius-tag);
     position: relative ;

@@ -32,6 +32,8 @@ import BatchTagsModal from './BatchTagsModal.vue'
 import BatchRefreshReferenceModal from './BatchRefreshReferenceModal.vue'
 import TagCategoryModal from './TagCategoryModal.vue'
 import TagEditModal from './TagEditModal.vue'
+// INT-739：标签管理页批量改分类
+import BatchTagCategoryModal from './BatchTagCategoryModal.vue'
 import TestCaseDetailModal from './TestCaseDetailModal.vue'
 import AudioPlayerModal from '../audio/AudioPlayerModal.vue'
 import AudioSelectModal from '../audio/AudioSelectModal.vue'
@@ -319,12 +321,22 @@ export function registerGlobalModals() {
     }
   });
 
+  // INT-739：标签管理页批量改分类（目标分类选择；confirm 载荷 { categoryId }）
+  manager.registerModal(MODAL_TYPES.BATCH_TAG_CATEGORY, {
+    component: BatchTagCategoryModal,
+    defaultConfig: {
+      title: '批量改分类',
+      tagCount: 0,
+      categories: []
+    }
+  });
+
   // INT-745：公开页「需要登录」引导（受限项 Dialog，5 秒倒计时跳登录）
   manager.registerModal(MODAL_TYPES.LOGIN_REQUIRED, {
     component: LoginRequiredModal,
     defaultConfig: {
       title: '需要登录',
-      width: '420px'
+      width: '420px' (INT-739: 用例域三页保留重设计——TagManagement 批量改分类补齐 + 暗色收编 + 构建修复)
     }
   });
 }

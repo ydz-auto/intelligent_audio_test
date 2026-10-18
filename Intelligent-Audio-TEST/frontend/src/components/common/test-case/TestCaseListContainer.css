@@ -1,8 +1,8 @@
 /* 测试用例列表容器样式 */
 .test-case-list-container {
   padding: 24px;
-  background-color: var(--color-white);
-  border-radius: var(--radius-lg);
+  background-color: var(--card);
+  border-radius: var(--radius-lg); (INT-739: 用例域三页保留重设计——TagManagement 批量改分类补齐 + 暗色收编 + 构建修复)
   box-shadow: var(--shadow-sm);
 }
 
@@ -58,8 +58,8 @@
   flex-wrap: wrap;
   margin-bottom: var(--spacing-lg);
   padding: var(--spacing-lg);
-  background: var(--color-white);
-  border-radius: var(--radius-lg);
+  background: var(--card);
+  border-radius: var(--radius-lg); (INT-739: 用例域三页保留重设计——TagManagement 批量改分类补齐 + 暗色收编 + 构建修复)
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--gray-light-color);
   overflow: visible;
@@ -127,7 +127,7 @@
   gap: var(--spacing-md);
   align-items: stretch;
   flex-wrap: nowrap;
-  background-color: white;
+  background-color: var(--card);
   padding: var(--spacing-md);
   border-radius: var(--radius-control);
   border: 1px solid var(--border-color);
@@ -456,8 +456,8 @@
 
 /* 类别卡片样式 */
 .category-card {
-  background-color: var(--color-white);
-  border-radius: var(--radius-lg);
+  background-color: var(--card);
+  border-radius: var(--radius-lg); (INT-739: 用例域三页保留重设计——TagManagement 批量改分类补齐 + 暗色收编 + 构建修复)
   box-shadow: var(--shadow-sm);
   overflow: visible;
   border: 1px solid var(--border-color);
@@ -609,8 +609,13 @@
 }
 
 .modal-container {
+<<<<<<< HEAD
   background-color: white;
   border-radius: var(--radius-card);
+=======
+  background-color: var(--card);
+  border-radius: var(--border-radius-xl);
+>>>>>>> 29f0b62a9 (INT-739: 用例域三页保留重设计——TagManagement 批量改分类补齐 + 暗色收编 + 构建修复)
   box-shadow: var(--shadow-lg);
   width: 90%;
   max-width: 400px;
