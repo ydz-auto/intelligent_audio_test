@@ -336,7 +336,7 @@ export function registerGlobalModals() {
     component: LoginRequiredModal,
     defaultConfig: {
       title: '需要登录',
-      width: '420px' (INT-739: 用例域三页保留重设计——TagManagement 批量改分类补齐 + 暗色收编 + 构建修复)
+      width: '420px'
     }
   });
 }

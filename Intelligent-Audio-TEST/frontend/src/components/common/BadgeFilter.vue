@@ -178,7 +178,7 @@ function select(value: string | number) {
   border: 1px solid var(--border) !important;
   border-radius: var(--radius-pill) !important;
   background: var(--muted) !important;
-  color: var(--muted-foreground) !important; (INT-739: 用例域三页保留重设计——TagManagement 批量改分类补齐 + 暗色收编 + 构建修复)
+  color: var(--muted-foreground) !important;
   font-size: 13px !important;
   font-weight: 500 !important;
   line-height: 1.4 !important;
