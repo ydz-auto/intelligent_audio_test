@@ -366,7 +366,7 @@ defineExpose({ openWizardWithTasks, startWizard });
   gap: 6px;
   padding: 7px 14px;
   border: 1px solid var(--color-slate-300, #cbd5e1);
-  border-radius: 6px;
+  border-radius: var(--border-radius-md);
   background: #fff;
   color: var(--foreground, #1e293b);
   font-size: 13px;
@@ -394,7 +394,7 @@ defineExpose({ openWizardWithTasks, startWizard });
   min-width: 18px;
   height: 18px;
   padding: 0 6px;
-  border-radius: 9px;
+  border-radius: var(--border-radius-full);
   background: var(--primary, #ff6a00);
   color: #fff;
   font-size: 11px;
@@ -411,7 +411,7 @@ defineExpose({ openWizardWithTasks, startWizard });
   min-width: 260px;
   background: #fff;
   border: 1px solid var(--color-slate-200, #e2e8f0);
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.1);
   padding: 8px;
 }
@@ -432,7 +432,7 @@ defineExpose({ openWizardWithTasks, startWizard });
 .cpp-count {
   flex-shrink: 0;
   padding: 1px 8px;
-  border-radius: 10px;
+  border-radius: var(--border-radius-full);
   background: var(--color-slate-100, #f1f5f9);
   color: var(--color-slate-500, #64748b);
   font-size: 11px;
@@ -477,7 +477,7 @@ defineExpose({ openWizardWithTasks, startWizard });
 }
 .cpp-card {
   border: 1px solid var(--color-slate-200, #e2e8f0);
-  border-radius: 8px;
+  border-radius: var(--border-radius-xl);
   padding: 12px;
 }
 .cpp-source-toggle {
@@ -496,7 +496,7 @@ defineExpose({ openWizardWithTasks, startWizard });
   margin-top: 8px;
   padding: 8px 12px;
   background: var(--color-slate-50, #f8fafc);
-  border-radius: 6px;
+  border-radius: var(--border-radius-md);
 }
 .cpp-source-head {
   font-size: 12px;
@@ -536,7 +536,7 @@ defineExpose({ openWizardWithTasks, startWizard });
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--border-radius-sm);
   background: var(--color-slate-100, #f1f5f9);
   font-size: 12px;
   color: var(--color-slate-600, #475569);
@@ -566,7 +566,7 @@ defineExpose({ openWizardWithTasks, startWizard });
   color: var(--color-primary, #2563eb);
   background: transparent;
   border: 1px solid var(--color-slate-300, #cbd5e1);
-  border-radius: 4px;
+  border-radius: var(--border-radius-md);
   cursor: pointer;
 }
 .source-retry-btn:hover {
@@ -610,7 +610,7 @@ defineExpose({ openWizardWithTasks, startWizard });
   color: var(--color-primary, #2563eb);
   background: transparent;
   border: 1px solid var(--color-slate-300, #cbd5e1);
-  border-radius: 4px;
+  border-radius: var(--border-radius-md);
   cursor: pointer;
 }
 .source-retry-btn:hover {

@@ -770,7 +770,7 @@ onUnmounted(() => {
   height: 40px;
   border: 4px solid color-mix(in srgb, var(--color-black) 10%, transparent);
   border-left-color: var(--primary-color);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-pill); (INT-738: 圆角 token 化返工——任务域 6 页面文件 + TaskComparisonReport 硬编码 border-radius 全部改用 --border-radius-*（卡片/容器=16px、控件/输入/按钮=8px、标签=4px、徽章/胶囊=full，对齐 INT-756 首页卡片基准；0 处硬编码残留）)
   animation: spin 1s linear infinite;
 }
 
