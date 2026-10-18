@@ -63,9 +63,9 @@ export const REFERENCE_PARAM_TYPE_OPTIONS = [
   { value: 'stm', label: 'STM' },
 ] as const
 
-/** 参考参数合并方式选项（§6.4） */
+/** 参考参数合并方式选项（§6.4；V9.7.10/V9.7.31 Vue 同款 join=拼接，非 concat） */
 export const REFERENCE_PARAM_MERGE_OPTIONS = [
-  { value: 'concat', label: '拼接' },
+  { value: 'join', label: '拼接' },
   { value: 'collect', label: '收集数组' },
   { value: 'first', label: '取第一个' },
 ] as const

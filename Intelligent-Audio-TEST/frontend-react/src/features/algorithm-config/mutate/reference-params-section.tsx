@@ -23,7 +23,7 @@ import {
 } from '@/features/algorithm-config/constants'
 
 const ANNOTATION_FORMAT_OPTIONS = [
-  { value: 'none', label: '不指定' },
+  { value: '', label: '不指定' },
   { value: 'text', label: '文本' },
   { value: 'json', label: 'JSON' },
   { value: 'rttm', label: 'RTTM' },
@@ -50,7 +50,7 @@ export function ReferenceParamsSection({
       annotationCode: '',
       annotationFormat: '',
       fieldPath: '',
-      mergeMode: '',
+      mergeMode: 'join',
       helpText: '',
     })
 
@@ -69,7 +69,7 @@ export function ReferenceParamsSection({
 
       <div className='bg-card ring-foreground/10 overflow-hidden rounded-lg ring-1'>
         <div className='overflow-x-auto'>
-          <table className='w-full min-w-[900px] text-[13px]'>
+          <table className='w-full min-w-[1000px] text-[13px]'>
             <thead>
               <tr className='bg-[var(--table-header)] text-xs'>
                 <th className='px-3 py-2 text-left font-medium'>参数代码</th>
@@ -79,13 +79,14 @@ export function ReferenceParamsSection({
                 <th className='px-3 py-2 text-left font-medium'>标注格式</th>
                 <th className='px-3 py-2 text-left font-medium'>字段路径</th>
                 <th className='px-3 py-2 text-left font-medium'>合并方式</th>
+                <th className='px-3 py-2 text-left font-medium'>帮助文本</th>
                 <th className='w-10 px-3 py-2 text-right font-medium'>操作</th>
               </tr>
             </thead>
             <tbody>
               {referenceParams.fields.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className='text-muted-foreground px-3 py-6 text-center'>
+                  <td colSpan={9} className='text-muted-foreground px-3 py-6 text-center'>
                     暂无参考参数，点击「添加参考字段」新增
                   </td>
                 </tr>
@@ -124,7 +125,11 @@ export function ReferenceParamsSection({
                         }
                       >
                         <SelectTrigger size='sm' className='w-24'>
-                          <SelectValue />
+                          <SelectValue>
+                            {REFERENCE_PARAM_TYPE_OPTIONS.find(
+                              (o) => o.value === form.watch(`referenceParams.${index}.type`)
+                            )?.label ?? '文本'}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           {REFERENCE_PARAM_TYPE_OPTIONS.map((option) => (
@@ -143,7 +148,12 @@ export function ReferenceParamsSection({
                         }
                       >
                         <SelectTrigger size='sm' className='w-28'>
-                          <SelectValue placeholder='不指定' />
+                          <SelectValue>
+                            {ANNOTATION_FORMAT_OPTIONS.find(
+                              (o) =>
+                                o.value === form.watch(`referenceParams.${index}.annotationFormat`)
+                            )?.label ?? '不指定'}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           {ANNOTATION_FORMAT_OPTIONS.map((option) => (
@@ -170,7 +180,11 @@ export function ReferenceParamsSection({
                         }
                       >
                         <SelectTrigger size='sm' className='w-24'>
-                          <SelectValue placeholder='未指定' />
+                          <SelectValue>
+                            {REFERENCE_PARAM_MERGE_OPTIONS.find(
+                              (o) => o.value === form.watch(`referenceParams.${index}.mergeMode`)
+                            )?.label ?? '未指定'}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           {REFERENCE_PARAM_MERGE_OPTIONS.map((option) => (
@@ -180,6 +194,14 @@ export function ReferenceParamsSection({
                           ))}
                         </SelectContent>
                       </Select>
+                    </td>
+                    <td className='px-2 py-1.5'>
+                      <Input
+                        aria-label='帮助文本'
+                        placeholder='可选提示'
+                        className='h-7 text-xs'
+                        {...form.register(`referenceParams.${index}.helpText`)}
+                      />
                     </td>
                     <td className='px-2 py-1.5'>
                       <div className='flex items-center justify-end'>

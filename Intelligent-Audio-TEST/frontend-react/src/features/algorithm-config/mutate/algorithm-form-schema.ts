@@ -242,7 +242,9 @@ function buildPublishAlgorithmFormSchema(enforcePattern: boolean) {
       ...baseObjectFields,
       type: algorithmTypeField(enforcePattern),
       name: z.string().min(1, '显示名称不能为空'),
-      groupId: z.string().min(1, '请选择所属分组'),
+      // 所属分组可空（V9.7.10 行为：group_id 允许 null；后端 AlgorithmDefinitionCreate.group_id
+      // Optional，存量 voice_llm 即未分组；空串在 save 侧映射为 group_id null）
+      groupId: z.string(),
     })
     .superRefine((values, ctx) => {
       // 参数代码同作用域唯一（§6.4）

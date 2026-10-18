@@ -70,7 +70,7 @@ const SAMPLE: AlgorithmDefinition = {
       annotationCode: null,
       annotationFormat: null,
       fieldPath: null,
-      mergeMode: 'concat',
+      mergeMode: 'join',
       helpText: null,
     },
   ],
@@ -104,7 +104,7 @@ describe('form-converters', () => {
       required: true,
     })
     expect(values.caseParams[0]).toMatchObject({ defaultValue: 'zh', scope: 'common' })
-    expect(values.referenceParams[0]).toMatchObject({ mergeMode: 'concat' })
+    expect(values.referenceParams[0]).toMatchObject({ mergeMode: 'join' })
     expect(values.mappings.device[0].targetParam).toBe('input_audio')
     expect(values.mappings.evaluation[0].targetParam).toBe('识别准确率')
     expect(values.associatedDimensions[0].isDefault).toBe(true)
