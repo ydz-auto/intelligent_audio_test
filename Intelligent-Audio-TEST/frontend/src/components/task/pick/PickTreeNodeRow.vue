@@ -33,6 +33,19 @@
 
       <span class="pt-icon" :class="iconClass"><i :class="iconName"></i></span>
       <span class="pt-name" :title="node.name">{{ node.name }}</span>
+      <!-- INT-796 §3.7.1：用例级卡片元信息（CaseIdBadge + 算法徽章；tags/时长待 §11-7 落地后补） -->
+      <CaseIdBadge
+        v-if="node.level === 'case'"
+        :case-id="node.id"
+        class="pt-case-badge"
+      />
+      <span
+        v-if="node.level === 'case' && node.algorithmType"
+        class="pt-alg-badge"
+        :title="`算法：${getAlgorithmName(node.algorithmType)}`"
+      >
+        {{ getAlgorithmName(node.algorithmType) }}
+      </span>
       <span v-if="node.children.length > 0" class="pt-count">{{ node.count }} 条</span>
     </div>
 
@@ -59,6 +72,7 @@
         <span class="pt-leaf-eval" :class="leafMeta.get(rid)?.evaluated ? 'evaluated' : 'pending-eval'">
           {{ leafMeta.get(rid)?.evaluated ? '已评估' : '未评估' }}
         </span>
+        <span v-if="leafMeta.get(rid)?.createdAt" class="pt-leaf-time">{{ formatTime(leafMeta.get(rid)!.createdAt) }}</span>
         <span v-if="alreadyAdded.has(rid)" class="pt-leaf-added"><i class="fas fa-cart-plus"></i> 已加购</span>
       </label>
     </div>
@@ -91,6 +105,28 @@ import { computed } from 'vue';
 import { nodeState } from './pickTree';
 import type { PickTreeNode, NodeCheckState } from './pickTree';
 import type { PickCandidate } from '../../../infrastructure/api/cherryPickApi';
+import CaseIdBadge from '../../common/CaseIdBadge.vue';
+
+/** 算法类型中文名（§3.6 裁定②「算法徽章」；与算法配置页同名映射同源，缺省回退原始值） */
+const ALGORITHM_LABEL: Record<string, string> = {
+  asr: 'ASR',
+  tts: 'TTS',
+  speaker_recognition: '说话人识别',
+  speaker_verification: '声纹验证',
+  speaker_identification: '说话人识别',
+};
+
+function getAlgorithmName(type: string | null | undefined): string {
+  if (!type) return '';
+  return ALGORITHM_LABEL[type] ?? type;
+}
+
+/** 叶行时间（mono 口径，YYYY-MM-DD HH:mm） */
+function formatTime(iso?: string | null): string {
+  if (!iso) return '';
+  const t = iso.replace('T', ' ').slice(0, 16);
+  return t;
+}
 
 const props = defineProps<{
   node: PickTreeNode;
@@ -223,6 +259,21 @@ function statusText(status?: string | null): string {
   font-size: 11px;
   font-weight: 500;
 }
+/* INT-796 §3.7.1：用例级 CaseIdBadge / 算法徽章（卡片级元信息，§11-7 剩余项落地前最小呈现） */
+.pt-case-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  margin-left: 2px;
+}
+.pt-alg-badge {
+  flex-shrink: 0;
+  padding: 1px 8px;
+  border-radius: var(--border-radius-full);
+  background: var(--color-slate-100, #f1f5f9);
+  color: var(--color-slate-600, #475569);
+  font-size: 11px;
+  font-weight: 500;
+}
 .pt-leaf {
   display: flex;
   align-items: center;
@@ -263,5 +314,11 @@ function statusText(status?: string | null): string {
 .pt-leaf-added {
   color: var(--primary, #ff6a00);
   font-size: 11px;
+}
+.pt-leaf-time {
+  color: var(--color-slate-400, #94a3b8);
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  margin-left: auto;
 }
 </style>
