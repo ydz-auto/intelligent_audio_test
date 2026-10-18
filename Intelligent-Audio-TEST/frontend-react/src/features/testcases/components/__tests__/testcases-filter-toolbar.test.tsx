@@ -6,6 +6,7 @@
  */
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { EvaluationDimensionItem } from '@/domain/models/evaluationDimension'
@@ -53,6 +54,11 @@ const DIMENSIONS: EvaluationDimensionItem[] = [
 const tagCount = (name: string) =>
   MOCK_TEST_CASES.filter((c) => !c.deleted && c.tags.includes(name)).length
 
+/** React Query 上下文（芯片 TestCasesAlgorithmChip 经 useAlgorithmOptions 依赖；INT-710 补） */
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false, gcTime: 0 } },
+})
+
 function renderToolbar(filters: Record<string, unknown> = {}, tags = MOCK_TAGS) {
   const props = {
     filters: filters as never,
@@ -64,7 +70,11 @@ function renderToolbar(filters: Record<string, unknown> = {}, tags = MOCK_TAGS) 
     dimensions: DIMENSIONS,
     onRestoreAll: vi.fn(),
   }
-  render(<TestCasesFilterToolbar {...props} />)
+  render(
+    <QueryClientProvider client={queryClient}>
+      <TestCasesFilterToolbar {...props} />
+    </QueryClientProvider>
+  )
   return props
 }
 
@@ -166,7 +176,11 @@ describe('TestCasesFilterToolbar', () => {
       dimensions: DIMENSIONS,
       onRestoreAll: vi.fn(),
     }
-    const { rerender } = render(<TestCasesFilterToolbar {...props} />)
+    const { rerender } = render(
+      <QueryClientProvider client={queryClient}>
+        <TestCasesFilterToolbar {...props} />
+      </QueryClientProvider>
+    )
     // 写权限用户（ADMIN_USER '*'）：下拉出现
     expect(screen.getByRole('button', { name: /标签操作/ })).toBeInTheDocument()
 
@@ -181,7 +195,11 @@ describe('TestCasesFilterToolbar', () => {
         permissions: ['testcase:read'],
       },
     })
-    rerender(<TestCasesFilterToolbar {...props} />)
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <TestCasesFilterToolbar {...props} />
+      </QueryClientProvider>
+    )
     expect(screen.getByRole('button', { name: /标签操作/ })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /标签操作/ }))
     // 写钮逐钮 aria-disabled + Tooltip（§7 注 1 口径；jest-dom toBeDisabled 不认 aria-disabled）
