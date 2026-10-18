@@ -465,10 +465,10 @@
   position: relative;
   margin: 0 var(--spacing-sm) var(--spacing-sm);
   padding: var(--spacing-md);
-  background: var(--foreground-deep);
+  background: var(--color-foreground-deep);
   border-radius: var(--border-radius-md);
   color: var(--color-white);
-  font-family: var(--font-mono, 'SFMono-Regular', Consolas, monospace);
+  font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: var(--font-size-xs);
 }
 
@@ -511,6 +511,9 @@
   color: var(--color-white);
   font-size: var(--font-size-xs);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
 }
 
 .dashboard-page .setup-api-signals {
@@ -787,7 +790,7 @@
 .dashboard-page .stat-tile-icon--accent3 { background: color-mix(in srgb, var(--chart-3) 10%, transparent); color: var(--chart-3); }
 
 .dashboard-page .stat-tile-value {
-  font-family: var(--font-mono, 'SFMono-Regular', Consolas, monospace);
+  font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: var(--font-size-xxl);
   font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
@@ -890,7 +893,7 @@
 }
 
 .dashboard-page .device-status-value {
-  font-family: var(--font-mono, 'SFMono-Regular', Consolas, monospace);
+  font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: var(--font-size-xxl);
   font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
@@ -932,7 +935,7 @@
 }
 
 .dashboard-page .mini-card-value {
-  font-family: var(--font-mono, 'SFMono-Regular', Consolas, monospace);
+  font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
@@ -966,7 +969,7 @@
 }
 
 .dashboard-page .queue-bar-count {
-  font-family: var(--font-mono, 'SFMono-Regular', Consolas, monospace);
+  font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
@@ -1180,7 +1183,7 @@
 .dashboard-page .group-rank {
   width: 24px;
   text-align: right;
-  font-family: var(--font-mono, 'SFMono-Regular', Consolas, monospace);
+  font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: var(--font-size-xs);
   color: var(--text-light);
 }
