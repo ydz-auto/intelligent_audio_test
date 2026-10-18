@@ -15,6 +15,8 @@ type CaseSelectionState = {
   toggleCase: (id: string) => void
   /** 正选当前页/全量圈定（POST /testcases/ids 全量 id 集落点） */
   selectMany: (ids: string[]) => void
+  /** 取消勾选一组 id（分组/标签卡「本组取消全选」；INT-710） */
+  removeMany: (ids: string[]) => void
   /** 反选：选中集 = 全量集 − 当前选中集（对称差） */
   invertWith: (allIds: string[]) => void
   clearSelection: () => void
@@ -39,6 +41,17 @@ export const useCaseSelectionStore = create<CaseSelectionState>((set) => ({
     set((s) => {
       const merged = Array.from(new Set([...s.manualCaseIds, ...ids]))
       return { manualCaseIds: merged, filterAllMode: false }
+    }),
+
+  removeMany: (ids) =>
+    set((s) => {
+      const remove = new Set(ids)
+      const kept = s.manualCaseIds.filter((id) => !remove.has(id))
+      return {
+        manualCaseIds: kept,
+        invertAdded: s.invertAdded.filter((id) => !remove.has(id)),
+        filterAllMode: false,
+      }
     }),
 
   invertWith: (allIds) =>

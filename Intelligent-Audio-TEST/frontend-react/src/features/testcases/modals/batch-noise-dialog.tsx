@@ -1,13 +1,15 @@
 /**
- * 批量设置噪声弹窗（11_用例域.md §5.3.4，Dialog sm:max-w-xl）。
- * 噪声音频（选择器卡「点击选择噪声音频」→ 打开音频选择弹窗；已选显名 + 重新选择/清除）
- * + 噪声声压级 dB（number 0-140，提示「建议值：94 dB（1kHz 校准点）」）
- * + 播放设备（多选选择器卡）+ 轮次范围三档（所有轮次统一/指定轮次统一/逐轮设置每轮可不同，
- * §5.3.5 口径）+ 应用层级多选（默认勾选 case级/segment级背景噪声）。
- * 可视稿演示态：提交走 toast；数据契约 noiseAudio/spl/deviceIds/roundMode/rounds/appliedLayers 留接线批次。
+ * 批量设置噪声弹窗（11_用例域.md §5.3.4，Dialog sm:max-w-xl；INT-710 真实数据接线）。
+ * 噪声音频（选择器卡「点击选择噪声音频」→ 打开音频选择弹窗，真实 GET /audios audio_type=noise；
+ * 已选显名 + 重新选择/清除）+ 噪声声压级 dB（number 0-140，提示「建议值：94 dB（1kHz 校准点）」）
+ * + 播放设备（多选选择器卡，真实 GET /playback-devices）+ 轮次范围三档 + 应用层级多选
+ * （默认勾选 case级/segment级背景噪声）。
+ * 提交走 POST /testcases/batch（update_noise）：noise_audio_id/noise_spl/noise_device_ids
+ * + targets + round_mode/round_numbers。
  */
 import { AudioWaveform } from 'lucide-react'
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -21,41 +23,35 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
+import type { AudioAsset } from '@/domain/models/audio'
+import { fetchRealAudios } from '@/infrastructure/api/audio-list-api'
+import { fetchRealPlaybackDevices } from '@/infrastructure/api/playback-api'
 import {
+  batchTestcaseAction,
+  type TestcaseRoundMode,
+} from '@/infrastructure/api/testcases-batch-api'
+import {
+  applyLayerToTargets,
   ApplyLayerField,
   createRoundScope,
   RoundScopeThreeField,
   usePerRoundValue,
+  type ApplyLayerId,
 } from '@/features/testcases/modals/batch-shared'
 
-/** mock 噪声音频（§5.3.4 音频选择弹窗，audioType='noise' 单选；形态对齐 AudioAsset 简版） */
-const MOCK_NOISE_AUDIOS = [
-  { id: 'au-n1', name: '粉红噪声_94dB.wav', duration: 180, tags: ['粉红噪声'] },
-  { id: 'au-n2', name: '白噪声_85dB.wav', duration: 120, tags: ['白噪声'] },
-  { id: 'au-n3', name: '音乐背景_闹钟.wav', duration: 18, tags: ['音乐背景', '闹钟'] },
-  { id: 'au-n4', name: '街道环境音.wav', duration: 240, tags: ['街道', '环境'] },
-]
-
-type NoiseAudio = (typeof MOCK_NOISE_AUDIOS)[number]
+const formatDuration = (s: number | null) => {
+  if (s == null) return '—'
+  return s < 60 ? `${s}s` : s % 60 === 0 ? `${s / 60}m` : `${Math.floor(s / 60)}m ${s % 60}s`
+}
 
 /** 单轮噪声配置值（逐轮设置时每轮一份；统一/指定轮次共用一份） */
 type NoiseValue = {
-  audio: NoiseAudio | null
+  audio: AudioAsset | null
   spl: string
   devices: Set<string>
 }
-
-/** mock 播放设备（§5.3.4 多选选择器卡） */
-const MOCK_PLAYBACK_DEVICES = [
-  { id: 'dev-1', name: '音频接口 A', channel: 1, type: '干声' },
-  { id: 'dev-2', name: '音频接口 B', channel: 2, type: '噪声' },
-  { id: 'dev-3', name: '功放 左声道', channel: 1, type: '干声' },
-  { id: 'dev-4', name: '功放 右声道', channel: 2, type: '噪声' },
-]
-
-const formatDuration = (s: number) =>
-  s < 60 ? `${s}s` : s % 60 === 0 ? `${s / 60}m` : `${Math.floor(s / 60)}m ${s % 60}s`
 
 /** 音频选择子弹窗（嵌套 Dialog；选择即回调并关闭） */
 function NoiseAudioPickerDialog({
@@ -66,9 +62,17 @@ function NoiseAudioPickerDialog({
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSelect: (audio: NoiseAudio) => void
+  onSelect: (audio: AudioAsset) => void
   currentId: string | null
 }) {
+  const audiosQuery = useQuery({
+    queryKey: ['audios', 'real', 'noise'],
+    queryFn: () => fetchRealAudios({ audioType: 'noise', perPage: 200 }),
+    staleTime: 30_000,
+    enabled: open,
+  })
+  const audios = audiosQuery.data?.items ?? []
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='sm:max-w-md'>
@@ -78,39 +82,50 @@ function NoiseAudioPickerDialog({
             选择一个噪声音频文件作为所选用例的背景噪声
           </DialogDescription>
         </DialogHeader>
-        <div className='space-y-1.5'>
-          {MOCK_NOISE_AUDIOS.map((a) => {
-            const selected = currentId === a.id
-            return (
-              <button
-                key={a.id}
-                type='button'
-                className={cn(
-                  'hover:bg-accent flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-start text-sm transition-colors',
-                  selected && 'bg-primary/10 border-primary/40'
-                )}
-                onClick={() => {
-                  onSelect(a)
-                  onOpenChange(false)
-                }}
-              >
-                <AudioWaveform
-                  aria-hidden='true'
-                  className='text-muted-foreground size-4 shrink-0'
-                />
-                <span className='min-w-0 flex-1 truncate'>{a.name}</span>
-                <span className='text-muted-foreground font-mono text-xs tabular-nums'>
-                  {formatDuration(a.duration)}
-                </span>
-                {a.tags.map((t) => (
-                  <Badge key={t} variant='secondary' className='rounded-md px-1.5 text-[11px]'>
-                    {t}
-                  </Badge>
-                ))}
-              </button>
-            )
-          })}
-        </div>
+        {audiosQuery.isLoading ? (
+          <div className='flex h-24 items-center justify-center gap-2 text-sm text-muted-foreground'>
+            <Spinner className='size-4' />
+            正在加载噪声音频...
+          </div>
+        ) : audios.length === 0 ? (
+          <p className='text-muted-foreground px-3 py-6 text-center text-sm'>
+            暂无可用的噪声音频
+          </p>
+        ) : (
+          <div className='space-y-1.5'>
+            {audios.map((a) => {
+              const selected = currentId === String(a.id)
+              return (
+                <button
+                  key={a.id}
+                  type='button'
+                  className={cn(
+                    'hover:bg-accent flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-start text-sm transition-colors',
+                    selected && 'bg-primary/10 border-primary/40'
+                  )}
+                  onClick={() => {
+                    onSelect(a)
+                    onOpenChange(false)
+                  }}
+                >
+                  <AudioWaveform
+                    aria-hidden='true'
+                    className='text-muted-foreground size-4 shrink-0'
+                  />
+                  <span className='min-w-0 flex-1 truncate'>{a.name}</span>
+                  <span className='text-muted-foreground font-mono text-xs tabular-nums'>
+                    {formatDuration(a.duration)}
+                  </span>
+                  {a.tags.slice(0, 2).map((t) => (
+                    <Badge key={t} variant='secondary' className='rounded-md px-1.5 text-[11px]'>
+                      {t}
+                    </Badge>
+                  ))}
+                </button>
+              )
+            })}
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   )
@@ -120,19 +135,31 @@ export function BatchNoiseDialog({
   open,
   onOpenChange,
   count,
+  ids,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   count: number
+  ids: string[]
 }) {
   const [scope, setScope] = useState(createRoundScope())
   const [pickingAudio, setPickingAudio] = useState(false)
+  const [layers, setLayers] = useState<ApplyLayerId[]>(['case-bg', 'segment-bg'])
+  const [submitting, setSubmitting] = useState(false)
   const { current: noise, setCurrent: setNoise } = usePerRoundValue<NoiseValue>(
-    { audio: null, spl: '94', devices: new Set(['dev-1', 'dev-3']) },
+    { audio: null, spl: '94', devices: new Set() },
     scope
   )
 
-  const setAudio = (audio: NoiseAudio | null) => setNoise({ ...noise, audio })
+  const devicesQuery = useQuery({
+    queryKey: ['playback-devices', 'real'],
+    queryFn: fetchRealPlaybackDevices,
+    staleTime: 30_000,
+    enabled: open,
+  })
+  const devices = devicesQuery.data ?? []
+
+  const setAudio = (audio: AudioAsset | null) => setNoise({ ...noise, audio })
   const setSpl = (spl: string) => setNoise({ ...noise, spl })
   const toggleDevice = (id: string) =>
     setNoise({
@@ -148,6 +175,29 @@ export function BatchNoiseDialog({
   const audio = noise.audio
   const spl = noise.spl
   const deviceIds = noise.devices
+
+  const handleSubmit = async () => {
+    const splValue = Number(spl)
+    if (!audio || Number.isNaN(splValue)) return
+    setSubmitting(true)
+    try {
+      await batchTestcaseAction('update_noise', ids, {
+        noiseAudioId: audio.id,
+        noiseSpl: splValue,
+        noiseDeviceIds: [...deviceIds].map((id) => Number(id)).filter((n) => !Number.isNaN(n)),
+        targets: applyLayerToTargets(layers),
+        roundMode: scope.mode as TestcaseRoundMode,
+        roundNumbers:
+          scope.mode === 'specific' ? scope.specificRounds : undefined,
+      })
+      toast.success(`批量操作执行成功（更新 ${count} 个）`)
+      onOpenChange(false)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '批量设置噪声失败')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -173,7 +223,7 @@ export function BatchNoiseDialog({
                 <span className='text-muted-foreground font-mono text-xs tabular-nums'>
                   {formatDuration(audio.duration)}
                 </span>
-                {audio.tags.map((t) => (
+                {audio.tags.slice(0, 2).map((t) => (
                   <Badge key={t} variant='secondary' className='rounded-md px-1.5 text-[11px]'>
                     {t}
                   </Badge>
@@ -234,14 +284,15 @@ export function BatchNoiseDialog({
           <div className='space-y-1.5'>
             <span className='text-sm font-medium'>播放设备（可多选）</span>
             <div className='flex flex-wrap gap-1.5'>
-              {MOCK_PLAYBACK_DEVICES.map((d) => {
-                const checked = deviceIds.has(d.id)
+              {devices.map((d) => {
+                const id = String(d.id)
+                const checked = deviceIds.has(id)
                 return (
                   <button
                     key={d.id}
                     type='button'
                     aria-pressed={checked}
-                    onClick={() => toggleDevice(d.id)}
+                    onClick={() => toggleDevice(id)}
                     className={cn(
                       'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
                       checked
@@ -249,7 +300,7 @@ export function BatchNoiseDialog({
                         : 'hover:bg-accent border-border text-muted-foreground'
                     )}
                   >
-                    {d.name} (通道 {d.channel}) [{d.type}]
+                    {d.name} (通道 {d.channelIndex ?? '—'}) [{d.deviceType === 'dry' ? '干声' : d.deviceType === 'noise' ? '噪声' : d.deviceType ?? '未知'}]
                   </button>
                 )
               })}
@@ -266,19 +317,18 @@ export function BatchNoiseDialog({
           />
 
           {/* 应用层级（默认勾选 case级/segment级背景噪声） */}
-          <ApplyLayerField defaultChecked={['case-bg', 'segment-bg']} />
+          <ApplyLayerField defaultChecked={['case-bg', 'segment-bg']} value={layers} onChange={setLayers} />
         </div>
 
         <DialogFooter>
-          <Button variant='outline' onClick={() => onOpenChange(false)}>
+          <Button variant='outline' onClick={() => onOpenChange(false)} disabled={submitting}>
             取消
           </Button>
           <Button
-            onClick={() => {
-              toast.success(`批量操作执行成功（更新 ${count} 个）`)
-              onOpenChange(false)
-            }}
+            onClick={() => void handleSubmit()}
+            disabled={submitting || !audio || Number.isNaN(Number(spl))}
           >
+            {submitting && <Spinner className='size-3.5' />}
             确定
           </Button>
         </DialogFooter>
@@ -287,7 +337,7 @@ export function BatchNoiseDialog({
       <NoiseAudioPickerDialog
         open={pickingAudio}
         onOpenChange={setPickingAudio}
-        currentId={audio?.id ?? null}
+        currentId={audio ? String(audio.id) : null}
         onSelect={(a) => setAudio(a)}
       />
     </Dialog>

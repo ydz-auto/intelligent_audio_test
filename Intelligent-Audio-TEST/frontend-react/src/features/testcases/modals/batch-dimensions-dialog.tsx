@@ -23,9 +23,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
 import type { Dimension } from '@/domain/models/evaluationDimension'
 import { DimensionPicker } from '@/features/testcases/modals/round-config/dimension-picker'
+import {
+  batchTestcaseAction,
+  type TestcaseRoundMode,
+} from '@/infrastructure/api/testcases-batch-api'
 
 type RoundMode = 'all' | 'specific' | 'per_round'
 
@@ -39,19 +44,24 @@ export function BatchDimensionsDialog({
   open,
   onOpenChange,
   count,
+  ids,
   dimensions,
   algorithmType,
+  testType,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   count: number
+  ids: string[]
   dimensions: Dimension[]
   algorithmType?: string | null
+  testType?: string | null
 }) {
   const [roundMode, setRoundMode] = useState<RoundMode>('all')
   const [rounds, setRounds] = useState<RoundKey[]>([1, 2, -1])
   const [activeRound, setActiveRound] = useState<RoundKey>(1)
   const [selected, setSelected] = useState<Record<RoundKey, number[]>>({})
+  const [submitting, setSubmitting] = useState(false)
   /** 「指定轮次」勾选的轮次号（§5.3.5 与 §5.3.1~5.3.4 同口径） */
   const [specificRounds, setSpecificRounds] = useState<number[]>([1])
 
@@ -97,6 +107,50 @@ export function BatchDimensionsDialog({
     setSpecificRounds((prev) =>
       prev.includes(round) ? prev.filter((r) => r !== round) : [...prev, round]
     )
+  }
+
+  /** 维度 id → { id, name } 配置项（提交载荷；后端 schema List[Dict[str, Any]]） */
+  const dimNameMap = useMemo(
+    () => new Map(dimensions.map((d) => [Number(d.id), d.name])),
+    [dimensions]
+  )
+  const toDimConfig = (id: number) => ({
+    id,
+    name: dimNameMap.get(Number(id)) ?? `dim-${id}`,
+  })
+
+  const handleSubmit = async () => {
+    setSubmitting(true)
+    try {
+      if (roundMode === 'per_round') {
+        const roundDimensions: Record<string, unknown[]> = {}
+        for (const key of rounds) {
+          roundDimensions[String(key)] = (selected[key] ?? []).map(toDimConfig)
+        }
+        await batchTestcaseAction('update_dimensions', ids, {
+          dimensions: [],
+          testType: testType ?? '',
+          roundMode: 'per_round',
+          roundNumbers: [],
+          roundDimensions,
+        })
+      } else {
+        const idsToApply = roundMode === 'specific' ? specificRounds : rounds
+        const flat = [...new Set(idsToApply.flatMap((k) => selected[k] ?? []))]
+        await batchTestcaseAction('update_dimensions', ids, {
+          dimensions: flat.map(toDimConfig),
+          testType: testType ?? '',
+          roundMode: roundMode as TestcaseRoundMode,
+          roundNumbers: roundMode === 'specific' ? specificRounds : undefined,
+        })
+      }
+      toast.success(`批量操作执行成功（更新 ${count} 个）`)
+      onOpenChange(false)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '批量设置评估维度失败')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -231,15 +285,11 @@ export function BatchDimensionsDialog({
         </div>
 
         <DialogFooter>
-          <Button variant='outline' onClick={() => onOpenChange(false)}>
+          <Button variant='outline' onClick={() => onOpenChange(false)} disabled={submitting}>
             取消
           </Button>
-          <Button
-            onClick={() => {
-              toast.success('批量操作执行成功（更新全部选中用例）')
-              onOpenChange(false)
-            }}
-          >
+          <Button onClick={() => void handleSubmit()} disabled={submitting}>
+            {submitting && <Spinner className='size-3.5' />}
             确定
           </Button>
         </DialogFooter>

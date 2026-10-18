@@ -230,21 +230,46 @@ export const APPLY_LAYERS = [
 
 export type ApplyLayerId = (typeof APPLY_LAYERS)[number]['id']
 
+/** 应用层级 id → 批量接口 targets 取值（Vue 基准：target→audio / case-bg→caseBackgroundNoise / …） */
+export const APPLY_LAYER_TARGET_MAP: Record<ApplyLayerId, string> = {
+  target: 'audio',
+  'case-bg': 'caseBackgroundNoise',
+  'segment-bg': 'segmentBackgroundNoise',
+  interferer: 'interferer',
+  voiceprint: 'voiceprint',
+}
+
+/** 应用层级 id 集合 → 批量接口 targets 数组（按 APPLY_LAYERS 顺序） */
+export function applyLayerToTargets(layers: Iterable<ApplyLayerId>): string[] {
+  const set = new Set(layers)
+  return APPLY_LAYERS.filter((l) => set.has(l.id)).map((l) => APPLY_LAYER_TARGET_MAP[l.id])
+}
+
 export function ApplyLayerField({
   defaultChecked = [],
+  value,
+  onChange,
 }: {
   /** 默认勾选的层级 id（§5.3.4 默认 case级/segment级背景噪声） */
   defaultChecked?: ApplyLayerId[]
+  /** 受控模式（INT-710 接线：提交时读取勾选层级） */
+  value?: ApplyLayerId[]
+  onChange?: (next: ApplyLayerId[]) => void
 }) {
-  const [checked, setChecked] = useState<Set<string>>(() => new Set(defaultChecked))
+  const [internal, setInternal] = useState<Set<string>>(
+    () => new Set(defaultChecked)
+  )
+  const checkedSet = value ? new Set(value) : internal
 
   const toggle = (id: string) => {
-    setChecked((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+    const next = new Set(checkedSet)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    if (value !== undefined && onChange) {
+      onChange(APPLY_LAYERS.filter((l) => next.has(l.id)).map((l) => l.id))
+    } else {
+      setInternal(next)
+    }
   }
 
   return (
@@ -257,7 +282,7 @@ export function ApplyLayerField({
             className='hover:bg-accent flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm'
           >
             <Checkbox
-              checked={checked.has(layer.id)}
+              checked={checkedSet.has(layer.id)}
               onCheckedChange={() => toggle(layer.id)}
             />
             {layer.label}
