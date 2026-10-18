@@ -1,7 +1,7 @@
 /**
  * SSE 事件 → 通知中心领域模型适配（infrastructure/adapters 层；INT-731 接线）。
  * 事件形状对照 api_gateway/routes/sse_bp.py `_map_event` 与各 emit 实测：
- * - task_progress：data = { task_id, status, progress, execution_status, … }（TaskProgressData）
+ * - task_progress：data = { task_id, status, total_progress, execution_status, … }（TaskProgressPayload）
  * - report_generated：data = { taskId, reportId, success, status } 或 { taskId, success, error }
  * - import_progress：data = { step, current_table, processed_rows, total_rows, percentage, message }
  * - task_log：data = { log_payload: { level, module, content, time }, task_id, test_case_id }
@@ -14,7 +14,8 @@ import type { SseEvent } from '@/infrastructure/realtime/sse'
 interface TaskProgressEventData {
   task_id?: string | number
   status?: string
-  progress?: number
+  /** 后端 TaskProgressPayload.total_progress（shared/schemas/socket_payloads.py） */
+  total_progress?: number
   updated_at?: string
 }
 
@@ -75,7 +76,7 @@ export function mapSseEventToNotification(event: SseEvent): AppNotification | nu
     case 'task_progress': {
       const data = event.data as TaskProgressEventData | undefined
       const taskId = asString(data?.task_id)
-      const progress = Math.round(asNumber(data?.progress))
+      const progress = Math.round(asNumber(data?.total_progress))
       const updatedAt = asString(data?.updated_at) || nowIso()
       if (!taskId) return null
       return {

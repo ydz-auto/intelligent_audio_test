@@ -20,8 +20,17 @@ import type { SseStatus } from '@/infrastructure/realtime/sse'
 /** 会话内通知列表上界（SSE 事件流只增不减，防止无界堆积） */
 const MAX_NOTICE_ITEMS = 50
 
-/** 站点公告行 id（read-ids 比对用） */
-const ANNOUNCEMENT_ID = 'site-notice'
+/**
+ * 站点公告已读 id = 内容哈希（P3-2：内容更新自然生成新 id → 重新提示未读）。
+ * 稳定字符串哈希（djb2），非加密用途；空内容不产生公告。
+ */
+function hashAnnouncement(content: string): string {
+  let hash = 5381
+  for (let i = 0; i < content.length; i++) {
+    hash = ((hash << 5) + hash) ^ content.charCodeAt(i)
+  }
+  return (hash >>> 0).toString(36)
+}
 
 /**
  * 通知中心状态（application 层；INT-731 接线）。
@@ -44,11 +53,11 @@ export function useNotifications() {
     readAnnouncementIds,
     markEventsRead,
     markAnnouncementRead,
-    isAnnouncementRead,
   } = useNotificationReadStore()
 
-  /** 会话内事件序号（未读比对：最新事件键） */
-  const eventSeqRef = useRef(0)
+  /** 会话内事件序号（未读比对：最新事件键；初始以持久已读序号为基线，
+   *  P3-1：跨会话单调递增，刷新后新事件 seq 才不会被旧持久值吞掉） */
+  const eventSeqRef = useRef(lastReadEventSeq)
 
   // ===== 通知页签：SSE 事件流 =====
   useEffect(() => {
@@ -78,21 +87,26 @@ export function useNotifications() {
     () => resolveSiteNoticeSettings(options).notice.trim(),
     [options]
   )
+  /** 公告已读 id = 内容哈希（内容为空 → 无公告，不写已读） */
+  const announcementId = useMemo(
+    () => (noticeContent ? `site-notice:${hashAnnouncement(noticeContent)}` : ''),
+    [noticeContent]
+  )
 
   const announcements = useMemo<AppNotification[]>(() => {
-    if (!noticeContent) return []
+    if (!announcementId) return []
     return [
       {
-        id: ANNOUNCEMENT_ID,
+        id: announcementId,
         tab: 'announcement',
         title: '站点公告',
         content: noticeContent,
         createdAt: '',
-        read: isAnnouncementRead(ANNOUNCEMENT_ID),
+        read: readAnnouncementIds.includes(announcementId),
         kind: 'task',
       },
     ]
-  }, [noticeContent, isAnnouncementRead])
+  }, [announcementId, noticeContent, readAnnouncementIds])
 
   // ===== 未读数 = 两页签之和 =====
   const unreadCount = useMemo(() => {
@@ -100,9 +114,9 @@ export function useNotifications() {
       const seq = Number.parseInt(n.id.split(':')[0] ?? '0', 10)
       return seq > lastReadEventSeq
     }).length
-    const announcementUnread = noticeContent && !isAnnouncementRead(ANNOUNCEMENT_ID) ? 1 : 0
+    const announcementUnread = announcementId && !readAnnouncementIds.includes(announcementId) ? 1 : 0
     return noticeUnread + announcementUnread
-  }, [notice, lastReadEventSeq, noticeContent, isAnnouncementRead])
+  }, [notice, lastReadEventSeq, announcementId, readAnnouncementIds])
 
   const loading = useMemo(
     () => (hasSseRead ? sseStatus === 'connecting' || sseStatus === 'reconnecting' : false) || optionsLoading,
@@ -112,8 +126,8 @@ export function useNotifications() {
   // ===== 已读动作 =====
   const markAllRead = useCallback(() => {
     markEventsRead(eventSeqRef.current)
-    if (noticeContent) markAnnouncementRead(ANNOUNCEMENT_ID)
-  }, [markEventsRead, markAnnouncementRead, noticeContent])
+    if (announcementId) markAnnouncementRead(announcementId)
+  }, [markEventsRead, markAnnouncementRead, announcementId])
 
   const setPopoverOpen = useCallback(
     (open: boolean) => {
@@ -123,11 +137,11 @@ export function useNotifications() {
         if (activeTab === 'notice') {
           markEventsRead(eventSeqRef.current)
         } else {
-          if (noticeContent) markAnnouncementRead(ANNOUNCEMENT_ID)
+          if (announcementId) markAnnouncementRead(announcementId)
         }
       }
     },
-    [activeTab, markEventsRead, markAnnouncementRead, noticeContent]
+    [activeTab, markEventsRead, markAnnouncementRead, announcementId]
   )
 
   const setActiveTab = useCallback(
@@ -137,10 +151,10 @@ export function useNotifications() {
       if (tab === 'notice') {
         markEventsRead(eventSeqRef.current)
       } else {
-        if (noticeContent) markAnnouncementRead(ANNOUNCEMENT_ID)
+        if (announcementId) markAnnouncementRead(announcementId)
       }
     },
-    [markEventsRead, markAnnouncementRead, noticeContent]
+    [markEventsRead, markAnnouncementRead, announcementId]
   )
 
   return {
