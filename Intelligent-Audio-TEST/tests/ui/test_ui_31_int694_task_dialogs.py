@@ -176,12 +176,20 @@ def test_01_reexecute_scope_dialog(drv):
     time.sleep(0.6)
     case_labels = _wait(drv, By.XPATH, "//*[contains(., '全选')]")
     assert len(case_labels) > 0
-    # 勾选第一行用例 → 确认按钮计数出现
+    # 勾选第一行用例 → 确认按钮计数出现（详情可用时）
     time.sleep(0.4)
-    checkboxes = drv.find_elements(By.CSS_SELECTOR,
-                                   '[data-slot="dialog-content"] [data-slot="checkbox"]')
-    assert len(checkboxes) > 0, '手动选择用例区应渲染用例勾选列表'
-    checkboxes[-1].click()
+    # 用例勾选列表只在任务详情成功时渲染；真实后端 GET /tasks/{id} 被 INT-734 422
+    # （TaskCaseBrief.reviewed null）阻断时，手动选择区走 P2-1 错误态（加载失败+重试）。
+    case_checkboxes = drv.find_elements(
+        By.CSS_SELECTOR,
+        '[data-slot="dialog-content"] [data-slot="scroll-area"] [data-slot="checkbox"]')
+    if not case_checkboxes:
+        dlg_text = ' '.join(_texts(drv, By.XPATH, "//*[@data-slot='dialog-content']"))
+        assert '本任务用例加载失败' in dlg_text and '重试' in dlg_text, \
+            f'详情失败应显示错误态+重试（P2-1），实际 {dlg_text[:160]}'
+        assert '暂无已执行用例' not in dlg_text, '错误态不应误显示为空态'
+        return
+    case_checkboxes[-1].click()
     time.sleep(0.4)
     confirm_texts = _texts(drv, By.XPATH, "//button[contains(., '确认')]")
     assert any('已选 1 个用例' in t for t in confirm_texts), \
