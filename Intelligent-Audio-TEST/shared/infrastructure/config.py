@@ -148,7 +148,7 @@ class BaseConfig:
 
     # --- report_service gRPC ---
     REPORT_SERVICE_HOST: str = _get_env('REPORT_SERVICE_HOST', 'localhost')
-    REPORT_SERVICE_GRPC_PORT: int = _get_int('REPORT_SERVICE_GRPC_PORT', 50068)
+    REPORT_SERVICE_GRPC_PORT: int = _get_int('REPORT_SERVICE_GRPC_PORT', 51068)
 
     # --- auth_service gRPC ---
     AUTH_SERVICE_HOST: str = _get_env('AUTH_SERVICE_HOST', 'localhost')
