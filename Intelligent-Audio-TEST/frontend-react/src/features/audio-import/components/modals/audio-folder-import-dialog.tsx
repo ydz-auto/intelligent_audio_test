@@ -53,9 +53,11 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
   const [groupNames, setGroupNames] = useState<Record<string, string>>({})
   const [audioType, setAudioType] = useState('dry')
   const [generateTestCase, setGenerateTestCase] = useState(false)
-  const [algorithmType, setAlgorithmType] = useState('asr-v3')
+  const [algorithmType, setAlgorithmType] = useState('')
   const [testTypes, setTestTypes] = useState<string[]>(['e2e'])
-  const [playbackDevice, setPlaybackDevice] = useState('1')
+  const [apiDimensionIds, setApiDimensionIds] = useState<number[]>([])
+  const [e2eDimensionIds, setE2eDimensionIds] = useState<number[]>([])
+  const [playbackDevice, setPlaybackDevice] = useState('')
   const [defaultSpl, setDefaultSpl] = useState(65)
   const [caseGroup, setCaseGroup] = useState('folder')
   const [customGroupName, setCustomGroupName] = useState('')
@@ -211,6 +213,10 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
             onCustomGroupNameChange={setCustomGroupName}
             inheritTags={inheritTags}
             onInheritTagsChange={setInheritTags}
+            apiDimensionIds={apiDimensionIds}
+            onApiDimensionIdsChange={setApiDimensionIds}
+            e2eDimensionIds={e2eDimensionIds}
+            onE2eDimensionIdsChange={setE2eDimensionIds}
           />
         </div>
 

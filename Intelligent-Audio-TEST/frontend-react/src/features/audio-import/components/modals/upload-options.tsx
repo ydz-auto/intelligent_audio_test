@@ -1,15 +1,14 @@
 /**
- * 上传选项（§6.16/§6.17 共用 UploadOptions；buildUploadOptionsConfig 平移）。
- * 音频类型 radio + 生成测试用例 boolean + 算法类型 select + 测试类型 checkbox
- * + 播放设备 select + 默认声压级 + 用例分组 radio + 继承音频标签 boolean。
- * E2E 时提示 info「播放设备、声压级、噪声等参数将在用例编辑页面的轮次配置中填写」
- * + 评估维度勾选用 DimensionPicker（照 V9.7.10 DimensionConfigPanel 平铺云，
- * 搜索+已选计数，默认勾选必填项——识别准确率/唤醒成功率）。
+ * 上传选项（§6.16/§6.17 共用 UploadOptions；buildUploadOptionsConfig 平移；INT-714 接线）。
+ * 音频类型 radio + 生成测试用例 boolean + 算法类型 select（真实 /algorithm/options）
+ * + 测试类型 checkbox（E2E/API 各自评估维度平铺云，照 V9.7.10 DimensionConfigPanel）
+ * + 播放设备 select（真实 /playback-devices）+ 默认声压级 + 用例分组 radio + 继承音频标签 boolean。
+ * 评估维度数据源 useEvaluationDimensions（真实 GET /evaluation/dimensions，INT-714 接线）。
  */
 import { Check, Info } from 'lucide-react'
-import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 
-import { useEvaluationDimensions } from '@/application/evaluation/use-dimensions'
+import { useEvaluationDimensions, useAlgorithmOptions } from '@/application/evaluation/use-dimensions'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -24,14 +23,12 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { DimensionPicker } from '@/features/testcases/modals/round-config/dimension-picker'
+import { fetchPlaybackDevices } from '@/infrastructure/api/audio-upload-api'
 import {
   UPLOAD_AUDIO_TYPE_OPTIONS,
   UPLOAD_TEST_TYPE_OPTIONS,
 } from '@/features/audio-import/constants'
-import {
-  MOCK_CASE_GROUP_OPTIONS,
-  MOCK_PLAYBACK_DEVICES,
-} from '@/infrastructure/mock/audio-mock'
+import { MOCK_CASE_GROUP_OPTIONS } from '@/infrastructure/mock/audio-mock'
 
 export type UploadOptionsProps = {
   audioType: string
@@ -52,6 +49,10 @@ export type UploadOptionsProps = {
   onCustomGroupNameChange: (value: string) => void
   inheritTags: boolean
   onInheritTagsChange: (value: boolean) => void
+  apiDimensionIds: number[]
+  onApiDimensionIdsChange: (value: number[]) => void
+  e2eDimensionIds: number[]
+  onE2eDimensionIdsChange: (value: number[]) => void
 }
 
 function OptionRadio({
@@ -95,17 +96,17 @@ export function UploadOptions(props: UploadOptionsProps) {
     props.onTestTypesChange(next)
   }
 
-  // 评估维度勾选（照 V9.7.10 DimensionConfigPanel 平铺云；默认勾选必填项：识别准确率/唤醒成功率）
+  // 真实数据源（INT-714 接线）：算法选项 /algorithm/options、评估维度 /evaluation/dimensions、播放设备 /playback-devices
+  const algorithmOptionsQuery = useAlgorithmOptions()
+  const algorithmOptions = algorithmOptionsQuery.data ?? []
   const uploadDimsQuery = useEvaluationDimensions()
   const uploadDimensions = uploadDimsQuery.data ?? []
-  const [selectedUploadDims, setSelectedUploadDims] = useState<number[]>([1, 3])
-  const handleUploadDimToggle = (ids: number[], checked: boolean) => {
-    setSelectedUploadDims((prev) =>
-      checked
-        ? [...new Set([...prev, ...ids])]
-        : prev.filter((id) => !ids.includes(id))
-    )
-  }
+  const playbackDevicesQuery = useQuery({
+    queryKey: ['playback-devices'],
+    queryFn: fetchPlaybackDevices,
+    staleTime: 5 * 60_000,
+  })
+  const playbackDevices = playbackDevicesQuery.data ?? []
 
   return (
     <div className='space-y-4'>
@@ -125,12 +126,14 @@ export function UploadOptions(props: UploadOptionsProps) {
             onValueChange={(value) => props.onAlgorithmTypeChange(value ?? '')}
           >
             <SelectTrigger size='sm' className='w-full' aria-label='算法类型'>
-              <SelectValue />
+              <SelectValue placeholder={algorithmOptionsQuery.isLoading ? '加载中…' : '选择算法'} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value='asr-v3'>通用识别引擎</SelectItem>
-              <SelectItem value='asr-stream'>流式识别引擎</SelectItem>
-              <SelectItem value='eval-ensemble'>多维评估集成</SelectItem>
+              {algorithmOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -172,6 +175,41 @@ export function UploadOptions(props: UploadOptionsProps) {
             </div>
           </div>
 
+          {/* API / E2E 各自评估维度配置（照 V9.7.10 DimensionConfigPanel 分型平铺云） */}
+          {props.testTypes.includes('api') && (
+            <div className='space-y-2'>
+              <Label>API 测试评估维度</Label>
+              <DimensionPicker
+                dimensions={uploadDimensions}
+                selected={props.apiDimensionIds}
+                onToggle={(ids, checked) =>
+                  props.onApiDimensionIdsChange(
+                    checked
+                      ? [...new Set([...props.apiDimensionIds, ...ids])]
+                      : props.apiDimensionIds.filter((id) => !ids.includes(id))
+                  )
+                }
+              />
+            </div>
+          )}
+
+          {props.testTypes.includes('e2e') && (
+            <div className='space-y-2'>
+              <Label>E2E 测试评估维度</Label>
+              <DimensionPicker
+                dimensions={uploadDimensions}
+                selected={props.e2eDimensionIds}
+                onToggle={(ids, checked) =>
+                  props.onE2eDimensionIdsChange(
+                    checked
+                      ? [...new Set([...props.e2eDimensionIds, ...ids])]
+                      : props.e2eDimensionIds.filter((id) => !ids.includes(id))
+                  )
+                }
+              />
+            </div>
+          )}
+
           <div className='space-y-2'>
             <Label htmlFor='upload-playback-device'>播放设备</Label>
             <Select
@@ -179,12 +217,13 @@ export function UploadOptions(props: UploadOptionsProps) {
               onValueChange={(value) => props.onPlaybackDeviceChange(value ?? '')}
             >
               <SelectTrigger id='upload-playback-device' size='sm' className='w-full'>
-                <SelectValue />
+                <SelectValue placeholder={playbackDevicesQuery.isLoading ? '加载中…' : '选择播放设备'} />
               </SelectTrigger>
               <SelectContent>
-                {MOCK_PLAYBACK_DEVICES.map((device) => (
+                {playbackDevices.map((device) => (
                   <SelectItem key={device.id} value={String(device.id)}>
-                    {device.name}（{device.model}）
+                    {device.name}
+                    {device.model ? `（${device.model}）` : ''}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -229,16 +268,6 @@ export function UploadOptions(props: UploadOptionsProps) {
               播放设备、声压级、噪声等参数将在用例编辑页面的轮次配置中填写
             </AlertDescription>
           </Alert>
-
-          <div className='space-y-2'>
-            <Label>评估维度</Label>
-            <DimensionPicker
-              dimensions={uploadDimensions}
-              algorithmType={props.algorithmType}
-              selected={selectedUploadDims}
-              onToggle={handleUploadDimToggle}
-            />
-          </div>
         </>
       )}
 

@@ -3,13 +3,13 @@
  * 枚举/状态 + 展示文案直接存中文，组件直接渲染（AGENTS.md §3.1 全中文硬编码）。
  */
 
-/** 格式 facet 选项（§5.3.2 FORMAT_OPTIONS 实测） */
+/** 格式 facet 选项（§5.3.2 FORMAT_OPTIONS 实测；后端 format 存小写，value 用小写匹配、label 大写展示） */
 export const FORMAT_OPTIONS = [
-  { value: 'MP3', label: 'MP3' },
-  { value: 'WAV', label: 'WAV' },
-  { value: 'FLAC', label: 'FLAC' },
-  { value: 'AAC', label: 'AAC' },
-  { value: 'M4A', label: 'M4A' },
+  { value: 'mp3', label: 'MP3' },
+  { value: 'wav', label: 'WAV' },
+  { value: 'flac', label: 'FLAC' },
+  { value: 'aac', label: 'AAC' },
+  { value: 'm4a', label: 'M4A' },
 ] as const
 
 /** 音频类型 facet 选项（§5.3.2 AUDIO_TYPE_OPTIONS 实测） */

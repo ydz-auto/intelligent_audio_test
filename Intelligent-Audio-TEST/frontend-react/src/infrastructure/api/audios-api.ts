@@ -1,148 +1,131 @@
 /**
- * 音频管理 API 桩（infrastructure 层；16_设备域.md §10 组件树落位）。
- * 红线④：全部返回 mock 常量（audio-mock），接线时替换为真实请求：
- *   GET    /api/v1/audios                          列表（含 data.stats）+ 分页/facet/跨页 ids
- *   GET    /api/v1/audios/tags                     标签列表（facet 选项）
- *   POST   /api/v1/audios/folder-tree              文件夹树（depth 1/10 增量）
- *   GET    /api/v1/audios/{id}                     详情（下载二次取流）
- *   DELETE /api/v1/audios/{id}                     删除（引用四路拦截）
- *   PUT    /api/v1/audios/{id}                     编辑元数据（§6.13）
- *   POST   /api/v1/audios/{id}/convert             格式转换（§6.15）
- *   POST   /api/v1/audios/url-import               URL 导入（§6.18）
- *   POST   /api/v1/audios/batch-action             批量 action（§5.6）
- *   POST   /api/v1/audios/batch/annotations        批量更新标注（§6.19）
+ * 音频管理 API（infrastructure 层；16_设备域.md §10 组件树落位；INT-714 接线）。
+ * 对照后端 api_gateway/routes/audio_bp.py + schemas/audio.py 实测：
+ *   GET    /api/v1/audios                           列表（data.items + data.total + data.stats）
+ *   GET    /api/v1/audios/tags                      标签列表（分页字符串）
+ *   POST   /api/v1/audios/folder-tree               文件夹树（body parent_path/depth → data.tree）
+ *   DELETE /api/v1/audios/{id}                      删除
+ *   PUT    /api/v1/audios/{id}/metadata             编辑元数据（UpdateMetadataRequest）
+ *   POST   /api/v1/audios/{id}/convert              格式转换（ConvertFormatRequest）
+ *   POST   /api/v1/audios/url-import                URL 导入（单 URL/次；列表逐条提交）
+ *   POST   /api/v1/audios/batch-action              批量 action（BatchActionRequest）
+ *   POST   /api/v1/audios/batch/annotations         批量更新标注（BatchUpdateAnnotationsRequest）
+ *   GET    /api/v1/audios/{id}/stream               流预签名 URL
+ * 分页：页面当前为客户端过滤/排序/分页，列表按 LIST_PAGE_SIZE 大页拉取供前端切分；
+ * snake→camel 收敛在 adapters/audioAdapter。
  */
 import type {
   AudioAsset,
   AudioFolderNode,
   AudioListStats,
 } from '@/domain/models/audio'
+import { apiClient } from './client'
 import {
-  MOCK_AUDIOS,
-  MOCK_AUDIO_STATS,
-  MOCK_AUDIO_TAGS,
-  MOCK_FOLDER_TREE,
-} from '../mock/audio-mock'
+  audioFolderTreeFromDto,
+  audioFromDto,
+  audioStatsFromDto,
+} from '@/infrastructure/adapters/audioAdapter'
+import type {
+  AudioFolderTreeDto,
+  AudioListDataDto,
+  AudioListStatsDto,
+} from '@/infrastructure/dto/audio.dto'
 
-/** 模拟网络延迟（视觉稿演示用；接线后删除） */
-function mockLatency<T>(value: T, ms = 180): Promise<T> {
-  return new Promise((resolve) => setTimeout(() => resolve(value), ms))
-}
-
-/** mock 内存库（页面内增删改操作在运行时可变） */
-let audiosStore: AudioAsset[] = [...MOCK_AUDIOS]
-
-/** 新 id（mock 阶段自增；接线后走后端自增） */
-let nextAudioId = 1000
-function freshId(): number {
-  nextAudioId += 1
-  return nextAudioId
-}
-
-/** 当前 mock 内存库（供 feature 内读取；接线后删除） */
-export function peekAudios(): AudioAsset[] {
-  return audiosStore
-}
+/** 列表页当前为客户端懒加载分页，拉大页供前端切分（§5.2 口径） */
+const LIST_PAGE_SIZE = 200
 
 export type AudioListResult = {
   items: AudioAsset[]
+  total: number
   stats: AudioListStats
 }
 
-/** 音频列表（§5.3；GET /audios，响应含 data.stats） */
+/** 音频列表（§5.3；GET /audios，响应含 data.items/data.total/data.stats） */
 export async function fetchAudios(): Promise<AudioListResult> {
-  // TODO(API 接线): GET /api/v1/audios
-  return mockLatency({ items: audiosStore, stats: MOCK_AUDIO_STATS })
+  const dto = await apiClient.get<AudioListDataDto>('/audios', {
+    params: { page: 1, per_page: LIST_PAGE_SIZE },
+  })
+  return {
+    items: (dto.items ?? []).map(audioFromDto),
+    total: dto.total ?? 0,
+    stats: audioStatsFromDto(dto.stats ?? emptyStats()),
+  }
+}
+
+/** 空统计兜底（后端异常未返回 stats 时不展示 NaN） */
+function emptyStats(): AudioListStatsDto {
+  return { total_files: 0, total_size: '0 B', total_duration: '0s', today_uploads: 0 }
 }
 
 /** 标签列表（§5.3.2 标签 facet 选项；GET /audios/tags） */
 export async function fetchAudioTags(): Promise<string[]> {
-  // TODO(API 接线): GET /api/v1/audios/tags
-  return mockLatency(MOCK_AUDIO_TAGS)
+  const dto = await apiClient.get<{ items: string[] }>('/audios/tags', {
+    params: { page: 1, per_page: LIST_PAGE_SIZE },
+  })
+  return dto?.items ?? []
 }
 
-/** 文件夹树（§5.5；POST /audios/folder-tree，depth 1 根节点） */
+/** 文件夹树（§5.5；POST /audios/folder-tree，parent_path='' + depth=1 根节点增量） */
 export async function fetchFolderTree(): Promise<AudioFolderNode[]> {
-  // TODO(API 接线): POST /api/v1/audios/folder-tree
-  return mockLatency(MOCK_FOLDER_TREE)
+  const dto = await apiClient.post<{ tree?: AudioFolderTreeDto }>('/audios/folder-tree', {
+    parent_path: '',
+    depth: 1,
+  })
+  return audioFolderTreeFromDto(dto?.tree)
 }
 
 /** 删除音频（§5.3.1；DELETE /audios/{id}，引用四路拦截文案见 §9） */
 export async function deleteAudio(
   id: number
 ): Promise<{ success: boolean; message?: string }> {
-  // TODO(API 接线): DELETE /api/v1/audios/{id}
-  const target = audiosStore.find((a) => a.id === id)
-  if (!target) return mockLatency({ success: false, message: '音频不存在' }, 80)
-  audiosStore = audiosStore.filter((a) => a.id !== id)
-  return mockLatency({ success: true }, 120)
+  const dto = await apiClient.delete<{ message?: string }>(`/audios/${id}`)
+  return { success: true, message: dto?.message }
 }
 
-/** 编辑元数据（§6.13；PUT /audios/{id}） */
+/** 编辑元数据（§6.13；PUT /audios/{id}/metadata，UpdateMetadataRequest snake_case） */
 export async function updateAudioMetadata(
   id: number,
   patch: Partial<AudioAsset>
 ): Promise<AudioAsset | undefined> {
-  // TODO(API 接线): PUT /api/v1/audios/{id}
-  const target = audiosStore.find((a) => a.id === id)
-  if (!target) return mockLatency(undefined, 80)
-  const updated: AudioAsset = {
-    ...target,
-    ...patch,
-    updatedAt: new Date().toISOString(),
-  }
-  audiosStore = audiosStore.map((a) => (a.id === id ? updated : a))
-  return mockLatency(updated, 120)
+  const dto = await apiClient.put<AudioListDataDto['items'][number] | null>(
+    `/audios/${id}/metadata`,
+    {
+      name: patch.name,
+      audio_type: patch.audioType,
+      asr_text: patch.asrText,
+      description: patch.description,
+      source_language: patch.sourceLanguage,
+      tags: patch.tags && patch.tags.length > 0 ? patch.tags.join(',') : undefined,
+      annotations: patch.annotations,
+    }
+  )
+  return dto ? audioFromDto(dto) : undefined
 }
 
-/** 格式转换（§6.15；POST /audios/{id}/convert{format}） */
+/** 格式转换（§6.15；POST /audios/{id}/convert，ConvertFormatRequest） */
 export async function convertAudio(
-  _id: number,
+  id: number,
   format: string
 ): Promise<{ success: boolean; message?: string }> {
-  // TODO(API 接线): POST /api/v1/audios/{id}/convert
-  return mockLatency({ success: true, message: `已提交转换为 ${format}` }, 200)
+  await apiClient.post(`/audios/${id}/convert`, { format })
+  return { success: true }
 }
 
-/** URL 导入（§6.18；POST /audios/url-import） */
+/** URL 导入（§6.18；POST /audios/url-import，URLImportRequest 单 URL/次，列表逐条提交） */
 export async function urlImportAudios(
   urls: string[]
 ): Promise<{ successCount: number; failedCount: number }> {
-  // TODO(API 接线): POST /api/v1/audios/url-import
   let successCount = 0
   let failedCount = 0
   for (const url of urls) {
-    if (!/^https?:\/\//i.test(url)) {
+    try {
+      await apiClient.post('/audios/url-import', { url, audio_type: 'dry' })
+      successCount += 1
+    } catch {
       failedCount += 1
-      continue
     }
-    const name = url.split('/').filter(Boolean).pop() ?? 'url-audio'
-    audiosStore = [
-      {
-        id: freshId(),
-        name,
-        originalFilename: name,
-        filePath: url,
-        duration: null,
-        size: null,
-        sampleRate: null,
-        channels: null,
-        bitrate: null,
-        format: null,
-        audioType: 'dry',
-        asrText: null,
-        description: null,
-        sourceLanguage: null,
-        tags: [],
-        annotations: [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      ...audiosStore,
-    ]
-    successCount += 1
   }
-  return mockLatency({ successCount, failedCount }, 200)
+  return { successCount, failedCount }
 }
 
 /** 批量更新标注（§6.19；POST /audios/batch/annotations） */
@@ -151,11 +134,19 @@ export async function batchUpdateAnnotations(): Promise<{
   failed: number
   refreshed: number
 }> {
-  // TODO(API 接线): POST /api/v1/audios/batch/annotations
-  return mockLatency({ success: 4, failed: 1, refreshed: 3 }, 220)
+  const dto = await apiClient.post<{
+    success?: number
+    failed?: number
+    refreshed?: number
+  }>('/audios/batch/annotations', { items: [], refresh_test_cases: true })
+  return {
+    success: dto?.success ?? 0,
+    failed: dto?.failed ?? 0,
+    refreshed: dto?.refreshed ?? 0,
+  }
 }
 
-/** 批量 action（§5.6；POST /audios/batch-action） */
+/** 批量 action（§5.6；POST /audios/batch-action，BatchActionRequest { audio_ids, action, tags }） */
 export type AudioBatchAction =
   | 'delete'
   | 'export'
@@ -166,21 +157,23 @@ export type AudioBatchAction =
   | 'modify-properties'
 
 export async function batchActionAudios(
-  _action: AudioBatchAction,
-  ids: number[]
+  action: AudioBatchAction,
+  ids: number[],
+  tags: string[] = []
 ): Promise<{ action: AudioBatchAction; total: number; successCount: number }> {
-  // TODO(API 接线): POST /api/v1/audios/batch-action
-  if (_action === 'delete') {
-    audiosStore = audiosStore.filter((a) => !ids.includes(a.id))
-  }
-  return mockLatency(
-    { action: _action, total: ids.length, successCount: ids.length },
-    160
+  const dto = await apiClient.post<{ success_count?: number } | null>(
+    '/audios/batch-action',
+    { audio_ids: ids, action, tags }
   )
+  return {
+    action,
+    total: ids.length,
+    successCount: dto?.success_count ?? ids.length,
+  }
 }
 
-/** 供测试清理内存库（vitest 用例内独立初始化） */
-export function __resetAudioMock(): void {
-  audiosStore = [...MOCK_AUDIOS]
-  nextAudioId = 1000
+/** 音频流预签名 URL（§5.2 浏览器播放；GET /audios/{id}/stream → { url }，audio_bp.py:94） */
+export async function fetchAudioStreamUrl(id: number): Promise<string | null> {
+  const dto = await apiClient.get<{ url?: string | null }>(`/audios/${id}/stream`)
+  return dto?.url ?? null
 }

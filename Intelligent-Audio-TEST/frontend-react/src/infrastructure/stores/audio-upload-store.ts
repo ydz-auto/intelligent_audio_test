@@ -31,6 +31,8 @@ export interface AudioUploadTask {
   /** 预计剩余时间（秒） */
   etaSeconds: number
   createdAt: string
+  /** 真实上传任务（INT-714：由 audio-upload-api 驱动进度；进度卡不自动 advance） */
+  real?: boolean
 }
 
 type AudioUploadState = {
@@ -39,7 +41,10 @@ type AudioUploadState = {
   enqueueTask: (input: {
     name: string
     fileNames: string[]
+    real?: boolean
   }) => string
+  /** 真实上传任务进度更新（INT-714；audio-upload-api 驱动） */
+  updateTask: (id: string, patch: Partial<AudioUploadTask>) => void
   advanceProgress: (id: string) => void
   setPaused: (id: string, paused: boolean) => void
   cancelTask: (id: string) => void
@@ -80,15 +85,25 @@ export const useAudioUploadStore = create<AudioUploadState>()(
           speed: 6.4,
           etaSeconds: 42,
           createdAt: new Date().toISOString(),
+          real: input.real ?? false,
         }
         set({ tasks: [task, ...get().tasks] })
         return id
       },
 
+      updateTask: (id, patch) => {
+        set({
+          tasks: get().tasks.map((task) =>
+            task.id === id ? { ...task, ...patch } : task
+          ),
+        })
+      },
+
       advanceProgress: (id) => {
         set({
           tasks: get().tasks.map((task) => {
-            if (task.id !== id || task.paused || task.progress >= 100) return task
+            // 真实上传任务由 audio-upload-api 驱动进度，本地模拟不再推进（INT-714）
+            if (task.id !== id || task.paused || task.progress >= 100 || task.real) return task
             const next = Math.min(task.progress + 3, 100)
             const total = task.files.length
             const activeIndex = Math.min(
