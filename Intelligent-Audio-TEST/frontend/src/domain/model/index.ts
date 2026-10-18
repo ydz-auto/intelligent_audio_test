@@ -30,3 +30,4 @@ export * from './logTypes'
 export * from './stats'
 export * from './ui'
 export * from './aiChat'
+export * from './system' (INT-743: 配置运维实施——算法配置分组CRUD + 日志/路由迁移 + 系统设置六域工作区)

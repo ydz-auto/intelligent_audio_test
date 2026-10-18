@@ -344,9 +344,10 @@ onMounted(load)
   padding: 8px 16px;
   border: 1px solid var(--color-gray-300);
   border-radius: 4px;
-  background: white;
+  background: var(--card, white);
   cursor: pointer;
   font-size: 14px;
+  color: var(--foreground);
 }
 .btn-primary {
   background: var(--secondary);
@@ -367,7 +368,7 @@ onMounted(load)
   cursor: not-allowed;
 }
 .form-panel {
-  background: white;
+  background: var(--card, white);
   border: 1px solid var(--color-gray-300);
   border-radius: 8px;
   padding: 20px;
@@ -423,7 +424,7 @@ onMounted(load)
 .provider-table {
   width: 100%;
   border-collapse: collapse;
-  background: white;
+  background: var(--card, white);
   border: 1px solid var(--color-gray-300);
   border-radius: 8px;
   overflow: hidden;
@@ -453,8 +454,8 @@ onMounted(load)
   font-size: 12px;
 }
 .status-badge.enabled {
-  background: #e6f7e9;
-  color: #1a7f37;
+  background: var(--success-light);
+  color: var(--success-dark);
 }
 .status-badge.disabled {
   background: var(--color-gray-200);
@@ -471,7 +472,7 @@ onMounted(load)
   margin-bottom: 10px;
 }
 .success-msg {
-  color: #1a7f37;
+  color: var(--success-dark);
   font-size: 14px;
   margin-bottom: 10px;
 }

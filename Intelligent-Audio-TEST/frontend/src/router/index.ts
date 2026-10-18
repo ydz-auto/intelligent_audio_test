@@ -76,20 +76,29 @@ const routes: Array<RouteRecordRaw> = [
   { path: '/AlgorithmConfig', name: 'algorithmConfig', component: () => import('../views/AlgorithmConfig/AlgorithmConfigPage.vue'), meta: { permission: 'algorithm:read', layout: 'authenticated', title: '算法配置' } },
   { path: '/logs', name: 'logs', component: () => import('../views/LogView/LogView.vue'), meta: { permission: 'log:read', layout: 'authenticated', title: '日志查看' } },
   { path: '/LogView', name: 'logView', redirect: '/logs' },
-  // 系统设置 drill-in（六域；域级门槛由侧栏树过滤，路由仅需登录）
+  // 系统设置 drill-in（INT-743 六域；域级门槛由侧栏树过滤，路由仅需登录）
   {
-    path: '/system-settings/:domain/:section',
-    name: 'systemSettingsSection',
-    component: () => import('../views/SystemSettings/SystemSettingsPage.vue'),
+    path: '/system-settings',
+    name: 'systemSettings',
+    component: () => import('../views/SystemSettings/SystemSettingsLayout.vue'),
     meta: { layout: 'authenticated', title: '系统设置' },
+    children: [
+      { path: '', redirect: { path: '/system-settings/site/info' } },
+      { path: 'site/info', name: 'systemSettingsSiteInfo', component: () => import('../views/SystemSettings/site/SiteInfoSection.vue'), meta: { title: '站点信息' } },
+      { path: 'site/notice', name: 'systemSettingsSiteNotice', component: () => import('../views/SystemSettings/site/SiteNoticeSection.vue'), meta: { title: '站点公告' } },
+      { path: 'site/navigation', name: 'systemSettingsSiteNavigation', component: () => import('../views/SystemSettings/site/SiteNavigationSection.vue'), meta: { title: '导航模块' } },
+      { path: 'iam/users', name: 'systemSettingsUsers', component: () => import('../views/SystemSettings/iam/UsersSection.vue'), meta: { title: '用户管理' } },
+      { path: 'iam/roles', name: 'systemSettingsRoles', component: () => import('../views/SystemSettings/iam/RolesSection.vue'), meta: { title: '角色权限管理' } },
+      { path: 'auth/methods', name: 'systemSettingsAuthMethods', component: () => import('../views/SystemSettings/auth/AuthMethodsSection.vue'), meta: { title: '认证方式' } },
+      { path: 'auth/oauth-providers', name: 'systemSettingsOAuthProviders', component: () => import('../views/SystemSettings/auth/OAuthProvidersSection.vue'), meta: { title: 'OAuth 提供方' } },
+      { path: 'appearance/presets', name: 'systemSettingsAppearancePresets', component: () => import('../views/SystemSettings/appearance/PresetsSection.vue'), meta: { title: '主题预设' } },
+      { path: 'appearance/fine-tuning', name: 'systemSettingsAppearanceFineTuning', component: () => import('../views/SystemSettings/appearance/FineTuningSection.vue'), meta: { title: '外观微调' } },
+      { path: 'security/access-control', name: 'systemSettingsSecurityAccessControl', component: () => import('../views/SystemSettings/security/AccessControlSection.vue'), meta: { title: '访问控制' } },
+      { path: 'operations/log-maintenance', name: 'systemSettingsLogMaintenance', component: () => import('../views/SystemSettings/operations/LogMaintenanceSection.vue'), meta: { title: '日志维护' } },
+    ],
   },
-  {
-    path: '/system-settings/:domain',
-    name: 'systemSettingsDomain',
-    component: () => import('../views/SystemSettings/SystemSettingsPage.vue'),
-    meta: { layout: 'authenticated', title: '系统设置' },
-  },
-  { path: '/OAuthProviders', name: 'oauthProviders', redirect: '/system-settings/auth/oauth-providers' },
+  // OAuth 提供方收编认证设置域（旧链 redirect）
+  { path: '/OAuthProviders', name: 'oauthProvidersLegacy', redirect: '/system-settings/auth/oauth-providers' },
   // 个人中心
   { path: '/profile', name: 'profile', component: () => import('../views/Account/AccountSettings.vue'), meta: { layout: 'authenticated', title: '个人中心' } },
   { path: '/AccountSettings', name: 'accountSettings', redirect: '/profile' },

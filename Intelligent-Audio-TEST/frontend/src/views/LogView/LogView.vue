@@ -27,9 +27,14 @@
             <i class="fas fa-download btn-icon" style="color: var(--primary-color);"></i>
             <span style="color: var(--primary-color);">导出日志</span>
           </button>
-          <button class="btn btn-text delete" @click="clearLogs" style="color: var(--primary-color);">
+          <button class="btn btn-text" @click="clearLogs" style="color: var(--primary-color);">
             <i class="fas fa-trash-alt btn-icon" style="color: var(--primary-color);"></i>
             <span style="color: var(--primary-color);">清除日志</span>
+          </button>
+          <!-- INT-743：归档面板迁移至系统设置「运维设置 → 日志维护」，此处保留直达入口 -->
+          <button class="btn btn-text" @click="goArchive" style="color: var(--primary-color);">
+            <i class="fas fa-archive btn-icon" style="color: var(--primary-color);"></i>
+            <span style="color: var(--primary-color);">查看归档</span>
           </button>
         </div>
       </div>
@@ -122,9 +127,6 @@
         </div>
       </div>
     </div>
-
-    <!-- 日志归档管理面板（INT-548：对接后端 5 个归档端点） -->
-    <LogArchivePanel />
 
     <!-- 单栏布局 -->
     <div class="single-column-layout">
@@ -256,9 +258,9 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
 import LogFilterPanel from './LogFilterPanel.vue';
-import LogArchivePanel from './LogArchivePanel.vue';
 import { useLogView } from './logView';
 
 // 日期时间选择器的引用（由 LogFilterPanel 暴露的 DOM 元素同步填充）
@@ -266,6 +268,13 @@ const startDateTimeRef = ref<HTMLInputElement | null>(null);
 const endDateTimeRef = ref<HTMLInputElement | null>(null);
 const startContainerRef = ref<HTMLElement | null>(null);
 const endContainerRef = ref<HTMLElement | null>(null);
+
+const router = useRouter();
+
+/** INT-743：归档面板迁至系统设置「运维设置 → 日志维护」 */
+function goArchive() {
+  router.push('/system-settings/operations/log-maintenance');
+}
 
 // LogFilterPanel 组件实例引用
 const filterPanelRef = ref<InstanceType<typeof LogFilterPanel> | null>(null);
