@@ -25,7 +25,7 @@
 .log-algorithm {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--border-radius-sm);
   font-size: 12px;
 }
 

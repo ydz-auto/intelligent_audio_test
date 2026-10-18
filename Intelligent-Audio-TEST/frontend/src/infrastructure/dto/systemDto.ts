@@ -4,6 +4,14 @@
  */
 import type { PaginatedDto } from './common'
 
+/** 用户附加权限 override 明细条目（GET /auth/users/{id} 的 overrides 数组元素） */
+export interface PermissionOverrideDto {
+  permission_id: number
+  code: string
+  /** true=附加授予；false=基线覆盖撤销 */
+  granted: boolean
+}
+
 /** 用户列表条目（auth 服务回传；字段可缺失，adapter 兜底） */
 export interface UserItemDto {
   id: number
@@ -14,23 +22,15 @@ export interface UserItemDto {
   role_id?: number | null
   role_name?: string
   permissions?: string[]
+  /** 附加权限 override 明细（仅详情查询返回；列表不含） */
+  overrides?: PermissionOverrideDto[]
   created_at?: string
 }
 
 export type UserListDto = PaginatedDto<UserItemDto>
 
 /** 用户详情（含 role_name / 生效权限 / overrides 明细） */
-export interface UserDetailDto {
-  id: number
-  username: string
-  email?: string
-  status?: string
-  role_id?: number | null
-  role_name?: string
-  permissions?: string[]
-  overrides?: unknown[]
-  created_at?: string
-}
+export interface UserDetailDto extends UserItemDto {}
 
 /** 创建用户请求 */
 export interface UserCreateDto {
@@ -67,11 +67,16 @@ export interface RoleListDto {
 /** 角色详情 */
 export interface RoleDetailDto extends RoleItemDto {}
 
-/** 权限点条目 */
+/**
+ * 权限点条目（GET /auth/permissions）。
+ * 后端实际返回 {id, name, description}——name 即权限码（seed_rbac.py 语义，
+ * 与 React iam-adapter `code: dto.name` 对齐）；无 code/module 字段。
+ */
 export interface PermissionItemDto {
-  code: string
+  id: number
+  /** 权限码（如 task:read / role:read） */
+  name: string
   description?: string
-  module?: string
 }
 
 /** 权限列表响应 */

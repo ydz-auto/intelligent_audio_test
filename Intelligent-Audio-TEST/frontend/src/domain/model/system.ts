@@ -36,7 +36,10 @@ export interface SystemUser {
   status?: string
   roleId?: number | null
   roleName?: string
+  /** 生效权限（角色基线 ∪ overrides）——列表「生效权限数」列口径 */
   permissions?: string[]
+  /** 附加权限 overrides 明细（仅详情查询返回；granted 过滤后的权限码列表） */
+  extraPermissions?: string[]
   createdAt?: string
 }
 
@@ -55,8 +58,11 @@ export interface SystemRole {
 
 /** 权限点（GET /api/v1/auth/permissions 条目） */
 export interface PermissionItem {
+  /** 权限点 ID（撤销用户附加权限时引用） */
+  id?: number
   code: string
   description?: string
+  /** 归属模块中文名（静态目录分组键） */
   module?: string
 }
 

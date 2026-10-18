@@ -343,7 +343,7 @@ onMounted(load)
 .btn {
   padding: 8px 16px;
   border: 1px solid var(--color-gray-300);
-  border-radius: 4px;
+  border-radius: var(--border-radius-md);
   background: var(--card, white);
   cursor: pointer;
   font-size: 14px;
@@ -370,7 +370,7 @@ onMounted(load)
 .form-panel {
   background: var(--card, white);
   border: 1px solid var(--color-gray-300);
-  border-radius: 8px;
+  border-radius: var(--border-radius-lg);
   padding: 20px;
   margin-bottom: 20px;
 }
@@ -387,7 +387,7 @@ onMounted(load)
   flex: 1;
   padding: 8px 10px;
   border: 1px solid var(--color-gray-300);
-  border-radius: 4px;
+  border-radius: var(--border-radius-md);
   font-size: 14px;
   box-sizing: border-box;
 }
@@ -412,7 +412,7 @@ onMounted(load)
   width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--color-gray-300);
-  border-radius: 4px;
+  border-radius: var(--border-radius-md);
   font-size: 14px;
   box-sizing: border-box;
 }
@@ -426,7 +426,7 @@ onMounted(load)
   border-collapse: collapse;
   background: var(--card, white);
   border: 1px solid var(--color-gray-300);
-  border-radius: 8px;
+  border-radius: var(--border-radius-lg);
   overflow: hidden;
 }
 .provider-table th,
@@ -450,7 +450,7 @@ onMounted(load)
 }
 .status-badge {
   padding: 2px 10px;
-  border-radius: 10px;
+  border-radius: var(--border-radius-full);
   font-size: 12px;
 }
 .status-badge.enabled {

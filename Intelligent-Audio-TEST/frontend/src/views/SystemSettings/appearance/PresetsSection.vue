@@ -105,6 +105,11 @@ function selectPreset(presetMode: ThemeMode) {
   flex: 1;
 }
 
+/* 主题预设色卡（INT-743 P3-1 审计注）：swatch 为固定预览，必须展示对应预设的实际
+   配色，不随当前主题切换（.dark 下「浅色」预设仍应显示浅色板）。色值即 tokens 双
+   主题语义值的快照（CSS 冻结「不写硬编码颜色」例外）：浅色 = :root --background/
+   --muted/--primary/--gray-light；深色 = .dark --background/--card/--primary/
+   --primary-hover/--muted。 */
 .swatch-light {
   background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%);
 }

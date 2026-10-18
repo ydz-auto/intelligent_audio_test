@@ -4,7 +4,10 @@
  * - 域级门槛 = 域可见性权限（string 单码 / string[] 任一）
  * - 分区级门槛：undefined 继承域门槛；显式权限则按分区额外判定
  * - appearance 域无域门槛（登录即可，仅直接 URL 可达，总表 §2.5）
+ * - AUTH_MODE=off（后端未启用认证、前端无登录态）时一切全显（总表 §2.6 注 4，
+ *   与路由守卫 off 放行、旧 Vue 侧栏 off「显示全部」同语义；readEnv 仅供测试注入）
  */
+import { AuthMode, getEffectiveAuthMode } from '@/domain/enums'
 export interface SettingsSection {
   /** 相对路径（/system-settings/<path>），如 'site/info' */
   path: string
@@ -96,20 +99,44 @@ export const settingsDomains: SettingsDomain[] = [
   },
 ]
 
-/** 判定用户对某域的可见性 */
-export function canAccessDomain(domain: SettingsDomain, hasAny: (...p: string[]) => boolean): boolean {
+/** AUTH_MODE=off 时系统设置权限门槛全开（readEnv 仅供测试注入；缺省与路由守卫同源） */
+export function settingsPermissionsOpen(readEnv?: () => unknown): boolean {
+  return getEffectiveAuthMode(readEnv) === AuthMode.OFF
+}
+
+/** 域权限判定（不含 off 全显门控；纯逻辑供单测） */
+export function canAccessDomainByPermission(
+  domain: SettingsDomain,
+  hasAny: (...p: string[]) => boolean,
+): boolean {
   if (!domain.permission) return true
   if (Array.isArray(domain.permission)) return hasAny(...domain.permission)
   return hasAny(domain.permission)
 }
 
-/** 判定用户对某分区的可见性（继承域门槛；显式分区门槛叠加） */
+/** 分区权限判定（不含 off 全显门控；纯逻辑供单测） */
+export function canAccessSectionByPermission(
+  domain: SettingsDomain,
+  section: SettingsSection,
+  hasAny: (...p: string[]) => boolean,
+): boolean {
+  if (!canAccessDomainByPermission(domain, hasAny)) return false
+  if (section.permission) return hasAny(section.permission)
+  return true
+}
+
+/** 判定用户对某域的可见性（off 模式短路放行） */
+export function canAccessDomain(domain: SettingsDomain, hasAny: (...p: string[]) => boolean): boolean {
+  if (settingsPermissionsOpen()) return true
+  return canAccessDomainByPermission(domain, hasAny)
+}
+
+/** 判定用户对某分区的可见性（继承域门槛；显式分区门槛叠加；off 模式短路放行） */
 export function canAccessSection(
   domain: SettingsDomain,
   section: SettingsSection,
   hasAny: (...p: string[]) => boolean,
 ): boolean {
-  if (!canAccessDomain(domain, hasAny)) return false
-  if (section.permission) return hasAny(section.permission)
-  return true
+  if (settingsPermissionsOpen()) return true
+  return canAccessSectionByPermission(domain, section, hasAny)
 }

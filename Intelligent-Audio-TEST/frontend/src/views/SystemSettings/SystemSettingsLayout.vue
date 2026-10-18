@@ -61,6 +61,7 @@ import {
   settingsDomains,
   canAccessDomain,
   canAccessSection,
+  settingsPermissionsOpen,
   SYSTEM_SETTINGS_PERMISSIONS,
   type SettingsDomain,
 } from './settingsConfig'
@@ -69,8 +70,9 @@ const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 
-/** 任一设置域权限门槛（总表 §2.5 / React SYSTEM_SETTINGS_PERMISSIONS） */
+/** 任一设置域权限门槛（总表 §2.5 / React SYSTEM_SETTINGS_PERMISSIONS）；AUTH_MODE=off 全显短路 */
 const allowed = computed(() =>
+  settingsPermissionsOpen() ||
   authStore.hasAnyPermission(...(SYSTEM_SETTINGS_PERMISSIONS as unknown as string[]))
 )
 
@@ -108,7 +110,9 @@ function isActiveSection(section: { path: string }): boolean {
 }
 
 function goDashboard() {
-  router.push('/dashboard')
+  // 工作台 /dashboard 属基座壳 INT-735，未合入前回落首页，避免「返回工作台」落地 404
+  const workbenchReady = router.getRoutes().some(r => r.path === '/dashboard')
+  router.push(workbenchReady ? '/dashboard' : '/')
 }
 </script>
 

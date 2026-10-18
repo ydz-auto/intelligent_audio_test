@@ -13,9 +13,13 @@
 import { computed } from 'vue'
 import OAuthProviderManagement from '@/views/OAuthProviders/OAuthProviderManagement.vue'
 import { useAuthStore } from '@/store/authStore'
+import { settingsPermissionsOpen } from '../settingsConfig'
 
 const authStore = useAuthStore()
-const allowed = computed(() => authStore.hasPermission('auth:manage_provider'))
+// AUTH_MODE=off 全显短路（收编前旧 /OAuthProviders 经路由 meta off 放行可访问，收编后不缩权限）
+const allowed = computed(() =>
+  settingsPermissionsOpen() || authStore.hasPermission('auth:manage_provider')
+)
 </script>
 
 <style scoped>

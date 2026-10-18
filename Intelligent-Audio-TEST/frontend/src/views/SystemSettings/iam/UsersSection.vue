@@ -46,7 +46,7 @@
                 <th>邮箱</th>
                 <th>角色</th>
                 <th>状态</th>
-                <th>附加权限数</th>
+                <th>生效权限数</th>
                 <th>注册时间</th>
                 <th class="action-col">操作</th>
               </tr>
@@ -373,9 +373,19 @@ const groupedPermissions = computed(() => {
 
 async function openPermissions(user: SystemUser) {
   permUser.value = user
-  permSelected.value = [...(user.permissions ?? [])]
+  permSelected.value = []
   error.value = ''
   permVisible.value = true
+  // 基线用用户详情 overrides（granted 明细），而非列表行生效权限（会混入角色基线，INT-743 P2-2）
+  try {
+    const detail = await usersPort.getDetail(user.id)
+    permUser.value = detail
+    permSelected.value = [...(detail.extraPermissions ?? [])]
+  } catch (e: any) {
+    // 详情拉取失败：回退列表行基线并提示，页面仍可编辑
+    permSelected.value = [...(user.permissions ?? [])]
+    error.value = e?.detail || e?.message || '加载用户权限明细失败'
+  }
 }
 
 async function savePermissions() {
@@ -384,13 +394,28 @@ async function savePermissions() {
   error.value = ''
   notice.value = ''
   try {
-    const current = new Set(permUser.value.permissions ?? [])
+    // 差量同步（对齐 React grantPermissions）：新增逐码 POST 授予，移除按权限点 ID DELETE 撤销
+    const current = new Set(permUser.value.extraPermissions ?? [])
     const next = new Set(permSelected.value)
     const toGrant = [...next].filter(p => !current.has(p) && p !== '*')
+    const toRevoke = [...current].filter(p => !next.has(p) && p !== '*')
+    const idByCode = new Map<string, number>()
+    for (const p of permissions.value) {
+      if (p.id != null) idByCode.set(p.code, p.id)
+    }
     for (const code of toGrant) {
       await usersPort.grantPermission(permUser.value.id, code)
     }
-    notice.value = toGrant.length ? `已授予 ${toGrant.length} 项附加权限` : '未选择新增权限'
+    for (const code of toRevoke) {
+      const permissionId = idByCode.get(code)
+      if (permissionId != null) {
+        await usersPort.revokePermission(permUser.value.id, permissionId)
+      }
+    }
+    const total = toGrant.length + toRevoke.length
+    notice.value = total
+      ? `已同步 ${total} 项附加权限（授予 ${toGrant.length} / 收回 ${toRevoke.length}）`
+      : '附加权限无变化'
     permVisible.value = false
     await load()
   } catch (e: any) {
