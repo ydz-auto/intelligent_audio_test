@@ -256,3 +256,35 @@ def test_06_column_sort(drv):
     shot = os.path.join(ARTIFACTS, 'logs-sorted.png')
     drv.save_screenshot(shot)
     assert os.path.getsize(shot) > 10_000, '排序截图过小'
+
+
+def test_07_error_state_not_empty(drv):
+    """P2 返修：首载失败渲染 ErrorState（日志列表加载失败 + 重试），不得误显示空态「暂无日志」。
+
+    用 CDP 拦截 /api/v1/logs* 列表请求制造加载失败，断言错误态出现且空态文案不出现；
+    解除拦截点击重试后恢复真实数据（INT-607 错误态区分先例）。
+    """
+    _set_theme(drv, 'light')
+    _wait_text(drv, '日志查看')
+    WebDriverWait(drv, 20).until(
+        lambda d: len(d.find_elements(By.CSS_SELECTOR, 'tbody tr')) > 0)
+
+    drv.execute_cdp_cmd('Network.enable', {})
+    drv.execute_cdp_cmd('Network.setBlockedURLs', {'urls': ['*api/v1/logs*']})
+    _goto(drv, '/logs')
+    WebDriverWait(drv, 15).until(lambda d: '日志列表加载失败' in _body_text(drv))
+    txt = _body_text(drv)
+    assert '获取日志列表失败，请重试' in txt, '错误态描述缺失'
+    assert '暂无日志' not in txt, '加载失败被误渲染成空态（P2-2 复发）'
+    retry = [b for b in drv.find_elements(By.TAG_NAME, 'button') if '重试' in b.text]
+    assert retry, '重试按钮未出现'
+    shot = os.path.join(ARTIFACTS, 'error-state.png')
+    drv.save_screenshot(shot)
+    assert os.path.getsize(shot) > 10_000, '错误态截图过小'
+
+    # 解除拦截 + 点击重试 → 恢复真实数据
+    drv.execute_cdp_cmd('Network.setBlockedURLs', {'urls': []})
+    retry[0].click()
+    WebDriverWait(drv, 20).until(
+        lambda d: len(d.find_elements(By.CSS_SELECTOR, 'tbody tr')) > 0)
+    assert '日志列表加载失败' not in _body_text(drv), '重试后错误态未消失'
