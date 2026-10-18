@@ -1,0 +1,8 @@
+/* base 层聚合入口（@layer base 归一 · INT-767 CSS-0）
+ * reset.css  = 元素级重置（与 Tailwind preflight 去重合并）
+ * base.css   = 平台基础（body / 滚动条 / 字体基线）
+ * utilities  = 平台级 @utility 工具类首批
+ */
+@import './reset.css';
+@import './base.css';
+@import './utilities.css';
