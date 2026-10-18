@@ -609,13 +609,8 @@
 }
 
 .modal-container {
-<<<<<<< HEAD
-  background-color: white;
-  border-radius: var(--radius-card);
-=======
   background-color: var(--card);
-  border-radius: var(--border-radius-xl);
->>>>>>> 29f0b62a9 (INT-739: 用例域三页保留重设计——TagManagement 批量改分类补齐 + 暗色收编 + 构建修复)
+  border-radius: var(--radius-card); (INT-739: 用例域三页保留重设计——TagManagement 批量改分类补齐 + 暗色收编 + 构建修复)
   box-shadow: var(--shadow-lg);
   width: 90%;
   max-width: 400px;
