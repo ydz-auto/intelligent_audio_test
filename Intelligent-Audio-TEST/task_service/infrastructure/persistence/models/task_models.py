@@ -113,7 +113,7 @@ class TaskCase(Base):
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
     created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
     # 执行域 P0 新增：用例级被测设备路由（取代已废弃的 task.type 语义）
-    device_type = Column(String(20), nullable=True, comment='被测设备类型 (physical/http_api/websocket_api，用例级决定执行路由；历史 NULL 行已由 202610 迁移回填)')
+    device_type = Column(String(20), nullable=True, comment='被测设备类型 (physical/http_api/websocket_api，用例级决定执行路由；历史 NULL 行已由 INT-789 回填迁移补齐)')
     device_id = Column(String(50), nullable=True, comment='被测设备ID (physical=设备ID / http_api|websocket_api=api.id)')
     # 实验室扩展：用例级实验室归属（可空=通用任务，随设备选择按实验室过滤）
     lab_id = Column(Integer, nullable=True, index=True, comment='关联实验室ID (实验室扩展)')
