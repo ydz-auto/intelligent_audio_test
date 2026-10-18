@@ -17,6 +17,8 @@
  *   POST   /api/v1/algorithm/reload                 重载配置缓存
  *   POST   /api/v1/algorithm/bulk-delete            批量删除（{ algorithm_types: [...] }）
  *   GET    /api/v1/evaluation/dimensions/options    评估维度选项（关联维度 Select 数据源）
+ *   GET    /api/v1/testcases                        用例引用聚合兜底（§154：后端未返回
+ *                                                   case_count 时按用例 algorithm_type 计数）
  */
 import type {
   AlgorithmDefinition,
@@ -25,6 +27,7 @@ import type {
 import { request } from '@/infrastructure/api/client'
 import { ApiError } from '@/infrastructure/api/api-error'
 import { fetchDimensionOptions } from '@/infrastructure/api/evaluation-api'
+import { fetchTestCases } from '@/infrastructure/api/testcases-api'
 import {
   toAlgorithmDefinition,
   toAlgorithmDefinitionList,
@@ -52,7 +55,40 @@ export async function fetchAlgorithmDefinitions(): Promise<AlgorithmDefinition[]
     'GET',
     '/algorithm/definitions'
   )
-  return toAlgorithmDefinitionList(dto)
+  const list = toAlgorithmDefinitionList(dto)
+  // §3.4/§154：后端返回 case_count 时直接消费；未返回（INT-591 契约未达）时按用例引用聚合兜底，
+  // 让「关联用例」列展示真实引用数而非恒 0
+  const hasBackendCount = (dto?.items ?? []).some((item) => item.case_count != null)
+  if (!hasBackendCount) {
+    const counts = await fetchCaseCountByAlgorithmType(list.map((d) => d.type))
+    for (const def of list) {
+      const count = counts.get(def.type)
+      if (count != null) def.caseCount = count
+    }
+  }
+  return list
+}
+
+/** 用例引用聚合兜底（§154）：按算法 type 逐个经 testcases 的 algorithm_type 筛选读 total 计数 */
+async function fetchCaseCountByAlgorithmType(
+  types: string[]
+): Promise<Map<string, number>> {
+  const counts = new Map<string, number>()
+  await Promise.all(
+    [...new Set(types.filter(Boolean))].map(async (type) => {
+      try {
+        const { total } = await fetchTestCases({
+          page: 1,
+          perPage: 1,
+          algorithmType: type,
+        })
+        counts.set(type, total)
+      } catch {
+        // 单类型计数失败不影响其余；用例端不可达时该类型归 0
+      }
+    })
+  )
+  return counts
 }
 
 /** 算法详情（§6.1 编辑/复制预填） */

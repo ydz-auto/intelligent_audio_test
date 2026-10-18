@@ -40,6 +40,8 @@ export interface AlgorithmDefinitionDto {
   associated_dimensions?: Array<Record<string, unknown>>
   dimension_relations?: Array<Record<string, unknown>>
   has_draft?: boolean
+  /** 引用该算法的用例数（INT-591 §154 case_count；后端未返回时 infra api 层按用例引用聚合兜底） */
+  case_count?: number | null
   revision?: number
   created_at?: string
   updated_at?: string
@@ -274,8 +276,8 @@ export function toAlgorithmDefinition(dto: AlgorithmDefinitionDto): AlgorithmDef
     referenceParams: referenceParams.map(toReferenceParam),
     mappings: toMappings(dto.mappings as Record<string, Array<Record<string, unknown>>>),
     associatedDimensions: associatedRaw.map(toDimensionRelation),
-    // definitions 响应无引用用例计数字段（mock 阶段聚合语义补列），接线后恒 0，由前端列隐藏兜底
-    caseCount: 0,
+    // §3.4/§154：case_count 后端返回时直接消费；未返回时由 infra api 层按用例引用聚合兜底
+    caseCount: num(dto.case_count) ?? 0,
     hasDraft: dto.has_draft,
     revision: dto.revision,
     createdAt: str(dto.created_at),
