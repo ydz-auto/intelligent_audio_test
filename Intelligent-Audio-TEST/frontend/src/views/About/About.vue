@@ -251,7 +251,7 @@ onMounted(() => {
 .about-lead code {
   background: var(--muted);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 1px 5px;
   font-size: 12px;
 }

@@ -116,10 +116,13 @@ router.beforeEach((to, _from, next) => {
 })
 
 // 路由切换后重置主内容区滚动（精简版，不再遍历全 DOM）
+// INT-745 P1 修复：公共页滚动容器为 .public-layout（挂 .app-container 壳内自管滚动），一并重置
 router.afterEach(() => {
   requestAnimationFrame(() => {
     const main = document.querySelector('.main-content')
     if (main) main.scrollTop = 0
+    const pub = document.querySelector('.public-layout')
+    if (pub) pub.scrollTop = 0
   })
 })
 

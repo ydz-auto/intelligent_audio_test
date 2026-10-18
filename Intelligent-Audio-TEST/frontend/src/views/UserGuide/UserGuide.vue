@@ -123,29 +123,36 @@ function copyCode(code: string, key: string) {
   })
 }
 
+/** 公共页滚动容器（PublicLayout 自管滚动，INT-745 P1 修复：window 不滚动） */
+function getScrollContainer(): HTMLElement | null {
+  return document.querySelector('.public-layout')
+}
+
 function onScroll() {
   const sections = guideDoc.value.sections
+  const container = getScrollContainer()
   let current = ''
   for (const section of sections) {
     const el = sectionRefs.get(section.id)
     if (el && el.getBoundingClientRect().top <= 120) current = section.id
   }
   // 触底强制高亮最后一节
-  if (window.innerHeight + window.scrollY >= document.body.scrollHeight - 4) {
+  if (container && container.clientHeight + container.scrollTop >= container.scrollHeight - 4) {
     current = sections[sections.length - 1]?.id ?? ''
   }
   activeId.value = current
 }
 
 onMounted(() => {
-  // 初始高亮第一目录项 + 监听滚动
+  // 初始高亮第一目录项 + 监听滚动（容器为 .public-layout，非 window）
   activeId.value = guideDoc.value.sections[0]?.id ?? ''
-  window.addEventListener('scroll', onScroll, { passive: true })
-  window.scrollTo(0, 0)
+  const container = getScrollContainer()
+  container?.addEventListener('scroll', onScroll, { passive: true })
+  container?.scrollTo(0, 0)
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('scroll', onScroll)
+  getScrollContainer()?.removeEventListener('scroll', onScroll)
 })
 </script>
 
