@@ -270,8 +270,8 @@ function go(path: string) {
 .sidebar-group__title i {
   font-size: 12px;
 }
-.sidebar-group__dot {
-  font-size: 5px !important;
+.sidebar-group__title i.sidebar-group__dot {
+  font-size: 5px;
   color: var(--text-tertiary);
 }
 .sidebar-group__items {

@@ -72,10 +72,10 @@ const sectionTitle = computed(() => {
   font-weight: 500;
   color: var(--foreground);
 }
-.settings-placeholder-hint {
-  font-size: 13px !important;
-  font-weight: 400 !important;
-  color: var(--text-secondary) !important;
+.settings-placeholder-card p.settings-placeholder-hint {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-secondary);
   line-height: 1.6;
   max-width: 520px;
 }
