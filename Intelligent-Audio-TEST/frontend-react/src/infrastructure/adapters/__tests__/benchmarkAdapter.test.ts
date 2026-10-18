@@ -14,7 +14,7 @@ import {
 import type {
   BenchmarkMetricMappingDto,
   BenchmarkRankingDto,
-} from '@/infrastructure/mock/benchmark-mock'
+} from '@/infrastructure/dto/benchmark.dto'
 import type { RankingFilters } from '@/domain/models/benchmark'
 
 const ROW_DTO: BenchmarkRankingDto = {
@@ -124,11 +124,11 @@ describe('mapMetricMappingDto', () => {
 })
 
 describe('mapRankingSubjectDto', () => {
-  it('主体联想 DTO → string 名称（subject_name 单一字段直转，application 层零 snake_case）', () => {
-    expect(mapRankingSubjectDto({ subject_name: '远场语音评测模型-旗舰版' })).toBe(
+  it('主体联想 DTO（string）直透为名称（GET /ranking/subjects 实测返回 string[]）', () => {
+    expect(mapRankingSubjectDto('远场语音评测模型-旗舰版')).toBe(
       '远场语音评测模型-旗舰版'
     )
-    expect(mapRankingSubjectDto({ subject_name: 'DeepL API' })).toBe('DeepL API')
+    expect(mapRankingSubjectDto('DeepL API')).toBe('DeepL API')
   })
 })
 

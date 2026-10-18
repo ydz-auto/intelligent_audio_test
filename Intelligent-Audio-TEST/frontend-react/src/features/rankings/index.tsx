@@ -122,12 +122,7 @@ export function RankingsPage() {
           ) : ranking.isError ? (
             <ErrorState
               message={ranking.errorMessage ?? '查询排行失败，请稍后重试'}
-              onRetry={() =>
-                void navigate({
-                  to: '/rankings',
-                  search: (prev) => ({ ...prev }),
-                })
-              }
+              onRetry={ranking.refetch}
             />
           ) : ranking.groups.length === 0 ? (
             <EmptyState

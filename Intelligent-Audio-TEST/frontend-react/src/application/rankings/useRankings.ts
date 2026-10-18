@@ -2,7 +2,7 @@
  * 排行榜主查询 hook（application 层，对位 newAPI use-rankings.ts）。
  * queryKey=['benchmarks','ranking',filters]；staleTime 5min；
  * placeholderData: keepPreviousData（切筛选 non-blocking 保留旧数据）。
- * mock 阶段：api 桩全量返回 → adapter 映射 → 前端筛选 → 分组。
+ * INT-730 接线：真实端点经 client.ts，失败抛 ApiError → 错误态（旧 Vue 同款「排行加载失败 + 重试」）。
  */
 import { useQuery } from '@tanstack/react-query'
 
@@ -26,6 +26,8 @@ export interface RankingQueryResult {
   isLoading: boolean
   isError: boolean
   errorMessage: string | null
+  /** 手动重试（错误态「重试」按钮，对齐旧 Vue store.load()） */
+  refetch: () => void
 }
 
 export function useRankings(
@@ -35,17 +37,14 @@ export function useRankings(
   const query = useQuery({
     queryKey: ['benchmarks', 'ranking', filters],
     queryFn: async () => {
-      const envelope = await fetchBenchmarkRanking({
+      const data = await fetchBenchmarkRanking({
         suite: filters.suite || undefined,
         category: filters.category || undefined,
         metricCode: filters.metricCode || undefined,
         source: filters.source || undefined,
         subjectName: filters.subjectName || undefined,
       })
-      if (!envelope.success || !envelope.data) {
-        throw new Error(envelope.message || '查询排行失败，请稍后重试')
-      }
-      return envelope.data.items.map(mapRankingRowDto)
+      return (data?.items ?? []).map(mapRankingRowDto)
     },
     staleTime: 5 * 60_000,
     placeholderData: (previous) => previous,
@@ -65,5 +64,6 @@ export function useRankings(
     isLoading: query.isLoading && !query.data,
     isError: query.isError,
     errorMessage: query.error instanceof Error ? query.error.message : null,
+    refetch: () => void query.refetch(),
   }
 }

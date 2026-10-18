@@ -12,8 +12,7 @@ import type {
 import type {
   BenchmarkMetricMappingDto,
   BenchmarkRankingDto,
-  BenchmarkSubjectDto,
-} from '@/infrastructure/mock/benchmark-mock'
+} from '@/infrastructure/dto/benchmark.dto'
 
 /** 排行行 DTO → Domain（全字段映射；baselineId 仅排障用，组件不显示） */
 export function mapRankingRowDto(dto: BenchmarkRankingDto): RankingRow {
@@ -60,9 +59,12 @@ export function mapMetricMappingDto(dto: BenchmarkMetricMappingDto): MetricMappi
   }
 }
 
-/** 主体联想 DTO → Domain（subject_name 单一字段 → string 名称清单；搜索联想数据源） */
-export function mapRankingSubjectDto(dto: BenchmarkSubjectDto): string {
-  return dto.subject_name
+/**
+ * 主体联想 DTO → Domain（GET /ranking/subjects 实测返回 string[]，非 {subject_name} 对象；
+ * 直透返回名称字符串，作为主体搜索联想数据源）
+ */
+export function mapRankingSubjectDto(subjectName: string): string {
+  return subjectName
 }
 
 /**
