@@ -40,6 +40,68 @@ export type AudioMetadataDialogProps = {
 
 const ANNOTATION_FORMAT_OPTIONS = ['text', 'json', 'rttm', 'stm', 'txt'] as const
 
+/** 标注内容 → 后端 annotations 数组（V9.7.10 标注协议：{format, code, data, source_language, target_language}） */
+function parseAnnotations(
+  format: string,
+  content: string
+): Array<Record<string, unknown>> {
+  const trimmed = content.trim()
+  if (!trimmed) return []
+  if (format === 'json') {
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (Array.isArray(parsed)) {
+        return [
+          {
+            format: 'json',
+            code: '',
+            data: { segments: parsed },
+            source_language: '',
+            target_language: '',
+          },
+        ]
+      }
+      if (parsed && typeof parsed === 'object') {
+        // 兼容平铺 {segments:[...]} / {txt:[...]} 等形态
+        return [
+          {
+            format: 'json',
+            code: '',
+            data: parsed,
+            source_language: '',
+            target_language: '',
+          },
+        ]
+      }
+    } catch {
+      return []
+    }
+    return []
+  }
+  // text/rttm/stm/txt → 文本内容落 data.text（V9.7.10 parseAnnotationFormat 口径）
+  return [
+    {
+      format,
+      code: '',
+      data: { text: trimmed },
+      source_language: '',
+      target_language: '',
+    },
+  ]
+}
+
+/** 已有标注 → 编辑器文本（json 序列化，其余取 data.text） */
+function annotationToEditorText(annotations: Array<Record<string, unknown>>): string {
+  if (annotations.length === 0) return ''
+  const first = annotations[0]
+  const data = first?.data as Record<string, unknown> | undefined
+  if (first?.format === 'json') {
+    return JSON.stringify(data?.segments ?? data ?? first, null, 2)
+  }
+  if (typeof data?.text === 'string') return data.text
+  return JSON.stringify(first, null, 2)
+}
+
 export function AudioMetadataDialog(props: AudioMetadataDialogProps) {
   const { saveMetadata } = useAudioMutations()
   const [name, setName] = useState('')
@@ -60,8 +122,13 @@ export function AudioMetadataDialog(props: AudioMetadataDialogProps) {
     setAsrText(props.audio.asrText ?? '')
     setDescription(props.audio.description ?? '')
     setTags(props.audio.tags.join(', '))
-    setAnnotationFormat('text')
-    setAnnotationContent('')
+    const existing = props.audio.annotations ?? []
+    setAnnotationFormat(
+      existing[0]?.format && ANNOTATION_FORMAT_OPTIONS.includes(existing[0].format as never)
+        ? String(existing[0].format)
+        : 'text'
+    )
+    setAnnotationContent(annotationToEditorText(existing))
   }, [props.audio])
 
   if (!props.audio) return null
@@ -82,6 +149,8 @@ export function AudioMetadataDialog(props: AudioMetadataDialogProps) {
             .split(',')
             .map((t) => t.trim())
             .filter(Boolean),
+          // §6.13：标注内容随保存提交（此前仅本地编辑未落库）
+          annotations: parseAnnotations(annotationFormat, annotationContent),
         },
       })
       toast.success('元数据保存成功')

@@ -111,3 +111,10 @@ export const CONVERT_BITRATE_OPTIONS = [
 
 /** 上传音频类型（§6.16 radio） */
 export const UPLOAD_AUDIO_TYPE_OPTIONS = AUDIO_TYPE_OPTIONS
+
+/** 用例分组方式（§6.16/§6.17 radio：根目录/文件夹名/自定义；V9.7.10 groupNameType 对位） */
+export const CASE_GROUP_OPTIONS = [
+  { value: 'root', label: '根目录' },
+  { value: 'folder', label: '文件夹名' },
+  { value: 'custom', label: '自定义' },
+] as const

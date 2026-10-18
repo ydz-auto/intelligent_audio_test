@@ -3,7 +3,9 @@
  * 批量操作类型=移动/复制/删除/重命名（删除已由浮条 batch-action delete 承载）；
  * 移动/复制需选「目标位置：选择目标文件夹」；重命名=统一规则（前缀+序号/正则替换预览）；
  * 批量修改属性=元数据/音频类型/SPL值等（音频导入功能设计文档.md:482-489）。
- * 主钮执行后 toast「批量操作完成：成功 {s} 失败 {f}」。
+ * 注意：后端 batch-action 白名单当前仅 delete/export/tags（audio_command_handler
+ * handle_batch_action），move/copy/rename/modify-properties 返回「不支持的操作」——
+ * 本卡标记 **待 FEAT**（后端扩展），UI 保留但禁用主钮并提示缺口。
  */
 import { FolderTree } from 'lucide-react'
 import { useState } from 'react'
@@ -27,6 +29,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Info } from 'lucide-react'
 import {
   FOLDER_TARGET_OPTIONS,
   MODIFY_PROPERTY_OPTIONS,
@@ -44,6 +48,14 @@ export type AudioBatchOperationDialogProps = {
 
 const BULK_KINDS = ['move', 'copy', 'rename', 'modify-properties'] as const
 type BulkKind = (typeof BULK_KINDS)[number]
+
+/** 后端 batch-action 暂不支持的操作（待 FEAT；audio_command_handler 白名单仅 delete/export/tags） */
+const UNSAFE_BACKEND_KINDS: ReadonlySet<BulkKind> = new Set([
+  'move',
+  'copy',
+  'rename',
+  'modify-properties',
+])
 
 const TITLES: Record<BulkKind, string> = {
   move: '批量移动音频',
@@ -109,6 +121,17 @@ export function AudioBatchOperationDialog(props: AudioBatchOperationDialogProps)
         </DialogHeader>
 
         <div className='space-y-4'>
+          {bulkKind && UNSAFE_BACKEND_KINDS.has(bulkKind) && (
+            <Alert className='py-2'>
+              <Info aria-hidden='true' className='size-4' />
+              <AlertTitle className='text-sm font-medium'>后端待支持</AlertTitle>
+              <AlertDescription>
+                批量{bulkKind === 'move' ? '移动' : bulkKind === 'copy' ? '复制' : bulkKind === 'rename' ? '重命名' : '修改属性'}
+                的后端接口尚未实现（batch-action 白名单仅 delete/export/tags），已开【FEAT】卡补齐，合入前暂不可用。
+              </AlertDescription>
+            </Alert>
+          )}
+
           {showFolderTarget && (
             <div className='space-y-2'>
               <Label htmlFor='batch-folder-target'>目标位置：选择目标文件夹</Label>
@@ -202,7 +225,11 @@ export function AudioBatchOperationDialog(props: AudioBatchOperationDialogProps)
           <Button variant='outline' size='sm' onClick={() => props.onOpenChange(false)}>
             取消
           </Button>
-          <Button size='sm' onClick={handleConfirm} disabled={pending}>
+          <Button
+            size='sm'
+            disabled={pending || (bulkKind != null && UNSAFE_BACKEND_KINDS.has(bulkKind))}
+            onClick={handleConfirm}
+          >
             {pending ? '执行中...' : '确认执行'}
           </Button>
         </DialogFooter>

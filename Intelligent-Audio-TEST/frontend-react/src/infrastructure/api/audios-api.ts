@@ -128,21 +128,42 @@ export async function urlImportAudios(
   return { successCount, failedCount }
 }
 
-/** 批量更新标注（§6.19；POST /audios/batch/annotations） */
-export async function batchUpdateAnnotations(): Promise<{
-  success: number
-  failed: number
-  refreshed: number
-}> {
+/** 批量更新标注请求条目（camelCase 域契约；snake_case 化在本层完成） */
+export interface BatchAnnotationItem {
+  audioId: number
+  annotations: unknown[]
+}
+
+/**
+ * 批量更新标注（§6.19；POST /audios/batch/annotations；body 对照 BatchUpdateAnnotationsRequest，
+ * 响应 data = { updated_count, failed_count, refreshed_test_case_ids } 归一为页面 toast 计数）。
+ * 载荷（items/algorithmType/refreshTestCases）由批量标注弹窗解析匹配后传入；
+ * 注：INT-645 同形改造已在收口分支，本卡保持 apiClient 风格兼容（INT-725 合入后统一）。
+ */
+export async function batchUpdateAnnotations(
+  payload?: {
+    items?: BatchAnnotationItem[]
+    algorithmType?: string
+    refreshTestCases?: boolean
+  }
+): Promise<{ success: number; failed: number; refreshed: number }> {
+  const body = {
+    items: (payload?.items ?? []).map((item) => ({
+      audio_id: item.audioId,
+      annotations: item.annotations ?? [],
+    })),
+    algorithm_type: payload?.algorithmType,
+    refresh_test_cases: payload?.refreshTestCases,
+  }
   const dto = await apiClient.post<{
-    success?: number
-    failed?: number
-    refreshed?: number
-  }>('/audios/batch/annotations', { items: [], refresh_test_cases: true })
+    updated_count?: number
+    failed_count?: number
+    refreshed_test_case_ids?: number[]
+  } | null>('/audios/batch/annotations', body)
   return {
-    success: dto?.success ?? 0,
-    failed: dto?.failed ?? 0,
-    refreshed: dto?.refreshed ?? 0,
+    success: dto?.updated_count ?? 0,
+    failed: dto?.failed_count ?? 0,
+    refreshed: dto?.refreshed_test_case_ids?.length ?? 0,
   }
 }
 

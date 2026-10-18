@@ -76,10 +76,13 @@ export function useAudioMutations() {
     mutationFn: ({
       action,
       ids,
+      tags,
     }: {
       action: AudioBatchAction
       ids: number[]
-    }) => batchActionAudios(action, ids),
+      /** 批量设置标签（batch-action tags）时传入，替换选中音频原有标签 */
+      tags?: string[]
+    }) => batchActionAudios(action, ids, tags),
     onSuccess: invalidate,
   })
 
@@ -89,7 +92,11 @@ export function useAudioMutations() {
   })
 
   const batchAnnotations = useMutation({
-    mutationFn: () => batchUpdateAnnotations(),
+    mutationFn: (payload?: {
+      items?: Array<{ audioId: number; annotations: unknown[] }>
+      algorithmType?: string
+      refreshTestCases?: boolean
+    }) => batchUpdateAnnotations(payload),
     onSuccess: invalidate,
   })
 

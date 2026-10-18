@@ -23,8 +23,10 @@ import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { DimensionPicker } from '@/features/testcases/modals/round-config/dimension-picker'
 import { fetchPlaybackDevices } from '@/infrastructure/api/audio-upload-api'
-import { UPLOAD_AUDIO_TYPE_OPTIONS } from '@/features/audio-import/constants'
-import { MOCK_CASE_GROUP_OPTIONS } from '@/infrastructure/mock/audio-mock'
+import {
+  CASE_GROUP_OPTIONS,
+  UPLOAD_AUDIO_TYPE_OPTIONS,
+} from '@/features/audio-import/constants'
 
 export type UploadOptionsProps = {
   audioType: string
@@ -45,6 +47,9 @@ export type UploadOptionsProps = {
   onCustomGroupNameChange: (value: string) => void
   inheritTags: boolean
   onInheritTagsChange: (value: boolean) => void
+  /** 音频标签（V9.7.10 UploadOptions tags 输入对位；生成测试用例时显示） */
+  tags: string
+  onTagsChange: (value: string) => void
 }
 
 function OptionRadio({
@@ -142,6 +147,20 @@ export function UploadOptions(props: UploadOptionsProps) {
 
       {props.generateTestCase && (
         <>
+          {/* 音频标签（V9.7.10 UploadOptions tags 输入对位；逗号分隔，随 merge 载荷 tags 落库） */}
+          <div className='space-y-2'>
+            <Label htmlFor='upload-tags'>标签</Label>
+            <Input
+              id='upload-tags'
+              value={props.tags}
+              onChange={(e) => props.onTagsChange(e.target.value)}
+              placeholder='逗号分隔，如 客厅, 中文'
+            />
+            <p className='text-muted-foreground text-xs'>
+              上传完成后作为音频标签，留空自动生成
+            </p>
+          </div>
+
           {/* 评估维度单组（INT-714 口径修订：不再按 E2E/API 分型平铺两组；用例类型由后端默认落库） */}
           <div className='space-y-2'>
             <Label>评估维度</Label>
@@ -195,7 +214,7 @@ export function UploadOptions(props: UploadOptionsProps) {
             <Label>用例分组</Label>
             <OptionRadio
               value={props.caseGroup}
-              options={MOCK_CASE_GROUP_OPTIONS}
+              options={CASE_GROUP_OPTIONS}
               onChange={props.onCaseGroupChange}
             />
             {props.caseGroup === 'custom' && (

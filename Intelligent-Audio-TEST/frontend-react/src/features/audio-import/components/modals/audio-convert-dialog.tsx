@@ -159,6 +159,10 @@ export function AudioConvertDialog(props: AudioConvertDialogProps) {
         <p className='text-muted-foreground text-xs'>
           批量转换：在列表中勾选多个音频后可从批量操作进入本弹窗，逐文件执行转换。
         </p>
+        <p className='text-muted-foreground text-xs'>
+          注：采样率 / 声道数 / 位深度 / 比特率当前为展示项，后端 ConvertFormatRequest 仅接收
+          format（待 FEAT 扩展后生效）。
+        </p>
 
         <DialogFooter>
           <Button variant='outline' size='sm' onClick={() => props.onOpenChange(false)}>

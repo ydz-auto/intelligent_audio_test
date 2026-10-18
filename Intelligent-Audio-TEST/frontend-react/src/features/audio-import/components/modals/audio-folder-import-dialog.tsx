@@ -1,8 +1,10 @@
 /**
  * 批量从文件夹导入弹窗（§6.17；Dialog sm:max-w-2xl）。
- * 拖放区（选择包含音频文件的文件夹 + 递归子文件夹导入 + 按文件类型筛选）
- * + 统计四枚 + 文件夹分组设置（逐文件夹自定义分组名）+ 复用 UploadOptions
- * + 标注代码 select。主钮「开始导入」（groupAudioFilesByLeafFolder 按最子级分组）。
+ * 拖放/选择文件夹（webkitdirectory + 递归子文件夹 + 按文件类型筛选）+ 真实统计四枚
+ * + 文件夹分组设置（逐文件夹自定义分组名）+ 标注代码 select + 复用 UploadOptions
+ * + 主钮「开始导入」→ 走真实上传（startRealAudioUpload，与上传弹窗同链路）。
+ * V9.7.10 FolderImportModal 对位；JSON 用例分组策略（testCaseStrategy）标注「部分对齐」
+ * ——本卡先按最子级文件夹整批上传，JSON 驱动的多轮用例分组留后续（见交付评论）。
  */
 import { FolderInput, FolderTree } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
@@ -28,7 +30,8 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { UploadOptions } from '@/features/audio-import/components/modals/upload-options'
-import { useAudioUploadStore } from '@/infrastructure/stores/audio-upload-store'
+import { startRealAudioUpload } from '@/application/audio/useAudioUploadProcess'
+import { formatFileSize } from '@/features/audio-import/lib/format'
 
 export type AudioFolderImportDialogProps = {
   open: boolean
@@ -44,12 +47,23 @@ const FORMAT_FILTER_OPTIONS = [
   { value: 'M4A', label: 'M4A' },
 ] as const
 
-const MOCK_FOLDERS = ['test_data/dry/中文', 'test_data/dry/外语', 'test_data/noise/环境']
+/** 支持的音频扩展名（§6.17 supportedFormats 对位；目录选择后按此过滤） */
+const AUDIO_EXTS = ['.wav', '.mp3', '.m4a', '.flac', '.aac', '.ogg']
+
+/** 取文件相对路径的首个目录（webkitRelativePath 首段；无路径时按文件名去扩展名回退） */
+function folderNameOf(file: File): string {
+  const rel = file.webkitRelativePath || ''
+  if (rel) {
+    const first = rel.split('/')[0]
+    if (first && first !== rel) return first
+  }
+  return file.name.replace(/\.[^.]+$/, '')
+}
 
 export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
-  const enqueueTask = useAudioUploadStore((s) => s.enqueueTask)
   const [formatFilter, setFormatFilter] = useState('all')
   const [recursive, setRecursive] = useState(true)
+  const [files, setFiles] = useState<File[]>([])
   const [groupNames, setGroupNames] = useState<Record<string, string>>({})
   const [audioType, setAudioType] = useState('dry')
   const [generateTestCase, setGenerateTestCase] = useState(false)
@@ -59,27 +73,107 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
   const [defaultSpl, setDefaultSpl] = useState(65)
   const [caseGroup, setCaseGroup] = useState('folder')
   const [customGroupName, setCustomGroupName] = useState('')
+  const [tags, setTags] = useState('')
   const [inheritTags, setInheritTags] = useState(true)
+  const [annotationCode, setAnnotationCode] = useState('')
+  const [importing, setImporting] = useState(false)
   const dirRef = useRef<HTMLInputElement | null>(null)
 
-  const stats = useMemo(
-    () => ({
-      audioCount: 28,
-      totalSize: 420_000_000,
-      folderCount: recursive ? MOCK_FOLDERS.length + 1 : MOCK_FOLDERS.length,
-      formats: formatFilter === 'all' ? 'WAV / MP3 / FLAC' : formatFilter,
-    }),
-    [formatFilter, recursive]
-  )
+  const audioFiles = useMemo(() => {
+    const ext = formatFilter === 'all' ? null : `.${formatFilter.toLowerCase()}`
+    return files.filter(
+      (f) =>
+        AUDIO_EXTS.some((e) => f.name.toLowerCase().endsWith(e)) &&
+        (ext ? f.name.toLowerCase().endsWith(ext) : true)
+    )
+  }, [files, formatFilter])
 
-  const handleStartImport = () => {
-    enqueueTask({ name: `批量导入 ${stats.audioCount} 个音频文件`, fileNames: ['目录批量导入任务'] })
-    toast.success(`已开始批量导入 ${stats.audioCount} 个音频文件`)
-    props.onOpenChange(false)
+  const folderNames = useMemo(() => {
+    const names = Array.from(new Set(files.map(folderNameOf)))
+    return recursive || files.length === 0 ? names : [folderNameOf(files[0])]
+  }, [files, recursive])
+
+  const stats = useMemo(() => {
+    const totalSize = audioFiles.reduce((sum, f) => sum + f.size, 0)
+    const formats = Array.from(
+      new Set(audioFiles.map((f) => f.name.split('.').pop()?.toUpperCase() ?? ''))
+    ).filter(Boolean)
+    return {
+      audioCount: audioFiles.length,
+      totalSize,
+      folderCount: folderNames.length,
+      formats: formats.length > 0 ? formats.join(' / ') : '—',
+    }
+  }, [audioFiles, folderNames])
+
+  const handleDirChange = (incoming: FileList | null) => {
+    if (!incoming) return
+    setFiles(Array.from(incoming))
+    // 为每个叶子文件夹预填分组名（V9.7.10 folderGroupNames 默认 folder→folder）
+    const names = Array.from(
+      new Set(Array.from(incoming).map(folderNameOf))
+    )
+    setGroupNames((prev) => {
+      const next = { ...prev }
+      for (const name of names) if (!(name in next)) next[name] = name
+      return next
+    })
+  }
+
+  const handleStartImport = async () => {
+    if (audioFiles.length === 0) {
+      toast.info('未选择任何音频文件，请先选择文件夹')
+      return
+    }
+    setImporting(true)
+    try {
+      const result = await startRealAudioUpload(audioFiles, {
+        createTestCase: generateTestCase,
+        algorithmType: algorithmType || null,
+        algorithmParams: [],
+        dimensions: dimensionIds,
+        playbackDeviceId: playbackDevice ? Number(playbackDevice) : null,
+        spl: defaultSpl,
+        noiseAudioId: null,
+        noiseSpl: 60,
+        inheritTags,
+        groupName:
+          caseGroup === 'custom' && customGroupName.trim()
+            ? customGroupName.trim()
+            : undefined,
+        tags: tags
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean),
+        audioType,
+      })
+      if (result.testCaseCount > 0) {
+        toast.success(
+          `导入完成：成功 ${result.successCount} 个，生成 ${result.testCaseCount} 个测试用例`
+        )
+      } else if (result.failedCount === 0) {
+        toast.success(`导入完成：成功 ${result.successCount} 个音频文件`)
+      } else {
+        toast.error(`导入完成：成功 ${result.successCount} 个，失败 ${result.failedCount} 个`)
+      }
+      result.failed.forEach((f) => toast.error(`${f.name}：${f.error}`))
+      setFiles([])
+      props.onOpenChange(false)
+    } catch (err) {
+      toast.error(`导入失败：${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setImporting(false)
+    }
   }
 
   return (
-    <Dialog open={props.open} onOpenChange={props.onOpenChange}>
+    <Dialog
+      open={props.open}
+      onOpenChange={(open) => {
+        props.onOpenChange(open)
+        if (!open) setFiles([])
+      }}
+    >
       <DialogContent className='sm:max-w-2xl'>
         <DialogHeader>
           <DialogTitle>批量从文件夹导入</DialogTitle>
@@ -100,15 +194,22 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
               >
                 选择文件夹
               </Button>
-              <span className='text-muted-foreground text-xs'>webkitdirectory 演示</span>
+              {files.length > 0 && (
+                <span className='text-muted-foreground text-xs'>
+                  已选 {files.length} 个文件
+                </span>
+              )}
             </div>
             <input
               ref={dirRef}
               type='file'
               multiple
-              // 真实浏览器文件夹选择（webkitdirectory）；mock 阶段保留入口
               {...({ webkitdirectory: '', directory: '' } as Record<string, string>)}
               className='hidden'
+              onChange={(e) => {
+                handleDirChange(e.target.files)
+                e.target.value = ''
+              }}
             />
             <label className='flex items-center gap-2 text-xs'>
               <Switch checked={recursive} onCheckedChange={setRecursive} />
@@ -116,21 +217,23 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
             </label>
           </div>
 
-          {/* 统计四枚 */}
-          <div className='flex flex-wrap gap-2'>
-            <span className='bg-muted/40 inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs'>
-              音频文件数量 <span className='font-mono tabular-nums'>{stats.audioCount}</span>
-            </span>
-            <span className='bg-muted/40 inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs'>
-              总大小 <span className='font-mono tabular-nums'>400.4 MB</span>
-            </span>
-            <span className='bg-muted/40 inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs'>
-              文件夹数量 <span className='font-mono tabular-nums'>{stats.folderCount}</span>
-            </span>
-            <span className='bg-muted/40 inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs'>
-              支持的文件格式 <span className='font-mono tabular-nums'>{stats.formats}</span>
-            </span>
-          </div>
+          {/* 统计四枚（真实数据） */}
+          {audioFiles.length > 0 && (
+            <div className='flex flex-wrap gap-2'>
+              <span className='bg-muted/40 inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs'>
+                音频文件数量 <span className='font-mono tabular-nums'>{stats.audioCount}</span>
+              </span>
+              <span className='bg-muted/40 inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs'>
+                总大小 <span className='font-mono tabular-nums'>{formatFileSize(stats.totalSize)}</span>
+              </span>
+              <span className='bg-muted/40 inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs'>
+                文件夹数量 <span className='font-mono tabular-nums'>{stats.folderCount}</span>
+              </span>
+              <span className='bg-muted/40 inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs'>
+                支持的文件格式 <span className='font-mono tabular-nums'>{stats.formats}</span>
+              </span>
+            </div>
+          )}
 
           <div className='space-y-2'>
             <Label htmlFor='folder-import-format'>按文件类型筛选</Label>
@@ -151,42 +254,49 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
             </Select>
           </div>
 
-          {/* 文件夹分组设置 */}
-          <div className='space-y-2'>
-            <div className='text-muted-foreground flex items-center gap-1.5 text-sm font-medium'>
-              <FolderTree aria-hidden='true' className='size-3.5' />
-              文件夹分组设置
-            </div>
+          {/* 文件夹分组设置（V9.7.10：custom 分组时逐文件夹自定义分组名） */}
+          {generateTestCase && caseGroup === 'custom' && folderNames.length > 0 && (
             <div className='space-y-2'>
-              {MOCK_FOLDERS.map((folder) => (
-                <div key={folder} className='flex items-center gap-2'>
-                  <span className='text-muted-foreground w-40 truncate font-mono text-xs'>
-                    {folder}
-                  </span>
-                  <Input
-                    aria-label={`为文件夹 ${folder} 设置自定义分组名`}
-                    value={groupNames[folder] ?? ''}
-                    onChange={(e) =>
-                      setGroupNames((prev) => ({ ...prev, [folder]: e.target.value }))
-                    }
-                    placeholder={`为文件夹「${folder.split('/').pop()}」设置自定义分组名`}
-                    className='h-8 flex-1 text-xs'
-                  />
-                </div>
-              ))}
+              <div className='text-muted-foreground flex items-center gap-1.5 text-sm font-medium'>
+                <FolderTree aria-hidden='true' className='size-3.5' />
+                文件夹分组设置
+              </div>
+              <div className='space-y-2'>
+                {folderNames.map((folder) => (
+                  <div key={folder} className='flex items-center gap-2'>
+                    <span className='text-muted-foreground w-40 truncate font-mono text-xs'>
+                      {folder}
+                    </span>
+                    <Input
+                      aria-label={`为文件夹 ${folder} 设置自定义分组名`}
+                      value={groupNames[folder] ?? ''}
+                      onChange={(e) =>
+                        setGroupNames((prev) => ({ ...prev, [folder]: e.target.value }))
+                      }
+                      placeholder={`为文件夹「${folder}」设置自定义分组名`}
+                      className='h-8 flex-1 text-xs'
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
+          {/* 标注代码（V9.7.10 对位：留空则使用 JSON 内 code/name 字段；真实解析留给批量标注弹窗） */}
           <div className='space-y-2'>
             <Label htmlFor='folder-import-annotation'>标注代码</Label>
-            <Select defaultValue=''>
+            <Select
+              value={annotationCode}
+              onValueChange={(value) => setAnnotationCode(value ?? '')}
+            >
               <SelectTrigger id='folder-import-annotation' size='sm' className='w-full'>
                 <SelectValue placeholder='留空则使用 JSON 内 code/name 字段' />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value=''>留空</SelectItem>
                 <SelectItem value='asr'>ASR 标注</SelectItem>
-                <SelectItem value='wake'>唤醒词标注</SelectItem>
+                <SelectItem value='translation'>翻译标注</SelectItem>
+                <SelectItem value='diarization'>说话人分离标注</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -211,15 +321,22 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
             onCustomGroupNameChange={setCustomGroupName}
             inheritTags={inheritTags}
             onInheritTagsChange={setInheritTags}
+            tags={tags}
+            onTagsChange={setTags}
           />
         </div>
 
         <DialogFooter>
-          <Button variant='outline' size='sm' onClick={() => props.onOpenChange(false)}>
+          <Button
+            variant='outline'
+            size='sm'
+            disabled={importing}
+            onClick={() => props.onOpenChange(false)}
+          >
             取消
           </Button>
-          <Button size='sm' onClick={handleStartImport}>
-            开始导入
+          <Button size='sm' onClick={handleStartImport} disabled={importing}>
+            {importing ? '导入中...' : '开始导入'}
           </Button>
         </DialogFooter>
       </DialogContent>

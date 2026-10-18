@@ -66,6 +66,7 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
   const [defaultSpl, setDefaultSpl] = useState(65)
   const [caseGroup, setCaseGroup] = useState('folder')
   const [customGroupName, setCustomGroupName] = useState('')
+  const [tags, setTags] = useState('')
   const [inheritTags, setInheritTags] = useState(true)
   const [folderConfig, setFolderConfig] = useState('select')
   const [naming, setNaming] = useState('keep')
@@ -118,7 +119,10 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
           caseGroup === 'custom' && customGroupName.trim()
             ? customGroupName.trim()
             : undefined,
-        tags: [],
+        tags: tags
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean),
         audioType,
       })
       if (result.testCaseCount > 0) {
@@ -313,6 +317,8 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
             onCustomGroupNameChange={setCustomGroupName}
             inheritTags={inheritTags}
             onInheritTagsChange={setInheritTags}
+            tags={tags}
+            onTagsChange={setTags}
           />
         </div>
 
