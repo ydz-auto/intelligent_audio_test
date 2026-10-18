@@ -2,7 +2,7 @@
   <div class="test-case-manager">
     <div class="page-header">
       <div class="header-left">
-        <h2 class="page-title" style="color: var(--primary-color);">
+        <h2 class="page-title">
           <i class="fas fa-tasks"></i>
           测试用例管理
         </h2>
@@ -102,5 +102,9 @@ const onFavoriteFilterChange = (value: boolean) => {
 <style scoped>
 .test-case-manager{
     padding: 24px;
+}
+/* 页面标题品牌色（原内联 style 迁入，INT-739 CSS 冻结） */
+.test-case-manager .page-title {
+    color: var(--primary-color, var(--color-indigo-500));
 }
 </style>

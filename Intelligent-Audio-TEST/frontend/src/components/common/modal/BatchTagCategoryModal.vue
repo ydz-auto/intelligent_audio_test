@@ -1,7 +1,6 @@
 <template>
   <div class="batch-tag-category-modal">
     <div class="modal-header">
-      <h3>{{ title }}</h3>
       <p class="tag-count">将为 {{ tagCount }} 个标签修改所属分类</p>
     </div>
 
@@ -66,12 +65,7 @@ function handleCancel() {
   padding: 20px;
 }
 
-.modal-header h3 {
-  margin: 0 0 8px 0;
-  font-size: 18px;
-  color: var(--foreground);
-}
-
+/* 标题由 BasicModal 注入（defaultConfig.title），本体内仅保留说明行 */
 .tag-count {
   margin: 0;
   font-size: 13px;
@@ -101,7 +95,7 @@ function handleCancel() {
   width: 100%;
   padding: 8px 12px;
   border: 1px solid var(--color-gray-300);
-  border-radius: 4px;
+  border-radius: var(--border-radius-md);
   font-size: 14px;
   background: var(--background);
   color: var(--foreground);
@@ -124,7 +118,7 @@ function handleCancel() {
 
 .btn {
   padding: 8px 20px;
-  border-radius: 4px;
+  border-radius: var(--border-radius-md);
   font-size: 14px;
   cursor: pointer;
   border: none;

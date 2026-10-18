@@ -31,6 +31,7 @@
   align-items: center;
   gap: calc(var(--spacing-sm) + var(--spacing-xs) / 2);
   font-weight: var(--font-weight-semibold);
+  color: var(--primary-color, var(--color-indigo-500));
 }
 
 .tg-page-title i {
@@ -67,7 +68,7 @@
 
 .tg-card {
   background: var(--card-bg, var(--color-white));
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 8%, transparent);
   display: flex;
   flex-direction: column;
@@ -137,7 +138,7 @@
 
 .tg-category-item {
   padding: calc(var(--spacing-sm) + var(--spacing-xs)) calc(var(--spacing-md) - var(--spacing-xs) / 2);
-  border-radius: 6px;
+  border-radius: var(--border-radius-md);
   cursor: pointer;
   display: flex;
   justify-content: space-between;
@@ -164,7 +165,7 @@
 .tg-category-color {
   width: calc(var(--spacing-sm) + var(--spacing-xs));
   height: calc(var(--spacing-sm) + var(--spacing-xs));
-  border-radius: 3px;
+  border-radius: var(--border-radius-sm);
   flex-shrink: 0;
 }
 
@@ -179,7 +180,7 @@
   color: var(--text-muted, var(--color-slate-500));
   background: var(--badge-bg, var(--color-slate-100));
   padding: calc(var(--spacing-xs) / 2) var(--spacing-sm);
-  border-radius: 10px;
+  border-radius: var(--border-radius-full);
   font-weight: var(--font-weight-medium);
 }
 
@@ -226,7 +227,7 @@
 .tg-search-input {
   padding: var(--spacing-sm) calc(var(--spacing-sm) + var(--spacing-xs)) var(--spacing-sm) calc(var(--spacing-xl) + var(--spacing-xs));
   border: 1px solid var(--border-color, var(--color-slate-200));
-  border-radius: 6px;
+  border-radius: var(--border-radius-md);
   font-size: var(--font-size-sm);
   width: 100%;
   transition: all 0.2s;
@@ -266,7 +267,7 @@
 .tg-tag-card {
   background: var(--card-bg, var(--color-white));
   border: 1px solid var(--border-color, var(--color-slate-200));
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   overflow: hidden;
   transition: all 0.2s;
 }
@@ -357,7 +358,7 @@
 
 .tg-btn {
   padding: var(--spacing-sm) var(--spacing-md);
-  border-radius: 6px;
+  border-radius: var(--border-radius-md);
   font-size: var(--font-size-sm);
   cursor: pointer;
   border: none;
@@ -461,7 +462,7 @@
   padding: calc(var(--spacing-sm) + var(--spacing-xs) / 2) var(--spacing-md);
   background: var(--card-bg, var(--color-white));
   border: 1px solid var(--border-color, var(--color-slate-200));
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   box-shadow: 0 8px 24px color-mix(in srgb, var(--color-black) 18%, transparent);
 }
 

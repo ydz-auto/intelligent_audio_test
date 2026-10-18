@@ -375,7 +375,7 @@ select.form-input.filter-select:focus {
   font-size: 12px;
   font-weight: 500;
   padding: 2px 10px;
-  border-radius: 12px;
+  border-radius: var(--border-radius-lg);
   min-width: 20px;
   text-align: center;
   flex-shrink: 0;
@@ -426,7 +426,7 @@ select.form-input.filter-select:focus {
   color: var(--primary);
   background: var(--accent);
   border: 1px solid color-mix(in srgb, var(--primary) 35%, transparent);
-  border-radius: 6px;
+  border-radius: var(--border-radius-md);
 }
 
 .auto-merge-hint i {
@@ -444,7 +444,7 @@ select.form-input.filter-select:focus {
   color: var(--color-slate-500);
   background-color: var(--color-slate-50);
   border: 1px dashed var(--color-slate-300);
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   width: 100%;
   margin: 0 auto;
 }

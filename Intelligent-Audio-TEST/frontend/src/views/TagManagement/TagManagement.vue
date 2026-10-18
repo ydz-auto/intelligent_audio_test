@@ -2,7 +2,7 @@
   <div class="tg-tag-management-view">
     <div class="tg-page-header">
       <div class="tg-header-left">
-        <h2 class="tg-page-title" style="color: var(--primary-color);">
+        <h2 class="tg-page-title">
           <i class="fas fa-tags"></i>
           标签管理
         </h2>
