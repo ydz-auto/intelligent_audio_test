@@ -59,7 +59,6 @@ export function hasActiveFilters(filter: LogFilterState, advanced: LogAdvancedSt
     advanced.deviceId !== '' ||
     advanced.taskId !== '' ||
     advanced.evaluationId !== '' ||
-    advanced.userId !== '' ||
     advanced.threadId !== '' ||
     advanced.contentInclude !== '' ||
     advanced.contentExclude !== ''

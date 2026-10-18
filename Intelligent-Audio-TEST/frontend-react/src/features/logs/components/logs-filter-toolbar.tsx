@@ -19,6 +19,12 @@ import {
 } from '@/components/ui/select'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import {
   LOG_CATEGORY_OPTIONS,
   LOG_LEVELS,
   LOG_MARK_OPTIONS,
@@ -244,13 +250,26 @@ export function LogsFilterToolbar(props: LogsFilterToolbarProps) {
         value={advanced.evaluationId}
         onChange={(event) => onAdvancedChange({ evaluationId: event.target.value })}
       />
-      <Input
-        className='h-8 min-w-0 text-sm leading-5'
-        placeholder='用户ID'
-        aria-label='用户ID'
-        value={advanced.userId}
-        onChange={(event) => onAdvancedChange({ userId: event.target.value })}
-      />
+      {/* 用户ID过滤后端 LogListQuery 无 user_id（INT-763 代码审计 P3，FEAT INT-806）：
+          落地前置灰 + Tooltip，避免用户以为已过滤（与「仅自己」Tab 同口径） */}
+      <TooltipProvider delay={100}>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span className='inline-flex'>
+                <Input
+                  className='h-8 min-w-0 text-sm leading-5'
+                  placeholder='用户ID'
+                  aria-label='用户ID'
+                  value={advanced.userId}
+                  disabled
+                />
+              </span>
+            }
+          />
+          <TooltipContent>用户ID过滤待后端接口（FEAT INT-806）落地</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <Input
         className='h-8 min-w-0 text-sm leading-5'
         placeholder='线程ID'

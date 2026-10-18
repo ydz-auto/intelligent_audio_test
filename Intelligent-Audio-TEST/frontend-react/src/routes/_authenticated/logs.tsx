@@ -10,7 +10,7 @@ import { LogsPage } from '@/features/logs'
  */
 export const Route = createFileRoute('/_authenticated/logs')({
   beforeLoad: ({ location }) => {
-    requirePermission('log:read', location.pathname)
+    requirePermission('log:read', location)
   },
   component: LogsPage,
 })
