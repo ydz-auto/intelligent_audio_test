@@ -1011,6 +1011,7 @@ message ListLogsRequest {
   string content_include = 15; // 可选，content 包含匹配
   string content_exclude = 16; // 可选，content 排除包含匹配
   string algorithm_type = 17;  // 可选，算法类型精确匹配（'all' 视为不过滤）
+  int32 user_id = 18;          // 可选，按操作人 created_by_user_id 过滤（INT-806「仅自己」）
 }
 message ListTestCaseGroupsRequest {
   string algorithm_type = 1;  // 可选，按算法类型过滤
@@ -1099,6 +1100,7 @@ message GetLogStatsRequest {
   string start_time = 10;     // 可选 ISO
   string end_time = 11;       // 可选 ISO
   string algorithm_type = 12; // 可选
+  int32 user_id = 13;         // 可选，按操作人 created_by_user_id 过滤（INT-806「仅自己」统计口径同步）
 }
 message ListLogsAfterIdRequest {
   int32 last_id = 1;   // 增量基准 ID
