@@ -178,6 +178,7 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
         groups={groups}
         tags={tags}
         dimensions={dimensions}
+        cases={items}
         onRestoreAll={() => {}}
       />
 

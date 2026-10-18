@@ -66,6 +66,7 @@ export function toPlatformUser(raw: UserDto): PlatformUser {
     roleCode,
     roleName: ROLE_META[roleCode as RoleCode]?.name ?? roleCode,
     status: toPlatformUserStatus(raw.status),
+    permissions: raw.permissions ?? [],
     extraPermissions: (raw.overrides ?? [])
       .filter((override) => override.granted)
       .map((override) => override.code),

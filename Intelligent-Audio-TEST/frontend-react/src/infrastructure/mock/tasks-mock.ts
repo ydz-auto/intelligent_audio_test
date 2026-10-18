@@ -549,17 +549,18 @@ export const MOCK_CHERRY_PICKS: CherryPickTask[] = [
 
 /** 任务用例列表 mock（关联用例页签） */
 export const MOCK_TASK_CASES: TaskCaseBrief[] = [
-  { case_id: 'c-001', name: '远场 3m 唤醒词响应', status: 'running', execution_status: 'running', evaluation_status: 'evaluating', started_at: '2026-10-15T09:00:00', completed_at: null, duration: 8200, error_message: null, group_name: '远场唤醒', tags: ['远场', '唤醒词'], evaluation_dimensions: [{ id: 1, name: '响应时延' }, { id: 2, name: '准确率' }] },
-  { case_id: 'c-002', name: '远场 3m 连续对话保持', status: 'completed', execution_status: 'completed', evaluation_status: 'completed', started_at: '2026-10-15T08:58:00', completed_at: '2026-10-15T09:05:00', duration: 420000, error_message: null, group_name: '远场唤醒', tags: ['远场', '对话'], evaluation_dimensions: [{ id: 1, name: '响应时延' }] },
-  { case_id: 'c-003', name: '近场 1m 唤醒词响应', status: 'completed', execution_status: 'completed', evaluation_status: 'completed', started_at: '2026-10-15T08:50:00', completed_at: '2026-10-15T08:56:00', duration: 360000, error_message: null, group_name: '近场唤醒', tags: ['近场', '唤醒词'], evaluation_dimensions: [] },
-  { case_id: 'c-004', name: '噪声环境 5m 唤醒（电视声）', status: 'failed', execution_status: 'failed', evaluation_status: 'failed', started_at: '2026-10-15T08:44:00', completed_at: '2026-10-15T08:50:00', duration: 300000, error_message: '设备在 3 次重试后仍未响应', group_name: '噪声环境', tags: ['噪声', '远场'], evaluation_dimensions: [] },
-  { case_id: 'c-005', name: '连续 10 轮对话保持率', status: 'pending', execution_status: 'pending', evaluation_status: 'pending', started_at: null, completed_at: null, duration: null, error_message: null, group_name: '连续对话', tags: ['对话'], evaluation_dimensions: [] },
+  { case_id: 'c-001', name: '远场 3m 唤醒词响应', status: 'running', execution_status: 'running', evaluation_status: 'evaluating', started_at: '2026-10-15T09:00:00', completed_at: null, duration: 8200, error_message: null, group_name: '远场唤醒', tags: ['远场', '唤醒词'], evaluation_dimensions: [{ id: 1, name: '响应时延' }, { id: 2, name: '准确率' }] , reviewed: false },
+  { case_id: 'c-002', name: '远场 3m 连续对话保持', status: 'completed', execution_status: 'completed', evaluation_status: 'completed', started_at: '2026-10-15T08:58:00', completed_at: '2026-10-15T09:05:00', duration: 420000, error_message: null, group_name: '远场唤醒', tags: ['远场', '对话'], evaluation_dimensions: [{ id: 1, name: '响应时延' }] , reviewed: false },
+  { case_id: 'c-003', name: '近场 1m 唤醒词响应', status: 'completed', execution_status: 'completed', evaluation_status: 'completed', started_at: '2026-10-15T08:50:00', completed_at: '2026-10-15T08:56:00', duration: 360000, error_message: null, group_name: '近场唤醒', tags: ['近场', '唤醒词'], evaluation_dimensions: [] , reviewed: false },
+  { case_id: 'c-004', name: '噪声环境 5m 唤醒（电视声）', status: 'failed', execution_status: 'failed', evaluation_status: 'failed', started_at: '2026-10-15T08:44:00', completed_at: '2026-10-15T08:50:00', duration: 300000, error_message: '设备在 3 次重试后仍未响应', group_name: '噪声环境', tags: ['噪声', '远场'], evaluation_dimensions: [] , reviewed: false },
+  { case_id: 'c-005', name: '连续 10 轮对话保持率', status: 'pending', execution_status: 'pending', evaluation_status: 'pending', started_at: null, completed_at: null, duration: null, error_message: null, group_name: '连续对话', tags: ['对话'], evaluation_dimensions: [] , reviewed: false },
 ]
 
 /** 任务详情 mock（路由页 /tasks/:id 与快览弹窗共用） */
 export const MOCK_TASK_DETAIL: TaskDetailData = {
   id: 1042,
   name: '智能音箱旗舰机型全量回归 · 第 3 轮',
+  review_count: 0,
   description: '旗舰音箱全量用例回归，覆盖远场唤醒与连续对话场景。',
   status: 'running',
   execution_status: 'running',

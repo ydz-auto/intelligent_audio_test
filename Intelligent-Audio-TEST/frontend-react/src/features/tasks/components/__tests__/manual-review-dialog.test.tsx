@@ -5,7 +5,7 @@
  * 共享 reviewApi 由报告侧 INT-793 / 任务侧 INT-795 共同落位，本测试 mock 提交出口。
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 

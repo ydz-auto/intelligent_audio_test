@@ -127,7 +127,8 @@ describe('buildPickTree', () => {
     expect(c1.name).toBe('用例不可用 c1')
     const d = c1.children.find((n) => n.kind === 'branch')
     expect(d && d.name).toBe('设备不可用 1')
-    const leaf = d && d.kind === 'branch' ? d.children[0].children[0] : null
+    const firstChild = d && d.kind === 'branch' ? d.children[0] : undefined
+    const leaf = firstChild && firstChild.kind === 'branch' ? firstChild.children[0] : null
     expect(leaf && leaf.kind === 'leaf' && leaf.caseName).toBe('用例不可用 c1')
   })
 

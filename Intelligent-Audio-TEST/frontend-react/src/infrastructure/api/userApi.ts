@@ -74,6 +74,7 @@ export async function createUser(input: {
     roleCode: '',
     roleName: '',
     status: input.status,
+    permissions: [],
     extraPermissions: [],
     createdAt: new Date().toISOString(),
   }
@@ -98,6 +99,7 @@ export async function updateUser(
     roleCode: patch.roleCode ?? '',
     roleName: patch.roleName ?? '',
     status: patch.status ?? 'active',
+    permissions: [],
     extraPermissions: [],
     createdAt: '',
   }

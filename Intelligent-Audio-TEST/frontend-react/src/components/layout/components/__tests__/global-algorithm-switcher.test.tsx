@@ -9,7 +9,7 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { fetchAlgorithmOptions } from '@/infrastructure/api/algorithmApi'
+import { fetchAlgorithmOptions } from '@/infrastructure/api/algorithm-api'
 import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
 import { useAuthStore } from '@/infrastructure/stores/auth-store'
 import { GlobalAlgorithmSwitcher } from '@/components/layout/components/global-algorithm-switcher'
@@ -23,7 +23,7 @@ vi.mock('@/infrastructure/api/authApi', () => ({
   },
 }))
 
-vi.mock('@/infrastructure/api/algorithmApi', () => ({
+vi.mock('@/infrastructure/api/algorithm-api', () => ({
   fetchAlgorithmOptions: vi.fn(),
 }))
 
@@ -38,8 +38,8 @@ function makeUser(permissions: string[]) {
 }
 
 const REAL_OPTIONS = [
-  { id: 'asr-v3', name: '通用识别引擎', version: '', description: '', enabled: true },
-  { id: 'asr-stream', name: '流式识别引擎', version: '', description: '', enabled: true },
+  { value: 'asr-v3', name: '通用识别引擎' },
+  { value: 'asr-stream', name: '流式识别引擎' },
 ]
 
 function renderSwitcher() {

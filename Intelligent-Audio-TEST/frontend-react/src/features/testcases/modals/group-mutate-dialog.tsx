@@ -86,7 +86,7 @@ export function GroupMutateDialog({
                 </SelectTrigger>
                 <SelectContent>
                   {algorithmOptions.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
+                    <SelectItem key={a.value} value={a.value}>
                       {a.name}
                     </SelectItem>
                   ))}

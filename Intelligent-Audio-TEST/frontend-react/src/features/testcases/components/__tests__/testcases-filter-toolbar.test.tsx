@@ -135,10 +135,13 @@ function renderToolbarWithCases(cases: TestCaseListItem[], filters: Record<strin
     cases,
     onRestoreAll: vi.fn(),
   }
-  render(<TestCasesFilterToolbar {...props} />)
+  render(
+    <QueryClientProvider client={queryClient}>
+      <TestCasesFilterToolbar {...props} />
+    </QueryClientProvider>
+  )
   return props
 }
- github/design/ux-redesign
 
 function renderToolbar(filters: Record<string, unknown> = {}, tags = MOCK_TAGS) {
   const props = {

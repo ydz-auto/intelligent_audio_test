@@ -101,7 +101,7 @@ function buildCloudGroups(dims: Dimension[], keyword: string): CloudGroup[] {
   const groupedChildIds = new Set<string>()
   mainDims.forEach((m) => {
     const children = childrenMap.get(String(dimId(m))) || []
-    groups.push({ main: m, children })
+    groups.push({ main: m, children, orphanParentName: '' })
     children.forEach((c) => groupedChildIds.add(String(dimId(c))))
   })
   // 孤儿子维度：父维度不在候选集（如被算法关联过滤）

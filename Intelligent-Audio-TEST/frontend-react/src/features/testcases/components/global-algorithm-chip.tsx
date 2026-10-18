@@ -17,7 +17,7 @@ export function TestCasesAlgorithmChip() {
   const setAlgorithmId = useAlgorithmStore((s) => s.setAlgorithmId)
   const { options } = useAlgorithmOptions()
 
-  const algorithm = options.find((a) => a.id === algorithmId)
+  const algorithm = options.find((a) => a.value === algorithmId)
   if (!algorithm) return null
 
   return (

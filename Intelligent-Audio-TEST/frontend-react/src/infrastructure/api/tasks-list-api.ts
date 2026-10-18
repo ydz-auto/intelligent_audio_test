@@ -87,11 +87,17 @@ export async function fetchTaskList(
 
 /** 已发布任务列表（keyword/type/status 服务端筛选；per_page 默认 100） */
 export async function fetchPublishedTaskList(
-  query: { search?: string; type?: string | null; ptStatus?: string | null } = {}
+  query: {
+    search?: string
+    type?: string | null
+    ptStatus?: string | null
+    page?: number
+    perPage?: number
+  } = {}
 ): Promise<{ items: PublishedTaskItem[]; total: number }> {
   const params: Record<string, unknown> = {
-    page: 1,
-    per_page: 100,
+    page: query.page ?? 1,
+    per_page: query.perPage ?? 100,
   }
   if (query.search) params.keyword = query.search
   if (query.type && query.type !== 'all') params.type = query.type

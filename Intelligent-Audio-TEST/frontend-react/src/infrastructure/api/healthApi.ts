@@ -1,7 +1,9 @@
 import type {
   AuthHealthResponse,
   GatewayHealthResponse,
+  SystemHealthResponse,
 } from '@/domain/models/about'
+import { request } from '@/infrastructure/api/client'
 
 /**
  * 服务状态 /health API 桩（infrastructure 层）。
@@ -43,4 +45,16 @@ export async function fetchGatewayHealth(): Promise<GatewayHealthResponse> {
  */
 export async function fetchAuthHealth(): Promise<AuthHealthResponse> {
   return MOCK_AUTH_HEALTH
+}
+
+/**
+ * GET /api/v1/system/health（api_gateway 汇总端点：网关 + 认证服务健康聚合）。
+ * 待 INT-766（FEAT 卡）：后端未落该端点 → 请求失败（404）→ 状态卡按 06_关于.md
+ * §3.1.1 实施注意降级「检测中」（值「—」+ 徽章「检测中」+ 整卡 Alert），不显示 mock「正常」。
+ * 公开健康数据，skipAuthRedirect：关于页为公开路由，避免 401 触发全局登出跳转。
+ */
+export async function fetchSystemHealth(): Promise<SystemHealthResponse> {
+  return request<SystemHealthResponse>('GET', '/system/health', undefined, {
+    skipAuthRedirect: true,
+  })
 }

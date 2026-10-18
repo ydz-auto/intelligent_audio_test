@@ -3,7 +3,7 @@
  * 主/子分组云渲染、逐轮模式快捷操作工具栏三件、多轮整体评估维度节、已选维度权重/阈值参数卡、
  * 提交载荷（统一 dimensions + multi_dimensions；逐轮 round_dimensions + multi_dimensions）。
  */
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -91,16 +91,16 @@ describe('BatchDimensionsDialog（§5.3.5）', () => {
     await user.click(screen.getByRole('button', { name: '确定' }))
 
     expect(mockedBatch).toHaveBeenCalledTimes(1)
-    const [action, ids, payload] = mockedBatch.mock.calls[0]
+    const [action, ids, payload = {}] = mockedBatch.mock.calls[0]
     expect(action).toBe('update_dimensions')
     expect(ids).toEqual(['tc-1', 'tc-2', 'tc-3'])
     expect(payload.roundMode).toBe('all')
-    expect(payload.dimensions).toHaveLength(3)
-    expect(payload.dimensions[0]).toMatchObject({ id: 1, name: '识别准确率', weight: 50, threshold: 80 })
+    expect(payload.dimensions!).toHaveLength(3)
+    expect(payload.dimensions![0]).toMatchObject({ id: 1, name: '识别准确率', weight: 50, threshold: 80 })
     // multi_dimensions 恒提交（勾选主维度联动子维度 → 2 项）
-    expect(payload.multiDimensions).toHaveLength(2)
-    expect(payload.multiDimensions[0]).toMatchObject({ id: 2, name: '语义理解', weight: 50, threshold: 80 })
-    expect(payload.multiDimensions[1]).toMatchObject({ id: 21, name: '指令完成度', weight: 50, threshold: 80 })
+    expect(payload.multiDimensions!).toHaveLength(2)
+    expect(payload.multiDimensions![0]).toMatchObject({ id: 2, name: '语义理解', weight: 50, threshold: 80 })
+    expect(payload.multiDimensions![1]).toMatchObject({ id: 21, name: '指令完成度', weight: 50, threshold: 80 })
   })
 
   it('提交（逐轮模式）载荷含 round_dimensions + multi_dimensions', async () => {
@@ -112,7 +112,7 @@ describe('BatchDimensionsDialog（§5.3.5）', () => {
     await user.click(screen.getByRole('button', { name: '确定' }))
 
     expect(mockedBatch).toHaveBeenCalledTimes(1)
-    const [action, ids, payload] = mockedBatch.mock.calls[0]
+    const [action, , payload = {}] = mockedBatch.mock.calls[0]
     expect(action).toBe('update_dimensions')
     expect(payload.roundMode).toBe('per_round')
     expect(payload.roundDimensions).toBeDefined()

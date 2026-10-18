@@ -22,7 +22,7 @@ export function AudioAlgorithmChip() {
   const [cleared, setCleared] = useState(false)
   const { options } = useAlgorithmOptions()
 
-  const algorithm = options.find((a) => a.id === algorithmId)
+  const algorithm = options.find((a) => a.value === algorithmId)
   if (!algorithm || cleared) return null
 
   return (

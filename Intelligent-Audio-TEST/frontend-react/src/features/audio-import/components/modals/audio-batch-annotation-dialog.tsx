@@ -41,7 +41,6 @@ export type AudioBatchAnnotationDialogProps = {
   onOpenChange: (open: boolean) => void
 }
 
-const AUDIO_EXTS = ['.wav', '.mp3', '.m4a', '.flac', '.aac', '.ogg']
 const ANNOTATION_EXTS = ['.json', '.jsonl', '.rttm', '.stm', '.txt']
 
 /** 去扩展名（用于音频/标注按文件名匹配） */
@@ -98,9 +97,6 @@ export function AudioBatchAnnotationDialog(props: AudioBatchAnnotationDialogProp
   const handleFiles = (incoming: FileList | null) => {
     if (!incoming) return
     const list = Array.from(incoming)
-    const audioNames = new Set(
-      audioList.map((a) => baseName(a.originalFilename ?? a.name).toLowerCase())
-    )
     const annotationFiles = list.filter((f) =>
       ANNOTATION_EXTS.some((e) => f.name.toLowerCase().endsWith(e))
     )

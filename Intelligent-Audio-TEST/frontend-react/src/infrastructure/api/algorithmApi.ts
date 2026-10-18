@@ -4,14 +4,14 @@
  * 切换器数据源（02_导航栏.md §3.4）：仅在线算法；选项 type 码即全局过滤值
  * （业务列表 algorithm_type 参数同源，tasks/用例/音频/设备/报告/日志消费）。
  */
-import type { AlgorithmOption } from '@/domain/models/algorithm'
+import type { AlgorithmSwitchOption } from '@/domain/models/algorithm'
 import { request } from '@/infrastructure/api/client'
 import {
   toAlgorithmOption,
   type AlgorithmOptionsResultDto,
 } from '@/infrastructure/dto/algorithm.dto'
 
-export async function fetchAlgorithmOptions(): Promise<AlgorithmOption[]> {
+export async function fetchAlgorithmOptions(): Promise<AlgorithmSwitchOption[]> {
   const dto = await request<AlgorithmOptionsResultDto>(
     'GET',
     '/algorithm/options'
