@@ -29,7 +29,8 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { UploadOptions } from '@/features/audio-import/components/modals/upload-options'
-import { startRealAudioUpload } from '@/application/audio/useAudioUploadProcess'
+import { startRealAudioUpload, type PerFileUploadConfig } from '@/application/audio/useAudioUploadProcess'
+import { parseAnnotationsForAudios } from '@/features/audio-import/lib/annotation'
 import { formatFileSize } from '@/features/audio-import/lib/format'
 
 export type AudioUploadDialogProps = {
@@ -68,6 +69,7 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
   const [customGroupName, setCustomGroupName] = useState('')
   const [tags, setTags] = useState('')
   const [inheritTags, setInheritTags] = useState(true)
+  const [annotationCode, setAnnotationCode] = useState('')
   const [folderConfig, setFolderConfig] = useState('select')
   const [naming, setNaming] = useState('keep')
   const [conflict, setConflict] = useState('rename')
@@ -104,6 +106,21 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
     }
     setUploading(true)
     try {
+      // 标注文件（json/jsonl/rttm/stm/txt）按文件名匹配音频解析；标注代码随 merge 落库
+      const perFileAnnotations = await parseAnnotationsForAudios(
+        files,
+        audioFiles,
+        annotationCode || algorithmType || undefined
+      )
+      const perFile: PerFileUploadConfig[] = audioFiles.map((f, idx) => ({
+        groupName:
+          caseGroup === 'custom' && customGroupName.trim()
+            ? customGroupName.trim()
+            : caseGroup === 'folder'
+              ? f.name.replace(/\.[^.]+$/, '')
+              : undefined,
+        annotations: perFileAnnotations[idx],
+      }))
       // 真实上传 + 生成测试用例（merge 载荷 create_test_case 控制；test_types 不传，后端默认 ['api']）
       const result = await startRealAudioUpload(audioFiles, {
         createTestCase: generateTestCase,
@@ -115,16 +132,13 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
         noiseAudioId: null,
         noiseSpl: 60,
         inheritTags,
-        groupName:
-          caseGroup === 'custom' && customGroupName.trim()
-            ? customGroupName.trim()
-            : undefined,
+        groupName: undefined,
         tags: tags
           .split(',')
           .map((t) => t.trim())
           .filter(Boolean),
         audioType,
-      })
+      }, perFile)
       if (result.testCaseCount > 0) {
         toast.success(
           `上传完成：成功 ${result.successCount} 个，生成 ${result.testCaseCount} 个测试用例`
@@ -246,7 +260,9 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
                 onValueChange={(value) => setFolderConfig(value ?? 'select')}
               >
                 <SelectTrigger id='upload-folder-config' size='sm' className='w-full'>
-                  <SelectValue />
+                  <SelectValue placeholder='选择或创建目标文件夹'>
+                    {FOLDER_CONFIG_OPTIONS.find((o) => o.value === folderConfig)?.label ?? ''}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {FOLDER_CONFIG_OPTIONS.map((option) => (
@@ -261,7 +277,9 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
               <Label htmlFor='upload-naming'>文件命名</Label>
               <Select value={naming} onValueChange={(value) => setNaming(value ?? 'keep')}>
                 <SelectTrigger id='upload-naming' size='sm' className='w-full'>
-                  <SelectValue />
+                  <SelectValue placeholder='保留原始文件名'>
+                    {NAMING_OPTIONS.find((o) => o.value === naming)?.label ?? ''}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {NAMING_OPTIONS.map((option) => (
@@ -276,7 +294,9 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
               <Label htmlFor='upload-conflict'>文件名冲突处理</Label>
               <Select value={conflict} onValueChange={(value) => setConflict(value ?? 'rename')}>
                 <SelectTrigger id='upload-conflict' size='sm' className='w-full'>
-                  <SelectValue />
+                  <SelectValue placeholder='自动重命名冲突文件'>
+                    {CONFLICT_OPTIONS.find((o) => o.value === conflict)?.label ?? ''}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {CONFLICT_OPTIONS.map((option) => (
@@ -319,6 +339,8 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
             onInheritTagsChange={setInheritTags}
             tags={tags}
             onTagsChange={setTags}
+            annotationCode={annotationCode}
+            onAnnotationCodeChange={setAnnotationCode}
           />
         </div>
 

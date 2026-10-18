@@ -18,3 +18,28 @@ export async function fetchAlgorithmOptions(): Promise<AlgorithmOption[]> {
   )
   return (dto?.algorithms ?? []).map(toAlgorithmOption)
 }
+
+/** 算法参考参数选项（音频上传/文件夹导入「标注代码」select；GET /algorithm/reference-params） */
+export interface ReferenceParamOption {
+  value: string
+  label: string
+}
+
+export async function fetchReferenceParams(
+  algorithmType?: string
+): Promise<ReferenceParamOption[]> {
+  const dto = await request<{
+    items?: Array<{ code?: string | null; name?: string | null }>
+  }>(
+    'GET',
+    '/algorithm/reference-params',
+    null,
+    algorithmType ? { params: { algorithm_type: algorithmType } } : undefined
+  )
+  return (dto?.items ?? [])
+    .filter((p) => p.code)
+    .map((p) => ({
+      value: p.code as string,
+      label: p.name ? `${p.code} - ${p.name}` : (p.code as string),
+    }))
+}

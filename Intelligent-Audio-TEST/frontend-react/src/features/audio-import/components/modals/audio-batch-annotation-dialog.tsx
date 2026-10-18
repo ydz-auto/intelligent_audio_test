@@ -34,6 +34,7 @@ import { cn } from '@/lib/utils'
 import { useAudioMutations } from '@/application/audio/useAudioList'
 import { useAudioList } from '@/application/audio/useAudioList'
 import { useAlgorithmOptions } from '@/application/evaluation/use-dimensions'
+import { parseAnnotationFile as parseAnnotation } from '@/features/audio-import/lib/annotation'
 
 export type AudioBatchAnnotationDialogProps = {
   open: boolean
@@ -46,53 +47,6 @@ const ANNOTATION_EXTS = ['.json', '.jsonl', '.rttm', '.stm', '.txt']
 /** 去扩展名（用于音频/标注按文件名匹配） */
 function baseName(name: string): string {
   return name.replace(/\.[^.]+$/, '')
-}
-
-/** 标注文件解析（V9.7.10 parseAnnotationContent 对位：txt/json/jsonl/rttm/stm） */
-function parseAnnotationFile(fileName: string, content: string): unknown[] {
-  const ext = fileName.split('.').pop()?.toLowerCase() ?? ''
-  const trimmed = content.trim()
-  if (!trimmed) return []
-  if (ext === 'txt') {
-    const lines = trimmed.split(/\r?\n/).filter(Boolean)
-    const text = lines[0] ?? trimmed
-    return [
-      {
-        format: 'text',
-        code: 'asr',
-        data: { text },
-        source_language: '',
-        target_language: '',
-      },
-    ]
-  }
-  if (ext === 'json' || ext === 'jsonl') {
-    try {
-      const lines = trimmed.split(/\r?\n/).filter(Boolean)
-      const parsed = lines.map((line) => JSON.parse(line))
-      return [
-        {
-          format: 'json',
-          code: '',
-          data: { segments: parsed },
-          source_language: '',
-          target_language: '',
-        },
-      ]
-    } catch {
-      return []
-    }
-  }
-  // rttm/stm：段解析留批量标注专项；先按文本协议落库
-  return [
-    {
-      format: ext,
-      code: 'diarization',
-      data: { text: trimmed },
-      source_language: '',
-      target_language: '',
-    },
-  ]
 }
 
 type MatchRow = {
@@ -121,6 +75,20 @@ export function AudioBatchAnnotationDialog(props: AudioBatchAnnotationDialogProp
   const fileRef = useRef<HTMLInputElement | null>(null)
 
   const matchedCount = useMemo(() => rows.filter((r) => r.matched).length, [rows])
+  const unmatchedCount = useMemo(() => rows.length - matchedCount, [rows, matchedCount])
+  const selectedAlgorithmLabel = algorithmOptions.find((o) => o.value === algorithmType)?.label
+
+  const exportUnmatched = () => {
+    const lines = rows.filter((r) => !r.matched).map((r) => r.annotationName)
+    if (lines.length === 0) return
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `未匹配标注_${new Date().toISOString().slice(0, 10)}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   const resultRows = useMemo(
     () => (onlyUnmatched ? rows.filter((r) => !r.matched) : rows),
@@ -152,7 +120,7 @@ export function AudioBatchAnnotationDialog(props: AudioBatchAnnotationDialogProp
       const reader = new FileReader()
       reader.onload = () => {
         const content = String(reader.result ?? '')
-        const annotations = parseAnnotationFile(file.name, content)
+        const annotations = parseAnnotation(file.name, content)
         const base = baseName(file.name).toLowerCase()
         const matchedAudio = audioList.find(
           (a) => baseName(a.originalFilename ?? a.name).toLowerCase() === base
@@ -219,7 +187,10 @@ export function AudioBatchAnnotationDialog(props: AudioBatchAnnotationDialogProp
       <DialogContent className='sm:max-w-3xl'>
         <DialogHeader>
           <DialogTitle>批量更新标注</DialogTitle>
-          <DialogDescription>按文件名匹配音频与标注文件（audio1.wav ↔ audio1.json）</DialogDescription>
+          <DialogDescription>
+            按文件名匹配音频与标注文件（audio1.wav ↔ audio1.json）。
+            文件名匹配基于当前列表载入的前 200 条音频，超出部分请先筛选后再操作。
+          </DialogDescription>
         </DialogHeader>
 
         <div className='space-y-4'>
@@ -291,7 +262,9 @@ export function AudioBatchAnnotationDialog(props: AudioBatchAnnotationDialogProp
                 onValueChange={(value) => setAlgorithmType(value ?? '')}
               >
                 <SelectTrigger id='batch-anno-algo' size='sm' className='w-full'>
-                  <SelectValue placeholder={algorithmOptionsQuery.isLoading ? '加载中…' : '选择算法'} />
+                  <SelectValue placeholder={algorithmOptionsQuery.isLoading ? '加载中…' : '选择算法'}>
+                    {selectedAlgorithmLabel ?? ''}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {algorithmOptions.map((option) => (
@@ -322,15 +295,27 @@ export function AudioBatchAnnotationDialog(props: AudioBatchAnnotationDialogProp
             <div className='space-y-2'>
               <div className='flex items-center justify-between'>
                 <div className='text-muted-foreground text-sm font-medium'>匹配结果</div>
-                <Button
-                  variant='ghost'
-                  size='sm'
-                  className='h-7 gap-1 px-2'
-                  onClick={() => setOnlyUnmatched((prev) => !prev)}
-                >
-                  <Link2Off aria-hidden='true' className='size-3.5' />
-                  {onlyUnmatched ? '显示全部' : '仅看未匹配'}
-                </Button>
+                <div className='flex items-center gap-1'>
+                  {unmatchedCount > 0 && (
+                    <Button
+                      variant='ghost'
+                      size='sm'
+                      className='h-7 gap-1 px-2'
+                      onClick={exportUnmatched}
+                    >
+                      导出未匹配（{unmatchedCount}）
+                    </Button>
+                  )}
+                  <Button
+                    variant='ghost'
+                    size='sm'
+                    className='h-7 gap-1 px-2'
+                    onClick={() => setOnlyUnmatched((prev) => !prev)}
+                  >
+                    <Link2Off aria-hidden='true' className='size-3.5' />
+                    {onlyUnmatched ? '显示全部' : '仅看未匹配'}
+                  </Button>
+                </div>
               </div>
               <div className='bg-card ring-foreground/10 overflow-hidden rounded-lg ring-1'>
                 <div className='max-h-52 overflow-y-auto'>

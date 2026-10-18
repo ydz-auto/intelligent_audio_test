@@ -1,10 +1,11 @@
 /**
  * 批量从文件夹导入弹窗（§6.17；Dialog sm:max-w-2xl）。
  * 拖放/选择文件夹（webkitdirectory + 递归子文件夹 + 按文件类型筛选）+ 真实统计四枚
- * + 文件夹分组设置（逐文件夹自定义分组名）+ 标注代码 select + 复用 UploadOptions
+ * + 文件夹分组设置（custom 时逐文件夹自定义分组名）+ 标注代码 select + 复用 UploadOptions
  * + 主钮「开始导入」→ 走真实上传（startRealAudioUpload，与上传弹窗同链路）。
- * V9.7.10 FolderImportModal 对位；JSON 用例分组策略（testCaseStrategy）标注「部分对齐」
- * ——本卡先按最子级文件夹整批上传，JSON 驱动的多轮用例分组留后续（见交付评论）。
+ * V9.7.10 FolderImportModal 对位：per-folder 分组名（root/folder/custom 三型）与标注文件
+ * 解析（json/jsonl/rttm/stm/txt）随 merge 载荷逐文件落库；JSON 用例分组策略（testCaseStrategy
+ * buildTestCaseGroups：Rounds/Flat/TxtArray 多轮用例）本卡未实现，显式标缺口（见交付评论）。
  */
 import { FolderInput, FolderTree } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
@@ -30,7 +31,8 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { UploadOptions } from '@/features/audio-import/components/modals/upload-options'
-import { startRealAudioUpload } from '@/application/audio/useAudioUploadProcess'
+import { startRealAudioUpload, type PerFileUploadConfig } from '@/application/audio/useAudioUploadProcess'
+import { parseAnnotationsForAudios } from '@/features/audio-import/lib/annotation'
 import { formatFileSize } from '@/features/audio-import/lib/format'
 
 export type AudioFolderImportDialogProps = {
@@ -47,15 +49,24 @@ const FORMAT_FILTER_OPTIONS = [
   { value: 'M4A', label: 'M4A' },
 ] as const
 
+/** 标注代码选项（文件夹导入静态选项；上传弹窗走 /algorithm/reference-params 联动算法类型） */
+const ANNOTATION_CODE_OPTIONS = [
+  { value: '', label: '留空' },
+  { value: 'asr', label: 'ASR 标注' },
+  { value: 'translation', label: '翻译标注' },
+  { value: 'diarization', label: '说话人分离标注' },
+] as const
+
 /** 支持的音频扩展名（§6.17 supportedFormats 对位；目录选择后按此过滤） */
 const AUDIO_EXTS = ['.wav', '.mp3', '.m4a', '.flac', '.aac', '.ogg']
 
-/** 取文件相对路径的首个目录（webkitRelativePath 首段；无路径时按文件名去扩展名回退） */
+/** 取文件所在的最子级文件夹名（V9.7.10 getLeafFolderName 对位：webkitRelativePath 倒数第二段；
+ *  无文件夹结构时按文件名去扩展名回退） */
 function folderNameOf(file: File): string {
   const rel = file.webkitRelativePath || ''
   if (rel) {
-    const first = rel.split('/')[0]
-    if (first && first !== rel) return first
+    const parts = rel.split('/').filter(Boolean)
+    if (parts.length >= 2) return parts[parts.length - 2] ?? ''
   }
   return file.name.replace(/\.[^.]+$/, '')
 }
@@ -127,6 +138,25 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
     }
     setImporting(true)
     try {
+      // 标注文件（json/jsonl/rttm/stm/txt）按文件名匹配音频解析；标注代码随 merge 落库
+      const perFileAnnotations = await parseAnnotationsForAudios(
+        files,
+        audioFiles,
+        annotationCode || algorithmType || undefined
+      )
+      // per-folder 分组名（V9.7.10 groupNameType 对位：root=根目录 / folder=最子级文件夹 / custom=逐文件夹自定义名）
+      const perFile: PerFileUploadConfig[] = audioFiles.map((f, idx) => {
+        const folder = folderNameOf(f)
+        return {
+          groupName:
+            caseGroup === 'custom'
+              ? (groupNames[folder]?.trim() || folder || undefined)
+              : caseGroup === 'folder'
+                ? (folder || undefined)
+                : undefined,
+          annotations: perFileAnnotations[idx],
+        }
+      })
       const result = await startRealAudioUpload(audioFiles, {
         createTestCase: generateTestCase,
         algorithmType: algorithmType || null,
@@ -137,16 +167,13 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
         noiseAudioId: null,
         noiseSpl: 60,
         inheritTags,
-        groupName:
-          caseGroup === 'custom' && customGroupName.trim()
-            ? customGroupName.trim()
-            : undefined,
+        groupName: undefined,
         tags: tags
           .split(',')
           .map((t) => t.trim())
           .filter(Boolean),
         audioType,
-      })
+      }, perFile)
       if (result.testCaseCount > 0) {
         toast.success(
           `导入完成：成功 ${result.successCount} 个，生成 ${result.testCaseCount} 个测试用例`
@@ -242,7 +269,9 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
               onValueChange={(value) => setFormatFilter(value ?? 'all')}
             >
               <SelectTrigger id='folder-import-format' size='sm' className='w-48'>
-                <SelectValue />
+                <SelectValue placeholder='全部格式'>
+                  {FORMAT_FILTER_OPTIONS.find((o) => o.value === formatFilter)?.label ?? ''}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {FORMAT_FILTER_OPTIONS.map((option) => (
@@ -282,7 +311,7 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
             </div>
           )}
 
-          {/* 标注代码（V9.7.10 对位：留空则使用 JSON 内 code/name 字段；真实解析留给批量标注弹窗） */}
+          {/* 标注代码（V9.7.10 对位：留空则使用 JSON 内 code/name 字段；真实解析接入上传链路） */}
           <div className='space-y-2'>
             <Label htmlFor='folder-import-annotation'>标注代码</Label>
             <Select
@@ -290,13 +319,16 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
               onValueChange={(value) => setAnnotationCode(value ?? '')}
             >
               <SelectTrigger id='folder-import-annotation' size='sm' className='w-full'>
-                <SelectValue placeholder='留空则使用 JSON 内 code/name 字段' />
+                <SelectValue placeholder='留空则使用 JSON 内 code/name 字段'>
+                  {ANNOTATION_CODE_OPTIONS.find((o) => o.value === annotationCode)?.label ?? ''}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value=''>留空</SelectItem>
-                <SelectItem value='asr'>ASR 标注</SelectItem>
-                <SelectItem value='translation'>翻译标注</SelectItem>
-                <SelectItem value='diarization'>说话人分离标注</SelectItem>
+                {ANNOTATION_CODE_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -323,6 +355,8 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
             onInheritTagsChange={setInheritTags}
             tags={tags}
             onTagsChange={setTags}
+            annotationCode={annotationCode}
+            onAnnotationCodeChange={setAnnotationCode}
           />
         </div>
 

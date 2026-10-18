@@ -20,11 +20,18 @@ export interface UploadBatchResult {
   failed: Array<{ name: string; error: string }>
 }
 
+/** 每文件上传配置覆盖（文件夹导入/上传弹窗：per-folder 分组名 + 解析后的标注随 merge 落库） */
+export interface PerFileUploadConfig {
+  groupName?: string
+  annotations?: unknown[]
+}
+
 /** 逐文件真实上传（每个文件独立 register/chunk/merge，merge 载荷 create_test_case 控制生成；用例类型由后端默认落库，INT-714 口径修订） */
 export async function runAudioUpload(
   files: File[],
   config: UploadTestCaseConfig,
-  onProgress?: (percent: number, currentFile: string) => void
+  onProgress?: (percent: number, currentFile: string) => void,
+  perFile?: PerFileUploadConfig[]
 ): Promise<UploadBatchResult> {
   const result: UploadBatchResult = {
     successCount: 0,
@@ -47,7 +54,8 @@ export async function runAudioUpload(
     return result
   }
 
-  for (const file of files) {
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i]
     onProgress?.(2, file.name)
     try {
       // 注册 → 分片上传 → 合并（生成测试用例由 merge 载荷 create_test_case 控制，test_types 不传）
@@ -57,13 +65,18 @@ export async function runAudioUpload(
       if (!registered?.fileId) throw new Error('注册文件失败')
       const chunkSize = registered.chunkSize > 0 ? registered.chunkSize : 5 * 1024 * 1024
       const totalChunks = Math.max(1, Math.ceil(file.size / chunkSize))
-      for (let i = 0; i < totalChunks; i++) {
-        const start = i * chunkSize
+      for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+        const start = chunkIndex * chunkSize
         const end = Math.min(start + chunkSize, file.size)
-        await uploadChunk(taskId, registered.fileId, i, totalChunks, file.slice(start, end))
-        onProgress?.(2 + Math.round(((i + 1) / totalChunks) * 88), file.name)
+        await uploadChunk(taskId, registered.fileId, chunkIndex, totalChunks, file.slice(start, end))
+        onProgress?.(2 + Math.round(((chunkIndex + 1) / totalChunks) * 88), file.name)
       }
-      const merged = await mergeChunks(taskId, registered.fileId, file.name, config)
+      const merged = await mergeChunks(taskId, registered.fileId, file.name, {
+        ...config,
+        // 每文件覆盖：分组名 / 标注（perFile 与 files 平行，缺省用 config 全局值）
+        groupName: perFile?.[i]?.groupName ?? config.groupName,
+        annotations: perFile?.[i]?.annotations ?? config.annotations ?? [],
+      })
       onProgress?.(95, file.name)
       result.successCount += 1
       result.testCaseCount += merged.testCaseCount
@@ -82,7 +95,8 @@ export async function runAudioUpload(
 /** 弹窗层便捷入口：入队真实任务 + 执行上传（供 audio-upload-dialog「开始上传」调用） */
 export async function startRealAudioUpload(
   files: File[],
-  config: UploadTestCaseConfig
+  config: UploadTestCaseConfig,
+  perFile?: PerFileUploadConfig[]
 ): Promise<UploadBatchResult> {
   const enqueueTask = useAudioUploadStore.getState().enqueueTask
   const updateTask = useAudioUploadStore.getState().updateTask
@@ -110,5 +124,5 @@ export async function startRealAudioUpload(
       speed: percent > 2 && percent < 100 ? 5 + Math.random() * 3 : 0,
       etaSeconds: percent < 100 ? Math.max(1, Math.round((100 - percent) / 8)) : 0,
     })
-  })
+  }, perFile)
 }

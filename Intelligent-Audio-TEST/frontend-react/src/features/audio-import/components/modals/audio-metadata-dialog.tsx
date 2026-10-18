@@ -186,7 +186,9 @@ export function AudioMetadataDialog(props: AudioMetadataDialogProps) {
               onValueChange={(value) => setAudioType(value ?? 'dry')}
             >
               <SelectTrigger id='audio-meta-type' size='sm' className='w-full'>
-                <SelectValue />
+                <SelectValue placeholder='选择音频类型'>
+                  {AUDIO_TYPE_OPTIONS.find((o) => o.value === audioType)?.label ?? ''}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {AUDIO_TYPE_OPTIONS.map((option) => (
@@ -262,7 +264,11 @@ export function AudioMetadataDialog(props: AudioMetadataDialogProps) {
                 onValueChange={(value) => setAnnotationFormat(value ?? 'text')}
               >
                 <SelectTrigger id='audio-meta-anno-format' size='sm' className='w-full'>
-                  <SelectValue />
+                  <SelectValue placeholder='选择格式'>
+                    {ANNOTATION_FORMAT_OPTIONS.includes(annotationFormat as never)
+                      ? annotationFormat.toUpperCase()
+                      : ''}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {ANNOTATION_FORMAT_OPTIONS.map((format) => (

@@ -23,6 +23,7 @@ import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { DimensionPicker } from '@/features/testcases/modals/round-config/dimension-picker'
 import { fetchPlaybackDevices } from '@/infrastructure/api/audio-upload-api'
+import { fetchReferenceParams } from '@/infrastructure/api/algorithmApi'
 import {
   CASE_GROUP_OPTIONS,
   UPLOAD_AUDIO_TYPE_OPTIONS,
@@ -50,6 +51,9 @@ export type UploadOptionsProps = {
   /** 音频标签（V9.7.10 UploadOptions tags 输入对位；生成测试用例时显示） */
   tags: string
   onTagsChange: (value: string) => void
+  /** 标注代码（V9.7.10 referenceParamOptions select 对位；解析标注文件时作为 code 落库） */
+  annotationCode: string
+  onAnnotationCodeChange: (value: string) => void
 }
 
 function OptionRadio({
@@ -97,6 +101,20 @@ export function UploadOptions(props: UploadOptionsProps) {
     staleTime: 5 * 60_000,
   })
   const playbackDevices = playbackDevicesQuery.data ?? []
+  // 标注代码（V9.7.10 referenceParamOptions 对位：选项走 /algorithm/reference-params，随算法类型联动）
+  const referenceParamsQuery = useQuery({
+    queryKey: ['algorithm', 'reference-params', props.algorithmType || ''],
+    queryFn: () => fetchReferenceParams(props.algorithmType || undefined),
+    enabled: Boolean(props.algorithmType),
+    staleTime: 5 * 60_000,
+  })
+  const referenceParams = referenceParamsQuery.data ?? []
+  const selectedAnnotationCodeLabel = referenceParams.find(
+    (option) => option.value === props.annotationCode
+  )?.label
+  const selectedPlaybackDevice = playbackDevices.find(
+    (device) => String(device.id) === props.playbackDevice
+  )
 
   return (
     <div className='space-y-4'>
@@ -116,7 +134,9 @@ export function UploadOptions(props: UploadOptionsProps) {
             onValueChange={(value) => props.onAlgorithmTypeChange(value ?? '')}
           >
             <SelectTrigger size='sm' className='w-full' aria-label='算法类型'>
-              <SelectValue placeholder={algorithmOptionsQuery.isLoading ? '加载中…' : '选择算法'} />
+              <SelectValue placeholder={algorithmOptionsQuery.isLoading ? '加载中…' : '选择算法'}>
+                {algorithmOptions.find((o) => o.value === props.algorithmType)?.label ?? ''}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {algorithmOptions.map((option) => (
@@ -128,6 +148,33 @@ export function UploadOptions(props: UploadOptionsProps) {
           </Select>
         </div>
       </div>
+
+      {/* 标注代码（V9.7.10 UploadFileModal/FolderImportModal 对位；选中后作为解析标注的 code 落库） */}
+      {Boolean(props.algorithmType) && (
+        <div className='space-y-2'>
+          <Label htmlFor='upload-annotation-code'>标注代码</Label>
+          <Select
+            value={props.annotationCode}
+            onValueChange={(value) => props.onAnnotationCodeChange(value ?? '')}
+          >
+            <SelectTrigger id='upload-annotation-code' size='sm' className='w-full'>
+              <SelectValue placeholder='留空则使用 JSON 内 code/name 字段'>
+                {selectedAnnotationCodeLabel ?? ''}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {referenceParams.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className='text-muted-foreground text-xs'>
+            标注文件解析时作为标注代码，留空则按 JSON 内 code 或文件名推断
+          </p>
+        </div>
+      )}
 
       <div className='space-y-2'>
         <div className='flex items-center justify-between gap-2'>
@@ -184,7 +231,11 @@ export function UploadOptions(props: UploadOptionsProps) {
               onValueChange={(value) => props.onPlaybackDeviceChange(value ?? '')}
             >
               <SelectTrigger id='upload-playback-device' size='sm' className='w-full'>
-                <SelectValue placeholder={playbackDevicesQuery.isLoading ? '加载中…' : '选择播放设备'} />
+                <SelectValue placeholder={playbackDevicesQuery.isLoading ? '加载中…' : '选择播放设备'}>
+                  {selectedPlaybackDevice
+                    ? `${selectedPlaybackDevice.name}${selectedPlaybackDevice.model ? `（${selectedPlaybackDevice.model}）` : ''}`
+                    : ''}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {playbackDevices.map((device) => (

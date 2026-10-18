@@ -88,7 +88,7 @@ export function AudioConvertDialog(props: AudioConvertDialogProps) {
               onValueChange={(value) => setTargetFormat(value ?? 'WAV')}
             >
               <SelectTrigger size='sm' className='w-full' aria-label='目标格式'>
-                <SelectValue />
+                <SelectValue placeholder='选择目标格式'>{targetFormat}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {CONVERT_TARGET_FORMATS.map((format) => (
@@ -106,7 +106,9 @@ export function AudioConvertDialog(props: AudioConvertDialogProps) {
               onValueChange={(value) => setSampleRate(value ?? '44100')}
             >
               <SelectTrigger size='sm' className='w-full' aria-label='目标采样率'>
-                <SelectValue />
+                <SelectValue placeholder='选择采样率'>
+                  {CONVERT_SAMPLE_RATE_OPTIONS.find((o) => o.value === sampleRate)?.label ?? ''}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {CONVERT_SAMPLE_RATE_OPTIONS.map((option) => (
@@ -121,7 +123,9 @@ export function AudioConvertDialog(props: AudioConvertDialogProps) {
             <Label>声道数</Label>
             <Select value={channels} onValueChange={(value) => setChannels(value ?? '2')}>
               <SelectTrigger size='sm' className='w-full' aria-label='声道数'>
-                <SelectValue />
+                <SelectValue placeholder='选择声道数'>
+                  {CONVERT_CHANNEL_OPTIONS.find((o) => o.value === channels)?.label ?? ''}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {CONVERT_CHANNEL_OPTIONS.map((option) => (
@@ -143,7 +147,9 @@ export function AudioConvertDialog(props: AudioConvertDialogProps) {
               }}
             >
               <SelectTrigger size='sm' className='w-full' aria-label='转换参数'>
-                <SelectValue />
+                <SelectValue placeholder='选择参数'>
+                  {paramOptions.find((o) => o.value === (isLossless ? bitDepth : bitrate))?.label ?? ''}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {paramOptions.map((option) => (

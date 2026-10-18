@@ -111,6 +111,8 @@ export interface UploadTestCaseConfig {
   groupName: string | undefined
   tags: string[]
   audioType: string
+  /** 标注文件解析结果（{format, code, data, source_language, target_language}；merge 载荷 annotations 落库） */
+  annotations?: unknown[]
 }
 
 export interface MergeChunksResult {
@@ -149,7 +151,7 @@ export async function mergeChunks(
     playback_device_id: config.playbackDeviceId,
     description: '',
     asr_text: '',
-    annotations: [],
+    annotations: config.annotations ?? [],
     test_case_config: {
       rounds: [
         {

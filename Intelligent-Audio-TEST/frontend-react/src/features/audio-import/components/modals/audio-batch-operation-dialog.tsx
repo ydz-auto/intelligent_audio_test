@@ -140,7 +140,9 @@ export function AudioBatchOperationDialog(props: AudioBatchOperationDialogProps)
                 onValueChange={(value) => setTargetFolder(value ?? 'test_data/dry')}
               >
                 <SelectTrigger id='batch-folder-target' size='sm' className='w-full'>
-                  <SelectValue />
+                  <SelectValue placeholder='选择目标文件夹'>
+                    {FOLDER_TARGET_OPTIONS.find((o) => o.value === targetFolder)?.label ?? ''}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {FOLDER_TARGET_OPTIONS.map((option) => (
@@ -192,7 +194,9 @@ export function AudioBatchOperationDialog(props: AudioBatchOperationDialogProps)
                 onValueChange={(value) => setProperty(value ?? 'metadata')}
               >
                 <SelectTrigger id='batch-property' size='sm' className='w-full'>
-                  <SelectValue />
+                  <SelectValue placeholder='修改属性'>
+                    {MODIFY_PROPERTY_OPTIONS.find((o) => o.value === property)?.label ?? ''}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {MODIFY_PROPERTY_OPTIONS.map((option) => (
