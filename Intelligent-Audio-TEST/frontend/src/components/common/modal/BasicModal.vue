@@ -177,8 +177,8 @@ onUnmounted(() => {
   padding: 20px 24px;
   border-bottom: 1px solid var(--muted);
   background: linear-gradient(135deg, var(--muted) 0%, var(--muted) 100%);
-  border-top-left-radius: 8px;
-  border-top-right-radius: 8px;
+  border-top-left-radius: var(--radius-card);
+  border-top-right-radius: var(--radius-card);
 }
 
 .modal-header h3 {
@@ -222,8 +222,8 @@ onUnmounted(() => {
   padding: 20px 24px;
   border-top: 1px solid var(--muted);
   background-color: var(--muted);
-  border-bottom-left-radius: 8px;
-  border-bottom-right-radius: 8px;
+  border-bottom-left-radius: var(--radius-card);
+  border-bottom-right-radius: var(--radius-card);
   /* 确保底部固定在模态窗底部 */
   position: sticky;
   bottom: 0;
