@@ -1,8 +1,9 @@
 /**
  * §6.4 参考参数分节（mutate sheet 第三 Tab）。
- * 说明文案 + 内联可编辑表（参数代码/标注代码/参数名称/参考类型/标注格式/字段路径/合并方式/帮助文本）。
+ * 说明文案 + 筛选行（搜索/类型/合并方式）+ 内联可编辑表（参数代码/标注代码/参数名称/参考类型/标注格式/字段路径/合并方式/帮助文本）。
  */
 import { Plus, Trash2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import type { UseFormReturn } from 'react-hook-form'
 import { useFieldArray } from 'react-hook-form'
 
@@ -41,6 +42,33 @@ export function ReferenceParamsSection({
     name: 'referenceParams',
   })
 
+  // 筛选行状态（§6.4：搜索/类型/合并方式，照 V9.7.10 filteredReferenceParams）
+  const [search, setSearch] = useState('')
+  const [typeFilter, setTypeFilter] = useState('all')
+  const [mergeFilter, setMergeFilter] = useState('all')
+
+  const watchReferenceParams = form.watch('referenceParams')
+
+  // 仅显示过滤命中行的「原始数组下标」（RHF 注册/取值必须用原下标，与 params-table 同模式）
+  const filteredIndices = useMemo(() => {
+    const kw = search.trim().toLowerCase()
+    return referenceParams.fields
+      .map((_, index) => index)
+      .filter((index) => {
+        const row = watchReferenceParams[index]
+        if (!row) return false
+        if (kw) {
+          const haystack = [row.code, row.annotationCode, row.name, row.fieldPath, row.helpText]
+            .join(' ')
+            .toLowerCase()
+          if (!haystack.includes(kw)) return false
+        }
+        if (typeFilter !== 'all' && row.type !== typeFilter) return false
+        if (mergeFilter !== 'all' && row.mergeMode !== mergeFilter) return false
+        return true
+      })
+  }, [search, typeFilter, mergeFilter, referenceParams.fields, watchReferenceParams])
+
   const addEmpty = () =>
     referenceParams.append({
       key: `r-${Date.now()}-${referenceParams.fields.length}`,
@@ -60,11 +88,57 @@ export function ReferenceParamsSection({
         {REFERENCE_PARAMS_DESCRIPTION}
       </p>
 
-      <div className='flex items-center justify-end'>
-        <Button variant='outline' size='sm' type='button' onClick={addEmpty}>
-          <Plus aria-hidden='true' />
-          添加参考字段
-        </Button>
+      {/* 筛选行（搜索/类型/合并方式 + 添加参考字段，§6.4；样式照 params-table） */}
+      <div className='flex flex-wrap items-center gap-2'>
+        <Input
+          aria-label='搜索参考参数'
+          placeholder='搜索参考参数...'
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className='h-7 w-44 text-xs'
+        />
+        <Select value={typeFilter} onValueChange={(value) => setTypeFilter(value ?? 'all')}>
+          <SelectTrigger size='sm' className='w-28' aria-label='按类型筛选'>
+            <SelectValue>
+              {typeFilter === 'all'
+                ? '全部类型'
+                : (REFERENCE_PARAM_TYPE_OPTIONS.find((o) => o.value === typeFilter)?.label ??
+                    '全部类型')}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value='all'>全部类型</SelectItem>
+            {REFERENCE_PARAM_TYPE_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={mergeFilter} onValueChange={(value) => setMergeFilter(value ?? 'all')}>
+          <SelectTrigger size='sm' className='w-28' aria-label='按合并方式筛选'>
+            <SelectValue>
+              {mergeFilter === 'all'
+                ? '全部合并'
+                : (REFERENCE_PARAM_MERGE_OPTIONS.find((o) => o.value === mergeFilter)?.label ??
+                    '全部合并')}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value='all'>全部合并</SelectItem>
+            {REFERENCE_PARAM_MERGE_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className='ml-auto'>
+          <Button variant='outline' size='sm' type='button' onClick={addEmpty}>
+            <Plus aria-hidden='true' />
+            添加参考字段
+          </Button>
+        </div>
       </div>
 
       <div className='bg-card ring-foreground/10 overflow-hidden rounded-lg ring-1'>
@@ -90,9 +164,18 @@ export function ReferenceParamsSection({
                     暂无参考参数，点击「添加参考字段」新增
                   </td>
                 </tr>
+              ) : filteredIndices.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className='text-muted-foreground px-3 py-6 text-center'>
+                    未找到匹配参考参数，换个关键词或筛选条件试试
+                  </td>
+                </tr>
               ) : (
-                referenceParams.fields.map((field, index) => (
-                  <tr key={field.key} className='border-border/50 border-b last:border-b-0'>
+                filteredIndices.map((index) => (
+                  <tr
+                    key={referenceParams.fields[index].key}
+                    className='border-border/50 border-b last:border-b-0'
+                  >
                     <td className='px-2 py-1.5'>
                       <Input
                         aria-label='参数代码'
