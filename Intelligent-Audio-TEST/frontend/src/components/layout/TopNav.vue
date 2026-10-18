@@ -35,6 +35,8 @@ const { hasNavPermission } = useNavAccess()
 /** 权限过滤后的可见链接（未登录仅公开项 + 受限项；已登录按权限码过滤） */
 const visibleLinks = computed<TopNavLink[]>(() => {
   if (!authStore.isLoggedIn) {
+    // AUTH_MODE=off 未登录全显（§2.6 注 4）；认证开启未登录仅公开 + 受限项
+    if (getEffectiveAuthMode() === AuthMode.OFF) return TOP_NAV_LINKS
     return TOP_NAV_LINKS.filter(item => item.public || item.restricted)
   }
   return TOP_NAV_LINKS.filter(item => {
