@@ -22,7 +22,6 @@ import { usePermissions } from '@/application/hooks/use-permissions'
 import { useExecutionStore } from '@/infrastructure/stores/execution-store'
 import { useCaseSelectionStore } from '@/infrastructure/stores/case-selection-store'
 import { useResourceSelectionStore } from '@/infrastructure/stores/resource-selection-store'
-import { MOCK_TESTCASES } from '@/infrastructure/mock/test-execution-mock'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { ConfirmDialog } from '@/components/confirm-dialog'
@@ -140,7 +139,8 @@ export function TestExecutionPage({
       return
     }
     const errors = launch.validate({
-      cases: caseState.filterAllMode ? MOCK_TESTCASES : [],
+      // filterAll 模式用例已满足（下方过滤空用例报错），不依赖 mock 用例常量
+      cases: [],
       devices: resources.devices,
       apis: resources.apis,
       deviceIds,

@@ -12,8 +12,8 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 
 import { useApisCrud } from '@/application/test-execution/useApisCrud'
+import { useTestAlgorithmOptions } from '@/application/test-execution/useTestAlgorithmOptions'
 import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
-import { MOCK_TEST_ALGORITHMS } from '@/infrastructure/mock/test-execution-mock'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -61,6 +61,8 @@ interface ApiEditDialogProps {
 export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
   const { save } = useApisCrud()
   const globalAlgorithmId = useAlgorithmStore((s) => s.algorithmId)
+  const { data: algorithmOptions } = useTestAlgorithmOptions()
+  const algorithmList = algorithmOptions ?? []
   const [showKey, setShowKey] = useState(false)
 
   const form = useForm<ApiForm>({
@@ -71,7 +73,7 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
       apiUrl: api?.apiUrl ?? '',
       algorithmType:
         api?.algorithmType ??
-        MOCK_TEST_ALGORITHMS.find((a) => a.id === globalAlgorithmId)?.name ??
+        algorithmList.find((a) => a.id === globalAlgorithmId)?.name ??
         '',
       maxProcess: api?.defaultMaxProcess ?? 5,
       description: api?.description ?? '',
@@ -168,7 +170,7 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                 <SelectValue placeholder='请选择算法' />
               </SelectTrigger>
               <SelectContent>
-                {MOCK_TEST_ALGORITHMS.filter((a) => a.enabled).map((algorithm) => (
+                {algorithmList.map((algorithm) => (
                   <SelectItem key={algorithm.id} value={algorithm.name}>
                     {algorithm.name}
                   </SelectItem>

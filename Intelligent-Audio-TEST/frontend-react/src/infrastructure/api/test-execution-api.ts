@@ -23,6 +23,7 @@ import type { CaseExecutionDetail, TaskLaunchInput } from '@/domain/models/testE
 import type { ApiConfig, ApiHealthCheckResult } from '@/domain/models/apiConfig'
 import type { Device } from '@/domain/models/device'
 import type { TestCase, EvaluationDimension } from '@/domain/models/testCase'
+import type { TestAlgorithmOption } from '@/domain/models/algorithm'
 import type { ReportDetailData } from '@/domain/models/report'
 import { request } from '@/infrastructure/api/client'
 import { apiConfigFromDto, apiHealthFromDto } from '@/infrastructure/adapters/apiConfigAdapter'
@@ -68,6 +69,18 @@ export async function fetchTestCases(filter: TestCaseFilter): Promise<TestCase[]
     params: { ...toTestCaseQuery(filter), per_page: 1000 },
   })
   return (dto?.items ?? []).map(testCaseFromDto)
+}
+
+/** 算法选项（步骤一算法联动 + API 弹窗关联算法；GET /algorithm/options，algorithm:read，与评测域同端点） */
+export async function fetchTestAlgorithmOptions(): Promise<TestAlgorithmOption[]> {
+  const dto = await request<{ algorithms: Array<{ value: string; name: string }> }>(
+    'GET',
+    '/algorithm/options'
+  )
+  return (dto?.algorithms ?? []).map((item) => ({
+    id: item.value ?? '',
+    name: item.name ?? item.value ?? '',
+  }))
 }
 
 /** 全量圈定（步骤二「全选结果」；POST /testcases/ids 按筛选条件圈定全量 id） */

@@ -162,15 +162,27 @@ export function EvaluationPage() {
 
   const categories = categoriesQuery.data ?? []
   const algorithmOptions = algorithmOptionsQuery.data ?? []
-  const globalAlgorithmLabel = globalAlgorithmId
+  // 全局算法联动（§4.1）：页内 facet 未显式选择时，过滤口径/默认值继承全局算法；
+  // 但全局算法不在真实 /algorithm/options 选项内时视为无效——不继承、按「全部」展示
+  // （INT-646 返修：避免把真实维度筛成空态；用户在 facet 显式选择即脱离全局）。
+  const globalAlgorithmValid = Boolean(
+    globalAlgorithmId && algorithmOptions.some((o) => o.value === globalAlgorithmId)
+  )
+  const globalAlgorithmLabel = globalAlgorithmValid
     ? getAlgorithmLabel(globalAlgorithmId)
     : null
-  // 全局算法联动（§4.1）：页内 facet 未显式选择时，过滤口径/默认值继承全局算法；
-  // 用户在 facet 显式选择即脱离全局（effective 取页内值，chip 隐藏）。
   const effectiveAlgorithmId =
-    algorithmFilter !== 'all' ? algorithmFilter : globalAlgorithmId || ''
+    algorithmFilter !== 'all'
+      ? algorithmFilter
+      : globalAlgorithmValid
+        ? globalAlgorithmId
+        : ''
   const algorithmFacetValue =
-    algorithmFilter !== 'all' ? algorithmFilter : globalAlgorithmId || 'all'
+    algorithmFilter !== 'all'
+      ? algorithmFilter
+      : globalAlgorithmValid
+        ? globalAlgorithmId || 'all'
+        : 'all'
 
   /* ───────── 派生：筛选 → 层级 → 分组 ───────── */
 

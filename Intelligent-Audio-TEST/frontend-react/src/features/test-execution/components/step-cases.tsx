@@ -301,7 +301,7 @@ export function StepCases({ readOnly, view, onViewChange }: StepCasesProps) {
       )}
 
       {/* 内容区 */}
-      {listQuery.isLoading ? (
+      {listQuery.isPending ? (
         <div aria-busy='true' className='overflow-hidden rounded-lg border'>
           {Array.from({ length: 6 }).map((_, index) => (
             <div key={index} className='flex gap-4 border-b p-4 last:border-0'>
