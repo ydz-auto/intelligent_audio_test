@@ -20,9 +20,34 @@ import type {
  * 挑选树构建（候选平铺行 → 四级分组 + 结果行叶）
  * ============================================================ */
 
-/** 任务/用例名缺省显示（§11-2 降级：候选未返 case_name 时显示用例 ID） */
-function displayName(name: string | null, fallback: string): string {
-  return name && name.trim() ? name : fallback
+/** 名称缺省降级（§11-2 + INT-713 打回 #1）：候选/条目未返名称时不裸显 36 位 UUID，改友好文案 + 截断 id */
+const CASE_UNAVAILABLE = '用例不可用'
+const DEVICE_UNAVAILABLE = '设备不可用'
+const API_UNAVAILABLE = 'API不可用'
+
+/** 截断 id 前 8 位（友好降级展示用） */
+function shortId(id: string | null | undefined): string {
+  const raw = id?.trim()
+  if (!raw) return '未知'
+  return raw.length > 8 ? `${raw.slice(0, 8)}…` : raw
+}
+
+/** 用例名缺省：友好文案 + 截断 case_id（不裸显 UUID） */
+function caseDisplayName(name: string | null, caseId: string | null): string {
+  if (name && name.trim()) return name
+  return `${CASE_UNAVAILABLE} ${shortId(caseId)}`
+}
+
+/** 设备/API 组名缺省：友好文案 + 截断 id（设备/API 二选一） */
+function deviceGroupDisplayName(
+  name: string | null,
+  deviceId: number | null,
+  apiId: number | null
+): string {
+  if (name && name.trim()) return name
+  if (deviceId != null) return `${DEVICE_UNAVAILABLE} ${shortId(String(deviceId))}`
+  if (apiId != null) return `${API_UNAVAILABLE} ${shortId(String(apiId))}`
+  return '不可用'
 }
 
 /** §11-2 候选未返 result_type → result_type 级分组折叠为「结果类型待补充」 */
@@ -71,7 +96,7 @@ export function buildPickTree(
 
     const cases: PickTreeBranch[] = []
     for (const [caseId, caseRows] of caseMap) {
-      const caseDisplay = displayName(caseRows[0]?.caseName, caseId)
+      const caseDisplay = caseDisplayName(caseRows[0]?.caseName, caseId)
       const deviceMap = new Map<string, CherryPickCandidate[]>()
       for (const c of caseRows) {
         const k = deviceKey(c)
@@ -82,7 +107,11 @@ export function buildPickTree(
 
       const devices: PickTreeBranch[] = []
       for (const [dk, deviceRows] of deviceMap) {
-        const deviceDisplay = displayName(deviceName(deviceRows[0]), dk)
+        const deviceDisplay = deviceGroupDisplayName(
+          deviceName(deviceRows[0]),
+          deviceRows[0]?.deviceId ?? null,
+          deviceRows[0]?.apiId ?? null
+        )
         const resultTypeMap = new Map<string, CherryPickCandidate[]>()
         for (const c of deviceRows) {
           const rt = resultTypeKey(c)
@@ -97,7 +126,7 @@ export function buildPickTree(
             kind: 'leaf',
             key: `leaf:${c.resultId}`,
             resultId: c.resultId,
-            caseName: displayName(c.caseName, c.caseId),
+            caseName: caseDisplayName(c.caseName, c.caseId),
             deviceName: c.deviceName,
             apiName: c.apiName,
             resultType: c.resultType,
@@ -316,7 +345,10 @@ export function buildCartTree(groups: { taskId: number; taskName: string; entrie
 
     const cases: CartTreeBranch[] = []
     for (const [caseKey, caseRows] of caseMap) {
-      const caseName = displayName(caseRows[0]?.sourceCaseName, caseKey)
+      const caseName = caseDisplayName(
+        caseRows[0]?.sourceCaseName,
+        caseRows[0]?.sourceCaseId ?? null
+      )
       const deviceMap = new Map<string, PickCartEntry[]>()
       for (const e of caseRows) {
         const key = e.sourceDeviceId != null ? `device:${e.sourceDeviceId}` : `api:${e.sourceApiId ?? '?'}`
@@ -327,9 +359,10 @@ export function buildCartTree(groups: { taskId: number; taskName: string; entrie
 
       const devices: CartTreeBranch[] = []
       for (const [dk, deviceRows] of deviceMap) {
-        const deviceDisplay = displayName(
+        const deviceDisplay = deviceGroupDisplayName(
           deviceRows[0]?.sourceDeviceName ?? deviceRows[0]?.sourceApiName ?? null,
-          dk
+          deviceRows[0]?.sourceDeviceId ?? null,
+          deviceRows[0]?.sourceApiId ?? null
         )
         // §11-5：缺 source_result_type → result_type 级折叠为「结果类型待补充」
         const rtRows = deviceRows
@@ -337,7 +370,7 @@ export function buildCartTree(groups: { taskId: number; taskName: string; entrie
           kind: 'leaf',
           key: `cart-leaf:${e.itemId}`,
           entryId: e.itemId,
-          caseName: displayName(e.sourceCaseName, e.sourceCaseId ?? '—'),
+          caseName: caseDisplayName(e.sourceCaseName, e.sourceCaseId),
           deviceName: e.sourceDeviceName,
           apiName: e.sourceApiName,
           resultType: e.sourceResultType,

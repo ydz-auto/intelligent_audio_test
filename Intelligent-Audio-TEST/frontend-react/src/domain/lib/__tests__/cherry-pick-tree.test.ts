@@ -119,13 +119,28 @@ describe('buildPickTree', () => {
     expect(apiNode?.count).toBe(1)
   })
 
-  it('缺 case_name/device_name 时降级显示 ID（§11-2）', () => {
+  it('缺 case_name/device_name 时降级友好文案 + 截断 id（§11-2/INT-713 打回 #1）', () => {
     const unnamed = buildPickTree([{ ...CANDIDATES[0], caseName: null, deviceName: null }])
     const taskA = findTask(unnamed, 1042)
     const c1 = findCase(taskA, 'c1')
-    expect(c1.name).toBe('c1')
+    expect(c1.name).toBe('用例不可用 c1')
     const d = c1.children.find((n) => n.kind === 'branch')
-    expect(d && d.name).toBe('device:1')
+    expect(d && d.name).toBe('设备不可用 1')
+    const leaf = d && d.kind === 'branch' ? d.children[0].children[0] : null
+    expect(leaf && leaf.kind === 'leaf' && leaf.caseName).toBe('用例不可用 c1')
+  })
+
+  it('缺 case_name 且 case_id 为 36 位 UUID → 不裸显 UUID，截断前 8 位（INT-713 打回 #1）', () => {
+    const longId = '1e98e5e6-b2bb-472d-b923-de6dde206ebf'
+    const orphan = buildPickTree([{ ...CANDIDATES[0], caseId: longId, caseName: null }])
+    const taskA = findTask(orphan, 1042)
+    const c1 = findCase(taskA, longId)
+    expect(c1.name).toBe(`用例不可用 ${longId.slice(0, 8)}…`)
+    expect(c1.name).not.toContain(longId)
+    const d = c1.children.find((n) => n.kind === 'branch') as PickTreeBranch
+    const rt = d.children[0] as PickTreeBranch
+    const leaf = rt.children[0]
+    expect(leaf.kind === 'leaf' && leaf.caseName).toBe(`用例不可用 ${longId.slice(0, 8)}…`)
   })
 
   it('候选未返 result_type → result_type 级折叠为「结果类型待补充」（§11-2/INT-713）', () => {
@@ -314,6 +329,32 @@ describe('购物车树与移除矩阵（§4.2/§4.3）', () => {
     )
     expect(leaves).toHaveLength(2)
     expect(leaves[1].invalid).toBe(true)
+  })
+
+  it('购物车条目缺 source_case_name/device_name → 友好降级文案 + 截断 id（INT-713 打回 #1）', () => {
+    const orphanGroups = [
+      {
+        taskId: 1042,
+        taskName: '任务A',
+        entries: [
+          {
+            ...cartGroups[0].entries[0],
+            itemId: 'x1',
+            sourceCaseId: '1e98e5e6-b2bb-472d-b923-de6dde206ebf',
+            sourceCaseName: null,
+            sourceDeviceId: 9,
+            sourceDeviceName: null,
+          },
+        ],
+      },
+    ]
+    const tree = buildCartTree(orphanGroups)
+    const caseNode = tree[0].children[0] as CartTreeBranch
+    expect(caseNode.name).toBe('用例不可用 1e98e5e6…')
+    const deviceNode = caseNode.children[0] as CartTreeBranch
+    expect(deviceNode.name).toBe('设备不可用 9')
+    const leaf = deviceNode.children[0]
+    expect(leaf.kind === 'leaf' && leaf.caseName).toBe('用例不可用 1e98e5e6…')
   })
 
   it('节点级批量移除：收集 node 全部条目 id', () => {
