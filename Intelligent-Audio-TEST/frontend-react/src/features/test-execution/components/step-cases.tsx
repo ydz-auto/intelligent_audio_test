@@ -5,12 +5,13 @@
  * 勾选/正选/反选/清空隐藏。
  */
 import { Check, ListChecks, Search, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { useAlgorithmChannel } from '@/application/test-execution/useAlgorithmChannel'
 import { useCaseSelection } from '@/application/test-execution/useCaseSelection'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { fetchTestCases, type TestCaseFilter } from '@/infrastructure/api/test-execution-api'
+import { useCaseSelectionStore } from '@/infrastructure/stores/case-selection-store'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -73,6 +74,12 @@ export function StepCases({ readOnly, view, onViewChange }: StepCasesProps) {
     }),
     [debouncedKeyword, groupId, tags, dimensionId, algorithmType]
   )
+
+  // INT-646 代码审计 P2：filter-all 圈定按当前筛选条件（含关键字/分组/标签/维度），
+  // 而非仅算法维度——筛选落位 case-selection store，launch 时随启动流程传入 createTask。
+  useEffect(() => {
+    useCaseSelectionStore.getState().setFilter(filter)
+  }, [filter])
 
   const listQuery = useQuery({
     queryKey: ['test-execution', 'cases', JSON.stringify(filter)],

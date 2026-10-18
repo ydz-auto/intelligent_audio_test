@@ -153,7 +153,11 @@ export async function fetchFlowReport(reportId: number): Promise<ReportDetailDat
 /** 创建任务（步骤三开始测试；POST /tasks，task:create；filter-all 口径显性化） */
 export async function createTask(input: TaskLaunchInput): Promise<{ id: number }> {
   const caseIds = input.filterAllMode
-    ? (await fetchCaseIdsByFilter({ algorithmType: input.algorithmType })).ids
+    // filter-all：按启动时当前筛选条件全量圈定（INT-646 代码审计 P2——不再是仅算法维度；
+    // caseFilter 由 case-selection store 随启动流程传入，未带时回退仅算法口径）
+    ? (await fetchCaseIdsByFilter(
+        input.caseFilter ?? { algorithmType: input.algorithmType ?? undefined }
+      )).ids
     : input.testCaseIds
   const body: Record<string, unknown> = {
     name: input.name,

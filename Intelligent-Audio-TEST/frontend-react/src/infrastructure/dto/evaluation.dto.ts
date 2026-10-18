@@ -192,7 +192,10 @@ export function toDimensionOptionsList(
     parentDimensionId: null,
     categoryId: null,
     weight: item.weight ?? null,
-    status: item.is_default ?? null,
+    // INT-646 代码审计 P3-3：is_default 语义为「是否默认评估维度」，独立字段映射，
+    // 不再错位映射为 status（启用状态）
+    isDefault: item.is_default ?? null,
+    status: null,
     createdAt: null,
     updatedAt: null,
   }))

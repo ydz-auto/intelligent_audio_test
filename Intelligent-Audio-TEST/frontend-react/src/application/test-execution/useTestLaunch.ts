@@ -88,6 +88,9 @@ export function useTestLaunch() {
         algorithmType: opts.algorithmType ?? null,
         testCaseIds: caseStore.manualCaseIds,
         filterAllMode: caseStore.filterAllMode,
+        // INT-646 代码审计 P2：filter-all 圈定按当前筛选条件（case-selection store
+        // 由 StepCases 持续同步），非仅算法维度
+        caseFilter: caseStore.filter,
         deviceIds: opts.deviceIds,
         apiIds: opts.apiIds,
         params: opts.params,

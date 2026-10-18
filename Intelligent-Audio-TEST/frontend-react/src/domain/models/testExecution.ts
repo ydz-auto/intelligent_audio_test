@@ -49,6 +49,19 @@ export interface TaskLaunchInput {
   testCaseIds: string[]
   /** 圈定模式：未手动选择时按筛选条件全量圈定（filter-all 口径显性化） */
   filterAllMode: boolean
+  /**
+   * filter-all 圈定用当前筛选条件（关键字/分组/标签/评估维度/算法；camelCase，
+   * 与 infrastructure TestCaseFilter 同构——随启动流程由 case-selection store 传入，
+   * createTask 经 toTestCaseQuery 转 snake_case 调 POST /testcases/ids 全量圈定）。
+   */
+  caseFilter?: {
+    keyword?: string
+    groupId?: string | null
+    tags?: string[]
+    dimensionId?: number | null
+    type?: 'e2e' | 'api' | null
+    algorithmType?: string | null
+  }
   /** 所选设备 id 集（设备+API 混合执行） */
   deviceIds: number[]
   /** 所选 API id 集（设备+API 混合执行） */

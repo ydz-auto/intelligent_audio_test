@@ -155,6 +155,9 @@ export interface EvaluationDimensionItem {
   parentDimensionId: number | null
   categoryId: number | null
   weight: number | null
+  /** 是否默认评估维度（后端 is_default 语义；INT-646 代码审计 P3-3 与 status 解耦） */
+  isDefault?: boolean | null
+  /** 启用状态（Dimension 全字段子集；options 端点不下发，恒 null） */
   status: boolean | null
   createdAt: string | null
   updatedAt: string | null

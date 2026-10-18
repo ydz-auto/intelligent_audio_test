@@ -18,6 +18,7 @@ import { useAlgorithmChannel } from '@/application/test-execution/useAlgorithmCh
 import { useReportStep } from '@/application/test-execution/useReportStep'
 import { useResourceSelection } from '@/application/test-execution/useResourceSelection'
 import { useTestLaunch } from '@/application/test-execution/useTestLaunch'
+import { useApisCrud } from '@/application/test-execution/useApisCrud'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useExecutionStore } from '@/infrastructure/stores/execution-store'
 import { useCaseSelectionStore } from '@/infrastructure/stores/case-selection-store'
@@ -61,6 +62,7 @@ export function TestExecutionPage({
   const reportStep = useReportStep()
   const launch = useTestLaunch()
   const resources = useResourceSelection(algorithmType)
+  const apisCrud = useApisCrud()
 
   const config = TEST_FLOW_CONFIG
 
@@ -82,6 +84,8 @@ export function TestExecutionPage({
   const [apiHealth, setApiHealth] = useState<{
     open: boolean
     result: ApiHealthCheckResult | null
+    /** 当前被测 API id（连接测试/重新测试共用；INT-646 代码审计 P1 真实端点口径） */
+    apiId?: number
   }>({ open: false, result: null })
   const [resetOpen, setResetOpen] = useState(false)
   const [newTestOpen, setNewTestOpen] = useState(false)
@@ -122,7 +126,21 @@ export function TestExecutionPage({
     toast.info('设备管理弹窗随设备域卡 INT-361 落地')
   }
 
+  /** 连接测试（§5.4；INT-646 代码审计 P1：经 useApisCrud.testConnection → 真实
+   *  POST /apis/{id}/health，进行中 Spinner；失败已 toast，关闭弹窗） */
+  const runApiHealthTest = async (apiId: number) => {
+    setApiHealth({ open: true, result: null, apiId })
+    const result = await apisCrud.testConnection(apiId)
+    if (result) {
+      setApiHealth({ open: true, result, apiId })
+    } else {
+      setApiHealth({ open: false, result: null })
+    }
+  }
+
   const handleSaveReport = () => {
+    // 报告保存归报告域卡（本卡 API 面未列 PUT /reports；同设备连接测试留证口径），
+    // 暂以本地 600ms 保存动画占位，待报告域卡接线后收敛真实端点。
     setSavingReport(true)
     window.setTimeout(() => {
       setSavingReport(false)
@@ -219,26 +237,7 @@ export function TestExecutionPage({
               voiceLlmAlert={config.voiceLlmAlert}
               readOnly={readOnly}
               onOpenApiEdit={(api) => setApiEdit({ open: true, api })}
-              onOpenApiHealth={(api) => {
-                // 触发连接测试（§5.4）；mock 700ms 后回结果
-                setApiHealth({ open: true, result: null })
-                window.setTimeout(() => {
-                  setApiHealth({
-                    open: true,
-                    result: {
-                      id: api.id,
-                      status: 'online',
-                      healthScore: api.healthScore ?? 92,
-                      apiUrlStatus: 'online',
-                      endpointsStatus: 'online',
-                      statusCode: 200,
-                      responseTime: '214ms',
-                      error: null,
-                      warning: null,
-                    },
-                  })
-                }, 700)
-              }}
+              onOpenApiHealth={(api) => runApiHealthTest(api.id)}
               onScanDevices={handleDeviceEntry}
               onAddDevice={handleDeviceEntry}
             />
@@ -332,23 +331,8 @@ export function TestExecutionPage({
         result={apiHealth.result}
         testing={apiHealth.open && apiHealth.result == null}
         onRetest={() => {
-          setApiHealth((s) => ({ ...s, result: null }))
-          window.setTimeout(() => {
-            setApiHealth({
-              open: true,
-              result: {
-                id: 11,
-                status: 'online',
-                healthScore: 95,
-                apiUrlStatus: 'online',
-                endpointsStatus: 'online',
-                statusCode: 200,
-                responseTime: '188ms',
-                error: null,
-                warning: null,
-              },
-            })
-          }, 600)
+          // 重新测试同走真实端点（复用当前被测 apiId；INT-646 代码审计 P1）
+          if (apiHealth.apiId != null) void runApiHealthTest(apiHealth.apiId)
         }}
       />
 
