@@ -79,7 +79,14 @@ def int789_pg(storage_env):
     remove_db_session()
     engine.dispose()
     cur = admin.cursor()
-    cur.execute(f"DROP DATABASE IF EXISTS {dbname} WITH (FORCE)")
+    # 清理临时库：FORCE 需终止跨角色后端，`intelligent_audio_test` 角色权限不足时
+    # 报 InsufficientPrivilege 留下孤儿库（实测过一次）。改为：先终止本角色残留
+    # 连接（同角色终止被允许），再普通 DROP，不依赖 FORCE。
+    cur.execute(
+        'SELECT pg_terminate_backend(pid) FROM pg_stat_activity '
+        'WHERE datname = %s AND usename = %s AND pid <> pg_backend_pid()',
+        (dbname, PG_USER))
+    cur.execute(f'DROP DATABASE IF EXISTS {dbname}')
     cur.close()
     admin.close()
 
