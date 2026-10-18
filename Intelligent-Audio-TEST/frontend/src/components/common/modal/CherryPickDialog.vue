@@ -22,18 +22,18 @@
             <option value="">全部来源任务</option>
             <option v-for="t in pickableTasks" :key="t.id" :value="String(t.id)">{{ t.name }}</option>
           </select>
-          <select v-model="filters.deviceId" class="cp-input" @change="onFilterChange">
+          <select v-model="filters.deviceId" class="cp-input" @change="onFilterChange"> (INT-738: 挑选合并向导——设备/执行状态/评估状态筛选变更重置页码回第 1 页（对齐 INT-339 P2-1 回归用例）)
             <option value="">全部设备</option>
             <option v-for="d in deviceOptions" :key="d.id" :value="String(d.id)">{{ d.name }}</option>
           </select>
           <input v-model="caseKeyword" class="cp-input" placeholder="按用例搜索" @input="debouncedLoad" />
-          <select v-model="filters.executionStatus" class="cp-input" @change="onFilterChange">
+          <select v-model="filters.executionStatus" class="cp-input" @change="onFilterChange"> (INT-738: 挑选合并向导——设备/执行状态/评估状态筛选变更重置页码回第 1 页（对齐 INT-339 P2-1 回归用例）)
             <option value="">全部执行状态</option>
             <option value="completed">执行完成</option>
             <option value="failed">执行失败</option>
             <option value="stopped">已停止</option>
           </select>
-          <select v-model="filters.evaluationStatus" class="cp-input" @change="onFilterChange">
+          <select v-model="filters.evaluationStatus" class="cp-input" @change="onFilterChange"> (INT-738: 挑选合并向导——设备/执行状态/评估状态筛选变更重置页码回第 1 页（对齐 INT-339 P2-1 回归用例）)
             <option value="">全部评估状态</option>
             <option value="evaluated">已评估</option>
             <option value="pending">未评估</option>
