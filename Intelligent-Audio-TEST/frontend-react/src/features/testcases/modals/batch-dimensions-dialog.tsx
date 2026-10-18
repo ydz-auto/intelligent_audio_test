@@ -1,14 +1,19 @@
 /**
  * 批量设置评估维度弹窗（11_用例域.md §5.3.5，Dialog sm:max-w-3xl；标题按负责人口径与产品全域「评估维度」对齐）。
  * 轮次范围三档「所有轮次（统一设置）/指定轮次（统一设置）/逐轮设置（每轮可不同）」：
- * 「指定轮次」展开轮次号 Checkbox 组「第{n}轮」（与 §5.3.1~5.3.4 同口径，
- * 所有批量设置均可指定轮次/设定所有轮次）；逐轮模式轮次 Tab 交互体系（§5.3.5 ②：
- * Tab 角标=该轮已选维度数、× 关闭至少保留 1 轮、末尾「+ 添加轮次」、最后一轮 Tab 语义 -1）。
- * 维度选择用 DimensionPicker（V9.7.10 平铺 chips 云，搜索+已选计数；主/子维度同屏平铺各自独立
- * 勾选，不做主/子联动分组——照 V9.7.10 BatchDimensionModal 实测口径）。
- * 可视稿演示态：提交走 toast；数据契约 roundMode/rounds/roundDimensions 序列化留接线批次。
+ * 「指定轮次」展开轮次号 Checkbox 组「第{n}轮」（与 §5.3.1~5.3.4 同口径）；逐轮模式轮次 Tab
+ * 交互体系（§5.3.5 ②：Tab 角标=该轮已选维度数、× 关闭至少保留 1 轮、末尾「+ 添加轮次」、
+ * 最后一轮 Tab 语义 -1）+ 快捷操作工具栏三件（§5.3.5 ③：从其他轮次复制 / 清空当前轮次 /
+ * 应用到所有轮次）。
+ * 维度选择用 DimensionPicker（V9.7.10 主/子分组云：主维度分组 + 子维度归属其下、搜索命中子维度
+ * 带出父维度上下文、主维度勾选联动全部子维度、孤儿子维度兜底）；已选维度参数卡（权重 0-100 默认 50
+ * + 阈值 0-100 默认 80，DimensionParamCard 共用）；多轮整体评估维度节（跨轮次聚合勾选 + 权重/阈值
+ * 配置，不选即清空——§5.3.5 数据契约 multiDimensions）。
+ * 数据契约：统一模式 dimensions=[{id,name,weight,threshold}] + roundMode(all/specific) +
+ * roundNumbers(specific)；逐轮模式 round_dimensions={轮次:[…],'-1':[…]}(JSON key 全字符串)；
+ * 多轮整体 multi_dimensions 恒提交（空数组=清空整体评估维度）。
  */
-import { Plus, X } from 'lucide-react'
+import { Copy, Plus, Trash2, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -23,9 +28,27 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { cn } from '@/lib/utils'
 import type { Dimension } from '@/domain/models/evaluationDimension'
+import {
+  DimensionParamCard,
+  type DimensionParamValue,
+} from '@/features/testcases/modals/round-config/dimension-param-card'
 import { DimensionPicker } from '@/features/testcases/modals/round-config/dimension-picker'
 import {
   batchTestcaseAction,
@@ -39,6 +62,8 @@ type RoundKey = number | -1
 
 /** mock 轮次数（§5.3.1~5.3.4 演示第 1~N 轮同口径；接线后按选中用例实际轮次） */
 const MOCK_ROUND_COUNT = 4
+
+const defaultParam = (): DimensionParamValue => ({ weight: 50, threshold: 80 })
 
 export function BatchDimensionsDialog({
   open,
@@ -61,9 +86,18 @@ export function BatchDimensionsDialog({
   const [rounds, setRounds] = useState<RoundKey[]>([1, 2, -1])
   const [activeRound, setActiveRound] = useState<RoundKey>(1)
   const [selected, setSelected] = useState<Record<RoundKey, number[]>>({})
+  /** 每轮次已选维度的权重/阈值参数（§5.3.5 已选维度参数卡） */
+  const [params, setParams] = useState<Record<RoundKey, Record<number, DimensionParamValue>>>({})
+  /** 多轮整体评估维度（跨轮次聚合勾选 + 权重/阈值配置，不选即清空） */
+  const [multiSelected, setMultiSelected] = useState<number[]>([])
+  const [multiParams, setMultiParams] = useState<Record<number, DimensionParamValue>>({})
   const [submitting, setSubmitting] = useState(false)
   /** 「指定轮次」勾选的轮次号（§5.3.5 与 §5.3.1~5.3.4 同口径） */
   const [specificRounds, setSpecificRounds] = useState<number[]>([1])
+  /** 逐轮快捷操作：从其他轮次复制（Popover）+ 清空/应用到所有轮次（ConfirmDialog） */
+  const [copyOpen, setCopyOpen] = useState(false)
+  const [copySource, setCopySource] = useState<RoundKey>(1)
+  const [confirmAction, setConfirmAction] = useState<null | 'clear' | 'applyAll'>(null)
 
   const roundLabels = (key: RoundKey) => (key === -1 ? '最后一轮' : `第 ${key} 轮`)
 
@@ -74,6 +108,10 @@ export function BatchDimensionsDialog({
     })
     setActiveRound((prevActive) => (prevActive === key ? rounds.find((r) => r !== key) ?? 1 : prevActive))
     setSelected((prev) => {
+      const { [key]: _removed, ...rest } = prev
+      return rest
+    })
+    setParams((prev) => {
       const { [key]: _removed, ...rest } = prev
       return rest
     })
@@ -89,7 +127,7 @@ export function BatchDimensionsDialog({
     [gridKeys, selected]
   )
 
-  /** DimensionPicker 勾选（含主维度联动子维度）应用到 gridKeys 各轮次 */
+  /** DimensionPicker 勾选（含主维度联动子维度）应用到 gridKeys 各轮次，并初始化/清理参数 */
   const handleDimensionToggle = (ids: number[], checked: boolean) => {
     setSelected((prev) => {
       const next = { ...prev }
@@ -98,6 +136,18 @@ export function BatchDimensionsDialog({
         next[k] = checked
           ? [...new Set([...current, ...ids])]
           : current.filter((id) => !ids.includes(id))
+      })
+      return next
+    })
+    setParams((prev) => {
+      const next = { ...prev }
+      gridKeys.forEach((k) => {
+        const current = { ...(next[k] ?? {}) }
+        for (const id of ids) {
+          if (checked && !current[id]) current[id] = defaultParam()
+          if (!checked) delete current[id]
+        }
+        next[k] = current
       })
       return next
     })
@@ -114,18 +164,114 @@ export function BatchDimensionsDialog({
     () => new Map(dimensions.map((d) => [Number(d.id), d.name])),
     [dimensions]
   )
-  const toDimConfig = (id: number) => ({
+
+  /** 读取某 id 在目标轮次集合上的有效参数（未显式配置回退默认 50/80） */
+  const getEffectiveParam = (id: number, keys: RoundKey[]): DimensionParamValue => {
+    for (const k of keys) {
+      const v = params[k]?.[id]
+      if (v) return v
+    }
+    return defaultParam()
+  }
+
+  /** 统一/逐轮已选维度的展示参数（per_round 取当前轮，否则取 gridKeys 首个生效值） */
+  const visibleSelected = roundMode === 'per_round' ? selected[activeRound] ?? [] : gridSelected
+  const visibleParam = (id: number) =>
+    roundMode === 'per_round'
+      ? getEffectiveParam(id, [activeRound])
+      : getEffectiveParam(id, gridKeys)
+
+  const handleParamChange = (id: number, patch: Partial<DimensionParamValue>) => {
+    setParams((prev) => {
+      const next = { ...prev }
+      gridKeys.forEach((k) => {
+        next[k] = {
+          ...(next[k] ?? {}),
+          [id]: { ...(next[k]?.[id] ?? defaultParam()), ...patch },
+        }
+      })
+      return next
+    })
+  }
+
+  /** 多轮整体评估维度勾选（主维度联动子维度由 DimensionPicker 传入 ids） */
+  const handleMultiToggle = (ids: number[], checked: boolean) => {
+    setMultiSelected((prev) => {
+      const next = new Set(prev)
+      ids.forEach((id) => (checked ? next.add(id) : next.delete(id)))
+      return [...next]
+    })
+    setMultiParams((prev) => {
+      const next = { ...prev }
+      for (const id of ids) {
+        if (checked && !next[id]) next[id] = defaultParam()
+        if (!checked) delete next[id]
+      }
+      return next
+    })
+  }
+
+  /** 逐轮快捷操作 */
+  const copyFromRound = () => {
+    const otherRounds = rounds.filter((r) => r !== activeRound)
+    if (otherRounds.length === 0) return
+    setCopySource(otherRounds[0])
+    setCopyOpen(true)
+  }
+  const doCopyFromRound = () => {
+    setSelected((prev) => ({ ...prev, [activeRound]: [...(prev[copySource] ?? [])] }))
+    setParams((prev) => ({
+      ...prev,
+      [activeRound]: { ...(prev[copySource] ?? {}) },
+    }))
+    setCopyOpen(false)
+  }
+  const clearRound = () => {
+    setSelected((prev) => ({ ...prev, [activeRound]: [] }))
+    setParams((prev) => ({ ...prev, [activeRound]: {} }))
+    setConfirmAction(null)
+  }
+  const applyToAllRounds = () => {
+    const source = selected[activeRound] ?? []
+    const sourceParams = params[activeRound] ?? {}
+    setSelected((prev) => {
+      const next = { ...prev }
+      rounds.forEach((r) => {
+        if (r === activeRound) return
+        next[r] = [...source]
+      })
+      return next
+    })
+    setParams((prev) => {
+      const next = { ...prev }
+      rounds.forEach((r) => {
+        if (r === activeRound) return
+        next[r] = { ...sourceParams }
+      })
+      return next
+    })
+    setConfirmAction(null)
+  }
+
+  /** 提交载荷：统一/逐轮均恒带 multiDimensions（空数组=清空整体评估维度） */
+  const toDimConfig = (id: number, keys: RoundKey[]) => ({
     id,
     name: dimNameMap.get(Number(id)) ?? `dim-${id}`,
+    ...getEffectiveParam(id, keys),
   })
 
   const handleSubmit = async () => {
     setSubmitting(true)
     try {
+      const multiDimensions = multiSelected.map((id) => ({
+        id,
+        name: dimNameMap.get(Number(id)) ?? `dim-${id}`,
+        ...(multiParams[id] ?? defaultParam()),
+      }))
       if (roundMode === 'per_round') {
         const roundDimensions: Record<string, unknown[]> = {}
         for (const key of rounds) {
-          roundDimensions[String(key)] = (selected[key] ?? []).map(toDimConfig)
+          roundDimensions[String(key)] = (selected[key] ?? []).map((id) => toDimConfig(id, [key]))
         }
         await batchTestcaseAction('update_dimensions', ids, {
           dimensions: [],
@@ -133,15 +279,17 @@ export function BatchDimensionsDialog({
           roundMode: 'per_round',
           roundNumbers: [],
           roundDimensions,
+          multiDimensions,
         })
       } else {
         const idsToApply = roundMode === 'specific' ? specificRounds : rounds
         const flat = [...new Set(idsToApply.flatMap((k) => selected[k] ?? []))]
         await batchTestcaseAction('update_dimensions', ids, {
-          dimensions: flat.map(toDimConfig),
+          dimensions: flat.map((id) => toDimConfig(id, gridKeys)),
           testType: testType ?? '',
           roundMode: roundMode as TestcaseRoundMode,
           roundNumbers: roundMode === 'specific' ? specificRounds : undefined,
+          multiDimensions,
         })
       }
       toast.success(`批量操作执行成功（更新 ${count} 个）`)
@@ -214,65 +362,150 @@ export function BatchDimensionsDialog({
             </div>
           )}
 
-          {/* 逐轮模式轮次 Tab（§5.3.5 ②） */}
+          {/* 逐轮模式轮次 Tab（§5.3.5 ②）+ 快捷操作工具栏（§5.3.5 ③） */}
           {roundMode === 'per_round' && (
-            <div className='border-border/60 flex flex-wrap items-center gap-1.5 rounded-lg border p-2'>
-              {rounds.map((key) => {
-                const countSelected = selected[key]?.length ?? 0
-                return (
-                  <span
-                    key={key}
-                    className={cn(
-                      'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-sm transition-colors',
-                      activeRound === key
-                        ? 'bg-primary/10 border-primary/40 text-foreground'
-                        : 'hover:bg-accent'
-                    )}
+            <div className='space-y-1.5'>
+              <div className='border-border/60 flex flex-wrap items-center gap-1.5 rounded-lg border p-2'>
+                {rounds.map((key) => {
+                  const countSelected = selected[key]?.length ?? 0
+                  return (
+                    <span
+                      key={key}
+                      className={cn(
+                        'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-sm transition-colors',
+                        activeRound === key
+                          ? 'bg-primary/10 border-primary/40 text-foreground'
+                          : 'hover:bg-accent'
+                      )}
+                    >
+                      <button
+                        type='button'
+                        className='font-medium'
+                        onClick={() => setActiveRound(key)}
+                      >
+                        {roundLabels(key)}
+                      </button>
+                      {countSelected > 0 && (
+                        <Badge className='rounded-sm px-1 font-mono text-[10px] tabular-nums'>
+                          {countSelected}
+                        </Badge>
+                      )}
+                      <button
+                        type='button'
+                        aria-label={`关闭 ${roundLabels(key)}`}
+                        className='text-muted-foreground hover:text-destructive'
+                        onClick={() => toggleRound(key, true)}
+                      >
+                        <X aria-hidden='true' className='size-3.5' />
+                      </button>
+                    </span>
+                  )
+                })}
+                <Button
+                  type='button'
+                  variant='ghost'
+                  size='sm'
+                  className='h-7 gap-1'
+                  onClick={() =>
+                    setRounds((prev) => [...prev, Math.max(...prev.filter((r) => r !== -1), 0) + 1])
+                  }
+                >
+                  <Plus aria-hidden='true' className='size-3.5' />
+                  添加轮次
+                </Button>
+              </div>
+
+              {/* 快捷操作工具栏三件（§5.3.5 ③） */}
+              <div className='flex flex-wrap items-center gap-2'>
+                <Popover open={copyOpen} onOpenChange={setCopyOpen}>
+                  <PopoverTrigger
+                    render={
+                      <Button
+                        type='button'
+                        variant='outline'
+                        size='sm'
+                        disabled={rounds.length <= 1}
+                      >
+                        <Copy aria-hidden='true' className='size-3.5' />
+                        从其他轮次复制
+                      </Button>
+                    }
+                  />
+                  <PopoverContent
+                    data-testid='batch-dim-copy-source'
+                    className='w-64'
+                    align='start'
                   >
-                    <button
-                      type='button'
-                      className='font-medium'
-                      onClick={() => setActiveRound(key)}
-                    >
-                      {roundLabels(key)}
-                    </button>
-                    {countSelected > 0 && (
-                      <Badge className='rounded-sm px-1 font-mono text-[10px] tabular-nums'>
-                        {countSelected}
-                      </Badge>
-                    )}
-                    <button
-                      type='button'
-                      aria-label={`关闭 ${roundLabels(key)}`}
-                      className='text-muted-foreground hover:text-destructive'
-                      onClick={() => toggleRound(key, true)}
-                    >
-                      <X aria-hidden='true' className='size-3.5' />
-                    </button>
-                  </span>
-                )
-              })}
-              <Button
-                type='button'
-                variant='ghost'
-                size='sm'
-                className='h-7 gap-1'
-                onClick={() => setRounds((prev) => [...prev, Math.max(...prev.filter((r) => r !== -1), 0) + 1])}
-              >
-                <Plus aria-hidden='true' className='size-3.5' />
-                添加轮次
-              </Button>
+                    <div className='space-y-2'>
+                      <div className='flex items-center gap-2'>
+                        <Label className='shrink-0 text-sm'>从</Label>
+                        <Select
+                          value={String(copySource)}
+                          onValueChange={(v) => setCopySource(Number(v) as RoundKey)}
+                        >
+                          <SelectTrigger size='sm' className='h-8'>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {rounds
+                              .filter((r) => r !== activeRound)
+                              .map((r) => (
+                                <SelectItem key={r} value={String(r)}>
+                                  {roundLabels(r)}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                        <Label className='shrink-0 text-sm'>复制到{roundLabels(activeRound)}</Label>
+                      </div>
+                      <div className='flex justify-end gap-2'>
+                        <Button type='button' variant='outline' size='sm' onClick={() => setCopyOpen(false)}>
+                          取消
+                        </Button>
+                        <Button type='button' size='sm' onClick={doCopyFromRound}>
+                          确定
+                        </Button>
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+
+                <Button
+                  type='button'
+                  variant='outline'
+                  size='sm'
+                  disabled={(selected[activeRound]?.length ?? 0) === 0}
+                  onClick={() => setConfirmAction('clear')}
+                >
+                  <Trash2 aria-hidden='true' className='size-3.5' />
+                  清空当前轮次
+                </Button>
+                <Button
+                  type='button'
+                  variant='outline'
+                  size='sm'
+                  disabled={
+                    (selected[activeRound]?.length ?? 0) === 0 || rounds.length <= 1
+                  }
+                  onClick={() => setConfirmAction('applyAll')}
+                >
+                  应用到所有轮次
+                </Button>
+              </div>
             </div>
           )}
 
-          {/* 维度选择（DimensionPicker 主/子层级云，参考 V9.7.10 DimensionCloud） */}
+          {/* 维度选择（DimensionPicker 主/子分组云，参考 V9.7.10 DimensionCloud） */}
           <div>
             <p className='text-muted-foreground mb-2 text-xs'>
               {roundMode === 'per_round'
                 ? '已按当前算法过滤可用维度；未选维度的轮次将被清空'
                 : '已按当前算法过滤可用维度；不选任何维度点确定即清除所选轮次的评估维度'}
             </p>
-            <div className='max-h-72 overflow-y-auto rounded-lg border p-2'>
+            <div
+              data-testid='batch-dim-round-cloud'
+              className='max-h-72 overflow-y-auto rounded-lg border p-2'
+            >
               <DimensionPicker
                 dimensions={dimensions}
                 algorithmType={algorithmType}
@@ -281,6 +514,76 @@ export function BatchDimensionsDialog({
                 showSearch
               />
             </div>
+          </div>
+
+          {/* 已选维度参数卡（权重 0-100 默认 50 + 阈值 0-100 默认 80） */}
+          {visibleSelected.length > 0 ? (
+            <div className='space-y-2'>
+              <span className='text-sm font-medium'>维度权重和阈值配置</span>
+              {visibleSelected.map((id) => {
+                const dim = dimensions.find((d) => Number(d.id) === Number(id))
+                if (!dim) return null
+                return (
+                  <DimensionParamCard
+                    key={id}
+                    dimension={dim}
+                    params={visibleParam(id)}
+                    onChange={(patch) => handleParamChange(id, patch)}
+                    onRemove={() => handleDimensionToggle([id], false)}
+                  />
+                )
+              })}
+            </div>
+          ) : (
+            <p className='text-muted-foreground/70 text-xs'>
+              未选择评估维度——不选任何维度点确定即清除所选轮次的评估维度
+            </p>
+          )}
+
+          {/* 多轮整体评估维度节（§5.3.5：跨轮次聚合勾选 + 权重/阈值配置，不选即清空） */}
+          <div className='border-border/60 space-y-2 rounded-lg border p-3'>
+            <div className='flex flex-wrap items-center gap-2'>
+              <span className='text-sm font-medium'>多轮整体评估维度（跨轮次聚合）</span>
+              <Badge variant='secondary' className='rounded-md px-1.5 text-[11px]'>
+                可选
+              </Badge>
+            </div>
+            <p className='text-muted-foreground text-xs leading-relaxed'>
+              这些维度在所有轮次执行完成后触发，基于全量多轮数据计算跨轮次综合指标（如多轮平均
+              WER、对话连贯性），与单轮维度独立配置。不选任何维度将清空已有的整体评估维度。
+            </p>
+            <div data-testid='batch-dim-multi-cloud'>
+              <DimensionPicker
+                dimensions={dimensions}
+                algorithmType={algorithmType}
+                selected={multiSelected}
+                onToggle={handleMultiToggle}
+                showSearch={false}
+              />
+            </div>
+            {multiSelected.length > 0 && (
+              <div className='space-y-2'>
+                <span className='text-sm font-medium'>整体评估 - 权重和阈值配置</span>
+                {multiSelected.map((id) => {
+                  const dim = dimensions.find((d) => Number(d.id) === Number(id))
+                  if (!dim) return null
+                  return (
+                    <DimensionParamCard
+                      key={id}
+                      dimension={dim}
+                      params={multiParams[id] ?? defaultParam()}
+                      onChange={(patch) =>
+                        setMultiParams((prev) => ({
+                          ...prev,
+                          [id]: { ...(prev[id] ?? defaultParam()), ...patch },
+                        }))
+                      }
+                      onRemove={() => handleMultiToggle([id], false)}
+                    />
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
 
@@ -293,6 +596,25 @@ export function BatchDimensionsDialog({
             确定
           </Button>
         </DialogFooter>
+
+        {/* 逐轮快捷操作确认（§5.3.5 ③ ConfirmDialog） */}
+        <ConfirmDialog
+          open={confirmAction === 'clear'}
+          onOpenChange={(o) => !o && setConfirmAction(null)}
+          title={`确定清空${roundLabels(activeRound)}的评估维度？`}
+          desc='清空后该轮次的已选评估维度与权重/阈值配置将被移除，无法撤销。'
+          confirmText='确定清空'
+          destructive
+          handleConfirm={clearRound}
+        />
+        <ConfirmDialog
+          open={confirmAction === 'applyAll'}
+          onOpenChange={(o) => !o && setConfirmAction(null)}
+          title={`将${roundLabels(activeRound)}的维度配置应用到所有其他轮次？`}
+          desc='其他轮次的评估维度与权重/阈值配置将被覆盖为当前轮次的内容。'
+          confirmText='确定应用'
+          handleConfirm={applyToAllRounds}
+        />
       </DialogContent>
     </Dialog>
   )
