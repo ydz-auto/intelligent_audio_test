@@ -22,8 +22,8 @@ import { ComparisonReportPanel } from '@/features/report-view/components/compari
 import {
   formatDateTime,
   getAlgorithmLabel,
-  REPORT_STATUS_META,
-  REPORT_TYPE_META,
+  getReportStatusMeta,
+  getReportTypeMeta,
 } from '@/features/reports/constants'
 
 interface StepReportProps {
@@ -84,8 +84,8 @@ export function StepReport({ taskId, readOnly }: StepReportProps) {
   }
 
   const isComparison = report.type === 'comparison' || report.type === 'secondary_comparison'
-  const typeMeta = REPORT_TYPE_META[report.type]
-  const statusMeta = REPORT_STATUS_META[report.status]
+  const typeMeta = getReportTypeMeta(report.type)
+  const statusMeta = getReportStatusMeta(report.status)
 
   return (
     <div className='space-y-6'>
