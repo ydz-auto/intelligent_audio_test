@@ -128,6 +128,17 @@ describe('buildPickTree', () => {
     expect(d && d.name).toBe('device:1')
   })
 
+  it('候选未返 result_type → result_type 级折叠为「结果类型待补充」（§11-2/INT-713）', () => {
+    const pending = buildPickTree([{ ...CANDIDATES[0], resultType: null }])
+    const taskA = findTask(pending, 1042)
+    const c1 = findCase(taskA, 'c1')
+    const d1 = findDevice(c1, '设备-01')
+    const rt = findResultType(d1, '结果类型待补充')
+    expect(rt.count).toBe(1)
+    const leaf = rt.children[0]
+    expect(leaf.kind === 'leaf' && leaf.resultType).toBeNull()
+  })
+
   it('R10 已加购叶标记', () => {
     const tree = buildPickTree(CANDIDATES, new Set([1, 6]))
     const taskA = findTask(tree, 1042)

@@ -25,9 +25,18 @@ function displayName(name: string | null, fallback: string): string {
   return name && name.trim() ? name : fallback
 }
 
+/** §11-2 候选未返 result_type → result_type 级分组折叠为「结果类型待补充」 */
+export const PENDING_RESULT_TYPE_KEY = '__pending__'
+export const PENDING_RESULT_TYPE_LABEL = '结果类型待补充'
+
 /** 设备/API 组 key（device_id 与 api_id 二选一，实测） */
 function deviceKey(c: CherryPickCandidate): string {
   return c.deviceId != null ? `device:${c.deviceId}` : `api:${c.apiId ?? '?'}`
+}
+
+/** 候选行 result_type 分组 key（缺省折叠为待补充） */
+function resultTypeKey(c: CherryPickCandidate): string {
+  return c.resultType && c.resultType.trim() ? c.resultType : PENDING_RESULT_TYPE_KEY
 }
 
 function deviceName(c: CherryPickCandidate): string | null {
@@ -76,7 +85,7 @@ export function buildPickTree(
         const deviceDisplay = displayName(deviceName(deviceRows[0]), dk)
         const resultTypeMap = new Map<string, CherryPickCandidate[]>()
         for (const c of deviceRows) {
-          const rt = c.resultType
+          const rt = resultTypeKey(c)
           const list = resultTypeMap.get(rt) ?? []
           list.push(c)
           resultTypeMap.set(rt, list)
@@ -101,7 +110,7 @@ export function buildPickTree(
             kind: 'branch',
             key: `resultType:${taskId}:${caseId}:${dk}:${rt}`,
             level: 'resultType',
-            name: rt,
+            name: rt === PENDING_RESULT_TYPE_KEY ? PENDING_RESULT_TYPE_LABEL : rt,
             count: leaves.length,
             resultIds: rtRows.map((c) => c.resultId),
             children: leaves,

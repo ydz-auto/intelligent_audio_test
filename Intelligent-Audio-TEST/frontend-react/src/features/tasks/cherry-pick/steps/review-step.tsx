@@ -68,11 +68,11 @@ export function ReviewStep({
               </AlertDescription>
             </Alert>
           )}
-          {(data?.duplicates ?? 0) > 0 && (
+          {(data?.duplicates?.length ?? 0) > 0 && (
             <Alert className='border-info/40'>
               <Layers aria-hidden='true' />
               <AlertTitle className='text-info'>
-                同设备同用例存在多来源结果 {data?.duplicates} 组，合并将全部保留并标注来源
+                同设备同用例存在多来源结果 {data?.duplicates.length} 组，合并将全部保留并标注来源
               </AlertTitle>
               <AlertDescription>
                 复核摘要与合并结果均按来源任务分组展示，重复结果不会丢失。
@@ -84,7 +84,7 @@ export function ReviewStep({
               <TriangleAlert aria-hidden='true' />
               <AlertTitle className='text-warning'>
                 {data?.sourceTaskCount} 个来源任务的任务级配置（
-                {data?.configFields.join('、') ?? '配置'}）不一致，新任务默认取首个来源任务配置，可展开「任务级配置」覆盖
+                {data?.configFields?.join('、') ?? '配置'}）不一致，新任务默认取首个来源任务配置，可展开「任务级配置」覆盖
               </AlertTitle>
               <AlertDescription>
                 下单步骤可展开「任务级配置」覆盖，确认下单前会再次确认。

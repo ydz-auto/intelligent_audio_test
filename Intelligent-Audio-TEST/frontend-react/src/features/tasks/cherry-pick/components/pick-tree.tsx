@@ -71,9 +71,18 @@ function LeafRow({
       <span className='text-muted-foreground min-w-0 max-w-40 truncate'>
         {leafDeviceName(leaf)}
       </span>
-      <Badge variant='outline' className='font-mono text-[10px]'>
-        {leaf.resultType}
-      </Badge>
+      {leaf.resultType ? (
+        <Badge variant='outline' className='font-mono text-[10px]'>
+          {leaf.resultType}
+        </Badge>
+      ) : (
+        <span
+          className='text-muted-foreground/60 shrink-0 text-[10px]'
+          title='结果类型待后端接口（§11-2）'
+        >
+          待补充
+        </span>
+      )}
       <StatusBadge
         label={
           leaf.executionStatus === 'completed'

@@ -85,8 +85,7 @@ export const usePickCartStore = create<PickCartState>((set, get) => ({
   },
 
   addEntries: async (resultIds) => {
-    const { added, skippedCount, invalidCount } = await addToCart(resultIds)
-    const addedCount = added.length
+    const { addedCount, skippedCount, invalidCount } = await addToCart(resultIds)
     set({ revision: get().revision + 1 })
     await get().refreshCart()
     return { addedCount, skippedCount, invalidCount }
