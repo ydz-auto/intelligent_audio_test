@@ -5,7 +5,8 @@
  * overrides 附加权限明细）、POST /users、PUT /users/{id}、POST /users/{id}/role、
  * POST /users/{id}/permissions（单条授予）、DELETE /users/{id}/permissions/{permission_id}、
  * DELETE /users/{id}。
- * 说明：displayName 后端无字段（兜底 username）；列表响应不含 overrides（附加权限
+ * 说明：displayName 走后端 display_name 字段（INT-697 落地，INT-698 接线），
+ * 未设置/清空为 null 时 DTO 兜底 username；列表响应不含 overrides（附加权限
  * 需详情端点承载）；角色分配按 role_id（前端 roleCode → role_id 由调用方解析）。
  */
 import type { PlatformUser, PlatformUserStatus } from '@/domain/models/user'
@@ -60,12 +61,14 @@ export async function createUser(input: {
   roleId?: number
   status: PlatformUserStatus
 }): Promise<PlatformUser> {
-  const data = await apiClient.post<{ user_id?: number }>('/auth/users', {
+  const body: Record<string, unknown> = {
     username: input.username,
     email: input.email,
     password: input.password,
     role_id: input.roleId ?? 0,
-  })
+  }
+  if (input.displayName !== undefined) body.display_name = input.displayName
+  const data = await apiClient.post<{ user_id?: number }>('/auth/users', body)
   return {
     id: data.user_id != null ? String(data.user_id) : `user-${Date.now()}`,
     username: input.username,
@@ -79,7 +82,10 @@ export async function createUser(input: {
   }
 }
 
-/** 更新用户（PUT /auth/users/{id}；email/status 落库，displayName 后端无字段不发送） */
+/**
+ * 更新用户（PUT /auth/users/{id}；email/status/displayName 落库，displayName
+ * 缺省键不发送——编辑态未改显示名时保留原值；显式传空串则清空后端 display_name）。
+ */
 export async function updateUser(
   userId: string,
   patch: Partial<
@@ -87,6 +93,7 @@ export async function updateUser(
   >
 ): Promise<PlatformUser> {
   const body: Record<string, unknown> = {}
+  if (patch.displayName !== undefined) body.display_name = patch.displayName
   if (patch.email !== undefined) body.email = patch.email
   if (patch.status !== undefined) body.status = toBackendStatus(patch.status)
   await apiClient.put(`/auth/users/${userId}`, body)
