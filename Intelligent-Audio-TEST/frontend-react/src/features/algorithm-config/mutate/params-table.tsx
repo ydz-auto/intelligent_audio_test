@@ -37,17 +37,15 @@ import type {
   ParamScope,
 } from '@/features/algorithm-config/types'
 import {
+  CASE_PARAM_CODE_PRESETS,
   CASE_PARAM_SCOPE_OPTIONS,
   CASE_PARAM_TYPE_OPTIONS,
   DEVICE_PARAM_TYPE_OPTIONS,
+  FEATURE_BUNDLES,
   FEATURE_BUNDLES_HINT,
   PARAM_DIRECTION_OPTIONS,
 } from '@/features/algorithm-config/constants'
 import { ParamScopeChips, type FeatureBundleItem } from './param-scope-chips'
-import {
-  MOCK_CASE_PARAM_CODE_PRESETS,
-  MOCK_FEATURE_BUNDLES,
-} from '@/infrastructure/mock/algorithm-config-mock'
 
 const PRESET_DATALIST_ID = 'case-param-code-presets'
 
@@ -101,7 +99,7 @@ export function ParamsTable({
 
   const featureBundles: FeatureBundleItem[] = useMemo(() => {
     const watchCase = watchParams.caseParams
-    return MOCK_FEATURE_BUNDLES.map((bundle) => ({
+    return FEATURE_BUNDLES.map((bundle) => ({
       key: bundle.key,
       label: bundle.label,
       params: bundle.params,
@@ -112,7 +110,7 @@ export function ParamsTable({
   }, [watchParams.caseParams])
 
   const toggleBundle = (key: string) => {
-    const bundle = MOCK_FEATURE_BUNDLES.find((b) => b.key === key)
+    const bundle = FEATURE_BUNDLES.find((b) => b.key === key)
     if (!bundle) return
     const active = bundle.params.every((code) =>
       watchParams.caseParams.some((param) => param.paramCode === code)
@@ -259,7 +257,7 @@ export function ParamsTable({
       )}
 
       <datalist id={PRESET_DATALIST_ID}>
-        {MOCK_CASE_PARAM_CODE_PRESETS.map((code) => (
+        {CASE_PARAM_CODE_PRESETS.map((code) => (
           <option key={code} value={code} />
         ))}
       </datalist>
@@ -275,7 +273,12 @@ export function ParamsTable({
         />
         <Select value={typeFilter} onValueChange={(value) => setTypeFilter(value ?? 'all')}>
           <SelectTrigger size='sm' className='w-28' aria-label='按类型筛选'>
-            <SelectValue placeholder='全部类型' />
+            <SelectValue>
+              {typeFilter === 'all'
+                ? '全部类型'
+                : (uniqueTypeOptions(scope).find((o) => o.value === typeFilter)
+                    ?.label ?? '全部类型')}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value='all'>全部类型</SelectItem>
@@ -288,7 +291,13 @@ export function ParamsTable({
         </Select>
         <Select value={requiredFilter} onValueChange={(value) => setRequiredFilter(value ?? 'all')}>
           <SelectTrigger size='sm' className='w-24' aria-label='按必填筛选'>
-            <SelectValue placeholder='全部' />
+            <SelectValue>
+              {requiredFilter === 'all'
+                ? '全部'
+                : requiredFilter === 'required'
+                  ? '必填'
+                  : '非必填'}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value='all'>全部</SelectItem>
@@ -534,7 +543,11 @@ function ParamRow({
             className='w-32'
             aria-invalid={Boolean(paramTypeError)}
           >
-            <SelectValue />
+            <SelectValue>
+              {(isCase ? CASE_PARAM_TYPE_OPTIONS : DEVICE_PARAM_TYPE_OPTIONS).find(
+                (o) => o.value === paramType
+              )?.label ?? '文本'}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {(isCase ? CASE_PARAM_TYPE_OPTIONS : DEVICE_PARAM_TYPE_OPTIONS).map(
@@ -566,7 +579,13 @@ function ParamRow({
               }
             >
               <SelectTrigger size='sm' className='w-24'>
-                <SelectValue />
+                <SelectValue>
+                  {PARAM_DIRECTION_OPTIONS.find(
+                    (o) =>
+                      o.value ===
+                      (form.watch(directionPath) as string)
+                  )?.label ?? '输入'}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {PARAM_DIRECTION_OPTIONS.map((option) => (
@@ -593,7 +612,13 @@ function ParamRow({
               }
             >
               <SelectTrigger size='sm' className='w-20'>
-                <SelectValue />
+                <SelectValue>
+                  {CASE_PARAM_SCOPE_OPTIONS.find(
+                    (o) =>
+                      o.value ===
+                      (form.watch(casePath('scope')) as string)
+                  )?.label ?? '通用'}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {CASE_PARAM_SCOPE_OPTIONS.map((option) => (

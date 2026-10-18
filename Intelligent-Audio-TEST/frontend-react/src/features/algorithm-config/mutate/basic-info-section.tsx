@@ -113,7 +113,12 @@ export function BasicInfoSection({
               className={cn('w-full justify-between', !groupId && 'text-muted-foreground')}
               aria-invalid={Boolean(formState.errors.groupId)}
             >
-              <SelectValue placeholder='请选择分组' />
+              <SelectValue>
+                {groupId
+                  ? (groups.find((g) => String(g.id) === groupId)?.name ??
+                    '请选择分组')
+                  : '请选择分组'}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {groups.map((group) => (

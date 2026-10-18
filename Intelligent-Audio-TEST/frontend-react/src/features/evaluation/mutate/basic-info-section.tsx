@@ -90,7 +90,11 @@ export function BasicInfoSection({
             }
           >
             <SelectTrigger className='w-full justify-between'>
-              <SelectValue placeholder='请选择评估类型' />
+              <SelectValue>
+                {DIMENSION_EVALUATION_TYPE_OPTIONS.find(
+                  (o) => o.value === watch('evaluationType')
+                )?.label ?? '请选择评估类型'}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {DIMENSION_EVALUATION_TYPE_OPTIONS.map((option) => (
@@ -118,7 +122,12 @@ export function BasicInfoSection({
           <Label required>所属分类</Label>
           <Select value={categoryId} onValueChange={handleCategorySelect}>
             <SelectTrigger className='w-full justify-between'>
-              <SelectValue placeholder='请选择分类' />
+              <SelectValue>
+                {categoryId === ''
+                  ? '未分类'
+                  : (categories.find((cat) => String(cat.id) === categoryId)?.name ??
+                    '请选择分类')}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value=''>未分类</SelectItem>

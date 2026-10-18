@@ -318,7 +318,11 @@ export function ApiSection({
             }
           >
             <SelectTrigger className='w-full justify-between'>
-              <SelectValue />
+              <SelectValue>
+                {STATISTIC_METHOD_OPTIONS.find(
+                  (o) => o.value === watch('statisticMethod')
+                )?.label ?? '简单平均'}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {STATISTIC_METHOD_OPTIONS.map((option) => (
@@ -338,7 +342,11 @@ export function ApiSection({
             }
           >
             <SelectTrigger className='w-full justify-between'>
-              <SelectValue />
+              <SelectValue>
+                {AGG_DENOMINATOR_OPTIONS.find(
+                  (o) => o.value === watch('aggDenominator')
+                )?.label ?? '按用例 (分母=配置该维度的用例数)'}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {AGG_DENOMINATOR_OPTIONS.map((option) => (

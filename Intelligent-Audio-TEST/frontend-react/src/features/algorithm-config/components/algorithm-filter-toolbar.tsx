@@ -52,7 +52,12 @@ export function AlgorithmFilterToolbar(props: AlgorithmFilterToolbarProps) {
         onValueChange={(value) => props.onGroupFilter(value ?? GROUP_FILTER_ALL)}
       >
         <SelectTrigger size='sm' className='w-36' aria-label='分组'>
-          <SelectValue placeholder='全部分组' />
+          <SelectValue>
+            {props.groupFilter === GROUP_FILTER_ALL
+              ? '全部分组'
+              : (props.groups.find((g) => String(g.id) === props.groupFilter)
+                  ?.name ?? '全部分组')}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={GROUP_FILTER_ALL}>全部分组</SelectItem>
@@ -69,7 +74,13 @@ export function AlgorithmFilterToolbar(props: AlgorithmFilterToolbarProps) {
         onValueChange={(value) => props.onStatusFilter(value ?? STATUS_FILTER_ALL)}
       >
         <SelectTrigger size='sm' className='w-32' aria-label='状态'>
-          <SelectValue placeholder='全部状态' />
+          <SelectValue>
+            {props.statusFilter === STATUS_FILTER_ALL
+              ? '全部状态'
+              : (ALGORITHM_STATUS_OPTIONS.find(
+                  (o) => o.value === props.statusFilter
+                )?.label ?? '全部状态')}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={STATUS_FILTER_ALL}>全部状态</SelectItem>

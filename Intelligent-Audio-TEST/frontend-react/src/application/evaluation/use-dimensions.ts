@@ -13,12 +13,14 @@ import type {
 import {
   batchEvaluationDimensions,
   calculateDimensionScore,
+  deleteEvaluationCategory,
   deleteEvaluationDimension,
   duplicateDimension,
   fetchAlgorithmOptions,
   fetchEvaluationCategories,
   fetchEvaluationDimensions,
   reorderDimension,
+  saveEvaluationCategory,
   saveEvaluationDimension,
   testDimensionHealth,
   updateDimensionWeight,
@@ -87,8 +89,7 @@ export function useEvaluationMutations() {
   })
 
   const reorder = useMutation({
-    mutationFn: ({ id, direction }: { id: number | string; direction: -1 | 1 }) =>
-      reorderDimension(id, direction),
+    mutationFn: (ids: Array<number | string>) => reorderDimension(ids),
     onSuccess: invalidate,
   })
 
@@ -124,20 +125,13 @@ export function useEvaluationCategoryMutations() {
   }
 
   const save = useMutation({
-    mutationFn: (_input: Partial<EvaluationCategory>) =>
-      // TODO(API 接线): POST /api/v1/evaluation/categories | PUT /api/v1/evaluation/categories/{id}
-      new Promise<{ success: boolean }>((resolve) =>
-        setTimeout(() => resolve({ success: true }), 120)
-      ),
+    mutationFn: (input: Partial<EvaluationCategory>) =>
+      saveEvaluationCategory(input),
     onSuccess: invalidate,
   })
 
   const remove = useMutation({
-    mutationFn: (_id: number) =>
-      // TODO(API 接线): DELETE /api/v1/evaluation/categories/{id}
-      new Promise<{ success: boolean }>((resolve) =>
-        setTimeout(() => resolve({ success: true }), 120)
-      ),
+    mutationFn: (id: number) => deleteEvaluationCategory(id),
     onSuccess: invalidate,
   })
 

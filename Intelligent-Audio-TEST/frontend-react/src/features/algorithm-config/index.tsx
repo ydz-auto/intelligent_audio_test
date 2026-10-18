@@ -17,6 +17,7 @@ import { PageFooterPortal } from '@/components/layout/components/page-footer'
 import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
 import {
   useAlgorithmDefinitions,
+  useAlgorithmDimensionOptions,
   useAlgorithmGroups,
   useAlgorithmMutations,
 } from '@/application/algorithm-config/useAlgorithmDefinitions'
@@ -44,12 +45,6 @@ import { AlgorithmGroupManagerDialog } from '@/features/algorithm-config/compone
 import { AlgorithmImportDialog } from '@/features/algorithm-config/components/modals/algorithm-import-dialog'
 import { AlgorithmConfirmDialogs } from '@/features/algorithm-config/components/modals/algorithm-confirm-dialogs'
 import { AlgorithmMutateSheet } from '@/features/algorithm-config/mutate/algorithm-mutate-sheet'
-import {
-  peekAlgorithmDefinitions,
-} from '@/infrastructure/api/algorithm-config-api'
-import {
-  MOCK_AVAILABLE_DIMENSIONS,
-} from '@/infrastructure/mock/algorithm-config-mock'
 import type {
   AlgorithmConfirmState,
   DetailDialogState,
@@ -81,6 +76,7 @@ export function AlgorithmConfigPage() {
 
   const definitionsQuery = useAlgorithmDefinitions()
   const groupsQuery = useAlgorithmGroups()
+  const dimensionOptionsQuery = useAlgorithmDimensionOptions()
   const { remove, bulkRemove, reload } = useAlgorithmMutations()
 
   const globalAlgorithmType = useAlgorithmStore((s) => s.algorithmId)
@@ -186,7 +182,8 @@ export function AlgorithmConfigPage() {
   /* ───────── 导出（§7.14：getDefinitions() 全量 → JSON Blob 下载） ───────── */
 
   const handleExport = () => {
-    const data = peekAlgorithmDefinitions()
+    // 接线后数据源 = 查询缓存全量（原 mock peekAlgorithmDefinitions 退役）
+    const data = definitions
     const blob = new Blob([JSON.stringify(data, null, 2)], {
       type: 'application/json',
     })
@@ -355,7 +352,7 @@ export function AlgorithmConfigPage() {
         mode={mutateSheet.mode}
         algorithm={mutateSheet.algorithm}
         groups={groups}
-        dimensionOptions={MOCK_AVAILABLE_DIMENSIONS}
+        dimensionOptions={dimensionOptionsQuery.data ?? []}
       />
       <AlgorithmDetailDialog
         open={detailDialog.open}
@@ -414,7 +411,7 @@ function PaginationBar({
         onValueChange={(value) => onPageSizeChange(Number(value ?? DEFAULT_PAGE_SIZE))}
       >
         <SelectTrigger size='sm' className='w-24'>
-          <SelectValue />
+          <SelectValue>{pageSize} 条/页</SelectValue>
         </SelectTrigger>
         <SelectContent>
           {PAGE_SIZE_OPTIONS.map((size) => (

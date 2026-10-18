@@ -106,7 +106,15 @@ export function DimensionsSection({
                         onValueChange={(value) => handleDimensionSelect(index, value ?? '')}
                       >
                         <SelectTrigger size='sm' className='w-56'>
-                          <SelectValue placeholder='选择评估维度' />
+                          <SelectValue>
+                            {dimensionOptions.find(
+                              (d) =>
+                                String(d.id) ===
+                                form.watch(
+                                  `associatedDimensions.${index}.dimensionId`
+                                )
+                            )?.name ?? '选择评估维度'}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           {dimensionOptions.map((dimension) => (
