@@ -28,6 +28,7 @@ import type {
 import { apiClient } from './client'
 import type {
   CategoryListDataDto,
+  DimensionItemDto,
   DimensionListDataDto,
   DimensionOptionsDataDto,
 } from '@/infrastructure/dto/evaluation.dto'
