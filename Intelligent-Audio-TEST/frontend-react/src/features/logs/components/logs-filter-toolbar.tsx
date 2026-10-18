@@ -142,7 +142,11 @@ export function LogsFilterToolbar(props: LogsFilterToolbarProps) {
         onValueChange={(value) => onFilterChange({ category: value ?? FILTER_ALL })}
       >
         <SelectTrigger size='sm' aria-label='分类'>
-          <SelectValue placeholder='所有分类' />
+          <SelectValue>
+            {filters.category === FILTER_ALL
+              ? '所有分类'
+              : (LOG_CATEGORY_OPTIONS.find((option) => option.value === filters.category)?.label ?? '所有分类')}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value='all'>所有分类</SelectItem>
@@ -158,7 +162,11 @@ export function LogsFilterToolbar(props: LogsFilterToolbarProps) {
         onValueChange={(value) => onFilterChange({ module: value ?? FILTER_ALL })}
       >
         <SelectTrigger size='sm' aria-label='模块'>
-          <SelectValue placeholder='所有模块' />
+          <SelectValue>
+            {filters.module === FILTER_ALL
+              ? '所有模块'
+              : (LOG_MODULE_OPTIONS.find((option) => option.value === filters.module)?.label ?? '所有模块')}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value='all'>所有模块</SelectItem>
@@ -174,7 +182,11 @@ export function LogsFilterToolbar(props: LogsFilterToolbarProps) {
         onValueChange={(value) => onFilterChange({ mark: value ?? FILTER_ALL })}
       >
         <SelectTrigger size='sm' aria-label='标记'>
-          <SelectValue placeholder='所有标记' />
+          <SelectValue>
+            {filters.mark === FILTER_ALL
+              ? '所有标记'
+              : (LOG_MARK_OPTIONS.find((option) => option.value === filters.mark)?.label ?? '所有标记')}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value='all'>所有标记</SelectItem>
@@ -190,7 +202,11 @@ export function LogsFilterToolbar(props: LogsFilterToolbarProps) {
         onValueChange={(value) => onFilterChange({ algorithmType: value ?? FILTER_ALL })}
       >
         <SelectTrigger size='sm' aria-label='算法类型'>
-          <SelectValue placeholder='全部算法' />
+          <SelectValue>
+            {filters.algorithmType === FILTER_ALL
+              ? '全部算法'
+              : (algorithmOptions.find((option) => option.value === filters.algorithmType)?.label ?? '全部算法')}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value='all'>全部算法</SelectItem>

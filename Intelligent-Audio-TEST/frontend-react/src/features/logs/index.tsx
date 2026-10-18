@@ -101,6 +101,16 @@ export function LogsPage() {
   const algorithmOptionsQuery = useAlgorithmOptions()
   const globalAlgorithmType = useAlgorithmStore((s) => s.algorithmId)
 
+  /** 算法筛选下拉选项（domain AlgorithmOption{id,name} → {value,label}，对照 algorithm-config 口径） */
+  const algorithmFilterOptions = useMemo(
+    () =>
+      algorithmOptionsQuery.options.map((option) => ({
+        value: option.id,
+        label: option.name,
+      })),
+    [algorithmOptionsQuery.options]
+  )
+
   /* ───────── 筛选状态（本地态，算法配置同款口径） ───────── */
   const [searchInput, handleSearchChange, searchKeyword, flushSearch] = useDebouncedSearch()
   const [filters, setFilters] = useState<LogFilterState>(EMPTY_FILTER_STATE)
@@ -172,6 +182,7 @@ export function LogsPage() {
     if (advanced.threadId) q.threadId = advanced.threadId
     if (advanced.contentInclude) q.contentInclude = advanced.contentInclude
     if (advanced.contentExclude) q.contentExclude = advanced.contentExclude
+    // 仅自己范围（后端 LogListQuery 无 user_id，待 FEAT INT-806；Tab 已置灰不可达，保留接线点）
     if (viewScope === 'self' && user) q.userId = user.id
     return q
   }, [
@@ -392,7 +403,22 @@ export function LogsPage() {
               >
                 <TabsList variant='line'>
                   <TabsTrigger value='all'>全部</TabsTrigger>
-                  <TabsTrigger value='self'>仅自己</TabsTrigger>
+                  {/* 仅自己过滤后端 LogListQuery 无 user_id（INT-763 审计 P3-1，FEAT INT-806）：
+                      落地前置灰 + Tooltip，避免用户以为已过滤 */}
+                  <TooltipProvider delay={100}>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <span className='inline-flex'>
+                            <TabsTrigger value='self' disabled>
+                              仅自己
+                            </TabsTrigger>
+                          </span>
+                        }
+                      />
+                      <TooltipContent>仅自己过滤待后端接口（FEAT INT-806）落地</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </TabsList>
               </Tabs>
             )}
@@ -444,7 +470,7 @@ export function LogsPage() {
               onToggleLevel={toggleLevel}
               advanced={advanced}
               onAdvancedChange={patchAdvanced}
-              algorithmOptions={algorithmOptionsQuery.options}
+              algorithmOptions={algorithmFilterOptions}
               onReset={resetFilters}
               hasActiveFilters={activeFilter}
             />

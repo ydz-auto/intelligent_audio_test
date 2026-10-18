@@ -2,6 +2,8 @@
  * 清除日志 Dialog（features/logs；17_配置运维.md §4.7/§7.10，sm:max-w-md，log:manage + destructive）。
  * 「清除 {before_datetime} 之前」的日志 + 「保留已标记日志」Switch（keepMarked 默认开）
  * + 说明「清除操作不可恢复。标记过的日志将保留」→ POST /logs/clear{before_datetime, keep_marked}。
+ * 确认条数 n 按所选 before_datetime 拉取统计推算（§4.7；后端 clear 仅按时间点，keep_marked
+ * 保留标记日志，实际清除数 ≤ n）。
  */
 import { useState } from 'react'
 
@@ -18,11 +20,12 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { useLogStatsQuery } from '@/application/logs/use-logs'
 
 export type LogClearDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** 统计推算的将清除条数（可选；未提供时仅展示保留说明） */
+  /** 全量统计总数兜底（未选时间点时的展示值） */
   totalCount?: number
   pending: boolean
   onClear: (beforeDatetime: string, keepMarked: boolean) => void
@@ -37,6 +40,10 @@ export function LogClearDialog({
 }: LogClearDialogProps) {
   const [beforeDatetime, setBeforeDatetime] = useState('')
   const [keepMarked, setKeepMarked] = useState(true)
+
+  /** 按所选 before_datetime 拉取统计（end_time 口径；空时间点=全量，命中页面同款缓存） */
+  const beforeStats = useLogStatsQuery(beforeDatetime ? { endTime: beforeDatetime } : {})
+  const derivedCount = beforeStats.isLoading ? undefined : beforeStats.data?.total ?? totalCount
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -80,8 +87,8 @@ export function LogClearDialog({
             disabled={pending}
             onClick={() => onClear(beforeDatetime, keepMarked)}
           >
-            {totalCount !== undefined
-              ? `清除 ${totalCount.toLocaleString()} 条日志`
+            {derivedCount !== undefined
+              ? `清除 ${derivedCount.toLocaleString()} 条日志`
               : '清除日志'}
           </Button>
         </DialogFooter>

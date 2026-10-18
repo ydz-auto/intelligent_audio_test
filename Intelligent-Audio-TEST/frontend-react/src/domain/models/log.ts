@@ -63,7 +63,7 @@ export interface LogQuery {
   deviceId?: string
   taskId?: string
   evaluationId?: string
-  /** 仅自己范围（LogListQuery extra ignore，后端 userId 过滤为设计口径） */
+  /** 仅自己范围（后端 LogListQuery 无 user_id，待 FEAT INT-806 落地后生效） */
   userId?: string
   threadId?: string
   contentInclude?: string

@@ -1,7 +1,8 @@
 /**
  * 导出日志 Dialog（features/logs；17_配置运维.md §4.7/§7.9，sm:max-w-lg，log:read）。
- * 当前筛选条件回显（时间范围/分类/模块/级别/标记/算法）+ 格式 Select[文本/JSON/CSV]
- * + 主钮「导出」→ POST /logs/export（后端 FileResponse 原始文件流，下载 txt/json/csv）。
+ * 回显实际生效的筛选条件（后端 LogExportQuery 仅 level/module，INT-763 审计 P3-3）+
+ * 格式 Select[文本/JSON/CSV] + 主钮「导出」→ POST /logs/export（后端 FileResponse 原始文件流，
+ * 下载 txt/json/csv）。
  */
 import { useState } from 'react'
 
@@ -22,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { LOG_MARK_OPTIONS, LOG_MODULE_OPTIONS, LOG_CATEGORY_OPTIONS } from '@/domain/models/log'
+import { LOG_MODULE_OPTIONS } from '@/domain/models/log'
 import type { LogFilterState } from '@/features/logs/types'
 
 const EXPORT_FORMATS = [
@@ -57,14 +58,12 @@ export function LogExportDialog({
 }: LogExportDialogProps) {
   const [format, setFormat] = useState('txt')
 
-  const conditionParts = [
-    filters.startTime || filters.endTime
-      ? `时间 ${filters.startTime || '…'} ~ ${filters.endTime || '…'}`
-      : '',
-    filters.category !== 'all' ? `分类 ${optionLabel(LOG_CATEGORY_OPTIONS, filters.category)}` : '',
+  /** 实际生效条件（后端 LogExportQuery 仅 level/module；handleExport 也只传这两项） */
+  const effectiveConditions = [
     filters.module !== 'all' ? `模块 ${optionLabel(LOG_MODULE_OPTIONS, filters.module)}` : '',
-    filters.mark !== 'all' ? `标记 ${optionLabel(LOG_MARK_OPTIONS, filters.mark)}` : '',
-    filters.algorithmType !== 'all' ? `算法 ${filters.algorithmType}` : '',
+    selectedLevels.length > 0 && selectedLevels.length < 5
+      ? `级别 ${selectedLevels.join('/')}`
+      : '',
   ].filter(Boolean)
 
   return (
@@ -76,8 +75,8 @@ export function LogExportDialog({
         </DialogHeader>
         <div className='grid gap-4 py-1'>
           <div className='text-muted-foreground flex flex-wrap gap-1 text-xs'>
-            {conditionParts.length > 0 ? (
-              conditionParts.map((part) => (
+            {effectiveConditions.length > 0 ? (
+              effectiveConditions.map((part) => (
                 <span key={part} className='border-border/60 bg-muted/30 rounded-md border px-2 py-1'>
                   {part}
                 </span>
@@ -85,12 +84,10 @@ export function LogExportDialog({
             ) : (
               <span>未设置筛选条件（导出全部日志）</span>
             )}
-            {selectedLevels.length > 0 && selectedLevels.length < 5 && (
-              <span className='border-border/60 bg-muted/30 rounded-md border px-2 py-1'>
-                级别 {selectedLevels.join('/')}
-              </span>
-            )}
           </div>
+          <p className='text-muted-foreground text-xs'>
+            后端导出当前仅支持按级别/模块过滤，时间/分类/标记/算法条件暂不生效
+          </p>
           <div className='grid items-center gap-2 sm:grid-cols-[auto_1fr]'>
             <span className='text-muted-foreground text-sm'>格式</span>
             <Select value={format} onValueChange={(value) => setFormat(value ?? 'txt')}>
