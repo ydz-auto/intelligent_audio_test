@@ -81,7 +81,7 @@ export function AlgorithmConfigPage() {
 
   const globalAlgorithmType = useAlgorithmStore((s) => s.algorithmId)
 
-  // URL 态语义（§3.2 mock 阶段本地态；接线后 validateSearch 化）
+  // URL 态语义（§3.2 本地态；接线后 validateSearch 化）
   const [searchInput, handleSearch, searchKeyword] = useDebouncedSearch()
   const [groupFilter, setGroupFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')

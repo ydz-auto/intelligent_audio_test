@@ -341,7 +341,7 @@ function toApiBodyTemplate(settings: Dimension['apiSettings']): string {
   return ''
 }
 
-/** 表单值 → 保存载荷（收敛为 Partial<Dimension>；mock 阶段仅演示） */
+/** 表单值 → 保存载荷（收敛为 Partial<Dimension>） */
 export function toDimensionSaveInput(values: DimensionFormValues): Partial<Dimension> {
   const isSub = values.dimensionType === 'sub'
   return {

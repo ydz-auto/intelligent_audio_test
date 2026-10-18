@@ -549,7 +549,7 @@ export function EvaluationPage() {
   }
 
   const handleImport = () => {
-    // mock：模拟文件导入 → 成功统计 toast（§4.1 导入维度）
+    // 导入暂为前端占位（后端导入接口未接线）：成功统计 toast（§4.1 导入维度）
     toast.success('导入完成：新增 2 · 更新 1')
   }
 

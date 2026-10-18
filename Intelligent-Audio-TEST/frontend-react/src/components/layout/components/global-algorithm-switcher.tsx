@@ -28,9 +28,6 @@ export function GlobalAlgorithmSwitcher() {
   const setAlgorithmId = useAlgorithmStore((s) => s.setAlgorithmId)
   const { options, isReadonly } = useAlgorithmOptions()
 
-  // 无 algorithm:read 权限：整钮隐藏
-  if (isReadonly) return null
-
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return options
@@ -40,6 +37,9 @@ export function GlobalAlgorithmSwitcher() {
         a.description.toLowerCase().includes(q)
     )
   }, [options, query])
+
+  // 无 algorithm:read 权限：整钮隐藏
+  if (isReadonly) return null
 
   // 持久化值不在当前 options → 静默回落「全部算法」
   const current = options.find((a) => a.id === algorithmId)
