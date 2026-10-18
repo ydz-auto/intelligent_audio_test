@@ -235,6 +235,7 @@ class EvaluationQueryService:
             'default_value': getattr(param, 'default_value', None),
             'help_text': getattr(param, 'help_text', None),
             'ui_order': getattr(param, 'ui_order', None),
+            'pass_threshold': getattr(param, 'pass_threshold', None),
         }
 
     def get_dimension_basics_by_ids(self, dim_ids: list) -> Dict[str, Any]:
