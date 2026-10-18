@@ -34,10 +34,23 @@ export default defineConfig(({ envMode }) => {
       strictPort: true,
       // 接线基座（INT-605）：/api 代理到 api_gateway（service_ports.py gateway=5000；
       // 旧 Vue .env.development VITE_API_TARGET=http://localhost:5000 同款）。
+      // INT-763：/ws + /socket.io 代理到同一网关——Socket.IO /ws/logs 实时日志通道
+      // 引擎挂 /socket.io（app.py:193 mount），命名空间 /ws/logs 走协议内 handshake；
+      // ws:true 启用 engine upgrade。
       proxy: {
         '/api': {
           target: 'http://localhost:5000',
           changeOrigin: true,
+        },
+        '/ws': {
+          target: 'http://localhost:5000',
+          changeOrigin: true,
+          ws: true,
+        },
+        '/socket.io': {
+          target: 'http://localhost:5000',
+          changeOrigin: true,
+          ws: true,
         },
       },
     },

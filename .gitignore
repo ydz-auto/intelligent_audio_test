@@ -193,3 +193,8 @@ Intelligent-Audio-TEST/frontend-react/.tanstack/
 Intelligent-Audio-TEST/frontend-react/_hero_probe.py
 Intelligent-Audio-TEST/frontend-react/_rpt_diag.py
 Intelligent-Audio-TEST/tests/ui/artifacts/
+
+!Intelligent-Audio-TEST/frontend-react/src/features/logs/
+!Intelligent-Audio-TEST/frontend-react/src/features/logs/**
+!Intelligent-Audio-TEST/frontend-react/src/application/logs/
+!Intelligent-Audio-TEST/frontend-react/src/application/logs/**
