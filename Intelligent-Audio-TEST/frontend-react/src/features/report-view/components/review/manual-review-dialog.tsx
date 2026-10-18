@@ -201,7 +201,9 @@ export function ManualReviewDialog({
                 onValueChange={(v) => setExecutionStatus(v && v !== 'none' ? v : undefined)}
               >
                 <SelectTrigger id='manual-review-exec' className='h-8 text-xs'>
-                  <SelectValue placeholder='不修改' />
+                  <SelectValue placeholder='不修改'>
+                    {executionStatus ? executionStatusLabel(executionStatus) : undefined}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value='none'>不修改</SelectItem>
@@ -224,7 +226,9 @@ export function ManualReviewDialog({
                 onValueChange={(v) => setEvaluationStatus(v && v !== 'none' ? v : undefined)}
               >
                 <SelectTrigger id='manual-review-eval' className='h-8 text-xs'>
-                  <SelectValue placeholder='不修改' />
+                  <SelectValue placeholder='不修改'>
+                    {evaluationStatus ? evaluationStatusLabel(evaluationStatus) : undefined}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value='none'>不修改</SelectItem>
