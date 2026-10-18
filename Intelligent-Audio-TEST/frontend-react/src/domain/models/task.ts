@@ -152,6 +152,8 @@ export interface TaskDetailData {
   /** 关联资源摘要（详情卡信息格补充，mock 口径派生） */
   api_count: number | null
   concurrency: number | null
+  /** 人工复核结果条数（task.py TaskDetailData.review_count；>0 时重执行/重评估走硬确认层，§5.7） */
+  review_count: number
 }
 
 /** 已发布任务列表项（published_task.py PublishedTaskItem） */
@@ -210,6 +212,148 @@ export interface PublishedTaskExecutionItem {
   completed_cases: number
   created_at: string | null
   completed_at: string | null
+}
+
+// ---------------------------------------------------------------------------
+// 冻结快照（§5.13 冻结任务详情 / 冻结报告数据源）
+// `PublishedTaskDetail.snapshot_config` / `report_snapshot` 为后端不透明明文
+// JSON（契约保持 camelCase，对齐 publishedTask.ts 快照结构），此处给出页面渲染
+// 用的类型化读法；snake_case↔camelCase 不做转换（快照即冻结形态）。
+// ---------------------------------------------------------------------------
+
+/** 任务详情冻结体（INT-303，schemaVersion=2）：任务详情真冻结，与 report_snapshot 同一语义 */
+export interface TaskSnapshot {
+  /** 冻结契约版本（2 = 含参考参数内容内联的完整冻结） */
+  schemaVersion?: number
+  task: {
+    name?: string | null
+    description?: string | null
+    config?: Record<string, unknown>
+    algorithmType?: string | null
+    algorithmParams?: Record<string, unknown> | null
+    tags?: string[]
+  }
+  /** 用例完整配置深拷贝（rounds/音频引用/播放设备/标签/分组/评价维度/算法参数/参考参数内容内联） */
+  cases: TaskSnapshotCase[]
+  /** 关联被测设备引用快照（含名称，渲染不再 join 现库） */
+  devices?: TaskSnapshotRef[]
+  /** 关联 API 引用快照（含名称） */
+  apis?: TaskSnapshotRef[]
+  /** 关联播放设备引用快照（含名称） */
+  playbackDevices?: TaskSnapshotRef[]
+}
+
+/** 冻结体引用项（ID + 发布时冻结的名称；名称可能为 null——服务不可达降级仅 ID） */
+export interface TaskSnapshotRef {
+  id: number
+  name?: string | null
+}
+
+/** 冻结体中的单个用例（发布时完整配置快照） */
+export interface TaskSnapshotCase {
+  caseId: string
+  name?: string | null
+  description?: string | null
+  config?: Record<string, unknown>
+  algorithmType?: string | null
+  algorithmParams?: Record<string, unknown> | null
+  /** 参考参数内容内联（[{roundNumber, referenceParams, path}]，可独立还原） */
+  referenceParams?: TaskSnapshotRefParams[]
+  /** 参考参数源路径留档（[roundNumber, path]） */
+  referenceParamsSource?: { roundNumber?: number | null; path?: string | null }[]
+  tags?: string[]
+  group?: { id: string; name: string; description?: string | null; algorithmType?: string | null } | null
+  /** 用例级执行路由快照（physical/http_api/websocket_api） */
+  deviceType?: string | null
+  deviceId?: string | null
+  labId?: number | null
+}
+
+/** 冻结体中的单轮参考参数（内容内联） */
+export interface TaskSnapshotRefParams {
+  roundNumber?: number | null
+  referenceParams: unknown[]
+  path?: string | null
+}
+
+/**
+ * 报告快照（发布时冻结的真实报告：引用 sourceReportId + 报告 7 表冻结数据，不可变）。
+ * INT-258 快照语义：版本详情按冻结数据渲染成报告样，不受源报告修改/删除影响。
+ */
+export interface ReportSnapshot {
+  /** 冻结契约版本（2 = 7 表完整冻结；存量 v1 快照缺省） */
+  schemaVersion?: number
+  /** 引用轨：源报告 ID（关联 test_reports，提供跳转报告页入口） */
+  sourceReportId?: number | null
+  /** 兼容字段（V9.7.10 冻结契约遗留，语义同 sourceReportId） */
+  reportId?: number
+  name: string
+  type?: string | null
+  status: string
+  description?: string | null
+  analysis?: string | null
+  createdAt?: string | null
+  updatedAt?: string | null
+  summary?: {
+    totalCases?: number
+    completedCases?: number
+    failedCases?: number
+    passRate?: number
+    duration?: number
+    startedAt?: string | null
+    completedAt?: string | null
+    [key: string]: unknown
+  }
+  cases?: ReportSnapshotCase[]
+}
+
+/** 冻结报告中的单个用例（逐轮结果/评估数据/日志） */
+export interface ReportSnapshotCase {
+  /** 报告用例行 ID（schemaVersion=2 起冻结；旧快照缺省由前端合成兜底） */
+  id?: number | null
+  testCaseId?: string | null
+  name?: string | null
+  description?: string | null
+  category?: string | null
+  tags: unknown[]
+  metrics: Record<string, unknown>
+  algorithmType?: string | null
+  logs?: string | null
+}
+
+/** 从 `snapshot_config` 不透明明文中读取任务详情冻结体（无则 null → legacy 历史版本态） */
+export function readTaskSnapshot(config: Record<string, unknown>): TaskSnapshot | null {
+  const raw = config?.taskSnapshot
+  if (raw == null || typeof raw !== 'object') return null
+  return raw as unknown as TaskSnapshot
+}
+
+/** 从 `report_snapshot` 中读取报告快照（无则 null → 空态「该快照缺少可渲染的冻结报告数据」） */
+export function readReportSnapshot(report: Record<string, unknown> | null): ReportSnapshot | null {
+  if (report == null || typeof report !== 'object') return null
+  return report as unknown as ReportSnapshot
+}
+
+/** 冻结报告摘要读取（schemaVersion=2 走 summary；存量 v1 快照走平铺 caseCount/passRate 回落） */
+export function readReportSummary(report: ReportSnapshot | null): {
+  caseCount: number | null
+  passRate: number | null
+  completedCases: number | null
+  failedCases: number | null
+  duration: number | null
+} {
+  const legacy = report as (ReportSnapshot & { caseCount?: unknown; passRate?: unknown }) | null
+  return {
+    caseCount:
+      report?.summary?.totalCases ??
+      (typeof legacy?.caseCount === 'number' ? legacy.caseCount : null),
+    passRate:
+      report?.summary?.passRate ??
+      (typeof legacy?.passRate === 'number' ? legacy.passRate : null),
+    completedCases: report?.summary?.completedCases ?? null,
+    failedCases: report?.summary?.failedCases ?? null,
+    duration: report?.summary?.duration ?? null,
+  }
 }
 
 /** 挑选合并任务（type=cherry_pick，INT-339 §8 契约） */

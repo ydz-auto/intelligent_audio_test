@@ -1,7 +1,7 @@
 /**
  * 任务详情内容组件（09_任务域.md §4，双形态共享：路由页 /tasks/:id 与快览弹窗）。
  * 三卡纵排：任务信息卡 / 进度概览卡 / 关联用例·设备（Tabs）；API/混合任务追加 API 资源管理；
- * 底部实时日志卡 + 操作按钮组（§4.7 状态机）。
+ * 底部实时日志卡 + 操作按钮组（§4.7 状态机）。重新执行/重新评估经 §5.7 范围选择弹窗发起。
  */
 import { Pause, Play, RotateCcw, Square } from 'lucide-react'
 import { useState } from 'react'
@@ -17,6 +17,7 @@ import { CaseAssociation } from '@/features/tasks/detail/case-association'
 import { ProgressCard } from '@/features/tasks/detail/progress-card'
 import { RealtimeLogs } from '@/features/tasks/detail/realtime-logs'
 import { TaskInfoCard } from '@/features/tasks/detail/task-info-card'
+import { ReexecuteScopeDialog } from '@/features/tasks/components/reexecute-scope-dialog'
 
 /** API 资源管理（§4.5，仅 API/混合任务；纯展示无操作） */
 function ApiResources({ apis }: { apis: Array<{ id: number; name: string; status: string | null }> }) {
@@ -63,6 +64,7 @@ export function TaskDetailContent({
   const { hasPermission } = usePermissions()
   const detailQuery = useTaskDetail(taskId)
   const [pending, setPending] = useState<string | null>(null)
+  const [reexecuteAction, setReexecuteAction] = useState<'retry' | 'reevaluate' | null>(null)
 
   const detail = detailQuery.data
   if (!detail) return null
@@ -83,85 +85,95 @@ export function TaskDetailContent({
   }
 
   return (
-    <div className='flex flex-col gap-4'>
-      <TaskInfoCard detail={detail} />
-      <ProgressCard detail={detail} />
-      {isApi && <ApiResources apis={detail.apis} />}
-      <CaseAssociation detail={detail} onCaseSelect={onCaseSelect} />
+    <>
+      <div className='flex flex-col gap-4'>
+        <TaskInfoCard detail={detail} />
+        <ProgressCard detail={detail} />
+        {isApi && <ApiResources apis={detail.apis} />}
+        <CaseAssociation detail={detail} onCaseSelect={onCaseSelect} />
 
-      {!compact && (
-        <div className='flex flex-wrap items-center gap-2'>
-          {hasPermission('task:execute') &&
-            !isTerminal &&
-            detail.execution_status !== 'pending' && (
-              <Button
-                size='sm'
-                disabled={pending != null}
-                onClick={() =>
-                  act('pause', detail.execution_status === 'paused' ? '任务已继续' : '任务已暂停')
-                }
-              >
-                {detail.execution_status === 'paused' ? (
-                  <>
-                    <Play aria-hidden='true' className='size-3.5' />
-                    继续
-                  </>
-                ) : (
-                  <>
-                    <Pause aria-hidden='true' className='size-3.5' />
-                    暂停
-                  </>
-                )}
-              </Button>
-            )}
-          {hasPermission('task:execute') &&
-            !isTerminal &&
-            detail.execution_status !== 'pending' && (
-              <Button
-                size='sm'
-                variant='destructive'
-                disabled={pending != null}
-                onClick={() => act('stop', '任务已停止')}
-              >
-                <Square aria-hidden='true' className='size-3.5' />
-                停止测试
-              </Button>
-            )}
-          {hasPermission('task:execute') &&
-            ['pending', 'failed', 'completed', 'stopped'].includes(detail.execution_status ?? '') && (
+        {!compact && (
+          <div className='flex flex-wrap items-center gap-2'>
+            {hasPermission('task:execute') &&
+              !isTerminal &&
+              detail.execution_status !== 'pending' && (
+                <Button
+                  size='sm'
+                  disabled={pending != null}
+                  onClick={() =>
+                    act('pause', detail.execution_status === 'paused' ? '任务已继续' : '任务已暂停')
+                  }
+                >
+                  {detail.execution_status === 'paused' ? (
+                    <>
+                      <Play aria-hidden='true' className='size-3.5' />
+                      继续
+                    </>
+                  ) : (
+                    <>
+                      <Pause aria-hidden='true' className='size-3.5' />
+                      暂停
+                    </>
+                  )}
+                </Button>
+              )}
+            {hasPermission('task:execute') &&
+              !isTerminal &&
+              detail.execution_status !== 'pending' && (
+                <Button
+                  size='sm'
+                  variant='destructive'
+                  disabled={pending != null}
+                  onClick={() => act('stop', '任务已停止')}
+                >
+                  <Square aria-hidden='true' className='size-3.5' />
+                  停止测试
+                </Button>
+              )}
+            {hasPermission('task:execute') &&
+              ['pending', 'failed', 'completed', 'stopped'].includes(detail.execution_status ?? '') && (
+                <Button
+                  size='sm'
+                  variant='outline'
+                  disabled={pending != null}
+                  onClick={() => setReexecuteAction('retry')}
+                >
+                  <RotateCcw aria-hidden='true' className='size-3.5' />
+                  重新执行
+                </Button>
+              )}
+            {hasPermission('evaluation:execute') && isTerminal && (
               <Button
                 size='sm'
                 variant='outline'
                 disabled={pending != null}
-                onClick={() => act('rerun', '已发起重新执行')}
+                onClick={() => setReexecuteAction('reevaluate')}
               >
-                <RotateCcw aria-hidden='true' className='size-3.5' />
-                重新执行
+                重新评估
               </Button>
             )}
-          {hasPermission('evaluation:execute') && isTerminal && (
-            <Button
-              size='sm'
-              variant='outline'
-              disabled={pending != null}
-              onClick={() => act('reeval', '已发起重新评估')}
-            >
-              重新评估
-            </Button>
-          )}
-          {pending && (
-            <Badge variant='secondary' className='rounded-md px-1.5 text-[11px]'>
-              控制中…
-            </Badge>
-          )}
-        </div>
-      )}
+            {pending && (
+              <Badge variant='secondary' className='rounded-md px-1.5 text-[11px]'>
+                控制中…
+              </Badge>
+            )}
+          </div>
+        )}
 
-      <RealtimeLogs
+        <RealtimeLogs
+          taskId={taskId}
+          executionMode={mode === 'execution'}
+          hasRealtimeDevice={hasRealtimeDevice}
+        />
+      </div>
+
+      <ReexecuteScopeDialog
+        open={reexecuteAction != null}
+        onOpenChange={(open) => !open && setReexecuteAction(null)}
         taskId={taskId}
-        executionMode={mode === 'execution'}
-        hasRealtimeDevice={hasRealtimeDevice}
+        taskName={detail.name}
+        actionType={reexecuteAction ?? 'retry'}
       />
-    </div>
+    </>
   )
 }

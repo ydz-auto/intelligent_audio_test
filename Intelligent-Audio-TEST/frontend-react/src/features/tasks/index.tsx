@@ -4,6 +4,7 @@
  * Content（Tabs → 筛选工具栏 → 页签表格 → 批量浮条）/ Footer（分页 Portal）。
  * 页签路径式 /tasks/$tab（白名单校验在路由层）；「挑选合并」页签由 CherryPickTab 自持
  * （统一容器列表 + 四步向导），旧「合并」页签已收编（§2.2 裁定①）。
+ * 模态窗群：任务类型/发布/快速查看 + §5.7 重新执行·重新评估范围 + §5.12 导出/导入数据。
  */
 import { Link, useNavigate } from '@tanstack/react-router'
 import { ChartLine, FileDown, Plus } from 'lucide-react'
@@ -30,6 +31,10 @@ import { TasksPagination } from '@/features/tasks/components/tasks-pagination'
 import { QuickViewDialog } from '@/features/tasks/components/quick-view-dialog'
 import { PublishTaskDialog } from '@/features/tasks/components/publish-task-dialog'
 import { TaskTypeDialog } from '@/features/tasks/components/task-type-dialog'
+import { ReexecuteScopeDialog } from '@/features/tasks/components/reexecute-scope-dialog'
+import { DataExportDialog } from '@/features/tasks/components/data-export-dialog'
+import { DataImportDialog } from '@/features/tasks/components/data-import-dialog'
+import type { ReexecuteActionType } from '@/features/tasks/components/task-row-actions'
 
 const EMPTY_FILTERS: TaskListFilters = {}
 
@@ -48,6 +53,12 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
   const [typeDialogOpen, setTypeDialogOpen] = useState(false)
   const [publishTask, setPublishTask] = useState<TaskListItem | null>(null)
   const [wizard, setWizard] = useState<WizardState | null>(null)
+  const [reexecuteState, setReexecuteState] = useState<{
+    task: TaskListItem
+    actionType: ReexecuteActionType
+  } | null>(null)
+  const [exportTasks, setExportTasks] = useState<TaskListItem[] | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
 
   // 页签切换重置筛选（URL 态回归：接线后 page/search/… 进 search，随 useTableUrlState）
   useEffect(() => {
@@ -95,6 +106,16 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
     void navigate({ to: '/tasks/$tab', params: { tab: 'cherry-picks' } })
   }
 
+  /** 重新执行/重新评估 → §5.7 范围选择弹窗 */
+  const handleReexecute = (task: TaskListItem, actionType: ReexecuteActionType) => {
+    setReexecuteState({ task, actionType })
+  }
+
+  /** 批量浮条「导出数据」→ §5.12 导出弹窗 */
+  const handleExport = (tasks: TaskListItem[]) => {
+    setExportTasks(tasks)
+  }
+
   const tabCount = (t: TasksTabKey) => {
     if (t === 'cherry-picks') return cherryTotal
     return total
@@ -133,10 +154,7 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
             size='sm'
             variant='outline'
             className='h-7 gap-1.5'
-            onClick={() => {
-              // §5.12 导入弹窗（视觉稿占位：toast 演示，完整弹窗随后续卡）
-              void navigate({ to: '/tasks/$tab', params: { tab: 'daily' } })
-            }}
+            onClick={() => setImportOpen(true)}
           >
             <FileDown aria-hidden='true' className='size-3.5' />
             导入数据
@@ -206,6 +224,8 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
                 onPublish={handlePublish}
                 onBatchPublish={handleBatchPublish}
                 onJoinPick={handleJoinPick}
+                onReexecute={handleReexecute}
+                onExport={handleExport}
                 onCreate={() => setTypeDialogOpen(true)}
               />
             )}
@@ -227,6 +247,28 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
         open={publishTask != null}
         onOpenChange={(open) => !open && setPublishTask(null)}
         task={publishTask ?? undefined}
+      />
+      <ReexecuteScopeDialog
+        open={reexecuteState != null}
+        onOpenChange={(open) => !open && setReexecuteState(null)}
+        taskId={reexecuteState?.task.id ?? 0}
+        taskName={reexecuteState?.task.name ?? ''}
+        actionType={reexecuteState?.actionType ?? 'retry'}
+      />
+      <DataExportDialog
+        open={exportTasks != null}
+        onOpenChange={(open) => !open && setExportTasks(null)}
+        tasks={(exportTasks ?? []).map((t) => ({
+          id: t.id,
+          name: t.name,
+          status: t.execution_status,
+        }))}
+        onExported={() => void listQuery.refetch()}
+      />
+      <DataImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onImported={() => void listQuery.refetch()}
       />
     </>
   )

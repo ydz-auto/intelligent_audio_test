@@ -151,6 +151,8 @@ export function DailyTaskTable({
   onPublish,
   onBatchPublish,
   onJoinPick,
+  onReexecute,
+  onExport,
   onCreate,
 }: {
   tasks: TaskListItem[]
@@ -161,6 +163,10 @@ export function DailyTaskTable({
   onBatchPublish: (tasks: TaskListItem[]) => void
   /** 加入挑选（§2.2 裁定②） */
   onJoinPick?: (tasks: TaskListItem[]) => void
+  /** 重新执行/重新评估 → §5.7 范围选择弹窗 */
+  onReexecute: (task: TaskListItem, actionType: 'retry' | 'reevaluate') => void
+  /** 导出数据 → §5.12 导出弹窗 */
+  onExport: (tasks: TaskListItem[]) => void
   onCreate: () => void
 }) {
   const { hasPermission } = usePermissions()
@@ -401,7 +407,12 @@ export function DailyTaskTable({
                     </td>
                   )}
                   <td className='px-3 py-2 text-right'>
-                    <TaskRowActions task={task} onQuickView={onQuickView} onPublish={onPublish} />
+                    <TaskRowActions
+                      task={task}
+                      onQuickView={onQuickView}
+                      onPublish={onPublish}
+                      onReexecute={onReexecute}
+                    />
                   </td>
                 </tr>
               )
@@ -417,6 +428,7 @@ export function DailyTaskTable({
         trash={trash}
         onBatchPublish={onBatchPublish}
         onJoinPick={onJoinPick}
+        onExport={onExport}
       />
     </div>
   )

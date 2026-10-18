@@ -3,12 +3,11 @@
  * 列：版本/名称·说明/状态/类型/Benchmark/版本数/发布人·发布时间/操作（行内按钮组）。
  * 展开行五个 DetailSection（照 log-detail-layout 键值行）：版本历史 / Benchmark 标记 /
  * 任务详情（发布时冻结）/ 冻结报告 / 执行记录。
- * 数据源：列表 fetchPublishedTaskList（GET /published-tasks）；展开版本链行
- * fetchPublishedTaskDetail（GET /published-tasks/{id}）真实详情。
+ * 「查看冻结任务详情」→ TaskSnapshotDialog（§5.13）；「查看冻结报告」→ ReportSnapshotDialog（§5.13）。
+ * 数据源：mock 见 MOCK_PUBLISHED_TASKS + MOCK_PUBLISHED_DETAIL。
  */
 import { ChevronDown, ChevronRight, Package, Trophy } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { toast } from 'sonner'
+import { useState } from 'react'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { Badge } from '@/components/ui/badge'
@@ -25,9 +24,12 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
-import { fetchPublishedTaskDetail } from '@/infrastructure/api/tasks-list-api'
 import type { PublishedTaskDetail, PublishedTaskItem } from '@/domain/models/task'
+import { readReportSnapshot, readReportSummary, readTaskSnapshot } from '@/domain/models/task'
+import { MOCK_PUBLISHED_DETAIL } from '@/infrastructure/mock/tasks-mock'
 import { formatDateTime, getTaskTypeLabel } from '@/features/tasks/constants'
+import { TaskSnapshotDialog } from '@/features/tasks/components/task-snapshot-dialog'
+import { ReportSnapshotDialog } from '@/features/tasks/components/report-snapshot-dialog'
 
 const STATUS_META: Record<string, { label: string; variant: 'success' | 'neutral' }> = {
   published: { label: '已发布', variant: 'success' },
@@ -35,9 +37,18 @@ const STATUS_META: Record<string, { label: string; variant: 'success' | 'neutral
 }
 
 /** 版本链展开行（§3.7 五节键值行） */
-function PublishedExpandRow({ detail }: { detail: PublishedTaskDetail }) {
+function PublishedExpandRow({
+  detail,
+  onOpenSnapshot,
+  onOpenReport,
+}: {
+  detail: PublishedTaskDetail
+  onOpenSnapshot: () => void
+  onOpenReport: () => void
+}) {
   const [versionsOpen, setVersionsOpen] = useState(true)
   const [legacy] = useState(!detail.has_task_snapshot)
+  const reportSummary = readReportSummary(readReportSnapshot(detail.report_snapshot))
 
   return (
     <div className='bg-muted/20 px-4 py-3'>
@@ -119,7 +130,7 @@ function PublishedExpandRow({ detail }: { detail: PublishedTaskDetail }) {
               size='sm'
               variant='outline'
               className='ml-auto h-7'
-              onClick={() => toast.success('冻结任务详情弹窗随 §5.13 冻结族落地')}
+              onClick={onOpenSnapshot}
             >
               查看冻结任务详情
             </Button>
@@ -133,17 +144,16 @@ function PublishedExpandRow({ detail }: { detail: PublishedTaskDetail }) {
         {detail.has_report_snapshot ? (
           <div className='mt-2 flex flex-wrap items-center gap-2 text-xs'>
             <span className='font-medium'>
-              {String(detail.report_snapshot?.name ?? '冻结报告')}
+              {String(readReportSnapshot(detail.report_snapshot)?.name ?? '冻结报告')}
             </span>
             <span className='text-muted-foreground'>
-              用例 {String(detail.report_snapshot?.caseCount ?? '—')} · 通过率{' '}
-              {String(detail.report_snapshot?.passRate ?? '—')}%
+              用例 {reportSummary.caseCount ?? '—'} · 通过率 {reportSummary.passRate ?? '—'}%
             </span>
             <Button
               size='sm'
               variant='outline'
               className='ml-auto h-7'
-              onClick={() => toast.success('冻结报告弹窗随 §5.13 冻结族落地')}
+              onClick={onOpenReport}
             >
               查看冻结报告
             </Button>
@@ -194,35 +204,9 @@ export function PublishedTaskTable({
 }) {
   const { hasPermission } = usePermissions()
   const [expandedId, setExpandedId] = useState<number | null>(null)
-  const [detail, setDetail] = useState<PublishedTaskDetail | null>(null)
-  const [detailLoading, setDetailLoading] = useState(false)
-  const [detailError, setDetailError] = useState<string | null>(null)
-
-  // 展开版本链：取 GET /published-tasks/{id} 真实详情（版本历史/冻结快照/执行记录）
-  useEffect(() => {
-    if (expandedId == null) {
-      setDetail(null)
-      setDetailError(null)
-      return
-    }
-    let cancelled = false
-    setDetailLoading(true)
-    setDetailError(null)
-    fetchPublishedTaskDetail(expandedId)
-      .then((d) => {
-        if (cancelled) return
-        setDetail(d)
-        setDetailLoading(false)
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return
-        setDetailError(err instanceof Error ? err.message : '已发布任务详情加载失败')
-        setDetailLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [expandedId])
+  const [snapshotOpen, setSnapshotOpen] = useState(false)
+  const [reportOpen, setReportOpen] = useState(false)
+  const detail = MOCK_PUBLISHED_DETAIL
 
   if (loading) {
     return (
@@ -254,44 +238,57 @@ export function PublishedTaskTable({
   }
 
   return (
-    <div className='bg-card ring-foreground/10 overflow-hidden rounded-xl ring-1'>
-      <div className='overflow-x-auto'>
-        <table className='w-full min-w-[900px] text-[13px]'>
-          <thead>
-            <tr className='bg-[var(--table-header)] text-xs'>
-              <th className='w-11 px-3 py-2' />
-              <th className='px-3 py-2 text-left font-medium'>版本</th>
-              <th className='px-3 py-2 text-left font-medium'>名称/说明</th>
-              <th className='px-3 py-2 text-left font-medium'>状态</th>
-              <th className='px-3 py-2 text-left font-medium'>类型</th>
-              <th className='px-3 py-2 text-left font-medium'>Benchmark</th>
-              <th className='px-3 py-2 text-left font-medium'>版本数</th>
-              <th className='px-3 py-2 text-left font-medium'>发布人/发布时间</th>
-              <th className='px-3 py-2 text-right font-medium'>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tasks.map((task) => {
-              const meta = STATUS_META[task.status] ?? { label: task.status, variant: 'neutral' as const }
-              const expanded = expandedId === task.id
-              return (
-                <ExpandedRows
-                  key={task.id}
-                  task={task}
-                  meta={meta}
-                  expanded={expanded}
-                  onToggle={() => setExpandedId(expanded ? null : task.id)}
-                  detail={detail}
-                  detailLoading={detailLoading}
-                  detailError={detailError}
-                  hasPermission={hasPermission}
-                />
-              )
-            })}
-          </tbody>
-        </table>
+    <>
+      <div className='bg-card ring-foreground/10 overflow-hidden rounded-xl ring-1'>
+        <div className='overflow-x-auto'>
+          <table className='w-full min-w-[900px] text-[13px]'>
+            <thead>
+              <tr className='bg-[var(--table-header)] text-xs'>
+                <th className='w-11 px-3 py-2' />
+                <th className='px-3 py-2 text-left font-medium'>版本</th>
+                <th className='px-3 py-2 text-left font-medium'>名称/说明</th>
+                <th className='px-3 py-2 text-left font-medium'>状态</th>
+                <th className='px-3 py-2 text-left font-medium'>类型</th>
+                <th className='px-3 py-2 text-left font-medium'>Benchmark</th>
+                <th className='px-3 py-2 text-left font-medium'>版本数</th>
+                <th className='px-3 py-2 text-left font-medium'>发布人/发布时间</th>
+                <th className='px-3 py-2 text-right font-medium'>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tasks.map((task) => {
+                const meta = STATUS_META[task.status] ?? { label: task.status, variant: 'neutral' as const }
+                const expanded = expandedId === task.id
+                return (
+                  <ExpandedRows
+                    key={task.id}
+                    task={task}
+                    meta={meta}
+                    expanded={expanded}
+                    onToggle={() => setExpandedId(expanded ? null : task.id)}
+                    detail={detail}
+                    hasPermission={hasPermission}
+                    onOpenSnapshot={() => setSnapshotOpen(true)}
+                    onOpenReport={() => setReportOpen(true)}
+                  />
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
+
+      <TaskSnapshotDialog
+        open={snapshotOpen}
+        onOpenChange={setSnapshotOpen}
+        snapshot={readTaskSnapshot(detail.snapshot_config)}
+      />
+      <ReportSnapshotDialog
+        open={reportOpen}
+        onOpenChange={setReportOpen}
+        report={readReportSnapshot(detail.report_snapshot)}
+      />
+    </>
   )
 }
 
@@ -301,18 +298,18 @@ function ExpandedRows({
   expanded,
   onToggle,
   detail,
-  detailLoading,
-  detailError,
   hasPermission,
+  onOpenSnapshot,
+  onOpenReport,
 }: {
   task: PublishedTaskItem
   meta: { label: string; variant: 'success' | 'neutral' }
   expanded: boolean
   onToggle: () => void
-  detail: PublishedTaskDetail | null
-  detailLoading: boolean
-  detailError: string | null
+  detail: PublishedTaskDetail
   hasPermission: (permission: string) => boolean
+  onOpenSnapshot: () => void
+  onOpenReport: () => void
 }) {
   const archived = task.status === 'archived'
   const canExecute = hasPermission('published_task:execute')
@@ -441,31 +438,12 @@ function ExpandedRows({
       {expanded && (
         <tr className='border-border/60 border-b'>
           <td colSpan={9} className='p-0'>
-            {detailLoading ? (
-              <div className='bg-muted/20 px-4 py-3'>
-                <Skeleton className='h-12 w-full' />
-                <Skeleton className='mt-3 h-20 w-full' />
-                <Skeleton className='mt-3 h-12 w-full' />
-              </div>
-            ) : detailError ? (
-              <div className='bg-muted/20 px-4 py-3 text-sm text-destructive'>
-                {detailError}
-              </div>
-            ) : detail ? (
-              <>
-                <PublishedExpandRow
-                  detail={{
-                    ...detail,
-                    id: task.id,
-                    versions: [
-                      task,
-                      ...detail.versions.filter((v) => v.id !== task.id),
-                    ],
-                  }}
-                />
-                <Separator className='mt-1' />
-              </>
-            ) : null}
+            <PublishedExpandRow
+              detail={{ ...detail, id: task.id, versions: [task, ...detail.versions.filter((v) => v.id !== task.id)] }}
+              onOpenSnapshot={onOpenSnapshot}
+              onOpenReport={onOpenReport}
+            />
+            <Separator className='mt-1' />
           </td>
         </tr>
       )}

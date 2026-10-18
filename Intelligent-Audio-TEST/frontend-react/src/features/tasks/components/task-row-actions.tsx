@@ -1,7 +1,7 @@
 /**
  * 任务行操作菜单（09_任务域.md §3.6.2 DataTableRowActionMenu）。
  * 按状态显隐 + 权限隐藏（对齐现 taskActions 口径）；控制类操作进行中置灰。
- * mock 态：动作触发 toast 演示（接线后替换为 application/tasks mutations）。
+ * 重新执行/重新评估经 onReexecute 打开 §5.7 范围选择弹窗；未传时回落 toast 演示。
  */
 import { useNavigate } from '@tanstack/react-router'
 import { MoreHorizontal, Star } from 'lucide-react'
@@ -34,10 +34,17 @@ type MenuItem = {
 const TERMINAL_STATES = new Set(['completed', 'failed', 'stopped', 'merged', 'skipped'])
 const ACTIVE_STATES = new Set(['running', 'paused', 'queued'])
 
+export type ReexecuteActionType = 'retry' | 'reevaluate'
+
 function buildDailyItems(
   task: TaskListItem,
   has: (p: string) => boolean,
-  actions: { goDetail: () => void; onQuickView: () => void; onPublish: () => void }
+  actions: {
+    goDetail: () => void
+    onQuickView: () => void
+    onPublish: () => void
+    onReexecute: (task: TaskListItem, actionType: ReexecuteActionType) => void
+  }
 ): MenuItem[] {
   const items: MenuItem[] = []
 
@@ -100,7 +107,7 @@ function buildDailyItems(
       items.push({
         key: 'rerun',
         label: '重新执行',
-        onSelect: () => toast.success('已发起重新执行'),
+        onSelect: () => actions.onReexecute(task, 'retry'),
       })
     }
   }
@@ -108,7 +115,7 @@ function buildDailyItems(
     items.push({
       key: 'reevaluate',
       label: '重新评估',
-      onSelect: () => toast.success('已发起重新评估'),
+      onSelect: () => actions.onReexecute(task, 'reevaluate'),
     })
   }
   if (has('task:publish')) {
@@ -153,10 +160,13 @@ export function TaskRowActions({
   task,
   onQuickView,
   onPublish,
+  onReexecute,
 }: {
   task: TaskListItem
   onQuickView: (task: TaskListItem) => void
   onPublish?: (task: TaskListItem) => void
+  /** 重新执行/重新评估 → §5.7 范围选择弹窗 */
+  onReexecute: (task: TaskListItem, actionType: ReexecuteActionType) => void
 }) {
   const { hasPermission } = usePermissions()
   const navigate = useNavigate()
@@ -167,6 +177,7 @@ export function TaskRowActions({
     onQuickView: () => onQuickView(task),
     onPublish: () =>
       onPublish ? onPublish(task) : toast.success('发布流程见发布任务弹窗'),
+    onReexecute,
   })
 
   return (
