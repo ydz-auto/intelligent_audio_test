@@ -58,6 +58,11 @@ export const useGlobalAlgorithmStore = defineStore('globalAlgorithm', () => {
     }
   }
 
+  /** 清空全局算法（列表恢复全部；INT-737 /start-test 流程用） */
+  function clear() {
+    setAlgorithm(null)
+  }
+
   /** 选中算法展示名（未选中返回空串，调用方渲染「全部算法」） */
   const selectedName = computed(() => {
     if (!selectedType.value) return ''
@@ -77,5 +82,6 @@ export const useGlobalAlgorithmStore = defineStore('globalAlgorithm', () => {
     init,
     loadAlgorithms,
     setAlgorithm,
+    clear,
   }
 })
