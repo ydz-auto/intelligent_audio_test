@@ -46,11 +46,6 @@
           </button>
         </div>
       </div>
-
-      <!-- Demo 说明尾注（§3.10：上线为 Demo 预览版，Agent 能力接入后完整开放） -->
-      <p class="empty-demo-note">
-        当前为 Demo 预览：Agent 能力待接入，对话使用你配置的 LLM 供应商。
-      </p>
     </div>
   </div>
 </template>
@@ -145,7 +140,7 @@ const { visibleStarters, visibleCapabilityGroups } = useChatPermissions()
 
 .starter-card:hover {
   border-color: var(--primary);
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--primary) 15%, transparent);
+  box-shadow: var(--shadow-sm);
 }
 
 .starter-icon {
@@ -182,7 +177,7 @@ const { visibleStarters, visibleCapabilityGroups } = useChatPermissions()
 
 .capability-card:hover:not(:disabled) {
   border-color: var(--primary);
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--primary) 15%, transparent);
+  box-shadow: var(--shadow-sm);
 }
 
 .capability-card:disabled {
@@ -222,7 +217,7 @@ const { visibleStarters, visibleCapabilityGroups } = useChatPermissions()
   font-size: 11px;
   color: var(--muted-foreground);
   background: var(--muted);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   padding: 2px 8px;
 }
 
@@ -231,13 +226,7 @@ const { visibleStarters, visibleCapabilityGroups } = useChatPermissions()
   font-size: 11px;
   color: var(--warning-foreground);
   background: var(--warning-light, color-mix(in srgb, var(--warning) 15%, transparent));
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   padding: 2px 8px;
-}
-
-.empty-demo-note {
-  margin: 16px 0 0;
-  font-size: 12px;
-  color: var(--warning-dark, var(--muted-foreground));
 }
 </style>

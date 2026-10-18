@@ -32,8 +32,14 @@
         </button>
       </div>
 
-      <!-- 右：发送 / 停止 -->
+      <!-- 右：报告上下文选择器 + 发送 / 停止 -->
       <div class="input-actions">
+        <!-- 报告上下文选择器（组件树先落；Demo 态整块不渲染，数据交互待后端立项——INT-598 方案A） -->
+        <ReportContextSelector
+          v-if="REPORT_CONTEXT_ENABLED"
+          :config="config"
+          @select-context="(id, label, type) => emit('select-context', id, label, type)"
+        />
         <button
           v-if="!isGenerating"
           type="button"
@@ -62,12 +68,19 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { ChatConfig, LlmProvider } from '@/domain/model/aiChat'
+import type { ChatConfig, LlmProvider, ReportContextType } from '@/domain/model/aiChat'
 import {
   EMPTY_STATE_COPY,
   INPUT_COPY,
 } from '@/domain/constants/aiChat'
 import ModelProviderSwitcher from './ModelProviderSwitcher.vue'
+import ReportContextSelector from './ReportContextSelector.vue'
+
+/**
+ * 报告上下文选择器开关：数据交互待后端立项（INT-598 方案A），Demo 态整块不渲染
+ * （组件树先落；立项后放开渲染并接线现有端点）。
+ */
+const REPORT_CONTEXT_ENABLED = false
 
 const props = defineProps<{
   value: string
@@ -85,6 +98,7 @@ const emit = defineEmits<{
   (e: 'manage-providers'): void
   (e: 'select-provider', providerId: string): void
   (e: 'select-model', providerId: string, modelId: string): void
+  (e: 'select-context', id: string, label: string, type: ReportContextType): void
 }>()
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
@@ -127,13 +141,13 @@ defineExpose({ focusInput })
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--card);
-  box-shadow: 0 4px 20px color-mix(in srgb, var(--color-black) 8%, transparent);
+  box-shadow: var(--shadow-md);
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .ai-chat-input-card:focus-within {
   border-color: var(--primary);
-  box-shadow: 0 6px 24px color-mix(in srgb, var(--primary) 18%, transparent);
+  box-shadow: var(--shadow-lg);
 }
 
 .ai-chat-textarea {

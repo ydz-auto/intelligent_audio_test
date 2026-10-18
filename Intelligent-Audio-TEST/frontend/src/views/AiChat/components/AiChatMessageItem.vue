@@ -1,22 +1,45 @@
 <template>
   <div class="ai-chat-message" :class="[`message--${message.from}`, { 'message--error': message.status === 'error' }]">
     <div class="message-row">
-      <!-- 用户消息：右侧气泡 -->
-      <div v-if="message.from === 'user'" class="message-bubble user-bubble">
-        <span v-if="isEditing" class="message-edit-label">{{ MESSAGE_ACTION_LABELS.edit }}</span>
-        <div v-if="!isEditing" class="message-text">{{ currentContent }}</div>
-        <div v-else class="message-edit">
+      <!-- 消息编辑器（§3.4 编辑器全套：编辑态在原位展开——assistant/user 消息均可编辑，照 React 语义） -->
+      <div v-if="isEditing" class="message-edit-block" :class="`message-edit-block--${message.from}`">
+        <div class="message-edit">
+          <div class="message-edit-header">
+            <span class="message-edit-label">{{ MESSAGE_COPY.editTitle }}</span>
+            <span class="message-edit-dirty" :class="{ 'message-edit-dirty--active': hasChanged }">
+              {{ hasChanged ? MESSAGE_COPY.editDirty : MESSAGE_COPY.editClean }}
+            </span>
+          </div>
           <textarea
             v-model="editContent"
             class="message-edit-textarea"
             rows="4"
-            @keydown.enter.prevent="saveEdit"
+            @keydown.enter.prevent="saveEdit(false)"
           ></textarea>
           <div class="message-edit-actions">
-            <button type="button" class="btn btn-sm btn-primary" @click="saveEdit">{{ MESSAGE_COPY.save }}</button>
-            <button type="button" class="btn btn-sm btn-secondary" @click="cancelEdit">{{ MESSAGE_COPY.reset }}</button>
+            <button v-if="hasChanged" type="button" class="btn btn-sm btn-primary" @click="saveEdit(true)">
+              <i class="fas fa-paper-plane"></i>
+              <span>{{ MESSAGE_COPY.saveAndResend }}</span>
+            </button>
+            <button type="button" class="btn btn-sm btn-primary" @click="saveEdit(false)">
+              <i class="fas fa-check"></i>
+              <span>{{ MESSAGE_COPY.save }}</span>
+            </button>
+            <button v-if="hasChanged" type="button" class="btn btn-sm btn-secondary" @click="resetEdit">
+              <i class="fas fa-rotate-left"></i>
+              <span>{{ MESSAGE_COPY.reset }}</span>
+            </button>
+            <button type="button" class="btn btn-sm btn-text" @click="handleCancelEdit">
+              <i class="fas fa-xmark"></i>
+              <span>{{ MESSAGE_COPY.cancel }}</span>
+            </button>
           </div>
         </div>
+      </div>
+
+      <!-- 用户消息：右侧气泡 -->
+      <div v-else-if="message.from === 'user'" class="message-bubble user-bubble">
+        <div class="message-text">{{ currentContent }}</div>
       </div>
 
       <!-- 助手消息：左侧文档面 -->
@@ -65,7 +88,19 @@
           <span class="loading-text">正在回复...</span>
         </div>
         <template v-else>
-          <div class="message-text message-text--doc">{{ currentContent }}</div>
+          <!-- 源码视图（§3.4 CodeBlock「原始回复」collapsedLines=24）：替换正文显示 -->
+          <div v-if="isSourceVisible && currentContent && message.status !== 'error'" class="message-source">
+            <div class="message-source-header">
+              <i class="fas fa-code message-source-icon"></i>
+              <span class="message-source-title">{{ MESSAGE_ACTION_LABELS.sourceTitle }}</span>
+              <span class="message-source-spacer"></span>
+              <button type="button" class="message-source-toggle" @click="sourceExpanded = !sourceExpanded">
+                {{ sourceExpanded ? MESSAGE_ACTION_LABELS.collapseSource : MESSAGE_ACTION_LABELS.expandSource }}
+              </button>
+            </div>
+            <pre class="message-source-body" :class="{ 'message-source-body--expanded': sourceExpanded }">{{ currentContent }}</pre>
+          </div>
+          <div v-else-if="message.status !== 'error'" class="message-text message-text--doc">{{ currentContent }}</div>
           <!-- 元数据（时间 + 响应时长） -->
           <div v-if="message.status === 'complete' && message.createdAt" class="message-metadata">
             <span>{{ formatTime(message.createdAt) }}</span>
@@ -94,6 +129,16 @@
             @click="copyContent"
           >
             <i class="fas fa-copy"></i>
+          </button>
+          <button
+            v-if="currentContent && message.status !== 'error'"
+            type="button"
+            class="action-btn"
+            :title="isSourceVisible ? MESSAGE_ACTION_LABELS.showPreview : MESSAGE_ACTION_LABELS.showSource"
+            :disabled="isGenerating"
+            @click="emit('toggle-source', message.key)"
+          >
+            <i class="fas fa-code"></i>
           </button>
           <button
             type="button"
@@ -138,7 +183,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import type { ChatMessage } from '@/domain/model/aiChat'
 import {
   AGENT_TOOL_STATUS_LABELS,
@@ -146,11 +191,14 @@ import {
   MESSAGE_ACTION_LABELS,
   MESSAGE_COPY,
 } from '@/domain/constants/aiChat'
+import { useModalControl } from '@/composables/modal/useModal'
+import { MODAL_TYPES } from '@/composables/modal/constants'
 
 const props = defineProps<{
   message: ChatMessage
   isGenerating: boolean
   isEditing: boolean
+  isSourceVisible: boolean
   alwaysShowActions: boolean
 }>()
 
@@ -160,15 +208,21 @@ const emit = defineEmits<{
   (e: 'delete', key: string): void
   (e: 'save-edit', content: string, resend: boolean): void
   (e: 'cancel-edit'): void
+  (e: 'toggle-source', key: string): void
   (e: 'view-document'): void
 }>()
 
+const modalControl = useModalControl()
+
 const editContent = ref('')
+const sourceExpanded = ref(false)
 
 const currentContent = computed(
-  () =>
-    props.message.versions[props.message.versions.length - 1]?.content ?? ''
+  () => props.message.versions[props.message.versions.length - 1]?.content ?? ''
 )
+
+/** 编辑是否有未保存更改（§3.4：驱动「保存并重发」/「重置」显隐 + beforeunload 守卫） */
+const hasChanged = computed(() => editContent.value !== currentContent.value)
 
 watch(
   () => props.message.versions,
@@ -181,9 +235,33 @@ watch(
 watch(
   () => props.isEditing,
   (editing) => {
-    if (editing) editContent.value = currentContent.value
+    if (editing) {
+      editContent.value = currentContent.value
+      sourceExpanded.value = false
+    }
   }
 )
+
+/** beforeunload 守卫：编辑中有未保存更改时拦截刷新/离开（§3.4 编辑器全套） */
+function handleBeforeUnload(event: BeforeUnloadEvent): void {
+  event.preventDefault()
+  event.returnValue = ''
+}
+
+watch(
+  () => props.isEditing && hasChanged.value,
+  (dirty) => {
+    if (dirty) {
+      window.addEventListener('beforeunload', handleBeforeUnload)
+    } else {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+    }
+  }
+)
+
+onUnmounted(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+})
 
 function formatTime(ts: number): string {
   const d = new Date(ts)
@@ -206,14 +284,34 @@ async function copyContent(): Promise<void> {
   }
 }
 
-function saveEdit(): void {
+function saveEdit(resend: boolean): void {
   const content = editContent.value
   if (!content.trim()) return
-  emit('save-edit', content, false)
+  emit('save-edit', content, resend)
 }
 
-function cancelEdit(): void {
-  emit('cancel-edit')
+function resetEdit(): void {
+  editContent.value = currentContent.value
+}
+
+/** 取消：有未保存更改 → 离开确认（ConfirmDialog，§3.4）；无更改直接退出编辑 */
+async function handleCancelEdit(): Promise<void> {
+  if (hasChanged.value) {
+    try {
+      await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+        title: MESSAGE_COPY.leaveConfirmTitle,
+        content: MESSAGE_COPY.leaveConfirm,
+        confirmText: MESSAGE_COPY.leave,
+        cancelText: MESSAGE_COPY.stay,
+        danger: true,
+      })
+      emit('cancel-edit')
+    } catch {
+      // 留在编辑态
+    }
+  } else {
+    emit('cancel-edit')
+  }
 }
 </script>
 
@@ -240,7 +338,7 @@ function cancelEdit(): void {
   border-radius: var(--radius-lg);
   border-bottom-right-radius: var(--radius-sm);
   padding: 10px 14px;
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--color-black) 6%, transparent);
+  box-shadow: var(--shadow-sm);
 }
 
 /* ===== 助手消息：左侧文档面 ===== */
@@ -265,13 +363,45 @@ function cancelEdit(): void {
   color: var(--foreground);
 }
 
-.message-edit-label {
-  font-size: 12px;
-  color: var(--muted-foreground);
+/* ===== 消息编辑器（§3.4 编辑器全套：标题 + 未保存提示 + 钮组 + 守卫） ===== */
+.message-edit-block {
+  width: 100%;
+  max-width: 78ch;
+}
+
+.message-edit-block--user {
+  margin-left: auto;
+  max-width: 85%;
+}
+
+.message-edit-block--assistant {
+  margin-right: auto;
 }
 
 .message-edit {
   margin-top: 6px;
+}
+
+.message-edit-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.message-edit-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.message-edit-dirty {
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+
+.message-edit-dirty--active {
+  color: var(--warning-dark, var(--muted-foreground));
 }
 
 .message-edit-textarea {
@@ -297,8 +427,73 @@ function cancelEdit(): void {
 
 .message-edit-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 8px;
+}
+
+/* ===== 源码视图（§3.4 CodeBlock「原始回复」collapsedLines=24） ===== */
+.message-source {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  overflow: hidden;
+}
+
+.message-source-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--muted);
+}
+
+.message-source-icon {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.message-source-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.message-source-spacer {
+  flex: 1;
+}
+
+.message-source-toggle {
+  border: none;
+  background: transparent;
+  color: var(--primary);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.message-source-toggle:hover {
+  color: var(--primary-hover);
+}
+
+.message-source-body {
+  margin: 0;
+  padding: 10px 12px;
+  font-family: var(--font-mono, Consolas, 'Courier New', monospace);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--foreground);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: calc(1.6em * 24);
+  overflow: hidden;
+}
+
+.message-source-body--expanded {
+  max-height: none;
+  overflow-y: auto;
 }
 
 .message-loading {
@@ -315,7 +510,7 @@ function cancelEdit(): void {
   height: 14px;
   border: 2px solid var(--border);
   border-top-color: var(--primary);
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   animation: ai-chat-spin 0.8s linear infinite;
 }
 
@@ -387,7 +582,7 @@ function cancelEdit(): void {
   margin-left: auto;
   font-size: 11px;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
 }
 
 .tool-status--pending,

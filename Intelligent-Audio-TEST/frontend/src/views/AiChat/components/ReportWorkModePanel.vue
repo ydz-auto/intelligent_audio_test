@@ -96,7 +96,7 @@ const emit = defineEmits<{ (e: 'close'): void }>()
   font-size: 10px;
   color: var(--muted-foreground);
   background: var(--muted);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   padding: 1px 6px;
 }
 

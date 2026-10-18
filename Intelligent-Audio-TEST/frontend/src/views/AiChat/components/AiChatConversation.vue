@@ -11,12 +11,14 @@
         :message="message"
         :is-generating="isGenerating"
         :is-editing="editingKey === message.key"
+        :is-source-visible="sourceVisibleKeys.has(message.key)"
         :always-show-actions="idx === renderedMessages.length - 1 && message.from === 'assistant'"
         @regenerate="emit('regenerate', $event)"
         @edit="emit('edit', $event)"
         @delete="emit('delete', $event)"
         @save-edit="(content, resend) => emit('save-edit', content, resend)"
         @cancel-edit="emit('cancel-edit')"
+        @toggle-source="handleToggleSource"
         @view-document="emit('view-document')"
       />
     </div>
@@ -59,6 +61,8 @@ const emit = defineEmits<{
 
 const scrollRef = ref<HTMLElement | null>(null)
 const showScrollButton = ref(false)
+/** 源码视图展开的消息 key 集合（§3.4：显示源码/显示预览切换，per-message） */
+const sourceVisibleKeys = ref<Set<string>>(new Set())
 let isNearBottom = true
 
 /** 历史渲染上限 24 条截断（§3.4 MAX_RENDERED_HISTORY_MESSAGES 照搬） */
@@ -66,6 +70,17 @@ const renderedMessages = computed(() => {
   if (props.messages.length <= MAX_RENDERED_HISTORY_MESSAGES) return props.messages
   return props.messages.slice(-MAX_RENDERED_HISTORY_MESSAGES)
 })
+
+/** 显示源码/显示预览切换（§3.4 per-message 视图态，照 React sourceMessageKeys 语义） */
+function handleToggleSource(key: string): void {
+  const next = new Set(sourceVisibleKeys.value)
+  if (next.has(key)) {
+    next.delete(key)
+  } else {
+    next.add(key)
+  }
+  sourceVisibleKeys.value = next
+}
 
 function scrollToBottom(smooth = true): void {
   const el = scrollRef.value
@@ -132,7 +147,7 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--card);
   color: var(--muted-foreground);
   font-size: 13px;

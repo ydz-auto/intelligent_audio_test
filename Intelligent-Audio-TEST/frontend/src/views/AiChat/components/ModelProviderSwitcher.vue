@@ -1,5 +1,5 @@
 <template>
-  <div class="provider-switcher">
+  <div class="provider-switcher" ref="rootRef">
     <!-- 触发钮（当前模型 + 供应商 Badge + 上下箭头） -->
     <button
       type="button"
@@ -85,6 +85,7 @@ const emit = defineEmits<{
 
 const open = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
+const rootRef = ref<HTMLElement | null>(null)
 
 const selectedProviderId = computed(() => props.config.providerId)
 const selectedModelId = computed(() => props.config.modelId)
@@ -114,10 +115,11 @@ function handleSelectModel(providerId: string, modelId: string): void {
   open.value = false
 }
 
+/** 点击组件根以外才关闭（触发钮/面板内点击不误关——标准 popover 语义） */
 function handleDocumentClick(event: MouseEvent): void {
-  const el = dropdownRef.value
-  if (!el) return
-  if (!el.contains(event.target as Node)) {
+  const root = rootRef.value
+  if (!root) return
+  if (!root.contains(event.target as Node)) {
     open.value = false
   }
 }
@@ -189,7 +191,7 @@ onUnmounted(() => {
   font-size: 10px;
   color: var(--muted-foreground);
   background: var(--muted);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   padding: 1px 6px;
 }
 
@@ -215,7 +217,7 @@ onUnmounted(() => {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--popover);
-  box-shadow: 0 8px 24px color-mix(in srgb, var(--color-black) 18%, transparent);
+  box-shadow: var(--shadow-lg);
   overflow: hidden;
 }
 
@@ -294,7 +296,7 @@ onUnmounted(() => {
   font-size: 10px;
   color: var(--muted-foreground);
   background: var(--muted);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   padding: 1px 6px;
 }
 

@@ -61,6 +61,7 @@
         @manage-providers="providerManagerOpen = true"
         @select-provider="(providerId) => store.updateConfig({ providerId })"
         @select-model="(providerId, modelId) => store.updateConfig({ providerId, modelId })"
+        @select-context="(id, label, type) => store.updateConfig({ reportContextId: id, reportContextLabel: label, reportContextType: type })"
       />
     </div>
 
@@ -74,7 +75,10 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAiChatStore } from '@/store/aiChatStore'
 import { useAgentWorkbenchStore } from '@/store/agentWorkbenchStore'
-import { DEMO_COPY } from '@/domain/constants/aiChat'
+import { DEMO_COPY, INPUT_COPY } from '@/domain/constants/aiChat'
+import { useModalControl } from '@/composables/modal/useModal'
+import { MODAL_TYPES } from '@/composables/modal/constants'
+import { useNotification } from '@/composables/modal/useNotification'
 import AiChatConversation from './AiChatConversation.vue'
 import AiChatInput from './AiChatInput.vue'
 import ProviderManagerModal from './ProviderManagerModal.vue'
@@ -82,6 +86,8 @@ import ProviderManagerModal from './ProviderManagerModal.vue'
 const store = useAiChatStore()
 const workbench = useAgentWorkbenchStore()
 const router = useRouter()
+const modalControl = useModalControl()
+const notification = useNotification()
 
 const draftText = ref('')
 const providerManagerOpen = ref(false)
@@ -95,9 +101,22 @@ function handleSubmit(text: string): void {
   draftText.value = ''
 }
 
-function handleClear(): void {
-  store.clearMessages()
-  draftText.value = ''
+/** 清空对话（与整页同款：确认弹窗 + 成功 toast，§3.5/§3.1B 两形态一致） */
+async function handleClear(): Promise<void> {
+  try {
+    await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+      title: INPUT_COPY.clearConfirmTitle,
+      content: INPUT_COPY.clearConfirmContent,
+      confirmText: INPUT_COPY.clearConfirm,
+      cancelText: '取消',
+      danger: true,
+    })
+    store.clearMessages()
+    draftText.value = ''
+    notification.success(INPUT_COPY.clearDone)
+  } catch {
+    // 用户取消清空
+  }
 }
 
 /** 展开整页（保留会话：浮窗与整页共用同一 store，§3.1B 不分裂会话） */
@@ -121,7 +140,7 @@ function expandToPage(): void {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--background);
-  box-shadow: 0 8px 32px color-mix(in srgb, var(--color-black) 22%, transparent);
+  box-shadow: var(--shadow-lg);
   overflow: hidden;
 }
 
@@ -152,7 +171,7 @@ function expandToPage(): void {
   font-weight: 600;
   color: var(--warning-dark, var(--foreground));
   background: var(--warning-light, color-mix(in srgb, var(--warning) 20%, transparent));
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   padding: 1px 7px;
   cursor: help;
 }
@@ -209,7 +228,7 @@ function expandToPage(): void {
   min-height: 36px;
   padding: 0 16px;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: linear-gradient(115deg, #4f7cff, #9145ee 55%, #cd4bdb);
   color: #ffffff;
   font: inherit;

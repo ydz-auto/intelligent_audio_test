@@ -52,6 +52,7 @@
             @manage-providers="providerManagerOpen = true"
             @select-provider="(providerId) => store.updateConfig({ providerId })"
             @select-model="(providerId, modelId) => store.updateConfig({ providerId, modelId })"
+            @select-context="(id, label, type) => store.updateConfig({ reportContextId: id, reportContextLabel: label, reportContextType: type })"
           />
         </div>
       </div>
@@ -94,6 +95,7 @@
           @manage-providers="providerManagerOpen = true"
           @select-provider="(providerId) => store.updateConfig({ providerId })"
           @select-model="(providerId, modelId) => store.updateConfig({ providerId, modelId })"
+          @select-context="(id, label, type) => store.updateConfig({ reportContextId: id, reportContextLabel: label, reportContextType: type })"
         />
       </div>
     </template>
@@ -241,7 +243,7 @@ onMounted(() => {
   font-weight: 600;
   color: var(--warning-dark, var(--foreground));
   background: var(--warning-light, color-mix(in srgb, var(--warning) 20%, transparent));
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   padding: 2px 9px;
   cursor: help;
 }

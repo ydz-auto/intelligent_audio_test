@@ -328,7 +328,7 @@ watch(
   font-size: 10px;
   color: var(--secondary);
   background: var(--secondary-light, color-mix(in srgb, var(--secondary) 12%, transparent));
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   padding: 1px 6px;
 }
 
@@ -336,7 +336,7 @@ watch(
   font-size: 10px;
   color: var(--success-dark, var(--foreground));
   background: var(--success-light, color-mix(in srgb, var(--success) 15%, transparent));
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   padding: 1px 6px;
 }
 

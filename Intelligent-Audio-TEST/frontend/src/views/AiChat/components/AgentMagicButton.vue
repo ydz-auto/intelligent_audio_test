@@ -31,7 +31,7 @@ const workbench = useAgentWorkbenchStore()
   min-height: 36px;
   padding: 0 16px;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   color: #ffffff;
   font: inherit;
   font-size: 13px;
