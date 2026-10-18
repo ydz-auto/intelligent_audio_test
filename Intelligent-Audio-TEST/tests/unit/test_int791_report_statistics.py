@@ -54,7 +54,7 @@ def _cleanup_tables(tables):
         remove_db_session()
 
 
-def _make_report(name, created_at=None, status='completed', algorithm_type=None,
+def _make_report(name, created_at=None, status='published', algorithm_type=None,
                  total=10, completed=8, failed=2, pass_rate=80.0, duration=120.0,
                  devices=None, apis=None, dimension_values=None, device_stats=None):
     """创建报告 + 摘要 + 元数据（+ 可选用例行）的完整统计样本。
@@ -147,6 +147,7 @@ class TestStatisticsService:
         assert result['overview']['report_count'] == 2
         assert result['overview']['total_cases'] == 30
         assert result['overview']['pass_rate'] == 90.0
+        assert result['overview']['completed_reports'] == 2
         dates = [d['group'] for d in result['detail']]
         assert dates == ['2026-10-01']
         assert result['chart']['categories'] == ['2026-10-01']
@@ -157,6 +158,27 @@ class TestStatisticsService:
             {'dimension': 'time'}, report_repository)
         assert result_all['overview']['report_count'] == 3
         assert len(result_all['detail']) == 2
+
+    def test_statistics_overview_status_semantics(self):
+        """overview 状态口径：published 计已完成、draft 不计、无 failed_reports。"""
+        from datetime import datetime
+        from report_service.application.services.report_aggregation.statistics_service import (
+            statistics_service,
+        )
+        from report_service.infrastructure.persistence.report_repository import (
+            report_repository,
+        )
+
+        _make_report('pub', created_at=datetime(2026, 10, 1), status='published', total=10)
+        _make_report('draft', created_at=datetime(2026, 10, 1), status='draft', total=20)
+
+        result = statistics_service.get_statistics(
+            {'dimension': 'time'}, report_repository)
+        assert result['overview']['report_count'] == 2
+        assert result['overview']['completed_reports'] == 1
+        assert result['overview']['total_cases'] == 30
+        # 报告表无 failed 状态，overview 不含 failed_reports 字段
+        assert 'failed_reports' not in result['overview']
 
     def test_statistics_invalid_dimension(self):
         """dimension 非法值返回错误。"""
@@ -223,6 +245,36 @@ class TestStatisticsService:
         assert groups['speaker']['report_count'] == 1
         assert groups['speaker']['device_count'] == 1
         assert groups['speaker']['total_cases'] == 10
+
+    def test_statistics_device_type_dedupe_same_type(self):
+        """device_type 维度：同报告多台同型设备去重计一次，device_count 收集全部。"""
+        from datetime import datetime
+        from report_service.application.services.report_aggregation.statistics_service import (
+            statistics_service,
+        )
+        from report_service.infrastructure.persistence.report_repository import (
+            report_repository,
+        )
+
+        # 同一报告含 2 台 phone + 1 台 speaker
+        _make_report('r1', created_at=datetime(2026, 10, 1), total=10,
+                     devices=[{'id': 1, 'name': 'd1', 'type': 'phone'},
+                              {'id': 2, 'name': 'd2', 'type': 'phone'},
+                              {'id': 3, 'name': 'd3', 'type': 'speaker'}])
+        # 另一报告含 1 台 phone
+        _make_report('r2', created_at=datetime(2026, 10, 1), total=20,
+                     devices=[{'id': 4, 'name': 'd4', 'type': 'phone'}])
+
+        result = statistics_service.get_statistics(
+            {'dimension': 'device_type'}, report_repository)
+        groups = {d['group']: d for d in result['detail']}
+        # 同报告同型去重：phone 组 report_count=2（r1+r2）、total_cases=30 而非 40
+        assert groups['phone']['report_count'] == 2
+        assert groups['phone']['total_cases'] == 30
+        assert groups['phone']['device_count'] == 3  # d1/d2/d4
+        assert groups['speaker']['report_count'] == 1
+        assert groups['speaker']['total_cases'] == 10
+        assert groups['speaker']['device_count'] == 1
 
     def test_statistics_evaluation_metric_dimension(self):
         """evaluation_metric 维度：按评估指标聚合平均得分。"""

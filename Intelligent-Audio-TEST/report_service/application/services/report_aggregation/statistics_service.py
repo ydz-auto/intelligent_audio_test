@@ -111,10 +111,16 @@ def _round(value, ndigits=2) -> float:
 # ======================================================================
 
 def _summarize_rows(rows: List[Tuple[Any, Any, Any]]) -> dict:
-    """对一批 (Report, ReportSummary, ReportSummaryMeta) 计算总览聚合。"""
+    """对一批 (Report, ReportSummary, ReportSummaryMeta) 计算总览聚合。
+
+    已完成报告按 published 计数：报告生成完成置 published（ReportStatus
+    仅 draft/published，见 shared/models/common_enums.py），draft 计入
+    report_count 但不计入已完成；报告表无 failed 状态（生成失败留 draft
+    或未落行），overview 不含 failed_reports，失败口径以用例级
+    failed_cases 体现。
+    """
     report_count = len(rows)
-    completed_reports = sum(1 for r, _s, _m in rows if r.status == 'completed')
-    failed_reports = sum(1 for r, _s, _m in rows if r.status == 'failed')
+    completed_reports = sum(1 for r, _s, _m in rows if r.status == 'published')
     total_cases = int(sum(_num(s, 'total_cases') for _r, s, _m in rows))
     completed_cases = int(sum(_num(s, 'completed_cases') for _r, s, _m in rows))
     failed_cases = int(sum(_num(s, 'failed_cases') for _r, s, _m in rows))
@@ -123,7 +129,6 @@ def _summarize_rows(rows: List[Tuple[Any, Any, Any]]) -> dict:
     return {
         'report_count': report_count,
         'completed_reports': completed_reports,
-        'failed_reports': failed_reports,
         'total_cases': total_cases,
         'completed_cases': completed_cases,
         'failed_cases': failed_cases,
@@ -179,7 +184,9 @@ def _group_rows(rows: List[Tuple[Any, Any, Any]], dimension: str) -> Dict[str, L
             keys = [_derive_task_type(meta)]
         elif dimension == 'device_type':
             devices = _meta_list(meta, 'devices')
-            keys = [d.get('type') or 'unknown' for d in devices if isinstance(d, dict)]
+            # 按报告对设备类型去重：同报告多台同型设备计为该类型一次，
+            # 避免 report_count/用例数被重复放大（device_count 另收集全部设备 id）
+            keys = sorted({d.get('type') or 'unknown' for d in devices if isinstance(d, dict)})
             if not keys:
                 keys = ['unknown']
         else:  # evaluation_metric
@@ -406,7 +413,6 @@ def _build_report_table(report_type: str, rows: List[Tuple[Any, Any, Any]],
                 '日期': date_key,
                 '报告数量': agg['report_count'],
                 '已完成': agg['completed_reports'],
-                '失败': agg['failed_reports'],
             })
         return table
 
