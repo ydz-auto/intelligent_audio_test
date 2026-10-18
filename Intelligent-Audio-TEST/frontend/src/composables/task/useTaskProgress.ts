@@ -331,14 +331,16 @@ export function useTaskProgress(options: TaskProgressOptions) {
     scheduleFallbackTick(generation)
   }
 
-  const startFallbackPolling = () => {
+  const startFallbackPolling = (silent = false) => {
     if (!currentTaskId.value) return
     // isProgressPolling 为当前活跃标志；generation 仅作在途 tick 失效令牌（单调递增）
     if (isProgressPolling.value || fallbackPollTimer !== null) return
     socketProgressSinceFallbackStart = false
     fallbackPollGeneration++
     isProgressPolling.value = true
-    addLog({ content: '实时连接已断开，进度已切换为 HTTP 轮询刷新，正在自动重连...', level: 'warn' })
+    if (!silent) {
+      addLog({ content: '实时连接已断开，进度已切换为 HTTP 轮询刷新，正在自动重连...', level: 'warn' })
+    }
     void runFallbackTick(fallbackPollGeneration)
   }
 
@@ -373,9 +375,13 @@ export function useTaskProgress(options: TaskProgressOptions) {
       stopFallbackPolling()
       return
     }
-    if (!taskChannelPort.isConnected()) {
-      startFallbackPolling()
-    }
+    // INT-737：任务创建后统一订阅任务房间 + 启动 HTTP 兜底轮询。
+    // socket 终态事件（failed/completed）在部分执行路径不达（如快速失败任务），
+    // HTTP 兜底轮询 GET /tasks/{id}/progress 是终态检测的可靠来源；
+    // socket 已送达事件时 socketProgressSinceFallbackStart 保证在途 HTTP 结果不回退
+    // （INT-401 语义不变）。已连接时静默启动（不展示「连接断开」误导提示）。
+    taskChannelPort.subscribeTask(taskId)
+    startFallbackPolling(!taskChannelPort.isConnected())
   })
 
   onUnmounted(() => {

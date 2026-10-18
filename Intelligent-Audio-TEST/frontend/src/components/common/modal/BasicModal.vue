@@ -153,7 +153,7 @@ onUnmounted(() => {
 }
 
 .modal {
-  background-color: white;
+  background-color: var(--popover);
   border-radius: var(--radius-card);
   box-shadow: 0 4px 20px color-mix(in srgb, var(--color-black) 15%, transparent);
   max-height: 90vh;
@@ -211,7 +211,7 @@ onUnmounted(() => {
 
 .modal-body {
   padding: 24px;
-  background-color: white;
+  background-color: var(--popover);
 }
 
 .modal-footer {

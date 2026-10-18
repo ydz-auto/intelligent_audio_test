@@ -24,7 +24,7 @@
       :current-step="currentStep"
       :step-labels="stepLabels"
       :step-count="4"
-      :step2-tooltip="'选择要测试的测试设备或被测 API（同屏混合选择）'"
+      :step-tooltips="stepTooltips"
       @go-to-step="goToStep"
     />
 
@@ -110,8 +110,8 @@
             :selected-ids="selectedDeviceIds"
             :display-fields="deviceDisplayFields"
             :empty-text="'未找到相关设备'"
-            @toggle-selection="toggleResourceSelection"
-            @action-click="handleResourceAction"
+            @toggle-selection="(id) => toggleResourceSelection(id, 'device')"
+            @action-click="(e) => handleResourceAction(e, 'device')"
           />
 
           <!-- 设备分页 -->
@@ -156,8 +156,8 @@
             :selected-ids="selectedAPIIds"
             :display-fields="apiDisplayFields"
             :empty-text="'未找到相关API'"
-            @toggle-selection="toggleResourceSelection"
-            @action-click="handleResourceAction"
+            @toggle-selection="(id) => toggleResourceSelection(id, 'api')"
+            @action-click="(e) => handleResourceAction(e, 'api')"
           />
 
           <!-- API 分页 -->
@@ -359,6 +359,14 @@ const stepLabels = computed(() => [
   '查看结果',
 ])
 
+// 步骤 tooltips（四步独立数组，与 stepLabels 一一对应，ProgressNav 不按 index 特判）
+const stepTooltips = [
+  '选择要执行的测试用例和配置参数',
+  '选择要测试的测试设备或被测 API（同屏混合选择）',
+  '运行测试并实时监控执行进度',
+  '查看和导出测试报告',
+]
+
 // 资源显示字段
 const deviceDisplayFields = [
   { label: '设备名称', key: 'name' },
@@ -445,7 +453,7 @@ border: 1px solid var(--gray-light-color);
   padding: var(--spacing-sm, 8px) var(--spacing-md, 16px);
   background: var(--primary-light, var(--secondary-light));
   border: 1px solid var(--primary-color, var(--secondary));
-  border-radius: var(--border-radius-md, 6px);
+  border-radius: var(--border-radius-md);
   color: var(--primary-color, var(--secondary));
   font-size: var(--font-size-sm, 13px);
   margin-bottom: var(--spacing-md, 16px);
@@ -463,7 +471,7 @@ border: 1px solid var(--gray-light-color);
   padding: 6px 12px;
   background: color-mix(in srgb, var(--primary) 10%, transparent);
   border: 1px solid var(--primary-color);
-  border-radius: 999px;
+  border-radius: var(--border-radius-full);
   color: var(--primary-color);
   font-size: 13px;
   font-weight: 500;

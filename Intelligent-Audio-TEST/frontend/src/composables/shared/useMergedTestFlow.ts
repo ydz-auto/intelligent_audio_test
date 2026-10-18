@@ -10,6 +10,7 @@ import { useTestReportOps } from './useTestReportOps'
 import { useDeviceManagement } from '../device/useDeviceManagement'
 import { apisPort } from '../apiTest/apisPort'
 import { tasksPort } from '../task/tasksPort'
+import { taskChannelPort } from '../task/taskChannelPort'
 import { useTestCaseStore } from '../../store/testCaseStore'
 import { normalizeSelectedCaseIds } from './useTestFlow'
 import { TaskStatus, DeviceStatus, ApiEndpointStatus, DeviceTabType, ViewMode, type VisibilityType } from '../../domain/enums'
@@ -204,11 +205,9 @@ export function useMergedTestFlow() {
     }
   }
 
-  /** 统一切换（设备/API 同屏） */
-  const toggleResourceSelection = (id: string | number) => {
-    // 设备与 API id 域不同（设备 int、API int），按当前项类型分发
-    const isDevice = (deviceManagement.devices.value as any[]).some(d => String(d.id) === String(id))
-    if (isDevice) {
+  /** 统一切换（设备/API 同屏，类型由调用方显式传入，不按 id 猜——避免设备/API id 撞车时分发错） */
+  const toggleResourceSelection = (id: string | number, type: 'device' | 'api') => {
+    if (type === 'device') {
       handleToggleDeviceSelection(id)
     } else {
       toggleAPISelection(id)
@@ -223,10 +222,9 @@ export function useMergedTestFlow() {
     associatedResources.value.map((d: any) => d.id)
   )
 
-  // ============ 资源操作（测试/编辑/删除） ============
-  const handleResourceAction = ({ actionId, itemId }: { actionId: string; itemId: string | number }) => {
-    const isDevice = (deviceManagement.devices.value as any[]).some(d => String(d.id) === String(itemId))
-    if (isDevice) {
+  // ============ 资源操作（测试/编辑/删除，类型由调用方显式传入） ============
+  const handleResourceAction = ({ actionId, itemId }: { actionId: string; itemId: string | number }, type: 'device' | 'api') => {
+    if (type === 'device') {
       if (actionId === 'test') {
         deviceManagement.testDeviceConnection(itemId, 'test')
       } else if (actionId === 'edit') {
@@ -377,6 +375,10 @@ export function useMergedTestFlow() {
         config: { parallel: true, concurrentTasks: concurrentTasks.value },
       })
       currentTaskId.value = response.id
+      // INT-737：任务创建后立即订阅任务 socket 房间（在 start 之前），
+      // 否则 socket 已连接时 useTaskProgress 的 currentTaskId watch 不订阅、
+      // 后端 task_progress/task_log 事件收不到 → 执行步无法推进到报告步。
+      taskChannelPort.subscribeTask(response.id)
 
       associatedCases.value = caseIds.map((id: any) => {
         const allCases = Object.values(testCaseGroups.value as Record<string, TestCase[]>).flat()

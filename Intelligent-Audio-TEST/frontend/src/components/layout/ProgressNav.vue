@@ -24,6 +24,8 @@ const props = defineProps({
   stepLabels: { type: Array, default: () => [] },
   /** 步骤数（INT-486 合并流程 4 步；缺省 5 步兼容 E2E/API 向导） */
   stepCount: { type: Number, default: 5 },
+  /** 每步 tooltips（与步骤一一对应，index 0..stepCount-1；合并流程四步传入覆盖默认） */
+  stepTooltips: { type: Array, default: () => [] },
   stepTwoTooltip: { type: String, default: '' }
 });
 
@@ -44,6 +46,9 @@ const visibleSteps = computed(() => {
 });
 
 const tooltipFor = (index) => {
+  if (props.stepTooltips && props.stepTooltips.length > index && props.stepTooltips[index] !== undefined) {
+    return props.stepTooltips[index];
+  }
   if (index === 2) return props.stepTwoTooltip || DEFAULT_TOOLTIPS[2];
   return DEFAULT_TOOLTIPS[index] || '';
 };
