@@ -48,6 +48,12 @@ export default defineConfig(({ command, mode }) => {
           target: apiTarget,
           changeOrigin: true
         },
+        // INT-745：关于页版本/健康状态卡（/health 为 api_gateway 根路径，nginx 未反代；
+        // dev 环境由 Vite 代理转发到后端，生产反代规则由部署侧随基座壳一并补充）
+        '/health': {
+          target: apiTarget,
+          changeOrigin: true
+        },
         '/socket.io': {
           target: apiTarget,
           changeOrigin: true,

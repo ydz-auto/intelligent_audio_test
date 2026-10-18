@@ -1,56 +1,64 @@
 <template>
   <div class="app-container">
-    <aside class="sidebar" :class="{ 'sidebar-collapsed': sidebarCollapsed }" @mouseenter="handleSidebarEnter" @mouseleave="handleSidebarLeave">
-      <div class="sidebar-header">
-        <div class="logo-container" v-if="!sidebarCollapsed">
-          <h1 class="logo">
+    <!-- INT-745：公共页（/ /user-guide /about /rankings）挂 PublicLayout 公共壳，不带侧栏 -->
+    <template v-if="isPublicRoute">
+      <router-view />
+    </template>
+
+    <!-- 业务页：工作台侧栏壳（基座壳 INT-735 将重构为 AuthenticatedLayout + 分组侧栏 + 顶栏） -->
+    <template v-else>
+      <aside class="sidebar" :class="{ 'sidebar-collapsed': sidebarCollapsed }" @mouseenter="handleSidebarEnter" @mouseleave="handleSidebarLeave">
+        <div class="sidebar-header">
+          <div class="logo-container" v-if="!sidebarCollapsed">
+            <h1 class="logo">
+              <i class="fas fa-headset"></i>
+              智能语音测试系统
+            </h1>
+          </div>
+          <div class="logo-icon-only" v-else>
             <i class="fas fa-headset"></i>
-            智能语音测试系统
-          </h1>
+          </div>
         </div>
-        <div class="logo-icon-only" v-else>
-          <i class="fas fa-headset"></i>
+
+        <nav>
+          <ul>
+            <li v-for="item in visibleNavItems" :key="item.path">
+              <router-link :to="item.path" class="navLink" :class="{ 'justify-center': sidebarCollapsed }">
+                <i :class="item.icon"></i>
+                <span v-if="!sidebarCollapsed">{{ item.label }}</span>
+              </router-link>
+            </li>
+            <!-- INT-577 §8：全局购物车角标（登录即可看，task:read 数据；增删链 task:cherry_pick 显隐） -->
+            <li v-if="canViewCart">
+              <button class="navLink nav-cart-link" @click="cartDrawerState.open()">
+                <i class="fas fa-cart-shopping navIcon"></i>
+                <span v-if="!sidebarCollapsed">挑选购物车</span>
+                <span v-if="pickCartCount > 0" class="nav-cart-badge">{{ pickCartCount }}</span>
+              </button>
+            </li>
+          </ul>
+        </nav>
+
+        <!-- 用户信息 + 登出 -->
+        <div v-if="authStore.isLoggedIn && !sidebarCollapsed" class="sidebar-footer">
+          <button class="user-entry" @click="goAccountSettings" title="账号设置">
+            <span class="user-name">{{ authStore.username }}</span>
+            <span class="user-role" v-if="authStore.roleName">{{ authStore.roleName }}</span>
+          </button>
+          <button class="logout-btn" @click="handleLogout">登出</button>
+        </div>
+      </aside>
+
+      <div class="sidebar-hover-trigger" v-if="sidebarCollapsed || isHomePage" @mouseenter="handleTriggerEnter" @mouseleave="handleTriggerLeave">
+        <div class="sidebar-hint">
+          <i class="fas fa-chevron-right"></i>
         </div>
       </div>
 
-      <nav>
-        <ul>
-          <li v-for="item in visibleNavItems" :key="item.path">
-            <router-link :to="item.path" class="navLink" :class="{ 'justify-center': sidebarCollapsed }">
-              <i :class="item.icon"></i>
-              <span v-if="!sidebarCollapsed">{{ item.label }}</span>
-            </router-link>
-          </li>
-          <!-- INT-577 §8：全局购物车角标（登录即可看，task:read 数据；增删链 task:cherry_pick 显隐） -->
-          <li v-if="canViewCart">
-            <button class="navLink nav-cart-link" @click="cartDrawerState.open()">
-              <i class="fas fa-cart-shopping navIcon"></i>
-              <span v-if="!sidebarCollapsed">挑选购物车</span>
-              <span v-if="pickCartCount > 0" class="nav-cart-badge">{{ pickCartCount }}</span>
-            </button>
-          </li>
-        </ul>
-      </nav>
-
-      <!-- 用户信息 + 登出 -->
-      <div v-if="authStore.isLoggedIn && !sidebarCollapsed" class="sidebar-footer">
-        <button class="user-entry" @click="goAccountSettings" title="账号设置">
-          <span class="user-name">{{ authStore.username }}</span>
-          <span class="user-role" v-if="authStore.roleName">{{ authStore.roleName }}</span>
-        </button>
-        <button class="logout-btn" @click="handleLogout">登出</button>
-      </div>
-    </aside>
-
-    <div class="sidebar-hover-trigger" v-if="sidebarCollapsed || isHomePage" @mouseenter="handleTriggerEnter" @mouseleave="handleTriggerLeave">
-      <div class="sidebar-hint">
-        <i class="fas fa-chevron-right"></i>
-      </div>
-    </div>
-
-    <main class="main-content" :class="{ 'sidebar-collapsed': sidebarCollapsed }" ref="mainContentRef">
-      <router-view :key="$route.fullPath"></router-view>
-    </main>
+      <main class="main-content" :class="{ 'sidebar-collapsed': sidebarCollapsed }" ref="mainContentRef">
+        <router-view :key="$route.fullPath"></router-view>
+      </main>
+    </template>
 
     <div id="global-fixed-elements"></div>
     <GlobalModalContainer />
@@ -78,6 +86,7 @@ import { usePickCart } from './composables/task/usePickCart'
 import { useCartDrawerState } from './composables/task/cartDrawerState'
 import { requestPickWizard } from './composables/task/usePickWizardRequest'
 import { PermissionPoint } from './domain/enums'
+import { initTheme } from './composables/shared/useTheme'
 
 // ===== 导航配置 =====
 interface NavItem {
@@ -93,7 +102,7 @@ const navItems: NavItem[] = [
   { path: '/APITest', label: 'API测试', icon: 'fas fa-exchange-alt navIcon', permission: 'task:execute' },
   { path: '/AlgorithmConfig', label: '算法配置', icon: 'fas fa-cogs navIcon', permission: 'algorithm:read' },
   { path: '/tasks', label: '测试任务记录', icon: 'fas fa-tasks navIcon', permission: 'task:read' },
-  { path: '/benchmarks', label: '排行榜', icon: 'fas fa-chart-simple navIcon', permission: 'benchmark:ranking:read' },
+  { path: '/rankings', label: '排行榜', icon: 'fas fa-chart-simple navIcon', permission: 'benchmark:ranking:read' },
   { path: '/history-reports', label: '历史报告', icon: 'fas fa-history navIcon', permission: 'report:read' },
   { path: '/TestCaseManager', label: '用例管理', icon: 'fas fa-tasks navIcon', permission: 'testcase:read' },
   { path: '/Evaluation', label: '评估维度管理', icon: 'fas fa-star navIcon', permission: 'evaluation:read' },
@@ -132,6 +141,9 @@ function goCartReview() {
 // provide() 必须在 setup 同步阶段调用，提供模态框管理器供子孙组件 inject
 provideModal()
 registerGlobalModals()
+
+/** INT-745：公共页（meta.public）不带工作台侧栏壳，由 PublicLayout 自管站头/页脚 */
+const isPublicRoute = computed(() => route.meta.public === true)
 
 // 按权限过滤导航
 const visibleNavItems = computed(() => {
@@ -216,6 +228,9 @@ onMounted(() => {
 
   // INT-577：全局购物车角标初始同步（导航栏角标数据源 usePickCart 单例镜像）
   pickCart.refreshCart()
+
+  // 深浅色主题恢复（INT-745 启用 tokens.css .dark 块；localStorage iatp:theme:v1）
+  initTheme()
 
   sidebarCollapsed.value = isHomePage.value
   if (!isHomePage.value) {

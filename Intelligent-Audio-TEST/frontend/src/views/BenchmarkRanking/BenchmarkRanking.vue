@@ -5,13 +5,17 @@
       <div class="header-left">
         <h2 class="page-title" style="color: var(--primary-color);">
           <i class="fas fa-chart-simple"></i>
-          Benchmark 排行
+          排行榜
         </h2>
-        <p class="page-description">平台实测与外部基线的语音能力横向对比，按指标与场景生成名次。</p>
+        <p class="page-description">多个厂商模型/APP/API 在同一标准化环境、同一测试集与指标下同时实测，按指标与场景生成名次，横向看清业界水平。</p>
       </div>
     </div>
 
     <BenchmarkRankingHero :active-category="store.category" @select="handleCategorySelect" />
+
+    <!-- INT-745：页内算法卡片网格（每算法一张大卡；不渲染右上角全局切换器；按算法过滤待后端立项） -->
+    <AlgorithmCardGrid />
+
     <BenchmarkRankingFilters
       :suite="store.suite"
       :metric-code="store.metricCode"
@@ -91,6 +95,7 @@ import { BenchmarkCategoryTabLabels, BenchmarkSource, type BenchmarkCategoryType
 import BenchmarkRankingHero from '../../components/benchmark/BenchmarkRankingHero.vue'
 import BenchmarkRankingFilters from '../../components/benchmark/BenchmarkRankingFilters.vue'
 import MetricGroupCard from '../../components/benchmark/MetricGroupCard.vue'
+import AlgorithmCardGrid from './AlgorithmCardGrid.vue'
 
 const store = useBenchmarkStore()
 const authStore = useAuthStore()

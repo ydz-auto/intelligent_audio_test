@@ -19,6 +19,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
+import { createPinia } from 'pinia';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -74,11 +75,13 @@ function homeCss(): string {
   return readFileSync(resolve(srcDir, 'views/Home/home.css'), 'utf8');
 }
 
-/** 挂载 Home.vue（真实 section 子组件，router-link 打桩；statsPort 由 mock 提供） */
+/** 挂载 Home.vue（真实 section 子组件，router-link 打桩；statsPort 由 mock 提供）
+ *  INT-745：section 内业务入口走 useLoginRequired（依赖 authStore/Pinia），故挂 Pinia */
 async function mountHome() {
   const w = mount((await import('../Home.vue')).default, {
     attachTo: document.body,
     global: {
+      plugins: [createPinia()],
       stubs: {
         'router-link': { template: '<a><slot /></a>' },
       },
@@ -142,29 +145,29 @@ describe('行为锚点：注入 home.css 后裸类名不污染、Home 作用域�
 });
 
 describe('动画收敛：.scroll-animate 只在 Home 根作用域内挂类（INT-279）', () => {
-  it('挂载 Home 后，根外同名 .stat-card/.feature-card 元素不被挂 .scroll-animate', async () => {
+  it('挂载 Home 后，根外同名 .feature-card/.test-type-card 元素不被挂 .scroll-animate', async () => {
     // 模拟其他页面上的同名元素（访问首页前已存在于 DOM）
-    const foreignStat = document.createElement('div');
-    foreignStat.className = 'stat-card foreign-stat';
-    document.body.appendChild(foreignStat);
     const foreignFeature = document.createElement('div');
     foreignFeature.className = 'feature-card foreign-feature';
     document.body.appendChild(foreignFeature);
+    const foreignStat = document.createElement('div');
+    foreignStat.className = 'test-type-card foreign-test-type';
+    document.body.appendChild(foreignStat);
 
     const w = await mountHome();
 
-    // Home 根内：QuickStats 的 .stat-card 被挂 .scroll-animate
-    const homeStat = document.querySelector('.home-page .stat-card') as HTMLElement;
-    expect(homeStat).toBeTruthy();
-    expect(homeStat.classList.contains('scroll-animate')).toBe(true);
+    // Home 根内：FeaturesSection 的 .feature-card 被挂 .scroll-animate（INT-745：业务统计 QuickStats 已移交工作台）
+    const homeFeature = document.querySelector('.home-page .feature-card') as HTMLElement;
+    expect(homeFeature).toBeTruthy();
+    expect(homeFeature.classList.contains('scroll-animate')).toBe(true);
 
     // 根外同名元素不被挂类
-    expect(foreignStat.classList.contains('scroll-animate')).toBe(false);
     expect(foreignFeature.classList.contains('scroll-animate')).toBe(false);
+    expect(foreignStat.classList.contains('scroll-animate')).toBe(false);
 
     // 观察器从未观察根外元素
-    expect(ioObserved.some((el) => el === foreignStat)).toBe(false);
     expect(ioObserved.some((el) => el === foreignFeature)).toBe(false);
+    expect(ioObserved.some((el) => el === foreignStat)).toBe(false);
 
     // 全文档 .scroll-animate 元素都必须位于 .home-page 之下
     document.querySelectorAll('.scroll-animate').forEach((el) => {

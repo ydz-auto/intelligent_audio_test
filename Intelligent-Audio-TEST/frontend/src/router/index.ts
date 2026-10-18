@@ -6,12 +6,31 @@ import { AuthMode, getEffectiveAuthMode } from '../domain/enums'
  * 路由表 + meta 权限配置
  *
  * meta.permission: 访问该路由所需权限（任一满足即可），undefined 表示不需要权限
- * meta.public:     是否为公开路由（无需登录，如登录页）
+ * meta.public:     是否为公开路由（无需登录，如登录页/公共页）
  * meta.title:       页面标题
+ *
+ * INT-745（公共页）：首页门户 / 文档 / 关于 / 排行榜 挂 PublicLayout 公共壳
+ * （站头 + 页脚，无侧栏），未登录可见；旧链 /benchmarks redirect 到 /rankings。
+ * 工作台壳（AuthenticatedLayout）与路由总表重构由 INT-735 基座壳卡落地。
  */
 const routes: Array<RouteRecordRaw> = [
+  // ===== 公共壳（PublicLayout：站头 + 内容区 + 页脚，公开可达） =====
+  {
+    path: '/',
+    component: () => import('../components/layout/PublicLayout.vue'),
+    meta: { public: true },
+    children: [
+      { path: '', name: 'home', component: () => import('../views/Home/Home.vue'), meta: { public: true, title: '首页' } },
+      { path: 'user-guide', name: 'userGuide', component: () => import('../views/UserGuide/UserGuide.vue'), meta: { public: true, title: '使用手册' } },
+      { path: 'user-guide-api', name: 'userGuideApi', component: () => import('../views/UserGuide/UserGuideApi.vue'), meta: { public: true, title: 'API 手册' } },
+      { path: 'about', name: 'about', component: () => import('../views/About/About.vue'), meta: { public: true, title: '关于' } },
+      { path: 'rankings', name: 'rankings', component: () => import('../views/BenchmarkRanking/BenchmarkRanking.vue'), meta: { public: true, title: '排行榜' } },
+    ],
+  },
+  // 旧链 redirect：/benchmarks → /rankings（收藏夹/旧链接兼容）
+  { path: '/benchmarks', name: 'benchmarkRankingLegacy', redirect: { name: 'rankings' } },
+
   { path: '/login', name: 'login', component: () => import('../views/Login/LoginPage.vue'), meta: { public: true, title: '登录' } },
-  { path: '/', name: 'home', component: () => import('../views/Home/Home.vue'), meta: { permission: 'home:read', title: '首页' } },
   { path: '/E2ETest', name: 'e2eTest', component: () => import('../views/E2ETest/E2ETest.vue'), meta: { permission: 'task:execute', title: '端到端测试' } },
   { path: '/APITest', name: 'apiTest', component: () => import('../views/APITest/APITest.vue'), meta: { permission: 'task:execute', title: 'API测试' } },
   { path: '/tasks', name: 'tasks', component: () => import('../views/Tasks/Tasks.vue'), meta: { permission: 'task:read', title: '测试任务记录' } },
@@ -29,7 +48,6 @@ const routes: Array<RouteRecordRaw> = [
   // G02：旧链 redirect 不带 tab 语义（INT-439 v2.6）
   { path: '/history-reports', name: 'historyReports', redirect: '/report-center' },
   { path: '/test-reports', name: 'testReports', redirect: '/report-center' },
-  { path: '/benchmarks', name: 'benchmarkRanking', component: () => import('../views/BenchmarkRanking/BenchmarkRanking.vue'), meta: { permission: 'benchmark:ranking:read', title: 'Benchmark 排行' } },
   { path: '/report/:id', name: 'reportView', component: () => import('../views/ReportView/ReportView.vue'), meta: { permission: 'report:read', title: '报告查看' } },
   { path: '/report', name: 'reportViewQuery', component: () => import('../views/ReportView/ReportView.vue'), meta: { permission: 'report:read', title: '报告查看' } },
   { path: '/TestCaseManager', name: 'testCaseManager', component: () => import('../views/TestCaseManager/TestCaseManager.vue'), meta: { permission: 'testcase:read', title: '用例管理' } },
@@ -67,7 +85,7 @@ router.beforeEach((to, _from, next) => {
     document.title = `${to.meta.title} - 智能语音测试系统`
   }
 
-  // 公开路由直接放行
+  // 公开路由直接放行（含 PublicLayout 公共页 /user-guide /about /rankings）
   if (to.meta.public) {
     return next()
   }

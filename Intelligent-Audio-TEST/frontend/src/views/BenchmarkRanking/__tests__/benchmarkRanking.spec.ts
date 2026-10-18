@@ -154,12 +154,12 @@ beforeEach(() => {
 })
 
 describe('页面遍历（验收②）', () => {
-  it('渲染 Hero 标题 / 副标题 / 类别下划线页签（全量中文文案）', async () => {
+  it('渲染 Hero 标题 / 副标题 / 类别下划线页签（全量中文文案，INT-745 文案「排行榜」）', async () => {
     const wrapper = await mountPage()
     const hero = wrapper.find('.rankings-hero')
     expect(hero.exists()).toBe(true)
-    expect(hero.text()).toContain('Benchmark 排行')
-    expect(hero.text()).toContain('汇聚平台实测与业界公开基线的语音能力横向对比')
+    expect(hero.text()).toContain('排行榜')
+    expect(hero.text()).toContain('多个厂商模型/APP/API 在同一标准化环境、同一测试集与指标下同时实测')
 
     const tabs = wrapper.findAll('.category-tab')
     const labels = tabs.map((t) => t.text())
@@ -245,10 +245,16 @@ describe('页面遍历（验收②）', () => {
   })
 })
 
-describe('路由 meta.permission（权限不可达语义）', () => {
-  it('/benchmarks 路由要求 benchmark:ranking:read', () => {
-    const route = router.getRoutes().find((r) => r.path === '/benchmarks')
-    expect(route).toBeDefined()
-    expect(route?.meta.permission).toBe('benchmark:ranking:read')
+describe('路由公开可达（INT-745：/rankings 公开路由，数据 403 权限空态）', () => {
+  it('/rankings 为公开路由（meta.public，无路由级权限），旧链 /benchmarks redirect 兼容', () => {
+    const rankings = router.getRoutes().find((r) => r.path === '/rankings')
+    expect(rankings).toBeDefined()
+    expect(rankings?.meta.public).toBe(true)
+    expect(rankings?.meta.permission).toBeUndefined()
+
+    // 旧链 /benchmarks 保留（收藏夹/旧链接兼容），redirect 到 /rankings
+    const legacy = router.getRoutes().find((r) => r.path === '/benchmarks')
+    expect(legacy).toBeDefined()
+    expect(legacy?.redirect).toMatchObject({ name: 'rankings' })
   })
 })

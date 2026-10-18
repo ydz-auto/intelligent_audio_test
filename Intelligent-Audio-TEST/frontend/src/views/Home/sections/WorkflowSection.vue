@@ -19,12 +19,13 @@
     </div>
 
     <div class="test-type-cards">
-      <router-link
+      <a
         v-for="card in testTypeCards"
         :key="String(card.to)"
-        :to="card.to"
+        href="javascript:void(0)"
         class="test-type-card"
         :class="card.variant"
+        @click.prevent="handleEntry(card.to, card.title)"
       >
         <div class="test-type-icon">
           <i :class="card.icon"></i>
@@ -40,11 +41,19 @@
           <span>开始测试</span>
           <i class="fas fa-arrow-right"></i>
         </div>
-      </router-link>
+      </a>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import { workflowSteps, testTypeCards } from '../homeData'
+import { useLoginRequired } from '../../../composables/shared/useLoginRequired'
+
+// INT-745：「开始测试」等业务入口在未登录+认证开启时弹「需要登录」Dialog（受限项）
+const { navigateEntry } = useLoginRequired()
+
+function handleEntry(to: any, title: string) {
+  navigateEntry(to, title)
+}
 </script>

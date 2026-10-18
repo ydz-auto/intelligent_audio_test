@@ -21,26 +21,25 @@
       <div class="info-content">
         <p class="help-text">
           首次使用请先配置评估维度和播放设备，然后导入测试音频。
-          您可以查看左侧导航栏中的各项功能进行操作。
+          登录后可使用上方导航进入平台各功能模块。
         </p>
         <div class="help-links">
-          <a
-            href="https://github.com"
-            target="_blank"
-            rel="noopener noreferrer"
+          <router-link
+            to="/user-guide"
             class="help-link"
           >
-            <i class="fas fa-external-link-alt"></i>使用帮助文档
-          </a>
-          <router-link
+            <i class="fas fa-book"></i>使用手册
+          </router-link>
+          <a
             v-for="link in helpLinks"
             :key="String(link.to)"
-            :to="link.to"
+            href="javascript:void(0)"
             class="help-link"
+            @click.prevent="handleEntry(link.to, link.text)"
           >
             <i :class="link.icon"></i>
             {{ link.text }}
-          </router-link>
+          </a>
         </div>
       </div>
     </div>
@@ -49,4 +48,13 @@
 
 <script setup lang="ts">
 import { systemInfo, helpLinks } from '../homeData'
+import { useLoginRequired } from '../../../composables/shared/useLoginRequired'
+
+// INT-745：「使用帮助文档」外链占位（https://github.com）废除，改链站内 /user-guide；
+// 配置设备/维度/音频等业务入口在未登录+认证开启时弹「需要登录」Dialog（受限项）
+const { navigateEntry } = useLoginRequired()
+
+function handleEntry(to: any, text: string) {
+  navigateEntry(to, text)
+}
 </script>

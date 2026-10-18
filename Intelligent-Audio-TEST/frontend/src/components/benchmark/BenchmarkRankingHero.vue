@@ -1,7 +1,7 @@
 <template>
   <div class="rankings-hero">
-    <h1 class="hero-title">Benchmark 排行</h1>
-    <p class="hero-subtitle">汇聚平台实测与业界公开基线的语音能力横向对比，按指标与场景生成名次。</p>
+    <h1 class="hero-title">排行榜</h1>
+    <p class="hero-subtitle">多个厂商模型/APP/API 在同一标准化环境、同一测试集与指标下同时实测，按指标与场景生成名次，横向看清业界水平。</p>
 
     <!-- 类别维度下划线页签（对位 INT-359 §4.2 RankingsHero） -->
     <div class="category-tabs" role="tablist" aria-label="指标类别">

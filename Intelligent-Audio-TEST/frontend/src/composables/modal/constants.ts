@@ -59,7 +59,9 @@ export const MODAL_TYPES = {
   TAG_CATEGORY: 'tagCategory',
   TAG_EDIT: 'tagEdit',
   /** INT-340：测试结果人工复核（单条/批量改判 + 备注必填 + 复核历史展示） */
-  RESULT_REVIEW: 'resultReview'
+  RESULT_REVIEW: 'resultReview',
+  /** INT-745：公开页「需要登录」引导（受限项 Dialog，5 秒倒计时跳登录） */
+  LOGIN_REQUIRED: 'loginRequired'
 } as const
 
 export type ModalTypeKey = keyof typeof MODAL_TYPES

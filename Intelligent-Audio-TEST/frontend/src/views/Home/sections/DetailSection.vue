@@ -38,23 +38,31 @@
     </div>
 
     <div class="detail-cta-section">
-      <router-link :to="section.ctaTo" class="detail-cta-btn" :class="`cta-${section.ctaVariant}`">
+      <a href="javascript:void(0)" class="detail-cta-btn" :class="`cta-${section.ctaVariant}`" @click.prevent="handleEntry(section.ctaTo, section.title)">
         <span>{{ section.ctaText }}</span>
         <i class="fas fa-arrow-right"></i>
-      </router-link>
-      <a href="https://github.com" target="_blank" class="detail-help-link-inline" v-if="showHelpLink">
+      </a>
+      <router-link to="/user-guide" class="detail-help-link-inline" v-if="showHelpLink">
         <i class="fas fa-book"></i>
         <span>使用文档</span>
-      </a>
+      </router-link>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import type { DetailSection } from '../homeData'
+import { useLoginRequired } from '../../../composables/shared/useLoginRequired'
 
 defineProps<{
   section: DetailSection
   showHelpLink?: boolean
 }>()
+
+// INT-745：详情区业务入口在未登录+认证开启时弹「需要登录」Dialog（受限项）
+const { navigateEntry } = useLoginRequired()
+
+function handleEntry(to: any, title: string) {
+  navigateEntry(to, title)
+}
 </script>
