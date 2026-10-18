@@ -125,7 +125,7 @@ margin-right: 8px ;
 appearance: none ;
 background-color: var(--color-white) !important;
 border: 2px solid var(--border-color) !important;
-border-radius: 4px ;
+border-radius: var(--radius-tag, 4px) ;
 position: relative ;
 transition: all 0.2s ease ;
 display: flex ;
@@ -151,7 +151,7 @@ display: flex;
 flex-direction: column;
 gap: 16px;
 background: var(--color-white);
-border-radius: 12px;
+border-radius: var(--radius-card, 16px);
 box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 8%, transparent);
 transition: all 0.3s ease;
 cursor: pointer;
@@ -224,7 +224,7 @@ padding: 16px;
 border-top: 1px solid var(--border-color);
 border-bottom: 1px solid var(--border-color);
 background: var(--color-bs-gray-100);
-border-radius: 8px;
+border-radius: var(--radius-control, 8px);
 }
 
 
@@ -273,7 +273,7 @@ border-radius: 8px;
     min-width: 150px;
     background: var(--color-white, #fff);
     border: 1px solid var(--border-color, #e5e5e5);
-    border-radius: 8px;
+    border-radius: var(--radius-control, 8px);
     box-shadow: 0 8px 24px color-mix(in srgb, var(--color-black) 12%, transparent);
     padding: 4px;
     z-index: 1002;
@@ -284,7 +284,7 @@ border-radius: 8px;
     align-items: center;
     gap: 8px;
     padding: 7px 12px;
-    border-radius: 6px;
+    border-radius: var(--radius-control, 8px);
     color: var(--text-primary, #333);
     text-decoration: none;
     font-size: 0.85rem;
@@ -311,7 +311,7 @@ border-radius: 8px;
     color: var(--text-secondary, #6b7280);
     background: var(--color-bs-gray-100, #f3f4f6);
     border: 1px solid var(--border-color, #e5e7eb);
-    border-radius: 10px;
+    border-radius: var(--radius-control, 8px);
     white-space: nowrap;
 }
 
