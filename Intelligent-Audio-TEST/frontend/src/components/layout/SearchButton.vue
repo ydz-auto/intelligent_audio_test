@@ -1,6 +1,6 @@
 <template>
   <div class="search-button" ref="rootRef">
-    <button class="header-icon-btn" title="全局搜索" @click.stop="openPanel">
+    <button class="header-icon-btn" data-layout-btn title="全局搜索" @click.stop="openPanel">
       <i class="fas fa-search"></i>
     </button>
     <div v-if="open" class="search-panel" @click.stop>
@@ -19,6 +19,7 @@
           v-for="item in filteredItems"
           :key="item.url"
           class="search-result"
+          data-layout-btn
           @click="go(item.url)"
         >
           <i :class="item.icon"></i>

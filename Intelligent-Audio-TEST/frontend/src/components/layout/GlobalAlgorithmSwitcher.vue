@@ -1,6 +1,6 @@
 <template>
   <div class="global-algorithm-switcher" ref="rootRef">
-    <button class="algorithm-trigger" :class="{ 'algorithm-trigger--selected': !!selectedType }" @click.stop="toggleOpen">
+    <button class="algorithm-trigger" data-layout-btn :class="{ 'algorithm-trigger--selected': !!selectedType }" @click.stop="toggleOpen">
       <i class="fas fa-microchip"></i>
       <span class="algorithm-trigger__text">{{ selectedName || '全部算法' }}</span>
       <i class="fas fa-chevron-down algorithm-trigger__caret"></i>
@@ -12,7 +12,7 @@
         <span class="algorithm-popover__hint">切换后全局列表按算法过滤</span>
       </div>
       <div v-if="selectedType" class="algorithm-popover__clear">
-        <button class="clear-btn" @click="handleClear">
+        <button class="clear-btn" data-layout-btn @click="handleClear">
           <i class="fas fa-times"></i> 清空算法筛选
         </button>
       </div>
@@ -21,6 +21,7 @@
           v-for="algo in algorithmList"
           :key="algo.value"
           class="algorithm-item"
+          data-layout-btn
           :class="{ 'algorithm-item--active': selectedType === algo.value }"
           @click="handleSelect(algo.value)"
         >

@@ -1,16 +1,16 @@
 <template>
   <div class="notification-popover" ref="rootRef">
-    <button class="header-icon-btn" :title="'通知'" @click.stop="handleBellClick">
+    <button class="header-icon-btn" data-layout-btn :title="'通知'" @click.stop="handleBellClick">
       <i class="far fa-bell"></i>
       <span v-if="unreadCount > 0" class="notification-badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
     </button>
 
     <div v-if="open" class="notification-panel" @click.stop>
       <div class="notification-tabs">
-        <button class="notification-tab" :class="{ 'notification-tab--active': activeTab === 'notice' }" @click="switchTab('notice')">
+        <button class="notification-tab" data-layout-btn :class="{ 'notification-tab--active': activeTab === 'notice' }" @click="switchTab('notice')">
           通知
         </button>
-        <button class="notification-tab" :class="{ 'notification-tab--active': activeTab === 'announce' }" @click="switchTab('announce')">
+        <button class="notification-tab" data-layout-btn :class="{ 'notification-tab--active': activeTab === 'announce' }" @click="switchTab('announce')">
           公告
         </button>
       </div>

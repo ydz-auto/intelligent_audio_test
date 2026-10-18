@@ -2,6 +2,7 @@
   <div class="theme-switcher" ref="rootRef">
     <button
       class="header-icon-btn"
+      data-layout-btn
       :title="isDark ? '切换为浅色' : '切换为深色'"
       @click.stop="toggleOpen"
     >
@@ -11,6 +12,7 @@
       <p class="theme-popover__title">主题</p>
       <button
         class="theme-option"
+        data-layout-btn
         :class="{ 'theme-option--active': !isDark }"
         @click="setTheme('light')"
       >
@@ -19,6 +21,7 @@
       </button>
       <button
         class="theme-option"
+        data-layout-btn
         :class="{ 'theme-option--active': isDark }"
         @click="setTheme('dark')"
       >

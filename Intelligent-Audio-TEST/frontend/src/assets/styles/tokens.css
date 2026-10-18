@@ -125,6 +125,15 @@
   /* 收藏星标色（INT-215：收敛三视图魔法色 #f5a623，取 amber 标度） */
   --favorite-star: var(--color-amber-500);
 
+  /* 灵犀Agent 魔法按钮炫彩渐变（照 React ai-discount-core 逐色移植，INT-735 负责人反馈「AI魔法炫彩按钮抄过来」） */
+  --ai-magic-blue: #4f7cff;
+  --ai-magic-indigo: #7657fa;
+  --ai-magic-violet: #9145ee;
+  --ai-magic-purple: #ac46f3;
+  --ai-magic-pink: #cd4bdb;
+  --ai-magic-fuchsia: #cf55da;
+  --ai-magic-text-shadow: 0 1px 2px rgb(0 0 0 / 35%);
+
   /* ── 布局 ── */
   --radius: 8px;
   /* 圆角语义令牌（与 @theme inline 同值，供 plain CSS var() 消费；基准见 00 总表 §1.4） */

@@ -1,6 +1,6 @@
 <template>
   <div class="profile-dropdown" ref="rootRef">
-    <button class="profile-trigger" @click.stop="toggleOpen">
+    <button class="profile-trigger" data-layout-btn @click.stop="toggleOpen">
       <AvatarBadge :name="authStore.username" />
       <span class="profile-trigger__meta">
         <span class="profile-trigger__name">{{ authStore.username }}</span>
@@ -18,15 +18,15 @@
         </div>
       </div>
       <div class="profile-panel__menu">
-        <button class="profile-menu-item" @click="go('/profile')">
+        <button class="profile-menu-item" data-layout-btn @click="go('/profile')">
           <i class="fas fa-user"></i> 个人中心
         </button>
-        <button v-if="canSystemSettings" class="profile-menu-item" @click="go('/system-settings/site')">
+        <button v-if="canSystemSettings" class="profile-menu-item" data-layout-btn @click="go('/system-settings/site')">
           <i class="fas fa-gear"></i> 系统设置
         </button>
       </div>
       <div class="profile-panel__divider"></div>
-      <button class="profile-menu-item profile-menu-item--danger" @click="handleLogout">
+      <button class="profile-menu-item profile-menu-item--danger" data-layout-btn @click="handleLogout">
         <i class="fas fa-sign-out-alt"></i> 登出
       </button>
     </div>

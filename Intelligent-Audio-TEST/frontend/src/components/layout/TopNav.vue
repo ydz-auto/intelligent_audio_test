@@ -69,27 +69,33 @@ function handleClick(item: TopNavLink, event: MouseEvent) {
   gap: 4px;
   height: 100%;
 }
+/* 顶导航项照 React `TopNav` 药丸形态（rounded-lg + hover/active 底）：
+   底色用 tokens `--muted`，不写死颜色 / 圆角（圆角 = 首页卡片同套 --radius-md）。 */
 .top-nav__link {
   display: inline-flex;
   align-items: center;
-  height: 100%;
+  height: 32px;
   padding: 0 12px;
   font-size: 14px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   text-decoration: none;
-  border-bottom: 2px solid transparent;
-  transition: color var(--transition-fast);
+  border-radius: var(--radius-md);
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast);
   white-space: nowrap;
 }
 .top-nav__link:hover {
+  background: var(--muted);
   color: var(--foreground);
 }
 .top-nav__link--active {
-  color: var(--primary);
+  background: var(--muted);
+  color: var(--foreground);
   font-weight: 600;
-  border-bottom-color: var(--primary);
 }
 .top-nav--mobile .top-nav__link {
   padding: 0 8px;
+  height: 30px;
 }
 </style>
