@@ -493,6 +493,7 @@ async function openSaveSet() {
   if (!name) return;
   try {
     const outcome = await saveAsSet(name);
+    // INT-738：toast 读 camelCase itemCount（infrastructure 层已收敛 snake_case，原 item_count 恒 undefined） (INT-738: UX设计-VUE 任务域实施——/tasks 四页签收敛（收藏收编筛选）+ 移除统计卡与三图 + 任务详情「生成 AI 报告」入口契约 + 挑选合并文案/单测修正)
     notification.success(`挑选集「${outcome.name}」已保存（${outcome.itemCount} 条）`);
   } catch (error: any) {
     notification.error(error?.message || '另存挑选集失败');

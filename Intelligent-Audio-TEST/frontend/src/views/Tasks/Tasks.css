@@ -1,44 +1,4 @@
-/* 图表头部样式 */
-.chart-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-/* 时间粒度选择器样式 */
-.time-granularity-selector {
-  display: flex;
-  gap: 8px;
-}
-
-/* 时间按钮样式 */
-.time-btn {
-  padding: 6px 12px;
-  border: 1px solid var(--color-slate-200);
-  border-radius: 6px;
-  background: var(--color-white);
-  color: var(--color-slate-500);
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  outline: none;
-}
-
-/* 时间按钮悬停样式 */
-.time-btn:hover {
-  background: var(--color-slate-100);
-  color: var(--color-slate-700);
-  border-color: var(--color-slate-300);
-}
-
-/* 时间按钮激活样式 */
-.time-btn.active {
-  background: var(--primary);
-  color: var(--color-white);
-  border-color: var(--primary);
-}
+/* INT-738：统计卡与三图已移交工作台，图表相关样式（chart-header / time-btn 等）随模板一并移除 */
 
 .comparison-report-container {
   margin-top: 32px;

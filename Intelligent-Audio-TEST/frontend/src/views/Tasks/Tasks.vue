@@ -1,11 +1,11 @@
 <template>
   <div class="tasks-view">
-    <!-- 页面标题 -->
+    <!-- 页面标题（INT-738：文案对齐 React 09_任务域「任务管理」） -->
     <section class="page-header">
       <div class="header-left">
         <h2 class="page-title" style="color: var(--primary-color);">
           <i class="fas fa-tasks"></i>
-          测试任务记录
+          任务管理
         </h2>
         <p class="page-description">管理和跟踪所有测试任务的进度和状态</p>
       </div>
@@ -24,108 +24,17 @@
       </div>
     </section>
 
-    <!-- 内容区域：三栏布局 -->
+    <!-- 内容区域 -->
     <div class="tasks-content-wrapper">
-      <!-- 统计卡片和图表的三栏布局 -->
-      <div class="stats-charts-row" v-if="!showComparisonReport">
-        <!-- 统计卡片 -->
-        <div class="stats-panel">
-          <h3>统计信息</h3>
-
-          <!-- 任务数量统计 -->
-            <div class="stats-cards">
-              <div class="stat-card">
-                <div class="stat-value">{{ domainTotal }}</div>
-                <div class="stat-label">总任务数</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-value">{{ pendingTasks }}</div>
-                <div class="stat-label">待处理</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-value">{{ queuedTasks }}</div>
-                <div class="stat-label">排队中</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-value">{{ inProgressTasks }}</div>
-                <div class="stat-label">进行中</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-value">{{ completedTasks }}</div>
-                <div class="stat-label">已完成</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-value">{{ failedTasks }}</div>
-                <div class="stat-label">执行失败</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-value">{{ deletedTasks }}</div>
-                <div class="stat-label">已删除</div>
-              </div>
-            </div>
-
-          <!-- 任务标签云 -->
-          <div class="tags-section">
-            <h4>任务标签</h4>
-            <div class="tags-cloud" id="tags-cloud">
-              <span v-for="tag in currentTags" :key="tag" class="tag-item" @click="toggleTag(tag)">
-                {{ tag }}
-              </span>
-            </div>
-            <!-- 标签分页控件 -->
-            <div class="tags-pagination" id="tags-pagination">
-              <button class="tag-page-btn" :disabled="tagCurrentPage === 1" @click="tagCurrentPage--">
-                <i class="fas fa-chevron-left"></i>
-              </button>
-              <span class="tag-page-info" id="tag-page-info">第 {{ tagCurrentPage }} 页，共 {{ totalTagPages }} 页</span>
-              <button class="tag-page-btn" :disabled="tagCurrentPage === totalTagPages" @click="tagCurrentPage++">
-                <i class="fas fa-chevron-right"></i>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- 任务统计图表区域 -->
-        <section class="stats-charts-container">
-          <!-- 任务类型分布 -->
-          <div class="chart-card">
-            <h3>任务类型分布</h3>
-            <div class="chart-container">
-              <canvas ref="taskTypeChartRef"></canvas>
-            </div>
-          </div>
-
-          <!-- 任务完成趋势 -->
-          <div class="chart-card">
-            <div class="chart-header">
-              <h3>任务完成趋势</h3>
-              <div class="time-granularity-selector">
-                <button class="time-btn" :class="{ active: isActive('day') }" @click="changeTimeGranularity('day')">日</button>
-                <button class="time-btn" :class="{ active: isActive('week') }" @click="changeTimeGranularity('week')">周</button>
-                <button class="time-btn" :class="{ active: isActive('month') }" @click="changeTimeGranularity('month')">月</button>
-                <button class="time-btn" :class="{ active: isActive('year') }" @click="changeTimeGranularity('year')">年</button>
-              </div>
-            </div>
-            <div class="chart-container">
-              <canvas ref="taskTrendChartRef"></canvas>
-            </div>
-          </div>
-
-          <!-- 任务状态分布 -->
-          <div class="chart-card">
-            <h3>任务状态分布</h3>
-            <div class="chart-container">
-              <canvas ref="taskStatusChartRef"></canvas>
-            </div>
-          </div>
-        </section>
-      </div>
-
-      <!-- 页签（INT-577 §2.2 裁定①：终态三页签 = 日常 / 已发布 / 挑选合并；「合并」页签收编） -->
+      <!-- INT-738：7 统计卡 + 三图已移交工作台（02_工作台卡 B02 承接），本页不再保留；
+           图表能力保留在 composables/task/useTaskCharts 供工作台卡复用 -->
+      <!-- 页签（INT-738 重定基到集成基线：四页签 = 日常 / 已发布 / 挑选合并 / 收藏——
+           合并页签收编进挑选合并（INT-577 裁定①），收藏独立页签（INT-298 主库恢复）；
+           交付原口径「收藏收编为筛选」与集成基线差异见 INT-738 交付评论） -->
       <section class="tasks-container" v-if="!showComparisonReport">
         <div class="task-tabs">
           <button class="task-tab" :class="{ active: activeTab === 'daily' }" @click="switchTab('daily')">
-            <i class="fas fa-tasks"></i> 日常任务
+            <i class="fas fa-tasks"></i> 日常
           </button>
           <button
             v-if="can(PermissionPoint.PUBLISHED_TASK_READ)"
@@ -133,7 +42,7 @@
             :class="{ active: activeTab === 'published' }"
             @click="switchTab('published')"
           >
-            <i class="fas fa-bookmark"></i> 已发布任务
+            <i class="fas fa-bookmark"></i> 已发布
             <span v-if="published.total > 0" class="task-tab-count">{{ published.total }}</span>
           </button>
           <button class="task-tab" :class="{ active: activeTab === 'cherryPick' }" @click="switchTab('cherryPick')">
@@ -148,7 +57,7 @@
         </div>
       </section>
 
-      <!-- 筛选和排序栏（日常 / 已发布 / 合并 / 收藏 四视图统一，对齐 V9.7.10 共享筛选栏） -->
+      <!-- 筛选和排序栏（日常 / 已发布 / 挑选合并 / 收藏 四页签统一，对齐 V9.7.10 共享筛选栏） -->
       <section class="filter-sort-section" v-if="!showComparisonReport">
         <div class="filter-row">
           <input type="text" class="search-input" placeholder="搜索任务名称、标签..." v-model="currentFilter.search" @input="applyCurrentFilter">
@@ -542,12 +451,11 @@ const {
   tasks,
   filteredTasks, selectedTasks, sortConfig,
   currentPage, pageSize, totalPages,
-  searchTerm, filters, customDateRange, tagCurrentPage, tagPageSize,
+  searchTerm, filters, customDateRange,
   showComparisonReport, isEditingConclusion,
-  totalTagPages, currentTags, totalTasks, domainTotal, pendingTasks, queuedTasks,
-  inProgressTasks, completedTasks, failedTasks, deletedTasks,
+  totalTasks,
   isAllSelected, formatDate, applyFilters, handleSearch, toggleSort,
-  toggleTag, toggleTaskSelection, toggleSelectAll, cancelSelect, createNewTask, handleCreateTask,
+  toggleTaskSelection, toggleSelectAll, cancelSelect, createNewTask, handleCreateTask,
   handleTaskAction, updateTaskName, batchDelete,
   batchCompare, batchRestore, closeComparisonReport, saveComparisonReport,
   publishComparisonReport, saveConclusion, toggleEditConclusion, reevaluateTask,
@@ -566,14 +474,6 @@ const {
   isTaskTypeModalVisible,
   currentTask,
   isControlling,
-  changeTimeGranularity,
-  isActive,
-  createTaskTypeChart, createTaskTrendChart, createTaskStatusChart,
-  updateCharts,
-  // 图表refs
-  taskTypeChartRef,
-  taskTrendChartRef,
-  taskStatusChartRef,
   // 日志相关
   taskLogs, filteredTaskLogs, taskLogSearchTerm, taskLogLevelFilter, taskLogFilter,
   refreshTaskLogs, filterTaskLogs,
@@ -605,7 +505,7 @@ const {
   leaveFavoriteView
 } = useTasks();
 
-// ========== 四视图统一筛选排序（日常 / 已发布 / 合并 / 收藏，对齐 V9.7.10）==========
+// ========== 四视图统一筛选排序（日常 / 已发布 / 挑选合并 / 收藏，对齐 V9.7.10）==========
 
 /**
  * 任务操作定义（INT-298：日常列表卡片与合并任务卡片/源任务行共用，保证行为一致）。
@@ -864,12 +764,8 @@ async function handlePickCheckedOut(payload: { action: string; taskId?: number }
   }
 }
 
-// 监听图表容器ref变化，初始化图表
-watch([taskTypeChartRef, taskTrendChartRef, taskStatusChartRef], () => {
-  if (taskTypeChartRef.value && taskTrendChartRef.value && taskStatusChartRef.value) {
-    updateCharts();
-  }
-}, { deep: true });
+// INT-738：统计卡与三图已移交工作台（02_工作台卡 B02），本页不再渲染图表——
+// 图表 ref 依赖 watch 一并移除，图表能力保留在 composables/task/useTaskCharts 供工作台卡复用。
 
 // INT-577 §2.2 裁定①：旧链接 redirect（?tab=merged → ?tab=cherry-picks；?tab=cherry-picks
 // 归一为内部 cherryPick）；无权限回落日常；?tab=favorite 直达收藏页签（主库恢复独立收藏页签）。
@@ -927,7 +823,7 @@ watch(activeTab, (tab, prev) => {
   gap: 6px;
   padding: 8px 18px;
   border: 1px solid var(--color-slate-200, #e2e8f0);
-  border-radius: 8px 8px 0 0;
+  border-radius: var(--border-radius-md) var(--border-radius-md) 0 0;
   background: var(--color-slate-50, #f8fafc);
   color: var(--color-slate-500, #64748b);
   font-size: 14px;
@@ -957,7 +853,7 @@ watch(activeTab, (tab, prev) => {
   min-width: 18px;
   height: 18px;
   padding: 0 6px;
-  border-radius: 9px;
+  border-radius: var(--border-radius-full);
   background: var(--primary, #ff6a00);
   color: var(--color-white);
   font-size: 11px;
@@ -969,131 +865,6 @@ watch(activeTab, (tab, prev) => {
   align-items: center;
   gap: 12px;
 }
-
-.chart-card{
-    transition: all 0.3s ease;
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    background: var(--background-primary);
-    border-radius: var(--border-radius-lg);
-    border: 1px solid var(--border-color);
-    padding: var(--spacing-lg);
-    margin-bottom: var(--spacing-xl);
-    box-shadow: 0 1px 3px color-mix(in srgb, var(--color-black) 5%, transparent);
-}
-
-.chart-card:hover{
-    transform: translateY(-5px);
-    box-shadow: 0 8px 24px color-mix(in srgb, var(--color-black) 12%, transparent);
-}
-
-.chart-card h3{
-    margin-bottom: 20px;
-    font-size: 18px;
-    font-weight: 600;
-    color: var(--foreground);
-}
-
-.stats-panel{
-    background: var(--color-white);
-    border-radius: 12px;
-    padding: 24px;
-    box-shadow: 0 2px 12px color-mix(in srgb, var(--color-black) 8%, transparent);
-}
-
-.stats-panel h3{
-    margin-bottom: 20px;
-    font-size: 18px;
-    font-weight: 600;
-    color: var(--foreground);
-}
-
-.tags-section{
-    margin-top: 24px;
-}
-
-.tags-section h4{
-    margin-bottom: 16px;
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--foreground);
-}
-
-.tags-cloud{
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 16px;
-    min-height: 40px;
-}
-/* stats-charts-container - 自全局样式就近迁移 */
-.stats-charts-container{
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 24px;
-    margin-bottom: 24px;
-}
-
-@media (max-width: 1024px){
-.stats-charts-container {
-        grid-template-columns: repeat(2, 1fr);
-}
-}
-
-@media (max-width: 767px){
-.stats-charts-container {
-        grid-template-columns: 1fr;
-}
-}
-/* stats-charts-row - 自全局样式就近迁移 */
-.stats-charts-row{
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 24px;
-    margin-bottom: 24px;
-    align-items: start;
-}
-
-/* stats-cards - 自全局样式就近迁移 */
-.stats-cards{
-display: grid;
-grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-gap: 16px;
-margin-bottom: 24px;
-align-items: center;
-}
-
-@media (max-width: 1279px){
-.stats-cards {
-        grid-template-columns: repeat(3, 1fr);
-}
-}
-
-@media (max-width: 1023px){
-.stats-cards {
-        grid-template-columns: repeat(2, 1fr);
-}
-}
-
-@media (max-width: 767px){
-.stats-cards {
-        grid-template-columns: 1fr;
-}
-}
-/* tags-pagination - 自全局样式就近迁移 */
-.tags-pagination{
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 12px;
-    margin-top: 16px;
-    padding-top: 16px;
-    border-top: 1px solid var(--gray-light);
-}
-
-/* time-granularity-selector - 自全局样式就近迁移 */
-
 
 /* tasks-container - 自全局样式就近迁移 */
 .tasks-container{
@@ -1125,7 +896,7 @@ align-items: center;
   min-width: 18px;
   height: 18px;
   padding: 0 6px;
-  border-radius: 9px;
+  border-radius: var(--border-radius-full);
   background: var(--primary, #ff6a00);
   color: var(--color-white);
   font-size: 11px;
