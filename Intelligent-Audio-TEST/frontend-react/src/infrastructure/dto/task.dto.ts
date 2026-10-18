@@ -113,6 +113,8 @@ export interface TaskDetailDto {
   apis: TaskApiBriefDto[]
   created_at: string | null
   updated_at: string | null
+  /** INT-734：任务级已复核结果计数（历史任务缺省时网关归一 0） */
+  review_count?: number | null
 }
 
 export interface TaskCaseBriefDto {
@@ -128,6 +130,8 @@ export interface TaskCaseBriefDto {
   group_name: string | null
   tags: string[]
   evaluation_dimensions: Array<{ id: number | string; name: string }>
+  /** INT-734：用例级「该用例下是否存在人工复核结果」标记（历史任务可能缺省 → None） */
+  reviewed?: boolean | null
 }
 
 /** 任务域统计 DTO（task.py TaskDomainStatsData；与 domain TaskDomainStats 同构） */
