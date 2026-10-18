@@ -33,6 +33,8 @@ export { apiRmsSplApi } from './apiRmsSplApi';
 export { statsApi } from './statsApi';
 export { algorithmApi } from './algorithmApi';
 export { tagsApi } from './tagsApi';
+export { llmProviderApi } from './llmProviderApi';
+export { agentApi, AGENT_BACKEND_STATUS } from './agentApi';
 
 // Shared types (re-exported for backward compatibility with existing imports)
 // TagCategory/TagItem 单一来源已收敛到 domain/model/tag.ts（businessTypes 链路）
