@@ -2,12 +2,15 @@
  * 新增/编辑用例抽屉（11_用例域.md §5.1，Sheet `sm:max-w-[1280px]`，testcase:create/update）。
  * 单栏纵向分节（节间 border-b）：基本信息（双列栅格）/标签（TagInput chips + 已有标签建议）/
  * 描述/关联算法/轮次配置（左 RoundNav 180px + 右步骤区横向锚点 Tabs line：
- * 算法参数→音频列表→噪声与干扰→评估维度→参考参数，五步全字段表单）/全局背景噪声
- * （§5.1.1 常驻节 GlobalNoiseEditor）/整体评估维度（§5.1.2 常驻节 OverallEvaluationEditor）——
- * INT-579 裁定两节常驻渲染、不随轮次数隐藏（V9.7.10 CaseForm 实测）。
+ * 算法参数→音频列表→噪声与干扰→评估维度→参考参数，五步全字段表单）/
+ * 【评估配置·默认折叠】评估策略节（§5.1.3 折叠节，默认收起：三模式 RadioGroup + 引用摘要卡 +
+ * 用例级覆盖区 + 新建策略内联表单）——INT-592 拆分「用例主体」与「评估配置」两层，
+ * 原 §5.1.1 全局背景噪声 / §5.1.2 整体评估维度两常驻节移入策略节（抽屉瘦身一半），
+ * GlobalNoiseEditor/OverallEvaluationEditor 改为受控策略字段编辑器。
  * INT-486 用例不分类型口径：头部类型切换（API/E2E）移除——正式类型维度=关联算法。
  * 轮次载荷形态对照 api_gateway/schemas/testcase.py TestCaseConfig.rounds 实测（mock 桩，
- * 接线后替换为 application/testcases mutations）。
+ * 接线后替换为 application/testcases mutations）；保存时策略节序列化为 config.evaluationStrategy
+ * （serializeEvaluationStrategy，含存量直载字段，§5.1.3 契约）。
  * ⚠️ 实施注意②：addRound 已有轮次时复制上一轮 evaluation（RoundConfigEditor.vue:252-254），
  * 「新轮次默认关闭」严格仅首轮成立——本卡等价移植保持复制行为、不额外重置 enabled。
  */
@@ -53,8 +56,12 @@ import { AudioListStep } from '@/features/testcases/modals/round-config/audio-li
 import { NoiseInterferenceStep } from '@/features/testcases/modals/round-config/noise-interference-step'
 import { EvaluationStep } from '@/features/testcases/modals/round-config/evaluation-step'
 import { ReferenceStep } from '@/features/testcases/modals/round-config/reference-step'
-import { GlobalNoiseEditor } from '@/features/testcases/modals/round-config/global-noise-editor'
-import { OverallEvaluationEditor } from '@/features/testcases/modals/round-config/overall-evaluation-editor'
+import {
+  EvaluationStrategyEditor,
+  serializeEvaluationStrategy,
+  type EvaluationStrategyEditorValue,
+} from '@/features/testcases/modals/strategy/evaluation-strategy-editor'
+import { useEvaluationStrategies } from '@/application/testcases/useEvaluationStrategies'
 
 const STEPS = ['算法参数', '音频列表', '噪声与干扰', '评估维度', '参考参数'] as const
 
@@ -157,6 +164,8 @@ export function CaseMutateDrawer({
   presetGroupId?: string | null
 }) {
   const isEdit = caseItem != null
+  const strategiesQuery = useEvaluationStrategies()
+  const strategies = strategiesQuery.data ?? []
   const [step, setStep] = useState<(typeof STEPS)[number]>('算法参数')
   const [nameValue, setNameValue] = useState(caseItem?.name ?? '')
   const [tagValue, setTagValue] = useState<string[]>(caseItem?.tags ?? [])
@@ -182,6 +191,8 @@ export function CaseMutateDrawer({
     },
   ])
   const [activeRound, setActiveRound] = useState(1)
+  /** 评估策略节值（§5.1.3；保存时序列化为 config.evaluationStrategy / 存量直载字段） */
+  const [strategyValue, setStrategyValue] = useState<EvaluationStrategyEditorValue | null>(null)
 
   const groupOptions = [
     ...groups.map((g) => ({ value: g.id, label: g.name })),
@@ -419,16 +430,13 @@ export function CaseMutateDrawer({
               </div>
             </section>
 
-            {/* 全局背景噪声（§5.1.1 常驻节） */}
+            {/* 评估配置 · 默认折叠「进阶」区（§5.1.3 评估策略节，INT-592 瘦身核心） */}
             <section className='border-border/60 border-t pt-4'>
-              <GlobalNoiseEditor />
-            </section>
-
-            {/* 整体评估维度（§5.1.2 常驻节） */}
-            <section className='border-border/60 border-t pt-4'>
-              <OverallEvaluationEditor
+              <EvaluationStrategyEditor
+                key={isEdit && caseItem ? caseItem.id : 'create'}
                 dimensions={MOCK_CASE_DIMENSIONS}
                 algorithmType={algorithmType}
+                onChange={setStrategyValue}
               />
             </section>
           </div>
@@ -441,7 +449,30 @@ export function CaseMutateDrawer({
             </Button>
             <Button
               onClick={() => {
-                toast.success(isEdit ? '更新测试用例成功' : '添加测试用例成功')
+                // 评估策略节 → 用例保存载荷（config.evaluationStrategy / 存量直载字段，§5.1.3 契约）
+                const payload = serializeEvaluationStrategy(strategyValue)
+                const reference = strategies.find(
+                  (s) => String(s.id) === String(strategyValue?.strategyId)
+                )
+                const overrideCount =
+                  (strategyValue?.overrides?.dimensions != null ? 1 : 0) +
+                  (strategyValue?.overrides?.backgroundNoise != null ? 1 : 0)
+                const summary =
+                  strategyValue?.mode === 'reference'
+                    ? reference
+                      ? overrideCount > 0
+                        ? `评估策略：已引用「${reference.name}」并覆盖 ${overrideCount} 项`
+                        : `评估策略：已引用「${reference.name}」`
+                      : '评估策略：已选择引用模式（待选择策略）'
+                    : strategyValue?.mode === 'create'
+                      ? `评估策略：内联配置（整体维度 ${payload.dimensions.length} 项 · 噪声 ${payload.backgroundNoise ? '已配置' : '未配置'}）`
+                      : '评估策略：未配置'
+                // eslint-disable-next-line no-console
+                console.log('[CaseMutateDrawer] config payload', payload)
+                toast.success(
+                  isEdit ? '更新测试用例成功' : '添加测试用例成功',
+                  { description: summary }
+                )
                 onOpenChange(false)
               }}
             >

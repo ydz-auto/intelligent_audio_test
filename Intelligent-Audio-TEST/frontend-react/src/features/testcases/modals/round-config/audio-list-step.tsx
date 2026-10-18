@@ -13,6 +13,7 @@ import {
   Copy,
   GripVertical,
   Headphones,
+  Library,
   Play,
   RefreshCcw,
   Shuffle,
@@ -51,6 +52,7 @@ import { BatchSplPanel } from '@/features/testcases/modals/round-config/batch-sp
 import { CrossDevicePanel } from '@/features/testcases/modals/round-config/cross-device-panel'
 import { TagDevicePanel } from '@/features/testcases/modals/round-config/tag-device-panel'
 import { TagInterleavePanel } from '@/features/testcases/modals/round-config/tag-interleave-panel'
+import { AudioSelectDialog } from '@/features/testcases/modals/audio/audio-select-dialog'
 
 const MOCK_AUDIO_FILES: MockAudioFile[] = [
   { id: 'au-01', name: '客厅_中文_命令集.wav', duration: '00:42', tags: ['客厅', '中文', '命令集'] },
@@ -77,6 +79,13 @@ interface AudioDraft {
   fileId: string
   deviceId: string
   spl: number
+  /** 音频选择子弹窗（多选）回填的音频简报；存在时优先于 fileId 的 mock 解析 */
+  fileOverride?: {
+    id: number | string
+    name: string
+    duration: number | null
+    tags: string[]
+  } | null
 }
 
 /** 列表 + 勾选态合并（批量工具替换列表后清理失效勾选，勾选态不残留） */
@@ -100,6 +109,7 @@ const defaultAudio = (n: number): AudioDraft => ({
   fileId: MOCK_AUDIO_FILES[n % MOCK_AUDIO_FILES.length].id,
   deviceId: MOCK_DEVICES[0].id,
   spl: 65,
+  fileOverride: null,
 })
 
 export function AudioListStep({ presetCount = 2 }: { presetCount?: number }) {
@@ -109,11 +119,14 @@ export function AudioListStep({ presetCount = 2 }: { presetCount?: number }) {
     selectedIds: new Set(),
   }))
   const [panel, setPanel] = useState<BatchPanel | null>(null)
+  const [pickingFromLibrary, setPickingFromLibrary] = useState(false)
 
   const { audios, selectedIds } = state
 
   const fileOf = (id: string) => MOCK_AUDIO_FILES.find((a) => a.id === id)
   const deviceOf = (id: string) => MOCK_DEVICES.find((d) => d.id === id)
+  /** 显示用音频文件（子弹窗回填优先于 mock 解析） */
+  const displayFileOf = (audio: AudioDraft) => audio.fileOverride ?? fileOf(audio.fileId)
 
   /** 普通替换（复制/排序/单行更新：id 集合不变） */
   const setAudios = (fn: (prev: AudioDraft[]) => AudioDraft[]) =>
@@ -165,14 +178,14 @@ export function AudioListStep({ presetCount = 2 }: { presetCount?: number }) {
         {tool('升序', <ArrowUpAZ aria-hidden='true' className='size-3.5' />, () =>
           setAudios((prev) =>
             [...prev].sort((a, b) =>
-              (fileOf(a.fileId)?.name ?? '').localeCompare(fileOf(b.fileId)?.name ?? '')
+              (displayFileOf(a)?.name ?? '').localeCompare(displayFileOf(b)?.name ?? '')
             )
           )
         )}
         {tool('降序', <ArrowDownAZ aria-hidden='true' className='size-3.5' />, () =>
           setAudios((prev) =>
             [...prev].sort((a, b) =>
-              (fileOf(b.fileId)?.name ?? '').localeCompare(fileOf(a.fileId)?.name ?? '')
+              (displayFileOf(b)?.name ?? '').localeCompare(displayFileOf(a)?.name ?? '')
             )
           )
         )}
@@ -191,7 +204,7 @@ export function AudioListStep({ presetCount = 2 }: { presetCount?: number }) {
         <p className='text-muted-foreground py-6 text-center text-sm'>尚未添加音频，点击下方「添加音频」</p>
       ) : (
         audios.map((audio, index) => {
-          const file = fileOf(audio.fileId)
+          const file = displayFileOf(audio)
           const device = deviceOf(audio.deviceId)
           return (
             <div key={audio.id} className='bg-background ring-foreground/10 rounded-lg p-3 ring-1'>
@@ -243,18 +256,25 @@ export function AudioListStep({ presetCount = 2 }: { presetCount?: number }) {
               <div className='mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-3'>
                 <div className='space-y-1.5'>
                   <Label className='text-sm'>音频文件 *</Label>
-                  <Select value={audio.fileId} onValueChange={(v) => v != null && update(audio.id, { fileId: v })}>
-                    <SelectTrigger size='sm' className='h-8'>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {MOCK_AUDIO_FILES.map((a) => (
-                        <SelectItem key={a.id} value={a.id}>
-                          {a.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {audio.fileOverride ? (
+                    <div className='bg-background ring-foreground/10 flex h-8 items-center gap-1 rounded-md px-2 ring-1'>
+                      <Play aria-hidden='true' className='text-muted-foreground size-3 shrink-0' />
+                      <span className='min-w-0 flex-1 truncate text-xs'>{audio.fileOverride.name}</span>
+                    </div>
+                  ) : (
+                    <Select value={audio.fileId} onValueChange={(v) => v != null && update(audio.id, { fileId: v })}>
+                      <SelectTrigger size='sm' className='h-8'>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {MOCK_AUDIO_FILES.map((a) => (
+                          <SelectItem key={a.id} value={a.id}>
+                            {a.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
                 <div className='space-y-1.5'>
                   <Label className='text-sm'>播放设备</Label>
@@ -291,15 +311,27 @@ export function AudioListStep({ presetCount = 2 }: { presetCount?: number }) {
         })
       )}
 
-      <Button
-        type='button'
-        variant='outline'
-        size='sm'
-        className='h-8 gap-1'
-        onClick={() => setAudios((prev) => [...prev, defaultAudio(prev.length)])}
-      >
-        + 添加音频
-      </Button>
+      <div className='flex flex-wrap items-center gap-2'>
+        <Button
+          type='button'
+          variant='outline'
+          size='sm'
+          className='h-8 gap-1'
+          onClick={() => setAudios((prev) => [...prev, defaultAudio(prev.length)])}
+        >
+          + 添加音频
+        </Button>
+        <Button
+          type='button'
+          variant='outline'
+          size='sm'
+          className='h-8 gap-1'
+          onClick={() => setPickingFromLibrary(true)}
+        >
+          <Library aria-hidden='true' className='size-3.5' />
+          从音频库选择
+        </Button>
+      </div>
 
       {/* 批量工具面板（§4 工具栏九件中的五件弹窗，mock 态真实交互） */}
       <TagInterleavePanel
@@ -358,6 +390,33 @@ export function AudioListStep({ presetCount = 2 }: { presetCount?: number }) {
               ? `已为勾选音频批量设置声压 ${spl} dB`
               : `已为全部音频批量设置声压 ${spl} dB`
           )
+        }}
+      />
+
+      {/* 音频选择子弹窗（多选；选中所用音频追加为轮次音频行） */}
+      <AudioSelectDialog
+        open={pickingFromLibrary}
+        onOpenChange={setPickingFromLibrary}
+        mode='multi'
+        title='选择音频文件'
+        onConfirm={(selected) => {
+          if (selected.length === 0) return
+          replaceAudios((prev) => [
+            ...prev,
+            ...selected.map((file) => ({
+              id: nextId(),
+              fileId: `lib-${file.id}`,
+              deviceId: MOCK_DEVICES[0].id,
+              spl: 65,
+              fileOverride: {
+                id: file.id,
+                name: file.name,
+                duration: file.duration,
+                tags: file.tags ?? [],
+              },
+            })),
+          ])
+          toast.success(`已添加 ${selected.length} 个音频到轮次`)
         }}
       />
     </div>

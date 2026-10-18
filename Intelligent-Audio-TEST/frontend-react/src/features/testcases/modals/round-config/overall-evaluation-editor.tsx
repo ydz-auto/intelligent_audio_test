@@ -1,13 +1,12 @@
 /**
- * 整体评估维度节（11_用例域.md §5.1.2 常驻节，case 级 config.dimensions）。
- * V9.7.10 OverallEvaluationEditor 逐字平移换壳。
+ * 整体评估维度编辑器（11_用例域.md §5.1.3.1 评估策略字段，原 §5.1.2 常驻节移入）。
+ * 受控组件（value/onChange），作策略字段编辑器由评估策略节引用复用——不再是用例常驻节。
  * 节头「整体评估维度」+ 徽章「所有轮次」+ 副标题 + 描述文案（逐字平移）；启用整体评估 Switch
- * （默认开；已有维度数据时自动启用；关闭即清空维度数组 emit 空数组）；维度多选用 DimensionPicker
- * （V9.7.10 平铺 chips 云，搜索+已选计数，不做主/子联动分组）；已选维度参数卡（权重 0-100 默认 50
- * + 阈值 0-100 默认 80 非 LLM Judge；LLM Judge 时 模型 Select + Prompt 模板 Select）。
- * 数据契约 config.dimensions = [{ id, name, weight, threshold, (llmJudgeConfig: {model, promptTemplate}) }]
- * ——TestCaseDimensionItem {id,name,weight,threshold,test_type}（schemas/testcase.py:85-90）；
- * 触发条件=顶层数组非空；报告取值整体优先、无整体结果取各轮算术平均。
+ * （有关键维度数据即自动启用；关闭即清空维度数组）；维度多选用 DimensionPicker（V9.7.10 平铺
+ * chips 云，搜索+已选计数，不做主/子联动分组）；已选维度参数卡（权重 0-100 默认 50 + 阈值
+ * 0-100 默认 80 非 LLM Judge；LLM Judge 时 模型 Select + Prompt 模板 Select）。
+ * 数据契约 TestCaseDimensionItem { id, name, weight, threshold, (llmJudgeConfig) }——由
+ * 用例承载 config.dimensions / 策略 dimensions / overrides.dimensions 共用。
  */
 import { useState } from 'react'
 
@@ -15,6 +14,7 @@ import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import type { Dimension } from '@/domain/models/evaluationDimension'
+import type { TestCaseDimensionItem } from '@/domain/models/evaluationStrategy'
 import {
   DimensionParamCard,
   type DimensionParamValue,
@@ -29,55 +29,82 @@ const defaultParams = (): DimensionParamValue => ({
 export function OverallEvaluationEditor({
   dimensions,
   algorithmType,
+  value,
+  onChange,
 }: {
   dimensions: Dimension[]
   algorithmType?: string | null
+  /** 维度配置值（整体评估维度数组；空=未启用） */
+  value: TestCaseDimensionItem[]
+  onChange: (next: TestCaseDimensionItem[]) => void
 }) {
-  const [enabled, setEnabled] = useState(true)
-  const [selected, setSelected] = useState<number[]>([1, 11])
-  const [params, setParams] = useState<Record<number, DimensionParamValue>>({
-    1: { weight: 50, threshold: 80 },
-    11: { weight: 50, threshold: 80 },
-  })
+  const [enabled, setEnabled] = useState(value.length > 0)
 
-  const dimensionOf = (id: number) => dimensions.find((d) => d.id === id)
+  const dimensionOf = (id: number) => dimensions.find((d) => Number(d.id) === id)
+  const itemOf = (id: number) => value.find((v) => Number(v.id) === id)
+  const selected = value.map((v) => Number(v.id))
 
   const handleToggle = (ids: number[], checked: boolean) => {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      ids.forEach((id) => (checked ? next.add(id) : next.delete(id)))
-      const list = [...next]
-      setParams((p) => {
-        const merged = { ...p }
-        for (const id of ids) {
-          if (checked && !merged[id]) merged[id] = defaultParams()
-        }
-        return merged
-      })
-      return list
+    const next = new Set(value.map((v) => Number(v.id)))
+    ids.forEach((id) => {
+      if (checked) next.add(id)
+      else next.delete(id)
     })
+    const list = dimensions
+      .filter((d) => next.has(Number(d.id)))
+      .map((d) => {
+        const existing = itemOf(Number(d.id))
+        if (existing) return existing
+        const llmJudge = d.resultType === 'llm_judge'
+        return {
+          id: d.id,
+          name: d.name,
+          weight: defaultParams().weight,
+          threshold: defaultParams().threshold,
+          ...(llmJudge
+            ? { llmJudgeConfig: { model: 'claude-3-sonnet', promptTemplate: 'default' } }
+            : {}),
+        }
+      })
+    onChange(list)
   }
 
-  const handleRemove = (id: number) => {
-    setSelected((prev) => prev.filter((x) => x !== id))
-    setParams((prev) => {
-      const { [id]: _removed, ...rest } = prev
-      return rest
-    })
-  }
+  const handleRemove = (id: number) =>
+    onChange(value.filter((v) => Number(v.id) !== id))
+
+  const handleParamChange = (id: number, patch: Partial<DimensionParamValue>) =>
+    onChange(
+      value.map((v) =>
+        Number(v.id) === id
+          ? {
+              ...v,
+              weight: patch.weight ?? v.weight,
+              threshold: patch.threshold ?? v.threshold,
+              ...(patch.model || patch.promptTemplate
+                ? {
+                    llmJudgeConfig: {
+                      model: patch.model ?? v.llmJudgeConfig?.model ?? 'claude-3-sonnet',
+                      promptTemplate:
+                        patch.promptTemplate ?? v.llmJudgeConfig?.promptTemplate ?? 'default',
+                    },
+                  }
+                : v.llmJudgeConfig
+                  ? { llmJudgeConfig: v.llmJudgeConfig }
+                  : {}),
+            }
+          : v
+      )
+    )
 
   return (
     <div className='space-y-2'>
       {/* 节头：标题 + 「所有轮次」徽章 + 副标题 */}
       <div className='flex flex-wrap items-center gap-2'>
-        <h4 className='text-base font-medium'>整体评估维度</h4>
+        <h4 className='text-sm font-medium'>整体评估维度</h4>
         <Badge variant='secondary' className='rounded-md px-1.5 text-[11px]'>
           所有轮次
         </Badge>
       </div>
-      <p className='font-mono text-muted-foreground text-xs'>
-        config.dimensions — 对多轮测试结果的综合评估
-      </p>
       <p className='text-muted-foreground text-xs leading-relaxed'>
         整体评估在所有轮次执行完成后触发，将多轮结果汇总后统一送给评估端点。与单轮评估
         （每轮独立打分）不同，整体评估关注的是跨轮次的综合指标，例如多轮平均 WER、对话连贯性、
@@ -91,10 +118,7 @@ export function OverallEvaluationEditor({
           checked={enabled}
           onCheckedChange={(v) => {
             setEnabled(v)
-            if (!v) {
-              setSelected([])
-              setParams({})
-            }
+            if (!v) onChange([])
           }}
           aria-label='启用整体评估'
           id='overall-evaluation-enabled'
@@ -112,27 +136,38 @@ export function OverallEvaluationEditor({
             selected={selected}
             onToggle={handleToggle}
           />
-          {selected.length === 0 ? (
+          {value.length === 0 ? (
             <p className='text-muted-foreground py-3 text-center text-sm'>
               未选择评估维度——不选任何维度点保存即清除整体评估维度
             </p>
           ) : (
             <div className='space-y-2'>
-              {selected.map((id) => {
-                const dim = dimensionOf(id)
-                if (!dim) return null
+              {value.map((item) => {
+                const dim = dimensionOf(Number(item.id))
+                const label = dim?.name ?? item.name
+                if (!dim) {
+                  // 策略字段可能引用已下架维度：按名称占位渲染（不崩坏编辑器）
+                  return (
+                    <div key={String(item.id)} className='bg-background ring-foreground/10 rounded-lg p-3 ring-1'>
+                      <div className='flex items-center gap-2'>
+                        <span className='text-sm font-medium'>{label}</span>
+                        <ButtonGhostRemove onRemove={() => handleRemove(Number(item.id))} />
+                      </div>
+                    </div>
+                  )
+                }
                 return (
                   <DimensionParamCard
-                    key={id}
+                    key={String(item.id)}
                     dimension={dim}
-                    params={params[id] ?? defaultParams()}
-                    onChange={(patch) =>
-                      setParams((prev) => ({
-                        ...prev,
-                        [id]: { ...(prev[id] ?? defaultParams()), ...patch },
-                      }))
-                    }
-                    onRemove={() => handleRemove(id)}
+                    params={{
+                      weight: item.weight,
+                      threshold: item.threshold,
+                      model: item.llmJudgeConfig?.model,
+                      promptTemplate: item.llmJudgeConfig?.promptTemplate,
+                    }}
+                    onChange={(patch) => handleParamChange(Number(item.id), patch)}
+                    onRemove={() => handleRemove(Number(item.id))}
                   />
                 )
               })}
@@ -141,5 +176,19 @@ export function OverallEvaluationEditor({
         </>
       )}
     </div>
+  )
+}
+
+/** 占位移除钮（无维度对象时仍可移除） */
+function ButtonGhostRemove({ onRemove }: { onRemove: () => void }) {
+  return (
+    <button
+      type='button'
+      aria-label='移除维度'
+      className='hover:text-destructive ms-auto size-7'
+      onClick={onRemove}
+    >
+      ✕
+    </button>
   )
 }
