@@ -170,6 +170,8 @@ export interface ReportListItemSummaryDto {
   failed_cases: number
   pass_rate: number
   task_count?: number | null
+  /** INT-340：人工复核结果条数（报告页「人工复核」标记） */
+  review_count?: number | null
 }
 
 /** 列表项（ReportListItem） */
@@ -236,6 +238,8 @@ export interface ReportSummaryDto {
   case_type_stats?: ReportCaseTypeStatRowDto[]
   overall_success_rate?: number
   stability?: number
+  /** INT-340：人工复核结果条数（报告页「人工复核」标记） */
+  review_count?: number
   /** 维度名 → 值（键为维度名非字段名） */
   dimension_values?: Record<string, number>
   devices?: Array<string | ReportDeviceInfoDto>

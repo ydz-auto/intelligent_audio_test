@@ -39,6 +39,8 @@ export interface ReportListItemSummary {
   failedCases: number
   passRate: number
   taskCount?: number
+  /** INT-340：人工复核结果条数（报告页「人工复核」标记） */
+  reviewCount?: number
 }
 
 /** 报告列表项（ReportListItem → camelCase） */
@@ -243,6 +245,8 @@ export interface ReportSummary {
   caseTypeStats?: ReportCaseTypeStatRow[]
   overallSuccessRate?: number
   stability?: number
+  /** INT-340：人工复核结果条数（报告页「人工复核」标记；详情 summary 未含该字段时走任务级 review-count） */
+  reviewCount?: number
   /** 维度名 → 值（后端原 key 为维度名，非字段名，保留 Record） */
   dimensionValues?: Record<string, number>
   devices?: Array<string | ReportDeviceInfo>

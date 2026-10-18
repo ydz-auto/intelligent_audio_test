@@ -7,6 +7,13 @@
         </div>
         <h1 class="hero-title">{{ report.title || report.name || '任务报告' }}</h1>
         <p class="hero-subtitle" v-if="report.description">{{ report.description }}</p>
+        <!-- INT-797：报告头复核统计徽章（§4.1 统计入口；review_count > 0 时显示，点击锚点具体用例分区） -->
+        <ReportReviewStatsBadge
+          v-if="reportReviewCount > 0"
+          :review-count="reportReviewCount"
+          :clickable="true"
+          @click="scrollToCaseSection"
+        />
         <div class="hero-meta">
           <span class="meta-item">
             <i class="fas fa-calendar-alt"></i>
@@ -23,7 +30,7 @@
     <div class="report-layout">
       <div class="report-main">
         <div class="report-section" id="section-overview">
-          <OverviewCardComponent :reportData="report" />
+          <OverviewCardComponent :reportData="report" :review-count="reportReviewCount" />
         </div>
 
         <div class="report-section" id="section-devices" v-if="hasDeviceOrApiStats">
@@ -192,12 +199,15 @@
 </template>
 
 <script setup>
+import { computed, ref, watch } from 'vue'
 import { ReportStatus, DeviceStatus } from '@/domain/enums'
+import { reviewApi } from '@/infrastructure/api/reviewApi'
 import ComparisonTableComponent from './ComparisonTableComponent.vue'
 import CaseCategoryComparisonComponent from './CaseCategoryComparisonComponent.vue'
 import CaseTagComparisonComponent from './CaseTagComparisonComponent.vue'
 import SpecificCaseComparisonComponent from './SpecificCaseComparisonComponent.vue'
 import OverviewCardComponent from './OverviewCardComponent.vue'
+import ReportReviewStatsBadge from './ReportReviewStatsBadge.vue'
 import { useTaskReportPanel } from './TaskReportPanel'
 
 const props = defineProps({
@@ -239,6 +249,41 @@ const {
   cancelLocalConclusion,
   scrollToSection
 } = useTaskReportPanel(props, emit)
+
+/**
+ * INT-797：报告头复核统计徽章数据。
+ * 优先读报告快照 review_count（report_summaries.review_count，报告生成时定格）；
+ * 快照为 0 且报告有来源任务时，兜底读来源任务 review-count（task:read，真实）
+ * —— 报告为落库快照，生成后来源任务再次复核不自动回流，直到重新生成；
+ * 兜底让徽章反映来源任务当前复核态（§4.1 统计入口口径）。
+ */
+const liveReviewCount = ref(0)
+const reportReviewCount = computed(() => {
+  const snapshot = Number(report.value?.summaries?.[0]?.metadata?.review_count ?? 0)
+  if (snapshot > 0) return snapshot
+  return liveReviewCount.value
+})
+
+const loadLiveReviewCount = async () => {
+  const taskId = report.value?.taskId
+  if (!taskId || Number(taskId) <= 0) return
+  try {
+    liveReviewCount.value = await reviewApi.getReviewCount(taskId)
+  } catch {
+    liveReviewCount.value = 0
+  }
+}
+
+watch(() => report.value?.id, () => {
+  liveReviewCount.value = 0
+  void loadLiveReviewCount()
+}, { immediate: true })
+
+/** 统计徽章点击 → 锚点到具体用例分区 */
+const scrollToCaseSection = () => {
+  const el = document.getElementById('section-case')
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 </script>
 
 <style scoped>

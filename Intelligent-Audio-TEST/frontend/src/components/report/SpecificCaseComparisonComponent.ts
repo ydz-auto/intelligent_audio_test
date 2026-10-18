@@ -9,6 +9,7 @@ import { createCaseDetailPrep } from './specificCaseDetailPrep'
 import { createCaseMetricsComputeds, createFilteredCases } from './specificCaseComputeds'
 import { usePagination } from '../../composables/usePagination'
 import { readCamel } from '../../utils/keyTransform'
+import { useReportReviews } from '@/composables/report/useReportReviews'
 
 /** 具体用例对比组件 props（reportData 由父组件注入的 Report Domain，adapter 出口 camelCase） */
 interface SpecificCaseComparisonProps {
@@ -269,7 +270,9 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
 
   const paginatedCasesWithPreparedData = computed(() => {
     const sourceCases = paginatedCases.value
-    return sourceCases.map((caseItem: any) => prepareCaseItem(caseItem))
+    return sourceCases
+      .filter((caseItem: any) => isCaseFilteredByReview(caseItem))
+      .map((caseItem: any) => prepareCaseItem(caseItem))
   })
 
   // 筛选/排序条件变化时重新请求后端
@@ -500,6 +503,38 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
     metricPage.value = 1
   }, { immediate: true })
 
+  // ===== 报告侧 人工复核 + AI 复核（§4，INT-797） =====
+  const reportReviews = useReportReviews(() => props.reportData as any)
+
+  // 报告数据变化时加载复核数据（统计徽章 + 用例级复核标记/明细）
+  watch(
+    () => props.reportData?.id,
+    async (id) => {
+      if (id) {
+        await reportReviews.loadReportReviews(props.reportData as any)
+      }
+    },
+    { immediate: true },
+  )
+
+  // 复核状态筛选（§4.1：全部/已复核/未复核）
+  const reviewFilter = ref<'all' | 'reviewed' | 'unreviewed'>('all')
+
+  // 当前用例是否通过复核筛选（客户端过滤）
+  const isCaseFilteredByReview = (caseItem: any) => {
+    if (reviewFilter.value === 'all') return true
+    const state = reportReviews.getCaseReview(caseItem?.id ?? caseItem?.testCaseId ?? '')
+    if (reviewFilter.value === 'reviewed') return state.hasReview
+    return !state.hasReview
+  }
+
+  // 筛选/复核筛选变化时重新请求后端（复核筛选为客户端过滤，联动分页重置）
+  watch(reviewFilter, () => {
+    currentPage.value = 1
+    const reportId = props.reportData?.id
+    if (reportId && !isExporting.value) loadCasesPage(reportId)
+  })
+
   return {
     showAudioModal, currentAudioId, currentAudioTitle, currentAudioTypeLabel,
     currentAudioType, currentAudioSpl, currentAudioPlayOrder, currentAudioNoiseSpl,
@@ -522,6 +557,10 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
     unpinnedFilteredCases, totalCases, currentPage, pageSize, handlePrevPage, handleNextPage, handleGoToPage, handlePageSizeChange,
     currentCaseDetailWithPreparedData, closeCaseDetail, openCaseDetail,
     getResourceName, getCaseTaskId, formatTime,
-    isDownloadingLog, downloadingCaseName, downloadProgress, downloadSpeed, downloadSize, downloadTotal
+    isDownloadingLog, downloadingCaseName, downloadProgress, downloadSpeed, downloadSize, downloadTotal,
+    // 复核
+    reportReviews,
+    isCaseFilteredByReview,
+    reviewFilter,
   }
 }
