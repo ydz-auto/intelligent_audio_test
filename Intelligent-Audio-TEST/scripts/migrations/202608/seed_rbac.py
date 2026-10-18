@@ -115,6 +115,11 @@ PERMISSIONS = [
     ('report:publish', '发布报告'),
     ('report:compare', '对比报告'),
     ('report:download_log', '下载报告日志'),
+    # Report Studio（INT-673：设计文档 §15.3 建议码，冒号方案对齐 report:* 注册）
+    ('report:studio:create', 'Report Studio 创建文档草稿'),
+    ('report:studio:edit', 'Report Studio 编辑文档'),
+    ('report:studio:undo', 'Report Studio 版本恢复'),
+    ('report:studio:export', 'Report Studio 导出作业'),
     # Benchmark 排行 (6)（INT-429：benchmark_bp.py 实际挂载码全量，冒号风格对齐现有编码）
     ('benchmark:ranking:read', '查看 Benchmark 排行/指标映射'),
     ('benchmark:ranking:compute', '触发 Benchmark 排行计算'),
@@ -219,6 +224,8 @@ TESTER_PERMS = [
     'api_config:delete', 'api_config:test',
     'report:read', 'report:create', 'report:update', 'report:delete',
     'report:compare', 'report:download_log',
+    # Report Studio（INT-673：tester 建/编/恢复/导出草稿）
+    'report:studio:create', 'report:studio:edit', 'report:studio:undo', 'report:studio:export',
     # Benchmark（INT-429：tester 可读排行榜并参与排行生命周期）
     'benchmark:ranking:read', 'benchmark:ranking:compute',
     'benchmark:baseline:read', 'benchmark:baseline:write',
@@ -246,6 +253,8 @@ ALGO_ENGINEER_PERMS = [
     'api_config:read',
     'report:read', 'report:create', 'report:update', 'report:publish',
     'report:compare', 'report:download_log',
+    # Report Studio（INT-673：algo_engineer 质量负责人建/编/恢复/导出草稿）
+    'report:studio:create', 'report:studio:edit', 'report:studio:undo', 'report:studio:export',
     # Benchmark（INT-429：质量负责人趋势分析/排行参与）
     'benchmark:ranking:read', 'benchmark:ranking:compute',
     'benchmark:baseline:read', 'benchmark:baseline:write',

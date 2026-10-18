@@ -86,6 +86,7 @@ class User(Base):
     oauth_unionid = Column(String(255), nullable=True, comment='OAuth 提供商返回的 unionid (如有)')
     oauth_nickname = Column(String(100), nullable=True, comment='OAuth 提供商返回的昵称')
     oauth_avatar_url = Column(String(500), nullable=True, comment='OAuth 提供商返回的头像URL')
+    display_name = Column(String(100), nullable=True, comment='显示名（INT-697，可空；空时前端兜底 username）')
     last_login_at = Column(DateTime, nullable=True, comment='最后登录时间')
     last_login_ip = Column(String(50), nullable=True, comment='最后登录IP')
     created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')

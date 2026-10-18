@@ -48,6 +48,9 @@ class CherryPickCartItem(Base):
     source_case_id = Column(String(50), nullable=True, comment='来源用例ID（溯源）')
     source_device_id = Column(Integer, nullable=True, comment='来源设备ID（溯源）')
     source_api_id = Column(Integer, nullable=True, comment='来源API ID（溯源）')
+    # INT-577 §11-5：来源结果类型快照（result_data/result_data_path 解析，缺省 default；
+    # 供购物车/复核树形分组到 result_type 级）
+    source_result_type = Column(String(50), nullable=True, comment='来源结果类型快照（加购时点）')
     execution_status = Column(String(20), nullable=True, comment='加购时结果执行状态快照')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='加购时间')
 
@@ -115,5 +118,7 @@ class CherryPickSetItem(Base):
     source_case_id = Column(String(50), nullable=True, comment='来源用例ID（溯源）')
     source_device_id = Column(Integer, nullable=True, comment='来源设备ID（溯源）')
     source_api_id = Column(Integer, nullable=True, comment='来源API ID（溯源）')
+    # INT-577 §11-5：来源结果类型快照（与购物车条目同构，恢复进购物车时透传）
+    source_result_type = Column(String(50), nullable=True, comment='来源结果类型快照（另存时点）')
     execution_status = Column(String(20), nullable=True, comment='另存时结果执行状态快照')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='加入挑选集时间')

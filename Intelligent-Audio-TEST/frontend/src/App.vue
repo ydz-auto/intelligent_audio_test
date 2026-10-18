@@ -21,6 +21,14 @@
               <span v-if="!sidebarCollapsed">{{ item.label }}</span>
             </router-link>
           </li>
+          <!-- INT-577 §8：全局购物车角标（登录即可看，task:read 数据；增删链 task:cherry_pick 显隐） -->
+          <li v-if="canViewCart">
+            <button class="navLink nav-cart-link" @click="cartDrawerState.open()">
+              <i class="fas fa-cart-shopping navIcon"></i>
+              <span v-if="!sidebarCollapsed">挑选购物车</span>
+              <span v-if="pickCartCount > 0" class="nav-cart-badge">{{ pickCartCount }}</span>
+            </button>
+          </li>
         </ul>
       </nav>
 
@@ -47,6 +55,12 @@
     <div id="global-fixed-elements"></div>
     <GlobalModalContainer />
     <Notification ref="notificationRef" />
+    <!-- INT-577 §4.4：全局购物车抽屉（导航栏角标入口；「去复核」跳到挑选合并页签复核步骤） -->
+    <CartDrawer
+      :visible="cartDrawerState.visible.value"
+      @close="cartDrawerState.close()"
+      @go-review="goCartReview"
+    />
   </div>
 </template>
 
@@ -59,6 +73,11 @@ import GlobalModalContainer from './components/common/modal/GlobalModalContainer
 import { useAuthStore } from './store/authStore'
 import Notification from './components/common/modal/Notification.vue'
 import { provideNotification, type NotificationInstance } from './composables/modal/useNotification'
+import CartDrawer from './components/task/pick/CartDrawer.vue'
+import { usePickCart } from './composables/task/usePickCart'
+import { useCartDrawerState } from './composables/task/cartDrawerState'
+import { requestPickWizard } from './composables/task/usePickWizardRequest'
+import { PermissionPoint } from './domain/enums'
 
 // ===== 导航配置 =====
 interface NavItem {
@@ -92,6 +111,23 @@ const router = useRouter()
 const route = useRoute()
 const notificationRef = ref<NotificationInstance | null>(null)
 const mainContentRef = ref<HTMLElement | null>(null)
+
+// INT-577：全局购物车（导航栏角标 + 抽屉；usePickCart 单例镜像，跨页面共享）
+const pickCart = usePickCart()
+const cartDrawerState = useCartDrawerState()
+const pickCartCount = computed(() => pickCart.cartCount.value ?? 0)
+/** §8：角标登录即可看（task:read 数据）；写链 task:cherry_pick 显隐由各按钮承载 */
+const canViewCart = computed(() => authStore.isLoggedIn && authStore.hasPermission('task:read'))
+
+function goCartReview() {
+  cartDrawerState.close()
+  // P0 修复同款机制：经共享请求自开复核向导（:key=fullPath 重挂载下 URL 参数方案
+  // 会在清参时再次重挂载丢向导态）；query 保留现有参数只归一 tab
+  requestPickWizard({ step: 'review' })
+  const query: Record<string, string> = { ...route.query, tab: 'cherry-picks' } as Record<string, string>
+  delete query.wizard
+  router.push({ path: '/tasks', query })
+}
 
 // provide() 必须在 setup 同步阶段调用，提供模态框管理器供子孙组件 inject
 provideModal()
@@ -177,6 +213,9 @@ onMounted(() => {
 
   // 恢复用户信息：token 存在时从后端 /auth/me 拉取最新权限
   authStore.init()
+
+  // INT-577：全局购物车角标初始同步（导航栏角标数据源 usePickCart 单例镜像）
+  pickCart.refreshCart()
 
   sidebarCollapsed.value = isHomePage.value
   if (!isHomePage.value) {
@@ -292,5 +331,35 @@ onUnmounted(() => {
   .sidebar-header {
     padding: var(--spacing-sm);
   }
+}
+
+/* INT-577：全局购物车导航角标 */
+.nav-cart-link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  cursor: pointer;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+}
+.nav-cart-badge {
+  position: absolute;
+  top: 4px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: var(--primary, #ff6a00);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
 }
 </style>

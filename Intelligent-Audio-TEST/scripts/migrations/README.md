@@ -43,8 +43,11 @@ python scripts/migrations/202610/seed_env_judge.py                      # ㉔ �
 python scripts/migrations/202610/seed_interruption_v2.py                # ㉕ 打断指标 v2 维度种子（INT-192，11 主 + 时延容器 + 3 子；依赖 ⑪ seed_voice_llm）
 python scripts/migrations/202610/backfill_report_snapshot_freeze.py --apply  # ㉖ 存量已发布任务 report_snapshot 补冻结（INT-258；默认 dry-run）
 python scripts/migrations/202610/cleanup_reeval_ghost_round_rows.py --apply  # ㉗ failed 重评幽灵失败逐轮行清理（INT-364；默认 dry-run）
-python scripts/migrations/202610/add_published_task_type_algorithm_type.py # ㉘ published_tasks 补 type/algorithm_type 两列 + idx_published_task_algorithm_type 索引 + 历史快照回填（INT-148 已发布任务类型列，INT-659 落地运行库）
-python scripts/migrations/202610/add_system_options_table.py                  # ㉙ 建 system_options 表 + 系统选项默认值种子（INT-620；全新库 create_all 已含，执行为全 SKIP）
+python scripts/migrations/202610/add_uq_task_case_route_int604.py           # ㉘ task_case_relations (task, case, 路由) 唯一索引（INT-604；建索引前先查重，存在重复即中止）
+python scripts/migrations/202610/add_published_task_type_algorithm_type.py # ㉙ published_tasks 补 type/algorithm_type 两列 + idx_published_task_algorithm_type 索引 + 历史快照回填（INT-148 已发布任务类型列，INT-659 落地运行库）
+python scripts/migrations/202610/add_system_options_table.py                  # ㉚ 建 system_options 表 + 系统选项默认值种子（INT-620；全新库 create_all 已含，执行为全 SKIP）
+python scripts/migrations/202610/add_report_studio_tables.py                 # ㉛ Report Studio 业务资产 4 表（INT-673：documents/versions/chart_specs/export_jobs；全新库 create_all 已含，执行为全 SKIP）
+python scripts/migrations/202610/add_cherry_pick_source_result_type_int577.py  # ㉜ 挑选合并购物车/挑选集条目补 source_result_type 列（INT-577 §11-5；依赖 INT-339 cherry-pick 表已建）
 ```
 
 > ✅ **2026-09-07 全量迁移记录**：当前环境已执行 ①③④⑧（`remove_foreign_keys_and_soft_delete` 12 步 + `add_audit_columns` 补 24 处 + `add_reevaluated_at` + `add_pass_threshold_to_eval_params`），执行后 `UndefinedColumn` 类报错全部消除。②⑤⑥⑦⑨ 视功能需要执行。
@@ -56,6 +59,8 @@ python scripts/migrations/202610/add_system_options_table.py                  # 
 > ✅ **2026-10-12 修复记录（INT-147 打回 F1）**：UserOAuthBinding PO 新增后存量部署缺 `user_oauth_bindings` 表，`GET/DELETE /oauth/bindings` 直接 500（UndefinedTable）。已补执行 ㉒：运行库执行为全 [SKIP]（验收方当日已按 PO 模型补建该表，脚本回读确认 5 列 + `uq_provider_user` + 双索引与 ORM 一致）；另在临时库完成建表路径验证（dry-run 不落 DDL / 首次执行建表 / 重复执行全 SKIP / 结构与 ORM 逐列比对一致）。
 
 > ✅ **2026-10-18 修复记录（INT-659）**：已发布任务列表 `GET /api/v1/published-tasks` 恒 400（`published_tasks.type` 不存在，INT-638 接线实测发现）。已执行 ㉘：补 `type` 列 [EXEC]（`algorithm_type` 列此前已存在 [SKIP]）、建 `idx_published_task_algorithm_type`、历史快照回填 13 行（type 按快照用例级 device_type 派生 api/e2e，algorithm_type 取快照 algorithmType）。重复执行全列 [SKIP]、回填仅触碰 algorithm_type 为 NULL 的行（快照无 algorithmType 的行写出 NULL 值无变化，幂等无报错）。同批修正 ⑯ `drop_task_type_and_testcase_test_type.py` 反向冲突：`DROP_COLUMNS` 移除 `('published_tasks', 'type')`（INT-148 裁定该列保留），dry-run 确认不再尝试删除该列；本次运行库实测该脚本 dry-run 全 [SKIP]（test_tasks.type / test_cases.test_type 此前已删除）。验收实测：真实后端带/不带 `type` 筛选参数 `GET /api/v1/published-tasks` 均恢复 200。
+
+> ✅ **2026-10-18 执行记录（INT-673）**：Report Studio 业务资产 4 表已执行 ㉚（全新库 create_all 已含，执行为全 SKIP；运行库本次全部 APPLY 11 步：4 表 + 7 索引）。同批执行 ⑦ seed_rbac.py 注册 `report:studio:create/edit/undo/export` 4 码 + tester/algo_engineer 授权矩阵（幂等，重跑 0 新增）。临时库红-绿自测：建表路径 APPLY → 重复执行全 SKIP → 结构逐列与 ORM 对齐 → 销毁。
 
 > ✅ **2026-10-13 移植记录（INT-192）**：补齐三族维度 seed（㉓ turn_eval / ㉔ env_judge / ㉕ interruption_v2，V9.7.10 蓝本金标对齐后移植）。运行库执行实测零插入（全原地更新/SKIP，仅 updated_at 移动，逐字段前后比对无差）；临时库（create_all + seed_voice_llm）fresh 路径实测：首轮 25 维/322 参数/110 映射全插入、重跑全 SKIP/更新零插入，临时库终态与运行库金标逐字段等价（含 api_settings deep-equal）后销毁。UPDATE 不写 status：运行库「逐轮三分类评估」status=FALSE 为现状保留（fresh 库该维为启用态，验收方如判定需对齐可手工关闭）。三个脚本依赖 ⑪ seed_voice_llm 先行（param_mappings/关联外键引用 algorithm_definitions）。
 
@@ -121,9 +126,8 @@ python scripts/migrations/202610/add_system_options_table.py                  # 
 | [seed_interruption_v2.py](202610/seed_interruption_v2.py) | 打断指标 v2 维度种子（INT-192，移植 V9.7.10 202609） | 11 主维度（8 数量类 COUNT 模板 + 3 评分类 SCORE 模板）+「打断时延」容器 + 3 时延子维度；Step 0 物理清理旧代 interruption_metrics 树（interruption_judge 属 seed_env_sound_judge 另一族不动）；分类→打断；同上幂等口径 |
 | [backfill_report_snapshot_freeze.py](202610/backfill_report_snapshot_freeze.py) | 存量已发布任务 `report_snapshot` 补冻结（INT-258） | 发布快照语义修正为「引用 + 冻结双轨」（冻结报告管理生成的真实报告 7 表渲染数据 + sourceReportId 引用）：report_snapshot 为空且源任务有未删报告 → 补冻结；存量 v1 旧结构且源报告仍在 → 升级 v2；无报告/无源任务 → 保持空态（v1 快照且报告已不在的保留原数据）；复用 task_service `freeze_report_snapshot` 单一事实源；幂等（schemaVersion=2 一律 SKIP）；默认 dry-run，`--apply` 执行 |
 | [cleanup_reeval_ghost_round_rows.py](202610/cleanup_reeval_ghost_round_rows.py) | failed 重评幽灵失败逐轮行清理（INT-364，移植 V9.7.10 f02ba75e 同名脚本） | 删除「逐轮失败（round_number 非空 + failed）+ 同 (result, dimension) 整体行已 completed」的幽灵行——E2E 每轮未配评估维度 + per_round 投影残留 failed 行场景下用例被永久判 failed；随附将不再有失败维度行的用例 TaskCase 恢复 completed、限定 `--task-id` 时同步任务统计；代码侧修复（failed 重评提交前清幽灵行）已随实现落地，本脚本处理存量历史数据；缺省全库扫描（任务过滤 `%(task_id)s IS NULL OR 列 = %(task_id)s`，None 绑定 NULL 恒假的静默失效已修，审计 P3 回归 tests/unit/test_int364_cleanup_script_full_db_mode.py）；幂等，默认 dry-run，`--apply` 执行 |
-| [add_published_task_type_algorithm_type.py](202610/add_published_task_type_algorithm_type.py) | published_tasks 补类型列 + 历史回填（INT-148/INT-659） | 补 `type`（任务类型 api/e2e，发布时由快照用例级 device_type 派生：http_api/websocket_api → api，否则 e2e，无 caseDevices 回退 apiIds）/ `algorithm_type`（发布时从快照 algorithmType 冻结的冗余列）两列 + `idx_published_task_algorithm_type` 索引（对齐 ORM `__table_args__`），历史行仅回填两列为 NULL 者；幂等（列已存在即 [SKIP]），支持 `--dry-run` |
-| [add_system_options_table.py](202610/add_system_options_table.py) | 建 `system_options` 表 + 系统选项默认值种子（INT-620） | api_gateway 直管的系统选项 KV 表（key VARCHAR(255) 主键 / value JSONB / updated_at，DDL 与 api_gateway `SystemOption` ORM 元数据对齐）；种子前端 settings-mock 当前可视稿基线 11 键（站点信息/公告/导航/认证/安全/运维域）；幂等（表已存在即 SKIP、种子按 key 去重 + ON CONFLICT DO NOTHING），支持 `--dry-run`；全新库 create_all 已含该表，执行为全 SKIP |
-
+| [add_uq_task_case_route_int604.py](202610/add_uq_task_case_route_int604.py) | task_case_relations (task, case, 路由) 唯一索引（INT-604 混选前置 + 评审①补录） | 同一用例可同时存在设备侧/API 侧多条 TaskCase，但 (task_id, test_case_id, COALESCE(device_type,''), COALESCE(device_id,'')) 不得重复；**建索引前先查重**——历史无 DB 唯一约束，理论存在 (task,case) 重复行，检测到即 ABORT 并列出重复行（交人工去重），避免唯一索引创建失败；幂等（索引已存在即 SKIP），支持 `--dry-run` |
+| [add_cherry_pick_source_result_type_int577.py](202610/add_cherry_pick_source_result_type_int577.py) | 挑选合并购物车/挑选集条目补 `source_result_type` 列（INT-577 §11-5） | `cherry_pick_cart_items` / `cherry_pick_set_items` 各补 `source_result_type VARCHAR(50) NULL`（购物车/挑选集条目来源结果类型快照；依赖 INT-339 `add_cherry_pick_tables_int339.py` 建表先行）；幂等（逐列 information_schema 检查），支持 `--dry-run` |
 
 ## 新增迁移脚本约定
 

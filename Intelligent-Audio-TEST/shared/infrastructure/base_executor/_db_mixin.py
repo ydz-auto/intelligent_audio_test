@@ -210,6 +210,8 @@ class DbMixin:
                 execution_status=execution_status,
                 evaluation_status=evaluation_status,
                 error_message=error_message,
+                # INT-604：多路由下按路由行精确命中，避免兄弟路由互相覆盖
+                tc_rel_id=tc_rel_id,
             )
         except Exception as e:
             self._log(

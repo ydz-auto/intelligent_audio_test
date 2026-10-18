@@ -582,7 +582,13 @@ class ReevaluationExecutor:
         # 拒绝收敛。已在提交范围的轮次（TRD 被复用重置、评估在途）保持不动。
         if failed_dims_by_round is not None:
             self._sweep_out_of_scope_active_scores(result, submitted_rounds, task_id, test_case_id)
-        return True
+        # INT-632：返回值必须是「是否确有评估提交」，而非「是否已处理」。全部轮次
+        # 被跳过（无维度可评估）时已由 _finalize_skipped_reevaluation 就地收尾、无
+        # 任何评估在途——返回 True 会让 _submit_cases_for_reevaluation 误计
+        # submitted_count>0，_on_complete 置 running 后无端点回调可触发收敛，任务
+        # 永久卡 running、队列被占死。bool(submitted_rounds) 对齐 _reevaluate_single
+        # 「提交成功才返回非 False」语义（已收尾的用例由零提交分支主动收敛）。
+        return bool(submitted_rounds)
 
     def _reevaluate_e2e_multi_round(self, task_id, result, test_case_id, algorithm_result, test_type, algorithm_type,
                                      reference_params_col, rounds, test_case, failed_dims_by_round=None,
@@ -1180,6 +1186,19 @@ class ReevaluationExecutor:
                      f"重新评估任务提交完成: task_id={task_id}, success={success}, 任务状态={new_status}"
                      + ("（评估仍在后台计算，任务终态由评估收敛驱动）" if success else ""),
                      task_id=task_id)
+
+        if success and (submitted_cases or 0) > 0:
+            # INT-632：端点回调在提交窗口内到达时，maybe_finalize 因 still_submitting
+            # 拒绝提前收敛，而该回调是唯一触发源、之后不会再有回调——任务会永久卡
+            # running。此处补一次收敛检查：快速评估（如 mock 端点）已在提交阶段完成
+            # 时直接收敛为 completed；评估仍在途时返回 False，由后续端点回调收敛
+            # （maybe_finalize 幂等，重复收敛安全）。
+            try:
+                self.maybe_finalize(task_id)
+            except Exception as e:
+                log_and_emit('WARNING', 'reevaluator',
+                             f"提交完成后收敛判定异常: task_id={task_id}, error={e}",
+                             task_id=task_id)
 
         if not success:
             # 提交失败：释放重新评估队列，启动下一个排队任务

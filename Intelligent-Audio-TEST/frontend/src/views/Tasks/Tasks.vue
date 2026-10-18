@@ -15,9 +15,9 @@
           <i class="fas fa-bookmark"></i> 发布任务
         </button>
       </div>
-      <!-- INT-339：全局购物车入口（角标计数，任何页签可达；点击打开挑选合并向导） -->
-      <div class="header-right" v-if="can(PermissionPoint.TASK_CHERRY_PICK)">
-        <button class="btn btn-secondary pick-cart-entry" @click="pickDialogVisible = true">
+      <!-- INT-577 §8：全局购物车入口（角标计数，task:read 可见；打开全局抽屉，增删链 task:cherry_pick 承载） -->
+      <div class="header-right" v-if="can('task:read')">
+        <button class="btn btn-secondary pick-cart-entry" @click="cartDrawerState.open()">
           <i class="fas fa-shopping-cart"></i> 挑选购物车
           <span v-if="pickCartCount > 0" class="pick-cart-badge">{{ pickCartCount }}</span>
         </button>
@@ -121,7 +121,7 @@
         </section>
       </div>
 
-      <!-- 页签（INT-298：日常 / 已发布 / 合并 / 收藏，对齐 V9.7.10 页签组织） -->
+      <!-- 页签（INT-577 §2.2 裁定①：终态三页签 = 日常 / 已发布 / 挑选合并；「合并」页签收编） -->
       <section class="tasks-container" v-if="!showComparisonReport">
         <div class="task-tabs">
           <button class="task-tab" :class="{ active: activeTab === 'daily' }" @click="switchTab('daily')">
@@ -136,14 +136,11 @@
             <i class="fas fa-bookmark"></i> 已发布任务
             <span v-if="published.total > 0" class="task-tab-count">{{ published.total }}</span>
           </button>
-          <button class="task-tab" :class="{ active: activeTab === 'merged' }" @click="switchTab('merged')">
-            <i class="fas fa-object-group"></i> 合并任务
-            <span v-if="mergedTasks.total > 0" class="task-tab-count">{{ mergedTasks.total }}</span>
-          </button>
           <button class="task-tab" :class="{ active: activeTab === 'cherryPick' }" @click="switchTab('cherryPick')">
             <i class="fas fa-shopping-cart"></i> 挑选合并
-            <span v-if="cherryPickTasks.total > 0" class="task-tab-count">{{ cherryPickTasks.total }}</span>
+            <span v-if="containers.total > 0" class="task-tab-count">{{ containers.total }}</span>
           </button>
+          <!-- 收藏页签（主库恢复：INT-298 收藏收编工具条后由负责人本地回改独立页签） -->
           <button class="task-tab" :class="{ active: activeTab === 'favorite' }" @click="switchTab('favorite')">
             <i class="fas fa-star"></i> 收藏
             <span v-if="favoriteIds.size > 0" class="task-tab-count">{{ favoriteIds.size }}</span>
@@ -237,7 +234,7 @@
         <!-- 算法筛选（徽章单选） -->
         <div class="filter-row">
           <AlgorithmFilter
-            :options="activeTab === 'daily' || activeTab === 'favorite' || activeTab === 'merged' || activeTab === 'cherryPick' ? algorithmOptions : undefined"
+            :options="activeTab === 'daily' || activeTab === 'favorite' || activeTab === 'cherryPick' ? algorithmOptions : undefined"
             :model-value="currentFilter.algorithmType"
             title="算法筛选"
             @update:model-value="handleAlgorithmBadgeChange"
@@ -282,8 +279,10 @@
           <button class="btn-primary" @click="batchCompare" :disabled="selectedTasks.size < 2">
             <i class="fas fa-exchange-alt"></i> 任务对比
           </button>
-          <button class="btn-primary" @click="batchMerge" :disabled="!canMerge" :title="mergeButtonTitle">
-            <i class="fas fa-object-ungroup"></i> 合并任务
+          <!-- INT-577 §2.2 裁定②：批量「合并任务」钮撤销，吸收为「加入挑选」（task:cherry_pick 判定，
+               任务级整任务加购 → 打开挑选向导并预选该批任务，等价旧合并任务入口） -->
+          <button v-if="can(PermissionPoint.TASK_CHERRY_PICK)" class="btn-primary" @click="batchAddToPick" :disabled="!canAddToPick" :title="addToPickTitle">
+            <i class="fas fa-cart-plus"></i> 加入挑选
           </button>
           <button class="btn-primary" @click="openDataExport">
             <i class="fas fa-file-export"></i> 导出数据
@@ -376,24 +375,16 @@
           <PublishedTaskPanel ref="publishedPanelRef" :pt="published" />
         </template>
 
-        <!-- 合并任务面板 -->
-        <template v-else-if="activeTab === 'merged'">
-          <MergedTaskPanel
-            :merged="mergedTasks"
-            :task-actions="taskActions"
-            @task-action="handleTaskAction"
-            @name-updated="handleMergedNameUpdated"
-          />
-        </template>
-
-        <!-- 挑选合并面板（INT-339：第五页签） -->
+        <!-- 挑选合并面板（INT-577：统一容器页签，merged ∪ cherry_pick + 合并方式 facet + 页内四步向导） -->
         <template v-else-if="activeTab === 'cherryPick'">
           <CherryPickPanel
-            :cherry-pick="cherryPickTasks"
+            ref="cherryPickPanelRef"
+            :containers="containers"
             :task-actions="taskActions"
             :is-favorite="isFavorite"
             @task-action="handleTaskAction"
             @name-updated="handleMergedNameUpdated"
+            @checked-out="handlePickCheckedOut"
           />
         </template>      </section>
 
@@ -443,13 +434,6 @@
       @close="isDataImportDialogVisible = false"
       @imported="handleDataImported"
     />
-
-    <!-- INT-339：挑选合并三步向导（挑选 → 购物车 → 下单三出口） -->
-    <CherryPickDialog
-      v-if="pickDialogVisible"
-      @close="pickDialogVisible = false"
-      @checked-out="handlePickCheckedOut"
-    />
   </div>
 </template>
 
@@ -460,7 +444,8 @@ import { useTasks } from './tasks';
 import { TaskStatus, TaskEvaluationStatus, FINISHED_STATUSES, REEXECUTE_ELIGIBLE_STATUSES, PermissionPoint, TestType } from '@/domain/enums';
 import { useAuthStore } from '../../store/authStore';
 import { usePublishedTasks } from '../../composables/publishedTask/usePublishedTasks';
-import { useMergedTasks } from '../../composables/task/useMergedTasks';
+import { useCherryPickContainers } from '../../composables/task/useCherryPickContainers';
+import { useCartDrawerState } from '../../composables/task/cartDrawerState';
 import { useModalControl, MODAL_TYPES } from '../../composables/modal/useModal';
 import { useNotification } from '../../composables/modal/useNotification';
 import TaskListWithPagination from '../../components/task/TaskListWithPagination.vue';
@@ -469,11 +454,9 @@ import TaskTypeModal from '../../components/common/modal/TaskTypeModal.vue';
 import TaskDataExportDialog from '../../components/task/TaskDataExportDialog.vue';
 import TaskDataImportDialog from '../../components/task/TaskDataImportDialog.vue';
 import PublishedTaskPanel from './PublishedTaskPanel.vue';
-import MergedTaskPanel from './MergedTaskPanel.vue';
 import CherryPickPanel from './CherryPickPanel.vue';
-import CherryPickDialog from '../../components/common/modal/CherryPickDialog.vue';
-import { useCherryPickTasks } from '../../composables/task/useCherryPickTasks';
 import { usePickCart } from '../../composables/task/usePickCart';
+import { requestPickWizard, clearPickWizardRequest } from '../../composables/task/usePickWizardRequest';
 import BadgeFilter from '../../components/common/BadgeFilter.vue';
 import FavoriteTrashBar from '../../components/common/FavoriteTrashBar.vue';
 import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
@@ -486,27 +469,28 @@ const { hasPermission: can } = useAuthStore();
 const notification = useNotification();
 const modalControl = useModalControl();
 
-// ===== 页签（INT-298：日常 / 已发布 / 合并 / 收藏，对齐 V9.7.10 页签组织）=====
-type TaskTab = 'daily' | 'published' | 'merged' | 'cherryPick' | 'favorite';
-const TAB_QUERY_VALUES: TaskTab[] = ['daily', 'published', 'merged', 'cherryPick', 'favorite'];
+// ===== 页签（INT-577 §2.2 裁定①：合并页签收编；主库恢复收藏页签 → 终态四页签 = 日常/已发布/挑选合并/收藏）=====
+type TaskTab = 'daily' | 'published' | 'cherryPick' | 'favorite';
+const TAB_QUERY_VALUES: TaskTab[] = ['daily', 'published', 'cherryPick', 'favorite'];
 const activeTab = ref<TaskTab>('daily');
 const published = usePublishedTasks();
-const mergedTasks = useMergedTasks();
-// INT-339：挑选合并页签（cherry_pick=true 服务端过滤）+ 全局购物车状态
-const cherryPickTasks = useCherryPickTasks();
+// INT-577：统一合并容器列表（merged ∪ cherry_pick + merge_type facet + stats）
+const containers = useCherryPickContainers();
 const pickCart = usePickCart();
-const pickDialogVisible = ref(false);
+const cartDrawerState = useCartDrawerState();
+const cherryPickPanelRef = ref<InstanceType<typeof CherryPickPanel> | null>(null);
 /** 购物车条目数（ComputedRef 解包为 number 供模板比较） */
 const pickCartCount = computed(() => pickCart.cartCount.value ?? 0);
 const publishedPanelRef = ref<InstanceType<typeof PublishedTaskPanel> | null>(null);
 
-/** 页签切换：选中集清空 + URL query 同步（/tasks?tab=published 兼容旧链接）。
- *  已发布/合并面板随 v-else-if 挂载自拉列表（面板 onMounted 承担首次刷新） */
+/** 页签切换：选中集清空 + URL query 同步（/tasks?tab=cherry-picks 兼容旧链接）。
+ *  已发布/挑选合并面板随 v-else-if 挂载自拉列表（面板 onMounted 承担首次刷新） */
 function switchTab(tab: TaskTab) {
   if (activeTab.value === tab) return;
   activeTab.value = tab;
   selectedTasks.value.clear();
-  router.replace({ query: { ...route.query, tab: tab === 'daily' ? undefined : tab } });
+  const tabParam = tab === 'daily' ? undefined : (tab === 'cherryPick' ? 'cherry-picks' : tab);
+  router.replace({ query: { ...route.query, tab: tabParam } });
 }
 
 // ===== 收藏视图（INT-298：与 C 域收藏语义一致，favorite=true 过滤任务）=====
@@ -525,13 +509,6 @@ const STATUS_FILTER_OPTIONS = [
   { value: TaskStatus.RUNNING, label: '执行中' },
   { value: TaskStatus.COMPLETED, label: '已完成' },
   { value: TaskStatus.FAILED, label: '执行失败' },
-  { value: TaskStatus.MERGED, label: '已合并' },
-];
-
-/** INT-298：合并视图状态选项（对齐 V9.7.10 MERGED_STATUS_OPTIONS） */
-const MERGED_STATUS_OPTIONS = [
-  { value: 'all', label: '全部状态' },
-  { value: TaskStatus.COMPLETED, label: '已完成' },
   { value: TaskStatus.MERGED, label: '已合并' },
 ];
 
@@ -572,7 +549,7 @@ const {
   isAllSelected, formatDate, applyFilters, handleSearch, toggleSort,
   toggleTag, toggleTaskSelection, toggleSelectAll, cancelSelect, createNewTask, handleCreateTask,
   handleTaskAction, updateTaskName, batchDelete,
-  batchCompare, batchMerge, batchRestore, closeComparisonReport, saveComparisonReport,
+  batchCompare, batchRestore, closeComparisonReport, saveComparisonReport,
   publishComparisonReport, saveConclusion, toggleEditConclusion, reevaluateTask,
   cancelEditConclusion, toggleEditReport, cancelEditReport,
   deviceApiColumns, caseExecutionColumns,
@@ -604,8 +581,6 @@ const {
   algorithmOptions,
   // 协调逻辑
   handleNameUpdated,
-  canMerge,
-  mergeButtonTitle,
   // 任务数据导入导出（INT-25）
   isDataExportDialogVisible,
   isDataImportDialogVisible,
@@ -691,42 +666,25 @@ const publishedFilterState = reactive({
   set sort(v: { field: string; order: 'asc' | 'desc' }) { published.filters.sort = v; },
 });
 
-const mergedFilterState = reactive({
-  get search() { return mergedTasks.filters.search; },
-  set search(v: string) { mergedTasks.filters.search = v; },
-  type: 'merged',
-  get algorithmType() { return mergedTasks.filters.algorithmType; },
-  set algorithmType(v: string) { mergedTasks.filters.algorithmType = v; },
-  get status() { return mergedTasks.filters.status; },
-  set status(v: string) { mergedTasks.filters.status = v; },
-  get timeRange() { return mergedTasks.filters.timeRange; },
-  set timeRange(v: string) { mergedTasks.filters.timeRange = v; },
-  get customRange() { return mergedTasks.filters.customRange; },
-  set customRange(v: { start: string; end: string }) { mergedTasks.filters.customRange = v; },
-  get sort() { return mergedTasks.filters.sort; },
-  set sort(v: { field: string; order: 'asc' | 'desc' }) { mergedTasks.filters.sort = v; },
-});
-
 const cherryPickFilterState = reactive({
-  get search() { return cherryPickTasks.filters.search; },
-  set search(v: string) { cherryPickTasks.filters.search = v; },
+  get search() { return containers.filters.search; },
+  set search(v: string) { containers.filters.search = v; },
   type: 'all',
-  get algorithmType() { return cherryPickTasks.filters.algorithmType; },
-  set algorithmType(v: string) { cherryPickTasks.filters.algorithmType = v; },
-  get status() { return cherryPickTasks.filters.status; },
-  set status(v: string) { cherryPickTasks.filters.status = v; },
-  get timeRange() { return cherryPickTasks.filters.timeRange; },
-  set timeRange(v: string) { cherryPickTasks.filters.timeRange = v; },
-  get customRange() { return cherryPickTasks.filters.customRange; },
-  set customRange(v: { start: string; end: string }) { cherryPickTasks.filters.customRange = v; },
-  get sort() { return cherryPickTasks.filters.sort; },
-  set sort(v: { field: string; order: 'asc' | 'desc' }) { cherryPickTasks.filters.sort = v; },
+  get algorithmType() { return containers.filters.algorithmType; },
+  set algorithmType(v: string) { containers.filters.algorithmType = v; },
+  get status() { return containers.filters.status; },
+  set status(v: string) { containers.filters.status = v; },
+  get timeRange() { return containers.filters.timeRange; },
+  set timeRange(v: string) { containers.filters.timeRange = v; },
+  get customRange() { return containers.filters.customRange; },
+  set customRange(v: { start: string; end: string }) { containers.filters.customRange = v; },
+  get sort() { return containers.filters.sort; },
+  set sort(v: { field: string; order: 'asc' | 'desc' }) { containers.filters.sort = v; },
 });
 
 /** 当前视图的筛选状态（筛选排序栏统一绑定；收藏视图与日常视图共用日常列表数据源） */
 const currentFilter = computed(() => {
   if (activeTab.value === 'published') return publishedFilterState;
-  if (activeTab.value === 'merged') return mergedFilterState;
   if (activeTab.value === 'cherryPick') return cherryPickFilterState;
   return dailyFilterState;
 });
@@ -740,7 +698,6 @@ const CHERRY_PICK_STATUS_OPTIONS = [
 /** 当前视图的状态选项 */
 const currentStatusOptions = computed(() => {
   if (activeTab.value === 'published') return published.statusOptions;
-  if (activeTab.value === 'merged') return MERGED_STATUS_OPTIONS;
   if (activeTab.value === 'cherryPick') return CHERRY_PICK_STATUS_OPTIONS;
   return STATUS_FILTER_OPTIONS;
 });
@@ -753,10 +710,8 @@ function applyCurrentFilter() {
   if (activeTab.value === 'published') {
     published.page = 1;
     published.fetchList();
-  } else if (activeTab.value === 'merged') {
-    mergedTasks.apply();
   } else if (activeTab.value === 'cherryPick') {
-    cherryPickTasks.apply();
+    containers.apply();
   } else {
     applyFilters();
   }
@@ -784,10 +739,8 @@ function handleEvaluationBadgeChange(value: string | number) {
 function toggleViewSort(field: string) {
   if (activeTab.value === 'published') {
     published.toggleSort(field);
-  } else if (activeTab.value === 'merged') {
-    mergedTasks.toggleSort(field);
   } else if (activeTab.value === 'cherryPick') {
-    cherryPickTasks.toggleSort(field);
+    containers.toggleSort(field);
   } else {
     toggleSort(field);
   }
@@ -841,30 +794,73 @@ function openPublishModal() {
   publishedPanelRef.value?.openPublishModal();
 }
 
-// ========== 合并任务：卡片/源行操作分发与重命名（对齐 V9.7.10 交互） ==========
+// ========== 合并容器：卡片/源行操作分发与重命名（对齐 V9.7.10 交互） ==========
 
-/** 合并任务重命名（复用日常任务重命名接口，对齐 V9.7.10） */
+/** 合并容器重命名（复用日常任务重命名接口，对齐 V9.7.10） */
 async function handleMergedNameUpdated({ taskId, newName }: { taskId: string | number; newName: string }) {
   try {
     await updateTaskName(taskId, newName);
-    mergedTasks.refresh();
+    containers.refresh();
   } catch (error: any) {
     notification.error(error?.message || '更新任务名称失败');
   }
 }
 
-// ===== INT-339：挑选合并下单成功处理 =====
+// ===== INT-577 §2.2 裁定②：批量「合并任务」→「加入挑选」 =====
 
-/** 下单成功：merge 跳转新任务详情；其余出口刷新挑选合并列表与购物车角标 */
+/** 可加入挑选状态（对齐后端 PickableTaskStatus 终态集合） */
+const PICKABLE_TASK_STATUSES = [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.STOPPED];
+
+/** 批量「加入挑选」准入：全部选中任务为终态（completed/failed/stopped） */
+const canAddToPick = computed(() => {
+  if (selectedTasks.value.size === 0) return false;
+  const selected = tasks.value.filter((t: any) => selectedTasks.value.has(t.id));
+  return selected.length > 0 && selected.every((t: any) => PICKABLE_TASK_STATUSES.includes(t.status));
+});
+
+const addToPickTitle = computed(() => {
+  if (selectedTasks.value.size === 0) return '请先选择任务';
+  if (!canAddToPick.value) return '仅已完成、执行失败、已停止的终态任务可加入挑选';
+  return '将所选任务加入挑选购物车（任务级整任务加购）';
+});
+
+/** 批量「加入挑选」：打开挑选向导并预选该批任务（任务级粒度，等价旧「合并任务」入口） */
+function batchAddToPick() {
+  if (selectedTasks.value.size === 0) return;
+  const selected = tasks.value.filter((t: any) => selectedTasks.value.has(t.id));
+  if (!canAddToPick.value) {
+    notification.warning(addToPickTitle.value);
+    return;
+  }
+  // 经共享状态传预选任务 id（P0 修复）：App.vue `<router-view :key="$route.fullPath">`
+  // 在 query 变化时整树重挂载，本实例的 cherryPickPanelRef/wizardOpen 会被销毁——
+  // 旧实现「导航后经 ref 打开向导」开到导航前的实例 A 上即被重挂载销毁（测试实证）。
+  // 不再手动切 activeTab：交给导航后新实例按 query.tab 归位，避免面板先于导航挂载
+  // 消费请求后又随重挂载销毁；新面板经 usePickWizardRequest immediate watch 自开向导。
+  requestPickWizard({ presetTaskIds: selected.map((t: any) => t.id) });
+  selectedTasks.value.clear();
+  router.replace({ query: { ...route.query, tab: 'cherry-picks' } })
+    .catch(() => clearPickWizardRequest());
+}
+
+// ===== INT-577：挑选合并下单成功处理 =====
+
+/**
+ * 下单成功（设计 §9：下单成功 → 购物车出清 → 按出口跳转）：
+ * - merge 跳转新任务详情（容器任务详情）；
+ * - reexecute 跳转重执行任务详情；
+ * - reevaluate 跳转首个来源任务详情查看评估进度（无来源则刷新挑选合并列表）。
+ * 购物车出清由 usePickCart.refreshCart 同步角标；容器列表 invalidate（页签计数 +1）。
+ */
 async function handlePickCheckedOut(payload: { action: string; taskId?: number }) {
-  pickDialogVisible.value = false;
   await pickCart.refreshCart();
-  if (payload.action === 'merge' && payload.taskId) {
+  containers.refresh();
+  if (payload.taskId) {
     router.push(`/tasks/${payload.taskId}`);
     return;
   }
   if (activeTab.value === 'cherryPick') {
-    cherryPickTasks.refresh();
+    containers.refresh();
   }
 }
 
@@ -875,14 +871,32 @@ watch([taskTypeChartRef, taskTrendChartRef, taskStatusChartRef], () => {
   }
 }, { deep: true });
 
-// INT-298：旧链接 /tasks?tab=published|merged|favorite 直达对应页签（无权限回落日常）
+// INT-577 §2.2 裁定①：旧链接 redirect（?tab=merged → ?tab=cherry-picks；?tab=cherry-picks
+// 归一为内部 cherryPick）；无权限回落日常；?tab=favorite 直达收藏页签（主库恢复独立收藏页签）。
 onMounted(() => {
   const tabParam = String(route.query.tab ?? '');
-  if ((TAB_QUERY_VALUES as string[]).includes(tabParam)) {
+  // ?tab=merged（旧「合并」页签）→ redirect 到挑选合并页签并切换页签态
+  if (tabParam === 'merged') {
+    if (can('task:read')) {
+      router.replace({ query: { ...route.query, tab: 'cherry-picks' } });
+      activeTab.value = 'cherryPick';
+    }
+  } else if (tabParam === 'cherry-picks' || tabParam === 'cherryPick') {
+    if (can('task:read')) {
+      activeTab.value = 'cherryPick';
+    }
+  } else if ((TAB_QUERY_VALUES as string[]).includes(tabParam)) {
     const target = tabParam as TaskTab;
     if (target !== 'published' || can(PermissionPoint.PUBLISHED_TASK_READ)) {
       activeTab.value = target;
     }
+  }
+  // INT-401：页面加载即同步购物车角标（usePickCart 模块级单例跨弹窗共享；此前仅
+  // 打开挑选向导才 refresh，刷新页面后角标初始为 0 与实际购物车不一致）
+  pickCart.refreshCart();
+  // INT-577：挑选合并页签容器计数（进入即拉一次，面板 onMounted 亦拉，双保险防角标滞后）
+  if (activeTab.value === 'cherryPick') {
+    containers.fetchList();
   }
 });
 

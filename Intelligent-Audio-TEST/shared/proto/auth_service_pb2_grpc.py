@@ -281,7 +281,8 @@ class AuthServiceServicer:
         raise NotImplementedError('Method not implemented!')
 
     def UpdateUser(self, request, context):
-        """更新用户资料（username/email/status/password，空串字段不修改）
+        """更新用户资料（username/email/status/password，空串字段不修改；
+        display_name 未传=不修改、空串=清空，INT-697）
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')

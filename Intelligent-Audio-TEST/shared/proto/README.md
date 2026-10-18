@@ -39,6 +39,12 @@
 protoc --python_out=. --grpc_python_out=. -I. e2e_service.proto task_service.proto api_test_service.proto evaluation_service.proto adapter_service.proto algorithm_service.proto report_service.proto auth_service.proto transfer_agent.proto
 ```
 
+**本环境无 `protoc` 命令**，改用已安装的 grpc_tools 逐个生成（单文件可独立生成，不依赖跨文件 import）：
+
+```bash
+python -m grpc_tools.protoc --python_out=. --grpc_python_out=. -I. auth_service.proto
+```
+
 生成后的文件（`*_pb2.py` 与 `*_pb2_grpc.py`）会位于本目录，作为 Python 包的一部分被各服务 import。
 
 ### 依赖

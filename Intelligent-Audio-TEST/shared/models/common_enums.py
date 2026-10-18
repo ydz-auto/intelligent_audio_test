@@ -117,6 +117,27 @@ class APIProtocol(str, Enum):
     WEBSOCKET = 'websocket'
 
 
+class ExecutionMode(str, Enum):
+    """任务执行模式枚举 — 同一用例在设备侧与 API 侧目标间的时序编排（INT-604）
+
+    - PARALLEL  并行（默认/现行为）：设备侧与 API 侧各自独立并发分发、互不等待
+    - SERIAL    串行（逐用例）：同一用例两侧执行不重叠——先跑用户指定优先侧，
+                完成后再跑另一侧；该用例两侧全部到达终态后才执行下一个用例
+    """
+    PARALLEL = 'parallel'
+    SERIAL = 'serial'
+
+
+class SerialFirst(str, Enum):
+    """串行优先侧枚举 — serial 模式下先执行的目标侧（INT-604）
+
+    - DEVICE  设备先：physical 路由优先，API 路由等设备侧全部终态后启动
+    - API     API 先：http_api/websocket_api 路由优先，设备侧等 API 全部终态后启动
+    """
+    DEVICE = 'device'
+    API = 'api'
+
+
 # 设备系统输入别名 → 规范成员（小写键）。harmony 为前端注册/扫描表单实际写入的别名（INT-206）
 _DEVICE_SYSTEM_ALIASES = {
     'android': 'ANDROID',
@@ -532,3 +553,34 @@ class PickableTaskStatus(str, Enum):
     COMPLETED = 'completed'
     FAILED = 'failed'
     STOPPED = 'stopped'
+
+
+class StudioExportFormat(str, Enum):
+    """Report Studio 导出格式（INT-673，设计文档 §15.6）
+
+    HTML/MD 为本卡落地格式；PPTX/PDF 属 S3 增强候选技术（需实测后定）。
+    """
+    HTML = 'html'
+    MD = 'md'
+    PPTX = 'pptx'
+    PDF = 'pdf'
+
+
+class StudioExportStatus(str, Enum):
+    """Report Studio 导出作业状态（INT-673，设计文档 §15.5）"""
+    PENDING = 'pending'
+    RUNNING = 'running'
+    DONE = 'done'
+    FAILED = 'failed'
+
+
+class StudioSnapshotReason(str, Enum):
+    """Report Studio 文档版本快照原因（INT-673，设计文档 §15.3）
+
+    每次编辑在同一数据库事务落不可变历史版本；snapshot_reason 记录
+    版本产生方式：ai_edit（AI 结构化编辑）/ manual_edit（人工编辑）/
+    restore（历史版本恢复为新版本）。
+    """
+    AI_EDIT = 'ai_edit'
+    MANUAL_EDIT = 'manual_edit'
+    RESTORE = 'restore'

@@ -90,11 +90,19 @@ class _ReevalHarness:
         ]
 
     def __enter__(self):
+        # 记录原始值，__exit__ 恢复——避免 module 级 patch 残留污染后续测试
+        # （INT-632 实测：_ReevalHarness 退出不恢复时，reeval_mod.task_acl_repository
+        #  等被永久替换为 MagicMock，其后 test_int364 等文件即使自身 patch 也会
+        #  失效，出现"配置了空维度轮次仍提交评估"的伪失败）。
+        self._originals = [(target, name, getattr(target, name))
+                           for target, name, _ in self._patches]
         for target, name, value in self._patches:
             setattr(target, name, value)
         return self
 
     def __exit__(self, *exc):
+        for target, name, original in self._originals:
+            setattr(target, name, original)
         return False
 
     def run(self, config, n_rounds=3, test_type='e2e'):

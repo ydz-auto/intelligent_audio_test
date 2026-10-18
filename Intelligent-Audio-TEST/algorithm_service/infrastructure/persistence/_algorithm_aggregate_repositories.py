@@ -276,8 +276,12 @@ class AlgorithmDefinitionDraftRepository(IAlgorithmDefinitionDraftRepository):
     按 algorithm_type upsert 的快照，不做版本历史。
     """
 
-    def save_snapshot(self, algorithm_type: str, snapshot: Any) -> None:
-        """保存草稿快照（按 algorithm_type upsert，不落正式六表）。"""
+    def save_snapshot(self, algorithm_type: str, snapshot: Any) -> Optional[Any]:
+        """保存草稿快照（按 algorithm_type upsert，不落正式六表）。
+
+        返回保存后的 PO.updated_at（datetime），供草稿保存响应补 saved_at
+        （INT-683）。
+        """
         session = get_db_session()
         try:
             po = session.query(AlgorithmDefinitionDraftPO).filter_by(
@@ -300,6 +304,7 @@ class AlgorithmDefinitionDraftRepository(IAlgorithmDefinitionDraftRepository):
                 po.updated_by_user_id = get_current_user_id()
                 po.updated_at = datetime.now()
             session.commit()
+            return po.updated_at
         except Exception:
             session.rollback()
             raise

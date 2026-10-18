@@ -16,8 +16,13 @@ class TestResultRepositoryABC(ABC):
         ...
 
     @abstractmethod
-    def get_by_task_and_case(self, task_id: int, test_case_id: str = '') -> List[Dict[str, Any]]:
-        """按 task_id + test_case_id 批量读取 TestResult。"""
+    def get_by_task_and_case(self, task_id: int, test_case_id: str = '',
+                             device_type: Optional[str] = None,
+                             device_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """按 task_id + test_case_id 批量读取 TestResult。
+
+        INT-604：device_type/device_id 可选路由过滤（多路由下按路由行读结果）。
+        """
         ...
 
     @abstractmethod

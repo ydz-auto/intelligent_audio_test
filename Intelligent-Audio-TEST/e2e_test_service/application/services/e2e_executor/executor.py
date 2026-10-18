@@ -85,13 +85,14 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
         self._log(level='ERROR', content=f"{message}（执行链不判失败，执行口径保持）",
                   task_id=task_id, test_case_id=test_case_id)
 
-    def _finalize_eval_submit_failures(self, task_id, test_case_id):
+    def _finalize_eval_submit_failures(self, task_id, test_case_id, tc_rel_id=None):
         """评估提交失败终态收口（INT-169，对齐 INT-123 API 链口径）
 
         execution_status 不动（执行完成事实已由 process_results 落库），仅补
         evaluation_status=FAILED 并留痕原因，复合 status 由 task_service 按
         derive_task_case_status(completed, failed) 推导，保留
         「执行成功、评估失败」的事实边界，避免 TaskCase 永挂 evaluating。
+        INT-604：tc_rel_id 多路由下按路由行精确命中。
         """
         failures = getattr(self, '_eval_submit_failures', None)
         if not failures:
@@ -103,6 +104,7 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
                 case_id=str(test_case_id),
                 evaluation_status=EvaluationStatus.FAILED,
                 error_message=error_msg,
+                tc_rel_id=tc_rel_id,
             )
         except Exception as status_err:
             self._log(level='WARNING',
@@ -250,7 +252,7 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
             )
 
             # INT-169: 评估提交失败以 evaluation_status 终态收口，不动执行口径
-            self._finalize_eval_submit_failures(task_id, test_case_id)
+            self._finalize_eval_submit_failures(task_id, test_case_id, tc_rel_id)
 
             return success
         except TaskStopSignal:

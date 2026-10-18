@@ -188,3 +188,25 @@ def load_full_result_data(result_data_from_db, result_data_path):
             category='system'
         )
         return result_data_from_db if isinstance(result_data_from_db, dict) else {}
+
+
+def extract_result_type(result_data_from_db, result_data_path=None) -> str:
+    """结果级 result_type 解析（口径对齐 report_data_builder_task_mixin._extract_result_type，
+    缺省 'default'）。result_data 为 dict 时直接取键；为字符串时尝试 JSON 解析；
+    仍无则尝试 result_data_path 指向的完整结果文件（load_full_result_data 先例）。
+
+    供 task_service 购物车快照（INT-577 §11-5）与候选行补字段（§11-2）共用，
+    避免各服务重复实现口径漂移。
+    """
+    try:
+        full_data = load_full_result_data(result_data_from_db, result_data_path)
+        if isinstance(full_data, dict) and full_data.get('result_type'):
+            return str(full_data['result_type'])
+        if isinstance(result_data_from_db, str) and result_data_from_db.strip():
+            import json as _json
+            parsed = _json.loads(result_data_from_db)
+            if isinstance(parsed, dict) and parsed.get('result_type'):
+                return str(parsed['result_type'])
+        return 'default'
+    except Exception:
+        return 'default'

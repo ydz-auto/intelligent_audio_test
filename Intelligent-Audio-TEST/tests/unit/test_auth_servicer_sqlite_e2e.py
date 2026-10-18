@@ -34,7 +34,7 @@ from sqlalchemy.ext.compiler import compiles
 _PURGE_USERS = [
     'busy_user', 'perm_user_1', 'perm_user_2', 'perm_user_3',
     'perm_user_4', 'perm_user_5', 'managed_user', 'deleted_role_user',
-    'self_registered', 'audit_status_user',
+    'self_registered', 'audit_status_user', 'display_name_user',
 ]
 _PURGE_ROLES = [
     'busy_role', 'dup_role', 'baseline_role', 'wildcard_role',
@@ -441,6 +441,58 @@ class TestUserManagementChain:
                                                  role_id=role_row))
         users = json.loads(resp.data)['items']
         assert users and all(u['role_id'] == role_row for u in users)
+
+    def test_display_name_create_update_clear_chain(self, servicer):
+        """INT-697：CreateUser display_name 透传 + UpdateUser HasField 三分支。
+
+        - CreateUser 带 display_name → 落库，列表/详情可见；
+        - UpdateUser 带非空 display_name → 设置；
+        - UpdateUser 不带 display_name（HasField=false）→ 不修改，其他字段照常更新；
+        - UpdateUser 传空串（HasField=true）→ 清空落 NULL；
+        - 详情/列表响应均含 display_name（null 时前端兜底 username）。
+        """
+        svc, pb = servicer
+        session = get_db_session()
+
+        # ① CreateUser 带 display_name → 落库
+        resp = svc.CreateUser(pb.CreateUserRequest(
+            username='display_name_user', display_name='张三', operator_id=1))
+        assert resp.success, resp.message
+        user_id = json.loads(resp.data)['user_id']
+        session.expire_all()
+        assert session.query(User).filter_by(id=user_id).first().display_name == '张三'
+
+        # ② UpdateUser 设置 display_name
+        resp = svc.UpdateUser(pb.UpdateUserRequest(
+            user_id=user_id, display_name='李四', operator_id=1))
+        assert resp.success, resp.message
+        session.expire_all()
+        assert session.query(User).filter_by(id=user_id).first().display_name == '李四'
+
+        # ③ UpdateUser 不带 display_name（HasField=false）→ 不修改，其他字段照常更新
+        resp = svc.UpdateUser(pb.UpdateUserRequest(
+            user_id=user_id, email='dn@x.com', operator_id=1))
+        assert resp.success, resp.message
+        session.expire_all()
+        po = session.query(User).filter_by(id=user_id).first()
+        assert po.display_name == '李四'
+        assert po.email == 'dn@x.com'
+
+        # ④ UpdateUser 传空串（HasField=true）→ 清空落 NULL
+        resp = svc.UpdateUser(pb.UpdateUserRequest(
+            user_id=user_id, display_name='', operator_id=1))
+        assert resp.success, resp.message
+        session.expire_all()
+        assert session.query(User).filter_by(id=user_id).first().display_name is None
+
+        # 详情/列表响应 display_name 字段存在且为 null
+        resp = svc.GetUser(pb.GetUserRequest(user_id=user_id))
+        data = json.loads(resp.data)
+        assert 'display_name' in data and data['display_name'] is None
+        resp = svc.ListUsers(pb.ListUsersRequest(
+            page=1, page_size=100, keyword='display_name_user'))
+        items = json.loads(resp.data)['items']
+        assert items and all(u['display_name'] is None for u in items)
 
 
 class TestAuditEvents:

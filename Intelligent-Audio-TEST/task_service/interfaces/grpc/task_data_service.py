@@ -119,7 +119,11 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
             return self._resp(False, str(e))
 
     def UpdateTaskCaseStatus(self, request, context=None):
-        """更新 TaskCase 状态（evaluation_service 评估完成后 / 执行引擎回写调用）"""
+        """更新 TaskCase 状态（evaluation_service 评估完成后 / 执行引擎回写调用）
+
+        INT-604：多路由下同一用例存在设备/API 多行 TaskCase，tc_rel_id 优先
+        精确命中路由行，避免 (task_id, test_case_id) 全量更新互相覆盖。
+        """
         try:
             updated = task_repository.update_task_case_status(
                 request.task_id, request.case_id,
@@ -129,6 +133,7 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
                 error_message=request.error_message,
                 started_at=request.started_at,
                 completed_at=request.completed_at,
+                tc_rel_id=request.tc_rel_id if request.tc_rel_id else None,
             )
             return self._resp(True, 'ok', {'updated': updated})
         except Exception as e:
@@ -162,10 +167,15 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
             return self._resp(False, str(e))
 
     def GetTestResultsByTaskAndCase(self, request, context=None):
-        """按 task_id + test_case_id 批量读取 TestResult"""
+        """按 task_id + test_case_id 批量读取 TestResult
+
+        INT-604：device_type / device_id 可选路由过滤（多路由下按路由行读结果）。
+        """
         try:
             items = test_result_repository.get_by_task_and_case(
-                request.task_id, request.test_case_id
+                request.task_id, request.test_case_id,
+                device_type=request.device_type or None,
+                device_id=request.device_id or None,
             )
             return self._resp(True, 'ok', items)
         except Exception as e:

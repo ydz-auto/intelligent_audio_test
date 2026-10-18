@@ -185,6 +185,8 @@ class TaskReadModel(
                      merged: bool = False,
                      cherry_pick: bool = False,
                      execution_status: Optional[str] = None,
+                     merge_type: Optional[str] = None,
+                     stats: bool = False,
                      task_type: Optional[str] = None) -> Dict[str, Any]:
         """网关 get_all 使用的查询逻辑：含 Report 关联。
 
@@ -199,12 +201,16 @@ class TaskReadModel(
             存在性判定，§5.4 与 merged 容器判定同构）。
         execution_status（可选，INT-301 F1）：按任务级执行状态过滤（复用派生
             表达式，徽章展示与筛选命中同口径）。
+        merge_type（可选，INT-577）：合并方式快捷筛选（whole|picked），网关已
+            映射为 merged/cherry_pick 布尔，此处透传（供兼容/审计）。
+        stats（可选，INT-577）：恒返回合并容器统计块（merged ∪ cherry_pick 并集，
+            供「挑选合并」页签计数/facet）。合并容器计数独立于列表分页。
         task_type（可选，INT-273）：按派生任务类型过滤（api/e2e/mixed；口径与
             /tasks/stats type_counts 一致——api=无物理设备用例、e2e=含物理且无
             API 设备用例、mixed=物理与 API 设备用例兼有）。
         """
         from datetime import datetime
-        from sqlalchemy import select as sa_select
+        from sqlalchemy import select as sa_select, or_
         from task_service.infrastructure.read_models.task_dual_status_expr import (
             EXECUTION_STATUS_EXPR, EVALUATION_STATUS_EXPR, evaluation_filter_condition,
             execution_filter_condition,
@@ -212,6 +218,18 @@ class TaskReadModel(
 
         session = get_db_session()
         try:
+            # INT-577：merged 与 cherry_pick 同时为 True 时取并集（OR），
+            # 而非历史 AND（交集）——统一「挑选合并」页签双容器并集
+            from task_service.infrastructure.persistence.models import TaskMergeRelation
+            merge_exists = sa_select(TaskMergeRelation.id).where(
+                TaskMergeRelation.merged_task_id == Task.id).correlate(Task).exists()
+            from task_service.infrastructure.persistence.models import TaskCherryPickRelation
+            cherry_exists = sa_select(TaskCherryPickRelation.id).where(
+                TaskCherryPickRelation.cherry_pick_task_id == Task.id).correlate(Task).exists()
+            if merge_type == 'whole':
+                merged, cherry_pick = True, False
+            elif merge_type == 'picked':
+                merged, cherry_pick = False, True
             # INT-141：回收站模式查软删除项，正常模式查活跃项（互斥）
             query = session.query(Task, EXECUTION_STATUS_EXPR, EVALUATION_STATUS_EXPR).filter(
                 Task.deleted == (True if deleted else False))  # noqa: E712
@@ -220,21 +238,16 @@ class TaskReadModel(
                 # （evaluating 等过渡态值仍按原始态命中，行为不变；执行域筛选
                 # 已由 execution_status 参数以派生口径承载）
                 query = query.filter(Task.status == status)
-            if merged:
+            if merged and cherry_pick:
+                # INT-577：双容器并集（OR）
+                query = query.filter(or_(merge_exists, cherry_exists))
+            elif merged:
                 # INT-298：合并容器任务（TaskMergeRelation.merged_task_id 命中即容器）
-                from task_service.infrastructure.persistence.models import TaskMergeRelation
-                query = query.filter(sa_select(TaskMergeRelation.id)
-                                     .where(TaskMergeRelation.merged_task_id == Task.id)
-                                     .correlate(Task)
-                                     .exists())
-            if cherry_pick:
+                query = query.filter(merge_exists)
+            elif cherry_pick:
                 # INT-339：挑选合并容器任务（task_cherry_pick_relations 存在性判定，
                 # §5.4 与 merged 容器同构；不使用 task.type）
-                from task_service.infrastructure.persistence.models import TaskCherryPickRelation
-                query = query.filter(sa_select(TaskCherryPickRelation.id)
-                                     .where(TaskCherryPickRelation.cherry_pick_task_id == Task.id)
-                                     .correlate(Task)
-                                     .exists())
+                query = query.filter(cherry_exists)
             if device_type:
                 from task_service.infrastructure.persistence.models import TaskCase
                 # SQLAlchemy 2.0：exists() 不再接受 Query，改用 select().exists()
@@ -324,15 +337,19 @@ class TaskReadModel(
             # 实验室扩展（INT-540）：批量获取本页任务关联实验室（N:M，含已软删过滤）
             labs_map = self._fetch_labs_map(session, page_task_ids)
             source_tasks_map = {}
+            merge_container_ids = set()
+            merge_container_stats: Dict[int, Dict[str, int]] = {}
             if page_task_ids:
                 relations = (session.query(TaskMergeRelation)
                              .filter(TaskMergeRelation.merged_task_id.in_(page_task_ids)).all())
                 merged_task_ids = sorted({r.merged_task_id for r in relations})
+                merge_container_ids = set(merged_task_ids)
                 source_ids = sorted({r.source_task_id for r in relations})
                 source_map = {t.id: t for t in session.query(Task).filter(Task.id.in_(source_ids)).all()} if source_ids else {}
                 for mid in merged_task_ids:
                     briefs = []
-                    for rel in [r for r in relations if r.merged_task_id == mid]:
+                    rels = [r for r in relations if r.merged_task_id == mid]
+                    for rel in rels:
                         st = source_map.get(rel.source_task_id)
                         if st:
                             briefs.append({
@@ -345,18 +362,30 @@ class TaskReadModel(
                                 'created_at': st.created_at.isoformat() if st.created_at else None,
                             })
                     source_tasks_map[mid] = briefs
+                    # INT-577：整任务合并容器来源计数（来源任务数 = 去重 source_task_id；
+                    # 结果数 = source_result_count 求和——merge_tasks 落库口径）
+                    merge_container_stats[mid] = {
+                        'source_task_count': len({r.source_task_id for r in rels}),
+                        'source_result_count': sum(int(r.source_result_count or 0) for r in rels),
+                    }
             # INT-339：挑选合并容器判定（本页批量，避免 N+1；沿用外层 session，
             # with_session 包装的仓储方法会 close 共享 scoped session，不得在
             # 查询中途调用）。表缺失（旧测试夹具未建表）时降级为空集合，
             # 仅影响 is_cherry_pick 输出，不影响主结果集。
             from task_service.infrastructure.persistence.models import TaskCherryPickRelation
             cherry_pick_container_ids = set()
+            cherry_pick_container_stats: Dict[int, Dict[str, int]] = {}
             if page_task_ids:
                 try:
-                    cp_rows = (session.query(TaskCherryPickRelation.cherry_pick_task_id)
-                               .filter(TaskCherryPickRelation.cherry_pick_task_id.in_(page_task_ids))
-                               .distinct().all())
-                    cherry_pick_container_ids = {r[0] for r in cp_rows}
+                    cp_rows = (session.query(TaskCherryPickRelation)
+                               .filter(TaskCherryPickRelation.cherry_pick_task_id.in_(page_task_ids)).all())
+                    cherry_pick_container_ids = {r.cherry_pick_task_id for r in cp_rows}
+                    for cid in cherry_pick_container_ids:
+                        rels = [r for r in cp_rows if r.cherry_pick_task_id == cid]
+                        cherry_pick_container_stats[cid] = {
+                            'source_task_count': len({r.source_task_id for r in rels}),
+                            'source_result_count': len(rels),
+                        }
                 except Exception as cp_err:
                     logger.debug("挑选合并容器批量判定降级（表可能未建）: %s", cp_err)
             # 批量取页面任务的用例级被测设备类型集合（差异#2 收尾：取代 task.type 输出）
@@ -456,6 +485,23 @@ class TaskReadModel(
                     'updated_at': task.updated_at.isoformat() if task.updated_at else None,
                     'is_favorite': str(task.id) in favorite_ids,
                     'is_cherry_pick': task.id in cherry_pick_container_ids,
+                    # INT-577：合并方式（whole=整任务合并 / picked=结果挑选）+ 来源任务·结果计数
+                    # （供列表次行「来源 {n} 任务 · 结果 {m} 条」与统计徽章）
+                    'merge_type': (
+                        'picked' if task.id in cherry_pick_container_ids
+                        else 'whole' if task.id in merge_container_ids
+                        else None
+                    ),
+                    'source_task_count': (
+                        cherry_pick_container_stats.get(task.id, {}).get('source_task_count')
+                        if task.id in cherry_pick_container_ids
+                        else merge_container_stats.get(task.id, {}).get('source_task_count')
+                    ),
+                    'source_result_count': (
+                        cherry_pick_container_stats.get(task.id, {}).get('source_result_count')
+                        if task.id in cherry_pick_container_ids
+                        else merge_container_stats.get(task.id, {}).get('source_result_count')
+                    ),
                     'reports': report_info,
                     'devices': devices,
                     'apis': apis,
@@ -464,12 +510,42 @@ class TaskReadModel(
                     'labs': labs_map.get(task.id, []),
                 })
 
+            # INT-577：合并容器统计（merged ∪ cherry_pick 并集，供「挑选合并」页签
+            # 计数/facet；独立于列表分页，仅统计未删除容器任务）。表缺失降级 None。
+            container_stats: Optional[Dict[str, int]] = None
+            try:
+                from sqlalchemy import func as sa_func, union as sa_union
+                _deleted_flag = (True if deleted else False)
+                whole_q = (session.query(TaskMergeRelation.merged_task_id)
+                           .join(Task, Task.id == TaskMergeRelation.merged_task_id)
+                           .filter(Task.deleted == _deleted_flag)  # noqa: E712
+                           .distinct())
+                picked_q = (session.query(TaskCherryPickRelation.cherry_pick_task_id)
+                            .join(Task, Task.id == TaskCherryPickRelation.cherry_pick_task_id)
+                            .filter(Task.deleted == _deleted_flag)  # noqa: E712
+                            .distinct())
+                whole_count = int(whole_q.count() or 0)
+                picked_count = int(picked_q.count() or 0)
+                union_sub = sa_union(whole_q, picked_q).subquery()
+                union_count = int(session.query(sa_func.count()).select_from(union_sub).scalar() or 0)
+                container_stats = {
+                    'total': union_count,
+                    'whole': whole_count,
+                    'picked': picked_count,
+                }
+            except Exception as cp_err:
+                # 表缺失（旧测试夹具未建表）时降级 None；失败语句已把事务置为
+                # aborted，必须 rollback 恢复，否则 return 后会话清理连锁抛错。
+                session.rollback()
+                logger.debug("合并容器统计降级（表可能未建）: %s", cp_err)
+
             return {
                 'items': items,
                 'total': pagination.total,
                 'page': pagination.page,
                 'per_page': pagination.per_page,
                 'pages': pagination.pages,
+                'stats': container_stats,
             }
         finally:
             session.close()

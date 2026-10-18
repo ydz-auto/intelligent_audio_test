@@ -13,6 +13,7 @@ import type {
   TaskSourceBrief,
   TaskDomainStats,
   TaskCaseRemoveResult,
+  TaskContainerStats,
 } from '../../domain/model/task'
 import type {
   CaseDetail,
@@ -24,7 +25,7 @@ import type {
 } from '../../domain/model/taskCaseDetail'
 import type { TaskStatusType } from '../../domain/enums'
 import type { ReportMetricConfig } from '../../domain/model/report'
-import type { TaskDto, TaskDetailDto, TaskCaseBriefDto, TaskCreateDto, TaskSourceBriefDto, TaskDomainStatsDto } from '../dto/taskDto'
+import type { TaskDto, TaskDetailDto, TaskCaseBriefDto, TaskCreateDto, TaskSourceBriefDto, TaskDomainStatsDto, TaskContainerStatsDto } from '../dto/taskDto'
 import { s } from './report.utils'
 import { toSafeNumber as n } from './commonAdapter'
 import { toAlgorithmResultItem, toReferenceParamsDict, toFieldMappingItem } from './report.mapping'
@@ -116,6 +117,10 @@ export function toTask(dto: TaskDto | TaskDetailDto): Task {
     // INT-423/467：可见性 + 归属人（两端同名，显式映射；缺省回落 undefined）
     visibility: d.visibility ?? undefined,
     createdByUserId: d.created_by_user_id ?? undefined,
+    // INT-577：统一合并容器「合并方式」+ 来源任务/结果计数（列表次行「来源 {n} 任务 · 结果 {m} 条」）
+    mergeType: d.merge_type ?? null,
+    sourceTaskCount: d.source_task_count ?? null,
+    sourceResultCount: d.source_result_count ?? null,
     result: d.result,
     reports: d.reports
       ? {
@@ -138,6 +143,16 @@ export function toTask(dto: TaskDto | TaskDetailDto): Task {
 
 export function toTaskList(dtos: (TaskDto | TaskDetailDto)[] | null | undefined): Task[] {
   return (dtos ?? []).map(toTask)
+}
+
+/** INT-577：合并容器统计 DTO → Domain（缺省 0；供「挑选合并」页签计数/facet 徽章） */
+export function toContainerStats(dto: TaskContainerStatsDto | null | undefined): TaskContainerStats | null {
+  if (!dto || typeof dto.total !== 'number') return null
+  return {
+    total: dto.total ?? 0,
+    whole: dto.whole ?? 0,
+    picked: dto.picked ?? 0,
+  }
 }
 
 /** 用例移除响应 DTO → TaskCaseRemoveResult（INT-305；snake_case → camelCase） */
