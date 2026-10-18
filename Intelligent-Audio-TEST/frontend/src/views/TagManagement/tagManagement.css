@@ -68,7 +68,7 @@
 
 .tg-card {
   background: var(--card-bg, var(--color-white));
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-card);
   box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 8%, transparent);
   display: flex;
   flex-direction: column;
@@ -267,7 +267,7 @@
 .tg-tag-card {
   background: var(--card-bg, var(--color-white));
   border: 1px solid var(--border-color, var(--color-slate-200));
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-card);
   overflow: hidden;
   transition: all 0.2s;
 }
