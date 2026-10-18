@@ -205,7 +205,8 @@ class TaskQueryService:
                 tags=c.get('tags', []),
                 evaluation_dimensions=c.get('evaluation_dimensions', []),
                 # INT-340：该用例下是否存在人工复核结果（read model 已计算，透传）
-                reviewed=c.get('reviewed'),
+                # INT-734：上游缺省/null 容错为 False（未复核）
+                reviewed=c.get('reviewed') or False,
             )
             for c in item.get('cases', [])
         ]
@@ -242,7 +243,8 @@ class TaskQueryService:
                 completed_cases=item.get('completed_cases'),
                 failed_cases=item.get('failed_cases'),
                 # INT-340：任务下已复核结果条数（read model 已计算，透传——覆盖提醒/报告标记）
-                review_count=item.get('review_count'),
+                # INT-734：上游缺省/null 容错为 0（未复核）
+                review_count=item.get('review_count') or 0,
                 tags=item.get('tags', []),
                 cases=cases,
                 devices=devices,

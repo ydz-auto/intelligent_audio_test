@@ -118,7 +118,8 @@ class TaskCaseBrief(APIModel):
     # INT-302/F3：本任务用例聚合的评估维度 [{id, name}]（重评估维度勾选候选集）
     evaluation_dimensions: List[Dict[str, Any]] = Field(default_factory=list)
     # INT-340：该用例下是否存在人工复核结果（任务详情「人工复核」标记）
-    reviewed: bool = Field(False)
+    # INT-734：DB 复核表无记录时上游可能透传 null，网关容错（缺省按 False/未复核）
+    reviewed: Optional[bool] = Field(False)
 
 
 class TaskDetailData(APIModel):
@@ -143,7 +144,8 @@ class TaskDetailData(APIModel):
     device_count: Optional[int] = Field(None)
     completed_cases: Optional[int] = Field(None)
     failed_cases: Optional[int] = Field(None)
-    review_count: int = Field(0)
+    # INT-734：DB 复核表无记录时上游可能透传 null，网关容错（缺省 0）
+    review_count: Optional[int] = Field(0)
     tags: List[str] = Field(default_factory=list)
     cases: List[TaskCaseBrief] = Field(default_factory=list)
     devices: List[TaskDeviceBrief] = Field(default_factory=list)
