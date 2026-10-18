@@ -32,7 +32,7 @@ export function GlobalAlgorithmSwitcher() {
   }, [options, query])
 
   const current = options.find((option) => option.value === algorithmId)
-  const isAll = !algorithmId
+  const isAll = !algorithmId || !current
 
   // 无 algorithm:read（device_admin/guest）：整钮不渲染（隐藏而非置灰）
   if (!canRead) return null
