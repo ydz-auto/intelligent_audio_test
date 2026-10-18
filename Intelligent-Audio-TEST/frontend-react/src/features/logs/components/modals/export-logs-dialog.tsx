@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import type { LogExportInput } from '@/domain/models/log'
-import { LOG_EXPORT_FORMATS } from '@/domain/models/log'
+import { LOG_EXPORT_FORMATS } from '@/features/logs/constants'
 
 export type LogFilterSummary = {
   startTime?: string

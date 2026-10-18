@@ -1,17 +1,21 @@
 /**
  * 日志数据表（interfaces 层；17_配置运维.md §4.4 DataTablePage）。
  * 列=勾选/展开/时间/级别/模块/算法/来源/内容/操作；ERROR·CRITICAL 行染浅色 tint；
- * 行点击展开详情行（LogRowDetails）；行内操作「标记」（颜色 Popover，log:manage）/
- * 「复制」（CopyButton，[时间] [级别] [模块] 内容）。
- * 空态：「暂无日志」/ 搜索空「未找到匹配日志」；加载 TableSkeleton。
+ * 时间/级别/模块/来源列头可点击排序（§4.4「时间=排序列」，客户端排序对齐 V9.7.10
+ * sortLogs 语义，后端 LogListQuery 无 sort 参数）；行点击展开详情行（LogRowDetails）；
+ * 行内操作「标记」（颜色 Popover，log:manage）/「复制」（CopyButton，[时间] [级别]
+ * [模块] 内容）。
+ * 空态：「暂无日志」/ 搜索空「未找到匹配日志」；加载 TableSkeleton；首载失败 ErrorState
+ * + 重试（INT-607 错误态区分先例，错误态不渲染空态文案）。
  */
-import { ChevronDown, ChevronRight, Flag } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronRight, Flag } from 'lucide-react'
 import { Fragment } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { CopyButton } from '@/components/copy-button'
+import { ErrorState } from '@/components/error-state'
 import {
   Empty,
   EmptyDescription,
@@ -35,9 +39,55 @@ import {
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import { LogRowDetails } from '@/features/logs/components/log-row-details'
 
+/** 可排序列（§4.4：时间/级别/模块/来源；与 V9.7.10 sortLogs 列一致） */
+export type LogSortKey = 'time' | 'level' | 'module' | 'source'
+
+export type LogSort = {
+  key: LogSortKey
+  direction: 'asc' | 'desc'
+}
+
+/** 级别排序权重（DEBUG < INFO < WARNING < ERROR < CRITICAL；未知级别垫底） */
+const LOG_LEVEL_ORDER: Record<string, number> = {
+  DEBUG: 0,
+  INFO: 1,
+  WARNING: 2,
+  ERROR: 3,
+  CRITICAL: 4,
+}
+
+/** 客户端排序（§4.4 排序列；null 不动序，realtime 增量插顶语义保留） */
+export function sortLogItems(rows: LogItem[], sort: LogSort | null): LogItem[] {
+  if (!sort) return rows
+  const copy = [...rows]
+  const { key, direction } = sort
+  copy.sort((a, b) => {
+    let cmp = 0
+    switch (key) {
+      case 'time':
+        cmp = a.time.localeCompare(b.time)
+        break
+      case 'level':
+        cmp = (LOG_LEVEL_ORDER[a.level.toUpperCase()] ?? 99) - (LOG_LEVEL_ORDER[b.level.toUpperCase()] ?? 99)
+        break
+      case 'module':
+        cmp = (a.module || '').localeCompare(b.module || '')
+        break
+      case 'source':
+        cmp = (a.source || '').localeCompare(b.source || '')
+        break
+    }
+    return direction === 'asc' ? cmp : -cmp
+  })
+  return copy
+}
+
 export type LogsTableProps = {
   rows: LogItem[]
   loading: boolean
+  /** 列表首载失败（INT-607：错误态区分，不落空态「暂无日志」误导） */
+  error?: boolean
+  onRetry?: () => void
   total: number
   searchKeyword: string
   selectedIds: Set<number>
@@ -47,6 +97,9 @@ export type LogsTableProps = {
   expandedId: number | null
   onToggleExpand: (id: number) => void
   onMark: (log: LogItem, mark: string) => void
+  /** 当前排序（null=服务端原序；realtime 增量插顶语义保留） */
+  sort: LogSort | null
+  onToggleSort: (key: LogSortKey) => void
 }
 
 /** 复制内容格式（§4.5「复制内容」口径：[时间] [级别] [模块] 内容） */
@@ -102,8 +155,47 @@ function MarkAction({
   )
 }
 
+/** 排序列头（§4.4：可点击排序，箭头指示当前方向；未激活显示可排提示图标） */
+function SortableHeader({
+  sortKey,
+  label,
+  sort,
+  onToggleSort,
+}: {
+  sortKey: LogSortKey
+  label: string
+  sort: LogSort | null
+  onToggleSort: () => void
+}) {
+  const active = sort?.key === sortKey
+  return (
+    <button
+      type='button'
+      onClick={onToggleSort}
+      aria-label={`按${label}排序`}
+      className='hover:text-foreground inline-flex items-center gap-1 transition-colors'
+    >
+      {label}
+      {active ? (
+        sort!.direction === 'asc' ? (
+          <ArrowUp aria-hidden='true' className='size-3' />
+        ) : (
+          <ArrowDown aria-hidden='true' className='size-3' />
+        )
+      ) : (
+        <ArrowUpDown
+          aria-hidden='true'
+          className='text-muted-foreground/60 size-3 opacity-60'
+        />
+      )}
+    </button>
+  )
+}
+
 export function LogsTable(props: LogsTableProps) {
   const isEmpty = !props.loading && props.rows.length === 0
+  // 首载失败：错误态优先于空态（INT-607「错误态区分」，不得把加载失败渲染成无数据）
+  const hasError = Boolean(props.error) && isEmpty
   const allSelected =
     !isEmpty && props.rows.length > 0 && props.selectedIds.size === props.rows.length
 
@@ -114,6 +206,18 @@ export function LogsTable(props: LogsTableProps) {
         {Array.from({ length: 6 }).map((_, i) => (
           <Skeleton key={i} className='h-12 w-full rounded-none border-b' />
         ))}
+      </div>
+    )
+  }
+
+  if (hasError) {
+    return (
+      <div className='bg-card ring-foreground/10 rounded-xl ring-1'>
+        <ErrorState
+          title='日志列表加载失败'
+          description='获取日志列表失败，请重试'
+          onRetry={props.onRetry}
+        />
       </div>
     )
   }
@@ -156,11 +260,39 @@ export function LogsTable(props: LogsTableProps) {
                 </span>
               </th>
               <th className='w-10 px-2 py-2' />
-              <th className='px-3 py-2 text-left font-medium'>时间</th>
-              <th className='px-3 py-2 text-left font-medium'>级别</th>
-              <th className='px-3 py-2 text-left font-medium'>模块</th>
+              <th className='px-3 py-2 text-left font-medium'>
+                <SortableHeader
+                  sortKey='time'
+                  label='时间'
+                  sort={props.sort}
+                  onToggleSort={() => props.onToggleSort('time')}
+                />
+              </th>
+              <th className='px-3 py-2 text-left font-medium'>
+                <SortableHeader
+                  sortKey='level'
+                  label='级别'
+                  sort={props.sort}
+                  onToggleSort={() => props.onToggleSort('level')}
+                />
+              </th>
+              <th className='px-3 py-2 text-left font-medium'>
+                <SortableHeader
+                  sortKey='module'
+                  label='模块'
+                  sort={props.sort}
+                  onToggleSort={() => props.onToggleSort('module')}
+                />
+              </th>
               <th className='px-3 py-2 text-left font-medium'>算法</th>
-              <th className='px-3 py-2 text-left font-medium'>来源</th>
+              <th className='px-3 py-2 text-left font-medium'>
+                <SortableHeader
+                  sortKey='source'
+                  label='来源'
+                  sort={props.sort}
+                  onToggleSort={() => props.onToggleSort('source')}
+                />
+              </th>
               <th className='px-3 py-2 text-left font-medium'>内容</th>
               <th className='w-16 px-3 py-2 text-right font-medium'>操作</th>
             </tr>

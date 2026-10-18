@@ -28,7 +28,7 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import type { LogRealtimeConfig } from '@/domain/models/log'
-import { REALTIME_POLL_INTERVALS } from '@/domain/models/log'
+import { REALTIME_POLL_INTERVALS } from '@/features/logs/constants'
 
 export type RealtimeConfigDialogProps = {
   open: boolean

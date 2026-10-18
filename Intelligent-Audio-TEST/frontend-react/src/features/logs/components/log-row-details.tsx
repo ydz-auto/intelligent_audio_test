@@ -33,7 +33,7 @@ export function LogRowDetails({ log }: { log: LogItem }) {
 
   return (
     <tr className='border-border/50 border-b bg-muted/20'>
-      <td colSpan={7} className='px-4 py-3'>
+      <td colSpan={9} className='px-4 py-3'>
         <div className='mb-2 flex items-center gap-1.5 text-xs font-medium'>
           <ChevronDown aria-hidden='true' className='text-muted-foreground size-3.5' />
           详细信息

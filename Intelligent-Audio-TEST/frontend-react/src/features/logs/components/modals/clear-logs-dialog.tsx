@@ -79,6 +79,16 @@ export function ClearLogsDialog(props: ClearLogsDialogProps) {
               aria-label='保留已标记日志'
             />
           </div>
+
+          {/* §4.7 确认文案：将清除 {n} 条日志（n 由统计推算；保留已标记 {m} 条——后端暂不返回已标记计数） */}
+          <p className='text-muted-foreground text-xs'>
+            将清除约{' '}
+            <span className='text-foreground tabular-nums'>
+              {props.estimatedCount.toLocaleString()}
+            </span>{' '}
+            条日志
+            {keepMarked ? '（保留已标记日志不受影响）' : '（含已标记日志）'}，确定吗？
+          </p>
         </div>
 
         <DialogFooter>

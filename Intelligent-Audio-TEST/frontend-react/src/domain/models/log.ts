@@ -114,37 +114,19 @@ export type LogClearInput = {
   keepMarked?: boolean
 }
 
-/** 日志导出格式（§7.9 格式 Select；后端 LogExportRequest.format 取值 txt/json/csv/excel） */
-export const LOG_EXPORT_FORMATS = [
-  { value: 'txt', label: '文本' },
-  { value: 'json', label: 'JSON' },
-  { value: 'csv', label: 'CSV' },
-] as const
+/** 日志导出格式（后端 LogExportRequest.format 取值 txt/json/csv/excel；中文标签选项见 features/logs/constants） */
+export type LogExportFormat = 'txt' | 'json' | 'csv' | 'excel'
 
 export type LogExportInput = {
   logIds?: Array<string | number>
-  format?: (typeof LOG_EXPORT_FORMATS)[number]['value']
+  format?: LogExportFormat
 }
 
-/** 实时监控配置（§7.11；轮询间隔档位 + 自动滚动 + 新日志计数 toast） */
-export const REALTIME_POLL_INTERVALS = [
-  { value: 2_000, label: '2s' },
-  { value: 5_000, label: '5s' },
-  { value: 10_000, label: '10s' },
-  { value: 30_000, label: '30s' },
-  { value: 60_000, label: '60s' },
-] as const
-
+/** 实时监控配置（§7.11；默认值 DEFAULT_REALTIME_CONFIG / 轮询档位 REALTIME_POLL_INTERVALS 见 features/logs/constants） */
 export type LogRealtimeConfig = {
   /** 轮询间隔（仅 WS 不可用降级 refresh 轮询时生效；默认跟随 VITE_LOG_POLL_IDLE_MAX_MS 语义） */
   pollIntervalMs: number
   autoScroll: boolean
   /** 新日志计数 toast 开关 */
   notifyNewLogs: boolean
-}
-
-export const DEFAULT_REALTIME_CONFIG: LogRealtimeConfig = {
-  pollIntervalMs: 5_000,
-  autoScroll: true,
-  notifyNewLogs: true,
 }

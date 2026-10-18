@@ -12,7 +12,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import type { LogItem, LogRealtimeConfig } from '@/domain/models/log'
-import { DEFAULT_REALTIME_CONFIG } from '@/domain/models/log'
 import { LOG_STATS_QUERY_KEY, refreshLogs } from '@/infrastructure/api/logsApi'
 
 /** 实时连接状态（§4.6 指示器文案映射；WS 接通后随模块升级切换） */
@@ -20,6 +19,13 @@ export type LogRealtimeConnection = 'idle' | 'polling' | 'error'
 
 /** 空闲退避上限（VITE_LOG_POLL_IDLE_MAX_MS 语义：无新日志时轮询放缓至上限 30s） */
 const LOG_POLL_IDLE_MAX_MS = 30_000
+
+/** 缺省实时配置（页面经 features/logs/constants DEFAULT_REALTIME_CONFIG 传入；此处兜底同值） */
+const FALLBACK_REALTIME_CONFIG: LogRealtimeConfig = {
+  pollIntervalMs: 5_000,
+  autoScroll: true,
+  notifyNewLogs: true,
+}
 
 export type LogRealtimeState = {
   enabled: boolean
@@ -33,13 +39,15 @@ export type LogRealtimeState = {
   resetNewLogs: () => void
 }
 
-export function useLogRealtime(): LogRealtimeState {
+export function useLogRealtime(initialConfig?: LogRealtimeConfig): LogRealtimeState {
   const queryClient = useQueryClient()
   const [enabled, setEnabledState] = useState(false)
   const [connection, setConnection] = useState<LogRealtimeConnection>('idle')
   const [logRate, setLogRate] = useState(0)
   const [logDelay, setLogDelay] = useState(0)
-  const [config, setConfigState] = useState<LogRealtimeConfig>(DEFAULT_REALTIME_CONFIG)
+  const [config, setConfigState] = useState<LogRealtimeConfig>(
+    initialConfig ?? FALLBACK_REALTIME_CONFIG
+  )
   const [newLogs, setNewLogs] = useState<LogItem[]>([])
   /** 增量基准（null = 未建立：首个轮询仅建基准，存量批不插顶） */
   const lastIdRef = useRef<number | null>(null)

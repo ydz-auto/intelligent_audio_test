@@ -32,6 +32,7 @@ import { useLogRealtime } from '@/application/logs/useLogRealtime'
 import { useLogMutations } from '@/application/logs/useLogMutations'
 import type { LogExportInput, LogItem, LogQuery } from '@/domain/models/log'
 import {
+  DEFAULT_REALTIME_CONFIG,
   LOG_DEFAULT_PAGE_SIZE,
   LOG_LEVEL_OPTIONS,
   LOG_PAGE_SIZE_OPTIONS,
@@ -43,7 +44,13 @@ import {
   type LogAdvancedFilters,
 } from '@/features/logs/components/logs-filter-toolbar'
 import { LogsStatsRow } from '@/features/logs/components/logs-stats-row'
-import { LogsTable, formatLogCopy } from '@/features/logs/components/logs-table'
+import {
+  LogsTable,
+  formatLogCopy,
+  sortLogItems,
+  type LogSort,
+  type LogSortKey,
+} from '@/features/logs/components/logs-table'
 import { RealtimeMonitorBar } from '@/features/logs/components/realtime-monitor-bar'
 import { LogsBulkActions } from '@/features/logs/components/logs-bulk-actions'
 import { ExportLogsDialog, type LogFilterSummary } from '@/features/logs/components/modals/export-logs-dialog'
@@ -56,6 +63,7 @@ const EMPTY_ADVANCED: LogAdvancedFilters = {
   deviceId: '',
   taskId: '',
   evaluationId: '',
+  userId: '',
   threadId: '',
   contentInclude: '',
   contentExclude: '',
@@ -86,6 +94,8 @@ export function LogsPage() {
   const [scope, setScope] = useState<LogScope>('all')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(LOG_DEFAULT_PAGE_SIZE)
+  /* 列头排序（§4.4 排序列；null=服务端原序，客户端排序对齐 V9.7.10 sortLogs） */
+  const [sort, setSort] = useState<LogSort | null>(null)
 
   /* ───────── 弹窗 + 选择 + 展开 ───────── */
   const [exportOpen, exportDialog] = useDialog()
@@ -130,6 +140,7 @@ export function LogsPage() {
     if (advanced.deviceId) next.deviceId = advanced.deviceId
     if (advanced.taskId) next.taskId = advanced.taskId
     if (advanced.evaluationId) next.evaluationId = advanced.evaluationId
+    if (advanced.userId) next.userId = advanced.userId
     if (advanced.threadId) next.threadId = advanced.threadId
     if (advanced.contentInclude) next.contentInclude = advanced.contentInclude
     if (advanced.contentExclude) next.contentExclude = advanced.contentExclude
@@ -142,7 +153,7 @@ export function LogsPage() {
 
   const listQuery = useLogListQuery(query)
   const statsQuery = useLogStatsQuery(query)
-  const realtime = useLogRealtime()
+  const realtime = useLogRealtime(DEFAULT_REALTIME_CONFIG)
   const { mark, clear, exportLogs } = useLogMutations()
 
   // 筛选条件变更 → 清空实时增量缓冲（新日志与旧筛选不匹配，避免脏显示）
@@ -158,6 +169,17 @@ export function LogsPage() {
     const seen = new Set(realtime.newLogs.map((log) => log.id))
     return [...realtime.newLogs, ...server.filter((log) => !seen.has(log.id))]
   }, [realtime.newLogs, listQuery.data])
+
+  /* ───────── 列头排序（§4.4 排序列；点升/降切换，第三次回服务端原序） ───────── */
+  const toggleSort = useCallback((key: LogSortKey) => {
+    setSort((prev) => {
+      if (!prev || prev.key !== key) return { key, direction: 'desc' }
+      if (prev.direction === 'desc') return { key, direction: 'asc' }
+      return null
+    })
+  }, [])
+
+  const sortedRows = useMemo(() => sortLogItems(rows, sort), [rows, sort])
 
   const total = listQuery.data?.total ?? 0
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
@@ -436,8 +458,10 @@ export function LogsPage() {
               className='min-h-0 flex-1 overflow-y-auto'
             >
               <LogsTable
-                rows={rows}
+                rows={sortedRows}
                 loading={listQuery.isLoading}
+                error={listQuery.isError}
+                onRetry={() => void listQuery.refetch()}
                 total={total}
                 searchKeyword={searchKeyword}
                 selectedIds={selectedIds}
@@ -449,6 +473,8 @@ export function LogsPage() {
                   setExpandedId((prev) => (prev === id ? null : id))
                 }
                 onMark={handleMark}
+                sort={sort}
+                onToggleSort={toggleSort}
               />
             </div>
 

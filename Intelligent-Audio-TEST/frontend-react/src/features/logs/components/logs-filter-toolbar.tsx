@@ -2,7 +2,7 @@
  * 日志筛选工具栏（interfaces 层；17_配置运维.md §4.2 LogsFilterToolbar）。
  * 搜索「搜索日志内容...」+ 分类/模块/标记/算法 Select + 级别 tag 多选 + 时间范围
  * （datetime-local 双框，对齐 Vue LogFilterPanel 语义）+ 高级过滤折叠
- * （设备ID/任务ID/评估ID/线程ID/内容包含/内容不包含）+ 清除过滤器。
+ * （设备ID/任务ID/评估ID/用户ID/线程ID/内容包含/内容不包含）+ 清除过滤器。
  * 算法筛选与全局切换器联动（§2.2：切换全局算法后同步为当前全局算法，可改选）。
  */
 import { ChevronDown, ChevronUp, Eraser, Search } from 'lucide-react'
@@ -30,6 +30,7 @@ export type LogAdvancedFilters = {
   deviceId: string
   taskId: string
   evaluationId: string
+  userId: string
   threadId: string
   contentInclude: string
   contentExclude: string
@@ -229,7 +230,7 @@ export function LogsFilterToolbar(props: LogsFilterToolbarProps) {
         </div>
       </div>
 
-      {/* 高级过滤折叠区（§4.2：设备ID/任务ID/评估ID/线程ID/内容包含/内容不包含） */}
+      {/* 高级过滤折叠区（§4.2：设备ID/任务ID/评估ID/用户ID/线程ID/内容包含/内容不包含） */}
       {advancedOpen && (
         <div className='bg-muted/30 grid gap-2 rounded-lg border p-2.5 sm:grid-cols-2 lg:grid-cols-3'>
           <AdvancedInput
@@ -246,6 +247,11 @@ export function LogsFilterToolbar(props: LogsFilterToolbarProps) {
             label='评估ID/轮次'
             value={props.advanced.evaluationId}
             onChange={(v) => props.onAdvancedChange({ evaluationId: v })}
+          />
+          <AdvancedInput
+            label='用户ID'
+            value={props.advanced.userId}
+            onChange={(v) => props.onAdvancedChange({ userId: v })}
           />
           <AdvancedInput
             label='线程ID'

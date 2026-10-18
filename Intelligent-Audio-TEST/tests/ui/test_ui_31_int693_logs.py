@@ -25,8 +25,9 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 BASE = os.environ.get('REACT_DEV_BASE', 'http://localhost:5312')
 CHROME_BINARY = r'C:\Program Files\Google\Chrome\Application\chrome.exe'
-ARTIFACTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                         'tests', 'ui', 'artifacts', 'int693_logs')
+# 与整站 tests/ui 其余用例同口径（PROJECT_ROOT = 仓库根；tests/ui/artifacts/...）
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ARTIFACTS = os.path.join(PROJECT_ROOT, 'tests', 'ui', 'artifacts', 'int693_logs')
 THEME_KEY = 'iatp:theme:v1:mode'
 
 
@@ -225,3 +226,33 @@ def test_05_realtime_toggle_and_config(drv):
     # 验证 refresh 轮询真实请求（开环后至少触发一次）
     WebDriverWait(drv, 20).until(
         lambda d: any('logs/refresh' in u for u in _resource_urls(drv, '/api/v1/logs/refresh')))
+
+
+def test_06_column_sort(drv):
+    """P2 返修：§4.4 排序列——时间列头可点击排序（客户端 sortLogs，第三次回原序）。"""
+    _set_theme(drv, 'light')
+    _wait_text(drv, '日志查看')
+    WebDriverWait(drv, 20).until(
+        lambda d: len(d.find_elements(By.CSS_SELECTOR, 'tbody tr')) > 0)
+
+    def first_two_times():
+        cells = drv.find_elements(By.CSS_SELECTOR, 'tbody tr td:nth-child(3)')
+        return [c.text for c in cells[:2]]
+
+    sort_btn = WebDriverWait(drv, 10).until(
+        lambda d: d.find_element(By.XPATH, "//button[contains(@aria-label, '按时间排序')]"))
+    sort_btn.click()  # 第 1 击：desc（与后端默认倒序一致）
+    time.sleep(0.3)
+    d1 = first_two_times()
+    sort_btn.click()  # 第 2 击：asc（旧在前）
+    time.sleep(0.3)
+    a1 = first_two_times()
+    # 两次点击后时间列应升序（ISO 时间串逐字典序 = 时间序）
+    assert a1[0] <= a1[1], f'时间升序排序未生效：{a1[0]} > {a1[1]}'
+    sort_btn.click()  # 第 3 击：回服务端原序（回 desc 默认展示）
+    time.sleep(0.3)
+    r1 = first_two_times()
+    assert r1[0] >= r1[1], f'第三次点击应回服务端倒序：{r1[0]} < {r1[1]}'
+    shot = os.path.join(ARTIFACTS, 'logs-sorted.png')
+    drv.save_screenshot(shot)
+    assert os.path.getsize(shot) > 10_000, '排序截图过小'

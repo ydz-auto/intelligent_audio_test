@@ -5,6 +5,7 @@
  * 参数原值（category/module/mark），'all' 表示不过滤。
  */
 import type { StatusVariant } from '@/features/dashboard/components/ui/status-badge'
+import type { LogRealtimeConfig } from '@/domain/models/log'
 
 /** 日志级别 tag 选项（大写原值；后端按逗号串过滤） */
 export const LOG_LEVEL_OPTIONS = [
@@ -76,3 +77,26 @@ export const LOG_DEFAULT_PAGE_SIZE = 20
 
 /** 搜索防抖（§4.2 Enter 应用；300ms 与算法页 ALGORITHM_SEARCH_DEBOUNCE_MS 同档） */
 export const LOG_SEARCH_DEBOUNCE_MS = 300
+
+/** 日志导出格式（§7.9 格式 Select；后端 LogExportRequest.format 取值 txt/json/csv/excel，界面只列三种） */
+export const LOG_EXPORT_FORMATS = [
+  { value: 'txt', label: '文本' },
+  { value: 'json', label: 'JSON' },
+  { value: 'csv', label: 'CSV' },
+] as const
+
+/** 实时监控轮询间隔档位（§7.11；2s/5s/10s/30s/60s） */
+export const REALTIME_POLL_INTERVALS = [
+  { value: 2_000, label: '2s' },
+  { value: 5_000, label: '5s' },
+  { value: 10_000, label: '10s' },
+  { value: 30_000, label: '30s' },
+  { value: 60_000, label: '60s' },
+] as const
+
+/** 实时监控默认配置（§7.11；页面传 useLogRealtime 作初始值，application 层兜底同值） */
+export const DEFAULT_REALTIME_CONFIG: LogRealtimeConfig = {
+  pollIntervalMs: 5_000,
+  autoScroll: true,
+  notifyNewLogs: true,
+}
