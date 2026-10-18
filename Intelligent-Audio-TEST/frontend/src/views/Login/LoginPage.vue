@@ -6,24 +6,8 @@
         <h1>智能语音测试系统</h1>
       </div>
 
-      <!-- 登录/注册双 Tab（INT-51 自助注册） -->
-      <div class="tab-bar">
-        <button
-          type="button"
-          class="tab-btn"
-          :class="{ active: activeTab === 'login' }"
-          @click="switchTab('login')"
-        >登 录</button>
-        <button
-          type="button"
-          class="tab-btn"
-          :class="{ active: activeTab === 'register' }"
-          @click="switchTab('register')"
-        >注 册</button>
-      </div>
-
       <!-- 登录表单 -->
-      <form v-if="activeTab === 'login'" @submit.prevent="handleLogin">
+      <form @submit.prevent="handleLogin">
         <div class="form-group">
           <label>用户名 / 邮箱</label>
           <input
@@ -48,55 +32,10 @@
         <button type="submit" class="login-btn" :disabled="loading">
           {{ loading ? '登录中...' : '登 录' }}
         </button>
-      </form>
-
-      <!-- 注册表单 -->
-      <form v-else @submit.prevent="handleRegister">
-        <div class="form-group">
-          <label>用户名</label>
-          <input
-            v-model="registerForm.username"
-            type="text"
-            placeholder="请输入用户名"
-            required
-            :disabled="loading"
-          />
-        </div>
-        <div class="form-group">
-          <label>密码</label>
-          <input
-            v-model="registerForm.password"
-            type="password"
-            :placeholder="`请输入密码（至少 ${AUTH_PASSWORD_MIN_LENGTH} 位）`"
-            required
-            :minlength="AUTH_PASSWORD_MIN_LENGTH"
-            :disabled="loading"
-          />
-        </div>
-        <div class="form-group">
-          <label>确认密码</label>
-          <input
-            v-model="registerForm.confirmPassword"
-            type="password"
-            placeholder="请再次输入密码"
-            required
-            :disabled="loading"
-          />
-        </div>
-        <div class="form-group">
-          <label>邮箱</label>
-          <input
-            v-model="registerForm.email"
-            type="email"
-            placeholder="请输入邮箱"
-            required
-            :disabled="loading"
-          />
-        </div>
-        <p v-if="error" class="error-msg">{{ error }}</p>
-        <button type="submit" class="login-btn" :disabled="loading">
-          {{ loading ? '注册中...' : '注 册' }}
-        </button>
+        <p class="login-footer">
+          没有账号？
+          <router-link to="/register" class="login-link">去注册</router-link>
+        </p>
       </form>
 
       <!-- OAuth 提供方动态按钮（管理端配置后自动渲染） -->
@@ -124,41 +63,27 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../../store/authStore'
 import { authPort } from '../../composables/auth/authPort'
 import { AuthErrorCode } from '../../domain/enums'
-import { AUTH_PASSWORD_MIN_LENGTH } from '../../domain/constants/auth'
 import type { OAuthProvider } from '../../domain/model/auth'
+import { sanitizeRedirect } from '../../utils/redirect'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 
-const activeTab = ref<'login' | 'register'>('login')
 const form = reactive({ username: '', password: '' })
-const registerForm = reactive({
-  username: '',
-  password: '',
-  confirmPassword: '',
-  email: '',
-})
 const loading = ref(false)
 const error = ref('')
 const oauthProviders = ref<OAuthProvider[]>([])
-
-function switchTab(tab: 'login' | 'register') {
-  activeTab.value = tab
-  error.value = ''
-}
 
 async function handleLogin() {
   error.value = ''
   loading.value = true
   try {
-    // 走 Application 层 Port（authStore.login），视图不感知 infrastructure
     await authStore.login(form.username, form.password)
-    const redirect = (route.query.redirect as string) || '/'
+    const redirect = sanitizeRedirect(route.query.redirect as string | undefined)
     router.push(redirect)
   } catch (e: any) {
-    // INT-188：加密校验失败 ≠ 凭证错误——引导刷新重试，不误导为密码错误；
-    // 加密初始化失败（前端抛错）由 message 直接呈现
+    // INT-188：加密校验失败 ≠ 凭证错误——引导刷新重试，不误导为密码错误
     if (e?.code === AuthErrorCode.ENCRYPTION_INVALID) {
       error.value = e?.detail || '登录加密校验失败，请刷新页面重试'
     } else {
@@ -169,43 +94,8 @@ async function handleLogin() {
   }
 }
 
-async function handleRegister() {
-  error.value = ''
-  if (registerForm.password !== registerForm.confirmPassword) {
-    error.value = '两次输入的密码不一致'
-    return
-  }
-  if (!registerForm.email.trim()) {
-    // INT-285 口径②：邮箱必填（对齐基线；后端网关同口径 400 兜底）
-    error.value = '请输入邮箱'
-    return
-  }
-  loading.value = true
-  try {
-    await authStore.register({
-      username: registerForm.username,
-      password: registerForm.password,
-      email: registerForm.email.trim(),
-    })
-    // 注册成功：切回登录 Tab，预填用户名引导登录（注册→登录全流程）
-    form.username = registerForm.username
-    form.password = ''
-    registerForm.password = ''
-    registerForm.confirmPassword = ''
-    activeTab.value = 'login'
-    error.value = ''
-  } catch (e: any) {
-    // 注册开关关闭 → 后端 403；重名等 → 400/409
-    error.value = e?.detail || e?.message || '注册失败'
-  } finally {
-    loading.value = false
-  }
-}
-
 function handleOAuth(slug: string) {
-  // 整页跳转到后端授权入口（302 → 提供方授权页 → 回调 → 携 token 回本页）。
-  // INT-285 口径③（成员裁定）：本页跳转（window.location.href），
-  // 不回退基线 window.open 新标签；表单未保存状态随跳转丢失为接受行为。
+  // 整页跳转到后端授权入口（302 → 提供方授权页 → 回调 → 携 token 回本页）
   window.location.href = authPort.getOAuthAuthorizeUrl(slug)
 }
 
@@ -220,7 +110,7 @@ onMounted(async () => {
     loading.value = true
     try {
       await authStore.loginWithToken(oauthToken)
-      const redirect = (route.query.redirect as string) || '/'
+      const redirect = sanitizeRedirect(route.query.redirect as string | undefined)
       router.push(redirect)
       return
     } catch (e: any) {
@@ -247,11 +137,12 @@ onMounted(async () => {
   background: var(--muted);
 }
 .login-card {
-  background: white;
+  background: var(--card);
   padding: 40px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 2px 10px color-mix(in srgb, var(--color-black) 10%, transparent);
   width: 360px;
+  border: 1px solid var(--border);
 }
 .login-header {
   text-align: center;
@@ -259,32 +150,12 @@ onMounted(async () => {
 }
 .login-header i {
   font-size: 40px;
-  color: var(--secondary);
+  color: var(--primary);
 }
 .login-header h1 {
   font-size: 20px;
   color: var(--foreground);
   margin-top: 10px;
-}
-.tab-bar {
-  display: flex;
-  margin-bottom: 20px;
-  border-bottom: 1px solid var(--color-gray-300);
-}
-.tab-btn {
-  flex: 1;
-  padding: 10px 0;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  font-size: 15px;
-  color: var(--color-gray-500);
-  cursor: pointer;
-}
-.tab-btn.active {
-  color: var(--secondary);
-  border-bottom-color: var(--secondary);
-  font-weight: 600;
 }
 .form-group {
   margin-bottom: 20px;
@@ -292,32 +163,35 @@ onMounted(async () => {
 .form-group label {
   display: block;
   margin-bottom: 5px;
-  color: var(--color-gray-500);
+  color: var(--text-secondary);
   font-size: 14px;
 }
 .form-group input {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid var(--color-gray-300);
-  border-radius: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   font-size: 14px;
+  color: var(--foreground);
+  background: var(--card);
 }
 .form-group input:focus {
-  border-color: var(--secondary);
+  border-color: var(--ring);
   outline: none;
+  box-shadow: 0 0 0 3px var(--accent);
 }
 .login-btn {
   width: 100%;
   padding: 12px;
-  background: var(--secondary);
-  color: white;
+  background: var(--primary);
+  color: var(--primary-foreground);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 16px;
   cursor: pointer;
 }
 .login-btn:hover {
-  background: var(--color-blue-600);
+  background: var(--primary-hover);
 }
 .login-btn:disabled {
   opacity: 0.6;
@@ -329,6 +203,17 @@ onMounted(async () => {
   margin-bottom: 15px;
   font-size: 14px;
 }
+.login-footer {
+  text-align: center;
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.login-link {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 600;
+}
 .oauth-section {
   margin-top: 24px;
 }
@@ -336,7 +221,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   margin-bottom: 12px;
-  color: var(--color-gray-400);
+  color: var(--text-tertiary);
   font-size: 12px;
 }
 .oauth-divider::before,
@@ -344,7 +229,7 @@ onMounted(async () => {
   content: '';
   flex: 1;
   height: 1px;
-  background: var(--color-gray-300);
+  background: var(--border);
 }
 .oauth-divider span {
   padding: 0 10px;
@@ -353,15 +238,15 @@ onMounted(async () => {
   width: 100%;
   padding: 10px;
   margin-bottom: 8px;
-  background: white;
-  border: 1px solid var(--color-gray-300);
-  border-radius: 4px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   font-size: 14px;
   cursor: pointer;
 }
 .oauth-btn:hover {
-  border-color: var(--secondary);
-  color: var(--secondary);
+  border-color: var(--ring);
+  color: var(--primary);
 }
 .oauth-btn:disabled {
   opacity: 0.6;

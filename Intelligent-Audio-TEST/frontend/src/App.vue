@@ -1,69 +1,14 @@
 <template>
-  <div class="app-container">
-    <!-- INT-745：公共页（/ /user-guide /about /rankings）挂 PublicLayout 公共壳，不带侧栏 -->
-    <template v-if="isPublicRoute">
-      <router-view />
-    </template>
-
-    <!-- 业务页：工作台侧栏壳（基座壳 INT-735 将重构为 AuthenticatedLayout + 分组侧栏 + 顶栏） -->
-    <template v-else>
-      <aside class="sidebar" :class="{ 'sidebar-collapsed': sidebarCollapsed }" @mouseenter="handleSidebarEnter" @mouseleave="handleSidebarLeave">
-        <div class="sidebar-header">
-          <div class="logo-container" v-if="!sidebarCollapsed">
-            <h1 class="logo">
-              <i class="fas fa-headset"></i>
-              智能语音测试系统
-            </h1>
-          </div>
-          <div class="logo-icon-only" v-else>
-            <i class="fas fa-headset"></i>
-          </div>
-        </div>
-
-        <nav>
-          <ul>
-            <li v-for="item in visibleNavItems" :key="item.path">
-              <router-link :to="item.path" class="navLink" :class="{ 'justify-center': sidebarCollapsed }">
-                <i :class="item.icon"></i>
-                <span v-if="!sidebarCollapsed">{{ item.label }}</span>
-              </router-link>
-            </li>
-            <!-- INT-577 §8：全局购物车角标（登录即可看，task:read 数据；增删链 task:cherry_pick 显隐） -->
-            <li v-if="canViewCart">
-              <button class="navLink nav-cart-link" @click="cartDrawerState.open()">
-                <i class="fas fa-cart-shopping navIcon"></i>
-                <span v-if="!sidebarCollapsed">挑选购物车</span>
-                <span v-if="pickCartCount > 0" class="nav-cart-badge">{{ pickCartCount }}</span>
-              </button>
-            </li>
-          </ul>
-        </nav>
-
-        <!-- 用户信息 + 登出 -->
-        <div v-if="authStore.isLoggedIn && !sidebarCollapsed" class="sidebar-footer">
-          <button class="user-entry" @click="goAccountSettings" title="账号设置">
-            <span class="user-name">{{ authStore.username }}</span>
-            <span class="user-role" v-if="authStore.roleName">{{ authStore.roleName }}</span>
-          </button>
-          <button class="logout-btn" @click="handleLogout">登出</button>
-        </div>
-      </aside>
-
-      <div class="sidebar-hover-trigger" v-if="sidebarCollapsed || isHomePage" @mouseenter="handleTriggerEnter" @mouseleave="handleTriggerLeave">
-        <div class="sidebar-hint">
-          <i class="fas fa-chevron-right"></i>
-        </div>
-      </div>
-
-      <main class="main-content" :class="{ 'sidebar-collapsed': sidebarCollapsed }" ref="mainContentRef">
-        <router-view :key="$route.fullPath"></router-view>
-      </main>
-    </template>
+  <div class="app-root">
+    <!-- 布局壳按路由 meta.layout 选择；无壳（错误页）直接渲染 router-view -->
+    <component :is="layoutComponent" v-if="layoutComponent" />
+    <router-view v-else />
 
     <div id="global-fixed-elements"></div>
     <GlobalModalContainer />
     <Notification ref="notificationRef" />
-    <!-- INT-577 §4.4：全局购物车抽屉（导航栏角标入口；「去复核」跳到挑选合并页签复核步骤） -->
+    <RequireLoginDialog />
+    <!-- INT-577 §4.4：全局购物车抽屉（Tasks/CherryPickPanel 入口；「去复核」跳到挑选合并页签复核步骤） -->
     <CartDrawer
       :visible="cartDrawerState.visible.value"
       @close="cartDrawerState.close()"
@@ -73,61 +18,43 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { provideModal } from './composables/index'
 import { registerGlobalModals } from './components/common/modal/modalRegistration'
 import GlobalModalContainer from './components/common/modal/GlobalModalContainer.vue'
 import { useAuthStore } from './store/authStore'
+import { useThemeStore } from './store/themeStore'
 import Notification from './components/common/modal/Notification.vue'
 import { provideNotification, type NotificationInstance } from './composables/modal/useNotification'
+import RequireLoginDialog from './components/layout/RequireLoginDialog.vue'
+import PublicLayout from './layouts/PublicLayout.vue'
+import AuthLayout from './layouts/AuthLayout.vue'
+import AuthenticatedLayout from './layouts/AuthenticatedLayout.vue'
 import CartDrawer from './components/task/pick/CartDrawer.vue'
-import { usePickCart } from './composables/task/usePickCart'
 import { useCartDrawerState } from './composables/task/cartDrawerState'
 import { requestPickWizard } from './composables/task/usePickWizardRequest'
-import { PermissionPoint } from './domain/enums'
-import { initTheme } from './composables/shared/useTheme'
 
-// ===== 导航配置 =====
-interface NavItem {
-  path: string
-  label: string
-  icon: string
-  permission: string
-}
+// provide() 必须在 setup 同步阶段调用，提供模态框管理器供子孙组件 inject
+provideModal()
+registerGlobalModals()
 
-const navItems: NavItem[] = [
-  { path: '/', label: '首页', icon: 'fas fa-home navIcon', permission: 'home:read' },
-  { path: '/E2ETest', label: '端到端测试', icon: 'fas fa-project-diagram navIcon', permission: 'task:execute' },
-  { path: '/APITest', label: 'API测试', icon: 'fas fa-exchange-alt navIcon', permission: 'task:execute' },
-  { path: '/AlgorithmConfig', label: '算法配置', icon: 'fas fa-cogs navIcon', permission: 'algorithm:read' },
-  { path: '/tasks', label: '测试任务记录', icon: 'fas fa-tasks navIcon', permission: 'task:read' },
-  { path: '/rankings', label: '排行榜', icon: 'fas fa-chart-simple navIcon', permission: 'benchmark:ranking:read' },
-  { path: '/history-reports', label: '历史报告', icon: 'fas fa-history navIcon', permission: 'report:read' },
-  { path: '/TestCaseManager', label: '用例管理', icon: 'fas fa-tasks navIcon', permission: 'testcase:read' },
-  { path: '/Evaluation', label: '评估维度管理', icon: 'fas fa-star navIcon', permission: 'evaluation:read' },
-  { path: '/Device', label: '设备管理', icon: 'fas fa-headphones navIcon', permission: 'device:read' },
-  { path: '/AudioImport', label: '导入音频管理', icon: 'fas fa-music navIcon', permission: 'audio:read' },
-  { path: '/SPLMapping', label: '声压级映射管理', icon: 'fas fa-sliders-h navIcon', permission: 'spl:read' },
-  { path: '/LogView', label: '日志查看', icon: 'fas fa-file-alt navIcon', permission: 'log:read' },
-  { path: '/TagManagement', label: '标签管理', icon: 'fas fa-tags navIcon', permission: 'tag:read' },
-  { path: '/OAuthProviders', label: 'OAuth 提供方', icon: 'fas fa-plug navIcon', permission: 'auth:manage_provider' },
-]
-
-// ===== Stores & refs =====
-const authStore = useAuthStore()
-const router = useRouter()
 const route = useRoute()
+const router = useRouter()
 const notificationRef = ref<NotificationInstance | null>(null)
-const mainContentRef = ref<HTMLElement | null>(null)
-
-// INT-577：全局购物车（导航栏角标 + 抽屉；usePickCart 单例镜像，跨页面共享）
-const pickCart = usePickCart()
 const cartDrawerState = useCartDrawerState()
-const pickCartCount = computed(() => pickCart.cartCount.value ?? 0)
-/** §8：角标登录即可看（task:read 数据）；写链 task:cherry_pick 显隐由各按钮承载 */
-const canViewCart = computed(() => authStore.isLoggedIn && authStore.hasPermission('task:read'))
 
+/** 按路由 meta.layout 选择布局壳（无 meta.layout = 无壳错误页） */
+const layoutComponent = computed(() => {
+  switch (route.meta.layout) {
+    case 'public': return PublicLayout
+    case 'auth': return AuthLayout
+    case 'authenticated': return AuthenticatedLayout
+    default: return null
+  }
+})
+
+/** INT-577：购物车抽屉「去复核」→ 挑选合并页签复核步骤 */
 function goCartReview() {
   cartDrawerState.close()
   // P0 修复同款机制：经共享请求自开复核向导（:key=fullPath 重挂载下 URL 参数方案
@@ -138,243 +65,27 @@ function goCartReview() {
   router.push({ path: '/tasks', query })
 }
 
-// provide() 必须在 setup 同步阶段调用，提供模态框管理器供子孙组件 inject
-provideModal()
-registerGlobalModals()
-
-/** INT-745：公共页（meta.public）不带工作台侧栏壳，由 PublicLayout 自管站头/页脚 */
-const isPublicRoute = computed(() => route.meta.public === true)
-
-// 按权限过滤导航
-const visibleNavItems = computed(() => {
-  if (!authStore.isLoggedIn) {
-    // 未登录（AUTH_MODE=off 兼容）：显示全部
-    return navItems
-  }
-  return navItems.filter(item => authStore.hasPermission(item.permission))
-})
-
-// 侧边栏折叠状态
-const sidebarCollapsed = ref(true)
-let hideTimeout: ReturnType<typeof setTimeout> | null = null
-let autoHideTimeout: ReturnType<typeof setTimeout> | null = null
-let isMouseOverSidebar = false
-
-const isHomePage = computed(() => route.path === '/')
-
-function clearTimers() {
-  if (hideTimeout) clearTimeout(hideTimeout)
-  if (autoHideTimeout) clearTimeout(autoHideTimeout)
-}
-
-function handleTriggerEnter() {
-  isMouseOverSidebar = true
-  clearTimers()
-  sidebarCollapsed.value = false
-}
-
-function handleTriggerLeave() {
-  isMouseOverSidebar = false
-  hideTimeout = setTimeout(() => {
-    if (!isMouseOverSidebar) sidebarCollapsed.value = true
-  }, 300)
-}
-
-function handleSidebarEnter() {
-  isMouseOverSidebar = true
-  clearTimers()
-  sidebarCollapsed.value = false
-}
-
-function handleSidebarLeave() {
-  isMouseOverSidebar = false
-  hideTimeout = setTimeout(() => {
-    if (!isMouseOverSidebar) sidebarCollapsed.value = true
-  }, 300)
-}
-
-async function handleLogout() {
-  await authStore.logout()
-  router.push('/')
-}
-
-function goAccountSettings() {
-  // 账号设置入口（INT-147：第三方账号绑定管理）
-  router.push('/AccountSettings')
-}
-
-// 路由切换：重置滚动 + 侧边栏自动折叠
-watch(() => route.fullPath, () => {
-  if (mainContentRef.value) {
-    mainContentRef.value.scrollTop = 0
-  }
-  clearTimers()
-  isMouseOverSidebar = false
-  sidebarCollapsed.value = isHomePage.value
-  if (!isHomePage.value) {
-    autoHideTimeout = setTimeout(() => {
-      if (!isMouseOverSidebar) sidebarCollapsed.value = true
-    }, 1000)
-  }
-})
-
 onMounted(() => {
   if (notificationRef.value) {
     provideNotification(notificationRef.value)
   }
 
   // 恢复用户信息：token 存在时从后端 /auth/me 拉取最新权限
-  authStore.init()
+  useAuthStore().init()
 
-  // INT-577：全局购物车角标初始同步（导航栏角标数据源 usePickCart 单例镜像）
-  pickCart.refreshCart()
-
-  // 深浅色主题恢复（INT-745 启用 tokens.css .dark 块；localStorage iatp:theme:v1）
-  initTheme()
-
-  sidebarCollapsed.value = isHomePage.value
-  if (!isHomePage.value) {
-    autoHideTimeout = setTimeout(() => {
-      if (!isMouseOverSidebar) sidebarCollapsed.value = true
-    }, 1000)
-  }
+  // 主题初始化：挂 .dark（localStorage iatp:theme:v1），须在渲染前生效
+  useThemeStore().init()
 })
 
 onUnmounted(() => {
-  clearTimers()
+  // 无清理逻辑（模态框等由全局单例持有）
 })
 </script>
 
 <style scoped>
-.sidebar-header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: var(--spacing-xl);
-  padding-bottom: var(--spacing-lg);
-  border-bottom: 1px solid var(--gray-light-color);
-  flex-shrink: 0;
-}
-
-.logo-container {
-  flex: 1;
-  overflow: hidden;
-}
-
-.logo-icon-only {
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--primary-light);
-  border-radius: var(--radius-control);
-  flex-shrink: 0;
-}
-
-.logo-icon-only i {
-  font-size: 20px;
-  color: var(--primary-color);
-}
-
-.sidebar-footer {
-  margin-top: auto;
-  padding: var(--spacing-md);
-  border-top: 1px solid var(--gray-light-color);
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  font-size: 13px;
-}
-
-.user-entry {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  font: inherit;
-  min-width: 0;
-}
-
-.user-entry:hover .user-name {
-  color: var(--primary-color);
-  text-decoration: underline;
-}
-
-.user-name {
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.user-role {
-  color: var(--text-secondary);
-  background: var(--gray-light-color);
-  padding: 2px 8px;
-  border-radius: var(--radius-tag);
-  font-size: 11px;
-}
-
-.logout-btn {
-  margin-left: auto;
-  background: none;
-  border: 1px solid var(--gray-color);
-  border-radius: var(--radius-control);
-  padding: 4px 10px;
-  font-size: 12px;
-  cursor: pointer;
-  color: var(--text-secondary);
-}
-
-.logout-btn:hover {
-  border-color: var(--danger-color);
-  color: var(--danger-color);
-}
-
-.navLink.justify-center {
-  justify-content: center;
-  padding: var(--spacing-md);
-}
-
-.navLink.justify-center .navIcon {
-  margin-right: 0;
-}
-
-@media (max-width: 768px) {
-  .sidebar-header {
-    padding: var(--spacing-sm);
-  }
-}
-
-/* INT-577：全局购物车导航角标 */
-.nav-cart-link {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  cursor: pointer;
-  border: none;
-  background: none;
-  font: inherit;
-  color: inherit;
-}
-.nav-cart-badge {
-  position: absolute;
-  top: 4px;
-  right: 10px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 6px;
-  border-radius: var(--radius-pill);
-  background: var(--primary, #ff6a00);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 600;
+/* 根容器只提供背景；滚动由各布局自管（AuthenticatedLayout 内部滚动，Public/错误页自然滚动） */
+.app-root {
+  min-height: 100vh;
+  background: var(--background);
 }
 </style>

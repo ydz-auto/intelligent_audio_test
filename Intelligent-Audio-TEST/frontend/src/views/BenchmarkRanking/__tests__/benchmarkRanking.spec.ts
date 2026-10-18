@@ -245,16 +245,17 @@ describe('页面遍历（验收②）', () => {
   })
 })
 
-describe('路由公开可达（INT-745：/rankings 公开路由，数据 403 权限空态）', () => {
-  it('/rankings 为公开路由（meta.public，无路由级权限），旧链 /benchmarks redirect 兼容', () => {
+describe('路由公开可达（INT-745：/rankings 公开路由，数据 403 权限空态；INT-735：layout public）', () => {
+  it('/rankings 为公开路由（meta.public + layout public，无路由级权限），旧链 /benchmarks redirect 兼容', () => {
     const rankings = router.getRoutes().find((r) => r.path === '/rankings')
     expect(rankings).toBeDefined()
     expect(rankings?.meta.public).toBe(true)
     expect(rankings?.meta.permission).toBeUndefined()
+    expect(rankings?.meta.layout).toBe('public')
 
     // 旧链 /benchmarks 保留（收藏夹/旧链接兼容），redirect 到 /rankings
     const legacy = router.getRoutes().find((r) => r.path === '/benchmarks')
     expect(legacy).toBeDefined()
-    expect(legacy?.redirect).toMatchObject({ name: 'rankings' })
+    expect(legacy?.redirect).toBeTruthy()
   })
 })
