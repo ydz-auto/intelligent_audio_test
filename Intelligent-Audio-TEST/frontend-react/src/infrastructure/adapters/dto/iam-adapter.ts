@@ -79,7 +79,9 @@ const EXTRA_MODULE_NAME: Record<string, string> = {
  */
 export function toPermissionModules(dtos: AuthPermissionDto[]): PermissionModule[] {
   const codeModuleId = new Map<string, string>()
+  const catalogModuleIds = new Set<string>()
   for (const module of PERMISSION_CATALOG) {
+    catalogModuleIds.add(module.id)
     for (const permission of module.permissions) {
       codeModuleId.set(permission.code, module.id)
     }
@@ -101,10 +103,18 @@ export function toPermissionModules(dtos: AuthPermissionDto[]): PermissionModule
       else knownGroups.set(moduleId, [permission])
     } else {
       const prefix = dto.name.split(':')[0] || dto.name
-      permission.module = prefix
-      const list = extraGroups.get(prefix)
-      if (list) list.push(permission)
-      else extraGroups.set(prefix, [permission])
+      // 后端新增码前缀命中目录模块 id → 并入该模块，避免同 id 双模块（React duplicate key）
+      if (catalogModuleIds.has(prefix)) {
+        permission.module = prefix
+        const list = knownGroups.get(prefix)
+        if (list) list.push(permission)
+        else knownGroups.set(prefix, [permission])
+      } else {
+        permission.module = prefix
+        const list = extraGroups.get(prefix)
+        if (list) list.push(permission)
+        else extraGroups.set(prefix, [permission])
+      }
     }
   }
   const modules: PermissionModule[] = []

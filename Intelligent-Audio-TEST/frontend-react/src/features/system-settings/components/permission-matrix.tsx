@@ -93,24 +93,22 @@ export function PermissionMatrix(props: PermissionMatrixProps) {
                 className='group/module'
                 disabled={props.disabled}
               >
-                <CollapsibleTrigger
-                  render={<div />}
+                <div
                   className={cn(
                     'border-border/70 hover:bg-muted/50 flex w-full items-center gap-2 rounded-lg border px-3 py-2',
                     props.disabled && 'cursor-not-allowed'
                   )}
                 >
-                  <ChevronRight className='size-4 shrink-0 transition-transform duration-200 group-data-[panel-open]/module:rotate-90' />
-                  <span className='min-w-0 flex-1 truncate text-sm font-medium'>
-                    {module.name}
-                  </span>
-                  <Badge variant='secondary' className='shrink-0'>
-                    已选 {selectedCount}/{moduleCodes.length}
-                  </Badge>
-                  <span
-                    className='flex shrink-0 items-center gap-1'
-                    onClick={(event) => event.stopPropagation()}
-                  >
+                  <CollapsibleTrigger className='group/trigger flex min-w-0 flex-1 items-center gap-2 rounded-lg text-left'>
+                    <ChevronRight className='size-4 shrink-0 transition-transform duration-200 group-data-[panel-open]/module:rotate-90' />
+                    <span className='min-w-0 flex-1 truncate text-sm font-medium'>
+                      {module.name}
+                    </span>
+                    <Badge variant='secondary' className='shrink-0'>
+                      已选 {selectedCount}/{moduleCodes.length}
+                    </Badge>
+                  </CollapsibleTrigger>
+                  <span className='flex shrink-0 items-center gap-1'>
                     <Button
                       type='button'
                       variant='ghost'
@@ -134,7 +132,7 @@ export function PermissionMatrix(props: PermissionMatrixProps) {
                       清空
                     </Button>
                   </span>
-                </CollapsibleTrigger>
+                </div>
                 <CollapsibleContent>
                   <div className='mt-1 flex flex-col gap-1 pl-6'>
                     {module.permissions.map((permission) => {
