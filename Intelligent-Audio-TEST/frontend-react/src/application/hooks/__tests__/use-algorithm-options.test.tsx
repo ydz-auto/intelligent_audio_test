@@ -22,6 +22,12 @@ vi.mock('@/infrastructure/api/algorithm-api', () => ({
   fetchAlgorithmOptions: fetchMock,
 }))
 
+const evaluationFetchMock = vi.hoisted(() => vi.fn())
+
+vi.mock('@/infrastructure/api/evaluation-api', () => ({
+  fetchAlgorithmOptions: evaluationFetchMock,
+}))
+
 const REAL_OPTIONS: AlgorithmSwitchOption[] = [
   { value: 'voice_llm', name: '语音大模型' },
   { value: 'audio_sep', name: '音频分离' },
@@ -53,6 +59,11 @@ describe('useAlgorithmOptions queryKey 隔离（代码审计 P2 回归）', () =
   beforeEach(() => {
     fetchMock.mockReset()
     fetchMock.mockResolvedValue(REAL_OPTIONS)
+    evaluationFetchMock.mockReset()
+    evaluationFetchMock.mockResolvedValue([
+      { value: 'asr-v3', label: '通用识别引擎' },
+      { value: 'eval-ensemble', label: '多维评估集成' },
+    ])
     useAuthStore.setState({ user: null })
   })
 

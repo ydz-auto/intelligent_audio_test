@@ -1,7 +1,7 @@
 /**
  * 报告变更操作聚合（application 层）：发布/软删/恢复/彻底删除/收藏/重命名/导出。
- * 出图先：调 infrastructure API 桩 + toast 反馈 + 列表失效重拉（演示交互闭环）；
- * TODO(API 接线): 桩替换真实端点后本层无需改动（返回形保持一致）。
+ * 接线卡 INT-643：移除演示 store 乐观覆盖（reports-ui-store），统一走真实端点 + 列表失效重拉；
+ * 导出端点返回二进制 Blob，本层触发浏览器下载。
  */
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
@@ -13,13 +13,25 @@ import {
   exportReports,
   generateTaskReport,
   publishReport,
-  purgeReport,
+  purgeReports,
   regenerateReport,
-  restoreReport,
+  restoreReports,
   toggleReportFavorite,
   updateReport,
 } from '@/infrastructure/api/reports-api'
-import { useReportsUiStore } from '@/infrastructure/stores/reports-ui-store'
+
+/** 触发 Blob 浏览器下载（导出报告：后端返回二进制文件） */
+function triggerBlobDownload(blob: Blob, format: string): void {
+  const ext = format === 'excel' ? 'xlsx' : format
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `报告导出.${ext}`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
 
 export function useReportActions() {
   const queryClient = useQueryClient()
@@ -38,7 +50,7 @@ export function useReportActions() {
     [refresh]
   )
 
-  /** 取消发布（快照语义：桩写回 name 保持成功回执；TODO(API 接线): POST /reports/{id}/unpublish） */
+  /** 取消发布（快照语义：更新 name 保持回执；后端无独立 unpublish 端点） */
   const unpublish = useCallback(
     async (id: number, name?: string) => {
       await updateReport(id, { name: name || undefined })
@@ -59,7 +71,6 @@ export function useReportActions() {
 
   const softDelete = useCallback(
     async (ids: number[]) => {
-      useReportsUiStore.getState().softDelete(ids)
       await deleteReport(ids[0]).catch(() => {})
       toast.success(ids.length > 1 ? `成功删除 ${ids.length} 个报告` : '报告已删除')
       refresh()
@@ -69,8 +80,7 @@ export function useReportActions() {
 
   const restore = useCallback(
     async (ids: number[]) => {
-      useReportsUiStore.getState().restore(ids)
-      await restoreReport(ids[0]).catch(() => {})
+      await restoreReports(ids).catch(() => {})
       toast.success(ids.length > 1 ? `已恢复 ${ids.length} 个报告` : '报告已恢复')
       refresh()
     },
@@ -79,20 +89,21 @@ export function useReportActions() {
 
   const purge = useCallback(
     async (ids: number[]) => {
-      useReportsUiStore.getState().purge(ids)
-      await purgeReport(ids[0]).catch(() => {})
+      await purgeReports(ids).catch(() => {})
       toast.success('已彻底删除')
       refresh()
     },
     [refresh]
   )
 
-  const toggleFavorite = useCallback(async (id: number, nextFavorite: boolean) => {
-    useReportsUiStore.getState().toggleFavorite(id, nextFavorite)
-    await toggleReportFavorite(id).catch(() => {})
-    toast.success(nextFavorite ? '已收藏' : '已取消收藏')
-    refresh()
-  }, [refresh])
+  const toggleFavorite = useCallback(
+    async (id: number, nextFavorite: boolean) => {
+      await toggleReportFavorite(id, nextFavorite).catch(() => {})
+      toast.success(nextFavorite ? '已收藏' : '已取消收藏')
+      refresh()
+    },
+    [refresh]
+  )
 
   const regenerate = useCallback(
     async (id: number) => {
@@ -116,7 +127,8 @@ export function useReportActions() {
 
   const exportReport = useCallback(
     async (ids: number[], format: string) => {
-      await exportReports({ ids, format })
+      const blob = await exportReports({ ids, format })
+      triggerBlobDownload(blob, format)
       toast.success('报告已导出')
     },
     []
@@ -147,7 +159,6 @@ export function useBatchReportActions() {
 
   const batchDelete = useCallback(
     async (ids: number[]) => {
-      useReportsUiStore.getState().softDelete(ids)
       await batchDeleteReports(ids).catch(() => {})
       toast.success(`成功删除 ${ids.length} 个报告`)
       refresh()
@@ -157,8 +168,7 @@ export function useBatchReportActions() {
 
   const batchRestore = useCallback(
     async (ids: number[]) => {
-      useReportsUiStore.getState().restore(ids)
-      await restoreReport(ids[0]).catch(() => {})
+      await restoreReports(ids).catch(() => {})
       toast.success(`已恢复 ${ids.length} 个报告`)
       refresh()
     },
@@ -167,8 +177,7 @@ export function useBatchReportActions() {
 
   const batchPurge = useCallback(
     async (ids: number[]) => {
-      useReportsUiStore.getState().purge(ids)
-      await purgeReport(ids[0]).catch(() => {})
+      await purgeReports(ids).catch(() => {})
       toast.success('已彻底删除')
       refresh()
     },

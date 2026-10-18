@@ -96,7 +96,7 @@ export function PublishTaskDialog({
   )
   const source = publishable.find((t) => String(t.id) === sourceTaskId)
 
-  const handleSourceChange = (value: string) => {
+  const handleSourceChange = (value: string | null) => {
     setSourceTaskId(value)
     const next = publishable.find((t) => String(t.id) === value)
     if (next) setName(next.name)
@@ -220,7 +220,7 @@ export function PublishTaskDialog({
               </div>
               <div className='flex flex-col gap-1.5'>
                 <Label className='text-sm'>被测类别</Label>
-                <Select value={benchmarkCategory} onValueChange={setBenchmarkCategory}>
+                <Select value={benchmarkCategory} onValueChange={(value) => setBenchmarkCategory(value ?? 'none')}>
                   <SelectTrigger size='sm' className='w-full' aria-label='被测类别'>
                     <SelectValue />
                   </SelectTrigger>

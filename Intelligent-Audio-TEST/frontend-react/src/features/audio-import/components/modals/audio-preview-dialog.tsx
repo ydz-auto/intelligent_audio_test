@@ -145,7 +145,7 @@ export function AudioPreviewDialog(props: AudioPreviewDialogProps) {
     }
   }
 
-  const handleModeChange = (value: string) => {
+  const handleModeChange = (value: 'frontend' | 'laboratory' | null) => {
     const mode = value === 'laboratory' ? 'laboratory' : 'frontend'
     if (mode !== playbackMode) {
       // 切换播放模式先停止当前播放

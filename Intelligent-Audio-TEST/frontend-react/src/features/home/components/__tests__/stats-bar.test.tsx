@@ -9,10 +9,25 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { render, screen } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { StatsBar } from '@/features/home/components/stats-bar'
 import { useAuthStore } from '@/infrastructure/stores/auth-store'
+import type { HomeStatsDetails } from '@/domain/models/home'
+
+vi.mock('@/infrastructure/api/home', () => ({
+  fetchHomeStatsDetails: vi.fn().mockResolvedValue({
+    test_cases: { total: 128, groups: 32 },
+    tasks: { total: 342, completed: 200, running: 10, failed: 5 },
+    devices: { online: 50, offline: 10, total: 60 },
+    audio_files: { total: 1560, dry: 1200, noise: 200, prompt: 160 },
+    playback_devices: 10,
+    apis: { online: 8, offline: 2, total: 10 },
+    reports: 45,
+    dimensions: { total: 38, with_endpoints: 30, endpoints: 26 },
+    updated_at: '2026-10-18T00:00:00',
+  } satisfies HomeStatsDetails),
+}))
 
 const initialAuth = useAuthStore.getState()
 
