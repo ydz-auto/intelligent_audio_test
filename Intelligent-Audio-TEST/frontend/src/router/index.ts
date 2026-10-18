@@ -100,8 +100,9 @@ const routes: Array<RouteRecordRaw> = [
   // OAuth 提供方收编认证设置域（旧链 redirect）
   { path: '/OAuthProviders', name: 'oauthProvidersLegacy', redirect: '/system-settings/auth/oauth-providers' },
   // 个人中心
-  { path: '/profile', name: 'profile', component: () => import('../views/Account/AccountSettings.vue'), meta: { layout: 'authenticated', title: '个人中心' } },
-  { path: '/AccountSettings', name: 'accountSettings', redirect: '/profile' },
+  // INT-744：个人中心 /profile（承接 /AccountSettings 并入；旧链用组件内 router.replace 保留 query 供 OAuth 绑定回调）
+  { path: '/profile', name: 'profile', component: () => import('../views/Profile/ProfileView.vue'), meta: { layout: 'authenticated', title: '个人中心' } },
+  { path: '/AccountSettings', name: 'accountSettings', component: () => import('../views/Account/AccountSettings.vue'), meta: { layout: 'authenticated', title: '账号设置' } },
   // 测试执行旧链（INT-737 合并入口落地后翻转 redirect：侧栏「测试执行 → 开始测试」单入口）
   { path: '/E2ETest', name: 'e2eTest', redirect: '/start-test', meta: { permission: 'task:execute', layout: 'authenticated', title: '开始测试' } },
   { path: '/APITest', name: 'apiTest', redirect: '/start-test', meta: { permission: 'task:execute', layout: 'authenticated', title: '开始测试' } },
