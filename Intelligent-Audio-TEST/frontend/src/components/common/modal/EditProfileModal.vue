@@ -116,7 +116,7 @@ function handleCancel() {
   width: 100%;
   padding: 10px 14px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-control, 8px);
   font-size: 14px;
   box-sizing: border-box;
   background: var(--background);
@@ -152,8 +152,8 @@ function handleCancel() {
   margin: 0;
   font-size: 13px;
   color: var(--destructive);
-  background: var(--destructive-light, rgba(245, 34, 45, 0.1));
-  border-radius: 6px;
+  background: var(--destructive-light);
+  border-radius: var(--radius-control, 8px);
   padding: 8px 10px;
 }
 
@@ -168,7 +168,7 @@ function handleCancel() {
 
 .btn {
   padding: 8px 18px;
-  border-radius: 6px;
+  border-radius: var(--radius-control, 8px);
   font-size: 14px;
   cursor: pointer;
   border: none;

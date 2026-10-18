@@ -445,7 +445,7 @@ onBeforeUnmount(() => {
 .profile-card {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-card, 16px);
   overflow: hidden;
 }
 
@@ -464,13 +464,13 @@ onBeforeUnmount(() => {
 .avatar {
   width: 56px;
   height: 56px;
-  border-radius: 12px;
+  border-radius: var(--radius-card, 16px);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 22px;
   font-weight: 600;
-  color: #fff;
+  color: var(--color-white);
   flex-shrink: 0;
   box-shadow: 0 0 0 2px var(--card);
 }
@@ -511,7 +511,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-tag, 4px);
   font-size: 12px;
   font-weight: 500;
 }
@@ -522,7 +522,7 @@ onBeforeUnmount(() => {
 }
 
 .id-badge {
-  background: var(--secondary-light, rgba(25, 118, 210, 0.1));
+  background: var(--secondary-light);
   color: var(--secondary);
 }
 
@@ -548,7 +548,7 @@ onBeforeUnmount(() => {
 }
 
 .bound-badge {
-  background: var(--success-light, rgba(82, 196, 26, 0.1));
+  background: var(--success-light);
   color: var(--success);
 }
 
@@ -600,7 +600,7 @@ onBeforeUnmount(() => {
 .stat-icon {
   width: 24px;
   height: 24px;
-  border-radius: 6px;
+  border-radius: var(--radius-control, 8px);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -609,17 +609,17 @@ onBeforeUnmount(() => {
 }
 
 .stat-icon.chart-4 {
-  background: var(--destructive-light, rgba(245, 34, 45, 0.1));
+  background: var(--destructive-light);
   color: var(--chart-4);
 }
 
 .stat-icon.info {
-  background: var(--secondary-light, rgba(25, 118, 210, 0.1));
+  background: var(--secondary-light);
   color: var(--secondary);
 }
 
 .stat-icon.success {
-  background: var(--success-light, rgba(82, 196, 26, 0.1));
+  background: var(--success-light);
   color: var(--success);
 }
 
@@ -692,7 +692,7 @@ onBeforeUnmount(() => {
 .card-icon {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--radius-control, 8px);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -701,7 +701,7 @@ onBeforeUnmount(() => {
 }
 
 .card-icon.info {
-  background: var(--secondary-light, rgba(25, 118, 210, 0.1));
+  background: var(--secondary-light);
   color: var(--secondary);
 }
 
@@ -805,7 +805,7 @@ onBeforeUnmount(() => {
   margin-top: 12px;
   padding: 10px 12px;
   background: var(--muted);
-  border-radius: 6px;
+  border-radius: var(--radius-control, 8px);
   font-size: 12px;
   color: var(--muted-foreground);
   line-height: 1.5;
@@ -844,7 +844,7 @@ onBeforeUnmount(() => {
 .row-icon {
   width: 32px;
   height: 32px;
-  border-radius: 6px;
+  border-radius: var(--radius-control, 8px);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -880,10 +880,10 @@ onBeforeUnmount(() => {
   width: fit-content;
   margin-top: 2px;
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-tag, 4px);
   font-size: 11px;
-  background: var(--warning-light, rgba(255, 169, 64, 0.1));
-  color: var(--warning-dark, var(--warning));
+  background: var(--warning-light);
+  color: var(--warning-dark);
 }
 
 /* ===== 第三方绑定 ===== */
@@ -906,7 +906,7 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-card, 16px);
   padding: 10px 12px;
 }
 
@@ -920,7 +920,7 @@ onBeforeUnmount(() => {
 .provider-icon {
   width: 32px;
   height: 32px;
-  border-radius: 6px;
+  border-radius: var(--radius-control, 8px);
   background: var(--muted);
   display: inline-flex;
   align-items: center;
@@ -984,7 +984,6 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 6px;
   padding: 8px 16px;
-  border-radius: 6px;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -1021,7 +1020,7 @@ onBeforeUnmount(() => {
 }
 
 .btn-ghost-danger:hover:not(:disabled) {
-  background: var(--destructive-light, rgba(245, 34, 45, 0.1));
+  background: var(--destructive-light);
 }
 
 .btn-ghost-danger:disabled {
@@ -1040,7 +1039,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-control, 8px);
   color: var(--foreground);
   text-decoration: none;
   transition: background 0.2s;
@@ -1053,7 +1052,7 @@ onBeforeUnmount(() => {
 .ql-icon {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--radius-control, 8px);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1097,7 +1096,7 @@ onBeforeUnmount(() => {
   gap: 10px;
   padding: 12px 14px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-card, 16px);
   background: var(--card);
   color: var(--muted-foreground);
 }
@@ -1126,8 +1125,8 @@ onBeforeUnmount(() => {
   z-index: 100;
   background: var(--popover);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 4px 16px color-mix(in srgb, var(--color-black) 12%, transparent);
+  border-radius: var(--radius-control, 8px);
+  box-shadow: var(--shadow-md);
   padding: 12px;
 }
 
@@ -1167,7 +1166,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   padding: 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-control, 8px);
   color: var(--foreground);
   text-decoration: none;
   transition: background 0.2s;
@@ -1252,7 +1251,7 @@ onBeforeUnmount(() => {
   font-size: 11px;
   background: var(--muted);
   color: var(--foreground);
-  border-radius: 4px;
+  border-radius: var(--radius-tag, 4px);
   padding: 2px 6px;
 }
 
@@ -1266,14 +1265,14 @@ onBeforeUnmount(() => {
 
 .skeleton {
   background: var(--muted);
-  border-radius: 8px;
+  border-radius: var(--radius-card, 16px);
   animation: skeleton-pulse 1.4s ease-in-out infinite;
 }
 
 .skeleton-avatar {
   width: 56px;
   height: 56px;
-  border-radius: 12px;
+  border-radius: var(--radius-card, 16px);
 }
 
 .skeleton-lines {
