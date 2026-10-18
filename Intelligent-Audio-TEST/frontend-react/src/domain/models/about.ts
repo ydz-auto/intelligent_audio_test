@@ -30,3 +30,9 @@ export type AuthHealthResponse = {
   status: 'ok' | string
   service: string
 }
+
+/** 系统健康汇总端点 GET /api/v1/system/health 响应（网关 + 认证服务聚合；待 INT-766 后端落地） */
+export type SystemHealthResponse = {
+  gateway: GatewayHealthResponse
+  auth: AuthHealthResponse
+}
