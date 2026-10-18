@@ -80,7 +80,8 @@ export interface PickCartEntry {
   /** §11-5 未补前为 null，result_type 级分组折叠为「结果类型待补充」 */
   sourceResultType: string | null
   executionStatus: string
-  evaluationStatus: string
+  /** §11-5 未补前购物车条目后端不返评估状态 → null（界面不渲染该列） */
+  evaluationStatus: string | null
   invalid: boolean
 }
 
@@ -113,7 +114,7 @@ export interface CartTreeLeaf {
   apiName: string | null
   resultType: string | null
   executionStatus: string
-  evaluationStatus: string
+  evaluationStatus: string | null
   invalid: boolean
 }
 

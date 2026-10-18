@@ -1,15 +1,17 @@
 /**
- * 任务域列表/详情 API 桩（infrastructure 层，09_任务域.md §10）。
- * 全部返回 mock 常量（红线④），接线时替换为真实请求：
- *   GET /api/v1/tasks                  （task.py TaskListQuery：page/per_page/status/
- *       algorithm_type/search/start_date/end_date/favorite/deleted/evaluation_status/
- *       merged/execution_status）
- *   GET /api/v1/tasks/stats?granularity=day  （TaskDomainStatsData，徽章行数据源）
- *   GET /api/v1/published-tasks        （published_task.py PublishedTaskListData）
- *   GET /api/v1/tasks/cherry-picks     （INT-339 §8 契约；后端未落前 hooks 容错禁用入口）
- *   GET /api/v1/tasks/{id}             （TaskDetailData）
- *   GET /api/v1/tasks/{id}/logs        （log.py LogEntry 分页）
+ * 任务域列表/详情/日志 API（infrastructure/api 层，接线基座 INT-605 client.ts 出口；
+ * 09_任务域.md §10 契约，INT-623 Vue 侧已比对后端契约）。
+ *   GET /api/v1/tasks                 （task_bp.py TaskListQuery：page/per_page/status/
+ *       algorithm_type/search/favorite/deleted/evaluation_status/merged/cherry_pick/
+ *       execution_status；tags 后端未支持 → 客户端近似过滤，FEAT 证据见 INT-638）
+ *   GET /api/v1/published-tasks       （published_task_bp.py：page/per_page/status/keyword/type）
+ *   GET /api/v1/tasks?merged=true     （合并容器，§11-1 客户端双查询合并）
+ *   GET /api/v1/tasks?cherry_pick=true（挑选合并容器，INT-339 §8）
+ *   GET /api/v1/tasks/{id}            （TaskDetailData）
+ *   GET /api/v1/logs?task_id=&page=&per_page=（log_bp.py 任务日志，LogEntry 分页；
+ *       /tasks/{id}/logs 端点不存在，按 INT-81 业务日志合并视图）
  */
+import type { CherryPickContainer } from '@/domain/models/cherryPick'
 import type {
   CherryPickTask,
   PublishedTaskItem,
@@ -18,122 +20,142 @@ import type {
   TaskLogEntry,
 } from '@/domain/models/task'
 import {
-  MOCK_CHERRY_PICKS,
-  MOCK_MERGED_TASKS,
-  MOCK_PUBLISHED_TASKS,
-  MOCK_TASK_DETAIL,
-  MOCK_TASK_LOGS,
-  MOCK_TASKS,
-} from '../mock/tasks-mock'
+  toCherryPickContainer,
+  toCherryPickTask,
+  toPublishedTaskListPage,
+  toTaskDetail,
+  toTaskListPage,
+  toTaskLogEntry,
+} from '@/infrastructure/adapters/dto/task-adapter'
+import { request } from '@/infrastructure/api/client'
+import type {
+  PaginatedDto,
+  PublishedTaskItemDto,
+  TaskDetailDto,
+  TaskListItemDto,
+  TaskLogEntryDto,
+} from '@/infrastructure/dto/task.dto'
 
-/** 模拟网络延迟（视觉稿演示用；接线后删除） */
-function mockLatency<T>(value: T): Promise<T> {
-  return new Promise((resolve) => setTimeout(() => resolve(value), 120))
+export interface TaskListQuery {
+  page?: number
+  perPage?: number
+  search?: string
+  executionStatus?: string | null
+  evaluationStatus?: string | null
+  tags?: string[]
+  favorite?: boolean
+  trash?: boolean
+  algorithmType?: string | null
 }
 
-/** 日常任务列表（含收藏/回收站态；mock 不做服务端分页，返回全量） */
+/**
+ * 日常任务列表（含收藏/回收站态；服务端分页，per_page 默认 100 近似视觉稿全量，
+ * URL 化分页随 09_任务域.md §3.11 接线后续卡）。
+ */
 export async function fetchTaskList(
-  _query: {
-    page?: number
-    perPage?: number
-    search?: string
-    executionStatus?: string | null
-    evaluationStatus?: string | null
-    tags?: string[]
-    favorite?: boolean
-    trash?: boolean
-    algorithmType?: string | null
-  }
+  query: TaskListQuery = {}
 ): Promise<{ items: TaskListItem[]; total: number }> {
-  // TODO(API 接线): GET /api/v1/tasks?…
-  const { search, executionStatus, evaluationStatus, favorite, trash, tags } =
-    _query
-
-  let items = MOCK_TASKS
-  if (trash) items = items.filter((t) => t.deleted)
-  else items = items.filter((t) => !t.deleted)
-  if (favorite) items = items.filter((t) => t.is_favorite)
-  if (search) {
-    const keyword = search.trim().toLowerCase()
-    items = items.filter(
-      (t) =>
-        t.name.toLowerCase().includes(keyword) ||
-        (t.description ?? '').toLowerCase().includes(keyword) ||
-        t.tags.some((tag) => tag.toLowerCase().includes(keyword))
-    )
+  const params: Record<string, unknown> = {
+    page: query.page ?? 1,
+    per_page: query.perPage ?? 100,
   }
-  if (executionStatus)
-    items = items.filter((t) => t.execution_status === executionStatus)
-  if (evaluationStatus)
-    items = items.filter((t) => t.evaluation_status === evaluationStatus)
-  if (tags && tags.length > 0)
-    items = items.filter((t) => tags.every((tag) => t.tags.includes(tag)))
+  if (query.search) params.search = query.search
+  if (query.algorithmType) params.algorithm_type = query.algorithmType
+  if (query.executionStatus) params.execution_status = query.executionStatus
+  if (query.evaluationStatus) params.evaluation_status = query.evaluationStatus
+  // INT-141：收藏 / 回收站过滤（同名透传；后端 TaskListQuery.favorite/deleted）
+  if (query.favorite) params.favorite = true
+  if (query.trash) params.deleted = true
 
-  return mockLatency({ items, total: items.length })
+  const dto = await request<PaginatedDto<TaskListItemDto>>(
+    'GET',
+    '/tasks',
+    undefined,
+    { params }
+  )
+  const items = toTaskListPage(dto)
+  // tags 后端 TaskListQuery 未支持（无 tags 参数）：在返回页上近似过滤（分页下仅对当前页生效）
+  const tags = query.tags?.filter(Boolean)
+  if (tags && tags.length > 0) {
+    items.items = items.items.filter((t) => tags.every((tag) => t.tags.includes(tag)))
+  }
+  return items
 }
 
-/** 已发布任务列表（mock 全量返回） */
+/** 已发布任务列表（keyword/type/status 服务端筛选；per_page 默认 100） */
 export async function fetchPublishedTaskList(
-  _query: { search?: string; type?: string | null; ptStatus?: string | null }
+  query: { search?: string; type?: string | null; ptStatus?: string | null } = {}
 ): Promise<{ items: PublishedTaskItem[]; total: number }> {
-  // TODO(API 接线): GET /api/v1/published-tasks
-  const { search, type, ptStatus } = _query
-  let items = MOCK_PUBLISHED_TASKS
-  if (search) {
-    const keyword = search.trim().toLowerCase()
-    items = items.filter(
-      (t) =>
-        t.name.toLowerCase().includes(keyword) ||
-        (t.description ?? '').toLowerCase().includes(keyword)
-    )
+  const params: Record<string, unknown> = {
+    page: 1,
+    per_page: 100,
   }
-  if (type) items = items.filter((t) => t.type === type)
-  if (ptStatus) items = items.filter((t) => t.status === ptStatus)
-  return mockLatency({ items, total: items.length })
+  if (query.search) params.keyword = query.search
+  if (query.type && query.type !== 'all') params.type = query.type
+  if (query.ptStatus && query.ptStatus !== 'all') params.status = query.ptStatus
+
+  const dto = await request<PaginatedDto<PublishedTaskItemDto>>(
+    'GET',
+    '/published-tasks',
+    undefined,
+    { params }
+  )
+  return toPublishedTaskListPage(dto)
 }
 
-/** 合并任务列表（mock：MOCK_TASKS 中 status=merged 的集合） */
+/** 合并任务列表（GET /tasks?merged=true；整任务合并容器数据源） */
 export async function fetchMergedTaskList(
-  _query: { search?: string }
-): Promise<{ items: TaskListItem[]; total: number }> {
-  // TODO(API 接线): GET /api/v1/tasks?merged=true
-  const { search } = _query
-  let items = MOCK_MERGED_TASKS
-  if (search) {
-    const keyword = search.trim().toLowerCase()
-    items = items.filter((t) => t.name.toLowerCase().includes(keyword))
+  query: { search?: string } = {}
+): Promise<{ items: CherryPickContainer[]; total: number }> {
+  const params: Record<string, unknown> = { page: 1, per_page: 100, merged: true }
+  if (query.search) params.search = query.search
+  const dto = await request<PaginatedDto<TaskListItemDto>>(
+    'GET',
+    '/tasks',
+    undefined,
+    { params }
+  )
+  return {
+    items: (dto.items ?? []).map(toCherryPickContainer),
+    total: dto.total ?? 0,
   }
-  return mockLatency({ items, total: items.length })
 }
 
-/** 挑选合并任务列表（后端未落前返回 mock，入口不禁用） */
+/** 挑选合并任务列表（GET /tasks?cherry_pick=true；INT-339 §8 契约） */
 export async function fetchCherryPickList(
-  _query: { search?: string }
+  query: { search?: string } = {}
 ): Promise<{ items: CherryPickTask[]; total: number }> {
-  // TODO(API 接线): GET /api/v1/tasks/cherry-picks
-  const { search } = _query
-  let items = MOCK_CHERRY_PICKS
-  if (search) {
-    const keyword = search.trim().toLowerCase()
-    items = items.filter((t) => t.name.toLowerCase().includes(keyword))
+  const params: Record<string, unknown> = { page: 1, per_page: 100, cherry_pick: true }
+  if (query.search) params.search = query.search
+  const dto = await request<PaginatedDto<TaskListItemDto>>(
+    'GET',
+    '/tasks',
+    undefined,
+    { params }
+  )
+  return {
+    items: (dto.items ?? []).map(toCherryPickTask),
+    total: dto.total ?? 0,
   }
-  return mockLatency({ items, total: items.length })
 }
 
 /** 任务详情（路由页 /tasks/:id 与快览弹窗共用同一数据源） */
-export async function fetchTaskDetail(
-  taskId: number
-): Promise<TaskDetailData> {
-  // TODO(API 接线): GET /api/v1/tasks/{id}
-  return mockLatency({ ...MOCK_TASK_DETAIL, id: taskId })
+export async function fetchTaskDetail(taskId: number): Promise<TaskDetailData> {
+  const dto = await request<TaskDetailDto>('GET', `/tasks/${taskId}`)
+  return toTaskDetail(dto)
 }
 
-/** 实时日志（mock 分页：page+1=更老；新→老） */
+/** 任务实时日志（GET /logs?task_id= 分页；page+1=更老，新→老） */
 export async function fetchTaskLogs(
-  _taskId: number,
-  _page = 1,
-  _pageSize = 20
+  taskId: number,
+  page = 1,
+  pageSize = 20
 ): Promise<TaskLogEntry[]> {
-  // TODO(API 接线): GET /api/v1/tasks/{id}/logs?page=&page_size=
-  return mockLatency(MOCK_TASK_LOGS)
+  const dto = await request<PaginatedDto<TaskLogEntryDto>>(
+    'GET',
+    '/logs',
+    undefined,
+    { params: { task_id: taskId, page, per_page: pageSize } }
+  )
+  return (dto.items ?? []).map(toTaskLogEntry)
 }

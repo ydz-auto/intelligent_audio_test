@@ -5,6 +5,7 @@
  * POST /testcases/ids（全量圈定）；GET /logs?task_id&test_case_id；
  * POST /reports/generate-task（report:create）；GET /apis（无后端门槛，前端 api_config:read 判定）。
  */
+import { request } from '@/infrastructure/api/client'
 import type { TaskLaunchInput } from '@/domain/models/testExecution'
 import type { ApiConfig, ApiHealthCheckResult } from '@/domain/models/apiConfig'
 import type { Device } from '@/domain/models/device'
@@ -122,16 +123,33 @@ export async function fetchFlowReport(_reportId: number): Promise<typeof MOCK_FL
   return mockLatency(MOCK_FLOW_REPORT)
 }
 
-/** 创建任务（步骤三开始测试；POST /tasks，task:create） */
-export async function createTask(_input: TaskLaunchInput): Promise<{ id: number }> {
-  // TODO(API 接线): POST /tasks（TaskCreateDto 载荷）
-  return mockLatency({ id: 1042 })
+/** 创建任务（步骤三开始测试；POST /tasks，task:create，task_bp.py TaskCreateRequest 契约） */
+export async function createTask(input: TaskLaunchInput): Promise<{ id: number }> {
+  const body: Record<string, unknown> = {
+    name: input.name,
+    case_ids: input.testCaseIds,
+    device_ids: input.deviceIds,
+    api_ids: input.apiIds,
+    algorithm_type: input.algorithmType,
+    config: {
+      rounds: input.params.rounds,
+      timeout: input.params.timeout,
+      retries: input.params.retries,
+      concurrency: input.params.concurrency,
+      network: input.params.network,
+      report_template: input.params.reportTemplate,
+      include_charts: input.params.includeCharts,
+      include_detailed_logs: input.params.includeDetailedLogs,
+      include_reference_params: input.params.includeReferenceParams,
+    },
+  }
+  const dto = await request<{ id?: number }>('POST', '/tasks', body)
+  return { id: dto?.id ?? 0 }
 }
 
-/** 启动任务（POST /tasks/{id}/start，task:execute） */
-export async function startTask(_taskId: number): Promise<void> {
-  // TODO(API 接线): POST /tasks/{id}/start
-  return mockLatency(undefined)
+/** 启动任务（POST /tasks/{id}/start，task:execute，task_bp.py TaskStartData 契约） */
+export async function startTask(taskId: number): Promise<void> {
+  await request<{ task_id?: number }>('POST', `/tasks/${taskId}/start`)
 }
 
 /** 报告生成（步骤五；POST /reports/generate-task，report:create） */
