@@ -113,6 +113,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         '/api/v1/auth/oauth',  # INT-51：提供方列表 / 授权跳转 / 授权回调
         # INT-674：站点配置（公开展示数据，登录页品牌角标需未登录态可取）
         '/api/v1/home/site',
+        # INT-766/INT-787：系统健康汇总（网关 + 认证服务）——「关于」页
+        # 状态卡登录前也要能取真实健康数据，须公开（AUTH_MODE=prod 强制态下
+        # 匿名可访问，语义同根路径 /health）
+        '/api/v1/system/health',
         '/docs',
         '/openapi.json',
         '/redoc',
