@@ -146,8 +146,8 @@ class _TaskConfigProxy:
     def list_tasks(self, page=1, per_page=10, status=None, device_type=None,
                    algorithm_type=None, search=None, start_date=None, end_date=None,
                    favorite=False, deleted=False, evaluation_status=None, merged=False,
-                   cherry_pick=False, execution_status=None, merge_type=None, stats=False,
-                   task_type=None):
+                   cherry_pick=False, execution_status=None, merge_type=None,
+                   stats=False, task_type=None):
         """任务列表（device_type 经 proto type 字段承载：按用例级被测设备类型过滤）
 
         favorite/deleted（INT-141）：收藏/回收站过滤；操作人 user_id 经
@@ -159,8 +159,8 @@ class _TaskConfigProxy:
         徽章展示与筛选命中一致）。
         merge_type（INT-577）：合并方式快捷筛选（whole|picked）——网关已映射为
         merged/cherry_pick 布尔，此处仅透传（供兼容/审计），实际过滤由布尔承载。
-        stats（INT-577）：页签计数统计（merged ∪ cherry_pick 并集），仅
-        stats=true（「挑选合并」页签）时 task_service 计算 stats 块，否则 None。
+        stats（INT-577）：页签计数统计（merged ∪ cherry_pick 并集），task_service
+        恒返回 stats 块，此处保留签名占位。
         task_type（INT-273）：按派生任务类型过滤（api/e2e/mixed；口径与
         /tasks/stats type_counts 一致——用例级 device_type 派生）。
         """
@@ -184,7 +184,6 @@ class _TaskConfigProxy:
                 cherry_pick=bool(cherry_pick),
                 execution_status=execution_status or '',
                 task_type=task_type or '',
-                stats=bool(stats),
             ))
             return self._resp(resp)
 

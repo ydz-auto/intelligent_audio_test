@@ -39,7 +39,8 @@ class TaskQueryService:
                    search=None, start_date=None, end_date=None,
                    favorite=False, deleted=False, user_id=None,
                    evaluation_status=None, merged=False, cherry_pick=False,
-                   execution_status=None, merge_type=None, stats=False, task_type=None) -> dict:
+                   execution_status=None, merge_type=None, stats=False,
+                   task_type=None) -> dict:
         """获取任务列表（device_type 按用例级被测设备类型过滤，可选）。
 
         favorite（INT-141）：仅当前用户收藏；deleted（INT-141）：仅回收站。
@@ -50,8 +51,7 @@ class TaskQueryService:
             徽章展示与筛选命中同口径；与原始 status 过滤并存，兼容历史入口）。
         merge_type（INT-577）：合并方式快捷筛选（whole|picked）——网关已映射为
             merged/cherry_pick 布尔，此处透传（供兼容/审计）。
-        stats（INT-577）：仅 stats=true 时返回合并容器统计块（merged ∪ cherry_pick
-            并集，供「挑选合并」页签计数），否则 None。
+        stats（INT-577）：恒返回合并容器统计块（merged ∪ cherry_pick 并集）。
         task_type（INT-273）：按派生任务类型过滤（api/e2e/mixed；口径与
             /tasks/stats type_counts 一致——用例级 device_type 派生）。
         """

@@ -73,6 +73,12 @@ def list_candidates(_: None = require_permission('task:read')):
     return to_response(CherryPickService.list_candidates())
 
 
+# INT-577 §11-4：全选当前筛选——返回当前筛选命中全部 result_id 集合（跨页全选语义）
+@router.post('/candidates/select-all')
+def select_all_candidates(_: None = require_permission('task:read')):
+    return to_response(CherryPickService.select_all_candidates())
+
+
 # ---- 下单（三出口 + 预览）----
 
 @router.post('/preview')

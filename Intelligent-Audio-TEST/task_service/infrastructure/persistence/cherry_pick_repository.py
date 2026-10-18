@@ -31,8 +31,22 @@ def _result_trace_snapshot(result: TestResult, source_task: Optional[Task]) -> D
         'source_case_id': result.test_case_id,
         'source_device_id': result.device_id,
         'source_api_id': result.api_id,
+        # INT-577 §11-5：来源结果类型快照（result_data/result_data_path 解析，缺省 default）
+        'source_result_type': _extract_result_type(result),
         'execution_status': result.execution_status,
     }
+
+
+def _extract_result_type(result: TestResult) -> Optional[str]:
+    """结果行 result_type 快照（口径对齐 shared.extract_result_type，缺省 'default'）。"""
+    from shared.utils.result_data_store import extract_result_type
+    try:
+        return extract_result_type(
+            getattr(result, 'result_data', None),
+            getattr(result, 'result_data_path', None),
+        )
+    except Exception:
+        return 'default'
 
 
 class CherryPickRepository:
@@ -90,6 +104,8 @@ class CherryPickRepository:
                 source_case_id=snapshot['source_case_id'],
                 source_device_id=snapshot['source_device_id'],
                 source_api_id=snapshot['source_api_id'],
+                # INT-577 §11-5：购物车条目快照补 source_result_type
+                source_result_type=snapshot['source_result_type'],
                 execution_status=snapshot['execution_status'],
             ))
             added.append(rid)
@@ -147,6 +163,8 @@ class CherryPickRepository:
             'source_case_id': row.source_case_id,
             'source_device_id': row.source_device_id,
             'source_api_id': row.source_api_id,
+            # INT-577 §11-5：购物车条目补 source_result_type
+            'source_result_type': row.source_result_type,
             'execution_status': row.execution_status,
             'created_at': row.created_at.isoformat() if row.created_at else None,
         }
@@ -187,6 +205,7 @@ class CherryPickRepository:
                 source_case_id=snapshot['source_case_id'],
                 source_device_id=snapshot['source_device_id'],
                 source_api_id=snapshot['source_api_id'],
+                source_result_type=snapshot['source_result_type'],
                 execution_status=snapshot['execution_status'],
             ))
         session.flush()
@@ -242,6 +261,7 @@ class CherryPickRepository:
                 'source_case_id': it.source_case_id,
                 'source_device_id': it.source_device_id,
                 'source_api_id': it.source_api_id,
+                'source_result_type': it.source_result_type,
                 'execution_status': it.execution_status,
             } for it in items],
         }

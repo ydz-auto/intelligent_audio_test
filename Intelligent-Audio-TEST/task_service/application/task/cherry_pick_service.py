@@ -1034,18 +1034,13 @@ class CherryPickService:
 
     @staticmethod
     def _case_name_map(case_ids) -> Dict[str, Optional[str]]:
-        """批量查询用例名称（test_cases 为用例目录，id 主键）。
-
-        独立 Session（create_db_session）：调用点外层仍持同一请求级 scoped session，
-        close 独立 session 不 expunge 外层 ORM 实例（审计 P3：勿对 get_db_session()
-        返回的共享 session close）。
-        """
+        """批量查询用例名称（test_cases 为用例目录，id 主键）。"""
         ids = [str(c) for c in (case_ids or []) if c]
         if not ids:
             return {}
         from task_service.infrastructure.persistence.models import TestCase
-        from shared.models.database import create_db_session
-        session = create_db_session()
+        from shared.models.database import get_db_session
+        session = get_db_session()
         try:
             rows = session.query(TestCase.id, TestCase.name).filter(
                 TestCase.id.in_(ids)).all()
