@@ -7,6 +7,7 @@ import { X } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
+import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -14,14 +15,14 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { MOCK_ALGORITHMS } from '@/domain/models/algorithm'
 import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
 
 export function DeviceAlgorithmChip() {
   const algorithmId = useAlgorithmStore((s) => s.algorithmId)
   const [cleared, setCleared] = useState(false)
+  const { options } = useAlgorithmOptions()
 
-  const algorithm = MOCK_ALGORITHMS.find((a) => a.id === algorithmId)
+  const algorithm = options.find((a) => a.id === algorithmId)
   if (!algorithm || cleared) return null
 
   return (

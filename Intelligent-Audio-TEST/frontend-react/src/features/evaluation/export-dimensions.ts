@@ -34,11 +34,12 @@ function categoryNameOf(
 /** Excel 导出（HTML 表格语法 .xls；行=维度，列=表头九列与页面表格同构） */
 export function buildDimensionExcelHtml(
   dimensions: Dimension[],
-  categories: EvaluationCategory[]
+  categories: EvaluationCategory[],
+  algorithmLabels?: Record<string, string>
 ): string {
   const algorithmText = (dimension: Dimension): string =>
     (dimension.associatedAlgorithms ?? [])
-      .map((a) => getAlgorithmLabel(a.algorithmType))
+      .map((a) => getAlgorithmLabel(a.algorithmType, algorithmLabels))
       .join('、')
   const header = `<tr><th>ID</th><th>维度名称</th><th>维度类型</th><th>分类</th><th>关联算法</th><th>权重</th><th>API状态</th><th>状态</th></tr>`
   const body = dimensions
