@@ -1,8 +1,7 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { z } from 'zod'
 
-import { hasPermission } from '@/domain/models/user'
-import { useAuthStore } from '@/infrastructure/stores/auth-store'
+import { requirePermission } from '@/application/auth/route-guards'
 import {
   TEST_CASES_TAB_WHITELIST,
   type TestCasesViewKey,
@@ -11,7 +10,7 @@ import { TestCasesPage } from '@/features/testcases'
 
 /**
  * /testcases/$view 双视图（by-group 分组 / by-tag 标签），11_用例域.md §3.2。
- * beforeLoad：白名单校验（非法回 by-group）+ testcase:read 守卫 → 无码 /403。
+ * beforeLoad：白名单校验（非法回 by-group）+ testcase:read 守卫 → 无码 /403?from。
  * validateSearch（zod + .catch()，URL 化可分享/回退）：page/pageSize/search/group/
  * tag（多选数组）/dimensionId/favorite/trash——mock 态为可分享参数，接线后接 useTableUrlState。
  * INT-486 用例不分类型口径：type（api/e2e）URL 参数移除——用例无类型之分。
@@ -28,11 +27,8 @@ const testcasesSearchSchema = z.object({
 })
 
 export const Route = createFileRoute('/_authenticated/testcases/$view')({
-  beforeLoad: ({ params }) => {
-    const user = useAuthStore.getState().user
-    if (!hasPermission(user, 'testcase:read')) {
-      throw redirect({ to: '/403' })
-    }
+  beforeLoad: ({ params, location }) => {
+    requirePermission('testcase:read', location)
     if (!TEST_CASES_TAB_WHITELIST.includes(params.view)) {
       throw redirect({
         to: '/testcases/$view',

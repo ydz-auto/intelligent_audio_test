@@ -230,20 +230,10 @@ export function SplMappingPage() {
     return digitalMappings.find((m) => m.id === digitalDialog.mappingId) ?? null
   }, [digitalDialog, digitalMappings])
 
-  /** §4.2.1 执行校准（mock：已有点集复用，无点集按 §11-12 生成默认点） */
+  /** §4.2.1 执行校准（接线：POST /spl/{id}/calibrate，现状后端为模拟校准，请求体忽略） */
   const handleCalibrateSpl = async (mapping: SplMapping) => {
-    const points = mapping.calibrationData?.points
-      ?.filter((point) => point.spl != null && point.gainOffset != null)
-      .map((point) => ({ spl: point.spl as number, gainOffset: point.gainOffset as number }))
-    const payload =
-      points && points.length > 0
-        ? points
-        : [-20, -10, 0, 10, 20].map((gainOffset, index) => ({
-            gainOffset,
-            spl: 45 + index * 10,
-          }))
     try {
-      const result = await calibrateSpl.mutateAsync({ id: mapping.id, points: payload })
+      const result = await calibrateSpl.mutateAsync({ id: mapping.id })
       if (result.success) toast.success('校准完成：映射已置为已校准')
       else toast.error(result.message ?? '校准失败，请重试')
     } catch {

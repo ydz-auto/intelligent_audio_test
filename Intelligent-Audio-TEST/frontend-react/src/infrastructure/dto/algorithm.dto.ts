@@ -1,32 +1,34 @@
 /**
- * 算法选项 DTO（infrastructure/dto 层；snake_case↔camelCase 唯一转换层）。
- * 对照 GET /api/v1/algorithm/options（algorithm_bp.py:165）实际契约（实测 2026-10-17）：
- * data: { algorithms: [{ value, name, group_id, group_name, icon }] }——仅在线算法，
- * value = 算法类型码（业务列表 algorithm_type 过滤参数，与 MOCK_ALGORITHMS 的 id 对齐）。
+ * 算法选项 DTO（infrastructure/dto 层；snake_case ↔ camelCase 唯一转换层）。
+ * 对照 GET /api/v1/algorithm/options（algorithm_bp.py:165-167，algorithm:read）
+ * 响应 data 契约（实测）：{ algorithms: [{ value, name, group_id?, group_name?, icon? }] }
+ * （gRPC GetAlgorithmOptions servicers.py:325-341，仅在线算法
+ * ListAlgorithmDefinitionsQuery(status='online')；value=算法类型码如 voice_llm，
+ * 即全局算法 store 的 algorithmId 同源值）。
+ * snake→camel 转换收敛在本文件，application/domain 只见 camelCase。
  */
-import type { AlgorithmOption } from '@/domain/models/algorithm'
+import type { AlgorithmSwitchOption } from '@/domain/models/algorithm'
 
-export interface AlgorithmOptionDto {
-  /** 算法类型码（全局过滤值；切换器选中即写全局 store） */
+/** 后端算法选项项（snake_case wire 契约：value=算法类型码，即全局算法 store 的 value） */
+export interface AlgorithmOptionItemDto {
   value: string
-  /** 算法名称（下拉展示） */
   name: string
   group_id?: number | null
   group_name?: string | null
   icon?: string | null
 }
 
+/** GET /algorithm/options 响应 data 信封 */
 export interface AlgorithmOptionsResultDto {
-  algorithms: AlgorithmOptionDto[]
+  algorithms: AlgorithmOptionItemDto[]
 }
 
-/** options 项 → Domain AlgorithmOption（id 落 value 码；group_name 作副行展示） */
-export function toAlgorithmOption(raw: AlgorithmOptionDto): AlgorithmOption {
+/** snake_case → camelCase Domain（value 与 useAlgorithmStore.algorithmId 同源） */
+export function toAlgorithmOption(
+  raw: AlgorithmOptionItemDto
+): AlgorithmSwitchOption {
   return {
-    id: raw.value,
+    value: raw.value,
     name: raw.name,
-    version: '',
-    description: raw.group_name ?? '',
-    enabled: true,
   }
 }

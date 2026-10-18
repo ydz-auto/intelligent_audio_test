@@ -1,24 +1,46 @@
-import type { SystemHealthResponse } from '@/domain/models/about'
-
-import { apiClient } from './client'
-
-/**
- * 服务状态健康检查 API（infrastructure 层）。
- * 数据形态对照 api_gateway/app.py:175-186（GET /health：status/service/version/database，
- * 根路径公开无权限）+ auth_service/app.py:79-84（GET /health：status/service）。
- *
- * 真实请求经统一 client.ts（baseURL /api/v1 → api_gateway，dev 走 rsbuild 代理），
- * snake_case↔camelCase 仅限本层——本端点返回字段与领域模型同名，无需转换。
- */
+import type {
+  AuthHealthResponse,
+  GatewayHealthResponse,
+} from '@/domain/models/about'
 
 /**
- * GET /api/v1/system/health（api_gateway 汇总端点：网关 + 认证服务健康聚合）。
- * 待 INT-766（FEAT 卡）：后端未落该端点 → 请求失败（404）→ 状态卡按 06_关于.md
- * §3.1.1 实施注意降级「检测中」（值「—」+ 徽章「检测中」+ 整卡 Alert），不显示 mock「正常」。
- * 公开健康数据，skipAuthRedirect：关于页为公开路由，避免 401 触发全局登出跳转。
+ * 服务状态 /health API 桩（infrastructure 层）。
+ * 数据形态对照 api_gateway/app.py:175-186（status/service/version/database，
+ * 根路径公开无权限）+ auth_service/app.py:79-84（status/service）。
  */
-export async function fetchSystemHealth(): Promise<SystemHealthResponse> {
-  return apiClient.get<SystemHealthResponse>('/system/health', {
-    skipAuthRedirect: true,
-  })
+
+/** mock：API 网关 /health（version 取 Config.PLATFORM_VERSION，库名取 database_name_of） */
+export const MOCK_GATEWAY_HEALTH: GatewayHealthResponse = {
+  status: 'ok',
+  service: 'api_gateway',
+  version: 'V9.7.31',
+  database: 'intelligent_audio_test',
+}
+
+/** mock：认证服务 /health（独立服务端口 5009；勿用 5001——5001 是 task_service） */
+export const MOCK_AUTH_HEALTH: AuthHealthResponse = {
+  status: 'ok',
+  service: 'auth_service',
+}
+
+/**
+ * TODO(API 接线, 后端/部署缺口 + client.ts 根路径): GET /health（api_gateway 根路径）。
+ * 端点存在且 2026-10-18 01:05 实测 200（api_gateway/app.py:175-186，status/service/
+ * version/database，根路径公开无权限）。阻塞：① nginx 只反代 /api/、/socket.io/、/ws，
+ * 根路径 /health 未反代（06_关于.md §3.1.1 实施注意）——生产不可达；
+ * ② dev rsbuild proxy 只转发 /api，且 client.ts baseURL=/api/v1 无法直达根路径——
+ * 需基座 client.ts 支持根路径（INT-641 子卡已派）并补 nginx location /health 反代
+ * 或后端落 /api/v1/system/health 汇总端点；未落前状态卡降级「检测中」。
+ */
+export async function fetchGatewayHealth(): Promise<GatewayHealthResponse> {
+  return MOCK_GATEWAY_HEALTH
+}
+
+/**
+ * TODO(API 接线, 后端/部署缺口): GET /health（auth_service 独立服务端口 5009——
+ * docker-compose.yml:409-420、shared/config/service_ports.py:12、auth_service/config/config.py:15；
+ * 5001 是 task_service，勿混）。未反代前状态卡降级「检测中」。
+ */
+export async function fetchAuthHealth(): Promise<AuthHealthResponse> {
+  return MOCK_AUTH_HEALTH
 }

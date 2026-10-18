@@ -1,9 +1,8 @@
-import { createFileRoute, redirect } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod'
 
-import { hasPermission } from '@/domain/models/user'
+import { requirePermission } from '@/application/auth/route-guards'
 import { ReportCenterPage } from '@/features/reports'
-import { useAuthStore } from '@/infrastructure/stores/auth-store'
 
 /**
  * 报告中心（管理页） /report-center（INT-434 重实施 / INT-441 双入口拆分落位）。
@@ -59,11 +58,8 @@ export type { ReportsSearch } from '@/features/reports/types'
 
 export const Route = createFileRoute('/_authenticated/report-center/')({
   validateSearch: reportCenterSearchSchema,
-  beforeLoad: () => {
-    const user = useAuthStore.getState().user
-    if (!hasPermission(user, 'report:read')) {
-      throw redirect({ to: '/403' })
-    }
+  beforeLoad: ({ location }) => {
+    requirePermission('report:read', location)
   },
   component: ReportCenterPage,
 })

@@ -1,6 +1,6 @@
 /**
- * 挑选合并 API（infrastructure/api，18_挑选合并交互重设计.md §7.3，INT-713）。
- * 真实接口（经 client.ts 统一信封解包；后端缺口按 §11-2/§11-5 降级，不写兼容层）：
+ * 挑选合并 API（infrastructure/api 层，接线基座 INT-605 client.ts 出口；
+ * 18_挑选合并交互重设计.md §7.3，INT-339 §8 契约，INT-623 Vue 侧已比对后端契约）。
  *   GET    /api/v1/tasks/cherry-picks/candidates      （候选行，多条件 AND）
  *   GET    /api/v1/tasks/cherry-picks/cart            （购物车读）
  *   POST   /api/v1/tasks/cherry-picks/cart/items      （加购）
@@ -12,18 +12,8 @@
  *   DELETE /api/v1/tasks/cherry-picks/sets/{id}       （删除挑选集）
  *   POST   /api/v1/tasks/cherry-picks/preview         （复核摘要）
  *   POST   /api/v1/tasks/cherry-picks/cart/checkout   （下单，action=merge/reexecute/reevaluate）
- * 统一容器列表：GET /api/v1/tasks?merged=true ∪ cherry_pick=true 双查询合并（§11-1）。
- * 名称装饰：candidates/cart 缺 case_name/device_name/api_name（§11-2/§11-5），
- * 本层经真实 test-devices / apis / testcases 列表构建 name map 注入 adapter。
+ * 统一容器列表：GET /api/v1/tasks?merged=true ∪ cherry_pick=true（§11-1 客户端双查询合并）
  */
-import type { PickNameMaps } from '@/infrastructure/adapters/dto/cherry-pick-adapter'
-import {
-  fromCandidateDto,
-  fromCartGroupDto,
-  fromContainerDto,
-  fromPreviewDto,
-  fromSetListItemDto,
-} from '@/infrastructure/adapters/dto/cherry-pick-adapter'
 import type {
   CheckoutAction,
   CherryPickCandidate,
@@ -32,186 +22,51 @@ import type {
   PickPreview,
   PickSet,
 } from '@/domain/models/cherryPick'
-import { request } from './client'
-import { ApiError } from './api-error'
+import {
+  fromCandidateDto,
+  fromCartEntryDto,
+  fromContainerDto,
+  fromPickSetDto,
+  fromPreviewDto,
+} from '@/infrastructure/adapters/dto/cherry-pick-adapter'
+import { request } from '@/infrastructure/api/client'
 import type {
-  CherryPickAddResultDto,
-  CherryPickCandidateDto,
-  CherryPickCartDto,
-  CherryPickMergeResultDto,
-  CherryPickPreviewDto,
-  CherryPickReevaluateResultDto,
-  CherryPickReexecuteResultDto,
-  CherryPickRemoveResultDto,
-  CherryPickRestoreResultDto,
-  CherryPickSaveSetResultDto,
-  CherryPickSetListItemDto,
-  CherryPickSourceTraceDto,
-  TaskContainerItemDto,
-  TaskListPageDto,
+  CheckoutResultDto,
+  CherryPickCandidatePageDto,
+  PickCartDto,
+  PickPreviewDto,
+  PickSetDto,
 } from '@/infrastructure/dto/cherry-pick.dto'
+import type { PaginatedDto, TaskListItemDto } from '@/infrastructure/dto/task.dto'
 
-/** 候选筛选条件（多条件 AND，§3.4；后端不支持的维度由本层客户端过滤降级） */
+/** 候选筛选条件（多条件 AND，§3.4；后端支持 task_ids/device_ids/case_keyword/
+ *  execution_status/evaluation_status/start_date/end_date） */
 export interface CherryPickFilters {
   search?: string
   taskIds?: number[]
   deviceIds?: number[]
+  /** 后端候选查询未支持（无 api_ids 参数，§3.4 点名维度缺口 → FEAT 证据见 INT-638） */
   apiIds?: number[]
+  /** 后端候选行未返 result_type → 筛选器选项缺省（FEAT 证据见 INT-638） */
   resultType?: string[]
+  /** 后端仅接受单值 execution_status；多选时仅透传首项（多值缺口 FEAT 证据） */
   executionStatus?: string[]
+  /** 后端语义为 evaluated/pending 二态；completed/evaluating/failed/skipped → evaluated */
   evaluationStatus?: string[]
+  /** 时间范围后端按 start_date/end_date ISO 透传；timeRange 快捷值映射见调用方 */
   timeRange?: string
 }
 
-/* ============================================================
- * 名称装饰（真实列表源：test-devices / apis / testcases）
- * 设备/API 名（快，候选/购物车直用）；用例名（testcases 全量分页较慢，
- * 不阻塞候选查询——hook 层背景拉取后对候选行二次装饰）。
- * ============================================================ */
+const OPTIONS_PAGE_SIZE = 200
 
-const MAX_OPTION_PAGE = 200
-
-let deviceApiMapsPromise: Promise<{ devices: Map<number, string>; apis: Map<number, string> }> | null =
-  null
-
-/** 设备名 map（GET /test-devices 全量；失败降级空 map → 缺名显示设备 ID） */
-async function fetchDeviceNameMap(): Promise<Map<number, string>> {
-  try {
-    const data = await request<TaskListPageDto<{ id: number; name: string }>>(
-      'GET',
-      '/test-devices',
-      undefined,
-      { params: { page: 1, per_page: MAX_OPTION_PAGE } }
-    )
-    return new Map((data.items ?? []).map((d) => [d.id, d.name]))
-  } catch {
-    return new Map()
-  }
-}
-
-/** API 名 map（GET /apis 全量） */
-async function fetchApiNameMap(): Promise<Map<number, string>> {
-  try {
-    const data = await request<TaskListPageDto<{ id: number; name: string }>>(
-      'GET',
-      '/apis',
-      undefined,
-      { params: { page: 1, per_page: MAX_OPTION_PAGE } }
-    )
-    return new Map((data.items ?? []).map((d) => [d.id, d.name]))
-  } catch {
-    return new Map()
-  }
-}
-
-/** 会话级设备/API 名缓存（快路径：候选与购物车直用，不阻塞） */
-export function getDeviceApiNameMaps(): Promise<{
-  devices: Map<number, string>
-  apis: Map<number, string>
-}> {
-  if (!deviceApiMapsPromise) {
-    deviceApiMapsPromise = (async () => {
-      const [devices, apis] = await Promise.all([
-        fetchDeviceNameMap(),
-        fetchApiNameMap(),
-      ])
-      return { devices, apis }
-    })()
-  }
-  return deviceApiMapsPromise
-}
-
-let caseNameMapPromise: Promise<Map<string, string>> | null = null
-
-/** 用例名 map（GET /testcases 全量分页并行；579 量级，一次会话缓存；
- *  慢路径不阻塞候选——hook 层背景拉取，就绪后对候选行 caseName 二次装饰） */
-export function fetchPickCaseNames(): Promise<Map<string, string>> {
-  if (!caseNameMapPromise) {
-    caseNameMapPromise = (async () => {
-      const map = new Map<string, string>()
-      try {
-        const first = await request<TaskListPageDto<{ id: string; name: string }>>(
-          'GET',
-          '/testcases',
-          undefined,
-          { params: { page: 1, per_page: MAX_OPTION_PAGE } }
-        )
-        for (const c of first.items ?? []) map.set(c.id, c.name)
-        const pages = first.pages ?? 1
-        if (pages > 1) {
-          const rest = await Promise.all(
-            Array.from({ length: pages - 1 }, (_, i) =>
-              request<TaskListPageDto<{ id: string; name: string }>>(
-                'GET',
-                '/testcases',
-                undefined,
-                { params: { page: i + 2, per_page: MAX_OPTION_PAGE } }
-              ).catch(() => null)
-            )
-          )
-          for (const data of rest) {
-            for (const c of data?.items ?? []) map.set(c.id, c.name)
-          }
-        }
-      } catch {
-        // 用例名不可用 → 缺名降级显示用例 ID
-      }
-      return map
-    })()
-  }
-  return caseNameMapPromise
-}
-
-/** 快路径名称 maps（设备/API 已就绪；用例名留空由 hook 二次装饰） */
-async function getFastNameMaps(): Promise<PickNameMaps> {
-  const { devices, apis } = await getDeviceApiNameMaps()
-  return { devices, apis, cases: new Map() }
-}
-
-/* ============================================================
- * 时间范围 → start_date/end_date（§3.4 时间筛选，ISO 口径对齐后端）
- * ============================================================ */
-
-function toIsoDaysAgo(days: number): string {
-  const d = new Date()
-  d.setDate(d.getDate() - days)
-  d.setHours(0, 0, 0, 0)
-  return d.toISOString()
-}
-
-function timeRangeToDates(
-  timeRange: string | undefined
-): { startDate?: string; endDate?: string } {
-  if (!timeRange || timeRange === 'all') return {}
-  const now = new Date()
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const startOfToday = todayStart.toISOString()
-  switch (timeRange) {
-    case 'today':
-      return { startDate: startOfToday }
-    case 'yesterday': {
-      const yesterdayStart = new Date(todayStart.getTime() - 24 * 3600 * 1000)
-      return { startDate: yesterdayStart.toISOString(), endDate: startOfToday }
-    }
-    case 'week':
-      return { startDate: toIsoDaysAgo(7) }
-    case 'month':
-      return { startDate: toIsoDaysAgo(30) }
-    default:
-      return {}
-  }
-}
-
-/* ============================================================
- * 候选查询 / 筛选选项
- * ============================================================ */
-
-/** 候选查询（GET /tasks/cherry-picks/candidates；per_page 封顶 200，§11-3 降级已加载页） */
+/** 候选查询（真实接口 AND 组合；缺名字段前端按 ID/缺省降级，§11-2） */
 export async function fetchCherryPickCandidates(
   filters: CherryPickFilters = {}
 ): Promise<CherryPickCandidate[]> {
-  const names = await getFastNameMaps()
-  const params: Record<string, unknown> = { page: 1, per_page: MAX_OPTION_PAGE }
+  const params: Record<string, unknown> = { page: 1, per_page: OPTIONS_PAGE_SIZE }
+  // 前端 search 命中用例名/用例ID → 后端 case_keyword（INT-401 语义）
+  if (filters.search) params.case_keyword = filters.search
+  // 逗号分隔多值（GET 查询串契约，cherry_pick_service._split_ints）
   if (filters.taskIds && filters.taskIds.length > 0) {
     params.task_ids = filters.taskIds.join(',')
   }
@@ -219,316 +74,236 @@ export async function fetchCherryPickCandidates(
     params.device_ids = filters.deviceIds.join(',')
   }
   if (filters.executionStatus && filters.executionStatus.length > 0) {
+    // 后端仅单值；多选暂取首项（多值筛选缺口 → FEAT 证据）
     params.execution_status = filters.executionStatus[0]
   }
   if (filters.evaluationStatus && filters.evaluationStatus.length > 0) {
-    // UI 选项 unevaluated ↔ 后端 EvaluationStatus.PENDING 口径（实测）
-    params.evaluation_status =
-      filters.evaluationStatus[0] === 'unevaluated' ? 'pending' : 'evaluated'
+    // 后端 evaluation_status 二态（evaluated/pending）；已评估族收敛为 evaluated
+    params.evaluation_status = filters.evaluationStatus.includes('pending')
+      ? 'pending'
+      : 'evaluated'
   }
-  const { startDate, endDate } = timeRangeToDates(filters.timeRange)
-  if (startDate) params.start_date = startDate
-  if (endDate) params.end_date = endDate
+  // apiIds/resultType/timeRange：后端候选查询未支持，未透传（FEAT 证据见 INT-638）
 
-  const data = await request<TaskListPageDto<CherryPickCandidateDto>>(
+  const dto = await request<CherryPickCandidatePageDto>(
     'GET',
     '/tasks/cherry-picks/candidates',
     undefined,
     { params }
   )
-  let items = (data.items ?? []).map((dto) => fromCandidateDto(dto, names))
-
-  // 后端未支持维度 → 客户端过滤（api_ids / result_type；§11-2 候选补字段后落服务端）
-  if (filters.apiIds && filters.apiIds.length > 0) {
-    const idSet = new Set(filters.apiIds)
-    items = items.filter((c) => c.apiId != null && idSet.has(c.apiId))
-  }
-  if (filters.resultType && filters.resultType.length > 0) {
-    const rtSet = new Set(filters.resultType)
-    items = items.filter((c) => c.resultType != null && rtSet.has(c.resultType))
-  }
-  // search 命中用例名/用例 ID/任务名：用例名依赖慢路径装饰，由 hook 层二次过滤
-  return items
+  return (dto.items ?? []).map(fromCandidateDto)
 }
 
-/** 候选行结果类型去重集合（§11-2 候选未返 result_type → 空选项，facet 显示「无选项」） */
+/** 候选行结果类型去重集合（后端候选行未返 result_type → 缺省 'default'，§11-2 降级） */
 export async function fetchResultTypeOptions(): Promise<string[]> {
-  const items = await fetchBaseCandidates()
-  return [...new Set(items.map((c) => c.resultType).filter((t): t is string => t != null))]
+  const candidates = await fetchCherryPickCandidates()
+  const types = new Set(candidates.map((c) => c.resultType))
+  return [...types]
 }
 
-/** 可挑选来源任务集合（候选行聚合去重） */
+/** 可挑选来源任务集合（候选行聚合去重，§3.4 来源任务筛选选项） */
 export async function fetchPickableTasks(): Promise<{ id: number; name: string }[]> {
-  const items = await fetchBaseCandidates()
+  const candidates = await fetchCherryPickCandidates()
   const map = new Map<number, string>()
-  for (const c of items) map.set(c.taskId, c.taskName)
+  for (const c of candidates) map.set(c.taskId, c.taskName)
   return [...map].map(([id, name]) => ({ id, name }))
 }
 
-/** 设备集合（候选行聚合去重 + 设备表名装饰；§11-2 缺名降级「设备 {id}」） */
+/** 设备集合（候选行 device_id 聚合；后端候选行未返 device_name → 显示「设备 {id}」） */
 export async function fetchPickableDevices(): Promise<{ id: number; name: string }[]> {
-  const { devices } = await getDeviceApiNameMaps()
-  const items = await fetchBaseCandidates()
+  const candidates = await fetchCherryPickCandidates()
   const map = new Map<number, string>()
-  for (const c of items) {
-    if (c.deviceId != null) {
-      map.set(c.deviceId, devices.get(c.deviceId) ?? `设备 ${c.deviceId}`)
-    }
+  for (const c of candidates) {
+    if (c.deviceId != null) map.set(c.deviceId, `设备 ${c.deviceId}`)
   }
   return [...map].map(([id, name]) => ({ id, name }))
 }
 
-/** 未筛选候选（筛选选项数据源；30s 会话缓存，避免三处选项各拉一次全量） */
-let baseCandidatesCache: { data: CherryPickCandidate[]; ts: number } | null = null
+// ============================================================
+// 购物车（per-user；服务端为准，本地为镜像）
+// ============================================================
 
-async function fetchBaseCandidates(): Promise<CherryPickCandidate[]> {
-  if (baseCandidatesCache && Date.now() - baseCandidatesCache.ts < 30_000) {
-    return baseCandidatesCache.data
-  }
-  const items = await fetchCherryPickCandidates({})
-  baseCandidatesCache = { data: items, ts: Date.now() }
-  return items
-}
-
-/** 测试用：重置会话缓存（vitest / 走查隔离） */
-export function __resetCherryPickSessionCache() {
-  deviceApiMapsPromise = null
-  caseNameMapPromise = null
-  baseCandidatesCache = null
-}
-
-/* ============================================================
- * 购物车
- * ============================================================ */
-
-/** 购物车读（GET /tasks/cherry-picks/cart，per-user 分组返回；用例名留空由调用方二次装饰） */
+/** 购物车读（按来源任务分组返回，per-user 实测） */
 export async function fetchCart(): Promise<PickCartGroup[]> {
-  const names = await getFastNameMaps()
-  const data = await request<CherryPickCartDto>('GET', '/tasks/cherry-picks/cart')
-  return (data.groups ?? []).map((g) => fromCartGroupDto(g, names))
+  const dto = await request<PickCartDto>('GET', '/tasks/cherry-picks/cart')
+  return (dto.groups ?? []).map((g) => ({
+    taskId: g.source_task_id,
+    taskName: g.source_task_name,
+    entries: (g.items ?? []).map(fromCartEntryDto),
+  }))
 }
 
-/** 加购（POST /tasks/cherry-picks/cart/items {result_ids}；重复幂等跳过 uq_cherry_cart_user_result） */
+/** 加购（按 result_id 建立条目快照；重复加购幂等跳过 uq_cherry_cart_user_result） */
 export async function addToCart(resultIds: number[]): Promise<{
   addedCount: number
   skippedCount: number
   invalidCount: number
 }> {
-  const data = await request<CherryPickAddResultDto>(
+  // 后端返回 { added: int[], missing: int[], duplicated: int[] }（result_id 集，非条目快照）；
+  // 购物车镜像随后以 refreshCart 服务端全量回写为准
+  const dto = await request<{ added?: number[]; duplicated?: number[]; missing?: number[] }>(
     'POST',
     '/tasks/cherry-picks/cart/items',
     { result_ids: resultIds }
   )
   return {
-    addedCount: (data.added ?? []).length,
-    skippedCount: (data.duplicated ?? []).length,
-    invalidCount: (data.missing ?? []).length,
+    addedCount: dto.added?.length ?? resultIds.length,
+    skippedCount: dto.duplicated?.length ?? 0,
+    invalidCount: dto.missing?.length ?? 0,
   }
 }
 
-/** 移除（POST /tasks/cherry-picks/cart/items/remove {item_ids}；单条/节点/整组/批量） */
+/** 移除（item_ids 数组：单条/节点/整组/批量/失效全矩阵，§4.3；后端条目 ID 为整型） */
 export async function removeCartItems(itemIds: string[]): Promise<{ removed: number }> {
-  const data = await request<CherryPickRemoveResultDto>(
+  return request<{ removed: number }>(
     'POST',
     '/tasks/cherry-picks/cart/items/remove',
     { item_ids: itemIds.map(Number) }
   )
-  return { removed: data.removed }
 }
 
-/** 清空购物车（DELETE /tasks/cherry-picks/cart/items） */
+/** 清空购物车 */
 export async function clearCart(): Promise<{ cleared: number }> {
-  const data = await request<CherryPickRemoveResultDto>(
-    'DELETE',
-    '/tasks/cherry-picks/cart/items'
-  )
-  return { cleared: data.removed }
+  return request<{ cleared: number }>('DELETE', '/tasks/cherry-picks/cart/items')
 }
 
-/* ============================================================
- * 挑选集
- * ============================================================ */
+// ============================================================
+// 挑选集
+// ============================================================
 
-/** 挑选集列表（GET /tasks/cherry-picks/sets） */
+/** 挑选集列表（后端 sets_list 返回摘要：set_id/name/item_count/created_at；不含条目） */
 export async function fetchPickSets(): Promise<PickSet[]> {
-  const data = await request<{ items: CherryPickSetListItemDto[] }>(
-    'GET',
-    '/tasks/cherry-picks/sets'
-  )
-  return (data.items ?? []).map(fromSetListItemDto)
+  const dto = await request<{ items: PickSetDto[] }>('GET', '/tasks/cherry-picks/sets')
+  return (dto.items ?? []).map(fromPickSetDto)
 }
 
-/** 另存挑选集（POST /tasks/cherry-picks/cart/save-as-set {name}；条目快照后端提取） */
+/** 另存挑选集（后端返回 { set_id, name, item_count }） */
 export async function savePickSet(name: string): Promise<PickSet> {
-  const data = await request<CherryPickSaveSetResultDto>(
-    'POST',
-    '/tasks/cherry-picks/cart/save-as-set',
-    { name }
-  )
-  return {
-    setId: String(data.set_id),
-    name: data.name,
-    createdAt: null,
-    itemCount: data.item_count,
-    entries: [],
-  }
+  const dto = await request<PickSetDto>('POST', '/tasks/cherry-picks/cart/save-as-set', {
+    name,
+  })
+  return fromPickSetDto(dto)
 }
 
-/** 恢复挑选集进购物车（POST /tasks/cherry-picks/sets/{id}/to-cart） */
+/** 恢复挑选集进购物车（后端返回 { added, missing, duplicated } result_id 集） */
 export async function restorePickSet(setId: string): Promise<{ restored: number }> {
-  const data = await request<CherryPickRestoreResultDto>(
+  const dto = await request<{ added?: number[] }>(
     'POST',
     `/tasks/cherry-picks/sets/${Number(setId)}/to-cart`
   )
-  return { restored: (data.added ?? []).length }
+  return { restored: dto.added?.length ?? 0 }
 }
 
-/** 删除挑选集（DELETE /tasks/cherry-picks/sets/{id}） */
+/** 删除挑选集（后端 set_id 整型；删除后由 refreshPickSets 回写） */
 export async function deletePickSet(setId: string): Promise<void> {
-  await request('DELETE', `/tasks/cherry-picks/sets/${Number(setId)}`)
+  await request<{ deleted: number }>(
+    'DELETE',
+    `/tasks/cherry-picks/sets/${Number(setId)}`
+  )
 }
 
-/* ============================================================
- * 复核 / 下单
- * ============================================================ */
+// ============================================================
+// 复核 / 下单
+// ============================================================
 
-/** 复核摘要（POST /tasks/cherry-picks/preview；购物车空 → 400 → 兜底空预览） */
+/** 复核摘要（POST /tasks/cherry-picks/preview 零新增接口） */
 export async function fetchCherryPickPreview(): Promise<PickPreview> {
-  try {
-    const data = await request<CherryPickPreviewDto>(
-      'POST',
-      '/tasks/cherry-picks/preview'
-    )
-    return fromPreviewDto(data)
-  } catch (err) {
-    if (err instanceof ApiError && err.httpStatus === 400) {
-      // 购物车为空（后端「购物车为空」400）：返回空预览供复核页空态兜底
-      return {
-        totalResults: 0,
-        invalidResultIds: [],
-        sourceTaskCount: 0,
-        deviceIds: [],
-        caseCount: 0,
-        executionStatusCounts: {},
-        duplicates: [],
-      }
-    }
-    throw err
-  }
+  const dto = await request<PickPreviewDto>('POST', '/tasks/cherry-picks/preview')
+  return fromPreviewDto(dto)
 }
 
 export interface CheckoutPayload {
   action: CheckoutAction
   name?: string
   description?: string
-  algorithm_type?: string
-  algorithm_params?: Record<string, unknown>
+  /** 任务级配置覆盖（§5.2；algorithm_type 等字段拆分透传后端） */
   config?: Record<string, unknown>
 }
 
 export interface CheckoutResult {
-  taskId: number
+  taskId: number | null
   action: CheckoutAction
+  /** 出清后保留条目（失效/重复）；后端内部出清，响应未返 → 恒空，由 refreshCart 回写 */
   keptItemIds: string[]
 }
 
-/** 下单（POST /tasks/cherry-picks/cart/checkout；三出口响应形态按 action 分流） */
+/** 下单（三出口 merge/reexecute/reevaluate；出清由后端处理） */
 export async function checkoutCart(payload: CheckoutPayload): Promise<CheckoutResult> {
-  const body: Record<string, unknown> = {
-    action: payload.action,
-    name: payload.name,
-    description: payload.description,
-    algorithm_type: payload.algorithm_type,
-    algorithm_params: payload.algorithm_params,
-    config: payload.config,
+  const body: Record<string, unknown> = { action: payload.action }
+  if (payload.name) body.name = payload.name
+  if (payload.description) body.description = payload.description
+  // §5.2 任务级配置覆盖：config 对象内 algorithm_type/algorithm_params 拆分透传
+  if (payload.config) {
+    if (typeof payload.config.algorithm_type === 'string') {
+      body.algorithm_type = payload.config.algorithm_type
+    }
+    if (payload.config.algorithm_params) {
+      body.algorithm_params = payload.config.algorithm_params
+    }
+    body.config = payload.config
   }
-  if (payload.action === 'merge') {
-    const data = await request<CherryPickMergeResultDto>(
-      'POST',
-      '/tasks/cherry-picks/cart/checkout',
-      body
-    )
-    return { taskId: data.task_id, action: payload.action, keptItemIds: [] }
-  }
-  if (payload.action === 'reexecute') {
-    const data = await request<CherryPickReexecuteResultDto>(
-      'POST',
-      '/tasks/cherry-picks/cart/checkout',
-      body
-    )
-    return { taskId: data.task_id, action: payload.action, keptItemIds: [] }
-  }
-  const data = await request<CherryPickReevaluateResultDto>(
+  const dto = await request<CheckoutResultDto>(
     'POST',
     '/tasks/cherry-picks/cart/checkout',
     body
   )
   return {
-    taskId: (data.submitted_task_ids ?? [])[0] ?? 0,
+    taskId: dto.task_id ?? null,
     action: payload.action,
     keptItemIds: [],
   }
 }
 
-/* ============================================================
- * 统一容器列表（§11-1 落地前客户端双查询合并）
- * ============================================================ */
+// ============================================================
+// 统一容器列表（§11-1 落地前客户端双查询合并：merged=true ∪ cherry_pick=true）
+// ============================================================
 
 export interface ContainerFilters {
   search?: string
   mergeType?: 'whole' | 'picked' | 'all'
 }
 
-/** 统一合并容器列表（GET /tasks?merged=true ∪ GET /tasks?cherry_pick=true 双查询合并；
- *  picked 容器 source_tasks 后端 read model 未填 → 溯源端点逐容器补全） */
+/** 统一合并容器列表（双 query 合并：整任务合并 merged=true ∪ 结果挑选 cherry_pick=true） */
 export async function fetchCherryPickContainers(
   filters: ContainerFilters = {}
 ): Promise<{ items: CherryPickContainer[]; total: number }> {
-  const baseParams: Record<string, unknown> = { page: 1, per_page: MAX_OPTION_PAGE }
-  if (filters.search && filters.search.trim()) baseParams.search = filters.search.trim()
-
-  const [wholeRes, pickedRes] = await Promise.all([
-    request<TaskListPageDto<TaskContainerItemDto>>('GET', '/tasks', undefined, {
-      params: { ...baseParams, merged: true },
-    }),
-    request<TaskListPageDto<TaskContainerItemDto>>('GET', '/tasks', undefined, {
-      params: { ...baseParams, cherry_pick: true },
-    }),
-  ])
-
-  const wholeItems = (wholeRes.items ?? []).map((it) =>
-    fromContainerDto({ ...it, mergeType: 'whole' })
-  )
-  const pickedItems = (pickedRes.items ?? []).map((it) =>
-    fromContainerDto({ ...it, mergeType: 'picked' })
-  )
-  // 溯源补全（仅 picked；接口失败保留空来源，不阻断列表）
-  const traced = await Promise.all(
-    pickedItems.map(async (container) => {
-      try {
-        const trace = await request<CherryPickSourceTraceDto>(
-          'GET',
-          `/tasks/cherry-picks/${container.id}/source`
-        )
-        const sourceResults = (trace.groups ?? []).map((g) => ({
-          source_task_id: g.source_task_id,
-          source_task_name: g.source_task_name,
-          count: (g.results ?? []).length,
-        }))
-        const raw = (pickedRes.items ?? []).find((it) => it.id === container.id)
-        if (raw) return fromContainerDto({ ...raw, mergeType: 'picked' }, sourceResults)
-        return container
-      } catch {
-        return container
-      }
-    })
-  )
-
-  let items = [...wholeItems, ...traced].sort((a, b) =>
-    (b.createdAt ?? '').localeCompare(a.createdAt ?? '')
-  )
-  if (filters.mergeType && filters.mergeType !== 'all') {
-    items = items.filter((c) => c.mergeType === filters.mergeType)
+  const mergeType = filters.mergeType ?? 'all'
+  const queries: Array<Promise<PaginatedDto<TaskListItemDto>>> = []
+  if (mergeType === 'whole' || mergeType === 'all') {
+    queries.push(
+      request<PaginatedDto<TaskListItemDto>>('GET', '/tasks', undefined, {
+        params: { page: 1, per_page: 100, merged: true },
+      })
+    )
   }
+  if (mergeType === 'picked' || mergeType === 'all') {
+    queries.push(
+      request<PaginatedDto<TaskListItemDto>>('GET', '/tasks', undefined, {
+        params: { page: 1, per_page: 100, cherry_pick: true },
+      })
+    )
+  }
+  const results = await Promise.all(queries)
+  const seen = new Set<number>()
+  const items: CherryPickContainer[] = []
+  for (const page of results) {
+    for (const row of page.items ?? []) {
+      if (seen.has(row.id)) continue
+      seen.add(row.id)
+      const container = fromContainerDto(row)
+      if (mergeType !== 'all' && container.mergeType !== mergeType) continue
+      if (filters.search) {
+        const kw = filters.search.trim().toLowerCase()
+        if (
+          !container.name.toLowerCase().includes(kw) &&
+          !(container.description ?? '').toLowerCase().includes(kw)
+        ) {
+          continue
+        }
+      }
+      items.push(container)
+    }
+  }
+  items.sort((a, b) => (b.createdAt < a.createdAt ? -1 : 1))
   return { items, total: items.length }
 }

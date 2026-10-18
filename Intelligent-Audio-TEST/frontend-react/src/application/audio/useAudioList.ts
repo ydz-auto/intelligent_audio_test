@@ -2,7 +2,8 @@
  * 音频管理页 query hooks（application 层；16_设备域.md §10 组件树落位）。
  * queryKey 前缀 ['audios'] / ['audio-tags'] / ['audio-folder-tree']；
  * 增删改/批量/URL导入后 invalidate 自动刷新列表与统计。
- * mock 阶段列表全量返回、前端过滤分页（§5.2 现接口支持分页/facet，接线后 URL 态化）。
+ * INT-645 已切真实后端（audios-api 经 client.ts）；列表当前仍前端过滤分页
+ * （§5.2 现接口支持分页/facet，URL 态化后传参后端）。
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -17,6 +18,7 @@ import {
   updateAudioMetadata,
   urlImportAudios,
   type AudioBatchAction,
+  type BatchAnnotationItem,
 } from '@/infrastructure/api/audios-api'
 import type { AudioAsset } from '@/domain/models/audio'
 
@@ -87,13 +89,19 @@ export function useAudioMutations() {
   })
 
   const urlImport = useMutation({
-    mutationFn: (urls: string[]) => urlImportAudios(urls),
+    mutationFn: ({
+      urls,
+      audioType,
+    }: {
+      urls: string[]
+      audioType: string
+    }) => urlImportAudios(urls, audioType),
     onSuccess: invalidate,
   })
 
   const batchAnnotations = useMutation({
     mutationFn: (payload?: {
-      items?: Array<{ audioId: number; annotations: unknown[] }>
+      items?: BatchAnnotationItem[]
       algorithmType?: string
       refreshTestCases?: boolean
     }) => batchUpdateAnnotations(payload),

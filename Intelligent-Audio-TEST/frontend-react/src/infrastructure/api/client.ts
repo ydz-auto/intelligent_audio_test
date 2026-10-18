@@ -5,6 +5,8 @@
  * - baseURL：相对路径 /api/v1（api_gateway/app.py:140-169 全路由挂载前缀）；
  *   dev 走 dev server 代理 → http://localhost:5000（service_ports.py gateway=5000，
  *   旧 Vue .env.development VITE_API_TARGET 同款，rsbuild.config.ts proxy 已配）。
+ *   根级端点（/api/status、/api/option/、/health，无 /api/v1 前缀）经
+ *   ApiRequestOptions.basePath 覆盖（INT-672），详见 buildUrl。
  * - JWT auth token：请求自动注入 Authorization: Bearer（token 存取
  *   infrastructure/storage/auth-token）；401 语义对照旧 Vue http/client.ts——
  *   skipAuthRedirect 特例（密码错误 401 不触发登出跳转循环）、refresh 流程、
@@ -24,8 +26,17 @@ export const API_BASE_URL = '/api/v1'
 export interface ApiRequestOptions extends Omit<RequestInit, 'body'> {
   /** query 参数（任意方法生效；undefined/null 值剔除） */
   params?: Record<string, unknown>
-  /** baseURL 覆盖（默认 /api/v1；根级挂载端点如 /api/option/ 传 '/api'） */
-  baseURL?: string
+  /**
+   * 根路径覆盖（INT-672）：请求改挂到其它根前缀，默认 undefined 沿用 API_BASE_URL。
+   * 后端根级端点无 `/api/v1` 前缀时用此字段直达——
+   * basePath: '/api' → GET /api/status；basePath: '' → GET /health。
+   */
+  basePath?: string
+  /**
+   * 根级路径（不走 /api/v1 前缀，改用 /api）：INT-620 /api/option/、/api/status
+   * 根级挂载端点对位 newAPI 契约；仍经本客户端注入 token/统一信封解包。
+   */
+  rootPath?: boolean
   /** 跳过 401 自动登出/跳转（login/register/encryption-key 等公开端点） */
   skipAuthRedirect?: boolean
   /** 响应类型（默认 json） */
@@ -86,7 +97,8 @@ function sessionExpired(): void {
 // ===== URL / 请求体 / 请求头 =====
 
 function buildUrl(path: string, options: ApiRequestOptions): string {
-  const base = options.baseURL ?? API_BASE_URL
+  // INT-672：basePath 覆盖网关统一前缀；rootPath 简写固定根级 /api；默认 API_BASE_URL（/api/v1）
+  const base = options.basePath ?? (options.rootPath ? '/api' : API_BASE_URL)
   let url = `${base}${path.startsWith('/') ? path : `/${path}`}`
   if (options.params) {
     const query = new URLSearchParams(

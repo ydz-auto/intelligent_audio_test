@@ -49,6 +49,10 @@ export type TopNavLink = {
   isActive?: boolean
   disabled?: boolean
   external?: boolean
+  /** 持有该权限码才可见（02_导航栏.md §2.2；admin 经 '*' 通配全显） */
+  permission?: string
+  /** 未登录可见但点击需登录的受限项（工作台；公共站头弹「需要登录」Dialog） */
+  requiresAuth?: boolean
 }
 
 /** 嵌套侧栏视图的返回项描述 */

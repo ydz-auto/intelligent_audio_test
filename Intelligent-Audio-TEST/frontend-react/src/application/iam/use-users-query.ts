@@ -1,25 +1,25 @@
 /**
- * 用户管理 query/mutations（application 层，INT-729 接线后）：
- * 列表 GET /auth/users（分页 ≤100 + status/keyword 下推、roleCodes 客户端
- * 二次过滤）；详情 GET /auth/users/{id}（overrides 附加权限回填编辑抽屉）；
- * 行操作分走 POST/PUT/DELETE；成功 toast + invalidate 联动（对齐 newAPI
+ * 用户管理 query/mutations（application 层，接线 INT-651）：
+ * 列表 GET /auth/users（分页 ≤100 + status/keyword/role_id 过滤，INT-347 §4.4.1）；
+ * 详情 GET /auth/users/{id}（overrides → 抽屉附加权限回填）；
+ * 行操作分走 PUT/POST/DELETE；成功 toast + invalidate 联动（对齐 newAPI
  * users-provider triggerRefresh 模式）。
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
+import type { PlatformUser } from '@/domain/models/user'
 import {
   assignRole,
   createUser,
   deleteUser,
-  getUserDetail,
+  getUser,
   getUsers,
   grantPermissions,
   updateUser,
   USERS_QUERY_KEY,
   type UserListFilter,
 } from '@/infrastructure/api/userApi'
-import type { PlatformUser, PlatformUserStatus } from '@/domain/models/user'
 
 export function useUsersQuery(filter: UserListFilter) {
   return useQuery({
@@ -29,22 +29,13 @@ export function useUsersQuery(filter: UserListFilter) {
   })
 }
 
-export function useUserDetailQuery(userId: string | null) {
+/** 用户详情（抽屉编辑回填附加权限；列表响应不含 overrides，需详情端点） */
+export function useUserDetail(userId: string | null) {
   return useQuery({
-    queryKey: ['iam', 'user-detail', userId],
-    queryFn: () => getUserDetail(userId as string),
+    queryKey: [...USERS_QUERY_KEY, 'detail', userId],
+    queryFn: () => (userId ? getUser(userId) : Promise.resolve(null)),
     enabled: !!userId,
-    staleTime: 30_000,
   })
-}
-
-export type CreateUserInput = {
-  username: string
-  displayName?: string
-  email: string
-  password: string
-  roleId?: number
-  status: PlatformUserStatus
 }
 
 export function useUserMutations() {
@@ -54,7 +45,7 @@ export function useUserMutations() {
     void queryClient.invalidateQueries({ queryKey: USERS_QUERY_KEY })
 
   const createUserMutation = useMutation({
-    mutationFn: (input: CreateUserInput) => createUser(input),
+    mutationFn: createUser,
     onSuccess: () => {
       toast.success('用户已创建')
       invalidateUsers()
@@ -65,7 +56,12 @@ export function useUserMutations() {
   const updateUserMutation = useMutation({
     mutationFn: (args: {
       userId: string
-      patch: Partial<Pick<PlatformUser, 'displayName' | 'email' | 'status'>>
+      patch: Partial<
+        Pick<
+          PlatformUser,
+          'displayName' | 'email' | 'status' | 'roleCode' | 'roleName'
+        >
+      >
     }) => updateUser(args.userId, args.patch),
     onSuccess: () => {
       toast.success('用户已更新')
@@ -75,8 +71,8 @@ export function useUserMutations() {
   })
 
   const assignRoleMutation = useMutation({
-    mutationFn: (args: { userId: string; roleCode: string }) =>
-      assignRole(args.userId, args.roleCode),
+    mutationFn: (args: { userId: string; roleId: number }) =>
+      assignRole(args.userId, args.roleId),
     onSuccess: () => {
       toast.success('用户角色已更新')
       invalidateUsers()
@@ -85,11 +81,8 @@ export function useUserMutations() {
   })
 
   const grantPermissionsMutation = useMutation({
-    mutationFn: (args: {
-      userId: string
-      permissions: string[]
-      previousPermissions?: string[]
-    }) => grantPermissions(args.userId, args.permissions, args.previousPermissions),
+    mutationFn: (args: { userId: string; permissions: string[] }) =>
+      grantPermissions(args.userId, args.permissions),
     onSuccess: () => {
       toast.success('附加权限已授予')
       invalidateUsers()
@@ -98,7 +91,7 @@ export function useUserMutations() {
   })
 
   const deleteUserMutation = useMutation({
-    mutationFn: (userId: string) => deleteUser(userId),
+    mutationFn: deleteUser,
     onSuccess: () => {
       toast.success('用户已删除')
       invalidateUsers()

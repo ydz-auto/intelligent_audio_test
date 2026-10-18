@@ -4,6 +4,7 @@
  * （用例集属敏感流程态，不进 URL 防超长）。
  */
 import { create } from 'zustand'
+import type { TestCaseFilter } from '@/infrastructure/api/test-execution-api'
 
 type CaseSelectionState = {
   /** 手动勾选（含全选结果/反选落点）的用例 id 集 */
@@ -12,6 +13,13 @@ type CaseSelectionState = {
   filterAllMode: boolean
   /** 反选补齐：手动勾选 a 条 · 反选补齐 b 条（汇总行口径透明） */
   invertAdded: string[]
+  /**
+   * 当前筛选条件（关键字/分组/标签/评估维度/算法；INT-646 代码审计 P2——
+   * filter-all 圈定按该筛选而非仅算法维度；StepCases 持续同步，
+   * launch 时随启动流程传入 createTask）。
+   */
+  filter: TestCaseFilter
+  setFilter: (filter: TestCaseFilter) => void
   toggleCase: (id: string) => void
   /** 正选当前页/全量圈定（POST /testcases/ids 全量 id 集落点） */
   selectMany: (ids: string[]) => void
@@ -28,6 +36,8 @@ export const useCaseSelectionStore = create<CaseSelectionState>((set) => ({
   manualCaseIds: [],
   filterAllMode: true,
   invertAdded: [],
+  filter: {},
+  setFilter: (filter) => set({ filter }),
 
   toggleCase: (id) =>
     set((s) => ({
@@ -66,7 +76,7 @@ export const useCaseSelectionStore = create<CaseSelectionState>((set) => ({
     }),
 
   clearSelection: () =>
-    set({ manualCaseIds: [], invertAdded: [], filterAllMode: true }),
+    set({ manualCaseIds: [], invertAdded: [], filterAllMode: true, filter: {} }),
 
   materializeAll: (allIds) =>
     set({ manualCaseIds: allIds, invertAdded: [], filterAllMode: false }),

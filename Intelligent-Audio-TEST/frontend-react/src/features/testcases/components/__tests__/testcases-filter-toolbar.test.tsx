@@ -10,6 +10,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { EvaluationDimensionItem } from '@/domain/models/evaluationDimension'
+import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import { MOCK_TAGS, MOCK_TEST_CASES } from '@/infrastructure/mock/testcases-mock'
 import { useAuthStore } from '@/infrastructure/stores/auth-store'
@@ -54,10 +55,90 @@ const DIMENSIONS: EvaluationDimensionItem[] = [
 const tagCount = (name: string) =>
   MOCK_TEST_CASES.filter((c) => !c.deleted && c.tags.includes(name)).length
 
+
 /** React Query 上下文（芯片 TestCasesAlgorithmChip 经 useAlgorithmOptions 依赖；INT-710 补） */
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false, gcTime: 0 } },
 })
+
+/**
+ * INT-677 回归 fixture：真实 API 态下已加载用例集（与静态 mock 不同源），
+ * 含一条回收站项（deleted）——验证 facet 计数从该集聚合而非 mock 常量。
+ */
+const LOADED_CASES: TestCaseListItem[] = [
+  {
+    id: 'real-001',
+    name: '真实-音箱播放',
+    description: null,
+    groupId: 'g1',
+    groupName: '智能音箱功能测试',
+    type: 'e2e',
+    tags: ['音箱', '中文'],
+    algorithmType: 'asr-v3',
+    createdAt: null,
+    updatedAt: null,
+    isFavorite: false,
+    deleted: false,
+    deletedAt: null,
+    deletedByUserId: null,
+    totalDuration: null,
+    rounds: 1,
+  },
+  {
+    id: 'real-002',
+    name: '真实-音箱点歌',
+    description: null,
+    groupId: 'g1',
+    groupName: '智能音箱功能测试',
+    type: 'api',
+    tags: ['音箱'],
+    algorithmType: 'asr-v3',
+    createdAt: null,
+    updatedAt: null,
+    isFavorite: false,
+    deleted: false,
+    deletedAt: null,
+    deletedByUserId: null,
+    totalDuration: null,
+    rounds: 1,
+  },
+  {
+    id: 'real-003',
+    name: '真实-回收站用例',
+    description: null,
+    groupId: null,
+    groupName: null,
+    type: 'e2e',
+    tags: ['音箱'],
+    algorithmType: 'asr-v3',
+    createdAt: null,
+    updatedAt: null,
+    isFavorite: false,
+    deleted: true,
+    deletedAt: '2026-10-01 10:00',
+    deletedByUserId: 1,
+    totalDuration: null,
+    rounds: 1,
+  },
+]
+
+/** 用自定义已加载用例集渲染工具栏（INT-677：计数数据源换为 cases prop） */
+function renderToolbarWithCases(cases: TestCaseListItem[], filters: Record<string, unknown> = {}) {
+  const props = {
+    filters: filters as never,
+    onChange: vi.fn(),
+    onReset: vi.fn(),
+    isFiltered: false,
+    groups: GROUPS,
+    tags: MOCK_TAGS,
+    dimensions: DIMENSIONS,
+    cases,
+    onRestoreAll: vi.fn(),
+  }
+  render(<TestCasesFilterToolbar {...props} />)
+  return props
+}
+ github/design/ux-redesign
 
 function renderToolbar(filters: Record<string, unknown> = {}, tags = MOCK_TAGS) {
   const props = {
@@ -68,6 +149,8 @@ function renderToolbar(filters: Record<string, unknown> = {}, tags = MOCK_TAGS) 
     groups: GROUPS,
     tags,
     dimensions: DIMENSIONS,
+    // INT-677：计数从已加载用例集（useTestCasesList items 形态）实时聚合，测试用 mock 常量模拟
+    cases: MOCK_TEST_CASES,
     onRestoreAll: vi.fn(),
   }
   render(
@@ -102,6 +185,36 @@ describe('TestCasesFilterToolbar', () => {
     // 选项计数从已加载集聚合（§3.4 客户端聚合口径）
     const speakerOption = screen.getByRole('button', { name: '音箱' })
     expect(within(speakerOption).getByText(String(tagCount('音箱')))).toBeInTheDocument()
+  })
+
+  it('INT-677 回归：标签 facet 计数从已加载用例集聚合（真实 API 态与静态 mock 不同源）', async () => {
+    const user = setupUser()
+    renderToolbarWithCases(LOADED_CASES)
+    await user.click(screen.getByRole('button', { name: '标签全部' }))
+    const speakerOption = screen.getByRole('button', { name: '音箱' })
+    // 已加载集命中 2 条（回收站项排除）；mock 常量的过期计数 5 不应出现
+    expect(within(speakerOption).getByText('2')).toBeInTheDocument()
+    expect(within(speakerOption).queryByText('5')).not.toBeInTheDocument()
+  })
+
+  it('INT-677 回归：删除标签级联确认计数来自已加载用例集', async () => {
+    const user = setupUser()
+    renderToolbarWithCases(LOADED_CASES, { tag: '音箱' })
+    await user.click(screen.getByRole('button', { name: /标签操作/ }))
+    await user.click(await screen.findByText('删除标签'))
+    expect(
+      screen.getByText('确定要删除标签「音箱」吗？该操作将级联删除标签下的 2 个用例，不可恢复！')
+    ).toBeInTheDocument()
+  })
+
+  it('INT-677 回归：回收站项不计入 facet 计数（仅删除项时计数不展示）', async () => {
+    const user = setupUser()
+    renderToolbarWithCases(LOADED_CASES.filter((c) => c.deleted), { trash: true })
+    await user.click(screen.getByRole('button', { name: '标签全部' }))
+    const speakerOption = screen.getByRole('button', { name: '音箱' })
+    // 回收站态已加载集全为删除项 → 计数 0 → badge 隐藏（沿用现语义）
+    expect(within(speakerOption).queryByText('1')).not.toBeInTheDocument()
+    expect(within(speakerOption).queryByText('2')).not.toBeInTheDocument()
   })
 
   it('标签 facet 单选：选中单个标签 → onChange({ tag })', async () => {
@@ -174,6 +287,7 @@ describe('TestCasesFilterToolbar', () => {
       groups: GROUPS,
       tags: MOCK_TAGS,
       dimensions: DIMENSIONS,
+      cases: MOCK_TEST_CASES,
       onRestoreAll: vi.fn(),
     }
     const { rerender } = render(

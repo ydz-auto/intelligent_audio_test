@@ -179,13 +179,10 @@ export function toCaseParam(raw: unknown): CaseParam {
 export function toReferenceParam(raw: unknown): ReferenceParam {
   const r = asRecord(raw)
   const merge = r.merge_mode
-  // 契约口径 join（V9.7.10/V9.7.31 Vue）；历史 concat 兼容读为 join
   const mergeMode =
-    merge === 'join' || merge === 'collect' || merge === 'first'
+    merge === 'concat' || merge === 'collect' || merge === 'first'
       ? merge
-      : merge === 'concat'
-        ? 'join'
-        : null
+      : null
   return {
     id: num(r.id) ?? 0,
     code: str(r.code),
@@ -398,7 +395,7 @@ function toReferenceParamItemDto(row: Row): Row {
     annotation_format: nullableStr(r.annotationFormat),
     field_path: nullableStr(r.fieldPath),
     merge_mode:
-      r.mergeMode === 'join' || r.mergeMode === 'collect' || r.mergeMode === 'first'
+      r.mergeMode === 'concat' || r.mergeMode === 'collect' || r.mergeMode === 'first'
         ? r.mergeMode
         : null,
     help_text: nullableStr(r.helpText),

@@ -9,12 +9,11 @@ import {
   mapMetricMappingDto,
   mapRankingRowDto,
   mapRankingRows,
-  mapRankingSubjectDto,
 } from '@/infrastructure/adapters/benchmarkAdapter'
 import type {
   BenchmarkMetricMappingDto,
   BenchmarkRankingDto,
-} from '@/infrastructure/dto/benchmark.dto'
+} from '@/infrastructure/mock/benchmark-mock'
 import type { RankingFilters } from '@/domain/models/benchmark'
 
 const ROW_DTO: BenchmarkRankingDto = {
@@ -120,15 +119,6 @@ describe('mapMetricMappingDto', () => {
     expect(mapping.scenarioTags).toEqual(['普通话通用', '噪声'])
     expect(mapping.active).toBe(true)
     expect(Object.keys(mapping).some((key) => key.includes('_'))).toBe(false)
-  })
-})
-
-describe('mapRankingSubjectDto', () => {
-  it('主体联想 DTO（string）直透为名称（GET /ranking/subjects 实测返回 string[]）', () => {
-    expect(mapRankingSubjectDto('远场语音评测模型-旗舰版')).toBe(
-      '远场语音评测模型-旗舰版'
-    )
-    expect(mapRankingSubjectDto('DeepL API')).toBe('DeepL API')
   })
 })
 

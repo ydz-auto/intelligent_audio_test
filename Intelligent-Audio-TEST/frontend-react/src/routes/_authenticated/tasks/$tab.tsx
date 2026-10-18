@@ -1,8 +1,7 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { z } from 'zod'
 
-import { hasPermission } from '@/domain/models/user'
-import { useAuthStore } from '@/infrastructure/stores/auth-store'
+import { requirePermission } from '@/application/auth/route-guards'
 import {
   TASKS_TAB_REDIRECTS,
   TASKS_TAB_WHITELIST,
@@ -37,11 +36,8 @@ const tasksSearchSchema = z.object({
 const NUMERIC_ID = /^\d+$/
 
 export const Route = createFileRoute('/_authenticated/tasks/$tab')({
-  beforeLoad: ({ params }) => {
-    const user = useAuthStore.getState().user
-    if (!hasPermission(user, 'task:read')) {
-      throw redirect({ to: '/403' })
-    }
+  beforeLoad: ({ params, location }) => {
+    requirePermission('task:read', location)
     // 旧「合并」路径 redirect 到「挑选合并」（§2.2 裁定①）
     const redirectTarget = TASKS_TAB_REDIRECTS[params.tab]
     if (redirectTarget) {

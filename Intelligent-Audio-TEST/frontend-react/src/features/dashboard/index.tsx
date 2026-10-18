@@ -3,7 +3,7 @@
  * ① 算法卡片网格（INT-436：每算法一张大卡，点击切换全局算法；双入口——右上角切换器+页内大卡）
  * ② 开始使用引导卡（双形态）③ 平台概览卡（三 StatCard + 设备状态）
  * ④ 双面板行（最近任务 ｜ 用例分组排行）⑤ 任务统计图表区（#task-charts）。
- * 数据一律 mock 常量（红线④），query 桩见 infrastructure/api。
+ * 数据经 infrastructure/api 取数（home 域已接真实接口，其余域 mock 常量，query 桩见 infrastructure/api）。
  */
 import { useIsFetching, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'

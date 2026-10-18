@@ -1,82 +1,135 @@
 /**
- * 全局算法选项 hook 测试（接线·壳 INT-607，02_导航栏.md §3.4）：
- * GET /algorithm/options（algorithm:read 门槛）——无码查询禁用且 isReadonly
- * （切换器整钮隐藏）；有码拉取真实选项映射到 Domain AlgorithmOption。
+ * 全局算法选项 hook 单测（接线壳 INT-607，代码审计 P2 回归）：
+ * queryKey 用独立前缀 ['shell','algorithm','options']，与评估域「关联算法」
+ * facet 的 ['algorithm','options']（evaluation-api mock → {value,label}）隔离——
+ * 同 key 共享缓存会让先填充的一方决定 data 形态、另一方字段读空白。
+ * 无 algorithm:read（device_admin/guest）不发请求（enabled: canRead）。
  */
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { fetchAlgorithmOptions } from '@/infrastructure/api/algorithmApi'
-import { useAuthStore } from '@/infrastructure/stores/auth-store'
 import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
+import { useAlgorithmOptions as useEvaluationAlgorithmOptions } from '@/application/evaluation/use-dimensions'
+import { useAuthStore } from '@/infrastructure/stores/auth-store'
+import type { AuthUser } from '@/domain/models/user'
+import type { AlgorithmSwitchOption } from '@/domain/models/algorithm'
 
-vi.mock('@/infrastructure/api/authApi', () => ({
-  authApi: {
-    login: vi.fn(),
-    getMe: vi.fn(),
-    logout: vi.fn(),
-    getAuthMode: vi.fn(),
-  },
+const fetchMock = vi.hoisted(() => vi.fn())
+
+vi.mock('@/infrastructure/api/algorithm-api', () => ({
+  fetchAlgorithmOptions: fetchMock,
 }))
 
-vi.mock('@/infrastructure/api/algorithmApi', () => ({
-  fetchAlgorithmOptions: vi.fn(),
+const evaluationFetchMock = vi.hoisted(() => vi.fn())
+
+vi.mock('@/infrastructure/api/evaluation-api', () => ({
+  fetchAlgorithmOptions: evaluationFetchMock,
 }))
 
-function makeUser(permissions: string[]) {
+const REAL_OPTIONS: AlgorithmSwitchOption[] = [
+  { value: 'voice_llm', name: '语音大模型' },
+  { value: 'audio_sep', name: '音频分离' },
+]
+
+function makeUser(username: string, permissions: string[]): AuthUser {
   return {
     id: '1',
-    username: 'u',
-    displayName: 'u',
-    roleName: '',
+    username,
+    displayName: username,
+    roleName: username,
     permissions,
   }
 }
 
-function renderOptionsHook() {
+function renderWithClient() {
   const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0 },
+    },
   })
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   )
-  return renderHook(() => useAlgorithmOptions(), { wrapper })
+  return { client, wrapper }
 }
 
-describe('useAlgorithmOptions', () => {
+describe('useAlgorithmOptions queryKey 隔离（代码审计 P2 回归）', () => {
   beforeEach(() => {
-    useAuthStore.setState({ user: null })
-    vi.clearAllMocks()
-  })
-
-  it('无 algorithm:read：查询禁用、isReadonly=true（切换器隐藏）', () => {
-    useAuthStore.setState({ user: makeUser(['report:read']) })
-    const { result } = renderOptionsHook()
-    expect(result.current.isReadonly).toBe(true)
-    expect(result.current.options).toEqual([])
-    expect(fetchAlgorithmOptions).not.toHaveBeenCalled()
-  })
-
-  it('有 algorithm:read：拉取真实 options 映射到 Domain AlgorithmOption', async () => {
-    useAuthStore.setState({ user: makeUser(['algorithm:read']) })
-    vi.mocked(fetchAlgorithmOptions).mockResolvedValue([
-      { id: 'asr-v3', name: '通用识别引擎', version: '', description: '', enabled: true },
-      { id: 'asr-stream', name: '流式识别引擎', version: '', description: '', enabled: true },
+    fetchMock.mockReset()
+    fetchMock.mockResolvedValue(REAL_OPTIONS)
+    evaluationFetchMock.mockReset()
+    evaluationFetchMock.mockResolvedValue([
+      { value: 'asr-v3', label: '通用识别引擎' },
+      { value: 'eval-ensemble', label: '多维评估集成' },
     ])
-    const { result } = renderOptionsHook()
-    await waitFor(() => expect(result.current.options.length).toBe(2))
-    expect(fetchAlgorithmOptions).toHaveBeenCalledTimes(1)
-    expect(result.current.options[0]).toMatchObject({ id: 'asr-v3', name: '通用识别引擎' })
-    expect(result.current.isReadonly).toBe(false)
+    useAuthStore.setState({ user: null })
   })
 
-  it('超级通配 *：视同有码查询', async () => {
-    useAuthStore.setState({ user: makeUser(['*']) })
-    vi.mocked(fetchAlgorithmOptions).mockResolvedValue([])
-    const { result } = renderOptionsHook()
-    await waitFor(() => expect(fetchAlgorithmOptions).toHaveBeenCalledTimes(1))
-    expect(result.current.isReadonly).toBe(false)
+  it("queryKey 为 ['shell','algorithm','options']，与评估域 ['algorithm','options'] 不共享", async () => {
+    useAuthStore.setState({
+      user: makeUser('tester', ['algorithm:read']),
+    })
+    const { client, wrapper } = renderWithClient()
+
+    renderHook(() => useAlgorithmOptions(), { wrapper })
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    const keys = client
+      .getQueryCache()
+      .findAll()
+      .map((query) => query.queryKey)
+    expect(keys).toContainEqual(['shell', 'algorithm', 'options'])
+    expect(keys).not.toContainEqual(['algorithm', 'options'])
+  })
+
+  it('返回 {value,name} 真实契约（AlgorithmSwitchOption，非评估域 {value,label}）', async () => {
+    useAuthStore.setState({
+      user: makeUser('tester', ['algorithm:read']),
+    })
+    const { wrapper } = renderWithClient()
+
+    const { result } = renderHook(() => useAlgorithmOptions(), { wrapper })
+    await waitFor(() => expect(result.current.options).toEqual(REAL_OPTIONS))
+    expect(result.current.options[0]).toHaveProperty('name')
+    expect(result.current.options[0]).not.toHaveProperty('label')
+  })
+
+  it('无 algorithm:read（device_admin/guest）→ 不发请求、返回空列表', async () => {
+    useAuthStore.setState({
+      user: makeUser('device_admin', ['device:read']),
+    })
+    const { wrapper } = renderWithClient()
+
+    const { result } = renderHook(() => useAlgorithmOptions(), { wrapper })
+    expect(result.current.options).toEqual([])
+    expect(result.current.canRead).toBe(false)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('与评估域「关联算法」hook 同挂载不串数据：各持各契约（壳 {value,name} / 评估 {value,label}）', async () => {
+    useAuthStore.setState({
+      user: makeUser('tester', ['algorithm:read']),
+    })
+    const { wrapper } = renderWithClient()
+
+    const shell = renderHook(() => useAlgorithmOptions(), { wrapper })
+    const evaluation = renderHook(() => useEvaluationAlgorithmOptions(), {
+      wrapper,
+    })
+
+    // 两 hook 各自 queryFn 都触发（评估域 mock 120ms 延迟）
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(evaluation.result.current.data).toBeDefined())
+    await waitFor(() => expect(shell.result.current.options).toHaveLength(2))
+
+    // 壳 hook 读 {value,name}：切换器下拉 name 有值
+    expect(shell.result.current.options[0]?.name).toBe('语音大模型')
+    // 评估域 hook 读 {value,label}：facet 下拉 label 有值（非 undefined 空白）
+    const evaluationOptions = evaluation.result.current.data ?? []
+    expect(evaluationOptions[0]?.label).toBe('通用识别引擎')
+    expect(evaluationOptions[0]).not.toHaveProperty('name')
   })
 })

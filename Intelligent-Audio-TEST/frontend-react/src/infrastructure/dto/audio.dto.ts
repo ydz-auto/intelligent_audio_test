@@ -31,25 +31,40 @@ export interface AudioListStatsDto {
   today_uploads: number
 }
 
-/** GET /audios 响应 data（AudioListData：items + total + stats，schemas/audio.py 实测） */
-export interface AudioListDataDto {
+/** 对应 AudioListData（PaginatedData[AudioItem] + stats；GET /audios 响应信封内 data） */
+export interface AudioListDto {
   items: AudioItemDto[]
   total: number
+  page: number
+  per_page: number
+  pages: number
   stats: AudioListStatsDto
 }
 
-/** 文件夹树节点（POST /audios/folder-tree 响应 data.tree 嵌套 folders/files，INT-714 实测） */
-export interface AudioFolderNodeDto {
-  name: string
-  path: string
-  /** 子节点（含文件）数量（根=全部音频数；子文件夹=其下音频总数） */
-  count: number
-  /** 当前文件夹直接包含的音频文件数 */
-  file_count: number
-  has_children: boolean
-  files: unknown[]
-  folders: AudioFolderNodeDto[]
+/** 对应 TagListData（音频标签名，INT-297 统一分页信封；GET /audios/tags 响应信封内 data） */
+export interface AudioTagListDto {
+  items: string[]
+  total: number
+  page?: number
+  per_page?: number
+  pages?: number
 }
 
-/** 文件夹树根（响应 data.tree） */
-export interface AudioFolderTreeDto extends AudioFolderNodeDto {}
+/** 文件夹树节点（POST /audios/folder-tree 递归节点；file_count/folders 后端原值） */
+export interface FolderTreeNodeDto {
+  name?: string
+  path?: string
+  count?: number
+  file_count?: number
+  has_children?: boolean
+  files?: Array<Record<string, unknown>>
+  folders?: FolderTreeNodeDto[]
+}
+
+/** 对应文件夹树响应（data = { tree, folders, total, folder_count }） */
+export interface FolderTreeDto {
+  tree: FolderTreeNodeDto
+  folders: FolderTreeNodeDto[]
+  total: number
+  folder_count: number
+}

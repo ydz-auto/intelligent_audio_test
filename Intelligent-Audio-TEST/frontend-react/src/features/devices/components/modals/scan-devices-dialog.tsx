@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/dialog'
 import { Progress } from '@/features/tasks/components/ui/progress'
 import { normalizeDeviceSystem } from '@/features/devices/lib/device-system'
+import { useDeviceMutations } from '@/application/devices/use-devices'
 import type { DevicesTabKey } from '@/features/devices/constants'
 import type { TestDevice } from '@/domain/models/testDevice'
 import type { PlaybackDevice } from '@/domain/models/playbackDevice'
@@ -73,6 +74,7 @@ export function ScanDevicesDialog(props: ScanDevicesDialogProps) {
   const [rows, setRows] = useState<ScanResultRow[]>([])
   const [adding, setAdding] = useState<Set<number>>(new Set())
   const timerRef = useRef<number | null>(null)
+  const { scan } = useDeviceMutations()
 
   const clearTimer = () => {
     if (timerRef.current != null) {
@@ -93,7 +95,7 @@ export function ScanDevicesDialog(props: ScanDevicesDialogProps) {
     // 防重入：已扫描中不重复启动
     if (scanning) return
     clearTimer()
-    // 模拟分档进度（§6.1 scanStatus 状态机）；接线后接 useDeviceMutations().scan
+    // 接线 INT-644：进度为 UX 分档状态机（§6.1 scanStatus），100% 时调真实 scan 端点
     setScanning(true)
     setProgress(0)
     const kind = props.tab === 'test' ? 'test' : 'playback'
@@ -106,19 +108,15 @@ export function ScanDevicesDialog(props: ScanDevicesDialogProps) {
       if (next >= 100) {
         clearTimer()
         setScanning(false)
-        // mock 扫描结果（§6.1 mock 兜底）
-        setRows(
-          kind === 'test'
-            ? [
-                { name: '音箱-扫描新机', model: '旗舰 S1', serial: 'SN-SCAN-1001', system: 'harmony', system_version: '3.2.1', ip: '192.168.1.51', status: 'online', is_registered: false, id: null, type: 'physical' },
-                { name: '手机-扫描小米14', model: 'Xiaomi 14', serial: 'SN-SCAN-1002', system: 'android', system_version: '14', ip: '192.168.1.52', status: 'online', is_registered: false, id: null, type: 'physical' },
-                { name: '音箱-客厅位', model: '旗舰 S1', serial: 'SN-A001-8821', system: 'harmony', system_version: '3.2.1', ip: '192.168.1.21', status: 'online', is_registered: true, id: 1, type: 'physical' },
-              ]
-            : [
-                { name: 'Speaker Out 1', model: '系统音频通道', device_unique_id: 'AUDIO-OUT-01', channel_index: 0, sample_rate: 48000, type: 'dry', status: 'online' },
-                { name: 'Speaker Out 2', model: '系统音频通道', device_unique_id: 'AUDIO-OUT-02', channel_index: 1, sample_rate: 48000, type: 'noise', status: 'offline' },
-              ]
-        )
+        void (async () => {
+          try {
+            const result = await scan.mutateAsync(kind)
+            setRows((result ?? []) as ScanResultRow[])
+          } catch {
+            setRows([])
+            toast.error('扫描失败，请检查后端设备服务')
+          }
+        })()
       }
     }, 350)
   }
@@ -237,7 +235,7 @@ export function ScanDevicesDialog(props: ScanDevicesDialogProps) {
                 )
               })}
               <p className='text-muted-foreground text-xs'>
-                当前为模拟数据（§6.1 mock 兜底；无真机时后端 scan 亦返 mock 列表）
+                已注册设备显示「已添加」，可跳转登记表单补充信息后保存（§6.1）
               </p>
             </div>
           )}

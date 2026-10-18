@@ -16,7 +16,8 @@ export const DEVICE_GROUP_TYPE_META: Record<
 }
 
 export interface DeviceGroup {
-  id: number
+  /** 分组 id：后端 device_groups.id 为 UUID 字符串（device_group.py id: Optional[str]） */
+  id: string
   name: string
   description: string | null
   groupType: DeviceGroupType

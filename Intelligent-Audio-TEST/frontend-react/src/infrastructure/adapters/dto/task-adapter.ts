@@ -96,15 +96,11 @@ export function toTaskDetail(dto: TaskDetailDto): TaskDetailData {
     concurrency:
       typeof config.concurrency === 'number' ? config.concurrency : null,
     tags: dto.tags ?? [],
-    cases: (dto.cases ?? []).map((c) => ({
-      ...c,
-      reviewed: c.reviewed === true,
-    })),
+    cases: dto.cases ?? [],
     devices: dto.devices ?? [],
     apis: dto.apis ?? [],
     created_at: dto.created_at,
     updated_at: dto.updated_at,
-    review_count: dto.review_count ?? 0,
   }
 }
 

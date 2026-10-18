@@ -1,19 +1,19 @@
 /**
- * 设备管理页 API 桩（infrastructure 层；16_设备域.md §10 组件树落位）。
- * 红线④：全部返回 mock 常量（devices-mock），接线时替换为真实请求：
- *   GET /api/v1/test-devices        列表（keyword/status/lab_id/group_id/page/per_page）
- *   GET /api/v1/playback-devices    列表（keyword/device_type/lab_id/page/per_page）
- *   GET /api/v1/apis                列表（§3.6；后端 GET 无权限门槛见 §11-10）
- *   GET /api/v1/laboratories        CRUD（INT-487 后端待立项，mock 先行）
- *   GET /api/v1/alarms(/stats)      告警列表 + 统计（get_alarm_stats）
- *   GET /api/v1/alarm-rules         告警规则 CRUD
- *   GET /api/v1/status-history      状态历史
- *   POST /api/v1/test-devices/batch 批量操作（BATCH_ACTIONS 白名单不含 delete，§11-7）
- *   POST /api/v1/test-devices/scan  扫描设备（API 分支恒空，§11-11）
+ * 设备管理页 API（infrastructure/api 层；接线 INT-644）。
+ * 经 client.ts 统一 fetch 封装（baseURL /api/v1 → dev 代理 gateway:5000；INT-605），
+ * 端点对照 api_gateway/routes/device_bp.py（/test-devices）、playback_bp.py
+ * （/playback-devices）、api_bp.py（/apis）实测契约；响应 snake_case DTO 经
+ * infrastructure/adapters 转 camelCase Domain（snake→camel 唯一转换层，红线③）。
+ * 列表端点统一 PaginatedData { items,total,page,per_page,pages }：本页全量拉取
+ * （per_page=1000，对照 Vue BATCH_LIST_PARAMS.defaultBatchPageSize），
+ * 筛选/分页由 feature 层前端完成（接线前 mock 同口径）。
+ * INT-487 待后端：laboratories CRUD 无端点（§11-24，mock 先行 + FEAT 证据）、
+ * lab_id/lab_name/occupied 后端 DTO 未暴露（§11-25/26）——occupied 以本地瞬时
+ * 覆盖兜底（见 setDeviceOccupied），lab 字段落地后接线不返工。
  */
 import type { TestDevice } from '@/domain/models/testDevice'
 import type { PlaybackDevice } from '@/domain/models/playbackDevice'
-import type { ApiDevice } from '@/domain/models/apiDevice'
+import type { ApiDevice, ApiEndpoint } from '@/domain/models/apiDevice'
 import type {
   Alarm,
   AlarmRule,
@@ -22,356 +22,510 @@ import type {
 } from '@/domain/models/alarm'
 import type { Laboratory } from '@/domain/models/laboratory'
 import type { DeviceGroup } from '@/domain/models/deviceGroup'
+import { request, type ApiRequestOptions } from '@/infrastructure/api/client'
+import { ApiError } from '@/infrastructure/api/api-error'
+import type { TestDeviceItemDto } from '@/infrastructure/dto/test-device.dto'
+import type { PlaybackDeviceItemDto } from '@/infrastructure/dto/playback-device.dto'
+import type { ApiItemDto } from '@/infrastructure/dto/apis.dto'
+import type { DeviceGroupItemDto } from '@/infrastructure/dto/device-group.dto'
+import type {
+  AlarmDto,
+  AlarmRuleDto,
+  AlarmStatsDto,
+  DeviceStatusHistoryDto,
+} from '@/infrastructure/dto/alarm.dto'
+import { testDeviceFromDto } from '@/infrastructure/adapters/testDeviceAdapter'
+import { playbackDeviceFromDto } from '@/infrastructure/adapters/playbackDeviceAdapter'
+import { apiDeviceFromDto } from '@/infrastructure/adapters/apiDeviceAdapter'
+import { deviceGroupFromDto } from '@/infrastructure/adapters/deviceGroupAdapter'
 import {
-  MOCK_ALARMS,
-  MOCK_ALARM_RULES,
-  MOCK_API_DEVICES,
-  MOCK_DEVICE_GROUPS,
-  MOCK_LABORATORIES,
-  MOCK_PLAYBACK_DEVICES,
-  MOCK_SPL_MAPPING_REFS,
-  MOCK_STATUS_HISTORY,
-  MOCK_TEST_DEVICES,
-} from '../mock/devices-mock'
+  alarmFromDto,
+  alarmRuleFromDto,
+  statusEventFromDto,
+} from '@/infrastructure/adapters/alarmAdapter'
+import { MOCK_LABORATORIES } from '../mock/devices-mock'
 
-/** 模拟网络延迟（视觉稿演示用；接线后删除） */
-function mockLatency<T>(value: T, ms = 160): Promise<T> {
-  return new Promise((resolve) => setTimeout(() => resolve(value), ms))
+/** 后端统一分页信封（api_gateway/schemas/common.py PaginatedData） */
+interface PaginatedDto<T> {
+  items: T[]
+  total: number
+  page: number
+  per_page: number
+  pages: number
 }
 
-/** mock 内存库（页面内增删改操作在运行时可变；接线后删除） */
-let testDeviceStore: TestDevice[] = [...MOCK_TEST_DEVICES]
-let playbackDeviceStore: PlaybackDevice[] = [...MOCK_PLAYBACK_DEVICES]
-let apiDeviceStore: ApiDevice[] = [...MOCK_API_DEVICES]
-let laboratoryStore: Laboratory[] = [...MOCK_LABORATORIES]
-let alarmStore: Alarm[] = [...MOCK_ALARMS]
-let alarmRuleStore: AlarmRule[] = [...MOCK_ALARM_RULES]
+/** 列表全量拉取参数（筛选/分页前端做；对照 Vue BATCH_LIST_PARAMS） */
+const LIST_ALL_PARAMS = { page: 1, per_page: 1000 }
 
-/** 新 id（mock 阶段自增；接线后走后端自增） */
-let nextDeviceId = 1000
-let nextLabId = 100
-let nextRuleId = 910
-
-function freshDeviceId(): number {
-  nextDeviceId += 1
-  return nextDeviceId
+/** 扫描结果行（device.py DeviceScanItem / playback.py PlaybackScanItem，snake_case 直出） */
+export interface ScannedDeviceRowDto {
+  serial?: string | null
+  model?: string | null
+  system?: string | null
+  system_version?: string | null
+  ip?: string | null
+  status?: string | null
+  is_registered?: boolean
+  id?: number | string | null
+  name?: string | null
+  type?: string | null
+  device_unique_id?: string | null
+  channel_index?: number | null
+  sample_rate?: number | null
 }
 
-/** 当前 mock 内存库（供 feature 内读取；接线后删除） */
-export function peekTestDevices(): TestDevice[] {
-  return testDeviceStore
-}
+/* ==================== INT-487「测试中」占用态本地瞬时覆盖 ==================== */
 
-/* ==================== 实验室名 / 映射名 refs 装饰（接线后由后端返回 lab_name） ==================== */
+/** 后端未暴露 occupied/testing（§11-26）；测试/停止测试动作后本地覆盖维持徽章（落地后换占用查询端点） */
+const occupiedOverrides = new Map<'test' | 'playback' | 'api', Map<number, boolean>>()
 
-function decorateTestDevice(devices: TestDevice[]): TestDevice[] {
-  return devices.map((device) => ({
-    ...device,
-    labName: device.labName ?? laboratoryStore.find((l) => l.id === device.labId)?.name ?? null,
-  }))
-}
-
-function decoratePlaybackDevice(devices: PlaybackDevice[]): PlaybackDevice[] {
-  return devices.map((device) => ({
-    ...device,
-    labName: device.labName ?? laboratoryStore.find((l) => l.id === device.labId)?.name ?? null,
-    currentSplMappingName:
-      device.currentSplMappingName ??
-      MOCK_SPL_MAPPING_REFS.find((ref) => ref.id === device.currentSplMappingId)?.name ??
-      null,
-  }))
-}
-
-/** 测试中 API id 集合（INT-487 统计「测试中API」口径 mock 本地装饰） */
-const API_OCCUPIED_IDS: ReadonlySet<number> = new Set([13])
-
-function decorateApiDevice(devices: ApiDevice[]): ApiDevice[] {
-  return devices.map((device) => ({
-    ...device,
-    occupied: API_OCCUPIED_IDS.has(device.id),
-    rmsSplMappingName:
-      device.rmsSplMappingName ??
-      MOCK_SPL_MAPPING_REFS.find((ref) => ref.id === device.rmsSplMappingId)?.name ??
-      null,
-  }))
-}
-
-/* ==================== 列表查询 ==================== */
-
-/** 测试设备列表（§3.4；GET /test-devices） */
-export async function fetchTestDevices(): Promise<TestDevice[]> {
-  // TODO(API 接线): GET /api/v1/test-devices
-  return mockLatency(decorateTestDevice([...testDeviceStore]))
-}
-
-/** 播放设备列表（§3.5；GET /playback-devices） */
-export async function fetchPlaybackDevices(): Promise<PlaybackDevice[]> {
-  // TODO(API 接线): GET /api/v1/playback-devices
-  return mockLatency(decoratePlaybackDevice([...playbackDeviceStore]))
-}
-
-/** 测试 API 列表（§3.6；GET /apis） */
-export async function fetchApiDevices(): Promise<ApiDevice[]> {
-  // TODO(API 接线): GET /api/v1/apis
-  return mockLatency(decorateApiDevice([...apiDeviceStore]))
-}
-
-/** 实验室列表（§6.26；GET /api/v1/laboratories——INT-487 后端待立项） */
-export async function fetchLaboratories(): Promise<Laboratory[]> {
-  // TODO(API 接线): GET /api/v1/laboratories
-  return mockLatency([...laboratoryStore])
-}
-
-/** 设备分组列表（§6.3；GET /device-groups） */
-export async function fetchDeviceGroups(): Promise<DeviceGroup[]> {
-  // TODO(API 接线): GET /api/v1/device-groups
-  return mockLatency(structuredClone(MOCK_DEVICE_GROUPS))
-}
-
-/** 告警列表 + 统计（§3.7；GET /alarms，响应内 data.stats） */
-export async function fetchAlarms(): Promise<{ alarms: Alarm[]; stats: AlarmStats }> {
-  // TODO(API 接线): GET /api/v1/alarms?status=&severity=&device_id=&page=&per_page
-  const active = alarmStore.filter((a) => a.status === 'active').length
-  const acknowledged = alarmStore.filter((a) => a.status === 'acknowledged').length
-  const resolved = alarmStore.filter((a) => a.status === 'resolved').length
-  return mockLatency({
-    alarms: [...alarmStore],
-    stats: {
-      active,
-      acknowledged,
-      resolved,
-      total: alarmStore.length,
-    },
+function applyOccupied<T extends { id: number; occupied: boolean }>(
+  kind: 'test' | 'playback' | 'api',
+  items: T[]
+): T[] {
+  const overrides = occupiedOverrides.get(kind)
+  if (!overrides || overrides.size === 0) return items
+  return items.map((item) => {
+    const override = overrides.get(item.id)
+    return override === undefined ? item : { ...item, occupied: override }
   })
 }
 
-/** 告警规则列表（§6.6；GET /alarm-rules） */
-export async function fetchAlarmRules(): Promise<AlarmRule[]> {
-  // TODO(API 接线): GET /api/v1/alarm-rules
-  return mockLatency([...alarmRuleStore])
+/* ==================== 列表查询（全量拉取，feature 层前端筛选分页） ==================== */
+
+/** 测试设备列表（§3.4；GET /test-devices） */
+export async function fetchTestDevices(options: ApiRequestOptions = {}): Promise<TestDevice[]> {
+  const dto = await request<PaginatedDto<TestDeviceItemDto>>(
+    'GET', '/test-devices', undefined, { ...options, params: LIST_ALL_PARAMS }
+  )
+  return applyOccupied('test', (dto?.items ?? []).map(testDeviceFromDto))
 }
 
-/** 状态历史（§3.7；GET /status-history） */
-export async function fetchStatusHistory(): Promise<DeviceStatusEvent[]> {
-  // TODO(API 接线): GET /api/v1/status-history?device_ids=&event_type=&start_time=&end_time=
-  return mockLatency([...MOCK_STATUS_HISTORY])
+/** 播放设备列表（§3.5；GET /playback-devices） */
+export async function fetchPlaybackDevices(options: ApiRequestOptions = {}): Promise<PlaybackDevice[]> {
+  const dto = await request<PaginatedDto<PlaybackDeviceItemDto>>(
+    'GET', '/playback-devices', undefined, { ...options, params: LIST_ALL_PARAMS }
+  )
+  return applyOccupied('playback', (dto?.items ?? []).map(playbackDeviceFromDto))
 }
 
-/* ==================== 变更操作（mock 内存库；接线后替换为真实请求） ==================== */
+/** 测试 API 列表（§3.6；GET /apis） */
+export async function fetchApiDevices(options: ApiRequestOptions = {}): Promise<ApiDevice[]> {
+  const dto = await request<PaginatedDto<ApiItemDto>>(
+    'GET', '/apis', undefined, { ...options, params: LIST_ALL_PARAMS }
+  )
+  return applyOccupied('api', (dto?.items ?? []).map(apiDeviceFromDto))
+}
+
+/** 实验室列表（§6.26；GET /laboratories——INT-487 后端 CRUD 未立项，mock 先行） */
+export async function fetchLaboratories(): Promise<Laboratory[]> {
+  return [...MOCK_LABORATORIES]
+}
+
+/** 设备分组列表（§6.3；GET /test-devices/device-groups） */
+export async function fetchDeviceGroups(options: ApiRequestOptions = {}): Promise<DeviceGroup[]> {
+  const dto = await request<PaginatedDto<DeviceGroupItemDto>>(
+    'GET', '/test-devices/device-groups', undefined,
+    { ...options, params: { page: 1, per_page: 100 } }
+  )
+  return (dto?.items ?? []).map(deviceGroupFromDto)
+}
+
+/** 告警列表 + 统计（§3.7；GET /test-devices/alarms，响应 data.stats） */
+export async function fetchAlarms(
+  options: ApiRequestOptions = {}
+): Promise<{ alarms: Alarm[]; stats: AlarmStats }> {
+  const dto = await request<PaginatedDto<AlarmDto> & { stats?: AlarmStatsDto }>(
+    'GET', '/test-devices/alarms', undefined,
+    { ...options, params: { page: 1, per_page: 500 } }
+  )
+  return {
+    alarms: (dto?.items ?? []).map(alarmFromDto),
+    stats: toAlarmStats(dto?.stats),
+  }
+}
+
+function toAlarmStats(stats: AlarmStatsDto | undefined): AlarmStats {
+  return {
+    active: stats?.active ?? 0,
+    acknowledged: stats?.acknowledged ?? 0,
+    resolved: stats?.resolved ?? 0,
+    total: stats?.total ?? 0,
+  }
+}
+
+/** 告警规则列表（§6.6；GET /test-devices/alarm-rules） */
+export async function fetchAlarmRules(options: ApiRequestOptions = {}): Promise<AlarmRule[]> {
+  const dto = await request<PaginatedDto<AlarmRuleDto>>(
+    'GET', '/test-devices/alarm-rules', undefined,
+    { ...options, params: { page: 1, per_page: 100 } }
+  )
+  return (dto?.items ?? []).map(alarmRuleFromDto)
+}
+
+/** 状态历史（§3.7；GET /test-devices/status-history） */
+export async function fetchStatusHistory(options: ApiRequestOptions = {}): Promise<DeviceStatusEvent[]> {
+  const dto = await request<PaginatedDto<DeviceStatusHistoryDto>>(
+    'GET', '/test-devices/status-history', undefined,
+    { ...options, params: { page: 1, per_page: 200 } }
+  )
+  return (dto?.items ?? []).map(statusEventFromDto)
+}
+
+/* ==================== 变更操作（camelCase Domain → snake_case 请求体，对照后端 Create/Update Schema） ==================== */
+
+/** DeviceCreateSchema/DeviceUpdateSchema 字段集（高级设置/占位字段后端 schema 未覆盖，不发送） */
+function toTestDeviceUpsertDto(data: Partial<TestDevice>): Record<string, unknown> {
+  const dto: Record<string, unknown> = {}
+  const pick = <K extends keyof TestDevice>(key: K, snake: string) => {
+    const value = data[key]
+    if (value !== undefined) dto[snake] = value
+  }
+  pick('name', 'name')
+  pick('model', 'model')
+  pick('type', 'type')
+  pick('system', 'system')
+  pick('systemVersion', 'system_version')
+  pick('appName', 'app_name')
+  pick('appVersion', 'app_version')
+  pick('description', 'description')
+  pick('location', 'location')
+  pick('maxAudioDuration', 'max_audio_duration')
+  pick('needsPromptAudio', 'needs_prompt_audio')
+  pick('connectionType', 'connection_type')
+  pick('keywords', 'keywords')
+  pick('serialNumber', 'serial_number')
+  pick('ip', 'ip')
+  pick('status', 'status')
+  pick('supportedAlgorithms', 'supported_algorithms')
+  return dto
+}
+
+/** PlaybackCreateSchema/PlaybackUpdateSchema 字段集（INT-381 补口字段后端 schema 未覆盖，不发送） */
+function toPlaybackDeviceUpsertDto(data: Partial<PlaybackDevice>): Record<string, unknown> {
+  const dto: Record<string, unknown> = {}
+  const pick = <K extends keyof PlaybackDevice>(key: K, snake: string) => {
+    const value = data[key]
+    if (value !== undefined) dto[snake] = value
+  }
+  pick('name', 'name')
+  pick('model', 'model')
+  pick('deviceType', 'device_type')
+  pick('sampleRate', 'sample_rate')
+  pick('channelIndex', 'channel_index')
+  pick('deviceUniqueId', 'device_unique_id')
+  pick('description', 'description')
+  pick('status', 'status')
+  pick('currentSplMappingId', 'current_spl_mapping_id')
+  return dto
+}
+
+function toApiEndpointUpsertDto(ep: ApiEndpoint): Record<string, unknown> {
+  const dto: Record<string, unknown> = {}
+  if (ep.endpoint !== undefined) dto.endpoint = ep.endpoint
+  if (ep.name !== undefined) dto.name = ep.name
+  if (ep.maxProcess !== undefined) dto.max_process = ep.maxProcess
+  if (ep.maxTimeout !== undefined) dto.max_timeout = ep.maxTimeout
+  if (ep.maxAudioDuration !== undefined) dto.max_audio_duration = ep.maxAudioDuration
+  if (ep.priority !== undefined) dto.priority = ep.priority
+  if (ep.status !== undefined) dto.status = ep.status
+  if (ep.description !== undefined) dto.description = ep.description
+  return dto
+}
+
+/** ApiCreateInput/ApiUpdateInput 字段集（camelCase 端点行 → snake_case） */
+function toApiDeviceUpsertDto(data: Partial<ApiDevice>): Record<string, unknown> {
+  const dto: Record<string, unknown> = {}
+  const pick = <K extends keyof ApiDevice>(key: K, snake: string) => {
+    const value = data[key]
+    if (value !== undefined) dto[snake] = value
+  }
+  pick('name', 'name')
+  pick('vendor', 'vendor')
+  pick('apiUrl', 'api_url')
+  pick('description', 'description')
+  pick('meta', 'meta')
+  pick('algorithmType', 'algorithm_type')
+  pick('defaultMaxProcess', 'default_max_process')
+  pick('defaultMaxTimeout', 'default_max_timeout')
+  pick('defaultMaxAudioDuration', 'default_max_audio_duration')
+  pick('status', 'status')
+  pick('rmsSplMappingId', 'rms_spl_mapping_id')
+  if (data.endpoints !== undefined) {
+    dto.endpoints = data.endpoints.map(toApiEndpointUpsertDto)
+  }
+  return dto
+}
+
+/** 删除失败收敛为 { success:false, message }（复用服务端中文文案，UI toast 直呈） */
+async function deleteGuard(action: () => Promise<unknown>): Promise<{ success: boolean; message?: string }> {
+  try {
+    await action()
+    return { success: true }
+  } catch (error) {
+    if (error instanceof ApiError) return { success: false, message: error.userMessage }
+    return { success: false, message: '操作失败，请重试' }
+  }
+}
 
 /** 新增测试设备（§6.2；POST /test-devices） */
-export async function createTestDevice(input: Omit<TestDevice, 'id' | 'createdAt' | 'updatedAt'>) {
-  // TODO(API 接线): POST /api/v1/test-devices
-  const device: TestDevice = { ...input, id: freshDeviceId(), createdAt: now(), updatedAt: now() }
-  testDeviceStore = [device, ...testDeviceStore]
-  await mockLatency(null, 120)
-  return { success: true, device }
+export async function createTestDevice(
+  input: Omit<TestDevice, 'id' | 'createdAt' | 'updatedAt'>,
+  options: ApiRequestOptions = {}
+): Promise<{ success: boolean }> {
+  await request('POST', '/test-devices', toTestDeviceUpsertDto(input), options)
+  return { success: true }
 }
 
 /** 编辑测试设备（§6.2；PUT /test-devices/{id}） */
-export async function updateTestDevice(id: number, patch: Partial<TestDevice>) {
-  // TODO(API 接线): PUT /api/v1/test-devices/{id}
-  testDeviceStore = testDeviceStore.map((d) =>
-    d.id === id ? { ...d, ...patch, updatedAt: now() } : d
-  )
-  await mockLatency(null, 120)
+export async function updateTestDevice(
+  id: number,
+  patch: Partial<TestDevice>,
+  options: ApiRequestOptions = {}
+): Promise<{ success: boolean }> {
+  await request('PUT', `/test-devices/${id}`, toTestDeviceUpsertDto(patch), options)
   return { success: true }
 }
 
-/** 删除测试设备（§3.4.1；DELETE /test-devices/{id}；被测试任务占用拦截 §11-1 toast） */
-export async function deleteTestDevice(id: number) {
-  // TODO(API 接线): DELETE /api/v1/test-devices/{id}
-  const target = testDeviceStore.find((d) => d.id === id)
-  if (target?.occupied) return { success: false, message: '该设备已关联测试任务，无法删除' }
-  testDeviceStore = testDeviceStore.filter((d) => d.id !== id)
-  await mockLatency(null, 120)
-  return { success: true }
+/** 删除测试设备（§3.4.1；DELETE /test-devices/{id}；被测试任务占用由后端拦截） */
+export async function deleteTestDevice(
+  id: number,
+  options: ApiRequestOptions = {}
+): Promise<{ success: boolean; message?: string }> {
+  return deleteGuard(() => request('DELETE', `/test-devices/${id}`, undefined, options))
 }
 
 /** 新增播放设备（§6.2；POST /playback-devices） */
 export async function createPlaybackDevice(
-  input: Omit<PlaybackDevice, 'id' | 'createdAt' | 'updatedAt'>
-) {
-  // TODO(API 接线): POST /api/v1/playback-devices
-  const device: PlaybackDevice = { ...input, id: freshDeviceId(), createdAt: now(), updatedAt: now() }
-  playbackDeviceStore = [device, ...playbackDeviceStore]
-  await mockLatency(null, 120)
-  return { success: true, device }
+  input: Omit<PlaybackDevice, 'id' | 'createdAt' | 'updatedAt'>,
+  options: ApiRequestOptions = {}
+): Promise<{ success: boolean }> {
+  await request('POST', '/playback-devices', toPlaybackDeviceUpsertDto(input), options)
+  return { success: true }
 }
 
 /** 编辑播放设备（§6.2；PUT /playback-devices/{id}） */
-export async function updatePlaybackDevice(id: number, patch: Partial<PlaybackDevice>) {
-  // TODO(API 接线): PUT /api/v1/playback-devices/{id}
-  playbackDeviceStore = playbackDeviceStore.map((d) =>
-    d.id === id ? { ...d, ...patch, updatedAt: now() } : d
-  )
-  await mockLatency(null, 120)
+export async function updatePlaybackDevice(
+  id: number,
+  patch: Partial<PlaybackDevice>,
+  options: ApiRequestOptions = {}
+): Promise<{ success: boolean }> {
+  await request('PUT', `/playback-devices/${id}`, toPlaybackDeviceUpsertDto(patch), options)
   return { success: true }
 }
 
 /** 删除播放设备（§3.5；DELETE /playback-devices/{id}） */
-export async function deletePlaybackDevice(id: number) {
-  // TODO(API 接线): DELETE /api/v1/playback-devices/{id}
-  playbackDeviceStore = playbackDeviceStore.filter((d) => d.id !== id)
-  await mockLatency(null, 120)
-  return { success: true }
+export async function deletePlaybackDevice(
+  id: number,
+  options: ApiRequestOptions = {}
+): Promise<{ success: boolean; message?: string }> {
+  return deleteGuard(() => request('DELETE', `/playback-devices/${id}`, undefined, options))
 }
 
 /** 新增测试 API（§6.2；POST /apis） */
-export async function createApiDevice(input: Omit<ApiDevice, 'id' | 'createdAt' | 'updatedAt'>) {
-  // TODO(API 接线): POST /api/v1/apis
-  const device: ApiDevice = { ...input, id: freshDeviceId(), createdAt: now(), updatedAt: now() }
-  apiDeviceStore = [device, ...apiDeviceStore]
-  await mockLatency(null, 120)
-  return { success: true, device }
+export async function createApiDevice(
+  input: Omit<ApiDevice, 'id' | 'createdAt' | 'updatedAt'>,
+  options: ApiRequestOptions = {}
+): Promise<{ success: boolean }> {
+  await request('POST', '/apis', toApiDeviceUpsertDto(input), options)
+  return { success: true }
 }
 
-/** 编辑测试 API（§6.2；PUT /apis/{id}——复用 INT-355 §5.3 口径） */
-export async function updateApiDevice(id: number, patch: Partial<ApiDevice>) {
-  // TODO(API 接线): PUT /api/v1/apis/{id}
-  apiDeviceStore = apiDeviceStore.map((d) =>
-    d.id === id ? { ...d, ...patch, updatedAt: now() } : d
-  )
-  await mockLatency(null, 120)
+/** 编辑测试 API（§6.2；PUT /apis/{id}） */
+export async function updateApiDevice(
+  id: number,
+  patch: Partial<ApiDevice>,
+  options: ApiRequestOptions = {}
+): Promise<{ success: boolean }> {
+  await request('PUT', `/apis/${id}`, toApiDeviceUpsertDto(patch), options)
   return { success: true }
 }
 
 /** 删除测试 API（§3.6；DELETE /apis/{id}） */
-export async function deleteApiDevice(id: number) {
-  // TODO(API 接线): DELETE /api/v1/apis/{id}
-  apiDeviceStore = apiDeviceStore.filter((d) => d.id !== id)
-  await mockLatency(null, 120)
-  return { success: true }
+export async function deleteApiDevice(
+  id: number,
+  options: ApiRequestOptions = {}
+): Promise<{ success: boolean; message?: string }> {
+  return deleteGuard(() => request('DELETE', `/apis/${id}`, undefined, options))
 }
 
-/** 设备控制操作（§3.4.1；POST /test-devices/{id}/{action}，mock 幂等成功） */
-export async function controlDevice(id: number, action: string) {
-  // TODO(API 接线): POST /api/v1/test-devices/{id}/{action}
-  await mockLatency(null, 200)
+/** 设备操作端点路径段（device_bp 固定段；health_check/api_health_check 走独立端点） */
+function controlActionToPath(action: string): string | null {
+  switch (action) {
+    case 'connect': return 'connect'
+    case 'disconnect': return 'disconnect'
+    case 'reboot': return 'reboot'
+    case 'shutdown': return 'shutdown'
+    case 'install_app': return 'install-app'
+    case 'uninstall_app': return 'uninstall-app'
+    default: return null
+  }
+}
+
+/** 设备控制操作（§3.4.1；POST /test-devices/{id}/{action}；health_check 走批量端点） */
+export async function controlDevice(
+  id: number,
+  action: string,
+  options: ApiRequestOptions = {}
+): Promise<{ success: boolean; action?: string; id?: number }> {
+  if (action === 'health_check') {
+    await request('POST', '/test-devices/health-check', { device_ids: [id] }, options)
+    return { success: true, action, id }
+  }
+  if (action === 'api_health_check') {
+    await request('POST', `/apis/${id}/health`, undefined, options)
+    return { success: true, action, id }
+  }
+  const path = controlActionToPath(action)
+  if (!path) {
+    // 后端无此操作端点（播放设备 restart/reset-config/mute/unmute 等 UX 视觉稿动作，
+    // 无 Vue 对位/未立项 → 本地幂等成功，不产生真实调用）
+    return { success: true, action, id }
+  }
+  await request('POST', `/test-devices/${id}/${path}`, undefined, options)
   return { success: true, action, id }
 }
 
-/** 「测试中」占用态本地瞬时态兜底（INT-487 §3.4 注③：后端 occupied/testing 待立项，
- * 落地前前端「测试/停止测试」动作置/清 occupied；接线后改调占用查询/任务派发端点） */
+/** 「测试中」占用态：本地瞬时覆盖 + 真实测试派发端点（INT-487 §3.4 注③：测试/停止测试） */
 export async function setDeviceOccupied(
   kind: 'test' | 'playback' | 'api',
   id: number,
-  occupied: boolean
-) {
-  // TODO(API 接线): POST /api/v1/tasks/{id}/start|stop 联动占用状态
-  if (kind === 'test') {
-    testDeviceStore = testDeviceStore.map((d) => (d.id === id ? { ...d, occupied } : d))
-  } else if (kind === 'playback') {
-    playbackDeviceStore = playbackDeviceStore.map((d) => (d.id === id ? { ...d, occupied } : d))
-  } else {
-    apiDeviceStore = apiDeviceStore.map((d) => (d.id === id ? { ...d, occupied } : d))
-  }
-  await mockLatency(null, 80)
+  occupied: boolean,
+  options: ApiRequestOptions = {}
+): Promise<{ success: boolean }> {
+  const overrides = occupiedOverrides.get(kind) ?? new Map<number, boolean>()
+  overrides.set(id, occupied)
+  occupiedOverrides.set(kind, overrides)
+  const base = kind === 'test' ? '/test-devices' : kind === 'playback' ? '/playback-devices' : '/apis'
+  await request('POST', `${base}/${id}/${occupied ? 'test' : 'stop-test'}`, undefined, options)
   return { success: true }
 }
 
-/** 批量设备操作（§3.8；POST /test-devices/batch；delete 前端串行 §11-7） */
-const executedBatchKeys = new Set<string>()
-
-export async function batchDeviceAction(action: string, ids: number[]) {
-  // TODO(API 接线): POST /api/v1/test-devices/batch
-  await mockLatency(null, 220)
-  // 幂等键模拟：同 action + 同 id 集合重复提交 → 命中幂等回放（P2-6 返修：部分失败与回放区分）
-  const key = `${action}:${[...ids].sort((a, b) => a - b).join(',')}`
-  const replayed = executedBatchKeys.has(key)
-  executedBatchKeys.add(key)
-  const successCount = ids.length
+/** 批量设备操作（§3.8；POST /test-devices/batch；delete 前端串行 §11-7；health_check 后端 batch 白名单内） */
+export async function batchDeviceAction(
+  action: string,
+  ids: number[],
+  options: ApiRequestOptions = {}
+): Promise<{
+  action: string
+  total: number
+  successCount: number
+  replayedCount: number
+  results: Array<{ id: number; success: boolean; message: string | null }>
+}> {
+  const dto = await request<{
+    action?: string
+    total?: number
+    success_count?: number
+    results?: Array<{ id: number | string; success?: boolean; message?: string }>
+    idempotent_replay?: boolean
+  }>('POST', '/test-devices/batch', { action, device_ids: ids }, options)
+  const results = (dto?.results ?? []).map((row) => ({
+    id: Number(row.id),
+    success: row.success ?? false,
+    message: row.message ?? null,
+  }))
+  const total = dto?.total ?? results.length
   return {
-    action,
-    total: ids.length,
-    successCount,
-    replayedCount: replayed ? ids.length : 0,
-    results: ids.map((id) => ({
-      id,
-      success: true,
-      message: replayed ? '命中幂等回放，未重复执行' : null,
-    })),
+    action: dto?.action ?? action,
+    total,
+    successCount: dto?.success_count ?? 0,
+    replayedCount: dto?.idempotent_replay ? total : 0,
+    results,
   }
 }
 
-/** 确认告警（§3.7；POST /alarms/{id}/acknowledge，acknowledged_by 后端注入 request.username） */
-export async function acknowledgeAlarm(id: number) {
-  // TODO(API 接线): POST /api/v1/alarms/{id}/acknowledge
-  alarmStore = alarmStore.map((a) =>
-    a.id === id ? { ...a, status: 'acknowledged', acknowledgedBy: '当前用户' } : a
-  )
-  await mockLatency(null, 120)
-  return { success: true }
-}
-
-/** 保存告警规则（§6.6；POST/PUT /alarm-rules） */
-export async function saveAlarmRule(input: Omit<AlarmRule, 'id' | 'createdAt' | 'updatedAt'> & { id?: number }) {
-  // TODO(API 接线): POST/PUT /api/v1/alarm-rules
-  if (input.id) {
-    alarmRuleStore = alarmRuleStore.map((r) => (r.id === input.id ? { ...r, ...input, updatedAt: now() } : r))
-  } else {
-    const rule: AlarmRule = { ...input, id: nextRuleId++, createdAt: now(), updatedAt: now() }
-    alarmRuleStore = [rule, ...alarmRuleStore]
-  }
-  await mockLatency(null, 120)
-  return { success: true }
-}
-
-/** 删除告警规则（§6.6；DELETE /alarm-rules/{id}） */
-export async function deleteAlarmRule(id: number) {
-  // TODO(API 接线): DELETE /api/v1/alarm-rules/{id}
-  alarmRuleStore = alarmRuleStore.filter((r) => r.id !== id)
-  await mockLatency(null, 120)
-  return { success: true }
-}
-
-/** 新建实验室（§6.26；POST /laboratories——INT-487 后端待立项，mock 先行） */
-export async function createLaboratory(input: Omit<Laboratory, 'id' | 'createdAt' | 'updatedAt' | 'deviceCount' | 'playbackDeviceCount' | 'testCaseCount'>) {
-  // TODO(API 接线): POST /api/v1/laboratories
-  const lab: Laboratory = { ...input, id: nextLabId++, deviceCount: 0, playbackDeviceCount: 0, testCaseCount: 0, createdAt: now(), updatedAt: now() }
-  laboratoryStore = [lab, ...laboratoryStore]
-  await mockLatency(null, 120)
-  return { success: true }
-}
-
-/** 删除实验室（§6.26；DELETE /laboratories/{id}） */
-export async function deleteLaboratory(id: number) {
-  // TODO(API 接线): DELETE /api/v1/laboratories/{id}
-  laboratoryStore = laboratoryStore.filter((l) => l.id !== id)
-  await mockLatency(null, 120)
-  return { success: true }
-}
-
-/** 编辑实验室（§6.26；PUT /laboratories/{id}——P3-21 返修补「编辑」操作） */
-export async function updateLaboratory(
+/** 确认告警（§3.7；POST /test-devices/alarms/{id}/acknowledge，acknowledged_by 后端注入 request.username） */
+export async function acknowledgeAlarm(
   id: number,
-  patch: Partial<Omit<Laboratory, 'id' | 'createdAt' | 'updatedAt' | 'deviceCount' | 'playbackDeviceCount' | 'testCaseCount'>>
-) {
-  // TODO(API 接线): PUT /api/v1/laboratories/{id}
-  laboratoryStore = laboratoryStore.map((l) =>
-    l.id === id ? { ...l, ...patch, updatedAt: now() } : l
-  )
-  await mockLatency(null, 120)
+  options: ApiRequestOptions = {}
+): Promise<{ success: boolean }> {
+  await request('POST', `/test-devices/alarms/${id}/acknowledge`, {}, options)
   return { success: true }
 }
 
-/** 扫描设备（§6.1；POST /test-devices/scan；API 分支恒空 §11-11） */
-export async function scanDevices(kind: 'test' | 'playback') {
-  // TODO(API 接线): POST /api/v1/test-devices/scan（ADB/HDC）+ /playback-devices/scan（系统音频通道）
-  await mockLatency(null, 1400)
-  if (kind === 'test') {
-    return [
-      { serial: 'SN-SCAN-1001', model: '旗舰 S1', system: 'harmony', status: 'online', is_registered: false, id: null, name: null, type: 'physical', system_version: '3.2.1', app_name: null, app_version: null, ip: '192.168.1.51' },
-      { serial: 'SN-SCAN-1002', model: 'Xiaomi 14', system: 'android', status: 'online', is_registered: false, id: null, name: null, type: 'physical', system_version: '14', app_name: null, app_version: null, ip: '192.168.1.52' },
-      { serial: 'SN-A001-8821', model: '旗舰 S1', system: 'harmony', status: 'online', is_registered: true, id: 1, name: '音箱-客厅位', type: 'physical', system_version: '3.2.1', app_name: null, app_version: null, ip: '192.168.1.21' },
-    ]
+/** 保存告警规则（§6.6；POST/PUT /test-devices/alarm-rules[/{id}]） */
+export async function saveAlarmRule(
+  input: Omit<AlarmRule, 'id' | 'createdAt' | 'updatedAt'> & { id?: number },
+  options: ApiRequestOptions = {}
+): Promise<{ success: boolean }> {
+  const body = {
+    name: input.name,
+    metric_type: input.metricType,
+    threshold_value: input.thresholdValue,
+    severity: input.severity,
+    notify_email: input.notifyEmail,
+    enabled: input.enabled,
   }
-  return [
-    { name: 'Speaker Out 1', model: '系统音频通道', device_unique_id: 'AUDIO-OUT-01', channel_index: 0, sample_rate: 48000, type: 'dry', status: 'online' },
-    { name: 'Speaker Out 2', model: '系统音频通道', device_unique_id: 'AUDIO-OUT-02', channel_index: 1, sample_rate: 48000, type: 'noise', status: 'offline' },
-  ]
+  if (input.id != null) {
+    await request('PUT', `/test-devices/alarm-rules/${input.id}`, body, options)
+  } else {
+    await request('POST', '/test-devices/alarm-rules', body, options)
+  }
+  return { success: true }
 }
+
+/** 删除告警规则（§6.6；DELETE /test-devices/alarm-rules/{id}） */
+export async function deleteAlarmRule(
+  id: number,
+  options: ApiRequestOptions = {}
+): Promise<{ success: boolean; message?: string }> {
+  return deleteGuard(() => request('DELETE', `/test-devices/alarm-rules/${id}`, undefined, options))
+}
+
+/* ==================== 实验室（§6.26；INT-487 后端 /laboratories CRUD 未立项，mock 先行） ==================== */
+
+let laboratoryStore: Laboratory[] = [...MOCK_LABORATORIES]
+let nextLabId = 100
 
 function now(): string {
   return new Date().toISOString()
+}
+
+/** 新建实验室（§6.26；POST /laboratories——INT-487 后端待立项，mock 先行） */
+export async function createLaboratory(
+  input: Omit<Laboratory, 'id' | 'createdAt' | 'updatedAt' | 'deviceCount' | 'playbackDeviceCount' | 'testCaseCount'>
+): Promise<{ success: boolean }> {
+  const lab: Laboratory = {
+    ...input,
+    id: nextLabId++,
+    deviceCount: 0,
+    playbackDeviceCount: 0,
+    testCaseCount: 0,
+    createdAt: now(),
+    updatedAt: now(),
+  }
+  laboratoryStore = [lab, ...laboratoryStore]
+  return { success: true }
+}
+
+/** 删除实验室（§6.26；DELETE /laboratories/{id}——INT-487 后端待立项，mock 先行） */
+export async function deleteLaboratory(id: number): Promise<{ success: boolean; message?: string }> {
+  laboratoryStore = laboratoryStore.filter((l) => l.id !== id)
+  return { success: true }
+}
+
+/** 编辑实验室（§6.26；PUT /laboratories/{id}——INT-487 后端待立项，mock 先行；P3-21 返修补「编辑」） */
+export async function updateLaboratory(
+  id: number,
+  patch: Partial<
+    Omit<Laboratory, 'id' | 'createdAt' | 'updatedAt' | 'deviceCount' | 'playbackDeviceCount' | 'testCaseCount'>
+  >
+): Promise<{ success: boolean }> {
+  laboratoryStore = laboratoryStore.map((l) =>
+    l.id === id ? { ...l, ...patch, updatedAt: now() } : l
+  )
+  return { success: true }
+}
+
+/** 扫描设备（§6.1；POST /test-devices/scan（ADB/HDC）+ /playback-devices/scan（系统音频通道），API 分支恒空 §11-11） */
+export async function scanDevices(
+  kind: 'test' | 'playback',
+  options: ApiRequestOptions = {}
+): Promise<ScannedDeviceRowDto[]> {
+  const dto = await request<ScannedDeviceRowDto[]>(
+    'POST', kind === 'test' ? '/test-devices/scan' : '/playback-devices/scan',
+    undefined, options
+  )
+  return dto ?? []
 }

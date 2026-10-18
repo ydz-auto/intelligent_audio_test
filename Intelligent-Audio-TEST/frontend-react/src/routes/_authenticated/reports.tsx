@@ -1,14 +1,13 @@
-import { createFileRoute, redirect } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod'
 
-import { hasPermission } from '@/domain/models/user'
+import { requirePermission } from '@/application/auth/route-guards'
 import { ReportShowcasePage } from '@/features/reports-showcase'
-import { useAuthStore } from '@/infrastructure/stores/auth-store'
 
 /**
  * 报告展示页 /reports（INT-434 重实施 / INT-441 双入口拆分；15_报告域.md §2.1）。
  * 顶部导航「报告」直达，对外展示已发布报告、弱管理；管理操作集中在 /report-center。
- * beforeLoad：report:read 守卫 → 无码整页 /403（顶部导航「报告」同码隐藏）。
+ * beforeLoad：report:read 守卫 → 无码整页 /403?from（顶部导航「报告」同码隐藏）。
  * validateSearch：URL 态（view/page/pageSize/search/type/timeRange/startTime/endTime/
  * algorithmType/sortBy/sortOrder），zod .catch 兜底，URL 可分享。
  */
@@ -41,11 +40,8 @@ export type { ShowcaseSearch } from '@/features/reports-showcase/types'
 
 export const Route = createFileRoute('/_authenticated/reports')({
   validateSearch: reportsShowcaseSearchSchema,
-  beforeLoad: () => {
-    const user = useAuthStore.getState().user
-    if (!hasPermission(user, 'report:read')) {
-      throw redirect({ to: '/403' })
-    }
+  beforeLoad: ({ location }) => {
+    requirePermission('report:read', location)
   },
   component: ReportShowcasePage,
 })

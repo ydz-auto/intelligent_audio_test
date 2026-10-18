@@ -30,8 +30,8 @@ import {
 } from '@/components/ui/popover'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { cn } from '@/lib/utils'
-import { MOCK_TEST_CASES } from '@/infrastructure/mock/testcases-mock'
 import type { TestCaseListFilters } from '@/application/testcases/use-testcases-list'
+import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import type { EvaluationDimensionItem } from '@/domain/models/evaluationDimension'
 import type { TagItem } from '@/domain/models/testTag'
@@ -46,6 +46,8 @@ export interface TestCasesFilterToolbarProps {
   groups: TestCaseGroup[]
   tags: TagItem[]
   dimensions: EvaluationDimensionItem[]
+  /** 已加载/已筛选用例集（INT-677：标签 facet 计数从该集实时聚合，与列表同源；回收站项不计入） */
+  cases: TestCaseListItem[]
   /** 回收站「全部恢复」 */
   onRestoreAll: () => void
 }
@@ -116,31 +118,23 @@ function SingleFacet({
   )
 }
 
-/** 标签下在用（未删除）用例数（mock 源派生；§3.4 客户端从已加载集聚合计数 +
- *  §3.6 删除/复制级联计数，接线后随列表查询；回收站项不计入——级联作用于在用集） */
-const TAG_CASE_COUNTS: Record<string, number> = (() => {
-  const m = new Map<string, number>()
-  for (const c of MOCK_TEST_CASES) {
-    if (c.deleted) continue
-    for (const t of c.tags) m.set(t, (m.get(t) ?? 0) + 1)
-  }
-  return Object.fromEntries(m)
-})()
-
 /**
  * 标签 facet（11_用例域.md §3.4/§3.6，INT-592 裁定单选）：
  * singleSelect + Command 搜索（输入过滤标签名）+ 选项按分类分组展示
  * （组头=分类名，数据源 GET /tags/by-category，INT-487 口径）+ 色点 +
- * 客户端聚合计数（§3.4：/tags/by-category 未返回 count，暂从已加载集聚合）。
+ * 客户端聚合计数（§3.4：/tags/by-category 未返回 count，暂从已加载集聚合；
+ * INT-677：聚合源改为父级传入的已加载/已筛选用例集，不再走 mock）。
  * 空态「暂无标签」；选中项再点 = 取消（清空标签筛选，与重置联动）。
  */
 function TagFacet({
   value,
   tags,
+  caseCounts,
   onChange,
 }: {
   value: string | null
   tags: TagItem[]
+  caseCounts: Record<string, number>
   onChange: (value: string | null) => void
 }) {
   const [open, setOpen] = useState(false)
@@ -239,7 +233,7 @@ function TagFacet({
                     </p>
                     {items.map((tag) => {
                       const checked = value === tag.name
-                      const count = TAG_CASE_COUNTS[tag.name] ?? 0
+                      const count = caseCounts[tag.name] ?? 0
                       return (
                         <button
                           key={tag.id}
@@ -327,9 +321,11 @@ const fallbackTag = (name: string): TagItem => ({
 function TagActionsDropdown({
   tagName,
   tags,
+  caseCounts,
 }: {
   tagName: string
   tags: TagItem[]
+  caseCounts: Record<string, number>
 }) {
   const { hasPermission } = usePermissions()
   const [open, setOpen] = useState(false)
@@ -345,7 +341,7 @@ function TagActionsDropdown({
   // §7 注 1：不整组隐藏——写权限逐钮禁用 + Tooltip（hook 调用保持无条件）
   const registry = useMemo(() => new Map(tags.map((t) => [t.name, t])), [tags])
   const tag = registry.get(tagName) ?? fallbackTag(tagName)
-  const count = TAG_CASE_COUNTS[tag.name] ?? 0
+  const count = caseCounts[tag.name] ?? 0
 
   const disabledItem = (reason: string, label: string) => (
     <DropdownMenuItem disabled title={reason}>
@@ -463,10 +459,24 @@ export function TestCasesFilterToolbar({
   groups,
   tags,
   dimensions,
+  cases,
   onRestoreAll,
 }: TestCasesFilterToolbarProps) {
   const searchRef = useRef<HTMLInputElement>(null)
   const [searchInput, setSearchInput] = useState(filters.search ?? '')
+
+  /**
+   * 标签下在用（未删除）用例数（INT-677：客户端从已加载/已筛选用例集实时聚合，
+   * §3.4 计数与列表同源；§3.6 删除/复制级联计数；回收站项不计入——级联作用于在用集）
+   */
+  const tagCaseCounts = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const c of cases) {
+      if (c.deleted) continue
+      for (const t of c.tags) m.set(t, (m.get(t) ?? 0) + 1)
+    }
+    return Object.fromEntries(m)
+  }, [cases])
 
   const update = useCallback(
     (patch: Partial<TestCaseListFilters>) => onChange({ ...filters, ...patch }),
@@ -520,6 +530,7 @@ export function TestCasesFilterToolbar({
         <TagFacet
           value={filters.tag ?? null}
           tags={tags}
+          caseCounts={tagCaseCounts}
           onChange={(tag) => update({ tag })}
         />
         <SingleFacet
@@ -550,7 +561,11 @@ export function TestCasesFilterToolbar({
 
         {/* §3.6 收编①：标签 facet 单选选中态后工具栏右端出现标签操作入口 */}
         {!isTrash && filters.tag != null && (
-          <TagActionsDropdown tagName={filters.tag} tags={tags} />
+          <TagActionsDropdown
+            tagName={filters.tag}
+            tags={tags}
+            caseCounts={tagCaseCounts}
+          />
         )}
 
         {isFiltered && (

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { fetchHomeStatsDetails } from '@/infrastructure/api/home'
 
+
 /**
  * 首页统计 hook（application 层，03_首页.md §7 useHomeStats）。
  * 复用工作台 details query（['home','stats-details'] 同 key 共享缓存，避免门户页重复拉取）；

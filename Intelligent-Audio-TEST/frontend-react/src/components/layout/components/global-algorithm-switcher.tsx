@@ -1,14 +1,13 @@
 /**
- * 全局算法切换器（导航栏右区第一项；02_导航栏.md §2.3）。
- * 数据源：真实 GET /algorithm/options（application/hooks/use-algorithm-options.ts，
- * 与工作台算法大卡同源）；无 algorithm:read 权限整钮隐藏（隐藏而非置灰）；
- * 持久化值不在当前 options（算法下线/删除）→ 静默回落「全部算法」；
- * 选中写全局 store（业务列表 algorithm_type 过滤参数同源）。
+ * 全局算法切换器（导航栏右区；02_导航栏.md §2.3/§3.4）。
+ * 接线壳 INT-607：数据源换 GET /algorithm/options（algorithm:read，仅在线算法）；
+ * 无 algorithm:read（device_admin/guest）整钮隐藏（隐藏而非置灰，基座卡 §9.2）。
+ * 切换写回 useAlgorithmStore（经 application 层 useGlobalAlgorithm 封装，
+ * localStorage iatp:algorithm:v1），一次切换全局生效。
  */
 import { useMemo, useState } from 'react'
 import { Check, ChevronsUpDown, Search } from 'lucide-react'
 
-import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -16,34 +15,27 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
+import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
+import { useGlobalAlgorithm } from '@/application/hooks/use-global-algorithm'
 import { cn } from '@/lib/utils'
-
-const ALL_LABEL = '全部算法'
 
 export function GlobalAlgorithmSwitcher() {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const algorithmId = useAlgorithmStore((s) => s.algorithmId)
-  const setAlgorithmId = useAlgorithmStore((s) => s.setAlgorithmId)
-  const { options, isReadonly } = useAlgorithmOptions()
+  const { algorithmId, setAlgorithmId } = useGlobalAlgorithm()
+  const { options, isLoading, isError, refetch, canRead } = useAlgorithmOptions()
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return options
-    return options.filter(
-      (a) =>
-        a.name.toLowerCase().includes(q) ||
-        a.description.toLowerCase().includes(q)
-    )
+    return options.filter((option) => option.name.toLowerCase().includes(q))
   }, [options, query])
 
-  // 无 algorithm:read 权限：整钮隐藏
-  if (isReadonly) return null
+  const current = options.find((option) => option.value === algorithmId)
+  const isAll = !algorithmId
 
-  // 持久化值不在当前 options → 静默回落「全部算法」
-  const current = options.find((a) => a.id === algorithmId)
-  const isAll = !algorithmId || !current
+  // 无 algorithm:read（device_admin/guest）：整钮不渲染（隐藏而非置灰）
+  if (!canRead) return null
 
   return (
     <Popover
@@ -67,7 +59,7 @@ export function GlobalAlgorithmSwitcher() {
           算法
         </span>
         <span className='min-w-0 max-w-28 truncate'>
-          {isAll ? ALL_LABEL : current.name}
+          {isAll ? '全部算法' : (current?.name ?? '选择算法')}
         </span>
         <ChevronsUpDown aria-hidden='true' className='size-3.5 shrink-0' />
       </PopoverTrigger>
@@ -87,55 +79,64 @@ export function GlobalAlgorithmSwitcher() {
           </div>
         </div>
         <div className='max-h-64 overflow-auto p-1'>
-          {/* 全部算法（清空全局过滤） */}
-          <button
-            type='button'
-            className={cn(
-              'hover:bg-accent flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-start text-sm transition-colors',
-              isAll && 'bg-accent'
-            )}
-            onClick={() => {
-              setAlgorithmId('')
-              setOpen(false)
-            }}
-          >
-            <span className='min-w-0'>
-              <span className='block truncate'>{ALL_LABEL}</span>
-              <span className='text-muted-foreground block truncate text-xs'>
-                不过滤业务列表
-              </span>
-            </span>
-            {isAll && <Check aria-hidden='true' className='size-4 shrink-0' />}
-          </button>
-          {filtered.length === 0 ? (
+          {isError ? (
+            <div className='px-3 py-6 text-center'>
+              <p className='text-muted-foreground text-sm'>加载失败</p>
+              <Button
+                variant='ghost'
+                size='sm'
+                className='mt-2'
+                onClick={() => void refetch()}
+              >
+                重试
+              </Button>
+            </div>
+          ) : isLoading ? (
+            <p className='text-muted-foreground px-3 py-6 text-center text-sm'>
+              加载中…
+            </p>
+          ) : filtered.length === 0 ? (
             <p className='text-muted-foreground px-3 py-6 text-center text-sm'>
               暂无匹配算法
             </p>
           ) : (
-            filtered.map((algorithm) => (
+            <>
               <button
-                key={algorithm.id}
                 type='button'
                 className={cn(
                   'hover:bg-accent flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-start text-sm transition-colors',
-                  algorithm.id === current?.id && 'bg-accent'
+                  isAll && 'bg-accent'
                 )}
                 onClick={() => {
-                  setAlgorithmId(algorithm.id)
+                  setAlgorithmId('')
                   setOpen(false)
                 }}
               >
-                <span className='min-w-0'>
-                  <span className='block truncate'>{algorithm.name}</span>
-                  <span className='text-muted-foreground block truncate text-xs'>
-                    {algorithm.description}
-                  </span>
-                </span>
-                {algorithm.id === current?.id && (
+                <span className='min-w-0 truncate'>全部算法</span>
+                {isAll && (
                   <Check aria-hidden='true' className='size-4 shrink-0' />
                 )}
               </button>
-            ))
+              {filtered.map((option) => (
+                <button
+                  key={option.value}
+                  type='button'
+                  className={cn(
+                    'hover:bg-accent flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-start text-sm transition-colors',
+                    option.value === algorithmId && 'bg-accent'
+                  )}
+                  onClick={() => {
+                    setAlgorithmId(option.value)
+                    setOpen(false)
+                  }}
+                >
+                  <span className='min-w-0 truncate'>{option.name}</span>
+                  {option.value === algorithmId && (
+                    <Check aria-hidden='true' className='size-4 shrink-0' />
+                  )}
+                </button>
+              ))}
+            </>
           )}
         </div>
       </PopoverContent>

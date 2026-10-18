@@ -53,7 +53,7 @@ export function AudioUrlImportDialog(props: AudioUrlImportDialogProps) {
     if (urls.length === 0) return
     setPending(true)
     try {
-      const result = await urlImport.mutateAsync(urls)
+      const result = await urlImport.mutateAsync({ urls, audioType })
       toast.success(
         `URL 导入成功：成功 ${result.successCount} 个，跳过 ${result.failedCount} 个`
       )

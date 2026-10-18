@@ -491,7 +491,8 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
       onDetail: (device: ApiDevice) => setDetailState({ open: true, kind: 'api', device }),
       onEdit: (device: ApiDevice) => openMutate({ open: true, mode: 'edit', kind: 'api', device }),
       onHealth: (device: ApiDevice) => {
-        void handleControl(device.id, 'health_check')
+        // 接线 INT-644：API 健康检查走 POST /apis/{id}/health（区别于测试设备 /test-devices/health-check）
+        void handleControl(device.id, 'api_health_check')
         toast.success(`健康检查已发起：${device.name}`)
       },
       onStopTest: (device: ApiDevice) => toast.success(`已停止测试：${device.name}`),

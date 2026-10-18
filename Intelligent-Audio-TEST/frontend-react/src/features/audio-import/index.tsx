@@ -5,7 +5,7 @@
  * Tabs（列表/文件夹）+ 筛选工具栏（搜索+格式/音频类型/采样率/时长/标签 facet + 全局算法
  * chip）+ 列表视图 DataTable（§5.3）+ 文件夹视图左树右表（§5.5）+ 上传进度卡（§5.4）
  * + 批量浮条（§5.6）+ 分页 Portal（§3.9）。
- * 列表/统计/文件夹/增删改/批量/URL 导入全接真实接口（INT-714 接线）；下载仍为本地 Blob 兜底。
+ * 数据经 infrastructure/api/audios-api.ts（INT-645 切真实后端，client.ts 统一 fetch）。
  */
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -25,6 +25,7 @@ import { SectionPageLayout } from '@/components/layout/components/section-page-l
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { usePermissions } from '@/application/hooks/use-permissions'
+import { downloadAudio } from '@/infrastructure/api/audios-api'
 import {
   useAudioList,
   useAudioMutations,
@@ -199,35 +200,46 @@ export function AudioImportPage() {
     return audios.find((a) => a.id === rowDialog.audioId) ?? null
   }, [rowDialog, audios])
 
-  const handleDownload = (audio: AudioAsset) => {
-    // §5.3.1：二次取流（后端 stream 返 JSON 预签名 URL，前端再取字节流）——mock 直接 Blob
-    const blob = new Blob([`mock audio content: ${audio.name}`], {
-      type: 'application/octet-stream',
-    })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = audio.name
-    anchor.click()
-    URL.revokeObjectURL(url)
-    toast.success('音频已开始下载')
+  const handleDownload = async (audio: AudioAsset) => {
+    // §5.3.1：二次取流（后端 stream 返 JSON 预签名 URL，前端再取字节流）
+    try {
+      const blob = await downloadAudio(audio.id)
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = audio.name
+      anchor.click()
+      URL.revokeObjectURL(url)
+      toast.success('音频已开始下载')
+    } catch {
+      toast.error('下载失败，请重试')
+    }
   }
 
-  const handleExport = () => {
-    // §5.6：batch-action export，解析 zip_base64→Blob 下载（修正现状 blob 直消费缺陷 §11-14）
-    const rows = audios.filter((a) => selectedIds.has(a.id))
-    const blob = new Blob([JSON.stringify(rows, null, 2)], {
-      type: 'application/json',
-    })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    const date = new Date().toISOString().slice(0, 10)
-    anchor.href = url
-    anchor.download = `audios_${date}.json`
-    anchor.click()
-    URL.revokeObjectURL(url)
-    void batch.mutateAsync({ action: 'export', ids: [...selectedIds] })
-    toast.success(`已导出 ${selectedIds.size} 个音频`)
+  const handleExport = async () => {
+    if (selectedIds.size === 0) return
+    // §5.6：batch-action export，解析 zip_base64→Blob 下载（INT 修正现状 blob 直消费缺陷 §11-14）
+    try {
+      const result = await batch.mutateAsync({
+        action: 'export',
+        ids: [...selectedIds],
+      })
+      if (result.zipBase64) {
+        const binary = atob(result.zipBase64)
+        const bytes = new Uint8Array(binary.length)
+        for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
+        const blob = new Blob([bytes], { type: 'application/zip' })
+        const url = URL.createObjectURL(blob)
+        const anchor = document.createElement('a')
+        anchor.href = url
+        anchor.download = result.filename ?? `audios_export_${Date.now()}.zip`
+        anchor.click()
+        URL.revokeObjectURL(url)
+      }
+      toast.success(`已导出 ${selectedIds.size} 个音频`)
+    } catch {
+      toast.error('导出失败，请重试')
+    }
   }
 
   const handleConfirmDelete = async () => {
@@ -253,7 +265,8 @@ export function AudioImportPage() {
     try {
       const result = await batch.mutateAsync({ action: 'delete', ids: [...selectedIds] })
       toast.success(
-        `批量删除完成：成功 ${result.successCount}，跳过 ${result.total - result.successCount}`
+        result.message ??
+          `批量删除完成：成功 ${result.successCount}，跳过 ${result.total - result.successCount}`
       )
       setSelectedIds(new Set())
       setBatchDeleteOpen(false)

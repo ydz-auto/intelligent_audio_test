@@ -125,12 +125,12 @@ function BulkAddMembersDialog({
 }
 
 export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
-  const [expanded, setExpanded] = useState<Set<number>>(new Set([2]))
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [groupType, setGroupType] = useState<DeviceGroupType>('test')
   const [groupName, setGroupName] = useState('')
   const [groupDesc, setGroupDesc] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<DeviceGroup | null>(null)
-  const [memberAdd, setMemberAdd] = useState<Record<number, string>>({})
+  const [memberAdd, setMemberAdd] = useState<Record<string, string>>({})
   // P3-17：本地分组以 props 首载同步一次后即归本地持有（新建/复制/重命名即时可见不丢失）
   const [groups, setGroups] = useState<DeviceGroup[]>(props.groups)
   const groupsSeeded = useRef<boolean>(props.groups.length > 0)
@@ -148,9 +148,9 @@ export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
   const [moveTarget, setMoveTarget] = useState<DeviceGroup | null>(null)
   const [moveParent, setMoveParent] = useState<string>('root')
   /** 成员批量移除勾选集（组 id → 勾选设备 id 集合） */
-  const [removingMap, setRemovingMap] = useState<Record<number, Set<number>>>({})
+  const [removingMap, setRemovingMap] = useState<Record<string, Set<number>>>({})
 
-  const toggleRemoving = (groupId: number, deviceId: number) => {
+  const toggleRemoving = (groupId: string, deviceId: number) => {
     setRemovingMap((prev) => {
       const current = new Set(prev[groupId] ?? [])
       if (current.has(deviceId)) current.delete(deviceId)
@@ -164,7 +164,7 @@ export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
     [props.testDevices]
   )
 
-  const toggleExpand = (id: number) => {
+  const toggleExpand = (id: string) => {
     setExpanded((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
@@ -196,7 +196,7 @@ export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
     setGroupDesc('')
   }
 
-  const addMember = (groupId: number, deviceId: number) => {
+  const addMember = (groupId: string, deviceId: number) => {
     setGroups((prev) =>
       prev.map((g) =>
         g.id === groupId ? { ...g, members: g.members.includes(deviceId) ? g.members : [...g.members, deviceId] } : g
@@ -204,13 +204,13 @@ export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
     )
   }
 
-  const removeMember = (groupId: number, deviceId: number) => {
+  const removeMember = (groupId: string, deviceId: number) => {
     setGroups((prev) =>
       prev.map((g) => (g.id === groupId ? { ...g, members: g.members.filter((id) => id !== deviceId) } : g))
     )
   }
 
-  const removeMembers = (groupId: number, deviceIds: number[]) => {
+  const removeMembers = (groupId: string, deviceIds: number[]) => {
     setGroups((prev) =>
       prev.map((g) =>
         g.id === groupId ? { ...g, members: g.members.filter((id) => !deviceIds.includes(id)) } : g
@@ -219,7 +219,7 @@ export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
     toast.success(`已移出 ${deviceIds.length} 台设备`)
   }
 
-  const addMembers = (groupId: number, deviceIds: number[]) => {
+  const addMembers = (groupId: string, deviceIds: number[]) => {
     setGroups((prev) =>
       prev.map((g) =>
         g.id === groupId ? { ...g, members: Array.from(new Set([...g.members, ...deviceIds])) } : g
@@ -262,7 +262,7 @@ export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
   /** P3-16：移动分组到目标父级（根级或某分组下；排除自身避免环） */
   const moveGroup = () => {
     if (!moveTarget) return
-    const targetParentId = moveParent === 'root' ? null : Number(moveParent)
+    const targetParentId = moveParent === 'root' ? null : moveParent
     if (targetParentId === moveTarget.id) {
       toast.error('不能移动到自身分组下')
       return
@@ -642,6 +642,11 @@ function MoreDots() {
   )
 }
 
-function nextGroupId(groups: DeviceGroup[]): number {
-  return Math.max(0, ...groups.map((g) => g.id)) + 1
+/** 新建/复制本地分组 id（字符串语义）：数值形分组取最大值+1，UUID 分组不影响计数（P1 返修） */
+function nextGroupId(groups: DeviceGroup[]): string {
+  const maxNumeric = groups.reduce((max, g) => {
+    const n = Number(g.id)
+    return Number.isFinite(n) ? Math.max(max, n) : max
+  }, 0)
+  return String(maxNumeric + 1)
 }

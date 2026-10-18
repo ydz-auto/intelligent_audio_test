@@ -61,6 +61,43 @@ describe('client 统一 fetch 封装', () => {
     expect(headers.Accept).toBe('application/json')
   })
 
+  it('basePath=/api 覆盖前缀：根级 /api/status（INT-672）', async () => {
+    queueResponses(
+      jsonResponse({ api_base_url: 'http://localhost:5000', server_address: '::1' })
+    )
+    await request('GET', '/status', undefined, { basePath: '/api' })
+    const [url] = fetchMock.mock.calls[0] as [string]
+    expect(url).toBe('/api/status')
+  })
+
+  it("basePath='' 覆盖前缀：根路径 /health（INT-672）", async () => {
+    queueResponses(jsonResponse({ status: 'ok', service: 'api_gateway' }))
+    await request('GET', '/health', undefined, { basePath: '' })
+    const [url] = fetchMock.mock.calls[0] as [string]
+    expect(url).toBe('/health')
+  })
+
+  it('basePath 覆盖同样走 query 拼接与 Bearer 注入（INT-672）', async () => {
+    authTokenStore.set('jwt-token-1')
+    queueResponses(jsonResponse({ success: true, code: 0, data: null }))
+    await request('GET', '/option/', undefined, { basePath: '/api', params: { key: 'x' } })
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/option/?key=x')
+    const headers = init.headers as Record<string, string>
+    expect(headers.Authorization).toBe('Bearer jwt-token-1')
+  })
+
+  it('未传 basePath 时沿用默认 /api/v1（回归：auth/home/tasks URL 不变）', async () => {
+    queueResponses(
+      jsonResponse({ success: true, code: 0, data: { ok: 1 } }),
+      jsonResponse({ success: true, code: 0, data: { saved: true } })
+    )
+    await request('GET', '/home/stats')
+    await request('POST', '/tasks', { name: 't' })
+    expect(fetchMock.mock.calls[0][0]).toBe(`${API_BASE_URL}/home/stats`)
+    expect(fetchMock.mock.calls[1][0]).toBe(`${API_BASE_URL}/tasks`)
+  })
+
   it('统一信封解包：{ code, message, data } → data', async () => {
     queueResponses(
       jsonResponse({ success: true, code: 0, message: 'Success', data: { id: 7 } })

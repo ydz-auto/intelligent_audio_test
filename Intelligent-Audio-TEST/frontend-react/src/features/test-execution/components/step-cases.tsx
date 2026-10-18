@@ -21,7 +21,6 @@ import { useCaseSelectionStore } from '@/infrastructure/stores/case-selection-st
 import { fetchCaseIdsByFilter } from '@/infrastructure/api/testcases-ids-api'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { cn } from '@/lib/utils'
 
 import {
   TEST_CASES_TABS,

@@ -66,8 +66,6 @@ export async function fetchAlgorithmDefinitions(): Promise<AlgorithmDefinition[]
       if (count != null) def.caseCount = count
     }
   }
-  // 关联维度名补全（后端 associated_dimensions 仅回 dimension_id，照 Vue 从维度选项解析）
-  await enrichAssociatedDimensionNames(list)
   return list
 }
 
@@ -101,9 +99,7 @@ export async function fetchAlgorithmDetail(
     'GET',
     `/algorithm/definitions/${encodeURIComponent(type)}`
   )
-  const detail = toAlgorithmDefinition(dto)
-  await enrichAssociatedDimensionNames([detail])
-  return detail
+  return toAlgorithmDefinition(dto)
 }
 
 /** 分组列表（facet 选项 + §7.1 分组管理 + 编辑 Sheet 所属分组 Select 共用） */
@@ -149,32 +145,6 @@ async function resolveDimensionIdByName(): Promise<Map<string, number>> {
   } catch {
     // 维度选项不可达时按空表兜底：evaluation 映射降级为仅提交 target_param，不阻断保存
     return new Map()
-  }
-}
-
-/** 评估维度 id → 名 解析（读侧详情/列表「关联维度」展示；后端 associated_dimensions
- *  仅回 dimension_id 不回名称，照 Vue 从维度选项解析口径补名）。 */
-async function resolveDimensionNameById(): Promise<Map<number, string>> {
-  try {
-    const options = await fetchDimensionOptions()
-    return new Map(options.map((d) => [d.id, d.name]))
-  } catch {
-    // 维度选项不可达时按空表兜底：名称保持后端原值（可能为空串），不阻断列表
-    return new Map()
-  }
-}
-
-/** 列表/详情共用的关联维度名称补全（dimensionId → 维度名；后端无 dimension_name 时回填） */
-async function enrichAssociatedDimensionNames(
-  defs: AlgorithmDefinition[]
-): Promise<void> {
-  const nameById = await resolveDimensionNameById()
-  for (const def of defs) {
-    for (const rel of def.associatedDimensions ?? []) {
-      if (!rel.dimensionName && nameById.has(rel.dimensionId)) {
-        rel.dimensionName = nameById.get(rel.dimensionId) ?? ''
-      }
-    }
   }
 }
 

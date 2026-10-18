@@ -2,6 +2,8 @@
  * 新建/编辑用户抽屉（interfaces 层，INT-347 §4.4.1）：
  * Sheet `sm:max-w-[600px]` 三段式（基本信息 / 角色与状态 / 附加权限 PermissionMatrix）；
  * 打开时按目标用户回填，角色变更走 assign_role、信息变更走 update、权限变更走 grant。
+ * 新建态状态字段置灰固定「正常」（POST /auth/users 不落 status，INT-691 P3-1），
+ * 创建后可在列表中启用/停用；编辑态状态可选并随 PUT 落库。
  */
 import { useEffect, useState } from 'react'
 
@@ -31,7 +33,11 @@ import {
   sideDrawerHeaderClassName,
 } from '@/components/drawer-layout'
 import { ROLE_META, type RoleCode } from '@/domain/models/role'
-import type { PlatformUser, PlatformUserStatus } from '@/domain/models/user'
+import {
+  USER_STATUS_META,
+  type PlatformUser,
+  type PlatformUserStatus,
+} from '@/domain/models/user'
 
 import { PermissionMatrix } from '../components/permission-matrix'
 
@@ -157,8 +163,14 @@ export function UserMutateDrawer(props: UserMutateDrawerProps) {
                   id='user-display-name'
                   placeholder='留空则使用用户名'
                   value={displayName}
+                  disabled={!isCreate}
                   onChange={(event) => setDisplayName(event.target.value)}
                 />
+                {!isCreate && (
+                  <p className='text-muted-foreground text-xs'>
+                    后端暂不支持修改显示名，保存后仍显示用户名
+                  </p>
+                )}
               </div>
               <div className='grid gap-1.5'>
                 <label className='text-sm font-medium' htmlFor='user-email'>
@@ -220,6 +232,11 @@ export function UserMutateDrawer(props: UserMutateDrawerProps) {
                 </label>
                 <Select
                   value={status}
+                  disabled={isCreate}
+                  itemToStringLabel={(value) =>
+                    USER_STATUS_META[value as PlatformUserStatus]?.label ??
+                    String(value)
+                  }
                   onValueChange={(value) => setStatus(value as PlatformUserStatus)}
                 >
                   <SelectTrigger id='user-status' className='h-8'>
@@ -231,6 +248,11 @@ export function UserMutateDrawer(props: UserMutateDrawerProps) {
                     <SelectItem value='locked'>锁定</SelectItem>
                   </SelectContent>
                 </Select>
+                {isCreate && (
+                  <p className='text-muted-foreground text-xs'>
+                    创建后可在列表中启用/停用
+                  </p>
+                )}
               </div>
             </div>
           </SideDrawerSection>

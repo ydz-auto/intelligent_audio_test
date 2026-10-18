@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '@/infrastructure/api/api-error'
 import { request, setSessionExpiredHandler } from '@/infrastructure/api/client'
 import { authTokenStore } from '@/infrastructure/storage/auth-token'
+import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
 import {
   resetAuthSessionBootstrap,
   useAuthStore,
@@ -184,6 +185,17 @@ describe('auth-store 真实登录态', () => {
     expect(authApi.logout).toHaveBeenCalledTimes(1)
     expect(authTokenStore.get()).toBeNull()
     expect(useAuthStore.getState().user).toBeNull()
+  })
+
+  it('logout：全局算法过滤随登出清空（多账号切换不串值，02_导航栏 §3.4 契约 6）', async () => {
+    useAuthStore.setState({ user: demoUser })
+    authTokenStore.set('t1')
+    useAlgorithmStore.setState({ algorithmId: 'asr-v3' })
+    vi.mocked(authApi.logout).mockResolvedValue(undefined)
+
+    await useAuthStore.getState().logout()
+
+    expect(useAlgorithmStore.getState().algorithmId).toBe('')
   })
 
   it('会话过期：client 401+refresh 失败 → 联动清空 user 登录态', async () => {

@@ -2,8 +2,8 @@
  * 任务域列表/详情/日志 API（infrastructure/api 层，接线基座 INT-605 client.ts 出口；
  * 09_任务域.md §10 契约，INT-623 Vue 侧已比对后端契约）。
  *   GET /api/v1/tasks                 （task_bp.py TaskListQuery：page/per_page/status/
- *       algorithm_type/search/start_date/end_date/favorite/deleted/evaluation_status/merged/
- *       cherry_pick/execution_status；tags 后端未支持 → 客户端近似过滤，FEAT 证据见 INT-638）
+ *       algorithm_type/search/favorite/deleted/evaluation_status/merged/cherry_pick/
+ *       execution_status；tags 后端未支持 → 客户端近似过滤，FEAT 证据见 INT-638）
  *   GET /api/v1/published-tasks       （published_task_bp.py：page/per_page/status/keyword/type）
  *   GET /api/v1/tasks?merged=true     （合并容器，§11-1 客户端双查询合并）
  *   GET /api/v1/tasks?cherry_pick=true（挑选合并容器，INT-339 §8）
@@ -49,9 +49,6 @@ export interface TaskListQuery {
   favorite?: boolean
   trash?: boolean
   algorithmType?: string | null
-  /** 创建时间范围（映射后端 start_date/end_date；YYYY-MM-DD 或 ISO，照旧 Vue startTime/endTime 口径） */
-  startDate?: string | null
-  endDate?: string | null
 }
 
 /**
@@ -72,9 +69,6 @@ export async function fetchTaskList(
   // INT-141：收藏 / 回收站过滤（同名透传；后端 TaskListQuery.favorite/deleted）
   if (query.favorite) params.favorite = true
   if (query.trash) params.deleted = true
-  // 创建时间范围（旧 Vue startTime/endTime → 后端 start_date/end_date；TaskListQuery 实测支持）
-  if (query.startDate) params.start_date = query.startDate
-  if (query.endDate) params.end_date = query.endDate
 
   const dto = await request<PaginatedDto<TaskListItemDto>>(
     'GET',
@@ -93,17 +87,11 @@ export async function fetchTaskList(
 
 /** 已发布任务列表（keyword/type/status 服务端筛选；per_page 默认 100） */
 export async function fetchPublishedTaskList(
-  query: {
-    page?: number
-    perPage?: number
-    search?: string
-    type?: string | null
-    ptStatus?: string | null
-  } = {}
+  query: { search?: string; type?: string | null; ptStatus?: string | null } = {}
 ): Promise<{ items: PublishedTaskItem[]; total: number }> {
   const params: Record<string, unknown> = {
-    page: query.page ?? 1,
-    per_page: query.perPage ?? 100,
+    page: 1,
+    per_page: 100,
   }
   if (query.search) params.keyword = query.search
   if (query.type && query.type !== 'all') params.type = query.type

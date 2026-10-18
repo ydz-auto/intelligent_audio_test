@@ -24,8 +24,6 @@ import { Search } from '@/components/search'
 import { useNotifications } from '@/application/hooks/use-notifications'
 import { useTopNavLinks } from '@/application/hooks/use-top-nav-links'
 
-import { defaultTopNavLinks } from '../config/top-nav.config'
-import type { TopNavLink } from '../types'
 import { AgentWorkbenchButton } from './agent-workbench-button'
 import { GlobalAlgorithmSwitcher } from './global-algorithm-switcher'
 import { Header } from './header'
@@ -38,7 +36,6 @@ import { TopNav } from './top-nav'
  * 去 newAPI 的签到/钱包充值/系统更新项；顶部导航项本体归导航栏卡 INT-344。
  */
 type AppHeaderProps = {
-  navLinks?: TopNavLink[]
   showTopNav?: boolean
   leftContent?: React.ReactNode
   showSearch?: boolean
@@ -51,7 +48,6 @@ type AppHeaderProps = {
 }
 
 export function AppHeader({
-  navLinks = defaultTopNavLinks,
   showTopNav = true,
   leftContent,
   showSearch = true,
@@ -63,7 +59,6 @@ export function AppHeader({
 }: AppHeaderProps) {
   const links = useTopNavLinks()
   const notifications = useNotifications()
-  void navLinks // 兜底链接保留 prop 形参，动态链接当前恒有值
 
   return (
     <Header

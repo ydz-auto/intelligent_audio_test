@@ -10,9 +10,9 @@ import type {
   AudioType,
 } from '@/domain/models/audio'
 import type {
-  AudioFolderTreeDto,
   AudioItemDto,
   AudioListStatsDto,
+  FolderTreeNodeDto,
 } from '@/infrastructure/dto/audio.dto'
 
 const AUDIO_TYPE_SET: ReadonlySet<string> = new Set([
@@ -60,22 +60,17 @@ export function audioStatsFromDto(dto: AudioListStatsDto): AudioListStats {
   }
 }
 
-/**
- * 文件夹树 DTO→Domain（§5.5 左树）。
- * 后端 data.tree 为嵌套 folders/files 结构：节点 `count`（其下音频总数）+ `file_count`
- * （本文件夹直接音频数）→ 前端节点 count=子文件夹数、fileCount=文件夹内音频文件数；
- * 递归 children 取 folders 子树，files 仅计数不展开。
- */
-export function audioFolderTreeFromDto(
-  dto: AudioFolderTreeDto | null | undefined
-): AudioFolderNode[] {
-  if (!dto?.folders) return []
-  return dto.folders.map((node) => ({
-    path: node.path,
-    name: node.name,
-    count: node.folders?.length ?? 0,
-    fileCount: node.file_count ?? 0,
-    depth: 1,
-    children: audioFolderTreeFromDto(node),
-  }))
+/** 文件夹树节点 DTO→Domain（后端 folder-tree 节点 file_count/folders → fileCount/children；depth 按递归层级显式传递） */
+export function folderNodeFromDto(
+  dto: FolderTreeNodeDto,
+  depth: number
+): AudioFolderNode {
+  return {
+    path: dto.path ?? '',
+    name: dto.name ?? '',
+    count: dto.count ?? 0,
+    fileCount: dto.file_count ?? 0,
+    depth,
+    children: (dto.folders ?? []).map((child) => folderNodeFromDto(child, depth + 1)),
+  }
 }

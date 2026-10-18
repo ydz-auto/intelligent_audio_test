@@ -1,86 +1,57 @@
 /**
- * 用户管理 API（infrastructure 层，INT-729 接线）。
- * 契约对照 api_gateway/routes/user_bp.py + auth_service servicers 实测：
- * GET /auth/users（分页 ≤100 + status/keyword/role_id 过滤）→ {items,total,page,per_page,pages}；
- * GET /auth/users/{id}（含 overrides 明细）；POST /auth/users（role_id 选填）；
- * PUT /auth/users/{id}（键缺省=不修改，display_name 空串=清空）；
- * DELETE /auth/users/{id}；POST /auth/users/{id}/role（{role_id}）；
- * POST /auth/users/{id}/permissions（{permission} 单码授予）+
- * DELETE /auth/users/{id}/permissions/{permission_id}（差量撤销）。
- * 权限门槛 user:read/create/update/delete/assign_role/grant_permission。
- * snake_case → camelCase 收敛于 iam-adapter；页面只消费 camelCase 领域对象。
+ * 用户管理真实 API（infrastructure/api 层；接线 INT-651）。
+ * 对照 api_gateway user_bp.py 契约（全部挂 /api/v1/auth 前缀）：
+ * GET /users（分页 ≤100 + status/keyword/role_id 过滤）、GET /users/{id}（详情含
+ * overrides 附加权限明细）、POST /users、PUT /users/{id}、POST /users/{id}/role、
+ * POST /users/{id}/permissions（单条授予）、DELETE /users/{id}/permissions/{permission_id}、
+ * DELETE /users/{id}。
+ * 说明：displayName 后端无字段（兜底 username）；列表响应不含 overrides（附加权限
+ * 需详情端点承载）；角色分配按 role_id（前端 roleCode → role_id 由调用方解析）。
  */
-import { apiClient } from './client'
-import { getPermissionCatalog, getRoles } from './roleApi'
 import type { PlatformUser, PlatformUserStatus } from '@/domain/models/user'
+import { apiClient } from '@/infrastructure/api/client'
 import {
-  toBackendUserStatus,
+  toBackendStatus,
   toPlatformUser,
-} from '@/infrastructure/adapters/dto/iam-adapter'
-import type { AuthUserDto, UsersPageDto } from '@/infrastructure/dto/iam.dto'
+  type UserDto,
+  type UserListResultDto,
+} from '@/infrastructure/dto/user.dto'
 
 export const USERS_QUERY_KEY = ['iam', 'users'] as const
 
 export type UserListFilter = {
   keyword?: string
   status?: PlatformUserStatus | 'all'
-  /** 多选角色码（FacetedFilter 多选口径；后端 role_id 单值，客户端二次过滤） */
+  /** 多选角色码（FacetedFilter 多选口径；后端仅支持单 role_id，多选在 API 层按 role_name 过滤） */
   roleCodes?: string[]
 }
 
-/** 分页拉取全部匹配用户（per_page=100 上限，total/pages 翻页兜底） */
-async function fetchAllUsers(params: {
-  status?: string
-  keyword?: string
-}): Promise<AuthUserDto[]> {
-  const perPage = 100
-  let page = 1
-  const all: AuthUserDto[] = []
-  for (;;) {
-    const dto = await apiClient.get<UsersPageDto>('/auth/users', {
-      params: {
-        page,
-        page_size: perPage,
-        status: params.status || undefined,
-        keyword: params.keyword || undefined,
-      },
-    })
-    const items = dto.items ?? []
-    all.push(...items)
-    const total = dto.total ?? all.length
-    const pages = dto.pages ?? Math.ceil(total / perPage)
-    if (page >= pages || items.length === 0) break
-    page += 1
-  }
-  return all
-}
-
+/**
+ * 用户列表（GET /auth/users；status/keyword 交后端，多选角色按 role_name 过滤——
+ * 后端仅单 role_id，列表 ≤100 窗口内过滤保持 FacetedFilter 多选语义）。
+ */
 export async function getUsers(filter: UserListFilter = {}): Promise<PlatformUser[]> {
-  const status =
-    filter.status && filter.status !== 'all'
-      ? toBackendUserStatus(filter.status)
-      : undefined
-  const all = await fetchAllUsers({ status, keyword: filter.keyword })
-  return all
-    .map(toPlatformUser)
-    .filter((user) => {
-      if (
-        filter.roleCodes &&
-        filter.roleCodes.length > 0 &&
-        !filter.roleCodes.includes(user.roleCode)
-      ) {
-        return false
-      }
-      return true
-    })
+  const params: Record<string, unknown> = { page: 1, page_size: 100 }
+  if (filter.keyword) params.keyword = filter.keyword
+  if (filter.status && filter.status !== 'all') {
+    params.status = toBackendStatus(filter.status)
+  }
+  const data = await apiClient.get<UserListResultDto>('/auth/users', { params })
+  let users = (data.items ?? []).map(toPlatformUser)
+  if (filter.roleCodes && filter.roleCodes.length > 0) {
+    const codes = new Set(filter.roleCodes)
+    users = users.filter((user) => codes.has(user.roleCode))
+  }
+  return users
 }
 
-/** 用户详情（含 overrides 附加权限明细；编辑抽屉回填基线） */
-export async function getUserDetail(userId: string): Promise<PlatformUser> {
-  const dto = await apiClient.get<AuthUserDto>(`/auth/users/${userId}`)
-  return toPlatformUser(dto)
+/** 用户详情（GET /auth/users/{id}；overrides → extraPermissions，供抽屉回填） */
+export async function getUser(userId: string): Promise<PlatformUser> {
+  const data = await apiClient.get<UserDto>(`/auth/users/${userId}`)
+  return toPlatformUser(data)
 }
 
+/** 创建用户（POST /auth/users；role_id 由调用方按 roleCode 解析，缺省 0=默认角色） */
 export async function createUser(input: {
   username: string
   displayName?: string
@@ -88,73 +59,84 @@ export async function createUser(input: {
   password: string
   roleId?: number
   status: PlatformUserStatus
-}): Promise<void> {
-  const body: Record<string, unknown> = {
+}): Promise<PlatformUser> {
+  const data = await apiClient.post<{ user_id?: number }>('/auth/users', {
     username: input.username,
     email: input.email,
     password: input.password,
+    role_id: input.roleId ?? 0,
+  })
+  return {
+    id: data.user_id != null ? String(data.user_id) : `user-${Date.now()}`,
+    username: input.username,
+    displayName: input.displayName || input.username,
+    email: input.email,
+    roleCode: '',
+    roleName: '',
+    status: input.status,
+    extraPermissions: [],
+    createdAt: new Date().toISOString(),
   }
-  if (input.displayName) body.display_name = input.displayName
-  if (input.roleId) body.role_id = input.roleId
-  await apiClient.post('/auth/users', body)
 }
 
+/** 更新用户（PUT /auth/users/{id}；email/status 落库，displayName 后端无字段不发送） */
 export async function updateUser(
   userId: string,
-  patch: Partial<Pick<PlatformUser, 'displayName' | 'email' | 'status'>>
-): Promise<void> {
+  patch: Partial<
+    Pick<PlatformUser, 'displayName' | 'email' | 'status' | 'roleCode' | 'roleName'>
+  >
+): Promise<PlatformUser> {
   const body: Record<string, unknown> = {}
-  if ('displayName' in patch) body.display_name = patch.displayName ?? ''
-  if ('email' in patch) body.email = patch.email ?? ''
-  if ('status' in patch && patch.status) {
-    body.status = toBackendUserStatus(patch.status)
-  }
+  if (patch.email !== undefined) body.email = patch.email
+  if (patch.status !== undefined) body.status = toBackendStatus(patch.status)
   await apiClient.put(`/auth/users/${userId}`, body)
+  return {
+    id: userId,
+    username: '',
+    displayName: patch.displayName ?? '',
+    email: patch.email ?? '',
+    roleCode: patch.roleCode ?? '',
+    roleName: patch.roleName ?? '',
+    status: patch.status ?? 'active',
+    extraPermissions: [],
+    createdAt: '',
+  }
 }
 
+/** 删除/软删除用户（DELETE /auth/users/{id}；不可删自己由后端 403 兜底） */
 export async function deleteUser(userId: string): Promise<void> {
   await apiClient.delete(`/auth/users/${userId}`)
 }
 
-export async function assignRole(
-  userId: string,
-  roleCode: string
-): Promise<void> {
-  const roles = await getRoles()
-  const role = roles.find((r) => r.code === roleCode)
-  if (!role) throw new Error(`角色不存在：${roleCode}`)
-  await apiClient.post(`/auth/users/${userId}/role`, {
-    role_id: Number(role.id),
-  })
+/** 分配用户角色（POST /auth/users/{id}/role；role_id 必填） */
+export async function assignRole(userId: string, roleId: number): Promise<void> {
+  await apiClient.post(`/auth/users/${userId}/role`, { role_id: roleId })
 }
 
 /**
- * 全量替换用户附加权限（差量同步：新增逐码 POST 授予，移除按权限点 ID
- * DELETE 撤销——后端单码授予/差量撤销语义，用户_bp.py:66-77 实测）。
+ * 授予/撤销用户附加权限（差量同步目标权限码集合）：
+ * 以详情 overrides（granted=true 的 permission_id）为基线——新增码逐条 POST
+ * /users/{id}/permissions，撤销码按 permission_id DELETE /users/{id}/permissions/{id}。
  */
 export async function grantPermissions(
   userId: string,
-  permissions: string[],
-  previousPermissions: string[] = []
+  permissions: string[]
 ): Promise<void> {
-  const added = permissions.filter((p) => !previousPermissions.includes(p))
-  const removed = previousPermissions.filter((p) => !permissions.includes(p))
-  const catalog = await getPermissionCatalog()
-  const idByCode = new Map<string, number>()
-  for (const module of catalog) {
-    for (const permission of module.permissions) {
-      if (permission.id != null) idByCode.set(permission.code, permission.id)
+  const detail = await apiClient.get<UserDto>(`/auth/users/${userId}`)
+  const current = (detail.overrides ?? []).filter((override) => override.granted)
+  const currentCodes = new Set(current.map((override) => override.code))
+  const target = new Set(permissions)
+
+  for (const code of permissions) {
+    if (!currentCodes.has(code)) {
+      await apiClient.post(`/auth/users/${userId}/permissions`, { permission: code })
     }
   }
-  await Promise.all([
-    ...added.map((code) =>
-      apiClient.post(`/auth/users/${userId}/permissions`, { permission: code })
-    ),
-    ...removed.map((code) => {
-      const permissionId = idByCode.get(code)
-      return permissionId
-        ? apiClient.delete(`/auth/users/${userId}/permissions/${permissionId}`)
-        : Promise.resolve()
-    }),
-  ])
+  for (const override of current) {
+    if (!target.has(override.code)) {
+      await apiClient.delete(
+        `/auth/users/${userId}/permissions/${override.permission_id}`
+      )
+    }
+  }
 }
