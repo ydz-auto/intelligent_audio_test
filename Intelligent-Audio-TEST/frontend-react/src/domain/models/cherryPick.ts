@@ -140,7 +140,7 @@ export interface PickDuplicate {
   count: number
 }
 
-/** 复核摘要（POST /cart/preview 返回，§5.2） */
+/** 复核摘要（POST /tasks/cherry-picks/preview 返回，§5.2） */
 export interface PickPreview {
   totalResults: number
   invalidResultIds: number[]

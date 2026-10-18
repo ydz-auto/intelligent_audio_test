@@ -1,7 +1,7 @@
 /**
  * 复核步骤（Step 3/4，18_挑选合并交互重设计.md §5.2，INT-600）。
  * 清单核对摘要（3 StatBadge）+ 失效/重复/配置差异 Alert + 购物车树（编辑态）+ 确认下单。
- * 复核摘要 = POST /cart/preview 实测返回（零新增接口）。
+ * 复核摘要 = POST /tasks/cherry-picks/preview 实测返回（零新增接口）。
  */
 import { ClipboardCheck, Layers, Save, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'

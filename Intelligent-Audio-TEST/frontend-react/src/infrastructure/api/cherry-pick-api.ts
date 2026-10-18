@@ -10,7 +10,7 @@
  *   GET    /api/v1/tasks/cherry-picks/sets            （挑选集列表）
  *   POST   /api/v1/tasks/cherry-picks/sets/{id}/to-cart（恢复挑选集）
  *   DELETE /api/v1/tasks/cherry-picks/sets/{id}       （删除挑选集）
- *   POST   /api/v1/tasks/cherry-picks/cart/preview    （复核摘要）
+ *   POST   /api/v1/tasks/cherry-picks/preview         （复核摘要）
  *   POST   /api/v1/tasks/cherry-picks/cart/checkout   （下单，action=merge/reexecute/reevaluate）
  * 统一容器列表：GET /api/v1/tasks?merged=true ∪ cherry_pick=true 双查询合并（§11-1）。
  * 名称装饰：candidates/cart 缺 case_name/device_name/api_name（§11-2/§11-5），
@@ -392,12 +392,12 @@ export async function deletePickSet(setId: string): Promise<void> {
  * 复核 / 下单
  * ============================================================ */
 
-/** 复核摘要（POST /tasks/cherry-picks/cart/preview；购物车空 → 400 → 兜底空预览） */
+/** 复核摘要（POST /tasks/cherry-picks/preview；购物车空 → 400 → 兜底空预览） */
 export async function fetchCherryPickPreview(): Promise<PickPreview> {
   try {
     const data = await request<CherryPickPreviewDto>(
       'POST',
-      '/tasks/cherry-picks/cart/preview'
+      '/tasks/cherry-picks/preview'
     )
     return fromPreviewDto(data)
   } catch (err) {

@@ -69,7 +69,7 @@ export interface CherryPickSaveSetResultDto {
   item_count: number
 }
 
-/** 复核摘要（POST /tasks/cherry-picks/cart/preview，preview() 实测） */
+/** 复核摘要（POST /tasks/cherry-picks/preview，preview() 实测） */
 export interface CherryPickPreviewDto {
   total_results: number
   invalid_result_ids: number[]

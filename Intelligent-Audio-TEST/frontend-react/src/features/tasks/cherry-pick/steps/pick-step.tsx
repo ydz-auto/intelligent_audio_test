@@ -20,6 +20,7 @@ import {
 } from '@/application/tasks/cherry-pick/use-cherry-pick-candidates'
 import { usePickCartStore } from '@/application/tasks/cherry-pick/use-pick-cart-store'
 import type { PickTreeBranch, PickTreeLeaf, PickTreeItem } from '@/domain/models/cherryPick'
+import { ApiError } from '@/infrastructure/api/api-error'
 import {
   clearSelection,
   computeSelectionStats,
@@ -77,24 +78,31 @@ export function PickStep({
   const handleAddToCart = async () => {
     if (stats.results === 0) return
     setAdding(true)
-    const { addedCount, skippedCount, invalidCount } = await addEntries([
-      ...selectedIds,
-    ])
-    setAdding(false)
-    if (addedCount > 0) {
-      const suffix =
-        invalidCount > 0
-          ? `${addedCount} 条，${invalidCount} 条源结果已失效未加入`
-          : skippedCount > 0
-            ? `${addedCount} 条（重复 ${skippedCount} 条已跳过）`
-            : `${addedCount} 条`
-      toast.success(`已加入购物车 ${suffix}`)
-      setSelectedIds(new Set())
-      onAdded(addedCount, skippedCount)
-    } else {
-      toast.success('已加入购物车（重复条目已跳过）')
-      setSelectedIds(new Set())
-      onAdded(0, skippedCount)
+    try {
+      const { addedCount, skippedCount, invalidCount } = await addEntries([
+        ...selectedIds,
+      ])
+      if (addedCount > 0) {
+        const suffix =
+          invalidCount > 0
+            ? `${addedCount} 条，${invalidCount} 条源结果已失效未加入`
+            : skippedCount > 0
+              ? `${addedCount} 条（重复 ${skippedCount} 条已跳过）`
+              : `${addedCount} 条`
+        toast.success(`已加入购物车 ${suffix}`)
+        setSelectedIds(new Set())
+        onAdded(addedCount, skippedCount)
+      } else {
+        toast.success('已加入购物车（重复条目已跳过）')
+        setSelectedIds(new Set())
+        onAdded(0, skippedCount)
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.userMessage : '加入购物车失败，请重试'
+      )
+    } finally {
+      setAdding(false)
     }
   }
 

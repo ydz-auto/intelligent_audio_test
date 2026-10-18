@@ -7,6 +7,7 @@ import { ShoppingCart, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { SelectionStats } from '@/domain/lib/cherry-pick-tree'
 
 export interface SelectedSummaryBarProps {
@@ -51,14 +52,23 @@ export function SelectedSummaryBar({
           {stats.devices} 台设备
         </span>
         <Separator orientation='vertical' className='h-5' />
-        <Button
-          size='sm'
-          variant='outline'
-          disabled={!hasVisibleItems}
-          onClick={onSelectAll}
-        >
-          全选当前筛选
-        </Button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                size='sm'
+                variant='outline'
+                disabled={!hasVisibleItems}
+                onClick={onSelectAll}
+              >
+                全选当前筛选
+              </Button>
+            }
+          />
+          <TooltipContent>
+            候选按页加载（每页至多 200 条），仅覆盖当前已加载的候选；跨页全选待后端聚合端点（§11-4）落地
+          </TooltipContent>
+        </Tooltip>
         <Button
           size='sm'
           variant='outline'
