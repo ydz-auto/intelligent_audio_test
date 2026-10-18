@@ -122,7 +122,7 @@ function goDashboard() {
 .settings-sidebar {
   width: 240px;
   flex-shrink: 0;
-  background: linear-gradient(180deg, var(--color-white) 0%, var(--muted) 100%);
+  background: linear-gradient(180deg, var(--background) 0%, var(--muted) 100%);
   border-right: 1px solid var(--gray-light-color);
   padding: var(--spacing-md);
   box-sizing: border-box;
@@ -239,5 +239,24 @@ function goDashboard() {
 .settings-forbidden i {
   font-size: 48px;
   color: var(--danger-color);
+}
+
+/* ── INT-743 深色模式：全局遗留白底（.page-header/.card）与 slate 标签色不随 .dark 切换，
+     本工作区在深色下统一走语义 token（浅色零变化、深色可读）。
+     基座 INT-735 / CSS 重构 INT-757 全局收敛前此处先行；不写死数值 ── */
+.dark .system-settings-workspace :deep(.page-header) {
+  background-color: var(--background-primary);
+}
+
+.dark .system-settings-workspace :deep(.page-description) {
+  color: var(--text-secondary);
+}
+
+.dark .system-settings-workspace :deep(.card) {
+  background-color: var(--card);
+}
+
+.dark .system-settings-workspace :deep(.form-group label) {
+  color: var(--foreground);
 }
 </style>

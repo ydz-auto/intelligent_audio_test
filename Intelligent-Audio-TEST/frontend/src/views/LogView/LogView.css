@@ -48,3 +48,24 @@
   background: var(--destructive-light);
   color: var(--destructive);
 }
+
+/* ── INT-743 深色模式：全局遗留白底（.page-header/.card）与 slate 标签色不随 .dark 切换，
+     本页在深色下统一走语义 token（浅色零变化、深色可读）。
+     基座 INT-735 / CSS 重构 INT-757 全局收敛前此处先行；不写死数值 ── */
+.dark .log-view .page-header,
+.dark .logs-content .page-header {
+  background-color: var(--background-primary);
+}
+
+.dark .log-view .page-description {
+  color: var(--text-secondary);
+}
+
+.dark .log-view .card,
+.dark .logs-content .card {
+  background-color: var(--card);
+}
+
+.dark .log-view .filter-label {
+  color: var(--text-secondary);
+}
