@@ -9,7 +9,7 @@
    .chart-mode-btn：INT-736 工作台图表模式切换段，样式在 views/Dashboard/Dashboard.css 内定义，
    加入豁免避免全局基类（特异性 0,3,1）以 !important 之外的覆盖链压制页面内样式（INT-757 要求不用 !important）。
    .api-copy-btn：INT-736 工作台「开发者 API 示例」复制按钮，同 .chart-mode-btn 机制加入豁免，
-   使 Dashboard.css 内声明的 color: var(--color-white) 生效，不被全局基类 color: var(--primary-color) 覆盖。
+   使 Dashboard.css 内声明的 color: var(--color-white) 生效，不被全局基类 color: var(--primary-color) 覆盖。 */
 button:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only):not([data-layout-btn]):not(.chart-mode-btn):not(.api-copy-btn),
 .btn:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only):not([data-layout-btn]):not(.chart-mode-btn):not(.api-copy-btn),
 label.btn:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only):not([data-layout-btn]):not(.chart-mode-btn):not(.api-copy-btn) {
