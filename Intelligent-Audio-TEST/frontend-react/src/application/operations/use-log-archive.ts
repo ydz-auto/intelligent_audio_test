@@ -13,7 +13,7 @@ import {
   deleteMockArchive,
   getArchiveItems,
   getArchiveStatus,
-} from '@/infrastructure/api/logsApi'
+} from '@/infrastructure/api/archive-api'
 
 export function useArchiveStatusQuery() {
   return useQuery({

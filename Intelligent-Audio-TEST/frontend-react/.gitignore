@@ -11,3 +11,7 @@ src/routeTree.gen.ts
 # 日志与本地文件
 *.log
 .DS_Store
+
+# 工作区根 .gitignore 的 `logs/` 目录规则会误命中 src/features/logs/（页面功能目录），
+# 此处豁免——日志查看页组件树按 17_配置运维.md §11 落 features/logs/
+!src/features/logs/
