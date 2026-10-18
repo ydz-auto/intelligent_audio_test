@@ -116,6 +116,8 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
   const totalCases = ref(0)
   const pageSize = ref(10)
   const currentPage = ref(1)
+  /** 复核筛选模式全量用例（reviewFilter !== 'all' 时拉全量，客户端复核过滤 + 分页，P2-1） */
+  const reviewAllCases = ref<any[]>([])
 
   // 计算实际使用的评测维度
   const { actualAllMetrics } = createCaseMetricsComputeds({ allMetrics, cases })
@@ -124,10 +126,11 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
   const devices = ref<any[]>(getValidResources(props.reportData));
 
   // 使用提取的数据辅助函数
-  const { extractCasesFromReportData, loadCasesPage, loadAllCasesForExport } = createCaseDataHelpers({
+  const { extractCasesFromReportData, loadCasesPage, loadAllCasesForExport, loadAllCasesForReview } = createCaseDataHelpers({
     props,
     cases,
     totalCases,
+    reviewAllCases,
     currentPage,
     pageSize,
     casesLoading,
@@ -141,6 +144,55 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
     selectedSortResource,
     sortOrder,
     processTags
+  })
+
+  // ===== 报告侧 人工复核 + AI 复核（§4，INT-797） =====
+  // 声明须在 placeholderForTotalCases / reportData watch 之前：displayTotalCases 在 setup
+  // 早期即被分页占位计算读取，晚声明会触发 TDZ（Cannot access 'displayTotalCases' before initialization）。
+  const reportReviews = useReportReviews(() => props.reportData as any)
+
+  // 报告数据变化时加载复核数据（统计徽章 + 用例级复核标记/明细）
+  watch(
+    () => props.reportData?.id,
+    async (id) => {
+      if (id) {
+        await reportReviews.loadReportReviews(props.reportData as any)
+      }
+    },
+    { immediate: true },
+  )
+
+  // 复核状态筛选（§4.1：全部/已复核/未复核）
+  const reviewFilter = ref<'all' | 'reviewed' | 'unreviewed'>('all')
+
+  // 当前用例是否通过复核筛选（客户端过滤）
+  const isCaseFilteredByReview = (caseItem: any) => {
+    if (reviewFilter.value === 'all') return true
+    const state = reportReviews.getCaseReview(caseItem?.id ?? caseItem?.testCaseId ?? '')
+    if (reviewFilter.value === 'reviewed') return state.hasReview
+    return !state.hasReview
+  }
+
+  // 复核筛选模式：全量用例先滤再分页（§4.1，P2-1）
+  const reviewFilteredAllCases = computed(() =>
+    reviewFilter.value !== 'all'
+      ? (reviewAllCases.value || []).filter((c: any) => isCaseFilteredByReview(c))
+      : [],
+  )
+
+  // 分页总数/页数随筛选：复核筛选模式取过滤后条数，全部模式取服务端总数（P2-1）
+  const displayTotalCases = computed(() =>
+    reviewFilter.value !== 'all' ? reviewFilteredAllCases.value.length : totalCases.value,
+  )
+
+  // 筛选/复核筛选变化时重新请求后端（复核筛选为客户端过滤，联动分页重置）
+  watch(reviewFilter, () => {
+    currentPage.value = 1
+    const reportId = props.reportData?.id
+    if (reportId && !isExporting.value) {
+      if (reviewFilter.value !== 'all') loadAllCasesForReview(reportId)
+      else loadCasesPage(reportId)
+    }
   })
 
   // Computed
@@ -203,9 +255,9 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
     return (filteredCases.value || []).filter((c: any) => c && !pinnedIds.has(c.id))
   })
 
-  // 用例分页为服务端分页，totalCases 由 API 返回
-  // 此处用 totalCases 长度的占位数组驱动 totalPages 计算
-  const placeholderForTotalCases = computed(() => Array(totalCases.value).fill(0))
+  // 用例分页为服务端分页，totalCases 由 API 返回；
+  // 复核筛选模式（reviewFilter !== 'all'）下 totalCases 取复核过滤后条数（displayTotalCases，P2-1）
+  const placeholderForTotalCases = computed(() => Array(displayTotalCases.value).fill(0))
   const { totalPages } = usePagination(placeholderForTotalCases, pageSize, { currentPage })
 
   const paginatedCases = computed(() => filteredCases.value)
@@ -269,18 +321,26 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
   const { totalPages: totalMetricPages, paginatedItems: paginatedMetrics } = usePagination(filteredMetricsForDisplay, metricPageSize, { currentPage: metricPage })
 
   const paginatedCasesWithPreparedData = computed(() => {
+    // 复核筛选模式：过滤先于分页（全量数据客户端过滤后按页切片），总数/页数随筛选（P2-1）
+    if (reviewFilter.value !== 'all') {
+      const start = (currentPage.value - 1) * pageSize.value
+      return reviewFilteredAllCases.value
+        .slice(start, start + pageSize.value)
+        .map((caseItem: any) => prepareCaseItem(caseItem))
+    }
     const sourceCases = paginatedCases.value
     return sourceCases
       .filter((caseItem: any) => isCaseFilteredByReview(caseItem))
       .map((caseItem: any) => prepareCaseItem(caseItem))
   })
 
-  // 筛选/排序条件变化时重新请求后端
+  // 筛选/排序条件变化时重新请求后端（复核筛选模式拉全量供客户端过滤）
   const debouncedReload = debounce(() => {
     const reportId = props.reportData?.id
     if (reportId && !isExporting.value) {
       currentPage.value = 1
-      loadCasesPage(reportId)
+      if (reviewFilter.value !== 'all') loadAllCasesForReview(reportId)
+      else loadCasesPage(reportId)
     }
   }, 300)
 
@@ -291,9 +351,11 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
   // 翻页/改页大小
   // 注：此处分页导航函数需在页码变更后触发 loadCasesPage() 拉取服务端数据，
   // 与 usePagination 的纯客户端导航语义不同，因此保留手写实现。
+  // 复核筛选模式为客户端分页：仅改 currentPage，无需再请求后端。
   const handlePrevPage = () => {
     if (currentPage.value > 1) {
       currentPage.value -= 1
+      if (reviewFilter.value !== 'all') return
       const reportId = props.reportData?.id
       if (reportId) loadCasesPage(reportId)
     }
@@ -302,6 +364,7 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
   const handleNextPage = () => {
     if (currentPage.value < totalPages.value) {
       currentPage.value += 1
+      if (reviewFilter.value !== 'all') return
       const reportId = props.reportData?.id
       if (reportId) loadCasesPage(reportId)
     }
@@ -311,6 +374,7 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
     const p = Number(page)
     if (!Number.isFinite(p)) return
     currentPage.value = Math.min(Math.max(1, p), totalPages.value)
+    if (reviewFilter.value !== 'all') return
     const reportId = props.reportData?.id
     if (reportId) loadCasesPage(reportId)
   }
@@ -318,6 +382,7 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
   const handlePageSizeChange = (newSize: any) => {
     pageSize.value = Number(newSize)
     currentPage.value = 1
+    if (reviewFilter.value !== 'all') return
     const reportId = props.reportData?.id
     if (reportId) loadCasesPage(reportId)
   }
@@ -480,7 +545,13 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
         loadedReportId = effectiveReportId
         console.log('watch: 优先调用 /api/v1/reports/{id}/cases/search API 获取用例数据')
         currentPage.value = 1
-        await loadCasesPage(effectiveReportId)
+        reviewAllCases.value = []
+        // 复核筛选模式拉全量供客户端过滤，否则服务端分页
+        if (reviewFilter.value !== 'all') {
+          await loadAllCasesForReview(effectiveReportId)
+        } else {
+          await loadCasesPage(effectiveReportId)
+        }
 
         if (!cases.value || cases.value.length === 0) {
           console.log('watch: API 返回空数据，尝试从本地数据提取')
@@ -503,38 +574,6 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
     metricPage.value = 1
   }, { immediate: true })
 
-  // ===== 报告侧 人工复核 + AI 复核（§4，INT-797） =====
-  const reportReviews = useReportReviews(() => props.reportData as any)
-
-  // 报告数据变化时加载复核数据（统计徽章 + 用例级复核标记/明细）
-  watch(
-    () => props.reportData?.id,
-    async (id) => {
-      if (id) {
-        await reportReviews.loadReportReviews(props.reportData as any)
-      }
-    },
-    { immediate: true },
-  )
-
-  // 复核状态筛选（§4.1：全部/已复核/未复核）
-  const reviewFilter = ref<'all' | 'reviewed' | 'unreviewed'>('all')
-
-  // 当前用例是否通过复核筛选（客户端过滤）
-  const isCaseFilteredByReview = (caseItem: any) => {
-    if (reviewFilter.value === 'all') return true
-    const state = reportReviews.getCaseReview(caseItem?.id ?? caseItem?.testCaseId ?? '')
-    if (reviewFilter.value === 'reviewed') return state.hasReview
-    return !state.hasReview
-  }
-
-  // 筛选/复核筛选变化时重新请求后端（复核筛选为客户端过滤，联动分页重置）
-  watch(reviewFilter, () => {
-    currentPage.value = 1
-    const reportId = props.reportData?.id
-    if (reportId && !isExporting.value) loadCasesPage(reportId)
-  })
-
   return {
     showAudioModal, currentAudioId, currentAudioTitle, currentAudioTypeLabel,
     currentAudioType, currentAudioSpl, currentAudioPlayOrder, currentAudioNoiseSpl,
@@ -554,7 +593,7 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
     getResourceLabel, resourceHeaders,
     paginatedCasesWithPreparedData, toggleCaseExpand, getOverallStatus,
     downloadCaseLogZip, expandedCases, allDevices,
-    unpinnedFilteredCases, totalCases, currentPage, pageSize, handlePrevPage, handleNextPage, handleGoToPage, handlePageSizeChange,
+    unpinnedFilteredCases, totalCases, displayTotalCases, currentPage, pageSize, handlePrevPage, handleNextPage, handleGoToPage, handlePageSizeChange,
     currentCaseDetailWithPreparedData, closeCaseDetail, openCaseDetail,
     getResourceName, getCaseTaskId, formatTime,
     isDownloadingLog, downloadingCaseName, downloadProgress, downloadSpeed, downloadSize, downloadTotal,

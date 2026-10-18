@@ -31,6 +31,7 @@ function makeDeps(overrides: Record<string, any> = {}) {
     props: { reportData: { taskType: 'all' } },
     cases: ref([]),
     totalCases: ref(0),
+    reviewAllCases: ref([]),
     currentPage: ref(1),
     pageSize: ref(20),
     casesLoading: ref(false),
@@ -88,6 +89,28 @@ describe('INT-157 ReportView 排序资源链路（helpers → api）', () => {
     const params = mockedSearchCases.mock.calls[0][1] as any;
     expect(params.sortBy).toBe('metric');
     expect(params.sortResource).toBe('device_1');
+  });
+
+  it('复核筛选全量 loadAllCasesForReview 分批拉全并写入 reviewAllCases（P2-1）', async () => {
+    const reviewAllCases = ref([] as any[]);
+    const h = createCaseDataHelpers(makeDeps({ reviewAllCases }));
+    // 大报告 gRPC 4MB 上限：perPage 固定 100 分批（两页各 2 条、total=4 → 拉 2 次合全）
+    mockedSearchCases
+      .mockResolvedValueOnce({ items: [{ id: 1 }, { id: 2 }], total: 4 })
+      .mockResolvedValueOnce({ items: [{ id: 3 }, { id: 4 }], total: 4 });
+    await h.loadAllCasesForReview(7);
+    expect(mockedSearchCases).toHaveBeenCalledTimes(2);
+    const p1 = mockedSearchCases.mock.calls[0][1] as any;
+    expect(p1.page).toBe(1);
+    expect(p1.perPage).toBe(100);
+    expect(p1.sortBy).toBe('metric');
+    expect(p1.sortResource).toBe('device_1');
+    expect(p1.sortOrder).toBe('desc');
+    const p2 = mockedSearchCases.mock.calls[1][1] as any;
+    expect(p2.page).toBe(2);
+    expect(reviewAllCases.value.length).toBe(4);
+    expect(reviewAllCases.value[0].id).toBe(1);
+    expect(reviewAllCases.value[3].id).toBe(4);
   });
 
   it('reportsApi.searchCases 将 sortResource 归一进 POST 请求体 sort_resource', async () => {
