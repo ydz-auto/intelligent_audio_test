@@ -145,7 +145,11 @@ describe('行为锚点：注入 home.css 后裸类名不污染、Home 作用域�
 });
 
 describe('动画收敛：.scroll-animate 只在 Home 根作用域内挂类（INT-279）', () => {
-  it('挂载 Home 后，根外同名 .feature-card/.test-type-card 元素不被挂 .scroll-animate', async () => {
+  // INT-745 验收：Home 门户去统计后仍挂载全部 detail 分区，整树较重；
+  // jsdom 下真实 mount ~4.9s，贴近 vitest 默认 5s 超时（整模块并行时偶发超时），
+  // 显式放宽至 20s 消除计时抖动（2026-10-18 实测单跑 4.9s / 并跑超时）。
+  it('挂载 Home 后，根外同名 .feature-card/.test-type-card 元素不被挂 .scroll-animate',
+    async () => {
     // 模拟其他页面上的同名元素（访问首页前已存在于 DOM）
     const foreignFeature = document.createElement('div');
     foreignFeature.className = 'feature-card foreign-feature';
@@ -175,5 +179,5 @@ describe('动画收敛：.scroll-animate 只在 Home 根作用域内挂类（INT
     });
 
     w.unmount();
-  });
+  }, 20000);
 });
