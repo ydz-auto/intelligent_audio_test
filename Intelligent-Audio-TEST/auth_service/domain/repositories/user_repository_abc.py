@@ -63,8 +63,12 @@ class UserRepositoryABC(ABC):
         email: Optional[str] = None,
         status: Optional[str] = None,
         password: Optional[str] = None,
+        display_name: Optional[str] = None,
     ) -> bool:
-        """按字段更新用户资料（None=不修改；password 哈希落库，仅 flush）。"""
+        """按字段更新用户资料（None=不修改；password 哈希落库，仅 flush）。
+
+        display_name（INT-697）：None=不修改，空串/空白=清空落 NULL，非空=设置。
+        """
 
     @abstractmethod
     def verify_password(self, account: str, password: str) -> Optional['UserAggregate']:

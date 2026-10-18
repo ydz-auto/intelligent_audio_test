@@ -158,6 +158,7 @@ def _user_po_to_entity(po: User, permissions: Optional[List[str]] = None) -> Use
         deleted=(po.status == UserStatus.DELETED.value),
         oauth_provider=po.oauth_provider,
         oauth_subject=po.oauth_id,
+        display_name=po.display_name,
         role_name=_role_name_by_id(get_db_session(), po.role_id),
         created_at=po.created_at,
         updated_at=po.updated_at,
@@ -180,6 +181,7 @@ def _apply_user_to_po(aggregate: UserAggregate, po: User) -> None:
         po.status = aggregate.status
     po.oauth_provider = aggregate.oauth_provider
     po.oauth_id = aggregate.oauth_subject
+    po.display_name = _normalize_display_name(aggregate.display_name)
 
 
 def _normalize_email(email: Optional[str]) -> Optional[str]:
@@ -192,6 +194,18 @@ def _normalize_email(email: Optional[str]) -> Optional[str]:
     if email is None:
         return None
     normalized = str(email).strip()
+    return normalized or None
+
+
+def _normalize_display_name(value: Optional[str]) -> Optional[str]:
+    """空/纯空白 display_name 归一化为 None（INT-697）。
+
+    显示名允许为空（NULL，前端兜底 username）；非空按 trim 后落库。
+    更新路径由 update_user_fields 的 None=不修改 与 空串=清空 语义承载。
+    """
+    if value is None:
+        return None
+    normalized = str(value).strip()
     return normalized or None
 
 
@@ -254,6 +268,7 @@ class UserRepository(UserRepositoryABC):
             status=UserStatus.DELETED.value if aggregate.deleted else aggregate.status,
             oauth_provider=aggregate.oauth_provider,
             oauth_id=aggregate.oauth_subject,
+            display_name=_normalize_display_name(aggregate.display_name),
             password_hash=_hash_password(password) if password else None,
         )
         session.add(po)
@@ -294,8 +309,12 @@ class UserRepository(UserRepositoryABC):
         email: Optional[str] = None,
         status: Optional[str] = None,
         password: Optional[str] = None,
+        display_name: Optional[str] = None,
     ) -> bool:
         """按字段更新用户资料（None=不修改；password 哈希落库，仅 flush）。
+
+        display_name（INT-697）：None=不修改，空串/空白=清空落 NULL，
+        非空=设置（与 username/email 的「空串=不修改」语义不同）。
 
         Returns:
             用户是否存在。
@@ -312,6 +331,8 @@ class UserRepository(UserRepositoryABC):
             po.status = status
         if password is not None:
             po.password_hash = _hash_password(password)
+        if display_name is not None:
+            po.display_name = _normalize_display_name(display_name)
         session.flush()
         return True
 

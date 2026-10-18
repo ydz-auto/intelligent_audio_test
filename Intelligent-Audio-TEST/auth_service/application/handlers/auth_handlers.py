@@ -145,6 +145,7 @@ class AuthCommandHandler:
             oauth_subject=cmd.oauth_subject,
             role_id=role_id,
             status='active',
+            display_name=cmd.display_name or None,
         )
         user_id = user_repository.add(aggregate, password=cmd.password or None)
         # 自助注册与管理员建号审计事件区分（INT-51）
@@ -158,6 +159,7 @@ class AuthCommandHandler:
                 'role_id': role_id, 'oauth_provider': cmd.oauth_provider,
                 'has_password': bool(cmd.password),
                 'registered': cmd.registered,
+                'display_name': cmd.display_name or None,
             },
         })
         return user_id
@@ -219,6 +221,7 @@ class AuthCommandHandler:
             email=cmd.email,
             status=cmd.status,
             password=cmd.password or None,
+            display_name=cmd.display_name,
         )
         # 规格§六：AUTH_USER_STATUS_CHANGED 含禁用/解锁/锁定（软删走 DeleteUser）；
         # 仅资料字段变更才落 AUTH_USER_UPDATED
@@ -233,6 +236,7 @@ class AuthCommandHandler:
             'delta': {
                 'username': cmd.username, 'email': cmd.email,
                 'status': cmd.status, 'password_changed': bool(cmd.password),
+                'display_name': cmd.display_name,
             },
         })
 

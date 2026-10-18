@@ -176,6 +176,7 @@ class UserManagementService:
             email=(body.get('email') or '').strip(),
             password=body.get('password') or '',
             role_id=int(body.get('role_id') or 0),
+            display_name=(body.get('display_name') or '').strip() or None,
             operator_id=current_operator_id(),
         ), default_error='创建用户失败')
         if fail:
@@ -185,16 +186,26 @@ class UserManagementService:
 
     @staticmethod
     def update_user(user_id: int) -> Tuple[Dict, int]:
-        """更新用户资料（body 键缺省=不修改；status∈active/inactive/locked）。"""
+        """更新用户资料（body 键缺省=不修改；status∈active/inactive/locked）。
+
+        display_name（INT-697）：仅当 body 含 display_name 键时赋值——
+        缺省键=不修改、空串=清空落 NULL、非空=设置。不得用
+        body.get('display_name') or '' 惯用法（会把缺省键误判为空串而清空）。
+        """
         body = _json_body()
-        data, fail = call_auth_rpc('UpdateUser', auth_pb.UpdateUserRequest(
+        request_kwargs = dict(
             user_id=user_id,
             username=body.get('username') or '',
             email=body.get('email') or '',
             status=body.get('status') or '',
             password=body.get('password') or '',
             operator_id=current_operator_id(),
-        ), default_error='更新用户失败')
+        )
+        if 'display_name' in body:
+            request_kwargs['display_name'] = body['display_name']
+        data, fail = call_auth_rpc(
+            'UpdateUser', auth_pb.UpdateUserRequest(**request_kwargs),
+            default_error='更新用户失败')
         if fail:
             return fail
         return with_notice(success_response(None, '更新成功'))

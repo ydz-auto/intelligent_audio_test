@@ -71,6 +71,7 @@ def _user_to_dict(user, overrides=None) -> dict:
         'permissions': list(user.permissions),
         'oauth_provider': user.oauth_provider,
         'oauth_subject': user.oauth_subject,
+        'display_name': user.display_name,
         'created_at': _datetime_str(user.created_at),
         'updated_at': _datetime_str(user.updated_at),
         'last_login_at': _datetime_str(user.last_login_at),
@@ -314,6 +315,7 @@ class AuthServicer(auth_grpc.AuthServiceServicer):
                 password=getattr(request, 'password', ''),
                 operator_id=getattr(request, 'operator_id', 0),
                 registered=bool(getattr(request, 'registered', False)),
+                display_name=getattr(request, 'display_name', '') or None,
             )
             user_id = self.command_handler.handle_create_user(cmd)
             self._commit()
@@ -341,7 +343,8 @@ class AuthServicer(auth_grpc.AuthServiceServicer):
             return self._error_response(e, 'UpdateUserStatus')
 
     def UpdateUser(self, request, context=None) -> auth_pb.AuthResponse:
-        """更新用户资料（username/email/status/password，空串=不修改）"""
+        """更新用户资料（username/email/status/password，空串=不修改；
+        display_name 未传=不修改、空串=清空、非空=设置，INT-697）"""
         try:
             from auth_service.application.commands.auth_commands import (
                 UpdateUserCommand,
@@ -352,6 +355,10 @@ class AuthServicer(auth_grpc.AuthServiceServicer):
                 email=getattr(request, 'email', '') or None,
                 status=getattr(request, 'status', '') or None,
                 password=getattr(request, 'password', '') or None,
+                display_name=(
+                    request.display_name
+                    if request.HasField('display_name') else None
+                ),
                 operator_id=getattr(request, 'operator_id', 0),
             )
             self.command_handler.handle_update_user(cmd)

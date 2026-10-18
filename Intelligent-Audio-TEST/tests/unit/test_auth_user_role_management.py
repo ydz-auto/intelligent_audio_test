@@ -206,8 +206,10 @@ class FakeUserRepository:
         self.baselines = {}   # user_id → [code]
         self.next_id = 1
 
-    def seed(self, user_id, username='u', role_id=None, baseline=()):
-        agg = UserAggregate(id=user_id, username=username, role_id=role_id)
+    def seed(self, user_id, username='u', role_id=None, baseline=(),
+             display_name=None):
+        agg = UserAggregate(id=user_id, username=username, role_id=role_id,
+                            display_name=display_name)
         self.users[user_id] = agg
         self.by_name[username] = agg
         self.baselines[user_id] = list(baseline)
@@ -239,7 +241,7 @@ class FakeUserRepository:
         self.users[user_id].status = status
 
     def update_user_fields(self, user_id, username=None, email=None,
-                           status=None, password=None):
+                           status=None, password=None, display_name=None):
         agg = self.users[user_id]
         if username is not None:
             self.by_name.pop(agg.username, None)
@@ -249,6 +251,9 @@ class FakeUserRepository:
             agg.email = email
         if status is not None:
             agg.status = status
+        if display_name is not None:
+            # 对齐真实仓储 update_user_fields：空串/空白 → None（清空）
+            agg.display_name = display_name or None
         return True
 
     def soft_delete(self, user_id):
@@ -536,6 +541,30 @@ class TestUserManagementHandlers:
             user_id=1, email='n@x.com'))
         assert handler['audits'][0]['event'] == AuditEvent.AUTH_USER_UPDATED
 
+    def test_update_user_display_name_set(self, handler):
+        """display_name 非空=设置（INT-697）。"""
+        handler['users'].seed(1)
+        handler['handler'].handle_update_user(UpdateUserCommand(
+            user_id=1, display_name='张三'))
+        assert handler['users'].users[1].display_name == '张三'
+        assert handler['audits'][0]['content']['delta']['display_name'] == '张三'
+
+    def test_update_user_display_name_not_modified(self, handler):
+        """display_name None=不修改（缺省键语义保持）。"""
+        handler['users'].seed(1, display_name='张三')
+        handler['handler'].handle_update_user(UpdateUserCommand(
+            user_id=1, email='n@x.com'))
+        assert handler['users'].users[1].display_name == '张三'
+        assert handler['audits'][0]['content']['delta']['display_name'] is None
+
+    def test_update_user_display_name_cleared(self, handler):
+        """display_name 空串=清空落 None（与 username/email 的「空串=不修改」不同）。"""
+        handler['users'].seed(1, display_name='张三')
+        handler['handler'].handle_update_user(UpdateUserCommand(
+            user_id=1, display_name=''))
+        assert handler['users'].users[1].display_name is None
+        assert handler['audits'][0]['content']['delta']['display_name'] == ''
+
     def test_delete_user_self_forbidden(self, handler):
         handler['users'].seed(7, username='admin1')
         with pytest.raises(AuthDomainError) as ei:
@@ -724,12 +753,21 @@ class TestServicerErrorCodes:
     def test_user_to_dict_includes_role_name_and_timestamps(self):
         from auth_service.interfaces.grpc.servicers import _user_to_dict
         user = UserAggregate(id=1, username='u', role_id=2, role_name='tester',
-                             status='active')
+                             status='active', display_name='张三')
         d = _user_to_dict(user, overrides=[
             {'permission_id': 10, 'code': 'task:read', 'granted': True}])
         assert d['role_name'] == 'tester'
         assert d['overrides'][0]['code'] == 'task:read'
         assert 'created_at' in d and 'last_login_at' in d
+        assert d['display_name'] == '张三'
+
+    def test_user_to_dict_display_name_null(self):
+        """display_name 未设置（None）时响应为 null，前端兜底 username。"""
+        from auth_service.interfaces.grpc.servicers import _user_to_dict
+        user = UserAggregate(id=2, username='u2', status='active',
+                             display_name=None)
+        d = _user_to_dict(user)
+        assert d['display_name'] is None
 
 
 # ============================================================
@@ -822,3 +860,103 @@ class TestGatewayNotice:
         payload, http_code = rms.RoleManagementService.delete_role(5)
         assert http_code == 200
         assert 'notice' in payload
+
+
+class TestGatewayDisplayNamePassthrough:
+    """INT-697：网关 update_user / create_user 的 display_name 键透传语义。
+
+    update_user 仅当 body 含 display_name 键时赋值（缺省键=不修改、空串=清空），
+    不得用 body.get('display_name') or '' 惯用法（会把缺省键误判为空串而清空）。
+    """
+
+    def _stub_update(self, monkeypatch, body):
+        import api_gateway.application.services.auth.user_management_service as ums
+        captured = {}
+
+        def _fake_rpc(name, req, default_error=''):
+            captured['name'] = name
+            captured['req'] = req
+            return {}, None  # 成功: (data, None)
+
+        monkeypatch.setattr(ums, '_json_body', lambda: body)
+        monkeypatch.setattr(ums, 'call_auth_rpc', _fake_rpc)
+        monkeypatch.setattr(ums, 'current_operator_id', lambda: 1)
+        monkeypatch.setattr(ums, 'with_notice', lambda r: r)
+        return captured
+
+    def test_update_user_no_display_name_key_omits_field(self, monkeypatch):
+        """body 不带 display_name 键 → 请求不含该字段（HasField=false=不修改）。"""
+        captured = self._stub_update(monkeypatch, {'email': 'n@x.com'})
+        import api_gateway.application.services.auth.user_management_service as ums
+        ums.UserManagementService.update_user(7)
+        req = captured['req']
+        assert captured['name'] == 'UpdateUser'
+        assert req.user_id == 7
+        assert req.HasField('display_name') is False
+
+    def test_update_user_display_name_key_passes_value(self, monkeypatch):
+        captured = self._stub_update(monkeypatch, {'display_name': '张三'})
+        import api_gateway.application.services.auth.user_management_service as ums
+        ums.UserManagementService.update_user(7)
+        req = captured['req']
+        assert req.HasField('display_name') is True
+        assert req.display_name == '张三'
+
+    def test_update_user_empty_display_name_passes_empty(self, monkeypatch):
+        """body 带空串 display_name → 请求字段存在且为空（HasField=true=清空）。"""
+        captured = self._stub_update(monkeypatch, {'display_name': ''})
+        import api_gateway.application.services.auth.user_management_service as ums
+        ums.UserManagementService.update_user(7)
+        req = captured['req']
+        assert req.HasField('display_name') is True
+        assert req.display_name == ''
+
+    def test_update_user_other_fields_unaffected_by_display_name(
+            self, monkeypatch):
+        """带 display_name 键时其他字段（email/status）照常透传。"""
+        captured = self._stub_update(
+            monkeypatch, {'email': 'n@x.com', 'status': 'inactive',
+                          'display_name': '张三'})
+        import api_gateway.application.services.auth.user_management_service as ums
+        ums.UserManagementService.update_user(7)
+        req = captured['req']
+        assert req.email == 'n@x.com'
+        assert req.status == 'inactive'
+        assert req.display_name == '张三'
+
+    def test_create_user_passes_display_name(self, monkeypatch):
+        import api_gateway.application.services.auth.user_management_service as ums
+        captured = {}
+
+        def _fake_rpc(name, req, default_error=''):
+            captured['name'] = name
+            captured['req'] = req
+            return {}, None
+
+        monkeypatch.setattr(ums, '_json_body',
+                            lambda: {'username': 'newuser',
+                                     'display_name': '张三'})
+        monkeypatch.setattr(ums, 'call_auth_rpc', _fake_rpc)
+        monkeypatch.setattr(ums, 'current_operator_id', lambda: 1)
+        monkeypatch.setattr(ums, 'with_notice', lambda r: r)
+        ums.UserManagementService.create_user()
+        req = captured['req']
+        assert captured['name'] == 'CreateUser'
+        assert req.display_name == '张三'
+
+    def test_create_user_empty_display_name_none(self, monkeypatch):
+        """create_user 空串/未传 display_name → 请求为 None（不填）。"""
+        import api_gateway.application.services.auth.user_management_service as ums
+        captured = {}
+
+        def _fake_rpc(name, req, default_error=''):
+            captured['req'] = req
+            return {}, None
+
+        monkeypatch.setattr(ums, '_json_body',
+                            lambda: {'username': 'newuser2', 'display_name': ''})
+        monkeypatch.setattr(ums, 'call_auth_rpc', _fake_rpc)
+        monkeypatch.setattr(ums, 'current_operator_id', lambda: 1)
+        monkeypatch.setattr(ums, 'with_notice', lambda r: r)
+        ums.UserManagementService.create_user()
+        assert captured['req'].display_name == ''
