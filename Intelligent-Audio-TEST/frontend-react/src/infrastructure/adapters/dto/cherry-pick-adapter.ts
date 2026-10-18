@@ -3,7 +3,8 @@
  * snake_case 唯一出现层；前端只见 camelCase Domain。
  * 对照契约：cherry_pick_bp.py + task_service/application/task/cherry_pick_service.py 实测响应。
  * §11-2/§11-5 落地后（INT-762 审计）：candidates 已返 case_name/device_name/api_name/
- * result_type/algorithm_type，购物车快照已返 source_result_type——adapter 直取；
+ * result_type/algorithm_type，购物车快照已返 source_case_name/source_device_name/
+ * source_result_type（source_api_name 缺省 undefined）——adapter 直取；
  * 缺名（后端返回 null / case_id 兜底）时经 name map 二次装饰，仍缺则降级显示 ID。
  */
 import type {
@@ -82,13 +83,25 @@ export function fromCartEntryDto(
     sourceTaskName: dto.source_task_name ?? `任务 ${dto.source_task_id}`,
     sourceCaseId: dto.source_case_id,
     sourceCaseName:
-      dto.source_case_id != null ? names.cases.get(dto.source_case_id) ?? null : null,
+      dto.source_case_name && dto.source_case_name.trim()
+        ? dto.source_case_name
+        : dto.source_case_id != null
+          ? names.cases.get(dto.source_case_id) ?? null
+          : null, // INT-577 §11-5：cart_get 已返 source_case_name → 直取；缺省回退 name map，仍缺则树层降级
     sourceDeviceId: dto.source_device_id,
     sourceDeviceName:
-      dto.source_device_id != null ? names.devices.get(dto.source_device_id) ?? null : null,
+      dto.source_device_name && dto.source_device_name.trim()
+        ? dto.source_device_name
+        : dto.source_device_id != null
+          ? names.devices.get(dto.source_device_id) ?? null
+          : null,
     sourceApiId: dto.source_api_id,
     sourceApiName:
-      dto.source_api_id != null ? names.apis.get(dto.source_api_id) ?? null : null,
+      dto.source_api_name && dto.source_api_name.trim()
+        ? dto.source_api_name
+        : dto.source_api_id != null
+          ? names.apis.get(dto.source_api_id) ?? null
+          : null,
     sourceResultType:
       dto.source_result_type && dto.source_result_type.trim()
         ? dto.source_result_type

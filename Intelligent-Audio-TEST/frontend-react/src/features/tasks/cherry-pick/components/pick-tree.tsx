@@ -64,7 +64,9 @@ function CaseIdBadge({ caseId }: { caseId: string }) {
       className='text-muted-foreground hover:text-foreground shrink-0 font-mono text-[10px] tabular-nums hover:underline'
       title={`点击复制用例 ID（${caseId}）`}
       onClick={() => {
-        void navigator.clipboard?.writeText(caseId)
+        void navigator.clipboard?.writeText(caseId).catch(() => {
+          // 剪贴板写入在非安全上下文 / 权限拒绝时静默降级（localhost 可写，headless 兜底）
+        })
         toast.success('用例 ID 已复制')
       }}
     >

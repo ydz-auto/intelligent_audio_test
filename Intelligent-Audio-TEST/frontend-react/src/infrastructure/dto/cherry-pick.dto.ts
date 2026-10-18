@@ -42,6 +42,12 @@ export interface CherryPickCartItemDto {
   source_case_id: string | null
   source_device_id: number | null
   source_api_id: number | null
+  /** INT-577 §11-5：cart_get 逐行 case_names 装饰的来源用例名（缺名 null → 前端「用例不可用」降级） */
+  source_case_name: string | null
+  /** INT-577 §11-5：cart_get 逐行 device_names 装饰的来源设备名（缺名 null → 设备 map 兜底） */
+  source_device_name: string | null
+  /** INT-577 §11-5：来源 API 名（后端 cart_get 未逐行装饰，缺省 undefined → adapter 经 api map 兜底） */
+  source_api_name: string | null
   /** §11-5：购物车快照 source_result_type（历史条目缺省 null → result_type 级折叠「结果类型待补充」） */
   source_result_type: string | null
   execution_status: string
