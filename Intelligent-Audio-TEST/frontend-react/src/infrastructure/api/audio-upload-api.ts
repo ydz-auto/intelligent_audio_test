@@ -5,8 +5,9 @@
  *   POST /api/v1/audios/upload/register      → files[]（file_id/total_chunks/chunk_size）
  *   POST /api/v1/audios/upload/chunk         （multipart：file_id/chunk_index/total_chunks/task_id/chunk）
  *   POST /api/v1/audios/upload/merge         → { audio_id, test_case_id, test_case_count }
- * 载荷字段全 snake_case（MergeChunksRequest 契约；test_types/dimensions/algorithm_type/
- * algorithm_params/test_case_config 由后端 audio 服务消费生成对应类型用例，实测 e2e/api 均落 type）。
+ * 载荷字段全 snake_case（MergeChunksRequest 契约；INT-714 口径修订：test_types 不再由前端传——
+ * 用户不再选择用例类型，merge 缺省时后端 audio 服务默认 ['api'] 落库
+ * （round_config_service.py data.get('test_types', ['api'])）；create_test_case 控制是否生成）。
  * md5 不做浏览器计算（无 spark-md5 依赖），注册传空串，后端不据此秒传；同批同名文件避免重复入库。
  */
 import { apiClient } from './client'
@@ -97,8 +98,8 @@ export async function uploadChunk(
 
 /** 生成测试用例配置（merge 载荷 test_case_config；照 TestCaseUploadConfig/RoundConfigItem 实测） */
 export interface UploadTestCaseConfig {
-  /** e2e / api；空数组 = 不生成用例 */
-  testTypes: string[]
+  /** 是否生成测试用例（原 test_types.length>0 语义；用例类型由后端默认落库） */
+  createTestCase: boolean
   algorithmType: string | null
   algorithmParams: Array<{ field_code: string; field_value: unknown }>
   dimensions: number[]
@@ -125,7 +126,7 @@ export async function mergeChunks(
   filename: string,
   config: UploadTestCaseConfig
 ): Promise<MergeChunksResult> {
-  const createTestCase = config.testTypes.length > 0
+  const createTestCase = config.createTestCase
   const dto = await apiClient.post<{
     audio_id?: number | string
     test_case_id?: string | null
@@ -134,7 +135,7 @@ export async function mergeChunks(
     file_id: fileId,
     task_id: taskId,
     create_test_case: createTestCase,
-    test_types: createTestCase ? config.testTypes : undefined,
+    // test_types 不传（INT-714 口径修订）：前端不再暴露用例类型选择，后端缺省默认 ['api'] 落库
     audio_type: config.audioType,
     algorithm_type: config.algorithmType ?? '',
     algorithm_params: config.algorithmParams,

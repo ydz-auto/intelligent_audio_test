@@ -5,7 +5,7 @@
  * Tabs（列表/文件夹）+ 筛选工具栏（搜索+格式/音频类型/采样率/时长/标签 facet + 全局算法
  * chip）+ 列表视图 DataTable（§5.3）+ 文件夹视图左树右表（§5.5）+ 上传进度卡（§5.4）
  * + 批量浮条（§5.6）+ 分页 Portal（§3.9）。
- * mock 数据对齐 api_gateway/schemas/audio.py（AudioItem/AudioListStats）；不接后端。
+ * 列表/统计/文件夹/增删改/批量/URL 导入全接真实接口（INT-714 接线）；下载仍为本地 Blob 兜底。
  */
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'

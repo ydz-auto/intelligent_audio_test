@@ -2,7 +2,8 @@
  * 上传音频弹窗（§6.16；Dialog sm:max-w-2xl；INT-714 接线）。
  * 拖放区 + 文件列表 + 目标文件夹配置 + 音频类型自动识别 + 文件命名与冲突 + 上传选项
  * （UploadOptions 复用）+ 主钮「开始上传」→ 真实上传（init/register/chunk/merge，
- * audio-upload-api；生成测试用例由 merge 载荷 test_types 控制）。
+ * audio-upload-api；生成测试用例由 merge 载荷 create_test_case 控制，
+ * test_types 不传——后端默认 ['api'] 落库，模态窗不再显示用例类型选择）。
  */
 import { FileAudio, FileText, FolderOpen, HardDriveUpload, UploadCloud } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
@@ -60,9 +61,7 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
   const [audioType, setAudioType] = useState('dry')
   const [generateTestCase, setGenerateTestCase] = useState(false)
   const [algorithmType, setAlgorithmType] = useState('')
-  const [testTypes, setTestTypes] = useState<string[]>(['e2e'])
-  const [apiDimensionIds, setApiDimensionIds] = useState<number[]>([])
-  const [e2eDimensionIds, setE2eDimensionIds] = useState<number[]>([])
+  const [dimensionIds, setDimensionIds] = useState<number[]>([])
   const [playbackDevice, setPlaybackDevice] = useState('')
   const [defaultSpl, setDefaultSpl] = useState(65)
   const [caseGroup, setCaseGroup] = useState('folder')
@@ -104,12 +103,12 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
     }
     setUploading(true)
     try {
-      // 真实上传 + 生成测试用例（merge 载荷 test_types=testTypes，后端落 e2e/api 类型）
+      // 真实上传 + 生成测试用例（merge 载荷 create_test_case 控制；test_types 不传，后端默认 ['api']）
       const result = await startRealAudioUpload(audioFiles, {
-        testTypes,
+        createTestCase: generateTestCase,
         algorithmType: algorithmType || null,
         algorithmParams: [],
-        dimensions: [...apiDimensionIds, ...e2eDimensionIds],
+        dimensions: dimensionIds,
         playbackDeviceId: playbackDevice ? Number(playbackDevice) : null,
         spl: defaultSpl,
         noiseAudioId: null,
@@ -124,7 +123,7 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
       })
       if (result.testCaseCount > 0) {
         toast.success(
-          `上传完成：成功 ${result.successCount} 个，生成 ${result.testCaseCount} 个测试用例（${testTypes.join(' / ')}）`
+          `上传完成：成功 ${result.successCount} 个，生成 ${result.testCaseCount} 个测试用例`
         )
       } else if (result.failedCount === 0) {
         toast.success(`上传完成：成功 ${result.successCount} 个音频文件`)
@@ -302,8 +301,8 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
             onGenerateTestCaseChange={setGenerateTestCase}
             algorithmType={algorithmType}
             onAlgorithmTypeChange={setAlgorithmType}
-            testTypes={testTypes}
-            onTestTypesChange={setTestTypes}
+            dimensionIds={dimensionIds}
+            onDimensionIdsChange={setDimensionIds}
             playbackDevice={playbackDevice}
             onPlaybackDeviceChange={setPlaybackDevice}
             defaultSpl={defaultSpl}
@@ -314,10 +313,6 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
             onCustomGroupNameChange={setCustomGroupName}
             inheritTags={inheritTags}
             onInheritTagsChange={setInheritTags}
-            apiDimensionIds={apiDimensionIds}
-            onApiDimensionIdsChange={setApiDimensionIds}
-            e2eDimensionIds={e2eDimensionIds}
-            onE2eDimensionIdsChange={setE2eDimensionIds}
           />
         </div>
 

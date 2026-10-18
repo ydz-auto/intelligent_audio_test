@@ -20,7 +20,7 @@ export interface UploadBatchResult {
   failed: Array<{ name: string; error: string }>
 }
 
-/** 逐文件真实上传（每个文件独立 register/chunk/merge，后端按 merge 载荷 test_types 生成对应类型用例） */
+/** 逐文件真实上传（每个文件独立 register/chunk/merge，merge 载荷 create_test_case 控制生成；用例类型由后端默认落库，INT-714 口径修订） */
 export async function runAudioUpload(
   files: File[],
   config: UploadTestCaseConfig,
@@ -50,7 +50,7 @@ export async function runAudioUpload(
   for (const file of files) {
     onProgress?.(2, file.name)
     try {
-      // 注册 → 分片上传 → 合并（生成测试用例由 merge 载荷 test_types 控制）
+      // 注册 → 分片上传 → 合并（生成测试用例由 merge 载荷 create_test_case 控制，test_types 不传）
       const [registered] = await registerUploadFiles(taskId, [
         { name: file.name, size: file.size },
       ])

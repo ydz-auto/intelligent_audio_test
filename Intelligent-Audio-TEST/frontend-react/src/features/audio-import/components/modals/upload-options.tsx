@@ -1,16 +1,15 @@
 /**
  * 上传选项（§6.16/§6.17 共用 UploadOptions；buildUploadOptionsConfig 平移；INT-714 接线）。
  * 音频类型 radio + 生成测试用例 boolean + 算法类型 select（真实 /algorithm/options）
- * + 测试类型 checkbox（E2E/API 各自评估维度平铺云，照 V9.7.10 DimensionConfigPanel）
+ * + 评估维度单组（真实 /evaluation/dimensions，DimensionPicker 平铺云；INT-714 口径修订：
+ *   用例类型由后端默认落库，模态窗不再显示 E2E/API 类型选择）
  * + 播放设备 select（真实 /playback-devices）+ 默认声压级 + 用例分组 radio + 继承音频标签 boolean。
- * 评估维度数据源 useEvaluationDimensions（真实 GET /evaluation/dimensions，INT-714 接线）。
  */
 import { Check, Info } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 
 import { useEvaluationDimensions, useAlgorithmOptions } from '@/application/evaluation/use-dimensions'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -24,10 +23,7 @@ import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { DimensionPicker } from '@/features/testcases/modals/round-config/dimension-picker'
 import { fetchPlaybackDevices } from '@/infrastructure/api/audio-upload-api'
-import {
-  UPLOAD_AUDIO_TYPE_OPTIONS,
-  UPLOAD_TEST_TYPE_OPTIONS,
-} from '@/features/audio-import/constants'
+import { UPLOAD_AUDIO_TYPE_OPTIONS } from '@/features/audio-import/constants'
 import { MOCK_CASE_GROUP_OPTIONS } from '@/infrastructure/mock/audio-mock'
 
 export type UploadOptionsProps = {
@@ -37,8 +33,8 @@ export type UploadOptionsProps = {
   onGenerateTestCaseChange: (value: boolean) => void
   algorithmType: string
   onAlgorithmTypeChange: (value: string) => void
-  testTypes: string[]
-  onTestTypesChange: (value: string[]) => void
+  dimensionIds: number[]
+  onDimensionIdsChange: (value: number[]) => void
   playbackDevice: string
   onPlaybackDeviceChange: (value: string) => void
   defaultSpl: number
@@ -49,10 +45,6 @@ export type UploadOptionsProps = {
   onCustomGroupNameChange: (value: string) => void
   inheritTags: boolean
   onInheritTagsChange: (value: boolean) => void
-  apiDimensionIds: number[]
-  onApiDimensionIdsChange: (value: number[]) => void
-  e2eDimensionIds: number[]
-  onE2eDimensionIdsChange: (value: number[]) => void
 }
 
 function OptionRadio({
@@ -89,13 +81,6 @@ function OptionRadio({
 }
 
 export function UploadOptions(props: UploadOptionsProps) {
-  const toggleTestType = (value: string) => {
-    const next = props.testTypes.includes(value)
-      ? props.testTypes.filter((v) => v !== value)
-      : [...props.testTypes, value]
-    props.onTestTypesChange(next)
-  }
-
   // 真实数据源（INT-714 接线）：算法选项 /algorithm/options、评估维度 /evaluation/dimensions、播放设备 /playback-devices
   const algorithmOptionsQuery = useAlgorithmOptions()
   const algorithmOptions = algorithmOptionsQuery.data ?? []
@@ -157,58 +142,21 @@ export function UploadOptions(props: UploadOptionsProps) {
 
       {props.generateTestCase && (
         <>
+          {/* 评估维度单组（INT-714 口径修订：不再按 E2E/API 分型平铺两组；用例类型由后端默认落库） */}
           <div className='space-y-2'>
-            <Label>测试类型</Label>
-            <div className='flex flex-wrap gap-4'>
-              {UPLOAD_TEST_TYPE_OPTIONS.map((option) => (
-                <label
-                  key={option.value}
-                  className='flex cursor-pointer items-center gap-2 text-sm'
-                >
-                  <Checkbox
-                    checked={props.testTypes.includes(option.value)}
-                    onCheckedChange={() => toggleTestType(option.value)}
-                  />
-                  {option.label}
-                </label>
-              ))}
-            </div>
+            <Label>评估维度</Label>
+            <DimensionPicker
+              dimensions={uploadDimensions}
+              selected={props.dimensionIds}
+              onToggle={(ids, checked) =>
+                props.onDimensionIdsChange(
+                  checked
+                    ? [...new Set([...props.dimensionIds, ...ids])]
+                    : props.dimensionIds.filter((id) => !ids.includes(id))
+                )
+              }
+            />
           </div>
-
-          {/* API / E2E 各自评估维度配置（照 V9.7.10 DimensionConfigPanel 分型平铺云） */}
-          {props.testTypes.includes('api') && (
-            <div className='space-y-2'>
-              <Label>API 测试评估维度</Label>
-              <DimensionPicker
-                dimensions={uploadDimensions}
-                selected={props.apiDimensionIds}
-                onToggle={(ids, checked) =>
-                  props.onApiDimensionIdsChange(
-                    checked
-                      ? [...new Set([...props.apiDimensionIds, ...ids])]
-                      : props.apiDimensionIds.filter((id) => !ids.includes(id))
-                  )
-                }
-              />
-            </div>
-          )}
-
-          {props.testTypes.includes('e2e') && (
-            <div className='space-y-2'>
-              <Label>E2E 测试评估维度</Label>
-              <DimensionPicker
-                dimensions={uploadDimensions}
-                selected={props.e2eDimensionIds}
-                onToggle={(ids, checked) =>
-                  props.onE2eDimensionIdsChange(
-                    checked
-                      ? [...new Set([...props.e2eDimensionIds, ...ids])]
-                      : props.e2eDimensionIds.filter((id) => !ids.includes(id))
-                  )
-                }
-              />
-            </div>
-          )}
 
           <div className='space-y-2'>
             <Label htmlFor='upload-playback-device'>播放设备</Label>
