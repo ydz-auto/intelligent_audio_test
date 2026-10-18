@@ -62,7 +62,6 @@ import { LogExportDialog } from '@/features/logs/components/log-export-dialog'
 import { LogClearDialog } from '@/features/logs/components/log-clear-dialog'
 import { RealtimeConfigDialog } from '@/features/logs/components/realtime-config-dialog'
 import { useLogRealtime } from '@/features/logs/hooks/use-log-realtime'
-import { cn } from '@/lib/utils'
 
 type ViewScope = 'all' | 'self'
 
@@ -105,7 +104,7 @@ export function LogsPage() {
   const algorithmFilterOptions = useMemo(
     () =>
       algorithmOptionsQuery.options.map((option) => ({
-        value: option.id,
+        value: option.value,
         label: option.name,
       })),
     [algorithmOptionsQuery.options]
@@ -444,7 +443,10 @@ export function LogsPage() {
                 size='sm'
                 className='gap-1.5'
                 render={
-                  <Link to='/system-settings/operations/log-maintenance'>
+                  <Link
+                    to='/system-settings/$domain/$section'
+                    params={{ domain: 'operations', section: 'log-maintenance' }}
+                  >
                     <Archive aria-hidden='true' className='size-3.5' />
                     查看归档
                   </Link>
