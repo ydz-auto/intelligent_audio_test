@@ -6,8 +6,8 @@
  * POST /logs/archive（{days?,dry_run?}）、DELETE /logs/archive/{filename}、
  * POST /logs/clear（{before_datetime?,keep_marked?}）；权限 log:read=状态/列表、
  * log:manage=归档/删除/清理。
- * 注：后端无全局归档文件清单接口（get_archived_logs 需 task_id/test_case_id），
- * 归档列表在本层返回空 + 页面「待接口」标记。
+ * 注：后端全局归档文件清单接口待 FEAT 卡 INT-780 落地（get_archived_logs 需 task_id/test_case_id）；
+ * 落地前归档列表在本层返回空 + 页面「待 INT-780」标记。
  */
 import { apiClient } from './client'
 import type { LogArchiveItem, LogArchiveStatus } from '@/domain/models/log-archive'
@@ -26,8 +26,8 @@ export async function getArchiveStatus(): Promise<LogArchiveStatus> {
 }
 
 export async function getArchiveItems(): Promise<LogArchiveItem[]> {
-  // 后端缺全局归档文件清单接口（get_archived_logs 需 task_id/test_case_id，
-  // log_query_service.py:410 实测 400）；返回空列表，页面呈现「待接口」标记。
+  // 后端全局归档文件清单接口待 FEAT 卡 INT-780 落地（get_archived_logs 需 task_id/test_case_id，
+  // log_query_service.py:410 实测 400）；落地前返回空列表，页面呈现「待 INT-780」标记。
   return []
 }
 

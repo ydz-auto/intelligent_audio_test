@@ -153,8 +153,8 @@ export function LogMaintenancePage({ defaultValues }: LogMaintenancePageProps) {
                 columns={columns}
                 rows={archiveItems.data ?? []}
                 rowKey={(row) => row.filename}
-                emptyText='暂无归档（待接口）'
-                emptyDescription='后端无全局归档文件清单接口（get_archived_logs 需 task_id/test_case_id），归档统计见左侧状态卡'
+                emptyText='暂无归档（待 INT-780）'
+                emptyDescription='后端全局归档文件清单接口待 FEAT 卡 INT-780 落地，归档统计见左侧状态卡'
                 minWidth='480px'
                 actions={
                   canManage
