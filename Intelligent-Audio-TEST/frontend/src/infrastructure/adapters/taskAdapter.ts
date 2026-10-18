@@ -121,9 +121,6 @@ export function toTask(dto: TaskDto | TaskDetailDto): Task {
     mergeType: d.merge_type ?? null,
     sourceTaskCount: d.source_task_count ?? null,
     sourceResultCount: d.source_result_count ?? null,
-    // INT-423/467：可见性 + 归属人（两端同名，显式映射；缺省回落 undefined）
-    visibility: d.visibility ?? undefined,
-    createdByUserId: d.created_by_user_id ?? undefined,
     result: d.result,
     reports: d.reports
       ? {
