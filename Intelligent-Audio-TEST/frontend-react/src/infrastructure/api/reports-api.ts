@@ -1,144 +1,117 @@
 /**
- * reports 域 API 桩（infrastructure 层；红线④：一律 mock，不接真实后端）。
- * TODO(API 接线): 替换为真实请求 —— 端点对照 api_gateway/routes/report_bp.py 实测：
- *   GET  /reports                        （report:read，ReportListQuery 全参，服务端分页）
- *   GET  /reports/tab-counts             （report:read，{all,draft,published,comparison}，页签取消后保留为全量分类计数）
- *   GET  /reports/{id}                   （report:read，ReportDetailData）
- *   GET  /reports/{id}/cases             （report:read，ReportCaseListQuery）
- *   POST /reports/{id}/cases/search      （report:read 语义，ReportSearchCasesRequest 全参）
- * 收藏/回收站端点（favorite_trash_bp.py:110-135，INT-215 口径）：
+ * reports 域 API（infrastructure 层；接线卡 INT-643）。
+ * 全部请求经 client.ts 统一 fetch 封装（baseURL / JWT / 错误码 / SSE 通道），端点对照
+ * api_gateway 实测契约：
+ *   GET  /reports                        （report_bp.py:29，ReportListQuery 全参，服务端分页）
+ *   GET  /reports/tab-counts             （report_bp.py:34，{all,draft,published,comparison}）
+ *   GET  /reports/{id}                   （report_bp.py:51，ReportDetailData）
+ *   POST /reports/{id}/cases/search      （report_bp.py:116，ReportSearchCasesRequest）
+ *   GET  /reports/{id}/cases/{caseId}/logs/download
+ * 变更类：
+ *   PUT /reports/{id}                    （ReportUpdateRequest）
+ *   POST /reports/{id}/publish、POST /reports/{id}/regenerate
+ *   DELETE /reports/{id}、POST /reports/batch-delete
+ *   POST /reports/generate-task、POST /reports/compare、POST /reports/secondary-compare
+ *   POST /reports/export（binary）
+ * 收藏/回收站（favorite_trash_bp.py:110-137，INT-215 口径）：
  *   POST/DELETE /reports/{report_id}/favorite、POST /reports/{report_id}/restore、
- *   POST /reports/restore（批量）、DELETE /reports/{report_id}/purge、POST /reports/purge（批量）。
+ *   DELETE /reports/{report_id}/purge。
+ * 已知后端缺口（本卡评论留证据）：POST /benchmarks/reports 不存在（publishBenchmarkReport
+ * 保持桩）；report-studio 端点不存在（reportStudioApi.ts 桩，FEAT 卡已开）。
  */
 import type {
-  ReportCaseListData,
+  ReportAlgorithmDefinition,
+  ReportCaseCategory,
   ReportCaseItem,
+  ReportCaseListData,
   ReportCompareConfig,
   ReportCounts,
   ReportDetailData,
   ReportListData,
-  ReportListItem,
   ReportListQuery,
+  ReportMetricValue,
   ReportSearchCasesRequest,
-  ReportType,
+  ReportSummary,
+  ReportSummaryUpdate,
+  ReportTag,
 } from '@/domain/models/report'
 
-import {
-  MOCK_COMPLETED_TASKS,
-  MOCK_REPORT_ADVANCED_META,
-  MOCK_REPORT_CASE_LIST_DATA,
-  MOCK_REPORT_COUNTS,
-  MOCK_REPORT_DETAILS,
-  MOCK_REPORT_LIST_ITEMS,
-  getReportDetailMock,
-} from '../mock/reports-mock'
-import { resolveReportUiFlags } from '../stores/reports-ui-store'
+import { request } from './client'
 
-/** 按 ReportListQuery 过滤/排序/分页 mock 列表（服务端分页语义平移，manualPagination 直用） */
+/** 生成报告/对比 Dialog 任务选择器数据源（GET /tasks 已完成子集映射） */
+export interface CompletedTaskOption {
+  id: number
+  name: string
+  type: string
+  status: string
+  completed_at: string
+}
+
+// ---------------------------------------------------------------------------
+// 查询类
+// ---------------------------------------------------------------------------
+
+/** GET /reports 列表（ReportListQuery 全参透传，服务端分页/排序/筛选） */
 export async function fetchReportList(
   query: ReportListQuery
 ): Promise<ReportListData> {
-  const { page, per_page, report_type, status, keyword, task_type, device_type, creator, start_time, end_time, algorithm_type, sort_by, order, favorite, deleted } =
-    query
-  const pageSize = per_page ?? 20
-
-  let items = MOCK_REPORT_LIST_ITEMS.filter((item) => {
-    if (report_type && item.type !== report_type) return false
-    if (status && item.status !== status) return false
-    // 高级搜索：任务类型/设备类型/创建者（§2 :186-188；mock 元信息按 id 合并）
-    const adv = MOCK_REPORT_ADVANCED_META[item.id]
-    if (task_type && adv?.task_type !== task_type) return false
-    if (device_type && adv?.device_type !== device_type) return false
-    if (creator && adv?.creator !== creator) return false
-    if (keyword) {
-      const kw = keyword.toLowerCase()
-      if (
-        !item.name.toLowerCase().includes(kw) &&
-        !item.task_name.toLowerCase().includes(kw) &&
-        !(item.algorithm_type ?? '').toLowerCase().includes(kw)
-      ) {
-        return false
-      }
-    }
-    if (algorithm_type && item.algorithm_type !== algorithm_type) return false
-    // 演示态覆盖（收藏/软删/彻底删除经 store 生效）；回收站态与正常态互斥。
-    // P2-3：store 的 restore/purge 集合优先于 mock 原值 deleted（base 软删行可恢复/彻底删除）。
-    const flags = resolveReportUiFlags(item.id, item.is_favorite, item.deleted === true)
-    if (deleted) {
-      if (flags.purged) return false
-      if (!flags.deleted) return false
-    } else {
-      if (flags.purged || flags.deleted) return false
-      if (favorite && !flags.isFavorite) return false
-    }
-    if (start_time && item.created_at < start_time) return false
-    if (end_time && item.created_at > end_time) return false
-    return true
-  })
-
-  const sortValue = (item: ReportListItem): string | number => {
-    switch (sort_by) {
-      case 'name':
-        return item.name
-      // §2/§2.1 主排序维度补 状态/算法（状态 draft→published 字典序；算法无值回退空串）
-      case 'status':
-        return item.status
-      case 'algorithm':
-        return item.algorithm_type ?? ''
-      case 'pass_rate':
-        return item.summary.pass_rate
-      case 'total_cases':
-        return item.summary.total_cases
-      default:
-        return item.created_at
-    }
-  }
-  // P2-1 数值排序：pass_rate/total_cases 走数值减法；name/created_at 走字典序（ISO 时间串字典序=时间序）
-  const cmpValue = (a: ReportListItem, b: ReportListItem): number => {
-    const av = sortValue(a)
-    const bv = sortValue(b)
-    if (typeof av === 'number' && typeof bv === 'number') return av - bv
-    return String(av).localeCompare(String(bv))
-  }
-  items = [...items].sort((a, b) => {
-    const cmp = cmpValue(a, b)
-    return order === 'asc' ? cmp : -cmp
-  })
-
-  const total = items.length
-  const pages = Math.max(1, Math.ceil(total / pageSize))
-  const start = (page - 1) * pageSize
-  return {
-    items: items.slice(start, start + pageSize).map((item) => {
-      const flags = resolveReportUiFlags(item.id, item.is_favorite, item.deleted === true)
-      const adv = MOCK_REPORT_ADVANCED_META[item.id]
-      return {
-        ...item,
-        ...adv,
-        is_favorite: flags.isFavorite,
-        deleted: flags.deleted,
-      }
-    }),
-    total,
-    page,
-    per_page: pageSize,
-    pages,
-  }
+  return request<ReportListData>('GET', '/reports', undefined, { params: query })
 }
 
-/** 全量报告分类计数（口径修正 2026-10-16：页签取消后保留为单一列表筛选 chips/徽章行计数源） */
+/** GET /reports/tab-counts 全量分类计数（all/draft/published/comparison 四键服务端聚合） */
 export async function fetchReportCounts(): Promise<ReportCounts> {
-  return MOCK_REPORT_COUNTS
+  return request<ReportCounts>('GET', '/reports/tab-counts')
 }
 
-/** GET /tasks 已完成子集（生成/对比 Dialog 任务选择器数据源；mock 只读） */
-export async function fetchCompletedTasks(): Promise<typeof MOCK_COMPLETED_TASKS> {
-  return MOCK_COMPLETED_TASKS
+/**
+ * GET /algorithm/definitions（algorithm:read；报告展示/工作台「当前算法」卡数据源）。
+ * 响应 { items: [AlgorithmDetailResponse] } → 域模型子集（ReportAlgorithmDefinition）。
+ * 契约对位 api_gateway/schemas/_algorithm_definition_schemas.py AlgorithmDetailResponse。
+ */
+export async function fetchAlgorithmDefinitions(): Promise<ReportAlgorithmDefinition[]> {
+  const raw = await request<unknown>('GET', '/algorithm/definitions')
+  const items = Array.isArray(raw)
+    ? raw
+    : Array.isArray((raw as { items?: unknown[] } | null)?.items)
+      ? (raw as { items: unknown[] }).items
+      : []
+  return (items as Record<string, unknown>[]).map((item) => ({
+    type: str(item.type) ?? '',
+    name: str(item.name) ?? '',
+    groupName: item.group_name !== undefined ? str(item.group_name) : undefined,
+    category: item.category !== undefined ? str(item.category) : undefined,
+    description: item.description !== undefined ? str(item.description) : undefined,
+    status: item.status !== undefined ? str(item.status) : undefined,
+    icon: item.icon !== undefined ? str(item.icon) : undefined,
+  }))
 }
 
-/** Hero 类型 chips / 收藏计数（全量非回收站项；mock 常量经 API 桩消费，避免页面直 import mock） */
+/** GET /tasks 已完成子集（生成/对比 Dialog 任务选择器数据源；status=completed 服务端过滤） */
+export async function fetchCompletedTasks(): Promise<CompletedTaskOption[]> {
+  const data = await request<{ items: TaskOptionRaw[] }>('GET', '/tasks', undefined, {
+    params: { status: 'completed', per_page: 100, deleted: false },
+  })
+  return (data.items ?? []).map((item) => ({
+    id: item.id,
+    name: item.name,
+    type: typeof item.config?.task_type === 'string' ? item.config.task_type : 'e2e',
+    status: item.status,
+    completed_at: item.completed_at ?? item.updated_at ?? '',
+  }))
+}
+
+interface TaskOptionRaw {
+  id: number
+  name: string
+  status: string
+  completed_at?: string
+  updated_at?: string
+  config?: { task_type?: string }
+}
+
+/** Hero 类型 chips / 收藏计数（全量非回收站项；按 type 客户端聚合，供类型筛选 chips 消费） */
 export async function fetchReportTypeCounts(): Promise<{
-  typeCounts: Record<ReportType | 'all', number>
+  typeCounts: Record<string, number>
   favoriteCount: number
 }> {
   const data = await fetchReportList({
@@ -150,33 +123,30 @@ export async function fetchReportTypeCounts(): Promise<{
     deleted: false,
   })
   const items = data.items
+  const count = (type: string) => items.filter((i) => i.type === type).length
   return {
     typeCounts: {
       all: items.length,
-      task: items.filter((i) => i.type === 'task').length,
-      comparison: items.filter((i) => i.type === 'comparison').length,
-      secondary_comparison: items.filter((i) => i.type === 'secondary_comparison').length,
-      benchmark: items.filter((i) => i.type === 'benchmark').length,
+      task: count('task'),
+      comparison: count('comparison'),
+      secondary_comparison: count('secondary_comparison'),
+      benchmark: count('benchmark'),
     },
     favoriteCount: items.filter((i) => i.is_favorite).length,
   }
 }
 
+/** GET /reports/{id} 报告详情（404/非法 id → 页面按 ApiError.httpStatus=404 分叉「报告不存在」） */
 export async function fetchReportDetail(
   reportId: number
 ): Promise<ReportDetailData> {
-  // INT-503：列表全部 ID 均可达——富详情优先，其余按列表项参数化生成；未知 id 仍走 404 语义
-  const detail = getReportDetailMock(reportId) ?? MOCK_REPORT_DETAILS[reportId]
-  if (!detail) {
-    // 未知 id → 404 语义（INT-434 P2-5：错误态需可达，不得静默回退 1201）
-    throw new Error(`报告 ${reportId} 不存在`)
-  }
-  return detail
+  const raw = await request<unknown>('GET', `/reports/${reportId}`)
+  return toReportDetailData(raw)
 }
 
 /**
- * Benchmark 报告列表（INT-500 v2.9：列表并入报告中心类型筛选，report_type='benchmark' 统一走 /reports 列表；
- * 本桩保留后端独立端点形态，供接线替换）。TODO(API 接线): GET /api/v1/benchmarks/reports。
+ * Benchmark 报告列表（INT-500 v2.9：列表并入报告中心类型筛选，report_type='benchmark'
+ * 统一走 /reports 列表；后端无独立 /benchmarks/reports 端点）。
  */
 export async function fetchBenchmarkReports(): Promise<ReportListData> {
   return fetchReportList({
@@ -190,177 +160,320 @@ export async function fetchBenchmarkReports(): Promise<ReportListData> {
   })
 }
 
-/** 发布 Benchmark 报告（§3.8；排行区块「发布 Benchmark 报告」→ POST /api/v1/benchmarks/reports）。TODO(API 接线)。 */
+/**
+ * 发布 Benchmark 报告（§3.8；排行区块「发布 Benchmark 报告」）。
+ * 后端缺口：POST /api/v1/benchmarks/reports 不存在（benchmark_bp.py 无此路由），
+ * 保持桩并返回演示态 reportId；待主项目后端立项后替换（证据见本卡交付评论）。
+ */
 export async function publishBenchmarkReport(): Promise<{ reportId: number }> {
-  // mock：返回 1185 关联 id（演示态）
   return { reportId: 1185 }
 }
 
-/** 用例 metrics 键提取（dict {resource:{metric}} 与 list [{resource,metrics}] 双格式） */
-function caseMetricKeys(item: ReportCaseItem): string[] {
-  if (Array.isArray(item.metrics)) {
-    return item.metrics.flatMap((g) => (g.metrics ?? []).map((m) => m.metric))
-  }
-  const keys = new Set<string>()
-  for (const resourceMetrics of Object.values(item.metrics)) {
-    for (const key of Object.keys(resourceMetrics)) keys.add(key)
-  }
-  return [...keys]
-}
+// ---------------------------------------------------------------------------
+// 用例搜索 / 日志下载
+// ---------------------------------------------------------------------------
 
-/** 具体用例筛选 mock（按 keyword/分组/标签/指标过滤 + 排序；页面演示用） */
+/** POST /reports/{id}/cases/search（ReportSearchCasesRequest 全参；响应 snake_case → 域模型） */
 export async function searchReportCases(
-  _reportId: number,
+  reportId: number,
   query: ReportSearchCasesRequest
 ): Promise<ReportCaseListData> {
-  let items: ReportCaseItem[] = MOCK_REPORT_CASE_LIST_DATA.items
-  if (query.keyword) {
-    const kw = query.keyword.toLowerCase()
-    items = items.filter(
-      (c) =>
-        c.name.toLowerCase().includes(kw) ||
-        c.id.toLowerCase().includes(kw) ||
-        (c.description ?? '').toLowerCase().includes(kw)
-    )
+  const dto = await request<{
+    items?: unknown[]
+    total?: number
+    page?: number
+    per_page?: number
+    pages?: number
+  }>('POST', `/reports/${reportId}/cases/search`, query)
+  const rawItems = Array.isArray(dto.items) ? dto.items : []
+  const total = typeof dto.total === 'number' ? dto.total : rawItems.length
+  const perPage = typeof dto.per_page === 'number' ? dto.per_page : (query.per_page || 20)
+  return {
+    items: rawItems.map(toReportCaseItem),
+    total,
+    page: typeof dto.page === 'number' ? dto.page : query.page,
+    per_page: perPage,
+    pages: typeof dto.pages === 'number' ? dto.pages : Math.max(1, Math.ceil(total / perPage)),
   }
-  if (query.categories?.length) {
-    items = items.filter((c) => query.categories?.includes(c.category ?? ''))
-  }
-  if (query.tags?.length) {
-    items = items.filter((c) => c.tags.some((t) => query.tags?.includes(t)))
-  }
-  if (query.metrics?.length) {
-    items = items.filter((c) =>
-      caseMetricKeys(c).some((m) => query.metrics?.includes(m))
-    )
-  }
-  if (query.sort_by && query.sort_by !== 'name') {
-    const dir = query.sort_order === 'asc' ? 1 : -1
-    items = [...items].sort((a, b) => {
-      if (query.sort_by === 'category') {
-        return (a.category ?? '').localeCompare(b.category ?? '') * dir
-      }
-      if (query.sort_by === 'createdat') {
-        return a.id.localeCompare(b.id) * dir
-      }
-      if (query.sort_by === 'metric' && query.sort_metric) {
-        const av = readCaseMetric(items.find((i) => i.id === a.id) ?? a, query.sort_metric, query.sort_resource)
-        const bv = readCaseMetric(items.find((i) => i.id === b.id) ?? b, query.sort_metric, query.sort_resource)
-        return ((av ?? 0) - (bv ?? 0)) * dir
-      }
-      return 0
-    })
-  } else {
-    items = [...items].sort((a, b) =>
-      query.sort_order === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name)
-    )
-  }
-  const pageSize = query.per_page || 20
-  const total = items.length
-  const pages = Math.max(1, Math.ceil(total / pageSize))
-  const start = (query.page - 1) * pageSize
-  return { items: items.slice(start, start + pageSize), total, page: query.page, per_page: pageSize, pages }
 }
 
-/** 读取用例单指标值（dict/list 双格式；resource 缺省取首个） */
-function readCaseMetric(
-  item: ReportCaseItem,
-  metric: string,
-  resource?: string
-): number | undefined {
-  if (Array.isArray(item.metrics)) {
-    const group = item.metrics.find((g) => !resource || g.resource === resource)
-    return group?.metrics?.find((m) => m.metric === metric)?.value
-  }
-  const entries = Object.entries(item.metrics)
-  const target = resource ? (item.metrics[resource] ?? {}) : (entries[0]?.[1] ?? {})
-  return target[metric]
-}
-
-/** GET /reports/{id}/cases/{caseId}/logs/download（logs.zip Blob；红线圈：mock 空数据演示） */
+/** GET /reports/{id}/cases/{caseId}/logs/download（logs.zip Blob） */
 export async function downloadCaseLogs(
-  _reportId: number,
-  _caseId: string
+  reportId: number,
+  caseId: string
 ): Promise<{ blob: Blob; size: number }> {
-  const blob = new Blob(['mock logs'], { type: 'application/zip' })
+  const blob = await request<Blob>(
+    'GET',
+    `/reports/${reportId}/cases/${caseId}/logs/download`,
+    undefined,
+    { responseType: 'blob' }
+  )
   return { blob, size: blob.size }
 }
 
 // ---------------------------------------------------------------------------
-// 变更类 API 桩（出图先：resolve 空数据，页面以乐观本地状态 + toast 演示；
-// TODO(API 接线): 接入真实端点后移除本地乐观状态，改 invalidate 重拉）
+// 变更类
 // ---------------------------------------------------------------------------
 
+/** PUT /reports/{id} 更新报告（name/description/analysis/summary 白名单；summary 经 snake_case 转换） */
 export async function updateReport(
-  _reportId: number,
-  _payload: {
+  reportId: number,
+  payload: {
     name?: string
     description?: string
     analysis?: string
-    summary?: { analysisConclusion?: string; conclusion?: string }
+    summary?: ReportSummaryUpdate & { analysisConclusion?: string; conclusion?: string }
   }
 ): Promise<{ success: boolean }> {
+  await request('PUT', `/reports/${reportId}`, toReportUpdateBody(payload))
   return { success: true }
 }
 
-export async function publishReport(_reportId: number): Promise<{ success: boolean }> {
+/** 报告更新请求体：summary 顶层白名单 camelCase → snake_case（ReportUpdateSummaryField 契约） */
+function toReportUpdateBody(payload: {
+  name?: string
+  description?: string
+  analysis?: string
+  summary?: ReportSummaryUpdate & { analysisConclusion?: string; conclusion?: string }
+}): Record<string, unknown> {
+  const body: Record<string, unknown> = {}
+  if (payload.name !== undefined) body.name = payload.name
+  if (payload.description !== undefined) body.description = payload.description
+  if (payload.analysis !== undefined) body.analysis = payload.analysis
+  if (payload.summary !== undefined) {
+    const s = payload.summary
+    const summary: Record<string, unknown> = { ...s }
+    if (s.caseCategories !== undefined) summary.case_categories = s.caseCategories
+    if (s.allCaseTags !== undefined) summary.all_case_tags = s.allCaseTags
+    if (s.allTags !== undefined) summary.all_tags = s.allTags
+    if (s.resourceHeaders !== undefined) summary.resource_headers = s.resourceHeaders
+    for (const key of ['caseCategories', 'allCaseTags', 'allTags', 'resourceHeaders']) {
+      delete summary[key]
+    }
+    body.summary = summary
+  }
+  return body
+}
+
+/** POST /reports/{id}/publish */
+export async function publishReport(reportId: number): Promise<{ success: boolean }> {
+  await request('POST', `/reports/${reportId}/publish`)
   return { success: true }
 }
 
-export async function deleteReport(_reportId: number): Promise<{ success: boolean }> {
+/** DELETE /reports/{id}（软删） */
+export async function deleteReport(reportId: number): Promise<{ success: boolean }> {
+  await request('DELETE', `/reports/${reportId}`)
   return { success: true }
 }
 
-export async function batchDeleteReports(_ids: number[]): Promise<{ success: boolean }> {
+/** POST /reports/batch-delete（批量软删；hard_delete 语义由后端按 body 判定） */
+export async function batchDeleteReports(ids: number[]): Promise<{ success: boolean }> {
+  await request('POST', '/reports/batch-delete', { ids })
   return { success: true }
 }
 
-export async function regenerateReport(_reportId: number): Promise<{ success: boolean }> {
+/** POST /reports/{id}/regenerate（仅任务报告） */
+export async function regenerateReport(reportId: number): Promise<{ success: boolean }> {
+  await request('POST', `/reports/${reportId}/regenerate`)
   return { success: true }
 }
 
-export async function generateTaskReport(_payload: {
+/** POST /reports/generate-task（GenerateTaskReportRequest） */
+export async function generateTaskReport(payload: {
   task_id: number
   name?: string
   description?: string
 }): Promise<{ report_id: number }> {
-  return { report_id: 1201 }
+  return request<{ report_id: number }>('POST', '/reports/generate-task', payload)
 }
 
-export async function compareReports(_payload: {
+/** POST /reports/compare（CompareReportsRequest；§4.6 对比配置后端未立项，不随批发送） */
+export async function compareReports(payload: {
   task_ids: number[]
   name?: string
   description?: string
-  /** §4.6 对比配置（对比维度/指标/方式；mock 不消费，留待接线） */
   config?: ReportCompareConfig
 }): Promise<{ report_id: number }> {
-  return { report_id: 1190 }
+  return request<{ report_id: number }>('POST', '/reports/compare', {
+    task_ids: payload.task_ids,
+    name: payload.name,
+    description: payload.description,
+  })
 }
 
-export async function secondaryCompareReports(_payload: {
+/** POST /reports/secondary-compare（SecondaryCompareRequest；config 同 compare 不入参） */
+export async function secondaryCompareReports(payload: {
   report_ids: number[]
   description?: string
-  /** §4.6 对比配置（对比维度/指标/方式；mock 不消费，留待接线） */
   config?: ReportCompareConfig
 }): Promise<{ report_id: number }> {
-  return { report_id: 1188 }
+  return request<{ report_id: number }>('POST', '/reports/secondary-compare', {
+    report_ids: payload.report_ids,
+    description: payload.description,
+  })
 }
 
-export async function exportReports(_payload: {
+/** POST /reports/export（ReportExportRequest；后端返回二进制文件，调用方触发下载） */
+export async function exportReports(payload: {
   ids: number[]
   format: string
-}): Promise<{ success: boolean }> {
+}): Promise<Blob> {
+  return request<Blob>('POST', '/reports/export', payload, { responseType: 'blob' })
+}
+
+/** POST/DELETE /reports/{id}/favorite（favorite=true 收藏、false 取消收藏；幂等） */
+export async function toggleReportFavorite(
+  reportId: number,
+  favorite: boolean
+): Promise<{ success: boolean }> {
+  await request(favorite ? 'POST' : 'DELETE', `/reports/${reportId}/favorite`)
   return { success: true }
 }
 
-export async function toggleReportFavorite(_reportId: number): Promise<{ success: boolean }> {
+/** POST /reports/{id}/restore（回收站恢复） */
+export async function restoreReport(reportId: number): Promise<{ success: boolean }> {
+  await request('POST', `/reports/${reportId}/restore`)
   return { success: true }
 }
 
-export async function restoreReport(_reportId: number): Promise<{ success: boolean }> {
+/** DELETE /reports/{id}/purge（彻底删除） */
+export async function purgeReport(reportId: number): Promise<{ success: boolean }> {
+  await request('DELETE', `/reports/${reportId}/purge`)
   return { success: true }
 }
 
-export async function purgeReport(_reportId: number): Promise<{ success: boolean }> {
-  return { success: true }
+// ---------------------------------------------------------------------------
+// snake_case → 域模型转换（唯一知道 snake_case 的层；域模型见 domain/models/report.ts）
+// ---------------------------------------------------------------------------
+
+function str(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined
+  return String(value)
+}
+
+function num(value: unknown): number | undefined {
+  if (value === undefined || value === null) return undefined
+  const n = Number(value)
+  return Number.isFinite(n) ? n : undefined
+}
+
+/** 参考/用例参数字典（reference_params/case_params：值对象逐字段转，非对象原样保留键值） */
+function toParamDict(raw: unknown): Record<string, import('@/domain/models/report').ReportReferenceParam> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const out: Record<string, import('@/domain/models/report').ReportReferenceParam> = {}
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+      const rec = value as Record<string, unknown>
+      out[key] = {
+        code: str(rec.code ?? key) ?? key,
+        type: rec.type !== undefined ? str(rec.type) : undefined,
+        label: rec.label !== undefined ? str(rec.label) : undefined,
+        value: rec.value,
+        segments: Array.isArray(rec.segments) ? rec.segments : undefined,
+        text: rec.text !== undefined ? str(rec.text) : undefined,
+        json: rec.json,
+      }
+    } else {
+      out[key] = { code: key, value }
+    }
+  }
+  return out
+}
+
+/** 算法结果扁平项（_expand_rounds 展开 @round:N 的 snake_case 字段 → 域模型） */
+function toAlgorithmResult(raw: Record<string, unknown>): import('@/domain/models/report').ReportAlgorithmResult {
+  return {
+    paramCode: str(raw.param_code ?? raw.paramCode ?? '') ?? '',
+    paramType:
+      raw.param_type !== undefined ? str(raw.param_type) : raw.paramType !== undefined ? str(raw.paramType) : undefined,
+    roundNumber: num(raw.round_number ?? raw.roundNumber),
+    dimensionName:
+      raw.dimension_name !== undefined ? str(raw.dimension_name) : raw.dimensionName !== undefined ? str(raw.dimensionName) : undefined,
+    device: raw.device !== undefined ? str(raw.device) : undefined,
+    label: raw.label !== undefined ? str(raw.label) : undefined,
+    value: raw.value,
+    rounds: raw.rounds,
+  }
+}
+
+/** 用例项 snake_case → 域模型（metrics 双格式原样保留；域模型见 report.ts ReportCaseItem） */
+function toReportCaseItem(raw: unknown): ReportCaseItem {
+  const rec = (raw ?? {}) as Record<string, unknown>
+  const algoResults = rec.algorithm_results ?? rec.algorithmResults
+  return {
+    id: str(rec.id ?? rec.case_id ?? '') ?? '',
+    name: str(rec.name ?? rec.case_name ?? '') ?? '',
+    description: rec.description !== undefined ? str(rec.description) : undefined,
+    category: str(rec.category ?? rec.test_case_type ?? undefined),
+    tags: Array.isArray(rec.tags) ? (rec.tags as unknown[]).map(String) : [],
+    metrics: (rec.metrics ?? {}) as ReportCaseItem['metrics'],
+    caseParams: toParamDict(rec.case_params ?? rec.caseParams),
+    metricScore: (rec.metric_score ?? rec.metricScore) as ReportCaseItem['metricScore'],
+    metricError: (rec.metric_error ?? rec.metricError) as ReportCaseItem['metricError'],
+    results: Array.isArray(rec.results)
+      ? (rec.results as import('@/domain/models/report').ReportCaseResult[])
+      : [],
+    audios: Array.isArray(rec.audios)
+      ? (rec.audios as import('@/domain/models/report').ReportAudioItem[])
+      : [],
+    referenceParams: toParamDict(rec.reference_params ?? rec.referenceParams),
+    algorithmResults: Array.isArray(algoResults)
+      ? (algoResults as Record<string, unknown>[]).map(toAlgorithmResult)
+      : undefined,
+    algorithmType: str(rec.algorithm_type ?? rec.algorithmType ?? undefined),
+    logs: rec.logs !== undefined ? str(rec.logs) : undefined,
+    overall_status: (rec.overall_status ?? rec.overallStatus) as ReportCaseItem['overall_status'],
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 报告详情归一（report_service 实际输出与域模型差异收敛；唯一知道后端字段的层）
+// ---------------------------------------------------------------------------
+
+/** 分组统计 {id,name} → 域模型 {category_id,category_name}（report_service 实测口径） */
+function toCaseCategories(raw: unknown): ReportCaseCategory[] {
+  if (!Array.isArray(raw)) return []
+  return raw.map((entry) => {
+    const rec = (entry ?? {}) as Record<string, unknown>
+    return {
+      id: rec.id as string | undefined,
+      category_id: (rec.category_id as string) ?? (rec.id as string),
+      category_name: String(rec.category_name ?? rec.name ?? ''),
+      metrics: Array.isArray(rec.metrics)
+        ? (rec.metrics as ReportMetricValue[])
+        : undefined,
+    }
+  })
+}
+
+/** 用例标签 {id,name} → 域模型 {tag_id,tag_name}（report_service 实测口径） */
+function toReportTags(raw: unknown): ReportTag[] {
+  if (!Array.isArray(raw)) return []
+  return raw.map((entry) => {
+    const rec = (entry ?? {}) as Record<string, unknown>
+    return {
+      id: rec.id as string | undefined,
+      tag_id: (rec.tag_id as string) ?? (rec.id as string),
+      tag_name: String(rec.tag_name ?? rec.name ?? ''),
+      category_id: (rec.category_id as string) ?? undefined,
+      category_name: (rec.category_name as string) ?? undefined,
+    }
+  })
+}
+
+/** 详情摘要归一：case_categories/all_case_tags/all_tags 按 report_service 输出转域模型 */
+function toReportDetailData(raw: unknown): ReportDetailData {
+  const rec = (raw ?? {}) as Record<string, unknown>
+  const summary = (rec.summary ?? {}) as Record<string, unknown>
+  const normalizedSummary: ReportSummary = {
+    ...(summary as unknown as ReportSummary),
+    case_categories: toCaseCategories(summary.case_categories),
+    all_case_tags: toReportTags(summary.all_case_tags),
+    ...(summary.all_tags !== undefined ? { all_tags: toReportTags(summary.all_tags) } : {}),
+  }
+  return {
+    ...(rec as unknown as ReportDetailData),
+    summary: normalizedSummary,
+  }
 }
