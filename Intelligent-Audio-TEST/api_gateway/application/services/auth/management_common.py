@@ -25,6 +25,13 @@ PERMISSION_CHANGE_NOTICE = (
     '强失效（Redis 黑名单）本期未实现'
 )
 
+# 自助改密成功提示（INT-794）：JWT 无状态无黑名单，旧令牌最长 24h 仍有效，
+# 引导前端清 token 重新登录（方案 A 契约「成功返回统一信封提示重新登录」）。
+PASSWORD_CHANGE_NOTICE = (
+    '密码已修改；旧令牌最长 24h 内仍有效（JWT 无黑名单），'
+    '请清除本地登录状态后重新登录'
+)
+
 # AuthErrorCode → HTTP 状态码（spec §五.6：400/403/404/409，未知 → 400）
 _ERROR_HTTP_STATUS = {
     AuthErrorCode.USER_NOT_FOUND: 404,
@@ -37,6 +44,8 @@ _ERROR_HTTP_STATUS = {
     AuthErrorCode.WILDCARD_FORBIDDEN: 400,
     AuthErrorCode.SELF_OPERATION_FORBIDDEN: 403,
     AuthErrorCode.PERMISSION_NOT_GRANTED: 400,
+    # 自助改密原密码校验失败（INT-794：401 与登录链防枚举语义一致）
+    AuthErrorCode.AUTH_CREDENTIALS_INVALID: 401,
     # 自定义 OAuth 提供方（INT-51）
     AuthErrorCode.OAUTH_PROVIDER_NOT_FOUND: 404,
     AuthErrorCode.OAUTH_SLUG_DUPLICATED: 409,
@@ -44,10 +53,17 @@ _ERROR_HTTP_STATUS = {
 }
 
 
-def with_notice(result: Tuple[Dict, int]) -> Tuple[Dict, int]:
-    """向 success_response/error_response 生成的 (payload, http_code) 注入 notice。"""
+def with_notice(result: Tuple[Dict, int],
+                notice: str = PERMISSION_CHANGE_NOTICE) -> Tuple[Dict, int]:
+    """向 success_response/error_response 生成的 (payload, http_code) 注入 notice。
+
+    Args:
+        result: (payload, http_code) 元组。
+        notice: 提示文案；缺省为权限变更时效提示，自助改密等场景可传入
+            场景专属文案（如 PASSWORD_CHANGE_NOTICE）。
+    """
     payload, http_code = result
-    payload['notice'] = PERMISSION_CHANGE_NOTICE
+    payload['notice'] = notice
     return payload, http_code
 
 
@@ -61,8 +77,19 @@ def current_operator_id() -> int:
 
 
 def call_auth_rpc(rpc_name: str, request_msg: Any,
-                  default_error: str = '操作失败') -> Tuple[Any, Any]:
+                  default_error: str = '操作失败',
+                  code_overrides: Dict[AuthErrorCode,
+                                      Tuple[ErrorCode, int]] = None,
+                  ) -> Tuple[Any, Any]:
     """调用 auth_service gRPC 并按 error_code 映射 HTTP 状态码。
+
+    Args:
+        rpc_name: gRPC 方法名。
+        request_msg: 请求 message。
+        default_error: 失败兜底文案。
+        code_overrides: {AuthErrorCode: (ErrorCode, http_code)}——命中该
+            错误码时以指定业务码 + HTTP 状态码返回（覆盖 _ERROR_HTTP_STATUS
+            默认映射；如 INT-794 原密码错误需 401 + code:106 AUTH_CREDENTIALS_INVALID）。
 
     Returns:
         成功: (data_dict_or_None, None)
@@ -73,10 +100,14 @@ def call_auth_rpc(rpc_name: str, request_msg: Any,
     if resp.success:
         return (_loads(resp.data, {}) or {}), None
     error_code = _parse_error_code(resp.data)
-    http_code = _ERROR_HTTP_STATUS.get(error_code, 400)
     message = resp.message or default_error
     logger.warning('auth RPC %s 失败: %s (error_code=%s)',
                    rpc_name, message, error_code.value if error_code else '')
+    if code_overrides and error_code in code_overrides:
+        code, http_code = code_overrides[error_code]
+        payload, _ = error_response(message, code=code, http_code=http_code)
+        return None, (payload, http_code)
+    http_code = _ERROR_HTTP_STATUS.get(error_code, 400)
     payload, _ = error_response(message, code=ErrorCode.OPERATION_FAILED,
                                 http_code=http_code)
     return None, (payload, http_code)

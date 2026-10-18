@@ -360,6 +360,26 @@ class UserRepository(UserRepositoryABC):
             return None
         return _user_po_to_entity(po)
 
+    def verify_password_by_user_id(self, user_id: int, password: str) -> bool:
+        """按用户 ID 校验密码（bcrypt），成功返回 True，失败返回 False。
+
+        INT-794 自助改密原密码校验：用户不存在 / 无本地密码（OAuth 用户）/
+        哈希不匹配 一律 False（与 verify_password 防枚举语义一致，差异仅在
+        按主键定位而非按账号匹配）。
+        """
+        import bcrypt
+        session = get_db_session()
+        po = session.query(User).filter_by(id=user_id).first()
+        if not po or not po.password_hash:
+            return False
+        try:
+            return bcrypt.checkpw(
+                password.encode('utf-8'),
+                po.password_hash.encode('utf-8'),
+            )
+        except ValueError:
+            return False
+
     def count_all(self) -> int:
         """统计非软删除用户总数（首个注册用户 admin 策略判定，INT-147）。
 

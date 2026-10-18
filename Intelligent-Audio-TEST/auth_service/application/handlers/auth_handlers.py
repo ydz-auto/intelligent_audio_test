@@ -46,6 +46,7 @@ from auth_service.application.commands.auth_commands import (
     RegisterUserCommand,
     UpdateUserStatusCommand,
     UpdateUserCommand,
+    ChangePasswordCommand,
     GrantPermissionCommand,
     RevokePermissionCommand,
     CreateUserCommand,
@@ -238,6 +239,33 @@ class AuthCommandHandler:
                 'status': cmd.status, 'password_changed': bool(cmd.password),
                 'display_name': cmd.display_name,
             },
+        })
+
+    def handle_change_password(self, cmd: ChangePasswordCommand) -> None:
+        """当前登录用户自助修改密码（INT-794 方案 A）。
+
+        - 用户不存在 → USER_NOT_FOUND；
+        - 原密码校验失败（或无本地密码，如 OAuth 用户）→ AUTH_CREDENTIALS_INVALID
+          （网关映射 401 + code:106，与登录链防枚举语义一致）；
+        - 新密码最短长度由网关侧统一校验（复用 AUTH_PASSWORD_MIN_LENGTH），
+          服务端不做二次截断/兜底，保持注册链路同口径；
+        - 落库走 update_user_fields(password=...)（bcrypt 哈希），成功落
+          AUTH_PASSWORD_CHANGED 审计（旁路）。
+        """
+        _raise_if(
+            user_repository.get_by_id(cmd.user_id) is None,
+            f'用户不存在: id={cmd.user_id}', AuthErrorCode.USER_NOT_FOUND,
+        )
+        if not user_repository.verify_password_by_user_id(
+                cmd.user_id, cmd.current_password):
+            raise AuthDomainError(
+                '当前密码错误', AuthErrorCode.AUTH_CREDENTIALS_INVALID,
+            )
+        user_repository.update_user_fields(cmd.user_id, password=cmd.new_password)
+        write_auth_audit(AuditEvent.AUTH_PASSWORD_CHANGED, _AUDIT_MODULE_USER, {
+            'operator_id': cmd.user_id,
+            'target_id': cmd.user_id,
+            'delta': {'password_changed': True},
         })
 
     def handle_delete_user(self, cmd: DeleteUserCommand) -> bool:

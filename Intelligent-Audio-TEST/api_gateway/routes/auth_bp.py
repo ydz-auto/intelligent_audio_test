@@ -194,3 +194,22 @@ def logout(request: Request):
 def me(request: Request):
     """获取当前用户信息"""
     return to_response(AuthService.get_current_user_info(request.state))
+
+
+@router.post('/change-password')
+def change_password(request: Request):
+    """当前登录用户自助修改密码（INT-794 方案 A）。
+
+    鉴权为「当前登录用户本人」（JWT user_id 注入），非 admin 管他人
+    （不走 user:update）。body 复用登录 RSA 公钥体系：
+    current_password_encrypted + new_password_encrypted + encryption_key_id
+    （加密开关关闭时回退明文 current_password / new_password）。
+    原密码错误 → 401 + code:106；新密码长度不足 → 400；
+    成功 → 200 + notice 提示清 token 重新登录。
+    """
+    from api_gateway.application.services.auth.dependencies import require_auth
+    require_auth(request)
+    from api_gateway.application.services.auth.user_management_service import (
+        UserManagementService,
+    )
+    return to_response(UserManagementService.change_password())
