@@ -72,6 +72,9 @@ export interface ScannedDeviceRowDto {
   device_unique_id?: string | null
   channel_index?: number | null
   sample_rate?: number | null
+  /** P3-1 返修：扫描响应含真实 app_name/app_version（后端 DeviceScanItem 透传），预填不再硬编码默认值 */
+  app_name?: string | null
+  app_version?: string | null
 }
 
 /* ==================== INT-487「测试中」占用态本地瞬时覆盖 ==================== */
@@ -143,6 +146,17 @@ export async function fetchDeviceGroups(options: ApiRequestOptions = {}): Promis
     { ...options, params: { page: 1, per_page: 100 } }
   )
   return (dto?.items ?? []).map(deviceGroupFromDto)
+}
+
+/** 设备分组详情（§6.3；GET /test-devices/device-groups/{id}——列表 device_ids 恒空，真实成员以详情为准，P2-1） */
+export async function fetchDeviceGroupDetail(
+  id: string,
+  options: ApiRequestOptions = {}
+): Promise<DeviceGroup> {
+  const dto = await request<DeviceGroupItemDto>(
+    'GET', `/test-devices/device-groups/${id}`, undefined, options
+  )
+  return deviceGroupFromDto(dto)
 }
 
 /* ==================== 设备分组 CRUD（§6.3；device_bp.py /test-devices/device-groups 实测契约） ==================== */

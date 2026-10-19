@@ -11,7 +11,7 @@
  * P2-2 返修：timer 用 useRef 持有，reset/关闭 clearInterval，杜绝并发双 interval。
  */
 import { Smartphone, AudioLines, Ban } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -58,6 +58,9 @@ interface ScanResultRow {
   channel_index?: number | null
   sample_rate?: number | null
   type?: string | null
+  /** P3-1 返修：后端扫描响应透传真实应用名/版本，预填不再硬编码默认值 */
+  app_name?: string | null
+  app_version?: string | null
 }
 
 const SCAN_STAGES: ReadonlyArray<string> = [
@@ -121,6 +124,15 @@ export function ScanDevicesDialog(props: ScanDevicesDialogProps) {
     }, 350)
   }
 
+  // P3-2 返修：V9.7.10 autoStartScan:true —— 打开扫描弹窗即自动开始扫描（API 页签无扫描源跳过；
+  // handleScan 内部 scanning 防重入，用户手动重扫不受影响）
+  useEffect(() => {
+    if (props.open && props.tab !== 'api') {
+      handleScan()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.open, props.tab])
+
   const handleAdd = (index: number) => {
     if (adding.has(index)) return
     setAdding((prev) => new Set(prev).add(index))
@@ -136,8 +148,9 @@ export function ScanDevicesDialog(props: ScanDevicesDialogProps) {
             system: normalizeDeviceSystem(row?.system)?.label ?? 'Android',
             systemVersion: row?.system_version ?? '未知',
             ip: row?.ip ?? '',
-            appName: 'Default App',
-            appVersion: '1.0.0',
+            // P3-1 返修：透传扫描响应真实应用名/版本（V9.7.10 `appName || 'Default App'` 口径）
+            appName: row?.app_name ?? 'Default App',
+            appVersion: row?.app_version ?? '1.0.0',
           }
         : {
             name: row?.name ?? '',

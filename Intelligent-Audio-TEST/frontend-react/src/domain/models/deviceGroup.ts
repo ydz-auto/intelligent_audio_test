@@ -21,8 +21,12 @@ export interface DeviceGroup {
   name: string
   description: string | null
   groupType: DeviceGroupType
-  /** 成员设备 id（DeviceGroupMember 仅关联被测设备表） */
+  /** 成员设备 id（DeviceGroupMember 仅关联被测设备表）。
+   *  注意：列表接口（GET /test-devices/device-groups）device_ids 恒空，
+   *  真实成员以详情接口（GET /test-devices/device-groups/{id}）为准，按需拉取。 */
   members: number[]
+  /** 真实成员数（列表接口 device_count 装饰；列表 device_ids 为空时以此为准显示） */
+  memberCount: number
   /** 子分组（嵌套分组，:214） */
   children: DeviceGroup[]
   createdAt: string | null

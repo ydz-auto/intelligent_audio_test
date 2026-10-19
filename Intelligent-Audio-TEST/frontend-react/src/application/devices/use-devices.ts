@@ -33,6 +33,7 @@ import {
   fetchAlarmRules,
   fetchAlarms,
   fetchApiDevices,
+  fetchDeviceGroupDetail,
   fetchDeviceGroups,
   fetchDriverKeywords,
   fetchLaboratories,
@@ -92,6 +93,16 @@ export function useDeviceGroups() {
     queryKey: ['devices', 'groups'],
     queryFn: fetchDeviceGroups,
     staleTime: 60_000,
+  })
+}
+
+/** 设备分组详情（§6.3；GET /device-groups/{id}——列表 device_ids 恒空，展开/筛选时按需拉取真实成员，P2-1） */
+export function useDeviceGroupDetailQuery(groupId: string | null) {
+  return useQuery({
+    queryKey: ['devices', 'groups', groupId],
+    queryFn: () => fetchDeviceGroupDetail(groupId as string),
+    enabled: groupId != null,
+    staleTime: 30_000,
   })
 }
 

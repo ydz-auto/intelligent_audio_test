@@ -15,6 +15,7 @@
 import { ChevronDown, ChevronRight, Copy, Move, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { useQueryClient } from '@tanstack/react-query'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -54,6 +55,7 @@ import type { DeviceGroup, DeviceGroupType } from '@/domain/models/deviceGroup'
 import { DEVICE_GROUP_TYPE_META } from '@/domain/models/deviceGroup'
 import type { TestDevice } from '@/domain/models/testDevice'
 import { useDeviceGroupMutations } from '@/application/devices/use-devices'
+import { fetchDeviceGroupDetail } from '@/infrastructure/api/devicesApi'
 import { ApiError } from '@/infrastructure/api/api-error'
 
 export interface DeviceGroupManagerDialogProps {
@@ -141,7 +143,10 @@ function MoveDisabledMenuItem() {
 }
 
 export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
+  const queryClient = useQueryClient()
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  /** P2-1：展开时按需拉取的分组详情成员（组 id → 真实 device_ids；列表 device_ids 恒空） */
+  const [detailMembers, setDetailMembers] = useState<Record<string, number[]>>({})
   const [groupType, setGroupType] = useState<DeviceGroupType>('test')
   const [groupName, setGroupName] = useState('')
   const [groupDesc, setGroupDesc] = useState('')
@@ -154,6 +159,49 @@ export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
   const [removingMap, setRemovingMap] = useState<Record<string, Set<number>>>({})
   const { create, update, remove, addMembers, removeMembers } = useDeviceGroupMutations()
   const groups = props.groups
+
+  /** P2-1：拉取分组详情真实成员（已拉取过不重复；失败回落到列表 device_ids） */
+  const ensureMembers = async (group: DeviceGroup): Promise<number[]> => {
+    if (detailMembers[group.id] != null) return detailMembers[group.id]
+    try {
+      const detail = await queryClient.fetchQuery({
+        queryKey: ['devices', 'groups', group.id],
+        queryFn: () => fetchDeviceGroupDetail(group.id),
+      })
+      setDetailMembers((prev) =>
+        prev[group.id] != null ? prev : { ...prev, [group.id]: detail.members }
+      )
+      return detail.members
+    } catch {
+      // 详情拉取失败不阻塞展开：成员标签回落列表 device_ids（可能为空）
+      setDetailMembers((prev) =>
+        prev[group.id] != null ? prev : { ...prev, [group.id]: group.members }
+      )
+      return group.members
+    }
+  }
+
+  /** P2-1：成员增删成功后清缓存并（展开中）重拉详情，保证标签与计数一致 */
+  const refreshMembers = (groupId: string) => {
+    setDetailMembers((prev) => {
+      const next = { ...prev }
+      delete next[groupId]
+      return next
+    })
+    const group = groups.find((g) => g.id === groupId)
+    if (group && expanded.has(groupId)) {
+      // 展开中：直接重拉详情并回填（不经过 ensureMembers，避免读到旧 state 闭包）
+      void queryClient
+        .fetchQuery({
+          queryKey: ['devices', 'groups', groupId],
+          queryFn: () => fetchDeviceGroupDetail(groupId),
+        })
+        .then((detail) => setDetailMembers((prev) => ({ ...prev, [groupId]: detail.members })))
+        .catch(() => {
+          // 重拉失败：保持当前展示（计数以列表 device_count 为准）
+        })
+    }
+  }
 
   const toggleRemoving = (groupId: string, deviceId: number) => {
     setRemovingMap((prev) => {
@@ -168,12 +216,18 @@ export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
     props.testDevices.find((d) => d.id === id)?.name ?? `设备 #${id}`
 
   const toggleExpand = (id: string) => {
+    const expanding = !expanded.has(id)
     setExpanded((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
       return next
     })
+    // P2-1：展开时按需拉取详情真实成员（列表 device_ids 恒空）
+    if (expanding) {
+      const group = groups.find((g) => g.id === id)
+      if (group) void ensureMembers(group)
+    }
   }
 
   const errMessage = (err: unknown, fallback: string) =>
@@ -203,6 +257,7 @@ export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
     try {
       await addMembers.mutateAsync({ id: groupId, deviceIds: [deviceId] })
       toast.success('成员已添加')
+      refreshMembers(groupId)
     } catch (err) {
       toast.error(errMessage(err, '添加成员失败，请重试'))
     }
@@ -212,6 +267,7 @@ export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
     try {
       await removeMembers.mutateAsync({ id: groupId, deviceIds: [deviceId] })
       toast.success('成员已移出')
+      refreshMembers(groupId)
     } catch (err) {
       toast.error(errMessage(err, '移出成员失败，请重试'))
     }
@@ -221,6 +277,7 @@ export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
     try {
       await removeMembers.mutateAsync({ id: groupId, deviceIds })
       toast.success(`已移出 ${deviceIds.length} 台设备`)
+      refreshMembers(groupId)
     } catch (err) {
       toast.error(errMessage(err, '移出成员失败，请重试'))
     }
@@ -230,6 +287,7 @@ export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
     try {
       await addMembers.mutateAsync({ id: groupId, deviceIds })
       toast.success(`已加入 ${deviceIds.length} 台设备`)
+      refreshMembers(groupId)
     } catch (err) {
       toast.error(errMessage(err, '添加成员失败，请重试'))
     }
@@ -237,12 +295,14 @@ export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
 
   /** 复制分组「{name}（副本）」+ 成员 + 描述（后端无 copy 端点 → 复用 create 带 device_ids，§6.3） */
   const copyGroup = async (group: DeviceGroup) => {
+    // P2-1：复制成员走详情真实 device_ids（列表恒空）
+    const members = await ensureMembers(group)
     try {
       await create.mutateAsync({
         name: `${group.name}（副本）`,
         description: group.description,
         groupType: group.groupType,
-        deviceIds: group.members,
+        deviceIds: members,
       })
       toast.success(`已复制分组「${group.name}」`)
     } catch (err) {
@@ -283,7 +343,9 @@ export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
   const renderGroup = (group: DeviceGroup, depth: number) => {
     const isExpanded = expanded.has(group.id)
     const typeMeta = DEVICE_GROUP_TYPE_META[group.groupType]
-    const memberCount = group.members.length
+    // P2-1：列表 device_count 为真实成员数；成员标签用详情 device_ids（展开时按需拉取）
+    const memberCount = group.memberCount
+    const effectiveMembers = detailMembers[group.id] ?? group.members
     const removing = removingMap[group.id] ?? new Set<number>()
     return (
       <div key={group.id} className='flex flex-col'>
@@ -350,12 +412,12 @@ export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
 
         {isExpanded && (
           <div className={cn('border-border/60 mt-0.5 flex flex-col gap-1 border-l pl-3', depth > 0 && 'ms-8')}>
-            {/* 成员标签（可勾选批量移除） */}
-            {group.members.length === 0 ? (
+            {/* 成员标签（可勾选批量移除）——列表 device_ids 恒空，以详情真实成员为准 */}
+            {effectiveMembers.length === 0 ? (
               <p className='text-muted-foreground px-2 py-1 text-xs'>暂无成员设备</p>
             ) : (
               <>
-                {group.members.map((deviceId) => (
+                {effectiveMembers.map((deviceId) => (
                   <span
                     key={deviceId}
                     className='inline-flex w-fit items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs'
@@ -554,8 +616,8 @@ export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
         title='删除分组'
         desc={
           deleteTarget
-            ? deleteTarget.members.length > 0
-              ? `分组「${deleteTarget.name}」包含 ${deleteTarget.members.length} 个设备。删除分组会把设备移出分组（设备本身保留），确定删除吗？`
+            ? deleteTarget.memberCount > 0
+              ? `分组「${deleteTarget.name}」包含 ${deleteTarget.memberCount} 个设备。删除分组会把设备移出分组（设备本身保留），确定删除吗？`
               : `确定要删除分组「${deleteTarget.name}」吗？`
             : ''
         }

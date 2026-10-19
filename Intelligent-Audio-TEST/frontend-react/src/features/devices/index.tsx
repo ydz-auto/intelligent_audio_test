@@ -32,6 +32,7 @@ import {
   useApiDevices,
   useAlarmRules,
   useDeviceAlarms,
+  useDeviceGroupDetailQuery,
   useDeviceGroups,
   useDeviceMutations,
   useLaboratories,
@@ -199,6 +200,8 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
   const alarmStats = alarmsQuery.data?.stats ?? null
   const rules = rulesQuery.data ?? []
   const history = historyQuery.data ?? []
+  /** P2-1：分组筛选走详情真实成员（列表 device_ids 恒空；选中分组时按需拉取） */
+  const groupFilterDetail = useDeviceGroupDetailQuery(testFilters.groupId)
 
   /* ───────── 过滤 / 排序 / 分页 ───────── */
 
@@ -219,7 +222,11 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
       if (f.connectionType) rows = rows.filter((row) => row.connectionType === f.connectionType)
       if (f.groupId) {
         const group = groups.find((g) => String(g.id) === f.groupId)
-        const memberIds = group ? collectGroupMemberIds(group) : new Set<number>()
+        // P2-1：详情 device_ids 为真实成员（列表恒空）；并合列表 members 兜底（嵌套/未来列表补 device_ids）
+        const memberIds = new Set<number>([
+          ...(groupFilterDetail.data?.members ?? []),
+          ...(group ? collectGroupMemberIds(group) : []),
+        ])
         rows = rows.filter((row) => memberIds.has(row.id))
       }
       if (f.labId) rows = rows.filter((row) => String(row.labId) === f.labId)
@@ -256,7 +263,7 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
     if (f.protocol) rows = rows.filter((row) => row.protocol === f.protocol)
     if (f.environment) rows = rows.filter((row) => row.environment === f.environment)
     return rows
-  }, [tab, testDevices, playbackDevices, apiDevices, testFilters, playbackFilters, apiFilters, groups])
+  }, [tab, testDevices, playbackDevices, apiDevices, testFilters, playbackFilters, apiFilters, groups, groupFilterDetail.data])
 
   const sortedRows = useMemo(() => {
     const rows = [...filteredRows]
