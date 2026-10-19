@@ -132,6 +132,66 @@ class EvaluationConfigAclRepository:
         from shared.clients.grpc_clients import get_evaluation_data_service_stub
         return get_evaluation_data_service_stub()
 
+    # INT-823 将新增 evaluation_service EvaluationDataService.AiReviewCheck RPC
+    # （LLM 复检：聚合 ASR/参考文本/维度分/LLM 评语 → verdict/confidence/reasoning）。
+    # 本卡（#2）异步执行骨架经此调用；方法未落地时优雅失败（发起记录置 failed）。
+    AI_REVIEW_RECHECK_RPC = 'AiReviewCheck'
+    AI_REVIEW_RECHECK_REQUEST = 'AiReviewCheckRequest'
+
+    def run_ai_review_check(self, result_id, dimension_id=None,
+                            task_id=None, test_case_id=None) -> dict:
+        """调用 evaluation_service LLM 复检 gRPC（INT-823 契约，本卡先留骨架）。
+
+        Returns:
+            {'success': bool, 'message': str, 'data': {'verdict','confidence','reasoning'}|None}
+        """
+        from shared.clients.grpc_clients import get_evaluation_data_service_stub
+        from shared.proto import evaluation_service_pb2 as eval_pb
+        try:
+            stub = get_evaluation_data_service_stub()
+            method = getattr(stub, self.AI_REVIEW_RECHECK_RPC, None)
+            req_cls = getattr(eval_pb, self.AI_REVIEW_RECHECK_REQUEST, None)
+            if method is None or req_cls is None:
+                return {'success': False,
+                        'message': f'evaluation_service LLM 复检 gRPC 未就绪'
+                                   f'（{self.AI_REVIEW_RECHECK_RPC} 待 INT-823）',
+                        'data': None}
+            resp = method(req_cls(
+                result_id=int(result_id),
+                dimension_id=int(dimension_id) if dimension_id is not None else 0,
+                task_id=int(task_id) if task_id is not None else 0,
+                test_case_id=test_case_id or '',
+            ))
+            data = json.loads(resp.data) if resp.data else {}
+            return {'success': resp.success, 'message': resp.message,
+                    'data': data if isinstance(data, dict) else None}
+        except Exception as e:
+            _logger.warning("run_ai_review_check gRPC 异常: %s", e)
+            return {'success': False, 'message': str(e), 'data': None}
+
+    def list_llm_judge_dimension_ids(self) -> list:
+        """查询全部 LLM 判分维度 ID（task_type_code/dimension_type 含 'llm_judge'）。
+
+        经 evaluation_service.ListDimensions 拉全量过滤（维度量级小，单页够）；
+        失败返回空列表。INT-822 发起缺省维度口径：结果现有已完成评估的 LLM 判分维度。
+        """
+        try:
+            payload = self.list_dimensions(page=1, per_page=1000)
+            items = payload.get('items', []) if isinstance(payload, dict) else []
+        except Exception as e:
+            _logger.warning("查询 LLM 判分维度失败: %s", e)
+            return []
+        out = []
+        for d in items:
+            if not isinstance(d, dict):
+                continue
+            ttc = d.get('task_type_code') or ''
+            dt = d.get('dimension_type') or ''
+            if 'llm_judge' in ttc or dt == 'llm_judge':
+                if d.get('id') is not None:
+                    out.append(int(d['id']))
+        return out
+
     def set_dimension_review_status(self, result_ids, evaluation_status, status) -> dict:
         """人工复核改判 TRD 评估状态（INT-340）。
 
