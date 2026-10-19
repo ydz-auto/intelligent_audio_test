@@ -741,3 +741,72 @@ class TestVisibilityServerFilter:
         result = testcase_repository.query_testcases(visibility='private', page=1, per_page=10)
         assert result.total == 1
         assert result.items[0].name == 'private用例'
+
+
+# ---------------- INT-979 P2：批量删除畸形 ids 回 400（不退化 500） ----------------
+
+class TestReportBatchDelete:
+    """POST /reports/batch-delete：畸形 ids 400 参数错误；合法 ids 正常删除 + 审计。"""
+
+    def test_malformed_ids_return_400(self, monkeypatch):
+        """ids 含不可 int 化元素 → 400，不触发审计预取与 gRPC。"""
+        from api_gateway.application.services.report import report_command_sevice as cmd_mod
+        from api_gateway.application.services.report import report_query_sevice as rpt_qs
+        from api_gateway.infrastructure.grpc_proxies import report_proxies
+
+        grpc_calls = []
+
+        class _FakeStub:
+            def BatchActionReports(self, request, context=None):
+                grpc_calls.append(request)
+                return SimpleNamespace(success=True, message='ok', data='{}')
+
+        monkeypatch.setattr(report_proxies._ReportConfigProxy, 'stub',
+                            property(lambda self: _FakeStub()))
+        prefetch_ids = []
+        monkeypatch.setattr(
+            rpt_qs.ReportQueryService, 'get_one',
+            lambda rid: prefetch_ids.append(rid) or (
+                {'success': True, 'message': '',
+                 'data': {'id': rid, 'visibility': 'private'}}, 200))
+        set_current_request(_fake_request(user_id=1, permissions=['*'],
+                                          json_body={'ids': ['abc']}))
+
+        payload, http_code = cmd_mod.ReportCommandService.batch_delete()
+        assert http_code == 400
+        assert payload.get('success') is False
+        assert '参数错误' in payload.get('message', '')
+        assert prefetch_ids == []   # 审计预取未执行
+        assert grpc_calls == []     # gRPC 未调用
+
+    def test_valid_ids_succeed_with_audit(self, monkeypatch):
+        """ids 合法 → 200；admin 批量删除私有报告逐条落 PRIVATE_RESOURCE_ACCESS。"""
+        from api_gateway.application.services.report import report_command_sevice as cmd_mod
+        from api_gateway.application.services.report import report_query_sevice as rpt_qs
+        from api_gateway.infrastructure.grpc_proxies import report_proxies
+        import json as _json
+
+        rows = _audit_capture(monkeypatch)
+
+        class _FakeStub:
+            def BatchActionReports(self, request, context=None):
+                self.request = request
+                return SimpleNamespace(success=True, message='ok', data='{"items":[]}')
+
+        fake_stub = _FakeStub()
+        monkeypatch.setattr(report_proxies._ReportConfigProxy, 'stub',
+                            property(lambda self: fake_stub))
+        monkeypatch.setattr(
+            rpt_qs.ReportQueryService, 'get_one',
+            lambda rid: ({'success': True, 'message': '',
+                          'data': {'id': rid, 'name': 'r', 'visibility': 'private',
+                                   'created_by_user_id': 100}}, 200))
+        set_current_request(_fake_request(user_id=1, permissions=['*'],
+                                          json_body={'ids': [7, 8]}))
+
+        payload, http_code = cmd_mod.ReportCommandService.batch_delete()
+        assert http_code == 200
+        assert _json.loads(fake_stub.request.data)['ids'] == [7, 8]
+        assert len(rows) == 2
+        assert [r[0][0] for r in rows] == ['report', 'report']
+        assert [r[0][2] for r in rows] == ['delete', 'delete']

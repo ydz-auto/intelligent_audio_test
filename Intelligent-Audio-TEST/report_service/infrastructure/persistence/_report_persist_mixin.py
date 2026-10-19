@@ -118,6 +118,9 @@ class ReportPersistMixin:
             config['conclusion'] = fields['analysis']
         if fields.get('status') is not None:
             po.status = str(fields['status'])
+        # INT-466：可见性切换真实落库（None 不更新；值已由 Handler 二值校验）
+        if fields.get('visibility') is not None:
+            po.visibility = str(fields['visibility'])
         po.updated_by_user_id = get_current_user_id()
         po.analysis = _safe_json_dumps(config) or ''
 

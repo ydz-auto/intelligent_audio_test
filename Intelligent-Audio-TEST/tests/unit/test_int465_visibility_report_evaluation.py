@@ -200,6 +200,38 @@ class TestReportVisibility:
                                 report_repository.list_reports(page=1, page_size=20)]
         assert report_repository.get_by_id(rid_private2) is not None
 
+    def test_owner_update_visibility_persists(self, db):
+        """INT-979 P1：handle_update 带 visibility 必须真实落库（更新路径补齐写列）。"""
+        session = db.get_db_session()
+        rid = _make_report(session, 'A共享报告', USER_A, 'shared')
+        session.commit()
+        db.remove_db_session()
+
+        from report_service.application.handlers.report_handlers import (
+            ReportCommandHandler,
+        )
+        from report_service.application.commands.report_commands import (
+            UpdateReportCommand,
+        )
+        from report_service.infrastructure.persistence.models import Report
+
+        set_current_user_id(USER_A)
+        cmd = ReportCommandHandler()
+
+        # shared → private：PO.visibility 必须真实变更
+        assert cmd.handle_update(
+            UpdateReportCommand(report_id=rid, visibility='private')) is True
+        po = db.get_db_session().get(Report, rid)
+        assert po.visibility == 'private'
+        db.remove_db_session()
+
+        # private → shared：回切同样落库
+        assert cmd.handle_update(
+            UpdateReportCommand(report_id=rid, visibility='shared')) is True
+        po = db.get_db_session().get(Report, rid)
+        assert po.visibility == 'shared'
+        db.remove_db_session()
+
     def test_report_sub_tables_follow_parent(self, db):
         """验收③：报告 7 子表不单独设列——父报告可见则摘要子表数据可读。"""
         session = db.get_db_session()

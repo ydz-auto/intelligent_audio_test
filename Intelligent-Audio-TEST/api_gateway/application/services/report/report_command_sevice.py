@@ -129,6 +129,8 @@ class ReportCommandService:
             ids = body.get('ids', [])
             if not ids or not isinstance(ids, list):
                 return error_response('ids 列表不能为空', 400)
+            # 先做 int 化校验：畸形 ids（如 "abc"）返回 400，不落到审计预取/gRPC
+            ids = [int(i) for i in ids]
         except Exception as e:
             return error_response(f'参数错误: {str(e)}', 400)
 
@@ -141,8 +143,8 @@ class ReportCommandService:
             preload_private_state,
         )
         pre_items = {
-            int(i): preload_private_state(
-                lambda rid=int(i): (ReportQueryService.get_one(rid)[0].get('data') or {}))
+            i: preload_private_state(
+                lambda rid=i: (ReportQueryService.get_one(rid)[0].get('data') or {}))
             for i in ids
         }
 
@@ -150,7 +152,7 @@ class ReportCommandService:
             stub = report_config_service.stub
             resp = stub.BatchActionReports(report_pb.BatchActionReportsRequest(
                 data=_dumps({
-                    'ids': [int(i) for i in ids],
+                    'ids': ids,
                     'action': 'delete',
                     'hard_delete': bool(body.get('hard_delete', False)),
                 })))
