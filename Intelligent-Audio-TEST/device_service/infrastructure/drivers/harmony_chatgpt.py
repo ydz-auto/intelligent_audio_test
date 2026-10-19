@@ -5,13 +5,13 @@ import uuid
 from .harmony_xiaoyichat import Xiaoyilivechat
 from .utils import By, log_and_emit, with_rpc_retry, is_rpc_not_running_error
 from shared.utils.time_utils import ms_to_utc8_str, MS_FMT
-from .driver_types import DevicePlatform
+from .driver_types import AppType, AppVersion, DevicePlatform
 from .registry import register_driver
 
 @register_driver
 class ChatGptVoiceChat(Xiaoyilivechat):
-    app_type = "chatgpt"
-    version = "v1"
+    app_type = AppType.CHATGPT
+    version = AppVersion.V1
     platform = DevicePlatform.HARMONYOS
     keywords = "harmony.chatgpt.v1"
     display_name = "ChatGPT语音通话专用驱动"

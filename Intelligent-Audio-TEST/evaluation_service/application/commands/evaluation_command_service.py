@@ -150,6 +150,14 @@ class EvaluationCommandService(CategoryCommandsMixin, DimensionOpsMixin):
             if err:
                 return err
 
+            # INT-466：可见性切换（None 不更新；值校验对齐 Visibility 二值）。
+            # Dimension 模型可赋值字段不含 visibility（走专用 share 端点），此处显式处理。
+            if data.get('visibility') is not None:
+                vis, verr = parse_visibility(data['visibility'])
+                if verr:
+                    return verr
+                dim.visibility = vis
+
             err = self._parse_dimension_payload(data)
             if err:
                 return err

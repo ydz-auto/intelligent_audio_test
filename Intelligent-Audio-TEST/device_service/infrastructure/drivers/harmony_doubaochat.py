@@ -14,13 +14,13 @@ except ImportError:
 from .harmony_xiaoyichat import Xiaoyilivechat
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry, is_rpc_not_running_error
 from shared.utils.time_utils import ms_to_utc8_str, MS_FMT
-from .driver_types import DevicePlatform
+from .driver_types import AppType, AppVersion, DevicePlatform
 from .registry import register_driver
 
 @register_driver
 class DoubaoChat(Xiaoyilivechat):
-    app_type = "doubao"
-    version = "v1"
+    app_type = AppType.DOUBAO
+    version = AppVersion.V1
     platform = DevicePlatform.HARMONYOS
     keywords = "harmony.doubao.v1"
     display_name = "豆包HarmonyOS语音通话专用驱动"
