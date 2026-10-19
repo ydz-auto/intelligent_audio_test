@@ -50,3 +50,33 @@ def check_object_visible(obj, user_id=None, is_admin=None):
         user_id = user_id if user_id is not None else uid
         is_admin = is_admin if is_admin is not None else admin
     check_visible(owner, vis, user_id, is_admin)
+
+
+def check_task_control_visible(task, user_id=None, is_admin=None):
+    """任务控制操作可见性校验（INT-573：私有任务 owner 或启动人放行）。
+
+    执行/控制口径（负责人拍板 2026-10-17 · 拍板 A）：
+    - 共享任务恒放行（控制仍受 RBAC 权限点约束，此处不叠加 owner 过滤）；
+    - 私有任务：仅 admin / owner（created_by_user_id）/ 启动人
+      （last_started_by_user_id，start/retry 时记录）可控制；
+    - 不可见抛 VisibilityDenied（网关层映射 403）。
+
+    task 为 Task PO 或含 created_by_user_id / visibility / last_started_by_user_id
+    的替身对象；缺省字段按存量形态处理（owner=None + visibility='shared'）。
+    """
+    from shared.models.common_enums import Visibility
+    from shared.infrastructure.visibility_filter import VisibilityDenied
+    if user_id is None or is_admin is None:
+        uid, admin = visibility_identity()
+        user_id = user_id if user_id is not None else uid
+        is_admin = is_admin if is_admin is not None else admin
+    if is_admin:
+        return
+    vis = getattr(task, 'visibility', Visibility.SHARED.value) or Visibility.SHARED.value
+    if vis != Visibility.PRIVATE.value:
+        return
+    owner = getattr(task, 'created_by_user_id', None)
+    starter = getattr(task, 'last_started_by_user_id', None)
+    if user_id is not None and (user_id == owner or user_id == starter):
+        return
+    raise VisibilityDenied('资源不存在或无权访问')

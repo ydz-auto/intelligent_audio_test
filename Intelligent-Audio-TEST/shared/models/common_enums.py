@@ -452,7 +452,7 @@ class AuditLogCategory(str, Enum):
     BENCHMARK = 'benchmark'
     # 设备管理审计（INT-80：分组/操作/批量端点）
     DEVICE = 'device'
-    # 数据可见性审计（INT-466：PRIVATE_RESOURCE_ACCESS / 可见性切换）
+    # 数据可见性审计（INT-466/573：PRIVATE_RESOURCE_ACCESS / 可见性切换 / admin 访问私有资源）
     VISIBILITY = 'visibility'
 
 

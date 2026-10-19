@@ -119,6 +119,17 @@ def main(dry_run=False):
                 'ON published_tasks (created_by_user_id)',
                 dry_run)
 
+    # 2b. test_tasks 补 last_started_by_user_id（INT-573：启动操作人记录，控制校验
+    #     owner 或启动人；存量 NULL——历史任务无启动人记录，控制回落 owner 校验）
+    if _table_exists(cur, 'test_tasks'):
+        _add_column(cur, conn, 'test_tasks', 'last_started_by_user_id', 'BIGINT NULL', dry_run)
+        if _col_exists(cur, 'test_tasks', 'last_started_by_user_id'):
+            _ensure_index(
+                cur, conn, 'idx_test_tasks_last_started_by_user_id',
+                'CREATE INDEX IF NOT EXISTS idx_test_tasks_last_started_by_user_id '
+                'ON test_tasks (last_started_by_user_id)',
+                dry_run)
+
     # 3. 各表 visibility 单列索引（幂等）
     for table in VISIBILITY_TABLES:
         if not _table_exists(cur, table):

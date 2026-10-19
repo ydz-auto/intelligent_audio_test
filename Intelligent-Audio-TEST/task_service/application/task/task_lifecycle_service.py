@@ -49,6 +49,11 @@ class TaskLifecycleService:
             if task is None:
                 return {'success': False, 'message': '任务 ID 不存在', 'data': None, 'code': 404}
 
+            # INT-573：私有任务执行（start）owner 校验——非 owner 403（共享回落 RBAC）
+            denied = self._check_owner_visible(task)
+            if denied:
+                return denied
+
             # 幂等：已在运行或排队
             if task.status in (TaskStatus.RUNNING, TaskStatus.QUEUED):
                 return {
@@ -80,6 +85,9 @@ class TaskLifecycleService:
 
             # 调用执行引擎
             from task_service.core.execution_engine import execution_engine
+            # INT-573：启动操作人记录（控制操作校验「owner 或启动人」）
+            from shared.infrastructure.user_context import get_current_user_id
+            task_repository.record_task_starter(task.id, get_current_user_id())
             success, message = execution_engine.start_task(task.id)
 
             if not success:
@@ -122,6 +130,11 @@ class TaskLifecycleService:
             task = task_repository.get_task_orm(task_id)
             if task is None:
                 return {'success': False, 'message': '未找到任务', 'data': None, 'code': 404}
+
+            # INT-573：私有任务执行（retry）owner 校验——非 owner 403（共享回落 RBAC）
+            denied = self._check_owner_visible(task)
+            if denied:
+                return denied
 
             if task.status in [TaskStatus.RUNNING, TaskStatus.PAUSED, TaskStatus.QUEUED]:
                 from task_service.core.execution_engine import execution_engine
@@ -175,6 +188,9 @@ class TaskLifecycleService:
 
             # 启动任务
             from task_service.core.execution_engine import execution_engine
+            # INT-573：启动操作人记录（retry 亦属启动，控制校验「owner 或启动人」）
+            from shared.infrastructure.user_context import get_current_user_id
+            task_repository.record_task_starter(task.id, get_current_user_id())
             success, message = execution_engine.start_task(task.id)
 
             if not success:
@@ -206,6 +222,11 @@ class TaskLifecycleService:
             task = task_repository.get_task_orm(task_id)
             if task is None:
                 return {'success': False, 'message': '未找到任务', 'data': None, 'code': 404}
+
+            # INT-573：私有任务控制校验——owner 或启动人放行，其余 403（共享回落 RBAC）
+            denied = self._check_control_visible(task)
+            if denied:
+                return denied
 
             # 单用例控制
             if action in ['skip', 'retry'] and case_id:
@@ -255,6 +276,9 @@ class TaskLifecycleService:
                 task_status = task_repository.get_task_orm(task_id)
                 if action == 'retry' and task_status and task_status.status not in [TaskStatus.RUNNING, TaskStatus.PAUSED]:
                     from task_service.core.execution_engine import execution_engine
+                    # INT-573：控制内触发重启亦属启动——记录操作人（owner 或启动人已通过校验）
+                    from shared.infrastructure.user_context import get_current_user_id
+                    task_repository.record_task_starter(task_id, get_current_user_id())
                     execution_engine.start_task(task_id)
 
                 return {'success': True, 'message': f"Action '{action}' executed successfully", 'data': None}
@@ -281,6 +305,11 @@ class TaskLifecycleService:
             task = task_repository.find_task_for_stop(task_id)
             if task is None:
                 return {'success': False, 'message': '未找到任务', 'data': None, 'code': 404}
+
+            # INT-573：私有任务控制校验——owner 或启动人放行，其余 403（共享回落 RBAC）
+            denied = self._check_control_visible(task)
+            if denied:
+                return denied
 
             from task_service.core.execution_engine import execution_engine
             success, message = execution_engine.control_task(task_id, 'stop')
@@ -313,6 +342,11 @@ class TaskLifecycleService:
             task = task_repository.get_task_orm(task_id)
             if task is None:
                 return {'success': False, 'message': '未找到任务', 'data': None, 'code': 404}
+
+            # INT-573：私有任务控制校验——owner 或启动人放行，其余 403（共享回落 RBAC）
+            denied = self._check_control_visible(task)
+            if denied:
+                return denied
 
             tc = task_repository.find_task_case(task_id, case_id)
             if tc is None:
@@ -443,6 +477,12 @@ class TaskLifecycleService:
             task = task_repository.find_task_for_reextract(task_id)
             if task is None:
                 return {'success': False, 'message': '未找到任务', 'data': None, 'code': 404}
+
+            # INT-573：私有任务控制校验——owner 或启动人放行，其余 403（共享回落 RBAC）
+            denied = self._check_control_visible(task)
+            if denied:
+                return denied
+
             if task.status not in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.STOPPED, TaskStatus.PAUSED, TaskStatus.SKIPPED]:
                 return {'success': False, 'message': '只有已完成/失败/停止/暂停/跳过的任务才能重新提取', 'data': None, 'code': 400}
 
@@ -475,6 +515,33 @@ class TaskLifecycleService:
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 
     # ==================== 内部辅助 ====================
+
+    def _check_owner_visible(self, task) -> dict | None:
+        """私有任务执行（start/retry）owner 校验（INT-573）。
+
+        私有任务非 owner 一律 403（admin 豁免）；共享任务回落 RBAC
+        `task:execute` 既有语义，此处不叠加。返回 403 dict 或 None（放行）。
+        """
+        from task_service.infrastructure.visibility_context import check_object_visible
+        try:
+            check_object_visible(task)
+        except PermissionError as e:
+            return {'success': False, 'message': str(e), 'data': None, 'code': 403}
+        return None
+
+    def _check_control_visible(self, task) -> dict | None:
+        """私有任务控制（stop/control/remove_case/rextract）owner 或启动人校验（INT-573）。
+
+        私有任务仅 owner（created_by_user_id）或启动人（last_started_by_user_id）
+        可控制，其余 403；admin 豁免；共享任务回落 RBAC 既有语义。返回 403
+        dict 或 None（放行）。
+        """
+        from task_service.infrastructure.visibility_context import check_task_control_visible
+        try:
+            check_task_control_visible(task)
+        except PermissionError as e:
+            return {'success': False, 'message': str(e), 'data': None, 'code': 403}
+        return None
 
     def _trigger_reevaluate(self, task_id, completed_cases):
         """触发已执行完成用例的重新评估。

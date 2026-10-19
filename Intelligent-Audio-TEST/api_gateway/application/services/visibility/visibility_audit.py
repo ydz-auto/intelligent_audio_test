@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""visibility 审计事件写入（INT-466）——api_gateway 侧旁路记录。
+"""visibility 审计事件写入（INT-466/573）——api_gateway 侧旁路记录。
 
 对齐 auth_audit / device_audit 旁路模式：审计为旁路记录，写入失败不影响业务
 结果。事件名取 shared.models.common_enums.AuditEvent（PRIVATE_RESOURCE_ACCESS），
@@ -17,6 +17,21 @@ import logging
 from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _request_identity() -> tuple:
+    """从 request.state 取 (user_id, is_admin)（INT-466 语义内联）。
+
+    AuthMiddleware 注入：user_id（JWT 载荷）、permissions（admin 通配 '*'）。
+    AUTH_MODE=off 时注入 dev 身份（user_id=None, permissions=['*'] → admin）。
+    """
+    from api_gateway.infrastructure.request_adapter import get_current_request
+    req = get_current_request()
+    if req is None:
+        return None, False
+    user_id = getattr(req.state, 'user_id', None)
+    perms = getattr(req.state, 'permissions', None) or []
+    return user_id, ('*' in perms)
 
 
 def write_visibility_audit(event, module: str, content: Dict[str, Any]) -> None:
