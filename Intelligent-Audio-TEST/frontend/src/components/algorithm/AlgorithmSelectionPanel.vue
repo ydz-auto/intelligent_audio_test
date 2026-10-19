@@ -258,6 +258,3 @@ function getAlgorithmIcon(groupName?: string): string {
   return iconMap[groupName || ''] || 'fa-cog'
 }
 </script>
-
-<style>
-</style>
