@@ -215,7 +215,7 @@ class TagRepositoryMixin:
 
         INT-423：逐行可见性过滤——私有非 owner 标签跳过，不整批放行。
         """
-        from shared.infrastructure.visibility_context import visibility_identity
+        from task_service.infrastructure.visibility_context import visibility_identity
         session = get_db_session()
         if not tag_ids:
             return 0
