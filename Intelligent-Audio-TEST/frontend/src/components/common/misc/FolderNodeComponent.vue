@@ -162,6 +162,9 @@
 </template>
 
 <script setup lang="ts">
+import '../../../assets/styles/components/navigation.css'
+import '../../../assets/styles/layouts/main.css'
+
 import { computed, ref, watch } from 'vue';
 import type { FolderNode as BaseFolderNode } from '../../../domain/model/audio';
 import { readCamel } from '../../../utils/keyTransform';

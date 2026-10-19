@@ -12,6 +12,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--spacing-xs);
+    margin-bottom: 16px;
 }
 
 /* 全宽表单组 */
@@ -22,10 +23,20 @@
 
 /* 表单标签 */
 .form-group label {
+    display: block;
     font-size: var(--font-size-md);
     font-weight: var(--font-weight-medium);
-    color: var(--text-primary);
-    margin-bottom: var(--spacing-xs);
+    color: var(--foreground);
+    margin-bottom: 8px;
+}
+
+/* 通用表单控件（原 BatchSplModal 裸 style 收编） */
+.form-control {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-control);
+    font-size: 14px;
 }
 
 /* 表单输入框和选择器 */
@@ -33,11 +44,11 @@
     width: 100%;
     height: 40px;
     padding: 0 var(--spacing-md);
-    border: 1px solid var(--gray-light-color);
+    border: 1px solid var(--gray-light);
     border-radius: var(--radius-control);
     font-size: var(--font-size-md);
-    color: var(--text-primary);
-    background-color: var(--background-primary);
+    color: var(--foreground);
+    background-color: var(--background);
     transition: all var(--transition-normal);
     box-sizing: border-box;
     outline: none;
@@ -121,11 +132,11 @@ select.filter-select {
     width: 100%;
     height: 40px;
     padding: 0 var(--spacing-md);
-    border: 1px solid var(--gray-light-color);
+    border: 1px solid var(--gray-light);
     border-radius: var(--radius-control);
     font-size: var(--font-size-md);
-    color: var(--text-primary);
-    background-color: var(--background-primary);
+    color: var(--foreground);
+    background-color: var(--background);
     transition: all var(--transition-normal);
     box-sizing: border-box;
     outline: none;
@@ -158,7 +169,7 @@ select.form-field {
 select.form-input:hover,
 select.form-field:hover,
 select.filter-select:hover {
-    border-color: var(--primary-color);
+    border-color: var(--primary);
     box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 8%, transparent);
 }
 
@@ -168,10 +179,10 @@ select.filter-select:hover {
 select.form-input:focus,
 select.form-field:focus,
 select.filter-select:focus {
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px var(--primary-light);
-    background-color: var(--background-primary);
-    color: var(--text-primary);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--accent);
+    background-color: var(--background);
+    color: var(--foreground);
 }
 
 /* 输入框错误状态 */
@@ -180,8 +191,8 @@ select.filter-select:focus {
 select.form-input.error,
 select.form-field.error,
 select.filter-select.error {
-    border-color: var(--danger-color);
-    box-shadow: 0 0 0 3px var(--danger-light);
+    border-color: var(--destructive);
+    box-shadow: 0 0 0 3px var(--destructive-light);
 }
 
 /* 输入框禁用状态 */
@@ -190,7 +201,7 @@ select.filter-select.error {
 select.form-input:disabled,
 select.form-field:disabled,
 select.filter-select:disabled {
-    background-color: var(--background-secondary);
+    background-color: var(--muted);
     color: var(--text-disabled);
     cursor: not-allowed;
 }
@@ -267,8 +278,8 @@ input[type="checkbox"] {
     cursor: pointer;
     -webkit-appearance: none;
     appearance: none;
-    background-color: var(--background-primary);
-    border: 2px solid var(--gray-light-color);
+    background-color: var(--background);
+    border: 2px solid var(--gray-light);
     border-radius: var(--radius-tag);
     position: relative;
     transition: all var(--transition-normal);
@@ -280,15 +291,15 @@ input[type="checkbox"] {
 
 /* 复选框选中状态 */
 input[type="checkbox"]:checked {
-    background-color: var(--primary-color);
-    border-color: var(--primary-color);
+    background-color: var(--primary);
+    border-color: var(--primary);
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent);
 }
 
 /* 复选框选中标记 */
 input[type="checkbox"]:checked::after {
     content: '✓';
-    color: var(--white-color);
+    color: var(--color-white);
     font-size: 12px;
     font-weight: bold;
 }
@@ -297,21 +308,21 @@ input[type="checkbox"]:checked::after {
 input[type="checkbox"]:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-    background-color: var(--background-secondary);
+    background-color: var(--muted);
 }
 
 /* 复选框标签 */
 .checkbox-container label {
     font-size: 14px;
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--foreground);
     cursor: pointer;
     transition: color var(--transition-normal);
     user-select: none;
 }
 
 .checkbox-container:hover label:not(:has(input:disabled)) {
-    color: var(--primary-color);
+    color: var(--primary);
 }
 
 /* 表单提交按钮容器 */
@@ -321,13 +332,13 @@ input[type="checkbox"]:disabled {
     justify-content: flex-end;
     margin-top: var(--spacing-lg);
     padding-top: var(--spacing-lg);
-    border-top: var(--card-border);
+    border-top: 1px solid var(--gray-light);
 }
 
 /* 错误提示文本 */
 .error-message {
     font-size: var(--font-size-sm);
-    color: var(--danger-color);
+    color: var(--destructive);
     margin-top: var(--spacing-xs);
 }
 
@@ -363,11 +374,11 @@ input[type="checkbox"]:disabled {
     width: auto;
     height: 36px;
     padding: 0 var(--spacing-sm);
-    border: 1px solid var(--gray-light-color);
+    border: 1px solid var(--gray-light);
     border-radius: var(--radius-control);
     font-size: var(--font-size-sm);
-    color: var(--text-primary);
-    background-color: var(--background-primary);
+    color: var(--foreground);
+    background-color: var(--background);
     transition: all var(--transition-normal);
     box-sizing: border-box;
     outline: none;
@@ -399,24 +410,24 @@ select.form-input.form-input-sm {
 
 /* 小型表单输入框悬停状态 */
 .form-input-sm:hover {
-    border-color: var(--primary-color);
+    border-color: var(--primary);
     box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 8%, transparent);
     transform: translateY(-1px);
 }
 
 /* 小型表单输入框聚焦状态 */
 .form-input-sm:focus {
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px var(--primary-light);
-    background-color: var(--background-primary);
-    color: var(--text-primary);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--accent);
+    background-color: var(--background);
+    color: var(--foreground);
     transform: translateY(-1px);
 }
 
 /* 小型表单输入框禁用状态 */
 .form-input-sm:disabled {
-    background-color: var(--background-secondary);
+    background-color: var(--muted);
     color: var(--text-disabled);
     cursor: not-allowed;
-    border-color: var(--gray-light-color);
+    border-color: var(--gray-light);
 }

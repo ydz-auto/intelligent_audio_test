@@ -84,6 +84,13 @@
 </template>
 
 <script setup lang="ts">
+import '../../../assets/styles/test-common.css'
+import '../../../assets/styles/components/common.css'
+import '../../../assets/styles/components/button.css'
+import '../../../assets/styles/components/table.css'
+import '../../../assets/styles/components/log.css'
+import '../../../assets/styles/layouts/main.css'
+
 /**
  * CartTreeNodeRow —— 购物车树节点行（递归组件）。
  * 节点三态由 cartTree.cartNodeState 派生；叶条目展示用例/设备/结果类型/状态/失效标记。

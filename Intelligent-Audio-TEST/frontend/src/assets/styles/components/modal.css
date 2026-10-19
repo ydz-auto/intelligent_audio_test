@@ -2,6 +2,13 @@
 
 /* 模态框遮罩层 - 基础样式 */
 .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background-color: color-mix(in srgb, var(--color-black) 50%, transparent);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: calc(var(--z-index-modal-top, 13000) + 2);
     pointer-events: auto;
 }
 
@@ -18,7 +25,7 @@
 
 /* 模态框头部 */
 .modal-header{
-    background-color: var(--background-primary);
+    background-color: var(--background);
 }
 
 /* 模态框标题 */
@@ -27,6 +34,18 @@
 
 /* 模态框关闭按钮 */
 .modal-close{
+    background: none;
+    border: none;
+    font-size: 20px;
+    color: var(--muted-foreground);
+    cursor: pointer;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-pill);
+    transition: all 0.2s;
 }
 
 .modal-close:hover {
@@ -34,7 +53,10 @@
 
 /* 模态框主体 */
 .modal-body{
-    background-color: var(--background-primary);
+    background-color: var(--background);
+    padding: 24px;
+    overflow-y: auto;
+    flex: 1;
 }
 
 /* 模态框按钮 */
@@ -44,13 +66,83 @@
 
 /* 模态框按钮样式 */
 .modal-footer .btn-primary {
-    background: var(--btn-primary-bg);
-    color: var(--white-color);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+    color: var(--color-white);
 }
 
 .modal-footer .btn-secondary {
-    background: var(--btn-secondary-bg);
-    color: var(--text-primary);
+    background: var(--secondary-btn-bg);
+    color: var(--foreground);
+}
+
+/* 弹窗功能性共享样式（原 AddTestCaseModal/BatchSplModal 裸 style 收编，供消费方按需加载） */
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background-color: color-mix(in srgb, var(--color-black) 50%, transparent);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10002;
+    animation: fadeIn 0.3s ease;
+}
+
+.modal-container {
+    background-color: var(--color-white);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-lg);
+    width: 90%;
+    max-width: 800px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    animation: slideIn 0.3s ease;
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+    color: var(--foreground);
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    font-size: 24px;
+    color: var(--muted-foreground);
+    cursor: pointer;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-pill);
+    transition: all 0.3s ease;
+}
+
+.close-btn:hover {
+    background-color: var(--muted);
+    color: var(--foreground);
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 24px;
+    border-top: 1px solid var(--border);
+}
+
+/* 弹窗响应式（原 AddTestCaseModal 裸 style 收编） */
+@media (width <= 768px) {
+    .modal-container {
+        width: 95%;
+        margin: 20px;
+        max-height: calc(100vh - 40px);
+    }
 }
 
 /* 确认对话框 */
@@ -61,7 +153,7 @@
 .confirm-modal .modal-body p {
     margin-bottom: var(--spacing-lg);
     font-size: var(--font-size-md);
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
 }
 
 /* 成功对话框 */
@@ -71,7 +163,7 @@
 
 .success-icon {
     font-size: 48px;
-    color: var(--success-color);
+    color: var(--success);
     margin-bottom: var(--spacing-md);
 }
 
@@ -93,21 +185,21 @@
 }
 
 .modal::-webkit-scrollbar-track {
-    background: var(--background-secondary);
+    background: var(--muted);
     border-radius: var(--radius-tag);
 }
 
 .modal::-webkit-scrollbar-thumb {
-    background: var(--gray-color);
+    background: var(--gray);
     border-radius: var(--radius-tag);
 }
 
 .modal::-webkit-scrollbar-thumb:hover {
-    background: var(--text-secondary);
+    background: var(--muted-foreground);
 }
 
 /* 响应式设计 */
-@media (max-width: 768px) {
+@media (width <= 768px) {
     .modal {
         width: 95%;
         margin: var(--spacing-md);

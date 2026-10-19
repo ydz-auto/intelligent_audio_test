@@ -11,6 +11,8 @@
 </template>
 
 <script setup lang="ts">
+import '../../assets/styles/components/log.css'
+
 import { ref, onMounted } from 'vue'
 import { getSiteName } from '../../infrastructure/api/optionsApi'
 

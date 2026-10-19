@@ -97,6 +97,10 @@
 </template>
 
 <script setup lang="ts">
+import '../../../assets/styles/components/table.css'
+import '../../../assets/styles/components/common.css'
+import '../../../assets/styles/layouts/main.css'
+
 /**
  * PickTreeNodeRow —— 挑选树节点行（递归组件）。
  * 节点三态由 pickTree.nodeState 派生；叶行勾选直接操作 result_id。

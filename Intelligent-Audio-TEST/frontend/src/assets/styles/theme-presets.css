@@ -88,6 +88,8 @@
   --btn-primary-hover-color: #ff8c40;  /* 实底主按钮悬浮 */
   --btn-primary-disabled-bg: #d9d9d9;  /* 实底主按钮禁用 */
   --btn-secondary-hover-bg: #e0e0e0;   /* 实底次按钮悬浮 */
+  /* 次按钮底渐变（原 variables.css --btn-secondary-bg 旧别名，值保真；深浅同值，不随主题换色） */
+  --secondary-btn-bg: linear-gradient(135deg, #e5e7eb 0%, #f3f4f6 100%);
   --danger-required: #e53e3e;    /* 必填星标 */
 
   /* 头像固定色板（值保真；身份色深浅同值，不随主题换色） */

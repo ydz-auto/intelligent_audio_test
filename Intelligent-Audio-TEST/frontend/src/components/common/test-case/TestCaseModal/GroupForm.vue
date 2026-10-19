@@ -28,6 +28,10 @@
 </template>
 
 <script setup lang="ts">
+import '../../../../assets/styles/test-common.css'
+import '../../../../assets/styles/components/button.css'
+import '../../../../assets/styles/components/form.css'
+
 import { ref, watch, onMounted } from 'vue';
 import { useAlgorithmConfig } from '../../../../composables/algorithm/useAlgorithmConfig';
 import { useAlgorithmLabels } from '../../../../composables/algorithm/useAlgorithmLabels';

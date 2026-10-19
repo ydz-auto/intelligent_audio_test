@@ -16,6 +16,9 @@
 </template>
 
 <script setup lang="ts">
+import '../assets/styles/components/navigation.css'
+import '../assets/styles/layouts/main.css'
+
 import { ref } from 'vue'
 import SystemBrand from '../components/layout/SystemBrand.vue'
 import TopNav from '../components/layout/TopNav.vue'

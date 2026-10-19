@@ -10,6 +10,9 @@
 </template>
 
 <script setup lang="ts">
+import '../../assets/styles/components/common.css'
+import '../../assets/styles/components/card.css'
+
 import { useRoute } from 'vue-router'
 
 defineProps<{

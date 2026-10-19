@@ -342,6 +342,16 @@
 </template>
 
 <script setup lang="ts">
+import '../../assets/styles/test-common.css'
+import '../../assets/styles/components/common.css'
+import '../../assets/styles/components/button.css'
+import '../../assets/styles/components/card.css'
+import '../../assets/styles/components/table.css'
+import '../../assets/styles/components/navigation.css'
+import '../../assets/styles/components/tag.css'
+import '../../assets/styles/components/log.css'
+import '../../assets/styles/layouts/main.css'
+
 /**
  * 个人中心页（13_个人中心 INT-358 / 总表 §3 J01/J02 / 卡 INT-744）：
  * 身份卡 + 个人数据快捷区 + 个人信息卡（F3 编辑壳）+ 账号安全卡（F2 改密壳/会话壳/OAuth 绑定）。
