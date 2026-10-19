@@ -1,8 +1,7 @@
 <template>
   <span class="case-review-badge" title="该用例存在人工复核结果" @click.stop="openDetail">
     <i class="fas fa-clipboard-check"></i>
-    <span>人工复核</span>
-    <span class="badge-count" v-if="count > 0">{{ count }}</span>
+    <span>{{ props.count !== undefined && props.count > 0 ? `已复核 ${props.count}` : '含复核' }}</span>
   </span>
 
   <!-- 复核明细弹窗 -->
@@ -50,7 +49,8 @@ import type { ReviewHistoryItemDomain } from '@/domain/model/review'
 
 const props = defineProps<{
   caseName: string
-  count: number
+  /** 已复核结果数（报告快照复核明细 §8-3 未落地前不传，仅显「含复核」无计数，对齐 React §4.1） */
+  count?: number
   items: ReviewHistoryItemDomain[]
 }>()
 
@@ -94,10 +94,6 @@ const formatTime = (ts?: string | null) => {
 }
 .case-review-badge:hover {
   background: color-mix(in srgb, var(--primary) 18%, transparent);
-}
-.badge-count {
-  font-size: 11px;
-  color: var(--muted-foreground);
 }
 .review-detail-overlay {
   position: fixed;

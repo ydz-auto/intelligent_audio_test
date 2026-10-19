@@ -127,9 +127,11 @@ export function useReportReviews(reportDataRef: () => any) {
         }
         const map: Record<string, CaseReviewState> = {}
         for (const [tcId, items] of Object.entries(grouped)) {
+          // 计数 = 该用例已复核「结果」数（按 result_id 去重，非留痕行数；§4.1，P2-3）
+          const distinctResults = new Set(items.map((i) => i.resultId).filter((id) => id != null))
           map[tcId] = {
             hasReview: items.length > 0,
-            count: items.length,
+            count: distinctResults.size,
             items: [...items].reverse(),
           }
         }
@@ -175,12 +177,13 @@ export function useReportReviews(reportDataRef: () => any) {
         ? (resultRows[0].reviewHistory ?? [])
         : []
 
+      // 打开复核弹窗；用户点「取消」是正常操作（open() 取消即 reject），不落错误分支
       const res = await modalControl.open(MODAL_TYPES.RESULT_REVIEW, {
         title: '人工复核',
         taskId: sourceTaskId.value,
         results: resultMetas,
         reviewHistory,
-      })
+      }).catch(() => undefined)
       if (res) {
         const payload: ReviewSubmitPayload = {
           resultIds: resultRows.map((r: any) => r.id),
@@ -235,7 +238,7 @@ export function useReportReviews(reportDataRef: () => any) {
     }
   }
 
-  /** 采纳 AI 复核结论 → 落人工复核语义（打开 §3.2 复核弹窗预填 AI 判定） */
+  /** 采纳 AI 复核结论 → 落人工复核语义（打开 §3.2 复核弹窗预填 AI 判定，§4.3） */
   async function adoptAiReview(caseItem: any) {
     const caseId = String(caseItem?.id ?? caseItem?.testCaseId ?? '')
     const run = getAiRun(caseId)
@@ -243,16 +246,24 @@ export function useReportReviews(reportDataRef: () => any) {
     // 待接线：POST /tasks/results/ai-review/{id}/adopt（§8-2 待后端立项）
     await reviewApi.adoptAiReview(run.record.id)
 
-    // 预填 AI 判定的评估状态 + 备注（AI 理由）→ 人工确认提交
-    const suggestedEvaluation = run.record.verdict === 'passed' ? 'completed' : 'failed'
+    // AI 判定 → 评估状态预填（对齐 React aiVerdictToEvaluationStatus：通过→已完成；不通过→评估失败；存疑→不预填）
+    const suggestedEvaluation = run.record.verdict === 'passed'
+      ? 'completed'
+      : run.record.verdict === 'failed'
+        ? 'failed'
+        : undefined
     const resultId = run.record.resultId
     try {
+      // 打开复核弹窗预填 AI 判定的评估状态 + 备注（AI 理由），用户确认即可提交；
+      // 点「取消」是正常操作（open() 取消即 reject），不落错误分支
       const res = await modalControl.open(MODAL_TYPES.RESULT_REVIEW, {
         title: '人工复核',
         taskId: sourceTaskId.value,
         results: [{ resultId, executionStatus: undefined, evaluationStatus: suggestedEvaluation }],
         reviewHistory: [],
-      })
+        initialEvaluationStatus: suggestedEvaluation,
+        initialComment: run.record.reasoning,
+      }).catch(() => undefined)
       if (res) {
         const payload: ReviewSubmitPayload = {
           resultIds: [resultId],

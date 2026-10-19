@@ -278,7 +278,6 @@
                 <CaseReviewBadge
                   v-if="getCaseReview(caseItem).hasReview"
                   :case-name="caseItem.name"
-                  :count="getCaseReview(caseItem).count"
                   :items="getCaseReview(caseItem).items"
                 />
               </div>
@@ -353,11 +352,11 @@
     </div>
 
     <PaginationComponent
-      v-if="totalCases > 0"
+      v-if="displayTotalCases > 0"
       class="specific-case-pagination"
       :currentPage="currentPage"
       :pageSize="pageSize"
-      :totalItems="totalCases"
+      :totalItems="displayTotalCases"
       @prev-page="handlePrevPage"
       @next-page="handleNextPage"
       @go-to-page="handleGoToPage"
@@ -536,6 +535,7 @@ const {
   allDevices,
   unpinnedFilteredCases,
   totalCases,
+  displayTotalCases,
   currentPage,
   pageSize,
   handlePrevPage,
