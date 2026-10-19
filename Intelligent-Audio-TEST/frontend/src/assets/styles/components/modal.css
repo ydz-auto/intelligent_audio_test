@@ -18,7 +18,7 @@
 
 /* 模态框头部 */
 .modal-header{
-    background-color: var(--background-primary);
+    background-color: var(--background);
 }
 
 /* 模态框标题 */
@@ -34,7 +34,7 @@
 
 /* 模态框主体 */
 .modal-body{
-    background-color: var(--background-primary);
+    background-color: var(--background);
 }
 
 /* 模态框按钮 */
@@ -44,13 +44,13 @@
 
 /* 模态框按钮样式 */
 .modal-footer .btn-primary {
-    background: var(--btn-primary-bg);
+    background: var(--primary-gradient);
     color: var(--white-color);
 }
 
 .modal-footer .btn-secondary {
     background: var(--btn-secondary-bg);
-    color: var(--text-primary);
+    color: var(--foreground);
 }
 
 /* 确认对话框 */
@@ -61,7 +61,7 @@
 .confirm-modal .modal-body p {
     margin-bottom: var(--spacing-lg);
     font-size: var(--font-size-md);
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
 }
 
 /* 成功对话框 */
@@ -71,7 +71,7 @@
 
 .success-icon {
     font-size: 48px;
-    color: var(--success-color);
+    color: var(--success);
     margin-bottom: var(--spacing-md);
 }
 
@@ -93,17 +93,17 @@
 }
 
 .modal::-webkit-scrollbar-track {
-    background: var(--background-secondary);
+    background: var(--muted);
     border-radius: var(--radius-tag);
 }
 
 .modal::-webkit-scrollbar-thumb {
-    background: var(--gray-color);
+    background: var(--gray);
     border-radius: var(--radius-tag);
 }
 
 .modal::-webkit-scrollbar-thumb:hover {
-    background: var(--text-secondary);
+    background: var(--muted-foreground);
 }
 
 /* 响应式设计 */

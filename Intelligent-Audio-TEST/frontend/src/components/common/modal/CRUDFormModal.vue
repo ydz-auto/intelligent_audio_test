@@ -60,6 +60,12 @@
 </template>
 
 <script setup>
+import '../../../assets/styles/test-common.css'
+import '../../../assets/styles/components/form.css'
+import '../../../assets/styles/components/modal.css'
+import '../../../assets/styles/components/log.css'
+import '../../../assets/styles/layouts/main.css'
+
 import FormField from '../form/FormField.vue'
 import ArrayField from '../form/ArrayField.vue'
 import DeviceSelector from './DeviceSelector.vue'

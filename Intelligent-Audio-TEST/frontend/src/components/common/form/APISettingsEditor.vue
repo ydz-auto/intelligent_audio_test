@@ -57,6 +57,10 @@
 </template>
 
 <script setup>
+import '../../../assets/styles/components/form.css'
+import '../../../assets/styles/components/tag.css'
+import '../../../assets/styles/components/log.css'
+
 import { ref, reactive, watch } from 'vue'
 
 const props = defineProps({

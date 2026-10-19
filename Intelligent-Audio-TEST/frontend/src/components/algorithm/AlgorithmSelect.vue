@@ -73,6 +73,10 @@
 </template>
 
 <script setup lang="ts">
+import '../../assets/styles/test-common.css'
+import '../../assets/styles/components/table.css'
+import '../../assets/styles/components/tag.css'
+
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { algorithmPort } from '../../composables/algorithm/algorithmPort'
 import { ApiEndpointStatus, ApiEndpointStatusType } from '../../domain/enums'

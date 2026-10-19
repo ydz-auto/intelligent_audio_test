@@ -52,6 +52,13 @@
 </template>
 
 <script setup lang="ts">
+import '../../assets/styles/test-common.css'
+import '../../assets/styles/components/button.css'
+import '../../assets/styles/components/batch-shared.css'
+import '../../assets/styles/components/navigation.css'
+import '../../assets/styles/components/log.css'
+import '../../assets/styles/layouts/main.css'
+
 import { ref, computed, watch, onMounted } from 'vue'
 import DynamicForm from './DynamicForm.vue'
 import { useAlgorithmConfig } from '../../composables/algorithm/useAlgorithmConfig'

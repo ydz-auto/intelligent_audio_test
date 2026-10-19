@@ -39,6 +39,11 @@
 </template>
 
 <script setup lang="ts">
+import '../../../../../assets/styles/test-common.css'
+import '../../../../../assets/styles/components/navigation.css'
+import '../../../../../assets/styles/components/tag.css'
+import '../../../../../assets/styles/layouts/main.css'
+
 import { computed, onMounted, watch, inject } from 'vue'
 import type { RoundConfigItem, AlgorithmParamItem } from '@/domain'
 import DynamicForm from '../../../../algorithm/DynamicForm.vue'

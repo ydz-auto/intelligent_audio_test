@@ -72,8 +72,8 @@ input[type="checkbox"]:checked,
 .group-checkbox:checked,
 .task-checkbox:checked,
 .select-all-checkbox:checked {
-    background-color: var(--primary-color) !important;
-    border-color: var(--primary-color) ;
+    background-color: var(--primary) !important;
+    border-color: var(--primary) ;
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent) ;
 }
 
@@ -99,7 +99,7 @@ input[type="checkbox"]:hover,
 .group-checkbox:hover,
 .task-checkbox:hover,
 .select-all-checkbox:hover {
-    border-color: var(--primary-color) ;
+    border-color: var(--primary) ;
 }
 
 /* 全选按钮样式 */
@@ -156,7 +156,7 @@ input[type="checkbox"]:hover,
 .pagination-btn {
     background: transparent;
     border: none;
-    color: var(--text-primary);
+    color: var(--foreground);
     font-size: var(--font-size-sm);
     padding: var(--spacing-xs) var(--spacing-sm);
     cursor: pointer;
@@ -165,14 +165,14 @@ input[type="checkbox"]:hover,
 }
 
 .pagination-btn:hover:not(:disabled) {
-    color: var(--primary-color);
-    background-color: var(--primary-light);
+    color: var(--primary);
+    background-color: var(--accent);
 }
 
 .pagination-btn.active {
-    color: var(--primary-color);
+    color: var(--primary);
     font-weight: var(--font-weight-medium);
-    background-color: var(--primary-light);
+    background-color: var(--accent);
 }
 
 .pagination-btn:disabled {
@@ -201,22 +201,22 @@ input[type="checkbox"]:hover,
     flex: 1;
     justify-content: flex-end;
     font-size: var(--font-size-sm);
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
 }
 
 .page-size-select select {
     min-width: 60px;
     padding: var(--spacing-xs) var(--spacing-sm);
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--border);
     border-radius: var(--radius-control);
-    background-color: var(--background-primary);
+    background-color: var(--background);
     font-size: var(--font-size-sm);
-    color: var(--text-primary);
+    color: var(--foreground);
     cursor: pointer;
 }
 
 .page-size-select select:hover {
-    border-color: var(--primary-color);
+    border-color: var(--primary);
 }
 
 /* TestCaseListContainer 分页控件样式 */
@@ -247,8 +247,8 @@ input[type="checkbox"]:hover,
 /* 11. 表单输入公共样式 */
 .date-input,
 .form-input {
-    color: var(--text-primary);
-    background-color: var(--background-primary);
+    color: var(--foreground);
+    background-color: var(--background);
     box-sizing: border-box;
 }
 
@@ -263,13 +263,13 @@ input[type="checkbox"]:hover,
 }
 
 .search-box:hover {
-    border-color: var(--primary-color);
+    border-color: var(--primary);
     box-shadow: var(--shadow-md);
 }
 
 .search-box:focus-within {
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px var(--primary-light);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--accent);
 }
 
 /* 搜索图标公共样式 - 采用绝对定位 */
@@ -282,7 +282,7 @@ input[type="checkbox"]:hover,
 
 .search-box:hover .search-icon,
 .search-box:focus-within .search-icon {
-    color: var(--primary-color);
+    color: var(--primary);
 }
 
 /* 搜索输入框特定样式 - 确保所有情况下都无边框 */
@@ -291,7 +291,7 @@ input[type="checkbox"]:hover,
     border: none ;
     background: transparent !important;
     padding: var(--spacing-sm) var(--spacing-sm) var(--spacing-sm) 40px !important;
-    color: var(--text-primary) ;
+    color: var(--foreground) ;
 }
 
 .search-input:focus {
@@ -308,7 +308,7 @@ input[type="checkbox"]:hover,
 .card,
 .tag-card,
 .api-card {
-    background-color: var(--background-primary);
+    background-color: var(--background);
 }
 
 .card:hover,

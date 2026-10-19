@@ -37,6 +37,12 @@
 </template>
 
 <script setup lang="ts">
+import '../../../assets/styles/test-common.css'
+import '../../../assets/styles/components/common.css'
+import '../../../assets/styles/components/button.css'
+import '../../../assets/styles/components/table.css'
+import '../../../assets/styles/components/log.css'
+
 import { computed, ref, watch, nextTick, onMounted } from 'vue'
 import type { ChatMessage } from '@/domain/model/aiChat'
 import { MAX_RENDERED_HISTORY_MESSAGES } from '@/domain/constants/aiChat'

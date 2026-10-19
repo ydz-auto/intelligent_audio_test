@@ -102,6 +102,12 @@
 </template>
 
 <script setup>
+import '../../../assets/styles/test-common.css'
+import '../../../assets/styles/components/common.css'
+import '../../../assets/styles/components/form.css'
+import '../../../assets/styles/components/modal.css'
+import '../../../assets/styles/components/log.css'
+
 import { ref, computed, watch } from 'vue'
 
 const props = defineProps({

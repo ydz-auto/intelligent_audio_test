@@ -21,6 +21,8 @@
 </template>
 
 <script setup lang="ts">
+import '../../assets/styles/components/tag.css'
+
 import { computed, onMounted } from 'vue'
 import { useAlgorithmLabels } from '../../composables/algorithm/useAlgorithmLabels'
 

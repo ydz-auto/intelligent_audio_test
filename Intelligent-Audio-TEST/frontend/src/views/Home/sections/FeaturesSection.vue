@@ -28,6 +28,10 @@
 </template>
 
 <script setup lang="ts">
+import '../../../assets/styles/components/common.css'
+import '../../../assets/styles/components/card.css'
+import '../../../assets/styles/layouts/main.css'
+
 import { featureCards } from '../homeData'
 import { useLoginRequired } from '../../../composables/shared/useLoginRequired'
 

@@ -47,6 +47,12 @@
 </template>
 
 <script setup lang="ts">
+import '../../../assets/styles/components/form.css'
+import '../../../assets/styles/components/navigation.css'
+import '../../../assets/styles/components/tag.css'
+import '../../../assets/styles/components/log.css'
+import '../../../assets/styles/layouts/main.css'
+
 /**
  * 任务复核历史抽屉（19 规范 §3.4，右侧 Sheet 形态）。
  * 数据源 GET /tasks/results/{task_id}/review-history（task:read；多次复核追加不覆盖）。

@@ -134,6 +134,17 @@
 </template>
 
 <script setup lang="ts">
+import '../../../../assets/styles/test-common.css'
+import '../../../../assets/styles/components/common.css'
+import '../../../../assets/styles/components/button.css'
+import '../../../../assets/styles/components/card.css'
+import '../../../../assets/styles/components/modal.css'
+import '../../../../assets/styles/components/table.css'
+import '../../../../assets/styles/components/navigation.css'
+import '../../../../assets/styles/components/tag.css'
+import '../../../../assets/styles/components/log.css'
+import '../../../../assets/styles/layouts/main.css'
+
 import { ref, computed, watch } from 'vue'
 import type { DimensionConfig } from '@/domain'
 import type { Dimension } from '../../../../domain'

@@ -18,31 +18,12 @@
 /* 2. CSS变量定义 - 旧变量兼容别名层（迁移期专用，CSS-4 删除；语义正源在 theme.css/theme-presets.css） */
 @import './variables.css';
 
-/* 2.1 测试公共样式 - 端到端测试/API测试共用的步骤、算法选择等样式（CSS-1 拆） */
-@import './test-common.css';
-
-/* 3. 基础组件样式（公共组件共享样式，CSS-1~3 随域收敛为组件按需 import） */
-@import './components/common.css';
-@import './components/button.css';
-@import './components/batch-shared.css';
-@import './components/card.css';
-@import './components/form.css';
-@import './components/modal.css';
-@import './components/table.css';
-@import './components/navigation.css';
-@import './components/progress.css';
-@import './components/tag.css';
-@import './components/log.css';
-@import './components/dropdown-multi-select.css';
-
-/* 3.1 领域共享组件样式（CSS-2：test-case-card；CSS-3：comparison-common） */
+/* 3. 领域共享组件样式（CSS-2：test-case-card；CSS-3：comparison-common） */
 @import './components/test-case-card.css';
 @import './components/comparison-common.css';
 @import './device/device-card.css';
 @import './e2etest/dropdown.css';
-
-/* 4. 页面布局样式 - 响应式设计实现（CSS-1 拆） */
-@import './layouts/main.css';
+@import './components/dropdown-multi-select.css';
 
 /* 5. 任务页面样式（CSS-2 拆） */
 @import './tasks/charts.css';

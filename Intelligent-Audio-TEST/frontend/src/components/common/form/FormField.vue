@@ -399,6 +399,12 @@
 </template>
 
 <script setup>
+import '../../../assets/styles/test-common.css'
+import '../../../assets/styles/components/button.css'
+import '../../../assets/styles/components/form.css'
+import '../../../assets/styles/components/tag.css'
+import '../../../assets/styles/components/log.css'
+
 import AlgorithmParamsConfig from '../../algorithm/AlgorithmParamsConfig.vue'
 import RequiredInputsEditor from './RequiredInputsEditor.vue'
 import OutputFieldsEditor from './OutputFieldsEditor.vue'

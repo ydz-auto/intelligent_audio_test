@@ -34,6 +34,8 @@
 </template>
 
 <script setup lang="ts">
+import '../../assets/styles/components/button.css'
+
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../../store/authStore'

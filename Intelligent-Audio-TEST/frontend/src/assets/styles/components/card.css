@@ -3,7 +3,7 @@
 /* 基础卡片样式 */
 .card {
     position: relative;
-    background-color: var(--background-primary);
+    background-color: var(--background);
 }
 
 /* 卡片悬停效果 */
@@ -14,22 +14,22 @@
 .card-header{
     font-size: var(--font-size-xl);
     font-weight: var(--font-weight-semibold);
-    color: var(--text-primary);
+    color: var(--foreground);
 }
 
 /* 卡片标题 */
 .card-title{
     font-size: var(--font-size-xl);
     font-weight: var(--font-weight-semibold);
-    color: var(--text-primary);
+    color: var(--foreground);
     margin: 0;
 }
 
 /* 卡片内容 */
 .card-body{
-    color: var(--text-primary);
+    color: var(--foreground);
     line-height: 1.6;
-    background-color: var(--background-primary);
+    background-color: var(--background);
 }
 
 /* 卡片底部 */
@@ -39,7 +39,7 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    background-color: var(--background-primary);
+    background-color: var(--background);
 }
 
 /* 卡片底部带两侧内容的样式 */
@@ -56,7 +56,7 @@
 .task-card:has(input[type="checkbox"].test-task-checkbox:checked),
 .case-card:has(input[type="checkbox"].test-case-checkbox:checked) {
     background-color: color-mix(in srgb, var(--primary) 10%, transparent) !important;
-    border-color: var(--primary-color) ;
+    border-color: var(--primary) ;
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent) ;
     transition: all var(--transition-normal);
 }
@@ -124,7 +124,7 @@
     margin: 0;
     font-size: var(--font-size-xl);
     font-weight: var(--font-weight-semibold);
-    color: var(--text-primary);
+    color: var(--foreground);
 }
 
 /* 统计卡片样式 */
@@ -137,8 +137,8 @@
 
 
 .stat-icon {
-    background-color: var(--primary-light);
-    color: var(--primary-color);
+    background-color: var(--accent);
+    color: var(--primary);
 }
 
 .stat-label {
@@ -153,15 +153,15 @@
 
 
 .stat-change.positive {
-    color: var(--success-color);
+    color: var(--success);
 }
 
 .stat-change.negative {
-    color: var(--danger-color);
+    color: var(--destructive);
 }
 
 .stat-change.neutral {
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
 }
 
 /* 卡片网格布局 */

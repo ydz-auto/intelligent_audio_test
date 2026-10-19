@@ -80,6 +80,14 @@
 </template>
 
 <script setup lang="ts">
+import '../../assets/styles/test-common.css'
+import '../../assets/styles/components/common.css'
+import '../../assets/styles/components/button.css'
+import '../../assets/styles/components/card.css'
+import '../../assets/styles/components/table.css'
+import '../../assets/styles/components/tag.css'
+import '../../assets/styles/components/log.css'
+
 /**
  * MergedTaskPanel —— 合并任务面板（INT-298：迁入 Tasks 页「合并任务」页签，对齐 V9.7.10）。
  *

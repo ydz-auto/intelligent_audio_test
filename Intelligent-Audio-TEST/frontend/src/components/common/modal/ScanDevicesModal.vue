@@ -101,6 +101,15 @@
 </template>
 
 <script setup>
+import '../../../assets/styles/test-common.css'
+import '../../../assets/styles/components/common.css'
+import '../../../assets/styles/components/button.css'
+import '../../../assets/styles/components/modal.css'
+import '../../../assets/styles/components/table.css'
+import '../../../assets/styles/components/progress.css'
+import '../../../assets/styles/components/tag.css'
+import '../../../assets/styles/components/log.css'
+
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { devicesPort } from '../../../composables/device/devicesPort'
 import { playbackPort } from '../../../composables/device/playbackPort'
