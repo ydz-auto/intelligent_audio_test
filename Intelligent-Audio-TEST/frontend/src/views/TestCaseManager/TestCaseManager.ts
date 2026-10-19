@@ -201,8 +201,7 @@ export function useTestCaseManager() {
     }
   };
 
-  watch(viewMode, async (newMode) => {
-    console.log('[TestCaseManager] 视图切换:', newMode);
+  watch(viewMode, async () => {
     await refreshCurrentView();
   });
 
@@ -255,7 +254,6 @@ export function useTestCaseManager() {
 
   const handleDeleteTestCase = async (testCase: TestCase) => {
     try {
-      console.log('[TestCaseManager] 调用handleDeleteTestCase:', testCase.id, testCase.name);
       const confirmed = await confirmDeleteTestCase(testCase.name);
       if (confirmed) {
         await deleteTestCase(testCase.id);
@@ -285,13 +283,11 @@ export function useTestCaseManager() {
   const handleSaveModal = async (data: ModalSaveData) => {
     const result = await handleModalSave(data);
     if (result?.needRefresh) {
-      console.log('刷新测试用例数据...');
       await refreshCurrentView();
     }
   };
 
   onMounted(async () => {
-    console.log('[TestCaseManager] 初始加载测试用例');
     await Promise.all([fetchTestCases(), favoritesModule.loadFavorites()]);
   });
 

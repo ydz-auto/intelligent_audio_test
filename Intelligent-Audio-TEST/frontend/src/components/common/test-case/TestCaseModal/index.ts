@@ -149,11 +149,11 @@ export function useTestCaseModal(props: any, emit: any) {
   }
 
   function handleImportUpdate(data: { file: File | null }) {
-    console.log('Import update:', data);
+    // no-op：导入文件由 ImportForm 内部处理
   }
 
   function handleExportUpdate(data: ExportFormData & { ids: (string | number)[] }) {
-    console.log('Export update:', data);
+    // no-op：导出参数由 ExportForm 内部处理
   }
 
   function openAudioSelectModal(audioType: 'dry' | 'noise', index?: number, callback?: (audios: { id: string; name?: string }[]) => void) {
@@ -200,13 +200,9 @@ export function useTestCaseModal(props: any, emit: any) {
   }
 
   function openBatchSplModal() {
-    console.log('[openBatchSplModal] called');
     const audios = getCurrentRoundAudios();
-    console.log('[openBatchSplModal] audios count:', audios.length);
     audioConfig.batchSplValue.value = audios.length > 0 ? (audios[0].spl || 65) : 65;
-    console.log('[openBatchSplModal] setting showBatchSplModal to true');
     audioConfig.showBatchSplModal.value = true;
-    console.log('[openBatchSplModal] showBatchSplModal.value:', audioConfig.showBatchSplModal.value);
   }
 
   function openCrossDeviceModal() {
@@ -311,15 +307,9 @@ export function useTestCaseModal(props: any, emit: any) {
   }
 
   function handleBatchSplConfirm(spl: number) {
-    console.log('[handleBatchSplConfirm] called with spl:', spl);
-    console.log('[handleBatchSplConfirm] caseFormRef:', caseFormRef.value);
-    console.log('[handleBatchSplConfirm] applyBatchSpl exists:', !!caseFormRef.value?.applyBatchSpl);
-
     if (caseFormRef.value?.applyBatchSpl) {
-      console.log('[handleBatchSplConfirm] calling applyBatchSpl');
       caseFormRef.value.applyBatchSpl(spl);
     } else if (caseFormData.value.config?.audios) {
-      console.log('[handleBatchSplConfirm] fallback to legacy mode');
       // 旧版 flat 格式回退：批量设置声压级（e2e 判断由用例级 testType 决定）
       caseFormData.value.config.audios.forEach((audio: any) => {
         audio.spl = spl;

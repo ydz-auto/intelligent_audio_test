@@ -1,32 +1,32 @@
 <template>
   <div class="category-actions-container">
-    <button 
-      class="btn btn-secondary" 
-      @click="() => { console.log('[TestCaseGroupActions] Button click: 编辑分组'); $emit('edit'); }"
+    <button
+      class="btn btn-secondary"
+      @click="$emit('edit')"
       :disabled="disabledActions?.includes('edit')"
     >
       <i class="fas fa-edit"></i> 编辑
     </button>
-    
-    <button 
-      class="btn btn-danger" 
-      @click="() => { console.log('[TestCaseGroupActions] Button click: 删除分组'); $emit('delete'); }"
+
+    <button
+      class="btn btn-danger"
+      @click="$emit('delete')"
       :disabled="disabledActions?.includes('delete')"
     >
       <i class="fas fa-trash"></i> 删除
     </button>
-    
-    <button 
-      class="btn btn-primary" 
-      @click="() => { console.log('[TestCaseGroupActions] Button click: 新增用例到分组'); $emit('addCase'); }"
+
+    <button
+      class="btn btn-primary"
+      @click="$emit('addCase')"
       :disabled="disabledActions?.includes('addCase')"
     >
       <i class="fas fa-plus"></i> 新增用例
     </button>
 
-    <button 
-      class="btn btn-info" 
-      @click="() => { console.log('[TestCaseGroupActions] Button click: 复制分组'); $emit('copyGroup'); }"
+    <button
+      class="btn btn-info"
+      @click="$emit('copyGroup')"
       :disabled="disabledActions?.includes('copyGroup')"
     >
       <i class="fas fa-copy"></i> 复制

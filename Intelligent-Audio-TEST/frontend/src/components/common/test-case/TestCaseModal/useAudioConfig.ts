@@ -64,12 +64,6 @@ export function useAudioConfig() {
         : ((allAudiosRes as any)?.data ?? []);
       const audios = rawAudios as AudioInfo[];
 
-      console.log('[useAudioConfig] loaded audios count:', audios.length);
-      if (audios.length > 0) {
-        console.log('[useAudioConfig] first audio sample:', audios[0]);
-        console.log('[useAudioConfig] first audio tags:', (audios[0] as any).tags, (audios[0] as any).tag);
-      }
-
       let dryAudioList: AudioInfo[] = audios.filter(a => a.audioType === 'dry');
       let noiseAudioList: AudioInfo[] = audios.filter(a => a.audioType === 'noise');
 
@@ -482,15 +476,11 @@ export function useAudioConfig() {
     audios.forEach(config => {
       if (config.audioId) {
         const tagsStr = getAudioTags(config.audioId);
-        console.log('[useAudioConfig] audioId:', config.audioId, 'tagsStr:', tagsStr);
         const tags = getNormalizedTags(tagsStr);
-        console.log('[useAudioConfig] normalized tags:', tags);
         tags.forEach(tag => tagSet.add(tag));
       }
     });
-    const result = Array.from(tagSet);
-    console.log('[useAudioConfig] getUniqueTagsFromConfigs result:', result);
-    return result;
+    return Array.from(tagSet);
   }
 
   function toggleTagSelector() {

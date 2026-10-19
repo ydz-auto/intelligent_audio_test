@@ -324,7 +324,6 @@ export function useCaseForm(props: any, emit: any) {
   }
 
   function handleAlgorithmTypeChange(newType: string) {
-    console.log("[CaseForm] algorithmType changed to:", newType);
     localFormData.value.algorithmType = newType;
     emitFormData();
   }
@@ -404,30 +403,20 @@ export function useCaseForm(props: any, emit: any) {
   }
 
   function applyBatchSpl(spl: number) {
-    console.log('[applyBatchSpl] called with spl:', spl);
-    console.log('[applyBatchSpl] has config:', !!localFormData.value.config);
-    console.log('[applyBatchSpl] has rounds:', !!localFormData.value.config?.rounds);
     const audios = getCurrentRoundAudiosLocal();
-    console.log('[applyBatchSpl] current round audios count:', audios.length);
-    console.log('[applyBatchSpl] current round audios:', JSON.stringify(audios.map(a => ({id: a.audioId, spl: a.spl}))));
     if (audios.length === 0) {
-      console.warn('[applyBatchSpl] No audios found, cannot apply batch SPL!');
       return;
     }
     const updated = audios.map((a: any) => ({ ...a, spl }));
-    console.log('[applyBatchSpl] updated audios spl:', updated.map(a => a.spl));
     if (localFormData.value.config?.rounds) {
       const roundIdx = roundConfigRef.value?.activeRoundIndex ?? 0;
-      console.log('[applyBatchSpl] updating rounds at index:', roundIdx);
       localFormData.value.config.rounds = localFormData.value.config.rounds.map((r: any, i: number) =>
         i === roundIdx ? { ...r, audios: updated } : r
       );
-      console.log('[applyBatchSpl] updated round audios spl:', localFormData.value.config.rounds[roundIdx].audios.map((a: any) => a.spl));
     } else if (localFormData.value.config?.audios) {
       localFormData.value.config.audios = updated;
     }
     emitFormData();
-    console.log('[applyBatchSpl] emitFormData called');
   }
 
   function applySingleDevice(audioIndex: number, deviceId: string) {

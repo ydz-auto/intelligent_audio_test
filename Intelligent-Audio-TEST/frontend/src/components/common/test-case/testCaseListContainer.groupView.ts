@@ -34,8 +34,6 @@ export function createGroupViewData(props: any, state: ContainerState, deps: Gro
 
   // ===== 计算属性：分组视图 =====
   const availableGroups = computed(() => {
-    console.log('[availableGroups] props.testCaseGroups:', props.testCaseGroups);
-    console.log('[availableGroups] props.testCaseGroups keys:', Object.keys(props.testCaseGroups || {}));
     return Object.keys(props.testCaseGroups || {});
   });
 

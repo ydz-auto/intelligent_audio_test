@@ -1,5 +1,5 @@
 <template>
-  <div class="case-card" :class="{ 'card-selected': isSelected }" @click="() => { if (testCase) { console.log('[TestCaseManager] 点击测试用例卡片: 选择/取消选择测试用例 ' + testCase.name + ' (ID: ' + testCase.id + '), 时间:', new Date().toISOString()); toggleSelection(); } }">
+  <div class="case-card" :class="{ 'card-selected': isSelected }" @click="() => { if (testCase) { toggleSelection(); } }">
     <!-- 只有当testCase为有效对象时才渲染内容 -->
     <template v-if="testCase">
       <div class="case-header">
@@ -9,7 +9,7 @@
             type="checkbox" 
             id="checkbox-{{ testCase.id }}" 
             class="test-case-checkbox"
-            @change="() => { console.log('[TestCaseManager] 点击测试用例复选框: 选择/取消选择测试用例 ' + testCase.name + ' (ID: ' + testCase.id + '), 时间:', new Date().toISOString()); toggleSelection(); }"
+            @change="() => toggleSelection()"
             @click.stop
             :checked="isSelected"
             tabindex="0"
@@ -101,7 +101,7 @@
               v-for="action in cardActions"
               :key="action.id"
               class="btn-icon-only"
-              @click.stop="() => { console.log('[TestCaseManager] 点击测试用例操作按钮: ' + (action.title || action.label) + ' - 测试用例 ' + testCase.name + ' (ID: ' + testCase.id + '), 时间:', new Date().toISOString()); handleAction(action); }"
+              @click.stop="() => handleAction(action)"
               :disabled="action.disabled"
               :title="action.title || action.label"
             >
