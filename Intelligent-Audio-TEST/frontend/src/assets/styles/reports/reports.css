@@ -488,3 +488,29 @@ select.filter-select{
     align-items: center;
     margin-right: var(--spacing-md);
 }
+
+/* ── INT-768 CSS-1 拆搬：原 api-test 共享样式（值原样迁入，旧别名已换语义令牌；CSS-4 再收敛） ── */
+
+.distribution-stats .stat-item{
+display: flex;
+    align-items: center;
+    gap: 10px;
+    background-color: var(--color-white);
+    padding: 12px 20px;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    flex: 1;
+    min-width: 200px;
+}
+
+.chart-container{
+background-color: var(--color-white);
+    border-radius: var(--radius-md);
+    padding: 20px;
+    height: 400px;
+    min-height: 350px;
+}
+
+.chart-container.full-width{
+grid-column: 1 / -1;
+}

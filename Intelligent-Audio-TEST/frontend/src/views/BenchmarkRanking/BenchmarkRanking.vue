@@ -3,7 +3,7 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <div class="header-left">
-        <h2 class="page-title" style="color: var(--primary-color);">
+        <h2 class="page-title" style="color: var(--primary);">
           <i class="fas fa-chart-simple"></i>
           排行榜
         </h2>
@@ -323,3 +323,6 @@ onMounted(() => {
   text-align: right;
 }
 </style>
+
+<!-- INT-768 CSS-1 拆搬：标签统计域样式由排行榜页按需加载 -->
+<style src="../../assets/styles/api-test/tag-stats.css"></style>

@@ -163,7 +163,7 @@ onMounted(async () => {
 .form-group label {
   display: block;
   margin-bottom: 5px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 14px;
 }
 .form-group input {
@@ -207,7 +207,7 @@ onMounted(async () => {
   text-align: center;
   margin-top: 16px;
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 .login-link {
   color: var(--primary);
