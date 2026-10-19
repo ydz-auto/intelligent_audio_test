@@ -28,7 +28,7 @@ export function toAuthLoginResult(raw: AuthLoginResultDto): AuthLoginResult {
   }
 }
 
-/** /auth/me 响应 → Domain CurrentUserInfo（/auth/me 不含角色名，roleName 缺省由调用方兜底） */
+/** /auth/me 响应 → Domain CurrentUserInfo（/auth/me 不含角色名，roleName 缺省由调用方兜底；email INT-792 缺省空串） */
 export function toCurrentUserInfo(raw: AuthMeResultDto): CurrentUserInfo {
   return {
     userId: raw.user_id ?? null,
@@ -36,6 +36,7 @@ export function toCurrentUserInfo(raw: AuthMeResultDto): CurrentUserInfo {
     roleId: raw.role_id ?? null,
     roleName: undefined,
     permissions: raw.permissions ?? [],
+    email: raw.email ?? '',
   }
 }
 

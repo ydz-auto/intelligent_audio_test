@@ -108,7 +108,7 @@
               <button
                 type="button"
                 class="btn btn-outline btn-sm"
-                title="自我资料更新 F3 待后端立项（当前为壳）"
+                title="编辑个人资料"
                 @click="openEditProfile"
               >
                 <i class="fas fa-pen"></i> 编辑资料
@@ -146,9 +146,9 @@
               <div class="info-row">
                 <div class="info-label-group">
                   <span class="info-label">邮箱</span>
-                  <span class="info-note">待开放</span>
+                  <span class="info-note">可用于登录与找回密码</span>
                 </div>
-                <span class="info-value muted" title="邮箱展示功能开发中">—</span>
+                <span class="info-value">{{ email || '—' }}</span>
               </div>
               <div class="info-row">
                 <div class="info-label-group">
@@ -184,7 +184,7 @@
 
             <div class="card-footnote">
               <i class="fas fa-info-circle"></i>
-              <span>当前页面为只读展示。如需修改用户名、邮箱或重置密码，请联系平台管理员。</span>
+              <span>用户名创建后不可修改，如需变更请联系平台管理员；邮箱与登录密码可在本页更新。</span>
             </div>
           </div>
 
@@ -203,13 +203,12 @@
             <div class="security-section">
               <h4 class="section-title">登录与认证</h4>
 
-              <!-- 修改密码行（F2 待 FEAT 壳；入口保留、提交提示待后端立项） -->
+              <!-- 修改密码行（POST /auth/change-password，INT-794；成功后清登录态重新登录） -->
               <div class="security-row">
                 <span class="row-icon neutral"><i class="fas fa-key"></i></span>
                 <div class="row-copy">
                   <span class="row-title">修改密码</span>
                   <span class="row-desc">更新登录密码，保护账号安全</span>
-                  <span class="pending-badge">待后端立项</span>
                 </div>
                 <button
                   type="button"
@@ -344,7 +343,7 @@
 <script setup lang="ts">
 /**
  * 个人中心页（13_个人中心 INT-358 / 总表 §3 J01/J02 / 卡 INT-744）：
- * 身份卡 + 个人数据快捷区 + 个人信息卡（F3 编辑壳）+ 账号安全卡（F2 改密壳/会话壳/OAuth 绑定）。
+ * 身份卡 + 个人数据快捷区 + 个人信息卡（F3 编辑资料）+ 账号安全卡（F2 改密/OAuth 绑定）。
  * 原 Vue 风格（tokens.css 语义令牌 + components/common 模态窗系统 + Font Awesome），
  * 不引入 React/newAPI 形态。深色模式经 tokens.css .dark 自动适配。
  */
@@ -358,6 +357,7 @@ const {
   username,
   roleName,
   permissions,
+  email,
   avatarStyle,
   avatarFallback,
   favorites,

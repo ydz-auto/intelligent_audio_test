@@ -64,9 +64,9 @@ export const MODAL_TYPES = {
   RESULT_REVIEW: 'resultReview',
   /** INT-745：公开页「需要登录」引导（受限项 Dialog，5 秒倒计时跳登录） */
   LOGIN_REQUIRED: 'loginRequired',
-  /** INT-744：个人中心·修改密码对话框壳（自助改密 F2 待 FEAT，端点未落前提交提示待后端立项） */
+  /** INT-744：个人中心·修改密码对话框（POST /auth/change-password，INT-794） */
   CHANGE_PASSWORD: 'changePassword',
-  /** INT-744：个人中心·编辑资料对话框壳（自我资料更新 F3 待 FEAT，端点未落前提交提示待后端立项） */
+  /** INT-744：个人中心·编辑资料对话框（PUT /auth/self，INT-792） */
   EDIT_PROFILE: 'editProfile'
 } as const
 

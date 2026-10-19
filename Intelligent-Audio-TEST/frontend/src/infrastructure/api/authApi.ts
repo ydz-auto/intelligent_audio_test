@@ -31,8 +31,8 @@ import {
   toOAuthBinding, toOAuthBindingList, toOAuthDiscoveryResult,
 } from '../adapters/authAdapter';
 
-/** 登录/注册共用的 RSA 公钥获取（enabled=false 抛 DisabledError 走明文路径） */
-async function fetchEncryptionKey(options: RequestOptions = {}): Promise<{ kid: string; publicKey: string }> {
+/** 登录/注册/改密共用的 RSA 公钥获取（enabled=false 抛 DisabledError 走明文路径；passwordApi 复用） */
+export async function fetchEncryptionKey(options: RequestOptions = {}): Promise<{ kid: string; publicKey: string }> {
   const cached = getCachedEncryptionKey();
   if (cached) return cached;
   const dto = await request<PasswordEncryptionKeyDto>(

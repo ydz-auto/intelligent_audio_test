@@ -19,12 +19,13 @@ export interface AuthLoginResultDto {
   user: AuthUserDto
 }
 
-/** 当前用户响应（GET /auth/me；AuthService.get_current_user_info） */
+/** 当前用户响应（GET /auth/me；AuthService.get_current_user_info，INT-792 扩展 email） */
 export interface AuthMeResultDto {
   user_id: number | null
   username: string
   role_id: number | null
   permissions: string[]
+  email?: string
 }
 
 // ===== 登录体系改造（INT-51）=====

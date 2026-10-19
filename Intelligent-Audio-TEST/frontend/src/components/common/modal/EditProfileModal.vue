@@ -17,7 +17,7 @@
         placeholder="请输入邮箱"
         autocomplete="email"
       />
-      <p class="field-hint">邮箱展示功能开发中（待后端立项），保存后由平台管理员确认生效</p>
+      <p class="field-hint">邮箱保存后即时生效，可用于登录与找回密码</p>
       <p v-if="errors.email" class="error-text">{{ errors.email }}</p>
     </div>
 
@@ -34,16 +34,17 @@
 
 <script setup lang="ts">
 /**
- * 编辑资料对话框壳（13_个人中心 §3.4 / 总表 §3.3 F3，自我资料更新）：
- * 用户名只读（平台口径不可改）+ 邮箱编辑。
- * ⚠️ 自我资料更新端点 F3 待 FEAT——本壳不造数据兜底、不出现假成功：
- * 提交走 profileApi 桩，调用即抛「待后端立项」错误提示。
+ * 编辑资料对话框（13_个人中心 §3.4 / 总表 §3.3 F3，自我资料更新）：
+ * 用户名只读（平台口径不可改）+ 邮箱编辑（预填当前邮箱，INT-792 /auth/me 回传）。
+ * 提交走 profileApi → PUT /auth/self（仅 email 白名单；空串=不修改，故前端必填校验）。
+ * 成功 emit confirm（调用方本地刷新邮箱展示）。
  */
 import { reactive, ref } from 'vue'
 import { profilePort } from '@/composables/profile/profilePort'
 
 const props = defineProps<{
   username?: string
+  email?: string
 }>()
 
 const emit = defineEmits<{
@@ -52,7 +53,7 @@ const emit = defineEmits<{
 }>()
 
 const form = reactive({
-  email: '',
+  email: props.email ?? '',
 })
 const errors = reactive<Record<string, string>>({})
 const errorMessage = ref('')
@@ -60,7 +61,10 @@ const saving = ref(false)
 
 function validate(): boolean {
   const nextErrors: Record<string, string> = {}
-  if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+  const email = form.email.trim()
+  if (!email) {
+    nextErrors.email = '请输入邮箱'
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     nextErrors.email = '邮箱格式不正确'
   }
   Object.assign(errors, nextErrors)
@@ -72,11 +76,11 @@ async function handleSubmit() {
   if (!validate() || saving.value) return
   saving.value = true
   try {
-    await profilePort.updateMyProfile({ email: form.email.trim() || undefined })
-    // 桩未落地前不会走到这里（updateMyProfile 抛「待后端立项」）
+    await profilePort.updateMyProfile({ email: form.email.trim() })
+    // 真实请求成功才走到这里（后端 400 错误态在框内展示）
     emit('confirm', { email: form.email.trim() })
   } catch (e: any) {
-    errorMessage.value = e?.message || '保存失败，请重试'
+    errorMessage.value = e?.detail || e?.message || '保存失败，请重试'
   } finally {
     saving.value = false
   }

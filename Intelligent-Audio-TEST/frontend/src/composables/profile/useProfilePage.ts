@@ -1,7 +1,7 @@
 /**
  * 个人中心页用例（application 层，13_个人中心 §3/§4/§7）：
  * 身份（auth store 会话缓存）+ 个人数据快捷区（我的收藏计数）+ OAuth 绑定 +
- * 权限概览分组 + 区块可见性门槛；改密/资料编辑为待 FEAT 壳（入口保留、提交即提示）。
+ * 权限概览分组 + 区块可见性门槛；改密（成功清登录态重新登录）/ 资料编辑（成功本地刷新邮箱）。
  */
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -65,6 +65,18 @@ export function useProfilePage() {
   const permissions = computed(() => authStore.permissions)
   const avatarStyle = computed(() => getUserAvatarStyle(username.value))
   const avatarFallback = computed(() => getUserAvatarFallback(username.value))
+
+  // ===== 邮箱（INT-792：/auth/me 实时回传；登录响应不含 email，页内拉取兜底）=====
+  const email = ref(authStore.user?.email ?? '')
+
+  async function loadCurrentUserEmail() {
+    try {
+      const me = await profilePort.getMe()
+      email.value = me.email ?? ''
+    } catch (e: any) {
+      console.warn('[useProfilePage] 拉取当前用户邮箱失败', e)
+    }
+  }
 
   // ===== 个人数据快捷区 =====
   const favorites = ref<FavoriteCounts>({ task: 0, report: 0, testcase: 0 })
@@ -154,13 +166,35 @@ export function useProfilePage() {
     }
   }
 
-  // ===== 账号安全壳（F2 改密 / F3 资料编辑，待 FEAT）=====
-  function openChangePassword() {
-    return modalControl.open(MODAL_TYPES.CHANGE_PASSWORD, { username: username.value })
+  // ===== 账号安全（F2 改密 / F3 资料编辑，POST /auth/change-password / PUT /auth/self）=====
+  /**
+   * 修改密码：模态窗内走真实请求，成功才 emit confirm。
+   * 后端 notice（INT-794）提示 JWT 无黑名单、旧令牌最长 24h 仍有效——
+   * 成功后清本地登录态跳登录页，用新密码重新登录。
+   */
+  async function openChangePassword() {
+    try {
+      await modalControl.open(MODAL_TYPES.CHANGE_PASSWORD, { username: username.value })
+      notification.success('密码修改成功，请重新登录')
+      await authStore.logout()
+      router.push('/login')
+    } catch {
+      // 用户取消
+    }
   }
 
-  function openEditProfile() {
-    return modalControl.open(MODAL_TYPES.EDIT_PROFILE, { username: username.value })
+  /** 编辑资料：模态窗走真实请求，成功回传新邮箱；本地刷新展示 */
+  async function openEditProfile() {
+    try {
+      const data = await modalControl.open<Record<string, unknown>>(MODAL_TYPES.EDIT_PROFILE, {
+        username: username.value,
+        email: email.value,
+      })
+      email.value = typeof data?.email === 'string' ? data.email.trim() : ''
+      notification.success('资料更新成功')
+    } catch {
+      // 用户取消
+    }
   }
 
   // ===== 权限概览 =====
@@ -216,7 +250,7 @@ export function useProfilePage() {
 
   onMounted(async () => {
     await handleBindCallback()
-    await Promise.all([loadOAuthBindings(), loadFavorites()])
+    await Promise.all([loadOAuthBindings(), loadFavorites(), loadCurrentUserEmail()])
   })
 
   return {
@@ -224,6 +258,7 @@ export function useProfilePage() {
     username,
     roleName,
     permissions,
+    email,
     avatarStyle,
     avatarFallback,
     // 快捷区
@@ -241,7 +276,7 @@ export function useProfilePage() {
     bindingsLocked,
     startBind,
     unbind,
-    // 壳
+    // 账号安全
     openChangePassword,
     openEditProfile,
     // 权限概览

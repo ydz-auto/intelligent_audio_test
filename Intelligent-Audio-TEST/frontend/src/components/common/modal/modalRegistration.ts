@@ -46,7 +46,7 @@ import ReexecuteOptionsModal from './ReexecuteOptionsModal.vue'
 import ResultReviewModal from './ResultReviewModal.vue'
 // INT-745：公开页「需要登录」引导（受限项 Dialog，5 秒倒计时跳登录）
 import LoginRequiredModal from './LoginRequiredModal.vue'
-// INT-744：个人中心·修改密码 / 编辑资料对话框壳（自助改密 F2 / 自我资料更新 F3 待 FEAT）
+// INT-744：个人中心·修改密码 / 编辑资料对话框（POST /auth/change-password / PUT /auth/self）
 import ChangePasswordModal from './ChangePasswordModal.vue'
 import EditProfileModal from './EditProfileModal.vue'
 
@@ -343,7 +343,7 @@ export function registerGlobalModals() {
     }
   });
 
-  // INT-744：个人中心·修改密码 / 编辑资料对话框壳（端点 F2/F3 待 FEAT，未落前提交提示待后端立项）
+  // INT-744：个人中心·修改密码 / 编辑资料对话框（真实请求，成功才 confirm）
   manager.registerModal(MODAL_TYPES.CHANGE_PASSWORD, {
     component: ChangePasswordModal,
     defaultConfig: {

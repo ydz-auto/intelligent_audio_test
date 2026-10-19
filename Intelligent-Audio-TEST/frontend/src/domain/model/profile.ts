@@ -15,14 +15,14 @@ export interface FavoriteCounts {
   testcase: number
 }
 
-/** 修改密码提交载荷（自助改密 F2 待 FEAT；端点语义以后端定稿为准，不杜撰） */
+/** 修改密码提交载荷（POST /auth/change-password，INT-794；新密码长度下限 AUTH_PASSWORD_MIN_LENGTH=6） */
 export interface ChangePasswordPayload {
   currentPassword: string
   newPassword: string
 }
 
-/** 自我资料更新提交载荷（自我资料更新 F3 待 FEAT；端点语义以后端定稿为准，不杜撰） */
+/** 自我资料更新提交载荷（PUT /auth/self，INT-792；仅 email 白名单字段，空串=不修改） */
 export interface UpdateProfilePayload {
-  /** 邮箱展示与更新均待后端立项（/auth/me 不含 email）；未开放前不预填 */
+  /** 邮箱（/auth/me INT-792 起回传；保存后即时生效） */
   email?: string
 }

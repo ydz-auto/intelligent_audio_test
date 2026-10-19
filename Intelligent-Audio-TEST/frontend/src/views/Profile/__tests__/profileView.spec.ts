@@ -15,8 +15,10 @@ const ports = vi.hoisted(() => ({
   listFavoriteIds: vi.fn(),
   changeMyPassword: vi.fn(),
   updateMyProfile: vi.fn(),
+  getMe: vi.fn(),
 }))
 const modalOpen = vi.hoisted(() => vi.fn())
+const authLogout = vi.hoisted(() => vi.fn())
 const authState = vi.hoisted(() => ({
   permissions: ['*'] as string[],
   hasPermission: (perm: string) =>
@@ -41,6 +43,7 @@ vi.mock('@/store/authStore', () => ({
     permissions: authState.permissions,
     hasPermission: authState.hasPermission,
     hasAnyPermission: authState.hasAnyPermission,
+    logout: authLogout,
   }),
 }))
 vi.mock('@/composables/profile/profilePort', () => ({ profilePort: ports }))
@@ -70,6 +73,9 @@ beforeEach(() => {
   ports.unbindOAuthProvider.mockResolvedValue({})
   ports.completeOAuthBinding.mockResolvedValue({})
   ports.listFavoriteIds.mockResolvedValue({ task: ['t1'], report: [], testcase: ['c1'] })
+  ports.getMe.mockResolvedValue({
+    userId: 1, username: 'alice', roleId: 1, roleName: undefined, permissions: [], email: 'alice@example.com',
+  })
 })
 
 async function mountPage() {
@@ -162,19 +168,36 @@ describe('ProfileView 个人中心（INT-744）', () => {
     expect(w2.text()).not.toContain('我的报告')
   })
 
-  it('账号安全壳：修改密码行 + 登录会话行保留（待后端立项）', async () => {
+  it('账号安全：修改密码行 + 登录会话行保留（登录会话仍待后端立项）', async () => {
     const w = await mountPage()
     expect(w.text()).toContain('修改密码')
-    expect(w.text()).toContain('待后端立项')
     expect(w.text()).toContain('登录会话')
+    // 会话端点未立项，会话行仍带「待后端立项」徽标；改密行已接真实端点不带
+    expect(w.text()).toContain('待后端立项')
   })
 
-  it('编辑资料钮打开 EDIT_PROFILE 壳模态；修改密码钮打开 CHANGE_PASSWORD 壳模态', async () => {
+  it('邮箱：/auth/me 回传 email（INT-792）→ 个人信息卡展示', async () => {
+    const w = await mountPage()
+    expect(w.text()).toContain('alice@example.com')
+  })
+
+  it('编辑资料钮打开 EDIT_PROFILE 模态（预填当前邮箱）；修改密码钮打开 CHANGE_PASSWORD 模态', async () => {
     const w = await mountPage()
     await w.findAll('button').find((b) => b.text().includes('编辑资料'))!.trigger('click')
-    expect(modalOpen).toHaveBeenCalledWith(MODAL_TYPES.EDIT_PROFILE, expect.objectContaining({ username: 'alice' }))
+    expect(modalOpen).toHaveBeenCalledWith(MODAL_TYPES.EDIT_PROFILE, expect.objectContaining({
+      username: 'alice',
+      email: 'alice@example.com',
+    }))
 
     await w.findAll('button').find((b) => b.text().includes('修改密码'))!.trigger('click')
     expect(modalOpen).toHaveBeenCalledWith(MODAL_TYPES.CHANGE_PASSWORD, expect.objectContaining({ username: 'alice' }))
+  })
+
+  it('修改密码成功（confirm 回调）→ 提示重新登录并清登录态跳登录页', async () => {
+    modalOpen.mockResolvedValue({ currentPassword: 'x', newPassword: 'y' })
+    const w = await mountPage()
+    await w.findAll('button').find((b) => b.text().includes('修改密码'))!.trigger('click')
+    await flushPromises()
+    expect(authLogout).toHaveBeenCalled()
   })
 })

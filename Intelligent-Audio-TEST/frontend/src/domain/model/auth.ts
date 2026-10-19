@@ -14,6 +14,8 @@ export interface AuthUser {
   roleId: number | null
   roleName: string
   permissions: string[]
+  /** INT-792：/auth/me 实时回传 email；登录响应不含，由 getMe 合并兜底 */
+  email?: string
 }
 
 /** 登录成功结果（对应后端 /auth/login 响应） */
@@ -23,13 +25,14 @@ export interface AuthLoginResult {
   user: AuthUser
 }
 
-/** 当前登录用户信息（对应后端 /auth/me 响应；roleName 后端可能缺省） */
+/** 当前登录用户信息（对应后端 /auth/me 响应；roleName 后端可能缺省，email INT-792 起回传） */
 export interface CurrentUserInfo {
   userId: number | null
   username: string
   roleId: number | null
   roleName?: string
   permissions: string[]
+  email?: string
 }
 
 // ===== 登录体系改造（INT-51）=====

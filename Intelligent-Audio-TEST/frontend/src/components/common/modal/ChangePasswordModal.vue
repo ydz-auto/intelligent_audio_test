@@ -51,10 +51,11 @@
 
 <script setup lang="ts">
 /**
- * 修改密码对话框壳（13_个人中心 §3.5.1 / §6，对位 newAPI change-password-dialog.tsx）：
+ * 修改密码对话框（13_个人中心 §3.5.1 / §6，对位 newAPI change-password-dialog.tsx）：
  * 三字段（当前/新/确认），新密码下限 6 位对齐平台 AUTH_PASSWORD_MIN_LENGTH（默认 6）。
- * ⚠️ 自助改密端点 F2 待 FEAT（总表 §3.3 F2）——本壳不造数据兜底、不出现假成功：
- * 提交走 passwordApi 桩，调用即抛「待后端立项」错误提示。
+ * 提交走 passwordApi → POST /auth/change-password（INT-794）：
+ * 原密码错误 401 / 新密码长度不足 400 的错误文案由后端返回，展示在框内；
+ * 成功 emit confirm（调用方清登录态重新登录）。
  */
 import { computed, reactive, ref } from 'vue'
 import { profilePort } from '@/composables/profile/profilePort'
@@ -112,10 +113,10 @@ async function handleSubmit() {
       currentPassword: form.currentPassword,
       newPassword: form.newPassword,
     })
-    // 桩未落地前不会走到这里（changeMyPassword 抛「待后端立项」）
+    // 真实请求成功才走到这里（后端 401/400 错误态在框内展示）
     emit('confirm', { ...form })
   } catch (e: any) {
-    errorMessage.value = e?.message || '密码修改失败，请重试'
+    errorMessage.value = e?.detail || e?.message || '密码修改失败，请重试'
   } finally {
     saving.value = false
   }
