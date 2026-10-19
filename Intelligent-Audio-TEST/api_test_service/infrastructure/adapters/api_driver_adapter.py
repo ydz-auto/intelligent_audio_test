@@ -122,6 +122,8 @@ class ApiDriverAdapter(ApiVendorAdapter):
 
         self._log(level='DEBUG', content=f"发起请求: endpoint={endpoint}, method={method}, timeout={timeout}", task_id=self._task_id, test_case_id=self._test_case_id)
 
+        # INT-839：被测 API 网络代理透传（apis.proxy_type / proxy_url），
+        # 无代理时两者为空，api_client 回退与改动前完全一致
         resp_info = api_client.call(
             endpoint=endpoint,
             method=method,
@@ -129,7 +131,9 @@ class ApiDriverAdapter(ApiVendorAdapter):
             data=request_data,
             files=files,
             timeout=timeout,
-            meta=call_meta
+            meta=call_meta,
+            proxy_type=getattr(self.api_config, 'proxy_type', None),
+            proxy_url=getattr(self.api_config, 'proxy_url', None),
         )
 
         # 3. 解析响应结果

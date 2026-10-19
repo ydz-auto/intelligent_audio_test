@@ -153,6 +153,9 @@ class RealtimeSessionExecutor:
                 event_listener=lambda frame: self._on_frame(
                     task_id, test_case_id, session_id, frame),
                 chunk_duration_ms=chunk_ms,
+                # INT-839：被测 API 网络代理（websocket-client 代理参数注入）
+                proxy_type=getattr(api_config, 'proxy_type', None),
+                proxy_url=getattr(api_config, 'proxy_url', None),
             )
             if not client.connect():
                 raise ConnectionError(f"Realtime WS 连接失败: {url}")

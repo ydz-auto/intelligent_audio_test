@@ -447,6 +447,15 @@ class APISessionExecutor:
             'headers': rendered_headers,
             'timeout': session.session_timeout,
         }
+        # INT-839：代理配置显式入 vendor_config —— 现状白名单仅
+        # api_url/headers/timeout/adapter_class/api_key_candidates，字段不会
+        # 自动透传；此处显式携带 proxy_type/proxy_url 供 api_adapter_service
+        # 透传白名单消费（跨服务契约，adapter 侧拼完整 URL 下发）
+        _proxy_type = getattr(api_config, 'proxy_type', None)
+        _proxy_url = getattr(api_config, 'proxy_url', None)
+        if _proxy_type or _proxy_url:
+            vendor_config['proxy_type'] = _proxy_type
+            vendor_config['proxy_url'] = _proxy_url
         # 密钥链候选（UC-0901 扩展流程 3a）：case_config/meta 层候选随
         # vendor_config 下发，adapter 服务 Infrastructure 密钥提供者
         # 统一按 case_config → meta → 服务配置层 → env 逐级回退解析

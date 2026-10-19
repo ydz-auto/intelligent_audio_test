@@ -35,6 +35,10 @@ requests>=2.31.0
 httpx>=0.27.0
 urllib3>=2.0.0
 websocket-client>=1.7.0
+# INT-839：requests socks 代理支持（proxies={'http': 'socks5://...'}，被测 API 代理）
+PySocks>=1.7.1
+# INT-839：websocket-client / websockets socks 代理依赖（proxy_type=socks5/socks5h）
+python-socks>=2.0.0
 
 # ===== Data Processing =====
 numpy>=1.24.0

@@ -17,6 +17,11 @@ from shared.utils.log_handler import log_not_emit
 from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
 from shared.models.common_enums import OutputType, DeviceType, AudioBitDepth, AudioContainer
 from api_test_service.domain.entities.api import normalize_output_types, normalize_audio_config
+from api_test_service.infrastructure.adapters.proxy_utils import (
+    build_proxy_url,
+    validate_proxy,
+    websocket_proxy_kwargs,
+)
 from api_gateway.application.services.stats_cache import refresh_stats_cache
 from api_test_service.infrastructure.persistence.api_test_repository import api_test_repository
 from api_test_service.infrastructure.persistence.api_rms_spl_repository import ApiRmsSplRepositoryImpl
@@ -82,6 +87,10 @@ class APICrudService:
             error = APICrudService._validate_audio_config(audio_config)
             if error:
                 return error
+
+        proxy_error = validate_proxy(data.get('proxy_type'), data.get('proxy_url'))
+        if proxy_error:
+            return proxy_error
 
         return None
 
@@ -228,6 +237,8 @@ class APICrudService:
             'adapter_class': getattr(api, 'adapter_class', None),
             'audio_config': getattr(api, 'audio_config', None),
             'rms_spl_mapping_id': getattr(api, 'rms_spl_mapping_id', None),
+            'proxy_type': getattr(api, 'proxy_type', None),
+            'proxy_url': getattr(api, 'proxy_url', None),
             'endpoints': endpoints,
             'created_at': created_at.isoformat() if created_at and hasattr(created_at, 'isoformat') else (created_at if isinstance(created_at, str) else None),
             'updated_at': updated_at.isoformat() if updated_at and hasattr(updated_at, 'isoformat') else (updated_at if isinstance(updated_at, str) else None),
@@ -290,6 +301,8 @@ class APICrudService:
             'device_type': data.get('device_type'),
             'adapter_class': data.get('adapter_class'),
             'audio_config': data.get('audio_config'),
+            'proxy_type': data.get('proxy_type'),
+            'proxy_url': data.get('proxy_url'),
         })
         if error:
             return {'success': False, 'message': error, 'data': None, 'code': 400}
@@ -331,6 +344,8 @@ class APICrudService:
                 'device_type': data.get('device_type') or 'http_api',
                 'adapter_class': data.get('adapter_class'),
                 'audio_config': normalize_audio_config(data.get('audio_config')),
+                'proxy_type': (data.get('proxy_type') or '').strip() or None,
+                'proxy_url': (data.get('proxy_url') or '').strip() or None,
             }
 
             new_api = api_test_repository.create_api(create_data)
@@ -366,11 +381,22 @@ class APICrudService:
         if not api:
             return {'success': False, 'message': '未找到API配置', 'data': None, 'code': 404}
 
-        # 校验 API 数据
-        data_dict = {k: v for k, v in data.items() if v is not None}
+        # 校验 API 数据（代理字段剔除：update 为局部更新，代理对走下方
+        # 合并口径校验，避免「只改 proxy_type 无 proxy_url」在此误判）
+        data_dict = {k: v for k, v in data.items()
+                     if v is not None and k not in ('proxy_type', 'proxy_url')}
         error = cls._validate_api_data(data_dict)
         if error:
             return {'success': False, 'message': error, 'data': None, 'code': 400}
+
+        # 代理校验（INT-839）：按「更新字段 + 当前 DB 值」合并口径校验，
+        # 单字段更新（只改 proxy_type 或只改 proxy_url）也保证最终状态合法；
+        # 显式传 None 表示清空代理
+        merged_proxy_type = data.get('proxy_type', getattr(api, 'proxy_type', None))
+        merged_proxy_url = data.get('proxy_url', getattr(api, 'proxy_url', None))
+        proxy_error = validate_proxy(merged_proxy_type, merged_proxy_url)
+        if proxy_error:
+            return {'success': False, 'message': proxy_error, 'data': None, 'code': 400}
 
         try:
             update_fields = {}
@@ -403,6 +429,12 @@ class APICrudService:
                 update_fields['adapter_class'] = data['adapter_class']
             if data.get('audio_config') is not None:
                 update_fields['audio_config'] = normalize_audio_config(data['audio_config'])
+            # 代理字段（INT-839）：键存在即更新（含显式 None 清空），
+            # 空串归一化为 None；合并口径已由上方 validate_proxy 把关
+            if 'proxy_type' in data:
+                update_fields['proxy_type'] = (data['proxy_type'] or '').strip() or None
+            if 'proxy_url' in data:
+                update_fields['proxy_url'] = (data['proxy_url'] or '').strip() or None
             if 'rms_spl_mapping_id' in data:
                 # 与 set-default 命令同口径双校验：映射必须存在且归属本 API，
                 # 防止把默认灵敏度映射指向其他 API 的校准曲线（越权配置写入）
@@ -576,6 +608,14 @@ class APICrudService:
         # 统一经 _api_to_dict（PO/聚合根双兼容）取字段，修复健康检查恒 AttributeError
         info = cls._api_to_dict(api)
 
+        # INT-839：代理参数（健康检查双分支共用）——http/https 走 requests.proxies，
+        # ws/wss 走 websocket-client 代理参数（http_proxy_host/port/auth + proxy_type）
+        ws_proxy_kwargs = websocket_proxy_kwargs(info.get('proxy_type'), info.get('proxy_url'))
+        requests_proxies = None
+        _full_proxy_url = build_proxy_url(info.get('proxy_type'), info.get('proxy_url'))
+        if _full_proxy_url:
+            requests_proxies = {'http': _full_proxy_url, 'https': _full_proxy_url}
+
         start_time = time.time()
         try:
             # 1. 测试 api_url 本身
@@ -590,7 +630,7 @@ class APICrudService:
                     if api_scheme in ['ws', 'wss']:
                         ws = websocket.WebSocket()
                         ws.settimeout(30)
-                        ws.connect(test_api_url)
+                        ws.connect(test_api_url, **ws_proxy_kwargs)
                         ws.close()
                         api_url_status = True
                     elif api_scheme in ['http', 'https']:
@@ -602,7 +642,8 @@ class APICrudService:
                         api_url_response = requests.get(
                             test_api_url,
                             timeout=30,
-                            headers={"User-Agent": "Task-Manager-Health-Checker/1.0"}
+                            headers={"User-Agent": "Task-Manager-Health-Checker/1.0"},
+                            proxies=requests_proxies,
                         )
                         if 200 <= api_url_response.status_code < 400:
                             api_url_status = True
@@ -639,7 +680,7 @@ class APICrudService:
                         if scheme in ['ws', 'wss']:
                             ws = websocket.WebSocket()
                             ws.settimeout(endpoint.get('max_timeout', 30))
-                            ws.connect(test_url)
+                            ws.connect(test_url, **ws_proxy_kwargs)
                             endpoint_duration = (time.time() - start_time) * 1000
                             ws.close()
                             endpoints_status = True
@@ -653,7 +694,8 @@ class APICrudService:
                             endpoint_response = requests.get(
                                 test_url,
                                 timeout=endpoint.get('max_timeout', 30),
-                                headers={"User-Agent": "Task-Manager-Health-Checker/1.0"}
+                                headers={"User-Agent": "Task-Manager-Health-Checker/1.0"},
+                                proxies=requests_proxies,
                             )
                             endpoint_duration = (time.time() - start_time) * 1000
 
