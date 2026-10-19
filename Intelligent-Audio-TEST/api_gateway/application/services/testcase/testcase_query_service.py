@@ -376,6 +376,8 @@ class TestCaseQueryService:
                 offset=offset,
                 overlap_rate=overlap_rate,
                 overlap_time=overlap_time,
+                testcase_id=tc_id,
+                testcase_name=tc.get('name'),
             )
             if not preview_result or not preview_result.result_data:
                 return error_response("用例未配置有效的干声音频")

@@ -255,9 +255,12 @@ class PlaybackServiceServicer(e2e_grpc.PlaybackServiceServicer):
                 offset = playback_config.get('offset', 0)
                 overlap_rate = playback_config.get('overlap_rate', 0)
                 overlap_time = playback_config.get('overlap_time', 0)
+                _kwargs = playback_config.get('kwargs', {})
                 result = self.orchestrator.preview(
                     audio_configs, case_config, task_id,
                     offset=offset, overlap_rate=overlap_rate, overlap_time=overlap_time,
+                    testcase_id=_kwargs.get('testcase_id'),
+                    testcase_name=_kwargs.get('testcase_name'),
                 )
             elif mode == 'voiceprint':
                 vp_config = playback_config.get('vp_config', {})

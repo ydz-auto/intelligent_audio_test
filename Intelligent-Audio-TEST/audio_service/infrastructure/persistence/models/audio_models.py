@@ -146,7 +146,7 @@ class AudioPlaybackHistory(Base):
     )
     id = Column(BigInteger, primary_key=True, autoincrement=True, comment='主键ID')
     audio_id = Column(Integer, ForeignKey('audios.id'), nullable=False, comment='关联音频ID')
-    testcase_id = Column(BigInteger, nullable=True, comment='关联测试用例ID（纯音频试听为空）')
+    testcase_id = Column(String(50), nullable=True, comment='关联测试用例ID（UUID，INT-782#2 返工；纯音频试听为空）')
     testcase_name = Column(String(255), nullable=True, comment='测试用例名称快照')
     device_id = Column(String(100), nullable=True, comment='播放设备标识快照（设备ID/唯一ID）')
     device_name = Column(String(255), nullable=False, comment='播放设备名称快照')

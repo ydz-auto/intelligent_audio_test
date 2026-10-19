@@ -293,7 +293,7 @@ class PlaybackHistoryItem(APIModel):
     """音频播放历史条目（INT-782#2；字段与 React audio-playback-history-dialog 期望一致）"""
     id: int = Field(...)
     audio_id: int = Field(...)
-    testcase_id: Optional[int] = Field(None)
+    testcase_id: Optional[str] = Field(None)
     testcase_name: Optional[str] = Field(None)
     device_id: Optional[str] = Field(None)
     device_name: str = Field(...)

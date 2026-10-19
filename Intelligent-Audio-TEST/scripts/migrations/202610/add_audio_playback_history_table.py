@@ -50,12 +50,22 @@ def _index_exists(cur, index):
     return cur.fetchone() is not None
 
 
+def _column_type(cur, table, column):
+    cur.execute(
+        "SELECT data_type FROM information_schema.columns "
+        "WHERE table_name = %s AND column_name = %s",
+        (table, column),
+    )
+    row = cur.fetchone()
+    return row[0] if row else None
+
+
 TABLE_DDL = {
     'audio_playback_history': """
         CREATE TABLE audio_playback_history (
             id BIGSERIAL PRIMARY KEY,
             audio_id INTEGER NOT NULL,
-            testcase_id BIGINT,
+            testcase_id VARCHAR(50),
             testcase_name VARCHAR(255),
             device_id VARCHAR(100),
             device_name VARCHAR(255) NOT NULL,
@@ -91,6 +101,14 @@ def main(dry_run=False):
     for table, ddl in TABLE_DDL.items():
         if _table_exists(cur, table):
             print(f'SKIP: 表 {table} 已存在')
+            # INT-819 返工：既有库 testcase_id 为 BIGINT 时迁移为 VARCHAR(50)（支持 UUID）
+            if _column_type(cur, table, 'testcase_id') in ('bigint', 'integer'):
+                print(f'APPLY: 变更 {table}.testcase_id BIGINT → VARCHAR(50)')
+                if not dry_run:
+                    cur.execute(
+                        f'ALTER TABLE {table} ALTER COLUMN testcase_id TYPE VARCHAR(50)'
+                    )
+                total_steps += 1
             continue
         print(f'APPLY: 创建表 {table}')
         if not dry_run:
