@@ -24,12 +24,6 @@
       </div>
     </div>
 
-    <!-- 待后端立项提示条（G04 出壳：不造数据兜底） -->
-    <div class="rst-pending-banner">
-      <i class="fas fa-info-circle"></i>
-      <span>{{ pendingNotice }}</span>
-    </div>
-
     <!-- 统计控制区：维度 + 时间范围 + 执行入口 -->
     <section class="card rst-control-section">
       <div class="rst-control-row">
@@ -46,8 +40,8 @@
           <input type="date" class="date-input" v-model="endDate" />
         </div>
         <div class="rst-control-item">
-          <button class="btn btn-primary" @click="handleExecute">
-            <i class="fas fa-play"></i> 执行统计分析
+          <button class="btn btn-primary" @click="handleExecute" :disabled="statisticsLoading">
+            <i class="fas fa-play" :class="{ 'fa-spin': statisticsLoading }"></i> 执行统计分析
           </button>
         </div>
       </div>
@@ -81,9 +75,31 @@
           <span class="rst-dimension-desc">{{ getDimensionDesc(opt.value) }}</span>
         </div>
       </div>
-      <div class="rst-empty-state">
+
+      <!-- 统计加载 / 错误 / 结果 -->
+      <div v-if="statisticsLoading" class="rst-loading-state">
+        <i class="fas fa-spinner fa-spin"></i>
+        <p>正在统计分析...</p>
+      </div>
+      <div v-else-if="statisticsError" class="rst-error-state">
+        <i class="fas fa-exclamation-circle"></i>
+        <p>{{ statisticsError }}</p>
+        <button class="btn btn-secondary btn-sm" @click="handleExecute">
+          <i class="fas fa-redo"></i> 重试
+        </button>
+      </div>
+      <div v-else-if="statisticsData" class="rst-section">
+        <h4 class="rst-section-title">当前维度统计概览（{{ getDimensionLabel(statisticsData.dimension) }}）</h4>
+        <div class="rst-overview-grid">
+          <div v-for="item in overviewItems" :key="item.label" class="card rst-overview-card">
+            <span class="rst-overview-label">{{ item.label }}</span>
+            <span class="rst-overview-value">{{ item.value }}</span>
+          </div>
+        </div>
+      </div>
+      <div v-else class="rst-empty-state">
         <i class="fas fa-chart-column"></i>
-        <p>暂无统计数据</p>
+        <p>暂无统计数据，请点击上方「执行统计分析」</p>
       </div>
     </section>
 
@@ -100,28 +116,230 @@
           {{ sub.label }}
         </button>
       </div>
-      <div class="rst-empty-state">
+
+      <div v-if="statisticsLoading" class="rst-loading-state">
+        <i class="fas fa-spinner fa-spin"></i>
+        <p>正在统计分析...</p>
+      </div>
+      <div v-else-if="statisticsError" class="rst-error-state">
+        <i class="fas fa-exclamation-circle"></i>
+        <p>{{ statisticsError }}</p>
+        <button class="btn btn-secondary btn-sm" @click="handleExecute">
+          <i class="fas fa-redo"></i> 重试
+        </button>
+      </div>
+      <template v-else-if="statisticsData">
+        <!-- 概览 -->
+        <div v-if="resultSubTab === 'overview'" class="rst-overview-grid">
+          <div v-for="item in overviewItems" :key="item.label" class="card rst-overview-card">
+            <span class="rst-overview-label">{{ item.label }}</span>
+            <span class="rst-overview-value">{{ item.value }}</span>
+          </div>
+        </div>
+
+        <!-- 详细 -->
+        <div v-else-if="resultSubTab === 'detail'">
+          <div v-if="detailColumns.length" class="rst-table-wrap">
+            <table class="rst-table">
+              <thead>
+                <tr>
+                  <th v-for="col in detailColumns" :key="col.key">{{ col.label }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, idx) in statisticsData.detail" :key="idx">
+                  <td v-for="col in detailColumns" :key="col.key">{{ formatDetailValue(row, col.key) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-else class="rst-empty-state">
+            <i class="fas fa-table"></i>
+            <p>暂无明细数据</p>
+          </div>
+        </div>
+
+        <!-- 图表 -->
+        <div v-else-if="resultSubTab === 'chart'">
+          <div v-if="statisticsChartData.labels.length" class="rst-chart-box">
+            <ChartComponent
+              title="统计图表"
+              type="line"
+              :data="statisticsChartData"
+              :height="320"
+              :show-actions="false"
+              :enable-zoom="false"
+            />
+          </div>
+          <div v-else class="rst-empty-state">
+            <i class="fas fa-chart-pie"></i>
+            <p>暂无图表数据</p>
+          </div>
+        </div>
+
+        <!-- 异常 -->
+        <div v-else-if="resultSubTab === 'anomaly'">
+          <div v-if="statisticsData.anomaly.length" class="rst-table-wrap">
+            <table class="rst-table">
+              <thead>
+                <tr>
+                  <th>异常类型</th>
+                  <th>报告名称</th>
+                  <th>报告 ID</th>
+                  <th>说明</th>
+                  <th>数值</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(item, idx) in statisticsData.anomaly" :key="idx">
+                  <td><span class="rst-anomaly-badge" :class="`rst-anomaly-${item.type}`">{{ getAnomalyTypeLabel(item.type) }}</span></td>
+                  <td>{{ item.reportName }}</td>
+                  <td>{{ item.reportId }}</td>
+                  <td>{{ item.message }}</td>
+                  <td>{{ item.value }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-else class="rst-empty-state">
+            <i class="fas fa-check-circle"></i>
+            <p>暂无异常统计</p>
+          </div>
+        </div>
+      </template>
+      <div v-else class="rst-empty-state">
         <i class="fas fa-table"></i>
-        <p>暂无统计数据</p>
+        <p>暂无统计数据，请先执行统计分析</p>
       </div>
     </section>
 
     <!-- 页签 3：趋势分析 -->
     <section v-else-if="activeTab === 'trend'" class="rst-pane">
-      <div class="rst-sub-tabs" role="tablist">
-        <button
-          v-for="sub in TREND_SUB_TABS"
-          :key="sub.value"
-          class="rst-sub-tab"
-          :class="{ active: trendSubTab === sub.value }"
-          @click="trendSubTab = sub.value"
-        >
-          {{ sub.label }}
+      <div class="rst-trend-toolbar">
+        <div class="rst-sub-tabs" role="tablist">
+          <button
+            v-for="sub in TREND_SUB_TABS"
+            :key="sub.value"
+            class="rst-sub-tab"
+            :class="{ active: trendSubTab === sub.value }"
+            @click="trendSubTab = sub.value"
+          >
+            {{ sub.label }}
+          </button>
+        </div>
+        <button class="btn btn-primary btn-sm" @click="handleTrendExecute" :disabled="trendLoading">
+          <i class="fas fa-play" :class="{ 'fa-spin': trendLoading }"></i> 执行趋势分析
         </button>
       </div>
-      <div class="rst-empty-state">
+
+      <div v-if="trendLoading" class="rst-loading-state">
+        <i class="fas fa-spinner fa-spin"></i>
+        <p>正在获取趋势数据...</p>
+      </div>
+      <div v-else-if="trendError" class="rst-error-state">
+        <i class="fas fa-exclamation-circle"></i>
+        <p>{{ trendError }}</p>
+        <button class="btn btn-secondary btn-sm" @click="handleTrendExecute">
+          <i class="fas fa-redo"></i> 重试
+        </button>
+      </div>
+      <template v-else-if="trendData">
+        <!-- 时间趋势 -->
+        <div v-if="trendSubTab === 'time_trend'">
+          <div v-if="timeTrendRows.length" class="rst-table-wrap">
+            <table class="rst-table">
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>报告数量</th>
+                  <th>总用例数</th>
+                  <th>通过率</th>
+                  <th>总时长(s)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, idx) in timeTrendRows" :key="idx">
+                  <td>{{ row.date }}</td>
+                  <td>{{ row.reportCount }}</td>
+                  <td>{{ row.totalCases }}</td>
+                  <td>{{ row.passRate }}%</td>
+                  <td>{{ row.duration }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-else class="rst-empty-state">
+            <i class="fas fa-chart-line"></i>
+            <p>暂无时间趋势数据</p>
+          </div>
+        </div>
+
+        <!-- 维度趋势 -->
+        <div v-else-if="trendSubTab === 'dimension_trend'">
+          <div v-if="dimensionTrendRows.length" class="rst-table-wrap">
+            <table class="rst-table">
+              <thead>
+                <tr>
+                  <th>评估指标</th>
+                  <th>日期</th>
+                  <th>得分</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, idx) in dimensionTrendRows" :key="idx">
+                  <td>{{ row.metric }}</td>
+                  <td>{{ row.date }}</td>
+                  <td>{{ row.value }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-else class="rst-empty-state">
+            <i class="fas fa-ruler"></i>
+            <p>暂无维度趋势数据</p>
+          </div>
+        </div>
+
+        <!-- 趋势图表 -->
+        <div v-else-if="trendSubTab === 'trend_chart'">
+          <div v-if="trendChartData.labels.length" class="rst-chart-box">
+            <ChartComponent
+              title="趋势图表"
+              type="line"
+              :data="trendChartData"
+              :height="320"
+              :show-actions="false"
+              :enable-zoom="false"
+            />
+          </div>
+          <div v-else class="rst-empty-state">
+            <i class="fas fa-chart-line"></i>
+            <p>暂无趋势图表数据</p>
+          </div>
+        </div>
+
+        <!-- 预测分析 -->
+        <div v-else-if="trendSubTab === 'forecast'">
+          <div v-if="forecastChartData.labels.length" class="rst-chart-box">
+            <ChartComponent
+              title="报告数量预测（基于历史线性趋势）"
+              type="line"
+              :data="forecastChartData"
+              :height="320"
+              :show-actions="false"
+              :enable-zoom="false"
+            />
+            <p class="rst-note">说明：预测为前端基于历史趋势的线性外推，仅供参考，不代表后端统计口径。</p>
+          </div>
+          <div v-else class="rst-empty-state">
+            <i class="fas fa-chart-line"></i>
+            <p>暂无预测数据，请先执行趋势分析</p>
+          </div>
+        </div>
+      </template>
+      <div v-else class="rst-empty-state">
         <i class="fas fa-chart-line"></i>
-        <p>暂无趋势数据</p>
+        <p>暂无趋势数据，请点击「执行趋势分析」</p>
       </div>
     </section>
 
@@ -149,12 +367,34 @@
           </div>
         </div>
         <div class="rst-control-row">
-          <button class="btn btn-primary" @click="handleExecute">
-            <i class="fas fa-file-export"></i> 生成报表
+          <button class="btn btn-primary" @click="handleGenerateReport" :disabled="reportGenerating">
+            <i class="fas fa-file-export" :class="{ 'fa-spin': reportGenerating }"></i> 生成报表
           </button>
         </div>
       </div>
-      <div class="rst-empty-state">
+
+      <div v-if="generatedReports.length" class="rst-section">
+        <h4 class="rst-section-title">本会话生成记录</h4>
+        <div class="rst-table-wrap">
+          <table class="rst-table">
+            <thead>
+              <tr>
+                <th>文件名</th>
+                <th>格式</th>
+                <th>生成时间</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(rec, idx) in generatedReports" :key="idx">
+                <td>{{ rec.filename }}</td>
+                <td>{{ getFormatLabel(rec.format) }}</td>
+                <td>{{ rec.generatedAt }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div v-else class="rst-empty-state">
         <i class="fas fa-file-export"></i>
         <p>暂无报表生成记录</p>
       </div>
@@ -163,8 +403,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import ChartComponent from '@/components/report/ChartComponent.vue'
 import {
   useReportStatistics,
   STATISTICS_TABS,
@@ -174,6 +415,7 @@ import {
   REPORT_TYPE_OPTIONS,
   REPORT_FORMAT_OPTIONS,
 } from './reportStatistics'
+import type { ReportStatisticsDetailItem } from '@/domain'
 import type { ToastMessage } from '@/domain/model/ui'
 
 const router = useRouter()
@@ -188,9 +430,18 @@ const {
   reportType,
   reportFormat,
   reportContent,
-  pendingNotice,
+  statisticsLoading,
+  statisticsError,
+  statisticsData,
+  trendLoading,
+  trendError,
+  trendData,
+  reportGenerating,
+  generatedReports,
   handleTabChange,
   executeStatistics,
+  executeTrend,
+  generateReport,
 } = useReportStatistics()
 
 const toast = ref<ToastMessage | null>(null)
@@ -206,9 +457,19 @@ const handleExecute = () => {
   executeStatistics(showToast)
 }
 
+const handleTrendExecute = () => {
+  executeTrend(showToast)
+}
+
+const handleGenerateReport = () => {
+  generateReport(showToast)
+}
+
 const goBack = () => {
   router.push('/report-center')
 }
+
+// ---- 统计结果 ----
 
 const DIMENSION_LABEL: Record<string, string> = {
   time: '时间',
@@ -238,6 +499,183 @@ const getDimensionDesc = (value: string): string => {
   }
   return descs[value] || ''
 }
+
+/** 总览卡片（overview → 标签/数值） */
+const overviewItems = computed(() => {
+  const o = statisticsData.value?.overview
+  if (!o) return []
+  return [
+    { label: '报告数量', value: o.reportCount },
+    { label: '已完成报告', value: o.completedReports },
+    { label: '总用例数', value: o.totalCases },
+    { label: '完成用例数', value: o.completedCases },
+    { label: '失败用例数', value: o.failedCases },
+    { label: '通过率', value: `${o.passRate}%` },
+    { label: '总时长', value: `${o.duration}s` },
+  ]
+})
+
+/** 明细表列定义（按首行实际字段动态生成，去空值列） */
+const DETAIL_COLUMN_LABELS: Record<string, string> = {
+  group: '分组',
+  metric: '评估指标',
+  deviceType: '设备类型',
+  deviceCount: '设备数',
+  reportCount: '报告数量',
+  completedReports: '已完成',
+  totalCases: '总用例数',
+  completedCases: '完成用例数',
+  failedCases: '失败用例数',
+  passRate: '通过率',
+  duration: '总时长(s)',
+  averageValue: '平均得分',
+  min: '最低',
+  max: '最高',
+}
+
+const detailColumns = computed(() => {
+  const rows = statisticsData.value?.detail
+  if (!rows || rows.length === 0) return [] as Array<{ key: string; label: string }>
+  const first = rows[0] as unknown as Record<string, unknown>
+  return Object.keys(first)
+    .filter(k => first[k] !== undefined && first[k] !== null)
+    .map(k => ({ key: k, label: DETAIL_COLUMN_LABELS[k] || k }))
+})
+
+const formatDetailValue = (row: ReportStatisticsDetailItem, key: string): string | number => {
+  const v = (row as unknown as Record<string, unknown>)[key]
+  if (v === undefined || v === null) return '—'
+  if (key === 'passRate') return `${v}%`
+  if (key === 'duration') return `${v}s`
+  return v as string | number
+}
+
+/** 异常类型中文名 */
+const ANOMALY_TYPE_LABEL: Record<string, string> = {
+  no_cases: '无用例数据',
+  low_pass_rate: '通过率偏低',
+  data_error: '数据异常',
+}
+
+const getAnomalyTypeLabel = (type: string): string => ANOMALY_TYPE_LABEL[type] || type
+
+// ---- 统计图表 ----
+
+/** 统计结果 chart（后端 categories+series）→ Chart.js 数据源 */
+const statisticsChartData = computed(() => {
+  const chart = statisticsData.value?.chart
+  if (!chart || !chart.categories.length) return { labels: [], datasets: [] }
+  return {
+    labels: chart.categories,
+    datasets: chart.series.map(s => ({
+      label: s.name,
+      data: s.data,
+    })),
+  }
+})
+
+// ---- 趋势分析 ----
+
+const timeTrendRows = computed(() => trendData.value?.timeTrend ?? [])
+
+const dimensionTrendRows = computed(() => {
+  const rows: Array<{ metric: string; date: string; value: number }> = []
+  for (const item of trendData.value?.dimensionTrend ?? []) {
+    for (const p of item.points) {
+      rows.push({ metric: item.metric, date: p.date, value: p.value })
+    }
+  }
+  return rows
+})
+
+/** 趋势图表：优先时间趋势，无则回退维度趋势（首条指标序列） */
+const trendChartData = computed(() => {
+  const trend = trendData.value
+  if (!trend) return { labels: [], datasets: [] }
+  const tt = trend.timeTrend
+  if (tt && tt.length) {
+    return {
+      labels: tt.map(t => t.date),
+      datasets: [
+        { label: '报告数量', data: tt.map(t => t.reportCount) },
+        { label: '总用例数', data: tt.map(t => t.totalCases) },
+        { label: '通过率', data: tt.map(t => t.passRate) },
+      ],
+    }
+  }
+  const dt = trend.dimensionTrend
+  if (dt && dt.length) {
+    return {
+      labels: dt[0].points.map(p => p.date),
+      datasets: dt.map(item => ({ label: item.metric, data: item.points.map(p => p.value) })),
+    }
+  }
+  return { labels: [], datasets: [] }
+})
+
+/** 预测分析：对时间趋势报告数量做线性外推（前端呈现，虚线区分历史/预测） */
+const forecastChartData = computed(() => {
+  const points = trendData.value?.timeTrend ?? []
+  if (!points.length) return { labels: [], datasets: [] }
+  const n = points.length
+  const xs = points.map((_, i) => i)
+  const ys = points.map(p => p.reportCount)
+  const sumX = xs.reduce((a, b) => a + b, 0)
+  const sumY = ys.reduce((a, b) => a + b, 0)
+  const sumXX = xs.reduce((a, b) => a + b * b, 0)
+  const sumXY = xs.reduce((a, _, i) => a + xs[i] * ys[i], 0)
+  const denom = n * sumXX - sumX * sumX
+  const slope = denom !== 0 ? (n * sumXY - sumX * sumY) / denom : 0
+  const intercept = denom !== 0 ? (sumY - slope * sumX) / n : n > 0 ? sumY / n : 0
+
+  const labels = points.map(p => p.date)
+  const hist = ys.map(y => Math.round(y * 10) / 10)
+  const last = new Date(points[n - 1].date)
+  const projLabels: string[] = []
+  const projVals: number[] = []
+  for (let i = 1; i <= 5; i++) {
+    const d = new Date(last)
+    d.setDate(d.getDate() + i)
+    projLabels.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)
+    const x = n - 1 + i
+    projVals.push(Math.max(0, Math.round((slope * x + intercept) * 10) / 10))
+  }
+  return {
+    labels: [...labels, ...projLabels],
+    datasets: [
+      { label: '报告数量（历史）', data: hist },
+      { label: '报告数量（预测）', data: [...Array(n).fill(null), ...projVals], borderDash: [6, 4] },
+    ],
+  }
+})
+
+// ---- 报表格式标签 ----
+
+const FORMAT_LABEL: Record<string, string> = {
+  csv: 'CSV',
+  excel: 'Excel',
+  pdf: 'PDF',
+  html: 'HTML',
+}
+
+const getFormatLabel = (format: string): string => FORMAT_LABEL[format] || format
+
+// ---- 自动触发 ----
+
+// 进入趋势页签且尚未拉取过 → 自动执行（错误态由手动按钮重试）
+watch(activeTab, (tab) => {
+  if (tab === 'trend' && !trendData.value && !trendLoading.value && !trendError.value) {
+    executeTrend(showToast)
+  }
+})
+
+// 趋势子页签切换 → 数据与子页签口径不一致时按当前口径重新拉取
+watch(trendSubTab, () => {
+  const want = trendSubTab.value === 'dimension_trend' ? 'dimension' : 'time'
+  if (trendData.value && trendData.value.trendType !== want && !trendLoading.value) {
+    executeTrend(showToast)
+  }
+})
 </script>
 
 <style scoped>
@@ -268,24 +706,6 @@ const getDimensionDesc = (value: string): string => {
 .header-actions {
   display: flex;
   gap: var(--spacing-sm);
-}
-
-/* ===== 待后端立项提示条 ===== */
-.rst-pending-banner {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  margin-bottom: var(--spacing-lg);
-  border-radius: var(--border-radius-lg);
-  background: var(--warning-light);
-  color: var(--warning-dark);
-  font-size: 14px;
-  border: 1px solid var(--warning-color);
-}
-
-.rst-pending-banner i {
-  font-size: 1.1rem;
 }
 
 /* ===== 控制区 ===== */
@@ -399,7 +819,6 @@ const getDimensionDesc = (value: string): string => {
 .rst-sub-tabs {
   display: flex;
   gap: var(--spacing-xs);
-  margin-bottom: var(--spacing-lg);
   flex-wrap: wrap;
 }
 
@@ -423,6 +842,16 @@ const getDimensionDesc = (value: string): string => {
   background: var(--primary-color);
   color: var(--color-white);
   border-color: var(--primary-color);
+}
+
+/* ===== 趋势工具栏 ===== */
+.rst-trend-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+  flex-wrap: wrap;
 }
 
 /* ===== 页签内容 ===== */
@@ -482,7 +911,122 @@ const getDimensionDesc = (value: string): string => {
   line-height: 1.5;
 }
 
-/* ===== 空态 ===== */
+/* ===== 分区标题 ===== */
+.rst-section {
+  margin-top: var(--spacing-md);
+}
+
+.rst-section-title {
+  margin: 0 0 var(--spacing-md) 0;
+  font-size: var(--font-size-md);
+  color: var(--text-primary);
+}
+
+/* ===== 总览卡片 ===== */
+.rst-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.rst-overview-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--spacing-md);
+  border-radius: var(--border-radius-lg);
+  background: var(--background-primary);
+  border: 1px solid var(--border-color);
+}
+
+.rst-overview-label {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.rst-overview-value {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--primary-color);
+}
+
+/* ===== 表格 ===== */
+.rst-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-lg);
+  background: var(--background-primary);
+}
+
+.rst-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.rst-table th,
+.rst-table td {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid var(--border-color);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.rst-table th {
+  background: var(--background-secondary);
+  color: var(--text-secondary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.rst-table tbody tr:hover {
+  background: var(--background-secondary);
+}
+
+.rst-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ===== 异常徽标 ===== */
+.rst-anomaly-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: var(--border-radius-full);
+  font-size: var(--font-size-sm);
+}
+
+.rst-anomaly-no_cases {
+  background: var(--color-amber-50);
+  color: var(--color-amber-600);
+}
+
+.rst-anomaly-low_pass_rate {
+  background: var(--color-red-50);
+  color: var(--color-red-600);
+}
+
+.rst-anomaly-data_error {
+  background: var(--color-purple-50, var(--color-blue-50));
+  color: var(--color-purple-600, var(--color-blue-600));
+}
+
+/* ===== 图表 ===== */
+.rst-chart-box {
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-lg);
+  background: var(--background-primary);
+  padding: var(--spacing-lg);
+}
+
+.rst-note {
+  margin: var(--spacing-sm) 0 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-tertiary);
+}
+
+/* ===== 加载 / 错误 / 空态 ===== */
+.rst-loading-state,
+.rst-error-state,
 .rst-empty-state {
   display: flex;
   flex-direction: column;
@@ -491,14 +1035,27 @@ const getDimensionDesc = (value: string): string => {
   text-align: center;
   padding: var(--spacing-xxl);
   color: var(--text-tertiary);
+  gap: var(--spacing-sm);
 }
 
+.rst-loading-state i,
+.rst-error-state i,
 .rst-empty-state i {
   font-size: var(--font-size-xxxl);
-  margin-bottom: var(--spacing-lg);
+  margin-bottom: var(--spacing-sm);
   color: var(--text-disabled);
 }
 
+.rst-error-state {
+  color: var(--color-red-600);
+}
+
+.rst-error-state i {
+  color: var(--color-red-600);
+}
+
+.rst-loading-state p,
+.rst-error-state p,
 .rst-empty-state p {
   margin: 0;
   font-size: var(--font-size-md);

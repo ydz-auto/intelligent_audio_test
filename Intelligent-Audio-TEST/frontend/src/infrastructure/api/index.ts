@@ -26,6 +26,7 @@ export { groupsApi } from './groupsApi';
 export { testcasesApi } from './testcasesApi';
 export { evaluationApi } from './evaluationApi';
 export { reportsApi } from './reportsApi';
+export { reportStatisticsApi } from './reportStatisticsApi';
 export { benchmarkApi } from './benchmarkApi';
 export { benchmarkReportsApi } from './benchmarkReportsApi';
 export { splApi } from './splApi';
