@@ -56,58 +56,56 @@
       <!-- 筛选面板 -->
       <div class="filter-panel">
         <div class="filter-content">
-          <div class="filter-grid">
-            <!-- 格式筛选 -->
-            <div class="filter-item">
-              <label class="filter-label">音频格式</label>
-              <BadgeFilter
-                :options="FORMAT_OPTIONS"
-                :model-value="filters.format"
-                all-label="所有格式"
-                @update:model-value="value => setFilter('format', value)"
-              />
-            </div>
-            
+          <div class="filter-row">
+            <!-- 格式筛选（标题与徽章同行，对齐任务管理 filter-row 横排） -->
+            <BadgeFilter
+              title="音频格式"
+              :options="FORMAT_OPTIONS"
+              :model-value="filters.format"
+              all-label="所有格式"
+              @update:model-value="value => setFilter('format', value)"
+            />
+
             <!-- 采样率筛选 -->
-            <div class="filter-item">
-              <label class="filter-label">采样率</label>
-              <BadgeFilter
-                :options="SAMPLE_RATE_OPTIONS"
-                :model-value="filters.sampleRate"
-                all-label="所有采样率"
-                @update:model-value="value => setFilter('sampleRate', value)"
-              />
-            </div>
-            
-            <!-- 标签云筛选 -->
-            <div class="filter-item">
-              <label class="filter-label">标签云</label>
-              <div class="tag-search-wrapper">
-                <input 
-                  type="text" 
-                  v-model="tagSearchQuery"
-                  placeholder="搜索标签..."
-                  class="tag-search-input"
-                />
-              </div>
-              <div class="tag-filter">
-                <div 
-                  v-for="tag in filteredTags" 
-                  :key="tag"
-                  :class="['tag-filter-item', { active: isTagSelected(tag), 'tag-or': getTagMode(tag) === 'or', 'tag-and': getTagMode(tag) === 'and' }]"
-                  @click="handleTagClick(tag)"
-                  @contextmenu.prevent="showTagMenu($event, tag)"
-                >
-                  {{ tag }}
-                  <span v-if="getTagMode(tag)" class="tag-mode-badge">{{ getTagMode(tag) === 'or' ? 'OR' : 'AND' }}</span>
+            <BadgeFilter
+              title="采样率"
+              :options="SAMPLE_RATE_OPTIONS"
+              :model-value="filters.sampleRate"
+              all-label="所有采样率"
+              @update:model-value="value => setFilter('sampleRate', value)"
+            />
+
+            <!-- 标签云筛选（标题与搜索/标签区同行，独占整行） -->
+            <div class="filter-item-tagcloud">
+              <span class="filter-label">标签云</span>
+              <div class="tag-cloud-body">
+                <div class="tag-search-wrapper">
+                  <input
+                    type="text"
+                    v-model="tagSearchQuery"
+                    placeholder="搜索标签..."
+                    class="tag-search-input"
+                  />
                 </div>
-                <div v-if="filteredTags.length === 0" class="no-data-tip">
-                  暂无可用的用例标签或用例分组
+                <div class="tag-filter">
+                  <div
+                    v-for="tag in filteredTags"
+                    :key="tag"
+                    :class="['tag-filter-item', { active: isTagSelected(tag), 'tag-or': getTagMode(tag) === 'or', 'tag-and': getTagMode(tag) === 'and' }]"
+                    @click="handleTagClick(tag)"
+                    @contextmenu.prevent="showTagMenu($event, tag)"
+                  >
+                    {{ tag }}
+                    <span v-if="getTagMode(tag)" class="tag-mode-badge">{{ getTagMode(tag) === 'or' ? 'OR' : 'AND' }}</span>
+                  </div>
+                  <div v-if="filteredTags.length === 0" class="no-data-tip">
+                    暂无可用的用例标签或用例分组
+                  </div>
                 </div>
               </div>
               <!-- 标签模式选择菜单 -->
-              <div 
-                v-if="showTagModeMenu" 
+              <div
+                v-if="showTagModeMenu"
                 class="tag-mode-menu"
                 :style="{ top: menuPosition.y + 'px', left: menuPosition.x + 'px' }"
               >
@@ -125,31 +123,27 @@
                 </div>
               </div>
             </div>
-            
+
             <!-- 时长筛选 -->
-            <div class="filter-item">
-              <label class="filter-label">音频时长</label>
-              <BadgeFilter
-                :options="DURATION_OPTIONS"
-                :model-value="filters.duration"
-                all-label="所有时长"
-                @update:model-value="value => setFilter('duration', value)"
-              />
-            </div>
-            
+            <BadgeFilter
+              title="音频时长"
+              :options="DURATION_OPTIONS"
+              :model-value="filters.duration"
+              all-label="所有时长"
+              @update:model-value="value => setFilter('duration', value)"
+            />
+
             <!-- 类型筛选 -->
-            <div class="filter-item">
-              <label class="filter-label">音频类型</label>
-              <BadgeFilter
-                :options="AUDIO_TYPE_OPTIONS"
-                :model-value="filters.audioType"
-                all-label="所有类型"
-                @update:model-value="value => setFilter('audioType', value)"
-              />
-            </div>
-            
+            <BadgeFilter
+              title="音频类型"
+              :options="AUDIO_TYPE_OPTIONS"
+              :model-value="filters.audioType"
+              all-label="所有类型"
+              @update:model-value="value => setFilter('audioType', value)"
+            />
+
             <!-- 筛选操作按钮 -->
-            <div class="filter-item filter-actions-item">
+            <div class="filter-actions-item">
               <div class="filter-actions">
                 <button class="btn btn-secondary" @click="resetFilters">重置筛选</button>
                 <button class="btn btn-primary" @click="applyFilters">应用筛选</button>
