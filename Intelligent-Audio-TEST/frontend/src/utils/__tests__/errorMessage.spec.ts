@@ -27,6 +27,10 @@ describe('isRawRpcErrorText', () => {
     expect(isRawRpcErrorText('网络断开')).toBe(false)
     expect(isRawRpcErrorText('')).toBe(false)
   })
+
+  it('INT-974：浏览器级网络失败（fetch TypeError）识别为内部异常', () => {
+    expect(isRawRpcErrorText('Failed to fetch')).toBe(true)
+  })
 })
 
 describe('toUserErrorMessage', () => {
@@ -44,6 +48,11 @@ describe('toUserErrorMessage', () => {
   it('正常业务错误 → 原样返回（单行化）', () => {
     expect(toUserErrorMessage(new Error('网络断开'), '保存失败')).toBe('网络断开')
     expect(toUserErrorMessage(new Error('类型已存在'), '保存失败')).toBe('类型已存在')
+  })
+
+  it('INT-974：fetch 网络失败 TypeError → 固定友好文案', () => {
+    expect(toUserErrorMessage(new Error('Failed to fetch'), '日志加载失败，请稍后重试'))
+      .toBe('日志加载失败，请稍后重试')
   })
 
   it('多行业务文案单行化，超长截断 200 字符', () => {

@@ -22,6 +22,9 @@ const RAW_RPC_TEXT_PATTERNS: RegExp[] = [
   /debug_error_string/i,
   /Failed to connect to all addresses/i,
   /Connection refused/i,
+  // INT-974：浏览器级网络失败（后端不可达/被拦截时 fetch 直抛 TypeError），
+  // 属内部技术异常，降级为友好文案而非直出英文原文
+  /failed to fetch/i,
 ]
 
 /** 是否原始 RPC/gRPC 异常文本（命中任一签名即视为内部异常直出） */

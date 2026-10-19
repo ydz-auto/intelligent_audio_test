@@ -139,3 +139,87 @@
 .log-row {
   cursor: pointer;
 }
+
+/* ── INT-974 加载 / 错误 / 空三态显式 UI ──
+   加载条对齐 INT-290 A/B 域方案；错误横幅对齐 INT-899 口径（友好文案 + 重试）；
+   空态沿用 Evaluation empty-dimensions 样式（含深色收编）。只用语义令牌，无硬编码色值。 */
+.log-loading-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: var(--spacing-md) var(--spacing-lg);
+  margin-bottom: var(--spacing-lg);
+  background: color-mix(in srgb, var(--primary-color) 5%, transparent);
+  border-radius: var(--border-radius-lg);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.log-loading-bar .loading-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.log-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: var(--spacing-md) var(--spacing-lg);
+  margin-bottom: var(--spacing-lg);
+  background: color-mix(in srgb, var(--danger-color) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger-color) 30%, transparent);
+  border-radius: var(--border-radius-lg);
+  color: var(--danger-color);
+  font-size: var(--font-size-sm);
+}
+
+.log-error-text {
+  flex: 1;
+}
+
+.log-error-banner .btn-sm {
+  padding: 4px 12px;
+  font-size: var(--font-size-xs);
+}
+
+.log-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--color-slate-500);
+  background-color: var(--color-slate-50);
+  border: 1px dashed var(--color-slate-300);
+  border-radius: var(--border-radius-md);
+  width: 100%;
+  margin: 0 auto;
+}
+
+.log-empty-state i {
+  font-size: 32px;
+  margin-bottom: var(--spacing-sm);
+  color: var(--color-slate-400);
+}
+
+.log-empty-state p {
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+
+/* 深色收编：空态走语义令牌（浅色零变化、深色可读），同 Evaluation empty-dimensions */
+.dark .log-empty-state {
+  background-color: var(--muted);
+  border-color: var(--border);
+}
+
+.dark .log-empty-state i,
+.dark .log-empty-state p {
+  color: var(--muted-foreground);
+}

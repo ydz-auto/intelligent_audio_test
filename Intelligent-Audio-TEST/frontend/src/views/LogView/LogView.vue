@@ -95,7 +95,8 @@
           <i class="fas fa-file-alt"></i>
         </div>
         <div class="stat-content">
-          <h3 class="stat-number">{{ totalLogs }}</h3>
+          <!-- INT-974：初始加载期间以占位符替代误导性的全 0 统计 -->
+          <h3 class="stat-number">{{ isInitialLoading ? '—' : totalLogs }}</h3>
           <p class="stat-label">总日志条数</p>
         </div>
       </div>
@@ -104,7 +105,7 @@
           <i class="fas fa-exclamation-circle"></i>
         </div>
         <div class="stat-content">
-          <h3 class="stat-number">{{ logStats.error }}</h3>
+          <h3 class="stat-number">{{ isInitialLoading ? '—' : logStats.error }}</h3>
           <p class="stat-label">错误日志</p>
         </div>
       </div>
@@ -113,7 +114,7 @@
           <i class="fas fa-exclamation-triangle"></i>
         </div>
         <div class="stat-content">
-          <h3 class="stat-number">{{ logStats.warning }}</h3>
+          <h3 class="stat-number">{{ isInitialLoading ? '—' : logStats.warning }}</h3>
           <p class="stat-label">警告日志</p>
         </div>
       </div>
@@ -122,7 +123,7 @@
           <i class="fas fa-info-circle"></i>
         </div>
         <div class="stat-content">
-          <h3 class="stat-number">{{ logStats.info }}</h3>
+          <h3 class="stat-number">{{ isInitialLoading ? '—' : logStats.info }}</h3>
           <p class="stat-label">信息日志</p>
         </div>
       </div>
@@ -151,7 +152,24 @@
             </div>
           </div>
           <div class="card-body">
-            <div class="table-container">
+            <!-- INT-974：加载 / 错误 / 空三态显式 UI（加载条对齐 INT-290 A/B 域方案，
+                 错误口径对齐 INT-899：友好文案 + 重试按钮，原始 RPC 异常不直出） -->
+            <div v-if="isInitialLoading" class="log-loading-bar">
+              <span class="loading-spinner"></span>
+              正在加载日志...
+            </div>
+            <div v-else-if="loadError && paginatedLogs.length === 0" class="log-error-banner">
+              <i class="fas fa-exclamation-triangle"></i>
+              <span class="log-error-text">{{ loadError }}</span>
+              <button class="btn btn-primary btn-sm" @click="fetchLogs">
+                <i class="fas fa-sync-alt"></i> 重试
+              </button>
+            </div>
+            <div v-else-if="!isLoading && paginatedLogs.length === 0" class="log-empty-state">
+              <i class="fas fa-inbox"></i>
+              <p>暂无日志数据</p>
+            </div>
+            <div v-else class="table-container">
               <table class="data-table" data-manual-sort>
                 <thead>
                   <tr>
@@ -321,6 +339,10 @@ const {
   markColor,
   logs,
   totalLogs,
+  isLoading,
+  isInitialLoading,
+  loadError,
+  loadErrorDetail,
   logStats,
   paginatedLogs,
   currentPage,
@@ -339,6 +361,7 @@ const {
   getAlgorithmLabel,
   filterLogs,
   searchLogs,
+  fetchLogs,
   clearSearch,
   toggleAdvancedFilter,
   toggleLevelDropdown,

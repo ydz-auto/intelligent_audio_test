@@ -3,6 +3,9 @@ import { useRoute } from 'vue-router';
 import { logsPort } from '../../composables/task/logsPort';
 import { algorithmPort } from '../../composables/algorithm/algorithmPort';
 import { useModalControl } from '../../composables/modal/useModal';
+import { useNotification } from '../../composables/modal/useNotification';
+// INT-974：错误消息安全化（原始 gRPC/RPC 异常降级为固定友好文案，细节进 Toast 折叠区）
+import { toUserErrorMessage, toUserErrorDetail } from '../../utils/errorMessage';
 import type {
   Log,
   LogFilters,
@@ -96,8 +99,15 @@ export function useLogView(refs?: LogViewRefs) {
   const showLevelDropdown = ref(false);
   const markColor = ref('yellow');
   const isLoading = ref(false);
+  // INT-974：初始加载未完成标记（首个 fetchLogs 结束即置 true），
+  // 用于仅初始/尚无数据时渲染 loading 指示，避免实时轮询期间反复闪现
+  const initialLoadDone = ref(false);
+  // INT-974：列表加载错误（友好文案 + 原始详情），驱动错误横幅与重试按钮
+  const loadError = ref('');
+  const loadErrorDetail = ref('');
 
   const modalManager = useModalControl();
+  const notification = useNotification();
 
   const logs = ref<UILog[]>([]);
   const totalLogs = ref(0);
@@ -186,7 +196,12 @@ export function useLogView(refs?: LogViewRefs) {
       
       logStats.value = result;
     } catch (error) {
+      // INT-974：统计接口失败不再静默——友好文案 + 原始详情进 Toast（列表已成功时仅此提示）
       console.error('Failed to fetch log stats:', error);
+      notification.error(
+        toUserErrorMessage(error, '日志统计加载失败，请稍后重试'),
+        toUserErrorDetail(error),
+      );
     }
   };
 
@@ -198,7 +213,7 @@ export function useLogView(refs?: LogViewRefs) {
       params.perPage = pageSize.value;
 
       const response = await logsPort.getAll(params);
-      
+
       logs.value = (response.items || []).map((log: Log) => {
         let formattedTime = log.time?.toString() || log.timestamp?.toString() || '';
         try {
@@ -209,16 +224,24 @@ export function useLogView(refs?: LogViewRefs) {
         } catch (e) {
           console.error('Failed to format log time:', e);
         }
-        
+
         return {...log, time: formattedTime, selected: false, isExpanded: false} as UILog;
       });
-      
+
       totalLogs.value = response?.total || 0;
+      // INT-974：列表加载成功即清错误态（含上一次失败残留）
+      loadError.value = '';
+      loadErrorDetail.value = '';
       fetchStats();
     } catch (error) {
+      // INT-974：列表接口失败不再静默——友好文案驱动错误横幅 + 重试按钮，
+      // 原始 RPC 异常文本经 errorMessage 降级，不直出
       console.error('Failed to fetch logs:', error);
+      loadError.value = toUserErrorMessage(error, '日志加载失败，请稍后重试');
+      loadErrorDetail.value = toUserErrorDetail(error);
     } finally {
       isLoading.value = false;
+      initialLoadDone.value = true;
     }
   };
 
@@ -243,6 +266,9 @@ export function useLogView(refs?: LogViewRefs) {
 
   const realTimeLogStatus = computed(() => realTimeLogEnabled.value ? '停止实时日志' : '开启实时日志');
   const paginatedLogs = computed(() => logs.value);
+  // INT-974：初始加载中（尚无数据可展示）——驱动 loading 指示；
+  // 首个 fetchLogs 完成后恒为 false，实时轮询/后台刷新不触发 loading 闪现
+  const isInitialLoading = computed(() => isLoading.value && !initialLoadDone.value);
   const advancedFilterText = computed(() => showAdvancedFilter.value ? '收起高级过滤' : '高级过滤');
   const autoScrollText = computed(() => autoScrollEnabled.value ? '暂停自动滚动' : '自动滚动');
   const selectedLevelObjects = computed(() => logLevels.value.filter(level => selectedLevels.value.includes(level.value)));
@@ -347,7 +373,12 @@ export function useLogView(refs?: LogViewRefs) {
       await logsPort.refresh(lastId);
       await fetchLogs();
     } catch (error) {
+      // INT-974：刷新失败不再静默（列表已有数据时不炸横幅，Toast 提示）
       console.error('Failed to refresh logs:', error);
+      notification.error(
+        toUserErrorMessage(error, '日志刷新失败，请稍后重试'),
+        toUserErrorDetail(error),
+      );
     } finally {
       isLoading.value = false;
     }
@@ -366,7 +397,12 @@ export function useLogView(refs?: LogViewRefs) {
           currentPage.value = 1;
           await fetchLogs();
         } catch (error) {
+          // INT-974：清除失败不再静默
           console.error('Failed to clear logs:', error);
+          notification.error(
+            toUserErrorMessage(error, '清除日志失败，请稍后重试'),
+            toUserErrorDetail(error),
+          );
         } finally {
           isLoading.value = false;
         }
@@ -410,7 +446,12 @@ export function useLogView(refs?: LogViewRefs) {
           
           await logsPort.export({ ...exportParams, format: options.format } as any);
         } catch (error) {
+          // INT-974：导出失败不再静默
           console.error('Failed to export logs:', error);
+          notification.error(
+            toUserErrorMessage(error, '导出日志失败，请稍后重试'),
+            toUserErrorDetail(error),
+          );
         } finally {
           isLoading.value = false;
         }
@@ -708,6 +749,10 @@ export function useLogView(refs?: LogViewRefs) {
     logs,
     totalLogs,
     isLoading,
+    // INT-974：三态（加载 / 错误 / 空）驱动状态对外暴露
+    isInitialLoading,
+    loadError,
+    loadErrorDetail,
     logStats,
     currentPage,
     pageSize,
