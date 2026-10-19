@@ -288,7 +288,6 @@ export function useTasks() {
   };
 
   const handleNameUpdated = ({ taskId, newName }: { taskId: string | number; newName: string }) => {
-    console.log('[DEBUG] handleUpdateTaskName called:', { taskId, newName });
     controlModule.updateTaskName(taskId, newName);
   };
 
@@ -373,6 +372,9 @@ export function useTasks() {
     deletedTasks: listModule.deletedTasks,
     totalPages: listModule.totalPages,
     paginatedTasks: listModule.paginatedTasks,
+    // INT-973：列表加载/错误态（视图错误条 + 空态抑制联动）
+    loading: listModule.loading,
+    error: listModule.error,
     isAllSelected: listModule.isAllSelected,
     algorithmOptions: listModule.algorithmOptions,
     loadAlgorithmOptions: listModule.loadAlgorithmOptions,

@@ -59,6 +59,9 @@ export function useTaskList(options?: UseTaskListOptions) {
   const visibilityFilter = ref('');
   const customDateRange = ref({ start: '', end: '' });
   const algorithmOptions = ref<{ value: string; label: string }[]>([]);
+  /** INT-973：列表加载/错误态（加载期间空态抑制不闪「没有找到任务」；失败置错误信息供视图渲染错误条含重试） */
+  const loading = ref(false);
+  const error = ref<string | null>(null);
 
   const tagCurrentPage = ref(1);
   const tagPageSize = ref(15);
@@ -133,6 +136,8 @@ export function useTaskList(options?: UseTaskListOptions) {
   }
 
   const fetchTasks = async () => {
+    loading.value = true;
+    error.value = null;
     try {
       // 查询参数保持 camelCase（TaskListQuery），snake_case 化由 tasksApi 内部完成
       const params: Record<string, any> = {
@@ -241,8 +246,12 @@ export function useTaskList(options?: UseTaskListOptions) {
           onTasksUpdated();
         }, 0);
       }
-    } catch (error) {
-      console.error('Failed to fetch tasks:', error);
+    } catch (err) {
+      console.error('Failed to fetch tasks:', err);
+      // INT-973：失败不静默落空态——置错误信息，视图渲染错误条（含重试）；保留旧数据不误清空
+      error.value = '任务列表加载失败，请稍后重试';
+    } finally {
+      loading.value = false;
     }
   };
 
@@ -372,6 +381,8 @@ export function useTaskList(options?: UseTaskListOptions) {
     isAllSelected,
     loadAlgorithmOptions,
     fetchTasks,
+    loading,
+    error,
     applyFilters,
     handleSearch,
     handlePageChange,

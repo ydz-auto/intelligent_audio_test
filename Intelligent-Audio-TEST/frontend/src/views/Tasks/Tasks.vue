@@ -177,6 +177,14 @@
       <section class="tasks-container" v-if="!showComparisonReport">
         <!-- 日常任务 / 收藏任务面板（共用日常任务列表与批量操作） -->
         <template v-if="activeTab === 'daily' || activeTab === 'favorite'">
+        <!-- INT-973：列表加载失败错误条（含重试；空态在错误时抑制，不落「没有找到任务」误导） -->
+        <div v-if="error" class="task-list-error-banner">
+          <i class="fas fa-exclamation-triangle"></i>
+          <span class="task-list-error-text">{{ error }}</span>
+          <button class="btn btn-primary btn-sm" @click="fetchTasks">
+            <i class="fas fa-sync-alt"></i> 重试
+          </button>
+        </div>
         <!-- 批量操作栏 -->
         <div class="batch-actions" v-if="selectedTasks.size > 0">
           <button class="btn-danger" @click="batchDelete">
@@ -264,6 +272,8 @@
             :is-selected="(task: any) => selectedTasks.has(task.id)"
             :show-checkbox="true"
             :show-config="false"
+            :is-loading="loading"
+            :has-error="!!error"
             :current-page="currentPage"
             :page-size="pageSize"
             :total-items="totalTasks"
@@ -497,6 +507,9 @@ const {
   algorithmOptions,
   // 协调逻辑
   handleNameUpdated,
+  // INT-973：列表加载/错误态（错误条 + 空态抑制联动）
+  loading,
+  error,
   // 任务数据导入导出（INT-25）
   isDataExportDialogVisible,
   isDataImportDialogVisible,

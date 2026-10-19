@@ -208,7 +208,6 @@ export function useTaskControl(
   };
 
   const updateTaskName = async (taskId: string | number, newName: string) => {
-    console.log('[DEBUG] updateTaskName called:', { taskId, newName });
     try {
       await tasksPort.update(taskId, { name: newName });
       const taskIndex = tasks.value.findIndex(t => t.id === taskId);

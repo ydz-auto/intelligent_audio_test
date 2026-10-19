@@ -38,7 +38,8 @@
         </div>
       </template>
 
-      <div class="empty-state" v-if="paginatedTasks.length === 0">
+      <!-- INT-973：空态仅在「非加载、非错误」时渲染（修复加载闪空态 + 错误静默落空态误导） -->
+      <div class="empty-state" v-if="!isLoading && !hasError && paginatedTasks.length === 0">
         <i class="fas fa-tasks"></i>
         <p>没有找到任务</p>
         <p class="empty-state-hint">请尝试调整筛选条件或添加新的任务</p>
@@ -78,6 +79,7 @@ const props = defineProps({
   actions: {type: Array, default: () => []},
   searchQuery: {type: String, default: ''},
   isLoading: {type: Boolean, default: false},
+  hasError: {type: Boolean, default: false},
   isSelected: {type: Function, default: (task) => task.selected || false},
   totalItems: {type: Number, default: 0},
   totalPages: {type: Number, default: 1},
@@ -167,6 +169,68 @@ defineExpose({
 </script>
 
 <style scoped>
+/* INT-973：加载态（首次进入列表不闪空态；轻/深色双主题可见） */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 64px 24px;
+  margin-top: 16px;
+  margin-bottom: 16px;
+  background-color: var(--background-secondary);
+  border-radius: var(--border-radius-lg);
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.loading-state .spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid color-mix(in srgb, var(--primary-color) 20%, transparent);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 空态（对齐 TestCaseListWithPagination 空态口径；仅在非加载、非错误时渲染） */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 24px;
+  margin-top: 16px;
+  margin-bottom: 16px;
+  text-align: center;
+  background-color: var(--background-secondary);
+  border-radius: var(--border-radius-lg);
+  border: 1px dashed var(--border-color);
+}
+
+.empty-state i {
+  font-size: 48px;
+  color: var(--text-tertiary);
+  margin-bottom: 16px;
+}
+
+.empty-state p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 16px;
+}
+
+.empty-state-hint {
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--text-tertiary);
+}
+
 .debug-info {
   background: var(--color-amber-100);
   padding: 10px;

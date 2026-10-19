@@ -219,12 +219,6 @@ const {
   isProgressPolling
 } = useTaskProgress({
   currentTaskId: computed(() => props.taskId as string | number | null),
-  onCompleted: (_data) => {
-    console.log('任务已完成');
-  },
-  onFailed: (_data) => {
-    console.log('任务执行失败');
-  }
 });
 
 function getLogTimestamp(log: any): number {
