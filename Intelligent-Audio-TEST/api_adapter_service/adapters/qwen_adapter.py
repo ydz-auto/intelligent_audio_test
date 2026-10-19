@@ -151,7 +151,13 @@ class QwenAdapter(BaseAdapter):
         try:
             # 2. 连接 WebSocket
             headers = {'Authorization': f'Bearer {self.api_key}'}
-            ws = await websockets.connect(self.api_url, additional_headers=headers)
+            connect_kwargs = {'additional_headers': headers}
+            # INT-839 #2：配置代理时经 proxy 走完整代理 URL；未配置保持
+            # websockets 默认行为（不显式传 proxy，避免改动自动探测语义）。
+            # getattr 兜底 __init__ 未走的子类（单测假对象不建真实会话）
+            if getattr(self, 'proxy_url', None):
+                connect_kwargs['proxy'] = self.proxy_url
+            ws = await websockets.connect(self.api_url, **connect_kwargs)
             self.connected = True
             logger.info(f'QwenAdapter: 已连接 {self.api_url}')
 

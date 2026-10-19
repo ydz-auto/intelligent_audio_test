@@ -42,6 +42,11 @@ class HttpAdapter(BaseAdapter):
             self.headers['Authorization'] = f'Bearer {self.api_key}'
         self.timeout = vendor_config.get('timeout', 60)
         self.result_parser = vendor_config.get('result_parser', {})
+        # INT-839 #2：代理配置存在时 requests.post 走 proxies（含认证 URL）；
+        # 无代理字段时 None，行为与改动前一致（requests 仍按环境变量代理）
+        self.proxies = None
+        if self.proxy_url:
+            self.proxies = {'http': self.proxy_url, 'https': self.proxy_url}
 
     def send_request(
         self,
@@ -101,6 +106,7 @@ class HttpAdapter(BaseAdapter):
             start_time = time.time()
             response = requests.post(
                 url, json=payload, headers=headers, timeout=self.timeout,
+                proxies=self.proxies,
             )
         else:
             files, data = self._build_audio_payload(
@@ -116,6 +122,7 @@ class HttpAdapter(BaseAdapter):
             response = requests.post(
                 url, files=files, data=data,
                 headers=multipart_headers, timeout=self.timeout,
+                proxies=self.proxies,
             )
 
         latency = time.time() - start_time

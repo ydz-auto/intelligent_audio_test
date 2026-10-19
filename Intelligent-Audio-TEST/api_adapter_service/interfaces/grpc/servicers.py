@@ -84,6 +84,12 @@ class AdapterServiceServicer(adapter_grpc.AdapterServiceServicer):
                 candidates = vendor_config_override.get('api_key_candidates')
                 if isinstance(candidates, dict) and candidates:
                     merged_config['api_key_candidates'] = candidates
+                # INT-839 #2：代理配置透传（proxy_type / proxy_url），
+                # adapter 侧拼完整 URL 后注入各协议栈
+                if vendor_config_override.get('proxy_type'):
+                    merged_config['proxy_type'] = vendor_config_override['proxy_type']
+                if vendor_config_override.get('proxy_url'):
+                    merged_config['proxy_url'] = vendor_config_override['proxy_url']
 
             # Ensure session exists in session_store
             session_config = base_vendor_config.get('session', {})

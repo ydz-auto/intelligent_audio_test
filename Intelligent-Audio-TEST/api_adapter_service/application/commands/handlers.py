@@ -54,6 +54,12 @@ class CreateDialogTaskHandler:
             candidates = override.get('api_key_candidates')
             if isinstance(candidates, dict) and candidates:
                 merged_config['api_key_candidates'] = candidates
+            # INT-839 #2：代理配置透传（proxy_type / proxy_url），
+            # adapter 侧拼完整 URL 后注入各协议栈
+            if override.get('proxy_type'):
+                merged_config['proxy_type'] = override['proxy_type']
+            if override.get('proxy_url'):
+                merged_config['proxy_url'] = override['proxy_url']
 
         # 2) 确保会话存在（委托 session_store）
         session_config = base_vendor_config.get('session', {})

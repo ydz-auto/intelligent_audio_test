@@ -238,11 +238,19 @@ class VolcAstAdapter(BaseAdapter):
             # 2. 连接 WebSocket API
             conn_id = str(uuid.uuid4())
             headers = self._build_headers(conn_id)
+            connect_kwargs = {
+                'additional_headers': headers,
+                'max_size': 1000000000,
+                'ping_interval': None,
+            }
+            # INT-839 #2：配置代理时经 proxy 走完整代理 URL；未配置保持
+            # websockets 默认行为（不显式传 proxy，避免改动自动探测语义）。
+            # getattr 兜底 __init__ 未走的子类（单测假对象不建真实会话）
+            if getattr(self, 'proxy_url', None):
+                connect_kwargs['proxy'] = self.proxy_url
             conn = await websockets.connect(
                 self.ws_url,
-                additional_headers=headers,
-                max_size=1000000000,
-                ping_interval=None,
+                **connect_kwargs,
             )
             log_id = conn.response.headers.get('X-Tt-Logid', '未知') if conn.response else '未知'
             logger.info(f'VolcAstAdapter: 连接 API 成功(log_id={log_id})')

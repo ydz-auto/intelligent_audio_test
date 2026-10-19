@@ -9,6 +9,7 @@ from typing import Optional
 import time
 
 from api_adapter_service.utils.logger import logger
+from api_adapter_service.utils.proxy import build_proxy_url
 
 
 class BaseAdapter(ABC):
@@ -17,6 +18,13 @@ class BaseAdapter(ABC):
     def __init__(self, vendor_config: dict):
         self.vendor_config = vendor_config
         self.connected = False
+        # INT-839 #2：proxy_type + proxy_url → 完整代理 URL；任一缺失/空
+        # 表示不用代理（None）。子类据此注入 requests.proxies /
+        # websockets.connect(proxy=...)。
+        self.proxy_url = build_proxy_url(
+            (vendor_config or {}).get('proxy_type'),
+            (vendor_config or {}).get('proxy_url'),
+        )
 
     @abstractmethod
     def send_request(
