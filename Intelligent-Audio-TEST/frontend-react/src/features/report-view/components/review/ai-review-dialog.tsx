@@ -121,7 +121,8 @@ export function AiReviewDialog({
 
   const handleAdopt = async () => {
     if (!ai.record) return
-    await ai.adopt()
+    const ok = await ai.adopt()
+    if (!ok) return
     onAdopt({
       evaluationStatus: aiVerdictToEvaluationStatus(ai.record.verdict),
       comment: ai.record.reasoning,

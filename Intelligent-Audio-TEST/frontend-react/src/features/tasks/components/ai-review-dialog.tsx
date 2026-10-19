@@ -98,7 +98,10 @@ export function AiReviewDialog({
     if (!record) return
     setPhase('adopted')
     try {
-      await adoptAiReview(record.id)
+      await adoptAiReview(record.id, {
+        evaluationStatus: verdictToEvaluationStatus(record.verdict),
+        comment: record.reasoning,
+      })
       onAdopt({
         evaluationStatus: verdictToEvaluationStatus(record.verdict),
         comment: record.reasoning,

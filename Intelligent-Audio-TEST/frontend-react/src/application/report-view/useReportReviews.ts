@@ -133,14 +133,23 @@ export function useAiReview(taskId: number, caseId: string) {
   }
 
   /** 采纳：AI 结论转人工复核语义（打开复核弹窗预填由消费侧处理；记录标已采纳） */
-  const adopt = async () => {
-    if (!record) return
-    const updated = await adoptAiReview(record.id)
-    setRecord(updated)
-    setPhase('adopted')
-    void queryClient.invalidateQueries({
-      queryKey: ['tasks', 'ai-reviews', 'history', taskId],
-    })
+  const adopt = async (): Promise<boolean> => {
+    if (!record) return false
+    try {
+      const updated = await adoptAiReview(record.id, {
+        evaluationStatus: aiVerdictToEvaluationStatus(record.verdict),
+        comment: record.reasoning,
+      })
+      setRecord(updated)
+      setPhase('adopted')
+      void queryClient.invalidateQueries({
+        queryKey: ['tasks', 'ai-reviews', 'history', taskId],
+      })
+      return true
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'AI 复核采纳失败')
+      return false
+    }
   }
 
   /** 驳回：保留原判定，AI 记录标记已驳回备查 */
