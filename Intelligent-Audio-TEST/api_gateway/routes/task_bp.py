@@ -128,7 +128,7 @@ def merge(_: None = require_permission('task:merge')):
     return result
 
 @router.post('/{task_id}/stop')
-def stop(task_id: int):
+def stop(task_id: int, _: None = require_permission('task:execute')):
     result = TaskLifecycleService.stop(task_id)
     if isinstance(result, tuple) and len(result) == 2:
         return to_response(result)

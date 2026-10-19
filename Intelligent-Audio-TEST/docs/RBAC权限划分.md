@@ -30,7 +30,7 @@
 |---|---|---|---|---|
 | 超级管理员 | `admin` | — | 拥有所有权限，可管理用户/角色/权限 | `true` |
 | 测试工程师 | `tester` | 测试工程师 + 测试主管 | 可执行测试、管理用例/音频/任务/报告等业务资源，支持 Solo 模式批量操作，不含设备管理和用户角色管理 | `true` |
-| 算法工程师 | `algo_engineer` | 算法工程师 + 质量负责人 | 可查看报告、结果对比、趋势分析、报告发布、算法配置管理，不可执行测试和设备操作 | `true` |
+| 算法工程师 | `algo_engineer` | 算法工程师 + 质量负责人 | 可查看报告、结果对比、趋势分析、报告发布、算法配置管理、任务执行只读观察（不可执行测试/设备操作） | `true` |
 | 设备管理员 | `device_admin` | 设备管理员 | 可管理被测设备/播放设备/SPL 校准/驱动生成，不可管理用例/任务/报告 | `true` |
 | 游客 | `guest` | — | 只读访问报告和首页统计，不可看日志、不可执行任何写操作 | `true` |
 
@@ -59,6 +59,7 @@
 | `task:update` | 修改任务 | `PUT /api/v1/tasks/{id}` |
 | `task:delete` | 删除任务 | `DELETE /api/v1/tasks/{id}` |
 | `task:execute` | 启动/停止/重试/控制任务 | `POST /tasks/{id}/start`、`POST /tasks/{id}/stop`、`POST /tasks/{id}/retry`、`POST /tasks/{id}/control`、`POST /execution/{id}/start`、`POST /execution/{id}/control` |
+| `task:read_execute_view` | 只读观察任务执行页（E2ETest/APITest/任务详情）：页面结构/流程/只读数据可见，按钮/控制/提交隐藏（INT-449） | 前端路由 `/E2ETest`、`/APITest`、`/tasks/{id}`；后端读取数据沿用 `task:read` 门禁 |
 | `task:merge` | 合并任务 | `POST /api/v1/tasks/merge` |
 | `task:batch` | 批量操作任务 | `POST /api/v1/tasks/batch-action`、`PATCH /tasks/{id}/cases` |
 | `task:reextract` | 重新提取设备结果 | `POST /api/v1/tasks/{id}/reextract` |
@@ -258,6 +259,7 @@
 | task:update | ✓ | ✓ | ✗ | ✗ | ✗ |
 | task:delete | ✓ | ✓ | ✗ | ✗ | ✗ |
 | task:execute | ✓ | ✓ | ✗ | ✗ | ✗ |
+| task:read_execute_view | ✓ | ✗ | ✓ | ✗ | ✗ |
 | task:merge | ✓ | ✓ | ✗ | ✗ | ✗ |
 | task:batch | ✓ | ✓ | ✗ | ✗ | ✗ |
 | task:reextract | ✓ | ✓ | ✗ | ✗ | ✗ |
@@ -380,7 +382,7 @@
 |---|---|---|
 | `admin` | 全部权限 | 全部（含用户/角色/权限管理） |
 | `tester` | 用例/音频/任务/报告/评估/算法参数/Benchmark 排行的读写 + 执行，不含设备/SPL 管理、算法定义管理、报告发布、用户角色管理 | 80 个 |
-| `algo_engineer` | 报告/评估/算法配置/Benchmark 排行的读写 + 报告发布/对比，不含测试执行、设备管理、用户角色管理 | 39 个 |
+| `algo_engineer` | 报告/评估/算法配置/Benchmark 排行的读写 + 报告发布/对比 + 任务执行只读观察，不含测试执行（写）、设备管理、用户角色管理 | 40 个 |
 | `device_admin` | 被测设备/播放设备/SPL/首页/SSE 的全权管理，不含用例/任务/报告/算法/用户角色管理 | ~25 个 |
 | `guest` | 报告只读 + 报告对比 + 首页统计 + SSE + 认证，不可看日志、不可执行任何写操作 | ~8 个 |
 

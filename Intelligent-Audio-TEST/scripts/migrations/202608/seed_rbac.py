@@ -4,7 +4,7 @@ RBAC 种子数据初始化
 ===================================
 
 向 permissions / roles / role_permissions 表插入系统内置数据：
-  - 129 个权限点（permissions）
+  - 130 个权限点（permissions）
   - 5 个系统角色（roles: admin / tester / algo_engineer / device_admin / guest）
   - 超级通配权限 * → admin
   - tester / algo_engineer / device_admin / guest 各自的角色-权限映射
@@ -40,11 +40,11 @@ POSTGRES_URI = os.environ.get(
 
 
 # ========================================================================
-# 权限点定义（129 个）
+# 权限点定义（130 个）
 # ========================================================================
 
 PERMISSIONS = [
-    # 任务 (8)
+    # 任务 (16)
     ('task:read', '查看任务'),
     ('task:create', '创建任务'),
     ('task:update', '修改任务'),
@@ -60,6 +60,7 @@ PERMISSIONS = [
     ('task.result.review', '人工复核测试结果（终态改判留痕，INT-340）'),
     ('task.result.ai_review', 'AI 复核测试结果（发起/驳回，INT-800）'),
     ('task:share', '分享任务（数据可见性，INT-423）'),
+    ('task:read_execute_view', '查看任务执行只读视图（INT-449：仅读开放执行页）'),
     # 已发布任务 (4)
     ('published_task:read', '查看已发布任务'),
     ('published_task:execute', '执行已发布任务'),
@@ -257,6 +258,8 @@ TESTER_PERMS = [
 # algo_engineer 权限
 ALGO_ENGINEER_PERMS = [
     'task:read',
+    # INT-449：任务执行页只读观察（E2ETest/APITest/任务详情结构/流程/只读数据可见，按钮/控制/提交隐藏）
+    'task:read_execute_view',
     'published_task:read',
     'testcase:read',
     'audio:read',
