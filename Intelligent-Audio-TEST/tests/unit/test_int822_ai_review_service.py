@@ -158,6 +158,36 @@ def _mock_llm_fail(monkeypatch, message='LLM 端点不可达'):
         lambda **kw: {'success': False, 'message': message, 'data': None})
 
 
+def _mock_dimension_results_grpc(monkeypatch, rows_by_result_id):
+    """mock evaluation_service gRPC 层（真实条目形状）→ 走真实 ACL 映射。
+
+    rows_by_result_id: {result_id: [条目 dict, ...]}。条目对齐 evaluation_service
+    get_dimension_results_with_names_by_result_ids 输出形状（含 test_result_id /
+    dimension_id / evaluation_status ...）。缺省维度用例经此 mock，防「mock 形状
+    与真实 ACL 输出不一致」掩盖映射缺陷（INT-822 审计 P1 回归）。
+    """
+    import json as _json
+    from shared.clients import grpc_clients as _gc
+    from shared.proto import evaluation_service_pb2 as eval_pb
+
+    items = []
+    for rid, rows in rows_by_result_id.items():
+        for row in rows:
+            item = {'test_result_id': rid}
+            item.update(row)
+            items.append(item)
+
+    class _FakeStub:
+        def GetDimensionResultsByResultIds(self, request):
+            return eval_pb.EvaluationDataResponse(
+                success=True, message='',
+                data=_json.dumps({'items': items}),
+            )
+
+    monkeypatch.setattr(_gc, 'get_evaluation_data_service_stub',
+                        lambda: _FakeStub())
+
+
 def _llm_service():
     from task_service.application.task.ai_review_service import ai_review_service
     return ai_review_service
@@ -313,7 +343,11 @@ def test_initiate_missing_result_skipped(db, monkeypatch):
 
 
 def test_initiate_default_dimensions_from_completed_llm_judge(db, monkeypatch):
-    """缺省维度：结果现有已完成评估的 LLM 判分维度（非 LLM / 未完成不纳入）。"""
+    """缺省维度：结果现有已完成评估的 LLM 判分维度（非 LLM / 未完成不纳入）。
+
+    mock 在 gRPC 层（模拟 evaluation_service 真实条目形状），走真实 ACL 映射
+    （INT-822 审计 P1 回归：dimension_id 透传）。
+    """
     from task_service.infrastructure.acl.evaluation_config_acl_repository import (
         evaluation_config_acl_repository,
     )
@@ -321,13 +355,11 @@ def test_initiate_default_dimensions_from_completed_llm_judge(db, monkeypatch):
         ai_review_repository,
     )
     _task_id, result_id, _ = _seed_task()
-    monkeypatch.setattr(
-        evaluation_config_acl_repository, 'get_dimension_results_by_result_ids',
-        lambda rids: {result_id: [
-            {'dimension_id': 7, 'evaluation_status': 'completed'},
-            {'dimension_id': 8, 'evaluation_status': 'failed'},      # 未完成不纳入
-            {'dimension_id': 9, 'evaluation_status': 'completed'},   # 非 LLM 不纳入
-        ]})
+    _mock_dimension_results_grpc(monkeypatch, {result_id: [
+        {'dimension_id': 7, 'evaluation_status': 'completed'},
+        {'dimension_id': 8, 'evaluation_status': 'failed'},      # 未完成不纳入
+        {'dimension_id': 9, 'evaluation_status': 'completed'},   # 非 LLM 不纳入
+    ]})
     monkeypatch.setattr(evaluation_config_acl_repository, 'list_llm_judge_dimension_ids',
                         lambda: [7, 8])
     _sync_executor(monkeypatch)
@@ -349,11 +381,9 @@ def test_initiate_default_no_llm_dim_skipped(db, monkeypatch):
         evaluation_config_acl_repository,
     )
     _task_id, result_id, _ = _seed_task()
-    monkeypatch.setattr(
-        evaluation_config_acl_repository, 'get_dimension_results_by_result_ids',
-        lambda rids: {result_id: [
-            {'dimension_id': 9, 'evaluation_status': 'completed'},
-        ]})
+    _mock_dimension_results_grpc(monkeypatch, {result_id: [
+        {'dimension_id': 9, 'evaluation_status': 'completed'},
+    ]})
     monkeypatch.setattr(evaluation_config_acl_repository, 'list_llm_judge_dimension_ids',
                         lambda: [7])
     _sync_executor(monkeypatch)

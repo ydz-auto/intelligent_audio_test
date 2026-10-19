@@ -113,6 +113,7 @@ class EvaluationConfigAclRepository:
                 continue
             grouped.setdefault(rid, []).append({
                 "id": item.get('id'),
+                "dimension_id": item.get('dimension_id'),
                 "name": item.get('dimension_name'),
                 "value": item.get('dimension_value'),
                 "score": item.get('score'),
