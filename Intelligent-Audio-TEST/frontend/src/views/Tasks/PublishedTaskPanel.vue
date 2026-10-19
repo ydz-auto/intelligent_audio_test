@@ -324,13 +324,27 @@ function formatPassRate(val?: number | null): string {
 
 // ---------- 发布 ----------
 
+/** 拉取日常任务候选全量（INT-292：逐页拉全，避免 perPage:100 首页截断候选列表） */
+async function fetchAllDailyTasks(): Promise<Task[]> {
+  const perPage = 100;
+  const all: Task[] = [];
+  let page = 1;
+  let pages = 1;
+  do {
+    const data = await tasksPort.getAll({ page, perPage }) as any;
+    all.push(...((data?.items ?? []) as Task[]));
+    pages = data?.pages ?? Math.max(1, Math.ceil((data?.total ?? 0) / perPage));
+    page += 1;
+  } while (page <= pages && all.length < 5000); // 5000 安全上限，防异常响应死循环
+  return all;
+}
+
 /** 打开发布弹窗（INT-298：由 Tasks 页头部/工具栏入口调用，expose 供宿主触发） */
 async function openPublishModal() {
   presetSourceTaskId.value = null;
   // 拉取日常任务作为来源候选（可发布状态由弹窗过滤）
   try {
-    const data = await tasksPort.getAll({ page: 1, perPage: 100 });
-    dailyTasks.value = (data as any).items ?? [];
+    dailyTasks.value = await fetchAllDailyTasks();
   } catch (error) {
     console.error('Failed to fetch tasks for publish modal:', error);
     dailyTasks.value = [];
