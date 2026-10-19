@@ -15,5 +15,8 @@ export interface DeviceGroupItemDto {
   updated_by_user_id: number | null
   created_at: string | null
   updated_at: string | null
+  /** 列表接口恒空（P2-1 实测：后端列表 device_ids 为空，详情接口才返回真实成员） */
   device_ids: number[] | null
+  /** 真实成员数（列表接口装饰字段；INT-721 P2-1 补） */
+  device_count?: number | null
 }

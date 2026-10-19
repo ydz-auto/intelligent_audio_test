@@ -2,18 +2,23 @@
  * 整体评估维度编辑器（11_用例域.md §5.1.3.1 评估策略字段，原 §5.1.2 常驻节移入）。
  * 受控组件（value/onChange），作策略字段编辑器由评估策略节引用复用——不再是用例常驻节。
  * 节头「整体评估维度」+ 徽章「所有轮次」+ 副标题 + 描述文案（逐字平移）；启用整体评估 Switch
- * （有关键维度数据即自动启用；关闭即清空维度数组）；维度多选用 DimensionPicker（V9.7.10 平铺
- * chips 云，搜索+已选计数，不做主/子联动分组）；已选维度参数卡（权重 0-100 默认 50 + 阈值
- * 0-100 默认 80 非 LLM Judge；LLM Judge 时 模型 Select + Prompt 模板 Select）。
- * 数据契约 TestCaseDimensionItem { id, name, weight, threshold, (llmJudgeConfig) }——由
- * 用例承载 config.dimensions / 策略 dimensions / overrides.dimensions 共用。
+ * （默认开；已有维度数据时自动启用；关闭即清空维度数组 emit 空数组）；维度多选用 DimensionPicker
+ * （V9.7.10 主/子分组云 + 分类分组：主维度「主」徽章/子维度「子」徽章，勾主联动子；
+ * categories 传入时按分类聚合组头）；已选维度参数卡（权重 0-100 默认 50
+ * + 阈值 0-100 默认 80 非 LLM Judge；LLM Judge 时 模型 Select + Prompt 模板 Select）。
+ * 数据契约 config.dimensions = [{ id, name, weight, threshold, (llmJudgeConfig: {model, promptTemplate}) }]
+ * ——TestCaseDimensionItem {id,name,weight,threshold,test_type}（schemas/testcase.py:85-90）；
+ * 触发条件=顶层数组非空；报告取值整体优先、无整体结果取各轮算术平均。
  */
 import { useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import type { Dimension } from '@/domain/models/evaluationDimension'
+import type {
+  Dimension,
+  EvaluationCategory,
+} from '@/domain/models/evaluationDimension'
 import type { TestCaseDimensionItem } from '@/domain/models/evaluationStrategy'
 import {
   DimensionParamCard,
@@ -28,11 +33,13 @@ const defaultParams = (): DimensionParamValue => ({
 
 export function OverallEvaluationEditor({
   dimensions,
+  categories = [],
   algorithmType,
   value,
   onChange,
 }: {
   dimensions: Dimension[]
+  categories?: EvaluationCategory[]
   algorithmType?: string | null
   /** 维度配置值（整体评估维度数组；空=未启用） */
   value: TestCaseDimensionItem[]
@@ -132,6 +139,7 @@ export function OverallEvaluationEditor({
         <>
           <DimensionPicker
             dimensions={dimensions}
+            categories={categories}
             algorithmType={algorithmType}
             selected={selected}
             onToggle={handleToggle}

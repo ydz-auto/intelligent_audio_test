@@ -14,6 +14,8 @@ export function deviceGroupFromDto(dto: DeviceGroupItemDto): DeviceGroup {
     description: dto.description ?? null,
     groupType: dto.group_type === 'playback' ? 'playback' : 'test',
     members: dto.device_ids ?? [],
+    // P2-1：列表 device_ids 恒空，成员数以后端 device_count 为准（详情接口才含真实 device_ids）
+    memberCount: dto.device_count ?? (dto.device_ids ?? []).length,
     children: [],
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,

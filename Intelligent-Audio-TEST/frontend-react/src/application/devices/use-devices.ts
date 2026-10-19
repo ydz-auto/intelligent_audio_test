@@ -12,31 +12,40 @@ import type { PlaybackDevice } from '@/domain/models/playbackDevice'
 import type { ApiDevice } from '@/domain/models/apiDevice'
 import type { AlarmRule } from '@/domain/models/alarm'
 import type { Laboratory } from '@/domain/models/laboratory'
+import type { DeviceGroup } from '@/domain/models/deviceGroup'
 import {
   acknowledgeAlarm,
+  addDevicesToGroup,
+  associatePlaybackSpl,
   batchDeviceAction,
   controlDevice,
   createApiDevice,
+  createDeviceGroup,
   createLaboratory,
   createPlaybackDevice,
   createTestDevice,
   deleteAlarmRule,
   deleteApiDevice,
+  deleteDeviceGroup,
   deleteLaboratory,
   deletePlaybackDevice,
   deleteTestDevice,
   fetchAlarmRules,
   fetchAlarms,
   fetchApiDevices,
+  fetchDeviceGroupDetail,
   fetchDeviceGroups,
+  fetchDriverKeywords,
   fetchLaboratories,
   fetchPlaybackDevices,
   fetchStatusHistory,
   fetchTestDevices,
+  removeDevicesFromGroup,
   saveAlarmRule,
   scanDevices,
   setDeviceOccupied,
   updateApiDevice,
+  updateDeviceGroup,
   updateLaboratory,
   updatePlaybackDevice,
   updateTestDevice,
@@ -83,6 +92,25 @@ export function useDeviceGroups() {
   return useQuery({
     queryKey: ['devices', 'groups'],
     queryFn: fetchDeviceGroups,
+    staleTime: 60_000,
+  })
+}
+
+/** 设备分组详情（§6.3；GET /device-groups/{id}——列表 device_ids 恒空，展开/筛选时按需拉取真实成员，P2-1） */
+export function useDeviceGroupDetailQuery(groupId: string | null) {
+  return useQuery({
+    queryKey: ['devices', 'groups', groupId],
+    queryFn: () => fetchDeviceGroupDetail(groupId as string),
+    enabled: groupId != null,
+    staleTime: 30_000,
+  })
+}
+
+/** 驱动关键字（§6.2/V9.7.10 loadDriverKeywords；GET /test-devices/driver-keywords） */
+export function useDriverKeywords() {
+  return useQuery({
+    queryKey: ['devices', 'driver-keywords'],
+    queryFn: fetchDriverKeywords,
     staleTime: 60_000,
   })
 }
@@ -214,6 +242,53 @@ export function useDeviceMutations() {
     scan,
     invalidateAll,
   }
+}
+
+/** 设备分组 CRUD（§6.3；INT-721 接线 device_bp /test-devices/device-groups 真实端点） */
+export function useDeviceGroupMutations() {
+  const queryClient = useQueryClient()
+
+  const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['devices', 'groups'] })
+
+  const create = useMutation({
+    mutationFn: (input: { name: string; description?: string | null; groupType?: DeviceGroup['groupType']; deviceIds?: number[] }) =>
+      createDeviceGroup(input),
+    onSuccess: invalidate,
+  })
+
+  const update = useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: { name?: string; description?: string | null; groupType?: DeviceGroup['groupType'] } }) =>
+      updateDeviceGroup(id, patch),
+    onSuccess: invalidate,
+  })
+
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteDeviceGroup(id, true),
+    onSuccess: invalidate,
+  })
+
+  const addMembers = useMutation({
+    mutationFn: ({ id, deviceIds }: { id: string; deviceIds: number[] }) => addDevicesToGroup(id, deviceIds),
+    onSuccess: invalidate,
+  })
+
+  const removeMembers = useMutation({
+    mutationFn: ({ id, deviceIds }: { id: string; deviceIds: number[] }) => removeDevicesFromGroup(id, deviceIds),
+    onSuccess: invalidate,
+  })
+
+  return { create, update, remove, addMembers, removeMembers }
+}
+
+/** 关联声压映射（§6.4；POST /playback-devices/{id}/associate-spl） */
+export function useAssociateSplMutation() {
+  const queryClient = useQueryClient()
+  const associate = useMutation({
+    mutationFn: ({ deviceId, splMappingId }: { deviceId: number; splMappingId: number }) =>
+      associatePlaybackSpl(deviceId, splMappingId),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['devices', 'playback'] }),
+  })
+  return { associate }
 }
 
 /** 告警确认（§3.7） */

@@ -13,7 +13,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
-import { useEvaluationDimensions } from '@/application/evaluation/use-dimensions'
+import { useEvaluationDimensions, useEvaluationCategories } from '@/application/evaluation/use-dimensions'
 import { useDimensionOptions } from '@/application/testcases/use-evaluation-dimensions'
 import { useCaseGroups } from '@/application/testcases/use-case-groups'
 import { useCaseTags } from '@/application/testcases/use-case-tags'
@@ -86,14 +86,17 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   const groupsQuery = useCaseGroups()
   const tagsQuery = useCaseTags()
   const dimsQuery = useDimensionOptions(algorithmId)
-  /** 全量评估维度（含子维度；批量设置评估维度 DimensionPicker 主/子层级用，参考 V9.7.10） */
+  /** 全量评估维度（含子维度；批量设置评估维度 DimensionPicker 主/子分组云用，参考 V9.7.10） */
   const allDimsQuery = useEvaluationDimensions()
+  /** 评估维度分类（DimensionPicker 分类分组组头；负责人 2026-10-19 口径） */
+  const categoriesQuery = useEvaluationCategories()
 
   const items = listQuery.data?.items ?? []
   const groups = groupsQuery.data ?? []
   const tags = tagsQuery.data ?? []
   const dimensions = dimsQuery.data ?? []
   const allDimensions = allDimsQuery.data ?? []
+  const categories = categoriesQuery.data ?? []
 
   const isFiltered = useMemo(
     () =>
@@ -530,6 +533,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
           count={batchDialog.count}
           ids={batchDialog.ids}
           dimensions={allDimensions}
+          categories={categories}
           algorithmType={algorithmId}
           testType={selectedTestType}
         />

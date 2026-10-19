@@ -31,7 +31,10 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import type { Dimension } from '@/domain/models/evaluationDimension'
+import type {
+  Dimension,
+  EvaluationCategory,
+} from '@/domain/models/evaluationDimension'
 import type {
   CaseEvaluationStrategy,
   TestCaseBackgroundNoiseItem,
@@ -101,6 +104,7 @@ export function EvaluationStrategyEditor({
   legacyDimensions,
   legacyBackgroundNoise,
   dimensions,
+  categories = [],
   algorithmType,
   onChange,
 }: {
@@ -111,6 +115,8 @@ export function EvaluationStrategyEditor({
   /** 存量用例 config.background_noise 直载 */
   legacyBackgroundNoise?: TestCaseBackgroundNoiseItem | null
   dimensions: Dimension[]
+  /** INT-587：评估维度选择按分类分组（分类头聚合；不传则平铺） */
+  categories?: EvaluationCategory[]
   algorithmType?: string | null
   onChange: (next: EvaluationStrategyEditorValue) => void
 }) {
@@ -395,6 +401,7 @@ export function EvaluationStrategyEditor({
                     <div className='border-border/60 rounded-lg border p-3'>
                       <OverallEvaluationEditor
                         dimensions={dimensions}
+                        categories={categories}
                         algorithmType={algorithmType}
                         value={overrides.dimensions}
                         onChange={(next) =>
@@ -476,6 +483,7 @@ export function EvaluationStrategyEditor({
               <div className='border-border/60 rounded-lg border p-3'>
                 <OverallEvaluationEditor
                   dimensions={dimensions}
+                  categories={categories}
                   algorithmType={algorithmType}
                   value={inlineDimensions}
                   onChange={setInlineDimensions}

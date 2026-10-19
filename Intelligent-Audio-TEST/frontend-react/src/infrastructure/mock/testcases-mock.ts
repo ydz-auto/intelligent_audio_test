@@ -6,7 +6,11 @@
  */
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
-import type { Dimension, EvaluationDimensionItem } from '@/domain/models/evaluationDimension'
+import type {
+  Dimension,
+  EvaluationCategory,
+  EvaluationDimensionItem,
+} from '@/domain/models/evaluationDimension'
 import type { TagCategory, TagItem } from '@/domain/models/testTag'
 
 /** 标签分类（testcase.py TagCategoryItem：id/name/description/color/sort_order/tag_count） */
@@ -73,6 +77,16 @@ export const MOCK_CASE_DIMENSIONS: Dimension[] = [
   { id: 3, name: '唤醒成功率', description: '唤醒词响应成功率', dimensionType: 'main', parentDimensionId: null, categoryId: 3, resultType: 1, weight: 6, status: true, associatedAlgorithms: [{ algorithmType: 'asr-stream', isDefault: true, weight: 6 }] },
   { id: 4, name: '响应时延', description: '指令响应端到端时延', dimensionType: 'main', parentDimensionId: null, categoryId: 3, resultType: 1, weight: 5, status: true, associatedAlgorithms: [{ algorithmType: 'asr-stream', isDefault: false, weight: 5 }, { algorithmType: 'eval-ensemble', isDefault: false, weight: 4 }] },
   { id: 5, name: '对话连贯性', description: '多轮对话上下文一致性', dimensionType: 'main', parentDimensionId: null, categoryId: 2, resultType: 'llm_judge', weight: 6, status: true, associatedAlgorithms: [{ algorithmType: 'eval-ensemble', isDefault: true, weight: 6 }] },
+]
+
+/**
+ * 评估维度分类（evaluation.py CategoryItem；用例编辑抽屉 mock 维度按 categoryId 归属，
+ * DimensionPicker 分类分组组头用——负责人 2026-10-19「评估维度已经分组/分类了」口径）。
+ */
+export const MOCK_EVALUATION_CATEGORIES: EvaluationCategory[] = [
+  { id: 1, name: '识别质量', description: '语音识别准确率相关指标', icon: 'fas fa-microphone', createdAt: '2026-08-01 09:00', updatedAt: '2026-09-20 11:00' },
+  { id: 2, name: '语义理解', description: '指令语义理解与执行正确性', icon: 'fas fa-brain', createdAt: '2026-08-01 09:00', updatedAt: '2026-09-20 11:00' },
+  { id: 3, name: '响应体验', description: '唤醒与响应端到端体验', icon: 'fas fa-bolt', createdAt: '2026-08-02 10:00', updatedAt: '2026-09-21 14:00' },
 ]
 
 /**

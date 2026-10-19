@@ -1,14 +1,18 @@
 /**
  * 上传选项（§6.16/§6.17 共用 UploadOptions；buildUploadOptionsConfig 平移；INT-714 接线）。
  * 音频类型 radio + 生成测试用例 boolean + 算法类型 select（真实 /algorithm/options）
- * + 评估维度单组（真实 /evaluation/dimensions，DimensionPicker 平铺云；INT-714 口径修订：
- *   用例类型由后端默认落库，模态窗不再显示 E2E/API 类型选择）
+ * + 评估维度单组（真实 /evaluation/dimensions，DimensionPicker 主/子分组云 + 分类分组；
+ *   INT-714 口径修订：用例类型由后端默认落库，模态窗不再显示 E2E/API 类型选择）
  * + 播放设备 select（真实 /playback-devices）+ 默认声压级 + 用例分组 radio + 继承音频标签 boolean。
  */
 import { Check, Info } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 
-import { useEvaluationDimensions, useAlgorithmOptions } from '@/application/evaluation/use-dimensions'
+import {
+  useEvaluationDimensions,
+  useEvaluationCategories,
+  useAlgorithmOptions,
+} from '@/application/evaluation/use-dimensions'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -95,6 +99,8 @@ export function UploadOptions(props: UploadOptionsProps) {
   const algorithmOptions = algorithmOptionsQuery.data ?? []
   const uploadDimsQuery = useEvaluationDimensions()
   const uploadDimensions = uploadDimsQuery.data ?? []
+  const categoriesQuery = useEvaluationCategories()
+  const categories = categoriesQuery.data ?? []
   const playbackDevicesQuery = useQuery({
     queryKey: ['playback-devices'],
     queryFn: fetchPlaybackDevices,
@@ -213,6 +219,7 @@ export function UploadOptions(props: UploadOptionsProps) {
             <Label>评估维度</Label>
             <DimensionPicker
               dimensions={uploadDimensions}
+              categories={categories}
               selected={props.dimensionIds}
               onToggle={(ids, checked) =>
                 props.onDimensionIdsChange(

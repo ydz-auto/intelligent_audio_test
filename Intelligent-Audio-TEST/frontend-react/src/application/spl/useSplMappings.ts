@@ -19,6 +19,7 @@ import {
   fetchPlaybackDeviceRefs,
   fetchSplHistory,
   fetchSplMappings,
+  fetchSplMappingsByDevice,
   fetchSplStats,
   updateSplMapping,
 } from '@/infrastructure/api/spl-api'
@@ -28,6 +29,16 @@ export function useSplMappings() {
   return useQuery({
     queryKey: ['spl'],
     queryFn: fetchSplMappings,
+    staleTime: 30_000,
+  })
+}
+
+/** 某播放设备的声压映射（§6.4 关联弹窗/播放表单编辑；GET /spl/by-device/{id}，V9.7.10 loadSplMappings 同源） */
+export function useSplMappingsByDevice(deviceId: number | null) {
+  return useQuery({
+    queryKey: ['spl-by-device', deviceId],
+    queryFn: () => fetchSplMappingsByDevice(deviceId as number),
+    enabled: deviceId != null,
     staleTime: 30_000,
   })
 }
