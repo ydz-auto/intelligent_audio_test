@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import func
+from sqlalchemy import Integer, func
 
 from shared.models.database import get_db_session
 from report_service.domain.entities.benchmark import MetricMapping, RankingDirection
@@ -207,6 +207,7 @@ class BenchmarkRepositoryImpl(BenchmarkRepository):
                 direction=data['direction'],
                 scenario_tags=data.get('scenario_tags') or [],
                 active=bool(data.get('active', True)),
+                created_by_user_id=data.get('created_by_user_id'),
             )
             session.add(po)
             session.commit()
@@ -225,7 +226,8 @@ class BenchmarkRepositoryImpl(BenchmarkRepository):
                 BenchmarkMetricMapping.id == int(mapping_id)).first()
             if po is None:
                 return None
-            allowed = ('metric_name', 'unit', 'direction', 'scenario_tags', 'active')
+            allowed = ('metric_name', 'unit', 'direction', 'scenario_tags', 'active',
+                       'updated_by_user_id')
             for field_name in allowed:
                 if field_name in updates and updates[field_name] is not None:
                     setattr(po, field_name, updates[field_name])
@@ -250,7 +252,10 @@ class BenchmarkRepositoryImpl(BenchmarkRepository):
                 url=data.get('url'),
                 version=data.get('version'),
                 description=data.get('description'),
+                # V9.7.10 兼容旧列（客户端自报仅作展示，非操作人依据）
                 created_by=data.get('created_by'),
+                # INT-844：操作人认证 user_id（AUTH_MODE=off → None → NULL）
+                created_by_user_id=data.get('created_by_user_id'),
             )
             session.add(po)
             session.commit()
@@ -338,7 +343,8 @@ class BenchmarkRepositoryImpl(BenchmarkRepository):
             rows = (
                 session.query(
                     BenchmarkBaseline.version,
-                    func.max(BenchmarkBaseline.is_current).label('is_current'),
+                    # Postgres 无 max(boolean)：is_current 转 int 后聚合（SQLite 同样成立）
+                    func.max(BenchmarkBaseline.is_current.cast(Integer)).label('is_current'),
                     func.count(BenchmarkBaseline.id).label('entry_count'),
                     func.min(BenchmarkBaseline.created_at).label('created_at'),
                 )
@@ -483,7 +489,10 @@ class BenchmarkRepositoryImpl(BenchmarkRepository):
                 metric_count=int(data.get('metric_count') or 0),
                 ranking_data=data.get('ranking_data') or {},
                 version=int(data.get('version') or 1),
+                # V9.7.10 兼容旧列（客户端自报仅作展示，非操作人依据）
                 published_by=data.get('published_by') or '',
+                # INT-844：发布操作人认证 user_id（AUTH_MODE=off → None → NULL）
+                created_by_user_id=data.get('created_by_user_id'),
             )
             session.add(po)
             session.commit()

@@ -29,6 +29,7 @@ from report_service.domain.entities.benchmark import (
     BenchmarkSourceType,
 )
 from report_service.domain.services.benchmark_metric_mapper import normalize_direction
+from shared.infrastructure.user_context import get_current_user_id
 from shared.models.common_enums import AuditEvent
 
 logger = logging.getLogger(__name__)
@@ -92,7 +93,11 @@ class BenchmarkBaselineService:
                 'url': (command.url or '').strip(),
                 'version': (command.version or '').strip(),
                 'description': command.description or '',
+                # V9.7.10 兼容旧列（客户端自报仅作展示，非操作人依据）
                 'created_by': command.created_by or '',
+                # INT-844：操作人取认证 user_id（AUTH_MODE=off → None → NULL），
+                # 不信任客户端自报、不硬编码 0 兜底
+                'created_by_user_id': get_current_user_id(),
             })
             return {'success': True, 'message': '数据源创建成功', 'data': source, 'code': 201}
         except Exception:
@@ -206,6 +211,8 @@ class BenchmarkBaselineService:
             else:
                 row['source_id'] = command.source_id
                 row['category'] = category
+                # INT-844：基线导入属用户操作，行写操作人认证 user_id
+                row['created_by_user_id'] = get_current_user_id()
                 rows.append(row)
 
         if not rows:
@@ -296,6 +303,8 @@ class BenchmarkBaselineService:
                 'direction': direction.value,
                 'scenario_tags': [str(t).strip() for t in (command.scenario_tags or []) if str(t).strip()],
                 'active': bool(command.active),
+                # INT-844：操作人取认证 user_id（AUTH_MODE=off → None → NULL）
+                'created_by_user_id': get_current_user_id(),
             })
             write_benchmark_audit(AuditEvent.BENCHMARK_MAPPING_CREATED, 'benchmark_mapping', {
                 'mapping_id': mapping.id,
@@ -336,6 +345,8 @@ class BenchmarkBaselineService:
                 updates['active'] = bool(command.active)
             if not updates:
                 return {'success': False, 'message': '无可更新的字段', 'data': None, 'code': 101}
+            # INT-844：更新写操作人认证 user_id（AUTH_MODE=off → None → NULL）
+            updates['updated_by_user_id'] = get_current_user_id()
             mapping = self.repo.update_metric_mapping(command.mapping_id, updates)
             if mapping is None:
                 return {'success': False, 'message': '指标映射不存在', 'data': None, 'code': 201}

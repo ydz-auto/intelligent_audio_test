@@ -73,6 +73,8 @@ class BenchmarkMetricMapping(Base):
     direction = Column(String(20), nullable=False, comment='lower_is_better / higher_is_better')
     scenario_tags = Column(JSON, comment='默认场景标签')
     active = Column(Boolean, nullable=False, default=True, comment='是否启用')
+    created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
+    updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
     updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
 
 
@@ -90,7 +92,9 @@ class BenchmarkSource(Base):
     url = Column(String(1024), comment='原始链接')
     version = Column(String(60), comment='数据源版本')
     description = Column(Text, comment='说明')
-    created_by = Column(String(120), comment='创建人')
+    created_by = Column(String(120), comment='创建人（V9.7.10 兼容旧列，客户端自报非操作人依据）')
+    created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID（INT-844 操作人，认证 user_id）')
+    updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
     created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
 
 
@@ -116,6 +120,7 @@ class BenchmarkBaseline(Base):
     metric_date = Column(String(20), comment='数据产生日期（YYYY-MM-DD）')
     version = Column(Integer, nullable=False, default=1, comment='基线版本号，从 1 开始')
     is_current = Column(Boolean, nullable=False, default=True, comment='是否当前版本')
+    created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='导入操作人用户ID（INT-844，认证 user_id）')
     created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
 
 
@@ -148,7 +153,8 @@ class BenchmarkReport(Base):
     metric_count = Column(Integer, nullable=False, default=0, comment='参与排行的指标数')
     ranking_data = Column(JSON, comment='指标数据快照（发布时点排行 ReadModel，报告不漂移）')
     version = Column(Integer, nullable=False, default=1, comment='Benchmark 报告版本号')
-    published_by = Column(String(120), comment='发布人')
+    published_by = Column(String(120), comment='发布人（V9.7.10 兼容旧列，客户端自报非操作人依据）')
+    created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='发布操作人用户ID（INT-844，认证 user_id）')
     published_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='发布时间')
     created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
