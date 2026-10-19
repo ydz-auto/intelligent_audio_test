@@ -95,8 +95,8 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
 
 <style scoped>
 .header-icon-btn {
-  width: 36px;
-  height: 36px;
+  width: var(--control-height);
+  height: var(--control-height);
   border-radius: var(--radius-control);
   border: none;
   background: transparent;

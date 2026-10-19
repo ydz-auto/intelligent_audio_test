@@ -68,13 +68,16 @@ function handleClick(item: TopNavLink, event: MouseEvent) {
   align-items: center;
   gap: 4px;
   height: 100%;
+  /* 覆盖 components/navigation.css 全局 nav 泄漏（margin-bottom: var(--spacing-xl)），
+     否则顶栏 nav 被整体下移、链接底边与右区按钮不齐（INT-894） */
+  margin-bottom: 0;
 }
 /* 顶导航项照 React `TopNav` 药丸形态（rounded-lg + hover/active 底）：
    底色用 tokens `--muted`，不写死颜色 / 圆角（圆角 = 首页卡片同套 --radius-md）。 */
 .top-nav__link {
   display: inline-flex;
   align-items: center;
-  height: 32px;
+  height: var(--control-height);
   padding: 0 12px;
   font-size: 14px;
   color: var(--muted-foreground);

@@ -178,3 +178,7 @@ export const SYSTEM_SETTINGS_DEFAULT_PATH = `/system-settings/${SETTINGS_DOMAINS
 
 /** 命中系统设置路径判定（drill-in 替换侧栏整树） */
 export const SYSTEM_SETTINGS_PATH_PATTERN = /^\/system-settings(\/|$)/
+
+// ===== 侧栏「固定/收起」偏好（INT-894）=====
+/** 持久化键，照 React `iatp:sidebar:v1:state` cookie 同 key；localStorage 存「展开」布尔（缺省展开） */
+export const SIDEBAR_STATE_KEY = 'iatp:sidebar:v1:state'

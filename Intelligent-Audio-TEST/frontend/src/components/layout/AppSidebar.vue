@@ -5,10 +5,10 @@
     @mouseenter="handleEnter"
     @mouseleave="handleLeave"
   >
-    <!-- 侧栏顶：折叠切换 -->
+    <!-- 侧栏顶：折叠/固定切换 -->
     <div class="app-sidebar__toolbar">
-      <button class="collapse-btn" :title="displayCollapsed ? '展开侧栏' : '折叠侧栏'" @click="toggleCollapsed">
-        <i class="fas fa-angles-left" :class="{ 'fas fa-angles-right': displayCollapsed }"></i>
+      <button class="collapse-btn" :title="fixedCollapsed ? '固定展开侧栏' : '折叠侧栏'" @click="toggleCollapsed">
+        <i class="fas fa-angles-left" :class="{ 'fas fa-angles-right': fixedCollapsed }"></i>
       </button>
     </div>
 
@@ -78,7 +78,7 @@ import { useAuthStore } from '../../store/authStore'
 import { useNavAccess } from '../../composables/layout/useNavAccess'
 import {
   ROOT_SIDEBAR_NAV, SETTINGS_DOMAINS,
-  SYSTEM_SETTINGS_PATH_PATTERN, type SettingsDomain,
+  SYSTEM_SETTINGS_PATH_PATTERN, SIDEBAR_STATE_KEY, type SettingsDomain,
 } from '../../config/navigation'
 
 const props = defineProps<{
@@ -95,7 +95,25 @@ const authStore = useAuthStore()
 const { hasNavPermission, hasNavAnyPermission } = useNavAccess()
 
 // 常驻折叠态（用户切换的固定偏好）+ 临时 hover 展开态
-const fixedCollapsed = ref(props.collapsed ?? true)
+// INT-894：默认展开（照 React getCookie('iatp:sidebar:v1:state') !== 'false'），
+// 显式切换写回 localStorage（刷新/重登保持）；hover 仅临时展开，不写回。
+function readSidebarCollapsed(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_STATE_KEY) === 'false'
+  } catch {
+    return false
+  }
+}
+function persistSidebarCollapsed(collapsed: boolean) {
+  try {
+    // 照 React：存「展开」布尔
+    localStorage.setItem(SIDEBAR_STATE_KEY, String(!collapsed))
+  } catch {
+    // 忽略持久化失败（隐私模式等）
+  }
+}
+
+const fixedCollapsed = ref(props.collapsed ?? readSidebarCollapsed())
 const isHovering = ref(false)
 const displayCollapsed = computed(() => fixedCollapsed.value && !isHovering.value)
 
@@ -155,6 +173,7 @@ function isSettingsActive(domainId: string, sectionId: string): boolean {
 function toggleCollapsed() {
   fixedCollapsed.value = !fixedCollapsed.value
   isHovering.value = false
+  persistSidebarCollapsed(fixedCollapsed.value)
   syncCollapsed()
 }
 
