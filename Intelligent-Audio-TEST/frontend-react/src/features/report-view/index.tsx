@@ -188,10 +188,7 @@ export function ReportViewPage() {
   // 空态/错误态（INT-503：isError 先于 !report 判定——加载失败不得落入骨架分支死区；
   // INT-596 P2-4：404/无效 ID →「报告不存在」，网络/500 →「加载失败 + 请重试」分叉，不合并误导）
   const isInvalidId = !Number.isFinite(reportId) || reportId <= 0
-  const notFoundError =
-    detailQuery.isError &&
-    typeof detailQuery.error?.message === 'string' &&
-    detailQuery.error.message.includes('不存在')
+  const notFoundError = detailQuery.isError && isReportNotFoundError(detailQuery.error)
 
   if (detailQuery.isLoading) {
     return <DetailSkeleton />
