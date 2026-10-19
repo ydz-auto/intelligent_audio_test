@@ -30,6 +30,7 @@ import { ResultField } from './result-field'
 import { TimelineComparison } from './timeline-comparison'
 import { AudioTimeline } from './audio-timeline'
 import { AudioPlayerModal, type AudioItemMeta } from './audio-player-modal'
+import { hasTimelineData } from '@/application/report-view/use-timeline-comparison'
 
 const META_CODES = new Set([
   'test_type',
@@ -260,14 +261,25 @@ export function ExecutionResults({
   const safeDimTab = Math.min(activeDimTab, Math.max(0, evalGroups.length - 1))
 
   const hasTimeline = useMemo(() => {
-    // fieldMapping.result/reference 含时间轴字段码（rttm/stm/json）
+    // fieldMapping.result/reference 显式声明的 rttm/stm 时间轴字段码
     const fm = fieldMapping
-    const hasResultTimeline = (fm?.result ?? []).some((code) => /rttm|stm|json/i.test(code))
-    const hasRefTimeline = (fm?.reference ?? []).some((code) => /rttm|stm|json/i.test(code))
+    const hasResultTimeline = (fm?.result ?? []).some((code) => /rttm|stm/i.test(code))
+    const hasRefTimeline = (fm?.reference ?? []).some((code) => /rttm|stm/i.test(code))
     if (hasResultTimeline || hasRefTimeline) return true
-    if ((caseItem.algorithmResults ?? []).some((r) => ['rttm', 'stm', 'json'].includes(r.paramType ?? ''))) return true
+    // 结果字段：rttm/stm 直接算时间轴；json 需值结构校验（rounds 等多轮结果数组不算，INT-951）
+    if (
+      (caseItem.algorithmResults ?? []).some((r) => {
+        const pt = r.paramType ?? ''
+        if (pt === 'rttm' || pt === 'stm') return true
+        if (pt === 'json') return hasTimelineData(r.value)
+        return false
+      })
+    )
+      return true
+    // 参考字段：key 含 rttm/stm 直接算；json 类 key 需值结构校验
     for (const [key, value] of Object.entries(caseItem.referenceParams ?? {})) {
       if (/rttm|stm/i.test(key) && value) return true
+      if (/json/i.test(key) && value && hasTimelineData((value as ReportReferenceParam).json ?? (value as ReportReferenceParam).value)) return true
     }
     return false
   }, [fieldMapping, caseItem.algorithmResults, caseItem.referenceParams])

@@ -55,8 +55,46 @@ export function parseStmText(text: string): TimelineSegment[] {
     })
 }
 
+/** 段对象结构校验：含 speaker + 数值 start/end 才算时间轴段（过滤 rounds 等多轮结果数组） */
+export function isTimelineSegment(value: unknown): value is TimelineSegment {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const rec = value as Record<string, unknown>
+  if (typeof rec.speaker !== 'string' || !rec.speaker.trim()) return false
+  return Number.isFinite(Number(rec.start)) && Number.isFinite(Number(rec.end))
+}
+
+/** 段对象归一化（start/end 兼容数字字符串；text 缺省空串） */
+function toTimelineSegment(value: unknown): TimelineSegment {
+  const rec = (value ?? {}) as Record<string, unknown>
+  return {
+    speaker: typeof rec.speaker === 'string' ? rec.speaker : '',
+    start: Number(rec.start),
+    end: Number(rec.end),
+    text: typeof rec.text === 'string' ? rec.text : '',
+  }
+}
+
+/** 值是否含时间轴段数据（json 数组需段结构校验；JSON 字符串递归解析） */
+export function hasTimelineData(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(isTimelineSegment)
+  if (typeof value !== 'string') return false
+  const text = value.trim()
+  if (!text) return false
+  if (text.startsWith('[') || text.startsWith('{')) {
+    try {
+      return hasTimelineData(JSON.parse(text))
+    } catch {
+      return false
+    }
+  }
+  return false
+}
+
 export function parseTimelineData(value: unknown): TimelineSegment[] {
-  if (Array.isArray(value)) return value as TimelineSegment[]
+  if (Array.isArray(value)) {
+    // 结构校验 + 归一化：rounds 等多轮结果数组（无 speaker/start/end）直接过滤
+    return (value as unknown[]).filter(isTimelineSegment).map(toTimelineSegment)
+  }
   if (typeof value === 'string') {
     const text = value.trim()
     if (text.startsWith('[') || text.startsWith('{')) {
@@ -127,11 +165,11 @@ export function useTimelineComparison() {
       return segs.map((s) => ({ ...s, resource: device }))
     })
     if (referenceSegments.length === 0 && resultSegments.length === 0) return null
-    // 说话人并集（参考 + 结果两侧；P3-8）
+    // 说话人并集（参考 + 结果两侧；P3-8；结构校验后 speaker 恒为字符串，去 undefined 兜底）
     const speakers = [...new Set([
       ...referenceSegments.map((s) => s.speaker),
       ...resultSegments.map((s) => s.speaker),
-    ])]
+    ])].filter((s): s is string => typeof s === 'string')
     // 匹配段高亮：贪心说话人映射（overlap ±0.5s）标记结果段 isMatch（P3-8）
     const mapping = computeOptimalSpeakerMapping(referenceSegments, resultSegments)
     const mappedResultSpeakers = new Set(mapping.values())

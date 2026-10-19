@@ -507,6 +507,21 @@ function toParamDict(raw: unknown): Record<string, import('@/domain/models/repor
   return out
 }
 
+/** 用例音频 {id,filename,...} → 域模型 {audio_id,audio_name,...}（report_service 实测口径：id/filename/playback_device_name，INT-951 顺带修正重复 key） */
+function toReportAudioItem(raw: unknown): import('@/domain/models/report').ReportAudioItem {
+  const rec = (raw ?? {}) as Record<string, unknown>
+  return {
+    audio_id: (rec.audio_id ?? rec.id) as number | string,
+    audio_name: str(rec.audio_name ?? rec.filename ?? rec.label) ?? undefined,
+    audio_type: rec.audio_type !== undefined ? str(rec.audio_type) : undefined,
+    spl: num(rec.spl),
+    play_order: num(rec.play_order),
+    noise_spl: rec.noise_spl !== undefined ? num(rec.noise_spl) : undefined,
+    device_name: str(rec.device_name ?? rec.playback_device_name) ?? undefined,
+    url: str(rec.url) ?? undefined,
+  }
+}
+
 /** 算法结果扁平项（_expand_rounds 展开 @round:N 的 snake_case 字段 → 域模型） */
 function toAlgorithmResult(raw: Record<string, unknown>): import('@/domain/models/report').ReportAlgorithmResult {
   return {
@@ -541,7 +556,7 @@ function toReportCaseItem(raw: unknown): ReportCaseItem {
       ? (rec.results as import('@/domain/models/report').ReportCaseResult[])
       : [],
     audios: Array.isArray(rec.audios)
-      ? (rec.audios as import('@/domain/models/report').ReportAudioItem[])
+      ? (rec.audios as Record<string, unknown>[]).map(toReportAudioItem)
       : [],
     referenceParams: toParamDict(rec.reference_params ?? rec.referenceParams),
     algorithmResults: Array.isArray(algoResults)
