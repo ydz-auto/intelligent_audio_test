@@ -569,3 +569,54 @@ export function toCaseParamUpsertDto(param: Partial<AlgorithmCaseParam>): CasePa
     field_path: param.fieldPath,
   }
 }
+
+// ===== 设备/API 参数 =====
+
+/** 设备/API 参数请求体（Domain → snake_case DTO，含 direction / param_type_source / options_* 等设备专属字段） */
+export interface DeviceApiParamUpsertDto {
+  algorithm_type?: string
+  param_code?: string
+  param_name?: string
+  label?: string
+  param_type?: string
+  direction?: string
+  required?: boolean
+  default_value?: unknown
+  options_source?: string
+  options_field?: string
+  options_label_field?: string
+  validation_rules?: unknown
+  help_text?: string
+  ui_order?: number
+  hidden?: boolean
+  param_type_source?: string
+}
+
+/** AlgorithmDeviceParam（Domain）→ 设备/API 参数请求体 DTO
+ *
+ * 与 toCaseParamUpsertDto 区分：设备/API 参数写路径（POST/PUT /algorithm/params）必须
+ * 透传 direction / param_type_source（后端按其路由 device/api 表，缺省均回退 input/device）
+ * 与 options_* / validation_rules（V9.7.10 旧 Vue 行为一致），不得复用用例参数 DTO。
+ */
+export function toDeviceApiParamUpsertDto(
+  param: Partial<AlgorithmDeviceParam> & { paramTypeSource?: string; validationRules?: unknown }
+): DeviceApiParamUpsertDto {
+  return {
+    algorithm_type: param.algorithmType,
+    param_code: param.paramCode,
+    param_name: param.paramName,
+    label: param.label,
+    param_type: param.paramType,
+    direction: param.direction,
+    required: param.required,
+    default_value: param.defaultValue,
+    options_source: param.optionsSource,
+    options_field: param.optionsField,
+    options_label_field: param.optionsLabelField,
+    validation_rules: param.validationRules,
+    help_text: param.helpText,
+    ui_order: param.uiOrder,
+    hidden: param.hidden,
+    param_type_source: param.paramTypeSource,
+  }
+}

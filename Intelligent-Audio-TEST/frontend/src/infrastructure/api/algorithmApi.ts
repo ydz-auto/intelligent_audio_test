@@ -47,6 +47,8 @@ import {
   toCaseParamUpsertDto,
   toAlgorithmDefinitionDto,
   toParamMappingDto,
+  toDeviceApiParamUpsertDto,
+  toAlgorithmDeviceParam,
 } from '../adapters/algorithmAdapter';
 
 export const algorithmApi = {
@@ -118,14 +120,14 @@ export const algorithmApi = {
     return toAlgorithmCaseParam(raw) as unknown as AlgorithmDeviceParam;
   },
 
-  async createParam(data: Partial<AlgorithmDeviceParam>) {
-    const raw = await request<any>('POST', '/algorithm/params', toCaseParamUpsertDto(data as Partial<AlgorithmCaseParam>));
-    return toAlgorithmCaseParam(raw) as unknown as AlgorithmDeviceParam;
+  async createParam(data: Partial<AlgorithmDeviceParam> & { paramTypeSource?: string }) {
+    const raw = await request<any>('POST', '/algorithm/params', toDeviceApiParamUpsertDto(data));
+    return toAlgorithmDeviceParam(raw);
   },
 
-  async updateParam(paramId: number, data: Partial<AlgorithmDeviceParam>) {
-    const raw = await request<any>('PUT', `/algorithm/params/${paramId}`, toCaseParamUpsertDto(data as Partial<AlgorithmCaseParam>));
-    return toAlgorithmCaseParam(raw) as unknown as AlgorithmDeviceParam;
+  async updateParam(paramId: number, data: Partial<AlgorithmDeviceParam> & { paramTypeSource?: string }) {
+    const raw = await request<any>('PUT', `/algorithm/params/${paramId}`, toDeviceApiParamUpsertDto(data));
+    return toAlgorithmDeviceParam(raw);
   },
 
   async deleteParam(paramId: number) {
