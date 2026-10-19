@@ -114,7 +114,13 @@ export function DimensionMutateDrawer({
 
   const handleSave = form.handleSubmit(async (values) => {
     try {
-      await save.mutateAsync(toDimensionSaveInput(values))
+      // 编辑态必须携带 id：saveEvaluationDimension 凭 input.id 走 PUT /{id}，
+      // 缺 id 会落入 POST 新建同名副本（INT-948）。复制路径不经本抽屉（onDuplicate 显式 copy- 前缀）。
+      await save.mutateAsync(
+        mode === 'edit' && effectiveDimension
+          ? { ...toDimensionSaveInput(values), id: effectiveDimension.id }
+          : toDimensionSaveInput(values)
+      )
       toast.success(
         mode === 'edit' ? '评估维度更新成功' : '评估维度添加成功'
       )
