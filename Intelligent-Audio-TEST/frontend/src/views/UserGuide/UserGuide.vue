@@ -339,16 +339,13 @@ onBeforeUnmount(() => {
 .code-pre {
   margin: 0;
   padding: 16px;
-  background: var(--foreground-deep, #1a1a1a);
-  color: #e6edf3;
+  background: var(--code-bg);
+  color: var(--code-text);
   overflow-x: auto;
   font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.7;
-  border-radius: 0;
-}
-.dark .code-pre {
-  background: #0d1117;
+  /* 圆角由 .guide-code-block（overflow:hidden + border-radius: var(--radius-md)）裁切，不在此重复定义 */
 }
 /* 表格 */
 .guide-table-scroll {

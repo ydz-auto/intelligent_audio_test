@@ -342,7 +342,7 @@ onMounted(() => {
 }
 .status-badge {
   padding: 2px 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-size: 12px;
   font-family: var(--font-sans);
 }

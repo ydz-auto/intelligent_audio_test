@@ -3,7 +3,7 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <div class="header-left">
-        <h2 class="page-title" style="color: var(--primary);">
+        <h2 class="page-title">
           <i class="fas fa-chart-simple"></i>
           排行榜
         </h2>
@@ -241,6 +241,7 @@ onMounted(() => {
   margin: 0;
   font-size: 20px;
   font-weight: 600;
+  color: var(--primary);
 }
 .page-description {
   margin: 0;

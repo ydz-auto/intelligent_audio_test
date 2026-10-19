@@ -121,6 +121,10 @@
   --timeline-blue: #69c0ff; /* 时间线结果段边框蓝（原散值 #69c0ff） */
   --gray-deep: #262626; /* 卡片内深灰标题（原散值 #262626） */
   --gray-lightest: #f8f9fa; /* 渐变浅灰端点（原散值 #F8F9FA） */
+
+  /* ── CSS 冻结收编：代码块（INT-977，UserGuide 原硬编码，值保真） ── */
+  --code-bg: #1a1a1a;    /* 代码块背景（浅色预设；深色预设见 .dark） */
+  --code-text: #e6edf3;  /* 代码块文字（常驻深底浅字，两套预设同值） */
 }
 
 /* 深色预设（原 tokens.css .dark 结构预留 → 本卡启用） */
@@ -173,4 +177,5 @@
   --btn-primary-disabled-bg: #3a3a3a;
   --btn-secondary-hover-bg: #444444;
   --danger-required: #ff6b70;
+  --code-bg: #0d1117; /* 代码块背景（深色预设，比浅色预设更深一档；INT-977 收编） */
 }
