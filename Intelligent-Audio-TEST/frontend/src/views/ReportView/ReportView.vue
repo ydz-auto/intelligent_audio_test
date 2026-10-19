@@ -133,7 +133,7 @@ import '../../assets/styles/components/tag.css'
 import '../../assets/styles/components/log.css'
 import '../../assets/styles/layouts/main.css'
 
-import { ref, computed, onMounted, onUnmounted, provide, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, provide, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { sanitizeConclusion } from '../../utils/sanitize'
 import { ReportStatus, Visibility } from '@/domain/enums'
@@ -417,15 +417,30 @@ const goBack = () => router.back()
 /** G02 报告中心接管历史报告管理入口；空态回退目标改为 /report-center */
 const goToReportCenter = () => router.push('/report-center')
 
-onMounted(() => {
+/** 从路由参数（path :id 或 query id）加载报告；无 id 时回到空态 */
+const loadFromRoute = () => {
   const reportId = route.params.id as string || route.query.id as string
   if (reportId) {
     loadReport(reportId)
   } else {
+    report.value = null
+    resetReportState()
     loading.value = false
   }
+}
+
+onMounted(() => {
+  loadFromRoute()
   document.addEventListener('click', closeExportMenuOnOutsideClick)
 })
+
+// INT-969：同组件路由参数变化（手改 URL/hash 切换 :id）→ 重新拉取，避免残留上一份报告数据
+watch(
+  () => [route.params.id, route.query.id],
+  () => {
+    loadFromRoute()
+  }
+)
 
 onUnmounted(() => {
   resetReportState()

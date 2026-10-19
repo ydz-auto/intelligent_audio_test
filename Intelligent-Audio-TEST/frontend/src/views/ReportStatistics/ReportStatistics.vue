@@ -1,17 +1,12 @@
 <template>
   <div class="rst-statistics-view">
-    <!-- Toast 提示 -->
-    <teleport to="#global-fixed-elements">
-      <div v-if="toast" class="rst-toast-container" :class="`rst-toast-${toast.type}`">
-        <i :class="toast.type === 'success' ? 'fas fa-check-circle' : toast.type === 'error' ? 'fas fa-exclamation-circle' : toast.type === 'warning' ? 'fas fa-exclamation-triangle' : 'fas fa-info-circle'"></i>
-        <span>{{ toast.message }}</span>
-      </div>
-    </teleport>
+    <!-- Toast 提示：公共组件（样式走 token，INT-969） -->
+    <Toast :toast="toast" />
 
     <!-- 页面标题 -->
     <div class="page-header rst-page-header">
       <div class="header-left">
-        <h2 class="page-title" style="color: var(--primary-color);">
+        <h2 class="page-title">
           <i class="fas fa-chart-line"></i>
           报告统计分析
         </h2>
@@ -418,6 +413,7 @@ import '../../assets/styles/layouts/main.css'
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import ChartComponent from '@/components/report/ChartComponent.vue'
+import Toast from '@/components/common/Toast.vue'
 import {
   useReportStatistics,
   STATISTICS_TABS,
@@ -709,6 +705,7 @@ watch(trendSubTab, () => {
 .page-title {
   margin: 0;
   font-size: var(--font-size-xl);
+  color: var(--primary-color);
 }
 
 .page-description {
@@ -749,21 +746,21 @@ watch(trendSubTab, () => {
 }
 
 .rst-select {
-  border: 2px solid var(--color-gray-300) !important;
-  background-color: var(--background-primary) !important;
-  border-radius: var(--border-radius-md) !important;
-  padding: var(--spacing-sm) var(--spacing-md) !important;
-  font-size: var(--font-size-sm) !important;
-  color: var(--text-primary) !important;
+  border: 2px solid var(--color-gray-300);
+  background-color: var(--background-primary);
+  border-radius: var(--border-radius-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
 }
 
 .date-input {
-  border: 2px solid var(--color-gray-300) !important;
-  background-color: var(--background-primary) !important;
-  border-radius: var(--border-radius-md) !important;
-  padding: var(--spacing-xs) var(--spacing-sm) !important;
-  font-size: var(--font-size-sm) !important;
-  color: var(--text-primary) !important;
+  border: 2px solid var(--color-gray-300);
+  background-color: var(--background-primary);
+  border-radius: var(--border-radius-md);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
 }
 
 .rst-content-item {
@@ -1079,34 +1076,5 @@ watch(trendSubTab, () => {
 .rst-report-form {
   padding: var(--spacing-lg);
   margin-bottom: var(--spacing-md);
-}
-
-/* ===== Toast ===== */
-.rst-toast-container {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  padding: 12px 20px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  z-index: 10000;
-  animation: rst-slide-in 0.3s ease;
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 15%, transparent);
-}
-
-.rst-toast-container i {
-  font-size: 1.2rem;
-}
-
-.rst-toast-success { background-color: var(--color-green-50); color: var(--color-green-600); border: 1px solid var(--color-green-600); }
-.rst-toast-error { background-color: var(--color-red-50); color: var(--color-red-600); border: 1px solid var(--color-red-600); }
-.rst-toast-warning { background-color: var(--color-amber-50); color: var(--color-amber-600); border: 1px solid var(--color-amber-600); }
-.rst-toast-info { background-color: var(--color-blue-50); color: var(--color-blue-600); border: 1px solid var(--color-blue-600); }
-
-@keyframes rst-slide-in {
-  from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
 }
 </style>

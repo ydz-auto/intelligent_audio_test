@@ -1,17 +1,12 @@
 <template>
   <div class="rc-report-center-view">
-    <!-- Toast 提示：Teleport 到全局固定元素容器 -->
-    <teleport to="#global-fixed-elements">
-      <div v-if="toast" class="rc-toast-container" :class="`rc-toast-${toast.type}`">
-        <i :class="toast.type === 'success' ? 'fas fa-check-circle' : toast.type === 'error' ? 'fas fa-exclamation-circle' : toast.type === 'warning' ? 'fas fa-exclamation-triangle' : 'fas fa-info-circle'"></i>
-        <span>{{ toast.message }}</span>
-      </div>
-    </teleport>
+    <!-- Toast 提示：公共组件（样式走 token，INT-969） -->
+    <Toast :toast="toast" />
 
     <!-- 页面标题 -->
     <div class="page-header rc-page-header">
       <div class="header-left">
-        <h2 class="page-title" style="color: var(--primary-color);">
+        <h2 class="page-title">
           <i class="fas fa-file-invoice"></i>
           报告中心
         </h2>
@@ -289,8 +284,17 @@
       </div>
     </div>
 
+    <!-- INT-969：加载失败独立错误态（区别于空态，可重试） -->
+    <div v-if="!loading && error" class="rc-error-state">
+      <i class="fas fa-exclamation-circle"></i>
+      <p>{{ error }}</p>
+      <button class="btn btn-secondary" @click="loadReports">
+        <i class="fas fa-redo"></i> 重试
+      </button>
+    </div>
+
     <!-- 无数据提示 -->
-    <div v-if="!loading && allReports.length === 0" class="rc-no-data">
+    <div v-if="!loading && !error && allReports.length === 0" class="rc-no-data">
       <i class="fas fa-inbox"></i>
       <p>{{ trashMode ? '回收站是空的' : '暂无报告数据' }}</p>
     </div>
@@ -337,6 +341,7 @@ import { benchmarkReportsPort } from '../../composables/benchmark/benchmarkRepor
 import BenchmarkReportPublishModal from '../../components/benchmark-report/BenchmarkReportPublishModal.vue'
 import BadgeFilter from '../../components/common/BadgeFilter.vue'
 import FavoriteTrashBar from '../../components/common/FavoriteTrashBar.vue'
+import Toast from '../../components/common/Toast.vue'
 import VisibilityBadge from '../../components/common/visibility/VisibilityBadge.vue'
 import { VISIBILITY_FILTER_OPTIONS, canEditResource } from '../../composables/visibility/useVisibility'
 import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue'
@@ -351,6 +356,7 @@ const {
   currentPage,
   pageSize,
   loading,
+  error,
   selectedReports,
   filters,
   sort,
@@ -491,6 +497,7 @@ async function handleBenchmarkPublish(payload: { name: string; description?: str
 .page-title {
   margin: 0;
   font-size: var(--font-size-xl);
+  color: var(--primary-color);
 }
 
 .page-description {
@@ -605,18 +612,19 @@ async function handleBenchmarkPublish(payload: { name: string; description?: str
 }
 
 .rc-search-filter :deep(.search-input) {
-  border: 2px solid var(--color-gray-300) !important;
+  /* 仅 background / padding 需 !important 覆盖全局 common.css .search-input 同名规则 */
+  border: 2px solid var(--color-gray-300);
   background-color: var(--background-primary) !important;
-  border-radius: var(--border-radius-lg) !important;
+  border-radius: var(--border-radius-lg);
   padding: var(--spacing-sm) var(--spacing-md) !important;
-  font-size: var(--font-size-md) !important;
-  color: var(--text-primary) !important;
+  font-size: var(--font-size-md);
+  color: var(--text-primary);
   width: 100%;
 }
 
 .rc-search-filter :deep(.search-input:focus) {
-  border-color: var(--primary-color) !important;
-  box-shadow: 0 0 0 3px var(--primary-light) !important;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px var(--primary-light);
 }
 
 .rc-custom-time-range {
@@ -627,12 +635,12 @@ async function handleBenchmarkPublish(payload: { name: string; description?: str
 }
 
 .rc-custom-time-range .date-input {
-  border: 2px solid var(--color-gray-300) !important;
-  background-color: var(--background-primary) !important;
-  border-radius: var(--border-radius-md) !important;
-  padding: var(--spacing-xs) var(--spacing-sm) !important;
-  font-size: var(--font-size-sm) !important;
-  color: var(--text-primary) !important;
+  border: 2px solid var(--color-gray-300);
+  background-color: var(--background-primary);
+  border-radius: var(--border-radius-md);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
 }
 
 .rc-sort-options {
@@ -728,6 +736,29 @@ async function handleBenchmarkPublish(payload: { name: string; description?: str
 }
 
 .rc-no-data p {
+  margin: 0;
+  font-size: var(--font-size-md);
+}
+
+/* ===== 错误态（INT-969：区别于空态，可重试）===== */
+.rc-error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--spacing-xxl);
+  color: var(--color-red-600);
+  gap: var(--spacing-sm);
+}
+
+.rc-error-state i {
+  font-size: var(--font-size-xxxl);
+  margin-bottom: var(--spacing-sm);
+  color: var(--color-red-600);
+}
+
+.rc-error-state p {
   margin: 0;
   font-size: var(--font-size-md);
 }
@@ -849,34 +880,5 @@ async function handleBenchmarkPublish(payload: { name: string; description?: str
   height: 18px;
   cursor: pointer;
   accent-color: var(--primary-color);
-}
-
-/* ===== Toast ===== */
-.rc-toast-container {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  padding: 12px 20px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  z-index: 10000;
-  animation: rc-slide-in 0.3s ease;
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 15%, transparent);
-}
-
-.rc-toast-container i {
-  font-size: 1.2rem;
-}
-
-.rc-toast-success { background-color: var(--color-green-50); color: var(--color-green-600); border: 1px solid var(--color-green-600); }
-.rc-toast-error { background-color: var(--color-red-50); color: var(--color-red-600); border: 1px solid var(--color-red-600); }
-.rc-toast-warning { background-color: var(--color-amber-50); color: var(--color-amber-600); border: 1px solid var(--color-amber-600); }
-.rc-toast-info { background-color: var(--color-blue-50); color: var(--color-blue-600); border: 1px solid var(--color-blue-600); }
-
-@keyframes rc-slide-in {
-  from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
 }
 </style>

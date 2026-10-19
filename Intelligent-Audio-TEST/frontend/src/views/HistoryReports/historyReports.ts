@@ -94,6 +94,8 @@ export function useHistoryReports() {
   const currentPage = ref(1);
   const pageSize = ref(10);
   const loading = ref(false);
+  /** INT-969：列表加载错误态（区别于空态；失败时置错误文案，成功/重试后清空） */
+  const error = ref('');
   const selectedReports = ref<Set<string | number>>(new Set());
   const activeTab = ref<ReportTabValue>(REPORT_TABS.ALL);
 
@@ -189,8 +191,11 @@ export function useHistoryReports() {
       const data = await reportsPort.getAll(params);
       allReports.value = data?.items || [];
       totalItems.value = data?.total || 0;
-    } catch (error) {
-      console.error('加载报告失败:', error);
+      error.value = '';
+    } catch (err) {
+      console.error('加载报告失败:', err);
+      // INT-969：列表加载失败进独立错误态（区别于空态），用户可点重试
+      error.value = '加载报告失败，请稍后重试';
       showToast('error', '加载报告失败，请稍后重试');
       allReports.value = [];
       totalItems.value = 0;
@@ -659,6 +664,7 @@ export function useHistoryReports() {
     currentPage,
     pageSize,
     loading,
+    error,
     selectedReports,
     filters,
     sort,

@@ -19,7 +19,7 @@
         :key="String(opt.value)"
         type="button"
         class="badge-filter__badge"
-        :class="{ 'badge-filter__badge--active': modelValue === opt.value }"
+        :class="{ 'badge-filter__badge--active': isActive(opt.value) }"
         @click="select(opt.value)"
       >
         {{ opt.label }}
@@ -102,6 +102,17 @@ const effectiveOptions = computed<BadgeFilterOption[]>(() =>
 
 const isAll = computed(() => !props.modelValue || props.modelValue === ALL_VALUE);
 
+/**
+ * 单项是否命中当前选中值。
+ * 兼容逗号组合值（如 'comparison,secondary_comparison' 表示后端 IN 多类型过滤，
+ * 此时 comparison / secondary_comparison 两个徽章都应呈现选中态）。
+ */
+const isActive = (value: string | number): boolean => {
+  const current = String(props.modelValue ?? '');
+  if (current === ALL_VALUE || current === '') return false;
+  return current.split(',').includes(String(value));
+};
+
 // ===== 折叠/展开（选项超过 collapsedCount 时收起多余的，点「更多」展开）=====
 const expanded = ref(false);
 
@@ -118,12 +129,14 @@ const visibleOptions = computed<BadgeFilterOption[]>(() => {
   return effectiveOptions.value.slice(0, props.collapsedCount);
 });
 
-// 当前选中项被折叠隐藏时自动展开（含收起时仍选中隐藏项的场景），避免「看不见的已选筛选」
+// 当前选中项被折叠隐藏时自动展开（含收起时仍选中隐藏项的场景），避免「看不见的已选筛选」。
+// 组合值（逗号分隔）任一分量被隐藏也要展开，确保选中态全部可见。
 watch(
   [expanded, () => props.modelValue],
   ([isExpanded, value]) => {
     if (isExpanded || value === ALL_VALUE) return;
-    if (!visibleOptions.value.some(opt => opt.value === value)) {
+    const hasHiddenSelected = !visibleOptions.value.some(opt => isActive(opt.value));
+    if (hasHiddenSelected) {
       expanded.value = true;
     }
   },
