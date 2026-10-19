@@ -1,6 +1,7 @@
 import { testcasesPort } from './testcasesPort'
 import { groupsPort } from './groupsPort'
 import { useNotification } from '../modal/useNotification'
+import { toUserErrorMessage } from '../../utils/errorMessage'
 import type { TestCase, TestCaseGroup, GroupFormData } from '../../domain'
 import { TestType } from '@/domain/enums'
 import { UNGROUPED_GROUP_ID, UNGROUPED_GROUP_NAME, UNGROUPED_GROUP_FETCH_SIZE } from '../../domain'
@@ -101,7 +102,8 @@ export function useTestCaseGroups(store: {
       return groupsList.value
     } catch (err: any) {
       console.error('获取分组列表失败:', err)
-      error.value = err.message || '获取分组列表失败'
+      // INT-972：分组列表加载失败同样降级为固定友好文案（容器错误横幅消费同一 error 状态）
+      error.value = toUserErrorMessage(err, '用例服务暂不可用，请稍后重试')
       return []
     } finally {
       isLoading.value = false
@@ -207,7 +209,8 @@ export function useTestCaseGroups(store: {
       }
     } catch (err: any) {
       console.error(`获取分组 ${groupId} 用例失败:`, err)
-      error.value = err.message || `获取分组用例失败`
+      // INT-972：分组用例加载失败降级为固定友好文案（不向错误横幅直出原始 RPC/网络异常文本）
+      error.value = toUserErrorMessage(err, '用例服务暂不可用，请稍后重试')
       return null
     } finally {
       groupLoadingStates.value[groupKey] = false
