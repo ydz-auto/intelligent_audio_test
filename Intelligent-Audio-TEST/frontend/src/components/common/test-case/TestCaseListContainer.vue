@@ -89,6 +89,8 @@
             :model-value="groupFilter"
             all-label="所有分组"
             title="用例分组"
+            collapsible
+            :collapsed-count="8"
             @update:model-value="setGroupFilter"
           />
           <BadgeFilter
