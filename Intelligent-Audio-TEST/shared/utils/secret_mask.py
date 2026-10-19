@@ -59,14 +59,24 @@ _OPENAI_KEY_PATTERN = re.compile(r'\b(sk-[A-Za-z0-9_-]{16,})\b')
 # 形如 "proxy_url": "user:pass@host:8080" / proxy_url=user:pass@host:8080 /
 # proxy_url: user:pass@host:8080 —— 复用 authorization/proxy_authorization
 # 的 KV 掩码思路，但只掩 user:pass 前缀，host:port 保留便于排查。
+# 两点边界（INT-846 审计 P2/P3）：
+# - 容错误带 scheme 前缀（http:// 等），仍掩 userinfo（scheme 保留可见）；
+# - userinfo 按末个 @ 切分（执行侧 split_proxy_url 亦按 urlparse 末个 @
+#   解析），密码含字面 @ 时不再只掩到首个 @ 而泄露后续段。
 _PROXY_USERINFO_PATTERN = re.compile(
     r'(?i)(?P<prefix>proxy[-_]?url["\']?\s*[:=]\s*["\']?)'
-    r'(?P<userpass>[^@/,\s;"\'\\:]+:[^@/,\s;"\'\\:]+)@'
+    r'(?P<scheme>[A-Za-z][A-Za-z0-9+.-]*://)?'
+    r'(?P<userinfo>[^\r\n]*)@'
+    r'(?P<hostport>[^\s@/;,"\'\\:]+(?::[0-9]{1,5})?)'
 )
 
 
 def _mask_proxy_userinfo(match: 're.Match') -> str:
-    return '%s****@' % match.group('prefix')
+    return '%s%s****@%s' % (
+        match.group('prefix'),
+        match.group('scheme') or '',
+        match.group('hostport'),
+    )
 
 
 def mask_value(value) -> str:
@@ -134,13 +144,24 @@ def _is_proxy_url_key(key: str) -> bool:
 
 
 def _mask_proxy_url_value(value: Any) -> Any:
-    """掩码 proxy_url 值内 user:pass 段，保留 host:port；非字符串递归脱敏。"""
+    """掩码 proxy_url 值内 user:pass 段，保留 host:port；非字符串递归脱敏。
+
+    INT-846 审计 P2/P3：剥 scheme 前缀（scheme 保留可见）、按末个 @ 切分，
+    与执行侧 split_proxy_url（urlparse 末个 @）口径一致。
+    """
     if not isinstance(value, str):
         return mask_mapping(value)
-    m = re.match(r'(?P<userpass>[^@/,\s;"\'\\:]+:[^@/,\s;"\'\\:]+)@', value)
-    if m:
-        return '****@' + value[m.end():]
-    return value
+    scheme = ''
+    rest = value
+    # 仅剥合法 scheme 前缀（[scheme]://，scheme 为字母开头）；密码含 `://`
+    # 字面时不误判为 scheme
+    if re.match(r'[A-Za-z][A-Za-z0-9+.-]*://', rest):
+        scheme, _, rest = rest.partition('://')
+        scheme = scheme + '://'
+    head, sep, tail = rest.rpartition('@')
+    if not sep:
+        return value
+    return '%s****@%s' % (scheme, tail)
 
 
 def _is_sensitive_key(key: str) -> bool:

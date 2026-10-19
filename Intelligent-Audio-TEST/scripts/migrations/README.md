@@ -52,6 +52,7 @@ python scripts/migrations/202610/backfill_task_case_device_type_int789.py --appl
 python scripts/migrations/202610/backfill_log_operator_int806.py --apply  # ㉞ 历史审计日志操作人回填（INT-806 可选回填：category∈{auth,benchmark} 且 content 可解析 JSON 且含 operator_id 的审计行 → created_by_user_id；解析失败放弃不阻塞；默认 dry-run）
 python scripts/migrations/202610/add_evaluation_deleted_by_int841.py      # ㉟ evaluation categories/dimensions 补 deleted_by_user_id（INT-841，软删操作人列）
 python scripts/migrations/202610/add_benchmark_operator_columns_int844.py  # ㊱ 基准线管理操作人 user_id 补齐（INT-844：benchmark_sources/benchmark_metric_mappings 补 created_by_user_id+updated_by_user_id，benchmark_baselines/benchmark_reports 补 created_by_user_id + created_by 索引）
+python scripts/migrations/202610/add_api_proxy_columns.py                 # ㊲ apis 加 proxy_type/proxy_url 两列（INT-839 被测 API 网络代理；两列均可 NULL，存量行不迁移数据）
 ```
 
 > ✅ **2026-09-07 全量迁移记录**：当前环境已执行 ①③④⑧（`remove_foreign_keys_and_soft_delete` 12 步 + `add_audit_columns` 补 24 处 + `add_reevaluated_at` + `add_pass_threshold_to_eval_params`），执行后 `UndefinedColumn` 类报错全部消除。②⑤⑥⑦⑨ 视功能需要执行。
@@ -140,6 +141,7 @@ python scripts/migrations/202610/add_benchmark_operator_columns_int844.py  # ㊱
 | [add_cherry_pick_source_result_type_int577.py](202610/add_cherry_pick_source_result_type_int577.py) | 挑选合并购物车/挑选集条目补 `source_result_type` 列（INT-577 §11-5） | `cherry_pick_cart_items` / `cherry_pick_set_items` 各补 `source_result_type VARCHAR(50) NULL`（购物车/挑选集条目来源结果类型快照；依赖 INT-339 `add_cherry_pick_tables_int339.py` 建表先行）；幂等（逐列 information_schema 检查），支持 `--dry-run` |
 | [backfill_log_operator_int806.py](202610/backfill_log_operator_int806.py) | 历史审计日志操作人回填（INT-806 可选回填） | `created_by_user_id` 为 NULL 的 category∈{auth,benchmark} 审计行：content 可解析为 JSON 且含 `operator_id`（int>0）→ 回填 `created_by_user_id=operator_id`，使「仅自己」上线即有数据；解析失败/无 operator_id 放弃不阻塞（已核验 benchmark 审计 content 为 operator 用户名串、不含 operator_id，实际只覆盖 auth 行）；幂等（非 NULL 行一律 SKIP）；默认 dry-run，`--apply` 执行 |
 | [add_evaluation_deleted_by_int841.py](202610/add_evaluation_deleted_by_int841.py) | evaluation categories/dimensions 补软删操作人列（INT-841） | `categories` / `dimensions` 补 `deleted_by_user_id BIGINT NULL`（created_by/updated_by 已由 add_audit_columns 补齐；软删路径无删除人列可写）；补 `created_by_user_id` 索引兜底（幂等）；全新库 create_all 已含，执行为全 SKIP；幂等，支持 `--dry-run` |
+| [add_api_proxy_columns.py](202610/add_api_proxy_columns.py) | `apis` 加网络代理两列（INT-839） | `proxy_type VARCHAR(20)`（http/https/socks5/socks5h，NULL=不用代理）+ `proxy_url VARCHAR(255)`（`user:pass@host:port`，不含 scheme，认证段必填）；两列均可 NULL，存量行不迁移数据（老数据 NULL 不报错，回归行为不变）；幂等（逐列 information_schema 检查，列已存在即 SKIP），支持 `--dry-run` |
 
 ## 新增迁移脚本约定
 

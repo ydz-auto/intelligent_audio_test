@@ -48,6 +48,11 @@ class TestProxyUtils:
         assert build_proxy_url('http', '') is None
         assert build_proxy_url(None, None) is None
 
+    def test_build_proxy_url_strips_scheme_prefix(self):
+        """审计 P2 修复：proxy_url 误带 scheme 前缀时不拼出双重 scheme"""
+        assert build_proxy_url('http', 'http://user:pass@host:8080') == 'http://user:pass@host:8080'
+        assert build_proxy_url('socks5', 'socks5://user:pass@host:1080') == 'socks5://user:pass@host:1080'
+
     def test_split_proxy_url_full(self):
         host, port, user, password = split_proxy_url('user:pass@proxy.local:8080')
         assert host == 'proxy.local'
@@ -140,6 +145,13 @@ class TestProxyUtils:
     def test_validate_proxy_invalid_port(self):
         err = validate_proxy('http', 'user:pass@host:notaport')
         assert err and '端口' in err
+
+    def test_validate_proxy_rejects_scheme_prefix(self):
+        """审计 P2 修复：契约规定 proxy_url 不含 scheme，带 scheme 前缀拒绝入库"""
+        for scheme in ('http', 'https', 'socks5'):
+            err = validate_proxy('http', f'{scheme}://user:pass@host:8080')
+            assert err, f'{scheme}:// 前缀应被拒绝'
+            assert 'scheme' in err
 
 
 # ═══════════════════ CRUD ═══════════════════
@@ -611,6 +623,19 @@ class TestSecretMaskProxy:
         once = mask_text('"proxy_url": "user:pass@proxy.local:8080"')
         assert mask_text(once) == once
 
+    def test_mask_text_proxy_url_scheme_prefix_masked(self):
+        """审计 P2 修复：误带 scheme 前缀的 proxy_url 不再明文泄露 user:pass"""
+        masked = mask_text('proxy_url=http://user:pass@proxy.local:8080')
+        assert 'user:pass@' not in masked
+        assert 'http://****@proxy.local:8080' in masked
+
+    def test_mask_text_proxy_url_at_in_password(self):
+        """审计 P3 修复：密码含字面 @ 时按末个 @ 切分掩码，不泄露段"""
+        masked = mask_text('proxy_url=user:p@ss@proxy.local:8080')
+        assert 'p@ss@' not in masked
+        assert 'p@ss' not in masked
+        assert '****@proxy.local:8080' in masked
+
     def test_mask_mapping_proxy_url_userinfo(self):
         masked = mask_mapping({'proxy_url': 'user:pass@proxy.local:8080', 'host': 'x'})
         assert masked['proxy_url'] == '****@proxy.local:8080'
@@ -621,6 +646,22 @@ class TestSecretMaskProxy:
         masked = mask_mapping(payload)
         assert 'u:p@' not in masked['vendor_config']['proxy_url']
         assert masked['vendor_config']['proxy_url'] == '****@proxy.local:8080'
+
+    def test_mask_mapping_proxy_url_scheme_prefix_masked(self):
+        """审计 P2 修复：结构化 payload 中带 scheme 前缀的 proxy_url 同样脱敏"""
+        masked = mask_mapping({'proxy_url': 'http://user:pass@proxy.local:8080'})
+        assert 'user:pass@' not in masked['proxy_url']
+        assert masked['proxy_url'] == 'http://****@proxy.local:8080'
+
+    def test_mask_mapping_proxy_url_at_in_password(self):
+        """审计 P3 修复：密码含字面 @ 时按末个 @ 切分掩码，不泄露段"""
+        masked = mask_mapping({'proxy_url': 'user:p@ss@proxy.local:8080'})
+        assert 'p@ss' not in masked['proxy_url']
+        assert masked['proxy_url'] == '****@proxy.local:8080'
+
+    def test_mask_mapping_proxy_url_no_auth_unchanged(self):
+        """无认证段（无 @）时原样保留，不误伤 host:port"""
+        assert mask_mapping({'proxy_url': 'proxy.local:8080'}) == {'proxy_url': 'proxy.local:8080'}
 
 
 # ═══════════════════ vendor_config 契约（#2 交付） ═══════════════════

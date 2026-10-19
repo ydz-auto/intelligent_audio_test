@@ -42,11 +42,15 @@ def build_proxy_url(proxy_type: Optional[str],
     """拼完整代理 URL `{proxy_type}://{proxy_url}`；任一为空返回 None。
 
     requests.proxies / vendor_config 契约（#2 adapter 侧拼 URL）共用。
+    防御：proxy_url 误带 `scheme://` 前缀时剥去（规范不含 scheme），
+    避免拼出双重 scheme（INT-846 审计 P2 修复）。
     """
     proxy_type = (proxy_type or '').strip()
     proxy_url = (proxy_url or '').strip()
     if not proxy_type or not proxy_url:
         return None
+    if '://' in proxy_url:
+        proxy_url = proxy_url.split('://', 1)[1]
     return f'{proxy_type}://{proxy_url}'
 
 
@@ -120,6 +124,12 @@ def validate_proxy(proxy_type: Optional[str],
 
     if not proxy_url:
         return '配置代理时 proxy_url 必填（格式: user:pass@host:port）'
+
+    if '://' in proxy_url:
+        # INT-846 审计 P2：契约规定 proxy_url 不含 scheme，带 scheme 前缀
+        # 会在执行侧拼出双重 scheme、脱敏失效 → 源头拒绝入库
+        return ('无效的代理地址 (proxy_url): 不应包含 scheme 前缀 '
+                '（去掉 http:// 等），格式: user:pass@host:port')
 
     try:
         host, port, user, password = split_proxy_url(proxy_url)
