@@ -2,9 +2,10 @@
  * 灵犀Agent 会话 Store 测试（§3.7 URL 契约上下文 / §3.11 无供应商/无模型语义化引导；
  * Demo 态对话由用户自配 LLM 供应商驱动，无供应商/无模型时不发起请求）。
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useAiChatStore } from '../aiChatStore'
+import { llmProviderApi } from '@/infrastructure/api/llmProviderApi'
 import { ERROR_MESSAGES, MESSAGE_STATUS } from '@/domain/constants/aiChat'
 
 beforeEach(() => {
@@ -70,5 +71,89 @@ describe('aiChatStore：清空与供应商默认（§3.11 默认=首个添加）
     store.addProvider({ name: 'B', baseUrl: 'https://b', apiKey: '', models: [] })
     expect(store.defaultProvider?.id).toBe(first.id)
     expect(first.isDefault).toBe(true)
+  })
+})
+
+/**
+ * 请求体回归（审计 P1：buildChatHistory 结尾总会推入当前 user 指令，
+ * 历史数组里再含同一条 user 消息就会重复发送 → 发送/重生成/编辑重发三种入口
+ * 都必须保证当前 user 内容只出现一次）。
+ */
+describe('aiChatStore：发送请求体（当前 user 消息只出现一次，P1 回归）', () => {
+  const REPLY = '已为您处理。'
+  let sendChatCompletionMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    sendChatCompletionMock = vi
+      .spyOn(llmProviderApi, 'sendChatCompletion')
+      .mockResolvedValue(REPLY)
+  })
+
+  afterEach(() => {
+    sendChatCompletionMock.mockRestore()
+  })
+
+  function setupWithProvider(): ReturnType<typeof useAiChatStore> {
+    const store = useAiChatStore()
+    const provider = store.addProvider({
+      name: 'Mock',
+      baseUrl: 'https://mock.example/v1',
+      apiKey: 'sk-test',
+      models: ['mock-model'],
+    })
+    store.updateConfig({ providerId: provider.id, modelId: 'mock-model' })
+    return store
+  }
+
+  /** 抽取请求体里的 user 消息内容（system 忽略） */
+  function requestUserContents(callIndex = 0): string[] {
+    const messages: Array<{ role: string; content: string }> =
+      sendChatCompletionMock.mock.calls[callIndex][0].messages
+    return messages.filter((m) => m.role === 'user').map((m) => m.content)
+  }
+
+  it('发送：请求体当前 user 消息只出现一次', () => {
+    const store = setupWithProvider()
+    store.handleSendMessage('生成一份报告')
+    expect(sendChatCompletionMock).toHaveBeenCalledTimes(1)
+    expect(requestUserContents()).toEqual(['生成一份报告'])
+    store.stopGeneration()
+  })
+
+  it('重新生成：原 user 指令只出现一次（请求体不含重复指令）', () => {
+    const store = setupWithProvider()
+    store.messages = [
+      { key: 'u1', from: 'user', versions: [{ id: 'u1-v1', content: '第一问' }], createdAt: 1 },
+      {
+        key: 'a1',
+        from: 'assistant',
+        versions: [{ id: 'a1-v1', content: '第一答' }],
+        createdAt: 2,
+        status: MESSAGE_STATUS.COMPLETE,
+      },
+    ]
+    store.handleRegenerateMessage('a1')
+    expect(sendChatCompletionMock).toHaveBeenCalledTimes(1)
+    expect(requestUserContents()).toEqual(['第一问'])
+    store.stopGeneration()
+  })
+
+  it('编辑后重发：当前 user 消息只出现一次', () => {
+    const store = setupWithProvider()
+    store.messages = [
+      { key: 'u1', from: 'user', versions: [{ id: 'u1-v1', content: '第一问' }], createdAt: 1 },
+      {
+        key: 'a1',
+        from: 'assistant',
+        versions: [{ id: 'a1-v1', content: '第一答' }],
+        createdAt: 2,
+        status: MESSAGE_STATUS.COMPLETE,
+      },
+    ]
+    store.handleEditMessage('u1')
+    store.applyEdit('第一问（改）', true)
+    expect(sendChatCompletionMock).toHaveBeenCalledTimes(1)
+    expect(requestUserContents()).toEqual(['第一问（改）'])
+    store.stopGeneration()
   })
 })

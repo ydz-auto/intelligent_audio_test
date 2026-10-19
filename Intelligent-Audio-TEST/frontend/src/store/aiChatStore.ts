@@ -215,6 +215,9 @@ export const useAiChatStore = defineStore('aiChat', () => {
       startedAt: now,
       status: MESSAGE_STATUS.LOADING,
     }
+    // 请求体用「追加前」历史构造（对齐 React messagesRef.current 语义）：buildChatHistory
+    // 结尾总会推入当前 user 指令，历史里再含它就会重复（审计 P1 缺陷根因）。
+    const prior = options.historyMessages ?? [...messages.value]
     updateMessages((prev) => [
       ...(appendUserMessage ? [...prev, userMessage] : prev),
       loadingMessage,
@@ -268,10 +271,7 @@ export const useAiChatStore = defineStore('aiChat', () => {
           baseUrl: currentProvider.baseUrl,
           apiKey: currentProvider.apiKey,
           model: currentModel,
-          messages: buildChatHistory(
-            options.historyMessages ?? messages.value,
-            text
-          ),
+          messages: buildChatHistory(prior, text),
           signal: abort.signal,
         })
         if (isInterrupted()) return
@@ -327,9 +327,16 @@ export const useAiChatStore = defineStore('aiChat', () => {
     const history = messages.value.slice(0, index)
     const originalUser = [...history].reverse().find((m) => m.from === 'user')
     if (!originalUser) return
+    const originalUserIndex = history.findIndex((m) => m.key === originalUser.key)
+    if (originalUserIndex === -1) return
     sendChat(
       originalUser.versions[originalUser.versions.length - 1].content,
-      { historyMessages: history, appendUserMessage: false }
+      // 请求体用「不含原 user 指令」的历史构造（对齐 React messages.slice(0, previousUserIndex)）：
+      // buildChatHistory 结尾推入当前指令，历史含原指令会重复（审计 P1）。
+      {
+        historyMessages: history.slice(0, originalUserIndex),
+        appendUserMessage: false,
+      }
     )
   }
 
@@ -364,7 +371,9 @@ export const useAiChatStore = defineStore('aiChat', () => {
     editingMessageKey.value = null
     if (resend) {
       sendChat(trimmed, {
-        historyMessages: [...history, patched],
+        // 请求体用「不含编辑后消息」的历史构造（同 sendChat/regenerate 的 P1 修复口径）：
+        // buildChatHistory 结尾推入当前指令（= trimmed），历史含编辑后消息会重复。
+        historyMessages: history,
         appendUserMessage: false,
       })
     }
