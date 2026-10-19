@@ -1,7 +1,8 @@
 /**
  * 轮次步骤④：评估维度（11_用例域.md §5.1 RoundEvaluationEditor 平移）。
  * 顶部单轮描述条 + 过滤提示条（当前算法有关联维度时才显示）+ DimensionPicker（V9.7.10
- * 平铺 chips 云，搜索+已选计数）+ 已选维度参数卡（权重 0-100 默认 50 + 阈值 0-100 默认 80
+ * 主/子分组云 + 分类分组：搜索+已选计数，主维度「主」徽章/子维度「子」徽章，勾主联动子；
+ * categories 传入时按分类聚合组头）+ 已选维度参数卡（权重 0-100 默认 50 + 阈值 0-100 默认 80
  * 非 LLM Judge；LLM Judge 时 模型 Select + Prompt 模板 Select，不含「最大 Token/Temperature」
  * ——属维度定义 §5.5）+ 底部「启用本轮评估」Checkbox。
  * 受控组件：value=RoundEvaluationDraft（enabled/selectedIds/params），onChange 回写轮次草稿，
@@ -9,7 +10,10 @@
  */
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
-import type { Dimension } from '@/domain/models/evaluationDimension'
+import type {
+  Dimension,
+  EvaluationCategory,
+} from '@/domain/models/evaluationDimension'
 import { getAlgorithmLabel } from '@/features/testcases/constants'
 import type { RoundEvaluationDraft } from '@/features/testcases/modals/round-config/round-nav'
 import {
@@ -25,11 +29,13 @@ const defaultParams = (): DimensionParamValue => ({
 
 export function EvaluationStep({
   dimensions,
+  categories = [],
   algorithmType,
   value,
   onChange,
 }: {
   dimensions: Dimension[]
+  categories?: EvaluationCategory[]
   algorithmType?: string | null
   value: RoundEvaluationDraft
   onChange: (next: RoundEvaluationDraft) => void
@@ -79,6 +85,7 @@ export function EvaluationStep({
 
       <DimensionPicker
         dimensions={dimensions}
+        categories={categories}
         algorithmType={algorithmType}
         selected={value.selectedIds}
         onToggle={handleToggle}

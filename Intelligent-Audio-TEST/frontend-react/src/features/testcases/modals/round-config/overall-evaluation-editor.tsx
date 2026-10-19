@@ -3,7 +3,8 @@
  * V9.7.10 OverallEvaluationEditor 逐字平移换壳。
  * 节头「整体评估维度」+ 徽章「所有轮次」+ 副标题 + 描述文案（逐字平移）；启用整体评估 Switch
  * （默认开；已有维度数据时自动启用；关闭即清空维度数组 emit 空数组）；维度多选用 DimensionPicker
- * （V9.7.10 平铺 chips 云，搜索+已选计数，不做主/子联动分组）；已选维度参数卡（权重 0-100 默认 50
+ * （V9.7.10 主/子分组云 + 分类分组：主维度「主」徽章/子维度「子」徽章，勾主联动子；
+ * categories 传入时按分类聚合组头）；已选维度参数卡（权重 0-100 默认 50
  * + 阈值 0-100 默认 80 非 LLM Judge；LLM Judge 时 模型 Select + Prompt 模板 Select）。
  * 数据契约 config.dimensions = [{ id, name, weight, threshold, (llmJudgeConfig: {model, promptTemplate}) }]
  * ——TestCaseDimensionItem {id,name,weight,threshold,test_type}（schemas/testcase.py:85-90）；
@@ -14,7 +15,10 @@ import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import type { Dimension } from '@/domain/models/evaluationDimension'
+import type {
+  Dimension,
+  EvaluationCategory,
+} from '@/domain/models/evaluationDimension'
 import {
   DimensionParamCard,
   type DimensionParamValue,
@@ -28,9 +32,11 @@ const defaultParams = (): DimensionParamValue => ({
 
 export function OverallEvaluationEditor({
   dimensions,
+  categories = [],
   algorithmType,
 }: {
   dimensions: Dimension[]
+  categories?: EvaluationCategory[]
   algorithmType?: string | null
 }) {
   const [enabled, setEnabled] = useState(true)
@@ -108,6 +114,7 @@ export function OverallEvaluationEditor({
         <>
           <DimensionPicker
             dimensions={dimensions}
+            categories={categories}
             algorithmType={algorithmType}
             selected={selected}
             onToggle={handleToggle}

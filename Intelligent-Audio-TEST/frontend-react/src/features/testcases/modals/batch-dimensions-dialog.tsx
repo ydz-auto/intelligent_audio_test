@@ -5,8 +5,9 @@
  * 交互体系（§5.3.5 ②：Tab 角标=该轮已选维度数、× 关闭至少保留 1 轮、末尾「+ 添加轮次」、
  * 最后一轮 Tab 语义 -1）+ 快捷操作工具栏三件（§5.3.5 ③：从其他轮次复制 / 清空当前轮次 /
  * 应用到所有轮次）。
- * 维度选择用 DimensionPicker（V9.7.10 主/子分组云：主维度分组 + 子维度归属其下、搜索命中子维度
- * 带出父维度上下文、主维度勾选联动全部子维度、孤儿子维度兜底）；已选维度参数卡（权重 0-100 默认 50
+ * 维度选择用 DimensionPicker（V9.7.10 主/子分组云 + 分类分组：主维度分组 + 子维度归属其下、
+ * 搜索命中子维度带出父维度上下文、主维度勾选联动全部子维度、孤儿子维度兜底；categories 传入时
+ * 按分类聚合组头——负责人 2026-10-19「评估维度已经分组/分类了」口径）；已选维度参数卡（权重 0-100 默认 50
  * + 阈值 0-100 默认 80，DimensionParamCard 共用）；多轮整体评估维度节（跨轮次聚合勾选 + 权重/阈值
  * 配置，不选即清空——§5.3.5 数据契约 multiDimensions）。
  * 数据契约：统一模式 dimensions=[{id,name,weight,threshold}] + roundMode(all/specific) +
@@ -44,7 +45,10 @@ import {
 import { Spinner } from '@/components/ui/spinner'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { cn } from '@/lib/utils'
-import type { Dimension } from '@/domain/models/evaluationDimension'
+import type {
+  Dimension,
+  EvaluationCategory,
+} from '@/domain/models/evaluationDimension'
 import {
   DimensionParamCard,
   type DimensionParamValue,
@@ -71,6 +75,7 @@ export function BatchDimensionsDialog({
   count,
   ids,
   dimensions,
+  categories = [],
   algorithmType,
   testType,
 }: {
@@ -79,6 +84,7 @@ export function BatchDimensionsDialog({
   count: number
   ids: string[]
   dimensions: Dimension[]
+  categories?: EvaluationCategory[]
   algorithmType?: string | null
   testType?: string | null
 }) {
@@ -513,6 +519,7 @@ export function BatchDimensionsDialog({
             >
               <DimensionPicker
                 dimensions={dimensions}
+                categories={categories}
                 algorithmType={algorithmType}
                 selected={gridSelected}
                 onToggle={handleDimensionToggle}
@@ -560,6 +567,7 @@ export function BatchDimensionsDialog({
             <div data-testid='batch-dim-multi-cloud'>
               <DimensionPicker
                 dimensions={dimensions}
+                categories={categories}
                 algorithmType={algorithmType}
                 selected={multiSelected}
                 onToggle={handleMultiToggle}

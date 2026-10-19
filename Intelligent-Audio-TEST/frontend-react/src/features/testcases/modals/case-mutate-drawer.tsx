@@ -42,7 +42,7 @@ import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import type { TagItem } from '@/domain/models/testTag'
-import { MOCK_CASE_DIMENSIONS } from '@/infrastructure/mock/testcases-mock'
+import { MOCK_CASE_DIMENSIONS, MOCK_EVALUATION_CATEGORIES } from '@/infrastructure/mock/testcases-mock'
 import {
   RoundNav,
   newRoundEvaluation,
@@ -438,6 +438,7 @@ export function CaseMutateDrawer({
             <section className='border-border/60 border-t pt-4'>
               <OverallEvaluationEditor
                 dimensions={MOCK_CASE_DIMENSIONS}
+                categories={MOCK_EVALUATION_CATEGORIES}
                 algorithmType={algorithmType}
               />
             </section>
@@ -486,6 +487,7 @@ function StepBody({
       return (
         <EvaluationStep
           dimensions={MOCK_CASE_DIMENSIONS}
+          categories={MOCK_EVALUATION_CATEGORIES}
           algorithmType={algorithmType || null}
           value={activeRound?.evaluation ?? newRoundEvaluation()}
           onChange={onEvaluationChange}
