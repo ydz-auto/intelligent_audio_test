@@ -11,6 +11,7 @@ _sync_dimension_params），供 create/update 共用（消除重复）。
 import logging
 from typing import Any, Dict, Optional, Tuple
 
+from shared.infrastructure.user_context import get_current_user_id
 from shared.utils.query_utils import now_cst
 
 from evaluation_service.application.commands._command_utils import (
@@ -141,6 +142,7 @@ class DimensionOpsMixin(DimensionParamsMixin):
     def _inherit_fields_to_sub_dimensions(self, dim) -> None:
         """主维度将 API 配置字段继承给子维度"""
         sub_dimensions = self.repo.list_sub_dimensions(dim.id)
+        operator_id = get_current_user_id()
         for sub_dim in sub_dimensions:
             if not sub_dim.api_url:
                 sub_dim.api_url = dim.api_url
@@ -151,6 +153,7 @@ class DimensionOpsMixin(DimensionParamsMixin):
             if not sub_dim.task_type_code:
                 sub_dim.task_type_code = dim.task_type_code
             sub_dim.updated_at = now_cst()
+            sub_dim.updated_by_user_id = operator_id
 
     # ==================== 删除 / 批量 ====================
 

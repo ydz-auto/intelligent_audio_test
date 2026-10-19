@@ -59,12 +59,18 @@ class EvaluationRepository(EvaluationRepositoryABC):
         return session.get(Category, cat_id)
 
     def create_category(self, data: Dict[str, Any]) -> Category:
-        """创建分类（含 flush，未 commit）。"""
+        """创建分类（含 flush，未 commit）。
+
+        created_by_user_id（INT-841）：从 x-user-id 上下文取 JWT 操作人，
+        未认证（AUTH_MODE=off）为 None → NULL。
+        """
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         cat = Category(
             name=data.get('name'),
             description=data.get('description'),
             icon=data.get('icon'),
+            created_by_user_id=get_current_user_id(),
         )
         session.add(cat)
         session.flush()
@@ -85,28 +91,47 @@ class EvaluationRepository(EvaluationRepositoryABC):
         return session.get(Dimension, dim_id)
 
     def create_dimension(self, create_data: Dict[str, Any]) -> Dimension:
-        """创建维度记录（含 flush，未 commit）。"""
+        """创建维度记录（含 flush，未 commit）。
+
+        created_by_user_id（INT-841）：从 x-user-id 上下文取 JWT 操作人，
+        未认证（AUTH_MODE=off）为 None → NULL。create_data 来自应用层
+        字段白名单（DIMENSION_MODEL_FIELDS），不含操作人列。
+        """
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
-        dim = Dimension(**create_data)
+        dim = Dimension(**create_data, created_by_user_id=get_current_user_id())
         session.add(dim)
         session.flush()
         return dim
 
     def soft_delete_dimension(self, dim: Dimension) -> None:
-        """软删除维度（含 flush，未 commit）。"""
+        """软删除维度（含 flush，未 commit）。
+
+        补盖 deleted_by_user_id（INT-841）：软删操作人从 x-user-id 上下文取，
+        未认证为 None → NULL。deleted_at/updated_at 语义保持原状不动。
+        """
+        from shared.infrastructure.user_context import get_current_user_id
         now = _now()
         dim.deleted = True
+        dim.deleted_by_user_id = get_current_user_id()
         dim.updated_at = now
         get_db_session().flush()
 
     def batch_update_dimensions(self, ids: List[int], update_data: Dict[str, Any]) -> int:
-        """按 ID 列表批量更新维度（含 flush，未 commit）。返回受影响行数。"""
+        """按 ID 列表批量更新维度（含 flush，未 commit）。返回受影响行数。
+
+        更新操作人（updated_by_user_id）从 x-user-id 上下文统一盖（INT-841）。
+        """
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         if not ids:
             return 0
         count = session.query(Dimension).filter(
             Dimension.id.in_(ids)
-        ).update(update_data, synchronize_session=False)
+        ).update(
+            {**update_data, 'updated_by_user_id': get_current_user_id()},
+            synchronize_session=False,
+        )
         session.flush()
         return count
 

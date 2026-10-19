@@ -24,6 +24,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict
 
+from shared.infrastructure.user_context import get_current_user_id
 from shared.utils.query_utils import now_cst
 
 from evaluation_service.domain.repositories.evaluation_repository_abc import (
@@ -152,6 +153,7 @@ class EvaluationCommandService(CategoryCommandsMixin, DimensionOpsMixin):
             self._sync_update_body_template(dim, data)
 
             dim.updated_at = now_cst()
+            dim.updated_by_user_id = get_current_user_id()
 
             # 主维度继承 API 配置给子维度
             if dim.dimension_type == DIMENSION_TYPE_MAIN:

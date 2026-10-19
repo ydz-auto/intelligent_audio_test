@@ -7,6 +7,7 @@
 import logging
 from typing import Any, Dict
 
+from shared.infrastructure.user_context import get_current_user_id
 from shared.utils.query_utils import now_cst
 
 from evaluation_service.application.commands._command_utils import (
@@ -64,6 +65,7 @@ class CategoryCommandsMixin:
                 cat.icon = data['icon']
 
             cat.updated_at = now_cst()
+            cat.updated_by_user_id = get_current_user_id()
             self.repo.commit()
 
             return command_ok('分类更新成功')
@@ -83,6 +85,7 @@ class CategoryCommandsMixin:
             cat.deleted = True
             cat.deleted_at = now
             cat.updated_at = now
+            cat.deleted_by_user_id = get_current_user_id()
             self.repo.commit()
 
             return command_ok('分类已删除')
