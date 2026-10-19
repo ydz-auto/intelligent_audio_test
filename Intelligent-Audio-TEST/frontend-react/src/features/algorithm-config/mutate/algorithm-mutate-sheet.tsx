@@ -63,6 +63,7 @@ import { AdvancedConfigCollapsible } from '@/features/algorithm-config/mutate/ad
 import { DRAFT_MESSAGES } from '@/features/algorithm-config/constants'
 import {
   fetchAlgorithmDetail,
+  fetchAlgorithmDraft,
   publishAlgorithm,
   saveAlgorithmDraft,
 } from '@/infrastructure/api/algorithm-config-api'
@@ -96,6 +97,11 @@ export function AlgorithmMutateSheet(props: AlgorithmMutateSheetProps) {
   const groupMutations = useAlgorithmGroupMutations()
   const [dirtyConfirmOpen, setDirtyConfirmOpen] = useState(false)
   const [draftRefreshConfirmOpen, setDraftRefreshConfirmOpen] = useState(false)
+  // 编辑态「存在未发布的草稿」横幅（§6.2/INT-589）：初始取列表 has_draft（后端返回后启用），
+  // 打开时经草稿恢复接口实证覆盖；空 {} = 无草稿 → 横幅不渲染
+  const [hasUnpublishedDraft, setHasUnpublishedDraft] = useState(
+    () => props.mode === 'edit' && Boolean(props.algorithm?.hasDraft)
+  )
 
   const defaultValues = useMemo(() => {
     if (!props.open) return undefined
@@ -151,9 +157,36 @@ export function AlgorithmMutateSheet(props: AlgorithmMutateSheetProps) {
     if (!props.open) {
       form.reset(emptyFormValues())
       draft.cancelPendingSave()
+      setHasUnpublishedDraft(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.open])
+
+  // 编辑态打开先读草稿（§6.2/INT-589）：有草稿 → 恢复草稿预填 + 头部 Alert；空 {} = 无草稿 → 发布版预填。
+  // create/clone 不读草稿；草稿接口不可达时保持发布版预填、不阻断编辑（横幅不渲染）
+  useEffect(() => {
+    if (!props.open || props.mode !== 'edit' || !props.algorithm) return
+    const algorithmType = props.algorithm.type
+    let cancelled = false
+    void (async () => {
+      try {
+        const draft = await fetchAlgorithmDraft(algorithmType)
+        if (cancelled) return
+        if (draft) {
+          form.reset(toFormValues(draft))
+          setHasUnpublishedDraft(true)
+        } else {
+          setHasUnpublishedDraft(false)
+        }
+      } catch {
+        setHasUnpublishedDraft(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.open, props.mode, props.algorithm])
 
   const handleOpenChange = (open: boolean) => {
     if (!open) {
@@ -189,8 +222,6 @@ export function AlgorithmMutateSheet(props: AlgorithmMutateSheetProps) {
     if (related && e.currentTarget.contains(related)) return
     draft.scheduleBlurSave()
   }
-
-  const hasUnpublishedDraft = props.mode === 'edit' && Boolean(props.algorithm?.hasDraft)
 
   return (
     <>

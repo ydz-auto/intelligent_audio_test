@@ -16,6 +16,8 @@
  *   POST   /api/v1/algorithm/import                 导入（{ algorithms: [...] }）
  *   POST   /api/v1/algorithm/reload                 重载配置缓存
  *   POST   /api/v1/algorithm/bulk-delete            批量删除（{ algorithm_types: [...] }）
+ *   PUT    /api/v1/algorithm/definitions/draft      草稿保存（完整定义快照 + algorithm_type，§6.2/INT-589）
+ *   GET    /api/v1/algorithm/definitions/draft/{type}  草稿恢复（空 {} = 无草稿）
  *   GET    /api/v1/evaluation/dimensions/options    评估维度选项（关联维度 Select 数据源）
  *   GET    /api/v1/testcases                        用例引用聚合兜底（§154：后端未返回
  *                                                   case_count 时按用例 algorithm_type 计数）
@@ -43,6 +45,7 @@ import {
   type AlgorithmBulkDeleteResultDto,
   type AlgorithmDefinitionDto,
   type AlgorithmDefinitionListDto,
+  type AlgorithmDraftSaveResultDto,
   type AlgorithmGroupDto,
   type AlgorithmGroupListDto,
   type AlgorithmImportResultDto,
@@ -283,11 +286,11 @@ export async function deleteAlgorithmGroup(
   return { success: true }
 }
 
-/* ───────────────────────── INT-591 草稿/发布（§6.2，后端 RPC 未落定） ─────────────────────────
- * 后端「算法定义全量保存事务 RPC」（主项目后端卡：草稿分支 + 发布事务 + 乐观锁 revision/force +
- * has_draft）落定后按契约平移；落定前 saveAlgorithmDraft 保留 mock 形态（仅回时间戳/版本号），
- * publishAlgorithm 走真实 create/update。乐观锁冲突 UI（AlgorithmConflictError）等待后端 RPC
- * 提供 revision 条件更新与 409 语义后启用；缺口证据见 INT-647 交付评论。
+/* ───────────────────────── INT-591/INT-589 草稿（§6.2，后端草稿 RPC 已落定） ─────────────────────────
+ * 草稿保存 = PUT /algorithm/definitions/draft（完整定义快照 + algorithm_type，不落正式六表）；
+ * 草稿恢复 = GET /algorithm/definitions/draft/{type}（空 {} = 无草稿）。发布走 create/update，
+ * 后端发布事务成功时清除草稿快照（clear_snapshot）。乐观锁冲突 UI（AlgorithmConflictError）
+ * 等待后端提供 revision 条件更新与 409 语义后启用；缺口证据见 INT-647 交付评论。
  */
 
 /** 草稿保存成功结果（footer「上次保存 HH:mm:ss」时间戳 + 乐观锁版本号） */
@@ -307,19 +310,39 @@ export class AlgorithmConflictError extends Error {
   }
 }
 
-/** mock 草稿版本号（后端 RPC 未落定前的本地回执；接线后删除） */
-const draftRevisionMap = new Map<string, number>()
+/** 草稿恢复（§6.2 编辑态打开先读草稿；空 {} = 无草稿，返回 undefined） */
+export async function fetchAlgorithmDraft(
+  type: string
+): Promise<AlgorithmDefinition | undefined> {
+  const dto = await request<AlgorithmDefinitionDto>(
+    'GET',
+    `/algorithm/definitions/draft/${encodeURIComponent(type)}`
+  )
+  // 后端无草稿返回 data:{}（空对象）；有草稿返回完整快照（snake_case，type 键可经 toAlgorithmDefinition 还原）
+  if (!dto || typeof dto !== 'object' || Object.keys(dto).length === 0) {
+    return undefined
+  }
+  return toAlgorithmDefinition(dto)
+}
 
-/** 草稿保存（§6.2 draft 分支；后端 RPC 落定前按 §6.2 UI 契约出 mock 回执） */
+/** 草稿保存（§6.2 draft 分支；PUT /algorithm/definitions/draft，快照落库 + 服务端 saved_at 回执） */
 export async function saveAlgorithmDraft(
   input: SaveAlgorithmInput,
   _revision?: number
 ): Promise<DraftSaveResult> {
-  // TODO(API 接线): 后端定义全量保存 RPC draft 分支（草稿落库 + 乐观锁 revision）
-  const type = input.type.trim() || '__new__'
-  const next = (draftRevisionMap.get(type) ?? 0) + 1
-  draftRevisionMap.set(type, next)
-  return { revision: next, savedAt: new Date().toISOString() }
+  const body = await buildDefinitionDto(input)
+  // 草稿快照归属键：后端 SaveAlgorithmDefinitionDraft 按 algorithm_type 落 PO（type 兼容读）
+  body.algorithm_type = input.type
+  const data = await request<AlgorithmDraftSaveResultDto>(
+    'PUT',
+    '/algorithm/definitions/draft',
+    body
+  )
+  return {
+    // 后端草稿保存仅回 success（无版本号），revision 恒 0；saved_at 服务端时间，缺省取本端
+    revision: 0,
+    savedAt: data?.saved_at ?? new Date().toISOString(),
+  }
 }
 
 /** 发布（§6.2 发布事务；后端 RPC 未落定前 = 真实 create/update，revision 条件更新待后端） */

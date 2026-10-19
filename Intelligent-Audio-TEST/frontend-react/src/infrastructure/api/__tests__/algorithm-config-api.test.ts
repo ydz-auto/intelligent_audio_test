@@ -32,10 +32,12 @@ import {
   deleteAlgorithmGroup,
   fetchAlgorithmDefinitions,
   fetchAlgorithmDetail,
+  fetchAlgorithmDraft,
   fetchAlgorithmGroups,
   importAlgorithms,
   publishAlgorithm,
   reloadAlgorithmConfig,
+  saveAlgorithmDraft,
   updateAlgorithm,
   updateAlgorithmGroup,
   type SaveAlgorithmInput,
@@ -312,5 +314,91 @@ describe('algorithm-config-api（真实端点接线）', () => {
     expect(mockRequest).toHaveBeenNthCalledWith(1, 'GET', '/algorithm/definitions/asr-v3')
     expect(mockRequest).toHaveBeenNthCalledWith(2, 'PUT', '/algorithm/definitions/asr-v3', expect.any(Object))
     expect(updated.name).toBe('asr-v3 名称')
+  })
+
+  it('saveAlgorithmDraft 走 PUT /algorithm/definitions/draft（完整快照 + algorithm_type）并回服务端 saved_at', async () => {
+    mockRequest.mockResolvedValue({
+      saved: true,
+      algorithm_type: 'asr-v3',
+      saved_at: '2026-10-19T12:00:00Z',
+    })
+    const result = await saveAlgorithmDraft(saveInput('asr-v3'))
+    expect(mockRequest).toHaveBeenCalledWith(
+      'PUT',
+      '/algorithm/definitions/draft',
+      expect.objectContaining({
+        type: 'asr-v3',
+        algorithm_type: 'asr-v3',
+        name: 'asr-v3 名称',
+        group_id: 1,
+        status: 'online',
+        device_params: expect.arrayContaining([
+          expect.objectContaining({ param_code: 'input_audio', param_name: '输入音频' }),
+        ]),
+      })
+    )
+    expect(result.revision).toBe(0)
+    expect(result.savedAt).toBe('2026-10-19T12:00:00Z')
+  })
+
+  it('saveAlgorithmDraft 后端未回 saved_at 时前端取本端 now', async () => {
+    mockRequest.mockResolvedValue({ saved: true, algorithm_type: 'asr-v3' })
+    const before = Date.now()
+    const result = await saveAlgorithmDraft(saveInput('asr-v3'))
+    expect(Date.parse(result.savedAt)).toBeGreaterThanOrEqual(before)
+    expect(result.revision).toBe(0)
+  })
+
+  it('fetchAlgorithmDraft 无草稿（data:{}）返回 undefined；有草稿映射回 Domain 定义', async () => {
+    // 无草稿：后端返回空对象 → undefined
+    mockRequest.mockResolvedValue({})
+    const none = await fetchAlgorithmDraft('asr-v3')
+    expect(mockRequest).toHaveBeenCalledWith('GET', '/algorithm/definitions/draft/asr-v3')
+    expect(none).toBeUndefined()
+
+    // 有草稿：完整快照（snake_case，type 键）→ AlgorithmDefinition
+    mockRequest.mockReset()
+    mockRequest.mockResolvedValue({
+      type: 'asr-v3',
+      name: 'asr-v3 草稿名',
+      group_id: 1,
+      display_order: 1,
+      status: 'online',
+      description: '草稿描述',
+      device_params: [
+        { id: 0, param_code: 'input_audio', param_name: '输入音频', label: '输入音频', param_type: 'audio_file', direction: 'input', required: true, default_value: null, help_text: '待识别音频', ui_order: 1, hidden: false },
+      ],
+      api_params: [],
+      case_params: [],
+      reference_params: [],
+      mappings: { device: [], api: [], evaluation: [] },
+      associated_dimensions: [],
+    })
+    const draft = await fetchAlgorithmDraft('asr-v3')
+    expect(draft?.type).toBe('asr-v3')
+    expect(draft?.name).toBe('asr-v3 草稿名')
+    expect(draft?.deviceParams[0].paramCode).toBe('input_audio')
+  })
+
+  it('fetchAlgorithmDraft 草稿含 algorithm_type 键（后端快照归属键）时仍按 type 还原', async () => {
+    mockRequest.mockResolvedValue({
+      algorithm_type: 'asr-v3',
+      type: 'asr-v3',
+      name: 'asr-v3 草稿名',
+      group_id: null,
+      display_order: 0,
+      status: 'offline',
+      description: '',
+      device_params: [],
+      api_params: [],
+      case_params: [],
+      reference_params: [],
+      mappings: { device: [], api: [], evaluation: [] },
+      associated_dimensions: [],
+    })
+    const draft = await fetchAlgorithmDraft('asr-v3')
+    expect(draft?.type).toBe('asr-v3')
+    expect(draft?.name).toBe('asr-v3 草稿名')
+    expect(draft?.status).toBe('offline')
   })
 })

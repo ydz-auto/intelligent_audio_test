@@ -95,6 +95,14 @@ export interface AlgorithmImportResultDto {
   imported?: string[]
 }
 
+/** PUT /algorithm/definitions/draft（草稿保存响应 data；后端仅回 saved + 服务端 saved_at，INT-683） */
+export interface AlgorithmDraftSaveResultDto {
+  saved?: boolean
+  algorithm_type?: string
+  /** 服务端最后保存时间（ISO，footer「上次保存 HH:mm:ss」消费；缺省时前端取本端 now） */
+  saved_at?: string
+}
+
 /** GET /evaluation/dimensions/options（维度选项下拉；evaluation 域 DTO，算法/评估页共用） */
 export interface DimensionOptionsResultDto {
   dimensions?: Array<{
