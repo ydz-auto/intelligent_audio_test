@@ -54,6 +54,7 @@
 <script setup lang="ts">
 import '../../assets/styles/test-common.css'
 import '../../assets/styles/components/button.css'
+import '../../assets/styles/components/common.css'
 import '../../assets/styles/components/batch-shared.css'
 import '../../assets/styles/components/navigation.css'
 import '../../assets/styles/components/log.css'

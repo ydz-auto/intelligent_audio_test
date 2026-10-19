@@ -153,13 +153,13 @@ watch(() => props.visible, (newValue) => {
     border: none;
     font-size: 24px;
     cursor: pointer;
-    color: var(--color-slate-500);
+    color: var(--text-secondary);
     padding: 0;
     line-height: 1;
 }
 
 .close-btn:hover{
-    color: var(--color-slate-700);
+    color: var(--text-primary);
 }
 
 

@@ -98,6 +98,7 @@
 
 <script setup lang="ts">
 import '../../../assets/styles/components/table.css'
+import '../../../assets/styles/components/common.css'
 import '../../../assets/styles/layouts/main.css'
 
 /**
