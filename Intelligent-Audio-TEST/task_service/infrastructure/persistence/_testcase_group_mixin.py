@@ -5,6 +5,7 @@ TestCaseGroup 查询 / 创建 / 更新 / 软删除（含级联）/ 多维筛选�
 """
 from typing import Any, Dict, List, Optional
 
+from shared.infrastructure.user_context import get_current_user_id
 from shared.models.database import get_db_session
 from task_service.infrastructure.persistence.models import TestCase, TestCaseGroup
 from task_service.infrastructure.persistence._testcase_repo_common import (
@@ -33,6 +34,7 @@ class TestCaseGroupMixin:
             id=group_id,
             name=name,
             description=description,
+            created_by_user_id=get_current_user_id(),
         )
         session.add(group)
         session.flush()
@@ -169,6 +171,7 @@ class TestCaseGroupMixin:
                 name=name,
                 description=description or '',
                 algorithm_type=algorithm_type or '',
+                created_by_user_id=get_current_user_id(),
             )
             session.add(po)
             session.commit()
@@ -200,6 +203,7 @@ class TestCaseGroupMixin:
             if algorithm_type:
                 r.algorithm_type = algorithm_type
 
+            r.updated_by_user_id = get_current_user_id()
             r.updated_at = _now()
             session.commit()
             return self._group_to_dict(r)
@@ -236,8 +240,10 @@ class TestCaseGroupMixin:
                 raise ValueError('未找到分组')
 
             now = _now()
+            operator_id = get_current_user_id()
             r.deleted = True
             r.deleted_at = now
+            r.deleted_by_user_id = operator_id
             r.updated_at = now
 
             if cascade:
@@ -247,6 +253,7 @@ class TestCaseGroupMixin:
                 ).update({
                     'deleted': True,
                     'deleted_at': now,
+                    'deleted_by_user_id': operator_id,
                     'updated_at': now,
                 }, synchronize_session=False)
 

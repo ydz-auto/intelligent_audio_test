@@ -96,7 +96,9 @@ class TagCrudService:
             if data.get('sort_order') is not None:
                 cat.sort_order = data['sort_order']
 
+            from shared.infrastructure.user_context import get_current_user_id
             from shared.utils.query_utils import now_cst
+            cat.updated_by_user_id = get_current_user_id()
             cat.updated_at = now_cst()
             self.repo.commit()
 
@@ -207,7 +209,9 @@ class TagCrudService:
             if data.get('category_id') is not None:
                 tag.category_id = category_id if category_id else None
 
+            from shared.infrastructure.user_context import get_current_user_id
             from shared.utils.query_utils import now_cst
+            tag.updated_by_user_id = get_current_user_id()
             tag.updated_at = now_cst()
             self.repo.commit()
 

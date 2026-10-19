@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy import func
 
+from shared.infrastructure.user_context import get_current_user_id
 from shared.models.database import get_db_session
 from task_service.infrastructure.persistence.models import Tag, TagCategory
 from task_service.infrastructure.persistence._testcase_repo_common import (
@@ -30,7 +31,7 @@ class TagRepositoryMixin:
         session = get_db_session()
         tag = session.query(Tag).filter_by(name=name).first()
         if not tag:
-            tag = Tag(name=name)
+            tag = Tag(name=name, created_by_user_id=get_current_user_id())
             session.add(tag)
             session.flush()
         return tag
@@ -67,6 +68,7 @@ class TagRepositoryMixin:
         """更新标签名（含 flush，未 commit）。"""
         session = get_db_session()
         tag.name = new_name
+        tag.updated_by_user_id = get_current_user_id()
         tag.updated_at = _now()
         session.flush()
 
@@ -80,6 +82,7 @@ class TagRepositoryMixin:
             description=data.get('description'),
             color=data.get('color'),
             sort_order=data.get('sort_order') or 0,
+            created_by_user_id=get_current_user_id(),
         )
         session.add(cat)
         session.flush()
@@ -100,6 +103,7 @@ class TagRepositoryMixin:
         now = _now()
         cat.deleted = True
         cat.deleted_at = now
+        cat.deleted_by_user_id = get_current_user_id()
         cat.updated_at = now
         get_db_session().flush()
 
@@ -146,6 +150,7 @@ class TagRepositoryMixin:
             description=data.get('description'),
             color=data.get('color'),
             category_id=data.get('category_id'),
+            created_by_user_id=get_current_user_id(),
         )
         session.add(tag)
         session.flush()
@@ -166,6 +171,7 @@ class TagRepositoryMixin:
         now = _now()
         tag.deleted = True
         tag.deleted_at = now
+        tag.deleted_by_user_id = get_current_user_id()
         tag.updated_at = now
         get_db_session().flush()
 
@@ -174,7 +180,11 @@ class TagRepositoryMixin:
         session = get_db_session()
         if not tag_ids:
             return 0
-        update_data = {'category_id': category_id if category_id else None, 'updated_at': _now()}
+        update_data = {
+            'category_id': category_id if category_id else None,
+            'updated_at': _now(),
+            'updated_by_user_id': get_current_user_id(),
+        }
         count = session.query(Tag).filter(
             Tag.id.in_(tag_ids), Tag.deleted == False  # noqa: E712
         ).update(update_data, synchronize_session=False)
