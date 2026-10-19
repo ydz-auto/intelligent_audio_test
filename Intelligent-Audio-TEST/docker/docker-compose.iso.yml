@@ -1,0 +1,51 @@
+# INT-597（INT-993 当前基线重交付）：多栈并行测试隔离覆盖（docker/run_stack_iso.py 叠加使用）
+#
+# 与 docker-compose.yml（base）的关系：base 定义全栈编排（端口/库名均已参数化，
+# *_PORT / POSTGRES_DB 环境变量覆盖）；本文件只覆盖跨 compose 项目会冲突的固定值
+# 与隔离栈专属增强，其余隔离全部经环境变量 + `-p` 项目名实现：
+#   - 库隔离：每栈独立 compose project → 独立 postgres 数据卷（docker volume），
+#     POSTGRES_DB=intelligent_audio_test_test 覆盖后验收 gate 口径（/health
+#     database==隔离库名）原样满足（INT-597 §2 裁定：volume 独立库实例）
+#   - 端口隔离：base 全部宿主端口均经 `*_PORT` 环境变量覆盖（run_stack_iso _stack_env）
+#   - 容器名隔离：rustfs 在 base 中是固定 container_name（rustfs-server），
+#     第二/三套栈必须改名，否则 container_name 全局冲突导致 compose 拒绝起栈
+#   - 自举链：db_bootstrap 门控（base 已含），EVAL_SERVER_URL 指向本栈 mock 评估
+#     替身——维度种子指向本栈，报告链无需外部算法服务（100.70.20.135:8888）
+#
+# 运行（见 docker/run_stack_iso.py 用法）：
+#   docker compose -p <project> -f docker/docker-compose.yml -f docker/docker-compose.iso.yml up -d
+services:
+  rustfs:
+    container_name: ${ISO_STACK_NAME:-intelligent-audio-test}-rustfs
+
+  # ============ mock 评估服务（INT-597 增补，INT-993 基线重交付）============
+  # 外部算法服务 100.70.20.135:8888 不可达时，隔离栈自带的评估替身：
+  # evaluation_service 出站评估链路（create_task / get_status /
+  # get_final_result，INT-182/INT-95 R8 llm_judge 契约）在本栈内闭环。
+  # 仅进隔离栈编排（生产路径零依赖，mock 不进入 base compose）。
+  mock_eval_server_judge:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.mock_eval
+    command: ["python", "mock_services/mock_eval_server_judge.py", "--port", "5097"]
+    restart: unless-stopped
+    mem_limit: ${SVC_MEM_LIMIT:-512m}
+    cpus: ${SVC_CPU_LIMIT:-0.5}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5097/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # 维度种子指向本栈 mock：db_bootstrap 内 seed_*.py 以 EVAL_SERVER_URL 写入
+  # dimensions.api_url（缺省 100.70.20.135:8888），隔离栈固定指向 mock，
+  # 保证全新起栈即可出评估结果、报告链无需外部网络。
+  db_bootstrap:
+    environment:
+      EVAL_SERVER_URL: http://mock_eval_server_judge:5097

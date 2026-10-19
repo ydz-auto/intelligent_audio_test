@@ -92,9 +92,31 @@
 - **容器形态例外**：device_service 物理设备链路——Linux 容器无宿主 USB 栈，容器内 adb/hdc 无法触达宿主实机；容器形态覆盖设备管理面全链路（CRUD/状态/告警），E2E 真机验收时该服务可保留宿主形态例外（成员保留裁定权）。
 - **mock_services（INT-137/182）**：仅联调/验收用、默认关闭，不进生产编排与镜像。
 
+### 5.1 多栈并行测试隔离（INT-597，docker 化；INT-993 按当前基线重交付）
+
+- **背景与裁定**：INT-138 全流程实机走查被 INT-288 在跑 run 占用 6000 并行栈阻塞（共享隔离库 `intelligent_audio_test_test` 多 run 并发必踩踏），负责人 2026-10-17 拍板「咱们不是有docker嘛」→ 本小节落地 docker 化多栈并行测试隔离（服务域：docker/解阻）。
+- **隔离形态**：`docker/run_stack_iso.py` 容器化隔离栈封装，每栈**独立 compose project** + **独立 postgres 数据卷**（docker volume 库隔离） + **独立端口段**（自动探测全空段） + 独立 redis / rustfs / 日志卷；`db_bootstrap` 自举（69 表 + 幂等迁移 + RBAC 种子 + dev 引导用户），base compose 以 `service_completed_successfully` 门控后端启动。
+- **与 parallel_stack.py 的关系**：parallel_stack = 宿主进程 UI 栈（6000 段，SHIFT/隔离库写死，多 run 并发必踩踏），适用于单 run 独占 6000 段的浏览器实测；run_stack_iso = docker 容器化隔离栈，每栈一个独立库实例，适用于 API 级验收/冒烟与并发多栈。浏览器 UI 实测与真机 E2E 段仍走宿主栈（容器形态 device_service 无宿主 USB 栈）。
+- **共享库隔离选择**：docker volume（独立库实例）——每栈 postgres 容器 + 项目级数据卷 = 完整独立库实例，比独立 schema 零侵入（schema 方案需改造全部 SQL/迁移）；`POSTGRES_DB=intelligent_audio_test_test` 覆盖后验收 gate 口径（`/health` database==隔离库名）原样满足，测试代码零改动；卷随 compose project 管理，`down` 保留卷复用、`down -v` 清库。
+- **端口隔离落地**：base compose 全部宿主端口经 `*_PORT` 环境变量参数化（本小节补齐——此前 §5 并存形态的「第二套 compose 栈用 `*_PORT` 覆盖」仅有文档口径、compose 未接线），隔离栈自动探测 2000 起测跳过宿主 6000 段约定段，逐端口探测全空即起、被占即拒（INT-459 纪律：起栈前探测复用、测完必 stop）。
+- **隔离栈专属增强**（`docker/docker-compose.iso.yml`）：rustfs 固定 `container_name` 跨栈冲突改名；`mock_eval_server_judge`（`docker/Dockerfile.mock_eval`）评估替身——外部算法服务 100.70.20.135:8888 不可达时，维度种子以 `EVAL_SERVER_URL` 指向本栈替身，报告链本栈内闭环。
+- **用法**（仓库根 `Intelligent-Audio-TEST/`）：
+  ```
+  python docker/run_stack_iso.py up --name <project> [--auth-mode dev] [--offset N]
+  python docker/run_stack_iso.py health --name <project>
+  python docker/run_stack_iso.py smoke --name <project>      # 登录→用例→任务→报告 API 链
+  python docker/run_stack_iso.py down --name <project>       # 测完必 stop（INT-459）
+  ```
+- **遗留风险**：docker 引擎宿主资源（Docker Desktop VM 内存 2GB 时多栈并发 OOM，2026-10-17 实测引擎自停）——已由环境侧调大 VM 内存缓解；多套栈并发前仍按需评估资源余量。
+
+### 5.2 前端镜像构建修复（INT-597 顺手闭合）
+
+- INT-597 原卡交付含 `docker/Dockerfile.frontend.dockerignore`（根 `.dockerignore` 排除 `frontend/` 导致 `Dockerfile.frontend` 从仓库根构建报 `"/frontend": not found`）。
+- 当前基线该修复已随 INT-472 落地（见 §7.1），本小节仅归档 INT-597 归属，不重复实施。
+
 ## 6. 实现锚点
 
-`docker/docker-compose.yml`（编排）· `docker/run_stack.py`（薄封装）· `docker/Dockerfile.service`（12 后端统一镜像，单镜像多 CMD，含 ffmpeg/adb/portaudio）· `docker/Dockerfile.frontend` · `docker/Dockerfile.db_bootstrap` · `docker/db_bootstrap_entrypoint.py`（引导链）· `docker/nginx-frontend.conf`（反代契约）· `docker/.env.compose.example`（变量清单）· `run_all.py:524`（只读端口检查）· `shared/config/service_ports.py`（端口注册表）
+`docker/docker-compose.yml`（编排，`*_PORT`/`POSTGRES_DB` 参数化 + `db_bootstrap` 门控）· `docker/run_stack.py`（薄封装）· `docker/run_stack_iso.py` + `docker/docker-compose.iso.yml` + `docker/Dockerfile.mock_eval`（多栈并行测试隔离，§5.1）· `tools/iso_stack_smoke.py`（隔离栈验收冒烟）· `docker/Dockerfile.service`（12 后端统一镜像，单镜像多 CMD，含 ffmpeg/adb/portaudio）· `docker/Dockerfile.frontend` · `docker/Dockerfile.db_bootstrap` · `docker/db_bootstrap_entrypoint.py`（引导链）· `docker/nginx-frontend.conf`（反代契约）· `docker/.env.compose.example`（变量清单）· `run_all.py:524`（只读端口检查）· `shared/config/service_ports.py`（端口注册表）
 
 ## 7. 落地缺陷与修复（2026-10-16，INT-472 实测发现）
 
