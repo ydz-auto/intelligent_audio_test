@@ -266,3 +266,99 @@ def test_int849_real_modal_validation_blocks_save(page, api_client, int849_api):
     assert data.get('proxy_type') in (None, ''), f'空代理回归失败: {data}'
     assert data.get('proxy_url') in (None, ''), f'空代理回归失败: {data}'
     page.capture_artifacts(page.node_artifact_dir('int849_real_modal_validated'))
+
+
+def _set_proxy_fields(page, ptype: str, purl: str):
+    """JS 设置编辑弹窗代理类型/地址并派发事件（与真实输入同语义）。"""
+    page.driver.execute_script(
+        "var s = document.getElementById('field-proxyType');"
+        "s.value = arguments[0]; s.dispatchEvent(new Event('change', {bubbles:true}));"
+        "var i = document.getElementById('field-proxyUrl');"
+        "i.value = arguments[1]; i.dispatchEvent(new Event('input', {bubbles:true}));",
+        ptype, purl)
+
+
+def _notification_message(page) -> str:
+    """读取当前全局通知文案（.notification-message）。"""
+    els = page.driver.find_elements(By.CSS_SELECTOR, '.notification-message')
+    return els[-1].text if els else ''
+
+
+def test_int849_p2_scheme_and_bad_port_blocked(page, api_client, int849_api):
+    """P2 复测（代码审计打回项）：带 scheme 前缀 / 非数字端口地址必须被前端拦截，
+    不再落到网关 400；错误文案对齐后端口径。"""
+    page.goto(APITEST_ROUTE)
+    page.settle(0.8)
+    _open_api_edit_modal(page, int849_api['name'])
+
+    # 路径 A：type=http + url 带 scheme 前缀 → 前端拦截，弹窗保持打开，文案含 scheme
+    _set_proxy_fields(page, 'http', 'http://user:pass@10.0.0.1:8080')
+    page.settle(0.2)
+    page.click('.crud-form-modal .btn-primary')
+    page.settle(0.5)
+    assert page.exists('.crud-form-modal'), '带 scheme 前缀不应关闭弹窗'
+    msg = _notification_message(page)
+    assert 'scheme' in msg, f'scheme 前缀错误文案缺失: {msg!r}'
+    page.capture_artifacts(page.node_artifact_dir('int849_p2_scheme_blocked'))
+
+    # 路径 B：type=http + url 端口非数字 → 前端拦截，文案含「端口必须为数字」
+    _set_proxy_fields(page, 'http', 'user:pass@host:abc')
+    page.settle(0.2)
+    page.click('.crud-form-modal .btn-primary')
+    page.settle(0.5)
+    assert page.exists('.crud-form-modal'), '非数字端口不应关闭弹窗'
+    msg = _notification_message(page)
+    assert '端口必须为数字' in msg, f'非数字端口错误文案缺失: {msg!r}'
+    page.capture_artifacts(page.node_artifact_dir('int849_p2_badport_blocked'))
+
+    # 路径 C：type=http + url 多段端口（8080:extra）→ 前端拦截
+    _set_proxy_fields(page, 'http', 'user:pass@10.0.0.1:8080:extra')
+    page.settle(0.2)
+    page.click('.crud-form-modal .btn-primary')
+    page.settle(0.5)
+    assert page.exists('.crud-form-modal'), '多段端口不应关闭弹窗'
+    msg = _notification_message(page)
+    assert '端口必须为数字' in msg, f'多段端口错误文案缺失: {msg!r}'
+
+    # 反向：非法地址改回合法 user:pass@host:port → 保存成功，回读一致
+    _set_proxy_fields(page, 'http', 'user:pass@10.0.0.1:8080')
+    page.settle(0.2)
+    page.click('.crud-form-modal .btn-primary')
+    page.settle(1.5)
+    assert not page.exists('.crud-form-modal'), '合法代理应关闭弹窗'
+    r = api_client.request('GET', f'/apis/{int849_api["id"]}')
+    data = r.get('data') or {}
+    assert data.get('proxy_type') == 'http', f'合法保存回读 proxy_type 不一致: {data}'
+    assert data.get('proxy_url') == 'user:pass@10.0.0.1:8080', f'合法保存回读 proxy_url 不一致: {data}'
+    page.capture_artifacts(page.node_artifact_dir('int849_p2_blocked_then_legal'))
+
+
+def test_int849_p2_legal_variants_roundtrip(page, api_client, int849_api):
+    """P2 复测合法回归：IPv6 字面量 + 端口省略两种合法形态保存正常、回读一致。"""
+    page.goto(APITEST_ROUTE)
+    page.settle(0.8)
+    _open_api_edit_modal(page, int849_api['name'])
+
+    # IPv6 字面量 [::1]:443
+    _set_proxy_fields(page, 'https', 'user:pass@[::1]:443')
+    page.settle(0.2)
+    page.click('.crud-form-modal .btn-primary')
+    page.settle(1.5)
+    assert not page.exists('.crud-form-modal'), 'IPv6 合法代理应关闭弹窗'
+    r = api_client.request('GET', f'/apis/{int849_api["id"]}')
+    data = r.get('data') or {}
+    assert data.get('proxy_type') == 'https' and data.get('proxy_url') == 'user:pass@[::1]:443', \
+        f'IPv6 回读不一致: {data}'
+
+    # 端口省略 user:pass@host
+    _open_api_edit_modal(page, int849_api['name'])
+    _set_proxy_fields(page, 'socks5h', 'user:pass@10.0.0.1')
+    page.settle(0.2)
+    page.click('.crud-form-modal .btn-primary')
+    page.settle(1.5)
+    assert not page.exists('.crud-form-modal'), '端口省略合法代理应关闭弹窗'
+    r = api_client.request('GET', f'/apis/{int849_api["id"]}')
+    data = r.get('data') or {}
+    assert data.get('proxy_type') == 'socks5h' and data.get('proxy_url') == 'user:pass@10.0.0.1', \
+        f'端口省略回读不一致: {data}'
+    page.capture_artifacts(page.node_artifact_dir('int849_p2_legal_variants'))
