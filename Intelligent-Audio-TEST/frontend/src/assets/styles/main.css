@@ -37,18 +37,13 @@
 @import './reports/base.css';
 @import './reports/reports.css';
 
-/* 7. 页面特定样式（CSS-2：device/test-case-manager/e2etest；CSS-1：api-test） */
+/* 7. 页面特定样式（CSS-2：device/test-case-manager/e2etest；CSS-1：api-test → 已拆搬至页面组件按需加载，INT-768） */
 @import './device/device.css';
 @import './test-case-manager/base.css';
 @import './test-case-manager/toolbar.css';
 @import './test-case-manager/category.css';
 @import './test-case-manager/test-case-manager.css';
 @import './e2etest/e2etest.css';
-@import './api-test/api-test.css';
-@import './api-test/visualization.css';
-@import './api-test/step-panel.css';
-@import './api-test/tag-stats.css';
-@import './api-test/api-card.css';
 
 /* 通用搜索框和筛选框布局规则（全局覆写段，CSS-1~4 收敛时并入对应域） */
 .filter-bar,
