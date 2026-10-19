@@ -9,7 +9,7 @@ export interface Field {
 }
 
 export function useArrayField(
-  props: { field: Field; value: any[]; modelValue: any[]; error: string },
+  props: { field: Field; value?: any[]; modelValue?: any[]; error?: string },
   emit: (e: any, ...args: any[]) => void
 ) {
   const fieldId = `field-${props.field.key}`

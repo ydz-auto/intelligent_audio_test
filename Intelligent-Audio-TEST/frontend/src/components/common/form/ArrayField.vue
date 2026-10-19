@@ -188,9 +188,9 @@ import { useArrayField, type Field } from './ArrayField'
 
 const props = defineProps<{
   field: Field;
-  value: any[];
-  modelValue: any[];
-  error: string;
+  value?: any[];
+  modelValue?: any[];
+  error?: string;
 }>();
 
 const emit = defineEmits<{
