@@ -47,8 +47,8 @@ import {
   testDeviceFormSchema,
 } from '@/features/devices/lib/device-form-schema'
 import { normalizeDeviceSystem } from '@/features/devices/lib/device-system'
-import { MOCK_ASSOCIATE_SPL_OPTIONS } from '@/features/devices/components/modals/associate-spl-dialog'
-import { useDeviceMutations } from '@/application/devices/use-devices'
+import { useDeviceMutations, useDriverKeywords } from '@/application/devices/use-devices'
+import { useSplMappingsByDevice } from '@/application/spl/useSplMappings'
 import type { TestDevice } from '@/domain/models/testDevice'
 import type { PlaybackDevice } from '@/domain/models/playbackDevice'
 import type { ApiDevice } from '@/domain/models/apiDevice'
@@ -72,16 +72,6 @@ const HARMONY_API_LEVELS = ['3.0', '3.1', '3.2', '4.0', '4.2']
 const FORMAT_OPTIONS = ['WAV', 'MP3', 'FLAC', 'AAC', 'OGG', 'WMA']
 /** 测试设备算法类型（对照 mock supported_algorithms 值，device.py supported_algorithms 实测） */
 const ALGORITHM_OPTIONS = ['asr_streaming', 'wakeword_detect', 'tts_eval']
-/** 驱动关键字（V9.7.10 添加测试设备 keywords 选项来源 loadDriverKeywords；INT-721 对照后端
- *  GET /test-devices/driver-keywords 实测值；INT-725 接线后切真实数据源） */
-const MOCK_DRIVER_KEYWORDS: Array<{ name: string; keywords: string; system: string }> = [
-  { name: '豆包 Android ASR v1', keywords: 'android.doubao_asr.v1', system: 'Android' },
-  { name: 'Plaud AI 录音 v1', keywords: 'android.plaud.v1', system: 'Android' },
-  { name: '小艺通话聊天 v2', keywords: 'harmony.xiaoyi_livechat.v2', system: 'HarmonyOS' },
-  { name: '小艺同声传译 v1', keywords: 'harmony.xiaoyi_simultaneous.v1', system: 'HarmonyOS' },
-  { name: 'ChatGPT语音通话 v1', keywords: 'harmony.chatgpt.v1', system: 'HarmonyOS' },
-  { name: '豆包语音通话 v1', keywords: 'harmony.doubao.v1', system: 'HarmonyOS' },
-]
 const PROTOCOL_OPTIONS = ['http', 'https', 'ws', 'wss']
 const ENV_OPTIONS = [
   { value: 'development', label: '开发' },
@@ -140,12 +130,12 @@ function buildDefaults(
       system: normalizeDeviceSystem(device?.system ?? scanPrefill?.system)?.label ?? 'Android',
       systemVersion: device?.systemVersion ?? scanPrefill?.systemVersion ?? '',
       apiLevel: device?.apiLevel ?? '',
-      appName: device?.appName ?? '',
-      appVersion: device?.appVersion ?? '',
       connectionType: device?.connectionType ?? 'usb',
       serialNumber: device?.serialNumber ?? scanPrefill?.serialNumber ?? '',
       keywords: device?.keywords ?? scanPrefill?.keywords ?? '',
       ip: device?.ip ?? scanPrefill?.ip ?? '',
+      appName: device?.appName ?? scanPrefill?.appName ?? '',
+      appVersion: device?.appVersion ?? scanPrefill?.appVersion ?? '',
       port: '5555',
       needsPromptAudio: device?.needsPromptAudio ?? false,
       algorithms: device?.supportedAlgorithms ?? [],
@@ -255,6 +245,13 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
   const editingDevice = isEdit ? state.device : null
   const { createTest, updateTest, createPlayback, updatePlayback, createApi, updateApi } =
     useDeviceMutations()
+  const driverKeywordsQuery = useDriverKeywords()
+  // 声压映射选项仅编辑态（设备已存在）加载该设备映射（V9.7.10 loadSplMappings 同源 GET /spl/by-device/{id}）；
+  // 新增态 deviceId 为空 → 无选项（设备创建后再经行操作关联）
+  const editingPlaybackId = kind === 'playback' && isEdit ? (state.device?.id ?? null) : null
+  const splMappingsQuery = useSplMappingsByDevice(editingPlaybackId)
+  const driverKeywords = driverKeywordsQuery.data ?? []
+  const splOptions = splMappingsQuery.data ?? []
 
   const form = useForm<DeviceForm>({
     resolver: zodResolver(deviceFormSchema),
@@ -369,8 +366,7 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
           supportedFormats: values.supportedFormats.length > 0 ? values.supportedFormats : null,
           sampleRate: Number(values.sampleRate) || 48000,
           currentSplMappingId: splMappingId,
-          currentSplMappingName:
-            MOCK_ASSOCIATE_SPL_OPTIONS.find((m) => m.id === splMappingId)?.name ?? null,
+          currentSplMappingName: splOptions.find((m) => m.id === splMappingId)?.name ?? null,
         }
         if (isEdit) {
           await updatePlayback.mutateAsync({ id: editingDevice!.id, patch: editable })
@@ -578,7 +574,7 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                       </Field>
                     </>
                   )}
-                  {/* 驱动关键字（V9.7.10 添加测试设备 keywords 选填；INT-725 接线后走 GET /test-devices/driver-keywords） */}
+                  {/* 驱动关键字（V9.7.10 添加测试设备 keywords 选填；GET /test-devices/driver-keywords 真实选项，INT-721 接线） */}
                   <Field label='驱动关键字' className='col-span-2'>
                     <Select
                       value={form.watch('keywords') ?? ''}
@@ -589,7 +585,7 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value=''>不使用驱动关键字</SelectItem>
-                        {MOCK_DRIVER_KEYWORDS.map((kw) => (
+                        {driverKeywords.map((kw) => (
                           <SelectItem key={kw.keywords} value={kw.keywords}>
                             {kw.name}（{kw.system}）
                           </SelectItem>
@@ -723,7 +719,7 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value=''>不使用声压映射</SelectItem>
-                        {MOCK_ASSOCIATE_SPL_OPTIONS.map((mapping) => (
+                        {splOptions.map((mapping) => (
                           <SelectItem key={mapping.id} value={String(mapping.id)}>
                             {mapping.name}（{mapping.calibrationStatus === 'calibrated' ? '已校准' : '未校准'}）
                           </SelectItem>

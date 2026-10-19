@@ -101,6 +101,20 @@ export async function fetchTestDevices(options: ApiRequestOptions = {}): Promise
   return applyOccupied('test', (dto?.items ?? []).map(testDeviceFromDto))
 }
 
+/** 驱动关键字（V9.7.10 添加测试设备 keywords 选项来源 loadDriverKeywords；GET /test-devices/driver-keywords） */
+export interface DriverKeywordItem {
+  name: string
+  keywords: string
+  system: string
+}
+
+export async function fetchDriverKeywords(options: ApiRequestOptions = {}): Promise<DriverKeywordItem[]> {
+  const dto = await request<DriverKeywordItem[]>(
+    'GET', '/test-devices/driver-keywords', undefined, options
+  )
+  return dto ?? []
+}
+
 /** 播放设备列表（§3.5；GET /playback-devices） */
 export async function fetchPlaybackDevices(options: ApiRequestOptions = {}): Promise<PlaybackDevice[]> {
   const dto = await request<PaginatedDto<PlaybackDeviceItemDto>>(
@@ -129,6 +143,76 @@ export async function fetchDeviceGroups(options: ApiRequestOptions = {}): Promis
     { ...options, params: { page: 1, per_page: 100 } }
   )
   return (dto?.items ?? []).map(deviceGroupFromDto)
+}
+
+/* ==================== 设备分组 CRUD（§6.3；device_bp.py /test-devices/device-groups 实测契约） ==================== */
+
+/** 新建分组（POST /test-devices/device-groups；DeviceGroupCreateSchema：name/description/group_type/device_ids） */
+export async function createDeviceGroup(
+  input: { name: string; description?: string | null; groupType?: DeviceGroup['groupType']; deviceIds?: number[] },
+  options: ApiRequestOptions = {}
+): Promise<{ success: boolean; message?: string }> {
+  const body: Record<string, unknown> = {
+    name: input.name,
+    description: input.description ?? null,
+    group_type: input.groupType ?? 'test',
+    device_ids: input.deviceIds ?? [],
+  }
+  await request('POST', '/test-devices/device-groups', body, options)
+  return { success: true }
+}
+
+/** 编辑分组（PUT /test-devices/device-groups/{id}；DeviceGroupUpdateSchema：name/description/group_type） */
+export async function updateDeviceGroup(
+  id: string,
+  patch: { name?: string; description?: string | null; groupType?: DeviceGroup['groupType'] },
+  options: ApiRequestOptions = {}
+): Promise<{ success: boolean; message?: string }> {
+  const body: Record<string, unknown> = {
+    name: patch.name,
+    description: patch.description,
+    group_type: patch.groupType,
+  }
+  await request('PUT', `/test-devices/device-groups/${id}`, body, options)
+  return { success: true }
+}
+
+/** 删除分组（DELETE /test-devices/device-groups/{id}；含成员需 cascade=true 先移出，§11-5 口径） */
+export async function deleteDeviceGroup(
+  id: string,
+  cascade = true,
+  options: ApiRequestOptions = {}
+): Promise<{ success: boolean; message?: string }> {
+  return deleteGuard(() =>
+    request('DELETE', `/test-devices/device-groups/${id}`, undefined, {
+      ...options,
+      params: { ...(options.params ?? {}), cascade },
+    })
+  )
+}
+
+/** 添加成员（POST /test-devices/device-groups/{id}/devices；DeviceGroupMembersRequest：device_ids） */
+export async function addDevicesToGroup(
+  id: string,
+  deviceIds: number[],
+  options: ApiRequestOptions = {}
+): Promise<{ success: boolean; added?: number; message?: string }> {
+  const dto = await request<{ added?: number }>(
+    'POST', `/test-devices/device-groups/${id}/devices`, { device_ids: deviceIds }, options
+  )
+  return { success: true, added: dto?.added ?? 0 }
+}
+
+/** 移除成员（POST /test-devices/device-groups/{id}/remove-devices；DeviceGroupMembersRequest：device_ids） */
+export async function removeDevicesFromGroup(
+  id: string,
+  deviceIds: number[],
+  options: ApiRequestOptions = {}
+): Promise<{ success: boolean; removed?: number; message?: string }> {
+  const dto = await request<{ removed?: number }>(
+    'POST', `/test-devices/device-groups/${id}/remove-devices`, { device_ids: deviceIds }, options
+  )
+  return { success: true, removed: dto?.removed ?? 0 }
 }
 
 /** 告警列表 + 统计（§3.7；GET /test-devices/alarms，响应 data.stats） */
@@ -347,6 +431,16 @@ export async function deleteApiDevice(
   options: ApiRequestOptions = {}
 ): Promise<{ success: boolean; message?: string }> {
   return deleteGuard(() => request('DELETE', `/apis/${id}`, undefined, options))
+}
+
+/** 关联声压映射（§6.4；POST /playback-devices/{id}/associate-spl，body camelCase splMappingId 实测） */
+export async function associatePlaybackSpl(
+  deviceId: number,
+  splMappingId: number,
+  options: ApiRequestOptions = {}
+): Promise<{ success: boolean; message?: string }> {
+  await request('POST', `/playback-devices/${deviceId}/associate-spl`, { splMappingId }, options)
+  return { success: true }
 }
 
 /** 设备操作端点路径段（device_bp 固定段；health_check/api_health_check 走独立端点） */

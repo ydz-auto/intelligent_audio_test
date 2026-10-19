@@ -53,6 +53,18 @@ export async function fetchSplMappings(
   return (dto?.items ?? []).map(splMappingFromDto)
 }
 
+/** 某播放设备的声压映射（§6.4 关联弹窗选项来源；GET /spl/by-device/{device_id}，V9.7.10 loadSplMappings 同源） */
+export async function fetchSplMappingsByDevice(
+  deviceId: number,
+  options: ApiRequestOptions = {}
+): Promise<SplMapping[]> {
+  const dto = await request<SplMappingListDto>('GET', `/spl/by-device/${deviceId}`, undefined, {
+    ...options,
+    params: { page: 1, per_page: SPL_LIST_PAGE_SIZE },
+  })
+  return (dto?.items ?? []).map(splMappingFromDto)
+}
+
 /** 统计（§4.1.2；GET /spl/stats → SplStatsData） */
 export async function fetchSplStats(
   options: ApiRequestOptions = {}
