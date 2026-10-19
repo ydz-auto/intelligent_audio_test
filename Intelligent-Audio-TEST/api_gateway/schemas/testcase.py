@@ -464,6 +464,8 @@ class TestCaseCreateSchema(APIModel):
     # 解析结果落库 config.dimensions / config.background_noise，引用与覆盖源另列）
     strategy_id: Optional[str] = Field(None)
     strategy_overrides: Optional[Dict[str, Any]] = Field(None)
+    # INT-566：新建用例可见性（shared/private；None 服务端默认 shared）
+    visibility: Optional[str] = Field(None)
 
     @field_validator('algorithm_params', mode='before')
     @classmethod
@@ -600,6 +602,8 @@ class TestCaseUpdateSchema(APIModel):
     # INT-590：评估策略引用 + 覆盖（写时物化；显式传空字符串清空引用）
     strategy_id: Optional[str] = Field(None)
     strategy_overrides: Optional[Dict[str, Any]] = Field(None)
+    # INT-566：更新载荷携带可见性时落库（可见性切换走专用 share 端点）
+    visibility: Optional[str] = Field(None)
 
     @field_validator('algorithm_params', mode='before')
     @classmethod

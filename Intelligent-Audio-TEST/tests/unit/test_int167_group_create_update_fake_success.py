@@ -108,7 +108,8 @@ class TestGroupServiceCreate:
                 return None
 
             def create_testcase_group(self, name, description='',
-                                      algorithm_type='', group_id=None):
+                                      algorithm_type='', group_id=None,
+                                      visibility=None):  # INT-566：新增透传形参
                 if create_error is not None:
                     raise create_error
                 return create_result

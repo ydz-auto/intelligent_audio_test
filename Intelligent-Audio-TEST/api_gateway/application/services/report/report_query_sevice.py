@@ -121,7 +121,15 @@ class ReportQueryService:
             resp = stub.GetReportDetail(report_pb.GetReportDetailRequest(
                 report_id=int(report_id)))
             if not resp.success:
-                return error_response(resp.message or '查询失败', 404)
+                # INT-566 P1-5：不存在/私有非 owner 详情 → HTTP 404（防探测口径统一）。
+                # 业务码经服务侧 fold_business_code 折进 data JSON，此处提取区分
+                # 404（不存在/越权）与其余失败（500 等）。
+                _data = _loads(resp.data, {}) or {}
+                _code = _data.get('code') if isinstance(_data, dict) else None
+                if _code == 404:
+                    return error_response(resp.message or '未找到测试报告',
+                                          code=404, http_code=404)
+                return error_response(resp.message or '查询失败', code=_code or 400)
             data = _loads(resp.data, {}) or {}
             # INT-466：admin 访问私有报告详情落 PRIVATE_RESOURCE_ACCESS 审计（旁路）
             from api_gateway.application.services.visibility.visibility_audit import (

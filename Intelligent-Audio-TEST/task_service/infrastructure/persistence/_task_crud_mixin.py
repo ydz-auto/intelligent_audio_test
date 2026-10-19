@@ -40,6 +40,7 @@ class TaskCrudMixin:
         now: Optional[datetime] = None,
         case_devices: Optional[List[Dict[str, Any]]] = None,
         lab_ids: Optional[List[int]] = None,
+        visibility: Optional[str] = None,
     ) -> int:
         """创建任务记录及其关联关系（用例/设备/API/实验室）。
 
@@ -59,6 +60,7 @@ class TaskCrudMixin:
             lab_ids: 关联实验室 ID 列表（实验室扩展 INT-493/INT-540，可选；
                 缺省/None = 不限定实验室，兼容现状）。按传入顺序写入
                 task_laboratory_relations.priority（1 起），N:M 多实验室。
+            visibility: 新建任务可见性（INT-566；shared/private；None 默认 shared）
 
         Returns:
             新任务 ID。
@@ -76,6 +78,7 @@ class TaskCrudMixin:
                 config=config, algorithm_type=algorithm_type,
                 algorithm_params=algorithm_params,
                 total_cases=len(case_ids), created_by=created_by, now=now,
+                visibility=visibility,
             )
             session.add(task)
             session.flush()  # 获取自增 ID
@@ -103,11 +106,13 @@ class TaskCrudMixin:
                         algorithm_type: Optional[str],
                         algorithm_params: Optional[Dict[str, Any]],
                         total_cases: int, created_by: Optional[int],
-                        now: datetime) -> Task:
+                        now: datetime,
+                        visibility: Optional[str] = None) -> Task:
         """构造新 Task PO（统一字段初始化，消除重复）。
 
         created_by_user_id（INT-141）：统一从 x-user-id 上下文取 JWT 操作人，
         不信任客户端自报 user_id（红线：0/None 不充当真实用户，保持 NULL）。
+        visibility（INT-566）：新建任务可见性透传（默认 shared，与迁移一致）。
         """
         from shared.infrastructure.user_context import get_current_user_id
         return Task(
@@ -122,6 +127,7 @@ class TaskCrudMixin:
             failed_cases=0,
             created_by=created_by,
             created_by_user_id=get_current_user_id(),
+            visibility=visibility or 'shared',
             created_at=now,
             updated_at=now,
         )

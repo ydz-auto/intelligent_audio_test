@@ -78,6 +78,8 @@ class TaskCrudService:
                 created_by=data.get('created_by'),
                 case_devices=data.get('case_devices'),
                 lab_ids=data.get('lab_ids'),
+                # INT-566：新建任务透传请求可见性落库（仓储侧默认 shared）
+                visibility=data.get('visibility'),
             )
             if task_id is None:
                 return {'success': False, 'message': '创建任务失败', 'data': None, 'code': 500}

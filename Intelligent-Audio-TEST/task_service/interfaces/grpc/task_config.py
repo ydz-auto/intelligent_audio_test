@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from shared.proto import task_service_pb2 as task_pb
 from shared.proto import task_service_pb2_grpc as task_grpc
-from shared.utils.grpc_json import loads as _loads, dumps as _dumps
+from shared.utils.grpc_json import loads as _loads, dumps as _dumps, fold_business_code
 
 
 class TaskConfigServiceServicer(task_grpc.TaskConfigServiceServicer):
@@ -35,10 +35,14 @@ class TaskConfigServiceServicer(task_grpc.TaskConfigServiceServicer):
     @staticmethod
     def _resp(result):
         """统一包装返回结果为 TaskConfigResponse"""
+        data = result.get('data')
+        # INT-566 P1-5：失败响应把顶层业务码折进 data JSON，网关代理按 data.code 提升
+        if not result.get('success', False):
+            data = fold_business_code(data, result.get('code'))
         return task_pb.TaskConfigResponse(
             success=result.get('success', False),
             message=result.get('message', ''),
-            data=_dumps(result.get('data')) if result.get('data') is not None else "",
+            data=_dumps(data) if data is not None else "",
         )
 
     # ---- 写操作 ----

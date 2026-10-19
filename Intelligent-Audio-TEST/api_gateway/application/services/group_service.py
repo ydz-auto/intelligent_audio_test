@@ -144,6 +144,8 @@ class GroupService:
                 description=validated_data.description or '',
                 algorithm_type=validated_data.algorithm_type or '',
                 group_id=group_id,
+                # INT-566：新建分组透传可见性（shared/private；None 服务端默认 shared）
+                visibility=validated_data.visibility,
             )
             if not new_group or not new_group.get('id'):
                 return error_response("创建分组失败：服务未确认创建结果")

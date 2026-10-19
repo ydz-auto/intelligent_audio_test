@@ -23,6 +23,8 @@ class GroupCreateRequest(APIModel):
     name: str = Field(..., validation_alias=AliasChoices('groupName', 'group_name'))
     description: Optional[str] = Field(None, validation_alias=AliasChoices('groupDescription', 'group_description'))
     algorithm_type: Optional[str] = Field(None)
+    # INT-566：新建分组可见性（shared/private；None 服务端默认 shared）
+    visibility: Optional[str] = Field(None)
 
 
 class GroupUpdateRequest(APIModel):

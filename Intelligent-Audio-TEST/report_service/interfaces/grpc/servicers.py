@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional
 
 from shared.proto import report_service_pb2 as report_pb
 from shared.proto import report_service_pb2_grpc as report_grpc
-from shared.utils.grpc_json import loads as _loads, dumps as _dumps
+from shared.utils.grpc_json import loads as _loads, dumps as _dumps, fold_business_code
 
 from report_service.application.commands.report_commands import (
     CreateReportCommand,
@@ -183,6 +183,9 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
 
         code: HTTP 语义业务码（INT-971：GetSharedReport 错误 404/410/401/403；0 = 200）。
         """
+        # INT-566 P1-5：失败响应把业务码折进 data JSON，网关代理按 data.code 提升映射 HTTP 状态
+        if not success:
+            data = fold_business_code(data, code)
         return report_pb.ReportConfigResponse(
             success=success,
             message=message,
@@ -453,6 +456,8 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
                 aggregate is not None,
                 'ok' if aggregate is not None else 'report not found',
                 _aggregate_to_dict(aggregate),
+                # INT-566 P1-5：不存在/私有非 owner → 业务码 404（防探测口径）
+                code=0 if aggregate is not None else 404,
             )
         except Exception as e:
             logger.exception("GetReportDetail failed")

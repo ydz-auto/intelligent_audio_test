@@ -60,6 +60,8 @@ class TestCaseCopyMoveMixin:
             # 与单用例 copy 口径一致）
             'strategy_id': getattr(tc, 'strategy_id', None),
             'strategy_overrides': copy.deepcopy(getattr(tc, 'strategy_overrides', None)),
+            # INT-566：批量复制用例继承源用例可见性
+            'visibility': getattr(tc, 'visibility', None),
         })
         # 复制标签关联
         for tag in tc.tags:
@@ -143,7 +145,9 @@ class TestCaseCopyMoveMixin:
             new_group = existing_group
         else:
             new_group = self.repo.create_group(
-                str(uuid.uuid4()), new_group_name, source_group.description
+                str(uuid.uuid4()), new_group_name, source_group.description,
+                # INT-566：复制分组继承源分组可见性（默认 shared）
+                visibility=getattr(source_group, 'visibility', None),
             )
 
         test_cases = self.repo.list_testcases_by_group(source_group.id)

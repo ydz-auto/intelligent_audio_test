@@ -1058,6 +1058,7 @@ message CreateTestCaseGroupRequest {
   string description = 2;
   string algorithm_type = 3;
   string group_id = 4;  // 可选，指定 ID（导入用）
+  string visibility = 5;  // 可选，数据可见性 shared/private（INT-566；空=服务端默认 shared）
 }
 message UpdateTestCaseGroupRequest {
   string group_id = 1;

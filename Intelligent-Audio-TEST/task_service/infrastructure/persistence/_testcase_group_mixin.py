@@ -29,10 +29,12 @@ class TestCaseGroupMixin:
         session = get_db_session()
         return session.query(TestCaseGroup).filter_by(id=group_id).first()
 
-    def create_group(self, group_id: str, name: str, description: str = None) -> TestCaseGroup:
+    def create_group(self, group_id: str, name: str, description: str = None,
+                     visibility: str = None) -> TestCaseGroup:
         """创建分组（含 flush，未 commit）。
 
         INT-423：created_by_user_id 从 x-user-id 上下文取操作人。
+        INT-566：透传可见性落库（默认 shared，与迁移一致）。
         """
         from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
@@ -40,6 +42,7 @@ class TestCaseGroupMixin:
             id=group_id,
             name=name,
             description=description,
+            visibility=visibility or 'shared',
             created_by_user_id=get_current_user_id(),
         )
         session.add(group)
@@ -219,10 +222,11 @@ class TestCaseGroupMixin:
             session.close()
 
     def create_group_and_commit(self, group_id: str, name: str, description: str = '',
-                                algorithm_type: str = '') -> dict:
+                                algorithm_type: str = '', visibility: str = None) -> dict:
         """创建 TestCaseGroup 并 commit（返回 dict）。
 
         INT-423：created_by_user_id 从 x-user-id 上下文取操作人。
+        INT-566：透传可见性落库（默认 shared，与迁移一致）。
         """
         from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
@@ -232,6 +236,7 @@ class TestCaseGroupMixin:
                 name=name,
                 description=description or '',
                 algorithm_type=algorithm_type or '',
+                visibility=visibility or 'shared',
                 created_by_user_id=get_current_user_id(),
             )
             session.add(po)

@@ -249,6 +249,8 @@ class TaskCreateRequest(APIModel):
     # 由网关显式字段承接，task_service 合并进 Task.config 落库；取值见 ExecutionMode/SerialFirst 枚举。
     execution_mode: Optional[str] = Field('parallel')
     serial_first: Optional[str] = Field('device')
+    # INT-566：新建任务可见性（shared/private；None 服务端默认 shared）
+    visibility: Optional[str] = Field(None)
 
     @field_validator('execution_mode')
     @classmethod

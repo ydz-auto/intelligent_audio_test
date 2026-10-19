@@ -208,7 +208,8 @@ class _TaskDataProxy:
             return json.loads(resp.data) if resp.data else None
         return _grpc_call(_call, default_return=None, error_msg_prefix='GetTestCaseGroupByName gRPC 失败')
 
-    def create_testcase_group(self, name, description='', algorithm_type='', group_id=None):
+    def create_testcase_group(self, name, description='', algorithm_type='', group_id=None,
+                              visibility=None):
         """通过 gRPC 创建 TestCaseGroup（写操作失败时抛出，禁止吞错假成功）"""
         def _call():
             stub = get_task_data_service_stub()
@@ -217,6 +218,7 @@ class _TaskDataProxy:
                 description=description or '',
                 algorithm_type=algorithm_type or '',
                 group_id=group_id or '',
+                visibility=visibility or '',
             ))
             if not resp.success:
                 raise RuntimeError(f"CreateTestCaseGroup gRPC 失败: {resp.message}")

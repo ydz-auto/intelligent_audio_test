@@ -348,6 +348,8 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
             gid = request.group_id or str(_uuid.uuid4())
             item = testcase_repository.create_group_and_commit(
                 gid, request.name, request.description or '', request.algorithm_type or '',
+                # INT-566：透传请求可见性落库（默认 shared）
+                visibility=request.visibility or None,
             )
             return self._resp(True, '', item)
         except Exception as e:

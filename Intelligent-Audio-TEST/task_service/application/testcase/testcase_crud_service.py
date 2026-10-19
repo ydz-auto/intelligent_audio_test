@@ -196,7 +196,9 @@ class TestCaseCrudService:
                 else:
                     group_id = str(uuid.uuid4())
                     self.repo.create_group(
-                        group_id, group_name, f"自动创建的分组: {group_name}"
+                        group_id, group_name, f"自动创建的分组: {group_name}",
+                        # INT-566：自动建组继承用例可见性（默认 shared）
+                        visibility=data.get('visibility'),
                     )
 
             # INT-423：私有分组非 owner 不允许在其下建用例（越权写入 → 403）。
@@ -291,6 +293,8 @@ class TestCaseCrudService:
                     'algorithm_type': data.get('algorithm_type'),
                     'strategy_id': strategy_id_val,
                     'strategy_overrides': strategy_overrides_val,
+                    # INT-566：新建用例透传请求可见性落库（仓储侧默认 shared）
+                    'visibility': data.get('visibility'),
                 })
 
                 # 处理标签
@@ -372,7 +376,9 @@ class TestCaseCrudService:
                 else:
                     group_id = str(uuid.uuid4())
                     self.repo.create_group(
-                        group_id, group_name, f"自动创建的分组: {group_name}"
+                        group_id, group_name, f"自动创建的分组: {group_name}",
+                        # INT-566：自动建组继承用例可见性（默认 shared）
+                        visibility=data.get('visibility'),
                     )
 
             if group_id is not None:
@@ -628,6 +634,8 @@ class TestCaseCrudService:
                     # INT-590：复制用例保留策略引用（config 已含解析后快照，引用列随拷贝）
                     'strategy_id': getattr(tc, 'strategy_id', None),
                     'strategy_overrides': copy.deepcopy(getattr(tc, 'strategy_overrides', None)),
+                    # INT-566：复制用例继承源用例可见性
+                    'visibility': getattr(tc, 'visibility', None),
                 })
 
                 for tag in tc.tags:
