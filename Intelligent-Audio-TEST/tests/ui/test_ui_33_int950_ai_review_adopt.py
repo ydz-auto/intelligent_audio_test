@@ -82,9 +82,20 @@ def _save_evidence(name, drv, dark=False):
     d = os.path.join(ARTIFACTS, name)
     os.makedirs(d, exist_ok=True)
     try:
+        with open(os.path.join(d, 'url.txt'), 'w', encoding='utf-8') as f:
+            f.write(drv.current_url)
+    except Exception:
+        pass
+    try:
         drv.save_screenshot(os.path.join(d, 'screenshot.png'))
+    except Exception:
+        pass
+    try:
         with open(os.path.join(d, 'page_source.html'), 'w', encoding='utf-8') as f:
             f.write(drv.page_source)
+    except Exception:
+        pass
+    try:
         with open(os.path.join(d, 'console.log'), 'w', encoding='utf-8') as f:
             for entry in drv.get_log('browser'):
                 f.write(json.dumps(entry, ensure_ascii=False) + '\n')
@@ -101,6 +112,51 @@ def drv():
         _DRIVER.quit()
     except Exception:
         pass
+
+
+@pytest.fixture()
+def fresh_drv():
+    """独立浏览器会话：深色/控制台用例不与采纳用例共享会话，
+    避免套件内复用导航 + React Query 缓存叠加导致报告页用例列表短暂为空。"""
+    global _DRIVER
+    _DRIVER = _driver()
+    yield _DRIVER
+    try:
+        _DRIVER.quit()
+    except Exception:
+        pass
+
+
+# 常驻栈 --test-db 库；探针用例 result 3693 / dim 9000（INT-891 同款）。
+# 后端发起 AI 复核按 (result, dim) 幂等复用最新 completed 记录，故本卡两次采纳
+# （报告侧 test_01 / 任务侧 test_02）指向同一条记录；每条采纳前置为未采纳态，
+# 否则后端以「已处置」拒绝、无法验证采纳成功路径。
+_PROBE_DSN = ('postgresql://intelligent_audio_test:intelligent_audio_test666'
+              '@localhost:5432/intelligent_audio_test_test')
+
+
+def _reset_probe_record():
+    try:
+        import psycopg2
+        conn = psycopg2.connect(_PROBE_DSN)
+        conn.autocommit = True
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE ai_reviews SET adopted=0, adopted_at=NULL, adopted_by_user_id=NULL "
+            "WHERE id=(SELECT id FROM ai_reviews WHERE result_id=3693 AND dimension_id=9000 "
+            "ORDER BY id DESC LIMIT 1) AND adopted=1")
+        cur.close()
+        conn.close()
+    except Exception:
+        pass
+
+
+@pytest.fixture(autouse=True)
+def reset_probe_record():
+    """每条用例前把探针记录置回未采纳，保证报告侧/任务侧采纳成功路径可复验。"""
+    _reset_probe_record()
+    yield
+
 
 
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)
@@ -162,9 +218,12 @@ def _open_ai_review(drv, base, case_name):
     drv.execute_script("arguments[0].scrollIntoView({block:'center'})", target)
     time.sleep(0.4)
     drv.execute_script("arguments[0].click()", target)
-    # 任务侧 openAiReview 先 fetch 用例结果再 setAiReviewTarget；等弹窗或 toast 错误
+    # 任务侧 openAiReview 先 fetch 用例结果再 setAiReviewTarget；等弹窗或 toast 错误。
+    # 报告侧 DialogContent 用默认 slot 'dialog-content'，任务侧覆盖为 'ai-review-dialog'，两 slot 都匹配。
     WebDriverWait(drv, 25).until(
-        lambda d: len(d.find_elements(By.XPATH, "//div[@data-slot='dialog-content'][.//*[contains(., 'AI 复核')]]")) > 0
+        lambda d: len(d.find_elements(By.XPATH,
+            "//div[@data-slot='dialog-content'][.//*[contains(., 'AI 复核')]]"
+            " | //div[@data-slot='ai-review-dialog']")) > 0
         or len(d.find_elements(By.CSS_SELECTOR, "li[data-sonner-toast]")) > 0)
     time.sleep(1.0)
     txt = _body(drv)
@@ -243,9 +302,6 @@ def test_01_report_ai_review_adopt(drv):
 
 
 # ── ② 任务页 AI 复核 → 采纳（tasks 侧，ai-review-dialog.tsx）─────────
-@pytest.mark.skip(reason='任务详情页 AI 复核弹窗在 headless Chrome 下渲染崩溃（任务页实时日志流 + 弹窗，'
-                        '环境性 Chrome renderer crash，发生于弹窗打开阶段、与本卡 adopt 改动无关）；'
-                        'tasks 侧 fix 由 pnpm build + 报告侧同契约端到端（test_01）覆盖验证')
 def test_02_task_ai_review_adopt(drv):
     _enter_workbench(drv)
     _open_ai_review(drv, TASK_URL, 'INT314SMOKE_70ed974e_API用例')
@@ -260,13 +316,14 @@ def test_02_task_ai_review_adopt(drv):
 
 
 # ── ③ 深色主题截图（§3.3 必附图）────────────────────────────
-def test_03_report_dark_screenshot(drv):
+def test_03_report_dark_screenshot(fresh_drv):
+    drv = fresh_drv
     _enter_workbench(drv)
     drv.execute_script("localStorage.setItem('iatp:theme:v1:mode','dark')")
     drv.get(REPORT_URL)
     time.sleep(3.0)
     WebDriverWait(drv, 20).until(
-        lambda d: len(d.find_elements(By.XPATH, "//*[contains(text(), 'INT314SMOKE_70ed974e_API用例')]")) > 0)
+        lambda d: len(d.find_elements(By.XPATH, "//*[contains(., 'INT314SMOKE_70ed974e_API用例')]")) > 0)
     html_cls = drv.find_element(By.TAG_NAME, 'html').get_attribute('class') or ''
     assert 'dark' in html_cls, f'dark class 未生效：{html_cls}'
     # 打开 AI 复核 → 发起 → 结论卡（深色截图完整链路）
@@ -288,13 +345,14 @@ def test_03_report_dark_screenshot(drv):
 
 
 # ── ④ 无未处理异常（报告侧不再静默失败）───────────────────────
-def test_04_no_unhandled_rejection(drv):
+def test_04_no_unhandled_rejection(fresh_drv):
+    drv = fresh_drv
     _enter_workbench(drv)
     drv.execute_script("localStorage.setItem('iatp:theme:v1:mode','light')")
     drv.get(REPORT_URL)
     time.sleep(3.0)
     WebDriverWait(drv, 20).until(
-        lambda d: len(d.find_elements(By.XPATH, "//*[contains(text(), 'INT314SMOKE_70ed974e_API用例')]")) > 0)
+        lambda d: len(d.find_elements(By.XPATH, "//*[contains(., 'INT314SMOKE_70ed974e_API用例')]")) > 0)
     btns = drv.find_elements(By.XPATH, "//button[contains(., 'AI 复核')]")
     assert btns, 'AI 复核入口缺失'
     drv.execute_script("arguments[0].scrollIntoView({block:'center'})", btns[0])
