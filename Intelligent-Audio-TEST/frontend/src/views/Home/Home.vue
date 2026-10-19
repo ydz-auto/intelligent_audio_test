@@ -16,7 +16,20 @@
     </section>
 
     <!-- 快速统计 -->
-    <QuickStats :animated-stats="animatedStats" />
+    <!-- INT-288 加载态：首屏统计拉取期间显示 spinner（非裸文本/全 0） -->
+    <template v-if="!statsLoaded && statsLoading">
+      <div class="home-stats-loading">
+        <div class="home-stats-spinner"></div>
+        <p>正在加载统计数据...</p>
+      </div>
+    </template>
+    <!-- INT-288 错误态：无数据且统计接口失败 → 错误条 + 重试（区别于空态/全 0） -->
+    <LoadErrorState v-else-if="!statsLoaded && statsError" :message="statsError" @retry="loadStats" />
+    <template v-else>
+      <!-- INT-288：已有数据时拉取失败 → 错误条悬于统计上方，旧数据保留不清空 -->
+      <LoadErrorState v-if="statsError" :message="statsError" @retry="loadStats" />
+      <QuickStats :animated-stats="animatedStats" />
+    </template>
 
     <!-- 开始测试 + 流程 -->
     <WorkflowSection />
@@ -45,6 +58,7 @@ import WorkflowSection from './sections/WorkflowSection.vue'
 import DetailSection from './sections/DetailSection.vue'
 import FeaturesSection from './sections/FeaturesSection.vue'
 import InfoSection from './sections/InfoSection.vue'
+import LoadErrorState from '@/components/common/misc/LoadErrorState.vue'
 import { detailSections, type AnimatedStats } from './homeData'
 
 const stats = ref({
@@ -96,7 +110,14 @@ function animateNumber(targetValue: number, duration = 1200, onUpdate?: (val: nu
   requestAnimationFrame(update)
 }
 
-onMounted(async () => {
+// INT-288：统计拉取加载态 / 错误态 / 是否已加载（失败保留旧数据不清空）
+const statsLoading = ref(false)
+const statsError = ref('')
+const statsLoaded = ref(false)
+
+async function loadStats() {
+  statsLoading.value = true
+  statsError.value = ''
   try {
     const statsData = await statsPort.getStatsDetails()
     const getCaseInsensitive = (obj: any, key: string) => {
@@ -113,6 +134,7 @@ onMounted(async () => {
     }
 
     stats.value = newStats
+    statsLoaded.value = true
 
     animateNumber(newStats.testCases.total, 1200, val => animatedStats.value.testCasesTotal = val)
     animateNumber(newStats.testCases.groups || 0, 1200, val => animatedStats.value.testCasesGroups = val)
@@ -129,7 +151,14 @@ onMounted(async () => {
     animateNumber(newStats.dimensions.endpoints || 0, 1200, val => animatedStats.value.dimensionsEndpoints = val)
   } catch (error) {
     console.error('获取统计数据失败:', error)
+    statsError.value = '获取统计数据失败，请稍后重试'
+  } finally {
+    statsLoading.value = false
   }
+}
+
+onMounted(async () => {
+  await loadStats()
 
   initScrollAnimations()
 })

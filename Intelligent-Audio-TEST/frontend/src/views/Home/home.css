@@ -1117,3 +1117,33 @@
     flex-direction: column;
   }
 }
+
+/* ===== INT-288：统计加载态（home- 前缀命名空间，对齐页面既有前缀约定） ===== */
+.home-stats-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 30vh;
+  text-align: center;
+  color: var(--text-tertiary, #9ca3af);
+  padding: 40px 16px;
+}
+
+.home-stats-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--color-slate-200, #e2e8f0);
+  border-top-color: var(--secondary, #ff6a00);
+  border-radius: 50%;
+  animation: home-stats-spin 1s linear infinite;
+  margin-bottom: 16px;
+}
+
+@keyframes home-stats-spin {
+  to { transform: rotate(360deg); }
+}
+
+.home-stats-loading p {
+  margin: 8px 0 0;
+}

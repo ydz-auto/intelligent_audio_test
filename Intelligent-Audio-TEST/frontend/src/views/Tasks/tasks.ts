@@ -374,6 +374,9 @@ export function useTasks() {
     totalPages: listModule.totalPages,
     paginatedTasks: listModule.paginatedTasks,
     isAllSelected: listModule.isAllSelected,
+    // INT-288：列表加载态 / 错误态（TaskListWithPagination 错误条 + 重试接线）
+    isLoading: listModule.isLoading,
+    error: listModule.error,
     algorithmOptions: listModule.algorithmOptions,
     loadAlgorithmOptions: listModule.loadAlgorithmOptions,
     fetchTasks: listModule.fetchTasks,

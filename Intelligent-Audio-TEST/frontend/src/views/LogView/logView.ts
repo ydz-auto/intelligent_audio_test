@@ -96,6 +96,8 @@ export function useLogView(refs?: LogViewRefs) {
   const showLevelDropdown = ref(false);
   const markColor = ref('yellow');
   const isLoading = ref(false);
+  // INT-288：日志列表拉取错误态（错误文案供视图渲染错误条；失败保留旧数据不清空）
+  const error = ref('');
 
   const modalManager = useModalControl();
 
@@ -192,13 +194,14 @@ export function useLogView(refs?: LogViewRefs) {
 
   const fetchLogs = async () => {
     isLoading.value = true;
+    error.value = '';
     try {
       const params = buildQueryParams();
       params.page = currentPage.value;
       params.perPage = pageSize.value;
 
       const response = await logsPort.getAll(params);
-      
+
       logs.value = (response.items || []).map((log: Log) => {
         let formattedTime = log.time?.toString() || log.timestamp?.toString() || '';
         try {
@@ -209,14 +212,16 @@ export function useLogView(refs?: LogViewRefs) {
         } catch (e) {
           console.error('Failed to format log time:', e);
         }
-        
+
         return {...log, time: formattedTime, selected: false, isExpanded: false} as UILog;
       });
-      
+
       totalLogs.value = response?.total || 0;
       fetchStats();
-    } catch (error) {
-      console.error('Failed to fetch logs:', error);
+    } catch (err) {
+      console.error('Failed to fetch logs:', err);
+      // INT-288：失败不清空旧数据，仅暴露错误文案（区别于空态「暂无日志」）
+      error.value = '加载日志失败，请稍后重试';
     } finally {
       isLoading.value = false;
     }
@@ -342,12 +347,14 @@ export function useLogView(refs?: LogViewRefs) {
 
   const refreshLogs = async () => {
     isLoading.value = true;
+    error.value = '';
     try {
       const lastId = logs.value.length > 0 ? logs.value[0].id : 0;
       await logsPort.refresh(lastId);
       await fetchLogs();
-    } catch (error) {
-      console.error('Failed to refresh logs:', error);
+    } catch (err) {
+      console.error('Failed to refresh logs:', err);
+      error.value = '刷新日志失败，请稍后重试';
     } finally {
       isLoading.value = false;
     }
@@ -700,6 +707,7 @@ export function useLogView(refs?: LogViewRefs) {
     logs,
     totalLogs,
     isLoading,
+    error,
     logStats,
     currentPage,
     pageSize,

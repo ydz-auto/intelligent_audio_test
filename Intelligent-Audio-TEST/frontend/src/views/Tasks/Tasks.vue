@@ -361,11 +361,14 @@
             :total-pages="totalPages"
             :actions="taskActions"
             :search-query="searchTerm"
+            :is-loading="isLoading"
+            :error="error"
             @toggle-selection="toggleTaskSelection"
             @action="handleTaskAction"
             @name-updated="handleNameUpdated"
             @page-change="handlePageChange"
             @page-size-change="handlePageSizeChange"
+            @retry="fetchTasks"
           />
         </div>
         </template>
@@ -593,6 +596,9 @@ const {
   isFavorite,
   favoriteIds,
   batchPurge,
+  // INT-288：列表加载态 / 错误态（TaskListWithPagination 错误条 + 重试）
+  isLoading,
+  error,
   // INT-423/467：可见性筛选
   visibilityFilter,
   handleTaskVisibilityFilterChange,
