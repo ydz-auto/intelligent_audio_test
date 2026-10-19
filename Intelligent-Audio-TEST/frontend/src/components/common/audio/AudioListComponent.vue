@@ -58,29 +58,25 @@
         <div class="filter-content">
           <div class="filter-grid">
             <!-- 格式筛选 -->
-            <div class="filter-item">
-              <label class="filter-label">音频格式</label>
-              <BadgeFilter
-                :options="FORMAT_OPTIONS"
-                :model-value="filters.format"
-                all-label="所有格式"
-                @update:model-value="value => setFilter('format', value)"
-              />
-            </div>
-            
+            <BadgeFilter
+              title="音频格式"
+              :options="FORMAT_OPTIONS"
+              :model-value="filters.format"
+              all-label="所有格式"
+              @update:model-value="value => setFilter('format', value)"
+            />
+
             <!-- 采样率筛选 -->
-            <div class="filter-item">
-              <label class="filter-label">采样率</label>
-              <BadgeFilter
-                :options="SAMPLE_RATE_OPTIONS"
-                :model-value="filters.sampleRate"
-                all-label="所有采样率"
-                @update:model-value="value => setFilter('sampleRate', value)"
-              />
-            </div>
+            <BadgeFilter
+              title="采样率"
+              :options="SAMPLE_RATE_OPTIONS"
+              :model-value="filters.sampleRate"
+              all-label="所有采样率"
+              @update:model-value="value => setFilter('sampleRate', value)"
+            />
             
             <!-- 标签云筛选 -->
-            <div class="filter-item">
+            <div class="filter-item filter-item--tag-cloud">
               <label class="filter-label">标签云</label>
               <div class="tag-search-wrapper">
                 <input 
@@ -127,27 +123,23 @@
             </div>
             
             <!-- 时长筛选 -->
-            <div class="filter-item">
-              <label class="filter-label">音频时长</label>
-              <BadgeFilter
-                :options="DURATION_OPTIONS"
-                :model-value="filters.duration"
-                all-label="所有时长"
-                @update:model-value="value => setFilter('duration', value)"
-              />
-            </div>
-            
+            <BadgeFilter
+              title="音频时长"
+              :options="DURATION_OPTIONS"
+              :model-value="filters.duration"
+              all-label="所有时长"
+              @update:model-value="value => setFilter('duration', value)"
+            />
+
             <!-- 类型筛选 -->
-            <div class="filter-item">
-              <label class="filter-label">音频类型</label>
-              <BadgeFilter
-                :options="AUDIO_TYPE_OPTIONS"
-                :model-value="filters.audioType"
-                all-label="所有类型"
-                @update:model-value="value => setFilter('audioType', value)"
-              />
-            </div>
-            
+            <BadgeFilter
+              title="音频类型"
+              :options="AUDIO_TYPE_OPTIONS"
+              :model-value="filters.audioType"
+              all-label="所有类型"
+              @update:model-value="value => setFilter('audioType', value)"
+            />
+
             <!-- 筛选操作按钮 -->
             <div class="filter-item filter-actions-item">
               <div class="filter-actions">

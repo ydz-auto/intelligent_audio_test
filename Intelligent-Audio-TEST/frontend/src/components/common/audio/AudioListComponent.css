@@ -95,33 +95,35 @@
   transition: all var(--transition-normal);
 }
 
+/* 徽章筛选区横排：对齐任务管理页 .filter-row 形态——BadgeFilter 直接作为 flex 子项，
+   按内容宽度排布、flex-wrap 自然换行；标题内置 BadgeFilter，宽组保持标题与徽章同行 */
 .filter-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--spacing-lg);
-  align-items: start;
-}
-
-.filter-item:nth-child(3) {
-  grid-column: 3 / 4;
-  grid-row: 1 / 3;
-}
-
-.filter-item.filter-actions-item {
-  grid-column: 1 / -1;
   display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-lg);
+  align-items: flex-start;
+}
+
+/* 标签云为自定义控件（搜索框 + chip 流），标题与内容同行、flex-wrap 换行，并分配更宽空间 */
+.filter-item--tag-cloud {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--spacing-sm) var(--spacing-md);
+  flex: 1 1 440px;
+  min-width: 0;
+}
+
+.filter-actions-item {
+  flex: 1 1 100%;
+  display: flex;
+  flex-direction: row;
   justify-content: flex-end;
   align-items: center;
   margin-top: var(--spacing-lg);
   padding-top: var(--spacing-lg);
   border-top: 1px solid var(--border-color);
-}
-
-.filter-item {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-  min-width: 0;
 }
 
 .filter-label {
@@ -130,6 +132,8 @@
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: color var(--transition-normal);
 }
 
@@ -159,8 +163,8 @@
 }
 
 .tag-search-wrapper {
-  margin-bottom: 8px;
-  width: 100%;
+  flex: 0 1 200px;
+  min-width: 140px;
   box-sizing: border-box;
 }
 
@@ -196,7 +200,8 @@
   min-height: 80px;
   max-height: 180px;
   overflow-y: auto;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 200px;
   box-sizing: border-box;
 }
 
