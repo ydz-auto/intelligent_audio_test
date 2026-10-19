@@ -1,8 +1,9 @@
 /**
  * 人工复核 + AI 复核 DTO（infrastructure/dto，19_人工审核与AI复核交互设计.md §3.6/§4.4，INT-793）。
- * 对照 review_bp.py / schemas/review.py / task_service review_repository 实测响应形态。
+ * 对照 review_bp.py / schemas/review.py / schemas/ai_review.py / task_service review_repository
+ * / ai_review_repository 实测响应形态。
  * snake_case 唯一出现层；经 adapters/reviewAdapter.ts 转 camelCase Domain。
- * AI 复核端点待后端立项（§8-2）→ dto 为契约建议形态，仅被桩返回。
+ * AI 复核契约定稿 INT-824（ai_reviews 表），真实请求经 client.ts 统一信封解包。
  */
 
 /** 复核留痕行（GET /tasks/results/{task_id}/review-history items；_review_po_to_dict 实测） */
@@ -65,26 +66,46 @@ export interface CaseResultsDataDto {
 }
 
 // ---------------------------------------------------------------------------
-// AI 复核（§5.3 契约建议；落地前仅桩返回，代码标 `// 待接线`）
+// AI 复核（INT-824 契约定稿：api_gateway/schemas/ai_review.py AiReviewRecordDto，
+// task_service ai_reviews 表全字段透传）
 // ---------------------------------------------------------------------------
 
-/** AI 复核记录（§5.3 ai_reviews 契约建议） */
+/** AI 复核记录（ai_reviews 全字段；adopted/rejected 为 0/1 整数，status 任务状态） */
 export interface AiReviewRecordDto {
   id: number
   result_id: number
   task_id: number
-  test_case_id: string
-  verdict: 'passed' | 'failed' | 'uncertain'
-  confidence: number
-  reasoning: string
-  adopted: boolean
+  test_case_id: string | null
+  dimension_id: number | null
+  /** AI 复核任务状态：pending/running/completed/failed/canceled */
+  status: string
+  verdict: 'passed' | 'failed' | 'uncertain' | null
+  confidence: number | null
+  reasoning: string | null
+  adopted: number
   adopted_by_user_id: number | null
   adopted_at: string | null
-  rejected: boolean
-  created_at: string
+  rejected: number
+  rejected_by_user_id: number | null
+  rejected_at: string | null
+  created_at: string | null
+  updated_at: string | null
 }
 
-/** AI 复核历史（GET /tasks/results/{task_id}/ai-review-history 契约建议） */
+/** 发起 AI 复核响应（POST /tasks/results/ai-review：items + reused + skipped） */
+export interface AiReviewInitiateDataDto {
+  items: AiReviewRecordDto[]
+  reused: boolean
+  skipped: Array<{ result_id: number; message: string }>
+}
+
+/** AI 复核历史（GET /tasks/results/{task_id}/ai-review-history） */
 export interface AiReviewHistoryDataDto {
   items: AiReviewRecordDto[]
+}
+
+/** 采纳 AI 复核响应（POST /tasks/results/ai-review/{id}/adopt：item + applied） */
+export interface AiReviewAdoptResponseDto {
+  item: AiReviewRecordDto
+  applied: unknown[]
 }

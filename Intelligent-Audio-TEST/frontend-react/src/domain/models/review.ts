@@ -1,8 +1,8 @@
 /**
  * 人工复核 + AI 复核领域模型（19_人工审核与AI复核交互设计.md §3.6/§4.4，INT-793）。
- * 后端契约实测（INT-340/INT-762）：review.py 改判枚举（执行 completed/failed/stopped/skipped，
- * 评估 completed/failed 双状态）+ comment 必填；test_result_reviews 留痕行；AI 复核端点待后端立项
- * （§8-2，前端 infrastructure 层留桩 `// 待接线`）。
+ * 后端契约实测（INT-340/INT-762/INT-824）：review.py 改判枚举（执行 completed/failed/stopped/skipped，
+ * 评估 completed/failed 双状态）+ comment 必填；test_result_reviews 留痕行；AI 复核契约定稿
+ * （INT-824，ai_reviews 表：status/verdict/confidence/reasoning/adopted/rejected）。
  * snake_case↔camelCase 只在 infrastructure 层做，本层只见 camelCase 领域对象。
  */
 
@@ -99,7 +99,7 @@ export function evaluationStatusLabel(status?: string | null): string {
 }
 
 // ---------------------------------------------------------------------------
-// AI 复核（建议层；§5.3 数据契约建议，端点待后端立项 → infrastructure 留桩）
+// AI 复核（§5.3 契约定稿 INT-824；ai_reviews 表，infrastructure 层真实请求映射）
 // ---------------------------------------------------------------------------
 
 /** AI 复核结论（§2.1 状态机：待发起→执行中→已完成→已采纳/已驳回/待查） */
@@ -113,12 +113,22 @@ export type AiReviewPhase =
   | 'rejected' // 已驳回
   | 'ignored' // 待查（忽略）
 
-/** AI 复核记录（§5.3 ai_reviews 契约建议；落地前由 infrastructure 桩返回） */
+/** AI 复核任务状态（后端 ai_reviews.status：pending/running/completed/failed/canceled） */
+export type AiReviewRecordStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'canceled'
+
+/** AI 复核记录（ai_reviews 契约定稿 INT-824；由 infrastructure 真实请求映射） */
 export interface AiReviewRecord {
   id: number
   resultId: number
   taskId: number
   testCaseId: string
+  /** AI 复核任务状态（running=执行中 / completed=结论落位 / failed=执行失败） */
+  status: AiReviewRecordStatus
   verdict: AiReviewVerdict
   /** 置信度 0-1（展示 {n}% 或高/中/低） */
   confidence: number
@@ -127,6 +137,8 @@ export interface AiReviewRecord {
   adoptedByUserId: number | null
   adoptedAt: string | null
   rejected: boolean
+  rejectedByUserId: number | null
+  rejectedAt: string | null
   createdAt: string
 }
 
@@ -134,6 +146,16 @@ export interface AiReviewRecord {
 export interface AiReviewRequest {
   resultIds: number[]
   dimensionIds?: number[]
+}
+
+/** AI 采纳请求（INT-824 契约定稿：改判状态至少一项 + 备注必填；采纳落人工复核语义） */
+export interface AiReviewAdoptPayload {
+  /** 执行状态改判（completed/failed/stopped/skipped） */
+  executionStatus?: string
+  /** 评估状态改判（completed/failed） */
+  evaluationStatus?: string
+  /** 复核备注（必填，min_length=1；采纳预填 AI 理由后人工确认） */
+  comment: string
 }
 
 /** AI 结论中文（§7：复核通过/复核不通过/存疑） */

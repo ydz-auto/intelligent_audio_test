@@ -66,28 +66,73 @@ describe('toReviewSubmitResult', () => {
 })
 
 describe('toAiReviewRecord', () => {
-  it('AI 复核记录 DTO → 领域（§5.3 契约建议）', () => {
+  it('AI 复核记录 DTO（ai_reviews 契约定稿 INT-824）→ 领域', () => {
     expect(
       toAiReviewRecord({
         id: 1001,
         result_id: 4690,
         task_id: 407,
         test_case_id: '86756aa2-2c97-4548-b493-b2312b20a8c4',
+        dimension_id: 21,
+        status: 'completed',
         verdict: 'passed',
         confidence: 0.85,
         reasoning: '大模型复检建议维持原评估结论',
-        adopted: false,
-        adopted_by_user_id: null,
-        adopted_at: null,
-        rejected: false,
+        adopted: 1,
+        adopted_by_user_id: 7,
+        adopted_at: '2026-10-19T04:00:00',
+        rejected: 0,
+        rejected_by_user_id: null,
+        rejected_at: null,
         created_at: '2026-10-19T04:00:00',
+        updated_at: '2026-10-19T04:00:00',
       })
     ).toMatchObject({
       id: 1001,
       resultId: 4690,
+      taskId: 407,
+      testCaseId: '86756aa2-2c97-4548-b493-b2312b20a8c4',
+      status: 'completed',
       verdict: 'passed',
       confidence: 0.85,
       reasoning: '大模型复检建议维持原评估结论',
+      adopted: true,
+      adoptedByUserId: 7,
+      adoptedAt: '2026-10-19T04:00:00',
+      rejected: false,
+      rejectedByUserId: null,
+      rejectedAt: null,
+      createdAt: '2026-10-19T04:00:00',
+    })
+  })
+
+  it('执行中的记录无判定字段 → 领域回退值（status 保留）', () => {
+    expect(
+      toAiReviewRecord({
+        id: 1002,
+        result_id: 4691,
+        task_id: 407,
+        test_case_id: '86756aa2-2c97-4548-b493-b2312b20a8c4',
+        dimension_id: 21,
+        status: 'running',
+        verdict: null,
+        confidence: null,
+        reasoning: null,
+        adopted: 0,
+        adopted_by_user_id: null,
+        adopted_at: null,
+        rejected: 0,
+        rejected_by_user_id: null,
+        rejected_at: null,
+        created_at: '2026-10-19T04:01:00',
+        updated_at: null,
+      })
+    ).toMatchObject({
+      id: 1002,
+      status: 'running',
+      verdict: 'uncertain',
+      confidence: 0,
+      reasoning: '',
       adopted: false,
       rejected: false,
     })
