@@ -4,7 +4,7 @@ RBAC 种子数据初始化
 ===================================
 
 向 permissions / roles / role_permissions 表插入系统内置数据：
-  - 124 个权限点（permissions）
+  - 129 个权限点（permissions）
   - 5 个系统角色（roles: admin / tester / algo_engineer / device_admin / guest）
   - 超级通配权限 * → admin
   - tester / algo_engineer / device_admin / guest 各自的角色-权限映射
@@ -40,7 +40,7 @@ POSTGRES_URI = os.environ.get(
 
 
 # ========================================================================
-# 权限点定义（124 个）
+# 权限点定义（129 个）
 # ========================================================================
 
 PERMISSIONS = [
