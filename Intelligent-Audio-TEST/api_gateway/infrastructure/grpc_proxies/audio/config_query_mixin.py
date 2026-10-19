@@ -184,22 +184,35 @@ class _AudioConfigQueryMixin:
         )
 
     def get_playback_history(self, audio_id, params):
-    def analyze_audio_features(self, audio_id):
-        """音频特征分析（INT-820 §3.3.2）"""        from shared.proto import audio_service_pb2 as audio_pb
+        from shared.proto import audio_service_pb2 as audio_pb
 
         def _call():
             stub = get_audio_config_service_stub()
             resp = stub.GetPlaybackHistory(audio_pb.GetPlaybackHistoryRequest(
                 audio_id=int(audio_id),
                 data=json.dumps(params or {}, ensure_ascii=False, default=str),
-            resp = stub.AnalyzeAudioFeatures(audio_pb.AnalyzeAudioFeaturesRequest(
-                audio_id=int(audio_id),            ))
+            ))
             return self._resp(resp)
 
         return _grpc_call(
             _call,
             default_return=lambda e: {'success': False, 'message': f'查询播放历史失败: {e}', 'data': None, 'code': 400},
             error_msg_prefix='查询播放历史失败',
+        )
+
+    def analyze_audio_features(self, audio_id):
+        """音频特征分析（INT-820 §3.3.2）"""
+        from shared.proto import audio_service_pb2 as audio_pb
+
+        def _call():
+            stub = get_audio_config_service_stub()
+            resp = stub.AnalyzeAudioFeatures(audio_pb.AnalyzeAudioFeaturesRequest(
+                audio_id=int(audio_id),
+            ))
+            return self._resp(resp)
+
+        return _grpc_call(
+            _call,
             default_return=lambda e: {'success': False, 'message': f'音频特征分析失败: {e}', 'data': None, 'code': 400},
             error_msg_prefix='音频特征分析失败',
         )
