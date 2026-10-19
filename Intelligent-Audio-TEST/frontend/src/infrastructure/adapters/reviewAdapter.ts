@@ -1,0 +1,58 @@
+/**
+ * Review Adapter —— DTO(snake_case) → Domain(camelCase)
+ *
+ * 复核留痕 / AI 复核记录转换；分层对齐 W1-A：infrastructure/adapters 是
+ * 唯一做 snake_case↔camelCase 转换的层，业务层只见 camelCase 领域对象。
+ */
+import type { ReviewHistoryItemDomain, AiReviewRecord, AiReviewConfidence, AiReviewVerdict } from '../../domain/model/review';
+import { s } from './report.utils';
+
+/** 复核留痕行 → ReviewHistoryItemDomain（容忍缺省/空值） */
+export function toReviewHistoryDomain(raw: Record<string, unknown>): ReviewHistoryItemDomain {
+  return {
+    id: raw.id !== undefined && raw.id !== null ? Number(raw.id) : undefined,
+    resultId: raw.result_id !== undefined && raw.result_id !== null ? Number(raw.result_id) : undefined,
+    taskId: raw.task_id !== undefined && raw.task_id !== null ? Number(raw.task_id) : undefined,
+    testCaseId: raw.test_case_id === null || raw.test_case_id === undefined ? null : s(raw.test_case_id),
+    fieldName: raw.field_name === null || raw.field_name === undefined ? undefined : s(raw.field_name) as ReviewHistoryItemDomain['fieldName'],
+    oldValue: raw.old_value === null || raw.old_value === undefined ? null : s(raw.old_value),
+    newValue: raw.new_value === null || raw.new_value === undefined ? null : s(raw.new_value),
+    comment: raw.comment === null || raw.comment === undefined ? null : s(raw.comment),
+    createdByUserId: raw.created_by_user_id === null || raw.created_by_user_id === undefined
+      ? null
+      : Number(raw.created_by_user_id),
+    createdAt: raw.created_at === null || raw.created_at === undefined ? null : s(raw.created_at),
+  };
+}
+
+/** AI 复核记录 → AiReviewRecord（后端 §5.3 建议 schema） */
+export function toAiReviewRecord(raw: Record<string, unknown>): AiReviewRecord {
+  const confidenceRaw = raw.confidence;
+  const confidenceValue = typeof confidenceRaw === 'number' ? confidenceRaw : Number(confidenceRaw ?? 0);
+  const confidence: AiReviewConfidence = {
+    value: confidenceValue,
+    label: confidenceValue >= 0.8 ? '高' : confidenceValue >= 0.5 ? '中' : '低',
+  };
+  const verdictRaw = s(raw.verdict);
+  const verdict: AiReviewVerdict =
+    verdictRaw === 'failed' || verdictRaw === 'uncertain' ? verdictRaw : 'passed';
+
+  return {
+    id: Number(raw.id ?? 0),
+    resultId: Number(raw.result_id ?? 0),
+    taskId: Number(raw.task_id ?? 0),
+    testCaseId: raw.test_case_id === null || raw.test_case_id === undefined ? null : s(raw.test_case_id),
+    dimensionId: raw.dimension_id === null || raw.dimension_id === undefined ? null : Number(raw.dimension_id),
+    dimensionName: raw.dimension_name === null || raw.dimension_name === undefined ? null : s(raw.dimension_name),
+    verdict,
+    confidence,
+    reasoning: raw.reasoning === null || raw.reasoning === undefined ? '' : s(raw.reasoning),
+    originalEvaluationStatus:
+      raw.original_evaluation_status === null || raw.original_evaluation_status === undefined
+        ? null
+        : s(raw.original_evaluation_status),
+    adopted: Boolean(raw.adopted),
+    rejected: Boolean(raw.rejected),
+    createdAt: raw.created_at === null || raw.created_at === undefined ? '' : s(raw.created_at),
+  };
+}

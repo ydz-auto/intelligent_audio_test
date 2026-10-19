@@ -180,6 +180,21 @@ class ReportConfigServiceStub:
                 request_serializer=report__service__pb2.PurgeReportsRequest.SerializeToString,
                 response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
                 _registered_method=True)
+        self.GetStatistics = channel.unary_unary(
+                '/report.ReportConfigService/GetStatistics',
+                request_serializer=report__service__pb2.GetStatisticsRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
+        self.GetStatisticsTrend = channel.unary_unary(
+                '/report.ReportConfigService/GetStatisticsTrend',
+                request_serializer=report__service__pb2.GetStatisticsTrendRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
+        self.GenerateStatisticsReport = channel.unary_unary(
+                '/report.ReportConfigService/GenerateStatisticsReport',
+                request_serializer=report__service__pb2.GenerateStatisticsReportRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
 
 
 class ReportConfigServiceServicer:
@@ -391,6 +406,31 @@ class ReportConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetStatistics(self, request, context):
+        """---- 报告统计分析（INT-791：G04 报告统计分析页接真实接口）----
+        GET /reports/statistics：按维度统计（time|task_type|device_type|evaluation_metric）
+        + start_time/end_time + 可选 algorithm_type；结果含 overview/detail/chart/anomaly 四形态
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetStatisticsTrend(self, request, context):
+        """GET /reports/statistics/trend：趋势分析（trend_type=time|dimension + metric + 时间范围）
+        只返回时间序列数据，预测呈现归前端（不引入后端 ML 预测）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GenerateStatisticsReport(self, request, context):
+        """POST /reports/statistics/report：报表生成（report_type × format × time_range），
+        复用 binary 下载结构（mime_type/filename/content_base64）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ReportConfigServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -537,6 +577,21 @@ def add_ReportConfigServiceServicer_to_server(servicer, server):
             'PurgeReports': grpc.unary_unary_rpc_method_handler(
                     servicer.PurgeReports,
                     request_deserializer=report__service__pb2.PurgeReportsRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'GetStatistics': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetStatistics,
+                    request_deserializer=report__service__pb2.GetStatisticsRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'GetStatisticsTrend': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetStatisticsTrend,
+                    request_deserializer=report__service__pb2.GetStatisticsTrendRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'GenerateStatisticsReport': grpc.unary_unary_rpc_method_handler(
+                    servicer.GenerateStatisticsReport,
+                    request_deserializer=report__service__pb2.GenerateStatisticsReportRequest.FromString,
                     response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
             ),
     }
@@ -1323,6 +1378,87 @@ class ReportConfigService:
             target,
             '/report.ReportConfigService/PurgeReports',
             report__service__pb2.PurgeReportsRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetStatistics(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/GetStatistics',
+            report__service__pb2.GetStatisticsRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetStatisticsTrend(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/GetStatisticsTrend',
+            report__service__pb2.GetStatisticsTrendRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GenerateStatisticsReport(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/GenerateStatisticsReport',
+            report__service__pb2.GenerateStatisticsReportRequest.SerializeToString,
             report__service__pb2.ReportConfigResponse.FromString,
             options,
             channel_credentials,

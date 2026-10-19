@@ -10,7 +10,8 @@
     "type-check": "vue-tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "electron:dev": "electron --loader tsx electron-main.ts"
+    "electron:dev": "electron --loader tsx electron-main.ts",
+    "lint:css": "stylelint \"src/assets/styles/**/*.css\" --allow-empty-input"
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "^7.1.0",
@@ -40,6 +41,9 @@
     "typescript": "^5.9.3",
     "vite": "^5.3.1",
     "vitest": "^4.1.0",
-    "vue-tsc": "^3.2.2"
+    "vue-tsc": "^3.2.2",
+    "stylelint": "^17.16.0",
+    "stylelint-config-standard": "^40.0.0",
+    "stylelint-config-recess-order": "^7.8.0"
   }
 }

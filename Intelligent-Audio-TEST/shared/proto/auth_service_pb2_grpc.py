@@ -100,6 +100,11 @@ class AuthServiceStub:
                 request_serializer=auth__service__pb2.UpdateUserRequest.SerializeToString,
                 response_deserializer=auth__service__pb2.AuthResponse.FromString,
                 _registered_method=True)
+        self.UpdateSelfProfile = channel.unary_unary(
+                '/auth.AuthService/UpdateSelfProfile',
+                request_serializer=auth__service__pb2.UpdateSelfProfileRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.AuthResponse.FromString,
+                _registered_method=True)
         self.SetUserRole = channel.unary_unary(
                 '/auth.AuthService/SetUserRole',
                 request_serializer=auth__service__pb2.SetUserRoleRequest.SerializeToString,
@@ -288,6 +293,15 @@ class AuthServiceServicer:
     def UpdateUser(self, request, context):
         """更新用户资料（username/email/status/password，空串字段不修改；
         display_name 未传=不修改、空串=清空，INT-697）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateSelfProfile(self, request, context):
+        """当前登录用户更新自我资料（INT-792：仅 email，服务端字段白名单——
+        消息结构不含 username/status/password，防止网关白名单漏配导致
+        经 admin UpdateUser 路径改非开放字段）
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -495,6 +509,11 @@ def add_AuthServiceServicer_to_server(servicer, server):
             'UpdateUser': grpc.unary_unary_rpc_method_handler(
                     servicer.UpdateUser,
                     request_deserializer=auth__service__pb2.UpdateUserRequest.FromString,
+                    response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
+            ),
+            'UpdateSelfProfile': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateSelfProfile,
+                    request_deserializer=auth__service__pb2.UpdateSelfProfileRequest.FromString,
                     response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
             ),
             'SetUserRole': grpc.unary_unary_rpc_method_handler(
@@ -944,6 +963,33 @@ class AuthService:
             target,
             '/auth.AuthService/UpdateUser',
             auth__service__pb2.UpdateUserRequest.SerializeToString,
+            auth__service__pb2.AuthResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateSelfProfile(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/UpdateSelfProfile',
+            auth__service__pb2.UpdateSelfProfileRequest.SerializeToString,
             auth__service__pb2.AuthResponse.FromString,
             options,
             channel_credentials,

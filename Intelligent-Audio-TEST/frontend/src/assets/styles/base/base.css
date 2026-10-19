@@ -1,0 +1,45 @@
+/* 平台基础（对应 newAPI index.css @layer base）
+ * INT-767 CSS-0：body/滚动条/字体基线等平台级默认样式。
+ */
+@layer base {
+  html, body {
+    font-family: var(--font-family);
+    font-size: 16px;
+    line-height: 1.6;
+    color: var(--text-primary);
+    background-color: var(--background-secondary);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* 移除Vue默认样式 */
+  [v-cloak] {
+    display: none;
+  }
+
+  /* 移除默认滚动条样式 */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--background-tertiary);
+    border-radius: var(--border-radius-sm);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--gray-color);
+    border-radius: var(--border-radius-sm);
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--dark-color);
+  }
+
+  /* 移除Firefox默认滚动条样式 */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--gray-color) var(--background-tertiary);
+  }
+}

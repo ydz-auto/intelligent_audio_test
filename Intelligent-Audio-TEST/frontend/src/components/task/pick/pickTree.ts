@@ -1,6 +1,7 @@
 // -*- coding: utf-8 -*-
 /**
- * 挑选树纯逻辑（INT-577 §3）——四级分组（任务→用例→设备/API→result_type）+ 结果行叶。
+ * 挑选树纯逻辑（INT-577 §3 / INT-796 §3.7）——四级分组（任务→用例→设备/API→result_type）
+ * + 结果行叶；用例视角按用例名跨任务聚合重排（§3.6 裁定③）。
  *
  * 树由平铺候选行重建（§11-3 未落地前口径）：候选行已携带 case_name/device_name/
  * api_name/result_type（后端 §11-2 补字段），无缺名时按 ID 容错展示。
@@ -23,12 +24,53 @@ export interface PickTreeNode {
   name: string
   /** 设备节点标识（device|api 二选一，节点区分用） */
   kind?: 'device' | 'api'
+  /** INT-796 §3.7.1：用例级算法徽章（候选行 algorithm_type，§11-2 已落地） */
+  algorithmType?: string | null
   count: number
   resultIds: number[]
   children: PickTreeNode[]
 }
 
-/** 由平铺候选行重建四级树（设备/API 同级并列；result_type 缺省 default） */
+/** result_type 展示文案：缺值/未解析 → 「结果类型待补充」（§3.7.1 PENDING 折叠口径） */
+export function resultTypeLabel(resultType?: string | null): string {
+  if (!resultType) return '结果类型待补充';
+  return resultType;
+}
+
+/** 设备/API → result_type → 叶 三级归并（挑选树与用例视角树共用；R4/R5 依赖该层级） */
+function mergeDeviceResultType(parent: PickTreeNode, c: PickCandidate, keyPrefix: string): void {
+  const deviceId = c.deviceId ?? null;
+  const apiId = c.apiId ?? null;
+  const kind: 'device' | 'api' = deviceId != null ? 'device' : 'api';
+  const dimId = deviceId ?? apiId;
+  const dimKey = `${keyPrefix}|d:${dimId ?? ''}:${kind}`;
+  let dimNode = parent.children.find((n) => n.key === dimKey);
+  if (!dimNode) {
+    dimNode = {
+      key: dimKey, level: 'device', id: dimId ?? '',
+      name: kind === 'device' ? (c.deviceName || `设备 ${dimId}`) : (c.apiName || `API ${dimId}`),
+      kind, count: 0, resultIds: [], children: [],
+    };
+    parent.children.push(dimNode);
+  }
+  const rtKey = `${dimKey}|rt:${c.resultType ?? 'default'}`;
+  let rtNode = dimNode.children.find((n) => n.key === rtKey);
+  if (!rtNode) {
+    rtNode = {
+      key: rtKey, level: 'resultType', id: c.resultType ?? 'default',
+      name: resultTypeLabel(c.resultType), count: 0, resultIds: [], children: [],
+    };
+    dimNode.children.push(rtNode);
+  }
+  rtNode.resultIds.push(c.resultId);
+  rtNode.count += 1;
+  dimNode.resultIds.push(c.resultId);
+  dimNode.count += 1;
+  parent.resultIds.push(c.resultId);
+  parent.count += 1;
+}
+
+/** 由平铺候选行重建四级树（设备/API 同级并列；result_type 缺省折叠「结果类型待补充」） */
 export function buildPickTree(candidates: PickCandidate[]): PickTreeNode[] {
   const roots: PickTreeNode[] = [];
   const rootByKey = new Map<string, PickTreeNode>();
@@ -49,40 +91,50 @@ export function buildPickTree(candidates: PickCandidate[]): PickTreeNode[] {
       caseNode = {
         key: caseKey, level: 'case', id: c.caseId,
         name: c.caseName || c.caseId, count: 0, resultIds: [], children: [],
+        algorithmType: c.algorithmType ?? null,
       };
       task.children.push(caseNode);
     }
-    const deviceId = c.deviceId ?? null;
-    const apiId = c.apiId ?? null;
-    const kind: 'device' | 'api' = deviceId != null ? 'device' : 'api';
-    const dimId = deviceId ?? apiId;
-    const dimKey = `${caseKey}|d:${dimId}:${kind}`;
-    let dimNode = caseNode.children.find((n) => n.key === dimKey);
-    if (!dimNode) {
-      dimNode = {
-        key: dimKey, level: 'device', id: dimId ?? '',
-        name: kind === 'device' ? (c.deviceName || `设备 ${dimId}`) : (c.apiName || `API ${dimId}`),
-        kind, count: 0, resultIds: [], children: [],
-      };
-      caseNode.children.push(dimNode);
-    }
-    const rtKey = `${dimKey}|rt:${c.resultType ?? 'default'}`;
-    let rtNode = dimNode.children.find((n) => n.key === rtKey);
-    if (!rtNode) {
-      rtNode = {
-        key: rtKey, level: 'resultType', id: c.resultType ?? 'default',
-        name: c.resultType ?? 'default', count: 0, resultIds: [], children: [],
-      };
-      dimNode.children.push(rtNode);
-    }
-    rtNode.resultIds.push(c.resultId);
-    rtNode.count += 1;
-    dimNode.resultIds.push(c.resultId);
-    dimNode.count += 1;
-    caseNode.resultIds.push(c.resultId);
-    caseNode.count += 1;
+    mergeDeviceResultType(caseNode, c, caseKey);
     task.resultIds.push(c.resultId);
     task.count += 1;
+  }
+  return roots;
+}
+
+/**
+ * 用例视角树（INT-796 §3.6 裁定③ / §3.7.3）：按用例名聚合跨任务——
+ * 用例 → 来源任务列表 → 设备/API → result_type → 结果行。
+ * 勾选态与任务视角共享同一 selectedResultIds；联动复用 R1-R7
+ * （根=用例，勾选=跨任务全部设备×结果类型；取消任务级节点仅清该任务下结果行，用例保持部分）。
+ */
+export function buildPickCaseViewTree(candidates: PickCandidate[]): PickTreeNode[] {
+  const roots: PickTreeNode[] = [];
+  const rootByCase = new Map<string, PickTreeNode>();
+  for (const c of candidates) {
+    const caseKey = `c:${c.caseId}`;
+    let caseNode = rootByCase.get(caseKey);
+    if (!caseNode) {
+      caseNode = {
+        key: caseKey, level: 'case', id: c.caseId,
+        name: c.caseName || c.caseId, count: 0, resultIds: [], children: [],
+        algorithmType: c.algorithmType ?? null,
+      };
+      rootByCase.set(caseKey, caseNode);
+      roots.push(caseNode);
+    }
+    const tKey = `${caseKey}|t:${c.taskId}`;
+    let taskNode = caseNode.children.find((n) => n.key === tKey);
+    if (!taskNode) {
+      taskNode = {
+        key: tKey, level: 'task', id: c.taskId, name: c.taskName || `任务 ${c.taskId}`,
+        count: 0, resultIds: [], children: [],
+      };
+      caseNode.children.push(taskNode);
+    }
+    mergeDeviceResultType(taskNode, c, tKey);
+    caseNode.resultIds.push(c.resultId);
+    caseNode.count += 1;
   }
   return roots;
 }

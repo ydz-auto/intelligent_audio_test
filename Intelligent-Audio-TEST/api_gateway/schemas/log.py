@@ -125,6 +125,9 @@ class LogStatsQuery(APIModel):
 class LogArchiveQuery(APIModel):
     task_id: Optional[int] = Field(None)
     test_case_id: Optional[str] = Field(None)
+    # INT-786：全局归档清单分页（照 LogListQuery 惯例，仅无筛选模式生效）
+    page: int = Field(1)
+    per_page: int = Field(50)
 
 
 class LogExportQuery(APIModel):

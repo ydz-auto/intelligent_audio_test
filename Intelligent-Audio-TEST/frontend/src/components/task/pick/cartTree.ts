@@ -19,6 +19,12 @@ export interface CartTreeNode {
   children: CartTreeNode[]
 }
 
+/** result_type 展示文案：缺值/未解析 → 「结果类型待补充」（§3.7.2 快照缺 source_result_type 折叠口径） */
+export function cartResultTypeLabel(resultType?: string | null): string {
+  if (!resultType) return '结果类型待补充';
+  return resultType;
+}
+
 /** 购物车 → 树（任务→用例→设备/API→result_type；叶=条目） */
 export function buildCartTree(groups: PickCartGroup[]): CartTreeNode[] {
   const roots: CartTreeNode[] = [];
@@ -65,7 +71,7 @@ export function buildCartTree(groups: PickCartGroup[]): CartTreeNode[] {
       if (!rtNode) {
         rtNode = {
           key: rtKey, level: 'resultType', id: it.sourceResultType ?? 'default',
-          name: it.sourceResultType ?? 'default', count: 0, itemIds: [], children: [],
+          name: cartResultTypeLabel(it.sourceResultType), count: 0, itemIds: [], children: [],
         };
         dimNode.children.push(rtNode);
       }

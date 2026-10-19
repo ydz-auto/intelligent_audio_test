@@ -24,10 +24,15 @@ export interface CaseDimensionResult {
 export interface ReviewHistoryItem {
   id?: number
   resultId?: number
+  /** INT-796 §3.4：历史抽屉行字段（任务/用例/操作人溯源） */
+  taskId?: number
+  testCaseId?: string
   fieldName?: 'execution_status' | 'evaluation_status' | (string & {})
   oldValue?: string | null
   newValue?: string | null
   comment?: string | null
+  /** INT-796 §3.4：操作人（用户 #id；AUTH_MODE=off 显「—」） */
+  createdByUserId?: number | null
   createdAt?: string | null
 }
 
