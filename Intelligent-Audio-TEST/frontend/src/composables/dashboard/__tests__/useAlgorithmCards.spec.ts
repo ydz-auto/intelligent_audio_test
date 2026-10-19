@@ -55,6 +55,28 @@ describe('useAlgorithmCards', () => {
     expect(cards.error.value).toBeTruthy()
   })
 
+  it('INT-899：原始 gRPC 异常 → error 固定文案 + errorDetail 保留原文（不直出页面）', async () => {
+    const raw =
+      '<_InactiveRpcError of RPC that terminated with:\n' +
+      '\tstatus = StatusCode.UNAVAILABLE\n' +
+      '\tdetails = "failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:50067"\n' +
+      '>'
+    mocks.getDefinitions.mockRejectedValue(new Error(raw))
+    const cards = useAlgorithmCards()
+    await cards.load()
+    expect(cards.error.value).toBe('算法服务暂不可用，请稍后重试')
+    expect(cards.errorDetail.value).toContain('StatusCode.UNAVAILABLE')
+    expect(cards.error.value).not.toContain('InactiveRpcError')
+  })
+
+  it('INT-899：正常业务错误 → error 原样收敛，errorDetail 为空', async () => {
+    mocks.getDefinitions.mockRejectedValue(new Error('网络断开'))
+    const cards = useAlgorithmCards()
+    await cards.load()
+    expect(cards.error.value).toBe('网络断开')
+    expect(cards.errorDetail.value).toBe('')
+  })
+
   it('select(null) 写回「全部算法」，select(type) 写回具体算法并持久化 localStorage', async () => {
     const cards = useAlgorithmCards()
     cards.select('asr')

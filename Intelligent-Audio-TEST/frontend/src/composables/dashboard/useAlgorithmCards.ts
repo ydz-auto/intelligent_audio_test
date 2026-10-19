@@ -10,24 +10,30 @@
 import { ref, computed } from 'vue'
 import { algorithmPort } from '../algorithm/algorithmPort'
 import { useGlobalAlgorithmStore } from '../../store/globalAlgorithmStore'
+import { toUserErrorMessage, toUserErrorDetail } from '../../utils/errorMessage'
 import type { AlgorithmDefinition } from '../../domain/model/algorithm'
 
 export function useAlgorithmCards() {
   const definitions = ref<AlgorithmDefinition[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
+  /** 原始 RPC 异常详情（INT-899：详情仅进 Toast 折叠区，不渲染进页面） */
+  const errorDetail = ref('')
   const store = useGlobalAlgorithmStore()
 
   async function load() {
     loading.value = true
     error.value = null
+    errorDetail.value = ''
     try {
       const result = await algorithmPort.getDefinitions({})
       definitions.value = [...(result?.data ?? [])].sort(
         (a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0)
       )
     } catch (e: any) {
-      error.value = e?.message || '算法详情暂不可用'
+      // INT-899（INT-858 N1）：原始 gRPC 异常文本不直出——固定文案 + 原始详情进 Toast
+      error.value = toUserErrorMessage(e, '算法服务暂不可用，请稍后重试')
+      errorDetail.value = toUserErrorDetail(e)
     } finally {
       loading.value = false
     }
@@ -41,7 +47,7 @@ export function useAlgorithmCards() {
     store.setAlgorithm(type)
   }
 
-  return { definitions, loading, error, selectedType, select, load }
+  return { definitions, loading, error, errorDetail, selectedType, select, load }
 }
 
 /** 参数摘要文本：设备参数 n · API 参数 m · 用例参数 k（三项全 0/缺失时为空） */

@@ -3,6 +3,7 @@ import { evaluationPort } from './evaluationPort';
 import { useModalControl } from '../modal/useModal';
 import { EvaluationCategory } from '../../domain';
 import { MODAL_TYPES } from '../modal/constants';
+import { toUserErrorMessage } from '../../utils/errorMessage';
 import type { UseEvaluationDimensionsReturn } from './useEvaluationDimensions';
 
 /**
@@ -65,7 +66,7 @@ export function useEvaluationCategories(dimensionsModule: UseEvaluationDimension
       console.error('Failed to save category:', err);
       modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
         title: '错误',
-        content: err.message || '保存分类失败',
+        content: toUserErrorMessage(err, '保存分类失败'),
         onConfirm: () => {
         }
       });

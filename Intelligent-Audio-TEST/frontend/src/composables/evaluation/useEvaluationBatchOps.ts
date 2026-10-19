@@ -2,6 +2,7 @@ import { ref } from 'vue';
 import { evaluationPort } from './evaluationPort';
 import { useModalControl } from '../modal/useModal';
 import { MODAL_TYPES } from '../modal/constants';
+import { toUserErrorMessage } from '../../utils/errorMessage';
 import type { UseEvaluationDimensionsReturn } from './useEvaluationDimensions';
 
 /**
@@ -86,7 +87,7 @@ export function useEvaluationBatchOps(dimensionsModule: UseEvaluationDimensionsR
       console.error('Failed to batch enable dimensions:', err);
       modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
         title: '错误',
-        content: err.message || '批量启用失败',
+        content: toUserErrorMessage(err, '批量启用失败'),
         onConfirm: () => {
         }
       });
@@ -119,7 +120,7 @@ export function useEvaluationBatchOps(dimensionsModule: UseEvaluationDimensionsR
       console.error('Failed to batch disable dimensions:', err);
       modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
         title: '错误',
-        content: err.message || '批量禁用失败',
+        content: toUserErrorMessage(err, '批量禁用失败'),
         onConfirm: () => {
         }
       });
@@ -158,7 +159,7 @@ export function useEvaluationBatchOps(dimensionsModule: UseEvaluationDimensionsR
           console.error('Failed to batch delete dimensions:', err);
           modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
             title: '错误',
-            content: err.message || '批量删除失败',
+            content: toUserErrorMessage(err, '批量删除失败'),
             onConfirm: () => {
             }
           });

@@ -295,6 +295,7 @@ import { algorithmPort } from '@/composables/algorithm/algorithmPort'
 import { useModalControl } from '@/composables/modal/useModal'
 import { MODAL_TYPES } from '@/composables/modal/constants'
 import { useNotification } from '@/composables/modal/useNotification'
+import { toUserErrorMessage } from '@/utils/errorMessage'
 import { ApiEndpointStatus } from '@/domain/enums'
 
 // 模板中 mappings 的键名收窄类型（device/api/evaluation，与页面 composable 定义一致）
@@ -320,7 +321,8 @@ async function handleReload() {
     const result = await algorithmPort.reloadConfig()
     notification.success(result?.message || '配置已重载')
   } catch (e: any) {
-    notification.error(e?.detail || e?.message || '重载失败')
+    // INT-899（INT-858 N1）：原始 gRPC 异常文本不直出 Toast，降级为固定文案
+    notification.error(toUserErrorMessage(e, '重载失败'))
   }
 }
 

@@ -6,6 +6,7 @@
  */
 import { MODAL_TYPES } from '../modal/constants';
 import { evaluationPort } from './evaluationPort';
+import { toUserErrorMessage } from '../../utils/errorMessage';
 import {
   EvaluationDimension,
 } from '../../domain';
@@ -104,8 +105,8 @@ export function createEvalDimensionSave(state: EvalDimensionState, deps: SaveMod
       await fetchData();
     } catch (err: any) {
       console.error('Failed to save dimension:', err);
-      showResultModal('错误', err.message || '保存失败');
-      error.value = err.message || '保存评估维度失败';
+      showResultModal('错误', toUserErrorMessage(err, '保存失败'));
+      error.value = toUserErrorMessage(err, '保存评估维度失败');
     } finally {
       loading.value = false;
     }
@@ -126,7 +127,7 @@ export function createEvalDimensionSave(state: EvalDimensionState, deps: SaveMod
           await fetchData();
         } catch (err: any) {
           console.error('Failed to delete dimension:', err);
-          showResultModal('错误', err.message || '删除维度失败');
+          showResultModal('错误', toUserErrorMessage(err, '删除维度失败'));
         } finally {
           loading.value = false;
         }
@@ -151,7 +152,7 @@ export function createEvalDimensionSave(state: EvalDimensionState, deps: SaveMod
       await fetchData();
     } catch (err: any) {
       console.error('Failed to toggle dimension visibility:', err);
-      showResultModal('错误', err.message || '切换可见性失败，请确认您有该维度的分享权限');
+      showResultModal('错误', toUserErrorMessage(err, '切换可见性失败，请确认您有该维度的分享权限'));
     } finally {
       loading.value = false;
     }
@@ -184,7 +185,7 @@ export function createEvalDimensionSave(state: EvalDimensionState, deps: SaveMod
       });
     } catch (err: any) {
       console.error('Failed to test API health:', err);
-      showResultModal('错误', `API测试失败: ${err.message || '未知错误'}`);
+      showResultModal('错误', `API测试失败: ${toUserErrorMessage(err, '未知错误')}`);
     } finally {
       loading.value = false;
     }
@@ -205,7 +206,7 @@ export function createEvalDimensionSave(state: EvalDimensionState, deps: SaveMod
       showResultModal('成功', '权重更新成功');
     } catch (err: any) {
       console.error('Failed to update weight:', err);
-      showResultModal('错误', `权重更新失败: ${err.message || '未知错误'}`);
+      showResultModal('错误', `权重更新失败: ${toUserErrorMessage(err, '未知错误')}`);
     } finally {
       loading.value = false;
     }
@@ -276,7 +277,7 @@ export function createEvalDimensionSave(state: EvalDimensionState, deps: SaveMod
       console.error('Failed to reorder dimensions:', err);
       modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
         title: '错误',
-        content: `调整排序失败: ${err.message || '未知错误'}`,
+        content: `调整排序失败: ${toUserErrorMessage(err, '未知错误')}`,
         onConfirm: () => {
         }
       });

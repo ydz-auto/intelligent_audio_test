@@ -85,6 +85,20 @@ describe('useAlgorithmConfigPage 失败路径通知（INT-291）', () => {
     expect(show).toHaveBeenCalledWith('加载算法列表失败: 未知错误', 'error', '');
   });
 
+  it('INT-899：loadAlgorithms 失败（原始 gRPC 异常文本）：降级为固定文案，不直出原文', async () => {
+    const raw =
+      '<_InactiveRpcError of RPC that terminated with:\n' +
+      '\tstatus = StatusCode.UNAVAILABLE\n' +
+      '\tdetails = "failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:50067"\n' +
+      '>';
+    mockGetDefinitions.mockRejectedValue(new Error(raw));
+    const view = setup();
+
+    await view.loadAlgorithms();
+
+    expect(show).toHaveBeenCalledWith('加载算法列表失败: 算法服务暂不可用，请稍后重试', 'error', '');
+  });
+
   it('loadGroups 失败：notification.error 提示（经页面挂载触发 onMounted 链路）', async () => {
     mockGetGroups.mockRejectedValue(new Error('服务不可用'));
 

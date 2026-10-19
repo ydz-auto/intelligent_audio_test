@@ -3,6 +3,7 @@ import { evaluationPort } from './evaluationPort';
 import { useModalControl } from '../modal/useModal';
 import { MODAL_TYPES } from '../modal/constants';
 import { downloadBlob } from '../../utils/utils';
+import { toUserErrorMessage } from '../../utils/errorMessage';
 import type { UseEvaluationDimensionsReturn } from './useEvaluationDimensions';
 
 /**
@@ -66,7 +67,7 @@ export function useEvaluationImport(dimensionsModule: UseEvaluationDimensionsRet
       console.error('Failed to import dimensions:', err);
       modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
         title: '错误',
-        content: `导入维度失败: ${err.message || '未知错误'}`,
+        content: `导入维度失败: ${toUserErrorMessage(err, '未知错误')}`,
         onConfirm: () => {
         }
       });
@@ -93,7 +94,7 @@ export function useEvaluationImport(dimensionsModule: UseEvaluationDimensionsRet
       console.error('Failed to export dimensions:', err);
       modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
         title: '错误',
-        content: `导出维度失败: ${err.message || '未知错误'}`,
+        content: `导出维度失败: ${toUserErrorMessage(err, '未知错误')}`,
         onConfirm: () => {
         }
       });

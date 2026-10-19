@@ -84,7 +84,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, watch } from 'vue'
 import { useNotification } from '../../../composables/modal/useNotification'
 import { useDashboardPermission } from '../../../composables/dashboard/useDashboardPermission'
 import { useAlgorithmCards, getAlgorithmParamSummary } from '../../../composables/dashboard/useAlgorithmCards'
@@ -93,7 +93,12 @@ import { useGlobalAlgorithmStore } from '../../../store/globalAlgorithmStore'
 const { can } = useDashboardPermission()
 const notification = useNotification()
 const store = useGlobalAlgorithmStore()
-const { definitions, loading, error, selectedType, select, load } = useAlgorithmCards()
+const { definitions, loading, error, errorDetail, selectedType, select, load } = useAlgorithmCards()
+
+/** INT-899（INT-858 N1）：加载失败降级——固定文案渲染进卡片网格，原始 RPC 详情仅进 Toast */
+watch(error, (val) => {
+  if (val) notification.error(val, errorDetail.value)
+})
 
 /** algorithm:read 持有者可管理（网格可点）；device_admin/guest 只读降级条；AUTH_MODE=off 全放行 */
 const canManage = computed(() => can('algorithm:read'))

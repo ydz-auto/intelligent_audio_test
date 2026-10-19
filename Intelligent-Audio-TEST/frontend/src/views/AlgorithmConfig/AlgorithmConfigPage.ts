@@ -4,7 +4,15 @@ import { algorithmPort } from '../../composables/algorithm/algorithmPort'
 import { useModalControl, MODAL_TYPES } from '../../composables/modal/useModal'
 import { useNotification } from '../../composables/modal/useNotification'
 import { usePagination } from '../../composables/usePagination'
+import { toUserErrorMessage } from '@/utils/errorMessage'
 import type { AlgorithmGroup, AlgorithmDefinition } from '@/domain'
+
+/** INT-899（INT-858 N1）：错误消息安全化——原始 gRPC 异常文本不直出 Toast；
+ *  非 Error 抛出（字符串等）保持「未知错误」兜底口径（INT-291 契约）。 */
+function errorText(error: unknown): string {
+  if (!(error instanceof Error)) return '未知错误'
+  return toUserErrorMessage(error, '算法服务暂不可用，请稍后重试')
+}
 
 export function useAlgorithmConfigPage() {
   const modalControl = useModalControl()
@@ -75,7 +83,8 @@ export function useAlgorithmConfigPage() {
     } catch (error) {
       console.error('加载算法列表失败:', error)
       // INT-291：失败必须可见——原先仅 console.error，列表落「暂无数据」与空态不可区分
-      notification.error('加载算法列表失败: ' + (error instanceof Error ? error.message : '未知错误'))
+      // INT-899：原始 gRPC 异常文本经 errorText 降级为固定文案，不直出 Toast
+      notification.error('加载算法列表失败: ' + errorText(error))
     } finally {
       loading.value = false
     }
@@ -87,7 +96,7 @@ export function useAlgorithmConfigPage() {
       groups.value = result?.data ?? []
     } catch (error) {
       console.error('加载分组列表失败:', error)
-      notification.error('加载分组列表失败: ' + (error instanceof Error ? error.message : '未知错误'))
+      notification.error('加载分组列表失败: ' + errorText(error))
     }
   }
 
@@ -114,7 +123,7 @@ export function useAlgorithmConfigPage() {
     } catch (error) {
       console.error('加载算法详情失败:', error)
       // 加载失败时弹窗仍以列表行浅数据打开，提示避免用户误以为主数据完整
-      notification.error('加载算法详情失败: ' + (error instanceof Error ? error.message : '未知错误'))
+      notification.error('加载算法详情失败: ' + errorText(error))
     }
   }
 
@@ -166,7 +175,7 @@ export function useAlgorithmConfigPage() {
     } catch (error) {
       console.error('复制失败:', error)
       // INT-291：失败必须可见；loadAlgorithms 仅在成功路径调用，列表现状不被误清
-      notification.error('复制算法失败: ' + (error instanceof Error ? error.message : '未知错误'))
+      notification.error('复制算法失败: ' + errorText(error))
     }
   }
 
@@ -196,7 +205,7 @@ export function useAlgorithmConfigPage() {
     } catch (error) {
       console.error('删除失败:', error)
       // INT-291：失败必须可见；loadAlgorithms 仅在成功路径调用，列表现状不被误清
-      notification.error('删除算法失败: ' + (error instanceof Error ? error.message : '未知错误'))
+      notification.error('删除算法失败: ' + errorText(error))
     }
   }
 
