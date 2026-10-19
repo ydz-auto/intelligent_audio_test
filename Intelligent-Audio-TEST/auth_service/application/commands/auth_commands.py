@@ -105,6 +105,19 @@ class ChangePasswordCommand:
 
 
 @dataclass(frozen=True)
+class UpdateSelfProfileCommand:
+    """当前登录用户更新自我资料（INT-792）。
+
+    服务端字段白名单：命令结构只承载 email——消息层不含
+    username/status/password，从入口杜绝改非开放字段
+    （防网关白名单漏配导致经 admin UpdateUser 路径改 username 等）。
+    """
+    user_id: int
+    email: Optional[str] = None   # 空串=不修改；非空须为合法邮箱格式
+    operator_id: int = 0
+
+
+@dataclass(frozen=True)
 class SetUserRoleCommand:
     """设置用户角色。"""
     user_id: int

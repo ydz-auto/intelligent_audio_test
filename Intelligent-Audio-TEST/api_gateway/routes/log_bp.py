@@ -70,14 +70,14 @@ def get_archived_logs(_: None = require_permission('log:read')):
         return to_response(result)
     return result
 
-@router.get('/archive/{filename}')
+@router.get('/archive/{filename:path}')
 def download_archive(filename: str, _: None = require_permission('log:read')):
     result = LogQueryService.download_archive(filename)
     if isinstance(result, tuple) and len(result) == 2:
         return to_response(result)
     return result
 
-@router.delete('/archive/{filename}')
+@router.delete('/archive/{filename:path}')
 def delete_archive(filename: str, _: None = require_permission('log:manage')):
     result = LogCommandService.delete_archive(filename)
     if isinstance(result, tuple) and len(result) == 2:

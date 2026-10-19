@@ -70,6 +70,7 @@ class DimensionParamDTO:
     default_value: Any = None
     help_text: Optional[str] = None
     ui_order: Optional[int] = None
+    pass_threshold: Optional[float] = None
 
 
 @dataclass
