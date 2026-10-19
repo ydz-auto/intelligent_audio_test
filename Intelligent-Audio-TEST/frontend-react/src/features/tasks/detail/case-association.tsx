@@ -1,7 +1,8 @@
 /**
  * 关联用例 / 关联设备（09_任务域.md §4.4，Card 内 Tabs）。
  * 页签「关联用例」（默认）/「关联{设备|API}」；工具行 = 视图切换（平铺/标签/分组）+ 状态筛选。
- * 平铺态 DataTable 列：用例名称/执行状态/评估状态/耗时/轮次/操作（移除用例）。
+ * 平铺态 DataTable 列：用例名称/执行状态/评估状态/耗时/操作（移除用例）。
+ * （轮次列 INT-932 P3-2 移除：TaskCaseBrief 无真实轮次数据，原 `第 n/2 轮` 为 mock 残留）
  * 19_人工审核与AI复核交互设计.md §3 落位（INT-795）：
  * - 已复核用例行执行/评估徽章旁叠加「人工复核」Badge（TaskCaseBrief.reviewed 驱动）；
  * - 行尾「人工复核」钮（终态任务 + task.result.review）→ §3.2 单条复核弹窗（取该用例结果行）；
@@ -15,6 +16,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
+import { useTaskActions } from '@/application/tasks/use-task-actions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -38,7 +40,6 @@ import type { TaskCaseBrief, TaskDetailData } from '@/domain/models/task'
 import { fetchCaseResults } from '@/infrastructure/api/reviewApi'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import { formatDuration } from '@/features/tasks/constants'
-import { Progress } from '@/features/tasks/components/ui/progress'
 import { AiReviewDialog } from '@/features/tasks/components/ai-review-dialog'
 import { ManualReviewBatchBar } from '@/features/tasks/components/manual-review-batch-bar'
 import { ManualReviewDialog } from '@/features/tasks/components/manual-review-dialog'
@@ -106,6 +107,7 @@ export function CaseAssociation({
   onCaseSelect?: (caseId: string) => void
 }) {
   const { hasPermission, hasAnyPermission } = usePermissions()
+  const actions = useTaskActions()
   const [tab, setTab] = useState('cases')
   const [view, setView] = useState<ViewMode>('flat')
   const [status, setStatus] = useState('all')
@@ -336,7 +338,9 @@ export function CaseAssociation({
                 <div key={api.id} className='flex items-center gap-2 rounded-lg border px-3 py-2 text-sm'>
                   <span aria-hidden='true' className={cn('size-2 rounded-full', api.status === 'online' ? 'bg-success' : 'bg-muted')} />
                   <span className='font-medium'>{api.name}</span>
-                  <span className='text-muted-foreground text-xs'>当前并发 2/4</span>
+                  <span className='text-muted-foreground text-xs'>
+                    {api.status === 'online' ? '在线' : '离线'}
+                  </span>
                 </div>
               ))}
             </div>
@@ -365,7 +369,6 @@ export function CaseAssociation({
                   <th className='px-3 py-2 text-left font-medium'>执行状态</th>
                   <th className='px-3 py-2 text-left font-medium'>评估状态</th>
                   <th className='px-3 py-2 text-left font-medium'>耗时</th>
-                  <th className='px-3 py-2 text-left font-medium'>轮次</th>
                   <th className='min-w-28 px-3 py-2 text-right font-medium'>操作</th>
                 </tr>
               </thead>
@@ -408,12 +411,6 @@ export function CaseAssociation({
                     <td className='px-3 py-2 font-mono text-xs tabular-nums'>
                       {formatDuration(c.duration)}
                     </td>
-                    <td className='min-w-24 px-3 py-2'>
-                      <div className='font-mono text-xs tabular-nums'>
-                        第 {c.duration != null ? 2 : 1}/2 轮
-                      </div>
-                      <Progress value={c.duration != null ? 50 : 0} size='xs' className='mt-1' />
-                    </td>
                     <td className='px-3 py-2 text-right'>
                       <div className='flex items-center justify-end gap-1'>
                         {/* INT-795：人工复核入口（终态任务 + task.result.review；§3.1） */}
@@ -449,8 +446,9 @@ export function CaseAssociation({
                           size='icon-sm'
                           className='text-destructive hover:text-destructive'
                           aria-label='移除用例'
+                          disabled={actions.removeCase.isPending}
                           onClick={() => {
-                            toast.success('已移除用例（末例二次确认见 §5.9）')
+                            actions.removeCase.mutate({ taskId: detail.id, caseId: c.case_id })
                             setSelected((prev) => {
                               const next = new Set(prev)
                               next.delete(c.case_id)

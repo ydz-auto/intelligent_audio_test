@@ -2,9 +2,10 @@
  * 日常任务表格（09_任务域.md §3.6，DataTablePage 骨架的轻量语义表格实现）。
  * 列：选择/任务名称/执行状态/评估状态/类型/用例进度/设备·API/标签/创建时间/操作。
  * 单元格 `py-2`、字号 13px；数值列 mono tabular-nums；回收站行 DISABLED_ROW（muted 底 + 左标线）。
- * 排序头/列显隐为演示控件（接线后接服务端 sortBy/sortOrder + useTableUrlState）。
+ * INT-932：排序头为客户端排序（后端 /tasks TaskListQuery 无 sort 参数，FEAT 见后端）；
+ * 服务端 sortBy/sortOrder 落地后切换为 URL 化参数。
  */
-import { ClipboardList, RefreshCw, Star, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronsUpDown, ClipboardList, RefreshCw, Star, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 
@@ -83,7 +84,43 @@ function TagCell({ tags }: { tags: string[] }) {
   )
 }
 
-function SortableHeader({ label, active }: { label: string; active?: boolean }) {
+/** 可排序列键（INT-932 客户端排序；服务端 sort_by/sort_order 落地后切换） */
+type SortKey = 'name' | 'execution' | 'createdAt'
+
+type SortState = { key: SortKey; dir: 'asc' | 'desc' } | null
+
+/** 表头文案 → 排序键映射（仅三列可排序，与 SORT_VALUE 对齐） */
+const SORT_KEY_BY_LABEL: Record<string, SortKey> = {
+  任务名称: 'name',
+  执行状态: 'execution',
+  创建时间: 'createdAt',
+}
+
+/** 排序取值器（name/createdAt 字符串比较，execution 按原始枚举排序） */
+const SORT_VALUE: Record<SortKey, (t: TaskListItem) => string> = {
+  name: (t) => t.name ?? '',
+  execution: (t) => t.execution_status ?? '',
+  createdAt: (t) => t.created_at ?? '',
+}
+
+function compareTasks(a: TaskListItem, b: TaskListItem, sort: NonNullable<SortState>): number {
+  const va = SORT_VALUE[sort.key](a)
+  const vb = SORT_VALUE[sort.key](b)
+  const cmp = va.localeCompare(vb, 'zh-Hans-CN')
+  return sort.dir === 'asc' ? cmp : -cmp
+}
+
+function SortableHeader({
+  label,
+  sort,
+  onSort,
+}: {
+  label: string
+  sort: SortState
+  onSort: (key: SortKey) => void
+}) {
+  const active = sort?.key === SORT_KEY_BY_LABEL[label]
+  const dir = active ? sort!.dir : null
   return (
     <button
       type='button'
@@ -91,12 +128,17 @@ function SortableHeader({ label, active }: { label: string; active?: boolean }) 
         'hover:text-foreground inline-flex items-center gap-1 text-xs font-medium transition-colors',
         active ? 'text-foreground' : 'text-muted-foreground'
       )}
-      title='演示排序控件（接线后接服务端 sortBy/sortOrder）'
+      title={dir ? (dir === 'asc' ? '升序排列（点击切换降序）' : '降序排列（点击切换升序）') : '点击排序'}
+      onClick={() => onSort(SORT_KEY_BY_LABEL[label])}
     >
       {label}
-      <span aria-hidden='true' className='text-muted-foreground/50 text-[10px]'>
-        ⇅
-      </span>
+      {dir === 'asc' ? (
+        <ArrowUp aria-hidden='true' className='text-muted-foreground/70 size-3' />
+      ) : dir === 'desc' ? (
+        <ArrowDown aria-hidden='true' className='text-muted-foreground/70 size-3' />
+      ) : (
+        <ChevronsUpDown aria-hidden='true' className='text-muted-foreground/50 size-3' />
+      )}
     </button>
   )
 }
@@ -156,6 +198,7 @@ export function DailyTaskTable({
   onJoinPick,
   onReexecute,
   onExport,
+  onCompare,
   onCreate,
 }: {
   tasks: TaskListItem[]
@@ -173,6 +216,8 @@ export function DailyTaskTable({
   onReexecute: (task: TaskListItem, actionType: 'retry' | 'reevaluate') => void
   /** 导出数据 → §5.12 导出弹窗 */
   onExport: (tasks: TaskListItem[]) => void
+  /** 任务对比（≥2）：生成对比报告后跳转报告页（INT-932 接线） */
+  onCompare?: (tasks: TaskListItem[]) => void
   onCreate: () => void
 }) {
   const { hasPermission } = usePermissions()
@@ -181,6 +226,22 @@ export function DailyTaskTable({
   const [visible, setVisible] = useState<Set<ColumnKey>>(
     () => new Set(DEFAULT_VISIBLE)
   )
+  const [sort, setSort] = useState<SortState>(null)
+
+  /** 客户端排序（INT-932；当前页已加载行内排序，服务端 sort 落地后切换） */
+  const sortedTasks = sort
+    ? [...tasks].sort((a, b) => compareTasks(a, b, sort))
+    : tasks
+
+  const handleSort = (key: SortKey) => {
+    setSort((prev) =>
+      prev?.key === key
+        ? prev.dir === 'asc'
+          ? { key, dir: 'desc' }
+          : null
+        : { key, dir: 'asc' }
+    )
+  }
 
   const toggleRow = (id: number, checked: boolean) => {
     setSelected((prev) => {
@@ -283,12 +344,12 @@ export function DailyTaskTable({
               </th>
               {col('name') && (
                 <th className='px-3 py-2 text-left font-medium'>
-                  <SortableHeader label='任务名称' active />
+                  <SortableHeader label='任务名称' sort={sort} onSort={handleSort} />
                 </th>
               )}
               {col('execution') && (
                 <th className='px-3 py-2 text-left font-medium'>
-                  <SortableHeader label='执行状态' />
+                  <SortableHeader label='执行状态' sort={sort} onSort={handleSort} />
                 </th>
               )}
               {col('evaluation') && (
@@ -308,14 +369,14 @@ export function DailyTaskTable({
               )}
               {col('createdAt') && (
                 <th className='px-3 py-2 text-left font-medium'>
-                  <SortableHeader label='创建时间' active />
+                  <SortableHeader label='创建时间' sort={sort} onSort={handleSort} />
                 </th>
               )}
               <th className='w-28 px-3 py-2 text-right font-medium'>操作</th>
             </tr>
           </thead>
           <tbody>
-            {tasks.map((task) => {
+            {sortedTasks.map((task) => {
               const execMeta = getExecutionStatusMeta(task.execution_status)
               const evalMeta = getEvaluationStatusMeta(task.evaluation_status)
               const disabled = task.deleted
@@ -453,6 +514,7 @@ export function DailyTaskTable({
         onBatchPublish={onBatchPublish}
         onJoinPick={onJoinPick}
         onExport={onExport}
+        onCompare={onCompare}
       />
     </div>
   )

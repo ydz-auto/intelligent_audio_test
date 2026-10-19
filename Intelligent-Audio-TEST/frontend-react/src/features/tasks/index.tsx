@@ -10,6 +10,7 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { ChartLine, FileDown, Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useTasksList, type TaskListFilters } from '@/application/tasks/use-tasks-list'
@@ -17,8 +18,10 @@ import { useCherryPickContainers } from '@/application/tasks/cherry-pick/use-che
 import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ApiError } from '@/infrastructure/api/api-error'
 import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
 import { fetchPublishedTaskList } from '@/infrastructure/api/tasks-list-api'
+import { compareReports } from '@/infrastructure/api/reports-api'
 import type { PublishedTaskItem, TaskListItem } from '@/domain/models/task'
 import {
   TASKS_TABS,
@@ -135,6 +138,26 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
   /** 批量浮条「导出数据」→ §5.12 导出弹窗 */
   const handleExport = (tasks: TaskListItem[]) => {
     setExportTasks(tasks)
+  }
+
+  /** 批量浮条「任务对比」（≥2，report:compare）：POST /reports/compare 生成对比报告后跳转报告页 */
+  const handleCompare = async (tasks: TaskListItem[]) => {
+    try {
+      const taskNames = tasks.map((t) => t.name).join('_')
+      const result = await compareReports({
+        task_ids: tasks.map((t) => t.id),
+        name: `任务对比报告_${taskNames}_${Date.now()}`,
+      })
+      toast.success('对比报告生成成功')
+      void navigate({
+        to: '/report/$reportId',
+        params: { reportId: String(result.report_id) },
+      })
+    } catch (error) {
+      const msg =
+        error instanceof ApiError ? error.userMessage || error.message : '任务对比失败，请稍后重试'
+      toast.error(msg)
+    }
   }
 
   /** 筛选变化/查询：回到第 1 页（分页与筛选共用 queryKey） */
@@ -258,6 +281,7 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
                 onJoinPick={handleJoinPick}
                 onReexecute={handleReexecute}
                 onExport={handleExport}
+                onCompare={handleCompare}
                 onCreate={() => setTypeDialogOpen(true)}
               />
             )}

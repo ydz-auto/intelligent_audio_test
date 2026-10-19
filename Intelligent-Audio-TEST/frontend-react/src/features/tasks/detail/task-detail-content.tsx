@@ -2,12 +2,15 @@
  * 任务详情内容组件（09_任务域.md §4，双形态共享：路由页 /tasks/:id 与快览弹窗）。
  * 三卡纵排：任务信息卡 / 进度概览卡 / 关联用例·设备（Tabs）；API/混合任务追加 API 资源管理；
  * 底部实时日志卡 + 操作按钮组（§4.7 状态机）。重新执行/重新评估经 §5.7 范围选择弹窗发起。
+ * INT-932 接线：暂停/继续（POST /tasks/{id}/control）、停止测试（POST /tasks/{id}/stop）
+ * 经 useTaskActions 发真实请求，成功后详情/列表刷新；API 资源管理去掉 mock 并发数据，
+ * 仅渲染真实 apis（id/name/status，status=online 在线）。
  */
 import { Pause, Play, RefreshCw, RotateCcw, Square } from 'lucide-react'
 import { useState } from 'react'
-import { toast } from 'sonner'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
+import { useTaskActions } from '@/application/tasks/use-task-actions'
 import { useTaskDetail } from '@/application/tasks/use-task-detail'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -20,14 +23,15 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
-import { Progress } from '@/features/tasks/components/ui/progress'
+import { Skeleton } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
 import { CaseAssociation } from '@/features/tasks/detail/case-association'
 import { ProgressCard } from '@/features/tasks/detail/progress-card'
 import { RealtimeLogs } from '@/features/tasks/detail/realtime-logs'
 import { TaskInfoCard } from '@/features/tasks/detail/task-info-card'
 import { ReexecuteScopeDialog } from '@/features/tasks/components/reexecute-scope-dialog'
 
-/** API 资源管理（§4.5，仅 API/混合任务；纯展示无操作） */
+/** API 资源管理（§4.5，仅 API/混合任务；真实 apis 简报：名称 + 在线状态） */
 function ApiResources({ apis }: { apis: Array<{ id: number; name: string; status: string | null }> }) {
   if (apis.length === 0) return null
   return (
@@ -39,11 +43,17 @@ function ApiResources({ apis }: { apis: Array<{ id: number; name: string; status
         <div className='flex flex-col gap-2'>
           {apis.map((api) => (
             <div key={api.id} className='flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2 text-sm'>
+              <span
+                aria-hidden='true'
+                className={cn(
+                  'size-2 rounded-full',
+                  api.status === 'online' ? 'bg-success' : 'bg-muted'
+                )}
+              />
               <span className='font-medium'>{api.name}</span>
-              <span className='text-muted-foreground text-xs tabular-nums'>
-                当前并发 2/4 · 队列长度 3 · 平均响应时间 214ms
+              <span className='text-muted-foreground text-xs'>
+                {api.status === 'online' ? '在线' : '离线'}
               </span>
-              <Progress value={50} size='sm' className='min-w-28 flex-1' />
             </div>
           ))}
         </div>
@@ -71,12 +81,22 @@ export function TaskDetailContent({
 }) {
   const { hasPermission } = usePermissions()
   const detailQuery = useTaskDetail(taskId)
-  const [pending, setPending] = useState<string | null>(null)
+  const actions = useTaskActions()
   const [reexecuteAction, setReexecuteAction] = useState<'retry' | 'reevaluate' | null>(null)
 
   const detail = detailQuery.data
+  if (detailQuery.isPending) {
+    // 首次加载骨架屏（路由页恒渲染本组件，loading 内聚；避免观察者卸载/重挂载 refetch 循环）
+    return (
+      <div className='flex flex-col gap-4'>
+        <Skeleton className='h-36 w-full rounded-xl' />
+        <Skeleton className='h-44 w-full rounded-xl' />
+        <Skeleton className='h-64 w-full rounded-xl' />
+      </div>
+    )
+  }
   if (detailQuery.isError) {
-    // 详情接口失败（如后端 TaskCaseBrief 校验 422）→ 错误态 + 重试，不渲染空白
+    // 详情接口失败（无效 id 400 code:203 / 后端 TaskCaseBrief 校验 422）→ 错误态 + 重试，不渲染空白
     return (
       <Empty className='border-dashed rounded-xl border px-6 py-12'>
         <EmptyHeader>
@@ -106,14 +126,7 @@ export function TaskDetailContent({
   const isTerminal = ['completed', 'failed', 'stopped', 'merged', 'skipped'].includes(
     detail.execution_status ?? ''
   )
-
-  const act = (key: string, success: string) => {
-    setPending(key)
-    setTimeout(() => {
-      setPending(null)
-      toast.success(success)
-    }, 600)
-  }
+  const pending = actions.control.isPending || actions.stop.isPending
 
   return (
     <>
@@ -130,9 +143,12 @@ export function TaskDetailContent({
               detail.execution_status !== 'pending' && (
                 <Button
                   size='sm'
-                  disabled={pending != null}
+                  disabled={pending}
                   onClick={() =>
-                    act('pause', detail.execution_status === 'paused' ? '任务已继续' : '任务已暂停')
+                    actions.control.mutate({
+                      taskId,
+                      action: detail.execution_status === 'paused' ? 'resume' : 'pause',
+                    })
                   }
                 >
                   {detail.execution_status === 'paused' ? (
@@ -154,8 +170,8 @@ export function TaskDetailContent({
                 <Button
                   size='sm'
                   variant='destructive'
-                  disabled={pending != null}
-                  onClick={() => act('stop', '任务已停止')}
+                  disabled={pending}
+                  onClick={() => actions.stop.mutate(taskId)}
                 >
                   <Square aria-hidden='true' className='size-3.5' />
                   停止测试
@@ -166,7 +182,7 @@ export function TaskDetailContent({
                 <Button
                   size='sm'
                   variant='outline'
-                  disabled={pending != null}
+                  disabled={pending}
                   onClick={() => setReexecuteAction('retry')}
                 >
                   <RotateCcw aria-hidden='true' className='size-3.5' />
@@ -177,7 +193,7 @@ export function TaskDetailContent({
               <Button
                 size='sm'
                 variant='outline'
-                disabled={pending != null}
+                disabled={pending}
                 onClick={() => setReexecuteAction('reevaluate')}
               >
                 重新评估

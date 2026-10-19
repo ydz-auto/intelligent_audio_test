@@ -2,6 +2,8 @@
  * 任务行操作菜单（09_任务域.md §3.6.2 DataTableRowActionMenu）。
  * 按状态显隐 + 权限隐藏（对齐现 taskActions 口径）；控制类操作进行中置灰。
  * 重新执行/重新评估经 onReexecute 打开 §5.7 范围选择弹窗；未传时回落 toast 演示。
+ * INT-932 接线：删除/收藏/恢复/彻底删除/暂停/继续/停止经 useTaskActions
+ * （infrastructure/api/tasks-actions-api + tasks-control-api）发真实请求，成功后列表刷新。
  */
 import { useNavigate } from '@tanstack/react-router'
 import { MoreHorizontal, Star } from 'lucide-react'
@@ -9,6 +11,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
+import { useTaskActions } from '@/application/tasks/use-task-actions'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -44,6 +47,14 @@ function buildDailyItems(
     onQuickView: () => void
     onPublish: () => void
     onReexecute: (task: TaskListItem, actionType: ReexecuteActionType) => void
+    onDelete: () => void
+    onFavorite: () => void
+    onUnfavorite: () => void
+    onRestore: () => void
+    onPurge: () => void
+    onPause: () => void
+    onResume: () => void
+    onStop: () => void
   }
 ): MenuItem[] {
   const items: MenuItem[] = []
@@ -67,10 +78,7 @@ function buildDailyItems(
     items.push({
       key: 'favorite',
       label: task.is_favorite ? '取消收藏' : '收藏',
-      onSelect: () => {
-        toast.success(task.is_favorite ? '已取消收藏' : '已加入收藏')
-        task.is_favorite = !task.is_favorite
-      },
+      onSelect: task.is_favorite ? actions.onUnfavorite : actions.onFavorite,
     })
   }
   if (has('report:create') && TERMINAL_STATES.has(task.execution_status ?? '')) {
@@ -86,7 +94,7 @@ function buildDailyItems(
         items.push({
           key: 'pause',
           label: task.execution_status === 'running' ? '暂停' : '继续',
-          onSelect: () => toast.success(task.execution_status === 'running' ? '任务已暂停' : '任务已继续'),
+          onSelect: task.execution_status === 'running' ? actions.onPause : actions.onResume,
         })
       }
       if (task.execution_status === 'running' || task.execution_status === 'paused' || task.execution_status === 'queued') {
@@ -94,7 +102,7 @@ function buildDailyItems(
           key: 'stop',
           label: '停止',
           destructive: true,
-          onSelect: () => toast.success('任务已停止'),
+          onSelect: actions.onStop,
         })
       }
     }
@@ -134,13 +142,13 @@ function buildDailyItems(
         {
           key: 'restore',
           label: '恢复',
-          onSelect: () => toast.success('已恢复'),
+          onSelect: actions.onRestore,
         },
         {
           key: 'purge',
           label: '彻底删除',
           destructive: true,
-          onSelect: () => toast.success('已彻底删除'),
+          onSelect: actions.onPurge,
         }
       )
     }
@@ -149,7 +157,7 @@ function buildDailyItems(
       key: 'delete',
       label: '删除',
       destructive: true,
-      onSelect: () => toast.success('已移入回收站'),
+      onSelect: actions.onDelete,
     })
   }
 
@@ -171,6 +179,7 @@ export function TaskRowActions({
   const { hasPermission } = usePermissions()
   const navigate = useNavigate()
   const [isControlling, setIsControlling] = useState(false)
+  const actions = useTaskActions()
 
   const items = buildDailyItems(task, hasPermission, {
     goDetail: () => void navigate({ to: '/tasks/$tab', params: { tab: String(task.id) } }),
@@ -178,7 +187,25 @@ export function TaskRowActions({
     onPublish: () =>
       onPublish ? onPublish(task) : toast.success('发布流程见发布任务弹窗'),
     onReexecute,
+    onDelete: () => actions.remove.mutate(task.id),
+    onFavorite: () => actions.favorite.mutate(task.id),
+    onUnfavorite: () => actions.unfavorite.mutate(task.id),
+    onRestore: () => actions.restore.mutate(task.id),
+    onPurge: () => actions.purge.mutate(task.id),
+    onPause: () => actions.control.mutate({ taskId: task.id, action: 'pause' }),
+    onResume: () => actions.control.mutate({ taskId: task.id, action: 'resume' }),
+    onStop: () => actions.stop.mutate(task.id),
   })
+
+  const mutating = [
+    actions.remove,
+    actions.favorite,
+    actions.unfavorite,
+    actions.restore,
+    actions.purge,
+    actions.control,
+    actions.stop,
+  ].some((m) => m.isPending)
 
   return (
     <DropdownMenu>
@@ -188,7 +215,7 @@ export function TaskRowActions({
             variant='ghost'
             size='icon-sm'
             aria-label='任务操作'
-            disabled={isControlling}
+            disabled={isControlling || mutating}
           />
         }
       >
@@ -202,7 +229,7 @@ export function TaskRowActions({
         {items.map((item) => (
           <DropdownMenuItem
             key={item.key}
-            disabled={item.disabled}
+            disabled={item.disabled || mutating}
             data-variant={item.destructive ? 'destructive' : undefined}
             onSelect={() => {
               setIsControlling(true)

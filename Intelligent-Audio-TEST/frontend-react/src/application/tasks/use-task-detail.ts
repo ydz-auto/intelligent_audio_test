@@ -16,6 +16,9 @@ export function useTaskDetail(taskId: number, enabled = true) {
     queryFn: () => fetchTaskDetail(taskId),
     enabled,
     staleTime: 30_000,
+    // INT-932 P2-2：无效任务 id（400 code:203 未找到任务）快速落到错误态，
+    // 不重试（默认 retry:1 指数退避会持续请求），错误态由 TaskDetailContent 渲染
+    retry: 0,
   })
 }
 

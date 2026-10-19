@@ -4,6 +4,8 @@
  *   POST /tasks/{task_id}/retry        （task:execute；INT-302 按用例选择：body {case_ids, mode}）
  *   POST /evaluation/task/reevaluate   （evaluation:execute；TaskReevaluateInput：
  *       task_id/reevaluate_type/reextract_device_output/case_ids/dimension_ids/mode）
+ *   POST /tasks/{task_id}/control      （task:execute；body {action: pause|resume}，INT-932 接线）
+ *   POST /tasks/{task_id}/stop         （task:execute；停止任务，INT-932 接线）
  * 请求一律经 infrastructure/api/client.ts；snake_case 只在 infrastructure/dto 层出现，
  * DTO→Domain 转换收敛在 adapters/dto/task-adapter，页面层只见 camelCase。
  */
@@ -53,4 +55,17 @@ export async function reevaluateTask(
     mode: payload.mode,
   })
   return toTaskReevaluateResult(dto)
+}
+
+/** 控制动作（暂停/继续）：POST /tasks/{id}/control {action: 'pause'|'resume'} */
+export async function controlTask(
+  taskId: number,
+  action: 'pause' | 'resume'
+): Promise<void> {
+  await apiClient.post<unknown>(`/tasks/${taskId}/control`, { action })
+}
+
+/** 停止任务：POST /tasks/{id}/stop */
+export async function stopTask(taskId: number): Promise<void> {
+  await apiClient.post<unknown>(`/tasks/${taskId}/stop`)
 }

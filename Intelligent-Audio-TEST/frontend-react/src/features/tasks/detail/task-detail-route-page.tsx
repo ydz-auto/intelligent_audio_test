@@ -12,7 +12,6 @@ import { ChevronLeft } from 'lucide-react'
 import { useTaskDetail } from '@/application/tasks/use-task-detail'
 import { Button } from '@/components/ui/button'
 import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
-import { Skeleton } from '@/components/ui/skeleton'
 import { TaskDetailContent } from '@/features/tasks/detail/task-detail-content'
 
 export function TaskDetailRoutePage({ taskId }: { taskId: number }) {
@@ -56,15 +55,9 @@ export function TaskDetailRoutePage({ taskId }: { taskId: number }) {
       </SectionPageLayout.Actions>
 
       <SectionPageLayout.Content>
-        {detailQuery.isLoading ? (
-          <div className='flex flex-col gap-4'>
-            <Skeleton className='h-36 w-full rounded-xl' />
-            <Skeleton className='h-44 w-full rounded-xl' />
-            <Skeleton className='h-64 w-full rounded-xl' />
-          </div>
-        ) : (
-          <TaskDetailContent taskId={taskId} />
-        )}
+        {/* INT-932 P2-2：恒渲染 TaskDetailContent（loading 内聚组件内部），
+            避免「loading→卸载观察者→error→重挂载→refetchOnMount」无限 refetch 循环 */}
+        <TaskDetailContent taskId={taskId} />
       </SectionPageLayout.Content>
     </SectionPageLayout>
   )

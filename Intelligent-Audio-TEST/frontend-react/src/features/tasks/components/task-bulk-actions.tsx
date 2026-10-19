@@ -6,11 +6,15 @@
  * 左起：X 清选钮（Tooltip「清除选择 (Esc)」）｜分隔｜计数 Badge +「个任务已选择」｜按钮组。
  * 日常（普通态）：批量删除/发布/任务对比（≥2）/加入挑选（task:cherry_pick，等价旧「合并任务」）/导出数据；
  * 日常（回收站态）：批量恢复/批量彻底删除。「导出数据」经 onExport 打开 §5.12 导出弹窗。
+ * INT-932 接线：批量删除（POST /tasks/batch-action）、批量恢复（POST /tasks/restore）、
+ * 批量彻底删除（POST /tasks/purge）经 useTaskActions 发真实请求；任务对比经 onCompare
+ * 生成对比报告（reports-api.compareReports）后跳转报告页。
  */
-import { X } from 'lucide-react'
+import { LoaderCircle, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
+import { useTaskActions } from '@/application/tasks/use-task-actions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -25,6 +29,7 @@ export function TaskBulkActions({
   onBatchPublish,
   onJoinPick,
   onExport,
+  onCompare,
 }: {
   tasks: TaskListItem[]
   selected: Set<number>
@@ -35,8 +40,11 @@ export function TaskBulkActions({
   onJoinPick?: (tasks: TaskListItem[]) => void
   /** 导出数据 → §5.12 导出弹窗 */
   onExport: (tasks: TaskListItem[]) => void
+  /** 任务对比（≥2）：生成对比报告后跳转报告页（INT-932 接线；未传回落 toast） */
+  onCompare?: (tasks: TaskListItem[]) => void
 }) {
   const { hasPermission } = usePermissions()
+  const actions = useTaskActions()
   const count = selected.size
   if (count === 0) return null
 
@@ -44,6 +52,8 @@ export function TaskBulkActions({
   const hasTerminal = selectedTasks.every((t) =>
     ['completed', 'failed', 'stopped', 'pending'].includes(t.execution_status ?? '')
   )
+
+  const busy = actions.batchRemove.isPending || actions.batchRestore.isPending || actions.batchPurge.isPending
 
   return (
     <div className='fixed bottom-6 left-1/2 z-50 w-max max-w-[calc(100vw-2rem)] -translate-x-1/2'>
@@ -73,8 +83,13 @@ export function TaskBulkActions({
               <Button
                 size='sm'
                 variant='outline'
-                onClick={() => toast.success('已批量恢复')}
+                disabled={busy}
+                onClick={() => {
+                  actions.batchRestore.mutate(selectedTasks.map((t) => t.id))
+                  onClear()
+                }}
               >
+                {actions.batchRestore.isPending && <LoaderCircle aria-hidden='true' className='size-3.5 animate-spin' />}
                 批量恢复
               </Button>
             )}
@@ -82,20 +97,30 @@ export function TaskBulkActions({
               <Button
                 size='sm'
                 variant='destructive'
-                onClick={() => toast.success('已批量彻底删除')}
+                disabled={busy}
+                onClick={() => {
+                  actions.batchPurge.mutate(selectedTasks.map((t) => t.id))
+                  onClear()
+                }}
               >
+                {actions.batchPurge.isPending && <LoaderCircle aria-hidden='true' className='size-3.5 animate-spin' />}
                 批量彻底删除
               </Button>
             )}
           </>
         ) : (
           <>
-            {hasPermission('task:delete') && (
+            {hasPermission('task:batch') && (
               <Button
                 size='sm'
                 variant='destructive'
-                onClick={() => toast.success('已移入回收站')}
+                disabled={busy}
+                onClick={() => {
+                  actions.batchRemove.mutate(selectedTasks.map((t) => t.id))
+                  onClear()
+                }}
               >
+                {actions.batchRemove.isPending && <LoaderCircle aria-hidden='true' className='size-3.5 animate-spin' />}
                 批量删除
               </Button>
             )}
@@ -124,7 +149,11 @@ export function TaskBulkActions({
               <Button
                 size='sm'
                 variant='outline'
-                onClick={() => toast.success('已进入任务对比工作区（§6）')}
+                onClick={() =>
+                  onCompare
+                    ? onCompare(selectedTasks)
+                    : toast.success('已进入任务对比工作区（§6）')
+                }
               >
                 任务对比
               </Button>
