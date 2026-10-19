@@ -125,6 +125,10 @@ class DeviceGroupAclRepositoryImpl(DeviceGroupAclRepository):
         from api_gateway.infrastructure.grpc_proxies import device_config_service
         return _wrap(device_config_service.remove_devices_from_group(group_id, device_ids))
 
+    def move(self, group_id, parent_id) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import device_config_service
+        return _wrap(device_config_service.move_group(group_id, parent_id))
+
 
 class DeviceMonitorAclRepositoryImpl(DeviceMonitorAclRepository):
     """device_monitor 实体 ACL 实现（INT-80 状态历史/告警）。"""

@@ -86,6 +86,9 @@ class DeviceGroupAclRepository(ABC):
     @abstractmethod
     def remove_devices(self, group_id, device_ids) -> CommandResultDTO: ...
 
+    @abstractmethod
+    def move(self, group_id, parent_id) -> CommandResultDTO: ...
+
 
 class DeviceMonitorAclRepository(ABC):
     """device_monitor 实体 ACL 接口（INT-80 状态历史/告警）。"""

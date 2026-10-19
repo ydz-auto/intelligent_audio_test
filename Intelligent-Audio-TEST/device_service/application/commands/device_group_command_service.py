@@ -41,11 +41,19 @@ class DeviceGroupCommandService:
             name = str(data.get('name') or '').strip()
             if not name:
                 return {'success': False, 'message': '分组名称不能为空', 'data': None, 'code': 400}
-            if self.repo.get_group_by_name(name):
+            parent_id = data.get('parent_id') or None
+            if parent_id is not None:
+                parent = self.repo.get_group(parent_id)
+                if not parent:
+                    return {'success': False, 'message': '父分组不存在或已删除', 'data': None, 'code': 404}
+                if parent_id == data.get('id'):
+                    return {'success': False, 'message': '父分组不能是分组自身', 'data': None, 'code': 400}
+            if self.repo.get_group_by_name(name, parent_id=parent_id):
                 return {'success': False, 'message': f"已存在名为 '{name}' 的设备分组", 'data': None, 'code': 400}
             member_ids = data.get('device_ids') or []
             group = self.repo.create_group({
                 'name': name,
+                'parent_id': parent_id,
                 'description': data.get('description') or '',
                 'group_type': self._validate_group_type(data.get('group_type')),
                 'created_by_user_id': data.get('created_by_user_id'),
@@ -70,14 +78,29 @@ class DeviceGroupCommandService:
             if not group:
                 return {'success': False, 'message': '未找到设备分组', 'data': None, 'code': 404}
             update_fields = {}
+            # 先确定目标父级（重名作用域）；未传 parent_id 则保持原父级
+            new_parent_id = group.parent_id
+            if data.get('parent_id') is not None:
+                target_parent = data['parent_id'] or None
+                if target_parent is not None:
+                    parent = self.repo.get_group(target_parent)
+                    if not parent:
+                        return {'success': False, 'message': '父分组不存在或已删除', 'data': None, 'code': 404}
+                    if target_parent == group_id:
+                        return {'success': False, 'message': '父分组不能是分组自身', 'data': None, 'code': 400}
+                new_parent_id = target_parent
+                update_fields['parent_id'] = target_parent
+            # 组名（含未改名的移动）须在目标父级作用域内唯一（决策 3 局部唯一）
+            target_name = group.name
             if data.get('name') is not None:
                 new_name = str(data['name']).strip()
                 if not new_name:
                     return {'success': False, 'message': '分组名称不能为空', 'data': None, 'code': 400}
-                existing = self.repo.get_group_by_name(new_name)
-                if existing and existing.id != group_id:
-                    return {'success': False, 'message': f"已存在名为 '{new_name}' 的设备分组", 'data': None, 'code': 400}
+                target_name = new_name
                 update_fields['name'] = new_name
+            existing = self.repo.get_group_by_name(target_name, parent_id=new_parent_id)
+            if existing and existing.id != group_id:
+                return {'success': False, 'message': f"已存在名为 '{target_name}' 的设备分组", 'data': None, 'code': 400}
             if data.get('description') is not None:
                 update_fields['description'] = data['description']
             if data.get('group_type') is not None:
@@ -105,7 +128,7 @@ class DeviceGroupCommandService:
             if not deleted:
                 return {
                     'success': False,
-                    'message': '该分组下存在设备，无法删除（可使用 cascade=true 将设备移出分组后删除）',
+                    'message': '该分组下存在设备或子分组，无法删除（可使用 cascade=true 将设备移出分组、子分组一并删除后删除）',
                     'data': None,
                     'code': 400,
                 }
@@ -114,6 +137,46 @@ class DeviceGroupCommandService:
             return {'success': True, 'message': '设备分组已删除', 'data': None, 'code': 200}
         except Exception as e:
             logger.exception("删除设备分组失败")
+            return {'success': False, 'message': str(e), 'data': None, 'code': 400}
+
+    def move(self, group_id: str, parent_id: str, updated_by_user_id=None) -> dict:
+        """移动分组到新父级（INT-832）。
+
+        parent_id 为空串/None 表示移到根。环检测查整条后代链：
+        目标父分组不能是自身或自身任意后代。
+        """
+        try:
+            group = self.repo.get_group(group_id)
+            if not group:
+                return {'success': False, 'message': '未找到设备分组', 'data': None, 'code': 404}
+            target_parent = parent_id or None
+            if target_parent is not None:
+                parent = self.repo.get_group(target_parent)
+                if not parent:
+                    return {'success': False, 'message': '父分组不存在或已删除', 'data': None, 'code': 404}
+                if target_parent == group_id:
+                    return {'success': False, 'message': '父分组不能是分组自身', 'data': None, 'code': 400}
+                descendants = self.repo.get_descendant_group_ids(group_id)
+                if target_parent in descendants:
+                    return {'success': False, 'message': '父分组不能是分组的后代分组（会形成环）',
+                            'data': None, 'code': 400}
+            # 移动到新父级后，组名须在新父级作用域内保持唯一（决策 3 局部唯一）
+            existing = self.repo.get_group_by_name(group.name, parent_id=target_parent)
+            if existing and existing.id != group_id:
+                return {'success': False,
+                        'message': f"目标父分组下已存在名为 '{group.name}' 的子分组",
+                        'data': None, 'code': 400}
+            updated = self.repo.move_group(group_id, target_parent, updated_by_user_id=updated_by_user_id)
+            self._log('INFO', f"移动设备分组: {group.name} (id={group_id}, parent_id={target_parent})",
+                      category='device')
+            return {
+                'success': True,
+                'message': '设备分组移动成功',
+                'data': updated.to_dict() if updated else None,
+                'code': 200,
+            }
+        except Exception as e:
+            logger.exception("移动设备分组失败")
             return {'success': False, 'message': str(e), 'data': None, 'code': 400}
 
     def add_devices(self, group_id: str, device_ids: list) -> dict:
