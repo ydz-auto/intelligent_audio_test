@@ -8,11 +8,9 @@ import { ShoppingCart } from 'lucide-react'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { usePickCartStore } from '@/application/tasks/cherry-pick/use-pick-cart-store'
-import { Button } from '@/components/ui/button'
 import {
   Sheet,
   SheetContent,
-  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
@@ -56,30 +54,6 @@ export function CartDrawer({
               : undefined
           }
         />
-
-        {canWrite && (
-          <SheetFooter className='border-t pt-3'>
-            <div className='flex gap-2'>
-              <Button
-                variant='outline'
-                className='flex-1'
-                onClick={() => onOpenChange(false)}
-              >
-                继续挑选
-              </Button>
-              <Button
-                className='flex-1'
-                disabled={total === 0}
-                onClick={() => {
-                  onOpenChange(false)
-                  onGoReview?.()
-                }}
-              >
-                去复核（{total}）
-              </Button>
-            </div>
-          </SheetFooter>
-        )}
       </SheetContent>
     </Sheet>
   )

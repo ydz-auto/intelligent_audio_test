@@ -141,7 +141,7 @@ export function CherryPickTab({
               )}
             </Button>
           )}
-          <PickSetPopover />
+          {canWrite && <PickSetPopover />}
         </div>
       </div>
 
