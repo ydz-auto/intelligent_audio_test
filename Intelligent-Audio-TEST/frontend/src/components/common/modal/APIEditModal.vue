@@ -92,6 +92,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue';
 import { useNotification } from '@/composables/modal/useNotification';
+import { validateProxy } from '@/utils/proxyValidation';
 import type { ProxyType } from '@/domain/model/apiConfig';
 
 interface APIEditData {
@@ -135,25 +136,10 @@ const handleClose = () => {
  * 代理配置校验（与后端同规则，前后端双校验）：
  * proxy_type 非空 → proxy_url 必填且必须带 user:pass@ 前缀；
  * proxy_type 为空 → proxy_url 必须为空。
+ * 规则与 CRUDFormModal 共用 utils/proxyValidation.ts。
  */
-const validateProxy = (): string | null => {
-  const proxyType = editableData.value.proxyType;
-  const proxyUrl = editableData.value.proxyUrl?.trim();
-  if (proxyType) {
-    if (!proxyUrl) {
-      return '已选择代理类型时，代理地址必填（格式 user:pass@host:port）';
-    }
-    if (!/^[^:@]+:[^@]+@\S+$/.test(proxyUrl)) {
-      return '代理地址必须以 user:pass@ 开头（格式 user:pass@host:port）';
-    }
-  } else if (proxyUrl) {
-    return '未选择代理类型时，代理地址必须为空';
-  }
-  return null;
-};
-
 const handleSave = () => {
-  const proxyError = validateProxy();
+  const proxyError = validateProxy(editableData.value.proxyType, editableData.value.proxyUrl);
   if (proxyError) {
     notification.warning(proxyError);
     return;
