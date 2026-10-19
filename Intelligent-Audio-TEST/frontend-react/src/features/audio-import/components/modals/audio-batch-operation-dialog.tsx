@@ -3,9 +3,10 @@
  * 批量操作类型=移动/复制/删除/重命名（删除已由浮条 batch-action delete 承载）；
  * 移动/复制需选「目标位置：选择目标文件夹」；重命名=统一规则（前缀+序号/正则替换预览）；
  * 批量修改属性=元数据/音频类型/SPL值等（音频导入功能设计文档.md:482-489）。
- * 注意：后端 batch-action 白名单当前仅 delete/export/tags（audio_command_handler
- * handle_batch_action），move/copy/rename/modify-properties 返回「不支持的操作」——
- * 本卡标记 **待 FEAT**（后端扩展），UI 保留但禁用主钮并提示缺口。
+ * INT-927：后端 batch-action 已支持 move/copy/rename/modify-properties（INT-818，
+ * 契约 api_gateway/schemas/audio.py BatchActionRequest），本卡移除「待 FEAT」禁用并透传
+ * target_folder / rename_rule / property / property_value；SPL 为设备/API 级映射无 per-audio
+ * 落点，后端明确拒绝（本期仅支持 metadata / audio-type），选择时禁用主钮并提示。
  */
 import { FolderTree } from 'lucide-react'
 import { useState } from 'react'
@@ -29,13 +30,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Info } from 'lucide-react'
 import {
+  AUDIO_TYPE_OPTIONS,
   FOLDER_TARGET_OPTIONS,
   MODIFY_PROPERTY_OPTIONS,
 } from '@/features/audio-import/constants'
 import { useAudioMutations } from '@/application/audio/useAudioList'
+import { ApiError } from '@/infrastructure/api/api-error'
 import type { AudioBulkDialogState } from '@/features/audio-import/types'
 
 export type AudioBatchOperationDialogProps = {
@@ -48,14 +49,6 @@ export type AudioBatchOperationDialogProps = {
 
 const BULK_KINDS = ['move', 'copy', 'rename', 'modify-properties'] as const
 type BulkKind = (typeof BULK_KINDS)[number]
-
-/** 后端 batch-action 暂不支持的操作（待 FEAT；audio_command_handler 白名单仅 delete/export/tags） */
-const UNSAFE_BACKEND_KINDS: ReadonlySet<BulkKind> = new Set([
-  'move',
-  'copy',
-  'rename',
-  'modify-properties',
-])
 
 const TITLES: Record<BulkKind, string> = {
   move: '批量移动音频',
@@ -71,11 +64,22 @@ const DESCRIPTIONS: Record<BulkKind, string> = {
   'modify-properties': '批量修改选中音频的属性',
 }
 
+/** 批量修改元数据的可改字段（对齐后端 _METADATA_PROPERTY_FIELDS：name/audio_type/asr_text/description/source_language） */
+const METADATA_FIELD_OPTIONS = [
+  { value: 'description', label: '描述' },
+  { value: 'source_language', label: '源语言' },
+  { value: 'asr_text', label: 'ASR 文本' },
+  { value: 'name', label: '文件名' },
+] as const
+
 export function AudioBatchOperationDialog(props: AudioBatchOperationDialogProps) {
   const { batch } = useAudioMutations()
   const [targetFolder, setTargetFolder] = useState('test_data/dry')
   const [renameRule, setRenameRule] = useState('测试音频_')
   const [property, setProperty] = useState('metadata')
+  const [metadataField, setMetadataField] = useState<string>('description')
+  const [metadataValue, setMetadataValue] = useState('')
+  const [audioTypeValue, setAudioTypeValue] = useState('dry')
   const [pending, setPending] = useState(false)
 
   const kind = props.state?.kind ?? null
@@ -84,25 +88,53 @@ export function AudioBatchOperationDialog(props: AudioBatchOperationDialogProps)
       ? kind
       : null
 
+  const showFolderTarget = bulkKind === 'move' || bulkKind === 'copy'
+  const showRenameRule = bulkKind === 'rename'
+  const showProperty = bulkKind === 'modify-properties'
+
+  /** modify-properties 的属性值：metadata → 字段字典、audio-type → 类型值 */
+  const propertyValue =
+    property === 'audio-type'
+      ? audioTypeValue
+      : property === 'metadata'
+        ? { [metadataField]: metadataValue }
+        : undefined
+
+  /** 主钮可用性：字段齐全且不触发后端明确拒绝的 SPL（无 per-audio 落点） */
+  const canConfirm =
+    bulkKind == null
+      ? false
+      : showFolderTarget
+        ? targetFolder.trim() !== ''
+        : showRenameRule
+          ? renameRule.trim() !== ''
+          : showProperty
+            ? property !== 'spl' && (property !== 'metadata' || metadataValue.trim() !== '')
+            : true
+
   const handleConfirm = async () => {
     if (!bulkKind) return
     setPending(true)
     try {
-      const result = await batch.mutateAsync({ action: bulkKind, ids: props.ids })
+      const result = await batch.mutateAsync({
+        action: bulkKind,
+        ids: props.ids,
+        targetFolder: showFolderTarget ? targetFolder : undefined,
+        renameRule: showRenameRule ? renameRule : undefined,
+        property: showProperty ? property : undefined,
+        propertyValue: showProperty ? propertyValue : undefined,
+      })
       toast.success(
         `批量操作完成：成功 ${result.successCount} 失败 ${result.total - result.successCount}`
       )
       props.onOpenChange(false)
-    } catch {
-      toast.error('批量操作失败，请重试')
+    } catch (err) {
+      // 透传后端校验文案（目标文件夹/重命名规则/属性名缺字段等 400）
+      toast.error(err instanceof ApiError ? err.userMessage : '批量操作失败，请重试')
     } finally {
       setPending(false)
     }
   }
-
-  const showFolderTarget = bulkKind === 'move' || bulkKind === 'copy'
-  const showRenameRule = bulkKind === 'rename'
-  const showProperty = bulkKind === 'modify-properties'
 
   return (
     <Dialog
@@ -121,17 +153,6 @@ export function AudioBatchOperationDialog(props: AudioBatchOperationDialogProps)
         </DialogHeader>
 
         <div className='space-y-4'>
-          {bulkKind && UNSAFE_BACKEND_KINDS.has(bulkKind) && (
-            <Alert className='py-2'>
-              <Info aria-hidden='true' className='size-4' />
-              <AlertTitle className='text-sm font-medium'>后端待支持</AlertTitle>
-              <AlertDescription>
-                批量{bulkKind === 'move' ? '移动' : bulkKind === 'copy' ? '复制' : bulkKind === 'rename' ? '重命名' : '修改属性'}
-                的后端接口尚未实现（batch-action 白名单仅 delete/export/tags），已开【FEAT】卡补齐，合入前暂不可用。
-              </AlertDescription>
-            </Alert>
-          )}
-
           {showFolderTarget && (
             <div className='space-y-2'>
               <Label htmlFor='batch-folder-target'>目标位置：选择目标文件夹</Label>
@@ -187,38 +208,88 @@ export function AudioBatchOperationDialog(props: AudioBatchOperationDialogProps)
           )}
 
           {showProperty && (
-            <div className='space-y-2'>
-              <Label htmlFor='batch-property'>修改属性</Label>
-              <Select
-                value={property}
-                onValueChange={(value) => setProperty(value ?? 'metadata')}
-              >
-                <SelectTrigger id='batch-property' size='sm' className='w-full'>
-                  <SelectValue placeholder='修改属性'>
-                    {MODIFY_PROPERTY_OPTIONS.find((o) => o.value === property)?.label ?? ''}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {MODIFY_PROPERTY_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className='space-y-3'>
+              <div className='space-y-2'>
+                <Label htmlFor='batch-property'>修改属性</Label>
+                <Select
+                  value={property}
+                  onValueChange={(value) => setProperty(value ?? 'metadata')}
+                >
+                  <SelectTrigger id='batch-property' size='sm' className='w-full'>
+                    <SelectValue placeholder='修改属性'>
+                      {MODIFY_PROPERTY_OPTIONS.find((o) => o.value === property)?.label ?? ''}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MODIFY_PROPERTY_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               {property === 'metadata' && (
-                <p className='text-muted-foreground text-xs'>
-                  批量修改元数据字段（描述/源语言/ASR 文本等）
-                </p>
+                <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+                  <div className='space-y-2'>
+                    <Label htmlFor='batch-meta-field'>元数据字段</Label>
+                    <Select
+                      value={metadataField}
+                      onValueChange={(value) => setMetadataField(value ?? 'description')}
+                    >
+                      <SelectTrigger id='batch-meta-field' size='sm' className='w-full'>
+                        <SelectValue placeholder='选择字段'>
+                          {METADATA_FIELD_OPTIONS.find((o) => o.value === metadataField)?.label ?? ''}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {METADATA_FIELD_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className='space-y-2'>
+                    <Label htmlFor='batch-meta-value'>值</Label>
+                    <Input
+                      id='batch-meta-value'
+                      value={metadataValue}
+                      onChange={(e) => setMetadataValue(e.target.value)}
+                      placeholder='批量设置到选中音频'
+                    />
+                  </div>
+                </div>
               )}
+
               {property === 'audio-type' && (
-                <p className='text-muted-foreground text-xs'>
-                  批量修改音频类型（干声/噪声/提示词音频/混合音频）
-                </p>
+                <div className='space-y-2'>
+                  <Label htmlFor='batch-audio-type-value'>音频类型</Label>
+                  <Select
+                    value={audioTypeValue}
+                    onValueChange={(value) => setAudioTypeValue(value ?? 'dry')}
+                  >
+                    <SelectTrigger id='batch-audio-type-value' size='sm' className='w-full'>
+                      <SelectValue placeholder='选择音频类型'>
+                        {AUDIO_TYPE_OPTIONS.find((o) => o.value === audioTypeValue)?.label ?? ''}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {AUDIO_TYPE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               )}
+
               {property === 'spl' && (
                 <p className='text-muted-foreground text-xs'>
-                  批量设置默认声压级（SPL 值，30-120 dB）
+                  批量设置 SPL 暂不支持（SPL 为设备/API 级映射，audios 表无 per-audio 落点），本期仅支持元数据 / 音频类型
                 </p>
               )}
             </div>
@@ -229,11 +300,7 @@ export function AudioBatchOperationDialog(props: AudioBatchOperationDialogProps)
           <Button variant='outline' size='sm' onClick={() => props.onOpenChange(false)}>
             取消
           </Button>
-          <Button
-            size='sm'
-            disabled={pending || (bulkKind != null && UNSAFE_BACKEND_KINDS.has(bulkKind))}
-            onClick={handleConfirm}
-          >
+          <Button size='sm' disabled={pending || !canConfirm} onClick={handleConfirm}>
             {pending ? '执行中...' : '确认执行'}
           </Button>
         </DialogFooter>

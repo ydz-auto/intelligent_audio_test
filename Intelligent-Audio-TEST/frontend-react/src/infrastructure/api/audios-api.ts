@@ -288,29 +288,58 @@ export type BatchActionResult = {
   filename?: string
 }
 
+/** batch-action 扩展参数（INT-818：move/copy/rename/modify-properties 四分支；snake_case 化在本层完成） */
+export type AudioBatchActionOptions = {
+  /** 批量设置标签（action=tags）时传入，替换选中音频原有标签 */
+  tags?: string[]
+  /** 批量移动/复制目标文件夹（move/copy；对应后端 target_folder，如 test_data/dry） */
+  targetFolder?: string
+  /** 批量重命名统一规则前缀（rename；对应后端 rename_rule，自动追加序号） */
+  renameRule?: string
+  /** 批量修改属性名（modify-properties：metadata / audio-type / spl） */
+  property?: string
+  /** 批量修改属性值（modify-properties：metadata 为字段字典、audio-type 为类型值） */
+  propertyValue?: unknown
+}
+
 export async function batchActionAudios(
   action: AudioBatchAction,
   ids: number[],
-  tags?: string[]
+  options?: AudioBatchActionOptions
 ): Promise<BatchActionResult> {
+  // 契约对照 api_gateway/schemas/audio.py BatchActionRequest：
+  // audio_ids / action / tags / target_folder / rename_rule / property / property_value
+  const body: Record<string, unknown> = { action, audio_ids: ids }
+  if (options?.tags && options.tags.length > 0) body.tags = options.tags
+  if (options?.targetFolder) body.target_folder = options.targetFolder
+  if (options?.renameRule) body.rename_rule = options.renameRule
+  if (options?.property) body.property = options.property
+  if (options?.propertyValue !== undefined) body.property_value = options.propertyValue
+
   // unwrapResponse: false 保留信封 message（delete/tags 的引用跳过明细以 message 呈现，
   // 后端不回逐项计数）；错误信封仍由 client 在非 2xx 时抛 ApiError。
   const envelope = await request<{
     message?: string
-    data?: { zip_base64?: string; filename?: string }
-  }>(
-    'POST',
-    '/audios/batch-action',
-    tags && tags.length > 0 ? { action, audio_ids: ids, tags } : { action, audio_ids: ids },
-    { unwrapResponse: false }
-  )
+    data?: {
+      zip_base64?: string
+      filename?: string
+      /** move/copy/rename/modify-properties 回逐项计数（INT-818） */
+      success_count?: number
+      failed_count?: number
+    }
+  }>('POST', '/audios/batch-action', body, { unwrapResponse: false })
+
+  const dto = envelope?.data
   return {
     action,
     total: ids.length,
-    // 后端 delete/tags 不回逐项计数；整批成功即按 ids.length 计（引用跳过明细以 message 呈现）
-    successCount: ids.length,
+    // 四分支后端回 success_count/failed_count 按实计；delete/tags/export 不回逐项计数，
+    // 整批成功即按 ids.length 计（引用跳过明细以 message 呈现）
+    successCount:
+      dto?.success_count ??
+      (dto?.failed_count != null ? ids.length - dto.failed_count : ids.length),
     message: envelope?.message,
-    zipBase64: envelope?.data?.zip_base64,
-    filename: envelope?.data?.filename,
+    zipBase64: dto?.zip_base64,
+    filename: dto?.filename,
   }
 }

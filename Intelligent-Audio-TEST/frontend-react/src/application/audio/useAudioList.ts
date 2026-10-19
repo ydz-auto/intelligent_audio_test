@@ -79,12 +79,31 @@ export function useAudioMutations() {
       action,
       ids,
       tags,
+      targetFolder,
+      renameRule,
+      property,
+      propertyValue,
     }: {
       action: AudioBatchAction
       ids: number[]
       /** 批量设置标签（batch-action tags）时传入，替换选中音频原有标签 */
       tags?: string[]
-    }) => batchActionAudios(action, ids, tags),
+      /** 批量移动/复制目标文件夹（batch-action move/copy） */
+      targetFolder?: string
+      /** 批量重命名统一规则前缀（batch-action rename） */
+      renameRule?: string
+      /** 批量修改属性名（batch-action modify-properties：metadata / audio-type / spl） */
+      property?: string
+      /** 批量修改属性值（batch-action modify-properties：metadata 为字段字典、audio-type 为类型值） */
+      propertyValue?: unknown
+    }) =>
+      batchActionAudios(action, ids, {
+        tags,
+        targetFolder,
+        renameRule,
+        property,
+        propertyValue,
+      }),
     onSuccess: invalidate,
   })
 
