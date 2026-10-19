@@ -143,7 +143,17 @@ function handleBellClick() {
 }
 
 async function loadNotice() {
-  noticeContent.value = await getSiteNotice()
+  // guest 等无 option:read 角色不拉取系统选项，避免 /api/option/ 403 控制台报错
+  // （INT-978）；无权限/拉取失败时展示空公告态
+  if (!authStore.hasPermission('option:read')) {
+    noticeContent.value = ''
+    return
+  }
+  try {
+    noticeContent.value = await getSiteNotice()
+  } catch {
+    noticeContent.value = ''
+  }
 }
 
 function markRead() {
