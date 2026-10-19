@@ -151,6 +151,20 @@ describe('testcases create/update 写接口（INT-922）', () => {
       })
     })
 
+    it('清引用契约：strategy_id 显式空字符串透传（null 原样保留，不 undefined 化）', async () => {
+      queueResponses(
+        jsonResponse({ success: true, code: 0, message: '测试用例更新成功' })
+      )
+      await updateTestCase('tc-1', {
+        ...SAMPLE_PAYLOAD,
+        strategyId: '',
+        strategyOverrides: null,
+      })
+      const body = JSON.parse(String(lastCall()[1].body)) as Record<string, unknown>
+      expect(body).toMatchObject({ strategy_id: '' })
+      expect(body.strategy_overrides).toBeNull()
+    })
+
     it('undefined 字段不进入请求体（exclude_none 契约对齐）', async () => {
       queueResponses(
         jsonResponse({ success: true, code: 0, message: '测试用例更新成功' })

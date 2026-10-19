@@ -451,13 +451,17 @@ export function CaseMutateDrawer({
       config.dimensions = strategyPayload.dimensions
       config.background_noise = strategyPayload.backgroundNoise
       delete config.evaluationStrategy
-      strategyId = null
+      // 后端契约：strategy_id=null 沿用既有引用；只有显式空字符串 '' 才清引用
+      // （testcase_crud_service.py _resolve_strategy_config：None 沿用、'' 清引用并返空配置）。
+      // INT-922 审计 P2：引用态用例显式「不使用」/「新建内联」必须发 ''，否则旧引用不清、
+      // 旧策略物化回填覆盖内联编辑。
+      strategyId = ''
       strategyOverrides = null
     } else if (strategyValue?.mode === 'none') {
       delete config.dimensions
       delete config.background_noise
       delete config.evaluationStrategy
-      strategyId = null
+      strategyId = ''
       strategyOverrides = null
     }
 

@@ -96,7 +96,7 @@ export interface TestCaseMutatePayload {
   config?: Record<string, unknown> | null
   algorithmParams?: unknown
   referenceParams?: unknown
-  /** INT-590：评估策略引用（写时物化；显式传 null 清除引用） */
+  /** INT-590：评估策略引用（写时物化；后端契约：显式空字符串 '' 清引用，null/缺省沿用既有引用） */
   strategyId?: string | null
   strategyOverrides?: Record<string, unknown> | null
 }
