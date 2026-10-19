@@ -16,9 +16,20 @@
       </div>
     </div>
 
-    <p v-if="error" class="error-msg">{{ error }}</p>
+    <p v-if="error && !loadFailed" class="error-msg">{{ error }}</p>
     <p v-if="notice" class="success-msg">{{ notice }}</p>
 
+    <!-- INT-900：后端 500 / 非 JSON 响应时友好降级（不直出 client 层原始 JS 错误串），固定文案 + 重试 -->
+    <div v-if="loadFailed" class="load-error-state">
+      <i class="fas fa-exclamation-triangle load-error-icon" aria-hidden="true"></i>
+      <h4 class="load-error-title">加载失败</h4>
+      <p class="load-error-desc">{{ SERVER_UNAVAILABLE_COPY }}</p>
+      <button type="button" class="btn btn-primary" @click="load">
+        <i class="fas fa-sync-alt"></i>重试
+      </button>
+    </div>
+
+    <template v-else>
     <div v-if="formVisible" class="form-panel">
       <h3>{{ editingId ? '编辑提供方' : '新建提供方' }}</h3>
       <div class="discovery-row">
@@ -136,12 +147,14 @@
         </tr>
       </tbody>
     </table>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { authPort } from '@/composables/auth/authPort'
+import { SERVER_UNAVAILABLE_COPY, isServerFailure, friendlyApiError } from '@/views/SystemSettings/errorState'
 import type { OAuthProviderDetail } from '@/domain/model/auth'
 import { useModalControl } from '@/composables/modal/useModal'
 import { MODAL_TYPES } from '@/composables/modal/constants'
@@ -153,6 +166,7 @@ const loading = ref(false)
 const saving = ref(false)
 const discovering = ref(false)
 const discoveryUrl = ref('')
+const loadFailed = ref(false)
 const modalControl = useModalControl()
 
 const formVisible = ref(false)
@@ -177,10 +191,13 @@ const form = reactive({
 async function load() {
   loading.value = true
   error.value = ''
+  loadFailed.value = false
   try {
     providers.value = await authPort.listOAuthProviders()
   } catch (e: any) {
-    error.value = e?.detail || e?.message || '加载提供方列表失败'
+    // INT-900：后端 500 / 非 JSON 响应不直出 client 层原始 JS 错误串，走友好错误态
+    loadFailed.value = isServerFailure(e)
+    error.value = loadFailed.value ? '' : friendlyApiError(e, '加载提供方列表失败')
   } finally {
     loading.value = false
   }
@@ -255,7 +272,7 @@ async function runDiscovery() {
     }
     notice.value = `Discovery 完成（${result.wellKnownUrl}），已填充端点配置`
   } catch (e: any) {
-    error.value = e?.detail || e?.message || 'Discovery 拉取失败'
+    error.value = friendlyApiError(e, 'Discovery 拉取失败')
   } finally {
     discovering.value = false
   }
@@ -283,7 +300,7 @@ async function save() {
     closeForm()
     await load()
   } catch (e: any) {
-    error.value = e?.detail || e?.message || '保存失败'
+    error.value = friendlyApiError(e, '保存失败')
   } finally {
     saving.value = false
   }
@@ -309,7 +326,7 @@ async function remove(p: OAuthProviderDetail) {
     notice.value = '删除成功'
     await load()
   } catch (e: any) {
-    error.value = e?.detail || e?.message || '删除失败'
+    error.value = friendlyApiError(e, '删除失败')
   }
 }
 
@@ -475,5 +492,37 @@ onMounted(load)
   color: var(--success-dark);
   font-size: 14px;
   margin-bottom: 10px;
+}
+
+/* INT-900：后端 500 友好错误态（固定文案 + 重试按钮，不直出原始 JS 错误串） */
+.load-error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xl);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.load-error-icon {
+  font-size: 32px;
+  color: var(--destructive);
+}
+
+.load-error-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.load-error-desc {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary);
 }
 </style>

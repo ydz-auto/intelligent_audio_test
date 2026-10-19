@@ -15,9 +15,20 @@
       </div>
     </div>
 
-    <p v-if="error" class="error-msg">{{ error }}</p>
+    <p v-if="error && !loadFailed" class="error-msg">{{ error }}</p>
     <p v-if="notice" class="success-msg">{{ notice }}</p>
 
+    <!-- INT-900：后端 500 / 非 JSON 响应时友好降级（不直出 client 层原始 JS 错误串），固定文案 + 重试 -->
+    <div v-if="loadFailed" class="load-error-state">
+      <i class="fas fa-exclamation-triangle load-error-icon" aria-hidden="true"></i>
+      <h4 class="load-error-title">加载失败</h4>
+      <p class="load-error-desc">{{ SERVER_UNAVAILABLE_COPY }}</p>
+      <button type="button" class="btn btn-primary" @click="load">
+        <i class="fas fa-sync-alt btn-icon"></i>重试
+      </button>
+    </div>
+
+    <template v-else>
     <div class="card">
       <div class="card-body">
         <div class="table-container">
@@ -72,6 +83,7 @@
         </div>
       </div>
     </div>
+    </template>
 
     <!-- 新建/编辑角色 -->
     <BasicModal :visible="formVisible" :title="editingId ? '编辑角色' : '新建角色'" :width="'720px'"
@@ -135,6 +147,7 @@ import BasicModal from '@/components/common/modal/BasicModal.vue'
 import { rolesPort } from '@/composables/system/rolesPort'
 import { useModalControl } from '@/composables/modal/useModal'
 import { MODAL_TYPES } from '@/composables/modal/constants'
+import { SERVER_UNAVAILABLE_COPY, isServerFailure, friendlyApiError } from '../errorState'
 import type { SystemRole, PermissionItem } from '@/domain'
 
 const modalControl = useModalControl()
@@ -145,15 +158,19 @@ const loading = ref(false)
 const saving = ref(false)
 const error = ref('')
 const notice = ref('')
+const loadFailed = ref(false)
 
 async function load() {
   loading.value = true
   error.value = ''
+  loadFailed.value = false
   try {
     const list = await rolesPort.getAll()
     roles.value = list.roles
   } catch (e: any) {
-    error.value = e?.detail || e?.message || '加载角色列表失败'
+    // INT-900：后端 500 / 非 JSON 响应不直出 client 层原始 JS 错误串，走友好错误态
+    loadFailed.value = isServerFailure(e)
+    error.value = loadFailed.value ? '' : friendlyApiError(e, '加载角色列表失败')
   } finally {
     loading.value = false
   }
@@ -234,7 +251,7 @@ async function save() {
     closeForm()
     await load()
   } catch (e: any) {
-    error.value = e?.detail || e?.message || '保存失败'
+    error.value = friendlyApiError(e, '保存失败')
   } finally {
     saving.value = false
   }
@@ -266,7 +283,7 @@ async function confirmDelete(role: SystemRole) {
     notice.value = '角色已删除'
     await load()
   } catch (e: any) {
-    error.value = e?.detail || e?.message || '删除失败'
+    error.value = friendlyApiError(e, '删除失败')
   }
 }
 
@@ -364,4 +381,36 @@ onMounted(() => {
   font-size: 14px;
   margin-bottom: var(--spacing-sm);
 }
+
+/* INT-900：后端 500 友好错误态（固定文案 + 重试按钮，不直出原始 JS 错误串） */
+.load-error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xl);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  text-align: center;
+}
+
+.load-error-icon {
+  font-size: 32px;
+  color: var(--destructive);
+}
+
+.load-error-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.load-error-desc {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
 </style>

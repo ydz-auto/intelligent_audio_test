@@ -62,7 +62,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../../store/authStore'
 import { authPort } from '../../composables/auth/authPort'
-import { AuthErrorCode } from '../../domain/enums'
+import { AuthErrorCode, AuthMode, getEffectiveAuthMode } from '../../domain/enums'
 import type { OAuthProvider } from '../../domain/model/auth'
 import { sanitizeRedirect } from '../../utils/redirect'
 
@@ -120,10 +120,14 @@ onMounted(async () => {
     }
   }
   // 已启用提供方列表（公开端点；未配置时隐藏按钮区）
-  try {
-    oauthProviders.value = await authPort.listPublicOAuthProviders()
-  } catch {
-    oauthProviders.value = []
+  // INT-900：AUTH_MODE=off 时 OAuth 登录无意义且后端该端点 500，跳过请求避免原始错误串；
+  // 其余模式请求失败时友好降级（隐藏按钮区，不直出错误）
+  if (getEffectiveAuthMode() !== AuthMode.OFF) {
+    try {
+      oauthProviders.value = await authPort.listPublicOAuthProviders()
+    } catch {
+      oauthProviders.value = []
+    }
   }
 })
 </script>
