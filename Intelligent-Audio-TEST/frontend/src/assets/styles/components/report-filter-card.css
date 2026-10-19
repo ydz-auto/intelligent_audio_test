@@ -32,26 +32,36 @@
 .report-filter-card .filter-row {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-start;
   gap: 20px;
   margin-bottom: 20px;
   width: 100%;
 }
 
 .report-filter-card .filter-item {
-  flex: 1;
-  min-width: 280px;
-  width: 100%;
+  /* INT-896 徽章筛选横排：标题与徽章同行，多个筛选并排 flex-flow 换行（对齐 Tasks.vue .filter-row） */
+  display: flex;
+  flex-flow: row wrap;
+  align-items: center;
+  gap: 10px 12px;
+  /* 定比 flex-basis（非 content）——徽章多时按内容计算的基础宽会超出行宽导致各占整行 */
+  flex: 1 1 40%;
+  min-width: 340px;
+  max-width: 100%;
+  width: auto;
+  box-sizing: border-box;
 }
 
 .report-filter-card .filter-label {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-weight: 600;
   color: var(--color-slate-500);
   font-size: 14px;
-  margin-bottom: 12px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  margin-bottom: 0;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .report-filter-card .filter-label i {
@@ -86,6 +96,24 @@
   height: 36px;
   width: 100%;
   box-sizing: border-box;
+}
+
+/* INT-896 横排：筛选框内搜索框与标题/徽章同行，定宽而非满宽 */
+.report-filter-card .filter-item .search-box-flex {
+  flex: 0 1 180px;
+  min-width: 140px;
+  max-width: 200px;
+  margin-bottom: 0;
+}
+
+/* 名称搜索项（无徽章）：搜索框占满剩余宽度 */
+.report-filter-card .filter-item.case-name-filter-section .search-box-flex,
+.report-filter-card .filter-item .filter-input {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  margin-bottom: 0;
 }
 
 .report-filter-card .search-box-flex:focus-within {
@@ -144,11 +172,12 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 12px;
-  min-height: 60px;
-  width: 100%;
+  padding: 0;
+  min-height: 0;
+  flex: 1 1 0;
+  width: auto;
   box-sizing: border-box;
-  background: var(--color-white);
+  background: transparent;
   border: none;
   border-radius: var(--border-radius-md);
 }
@@ -191,11 +220,12 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 12px;
-  min-height: 60px;
-  width: 100%;
+  padding: 0;
+  min-height: 0;
+  flex: 1 1 0;
+  width: auto;
   box-sizing: border-box;
-  background: var(--color-white);
+  background: transparent;
   border: none;
   border-radius: var(--border-radius-md);
 }
@@ -243,8 +273,9 @@
   align-items: center;
   justify-content: center;
   gap: 12px;
-  margin-top: 12px;
-  padding-top: 12px;
+  flex-basis: 100%;
+  margin-top: 4px;
+  padding-top: 0;
   border-top: none;
 }
 
@@ -342,16 +373,36 @@
   .report-filter-card .filter-row {
     flex-direction: column;
   }
-  
+
   .report-filter-card .filter-item {
+    flex-direction: column;
+    align-items: stretch;
     width: 100%;
     min-width: unset;
   }
-  
+
+  .report-filter-card .filter-item .search-box-flex,
+  .report-filter-card .filter-item .filter-input {
+    flex: 1 1 auto;
+    width: 100%;
+    max-width: none;
+  }
+
+  .metric-selection {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .metric-selection .metric-search-box {
+    flex: 1 1 auto;
+    width: 100%;
+    max-width: none;
+  }
+
   .report-filter-card .filter-buttons {
     flex-direction: column;
   }
-  
+
   .report-filter-card .btn {
     width: 100%;
     justify-content: center;
@@ -365,11 +416,12 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 12px;
-  min-height: 80px;
-  width: 100%;
+  padding: 0;
+  min-height: 0;
+  flex: 1 1 0;
+  width: auto;
   box-sizing: border-box;
-  background: var(--color-white);
+  background: transparent;
   border: none;
   border-radius: var(--border-radius-md);
 }
@@ -412,11 +464,12 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 12px;
-  min-height: 80px;
-  width: 100%;
+  padding: 0;
+  min-height: 0;
+  flex: 1 1 0;
+  width: auto;
   box-sizing: border-box;
-  background: var(--color-white);
+  background: transparent;
   border: none;
   border-radius: var(--border-radius-md);
 }
@@ -535,15 +588,44 @@
 .metric-selection .metric-search-box {
   display: flex;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 0;
   border: 1px solid var(--color-slate-200) ;
   border-radius: var(--border-radius-md);
   padding: 0 12px;
   background-color: var(--color-white);
   transition: all 0.2s ease;
   height: 36px;
-  width: 100%;
+  flex: 0 1 180px;
+  min-width: 140px;
+  max-width: 200px;
   box-sizing: border-box;
+}
+
+/* INT-896 横排：评估维度选择区与筛选卡片一致，标题/搜索/徽章同行（覆盖 comparison-common.css 竖排基线） */
+.metric-selection {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+}
+
+.metric-selection-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+
+.metric-tags {
+  flex: 1 1 auto;
+}
+
+.metric-selection .metric-pagination {
+  flex-basis: 100%;
+  margin-top: 4px;
+  padding-top: 0;
+  border-top: none;
 }
 
 .metric-selection .metric-search-box:focus-within {
@@ -602,8 +684,9 @@
   align-items: center;
   justify-content: center;
   gap: 12px;
-  margin-top: 12px;
-  padding-top: 12px;
+  flex-basis: 100%;
+  margin-top: 4px;
+  padding-top: 0;
   border-top: none;
 }
 
@@ -613,14 +696,16 @@
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  width: 100%;
+  flex: 1 1 0;
+  width: auto;
 }
 
 .report-filter-card .sort-filter-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  width: 100%;
+  flex: 1 1 auto;
+  width: auto;
   flex-wrap: nowrap;
 }
 

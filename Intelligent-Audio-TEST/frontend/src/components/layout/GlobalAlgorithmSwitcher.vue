@@ -87,7 +87,7 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 34px;
+  height: var(--control-height);
   padding: 0 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);

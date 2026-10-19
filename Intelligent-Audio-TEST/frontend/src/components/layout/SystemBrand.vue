@@ -35,8 +35,8 @@ onMounted(async () => {
   height: 100%;
 }
 .system-brand__icon {
-  width: 36px;
-  height: 36px;
+  width: var(--control-height);
+  height: var(--control-height);
   border-radius: var(--radius-10);
   background: var(--accent);
   display: inline-flex;
