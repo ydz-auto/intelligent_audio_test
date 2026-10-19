@@ -247,6 +247,12 @@ class ReportCommandHandler:
             if normalized is None:
                 raise ValueError('summary 字段格式错误，应为对象')
             fields['summary'] = normalized
+        # INT-466：可见性切换（None 不更新；值校验对齐 Visibility 二值）
+        if command.visibility is not None:
+            from shared.models.common_enums import Visibility
+            if command.visibility not in (Visibility.SHARED.value, Visibility.PRIVATE.value):
+                raise ValueError('visibility 仅支持 shared/private')
+            fields['visibility'] = command.visibility
         if not fields:
             return False
         return self.repository.update_report_fields(command.report_id, fields)

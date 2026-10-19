@@ -422,6 +422,8 @@ class AuditLogCategory(str, Enum):
     BENCHMARK = 'benchmark'
     # 设备管理审计（INT-80：分组/操作/批量端点）
     DEVICE = 'device'
+    # 数据可见性审计（INT-466：PRIVATE_RESOURCE_ACCESS / 可见性切换）
+    VISIBILITY = 'visibility'
 
 
 AUDIT_LOG_CATEGORIES = frozenset(item.value for item in AuditLogCategory)

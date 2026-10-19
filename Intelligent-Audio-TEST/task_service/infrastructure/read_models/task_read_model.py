@@ -198,7 +198,8 @@ class TaskReadModel(
                      execution_status: Optional[str] = None,
                      merge_type: Optional[str] = None,
                      stats: bool = False,
-                     task_type: Optional[str] = None) -> Dict[str, Any]:
+                     task_type: Optional[str] = None,
+                     visibility: Optional[str] = None) -> Dict[str, Any]:
         """网关 get_all 使用的查询逻辑：含 Report 关联。
 
         device_type（可选）：按用例级被测设备类型过滤（任务下存在该类型用例）。
@@ -219,6 +220,7 @@ class TaskReadModel(
         task_type（可选，INT-273）：按派生任务类型过滤（api/e2e/mixed；口径与
             /tasks/stats type_counts 一致——api=无物理设备用例、e2e=含物理且无
             API 设备用例、mixed=物理与 API 设备用例兼有）。
+        visibility（可选，INT-466）：可见性筛选（shared/private；None=全部）。
         """
         from datetime import datetime
         from sqlalchemy import select as sa_select, or_
@@ -249,6 +251,9 @@ class TaskReadModel(
             _vis_uid, _vis_admin = visibility_identity(user_id)
             query = query.filter(visible_condition(
                 Task.created_by_user_id, Task.visibility, _vis_uid, _vis_admin))
+            # INT-466：可见性筛选（?visibility=shared|private；None 不追加）
+            if visibility:
+                query = query.filter(Task.visibility == visibility)
             if status:
                 # INT-301 F1 兼容：历史入口的原始 Task.status 过滤保留原文匹配
                 # （evaluating 等过渡态值仍按原始态命中，行为不变；执行域筛选
@@ -469,6 +474,9 @@ class TaskReadModel(
                         'deleted': True,
                         'deleted_at': task.deleted_at.isoformat() if task.deleted_at else None,
                         'deleted_by_user_id': task.deleted_by_user_id,
+                        # INT-423/466：资源可见性与归属人（网关路由层 owner 校验 / 前端徽标）
+                        'visibility': task.visibility,
+                        'created_by_user_id': task.created_by_user_id,
                         'created_at': task.created_at.isoformat() if task.created_at else None,
                     })
                     continue
@@ -527,6 +535,9 @@ class TaskReadModel(
                     'updated_at': task.updated_at.isoformat() if task.updated_at else None,
                     'is_favorite': str(task.id) in favorite_ids,
                     'is_cherry_pick': task.id in cherry_pick_container_ids,
+                    # INT-423/466：资源可见性与归属人（网关路由层 owner 校验 / 前端徽标）
+                    'visibility': task.visibility,
+                    'created_by_user_id': task.created_by_user_id,
                     # INT-577：合并方式（whole=整任务合并 / picked=结果挑选）+ 来源任务·结果计数
                     # （供列表次行「来源 {n} 任务 · 结果 {m} 条」与统计徽章）
                     'merge_type': (
@@ -624,6 +635,9 @@ class TaskReadModel(
             'processed_cases': processed,
             'progress_percent': percent,
             'created_by': task.created_by,
+            # INT-423/466：资源可见性与归属人
+            'visibility': task.visibility,
+            'created_by_user_id': task.created_by_user_id,
             'created_at': task.created_at.isoformat() if task.created_at else None,
             'updated_at': task.updated_at.isoformat() if task.updated_at else None,
             'started_at': task.started_at.isoformat() if task.started_at else None,

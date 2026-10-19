@@ -214,4 +214,7 @@ class TaskDetailReadModelMixin:
             'labs': labs,
             'created_at': task.created_at.isoformat() if task.created_at else None,
             'updated_at': task.updated_at.isoformat() if task.updated_at else None,
+            # INT-423/466：资源可见性与归属人（网关路由层 owner 校验 / 前端徽标）
+            'visibility': task.visibility,
+            'created_by_user_id': task.created_by_user_id,
         }

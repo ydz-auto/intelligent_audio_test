@@ -355,14 +355,16 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
             return self._resp(False, str(e))
 
     def UpdateTestCaseGroup(self, request, context=None):
-        """更新 TestCaseGroup（名称/描述/算法类型）
+        """更新 TestCaseGroup（名称/描述/算法类型/可见性）
 
         若 name 非空且与当前不同，会先检查名称冲突。
+        visibility（INT-466）：空串不更新，非空时校验二值并落库。
         """
         try:
             item = testcase_repository.update_group_and_commit(
                 request.group_id, request.name or '', request.description or '',
                 request.algorithm_type or '',
+                visibility=request.visibility or None,
             )
             return self._resp(True, '', item)
         except ValueError as e:

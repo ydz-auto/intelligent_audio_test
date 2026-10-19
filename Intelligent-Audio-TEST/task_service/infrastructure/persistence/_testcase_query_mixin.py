@@ -73,12 +73,14 @@ class TestCaseQueryMixin:
         only_deleted: bool = False,
         user_id: int = None,
         lab_ids: List[int] = None,
+        visibility: str = None,
     ):
         """分页查询测试用例（带 group/tags 预加载）。
 
         favorite（INT-141）：仅当前用户收藏；only_deleted（INT-141）：仅回收站。
         test_type（INT-193）：执行口径 api/e2e，配置形态派生过滤（Python 侧）。
         lab_ids（INT-539）：按实验室过滤（含通用用例；None/空 = 不过滤）。
+        visibility（INT-466）：可见性筛选（shared/private；None 不追加）。
         """
         session = get_db_session()
         # INT-228：同事务批量创建的用例 created_at 全同（Postgres now() 为事务级
@@ -92,6 +94,9 @@ class TestCaseQueryMixin:
         _vis_uid, _vis_admin = visibility_identity(user_id)
         query = query.filter(visible_condition(
             TestCase.created_by_user_id, TestCase.visibility, _vis_uid, _vis_admin))
+        # INT-466：可见性筛选（?visibility=shared|private；None 不追加）
+        if visibility:
+            query = query.filter(TestCase.visibility == visibility)
 
         # INT-141：回收站模式查软删除项，否则按 include_deleted 语义
         if only_deleted:
@@ -187,6 +192,7 @@ class TestCaseQueryMixin:
         only_deleted: bool = False,
         user_id: int = None,
         lab_ids: List[int] = None,
+        visibility: str = None,
     ) -> List[TestCase]:
         """按标签 ID 列表查询关联的测试用例（带 group/tags 预加载）。
 
@@ -195,6 +201,7 @@ class TestCaseQueryMixin:
         test_type（INT-193）：执行口径 api/e2e，Python 侧派生过滤（无分页诉求，
         标签视图分页在标签维度）。
         lab_ids（INT-539）：按实验室过滤（含通用用例；None/空 = 不过滤）。
+        visibility（INT-466）：可见性筛选（shared/private；None 不追加）。
         """
         session = get_db_session()
         tc_query = self._query_testcases_with_preload(session) \
@@ -204,6 +211,9 @@ class TestCaseQueryMixin:
         _vis_uid, _vis_admin = visibility_identity(user_id)
         tc_query = tc_query.filter(visible_condition(
             TestCase.created_by_user_id, TestCase.visibility, _vis_uid, _vis_admin))
+        # INT-466：可见性筛选（?visibility=shared|private；None 不追加）
+        if visibility:
+            tc_query = tc_query.filter(TestCase.visibility == visibility)
 
         # INT-215：回收站模式查软删除项，否则按 include_deleted 语义
         if only_deleted:

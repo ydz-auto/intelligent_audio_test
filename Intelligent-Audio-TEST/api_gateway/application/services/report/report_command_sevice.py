@@ -29,6 +29,17 @@ class ReportCommandService:
 
     @staticmethod
     def delete(report_id):
+        # INT-466：admin 删除私有报告落 PRIVATE_RESOURCE_ACCESS 审计（旁路预取，仅 admin 取数）
+        from api_gateway.application.services.report.report_query_sevice import (
+            ReportQueryService,
+        )
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_write,
+            preload_private_state,
+        )
+        pre_data = preload_private_state(
+            lambda: (ReportQueryService.get_one(report_id)[0].get('data') or {}))
+
         try:
             stub = report_config_service.stub
             resp = stub.DeleteReport(report_pb.DeleteReportRequest(
@@ -36,6 +47,7 @@ class ReportCommandService:
             if not resp.success:
                 return error_response(resp.message or '删除失败')
             data = _loads(resp.data, {}) or {}
+            maybe_audit_private_write('report', report_id, 'delete', pre_data)
             return success_response(data)
         except Exception as e:
             return error_response(f'删除报告失败: {str(e)}')
@@ -52,6 +64,17 @@ class ReportCommandService:
         except Exception as e:
             return error_response(f'参数错误: {str(e)}', 400)
 
+        # INT-466：admin 修改私有报告落 PRIVATE_RESOURCE_ACCESS 审计（旁路预取，仅 admin 取数）
+        from api_gateway.application.services.report.report_query_sevice import (
+            ReportQueryService,
+        )
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_write,
+            preload_private_state,
+        )
+        pre_data = preload_private_state(
+            lambda: (ReportQueryService.get_one(report_id)[0].get('data') or {}))
+
         try:
             stub = report_config_service.stub
             resp = stub.UpdateReport(report_pb.UpdateReportRequest(
@@ -60,6 +83,7 @@ class ReportCommandService:
             if not resp.success:
                 return error_response(resp.message or '更新失败')
             data = _loads(resp.data, {}) or {}
+            maybe_audit_private_write('report', report_id, 'update', pre_data)
             return success_response(data)
         except Exception as e:
             return error_response(f'更新报告失败: {str(e)}')
@@ -70,6 +94,17 @@ class ReportCommandService:
 
     @staticmethod
     def publish(report_id):
+        # INT-466：admin 发布私有报告（状态修改）落 PRIVATE_RESOURCE_ACCESS 审计（旁路预取，仅 admin 取数）
+        from api_gateway.application.services.report.report_query_sevice import (
+            ReportQueryService,
+        )
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_write,
+            preload_private_state,
+        )
+        pre_data = preload_private_state(
+            lambda: (ReportQueryService.get_one(report_id)[0].get('data') or {}))
+
         try:
             stub = report_config_service.stub
             resp = stub.UpdateReportStatus(report_pb.UpdateReportStatusRequest(
@@ -78,6 +113,7 @@ class ReportCommandService:
             if not resp.success:
                 return error_response(resp.message or '发布失败')
             data = _loads(resp.data, {}) or {}
+            maybe_audit_private_write('report', report_id, 'update', pre_data)
             return success_response(data)
         except Exception as e:
             return error_response(f'发布报告失败: {str(e)}')
@@ -96,6 +132,20 @@ class ReportCommandService:
         except Exception as e:
             return error_response(f'参数错误: {str(e)}', 400)
 
+        # INT-466：admin 批量删除私有报告落 PRIVATE_RESOURCE_ACCESS 审计（旁路预取，仅 admin 取数）
+        from api_gateway.application.services.report.report_query_sevice import (
+            ReportQueryService,
+        )
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_write,
+            preload_private_state,
+        )
+        pre_items = {
+            int(i): preload_private_state(
+                lambda rid=int(i): (ReportQueryService.get_one(rid)[0].get('data') or {}))
+            for i in ids
+        }
+
         try:
             stub = report_config_service.stub
             resp = stub.BatchActionReports(report_pb.BatchActionReportsRequest(
@@ -107,6 +157,8 @@ class ReportCommandService:
             if not resp.success:
                 return error_response(resp.message or '批量删除失败')
             data = _loads(resp.data, {}) or {}
+            for rid, pre_data in pre_items.items():
+                maybe_audit_private_write('report', rid, 'delete', pre_data)
             return success_response(data)
         except Exception as e:
             return error_response(f'批量删除报告失败: {str(e)}')

@@ -147,7 +147,7 @@ class _TaskConfigProxy:
                    algorithm_type=None, search=None, start_date=None, end_date=None,
                    favorite=False, deleted=False, evaluation_status=None, merged=False,
                    cherry_pick=False, execution_status=None, merge_type=None,
-                   stats=False, task_type=None):
+                   stats=False, task_type=None, visibility=None):
         """任务列表（device_type 经 proto type 字段承载：按用例级被测设备类型过滤）
 
         favorite/deleted（INT-141）：收藏/回收站过滤；操作人 user_id 经
@@ -163,6 +163,7 @@ class _TaskConfigProxy:
         恒返回 stats 块，此处保留签名占位。
         task_type（INT-273）：按派生任务类型过滤（api/e2e/mixed；口径与
         /tasks/stats type_counts 一致——用例级 device_type 派生）。
+        visibility（INT-466）：可见性筛选（shared/private；空=全部）。
         """
         from shared.proto import task_service_pb2 as task_pb
 
@@ -184,6 +185,7 @@ class _TaskConfigProxy:
                 cherry_pick=bool(cherry_pick),
                 execution_status=execution_status or '',
                 task_type=task_type or '',
+                visibility=visibility or '',
             ))
             return self._resp(resp)
 
@@ -613,7 +615,8 @@ class _TestCaseConfigProxy:
     def list_testcases(self, page=1, per_page=10, keyword=None, tag=None,
                        group_id=None, algorithm_type=None, test_type=None,
                        view=None, include_deleted=False, dimension_id=None,
-                       favorite=False, only_deleted=False, lab_ids=None):
+                       favorite=False, only_deleted=False, lab_ids=None,
+                       visibility=None):
         from shared.proto import task_service_pb2 as task_pb
 
         def _call():
@@ -635,6 +638,8 @@ class _TestCaseConfigProxy:
                 only_deleted=bool(only_deleted),
                 # INT-539：按实验室过滤（含通用用例；None/空 = 不过滤）
                 lab_ids=[int(i) for i in (lab_ids or [])],
+                # INT-466：可见性筛选（shared/private；空=全部）
+                visibility=visibility or '',
             ))
             return self._resp(resp)
 

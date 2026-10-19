@@ -10,6 +10,8 @@ from api_gateway.routes._response import to_response
 from api_gateway.application.services.auth.dependencies import require_permission
 from api_gateway.application.services.report.report_query_sevice import ReportQueryService
 from api_gateway.application.services.report.report_command_sevice import ReportCommandService
+from api_gateway.application.services.visibility.visibility_service import VisibilityService
+from api_gateway.schemas.visibility import VisibilityUpdateRequest
 
 router = APIRouter()
 
@@ -70,6 +72,12 @@ def generate_statistics_report(_: None = require_permission('report:read')):
 @router.get('/{report_id}')
 def get_one(report_id: int, _: None = require_permission('report:read')):
     return _handle(ReportQueryService.get_one(report_id))
+
+# INT-466：报告可见性切换（资源:share + owner 校验，admin 豁免）
+@router.patch('/{report_id}/visibility')
+def update_visibility(report_id: int, body: VisibilityUpdateRequest,
+                      _: None = require_permission('report:share')):
+    return _handle(VisibilityService.update_report_visibility(report_id, body.visibility))
 
 
 @router.delete('/{report_id}')

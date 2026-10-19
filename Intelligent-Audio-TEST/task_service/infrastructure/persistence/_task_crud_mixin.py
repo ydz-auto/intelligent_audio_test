@@ -482,8 +482,10 @@ class TaskCrudMixin:
     # ========== task_crud_service 兼容方法 ==========
 
     def update_task(self, task_id: int, name: str = None,
-                    description: str = None) -> bool:
+                    description: str = None, visibility: str = None) -> bool:
         """更新任务名称/描述（updated_by_user_id 记录操作人，INT-141）。
+
+        visibility（INT-466）：可见性切换（shared/private；None 不更新）。
 
         Returns:
             True 如果任务存在且已更新；False 如果任务不存在。
@@ -498,6 +500,8 @@ class TaskCrudMixin:
                 task.name = name
             if description is not None:
                 task.description = description
+            if visibility is not None:
+                task.visibility = visibility
             task.updated_by_user_id = get_current_user_id()
             task.updated_at = datetime.now(_UTC_PLUS_8)
             session.commit()

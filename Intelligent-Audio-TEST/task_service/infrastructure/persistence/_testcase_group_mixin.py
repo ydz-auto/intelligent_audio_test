@@ -175,6 +175,9 @@ class TestCaseGroupMixin:
             'name': r.name,
             'description': getattr(r, 'description', ''),
             'algorithm_type': getattr(r, 'algorithm_type', ''),
+            # INT-423/466：资源可见性与归属人（网关路由层 owner 校验 / 前端徽标）
+            'visibility': getattr(r, 'visibility', 'shared'),
+            'created_by_user_id': getattr(r, 'created_by_user_id', None),
         }
 
     def get_group_by_id_as_dict(self, group_id: str) -> Optional[dict]:
@@ -242,12 +245,14 @@ class TestCaseGroupMixin:
 
     def update_group_and_commit(self, group_id: str, name: str = '',
                                 description: str = '',
-                                algorithm_type: str = '') -> dict:
+                                algorithm_type: str = '',
+                                visibility: str = None) -> dict:
         """更新 TestCaseGroup 并 commit（返回 dict）。
 
         若 name 非空且与当前不同，会先检查名称冲突。
         raise ValueError 当分组不存在或名称冲突时。
         INT-423：私有分组非 owner 更新抛 VisibilityDenied（写操作 403 语义）。
+        visibility（INT-466）：None 不更新；非 None 时校验二值后落库。
         """
         from shared.infrastructure.visibility_filter import check_visible
         from task_service.infrastructure.visibility_context import visibility_identity
@@ -265,6 +270,11 @@ class TestCaseGroupMixin:
                 r.description = description
             if algorithm_type:
                 r.algorithm_type = algorithm_type
+            if visibility is not None:
+                from shared.models.common_enums import Visibility
+                if visibility not in (Visibility.SHARED.value, Visibility.PRIVATE.value):
+                    raise ValueError('visibility 仅支持 shared/private')
+                r.visibility = visibility
 
             r.updated_by_user_id = get_current_user_id()
             r.updated_at = _now()

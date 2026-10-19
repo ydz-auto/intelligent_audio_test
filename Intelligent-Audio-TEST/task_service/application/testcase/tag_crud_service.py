@@ -105,6 +105,13 @@ class TagCrudService:
                 cat.color = data['color']
             if data.get('sort_order') is not None:
                 cat.sort_order = data['sort_order']
+            # INT-466：可见性切换（共享写入口，None 不更新；值校验对齐 Visibility 二值）
+            if data.get('visibility') is not None:
+                from shared.models.common_enums import Visibility
+                vis = data['visibility']
+                if vis not in (Visibility.SHARED.value, Visibility.PRIVATE.value):
+                    return {'success': False, 'message': 'visibility 仅支持 shared/private', 'code': 400}
+                cat.visibility = vis
 
             from shared.infrastructure.user_context import get_current_user_id
             from shared.utils.query_utils import now_cst
@@ -247,6 +254,13 @@ class TagCrudService:
                 tag.color = data['color']
             if data.get('category_id') is not None:
                 tag.category_id = category_id if category_id else None
+            # INT-466：可见性切换（共享写入口，None 不更新；值校验对齐 Visibility 二值）
+            if data.get('visibility') is not None:
+                from shared.models.common_enums import Visibility
+                vis = data['visibility']
+                if vis not in (Visibility.SHARED.value, Visibility.PRIVATE.value):
+                    return {'success': False, 'message': 'visibility 仅支持 shared/private', 'code': 400}
+                tag.visibility = vis
 
             from shared.infrastructure.user_context import get_current_user_id
             from shared.utils.query_utils import now_cst
@@ -540,6 +554,9 @@ class TagCrudService:
             'tag_count': tag_count,
             'created_at': cat.created_at.isoformat() if cat.created_at else None,
             'updated_at': cat.updated_at.isoformat() if cat.updated_at else None,
+            # INT-423/466：资源可见性与归属人（网关路由层 owner 校验 / 前端徽标）
+            'visibility': getattr(cat, 'visibility', 'shared'),
+            'created_by_user_id': getattr(cat, 'created_by_user_id', None),
         }
 
     def _tag_to_dict(self, tag, cat_map: Dict = None) -> Dict[str, Any]:
@@ -558,6 +575,9 @@ class TagCrudService:
             'category_name': category_name,
             'created_at': tag.created_at.isoformat() if tag.created_at else None,
             'updated_at': tag.updated_at.isoformat() if tag.updated_at else None,
+            # INT-423/466：资源可见性与归属人（网关路由层 owner 校验 / 前端徽标）
+            'visibility': getattr(tag, 'visibility', 'shared'),
+            'created_by_user_id': getattr(tag, 'created_by_user_id', None),
         }
 
 

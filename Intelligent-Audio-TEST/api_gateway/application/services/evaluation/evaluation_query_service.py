@@ -102,7 +102,13 @@ class EvaluationQueryService:
             code = result.get('code', 400)
             return error_response(result.get('message', '获取维度详情失败'), code)
 
-        return success_response(result.get('data'))
+        data = result.get('data') or {}
+        # INT-466：admin 访问私有维度详情落 PRIVATE_RESOURCE_ACCESS 审计（旁路）
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_detail,
+        )
+        maybe_audit_private_detail('dimension', dim_id, data)
+        return success_response(data)
 
     # 维度 API 健康探测
     @staticmethod

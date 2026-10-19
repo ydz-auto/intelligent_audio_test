@@ -129,11 +129,15 @@ class AudioQueryService:
     # 获取单个音频文件详情
     @staticmethod
     def get_one(audio_id):
-        
         result = _audio_acl.get_one(audio_id)
         if result.get('success'):
             data = result.get('data')
             if data:
+                # INT-466：admin 访问私有音频详情落 PRIVATE_RESOURCE_ACCESS 审计（旁路）
+                from api_gateway.application.services.visibility.visibility_audit import (
+                    maybe_audit_private_detail,
+                )
+                maybe_audit_private_detail('audio', audio_id, data if isinstance(data, dict) else {})
                 return success_response(AudioItem(**data) if isinstance(data, dict) else data)
             return success_response(None)
         return wrap_grpc_response(

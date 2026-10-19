@@ -166,6 +166,9 @@ class ReportListItem(APIModel):
     deleted: Optional[bool] = Field(None)
     deleted_at: Optional[str] = Field(None)
     deleted_by_user_id: Optional[int] = Field(None)
+    # INT-423/466：资源可见性与归属人（前端徽标 + 路由层 owner 校验）
+    visibility: Optional[str] = Field(None)
+    created_by_user_id: Optional[int] = Field(None)
 
 
 class ReportListData(APIModel):
@@ -213,6 +216,9 @@ class ReportDetailData(APIModel):
     deleted: Optional[bool] = Field(None)
     deleted_at: Optional[str] = Field(None)
     deleted_by_user_id: Optional[int] = Field(None)
+    # INT-423/466：资源可见性与归属人（前端徽标 + 路由层 owner 校验）
+    visibility: Optional[str] = Field(None)
+    created_by_user_id: Optional[int] = Field(None)
 
 
 class ReportIdData(APIModel):

@@ -120,6 +120,9 @@ class DimensionItem(APIModel):
     status: Optional[bool] = Field(None)
     created_at: Optional[str] = Field(None)
     updated_at: Optional[str] = Field(None)
+    # INT-423/466：资源可见性与归属人（前端徽标 + 路由层 owner 校验）
+    visibility: Optional[str] = Field(None)
+    created_by_user_id: Optional[int] = Field(None)
 
 
 class DimensionListData(PaginatedData[DimensionItem]):

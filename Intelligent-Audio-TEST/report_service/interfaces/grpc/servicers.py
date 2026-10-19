@@ -230,6 +230,8 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
                 analysis=analysis,
                 status=data.get('status'),
                 summary=data.get('summary'),
+                # INT-466：可见性切换（data 携带 visibility 时更新；None 不更新）
+                visibility=data.get('visibility'),
             )
             updated = self.command_handler.handle_update(command)
             return self._resp(updated, 'ok' if updated else 'report not found', {

@@ -110,7 +110,8 @@ class TaskCrudService:
                 return {'success': False, 'message': str(e), 'data': None, 'code': 403}
 
             updated = task_repository.update_task(
-                task_id, name=data.get('name'), description=data.get('description')
+                task_id, name=data.get('name'), description=data.get('description'),
+                visibility=data.get('visibility'),
             )
             if not updated:
                 return {'success': False, 'message': '未找到任务', 'data': None, 'code': 404}

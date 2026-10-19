@@ -125,6 +125,8 @@ class TaskConfigServiceServicer(task_grpc.TaskConfigServiceServicer):
                 # INT-577：仅「挑选合并」页签计算合并容器统计块（stats=true 才执行
                 # 3 次 COUNT；日常/已发布/收藏页签恒 None——审计 P2 门控全链透传）
                 stats=getattr(request, 'stats', False),
+                # INT-466：可见性筛选（shared/private；空=全部）
+                visibility=getattr(request, 'visibility', '') or None,
             )
             return self._resp(self.qry.handle_list_tasks_config(query))
         except Exception as e:

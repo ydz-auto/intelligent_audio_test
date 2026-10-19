@@ -123,6 +123,11 @@ class ReportQueryService:
             if not resp.success:
                 return error_response(resp.message or '查询失败', 404)
             data = _loads(resp.data, {}) or {}
+            # INT-466：admin 访问私有报告详情落 PRIVATE_RESOURCE_ACCESS 审计（旁路）
+            from api_gateway.application.services.visibility.visibility_audit import (
+                maybe_audit_private_detail,
+            )
+            maybe_audit_private_detail('report', report_id, data)
             return success_response(data)
         except Exception as e:
             return error_response(f'查询报告失败: {str(e)}')
