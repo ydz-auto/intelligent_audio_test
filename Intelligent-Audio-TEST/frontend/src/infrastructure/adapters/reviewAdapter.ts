@@ -3,8 +3,18 @@
  *
  * 复核留痕 / AI 复核记录转换；分层对齐 W1-A：infrastructure/adapters 是
  * 唯一做 snake_case↔camelCase 转换的层，业务层只见 camelCase 领域对象。
+ *
+ * AI 复核契约（INT-824 AiReviewRecordDto / ai_reviews 表，见 review_bp.py）：
+ *   {id, result_id, task_id, test_case_id, dimension_id, status,
+ *    verdict, confidence, reasoning, adopted(0/1), rejected(0/1),
+ *    adopted_by_user_id, adopted_at, rejected_by_user_id, rejected_at,
+ *    created_at, updated_at}
+ * 后端 DTO 无 dimension_name / original_evaluation_status → 领域置 null。
  */
-import type { ReviewHistoryItemDomain, AiReviewRecord, AiReviewConfidence, AiReviewVerdict } from '../../domain/model/review';
+import type {
+  ReviewHistoryItemDomain, AiReviewRecord, AiReviewConfidence, AiReviewVerdict,
+  AiReviewStatus,
+} from '../../domain/model/review';
 import { s } from './report.utils';
 
 /** 复核留痕行 → ReviewHistoryItemDomain（容忍缺省/空值） */
@@ -25,17 +35,30 @@ export function toReviewHistoryDomain(raw: Record<string, unknown>): ReviewHisto
   };
 }
 
-/** AI 复核记录 → AiReviewRecord（后端 §5.3 建议 schema） */
+/** AI 复核记录 → AiReviewRecord（后端 AiReviewRecordDto，契约 INT-824） */
 export function toAiReviewRecord(raw: Record<string, unknown>): AiReviewRecord {
   const confidenceRaw = raw.confidence;
-  const confidenceValue = typeof confidenceRaw === 'number' ? confidenceRaw : Number(confidenceRaw ?? 0);
-  const confidence: AiReviewConfidence = {
-    value: confidenceValue,
-    label: confidenceValue >= 0.8 ? '高' : confidenceValue >= 0.5 ? '中' : '低',
-  };
+  const confidenceValue = confidenceRaw === null || confidenceRaw === undefined
+    ? NaN
+    : (typeof confidenceRaw === 'number' ? confidenceRaw : Number(confidenceRaw));
+  const hasConfidence = Number.isFinite(confidenceValue);
+  const confidence: AiReviewConfidence | null = hasConfidence
+    ? {
+        value: confidenceValue,
+        label: confidenceValue >= 0.8 ? '高' : confidenceValue >= 0.5 ? '中' : '低',
+      }
+    : null;
   const verdictRaw = s(raw.verdict);
-  const verdict: AiReviewVerdict =
-    verdictRaw === 'failed' || verdictRaw === 'uncertain' ? verdictRaw : 'passed';
+  const verdict: AiReviewVerdict | null =
+    verdictRaw === 'passed' || verdictRaw === 'failed' || verdictRaw === 'uncertain'
+      ? verdictRaw
+      : null;
+  const statusRaw = s(raw.status);
+  const status: AiReviewStatus =
+    statusRaw === 'pending' || statusRaw === 'running' || statusRaw === 'completed'
+      || statusRaw === 'failed' || statusRaw === 'canceled'
+      ? statusRaw
+      : 'pending';
 
   return {
     id: Number(raw.id ?? 0),
@@ -43,16 +66,13 @@ export function toAiReviewRecord(raw: Record<string, unknown>): AiReviewRecord {
     taskId: Number(raw.task_id ?? 0),
     testCaseId: raw.test_case_id === null || raw.test_case_id === undefined ? null : s(raw.test_case_id),
     dimensionId: raw.dimension_id === null || raw.dimension_id === undefined ? null : Number(raw.dimension_id),
-    dimensionName: raw.dimension_name === null || raw.dimension_name === undefined ? null : s(raw.dimension_name),
+    dimensionName: null,
+    status,
     verdict,
     confidence,
     reasoning: raw.reasoning === null || raw.reasoning === undefined ? '' : s(raw.reasoning),
-    originalEvaluationStatus:
-      raw.original_evaluation_status === null || raw.original_evaluation_status === undefined
-        ? null
-        : s(raw.original_evaluation_status),
-    adopted: Boolean(raw.adopted),
-    rejected: Boolean(raw.rejected),
+    adopted: Number(raw.adopted ?? 0) === 1,
+    rejected: Number(raw.rejected ?? 0) === 1,
     createdAt: raw.created_at === null || raw.created_at === undefined ? '' : s(raw.created_at),
   };
 }

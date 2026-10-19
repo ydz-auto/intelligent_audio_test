@@ -1,15 +1,21 @@
 /**
- * 复核 API —— 人工审核（真实接口 INT-340）+ AI 复核（`// 待接线` 桩，§8-2 待后端立项）
+ * 复核 API —— 人工审核（真实接口 INT-340）+ AI 复核（真实接口 INT-822/823/824）
  *
  * 出口契约：Domain（camelCase）；DTO 转换收敛在 adapters。
  * - 人工审核：POST /tasks/results/review、GET /tasks/results/{task_id}/review-count|review-history
  *   （同 tasksApi，报告页消费侧独立收敛，避免跨域直接引用任务域 api）
- * - AI 复核：后端无端点（§8-2 待后端立项），此处留桩返回符合 §5.3 建议 schema 的示例数据，
- *   代码标 `// 待接线`；FEAT 落地后由接线卡替换为真实请求。
+ * - AI 复核：端点见 reviewAiApi.ts（发起/历史/采纳/驳回，异步回写结论）；
+ *   本段委派 reviewAiApi，避免双实现口径。
  */
 import { request } from '../http/client';
 import type { ReviewSubmitPayload, ReviewHistoryItemDomain, AiReviewRecord } from '../../domain/model/review';
-import { toReviewHistoryDomain, toAiReviewRecord } from '../adapters/reviewAdapter';
+import { toReviewHistoryDomain } from '../adapters/reviewAdapter';
+import {
+  requestAiReview,
+  fetchAiReviewHistory,
+  adoptAiReview as adoptAiReviewRequest,
+  rejectAiReview as rejectAiReviewRequest,
+} from './reviewAiApi';
 
 export const reviewApi = {
   /**
@@ -38,44 +44,37 @@ export const reviewApi = {
   },
 
   /**
-   * 发起 AI 复核（§8-2 待后端立项）。
-   * `// 待接线`：返回符合 §5.3 建议 schema 的示例结论，供交互流程验证；
-   * FEAT 落地后替换为 POST /tasks/results/ai-review。
+   * 发起 AI 复核（POST /tasks/results/ai-review，异步回写结论；委派 reviewAiApi）。
+   * 轮询 ai-review-history 直至 completed 返回记录；失败/超时抛错由调用方提示。
    */
-  async submitAiReview(payload: { resultIds: (string | number)[]; dimensionIds?: number[] }): Promise<AiReviewRecord> {
-    // 待接线：POST /tasks/results/ai-review
-    void payload;
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    return toAiReviewRecord({
-      id: Math.floor(Math.random() * 100000),
-      result_id: Number(payload.resultIds[0]),
-      task_id: 0,
-      test_case_id: null,
-      dimension_id: payload.dimensionIds?.[0] ?? null,
-      dimension_name: null,
-      verdict: 'passed',
-      confidence: 0.86,
-      reasoning: '大模型复核：该用例评估结果与参考依据一致，判定通过（示例数据，待后端 AI 复核机制落地）。',
-      original_evaluation_status: null,
-      adopted: false,
-      rejected: false,
-      created_at: new Date().toISOString(),
+  async submitAiReview(
+    taskId: string | number,
+    payload: { resultIds: (string | number)[]; dimensionIds?: number[] },
+  ): Promise<AiReviewRecord> {
+    return requestAiReview(Number(taskId), '', {
+      resultIds: payload.resultIds.map((id) => Number(id)),
+      dimensionIds: payload.dimensionIds?.map((id) => Number(id)),
     });
   },
 
-  /** 查询 AI 复核历史（§8-2 待后端立项）。`// 待接线`：返回空列表示例。 */
-  async getAiReviewHistory(_taskId: string | number): Promise<AiReviewRecord[]> {
-    // 待接线：GET /tasks/results/{task_id}/ai-review-history
-    return [];
+  /** 查询 AI 复核历史（GET /tasks/results/{task_id}/ai-review-history，委派 reviewAiApi）。 */
+  async getAiReviewHistory(taskId: string | number, filters?: { resultId?: number; status?: string }): Promise<AiReviewRecord[]> {
+    return fetchAiReviewHistory(Number(taskId), filters);
   },
 
-  /** 采纳 AI 复核结论 → 落人工复核语义（§8-2 待后端立项）。`// 待接线`：幂等成功。 */
-  async adoptAiReview(_aiReviewId: number): Promise<void> {
-    // 待接线：POST /tasks/results/ai-review/{id}/adopt
+  /**
+   * 采纳 AI 复核结论（POST /tasks/results/ai-review/{id}/adopt，委派 reviewAiApi）。
+   * 载荷 executionStatus?/evaluationStatus? + comment 必填；后端落人工复核语义（改判+留痕+统计重算+标记采纳）。
+   */
+  async adoptAiReview(
+    aiReviewId: number,
+    payload: { executionStatus?: string; evaluationStatus?: string; comment: string },
+  ): Promise<AiReviewRecord> {
+    return adoptAiReviewRequest(aiReviewId, payload);
   },
 
-  /** 驳回 AI 复核结论（§8-2 待后端立项）。`// 待接线`：幂等成功。 */
-  async rejectAiReview(_aiReviewId: number): Promise<void> {
-    // 待接线：POST /tasks/results/ai-review/{id}/reject
+  /** 驳回 AI 复核结论（POST /tasks/results/ai-review/{id}/reject，委派 reviewAiApi；原判定不变）。 */
+  async rejectAiReview(aiReviewId: number): Promise<AiReviewRecord> {
+    return rejectAiReviewRequest(aiReviewId);
   },
 };

@@ -34,19 +34,19 @@
             <i class="fas fa-spinner fa-spin"></i> AI 复核中，请稍候…
           </div>
 
-          <!-- 已完成 -->
+        <!-- 已完成 -->
           <div v-else-if="phase === 'completed' && record" class="ai-record">
             <div class="ai-verdict">
               <span class="ai-verdict-badge" :class="verdictClass">
-                <i :class="verdictIcon"></i> {{ AI_VERDICT_LABELS[record.verdict] }}
+                <i :class="verdictIcon"></i> {{ verdictText }}
               </span>
-              <span class="ai-confidence">置信度 {{ aiConfidenceLabel(record.confidence) }}（{{ Math.round(record.confidence * 100) }}%）</span>
+              <span class="ai-confidence">置信度 {{ aiConfidenceLabel(record.confidence?.value ?? 0) }}（{{ Math.round((record.confidence?.value ?? 0) * 100) }}%）</span>
             </div>
             <p class="ai-reasoning">{{ record.reasoning }}</p>
             <div class="ai-compare">
               <span>AI 判定 vs 原评估判定</span>
               <span class="ai-compare-row">
-                <span class="ai-compare-item"><b>AI：</b>{{ AI_VERDICT_LABELS[record.verdict] }}</span>
+                <span class="ai-compare-item"><b>AI：</b>{{ verdictText }}</span>
                 <span class="ai-compare-arrow">→</span>
                 <span class="ai-compare-item"><b>原评估：</b>{{ evalLabel(evaluationStatus) }}</span>
               </span>
@@ -88,13 +88,14 @@
 /**
  * AI 复核弹窗（19 规范 §5.2 + §2.1 AI 复核状态机：待发起→执行中→已完成→已采纳/已驳回/待查）。
  * 定位：建议层，不直接改统计；只有人工「采纳」才落入人工复核语义（开 §3.2 复核弹窗预填
- * AI 判定的评估状态 + 备注=AI 理由 → 人工确认提交 → test_result_reviews 留痕 + 统计重算）。
- * 后端 AI 复核端点未合入常驻栈（FEAT INT-800 已 done，待集成）→ infrastructure 留桩 `// 待接线`；
- * 本组件只消费 reviewAiApi（requestAiReview / adoptAiReview / rejectAiReview），不感知桩/真实。
+ * AI 判定的评估状态 + 备注=AI 理由 → 人工确认提交 → POST /tasks/results/ai-review/{id}/adopt
+ * 由后端落 test_result_reviews 留痕 + 统计重算 + 标记采纳）。
+ * 消费 reviewAiApi（requestAiReview / rejectAiReview）真实端点；采纳由父级打开复核弹窗
+ * 确认后带改判载荷调用 adoptAiReview，本组件不直接落采纳端点。
  */
 import { ref, computed } from 'vue'
 import {
-  AI_VERDICT_LABELS, aiConfidenceLabel, requestAiReview, adoptAiReview, rejectAiReview,
+  AI_VERDICT_LABELS, aiConfidenceLabel, requestAiReview, rejectAiReview,
   type AiReviewRecord, type AiReviewPhase,
 } from '../../../infrastructure/api/reviewAiApi'
 
@@ -110,8 +111,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void
-  /** 人工采纳 → 父级打开 §3.2 复核弹窗预填（评估状态 + 备注=AI 理由） */
-  (e: 'adopt', preset: { evaluationStatus?: string; comment: string }): void
+  /** 人工采纳 → 父级打开 §3.2 复核弹窗预填（评估状态 + 备注=AI 理由 + 记录 id） */
+  (e: 'adopt', preset: { recordId: number; evaluationStatus?: string; comment: string }): void
 }>()
 
 const phase = ref<AiReviewPhase>('idle')
@@ -129,6 +130,10 @@ const verdictIcon = computed(() => {
     case 'failed': return 'fas fa-circle-xmark'
     default: return 'fas fa-circle-question'
   }
+})
+const verdictText = computed(() => {
+  const v = record.value?.verdict
+  return v ? AI_VERDICT_LABELS[v] : ''
 })
 
 function evalLabel(status?: string | null): string {
@@ -156,22 +161,17 @@ async function launch() {
   }
 }
 
-async function adopt() {
+/** 采纳：仅向父级派发预填载荷（AI 判定评估状态 + 理由）；父级开 §3.2 复核弹窗确认后调 adopt 端点 */
+function adopt() {
   if (!record.value) return
-  phase.value = 'adopted'
-  try {
-    await adoptAiReview(record.value.id)
-    const verdict = record.value.verdict
-    // §2.1：通过→已完成，不通过→评估失败，存疑→留给人工
-    const presetEvaluation = verdict === 'passed' ? 'completed' : verdict === 'failed' ? 'failed' : undefined
-    emit('adopt', {
-      evaluationStatus: presetEvaluation,
-      comment: record.value.reasoning,
-    })
-  } catch (err: any) {
-    errorText.value = err?.message || 'AI 复核采纳失败，请稍后重试'
-    phase.value = 'completed'
-  }
+  const verdict = record.value.verdict
+  // §2.1：通过→已完成，不通过→评估失败，存疑→留给人工
+  const presetEvaluation = verdict === 'passed' ? 'completed' : verdict === 'failed' ? 'failed' : undefined
+  emit('adopt', {
+    recordId: record.value.id,
+    evaluationStatus: presetEvaluation,
+    comment: record.value.reasoning,
+  })
 }
 
 async function reject() {

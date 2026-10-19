@@ -1,5 +1,5 @@
 /**
- * 报告侧复核编排 —— 人工审核（真实接口）+ AI 复核（§8-2 待后端立项，桩）
+ * 报告侧复核编排 —— 人工审核（真实接口）+ AI 复核（真实接口 INT-822/823/824）
  *
  * 消费面：报告详情「具体用例卡片」（SpecificCaseComparisonComponent）。
  * 数据源：
@@ -9,9 +9,10 @@
  *   逐条含 test_case_id，按用例聚合）
  * - 双路径入口 A（跳来源任务复核，默认）：经 `GET /tasks/{task_id}/cases/{caseId}/results`
  *   溯源结果行 → 打开 §3.2 复核弹窗（ResultReviewModal）预填 → POST /tasks/results/review
- * - 路径 B（报告内直接复核）：§4.2 待后端立项 → 未落地，仅路径 A
+ * - 路径 B（报告内直接复核）：§4.2 未落地，仅路径 A
  * - AI 复核：§4.3 状态机（待发起→执行中→已完成→已采纳/已驳回/待查），
- *   端点 `// 待接线`（reviewApi.submitAiReview 等返回 §5.3 schema 示例），开 FEAT 卡
+ *   端点 POST /tasks/results/ai-review（异步回写结论，submitAiReview 轮询至 completed）、
+ *   采纳 POST /tasks/results/ai-review/{id}/adopt（后端落人工复核语义）、驳回 .../reject
  */
 import { ref, computed, onUnmounted } from 'vue';
 import { useModalControl, MODAL_TYPES } from '@/composables/modal/useModal';
@@ -210,9 +211,9 @@ export function useReportReviews(reportDataRef: () => any) {
     return state
   }
 
-  // ===== AI 复核（§4.3，端点待后端立项 `// 待接线`） =====
+  // ===== AI 复核（§4.3，真实端点 INT-822/823/824） =====
 
-  /** 发起 AI 复核：待发起 → 执行中 → 已完成（桩返回示例结论） */
+  /** 发起 AI 复核：待发起 → 执行中 → 已完成（提交后端异步复核，轮询至结论落库） */
   async function initiateAiReview(caseItem: any) {
     const caseId = String(caseItem?.id ?? caseItem?.testCaseId ?? '')
     if (!caseId) return
@@ -220,7 +221,7 @@ export function useReportReviews(reportDataRef: () => any) {
 
     aiReviewMap.value[caseId] = { phase: 'running', record: null, error: '' }
     try {
-      // 溯源来源任务该用例结果行 → 取首个结果发起
+      // 溯源来源任务该用例结果行 → 取结果行发起
       let resultIds: (string | number)[] = []
       if (sourceTaskId.value !== '') {
         const resultsData = await tasksApi.getCaseResults(sourceTaskId.value, caseId)
@@ -230,21 +231,23 @@ export function useReportReviews(reportDataRef: () => any) {
         aiReviewMap.value[caseId] = { phase: 'completed', record: null, error: '该用例无可发起 AI 复核的结果' }
         return
       }
-      // 待接线：POST /tasks/results/ai-review（§8-2 待后端立项）
-      const record = await reviewApi.submitAiReview({ resultIds })
+      // 真实请求：POST /tasks/results/ai-review（异步回写结论，submitAiReview 轮询至 completed）
+      const record = await reviewApi.submitAiReview(sourceTaskId.value, { resultIds })
       aiReviewMap.value[caseId] = { phase: 'completed', record, error: '' }
     } catch (e: any) {
       aiReviewMap.value[caseId] = { phase: 'completed', record: null, error: e?.message || 'AI 复核失败' }
     }
   }
 
-  /** 采纳 AI 复核结论 → 落人工复核语义（打开 §3.2 复核弹窗预填 AI 判定，§4.3） */
+  /**
+   * 采纳 AI 复核结论：打开 §3.2 复核弹窗预填 AI 判定的评估状态 + 备注=AI 理由，
+   * 人工确认后 POST /tasks/results/ai-review/{id}/adopt（后端单事务落人工复核语义：
+   * 改判评估/执行状态 + 留痕 + 统计重算 + 标记采纳）。
+   */
   async function adoptAiReview(caseItem: any) {
     const caseId = String(caseItem?.id ?? caseItem?.testCaseId ?? '')
     const run = getAiRun(caseId)
     if (!run.record) return
-    // 待接线：POST /tasks/results/ai-review/{id}/adopt（§8-2 待后端立项）
-    await reviewApi.adoptAiReview(run.record.id)
 
     // AI 判定 → 评估状态预填（对齐 React aiVerdictToEvaluationStatus：通过→已完成；不通过→评估失败；存疑→不预填）
     const suggestedEvaluation = run.record.verdict === 'passed'
@@ -261,17 +264,18 @@ export function useReportReviews(reportDataRef: () => any) {
         taskId: sourceTaskId.value,
         results: [{ resultId, executionStatus: undefined, evaluationStatus: suggestedEvaluation }],
         reviewHistory: [],
-        initialEvaluationStatus: suggestedEvaluation,
-        initialComment: run.record.reasoning,
+        preset: {
+          evaluationStatus: suggestedEvaluation,
+          comment: run.record.reasoning,
+        },
       }).catch(() => undefined)
       if (res) {
-        const payload: ReviewSubmitPayload = {
-          resultIds: [resultId],
+        // 采纳 = POST /tasks/results/ai-review/{id}/adopt（载荷对齐人工复核契约：至少一项状态 + comment 必填）
+        await reviewApi.adoptAiReview(run.record.id, {
           executionStatus: res.executionStatus,
           evaluationStatus: res.evaluationStatus || suggestedEvaluation,
           comment: res.comment || run.record.reasoning,
-        }
-        await reviewApi.submitReview(payload)
+        })
         aiReviewMap.value[caseId] = { ...run, phase: 'adopted' }
         const report = reportDataRef()
         if (report) await loadReportReviews(report)
@@ -282,14 +286,18 @@ export function useReportReviews(reportDataRef: () => any) {
     }
   }
 
-  /** 驳回 AI 复核结论：保留原判定，AI 记录标记已驳回（待接线） */
+  /** 驳回 AI 复核结论：保留原判定，AI 记录标记已驳回（POST .../reject，真实请求） */
   async function rejectAiReview(caseItem: any) {
     const caseId = String(caseItem?.id ?? caseItem?.testCaseId ?? '')
     const run = getAiRun(caseId)
     if (!run.record) return
-    // 待接线：POST /tasks/results/ai-review/{id}/reject（§8-2 待后端立项）
-    await reviewApi.rejectAiReview(run.record.id)
-    aiReviewMap.value[caseId] = { ...run, phase: 'rejected' }
+    try {
+      await reviewApi.rejectAiReview(run.record.id)
+      aiReviewMap.value[caseId] = { ...run, phase: 'rejected' }
+    } catch (e: any) {
+      console.error('驳回 AI 复核失败:', e)
+      reviewsError.value = e?.message || '驳回 AI 复核失败，请稍后重试'
+    }
   }
 
   /** 忽略（待查）：关闭暂不处理，AI 结论保留待查 */

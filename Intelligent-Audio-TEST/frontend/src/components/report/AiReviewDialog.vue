@@ -62,7 +62,7 @@
                 <span class="verdict-confidence">{{ confidenceLabel }}</span>
               </div>
 
-              <div class="ai-review-compare" v-if="record.originalEvaluationStatus">
+              <div class="ai-review-compare" v-if="originalEvaluationStatus">
                 <div class="compare-item">
                   <span class="compare-label">AI 判定</span>
                   <span class="compare-value">{{ verdictLabel }}</span>
@@ -70,7 +70,7 @@
                 <div class="compare-arrow"><i class="fas fa-arrow-right"></i></div>
                 <div class="compare-item">
                   <span class="compare-label">原评估判定</span>
-                  <span class="compare-value">{{ evalStatusLabel(record.originalEvaluationStatus) }}</span>
+                  <span class="compare-value">{{ evalStatusLabel(originalEvaluationStatus) }}</span>
                 </div>
               </div>
 
@@ -111,8 +111,9 @@
  * 状态机（§2.1）：待发起(idle) → 执行中(running) → 已完成(completed)
  * → 已采纳(adopted) / 已驳回(rejected) / 待查(ignored)。
  *
- * 后端 AI 复核端点待后端立项（§8-2）：reviewApi.submitAiReview 等为 `// 待接线`
- * 桩（返回符合 §5.3 schema 的示例结论），FEAT 落地后由接线卡替换为真实请求。
+ * 消费父级（SpecificCaseComparisonComponent）经 useReportReviews 编排的真实请求：
+ * 发起 POST /tasks/results/ai-review（异步回写结论）、采纳 .../adopt（后端落人工复核语义）、
+ * 驳回 .../reject。本组件为受控展示件，不直接发请求。
  */
 import { computed, ref } from 'vue'
 import { AI_REVIEW_VERDICT_LABELS, EVALUATION_STATUS_LABELS } from '@/domain/model/review'

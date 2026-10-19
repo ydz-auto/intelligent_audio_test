@@ -8,9 +8,12 @@
  * - AI 复核（建议层，不直接改统计）：待发起 → 执行中 → 已完成
  *   → 已采纳 / 已驳回 / 待查
  *
- * 后端接口（INT-340 已具备）：
- *   POST /tasks/results/review、GET /tasks/results/{task_id}/review-count、
- *   GET /tasks/results/{task_id}/review-history
+ * 后端接口：
+ *   人工审核（INT-340）：POST /tasks/results/review、
+ *     GET /tasks/results/{task_id}/review-count、GET /tasks/results/{task_id}/review-history
+ *   AI 复核（INT-822/823/824）：POST /tasks/results/ai-review、
+ *     GET /tasks/results/{task_id}/ai-review-history、
+ *     POST /tasks/results/ai-review/{id}/adopt|reject
  */
 
 /** 可改判执行状态（后端 REVIEWABLE_EXECUTION_STATUSES） */
@@ -51,6 +54,9 @@ export type AiReviewPhase =
 /** AI 复核结论判定（verdict） */
 export type AiReviewVerdict = 'passed' | 'failed' | 'uncertain'
 
+/** AI 复核任务状态（后端 ai_reviews.status：pending/running/completed/failed/canceled） */
+export type AiReviewStatus = 'pending' | 'running' | 'completed' | 'failed' | 'canceled'
+
 /** AI 复核结论中文映射 */
 export const AI_REVIEW_VERDICT_LABELS: Record<AiReviewVerdict, string> = {
   passed: '复核通过',
@@ -64,9 +70,18 @@ export interface AiReviewConfidence {
   label: '高' | '中' | '低'
 }
 
+/** AI 复核结论中文（null 安全，运行中/失败记录 verdict 为空时返回占位） */
+export function aiVerdictLabel(verdict: AiReviewVerdict | null | undefined): string {
+  return verdict ? AI_REVIEW_VERDICT_LABELS[verdict] : ''
+}
+
 /**
- * AI 复核记录（§5.3 数据契约建议；后端待立项，
- * 落地前 infrastructure 层返回符合 schema 的示例数据，代码标 `// 待接线`）。
+ * AI 复核记录（INT-862 契约对齐后端 AiReviewRecordDto / ai_reviews 表）。
+ * 后端出参 snake_case 经 reviewAdapter.toAiReviewRecord 转 camelCase：
+ * - status：复核任务状态（发起后 running，异步回写 verdict 后 completed，失败 failed）
+ * - verdict/confidence：运行中未回写前为 null（界面仅在 completed 后展示结论）
+ * - adopted/rejected：后端 0/1 → 领域 boolean
+ * 原评估判定（originalEvaluationStatus）后端 DTO 不含，由消费面上下文提供。
  */
 export interface AiReviewRecord {
   id: number
@@ -75,11 +90,10 @@ export interface AiReviewRecord {
   testCaseId?: string | null
   dimensionId?: number | null
   dimensionName?: string | null
-  verdict: AiReviewVerdict
-  confidence: AiReviewConfidence
+  status: AiReviewStatus
+  verdict: AiReviewVerdict | null
+  confidence: AiReviewConfidence | null
   reasoning: string
-  /** 原评估判定（对比行「AI 判定 vs 原评估判定」） */
-  originalEvaluationStatus?: string | null
   adopted: boolean
   rejected: boolean
   createdAt: string

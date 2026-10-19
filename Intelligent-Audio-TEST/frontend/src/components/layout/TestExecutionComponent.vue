@@ -553,6 +553,7 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { TaskStatus, ExecutionStatus, EvaluationStatus, ViewMode, DeviceStatus, REEXECUTE_ELIGIBLE_STATUSES, PermissionPoint } from '@/domain/enums';
 import { useAuthStore } from '../../store/authStore';
 import { tasksApi } from '../../infrastructure/api';
+import { adoptAiReview } from '../../infrastructure/api/reviewAiApi';
 import { useModalControl, MODAL_TYPES } from '../../composables/modal/useModal';
 import { useNotification } from '../../composables/modal/useNotification';
 import AiReviewDialog from '../common/modal/AiReviewDialog.vue';
@@ -803,7 +804,7 @@ async function submitReview(resultIds, payload, _testCase) {
   }
 }
 
-/** AI 采纳 → 打开 §3.2 复核弹窗预填（AI 判定的评估状态 + 备注=AI 理由） */
+/** AI 采纳 → 打开 §3.2 复核弹窗预填（AI 判定的评估状态 + 备注=AI 理由）→ 人工确认 → POST .../adopt 落人工复核语义 */
 async function adoptAiReviewIntoManual(preset) {
   if (!aiReviewTarget.value) return;
   const results = aiReviewTarget.value.results.map((r) => ({
@@ -824,9 +825,23 @@ async function adoptAiReviewIntoManual(preset) {
     evaluationStatus: aiReviewTarget.value.evaluationStatus,
     preset,
   });
-  if (payload) {
-    await submitReview(results.map((r) => r.resultId), payload);
-    aiReviewTarget.value = null;
+  if (payload && preset?.recordId) {
+    // 采纳 = POST /tasks/results/ai-review/{id}/adopt（载荷对齐人工复核契约：至少一项状态 + comment 必填；
+    // 后端单事务落 test_result_reviews 留痕 + 统计重算 + 标记 ai_reviews.adopted）
+    try {
+      await adoptAiReview(preset.recordId, {
+        executionStatus: payload.executionStatus,
+        evaluationStatus: payload.evaluationStatus || preset.evaluationStatus,
+        comment: payload.comment || preset.comment,
+      });
+      notification.success('已采纳 AI 复核结论，复核已提交');
+      aiReviewTarget.value = null;
+      await loadReviewCount();
+      emit('refreshReview');
+    } catch (err) {
+      console.error('采纳 AI 复核失败:', err);
+      notification.error(err?.message || '采纳 AI 复核失败，请稍后重试');
+    }
   }
 }
 

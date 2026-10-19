@@ -1,38 +1,30 @@
 // -*- coding: utf-8 -*-
 /**
- * AI 复核 API（19 规范 §5.2/§5.3，INT-796）——建议层，不直接改统计。
+ * AI 复核 API（19 规范 §5.2/§5.3，INT-862 接线）——建议层，不直接改统计。
  *
- * 真实接口（后端已具备，INT-762 审计对位）：
- *   POST /tasks/results/review（人工复核提交，人工「采纳」AI 结论时复用）
- *   GET  /tasks/results/{task_id}/review-count / review-history（任务复核统计/历史）
+ * 真实接口（后端 INT-822/823/824 已合入，契约只读 api_gateway/routes/review_bp.py）：
+ *   POST /tasks/results/ai-review                    # 发起（result_ids + dimension_ids?，权限 task.result.ai_review）
+ *   GET  /tasks/results/{task_id}/ai-review-history  # AI 复核记录（task:read，时间倒序，可 result_id/status 过滤）
+ *   POST /tasks/results/ai-review/{id}/adopt         # 采纳（task.result.review；后端落人工复核语义：改判+留痕+统计重算+标记采纳）
+ *   POST /tasks/results/ai-review/{id}/reject        # 驳回（task.result.ai_review；原判定不变，记录标记驳回备查）
  *
- * AI 复核端点（§8-2 契约建议）后端未立项（FEAT INT-800 已 done，待合入 V9.7.31 常驻栈）
- * → 本层留桩返回符合 §5.3 契约形态的示例，代码标 `// 待接线`；立项合入后替换为真实请求。
+ * 发起为异步执行：后端落 ai_reviews.status=running 后经 evaluation_service LLM 复检
+ * 回写 verdict/confidence/reasoning 并置 completed（失败 failed 不落判定）。
+ * 本层发起后轮询 ai-review-history 直至结论落库，返回可展示的 completed 记录。
  */
+import { request } from '../http/client';
+import { toAiReviewRecord } from '../adapters/reviewAdapter';
+import type {
+  AiReviewRecord, AiReviewPhase, AiReviewVerdict,
+} from '../../domain/model/review';
 
-export type AiReviewVerdict = 'passed' | 'failed' | 'uncertain'
-
-/** AI 复核记录（§5.3 契约建议） */
-export interface AiReviewRecord {
-  id: number
-  resultId: number
-  taskId: number
-  testCaseId: string
-  verdict: AiReviewVerdict
-  confidence: number
-  reasoning: string
-  adopted: boolean
-  rejected: boolean
-  createdAt: string
-}
+export type { AiReviewPhase, AiReviewVerdict, AiReviewRecord } from '../../domain/model/review';
 
 /** AI 复核发起载荷（result_ids + 可选复核维度） */
 export interface AiReviewRequest {
   resultIds: number[]
   dimensionIds?: number[]
 }
-
-export type AiReviewPhase = 'idle' | 'running' | 'completed' | 'adopted' | 'rejected'
 
 /** AI 结论中文（§7 文案） */
 export const AI_VERDICT_LABELS: Record<AiReviewVerdict, string> = {
@@ -49,81 +41,103 @@ export function aiConfidenceLabel(confidence: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// AI 复核桩存储（会话级内存）；FEAT INT-800 合入后删除并由后端读写替代
+// 轮询参数（异步回写结论：LLM 复检通常在秒级完成，15s 仍未完成则提示稍后查看）
 // ---------------------------------------------------------------------------
 
-const _aiReviewStore = new Map<number, AiReviewRecord>()
-let _aiReviewSeq = 1000
+const _POLL_MAX_TRIES = 15
+const _POLL_INTERVAL_MS = 1000
 
-/** 桩：确定性结论（result_id 派生，避免纯随机难复现；契约建议 §5.3） */
-function _stubVerdict(resultId: number): AiReviewVerdict {
-  const n = resultId % 10
-  if (n < 4) return 'passed'
-  if (n < 8) return 'uncertain'
-  return 'failed'
+async function _sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-/** 桩：理由模板（§7 文案：AI 判定 vs 原评估判定；低分/失败/断言不符复检） */
-function _stubReasoning(verdict: AiReviewVerdict): string {
-  const base = '大模型对当前评估结果进行复检：综合判分数据与语音特征一致性，'
-  if (verdict === 'passed') {
-    return `${base}未发现与低分判定相符的明显异常，建议维持原评估结论。`
+/** 等待 AI 复核结论落库：轮询 ai-review-history 直至 completed/failed（超时抛错提示稍后查看） */
+async function _waitForConclusion(
+  taskId: number,
+  reviewId: number,
+  resultId: number,
+): Promise<AiReviewRecord> {
+  for (let i = 0; i < _POLL_MAX_TRIES; i++) {
+    await _sleep(_POLL_INTERVAL_MS)
+    const history = await fetchAiReviewHistory(taskId, { resultId })
+    const rec = history.find((r) => r.id === reviewId)
+    if (!rec) continue
+    if (rec.status === 'completed') return rec
+    if (rec.status === 'failed' || rec.status === 'canceled') {
+      throw new Error(rec.reasoning || 'AI 复核执行未完成，请稍后重试')
+    }
   }
-  if (verdict === 'failed') {
-    return `${base}发现语音内容与参考文本偏差显著，建议按评估失败处理。`
-  }
-  return `${base}存在多处临界特征，无法给出明确判定，建议人工复核确认。`
+  throw new Error('AI 复核仍在执行中，请稍后在复核历史中查看或重新发起')
 }
 
-/** 发起 AI 复核（POST /tasks/results/ai-review 契约建议；待接线） */
+/**
+ * 发起 AI 复核（POST /tasks/results/ai-review）并等待结论落库。
+ * 返回 completed 记录（幂等复用最近结论时直接返回）；失败/超时抛错由界面提示。
+ */
 export async function requestAiReview(
   taskId: number,
-  caseId: string,
+  _caseId: string,
   payload: AiReviewRequest,
 ): Promise<AiReviewRecord> {
-  // 待接线：FEAT INT-800 合入后替换为 request('POST', '/tasks/results/ai-review', { result_ids, dimension_ids })
-  const resultId = payload.resultIds[0] ?? 0
-  const verdict = _stubVerdict(resultId)
-  const record: AiReviewRecord = {
-    id: _aiReviewSeq++,
-    resultId,
-    taskId,
-    testCaseId: caseId,
-    verdict,
-    confidence: verdict === 'uncertain' ? 0.5 : 0.85,
-    reasoning: _stubReasoning(verdict),
-    adopted: false,
-    rejected: false,
-    createdAt: new Date().toISOString(),
+  const data = await request<{ items?: Record<string, unknown>[]; reused?: boolean }>(
+    'POST', '/tasks/results/ai-review', {
+      result_ids: payload.resultIds.map((id) => Number(id)),
+      dimension_ids: payload.dimensionIds?.map((id) => Number(id)) || undefined,
+    },
+  )
+  const items = data?.items ?? []
+  if (!items.length) throw new Error('AI 复核发起失败：该结果无可用复核维度（需已完成评估的 LLM 判分）')
+  const first = toAiReviewRecord(items[0])
+  if (first.status === 'completed' && first.verdict) return first
+  if (first.status === 'failed' || first.status === 'canceled') {
+    throw new Error(first.reasoning || 'AI 复核执行未完成，请稍后重试')
   }
-  _aiReviewStore.set(record.id, record)
-  return record
+  // running/pending → 轮询历史直至结论落库
+  return _waitForConclusion(taskId, first.id, first.resultId)
 }
 
-/** AI 复核历史（GET /tasks/results/{task_id}/ai-review-history 契约建议；待接线） */
-export async function fetchAiReviewHistory(taskId: number): Promise<AiReviewRecord[]> {
-  // 待接线：FEAT INT-800 合入后替换为真实 GET；当前返回会话内桩记录
-  return [..._aiReviewStore.values()].filter((r) => r.taskId === taskId)
+/**
+ * AI 复核历史（GET /tasks/results/{task_id}/ai-review-history，时间倒序）。
+ * 可选 resultId / status 过滤（Query 对齐后端契约白名单 result_id/dimension_id/status）。
+ */
+export async function fetchAiReviewHistory(
+  taskId: number,
+  filters?: { resultId?: number; status?: string },
+): Promise<AiReviewRecord[]> {
+  const data = await request<{ items?: Record<string, unknown>[] }>(
+    'GET', `/tasks/results/${taskId}/ai-review-history`, null, {
+      params: {
+        result_id: filters?.resultId,
+        status: filters?.status,
+      },
+    },
+  )
+  return (data?.items ?? []).map(toAiReviewRecord)
 }
 
-/** 采纳 AI 结论（POST /tasks/results/ai-review/{id}/adopt 契约建议；待接线） */
-export async function adoptAiReview(recordId: number): Promise<AiReviewRecord> {
-  // 待接线：FEAT INT-800 合入后替换为真实 POST；采纳后落人工复核语义由前端调 submitReview 完成
-  const record = _aiReviewStore.get(recordId)
-  if (!record) throw new Error('AI 复核记录不存在')
-  record.adopted = true
-  record.rejected = false
-  _aiReviewStore.set(recordId, record)
-  return record
+/**
+ * 采纳 AI 复核结论（POST /tasks/results/ai-review/{id}/adopt）。
+ * 载荷对齐人工复核契约：execution_status?/evaluation_status?（至少一项）+ comment 必填；
+ * 后端单事务落 test_result_reviews 留痕 + 统计重算 + 标记 ai_reviews.adopted。
+ */
+export async function adoptAiReview(
+  recordId: number,
+  payload: { executionStatus?: string; evaluationStatus?: string; comment: string },
+): Promise<AiReviewRecord> {
+  const data = await request<{ item?: Record<string, unknown> }>(
+    'POST', `/tasks/results/ai-review/${recordId}/adopt`, {
+      execution_status: payload.executionStatus || undefined,
+      evaluation_status: payload.evaluationStatus || undefined,
+      comment: payload.comment,
+    },
+  )
+  return toAiReviewRecord(data?.item ?? {})
 }
 
-/** 驳回 AI 结论（POST /tasks/results/ai-review/{id}/reject 契约建议；待接线） */
+/** 驳回 AI 复核结论（POST /tasks/results/ai-review/{id}/reject；原判定不变，记录标记驳回备查） */
 export async function rejectAiReview(recordId: number): Promise<AiReviewRecord> {
-  // 待接线：FEAT INT-800 合入后替换为真实 POST；驳回保留原判定，记录标记已驳回备查
-  const record = _aiReviewStore.get(recordId)
-  if (!record) throw new Error('AI 复核记录不存在')
-  record.rejected = true
-  record.adopted = false
-  _aiReviewStore.set(recordId, record)
-  return record
+  const data = await request<Record<string, unknown>>(
+    'POST', `/tasks/results/ai-review/${recordId}/reject`,
+  )
+  return toAiReviewRecord(data ?? {})
 }
