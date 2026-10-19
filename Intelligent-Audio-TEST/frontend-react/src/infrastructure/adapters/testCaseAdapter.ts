@@ -58,6 +58,11 @@ export function testCaseListItemFromDto(
     totalDuration: dto.total_duration,
     rounds,
     audioCount,
+    // 编辑回填/保存合并用：原始 config / algorithm_params / reference_params 透传
+    // （值内 snake_case 契约与 Vue 基准一致，见 domain/models/testCase.ts 注释）
+    config: dto.config ?? null,
+    algorithmParams: dto.algorithm_params ?? null,
+    referenceParams: dto.reference_params ?? null,
   }
 }
 

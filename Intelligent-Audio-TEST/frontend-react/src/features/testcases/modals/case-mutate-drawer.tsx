@@ -14,6 +14,7 @@
  * ⚠️ 实施注意②：addRound 已有轮次时复制上一轮 evaluation（RoundConfigEditor.vue:252-254），
  * 「新轮次默认关闭」严格仅首轮成立——本卡等价移植保持复制行为、不额外重置 enabled。
  */
+import { useQueryClient } from '@tanstack/react-query'
 import { Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
@@ -46,6 +47,11 @@ import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import type { TagItem } from '@/domain/models/testTag'
 import { MOCK_CASE_DIMENSIONS, MOCK_EVALUATION_CATEGORIES } from '@/infrastructure/mock/testcases-mock'
+import {
+  createTestCase,
+  updateTestCase,
+  type TestCaseMutatePayload,
+} from '@/infrastructure/api/testcases-api'
 import {
   RoundNav,
   newRoundEvaluation,
@@ -148,6 +154,118 @@ function CaseTagInput({
   )
 }
 
+/** 新建态默认轮次（单轮空评估；rounds 由保存侧序列化为 config.rounds） */
+function defaultRounds(): RoundDraft[] {
+  return [
+    {
+      number: 1,
+      audioCount: 0,
+      dimensionCount: 0,
+      evaluation: { enabled: true, selectedIds: [], params: {} },
+    },
+  ]
+}
+
+/** 后端 config.rounds 单轮 → RoundDraft（编辑回填：轮次数 + 音频/维度摘要 + 评估内容） */
+function roundDraftFromConfig(
+  raw: Record<string, unknown>,
+  index: number
+): RoundDraft {
+  const number = Number(raw.round_number ?? raw.roundNumber ?? index + 1)
+  const audios = Array.isArray(raw.audios) ? (raw.audios as Array<Record<string, unknown>>) : []
+  const evaluation =
+    raw.evaluation && typeof raw.evaluation === 'object'
+      ? (raw.evaluation as Record<string, unknown>)
+      : null
+  const dimensions = Array.isArray(evaluation?.dimensions)
+    ? (evaluation.dimensions as Array<Record<string, unknown>>)
+    : []
+  const draft: RoundEvaluationDraft = {
+    enabled: evaluation?.enabled !== false,
+    selectedIds: dimensions
+      .map((d) => Number(d.id))
+      .filter((id) => Number.isFinite(id) && id !== 0),
+    params: {},
+  }
+  for (const d of dimensions) {
+    const id = Number(d.id)
+    if (!Number.isFinite(id) || id === 0) continue
+    const llm =
+      d.llmJudgeConfig && typeof d.llmJudgeConfig === 'object'
+        ? (d.llmJudgeConfig as Record<string, unknown>)
+        : null
+    draft.params[id] = {
+      weight: Number(d.weight ?? 50),
+      threshold: Number(d.threshold ?? 80),
+      ...(llm?.model != null ? { model: String(llm.model) } : {}),
+      ...(llm?.promptTemplate != null ? { promptTemplate: String(llm.promptTemplate) } : {}),
+    }
+  }
+  return {
+    number,
+    audioCount: audios.length,
+    dimensionCount: dimensions.length,
+    evaluation: draft,
+  }
+}
+
+/** 真实 config.rounds → RoundDraft[]（空/缺失回退默认轮次） */
+function roundsFromConfig(
+  config: Record<string, unknown> | null | undefined
+): RoundDraft[] {
+  const rawRounds = Array.isArray(config?.rounds)
+    ? (config.rounds as Array<Record<string, unknown>>)
+    : []
+  if (rawRounds.length === 0) return defaultRounds()
+  return rawRounds.map(roundDraftFromConfig)
+}
+
+/** RoundDraft[] → 后端 config.rounds（合并原始轮次保留 audios/background_noise 等；evaluation 序列化为 {enabled, dimensions}） */
+function roundsToConfig(
+  drafts: RoundDraft[],
+  originalRounds: Array<Record<string, unknown>> | null | undefined
+): Array<Record<string, unknown>> {
+  return drafts.map((draft) => {
+    const orig =
+      originalRounds?.find(
+        (r) => Number(r.round_number ?? r.roundNumber) === draft.number
+      ) ?? null
+    // 原始单轮 evaluation（保留 name 等未在抽屉编辑的字段；INT-922 保存不得丢维度名）
+    const origEval =
+      orig?.evaluation && typeof orig.evaluation === 'object'
+        ? (orig.evaluation as Record<string, unknown>)
+        : null
+    const origDims = Array.isArray(origEval?.dimensions)
+      ? (origEval.dimensions as Array<Record<string, unknown>>)
+      : []
+    return {
+      ...(orig ?? {}),
+      round_number: draft.number,
+      evaluation: {
+        enabled: draft.evaluation.enabled,
+        dimensions: draft.evaluation.selectedIds.map((id) => {
+          const p = draft.evaluation.params[id]
+          const origDim = origDims.find((d) => Number(d.id) === id) ?? null
+          return {
+            ...(origDim ?? {}),
+            id,
+            weight: p?.weight ?? Number(origDim?.weight ?? 50),
+            threshold: p?.threshold ?? Number(origDim?.threshold ?? 80),
+            ...(p?.model || p?.promptTemplate
+              ? {
+                  llmJudgeConfig: {
+                    model: p?.model ?? '',
+                    promptTemplate: p?.promptTemplate ?? '',
+                  },
+                }
+              : {}),
+          }
+        }),
+      },
+    }
+  })
+}
+
 export function CaseMutateDrawer({
   open,
   onOpenChange,
@@ -165,6 +283,7 @@ export function CaseMutateDrawer({
   presetGroupId?: string | null
 }) {
   const isEdit = caseItem != null
+  const queryClient = useQueryClient()
   const strategiesQuery = useEvaluationStrategies()
   const strategies = strategiesQuery.data ?? []
   const [step, setStep] = useState<(typeof STEPS)[number]>('算法参数')
@@ -173,26 +292,10 @@ export function CaseMutateDrawer({
   const [groupValue, setGroupValue] = useState(caseItem?.groupId ?? presetGroupId ?? '')
   const [newGroupName, setNewGroupName] = useState('')
   const [algorithmType, setAlgorithmType] = useState(caseItem?.algorithmType ?? '')
+  const [descriptionValue, setDescriptionValue] = useState(caseItem?.description ?? '')
   const { options: algorithmOptions, isLoading: loadingAlgorithms } =
     useAlgorithmOptions()
-  const [rounds, setRounds] = useState<RoundDraft[]>([
-    {
-      number: 1,
-      audioCount: 2,
-      dimensionCount: 1,
-      evaluation: { enabled: true, selectedIds: [1], params: { 1: { weight: 50, threshold: 80 } } },
-    },
-    {
-      number: 2,
-      audioCount: 1,
-      dimensionCount: 2,
-      evaluation: {
-        enabled: true,
-        selectedIds: [1, 11],
-        params: { 1: { weight: 50, threshold: 80 }, 11: { weight: 50, threshold: 80 } },
-      },
-    },
-  ])
+  const [rounds, setRounds] = useState<RoundDraft[]>(defaultRounds())
   const [activeRound, setActiveRound] = useState(1)
   /** 评估策略节值（§5.1.3；保存时序列化为 config.evaluationStrategy / 存量直载字段） */
   const [strategyValue, setStrategyValue] = useState<EvaluationStrategyEditorValue | null>(null)
@@ -262,15 +365,123 @@ export function CaseMutateDrawer({
 
   const activeRoundDraft = rounds.find((r) => r.number === activeRound) ?? rounds[0]
 
-  // INT-588：自动生成需真实读写名称框。抽屉组件常驻渲染（弹窗群内，Sheet 内容关闭时才卸载），
-  // useState 初始值在页面加载（caseItem=null）时已定格；打开时按 caseItem 回填名称/标签，
-  // 编辑态原名与既有标签不丢（等价 defaultValue 装载时机的行为）。
-  useEffect(() => {
-    if (open) {
-      setNameValue(caseItem?.name ?? '')
-      setTagValue(caseItem?.tags ?? [])
+  /**
+   * 保存（INT-922 P1-1：走真实 testcase create/update 写接口，对照 V9.7.10 Vue）。
+   * config.rounds 由轮次草稿序列化并与原始轮次合并（保留未在抽屉编辑的
+   * audios/background_noise 等结构）；评估策略节仅在用户操作过时改写。
+   */
+  const handleSave = async () => {
+    if (!nameValue.trim()) {
+      toast.error('请输入用例名称')
+      return
     }
-  }, [open, caseItem])
+    if (groupValue === '__new__' && !newGroupName.trim()) {
+      toast.error('请输入新分组名称')
+      return
+    }
+
+    const originalRounds = Array.isArray(caseItem?.config?.rounds)
+      ? (caseItem.config.rounds as Array<Record<string, unknown>>)
+      : []
+    const config: Record<string, unknown> = {
+      ...(caseItem?.config ?? {}),
+      rounds: roundsToConfig(rounds, originalRounds),
+    }
+
+    // 评估策略节（§5.1.3 契约）：未触碰（strategyValue=null）保留存量字段；三模式改写如下
+    const strategyPayload = serializeEvaluationStrategy(strategyValue)
+    let strategyId: string | null | undefined
+    let strategyOverrides: Record<string, unknown> | null | undefined
+    if (strategyValue?.mode === 'reference') {
+      strategyId = strategyValue.strategyId ?? null
+      strategyOverrides = (strategyValue.overrides ?? null) as Record<string, unknown> | null
+      // 引用态：清存量直载字段（策略写时物化到 config.dimensions/background_noise）
+      delete config.dimensions
+      delete config.background_noise
+      delete config.evaluationStrategy
+    } else if (strategyValue?.mode === 'create') {
+      config.dimensions = strategyPayload.dimensions
+      config.background_noise = strategyPayload.backgroundNoise
+      delete config.evaluationStrategy
+      strategyId = null
+      strategyOverrides = null
+    } else if (strategyValue?.mode === 'none') {
+      delete config.dimensions
+      delete config.background_noise
+      delete config.evaluationStrategy
+      strategyId = null
+      strategyOverrides = null
+    }
+
+    const payload: TestCaseMutatePayload = {
+      name: nameValue.trim(),
+      description: descriptionValue || null,
+      groupId: groupValue === '__new__' ? null : groupValue || null,
+      ...(groupValue === '__new__' ? { group: newGroupName.trim() } : {}),
+      tags: tagValue,
+      algorithmType: algorithmType || null,
+      config,
+      algorithmParams: caseItem?.algorithmParams ?? undefined,
+      referenceParams: caseItem?.referenceParams ?? undefined,
+      ...(strategyValue ? { strategyId, strategyOverrides } : {}),
+    }
+
+    const reference = strategies.find(
+      (s) => String(s.id) === String(strategyValue?.strategyId)
+    )
+    const overrideCount =
+      (strategyValue?.overrides?.dimensions != null ? 1 : 0) +
+      (strategyValue?.overrides?.backgroundNoise != null ? 1 : 0)
+    const summary =
+      strategyValue?.mode === 'reference'
+        ? reference
+          ? overrideCount > 0
+            ? `评估策略：已引用「${reference.name}」并覆盖 ${overrideCount} 项`
+            : `评估策略：已引用「${reference.name}」`
+          : '评估策略：已选择引用模式（待选择策略）'
+        : strategyValue?.mode === 'create'
+          ? `评估策略：内联配置（整体维度 ${strategyPayload.dimensions.length} 项 · 噪声 ${strategyPayload.backgroundNoise ? '已配置' : '未配置'}）`
+          : '评估策略：未配置'
+
+    try {
+      if (isEdit && caseItem) {
+        await updateTestCase(caseItem.id, payload)
+      } else {
+        await createTestCase(payload)
+      }
+      toast.success(isEdit ? '更新测试用例成功' : '添加测试用例成功', {
+        description: summary,
+      })
+      onOpenChange(false)
+      void queryClient.invalidateQueries({ queryKey: ['testcases'] })
+      // 新建分组时分组列表一并刷新（分组头行/筛选选项）
+      if (groupValue === '__new__') {
+        void queryClient.invalidateQueries({ queryKey: ['testcase-groups'] })
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '请稍后重试'
+      toast.error(isEdit ? '更新测试用例失败' : '添加测试用例失败', {
+        description: message,
+      })
+    }
+  }
+
+  // INT-588：自动生成需真实读写名称框。抽屉组件常驻渲染（弹窗群内，Sheet 内容关闭时才卸载），
+  // useState 初始值在页面加载（caseItem=null）时已定格；打开时按 caseItem 全字段回填——
+  // INT-922：所属分组/关联算法/轮次此前不回填（Select 显占位、轮次硬编码默认），
+  // 编辑态原名与既有配置不丢（等价 defaultValue 装载时机的行为）。
+  useEffect(() => {
+    if (!open) return
+    setNameValue(caseItem?.name ?? '')
+    setTagValue(caseItem?.tags ?? [])
+    setGroupValue(caseItem?.groupId ?? presetGroupId ?? '')
+    setAlgorithmType(caseItem?.algorithmType ?? '')
+    setDescriptionValue(caseItem?.description ?? '')
+    setRounds(caseItem ? roundsFromConfig(caseItem.config) : defaultRounds())
+    setActiveRound(1)
+    setStep('算法参数')
+    setNewGroupName('')
+  }, [open, caseItem, presetGroupId])
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -329,6 +540,8 @@ export function CaseMutateDrawer({
                 <Select
                   value={groupValue}
                   onValueChange={(v) => setGroupValue(v ?? '')}
+                  // 声明式 items：编辑回填（程序设值）时闭合态下拉也能显示分组名而非原始 id
+                  items={groupOptions.map((o) => ({ value: o.value, label: o.label }))}
                 >
                   <SelectTrigger size='sm' className='h-8 w-full'>
                     <SelectValue placeholder='请选择分组' />
@@ -367,7 +580,8 @@ export function CaseMutateDrawer({
               <Textarea
                 id='case-desc'
                 rows={2}
-                defaultValue={caseItem?.description ?? ''}
+                value={descriptionValue}
+                onChange={(e) => setDescriptionValue(e.target.value)}
                 placeholder='补充用例描述（可选）'
               />
             </section>
@@ -381,7 +595,12 @@ export function CaseMutateDrawer({
                   加载算法列表...
                 </div>
               ) : (
-                <Select value={algorithmType} onValueChange={(v) => setAlgorithmType(v ?? '')}>
+                <Select
+                  value={algorithmType}
+                  onValueChange={(v) => setAlgorithmType(v ?? '')}
+                  // 声明式 items：编辑回填（程序设值）时闭合态下拉显示算法名而非原始类型码
+                  items={algorithmOptions.map((a) => ({ value: a.value, label: a.name }))}
+                >
                   <SelectTrigger size='sm' className='h-8 w-full sm:w-80'>
                     <SelectValue placeholder='请选择算法' />
                   </SelectTrigger>
@@ -458,35 +677,7 @@ export function CaseMutateDrawer({
             <Button variant='outline' onClick={() => onOpenChange(false)}>
               取消
             </Button>
-            <Button
-              onClick={() => {
-                // 评估策略节 → 用例保存载荷（config.evaluationStrategy / 存量直载字段，§5.1.3 契约）
-                const payload = serializeEvaluationStrategy(strategyValue)
-                const reference = strategies.find(
-                  (s) => String(s.id) === String(strategyValue?.strategyId)
-                )
-                const overrideCount =
-                  (strategyValue?.overrides?.dimensions != null ? 1 : 0) +
-                  (strategyValue?.overrides?.backgroundNoise != null ? 1 : 0)
-                const summary =
-                  strategyValue?.mode === 'reference'
-                    ? reference
-                      ? overrideCount > 0
-                        ? `评估策略：已引用「${reference.name}」并覆盖 ${overrideCount} 项`
-                        : `评估策略：已引用「${reference.name}」`
-                      : '评估策略：已选择引用模式（待选择策略）'
-                    : strategyValue?.mode === 'create'
-                      ? `评估策略：内联配置（整体维度 ${payload.dimensions.length} 项 · 噪声 ${payload.backgroundNoise ? '已配置' : '未配置'}）`
-                      : '评估策略：未配置'
-                // eslint-disable-next-line no-console
-                console.log('[CaseMutateDrawer] config payload', payload)
-                toast.success(
-                  isEdit ? '更新测试用例成功' : '添加测试用例成功',
-                  { description: summary }
-                )
-                onOpenChange(false)
-              }}
-            >
+            <Button onClick={() => void handleSave()}>
               保存
             </Button>
           </div>

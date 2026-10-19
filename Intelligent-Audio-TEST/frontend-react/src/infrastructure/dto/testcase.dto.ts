@@ -25,6 +25,13 @@ export interface TestCaseListItemDto {
     rounds: Array<Record<string, unknown>> | null
     dimensions: Array<{ id: number; name: string; weight: number | null; test_type: string | null }>
   }
+  /**
+   * 算法参数独立列（test_cases.algorithm_params；按轮分组
+   * [{round_number, params:[{field_code, field_value}]}]，编辑回填/保存原样透传）
+   */
+  algorithm_params?: unknown
+  /** 参考参数独立列（test_cases.reference_params；按轮分组 [{round_number, reference_params_path}]） */
+  reference_params?: unknown
 }
 
 /** GET /testcases 列表响应（testcase.py TestCaseListData：PaginatedData 信封内 items） */

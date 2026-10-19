@@ -77,3 +77,67 @@ export async function fetchTagGroupedTestCases(
 ): Promise<TestCaseListResult> {
   return fetchTestCases(query)
 }
+
+/**
+ * 用例保存载荷（camelCase Domain 写侧；对照 api_gateway/schemas/testcase.py
+ * TestCaseCreateSchema/TestCaseUpdateSchema，Vue testcasesApi.create/update 口径）。
+ * config/algorithmParams/referenceParams 值内动态结构原样透传（snake_case 契约，
+ * 与 batch API「顶层映射、值内 Dict 透传」一致）。
+ */
+export interface TestCaseMutatePayload {
+  name: string
+  description?: string | null
+  /** 分组 id（新建「+ 新建分组」时缺省，改走 group 字段） */
+  groupId?: string | null
+  /** 新建分组名（group_id 缺省时后端按名建组） */
+  group?: string | null
+  tags?: string[]
+  algorithmType?: string | null
+  config?: Record<string, unknown> | null
+  algorithmParams?: unknown
+  referenceParams?: unknown
+  /** INT-590：评估策略引用（写时物化；显式传 null 清除引用） */
+  strategyId?: string | null
+  strategyOverrides?: Record<string, unknown> | null
+}
+
+/** 写侧 camelCase → snake_case 顶层映射（值内动态结构原样透传，Vue convertTestCaseFormData 口径） */
+const MUTATE_KEY_MAP: Record<string, string> = {
+  groupId: 'group_id',
+  algorithmType: 'algorithm_type',
+  algorithmParams: 'algorithm_params',
+  referenceParams: 'reference_params',
+  strategyId: 'strategy_id',
+  strategyOverrides: 'strategy_overrides',
+}
+
+function toTestCaseMutateDto(
+  payload: TestCaseMutatePayload
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(payload)) {
+    if (value === undefined) continue
+    const snakeKey = MUTATE_KEY_MAP[key] ?? key
+    body[snakeKey] = value
+  }
+  return body
+}
+
+/** 创建测试用例（POST /testcases；对照 Vue testcasesApi.create → StringIdData） */
+export async function createTestCase(
+  payload: TestCaseMutatePayload
+): Promise<{ id: string }> {
+  const dto = await apiClient.post<{ id?: string | number }>(
+    '/testcases',
+    toTestCaseMutateDto(payload)
+  )
+  return { id: String(dto?.id ?? '') }
+}
+
+/** 更新测试用例（PUT /testcases/{id}；对照 Vue testcasesApi.update） */
+export async function updateTestCase(
+  id: string,
+  payload: TestCaseMutatePayload
+): Promise<void> {
+  await apiClient.put(`/testcases/${id}`, toTestCaseMutateDto(payload))
+}

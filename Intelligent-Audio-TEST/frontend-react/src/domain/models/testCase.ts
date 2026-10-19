@@ -59,6 +59,16 @@ export interface TestCaseListItem {
    * RoundConfigItem.audios 实测），不再占位）
    */
   audioCount?: number | null
+  /**
+   * 原始 config（TestCaseConfig JSONB 透传；编辑回填轮次/保存合并用，结构对照
+   * schemas/testcase.py TestCaseConfig：rounds/dimensions/background_noise/... 内嵌
+   * snake_case 契约——与 Vue 基准一致，infrastructure 顶层映射、值内 Dict 原样透传）。
+   */
+  config?: Record<string, unknown> | null
+  /** 算法参数独立列（按轮分组 [{round_number, params:[{field_code, field_value}]}]；保存原样回传） */
+  algorithmParams?: unknown
+  /** 参考参数独立列（按轮分组 [{round_number, reference_params_path}]；保存原样回传） */
+  referenceParams?: unknown
 }
 
 /** 评估维度简报（testcase.py TestCaseDimensionBrief） */
