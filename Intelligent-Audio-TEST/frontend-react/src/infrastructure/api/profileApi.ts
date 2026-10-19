@@ -14,9 +14,19 @@ import { toOAuthBindingList } from '@/infrastructure/dto/profile.dto'
 
 export const OAUTH_BINDINGS_QUERY_KEY = ['auth', 'oauth', 'bindings'] as const
 
-/** 当前用户第三方绑定列表（GET /auth/oauth/bindings；JWT 由 client 拦截器注入） */
+/**
+ * 当前用户第三方绑定列表（GET /auth/oauth/bindings；JWT 由 client 拦截器注入）。
+ * skipAuthRedirect（INT-933）：AUTH_MODE=off 下后端对 bindings 恒 401（dev_user
+ * user_id=0 被 oauth_bp 判未登录），若走全局 401 会把该子请求误判会话过期、整页
+ * 弹回 /login；与 authApi.listPublicOAuthProviders 同口径——子请求失败仅降级为空态。
+ */
 export async function listOAuthBindings(): Promise<OAuthBinding[]> {
-  const dto = await request<OAuthBindingsResultDto>('GET', '/auth/oauth/bindings')
+  const dto = await request<OAuthBindingsResultDto>(
+    'GET',
+    '/auth/oauth/bindings',
+    undefined,
+    { skipAuthRedirect: true }
+  )
   return toOAuthBindingList(dto?.bindings ?? [])
 }
 

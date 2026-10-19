@@ -6,7 +6,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { API_BASE_URL } from '@/infrastructure/api/client'
+import { ApiError } from '@/infrastructure/api/api-error'
+import { API_BASE_URL, onSessionExpired, setSessionExpiredHandler } from '@/infrastructure/api/client'
 import { getFavorites } from '@/infrastructure/api/favoritesApi'
 import {
   completeOAuthBinding,
@@ -78,6 +79,25 @@ describe('profileApi / favoritesApi 真实接口', () => {
         providerUserId: 'octocat-2026',
       },
     ])
+  })
+
+  it('listOAuthBindings：401 抛 ApiError 且不触发全局登出（skipAuthRedirect 语义，INT-933）', async () => {
+    authTokenStore.set('kept-token')
+    const expiredListener = vi.fn()
+    const off = onSessionExpired(expiredListener)
+    const handler = vi.fn()
+    setSessionExpiredHandler(handler)
+
+    queueResponses(jsonResponse({ detail: '未登录', code: 401 }, 401))
+
+    const error = await listOAuthBindings().catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(ApiError)
+    expect(expiredListener).not.toHaveBeenCalled()
+    expect(handler).not.toHaveBeenCalled()
+    expect(authTokenStore.get()).toBe('kept-token')
+    off()
+    setSessionExpiredHandler(null)
   })
 
   it('completeOAuthBinding：POST /auth/oauth/bindings 携 bind_ticket JSON body', async () => {
