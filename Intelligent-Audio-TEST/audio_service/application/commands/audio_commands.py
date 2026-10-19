@@ -66,6 +66,13 @@ class PersistAnnotationsCommand:
 
 
 @dataclass(frozen=True)
+class ProcessAudioCommand:
+    """音频处理命令（INT-820 §3.3.2 处理：降噪/增益/剪辑）。"""
+    audio_id: int
+    data: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class CreateTestCaseFromAudioCommand:
     audio_id: int
     test_types: List[str] = field(default_factory=lambda: ['api'])

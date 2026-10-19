@@ -25,7 +25,8 @@ from audio_service.application.queries.audio_queries import (
     GetAudioFolderTreeQuery,
     GetAudioSpeakersQuery,
     GetAudioPlaybackHistoryQuery,
-)
+    AnalyzeAudioFeaturesQuery,
+    AssessAudioQualityQuery,)
 
 logger = logging.getLogger(__name__)
 
@@ -335,6 +336,14 @@ class AudioQueryHandler:
 
         result = self._build_folder_structure(audios, base_normalized, parent_path, depth)
         return _ok(data=result)
+
+    def handle_analyze_audio_features(self, query: AnalyzeAudioFeaturesQuery) -> Dict[str, Any]:
+        from audio_service.application.services.audio_analysis_service import audio_analysis_service
+        return audio_analysis_service.analyze_features(query.audio_id)
+
+    def handle_assess_audio_quality(self, query: AssessAudioQualityQuery) -> Dict[str, Any]:
+        from audio_service.application.services.audio_analysis_service import audio_analysis_service
+        return audio_analysis_service.assess_quality(query.audio_id)
 
     @staticmethod
     def _build_folder_structure(audios, base_normalized, parent_path, depth):

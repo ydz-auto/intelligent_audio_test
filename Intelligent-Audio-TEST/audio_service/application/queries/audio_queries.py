@@ -69,3 +69,12 @@ class GetAudioSpeakersQuery:
 class GetAudioPlaybackHistoryQuery:
     audio_id: int
     params: Dict[str, Any] = field(default_factory=dict)
+class AnalyzeAudioFeaturesQuery:
+    """音频特征分析查询（INT-820 §3.3.2）。"""
+    audio_id: int
+
+
+@dataclass(frozen=True)
+class AssessAudioQualityQuery:
+    """音频质量评估查询（INT-820 §3.3.2）。"""
+    audio_id: int

@@ -16,6 +16,7 @@ from audio_service.application.commands.audio_commands import (
     StopPreviewAudioCommand,
     PersistAnnotationsCommand,
     CreateTestCaseFromAudioCommand,
+    ProcessAudioCommand,
 )
 from audio_service.application.commands.audio_upload_commands import (
     PresignUploadCommand,
@@ -42,6 +43,7 @@ __all__ = [
     "StopPreviewAudioCommand",
     "PersistAnnotationsCommand",
     "CreateTestCaseFromAudioCommand",
+    "ProcessAudioCommand",
     # 上传命令
     "PresignUploadCommand",
     "PresignPartCommand",

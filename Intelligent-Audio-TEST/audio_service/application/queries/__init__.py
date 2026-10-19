@@ -17,7 +17,8 @@ from audio_service.application.queries.audio_queries import (
     GetAudioFolderTreeQuery,
     GetAudioSpeakersQuery,
     GetAudioPlaybackHistoryQuery,
-)
+    AnalyzeAudioFeaturesQuery,
+    AssessAudioQualityQuery,)
 
 __all__ = [
     "ListAudiosQuery",
@@ -32,4 +33,5 @@ __all__ = [
     "GetAudioFolderTreeQuery",
     "GetAudioSpeakersQuery",
     "GetAudioPlaybackHistoryQuery",
-]
+    "AnalyzeAudioFeaturesQuery",
+    "AssessAudioQualityQuery",]

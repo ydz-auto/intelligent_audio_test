@@ -83,6 +83,11 @@ service AudioConfigService {
   rpc GetAudioSpeakers(GetAudioSpeakersRequest) returns (AudioConfigResponse);
   // 分页查询音频播放历史（INT-782#2：新表 + 写侧 + GET 分页）
   rpc GetPlaybackHistory(GetPlaybackHistoryRequest) returns (AudioConfigResponse);
+  // 音频特征分析（频谱/能量分布/时域特征）与质量评估（INT-820：§3.3.2）
+  rpc AnalyzeAudioFeatures(AnalyzeAudioFeaturesRequest) returns (AudioConfigResponse);
+  rpc AssessAudioQuality(AnalyzeAudioFeaturesRequest) returns (AudioConfigResponse);
+  // 音频处理（降噪/增益调整/剪辑，INT-820：§3.3.2 处理）
+  rpc ProcessAudio(ProcessAudioRequest) returns (AudioConfigResponse);
 }
 
 // ==================== AudioService Messages ====================
@@ -382,4 +387,13 @@ message GetAudioSpeakersRequest {
 message GetPlaybackHistoryRequest {
   int32 audio_id = 1;
   string data = 2;  // JSON: 分页参数 {"page": 1, "per_page": 10}
+}
+
+message AnalyzeAudioFeaturesRequest {
+  int32 audio_id = 1;
+}
+
+message ProcessAudioRequest {
+  int32 audio_id = 1;
+  string data = 2;  // JSON: 处理参数（operation / gain_db / start_ms / end_ms / mode）
 }

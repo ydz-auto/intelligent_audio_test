@@ -242,6 +242,18 @@ class ConvertFormatRequest(APIModel):
         return s
 
 
+class AudioProcessRequest(APIModel):
+    """音频处理请求（INT-820 §3.3.2 处理：降噪/增益/剪辑）。
+
+    mode 默认 new：生成新文件并创建新音频记录；overwrite：更新原记录 file_path。
+    """
+    operation: str = Field(...)
+    mode: Optional[str] = Field('new')
+    gain_db: Optional[float] = Field(0.0)
+    start_ms: Optional[int] = Field(0)
+    end_ms: Optional[int] = Field(None)
+
+
 class BatchActionRequest(APIModel):
     audio_ids: List[int] = Field(...)
     action: str = Field(...)

@@ -28,6 +28,7 @@ from audio_service.application.commands.audio_commands import (
     StopPreviewAudioCommand,
     PersistAnnotationsCommand,
     CreateTestCaseFromAudioCommand,
+    ProcessAudioCommand,
 )
 
 logger = logging.getLogger(__name__)
@@ -655,6 +656,10 @@ class AudioCommandHandler:
     def handle_stop_preview_audio(self, cmd: StopPreviewAudioCommand) -> Dict[str, Any]:
         from audio_service.application.services.audio_preview_service import audio_preview_service
         return audio_preview_service.stop_preview_audio(cmd.audio_id)
+
+    def handle_process_audio(self, cmd: ProcessAudioCommand) -> Dict[str, Any]:
+        from audio_service.application.services.audio_analysis_service import audio_analysis_service
+        return audio_analysis_service.process(cmd.audio_id, cmd.data)
 
     # ========== 标注/测试用例创建（委托子服务） ==========
 
