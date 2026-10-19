@@ -208,6 +208,7 @@
 
 <script setup>
 import { useFilterComponent } from './FilterComponent'
+import '../../assets/styles/components/comparison-common.css'
 
 const props = defineProps({
   title: {

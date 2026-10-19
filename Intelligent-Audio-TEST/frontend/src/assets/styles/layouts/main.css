@@ -173,6 +173,10 @@
 
 
 .section-header {
+    margin-bottom: 20px;
+    cursor: pointer;
+    width: 100%;
+    box-sizing: border-box;
     padding: var(--spacing-lg);
     border-bottom: var(--card-border);
     display: flex;
@@ -303,6 +307,7 @@
 
 /* 搜索栏 */
 .search-box {
+    width: 100%;
     margin-bottom: var(--spacing-lg);
 }
 
@@ -359,6 +364,26 @@
     font-weight: 500;
     margin: 0;
     color: var(--text-secondary);
+}
+
+/* ── [INT-771 拆搬] 区块标题/内容（共享组件样式 · 自 components/comparison-common.css 归位，值原样） ── */
+.section-title {
+  font-size: var(--font-size-xxl);
+  font-weight: var(--font-weight-bold);
+  color: var(--foreground);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.section-title i {
+  color: var(--color-slate-500);
+}
+
+.section-content {
+  overflow: hidden;
+  transition: all 0.3s ease;
 }
 
 /* 响应式设计 */
@@ -544,4 +569,33 @@
     align-items: center;
     gap: var(--spacing-md);
     flex: 1;
+}
+
+/* ── [INT-771 拆搬] 搜索框输入（共享组件样式 · 自 components/comparison-common.css 归位，值原样） ── */
+.search-box input {
+  width: 100%;
+  padding: 8px 12px 8px 36px;
+  border: 1px solid var(--color-slate-200);
+  border-radius: var(--radius-6);
+  font-size: 14px;
+  color: var(--color-slate-700);
+  background: var(--color-white);
+  transition: all 0.2s ease;
+}
+
+.search-box input:focus {
+  outline: none;
+  border-color: var(--secondary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--secondary) 10%, transparent);
+}
+
+.search-box input::placeholder {
+  color: var(--color-slate-400);
+}
+
+.search-box i {
+  position: absolute;
+  left: 12px;
+  color: var(--color-slate-400);
+  font-size: 14px;
 }

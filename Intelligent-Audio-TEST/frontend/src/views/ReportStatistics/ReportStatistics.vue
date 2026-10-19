@@ -175,6 +175,8 @@ import {
   REPORT_FORMAT_OPTIONS,
 } from './reportStatistics'
 import type { ToastMessage } from '@/domain/model/ui'
+import '../../assets/styles/reports/base.css'
+import '../../assets/styles/reports/reports.css'
 
 const router = useRouter()
 

@@ -207,6 +207,7 @@ import CaseCategoryComparisonComponent from './CaseCategoryComparisonComponent.v
 import CaseTagComparisonComponent from './CaseTagComparisonComponent.vue'
 import SpecificCaseComparisonComponent from './SpecificCaseComparisonComponent.vue'
 import OverviewCardComponent from './OverviewCardComponent.vue'
+import '../../assets/styles/components/comparison-common.css'
 import ReportReviewStatsBadge from './ReportReviewStatsBadge.vue'
 import { useTaskReportPanel } from './TaskReportPanel'
 

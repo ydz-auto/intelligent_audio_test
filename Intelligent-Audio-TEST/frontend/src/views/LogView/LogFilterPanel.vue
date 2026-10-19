@@ -211,6 +211,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import '../../assets/styles/components/comparison-common.css'
 
 defineProps<{
   filters: any

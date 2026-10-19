@@ -129,6 +129,7 @@
 
 <script setup>
 import { useTimelineComparison } from './TimelineComparison'
+import '../../assets/styles/components/comparison-common.css'
 
 const props = defineProps({
   algorithmResults: {

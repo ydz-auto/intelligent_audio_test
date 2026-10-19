@@ -187,6 +187,7 @@ import ComparisonTableComponent from '../../../components/report/ComparisonTable
 import CaseCategoryComparisonComponent from '../../../components/report/CaseCategoryComparisonComponent.vue'
 import CaseTagComparisonComponent from '../../../components/report/CaseTagComparisonComponent.vue'
 import SpecificCaseComparisonComponent from '../../../components/report/SpecificCaseComparisonComponent.vue'
+import '../../../assets/styles/components/comparison-common.css'
 import {
   comparisonDevices,
   deviceApiColumns,

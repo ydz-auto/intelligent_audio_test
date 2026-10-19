@@ -3,6 +3,7 @@
 /* 模态框遮罩层 - 基础样式 */
 .modal-overlay {
     pointer-events: auto;
+    background: color-mix(in srgb, var(--color-black) 50%, transparent);
 }
 
 /* 模态框内容 */
@@ -35,6 +36,7 @@
 /* 模态框主体 */
 .modal-body{
     background-color: var(--background-primary);
+    padding: 20px;
 }
 
 /* 模态框按钮 */
@@ -132,4 +134,10 @@
 .modal-overlay textarea {
     user-select: text;
     pointer-events: auto ;
+}
+
+/* ── [INT-771 拆搬] 模态内容容器（共享组件样式 · 自 components/comparison-common.css 归位，值原样） ── */
+.modal-content {
+  background: var(--color-white);
+  overflow: auto;
 }

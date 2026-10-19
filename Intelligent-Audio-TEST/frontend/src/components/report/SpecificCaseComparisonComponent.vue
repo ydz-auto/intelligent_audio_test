@@ -468,6 +468,7 @@ import { useAuthStore } from '@/store/authStore'
 import { AuthMode, getEffectiveAuthMode } from '@/domain/enums'
 import { computed, ref } from 'vue'
 import '../../assets/styles/components/report-filter-card.css'
+import '../../assets/styles/components/comparison-common.css'
 import { useSpecificCaseComparison } from './SpecificCaseComparisonComponent'
 
 const props = defineProps({

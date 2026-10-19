@@ -69,6 +69,7 @@ import { ref, onMounted, onBeforeUnmount } from 'vue';
 import { useChart } from '../../chart/composables/useChart';
 import ChartStatsCard from '../../chart/components/ChartStatsCard.vue';
 import ChartActions from '../../chart/components/ChartActions.vue';
+import '../../assets/styles/components/comparison-common.css';
 
 export default {
   name: 'ChartComponent',

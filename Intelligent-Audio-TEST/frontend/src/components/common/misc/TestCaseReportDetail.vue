@@ -356,6 +356,7 @@ import AudioTimelineVisualization from '../audio/AudioTimelineVisualization.vue'
 import { useTestCaseReportDetail } from './TestCaseReportDetail';
 import { TestType } from '@/domain/enums';
 import { readCamel } from '@/utils/keyTransform';
+import '../../../assets/styles/components/comparison-common.css';
 
 const props = defineProps({
   dimensions: { type: Array, default: () => [] },

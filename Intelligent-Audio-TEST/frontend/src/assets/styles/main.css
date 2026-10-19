@@ -35,9 +35,8 @@
 @import './components/log.css';
 @import './components/dropdown-multi-select.css';
 
-/* 3.1 领域共享组件样式（CSS-2：test-case-card；CSS-3：comparison-common） */
+/* 3.1 领域共享组件样式（CSS-2：test-case-card；CSS-3：comparison-common 已 re-home 至比较组件） */
 @import './components/test-case-card.css';
-@import './components/comparison-common.css';
 @import './device/device-card.css';
 @import './e2etest/dropdown.css';
 
@@ -51,9 +50,7 @@
 @import './tasks/filter-sort.css';
 @import './tasks/stats.css';
 
-/* 6. 报告相关样式（CSS-3 拆） */
-@import './reports/base.css';
-@import './reports/reports.css';
+/* 6. 报告相关样式（CSS-3 已 re-home 至报告页面/组件） */
 
 /* 7. 页面特定样式（CSS-2：device/test-case-manager/e2etest；CSS-1：api-test） */
 @import './device/device.css';

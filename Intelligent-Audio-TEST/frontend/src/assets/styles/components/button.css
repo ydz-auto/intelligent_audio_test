@@ -926,3 +926,39 @@ button.warning:hover, .btn-warning:hover {
     transform: translateY(-2px);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+/* ── [INT-771 拆搬] 通用按钮尺寸/变体（共享组件样式 · 自 reports/base.css 归位，值原样） ── */
+.btn-sm{
+    border-radius: var(--radius-md);
+    font-weight: var(--font-weight-medium);
+    transition: all var(--transition-normal);
+}
+
+.btn-primary{
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+    border: none;
+}
+
+.btn-secondary{
+    background: var(--background);
+}
+
+.btn-success{
+    background: linear-gradient(135deg, var(--success) 0%, var(--success-dark) 100%);
+    border: none;
+}
+
+.btn-danger{
+    background: linear-gradient(135deg, var(--destructive) 0%, var(--destructive) 100%);
+    color: var(--color-white);
+    border: none;
+}
+
+/* ── [INT-771 拆搬] 按钮 hover（共享组件样式 · 自 components/comparison-common.css 归位，值原样） ── */
+.btn-primary:hover {
+  background: var(--secondary);
+}
+
+.btn-secondary:hover {
+  background: var(--color-slate-200);
+}

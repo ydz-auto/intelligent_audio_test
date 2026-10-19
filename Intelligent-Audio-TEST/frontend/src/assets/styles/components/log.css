@@ -593,15 +593,25 @@
     }
 }
 
-/* 分页插件样式 */
+/* 分页插件样式（INT-771 拆搬：基础布局/按钮样式自 reports/{base,reports}.css + comparison-common.css 归位，值原样） */
 .pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: var(--spacing-lg);
+    margin-top: var(--spacing-xxl);
+    padding: var(--spacing-lg);
+    background: var(--muted);
+    border-radius: var(--radius-lg);
+    border-top: 1px solid var(--color-slate-200);
 }
 
 .pagination button {
     padding: var(--spacing-sm) var(--spacing-lg);
-    border: 1px solid var(--border-color);
-    background: var(--color-white);
-    border-radius: var(--radius-control);
+    border: 2px solid var(--border);
+    background: var(--background);
+    border-radius: var(--radius-md);
+    color: var(--foreground);
     cursor: pointer;
     transition: all var(--transition-normal);
     font-size: var(--font-size-md);
@@ -611,8 +621,9 @@
 }
 
 .pagination button:hover:not(:disabled) {
-    border-color: var(--primary-color);
-    color: var(--primary-color);
+    background-color: var(--accent);
+    border-color: var(--primary);
+    color: var(--primary);
 }
 
 .pagination button:disabled {
@@ -698,4 +709,11 @@
 .log-mark.blue {
     background-color: var(--secondary);
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--secondary) 30%, transparent);
+}
+
+/* ── [INT-771 拆搬] 分页信息（共享组件样式 · 自 reports/base.css 归位，值原样） ── */
+#page-info {
+    font-size: var(--font-size-md);
+    color: var(--muted-foreground);
+    font-weight: var(--font-weight-medium);
 }

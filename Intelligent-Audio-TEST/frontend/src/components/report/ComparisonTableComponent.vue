@@ -146,6 +146,7 @@
 
 <script>
 import { TaskStatus, ReportStatus, ExecutionStatus } from '@/domain/enums';
+import '../../assets/styles/components/comparison-common.css';
 
 export default {
   name: 'ComparisonTableComponent',
