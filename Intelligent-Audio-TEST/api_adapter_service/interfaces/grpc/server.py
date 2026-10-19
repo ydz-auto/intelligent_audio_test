@@ -2,7 +2,7 @@
 """
 api_adapter_service gRPC server 启动模块。
 
-端口：50081
+端口：51081
 注册 servicer：
 - AdapterService
 """
@@ -25,7 +25,7 @@ def start_grpc_server(port=API_ADAPTER_SERVICE_GRPC_PORT):
     """启动 api_adapter_service 的 gRPC server
 
     Args:
-        port: gRPC 监听端口，默认 50081
+        port: gRPC 监听端口，默认 51081
 
     Returns:
         grpc.Server: 已启动的 server 实例，调用方持有引用以防被 GC 回收

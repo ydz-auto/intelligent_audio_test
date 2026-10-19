@@ -3,7 +3,7 @@
 
 Starts both:
 - FastAPI HTTP server (port 5008)
-- gRPC server (port 50081) —— 由 app lifespan 启动（INT-114），
+- gRPC server (port 51081) —— 由 app lifespan 启动（INT-114），
   本入口只负责 uvicorn，不再手动拉起 gRPC（避免同端口双重绑定）。
 """
 

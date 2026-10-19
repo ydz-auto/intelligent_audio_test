@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""INT-114：api_adapter_service gRPC(50081) 随 app lifespan 自启验证。
+"""INT-114：api_adapter_service gRPC(51081) 随 app lifespan 自启验证。
 
 缺陷：run_all 用 uvicorn 起 ``{dir}.app:app`` 不执行 run.py，多轮 SendRound
-依赖的 gRPC 50081 无人监听 → 多轮 API 执行全部连接拒绝。修复：lifespan 内
+依赖的 gRPC 51081 无人监听 → 多轮 API 执行全部连接拒绝。修复：lifespan 内
 自启 gRPC server（与 task_service 等其余 HTTP+gRPC 服务同款）。
 
 - TestClient 上下文（触发 lifespan）内 gRPC 端口可达，退出后端口关闭
@@ -44,7 +44,7 @@ def test_registry_and_defaults_aligned():
     from api_adapter_service.interfaces.grpc import server as grpc_server
     from shared.infrastructure.config import BaseConfig
 
-    assert API_ADAPTER_SERVICE_GRPC_PORT == 50081
+    assert API_ADAPTER_SERVICE_GRPC_PORT == 51081
     default_port = inspect.signature(
         grpc_server.start_grpc_server).parameters['port'].default
     assert default_port == API_ADAPTER_SERVICE_GRPC_PORT
