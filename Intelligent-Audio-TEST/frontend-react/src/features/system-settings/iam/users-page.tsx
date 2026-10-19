@@ -58,6 +58,7 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { ErrorState } from '@/components/error-state'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 
 import { SettingsSection } from '../components/settings-section'
@@ -240,6 +241,12 @@ export function UsersPage() {
             </div>
           ))}
         </div>
+      ) : usersQuery.isError ? (
+        <ErrorState
+          title='加载失败'
+          description='用户列表加载失败，请重试'
+          onRetry={() => void usersQuery.refetch()}
+        />
       ) : (usersQuery.data?.length ?? 0) === 0 ? (
         <Empty className='min-h-[240px] border-dashed'>
           <EmptyHeader>

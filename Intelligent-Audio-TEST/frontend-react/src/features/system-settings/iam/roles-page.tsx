@@ -36,6 +36,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { ErrorState } from '@/components/error-state'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Empty,
@@ -112,6 +113,12 @@ export function RolesPage() {
             </div>
           ))}
         </div>
+      ) : rolesQuery.isError ? (
+        <ErrorState
+          title='加载失败'
+          description='角色列表加载失败，请重试'
+          onRetry={() => void rolesQuery.refetch()}
+        />
       ) : (rolesQuery.data?.length ?? 0) === 0 ? (
         <Empty className='min-h-[200px] border-dashed'>
           <EmptyHeader>

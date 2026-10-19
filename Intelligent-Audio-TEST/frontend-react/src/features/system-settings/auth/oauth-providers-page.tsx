@@ -41,6 +41,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { ErrorState } from '@/components/error-state'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   OAUTH_CALLBACK_TEMPLATE,
@@ -146,6 +147,12 @@ export function OAuthProvidersPage() {
             </div>
           ))}
         </div>
+      ) : providersQuery.isError ? (
+        <ErrorState
+          title='加载失败'
+          description='OAuth 提供方列表加载失败，请重试'
+          onRetry={() => void providersQuery.refetch()}
+        />
       ) : (
         <StaticDataTable
           columns={columns}
