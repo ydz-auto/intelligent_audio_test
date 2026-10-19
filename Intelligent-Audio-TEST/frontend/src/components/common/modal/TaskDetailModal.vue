@@ -82,7 +82,7 @@ import TestExecutionComponent from '../../layout/TestExecutionComponent.vue';
 import CherryPickDialog from './CherryPickDialog.vue';
 import VisibilityBadge from '../visibility/VisibilityBadge.vue';
 import type { Task, Log } from '../../../domain';
-import { TaskStatus, Visibility, type TaskStatusType } from '@/domain/enums';
+import { TaskStatus, Visibility, PICKABLE_STATUSES, type TaskStatusType } from '@/domain/enums';
 
 const props = defineProps({
   taskId: {type: [String, Number], required: true}
@@ -569,8 +569,7 @@ async function reevaluateTask() {
 const cherryPickVisible = ref(false);
 const router = useRouter();
 
-/** 终态任务才展示挑选入口（§10 默认仅终态任务可挑选） */
-const PICKABLE_STATUSES: readonly string[] = ['completed', 'failed', 'stopped'];
+/** 终态任务才展示挑选入口（§10 默认仅终态任务可挑选；INT-553 P3-4 与入口可见性同源 PICKABLE_STATUSES） */
 const isPickableTask = computed(() =>
   PICKABLE_STATUSES.includes(String(task.value?.status ?? '')));
 

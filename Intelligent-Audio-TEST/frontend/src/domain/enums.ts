@@ -57,6 +57,19 @@ export const REEXECUTE_ELIGIBLE_STATUSES = [
   TaskStatus.STOPPED,
 ] as const
 
+/**
+ * 可挑选（加入购物车）任务状态集合（INT-553 P3-4，INT-339 §10 默认仅终态任务可挑选）。
+ * 挑选入口可见性（TestExecutionComponent）与 openCherryPick 门控（TaskDetailModal）同源此集合，
+ * 禁止散落字面量。后端历史遗留 'finished'/'success' 不在集合内——入口不可见即不可点，
+ * 消除「按钮可见但点击仅 warning」的前后口径不一致。
+ * 类型用 readonly string[]：门控以任意 task status 字符串入参，字面量联合会让 includes 报类型错。
+ */
+export const PICKABLE_STATUSES: readonly string[] = [
+  TaskStatus.COMPLETED,
+  TaskStatus.FAILED,
+  TaskStatus.STOPPED,
+]
+
 /** 用例执行状态枚举 */
 export const ExecutionStatus = {
   PENDING: 'pending',

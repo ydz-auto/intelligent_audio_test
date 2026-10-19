@@ -6,8 +6,8 @@
         <h3><i class="fas fa-shopping-cart"></i> {{ stepTitle }}</h3>
         <div class="cp-steps">
           <span v-for="(s, i) in STEPS" :key="s.key"
-                class="cp-step" :class="{ active: step === s.key, done: stepIndex > i }"
-                @click="goStep(s.key)">
+                class="cp-step" :class="{ active: step === s.key, done: stepIndex > i, locked: !canStepTo(s.key) }"
+                @click="canStepTo(s.key) && goStep(s.key)">
             <i v-if="stepIndex > i" class="fas fa-check"></i> {{ s.label }}
           </span>
         </div>
@@ -219,7 +219,7 @@
         <button v-else-if="step === 'cart'" class="cp-btn cp-btn-primary" :disabled="cartCount === 0" @click="goStep('checkout')">
           <i class="fas fa-flag-checkered"></i> 去下单
         </button>
-        <button v-else class="cp-btn cp-btn-primary" :disabled="!action || submitting || cartCount === 0" @click="submitCheckout">
+        <button v-else class="cp-btn cp-btn-primary" :disabled="!action || submitting || cartCount === 0 || (action === 'merge' && !mergeName.trim())" @click="submitCheckout">
           <i class="fas" :class="submitting ? 'fa-spinner fa-spin' : 'fa-paper-plane'"></i>
           {{ submitting ? '下单中...' : '提交下单' }}
         </button>
@@ -274,7 +274,17 @@ const step = ref<StepKey>('pick');
 const stepIndex = computed(() => STEPS.findIndex(s => s.key === step.value));
 const stepTitle = computed(() => ({ pick: '挑选执行结果', cart: '我的购物车', checkout: '下单' }[step.value]));
 
+/** 步骤跳转准入（INT-553 P3-2：非顺序跳转受限）：
+ *  最多前进一格（任意位置可后退），且未到购物车前「下单」步骤不可点；
+ *  购物车为空时「下单」亦不可点（与底部「去下单」按钮同一门控）。 */
+function canStepTo(key: StepKey): boolean {
+  const i = STEPS.findIndex(s => s.key === key);
+  if (i > stepIndex.value + 1) return false;
+  if (key === 'checkout' && cartCount.value === 0) return false;
+  return true;
+}
 function goStep(key: StepKey) {
+  if (!canStepTo(key)) return;
   step.value = key;
   if (key === 'cart') refreshCart();
   if (key === 'checkout') loadPreview();

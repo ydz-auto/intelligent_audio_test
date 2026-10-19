@@ -438,7 +438,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
-import { TaskStatus, ExecutionStatus, EvaluationStatus, ViewMode, DeviceStatus, REEXECUTE_ELIGIBLE_STATUSES, PermissionPoint } from '@/domain/enums';
+import { TaskStatus, ExecutionStatus, EvaluationStatus, ViewMode, DeviceStatus, REEXECUTE_ELIGIBLE_STATUSES, PICKABLE_STATUSES, PermissionPoint } from '@/domain/enums';
 import { useAuthStore } from '../../store/authStore';
 // INT-301 F3：双徽章图标/文案单一定义源 utils/taskStatusBadge.ts；配色单一定义源 TaskCard.css
 
@@ -507,8 +507,11 @@ const shouldShowRetryButton = computed(() =>
 // INT-302：重评估入口与任务卡片口径一致（终态任务可见）
 const shouldShowReevaluateButton = computed(() => finishedTaskStatuses.includes(props.taskStatus));
 
-// INT-339：挑选加购入口（终态任务可见——§10 默认仅终态任务可挑选）
-const shouldShowPickButton = computed(() => finishedTaskStatuses.includes(props.taskStatus));
+// INT-339：挑选加购入口（终态任务可见——§10 默认仅终态任务可挑选）。
+// INT-553 P3-4：与 openCherryPick 门控同源 PICKABLE_STATUSES（domain/enums 单一源），禁止散落字面量；
+// legacy 'finished'/'success' 不在集合内——入口不可见即不可点，消除「可见但点击仅警告」。
+const shouldShowPickButton = computed(() =>
+  [...PICKABLE_STATUSES].includes(props.taskStatus));
 
 // INT-401：挑选入口权限可见性（task:cherry_pick；seed_rbac tester 已授，见 INT-429 benchmark
 // 同型缺口先例——权限码定义 ≠ 已授，入口必须经 can() 门控）
