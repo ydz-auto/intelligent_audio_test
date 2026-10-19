@@ -24,7 +24,8 @@ os.environ.setdefault('OSS_SECRET_KEY', 'ut-dummy-sk')
 import pytest
 from fastapi.testclient import TestClient
 
-from api_adapter_service.utils.proxy import build_proxy_url
+from api_adapter_service.utils.proxy import (
+    build_proxy_url, is_supported_proxy_scheme, mask_proxy_userinfo)
 
 _PROXY_HTTP = ('http', 'user:pass@10.0.0.1:8080', 'http://user:pass@10.0.0.1:8080')
 _PROXY_SOCKS5 = ('socks5', 'user:pass@10.0.0.1:1080', 'socks5://user:pass@10.0.0.1:1080')
@@ -435,3 +436,199 @@ class TestWebsocketsProxyInjection:
             task_id='t1', session_id='s1', input_type='audio',
             input_data='local://x.wav', source_lang='zh', target_lang='en')
         assert 'proxy' not in captured['kwargs']
+
+
+# ── 打回修复（验收标准 5：日志/异常上下文不出现明文 user:pass）──────────
+
+class TestMaskProxyUserinfo:
+    """userinfo 掩码：scheme://user:pass@ → scheme://****@，幂等。"""
+
+    def test_masks_userinfo_in_proxy_error(self):
+        assert mask_proxy_userinfo(
+            "ftp://u:p@10.0.0.1:9 isn't a valid proxy: "
+            "scheme ftp isn't supported"
+        ) == "ftp://****@10.0.0.1:9 isn't a valid proxy: " \
+            "scheme ftp isn't supported"
+
+    def test_masks_http_and_socks(self):
+        assert mask_proxy_userinfo(
+            'http://user:pass@10.0.0.1:8080') == 'http://****@10.0.0.1:8080'
+        assert mask_proxy_userinfo(
+            'socks5://user:pass@10.0.0.1:1080') == 'socks5://****@10.0.0.1:1080'
+
+    def test_idempotent(self):
+        masked = 'ftp://****@10.0.0.1:9 bad proxy'
+        assert mask_proxy_userinfo(masked) == masked
+
+    def test_no_userinfo_unchanged(self):
+        assert mask_proxy_userinfo(
+            'http://10.0.0.1:8080 connect refused') == \
+            'http://10.0.0.1:8080 connect refused'
+
+    def test_non_url_and_non_str(self):
+        assert mask_proxy_userinfo('plain text') == 'plain text'
+        assert mask_proxy_userinfo(None) is None
+        assert mask_proxy_userinfo(123) == 123
+
+
+class TestProxySchemeWhitelist:
+    """代理 scheme 白名单（http/https/socks5/socks5h，不做 socks4）。"""
+
+    def test_supported_schemes(self):
+        assert is_supported_proxy_scheme('http://u:p@h:1') is True
+        assert is_supported_proxy_scheme('https://h:1') is True
+        assert is_supported_proxy_scheme('socks5://u:p@h:1') is True
+        assert is_supported_proxy_scheme('socks5h://u:p@h:1') is True
+
+    def test_unsupported_schemes(self):
+        assert is_supported_proxy_scheme('ftp://u:p@10.0.0.1:9') is False
+        assert is_supported_proxy_scheme('htttp://u:p@h:1') is False
+        assert is_supported_proxy_scheme('socks4://u:p@h:1') is False
+
+    def test_empty_or_no_scheme(self):
+        assert is_supported_proxy_scheme(None) is False
+        assert is_supported_proxy_scheme('') is False
+        assert is_supported_proxy_scheme('u:p@10.0.0.1:9') is False
+
+
+class TestUnsupportedSchemeRejected:
+    """非白名单 scheme：不把完整 URL 交给 websockets，返回不含 URL 的错误。"""
+
+    def test_qwen_ftp_scheme_not_connecting(self, monkeypatch):
+        import api_adapter_service.adapters.qwen_adapter as qwen_mod
+
+        called = []
+
+        def _fake_connect(*args, **kwargs):
+            called.append(kwargs)
+            raise AssertionError('unsupported scheme must not connect')
+
+        monkeypatch.setattr(qwen_mod.websockets, 'connect', _fake_connect)
+        monkeypatch.setattr(qwen_mod, 'resolve_audio_bytes',
+                            lambda src: b'\x00' * 3200)
+        adapter = qwen_mod.QwenAdapter({
+            'timeout': 5,
+            'proxy_type': 'ftp',
+            'proxy_url': 'u:p@10.0.0.1:9',
+        })
+        result = adapter.send_request(
+            task_id='t1', session_id='s1', input_type='audio',
+            input_data='local://x.wav')
+        assert not called
+        error = result['raw_response']['error']
+        assert '不支持的代理类型' in error
+        assert 'u:p' not in error
+        assert '10.0.0.1' not in error
+
+    def test_volc_htttp_scheme_not_connecting(self, monkeypatch):
+        import api_adapter_service.adapters.volc_ast_adapter as volc_mod
+
+        called = []
+
+        def _fake_connect(*args, **kwargs):
+            called.append(kwargs)
+            raise AssertionError('unsupported scheme must not connect')
+
+        monkeypatch.setattr(volc_mod.websockets, 'connect', _fake_connect)
+        monkeypatch.setattr(volc_mod, 'resolve_audio_bytes',
+                            lambda src: b'\x00' * 6400)
+        adapter = volc_mod.VolcAstAdapter({
+            'ws_url': 'wss://ast.example.com',
+            'timeout': 5,
+            'proxy_type': 'htttp',
+            'proxy_url': 'u:p@10.0.0.1:9',
+        })
+        result = adapter.send_request(
+            task_id='t1', session_id='s1', input_type='audio',
+            input_data='local://x.wav', source_lang='zh', target_lang='en')
+        assert not called
+        error = result['raw_response']['error']
+        assert '不支持的代理类型' in error
+        assert 'u:p' not in error
+        assert '10.0.0.1' not in error
+
+    def test_whitelist_scheme_still_connects(self, monkeypatch):
+        """白名单 scheme 不被误拦截（回归，等价现有 proxy 注入用例）。"""
+        import api_adapter_service.adapters.qwen_adapter as qwen_mod
+
+        captured = {}
+        monkeypatch.setattr(qwen_mod.websockets, 'connect',
+                            _raise_connect(captured))
+        monkeypatch.setattr(qwen_mod, 'resolve_audio_bytes',
+                            lambda src: b'\x00' * 3200)
+        adapter = qwen_mod.QwenAdapter({
+            'timeout': 5,
+            'proxy_type': _PROXY_SOCKS5[0],
+            'proxy_url': _PROXY_SOCKS5[1],
+        })
+        adapter.send_request(
+            task_id='t1', session_id='s1', input_type='audio',
+            input_data='local://x.wav')
+        assert captured['kwargs']['proxy'] == _PROXY_SOCKS5[2]
+
+
+class TestProxyErrorMaskingAtCatch:
+    """残留路径（合法 scheme 但 URL 畸形等）：异常文本 userinfo 掩码后才
+    写日志 / 回 raw_response，日志 traceback 亦不泄漏明文。"""
+
+    def test_qwen_error_masked_in_result_and_log(self, monkeypatch, caplog):
+        import logging
+        import api_adapter_service.adapters.qwen_adapter as qwen_mod
+        from websockets.exceptions import InvalidProxy
+
+        def _fake_connect(*args, **kwargs):
+            url = 'http://u:p@10.0.0.1:9'
+            raise InvalidProxy(url, 'hostname is not provided')
+
+        monkeypatch.setattr(qwen_mod.websockets, 'connect', _fake_connect)
+        monkeypatch.setattr(qwen_mod, 'resolve_audio_bytes',
+                            lambda src: b'\x00' * 3200)
+        # 绕过 scheme 白名单，模拟合法 scheme 下 websockets 仍抛 InvalidProxy
+        monkeypatch.setattr(qwen_mod, 'is_supported_proxy_scheme',
+                            lambda url: True)
+        caplog.set_level(logging.ERROR, logger='api_adapter')
+
+        adapter = qwen_mod.QwenAdapter({
+            'timeout': 5,
+            'proxy_type': 'http',
+            'proxy_url': 'u:p@10.0.0.1:9',
+        })
+        result = adapter.send_request(
+            task_id='t1', session_id='s1', input_type='audio',
+            input_data='local://x.wav')
+
+        assert 'u:p' not in result['raw_response']['error']
+        assert '****' in result['raw_response']['error']
+        assert 'u:p' not in caplog.text
+        assert '****' in caplog.text
+
+    def test_volc_error_masked_in_result_and_log(self, monkeypatch, caplog):
+        import logging
+        import api_adapter_service.adapters.volc_ast_adapter as volc_mod
+        from websockets.exceptions import InvalidProxy
+
+        def _fake_connect(*args, **kwargs):
+            url = 'http://u:p@10.0.0.1:9'
+            raise InvalidProxy(url, 'hostname is not provided')
+
+        monkeypatch.setattr(volc_mod.websockets, 'connect', _fake_connect)
+        monkeypatch.setattr(volc_mod, 'resolve_audio_bytes',
+                            lambda src: b'\x00' * 6400)
+        monkeypatch.setattr(volc_mod, 'is_supported_proxy_scheme',
+                            lambda url: True)
+        caplog.set_level(logging.ERROR, logger='api_adapter')
+
+        adapter = volc_mod.VolcAstAdapter({
+            'ws_url': 'wss://ast.example.com',
+            'timeout': 5,
+            'proxy_type': 'http',
+            'proxy_url': 'u:p@10.0.0.1:9',
+        })
+        result = adapter.send_request(
+            task_id='t1', session_id='s1', input_type='audio',
+            input_data='local://x.wav', source_lang='zh', target_lang='en')
+
+        assert 'u:p' not in result['raw_response']['error']
+        assert '****' in result['raw_response']['error']
+        assert 'u:p' not in caplog.text
+        assert '****' in caplog.text
