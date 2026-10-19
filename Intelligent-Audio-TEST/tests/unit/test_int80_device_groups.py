@@ -312,6 +312,17 @@ class TestNestedCreate:
         assert result['success'] is False
         assert result['code'] == 404
 
+    def test_update_moves_to_descendant_cycle_400(self, command, repo):
+        """审计返工：update 改父级必须与 move 一致做后代链环检测"""
+        root = command.create({'name': '根组'})['data']
+        child = command.create({'name': '子组', 'parent_id': root['id']})['data']
+        grand = command.create({'name': '孙组', 'parent_id': child['id']})['data']
+        # 把根组 update 到自己的孙组下 → 成环 400
+        result = command.update(root['id'], {'parent_id': grand['id']})
+        assert result['success'] is False
+        assert result['code'] == 400
+        assert repo.groups[root['id']].parent_id is None
+
 
 class TestMoveGroup:
     """INT-832：移动分组（含环检测、父存在性、新父级重名）"""

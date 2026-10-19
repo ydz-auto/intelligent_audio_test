@@ -88,6 +88,10 @@ class DeviceGroupCommandService:
                         return {'success': False, 'message': '父分组不存在或已删除', 'data': None, 'code': 404}
                     if target_parent == group_id:
                         return {'success': False, 'message': '父分组不能是分组自身', 'data': None, 'code': 400}
+                    descendants = self.repo.get_descendant_group_ids(group_id)
+                    if target_parent in descendants:
+                        return {'success': False, 'message': '父分组不能是分组的后代分组（会形成环）',
+                                'data': None, 'code': 400}
                 new_parent_id = target_parent
                 update_fields['parent_id'] = target_parent
             # 组名（含未改名的移动）须在目标父级作用域内唯一（决策 3 局部唯一）
