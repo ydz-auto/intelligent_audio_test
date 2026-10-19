@@ -1,0 +1,154 @@
+# -*- coding: utf-8 -*-
+"""INT-849 UI 实测：API 编辑弹窗代理配置（类型下拉 + 地址输入 + 校验）可达性。
+
+卡面验收 #1/#2/#4：打开 API 编辑弹窗 → 应能看到「代理类型」下拉
+（http/https/socks5/socks5h + 不使用代理）+「代理地址」输入；校验规则与
+后端一致；代理为空时行为与改动前一致。
+
+本用例走真实 UI 流程（/APITest 资源卡片「编辑」→ API 编辑弹窗），只读/
+写造数据自建自清：API 造一个测试 API → 浏览器点编辑 → 断言弹窗内出现代理
+字段。若实际打开的编辑弹窗（CRUDFormModal）不含代理字段，则验收 #1 不满足。
+"""
+import time
+
+import pytest
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+
+from tests.ui.utils.api_client import unique_suffix
+
+APITEST_ROUTE = '/APITest'
+MODAL_TITLE = '.modal-title'
+CARD_EDIT_BTN_XPATH = (
+    './/div[contains(@class,"card-actions")]//button[contains(@title,"编辑")]'
+)
+FORM_LABELS = '.crud-form-modal .form-label, .crud-form-modal label'
+FORM_SELECTS = '.crud-form-modal select'
+FORM_INPUTS = '.crud-form-modal input'
+
+
+@pytest.fixture()
+def int849_api(api_client) -> dict:
+    """API 造一个测试 API（无代理，仅触发列表卡片）。返回 {id, name, cleanup}。"""
+    suffix = unique_suffix()
+    name = f'ui849_api_{suffix}'
+    data = api_client.request('POST', '/apis', {
+        'name': name,
+        'vendor': 'volc_ast',
+        'api_url': 'http://127.0.0.1:1',
+        'default_max_process': 5,
+        'default_max_timeout': 30,
+        'default_max_audio_duration': 60,
+        'meta': {'protocol': 'http', 'environment': 'testing', 'version': 'v1'},
+        'endpoints': [{'endpoint': 'http://127.0.0.1:1/health', 'name': 'default',
+                       'max_process': 5, 'max_timeout': 30, 'max_audio_duration': 60,
+                       'priority': 1}],
+    })
+    item = (data or {}).get('data') or {}
+    api_id = item.get('id')
+    assert api_id, f'API 造数据失败: {str(data)[:300]}'
+    yield {'id': api_id, 'name': name}
+    try:
+        api_client.request('DELETE', f'/apis/{api_id}')
+    except Exception:
+        pass
+
+
+def _open_api_edit_modal(page, api_name: str):
+    """导航 /APITest → 找到目标 API 卡片 → 点编辑 → 等弹窗。"""
+    page.goto(APITEST_ROUTE)
+    page.settle(1.0)
+    wait = WebDriverWait(page.driver, 20)
+    # 目标卡片（名称匹配）
+    card = wait.until(
+        EC.presence_of_element_located(
+            (By.XPATH, f'//div[contains(@class,"resource-card")]'
+                       f'[.//div[contains(@class,"card-name")][contains(text(),"{api_name}")]]')))
+    edit_btn = card.find_element(By.XPATH, CARD_EDIT_BTN_XPATH)
+    page.driver.execute_script('arguments[0].scrollIntoView({block:"center"});', edit_btn)
+    page.settle(0.3)
+    page.driver.execute_script('arguments[0].click();', edit_btn)
+    # 等编辑弹窗出现
+    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, MODAL_TITLE)))
+    page.settle(0.6)
+    return card
+
+
+def test_int849_proxy_fields_in_real_api_edit_modal(page, int849_api):
+    """验收 #1/#2：真实 API 编辑弹窗必须包含代理类型下拉 + 代理地址输入。"""
+    _open_api_edit_modal(page, int849_api['name'])
+
+    labels = [e.text.strip() for e in page.find_all(FORM_LABELS)]
+    body_text = page.find('.crud-form-modal').text
+
+    select_texts = []
+    for sel in page.find_all(FORM_SELECTS):
+        opts = [o.text.strip() for o in sel.find_elements(By.TAG_NAME, 'option')]
+        select_texts.append((sel.get_attribute('id'), opts))
+
+    page.capture_artifacts(page.node_artifact_dir('int849_proxy_reach'))
+
+    # 断言：代理类型下拉（含 http/https/socks5/socks5h）+ 代理地址输入
+    assert any('代理' in t for t in labels), (
+        f'实际 API 编辑弹窗缺少代理字段标签。labels={labels}')
+    proxy_select = [s for s in page.find_all(FORM_SELECTS)
+                    if '代理' in s.get_attribute('id') or
+                    any(o in ('http', 'https', 'socks5', 'socks5h')
+                        for o in [o.get_attribute('value') or o.text
+                                  for o in s.find_elements(By.TAG_NAME, 'option')])]
+    assert proxy_select, f'未找到代理类型下拉。selects={select_texts} body={body_text[:300]}'
+    opts = [o.get_attribute('value') for o in proxy_select[0].find_elements(By.TAG_NAME, 'option')]
+    assert set(opts) >= {'http', 'https', 'socks5', 'socks5h'}, f'代理类型选项缺失: {opts}'
+    # 代理地址输入（placeholder 含 user:pass@ 或 label 含 代理地址）
+    proxy_input = [i for i in page.find_all(FORM_INPUTS)
+                   if '代理' in (i.get_attribute('placeholder') or '')]
+    assert proxy_input, f'未找到代理地址输入框。body={body_text[:400]}'
+
+
+def test_int849_apieditmodal_component_direct(page):
+    """组件本身（直接经 modal registry 打开 APIEditModal）必须渲染代理字段 + 校验。
+
+    说明：APIEditModal（MODAL_TYPES.API_OTHER_CONFIG='apiEdit'）在真实编辑流程
+    中无打开入口（见上一用例），此用例经 window 全局 modal manager 直接 open，
+    只验证组件自身渲染与保存载荷契约（与交付截图口径一致）。
+    """
+    page.goto(APITEST_ROUTE)
+    page.settle(0.8)
+    page.driver.execute_script(
+        "window.__ui849_payload = null;"
+        "window.__modal_manager_instance__.open('apiEdit', {"
+        "  data: { name: 'D', proxyType: 'socks5', proxyUrl: 'user:pass@10.0.0.1:1080' }"
+        "}).then(d => { window.__ui849_payload = d; });")
+    page.settle(1.0)
+
+    select = page.find('.api-edit-modal select')
+    opts = [o.get_attribute('value') for o in select.find_elements(By.TAG_NAME, 'option')]
+    assert set(opts) >= {'', 'http', 'https', 'socks5', 'socks5h'}, f'下拉选项缺失: {opts}'
+    assert select.get_attribute('value') == 'socks5', '回显 proxyType=socks5 失败'
+    url_input = page.find('.api-edit-modal input[placeholder="user:pass@host:port"]')
+    assert url_input.get_attribute('value') == 'user:pass@10.0.0.1:1080', '回显 proxyUrl 失败'
+
+    # 校验：类型非空 + 地址缺 user:pass@ → 保存被阻止
+    page.driver.execute_script(
+        "var i = document.querySelector('.api-edit-modal input[placeholder=\"user:pass@host:port\"]');"
+        "i.value = '10.0.0.1:8080'; i.dispatchEvent(new Event('input', {bubbles:true}));")
+    page.settle(0.2)
+    page.click('.api-edit-modal .btn-primary')
+    page.settle(0.4)
+    assert page.driver.execute_script('return window.__ui849_payload === null'), \
+        '非法代理地址（缺 user:pass@）不应触发保存'
+
+    # 合法保存：载荷携带 camelCase proxyType / proxyUrl
+    page.driver.execute_script(
+        "var i = document.querySelector('.api-edit-modal input[placeholder=\"user:pass@host:port\"]');"
+        "i.value = 'user:pass@10.0.0.1:1080'; i.dispatchEvent(new Event('input', {bubbles:true}));")
+    page.settle(0.2)
+    page.click('.api-edit-modal .btn-primary')
+    page.settle(0.5)
+    payload = page.driver.execute_script('return window.__ui849_payload')
+    assert payload, '合法代理保存未产生载荷'
+    assert payload.get('proxyType') == 'socks5' and payload.get('proxyUrl') == 'user:pass@10.0.0.1:1080', \
+        f'保存载荷代理字段错误: {payload}'
+
+    page.capture_artifacts(page.node_artifact_dir('int849_apiedit_direct'))
