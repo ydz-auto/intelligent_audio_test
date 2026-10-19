@@ -389,19 +389,39 @@ class MockRealtimeServer:
             self._started.set()
             await self._server.serve_forever()
 
+        def _run():
+            try:
+                self._loop.run_until_complete(serve())
+            except Exception:
+                # stop() 强制收口时 serve_forever 中途退出属预期，不抛线程异常
+                pass
+
         self._loop = asyncio.new_event_loop()
         self._thread = threading.Thread(
-            target=self._loop.run_until_complete, args=(serve(),), daemon=True,
+            target=_run, daemon=True,
             name='mock-realtime-api')
         self._thread.start()
         assert self._started.wait(timeout=5), 'mock realtime 服务器启动超时'
 
     def stop(self):
+        """停止 mock 服务器（宿主环境容错，不阻塞测试）。
+
+        wait_closed 在 hypium/devicetest（nest_asyncio 类 asyncio 补丁）下永不收敛，
+        故仅 close 不强等；线程未退出（连接处理器仍在收尾）时强制停循环线程
+        （daemon 线程随进程退出回收）。
+        """
         if self._server is not None and self._loop is not None:
-            async def _close():
-                self._server.close()
-                await self._server.wait_closed()
-            asyncio.run_coroutine_threadsafe(_close(), self._loop).result(timeout=5)
+            try:
+                async def _close():
+                    self._server.close()
+                asyncio.run_coroutine_threadsafe(_close(), self._loop).result(timeout=3)
+            except Exception:
+                pass
+            if self._thread is not None and self._thread.is_alive():
+                try:
+                    self._loop.call_soon_threadsafe(self._loop.stop)
+                except Exception:
+                    pass
         if self._thread is not None:
             self._thread.join(timeout=5)
 
