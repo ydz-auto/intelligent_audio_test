@@ -160,15 +160,15 @@
   min-height: 40px;
 }
 
-/* 筛选器容器样式 */
+/* 筛选器容器样式（INT-939：横排，与任务管理 .filter-row 一致——各筛选组按内容宽度横排、空间不足自然换行） */
 .filters-container {
   display: flex;
   gap: var(--spacing-md);
-  align-items: center;
-  flex-wrap: nowrap;
-  justify-content: flex-end;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  justify-content: flex-start;
   width: 100%;
-  overflow-x: auto;
+  overflow: visible;
   padding-bottom: var(--spacing-xs);
   min-height: 40px;
   box-sizing: border-box;
