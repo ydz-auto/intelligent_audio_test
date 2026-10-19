@@ -2,7 +2,8 @@
  * Benchmark 排行区块（15_报告域.md §3.8 + 14_benchmark排行.md §10.3 组件规格）。
  * 独立模块：内嵌 ECharts 参考线图（横向柱状图 + 中位数/最佳参考线），与域图表 Chart.js v4 互不干扰
  * （INT-500 实施卡注意：排行区块专用 ECharts，独立引入 echarts，不混入 report-chart）。
- * 异步计算 + 进度轮询 + 来源筛选（仅实测/仅导入/全部/仅看有差异的）+ 版本标注 + 发布 Benchmark 报告。
+ * 数据经 infrastructure 获取（后端 GET /benchmarks/reports/{id} 待立项 → benchmarkApi 桩）+ 来源筛选
+ * （仅实测/仅导入/全部/仅看有差异的）+ 版本标注 + 发布 Benchmark 报告。
  * 报告详情页内嵌于总览分区前（§3.1 type=benchmark 分发）。
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -33,7 +34,7 @@ interface BenchmarkRankingBlockProps {
 export function BenchmarkRankingBlock({ reportId, reportName }: BenchmarkRankingBlockProps) {
   const {
     computing,
-    progress,
+    error,
     source,
     setSource,
     data,
@@ -163,14 +164,16 @@ export function BenchmarkRankingBlock({ reportId, reportName }: BenchmarkRanking
           <Skeleton className='h-4 w-full' />
           <Skeleton className='h-4 w-2/3' />
         </div>
-        <div className='mt-4 h-1.5 overflow-hidden rounded-full bg-muted'>
-          <div
-            className='bg-primary h-full rounded-full transition-all duration-200'
-            style={{ width: `${progress}%` }}
-            aria-label={`排行计算进度 ${progress}%`}
-          />
-        </div>
-        <p className='text-muted-foreground mt-2 text-xs tabular-nums'>正在计算排行结果... {progress}%</p>
+        <p className='text-muted-foreground mt-2 text-xs'>正在计算排行结果…</p>
+      </section>
+    )
+  }
+
+  if (error) {
+    return (
+      <section id='report-benchmark-ranking' aria-label='Benchmark 排行' className='bg-card rounded-2xl border shadow-xs p-4 sm:p-5'>
+        <h4 className='text-sm font-semibold'>Benchmark 排行</h4>
+        <p className='text-destructive mt-2 text-sm'>排行数据加载失败，请稍后重试</p>
       </section>
     )
   }

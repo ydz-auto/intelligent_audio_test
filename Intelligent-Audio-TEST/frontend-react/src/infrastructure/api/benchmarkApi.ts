@@ -92,3 +92,63 @@ export async function computeBenchmarkRanking(params: {
 }): Promise<void> {
   await request('POST', '/benchmarks/ranking/compute', params)
 }
+
+// ---------------------------------------------------------------------------
+// 报告详情 Benchmark 排行区块（15_报告域.md §3.8）
+// 后端暂无 `GET /benchmarks/reports/{reportId}` 端点（实测 404）→ 本层留桩 // 待接线，
+// 桩返回符合后端 ReadModel 形态的示例（与报告发布 POST /benchmarks/reports 属同一 benchmark_bp）。
+// FEAT 卡：报告排行端点立项（GET /benchmarks/reports/{reportId}）。
+// ---------------------------------------------------------------------------
+
+/** 报告详情排行 DTO（桩形态；report_id + 版本/计算时间/中位数/最佳 + 排行行） */
+export interface BenchmarkReportRankingDto {
+  report_id: number
+  version: string
+  computed_at: string
+  metric_name: string
+  unit: string
+  median: number
+  best: number
+  rows: BenchmarkReportRankingRowDto[]
+}
+
+/** 排行区块行 DTO（source: measured/imported 双轨，delta 双轨并存时非空） */
+export interface BenchmarkReportRankingRowDto {
+  rank: number
+  subject_name: string
+  subject_type: string
+  source: 'measured' | 'imported'
+  metric_value: number
+  gap_best: number
+  percentile: number
+  delta: number | null
+}
+
+/** 桩示例数据（与 FEAT 立项后端 ReadModel 对齐；接真实端点后本函数改为 request 调用） */
+const MOCK_REPORT_RANKING: Omit<BenchmarkReportRankingDto, 'report_id'> = {
+  version: 'v20261016.1',
+  computed_at: '2026-10-16T09:30:00',
+  metric_name: '唤醒成功率',
+  unit: '%',
+  median: 93.2,
+  best: 97.8,
+  rows: [
+    { rank: 1, subject_name: '旗舰-01（平台实测）', subject_type: '设备', source: 'measured', metric_value: 97.8, gap_best: 0, percentile: 100, delta: 1.2 },
+    { rank: 2, subject_name: 'asr-streaming-v3', subject_type: '商业 API', source: 'measured', metric_value: 96.4, gap_best: -1.4, percentile: 92, delta: null },
+    { rank: 3, subject_name: '开源基线 whisper-large', subject_type: '开源模型', source: 'imported', metric_value: 95.1, gap_best: -2.7, percentile: 81, delta: 0.8 },
+    { rank: 4, subject_name: '旗舰-02（平台实测）', subject_type: '设备', source: 'measured', metric_value: 94.3, gap_best: -3.5, percentile: 70, delta: -0.4 },
+    { rank: 5, subject_name: 'wakeword-detect-v2', subject_type: '商业 API', source: 'measured', metric_value: 93.2, gap_best: -4.6, percentile: 58, delta: null },
+    { rank: 6, subject_name: '友商 A 音箱', subject_type: '已上线 APP', source: 'imported', metric_value: 90.6, gap_best: -7.2, percentile: 37, delta: 2.1 },
+    { rank: 7, subject_name: '入门-03（平台实测）', subject_type: '设备', source: 'measured', metric_value: 89.4, gap_best: -8.4, percentile: 25, delta: -1.6 },
+  ],
+}
+
+/** 报告详情排行（待接线：GET /api/v1/benchmarks/reports/{reportId}；桩返回示例） */
+export async function fetchBenchmarkReportRanking(
+  reportId: number
+): Promise<BenchmarkReportRankingDto> {
+  // 待接线：真实端点立项后改为
+  //   return request<BenchmarkReportRankingDto>('GET', `/benchmarks/reports/${reportId}`)
+  void reportId
+  return { report_id: reportId, ...MOCK_REPORT_RANKING }
+}

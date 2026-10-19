@@ -9,7 +9,7 @@
  * 提交后 invalidate 源任务详情（review_count / reviewed 标记），报告重新生成后快照刷新。
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import type {
   AiReviewRecord,
@@ -98,31 +98,60 @@ export function useCaseResults(taskId: number, caseId: string, enabled: boolean)
   })
 }
 
-/** 用例 AI 复核状态机（§2.1：待发起→执行中→已完成→已采纳/已驳回/待查；端点留桩 `// 待接线`） */
+/** 用例 AI 复核状态机（§2.1：待发起→执行中→已完成→已采纳/已驳回/待查；真实端点 INT-824 契约 POST /tasks/results/ai-review） */
 export function useAiReview(taskId: number, caseId: string) {
   const queryClient = useQueryClient()
   const [phase, setPhase] = useState<
     'idle' | 'running' | 'completed' | 'adopted' | 'rejected' | 'ignored'
   >('idle')
   const [record, setRecord] = useState<AiReviewRecord>()
+  /** 本次发起的记录 id（执行中按它从历史定位推进状态） */
+  const [recordId, setRecordId] = useState<number>()
   const [error, setError] = useState<string>()
 
   const historyQuery = useQuery({
     queryKey: ['tasks', 'ai-reviews', 'history', taskId],
     queryFn: () => fetchAiReviewHistory(taskId),
     enabled: Boolean(taskId),
+    // 执行中由真实后端异步驱动（pending/running → completed/failed）：每 3s 轮询历史推进
+    refetchInterval: phase === 'running' ? 3000 : false,
   })
 
-  /** 发起：提交 → 异步执行（模拟轮询，端点留桩） → 结论落位 */
+  // 按真实后端 status 推进：completed → 已完成；failed/canceled → 失败可重试；pending/running → 保持执行中
+  useEffect(() => {
+    if (!recordId) return
+    const current = historyQuery.data?.find((r) => r.id === recordId)
+    if (!current) return
+    if (current.status === 'completed') {
+      setRecord(current)
+      setPhase('completed')
+      setRecordId(undefined)
+    } else if (current.status === 'failed' || current.status === 'canceled') {
+      setError(current.status === 'failed' ? 'AI 复核执行失败，请稍后重试' : 'AI 复核已取消')
+      setPhase('idle')
+      setRecordId(undefined)
+    }
+    // pending/running：保持执行中，下次轮询继续
+  }, [historyQuery.data, recordId])
+
+  /** 发起：提交真实端点 → 按返回记录 status 落位（completed/failed 直接收敛；pending/running 轮询历史） */
   const initiate = async (payload: AiReviewRequest) => {
     setPhase('running')
     setError(undefined)
     try {
-      // 待接线：真实端点异步执行中由后端驱动进度；桩实现模拟延迟后返回结论
-      await new Promise((resolve) => setTimeout(resolve, 1600))
       const result = await requestAiReview(taskId, caseId, payload)
       setRecord(result)
-      setPhase('completed')
+      if (result.status === 'completed') {
+        setPhase('completed')
+        setRecordId(undefined)
+      } else if (result.status === 'failed' || result.status === 'canceled') {
+        setError(result.status === 'failed' ? 'AI 复核执行失败，请稍后重试' : 'AI 复核已取消')
+        setPhase('idle')
+        setRecordId(undefined)
+      } else {
+        // pending/running：异步执行中，refetchInterval 驱动轮询历史推进
+        setRecordId(result.id)
+      }
       void queryClient.invalidateQueries({
         queryKey: ['tasks', 'ai-reviews', 'history', taskId],
       })
@@ -181,6 +210,7 @@ export function useAiReview(taskId: number, caseId: string) {
     reset: () => {
       setPhase('idle')
       setRecord(undefined)
+      setRecordId(undefined)
       setError(undefined)
     },
   }

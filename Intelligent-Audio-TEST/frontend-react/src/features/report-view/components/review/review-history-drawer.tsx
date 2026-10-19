@@ -2,7 +2,7 @@
  * 复核历史抽屉（19 规范 §3.4/§4.3，INT-793）：人工复核 / AI 复核 两 Tab。
  * 人工 Tab：GET /tasks/results/{task_id}/review-history（服务端时间正序，展示倒序），
  * 行 = 时间 + 操作人 + 用例名 + 字段徽章 + 改判 {原值} → {新值} + 备注（LongText 截断）。
- * AI Tab：AI 复核记录（§8-2 待后端立项，infrastructure 桩 `// 待接线`），空态「暂无 AI 复核记录」。
+ * AI Tab：AI 复核记录（GET /tasks/results/{task_id}/ai-review-history，INT-824），空态「暂无 AI 复核记录」。
  * 用例卡片入口按 caseId 过滤；任务级入口不过滤。
  */
 import { ShieldCheck, Sparkles } from 'lucide-react'

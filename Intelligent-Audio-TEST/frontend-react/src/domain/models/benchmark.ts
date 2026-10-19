@@ -92,3 +92,29 @@ export interface RankingGroup {
   rows: RankingRow[]
   computedAt: string
 }
+
+/** 报告详情 Benchmark 排行区块（15_报告域.md §3.8；后端 `GET /benchmarks/reports/{id}` 待接线） */
+export type BenchmarkReportSourceFilter = 'measured' | 'imported' | 'all' | 'diff'
+
+/** 排行区块行（camelCase；后端 ReadModel 待立项，桩形态由 benchmarkApi 留桩） */
+export interface BenchmarkReportRankingRow {
+  rank: number
+  subjectName: string
+  subjectType: string
+  source: 'measured' | 'imported'
+  metricValue: number
+  gapBest: number
+  percentile: number
+  delta: number | null
+}
+
+/** 排行区块数据（版本标注/计算时间/中位数/最佳参考线 + 排行行） */
+export interface BenchmarkReportRanking {
+  version: string
+  computedAt: string
+  metricName: string
+  unit: string
+  median: number
+  best: number
+  rows: BenchmarkReportRankingRow[]
+}

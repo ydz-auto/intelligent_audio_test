@@ -1,7 +1,8 @@
 /**
  * 分享报告 Dialog（15_报告域.md §4.12；报告管理功能设计文档.md:254-272 实测）。
  * 分享方式=生成分享链接/邮件分享/导出后分享；分享权限=访问权限（仅登录/指定人/公开）× 有效期 × 访问密码；
- * 分享统计=访问次数/访问时间；链接管理和撤销。状态由 application/use-report-share 承载（mock）。
+ * 分享统计=访问次数/访问时间；链接管理和撤销。状态由 application/use-report-share 承载
+ * （数据经 infrastructure/api/report-share-api.ts 桩 `// 待接线`，后端分享端点待立项）。
  */
 import { Copy, ExternalLink, Mail, Share2 } from 'lucide-react'
 

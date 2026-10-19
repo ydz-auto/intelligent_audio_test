@@ -5,6 +5,8 @@
  * 全量映射表见 14_benchmark排行.md §9；回归断言：interfaces 层零 snake_case。
  */
 import type {
+  BenchmarkReportRanking,
+  BenchmarkReportRankingRow,
   MetricMappingInfo,
   RankingFilters,
   RankingRow,
@@ -13,6 +15,10 @@ import type {
   BenchmarkMetricMappingDto,
   BenchmarkRankingDto,
 } from '@/infrastructure/mock/benchmark-mock'
+import type {
+  BenchmarkReportRankingDto,
+  BenchmarkReportRankingRowDto,
+} from '@/infrastructure/api/benchmarkApi'
 
 /** 排行行 DTO → Domain（全字段映射；baselineId 仅排障用，组件不显示） */
 export function mapRankingRowDto(dto: BenchmarkRankingDto): RankingRow {
@@ -82,4 +88,33 @@ export function filterRankingRows(
     }
     return true
   })
+}
+
+/** 报告详情排行行 DTO → Domain（rank/subjectName/source/metricValue/gapBest/percentile/delta） */
+export function mapBenchmarkReportRankingRowDto(
+  dto: BenchmarkReportRankingRowDto
+): BenchmarkReportRankingRow {
+  return {
+    rank: dto.rank,
+    subjectName: dto.subject_name,
+    subjectType: dto.subject_type,
+    source: dto.source,
+    metricValue: dto.metric_value,
+    gapBest: dto.gap_best,
+    percentile: dto.percentile,
+    delta: dto.delta,
+  }
+}
+
+/** 报告详情排行 DTO → Domain（版本/计算时间/中位数/最佳参考线 + 排行行；15_报告域 §3.8） */
+export function mapBenchmarkReportRanking(dto: BenchmarkReportRankingDto): BenchmarkReportRanking {
+  return {
+    version: dto.version,
+    computedAt: dto.computed_at,
+    metricName: dto.metric_name,
+    unit: dto.unit,
+    median: dto.median,
+    best: dto.best,
+    rows: dto.rows.map(mapBenchmarkReportRankingRowDto),
+  }
 }

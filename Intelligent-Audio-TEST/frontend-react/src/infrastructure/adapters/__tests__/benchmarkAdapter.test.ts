@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   filterRankingRows,
+  mapBenchmarkReportRanking,
   mapMetricMappingDto,
   mapRankingRowDto,
   mapRankingRows,
@@ -14,6 +15,7 @@ import type {
   BenchmarkMetricMappingDto,
   BenchmarkRankingDto,
 } from '@/infrastructure/mock/benchmark-mock'
+import type { BenchmarkReportRankingDto } from '@/infrastructure/api/benchmarkApi'
 import type { RankingFilters } from '@/domain/models/benchmark'
 
 const ROW_DTO: BenchmarkRankingDto = {
@@ -167,5 +169,45 @@ describe('mapRankingRows', () => {
     const mapped = mapRankingRows([ROW_DTO, { ...ROW_DTO, id: 2001 }])
     expect(mapped).toHaveLength(2)
     expect(mapped[1].id).toBe(2001)
+  })
+})
+
+describe('mapBenchmarkReportRanking', () => {
+  const REPORT_DTO: BenchmarkReportRankingDto = {
+    report_id: 67,
+    version: 'v20261016.1',
+    computed_at: '2026-10-16T09:30:00',
+    metric_name: '唤醒成功率',
+    unit: '%',
+    median: 93.2,
+    best: 97.8,
+    rows: [
+      { rank: 1, subject_name: '旗舰-01（平台实测）', subject_type: '设备', source: 'measured', metric_value: 97.8, gap_best: 0, percentile: 100, delta: 1.2 },
+      { rank: 2, subject_name: 'asr-streaming-v3', subject_type: '商业 API', source: 'measured', metric_value: 96.4, gap_best: -1.4, percentile: 92, delta: null },
+    ],
+  }
+
+  it('报告详情排行 DTO → Domain（camelCase 全字段；interfaces 零 snake_case）', () => {
+    const data = mapBenchmarkReportRanking(REPORT_DTO)
+    expect(data.version).toBe('v20261016.1')
+    expect(data.computedAt).toBe('2026-10-16T09:30:00')
+    expect(data.metricName).toBe('唤醒成功率')
+    expect(data.unit).toBe('%')
+    expect(data.median).toBe(93.2)
+    expect(data.best).toBe(97.8)
+    expect(data.rows).toHaveLength(2)
+    expect(data.rows[0].rank).toBe(1)
+    expect(data.rows[0].subjectName).toBe('旗舰-01（平台实测）')
+    expect(data.rows[0].subjectType).toBe('设备')
+    expect(data.rows[0].source).toBe('measured')
+    expect(data.rows[0].metricValue).toBe(97.8)
+    expect(data.rows[0].gapBest).toBe(0)
+    expect(data.rows[0].percentile).toBe(100)
+    expect(data.rows[0].delta).toBe(1.2)
+    expect(data.rows[1].delta).toBeNull()
+    expect(Object.keys(data).some((key) => key.includes('_'))).toBe(false)
+    expect(
+      data.rows.flatMap((r) => Object.keys(r)).some((key) => key.includes('_'))
+    ).toBe(false)
   })
 })
