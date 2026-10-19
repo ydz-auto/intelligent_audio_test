@@ -387,6 +387,18 @@ export interface ReportDetailData {
   deleted_by_user_id?: number
 }
 
+/** GET /reports/{id}/progress 报告生成进度（report_handlers.handle_get_report_progress 实测契约） */
+export interface ReportProgress {
+  report_id: number
+  task_id: number | null
+  /** generating（生成锁持有）→ completed（报告行落库即完成）；failed 由 SSE 失败事件表达 */
+  status: string
+  /** 0-100（generating 时按任务完成用例数推导） */
+  progress: number
+  /** 报告落库后状态（draft/published） */
+  report_status?: string
+}
+
 /** 具体用例（POST /reports/{id}/cases/search 返回项；build_case_item 全字段，§1.3） */
 export interface ReportCaseItem {
   id: string

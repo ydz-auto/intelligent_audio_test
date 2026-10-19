@@ -7,7 +7,8 @@
  * 返回 report_id 后跳转；对比配置 §4.6 后端未立项，不随批透传）。
  */
 import { GitCompareArrows } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -30,7 +31,10 @@ import {
 } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useCompletedTasks } from '@/application/reports/use-completed-tasks'
-import { useReportCompare } from '@/application/reports/use-report-compare'
+import {
+  useReportCompare,
+  waitForReportGenerated,
+} from '@/application/reports/use-report-compare'
 import type { ReportListItem } from '@/domain/models/report'
 import { cn } from '@/lib/utils'
 
@@ -56,7 +60,15 @@ interface ReportCompareDialogProps {
   onOpenChange: (open: boolean) => void
   /** 列表勾选的报告（二次对比数据源，≥2 可用） */
   selectedReports: ReportListItem[]
-  onCompared: (reportId: number) => void
+  /** 同步生成（基于任务）→ reportId；异步生成（基于已选报告）→ waitPromise 回传真实 report_id */
+  onCompared: (payload: {
+    reportId?: number
+    reportKey?: number[]
+    /** 二次对比 SSE 等待 Promise（提交前已订阅，进度弹窗直接 await） */
+    waitPromise?: Promise<number>
+    /** 取消等待（进度弹窗关闭时解绑 SSE 订阅） */
+    waitAbort?: () => void
+  }) => void
 }
 
 export function ReportCompareDialog({
@@ -73,8 +85,14 @@ export function ReportCompareDialog({
   const [metrics, setMetrics] = useState<string[]>(['唤醒成功率'])
   const [mode, setMode] = useState('horizontal')
   const [submitting, setSubmitting] = useState(false)
+  /** 二次对比 SSE 等待的 AbortController（弹窗关闭/卸载时中止，防订阅泄漏） */
+  const submitAbortRef = useRef<AbortController | undefined>(undefined)
   const { data: tasks = [] } = useCompletedTasks()
   const { compare, secondaryCompare } = useReportCompare()
+
+  useEffect(() => {
+    return () => submitAbortRef.current?.abort()
+  }, [])
 
   const taskCount = selectedTaskIds.length
   const reportCount = selectedReports.length
@@ -84,6 +102,8 @@ export function ReportCompareDialog({
 
   const handleOpenChange = (next: boolean) => {
     if (!next) {
+      submitAbortRef.current?.abort()
+      submitAbortRef.current = undefined
       setSelectedTaskIds([])
       setName('')
     }
@@ -105,13 +125,54 @@ export function ReportCompareDialog({
   const handleSubmit = async () => {
     setSubmitting(true)
     const config = { dimension, metrics, mode }
-    const resultId =
-      source === 'task'
-        ? await compare(selectedTaskIds, name || '对比报告', config)
-        : await secondaryCompare(selectedReports.map((r) => r.id), name || undefined, config)
+    if (source === 'task') {
+      const reportId = await compare(selectedTaskIds, name || '对比报告', config)
+      setSubmitting(false)
+      handleOpenChange(false)
+      onCompared({ reportId })
+      return
+    }
+    // 二次对比异步生成（INT-935 契约）：reportKey 提交前可算 → 先订阅 SSE 后提交，
+    // 事件必达无竞态；真实 report_id 经 waitPromise 回传进度弹窗
+    const reportIds = selectedReports.map((r) => r.id)
+    const reportKey = reportIds.map(Number).sort((a, b) => a - b)
+    const controller = new AbortController()
+    submitAbortRef.current = controller
+    let sseOpened: (() => void) | undefined
+    const sseReady = new Promise<void>((resolve) => {
+      sseOpened = resolve
+    })
+    const waitPromise = waitForReportGenerated(
+      { reportKey },
+      { signal: controller.signal, onOpen: () => sseOpened?.() },
+    )
+    // 交接前先挂 no-op catch，避免取消/超时在进度弹窗接管前成为 unhandled rejection
+    void waitPromise.catch(() => undefined)
+    try {
+      // 等 SSE 连接建立（≤2s 兜底）再提交，杜绝 <1s 快速失败事件早于订阅到达的竞态
+      await Promise.race([sseReady, new Promise((r) => setTimeout(r, 2_000))])
+      await secondaryCompare(reportIds, name || undefined, config)
+    } catch (err) {
+      controller.abort()
+      submitAbortRef.current = undefined
+      setSubmitting(false)
+      toast.error(err instanceof Error ? err.message : '二次对比报告提交失败')
+      return
+    }
+    if (controller.signal.aborted) {
+      // 弹窗在提交期间被取消：不打开进度弹窗
+      setSubmitting(false)
+      submitAbortRef.current = undefined
+      return
+    }
     setSubmitting(false)
+    submitAbortRef.current = undefined
     handleOpenChange(false)
-    onCompared(resultId)
+    onCompared({
+      reportKey,
+      waitPromise,
+      waitAbort: () => controller.abort(),
+    })
   }
 
   return (

@@ -16,7 +16,10 @@ import {
   fetchReportCounts,
   fetchReportDetail,
   fetchReportList,
+  fetchReportProgress,
+  generateTaskReport,
   publishBenchmarkReport,
+  secondaryCompareReports,
   toggleReportFavorite,
   updateReport,
 } from '@/infrastructure/api/reports-api'
@@ -241,5 +244,65 @@ describe('reports 域 API 真实端点', () => {
     expect(url).toBe(`${API_BASE_URL}/benchmarks/reports`)
     expect(init.method).toBe('POST')
     expect(init.body).toBe('{}')
+  })
+
+  it('secondaryCompareReports：POST /reports/secondary-compare 异步契约 {reportKey,status}', async () => {
+    queueResponses(
+      jsonResponse({
+        success: true,
+        code: 0,
+        data: { reportKey: [2, 65], status: 'generating' },
+        message: '对比报告生成中，请稍后',
+      })
+    )
+    const result = await secondaryCompareReports({ report_ids: [65, 2], description: '对比' })
+    expect(result).toEqual({ reportKey: [2, 65], status: 'generating' })
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe(`${API_BASE_URL}/reports/secondary-compare`)
+    expect(init.method).toBe('POST')
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>
+    expect(body.report_ids).toEqual([65, 2])
+    expect(body.description).toBe('对比')
+  })
+
+  it('generateTaskReport：POST /reports/generate-task 异步契约 {taskId,status}（无 report_id）', async () => {
+    queueResponses(
+      jsonResponse({
+        success: true,
+        code: 0,
+        data: { taskId: 1042, status: 'generating' },
+        message: '报告生成中，请稍后刷新',
+      })
+    )
+    const result = await generateTaskReport({ task_id: 1042, name: '任务报告' })
+    expect(result).toEqual({ taskId: 1042, status: 'generating' })
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe(`${API_BASE_URL}/reports/generate-task`)
+    expect(init.method).toBe('POST')
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>
+    expect(body.task_id).toBe(1042)
+    expect(body.name).toBe('任务报告')
+  })
+
+  it('fetchReportProgress：GET /reports/{id}/progress 返回进度契约', async () => {
+    queueResponses(
+      jsonResponse({
+        success: true,
+        code: 0,
+        data: { report_id: 1185, task_id: 1042, status: 'completed', progress: 100, report_status: 'draft' },
+      })
+    )
+    const result = await fetchReportProgress(1185)
+    expect(result).toEqual({
+      report_id: 1185,
+      task_id: 1042,
+      status: 'completed',
+      progress: 100,
+      report_status: 'draft',
+    })
+    const [url] = fetchMock.mock.calls[0] as [string]
+    expect(url).toBe(`${API_BASE_URL}/reports/1185/progress`)
   })
 })

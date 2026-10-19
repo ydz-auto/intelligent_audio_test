@@ -60,20 +60,8 @@ export interface SseSubscribeOptions {
   heartbeatTimeoutMs?: number
 }
 
-/** 同事件去重窗口（重连后重复推送同一事件时跳过） */
+/** 同事件去重窗口（单订阅内重连后重复推送同一事件时跳过；每订阅独立作用域，跨订阅不误杀） */
 const DEDUP_WINDOW_MS = 5_000
-const lastEvents = new Map<string, { key: string; at: number }>()
-
-function isDuplicate(eventType: string, data: unknown): boolean {
-  const key = `${eventType}:${JSON.stringify(data)}`
-  const now = Date.now()
-  const last = lastEvents.get(eventType)
-  if (last && last.key === key && now - last.at < DEDUP_WINDOW_MS) {
-    return true
-  }
-  lastEvents.set(eventType, { key, at: now })
-  return false
-}
 
 function routeChannel(eventType: string, data: unknown): SseChannel | undefined {
   const mapped = EVENT_TO_CHANNEL[eventType]
@@ -136,6 +124,20 @@ export function subscribeSse(options: SseSubscribeOptions): () => void {
     reconnectMaxMs = 30_000,
     heartbeatTimeoutMs = 30_000,
   } = options
+
+  // 去重作用域绑定到本订阅实例（INT-935：全局共享会误杀同事件的多订阅方——
+  // 通知中心与报告生成进度并行订阅同一事件时，后到者被误判为重连重复而丢失）
+  const lastEvents = new Map<string, { key: string; at: number }>()
+  const isDuplicate = (eventType: string, data: unknown): boolean => {
+    const key = `${eventType}:${JSON.stringify(data)}`
+    const now = Date.now()
+    const last = lastEvents.get(eventType)
+    if (last && last.key === key && now - last.at < DEDUP_WINDOW_MS) {
+      return true
+    }
+    lastEvents.set(eventType, { key, at: now })
+    return false
+  }
 
   let stopped = false
   let attempt = 0

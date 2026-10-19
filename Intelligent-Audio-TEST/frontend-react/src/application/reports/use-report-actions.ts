@@ -33,6 +33,16 @@ function triggerBlobDownload(blob: Blob, format: string): void {
   URL.revokeObjectURL(url)
 }
 
+/**
+ * 生成报告提交结果（INT-935 异步契约）：
+ * - taskId 恒有（生成任务 id）；reportId 仅在任务已有报告（status='exists'）时存在。
+ *   异步生成时页面进度弹窗经 report_generated SSE 事件取真实报告 id。
+ */
+export interface GenerateReportOutcome {
+  taskId: number
+  reportId?: number
+}
+
 export function useReportActions() {
   const queryClient = useQueryClient()
 
@@ -114,13 +124,16 @@ export function useReportActions() {
     [refresh]
   )
 
-  /** 生成报告（POST /reports/generate-task；返回新报告 id） */
+  /** 生成报告（POST /reports/generate-task；异步契约 INT-935：返回 taskId 待 SSE 事件，任务已有报告时直接给 id） */
   const generate = useCallback(
-    async (taskId: number, name?: string, description?: string): Promise<number> => {
+    async (taskId: number, name?: string, description?: string): Promise<GenerateReportOutcome> => {
       const result = await generateTaskReport({ task_id: taskId, name, description })
       toast.success('报告已生成')
       refresh()
-      return result.report_id
+      if (result.status === 'exists' && result.id !== undefined) {
+        return { taskId, reportId: result.id }
+      }
+      return { taskId }
     },
     [refresh]
   )

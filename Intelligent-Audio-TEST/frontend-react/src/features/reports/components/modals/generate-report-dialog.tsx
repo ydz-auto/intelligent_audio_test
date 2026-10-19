@@ -19,13 +19,13 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useCompletedTasks } from '@/application/reports/use-completed-tasks'
-import { useReportActions } from '@/application/reports/use-report-actions'
+import { useReportActions, type GenerateReportOutcome } from '@/application/reports/use-report-actions'
 import { cn } from '@/lib/utils'
 
 interface GenerateReportDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onGenerated: (reportId: number) => void
+  onGenerated: (outcome: GenerateReportOutcome) => void
 }
 
 export function GenerateReportDialog({
@@ -64,14 +64,14 @@ export function GenerateReportDialog({
   const handleSubmit = async () => {
     if (!taskId) return
     setSubmitting(true)
-    const resultId = await generate(
+    const outcome = await generate(
       taskId,
       name || `${selectedTask?.name} 报告`,
       description || undefined
     )
     setSubmitting(false)
     handleOpenChange(false)
-    onGenerated(resultId)
+    onGenerated(outcome)
   }
 
   return (

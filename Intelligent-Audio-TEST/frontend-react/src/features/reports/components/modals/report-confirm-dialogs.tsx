@@ -8,6 +8,8 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 export interface ReportDialogTarget {
   id: number
   name: string
+  /** 任务型报告源任务 id（重新生成进度订阅 report_generated 事件匹配键；INT-935） */
+  task_id?: number
 }
 
 export interface SingleReportDialogProps {

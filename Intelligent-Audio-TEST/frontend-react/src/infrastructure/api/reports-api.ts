@@ -32,6 +32,7 @@ import type {
   ReportListData,
   ReportListQuery,
   ReportMetricValue,
+  ReportProgress,
   ReportSearchCasesRequest,
   ReportSummary,
   ReportSummaryUpdate,
@@ -289,13 +290,30 @@ export async function regenerateReport(reportId: number): Promise<{ success: boo
   return { success: true }
 }
 
-/** POST /reports/generate-task（GenerateTaskReportRequest） */
+/** GET /reports/{id}/progress 报告生成进度（report_service 读侧；completed → 页面跳转报告查看） */
+export async function fetchReportProgress(reportId: number): Promise<ReportProgress> {
+  return request<ReportProgress>('GET', `/reports/${reportId}/progress`)
+}
+
+/**
+ * POST /reports/generate-task（GenerateTaskReportRequest；异步生成契约，
+ * report_task_generator.generate_task_report 实测：立即返回 { taskId, status:'generating' }，
+ * 任务已有报告时返回 { id, status:'exists' }；真实 report_id 经 SSE report_generated 事件回传）。
+ */
+export interface GenerateTaskReportResult {
+  /** 异步生成中（status='generating'）：报告 id 待 SSE 事件回传 */
+  taskId?: number
+  /** 任务报告已存在（status='exists'）：直接可跳转 */
+  id?: number
+  status?: string
+}
+
 export async function generateTaskReport(payload: {
   task_id: number
   name?: string
   description?: string
-}): Promise<{ report_id: number }> {
-  return request<{ report_id: number }>('POST', '/reports/generate-task', payload)
+}): Promise<GenerateTaskReportResult> {
+  return request<GenerateTaskReportResult>('POST', '/reports/generate-task', payload)
 }
 
 /** POST /reports/compare（CompareReportsRequest；§4.6 对比配置后端未立项，不随批发送） */
@@ -312,13 +330,25 @@ export async function compareReports(payload: {
   })
 }
 
-/** POST /reports/secondary-compare（SecondaryCompareRequest；config 同 compare 不入参） */
+/**
+ * POST /reports/secondary-compare（SecondaryCompareRequest；config 同 compare 不入参）。
+ * 异步生成契约（report_compare_generator.secondary_compare 实测）：立即返回
+ * { reportKey, status:'generating' }，真实 report_id 经 SSE secondary_compare_generated 事件回传
+ * （应用层 waitForReportGenerated 等待，见 use-report-compare.ts）。
+ */
+export interface SecondaryCompareResult {
+  /** 参与二次对比的报告 id（升序，与 SSE 事件 reportIds 匹配键） */
+  reportKey: number[]
+  /** generating（异步生成中） */
+  status: string
+}
+
 export async function secondaryCompareReports(payload: {
   report_ids: number[]
   description?: string
   config?: ReportCompareConfig
-}): Promise<{ report_id: number }> {
-  return request<{ report_id: number }>('POST', '/reports/secondary-compare', {
+}): Promise<SecondaryCompareResult> {
+  return request<SecondaryCompareResult>('POST', '/reports/secondary-compare', {
     report_ids: payload.report_ids,
     description: payload.description,
   })

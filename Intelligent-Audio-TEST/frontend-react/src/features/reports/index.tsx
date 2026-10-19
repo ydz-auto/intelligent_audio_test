@@ -260,7 +260,13 @@ export function ReportCenterPage() {
   const [batchPurgeOpen, setBatchPurgeOpen] = useState(false)
   const [compareOpen, setCompareOpen] = useState(false)
   const [progressOpen, setProgressOpen] = useState(false)
-  const [progressReportId, setProgressReportId] = useState(0)
+  /** 进度弹窗等待源：reportId（同步 compare 轮询）/ taskId（异步生成 SSE）/ waitPromise（二次对比 SSE） */
+  const [progressReportId, setProgressReportId] = useState<number | undefined>(undefined)
+  const [progressTaskId, setProgressTaskId] = useState<number | undefined>(undefined)
+  const [progressWait, setProgressWait] = useState<
+    | { promise: Promise<number>; abort: () => void }
+    | undefined
+  >(undefined)
 
   const selectedReports = useMemo(
     () => items.filter((i) => selectedIds.includes(i.id)),
@@ -564,8 +570,10 @@ export function ReportCenterPage() {
       <GenerateReportDialog
         open={generateOpen}
         onOpenChange={setGenerateOpen}
-        onGenerated={(id) => {
-          setProgressReportId(id)
+        onGenerated={(outcome) => {
+          setProgressWait(undefined)
+          setProgressReportId(outcome.reportId)
+          setProgressTaskId(outcome.reportId === undefined ? outcome.taskId : undefined)
           setProgressOpen(true)
         }}
       />
@@ -580,9 +588,15 @@ export function ReportCenterPage() {
         open={compareOpen}
         onOpenChange={setCompareOpen}
         selectedReports={selectedReports}
-        onCompared={(id) => {
+        onCompared={(payload) => {
           setSelectedIds([])
-          setProgressReportId(id)
+          setProgressReportId(payload.reportId)
+          setProgressTaskId(undefined)
+          setProgressWait(
+            payload.waitPromise
+              ? { promise: payload.waitPromise, abort: payload.waitAbort ?? (() => undefined) }
+              : undefined
+          )
           setProgressOpen(true)
         }}
       />
@@ -655,6 +669,9 @@ export function ReportCenterPage() {
         open={progressOpen}
         onOpenChange={setProgressOpen}
         reportId={progressReportId}
+        taskId={progressTaskId}
+        waitPromise={progressWait?.promise}
+        onWaitAbort={progressWait?.abort}
         onComplete={handleProgressComplete}
       />
     </>

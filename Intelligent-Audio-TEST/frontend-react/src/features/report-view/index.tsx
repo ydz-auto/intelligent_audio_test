@@ -109,7 +109,8 @@ export function ReportViewPage() {
   const [publishOpen, setPublishOpen] = useState(false)
   const [regenerateOpen, setRegenerateOpen] = useState(false)
   const [regenerateProgressOpen, setRegenerateProgressOpen] = useState(false)
-  const [regenerateProgressId, setRegenerateProgressId] = useState(0)
+  /** 重新生成进度弹窗按源任务订阅 report_generated（regenerate 异步删旧建新，旧报告 id 不可作进度键） */
+  const [regenerateProgressTaskId, setRegenerateProgressTaskId] = useState<number | undefined>(undefined)
   const [renameOpen, setRenameOpen] = useState(false)
   const [activeSection, setActiveSection] = useState('report-overview')
   const [progress, setProgress] = useState(0)
@@ -356,8 +357,9 @@ export function ReportViewPage() {
         report={report}
         onConfirm={(target) => {
           setRegenerateOpen(false)
-          // §4.8 重新生成确认后 → 进度弹窗（报告中心生成/对比路径同款 ReportProgressDialog）
-          setRegenerateProgressId(target.id)
+          // §4.8 重新生成确认后 → 进度弹窗（报告中心生成/对比路径同款 ReportProgressDialog）；
+          // regenerate 后端异步删旧建新（report_generated 事件回传新报告 id），进度弹窗按源任务等待
+          setRegenerateProgressTaskId(target.task_id)
           setRegenerateProgressOpen(true)
           void reportActions.regenerate(target.id)
         }}
@@ -365,9 +367,14 @@ export function ReportViewPage() {
       <ReportProgressDialog
         open={regenerateProgressOpen}
         onOpenChange={setRegenerateProgressOpen}
-        reportId={regenerateProgressId}
-        onComplete={() => {
+        taskId={regenerateProgressTaskId}
+        onComplete={(newReportId) => {
           setRegenerateProgressOpen(false)
+          void navigate({
+            to: '/report/$reportId',
+            params: { reportId: String(newReportId) },
+            search: { from: search.from as 'showcase' | 'management' | undefined },
+          })
         }}
       />
       <ReportRenameDialog
