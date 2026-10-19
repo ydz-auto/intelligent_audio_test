@@ -21,12 +21,12 @@
 
 /* ── [恢复] 死类误删的样式（HEAD 原样） ── */
 .category-count {
-    background-color: var(--primary-color) !important;
-    color: white !important;
-    font-size: 12px !important;
-    font-weight: 500 !important;
-    padding: 4px 8px !important;
-    border-radius: 12px !important;
-    min-width: 20px !important;
-    text-align: center !important;
+    background-color: var(--primary-color);
+    color: var(--color-white);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 4px 8px;
+    border-radius: var(--radius-lg);
+    min-width: 20px;
+    text-align: center;
 }

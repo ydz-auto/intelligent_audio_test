@@ -111,20 +111,20 @@
 
 /* 自定义勾选框样式 */
 input[type="checkbox"].group-checkbox, input[type="checkbox"].test-case-checkbox{
-    margin-right: 8px !important;
+    margin-right: 8px;
     width: 24px ;
     height: 24px ;
     min-width: 24px ;
     min-height: 24px ;
     max-width: 24px ;
     max-height: 24px ;
-    padding: 0 !important;
+    padding: 0;
     cursor: pointer ;
     -webkit-appearance: none ;
     appearance: none ;
-    background-color: var(--color-white) !important;
-    border: 2px solid var(--border-color) !important;
-    border-radius: 4px ;
+    background-color: var(--color-white);
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-tag);
     position: relative ;
     transition: all 0.2s ease ;
     display: flex ;
@@ -139,14 +139,14 @@ input[type="checkbox"].group-checkbox, input[type="checkbox"].test-case-checkbox
 }
 
 input[type="checkbox"].group-checkbox:checked, input[type="checkbox"].test-case-checkbox:checked{
-    background-color: var(--primary-color) !important;
+    background-color: var(--primary-color);
     border-color: var(--primary-color) ;
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent) ;
 }
 
 input[type="checkbox"].group-checkbox:checked::after, input[type="checkbox"].test-case-checkbox:checked::after{
     content: '✓' ;
-    color: white ;
+    color: var(--color-white) ;
     font-size: 16px ;
     font-weight: bold ;
     position: absolute ;
@@ -262,7 +262,7 @@ input[type="checkbox"].group-checkbox:hover, input[type="checkbox"].test-case-ch
     opacity: 1;
     visibility: visible;
     box-sizing: border-box;
-    background-color: white;
+    background-color: var(--color-white);
     color: var(--secondary-color);
     border: 1px solid var(--gray-light-color);
 }
@@ -665,11 +665,11 @@ input[type="checkbox"].group-checkbox:hover, input[type="checkbox"].test-case-ch
 /* ── [恢复] 死类误删的样式（HEAD 原样） ── */
 .category-count {
     background-color: var(--primary-color);
-    color: white;
+    color: var(--color-white);
     font-size: 12px;
     font-weight: 500;
     padding: 4px 8px;
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     min-width: 20px;
     text-align: center;
 }
@@ -689,7 +689,7 @@ input[type="checkbox"].group-checkbox:hover, input[type="checkbox"].test-case-ch
     flex-wrap: wrap;
     margin-bottom: var(--spacing-lg);
     padding: var(--spacing-lg);
-    background: linear-gradient(135deg, var(--color-white) 0%, #F8F9FA 100%);
+    background: linear-gradient(135deg, var(--color-white) 0%, var(--color-gray-tint) 100%);
     border-radius: var(--border-radius-lg);
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--gray-light-color);

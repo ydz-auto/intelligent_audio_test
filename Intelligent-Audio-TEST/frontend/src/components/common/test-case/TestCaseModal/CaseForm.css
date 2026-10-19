@@ -124,7 +124,7 @@
 }
 
 .existing-tags-section {
-  background: white;
+  background: var(--color-white);
   border-radius: var(--radius-control);
   padding: 12px;
   border: 1px solid var(--border-color);
@@ -220,19 +220,19 @@
 
 .tag-item.selectable:hover {
   background: var(--secondary-color);
-  color: white;
+  color: var(--color-white);
   transform: translateY(-1px);
 }
 
 .tag-item.selectable.already-added {
   background: var(--secondary-color);
-  color: white;
+  color: var(--color-white);
   cursor: default;
 }
 
 /* ===== test-type-switcher ===== */
 .test-type-section {
-  padding: 14px 20px !important;
+  padding: 14px 20px;
 }
 
 .test-type-switcher-row {
@@ -274,7 +274,7 @@
 
 .test-type-btn.active {
   background: var(--primary-color);
-  color: white;
+  color: var(--color-white);
 }
 
 .test-type-btn:disabled {
@@ -288,7 +288,7 @@
 
 /* ===== round-editor-section ===== */
 .round-editor-section {
-  padding: 0 !important;
-  background: transparent !important;
-  border: none !important;
+  padding: 0;
+  background: transparent;
+  border: none;
 }

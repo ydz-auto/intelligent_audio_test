@@ -9,9 +9,9 @@
     position: absolute;
     top: 100%;
     right: 0;
-    background-color: white;
+    background-color: var(--color-white);
     border: 1px solid var(--color-gray-200);
-    border-radius: 4px;
+    border-radius: var(--radius-tag);
     box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 15%, transparent);
     min-width: 150px;
     z-index: 1000;
