@@ -69,3 +69,73 @@
 .dark .log-view .filter-label {
   color: var(--text-secondary);
 }
+
+/* ── INT-998 CSS 冻结收敛：删除模板内联 style，颜色/间距/列宽就近落入类 ── */
+
+/* 页标题主色（全局 .page-title 为 --text-primary，本页原内联覆盖为 primary） */
+.log-view .page-title {
+  color: var(--primary-color);
+}
+
+/* 页头文本操作按钮主色：按钮/图标/文案统一，悬停仍走全局 .btn-text:hover → primary-dark */
+.log-view .header-actions .btn-text,
+.log-view .header-actions .btn-text .btn-icon,
+.log-view .header-actions .btn-text span {
+  color: var(--primary-color);
+}
+
+/* 标记颜色下拉间距：原 12px 无对应 token，取 --spacing-md(16px) */
+.marking-options select {
+  margin-inline: var(--spacing-md);
+}
+
+/* 表头列宽：覆盖全局 .data-table 的 nth-child 默认列宽，宽度承载于列类 + 列位置 */
+.log-view .data-table .checkbox-col {
+  width: 40px;
+  min-width: 40px;
+}
+
+.log-view .data-table .expand-header {
+  width: 30px;
+  min-width: 30px;
+}
+
+.log-view .data-table th.core-col:nth-child(3) {
+  width: 150px;
+  min-width: 150px;
+}
+
+.log-view .data-table th.core-col:nth-child(4) {
+  width: 100px;
+  min-width: 100px;
+}
+
+.log-view .data-table th.secondary-col:nth-child(5) {
+  width: 120px;
+  min-width: 120px;
+}
+
+.log-view .data-table th.secondary-col:nth-child(6) {
+  width: 100px;
+  min-width: 100px;
+}
+
+.log-view .data-table th.secondary-col:nth-child(7) {
+  width: 120px;
+  min-width: 120px;
+}
+
+.log-view .data-table th.core-col:nth-child(8) {
+  flex: 1;
+  min-width: 200px;
+}
+
+.log-view .data-table th.core-col:nth-child(9) {
+  width: 200px;
+  min-width: 200px;
+}
+
+/* 日志行整行可点击（原内联 cursor，收敛到 .log-row 类） */
+.log-row {
+  cursor: pointer;
+}

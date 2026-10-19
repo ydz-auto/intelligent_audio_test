@@ -7,7 +7,7 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <div class="header-left">
-        <h2 class="page-title" style="color: var(--primary-color);">
+        <h2 class="page-title">
           <i class="fas fa-file-alt"></i>
           日志查看
         </h2>
@@ -15,26 +15,26 @@
       </div>
       <div class="header-right">
         <div class="header-actions">
-          <button class="btn btn-text" @click="toggleRealTimeLog" :class="{ 'active': realTimeLogEnabled }" style="color: var(--primary-color);">
-            <i class="fas fa-sync-alt btn-icon" :class="{ 'fa-spin': realTimeLogEnabled }" style="color: var(--primary-color);"></i>
-            <span style="color: var(--primary-color);">{{ realTimeLogStatus  }}</span>
+          <button class="btn btn-text" @click="toggleRealTimeLog" :class="{ 'active': realTimeLogEnabled }">
+            <i class="fas fa-sync-alt btn-icon" :class="{ 'fa-spin': realTimeLogEnabled }"></i>
+            <span>{{ realTimeLogStatus  }}</span>
           </button>
-          <button class="btn btn-text" @click="refreshLogs" style="color: var(--primary-color);">
-            <i class="fas fa-redo-alt btn-icon" style="color: var(--primary-color);"></i>
-            <span style="color: var(--primary-color);">刷新日志</span>
+          <button class="btn btn-text" @click="refreshLogs">
+            <i class="fas fa-redo-alt btn-icon"></i>
+            <span>刷新日志</span>
           </button>
-          <button class="btn btn-text" @click="exportLogs" style="color: var(--primary-color);">
-            <i class="fas fa-download btn-icon" style="color: var(--primary-color);"></i>
-            <span style="color: var(--primary-color);">导出日志</span>
+          <button class="btn btn-text" @click="exportLogs">
+            <i class="fas fa-download btn-icon"></i>
+            <span>导出日志</span>
           </button>
-          <button class="btn btn-text" @click="clearLogs" style="color: var(--primary-color);">
-            <i class="fas fa-trash-alt btn-icon" style="color: var(--primary-color);"></i>
-            <span style="color: var(--primary-color);">清除日志</span>
+          <button class="btn btn-text" @click="clearLogs">
+            <i class="fas fa-trash-alt btn-icon"></i>
+            <span>清除日志</span>
           </button>
           <!-- INT-743：归档面板迁移至系统设置「运维设置 → 日志维护」，此处保留直达入口 -->
-          <button class="btn btn-text" @click="goArchive" style="color: var(--primary-color);">
-            <i class="fas fa-archive btn-icon" style="color: var(--primary-color);"></i>
-            <span style="color: var(--primary-color);">查看归档</span>
+          <button class="btn btn-text" @click="goArchive">
+            <i class="fas fa-archive btn-icon"></i>
+            <span>查看归档</span>
           </button>
         </div>
       </div>
@@ -137,7 +137,7 @@
             <h3 class="card-title">系统日志</h3>
             <div class="card-actions">
               <div class="marking-options">
-                <select class="form-input-sm" v-model="markColor" style="margin-left: 12px; margin-right: 12px;">
+                <select class="form-input-sm" v-model="markColor">
                   <option value="yellow">黄色</option>
                   <option value="red">红色</option>
                   <option value="green">绿色</option>
@@ -155,37 +155,37 @@
               <table class="data-table" data-manual-sort>
                 <thead>
                   <tr>
-                    <th class="checkbox-col" style="width: 40px; min-width: 40px;">
+                    <th class="checkbox-col">
                       <input type="checkbox" id="selectAllLogs" @change="selectAllLogs">
                     </th>
-                    <th class="expand-header" style="width: 30px; min-width: 30px;"></th>
-                    <th class="sortable core-col" @click="sortLogs('time')" style="width: 150px; min-width: 150px;">
+                    <th class="expand-header"></th>
+                    <th class="sortable core-col" @click="sortLogs('time')">
                       时间
                       <i class="fas fa-sort sort-icon"></i>
                     </th>
-                    <th class="sortable core-col" @click="sortLogs('level')" style="width: 100px; min-width: 100px;">
+                    <th class="sortable core-col" @click="sortLogs('level')">
                       级别
                       <i class="fas fa-sort sort-icon"></i>
                     </th>
-                    <th class="sortable secondary-col" @click="sortLogs('module')" style="width: 120px; min-width: 120px;">
+                    <th class="sortable secondary-col" @click="sortLogs('module')">
                       模块
                       <i class="fas fa-sort sort-icon"></i>
                     </th>
-                    <th class="secondary-col" style="width: 100px; min-width: 100px;">
+                    <th class="secondary-col">
                       算法
                     </th>
-                    <th class="sortable secondary-col" @click="sortLogs('source')" style="width: 120px; min-width: 120px;">
+                    <th class="sortable secondary-col" @click="sortLogs('source')">
                       来源
                       <i class="fas fa-sort sort-icon"></i>
                     </th>
-                    <th class="core-col" style="flex: 1; min-width: 200px;">内容</th>
-                    <th class="core-col" style="width: 200px; min-width: 200px;">操作</th>
+                    <th class="core-col">内容</th>
+                    <th class="core-col">操作</th>
                   </tr>
                 </thead>
                 <tbody id="logsTable">
                   <template v-for="log in paginatedLogs" :key="log.id">
                     <!-- 日志行 -->
-                    <tr class="log-row" @click="toggleLogDetails(log.id)" :class="{ 'marked': log.mark, [`marked-${log.mark}`]: log.mark }" style="cursor: pointer;">
+                    <tr class="log-row" @click="toggleLogDetails(log.id)" :class="{ 'marked': log.mark, [`marked-${log.mark}`]: log.mark }">
                       <td class="checkbox-col">
                         <input type="checkbox" class="log-checkbox" v-model="log.selected" @click.stop>
                       </td>
