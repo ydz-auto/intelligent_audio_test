@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import tempfile
 import uuid
@@ -49,6 +50,8 @@ _DENOISE_ALPHA = 1.5          # 谱减系数
 _DENOISE_FLOOR_RATIO = 0.01   # 谱底比例（相对噪声谱估计）
 _SNR_MAX_DB = 99.0
 _DR_MAX_DB = 120.0
+_GAIN_DB_MIN = -60.0          # 增益调整范围下界（dB）
+_GAIN_DB_MAX = 60.0           # 增益调整范围上界（dB）
 
 
 def _to_db(value, min_db: float = _DBFS_MIN):
@@ -429,8 +432,10 @@ class AudioAnalysisService:
 
             if operation == 'trim':
                 duration_ms = len(seg)
-                start_ms = int(data.get('start_ms', 0))
-                end_ms = int(data.get('end_ms', duration_ms))
+                # 网关 payload 恒带 start_ms/end_ms 键（省略时值为 None），
+                # 须同时兜住「键缺失」与「值为 None」两种形态，默认取全长。
+                start_ms = int(data['start_ms']) if data.get('start_ms') is not None else 0
+                end_ms = int(data['end_ms']) if data.get('end_ms') is not None else duration_ms
                 if start_ms < 0 or end_ms <= start_ms or end_ms > duration_ms:
                     return {'success': False,
                             'message': f'无效的剪辑区间 start_ms={start_ms} end_ms={end_ms}（音频时长 {duration_ms}ms）',
@@ -443,6 +448,13 @@ class AudioAnalysisService:
                     processed = denoise_samples(samples, sr)
                 else:  # gain
                     gain_db = float(data.get('gain_db', 0.0))
+                    # JSON 1e999 经 float 透传为 inf → 10^(inf/20)=inf → 输出全满幅/NaN 垃圾；
+                    # 非有限值拒绝，有限值收拢到 ±60dB 范围。
+                    if not math.isfinite(gain_db):
+                        return {'success': False,
+                                'message': f'无效的增益值 gain_db={gain_db}，需为有限数值',
+                                'data': None, 'code': 400}
+                    gain_db = max(_GAIN_DB_MIN, min(_GAIN_DB_MAX, gain_db))
                     processed = apply_gain(samples, gain_db)
                 new_seg = _samples_to_segment(processed, sr)
                 new_sr = sr

@@ -294,6 +294,61 @@ class TestAudioAnalysisService:
         assert result['data']['new_audio_id'] == 100
         assert abs(result['data']['duration'] - 1.0) < 0.1
 
+    @mock.patch.object(storage, 'load_file')
+    def test_process_trim_only_start_ms(self, load_file, tmp_path):
+        """仅给 start_ms（省略 end_ms）：裁去开头、保留到音频末尾。"""
+        wav = _make_sine(tmp_path / 'sine.wav', duration=2.0)
+        load_file.return_value = str(wav)
+        repo = mock.MagicMock()
+        repo.get_audio.return_value = _fake_audio()
+        new_audio = _fake_audio(id=101)
+        repo.create_audio.return_value = new_audio
+        result = self._service(repo).process(
+            1, {'operation': 'trim', 'start_ms': 500})
+        assert result['success'] is True
+        assert abs(result['data']['duration'] - 1.5) < 0.1
+
+    @mock.patch.object(storage, 'load_file')
+    def test_process_trim_only_end_ms(self, load_file, tmp_path):
+        """仅给 end_ms（省略 start_ms）：保留开头到 end_ms。"""
+        wav = _make_sine(tmp_path / 'sine.wav', duration=2.0)
+        load_file.return_value = str(wav)
+        repo = mock.MagicMock()
+        repo.get_audio.return_value = _fake_audio()
+        new_audio = _fake_audio(id=102)
+        repo.create_audio.return_value = new_audio
+        result = self._service(repo).process(
+            1, {'operation': 'trim', 'end_ms': 500})
+        assert result['success'] is True
+        assert abs(result['data']['duration'] - 0.5) < 0.1
+
+    @mock.patch.object(storage, 'load_file')
+    def test_process_trim_null_end_ms_defaults_full(self, load_file, tmp_path):
+        """网关透传形态（end_ms 键存在但为 None）：默认取全长，不再 400。"""
+        wav = _make_sine(tmp_path / 'sine.wav', duration=2.0)
+        load_file.return_value = str(wav)
+        repo = mock.MagicMock()
+        repo.get_audio.return_value = _fake_audio()
+        new_audio = _fake_audio(id=103)
+        repo.create_audio.return_value = new_audio
+        result = self._service(repo).process(
+            1, {'operation': 'trim', 'start_ms': 500, 'end_ms': None})
+        assert result['success'] is True
+        assert abs(result['data']['duration'] - 1.5) < 0.1
+
+    @mock.patch.object(storage, 'load_file')
+    def test_process_gain_non_finite_rejected(self, load_file, tmp_path):
+        """gain_db 非有限值（JSON 1e999 → inf）：拒绝，不产出垃圾音频。"""
+        wav = _make_sine(tmp_path / 'sine.wav', duration=1.0)
+        load_file.return_value = str(wav)
+        repo = mock.MagicMock()
+        repo.get_audio.return_value = _fake_audio()
+        result = self._service(repo).process(
+            1, {'operation': 'gain', 'gain_db': 1e999})
+        assert result['success'] is False
+        assert result['code'] == 400
+        repo.create_audio.assert_not_called()
+
     def test_process_invalid_operation(self):
         repo = mock.MagicMock()
         repo.get_audio.return_value = _fake_audio()
