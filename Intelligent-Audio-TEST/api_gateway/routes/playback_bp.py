@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from api_gateway.application.services.playback.playback_query_service import PlaybackQueryService
 from api_gateway.application.services.playback.playback_command_service import PlaybackCommandService
+from api_gateway.application.services.device.device_import_export_service import ResourceImportExportService
 from api_gateway.routes._response import to_response
 from api_gateway.application.services.auth.dependencies import require_permission
 
@@ -17,6 +18,19 @@ def get_all(_: None = require_permission('playback:read')):
 @router.get('/check-status')
 def check_status(_: None = require_permission('playback:read')):
     return to_response(PlaybackQueryService.check_status())
+
+
+# INT-816 导入导出（静态段，须先于 /{device_id} 注册）
+@router.get('/export')
+def export_playback_devices(_: None = require_permission('playback:read')):
+    """导出播放设备（json/excel 文件流，ids/format 可选；CQRS 查询侧无副作用）"""
+    return to_response(ResourceImportExportService.export('playback-devices'))
+
+
+@router.post('/import')
+def import_playback_devices(_: None = require_permission('playback:create')):
+    """导入播放设备（multipart 文件），按 device_unique_id 匹配更新/新建/跳过"""
+    return to_response(ResourceImportExportService.import_resource('playback-devices'))
 
 
 @router.get('/{device_id}')
