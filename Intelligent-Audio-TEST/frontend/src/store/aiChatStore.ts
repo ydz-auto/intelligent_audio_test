@@ -329,6 +329,9 @@ export const useAiChatStore = defineStore('aiChat', () => {
     if (!originalUser) return
     const originalUserIndex = history.findIndex((m) => m.key === originalUser.key)
     if (originalUserIndex === -1) return
+    // 重新生成=截断重建（§3.4，对齐 React updateMessages((prev) => prev.slice(0, index))）：
+    // 先截断到旧 assistant 回复之前（移除旧答及其后内容），sendChat 追加新回复替换旧答（审计 P2）。
+    updateMessages((prev) => prev.slice(0, index))
     sendChat(
       originalUser.versions[originalUser.versions.length - 1].content,
       // 请求体用「不含原 user 指令」的历史构造（对齐 React messages.slice(0, previousUserIndex)）：

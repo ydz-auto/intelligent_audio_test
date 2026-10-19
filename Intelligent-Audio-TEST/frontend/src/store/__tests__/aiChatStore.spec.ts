@@ -157,3 +157,59 @@ describe('aiChatStore：发送请求体（当前 user 消息只出现一次，P1
     store.stopGeneration()
   })
 })
+
+/**
+ * 截断重建回归（审计 P2：重生成必须在发送前把旧 assistant 回复从会话截断，
+ * 由新回复替换；否则旧答残留并污染后续请求体上下文）。
+ */
+describe('aiChatStore：重新生成截断重建（P2 回归）', () => {
+  const REPLY = '已为您处理。'
+  let sendChatCompletionMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    sendChatCompletionMock = vi
+      .spyOn(llmProviderApi, 'sendChatCompletion')
+      .mockResolvedValue(REPLY)
+  })
+
+  afterEach(() => {
+    sendChatCompletionMock.mockRestore()
+  })
+
+  function setupWithProvider(): ReturnType<typeof useAiChatStore> {
+    const store = useAiChatStore()
+    const provider = store.addProvider({
+      name: 'Mock',
+      baseUrl: 'https://mock.example/v1',
+      apiKey: 'sk-test',
+      models: ['mock-model'],
+    })
+    store.updateConfig({ providerId: provider.id, modelId: 'mock-model' })
+    return store
+  }
+
+  it('重生成后旧答被截断：消息列表回到原 user 指令处 + 新回复 loading（旧答不残留）', () => {
+    const store = setupWithProvider()
+    store.messages = [
+      { key: 'u1', from: 'user', versions: [{ id: 'u1-v1', content: '第一问' }], createdAt: 1 },
+      {
+        key: 'a1',
+        from: 'assistant',
+        versions: [{ id: 'a1-v1', content: '第一答' }],
+        createdAt: 2,
+        status: MESSAGE_STATUS.COMPLETE,
+      },
+    ]
+    store.handleRegenerateMessage('a1')
+    // 截断重建：旧 assistant 回复移除，列表 = [原 user 指令, 新回复 loading]
+    expect(store.messages).toHaveLength(2)
+    expect(store.messages[0].key).toBe('u1')
+    expect(store.messages[0].from).toBe('user')
+    expect(store.messages[1].from).toBe('assistant')
+    expect(store.messages[1].status).toBe(MESSAGE_STATUS.LOADING)
+    expect(store.messages.map((m) => m.versions[m.versions.length - 1]?.content)).not.toContain(
+      '第一答'
+    )
+    store.stopGeneration()
+  })
+})
