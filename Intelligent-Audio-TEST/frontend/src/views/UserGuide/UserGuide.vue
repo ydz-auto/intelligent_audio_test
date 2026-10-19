@@ -345,7 +345,9 @@ onBeforeUnmount(() => {
   font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.7;
-  /* 圆角由 .guide-code-block（overflow:hidden + border-radius: var(--radius-md)）裁切，不在此重复定义 */
+  /* 显式归零：base 层 pre { border-radius: var(--border-radius-md) } 会接管；
+     圆角由 .guide-code-block（overflow:hidden + border-radius: var(--radius-md)）裁切 */
+  border-radius: var(--radius-none);
 }
 /* 表格 */
 .guide-table-scroll {

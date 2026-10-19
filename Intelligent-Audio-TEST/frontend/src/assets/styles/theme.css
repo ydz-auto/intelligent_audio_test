@@ -69,6 +69,7 @@
   --radius-control: var(--radius-md); /* 8px：输入框/按钮/下拉/分页等控件 */
   --radius-tag: var(--radius-sm); /* 4px：小标签/徽章/复选框/滚动条等小元素 */
   --radius-pill: var(--radius-full); /* 9999px：胶囊标签/状态徽章/进度条 */
+  --radius-none: 0px; /* 无圆角：需显式归零、由父级裁切承担圆角的场景（如代码块） */
   /* 圆角散值档（值保真；CSS-2 域收编，INT-770） */
   --radius-6: 6px;   /* e2etest.css 步骤/指标卡（原 6px） */
   --radius-20: 20px; /* AlgorithmConfigModal 功能包胶囊（原 20px） */
@@ -113,6 +114,7 @@
   --radius-control: var(--radius-md);  /* 输入框 / 按钮 / 下拉 / 分页 */
   --radius-tag: var(--radius-sm);      /* 小标签 / 徽章 / 复选框 / 滚动条 */
   --radius-pill: var(--radius-full);   /* 胶囊 / 状态徽章 / 进度条 */
+  --radius-none: 0px;                  /* 无圆角 / 归零（由父级 overflow 裁切承担圆角） */
 
   /* 实测高频散值收编（§1.3：6px/10px/3px/20px，值保真，供 CSS-1~3 消硬编码） */
   --radius-6: 6px;
