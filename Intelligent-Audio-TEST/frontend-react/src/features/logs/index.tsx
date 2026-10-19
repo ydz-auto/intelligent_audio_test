@@ -24,12 +24,18 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
 import { useGlobalAlgorithm } from '@/application/hooks/use-global-algorithm'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useLogListQuery, useLogStatsQuery } from '@/application/logs/useLogList'
 import { useLogRealtime } from '@/application/logs/useLogRealtime'
 import { useLogMutations } from '@/application/logs/useLogMutations'
+import type { LogWsFilter } from '@/infrastructure/realtime/useLogRealtimeWs'
 import type { LogExportInput, LogItem, LogQuery } from '@/domain/models/log'
 import {
   DEFAULT_REALTIME_CONFIG,
@@ -151,9 +157,21 @@ export function LogsPage() {
     startTime, endTime, selectedLevels, advanced, scope, user?.id,
   ])
 
+  /* ───────── 实时 WS 订阅条件（§4.6 set_filter：levels/modules/keyword/task_id 四维收敛） ───────── */
+  const realtimeWsFilter = useMemo<LogWsFilter>(() => ({
+    // 全选级别 = 无级别过滤（后端 levels 为空数组/缺失即全放行）
+    levels: selectedLevels.length < LOG_LEVEL_OPTIONS.length ? selectedLevels : undefined,
+    modules: module !== 'all' ? [module] : undefined,
+    keyword: searchKeyword || undefined,
+    taskId: advanced.taskId || undefined,
+  }), [selectedLevels, module, searchKeyword, advanced.taskId])
+
   const listQuery = useLogListQuery(query)
   const statsQuery = useLogStatsQuery(query)
-  const realtime = useLogRealtime(DEFAULT_REALTIME_CONFIG)
+  const realtime = useLogRealtime(DEFAULT_REALTIME_CONFIG, {
+    wsFilter: realtimeWsFilter,
+    canPollFallback: canManage,
+  })
   const { mark, clear, exportLogs } = useLogMutations()
 
   // 筛选条件变更 → 清空实时增量缓冲（新日志与旧筛选不匹配，避免脏显示）
@@ -214,9 +232,9 @@ export function LogsPage() {
     [rows, selectedIds]
   )
 
-  /* ───────── 实时开关（§4.6：log:websocket 判定；refresh 兜底需 log:manage） ───────── */
+  /* ───────── 实时开关（§4.6：log:websocket 判定；WS 主通道 + refresh 兜底需 log:manage） ───────── */
   const handleRealtimeToggle = (value: boolean) => {
-    if (value && !canManage) {
+    if (value && !canRealtime) {
       toast.info('实时推送鉴权待后端立项')
       return
     }
@@ -323,15 +341,24 @@ export function LogsPage() {
         <SectionPageLayout.Actions>
           <span className='flex flex-wrap items-center gap-2'>
             {canRealtime && (
-              <label className='flex items-center gap-1.5 text-xs'>
-                实时日志
-                <Switch
-                  checked={realtime.enabled}
-                  onCheckedChange={handleRealtimeToggle}
-                  size='sm'
-                  aria-label='实时日志开关'
-                />
-              </label>
+              <Tooltip>
+                <TooltipTrigger render={<label />}>
+                  <span className='flex items-center gap-1.5 text-xs'>
+                    实时日志
+                    <Switch
+                      checked={realtime.enabled}
+                      onCheckedChange={handleRealtimeToggle}
+                      size='sm'
+                      aria-label='实时日志开关'
+                    />
+                  </span>
+                </TooltipTrigger>
+                {!canManage && (
+                  <TooltipContent>
+                    已开通 WS 实时订阅；refresh 轮询兜底需 log:manage，WS 不可用时无法降级
+                  </TooltipContent>
+                )}
+              </Tooltip>
             )}
             {canViewScope && (
               <Tabs

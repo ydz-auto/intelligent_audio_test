@@ -2,9 +2,9 @@
  * 实时监控配置弹窗（interfaces 层；17_配置运维.md §7.11，Dialog sm:max-w-md，
  * log:websocket）。
  * 主通道 WS/Socket.IO /ws/logs（subscribe_task + set_filter[levels/modules/keyword/
- * task_id]，§4.6）——鉴权待后端立项（§12-1）；当前真实可用通道 = POST /logs/refresh
- * 轮询兜底（log:manage）：轮询间隔 Select[2s/5s/10s/30s/60s]（默认跟随
- * VITE_LOG_POLL_IDLE_MAX_MS 语义，空闲指数退避至 30s）+ 自动滚动 Switch +
+ * task_id]，§4.6，INT-928 接线）——WS 已连即纯 WS 主通道；WS 不可用时降级
+ * POST /logs/refresh 轮询兜底（log:manage）：轮询间隔 Select[2s/5s/10s/30s/60s]
+ * （默认跟随 VITE_LOG_POLL_IDLE_MAX_MS 语义，空闲指数退避至 30s）+ 自动滚动 Switch +
  * 新日志计数 toast Switch。
  */
 import { useMemo } from 'react'
@@ -51,7 +51,7 @@ export function RealtimeConfigDialog(props: RealtimeConfigDialogProps) {
         <DialogHeader>
           <DialogTitle>实时监控配置</DialogTitle>
           <DialogDescription>
-            主通道 WS/Socket.IO /ws/logs（鉴权待后端立项）；当前走轮询兜底。
+            主通道 WS/Socket.IO /ws/logs（task_log 增量插顶）；WS 不可用时降级轮询兜底（需 log:manage）。
           </DialogDescription>
         </DialogHeader>
 

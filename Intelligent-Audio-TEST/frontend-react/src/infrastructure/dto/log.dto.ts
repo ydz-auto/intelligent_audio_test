@@ -85,6 +85,28 @@ export interface LogExportRequestDto {
   format?: string
 }
 
+// ===== WS/Socket.IO /ws/logs 载荷（socketio_server.broadcast_log wire：{task_id, log}） =====
+
+/** task_log 事件 log 载荷（_websocket_mixin log_payload 字段子集：id/time/level/module/content/mark/task_id/test_case_id/category/source） */
+export interface LogWsLogDto {
+  id?: number
+  time?: string
+  level?: string
+  module?: string
+  content?: string
+  mark?: string | null
+  task_id?: number | string | null
+  test_case_id?: string | null
+  category?: string | null
+  source?: string | null
+}
+
+/** task_log 事件信封（socketio_server.py:122-125 wire：task_id + log） */
+export interface LogWsTaskLogDto {
+  task_id?: number | string | null
+  log?: LogWsLogDto | null
+}
+
 // ===== DTO → Domain（响应） =====
 
 function toNumber(value: unknown): number {
@@ -109,6 +131,32 @@ export function toLog(dto: LogItemDto): LogItem {
     testCaseId: dto.test_case_id ?? null,
     threadId: dto.thread_id ?? null,
     algorithmType: dto.algorithm_type ?? null,
+  }
+}
+
+/**
+ * WS task_log 载荷 → LogItem（INT-928 接线；Socket.IO 通道增量插顶）。
+ * 通道 log 载荷字段子集（无 device_id/api_id/thread_id/algorithm_type），缺失置 null；
+ * task_id/test_case_id snake_case 收敛 camelCase，与 HTTP 侧同口径（本层唯一转换点）。
+ */
+export function toLogFromWs(dto: LogWsTaskLogDto | null | undefined): LogItem | null {
+  const log = dto?.log
+  if (!log || typeof log !== 'object') return null
+  return {
+    id: toNumber(log.id),
+    time: log.time ?? '',
+    level: log.level ?? '',
+    category: log.category ?? '',
+    module: log.module ?? '',
+    source: log.source ?? '',
+    content: log.content ?? '',
+    mark: log.mark ?? null,
+    deviceId: null,
+    taskId: log.task_id != null ? toNumber(log.task_id) : null,
+    apiId: null,
+    testCaseId: log.test_case_id ?? null,
+    threadId: null,
+    algorithmType: null,
   }
 }
 
