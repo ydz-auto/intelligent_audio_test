@@ -242,10 +242,10 @@ function statusText(status?: string | null): string {
   font-size: 13px;
 }
 .pt-icon--task { color: var(--primary, #ff6a00); }
-.pt-icon--case { color: #3b82f6; }
-.pt-icon--device { color: #10b981; }
-.pt-icon--api { color: #8b5cf6; }
-.pt-icon--rt { color: #f59e0b; }
+.pt-icon--case { color: var(--color-blue-500); }
+.pt-icon--device { color: var(--color-emerald-500); }
+.pt-icon--api { color: var(--color-violet-500); }
+.pt-icon--rt { color: var(--color-amber-500); }
 .pt-name {
   flex: 1;
   overflow: hidden;
@@ -295,7 +295,7 @@ function statusText(status?: string | null): string {
   padding: 0 6px;
   border-radius: var(--border-radius-sm);
   background: var(--color-amber-50, #fffbeb);
-  color: #b45309;
+  color: var(--color-amber-700);
   font-family: var(--font-mono, monospace);
   font-size: 11px;
 }

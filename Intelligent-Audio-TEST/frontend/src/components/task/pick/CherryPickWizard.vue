@@ -1118,7 +1118,7 @@ watch(() => cartRevision.value, () => {
   color: var(--danger-color, #dc2626);
 }
 .cpw-btn-danger:hover {
-  background: #fee2e2;
+  background: var(--color-red-100);
 }
 .cpw-btn-sm {
   padding: 4px 10px;
@@ -1149,7 +1149,7 @@ watch(() => cartRevision.value, () => {
   margin-bottom: 8px;
 }
 .cpw-empty-hint {
-  font-size: 12px !important;
+  font-size: var(--font-size-xs);
   color: var(--color-slate-400, #94a3b8);
 }
 .cpw-leaf {
@@ -1169,7 +1169,7 @@ watch(() => cartRevision.value, () => {
   padding: 0 6px;
   border-radius: var(--border-radius-sm);
   background: var(--color-amber-50, #fffbeb);
-  color: #b45309;
+  color: var(--color-amber-700);
   font-family: var(--font-mono, monospace);
   font-size: 11px;
 }
@@ -1219,7 +1219,7 @@ watch(() => cartRevision.value, () => {
   background: #fff;
   border: 1px solid var(--color-slate-200, #e2e8f0);
   border-radius: var(--border-radius-md);
-  box-shadow: 0 -2px 8px rgb(0 0 0 / 0.04);
+  box-shadow: 0 -2px 8px color-mix(in srgb, var(--color-slate-900) 4%, transparent);
   margin-top: 12px;
 }
 .cpw-summary-info {
@@ -1265,7 +1265,7 @@ watch(() => cartRevision.value, () => {
   font-size: 12px;
 }
 .cpw-cart-row.invalid {
-  background: #fef2f2;
+  background: var(--color-red-50);
 }
 .cpw-cart-row:hover {
   background: var(--color-slate-50, #f8fafc);
@@ -1331,14 +1331,14 @@ watch(() => cartRevision.value, () => {
   flex-wrap: wrap;
 }
 .cpw-alert--warn {
-  background: #fffbeb;
-  border: 1px solid #fde68a;
-  color: #92400e;
+  background: var(--color-amber-50);
+  border: 1px solid var(--color-amber-200);
+  color: var(--color-amber-800);
 }
 .cpw-alert--info {
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  color: #1e40af;
+  background: var(--color-blue-50);
+  border: 1px solid var(--color-blue-200);
+  color: var(--color-blue-700);
 }
 .cpw-checkouts {
   display: flex;
@@ -1385,7 +1385,7 @@ watch(() => cartRevision.value, () => {
   padding: 3px 0;
 }
 .cpw-preview-row span { color: var(--color-slate-500, #64748b); }
-.cpw-preview-row.warn b { color: #92400e; }
+.cpw-preview-row.warn b { color: var(--color-amber-800); }
 .cpw-config-toggle {
   display: inline-flex;
   align-items: center;

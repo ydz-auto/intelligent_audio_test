@@ -72,8 +72,8 @@ defineOptions({ name: 'PickTree' });
   margin: 4px 0;
   font-size: 13px;
 }
-.pick-tree-empty-hint {
-  font-size: 12px !important;
+.pick-tree-empty p.pick-tree-empty-hint {
+  font-size: var(--font-size-xs);
   color: var(--color-slate-400, #94a3b8);
 }
 </style>

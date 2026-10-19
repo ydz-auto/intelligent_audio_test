@@ -424,7 +424,7 @@ defineExpose({ openWizardWithTasks, startWizard });
   background: #fff;
   border: 1px solid var(--color-slate-200, #e2e8f0);
   border-radius: var(--border-radius-md);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.1);
+  box-shadow: var(--shadow-lg);
   padding: 8px;
 }
 .cpp-sets-empty { padding: 12px; text-align: center; color: var(--color-slate-400, #94a3b8); font-size: 13px; }
@@ -481,7 +481,8 @@ defineExpose({ openWizardWithTasks, startWizard });
 }
 .cpp-loading p, .cpp-empty p { margin: 8px 0 4px; }
 .cpp-empty i { font-size: 42px; color: var(--color-slate-300, #cbd5e1); }
-.cpp-empty-hint { font-size: 13px !important; color: var(--color-slate-400, #94a3b8); margin-bottom: 12px !important; }
+.cpp-empty-hint { font-size: 13px; color: var(--color-slate-400, #94a3b8); }
+.cpp-empty p.cpp-empty-hint { margin-bottom: 12px; }
 .cpp-list {
   display: flex;
   flex-direction: column;
@@ -554,13 +555,19 @@ defineExpose({ openWizardWithTasks, startWizard });
   color: var(--color-slate-600, #475569);
 }
 .cpp-source-result.missing {
-  background: var(--color-red-50, #fef2f2);
-  color: var(--danger-color, #dc2626);
+  background: var(--color-red-50);
+  color: var(--danger-color);
 }
 .cpp-row-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  font-size: 11px;
+}
+.cpp-source-case { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cpp-row-badge.missing-badge {
+  flex-shrink: 0;
+  color: var(--warning-color, #b45309);
   font-size: 11px;
 }
 /* INT-552：溯源加载失败可见错误（含重试） */
@@ -585,47 +592,4 @@ defineExpose({ openWizardWithTasks, startWizard });
   border-color: var(--color-primary, #2563eb);
 }
 .cpp-loading-hint { padding: 8px 0; color: var(--color-slate-400, #94a3b8); font-size: 13px; }
-/* INT-401（主库并入）：引用结果明细 + 缺失标注 */
-.cpp-source-results {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding-left: 20px;
-}
-.cpp-source-result {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 0;
-  font-size: 12px;
-  color: var(--color-slate-600, #475569);
-}
-.cpp-source-result.missing { color: var(--color-slate-400, #94a3b8); }
-.cpp-source-case { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cpp-row-badge.missing-badge {
-  flex-shrink: 0;
-  color: var(--warning-color, #b45309);
-  font-size: 11px;
-}
-/* INT-552（主库并入）：溯源加载失败可见错误（含重试） */
-.cpp-source-error {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 0;
-  font-size: 13px;
-  color: var(--danger-color, #dc2626);
-}
-.source-retry-btn {
-  padding: 2px 10px;
-  font-size: 12px;
-  color: var(--color-primary, #2563eb);
-  background: transparent;
-  border: 1px solid var(--color-slate-300, #cbd5e1);
-  border-radius: var(--border-radius-md);
-  cursor: pointer;
-}
-.source-retry-btn:hover {
-  border-color: var(--color-primary, #2563eb);
-}
 </style>

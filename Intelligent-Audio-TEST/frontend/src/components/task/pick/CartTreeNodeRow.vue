@@ -185,10 +185,10 @@ function statusText(status?: string | null): string {
 }
 .ctr-icon { width: 18px; color: var(--color-slate-400, #94a3b8); flex-shrink: 0; font-size: 13px; }
 .ctr-icon--task { color: var(--primary, #ff6a00); }
-.ctr-icon--case { color: #3b82f6; }
-.ctr-icon--device { color: #10b981; }
-.ctr-icon--api { color: #8b5cf6; }
-.ctr-icon--rt { color: #f59e0b; }
+.ctr-icon--case { color: var(--color-blue-500); }
+.ctr-icon--device { color: var(--color-emerald-500); }
+.ctr-icon--api { color: var(--color-violet-500); }
+.ctr-icon--rt { color: var(--color-amber-500); }
 .ctr-name {
   flex: 1;
   overflow: hidden;
@@ -221,7 +221,7 @@ function statusText(status?: string | null): string {
 .ctr-btn:hover { border-color: var(--primary, #ff6a00); color: var(--primary, #ff6a00); }
 .ctr-btn-sm { font-size: 12px; }
 .ctr-btn-danger { border-color: var(--danger-color, #dc2626); color: var(--danger-color, #dc2626); }
-.ctr-btn-danger:hover { background: #fee2e2; }
+.ctr-btn-danger:hover { background: var(--color-red-100); }
 .ctr-leaf {
   display: flex;
   align-items: center;
@@ -229,7 +229,7 @@ function statusText(status?: string | null): string {
   padding: 4px 8px;
   font-size: 12px;
 }
-.ctr-leaf.invalid { background: #fef2f2; }
+.ctr-leaf.invalid { background: var(--color-red-50); }
 .ctr-leaf:hover { background: var(--color-slate-50, #f8fafc); }
 .ctr-leaf-case { color: var(--foreground, #1e293b); min-width: 80px; }
 .ctr-leaf-dim { color: var(--color-slate-500, #64748b); min-width: 70px; }
@@ -237,7 +237,7 @@ function statusText(status?: string | null): string {
   padding: 0 6px;
   border-radius: var(--border-radius-sm);
   background: var(--color-amber-50, #fffbeb);
-  color: #b45309;
+  color: var(--color-amber-700);
   font-family: var(--font-mono, monospace);
   font-size: 11px;
 }
