@@ -686,7 +686,7 @@ box-sizing: border-box;
 .modal-close-btn:hover{
   color: var(--color-slate-700);
   background: var(--color-slate-100);
-  border-radius: 4px;
+  border-radius: var(--radius-tag); /* 4px 小控件圆角 */
 }
 
 /* detail-section-title - 自全局样式就近迁移 */

@@ -72,7 +72,7 @@ export default {
   align-items: center;
   padding: 20px;
   background: var(--color-white);
-  border-radius: 12px;
+  border-radius: var(--border-radius-lg);
   box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 8%, transparent);
   margin-bottom: 24px;
 }
@@ -102,7 +102,7 @@ export default {
 .report-type, .report-date, .report-status {
   font-size: 14px;
   padding: 6px 12px;
-  border-radius: 16px;
+  border-radius: var(--border-radius-xl);
   font-weight: 500;
 }
 

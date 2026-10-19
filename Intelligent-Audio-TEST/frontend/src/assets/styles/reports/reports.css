@@ -23,14 +23,14 @@
     border-radius: var(--border-radius-md) ;
     padding: var(--spacing-sm) var(--spacing-md) ;
     font-size: var(--font-size-md) ;
-    background-color: white ;
+    background-color: var(--color-white) ;
 }
 
 /* 历史报告页面搜索框聚焦状态 */
 .filter-sort-section .search-input:focus{
     border-color: var(--primary-color) ;
     box-shadow: 0 0 0 3px var(--primary-light) ;
-    background-color: white ;
+    background-color: var(--color-white) ;
 }
 
 /* 下拉选择框样式 */
@@ -39,7 +39,7 @@
     border: 2px solid var(--color-gray-300);
     border-radius: var(--border-radius-md);
     font-size: var(--font-size-md);
-    background-color: white;
+    background-color: var(--color-white);
     transition: all var(--transition-normal);
 }
 
@@ -53,7 +53,7 @@
 /* 确保select元素也应用相同样式 */
 select.filter-select{
     border: 2px solid var(--color-gray-300);
-    background-color: white;
+    background-color: var(--color-white);
 }
 
 /* 确保历史报告页面的下拉选择框样式正确应用 */
@@ -63,7 +63,7 @@ select.filter-select{
     border-radius: var(--border-radius-md) ;
     padding: var(--spacing-sm) var(--spacing-md) ;
     font-size: var(--font-size-md) ;
-    background-color: white ;
+    background-color: var(--color-white) ;
 }
 
 /* 历史报告页面下拉选择框聚焦状态 */
@@ -335,7 +335,7 @@ select.filter-select{
   display: flex ;
   flex-direction: column ;
   gap: 10px ;
-  z-index: 14000 ;
+  z-index: var(--z-index-floating) ;
 }
 
 .report-view-page .action-btn,
@@ -378,10 +378,10 @@ select.filter-select{
   transform: translateX(-50%) ;
   display: flex ;
   gap: 8px ;
-  z-index: 14000 ;
+  z-index: var(--z-index-floating) ;
   padding: 12px 20px ;
-  background: white ;
-  border-radius: 12px ;
+  background: var(--color-white) ;
+  border-radius: var(--radius-lg) ;
   box-shadow: 0 4px 16px color-mix(in srgb, var(--color-black) 8%, transparent) ;
 }
 
@@ -390,7 +390,7 @@ select.filter-select{
   align-items: center ;
   gap: 6px ;
   padding: 8px 16px ;
-  border-radius: 6px ;
+  border-radius: var(--radius-6) ;
   font-size: 14px ;
   font-weight: 500 ;
   cursor: pointer ;
@@ -400,7 +400,7 @@ select.filter-select{
 
 .floating-actions-bar .btn-primary{
   background: var(--secondary) ;
-  color: white ;
+  color: var(--color-white) ;
 }
 
 .floating-actions-bar .btn-primary:hover{
@@ -409,7 +409,7 @@ select.filter-select{
 
 .floating-actions-bar .btn-success{
   background: var(--success) ;
-  color: white ;
+  color: var(--color-white) ;
 }
 
 .floating-actions-bar .btn-success:hover{
@@ -483,7 +483,8 @@ select.filter-select{
 }
 
 .report-checkbox-wrapper {
-    display: flex !important;
-    align-items: center !important;
+    /* !important 可去：实际消费方 HistoryReports.vue 的 scoped 副本加载序更晚且带属性选择器，全局副本为兜底（INT-771 降噪） */
+    display: flex;
+    align-items: center;
     margin-right: var(--spacing-md);
 }

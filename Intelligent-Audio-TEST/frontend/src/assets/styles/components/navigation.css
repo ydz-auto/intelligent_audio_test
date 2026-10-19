@@ -273,7 +273,7 @@ nav a:hover .nav-icon, nav a.active .nav-icon, nav .router-link-active .nav-icon
     left: 50%;
     transform: translateX(-50%);
     background-color: var(--text-primary);
-    color: white;
+    color: var(--color-white);
     padding: 8px 12px;
     border-radius: var(--radius-control);
     font-size: var(--font-size-sm);

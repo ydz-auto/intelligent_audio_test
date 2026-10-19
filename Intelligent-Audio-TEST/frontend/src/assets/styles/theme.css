@@ -149,6 +149,10 @@
   --sidebar-width: 240px;
   --page-margin: 24px;
   --content-min-width: 1024px;
+
+  /* ── CSS-3 结构值收编（INT-771，值保真；域散色进 theme-presets.css） ── */
+  --z-index-overlay: 9999; /* 浮层/悬停层（实测 9999） */
+  --font-size-base: 16px; /* 兼容别名：报告页正文标签（原未定义→继承 body 16px，定案同 --font-size-md） */
 }
 
 /*

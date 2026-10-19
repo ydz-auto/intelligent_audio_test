@@ -103,13 +103,13 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 24px;
+    margin-bottom: var(--spacing-lg);
     padding: 20px;
-    background: white;
+    background: var(--color-white);
     border-radius: var(--radius-lg);
     box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 5%, transparent);
     flex-wrap: wrap;
-    gap: 16px;
+    gap: var(--spacing-md);
 }
 
 .header-left {
@@ -125,7 +125,7 @@
 }
 
 .page-title {
-    font-size: 24px;
+    font-size: var(--font-size-xxl);
     font-weight: 700;
     color: var(--text-primary);
     margin: 0;
@@ -137,7 +137,7 @@
 
 
 .page-description {
-    font-size: 14px;
+    font-size: var(--font-size-sm);
     color: var(--color-gray-500);
     margin: 0;
 }
@@ -348,14 +348,14 @@
 
 .empty-state i,
 .no-tasks i {
-    font-size: 64px;
-    margin-bottom: 16px;
+    font-size: 64px; /* 无匹配字号 token（--font-size-xxxl=32px），保留原值 */
+    margin-bottom: var(--spacing-md);
     opacity: 0.5;
 }
 
 .empty-state p,
 .no-tasks p {
-    font-size: 18px;
+    font-size: var(--font-size-lg);
     font-weight: 500;
     margin: 0;
     color: var(--text-secondary);
@@ -490,7 +490,7 @@
 .tasks-view, .log-view, .device-view, .evaluation-view{
     width: 100%;
     height: 100%;
-    padding: 24px;
+    padding: var(--spacing-lg);
     box-sizing: border-box;
 }
 
@@ -526,11 +526,11 @@
     .sidebar-hover-trigger {
         width: 20px;
     }
-    
+
     .sidebar-hint {
         width: 16px;
         height: 48px;
-        font-size: 12px;
+        font-size: var(--font-size-xs);
     }
 }
 

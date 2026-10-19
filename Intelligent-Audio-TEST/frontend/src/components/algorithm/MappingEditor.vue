@@ -841,7 +841,7 @@ function handleRemove(record: any) {
   border-radius: var(--border-radius-full);
   padding: 3px;
   background: var(--background-secondary);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--color-black) 4%, transparent);
 }
 .view-mode-tab {
   display: inline-flex;
@@ -862,12 +862,12 @@ function handleRemove(record: any) {
 }
 .view-mode-tab:hover {
   color: var(--primary-color);
-  background: rgba(99, 102, 241, 0.08);
+  background: color-mix(in srgb, var(--color-indigo-500) 8%, transparent);
 }
 .view-mode-tab.active {
-  background: var(--primary-gradient, linear-gradient(135deg, #6366f1, #8b5cf6));
-  color: #fff;
-  box-shadow: 0 2px 6px rgba(99, 102, 241, 0.35);
+  background: var(--primary-gradient); /* 去掉死回退：--primary-gradient 已定义（橙渐变），原 #6366f1 回退从未生效 */
+  color: var(--color-white);
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--color-indigo-500) 35%, transparent);
 }
 
 /* 评估维度分组头行 */
@@ -913,8 +913,8 @@ function handleRemove(record: any) {
   color: var(--primary-color);
 }
 .dimension-group-add-row:hover .add-row-icon {
-  background: var(--primary-gradient, linear-gradient(135deg, #6366f1, #8b5cf6));
-  color: #fff;
+  background: var(--primary-gradient); /* 去掉死回退（同 .view-mode-tab.active） */
+  color: var(--color-white);
 }
 
 .mapping-pagination {
@@ -1011,7 +1011,7 @@ function handleRemove(record: any) {
 
 .add-row:hover .add-row-icon {
   background: var(--primary-gradient);
-  color: #fff;
+  color: var(--color-white);
 }
 .form-input-sm { width: 100%; padding: var(--spacing-xs) var(--spacing-sm); font-size: var(--font-size-sm); height: 32px; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); background: var(--white-color); color: var(--text-primary); transition: all var(--transition-fast); }
 .form-input-sm:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 2px var(--primary-light); }

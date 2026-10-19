@@ -344,14 +344,14 @@ onMounted(load)
   padding: 8px 16px;
   border: 1px solid var(--color-gray-300);
   border-radius: var(--border-radius-md);
-  background: var(--card, white);
+  background: var(--card, var(--color-white));
   cursor: pointer;
   font-size: 14px;
   color: var(--foreground);
 }
 .btn-primary {
   background: var(--secondary);
-  color: white;
+  color: var(--color-white);
   border-color: var(--secondary);
 }
 .btn-sm {
@@ -368,7 +368,7 @@ onMounted(load)
   cursor: not-allowed;
 }
 .form-panel {
-  background: var(--card, white);
+  background: var(--card, var(--color-white));
   border: 1px solid var(--color-gray-300);
   border-radius: var(--border-radius-lg);
   padding: 20px;
@@ -424,7 +424,7 @@ onMounted(load)
 .provider-table {
   width: 100%;
   border-collapse: collapse;
-  background: var(--card, white);
+  background: var(--card, var(--color-white));
   border: 1px solid var(--color-gray-300);
   border-radius: var(--border-radius-lg);
   overflow: hidden;

@@ -495,7 +495,7 @@
 .tag-page-btn{
     background: transparent;
     border: 1px solid var(--border-color);
-    border-radius: 4px;
+    border-radius: var(--border-radius-sm);
     padding: 2px 8px;
     font-size: 12px;
     cursor: pointer;
@@ -511,7 +511,7 @@
 .tag-page-btn.active{
     background-color: var(--primary-color);
     border-color: var(--primary-color);
-    color: white;
+    color: var(--color-white);
 }
 
 .tag-page-btn:disabled{
@@ -572,7 +572,7 @@
     background: var(--color-white);
     border: 1px solid var(--border);
     box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 4%, transparent);
-    border-radius: 12px;
+    border-radius: var(--border-radius-lg);
     overflow: hidden;
 }
 
@@ -589,7 +589,7 @@
     border: 1px solid var(--border);
     cursor: pointer;
     transition: all 0.2s ease;
-    border-radius: 12px;
+    border-radius: var(--border-radius-lg);
     margin: 0;
     height: auto;
     min-height: 80px;
@@ -653,7 +653,7 @@
 
 .group-actions .btn-primary{
     background: var(--primary-gradient);
-    color: white;
+    color: var(--color-white);
     border: none;
     box-shadow: var(--shadow-md);
 }
@@ -780,7 +780,7 @@
     z-index: 10;
     background-color: var(--color-amber-50) ;
     box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 10%, transparent);
-    border-radius: 6px;
+    border-radius: var(--radius-6);
     transform: translateY(-1px);
 }
 
@@ -795,10 +795,10 @@
 /* 操作按钮样式 */
 .tag-result-content .data-table td:last-child button{
     background: linear-gradient(135deg, var(--color-indigo-400) 0%, var(--color-purple-500) 100%);
-    color: white;
+    color: var(--color-white);
     border: none;
     padding: 6px 12px;
-    border-radius: 4px;
+    border-radius: var(--border-radius-sm);
     cursor: pointer;
     font-size: 13px;
     transition: all 0.2s ease;
@@ -819,7 +819,7 @@
 /* 状态标签样式优化 */
 .status-badge{
     padding: 4px 12px;
-    border-radius: 12px;
+    border-radius: var(--border-radius-lg);
     font-size: 12px;
     font-weight: 500;
     text-transform: uppercase;
@@ -951,7 +951,7 @@
     min-width: 200px;
     padding: 8px 12px;
     border: 1px solid var(--color-gray-300);
-    border-radius: 6px;
+    border-radius: var(--radius-6);
     font-size: 14px;
     transition: all 0.2s ease;
 }
@@ -1033,7 +1033,7 @@
 .test-view-common .modal{
     display: none;
     position: fixed;
-    z-index: 1000;
+    z-index: var(--z-index-dropdown);
     left: 0;
     top: 0;
     width: 100%;
@@ -1051,7 +1051,7 @@
     max-width: 800px;
     max-height: 80%;
     overflow-y: auto;
-    border-radius: 12px;
+    border-radius: var(--border-radius-lg);
     box-shadow: 0 20px 25px -5px color-mix(in srgb, var(--color-black) 10%, transparent), 0 10px 10px -5px color-mix(in srgb, var(--color-black) 4%, transparent);
     position: relative;
 }
@@ -1095,7 +1095,7 @@
     margin-top: 24px;
     padding: 16px;
     background: var(--color-slate-50);
-    border-radius: 8px;
+    border-radius: var(--border-radius-md);
     border: 1px solid var(--color-slate-200);
 }
 
@@ -1109,7 +1109,7 @@
 
 #useCasePagination .btn-sm{
     padding: 6px 12px;
-    border-radius: 6px;
+    border-radius: var(--radius-6);
     font-size: 13px;
     transition: all 0.2s ease;
 }
@@ -1117,7 +1117,7 @@
 #useCasePagination .btn-primary{
     background-color: var(--primary);
     border-color: var(--primary);
-    color: white;
+    color: var(--color-white);
 }
 
 #useCasePagination .btn-primary:hover{
@@ -1126,7 +1126,7 @@
 }
 
 #useCasePagination .btn-secondary{
-    background-color: white;
+    background-color: var(--color-white);
     border-color: var(--color-slate-200);
     color: var(--color-slate-600);
 }
@@ -1161,7 +1161,7 @@
 
 /* API Selector Buttons Enhancement */
 .api-selector .btn{
-    border-radius: 20px;
+    border-radius: var(--radius-20);
     padding: 6px 18px;
     font-weight: 500;
     transition: all 0.2s;
@@ -1180,7 +1180,7 @@
 .api-selector .btn.active{
     border: 2px solid var(--primary-color, var(--primary)) ;
     background: var(--primary-color, var(--primary)) ;
-    color: white ;
+    color: var(--color-white) ;
     box-shadow: 0 4px 12px color-mix(in srgb, var(--primary) 40%, transparent) ;
     font-weight: bold;
 }
@@ -1230,7 +1230,7 @@
   font-size: 16px;
   color: var(--color-gray-500);
   padding: 4px;
-  border-radius: 4px;
+  border-radius: var(--border-radius-sm);
   transition: all 0.3s ease;
 }
 
@@ -1268,9 +1268,9 @@
 .search-box{
   display: flex;
   align-items: center;
-  background: white;
+  background: var(--color-white);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-6);
   padding: 0 12px;
   min-width: 200px;
   flex: 1;
@@ -1299,7 +1299,7 @@
   width: 100%;
   padding: 8px 12px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-6);
   font-size: 14px;
   outline: none;
   transition: all 0.3s ease;
@@ -1321,7 +1321,7 @@
   gap: 8px;
   padding: 20px;
   background: linear-gradient(135deg, var(--color-neutral-50) 0%, var(--muted) 100%);
-  border-radius: 12px;
+  border-radius: var(--border-radius-lg);
   border: 1px solid var(--color-slate-200);
   margin-bottom: 24px;
   box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 5%, transparent);
@@ -1352,7 +1352,7 @@
 .report-save-section{
   background: linear-gradient(to right, var(--secondary-light), var(--color-white));
   border: 1px solid var(--secondary-light);
-  border-radius: 12px;
+  border-radius: var(--border-radius-lg);
   padding: 20px;
   margin-bottom: 24px;
   display: flex;
@@ -1365,7 +1365,7 @@
 .analysis-conclusion-card{
   background: linear-gradient(to right, var(--secondary-light), var(--color-white));
   border: 1px solid var(--secondary-light);
-  border-radius: 12px;
+  border-radius: var(--border-radius-lg);
   padding: 20px;
   margin-bottom: 32px;
   display: flex;
@@ -1384,7 +1384,7 @@
   align-items: center;
   justify-content: center;
   box-shadow: 0 2px 4px color-mix(in srgb, var(--color-black) 5%, transparent);
-  background: white;
+  background: var(--color-white);
 }
 
 .analysis-icon svg{
@@ -1424,7 +1424,7 @@
   align-items: center;
   gap: 6px;
   padding: 4px 12px;
-  border-radius: 12px;
+  border-radius: var(--border-radius-lg);
   font-size: 0.8rem;
   font-weight: 500;
   background-color: var(--color-sky-50);
@@ -1447,7 +1447,7 @@
   font-size: 0.95rem;
   min-height: 100px;
   padding: 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-6);
   transition: all 0.3s ease;
 }
 
@@ -1478,7 +1478,7 @@
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   font-size: 0.95rem;
   line-height: 1.6;
   transition: all 0.3s ease;
@@ -1515,7 +1515,7 @@
 .selector-content{
   background: var(--color-white);
   padding: 24px;
-  border-radius: 12px;
+  border-radius: var(--border-radius-lg);
   border: 1px solid var(--color-slate-200);
   box-shadow: 0 1px 3px color-mix(in srgb, var(--color-black) 5%, transparent);
 }
@@ -1535,8 +1535,8 @@
   gap: 16px;
   padding: 20px;
   border: 2px solid var(--secondary);
-  border-radius: 8px;
-  background: white;
+  border-radius: var(--border-radius-md);
+  background: var(--color-white);
   cursor: pointer;
   transition: all 0.3s ease;
   width: 120px;
@@ -1563,10 +1563,10 @@
   display: flex;
   justify-content: center;
   gap: 16px;
-  z-index: 1000;
+  z-index: var(--z-index-dropdown);
   padding: 16px 24px;
   background: color-mix(in srgb, var(--color-white) 95%, transparent);
-  border-radius: 12px;
+  border-radius: var(--border-radius-lg);
   box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 15%, transparent);
   backdrop-filter: blur(10px);
   border: 1px solid color-mix(in srgb, var(--color-slate-200) 80%, transparent);
@@ -1576,7 +1576,7 @@
 /* 按钮样式 */
 .btn{
   padding: 8px 16px;
-  border-radius: 6px;
+  border-radius: var(--radius-6);
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
@@ -1590,7 +1590,7 @@
 
 .btn-primary{
   background-color: var(--secondary);
-  color: white;
+  color: var(--color-white);
 }
 
 .btn-primary:hover{
@@ -1609,7 +1609,7 @@
 
 .btn-success{
   background-color: var(--success);
-  color: white;
+  color: var(--color-white);
 }
 
 .btn-success:hover{
@@ -1662,7 +1662,7 @@
 
 .category-count {
     background-color: var(--primary-color);
-    color: white;
+    color: var(--color-white);
     padding: var(--spacing-xs) var(--spacing-sm);
     border-radius: var(--border-radius-full);
     font-size: var(--font-size-xs);
@@ -1684,7 +1684,7 @@
     margin: 0;
     font-size: 16px;
     font-weight: 600;
-    color: #262626;
+    color: var(--gray-deep);
     display: flex;
     align-items: center;
     gap: 10px;
@@ -1714,7 +1714,7 @@
     flex-wrap: wrap;
     margin-bottom: var(--spacing-lg);
     padding: var(--spacing-md);
-    background: linear-gradient(135deg, var(--color-white) 0%, #F8F9FA 100%);
+    background: linear-gradient(135deg, var(--color-white) 0%, var(--gray-lightest) 100%);
     border-radius: var(--border-radius-lg);
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--gray-light-color);

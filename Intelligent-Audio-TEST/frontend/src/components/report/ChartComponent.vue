@@ -170,7 +170,7 @@ export default {
 
 .chart-component-container{
   background: var(--color-white);
-  border-radius: 12px;
+  border-radius: var(--border-radius-lg);
   box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 8%, transparent);
   padding: 24px;
   margin-bottom: 24px;
@@ -187,8 +187,8 @@ export default {
 .switcher-btn{
   padding: 6px 16px;
   border: 1px solid var(--color-slate-300);
-  border-radius: 4px;
-  background: white;
+  border-radius: var(--border-radius-sm);
+  background: var(--color-white);
   color: var(--color-slate-500);
   font-size: 13px;
   cursor: pointer;

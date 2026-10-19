@@ -26,7 +26,7 @@
 .no-metrics-selected {
   background: var(--color-amber-100);
   border: 1px solid var(--color-amber-400);
-  border-radius: 12px;
+  border-radius: var(--border-radius-lg);
   padding: 20px;
   margin-bottom: 24px;
   text-align: center;
@@ -56,10 +56,10 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  background: white;
+  background: var(--color-white);
   width: 100%;
   box-sizing: border-box;
-  border-radius: 16px 16px 0 0;
+  border-radius: var(--border-radius-xl) var(--border-radius-xl) 0 0;
   border: 1px solid var(--color-slate-200);
   border-bottom: none;
   box-shadow: 0 1px 3px color-mix(in srgb, var(--color-black) 10%, transparent);
@@ -94,7 +94,7 @@
   color: var(--color-slate-500);
   cursor: pointer;
   padding: 6px;
-  border-radius: 6px;
+  border-radius: var(--radius-6);
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
@@ -127,8 +127,8 @@
   width: 28px;
   height: 28px;
   border: 1px solid var(--color-slate-200);
-  border-radius: 6px;
-  background: white;
+  border-radius: var(--radius-6);
+  background: var(--color-white);
   color: var(--color-slate-500);
   cursor: pointer;
   transition: all 0.2s ease;
@@ -146,7 +146,7 @@
 
 .display-type-btn.active {
   background: var(--secondary);
-  color: white;
+  color: var(--color-white);
   border-color: var(--secondary);
 }
 
