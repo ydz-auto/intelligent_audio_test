@@ -58,7 +58,10 @@
     "ai_start_timeout_seconds": 25,
     "ai_complete_timeout_seconds": 60,
     "barge_in_window_seconds": 5,
-    "bind_ttl_seconds": 3600
+    "bind_ttl_seconds": 3600,
+    "pacing_strategy": "fixed",
+    "turn_end_wait_timeout_s": 60,
+    "pacing_fallback_timeout_s": 30
   },
   "audio_render": {
     "chunk_duration_ms": 100,

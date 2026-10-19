@@ -243,6 +243,29 @@ class RealtimeRoundMode(str, Enum):
     INTERRUPTION = 'interruption'
 
 
+class RealtimePacingStrategy(str, Enum):
+    """Realtime 输入节奏策略枚举（INT-475 新增）
+
+    驱动输入推送节奏的输出信号来自被测厂商 Realtime API 实时输出
+    （RealtimeWSClient 归一化事件实例内回流），执行器据此调整后续音频
+    输入帧的推送时机，而非固定间隔盲推。
+
+    - FIXED              恒定节奏（默认 = 现状，回归基准）
+    - WAIT_TURN_END      模型输出 turn 进行中则暂停输入推流，turn 结束后续推
+    - ALLOW_BARGE_IN     允许输入推流中模型提前回话/打断，打断信号到达即收敛输入推流
+    - TIMEOUT_FALLBACK   模型无输出/无 turn 结束时按配置超时兜底，不无限等待
+                         （可与 WAIT_TURN_END / ALLOW_BARGE_IN 组合）
+
+    配置取值：单值字符串或组合列表/逗号分隔字符串（如 ['wait_turn_end',
+    'timeout_fallback']）；case_config['pacing'] / api_config.meta['pacing']
+    可覆盖 realtime_session 全局配置。
+    """
+    FIXED = 'fixed'
+    WAIT_TURN_END = 'wait_turn_end'
+    ALLOW_BARGE_IN = 'allow_barge_in'
+    TIMEOUT_FALLBACK = 'timeout_fallback'
+
+
 class OutputType(str, Enum):
     """API 输出类型枚举 — adapter 多模态输出采集（执行域 P0 新增）"""
     AUDIO = 'audio'

@@ -413,6 +413,21 @@ export const Visibility = {
 /** 资源可见性类型（由 Visibility 派生；字符串兜底兼容后端扩展） */
 export type VisibilityType = typeof Visibility[keyof typeof Visibility] | (string & {})
 
+/** Realtime 输入节奏策略枚举（INT-475，值 = 后端 shared RealtimePacingStrategy 原值，禁止改动值）。
+ *  FIXED 恒定节奏（默认=现状）/ WAIT_TURN_END 等输出 turn 结束再推下一帧 /
+ *  ALLOW_BARGE_IN 允许输入推流中模型提前回话/打断 / TIMEOUT_FALLBACK 无输出按配置超时兜底。
+ */
+export const RealtimePacingStrategy = {
+  FIXED: 'fixed',
+  WAIT_TURN_END: 'wait_turn_end',
+  ALLOW_BARGE_IN: 'allow_barge_in',
+  TIMEOUT_FALLBACK: 'timeout_fallback',
+} as const
+
+/** Realtime 输入节奏策略类型（由 RealtimePacingStrategy 派生） */
+export type RealtimePacingStrategyType =
+  typeof RealtimePacingStrategy[keyof typeof RealtimePacingStrategy]
+
 /** 权限点（INT-298，对齐 V9.7.10 / 后端 RBAC seed「资源:操作」命名；值 = 后端 PermissionPoints 原值，禁止改动值） */
 export const PermissionPoint = {
   /** 发布已发布任务（POST /published-tasks） */
