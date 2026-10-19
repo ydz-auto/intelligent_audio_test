@@ -145,6 +145,11 @@ class AlgorithmCommandService:
                 return error_response(f"请求数据验证失败: {str(e)}", 400)
 
         data = req.model_dump(by_alias=False, exclude_none=True)
+        # param_type_source 用于下游 device/api 分表路由，两个 schema 均不包含该字段，
+        # 且 APIModel extra="ignore" 会把它从 model_dump 结果中丢弃 → 重新注入，
+        # 防 API 参数（param_type_source='api'）错落 device_params 表（INT-1004 回归）。
+        # 空值归一为 'device'，与上方 schema 选择分支（非 api 一律 device）保持一致。
+        data['param_type_source'] = param_type_source or 'device'
         result = _algorithm_acl.create_param(data)
 
         if result.get('success'):
