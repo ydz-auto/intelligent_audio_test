@@ -403,7 +403,7 @@
 }
 
 .tg-btn-danger:hover {
-  background: var(--danger-hover, var(--color-red-600));
+  background: var(--color-red-600);
 }
 
 .tg-btn-text {

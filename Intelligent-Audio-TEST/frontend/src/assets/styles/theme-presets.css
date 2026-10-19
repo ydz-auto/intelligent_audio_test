@@ -108,6 +108,17 @@
   --feature-blue: #096dd9;
   --feature-purple: #531dab;
   --feature-red: #cf1322;
+
+  /* ── CSS-3 域散值收编（INT-771，值保真，替换后视觉零变化） ── */
+  --indigo-light: #f0f4ff; /* 功能特性开关 hover 浅靛底（原散值 #f0f4ff） */
+  --gray-faint: #aaaaaa; /* 次要计数文字（原散值 #aaa） */
+  --volcano: #ff7a45; /* 取消置顶 hover 火山橙（原散值 #ff7a45） */
+  --terminal-green: #00ff00; /* 日志终端文字绿（原散值 #00ff00） */
+  --timeline-green-soft: #b7eb8f; /* 时间线参考轨虚线绿（原散值 #b7eb8f） */
+  --timeline-green: #95de64; /* 时间线参考段边框绿（原散值 #95de64） */
+  --timeline-blue: #69c0ff; /* 时间线结果段边框蓝（原散值 #69c0ff） */
+  --gray-deep: #262626; /* 卡片内深灰标题（原散值 #262626） */
+  --gray-lightest: #f8f9fa; /* 渐变浅灰端点（原散值 #F8F9FA） */
 }
 
 /* 深色预设（原 tokens.css .dark 结构预留 → 本卡启用） */

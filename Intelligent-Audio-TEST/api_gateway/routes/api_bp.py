@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from api_gateway.application.services.api.api_query_service import ApiQueryService
 from api_gateway.application.services.api.api_command_service import ApiCommandService
+from api_gateway.application.services.device.device_import_export_service import ResourceImportExportService
 from api_gateway.routes._response import to_response
 from api_gateway.application.services.auth.dependencies import require_permission
 
@@ -11,6 +12,20 @@ router = APIRouter()
 @router.get('')
 def get_all():
     return to_response(ApiQueryService.get_all())
+
+
+# INT-816 导入导出（静态段，须先于 /{api_id} 注册；现有端点缺权限门槛，
+# 新增端点必须带 require_permission，见 UX 规范 §11-10 / FEAT INT-759 审计）
+@router.get('/export')
+def export_apis(_: None = require_permission('api_config:read')):
+    """导出 API 配置（json/excel 文件流，ids/format 可选；CQRS 查询侧无副作用）"""
+    return to_response(ResourceImportExportService.export('apis'))
+
+
+@router.post('/import')
+def import_apis(_: None = require_permission('api_config:create')):
+    """导入 API 配置（multipart 文件），按 name 匹配更新/新建/跳过"""
+    return to_response(ResourceImportExportService.import_resource('apis'))
 
 
 @router.get('/{api_id}')

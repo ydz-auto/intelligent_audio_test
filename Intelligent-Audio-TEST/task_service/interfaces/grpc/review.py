@@ -63,3 +63,44 @@ class ReviewServiceServicer(task_grpc.ReviewServiceServicer):
             return self._resp(review_service.review_history(request.task_id))
         except Exception as e:
             return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
+
+    # ==================== AI 复核（INT-822/INT-800） ====================
+
+    def InitiateAiReview(self, request, context=None):
+        """发起 AI 复核：{result_ids, dimension_ids?, force?} → {items, reused, skipped}。"""
+        try:
+            from task_service.application.task.ai_review_service import ai_review_service
+            data = _loads(request.data, {})
+            return self._resp(self._with_user(
+                context, lambda: ai_review_service.initiate_review(data)))
+        except Exception as e:
+            return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
+
+    def ListAiReviewHistory(self, request, context=None):
+        """任务 AI 复核历史（时间倒序；data JSON: {result_id?, dimension_id?, status?}）。"""
+        try:
+            from task_service.application.task.ai_review_service import ai_review_service
+            filters = _loads(request.data, {})
+            return self._resp(ai_review_service.review_history(request.task_id, filters))
+        except Exception as e:
+            return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
+
+    def AdoptAiReview(self, request, context=None):
+        """采纳 AI 复核结论：data JSON {execution_status?, evaluation_status?, comment}。"""
+        try:
+            from task_service.application.task.ai_review_service import ai_review_service
+            data = _loads(request.data, {})
+            return self._resp(self._with_user(
+                context,
+                lambda: ai_review_service.adopt_review(request.review_id, data)))
+        except Exception as e:
+            return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
+
+    def RejectAiReview(self, request, context=None):
+        """驳回 AI 复核结论（原判定不变）。"""
+        try:
+            from task_service.application.task.ai_review_service import ai_review_service
+            return self._resp(self._with_user(
+                context, lambda: ai_review_service.reject_review(request.review_id)))
+        except Exception as e:
+            return task_pb.TaskConfigResponse(success=False, message=str(e), data="")

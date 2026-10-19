@@ -10,7 +10,7 @@
 
 .form-group-item {
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
 }
 
@@ -82,7 +82,7 @@
   height: 40px;
   padding: 0 16px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   color: var(--foreground);
   background-color: var(--color-white);
@@ -124,7 +124,7 @@ textarea.form-input {
   -webkit-appearance: none;
   appearance: none;
   background: var(--border);
-  border-radius: 9999px;
+  border-radius: var(--radius-full);
   outline: none;
 }
 
@@ -171,7 +171,7 @@ textarea.form-input {
   right: 0;
   bottom: 0;
   background-color: var(--border);
-  border-radius: 9999px;
+  border-radius: var(--radius-full);
   transition: 0.2s ease;
 }
 
@@ -182,7 +182,7 @@ textarea.form-input {
   width: 18px;
   left: 3px;
   bottom: 3px;
-  background-color: white;
+  background-color: var(--color-white);
   border-radius: 50%;
   transition: 0.2s ease;
 }
@@ -224,7 +224,7 @@ textarea.form-input {
   font-weight: 600;
   color: var(--primary);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   padding: 4px 8px;
   font-size: 13px;
   outline: none;

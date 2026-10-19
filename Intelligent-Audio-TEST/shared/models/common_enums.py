@@ -345,6 +345,10 @@ class AuditEvent(str, Enum):
     PUBLISHED_TASK_ARCHIVED = 'PUBLISHED_TASK_ARCHIVED'
     # 测试结果人工复核审计（INT-340，category='System'）
     MANUAL_REVIEW_SUBMITTED = 'MANUAL_REVIEW_SUBMITTED'
+    # AI 复核审计（INT-822/INT-800，category='System'；AI 结论独立表，不污染人工复核审计）
+    AI_REVIEW_INITIATED = 'AI_REVIEW_INITIATED'
+    AI_REVIEW_ADOPTED = 'AI_REVIEW_ADOPTED'
+    AI_REVIEW_REJECTED = 'AI_REVIEW_REJECTED'
 
 
 class AuthErrorCode(str, Enum):

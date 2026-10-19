@@ -250,13 +250,19 @@ class EvaluationQueryService:
             logger.error(f"批量查询维度基础信息失败: {e}")
             return {'success': False, 'message': str(e), 'code': 500}
 
-    def get_dimension_results_by_result_ids(self, result_ids: list) -> Dict[str, Any]:
-        """按 result_id 列表批量查询维度评估结果（含 dimension_name）。"""
+    def get_dimension_results_by_result_ids(self, result_ids: list, include_body: bool = False) -> Dict[str, Any]:
+        """按 result_id 列表批量查询维度评估结果（含 dimension_name）。
+
+        Args:
+            include_body: 是否携带 api_request_body / api_raw_response
+                （LLM 复检 INT-823 上下文聚合用；默认 False 保持既有载荷不变）。
+        """
         try:
             from evaluation_service.infrastructure.persistence.evaluation_dimension_repository import (
                 evaluation_dimension_repository,
             )
-            items = evaluation_dimension_repository.get_dimension_results_with_names_by_result_ids(result_ids)
+            items = evaluation_dimension_repository.get_dimension_results_with_names_by_result_ids(
+                result_ids, include_body=include_body)
             return {'success': True, 'message': '', 'data': {'items': items}}
         except Exception as e:
             logger.error(f"批量查询维度评估结果失败: {e}")

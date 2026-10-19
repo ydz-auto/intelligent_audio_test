@@ -1,6 +1,6 @@
 .timeline-comparison {
-  background: white;
-  border-radius: 8px;
+  background: var(--color-white);
+  border-radius: var(--border-radius-md);
   padding: 16px;
   margin-top: 16px;
 }
@@ -37,7 +37,7 @@
 .resource-select {
   padding: 4px 8px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--border-radius-sm);
   font-size: 14px;
   background: var(--color-white);
   cursor: pointer;
@@ -57,7 +57,7 @@
 .speaker-select {
   padding: 4px 8px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--border-radius-sm);
   font-size: 14px;
   background: var(--color-white);
   cursor: pointer;
@@ -106,7 +106,7 @@
 .zoom-btn {
   padding: 4px 8px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--border-radius-sm);
   background: var(--color-white);
   cursor: pointer;
   transition: all 0.2s;
@@ -135,7 +135,7 @@
 
 .speaker-row {
   background: var(--color-white);
-  border-radius: 6px;
+  border-radius: var(--radius-6);
   padding: 12px;
   border: 1px solid var(--border);
 }
@@ -190,7 +190,7 @@
 
 .reference-row .track-segments {
   background: var(--success-light);
-  border: 1px dashed #b7eb8f;
+  border: 1px dashed var(--timeline-green-soft);
 }
 
 .result-row .track-segments {
@@ -211,7 +211,7 @@
   position: relative;
   height: 28px;
   background: var(--muted);
-  border-radius: 4px;
+  border-radius: var(--border-radius-sm);
   overflow: hidden;
 }
 
@@ -219,7 +219,7 @@
   position: absolute;
   height: 24px;
   top: 2px;
-  border-radius: 3px;
+  border-radius: var(--radius-3);
   display: flex;
   align-items: center;
   padding: 0 6px;
@@ -235,12 +235,12 @@
 
 .reference-segment {
   background: var(--color-lime-200);
-  border: 1px solid #95de64;
+  border: 1px solid var(--timeline-green);
 }
 
 .result-segment {
   background: var(--color-sky-200);
-  border: 1px solid #69c0ff;
+  border: 1px solid var(--timeline-blue);
 }
 
 .result-segment.match-segment {

@@ -453,10 +453,16 @@ class EvaluationDimensionRepository(EvaluationDimensionRepositoryABC):
             raise
 
     def get_dimension_results_with_names_by_result_ids(
-        self, result_ids: List[int]
+        self, result_ids: List[int], include_body: bool = False
     ) -> List[dict]:
         """按 result_id 列表批量查询维度评估结果（含 dimension_name）。
-        返回 dict 列表，供 gRPC servicer 直接序列化。"""
+        返回 dict 列表，供 gRPC servicer 直接序列化。
+
+        Args:
+            include_body: 是否携带 api_request_body / api_raw_response（LLM 复检
+                INT-823 上下文聚合用；默认 False 保持既有 read model 调用载荷不变，
+                避免对报告/导出等大批量消费方回传大 JSON 字段）。
+        """
         session = get_db_session()
         rows = session.query(
             TestResultDimensionPO, DimensionPO.name
@@ -468,7 +474,7 @@ class EvaluationDimensionRepository(EvaluationDimensionRepositoryABC):
 
         items = []
         for dim, dim_name in rows:
-            items.append({
+            item = {
                 'id': dim.id,
                 'test_result_id': dim.test_result_id,
                 'dimension_id': dim.dimension_id,
@@ -479,7 +485,11 @@ class EvaluationDimensionRepository(EvaluationDimensionRepositoryABC):
                 'evaluation_status': dim.evaluation_status,
                 'error_message': dim.error_message,
                 'round_number': getattr(dim, 'round_number', None),
-            })
+            }
+            if include_body:
+                item['api_request_body'] = dim.api_request_body
+                item['api_raw_response'] = dim.api_raw_response
+            items.append(item)
         return items
 
     def delete_scores_by_result_ids(self, result_ids: List[int]) -> int:

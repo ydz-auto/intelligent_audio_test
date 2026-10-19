@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import traceback
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -38,6 +39,129 @@ def _ok(data: Any = None, message: str = 'Success', code: int = 200) -> Dict[str
 
 def _fail(message: str, code: int = 400, data: Any = None) -> Dict[str, Any]:
     return {'success': False, 'message': message, 'data': data, 'code': code}
+
+
+# ========== 批量操作（move/copy/rename/modify-properties）工具函数 ==========
+
+_ALLOWED_AUDIO_TYPES = {'dry', 'noise', 'prompt', 'mixed'}
+# modify-properties 元数据白名单列（file_path 归 move/copy 管理；
+# audios 无 per-audio SPL 列，SPL 为设备/API 级映射）
+_METADATA_PROPERTY_FIELDS = ('name', 'audio_type', 'asr_text', 'description', 'source_language')
+
+
+def _batch_field(data: Dict[str, Any], *names: str) -> Any:
+    """按 snake_case/camelCase 顺序取扩展字段（与既有 audioIds 双口径读取一致）。"""
+    for name in names:
+        if name in data and data.get(name) is not None:
+            return data.get(name)
+    return None
+
+
+def _normalize_target_folder(target_folder: Any) -> str:
+    """规范化批量 move/copy 目标文件夹。
+
+    统一反斜杠、去首尾斜杠；拒绝空目录、. / .. 穿越、绝对路径；
+    兼容 folder-tree 展示口径：开头的 direct/ 前缀可带可不带。
+    """
+    folder = (target_folder or '').replace('\\', '/').strip('/').strip()
+    parts = [p for p in folder.split('/') if p and p.strip()]
+    if not parts:
+        raise ValueError('目标文件夹不能为空')
+    if any(p in ('.', '..') for p in parts):
+        raise ValueError('目标文件夹包含非法路径段（. / ..）')
+    if parts[0] == 'direct':
+        parts = parts[1:]
+    if not parts:
+        raise ValueError('目标文件夹不能为空')
+    return '/'.join(parts)
+
+
+def _storage_key_of(file_path: str) -> str:
+    """取存储 key（去 scheme 前缀；裸 key 原样返回）。"""
+    if file_path.startswith('oss://'):
+        return file_path[len('oss://'):]
+    if file_path.startswith('local://'):
+        return file_path[len('local://'):]
+    return file_path
+
+
+def _same_storage_location(old_path: str, target_key: str) -> bool:
+    """判断目标 key 与源存储位置是否相同（scheme 路径的 key 含 audios/ 分类前缀）。"""
+    old_key = _storage_key_of(old_path)
+    if old_key == target_key:
+        return True
+    if old_key.startswith('audios/') and old_key[len('audios/'):] == target_key:
+        return True
+    return False
+
+
+def _extract_basename(file_path: str) -> str:
+    """取 file_path 最后一段文件名（storage key 或本地路径通用）。"""
+    normalized = (file_path or '').replace('\\', '/').rstrip('/')
+    return normalized.rsplit('/', 1)[-1]
+
+
+def _dedupe_storage_key(key: str) -> str:
+    """目标 storage key 已存在时追加 _1/_2 序号（与上传 _dedupe_oss_key 同口径）。
+
+    带安全上限：storage.exists 持续为 True（存储状态异常）时最多递增 999 后直接返回。
+    """
+    if not storage.exists(storage.build_path('audios', key)):
+        return key
+    stem, ext = os.path.splitext(key)
+    counter = 1
+    while storage.exists(storage.build_path('audios', f'{stem}_{counter}{ext}')):
+        counter += 1
+        if counter >= 1000:
+            break
+    return f'{stem}_{counter}{ext}'
+
+
+def _relocate_audio_file(audio, target_folder: str, copy_mode: bool) -> str:
+    """迁移音频物理文件到目标文件夹，返回新的 file_path。
+
+    - copy_mode=False（move）：目标 key 与源 key 相同视为原地不动，直接返回旧路径；
+      否则下载→重存→删除源存储对象。
+    - copy_mode=True（copy）：下载→重存，保留源对象。
+    """
+    old_path = audio.file_path
+    if not old_path:
+        raise ValueError('音频文件路径缺失')
+    filename = _extract_basename(old_path)
+    target_key = f'direct/{target_folder}/{filename}'
+    if not copy_mode and _same_storage_location(old_path, target_key):
+        return old_path
+    deduped_key = _dedupe_storage_key(target_key)
+
+    if old_path.startswith(('oss://', 'local://')):
+        tmp = storage.load_file(old_path)
+        try:
+            new_path = storage.save_file(tmp, 'audios', deduped_key)
+        finally:
+            if tmp and os.path.exists(tmp):
+                os.remove(tmp)
+        if not copy_mode:
+            storage.delete(old_path)
+        return new_path
+
+    if os.path.isabs(old_path):
+        # 传统本地绝对路径：直接以本地文件为存储源
+        new_path = storage.save_file(old_path, 'audios', deduped_key)
+        if not copy_mode and os.path.exists(old_path):
+            os.remove(old_path)
+        return new_path
+
+    # 裸逻辑 key（无 scheme）：按 audios 分类处理
+    src_path = storage.build_path('audios', old_path)
+    tmp = storage.load_file(src_path)
+    try:
+        new_path = storage.save_file(tmp, 'audios', deduped_key)
+    finally:
+        if tmp and os.path.exists(tmp):
+            os.remove(tmp)
+    if not copy_mode:
+        storage.delete(src_path)
+    return new_path
 
 
 class AudioCommandHandler:
@@ -268,12 +392,179 @@ class AudioCommandHandler:
                 self.repo.commit()
                 return _ok(message=f'批量操作 {action} 执行成功')
 
+            elif action == 'move':
+                return self._handle_batch_move_or_copy(cmd.data, audio_ids, copy_mode=False)
+
+            elif action == 'copy':
+                return self._handle_batch_move_or_copy(cmd.data, audio_ids, copy_mode=True)
+
+            elif action == 'rename':
+                return self._handle_batch_rename(cmd.data, audio_ids)
+
+            elif action == 'modify-properties':
+                return self._handle_batch_modify_properties(cmd.data, audio_ids)
+
             else:
                 return _fail(f'不支持的操作: {action}')
 
         except Exception as e:
             self.repo.rollback()
             return _fail(str(e))
+
+    # ========== 批量 move / copy（storage + file_path 更新，INT-818） ==========
+
+    def _handle_batch_move_or_copy(self, data: Dict[str, Any], audio_ids: List[int], copy_mode: bool) -> Dict[str, Any]:
+        """批量移动/复制音频到目标文件夹。
+
+        move：物理文件迁移 + file_path 更新（目标 key 与源相同视为原地不动）。
+        copy：物理文件复制 + 新建 Audio 记录（保留源记录与文件）。
+        """
+        action_label = '复制' if copy_mode else '移动'
+        target_folder = _batch_field(data, 'target_folder', 'targetFolder')
+        try:
+            folder = _normalize_target_folder(target_folder)
+        except ValueError as e:
+            return _fail(f'批量{action_label}失败: {e}')
+
+        if not audio_ids:
+            return _fail('音频 ID 列表不能为空')
+
+        audios = self.repo.get_audios_by_ids(audio_ids)
+        if not audios:
+            return _fail('未找到音频文件')
+
+        success_count = 0
+        failed_count = 0
+        failed_ids = []
+        try:
+            for audio in audios:
+                try:
+                    new_path = _relocate_audio_file(audio, folder, copy_mode=copy_mode)
+                    if copy_mode:
+                        self.repo.create_audio({
+                            'name': audio.name,
+                            'original_filename': audio.original_filename,
+                            'file_path': new_path,
+                            'size': audio.size,
+                            'duration': audio.duration,
+                            'sample_rate': audio.sample_rate,
+                            'channels': audio.channels,
+                            'bitrate': audio.bitrate,
+                            'format': audio.format,
+                            'audio_type': audio.audio_type,
+                            'asr_text': audio.asr_text,
+                            'description': audio.description,
+                            'md5': audio.md5,
+                            'source_language': audio.source_language,
+                        })
+                    else:
+                        self.repo.update_audio(audio.id, {'file_path': new_path})
+                    success_count += 1
+                except Exception as e:
+                    logger.debug("批量%s音频失败: audio_id=%s, err=%s", action_label, audio.id, e, exc_info=True)
+                    failed_count += 1
+                    failed_ids.append(audio.id)
+            self.repo.commit()
+            message = f'成功{action_label} {success_count} 个音频'
+            if failed_count:
+                message += f'，{failed_count} 个失败（audio_id: {failed_ids}）'
+            return _ok(data={
+                'action': 'copy' if copy_mode else 'move',
+                'success_count': success_count,
+                'failed_count': failed_count,
+            }, message=message)
+        except Exception as e:
+            self.repo.rollback()
+            return _fail(f'批量{action_label}失败: {e}')
+
+    # ========== 批量 rename（name 列更新，INT-818） ==========
+
+    def _handle_batch_rename(self, data: Dict[str, Any], audio_ids: List[int]) -> Dict[str, Any]:
+        """批量重命名：name = {rename_rule}{01..N}{原扩展名}（React 预览口径）。"""
+        rename_rule = _batch_field(data, 'rename_rule', 'renameRule')
+        if not rename_rule:
+            return _fail('重命名规则不能为空')
+
+        if not audio_ids:
+            return _fail('音频 ID 列表不能为空')
+
+        audios = self.repo.get_audios_by_ids(audio_ids)
+        if not audios:
+            return _fail('未找到音频文件')
+
+        success_count = 0
+        try:
+            for index, audio in enumerate(audios, start=1):
+                ext = os.path.splitext(audio.name)[1] if audio.name else ''
+                new_name = f'{rename_rule}{index:02d}{ext}'
+                self.repo.update_audio(audio.id, {'name': new_name})
+                success_count += 1
+            self.repo.commit()
+            return _ok(data={
+                'action': 'rename',
+                'success_count': success_count,
+                'failed_count': 0,
+            }, message=f'成功重命名 {success_count} 个音频')
+        except Exception as e:
+            self.repo.rollback()
+            return _fail(f'批量重命名失败: {e}')
+
+    # ========== 批量 modify-properties（元数据/音频类型，INT-818） ==========
+
+    def _handle_batch_modify_properties(self, data: Dict[str, Any], audio_ids: List[int]) -> Dict[str, Any]:
+        """批量修改属性：metadata（字段字典白名单）/ audio-type（类型值）。
+
+        SPL 无 per-audio 落点（spl_mappings 为设备/API 级），本期明确拒绝并说明。
+        """
+        property_name = _batch_field(data, 'property')
+        if not property_name:
+            return _fail('属性名称不能为空')
+
+        if property_name == 'spl':
+            return _fail(
+                '批量修改 SPL 暂不支持：audios 表无 per-audio SPL 列（SPL 为设备/API 级映射），'
+                '本期仅支持 metadata / audio-type'
+            )
+
+        if not audio_ids:
+            return _fail('音频 ID 列表不能为空')
+
+        audios = self.repo.get_audios_by_ids(audio_ids)
+        if not audios:
+            return _fail('未找到音频文件')
+
+        if property_name == 'metadata':
+            property_value = _batch_field(data, 'property_value', 'propertyValue')
+            if not isinstance(property_value, dict) or not property_value:
+                return _fail('修改元数据需要 property_value 为字段字典（如 {"description": "..."}）')
+            update_fields = {k: v for k, v in property_value.items() if k in _METADATA_PROPERTY_FIELDS}
+            if not update_fields:
+                return _fail(f'未提供可修改的元数据字段，允许字段: {"/".join(_METADATA_PROPERTY_FIELDS)}')
+            return self._apply_property_update(audios, update_fields)
+
+        if property_name == 'audio-type':
+            property_value = _batch_field(data, 'property_value', 'propertyValue', 'value')
+            if property_value not in _ALLOWED_AUDIO_TYPES:
+                return _fail(f'无效的音频类型: {property_value}，允许值: dry / noise / prompt / mixed')
+            return self._apply_property_update(audios, {'audio_type': property_value})
+
+        return _fail(f'不支持的属性: {property_name}，允许值: metadata / audio-type / spl')
+
+    def _apply_property_update(self, audios: List[Any], update_fields: dict) -> Dict[str, Any]:
+        success_count = 0
+        try:
+            for audio in audios:
+                self.repo.update_audio(audio.id, update_fields)
+                success_count += 1
+            self.repo.commit()
+            return _ok(data={
+                'action': 'modify-properties',
+                'success_count': success_count,
+                'failed_count': 0,
+            }, message=f'成功修改 {success_count} 个音频的属性')
+        except Exception as e:
+            self.repo.rollback()
+            return _fail(f'批量修改属性失败: {e}')
 
     def handle_delete(self, cmd: DeleteAudioCommand) -> Dict[str, Any]:
         audio = self.repo.get_audio(cmd.audio_id)

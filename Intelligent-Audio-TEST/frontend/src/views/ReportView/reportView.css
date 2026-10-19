@@ -58,7 +58,7 @@
   background: var(--secondary);
   color: var(--color-white);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s;
@@ -71,7 +71,7 @@
 .rv-btn {
   padding: 8px 20px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-6);
   font-size: 14px;
   cursor: pointer;
   display: inline-flex;
@@ -139,7 +139,7 @@
 .rv-analysis-conclusion-card {
   background: var(--color-white);
   border: 1px solid var(--color-slate-200);
-  border-radius: 12px;
+  border-radius: var(--border-radius-lg);
   padding: 24px;
   margin-bottom: 24px;
   display: flex;
@@ -150,7 +150,7 @@
   width: 48px;
   height: 48px;
   background: var(--secondary-light);
-  border-radius: 12px;
+  border-radius: var(--border-radius-lg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -185,7 +185,7 @@
   color: var(--color-slate-500);
   background: var(--color-slate-100);
   padding: 4px 12px;
-  border-radius: 12px;
+  border-radius: var(--border-radius-lg);
 }
 
 .rv-analysis-status .rv-status-dot {
@@ -245,7 +245,7 @@
   width: 100%;
   padding: 10px 14px;
   border: 1px solid var(--color-slate-200);
-  border-radius: 6px;
+  border-radius: var(--radius-6);
   font-size: 14px;
   color: var(--color-slate-800);
   background: var(--color-white);
@@ -272,7 +272,7 @@
   min-height: 120px;
   padding: 12px 16px;
   border: 1px solid var(--color-slate-200);
-  border-radius: 6px;
+  border-radius: var(--radius-6);
   font-size: 14px;
   color: var(--color-slate-800);
   background: var(--color-white);
@@ -297,7 +297,7 @@
 .rv-comparison-selectors {
   background: var(--color-white);
   border: 1px solid var(--color-slate-200);
-  border-radius: 12px;
+  border-radius: var(--border-radius-lg);
   padding: 24px;
   margin-bottom: 24px;
 }
@@ -341,7 +341,7 @@
 .rv-collapse-btn:hover {
   color: var(--color-slate-700);
   background: var(--color-slate-100);
-  border-radius: 4px;
+  border-radius: var(--border-radius-sm);
 }
 
 .rv-collapse-btn.collapsed {
@@ -367,7 +367,7 @@
   gap: 12px;
   padding: 12px 16px;
   border: 2px solid var(--color-slate-200);
-  border-radius: 10px;
+  border-radius: var(--radius-10);
   cursor: pointer;
   transition: all 0.2s;
   background: var(--color-white);
@@ -402,7 +402,7 @@
 .rv-device-icon-wrapper {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -464,12 +464,12 @@
   position: fixed;
   top: 80px;
   right: 24px;
-  z-index: 10000;
+  z-index: var(--z-index-modal);
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 12px 20px;
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   font-size: 14px;
   color: var(--color-white);
   box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 15%, transparent);
@@ -495,7 +495,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  z-index: 14000;
+  z-index: var(--z-index-floating);
 }
 
 /* 底部浮动保存/发布/关闭操作条（原 ReportView.vue 内联样式迁入；rgba 阴影/白底收编 tokens） */
@@ -507,10 +507,10 @@
   display: flex;
   justify-content: center;
   gap: 16px;
-  z-index: 14000;
+  z-index: var(--z-index-floating);
   padding: 16px 24px;
   background: color-mix(in srgb, var(--color-white) 95%, transparent);
-  border-radius: 12px;
+  border-radius: var(--border-radius-lg);
   box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 15%, transparent);
   backdrop-filter: blur(10px);
   border: 1px solid color-mix(in srgb, var(--color-slate-200) 80%, transparent);
@@ -554,12 +554,12 @@
   right: 0;
   bottom: calc(100% + 8px);
   background: var(--color-white);
-  border-radius: 10px;
+  border-radius: var(--radius-10);
   box-shadow: 0 4px 20px color-mix(in srgb, var(--color-black) 15%, transparent);
   border: 1px solid var(--color-slate-200);
   overflow: hidden;
   min-width: 160px;
-  z-index: 15000;
+  z-index: var(--z-index-toast);
 }
 
 .rv-export-menu-item {
@@ -594,9 +594,9 @@
   padding: 10px 16px;
   background: var(--success);
   color: var(--color-white);
-  border-radius: 6px;
+  border-radius: var(--radius-6);
   font-size: 13px;
-  z-index: 9999;
+  z-index: var(--z-index-overlay);
   display: flex;
   align-items: center;
   gap: 6px;

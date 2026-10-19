@@ -415,7 +415,7 @@ const getAverageValue = (metricName, device) => {
   align-items: center;
   gap: 4px;
   padding: 2px 10px;
-  border-radius: 10px;
+  border-radius: var(--radius-10);
   font-size: 12px;
   font-weight: 500;
   color: var(--primary-color);

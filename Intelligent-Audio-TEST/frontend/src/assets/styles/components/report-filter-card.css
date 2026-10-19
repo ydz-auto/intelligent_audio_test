@@ -1,7 +1,7 @@
 /* 报告页面筛选卡片统一样式 - 基于参考设计 */
 .report-filter-card {
   background: var(--color-white);
-  border-radius: 16px;
+  border-radius: var(--border-radius-xl);
   border: 1px solid var(--color-slate-200);
   box-shadow: none;
   padding: 20px;
@@ -79,9 +79,9 @@
   align-items: center;
   margin-bottom: 12px;
   border: 1px solid var(--color-slate-200) ;
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   padding: 0 12px;
-  background-color: white;
+  background-color: var(--color-white);
   transition: all 0.2s ease;
   height: 36px;
   width: 100%;
@@ -148,9 +148,9 @@
   min-height: 60px;
   width: 100%;
   box-sizing: border-box;
-  background: white;
+  background: var(--color-white);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
 }
 
 .report-filter-card .tag-filter.has-pagination {
@@ -160,10 +160,10 @@
 
 .report-filter-card .tag-filter-item {
   padding: 6px 14px;
-  background: white ;
+  background: var(--color-white) ;
   color: var(--color-slate-500) ;
   border: 1px solid var(--color-slate-200) ;
-  border-radius: 16px;
+  border-radius: var(--border-radius-xl);
   cursor: pointer;
   transition: all 0.2s ease;
   font-size: 13px;
@@ -181,7 +181,7 @@
 
 .report-filter-card .tag-filter-item.active {
   background: var(--secondary) ;
-  color: white ;
+  color: var(--color-white) ;
   border-color: var(--secondary) ;
   box-shadow: 0 2px 8px color-mix(in srgb, var(--secondary) 30%, transparent);
 }
@@ -195,9 +195,9 @@
   min-height: 60px;
   width: 100%;
   box-sizing: border-box;
-  background: white;
+  background: var(--color-white);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
 }
 
 .report-filter-card .case-type-filter.has-pagination {
@@ -207,10 +207,10 @@
 
 .report-filter-card .case-type-item {
   padding: 6px 14px;
-  background: white ;
+  background: var(--color-white) ;
   color: var(--color-slate-500) ;
   border: 1px solid var(--color-slate-200) ;
-  border-radius: 16px;
+  border-radius: var(--border-radius-xl);
   cursor: pointer;
   transition: all 0.2s ease;
   font-size: 13px;
@@ -228,7 +228,7 @@
 
 .report-filter-card .case-type-item.active {
   background: var(--secondary) ;
-  color: white ;
+  color: var(--color-white) ;
   border-color: var(--secondary) ;
   font-weight: 600;
   text-decoration: none;
@@ -251,8 +251,8 @@
 .report-filter-card .pagination-btn {
   padding: 6px 12px;
   border: 1px solid var(--color-slate-200);
-  border-radius: 6px;
-  background: white;
+  border-radius: var(--radius-6);
+  background: var(--color-white);
   color: var(--color-slate-500);
   cursor: pointer;
   font-size: 12px;
@@ -295,7 +295,7 @@
   gap: 6px;
   padding: 8px 16px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -305,7 +305,7 @@
 
 .report-filter-card .btn-primary {
   background: linear-gradient(135deg, var(--secondary) 0%, var(--secondary) 100%);
-  color: white;
+  color: var(--color-white);
   box-shadow: 0 2px 8px color-mix(in srgb, var(--secondary) 20%, transparent);
 }
 
@@ -316,7 +316,7 @@
 }
 
 .report-filter-card .btn-secondary {
-  background: white;
+  background: var(--color-white);
   color: var(--color-slate-500);
   border: 1px solid var(--color-slate-200);
 }
@@ -369,9 +369,9 @@
   min-height: 80px;
   width: 100%;
   box-sizing: border-box;
-  background: white;
+  background: var(--color-white);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
 }
 
 .report-filter-card .tag-filter-orange.has-pagination {
@@ -381,10 +381,10 @@
 
 .report-filter-card .tag-filter-item-orange {
   padding: 6px 12px;
-  background: white ;
+  background: var(--color-white) ;
   color: var(--color-slate-500) ;
   border: 1px solid var(--color-slate-200) ;
-  border-radius: 16px;
+  border-radius: var(--border-radius-xl);
   cursor: pointer;
   transition: all 0.2s ease;
   font-size: 13px;
@@ -402,7 +402,7 @@
 
 .report-filter-card .tag-filter-item-orange.active {
   background: var(--secondary) ;
-  color: white ;
+  color: var(--color-white) ;
   border-color: var(--secondary) ;
   box-shadow: 0 2px 8px color-mix(in srgb, var(--secondary) 30%, transparent);
 }
@@ -416,9 +416,9 @@
   min-height: 80px;
   width: 100%;
   box-sizing: border-box;
-  background: white;
+  background: var(--color-white);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
 }
 
 .report-filter-card .metric-filter.has-pagination {
@@ -428,10 +428,10 @@
 
 .report-filter-card .metric-filter-item {
   padding: 6px 12px;
-  background: white ;
+  background: var(--color-white) ;
   color: var(--color-slate-500) ;
   border: 1px solid var(--color-slate-200) ;
-  border-radius: 16px;
+  border-radius: var(--border-radius-xl);
   cursor: pointer;
   transition: all 0.2s ease;
   font-size: 13px;
@@ -455,14 +455,14 @@
 
 .report-filter-card .metric-filter-item.active {
   background: var(--secondary) ;
-  color: white ;
+  color: var(--color-white) ;
   border-color: var(--secondary) ;
   box-shadow: 0 2px 8px color-mix(in srgb, var(--secondary) 30%, transparent);
 }
 
 .report-filter-card .metric-filter-item.active i {
   opacity: 1;
-  color: white;
+  color: var(--color-white);
 }
 
 /* 评估维度搜索框和分页器 */
@@ -471,9 +471,9 @@
   align-items: center;
   margin-bottom: 12px;
   border: 1px solid var(--color-slate-200) ;
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   padding: 0 12px;
-  background-color: white;
+  background-color: var(--color-white);
   transition: all 0.2s ease;
   height: 36px;
   width: 100%;
@@ -537,9 +537,9 @@
   align-items: center;
   margin-bottom: 12px;
   border: 1px solid var(--color-slate-200) ;
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   padding: 0 12px;
-  background-color: white;
+  background-color: var(--color-white);
   transition: all 0.2s ease;
   height: 36px;
   width: 100%;
@@ -640,10 +640,10 @@
   width: 100%;
   padding: 8px 12px;
   border: 1px solid var(--color-slate-200);
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   font-size: 14px;
   transition: all 0.3s ease;
-  background: white;
+  background: var(--color-white);
   box-sizing: border-box;
 }
 
@@ -661,9 +661,9 @@
   width: 100%;
   padding: 8px 12px;
   border: 1px solid var(--color-slate-200);
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   font-size: 14px;
-  background: white;
+  background: var(--color-white);
   cursor: pointer;
   transition: all 0.3s ease;
   box-sizing: border-box;

@@ -59,6 +59,7 @@ from .cherry_pick_proxies import (
     cherry_pick_service,
 )
 from .review_proxies import review_service
+from .ai_review_proxies import _AiReviewProxy, ai_review_proxy
 from .evaluation_strategy_proxies import (
     _EvaluationStrategyProxy,
     evaluation_strategy_service,
@@ -96,6 +97,8 @@ __all__ = [
     '_CherryPickProxy',
     'cherry_pick_service',
     'review_service',
+    '_AiReviewProxy',
+    'ai_review_proxy',
     '_EvaluationStrategyProxy',
     'evaluation_strategy_service',
 ]

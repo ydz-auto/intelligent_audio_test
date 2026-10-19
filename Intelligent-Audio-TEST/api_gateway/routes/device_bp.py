@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from api_gateway.application.services.device.device_query_service import DeviceQueryService
 from api_gateway.application.services.device.device_command_service import DeviceCommandService
+from api_gateway.application.services.device.device_import_export_service import ResourceImportExportService
 from api_gateway.routes._response import to_response
 from api_gateway.application.services.auth.dependencies import require_permission
 
@@ -175,6 +176,21 @@ def uninstall_app(device_id: int, _: None = require_permission('device:control')
 def get_device_status_history(device_id: int, _: None = require_permission('device:read')):
     """单设备状态历史/趋势查询（INT-80）"""
     return to_response(DeviceQueryService.get_status_history(device_id))
+
+
+# ==================== INT-816 导入导出（静态段，须先于 /{device_id} 注册） ====================
+
+
+@router.get('/export')
+def export_devices(_: None = require_permission('device:read')):
+    """导出测试设备（json/excel 文件流，ids/format 可选；CQRS 查询侧无副作用）"""
+    return to_response(ResourceImportExportService.export('test-devices'))
+
+
+@router.post('/import')
+def import_devices(_: None = require_permission('device:create')):
+    """导入测试设备（multipart 文件），按 serial_number 匹配更新/新建/跳过"""
+    return to_response(ResourceImportExportService.import_resource('test-devices'))
 
 
 # ==================== 原有设备路由（动态段置底） ====================

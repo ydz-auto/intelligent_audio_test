@@ -113,7 +113,7 @@
 .tag-filter-item.active {
     background-color: var(--primary-color);
     border-color: var(--primary-color);
-    color: white;
+    color: var(--color-white);
 }
 
 /* 标签省略号样式 */

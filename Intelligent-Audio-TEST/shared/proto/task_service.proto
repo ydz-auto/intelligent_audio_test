@@ -341,6 +341,16 @@ service ReviewService {
   rpc GetReviewCount(ReviewTaskRequest) returns (TaskConfigResponse);
   // 复核历史（多次复核追加不覆盖）
   rpc ListReviewHistory(ReviewTaskRequest) returns (TaskConfigResponse);
+
+  // ---- AI 复核（INT-822/INT-800；operator 走 x-user-id metadata）----
+  // 发起：{result_ids, dimension_ids?, force?} → {items: [AiReviewRecordDto], reused, skipped}
+  rpc InitiateAiReview(AiReviewRequest) returns (TaskConfigResponse);
+  // 任务 AI 复核历史（时间倒序；data JSON: {result_id?, dimension_id?, status?}）
+  rpc ListAiReviewHistory(AiReviewHistoryRequest) returns (TaskConfigResponse);
+  // 采纳（复用 apply_review 落人工复核语义）：data JSON {execution_status?, evaluation_status?, comment}
+  rpc AdoptAiReview(AiReviewActionRequest) returns (TaskConfigResponse);
+  // 驳回（原判定不变）
+  rpc RejectAiReview(AiReviewActionRequest) returns (TaskConfigResponse);
 }
 
 message ReviewSubmitRequest {
@@ -349,6 +359,18 @@ message ReviewSubmitRequest {
 }
 message ReviewTaskRequest {
   int32 task_id = 1;
+}
+
+message AiReviewRequest {
+  string data = 1;  // JSON: {result_ids: [int], dimension_ids?: [int], force?: bool}
+}
+message AiReviewHistoryRequest {
+  int32 task_id = 1;
+  string data = 2;  // JSON: {result_id?: int, dimension_id?: int, status?: str}
+}
+message AiReviewActionRequest {
+  int64 review_id = 1;
+  string data = 2;  // JSON: adopt {execution_status?: str, evaluation_status?: str, comment: str}
 }
 
 // ===== 已发布任务配置服务（任务发布功能）=====
@@ -1011,6 +1033,7 @@ message ListLogsRequest {
   string content_include = 15; // 可选，content 包含匹配
   string content_exclude = 16; // 可选，content 排除包含匹配
   string algorithm_type = 17;  // 可选，算法类型精确匹配（'all' 视为不过滤）
+  int32 user_id = 18;          // 可选，按操作人 created_by_user_id 过滤（INT-806「仅自己」）
 }
 message ListTestCaseGroupsRequest {
   string algorithm_type = 1;  // 可选，按算法类型过滤
@@ -1099,6 +1122,7 @@ message GetLogStatsRequest {
   string start_time = 10;     // 可选 ISO
   string end_time = 11;       // 可选 ISO
   string algorithm_type = 12; // 可选
+  int32 user_id = 13;         // 可选，按操作人 created_by_user_id 过滤（INT-806「仅自己」统计口径同步）
 }
 message ListLogsAfterIdRequest {
   int32 last_id = 1;   // 增量基准 ID

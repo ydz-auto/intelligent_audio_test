@@ -13,6 +13,7 @@ from concurrent import futures
 import grpc
 from shared.infrastructure.grpc_interceptors import (
     server_log_interceptor, server_db_scope_interceptor,
+    server_user_context_interceptor,
 )
 from shared.utils.config_manager import config_manager
 from shared.config.service_ports import AUTH_SERVICE_GRPC_PORT
@@ -35,7 +36,8 @@ def start_grpc_server(port=AUTH_SERVICE_GRPC_PORT):
     _max_workers = config_manager.get_value('grpc', 'auth_service_workers', 10)
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=_max_workers),
-        interceptors=[server_db_scope_interceptor, server_log_interceptor],
+        interceptors=[server_db_scope_interceptor, server_log_interceptor,
+                      server_user_context_interceptor],
     )
     auth_grpc.add_AuthServiceServicer_to_server(AuthServicer(), server)
     server.add_insecure_port(f'[::]:{port}')

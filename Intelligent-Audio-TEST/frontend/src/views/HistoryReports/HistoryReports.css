@@ -1,33 +1,34 @@
 /* 搜索框样式 - 确保外框为明显的灰色 */
+/* !important 全部可去：本组件样式加载序晚于全局 reports.css，同特异性后载胜出（INT-771 降噪） */
 .filter-sort-section :deep(.search-input) {
-  border: 2px solid var(--color-gray-300) !important;
-  background-color: white !important;
-  border-radius: var(--border-radius-lg) !important;
-  padding: var(--spacing-sm) var(--spacing-md) !important;
-  font-size: var(--font-size-md) !important;
+  border: 2px solid var(--color-gray-300);
+  background-color: var(--color-white);
+  border-radius: var(--border-radius-lg);
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: var(--font-size-md);
 }
 
 /* 搜索框聚焦状态样式 */
 .filter-sort-section :deep(.search-input:focus) {
-  border-color: var(--primary-color) !important;
-  box-shadow: 0 0 0 3px var(--primary-light) !important;
-  background-color: white !important;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px var(--primary-light);
+  background-color: var(--color-white);
 }
 
 /* 下拉选择框样式 - 确保外框为明显的灰色 */
 .filter-sort-section :deep(.filter-select) {
-  border: 2px solid var(--color-gray-300) !important;
-  background-color: white !important;
-  border-radius: var(--border-radius-md) !important;
-  padding: var(--spacing-sm) var(--spacing-md) !important;
-  font-size: var(--font-size-md) !important;
+  border: 2px solid var(--color-gray-300);
+  background-color: var(--color-white);
+  border-radius: var(--border-radius-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: var(--font-size-md);
 }
 
 /* 下拉选择框聚焦状态样式 */
 .filter-sort-section :deep(.filter-select:focus) {
-  border-color: var(--primary-color) !important;
-  box-shadow: 0 0 0 3px var(--primary-light) !important;
-  background-color: white !important;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px var(--primary-light);
+  background-color: var(--color-white);
 }
 
 /* 视图 Tab 栏样式 */
@@ -110,18 +111,18 @@
 
 /* 报告区域样式 */
 .reports-section {
-  margin-bottom: 32px;
+  margin-bottom: var(--spacing-xl);
 }
 
 .reports-section.draft-section {
-  margin-top: 32px;
-  padding-top: 24px;
+  margin-top: var(--spacing-xl);
+  padding-top: var(--spacing-lg);
   border-top: 2px dashed var(--color-slate-200);
 }
 
 .section-header {
-  margin-bottom: 16px;
-  padding-bottom: 12px;
+  margin-bottom: var(--spacing-md);
+  padding-bottom: 12px; /* 值保真：12px 不在 spacing 标度内，不硬套 --spacing-sm(8px) */
   border-bottom: 1px solid var(--color-slate-200);
 }
 
@@ -132,7 +133,7 @@
   margin: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-sm);
 }
 
 .section-title i {
@@ -157,7 +158,7 @@
   color: var(--color-sky-600);
   border: 1px solid var(--color-sky-600);
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   font-size: 0.75rem;
   font-weight: 500;
 }
@@ -167,11 +168,11 @@
   top: 20px;
   right: 20px;
   padding: 12px 20px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   display: flex;
   align-items: center;
   gap: 10px;
-  z-index: 10000;
+  z-index: var(--z-index-modal);
   animation: slideIn 0.3s ease;
   box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 15%, transparent);
 }
@@ -293,8 +294,8 @@
 
 /* 报告卡片复选框包装器 */
 .report-checkbox-wrapper {
-    display: flex !important;
-    align-items: center !important;
+    display: flex;
+    align-items: center;
     margin-right: var(--spacing-md);
 }
 

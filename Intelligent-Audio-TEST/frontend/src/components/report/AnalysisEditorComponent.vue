@@ -198,7 +198,7 @@ export default {
 <style scoped>
 .analysis-editor-container {
   background: var(--color-white);
-  border-radius: 12px;
+  border-radius: var(--border-radius-lg);
   box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 8%, transparent);
   padding: 0;
   margin-bottom: 24px;
@@ -235,7 +235,7 @@ export default {
 
 .status {
   padding: 6px 12px;
-  border-radius: 16px;
+  border-radius: var(--border-radius-xl);
   font-size: 14px;
   font-weight: 500;
 }
@@ -275,7 +275,7 @@ export default {
 .analysis-text-wrapper {
   position: relative;
   border: 1px solid var(--color-slate-200);
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   min-height: 150px;
   background: var(--color-neutral-50);
 }
@@ -287,7 +287,7 @@ export default {
   line-height: 1.6;
   color: var(--foreground);
   background: var(--color-white);
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   transition: all 0.3s ease;
 }
 
@@ -358,7 +358,7 @@ export default {
 .tool-btn {
   background: var(--muted);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--border-radius-sm);
   padding: 8px 12px;
   cursor: pointer;
   font-size: 14px;
@@ -401,7 +401,7 @@ export default {
 
 .tag-item {
   padding: 6px 14px;
-  border-radius: 16px;
+  border-radius: var(--border-radius-xl);
   background: var(--muted);
   color: var(--color-gray-500);
   font-size: 14px;
@@ -418,7 +418,7 @@ export default {
 
 .tag-selected {
   background: var(--secondary);
-  color: white;
+  color: var(--color-white);
 }
 
 .add-tag-container {
@@ -431,7 +431,7 @@ export default {
   flex: 1;
   padding: 8px 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   font-size: 14px;
   max-width: 200px;
 }
@@ -448,7 +448,7 @@ export default {
   gap: 6px;
   padding: 8px 16px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -458,7 +458,7 @@ export default {
 
 .btn-primary {
   background: linear-gradient(90deg, var(--primary), var(--secondary));
-  color: white;
+  color: var(--color-white);
 }
 
 .btn-primary:hover {
@@ -467,7 +467,7 @@ export default {
 }
 
 .btn-secondary {
-  background: white;
+  background: var(--color-white);
   color: var(--color-gray-500);
   border: 1px solid var(--border);
 }

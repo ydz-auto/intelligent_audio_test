@@ -316,7 +316,7 @@ export default {
 
 .comparison-table-container{
   background: var(--color-white);
-  border-radius: 12px;
+  border-radius: var(--border-radius-lg);
   box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 8%, transparent);
   padding: 24px;
   margin-bottom: 24px;
@@ -370,7 +370,7 @@ export default {
 
 .table-wrapper{
   overflow-x: auto;
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   border: 1px solid var(--color-slate-200);
 }
 
@@ -496,7 +496,7 @@ export default {
 
 .btn-primary{
   background: linear-gradient(90deg, var(--primary), var(--secondary));
-  color: white;
+  color: var(--color-white);
 }
 
 .btn-primary:hover{
@@ -505,7 +505,7 @@ export default {
 }
 
 .btn-secondary{
-  background: white;
+  background: var(--color-white);
   color: var(--color-gray-500);
   border: 1px solid var(--border);
 }

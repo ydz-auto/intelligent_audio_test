@@ -8,7 +8,7 @@
   color: var(--color-slate-500);
   background-color: var(--color-slate-50);
   border: 1px dashed var(--color-slate-300);
-  border-radius: var(--radius-control, 8px);
+  border-radius: var(--radius-control);
   width: 100%;
   margin: 0 auto;
 }
