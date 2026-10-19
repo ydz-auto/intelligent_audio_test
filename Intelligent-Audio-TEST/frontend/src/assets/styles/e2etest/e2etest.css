@@ -89,7 +89,7 @@
 /* Device Item Styles */
 .device-item{
     padding: 12px;
-    border-radius: 8px;
+    border-radius: var(--radius-control);
     background-color: var(--background-secondary);
     display: flex;
     justify-content: space-between;
@@ -308,7 +308,7 @@
     align-items: center;
     background-color: var(--background-secondary);
     padding: 8px 16px;
-    border-radius: 6px;
+    border-radius: var(--radius-6);
 }
 
 .metric-name {
@@ -328,7 +328,7 @@
     align-items: center;
     padding: 8px 12px;
     background-color: var(--background-secondary);
-    border-radius: 6px;
+    border-radius: var(--radius-6);
 }
 
 .step-name {

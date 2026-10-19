@@ -242,7 +242,7 @@
 .rce-audio-input input {
   flex: 1;
   cursor: pointer;
-  background: var(--background-primary, var(--color-white)) !important;
+  background: var(--background-primary, var(--color-white));
 }
 
 .rce-audio-tags {
@@ -263,7 +263,7 @@
 .rce-audio-tag {
   padding: 1px 8px;
   font-size: 11px;
-  background: var(--primary-light, #fff0e6);
+  background: var(--primary-light);
   color: var(--primary-color, var(--primary));
   border-radius: var(--radius-pill);
 }

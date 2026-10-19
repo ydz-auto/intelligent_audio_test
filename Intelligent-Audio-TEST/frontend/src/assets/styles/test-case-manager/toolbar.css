@@ -61,7 +61,7 @@
     flex-wrap: wrap;
     margin-bottom: var(--spacing-lg);
     padding: var(--spacing-md);
-    background: linear-gradient(135deg, var(--color-white) 0%, #F8F9FA 100%);
+    background: linear-gradient(135deg, var(--color-white) 0%, var(--color-gray-tint) 100%);
     border-radius: var(--border-radius-lg);
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--gray-light-color);

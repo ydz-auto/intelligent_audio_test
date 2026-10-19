@@ -62,6 +62,16 @@
   --radius-xl: calc(var(--radius) * 2);
   --radius-xxl: calc(var(--radius) * 3);
   --radius-full: 9999px;
+
+  /* 圆角语义令牌（基准：首页卡片 16px = --radius-xl，INT-756 收编）
+     值对齐上方 --radius 标度，不另起一套；Tailwind 原子类 rounded-card/control/tag/pill */
+  --radius-card: var(--radius-xl); /* 16px：卡片/模态窗/抽屉/表格容器等大表面 */
+  --radius-control: var(--radius-md); /* 8px：输入框/按钮/下拉/分页等控件 */
+  --radius-tag: var(--radius-sm); /* 4px：小标签/徽章/复选框/滚动条等小元素 */
+  --radius-pill: var(--radius-full); /* 9999px：胶囊标签/状态徽章/进度条 */
+  /* 圆角散值档（值保真；CSS-2 域收编，INT-770） */
+  --radius-6: 6px;   /* e2etest.css 步骤/指标卡（原 6px） */
+  --radius-20: 20px; /* AlgorithmConfigModal 功能包胶囊（原 20px） */
 }
 
 :root {
@@ -157,6 +167,7 @@
   --color-slate-600: #475569;
   --color-slate-700: #334155;
   --color-slate-800: #1e293b;
+  --color-slate-900: #0f172a; /* 遮罩/阴影深色基（CherryPickDialog 原 rgba(15,23,42,x)，INT-770 收编） */
 
   /* Gray / Neutral（对齐 Tailwind 默认色板） */
   --color-gray-50: #f9fafb;
@@ -259,4 +270,10 @@
   --color-foreground-deep: #1a1a1a;
   --color-white: #ffffff;
   --color-black: #000000;
+
+  /* CSS-2 域散色收编（值保真，INT-770；替换后视觉零变化） */
+  --color-emerald-50: #ecfdf5;   /* 徽章完成态底色（CherryPickDialog 原 #ecfdf5） */
+  --color-blue-tint: #f0f4ff;    /* 功能包胶囊悬浮底色（AlgorithmConfigModal 原 #f0f4ff） */
+  --color-gray-muted: #aaaaaa;   /* 功能包计数弱化文字（AlgorithmConfigModal 原 #aaa） */
+  --color-gray-tint: #f8f9fa;    /* 分组渐变浅端点（test-case-manager/toolbar 原 #F8F9FA） */
 }

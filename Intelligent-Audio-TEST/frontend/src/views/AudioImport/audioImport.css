@@ -955,7 +955,7 @@
 .translation-item {
     background-color: var(--color-slate-50);
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-tag, 4px);
+    border-radius: var(--radius-tag);
     padding: 15px;
     margin-bottom: 15px;
 }
@@ -1048,7 +1048,7 @@
 
 .checkbox-label input[type="checkbox"]:checked + .checkbox-custom::after {
     content: '✓';
-    color: white;
+    color: var(--color-white);
     font-size: 14px;
     font-weight: bold;
 }
