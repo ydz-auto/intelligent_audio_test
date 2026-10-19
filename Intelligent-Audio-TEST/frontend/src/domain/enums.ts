@@ -257,6 +257,17 @@ export const OutputType = {
 /** API 输出类型（由 OutputType 派生的字符串联合） */
 export type OutputTypeType = typeof OutputType[keyof typeof OutputType]
 
+/** 被测 API 网络代理类型枚举（INT-839，值 = 后端 api 表 proxy_type 原值；NULL 或空 = 不用代理） */
+export const ProxyType = {
+  HTTP: 'http',
+  HTTPS: 'https',
+  SOCKS5: 'socks5',
+  SOCKS5H: 'socks5h',
+} as const
+
+/** 被测 API 网络代理类型（由 ProxyType 派生的字符串联合） */
+export type ProxyTypeType = typeof ProxyType[keyof typeof ProxyType]
+
 /** SPL 校准状态枚举（值 = 后端 shared.models.common_enums.CalibrationStatus 原值） */
 export const CalibrationStatus = {
   CALIBRATED: 'calibrated',

@@ -3,6 +3,9 @@
  * 对应后端 api_gateway/schemas/api.py::ApiItem / ApiCreateInput
  */
 
+/** 被测 API 网络代理类型（INT-839，值 = 后端 proxy_type 原值；NULL 或空 = 不用代理） */
+export type ApiProxyType = 'http' | 'https' | 'socks5' | 'socks5h'
+
 export interface ApiEndpointDto {
   id?: string
   endpoint: string
@@ -33,6 +36,10 @@ export interface APIConfigDto {
   output_types?: string[]
   device_type?: string
   adapter_class?: string
+  /** 网络代理类型（INT-839：http/https/socks5/socks5h；NULL 或空 = 不用代理） */
+  proxy_type?: ApiProxyType
+  /** 网络代理地址 [user:pass@]host:port（不含 scheme） */
+  proxy_url?: string
   audio_config?: Record<string, any>
   rms_spl_mapping_id?: number | null
   created_at?: string
@@ -60,6 +67,10 @@ export interface ApiUpsertDto {
   output_types?: string[]
   device_type?: string
   adapter_class?: string
+  /** 网络代理类型（INT-839：http/https/socks5/socks5h；NULL 或空 = 不用代理） */
+  proxy_type?: ApiProxyType
+  /** 网络代理地址 [user:pass@]host:port（不含 scheme） */
+  proxy_url?: string
   audio_config?: Record<string, any>
   rms_spl_mapping_id?: number | null
 }
