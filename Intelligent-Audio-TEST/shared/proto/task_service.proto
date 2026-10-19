@@ -1083,7 +1083,7 @@ message TaskAggStatsRequest {
 }
 message TestCaseAggStatsRequest {
   string algorithm_type = 1;  // 可选
-  int32 group_id = 2;         // 可选
+  string group_id = 2;        // 可选，TestCaseGroup ID（UUID 字符串，INT-468：不得 int 强转）
   string group_by = 3;        // 可选，分组字段（如 algorithm_type / group_id）
   string test_type = 4;       // 可选，按用例类型过滤（api / e2e；test_type 列已废弃，按配置形态派生）
   string keyword = 5;         // 可选，按用例 id/name/description 模糊匹配（分组列表筛选）

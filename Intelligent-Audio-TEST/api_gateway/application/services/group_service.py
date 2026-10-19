@@ -185,16 +185,18 @@ class GroupService:
 
     @staticmethod
     def delete(group_id):
-        """通过 gRPC 软删除 TestCaseGroup"""
+        """通过 gRPC 软删除 TestCaseGroup（守卫：分组下有未删除用例且不带级联时拒绝删除）"""
         query = _parse_query_params(GroupDeleteQuery)
         cascade = query.cascade
 
         from api_gateway.infrastructure.grpc_proxies import task_data_service
+        # 删除前守卫：确认分组下无未删除用例。stats 查询失败必须拒绝删除（fail-closed），
+        # 不得把「查询失败」静默降级为「无用例」绕过守卫（INT-468）。
         try:
-            stats = task_data_service.get_testcase_stats(group_id=group_id)
+            stats = task_data_service.get_testcase_stats(group_id=group_id, reraise=True)
             active_cases = stats.get('total', 0) if stats else 0
-        except Exception:
-            active_cases = 0
+        except Exception as e:
+            return error_response(f"删除分组失败：无法查询分组用例统计（{e}）")
         if active_cases > 0 and not cascade:
             return error_response("该分组下存在测试用例，无法删除")
 
