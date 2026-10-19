@@ -35,6 +35,8 @@ from .report_studio_models import (
     ReportStudioDocumentVersion,
     ReportStudioExportJob,
 )
+# 报告分享（INT-971）
+from .report_share_models import ReportShare
 
 __all__ = [
     'Report', 'ReportSummary', 'ReportSummaryMeta', 'ReportRawData',
@@ -46,4 +48,6 @@ __all__ = [
     # Report Studio（INT-673）
     'ReportStudioDocument', 'ReportStudioDocumentVersion',
     'ReportStudioChartSpec', 'ReportStudioExportJob',
+    # 报告分享（INT-971）
+    'ReportShare',
 ]

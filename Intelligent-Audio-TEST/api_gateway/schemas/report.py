@@ -375,3 +375,20 @@ class GenerateStatisticsReportRequest(APIModel):
     # 格式：csv | excel | pdf | html
     format: str = Field('csv')
     time_range: StatisticsReportTimeRange = Field(default_factory=StatisticsReportTimeRange)
+
+
+# ===== 报告分享（INT-971：生成 / 列表 / 撤销 / 公开读取） =====
+
+
+class ReportShareCreateRequest(APIModel):
+    """POST /reports/{report_id}/share 请求体。"""
+    # 访问口径：login | specific | public
+    access: str = Field('login')
+    # 有效期：none | 7d | 30d | custom
+    expiry: str = Field('none')
+    # 仅 expiry=custom 必填（ISO 8601，如 2026-10-30T00:00:00Z）
+    expires_at: Optional[str] = Field(None)
+    # 空串 = 不设密码
+    password: Optional[str] = Field(None)
+    # 仅 access=specific；逗号分隔用户名/邮箱（网关经 auth ListUsers 解析）
+    recipients: Optional[str] = Field(None)

@@ -184,7 +184,8 @@ class ReportPersistMixin:
         """硬删除报告及其所有子表记录。
 
         级联删除 ReportSummary、ReportSummaryMeta、ReportRawData、
-        ReportCase、ReportMetricStats、ReportComparisonMatrix。
+        ReportCase、ReportMetricStats、ReportComparisonMatrix，
+        以及 INT-971 报告分享（report_shares）。
 
         Returns:
             True 表示删除成功，False 表示报告不存在。
@@ -196,7 +197,9 @@ class ReportPersistMixin:
             ReportCase,
             ReportMetricStats,
             ReportComparisonMatrix,
+            ReportShare,
         )
+        from shared.models.database import get_engine
 
         session = get_db_session()
         po = session.get(self.PO_CLASS, report_id)
@@ -214,6 +217,12 @@ class ReportPersistMixin:
         for model in child_models:
             session.query(model).filter(
                 model.report_id == report_id
+            ).delete(synchronize_session=False)
+        # INT-971 报告分享：部分建表测试环境可能未建 report_shares，has_table 守卫
+        from sqlalchemy import inspect
+        if inspect(get_engine()).has_table(ReportShare.__tablename__):
+            session.query(ReportShare).filter(
+                ReportShare.report_id == report_id
             ).delete(synchronize_session=False)
         # 删除主表
         session.delete(po)
