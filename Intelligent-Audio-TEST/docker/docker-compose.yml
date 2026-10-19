@@ -88,7 +88,7 @@ services:
       - ALGORITHM_SERVICE_HOST=algorithm_service
       - ALGORITHM_SERVICE_GRPC_PORT=50067
       - AUTH_SERVICE_HOST=auth_service
-      - AUTH_SERVICE_GRPC_PORT=50069
+      - AUTH_SERVICE_GRPC_PORT=51069
       - AUTH_MODE=${AUTH_MODE:-off}
       - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production}
       - JWT_EXPIRE_HOURS=${JWT_EXPIRE_HOURS:-24}
@@ -405,7 +405,7 @@ services:
       dockerfile: docker/Dockerfile.auth_service
     ports:
       - "5009:5009"
-      - "50069:50069"
+      - "51069:51069"
     environment:
       - DATABASE_URL=postgresql://intelligent_audio_test:intelligent_audio_test666@postgres:5432/intelligent_audio_test
       - REDIS_URL=redis://redis:6379
@@ -416,7 +416,7 @@ services:
       - OSS_KEY_PREFIX=intelligent_audio_test
       - SERVICE_HOST=auth_service
       - SERVICE_NAME=auth_service
-      - GRPC_PORT=50069
+      - GRPC_PORT=51069
       # INT-180：/api/auth/mode 自检端点数据源，与 api_gateway 注入同一变量
       - AUTH_MODE=${AUTH_MODE:-off}
     volumes:

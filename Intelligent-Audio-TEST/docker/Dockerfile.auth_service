@@ -7,6 +7,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 5009 50069
+EXPOSE 5009 51069
 
 CMD ["python", "-m", "auth_service.app"]

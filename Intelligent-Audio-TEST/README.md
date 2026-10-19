@@ -86,7 +86,7 @@
 | report_service | 5006 | 51068 | 报告生成（异步）与查询、对比分析 |
 | algorithm_service | 5007 | 50067 | 被测算法配置、参考参数生成器 |
 | api_adapter_service | 5008 | 50081 | 被测算法适配（Qwen/火山 AST/SSE/HTTP） |
-| auth_service | 5009 | 50069 | 认证 / OAuth / RBAC 角色权限 |
+| auth_service | 5009 | 51069 | 认证 / OAuth / RBAC 角色权限 |
 | audio_service | - | 50052 | 音频播放（gRPC-only） |
 | device_service | - | 50053 | 播放 / 环境设备驱动（gRPC-only） |
 
