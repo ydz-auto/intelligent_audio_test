@@ -6,6 +6,9 @@
  * （infrastructure/api/tasks-actions-api + tasks-control-api）发真实请求，成功后列表刷新。
  * INT-949：危险/控制操作（删除/彻底删除/恢复/暂停/继续/停止）点击先弹 ConfirmDialog
  * （§5.8/§5.10 + 旧 Vue 基线），确认才发请求，取消不发请求。
+ * INT-967：查看报告跳 /report/:id（task.reports.reports[0].id）；重新生成报告接真实
+ * generateTaskReport + regenerateReport（§3.6.2，对齐旧 Vue regenerateReport：定位已有报告 →
+ * 有旧报告弹「将删除当前报告并重新生成」确认 → regenerate → 跳报告页），不再 toast 假成功。
  */
 import { useNavigate } from '@tanstack/react-router'
 import { MoreHorizontal, Star } from 'lucide-react'
@@ -14,6 +17,7 @@ import { toast } from 'sonner'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useTaskActions } from '@/application/tasks/use-task-actions'
+import { waitForReportGenerated } from '@/application/reports/use-report-compare'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -24,7 +28,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import type { TaskListItem } from '@/domain/models/task'
+import { generateTaskReport, regenerateReport } from '@/infrastructure/api/reports-api'
 import {
   TaskConfirmDialog,
   type TaskConfirmState,
@@ -50,6 +56,8 @@ function buildDailyItems(
   has: (p: string) => boolean,
   actions: {
     goDetail: () => void
+    goReport: () => void
+    onRegenReport: (task: TaskListItem) => void
     onQuickView: () => void
     onPublish: () => void
     onReexecute: (task: TaskListItem, actionType: ReexecuteActionType) => void
@@ -72,12 +80,13 @@ function buildDailyItems(
     )
   }
   if (has('report:read')) {
+    // §3.6.2 查看报告（report:read）：跳 /report/:id（task.reports.reports[0].id）；无报告禁用
     items.push({
       key: 'report',
       label: '查看报告',
       disabled: !task.reports?.count,
       disabledReason: task.reports?.count ? undefined : '该任务暂无报告',
-      onSelect: () => toast.success('报告页随报告域卡 INT-360 落地'),
+      onSelect: actions.goReport,
     })
   }
   if (has('task:read') && !task.deleted) {
@@ -91,7 +100,7 @@ function buildDailyItems(
     items.push({
       key: 'regen-report',
       label: '重新生成报告',
-      onSelect: () => toast.success('报告生成成功'),
+      onSelect: () => actions.onRegenReport(task),
     })
   }
   if (has('task:execute')) {
@@ -187,10 +196,20 @@ export function TaskRowActions({
   const [isControlling, setIsControlling] = useState(false)
   const [confirm, setConfirm] = useState<TaskConfirmState | null>(null)
   const [confirmPending, setConfirmPending] = useState(false)
+  /** 重新生成报告覆盖确认（§3.6.2：任务已有报告 → 弹「将删除当前报告并重新生成」确认） */
+  const [regenConfirm, setRegenConfirm] = useState<{ task: TaskListItem; reportId: number } | null>(null)
+  const [regenPending, setRegenPending] = useState(false)
   const actions = useTaskActions()
 
   const items = buildDailyItems(task, hasPermission, {
     goDetail: () => void navigate({ to: '/tasks/$tab', params: { tab: String(task.id) } }),
+    goReport: () => {
+      const reportId = task.reports?.reports[0]?.id
+      if (reportId != null) {
+        void navigate({ to: '/report/$reportId', params: { reportId: String(reportId) } })
+      }
+    },
+    onRegenReport: (t) => void handleRegenReport(t),
     onQuickView: () => onQuickView(task),
     onPublish: () =>
       onPublish ? onPublish(task) : toast.success('发布流程见发布任务弹窗'),
@@ -240,15 +259,102 @@ export function TaskRowActions({
     }
   }
 
-  const mutating = [
-    actions.remove,
-    actions.favorite,
-    actions.unfavorite,
-    actions.restore,
-    actions.purge,
-    actions.control,
-    actions.stop,
-  ].some((m) => m.isPending)
+  /**
+   * §3.6.2 重新生成报告（对齐旧 Vue regenerateReport，INT-967 接线）：
+   * generateTaskReport 定位已有报告（任务已有 → { id, status:'exists' }；无 → 异步生成
+   * { taskId, status:'generating' }）→ 有旧报告弹覆盖确认，无旧报告等 SSE 回传后跳报告页。
+   * 先订阅 report_generated、等 SSE open 再 POST（对齐二次对比 onOpen-gate 防快速失败竞态）。
+   */
+  const handleRegenReport = async (locateTask: TaskListItem) => {
+    const controller = new AbortController()
+    let sseOpened: (() => void) | undefined
+    const sseReady = new Promise<void>((resolve) => {
+      sseOpened = resolve
+    })
+    const waitPromise = waitForReportGenerated(
+      { taskId: locateTask.id },
+      { signal: controller.signal, onOpen: () => sseOpened?.() }
+    )
+    // 交接前先挂 no-op catch，避免取消/超时成为 unhandled rejection
+    void waitPromise.catch(() => undefined)
+    try {
+      // 等 SSE 连接建立（≤2s 兜底）再提交，杜绝 <1s 快速失败事件早于订阅到达的竞态
+      await Promise.race([sseReady, new Promise((r) => setTimeout(r, 2_000))])
+      const result = await generateTaskReport({
+        task_id: locateTask.id,
+        name: `${locateTask.name || `任务${locateTask.id}`} - 测试报告`,
+        description: locateTask.description ?? undefined,
+      })
+      if (result.status === 'exists' && result.id !== undefined) {
+        // 任务已有报告 → 取消本次预订阅（未发起生成），弹「将删除当前报告并重新生成」确认
+        controller.abort()
+        setRegenConfirm({ task: locateTask, reportId: result.id })
+        return
+      }
+      // 无旧报告 → 异步生成中：loading toast + 等 SSE report_generated 回传真实 report_id 后跳报告页
+      const loadingId = toast.loading('正在生成报告，请稍候...')
+      try {
+        const reportId = await waitPromise
+        toast.dismiss(loadingId)
+        toast.success('报告生成成功')
+        void navigate({ to: '/report/$reportId', params: { reportId: String(reportId) } })
+      } catch (waitError) {
+        toast.dismiss(loadingId)
+        toast.error(waitError instanceof Error ? waitError.message : '报告生成失败，请稍后重试')
+      }
+    } catch (error) {
+      controller.abort()
+      toast.error(error instanceof Error ? error.message : '报告生成失败，请稍后重试')
+    }
+  }
+
+  /** 重新生成报告覆盖确认（确认后 POST /reports/{id}/regenerate → 等 SSE → 跳报告页） */
+  const handleRegenConfirm = async () => {
+    if (!regenConfirm) return
+    setRegenPending(true)
+    const { task: regenTask, reportId: existingReportId } = regenConfirm
+    const controller = new AbortController()
+    let sseOpened: (() => void) | undefined
+    const sseReady = new Promise<void>((resolve) => {
+      sseOpened = resolve
+    })
+    const waitPromise = waitForReportGenerated(
+      { taskId: regenTask.id },
+      { signal: controller.signal, onOpen: () => sseOpened?.() }
+    )
+    void waitPromise.catch(() => undefined)
+    try {
+      await Promise.race([sseReady, new Promise((r) => setTimeout(r, 2_000))])
+      await regenerateReport(existingReportId)
+      const loadingId = toast.loading('正在重新生成报告，请稍候...')
+      try {
+        const newReportId = await waitPromise
+        toast.dismiss(loadingId)
+        toast.success('报告重新生成成功')
+        setRegenConfirm(null)
+        void navigate({ to: '/report/$reportId', params: { reportId: String(newReportId) } })
+      } catch (waitError) {
+        toast.dismiss(loadingId)
+        toast.error(waitError instanceof Error ? waitError.message : '报告重新生成失败，请稍后重试')
+      }
+    } catch (error) {
+      controller.abort()
+      toast.error(error instanceof Error ? error.message : '报告重新生成失败，请稍后重试')
+    } finally {
+      setRegenPending(false)
+    }
+  }
+
+  const mutating =
+    [
+      actions.remove,
+      actions.favorite,
+      actions.unfavorite,
+      actions.restore,
+      actions.purge,
+      actions.control,
+      actions.stop,
+    ].some((m) => m.isPending) || regenPending
 
   return (
     <>
@@ -296,6 +402,24 @@ export function TaskRowActions({
         onOpenChange={(open) => !open && setConfirm(null)}
         isLoading={confirmPending}
         onConfirm={() => void handleConfirm()}
+      />
+      {/* §3.6.2 重新生成报告覆盖确认（INT-967：任务已有报告 → 确认后 regenerate → 跳报告页；
+          取消/关闭弹窗 → 跳旧报告，对齐旧 Vue cancelText『查看旧报告』） */}
+      <ConfirmDialog
+        open={regenConfirm != null}
+        onOpenChange={(open) => {
+          if (!open && regenConfirm && !regenPending) {
+            const oldReportId = regenConfirm.reportId
+            setRegenConfirm(null)
+            void navigate({ to: '/report/$reportId', params: { reportId: String(oldReportId) } })
+          }
+        }}
+        title='重新生成报告'
+        desc='将删除当前报告并重新生成，旧报告数据将被覆盖。是否继续？'
+        confirmText='重新生成'
+        cancelBtnText='查看旧报告'
+        isLoading={regenPending}
+        handleConfirm={() => void handleRegenConfirm()}
       />
     </>
   )

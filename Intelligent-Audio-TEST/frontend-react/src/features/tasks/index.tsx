@@ -7,7 +7,7 @@
  * 模态窗群：任务类型/发布/快速查看 + §5.7 重新执行·重新评估范围 + §5.12 导出/导入数据。
  */
 import { Link, useNavigate } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChartLine, FileDown, Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ApiError } from '@/infrastructure/api/api-error'
 import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
-import { fetchPublishedTaskList } from '@/infrastructure/api/tasks-list-api'
+import { fetchPublishedTaskList, publishTask as publishTaskRequest } from '@/infrastructure/api/tasks-list-api'
 import { compareReports } from '@/infrastructure/api/reports-api'
 import type { PublishedTaskItem, TaskListItem } from '@/domain/models/task'
 import {
@@ -49,6 +49,7 @@ export interface WizardState {
 export function TasksPage({ tab }: { tab: TasksTabKey }) {
   const { hasPermission } = usePermissions()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const algorithmId = useAlgorithmStore((s) => s.algorithmId)
 
   const [filters, setFilters] = useState<TaskListFilters>({ page: 1, pageSize: 10 })
@@ -119,9 +120,32 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
     setPublishTask(task)
   }
 
-  const handleBatchPublish = (tasks: TaskListItem[]) => {
-    // 批量发布：接首个选中任务打开 §5.2 发布弹窗（完整 BatchPublish 确认留待接线）
-    setPublishTask(tasks[0] ?? null)
+  const handleBatchPublish = async (tasks: TaskListItem[]) => {
+    // §5.3 批量发布（对齐旧 Vue batchPublish）：名称沿用源任务名，逐任务 POST /published-tasks，
+    // 统计成功/失败聚合 toast；完成后失效 ['tasks'] 前缀刷新列表与已发布计数。
+    // 单任务 §5.2 发布弹窗（带自定义字段）保留 handlePublish 入口不变。
+    let successCount = 0
+    const failedNames: string[] = []
+    for (const task of tasks) {
+      try {
+        await publishTaskRequest({
+          sourceTaskId: task.id,
+          name: task.name || `任务${task.id}`,
+          description: task.description ?? undefined,
+        })
+        successCount += 1
+      } catch {
+        failedNames.push(task.name || `#${task.id}`)
+      }
+    }
+    if (successCount > 0) {
+      toast.success(
+        `批量发布完成：成功 ${successCount} 个${failedNames.length > 0 ? `，失败 ${failedNames.length} 个` : ''}`
+      )
+      await queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    } else {
+      toast.error('批量发布失败，请确认任务状态是否可发布')
+    }
   }
 
   /** 批量浮条「加入挑选」（§2.2 裁定②：原「合并任务」钮撤销，吸收为任务级挑选） */

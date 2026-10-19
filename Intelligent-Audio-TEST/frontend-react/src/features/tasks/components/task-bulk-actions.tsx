@@ -82,9 +82,8 @@ export function TaskBulkActions({
           onClear()
           break
         case 'batch-publish':
-          // §5.3 批量发布确认（P3）：确认后沿用现入口打开首个任务 §5.2 发布弹窗
-          if (onBatchPublish) onBatchPublish(confirm.tasks)
-          else toast.success(`批量发布完成：成功 ${confirm.tasks.length} 个`)
+          // §5.3 批量发布确认（INT-967）：确认后 await 页面层逐任务发布 + 聚合 toast + 列表刷新
+          if (onBatchPublish) await onBatchPublish(confirm.tasks)
           break
         default:
           return
