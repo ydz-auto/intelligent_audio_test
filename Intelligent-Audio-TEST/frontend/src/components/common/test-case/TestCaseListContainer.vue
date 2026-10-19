@@ -126,6 +126,15 @@
     </div>
     
     <div class="single-column-layout" ref="listContainerRef" @scroll="handleScroll">
+      <!-- INT-972：加载失败友好错误态（后端不可用/500 时不以空态误导用户） -->
+      <div v-if="error" class="test-case-error-banner" role="alert">
+        <i class="fas fa-exclamation-triangle"></i>
+        <div class="test-case-error-body">
+          <p class="test-case-error-message">{{ error }}</p>
+          <p class="test-case-error-hint">请稍后重试</p>
+        </div>
+      </div>
+
       <!-- ===== 分组视图 ===== -->
       <template v-if="innerViewMode === 'group'">
       <div
@@ -194,7 +203,7 @@
         </div>
       </div>
       
-      <div v-if="paginatedGroups.length === 0" class="empty-state">
+      <div v-if="paginatedGroups.length === 0 && !error" class="empty-state">
         <i class="fas fa-inbox"></i>
         <p>没有找到测试用例分组</p>
         <p class="empty-state-hint">请尝试添加新的测试用例或创建分组</p>
@@ -272,7 +281,7 @@
           </div>
         </div>
 
-        <div v-if="sortedTags.length === 0" class="empty-state">
+        <div v-if="sortedTags.length === 0 && !error" class="empty-state">
           <i class="fas fa-tags"></i>
           <p>没有找到标签分组的测试用例</p>
           <p class="empty-state-hint">请为测试用例添加标签</p>
@@ -384,6 +393,8 @@ const props = defineProps<{
   tagViewPagination?: { page: number; pages: number; perPage: number; total: number };
   tagViewLoading?: boolean;
   isLoading?: boolean;
+  // INT-972：加载失败友好错误态（store error 由父视图透传；Toast 折叠区详情由 store 直接弹）
+  error?: string | null;
   algorithmTypeFilter?: string;
   testTypeFilter?: string;
   viewMode?: 'group' | 'tag';

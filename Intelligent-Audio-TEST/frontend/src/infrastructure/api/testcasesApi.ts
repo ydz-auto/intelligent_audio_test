@@ -4,11 +4,11 @@
  */
 import type { PaginatedResult } from '../../domain';
 import { request, type RequestOptions } from '../http/client';
-import { toTestCase, toTagViewItem } from '../adapters/testCaseAdapter';
+import { toTestCase, toTagViewItem, toTestCaseUpsertDto } from '../adapters/testCaseAdapter';
 import { toPaginated } from '../adapters/commonAdapter';
 import { ViewMode } from '../../domain/enums';
 import type { TagViewItemDto, TestCaseDto, TestCaseGroupDto, PaginatedDto } from '../dto';
-import type { TestCase, TestCaseGroup, TagViewItem } from '../../domain/model/testCase';
+import type { TestCase, TestCaseDraft, TestCaseGroup, TagViewItem } from '../../domain/model/testCase';
 
 /**
  * camelCase 查询参数 → snake_case 映射表
@@ -98,12 +98,16 @@ export const testcasesApi = {
     return toTestCase(dto);
   },
 
-  async create(tcData: Record<string, any> | FormData) {
-    return request<TestCaseDto>('POST', '/testcases', tcData);
+  /** 创建用例：Domain 草稿（camelCase）→ toTestCaseUpsertDto 转 snake_case 请求体（INT-972 DDD §3.1） */
+  async create(draft: TestCaseDraft | FormData) {
+    const body = draft instanceof FormData ? draft : toTestCaseUpsertDto(draft);
+    return request<TestCaseDto>('POST', '/testcases', body);
   },
 
-  async update(id: string | number, tcData: Record<string, any> | FormData) {
-    return request<void>('PUT', `/testcases/${id}`, tcData);
+  /** 更新用例：同 create，走 toTestCaseUpsertDto（snake_case 转换收敛在 adapters） */
+  async update(id: string | number, draft: TestCaseDraft | FormData) {
+    const body = draft instanceof FormData ? draft : toTestCaseUpsertDto(draft);
+    return request<void>('PUT', `/testcases/${id}`, body);
   },
 
   async delete(id: string | number) {

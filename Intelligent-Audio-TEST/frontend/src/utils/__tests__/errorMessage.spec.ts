@@ -1,9 +1,11 @@
 /**
  * INT-899（INT-858 N1）：错误消息安全化工具——原始 gRPC/RPC 异常文本不直出页面/Toast。
+ * INT-972：补充网络/服务端级失败（端口不可达 / 5xx / 非 JSON 响应）同样回落固定友好文案。
  */
 import { describe, it, expect } from 'vitest'
 import {
   isRawRpcErrorText,
+  isNetworkOrServerErrorText,
   toUserErrorMessage,
   toUserErrorDetail,
 } from '../errorMessage'
@@ -30,6 +32,20 @@ describe('isRawRpcErrorText', () => {
 
   it('INT-974：浏览器级网络失败（fetch TypeError）识别为内部异常', () => {
     expect(isRawRpcErrorText('Failed to fetch')).toBe(true)
+  })
+})
+
+describe('isNetworkOrServerErrorText（INT-972）', () => {
+  it('识别网络/服务端级失败签名（端口不可达 / 5xx / 非 JSON 响应）', () => {
+    expect(isNetworkOrServerErrorText('Failed to fetch')).toBe(true)
+    expect(isNetworkOrServerErrorText('NetworkError when attempting to fetch resource')).toBe(true)
+    expect(isNetworkOrServerErrorText('Server returned invalid JSON: 500 Internal Server Error')).toBe(true)
+    expect(isNetworkOrServerErrorText('status code 500')).toBe(true)
+  })
+
+  it('业务文案不被误判', () => {
+    expect(isNetworkOrServerErrorText('类型已存在')).toBe(false)
+    expect(isNetworkOrServerErrorText('')).toBe(false)
   })
 })
 
@@ -65,6 +81,14 @@ describe('toUserErrorMessage', () => {
   it('取不到消息 → fallback', () => {
     expect(toUserErrorMessage(undefined, '保存失败')).toBe('保存失败')
     expect(toUserErrorMessage({}, '保存失败')).toBe('保存失败')
+  })
+
+  it('网络/服务端级失败（INT-972）→ 固定友好文案（不直出 Failed to fetch 等英文原始串）', () => {
+    expect(toUserErrorMessage(new Error('Failed to fetch'), '用例服务暂不可用，请稍后重试'))
+      .toBe('用例服务暂不可用，请稍后重试')
+    const err = new Error('用例服务暂不可用，请稍后重试') as any
+    err.detail = 'Server returned invalid JSON: 500 Internal Server Error'
+    expect(toUserErrorMessage(err, '加载失败')).toBe('加载失败')
   })
 })
 

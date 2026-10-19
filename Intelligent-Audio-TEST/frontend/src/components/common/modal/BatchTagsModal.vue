@@ -155,7 +155,7 @@ import '../../../assets/styles/components/tag.css'
 import '../../../assets/styles/components/log.css'
 
 import { ref, computed, onMounted, watch } from 'vue'
-import { testcasesPort } from '../../../composables/testCase/testcasesPort'
+import { tagsPort } from '../../../composables/shared/tagsPort'
 import { usePagination } from '../../../composables/usePagination'
 
 interface Props {
@@ -232,21 +232,10 @@ const {
 
 async function loadExistingTags() {
   try {
-    const result = await testcasesPort.getAll()
-    const cases = (result as any).items || []
-    const tagSet = new Set<string>()
-    cases.forEach((tc: any) => {
-      if (tc.tags && Array.isArray(tc.tags)) {
-        tc.tags.forEach((tag: any) => {
-          if (typeof tag === 'string') {
-            tagSet.add(tag)
-          } else if (tag && typeof tag === 'object' && 'name' in tag) {
-            tagSet.add(tag.name)
-          }
-        })
-      }
-    })
-    existingTags.value = Array.from(tagSet).sort()
+    // INT-972 P3-2：改用标签名全量接口（与 CaseForm 口径一致，perPage=100），
+    // 不再从用例列表第一页（默认 50/页）推导——超首页用例才出现的标签也能进建议列表
+    const response = await tagsPort.getTagNames({ perPage: 100 })
+    existingTags.value = [...(response?.items ?? [])].sort()
   } catch (error) {
     console.error('加载已有标签失败:', error)
   }

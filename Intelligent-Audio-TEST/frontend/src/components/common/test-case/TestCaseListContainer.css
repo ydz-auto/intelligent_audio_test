@@ -589,6 +589,44 @@
   color: var(--text-tertiary);
 }
 
+/* INT-972：加载失败错误横幅（后端不可用/500 时替代空态，友好降级） */
+.test-case-error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-md);
+  padding: var(--spacing-lg);
+  margin-top: 16px;
+  margin-bottom: 16px;
+  background-color: var(--error-light);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+}
+
+.test-case-error-banner > i {
+  font-size: 22px;
+  color: var(--error-color);
+  margin-top: 2px;
+}
+
+.test-case-error-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.test-case-error-message {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.test-case-error-hint {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
 /* 模态窗样式 */
 .modal-overlay {
   position: fixed;

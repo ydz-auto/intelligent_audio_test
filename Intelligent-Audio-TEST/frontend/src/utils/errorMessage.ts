@@ -27,10 +27,33 @@ const RAW_RPC_TEXT_PATTERNS: RegExp[] = [
   /failed to fetch/i,
 ]
 
+/** 网络/服务端级失败文本特征（后端端口不可达、5xx、非 JSON 响应等，INT-972 补充） */
+const NETWORK_SERVER_TEXT_PATTERNS: RegExp[] = [
+  /Failed to fetch/i,
+  /NetworkError/i,
+  /Network request failed/i,
+  /load failed/i,
+  /fetch failed/i,
+  /Server returned (invalid JSON|HTML instead of JSON)/i,
+  /Internal Server Error/i,
+  /status code 5\d\d/i,
+]
+
 /** 是否原始 RPC/gRPC 异常文本（命中任一签名即视为内部异常直出） */
 export function isRawRpcErrorText(text: string): boolean {
   if (!text) return false
   return RAW_RPC_TEXT_PATTERNS.some((re) => re.test(text))
+}
+
+/** 是否网络/服务端级失败（端口不可达 / 5xx / 非 JSON 响应），此类同样回落固定友好文案 */
+export function isNetworkOrServerErrorText(text: string): boolean {
+  if (!text) return false
+  return NETWORK_SERVER_TEXT_PATTERNS.some((re) => re.test(text))
+}
+
+/** 是否任一内部/基础设施级失败（原始 RPC 或网络/服务端失败）→ 一律回落固定友好文案 */
+export function isInfrastructureErrorText(text: string): boolean {
+  return isRawRpcErrorText(text) || isNetworkOrServerErrorText(text)
 }
 
 /** 从对象取值（message / detail / error 字段），空串视为缺失 */
@@ -44,13 +67,13 @@ function extractStringField(err: unknown, field: string): string {
 
 /**
  * 供页面/Toast 展示的安全错误消息：
- * 原始 RPC 异常（message 或 detail 命中）→ fallback 固定友好文案；
+ * 原始 RPC 异常（message 或 detail 命中）或网络/服务端级失败 → fallback 固定友好文案；
  * 正常业务错误 → 原样单行化返回（截断 200 字符）。
  */
 export function toUserErrorMessage(err: unknown, fallback: string): string {
   const message = extractStringField(err, 'message')
   const detail = extractStringField(err, 'detail')
-  if (isRawRpcErrorText(message) || isRawRpcErrorText(detail)) return fallback
+  if (isInfrastructureErrorText(message) || isInfrastructureErrorText(detail)) return fallback
   const raw = message || detail
   if (!raw) return fallback
   // 单行化 + 截断：多行/超长异常文本不允许直出，交由固定文案承载

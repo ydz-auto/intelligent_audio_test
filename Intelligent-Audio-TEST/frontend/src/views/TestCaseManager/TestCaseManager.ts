@@ -36,7 +36,7 @@ export function useTestCaseManager() {
 
   const store = useTestCaseStore();
   const modalControl = useModalControl();
-  const { testCaseGroups, tagViewData, tags, paginationInfo, isLoading, tagViewPagination, tagViewLoading } = storeToRefs(store);
+  const { testCaseGroups, tagViewData, tags, paginationInfo, isLoading, tagViewPagination, tagViewLoading, error } = storeToRefs(store);
   const { fetchTestCases, fetchTagView, loadMoreTagView, deleteGroup: deleteGroupFromStore, deleteTestCase, resetGroupCache } = store;
 
   // ===== 收藏 / 回收站（INT-141）=====
@@ -303,6 +303,7 @@ export function useTestCaseManager() {
     tagViewPagination,
     tagViewLoading,
     isLoading,
+    error,
     viewMode,
     handleDeleteGroup,
     handleDeleteTestCase,

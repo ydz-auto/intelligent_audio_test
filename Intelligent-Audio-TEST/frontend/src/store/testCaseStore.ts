@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { testcasesPort } from '../composables/testCase/testcasesPort'
 import { tagsPort } from '../composables/shared/tagsPort'
 import { convertTestCaseFormData } from '../utils/utils'
+import { toUserErrorMessage, toUserErrorDetail } from '../utils/errorMessage'
 import { useNotification } from '../composables/modal/useNotification'
 import { useTestCaseBatchOps } from '../composables/testCase/useTestCaseBatchOps'
 import { useTestCaseGroups } from '../composables/testCase/useTestCaseGroups'
@@ -37,6 +38,8 @@ export const useTestCaseStore = defineStore('testCase', () => {
   const tags = ref<string[]>([]);
   const isLoading = ref(false);
   const error = ref<string | null>(null);
+  /** 原始 RPC/网络异常详情（INT-972：仅进 Toast 折叠区，不渲染进页面） */
+  const errorDetail = ref('');
   const allGroups = ref<string[]>([]);
   const fullGroupsMap = ref<Record<string, TestCaseGroup>>({});
   const groupsList = ref<GroupWithCount[]>([]);
@@ -66,27 +69,24 @@ export const useTestCaseStore = defineStore('testCase', () => {
   const notification = useNotification();
 
   const handleError = (err: any, errorMessage: string) => {
-    let fullErrorMsg = errorMessage;
-    let details = '';
-    if (err.message) {
-      fullErrorMsg += ` - ${err.message}`;
+    // INT-972（INT-899）：原始 gRPC/RPC 异常文本与网络/服务端失败不直出——
+    // 固定友好文案 + 原始详情进 Toast 折叠区；正常业务错误原样单行化返回
+    const msg = toUserErrorMessage(err, errorMessage);
+    let details = toUserErrorDetail(err);
+    // 非基础设施级业务错误保留结构化详情（detail/errors/code），供排查
+    if (!details && err && typeof err === 'object') {
+      if (err.detail) details += (details ? '\n' : '') + `详情: ${JSON.stringify(err.detail)}`;
+      if (err.errors) details += (details ? '\n' : '') + `错误列表: ${JSON.stringify(err.errors)}`;
+      if (err.code) details += (details ? '\n' : '') + `错误码: ${err.code}`;
     }
-    if (err.detail) {
-      details += `详情: ${JSON.stringify(err.detail)}`;
-    }
-    if (err.errors) {
-      details += (details ? '\n' : '') + `错误列表: ${JSON.stringify(err.errors)}`;
-    }
-    if (err.code) {
-      details += (details ? '\n' : '') + `错误码: ${err.code}`;
-    }
-    console.error(fullErrorMsg);
+    // 保留操作上下文前缀（如「添加测试用例失败 - 名称已存在」）；RPC/网络降级时 msg 即固定文案
+    const display = msg === errorMessage ? msg : `${errorMessage} - ${msg}`;
+    console.error(display, details || '');
     if (details) {
-      notification.error(fullErrorMsg, details);
+      notification.error(display, details);
     } else {
-      notification.error(fullErrorMsg);
+      notification.error(display);
     }
-    const msg = err.message || errorMessage;
     error.value = msg;
     return false;
   };
@@ -156,6 +156,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
     try {
       isLoading.value = true;
       error.value = null;
+      errorDetail.value = '';
 
       const page = params.page || 1;
       const perPage = params.perPage || DEFAULT_FETCH_PAGE_SIZE;
@@ -255,8 +256,12 @@ export const useTestCaseStore = defineStore('testCase', () => {
       organizeTestCasesByGroup();
       extractTags();
     } catch (err: any) {
+      // INT-972：加载失败降级——固定友好文案渲染进页面 + Toast 折叠区保留原始详情；
+      // 不以「没有找到分组」空态误导用户以为库里无数据
+      error.value = toUserErrorMessage(err, '用例服务暂不可用，请稍后重试');
+      errorDetail.value = toUserErrorDetail(err);
+      notification.error(error.value, errorDetail.value);
       console.error('获取测试用例失败:', err);
-      error.value = err.message || '获取测试用例失败';
       allGroups.value = [];
       testCaseGroups.value = {};
       testCases.value = [];
@@ -276,6 +281,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
       tagViewLoading.value = true;
       isLoading.value = true;
       error.value = null;
+      errorDetail.value = '';
 
       const page = params.page || 1;
       const perPage = params.perPage || DEFAULT_FETCH_PAGE_SIZE;
@@ -322,8 +328,11 @@ export const useTestCaseStore = defineStore('testCase', () => {
       });
       tags.value = Array.from(tagSet);
     } catch (err: any) {
+      // INT-972：标签视图加载失败同样降级为固定友好文案，不以「没有找到标签」空态误导
+      error.value = toUserErrorMessage(err, '用例服务暂不可用，请稍后重试');
+      errorDetail.value = toUserErrorDetail(err);
+      notification.error(error.value, errorDetail.value);
       console.error('获取标签视图数据失败:', err);
-      error.value = err.message || '获取标签视图数据失败';
       tagViewData.value = {};
     } finally {
       tagViewLoading.value = false;
@@ -386,7 +395,9 @@ export const useTestCaseStore = defineStore('testCase', () => {
       tags.value = Array.from(tagSet);
     } catch (err: any) {
       console.error('加载更多标签视图数据失败:', err);
-      error.value = err.message || '加载更多标签视图数据失败';
+      error.value = toUserErrorMessage(err, '用例服务暂不可用，请稍后重试');
+      errorDetail.value = toUserErrorDetail(err);
+      notification.error(error.value, errorDetail.value);
     } finally {
       tagViewLoading.value = false;
     }
@@ -640,6 +651,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
     tags,
     isLoading,
     error,
+    errorDetail,
     allGroups,
     fullGroupsMap,
     paginationInfo,

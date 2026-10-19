@@ -1,6 +1,5 @@
-import type { TestCaseFormData } from '../domain';
+import type { TestCaseFormData, TestCaseDraft } from '../domain';
 import { TestType } from '@/domain/enums';
-import { snakifyKeys } from './keyTransform';
 
 /**
  * AlgorithmSelector 会把 schema 定义（caseAlgorithmParams / algorithmFormSchema）塞进 params 对象，
@@ -182,8 +181,12 @@ export function normalizeTestCaseConfig(config: Record<string, any>) {
   };
 }
 
-/** 用例表单转提交载荷：config 归一化 + 算法参数/参考参数独立列分组 + snake_case */
-export function convertTestCaseFormData(formData: TestCaseFormData): Record<string, any> {
+/**
+ * 用例表单归一化为 Domain 草稿（camelCase）：config 归一化 + 算法参数/参考参数独立列分组。
+ * snake_case↔camelCase 转换收敛在 infrastructure adapters（DDD §3.1），由
+ * toTestCaseUpsertDto 在 testcasesApi.create/update 出口执行（INT-972）。
+ */
+export function convertTestCaseFormData(formData: TestCaseFormData): TestCaseDraft {
   const convertedData = {...formData};
 
   if (convertedData.config) {
@@ -282,5 +285,5 @@ export function convertTestCaseFormData(formData: TestCaseFormData): Record<stri
     delete (convertedData as any).referenceParams;
   }
 
-  return snakifyKeys(convertedData);
+  return convertedData as TestCaseDraft;
 }

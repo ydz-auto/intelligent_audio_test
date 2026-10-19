@@ -111,6 +111,8 @@ vi.mock('../../../../../composables/modal/useModal', async () => {
 import TestCaseModal from '../index.vue';
 import RoundConfigEditor from '../RoundConfigEditor.vue';
 import { convertTestCaseFormData } from '@/utils/testCaseConfig';
+// INT-972：snake_case 转换已收敛到 adapter（toTestCaseUpsertDto），表单归一化输出 camelCase 草稿
+import { toTestCaseUpsertDto } from '@/infrastructure/adapters/testCaseAdapter';
 
 function twoRoundEditFormData() {
   return {
@@ -217,8 +219,8 @@ describe('INT-194 验收 · 模态窗保存路径（原缺陷场景）', () => {
     expect(col[1].params).toEqual([{ fieldCode: 'threshold', fieldValue: 0.8 }]);
     expect(payload.data.config.rounds).toHaveLength(2);
 
-    // 落库前的真实 wire 格式（store.updateTestCase 走 convertTestCaseFormData）
-    const wire = convertTestCaseFormData(payload.data);
+    // 落库前的真实 wire 格式（store.updateTestCase → testcasesApi.update 走 toTestCaseUpsertDto）
+    const wire: any = toTestCaseUpsertDto(convertTestCaseFormData(payload.data));
     expect(wire.algorithm_params).toHaveLength(2);
     expect(wire.algorithm_params[0]).toEqual({
       round_number: 1,
@@ -248,7 +250,7 @@ describe('INT-194 验收 · 模态窗保存路径（原缺陷场景）', () => {
     expect(col[0].params).toEqual([{ fieldCode: 'threshold', fieldValue: 0.9 }]);
     expect(col[1].params).toEqual([{ fieldCode: 'threshold', fieldValue: 0.8 }]);
 
-    const wire = convertTestCaseFormData(payload.data);
+    const wire: any = toTestCaseUpsertDto(convertTestCaseFormData(payload.data));
     expect(wire.algorithm_params[0].params[0].field_value).toBe(0.9);
     expect(wire.algorithm_params[1].params[0].field_value).toBe(0.8);
   });
@@ -261,7 +263,7 @@ describe('INT-194 验收 · 模态窗保存路径（原缺陷场景）', () => {
     const col = payload.data.algorithmParams;
     expect(col).toHaveLength(2);
     expect(col[1].roundNumber).toBe(2);
-    const wire = convertTestCaseFormData(payload.data);
+    const wire: any = toTestCaseUpsertDto(convertTestCaseFormData(payload.data));
     expect(wire.algorithm_params).toHaveLength(2);
   });
 
@@ -300,7 +302,7 @@ describe('INT-194 验收 · 模态窗保存路径（原缺陷场景）', () => {
     expect(payload.isEdit).toBe(false);
     expect(payload.data.id).toBeUndefined();
 
-    const wire = convertTestCaseFormData(payload.data);
+    const wire: any = toTestCaseUpsertDto(convertTestCaseFormData(payload.data));
     // 第 1 轮参数进入提交形态；normalizeTestCaseConfig 会为无参数的轮次补空 entries
     //（testCaseConfig.ts:102-106 + 兼容合并 219-234，既有归一化行为，不丢数据）
     const round1 = (wire.algorithm_params as any[]).find(e => e.round_number === 1);
