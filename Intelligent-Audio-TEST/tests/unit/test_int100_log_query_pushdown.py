@@ -239,6 +239,7 @@ class TestListLogsServicerPassthrough:
             page=1, per_page=20, module='executor', category='', mark='',
             device_id=0, api_id=0, test_case_id='', thread_id='', keyword='',
             content_include='', content_exclude='', algorithm_type='',
+            user_id=0,
         )
         resp = servicer.ListLogs(request)
         assert resp.success is True
@@ -255,6 +256,7 @@ class TestListLogsServicerPassthrough:
             page=1, per_page=20, module='', category='', mark='',
             device_id=0, api_id=0, test_case_id='', thread_id='', keyword='',
             content_include='', content_exclude='', algorithm_type='',
+            user_id=0,
         )
         resp = servicer.ListLogs(request)
         data = __import__('json').loads(resp.data)

@@ -967,6 +967,11 @@ class EvaluationDataServiceStub:
                 request_serializer=evaluation__service__pb2.RollbackDimensionImportRequest.SerializeToString,
                 response_deserializer=evaluation__service__pb2.EvaluationDataResponse.FromString,
                 _registered_method=True)
+        self.AiReviewCheck = channel.unary_unary(
+                '/evaluation_service.EvaluationDataService/AiReviewCheck',
+                request_serializer=evaluation__service__pb2.AiReviewCheckRequest.SerializeToString,
+                response_deserializer=evaluation__service__pb2.EvaluationDataResponse.FromString,
+                _registered_method=True)
 
 
 class EvaluationDataServiceServicer:
@@ -1017,6 +1022,15 @@ class EvaluationDataServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def AiReviewCheck(self, request, context):
+        """LLM 复检（INT-800/INT-823）：单次 AI 复核，聚合 ASR/参考文本/维度分/LLM 评语，
+        复用 llm_judge 端点 worker 与维度配置重新判分，返回 verdict/confidence/reasoning。
+        非 E 域 Agent 编排（架构红线）：单次 LLM 调用，不做多步编排。
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_EvaluationDataServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -1048,6 +1062,11 @@ def add_EvaluationDataServiceServicer_to_server(servicer, server):
             'RollbackDimensionImport': grpc.unary_unary_rpc_method_handler(
                     servicer.RollbackDimensionImport,
                     request_deserializer=evaluation__service__pb2.RollbackDimensionImportRequest.FromString,
+                    response_serializer=evaluation__service__pb2.EvaluationDataResponse.SerializeToString,
+            ),
+            'AiReviewCheck': grpc.unary_unary_rpc_method_handler(
+                    servicer.AiReviewCheck,
+                    request_deserializer=evaluation__service__pb2.AiReviewCheckRequest.FromString,
                     response_serializer=evaluation__service__pb2.EvaluationDataResponse.SerializeToString,
             ),
     }
@@ -1214,6 +1233,33 @@ class EvaluationDataService:
             target,
             '/evaluation_service.EvaluationDataService/RollbackDimensionImport',
             evaluation__service__pb2.RollbackDimensionImportRequest.SerializeToString,
+            evaluation__service__pb2.EvaluationDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AiReviewCheck(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/evaluation_service.EvaluationDataService/AiReviewCheck',
+            evaluation__service__pb2.AiReviewCheckRequest.SerializeToString,
             evaluation__service__pb2.EvaluationDataResponse.FromString,
             options,
             channel_credentials,

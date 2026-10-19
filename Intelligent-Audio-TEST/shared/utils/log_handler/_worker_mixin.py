@@ -153,6 +153,8 @@ class _WorkerMixin:
                     'test_case_id': data.get('test_case_id'),
                     'thread_id': data.get('thread_id'),
                     'algorithm_type': data.get('algorithm_type'),
+                    # INT-806：操作人随条目携带（worker 线程不继承 contextvar）
+                    'user_id': data.get('user_id'),
                 })
             ids = batch_create_logs(logs_payload)
             for i, data in enumerate(batch):

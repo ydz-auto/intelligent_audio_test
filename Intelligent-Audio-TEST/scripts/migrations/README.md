@@ -49,6 +49,7 @@ python scripts/migrations/202610/add_system_options_table.py                  # 
 python scripts/migrations/202610/add_report_studio_tables.py                 # ㉛ Report Studio 业务资产 4 表（INT-673：documents/versions/chart_specs/export_jobs；全新库 create_all 已含，执行为全 SKIP）
 python scripts/migrations/202610/add_cherry_pick_source_result_type_int577.py  # ㉜ 挑选合并购物车/挑选集条目补 source_result_type 列（INT-577 §11-5；依赖 INT-339 cherry-pick 表已建）
 python scripts/migrations/202610/backfill_task_case_device_type_int789.py --apply  # ㉝ 历史 task_case_relations.device_type/device_id 按关系表回填（INT-789：⑯ 的回填被 test_tasks.type 列存在性门控 SKIP，历史 NULL 行未补齐 → 误显「API测试」；见下执行记录）
+python scripts/migrations/202610/backfill_log_operator_int806.py --apply  # ㉞ 历史审计日志操作人回填（INT-806 可选回填：category∈{auth,benchmark} 且 content 可解析 JSON 且含 operator_id 的审计行 → created_by_user_id；解析失败放弃不阻塞；默认 dry-run）
 ```
 
 > ✅ **2026-09-07 全量迁移记录**：当前环境已执行 ①③④⑧（`remove_foreign_keys_and_soft_delete` 12 步 + `add_audit_columns` 补 24 处 + `add_reevaluated_at` + `add_pass_threshold_to_eval_params`），执行后 `UndefinedColumn` 类报错全部消除。②⑤⑥⑦⑨ 视功能需要执行。
@@ -64,6 +65,8 @@ python scripts/migrations/202610/backfill_task_case_device_type_int789.py --appl
 > ✅ **2026-10-18 执行记录（INT-673）**：Report Studio 业务资产 4 表已执行 ㉚（全新库 create_all 已含，执行为全 SKIP；运行库本次全部 APPLY 11 步：4 表 + 7 索引）。同批执行 ⑦ seed_rbac.py 注册 `report:studio:create/edit/undo/export` 4 码 + tester/algo_engineer 授权矩阵（幂等，重跑 0 新增）。临时库红-绿自测：建表路径 APPLY → 重复执行全 SKIP → 结构逐列与 ORM 对齐 → 销毁。
 
 > ✅ **2026-10-19 执行记录（INT-789）**：任务用例被测设备类型数据回填。⑯ 的 device_type 回填被 `test_tasks.type` 列存在性门控整体 SKIP（运行库该列先删），历史 NULL 行从未补齐 → 任务列表 E2E 任务误显「API测试」。已执行 ㉝ `--apply`：按关系表确定性回填——task_api_relations→http_api、task_device_relations→physical、websocket 前缀→websocket_api，合并容器任务按设计 §3.3 不回填；device_id 一并回填（physical=task_device_relations.device_id / API=task_api_relations.api_id）。运行库本次 ① 0 行 / ② 4154 行 / ③ 0 行：执行前 `device_type` 已全量非 NULL（FEAT 评审前实测 2877 行 NULL；开发自测阶段一次 psycopg2 隐性事务回滚失败使该批提前落为 physical，值符合评审结论"本库全 dev_only"，`device_id` 全量 NULL）；执行后 `device_type` 全量 physical + `device_id` 4154 行全部回填；重复执行三步均 0 行（幂等）。临时库红-绿自测：fresh 库九分支（device-only/api-only/兼有/合并容器/既有值/无关系/ws 前缀/http 前缀/部分迁移态）全断言通过，重跑三步全 0。
+
+> ✅ **2026-10-19 执行记录（INT-806）**：历史审计日志操作人回填 ㉞。运行库 `logs.created_by_user_id` 列已存在（列迁移先行），存量行全 NULL → 按 content JSON `operator_id` 回填（category=auth 审计行；benchmark 行 content 为用户名串无 operator_id，按脚本设计不回填）。dry-run 共 578 行：待回填 452、解析失败/无 operator_id 跳过 126；`--apply` 回填 452 行（全部 category=auth，operator=admin/183 364 行 + 其余 88 行）。执行后 `logs.created_by_user_id` NULL 计数 300,673 → 300,221，auth 行已回填 452；重跑 dry-run 待回填 0（幂等）。数据仅 UPDATE、无 DDL，无需停服务。
 
 > ✅ **2026-10-13 移植记录（INT-192）**：补齐三族维度 seed（㉓ turn_eval / ㉔ env_judge / ㉕ interruption_v2，V9.7.10 蓝本金标对齐后移植）。运行库执行实测零插入（全原地更新/SKIP，仅 updated_at 移动，逐字段前后比对无差）；临时库（create_all + seed_voice_llm）fresh 路径实测：首轮 25 维/322 参数/110 映射全插入、重跑全 SKIP/更新零插入，临时库终态与运行库金标逐字段等价（含 api_settings deep-equal）后销毁。UPDATE 不写 status：运行库「逐轮三分类评估」status=FALSE 为现状保留（fresh 库该维为启用态，验收方如判定需对齐可手工关闭）。三个脚本依赖 ⑪ seed_voice_llm 先行（param_mappings/关联外键引用 algorithm_definitions）。
 
@@ -131,6 +134,7 @@ python scripts/migrations/202610/backfill_task_case_device_type_int789.py --appl
 | [cleanup_reeval_ghost_round_rows.py](202610/cleanup_reeval_ghost_round_rows.py) | failed 重评幽灵失败逐轮行清理（INT-364，移植 V9.7.10 f02ba75e 同名脚本） | 删除「逐轮失败（round_number 非空 + failed）+ 同 (result, dimension) 整体行已 completed」的幽灵行——E2E 每轮未配评估维度 + per_round 投影残留 failed 行场景下用例被永久判 failed；随附将不再有失败维度行的用例 TaskCase 恢复 completed、限定 `--task-id` 时同步任务统计；代码侧修复（failed 重评提交前清幽灵行）已随实现落地，本脚本处理存量历史数据；缺省全库扫描（任务过滤 `%(task_id)s IS NULL OR 列 = %(task_id)s`，None 绑定 NULL 恒假的静默失效已修，审计 P3 回归 tests/unit/test_int364_cleanup_script_full_db_mode.py）；幂等，默认 dry-run，`--apply` 执行 |
 | [add_uq_task_case_route_int604.py](202610/add_uq_task_case_route_int604.py) | task_case_relations (task, case, 路由) 唯一索引（INT-604 混选前置 + 评审①补录） | 同一用例可同时存在设备侧/API 侧多条 TaskCase，但 (task_id, test_case_id, COALESCE(device_type,''), COALESCE(device_id,'')) 不得重复；**建索引前先查重**——历史无 DB 唯一约束，理论存在 (task,case) 重复行，检测到即 ABORT 并列出重复行（交人工去重），避免唯一索引创建失败；幂等（索引已存在即 SKIP），支持 `--dry-run` |
 | [add_cherry_pick_source_result_type_int577.py](202610/add_cherry_pick_source_result_type_int577.py) | 挑选合并购物车/挑选集条目补 `source_result_type` 列（INT-577 §11-5） | `cherry_pick_cart_items` / `cherry_pick_set_items` 各补 `source_result_type VARCHAR(50) NULL`（购物车/挑选集条目来源结果类型快照；依赖 INT-339 `add_cherry_pick_tables_int339.py` 建表先行）；幂等（逐列 information_schema 检查），支持 `--dry-run` |
+| [backfill_log_operator_int806.py](202610/backfill_log_operator_int806.py) | 历史审计日志操作人回填（INT-806 可选回填） | `created_by_user_id` 为 NULL 的 category∈{auth,benchmark} 审计行：content 可解析为 JSON 且含 `operator_id`（int>0）→ 回填 `created_by_user_id=operator_id`，使「仅自己」上线即有数据；解析失败/无 operator_id 放弃不阻塞（已核验 benchmark 审计 content 为 operator 用户名串、不含 operator_id，实际只覆盖 auth 行）；幂等（非 NULL 行一律 SKIP）；默认 dry-run，`--apply` 执行 |
 
 ## 新增迁移脚本约定
 

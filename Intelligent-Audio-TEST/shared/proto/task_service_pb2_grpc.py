@@ -2194,6 +2194,26 @@ class ReviewServiceStub:
                 request_serializer=task__service__pb2.ReviewTaskRequest.SerializeToString,
                 response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
                 _registered_method=True)
+        self.InitiateAiReview = channel.unary_unary(
+                '/task_service.ReviewService/InitiateAiReview',
+                request_serializer=task__service__pb2.AiReviewRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.ListAiReviewHistory = channel.unary_unary(
+                '/task_service.ReviewService/ListAiReviewHistory',
+                request_serializer=task__service__pb2.AiReviewHistoryRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.AdoptAiReview = channel.unary_unary(
+                '/task_service.ReviewService/AdoptAiReview',
+                request_serializer=task__service__pb2.AiReviewActionRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.RejectAiReview = channel.unary_unary(
+                '/task_service.ReviewService/RejectAiReview',
+                request_serializer=task__service__pb2.AiReviewActionRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
 
 
 class ReviewServiceServicer:
@@ -2222,6 +2242,35 @@ class ReviewServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def InitiateAiReview(self, request, context):
+        """---- AI 复核（INT-822/INT-800；operator 走 x-user-id metadata）----
+        发起：{result_ids, dimension_ids?, force?} → {items: [AiReviewRecordDto], reused, skipped}
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListAiReviewHistory(self, request, context):
+        """任务 AI 复核历史（时间倒序；data JSON: {result_id?, dimension_id?, status?}）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AdoptAiReview(self, request, context):
+        """采纳（复用 apply_review 落人工复核语义）：data JSON {execution_status?, evaluation_status?, comment}
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RejectAiReview(self, request, context):
+        """驳回（原判定不变）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ReviewServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -2238,6 +2287,26 @@ def add_ReviewServiceServicer_to_server(servicer, server):
             'ListReviewHistory': grpc.unary_unary_rpc_method_handler(
                     servicer.ListReviewHistory,
                     request_deserializer=task__service__pb2.ReviewTaskRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'InitiateAiReview': grpc.unary_unary_rpc_method_handler(
+                    servicer.InitiateAiReview,
+                    request_deserializer=task__service__pb2.AiReviewRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'ListAiReviewHistory': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListAiReviewHistory,
+                    request_deserializer=task__service__pb2.AiReviewHistoryRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'AdoptAiReview': grpc.unary_unary_rpc_method_handler(
+                    servicer.AdoptAiReview,
+                    request_deserializer=task__service__pb2.AiReviewActionRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'RejectAiReview': grpc.unary_unary_rpc_method_handler(
+                    servicer.RejectAiReview,
+                    request_deserializer=task__service__pb2.AiReviewActionRequest.FromString,
                     response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
             ),
     }
@@ -2323,6 +2392,114 @@ class ReviewService:
             target,
             '/task_service.ReviewService/ListReviewHistory',
             task__service__pb2.ReviewTaskRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def InitiateAiReview(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.ReviewService/InitiateAiReview',
+            task__service__pb2.AiReviewRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListAiReviewHistory(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.ReviewService/ListAiReviewHistory',
+            task__service__pb2.AiReviewHistoryRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AdoptAiReview(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.ReviewService/AdoptAiReview',
+            task__service__pb2.AiReviewActionRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RejectAiReview(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.ReviewService/RejectAiReview',
+            task__service__pb2.AiReviewActionRequest.SerializeToString,
             task__service__pb2.TaskConfigResponse.FromString,
             options,
             channel_credentials,
