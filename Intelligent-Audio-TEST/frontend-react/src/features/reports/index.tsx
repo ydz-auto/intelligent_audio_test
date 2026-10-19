@@ -571,9 +571,19 @@ export function ReportCenterPage() {
         open={generateOpen}
         onOpenChange={setGenerateOpen}
         onGenerated={(outcome) => {
-          setProgressWait(undefined)
+          // INT-935 返工 P2：异步生成经提交前预订阅的 waitPromise 等待真实 report_id
+          //（存在时优先，任务已有报告同步返回 reportId 走轮询；taskId 兜底补订阅）
+          setProgressWait(
+            outcome.waitPromise
+              ? { promise: outcome.waitPromise, abort: outcome.waitAbort ?? (() => undefined) }
+              : undefined
+          )
           setProgressReportId(outcome.reportId)
-          setProgressTaskId(outcome.reportId === undefined ? outcome.taskId : undefined)
+          setProgressTaskId(
+            outcome.reportId === undefined && outcome.waitPromise === undefined
+              ? outcome.taskId
+              : undefined
+          )
           setProgressOpen(true)
         }}
       />

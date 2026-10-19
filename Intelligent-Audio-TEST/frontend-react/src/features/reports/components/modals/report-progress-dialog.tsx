@@ -126,9 +126,11 @@ export function ReportProgressDialog({
     }
   }, [open, reportId])
 
-  // taskId（generate-task / regenerate）→ 订阅 report_generated
+  // taskId（generate-task / regenerate）→ 订阅 report_generated。
+  // 兜底路径：waitPromise 存在时外层（dialog/index）已提交前预订阅并回传，本 effect 跳过，
+  // 避免二次订阅（INT-935 返工 P2：taskId 补订阅晚于 POST 会有快速失败事件竞态，仅无 waitPromise 时启用）
   useEffect(() => {
-    if (!open || !(typeof taskId === 'number' && taskId > 0)) return
+    if (!open || waitPromise || !(typeof taskId === 'number' && taskId > 0)) return
     const controller = new AbortController()
     let cancelled = false
     setStatus('generating')
@@ -149,9 +151,9 @@ export function ReportProgressDialog({
       cancelled = true
       controller.abort()
     }
-  }, [open, taskId])
+  }, [open, taskId, waitPromise])
 
-  // waitPromise（secondary-compare）→ 直接 await 提交前已订阅的 SSE 等待
+  // waitPromise（secondary-compare / generate-task / regenerate）→ 直接 await 提交前已订阅的 SSE 等待
   useEffect(() => {
     if (!open || !waitPromise) return
     let cancelled = false
@@ -166,7 +168,7 @@ export function ReportProgressDialog({
       .catch((err) => {
         if (cancelled) return
         setStatus('failed')
-        setError(err instanceof Error ? err.message : '对比报告生成失败')
+        setError(err instanceof Error ? err.message : '报告生成失败')
       })
     return () => {
       cancelled = true

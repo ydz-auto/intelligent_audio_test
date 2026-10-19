@@ -2,9 +2,14 @@
  * 生成报告 Dialog（规范 §5.1，report:create）：
  * 任务选择器（GET /tasks 已完成只读，mock）+ 名称/描述 + 生成报告 →
  * POST /reports/generate-task 后交页面打开进度 Dialog 并跳转报告查看。
+ * INT-935 返工 P2：generate-task 异步快速失败事件竞态——taskId 提交前已知，
+ * 先订阅 report_generated、等 SSE open 再 POST（对齐二次对比 onOpen-gate），
+ * 真实 report_id 经 waitPromise 回传进度弹窗；任务已有报告（status='exists'）时
+ * 同步返回 reportId，无需等待。
  */
 import { FilePlus2, Search } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -20,12 +25,18 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useCompletedTasks } from '@/application/reports/use-completed-tasks'
 import { useReportActions, type GenerateReportOutcome } from '@/application/reports/use-report-actions'
+import { waitForReportGenerated } from '@/application/reports/use-report-compare'
 import { cn } from '@/lib/utils'
 
 interface GenerateReportDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onGenerated: (outcome: GenerateReportOutcome) => void
+  onGenerated: (outcome: GenerateReportOutcome & {
+    /** 异步生成 SSE 等待 Promise（提交前已订阅；存在时进度弹窗直接 await，而非按 taskId 补订阅） */
+    waitPromise?: Promise<number>
+    /** 取消等待（进度弹窗关闭/卸载时解绑 SSE 订阅） */
+    waitAbort?: () => void
+  }) => void
 }
 
 export function GenerateReportDialog({
@@ -38,8 +49,14 @@ export function GenerateReportDialog({
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  /** 异步生成 SSE 等待的 AbortController（弹窗关闭/卸载时中止，防订阅泄漏） */
+  const submitAbortRef = useRef<AbortController | undefined>(undefined)
   const { data: tasks = [] } = useCompletedTasks()
   const { generate } = useReportActions()
+
+  useEffect(() => {
+    return () => submitAbortRef.current?.abort()
+  }, [])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -53,6 +70,8 @@ export function GenerateReportDialog({
 
   const handleOpenChange = (next: boolean) => {
     if (!next) {
+      submitAbortRef.current?.abort()
+      submitAbortRef.current = undefined
       setQuery('')
       setTaskId(null)
       setName('')
@@ -64,14 +83,50 @@ export function GenerateReportDialog({
   const handleSubmit = async () => {
     if (!taskId) return
     setSubmitting(true)
-    const outcome = await generate(
-      taskId,
-      name || `${selectedTask?.name} 报告`,
-      description || undefined
+    // INT-935 返工 P2：taskId 提交前已知 → 先订阅 report_generated、等 SSE open 再 POST，
+    // 杜绝 <1s 快速失败事件早于订阅到达的竞态（对齐二次对比 onOpen-gate 模式）；
+    // 真实 report_id 经 waitPromise 回传进度弹窗
+    const controller = new AbortController()
+    submitAbortRef.current = controller
+    let sseOpened: (() => void) | undefined
+    const sseReady = new Promise<void>((resolve) => {
+      sseOpened = resolve
+    })
+    const waitPromise = waitForReportGenerated(
+      { taskId },
+      { signal: controller.signal, onOpen: () => sseOpened?.() },
     )
-    setSubmitting(false)
-    handleOpenChange(false)
-    onGenerated(outcome)
+    // 交接前先挂 no-op catch，避免取消/超时在进度弹窗接管前成为 unhandled rejection
+    void waitPromise.catch(() => undefined)
+    try {
+      // 等 SSE 连接建立（≤2s 兜底）再提交，杜绝 <1s 快速失败事件早于订阅到达的竞态
+      await Promise.race([sseReady, new Promise((r) => setTimeout(r, 2_000))])
+      const outcome = await generate(
+        taskId,
+        name || `${selectedTask?.name} 报告`,
+        description || undefined
+      )
+      if (outcome.reportId !== undefined) {
+        // 任务已有报告（status='exists'）：同步可跳转，无需等待，取消预订阅
+        controller.abort()
+        submitAbortRef.current = undefined
+        setSubmitting(false)
+        handleOpenChange(false)
+        onGenerated(outcome)
+        return
+      }
+      // 异步生成：进度弹窗 await 预订阅的 waitPromise 取真实 report_id
+      submitAbortRef.current = undefined
+      setSubmitting(false)
+      handleOpenChange(false)
+      onGenerated({ ...outcome, waitPromise, waitAbort: () => controller.abort() })
+    } catch (err) {
+      controller.abort()
+      submitAbortRef.current = undefined
+      setSubmitting(false)
+      toast.error(err instanceof Error ? err.message : '生成报告提交失败')
+      return
+    }
   }
 
   return (

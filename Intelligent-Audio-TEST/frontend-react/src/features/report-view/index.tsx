@@ -18,6 +18,7 @@ import { useReportReviews } from '@/application/report-view/useReportReviews'
 import { useReportAnalysis } from '@/application/report-view/use-report-analysis'
 import { useReportShare } from '@/application/report-view/use-report-share'
 import { useReportActions } from '@/application/reports/use-report-actions'
+import { waitForReportGenerated } from '@/application/reports/use-report-compare'
 import { ExportReportDialog } from '@/features/reports/components/modals/export-report-dialog'
 import { PublishReportDialog, RegenerateReportDialog } from '@/features/reports/components/modals/report-confirm-dialogs'
 import { ReportRenameDialog } from '@/features/reports/components/modals/report-rename-dialog'
@@ -111,6 +112,10 @@ export function ReportViewPage() {
   const [regenerateProgressOpen, setRegenerateProgressOpen] = useState(false)
   /** 重新生成进度弹窗按源任务订阅 report_generated（regenerate 异步删旧建新，旧报告 id 不可作进度键） */
   const [regenerateProgressTaskId, setRegenerateProgressTaskId] = useState<number | undefined>(undefined)
+  /** 重新生成 SSE 等待（提交前已订阅，POST 成功后开进度弹窗直接 await；避免 taskId 补订阅的快速失败事件竞态） */
+  const [regenerateWait, setRegenerateWait] = useState<
+    { promise: Promise<number>; abort: () => void } | undefined
+  >(undefined)
   const [renameOpen, setRenameOpen] = useState(false)
   const [activeSection, setActiveSection] = useState('report-overview')
   const [progress, setProgress] = useState(0)
@@ -357,17 +362,49 @@ export function ReportViewPage() {
         report={report}
         onConfirm={(target) => {
           setRegenerateOpen(false)
-          // §4.8 重新生成确认后 → 进度弹窗（报告中心生成/对比路径同款 ReportProgressDialog）；
-          // regenerate 后端异步删旧建新（report_generated 事件回传新报告 id），进度弹窗按源任务等待
-          setRegenerateProgressTaskId(target.task_id)
-          setRegenerateProgressOpen(true)
-          void reportActions.regenerate(target.id)
+          const taskId = target.task_id
+          if (typeof taskId === 'number' && taskId > 0) {
+            // INT-935 返工 P2：regenerate 异步快速失败事件竞态——task_id 来自报告详情，提交前已知，
+            // 先订阅 report_generated、等 SSE open 再 POST（对齐二次对比 onOpen-gate），事件必达
+            const controller = new AbortController()
+            let sseOpened: (() => void) | undefined
+            const sseReady = new Promise<void>((resolve) => {
+              sseOpened = resolve
+            })
+            const waitPromise = waitForReportGenerated(
+              { taskId },
+              { signal: controller.signal, onOpen: () => sseOpened?.() },
+            )
+            // 交接前先挂 no-op catch，避免取消/超时在进度弹窗接管前成为 unhandled rejection
+            void waitPromise.catch(() => undefined)
+            void (async () => {
+              try {
+                // 等 SSE 连接建立（≤2s 兜底）再提交，杜绝 <1s 快速失败事件早于订阅到达的竞态
+                await Promise.race([sseReady, new Promise((r) => setTimeout(r, 2_000))])
+                await reportActions.regenerate(target.id)
+                // POST 成功 → 开进度弹窗 await 预订阅 waitPromise 取新报告 id
+                setRegenerateWait({ promise: waitPromise, abort: () => controller.abort() })
+                setRegenerateProgressTaskId(undefined)
+                setRegenerateProgressOpen(true)
+              } catch (err) {
+                controller.abort()
+                toast.error(err instanceof Error ? err.message : '重新生成报告提交失败')
+              }
+            })()
+          } else {
+            // 无 task_id 兜底（理论上任务型报告必有；防类型漏）：按旧路径直接开弹窗
+            setRegenerateWait(undefined)
+            setRegenerateProgressOpen(true)
+            void reportActions.regenerate(target.id)
+          }
         }}
       />
       <ReportProgressDialog
         open={regenerateProgressOpen}
         onOpenChange={setRegenerateProgressOpen}
         taskId={regenerateProgressTaskId}
+        waitPromise={regenerateWait?.promise}
+        onWaitAbort={regenerateWait?.abort}
         onComplete={(newReportId) => {
           setRegenerateProgressOpen(false)
           void navigate({
