@@ -50,7 +50,11 @@ export function HierarchySection({
             }}
           >
             <SelectTrigger className='w-full justify-between'>
-              <SelectValue placeholder='请选择维度类型' />
+              <SelectValue>
+                {DIMENSION_TYPE_OPTIONS.find(
+                  (o) => o.value === dimensionType
+                )?.label ?? '请选择维度类型'}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {DIMENSION_TYPE_OPTIONS.map((option) => (
@@ -75,7 +79,11 @@ export function HierarchySection({
                 className='w-full justify-between'
                 aria-invalid={Boolean(formState.errors.parentDimensionId)}
               >
-                <SelectValue placeholder='请选择所属主维度' />
+                <SelectValue>
+                  {mainDimensions.find(
+                    (d) => String(d.id) === parentDimensionId
+                  )?.name ?? '请选择所属主维度'}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {mainDimensions.map((dim) => (

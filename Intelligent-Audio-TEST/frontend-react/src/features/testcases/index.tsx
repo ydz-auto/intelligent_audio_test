@@ -7,6 +7,7 @@
  * 接线后替换为 application/testcases mutations + URL 态 useTableUrlState。
  */
 import { Link, useNavigate } from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { FileDown, FileSpreadsheet, FileUp, Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -50,11 +51,16 @@ import {
   CaseConfirmDialog,
   type CaseConfirmState,
 } from '@/features/testcases/modals/case-confirms'
+import {
+  batchTestcaseAction,
+  fetchRefreshTaskStatus,
+} from '@/infrastructure/api/testcases-batch-api'
 
 export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   const { hasPermission } = usePermissions()
   const navigate = useNavigate()
   const algorithmId = useAlgorithmStore((s) => s.algorithmId)
+  const queryClient = useQueryClient()
 
   const [filters, setFilters] = useState<TestCaseListFilters>({})
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -69,6 +75,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   const [batchDialog, setBatchDialog] = useState<{
     kind: 'dimensions' | 'group' | 'tags' | 'params' | 'device' | 'spl' | 'noise'
     count: number
+    ids: string[]
   } | null>(null)
   const [confirm, setConfirm] = useState<CaseConfirmState | null>(null)
 
@@ -160,6 +167,14 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
     })
   }, [])
 
+  /** 批量弹窗关闭后刷新列表（设置成功/取消后均刷新，成本低；INT-710 真实提交后列表可见结果） */
+  useEffect(() => {
+    if (batchDialog === null) return
+    return () => {
+      void queryClient.invalidateQueries({ queryKey: ['testcases'] })
+    }
+  }, [batchDialog, queryClient])
+
   const toggleAll = useCallback((ids: string[], checked: boolean) => {
     setSelected((prev) => {
       const next = new Set(prev)
@@ -223,7 +238,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
       case 'device':
       case 'spl':
       case 'noise':
-        setBatchDialog({ kind: action, count })
+        setBatchDialog({ kind: action, count, ids })
         break
       case 'copy':
         setConfirm({ kind: 'batch-copy', count })
@@ -278,14 +293,58 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
         toast.success('已批量彻底删除')
         break
       case 'auto-name':
-        toast.success('自动生成名称完成')
+        // INT-710：批量自动生成名称走真实 POST /testcases/batch（auto_generate_name）
+        void (async () => {
+          try {
+            await batchTestcaseAction('auto_generate_name', [...selected], {})
+            toast.success('自动生成名称完成')
+            await queryClient.invalidateQueries({ queryKey: ['testcases'] })
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : '自动生成名称失败')
+          }
+        })()
         break
       case 'refresh':
-        toast.success('已提交刷新任务')
+        // INT-710：刷新参考参数走真实 POST /testcases/batch（refresh_reference → 异步任务）
+        void refreshReferenceParams([...selected])
         break
     }
     clearSelection()
     setConfirm(null)
+  }
+
+  /** 刷新参考参数（§5.3.9）：POST /testcases/batch → task_id → 1s 轮询完成统计 */
+  const refreshReferenceParams = async (ids: string[]) => {
+    try {
+      const result = await batchTestcaseAction('refresh_reference', ids, {})
+      if (result.taskId) {
+        void pollRefreshTask(result.taskId)
+        toast.success('已提交刷新任务')
+      } else {
+        toast.success(`已成功刷新 ${ids.length} 个用例的参考参数`)
+      }
+      queryClient.invalidateQueries({ queryKey: ['testcases'] })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '刷新用例参考失败')
+    }
+  }
+
+  const pollRefreshTask = async (taskId: string) => {
+    try {
+      let status = await fetchRefreshTaskStatus(taskId)
+      while (status.status !== 'completed' && status.status !== 'failed') {
+        await new Promise((r) => setTimeout(r, 1000))
+        status = await fetchRefreshTaskStatus(taskId)
+      }
+      if (status.status === 'completed') {
+        toast.success(`用例参考更新完成！成功刷新: ${status.updated} 个｜失败: ${status.failed} 个`)
+      } else {
+        toast.error('用例参考更新任务执行失败，请稍后重试')
+      }
+      queryClient.invalidateQueries({ queryKey: ['testcases'] })
+    } catch {
+      // 轮询失败不阻断（后台任务仍可能完成）
+    }
   }
 
   const openCreate = () => {
@@ -298,6 +357,12 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
     () => (filters.trash ? items.filter((c) => c.deleted).length : 0),
     [filters.trash, items]
   )
+
+  /** 批量设置评估维度透传的 testType（取第一个选中用例；INT-486 用例不分 e2e/api 口径前对齐 Vue） */
+  const selectedTestType = useMemo(() => {
+    const first = items.find((c) => selected.has(c.id))
+    return first?.type ?? null
+  }, [items, selected])
 
   return (
     <>
@@ -463,8 +528,10 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
           open
           onOpenChange={(open) => !open && setBatchDialog(null)}
           count={batchDialog.count}
+          ids={batchDialog.ids}
           dimensions={allDimensions}
           algorithmType={algorithmId}
+          testType={selectedTestType}
         />
       )}
       {batchDialog?.kind === 'group' && (
@@ -488,6 +555,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
           open
           onOpenChange={(open) => !open && setBatchDialog(null)}
           count={batchDialog.count}
+          ids={batchDialog.ids}
         />
       )}
       {batchDialog?.kind === 'device' && (
@@ -495,6 +563,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
           open
           onOpenChange={(open) => !open && setBatchDialog(null)}
           count={batchDialog.count}
+          ids={batchDialog.ids}
         />
       )}
       {batchDialog?.kind === 'spl' && (
@@ -502,6 +571,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
           open
           onOpenChange={(open) => !open && setBatchDialog(null)}
           count={batchDialog.count}
+          ids={batchDialog.ids}
         />
       )}
       {batchDialog?.kind === 'noise' && (
@@ -509,6 +579,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
           open
           onOpenChange={(open) => !open && setBatchDialog(null)}
           count={batchDialog.count}
+          ids={batchDialog.ids}
         />
       )}
       <CaseConfirmDialog

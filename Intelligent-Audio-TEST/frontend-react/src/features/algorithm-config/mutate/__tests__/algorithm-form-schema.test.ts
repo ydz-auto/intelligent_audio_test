@@ -45,11 +45,11 @@ describe('algorithmFormSchema', () => {
     expect(invalid.success).toBe(false)
   })
 
-  it('显示名称与所属分组必填', () => {
+  it('显示名称必填；所属分组可空（V9.7.10 行为：未分组算法合法）', () => {
     const noName = algorithmFormSchema.safeParse({ ...validBase(), name: '' })
     expect(noName.success).toBe(false)
     const noGroup = algorithmFormSchema.safeParse({ ...validBase(), groupId: '' })
-    expect(noGroup.success).toBe(false)
+    expect(noGroup.success).toBe(true)
   })
 
   it('同页签参数代码重复报「参数代码重复」（§6.3 行级唯一）', () => {

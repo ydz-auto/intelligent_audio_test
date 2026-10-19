@@ -1,13 +1,20 @@
 /**
  * 关联用例 / 关联设备（09_任务域.md §4.4，Card 内 Tabs）。
  * 页签「关联用例」（默认）/「关联{设备|API}」；工具行 = 视图切换（平铺/标签/分组）+ 状态筛选。
- * 平铺态 DataTable 列：用例名称/执行状态/评估状态/耗时/轮次/操作（移除用例）；
+ * 平铺态 DataTable 列：用例名称/执行状态/评估状态/耗时/轮次/操作（移除用例）。
+ * 19_人工审核与AI复核交互设计.md §3 落位（INT-795）：
+ * - 已复核用例行执行/评估徽章旁叠加「人工复核」Badge（TaskCaseBrief.reviewed 驱动）；
+ * - 行尾「人工复核」钮（终态任务 + task.result.review）→ §3.2 单条复核弹窗（取该用例结果行）；
+ * - 行尾「AI 复核」钮（evaluation:execute）→ AI 复核状态机弹窗（§2.1/§5.2）；
+ * - 勾选多行 → 底部「批量复核」浮条（§3.3，同一改判字段应用到全部勾选结果）；
+ * - 工具行「查看复核历史」link + 头行「已复核 {n} 条」计数（TaskDetailData.review_count 驱动）→ §3.4 抽屉。
  * 标签/分组态用 Collapsible 组头（名称 + 计数）行。
  */
-import { Trash2 } from 'lucide-react'
+import { ClipboardCheck, History, Sparkles, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
+import { usePermissions } from '@/application/hooks/use-permissions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -26,10 +33,20 @@ import {
 } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
+import type { CaseResultForReview } from '@/domain/models/review'
+import type { TaskCaseBrief, TaskDetailData } from '@/domain/models/task'
+import { fetchCaseResults } from '@/infrastructure/api/reviewApi'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
-import type { TaskDetailData } from '@/domain/models/task'
 import { formatDuration } from '@/features/tasks/constants'
 import { Progress } from '@/features/tasks/components/ui/progress'
+import { AiReviewDialog } from '@/features/tasks/components/ai-review-dialog'
+import { ManualReviewBatchBar } from '@/features/tasks/components/manual-review-batch-bar'
+import { ManualReviewDialog } from '@/features/tasks/components/manual-review-dialog'
+import { ReviewBadge } from '@/features/tasks/components/review-badge'
+import {
+  buildCaseNameMap,
+  ReviewHistoryDrawer,
+} from '@/features/tasks/components/review-history-drawer'
 
 type ViewMode = 'flat' | 'tag' | 'group'
 const VIEW_OPTIONS: Array<{ value: ViewMode; label: string }> = [
@@ -68,6 +85,18 @@ function CaseStatusBadge({ status }: { status: string | null }) {
   return <StatusBadge label={meta.label} variant={meta.variant} />
 }
 
+/** 终态任务（review_service TaskStatus.is_terminal 口径：completed/failed/stopped/skipped） */
+const TERMINAL_STATUSES = ['completed', 'failed', 'stopped', 'skipped']
+
+interface ReviewTarget {
+  caseId: string
+  caseName?: string
+  results: CaseResultForReview[]
+  evaluationStatus: string | null
+  caseNameByResultId?: Record<number, string>
+  preset?: { evaluationStatus?: string; comment?: string }
+}
+
 export function CaseAssociation({
   detail,
   onCaseSelect,
@@ -76,10 +105,15 @@ export function CaseAssociation({
   /** 用例行点击回调（10_测试执行.md §3.7：步骤四关联用例行点击 → 用例详情弹窗 §5.2） */
   onCaseSelect?: (caseId: string) => void
 }) {
+  const { hasPermission, hasAnyPermission } = usePermissions()
   const [tab, setTab] = useState('cases')
   const [view, setView] = useState<ViewMode>('flat')
   const [status, setStatus] = useState('all')
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [reviewTarget, setReviewTarget] = useState<ReviewTarget | null>(null)
+  const [aiReviewTarget, setAiReviewTarget] = useState<ReviewTarget | null>(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [reviewLoading, setReviewLoading] = useState(false)
 
   const cases = detail.cases ?? []
   const filtered = cases.filter(
@@ -91,6 +125,10 @@ export function CaseAssociation({
   )
 
   const resourceLabel = detail.device_types.includes('http_api') ? '关联API' : '关联设备'
+  const isTerminal = TERMINAL_STATUSES.includes(detail.status)
+  // 人工复核提交权限（task.result.review）；AI 复核发起/查看结论 evaluation:execute（§6）
+  const canReview = hasPermission('task.result.review')
+  const canAiReview = hasAnyPermission(['task.result.review', 'evaluation:execute'])
 
   // 标签分组（按用例 tags 首标签粗分）
   const tagGroups = filtered.reduce<Record<string, typeof filtered>>((acc, c) => {
@@ -107,6 +145,104 @@ export function CaseAssociation({
       else next.delete(caseId)
       return next
     })
+  }
+
+  /** 单条复核入口：取该用例结果行 → §3.2 弹窗（真实结果数据，result_ids 逐条留痕） */
+  const openCaseReview = async (c: TaskCaseBrief) => {
+    setReviewLoading(true)
+    try {
+      const res = await fetchCaseResults(detail.id, c.case_id)
+      // 无执行结果的用例不打开可提交的复核弹窗（旧 Vue 基线 TestCaseDetailModal 同口径收口，INT-795 P2-1）
+      if (res.results.length === 0) {
+        toast.error('该用例无执行结果，无法复核')
+        return
+      }
+      setReviewTarget({
+        caseId: c.case_id,
+        caseName: res.caseName || c.name,
+        results: res.results,
+        evaluationStatus: c.evaluation_status,
+      })
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? `用例结果加载失败：${err.message}` : '用例结果加载失败'
+      )
+    } finally {
+      setReviewLoading(false)
+    }
+  }
+
+  /** AI 复核入口：取该用例结果行 → AI 复核状态机弹窗 */
+  const openAiReview = async (c: TaskCaseBrief) => {
+    setReviewLoading(true)
+    try {
+      const res = await fetchCaseResults(detail.id, c.case_id)
+      // 无执行结果不发起 AI 复核（§5.2 可发起对象须有结果；INT-795 P2-1）
+      if (res.results.length === 0) {
+        toast.error('该用例无执行结果，无法复核')
+        return
+      }
+      setAiReviewTarget({
+        caseId: c.case_id,
+        caseName: res.caseName || c.name,
+        results: res.results,
+        evaluationStatus: c.evaluation_status,
+      })
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? `用例结果加载失败：${err.message}` : '用例结果加载失败'
+      )
+    } finally {
+      setReviewLoading(false)
+    }
+  }
+
+  /** 批量复核入口（勾选多行 → 底部浮条）：并行取各用例结果行聚合 → §3.3 批量弹窗 */
+  const openBatchReview = async () => {
+    setReviewLoading(true)
+    try {
+      const entries = await Promise.all(
+        [...selected].map(async (caseId) => {
+          const c = cases.find((x) => x.case_id === caseId)
+          const res = await fetchCaseResults(detail.id, caseId)
+          return {
+            caseName: c?.name ?? res.caseName,
+            evaluationStatus: c?.evaluation_status ?? null,
+            results: res.results,
+          }
+        })
+      )
+      const caseNameByResultId: Record<number, string> = {}
+      for (const e of entries) {
+        for (const r of e.results) caseNameByResultId[r.id] = e.caseName
+      }
+      const results = entries.flatMap((e) => e.results)
+      // 勾选用例均无执行结果时不打开可提交的批量复核弹窗（INT-795 P2-1）
+      if (results.length === 0) {
+        toast.error('勾选用例均无执行结果，无法复核')
+        return
+      }
+      setReviewTarget({
+        caseId: '',
+        caseName: undefined,
+        results,
+        evaluationStatus: null,
+        caseNameByResultId,
+      })
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? `用例结果加载失败：${err.message}` : '用例结果加载失败'
+      )
+    } finally {
+      setReviewLoading(false)
+    }
+  }
+
+  /** AI 采纳 → 转人工复核弹窗（预填 AI 判定的评估状态 + 备注=AI 理由，§5.2） */
+  const handleAiAdopt = (preset: { evaluationStatus?: string; comment: string }) => {
+    if (!aiReviewTarget) return
+    setReviewTarget({ ...aiReviewTarget, preset })
+    setAiReviewTarget(null)
   }
 
   return (
@@ -145,6 +281,28 @@ export function CaseAssociation({
                   ))}
                 </SelectContent>
               </Select>
+              {/* INT-795：任务复核计数 + 查看复核历史（task:read；review_count 驱动，§3.5） */}
+              {detail.review_count > 0 && (
+                <>
+                  <Badge
+                    variant='secondary'
+                    className='h-6 gap-1 rounded-md px-2 text-[11px]'
+                    data-slot='review-count-badge'
+                  >
+                    <ClipboardCheck aria-hidden='true' className='size-3' />
+                    已复核 {detail.review_count} 条
+                  </Badge>
+                  <Button
+                    variant='ghost'
+                    size='sm'
+                    className='text-muted-foreground h-7 gap-1 text-xs'
+                    onClick={() => setHistoryOpen(true)}
+                  >
+                    <History aria-hidden='true' className='size-3.5' />
+                    查看复核历史
+                  </Button>
+                </>
+              )}
             </>
           )}
         </div>
@@ -191,7 +349,7 @@ export function CaseAssociation({
           <p className='text-muted-foreground py-6 text-center text-sm'>暂无关联用例</p>
         ) : view === 'flat' ? (
           <div className='overflow-x-auto'>
-            <table className='w-full min-w-[680px] text-[13px]'>
+            <table className='w-full min-w-[720px] text-[13px]'>
               <thead>
                 <tr className='bg-[var(--table-header)] text-xs'>
                   <th className='w-11 px-3 py-2'>
@@ -208,7 +366,7 @@ export function CaseAssociation({
                   <th className='px-3 py-2 text-left font-medium'>评估状态</th>
                   <th className='px-3 py-2 text-left font-medium'>耗时</th>
                   <th className='px-3 py-2 text-left font-medium'>轮次</th>
-                  <th className='px-3 py-2 text-right font-medium'>操作</th>
+                  <th className='min-w-28 px-3 py-2 text-right font-medium'>操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -239,7 +397,10 @@ export function CaseAssociation({
                       </span>
                     </td>
                     <td className='px-3 py-2'>
-                      <CaseStatusBadge status={c.execution_status} />
+                      <div className='flex flex-wrap items-center gap-1'>
+                        <CaseStatusBadge status={c.execution_status} />
+                        {c.reviewed && <ReviewBadge />}
+                      </div>
                     </td>
                     <td className='px-3 py-2'>
                       <CaseStatusBadge status={c.evaluation_status} />
@@ -254,22 +415,52 @@ export function CaseAssociation({
                       <Progress value={c.duration != null ? 50 : 0} size='xs' className='mt-1' />
                     </td>
                     <td className='px-3 py-2 text-right'>
-                      <Button
-                        variant='ghost'
-                        size='icon-sm'
-                        className='text-destructive hover:text-destructive'
-                        aria-label='移除用例'
-                        onClick={() => {
-                          toast.success('已移除用例（末例二次确认见 §5.9）')
-                          setSelected((prev) => {
-                            const next = new Set(prev)
-                            next.delete(c.case_id)
-                            return next
-                          })
-                        }}
-                      >
-                        <Trash2 aria-hidden='true' />
-                      </Button>
+                      <div className='flex items-center justify-end gap-1'>
+                        {/* INT-795：人工复核入口（终态任务 + task.result.review；§3.1） */}
+                        {canReview && isTerminal && (
+                          <Button
+                            variant='ghost'
+                            size='sm'
+                            className='h-6 gap-1 px-1.5 text-xs'
+                            disabled={reviewLoading}
+                            onClick={() => openCaseReview(c)}
+                            title='人工复核该用例结果'
+                          >
+                            <ClipboardCheck aria-hidden='true' className='size-3' />
+                            人工复核
+                          </Button>
+                        )}
+                        {/* INT-795：AI 复核入口（evaluation:execute；§5.2 待后端立项） */}
+                        {canAiReview && isTerminal && (
+                          <Button
+                            variant='ghost'
+                            size='sm'
+                            className='text-muted-foreground h-6 gap-1 px-1.5 text-xs'
+                            disabled={reviewLoading}
+                            onClick={() => openAiReview(c)}
+                            title='AI 复核该用例结果（建议层，不直接修改统计）'
+                          >
+                            <Sparkles aria-hidden='true' className='size-3' />
+                            AI 复核
+                          </Button>
+                        )}
+                        <Button
+                          variant='ghost'
+                          size='icon-sm'
+                          className='text-destructive hover:text-destructive'
+                          aria-label='移除用例'
+                          onClick={() => {
+                            toast.success('已移除用例（末例二次确认见 §5.9）')
+                            setSelected((prev) => {
+                              const next = new Set(prev)
+                              next.delete(c.case_id)
+                              return next
+                            })
+                          }}
+                        >
+                          <Trash2 aria-hidden='true' />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -290,6 +481,7 @@ export function CaseAssociation({
                       <div key={c.case_id} className='flex items-center gap-2 py-1.5 text-xs'>
                         <span className='min-w-0 flex-1 truncate'>{c.name}</span>
                         <CaseStatusBadge status={c.execution_status} />
+                        {c.reviewed && <ReviewBadge />}
                       </div>
                     ))}
                   </div>
@@ -299,6 +491,52 @@ export function CaseAssociation({
           </div>
         )}
       </CardContent>
+
+      {/* INT-795：批量复核浮条（勾选多行 → §3.3） */}
+      <ManualReviewBatchBar
+        selectedCount={selected.size}
+        onClear={() => setSelected(new Set())}
+        onBatchReview={() => void openBatchReview()}
+        disabled={!canReview || !isTerminal || reviewLoading}
+      />
+
+      {/* §3.2/§3.3 复核弹窗（单条=results 长度 1，批量=results[n]；AI 采纳时 preset 预填） */}
+      <ManualReviewDialog
+        open={reviewTarget != null}
+        onOpenChange={(next) => {
+          if (!next) setReviewTarget(null)
+        }}
+        taskId={detail.id}
+        taskName={detail.name}
+        caseName={reviewTarget?.caseName}
+        caseNameByResultId={reviewTarget?.caseNameByResultId}
+        results={reviewTarget?.results ?? []}
+        evaluationStatus={reviewTarget?.evaluationStatus}
+        preset={reviewTarget?.preset}
+      />
+
+      {/* §5.2 AI 复核弹窗（状态机：待发起→执行中→已完成→已采纳/已驳回/待查） */}
+      <AiReviewDialog
+        open={aiReviewTarget != null}
+        onOpenChange={(next) => {
+          if (!next) setAiReviewTarget(null)
+        }}
+        taskId={detail.id}
+        caseId={aiReviewTarget?.caseId ?? ''}
+        caseName={aiReviewTarget?.caseName}
+        results={aiReviewTarget?.results ?? []}
+        evaluationStatus={aiReviewTarget?.evaluationStatus}
+        onAdopt={handleAiAdopt}
+      />
+
+      {/* §3.4 任务复核历史抽屉 */}
+      <ReviewHistoryDrawer
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        taskId={detail.id}
+        taskName={detail.name}
+        caseNameMap={buildCaseNameMap(cases)}
+      />
     </Card>
   )
 }

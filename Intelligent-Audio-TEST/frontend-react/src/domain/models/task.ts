@@ -119,6 +119,8 @@ export interface TaskCaseBrief {
   group_name: string | null
   tags: string[]
   evaluation_dimensions: Array<{ id: number | string; name: string }>
+  /** INT-734：该用例下是否存在人工复核结果（驱动「人工复核」Badge 显隐，19 规范 §3.5） */
+  reviewed: boolean
 }
 
 /** 任务详情（task.py TaskDetailData） */
@@ -152,7 +154,7 @@ export interface TaskDetailData {
   /** 关联资源摘要（详情卡信息格补充，mock 口径派生） */
   api_count: number | null
   concurrency: number | null
-  /** 人工复核结果条数（task.py TaskDetailData.review_count；>0 时重执行/重评估走硬确认层，§5.7） */
+  /** 任务级已复核结果计数（INT-734：驱动任务头/统计复核徽章，19 规范 §3.5；>0 时重执行/重评估走硬确认层，§5.7） */
   review_count: number
 }
 

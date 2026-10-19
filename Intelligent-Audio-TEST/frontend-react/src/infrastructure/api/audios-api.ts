@@ -290,14 +290,20 @@ export type BatchActionResult = {
 
 export async function batchActionAudios(
   action: AudioBatchAction,
-  ids: number[]
+  ids: number[],
+  tags?: string[]
 ): Promise<BatchActionResult> {
   // unwrapResponse: false 保留信封 message（delete/tags 的引用跳过明细以 message 呈现，
   // 后端不回逐项计数）；错误信封仍由 client 在非 2xx 时抛 ApiError。
   const envelope = await request<{
     message?: string
     data?: { zip_base64?: string; filename?: string }
-  }>('POST', '/audios/batch-action', { action, audio_ids: ids }, { unwrapResponse: false })
+  }>(
+    'POST',
+    '/audios/batch-action',
+    tags && tags.length > 0 ? { action, audio_ids: ids, tags } : { action, audio_ids: ids },
+    { unwrapResponse: false }
+  )
   return {
     action,
     total: ids.length,

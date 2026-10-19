@@ -58,8 +58,8 @@ export type ReferenceParam = {
   annotationCode: string | null
   annotationFormat: string | null
   fieldPath: string | null
-  /** concat / collect / first */
-  mergeMode: 'concat' | 'collect' | 'first' | null
+  /** join / collect / first（V9.7.10/V9.7.31 Vue 实测 merge_mode 取值） */
+  mergeMode: 'join' | 'collect' | 'first' | null
   helpText: string | null
 }
 

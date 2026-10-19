@@ -110,7 +110,9 @@ export function AudioUrlImportDialog(props: AudioUrlImportDialogProps) {
               onValueChange={(value) => setAudioType(value ?? 'dry')}
             >
               <SelectTrigger id='url-import-type' size='sm' className='w-full'>
-                <SelectValue />
+                <SelectValue placeholder='选择音频类型'>
+                  {AUDIO_TYPE_OPTIONS.find((o) => o.value === audioType)?.label ?? ''}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {AUDIO_TYPE_OPTIONS.map((option) => (

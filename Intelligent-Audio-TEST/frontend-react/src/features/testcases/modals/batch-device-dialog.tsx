@@ -1,12 +1,13 @@
 /**
- * 批量设置播放设备弹窗（11_用例域.md §5.3.2，Dialog sm:max-w-lg）。
+ * 批量设置播放设备弹窗（11_用例域.md §5.3.2，Dialog sm:max-w-lg；INT-710 真实数据接线）。
  * 「重新扫描」ghost 钮（扫描中 Spinner「正在扫描可用设备...」，失败红字）+ 播放设备* Select
- * （「{设备名} (通道 {n}) [干声/噪声]」，空态「暂无可用的播放设备」）+ 轮次范围三档
- * （所有轮次统一/指定轮次统一/逐轮设置每轮可不同，§5.3.5 口径）+ 应用层级多选。
- * mock 扫描演示：每次重扫在成功/失败间轮换，失败态红字 + 设备清空（空态可走查）；
- * 数据契约 deviceId/roundMode/rounds/appliedLayers 留接线批次。
+ * （真实 GET /playback-devices「{设备名} (通道 {n}) [干声/噪声]」，空态「暂无可用的播放设备」，
+ * POST /playback-devices/scan 重新扫描）+ 轮次范围三档（§3.5 口径）+ 应用层级多选。
+ * 提交走 POST /testcases/batch（update_playback_devices）：
+ * playback_devices.deviceId + targets + round_mode/round_numbers。
  */
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -27,20 +28,22 @@ import {
 } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
 import {
+  fetchRealPlaybackDevices,
+  scanRealPlaybackDevices,
+} from '@/infrastructure/api/playback-api'
+import {
+  batchTestcaseAction,
+  type TestcaseBatchPayload,
+  type TestcaseRoundMode,
+} from '@/infrastructure/api/testcases-batch-api'
+import {
+  applyLayerToTargets,
   ApplyLayerField,
   createRoundScope,
   RoundScopeThreeField,
   usePerRoundValue,
+  type ApplyLayerId,
 } from '@/features/testcases/modals/batch-shared'
-
-/** mock 可用播放设备（§5.3.2「{设备名} (通道 {n}) [干声/噪声]」口径） */
-const MOCK_SCAN_DEVICES = [
-  { id: 'dev-1', name: '音频接口 A', channel: 1, type: '干声' },
-  { id: 'dev-2', name: '音频接口 B', channel: 2, type: '噪声' },
-  { id: 'dev-3', name: '功放 左声道', channel: 1, type: '干声' },
-  { id: 'dev-4', name: '功放 右声道', channel: 2, type: '噪声' },
-  { id: 'dev-5', name: '实验室喇叭组', channel: 3, type: '干声' },
-]
 
 type ScanState = 'ready' | 'scanning' | 'error'
 
@@ -48,38 +51,109 @@ export function BatchDeviceDialog({
   open,
   onOpenChange,
   count,
+  ids,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   count: number
+  ids: string[]
 }) {
+  const queryClient = useQueryClient()
   const [scanState, setScanState] = useState<ScanState>('ready')
-  const [scanRound, setScanRound] = useState(0)
-  const timerRef = useRef<number | null>(null)
+  const [scanError, setScanError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const [scope, setScope] = useState(createRoundScope())
-  const { current: deviceId, setCurrent: setDeviceId } = usePerRoundValue('', scope)
+  const [layers, setLayers] = useState<ApplyLayerId[]>([])
+  const {
+    current: deviceId,
+    setCurrent: setDeviceId,
+    perRound,
+  } = usePerRoundValue('', scope)
 
-  useEffect(() => () => {
-    if (timerRef.current != null) window.clearTimeout(timerRef.current)
-  }, [])
+  const devicesQuery = useQuery({
+    queryKey: ['playback-devices', 'real'],
+    queryFn: fetchRealPlaybackDevices,
+    staleTime: 30_000,
+    enabled: open,
+  })
+  const devices = devicesQuery.data ?? []
 
-  const rescan = () => {
-    if (scanState === 'scanning') return
-    const round = scanRound + 1
-    setScanRound(round)
-    setScanState('scanning')
-    setDeviceId('')
-    timerRef.current = window.setTimeout(() => {
-      // mock：单数重扫走失败态（红字 + 空设备表），双数恢复成功态
-      if (round % 2 === 1) {
-        setScanState('error')
-      } else {
-        setScanState('ready')
+  const scanMutation = useMutation({
+    mutationFn: scanRealPlaybackDevices,
+    onMutate: () => {
+      setScanState('scanning')
+      setScanError('')
+      setDeviceId('')
+    },
+    onSuccess: (scanned) => {
+      setScanState('ready')
+      // 扫描到的设备并入列表（照 Vue：按 name|channelIndex 去重追加）
+      const existingKeys = new Set(
+        devices.map((d) => `${d.name}|${d.channelIndex}`)
+      )
+      const newDevices = scanned.filter(
+        (d) => !existingKeys.has(`${d.name}|${d.channelIndex}`)
+      )
+      if (newDevices.length > 0) {
+        queryClient.setQueryData<typeof devices>(
+          ['playback-devices', 'real'],
+          (prev) => [...(prev ?? []), ...newDevices]
+        )
       }
-    }, 1000)
+      toast.success('扫描完成')
+    },
+    onError: () => {
+      setScanState('error')
+      setScanError('扫描失败：无法连接设备管理器，请确认实验室设备在线后重试')
+    },
+  })
+
+  const handleSubmit = async () => {
+    const targets = applyLayerToTargets(layers)
+    let payload: TestcaseBatchPayload
+    if (scope.mode === 'per_round') {
+      // 逐轮设置：round_values = {轮次号: {deviceId, targets}}，仅含用户实际编辑过的轮次
+      const roundValues: Record<string, unknown> = {}
+      for (const [roundKey, roundDeviceId] of Object.entries(perRound)) {
+        if (roundDeviceId === '') continue
+        const numeric = Number(roundDeviceId)
+        if (Number.isNaN(numeric)) continue
+        roundValues[roundKey] = { deviceId: numeric, targets }
+      }
+      if (Object.keys(roundValues).length === 0) {
+        toast.error('请至少为一个轮次选择播放设备')
+        return
+      }
+      payload = { roundMode: 'per_round', roundNumbers: [], roundValues }
+    } else {
+      if (!deviceId) return
+      payload = {
+        playbackDevices: { deviceId: Number(deviceId) },
+        targets,
+        roundMode: scope.mode as TestcaseRoundMode,
+        roundNumbers:
+          scope.mode === 'specific' ? scope.specificRounds : undefined,
+      }
+    }
+    setSubmitting(true)
+    try {
+      await batchTestcaseAction('update_playback_devices', ids, payload)
+      toast.success(`批量操作执行成功（更新 ${count} 个）`)
+      onOpenChange(false)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '批量设置播放设备失败')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
-  const available = scanState === 'ready'
+  /** 逐轮模式：任一编辑过的轮次选了设备即可提交 */
+  const canSubmit =
+    scope.mode === 'per_round'
+      ? Object.values(perRound).some((v) => v !== '')
+      : Boolean(deviceId)
+
+  const available = scanState !== 'error'
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -99,21 +173,38 @@ export function BatchDeviceDialog({
             <Select
               value={deviceId}
               onValueChange={(v) => setDeviceId(v ?? '')}
-              disabled={!available}
+              disabled={!available || devices.length === 0}
             >
               <SelectTrigger size='sm' className='h-8 w-full'>
-                <SelectValue placeholder='暂无可用的播放设备' />
+                <SelectValue placeholder='请选择设备' />
               </SelectTrigger>
               <SelectContent>
-                {MOCK_SCAN_DEVICES.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.name} (通道 {d.channel}) [{d.type}]
+                {devices.map((d) => (
+                  <SelectItem key={d.id} value={String(d.id)}>
+                    {d.name} (通道 {d.channelIndex ?? '—'}) [{d.deviceType === 'dry' ? '干声' : d.deviceType === 'noise' ? '噪声' : d.deviceType ?? '未知'}]
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {devicesQuery.isLoading ? (
+              <p className='text-muted-foreground/70 inline-flex items-center gap-1.5 pt-1 text-xs'>
+                <Spinner className='size-3.5' />
+                正在加载播放设备...
+              </p>
+            ) : devices.length === 0 && scanState !== 'scanning' ? (
+              <p className='text-muted-foreground/70 pt-1 text-xs'>
+                暂无可用的播放设备
+              </p>
+            ) : null}
             <div className='flex items-center gap-3'>
-              <Button type='button' variant='ghost' size='sm' className='h-7' onClick={rescan}>
+              <Button
+                type='button'
+                variant='ghost'
+                size='sm'
+                className='h-7'
+                onClick={() => scanMutation.mutate()}
+                disabled={scanMutation.isPending}
+              >
                 重新扫描
               </Button>
               {scanState === 'scanning' && (
@@ -123,9 +214,7 @@ export function BatchDeviceDialog({
                 </span>
               )}
               {scanState === 'error' && (
-                <span className='text-destructive text-xs'>
-                  扫描失败：无法连接设备管理器，请确认实验室设备在线后重试
-                </span>
+                <span className='text-destructive text-xs'>{scanError}</span>
               )}
             </div>
           </div>
@@ -135,19 +224,19 @@ export function BatchDeviceDialog({
             value={scope}
             onChange={setScope}
           />
-          <ApplyLayerField />
+          <ApplyLayerField
+            value={layers}
+            onChange={setLayers}
+            hint='可多选；留空时默认应用到目标人音频'
+          />
         </div>
 
         <DialogFooter>
-          <Button variant='outline' onClick={() => onOpenChange(false)}>
+          <Button variant='outline' onClick={() => onOpenChange(false)} disabled={submitting}>
             取消
           </Button>
-          <Button
-            onClick={() => {
-              toast.success(`批量操作执行成功（更新 ${count} 个）`)
-              onOpenChange(false)
-            }}
-          >
+          <Button onClick={() => void handleSubmit()} disabled={submitting || !canSubmit}>
+            {submitting && <Spinner className='size-3.5' />}
             确定
           </Button>
         </DialogFooter>

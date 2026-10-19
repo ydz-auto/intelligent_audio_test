@@ -6,6 +6,7 @@
 import type {
   ReportCaseItem,
   ReportMetricConfig,
+  ReportMetricValue,
   MetricMatrix,
   ReportSummary,
 } from '@/domain/models/report'
@@ -131,17 +132,46 @@ export function buildCategoryMatrixFromSummary(
   _allMetrics: ReportMetricConfig[]
 ): MetricMatrix {
   const matrix: MetricMatrix = {}
+  // 已知分组（case_categories 域模型 {category_name, category_id}；对齐 Vue extractInitialMetricData）
+  const knownCategories = (summary.case_categories ?? [])
+    .map((c) => c.category_name || c.category_id || '')
+    .filter(Boolean)
+
+  const fillRow = (
+    row: Record<string, unknown>,
+    resource: string,
+    metrics: ReportMetricValue[] | undefined,
+    rawValues: Record<string, number[]>
+  ) => {
+    const existing = row[resource]
+    const col: Record<string, unknown> =
+      typeof existing === 'object' && existing !== null
+        ? (existing as Record<string, unknown>)
+        : {}
+    row[resource] = col
+    for (const m of metrics ?? []) {
+      col[m.metric] = m.value
+      const raw = rawValues[m.metric] ?? []
+      if (raw.length > 0) col[`${m.metric}_raw`] = raw
+    }
+  }
+
   for (const group of summary.metric_data) {
-    if (!group.categories?.length) continue
+    if (!group) continue
     const resource = group.resource
     const rawValues = rawDataForResource(summary, resource)
-    for (const cat of group.categories) {
-      const row = matrix[cat.categoryName] ?? (matrix[cat.categoryName] = {})
-      const col = row[resource] ?? (row[resource] = {})
-      for (const m of cat.metrics) {
-        col[m.metric] = m.value
-        const raw = rawValues[m.metric] ?? []
-        if (raw.length > 0) col[`${m.metric}_raw`] = raw
+    if (group.categories?.length) {
+      for (const cat of group.categories) {
+        const row = matrix[cat.categoryName] ?? (matrix[cat.categoryName] = {})
+        fillRow(row, resource, cat.metrics, rawValues)
+      }
+    } else {
+      // 扁平行（resource 级全局平均，无 category 维度）：复制到所有已知分组，
+      // 保证按已知分组查找能命中（对齐 Vue extractInitialMetricData 兜底行为）
+      const categories = knownCategories.length > 0 ? knownCategories : ['未分类']
+      for (const category of categories) {
+        const row = matrix[category] ?? (matrix[category] = {})
+        fillRow(row, resource, group.metrics, rawValues)
       }
     }
   }

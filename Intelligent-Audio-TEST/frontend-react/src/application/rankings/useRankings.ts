@@ -28,6 +28,8 @@ export interface RankingQueryResult {
   isLoading: boolean
   isError: boolean
   errorMessage: string | null
+  /** 手动重试（错误态「重试」按钮，对齐旧 Vue store.load()） */
+  refetch: () => void
 }
 
 export function useRankings(
@@ -66,6 +68,7 @@ export function useRankings(
     isLoading: query.isLoading && !query.data,
     isError: query.isError,
     errorMessage: resolveErrorMessage(query.error),
+    refetch: () => void query.refetch(),
   }
 }
 

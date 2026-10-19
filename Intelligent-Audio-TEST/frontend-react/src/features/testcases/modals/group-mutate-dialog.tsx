@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Spinner } from '@/components/ui/spinner'
 import {
   Select,
   SelectContent,
@@ -25,7 +26,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { MOCK_ALGORITHMS } from '@/domain/models/algorithm'
+import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 
 export function GroupMutateDialog({
@@ -39,6 +40,8 @@ export function GroupMutateDialog({
 }) {
   const isEdit = group != null
   const [name, setName] = useState(group?.name ?? '')
+  const { options: algorithmOptions, isLoading: loadingAlgorithms } =
+    useAlgorithmOptions()
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -71,18 +74,25 @@ export function GroupMutateDialog({
           </div>
           <div className='space-y-1.5'>
             <Label>算法类型</Label>
-            <Select defaultValue={group?.algorithmType ?? ''}>
-              <SelectTrigger size='sm' className='h-8 w-full'>
-                <SelectValue placeholder='全部算法' />
-              </SelectTrigger>
-              <SelectContent>
-                {MOCK_ALGORITHMS.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {loadingAlgorithms ? (
+              <div className='flex h-8 w-full items-center gap-2 rounded-md border px-3 text-sm text-muted-foreground'>
+                <Spinner className='size-3.5' />
+                加载算法列表...
+              </div>
+            ) : (
+              <Select defaultValue={group?.algorithmType ?? ''}>
+                <SelectTrigger size='sm' className='h-8 w-full'>
+                  <SelectValue placeholder='全部算法' />
+                </SelectTrigger>
+                <SelectContent>
+                  {algorithmOptions.map((a) => (
+                    <SelectItem key={a.value} value={a.value}>
+                      {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
         </div>
         <DialogFooter>

@@ -1,7 +1,7 @@
 /**
  * 分页脚注（09_任务域.md §3.11，PageFooterPortal 落 SectionPageLayout 页脚）。
  * 「共 {n} 条」+ 每页 Select（[10,20,30,40,50,100]）+ 首页/上一页/页码/下一页/末页。
- * mock 态为演示控件（接线后 URL 化：page/pageSize 进 search）。
+ * 受控组件：page/pageSize 由页面态持有（接 useTasksList queryKey），切换即重新查询。
  */
 import {
   ChevronLeft,
@@ -9,7 +9,6 @@ import {
   ChevronsLeft,
   ChevronsRight,
 } from 'lucide-react'
-import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -24,15 +23,23 @@ import { cn } from '@/lib/utils'
 
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50, 100]
 
-export function TasksPagination({ total }: { total: number }) {
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
-
+export function TasksPagination({
+  total,
+  page,
+  pageSize,
+  onPageChange,
+  onPageSizeChange,
+}: {
+  total: number
+  page: number
+  pageSize: number
+  onPageChange: (page: number) => void
+  onPageSizeChange: (pageSize: number) => void
+}) {
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
   const from = total === 0 ? 0 : (page - 1) * pageSize + 1
   const to = Math.min(page * pageSize, total)
-
-  const goto = (next: number) => setPage(Math.min(pageCount, Math.max(1, next)))
+  const safePage = Math.min(Math.max(1, page), pageCount)
 
   return (
     <PageFooterPortal>
@@ -46,8 +53,8 @@ export function TasksPagination({ total }: { total: number }) {
             <Select
               value={String(pageSize)}
               onValueChange={(v) => {
-                setPageSize(Number(v))
-                setPage(1)
+                onPageSizeChange(Number(v))
+                onPageChange(1)
               }}
             >
               <SelectTrigger size='sm' className='h-8 w-[64px]' aria-label='每页条数'>
@@ -67,8 +74,8 @@ export function TasksPagination({ total }: { total: number }) {
               variant='ghost'
               size='icon-xs'
               aria-label='首页'
-              disabled={page <= 1}
-              onClick={() => goto(1)}
+              disabled={safePage <= 1}
+              onClick={() => onPageChange(1)}
             >
               <ChevronsLeft aria-hidden='true' />
             </Button>
@@ -76,23 +83,23 @@ export function TasksPagination({ total }: { total: number }) {
               variant='ghost'
               size='icon-xs'
               aria-label='上一页'
-              disabled={page <= 1}
-              onClick={() => goto(page - 1)}
+              disabled={safePage <= 1}
+              onClick={() => onPageChange(safePage - 1)}
             >
               <ChevronLeft aria-hidden='true' />
             </Button>
             {Array.from({ length: pageCount }, (_, i) => i + 1)
-              .slice(Math.max(0, page - 3), page + 2)
+              .slice(Math.max(0, safePage - 3), safePage + 2)
               .map((p) => (
                 <Button
                   key={p}
-                  variant={p === page ? 'default' : 'ghost'}
+                  variant={p === safePage ? 'default' : 'ghost'}
                   size='sm'
                   className={cn(
                     'h-8 min-w-8 px-2 tabular-nums',
-                    p === page && 'font-semibold'
+                    p === safePage && 'font-semibold'
                   )}
-                  onClick={() => goto(p)}
+                  onClick={() => onPageChange(p)}
                 >
                   {p}
                 </Button>
@@ -101,8 +108,8 @@ export function TasksPagination({ total }: { total: number }) {
               variant='ghost'
               size='icon-xs'
               aria-label='下一页'
-              disabled={page >= pageCount}
-              onClick={() => goto(page + 1)}
+              disabled={safePage >= pageCount}
+              onClick={() => onPageChange(safePage + 1)}
             >
               <ChevronRight aria-hidden='true' />
             </Button>
@@ -110,8 +117,8 @@ export function TasksPagination({ total }: { total: number }) {
               variant='ghost'
               size='icon-xs'
               aria-label='末页'
-              disabled={page >= pageCount}
-              onClick={() => goto(pageCount)}
+              disabled={safePage >= pageCount}
+              onClick={() => onPageChange(pageCount)}
             >
               <ChevronsRight aria-hidden='true' />
             </Button>

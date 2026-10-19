@@ -70,7 +70,10 @@ export function ResultSection({
             }
           >
             <SelectTrigger className='w-full justify-between'>
-              <SelectValue placeholder='请选择结果类型' />
+              <SelectValue>
+                {RESULT_TYPE_OPTIONS.find((o) => o.value === resultType)?.label ??
+                  '请选择结果类型'}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {RESULT_TYPE_OPTIONS.map((option) => (

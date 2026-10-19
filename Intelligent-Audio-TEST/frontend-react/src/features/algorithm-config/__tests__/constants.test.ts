@@ -63,7 +63,7 @@ describe('algorithm-config constants', () => {
     const types = REFERENCE_PARAM_TYPE_OPTIONS.map((o) => o.value)
     expect(types).toEqual(expect.arrayContaining(['text', 'audio', 'rttm', 'stm']))
     const merges = REFERENCE_PARAM_MERGE_OPTIONS.map((o) => o.value)
-    expect(merges).toEqual(['concat', 'collect', 'first'])
+    expect(merges).toEqual(['join', 'collect', 'first'])
   })
 
   it('方向选项为输入/输出', () => {

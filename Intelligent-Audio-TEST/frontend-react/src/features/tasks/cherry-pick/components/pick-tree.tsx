@@ -1,7 +1,8 @@
 /**
- * 多级挑选树（18_挑选合并交互重设计.md §3.3/§7.1，INT-600）。
- * 四级分组（任务→用例→设备/API→result_type）+ 结果行叶；Checkbox 三态联动 R1-R5/R10。
- * 挑选页与购物车（CartTree）共用行呈现形态；本件用于挑选工作区。
+ * 多级挑选树（18_挑选合并交互重设计.md §3.3/§3.7/§7.1，INT-600/INT-790）。
+ * 五级（任务→用例→设备/API→result_type→结果行）；Checkbox 三态联动 R1-R5/R10。
+ * §3.7.1 逐级收口：任务名超长 Tooltip、用例级 CaseIdBadge（点击复制）+ 算法徽章、
+ * 设备/API 二选一图标；挑选页与购物车（CartTree）共用行呈现形态。
  */
 import {
   ArrowLeftRight,
@@ -13,6 +14,7 @@ import {
   Tag,
 } from 'lucide-react'
 import { useState } from 'react'
+import { toast } from 'sonner'
 
 import type {
   PickTreeBranch,
@@ -28,6 +30,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import { formatPickDateTime } from '@/features/tasks/cherry-pick/constants'
 import { getEvaluationStatusMeta } from '@/features/tasks/constants'
@@ -45,6 +48,31 @@ function leafDeviceName(leaf: PickTreeLeaf): string {
   if (leaf.deviceName) return leaf.deviceName
   if (leaf.apiName) return leaf.apiName
   return '—'
+}
+
+/** 设备/API 分支图标判定：dk 段含 `api:` 前缀 → API 图标（设备分支 key 内嵌 dk） */
+function isApiDeviceBranch(branch: PickTreeBranch): boolean {
+  return branch.level === 'device' && branch.key.includes(':api:')
+}
+
+/** 用例 ID 展示（CaseIdBadge：不裸显 36 位 UUID，截断前 8 位 + title 全量 + 点击复制） */
+function CaseIdBadge({ caseId }: { caseId: string }) {
+  const short = caseId.length > 8 ? `${caseId.slice(0, 8)}…` : caseId
+  return (
+    <button
+      type='button'
+      className='text-muted-foreground hover:text-foreground shrink-0 font-mono text-[10px] tabular-nums hover:underline'
+      title={`点击复制用例 ID（${caseId}）`}
+      onClick={() => {
+        void navigator.clipboard?.writeText(caseId).catch(() => {
+          // 剪贴板写入在非安全上下文 / 权限拒绝时静默降级（localhost 可写，headless 兜底）
+        })
+        toast.success('用例 ID 已复制')
+      }}
+    >
+      {short}
+    </button>
+  )
 }
 
 function LeafRow({
@@ -71,9 +99,18 @@ function LeafRow({
       <span className='text-muted-foreground min-w-0 max-w-40 truncate'>
         {leafDeviceName(leaf)}
       </span>
-      <Badge variant='outline' className='font-mono text-[10px]'>
-        {leaf.resultType}
-      </Badge>
+      {leaf.resultType ? (
+        <Badge variant='outline' className='font-mono text-[10px]'>
+          {leaf.resultType}
+        </Badge>
+      ) : (
+        <span
+          className='text-muted-foreground/60 shrink-0 text-[10px]'
+          title='结果类型待后端接口（§11-2）'
+        >
+          待补充
+        </span>
+      )}
       <StatusBadge
         label={
           leaf.executionStatus === 'completed'
@@ -121,10 +158,7 @@ function BranchRow({
   onToggleBranch: (branch: PickTreeBranch, select: boolean) => void
 }) {
   const state = getBranchSelectionState(branch, selectedIds)
-  const Icon =
-    branch.level === 'device' && branch.key.startsWith('api:')
-      ? ArrowLeftRight
-      : LEVEL_ICONS[branch.level]
+  const Icon = isApiDeviceBranch(branch) ? ArrowLeftRight : LEVEL_ICONS[branch.level]
   const hasChildren = branch.children.length > 0
   const open = openKeys.has(branch.key)
   const indent = depth * 14 + 4
@@ -165,7 +199,26 @@ function BranchRow({
           className='shrink-0'
         />
         <Icon aria-hidden='true' className='text-muted-foreground size-3.5 shrink-0' />
-        <span className='min-w-0 flex-1 truncate font-medium'>{branch.name}</span>
+        {/* §3.7.1 任务级：任务名超长 Tooltip（font-medium truncate 兜底） */}
+        {branch.level === 'task' ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span className='min-w-0 flex-1 truncate font-medium'>{branch.name}</span>
+              }
+            />
+            <TooltipContent>{branch.name}</TooltipContent>
+          </Tooltip>
+        ) : (
+          <span className='min-w-0 flex-1 truncate font-medium'>{branch.name}</span>
+        )}
+        {/* §3.7.1 用例级：CaseIdBadge（点击复制）+ 算法徽章（§11-7 剩余元信息落地后补全） */}
+        {branch.level === 'case' && branch.caseId && <CaseIdBadge caseId={branch.caseId} />}
+        {branch.level === 'case' && branch.algorithmType && (
+          <Badge variant='secondary' className='shrink-0 font-mono text-[10px]'>
+            {branch.algorithmType}
+          </Badge>
+        )}
         {state === 'indeterminate' && (
           <span className='text-muted-foreground/70 shrink-0 text-[11px]'>
             部分选中

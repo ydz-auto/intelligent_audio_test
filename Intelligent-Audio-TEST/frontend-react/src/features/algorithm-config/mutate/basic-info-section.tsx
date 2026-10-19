@@ -104,7 +104,7 @@ export function BasicInfoSection({
 
       <div className='grid gap-3 sm:grid-cols-2'>
         <div className='space-y-1.5'>
-          <Label required>所属分组</Label>
+          <Label>所属分组</Label>
           <Select
             value={groupId}
             onValueChange={handleGroupSelect}
@@ -113,7 +113,12 @@ export function BasicInfoSection({
               className={cn('w-full justify-between', !groupId && 'text-muted-foreground')}
               aria-invalid={Boolean(formState.errors.groupId)}
             >
-              <SelectValue placeholder='请选择分组' />
+              <SelectValue>
+                {groupId
+                  ? (groups.find((g) => String(g.id) === groupId)?.name ??
+                    '请选择分组')
+                  : '请选择分组'}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {groups.map((group) => (

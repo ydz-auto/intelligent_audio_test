@@ -1,9 +1,20 @@
 /**
  * 具体用例（15_报告域.md §3.3.7，SpecificCaseComparison 对位）。
  * 筛选卡（名称搜索/分组/标签/维度/排序）+ 已固定用例区 + 用例列表（状态点 + 名称 + 分组徽标
- * + CaseIdBadge + 标签 + 下载日志 + 展开）+ 展开详情 = TestCaseReportDetail 七块（§3.5）。
+ * + CaseIdBadge + 标签 + 人工复核/AI复核 + 下载日志 + 展开）+ 展开详情 = TestCaseReportDetail 七块（§3.5）。
+ * 人工复核 + AI 复核交互（19 规范 §4.1~§4.3，INT-793）：卡片标记（复核 Badge → 复核明细抽屉）
+ * + 明细操作（「人工复核」弹窗 / 「AI 复核」弹窗）双路径；源任务 result_id 溯源（§4.2 路径 A）。
  */
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, ChevronDown, Download, Pin, PinOff } from 'lucide-react'
+import {
+  ArrowDownWideNarrow,
+  ArrowUpNarrowWide,
+  ChevronDown,
+  Download,
+  Pin,
+  PinOff,
+  ShieldCheck,
+  Sparkles,
+} from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -23,6 +34,8 @@ import {
 } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { useReportCases } from '@/application/report-view/use-report-cases'
+import { useReportReviews } from '@/application/report-view/useReportReviews'
+import { usePermissions } from '@/application/hooks/use-permissions'
 import type { ReportCaseItem, ReportDetailData } from '@/domain/models/report'
 import { cn } from '@/lib/utils'
 
@@ -30,6 +43,10 @@ import { CaseReportDetail } from '../case-report-detail'
 import { getDeviceName } from '../case-report-detail/case-report-utils'
 import { CaseDetailDialog } from '../modals/case-detail-dialog'
 import { LogDownloadProgressDialog } from '../modals/log-download-progress-dialog'
+import { ReviewBadge } from '../review/review-badge'
+import { ManualReviewDialog } from '../review/manual-review-dialog'
+import { AiReviewDialog } from '../review/ai-review-dialog'
+import { ReviewHistoryDrawer } from '../review/review-history-drawer'
 import { MultiSelectFilter, SelectedConditionsBar } from './multi-select-filter'
 
 export function SpecificCaseComparison({
@@ -60,6 +77,34 @@ export function SpecificCaseComparison({
     toggleExpand,
     downloadLogs,
   } = useReportCases(report.id, fallbackCases, isExporting)
+
+  // 人工复核 + AI 复核（19 规范 §4：源任务 review_count / reviewed 标记 / 复核弹窗 / AI 结论）
+  const reviews = useReportReviews(report)
+  const { hasPermission } = usePermissions()
+  const canReview = hasPermission('task.result.review')
+  const isTaskReport = report.type === 'task' && Boolean(report.task_id)
+
+  const [reviewCase, setReviewCase] = useState<ReportCaseItem>()
+  const [aiCase, setAiCase] = useState<ReportCaseItem>()
+  const [aiPrefill, setAiPrefill] = useState<{
+    evaluationStatus?: 'completed' | 'failed'
+    comment?: string
+  }>()
+  const [historyCase, setHistoryCase] = useState<ReportCaseItem>()
+
+  // AI 采纳 → 打开人工复核弹窗预填（AI 判定评估状态 + 理由；§4.3 关键闭环）
+  const handleAiAdopt = (prefill: {
+    evaluationStatus?: 'completed' | 'failed'
+    comment?: string
+  }) => {
+    setAiPrefill(prefill)
+    setAiCase(undefined)
+    setReviewCase(aiCase)
+  }
+
+  // 用例当前评估状态（任务侧用例简报 evaluation_status → AI 结论卡「原评估判定」）
+  const caseEvaluationStatus = (caseId: string): string | null | undefined =>
+    reviews.taskCases.find((c) => c.case_id === caseId)?.evaluation_status
 
   // 筛选卡可选项（分组/标签/评估维度；标签合并自用例 + summary 标签池）
   const availableGroups = useMemo(
@@ -379,6 +424,17 @@ export function SpecificCaseComparison({
                           {c.category ?? '未分类'}
                         </Badge>
                         <span className='text-muted-foreground font-mono text-xs'>{c.id}</span>
+                        {/* 卡片标记（§4.1：用例卡片头行「人工复核」Badge → 复核明细抽屉） */}
+                        {isTaskReport && reviews.reviewedCases[c.id] === true && (
+                          <button
+                            type='button'
+                            className='cursor-pointer'
+                            onClick={() => setHistoryCase(c)}
+                            aria-label='查看复核明细'
+                          >
+                            <ReviewBadge />
+                          </button>
+                        )}
                       </div>
                       <div className='mt-1 flex flex-wrap gap-1'>
                         {c.tags.map((tag) => (
@@ -388,6 +444,34 @@ export function SpecificCaseComparison({
                         ))}
                       </div>
                     </div>
+                    {/* 明细操作（§4.2 双路径入口之二）：人工复核 / AI 复核 */}
+                    {isTaskReport && canReview && (
+                      <>
+                        <Button
+                          variant='outline'
+                          size='sm'
+                          className='h-7 gap-1 px-2 text-xs'
+                          onClick={() => {
+                            setAiPrefill(undefined)
+                            setReviewCase(c)
+                          }}
+                        >
+                          <ShieldCheck aria-hidden='true' className='size-3.5' />
+                          人工复核
+                        </Button>
+                        <Button
+                          variant='ghost'
+                          size='sm'
+                          className='h-7 gap-1 px-2 text-xs'
+                          onClick={() => {
+                            setAiCase(c)
+                          }}
+                        >
+                          <Sparkles aria-hidden='true' className='size-3.5' />
+                          AI 复核
+                        </Button>
+                      </>
+                    )}
                     <Button
                       variant='ghost'
                       size='sm'
@@ -473,6 +557,49 @@ export function SpecificCaseComparison({
         caseItem={detailCase}
         report={report}
       />
+
+      {/* 人工复核 + AI 复核（19 规范 §4：卡片标记 → 明细抽屉 / 明细操作 → 复核弹窗；源任务 result_id 溯源） */}
+      {isTaskReport && reviews.taskId && (
+        <>
+          <ManualReviewDialog
+            open={reviewCase !== undefined}
+            onOpenChange={(open) => {
+              if (!open) {
+                setReviewCase(undefined)
+                setAiPrefill(undefined)
+              }
+            }}
+            taskId={reviews.taskId}
+            caseItem={reviewCase}
+            prefill={aiPrefill}
+            onSubmitted={() => void reviews.refetchTask()}
+            onViewHistory={() => {
+              setHistoryCase(reviewCase)
+            }}
+          />
+          <AiReviewDialog
+            open={aiCase !== undefined}
+            onOpenChange={(open) => {
+              if (!open) setAiCase(undefined)
+            }}
+            taskId={reviews.taskId}
+            caseItem={aiCase}
+            originalEvaluationStatus={
+              aiCase ? caseEvaluationStatus(aiCase.id) : undefined
+            }
+            onAdopt={handleAiAdopt}
+          />
+          <ReviewHistoryDrawer
+            open={historyCase !== undefined}
+            onOpenChange={(open) => {
+              if (!open) setHistoryCase(undefined)
+            }}
+            taskId={reviews.taskId}
+            caseId={historyCase?.id}
+            title={historyCase?.name ?? '用例'}
+          />
+        </>
+      )}
     </Collapsible>
   )
 }

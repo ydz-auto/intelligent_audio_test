@@ -21,6 +21,8 @@ export const testDeviceFormSchema = z.object({
   appVersion: z.string().min(1, '请填写应用版本'),
   connectionType: z.string().min(1, '请选择连接方式'),
   serialNumber: z.string().min(1, '请填写设备序列号'),
+  /** 驱动关键字（V9.7.10 添加测试设备 keywords 选填；选项 GET /test-devices/driver-keywords，INT-721 待 INT-725 接线） */
+  keywords: z.string().optional(),
   ip: z.string().optional(),
   port: z.string().optional(),
   needsPromptAudio: z.boolean(),

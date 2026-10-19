@@ -35,6 +35,7 @@ export function GroupedDimensionList({
   canMoveUp,
   canMoveDown,
   weightPendingIds,
+  algorithmLabels,
   onEdit,
   onDelete,
   onDuplicate,
@@ -56,6 +57,8 @@ export function GroupedDimensionList({
   canMoveUp: (dimension: HierarchicalDimension) => boolean
   canMoveDown: (dimension: HierarchicalDimension) => boolean
   weightPendingIds: Set<number | string>
+  /** 算法类型码 → 中文名（真实 /algorithm/options 的 value→label；组内表格徽章用） */
+  algorithmLabels?: Record<string, string>
   onEdit: (dimension: Dimension) => void
   onDelete: (dimension: Dimension) => void
   onDuplicate: (dimension: Dimension) => void
@@ -239,6 +242,7 @@ export function GroupedDimensionList({
                   canMoveUp={canMoveUp}
                   canMoveDown={canMoveDown}
                   weightPendingIds={weightPendingIds}
+                  algorithmLabels={algorithmLabels}
                   onEdit={onEdit}
                   onDelete={onDelete}
                   onDuplicate={onDuplicate}

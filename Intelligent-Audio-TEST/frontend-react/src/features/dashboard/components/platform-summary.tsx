@@ -1,10 +1,14 @@
 /**
  * ② 平台概览卡（04_控制台.md §3.6，照 newAPI SummaryCards 双区版式）：
- * 左区三枚 StatCard（任务总数/完成率/最近任务，mock + sparkline）+ 右区设备状态面板。
+ * 左区三枚 StatCard（任务总数/完成率/最近任务，真实 sparkline）+ 右区设备状态面板。
  * 点击口径（负责人 2026-10-17 拍板）：任务总数 → 任务列表 /tasks；
  * 完成率、最近任务 → 最近一个任务详情 /tasks/:id（task:read 缺失时降级纯展示）。
- * sparkline mock 序列经 application hook 透出（useTaskDomainStats/useTaskQualityStats），
- * feature 层不直触 infrastructure。
+ * 数据源（INT-728 接线）：details = GET /home/stats/details；summary = GET /home/stats/summary；
+ * sparkline = GET /tasks/stats 真实 trend（buildSummarySparklines 12 桶）。
+ * 「最近任务」卡状态/名称直接取 summary.recent_tasks[0]（真实数据）；完成时间/预计/测试用时
+ * 需任务详情 GET /tasks/{id}——常驻后端该端点对现存任务响应校验失败（review_count/reviewed
+ * 空值 → 400 code 100，FEAT 卡 INT-xxx 跟踪），本卡不请求该端点以免 400 报错，详情退化为
+ * 用例进度+创建时间（summary 同源字段）。
  */
 import { Link } from '@tanstack/react-router'
 import { ChartLine, ClipboardList, Clock, Music, Server } from 'lucide-react'
@@ -13,9 +17,7 @@ import type { ReactNode } from 'react'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useDashboardStats } from '@/application/dashboard/use-dashboard-stats'
 import { useTaskDomainStats } from '@/application/dashboard/use-task-domain-stats'
-import { useTaskQualityStats } from '@/application/dashboard/use-task-quality-stats'
 import { useDashboardSummary } from '@/application/dashboard/use-dashboard-summary'
-import { useLatestTaskDetail } from '@/application/dashboard/use-latest-task-detail'
 import {
   CardStaggerContainer as StaggerContainer,
   CardStaggerItem as StaggerItem,
@@ -85,22 +87,16 @@ function OverviewTile(props: { link?: OverviewTileLink; children: ReactNode }) {
 export function PlatformSummary() {
   const { hasPermission } = usePermissions()
   const statsQuery = useDashboardStats()
-  const qualityQuery = useTaskQualityStats()
-  // 任务卡 sparkline：trend 12 桶（无 task:read 时接口 403 降级——mock 阶段恒有数据）
+  // 任务卡 sparkline：/tasks/stats day 粒度真实 trend（无 task:read 时接口 403 降级——sparkline 隐藏）
   const domainStatsQuery = useTaskDomainStats('day')
   const summaryQuery = useDashboardSummary()
-  const latestTaskId = summaryQuery.data?.recent_tasks[0]?.id
-  const latestTaskQuery = useLatestTaskDetail(latestTaskId)
+  const latestTaskId = summaryQuery.data?.recentTasks[0]?.id
+  const latestTask = summaryQuery.data?.recentTasks[0]
 
   const details = statsQuery.data
-  const latestTask = latestTaskQuery.data
   const canOpenTask = hasPermission('task:read')
   const loading =
-    statsQuery.isLoading ||
-    qualityQuery.isLoading ||
-    domainStatsQuery.isLoading ||
-    summaryQuery.isLoading ||
-    latestTaskQuery.isLoading
+    statsQuery.isLoading || domainStatsQuery.isLoading || summaryQuery.isLoading
 
   const devices = details?.devices
   const healthLevel = getDeviceHealthLevel(
@@ -164,10 +160,10 @@ export function PlatformSummary() {
                   }
                   icon={ChartLine}
                   tone='accent-2'
-                  sparkline={qualityQuery.passRateTrend}
+                  sparkline={domainStatsQuery.taskTrendSparkline}
                   sparklineVariant='line'
                   loading={loading}
-                  error={statsQuery.isError || qualityQuery.isError}
+                  error={statsQuery.isError || domainStatsQuery.isError}
                   compactMobile
                 />
               </OverviewTile>
@@ -184,9 +180,7 @@ export function PlatformSummary() {
                   title='最近任务'
                   value={
                     latestTask
-                      ? getTaskStatusLabel(
-                          latestTask.execution_status ?? latestTask.status
-                        )
+                      ? getTaskStatusLabel(latestTask.status)
                       : '--'
                   }
                   description={latestTask?.name ?? '统计暂不可用'}
@@ -196,26 +190,18 @@ export function PlatformSummary() {
                     latestTask
                       ? [
                           {
-                            label: '完成时间',
-                            value: latestTask.completed_at
-                              ? formatDateTime(latestTask.completed_at)
-                              : '进行中',
+                            label: '用例进度',
+                            value: `${latestTask.completedCases}/${latestTask.totalCases}`,
                           },
                           {
-                            label: '预计完成时间',
-                            value: formatDateTime(
-                              latestTask.expected_complete_time
-                            ),
-                          },
-                          {
-                            label: '测试所用时间',
-                            value: latestTask.used_time ?? '—',
+                            label: '创建时间',
+                            value: formatDateTime(latestTask.createdAt),
                           },
                         ]
                       : undefined
                   }
                   loading={loading}
-                  error={summaryQuery.isError || latestTaskQuery.isError}
+                  error={summaryQuery.isError}
                   compactMobile
                 />
               </OverviewTile>
@@ -261,10 +247,10 @@ export function PlatformSummary() {
                     <span className='truncate'>音频文件</span>
                   </div>
                   <div className='text-foreground mt-1.5 truncate text-xs font-semibold tabular-nums'>
-                    {details ? details.audio_files.total : '--'}
+                    {details ? details.audioFiles.total : '--'}
                   </div>
                   <div className='text-muted-foreground/60 mt-0.5 truncate text-[11px]'>
-                    干音 {details ? details.audio_files.dry : '--'} 个
+                    干音 {details ? details.audioFiles.dry : '--'} 个
                   </div>
                 </Link>
               ) : (
@@ -274,14 +260,14 @@ export function PlatformSummary() {
                     <span className='truncate'>音频文件</span>
                   </div>
                   <div className='text-foreground mt-1.5 truncate text-xs font-semibold tabular-nums'>
-                    {details ? details.audio_files.total : '--'}
+                    {details ? details.audioFiles.total : '--'}
                   </div>
                   <div className='text-muted-foreground/60 mt-0.5 truncate text-[11px]'>
-                    干音 {details ? details.audio_files.dry : '--'} 个
+                    干音 {details ? details.audioFiles.dry : '--'} 个
                   </div>
                 </div>
               )}
-              {/* TODO(API 接线): API 服务卡跳转 /system-settings/testing/apis，路由随 INT-347 落定后接线 */}
+              {/* API 服务卡为纯数值展示（api_config 管理散落于测试执行向导/报告流程，无独立页面） */}
               <div className='bg-card rounded-lg border px-2.5 py-2'>
                 <div className='text-muted-foreground flex items-center gap-1 text-[11px] leading-none font-medium'>
                   <Server className='size-3 shrink-0' aria-hidden='true' />

@@ -60,7 +60,9 @@ export type PlatformUser = {
   roleCode: string
   roleName: string
   status: PlatformUserStatus
-  /** 附加权限码（grant/revoke overrides，角色权限之上） */
+  /** 生效权限码集合（角色基线 ∪ 附加 overrides 合并去重；列表口径） */
+  permissions: string[]
+  /** 附加权限码（grant/revoke overrides，角色权限之上；详情查询返回） */
   extraPermissions: string[]
   createdAt: string
 }

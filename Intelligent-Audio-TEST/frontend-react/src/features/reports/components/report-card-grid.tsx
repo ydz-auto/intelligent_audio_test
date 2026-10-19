@@ -29,9 +29,9 @@ import { cn } from '@/lib/utils'
 import {
   formatDateTime,
   getAlgorithmLabel,
+  getReportStatusMeta,
+  getReportTypeMeta,
   getSuccessRateVariant,
-  REPORT_STATUS_META,
-  REPORT_TYPE_META,
 } from '@/features/reports/constants'
 import { ReportRowActions, type ReportRowAction } from './report-row-actions'
 
@@ -129,8 +129,8 @@ export function ReportCardGrid({
   return (
     <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-3'>
       {items.map((report) => {
-        const typeMeta = REPORT_TYPE_META[report.type]
-        const statusMeta = REPORT_STATUS_META[report.status]
+        const typeMeta = getReportTypeMeta(report.type)
+        const statusMeta = getReportStatusMeta(report.status)
         const rateVariant = getSuccessRateVariant(report.summary.pass_rate)
         return (
           <Card

@@ -24,6 +24,7 @@ import { request } from '@/infrastructure/api/client'
 import {
   type CategoryListDataDto,
   type DimensionHealthCheckDataDto,
+  type DimensionItemDto,
   type DimensionListDataDto,
   type DimensionOptionsDataDto,
   type ScoreDataDto,
@@ -53,6 +54,14 @@ export async function fetchEvaluationDimensions(): Promise<Dimension[]> {
     params: { per_page: 1000 },
   })
   return (dto?.items ?? []).map(toDimension)
+}
+
+/** 维度详情（编辑抽屉反填 required_inputs/output_fields——列表接口不下发，恒 []） */
+export async function fetchEvaluationDimensionDetail(
+  id: number | string
+): Promise<Dimension> {
+  const dto = await request<DimensionItemDto>('GET', `/evaluation/dimensions/${id}`)
+  return toDimension(dto)
 }
 
 /** 评估分类（分类 facet + 分组视图组头 + 分类表单） */
@@ -178,6 +187,51 @@ export async function duplicateDimension(
   })
   await request('POST', '/evaluation/dimensions', body)
   return { success: true }
+}
+
+/** 导入维度（POST /evaluation/dimensions/import；multipart：file + updateExisting；返回 { imported, updated }） */
+export async function importEvaluationDimensions(
+  file: File,
+  updateExisting: boolean
+): Promise<{ imported: number; updated: number }> {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('updateExisting', updateExisting ? 'true' : 'false')
+  const data = await request<{ imported?: number; updated?: number }>(
+    'POST',
+    '/evaluation/dimensions/import',
+    formData
+  )
+  return { imported: data?.imported ?? 0, updated: data?.updated ?? 0 }
+}
+
+/** 导出维度结果（excel 为后端二进制 XLSX，json 为行数组） */
+export type DimensionExportResult =
+  | { format: 'json'; rows: Array<Record<string, unknown>> }
+  | { format: 'excel'; blob: Blob }
+
+/** 导出维度（GET /evaluation/dimensions/export?format=json|excel）。
+ * json：后端返回 JSON 信封（data=行数组），前端序列化落盘；
+ * excel：后端返回二进制 XLSX（Response 字节流），须 blob 直落
+ * （对照旧 Vue responseType:'blob' 口径）。 */
+export async function exportEvaluationDimensions(
+  format: 'json' | 'excel'
+): Promise<DimensionExportResult> {
+  if (format === 'excel') {
+    const blob = await request<Blob>('GET', '/evaluation/dimensions/export', undefined, {
+      params: { format: 'excel' },
+      responseType: 'blob',
+      unwrapResponse: false,
+    })
+    return { format: 'excel', blob }
+  }
+  const dto = await request<Array<Record<string, unknown>>>(
+    'GET',
+    '/evaluation/dimensions/export',
+    undefined,
+    { params: { format: 'json' } }
+  )
+  return { format: 'json', rows: Array.isArray(dto) ? dto : [] }
 }
 
 /** 保存分类（新增/编辑；有 id 走 PUT /categories/{id}，无 id 走 POST；门槛 category_manage） */

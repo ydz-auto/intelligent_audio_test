@@ -7,10 +7,11 @@ import { useQuery } from '@tanstack/react-query'
 
 import { usePickCartStore } from '@/application/tasks/cherry-pick/use-pick-cart-store'
 import type { CherryPickCandidate } from '@/domain/models/cherryPick'
-import { buildPickTree } from '@/domain/lib/cherry-pick-tree'
+import { buildPickCaseView, buildPickTree } from '@/domain/lib/cherry-pick-tree'
 import type { CherryPickFilters } from '@/infrastructure/api/cherry-pick-api'
 import {
   fetchCherryPickCandidates,
+  fetchPickCaseNames,
   fetchPickableDevices,
   fetchPickableTasks,
   fetchResultTypeOptions,
@@ -53,13 +54,40 @@ function toApiFilters(filters: PickFilters): CherryPickFilters {
   }
 }
 
-/** 候选行查询（多条件 AND） */
+/** 候选行查询（多条件 AND）；用例名慢路径背景拉取，就绪后二次装饰 caseName（§11-2 降级 → 名称） */
 export function useCherryPickCandidates(filters: PickFilters) {
-  return useQuery({
+  const candidatesQuery = useQuery({
     queryKey: ['cherry-pick', 'candidates', toApiFilters(filters)],
     queryFn: () => fetchCherryPickCandidates(toApiFilters(filters)),
     staleTime: 15_000,
   })
+  const caseNamesQuery = useQuery({
+    queryKey: ['cherry-pick', 'case-names'],
+    queryFn: fetchPickCaseNames,
+    staleTime: 5 * 60_000,
+  })
+  const data = useMemo(() => {
+    let rows = candidatesQuery.data
+    const caseNames = caseNamesQuery.data
+    if (rows && caseNames) {
+      // 仅补未装饰的候选行（缺名降级显示用例 ID → 名称）
+      rows = rows.map((c) =>
+        c.caseName ? c : { ...c, caseName: caseNames.get(c.caseId) ?? null }
+      )
+    }
+    // search 命中用例名/用例 ID/任务名（用例名装饰就绪后生效）
+    if (rows && filters.search && filters.search.trim()) {
+      const kw = filters.search.trim().toLowerCase()
+      rows = rows.filter(
+        (c) =>
+          (c.caseName ?? '').toLowerCase().includes(kw) ||
+          c.caseId.toLowerCase().includes(kw) ||
+          c.taskName.toLowerCase().includes(kw)
+      )
+    }
+    return rows
+  }, [candidatesQuery.data, caseNamesQuery.data, filters.search])
+  return { ...candidatesQuery, data }
 }
 
 /** 筛选器选项（来源任务/设备/结果类型，动态选项数据源 §3.4） */
@@ -91,6 +119,15 @@ export function useCherryPickTree(candidates: CherryPickCandidate[] | undefined)
   const resultIdSet = usePickCartStore((s) => s.resultIdSet)
   return useMemo(
     () => buildPickTree(candidates ?? [], resultIdSet),
+    [candidates, resultIdSet]
+  )
+}
+
+/** 用例视角树（§3.7.3：用例→来源任务→设备/API→result_type→结果行；与任务视角共享 selectedResultIds） */
+export function useCherryPickCaseView(candidates: CherryPickCandidate[] | undefined) {
+  const resultIdSet = usePickCartStore((s) => s.resultIdSet)
+  return useMemo(
+    () => buildPickCaseView(candidates ?? [], resultIdSet),
     [candidates, resultIdSet]
   )
 }

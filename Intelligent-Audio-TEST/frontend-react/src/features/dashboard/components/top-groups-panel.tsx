@@ -16,10 +16,10 @@ export function TopGroupsPanel() {
   const { hasPermission } = usePermissions()
   const summaryQuery = useDashboardSummary()
 
-  const groups = summaryQuery.data?.top_groups ?? []
+  const groups = summaryQuery.data?.topGroups ?? []
   const loading = summaryQuery.isLoading
   const empty = !loading && groups.length === 0
-  const maxCount = Math.max(...groups.map((group) => group.case_count), 0)
+  const maxCount = Math.max(...groups.map((group) => group.caseCount), 0)
   const canOpenGroup = hasPermission('testcase:read')
 
   return (
@@ -63,7 +63,7 @@ export function TopGroupsPanel() {
                 </span>
               )}
               <span className='text-muted-foreground shrink-0 text-xs tabular-nums'>
-                {group.case_count} 条
+                {group.caseCount} 条
               </span>
               {/* 占比条：max=第一名计数（§3.7 轻量可视化） */}
               <div
@@ -74,7 +74,7 @@ export function TopGroupsPanel() {
                   className='bg-chart-2 h-full rounded-full'
                   style={{
                     width: `${
-                      maxCount > 0 ? (group.case_count / maxCount) * 100 : 0
+                      maxCount > 0 ? (group.caseCount / maxCount) * 100 : 0
                     }%`,
                   }}
                 />

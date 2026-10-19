@@ -76,24 +76,26 @@ function SetupGuideBackdrop(props: { compact?: boolean }) {
   )
 }
 
-function buildCurlCommand(taskId: number): string {
+function buildCurlCommand(taskId: number | null): string {
   const origin =
     typeof window === 'undefined' ? 'http://localhost:8000' : window.location.origin
+  // 最近任务 id 就绪前显示占位符（模板示例，非裸 mock id）
+  const idPath = taskId != null ? String(taskId) : '{taskId}'
   return [
-    `curl "${origin}/api/v1/tasks/${taskId}/progress" \\`,
+    `curl "${origin}/api/v1/tasks/${idPath}/progress" \\`,
     '  -H "Accept: text/event-stream" \\',
     '  -H "Authorization: Bearer <token>"',
   ].join('\n')
 }
 
 /** 左列「接口驱动测试」卡（对位 newAPI RequestPreview，换本平台语义） */
-function ApiPreviewCard(props: { signals: HeroSignal[] }) {
+function ApiPreviewCard(props: { signals: HeroSignal[]; latestTaskId?: number }) {
   const shouldReduceMotion = useReducedMotion()
   const [isCopying, setIsCopying] = useState(false)
-  // TODO(API 接线): 示例任务 id 换真实最近任务；progress 为 SSE 订阅端点（首页卡 §3.6 同源）
+  // 示例任务 id 取真实最近任务（summary recent_tasks[0]，INT-728 接线）；progress 为 SSE 订阅端点
   const previewLines = useMemo(
-    () => buildCurlCommand(1042).split('\n'),
-    []
+    () => buildCurlCommand(props.latestTaskId ?? null).split('\n'),
+    [props.latestTaskId]
   )
 
   const handleCopy = async () => {
@@ -316,6 +318,8 @@ export interface SetupGuideProps {
   completedCount: number
   expanded: boolean
   details?: HomeStatsDetails
+  /** 最近任务 id（summary recent_tasks[0]，供 API 示例 curl 用真实任务；未就绪显占位符） */
+  latestTaskId?: number
   onToggle: () => void
 }
 
@@ -341,7 +345,7 @@ export function SetupGuide(props: SetupGuideProps) {
       },
       {
         label: '用例就绪',
-        value: `${props.details?.test_cases.total ?? 0} 条`,
+        value: `${props.details?.testCases.total ?? 0} 条`,
         icon: ListChecks,
         tone: 'success',
       },
@@ -407,7 +411,7 @@ export function SetupGuide(props: SetupGuideProps) {
         <div className='relative h-full overflow-hidden p-4 sm:p-5'>
           <SetupGuideBackdrop />
           <div className='relative grid gap-5 lg:grid-cols-[21rem_minmax(0,1fr)]'>
-            <ApiPreviewCard signals={signals} />
+            <ApiPreviewCard signals={signals} latestTaskId={props.latestTaskId} />
             <div className='flex min-w-0 flex-col gap-4'>
               <div className='flex flex-wrap items-start justify-between gap-3'>
                 <div className='flex flex-col gap-1'>

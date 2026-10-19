@@ -24,12 +24,15 @@ export interface CherryPickCandidate {
   deviceName: string | null
   apiId: number | null
   apiName: string | null
-  /** 结果类型（result_data 内解析，缺省 default；缺名时按缺省合并） */
-  resultType: string
+  /** 结果类型（result_data 内解析；后端候选未返 §11-2 → null 折叠为「结果类型待补充」） */
+  resultType: string | null
+  /** 算法类型（§11-2 候选行实测返回；用例级算法徽章数据源） */
+  algorithmType: string | null
   executionStatus: string
+  /** 结果级评估状态（候选仅返 evaluated 布尔，转换后 completed/pending） */
   evaluationStatus: string
   evaluated: boolean
-  createdAt: string
+  createdAt: string | null
 }
 
 /** 挑选树节点——分支（分组级） */
@@ -42,6 +45,10 @@ export interface PickTreeBranch {
   /** 本节点全部子孙结果 id 快照（勾选/取消整组用） */
   resultIds: number[]
   children: PickTreeItem[]
+  /** 用例级：case_id（CaseIdBadge 复制展示，§3.7.1） */
+  caseId?: string
+  /** 用例级：算法类型（§3.7.1 算法徽章；§11-7 tags/时长等落地后补全卡片级元信息） */
+  algorithmType?: string | null
 }
 
 /** 挑选树节点——叶（执行结果行） */
@@ -52,10 +59,10 @@ export interface PickTreeLeaf {
   caseName: string
   deviceName: string | null
   apiName: string | null
-  resultType: string
+  resultType: string | null
   executionStatus: string
   evaluationStatus: string
-  createdAt: string
+  createdAt: string | null
   /** R10 已加购标记（来自购物车 resultIdSet） */
   added: boolean
 }
@@ -80,7 +87,7 @@ export interface PickCartEntry {
   /** §11-5 未补前为 null，result_type 级分组折叠为「结果类型待补充」 */
   sourceResultType: string | null
   executionStatus: string
-  /** §11-5 未补前购物车条目后端不返评估状态 → null（界面不渲染该列） */
+  /** 快照未含评估状态 → null 显示「—」（对照原 Vue 购物车口径） */
   evaluationStatus: string | null
   invalid: boolean
 }
@@ -124,7 +131,7 @@ export type CartTreeItem = CartTreeBranch | CartTreeLeaf
 export interface PickSet {
   setId: string
   name: string
-  createdAt: string
+  createdAt: string | null
   itemCount: number
   entries: PickCartEntry[]
 }
@@ -132,19 +139,29 @@ export interface PickSet {
 /** 下单出口（cherry_pick_service.py:897-912 实测） */
 export type CheckoutAction = 'merge' | 'reexecute' | 'reevaluate'
 
-/** 复核摘要（POST /cart/preview 返回，§5.2） */
+/** 复核重复组（同设备同用例多来源，preview 返回数组逐项展示） */
+export interface PickDuplicate {
+  deviceId: number | null
+  caseId: string | null
+  count: number
+}
+
+/** 复核摘要（POST /tasks/cherry-picks/preview 返回，§5.2） */
 export interface PickPreview {
   totalResults: number
   invalidResultIds: number[]
   sourceTaskCount: number
   deviceIds: number[]
+  /** 预览接口返回的设备名（preview device_names 实测；排序与 device_ids 对齐） */
+  deviceNames?: string[]
   caseCount: number
   executionStatusCounts: Record<string, number>
-  /** 同设备同用例多来源组数 */
-  duplicates: number
-  configInconsistent: boolean
-  configFields: string[]
-  sourceConfigs: Record<string, unknown>[]
+  /** 同设备同用例多来源组（后端逐组返回；前端展示组数） */
+  duplicates: PickDuplicate[]
+  /** 配置差异提示后端未返（§11 FEAT 待 INT-xxx）→ 可选，缺省不展示 */
+  configInconsistent?: boolean
+  configFields?: string[]
+  sourceConfigs?: Record<string, unknown>[]
 }
 
 /** 合并容器（统一列表：整任务合并 merged=true ∪ 结果挑选 cherry_pick=true，§11-1） */

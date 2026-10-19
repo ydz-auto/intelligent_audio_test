@@ -181,7 +181,7 @@ export function toReferenceParam(raw: unknown): ReferenceParam {
   const merge = r.merge_mode
   const mergeMode =
     merge === 'concat' || merge === 'collect' || merge === 'first'
-      ? merge
+      ? merge === 'concat' ? 'join' : merge
       : null
   return {
     id: num(r.id) ?? 0,
@@ -395,8 +395,8 @@ function toReferenceParamItemDto(row: Row): Row {
     annotation_format: nullableStr(r.annotationFormat),
     field_path: nullableStr(r.fieldPath),
     merge_mode:
-      r.mergeMode === 'concat' || r.mergeMode === 'collect' || r.mergeMode === 'first'
-        ? r.mergeMode
+      r.mergeMode === 'join' || r.mergeMode === 'collect' || r.mergeMode === 'first'
+        ? r.mergeMode === 'join' ? 'concat' : r.mergeMode
         : null,
     help_text: nullableStr(r.helpText),
   }

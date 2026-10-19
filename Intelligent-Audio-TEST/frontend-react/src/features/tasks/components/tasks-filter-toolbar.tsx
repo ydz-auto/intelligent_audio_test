@@ -51,6 +51,8 @@ import { TasksStatsRow } from '@/features/tasks/components/tasks-stats-row'
 export interface TasksFilterToolbarProps {
   tab: TasksTabKey
   filters: TaskListFilters
+  /** 标签 facet 选项（真实数据源：已加载任务标签去重集合；缺省回退静态选项） */
+  tagOptions?: string[]
   onChange: (next: TaskListFilters) => void
   onReset: () => void
   onSearch: () => void
@@ -229,6 +231,7 @@ function SelectFilter({
 export function TasksFilterToolbar({
   tab,
   filters,
+  tagOptions,
   onChange,
   onReset,
   onSearch,
@@ -292,7 +295,7 @@ export function TasksFilterToolbar({
         <MultiFacet
           label='标签'
           value={filters.tags ?? []}
-          options={TASK_TAG_OPTIONS}
+          options={tagOptions ?? TASK_TAG_OPTIONS}
           onChange={(tags) => update({ tags })}
         />
         <SelectFilter

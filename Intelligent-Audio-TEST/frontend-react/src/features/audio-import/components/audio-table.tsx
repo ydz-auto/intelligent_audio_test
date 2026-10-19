@@ -214,7 +214,7 @@ export function AudioTable(props: AudioTableProps) {
                 <td className='px-3 py-2'>
                   {row.format ? (
                     <Badge variant='outline' className='rounded-md px-1.5 font-normal'>
-                      {row.format}
+                      {(row.format ?? '').toUpperCase()}
                     </Badge>
                   ) : (
                     <span className='text-muted-foreground'>—</span>

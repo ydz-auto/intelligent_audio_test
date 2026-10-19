@@ -2,6 +2,7 @@
  * 指标映射查询（application 层，指标筛选下拉数据源）。
  * GET /metric-mappings?activeOnly=true（benchmark:ranking:read）；
  * 失败静默退化——调用方回退为纯文本输入（不打断页面，14_benchmark排行.md §4.3）。
+ * INT-730 接线：真实端点，client 解包 data；null/失败抛错由 isFailed 判定。
  */
 import { useQuery } from '@tanstack/react-query'
 

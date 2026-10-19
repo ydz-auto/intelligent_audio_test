@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
-import { formatBytes } from '@/domain/models/log-archive'
+import { archiveFileCount, formatBytes } from '@/domain/models/log-archive'
 import type { LogMaintenanceSettings } from '@/domain/models/option'
 
 import { SettingsFormGrid, SettingsFormGridItem } from '../components/settings-form-layout'
@@ -31,7 +31,7 @@ export function LogMaintenancePage({ defaultValues }: LogMaintenancePageProps) {
   const canManage = hasPermission('log:manage')
   const archiveStatus = useArchiveStatusQuery()
   const archiveItems = useArchiveItemsQuery()
-  const { archiveNow, deleteArchive } = useLogArchiveMutations()
+  const { archiveNow, deleteArchive, clearLogs, downloadArchive } = useLogArchiveMutations()
   const [clearOpen, setClearOpen] = useState(false)
   const [archiveOpen, setArchiveOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
@@ -103,18 +103,16 @@ export function LogMaintenancePage({ defaultValues }: LogMaintenancePageProps) {
             ) : archiveStatus.data ? (
               <div className='flex flex-wrap items-center gap-x-6 gap-y-2 text-sm'>
                 <div>
-                  <div className='text-muted-foreground text-xs'>最近归档</div>
-                  <div className='font-medium'>
-                    {archiveStatus.data.archiveFiles.length > 0
-                      ? archiveStatus.data.archiveFiles[archiveStatus.data.archiveFiles.length - 1]
-                      : '尚未归档'}
+                  <div className='text-muted-foreground text-xs'>归档文件数</div>
+                  <div className='font-medium tabular-nums'>
+                    {archiveFileCount(archiveStatus.data)}
                   </div>
                 </div>
                 <div>
                   <div className='text-muted-foreground text-xs'>归档状态</div>
                   <StatusBadge
-                    label={archiveStatus.data.archiveFiles.length > 0 ? '已归档' : '未归档'}
-                    variant={archiveStatus.data.archiveFiles.length > 0 ? 'success' : 'neutral'}
+                    label={archiveFileCount(archiveStatus.data) > 0 ? '已归档' : '未归档'}
+                    variant={archiveFileCount(archiveStatus.data) > 0 ? 'success' : 'neutral'}
                   />
                 </div>
                 <div>
@@ -122,6 +120,11 @@ export function LogMaintenancePage({ defaultValues }: LogMaintenancePageProps) {
                   <div className='font-medium tabular-nums'>
                     {archiveStatus.data.coldLogs.toLocaleString()}
                   </div>
+                </div>
+                <div className='text-muted-foreground text-xs'>
+                  任务 {archiveStatus.data.taskArchives.toLocaleString()} · 用例{' '}
+                  {archiveStatus.data.caseArchives.toLocaleString()} · 其他{' '}
+                  {archiveStatus.data.otherArchives.toLocaleString()}
                 </div>
               </div>
             ) : null}
@@ -150,14 +153,14 @@ export function LogMaintenancePage({ defaultValues }: LogMaintenancePageProps) {
                 columns={columns}
                 rows={archiveItems.data ?? []}
                 rowKey={(row) => row.filename}
-                emptyText='暂无归档'
-                emptyDescription='归档管理可用于将历史日志归档至 OSS'
+                emptyText='暂无归档（待 INT-780）'
+                emptyDescription='后端全局归档文件清单接口待 FEAT 卡 INT-780 落地，归档统计见左侧状态卡'
                 minWidth='480px'
                 actions={
                   canManage
                     ? (row) => (
                         <div className='flex justify-end gap-1'>
-                          <Button type='button' variant='ghost' size='icon' className='size-7'>
+                          <Button type='button' variant='ghost' size='icon' className='size-7' onClick={() => downloadArchive.mutate(row.filename)}>
                             <Download className='size-3.5' aria-hidden='true' />
                             <span className='sr-only'>下载</span>
                           </Button>
@@ -191,7 +194,7 @@ export function LogMaintenancePage({ defaultValues }: LogMaintenancePageProps) {
         confirmText='确认清理'
         handleConfirm={() => {
           setClearOpen(false)
-          // TODO(API 接线): POST /logs/clear {before_datetime, keep_marked}（log:manage）
+          clearLogs.mutate()
         }}
       />
       <ConfirmDialog

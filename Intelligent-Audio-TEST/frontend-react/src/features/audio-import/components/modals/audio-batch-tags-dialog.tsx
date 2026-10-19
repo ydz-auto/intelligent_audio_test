@@ -33,19 +33,20 @@ export function AudioBatchTagsDialog(props: AudioBatchTagsDialogProps) {
   const [pending, setPending] = useState(false)
 
   const handleConfirm = async () => {
-    if (!tagsText.trim()) {
+    const tagList = tagsText
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean)
+    if (tagList.length === 0) {
       toast.info('请输入需要设置的标签')
       return
     }
     setPending(true)
     try {
-      const result = await batch.mutateAsync({ action: 'tags', ids: props.ids })
+      // §5.6：batch-action tags 需把标签随请求提交（此前仅预览 toast 未传 tags，后端会把标签置空）
+      const result = await batch.mutateAsync({ action: 'tags', ids: props.ids, tags: tagList })
       toast.success(
-        `已为 ${result.successCount} 个音频设置标签：${tagsText
-          .split(',')
-          .map((t) => t.trim())
-          .filter(Boolean)
-          .join('、')}`
+        `已为 ${result.successCount} 个音频设置标签：${tagList.join('、')}`
       )
       setTagsText('')
       props.onOpenChange(false)

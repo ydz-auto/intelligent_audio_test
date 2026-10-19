@@ -81,7 +81,7 @@ export function AlgorithmConfigPage() {
 
   const globalAlgorithmType = useAlgorithmStore((s) => s.algorithmId)
 
-  // URL 态语义（§3.2 mock 阶段本地态；接线后 validateSearch 化）
+  // URL 态语义（§3.2 本地态；接线后 validateSearch 化）
   const [searchInput, handleSearch, searchKeyword] = useDebouncedSearch()
   const [groupFilter, setGroupFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -290,6 +290,8 @@ export function AlgorithmConfigPage() {
               <AlgorithmsTable
                 rows={pageRows}
                 loading={definitionsQuery.isLoading}
+                error={definitionsQuery.isError}
+                onRetry={() => void definitionsQuery.refetch()}
                 total={filtered.length}
                 searchKeyword={searchKeyword}
                 selectedIds={selectedIds}
@@ -411,7 +413,7 @@ function PaginationBar({
         onValueChange={(value) => onPageSizeChange(Number(value ?? DEFAULT_PAGE_SIZE))}
       >
         <SelectTrigger size='sm' className='w-24'>
-          <SelectValue />
+          <SelectValue>{pageSize} 条/页</SelectValue>
         </SelectTrigger>
         <SelectContent>
           {PAGE_SIZE_OPTIONS.map((size) => (

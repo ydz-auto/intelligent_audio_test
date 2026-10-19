@@ -12,6 +12,7 @@ import {
   buildCartTree,
   collectEntryIds,
   getCartBranchSelectionState,
+  PENDING_RESULT_TYPE_LABEL,
 } from '@/domain/lib/cherry-pick-tree'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -21,6 +22,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import { cn } from '@/lib/utils'
 import type { PickCartGroup } from '@/domain/models/cherryPick'
@@ -156,7 +158,19 @@ function BranchRow({
             className='shrink-0'
           />
         )}
-        <span className='min-w-0 flex-1 truncate font-medium'>{branch.name}</span>
+        {/* §3.7.2：历史快照缺 source_result_type → 「结果类型待补充」组 Tooltip 说明 */}
+        {branch.level === 'resultType' && branch.name === PENDING_RESULT_TYPE_LABEL ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span className='min-w-0 flex-1 truncate font-medium'>{branch.name}</span>
+              }
+            />
+            <TooltipContent>结果类型待后端接口（§11-5）</TooltipContent>
+          </Tooltip>
+        ) : (
+          <span className='min-w-0 flex-1 truncate font-medium'>{branch.name}</span>
+        )}
         {state === 'indeterminate' && (
           <span className='text-muted-foreground/70 shrink-0 text-[11px]'>
             部分选中
@@ -330,7 +344,9 @@ export function CartTree({
                     ? '设备'
                     : branch.level === 'case'
                       ? '用例'
-                      : '结果类型'
+                      : branch.level === 'resultType'
+                        ? '结果类型'
+                        : '任务'
                 onRemoveNode(
                   collectEntryIds([branch]),
                   levelLabel,

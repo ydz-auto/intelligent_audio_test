@@ -1,8 +1,9 @@
 /**
  * §6.6 评估维度分节（mutate sheet 第五 Tab）。
- * 说明文案 + 内联可编辑表（评估维度 Select/权重 number 0-1/默认 Checkbox，多选一时自动唯一）。
+ * 说明文案 + 筛选（搜索维度）+ 内联可编辑表（评估维度 Select/权重 number 0-1/默认 Checkbox，多选一时自动唯一）。
  */
 import { Plus, Trash2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { type UseFormReturn } from 'react-hook-form'
 import { useFieldArray, useWatch } from 'react-hook-form'
 
@@ -30,6 +31,28 @@ export function DimensionsSection({
     control: form.control,
     name: 'associatedDimensions',
   })
+
+  // 筛选状态（§6.6：搜索维度，照 V9.7.10 filteredDimensions 按维度名过滤）
+  const [search, setSearch] = useState('')
+
+  const watchDimensions = form.watch('associatedDimensions')
+
+  // 仅显示过滤命中行的「原始数组下标」（RHF 注册/取值必须用原下标）
+  const filteredIndices = useMemo(() => {
+    const kw = search.trim().toLowerCase()
+    if (!kw) return dimensions.fields.map((_, index) => index)
+    return dimensions.fields
+      .map((_, index) => index)
+      .filter((index) => {
+        const row = watchDimensions[index]
+        if (!row) return false
+        const name =
+          row.dimensionName ||
+          dimensionOptions.find((d) => String(d.id) === row.dimensionId)?.name ||
+          ''
+        return name.toLowerCase().includes(kw)
+      })
+  }, [search, dimensions.fields, watchDimensions, dimensionOptions])
 
   const addEmpty = () =>
     dimensions.append({
@@ -72,11 +95,21 @@ export function DimensionsSection({
         )}
       </p>
 
-      <div className='flex items-center justify-end'>
-        <Button variant='outline' size='sm' type='button' onClick={addEmpty}>
-          <Plus aria-hidden='true' />
-          添加关联维度
-        </Button>
+      {/* 筛选行（搜索维度 + 添加关联维度，§6.6；样式照 params-table） */}
+      <div className='flex flex-wrap items-center gap-2'>
+        <Input
+          aria-label='搜索评估维度'
+          placeholder='搜索评估维度...'
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className='h-7 w-44 text-xs'
+        />
+        <div className='ml-auto'>
+          <Button variant='outline' size='sm' type='button' onClick={addEmpty}>
+            <Plus aria-hidden='true' />
+            添加关联维度
+          </Button>
+        </div>
       </div>
 
       <div className='bg-card ring-foreground/10 overflow-hidden rounded-lg ring-1'>
@@ -97,16 +130,33 @@ export function DimensionsSection({
                     暂未关联评估维度，点击「添加关联维度」新增
                   </td>
                 </tr>
+              ) : filteredIndices.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className='text-muted-foreground px-3 py-6 text-center'>
+                    未找到匹配评估维度，换个关键词试试
+                  </td>
+                </tr>
               ) : (
-                dimensions.fields.map((field, index) => (
-                  <tr key={field.key} className='border-border/50 border-b last:border-b-0'>
+                filteredIndices.map((index) => (
+                  <tr
+                    key={dimensions.fields[index].key}
+                    className='border-border/50 border-b last:border-b-0'
+                  >
                     <td className='px-2 py-1.5'>
                       <Select
                         value={form.watch(`associatedDimensions.${index}.dimensionId`)}
                         onValueChange={(value) => handleDimensionSelect(index, value ?? '')}
                       >
                         <SelectTrigger size='sm' className='w-56'>
-                          <SelectValue placeholder='选择评估维度' />
+                          <SelectValue>
+                            {dimensionOptions.find(
+                              (d) =>
+                                String(d.id) ===
+                                form.watch(
+                                  `associatedDimensions.${index}.dimensionId`
+                                )
+                            )?.name ?? '选择评估维度'}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           {dimensionOptions.map((dimension) => (

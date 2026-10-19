@@ -25,9 +25,9 @@ import { cn } from '@/lib/utils'
 import {
   formatDateTime,
   getAlgorithmLabel,
+  getReportStatusMeta,
+  getReportTypeMeta,
   getSuccessRateVariant,
-  REPORT_STATUS_META,
-  REPORT_TYPE_META,
 } from '@/features/reports/constants'
 import { ReportRowActions, type ReportRowAction } from './report-row-actions'
 
@@ -157,8 +157,8 @@ export function ReportsTable({
           </thead>
           <tbody>
             {items.map((report) => {
-              const typeMeta = REPORT_TYPE_META[report.type]
-              const statusMeta = REPORT_STATUS_META[report.status]
+              const typeMeta = getReportTypeMeta(report.type)
+              const statusMeta = getReportStatusMeta(report.status)
               const isSelected = selectedIds.includes(report.id)
               const passRate = report.summary.pass_rate
               return (

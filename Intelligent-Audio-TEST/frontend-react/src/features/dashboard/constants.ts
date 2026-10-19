@@ -6,7 +6,7 @@
 import type { StatusVariant } from '@/features/dashboard/components/ui/status-badge'
 import type { TrendGranularity } from '@/application/dashboard/use-task-domain-stats'
 
-/** 执行状态 → 中文 + 徽章色（09_任务域.md §3.6.1 映射） */
+/** 执行状态 → 中文 + 徽章色（09_任务域.md §3.6.1 映射；后端扩展状态见 Vue domain/enums.ts TaskStatus） */
 export const TASK_STATUS_META: Record<string, { label: string; variant: StatusVariant; pulse?: boolean }> = {
   pending: { label: '待执行', variant: 'neutral' },
   queued: { label: '排队中', variant: 'info' },
@@ -18,6 +18,10 @@ export const TASK_STATUS_META: Record<string, { label: string; variant: StatusVa
   stopped: { label: '已停止', variant: 'neutral' },
   skipped: { label: '已跳过', variant: 'neutral' },
   merged: { label: '已合并', variant: 'purple' },
+  // 后端扩展状态（评估相关，Vue domain/enums.ts TaskStatus 实测）
+  evaluating: { label: '评估中', variant: 'info' },
+  reevaluate_queued: { label: '重新评估排队中', variant: 'info' },
+  reevaluating: { label: '重新评估中', variant: 'info', pulse: true },
 }
 
 export function getTaskStatusMeta(status: string) {

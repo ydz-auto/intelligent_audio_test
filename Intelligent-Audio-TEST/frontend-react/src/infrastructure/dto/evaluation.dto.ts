@@ -62,10 +62,17 @@ export interface DimensionItemDto {
   statistic_method: string | null
   agg_denominator: string | null
   exclude_rounds: number[] | null
-  associated_algorithms: Dimension['associatedAlgorithms'] | null
+  associated_algorithms: AlgorithmAssociationDto[] | null
   status: boolean | null
   created_at: string | null
   updated_at: string | null
+}
+
+/** 关联算法 wire 项（snake_case；adapter 归一为 AlgorithmAssociation） */
+export interface AlgorithmAssociationDto {
+  algorithm_type: string
+  is_default: boolean
+  weight: number | null
 }
 
 /** GET /evaluation/dimensions 分页信封（DimensionListData） */
@@ -173,7 +180,11 @@ export function toDimension(dto: DimensionItemDto): Dimension {
     statisticMethod: dto.statistic_method,
     aggDenominator: dto.agg_denominator,
     excludeRounds: dto.exclude_rounds,
-    associatedAlgorithms: dto.associated_algorithms,
+    associatedAlgorithms: (dto.associated_algorithms ?? []).map((a) => ({
+      algorithmType: a.algorithm_type,
+      isDefault: Boolean(a.is_default),
+      weight: a.weight ?? 1,
+    })),
     status: dto.status,
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
@@ -257,18 +268,18 @@ export function toDimensionInputDto(data: Partial<Dimension>): Record<string, un
   if (data.requiredInputs !== undefined) {
     const inputs = Array.isArray(data.requiredInputs) ? data.requiredInputs : []
     result.required_inputs = inputs.map((item) => ({
-      key: item.key,
+      key: item.paramCode,
       label: item.label,
       field_type: item.fieldType,
       required: item.required,
       default_value: item.defaultValue,
-      description: item.description,
+      description: item.helpText,
     }))
   }
   if (data.outputFields !== undefined) {
     const fields = Array.isArray(data.outputFields) ? data.outputFields : []
     result.output_fields = fields.map((item) => ({
-      name: item.name,
+      name: item.paramCode,
       label: item.label,
       output_role: item.outputRole,
       agg_role: item.aggRole,

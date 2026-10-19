@@ -26,10 +26,11 @@ import type { ReportDetailData } from '@/domain/models/report'
 import {
   formatDateTime,
   getAlgorithmLabel,
-  REPORT_STATUS_META,
-  REPORT_TYPE_META,
+  getReportStatusMeta,
+  getReportTypeMeta,
 } from '@/features/reports/constants'
 import { AiChatEntry } from './ai-chat-entry'
+import { ReviewStatsBadge } from './review/review-stats-badge'
 
 interface ReportHeaderProps {
   report: ReportDetailData
@@ -48,6 +49,10 @@ interface ReportHeaderProps {
   onCopyLink: () => void
   onShare: () => void
   onClose: () => void
+  /** 报告源任务已复核计数（§4.1 统计徽章；仅任务型报告） */
+  reviewCount?: number
+  /** 复核统计徽章点击 → 锚点到具体用例分区 */
+  onReviewStatsClick?: () => void
 }
 
 export function ReportHeader({
@@ -66,9 +71,11 @@ export function ReportHeader({
   onCopyLink,
   onShare,
   onClose,
+  reviewCount,
+  onReviewStatsClick,
 }: ReportHeaderProps) {
-  const typeMeta = REPORT_TYPE_META[report.type]
-  const statusMeta = REPORT_STATUS_META[report.status]
+  const typeMeta = getReportTypeMeta(report.type)
+  const statusMeta = getReportStatusMeta(report.status)
   const isComparison =
     report.type === 'comparison' || report.type === 'secondary_comparison'
 
@@ -100,6 +107,10 @@ export function ReportHeader({
                 <Badge variant='secondary'>
                   算法：{getAlgorithmLabel(report.algorithm_type)}
                 </Badge>
+              )}
+              {/* 复核统计徽章（§4.1：review_count > 0 显「已复核 {n} 条」，点击锚点到具体用例） */}
+              {typeof reviewCount === 'number' && (
+                <ReviewStatsBadge count={reviewCount} onClick={onReviewStatsClick} />
               )}
             </div>
             <div className='text-muted-foreground mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs'>

@@ -40,12 +40,31 @@ export function CheckoutStep({
   const [action, setAction] = useState<CheckoutAction>('merge')
   const [taskName, setTaskName] = useState('')
   const [description, setDescription] = useState('')
+  const [algorithmType, setAlgorithmType] = useState('')
+  const [algorithmParams, setAlgorithmParams] = useState('')
+  const [configJson, setConfigJson] = useState('')
   const [configOpen, setConfigOpen] = useState(false)
   const [forcedOpen, setForcedOpen] = useState(false)
 
   const data = preview.data
   const configInconsistent = data?.configInconsistent ?? false
   const isMerge = action === 'merge'
+
+  /** JSON 覆盖解析（空 → null 不发送；非法 → {ok:false} 拦截） */
+  const parseJsonOverride = (
+    text: string
+  ): { ok: true; value: Record<string, unknown> } | { ok: false } | null => {
+    if (!text.trim()) return null
+    try {
+      const parsed = JSON.parse(text)
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return { ok: true, value: parsed as Record<string, unknown> }
+      }
+      return { ok: false }
+    } catch {
+      return { ok: false }
+    }
+  }
 
   const handleConfirm = async () => {
     if (configInconsistent) {
@@ -66,11 +85,23 @@ export function CheckoutStep({
       toast.error('新任务名称必填')
       return
     }
+    const paramsParsed = parseJsonOverride(algorithmParams)
+    const configParsed = parseJsonOverride(configJson)
+    if (paramsParsed && !paramsParsed.ok) {
+      toast.error('算法参数覆盖不是合法 JSON 对象')
+      return
+    }
+    if (configParsed && !configParsed.ok) {
+      toast.error('任务配置覆盖不是合法 JSON 对象')
+      return
+    }
     const result = await checkout.mutateAsync({
       action,
       name,
       description: description.trim() || undefined,
-      config: { algorithm_type: 'asr_streaming' },
+      algorithm_type: algorithmType.trim() || undefined,
+      algorithm_params: paramsParsed?.ok ? paramsParsed.value : undefined,
+      config: configParsed?.ok ? configParsed.value : undefined,
     })
     await refreshCart()
     const id = result.taskId
@@ -178,12 +209,19 @@ export function CheckoutStep({
               <div className='mt-2 grid gap-2 rounded-lg border p-3 text-xs'>
                 <div className='flex flex-col gap-1'>
                   <Label>算法类型覆盖</Label>
-                  <Input defaultValue='asr_streaming' aria-label='算法类型覆盖' />
+                  <Input
+                    value={algorithmType}
+                    onChange={(e) => setAlgorithmType(e.target.value)}
+                    placeholder='默认取首个来源任务算法'
+                    aria-label='算法类型覆盖'
+                  />
                 </div>
                 <div className='flex flex-col gap-1'>
                   <Label>算法参数覆盖（JSON）</Label>
                   <Textarea
-                    defaultValue='{ "beam_size": 8 }'
+                    value={algorithmParams}
+                    onChange={(e) => setAlgorithmParams(e.target.value)}
+                    placeholder='可选，如 { "beam_size": 8 }'
                     aria-label='算法参数覆盖'
                     rows={2}
                     className='font-mono'
@@ -192,7 +230,9 @@ export function CheckoutStep({
                 <div className='flex flex-col gap-1'>
                   <Label>任务配置覆盖（JSON）</Label>
                   <Textarea
-                    defaultValue='{ "concurrency": 4 }'
+                    value={configJson}
+                    onChange={(e) => setConfigJson(e.target.value)}
+                    placeholder='可选，如 { "concurrency": 4 }'
                     aria-label='任务配置覆盖'
                     rows={2}
                     className='font-mono'
@@ -235,7 +275,7 @@ export function CheckoutStep({
         onOpenChange={setForcedOpen}
         title='确认合并？'
         desc={`所选结果来自 ${data?.sourceTaskCount ?? 1} 个来源任务，其任务级配置（${
-          data?.configFields.join('、') ?? '配置'
+          data?.configFields?.join('、') ?? '配置'
         }）不一致。合并新任务将默认取首个来源任务配置，您可展开「任务级配置」覆盖。是否继续合并？`}
         confirmText='继续合并'
         cancelBtnText='返回修改'

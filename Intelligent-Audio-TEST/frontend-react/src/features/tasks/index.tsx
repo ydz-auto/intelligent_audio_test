@@ -7,6 +7,7 @@
  * 模态窗群：任务类型/发布/快速查看 + §5.7 重新执行·重新评估范围 + §5.12 导出/导入数据。
  */
 import { Link, useNavigate } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
 import { ChartLine, FileDown, Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
@@ -17,6 +18,7 @@ import { SectionPageLayout } from '@/components/layout/components/section-page-l
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
+import { fetchPublishedTaskList } from '@/infrastructure/api/tasks-list-api'
 import type { PublishedTaskItem, TaskListItem } from '@/domain/models/task'
 import {
   TASKS_TABS,
@@ -36,8 +38,6 @@ import { DataExportDialog } from '@/features/tasks/components/data-export-dialog
 import { DataImportDialog } from '@/features/tasks/components/data-import-dialog'
 import type { ReexecuteActionType } from '@/features/tasks/components/task-row-actions'
 
-const EMPTY_FILTERS: TaskListFilters = {}
-
 export interface WizardState {
   step: WizardStepKey
   taskIds?: number[]
@@ -48,7 +48,7 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
   const navigate = useNavigate()
   const algorithmId = useAlgorithmStore((s) => s.algorithmId)
 
-  const [filters, setFilters] = useState<TaskListFilters>(EMPTY_FILTERS)
+  const [filters, setFilters] = useState<TaskListFilters>({ page: 1, pageSize: 10 })
   const [quickViewTask, setQuickViewTask] = useState<TaskListItem | null>(null)
   const [typeDialogOpen, setTypeDialogOpen] = useState(false)
   const [publishTask, setPublishTask] = useState<TaskListItem | null>(null)
@@ -62,7 +62,7 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
 
   // 页签切换重置筛选（URL 态回归：接线后 page/search/… 进 search，随 useTableUrlState）
   useEffect(() => {
-    setFilters(EMPTY_FILTERS)
+    setFilters({ page: 1, pageSize: 10 })
   }, [tab])
 
   const algorithmType = algorithmId ? algorithmId : null
@@ -70,9 +70,22 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
     ...filters,
     algorithmType: filters.algorithmType ?? algorithmType,
   })
-  // 「挑选合并」页签计数 = 两类合并容器总数（§2.3/§11-1）
+  // 「挑选合并」页签计数 = 两类合并容器总数（§2.3/§11-1；各页签常取，供角标）
   const cherryContainers = useCherryPickContainers({})
-  const cherryTotal = tab === 'cherry-picks' ? cherryContainers.data?.total ?? 0 : 0
+  const cherryTotal = cherryContainers.data?.total ?? 0
+  // 「已发布」页签计数 = published 列表 total（各页签常取，供角标；无权限隐藏页签不取）。
+  // 本页签直接复用列表 query 的 total（与列表条数同源，口径一致）；其他页签由独立 count
+  // query 提供（per_page=1 取 total，staleTime 与列表 query 对齐）。
+  const publishedCountQuery = useQuery({
+    queryKey: ['tasks', 'count', 'published'],
+    queryFn: async () => (await fetchPublishedTaskList({ perPage: 1 })).total,
+    enabled: hasPermission('published_task:read'),
+    staleTime: 15_000,
+  })
+  const publishedTotal =
+    tab === 'published'
+      ? (listQuery.data?.total ?? publishedCountQuery.data ?? 0)
+      : (publishedCountQuery.data ?? 0)
 
   const items = listQuery.data?.items ?? []
   const total = listQuery.data?.total ?? 0
@@ -80,12 +93,20 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
   const isFiltered = useMemo(
     () =>
       Object.entries(filters).some(([key, value]) => {
-        if (key === 'algorithmType') return false
+        if (key === 'algorithmType' || key === 'page' || key === 'pageSize') return false
         if (Array.isArray(value)) return value.length > 0
         return value != null && value !== '' && value !== false && value !== 'all'
       }),
     [filters]
   )
+
+  /** 标签 facet 数据源：已加载日常任务的标签去重集合（对齐旧 Vue currentTags 口径，替代 mock 静态源） */
+  const tagOptions = useMemo(() => {
+    if (tab !== 'daily') return []
+    const set = new Set<string>()
+    ;(items as TaskListItem[]).forEach((t) => t.tags.forEach((tag) => set.add(tag)))
+    return Array.from(set).sort()
+  }, [items, tab])
 
   const handleQuickView = (task: TaskListItem) => {
     setQuickViewTask(task)
@@ -116,9 +137,15 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
     setExportTasks(tasks)
   }
 
+  /** 筛选变化/查询：回到第 1 页（分页与筛选共用 queryKey） */
+  const handleFiltersChange = (next: TaskListFilters) => {
+    setFilters({ ...next, page: 1, pageSize: filters.pageSize ?? 10 })
+  }
+
   const tabCount = (t: TasksTabKey) => {
     if (t === 'cherry-picks') return cherryTotal
-    return total
+    if (t === 'published') return publishedTotal
+    return 0
   }
 
   return (
@@ -196,8 +223,9 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
             <TasksFilterToolbar
               tab={tab}
               filters={filters}
-              onChange={setFilters}
-              onReset={() => setFilters(EMPTY_FILTERS)}
+              tagOptions={tagOptions}
+              onChange={handleFiltersChange}
+              onReset={() => setFilters({ page: 1, pageSize: filters.pageSize ?? 10 })}
               onSearch={() => listQuery.refetch()}
               isFiltered={isFiltered}
             />
@@ -208,6 +236,8 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
               <PublishedTaskTable
                 tasks={items as PublishedTaskItem[]}
                 loading={listQuery.isLoading}
+                error={listQuery.isError}
+                onRetry={() => listQuery.refetch()}
               />
             ) : tab === 'cherry-picks' ? (
               <CherryPickTab
@@ -219,6 +249,8 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
               <DailyTaskTable
                 tasks={items as TaskListItem[]}
                 loading={listQuery.isLoading}
+                error={listQuery.isError}
+                onRetry={() => listQuery.refetch()}
                 trash={filters.trash ?? false}
                 onQuickView={handleQuickView}
                 onPublish={handlePublish}
@@ -232,7 +264,15 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
           </div>
         </div>
 
-        {tab !== 'cherry-picks' && <TasksPagination total={total} />}
+        {tab !== 'cherry-picks' && (
+          <TasksPagination
+            total={total}
+            page={filters.page ?? 1}
+            pageSize={filters.pageSize ?? 10}
+            onPageChange={(page) => setFilters((prev) => ({ ...prev, page }))}
+            onPageSizeChange={(pageSize) => setFilters((prev) => ({ ...prev, pageSize, page: 1 }))}
+          />
+        )}
       </SectionPageLayout.Content>
     </SectionPageLayout>
 

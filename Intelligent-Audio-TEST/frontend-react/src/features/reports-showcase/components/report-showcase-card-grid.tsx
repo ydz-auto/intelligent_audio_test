@@ -31,8 +31,8 @@ import type { ReportListItem } from '@/domain/models/report'
 import {
   formatDateTime,
   getAlgorithmLabel,
+  getReportTypeMeta,
   getSuccessRateVariant,
-  REPORT_TYPE_META,
 } from '@/features/reports/constants'
 
 interface ReportShowcaseCardGridProps {
@@ -118,7 +118,7 @@ export function ReportShowcaseCardGrid({
   return (
     <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-3'>
       {items.map((report) => {
-        const typeMeta = REPORT_TYPE_META[report.type]
+        const typeMeta = getReportTypeMeta(report.type)
         const rateVariant = getSuccessRateVariant(report.summary.pass_rate)
         return (
           <Card

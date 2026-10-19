@@ -53,6 +53,7 @@ export function PublicHeader({ className }: { className?: string }) {
             notice={notifications.notice}
             announcements={notifications.announcements}
             loading={notifications.loading}
+            onMarkAllRead={notifications.markAllRead}
           />
           <ConfigDrawer />
         </div>

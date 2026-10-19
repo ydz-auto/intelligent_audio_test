@@ -3,7 +3,7 @@
  * 三卡纵排：任务信息卡 / 进度概览卡 / 关联用例·设备（Tabs）；API/混合任务追加 API 资源管理；
  * 底部实时日志卡 + 操作按钮组（§4.7 状态机）。重新执行/重新评估经 §5.7 范围选择弹窗发起。
  */
-import { Pause, Play, RotateCcw, Square } from 'lucide-react'
+import { Pause, Play, RefreshCw, RotateCcw, Square } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
@@ -12,6 +12,14 @@ import { useTaskDetail } from '@/application/tasks/use-task-detail'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 import { Progress } from '@/features/tasks/components/ui/progress'
 import { CaseAssociation } from '@/features/tasks/detail/case-association'
 import { ProgressCard } from '@/features/tasks/detail/progress-card'
@@ -67,6 +75,29 @@ export function TaskDetailContent({
   const [reexecuteAction, setReexecuteAction] = useState<'retry' | 'reevaluate' | null>(null)
 
   const detail = detailQuery.data
+  if (detailQuery.isError) {
+    // 详情接口失败（如后端 TaskCaseBrief 校验 422）→ 错误态 + 重试，不渲染空白
+    return (
+      <Empty className='border-dashed rounded-xl border px-6 py-12'>
+        <EmptyHeader>
+          <EmptyMedia variant='icon'>
+            <RefreshCw aria-hidden='true' className='size-4' />
+          </EmptyMedia>
+          <EmptyTitle>任务详情加载失败</EmptyTitle>
+          <EmptyDescription>
+            {detailQuery.error instanceof Error
+              ? detailQuery.error.message
+              : '请稍后重试或联系管理员'}
+          </EmptyDescription>
+          <EmptyContent>
+            <Button variant='outline' size='sm' onClick={() => detailQuery.refetch()}>
+              重试
+            </Button>
+          </EmptyContent>
+        </EmptyHeader>
+      </Empty>
+    )
+  }
   if (!detail) return null
 
   const effectiveDeviceTypes = deviceTypesOverride ?? detail.device_types

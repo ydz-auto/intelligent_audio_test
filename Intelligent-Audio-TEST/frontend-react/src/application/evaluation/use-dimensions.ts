@@ -16,9 +16,12 @@ import {
   deleteEvaluationCategory,
   deleteEvaluationDimension,
   duplicateDimension,
+  exportEvaluationDimensions,
   fetchAlgorithmOptions,
   fetchEvaluationCategories,
+  fetchEvaluationDimensionDetail,
   fetchEvaluationDimensions,
+  importEvaluationDimensions,
   reorderDimension,
   saveEvaluationCategory,
   saveEvaluationDimension,
@@ -31,6 +34,16 @@ export function useEvaluationDimensions() {
   return useQuery({
     queryKey: ['evaluation', 'dimensions'],
     queryFn: fetchEvaluationDimensions,
+    staleTime: 30_000,
+  })
+}
+
+/** 维度详情（编辑反填用；列表不下发 required_inputs/output_fields，编辑必须走详情） */
+export function useEvaluationDimensionDetail(id: number | string | null) {
+  return useQuery({
+    queryKey: ['evaluation', 'dimensions', 'detail', id],
+    queryFn: () => fetchEvaluationDimensionDetail(id as number | string),
+    enabled: id != null,
     staleTime: 30_000,
   })
 }
@@ -114,6 +127,27 @@ export function useTestHealth() {
   return useMutation({
     mutationFn: (dimension: Dimension) => testDimensionHealth(dimension),
   })
+}
+
+/** 导入/导出维度（页头「导入/导出」下拉；门槛 evaluation:import_export） */
+export function useEvaluationImportExport() {
+  const queryClient = useQueryClient()
+
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ['evaluation'] })
+  }
+
+  const importMutation = useMutation({
+    mutationFn: ({ file, updateExisting }: { file: File; updateExisting: boolean }) =>
+      importEvaluationDimensions(file, updateExisting),
+    onSuccess: invalidate,
+  })
+
+  const exportMutation = useMutation({
+    mutationFn: (format: 'json' | 'excel') => exportEvaluationDimensions(format),
+  })
+
+  return { import: importMutation, export: exportMutation, invalidate }
 }
 
 /** 分类保存/删除（分类表单 + 分组视图分类行操作；门槛 evaluation:category_manage） */

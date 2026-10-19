@@ -50,23 +50,61 @@ export interface DimensionRule {
   [key: string]: unknown
 }
 
-/** 所需输入配置（required_inputs 列表项） */
+/**
+ * 所需输入配置（required_inputs 列表项）。
+ * 字段对照 evaluation_service 序列化（_serialize_dimension_param）：
+ * param_code / param_name / label / field_type / required / default_value / help_text / ui_order。
+ * 兼容旧数据 key/description 键（adapter 归一为 paramCode/helpText）。
+ */
 export interface DimensionRequiredInput {
-  key: string
+  id?: number | null
+  dimensionId?: number | null
+  /** 参数键名（param_code，如 asr_result） */
+  paramCode: string
+  /** 参数名称（param_name，如 ASR识别结果） */
+  paramName: string
+  /** 显示标签（label，缺省回退 paramName） */
   label: string
+  /** 字段类型（field_type 原值：text/number/audio/boolean/json/timestamp） */
   fieldType: string
   required: boolean
   defaultValue?: unknown
-  description?: string
+  /** 帮助文本（help_text；兼容旧数据 description） */
+  helpText?: string
+  /** 展示顺序（ui_order） */
+  uiOrder?: number | null
 }
 
-/** 输出字段配置（output_fields 列表项） */
+/**
+ * 输出字段配置（output_fields 列表项）。
+ * 字段对照 evaluation_service 序列化：param_code / param_name / label / field_path /
+ * field_type / output_role / agg_role / default_value / visible_in_report / help_text / ui_order。
+ * 兼容旧数据 name 键（adapter 归一为 paramCode）。
+ */
 export interface DimensionOutputField {
-  name: string
+  id?: number | null
+  dimensionId?: number | null
+  /** 字段代码（param_code，如 wer） */
+  paramCode: string
+  /** 参数名称（param_name，如 WER值） */
+  paramName: string
+  /** 显示标签（label，缺省回退 paramName） */
   label: string
+  /** 提取路径（field_path，如 wer 或 data.result.wer） */
+  fieldPath: string
+  /** 字段类型（field_type 原值：number/text/boolean/json/timestamp） */
+  fieldType: string
+  /** 字段角色（output_role：main 主结果 / aux 辅助字段） */
   outputRole: string
+  /** 聚合角色（agg_role：'' 无 / value 直接值 / numerator 分子 / denominator 分母 / pass_* 达标线） */
   aggRole: string
   defaultValue?: unknown
+  /** 是否在报告中可见（visible_in_report） */
+  visibleInReport: boolean
+  /** 帮助文本（help_text） */
+  helpText?: string
+  /** 展示顺序（ui_order） */
+  uiOrder?: number | null
 }
 
 /** 评估维度完整模型（DimensionItem） */

@@ -5,6 +5,7 @@
 import {
   ChevronsDownUp,
   ChevronsUpDown,
+  Layers,
   List,
   TreePine,
   TriangleAlert,
@@ -15,11 +16,13 @@ import { toast } from 'sonner'
 import type { PickFilters } from '@/application/tasks/cherry-pick/use-cherry-pick-candidates'
 import {
   useCherryPickCandidates,
+  useCherryPickCaseView,
   useCherryPickTree,
   usePickFilterOptions,
 } from '@/application/tasks/cherry-pick/use-cherry-pick-candidates'
 import { usePickCartStore } from '@/application/tasks/cherry-pick/use-pick-cart-store'
 import type { PickTreeBranch, PickTreeLeaf, PickTreeItem } from '@/domain/models/cherryPick'
+import { ApiError } from '@/infrastructure/api/api-error'
 import {
   clearSelection,
   computeSelectionStats,
@@ -53,10 +56,11 @@ export function PickStep({
   const options = usePickFilterOptions()
   const candidatesQuery = useCherryPickCandidates(filters)
   const tree = useCherryPickTree(candidatesQuery.data)
+  const caseTree = useCherryPickCaseView(candidatesQuery.data)
   const addEntries = usePickCartStore((s) => s.addEntries)
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
-  const [view, setView] = useState<'tree' | 'flat'>('tree')
+  const [view, setView] = useState<'tree' | 'case' | 'flat'>('tree')
   const [expandSignal, setExpandSignal] = useState<{ all: boolean; tick: number }>({
     all: false,
     tick: 0,
@@ -77,24 +81,31 @@ export function PickStep({
   const handleAddToCart = async () => {
     if (stats.results === 0) return
     setAdding(true)
-    const { addedCount, skippedCount, invalidCount } = await addEntries([
-      ...selectedIds,
-    ])
-    setAdding(false)
-    if (addedCount > 0) {
-      const suffix =
-        invalidCount > 0
-          ? `${addedCount} 条，${invalidCount} 条源结果已失效未加入`
-          : skippedCount > 0
-            ? `${addedCount} 条（重复 ${skippedCount} 条已跳过）`
-            : `${addedCount} 条`
-      toast.success(`已加入购物车 ${suffix}`)
-      setSelectedIds(new Set())
-      onAdded(addedCount, skippedCount)
-    } else {
-      toast.success('已加入购物车（重复条目已跳过）')
-      setSelectedIds(new Set())
-      onAdded(0, skippedCount)
+    try {
+      const { addedCount, skippedCount, invalidCount } = await addEntries([
+        ...selectedIds,
+      ])
+      if (addedCount > 0) {
+        const suffix =
+          invalidCount > 0
+            ? `${addedCount} 条，${invalidCount} 条源结果已失效未加入`
+            : skippedCount > 0
+              ? `${addedCount} 条（重复 ${skippedCount} 条已跳过）`
+              : `${addedCount} 条`
+        toast.success(`已加入购物车 ${suffix}`)
+        setSelectedIds(new Set())
+        onAdded(addedCount, skippedCount)
+      } else {
+        toast.success('已加入购物车（重复条目已跳过）')
+        setSelectedIds(new Set())
+        onAdded(0, skippedCount)
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.userMessage : '加入购物车失败，请重试'
+      )
+    } finally {
+      setAdding(false)
     }
   }
 
@@ -129,6 +140,15 @@ export function PickStep({
           >
             <TreePine aria-hidden='true' className='size-3.5' />
             树形
+          </Button>
+          <Button
+            variant={view === 'case' ? 'default' : 'ghost'}
+            size='sm'
+            className='h-6 gap-1 px-2 text-xs'
+            onClick={() => setView('case')}
+          >
+            <Layers aria-hidden='true' className='size-3.5' />
+            用例视角
           </Button>
           <Button
             variant={view === 'flat' ? 'default' : 'ghost'}
@@ -198,6 +218,15 @@ export function PickStep({
           <PickTree
             className='p-2'
             items={tree}
+            selectedIds={selectedIds}
+            onToggleLeaf={handleToggleLeaf}
+            onToggleBranch={handleToggleBranch}
+            expandSignal={expandSignal}
+          />
+        ) : view === 'case' ? (
+          <PickTree
+            className='p-2'
+            items={caseTree}
             selectedIds={selectedIds}
             onToggleLeaf={handleToggleLeaf}
             onToggleBranch={handleToggleBranch}

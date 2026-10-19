@@ -1,298 +1,241 @@
 /**
- * 步骤二：选择测试用例（interfaces/features/test-execution/components；10_测试执行.md §3.5）。
- * 表格/卡片双模式（view 进 URL）+ 正选/反选（POST /testcases/ids 全量圈定 + 对称差）+
- * 已选汇总行常驻 + 全量圈定显性提示；readOnly（§3.1.1）：表格/卡片只读可见，
- * 勾选/正选/反选/清空隐藏。
+ * 步骤二：选择测试用例（10_测试执行.md §3.5；INT-710 与用例管理页「一模一样」）。
+ * 负责人 2026-10-18 口径：开始测试的用例选择直接复用用例管理页的列表、筛选（分组/标签分类/
+ * 搜索）、视图切换组件，不再单独实现一套——按分组/按标签页签 + TestCasesFilterToolbar +
+ * GroupedCaseList/TagCaseList（真实接口）。向导专用选择操作（全选结果/反选/重置）与已选汇总行
+ * 保留（§3.5 本页不启用批量浮条，汇总行承担全部选择态操作）。
+ * 选择态经 useCaseSelectionStore（manual/filter-all）适配为管理组件消费的 Set + checked 回调。
  */
-import { Check, ListChecks, Search, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { ListChecks, X } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { toast } from 'sonner'
 
 import { useAlgorithmChannel } from '@/application/test-execution/useAlgorithmChannel'
 import { useCaseSelection } from '@/application/test-execution/useCaseSelection'
 import { usePermissions } from '@/application/hooks/use-permissions'
-import { fetchTestCases, type TestCaseFilter } from '@/infrastructure/api/test-execution-api'
+import { useTestCasesList, type TestCaseListFilters } from '@/application/testcases/use-testcases-list'
+import { useCaseGroups } from '@/application/testcases/use-case-groups'
+import { useCaseTags } from '@/application/testcases/use-case-tags'
+import { useDimensionOptions } from '@/application/testcases/use-evaluation-dimensions'
 import { useCaseSelectionStore } from '@/infrastructure/stores/case-selection-store'
-import { Badge } from '@/components/ui/badge'
+import { fetchCaseIdsByFilter } from '@/infrastructure/api/testcases-ids-api'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty'
-import { Input } from '@/components/ui/input'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useQuery } from '@tanstack/react-query'
-import { cn } from '@/lib/utils'
 
+import {
+  TEST_CASES_TABS,
+  type TestCasesViewKey,
+} from '@/features/testcases/constants'
+import { TestCasesFilterToolbar } from '@/features/testcases/components/testcases-filter-toolbar'
+import { GroupedCaseList, type GroupActionCallbacks } from '@/features/testcases/components/grouped-case-list'
+import { TagCaseList } from '@/features/testcases/components/tag-case-list'
+import type { CaseCardCallbacks } from '@/features/testcases/components/case-card'
 import { SelectionSummary } from '@/features/test-execution/components/selection-summary'
-import { fetchCaseGroups, fetchCaseTags, fetchEvaluationDimensions } from '@/infrastructure/api/test-execution-api'
 
 interface StepCasesProps {
   readOnly: boolean
+  /** 保留父级 URL view 契约（表格/卡片→按分组/按标签映射为初始值）；不再独立实现表格/卡片 */
   view: 'table' | 'card'
   onViewChange: (view: 'table' | 'card') => void
   /** 全量圈定/过滤空态用（步骤一算法联动 chip 由 toolBar 内嵌） */
   onGoStep0?: () => void
 }
 
-export function StepCases({ readOnly, view, onViewChange }: StepCasesProps) {
+export function StepCases({ readOnly, view }: StepCasesProps) {
   const { hasPermission } = usePermissions()
-  const { algorithmType, current: currentAlgorithm } = useAlgorithmChannel()
-  const [keyword, setKeyword] = useState('')
-  const [debouncedKeyword, setDebouncedKeyword] = useState('')
-  const [groupId, setGroupId] = useState<string | null>(null)
-  const [tags, setTags] = useState<string[]>([])
-  const [dimensionId, setDimensionId] = useState<number | null>(null)
+  const { algorithmType } = useAlgorithmChannel()
+  const selection = useCaseSelection([])
+  const store = useCaseSelectionStore
+
+  const [caseView, setCaseView] = useState<TestCasesViewKey>(
+    view === 'card' ? 'by-tag' : 'by-group'
+  )
+  const [filters, setFilters] = useState<TestCaseListFilters>({})
   const [pendingSelectAll, setPendingSelectAll] = useState(false)
 
   const canSelect = hasPermission('testcase:read') && !readOnly
 
-  const groupsQuery = useQuery({ queryKey: ['test-execution', 'groups'], queryFn: fetchCaseGroups })
-  const tagsQuery = useQuery({ queryKey: ['test-execution', 'tags'], queryFn: fetchCaseTags })
-  const dimensionsQuery = useQuery({
-    queryKey: ['test-execution', 'dimensions'],
-    queryFn: fetchEvaluationDimensions,
+  const listQuery = useTestCasesList(caseView, {
+    ...filters,
+    algorithmType: filters.algorithmType ?? algorithmType,
   })
+  const groupsQuery = useCaseGroups()
+  const tagsQuery = useCaseTags()
+  const dimsQuery = useDimensionOptions(algorithmType)
 
-  const filter = useMemo<TestCaseFilter>(
-    () => ({
-      keyword: debouncedKeyword || undefined,
-      groupId: groupId ?? null,
-      tags: tags.length ? tags : undefined,
-      dimensionId: dimensionId ?? null,
-      algorithmType,
-    }),
-    [debouncedKeyword, groupId, tags, dimensionId, algorithmType]
+  const items = listQuery.data?.items ?? []
+  const total = listQuery.data?.total ?? items.length
+  const groups = groupsQuery.data ?? []
+  const tags = tagsQuery.data ?? []
+  const dimensions = dimsQuery.data ?? []
+
+  const isFiltered = useMemo(
+    () =>
+      Object.entries(filters).some(([key, value]) => {
+        if (key === 'algorithmType') return false
+        return value != null && value !== '' && value !== false
+      }),
+    [filters]
   )
 
-  // INT-646 代码审计 P2：filter-all 圈定按当前筛选条件（含关键字/分组/标签/维度），
-  // 而非仅算法维度——筛选落位 case-selection store，launch 时随启动流程传入 createTask。
-  useEffect(() => {
-    useCaseSelectionStore.getState().setFilter(filter)
-  }, [filter])
+  /** 选择态适配（store manualCaseIds → 管理组件消费的 Set<string>） */
+  const selectedSet = useMemo(
+    () => new Set(selection.manualCaseIds),
+    [selection.manualCaseIds]
+  )
 
-  const listQuery = useQuery({
-    queryKey: ['test-execution', 'cases', JSON.stringify(filter)],
-    queryFn: () => fetchTestCases(filter),
-    staleTime: 15_000,
-  })
-  const cases = listQuery.data ?? []
-  const total = cases.length
-
-  const selection = useCaseSelection(cases)
-
-  const isFiltered = Boolean(debouncedKeyword || groupId || tags.length || dimensionId)
-
-  const handleSearch = (value: string) => {
-    setKeyword(value)
-    // debounce 500ms
-    window.setTimeout(() => setDebouncedKeyword(value), 500)
+  const handleToggleSelect = (id: string, checked: boolean) => {
+    if (canSelect && checked !== selectedSet.has(id)) store.getState().toggleCase(id)
   }
 
+  const handleToggleAll = (ids: string[], checked: boolean) => {
+    if (!canSelect) return
+    if (checked) store.getState().selectMany(ids)
+    else store.getState().removeMany(ids)
+  }
+
+  /** 全选结果（真实 POST /testcases/ids 按当前筛选圈定） */
   const handleSelectAllFiltered = async () => {
     setPendingSelectAll(true)
     try {
-      await selection.selectAllFiltered(filter)
+      const { ids, total: count } = await fetchCaseIdsByFilter({
+        search: filters.search,
+        groupId: filters.groupId,
+        tag: filters.tag,
+        dimensionId: filters.dimensionId,
+        algorithmType: filters.algorithmType ?? algorithmType,
+      })
+      store.getState().selectMany(ids)
+      toast.success(`已全选 ${count} 条用例`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '全选用例失败，请重试')
     } finally {
       setPendingSelectAll(false)
     }
   }
 
+  /** 反选（对称差） */
   const handleInvert = async () => {
-    await selection.invertSelection(filter)
+    try {
+      const { ids } = await fetchCaseIdsByFilter({
+        search: filters.search,
+        groupId: filters.groupId,
+        tag: filters.tag,
+        dimensionId: filters.dimensionId,
+        algorithmType: filters.algorithmType ?? algorithmType,
+      })
+      store.getState().invertWith(ids)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '反选用例失败，请重试')
+    }
   }
 
-  const handleReset = () => {
-    setKeyword('')
-    setDebouncedKeyword('')
-    setGroupId(null)
-    setTags([])
-    setDimensionId(null)
-  }
+  const handleReset = () => setFilters({})
 
-  const groups = groupsQuery.data ?? []
-  const allTags = tagsQuery.data ?? []
-  const dimensions = dimensionsQuery.data ?? []
+  /** 向导语境行内操作（编辑/复制/收藏/删除归用例管理页；试听入口归预览弹窗） */
+  const rowCallbacks = useMemo<CaseCardCallbacks>(
+    () => ({
+      onPreview: () => toast.info('音频试听请前往用例管理页'),
+      onCopy: () => toast.info('复制用例请前往用例管理页'),
+      onFavorite: () => toast.info('收藏请在用例管理页操作'),
+      onEdit: () => toast.info('编辑用例请前往用例管理页'),
+      onDelete: () => toast.info('删除用例请前往用例管理页'),
+      onRestore: () => {},
+      onPurge: () => {},
+    }),
+    []
+  )
+
+  const groupCallbacks = useMemo<GroupActionCallbacks>(
+    () => ({
+      onCreateInGroup: () => toast.info('新增用例请前往用例管理页'),
+      onEditGroup: () => toast.info('分组编辑请前往用例管理页'),
+      onDeleteGroup: () => toast.info('分组删除请前往用例管理页'),
+      onCopyGroup: () => toast.info('分组复制请前往用例管理页'),
+    }),
+    []
+  )
 
   return (
-    <div className='flex flex-col gap-4'>
-      {/* 工具栏 */}
-      <div className='flex flex-wrap items-center gap-2'>
-        {/* 算法联动 chip（§3.3；本页 chip 无 ×，点击回步骤0 换算法） */}
-        <Badge variant='secondary' className='gap-1 rounded-md px-2 py-1 text-xs'>
-          <span className='text-muted-foreground'>算法：</span>
-          <span className='font-medium'>{currentAlgorithm?.name ?? '未选择'}</span>
-        </Badge>
+    <div className='flex flex-col gap-3'>
+      {/* 视图页签：按分组/按标签（用例管理页同款） */}
+      <Tabs value={caseView} onValueChange={(v) => setCaseView(v as TestCasesViewKey)}>
+        <TabsList variant='line' className='max-w-full flex-wrap justify-start'>
+          {TEST_CASES_TABS.map((t) => (
+            <TabsTrigger key={t.key} value={t.key} className='px-3'>
+              {t.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
-        <div className='relative'>
-          <Search
-            aria-hidden='true'
-            className='text-muted-foreground absolute start-2 top-1/2 size-3.5 -translate-y-1/2'
-          />
-          <Input
-            value={keyword}
-            onChange={(e) => handleSearch(e.target.value)}
-            placeholder='搜索用例名称或描述'
-            className='h-8 w-[200px] ps-7 sm:w-[240px]'
-          />
-        </div>
+      {/* 筛选工具栏（用例管理页同款：搜索/分组/标签分类/评估维度） */}
+      <TestCasesFilterToolbar
+        filters={filters}
+        onChange={setFilters}
+        onReset={handleReset}
+        isFiltered={isFiltered}
+        groups={groups}
+        tags={tags}
+        dimensions={dimensions}
+        cases={items}
+        onRestoreAll={() => {}}
+      />
 
-        {/* 分组 facet（单选，Command 搜索） */}
-        <Popover>
-          <PopoverTrigger
-            render={
-              <Button variant='outline' size='sm' className='h-8 gap-1.5 text-xs' />
-            }
+      {/* 向导专用选择操作（§3.5：本页不启用批量浮条，汇总行承担选择态操作） */}
+      {!readOnly && canSelect && (
+        <div className='flex flex-wrap items-center gap-2'>
+          <Button
+            variant='outline'
+            size='sm'
+            className='h-8 gap-1.5 text-xs'
+            disabled={pendingSelectAll}
+            onClick={() => void handleSelectAllFiltered()}
           >
-            {groupId ? groups.find((g) => g.value === groupId)?.label ?? '分组' : '分组'}
-            {groupId && <X aria-hidden='true' className='size-3' onClick={() => setGroupId(null)} />}
-          </PopoverTrigger>
-          <PopoverContent align='start' className='w-44 p-1'>
-            <button
-              type='button'
-              className={cn(
-                'hover:bg-accent flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm',
-                groupId === null && 'bg-accent'
-              )}
-              onClick={() => setGroupId(null)}
-            >
-              全部分组
-            </button>
-            {groups.map((group) => (
-              <button
-                key={group.value}
-                type='button'
-                className={cn(
-                  'hover:bg-accent flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm',
-                  groupId === group.value && 'bg-accent'
-                )}
-                onClick={() => setGroupId(groupId === group.value ? null : group.value)}
-              >
-                <span className='flex-1'>{group.label}</span>
-                {groupId === group.value && <Check aria-hidden='true' className='size-3.5' />}
-              </button>
-            ))}
-          </PopoverContent>
-        </Popover>
-
-        {/* 标签 facet（多选+计数） */}
-        <Popover>
-          <PopoverTrigger render={<Button variant='outline' size='sm' className='h-8 gap-1.5 text-xs' />}>
-            标签
-            {tags.length > 0 && (
-              <span className='bg-primary text-primary-foreground rounded-full px-1.5 text-[10px] font-semibold'>
-                {tags.length}
-              </span>
-            )}
-          </PopoverTrigger>
-          <PopoverContent align='start' className='w-56 p-1'>
-            {allTags.length === 0 ? (
-              <p className='text-muted-foreground px-3 py-6 text-center text-sm'>暂无标签</p>
-            ) : (
-              <div className='max-h-60 overflow-auto'>
-                {allTags.map((tag) => {
-                  const selected = tags.includes(tag)
-                  return (
-                    <button
-                      key={tag}
-                      type='button'
-                      className={cn(
-                        'hover:bg-accent flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm',
-                        selected && 'bg-accent'
-                      )}
-                      onClick={() =>
-                        setTags((prev) => (selected ? prev.filter((t) => t !== tag) : [...prev, tag]))
-                      }
-                    >
-                      <Checkbox checked={selected} className='size-3.5' readOnly />
-                      <span className='flex-1'>{tag}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-          </PopoverContent>
-        </Popover>
-
-        {/* 评估维度 facet（单选，Popover 内滚动） */}
-        <Popover>
-          <PopoverTrigger render={<Button variant='outline' size='sm' className='h-8 gap-1.5 text-xs' />}>
-            评估维度
-          </PopoverTrigger>
-          <PopoverContent align='start' className='w-52 p-1'>
-            <div className='max-h-60 overflow-auto'>
-              <button
-                type='button'
-                className={cn(
-                  'hover:bg-accent flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm',
-                  dimensionId === null && 'bg-accent'
-                )}
-                onClick={() => setDimensionId(null)}
-              >
-                全部维度
-              </button>
-              {dimensions.map((dimension) => (
-                <button
-                  key={dimension.id}
-                  type='button'
-                  className={cn(
-                    'hover:bg-accent flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm',
-                    dimensionId === dimension.id && 'bg-accent'
-                  )}
-                  onClick={() =>
-                    setDimensionId(dimensionId === dimension.id ? null : dimension.id)
-                  }
-                >
-                  <span className='flex-1'>{dimension.name}</span>
-                  {dimensionId === dimension.id && (
-                    <Check aria-hidden='true' className='size-3.5' />
-                  )}
-                </button>
-              ))}
-            </div>
-          </PopoverContent>
-        </Popover>
-
-        {/* 右端：正选/反选 + 重置 */}
-        {!readOnly && canSelect && (
-          <div className='ml-auto flex items-center gap-2'>
-            <Button variant='outline' size='sm' disabled={pendingSelectAll} onClick={() => void handleSelectAllFiltered()}>
-              <ListChecks aria-hidden='true' className='size-3.5' />
-              全选结果
+            <ListChecks aria-hidden='true' className='size-3.5' />
+            全选结果
+          </Button>
+          <Button variant='outline' size='sm' className='h-8 gap-1.5 text-xs' onClick={() => void handleInvert()}>
+            反选
+          </Button>
+          {isFiltered && (
+            <Button variant='ghost' size='sm' className='h-8 gap-1.5 text-xs' onClick={handleReset}>
+              <X aria-hidden='true' className='size-3.5' />
+              重置
             </Button>
-            <Button variant='outline' size='sm' onClick={() => void handleInvert()}>
-              反选
-            </Button>
-            {isFiltered && (
-              <Button variant='ghost' size='sm' onClick={handleReset}>
-                <X aria-hidden='true' className='size-3.5' />
-                重置
-              </Button>
-            )}
-          </div>
+          )}
+        </div>
+      )}
+
+      {/* 内容区（分组/标签卡片流，与用例管理页同一组件） */}
+      <div className='min-h-0 flex-1 overflow-auto'>
+        {caseView === 'by-group' ? (
+          <GroupedCaseList
+            groups={groups}
+            cases={items}
+            loading={listQuery.isLoading}
+            trash={false}
+            hasQueryFilters={isFiltered}
+            selected={selectedSet}
+            tagRegistry={tags}
+            callbacks={rowCallbacks}
+            onBatchAction={() => {}}
+            actionCallbacks={groupCallbacks}
+            onToggleSelect={handleToggleSelect}
+            onToggleAll={handleToggleAll}
+          />
+        ) : (
+          <TagCaseList
+            cases={items}
+            loading={listQuery.isLoading}
+            selected={selectedSet}
+            tagRegistry={tags}
+            callbacks={rowCallbacks}
+            onToggleSelect={handleToggleSelect}
+            onToggleAll={handleToggleAll}
+            onCreate={() => toast.info('新增用例请前往用例管理页')}
+          />
         )}
-
-        {/* 视图切换 */}
-        <Tabs value={view} onValueChange={(v) => onViewChange(v as 'table' | 'card')}>
-          <TabsList className='h-8'>
-            <TabsTrigger value='table' className='text-xs'>
-              表格
-            </TabsTrigger>
-            <TabsTrigger value='card' className='text-xs'>
-              卡片
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
       </div>
 
       {/* 已选汇总行（常驻） */}
@@ -306,182 +249,6 @@ export function StepCases({ readOnly, view, onViewChange }: StepCasesProps) {
           onClear={selection.clearSelection}
         />
       )}
-
-      {/* 内容区 */}
-      {listQuery.isPending ? (
-        <div aria-busy='true' className='overflow-hidden rounded-lg border'>
-          {Array.from({ length: 6 }).map((_, index) => (
-            <div key={index} className='flex gap-4 border-b p-4 last:border-0'>
-              <Skeleton className='h-4 w-4' />
-              <Skeleton className='h-5 w-48 max-w-full' />
-              <Skeleton className='h-5 flex-1' />
-              <Skeleton className='h-5 w-20' />
-            </div>
-          ))}
-        </div>
-      ) : cases.length === 0 ? (
-        <Empty className='min-h-[280px] border-dashed'>
-          <EmptyHeader>
-            <EmptyMedia variant='icon'>
-              <ListChecks className='size-4' />
-            </EmptyMedia>
-            <EmptyTitle>暂无匹配的测试用例</EmptyTitle>
-            <EmptyDescription>调整筛选条件，或前往用例管理创建用例</EmptyDescription>
-          </EmptyHeader>
-          <EmptyContent>
-            <Button size='sm' variant='outline' onClick={() => {}}>
-              前往用例管理
-            </Button>
-          </EmptyContent>
-        </Empty>
-      ) : view === 'table' ? (
-        <div className='overflow-hidden rounded-lg border'>
-          <table className='w-full text-left text-sm'>
-            <thead className='bg-muted/50 border-b'>
-              <tr className='text-muted-foreground text-xs'>
-                <th className='w-10 px-4 py-2.5'>
-                  {!readOnly && (
-                    <Checkbox
-                      checked={selection.allVisibleSelected}
-                      aria-label='正选当前页'
-                      className='size-4'
-                      onCheckedChange={selection.toggleAllVisible}
-                    />
-                  )}
-                </th>
-                <th className='px-2 py-2.5 font-medium'>用例名称</th>
-                <th className='px-2 py-2.5 font-medium'>算法</th>
-                <th className='px-2 py-2.5 font-medium'>标签</th>
-                <th className='px-2 py-2.5 font-medium'>轮次/时长</th>
-                <th className='px-4 py-2.5 text-end font-medium'>更新时间</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cases.map((item) => {
-                const selected = selection.manualCaseIds.includes(item.id)
-                return (
-                  <tr
-                    key={item.id}
-                    className={cn(
-                      'border-b last:border-0 hover:bg-muted/30',
-                      selected && 'bg-primary/5'
-                    )}
-                  >
-                    <td className='px-4 py-2.5'>
-                      {!readOnly ? (
-                        <Checkbox
-                          checked={selected}
-                          aria-label={`选择 ${item.name}`}
-                          className='size-4'
-                          onCheckedChange={() => selection.toggleCase(item.id)}
-                        />
-                      ) : (
-                        <span className='text-primary flex justify-center text-xs'>✓</span>
-                      )}
-                    </td>
-                    <td className='px-2 py-2.5'>
-                      <span className='block font-medium'>{item.name}</span>
-                      {item.description && (
-                        <span className='text-muted-foreground block truncate text-xs'>
-                          {item.description}
-                        </span>
-                      )}
-                    </td>
-                    <td className='px-2 py-2.5'>
-                      <Badge variant='secondary' className='text-[11px]'>
-                        {item.algorithmType ?? '—'}
-                      </Badge>
-                    </td>
-                    <td className='px-2 py-2.5'>
-                      <div className='flex items-center gap-1'>
-                        {item.tags.slice(0, 2).map((tag) => (
-                          <Badge key={tag} variant='outline' className='text-[11px]'>
-                            {tag}
-                          </Badge>
-                        ))}
-                        {item.tags.length > 2 && (
-                          <Badge variant='outline' className='text-[11px]'>
-                            +{item.tags.length - 2}
-                          </Badge>
-                        )}
-                      </div>
-                    </td>
-                    <td className='px-2 py-2.5 text-xs whitespace-nowrap tabular-nums'>
-                      {item.rounds} 轮 · {formatDuration(item.totalDuration)}
-                    </td>
-                    <td className='px-4 py-2.5 text-end font-mono text-xs whitespace-nowrap tabular-nums'>
-                      {item.updatedAt?.slice(5, 16) ?? '—'}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3'>
-          {cases.map((item) => {
-            const selected = selection.manualCaseIds.includes(item.id)
-            return (
-              <div
-                key={item.id}
-                className={cn(
-                  'flex flex-col gap-2 rounded-xl border p-3 transition-colors',
-                  selected ? 'border-primary ring-primary/20 ring-2' : 'border-border hover:bg-muted/30'
-                )}
-              >
-                <div className='flex items-start gap-2'>
-                  {!readOnly ? (
-                    <Checkbox
-                      checked={selected}
-                      aria-label={`选择 ${item.name}`}
-                      className='mt-0.5 size-4'
-                      onCheckedChange={() => selection.toggleCase(item.id)}
-                    />
-                  ) : (
-                    <span className='text-primary mt-0.5 text-xs'>✓</span>
-                  )}
-                  <span className='min-w-0 flex-1'>
-                    <span className='block truncate text-sm font-medium'>{item.name}</span>
-                    <span className='text-muted-foreground mt-0.5 flex flex-wrap items-center gap-1 text-xs'>
-                      <span className='tabular-nums'>
-                        {item.rounds} 轮 · {formatDuration(item.totalDuration)}
-                      </span>
-                    </span>
-                  </span>
-                </div>
-                <div className='flex flex-wrap gap-1'>
-                  {item.tags.slice(0, 8).map((tag) => (
-                    <Badge key={tag} variant='outline' className='text-[11px]'>
-                      {tag}
-                    </Badge>
-                  ))}
-                  {item.tags.length > 8 && (
-                    <Badge variant='outline' className='text-[11px]'>
-                      +{item.tags.length - 8}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* 分页 */}
-      <div className='flex items-center justify-between text-xs'>
-        <span className='text-muted-foreground'>
-          共 {total} 条用例
-        </span>
-        <span className='text-muted-foreground'>每页 10 条 · 第 1 / 1 页</span>
-      </div>
     </div>
   )
-}
-
-function formatDuration(seconds: number | null): string {
-  if (seconds == null) return '—'
-  const m = Math.floor(seconds / 60)
-  const s = Math.round(seconds % 60)
-  return m > 0 ? `${m}m ${s}s` : `${s}s`
 }

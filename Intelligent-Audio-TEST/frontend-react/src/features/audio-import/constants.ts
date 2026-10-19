@@ -3,13 +3,13 @@
  * 枚举/状态 + 展示文案直接存中文，组件直接渲染（AGENTS.md §3.1 全中文硬编码）。
  */
 
-/** 格式 facet 选项（§5.3.2 FORMAT_OPTIONS 实测） */
+/** 格式 facet 选项（§5.3.2 FORMAT_OPTIONS 实测；后端 format 存小写，value 用小写匹配、label 大写展示） */
 export const FORMAT_OPTIONS = [
-  { value: 'MP3', label: 'MP3' },
-  { value: 'WAV', label: 'WAV' },
-  { value: 'FLAC', label: 'FLAC' },
-  { value: 'AAC', label: 'AAC' },
-  { value: 'M4A', label: 'M4A' },
+  { value: 'mp3', label: 'MP3' },
+  { value: 'wav', label: 'WAV' },
+  { value: 'flac', label: 'FLAC' },
+  { value: 'aac', label: 'AAC' },
+  { value: 'm4a', label: 'M4A' },
 ] as const
 
 /** 音频类型 facet 选项（§5.3.2 AUDIO_TYPE_OPTIONS 实测） */
@@ -112,17 +112,9 @@ export const CONVERT_BITRATE_OPTIONS = [
 /** 上传音频类型（§6.16 radio） */
 export const UPLOAD_AUDIO_TYPE_OPTIONS = AUDIO_TYPE_OPTIONS
 
-/** 测试类型（§6.16 checkbox 组） */
-export const UPLOAD_TEST_TYPE_OPTIONS = [
-  { value: 'e2e', label: 'E2E 测试' },
-  { value: 'api', label: 'API 测试' },
-] as const
-
-/** 评估维度（§6.16 DimensionConfigPanel 勾选必填） */
-export const UPLOAD_EVALUATION_DIMENSIONS = [
-  { id: 1, name: '唤醒成功率', required: true },
-  { id: 2, name: '误唤醒率', required: false },
-  { id: 3, name: '识别准确率', required: true },
-  { id: 4, name: '平均WER', required: false },
-  { id: 5, name: '平均响应时间', required: false },
+/** 用例分组方式（§6.16/§6.17 radio：根目录/文件夹名/自定义；V9.7.10 groupNameType 对位） */
+export const CASE_GROUP_OPTIONS = [
+  { value: 'root', label: '根目录' },
+  { value: 'folder', label: '文件夹名' },
+  { value: 'custom', label: '自定义' },
 ] as const

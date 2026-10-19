@@ -216,7 +216,11 @@ export function usePerRoundValue<V>(initial: V, scope: RoundScopeThreeValue) {
     setUniform(initial)
     setPerRound({})
   }, [initial])
-  return { current, setCurrent, resetValue }
+  /**
+   * perRound：逐轮设置模式各轮已编辑值（key 为轮次号，仅含用户实际改过的轮次；
+   * 未覆盖的轮次提交时不出现在 round_values，后端按「未指定轮次保留原配置」处理）。
+   */
+  return { current, setCurrent, resetValue, perRound }
 }
 
 /** 应用层级五项（§5.3.2~5.3.4；noise 弹窗默认勾选 case级/segment级背景噪声） */
@@ -230,21 +234,49 @@ export const APPLY_LAYERS = [
 
 export type ApplyLayerId = (typeof APPLY_LAYERS)[number]['id']
 
+/** 应用层级 id → 批量接口 targets 取值（Vue 基准：target→audio / case-bg→caseBackgroundNoise / …） */
+export const APPLY_LAYER_TARGET_MAP: Record<ApplyLayerId, string> = {
+  target: 'audio',
+  'case-bg': 'caseBackgroundNoise',
+  'segment-bg': 'segmentBackgroundNoise',
+  interferer: 'interferer',
+  voiceprint: 'voiceprint',
+}
+
+/** 应用层级 id 集合 → 批量接口 targets 数组（按 APPLY_LAYERS 顺序） */
+export function applyLayerToTargets(layers: Iterable<ApplyLayerId>): string[] {
+  const set = new Set(layers)
+  return APPLY_LAYERS.filter((l) => set.has(l.id)).map((l) => APPLY_LAYER_TARGET_MAP[l.id])
+}
+
 export function ApplyLayerField({
   defaultChecked = [],
+  value,
+  onChange,
+  hint = '可多选；留空表示不应用任何层级',
 }: {
   /** 默认勾选的层级 id（§5.3.4 默认 case级/segment级背景噪声） */
   defaultChecked?: ApplyLayerId[]
+  /** 受控模式（INT-710 接线：提交时读取勾选层级） */
+  value?: ApplyLayerId[]
+  onChange?: (next: ApplyLayerId[]) => void
+  /** 提示文案（各批量操作留空回退口径不同：声压/设备→目标人音频，噪声→case级/segment级） */
+  hint?: string
 }) {
-  const [checked, setChecked] = useState<Set<string>>(() => new Set(defaultChecked))
+  const [internal, setInternal] = useState<Set<string>>(
+    () => new Set(defaultChecked)
+  )
+  const checkedSet = value ? new Set(value) : internal
 
   const toggle = (id: string) => {
-    setChecked((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+    const next = new Set(checkedSet)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    if (value !== undefined && onChange) {
+      onChange(APPLY_LAYERS.filter((l) => next.has(l.id)).map((l) => l.id))
+    } else {
+      setInternal(next)
+    }
   }
 
   return (
@@ -257,16 +289,14 @@ export function ApplyLayerField({
             className='hover:bg-accent flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm'
           >
             <Checkbox
-              checked={checked.has(layer.id)}
+              checked={checkedSet.has(layer.id)}
               onCheckedChange={() => toggle(layer.id)}
             />
             {layer.label}
           </label>
         ))}
       </div>
-      <p className='text-muted-foreground/70 text-xs'>
-        可多选；留空表示不应用任何层级
-      </p>
+      <p className='text-muted-foreground/70 text-xs'>{hint}</p>
     </div>
   )
 }

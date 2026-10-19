@@ -4,27 +4,21 @@
  * 订阅页内 store（useRankingAlgorithmStore，localStorage iatp:rankings:v1:algorithm），
  * **不写回全局算法 store**；无 algorithm:read（device_admin/guest/未登录）只读降级条。
  * 榜单按算法过滤待后端立项（ReadModel 暂无算法维度），就绪前榜单全量展示。
+ * INT-730 接线：definitions 经 algorithm-config-api.fetchAlgorithmDefinitions 真实端点
+ * （client.ts，AlgorithmDefinition 全量 camelCase 形态，含 deviceParams/apiParams/caseParams
+ * 供参数摘要计数）；queryKey 与算法配置页共享 ['algorithm-definitions'] 缓存。
  */
 import { useQuery } from '@tanstack/react-query'
 
+import { fetchAlgorithmDefinitions } from '@/infrastructure/api/algorithm-config-api'
+import type { AlgorithmDefinition } from '@/domain/models/algorithmConfig'
 import { useBenchmarkAccess } from '@/application/rankings/useBenchmarkAccess'
-import {
-  MOCK_RANKING_ALGORITHM_DEFINITIONS,
-  type MockRankingAlgorithmDefinition,
-} from '@/infrastructure/mock/benchmark-mock'
 import { useRankingAlgorithmStore } from '@/infrastructure/stores/ranking-algorithm-store'
-
-/** GET /algorithm/definitions（algorithm:read；mock 常量，TODO(API 接线) 换真实端点） */
-async function fetchRankingAlgorithmDefinitions(): Promise<
-  MockRankingAlgorithmDefinition[]
-> {
-  return MOCK_RANKING_ALGORITHM_DEFINITIONS
-}
 
 export interface RankingAlgorithmState {
   algorithmType: string | null
-  definitions: MockRankingAlgorithmDefinition[]
-  selected: MockRankingAlgorithmDefinition | undefined
+  definitions: AlgorithmDefinition[]
+  selected: AlgorithmDefinition | undefined
   isLoading: boolean
   /** 无 algorithm:read（device_admin/guest/未登录）——只读降级条 */
   isReadonly: boolean
@@ -38,9 +32,9 @@ export function useRankingAlgorithm(): RankingAlgorithmState {
   const { canReadAlgorithm: canRead } = useBenchmarkAccess()
   const algorithmType = useRankingAlgorithmStore((s) => s.algorithmType)
   const defsQuery = useQuery({
-    queryKey: ['algorithm', 'definitions'],
-    queryFn: fetchRankingAlgorithmDefinitions,
-    staleTime: 5 * 60_000,
+    queryKey: ['algorithm-definitions'],
+    queryFn: fetchAlgorithmDefinitions,
+    staleTime: 30_000,
     enabled: canRead,
   })
 
@@ -72,12 +66,12 @@ export function useRankingAlgorithm(): RankingAlgorithmState {
 
 /** 参数摘要「设备参数 {n} · API 参数 {m} · 用例参数 {k}」；三项全 0/缺失返回空串隐藏 */
 export function buildParamSummary(
-  definition: MockRankingAlgorithmDefinition | undefined
+  definition: AlgorithmDefinition | undefined
 ): string {
   if (!definition) return ''
-  const device = definition.device_params?.length ?? 0
-  const api = definition.api_params?.length ?? 0
-  const cases = definition.case_params?.length ?? 0
+  const device = definition.deviceParams?.length ?? 0
+  const api = definition.apiParams?.length ?? 0
+  const cases = definition.caseParams?.length ?? 0
   if (device === 0 && api === 0 && cases === 0) return ''
   return `设备参数 ${device} · API 参数 ${api} · 用例参数 ${cases}`
 }

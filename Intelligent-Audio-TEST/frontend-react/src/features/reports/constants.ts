@@ -80,6 +80,22 @@ export const REPORT_STATUS_META: Record<
   published: { label: '已发布', variant: 'success' },
 }
 
+/** 报告类型元信息兜底（INT-769：未知/遗留类型回退「未知报告类型」，对齐旧 Vue ReportHeaderComponent typeMap || '未知报告类型'） */
+export function getReportTypeMeta(
+  type: ReportType | string | undefined
+): { label: string; variant: StatusVariant } {
+  if (!type) return { label: '未知报告类型', variant: 'neutral' }
+  return REPORT_TYPE_META[type as ReportType] ?? { label: '未知报告类型', variant: 'neutral' }
+}
+
+/** 报告状态元信息兜底（INT-769：未知状态回退「未知状态」，对齐旧 Vue statusMap || '未知状态'） */
+export function getReportStatusMeta(
+  status: ReportStatus | string | undefined
+): { label: string; variant: StatusVariant } {
+  if (!status) return { label: '未知状态', variant: 'neutral' }
+  return REPORT_STATUS_META[status as ReportStatus] ?? { label: '未知状态', variant: 'neutral' }
+}
+
 /** 算法类型中文映射（对照 schemas/algorithm.py 实测枚举名；未知回退原值） */
 export const ALGORITHM_LABELS: Record<string, string> = {
   asr_streaming: '流式识别',

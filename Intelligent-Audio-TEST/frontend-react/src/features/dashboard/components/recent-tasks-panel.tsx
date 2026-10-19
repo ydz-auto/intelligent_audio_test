@@ -1,7 +1,7 @@
 /**
  * ③ 最近任务面板（04_控制台.md §3.6，PanelWrapper 形态）。
- * 列表行经 summaryQuery 渲染真实最近任务（状态徽章按任务状态取色，算法标签取算法类型）；
- * loading Skeleton / 空态由 PanelWrapper 按查询状态驱动。
+ * 真实数据源 GET /home/stats/summary recent_tasks（INT-728 接线）；
+ * 加载/空态由 React Query 态驱动（PanelWrapper loading Skeleton / empty 空态）。
  */
 import { Link } from '@tanstack/react-router'
 import { ClipboardList } from 'lucide-react'
@@ -24,7 +24,7 @@ export function RecentTasksPanel() {
   const { hasPermission } = usePermissions()
   const summaryQuery = useDashboardSummary()
 
-  const tasks = summaryQuery.data?.recent_tasks ?? []
+  const tasks = summaryQuery.data?.recentTasks ?? []
   const loading = summaryQuery.isLoading
   const empty = !loading && tasks.length === 0
 
@@ -61,7 +61,7 @@ export function RecentTasksPanel() {
         <div>
           {tasks.map((task, index) => {
             const statusMeta = getTaskStatusMeta(task.status)
-            const algorithmLabel = getAlgorithmTypeLabel(task.algorithm_type)
+            const algorithmLabel = getAlgorithmTypeLabel(task.algorithmType)
             return (
               // TODO(API 接线): 行点击 → /tasks/{id}，详情路由随 INT-354 任务域卡落定
               <button
@@ -86,8 +86,8 @@ export function RecentTasksPanel() {
                   </div>
                 </div>
                 <div className='text-muted-foreground/60 mt-1 text-xs tabular-nums'>
-                  用例 {task.completed_cases}/{task.total_cases} ·{' '}
-                  {formatDateTime(task.created_at)}
+                  用例 {task.completedCases}/{task.totalCases} ·{' '}
+                  {formatDateTime(task.createdAt)}
                 </div>
               </button>
             )

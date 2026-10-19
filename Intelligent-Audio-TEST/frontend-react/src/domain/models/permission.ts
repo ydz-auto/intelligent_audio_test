@@ -7,6 +7,8 @@
  */
 
 export type Permission = {
+  /** 权限点 ID（后端 seed_rbac 落库；撤销用 permission_id 引用） */
+  id?: number
   code: string
   name: string
   /** 所属业务模块（矩阵 Collapsible 分组键） */

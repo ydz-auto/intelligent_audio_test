@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Spinner } from '@/components/ui/spinner'
 import {
   Select,
   SelectContent,
@@ -40,7 +41,7 @@ import {
 } from '@/components/ui/sheet'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import { MOCK_ALGORITHMS } from '@/domain/models/algorithm'
+import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import type { TagItem } from '@/domain/models/testTag'
@@ -172,6 +173,8 @@ export function CaseMutateDrawer({
   const [groupValue, setGroupValue] = useState(caseItem?.groupId ?? presetGroupId ?? '')
   const [newGroupName, setNewGroupName] = useState('')
   const [algorithmType, setAlgorithmType] = useState(caseItem?.algorithmType ?? '')
+  const { options: algorithmOptions, isLoading: loadingAlgorithms } =
+    useAlgorithmOptions()
   const [rounds, setRounds] = useState<RoundDraft[]>([
     {
       number: 1,
@@ -372,18 +375,25 @@ export function CaseMutateDrawer({
             {/* 关联算法 */}
             <section className='border-border/60 border-t pt-4'>
               <Label className='mb-2'>关联算法</Label>
-              <Select value={algorithmType} onValueChange={(v) => setAlgorithmType(v ?? '')}>
-                <SelectTrigger size='sm' className='h-8 w-full sm:w-80'>
-                  <SelectValue placeholder='请选择算法' />
-                </SelectTrigger>
-                <SelectContent>
-                  {MOCK_ALGORITHMS.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {loadingAlgorithms ? (
+                <div className='flex h-8 w-full items-center gap-2 rounded-md border px-3 text-sm text-muted-foreground sm:w-80'>
+                  <Spinner className='size-3.5' />
+                  加载算法列表...
+                </div>
+              ) : (
+                <Select value={algorithmType} onValueChange={(v) => setAlgorithmType(v ?? '')}>
+                  <SelectTrigger size='sm' className='h-8 w-full sm:w-80'>
+                    <SelectValue placeholder='请选择算法' />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {algorithmOptions.map((a) => (
+                      <SelectItem key={a.value} value={a.value}>
+                        {a.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <p className='text-muted-foreground mt-1 text-xs'>
                 算法类型决定「算法参数/评估维度」步骤的可用字段与维度过滤。
               </p>

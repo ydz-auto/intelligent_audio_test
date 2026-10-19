@@ -1,6 +1,7 @@
 /**
  * 首页门户组件测试——StatsBar（INT-379 门户）：未登录/无权限降级登录引导、
  * 登录态渲染平台规模六项（03_首页.md §3.2 尾部）。
+ * useHomeStats 为真实接口 query（INT-728 接线后），组件测试 mock hook 供稳态数据。
  */
 import {
   createMemoryHistory,
@@ -15,18 +16,27 @@ import { StatsBar } from '@/features/home/components/stats-bar'
 import { useAuthStore } from '@/infrastructure/stores/auth-store'
 import type { HomeStatsDetails } from '@/domain/models/home'
 
-vi.mock('@/infrastructure/api/home', () => ({
-  fetchHomeStatsDetails: vi.fn().mockResolvedValue({
-    test_cases: { total: 128, groups: 32 },
-    tasks: { total: 342, completed: 200, running: 10, failed: 5 },
-    devices: { online: 50, offline: 10, total: 60 },
-    audio_files: { total: 1560, dry: 1200, noise: 200, prompt: 160 },
-    playback_devices: 10,
-    apis: { online: 8, offline: 2, total: 10 },
-    reports: 45,
-    dimensions: { total: 38, with_endpoints: 30, endpoints: 26 },
-    updated_at: '2026-10-18T00:00:00',
-  } satisfies HomeStatsDetails),
+const { MOCK_HOME_STATS } = vi.hoisted<{ MOCK_HOME_STATS: HomeStatsDetails }>(
+  () => ({
+    MOCK_HOME_STATS: {
+      testCases: { total: 579, groups: 6 },
+      tasks: { total: 124, completed: 74, running: 1, failed: 38 },
+      devices: { online: 3, offline: 0, total: 3 },
+      audioFiles: { total: 1953, dry: 1953, noise: 0, prompt: 0 },
+      playbackDevices: 12,
+      apis: { online: 1, offline: 0, total: 1 },
+      reports: 55,
+      dimensions: { total: 37, withEndpoints: 0, endpoints: 0 },
+      updatedAt: '2026-10-18T11:05:08',
+    },
+  })
+)
+
+vi.mock('@/application/hooks/use-home-stats', () => ({
+  useHomeStats: () => ({
+    data: MOCK_HOME_STATS,
+    isLoading: false,
+  }),
 }))
 
 const initialAuth = useAuthStore.getState()

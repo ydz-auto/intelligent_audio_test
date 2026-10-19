@@ -40,6 +40,7 @@ export function DimensionTable({
   canMoveUp,
   canMoveDown,
   weightPendingIds,
+  algorithmLabels,
   onEdit,
   onDelete,
   onDuplicate,
@@ -61,6 +62,8 @@ export function DimensionTable({
   canMoveUp: (dimension: HierarchicalDimension) => boolean
   canMoveDown: (dimension: HierarchicalDimension) => boolean
   weightPendingIds: Set<number | string>
+  /** 算法类型码 → 中文名（真实 /algorithm/options 的 value→label；关联算法徽章用） */
+  algorithmLabels?: Record<string, string>
   onEdit: (dimension: Dimension) => void
   onDelete: (dimension: Dimension) => void
   onDuplicate: (dimension: Dimension) => void
@@ -192,7 +195,7 @@ export function DimensionTable({
                                 'border-primary/60 text-primary'
                             )}
                           >
-                            {getAlgorithmLabel(algo.algorithmType)}
+                            {getAlgorithmLabel(algo.algorithmType, algorithmLabels)}
                           </Badge>
                         ))}
                       </div>

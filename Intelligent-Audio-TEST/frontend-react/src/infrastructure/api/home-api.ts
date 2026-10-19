@@ -1,4 +1,4 @@
-import type { HomeStatsSummary } from '@/domain/models/stats'
+import type { HomeStatsSummary } from '@/domain/models/home'
 import { request } from '@/infrastructure/api/client'
 
 /**

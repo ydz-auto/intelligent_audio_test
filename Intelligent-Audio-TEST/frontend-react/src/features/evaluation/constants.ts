@@ -2,16 +2,18 @@
  * 评估维度页常量（features/evaluation；11_用例域.md §8 中文文案全量源）。
  * 视图页签/状态筛选/结果类型映射/默认权重；徽章映射走 status-badge 语义名。
  */
-import { MOCK_ALGORITHMS } from '@/domain/models/algorithm'
+/**
+ * 算法类型 id → 中文名。真实 label 优先取 GET /algorithm/options（页面级把
+ * options 的 value→label 传进来）；ALGORITHM_LABELS 仅作无真实数据时的兜底。
+ */
+export const ALGORITHM_LABELS: Record<string, string> = {}
 
-/** 算法类型 id → 中文名（关联算法徽章/关联算法 facet 选项 label） */
-export const ALGORITHM_LABELS: Record<string, string> = Object.fromEntries(
-  MOCK_ALGORITHMS.map((a) => [a.id, a.name])
-)
-
-export function getAlgorithmLabel(algorithmType: string | null): string {
+export function getAlgorithmLabel(
+  algorithmType: string | null,
+  labels?: Record<string, string>
+): string {
   if (!algorithmType) return '—'
-  return ALGORITHM_LABELS[algorithmType] ?? algorithmType
+  return labels?.[algorithmType] ?? ALGORITHM_LABELS[algorithmType] ?? algorithmType
 }
 
 /** 双视图页签（default 胶囊，§4.1）：列表视图 / 分组视图 */

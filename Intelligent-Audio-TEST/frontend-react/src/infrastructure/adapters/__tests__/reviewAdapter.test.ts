@@ -1,0 +1,110 @@
+/**
+ * infrastructure/adapters/reviewAdapter + 复核领域模型 纯函数测试（19 规范 §3.6/§4.4，INT-793）。
+ * 对位 review_repository._review_po_to_dict / review_service.submit_review 实测响应形态。
+ */
+import { describe, expect, it } from 'vitest'
+
+import {
+  toAiReviewRecord,
+  toReviewHistoryItem,
+  toReviewHistoryList,
+  toReviewSubmitResult,
+} from '@/infrastructure/adapters/reviewAdapter'
+import {
+  aiConfidenceLabel,
+  evaluationStatusLabel,
+  executionStatusLabel,
+} from '@/domain/models/review'
+
+describe('toReviewHistoryItem', () => {
+  it('snake_case DTO → camelCase 领域（留痕行）', () => {
+    expect(
+      toReviewHistoryItem({
+        id: 1,
+        result_id: 5599,
+        task_id: 407,
+        test_case_id: '4607de9d-8a3e-4b96-8f12-b8c95bbb0c5e',
+        field_name: 'evaluation_status',
+        old_value: 'failed',
+        new_value: 'completed',
+        comment: '接线测试：INT-793 演示',
+        created_by_user_id: 7,
+        created_at: '2026-10-19T04:00:00',
+      })
+    ).toEqual({
+      id: 1,
+      resultId: 5599,
+      taskId: 407,
+      testCaseId: '4607de9d-8a3e-4b96-8f12-b8c95bbb0c5e',
+      fieldName: 'evaluation_status',
+      oldValue: 'failed',
+      newValue: 'completed',
+      comment: '接线测试：INT-793 演示',
+      createdByUserId: 7,
+      createdAt: '2026-10-19T04:00:00',
+    })
+  })
+
+  it('空历史 → 空列表', () => {
+    expect(toReviewHistoryList([])).toEqual([])
+  })
+})
+
+describe('toReviewSubmitResult', () => {
+  it('reviewed/failed/review_count → 领域', () => {
+    expect(
+      toReviewSubmitResult({
+        reviewed: [{ result_id: 5599 }],
+        failed: [{ result_id: 1, message: '状态无变化（已复核同值），仅允许补备注' }],
+        review_count: 1,
+      })
+    ).toEqual({
+      reviewedCount: 1,
+      failed: [{ resultId: 1, message: '状态无变化（已复核同值），仅允许补备注' }],
+    })
+  })
+})
+
+describe('toAiReviewRecord', () => {
+  it('AI 复核记录 DTO → 领域（§5.3 契约建议）', () => {
+    expect(
+      toAiReviewRecord({
+        id: 1001,
+        result_id: 4690,
+        task_id: 407,
+        test_case_id: '86756aa2-2c97-4548-b493-b2312b20a8c4',
+        verdict: 'passed',
+        confidence: 0.85,
+        reasoning: '大模型复检建议维持原评估结论',
+        adopted: false,
+        adopted_by_user_id: null,
+        adopted_at: null,
+        rejected: false,
+        created_at: '2026-10-19T04:00:00',
+      })
+    ).toMatchObject({
+      id: 1001,
+      resultId: 4690,
+      verdict: 'passed',
+      confidence: 0.85,
+      reasoning: '大模型复检建议维持原评估结论',
+      adopted: false,
+      rejected: false,
+    })
+  })
+})
+
+describe('复核领域文案（§7 页面文案）', () => {
+  it('执行/评估状态中文映射', () => {
+    expect(executionStatusLabel('completed')).toBe('已完成')
+    expect(executionStatusLabel('skipped')).toBe('已跳过')
+    expect(executionStatusLabel('unknown-x')).toBe('unknown-x')
+    expect(evaluationStatusLabel('failed')).toBe('评估失败')
+    expect(evaluationStatusLabel(undefined)).toBe('未知')
+  })
+
+  it('AI 置信度 0-1 → 百分比', () => {
+    expect(aiConfidenceLabel(0.85)).toBe('85%')
+    expect(aiConfidenceLabel(undefined)).toBe('—')
+  })
+})

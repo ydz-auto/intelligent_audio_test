@@ -160,8 +160,8 @@ export function RankingAlgorithmCardGrid(props: { className?: string }) {
                   {definition.name}
                 </h3>
                 <span className='flex flex-wrap items-center gap-1'>
-                  {definition.group_name ? (
-                    <Badge variant='outline'>{definition.group_name}</Badge>
+                  {definition.groupName ? (
+                    <Badge variant='outline'>{definition.groupName}</Badge>
                   ) : null}
                   <Badge
                     variant='outline'

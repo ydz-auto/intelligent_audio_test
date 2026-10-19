@@ -1,23 +1,24 @@
 /**
  * 全局算法联动 chip（11_用例域.md §3.4，用例页变体）：
- * 只读展示全局算法切换器当前选择；× 清空（本地演示态，提示「清除后将显示全部算法的用例」）。
+ * 只读展示全局算法切换器当前选择；× 清除 store（回到全部算法）。
+ * 算法名从真实 GET /algorithm/options（useAlgorithmOptions 同源）解析，不再走 MOCK 表。
  * store 消费见 infrastructure/stores/algorithm-store.ts（INT-344 基座件，本页只读）。
  */
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { MOCK_ALGORITHMS } from '@/domain/models/algorithm'
+import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
 import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
 import { X } from 'lucide-react'
-import { useState } from 'react'
 import { toast } from 'sonner'
 
 export function TestCasesAlgorithmChip() {
   const algorithmId = useAlgorithmStore((s) => s.algorithmId)
-  const [cleared, setCleared] = useState(false)
+  const setAlgorithmId = useAlgorithmStore((s) => s.setAlgorithmId)
+  const { options } = useAlgorithmOptions()
 
-  const algorithm = MOCK_ALGORITHMS.find((a) => a.id === algorithmId)
-  if (!algorithm || cleared) return null
+  const algorithm = options.find((a) => a.value === algorithmId)
+  if (!algorithm) return null
 
   return (
     <Tooltip>
@@ -30,7 +31,7 @@ export function TestCasesAlgorithmChip() {
             size='icon-xs'
             aria-label='清除全局算法'
             onClick={() => {
-              setCleared(true)
+              setAlgorithmId('')
               toast.success('已清除全局算法，显示全部算法的用例')
             }}
           >

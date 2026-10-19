@@ -5,7 +5,7 @@
  * 保存 = POST /roles/{id}/permissions 全量替换（确认提示）；
  * 系统角色删除按钮隐藏、被引用角色删除预检「该角色仍有用户归属，请先转移用户」。
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { KeyRound, Ellipsis } from 'lucide-react'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
@@ -14,6 +14,7 @@ import {
   useRolesQuery,
   useRoleMutations,
 } from '@/application/iam/use-roles-query'
+import { useUsersQuery } from '@/application/iam/use-users-query'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -54,6 +55,16 @@ export function RolesPage() {
   const rolesQuery = useRolesQuery()
   const permissionCatalogQuery = usePermissionCatalogQuery()
   const mutations = useRoleMutations()
+  // 用户数后端角色接口不返回（role_bp.py 无 user_count），按用户列表 role_name 统计
+  const usersQuery = useUsersQuery({})
+
+  const userCountByRole = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const user of usersQuery.data ?? []) {
+      counts.set(user.roleCode, (counts.get(user.roleCode) ?? 0) + 1)
+    }
+    return counts
+  }, [usersQuery.data])
 
   const canCreate = hasPermission('role:create')
   const canUpdate = hasPermission('role:update')
@@ -157,7 +168,7 @@ export function RolesPage() {
                       </td>
                       <td className='px-3 py-3'>
                         <span className='font-mono tabular-nums'>
-                          {role.userCount}
+                          {userCountByRole.get(role.code) ?? 0}
                         </span>
                       </td>
                       <td className='px-3 py-3 text-right'>

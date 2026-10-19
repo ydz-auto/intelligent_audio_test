@@ -30,6 +30,9 @@ import { AlgorithmRowActions } from '@/features/algorithm-config/components/algo
 export type AlgorithmTableProps = {
   rows: AlgorithmDefinition[]
   loading: boolean
+  /** 列表查询失败（INT-715：错误态不再误示为空态） */
+  error: boolean
+  onRetry: () => void
   total: number
   searchKeyword: string
   selectedIds: Set<number>
@@ -89,6 +92,27 @@ export function AlgorithmsTable(props: AlgorithmTableProps) {
         {Array.from({ length: Math.min(props.total || 8, 10) }).map((_, i) => (
           <Skeleton key={i} className='h-12 w-full rounded-none border-b' />
         ))}
+      </div>
+    )
+  }
+
+  if (props.error) {
+    return (
+      <div className='bg-card ring-foreground/10 rounded-xl ring-1'>
+        <Empty className='h-80'>
+          <EmptyMedia variant='icon'>
+            <Box aria-hidden='true' className='size-4' />
+          </EmptyMedia>
+          <EmptyHeader>
+            <EmptyTitle>加载失败</EmptyTitle>
+            <EmptyDescription>算法配置加载失败，请重试</EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button variant='outline' size='sm' onClick={props.onRetry}>
+              请重试
+            </Button>
+          </EmptyContent>
+        </Empty>
       </div>
     )
   }
