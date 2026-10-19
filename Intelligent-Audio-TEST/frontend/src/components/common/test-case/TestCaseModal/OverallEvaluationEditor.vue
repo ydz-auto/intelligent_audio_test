@@ -44,7 +44,7 @@
         >
           <i :class="isDimSelected(dim) ? 'fas fa-check' : 'fas fa-plus'"></i>
           {{ dim.name }}
-          <i v-if="(dim as any).requiresAudio" class="fas fa-music" style="margin-left: 2px; font-size: 9px;"></i>
+          <i v-if="(dim as any).requiresAudio" class="fas fa-music chip-audio-icon"></i>
         </div>
       </div>
 
@@ -429,6 +429,11 @@ watch(enabled, () => {
 }
 .eval-chip i{
   font-size: 10px;
+}
+/* 维度音频标记小图标 - 自内联 style 就近迁移（INT-1002 CSS冻结） */
+.eval-chip i.chip-audio-icon{
+  margin-left: 2px;
+  font-size: 9px;
 }
 
 .eval-empty{

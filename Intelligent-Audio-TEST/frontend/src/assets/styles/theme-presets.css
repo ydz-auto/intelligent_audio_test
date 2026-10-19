@@ -125,6 +125,13 @@
   /* ── CSS 冻结收编：代码块（INT-977，UserGuide 原硬编码，值保真） ── */
   --code-bg: #1a1a1a;    /* 代码块背景（浅色预设；深色预设见 .dark） */
   --code-text: #e6edf3;  /* 代码块文字（常驻深底浅字，两套预设同值） */
+  /* ── 用例域执行日志终端色（INT-1002 CSS冻结收编 · 值保真；终端观感深浅主题均保持暗色，不随主题换肤） ── */
+  --terminal-bg: #1e1e1e;           /* 执行日志容器背景（TestCaseDetailModal 原 #1e1e1e） */
+  --terminal-fg: #d4d4d4;           /* 执行日志正文文字（TestCaseDetailModal 原 #d4d4d4） */
+  --terminal-border: #333333;       /* 执行日志容器边框（TestCaseDetailModal 原 #333） */
+  --terminal-muted: #666666;        /* 执行日志空态文案（TestCaseDetailModal 原 #666） */
+  --terminal-timestamp: #858585;    /* 执行日志时间戳（TestCaseDetailModal 原 #858585） */
+  --terminal-scroll-hover: #444444; /* 执行日志滚动条悬浮（TestCaseDetailModal scoped 原 #444） */
 }
 
 /* 深色预设（原 tokens.css .dark 结构预留 → 本卡启用） */

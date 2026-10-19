@@ -19,10 +19,10 @@
             @dragleave.prevent="isDragging = false"
             @drop.prevent="handleDrop"
           >
-            <i class="fas fa-upload" style="font-size: 32px; color: var(--primary-color); margin-bottom: 12px;"></i>
-            <p style="margin: 0 0 12px 0; color: var(--text-secondary);">点击或拖拽文件到此处上传</p>
-            <p style="margin: 0; font-size: 12px; color: var(--text-tertiary);">支持 .xlsx/.xls, .json 格式文件，单个文件不超过10MB</p>
-            <input ref="fileInputRef" type="file" id="import-file" accept=".xlsx,.xls,.json" style="display: none;" @change="handleFileChange">
+            <i class="fas fa-upload file-upload-icon"></i>
+            <p class="upload-hint">点击或拖拽文件到此处上传</p>
+            <p class="upload-limit">支持 .xlsx/.xls, .json 格式文件，单个文件不超过10MB</p>
+            <input ref="fileInputRef" type="file" id="import-file" accept=".xlsx,.xls,.json" class="file-input-hidden" @change="handleFileChange">
             <div v-if="localFile" class="file-info mt-2">
               <i class="fas fa-file-alt"></i>
               <span>{{ localFile.name }}</span>
@@ -279,6 +279,28 @@ defineExpose({
   text-align: center;
   cursor: pointer;
   transition: all 0.2s;
+}
+
+/* 上传区图标 / 文案 / 隐藏 file input - 自内联 style 就近迁移（INT-1002 CSS冻结） */
+.file-upload-icon {
+  font-size: var(--font-size-xxxl);
+  color: var(--primary-color);
+  margin-bottom: 12px;
+}
+
+.upload-hint {
+  margin: 0 0 12px 0;
+  color: var(--text-secondary);
+}
+
+.upload-limit {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+
+.file-input-hidden {
+  display: none;
 }
 
 .file-upload:hover {

@@ -73,7 +73,6 @@
             placeholder="输入标签后按回车添加"
             @keydown.enter.prevent="addTagFromInput"
             @keydown.tab.prevent="addTagFromInput"
-            style="width: 100%;"
           />
         </div>
       <div class="tags-container mt-2" v-if="selectedTags.length > 0">

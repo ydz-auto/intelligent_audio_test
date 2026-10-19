@@ -12,33 +12,33 @@
     </div>
     
     <div v-else class="detail-content">
-      <div class="case-header-panel" style="margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--border-color);">
-        <h4 style="margin: 0 0 12px 0; font-size: 18px; font-weight: var(--font-weight-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
-          <i class="fas fa-file-alt" style="color: var(--primary-color);"></i>
+      <div class="case-header-panel">
+        <h4>
+          <i class="fas fa-file-alt"></i>
           {{ detail.caseName }}
         </h4>
-        <div class="case-meta" style="display: flex; gap: 20px; flex-wrap: wrap;">
+        <div class="case-meta">
           <div class="meta-item flex items-center gap-2">
-            <i class="fas fa-info-circle" style="color: var(--text-secondary); font-size: 14px;"></i>
-            <span style="font-size: 14px; color: var(--text-secondary);">状态: </span>
-            <span :class="'status-tag ' + (detail.executionStatus || ExecutionStatus.PENDING).toLowerCase()" style="font-size: 12px; padding: 2px 8px; border-radius: var(--radius-tag); font-weight: 500;">
-              {{ 
+            <i class="fas fa-info-circle"></i>
+            <span class="meta-label">状态: </span>
+            <span :class="'status-tag ' + (detail.executionStatus || ExecutionStatus.PENDING).toLowerCase()">
+              {{
                 detail.executionStatus === ExecutionStatus.COMPLETED ? (
                   (detail.evaluationStatus === EvaluationStatus.COMPLETED || detail.evaluationStatus === EvaluationStatus.FAILED) ? '已完成' : '评估中'
-                ) : 
-                detail.executionStatus === ExecutionStatus.FAILED ? '执行失败' : 
+                ) :
+                detail.executionStatus === ExecutionStatus.FAILED ? '执行失败' :
                 detail.executionStatus === ExecutionStatus.IN_PROGRESS ? '执行中' : '等待中'
               }}
             </span>
           </div>
-          <div class="meta-item" style="display: flex; align-items: center; gap: 8px;" v-if="detail.duration">
-            <i class="fas fa-clock" style="color: var(--text-secondary); font-size: 14px;"></i>
-            <span style="font-size: 14px; color: var(--text-secondary);">耗时{{ (detail.duration / 1000).toFixed(2) }}s</span>
+          <div class="meta-item" v-if="detail.duration">
+            <i class="fas fa-clock"></i>
+            <span class="meta-label">耗时{{ (detail.duration / 1000).toFixed(2) }}s</span>
           </div>
           <div class="meta-item flex items-center gap-2">
-            <i class="fas fa-star" style="color: var(--text-secondary); font-size: 14px;"></i>
-            <span style="font-size: 14px; color: var(--text-secondary);">评分: </span>
-            <span :class="'status-tag ' + (detail.evaluationStatus || EvaluationStatus.PENDING).toLowerCase()" style="font-size: 12px; padding: 2px 8px; border-radius: var(--radius-tag); font-weight: 500;">
+            <i class="fas fa-star"></i>
+            <span class="meta-label">评分: </span>
+            <span :class="'status-tag ' + (detail.evaluationStatus || EvaluationStatus.PENDING).toLowerCase()">
               {{ detail.evaluationStatus === EvaluationStatus.COMPLETED ? '评分完成' : '待评分' }}
             </span>
           </div>
@@ -49,10 +49,10 @@
       </div>
 
       <!-- INT-340：人工复核入口（结果列表多选批量复核，逐条留痕） -->
-      <div v-if="detail.results && detail.results.length" class="review-toolbar" style="margin-top: 16px; padding: 12px 16px; background-color: var(--background-primary); border: 1px solid var(--border-color); border-radius: var(--radius-lg);">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-          <h5 style="margin: 0; font-size: 14px; font-weight: var(--font-weight-semibold); color: var(--text-primary);">
-            <i class="fas fa-clipboard-check" style="color: var(--primary-color); margin-right: 6px;"></i>
+      <div v-if="detail.results && detail.results.length" class="review-toolbar">
+        <div class="review-toolbar-header">
+          <h5>
+            <i class="fas fa-clipboard-check"></i>
             人工复核
           </h5>
           <button
@@ -63,8 +63,8 @@
             批量复核（{{ selectedResultIds.length }}）
           </button>
         </div>
-        <div class="review-result-list" style="display: flex; flex-wrap: wrap; gap: 8px;">
-          <label v-for="r in detail.results" :key="r.id" class="review-result-item" style="display: flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid var(--border-color); border-radius: var(--radius-tag); font-size: 12px; cursor: pointer;">
+        <div class="review-result-list">
+          <label v-for="r in detail.results" :key="r.id" class="review-result-item">
             <input type="checkbox" :value="r.id" v-model="selectedResultIds" />
             <span>{{ r.deviceName || ('设备 ' + (r.deviceId ?? r.id)) }}</span>
             <span class="status-pill" :class="(r.executionStatus || 'pending').toLowerCase()">{{ execStatusLabel(r.executionStatus) }}</span>
@@ -74,12 +74,12 @@
       </div>
 
       <!-- 执行结果与指标 - 有任何数据时才显示 -->
-      <div v-if="hasAnyResultData" class="results-section" style="margin-top: 24px; background-color: var(--background-primary); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 20px; border: 1px solid var(--border-color);">
-        <h5 style="margin: 0 0 16px 0; font-size: 16px; font-weight: var(--font-weight-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
-          <i class="fas fa-chart-bar" style="color: var(--primary-color);"></i>
+      <div v-if="hasAnyResultData" class="results-section">
+        <h5>
+          <i class="fas fa-chart-bar"></i>
           执行结果与指标
         </h5>
-        <TestCaseReportDetail 
+        <TestCaseReportDetail
           :isComparison="true"
           :devices="detail.devices"
           :comparisonData="preparedComparisonData"
@@ -95,22 +95,22 @@
           :resultAudios="detail.resultAudios"
         />
       </div>
-      
+
       <!-- 完全没有执行数据时的提示 -->
-      <div v-else-if="!detail.results || detail.results.length === 0" class="results-section" style="margin-top: 24px; background-color: var(--background-primary); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 20px; border: 1px solid var(--border-color);">
-        <h5 style="margin: 0 0 16px 0; font-size: 16px; font-weight: var(--font-weight-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
-          <i class="fas fa-chart-bar" style="color: var(--primary-color);"></i>
+      <div v-else-if="!detail.results || detail.results.length === 0" class="results-section">
+        <h5>
+          <i class="fas fa-chart-bar"></i>
           执行结果与指标
         </h5>
-        <div class="no-items-message" style="text-align: center; padding: 30px; color: var(--text-secondary);">
+        <div class="no-items-message">
           暂无执行结果
         </div>
       </div>
 
       <!-- 执行日志 -->
-      <div class="logs-section" style="margin-top: 24px;">
-        <h5 style="margin: 0 0 16px 0; font-size: 16px; font-weight: var(--font-weight-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
-          <i class="fas fa-terminal" style="color: var(--primary-color);"></i>
+      <div class="logs-section">
+        <h5>
+          <i class="fas fa-terminal"></i>
           执行日志
         </h5>
         <div class="log-toolbar">
@@ -119,14 +119,14 @@
           </button>
           <span v-if="logTotal > 0" class="log-count">显示 {{ detail.logs.length }} / 共 {{ logTotal }} 条</span>
         </div>
-        <div class="modern-log-container" ref="logContainer" style="background-color: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: var(--radius-control); font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; max-height: 400px; overflow-y: auto; line-height: 1.6; border: 1px solid #333;">
-          <div v-if="!detail.logs || detail.logs.length === 0" class="no-logs" style="text-align: center; color: #666; padding: 20px;">
+        <div class="modern-log-container" ref="logContainer">
+          <div v-if="!detail.logs || detail.logs.length === 0" class="no-logs">
             暂无日志信息
           </div>
-          <div v-else v-for="log in detail.logs" :key="log.id" class="log-line" :class="'log-' + (log.level || 'info').toLowerCase()" style="margin-bottom: 2px; display: flex; gap: 10px;">
-            <span class="log-timestamp" style="color: #858585; white-space: nowrap;">[{{ formatTime(log.time) }}]</span>
-            <span class="log-lvl" style="font-weight: bold; width: 50px; text-align: center; border-radius: var(--radius-tag); font-size: 11px; height: 18px; line-height: 18px;">{{ (log.level || 'INFO').toUpperCase() }}</span>
-            <span class="log-msg" style="word-break: break-all;">{{ log.content }}</span>
+          <div v-else v-for="log in detail.logs" :key="log.id" class="log-line" :class="'log-' + (log.level || 'info').toLowerCase()">
+            <span class="log-timestamp">[{{ formatTime(log.time) }}]</span>
+            <span class="log-lvl">{{ (log.level || 'INFO').toUpperCase() }}</span>
+            <span class="log-msg">{{ log.content }}</span>
           </div>
         </div>
       </div>
@@ -484,12 +484,171 @@ onMounted(() => {
 
 .status-tag{
   display: inline-block;
+  font-size: var(--font-size-xs);
+  padding: 2px 8px;
+  border-radius: var(--radius-tag);
+  font-weight: 500;
 }
 
 .status-tag.completed{ background-color: var(--success-light); color: var(--success-color); }
 .status-tag.failed{ background-color: var(--error-light); color: var(--error-color); }
 .status-tag.inProgress{ background-color: var(--warning-light); color: var(--warning-color); }
 .status-tag.pending{ background-color: var(--secondary-light); color: var(--secondary-color); }
+
+/* case-header-panel - 自内联 style 就近迁移（INT-1002 CSS冻结） */
+.case-header-panel{
+  margin-bottom: var(--spacing-lg);
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+.case-header-panel h4{
+  margin: 0 0 12px 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+.case-header-panel h4 i{
+  color: var(--primary-color);
+}
+
+.meta-item{
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+.meta-item > i{
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+.meta-label{
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+/* review-toolbar - 自内联 style 就近迁移（INT-1002 CSS冻结） */
+.review-toolbar{
+  margin-top: var(--spacing-md);
+  padding: 12px 16px;
+  background-color: var(--background-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+}
+.review-toolbar-header{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-sm);
+}
+.review-toolbar-header h5{
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+.review-toolbar-header h5 i{
+  color: var(--primary-color);
+  margin-right: 6px;
+}
+.review-result-list{
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
+.review-result-item{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-tag);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+/* results-section - 自内联 style 就近迁移（INT-1002 CSS冻结） */
+.results-section{
+  margin-top: var(--spacing-lg);
+  background-color: var(--background-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 20px;
+  border: 1px solid var(--border-color);
+}
+.results-section h5{
+  margin: 0 0 var(--spacing-md) 0;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+.results-section h5 i{
+  color: var(--primary-color);
+}
+.no-items-message{
+  text-align: center;
+  padding: 30px;
+  color: var(--text-secondary);
+}
+
+/* logs-section - 自内联 style 就近迁移（INT-1002 CSS冻结；终端观感不随主题换肤） */
+.logs-section{
+  margin-top: var(--spacing-lg);
+}
+.logs-section h5{
+  margin: 0 0 var(--spacing-md) 0;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+.logs-section h5 i{
+  color: var(--primary-color);
+}
+.modern-log-container{
+  background-color: var(--terminal-bg);
+  color: var(--terminal-fg);
+  padding: var(--spacing-md);
+  border-radius: var(--radius-control);
+  font-family: var(--font-mono, 'Consolas', 'Monaco', monospace);
+  font-size: 13px;
+  max-height: 400px;
+  overflow-y: auto;
+  line-height: 1.6;
+  border: 1px solid var(--terminal-border);
+}
+.modern-log-container .no-logs{
+  text-align: center;
+  color: var(--terminal-muted);
+  padding: 20px;
+}
+.log-line{
+  margin-bottom: 2px;
+  display: flex;
+  gap: 10px;
+}
+.log-timestamp{
+  color: var(--terminal-timestamp);
+  white-space: nowrap;
+}
+.log-lvl{
+  font-weight: bold;
+  width: 50px;
+  text-align: center;
+  border-radius: var(--radius-tag);
+  font-size: 11px;
+  height: 18px;
+  line-height: 18px;
+}
+.log-msg{
+  word-break: break-all;
+}
 
 .log-line.error .log-lvl{ background-color: var(--color-red-500); color: white; }
 .log-line.warn .log-lvl{ background-color: var(--color-amber-500); color: white; }
@@ -513,7 +672,7 @@ onMounted(() => {
 }
 
 .modern-log-container::-webkit-scrollbar-thumb:hover{
-  background: #444;
+  background: var(--terminal-scroll-hover);
 }
 
 .btn{
