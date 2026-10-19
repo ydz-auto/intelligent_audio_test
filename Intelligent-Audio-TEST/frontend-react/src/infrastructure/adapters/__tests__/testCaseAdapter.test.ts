@@ -59,12 +59,13 @@ describe('testCaseListItemFromDto（INT-922）', () => {
       audioCount: 3,
     })
     // config 值内 snake_case 契约原样保留（编辑回填数据源）
-    expect(item.config?.rounds).toHaveLength(2)
-    expect(item.config?.rounds?.[0]).toMatchObject({
+    const configRounds = (item.config?.rounds ?? []) as Array<Record<string, unknown>>
+    expect(configRounds).toHaveLength(2)
+    expect(configRounds[0]).toMatchObject({
       round_number: 1,
       evaluation: { enabled: true, dimensions: [{ id: 5 }, { id: 11 }] },
     })
-    expect((item.config?.rounds?.[0]?.audios as Array<{ audio_id: number }>)).toHaveLength(2)
+    expect(configRounds[0].audios as Array<{ audio_id: number }>).toHaveLength(2)
     expect(item.algorithmParams).toEqual(DTO.algorithm_params)
     expect(item.referenceParams).toEqual(DTO.reference_params)
   })
