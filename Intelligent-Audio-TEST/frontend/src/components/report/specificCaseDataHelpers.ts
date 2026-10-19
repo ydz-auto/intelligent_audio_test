@@ -109,6 +109,7 @@ export function createCaseDataHelpers(deps: {
   props: any
   cases: any
   totalCases: any
+  reviewAllCases: any
   currentPage: any
   pageSize: any
   casesLoading: any
@@ -124,7 +125,7 @@ export function createCaseDataHelpers(deps: {
   processTags: (tags: any) => any[]
 }) {
   const {
-    props, cases, totalCases, currentPage, pageSize,
+    props, cases, totalCases, reviewAllCases, currentPage, pageSize,
     casesLoading, casesLoadError,
     searchKeyword, selectedCategories, selectedTags, selectedMetrics,
     sortDimension, selectedSortMetric, selectedSortResource, sortOrder,
@@ -289,6 +290,25 @@ export function createCaseDataHelpers(deps: {
     }
   }
 
+  /** 服务端筛选/排序参数（loadCasesPage / 导出 / 复核筛选全量 共用同一套参数口径） */
+  function buildSearchParams(): Record<string, any> {
+    const params: Record<string, any> = {}
+    if (searchKeyword.value) params.keyword = searchKeyword.value
+    if (selectedCategories.value.length > 0) params.categories = selectedCategories.value
+    if (selectedTags.value.length > 0) params.tags = selectedTags.value
+    if (selectedMetrics.value.length > 0) params.metrics = selectedMetrics.value
+    if (sortDimension.value === '评估维度' && selectedSortMetric.value) {
+      params.sortBy = 'metric'
+      params.sortMetric = selectedSortMetric.value
+      params.sortResource = selectedSortResource.value || undefined
+      params.sortOrder = sortOrder.value
+    } else {
+      params.sortBy = sortDimension.value
+      params.sortOrder = sortOrder.value
+    }
+    return params
+  }
+
   // 后端分页加载当前页用例（排序也由后端处理）
   async function loadCasesPage(reportId: any) {
     casesLoading.value = true
@@ -297,19 +317,7 @@ export function createCaseDataHelpers(deps: {
       const params: any = {
         page: currentPage.value,
         perPage: pageSize.value,
-      }
-      if (searchKeyword.value) params.keyword = searchKeyword.value
-      if (selectedCategories.value.length > 0) params.categories = selectedCategories.value
-      if (selectedTags.value.length > 0) params.tags = selectedTags.value
-      if (selectedMetrics.value.length > 0) params.metrics = selectedMetrics.value
-      if (sortDimension.value === '评估维度' && selectedSortMetric.value) {
-        params.sortBy = 'metric'
-        params.sortMetric = selectedSortMetric.value
-        params.sortResource = selectedSortResource.value || undefined
-        params.sortOrder = sortOrder.value
-      } else {
-        params.sortBy = sortDimension.value
-        params.sortOrder = sortOrder.value
+        ...buildSearchParams(),
       }
       const data = await reportsPort.searchCases(reportId, params)
       const items = data?.items || []
@@ -328,20 +336,7 @@ export function createCaseDataHelpers(deps: {
     casesLoading.value = true
     casesLoadError.value = ''
     try {
-      const params: any = { page: 1, perPage: 999999 }
-      if (searchKeyword.value) params.keyword = searchKeyword.value
-      if (selectedCategories.value.length > 0) params.categories = selectedCategories.value
-      if (selectedTags.value.length > 0) params.tags = selectedTags.value
-      if (selectedMetrics.value.length > 0) params.metrics = selectedMetrics.value
-      if (sortDimension.value === '评估维度' && selectedSortMetric.value) {
-        params.sortBy = 'metric'
-        params.sortMetric = selectedSortMetric.value
-        params.sortResource = selectedSortResource.value || undefined
-        params.sortOrder = sortOrder.value
-      } else {
-        params.sortBy = sortDimension.value
-        params.sortOrder = sortOrder.value
-      }
+      const params: any = { page: 1, perPage: 999999, ...buildSearchParams() }
       const data = await reportsPort.searchCases(reportId, params)
       const items = data?.items || []
       totalCases.value = data?.total || 0
@@ -354,5 +349,35 @@ export function createCaseDataHelpers(deps: {
     }
   }
 
-  return { extractCasesFromReportData, normalizeCasesForUi, loadCasesPage, loadAllCasesForExport }
+  // 复核筛选模式：拉取全量用例（保留服务端筛选/排序），供客户端复核过滤 + 分页。
+  // 与 loadCasesPage 的差异：写入 reviewAllCases（不动 cases/totalCases），
+  // 分页总数/页数由组件按复核过滤后的条数计算。
+  // 注：后端 gRPC 单条响应 4MB 上限——perPage=999999 一次拉全在大报告（如 420 共 387 例）
+  // 会 RESOURCE_EXHAUSTED（6.4MB 超限），故按 perPage=100 分批拉全合入（P2-1 实测修复）。
+  async function loadAllCasesForReview(reportId: any) {
+    casesLoading.value = true
+    casesLoadError.value = ''
+    try {
+      const accumulated: any[] = []
+      let page = 1
+      const perPage = 100
+      for (;;) {
+        const params: any = { page, perPage, ...buildSearchParams() }
+        const data = await reportsPort.searchCases(reportId, params)
+        const items = data?.items || []
+        accumulated.push(...items)
+        const total = data?.total ?? accumulated.length
+        if (!items.length || accumulated.length >= total) break
+        page += 1
+      }
+      reviewAllCases.value = normalizeCasesForUi(accumulated)
+    } catch (e: any) {
+      console.error('加载全量用例失败（复核筛选）:', e)
+      casesLoadError.value = e?.message || '加载用例失败'
+    } finally {
+      casesLoading.value = false
+    }
+  }
+
+  return { extractCasesFromReportData, normalizeCasesForUi, loadCasesPage, loadAllCasesForExport, loadAllCasesForReview }
 }

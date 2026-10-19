@@ -421,7 +421,7 @@ border: 1px solid var(--gray-light-color);
   padding: var(--spacing-sm, 8px) var(--spacing-md, 16px);
   background: var(--primary-light, var(--secondary-light));
   border: 1px solid var(--primary-color, var(--secondary));
-  border-radius: var(--border-radius-md, 6px);
+  border-radius: var(--border-radius-md);
   color: var(--primary-color, var(--secondary));
   font-size: var(--font-size-sm, 13px);
   margin-bottom: var(--spacing-md, 16px);

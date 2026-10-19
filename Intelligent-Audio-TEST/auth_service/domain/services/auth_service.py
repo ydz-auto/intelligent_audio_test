@@ -6,11 +6,13 @@
 - Token 载荷校验
 - 权限判定
 - 角色权限与用户附加权限的合并解析
+- 自我资料邮箱格式校验（INT-792）
 
 本文件不依赖 SQLAlchemy / db.Model，便于单元测试。
 """
 from __future__ import annotations
 
+import re
 from typing import Dict, List
 
 from auth_service.domain.entities.user import UserStatus
@@ -84,6 +86,24 @@ _ASSIGNABLE_STATUSES = (
 
 # 系统内置管理员角色名（其 '*' 通配权限不可被角色权限替换移除）
 _ADMIN_ROLE_NAME = 'admin'
+
+# 自我资料邮箱格式（INT-792）：users.email 列 VARCHAR(100)，前端壳仅此一项
+_EMAIL_PATTERN = re.compile(r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$')
+_EMAIL_MAX_LEN = 100
+
+
+def validate_email_format(email: str) -> None:
+    """校验自我资料邮箱格式（非空时）。
+
+    空串不校验（空串=不修改语义在调用方归一）；非法格式抛
+    AuthDomainError（无归类错误码，网关按未知错误码映射 400）。
+    """
+    if not email:
+        return
+    if len(email) > _EMAIL_MAX_LEN:
+        raise AuthDomainError('邮箱长度不能超过 100 个字符')
+    if not _EMAIL_PATTERN.match(email):
+        raise AuthDomainError('邮箱格式不正确')
 
 
 def validate_status_transition(status: str) -> None:

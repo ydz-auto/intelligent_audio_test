@@ -225,10 +225,16 @@ function toReviewHistoryItem(raw: Record<string, unknown>): ReviewHistoryItem {
   return {
     id: raw.id !== undefined && raw.id !== null ? Number(raw.id) : undefined,
     resultId: raw.result_id !== undefined && raw.result_id !== null ? Number(raw.result_id) : undefined,
+    // INT-796 §3.4：历史抽屉溯源字段（任务/用例/操作人）
+    taskId: raw.task_id !== undefined && raw.task_id !== null ? Number(raw.task_id) : undefined,
+    testCaseId: raw.test_case_id !== undefined && raw.test_case_id !== null ? String(raw.test_case_id) : undefined,
     fieldName: raw.field_name !== undefined && raw.field_name !== null ? String(raw.field_name) : undefined,
     oldValue: raw.old_value === null || raw.old_value === undefined ? null : String(raw.old_value),
     newValue: raw.new_value === null || raw.new_value === undefined ? null : String(raw.new_value),
     comment: raw.comment === null || raw.comment === undefined ? null : String(raw.comment),
+    createdByUserId: raw.created_by_user_id === null || raw.created_by_user_id === undefined
+      ? null
+      : Number(raw.created_by_user_id),
     createdAt: raw.created_at === null || raw.created_at === undefined ? null : s(raw.created_at),
   }
 }

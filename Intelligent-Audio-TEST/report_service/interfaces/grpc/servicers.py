@@ -693,6 +693,54 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
             logger.exception("GetCaseAverages failed")
             return self._resp(False, str(e), {})
 
+    def GetStatistics(self, request, context=None):
+        """报告统计分析（GET /reports/statistics，INT-791）。
+
+        请求字段（proto GetStatisticsRequest）：
+            data: str  JSON: {dimension, start_time, end_time, algorithm_type}
+        """
+        try:
+            params_dict = _loads(getattr(request, 'data', ''), {}) or {}
+            data = self.query_handler.handle_get_statistics(params_dict)
+            if data.get('success') is False:
+                return self._resp(False, data.get('message', 'failed'), data)
+            return self._resp(True, 'ok', data)
+        except Exception as e:
+            logger.exception("GetStatistics failed")
+            return self._resp(False, str(e), {})
+
+    def GetStatisticsTrend(self, request, context=None):
+        """趋势分析（GET /reports/statistics/trend，INT-791）。
+
+        请求字段（proto GetStatisticsTrendRequest）：
+            data: str  JSON: {trend_type, metric, start_time, end_time}
+        """
+        try:
+            params_dict = _loads(getattr(request, 'data', ''), {}) or {}
+            data = self.query_handler.handle_get_statistics_trend(params_dict)
+            if data.get('success') is False:
+                return self._resp(False, data.get('message', 'failed'), data)
+            return self._resp(True, 'ok', data)
+        except Exception as e:
+            logger.exception("GetStatisticsTrend failed")
+            return self._resp(False, str(e), {})
+
+    def GenerateStatisticsReport(self, request, context=None):
+        """统计分析报表生成（POST /reports/statistics/report，INT-791）。
+
+        请求字段（proto GenerateStatisticsReportRequest）：
+            data: str  JSON: {report_type, content, format, time_range}
+        """
+        try:
+            params_dict = _loads(getattr(request, 'data', ''), {}) or {}
+            data = self.query_handler.handle_generate_statistics_report(params_dict)
+            if not data.get('content_base64'):
+                return self._resp(False, data.get('message', 'generate failed'), data)
+            return self._resp(True, 'ok', data)
+        except Exception as e:
+            logger.exception("GenerateStatisticsReport failed")
+            return self._resp(False, str(e), {})
+
     def DownloadCaseLogs(self, request, context=None):
         """下载用例日志（ZIP）。
 

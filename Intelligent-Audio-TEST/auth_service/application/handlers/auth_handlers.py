@@ -21,6 +21,7 @@ from auth_service.domain.entities.user import UserAggregate
 from auth_service.domain.entities.role import PermissionEntity, RoleEntity
 from auth_service.domain.exceptions import AuthDomainError
 from auth_service.domain.services.auth_service import (
+    validate_email_format,
     validate_grant,
     validate_revoke,
     validate_role_deletion,
@@ -47,6 +48,7 @@ from auth_service.application.commands.auth_commands import (
     UpdateUserStatusCommand,
     UpdateUserCommand,
     ChangePasswordCommand,
+    UpdateSelfProfileCommand,
     GrantPermissionCommand,
     RevokePermissionCommand,
     CreateUserCommand,
@@ -266,6 +268,31 @@ class AuthCommandHandler:
             'operator_id': cmd.user_id,
             'target_id': cmd.user_id,
             'delta': {'password_changed': True},
+        })
+
+    def handle_update_self_profile(self, cmd: UpdateSelfProfileCommand) -> None:
+        """当前登录用户更新自我资料（INT-792：仅 email，服务端字段白名单）。
+
+        - 目标=操作人（网关 JWT 注入，operator_id 同 user_id）；
+          用户不存在 → USER_NOT_FOUND；
+        - 命令结构只承载 email（无 username/status/password 字段），
+          从入口杜绝改非开放字段；
+        - email 空串=不修改（对齐 admin UpdateUser 空串语义）；
+        - 非空 email 格式校验（validate_email_format）。
+        """
+        _raise_if(
+            user_repository.get_by_id(cmd.user_id) is None,
+            f'用户不存在: id={cmd.user_id}', AuthErrorCode.USER_NOT_FOUND,
+        )
+        if cmd.email is not None:
+            email = cmd.email.strip()
+            validate_email_format(email)
+            if email:
+                user_repository.update_user_fields(cmd.user_id, email=email)
+        write_auth_audit(AuditEvent.AUTH_USER_UPDATED, _AUDIT_MODULE_USER, {
+            'operator_id': cmd.operator_id,
+            'target_id': cmd.user_id,
+            'delta': {'email': cmd.email},
         })
 
     def handle_delete_user(self, cmd: DeleteUserCommand) -> bool:

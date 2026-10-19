@@ -200,6 +200,26 @@
               <i class="fas fa-check"></i> 应用筛选
             </button>
           </div>
+
+          <!-- INT-797：复核状态筛选（§4.1 筛选） -->
+          <div class="filter-row review-filter-row">
+            <div class="filter-item flex-1">
+              <label class="filter-label">
+                <i class="fas fa-clipboard-check review-filter-icon"></i> 复核状态
+              </label>
+              <div class="review-filter-options">
+                <button
+                  v-for="opt in reviewFilterOptions"
+                  :key="opt.value"
+                  class="review-filter-option"
+                  :class="{ active: reviewFilter === opt.value }"
+                  @click="reviewFilter = opt.value"
+                >
+                  {{ opt.label }}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -247,13 +267,19 @@
           <div class="case-info-wrapper">
             <div class="case-info">
               <div class="case-name-status">
-                <span 
+                <span
                   class="status-indicator"
                   :class="getOverallStatus(caseItem)"
                 ></span>
                 <div class="case-name">{{ caseItem.name }}</div>
                 <span class="case-category">{{ caseItem.category || '未分类' }}</span>
                 <CaseIdBadge v-if="caseItem.id" :case-id="caseItem.id" />
+                <!-- INT-797：用例卡片「人工复核」Badge + 明细（§4.1 卡片标记/明细） -->
+                <CaseReviewBadge
+                  v-if="getCaseReview(caseItem).hasReview"
+                  :case-name="caseItem.name"
+                  :items="getCaseReview(caseItem).items"
+                />
               </div>
               <div class="case-tags-container" v-if="caseItem.tags && caseItem.tags.length > 0">
                 <div class="case-tags">
@@ -263,6 +289,26 @@
             </div>
           </div>
           <div class="case-actions">
+            <!-- INT-797：双路径入口 A——跳来源任务复核（§4.2） -->
+            <button
+              v-if="canManualReview && hasSourceTask"
+              class="review-action-btn review-manual-btn"
+              @click.stop="handleManualReview(caseItem)"
+              title="人工复核：改判执行/评估状态并填写原因"
+            >
+              <i class="fas fa-clipboard-check"></i>
+              <span>人工复核</span>
+            </button>
+            <!-- INT-797：AI 复核入口（§4.3，待后端立项） -->
+            <button
+              v-if="canManualReview && hasSourceTask"
+              class="review-action-btn review-ai-btn"
+              @click.stop="handleAiReview(caseItem)"
+              title="AI 复核：由大模型复检当前评估结果"
+            >
+              <i class="fas fa-sparkles"></i>
+              <span>AI 复核</span>
+            </button>
             <button
               class="download-log-btn"
               @click.stop="downloadCaseLogZip(caseItem)"
@@ -306,11 +352,11 @@
     </div>
 
     <PaginationComponent
-      v-if="totalCases > 0"
+      v-if="displayTotalCases > 0"
       class="specific-case-pagination"
       :currentPage="currentPage"
       :pageSize="pageSize"
-      :totalItems="totalCases"
+      :totalItems="displayTotalCases"
       @prev-page="handlePrevPage"
       @next-page="handleNextPage"
       @go-to-page="handleGoToPage"
@@ -390,6 +436,23 @@
         </div>
       </div>
     </teleport>
+
+    <!-- INT-797：AI 复核发起弹窗 + 结论卡 + 人工处置（§4.3） -->
+    <AiReviewDialog
+      :visible="aiReviewDialogVisible"
+      :case-name="aiReviewCaseName"
+      :dimension-name="aiReviewDimensionName"
+      :original-evaluation-status="aiReviewOriginalEvaluationStatus"
+      :phase="aiReviewPhase"
+      :record="aiReviewRecord"
+      :error="aiReviewError"
+      :initiating="aiReviewInitiating"
+      @close="closeAiReviewDialog"
+      @initiate="initiateAiReviewForDialog"
+      @adopt="adoptAiReviewForDialog"
+      @reject="rejectAiReviewForDialog"
+      @ignore="ignoreAiReviewForDialog"
+    />
     </div>
   </div>
 </template>
@@ -399,6 +462,11 @@ import AudioPlayerModal from '../common/audio/AudioPlayerModal.vue'
 import TestCaseReportDetail from '../common/misc/TestCaseReportDetail.vue'
 import PaginationComponent from '../common/data/PaginationComponent.vue'
 import CaseIdBadge from '../common/CaseIdBadge.vue'
+import CaseReviewBadge from './CaseReviewBadge.vue'
+import AiReviewDialog from './AiReviewDialog.vue'
+import { useAuthStore } from '@/store/authStore'
+import { AuthMode, getEffectiveAuthMode } from '@/domain/enums'
+import { computed, ref } from 'vue'
 import '../../assets/styles/components/report-filter-card.css'
 import { useSpecificCaseComparison } from './SpecificCaseComparisonComponent'
 
@@ -467,6 +535,7 @@ const {
   allDevices,
   unpinnedFilteredCases,
   totalCases,
+  displayTotalCases,
   currentPage,
   pageSize,
   handlePrevPage,
@@ -480,8 +549,115 @@ const {
   downloadProgress,
   downloadSpeed,
   downloadSize,
-  downloadTotal
+  downloadTotal,
+  reportReviews,
+  isCaseFilteredByReview,
+  reviewFilter
 } = useSpecificCaseComparison(props)
+
+// INT-797：复核筛选选项
+const reviewFilterOptions = [
+  { value: 'all', label: '全部' },
+  { value: 'reviewed', label: '已复核' },
+  { value: 'unreviewed', label: '未复核' },
+]
+
+// INT-797：人工复核/AI 复核权限（按钮级 task.result.review）
+const authStore = useAuthStore()
+const canManualReview = computed(() => {
+  // AUTH_MODE=off（后端注入 permissions=['*']）全量放行（对齐基座 §9.1 兼容口径）
+  if (getEffectiveAuthMode() === AuthMode.OFF) return true
+  return authStore.hasPermission('task.result.review')
+})
+
+/** 报告是否有来源任务（任务报告有 report.taskId；对比/合并报告无单一来源任务时隐藏复核入口） */
+const hasSourceTask = computed(() => {
+  return reportReviews.sourceTaskId.value !== ''
+})
+
+/** 取用例复核态（驱动 Badge 显隐/明细） */
+const getCaseReview = (caseItem) => {
+  return reportReviews.getCaseReview(caseItem?.id ?? caseItem?.testCaseId ?? '')
+}
+
+/** 双路径入口 A：跳来源任务复核（§3.2 复核弹窗） */
+const handleManualReview = (caseItem) => {
+  reportReviews.openManualReview(caseItem)
+}
+
+// ---- AI 复核（§4.3）弹窗状态 ----
+const aiReviewDialogVisible = ref(false)
+const aiReviewCase = ref(null)
+const aiReviewCaseName = ref('')
+const aiReviewDimensionName = ref('')
+const aiReviewOriginalEvaluationStatus = ref('')
+const aiReviewInitiating = ref(false)
+
+const aiReviewPhase = ref('idle')
+const aiReviewRecord = ref(null)
+const aiReviewError = ref('')
+
+const closeAiReviewDialog = () => {
+  if (aiReviewPhase.value === 'running') return // 执行中不关闭
+  aiReviewDialogVisible.value = false
+  aiReviewCase.value = null
+  aiReviewPhase.value = 'idle'
+  aiReviewRecord.value = null
+  aiReviewError.value = ''
+}
+
+const handleAiReview = (caseItem) => {
+  aiReviewCase.value = caseItem
+  aiReviewCaseName.value = caseItem?.name ?? '用例'
+  aiReviewDimensionName.value = ''
+  aiReviewOriginalEvaluationStatus.value = ''
+  const key = String(caseItem?.id ?? '')
+  const run = reportReviews.aiReviewMap.value[key]
+  aiReviewPhase.value = run?.phase ?? 'idle'
+  aiReviewRecord.value = run?.record ?? null
+  aiReviewError.value = run?.error ?? ''
+  aiReviewDialogVisible.value = true
+}
+
+const initiateAiReviewForDialog = async () => {
+  if (!aiReviewCase.value) return
+  aiReviewInitiating.value = true
+  try {
+    await reportReviews.initiateAiReview(aiReviewCase.value)
+    const key = String(aiReviewCase.value?.id ?? '')
+    const run = reportReviews.aiReviewMap.value[key]
+    aiReviewPhase.value = run?.phase ?? 'idle'
+    aiReviewRecord.value = run?.record ?? null
+    aiReviewError.value = run?.error ?? ''
+  } finally {
+    aiReviewInitiating.value = false
+  }
+}
+
+const adoptAiReviewForDialog = async () => {
+  if (!aiReviewCase.value) return
+  await reportReviews.adoptAiReview(aiReviewCase.value)
+  const key = String(aiReviewCase.value?.id ?? '')
+  const run = reportReviews.aiReviewMap.value[key]
+  aiReviewPhase.value = run?.phase ?? 'idle'
+  if (aiReviewPhase.value === 'adopted') {
+    aiReviewDialogVisible.value = false
+  }
+}
+
+const rejectAiReviewForDialog = async () => {
+  if (!aiReviewCase.value) return
+  await reportReviews.rejectAiReview(aiReviewCase.value)
+  const key = String(aiReviewCase.value?.id ?? '')
+  const run = reportReviews.aiReviewMap.value[key]
+  aiReviewPhase.value = run?.phase ?? 'idle'
+}
+
+const ignoreAiReviewForDialog = () => {
+  if (!aiReviewCase.value) return
+  reportReviews.ignoreAiReview(aiReviewCase.value)
+  aiReviewDialogVisible.value = false
+}
 </script>
 
 <style scoped>@import './SpecificCaseComparisonComponent.css';
@@ -530,7 +706,65 @@ align-items: flex-start;
 justify-content: flex-end;
 }
 
+/* INT-797：复核操作按钮（人工复核 / AI 复核） */
+.review-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  border: 1px solid var(--border);
+  background: var(--muted);
+  color: var(--foreground);
+}
+.review-action-btn:hover {
+  border-color: color-mix(in srgb, var(--primary) 50%, transparent);
+  color: var(--primary);
+}
+.review-manual-btn i {
+  color: var(--primary);
+}
+.review-ai-btn i {
+  color: var(--info);
+}
 
-
+/* INT-797：复核状态筛选选项 */
+.review-filter-row {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.review-filter-icon {
+  color: var(--primary);
+}
+.review-filter-options {
+  display: inline-flex;
+  gap: 8px;
+}
+.review-filter-option {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.review-filter-option:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.review-filter-option.active {
+  border-color: var(--primary);
+  background: var(--accent);
+  color: var(--primary);
+  font-weight: 500;
+}
 
 </style>

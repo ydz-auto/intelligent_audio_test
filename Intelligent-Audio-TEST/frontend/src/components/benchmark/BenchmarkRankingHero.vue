@@ -94,6 +94,6 @@ const tabLabels = computed(() => BenchmarkCategoryTabLabels)
   bottom: 0;
   height: 2px;
   background: var(--foreground);
-  border-radius: 1px;
+  border-radius: var(--radius-1);
 }
 </style>

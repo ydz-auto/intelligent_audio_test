@@ -52,7 +52,7 @@ function handleClose() {
 .require-login-icon {
   width: 48px;
   height: 48px;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background: var(--accent);
   display: flex;
   align-items: center;

@@ -124,7 +124,7 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
-  z-index: 1200;
+  z-index: var(--z-index-popover);
   overflow: hidden;
 }
 .algorithm-popover__header {

@@ -58,10 +58,11 @@
         <button class="cpw-btn" @click="resetFilters"><i class="fas fa-undo"></i> 重置</button>
       </div>
 
-      <!-- 视图切换 -->
+      <!-- 视图切换（INT-796 §3.6 裁定③：树形｜用例视角｜平铺；默认树形，多任务绝不默认平铺） -->
       <div class="cpw-toolbar">
         <div class="cpw-view-switch">
           <button class="cpw-btn" :class="{ active: viewMode === 'tree' }" @click="viewMode = 'tree'"><i class="fas fa-sitemap"></i> 树形</button>
+          <button class="cpw-btn" :class="{ active: viewMode === 'case' }" @click="viewMode = 'case'"><i class="fas fa-list-check"></i> 用例视角</button>
           <button class="cpw-btn" :class="{ active: viewMode === 'flat' }" @click="viewMode = 'flat'"><i class="fas fa-list"></i> 平铺</button>
           <button class="cpw-btn" @click="expandAll"><i class="fas fa-angles-down"></i> 全部展开</button>
           <button class="cpw-btn" @click="collapseAll"><i class="fas fa-angles-up"></i> 全部收起</button>
@@ -69,10 +70,22 @@
         <span class="cpw-toolbar-info">已选 {{ selectedResultIds.size }} 条 / 共 {{ visibleTotal }} 条</span>
       </div>
 
-      <!-- 树形 / 平铺 -->
+      <!-- 树形（任务视角）/ 用例视角 / 平铺 -->
       <div v-if="viewMode === 'tree'" class="cpw-tree">
         <PickTree
           :roots="treeRoots"
+          :selected="selectedResultIds"
+          :expanded-keys="expandedKeys"
+          :already-added="resultIdSet"
+          :leaf-meta="leafMeta"
+          @toggle-node="onToggleNode"
+          @toggle-expand="onToggleExpand"
+          @toggle-leaf="onToggleLeaf"
+        />
+      </div>
+      <div v-else-if="viewMode === 'case'" class="cpw-tree">
+        <PickTree
+          :roots="caseViewRoots"
           :selected="selectedResultIds"
           :expanded-keys="expandedKeys"
           :already-added="resultIdSet"
@@ -302,7 +315,7 @@ import { useModalControl } from '../../../composables/modal/useModal';
 import { MODAL_TYPES } from '../../../composables/modal/constants';
 import PickTree from './PickTree.vue';
 import CartTree from './CartTree.vue';
-import { buildPickTree, toggleNode, selectAll, invertSelection, collectLeafResultIds, type PickTreeNode } from './pickTree';
+import { buildPickTree, buildPickCaseViewTree, toggleNode, selectAll, invertSelection, collectLeafResultIds, type PickTreeNode } from './pickTree';
 import { buildCartTree, toggleCartNode, type CartTreeNode } from './cartTree';
 
 const STEPS = [
@@ -417,7 +430,8 @@ const pages = ref(0);
 const loadingCandidates = ref(false);
 const selectedResultIds = ref<Set<number>>(new Set());
 const expandedKeys = ref<Set<string>>(new Set());
-const viewMode = ref<'tree' | 'flat'>('tree');
+/** INT-796 §3.6 裁定①/③：默认树形（任务视角）；用例视角/平铺仅显式切换 */
+const viewMode = ref<'tree' | 'case' | 'flat'>('tree');
 
 /** 结果类型客户端过滤（UX 审计 P2 修复）：后端候选查询不下发 result_type 参数，
  * 取审计建议方案①——loadCandidates 后按 filters.resultTypes 过滤候选行/树；
@@ -431,6 +445,8 @@ const visibleTotal = computed(() =>
   filters.resultTypes.length ? filteredCandidates.value.length : candidateTotal.value);
 
 const treeRoots = computed(() => buildPickTree(filteredCandidates.value));
+/** INT-796 §3.7.3：用例视角树（跨任务按用例聚合；与任务视角共享同一 selectedResultIds） */
+const caseViewRoots = computed(() => buildPickCaseViewTree(filteredCandidates.value));
 /** 累计候选元数据（跨页累加不清理：跨页已选结果的任务/设备计数、R10 标记均可用） */
 const knownMeta = ref<Map<number, PickCandidate>>(new Map());
 const leafMeta = computed(() => knownMeta.value);
@@ -564,13 +580,14 @@ function onToggleExpand(key: string) {
 
 function expandAll() {
   const keys = new Set<string>();
+  const roots = viewMode.value === 'case' ? caseViewRoots.value : treeRoots.value;
   const walk = (nodes: PickTreeNode[]) => {
     for (const n of nodes) {
       if (n.children.length) keys.add(n.key);
       walk(n.children);
     }
   };
-  walk(treeRoots.value);
+  walk(roots);
   expandedKeys.value = keys;
 }
 
@@ -585,7 +602,9 @@ function clearSelection() {
 function invertCurrent() {
   const leaves = viewMode.value === 'tree'
     ? collectLeafResultIds(treeRoots.value)
-    : filteredCandidates.value.map((c) => c.resultId);
+    : viewMode.value === 'case'
+      ? collectLeafResultIds(caseViewRoots.value)
+      : filteredCandidates.value.map((c) => c.resultId);
   selectedResultIds.value = invertSelection(leaves, selectedResultIds.value);
 }
 

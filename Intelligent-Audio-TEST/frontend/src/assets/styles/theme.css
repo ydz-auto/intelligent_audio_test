@@ -109,6 +109,8 @@
   --radius-10: 10px;
   --radius-3: 3px;
   --radius-20: 20px;
+  --radius-2: 2px;
+  --radius-1: 1px;
 
   /* ── 阴影 ── */
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
@@ -123,6 +125,7 @@
 
   /* ── Z-index（值域对齐 §1.3 实测档位） ── */
   --z-index-dropdown: 1000;
+  --z-index-popover: 1200;     /* 弹层 / 悬浮面板（实测 1200） */
   --z-index-tooltip: 3000;
   --z-index-modal: 10000;
   --z-index-modal-top: 13000;

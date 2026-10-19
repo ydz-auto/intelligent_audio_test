@@ -65,7 +65,7 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
 .header-icon-btn {
   width: 36px;
   height: 36px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   border: none;
   background: transparent;
   color: var(--text-secondary);
@@ -93,7 +93,7 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
   padding: 12px;
-  z-index: 1200;
+  z-index: var(--z-index-popover);
 }
 .theme-popover__title {
   margin: 0 0 8px;

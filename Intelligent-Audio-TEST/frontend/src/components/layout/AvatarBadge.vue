@@ -16,16 +16,16 @@ const props = defineProps<{
   size?: number
 }>()
 
-/** 哈希底色：把用户名散列映射到一组固定底色（深色可用） */
+/** 哈希底色：把用户名散列映射到一组固定底色（身份色令牌，深浅同值不随主题换色） */
 const AVATAR_COLORS = [
-  { bg: '#ff6a00', fg: '#ffffff' },
-  { bg: '#1976d2', fg: '#ffffff' },
-  { bg: '#52c41a', fg: '#ffffff' },
-  { bg: '#7c4dff', fg: '#ffffff' },
-  { bg: '#00a2ae', fg: '#ffffff' },
-  { bg: '#d81b60', fg: '#ffffff' },
-  { bg: '#5c6bc0', fg: '#ffffff' },
-  { bg: '#e65100', fg: '#ffffff' },
+  { bg: 'var(--avatar-1)', fg: 'var(--color-white)' },
+  { bg: 'var(--avatar-2)', fg: 'var(--color-white)' },
+  { bg: 'var(--avatar-3)', fg: 'var(--color-white)' },
+  { bg: 'var(--avatar-8)', fg: 'var(--color-white)' },
+  { bg: 'var(--avatar-9)', fg: 'var(--color-white)' },
+  { bg: 'var(--avatar-10)', fg: 'var(--color-white)' },
+  { bg: 'var(--avatar-11)', fg: 'var(--color-white)' },
+  { bg: 'var(--avatar-12)', fg: 'var(--color-white)' },
 ]
 
 function hashString(s: string): number {
@@ -58,13 +58,13 @@ const initials = computed(() => {
 .avatar-badge {
   width: 32px;
   height: 32px;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   user-select: none;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   font-size: 13px;
 }
 .avatar-badge span {

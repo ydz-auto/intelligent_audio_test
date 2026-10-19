@@ -36,6 +36,7 @@
         :task-status="taskStatus"
         :execution-status="executionStatus"
         :evaluation-status="evaluationStatus"
+        :task-id="props.taskId"
         @update:active-tab="newTab => activeTab = newTab"
         @test-case-click="showTestCaseDetails"
         @pause-test="pauseTest"
@@ -46,6 +47,7 @@
         @pick-results="openCherryPick"
         @remove-case="removeCase"
         @load-more-logs="loadMoreLogs"
+        @refresh-review="fetchTaskDetails"
       />
 
       <!-- INT-467：任务可见性徽标 + 分享/设为私有切换（owner/admin 可切换；

@@ -166,7 +166,7 @@ onUnmounted(() => {
 .header-icon-btn {
   width: 36px;
   height: 36px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   border: none;
   background: transparent;
   color: var(--text-secondary);
@@ -189,9 +189,9 @@ onUnmounted(() => {
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
-  border-radius: 8px;
+  border-radius: var(--radius-pill);
   background: var(--destructive);
-  color: #fff;
+  color: var(--color-white);
   font-size: 10px;
   line-height: 16px;
   text-align: center;
@@ -208,7 +208,7 @@ onUnmounted(() => {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
-  z-index: 1200;
+  z-index: var(--z-index-popover);
   overflow: hidden;
 }
 .notification-tabs {
@@ -250,7 +250,7 @@ onUnmounted(() => {
 .notification-item__tag {
   display: inline-block;
   padding: 1px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   font-size: 11px;
   margin-right: 8px;
   background: var(--gray-light);

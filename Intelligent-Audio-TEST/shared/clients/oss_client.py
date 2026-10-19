@@ -301,6 +301,27 @@ class OSSClient:
         resp = self._client.list_objects_v2(Bucket=bucket, Prefix=full_prefix)
         return [self._strip_key(category, obj['Key']) for obj in resp.get('Contents', [])]
 
+    def list_objects_with_meta(self, category: str, prefix: str = '') -> list:
+        """列出对象 key 及元数据（Size/LastModified）。
+
+        INT-786：归档全局文件清单需要文件名/大小/归档时间（LastModified）。
+        分页拉取全部对象（list_objects_v2 单次最多 1000 条）。
+        :return: [{key, sizeBytes, lastModified}]（key 为逻辑 key，已去掉前缀）
+        """
+        self._ensure_init()
+        bucket = self._bucket(category)
+        full_prefix = self._full_key(category, prefix)
+        result = []
+        paginator = self._client.get_paginator('list_objects_v2')
+        for page in paginator.paginate(Bucket=bucket, Prefix=full_prefix):
+            for obj in page.get('Contents', []):
+                result.append({
+                    'key': self._strip_key(category, obj['Key']),
+                    'sizeBytes': obj.get('Size', 0),
+                    'lastModified': obj.get('LastModified'),
+                })
+        return result
+
     def get_presigned_url(self, category: str, key: str, expires: int = 3600) -> str:
         """
         生成预签名 URL（前端直传/直下）

@@ -235,3 +235,66 @@ class ReportQueryMixin:
             }
             for r, s in rows
         ]
+
+    # ---- 统计分析基础行（INT-791：/reports/statistics*） ----
+
+    @with_session
+    def get_statistics_rows(self, start_time=None, end_time=None, algorithm_type=None):
+        """查询统计用报告基础行（主表 + 摘要 + 元数据，外连接）。
+
+        Args:
+            start_time: datetime 或 None，created_at >= start_time
+            end_time: datetime 或 None，created_at <= end_time
+            algorithm_type: str 或 None，按 report_cases.algorithm_type 存在性过滤
+                （报告无 algorithm_type 列，以用例级算法类型归属）
+
+        Returns:
+            list[tuple(Report, ReportSummary|None, ReportSummaryMeta|None)]，
+            按 created_at 升序。
+        """
+        from sqlalchemy import select as sa_select
+
+        from report_service.infrastructure.persistence.models import (
+            ReportCase,
+            ReportSummary,
+            ReportSummaryMeta,
+        )
+
+        session = get_db_session()
+        query = (
+            session.query(self.PO_CLASS, ReportSummary, ReportSummaryMeta)
+            .outerjoin(ReportSummary, self.PO_CLASS.id == ReportSummary.report_id)
+            .outerjoin(ReportSummaryMeta, self.PO_CLASS.id == ReportSummaryMeta.report_id)
+            .filter(self.PO_CLASS.deleted == False)  # noqa: E712
+        )
+        if start_time is not None:
+            query = query.filter(self.PO_CLASS.created_at >= start_time)
+        if end_time is not None:
+            query = query.filter(self.PO_CLASS.created_at <= end_time)
+        if algorithm_type:
+            query = query.filter(
+                sa_select(ReportCase.id)
+                .where(ReportCase.report_id == self.PO_CLASS.id,
+                       ReportCase.algorithm_type == algorithm_type)
+                .correlate(self.PO_CLASS)
+                .exists()
+            )
+        query = query.order_by(self.PO_CLASS.created_at.asc())
+        return query.all()
+
+    @with_session
+    def get_metric_stats_for_report_ids(self, report_ids):
+        """按 report_id 批量加载 ReportMetricStats，返回 {report_id: po}。
+
+        供统计分析报表生成（device_performance 类型）读取设备/API 统计快照。
+        """
+        if not report_ids:
+            return {}
+        from report_service.infrastructure.persistence.models import ReportMetricStats
+        session = get_db_session()
+        rows = (
+            session.query(ReportMetricStats)
+            .filter(ReportMetricStats.report_id.in_(report_ids))
+            .all()
+        )
+        return {po.report_id: po for po in rows}

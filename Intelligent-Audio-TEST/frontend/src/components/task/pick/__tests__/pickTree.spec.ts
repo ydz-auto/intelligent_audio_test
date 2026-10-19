@@ -7,7 +7,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  buildPickTree, nodeState, toggleNode, selectAll, invertSelection, collectLeafResultIds,
+  buildPickTree, buildPickCaseViewTree, nodeState, toggleNode, selectAll, invertSelection, collectLeafResultIds,
 } from '../pickTree';
 import type { PickCandidate } from '../../../../infrastructure/api/cherryPickApi';
 
@@ -55,10 +55,11 @@ describe('buildPickTree（四级分组）', () => {
     expect(dim.name).toBe('API 101');
   });
 
-  it('result_type 缺省 default（结果级解析容错口径）', () => {
-    const rows = [cand({ resultId: 1, taskId: 1, caseId: 'C1', deviceId: 7 })];
+  it('result_type 缺省折叠「结果类型待补充」（§3.7.1 PENDING 口径）', () => {
+    const rows = [cand({ resultId: 1, taskId: 1, caseId: 'C1', deviceId: 7, resultType: null })];
     const tree = buildPickTree(rows);
-    expect(tree[0].children[0].children[0].children[0].name).toBe('default');
+    expect(tree[0].children[0].children[0].children[0].name).toBe('结果类型待补充');
+    expect(tree[0].children[0].children[0].children[0].id).toBe('default');
   });
 });
 
@@ -164,5 +165,47 @@ describe('R9 全选当前筛选 / 反选', () => {
   it('反选 = 仅对给定叶取反（保留其余已选）', () => {
     const sel = invertSelection([1, 2], new Set([2, 3]));
     expect(sel).toEqual(new Set([1, 3]));
+  });
+});
+
+describe('buildPickCaseViewTree（用例视角，§3.6 裁定③ / §3.7.3）', () => {
+  it('跨任务按用例聚合：用例 → 来源任务列表 → 设备 → result_type → 叶', () => {
+    const rows = [
+      cand({ resultId: 1, taskId: 1, caseId: 'C1', deviceId: 7, resultType: 'real-time', algorithmType: 'asr' }),
+      cand({ resultId: 2, taskId: 1, caseId: 'C1', deviceId: 7, resultType: 'final' }),
+      cand({ resultId: 3, taskId: 2, caseId: 'C1', deviceId: 9, resultType: 'default' }),
+      cand({ resultId: 4, taskId: 1, caseId: 'C2', deviceId: 8, resultType: 'streaming' }),
+    ];
+    const tree = buildPickCaseViewTree(rows);
+    expect(tree).toHaveLength(2); // C1 / C2 根
+    const c1 = tree.find((n) => n.id === 'C1')!;
+    expect(c1.level).toBe('case');
+    expect(c1.count).toBe(3);
+    expect(c1.algorithmType).toBe('asr');
+    expect(c1.children).toHaveLength(2); // 任务 1 / 任务 2
+    const task1 = c1.children.find((n) => n.id === 1)!;
+    expect(task1.level).toBe('task');
+    expect(task1.children).toHaveLength(1); // 设备 7
+    expect(task1.children[0].children.map((n) => n.name)).toEqual(['real-time', 'final']);
+    const task2 = c1.children.find((n) => n.id === 2)!;
+    expect(task2.children[0].id).toBe(9);
+  });
+
+  it('用例视角勾选联动复用 R1-R7（取消任务级仅清该任务结果行，用例保持部分）', () => {
+    const rows = [
+      cand({ resultId: 1, taskId: 1, caseId: 'C1', deviceId: 7, resultType: 'real-time' }),
+      cand({ resultId: 2, taskId: 2, caseId: 'C1', deviceId: 9, resultType: 'default' }),
+    ];
+    const tree = buildPickCaseViewTree(rows);
+    const c1 = tree[0];
+    const task1 = c1.children[0];
+    // R7 语义：勾选用例根 = 跨任务全部结果
+    const sel = toggleNode(c1, new Set());
+    expect(sel).toEqual(new Set([1, 2]));
+    // 取消任务 1 → 仅清该任务下结果行，用例保持部分选中
+    const after = toggleNode(task1, sel);
+    expect(after).toEqual(new Set([2]));
+    expect(nodeState(c1, after)).toBe('indeterminate');
+    expect(nodeState(task1, after)).toBe('unchecked');
   });
 });
