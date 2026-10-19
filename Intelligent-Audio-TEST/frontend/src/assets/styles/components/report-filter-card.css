@@ -35,28 +35,62 @@
   gap: 20px;
   margin-bottom: 20px;
   width: 100%;
+  align-items: flex-start;
 }
 
+/* 筛选项横排：标题与控件同行，flex-wrap 自然换行（对齐任务管理页横排基准）
+   显式 flex-direction:row 覆盖全局 filter-sort.css .filter-item{flex-direction:column}
+   min-width:320px 保证标题+控件同行不局促（三项目在窄容器下自然 2+1 换行） */
 .report-filter-card .filter-item {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
   flex: 1;
-  min-width: 280px;
-  width: 100%;
+  min-width: 320px;
+  width: auto;
+  box-sizing: border-box;
+}
+
+/* 横排：搜索框 / 文本输入等直接控件与标题同行，flex 撑开剩余宽度
+   min-width:140px 保证窄筛选项（如 SpecificCase 用例分组 1/3 宽）内标题+控件仍同行 */
+.report-filter-card .filter-item > .search-box-flex,
+.report-filter-card .filter-item > .filter-input {
+  flex: 1;
+  min-width: 140px;
+  width: auto;
+  margin-bottom: 0;
+}
+
+/* 横排：排序控件区（含多个下拉）与标题同行 */
+.report-filter-card .filter-item > .sort-filter {
+  flex: 1;
+  min-width: 260px;
+  width: auto;
 }
 
 .report-filter-card .filter-label {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-weight: 600;
   color: var(--color-slate-500);
   font-size: 14px;
-  margin-bottom: 12px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-shrink: 0;
 }
 
 .report-filter-card .filter-label i {
   color: var(--primary);
   font-size: 14px;
+}
+
+/* 分页器在筛选项内保持整行（flex 布局下不再自然收缩为内容宽度，避免居中丢失） */
+.report-filter-card .filter-item > .tag-pagination,
+.report-filter-card .filter-item > .category-pagination,
+.report-filter-card .filter-item > .metric-pagination {
+  width: 100%;
 }
 
 .report-filter-card .filter-hint {
