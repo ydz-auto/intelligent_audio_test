@@ -5,6 +5,7 @@
  * INT-932 接线：暂停/继续（POST /tasks/{id}/control）、停止测试（POST /tasks/{id}/stop）
  * 经 useTaskActions 发真实请求，成功后详情/列表刷新；API 资源管理去掉 mock 并发数据，
  * 仅渲染真实 apis（id/name/status，status=online 在线）。
+ * INT-949：停止/暂停/继续点击先弹 ConfirmDialog（§5.8 + 旧 Vue 基线），确认才发请求。
  */
 import { Pause, Play, RefreshCw, RotateCcw, Square } from 'lucide-react'
 import { useState } from 'react'
@@ -30,6 +31,10 @@ import { ProgressCard } from '@/features/tasks/detail/progress-card'
 import { RealtimeLogs } from '@/features/tasks/detail/realtime-logs'
 import { TaskInfoCard } from '@/features/tasks/detail/task-info-card'
 import { ReexecuteScopeDialog } from '@/features/tasks/components/reexecute-scope-dialog'
+import {
+  TaskConfirmDialog,
+  type TaskConfirmState,
+} from '@/features/tasks/components/task-confirm-dialogs'
 
 /** API 资源管理（§4.5，仅 API/混合任务；真实 apis 简报：名称 + 在线状态） */
 function ApiResources({ apis }: { apis: Array<{ id: number; name: string; status: string | null }> }) {
@@ -83,6 +88,28 @@ export function TaskDetailContent({
   const detailQuery = useTaskDetail(taskId)
   const actions = useTaskActions()
   const [reexecuteAction, setReexecuteAction] = useState<'retry' | 'reevaluate' | null>(null)
+  const [confirm, setConfirm] = useState<TaskConfirmState | null>(null)
+  const [confirmPending, setConfirmPending] = useState(false)
+
+  /** 确认后才发请求（INT-949 停止/暂停/继续）；失败 toast 由 mutation onError 处理 */
+  const handleConfirm = async () => {
+    if (!confirm) return
+    setConfirmPending(true)
+    try {
+      if (confirm.kind === 'detail-stop') {
+        await actions.stop.mutateAsync(taskId)
+      } else if (confirm.kind === 'detail-control') {
+        await actions.control.mutateAsync({ taskId, action: confirm.action })
+      } else {
+        return
+      }
+      setConfirm(null)
+    } catch {
+      // mutation onError 已 toast
+    } finally {
+      setConfirmPending(false)
+    }
+  }
 
   const detail = detailQuery.data
   if (detailQuery.isPending) {
@@ -145,8 +172,8 @@ export function TaskDetailContent({
                   size='sm'
                   disabled={pending}
                   onClick={() =>
-                    actions.control.mutate({
-                      taskId,
+                    setConfirm({
+                      kind: 'detail-control',
                       action: detail.execution_status === 'paused' ? 'resume' : 'pause',
                     })
                   }
@@ -171,7 +198,7 @@ export function TaskDetailContent({
                   size='sm'
                   variant='destructive'
                   disabled={pending}
-                  onClick={() => actions.stop.mutate(taskId)}
+                  onClick={() => setConfirm({ kind: 'detail-stop' })}
                 >
                   <Square aria-hidden='true' className='size-3.5' />
                   停止测试
@@ -220,6 +247,15 @@ export function TaskDetailContent({
         taskId={taskId}
         taskName={detail.name}
         actionType={reexecuteAction ?? 'retry'}
+      />
+
+      {/* 详情控制确认（INT-949：停止/暂停/继续，取消不发请求） */}
+      <TaskConfirmDialog
+        open={confirm != null}
+        state={confirm}
+        onOpenChange={(open) => !open && setConfirm(null)}
+        isLoading={confirmPending}
+        onConfirm={() => void handleConfirm()}
       />
     </>
   )

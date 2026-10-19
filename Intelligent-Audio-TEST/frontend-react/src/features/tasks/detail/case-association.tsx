@@ -10,6 +10,8 @@
  * - 勾选多行 → 底部「批量复核」浮条（§3.3，同一改判字段应用到全部勾选结果）；
  * - 工具行「查看复核历史」link + 头行「已复核 {n} 条」计数（TaskDetailData.review_count 驱动）→ §3.4 抽屉。
  * 标签/分组态用 Collapsible 组头（名称 + 计数）行。
+ * INT-949：行尾「移除用例」先弹 ConfirmDialog（§5.9 按任务阶段两段后果文案），
+ * 末例追加二次确认（「移除并停止任务」/「仅移除用例」）；取消不发请求。
  */
 import { ClipboardCheck, History, Sparkles, Trash2 } from 'lucide-react'
 import { useState } from 'react'
@@ -26,6 +28,14 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import {
   Select,
   SelectContent,
@@ -48,6 +58,11 @@ import {
   buildCaseNameMap,
   ReviewHistoryDrawer,
 } from '@/features/tasks/components/review-history-drawer'
+import {
+  getCaseRemovePhase,
+  TaskConfirmDialog,
+  type CaseRemovePhase,
+} from '@/features/tasks/components/task-confirm-dialogs'
 
 type ViewMode = 'flat' | 'tag' | 'group'
 const VIEW_OPTIONS: Array<{ value: ViewMode; label: string }> = [
@@ -116,6 +131,14 @@ export function CaseAssociation({
   const [aiReviewTarget, setAiReviewTarget] = useState<ReviewTarget | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [reviewLoading, setReviewLoading] = useState(false)
+  /** INT-949 移除用例确认（§5.9：两段后果文案 + 末例二次确认） */
+  const [caseRemoveTarget, setCaseRemoveTarget] = useState<{
+    caseId: string
+    phase: CaseRemovePhase
+    isLast: boolean
+  } | null>(null)
+  const [lastCaseOpen, setLastCaseOpen] = useState(false)
+  const [caseRemovePending, setCaseRemovePending] = useState(false)
 
   const cases = detail.cases ?? []
   const filtered = cases.filter(
@@ -147,6 +170,80 @@ export function CaseAssociation({
       else next.delete(caseId)
       return next
     })
+  }
+
+  /** 移除用例确认（INT-949，§5.9）：先弹后果文案；末例转二次确认，取消不发请求 */
+  const handleRemoveCase = async () => {
+    if (!caseRemoveTarget) return
+    // 末例：首段确认后关首弹窗，弹二次确认（§5.9「移除并停止任务 / 仅移除用例」）
+    if (caseRemoveTarget.isLast) {
+      setLastCaseOpen(true)
+      return
+    }
+    setCaseRemovePending(true)
+    try {
+      await actions.removeCase.mutateAsync({
+        taskId: detail.id,
+        caseId: caseRemoveTarget.caseId,
+      })
+      setSelected((prev) => {
+        const next = new Set(prev)
+        next.delete(caseRemoveTarget.caseId)
+        return next
+      })
+      setCaseRemoveTarget(null)
+    } catch {
+      // mutation onError 已 toast
+    } finally {
+      setCaseRemovePending(false)
+    }
+  }
+
+  /** 末例二次确认副钮「仅移除用例」（§5.9） */
+  const handleLastCaseOnly = async () => {
+    if (!caseRemoveTarget) return
+    setCaseRemovePending(true)
+    try {
+      await actions.removeCase.mutateAsync({
+        taskId: detail.id,
+        caseId: caseRemoveTarget.caseId,
+      })
+      setSelected((prev) => {
+        const next = new Set(prev)
+        next.delete(caseRemoveTarget.caseId)
+        return next
+      })
+      setCaseRemoveTarget(null)
+      setLastCaseOpen(false)
+    } catch {
+      // mutation onError 已 toast
+    } finally {
+      setCaseRemovePending(false)
+    }
+  }
+
+  /** 末例二次确认主钮「移除并停止任务」（§5.9：移除成功后连带停止） */
+  const handleLastCaseRemoveAndStop = async () => {
+    if (!caseRemoveTarget) return
+    setCaseRemovePending(true)
+    try {
+      await actions.removeCase.mutateAsync({
+        taskId: detail.id,
+        caseId: caseRemoveTarget.caseId,
+      })
+      setSelected((prev) => {
+        const next = new Set(prev)
+        next.delete(caseRemoveTarget.caseId)
+        return next
+      })
+      setCaseRemoveTarget(null)
+      setLastCaseOpen(false)
+      await actions.stop.mutateAsync(detail.id)
+    } catch {
+      // mutation onError 已 toast（停止失败不影响用例已移除结果）
+    } finally {
+      setCaseRemovePending(false)
+    }
   }
 
   /** 单条复核入口：取该用例结果行 → §3.2 弹窗（真实结果数据，result_ids 逐条留痕） */
@@ -446,15 +543,14 @@ export function CaseAssociation({
                           size='icon-sm'
                           className='text-destructive hover:text-destructive'
                           aria-label='移除用例'
-                          disabled={actions.removeCase.isPending}
-                          onClick={() => {
-                            actions.removeCase.mutate({ taskId: detail.id, caseId: c.case_id })
-                            setSelected((prev) => {
-                              const next = new Set(prev)
-                              next.delete(c.case_id)
-                              return next
+                          disabled={actions.removeCase.isPending || caseRemovePending}
+                          onClick={() =>
+                            setCaseRemoveTarget({
+                              caseId: c.case_id,
+                              phase: getCaseRemovePhase(detail.execution_status ?? detail.status),
+                              isLast: cases.length === 1,
                             })
-                          }}
+                          }
                         >
                           <Trash2 aria-hidden='true' />
                         </Button>
@@ -535,6 +631,50 @@ export function CaseAssociation({
         taskName={detail.name}
         caseNameMap={buildCaseNameMap(cases)}
       />
+
+      {/* §5.9 移除用例确认（INT-949：首段按任务阶段两段后果文案；末例 → 二次确认） */}
+      <TaskConfirmDialog
+        open={caseRemoveTarget != null && !lastCaseOpen}
+        state={caseRemoveTarget ? { kind: 'remove-case', phase: caseRemoveTarget.phase } : null}
+        onOpenChange={(open) => !open && setCaseRemoveTarget(null)}
+        isLoading={caseRemovePending}
+        onConfirm={() => void handleRemoveCase()}
+      />
+      {/* §5.9 末例二次确认：「移除并停止任务」主钮 destructive /「仅移除用例」副钮 */}
+      <AlertDialog
+        open={lastCaseOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setLastCaseOpen(false)
+            setCaseRemoveTarget(null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>移除用例</AlertDialogTitle>
+            <AlertDialogDescription>
+              这是任务中最后一个用例，移除后任务将不含任何用例。是否连任务一并停止（后续可在任务列表删除该任务）？
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button
+              variant='outline'
+              disabled={caseRemovePending}
+              onClick={() => void handleLastCaseOnly()}
+            >
+              仅移除用例
+            </Button>
+            <Button
+              variant='destructive'
+              disabled={caseRemovePending}
+              onClick={() => void handleLastCaseRemoveAndStop()}
+            >
+              移除并停止任务
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   )
 }

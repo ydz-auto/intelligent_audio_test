@@ -4,6 +4,8 @@
  * 重新执行/重新评估经 onReexecute 打开 §5.7 范围选择弹窗；未传时回落 toast 演示。
  * INT-932 接线：删除/收藏/恢复/彻底删除/暂停/继续/停止经 useTaskActions
  * （infrastructure/api/tasks-actions-api + tasks-control-api）发真实请求，成功后列表刷新。
+ * INT-949：危险/控制操作（删除/彻底删除/恢复/暂停/继续/停止）点击先弹 ConfirmDialog
+ * （§5.8/§5.10 + 旧 Vue 基线），确认才发请求，取消不发请求。
  */
 import { useNavigate } from '@tanstack/react-router'
 import { MoreHorizontal, Star } from 'lucide-react'
@@ -23,6 +25,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import type { TaskListItem } from '@/domain/models/task'
+import {
+  TaskConfirmDialog,
+  type TaskConfirmState,
+} from '@/features/tasks/components/task-confirm-dialogs'
 
 type MenuItem = {
   key: string
@@ -179,6 +185,8 @@ export function TaskRowActions({
   const { hasPermission } = usePermissions()
   const navigate = useNavigate()
   const [isControlling, setIsControlling] = useState(false)
+  const [confirm, setConfirm] = useState<TaskConfirmState | null>(null)
+  const [confirmPending, setConfirmPending] = useState(false)
   const actions = useTaskActions()
 
   const items = buildDailyItems(task, hasPermission, {
@@ -187,15 +195,50 @@ export function TaskRowActions({
     onPublish: () =>
       onPublish ? onPublish(task) : toast.success('发布流程见发布任务弹窗'),
     onReexecute,
-    onDelete: () => actions.remove.mutate(task.id),
+    onDelete: () => setConfirm({ kind: 'row-delete', task }),
     onFavorite: () => actions.favorite.mutate(task.id),
     onUnfavorite: () => actions.unfavorite.mutate(task.id),
-    onRestore: () => actions.restore.mutate(task.id),
-    onPurge: () => actions.purge.mutate(task.id),
-    onPause: () => actions.control.mutate({ taskId: task.id, action: 'pause' }),
-    onResume: () => actions.control.mutate({ taskId: task.id, action: 'resume' }),
-    onStop: () => actions.stop.mutate(task.id),
+    onRestore: () => setConfirm({ kind: 'row-restore', task }),
+    onPurge: () => setConfirm({ kind: 'row-purge', task }),
+    onPause: () => setConfirm({ kind: 'row-pause', task }),
+    onResume: () => setConfirm({ kind: 'row-resume', task }),
+    onStop: () => setConfirm({ kind: 'row-stop', task }),
   })
+
+  /** 确认后才发请求（INT-949）；失败 toast 由 mutation onError 处理，弹窗保留可重试 */
+  const handleConfirm = async () => {
+    if (!confirm) return
+    setConfirmPending(true)
+    try {
+      switch (confirm.kind) {
+        case 'row-delete':
+          await actions.remove.mutateAsync(confirm.task.id)
+          break
+        case 'row-purge':
+          await actions.purge.mutateAsync(confirm.task.id)
+          break
+        case 'row-restore':
+          await actions.restore.mutateAsync(confirm.task.id)
+          break
+        case 'row-stop':
+          await actions.stop.mutateAsync(confirm.task.id)
+          break
+        case 'row-pause':
+          await actions.control.mutateAsync({ taskId: confirm.task.id, action: 'pause' })
+          break
+        case 'row-resume':
+          await actions.control.mutateAsync({ taskId: confirm.task.id, action: 'resume' })
+          break
+        default:
+          return
+      }
+      setConfirm(null)
+    } catch {
+      // mutation onError 已 toast
+    } finally {
+      setConfirmPending(false)
+    }
+  }
 
   const mutating = [
     actions.remove,
@@ -208,42 +251,52 @@ export function TaskRowActions({
   ].some((m) => m.isPending)
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant='ghost'
-            size='icon-sm'
-            aria-label='任务操作'
-            disabled={isControlling || mutating}
-          />
-        }
-      >
-        <MoreHorizontal aria-hidden='true' />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align='end' className='w-44'>
-        <DropdownMenuGroup>
-          <DropdownMenuLabel className='truncate'>{task.name}</DropdownMenuLabel>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        {items.map((item) => (
-          <DropdownMenuItem
-            key={item.key}
-            disabled={item.disabled || mutating}
-            data-variant={item.destructive ? 'destructive' : undefined}
-            onSelect={() => {
-              setIsControlling(true)
-              setTimeout(() => setIsControlling(false), 600)
-              item.onSelect?.()
-            }}
-          >
-            {item.key === 'favorite' && task.is_favorite ? (
-              <Star aria-hidden='true' className='size-4 fill-current' />
-            ) : null}
-            {item.label}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant='ghost'
+              size='icon-sm'
+              aria-label='任务操作'
+              disabled={isControlling || mutating}
+            />
+          }
+        >
+          <MoreHorizontal aria-hidden='true' />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align='end' className='w-44'>
+          <DropdownMenuGroup>
+            <DropdownMenuLabel className='truncate'>{task.name}</DropdownMenuLabel>
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          {items.map((item) => (
+            <DropdownMenuItem
+              key={item.key}
+              disabled={item.disabled || mutating}
+              data-variant={item.destructive ? 'destructive' : undefined}
+              onSelect={() => {
+                setIsControlling(true)
+                setTimeout(() => setIsControlling(false), 600)
+                item.onSelect?.()
+              }}
+            >
+              {item.key === 'favorite' && task.is_favorite ? (
+                <Star aria-hidden='true' className='size-4 fill-current' />
+              ) : null}
+              {item.label}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {/* 行操作确认（INT-949：删除/彻底删除/恢复/暂停/继续/停止，取消不发请求） */}
+      <TaskConfirmDialog
+        open={confirm != null}
+        state={confirm}
+        onOpenChange={(open) => !open && setConfirm(null)}
+        isLoading={confirmPending}
+        onConfirm={() => void handleConfirm()}
+      />
+    </>
   )
 }
