@@ -31,11 +31,91 @@ export const newRoundEvaluation = (): RoundEvaluationDraft => ({
   params: {},
 })
 
+/** 算法参数项（后端 AlgorithmParamItem：{field_code, field_value}；INT-996 独立列 params 数组元素） */
+export interface RoundAlgorithmParamItem {
+  field_code: string
+  field_value: unknown
+}
+
+/** 轮次级背景噪声草稿（INT-996；保存写入 config.rounds[].audios[].background_noise） */
+export interface RoundBackgroundNoiseDraft {
+  audioId: number | string | null
+  audioName?: string | null
+  /** 冗余音频简报（音频选择弹窗回填 name/duration/tags；保存侧序列化时剔除） */
+  audio?: {
+    id: number | string
+    name: string
+    duration?: number | null
+    tags?: string[]
+  } | null
+  /** 声压级（dB；§5.3.4 建议值 94） */
+  spl: number
+  /** 播放设备 id 列表（真实 /playback-devices） */
+  deviceIds: Array<number | string>
+  /** 循环播放 */
+  loop: boolean
+}
+
+/** 轮次声纹注册草稿（INT-996；保存写入 algorithm_params 独立列 field_code='voiceprint'） */
+export interface RoundVoiceprintDraft {
+  enabled: boolean
+  audioId: number | string | null
+  audioName?: string | null
+  playbackDeviceId: number | string | null
+  /** 播放声压级（dB） */
+  spl: number
+  /** 注册后等待秒数（0-60） */
+  waitSec: number
+}
+
+/** 单个干扰人草稿（INT-996；保存写入 config.rounds[].audios[].interferers） */
+export interface RoundInterfererDraft {
+  /** 本地行 id（仅渲染 key/删除定位用；保存序列化时剔除） */
+  id: string
+  audioId: number | string | null
+  audioName?: string | null
+  playbackDeviceId: number | string | null
+  /** 声压级（dB） */
+  spl: number
+  /** 开始延迟秒 */
+  startDelay: number
+  /** 循环播放 */
+  loop: boolean
+}
+
+/** 轮次噪声与干扰草稿（INT-996；算法参数步骤排除的 voiceprint/interferers/背景噪声集中在此） */
+export interface RoundNoiseDraft {
+  backgroundNoise: RoundBackgroundNoiseDraft | null
+  voiceprint: RoundVoiceprintDraft
+  interferers: RoundInterfererDraft[]
+}
+
+/** 默认空声纹草稿（§5.1 声纹注册配置节：播放声压级默认 75、等待 5s） */
+export const emptyVoiceprint = (): RoundVoiceprintDraft => ({
+  enabled: false,
+  audioId: null,
+  audioName: null,
+  playbackDeviceId: null,
+  spl: 75,
+  waitSec: 5,
+})
+
+/** 默认空噪声与干扰草稿（背景噪声未配置 + 声纹关闭 + 无干扰人） */
+export const emptyRoundNoise = (): RoundNoiseDraft => ({
+  backgroundNoise: null,
+  voiceprint: emptyVoiceprint(),
+  interferers: [],
+})
+
 export interface RoundDraft {
   number: number
   audioCount: number
   dimensionCount: number
   evaluation: RoundEvaluationDraft
+  /** INT-996 算法参数独立列 params（[{field_code, field_value}]；DynamicForm 排除声纹/干扰人/音频选择类字段） */
+  algorithmParams: RoundAlgorithmParamItem[]
+  /** INT-996 噪声与干扰草稿（背景噪声/声纹/干扰人） */
+  noise: RoundNoiseDraft
 }
 
 export function RoundNav({

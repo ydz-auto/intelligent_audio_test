@@ -60,12 +60,21 @@ import {
 import {
   RoundNav,
   newRoundEvaluation,
+  emptyRoundNoise,
+  type RoundAlgorithmParamItem,
   type RoundDraft,
   type RoundEvaluationDraft,
+  type RoundNoiseDraft,
 } from '@/features/testcases/modals/round-config/round-nav'
 import { AlgorithmParamsStep } from '@/features/testcases/modals/round-config/algo-params-step'
 import { AudioListStep } from '@/features/testcases/modals/round-config/audio-list-step'
 import { NoiseInterferenceStep } from '@/features/testcases/modals/round-config/noise-interference-step'
+import {
+  algorithmParamsForRound,
+  applyNoiseToRound,
+  noiseDraftFromRound,
+  serializeVoiceprint,
+} from '@/features/testcases/modals/round-config/round-noise-codec'
 import { EvaluationStep } from '@/features/testcases/modals/round-config/evaluation-step'
 import { ReferenceStep } from '@/features/testcases/modals/round-config/reference-step'
 import {
@@ -159,7 +168,7 @@ function CaseTagInput({
   )
 }
 
-/** 新建态默认轮次（单轮空评估；rounds 由保存侧序列化为 config.rounds） */
+/** 新建态默认轮次（单轮空评估 + 空算法参数/噪声与干扰；rounds 由保存侧序列化为 config.rounds） */
 function defaultRounds(): RoundDraft[] {
   return [
     {
@@ -167,14 +176,17 @@ function defaultRounds(): RoundDraft[] {
       audioCount: 0,
       dimensionCount: 0,
       evaluation: { enabled: true, selectedIds: [], params: {} },
+      algorithmParams: [],
+      noise: emptyRoundNoise(),
     },
   ]
 }
 
-/** 后端 config.rounds 单轮 → RoundDraft（编辑回填：轮次数 + 音频/维度摘要 + 评估内容） */
+/** 后端 config.rounds 单轮 → RoundDraft（编辑回填：轮次数 + 音频/维度摘要 + 评估内容 + INT-996 算法参数/噪声与干扰） */
 function roundDraftFromConfig(
   raw: Record<string, unknown>,
-  index: number
+  index: number,
+  paramsForRound: RoundAlgorithmParamItem[]
 ): RoundDraft {
   const number = Number(raw.round_number ?? raw.roundNumber ?? index + 1)
   const audios = Array.isArray(raw.audios) ? (raw.audios as Array<Record<string, unknown>>) : []
@@ -211,21 +223,27 @@ function roundDraftFromConfig(
     audioCount: audios.length,
     dimensionCount: dimensions.length,
     evaluation: draft,
+    algorithmParams: paramsForRound,
+    noise: noiseDraftFromRound(raw, paramsForRound),
   }
 }
 
-/** 真实 config.rounds → RoundDraft[]（空/缺失回退默认轮次） */
+/** 真实 config.rounds → RoundDraft[]（空/缺失回退默认轮次；INT-996 按轮读独立列 algorithmParams） */
 function roundsFromConfig(
-  config: Record<string, unknown> | null | undefined
+  config: Record<string, unknown> | null | undefined,
+  algorithmParams: unknown
 ): RoundDraft[] {
   const rawRounds = Array.isArray(config?.rounds)
     ? (config.rounds as Array<Record<string, unknown>>)
     : []
   if (rawRounds.length === 0) return defaultRounds()
-  return rawRounds.map(roundDraftFromConfig)
+  return rawRounds.map((raw, i) =>
+    roundDraftFromConfig(raw, i, algorithmParamsForRound(algorithmParams, Number(raw.round_number ?? raw.roundNumber ?? i + 1)))
+  )
 }
 
-/** RoundDraft[] → 后端 config.rounds（合并原始轮次保留 audios/background_noise 等；evaluation 序列化为 {enabled, dimensions}） */
+/** RoundDraft[] → 后端 config.rounds（合并原始轮次保留 audios 等；evaluation 序列化为 {enabled, dimensions}；
+ *  INT-996 噪声与干扰写入 segment 级 audios[].background_noise/interferers） */
 function roundsToConfig(
   drafts: RoundDraft[],
   originalRounds: Array<Record<string, unknown>> | null | undefined
@@ -243,31 +261,38 @@ function roundsToConfig(
     const origDims = Array.isArray(origEval?.dimensions)
       ? (origEval.dimensions as Array<Record<string, unknown>>)
       : []
-    return {
-      ...(orig ?? {}),
-      round_number: draft.number,
-      evaluation: {
-        enabled: draft.evaluation.enabled,
-        dimensions: draft.evaluation.selectedIds.map((id) => {
-          const p = draft.evaluation.params[id]
-          const origDim = origDims.find((d) => Number(d.id) === id) ?? null
-          return {
-            ...(origDim ?? {}),
-            id,
-            weight: p?.weight ?? Number(origDim?.weight ?? 50),
-            threshold: p?.threshold ?? Number(origDim?.threshold ?? 80),
-            ...(p?.model || p?.promptTemplate
-              ? {
-                  llmJudgeConfig: {
-                    model: p?.model ?? '',
-                    promptTemplate: p?.promptTemplate ?? '',
-                  },
-                }
-              : {}),
-          }
-        }),
+    const base: Record<string, unknown> = { ...(orig ?? {}) }
+    // 独立列字段/round 级 algorithmParams 由 CRUD 服务弹出，round 内不携带（INT-996 口径）
+    delete base.algorithmParams
+    delete base.algorithm_params
+    return applyNoiseToRound(
+      {
+        ...base,
+        round_number: draft.number,
+        evaluation: {
+          enabled: draft.evaluation.enabled,
+          dimensions: draft.evaluation.selectedIds.map((id) => {
+            const p = draft.evaluation.params[id]
+            const origDim = origDims.find((d) => Number(d.id) === id) ?? null
+            return {
+              ...(origDim ?? {}),
+              id,
+              weight: p?.weight ?? Number(origDim?.weight ?? 50),
+              threshold: p?.threshold ?? Number(origDim?.threshold ?? 80),
+              ...(p?.model || p?.promptTemplate
+                ? {
+                    llmJudgeConfig: {
+                      model: p?.model ?? '',
+                      promptTemplate: p?.promptTemplate ?? '',
+                    },
+                  }
+                : {}),
+            }
+          }),
+        },
       },
-    }
+      draft.noise
+    )
   })
 }
 
@@ -368,7 +393,7 @@ export function CaseMutateDrawer({
             params: { ...src.params },
           }
         : newRoundEvaluation()
-      return [...prev, { number, audioCount: 0, dimensionCount: 0, evaluation }]
+      return [...prev, { number, audioCount: 0, dimensionCount: 0, evaluation, algorithmParams: [], noise: emptyRoundNoise() }]
     })
     setActiveRound(number)
   }
@@ -386,6 +411,12 @@ export function CaseMutateDrawer({
           ...src.evaluation,
           selectedIds: [...src.evaluation.selectedIds],
           params: { ...src.evaluation.params },
+        },
+        algorithmParams: [...src.algorithmParams],
+        noise: {
+          backgroundNoise: src.noise.backgroundNoise ? { ...src.noise.backgroundNoise, deviceIds: [...src.noise.backgroundNoise.deviceIds] } : null,
+          voiceprint: { ...src.noise.voiceprint },
+          interferers: src.noise.interferers.map((x) => ({ ...x })),
         },
       },
     ])
@@ -409,6 +440,18 @@ export function CaseMutateDrawer({
           : r
       )
     )
+  }
+
+  /** INT-996 算法参数步骤：更新指定轮 algorithmParams（独立列 params） */
+  const updateRoundAlgorithmParams = (number: number | undefined, params: RoundAlgorithmParamItem[]) => {
+    if (number == null) return
+    setRounds((prev) => prev.map((r) => (r.number === number ? { ...r, algorithmParams: params } : r)))
+  }
+
+  /** INT-996 噪声与干扰步骤：更新指定轮噪声草稿 */
+  const updateRoundNoise = (number: number | undefined, noise: RoundNoiseDraft) => {
+    if (number == null) return
+    setRounds((prev) => prev.map((r) => (r.number === number ? { ...r, noise } : r)))
   }
 
   const activeRoundDraft = rounds.find((r) => r.number === activeRound) ?? rounds[0]
@@ -435,6 +478,17 @@ export function CaseMutateDrawer({
       ...(caseItem?.config ?? {}),
       rounds: roundsToConfig(rounds, originalRounds),
     }
+
+    // INT-996 算法参数独立列 [{round_number, params:[{field_code, field_value}]}]：
+    // 各轮草稿 params（含 DynamicForm 编辑 + 存量非专项字段）+ 声纹对象（enabled 才入列）
+    const algorithmParams = rounds
+      .map((r) => {
+        const params = r.algorithmParams.filter((p) => p.field_code !== 'voiceprint')
+        const vp = serializeVoiceprint(r.noise.voiceprint)
+        if (vp) params.push({ field_code: 'voiceprint', field_value: vp })
+        return { round_number: r.number, params }
+      })
+      .filter((e) => e.params.length > 0)
 
     // 评估策略节（§5.1.3 契约）：未触碰（strategyValue=null）保留存量字段；三模式改写如下
     const strategyPayload = serializeEvaluationStrategy(strategyValue)
@@ -473,7 +527,7 @@ export function CaseMutateDrawer({
       tags: tagValue,
       algorithmType: algorithmType || null,
       config,
-      algorithmParams: caseItem?.algorithmParams ?? undefined,
+      algorithmParams: algorithmParams.length > 0 ? algorithmParams : caseItem?.algorithmParams ?? undefined,
       referenceParams: caseItem?.referenceParams ?? undefined,
       ...(strategyValue ? { strategyId, strategyOverrides } : {}),
     }
@@ -529,7 +583,7 @@ export function CaseMutateDrawer({
     setGroupValue(caseItem?.groupId ?? presetGroupId ?? '')
     setAlgorithmType(caseItem?.algorithmType ?? '')
     setDescriptionValue(caseItem?.description ?? '')
-    setRounds(caseItem ? roundsFromConfig(caseItem.config) : defaultRounds())
+    setRounds(caseItem ? roundsFromConfig(caseItem.config, caseItem.algorithmParams) : defaultRounds())
     setActiveRound(1)
     setStep('算法参数')
     setNewGroupName('')
@@ -708,6 +762,12 @@ export function CaseMutateDrawer({
                         onEvaluationChange={(evaluation) =>
                           updateEvaluation(activeRoundDraft?.number, evaluation)
                         }
+                        onAlgorithmParamsChange={(params) =>
+                          updateRoundAlgorithmParams(activeRoundDraft?.number, params)
+                        }
+                        onNoiseChange={(noise) =>
+                          updateRoundNoise(activeRoundDraft?.number, noise)
+                        }
                       />
                     </div>
                   </div>
@@ -751,19 +811,34 @@ function StepBody({
   activeRound,
   algorithmType,
   onEvaluationChange,
+  onAlgorithmParamsChange,
+  onNoiseChange,
 }: {
   step: (typeof STEPS)[number]
   activeRound: RoundDraft | undefined
   algorithmType: string
   onEvaluationChange: (evaluation: RoundEvaluationDraft) => void
+  onAlgorithmParamsChange: (params: RoundAlgorithmParamItem[]) => void
+  onNoiseChange: (noise: RoundNoiseDraft) => void
 }) {
   switch (step) {
     case '算法参数':
-      return <AlgorithmParamsStep algorithmType={algorithmType || null} />
+      return (
+        <AlgorithmParamsStep
+          algorithmType={algorithmType || null}
+          value={activeRound?.algorithmParams ?? []}
+          onChange={onAlgorithmParamsChange}
+        />
+      )
     case '音频列表':
       return <AudioListStep presetCount={activeRound?.audioCount || 1} />
     case '噪声与干扰':
-      return <NoiseInterferenceStep />
+      return (
+        <NoiseInterferenceStep
+          value={activeRound?.noise ?? emptyRoundNoise()}
+          onChange={onNoiseChange}
+        />
+      )
     case '评估维度':
       return (
         <EvaluationStep
