@@ -507,12 +507,19 @@ class ReportCompareHelpers:
 
     @staticmethod
     def _collect_all_resources(task_ids, tasks):
+        """收集二次对比所需的测试结果与设备/API 资源。
+
+        统一返回 7 元组 (results, resources, devices_list, apis_list,
+        device_ids, api_ids, error)：错误路径也补齐前 6 位为 None，
+        error 恒为末位（INT-959：错误路径曾只返 6 元组，调用方按 7 元组
+        解包抛 not enough values to unpack）。
+        """
         ReportHelpers = _get_report_helpers()
         from report_service.application.services.report_data_builder import ReportDataBuilder
 
         results = _grpc_get_test_results_by_task_ids(task_ids)
         if not results:
-            return None, None, None, None, None, "未找到测试结果数据"
+            return None, None, None, None, None, None, "未找到测试结果数据"
 
         resources = set()
         for t in tasks:
@@ -530,7 +537,7 @@ class ReportCompareHelpers:
         devices_list, apis_list, device_ids, api_ids = ReportDataBuilder._get_task_resources(task_ids)
 
         if not devices_list and not apis_list:
-            return None, None, None, None, None, "未找到设备或API资源数据"
+            return None, None, None, None, None, None, "未找到设备或API资源数据"
 
         return results, resources, devices_list, apis_list, device_ids, api_ids, None
 
