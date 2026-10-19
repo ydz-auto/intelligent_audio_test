@@ -46,6 +46,7 @@ def _log_po_to_dict(po: Log) -> Dict[str, Any]:
         'test_case_id': po.test_case_id,
         'thread_id': po.thread_id,
         'algorithm_type': po.algorithm_type,
+        'created_by_user_id': po.created_by_user_id,
         'created_at': po.created_at.isoformat() if po.created_at else None,
     }
 

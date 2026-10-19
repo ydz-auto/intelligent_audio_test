@@ -43,7 +43,11 @@ def _to_iso_utc(value):
 
 
 def _to_log_item(log: dict) -> LogItem:
-    """dict（DB 行或业务文件条目）→ LogItem。"""
+    """dict（DB 行或业务文件条目）→ LogItem。
+
+    INT-838：读侧响应补带操作人 user_id——DB 行取 created_by_user_id
+    （_log_po_to_dict 输出），业务文件条目取 user_id（JSONL 行新字段）。
+    """
     return LogItem(
         id=log.get('id'),
         time=log.get('time') or '',
@@ -59,6 +63,7 @@ def _to_log_item(log: dict) -> LogItem:
         test_case_id=log.get('test_case_id'),
         thread_id=log.get('thread_id'),
         algorithm_type=log.get('algorithm_type'),
+        user_id=log.get('user_id', log.get('created_by_user_id')),
     )
 
 
@@ -355,6 +360,7 @@ class LogQueryService:
                     test_case_id=log.get('test_case_id'),
                     thread_id=log.get('thread_id'),
                     algorithm_type=log.get('algorithm_type'),
+                    user_id=log.get('created_by_user_id'),
                 )
             )
 
@@ -523,6 +529,7 @@ class LogQueryService:
                     test_case_id=log.get('test_case_id'),
                     thread_id=log.get('thread_id'),
                     algorithm_type=log.get('algorithm_type'),
+                    user_id=log.get('created_by_user_id'),
                 ))
 
             return success_response({

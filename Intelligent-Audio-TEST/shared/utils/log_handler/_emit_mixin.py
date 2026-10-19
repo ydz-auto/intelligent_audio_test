@@ -224,6 +224,7 @@ class _EmitMixin:
             'test_case_id': test_case_id,
             'thread_id': getattr(record, 'thread_id', None) or str(threading.get_ident()),
             'algorithm_type': getattr(record, 'algorithm_type', None),
+            'user_id': get_current_user_id(),
             'round': getattr(record, 'round', None) or get_current_round(),
             'evaluation_id': getattr(record, 'evaluation_id', None) or get_current_evaluation_id(),
             'log_type': log_type_for_category(category).value,

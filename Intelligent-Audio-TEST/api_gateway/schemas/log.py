@@ -20,6 +20,8 @@ class LogItem(APIModel):
     test_case_id: Optional[str] = None
     thread_id: Optional[str] = None
     algorithm_type: Optional[str] = None
+    # INT-838：读侧响应补带操作人 user_id（DB 行 created_by_user_id / 业务文件条目 user_id）
+    user_id: Optional[int] = None
 
 
 class LogListData(PaginatedData[LogItem]):

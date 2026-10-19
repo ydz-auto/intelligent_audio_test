@@ -33,7 +33,7 @@ _MAX_OPEN_HANDLES = 64
 _ENTRY_FIELDS = (
     'time', 'level', 'category', 'module', 'source', 'content',
     'task_id', 'device_id', 'api_id', 'test_case_id', 'thread_id',
-    'algorithm_type', 'round', 'evaluation_id', 'service', 'log_type',
+    'algorithm_type', 'user_id', 'round', 'evaluation_id', 'service', 'log_type',
 )
 
 

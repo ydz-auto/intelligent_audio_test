@@ -208,6 +208,7 @@ class BusinessLogReader:
             'test_case_id': record.get('test_case_id'),
             'thread_id': record.get('thread_id'),
             'algorithm_type': record.get('algorithm_type'),
+            'user_id': record.get('user_id'),
             'round': record.get('round'),
             'log_type': record.get('log_type'),
             'service': record.get('service'),
