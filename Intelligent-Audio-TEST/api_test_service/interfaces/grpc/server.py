@@ -13,7 +13,11 @@ from concurrent import futures
 import grpc
 
 from shared.proto import api_test_service_pb2_grpc as api_grpc
-from shared.infrastructure.grpc_interceptors import server_log_interceptor, server_db_scope_interceptor
+from shared.infrastructure.grpc_interceptors import (
+    server_log_interceptor,
+    server_db_scope_interceptor,
+    server_user_context_interceptor,
+)
 from shared.utils.config_manager import config_manager
 from shared.config.service_ports import API_TEST_SERVICE_GRPC_PORT
 from api_test_service.interfaces.grpc.servicers import (
@@ -37,7 +41,8 @@ def start_grpc_server(port=API_TEST_SERVICE_GRPC_PORT):
     _max_workers = config_manager.get_value('grpc', 'api_test_service_workers', 8)
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=_max_workers),
-        interceptors=[server_db_scope_interceptor, server_log_interceptor],
+        interceptors=[server_db_scope_interceptor, server_log_interceptor,
+                      server_user_context_interceptor],
     )
     api_grpc.add_APITestServiceServicer_to_server(APITestServiceServicer(), server)
     api_grpc.add_ApiRmsSplConfigServiceServicer_to_server(ApiRmsSplConfigServiceServicer(), server)
