@@ -37,7 +37,7 @@ import type {
 import { testDeviceFromDto } from '@/infrastructure/adapters/testDeviceAdapter'
 import { playbackDeviceFromDto } from '@/infrastructure/adapters/playbackDeviceAdapter'
 import { apiDeviceFromDto } from '@/infrastructure/adapters/apiDeviceAdapter'
-import { deviceGroupFromDto } from '@/infrastructure/adapters/deviceGroupAdapter'
+import { deviceGroupFromDto, deviceGroupsToTree } from '@/infrastructure/adapters/deviceGroupAdapter'
 import {
   alarmFromDto,
   alarmRuleFromDto,
@@ -139,13 +139,14 @@ export async function fetchLaboratories(): Promise<Laboratory[]> {
   return [...MOCK_LABORATORIES]
 }
 
-/** 设备分组列表（§6.3；GET /test-devices/device-groups） */
+/** 设备分组列表（§6.3；GET /test-devices/device-groups——INT-832 起每项含 parent_id，返回嵌套树） */
 export async function fetchDeviceGroups(options: ApiRequestOptions = {}): Promise<DeviceGroup[]> {
   const dto = await request<PaginatedDto<DeviceGroupItemDto>>(
     'GET', '/test-devices/device-groups', undefined,
-    { ...options, params: { page: 1, per_page: 100 } }
+    { ...options, params: LIST_ALL_PARAMS }
   )
-  return (dto?.items ?? []).map(deviceGroupFromDto)
+  // INT-832：列表扁平分页、每项含 parent_id，树由前端按 parentId 建（children）
+  return deviceGroupsToTree((dto?.items ?? []).map(deviceGroupFromDto))
 }
 
 /** 设备分组详情（§6.3；GET /test-devices/device-groups/{id}——列表 device_ids 恒空，真实成员以详情为准，P2-1） */
@@ -188,6 +189,16 @@ export async function updateDeviceGroup(
     group_type: patch.groupType,
   }
   await request('PUT', `/test-devices/device-groups/${id}`, body, options)
+  return { success: true }
+}
+
+/** 移动分组（INT-864/INT-832；PUT /test-devices/device-groups/{id}/move，body {parent_id: string|null}） */
+export async function moveDeviceGroup(
+  id: string,
+  parentId: string | null,
+  options: ApiRequestOptions = {}
+): Promise<{ success: boolean }> {
+  await request('PUT', `/test-devices/device-groups/${id}/move`, { parent_id: parentId }, options)
   return { success: true }
 }
 

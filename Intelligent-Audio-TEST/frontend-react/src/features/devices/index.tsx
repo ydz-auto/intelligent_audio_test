@@ -60,6 +60,7 @@ import type {
   TestDeviceFilters,
 } from '@/features/devices/types'
 import { DevicesPrimaryButtons } from '@/features/devices/components/devices-primary-buttons'
+import { findDeviceGroup } from '@/features/devices/lib/device-group-tree'
 import { DevicesFilterToolbar } from '@/features/devices/components/devices-filter-toolbar'
 import { DevicesStatsRow } from '@/features/devices/components/devices-stats-row'
 import { TestDeviceTable } from '@/features/devices/components/test-device-table'
@@ -221,8 +222,9 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
       if (f.status) rows = rows.filter((row) => row.status === f.status)
       if (f.connectionType) rows = rows.filter((row) => row.connectionType === f.connectionType)
       if (f.groupId) {
-        const group = groups.find((g) => String(g.id) === f.groupId)
-        // P2-1：详情 device_ids 为真实成员（列表恒空）；并合列表 members 兜底（嵌套/未来列表补 device_ids）
+        // INT-864：分组树嵌套后，按引用查找需递归（含子分组）
+        const group = findDeviceGroup(groups, f.groupId)
+        // P2-1：详情 device_ids 为真实成员（列表恒空）；并合树成员兜底（嵌套/未来列表补 device_ids）
         const memberIds = new Set<number>([
           ...(groupFilterDetail.data?.members ?? []),
           ...(group ? collectGroupMemberIds(group) : []),

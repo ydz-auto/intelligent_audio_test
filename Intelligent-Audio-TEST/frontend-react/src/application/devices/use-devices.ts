@@ -40,6 +40,7 @@ import {
   fetchPlaybackDevices,
   fetchStatusHistory,
   fetchTestDevices,
+  moveDeviceGroup,
   removeDevicesFromGroup,
   saveAlarmRule,
   scanDevices,
@@ -262,6 +263,13 @@ export function useDeviceGroupMutations() {
     onSuccess: invalidate,
   })
 
+  /** 移动分组到新父级/根（INT-864；成功刷新分组树） */
+  const move = useMutation({
+    mutationFn: ({ id, parentId }: { id: string; parentId: string | null }) =>
+      moveDeviceGroup(id, parentId),
+    onSuccess: invalidate,
+  })
+
   const remove = useMutation({
     mutationFn: (id: string) => deleteDeviceGroup(id, true),
     onSuccess: invalidate,
@@ -277,7 +285,7 @@ export function useDeviceGroupMutations() {
     onSuccess: invalidate,
   })
 
-  return { create, update, remove, addMembers, removeMembers }
+  return { create, update, move, remove, addMembers, removeMembers }
 }
 
 /** 关联声压映射（§6.4；POST /playback-devices/{id}/associate-spl） */

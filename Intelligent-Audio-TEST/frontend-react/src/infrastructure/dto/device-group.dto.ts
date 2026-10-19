@@ -2,6 +2,8 @@
  * 设备分组 DTO（infrastructure/dto 层——snake_case 唯一出现层；16_设备域.md §6.3/INT-80）。
  * 形态对照 device_service device_group_repository.list_groups 实测：
  * id 后端为 str（Optional[str]）、device_ids 成员集合、无嵌套（children 前端空置）。
+ * INT-864（承接 INT-832）：后端 device_groups 增加 parent_id（可空，根分组为 null），
+ * 列表接口每项返回 parent_id，前端 adapter 按 parent_id 建嵌套树。
  */
 import type { DeviceGroupType } from '@/domain/models/deviceGroup'
 
@@ -11,6 +13,8 @@ export interface DeviceGroupItemDto {
   name: string
   description: string | null
   group_type: DeviceGroupType | null
+  /** 父分组 id（INT-832；根分组为 null） */
+  parent_id: string | number | null
   created_by_user_id: number | null
   updated_by_user_id: number | null
   created_at: string | null

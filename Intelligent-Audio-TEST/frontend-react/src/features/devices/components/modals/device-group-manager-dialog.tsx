@@ -8,12 +8,14 @@
  * INT-721 接线：全部增删改/成员操作走 device_bp /test-devices/device-groups 真实端点
  * （create/update/delete?cascade=true/add-devices/remove-devices），经 useDeviceGroupMutations
  * invalidate ['devices','groups'] 刷新列表（不再本地持有一份可漂移的分组状态）。
- * 嵌套分组/「移动」后端 device_group 无 parent_id 字段（§11-5 嵌套为前端 UI 稿）→ 待 FEAT，
- * 移动入口禁用 + Tooltip；children 恒空，树渲染保留为嵌套落地后的兼容。
+ * INT-864（承接 INT-832）：后端 device_groups 增加 parent_id——「移动」接真实端点
+ * PUT /test-devices/device-groups/{id}/move（目标父分组选择器，根=移到顶层），
+ * 分组树按后端 parent_id 建（列表接口扁平分页、children 由 adapter 建树），
+ * 删除确认按 INT-832 决策 2 升级（含子分组数，cascade=true 软删整棵子树、设备保留）。
  * P3-15 返修：播放设备组类型创建整项禁用 + Tooltip「播放设备分组暂未实装」。
  */
 import { ChevronDown, ChevronRight, Copy, Move, Pencil, Plus, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 
@@ -129,19 +131,6 @@ function BulkAddMembersDialog({
   )
 }
 
-/** 移动分组入口（后端 device_group 无 parent_id，嵌套待 FEAT） */
-function MoveDisabledMenuItem() {
-  return (
-    <Tooltip>
-      <TooltipTrigger render={<DropdownMenuItem disabled className='gap-2' />}>
-        <Move aria-hidden='true' className='size-3.5' />
-        移动
-      </TooltipTrigger>
-      <TooltipContent>后端暂不支持分组嵌套（移动/子分组待 FEAT）</TooltipContent>
-    </Tooltip>
-  )
-}
-
 export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
   const queryClient = useQueryClient()
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -155,9 +144,12 @@ export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
   const [bulkAddTarget, setBulkAddTarget] = useState<DeviceGroup | null>(null)
   const [renameTarget, setRenameTarget] = useState<DeviceGroup | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  /** INT-864：移动分组目标（null=弹窗关闭；'__root__'=根/顶层，否则为目标父分组 id） */
+  const [moveTarget, setMoveTarget] = useState<DeviceGroup | null>(null)
+  const [moveParent, setMoveParent] = useState('')
   /** 成员批量移除勾选集（组 id → 勾选设备 id 集合） */
   const [removingMap, setRemovingMap] = useState<Record<string, Set<number>>>({})
-  const { create, update, remove, addMembers, removeMembers } = useDeviceGroupMutations()
+  const { create, update, move, remove, addMembers, removeMembers } = useDeviceGroupMutations()
   const groups = props.groups
 
   /** P2-1：拉取分组详情真实成员（已拉取过不重复；失败回落到列表 device_ids） */
@@ -328,6 +320,39 @@ export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
     }
   }
 
+  /** INT-864：移动分组到目标父级/根（PUT /test-devices/device-groups/{id}/move；成功刷新分组树） */
+  const handleMove = async () => {
+    if (!moveTarget) return
+    try {
+      await move.mutateAsync({
+        id: moveTarget.id,
+        parentId: moveParent === '__root__' ? null : moveParent,
+      })
+      toast.success(`分组「${moveTarget.name}」已移动`)
+      setMoveTarget(null)
+    } catch (err) {
+      toast.error(errMessage(err, '移动分组失败，请重试'))
+    }
+  }
+
+  /** INT-864：移动目标候选 = 全部分组（扁平）去掉自身及后代（环检测前端拦截，与后端 400 一致） */
+  const moveTargetOptions = useMemo(() => {
+    if (!moveTarget) return []
+    const excluded = new Set<string>()
+    const collect = (group: DeviceGroup) => {
+      excluded.add(group.id)
+      group.children.forEach(collect)
+    }
+    collect(moveTarget)
+    const options: { id: string; label: string }[] = []
+    const walk = (group: DeviceGroup, depth: number) => {
+      if (group.id !== moveTarget.id) options.push({ id: group.id, label: `${'　'.repeat(depth)}${group.name}` })
+      group.children.forEach((child) => walk(child, depth + 1))
+    }
+    groups.forEach((group) => walk(group, 0))
+    return options.filter((o) => !excluded.has(o.id))
+  }, [groups, moveTarget])
+
   const handleDelete = async () => {
     if (!deleteTarget) return
     try {
@@ -397,7 +422,15 @@ export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
                 <Pencil aria-hidden='true' className='size-3.5' />
                 重命名
               </DropdownMenuItem>
-              <MoveDisabledMenuItem />
+              <DropdownMenuItem
+                onClick={() => {
+                  setMoveTarget(group)
+                  setMoveParent('__root__')
+                }}
+              >
+                <Move aria-hidden='true' className='size-3.5' />
+                移动
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 variant='destructive'
@@ -557,7 +590,7 @@ export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
               </div>
             </div>
 
-            {/* 分组列表（嵌套展开；后端扁平、children 恒空，树渲染为嵌套落地兼容） */}
+            {/* 分组列表（INT-864：按后端 parent_id 建树；父级行展开子分组） */}
             <div className='bg-card ring-foreground/10 max-h-80 overflow-y-auto rounded-lg ring-1 p-1'>
               {groups.length === 0 ? (
                 <p className='text-muted-foreground px-3 py-8 text-center text-sm'>暂无分组</p>
@@ -610,23 +643,77 @@ export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
         </DialogContent>
       </Dialog>
 
+      {/* 移动分组（INT-864；目标父分组选择器，根 = 移到顶层） */}
+      <Dialog open={moveTarget != null} onOpenChange={(open) => !open && setMoveTarget(null)}>
+        <DialogContent className='sm:max-w-sm'>
+          <DialogHeader>
+            <DialogTitle>移动分组</DialogTitle>
+            <DialogDescription>
+              将分组「{moveTarget?.name ?? ''}」移动到目标父分组下，选「根/顶层」则移到根。
+            </DialogDescription>
+          </DialogHeader>
+          <div className='flex flex-col gap-1.5'>
+            <Label htmlFor='move-parent'>目标父分组</Label>
+            <Select
+              value={moveParent}
+              onValueChange={(value) => setMoveParent(value ?? '__root__')}
+              items={[
+                { value: '__root__', label: '根/顶层' },
+                ...moveTargetOptions.map((o) => ({ value: o.id, label: o.label })),
+              ]}
+            >
+              <SelectTrigger id='move-parent' size='sm' className='w-full'>
+                <SelectValue placeholder='选择目标父分组' />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value='__root__'>根/顶层</SelectItem>
+                {moveTargetOptions.map((option) => (
+                  <SelectItem key={option.id} value={option.id}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant='outline' onClick={() => setMoveTarget(null)}>
+              取消
+            </Button>
+            <Button onClick={() => void handleMove()}>移动</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <ConfirmDialog
         open={deleteTarget != null}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
         title='删除分组'
-        desc={
-          deleteTarget
-            ? deleteTarget.memberCount > 0
-              ? `分组「${deleteTarget.name}」包含 ${deleteTarget.memberCount} 个设备。删除分组会把设备移出分组（设备本身保留），确定删除吗？`
-              : `确定要删除分组「${deleteTarget.name}」吗？`
-            : ''
-        }
+        desc={deleteTarget ? deleteGroupConfirmCopy(deleteTarget) : ''}
         destructive
         confirmText='删除'
         handleConfirm={() => void handleDelete()}
       />
     </>
   )
+}
+
+/** INT-864 决策 2：整棵子树的分组数（含全部后代，用于删除确认文案） */
+function subtreeGroupCount(group: DeviceGroup): number {
+  let count = 0
+  for (const child of group.children) count += 1 + subtreeGroupCount(child)
+  return count
+}
+
+/** 删除分组确认文案（INT-832 决策 2：含子分组时升级，cascade=true 软删整棵子树、设备保留） */
+function deleteGroupConfirmCopy(group: DeviceGroup): string {
+  const childCount = subtreeGroupCount(group)
+  if (childCount > 0) {
+    return `分组「${group.name}」包含 ${group.memberCount} 个设备与 ${childCount} 个子分组。删除分组会把设备移出分组、子分组一并删除（设备本身保留），确定删除吗？`
+  }
+  if (group.memberCount > 0) {
+    return `分组「${group.name}」包含 ${group.memberCount} 个设备。删除分组会把设备移出分组（设备本身保留），确定删除吗？`
+  }
+  return `确定要删除分组「${group.name}」吗？`
 }
 
 /** 分组行更多操作三点图标 */

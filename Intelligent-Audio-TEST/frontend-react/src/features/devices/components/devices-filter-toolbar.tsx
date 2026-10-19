@@ -28,6 +28,7 @@ import {
   type DevicesTabKey,
 } from '@/features/devices/constants'
 import { DeviceAlgorithmChip } from '@/features/devices/components/global-algorithm-chip'
+import { flattenDeviceGroups } from '@/features/devices/lib/device-group-tree'
 import type { Laboratory } from '@/domain/models/laboratory'
 import type { DeviceGroup } from '@/domain/models/deviceGroup'
 
@@ -263,12 +264,12 @@ export function DevicesFilterToolbar(props: DevicesFilterToolbarProps) {
           </>
         )}
 
-        {/* 分组（§3.4 仅测试设备页签） */}
+        {/* 分组（§3.4 仅测试设备页签；嵌套分组摊平后全部可选，INT-864） */}
         {props.tab === 'test' && (
           <SingleFacet
             label='分组'
             value={props.groupId}
-            options={props.groups
+            options={flattenDeviceGroups(props.groups)
               .filter((g) => g.groupType === 'test')
               .map((g) => ({ value: String(g.id), label: g.name }))}
             onChange={props.onGroupId}
