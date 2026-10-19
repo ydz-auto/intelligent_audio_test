@@ -46,6 +46,11 @@ import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import type { TagItem } from '@/domain/models/testTag'
+import type {
+  CaseEvaluationStrategy,
+  TestCaseBackgroundNoiseItem,
+  TestCaseDimensionItem,
+} from '@/domain/models/evaluationStrategy'
 import { MOCK_CASE_DIMENSIONS, MOCK_EVALUATION_CATEGORIES } from '@/infrastructure/mock/testcases-mock'
 import {
   createTestCase,
@@ -266,6 +271,45 @@ function roundsToConfig(
   })
 }
 
+/**
+ * 存量 config → 评估策略节初始值（编辑回填 §5.1.3；config 值内 snake_case 契约 →
+ * camelCase Domain，editor 直接消费）。
+ * - config.evaluationStrategy（引用态 {strategy_id, overrides}）→ initialValue；
+ * - 存量直载 config.dimensions / config.background_noise → legacy 字段（无 strategy 时
+ *   等价内联策略，映射「新建策略」模式并提示可另存为复用策略）。
+ */
+function strategyEditorInitial(
+  config: Record<string, unknown> | null | undefined
+): {
+  initialValue: CaseEvaluationStrategy | null
+  legacyDimensions: TestCaseDimensionItem[]
+  legacyBackgroundNoise: TestCaseBackgroundNoiseItem | null
+} {
+  const rawStrategy = config?.evaluationStrategy as
+    | { strategy_id?: string | null; overrides?: { dimensions?: TestCaseDimensionItem[]; background_noise?: TestCaseBackgroundNoiseItem | null } }
+    | null
+  const rawOverrides = rawStrategy?.overrides
+  const overrides =
+    rawOverrides != null &&
+    (rawOverrides.dimensions != null || rawOverrides.background_noise != null)
+      ? {
+          ...(rawOverrides.dimensions != null ? { dimensions: rawOverrides.dimensions } : {}),
+          ...(rawOverrides.background_noise != null
+            ? { backgroundNoise: rawOverrides.background_noise }
+            : {}),
+        }
+      : null
+  return {
+    initialValue: rawStrategy
+      ? { strategyId: rawStrategy.strategy_id ?? null, ...(overrides ? { overrides } : {}) }
+      : null,
+    legacyDimensions: (Array.isArray(config?.dimensions)
+      ? config.dimensions
+      : []) as TestCaseDimensionItem[],
+    legacyBackgroundNoise: (config?.background_noise ?? null) as TestCaseBackgroundNoiseItem | null,
+  }
+}
+
 export function CaseMutateDrawer({
   open,
   onOpenChange,
@@ -299,6 +343,10 @@ export function CaseMutateDrawer({
   const [activeRound, setActiveRound] = useState(1)
   /** 评估策略节值（§5.1.3；保存时序列化为 config.evaluationStrategy / 存量直载字段） */
   const [strategyValue, setStrategyValue] = useState<EvaluationStrategyEditorValue | null>(null)
+  /** 编辑态评估策略节初始值（存量 config 回填；「未触碰」与「显式不使用」以此区分） */
+  const { initialValue, legacyDimensions, legacyBackgroundNoise } = strategyEditorInitial(
+    caseItem?.config
+  )
 
   const groupOptions = [
     ...groups.map((g) => ({ value: g.id, label: g.name })),
@@ -481,6 +529,10 @@ export function CaseMutateDrawer({
     setActiveRound(1)
     setStep('算法参数')
     setNewGroupName('')
+    // INT-922 审计 P1：评估策略节未触碰（strategyValue=null）时保存保留存量字段，
+    // 否则 EvaluationStrategyEditor 挂载即 onChange 输出 mode='none' 会在保存时
+    // 删除 config.dimensions / config.background_noise / config.evaluationStrategy
+    setStrategyValue(null)
   }, [open, caseItem, presetGroupId])
 
   return (
@@ -663,6 +715,9 @@ export function CaseMutateDrawer({
             <section className='border-border/60 border-t pt-4'>
               <EvaluationStrategyEditor
                 key={isEdit && caseItem ? caseItem.id : 'create'}
+                initialValue={initialValue}
+                legacyDimensions={legacyDimensions}
+                legacyBackgroundNoise={legacyBackgroundNoise}
                 dimensions={MOCK_CASE_DIMENSIONS}
                 categories={MOCK_EVALUATION_CATEGORIES}
                 algorithmType={algorithmType}
