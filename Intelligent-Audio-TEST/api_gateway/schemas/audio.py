@@ -246,6 +246,13 @@ class BatchActionRequest(APIModel):
     audio_ids: List[int] = Field(...)
     action: str = Field(...)
     tags: Optional[List[str]] = Field(default_factory=list)
+    # INT-818：批量移动/复制/重命名/改属性扩展字段（React 弹窗 targetFolder /
+    # renameRule / property 语义一一对应；旧 Vue extraParams 透传兼容——
+    # extra="ignore" 下未声明字段不报错，camelCase 由 alias_generator 同时接受）
+    target_folder: Optional[str] = Field(None, description='move/copy 目标文件夹（如 test_data/dry）')
+    rename_rule: Optional[str] = Field(None, description='rename 统一命名规则前缀（自动追加序号）')
+    property: Optional[str] = Field(None, description='modify-properties 属性名（metadata / audio-type / spl）')
+    property_value: Optional[Any] = Field(None, description='modify-properties 属性值（metadata 为字段字典，audio-type 为类型值）')
 
 
 class BatchPlaybackRequest(APIModel):
