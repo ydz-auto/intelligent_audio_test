@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Union
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from api_gateway.schemas.base import APIModel
 from api_gateway.schemas.common import PaginatedData
@@ -195,7 +195,51 @@ class URLImportRequest(APIModel):
 
 
 class ConvertFormatRequest(APIModel):
+    """格式转换请求（INT-782 附加参数：目标采样率/声道数/位深度/比特率）。
+
+    全部附加参数可选，不传时保持原行为（仅转换格式）。支持范围见
+    接口实现文档 AudioImport §1.5：校验采样率/声道数/位深在支持范围内。
+    """
     format: str = Field(...)
+    sample_rate: Optional[int] = Field(None, description='目标采样率 (Hz)，支持 8000-192000')
+    channels: Optional[int] = Field(None, description='目标声道数，支持 1-8')
+    bit_depth: Optional[int] = Field(None, description='目标位深度 (bit)，支持 8/16/24/32')
+    bitrate: Optional[Union[int, str]] = Field(None, description='目标比特率 (kbps)，如 128 或 "128k"')
+
+    @field_validator('sample_rate')
+    def _check_sample_rate(cls, v):
+        if v is not None and not (8000 <= v <= 192000):
+            raise ValueError('目标采样率需在 8000-192000 Hz 范围内')
+        return v
+
+    @field_validator('channels')
+    def _check_channels(cls, v):
+        if v is not None and not (1 <= v <= 8):
+            raise ValueError('目标声道数需在 1-8 之间')
+        return v
+
+    @field_validator('bit_depth')
+    def _check_bit_depth(cls, v):
+        if v is not None and v not in (8, 16, 24, 32):
+            raise ValueError('目标位深度仅支持 8/16/24/32 bit')
+        return v
+
+    @field_validator('bitrate', mode='before')
+    def _check_bitrate(cls, v):
+        if v is None:
+            return v
+        if isinstance(v, bool):
+            raise ValueError('目标比特率不能为布尔值')
+        if isinstance(v, (int, float)):
+            if v <= 0:
+                raise ValueError('目标比特率需为正整数 (kbps)')
+            return int(v)
+        s = str(v).strip().lower()
+        # 纯数字按 kbps 解释；允许 k/m 后缀（如 "128k"、"1m"）
+        body = s[:-1] if s and s[-1] in 'km' else s
+        if not body.replace('.', '', 1).isdigit():
+            raise ValueError('目标比特率需为数字或以 k/m 结尾的数值字符串 (kbps)')
+        return s
 
 
 class BatchActionRequest(APIModel):
