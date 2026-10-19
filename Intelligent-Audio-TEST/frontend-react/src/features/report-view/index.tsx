@@ -10,6 +10,8 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ApiError } from '@/infrastructure/api/api-error'
+import { HttpStatus } from '@/domain/models/api'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useReportDetail } from '@/application/report-view/use-report-detail'
 import { useReportReviews } from '@/application/report-view/useReportReviews'
@@ -57,6 +59,25 @@ const NAV: Record<'task' | 'comparison' | 'benchmark', ReadingNavSection[]> = {
     { id: 'report-case-tag', label: '用例标签' },
     { id: 'report-specific-cases', label: '具体用例' },
   ],
+}
+
+/**
+ * 报告不存在的错误判定（INT-934）：后端 GET /reports/{id} 对不存在报告返回
+ * HTTP 400 + envelope {code:404, message:"report not found"}（report_service
+ * interfaces/api/routes.py:208）——envelope code 404 即业务 not-found，配 httpStatus
+ * 404 兜底；非标准码时按 message 语义兜底（英文 not found / 旧中文「不存在」「未找到」）。
+ */
+function isReportNotFoundError(error: unknown): boolean {
+  if (error instanceof ApiError) {
+    // 后端 GET /reports/{id} 对不存在报告返回 HTTP 400 + envelope {code:404}——404 是 HTTP
+    // 语义码，不在 ApiErrorCode 枚举内，按裸数值比对 HttpStatus.NOT_FOUND；httpStatus=404 兜底。
+    const code = error.code as number | null
+    if (code === HttpStatus.NOT_FOUND || error.httpStatus === HttpStatus.NOT_FOUND) return true
+    return /不存在|未找到|not found/i.test(error.serverMessage ?? '')
+  }
+  if (typeof error !== 'object' || error === null) return false
+  const message = (error as { message?: unknown }).message
+  return typeof message === 'string' && message.includes('不存在')
 }
 
 function DetailSkeleton() {
