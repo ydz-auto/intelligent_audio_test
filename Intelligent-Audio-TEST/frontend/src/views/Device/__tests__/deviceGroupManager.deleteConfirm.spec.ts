@@ -1,8 +1,9 @@
 /**
- * INT-286：设备分组删除确认回归（window.confirm → BASIC_CONFIRM danger 模态）。
+ * INT-286/INT-863：设备分组删除确认回归（window.confirm → BASIC_CONFIRM danger 模态）。
  *
  * 锁定口径：
  * - 删除分组打开 BASIC_CONFIRM（title=删除设备分组、danger=true），文案含分组名与成员提示
+ * - 含子分组（INT-863）：文案升级为「包含 {n} 个设备与 {m} 个子分组」，仍走 cascade=true
  * - 确认（open resolve）→ deleteGroup(id, true) 下发并刷新；取消（reject）→ 不下发
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -13,6 +14,7 @@ const ports = vi.hoisted(() => ({
   getGroup: vi.fn(),
   createGroup: vi.fn(),
   updateGroup: vi.fn(),
+  moveGroup: vi.fn(),
   deleteGroup: vi.fn(),
   addDevicesToGroup: vi.fn(),
   removeDevicesFromGroup: vi.fn(),
@@ -28,8 +30,19 @@ import DeviceGroupManager from '../DeviceGroupManager.vue'
 import { MODAL_TYPES } from '../../../composables/modal/constants'
 
 const GROUPS = [
-  { id: 'g1', name: '会议室组', groupType: 'test', description: '', deviceCount: 3 },
-  { id: 'g2', name: '空分组', groupType: 'playback', description: '', deviceCount: 0 },
+  { id: 'g1', name: '会议室组', groupType: 'test', description: '', deviceCount: 3, parentId: null, children: [] },
+  { id: 'g2', name: '空分组', groupType: 'playback', description: '', deviceCount: 0, parentId: null, children: [] },
+]
+
+/** 含子分组的父分组（INT-863 文案升级用例） */
+const PARENT_WITH_CHILDREN = [
+  {
+    id: 'p1', name: '根分组A', groupType: 'test', description: '', deviceCount: 2, parentId: null,
+    children: [
+      { id: 'c1', name: '子分组1', groupType: 'test', description: '', deviceCount: 0, parentId: 'p1', children: [] },
+      { id: 'c2', name: '子分组2', groupType: 'playback', description: '', deviceCount: 0, parentId: 'p1', children: [] },
+    ],
+  },
 ]
 
 beforeEach(() => {
@@ -50,7 +63,7 @@ const findRowDeleteButton = (w: ReturnType<typeof mount>, rowName: string) => {
   return row.findAll('button').find(b => b.text().includes('删除'))!
 }
 
-describe('DeviceGroupManager 删除分组（INT-286）', () => {
+describe('DeviceGroupManager 删除分组（INT-286/INT-863）', () => {
   it('打开 BASIC_CONFIRM（danger）确认模态，文案含分组名与成员数提示', async () => {
     modalOpen.mockResolvedValue({ confirmed: true })
     const w = await mountWithGroups()
@@ -97,5 +110,19 @@ describe('DeviceGroupManager 删除分组（INT-286）', () => {
 
     const content = modalOpen.mock.calls[0][1].content as string
     expect(content).toBe('确定删除分组「空分组」吗？')
+  })
+
+  it('含子分组时文案升级：包含 {n} 个设备与 {m} 个子分组（INT-863）', async () => {
+    ports.getGroups.mockResolvedValue({ items: PARENT_WITH_CHILDREN })
+    modalOpen.mockResolvedValue({ confirmed: true })
+    const w = await mountWithGroups()
+
+    await findRowDeleteButton(w, '根分组A').trigger('click')
+
+    const content = modalOpen.mock.calls[0][1].content as string
+    expect(content).toBe(
+      '分组「根分组A」包含 2 个设备与 2 个子分组。删除分组会把设备移出分组、子分组一并删除（设备本身保留），确定删除吗？'
+    )
+    expect(ports.deleteGroup).toHaveBeenCalledWith('p1', true)
   })
 })
