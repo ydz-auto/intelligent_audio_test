@@ -146,17 +146,20 @@ function buildDefaults(
   }
   if (state.kind === 'playback') {
     const device = state.mode === 'edit' ? (state.device as PlaybackDevice | null) : null
+    // P2-2 返修：播放扫描「添加」预填透传（§6.1 playback: name/model/deviceUniqueId/channelIndex/
+    // sampleRate/deviceType；对齐 test 分支 scanPrefill 口径）
+    const scanPrefill = prefill as Partial<PlaybackDevice> | null
     return {
       kind: 'playback',
-      name: device?.name ?? '',
+      name: device?.name ?? scanPrefill?.name ?? '',
       description: device?.description ?? '',
-      model: device?.model ?? '',
-      deviceType: device?.deviceType ?? 'dry',
-      deviceUniqueId: device?.deviceUniqueId ?? '',
-      channelIndex: String(device?.channelIndex ?? 0),
+      model: device?.model ?? scanPrefill?.model ?? '',
+      deviceType: device?.deviceType ?? scanPrefill?.deviceType ?? 'dry',
+      deviceUniqueId: device?.deviceUniqueId ?? scanPrefill?.deviceUniqueId ?? '',
+      channelIndex: String(device?.channelIndex ?? scanPrefill?.channelIndex ?? 0),
       supportedChannels: device?.supportedChannels != null ? String(device.supportedChannels) : '',
       supportedFormats: device?.supportedFormats ?? [],
-      sampleRate: String(device?.sampleRate ?? 48000),
+      sampleRate: String(device?.sampleRate ?? scanPrefill?.sampleRate ?? 48000),
       splMappingId: device?.currentSplMappingId != null ? String(device.currentSplMappingId) : '',
     }
   }
