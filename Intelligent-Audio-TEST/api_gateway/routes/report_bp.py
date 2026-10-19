@@ -67,6 +67,15 @@ def generate_statistics_report(_: None = require_permission('report:read')):
     return _handle(ReportQueryService.generate_statistics_report())
 
 
+# ---- 报告分享公开读取（INT-971）----
+# 注意：GET /shared/{token} 必须注册在 GET /{report_id} 之前（同 /statistics
+# 注记先例，否则 shared 被 {report_id} int 捕获返回 422）。
+# 公开路由：进 AuthMiddleware.PUBLIC_PATHS，handler 内自校验（不走 require_permission）。
+@router.get('/shared/{token}')
+def get_shared_report(token: str):
+    return _handle(ReportQueryService.get_shared_report(token))
+
+
 @router.get('/{report_id}')
 def get_one(report_id: int, _: None = require_permission('report:read')):
     return _handle(ReportQueryService.get_one(report_id))
@@ -95,6 +104,22 @@ def batch_delete(_: None = require_permission('report:delete')):
 @router.get('/{report_id}/progress')
 def get_progress(report_id: int, _: None = require_permission('report:read')):
     return _handle(ReportQueryService.get_progress(report_id))
+
+
+# ---- 报告分享管理（INT-971：生成 / 列表 / 撤销）----
+@router.post('/{report_id}/share')
+def create_share(report_id: int, _: None = require_permission('report:update')):
+    return _handle(ReportCommandService.create_share(report_id))
+
+
+@router.get('/{report_id}/share')
+def list_shares(report_id: int, _: None = require_permission('report:update')):
+    return _handle(ReportQueryService.list_shares(report_id))
+
+
+@router.delete('/{report_id}/share/{token}')
+def revoke_share(report_id: int, token: str, _: None = require_permission('report:update')):
+    return _handle(ReportCommandService.revoke_share(report_id, token))
 
 
 @router.post('/compare')
