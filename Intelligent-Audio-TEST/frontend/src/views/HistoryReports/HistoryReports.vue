@@ -548,9 +548,9 @@ function handleAlgorithmFilterChange(value: string | number) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background-color: var(--primary-color, #ff6a00);
-  border-color: var(--primary-color, #ff6a00);
-  color: #fff;
+  background-color: var(--primary-color); /* 去掉 hex 回退：--primary-color 已定义（#ff6a00） */
+  border-color: var(--primary-color);
+  color: var(--color-white);
   white-space: nowrap;
 }
 

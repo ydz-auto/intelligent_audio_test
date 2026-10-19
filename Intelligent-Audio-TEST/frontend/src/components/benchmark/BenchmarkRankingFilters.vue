@@ -237,11 +237,11 @@ function handleConfirm() {
 .confirm-mask {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: var(--z-index-dropdown);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.4);
+  background: color-mix(in srgb, var(--color-black) 40%, transparent);
 }
 .confirm-dialog {
   width: 400px;

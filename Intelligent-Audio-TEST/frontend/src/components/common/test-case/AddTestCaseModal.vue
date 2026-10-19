@@ -152,7 +152,7 @@ watch(() => props.visible, (newValue) => {
 
 .modal-container {
   background-color: white;
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-card);
   box-shadow: var(--shadow-lg);
   width: 90%;
   max-width: 800px;
@@ -181,7 +181,7 @@ watch(() => props.visible, (newValue) => {
   justify-content: center;
   width: 32px;
   height: 32px;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   transition: all 0.3s ease;
 }
 
@@ -199,7 +199,7 @@ watch(() => props.visible, (newValue) => {
 .btn {
   padding: 10px 24px;
   border: none;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-control);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -307,7 +307,7 @@ watch(() => props.visible, (newValue) => {
   width: 100%;
   padding: 10px 12px 10px 40px;
   border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-control);
   font-size: 14px;
   transition: all 0.3s ease;
 }
@@ -326,7 +326,7 @@ watch(() => props.visible, (newValue) => {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-control);
   font-size: 14px;
   transition: all 0.3s ease;
 }

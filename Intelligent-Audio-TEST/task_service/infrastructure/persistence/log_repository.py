@@ -20,6 +20,7 @@ from sqlalchemy import or_ as _or
 
 from shared.models.database import get_db_session
 from shared.utils.query_utils import now_cst
+from shared.infrastructure.user_context import normalize_user_id, get_current_user_id
 
 logger = logging.getLogger(__name__)
 from task_service.domain.repositories.log_repository import LogRepositoryABC
@@ -76,12 +77,14 @@ class LogRepository(LogRepositoryABC):
                   device_id: int = 0, api_id: int = 0,
                   test_case_id: str = '', thread_id: str = '',
                   keyword: str = '', content_include: str = '',
-                  content_exclude: str = '', algorithm_type: str = '') -> Dict[str, Any]:
+                  content_exclude: str = '', algorithm_type: str = '',
+                  user_id: int = 0) -> Dict[str, Any]:
         """查询 Log 列表（分页 + 过滤），返回 {items, total, page, per_page}。
 
         INT-100：level 支持逗号分隔多级别（大小写不敏感，与 get_stats 同语义）；
         module/category/mark/device_id/api_id/test_case_id/thread_id/keyword/
         content_*/algorithm_type 全部下推到 DB 过滤（调用方不传 = 不过滤）。
+        INT-806：user_id 按 created_by_user_id 过滤（「仅自己」视图，不传 = 不过滤）。
         """
         session = get_db_session()
         try:
@@ -127,6 +130,8 @@ class LogRepository(LogRepositoryABC):
                 query = query.filter(~Log.content.like(f"%{content_exclude}%"))
             if algorithm_type and algorithm_type != 'all':
                 query = query.filter(Log.algorithm_type == algorithm_type)
+            if user_id:
+                query = query.filter(Log.created_by_user_id == user_id)
             page = page or 1
             per_page = per_page or 20
             total = query.count()
@@ -149,7 +154,12 @@ class LogRepository(LogRepositoryABC):
             session.close()
 
     def batch_create(self, logs: List[Dict[str, Any]]) -> List[int]:
-        """批量写入日志，返回写入后的 id 列表。"""
+        """批量写入日志，返回写入后的 id 列表。
+
+        INT-806：写侧归属——条目显式携带 user_id 时优先（worker 载荷透传），
+        否则回退 servicer 上下文用户（get_current_user_id()）；两者皆无 → NULL
+        （不硬编码兜底为真实用户，红线）。
+        """
         if not logs:
             return []
         session = get_db_session()
@@ -170,6 +180,8 @@ class LogRepository(LogRepositoryABC):
                     test_case_id=item.get('test_case_id'),
                     thread_id=item.get('thread_id'),
                     algorithm_type=item.get('algorithm_type'),
+                    created_by_user_id=normalize_user_id(item.get('user_id'))
+                    or get_current_user_id(),
                 )
                 session.add(po)
                 session.flush()
@@ -186,8 +198,12 @@ class LogRepository(LogRepositoryABC):
                   mark: str = '', device_id: int = 0, task_id: int = 0,
                   keyword: str = '', content_include: str = '',
                   content_exclude: str = '', start_time: str = '',
-                  end_time: str = '', algorithm_type: str = '') -> Dict[str, Any]:
-        """查询日志统计（group_by level + count）。"""
+                  end_time: str = '', algorithm_type: str = '',
+                  user_id: int = 0) -> Dict[str, Any]:
+        """查询日志统计（group_by level + count）。
+
+        INT-806：user_id 按 created_by_user_id 过滤（统计口径与列表一致）。
+        """
         session = get_db_session()
         try:
             query = session.query(Log.level, _func.count(Log.id))
@@ -225,6 +241,8 @@ class LogRepository(LogRepositoryABC):
                     logger.debug("get_stats end_time 非法 ISO 格式已忽略: %r", end_time)
             if algorithm_type and algorithm_type != 'all':
                 query = query.filter(Log.algorithm_type == algorithm_type)
+            if user_id:
+                query = query.filter(Log.created_by_user_id == user_id)
             stats = query.group_by(Log.level).all()
             stats_dict = {lv.lower(): count for lv, count in stats}
             return {

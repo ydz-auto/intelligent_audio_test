@@ -38,6 +38,7 @@ import shutil
 import tempfile
 import threading
 import time
+from datetime import datetime, timezone
 from typing import Optional, BinaryIO
 
 from shared.infrastructure.config import BaseConfig
@@ -360,6 +361,42 @@ class Storage:
                         rel = os.path.relpath(full, local_base)
                         rel = rel.replace(os.sep, '/')
                         results.append(rel)
+            return results
+
+    def list_objects_with_meta(self, category: str, prefix: str = '') -> list:
+        """列出指定类别+前缀下的对象 key 及元数据（sizeBytes/lastModified）。
+
+        INT-786：归档全局文件清单需要对象元数据（S3 Size/LastModified，本地降级
+        对应取 st_size / st_mtime）。archivedAt 口径以对象 LastModified 为准。
+        :param category: 存储类别（如 'archives'）
+        :param prefix: key 前缀
+        :return: [{key, sizeBytes, lastModified}]（key 为逻辑 key，不含 category/ 前缀）
+        """
+        try:
+            return self._oss.list_objects_with_meta(category, prefix)
+        except Exception as e:
+            _warn_oss_throttled(
+                f'list_objects_with_meta OSS failed: {e}',
+                category=category)
+            # 回退：列举本地降级副本
+            local_base = self._local_path(category, '')
+            local_root = os.path.join(local_base, prefix) if prefix else local_base
+            results = []
+            if os.path.isdir(local_root):
+                for root, _dirs, files in os.walk(local_root):
+                    for fname in files:
+                        full = os.path.join(root, fname)
+                        rel = os.path.relpath(full, local_base)
+                        rel = rel.replace(os.sep, '/')
+                        try:
+                            st = os.stat(full)
+                        except OSError:
+                            continue
+                        results.append({
+                            'key': rel,
+                            'sizeBytes': st.st_size,
+                            'lastModified': datetime.fromtimestamp(st.st_mtime, tz=timezone.utc),
+                        })
             return results
 
     def get_url(self, path: str, expires: int = 3600) -> Optional[str]:

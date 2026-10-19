@@ -22,6 +22,8 @@ import {
   algorithmFilter,
   algorithmTypeFilter,
   algorithmTypeOptions,
+  laboratoryFilter,
+  laboratories,
   playbackDevices,
   testDevices,
   apiDevices,
@@ -51,7 +53,7 @@ import {
   getStatusUpdateTimer
 } from './deviceState';
 
-import { fetchAllDevices } from './deviceFetching';
+import { fetchAllDevices, loadLaboratories } from './deviceFetching';
 import {
   switchDeviceType,
   toggleDropdown,
@@ -110,6 +112,7 @@ export function useDevice() {
 
   onMounted(() => {
     fetchAllDevices();
+    loadLaboratories();
     loadAlgorithmTypeOptions();
     console.log('设备健康检查轮询已启动');
     getDeviceManagement()!.startHealthCheckPolling();
@@ -134,6 +137,11 @@ export function useDevice() {
     }
   }
 
+  /** 实验室徽章筛选选中（INT-655：BadgeFilter value 为 labId 字符串，'all' = 全部） */
+  function setLaboratoryFilter(value: string | number) {
+    laboratoryFilter.value = String(value);
+  }
+
   return {
     tabs,
     activeTab,
@@ -146,6 +154,9 @@ export function useDevice() {
     algorithmTypeFilter,
     algorithmTypeOptions,
     getAlgorithmTypeName,
+    laboratoryFilter,
+    laboratories,
+    setLaboratoryFilter,
     deviceStatusText: DEVICE_STATUS_TEXT,
     playbackDevices,
     testDevices,

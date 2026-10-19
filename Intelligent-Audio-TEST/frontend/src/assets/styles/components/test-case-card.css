@@ -4,7 +4,7 @@
 .case-card {
     background-color: var(--color-white);
     border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-md);
+    border-radius: var(--radius-card);
     padding: 20px;
     box-shadow: var(--shadow-sm);
     transition: all 0.3s ease;
@@ -124,7 +124,7 @@
 .case-status {
   font-size: 12px;
   padding: 2px 8px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   font-weight: 500;
   text-transform: capitalize;
   margin-bottom: 8px;
@@ -295,13 +295,13 @@ input[type="checkbox"].group-checkbox, input[type="checkbox"].test-case-checkbox
   min-height: 24px ;
   max-width: 24px ;
   max-height: 24px ;
-  padding: 0 !important;
+  padding: 0;
   cursor: pointer ;
   -webkit-appearance: none ;
   appearance: none ;
-  background-color: var(--color-white) !important;
-  border: 2px solid var(--border-color) !important;
-  border-radius: 4px ;
+  background-color: var(--color-white);
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius-tag);
   position: relative ;
   transition: all 0.2s ease ;
   display: flex ;
@@ -316,14 +316,14 @@ input[type="checkbox"].group-checkbox, input[type="checkbox"].test-case-checkbox
 }
 
 input[type="checkbox"].group-checkbox:checked, input[type="checkbox"].test-case-checkbox:checked {
-  background-color: var(--primary-color) !important;
+  background-color: var(--primary-color);
   border-color: var(--primary-color) ;
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent) ;
 }
 
 input[type="checkbox"].group-checkbox:checked::after, input[type="checkbox"].test-case-checkbox:checked::after {
   content: '✓' ;
-  color: white ;
+  color: var(--color-white) ;
   font-size: 16px ;
   font-weight: bold ;
   position: absolute ;
@@ -372,7 +372,7 @@ input[type="checkbox"].group-checkbox:hover, input[type="checkbox"].test-case-ch
 /* 选中状态下的配置区域背景 - 保持透明，继承父元素背景 */
 .case-card.card-selected .case-config,
 .case-card:has(input[type="checkbox"].test-case-checkbox:checked) .case-config {
-  background-color: transparent !important;
+  background-color: transparent;
 }
 
 .config-section {
@@ -385,7 +385,7 @@ input[type="checkbox"].group-checkbox:hover, input[type="checkbox"].test-case-ch
 
 .config-details {
   background-color: var(--background-secondary);
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   padding: 12px;
   margin-bottom: 12px;
 }
@@ -393,7 +393,7 @@ input[type="checkbox"].group-checkbox:hover, input[type="checkbox"].test-case-ch
 /* 选中状态下的配置详情背景 - 保持透明，继承父元素背景 */
 .case-card.card-selected .config-details,
 .case-card:has(input[type="checkbox"].test-case-checkbox:checked) .config-details {
-  background-color: transparent !important;
+  background-color: transparent;
 }
 
 .config-row {

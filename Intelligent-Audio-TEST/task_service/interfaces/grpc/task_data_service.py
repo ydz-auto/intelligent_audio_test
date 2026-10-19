@@ -283,6 +283,7 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
                 content_include=request.content_include or '',
                 content_exclude=request.content_exclude or '',
                 algorithm_type=request.algorithm_type or '',
+                user_id=request.user_id or 0,
             )
             return self._resp(True, '', result)
         except Exception as e:
@@ -534,6 +535,7 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
                 start_time=request.start_time or '',
                 end_time=request.end_time or '',
                 algorithm_type=request.algorithm_type or '',
+                user_id=request.user_id or 0,
             )
             return self._resp(True, '', result)
         except Exception as e:

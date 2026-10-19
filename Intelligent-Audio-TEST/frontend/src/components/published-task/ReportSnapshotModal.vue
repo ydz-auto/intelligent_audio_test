@@ -93,7 +93,7 @@ function handleClose() {
 
 .modal {
   background-color: #fff;
-  border-radius: 8px;
+  border-radius: var(--border-radius-xl);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   max-height: 90vh;
   overflow: hidden;
@@ -147,7 +147,7 @@ function handleClose() {
   gap: 6px;
   padding: 6px 12px;
   border: 1px solid #ff6a00;
-  border-radius: 4px;
+  border-radius: var(--border-radius-md);
   background: #fff7ed;
   color: #ff6a00;
   font-size: 13px;
@@ -172,7 +172,7 @@ function handleClose() {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  border-radius: var(--border-radius-full);
   transition: all 0.2s;
 }
 

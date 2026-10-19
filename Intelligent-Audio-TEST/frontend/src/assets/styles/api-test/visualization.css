@@ -10,7 +10,7 @@
 
 /* 图表容器样式 */
 .chart-container{
-    background-color: white;
+    background-color: var(--color-white);
     border-radius: var(--border-radius-md);
     padding: 20px;
     height: 400px;

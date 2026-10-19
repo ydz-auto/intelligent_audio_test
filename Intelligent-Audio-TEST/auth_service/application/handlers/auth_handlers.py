@@ -21,6 +21,7 @@ from auth_service.domain.entities.user import UserAggregate
 from auth_service.domain.entities.role import PermissionEntity, RoleEntity
 from auth_service.domain.exceptions import AuthDomainError
 from auth_service.domain.services.auth_service import (
+    validate_email_format,
     validate_grant,
     validate_revoke,
     validate_role_deletion,
@@ -46,6 +47,8 @@ from auth_service.application.commands.auth_commands import (
     RegisterUserCommand,
     UpdateUserStatusCommand,
     UpdateUserCommand,
+    ChangePasswordCommand,
+    UpdateSelfProfileCommand,
     GrantPermissionCommand,
     RevokePermissionCommand,
     CreateUserCommand,
@@ -238,6 +241,58 @@ class AuthCommandHandler:
                 'status': cmd.status, 'password_changed': bool(cmd.password),
                 'display_name': cmd.display_name,
             },
+        })
+
+    def handle_change_password(self, cmd: ChangePasswordCommand) -> None:
+        """当前登录用户自助修改密码（INT-794 方案 A）。
+
+        - 用户不存在 → USER_NOT_FOUND；
+        - 原密码校验失败（或无本地密码，如 OAuth 用户）→ AUTH_CREDENTIALS_INVALID
+          （网关映射 401 + code:106，与登录链防枚举语义一致）；
+        - 新密码最短长度由网关侧统一校验（复用 AUTH_PASSWORD_MIN_LENGTH），
+          服务端不做二次截断/兜底，保持注册链路同口径；
+        - 落库走 update_user_fields(password=...)（bcrypt 哈希），成功落
+          AUTH_PASSWORD_CHANGED 审计（旁路）。
+        """
+        _raise_if(
+            user_repository.get_by_id(cmd.user_id) is None,
+            f'用户不存在: id={cmd.user_id}', AuthErrorCode.USER_NOT_FOUND,
+        )
+        if not user_repository.verify_password_by_user_id(
+                cmd.user_id, cmd.current_password):
+            raise AuthDomainError(
+                '当前密码错误', AuthErrorCode.AUTH_CREDENTIALS_INVALID,
+            )
+        user_repository.update_user_fields(cmd.user_id, password=cmd.new_password)
+        write_auth_audit(AuditEvent.AUTH_PASSWORD_CHANGED, _AUDIT_MODULE_USER, {
+            'operator_id': cmd.user_id,
+            'target_id': cmd.user_id,
+            'delta': {'password_changed': True},
+        })
+
+    def handle_update_self_profile(self, cmd: UpdateSelfProfileCommand) -> None:
+        """当前登录用户更新自我资料（INT-792：仅 email，服务端字段白名单）。
+
+        - 目标=操作人（网关 JWT 注入，operator_id 同 user_id）；
+          用户不存在 → USER_NOT_FOUND；
+        - 命令结构只承载 email（无 username/status/password 字段），
+          从入口杜绝改非开放字段；
+        - email 空串=不修改（对齐 admin UpdateUser 空串语义）；
+        - 非空 email 格式校验（validate_email_format）。
+        """
+        _raise_if(
+            user_repository.get_by_id(cmd.user_id) is None,
+            f'用户不存在: id={cmd.user_id}', AuthErrorCode.USER_NOT_FOUND,
+        )
+        if cmd.email is not None:
+            email = cmd.email.strip()
+            validate_email_format(email)
+            if email:
+                user_repository.update_user_fields(cmd.user_id, email=email)
+        write_auth_audit(AuditEvent.AUTH_USER_UPDATED, _AUDIT_MODULE_USER, {
+            'operator_id': cmd.operator_id,
+            'target_id': cmd.user_id,
+            'delta': {'email': cmd.email},
         })
 
     def handle_delete_user(self, cmd: DeleteUserCommand) -> bool:

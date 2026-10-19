@@ -234,6 +234,17 @@
                   <option v-for="opt in CASE_EVALUATION_FILTER_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
                 </select>
               </div>
+              <!-- INT-796 §3.1/§3.5：查看复核历史入口 + 已复核计数（task:read） -->
+              <button
+                v-if="reviewCount > 0 || historyOpen"
+                type="button"
+                class="review-history-link"
+                title="查看任务复核历史（多次复核追加不覆盖）"
+                @click="historyOpen = true"
+              >
+                <i class="fas fa-clock-rotate-left"></i>
+                查看复核历史<span v-if="reviewCount > 0">（已复核 {{ reviewCount }} 条）</span>
+              </button>
             </div>
           </div>
 
@@ -248,7 +259,21 @@
                   <i class="fas fa-info-circle" style="font-size: 24px; margin-bottom: 12px; display: block;"></i>
                   暂无关联用例
                 </div>
-                <div v-for="testCase in visibleCases" :key="testCase.id" class="progress-item-small" :class="testCase.status" style="padding: 12px; border-radius: 8px; background-color: var(--background-secondary); display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; min-height: 52px; box-sizing: border-box; cursor: pointer;" @click="handleTestCaseClick(testCase)">
+                <div v-for="testCase in visibleCases" :key="testCase.id" class="progress-item-small" :class="testCase.status" style="padding: 12px; border-radius: var(--radius-control); background-color: var(--background-secondary); display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; min-height: 52px; box-sizing: border-box; cursor: pointer;" @click="handleTestCaseClick(testCase)">
+                  <!-- INT-796 §3.1：批量复核勾选（终态任务 + task.result.review；点击不冒泡） -->
+                  <label
+                    v-if="canReview && isTerminal"
+                    class="review-select"
+                    style="display: inline-flex; align-items: center; margin-right: 4px; cursor: pointer;"
+                    @click.stop
+                  >
+                    <input
+                      type="checkbox"
+                      class="review-select-checkbox"
+                      :checked="selectedCaseIds.has(String(testCase.id))"
+                      @change="toggleCaseSelect(String(testCase.id))"
+                    />
+                  </label>
                   <div class="progress-info" style="flex: 1; overflow: hidden;">
                     <div class="progress-name" style="font-weight: 500; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ testCase.name }}</div>
                     <div class="progress-time" style="font-size: 12px; color: var(--text-secondary);">
@@ -258,8 +283,8 @@
                       <span style="font-size: 11px; color: var(--text-secondary); white-space: nowrap;">
                         第 {{ testCase.roundProgress.current }}/{{ testCase.roundProgress.total }} 轮
                       </span>
-                      <div style="flex: 1; height: 3px; background: var(--border-color); border-radius: 2px; overflow: hidden; min-width: 40px;">
-                        <div style="height: 100%; background: var(--primary-color); border-radius: 2px; transition: width 0.3s ease;"
+                      <div style="flex: 1; height: 3px; background: var(--border-color); border-radius: var(--radius-2); overflow: hidden; min-width: 40px;">
+                        <div style="height: 100%; background: var(--primary-color); border-radius: var(--radius-2); transition: width 0.3s ease;"
                              :style="{ width: (testCase.roundProgress.current / testCase.roundProgress.total * 100) + '%' }">
                         </div>
                       </div>
@@ -281,6 +306,25 @@
                         <i class="fas fa-clipboard-check"></i> 已复核
                       </span>
                     </div>
+                    <!-- INT-796 §3.1：人工复核/AI复核 入口（终态任务 + 权限门控；点击不冒泡） -->
+                    <button
+                      v-if="canReview && isTerminal"
+                      class="review-row-btn"
+                      :disabled="reviewLoading"
+                      :title="'人工复核该用例结果'"
+                      @click.stop="openCaseReview(testCase)"
+                    >
+                      <i class="fas fa-clipboard-check"></i> 人工复核
+                    </button>
+                    <button
+                      v-if="canAiReview && isTerminal"
+                      class="review-row-btn review-row-btn--ai"
+                      :disabled="reviewLoading"
+                      :title="'AI 复核该用例结果（建议层，不直接修改统计）'"
+                      @click.stop="openAiReview(testCase)"
+                    >
+                      <i class="fas fa-sparkles"></i> AI 复核
+                    </button>
                     <!-- INT-305：移除用例（执行详情模态窗四阶段全允许；点击不冒泡触发用例详情） -->
                     <button v-if="canRemoveCase"
                             class="case-remove-btn"
@@ -307,10 +351,24 @@
                 <i v-if="caseViewMode === ViewMode.TAG" class="fas fa-tag" style="color: var(--primary-color); font-size: 13px;"></i>
                 <i v-else class="fas fa-folder" style="color: var(--primary-color); font-size: 13px;"></i>
                 <span style="font-weight: 500; color: var(--text-primary);">{{ key }}</span>
-                <span style="background-color: var(--primary-color); color: white; font-size: 12px; padding: 2px 8px; border-radius: 12px; min-width: 20px; text-align: center;">{{ cases.length }}</span>
+                <span style="background-color: var(--primary-color); color: var(--color-white); font-size: 12px; padding: 2px 8px; border-radius: var(--radius-pill); min-width: 20px; text-align: center;">{{ cases.length }}</span>
               </div>
               <div v-if="expandedCaseGroups[key]" class="case-group-content" style="padding: 0 12px 12px 12px; display: flex; flex-direction: column; gap: 2px;">
-                <div v-for="testCase in cases" :key="testCase.id" class="progress-item-small" :class="testCase.status" style="padding: 10px; border-radius: 8px; background-color: var(--background-primary); display: flex; justify-content: space-between; align-items: center; min-height: 48px; box-sizing: border-box; cursor: pointer;" @click="handleTestCaseClick(testCase)">
+                <div v-for="testCase in cases" :key="testCase.id" class="progress-item-small" :class="testCase.status" style="padding: 10px; border-radius: var(--radius-control); background-color: var(--background-primary); display: flex; justify-content: space-between; align-items: center; min-height: 48px; box-sizing: border-box; cursor: pointer;" @click="handleTestCaseClick(testCase)">
+                  <!-- INT-796 §3.1：批量复核勾选（标签/分组视图同款） -->
+                  <label
+                    v-if="canReview && isTerminal"
+                    class="review-select"
+                    style="display: inline-flex; align-items: center; margin-right: 4px; cursor: pointer;"
+                    @click.stop
+                  >
+                    <input
+                      type="checkbox"
+                      class="review-select-checkbox"
+                      :checked="selectedCaseIds.has(String(testCase.id))"
+                      @change="toggleCaseSelect(String(testCase.id))"
+                    />
+                  </label>
                   <div class="progress-info" style="flex: 1; overflow: hidden;">
                     <div class="progress-name" style="font-weight: 500; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ testCase.name }}</div>
                     <div class="progress-time" style="font-size: 12px; color: var(--text-secondary);">
@@ -320,8 +378,8 @@
                       <span style="font-size: 11px; color: var(--text-secondary); white-space: nowrap;">
                         第 {{ testCase.roundProgress.current }}/{{ testCase.roundProgress.total }} 轮
                       </span>
-                      <div style="flex: 1; height: 3px; background: var(--border-color); border-radius: 2px; overflow: hidden; min-width: 40px;">
-                        <div style="height: 100%; background: var(--primary-color); border-radius: 2px; transition: width 0.3s ease;"
+                      <div style="flex: 1; height: 3px; background: var(--border-color); border-radius: var(--radius-2); overflow: hidden; min-width: 40px;">
+                        <div style="height: 100%; background: var(--primary-color); border-radius: var(--radius-2); transition: width 0.3s ease;"
                              :style="{ width: (testCase.roundProgress.current / testCase.roundProgress.total * 100) + '%' }">
                         </div>
                       </div>
@@ -337,6 +395,25 @@
                       <i class="fas task-indicator" :class="getCaseEvaluationBadgeIcon(testCase.evaluationStatus)"></i>
                       {{ getCaseEvaluationStatusText(testCase.evaluationStatus) }}
                     </span>
+                    <!-- INT-796 §3.1：人工复核/AI复核 入口（标签/分组视图同款） -->
+                    <button
+                      v-if="canReview && isTerminal"
+                      class="review-row-btn"
+                      :disabled="reviewLoading"
+                      :title="'人工复核该用例结果'"
+                      @click.stop="openCaseReview(testCase)"
+                    >
+                      <i class="fas fa-clipboard-check"></i> 人工复核
+                    </button>
+                    <button
+                      v-if="canAiReview && isTerminal"
+                      class="review-row-btn review-row-btn--ai"
+                      :disabled="reviewLoading"
+                      :title="'AI 复核该用例结果（建议层，不直接修改统计）'"
+                      @click.stop="openAiReview(testCase)"
+                    >
+                      <i class="fas fa-sparkles"></i> AI 复核
+                    </button>
                     <!-- INT-305：标签/分组视图同款移除入口 -->
                     <button v-if="canRemoveCase"
                             class="case-remove-btn"
@@ -363,7 +440,7 @@
               <i class="fas fa-info-circle" style="font-size: 24px; margin-bottom: 12px; display: block;"></i>
               暂无关联{{ testType === 'API' ? 'API' : '设备' }}
             </div>
-            <div v-for="device in associatedDevices" :key="device.id" class="associated-device-item" style="padding: 12px; border-radius: 8px; background-color: var(--background-secondary); display: flex; justify-content: space-between; align-items: center;">
+            <div v-for="device in associatedDevices" :key="device.id" class="associated-device-item" style="padding: 12px; border-radius: var(--radius-control); background-color: var(--background-secondary); display: flex; justify-content: space-between; align-items: center;">
               <div class="device-info">
                 <div class="device-name" style="font-weight: 500; margin-bottom: 4px;">{{ device.name }}</div>
                 <div class="device-status" :class="`status-${device.status}`" style="font-size: 12px;">
@@ -433,6 +510,41 @@
         <i class="fas fa-stop"></i> 停止测试
       </button>
     </div>
+
+    <!-- INT-796 §3.3：批量复核浮条（勾选多行 → 底部浮条；同一改判字段应用到全部勾选结果，逐条留痕） -->
+    <Teleport to="body">
+      <div v-if="canReview && isTerminal && selectedCaseIds.size > 0" class="review-batch-bar">
+        <button type="button" class="review-batch-clear" title="清除选择" @click="clearCaseSelect">
+          <i class="fas fa-xmark"></i>
+        </button>
+        <span class="review-batch-count">{{ selectedCaseIds.size }}</span>
+        <span class="review-batch-text">条用例已选择</span>
+        <button type="button" class="review-batch-btn" :disabled="reviewLoading" @click="openBatchReview">
+          <i class="fas fa-clipboard-check"></i> 批量复核
+        </button>
+      </div>
+    </Teleport>
+
+    <!-- INT-796：复核历史抽屉（§3.4） -->
+    <ReviewHistoryDrawer
+      v-if="historyOpen"
+      :task-id="props.taskId"
+      :task-name="props.taskInfo?.taskName"
+      :case-name-map="historyCaseNameMap"
+      @close="historyOpen = false"
+    />
+
+    <!-- INT-796：AI 复核弹窗（§5.2，建议层；采纳后开人工复核弹窗预填） -->
+    <AiReviewDialog
+      v-if="aiReviewTarget"
+      :task-id="Number(props.taskId)"
+      :case-id="aiReviewTarget.caseId"
+      :case-name="aiReviewTarget.caseName"
+      :results="aiReviewTarget.results"
+      :evaluation-status="aiReviewTarget.evaluationStatus"
+      @close="aiReviewTarget = null"
+      @adopt="adoptAiReviewIntoManual"
+    />
   </div>
 </template>
 
@@ -440,6 +552,11 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { TaskStatus, ExecutionStatus, EvaluationStatus, ViewMode, DeviceStatus, REEXECUTE_ELIGIBLE_STATUSES, PermissionPoint } from '@/domain/enums';
 import { useAuthStore } from '../../store/authStore';
+import { tasksApi } from '../../infrastructure/api';
+import { useModalControl, MODAL_TYPES } from '../../composables/modal/useModal';
+import { useNotification } from '../../composables/modal/useNotification';
+import AiReviewDialog from '../common/modal/AiReviewDialog.vue';
+import ReviewHistoryDrawer from '../common/modal/ReviewHistoryDrawer.vue';
 // INT-301 F3：双徽章图标/文案单一定义源 utils/taskStatusBadge.ts；配色单一定义源 TaskCard.css
 
 const props = defineProps({
@@ -463,7 +580,9 @@ const props = defineProps({
   /** INT-301：任务级评估状态（pending/evaluating/completed/failed/skipped） */
   evaluationStatus: {type: String, default: ''},
   isExecuting: {type: Boolean, default: false},
-  connectionFallback: {type: Boolean, default: false}
+  connectionFallback: {type: Boolean, default: false},
+  /** INT-796：任务详情人工复核/AI复核（§3 入口；终态任务 + task.result.review 门控） */
+  taskId: {type: [String, Number], default: ''}
 });
 
 const emit = defineEmits([
@@ -483,7 +602,9 @@ const emit = defineEmits([
   // INT-339：执行详情模态窗内的挑选加购入口（CherryPickDialog 由 TaskDetailModal 承载）
   'pickResults',
   // INT-305：执行详情模态窗内的移除用例入口（四阶段全允许，确认由 TaskDetailModal 承载）
-  'removeCase'
+  'removeCase',
+  // INT-796：人工复核提交后刷新任务详情（复核标记/统计按复核后判定重算）
+  'refreshReview'
 ]);
 
 // 已结束的任务状态（finished/success 为后端历史遗留状态值，暂无对应枚举）
@@ -514,6 +635,209 @@ const shouldShowPickButton = computed(() => finishedTaskStatuses.includes(props.
 // 同型缺口先例——权限码定义 ≠ 已授，入口必须经 can() 门控）
 const { hasPermission: can } = useAuthStore();
 const canPickCherry = computed(() => can(PermissionPoint.TASK_CHERRY_PICK));
+
+// ===== INT-796：任务详情人工复核 + AI复核（19 规范 §3：入口/单条批量弹窗/历史抽屉/标记统计） =====
+const modalControl = useModalControl();
+const notification = useNotification();
+
+/** 终态任务（completed/failed/stopped；人工复核仅终态可改判） */
+const isTerminal = computed(() => [...REEXECUTE_ELIGIBLE_STATUSES].includes(props.taskStatus));
+/** 人工复核提交权限（task.result.review） */
+const canReview = computed(() => can(PermissionPoint.TASK_RESULT_REVIEW));
+/** AI 复核发起/查看结论（§6：task.result.review 或 evaluation:execute；AUTH_MODE=off 持 *） */
+const canAiReview = computed(() => can(PermissionPoint.TASK_RESULT_REVIEW) || can('evaluation:execute'));
+
+/** 勾选用例（批量复核选择；§3.1 底部批量浮条） */
+const selectedCaseIds = ref(new Set());
+const reviewLoading = ref(false);
+const historyOpen = ref(false);
+const reviewCount = ref(0);
+const aiReviewTarget = ref(null);
+
+const toggleCaseSelect = (caseId) => {
+  const next = new Set(selectedCaseIds.value);
+  if (next.has(caseId)) next.delete(caseId); else next.add(caseId);
+  selectedCaseIds.value = next;
+};
+const clearCaseSelect = () => { selectedCaseIds.value = new Set(); };
+
+/** 任务已复核计数（任务头「已复核 {n} 条」徽章；task:read） */
+async function loadReviewCount() {
+  if (!props.taskId) return;
+  try {
+    reviewCount.value = await tasksApi.getReviewCount(props.taskId);
+  } catch (err) {
+    console.error('加载复核计数失败:', err);
+  }
+}
+
+/** 单条/整用例复核入口（§3.1）：取该用例结果行 → §3.2 复核弹窗（真实 result_ids 逐条留痕） */
+async function openCaseReview(testCase) {
+  if (!props.taskId) return;
+  reviewLoading.value = true;
+  try {
+    const res = await tasksApi.getCaseResults(props.taskId, testCase.id);
+    if (!res.results || res.results.length === 0) {
+      notification.warning('该用例无执行结果，无法复核');
+      return;
+    }
+    const results = res.results.map((r) => ({
+      resultId: Number(r.id),
+      executionStatus: r.executionStatus,
+      evaluationStatus: undefined,
+      deviceName: r.deviceName,
+      apiName: r.apiName,
+      reviewed: r.reviewed,
+      reviewHistory: r.reviewHistory,
+    }));
+    const payload = await modalControl.open(MODAL_TYPES.RESULT_REVIEW, {
+      title: '人工复核',
+      taskId: props.taskId,
+      caseName: res.caseName || testCase.name,
+      taskName: props.taskInfo?.taskName,
+      results,
+      reviewHistory: [],
+      evaluationStatus: testCase.evaluationStatus || null,
+    });
+    if (payload) {
+      await submitReview(results.map((r) => r.resultId), payload, testCase);
+    }
+  } catch (err) {
+    console.error('加载用例结果失败:', err);
+    notification.error(err?.message || '用例结果加载失败');
+  } finally {
+    reviewLoading.value = false;
+  }
+}
+
+/** AI 复核入口（§5.2）：取该用例结果行 → AI 复核状态机弹窗 */
+async function openAiReview(testCase) {
+  if (!props.taskId) return;
+  reviewLoading.value = true;
+  try {
+    const res = await tasksApi.getCaseResults(props.taskId, testCase.id);
+    if (!res.results || res.results.length === 0) {
+      notification.warning('该用例无执行结果，无法复核');
+      return;
+    }
+    aiReviewTarget.value = {
+      caseId: String(testCase.id),
+      caseName: res.caseName || testCase.name,
+      results: res.results,
+      evaluationStatus: testCase.evaluationStatus || null,
+    };
+  } catch (err) {
+    console.error('加载用例结果失败:', err);
+    notification.error(err?.message || '用例结果加载失败');
+  } finally {
+    reviewLoading.value = false;
+  }
+}
+
+/** 批量复核入口（§3.3）：勾选多行 → 并行取各用例结果行聚合 → 批量复核弹窗 */
+async function openBatchReview() {
+  if (!props.taskId || selectedCaseIds.value.size === 0) return;
+  reviewLoading.value = true;
+  try {
+    const entries = await Promise.all(
+      [...selectedCaseIds.value].map(async (caseId) => {
+        const c = props.associatedCases.find((x) => String(x.id) === caseId);
+        const res = await tasksApi.getCaseResults(props.taskId, caseId);
+        return { caseName: c?.name || res.caseName || caseId, evaluationStatus: c?.evaluationStatus || null, results: res.results };
+      }),
+    );
+    const caseNameByResultId = {};
+    const results = [];
+    for (const e of entries) {
+      for (const r of e.results) {
+        caseNameByResultId[Number(r.id)] = e.caseName;
+        results.push({
+          resultId: Number(r.id),
+          executionStatus: r.executionStatus,
+          deviceName: r.deviceName,
+          apiName: r.apiName,
+          reviewed: r.reviewed,
+          reviewHistory: r.reviewHistory,
+        });
+      }
+    }
+    if (results.length === 0) {
+      notification.warning('所选用例均无执行结果，无法批量复核');
+      return;
+    }
+    const payload = await modalControl.open(MODAL_TYPES.RESULT_REVIEW, {
+      title: '批量复核',
+      taskId: props.taskId,
+      caseName: '批量复核',
+      caseNameByResultId,
+      taskName: props.taskInfo?.taskName,
+      results,
+      reviewHistory: [],
+    });
+    if (payload) {
+      await submitReview(results.map((r) => r.resultId), payload);
+      clearCaseSelect();
+    }
+  } catch (err) {
+    console.error('批量复核失败:', err);
+    notification.error(err?.message || '批量复核失败，请稍后重试');
+  } finally {
+    reviewLoading.value = false;
+  }
+}
+
+/** 提交复核（POST /tasks/results/review；成功 toast 后刷新任务详情/复核计数） */
+async function submitReview(resultIds, payload, _testCase) {
+  try {
+    await tasksApi.reviewResults(resultIds, {
+      executionStatus: payload.executionStatus,
+      evaluationStatus: payload.evaluationStatus,
+      comment: payload.comment,
+    });
+    notification.success(`复核已提交 ${resultIds.length} 条结果，结果已按复核后判定计入统计`);
+    await loadReviewCount();
+    emit('refreshReview');
+  } catch (err) {
+    console.error('人工复核提交失败:', err);
+    notification.error(err?.message || '复核提交失败，请稍后重试');
+  }
+}
+
+/** AI 采纳 → 打开 §3.2 复核弹窗预填（AI 判定的评估状态 + 备注=AI 理由） */
+async function adoptAiReviewIntoManual(preset) {
+  if (!aiReviewTarget.value) return;
+  const results = aiReviewTarget.value.results.map((r) => ({
+    resultId: Number(r.id),
+    executionStatus: r.executionStatus,
+    deviceName: r.deviceName,
+    apiName: r.apiName,
+    reviewed: r.reviewed,
+    reviewHistory: r.reviewHistory,
+  }));
+  const payload = await modalControl.open(MODAL_TYPES.RESULT_REVIEW, {
+    title: '人工复核',
+    taskId: props.taskId,
+    caseName: aiReviewTarget.value.caseName,
+    taskName: props.taskInfo?.taskName,
+    results,
+    reviewHistory: [],
+    evaluationStatus: aiReviewTarget.value.evaluationStatus,
+    preset,
+  });
+  if (payload) {
+    await submitReview(results.map((r) => r.resultId), payload);
+    aiReviewTarget.value = null;
+  }
+}
+
+/** 用例名映射（历史抽屉 testCaseId → 名称；从关联用例构建） */
+const historyCaseNameMap = computed(() => {
+  const map = {};
+  for (const c of props.associatedCases || []) {
+    if (c.id !== undefined && c.id !== null) map[String(c.id)] = c.name;
+  }
+  return map;
+});
 
 // ===== INT-305：移除用例（执行详情模态窗四阶段全允许） =====
 
@@ -747,6 +1071,8 @@ onMounted(() => {
   if (logScrollContainer.value) {
     logScrollContainer.value.scrollTop = logScrollContainer.value.scrollHeight;
   }
+  // INT-796：任务头「已复核 {n} 条」计数（task:read）
+  void loadReviewCount();
 });
 
 const scrollToBottom = () => {
@@ -770,7 +1096,7 @@ const scrollToBottom = () => {
   align-items: center;
   gap: 6px;
   padding: 4px 12px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   font-size: 12px;
   font-weight: 500;
   border: none;
@@ -782,12 +1108,124 @@ const scrollToBottom = () => {
   align-items: center;
   gap: 4px;
   padding: 3px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-10);
   font-size: 11px;
   font-weight: 500;
   color: var(--primary-color);
   background: color-mix(in srgb, var(--primary-color) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
+}
+
+/* INT-796 §3：任务详情人工复核/AI复核 交互（入口/批量浮条/历史 link） */
+.review-history-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.review-history-link:hover {
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+.review-select {
+  flex-shrink: 0;
+}
+.review-select-checkbox {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: var(--primary-color);
+}
+.review-row-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+.review-row-btn:hover {
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+.review-row-btn--ai {
+  color: var(--secondary-color);
+}
+.review-row-btn--ai:hover {
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+.review-row-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.review-batch-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--background-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-lg);
+}
+.review-batch-clear {
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+}
+.review-batch-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  padding: 0 6px;
+  border-radius: var(--radius-control);
+  background: var(--primary-color);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+}
+.review-batch-text {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.review-batch-btn {
+  padding: 5px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-control);
+  background: var(--background-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+}
+.review-batch-btn:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+.review-batch-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* 取值配色与 TaskCard.css 同源同值（int-301 F2/F3 统一 tokens 口径）。
@@ -845,7 +1283,7 @@ const scrollToBottom = () => {
 .association-content{
     padding: 24px;
     background-color: var(--background-primary);
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--border-color);
     margin: 20px 0;
@@ -867,7 +1305,7 @@ const scrollToBottom = () => {
 .associated-items-list .progress-item-small{
     cursor: pointer;
     padding: 12px;
-    border-radius: 8px;
+    border-radius: var(--radius-control);
     background-color: var(--background-secondary);
     display: flex;
     justify-content: space-between;

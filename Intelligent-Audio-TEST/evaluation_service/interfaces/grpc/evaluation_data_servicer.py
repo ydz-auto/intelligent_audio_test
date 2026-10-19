@@ -82,6 +82,31 @@ class EvaluationDataServiceServicer(eval_grpc.EvaluationDataServiceServicer):
         except Exception as e:
             return self._resp(False, str(e))
 
+    def AiReviewCheck(self, request, context=None):
+        """LLM 复检（INT-800/INT-823）：单次 AI 复核。
+
+        聚合 ASR/参考文本/维度分/LLM 评语，复用 llm_judge 端点 worker 与维度
+        配置重新判分，返回 verdict/confidence/reasoning。供 task_service 异步
+        执行骨架（AiReviewExecutor）跨服务调用。
+        """
+        try:
+            result_id = int(request.result_id or 0)
+            dimension_id = int(request.dimension_id or 0)
+            task_id = int(request.task_id or 0)
+            test_case_id = request.test_case_id or ''
+            from evaluation_service.application.handlers.ai_review_checker import (
+                ai_review_checker,
+            )
+            result = ai_review_checker.execute(
+                result_id=result_id,
+                dimension_id=dimension_id or None,
+                task_id=task_id or None,
+                test_case_id=test_case_id,
+            )
+            return self._resp(*self._from_result(result))
+        except Exception as e:
+            return self._resp(False, str(e))
+
     # ==================== 任务数据导入导出（INT-25） ====================
 
     def ExportDimensionsForTasks(self, request, context=None):

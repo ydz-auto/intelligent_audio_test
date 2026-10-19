@@ -198,6 +198,10 @@ service EvaluationDataService {
   rpc ImportDimensions(ImportDimensionsRequest) returns (EvaluationDataResponse);
   // 回滚一次维度导入批次：按批次登记主键删除（补偿失败时人工介入的兜底入口）
   rpc RollbackDimensionImport(RollbackDimensionImportRequest) returns (EvaluationDataResponse);
+  // LLM 复检（INT-800/INT-823）：单次 AI 复核，聚合 ASR/参考文本/维度分/LLM 评语，
+  // 复用 llm_judge 端点 worker 与维度配置重新判分，返回 verdict/confidence/reasoning。
+  // 非 E 域 Agent 编排（架构红线）：单次 LLM 调用，不做多步编排。
+  rpc AiReviewCheck(AiReviewCheckRequest) returns (EvaluationDataResponse);
 }
 
 message GetDimensionResultsByResultIdsRequest {
@@ -224,6 +228,16 @@ message ImportDimensionsRequest {
 
 message RollbackDimensionImportRequest {
   string batch_id = 1;
+}
+
+// LLM 复检（INT-800/INT-823）：单次 AI 复核请求。
+// 输入 result_id + dimension_id（缺省 0 = 结果现有已完成评估的 LLM 判分维度），
+// 聚合 ASR/参考文本/维度分/LLM 评语，复用 llm_judge 端点 worker 与维度配置重新判分。
+message AiReviewCheckRequest {
+  int32 result_id = 1;     // TestResult.id（评估结果 ID）
+  int32 dimension_id = 2;  // 复核维度（缺省 0 = 结果现有已完成评估的 LLM 判分维度）
+  int32 task_id = 3;       // 冗余任务上下文（日志/审计）
+  string test_case_id = 4; // 冗余用例上下文（日志/审计）
 }
 
 message EvaluationDataResponse {

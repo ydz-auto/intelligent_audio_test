@@ -17,6 +17,7 @@ from shared.utils.log_handler._constants import (
     CONSOLE_LOG_MAX_LENGTH,
     LOG_CONTENT_MAX_LENGTH,
 )
+from shared.infrastructure.user_context import get_current_user_id
 
 
 class _EmitMixin:
@@ -119,6 +120,7 @@ class _EmitMixin:
                 'test_case_id': test_case_id,
                 'thread_id': getattr(record, 'thread_id', None) or str(threading.get_ident()),
                 'algorithm_type': getattr(record, 'algorithm_type', None),
+                'user_id': get_current_user_id(),
                 'push_to_websocket': getattr(record, 'push_to_websocket', True)
             }
 
@@ -178,6 +180,7 @@ class _EmitMixin:
             'test_case_id': test_case_id,
             'thread_id': getattr(record, 'thread_id', None) or str(threading.get_ident()),
             'algorithm_type': getattr(record, 'algorithm_type', None),
+            'user_id': get_current_user_id(),
             'push_to_websocket': getattr(record, 'push_to_websocket', True)
         }
         try:

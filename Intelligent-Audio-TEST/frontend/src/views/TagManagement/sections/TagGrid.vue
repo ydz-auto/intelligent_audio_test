@@ -3,6 +3,14 @@
     <div class="tg-card">
       <div class="tg-card-header">
         <h3 class="tg-card-title">
+          <input
+            type="checkbox"
+            class="tg-select-all-checkbox"
+            :checked="allVisibleSelected"
+            :indeterminate.prop="someVisibleSelected"
+            @change="toggleSelectAll"
+            title="全选当前标签"
+          >
           <i class="fas fa-tag"></i>
           {{ currentCategoryName }}
           <span class="tg-tag-total-count">共 {{ tagTotal }} 个标签</span>
@@ -38,12 +46,21 @@
           <div
             v-for="tag in tags"
             :key="tag.id"
-            class="tg-tag-card"
+            :class="['tg-tag-card', { 'tg-tag-card--selected': isSelected(tag.id) }]"
           >
             <div class="tg-tag-color-bar" :style="{ backgroundColor: tag.color || 'var(--color-indigo-500)' }"></div>
             <div class="tg-tag-card-content">
               <div class="tg-tag-header">
-                <span class="tg-tag-name">{{ tag.name }}</span>
+                <div class="tg-tag-name-wrap">
+                  <input
+                    type="checkbox"
+                    class="tg-tag-checkbox"
+                    :checked="isSelected(tag.id)"
+                    @change="toggleTag(tag)"
+                    :title="`勾选「${tag.name}」用于批量操作`"
+                  >
+                  <span class="tg-tag-name">{{ tag.name }}</span>
+                </div>
                 <div class="tg-tag-actions">
                   <button class="tg-btn tg-btn-text tg-btn-primary" @click="emit('open-tag-modal', tag)" title="编辑">
                     <i class="fas fa-edit"></i>
@@ -77,7 +94,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import type { TagItem } from '@/domain/model/tag'
 
 const props = defineProps<{
@@ -86,6 +103,8 @@ const props = defineProps<{
   tagLoading: boolean
   tagHasMore: boolean
   currentCategoryName: string
+  /** INT-739：批量改分类勾选集（当前已加载标签中勾选的 id 集合） */
+  selectedTagIds?: number[]
 }>()
 
 const emit = defineEmits<{
@@ -93,12 +112,38 @@ const emit = defineEmits<{
   (e: 'confirm-delete-tag', tag: TagItem): void
   (e: 'search-tags', keyword: string): void
   (e: 'tag-scroll'): void
+  // INT-739：批量勾选
+  (e: 'toggle-tag-selection', tag: TagItem): void
+  (e: 'toggle-select-all'): void
 }>()
 
 const searchKeyword = ref('')
 const scrollContainer = ref<HTMLElement | null>(null)
 
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+/** 当前标签是否已勾选 */
+function isSelected(id: number): boolean {
+  return (props.selectedTagIds || []).includes(id)
+}
+
+/** 全部可见（已加载）标签是否都已勾选 */
+const allVisibleSelected = computed(() =>
+  props.tags.length > 0 && props.tags.every(t => isSelected(t.id))
+)
+
+/** 部分勾选（半选态） */
+const someVisibleSelected = computed(() =>
+  props.tags.some(t => isSelected(t.id)) && !allVisibleSelected.value
+)
+
+function toggleTag(tag: TagItem) {
+  emit('toggle-tag-selection', tag)
+}
+
+function toggleSelectAll() {
+  emit('toggle-select-all')
+}
 
 function handleSearchInput() {
   if (searchDebounceTimer) {

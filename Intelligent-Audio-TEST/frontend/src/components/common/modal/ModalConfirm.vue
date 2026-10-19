@@ -106,7 +106,7 @@ const handleCancel = () => {
 .modal-confirmIcon {
   width: 48px;
   height: 48px;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background-color: var(--color-sky-100);
   display: flex;
   align-items: center;

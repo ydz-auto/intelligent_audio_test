@@ -126,7 +126,7 @@ defineExpose({ show, close })
   align-items: flex-start;
   gap: 12px;
   padding: 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 15%, transparent);
   background: white;
   border: 1px solid var(--border);
@@ -209,7 +209,7 @@ defineExpose({ show, close })
 .notification-details-content pre {
   background: var(--color-gray-100);
   padding: 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   font-size: 12px;
   max-height: 200px;
   overflow: auto;
@@ -225,7 +225,7 @@ defineExpose({ show, close })
   font-size: 12px;
   background: var(--border);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   cursor: pointer;
 }
 

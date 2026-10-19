@@ -40,7 +40,7 @@ onUnmounted(() => { if (timer) clearTimeout(timer); });
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
-  border-radius: 3px;
+  border-radius: var(--radius-tag);
   background: var(--color-slate-100);
   color: var(--color-slate-600);
   font-size: 12px;

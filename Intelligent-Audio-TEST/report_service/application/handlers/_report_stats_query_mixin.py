@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
-"""报告查询处理器 Mixin — 平均值统计 / 用例日志下载（从 report_handlers.py 拆分，P4-5）。
+"""报告查询处理器 Mixin — 平均值统计 / 用例日志下载 / 报告统计分析
+（从 report_handlers.py 拆分，P4-5）。
 
-handle_get_case_averages / handle_download_case_logs 及其私有查询辅助。
+handle_get_case_averages / handle_download_case_logs 及其私有查询辅助；
+INT-791 新增 handle_get_statistics / handle_get_statistics_trend /
+handle_generate_statistics_report（委托 StatisticsService）。
 """
 import logging
 
@@ -16,7 +19,62 @@ logger = logging.getLogger(__name__)
 
 
 class ReportStatsQueryMixin:
-    """平均值统计与日志下载（依赖 self.repository）"""
+    """平均值统计 / 日志下载 / 报告统计分析（依赖 self.repository）"""
+
+    # ==================================================================
+    # 报告统计分析（INT-791：/reports/statistics* 三端点）
+    # ==================================================================
+
+    def handle_get_statistics(self, params_dict: dict) -> dict:
+        """处理统计分析查询（GET /reports/statistics）。
+
+        委托 StatisticsService，按维度聚合 report 7 表只读数据。
+
+        Args:
+            params_dict: {dimension, start_time, end_time, algorithm_type}
+
+        Returns:
+            成功：{dimension, overview, detail, chart, anomaly}
+            失败：{success: False, message}
+        """
+        from report_service.application.services.report_aggregation.statistics_service import (
+            statistics_service,
+        )
+        return statistics_service.get_statistics(params_dict, self.repository)
+
+    def handle_get_statistics_trend(self, params_dict: dict) -> dict:
+        """处理趋势分析查询（GET /reports/statistics/trend）。
+
+        委托 StatisticsService，返回时间序列（time_trend/dimension_trend）。
+
+        Args:
+            params_dict: {trend_type, metric, start_time, end_time}
+
+        Returns:
+            成功：{trend_type, time_trend, dimension_trend}
+            失败：{success: False, message}
+        """
+        from report_service.application.services.report_aggregation.statistics_service import (
+            statistics_service,
+        )
+        return statistics_service.get_trend(params_dict, self.repository)
+
+    def handle_generate_statistics_report(self, params_dict: dict) -> dict:
+        """处理统计分析报表生成（POST /reports/statistics/report）。
+
+        委托 StatisticsService，复用 binary 下载结构。
+
+        Args:
+            params_dict: {report_type, content, format, time_range}
+
+        Returns:
+            成功：{filename, format, content_base64, mime_type}
+            失败：{success: False, message}
+        """
+        from report_service.application.services.report_aggregation.statistics_service import (
+            statistics_service,
+        )
+        return statistics_service.generate_report(params_dict, self.repository)
 
     def handle_get_case_averages(self, params_dict: dict) -> dict:
         """处理按分组和标签查询用例平均值。

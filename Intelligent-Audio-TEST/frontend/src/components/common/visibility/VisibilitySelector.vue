@@ -70,7 +70,7 @@ function onChange(value: VisibilityType) {
   gap: 10px;
   padding: 10px 14px;
   border: 1px solid var(--border-color, #d0d5dd);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   background: var(--background-primary, #fff);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;

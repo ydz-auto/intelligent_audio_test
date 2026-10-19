@@ -13,7 +13,8 @@ import {
 import { TaskStatus, TestType } from '@/domain/enums'
 
 interface UseTestReportOpsOptions {
-  testType: 'e2e' | 'api'
+  /** 'merged' = /start-test 合并流程（INT-486 口径：E2E+API 单流程） */
+  testType: 'e2e' | 'api' | 'merged'
   currentTaskId: Ref<string | number | null>
   taskName: Ref<string>
   onReportReady?: () => void
@@ -53,7 +54,7 @@ export function useTestReportOps(options: UseTestReportOpsOptions) {
     try {
       const reportData = await viewTaskReport({
         id: currentTaskId.value,
-        name: taskName.value || (testType === TestType.E2E ? 'E2E测试任务' : 'API测试任务'),
+        name: taskName.value || (testType === TestType.E2E ? 'E2E测试任务' : testType === 'merged' ? '测试任务' : 'API测试任务'),
         type: testType,
         status,
         progress,

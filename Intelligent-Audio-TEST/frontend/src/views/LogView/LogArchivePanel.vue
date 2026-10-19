@@ -279,7 +279,7 @@ onMounted(() => {
 
 .archive-stat-value.archive-dir {
   font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-regular);
+  font-weight: var(--font-weight-normal); /* 原 --font-weight-regular 未定义→继承 400；对齐 400 = normal */
   word-break: break-all;
 }
 

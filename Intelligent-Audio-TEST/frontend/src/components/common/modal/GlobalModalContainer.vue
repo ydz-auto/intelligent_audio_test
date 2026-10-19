@@ -137,6 +137,8 @@ import BatchTagsModal from './BatchTagsModal.vue'
 import BatchRefreshReferenceModal from './BatchRefreshReferenceModal.vue'
 import TagCategoryModal from './TagCategoryModal.vue'
 import TagEditModal from './TagEditModal.vue'
+// INT-739：标签管理页批量改分类
+import BatchTagCategoryModal from './BatchTagCategoryModal.vue'
 import TaskTypeModal from './TaskTypeModal.vue'
 import TaskDetailModal from './TaskDetailModal.vue'
 import TestCaseDetailModal from './TestCaseDetailModal.vue'
@@ -300,7 +302,9 @@ const getModalComponent = (type: string) => {
     [MODAL_TYPES.BATCH_TAGS]: BatchTagsModal,
     [MODAL_TYPES.BATCH_REFRESH_REFERENCE]: BatchRefreshReferenceModal,
     [MODAL_TYPES.TAG_CATEGORY]: TagCategoryModal,
-    [MODAL_TYPES.TAG_EDIT]: TagEditModal
+    [MODAL_TYPES.TAG_EDIT]: TagEditModal,
+    // INT-739：标签管理页批量改分类
+    [MODAL_TYPES.BATCH_TAG_CATEGORY]: BatchTagCategoryModal
   }
   return componentMap[type] || null
 }

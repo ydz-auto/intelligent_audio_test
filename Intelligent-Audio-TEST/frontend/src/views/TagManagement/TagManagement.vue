@@ -2,7 +2,7 @@
   <div class="tg-tag-management-view">
     <div class="tg-page-header">
       <div class="tg-header-left">
-        <h2 class="tg-page-title" style="color: var(--primary-color);">
+        <h2 class="tg-page-title">
           <i class="fas fa-tags"></i>
           标签管理
         </h2>
@@ -37,12 +37,29 @@
         :tag-loading="tagLoading"
         :tag-has-more="tagHasMore"
         :current-category-name="currentCategoryName"
+        :selected-tag-ids="selectedTagIds"
         @open-tag-modal="openTagModal"
         @confirm-delete-tag="confirmDeleteTag"
         @search-tags="handleTagSearch"
         @tag-scroll="onTagScroll"
+        @toggle-tag-selection="toggleTagSelection"
+        @toggle-select-all="toggleSelectAllVisible"
       />
     </div>
+
+    <!-- INT-739：批量改分类浮动条（勾选 ≥1 标签出现，只作用于当前勾选集合） -->
+    <Transition name="tg-bulk-fade">
+      <div v-if="selectedTagIds.length > 0" class="tg-bulk-bar" aria-live="polite">
+        <span class="tg-bulk-count">{{ selectedTagIds.length }} 个标签已选择</span>
+        <button class="tg-btn tg-btn-primary" @click="openBatchCategoryModal">
+          <i class="fas fa-folder tg-btn-icon"></i>
+          批量改分类
+        </button>
+        <button class="tg-btn tg-btn-text tg-bulk-clear" @click="clearTagSelection" title="清除选择 (Esc)">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+    </Transition>
 
     <Notification ref="notificationRef" />
   </div>
@@ -226,6 +243,59 @@ function selectCategory(id: number | null) {
   selectedCategoryId.value = id;
   resetTagList();
   loadTags();
+}
+
+// ===== INT-739：批量改分类（勾选集合只作用于当前勾选，对齐用例域「只认勾选」口径）=====
+const selectedTagIds = ref<number[]>([]);
+
+function toggleTagSelection(tag: TagItem) {
+  const idx = selectedTagIds.value.indexOf(tag.id);
+  if (idx >= 0) {
+    selectedTagIds.value.splice(idx, 1);
+  } else {
+    selectedTagIds.value.push(tag.id);
+  }
+}
+
+/** 全选当前已加载标签（半选态由 TagGrid computed 呈现，未加载项经滚动追加后再勾选） */
+function toggleSelectAllVisible() {
+  if (tags.value.length === 0) return;
+  const allSelected = tags.value.every(t => selectedTagIds.value.includes(t.id));
+  if (allSelected) {
+    // 全选态再点 = 全量移除当前已加载
+    selectedTagIds.value = selectedTagIds.value.filter(id => !tags.value.some(t => t.id === id));
+  } else {
+    const existing = new Set(selectedTagIds.value);
+    tags.value.forEach(t => existing.add(t.id));
+    selectedTagIds.value = Array.from(existing);
+  }
+}
+
+function clearTagSelection() {
+  selectedTagIds.value = [];
+}
+
+/** 批量改分类：目标分类选择（null=未分类）→ PUT /tags/batch-category */
+function openBatchCategoryModal() {
+  open(MODAL_TYPES.BATCH_TAG_CATEGORY, {
+    tagCount: selectedTagIds.value.length,
+    categories: allCategories.value,
+  }).then(async (result: { categoryId: number | null }) => {
+    try {
+      await tagsPort.batchUpdateCategory(selectedTagIds.value, result.categoryId);
+      showNotification('批量改分类成功', 'success');
+      clearTagSelection();
+      resetTagList();
+      await loadTags();
+      resetCategoryList();
+      await loadCategories();
+      await loadAllCategories();
+    } catch (e: any) {
+      showNotification(e.message || '批量改分类失败', 'error');
+    }
+  }).catch(() => {
+    // 用户取消
+  });
 }
 
 function openCategoryModal(cat?: TagCategory) {

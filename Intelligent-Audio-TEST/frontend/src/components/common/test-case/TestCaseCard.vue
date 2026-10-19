@@ -307,9 +307,9 @@ input[type="checkbox"].test-case-checkbox{
     cursor: pointer ;
     -webkit-appearance: none ;
     appearance: none ;
-    background-color: var(--color-white) !important;
+    background-color: var(--card) !important;
     border: 2px solid var(--border-color) !important;
-    border-radius: 4px ;
+    border-radius: var(--radius-tag);
     position: relative ;
     transition: all 0.2s ease ;
     display: flex ;
@@ -347,7 +347,7 @@ input[type="checkbox"].test-case-checkbox:hover{
 
 .case-config{
     background-color: var(--background-secondary);
-    border-radius: var(--border-radius-sm);
+    border-radius: var(--radius-tag);
     padding: 12px;
     margin-bottom: 12px;
 }
@@ -430,7 +430,7 @@ input[type="checkbox"].test-case-checkbox:hover{
   background-color: var(--text-primary);
   color: white;
   padding: 8px 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 13px;
   white-space: normal;
   word-break: break-all;
@@ -467,7 +467,7 @@ input[type="checkbox"].test-case-checkbox:hover{
 
 .test-type-tag{
   padding: 2px 8px;
-  border-radius: 12px;
+  border-radius: var(--radius-pill);
   font-size: 12px;
   font-weight: 500;
   color: white;
@@ -525,7 +525,7 @@ input[type="checkbox"].test-case-checkbox:hover{
   font-size: 12px;
   font-weight: 500;
   padding: 4px 8px;
-  border-radius: 12px;
+  border-radius: var(--radius-pill);
   min-width: 20px;
   text-align: center;
 }
@@ -537,7 +537,7 @@ input[type="checkbox"].test-case-checkbox:hover{
   font-size: 12px;
   font-weight: 500;
   padding: 4px 8px;
-  border-radius: 12px;
+  border-radius: var(--radius-pill);
   display: inline-flex;
   align-items: center;
   gap: 4px;

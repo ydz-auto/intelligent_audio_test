@@ -147,3 +147,68 @@ class TestAuthServiceEndpoint:
             assert body['data'] == {'auth_mode': 'dev'}
         finally:
             mp.undo()
+
+
+def _off_app_with_me_route():
+    """最小网关应用：真实 AuthMiddleware(auth_mode='off') + /me 暴露注入身份。
+
+    /me 同时回 state 注入值（request.state.user_id / username）与出站上下文
+    get_current_user_id()，用于锁定 INT-774 方案 A 的可选 Bearer 解析行为。
+    """
+    from api_gateway.middleware import RequestAdapterMiddleware, AuthMiddleware
+
+    app = FastAPI()
+
+    @app.get('/me')
+    def me():
+        from api_gateway.infrastructure.request_adapter import get_current_request
+        from shared.infrastructure.user_context import get_current_user_id
+        req = get_current_request()
+        return {
+            'context_user_id': get_current_user_id(),
+            'state_user_id': getattr(req.state, 'user_id', None),
+            'username': getattr(req.state, 'username', None),
+        }
+
+    app.add_middleware(RequestAdapterMiddleware)
+    app.add_middleware(AuthMiddleware, auth_mode='off')
+    return app
+
+
+class TestAuthOffOptionalBearer:
+    """INT-774 方案 A：AUTH_MODE=off Bearer 可选解析。
+
+    off 从「完全跳过认证」演进为「可选认证」——有合法 token 注入真实 user_id
+    （购物车等 per-user 写侧可用）；无/无效 token 保持 None 空态
+    （dev_user 归一未认证，不充当真实操作人，不 401）。
+    """
+
+    @pytest.fixture()
+    def off_client(self):
+        app = _off_app_with_me_route()
+        from fastapi.testclient import TestClient
+        with TestClient(app) as client:
+            yield client
+
+    def test_no_token_keeps_none_state(self, off_client):
+        """无 token → state 注入 dev_user（user_id=0 归一 None），context None。"""
+        body = off_client.get('/me').json()
+        assert body['context_user_id'] is None
+        assert body['state_user_id'] == 0
+        assert body['username'] == 'dev_user'
+
+    def test_valid_bearer_injects_real_user(self, off_client):
+        """合法 Bearer → 注入真实 user_id（per-user 写侧 _require_user 不再拒绝）。"""
+        from api_gateway.application.services.auth.token_service import TokenService
+        token = TokenService.create_token(42, 'alice', 1, ['*'])
+        body = off_client.get('/me', headers={'Authorization': f'Bearer {token}'}).json()
+        assert body['context_user_id'] == 42
+        assert body['state_user_id'] == 42
+        assert body['username'] == 'alice'
+
+    def test_invalid_bearer_keeps_none_state(self, off_client):
+        """无效 token → 不 401，保持 None 空态（Bearer 可选，非强制）。"""
+        body = off_client.get('/me', headers={'Authorization': 'Bearer garbage'}).json()
+        assert body['context_user_id'] is None
+        assert body['state_user_id'] == 0
+        assert body['username'] == 'dev_user'

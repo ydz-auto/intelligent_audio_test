@@ -2,9 +2,9 @@
   <div class="overview-card">
     <div class="section-header" @click="toggleCollapse">
       <h3 class="section-title">总览卡片 (Overview)</h3>
-      <!-- INT-340：报告页「人工复核」标记（复核后已生成报告不自动重算，提示重新生成） -->
-      <span v-if="reviewCount > 0" class="reviewed-badge" title="该报告统计按人工复核后判定生成；复核后需重新生成报告以反映最新改判">
-        <i class="fas fa-clipboard-check"></i> 人工复核 {{ reviewCount }} 条
+      <!-- INT-340/797：报告页「人工复核」统计徽章（review_count > 0 时显示；点击锚点到具体用例分区） -->
+      <span v-if="reviewCount > 0" class="reviewed-badge clickable" @click="scrollToCaseSection" title="已复核 {{ reviewCount }} 条结果；点击跳转具体用例分区">
+        <i class="fas fa-clipboard-check"></i> 已复核 {{ reviewCount }} 条
       </span>
       <button class="collapse-btn" :class="{ collapsed: isCollapsed }" title="折叠/展开">
         <i class="fas fa-chevron-up" v-if="isCollapsed"></i>
@@ -72,6 +72,10 @@ import { readCamel } from '../../utils/keyTransform'
 const props = defineProps({
   reportData: {
     type: Object, default: () => ({})
+  },
+  /** INT-797：报告头复核统计徽章 live 值（来源任务 review-count 兜底；未传时读报告快照） */
+  reviewCount: {
+    type: Number, default: undefined
   }
 })
 
@@ -82,6 +86,12 @@ const isCollapsed = ref(false)
 
 const toggleCollapse = () => {
   isCollapsed.value = !isCollapsed.value
+}
+
+/** INT-797：统计徽章点击 → 锚点到具体用例分区（#section-case） */
+const scrollToCaseSection = () => {
+  const el = document.getElementById('section-case')
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 // 导出模式：展开
@@ -244,8 +254,14 @@ const actualAllMetrics = computed(() => {
 const totalCases = computed(() => readCamel(readCamel(props.reportData, 'summary'), 'totalCases') ?? 0)
 const metricsCount = computed(() => actualAllMetrics.value.length)
 const devicesCount = computed(() => devices.value.length)
-/** INT-340：报告摘要中的人工复核条数（summary.review_count） */
-const reviewCount = computed(() => readCamel(readCamel(props.reportData, 'summary'), 'reviewCount') ?? 0)
+/** INT-340/797：报告摘要中的人工复核条数（优先 live 值；未传时读 summary.reviewCount / summaries[0].metadata.review_count 快照） */
+const reviewCount = computed(() => {
+  if (props.reviewCount !== undefined) return Number(props.reviewCount)
+  const fromSummary = readCamel(readCamel(props.reportData, 'summary'), 'reviewCount') ?? 0
+  if (Number(fromSummary) > 0) return Number(fromSummary)
+  const meta = props.reportData?.summaries?.[0]?.metadata
+  return Number(meta?.review_count ?? 0)
+})
 
 const tableColumns = computed(() => {
   const columns = [
@@ -399,12 +415,18 @@ const getAverageValue = (metricName, device) => {
   align-items: center;
   gap: 4px;
   padding: 2px 10px;
-  border-radius: 10px;
+  border-radius: var(--radius-10);
   font-size: 12px;
   font-weight: 500;
   color: var(--primary-color);
   background: color-mix(in srgb, var(--primary-color) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
+}
+.reviewed-badge.clickable {
+  cursor: pointer;
+}
+.reviewed-badge.clickable:hover {
+  background: color-mix(in srgb, var(--primary-color) 18%, transparent);
 }
 
 .section-content {

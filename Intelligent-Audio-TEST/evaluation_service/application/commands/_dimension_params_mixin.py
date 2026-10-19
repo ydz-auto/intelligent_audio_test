@@ -70,6 +70,7 @@ class DimensionParamsMixin:
                 'default_value': json.dumps(outp.get('default_value')) if outp.get('default_value') else None,
                 'help_text': outp.get('help_text', ''),
                 'ui_order': outp.get('ui_order', idx),
+                'pass_threshold': outp.get('pass_threshold'),
             })
         return None
 

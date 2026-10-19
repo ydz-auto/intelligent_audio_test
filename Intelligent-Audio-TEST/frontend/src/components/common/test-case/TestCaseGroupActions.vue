@@ -116,7 +116,7 @@ const emit = defineEmits(['edit', 'delete', 'addCase', 'copyGroup', 'updateAlgor
   background-color: var(--background);
   background-clip: padding-box;
   border: 1px solid color-mix(in srgb, var(--color-black) 15%, transparent);
-  border-radius: 0.25rem;
+  border-radius: var(--radius-control);
   box-shadow: 0 0.5rem 1rem color-mix(in srgb, var(--color-black) 17.5%, transparent);
 }
 

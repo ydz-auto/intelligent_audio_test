@@ -330,7 +330,7 @@ async function removeMember(group: DeviceGroup, deviceId: string | number) {
 }
 .dg-form {
   border: 1px solid var(--border-color, #eee);
-  border-radius: 8px;
+  border-radius: var(--radius-control, 8px);
   padding: 12px;
   margin-bottom: 12px;
   display: grid;
@@ -388,7 +388,7 @@ async function removeMember(group: DeviceGroup, deviceId: string | number) {
   gap: 6px;
   background: var(--background-primary, #fff);
   border: 1px solid var(--border-color, #ddd);
-  border-radius: 12px;
+  border-radius: var(--radius-card, 16px);
   padding: 3px 10px;
   font-size: 0.82rem;
 }

@@ -220,7 +220,7 @@ function handleConfirm() {
 
 .modal {
   background-color: #fff;
-  border-radius: 8px;
+  border-radius: var(--border-radius-xl);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   max-height: 90vh;
   overflow: hidden;
@@ -261,7 +261,7 @@ function handleConfirm() {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  border-radius: var(--border-radius-full);
   transition: all 0.2s;
 }
 
@@ -294,7 +294,7 @@ function handleConfirm() {
 .btn {
   padding: 8px 18px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--border-radius-md);
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
@@ -346,7 +346,7 @@ function handleConfirm() {
   width: 100%;
   padding: 8px 10px;
   border: 1px solid #d1d5db;
-  border-radius: 6px;
+  border-radius: var(--border-radius-md);
   font-size: 13px;
   background: #fff;
   color: #1f2937;
@@ -367,7 +367,7 @@ function handleConfirm() {
   gap: 8px;
   padding: 10px 12px;
   border: 1px solid #e2e8f0;
-  border-radius: 6px;
+  border-radius: var(--border-radius-md);
   background: #f8fafc;
   font-size: 13px;
   color: #334155;

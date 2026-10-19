@@ -153,8 +153,8 @@ onUnmounted(() => {
 }
 
 .modal {
-  background-color: white;
-  border-radius: 8px;
+  background-color: var(--popover);
+  border-radius: var(--radius-card);
   box-shadow: 0 4px 20px color-mix(in srgb, var(--color-black) 15%, transparent);
   max-height: 90vh;
   overflow: hidden;
@@ -177,8 +177,8 @@ onUnmounted(() => {
   padding: 20px 24px;
   border-bottom: 1px solid var(--muted);
   background: linear-gradient(135deg, var(--muted) 0%, var(--muted) 100%);
-  border-top-left-radius: 8px;
-  border-top-right-radius: 8px;
+  border-top-left-radius: var(--radius-card);
+  border-top-right-radius: var(--radius-card);
 }
 
 .modal-header h3 {
@@ -199,7 +199,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   transition: all 0.2s;
 }
 
@@ -211,7 +211,7 @@ onUnmounted(() => {
 
 .modal-body {
   padding: 24px;
-  background-color: white;
+  background-color: var(--popover);
 }
 
 .modal-footer {
@@ -222,8 +222,8 @@ onUnmounted(() => {
   padding: 20px 24px;
   border-top: 1px solid var(--muted);
   background-color: var(--muted);
-  border-bottom-left-radius: 8px;
-  border-bottom-right-radius: 8px;
+  border-bottom-left-radius: var(--radius-card);
+  border-bottom-right-radius: var(--radius-card);
   /* 确保底部固定在模态窗底部 */
   position: sticky;
   bottom: 0;
@@ -233,7 +233,7 @@ onUnmounted(() => {
 .btn {
   padding: 10px 20px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
@@ -259,7 +259,7 @@ onUnmounted(() => {
   width: 16px;
   height: 16px;
   border: 2px solid color-mix(in srgb, var(--color-white) 30%, transparent);
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   border-top-color: white;
   animation: spin 1s ease-in-out infinite;
   margin-right: 8px;

@@ -58,10 +58,11 @@
         <button class="cpw-btn" @click="resetFilters"><i class="fas fa-undo"></i> 重置</button>
       </div>
 
-      <!-- 视图切换 -->
+      <!-- 视图切换（INT-796 §3.6 裁定③：树形｜用例视角｜平铺；默认树形，多任务绝不默认平铺） -->
       <div class="cpw-toolbar">
         <div class="cpw-view-switch">
           <button class="cpw-btn" :class="{ active: viewMode === 'tree' }" @click="viewMode = 'tree'"><i class="fas fa-sitemap"></i> 树形</button>
+          <button class="cpw-btn" :class="{ active: viewMode === 'case' }" @click="viewMode = 'case'"><i class="fas fa-list-check"></i> 用例视角</button>
           <button class="cpw-btn" :class="{ active: viewMode === 'flat' }" @click="viewMode = 'flat'"><i class="fas fa-list"></i> 平铺</button>
           <button class="cpw-btn" @click="expandAll"><i class="fas fa-angles-down"></i> 全部展开</button>
           <button class="cpw-btn" @click="collapseAll"><i class="fas fa-angles-up"></i> 全部收起</button>
@@ -69,10 +70,22 @@
         <span class="cpw-toolbar-info">已选 {{ selectedResultIds.size }} 条 / 共 {{ visibleTotal }} 条</span>
       </div>
 
-      <!-- 树形 / 平铺 -->
+      <!-- 树形（任务视角）/ 用例视角 / 平铺 -->
       <div v-if="viewMode === 'tree'" class="cpw-tree">
         <PickTree
           :roots="treeRoots"
+          :selected="selectedResultIds"
+          :expanded-keys="expandedKeys"
+          :already-added="resultIdSet"
+          :leaf-meta="leafMeta"
+          @toggle-node="onToggleNode"
+          @toggle-expand="onToggleExpand"
+          @toggle-leaf="onToggleLeaf"
+        />
+      </div>
+      <div v-else-if="viewMode === 'case'" class="cpw-tree">
+        <PickTree
+          :roots="caseViewRoots"
           :selected="selectedResultIds"
           :expanded-keys="expandedKeys"
           :already-added="resultIdSet"
@@ -302,7 +315,7 @@ import { useModalControl } from '../../../composables/modal/useModal';
 import { MODAL_TYPES } from '../../../composables/modal/constants';
 import PickTree from './PickTree.vue';
 import CartTree from './CartTree.vue';
-import { buildPickTree, toggleNode, selectAll, invertSelection, collectLeafResultIds, type PickTreeNode } from './pickTree';
+import { buildPickTree, buildPickCaseViewTree, toggleNode, selectAll, invertSelection, collectLeafResultIds, type PickTreeNode } from './pickTree';
 import { buildCartTree, toggleCartNode, type CartTreeNode } from './cartTree';
 
 const STEPS = [
@@ -417,7 +430,8 @@ const pages = ref(0);
 const loadingCandidates = ref(false);
 const selectedResultIds = ref<Set<number>>(new Set());
 const expandedKeys = ref<Set<string>>(new Set());
-const viewMode = ref<'tree' | 'flat'>('tree');
+/** INT-796 §3.6 裁定①/③：默认树形（任务视角）；用例视角/平铺仅显式切换 */
+const viewMode = ref<'tree' | 'case' | 'flat'>('tree');
 
 /** 结果类型客户端过滤（UX 审计 P2 修复）：后端候选查询不下发 result_type 参数，
  * 取审计建议方案①——loadCandidates 后按 filters.resultTypes 过滤候选行/树；
@@ -431,6 +445,8 @@ const visibleTotal = computed(() =>
   filters.resultTypes.length ? filteredCandidates.value.length : candidateTotal.value);
 
 const treeRoots = computed(() => buildPickTree(filteredCandidates.value));
+/** INT-796 §3.7.3：用例视角树（跨任务按用例聚合；与任务视角共享同一 selectedResultIds） */
+const caseViewRoots = computed(() => buildPickCaseViewTree(filteredCandidates.value));
 /** 累计候选元数据（跨页累加不清理：跨页已选结果的任务/设备计数、R10 标记均可用） */
 const knownMeta = ref<Map<number, PickCandidate>>(new Map());
 const leafMeta = computed(() => knownMeta.value);
@@ -564,13 +580,14 @@ function onToggleExpand(key: string) {
 
 function expandAll() {
   const keys = new Set<string>();
+  const roots = viewMode.value === 'case' ? caseViewRoots.value : treeRoots.value;
   const walk = (nodes: PickTreeNode[]) => {
     for (const n of nodes) {
       if (n.children.length) keys.add(n.key);
       walk(n.children);
     }
   };
-  walk(treeRoots.value);
+  walk(roots);
   expandedKeys.value = keys;
 }
 
@@ -585,7 +602,9 @@ function clearSelection() {
 function invertCurrent() {
   const leaves = viewMode.value === 'tree'
     ? collectLeafResultIds(treeRoots.value)
-    : filteredCandidates.value.map((c) => c.resultId);
+    : viewMode.value === 'case'
+      ? collectLeafResultIds(caseViewRoots.value)
+      : filteredCandidates.value.map((c) => c.resultId);
   selectedResultIds.value = invertSelection(leaves, selectedResultIds.value);
 }
 
@@ -954,7 +973,7 @@ watch(() => cartRevision.value, () => {
   gap: 12px;
   padding: 12px 16px;
   background: var(--color-slate-50, #f8fafc);
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   border: 1px solid var(--color-slate-200, #e2e8f0);
 }
 .cpw-steps {
@@ -968,7 +987,7 @@ watch(() => cartRevision.value, () => {
   align-items: center;
   gap: 6px;
   padding: 6px 14px;
-  border-radius: 16px;
+  border-radius: var(--border-radius-md);
   background: var(--color-slate-100, #f1f5f9);
   color: var(--color-slate-500, #64748b);
   font-size: 13px;
@@ -1007,7 +1026,7 @@ watch(() => cartRevision.value, () => {
   flex-wrap: wrap;
   padding: 12px;
   background: var(--color-slate-50, #f8fafc);
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   border: 1px solid var(--color-slate-200, #e2e8f0);
   margin-bottom: 12px;
 }
@@ -1015,7 +1034,7 @@ watch(() => cartRevision.value, () => {
   height: 34px;
   padding: 0 10px;
   border: 1px solid var(--color-slate-300, #cbd5e1);
-  border-radius: 6px;
+  border-radius: var(--border-radius-md);
   font-size: 13px;
   background: #fff;
   color: var(--foreground, #1e293b);
@@ -1053,7 +1072,7 @@ watch(() => cartRevision.value, () => {
   gap: 6px;
   padding: 7px 14px;
   border: 1px solid var(--color-slate-300, #cbd5e1);
-  border-radius: 6px;
+  border-radius: var(--border-radius-md);
   background: #fff;
   color: var(--foreground, #1e293b);
   font-size: 13px;
@@ -1097,14 +1116,14 @@ watch(() => cartRevision.value, () => {
   max-height: 420px;
   overflow-y: auto;
   border: 1px solid var(--color-slate-200, #e2e8f0);
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   padding: 8px 0;
 }
 .cpw-flat {
   max-height: 420px;
   overflow-y: auto;
   border: 1px solid var(--color-slate-200, #e2e8f0);
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   padding: 8px 0;
 }
 .cpw-empty {
@@ -1136,7 +1155,7 @@ watch(() => cartRevision.value, () => {
 .cpw-leaf-dim { color: var(--color-slate-500, #64748b); min-width: 80px; }
 .cpw-leaf-rt {
   padding: 0 6px;
-  border-radius: 4px;
+  border-radius: var(--border-radius-sm);
   background: var(--color-amber-50, #fffbeb);
   color: #b45309;
   font-family: var(--font-mono, monospace);
@@ -1145,7 +1164,7 @@ watch(() => cartRevision.value, () => {
 /* P3（UX 审计）：状态徽章改走 tokens 与 TaskCard exec-status-badge 同源，去硬编码 hex */
 .cpw-leaf-status {
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--border-radius-full);
   font-size: 11px;
 }
 .cpw-leaf-status.completed { background: var(--color-emerald-100); color: var(--color-emerald-600); }
@@ -1153,7 +1172,7 @@ watch(() => cartRevision.value, () => {
 .cpw-leaf-status.stopped { background: var(--color-gray-100); color: var(--color-gray-500); }
 .cpw-leaf-eval {
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--border-radius-full);
   font-size: 11px;
 }
 .cpw-leaf-eval.evaluated { background: var(--color-blue-100); color: var(--color-blue-600); }
@@ -1187,7 +1206,7 @@ watch(() => cartRevision.value, () => {
   padding: 10px 12px;
   background: #fff;
   border: 1px solid var(--color-slate-200, #e2e8f0);
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   box-shadow: 0 -2px 8px rgb(0 0 0 / 0.04);
   margin-top: 12px;
 }
@@ -1203,7 +1222,7 @@ watch(() => cartRevision.value, () => {
 }
 .cpw-cart-group {
   border: 1px solid var(--color-slate-200, #e2e8f0);
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   overflow: hidden;
 }
 .cpw-cart-group-head {
@@ -1276,7 +1295,7 @@ watch(() => cartRevision.value, () => {
   min-width: 100px;
   padding: 12px;
   border: 1px solid var(--color-slate-200, #e2e8f0);
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   background: var(--color-slate-50, #f8fafc);
   text-align: center;
 }
@@ -1294,7 +1313,7 @@ watch(() => cartRevision.value, () => {
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: var(--border-radius-md);
   font-size: 13px;
   margin-bottom: 8px;
   flex-wrap: wrap;
@@ -1316,7 +1335,7 @@ watch(() => cartRevision.value, () => {
 }
 .cpw-checkout-card {
   border: 1px solid var(--color-slate-200, #e2e8f0);
-  border-radius: 8px;
+  border-radius: var(--border-radius-xl);
   padding: 12px 16px;
   cursor: pointer;
   transition: all 0.15s ease;

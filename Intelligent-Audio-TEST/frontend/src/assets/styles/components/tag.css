@@ -8,7 +8,7 @@
     margin-bottom: var(--spacing-xs);
     background-color: color-mix(in srgb, var(--secondary) 10%, transparent);
     color: var(--secondary);
-    border-radius: var(--border-radius-full);
+    border-radius: var(--radius-pill);
     font-size: var(--font-size-xs);
     font-weight: var(--font-weight-medium);
     white-space: nowrap;
@@ -113,7 +113,7 @@
 .tag-filter-item.active {
     background-color: var(--primary-color);
     border-color: var(--primary-color);
-    color: white;
+    color: var(--color-white);
 }
 
 /* 标签省略号样式 */

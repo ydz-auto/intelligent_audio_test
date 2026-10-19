@@ -21,7 +21,7 @@
           <div class="meta-item flex items-center gap-2">
             <i class="fas fa-info-circle" style="color: var(--text-secondary); font-size: 14px;"></i>
             <span style="font-size: 14px; color: var(--text-secondary);">状态: </span>
-            <span :class="'status-tag ' + (detail.executionStatus || ExecutionStatus.PENDING).toLowerCase()" style="font-size: 12px; padding: 2px 8px; border-radius: 4px; font-weight: 500;">
+            <span :class="'status-tag ' + (detail.executionStatus || ExecutionStatus.PENDING).toLowerCase()" style="font-size: 12px; padding: 2px 8px; border-radius: var(--radius-tag); font-weight: 500;">
               {{ 
                 detail.executionStatus === ExecutionStatus.COMPLETED ? (
                   (detail.evaluationStatus === EvaluationStatus.COMPLETED || detail.evaluationStatus === EvaluationStatus.FAILED) ? '已完成' : '评估中'
@@ -38,7 +38,7 @@
           <div class="meta-item flex items-center gap-2">
             <i class="fas fa-star" style="color: var(--text-secondary); font-size: 14px;"></i>
             <span style="font-size: 14px; color: var(--text-secondary);">评分: </span>
-            <span :class="'status-tag ' + (detail.evaluationStatus || EvaluationStatus.PENDING).toLowerCase()" style="font-size: 12px; padding: 2px 8px; border-radius: 4px; font-weight: 500;">
+            <span :class="'status-tag ' + (detail.evaluationStatus || EvaluationStatus.PENDING).toLowerCase()" style="font-size: 12px; padding: 2px 8px; border-radius: var(--radius-tag); font-weight: 500;">
               {{ detail.evaluationStatus === EvaluationStatus.COMPLETED ? '评分完成' : '待评分' }}
             </span>
           </div>
@@ -49,7 +49,7 @@
       </div>
 
       <!-- INT-340：人工复核入口（结果列表多选批量复核，逐条留痕） -->
-      <div v-if="detail.results && detail.results.length" class="review-toolbar" style="margin-top: 16px; padding: 12px 16px; background-color: var(--background-primary); border: 1px solid var(--border-color); border-radius: var(--border-radius-lg);">
+      <div v-if="detail.results && detail.results.length" class="review-toolbar" style="margin-top: 16px; padding: 12px 16px; background-color: var(--background-primary); border: 1px solid var(--border-color); border-radius: var(--radius-lg);">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
           <h5 style="margin: 0; font-size: 14px; font-weight: var(--font-weight-semibold); color: var(--text-primary);">
             <i class="fas fa-clipboard-check" style="color: var(--primary-color); margin-right: 6px;"></i>
@@ -64,7 +64,7 @@
           </button>
         </div>
         <div class="review-result-list" style="display: flex; flex-wrap: wrap; gap: 8px;">
-          <label v-for="r in detail.results" :key="r.id" class="review-result-item" style="display: flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 12px; cursor: pointer;">
+          <label v-for="r in detail.results" :key="r.id" class="review-result-item" style="display: flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid var(--border-color); border-radius: var(--radius-tag); font-size: 12px; cursor: pointer;">
             <input type="checkbox" :value="r.id" v-model="selectedResultIds" />
             <span>{{ r.deviceName || ('设备 ' + (r.deviceId ?? r.id)) }}</span>
             <span class="status-pill" :class="(r.executionStatus || 'pending').toLowerCase()">{{ execStatusLabel(r.executionStatus) }}</span>
@@ -74,7 +74,7 @@
       </div>
 
       <!-- 执行结果与指标 - 有任何数据时才显示 -->
-      <div v-if="hasAnyResultData" class="results-section" style="margin-top: 24px; background-color: var(--background-primary); border-radius: var(--border-radius-lg); box-shadow: var(--shadow-sm); padding: 20px; border: 1px solid var(--border-color);">
+      <div v-if="hasAnyResultData" class="results-section" style="margin-top: 24px; background-color: var(--background-primary); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 20px; border: 1px solid var(--border-color);">
         <h5 style="margin: 0 0 16px 0; font-size: 16px; font-weight: var(--font-weight-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
           <i class="fas fa-chart-bar" style="color: var(--primary-color);"></i>
           执行结果与指标
@@ -97,7 +97,7 @@
       </div>
       
       <!-- 完全没有执行数据时的提示 -->
-      <div v-else-if="!detail.results || detail.results.length === 0" class="results-section" style="margin-top: 24px; background-color: var(--background-primary); border-radius: var(--border-radius-lg); box-shadow: var(--shadow-sm); padding: 20px; border: 1px solid var(--border-color);">
+      <div v-else-if="!detail.results || detail.results.length === 0" class="results-section" style="margin-top: 24px; background-color: var(--background-primary); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 20px; border: 1px solid var(--border-color);">
         <h5 style="margin: 0 0 16px 0; font-size: 16px; font-weight: var(--font-weight-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
           <i class="fas fa-chart-bar" style="color: var(--primary-color);"></i>
           执行结果与指标
@@ -119,13 +119,13 @@
           </button>
           <span v-if="logTotal > 0" class="log-count">显示 {{ detail.logs.length }} / 共 {{ logTotal }} 条</span>
         </div>
-        <div class="modern-log-container" ref="logContainer" style="background-color: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 8px; font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; max-height: 400px; overflow-y: auto; line-height: 1.6; border: 1px solid #333;">
+        <div class="modern-log-container" ref="logContainer" style="background-color: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: var(--radius-control); font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; max-height: 400px; overflow-y: auto; line-height: 1.6; border: 1px solid #333;">
           <div v-if="!detail.logs || detail.logs.length === 0" class="no-logs" style="text-align: center; color: #666; padding: 20px;">
             暂无日志信息
           </div>
           <div v-else v-for="log in detail.logs" :key="log.id" class="log-line" :class="'log-' + (log.level || 'info').toLowerCase()" style="margin-bottom: 2px; display: flex; gap: 10px;">
             <span class="log-timestamp" style="color: #858585; white-space: nowrap;">[{{ formatTime(log.time) }}]</span>
-            <span class="log-lvl" style="font-weight: bold; width: 50px; text-align: center; border-radius: 2px; font-size: 11px; height: 18px; line-height: 18px;">{{ (log.level || 'INFO').toUpperCase() }}</span>
+            <span class="log-lvl" style="font-weight: bold; width: 50px; text-align: center; border-radius: var(--radius-tag); font-size: 11px; height: 18px; line-height: 18px;">{{ (log.level || 'INFO').toUpperCase() }}</span>
             <span class="log-msg" style="word-break: break-all;">{{ log.content }}</span>
           </div>
         </div>
@@ -436,7 +436,7 @@ onMounted(() => {
 
 .test-case-detail{
     background-color: var(--background-primary);
-    border-radius: 8px;
+    border-radius: var(--radius-control);
     padding: 16px;
     border: 1px solid var(--border-color);
 }
@@ -461,7 +461,7 @@ onMounted(() => {
   height: 40px;
   border: 4px solid color-mix(in srgb, var(--color-black) 10%, transparent);
   border-left-color: var(--primary-color);
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   animation: spin 1s linear infinite;
 }
 
@@ -496,7 +496,7 @@ onMounted(() => {
 
 .modern-log-container::-webkit-scrollbar-thumb{
   background: var(--foreground);
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
 }
 
 .modern-log-container::-webkit-scrollbar-thumb:hover{
@@ -506,7 +506,7 @@ onMounted(() => {
 .btn{
   padding: 10px 20px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -533,7 +533,7 @@ onMounted(() => {
 .btn-load-more-logs{
   padding: 4px 12px;
   border: 1px solid var(--border-color);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   background: var(--background-secondary);
   color: var(--primary-color);
   font-size: 12px;
@@ -549,7 +549,7 @@ onMounted(() => {
 .btn-review{
   padding: 6px 16px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   background: var(--primary-color);
   color: white;
   font-size: 13px;
@@ -561,7 +561,7 @@ onMounted(() => {
 }
 .status-pill{
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-tag);
   font-size: 11px;
   background: var(--secondary-light);
   color: var(--secondary-color);
@@ -571,7 +571,7 @@ onMounted(() => {
 .status-pill.stopped{ background: var(--warning-light); color: var(--warning-color); }
 .reviewed-badge{
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-tag);
   font-size: 11px;
   background: var(--primary-light, color-mix(in srgb, var(--primary-color) 15%, transparent));
   color: var(--primary-color);

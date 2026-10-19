@@ -49,6 +49,9 @@ from api_gateway.infrastructure.acl.reevaluation_acl_repository import (
 from api_gateway.infrastructure.acl.review_acl_repository import (
     ReviewAclRepositoryImpl,
 )
+from api_gateway.infrastructure.acl.ai_review_acl_repository import (
+    AiReviewAclRepositoryImpl,
+)
 
 __all__ = [
     'AlgorithmConfigAclRepositoryImpl',
@@ -68,6 +71,7 @@ __all__ = [
     'PlaybackConfigAclRepositoryImpl',
     'ReevaluationAclRepositoryImpl',
     'ReviewAclRepositoryImpl',
+    'AiReviewAclRepositoryImpl',
     'SplConfigAclRepositoryImpl',
     'TagConfigAclRepositoryImpl',
     'TaskConfigAclRepositoryImpl',

@@ -292,7 +292,7 @@ gap: 8px;
   padding: 12px;
   background: var(--color-slate-50);
   border: 1px dashed var(--color-slate-300);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   text-align: center;
   min-height: 44px;
@@ -331,7 +331,7 @@ gap: 8px;
   width: 100%;
   padding: 10px 14px;
   border: 1px solid var(--color-gray-300);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   transition: all 0.2s ease;
 }
@@ -359,7 +359,7 @@ gap: 8px;
 
 .btn{
   padding: 10px 20px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   cursor: pointer;
   border: none;

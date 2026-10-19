@@ -589,7 +589,7 @@ onMounted(async () => {
     padding: 10px 14px;
     background: color-mix(in srgb, var(--color-ant-gold-6, #faad14) 10%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-ant-gold-6, #faad14) 40%, transparent);
-    border-radius: 6px;
+    border-radius: var(--radius-control, 8px);
     font-size: 12px;
     color: var(--text-secondary);
 }
@@ -689,7 +689,7 @@ onMounted(async () => {
 .protocol-tag {
     display: inline-block;
     padding: 2px 8px;
-    border-radius: 10px;
+    border-radius: var(--radius-control, 8px);
     font-size: 11px;
     background: color-mix(in srgb, var(--primary-color) 8%, transparent);
     color: var(--primary-color);
@@ -700,7 +700,7 @@ onMounted(async () => {
     align-items: center;
     gap: 4px;
     padding: 2px 8px;
-    border-radius: 10px;
+    border-radius: var(--radius-control, 8px);
     font-size: 11px;
     background: color-mix(in srgb, var(--color-ant-gold-6, #faad14) 12%, transparent);
     color: var(--warning-color, #faad14);
@@ -736,7 +736,7 @@ onMounted(async () => {
 
 .calibration-detail-card {
     border: 1px solid var(--border-color);
-    border-radius: 10px;
+    border-radius: var(--radius-control, 8px);
     padding: 14px 16px;
     background: var(--background-primary);
 }
@@ -808,7 +808,7 @@ onMounted(async () => {
     padding: 12px 16px;
     background: color-mix(in srgb, var(--primary-color) 5%, transparent);
     border-left: 3px solid var(--primary-color);
-    border-radius: 6px;
+    border-radius: var(--radius-control, 8px);
 }
 
 .symmetric-hint i {

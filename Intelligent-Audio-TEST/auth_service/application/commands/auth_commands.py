@@ -92,6 +92,32 @@ class UpdateUserCommand:
 
 
 @dataclass(frozen=True)
+class ChangePasswordCommand:
+    """当前登录用户自助修改密码（INT-794 方案 A）。
+
+    current_password 为明文原密码（网关 RSA 解密后经内网 gRPC 传递），
+    new_password 为明文新密码，由应用层下游哈希落库；命令只承载意图。
+    原密码校验失败语义（AUTH_CREDENTIALS_INVALID）与登录链防枚举一致。
+    """
+    user_id: int
+    current_password: str
+    new_password: str
+
+
+@dataclass(frozen=True)
+class UpdateSelfProfileCommand:
+    """当前登录用户更新自我资料（INT-792）。
+
+    服务端字段白名单：命令结构只承载 email——消息层不含
+    username/status/password，从入口杜绝改非开放字段
+    （防网关白名单漏配导致经 admin UpdateUser 路径改 username 等）。
+    """
+    user_id: int
+    email: Optional[str] = None   # 空串=不修改；非空须为合法邮箱格式
+    operator_id: int = 0
+
+
+@dataclass(frozen=True)
 class SetUserRoleCommand:
     """设置用户角色。"""
     user_id: int

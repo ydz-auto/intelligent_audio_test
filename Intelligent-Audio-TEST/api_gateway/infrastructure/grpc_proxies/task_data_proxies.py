@@ -258,7 +258,7 @@ class _TaskDataProxy:
                   start_date=None, end_date=None, module=None, category=None,
                   mark=None, device_id=None, api_id=None, test_case_id=None,
                   thread_id=None, keyword=None, content_include=None,
-                  content_exclude=None, algorithm_type=None):
+                  content_exclude=None, algorithm_type=None, user_id=None):
         """通过 gRPC 查询 Log 列表（分页 + 过滤；INT-100 过滤下推 task_service）"""
         def _call():
             stub = get_task_data_service_stub()
@@ -280,6 +280,7 @@ class _TaskDataProxy:
                 content_include=content_include or '',
                 content_exclude=content_exclude or '',
                 algorithm_type=algorithm_type or '',
+                user_id=int(user_id) if user_id else 0,
             ))
             if not resp.success:
                 raise RuntimeError(f"ListLogs gRPC 失败: {resp.message}")
@@ -289,7 +290,8 @@ class _TaskDataProxy:
     def get_log_stats(self, level=None, module=None, category=None, mark=None,
                       device_id=None, task_id=None, keyword=None,
                       content_include=None, content_exclude=None,
-                      start_time=None, end_time=None, algorithm_type=None):
+                      start_time=None, end_time=None, algorithm_type=None,
+                      user_id=None):
         """通过 gRPC 查询日志统计（group_by level + count）"""
         def _call():
             stub = get_task_data_service_stub()
@@ -306,6 +308,7 @@ class _TaskDataProxy:
                 start_time=start_time or '',
                 end_time=end_time or '',
                 algorithm_type=algorithm_type or '',
+                user_id=int(user_id) if user_id else 0,
             ))
             if not resp.success:
                 raise RuntimeError(f"GetLogStats gRPC 失败: {resp.message}")

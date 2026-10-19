@@ -99,4 +99,17 @@
     --color-bs-gray-100: #f8f9fa;
     --color-legacy-gray-100: #edf2f7;
     --color-legacy-gray-800: #2d3748;
+
+    /* ── INT-739 暗色收编：补齐曾被引用但未定义的旧变量别名（附则① 收编进语义令牌）──
+       这些旧名大量出现在存量页面/组件 CSS 的 var(--x, <浅色兜底>) 回退位，未定义时
+       深浅两套恒取浅色兜底，.dark 下卡片/背景不换肤。此处统一指回双主题自动切换的
+       语义令牌，页面零改动即可随 .dark 生效。 */
+    --card-bg: var(--card);
+    --bg-color: var(--background);
+    --hover-bg: var(--muted);
+    --active-bg: color-mix(in srgb, var(--primary) 12%, var(--background));
+    --badge-bg: var(--muted);
+    --border-hover: var(--border);
+    --table-header: var(--muted);
+    --table-disabled: color-mix(in srgb, var(--foreground) 6%, var(--card));
 }

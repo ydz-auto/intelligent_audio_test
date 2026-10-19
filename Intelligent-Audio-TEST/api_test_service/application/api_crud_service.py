@@ -278,7 +278,7 @@ class APICrudService:
         Returns:
             dict: {success, message, data, code}
         """
-        if not data.get('name') or not data.get('meta'):
+        if not data.get('name') or data.get('meta') is None:
             return {'success': False, 'message': '缺少必要字段: name, meta', 'data': None, 'code': 400}
 
         error = cls._validate_api_data({
@@ -421,9 +421,9 @@ class APICrudService:
                     if error:
                         return {'success': False, 'message': error, 'data': None, 'code': 400}
 
-                default_max_process = api.default_max_process
-                default_max_timeout = api.default_max_timeout
-                default_max_audio_duration = api.default_max_audio_duration
+                default_max_process = getattr(api, 'default_max_process', None) or 5
+                default_max_timeout = getattr(api, 'default_max_timeout', None) or 30
+                default_max_audio_duration = getattr(api, 'default_max_audio_duration', None) or 60
 
                 new_api_endpoints = cls._build_endpoints_list(
                     data['endpoints'],

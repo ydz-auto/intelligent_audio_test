@@ -87,7 +87,7 @@ defineEmits(['select', 'rescan'])
 .device-selector-section{
   background-color: var(--muted);
   padding: 20px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   margin-bottom: 24px;
   border: 1px solid var(--muted);
 }
@@ -110,7 +110,7 @@ defineEmits(['select', 'rescan'])
   color: white;
   border: 1px solid transparent;
   padding: 8px 16px;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   font-size: 14px;
   display: flex;
@@ -140,7 +140,7 @@ defineEmits(['select', 'rescan'])
   width: 16px;
   height: 16px;
   border: 2px solid color-mix(in srgb, var(--color-white) 30%, transparent);
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   border-top-color: var(--background);
   animation: spin 1s ease-in-out infinite;
 }
@@ -164,12 +164,12 @@ defineEmits(['select', 'rescan'])
 
 .device-list::-webkit-scrollbar-track{
   background: var(--color-neutral-100);
-  border-radius: 3px;
+  border-radius: var(--radius-tag);
 }
 
 .device-list::-webkit-scrollbar-thumb{
   background: var(--color-gray-300);
-  border-radius: 3px;
+  border-radius: var(--radius-tag);
 }
 
 .device-list::-webkit-scrollbar-thumb:hover{
@@ -179,7 +179,7 @@ defineEmits(['select', 'rescan'])
 .device-item{
   background-color: white;
   padding: 16px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--muted);
   cursor: pointer;
   transition: all 0.2s ease;
@@ -244,7 +244,7 @@ defineEmits(['select', 'rescan'])
   background-color: var(--success);
   color: white;
   padding: 4px 12px;
-  border-radius: 12px;
+  border-radius: var(--radius-pill);
   font-size: 12px;
   font-weight: 500;
 }
@@ -253,7 +253,7 @@ defineEmits(['select', 'rescan'])
   background-color: var(--muted-foreground);
   color: white;
   padding: 4px 12px;
-  border-radius: 12px;
+  border-radius: var(--radius-pill);
   font-size: 12px;
   font-weight: 500;
 }
@@ -262,7 +262,7 @@ defineEmits(['select', 'rescan'])
   background-color: var(--primary-color);
   color: white;
   padding: 4px 12px;
-  border-radius: 12px;
+  border-radius: var(--radius-pill);
   font-size: 12px;
   font-weight: 500;
   box-shadow: 0 2px 4px color-mix(in srgb, var(--primary) 20%, transparent);
@@ -283,7 +283,7 @@ defineEmits(['select', 'rescan'])
   padding: 24px;
   color: var(--muted-foreground);
   background-color: white;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   border: 1px dashed var(--border);
 }
 </style>

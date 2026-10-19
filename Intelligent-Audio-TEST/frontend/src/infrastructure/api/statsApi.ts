@@ -18,5 +18,10 @@ export const statsApi = {
   async getStatsSummary(options: RequestOptions = {}): Promise<HomeStatsSummary> {
     const dto = await request<HomeStatsSummaryDto>('GET', '/home/stats/summary', null, options);
     return toHomeStatsSummary(dto);
+  },
+
+  /** 刷新首页统计缓存（工作台「刷新统计」动作；home:refresh） */
+  async refreshStats(options: RequestOptions = {}): Promise<void> {
+    return request<void>('POST', '/home/stats/refresh', null, options);
   }
 };

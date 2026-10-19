@@ -160,7 +160,7 @@ const directionBadgeClass = computed(() =>
   display: inline-flex;
   align-items: center;
   padding: 1px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   font-size: 11px;
   line-height: 1.6;
 }

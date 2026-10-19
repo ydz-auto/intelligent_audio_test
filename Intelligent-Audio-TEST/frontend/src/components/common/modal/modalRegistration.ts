@@ -32,6 +32,8 @@ import BatchTagsModal from './BatchTagsModal.vue'
 import BatchRefreshReferenceModal from './BatchRefreshReferenceModal.vue'
 import TagCategoryModal from './TagCategoryModal.vue'
 import TagEditModal from './TagEditModal.vue'
+// INT-739：标签管理页批量改分类
+import BatchTagCategoryModal from './BatchTagCategoryModal.vue'
 import TestCaseDetailModal from './TestCaseDetailModal.vue'
 import AudioPlayerModal from '../audio/AudioPlayerModal.vue'
 import AudioSelectModal from '../audio/AudioSelectModal.vue'
@@ -44,6 +46,9 @@ import ReexecuteOptionsModal from './ReexecuteOptionsModal.vue'
 import ResultReviewModal from './ResultReviewModal.vue'
 // INT-745：公开页「需要登录」引导（受限项 Dialog，5 秒倒计时跳登录）
 import LoginRequiredModal from './LoginRequiredModal.vue'
+// INT-744：个人中心·修改密码 / 编辑资料对话框壳（自助改密 F2 / 自我资料更新 F3 待 FEAT）
+import ChangePasswordModal from './ChangePasswordModal.vue'
+import EditProfileModal from './EditProfileModal.vue'
 
 export function registerGlobalModals() {
   const manager = getModalManager();
@@ -319,12 +324,39 @@ export function registerGlobalModals() {
     }
   });
 
+  // INT-739：标签管理页批量改分类（目标分类选择；confirm 载荷 { categoryId }）
+  manager.registerModal(MODAL_TYPES.BATCH_TAG_CATEGORY, {
+    component: BatchTagCategoryModal,
+    defaultConfig: {
+      title: '批量改分类',
+      tagCount: 0,
+      categories: []
+    }
+  });
+
   // INT-745：公开页「需要登录」引导（受限项 Dialog，5 秒倒计时跳登录）
   manager.registerModal(MODAL_TYPES.LOGIN_REQUIRED, {
     component: LoginRequiredModal,
     defaultConfig: {
       title: '需要登录',
       width: '420px'
+    }
+  });
+
+  // INT-744：个人中心·修改密码 / 编辑资料对话框壳（端点 F2/F3 待 FEAT，未落前提交提示待后端立项）
+  manager.registerModal(MODAL_TYPES.CHANGE_PASSWORD, {
+    component: ChangePasswordModal,
+    defaultConfig: {
+      title: '修改密码',
+      width: '480px'
+    }
+  });
+
+  manager.registerModal(MODAL_TYPES.EDIT_PROFILE, {
+    component: EditProfileModal,
+    defaultConfig: {
+      title: '编辑资料',
+      width: '480px'
     }
   });
 }

@@ -192,5 +192,34 @@ def logout(request: Request):
 
 @router.get('/me')
 def me(request: Request):
-    """获取当前用户信息"""
+    """获取当前用户信息（INT-792：扩展 email，经 auth_service 实时合并）"""
     return to_response(AuthService.get_current_user_info(request.state))
+
+
+@router.post('/change-password')
+def change_password(request: Request):
+    """当前登录用户自助修改密码（INT-794 方案 A）。
+
+    鉴权为「当前登录用户本人」（JWT user_id 注入），非 admin 管他人
+    （不走 user:update）。body 复用登录 RSA 公钥体系：
+    current_password_encrypted + new_password_encrypted + encryption_key_id
+    （加密开关关闭时回退明文 current_password / new_password）。
+    原密码错误 → 401 + code:106；新密码长度不足 → 400；
+    成功 → 200 + notice 提示清 token 重新登录。
+    """
+    from api_gateway.application.services.auth.dependencies import require_auth
+    require_auth(request)
+    from api_gateway.application.services.auth.user_management_service import (
+        UserManagementService,
+    )
+    return to_response(UserManagementService.change_password())
+
+
+@router.put('/self')
+def update_self(request: Request):
+    """更新当前登录用户自我资料（INT-792：仅 email；username 平台口径不可改）。
+
+    鉴权取 request.state.user_id 为本人（operator_id 同值），不要求
+    user:update（那是 admin 管他人）；body 携带 username 等其他字段 → 400。
+    """
+    return to_response(AuthService.update_self_profile(request.state))

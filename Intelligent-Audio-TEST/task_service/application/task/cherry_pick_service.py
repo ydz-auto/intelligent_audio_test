@@ -575,6 +575,30 @@ class CherryPickService:
                 {'device_id': dev_id, 'case_id': case_id, 'count': count}
                 for (dev_id, case_id), count in combo_counts.items() if count > 1
             ]
+            # INT-774 ④：跨任务配置差异检测（§5.2 拍板：不一致强制确认提示，
+            # 比「默认取首源」严）——algorithm_type / algorithm_params / config
+            # 逐项比较；source_configs 供创建弹窗确认提示数据源（先例 agent/2/int-280）
+            source_tasks = list({t.id: t for _r, t in rows.values()}.values())
+            config_inconsistent = False
+            config_fields: List[str] = []
+            if len(source_tasks) > 1:
+                first = source_tasks[0]
+                if any(t.algorithm_type != first.algorithm_type for t in source_tasks[1:]):
+                    config_inconsistent = True
+                    config_fields.append('algorithm_type')
+                if any(t.algorithm_params != first.algorithm_params for t in source_tasks[1:]):
+                    config_inconsistent = True
+                    config_fields.append('algorithm_params')
+                if any(t.config != first.config for t in source_tasks[1:]):
+                    config_inconsistent = True
+                    config_fields.append('config')
+            source_configs = [{
+                'task_id': t.id,
+                'task_name': t.name,
+                'algorithm_type': t.algorithm_type,
+                'algorithm_params': t.algorithm_params,
+                'config': t.config,
+            } for t in source_tasks]
             return {'success': True, 'message': 'ok', 'data': {
                 'total_results': len(rows),
                 'invalid_result_ids': invalid_result_ids,
@@ -585,6 +609,9 @@ class CherryPickService:
                 'case_count': len(case_ids),
                 'execution_status_counts': execution_status_counts,
                 'duplicates': duplicates,
+                'config_inconsistent': config_inconsistent,
+                'config_fields': config_fields,
+                'source_configs': source_configs,
             }}
         except ValueError as e:
             return {'success': False, 'message': str(e), 'data': {'code': 400}, 'code': 400}

@@ -84,7 +84,7 @@ const visible = ref(true)
 
 .auth-mode-banner__text code {
   padding: 0 4px;
-  border-radius: 3px;
+  border-radius: var(--radius-tag);
   background: #fff1d6;
   border: 1px solid #ffd591;
   font-size: 12px;

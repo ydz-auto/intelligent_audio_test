@@ -65,12 +65,13 @@ def db():
     set_current_user_id(None)
 
 
-def _seed_source_task(name='INT339源任务', status='completed'):
+def _seed_source_task(name='INT339源任务', status='completed', algorithm_type='asr'):
     """种子：终态源任务 + 2 用例 2 结果（设备 7/8 各一）。返回 (task_id, [(case_id, result_id, device_id)...])"""
     from task_service.infrastructure.persistence.models import Task, TaskCase, TestResult
     session = get_db_session()
     try:
-        task = Task(name=name, status=status, total_cases=2)
+        task = Task(name=name, status=status, total_cases=2,
+                    algorithm_type=algorithm_type)
         session.add(task)
         session.flush()
         results = []
@@ -83,7 +84,7 @@ def _seed_source_task(name='INT339源任务', status='completed'):
             ))
             r = TestResult(
                 task_id=task.id, test_case_id=case_id, device_id=device_id,
-                algorithm_type='asr', execution_status='completed',
+                algorithm_type=algorithm_type, execution_status='completed',
                 algorithm_result={'asr_result': f'文本{i}'},
             )
             session.add(r)
@@ -505,6 +506,39 @@ def test_preview_counts_and_invalid_marking(db):
     assert data['invalid_result_ids'] == [results_b[0][1]]
     assert data['source_task_count'] == 1
     assert 7 in data['device_ids']
+
+
+def test_preview_config_inconsistent_detection(db):
+    """INT-774 ④：跨任务配置差异检测（§5.2 拍板：不一致强制确认提示）。
+
+    两个来源任务算法类型不同 → config_inconsistent=True 且标注差异字段；
+    同配置 → False。source_configs 含各来源任务的任务级配置（弹窗确认提示数据源）。
+    """
+    from task_service.application.task.cherry_pick_service import cherry_pick_service
+
+    src_a, results_a = _seed_source_task(name='INT774配置A', algorithm_type='asr')
+    src_b, results_b = _seed_source_task(name='INT774配置B', algorithm_type='tts')
+    set_current_user_id(42)
+    cherry_pick_service.cart_add({'result_ids': [results_a[0][1], results_b[0][1]]})
+
+    resp = cherry_pick_service.preview()
+    assert resp['success'] is True
+    assert resp['data']['config_inconsistent'] is True
+    assert 'algorithm_type' in resp['data']['config_fields']
+    by_task = {c['task_id']: c for c in resp['data']['source_configs']}
+    assert by_task[src_a]['algorithm_type'] == 'asr'
+    assert by_task[src_b]['algorithm_type'] == 'tts'
+    assert by_task[src_a]['task_name'] == 'INT774配置A'
+
+    # 同配置 → 不一致 False
+    cherry_pick_service.cart_clear()
+    _src_c, results_c = _seed_source_task(name='INT774配置C', algorithm_type='asr')
+    cherry_pick_service.cart_add({'result_ids': [results_a[0][1], results_c[0][1]]})
+    resp2 = cherry_pick_service.preview()
+    assert resp2['success'] is True
+    assert resp2['data']['config_inconsistent'] is False
+    assert resp2['data']['config_fields'] == []
+    assert len(resp2['data']['source_configs']) == 2  # A/C 两源同配置也全量给出
 
 
 def test_reevaluate_submits_per_source_task(db):

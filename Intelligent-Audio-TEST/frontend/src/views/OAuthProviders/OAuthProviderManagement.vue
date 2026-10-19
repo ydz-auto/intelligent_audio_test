@@ -343,14 +343,15 @@ onMounted(load)
 .btn {
   padding: 8px 16px;
   border: 1px solid var(--color-gray-300);
-  border-radius: 4px;
-  background: white;
+  border-radius: var(--border-radius-md);
+  background: var(--card, var(--color-white));
   cursor: pointer;
   font-size: 14px;
+  color: var(--foreground);
 }
 .btn-primary {
   background: var(--secondary);
-  color: white;
+  color: var(--color-white);
   border-color: var(--secondary);
 }
 .btn-sm {
@@ -367,9 +368,9 @@ onMounted(load)
   cursor: not-allowed;
 }
 .form-panel {
-  background: white;
+  background: var(--card, var(--color-white));
   border: 1px solid var(--color-gray-300);
-  border-radius: 8px;
+  border-radius: var(--border-radius-lg);
   padding: 20px;
   margin-bottom: 20px;
 }
@@ -386,7 +387,7 @@ onMounted(load)
   flex: 1;
   padding: 8px 10px;
   border: 1px solid var(--color-gray-300);
-  border-radius: 4px;
+  border-radius: var(--border-radius-md);
   font-size: 14px;
   box-sizing: border-box;
 }
@@ -411,7 +412,7 @@ onMounted(load)
   width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--color-gray-300);
-  border-radius: 4px;
+  border-radius: var(--border-radius-md);
   font-size: 14px;
   box-sizing: border-box;
 }
@@ -423,9 +424,9 @@ onMounted(load)
 .provider-table {
   width: 100%;
   border-collapse: collapse;
-  background: white;
+  background: var(--card, var(--color-white));
   border: 1px solid var(--color-gray-300);
-  border-radius: 8px;
+  border-radius: var(--border-radius-lg);
   overflow: hidden;
 }
 .provider-table th,
@@ -449,12 +450,12 @@ onMounted(load)
 }
 .status-badge {
   padding: 2px 10px;
-  border-radius: 10px;
+  border-radius: var(--border-radius-full);
   font-size: 12px;
 }
 .status-badge.enabled {
-  background: #e6f7e9;
-  color: #1a7f37;
+  background: var(--success-light);
+  color: var(--success-dark);
 }
 .status-badge.disabled {
   background: var(--color-gray-200);
@@ -471,7 +472,7 @@ onMounted(load)
   margin-bottom: 10px;
 }
 .success-msg {
-  color: #1a7f37;
+  color: var(--success-dark);
   font-size: 14px;
   margin-bottom: 10px;
 }

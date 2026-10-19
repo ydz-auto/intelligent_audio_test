@@ -65,6 +65,17 @@ service ReportConfigService {
   rpc RestoreReports(RestoreReportsRequest) returns (ReportConfigResponse);
   // 彻底删除（物理删除子表+主表；权限收敛在网关 admin/owner）
   rpc PurgeReports(PurgeReportsRequest) returns (ReportConfigResponse);
+
+  // ---- 报告统计分析（INT-791：G04 报告统计分析页接真实接口）----
+  // GET /reports/statistics：按维度统计（time|task_type|device_type|evaluation_metric）
+  // + start_time/end_time + 可选 algorithm_type；结果含 overview/detail/chart/anomaly 四形态
+  rpc GetStatistics(GetStatisticsRequest) returns (ReportConfigResponse);
+  // GET /reports/statistics/trend：趋势分析（trend_type=time|dimension + metric + 时间范围）
+  // 只返回时间序列数据，预测呈现归前端（不引入后端 ML 预测）
+  rpc GetStatisticsTrend(GetStatisticsTrendRequest) returns (ReportConfigResponse);
+  // POST /reports/statistics/report：报表生成（report_type × format × time_range），
+  // 复用 binary 下载结构（mime_type/filename/content_base64）
+  rpc GenerateStatisticsReport(GenerateStatisticsReportRequest) returns (ReportConfigResponse);
 }
 
 message CreateReportRequest {
@@ -177,6 +188,17 @@ message RestoreReportsRequest {
 }
 message PurgeReportsRequest {
   repeated int32 report_ids = 1;
+}
+
+// ===== 报告统计分析（INT-791）=====
+message GetStatisticsRequest {
+  string data = 1;  // JSON: {dimension, start_time, end_time, algorithm_type}
+}
+message GetStatisticsTrendRequest {
+  string data = 1;  // JSON: {trend_type, metric, start_time, end_time}
+}
+message GenerateStatisticsReportRequest {
+  string data = 1;  // JSON: {report_type, content, format, time_range: {start_time, end_time}}
 }
 
 // ===== Benchmark 排行服务（D1 双轨排行：实测轨 + 外部基线导入 + 6 算法 + 指标映射）=====

@@ -489,7 +489,7 @@ defineExpose({ openPublishModal });
 .btn {
   padding: 8px 16px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--border-radius-md);
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
@@ -542,7 +542,7 @@ defineExpose({ openPublishModal });
 .pt-card {
   background: var(--background-primary, #fff);
   border: 1px solid var(--border-color, #e5e7eb);
-  border-radius: 10px;
+  border-radius: var(--border-radius-xl);
   padding: 14px 16px;
   box-shadow: 0 1px 3px color-mix(in srgb, var(--color-black) 4%, transparent);
 }
@@ -567,7 +567,7 @@ defineExpose({ openPublishModal });
   color: var(--primary-color, #ff6a00);
   font-size: 12px;
   font-weight: 700;
-  border-radius: 10px;
+  border-radius: var(--border-radius-full);
   padding: 2px 8px;
   white-space: nowrap;
 }
@@ -582,7 +582,7 @@ defineExpose({ openPublishModal });
   display: inline-block;
   font-size: 12px;
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: var(--border-radius-full);
   background: var(--color-slate-100);
   color: var(--color-slate-500);
 }
@@ -617,7 +617,7 @@ defineExpose({ openPublishModal });
   font-size: 11px;
   color: var(--color-green-600);
   background: var(--color-green-100);
-  border-radius: 8px;
+  border-radius: var(--border-radius-full);
   padding: 1px 6px;
 }
 
@@ -626,7 +626,7 @@ defineExpose({ openPublishModal });
   font-size: 11px;
   font-weight: 700;
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: var(--border-radius-full);
   background: var(--color-purple-100);
   color: var(--color-purple-600);
   white-space: nowrap;
@@ -691,7 +691,7 @@ defineExpose({ openPublishModal });
   color: var(--color-gray-600);
   padding: 5px 8px;
   background: var(--color-slate-50);
-  border-radius: 6px;
+  border-radius: var(--border-radius-md);
   flex-wrap: wrap;
 }
 
@@ -718,7 +718,7 @@ defineExpose({ openPublishModal });
   padding: 6px 10px;
   background: var(--color-amber-50);
   border: 1px solid var(--color-amber-200);
-  border-radius: 6px;
+  border-radius: var(--border-radius-md);
   font-size: 12px;
   color: var(--color-amber-800);
 }
@@ -733,7 +733,7 @@ defineExpose({ openPublishModal });
   color: var(--color-gray-400);
   background: var(--color-slate-50);
   border: 1px dashed var(--color-slate-200);
-  border-radius: 10px;
+  border-radius: var(--border-radius-xl);
 }
 
 .pt-empty i {

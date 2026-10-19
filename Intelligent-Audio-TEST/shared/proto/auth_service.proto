@@ -31,8 +31,14 @@ service AuthService {
   // 更新用户资料（username/email/status/password，空串字段不修改；
   // display_name 未传=不修改、空串=清空，INT-697）
   rpc UpdateUser(UpdateUserRequest) returns (AuthResponse);
+  // 当前登录用户更新自我资料（INT-792：仅 email，服务端字段白名单——
+  // 消息结构不含 username/status/password，防止网关白名单漏配导致
+  // 经 admin UpdateUser 路径改非开放字段）
+  rpc UpdateSelfProfile(UpdateSelfProfileRequest) returns (AuthResponse);
   // 设置用户角色
   rpc SetUserRole(SetUserRoleRequest) returns (AuthResponse);
+  // 当前登录用户自助修改密码（INT-794 方案 A：校验原密码 → 更新 → 审计）
+  rpc ChangePassword(ChangePasswordRequest) returns (AuthResponse);
 
   // ===== 角色与权限管理 =====
   // 按角色 ID 获取角色（含权限码列表）
@@ -143,10 +149,20 @@ message UpdateUserRequest {
   // 未传（HasField=false）=不修改；空串=清空落 NULL；非空=设置
   optional string display_name = 7;
 }
+message UpdateSelfProfileRequest {
+  int32 user_id = 1;      // 当前登录用户 ID（网关从 JWT 注入，即本人）
+  string email = 2;       // 空串=不修改；非空须为合法邮箱格式
+  int32 operator_id = 3;  // 操作者用户 ID（审计归因，self=user_id）
+}
 message SetUserRoleRequest {
   int32 user_id = 1;
   int32 role_id = 2;
   int32 operator_id = 3; // 操作者用户 ID（审计归因）
+}
+message ChangePasswordRequest {
+  int32 user_id = 1;           // 当前登录用户 ID（网关从 JWT 注入，非 admin 管他人）
+  string current_password = 2; // 明文原密码（网关 RSA 解密后经内网 gRPC 传递）
+  string new_password = 3;     // 明文新密码（auth_service 内 bcrypt 哈希落库）
 }
 message GetRoleRequest {
   int32 role_id = 1;

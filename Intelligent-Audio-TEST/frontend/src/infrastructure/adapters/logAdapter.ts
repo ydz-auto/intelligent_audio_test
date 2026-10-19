@@ -144,6 +144,9 @@ export function toLogQueryDto(query: LogQuery): Record<string, string | number |
   if (query.testCaseId) params.test_case_id = String(query.testCaseId)
   if (query.contentInclude) params.content_include = query.contentInclude
   if (query.contentExclude) params.content_exclude = query.contentExclude
+  // INT-806：旧 Vue 高级筛选「用户ID」（domain userId）→ user_id 查询参数；
+  // 后端 LogListQuery.user_id 按 created_by_user_id 过滤（「仅自己」视图范围）
+  if (query.userId !== undefined && query.userId !== '') params.user_id = String(query.userId)
   return params
 }
 

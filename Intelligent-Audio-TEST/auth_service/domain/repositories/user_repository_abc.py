@@ -75,6 +75,10 @@ class UserRepositoryABC(ABC):
         """校验 账号(用户名或邮箱)+密码（bcrypt），成功返回用户聚合，失败返回 None。"""
 
     @abstractmethod
+    def verify_password_by_user_id(self, user_id: int, password: str) -> bool:
+        """按用户 ID 校验密码（bcrypt）；用户不存在/无密码/不匹配返回 False（INT-794 自助改密用）。"""
+
+    @abstractmethod
     def count_all(self) -> int:
         """统计非软删除用户总数（首个注册用户 admin 策略判定）。"""
 

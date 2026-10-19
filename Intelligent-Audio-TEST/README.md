@@ -83,7 +83,7 @@
 | e2e_test_service | 5002 | 50051 | 端到端测试、音频引擎、设备驱动、结果采集 |
 | api_test_service | 5003 | 50071 | API 测试、并发控制、会话执行 |
 | evaluation_service | 5004 | 50091 | 评估维度管理、指标计算（WER/DER/LLM Judge 等） |
-| report_service | 5006 | 50068 | 报告生成（异步）与查询、对比分析 |
+| report_service | 5006 | 51068 | 报告生成（异步）与查询、对比分析 |
 | algorithm_service | 5007 | 50067 | 被测算法配置、参考参数生成器 |
 | api_adapter_service | 5008 | 50081 | 被测算法适配（Qwen/火山 AST/SSE/HTTP） |
 | auth_service | 5009 | 50069 | 认证 / OAuth / RBAC 角色权限 |

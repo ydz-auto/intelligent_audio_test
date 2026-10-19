@@ -113,6 +113,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         '/api/v1/auth/oauth',  # INT-51：提供方列表 / 授权跳转 / 授权回调
         # INT-674：站点配置（公开展示数据，登录页品牌角标需未登录态可取）
         '/api/v1/home/site',
+        # INT-766/INT-787：系统健康汇总（网关 + 认证服务）——「关于」页
+        # 状态卡登录前也要能取真实健康数据，须公开（AUTH_MODE=prod 强制态下
+        # 匿名可访问，语义同根路径 /health）
+        '/api/v1/system/health',
         '/docs',
         '/openapi.json',
         '/redoc',
@@ -136,14 +140,39 @@ class AuthMiddleware(BaseHTTPMiddleware):
             set_current_user_id, set_current_user_is_admin,
         )
 
-        # off 模式：完全跳过认证，注入默认开发用户
+        # off 模式：可选认证（INT-774 方案 A，INT-751 拍板）——Bearer 有合法
+        # token 注入真实 user_id；无/无效 token 保持 None 空态。off 从「完全
+        # 跳过认证」演进为「可选认证」，购物车等 per-user 写侧（_require_user
+        # 拒绝 None）在常驻 off 栈 + 前端 localStorage token 下整链可用。
         if self.auth_mode == 'off':
+            auth_header = request.headers.get('Authorization', '')
+            if auth_header.startswith('Bearer '):
+                token = auth_header[7:]
+                try:
+                    from api_gateway.application.services.auth.token_service import TokenService
+                    payload = TokenService.verify(token)
+                except Exception:
+                    payload = None
+                if payload:
+                    request.state.user_id = payload.get('user_id', 0)
+                    request.state.username = payload.get('username', '')
+                    request.state.role_id = payload.get('role_id', 0)
+                    request.state.permissions = payload.get('permissions', [])
+                    # INT-141：操作人上下文（出站 gRPC 自动附加 x-user-id /
+                    # x-user-is-admin metadata，下游服务据此填 CUD 操作人列）
+                    set_current_user_id(request.state.user_id)
+                    set_current_user_is_admin('*' in (request.state.permissions or []))
+                    try:
+                        return await call_next(request)
+                    finally:
+                        set_current_user_id(None)
+                        set_current_user_is_admin(False)
+            # 无/无效 token → None 空态（user_id=0 归一化为 None，不充当真实
+            # 操作人；dev 身份 permissions=['*'] → admin，出站 gRPC 自动透传）
             request.state.user_id = 0
             request.state.username = 'dev_user'
             request.state.role_id = 1
             request.state.permissions = ['*']
-            # INT-141：user_id=0 归一化为 None（未认证），不充当真实操作人；
-            # dev 身份 permissions=['*'] → admin，出站 gRPC 自动透传
             set_current_user_id(None)
             set_current_user_is_admin(True)
             try:

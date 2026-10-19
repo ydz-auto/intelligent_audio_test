@@ -154,7 +154,7 @@ function handleCancel() {
   width: 100%;
   padding: 10px 14px;
   border: 1px solid var(--border-color, var(--color-slate-200));
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   box-sizing: border-box;
   transition: all 0.2s;
@@ -196,7 +196,7 @@ input[type="color"] {
   width: 60px;
   cursor: pointer;
   border: 1px solid var(--border-color, var(--color-slate-200));
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 
 .color-value {
@@ -222,7 +222,7 @@ input[type="color"] {
 
 .btn {
   padding: 10px 20px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   cursor: pointer;
   border: none;

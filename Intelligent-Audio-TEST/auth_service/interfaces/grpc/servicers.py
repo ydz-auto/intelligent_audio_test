@@ -368,6 +368,28 @@ class AuthServicer(auth_grpc.AuthServiceServicer):
             self._rollback()
             return self._error_response(e, 'UpdateUser')
 
+    def UpdateSelfProfile(self, request, context=None) -> auth_pb.AuthResponse:
+        """更新当前登录用户自我资料（INT-792：仅 email）。
+
+        服务端字段白名单：请求消息只含 email，无 username/status/password，
+        防网关白名单漏配导致经 admin UpdateUser 路径改非开放字段。
+        """
+        try:
+            from auth_service.application.commands.auth_commands import (
+                UpdateSelfProfileCommand,
+            )
+            cmd = UpdateSelfProfileCommand(
+                user_id=getattr(request, 'user_id', 0),
+                email=getattr(request, 'email', '') or None,
+                operator_id=getattr(request, 'operator_id', 0),
+            )
+            self.command_handler.handle_update_self_profile(cmd)
+            self._commit()
+            return _ok({}, '更新成功')
+        except Exception as e:
+            self._rollback()
+            return self._error_response(e, 'UpdateSelfProfile')
+
     def UpdateLastLogin(self, request, context=None) -> auth_pb.AuthResponse:
         """更新最后登录时间/IP"""
         try:
@@ -439,6 +461,29 @@ class AuthServicer(auth_grpc.AuthServiceServicer):
         except Exception as e:
             self._rollback()
             return self._error_response(e, 'SetUserRole')
+
+    def ChangePassword(self, request, context=None) -> auth_pb.AuthResponse:
+        """当前登录用户自助修改密码（INT-794 方案 A）。
+
+        校验原密码（bcrypt）→ 更新 password_hash → 落 AUTH_PASSWORD_CHANGED
+        审计。原密码错误以 AUTH_CREDENTIALS_INVALID 失败返回，供网关映射
+        401 + code:106（与登录链防枚举语义一致）。
+        """
+        try:
+            from auth_service.application.commands.auth_commands import (
+                ChangePasswordCommand,
+            )
+            cmd = ChangePasswordCommand(
+                user_id=getattr(request, 'user_id', 0),
+                current_password=getattr(request, 'current_password', ''),
+                new_password=getattr(request, 'new_password', ''),
+            )
+            self.command_handler.handle_change_password(cmd)
+            self._commit()
+            return _ok({}, '密码修改成功')
+        except Exception as e:
+            self._rollback()
+            return self._error_response(e, 'ChangePassword')
 
     def DeleteUser(self, request, context=None) -> auth_pb.AuthResponse:
         """删除用户（软删除）"""

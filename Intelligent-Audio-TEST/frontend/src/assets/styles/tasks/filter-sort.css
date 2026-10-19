@@ -29,7 +29,7 @@
     font-size: var(--font-size-sm);
     transition: all var(--transition-normal);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--border-radius-md);
 }
 
 .filter-sort-section .search-input:hover{
@@ -39,7 +39,7 @@
 }
 
 .filter-sort-section .search-input:focus{
-    background-color: white;
+    background-color: var(--background);
 }
 
 .filter-sort-section .search-input::placeholder{
@@ -60,9 +60,9 @@
 .filter-sort-section select.filter-select{
     padding: 10px 16px;
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--border-radius-md);
     font-size: 14px;
-    background-color: white;
+    background-color: var(--background);
     color: var(--foreground);
     cursor: pointer;
     transition: all 0.3s ease;
@@ -85,7 +85,7 @@
     outline: none;
     border-color: var(--primary);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 10%, transparent);
-    background-color: white;
+    background-color: var(--background);
 }
 
 /* 自定义日期范围样式优化 */
@@ -131,7 +131,7 @@
     padding: 8px 16px;
     background: var(--color-neutral-50);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--border-radius-md);
     cursor: pointer;
     transition: all 0.3s ease;
     font-size: 14px;
@@ -146,7 +146,7 @@
 
 .sort-item.active{
     background: linear-gradient(90deg, var(--primary), var(--color-orange-500));
-    color: white;
+    color: var(--color-white);
     border-color: var(--primary);
     box-shadow: 0 4px 12px color-mix(in srgb, var(--primary) 15%, transparent);
 }
@@ -157,9 +157,9 @@
 
 /* 筛选卡片样式优化 */
 .filter-card{
-    background: white;
+    background: var(--card);
     padding: 24px;
-    border-radius: 16px;
+    border-radius: var(--border-radius-xl);
     border: 1px solid var(--color-slate-200);
     box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 8%, transparent);
     margin-bottom: 24px;

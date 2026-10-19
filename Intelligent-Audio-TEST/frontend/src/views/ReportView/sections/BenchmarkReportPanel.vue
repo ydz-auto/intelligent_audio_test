@@ -340,11 +340,11 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 20px;
   padding: 24px;
-  background: var(--card-bg, #fff);
-  border: 1px solid var(--border, #e5e7eb);
-  border-radius: 12px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius-lg);
   font-size: 14px;
-  color: var(--text, #1f2937);
+  color: var(--color-gray-800);
 }
 
 .bmr-state {
@@ -355,27 +355,27 @@ onBeforeUnmount(() => {
   gap: 12px;
   padding: 48px 24px;
   text-align: center;
-  color: var(--muted-foreground, #777);
+  color: var(--muted-foreground);
 }
 
 .bmr-state i {
   font-size: 40px;
-  color: var(--muted-foreground, #777);
+  color: var(--muted-foreground);
 }
 
 .bmr-error {
-  color: var(--danger-color, #e53e3e);
+  color: var(--danger-color);
 }
 
 .bmr-error i {
-  color: var(--danger-color, #e53e3e);
+  color: var(--danger-color);
 }
 
 .bmr-spinner {
   width: 28px;
   height: 28px;
-  border: 3px solid var(--border, #e5e7eb);
-  border-top-color: var(--primary-color, #ff6a00);
+  border: 3px solid var(--border);
+  border-top-color: var(--primary-color);
   border-radius: 50%;
   animation: bmr-spin 0.8s linear infinite;
 }
@@ -386,7 +386,7 @@ onBeforeUnmount(() => {
 
 .bmr-fallback-desc {
   font-size: 12px;
-  color: var(--muted-foreground, #777);
+  color: var(--muted-foreground);
 }
 
 .bmr-header {
@@ -405,14 +405,14 @@ onBeforeUnmount(() => {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: var(--text, #1f2937);
+  color: var(--color-gray-800);
 }
 
 .bmr-badge {
   padding: 2px 10px;
-  border-radius: 999px;
-  background: rgba(255, 106, 0, 0.12);
-  color: var(--primary-color, #ff6a00);
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary-color);
   font-size: 12px;
   font-weight: 600;
 }
@@ -428,9 +428,9 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  border-radius: 6px;
-  background: var(--muted, #f5f5f5);
-  color: var(--text-secondary, #4b5563);
+  border-radius: var(--radius-6);
+  background: var(--muted);
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
@@ -446,19 +446,19 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 4px;
   padding: 16px 8px;
-  border-radius: 10px;
-  background: var(--muted, #f5f5f5);
+  border-radius: var(--radius-10);
+  background: var(--muted);
 }
 
 .bmr-count-value {
   font-size: 22px;
   font-weight: 700;
-  color: var(--primary-color, #ff6a00);
+  color: var(--primary-color);
 }
 
 .bmr-count-label {
   font-size: 12px;
-  color: var(--muted-foreground, #777);
+  color: var(--muted-foreground);
 }
 
 .bmr-ranking {
@@ -470,7 +470,7 @@ onBeforeUnmount(() => {
 .bmr-section-title {
   font-size: 15px;
   font-weight: 600;
-  color: var(--text, #1f2937);
+  color: var(--color-gray-800);
 }
 
 .bmr-group-tabs {
@@ -481,24 +481,24 @@ onBeforeUnmount(() => {
 
 .bmr-group-tab {
   padding: 6px 14px;
-  border: 1px solid var(--border, #e5e7eb);
-  border-radius: 999px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
   background: transparent;
   font-size: 13px;
-  color: var(--text-secondary, #4b5563);
+  color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .bmr-group-tab:hover {
-  border-color: var(--primary-color, #ff6a00);
-  color: var(--primary-color, #ff6a00);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
 }
 
 .bmr-group-tab.active {
-  background: var(--primary-color, #ff6a00);
-  border-color: var(--primary-color, #ff6a00);
-  color: #fff;
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: var(--color-white);
 }
 
 .bmr-group-body {
@@ -514,8 +514,8 @@ onBeforeUnmount(() => {
 }
 
 .bmr-leaderboard {
-  border: 1px solid var(--border, #e5e7eb);
-  border-radius: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-10);
   overflow: hidden;
 }
 
@@ -529,13 +529,13 @@ onBeforeUnmount(() => {
 .bmr-table td {
   padding: 8px 12px;
   text-align: left;
-  border-bottom: 1px solid var(--border, #e5e7eb);
+  border-bottom: 1px solid var(--border);
 }
 
 .bmr-table th {
-  background: var(--muted, #f5f5f5);
+  background: var(--muted);
   font-weight: 600;
-  color: var(--text-secondary, #4b5563);
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
@@ -545,7 +545,7 @@ onBeforeUnmount(() => {
 
 .bmr-rank {
   font-weight: 700;
-  color: var(--primary-color, #ff6a00);
+  color: var(--primary-color);
 }
 
 .bmr-subject {
@@ -557,25 +557,25 @@ onBeforeUnmount(() => {
 }
 
 .bmr-unit {
-  color: var(--muted-foreground, #777);
+  color: var(--muted-foreground);
   font-size: 12px;
 }
 
 .bmr-source-chip {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   font-size: 12px;
 }
 
 .bmr-source-platform_test {
-  background: rgba(255, 106, 0, 0.12);
-  color: var(--chart-1, #ff6a00);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--chart-1);
 }
 
 .bmr-source-external_import {
-  background: rgba(25, 118, 210, 0.12);
-  color: var(--chart-2, #1976d2);
+  background: color-mix(in srgb, var(--secondary) 12%, transparent);
+  color: var(--chart-2);
 }
 
 .bmr-chart-block {
@@ -587,7 +587,7 @@ onBeforeUnmount(() => {
 .bmr-chart-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-secondary, #4b5563);
+  color: var(--text-secondary);
 }
 
 .bmr-chart-canvas-wrap {
@@ -603,7 +603,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   font-size: 13px;
-  color: var(--muted-foreground, #777);
-  background: var(--muted, #f5f5f5);
+  color: var(--muted-foreground);
+  background: var(--muted);
 }
 </style>

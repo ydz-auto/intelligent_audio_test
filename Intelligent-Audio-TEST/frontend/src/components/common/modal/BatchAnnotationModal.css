@@ -10,7 +10,7 @@
 /* 紧凑模式 drop-zone */
 .drop-zone {
   border: 2px dashed var(--color-slate-300);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   padding: 32px 20px;
   text-align: center;
   transition: all 0.2s ease;
@@ -70,7 +70,7 @@
   padding: 6px 16px;
   background: var(--color-blue-500);
   color: var(--color-white);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   font-size: 13px;
   transition: background 0.2s ease;
@@ -102,14 +102,14 @@
   max-width: 320px;
   height: 8px;
   background: var(--color-slate-200);
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   overflow: hidden;
 }
 
 .progress-bar {
   height: 100%;
   background: var(--color-blue-500);
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   transition: width 0.2s ease;
 }
 
@@ -118,7 +118,7 @@
   background: var(--color-red-100);
   color: var(--color-red-800);
   border: 1px solid var(--color-red-300);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 12px;
   cursor: pointer;
 }
@@ -244,7 +244,7 @@
   max-height: 320px;
   overflow-y: auto;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   padding: 6px;
 }
 
@@ -289,7 +289,7 @@
 .meta-tag {
   font-size: 11px;
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
 }
 
 .meta-tag.has-match {
@@ -311,7 +311,7 @@
 .ann-tag {
   font-size: 11px;
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-tag);
   background: var(--color-indigo-100);
   color: var(--color-indigo-800);
 }
@@ -329,7 +329,7 @@
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   margin-bottom: 12px;
   font-size: 13px;
 }
@@ -373,7 +373,7 @@
   background: var(--color-amber-100);
   color: var(--color-amber-800);
   border: 1px solid var(--color-amber-300);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   margin-bottom: 12px;
   font-size: 13px;
 }
@@ -388,7 +388,7 @@
 .btn-primary,
 .btn-secondary {
   padding: 8px 20px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -425,7 +425,7 @@
   height: 14px;
   border: 2px solid color-mix(in srgb, var(--color-white) 30%, transparent);
   border-top-color: var(--color-white);
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   animation: spin 0.6s linear infinite;
   margin-right: 6px;
 }

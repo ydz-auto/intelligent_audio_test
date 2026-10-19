@@ -98,85 +98,91 @@ class TaskQueryService:
         if not result.get('success'):
             return error_response(result.get('message', '查询失败'))
 
-        raw = result.get('data') or {}
-        items = []
-        for item in raw.get('items', []):
-            report_info = item.get('reports', {})
-            devices = [
-                TaskDeviceBrief(**d) for d in item.get('devices', [])
-            ]
-            apis = [
-                TaskApiBrief(**a) for a in item.get('apis', [])
-            ]
-            source_tasks = [
-                TaskSourceBrief(**st) for st in item.get('source_tasks', [])
-            ]
-            labs = [
-                TaskLabBrief(**l) for l in item.get('labs', [])
-            ]
-            items.append(
-                TaskListItem(
-                    id=item.get('id'),
-                    name=item.get('name'),
-                    description=item.get('description'),
-                    status=item.get('status'),
-                    execution_status=item.get('execution_status'),
-                    evaluation_status=item.get('evaluation_status'),
-                    device_types=item.get('device_types', []),
-                    config=item.get('config') if item.get('config') else {},
-                    algorithm_type=item.get('algorithm_type'),
-                    algorithm_params=item.get('algorithm_params') if item.get('algorithm_params') else None,
-                    started_at=item.get('started_at'),
-                    completed_at=item.get('completed_at'),
-                    total_cases=item.get('total_cases'),
-                    case_count=item.get('total_cases'),
-                    device_count=item.get('device_count', len(devices)),
-                    completed_cases=item.get('completed_cases'),
-                    failed_cases=item.get('failed_cases'),
-                    tags=item.get('tags', []),
-                    created_at=item.get('created_at'),
-                    updated_at=item.get('updated_at'),
-                    # INT-141：收藏标记 / 回收站字段（read model 已计算，此处透传）
-                    is_favorite=item.get('is_favorite'),
-                    # INT-339：挑选合并容器标记（read model 批量判定，此处透传）
-                    is_cherry_pick=item.get('is_cherry_pick'),
-                    # INT-577：合并方式 / 来源任务·结果计数（read model 计算，此处透传）
-                    merge_type=item.get('merge_type'),
-                    source_task_count=item.get('source_task_count'),
-                    source_result_count=item.get('source_result_count'),
-                    deleted=item.get('deleted'),
-                    deleted_at=item.get('deleted_at'),
-                    deleted_by_user_id=item.get('deleted_by_user_id'),
-                    reports=TaskReportsData(
-                        count=report_info.get('count', 0),
-                        reports=[
-                            TaskReportItem(
-                                id=r.get('id'),
-                                name=r.get('name'),
-                                status=r.get('status'),
-                                type=r.get('type'),
-                                created_at=r.get('created_at'),
-                            )
-                            for r in report_info.get('reports', [])
-                        ],
-                    ) if report_info else TaskReportsData(count=0, reports=[]),
-                    devices=devices,
-                    apis=apis,
-                    source_tasks=source_tasks,
-                    labs=labs,
+        try:
+            raw = result.get('data') or {}
+            items = []
+            for item in raw.get('items', []):
+                report_info = item.get('reports', {})
+                devices = [
+                    TaskDeviceBrief(**d) for d in item.get('devices', [])
+                ]
+                apis = [
+                    TaskApiBrief(**a) for a in item.get('apis', [])
+                ]
+                source_tasks = [
+                    TaskSourceBrief(**st) for st in item.get('source_tasks', [])
+                ]
+                labs = [
+                    TaskLabBrief(**l) for l in item.get('labs', [])
+                ]
+                items.append(
+                    TaskListItem(
+                        id=item.get('id'),
+                        name=item.get('name'),
+                        description=item.get('description'),
+                        status=item.get('status'),
+                        execution_status=item.get('execution_status'),
+                        evaluation_status=item.get('evaluation_status'),
+                        device_types=item.get('device_types', []),
+                        config=item.get('config') if item.get('config') else {},
+                        algorithm_type=item.get('algorithm_type'),
+                        algorithm_params=item.get('algorithm_params') if item.get('algorithm_params') else None,
+                        started_at=item.get('started_at'),
+                        completed_at=item.get('completed_at'),
+                        total_cases=item.get('total_cases'),
+                        case_count=item.get('total_cases'),
+                        device_count=item.get('device_count', len(devices)),
+                        completed_cases=item.get('completed_cases'),
+                        failed_cases=item.get('failed_cases'),
+                        tags=item.get('tags', []),
+                        created_at=item.get('created_at'),
+                        updated_at=item.get('updated_at'),
+                        # INT-141：收藏标记 / 回收站字段（read model 已计算，此处透传）
+                        is_favorite=item.get('is_favorite'),
+                        # INT-339：挑选合并容器标记（read model 批量判定，此处透传）
+                        is_cherry_pick=item.get('is_cherry_pick'),
+                        # INT-577：合并方式 / 来源任务·结果计数（read model 计算，此处透传）
+                        merge_type=item.get('merge_type'),
+                        source_task_count=item.get('source_task_count'),
+                        source_result_count=item.get('source_result_count'),
+                        deleted=item.get('deleted'),
+                        deleted_at=item.get('deleted_at'),
+                        deleted_by_user_id=item.get('deleted_by_user_id'),
+                        reports=TaskReportsData(
+                            count=report_info.get('count', 0),
+                            reports=[
+                                TaskReportItem(
+                                    id=r.get('id'),
+                                    name=r.get('name'),
+                                    status=r.get('status'),
+                                    type=r.get('type'),
+                                    created_at=r.get('created_at'),
+                                )
+                                for r in report_info.get('reports', [])
+                            ],
+                        ) if report_info else TaskReportsData(count=0, reports=[]),
+                        devices=devices,
+                        apis=apis,
+                        source_tasks=source_tasks,
+                        labs=labs,
+                    )
+                )
+
+            return success_response(
+                TaskListData(
+                    items=items,
+                    total=raw.get('total', 0),
+                    page=raw.get('page', page),
+                    per_page=raw.get('per_page', per_page),
+                    pages=raw.get('pages', 0),
+                    stats=raw.get('stats'),
                 )
             )
-
-        return success_response(
-            TaskListData(
-                items=items,
-                total=raw.get('total', 0),
-                page=raw.get('page', page),
-                per_page=raw.get('per_page', per_page),
-                pages=raw.get('pages', 0),
-                stats=raw.get('stats'),
-            )
-        )
+        except Exception as e:
+            # INT-755：历史数据/上游缺省字段触发嵌套模型校验失败时，列表裸 500 且
+            # 无日志无法定位。此处捕获并打全栈，返回可读 500（定位具体字段）。
+            logger.exception("任务列表响应构造失败: %s", e)
+            return error_response(f"任务列表查询失败: {e}", code=500, http_code=500)
 
     # 获取单个任务详情
     @staticmethod
@@ -189,69 +195,79 @@ class TaskQueryService:
                 return error_response("未找到任务", code=ErrorCode.NOT_FOUND, http_code=404)
             return error_response(result.get('message', '查询失败'))
 
-        item = result.get('data') or {}
-        cases = [
-            TaskCaseBrief(
-                case_id=c.get('case_id'),
-                name=c.get('name'),
-                status=c.get('status'),
-                execution_status=c.get('execution_status'),
-                evaluation_status=c.get('evaluation_status'),
-                started_at=c.get('started_at'),
-                completed_at=c.get('completed_at'),
-                duration=c.get('duration'),
-                error_message=c.get('error_message'),
-                group_name=c.get('group_name'),
-                tags=c.get('tags', []),
-                evaluation_dimensions=c.get('evaluation_dimensions', []),
-                # INT-340：该用例下是否存在人工复核结果（read model 已计算，透传）
-                reviewed=c.get('reviewed'),
-            )
-            for c in item.get('cases', [])
-        ]
-        devices = [
-            TaskDeviceBrief(**d) for d in item.get('devices', [])
-        ]
-        apis = [
-            TaskApiBrief(**a) for a in item.get('apis', [])
-        ]
-        labs = [
-            TaskLabBrief(**l) for l in item.get('labs', [])
-        ]
+        try:
+            item = result.get('data') or {}
+            cases = [
+                TaskCaseBrief(
+                    case_id=c.get('case_id'),
+                    name=c.get('name'),
+                    status=c.get('status'),
+                    execution_status=c.get('execution_status'),
+                    evaluation_status=c.get('evaluation_status'),
+                    started_at=c.get('started_at'),
+                    completed_at=c.get('completed_at'),
+                    duration=c.get('duration'),
+                    error_message=c.get('error_message'),
+                    group_name=c.get('group_name'),
+                    tags=c.get('tags', []),
+                    evaluation_dimensions=c.get('evaluation_dimensions', []),
+                    # INT-340：该用例下是否存在人工复核结果（read model 已计算，透传）
+                    # INT-734：上游缺省/null 容错为 False（未复核）
+                    # INT-755：历史任务上游可能缺省该键 → None，归一 False 保持 bool 契约
+                    reviewed=bool(c.get('reviewed')),
+                )
+                for c in item.get('cases', [])
+            ]
+            devices = [
+                TaskDeviceBrief(**d) for d in item.get('devices', [])
+            ]
+            apis = [
+                TaskApiBrief(**a) for a in item.get('apis', [])
+            ]
+            labs = [
+                TaskLabBrief(**l) for l in item.get('labs', [])
+            ]
 
-        return success_response(
-            TaskDetailData(
-                id=item.get('id'),
-                name=item.get('name'),
-                description=item.get('description'),
-                status=item.get('status'),
-                execution_status=item.get('execution_status'),
-                evaluation_status=item.get('evaluation_status'),
-                device_types=item.get('device_types', []),
-                config=item.get('config') if item.get('config') else {},
-                algorithm_type=item.get('algorithm_type'),
-                algorithm_params=item.get('algorithm_params') if item.get('algorithm_params') else None,
-                started_at=item.get('started_at'),
-                completed_at=item.get('completed_at'),
-                expected_total_time=item.get('expected_total_time'),
-                expected_complete_time=item.get('expected_complete_time'),
-                used_time=item.get('used_time'),
-                total_cases=item.get('total_cases'),
-                case_count=item.get('total_cases'),
-                device_count=len(devices),
-                completed_cases=item.get('completed_cases'),
-                failed_cases=item.get('failed_cases'),
-                # INT-340：任务下已复核结果条数（read model 已计算，透传——覆盖提醒/报告标记）
-                review_count=item.get('review_count'),
-                tags=item.get('tags', []),
-                cases=cases,
-                devices=devices,
-                apis=apis,
-                labs=labs,
-                created_at=item.get('created_at'),
-                updated_at=item.get('updated_at'),
+            return success_response(
+                TaskDetailData(
+                    id=item.get('id'),
+                    name=item.get('name'),
+                    description=item.get('description'),
+                    status=item.get('status'),
+                    execution_status=item.get('execution_status'),
+                    evaluation_status=item.get('evaluation_status'),
+                    device_types=item.get('device_types', []),
+                    config=item.get('config') if item.get('config') else {},
+                    algorithm_type=item.get('algorithm_type'),
+                    algorithm_params=item.get('algorithm_params') if item.get('algorithm_params') else None,
+                    started_at=item.get('started_at'),
+                    completed_at=item.get('completed_at'),
+                    expected_total_time=item.get('expected_total_time'),
+                    expected_complete_time=item.get('expected_complete_time'),
+                    used_time=item.get('used_time'),
+                    total_cases=item.get('total_cases'),
+                    case_count=item.get('total_cases'),
+                    device_count=len(devices),
+                    completed_cases=item.get('completed_cases'),
+                    failed_cases=item.get('failed_cases'),
+                    # INT-340：任务下已复核结果条数（read model 已计算，透传——覆盖提醒/报告标记）
+                    # INT-734：上游缺省/null 容错为 0（未复核）
+                    # INT-755：历史任务上游可能缺省该键 → None，归一 0 保持 int 契约
+                    review_count=item.get('review_count') or 0,
+                    tags=item.get('tags', []),
+                    cases=cases,
+                    devices=devices,
+                    apis=apis,
+                    labs=labs,
+                    created_at=item.get('created_at'),
+                    updated_at=item.get('updated_at'),
+                )
             )
-        )
+        except Exception as e:
+            # INT-755：历史数据/上游缺省字段触发校验失败时详情裸 500，无日志无法
+            # 定位。此处捕获并打全栈，返回可读 500（定位具体字段/任务）。
+            logger.exception("任务详情响应构造失败 task_id=%s: %s", task_id, e)
+            return error_response(f"任务详情查询失败: {e}", code=500, http_code=500)
 
     # 获取任务关联实验室（INT-540：GET /api/tasks/{id}/labs，多实验室 N:M）
     @staticmethod

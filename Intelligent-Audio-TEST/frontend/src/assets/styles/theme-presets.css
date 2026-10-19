@@ -64,9 +64,61 @@
   /* 收藏星标色（INT-215：收敛三视图魔法色 #f5a623，取 amber 标度） */
   --favorite-star: var(--color-amber-500);
 
+  /* 灵犀Agent 魔法按钮炫彩渐变（照 React ai-discount-core 逐色移植，INT-735 负责人反馈「AI魔法炫彩按钮抄过来」；
+     单品牌单态色，不入深色预设） */
+  --ai-magic-blue: #4f7cff;
+  --ai-magic-indigo: #7657fa;
+  --ai-magic-violet: #9145ee;
+  --ai-magic-purple: #ac46f3;
+  --ai-magic-pink: #cd4bdb;
+  --ai-magic-fuchsia: #cf55da;
+  --ai-magic-text-shadow: 0 1px 2px rgb(0 0 0 / 35%);
+
   /* ── 提级入预设层的旧别名正源（原 variables.css 定义，值保真） ── */
   --text-disabled: #cccccc;
   --info-light: rgba(25, 118, 210, 0.1);
+
+  /* ── CSS-1 域散色收编（INT-768 域样式收敛 · 只搬值不改值；深浅同值不随主题换色，随主题换肤留待 CSS-4） ── */
+  /* 弹窗表面灰（INT-768 Benchmark 报告发布弹窗原硬编码，值保真） */
+  --modal-surface-top: #f8f9fa;   /* 弹窗头部渐变起色 / 底部栏背景 */
+  --modal-border-color: #e9ecef;  /* 弹窗头/尾分隔线、关闭按钮悬浮底 */
+  --modal-title-color: #343a40;   /* 弹窗标题 / 关闭按钮悬浮 */
+  --modal-text: #1f2937;          /* 弹窗标签 / 输入文字 */
+  --modal-muted: #6c757d;         /* 关闭按钮图标 */
+  --btn-primary-hover-color: #ff8c40;  /* 实底主按钮悬浮 */
+  --btn-primary-disabled-bg: #d9d9d9;  /* 实底主按钮禁用 */
+  --btn-secondary-hover-bg: #e0e0e0;   /* 实底次按钮悬浮 */
+  --danger-required: #e53e3e;    /* 必填星标 */
+
+  /* 头像固定色板（值保真；身份色深浅同值，不随主题换色） */
+  --avatar-1: #ff6a00;
+  --avatar-2: #1976d2;
+  --avatar-3: #52c41a;
+  --avatar-4: #722ed1;
+  --avatar-5: #d48806;
+  --avatar-6: #13c2c2;
+  --avatar-7: #eb2f96;
+  --avatar-8: #7c4dff;
+  --avatar-9: #00a2ae;
+  --avatar-10: #d81b60;
+  --avatar-11: #5c6bc0;
+  --avatar-12: #e65100;
+
+  /* 首页功能卡渐变深色端点（INT-768 home.css 原硬编码，值保真） */
+  --feature-blue: #096dd9;
+  --feature-purple: #531dab;
+  --feature-red: #cf1322;
+
+  /* ── CSS-3 域散值收编（INT-771，值保真，替换后视觉零变化） ── */
+  --indigo-light: #f0f4ff; /* 功能特性开关 hover 浅靛底（原散值 #f0f4ff） */
+  --gray-faint: #aaaaaa; /* 次要计数文字（原散值 #aaa） */
+  --volcano: #ff7a45; /* 取消置顶 hover 火山橙（原散值 #ff7a45） */
+  --terminal-green: #00ff00; /* 日志终端文字绿（原散值 #00ff00） */
+  --timeline-green-soft: #b7eb8f; /* 时间线参考轨虚线绿（原散值 #b7eb8f） */
+  --timeline-green: #95de64; /* 时间线参考段边框绿（原散值 #95de64） */
+  --timeline-blue: #69c0ff; /* 时间线结果段边框蓝（原散值 #69c0ff） */
+  --gray-deep: #262626; /* 卡片内深灰标题（原散值 #262626） */
+  --gray-lightest: #f8f9fa; /* 渐变浅灰端点（原散值 #F8F9FA） */
 }
 
 /* 深色预设（原 tokens.css .dark 结构预留 → 本卡启用） */
@@ -108,4 +160,15 @@
   --chart-3: #6fd45c;
   --chart-4: #ff6b70;
   --chart-5: #ffc069;
+
+  /* ── CSS-1 域散色 · 深色随主题换肤（对齐上方 .dark 预设值） ── */
+  --modal-surface-top: #3a3a3a;
+  --modal-border-color: rgba(255, 255, 255, 0.12);
+  --modal-title-color: #f5f5f5;
+  --modal-text: #f5f5f5;
+  --modal-muted: #a3a3a3;
+  --btn-primary-hover-color: #ffa05c;
+  --btn-primary-disabled-bg: #3a3a3a;
+  --btn-secondary-hover-bg: #444444;
+  --danger-required: #ff6b70;
 }

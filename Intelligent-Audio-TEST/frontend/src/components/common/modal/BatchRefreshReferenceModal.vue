@@ -115,7 +115,7 @@ function handleCancel() {
 
 .btn {
   padding: 8px 20px;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   cursor: pointer;
   border: none;

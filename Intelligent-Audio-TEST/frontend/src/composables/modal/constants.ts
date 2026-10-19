@@ -58,10 +58,16 @@ export const MODAL_TYPES = {
   BATCH_REFRESH_REFERENCE: 'batchRefreshReference',
   TAG_CATEGORY: 'tagCategory',
   TAG_EDIT: 'tagEdit',
+  // INT-739：标签管理页批量改分类（PUT /tags/batch-category）
+  BATCH_TAG_CATEGORY: 'batchTagCategory',
   /** INT-340：测试结果人工复核（单条/批量改判 + 备注必填 + 复核历史展示） */
   RESULT_REVIEW: 'resultReview',
   /** INT-745：公开页「需要登录」引导（受限项 Dialog，5 秒倒计时跳登录） */
-  LOGIN_REQUIRED: 'loginRequired'
+  LOGIN_REQUIRED: 'loginRequired',
+  /** INT-744：个人中心·修改密码对话框壳（自助改密 F2 待 FEAT，端点未落前提交提示待后端立项） */
+  CHANGE_PASSWORD: 'changePassword',
+  /** INT-744：个人中心·编辑资料对话框壳（自我资料更新 F3 待 FEAT，端点未落前提交提示待后端立项） */
+  EDIT_PROFILE: 'editProfile'
 } as const
 
 export type ModalTypeKey = keyof typeof MODAL_TYPES

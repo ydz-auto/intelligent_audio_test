@@ -59,7 +59,7 @@
 <style scoped>
 
 .algorithm-card{
-  background: white;
+  background: var(--card);
   border-radius: 12px;
   border: 2px solid transparent;
   outline: 1px solid var(--color-slate-200);

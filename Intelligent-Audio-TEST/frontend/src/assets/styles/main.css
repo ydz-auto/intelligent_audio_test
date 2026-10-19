@@ -101,7 +101,7 @@
     align-items: center ;
     background: var(--background-primary) ;
     border: 1px solid var(--border-color) ;
-    border-radius: var(--border-radius-md) ;
+    border-radius: var(--radius-control);
     padding: 0 ;
     transition: all var(--transition-normal) ;
     box-shadow: var(--shadow-sm) ;
@@ -133,7 +133,7 @@
     width: 100% ;
     height: 40px ;
     border: none ;
-    border-radius: var(--border-radius-md) ;
+    border-radius: var(--radius-control);
     font-size: var(--font-size-md) ;
     color: var(--text-primary) ;
     background-color: transparent ;

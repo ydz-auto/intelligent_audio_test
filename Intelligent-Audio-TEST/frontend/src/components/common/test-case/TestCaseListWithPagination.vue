@@ -181,12 +181,12 @@ defineExpose({
 
 .test-case-list-with-pagination::-webkit-scrollbar-track {
   background: var(--background-tertiary);
-  border-radius: 3px;
+  border-radius: var(--radius-tag);
 }
 
 .test-case-list-with-pagination::-webkit-scrollbar-thumb {
   background: var(--border-color);
-  border-radius: 3px;
+  border-radius: var(--radius-tag);
 }
 
 .test-case-list-with-pagination::-webkit-scrollbar-thumb:hover {
@@ -202,7 +202,7 @@ defineExpose({
   padding: 64px 24px;
   text-align: center;
   background-color: var(--background-secondary);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   border: 1px dashed var(--border-color);
   margin-top: 16px;
   margin-bottom: 16px;
@@ -234,7 +234,7 @@ defineExpose({
   justify-content: center;
   padding: 64px 24px;
   background-color: var(--background-secondary);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   margin-top: 16px;
   margin-bottom: 16px;
 }

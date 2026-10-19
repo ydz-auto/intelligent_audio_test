@@ -123,7 +123,7 @@ const handlePreview = () => {
 
 .modal-container {
   background-color: white;
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   box-shadow: 0 4px 20px color-mix(in srgb, var(--color-black) 15%, transparent);
   width: 90%;
   max-width: 600px;
@@ -164,7 +164,7 @@ const handlePreview = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   transition: all 0.2s;
 }
 
@@ -182,7 +182,7 @@ const handlePreview = () => {
   margin-bottom: 24px;
   padding: 20px;
   background-color: var(--muted);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--muted);
 }
 
@@ -222,7 +222,7 @@ const handlePreview = () => {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   transition: all 0.2s;
   box-sizing: border-box;
@@ -242,7 +242,7 @@ const handlePreview = () => {
 .scan-status {
   margin-bottom: 20px;
   padding: 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   display: flex;
   align-items: center;
@@ -266,7 +266,7 @@ const handlePreview = () => {
   padding: 16px;
   background-color: var(--color-white);
   border: 1px solid var(--muted);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
 }
 
 .device-group h5 {
@@ -290,7 +290,7 @@ const handlePreview = () => {
   padding: 8px 12px;
   background-color: var(--muted);
   border: 1px solid var(--muted);
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -343,7 +343,7 @@ const handlePreview = () => {
   padding: 12px;
   background-color: var(--color-secondary-light);
   border: 1px solid var(--secondary-light);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   color: var(--secondary);
   display: flex;
@@ -366,7 +366,7 @@ const handlePreview = () => {
 .btn {
   padding: 10px 24px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;

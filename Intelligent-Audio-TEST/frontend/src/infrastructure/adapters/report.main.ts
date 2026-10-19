@@ -73,6 +73,7 @@ export function toReportSummary(dto: ReportSummaryDto): ReportSummary {
     caseTypeStats: arr(dto.case_type_stats).map(toCaseTypeStatRow),
     overallSuccessRate: dto.overall_success_rate !== undefined ? n(dto.overall_success_rate) : undefined,
     stability: dto.stability !== undefined ? n(dto.stability) : undefined,
+    reviewCount: dto.review_count !== undefined ? n(dto.review_count) : undefined,
     dimensionValues: dto.dimension_values,
     devices: (dto.devices ?? []).map(d => (typeof d === 'string' ? d : toDeviceInfo(d))),
     apis: (dto.apis ?? []).map(a => (typeof a === 'string' ? a : toApiInfo(a))),
@@ -141,6 +142,7 @@ export function toReportListItem(dto: ReportListItemDto): ReportListItemDomain {
     failedCases: n(summary?.failed_cases),
     passRate: n(summary?.pass_rate),
     taskCount: summary?.task_count ?? undefined,
+    reviewCount: summary?.review_count !== undefined ? n(summary.review_count) : undefined,
   }
   return {
     id: dto.id,

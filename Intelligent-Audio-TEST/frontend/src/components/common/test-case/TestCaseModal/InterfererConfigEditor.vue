@@ -289,7 +289,7 @@ function onInterfererDeviceChange(index: number, deviceId: string) {
 <style scoped>
 .interferer-editor {
   border: 1px solid var(--border-color, var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   overflow: hidden;
 }
 
@@ -357,7 +357,7 @@ function onInterfererDeviceChange(index: number, deviceId: string) {
   padding: 3px 10px;
   font-size: 11px;
   border: 1px solid var(--destructive-light);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--danger-color, var(--destructive));
   cursor: pointer;
@@ -421,7 +421,7 @@ function onInterfererDeviceChange(index: number, deviceId: string) {
   gap: 8px;
   padding: 8px 12px;
   border: 1px solid var(--color-indigo-100);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--muted);
 }
 .intf-audio-card-info {
@@ -463,7 +463,7 @@ function onInterfererDeviceChange(index: number, deviceId: string) {
 .intf-audio-tag {
   font-size: 10px;
   padding: 1px 6px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--color-indigo-100);
   color: var(--color-indigo-600);
 }
@@ -480,7 +480,7 @@ function onInterfererDeviceChange(index: number, deviceId: string) {
   gap: 6px;
   padding: 16px;
   border: 1px dashed var(--color-gray-300);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   color: var(--color-gray-400);
   font-size: 13px;

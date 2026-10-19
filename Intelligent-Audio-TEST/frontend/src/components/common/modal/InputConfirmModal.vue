@@ -121,7 +121,7 @@ onMounted(() => {
   width: 100%;
   padding: 8px 12px;
   border: 1px solid var(--color-gray-300);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   box-sizing: border-box;
 }
@@ -150,7 +150,7 @@ onMounted(() => {
 .btn {
   padding: 8px 20px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   cursor: pointer;
 }

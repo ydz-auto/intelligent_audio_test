@@ -448,7 +448,7 @@ const handleAnnotationSuccess = (_result: { updatedCount: number; failedCount: n
   z-index: 9999;
   background: var(--background);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-control, 8px);
   box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 15%, transparent);
   min-width: 380px;
   max-width: 480px;

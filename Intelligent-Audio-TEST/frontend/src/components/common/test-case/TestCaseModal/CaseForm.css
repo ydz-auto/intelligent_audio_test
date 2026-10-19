@@ -6,7 +6,7 @@
   margin-bottom: 24px;
   padding: 20px;
   background: var(--background-secondary);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border-color);
 }
 
@@ -88,7 +88,7 @@
   font-weight: 500;
   background: var(--secondary-light);
   color: var(--secondary-color);
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-pill);
   border: 1px solid transparent;
   max-width: 200px;
 }
@@ -124,8 +124,8 @@
 }
 
 .existing-tags-section {
-  background: white;
-  border-radius: var(--border-radius-md);
+  background: var(--color-white);
+  border-radius: var(--radius-control);
   padding: 12px;
   border: 1px solid var(--border-color);
 }
@@ -150,7 +150,7 @@
   gap: 6px;
   background: var(--background-secondary);
   border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-control);
   padding: 4px 8px;
   flex: 1;
   max-width: 200px;
@@ -183,7 +183,7 @@
 .tag-page-btn {
   background: transparent;
   border: 1px solid var(--border-color);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   padding: 2px 6px;
   cursor: pointer;
   color: var(--text-secondary);
@@ -220,19 +220,19 @@
 
 .tag-item.selectable:hover {
   background: var(--secondary-color);
-  color: white;
+  color: var(--color-white);
   transform: translateY(-1px);
 }
 
 .tag-item.selectable.already-added {
   background: var(--secondary-color);
-  color: white;
+  color: var(--color-white);
   cursor: default;
 }
 
 /* ===== test-type-switcher ===== */
 .test-type-section {
-  padding: 14px 20px !important;
+  padding: 14px 20px;
 }
 
 .test-type-switcher-row {
@@ -250,7 +250,7 @@
 .test-type-switcher {
   display: flex;
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   overflow: hidden;
 }
 
@@ -274,7 +274,7 @@
 
 .test-type-btn.active {
   background: var(--primary-color);
-  color: white;
+  color: var(--color-white);
 }
 
 .test-type-btn:disabled {
@@ -288,7 +288,7 @@
 
 /* ===== round-editor-section ===== */
 .round-editor-section {
-  padding: 0 !important;
-  background: transparent !important;
-  border: none !important;
+  padding: 0;
+  background: transparent;
+  border: none;
 }

@@ -4,7 +4,7 @@ P0-3 DDD 改造：所有 Log 读/聚合统计查询通过 gRPC 调用 task_servi
 不再直连 task_service DB。
 """
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 from fastapi.responses import FileResponse
@@ -25,6 +25,21 @@ def _parse_query_params(model_cls):
     """从 request.args 提取查询参数并通过 APIModel 校验"""
     params = {k: v[0] if isinstance(v, list) else v for k, v in request.args.to_dict().items()}
     return model_cls.model_validate(params)
+
+
+def _to_iso_utc(value):
+    """datetime → ISO-8601 UTC 字符串（'Z' 后缀）；非 datetime / None 原样返回。
+
+    INT-786：归档清单 archivedAt 对齐前端 LogArchiveItem（ISO 字符串）。
+    本地模拟器可能返回 naive datetime（无 tzinfo），统一按 UTC 处理。
+    """
+    if value is None or isinstance(value, str):
+        return value
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    else:
+        value = value.astimezone(timezone.utc)
+    return value.isoformat().replace('+00:00', 'Z')
 
 
 def _to_log_item(log: dict) -> LogItem:
@@ -57,11 +72,33 @@ class LogQueryService:
     承载 LogController 中所有只读查询方法，保持原有逻辑不变。
     """
 
+    @staticmethod
+    def _authorize_log_user(user_id):
+        """INT-806 鉴权绑定：非空 user_id 与当前认证用户不一致 → 403 响应。
+
+        current_operator_id() 返回 int，AUTH_MODE=off 无 token 时为 0（非真实
+        用户）→ 一律放行，仅按「operator_id != 0 且 user_id != operator_id」
+        判定；返回 None 表示通过。
+        """
+        if not user_id:
+            return None
+        from api_gateway.application.services.auth.management_common import current_operator_id
+        from api_gateway.utils.error_codes import ErrorCode
+        operator_id = current_operator_id()
+        if operator_id != 0 and user_id != operator_id:
+            return error_response('无权限查看他人日志',
+                                  code=ErrorCode.FORBIDDEN, http_code=403)
+        return None
+
     # 获取日志列表 (支持分页和高级过滤)
     @staticmethod
     def get_logs():
         try:
             query = _parse_query_params(LogListQuery)
+
+            auth_err = LogQueryService._authorize_log_user(query.user_id)
+            if auth_err:
+                return auth_err
 
             # INT-81：带任务条件的查询走「业务日志文件 + DB 历史行」合并视图。
             # 业务日志已去库化落文件（logs/business/{task}/...），历史 logs 表
@@ -91,6 +128,7 @@ class LogQueryService:
                 content_include=query.content_include,
                 content_exclude=query.content_exclude,
                 algorithm_type=query.algorithm_type,
+                user_id=query.user_id,
             )
             logs = resp.get('items') or []
             total = resp.get('total', 0)
@@ -140,23 +178,28 @@ class LogQueryService:
         from shared.logging import BusinessLogReader
 
         reader = BusinessLogReader()
-        file_entries = reader.read_entries(
-            task_id=query.task_id,
-            device_id=query.device_id,
-            api_id=query.api_id,
-            evaluation_id=query.evaluation_id,
-            round_value=query.round,
-            level=query.level,
-            category=query.category if query.category and query.category != 'all' else None,
-            module=module_filter,
-            keyword=query.keyword,
-            content_include=query.content_include,
-            content_exclude=query.content_exclude,
-            algorithm_type=query.algorithm_type,
-            test_case_id=query.test_case_id,
-            start_time=query.start_time,
-            end_time=query.end_time,
-        )
+        # INT-806：「仅自己」只显示用户操作产生的日志；文件侧业务执行日志无
+        # 操作人属性、非用户操作 → 排除（短路不读文件，DB 侧按 user_id 过滤）
+        if query.user_id:
+            file_entries = []
+        else:
+            file_entries = reader.read_entries(
+                task_id=query.task_id,
+                device_id=query.device_id,
+                api_id=query.api_id,
+                evaluation_id=query.evaluation_id,
+                round_value=query.round,
+                level=query.level,
+                category=query.category if query.category and query.category != 'all' else None,
+                module=module_filter,
+                keyword=query.keyword,
+                content_include=query.content_include,
+                content_exclude=query.content_exclude,
+                algorithm_type=query.algorithm_type,
+                test_case_id=query.test_case_id,
+                start_time=query.start_time,
+                end_time=query.end_time,
+            )
         file_items = [_to_log_item(entry) for entry in file_entries]
 
         # DB 历史行（审计事件与改造前任务日志，保留只读不迁移）。
@@ -182,6 +225,7 @@ class LogQueryService:
             content_include=query.content_include,
             content_exclude=query.content_exclude,
             algorithm_type=query.algorithm_type,
+            user_id=query.user_id,
         )
         db_items = [_to_log_item(log) for log in (resp.get('items') or [])]
 
@@ -210,6 +254,10 @@ class LogQueryService:
         try:
             query = _parse_query_params(LogStatsQuery)
 
+            auth_err = LogQueryService._authorize_log_user(query.user_id)
+            if auth_err:
+                return auth_err
+
             # P0-3: 通过 gRPC 聚合查询日志统计
             from api_gateway.infrastructure.grpc_proxies import task_data_service
             from api_gateway.schemas.log import LogStatsData
@@ -226,10 +274,13 @@ class LogQueryService:
                 start_time=query.start_time,
                 end_time=query.end_time,
                 algorithm_type=query.algorithm_type if query.algorithm_type != 'all' else None,
+                user_id=query.user_id,
             )
 
-            # INT-81：任务维度统计叠加业务日志文件行（DB 侧只含审计/历史行）
-            if query.task_id:
+            # INT-81：任务维度统计叠加业务日志文件行（DB 侧只含审计/历史行）。
+            # INT-806：「仅自己」时文件侧业务执行日志非用户操作 → 排除，统计口径
+            # 与列表一致（徽章数不虚高）。
+            if query.task_id and not query.user_id:
                 stats_dict = LogQueryService._merge_file_stats(query, stats_dict)
 
             log_stats = LogStatsData(
@@ -410,8 +461,9 @@ class LogQueryService:
     def get_archived_logs():
         query = _parse_query_params(LogArchiveQuery)
 
+        # INT-786：无 task_id / test_case_id → 全局归档文件清单（manifest），可分页
         if not query.task_id and not query.test_case_id:
-            return error_response("需要提供 task_id 或 test_case_id 参数", code=400)
+            return LogQueryService._get_archive_manifest(query)
 
         try:
             logs = []
@@ -480,6 +532,42 @@ class LogQueryService:
             })
         except Exception as e:
             return error_response(f"获取归档日志失败: {str(e)}", code=500)
+
+    # 全局归档文件清单（无 task_id / test_case_id，INT-786）
+    @staticmethod
+    def _get_archive_manifest(query):
+        """返回 archives 类目下全部 .json 归档文件的全局清单（可分页）。
+
+        INT-780 契约裁定：
+        1. filename = 归档逻辑 key 完整路径（如 tasks/123/2026-10-18.json），行 key 唯一；
+        2. 响应 {items:[{filename, sizeBytes, archivedAt}], total}（camelCase raw dict）；
+        4. sizeBytes 取对象 Size，archivedAt 取 LastModified（UTC ISO 'Z' 后缀）。
+        """
+        try:
+            objects = storage.list_objects_with_meta('archives')
+            files = [o for o in objects if o.get('key', '').endswith('.json')]
+            files.sort(key=lambda o: o.get('key', ''), reverse=True)
+
+            total = len(files)
+            page = query.page or 1
+            per_page = query.per_page or 50
+            start = (page - 1) * per_page
+            end = start + per_page
+
+            items = [
+                {
+                    "filename": o['key'],
+                    "sizeBytes": o.get('sizeBytes', 0),
+                    "archivedAt": _to_iso_utc(o.get('lastModified')),
+                }
+                for o in files[start:end]
+            ]
+            return success_response({
+                "items": items,
+                "total": total,
+            })
+        except Exception as e:
+            return error_response(f"获取归档文件清单失败: {str(e)}", code=500)
 
     # 下载归档文件
     @staticmethod

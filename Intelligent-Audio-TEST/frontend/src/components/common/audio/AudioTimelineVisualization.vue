@@ -252,7 +252,7 @@ const closeAudioModal = () => {
 <style scoped>
 .audio-timeline-viz {
   background: white;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   padding: 16px;
   margin-bottom: 16px;
 }
@@ -292,7 +292,7 @@ const closeAudioModal = () => {
 .zoom-btn {
   padding: 4px 8px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   background: var(--background);
   cursor: pointer;
   transition: all 0.2s;
@@ -327,7 +327,7 @@ const closeAudioModal = () => {
   flex: 1;
   position: relative;
   background: var(--background);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--border);
   overflow: hidden;
 }
@@ -335,7 +335,7 @@ const closeAudioModal = () => {
 .audio-segment {
   position: absolute;
   height: 40px;
-  border-radius: 4px;
+  border-radius: var(--radius-tag);
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
@@ -461,7 +461,7 @@ const closeAudioModal = () => {
 .legend-color {
   width: 16px;
   height: 12px;
-  border-radius: 2px;
+  border-radius: var(--radius-tag);
 }
 
 .legend-item.api .legend-color {

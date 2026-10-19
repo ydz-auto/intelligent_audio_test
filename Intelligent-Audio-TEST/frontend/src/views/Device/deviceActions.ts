@@ -16,6 +16,7 @@ import {
   playbackTypeFilter,
   algorithmTypeFilter,
   algorithmFilter,
+  laboratoryFilter,
   selectedDevices,
   testDevices,
   playbackDevices,
@@ -41,6 +42,7 @@ export function switchDeviceType(type: DeviceTabTypeType) {
   statusFilter.value = 'all';
   playbackTypeFilter.value = 'all';
   algorithmTypeFilter.value = 'all';
+  laboratoryFilter.value = 'all';
   searchQuery.value = '';
   selectedDevices.value = [];
   fetchAllDevices();

@@ -3,7 +3,9 @@
 
 背景（执行域 P0，见 doc/功能设计文档/01_测试执行/02_架构设计.md §7.1）：
 - task_case_relations.device_type：用例级被测设备类型（physical/http_api/websocket_api），
-  执行路由由 task.type 迁移到用例级 device_type（为空时回退 task.type，保证旧任务兼容）。
+  执行路由由 task.type 迁移到用例级 device_type。历史 NULL 行已由 INT-789 回填迁移
+  按关系表（task_api_relations / task_device_relations）补齐，不再回退 task.type
+  （该列已废弃删除，见 drop_task_type_and_testcase_test_type.py）。
 - task_case_relations.device_id：用例级被测设备 ID（physical=设备ID / API 类=api.id）。
 - task_case_relations.lab_id：实验室扩展列（doc/总架构/实验室扩展功能设计.md §3），
   与 add_laboratory_tables.py 的列定义一致，此处幂等补齐，便于按实验室过滤设备选择。

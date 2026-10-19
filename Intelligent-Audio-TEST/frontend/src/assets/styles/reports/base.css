@@ -115,7 +115,7 @@
 
 .btn-danger{
     background: var(--danger-gradient);
-    color: white;
+    color: var(--color-white);
     border: none;
 }
 
@@ -175,7 +175,8 @@
 }
 
 .report-checkbox-wrapper {
-    display: flex !important;
-    align-items: center !important;
+    /* !important 可去：本类实际消费方仅 HistoryReports.vue（其 scoped 副本加载序更晚且带属性选择器，胜出）（INT-771 降噪） */
+    display: flex;
+    align-items: center;
     margin-right: var(--spacing-md);
 }
