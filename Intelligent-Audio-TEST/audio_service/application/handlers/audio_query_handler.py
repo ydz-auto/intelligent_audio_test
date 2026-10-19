@@ -24,6 +24,7 @@ from audio_service.application.queries.audio_queries import (
     GetAudioAlgorithmsQuery,
     GetAudioFolderTreeQuery,
     GetAudioSpeakersQuery,
+    GetAudioPlaybackHistoryQuery,
 )
 
 logger = logging.getLogger(__name__)
@@ -220,6 +221,15 @@ class AudioQueryHandler:
                 speakers |= speakers_from_annotation_data(ann.get('data'))
             speakers_map[str(audio_id)] = sorted(speakers)
         return _ok(data={'speakers_map': speakers_map})
+
+    def handle_get_playback_history(self, query: GetAudioPlaybackHistoryQuery) -> Dict[str, Any]:
+        """分页查询音频播放历史（INT-782#2，播放时间倒序）。"""
+        try:
+            data = self.repo.list_playback_history(query.audio_id, query.params or {})
+            return _ok(data=data)
+        except Exception as e:
+            logger.error(f"查询播放历史失败: {e}", exc_info=True)
+            return _fail(f'查询播放历史失败: {e}')
 
     def handle_stream_audio(self, query: StreamAudioQuery) -> Dict[str, Any]:
         audio = self.repo.get_audio_with_deleted(query.audio_id)

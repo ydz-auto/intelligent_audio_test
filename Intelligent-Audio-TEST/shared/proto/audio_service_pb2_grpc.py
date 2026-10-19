@@ -951,6 +951,11 @@ class AudioConfigServiceStub:
                 request_serializer=audio__service__pb2.GetAudioSpeakersRequest.SerializeToString,
                 response_deserializer=audio__service__pb2.AudioConfigResponse.FromString,
                 _registered_method=True)
+        self.GetPlaybackHistory = channel.unary_unary(
+                '/audio_service.AudioConfigService/GetPlaybackHistory',
+                request_serializer=audio__service__pb2.GetPlaybackHistoryRequest.SerializeToString,
+                response_deserializer=audio__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
 
 
 class AudioConfigServiceServicer:
@@ -1132,6 +1137,13 @@ class AudioConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetPlaybackHistory(self, request, context):
+        """分页查询音频播放历史（INT-782#2：新表 + 写侧 + GET 分页）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_AudioConfigServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -1278,6 +1290,11 @@ def add_AudioConfigServiceServicer_to_server(servicer, server):
             'GetAudioSpeakers': grpc.unary_unary_rpc_method_handler(
                     servicer.GetAudioSpeakers,
                     request_deserializer=audio__service__pb2.GetAudioSpeakersRequest.FromString,
+                    response_serializer=audio__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'GetPlaybackHistory': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetPlaybackHistory,
+                    request_deserializer=audio__service__pb2.GetPlaybackHistoryRequest.FromString,
                     response_serializer=audio__service__pb2.AudioConfigResponse.SerializeToString,
             ),
     }
@@ -2064,6 +2081,33 @@ class AudioConfigService:
             target,
             '/audio_service.AudioConfigService/GetAudioSpeakers',
             audio__service__pb2.GetAudioSpeakersRequest.SerializeToString,
+            audio__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetPlaybackHistory(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/audio_service.AudioConfigService/GetPlaybackHistory',
+            audio__service__pb2.GetPlaybackHistoryRequest.SerializeToString,
             audio__service__pb2.AudioConfigResponse.FromString,
             options,
             channel_credentials,

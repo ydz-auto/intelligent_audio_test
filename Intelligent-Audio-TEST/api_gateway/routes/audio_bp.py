@@ -154,6 +154,11 @@ def get_audio_algorithms(audio_id: int, _: None = require_permission('audio:read
     return to_response(AudioQueryService.get_audio_algorithms(audio_id))
 
 
+@router.get('/{audio_id}/playback-history')
+def get_playback_history(audio_id: int, _: None = require_permission('audio:read')):
+    return to_response(AudioQueryService.get_playback_history(audio_id))
+
+
 @router.put('/{audio_id}/algorithms')
 def update_audio_algorithms(audio_id: int, _: None = require_permission('audio:update')):
     return to_response(AudioCommandService.update_audio_algorithms(audio_id))

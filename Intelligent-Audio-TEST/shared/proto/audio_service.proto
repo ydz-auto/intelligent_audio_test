@@ -81,6 +81,8 @@ service AudioConfigService {
   rpc StopPreviewAudio(StopPreviewAudioRequest) returns (AudioConfigResponse);
   // 批量查询音频 diarization 标注 speaker 集合（INT-99：API 侧混音 speakers_map 透传）
   rpc GetAudioSpeakers(GetAudioSpeakersRequest) returns (AudioConfigResponse);
+  // 分页查询音频播放历史（INT-782#2：新表 + 写侧 + GET 分页）
+  rpc GetPlaybackHistory(GetPlaybackHistoryRequest) returns (AudioConfigResponse);
 }
 
 // ==================== AudioService Messages ====================
@@ -375,4 +377,9 @@ message StopPreviewAudioRequest {
 
 message GetAudioSpeakersRequest {
   string data = 1;  // JSON: {"audio_ids": [int]}
+}
+
+message GetPlaybackHistoryRequest {
+  int32 audio_id = 1;
+  string data = 2;  // JSON: 分页参数 {"page": 1, "per_page": 10}
 }

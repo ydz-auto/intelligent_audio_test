@@ -184,6 +184,10 @@ class AudioAclRepositoryImpl(AudioAclRepository):
         from api_gateway.infrastructure.grpc_proxies import audio_config_service
         return _wrap(audio_config_service.get_folder_tree(params))
 
+    def get_playback_history(self, audio_id, params) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import audio_config_service
+        return _wrap(audio_config_service.get_playback_history(audio_id, params))
+
     def get_upload_progress(self, data) -> CommandResultDTO:
         from api_gateway.infrastructure.grpc_proxies import audio_config_service
         return _wrap(audio_config_service.get_upload_progress(data))

@@ -182,3 +182,20 @@ class _AudioConfigQueryMixin:
             default_return=lambda e: {'success': False, 'message': f'获取音频目录树失败: {e}', 'data': None, 'code': 400},
             error_msg_prefix='获取音频目录树失败',
         )
+
+    def get_playback_history(self, audio_id, params):
+        from shared.proto import audio_service_pb2 as audio_pb
+
+        def _call():
+            stub = get_audio_config_service_stub()
+            resp = stub.GetPlaybackHistory(audio_pb.GetPlaybackHistoryRequest(
+                audio_id=int(audio_id),
+                data=json.dumps(params or {}, ensure_ascii=False, default=str),
+            ))
+            return self._resp(resp)
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'查询播放历史失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='查询播放历史失败',
+        )

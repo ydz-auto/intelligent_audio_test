@@ -15,6 +15,9 @@ from api_gateway.schemas.audio import (
     AudioStreamQuery,
     AudioStreamByPathQuery,
     AudioDownloadQuery,
+    PlaybackHistoryItem,
+    PlaybackHistoryListData,
+    PlaybackHistoryQuery,
 )
 from api_gateway.infrastructure.acl import AudioAclRepositoryImpl
 
@@ -363,3 +366,36 @@ class AudioQueryService:
         if result.get('success'):
             return success_response(result.get('data'))
         return wrap_grpc_response(result, default_error_msg='查询失败')
+
+    # 分页查询音频播放历史（INT-782#2）
+    @staticmethod
+    def get_playback_history(audio_id):
+        """获取指定音频的播放历史（分页，播放时间倒序）。"""
+        try:
+            query = _parse_query_params(PlaybackHistoryQuery)
+            params = query.model_dump(exclude_none=True)
+        except Exception:
+            params = {'page': 1, 'per_page': 10}
+
+        result = _audio_acl.get_playback_history(audio_id, params)
+        if result.get('success'):
+            data = result.get('data') or {}
+            items = data.get('items', [])
+            history_items = [
+                PlaybackHistoryItem(**item) if isinstance(item, dict) else item
+                for item in items
+            ]
+            return success_response(
+                PlaybackHistoryListData(
+                    items=history_items,
+                    total=data.get('total', 0),
+                    page=data.get('page', params.get('page', 1)),
+                    per_page=data.get('per_page', params.get('per_page', 10)),
+                    pages=data.get('pages', 0),
+                )
+            )
+        return wrap_grpc_response(
+            result,
+            default_error_msg='查询播放历史失败',
+            error_code_mapping={404: ('音频不存在', 404)},
+        )

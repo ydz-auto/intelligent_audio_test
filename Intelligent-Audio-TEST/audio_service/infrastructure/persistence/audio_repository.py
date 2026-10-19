@@ -261,6 +261,75 @@ class AudioRepository(AudioRelationMixin, AudioRepositoryInterface, UploadReposi
             return None
         return _audio_po_to_entity(po)
 
+    # ========== 播放历史（INT-782#2） ==========
+
+    def record_playback_history(self, data: dict) -> Optional[int]:
+        """新增一条播放历史记录，返回记录 ID（不 commit，由调用方统一提交）。"""
+        from shared.infrastructure.user_context import get_current_user_id
+        from audio_service.infrastructure.persistence.models import AudioPlaybackHistory
+        session = get_db_session()
+        row = AudioPlaybackHistory(
+            audio_id=data.get('audio_id'),
+            testcase_id=data.get('testcase_id'),
+            testcase_name=data.get('testcase_name'),
+            device_id=data.get('device_id'),
+            device_name=data.get('device_name') or '未知设备',
+            result=data.get('result', 'success'),
+            duration=data.get('duration'),
+            source=data.get('source', 'preview'),
+            created_by_user_id=get_current_user_id(),
+        )
+        session.add(row)
+        session.flush()
+        return row.id
+
+    def list_playback_history(self, audio_id: int, params: dict) -> dict:
+        """分页查询音频播放历史（按播放时间倒序，最近在前）。"""
+        from audio_service.infrastructure.persistence.models import AudioPlaybackHistory
+        session = get_db_session()
+        try:
+            page = max(int(params.get('page', 1)), 1)
+        except (TypeError, ValueError):
+            page = 1
+        try:
+            per_page = max(int(params.get('per_page', 10)), 1)
+        except (TypeError, ValueError):
+            per_page = 10
+
+        query = session.query(AudioPlaybackHistory).filter_by(audio_id=audio_id)
+        total = query.count()
+        rows = (
+            query
+            .order_by(AudioPlaybackHistory.created_at.desc(), AudioPlaybackHistory.id.desc())
+            .limit(per_page)
+            .offset((page - 1) * per_page)
+            .all()
+        )
+        pages = (total + per_page - 1) // per_page
+        return {
+            'items': [self._playback_history_to_dict(r) for r in rows],
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'pages': pages,
+        }
+
+    @staticmethod
+    def _playback_history_to_dict(row) -> dict:
+        """播放历史 PO → 接口 dict（played_at 用 created_at 承载播放时间）。"""
+        return {
+            'id': row.id,
+            'audio_id': row.audio_id,
+            'testcase_id': row.testcase_id,
+            'testcase_name': row.testcase_name,
+            'device_id': row.device_id,
+            'device_name': row.device_name,
+            'result': row.result,
+            'duration': row.duration,
+            'source': row.source,
+            'played_at': row.created_at.isoformat() if row.created_at else None,
+        }
+
     # ========== Session 管理 ==========
 
     def commit(self):

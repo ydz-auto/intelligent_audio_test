@@ -511,6 +511,17 @@ class AudioConfigServiceServicer(e2e_grpc.AudioConfigServiceServicer):
         except Exception as e:
             return e2e_pb.AudioConfigResponse(success=False, message=str(e), data="")
 
+    def GetPlaybackHistory(self, request, context=None):
+        try:
+            data = _loads(request.data, {})
+            from audio_service.application.queries import GetAudioPlaybackHistoryQuery
+            result = self.query_handler.handle_get_playback_history(
+                GetAudioPlaybackHistoryQuery(audio_id=request.audio_id, params=data)
+            )
+            return self._wrap(result)
+        except Exception as e:
+            return e2e_pb.AudioConfigResponse(success=False, message=str(e), data="")
+
     # ---------- 上传操作 ----------
 
     def PresignUpload(self, request, context=None):
