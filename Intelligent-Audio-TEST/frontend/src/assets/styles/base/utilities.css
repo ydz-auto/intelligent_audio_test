@@ -1,0 +1,35 @@
+/* 平台级工具类（@utility 首批 · INT-767 CSS-0）
+ * 照 newAPI index.css 的做法（@utility 顶层声明）；不强制存量组件改用原子类，
+ * 新代码可选消费。命名避开 Tailwind 内置（text-ellipsis / truncate 等已有）。
+ */
+
+/* 细滚动条 */
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--gray);
+    border-radius: var(--radius-tag);
+  }
+}
+
+/* 隐藏滚动条（容器可滚但无条） */
+@utility no-scrollbar {
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* 弹性居中 */
+@utility flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

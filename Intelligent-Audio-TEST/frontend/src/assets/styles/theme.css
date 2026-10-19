@@ -1,9 +1,11 @@
 /*
- * 语义化设计令牌（照 newAPI web/src/styles/theme.css 结构）
- * 职责：
- *  - 颜色 / 圆角 / 字体等所有"设计决策"统一收敛于此，禁止在业务 CSS 中硬编码色值
+ * 语义化设计令牌 · 全家族（照 newAPI web/src/styles/theme.css 结构）
+ * 职责（INT-767 CSS-0 基座）：
+ *  - 颜色 / 圆角 / 阴影 / 间距 / 字号 / 动效 / z-index 全部"设计决策"统一收敛于此，
+ *    禁止在业务 CSS 中硬编码设计值
  *  - @theme inline 将令牌映射为 Tailwind 原子类色板（bg-primary、text-muted-foreground 等）
- *  - :root / .dark 双主题，换肤只改这里的变量
+ *  - 颜色值本体（浅/深两套预设）在 theme-presets.css，本文件 :root 只含结构族
+ *  - 值全部取自原 Vue tokens.css / variables.css 现值，零漂移
  * 迁移原则：新组件一律使用本文件的语义令牌 + Tailwind 原子类；
  *           存量 CSS 通过 variables.css 的旧名别名无缝兼容。
  */
@@ -60,87 +62,75 @@
   --radius-xl: calc(var(--radius) * 2);
   --radius-xxl: calc(var(--radius) * 3);
   --radius-full: 9999px;
-
-  /* 圆角语义令牌（基准：首页卡片 16px = --radius-xl，INT-756 收编）
-     值对齐上方 --radius 标度，不另起一套；Tailwind 原子类 rounded-card/control/tag/pill */
-  --radius-card: var(--radius-xl); /* 16px：卡片/模态窗/抽屉/表格容器等大表面 */
-  --radius-control: var(--radius-md); /* 8px：输入框/按钮/下拉/分页等控件 */
-  --radius-tag: var(--radius-sm); /* 4px：小标签/徽章/复选框/滚动条等小元素 */
-  --radius-pill: var(--radius-full); /* 9999px：胶囊标签/状态徽章/进度条 */
 }
 
 :root {
-  /* ── 品牌与功能色 ── */
-  --primary: #ff6a00;
-  --primary-hover: #e65c00;
-  --primary-foreground: #ffffff;
-  --secondary: #1976d2;
-  --secondary-deep: #0958d9;
-  --secondary-foreground: #ffffff;
-  --success: #52c41a;
-  --success-foreground: #ffffff;
-  --warning: #ffa940;
-  --warning-foreground: #333333;
-  --destructive: #f5222d;
-  --destructive-foreground: #ffffff;
-  --info: #1976d2;
-  --info-foreground: #ffffff;
+  /* ── 字体 ── */
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  --font-size-xs: 12px;
+  --font-size-sm: 14px;
+  --font-size-md: 16px;
+  --font-size-lg: 18px;
+  --font-size-xl: 20px;
+  --font-size-xxl: 24px;
+  --font-size-xxxl: 32px;
 
-  /* ── 中性色 / 表面 ── */
-  --foreground: #333333;
-  --muted: #f5f5f5;
-  --muted-foreground: #777777;
-  --text-light: #999999;
-  --text-tertiary: var(--text-light);
-  --accent: rgba(255, 106, 0, 0.1);
-  --accent-foreground: #333333;
-  --border: #e5e7eb;
-  --input: #e5e7eb;
-  --ring: #ff6a00;
-  --background: #ffffff;
-  --card: #ffffff;
-  --card-foreground: #333333;
-  --popover: #ffffff;
-  --popover-foreground: #333333;
-  --gray: #737373;
-  --gray-light: #f0f0f0;
-  --sidebar: #ffffff;
-  --sidebar-foreground: #333333;
-  --sidebar-border: #e5e7eb;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
 
-  /* ── 图表色板（chart.js） ── */
-  --chart-1: #ff6a00;
-  --chart-2: #1976d2;
-  --chart-3: #52c41a;
-  --chart-4: #f5222d;
-  --chart-5: #ffa940;
+  /* ── 间距 ── */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-xxl: 48px;
+  --spacing-xxxl: 64px;
 
-  /* ── 功能色衍生（浅底 / 深色变体） ── */
-  --secondary-light: #e3f2fd;
-  --success-light: rgba(82, 196, 26, 0.1);
-  --success-dark: #389e0d;
-  --warning-light: rgba(255, 169, 64, 0.1);
-  --warning-dark: #d48806;
-  --destructive-light: rgba(245, 34, 45, 0.1);
-  /* 收藏星标色（INT-215：收敛三视图魔法色 #f5a623，取 amber 标度） */
-  --favorite-star: var(--color-amber-500);
-
-  /* 灵犀Agent 魔法按钮炫彩渐变（照 React ai-discount-core 逐色移植，INT-735 负责人反馈「AI魔法炫彩按钮抄过来」） */
-  --ai-magic-blue: #4f7cff;
-  --ai-magic-indigo: #7657fa;
-  --ai-magic-violet: #9145ee;
-  --ai-magic-purple: #ac46f3;
-  --ai-magic-pink: #cd4bdb;
-  --ai-magic-fuchsia: #cf55da;
-  --ai-magic-text-shadow: 0 1px 2px rgb(0 0 0 / 35%);
-
-  /* ── 布局 ── */
+  /* ── 圆角（INT-756 定案：sm 4 / md 8 / lg 12 / xl 16 / xxl 24 / full 9999）── */
   --radius: 8px;
-  /* 圆角语义令牌（与 @theme inline 同值，供 plain CSS var() 消费；基准见 00 总表 §1.4） */
-  --radius-card: var(--radius-xl);
-  --radius-control: var(--radius-md);
-  --radius-tag: var(--radius-sm);
-  --radius-pill: var(--radius-full);
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-xxl: 24px;
+  --radius-full: 9999px;
+
+  /* 圆角语义档（INT-756 定案：以首页卡片 16px 为基准） */
+  --radius-card: var(--radius-xl);     /* 卡片 / 模态窗 / 抽屉 / 表格容器 */
+  --radius-control: var(--radius-md);  /* 输入框 / 按钮 / 下拉 / 分页 */
+  --radius-tag: var(--radius-sm);      /* 小标签 / 徽章 / 复选框 / 滚动条 */
+  --radius-pill: var(--radius-full);   /* 胶囊 / 状态徽章 / 进度条 */
+
+  /* 实测高频散值收编（§1.3：6px/10px/3px/20px，值保真，供 CSS-1~3 消硬编码） */
+  --radius-6: 6px;
+  --radius-10: 10px;
+  --radius-3: 3px;
+  --radius-20: 20px;
+
+  /* ── 阴影 ── */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.16);
+
+  /* ── 过渡 ── */
+  --transition-fast: 0.2s ease;
+  --transition-normal: 0.3s ease;
+  --transition-slow: 0.5s ease;
+
+  /* ── Z-index（值域对齐 §1.3 实测档位） ── */
+  --z-index-dropdown: 1000;
+  --z-index-tooltip: 3000;
+  --z-index-modal: 10000;
+  --z-index-modal-top: 13000;
+  --z-index-floating: 14000;  /* 悬浮条 / 浮层（实测 14000） */
+  --z-index-toast: 15000;     /* 全局提示 / 顶置（实测 15000） */
+  --z-index-sticky: 10001;    /* 模态内吸顶（实测 10001） */
+
+  /* ── 布局尺寸（与 variables.css 保持一致） ── */
   --header-height: 64px;
   --footer-height: 60px;
   --sidebar-width: 240px;
@@ -266,45 +256,4 @@
   --color-foreground-deep: #1a1a1a;
   --color-white: #ffffff;
   --color-black: #000000;
-}
-
-/* 暗色主题：结构预留（照 newAPI 双主题设计），项目当前未启用 .dark */
-.dark {
-  --background: #2a2a2a;
-  --foreground: #f5f5f5;
-  --card: #333333;
-  --card-foreground: #f5f5f5;
-  --popover: #3a3a3a;
-  --popover-foreground: #f5f5f5;
-  --primary: #ff8c3b;
-  --primary-hover: #ffa05c;
-  --primary-foreground: #1a1a1a;
-  --secondary: #4a90d9;
-  --secondary-deep: #6aa5e0;
-  --secondary-foreground: #1a1a1a;
-  --muted: #3a3a3a;
-  --muted-foreground: #a3a3a3;
-  --accent: rgba(255, 138, 59, 0.18);
-  --accent-foreground: #f5f5f5;
-  --destructive: #ff6b70;
-  --destructive-foreground: #1a1a1a;
-  --success: #6fd45c;
-  --success-foreground: #1a1a1a;
-  --warning: #ffc069;
-  --warning-foreground: #1a1a1a;
-  --info: #6aa5e0;
-  --info-foreground: #1a1a1a;
-  --border: rgba(255, 255, 255, 0.12);
-  --input: rgba(255, 255, 255, 0.18);
-  --ring: #ff8c3b;
-  --gray: #a3a3a3;
-  --gray-light: #3a3a3a;
-  --sidebar: #2a2a2a;
-  --sidebar-foreground: #f5f5f5;
-  --sidebar-border: rgba(255, 255, 255, 0.12);
-  --chart-1: #ff8c3b;
-  --chart-2: #6aa5e0;
-  --chart-3: #6fd45c;
-  --chart-4: #ff6b70;
-  --chart-5: #ffc069;
 }

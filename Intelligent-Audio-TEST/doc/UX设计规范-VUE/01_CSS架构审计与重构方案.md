@@ -4,18 +4,18 @@
 > 范围：只读代码、只产文档；本卡不改任何样式代码。
 > 审计对象（只读）：`frontend/src` 全部样式来源（`.css` / `.vue <style>` / 内联 style / JS 拼样式）。
 > 参照基准（只读）：newAPI `D:\00_code\new_api_xagents\web\src\styles\{index.css,theme.css,theme-presets.css}` + `web/src/lib/theme-customization.ts` + `web/src/components/ui/` 样式归属方式。
-> 前置关联：INT-756（全站圆角统一，in_progress）——本方案圆角轴并入其产出；INT-735~745（在办页面实施卡）——先后关系见 §5.6。
+> 前置关联：INT-756（全站圆角统一，in_progress）——本方案圆角轴并入其产出；INT-735~745（在办页面实施卡）——先后关系见 §4。
 
 ---
 
 ## 0. 结论摘要（TL;DR）
 
-- **现状是「半迁移态」**：Tailwind 4 + 语义令牌（tokens.css）基础设施已经就位（`index.css:6-11`、`tokens.css`），但 **46 个存量全局样式文件仍经 `main.css` 聚合器全局注入**（`main.css:5-60` 共 39 条 `@import`），组件内还有 30 个组件旁 `.css` + 约 1.6 万行 `<style scoped>` 内联样式；**Tailwind 原子类几乎未被采用**（全库语义色类出现仅 6 处）。
-- **硬编码与冲突严重**：业务 CSS 散落 293 处 hex 色值、677 处 `border-radius`、4973 处 px 字面量；`!important` 169 处（重灾：`splMapping.css` 59、`HistoryReports.css` 18、`AlgorithmConfigModal.css` 14）；通用类名（`.btn-primary` 16 个文件、`.form-group` 11 个、`.modal-footer` 13 个等）跨文件重复定义，全靠全局加载顺序压胜——「谁靠后谁赢」。
-- **token 层不完整**：tokens.css 只定义了颜色/布局/圆角，**间距（832 处引用）、字号（265）、阴影（136）、动效（155）、z-index（5）五大家族只存在于 variables.css**；另有 **17 个「用了没定义」的变量**（`--font-size-2xl/3xl/base`、`--spacing-2xl`、`--gray-lightest-color`、`--color-emerald-300`、`--danger-dark` 等）。
+- **现状是「半迁移态」**：Tailwind 4 + 语义令牌（tokens.css）基础设施已经就位（`index.css:6-11`、`tokens.css`），但 **38 个存量全局样式文件仍经 `main.css` 聚合器全局注入**（`main.css:5-60` 共 39 条 `@import`，含 1 条 fontawesome），组件内还有 30 个组件旁 `.css` + 约 1.6 万行 `<style scoped>` 内联样式；**Tailwind 原子类几乎未被采用**（全库语义色类出现仅 6 处）。
+- **硬编码与冲突严重**：业务 CSS 散落 293 处 hex 色值、677 处 `border-radius`、4973 处 px 字面量；`!important` 169 处（重灾：`splMapping.css` 59、`HistoryReports.css` 18、`AlgorithmConfigModal.css` 14）；通用类名（`.btn-primary` 16 个文件、`.form-group` 12 个、`.modal-footer` 13 个等）跨文件重复定义，全靠全局加载顺序压胜——「谁靠后谁赢」。
+- **token 层不完整**：tokens.css 只定义了颜色/布局/圆角，**间距（832 处引用）、字号（265）、阴影（136）、动效（155）、z-index（5）五大家族只存在于 variables.css**；另有 **18 个「用了没定义」的变量**（`--font-size-2xl/3xl/base`、`--spacing-2xl`、`--gray-lightest-color`、`--color-emerald-300`、`--danger-dark`、`--text` 等）。
 - **深浅色零启用**：`.dark` 仅在 `tokens.css:251-289` 预留，全库**没有任何切换逻辑**（无 `classList.add('dark')`、无主题 store）。
 - **重构方向（照 newAPI）**：单入口 `index.css` → 主题令牌（theme.css）→ base/reset（`@layer base`）→ 组件样式收敛到 `<style scoped>` + 共享组件样式（对应 newAPI `components/ui` 的样式归属）；`main.css` 聚合器逐域拆解后删除；完成 tokens.css 缺失家族；启用浅/深两套（**单品牌主题，非多预设**，遵循 00 总表 §1.2「不引入多主题预设体系」）；补 stylelint 守规则。
-- **视觉不变是硬约束**：所有值取自原 Vue 现状（见 §2.2 映射表），每张迁移卡验收为「同页重构前后截图像素级对比」（§5.7）。
+- **视觉不变是硬约束**：所有值取自原 Vue 现状（见 §2.2 映射表），每张迁移卡验收为「同页重构前后截图像素级对比」（§3）。
 
 ---
 
@@ -29,9 +29,9 @@
 
 | 位置 | 数量 | 行数合计 | 说明 |
 | --- | --- | --- | --- |
-| `assets/styles/` | 42 | ~18,300 | 全局存量库（聚合器 `main.css` 引入 38 个） |
-| `components/**`（组件旁） | 30 | ~10,400 | 组件私有样式，经 `<style scoped>@import` 或 script `import` 引入 |
-| `views/**`（页面旁） | 11 | ~4,000 | 页面私有样式，3 个经 `<style src>`（**非 scoped**）引入 |
+| `assets/styles/` | 42 | 12,912 | 全局存量库（聚合器 `main.css` 引入 38 个） |
+| `components/**`（组件旁） | 30 | 12,186 | 组件私有样式，经 `<style scoped>@import` 或 script `import` 引入 |
+| `views/**`（页面旁） | 11 | 5,587 | 页面私有样式，3 个经 `<style src>`（**非 scoped**）引入 |
 
 **引入方式（实测 `main.ts:4` / `index.css` / `main.css` / `.vue`）**：
 
@@ -39,7 +39,7 @@
 main.ts:4  import './assets/styles/index.css'          ← 全局唯一入口
 index.css:6-11  @import 'tailwindcss'; @import './tokens.css'; @import './main.css'; @source '../../'
 main.css:5-60   39 条 @import（38 个存量 css + fontawesome）→ 全部全局注入
-.vue 内：38 处 @import 组件旁 .css（9 处与 <style scoped> 同行）；42 处 script import 'xxx.css'
+.vue 内：38 处 @import 组件旁 .css（9 处与 <style scoped> 同行）；script import 实 4 处（main.ts:4 + report-filter-card ×3）
            3 处 <style src="...">（Home.vue:172 / ReportView.vue:430 / TagManagement.vue:320，非 scoped）
 ```
 
@@ -65,8 +65,8 @@ main.css:5-60   39 条 @import（38 个存量 css + fontawesome）→ 全部全�
   - `--secondary-light: #e3f2fd` 在 `tokens.css:112` 与 `variables.css:15` 各一次；
   - 布局四件套 `--sidebar-width/--header-height/--footer-height/--page-margin/--content-min-width` 在 `tokens.css:122-127` 与 `variables.css:72-76` **重复**；
   - 状态色三别名：`--warning`（tokens.css:75）/ `--warning-color`（variables.css:23）/ `--pending-color`（variables.css:129）；`--destructive`（tokens.css:77）/ `--error-color`（variables.css:27）/ `--danger-color`（variables.css:29）；`--info`（tokens.css:79）/ `--info-color`（variables.css:133）/ `--in-progress-color`（variables.css:132）——同一语义 3 个名字。
-- **定义了没用的**：`--color-neutral-*`（tokens.css:158-159）、`--color-yellow-400/800`（tokens.css:239-240）等色阶中多处未被 `var()` 引用（Tailwind `@theme` 声明本身是供给层，但业务侧 0 消费）。
-- **用了没定义的（17 个，均有文件:行号证据）**：
+- **定义了没用的**：`--color-neutral-*`、`--color-yellow-400/800` **实际已被 `var()` 引用**（neutral-50/100、yellow-400/800 有业务消费）；真「定义未用」是另 **36 个** `@theme` 声明（如 `--color-accent`/`--color-chart-1~5`/`--color-amber-700` 等——Tailwind `@theme` 声明本身是供给层，但业务侧 0 消费）。
+- **用了没定义的（18 个，均有文件:行号证据）**：
 
 | 变量 | 使用处（代表） |
 | --- | --- |
@@ -87,8 +87,10 @@ main.css:5-60   39 条 @import（38 个存量 css + fontawesome）→ 全部全�
 | `--font-family-mono` | `components/benchmark/BenchmarkBadges.vue:68`、`MetricGroupCard.vue:185`、`SubjectLeaderboard.vue:105,123` |
 | `--font-mono` | `components/layout/TestExecutionComponent.vue:396`（内联 style） |
 | `--color-emerald-300` | `components/common/modal/BatchAnnotationModal.css:340`（tokens.css 只声明了 emerald-100/500/600/800） |
+| `--text` | `views/ReportView/sections/BenchmarkReportPanel.vue:347,408,473`（带回退 #1f2937） |
 
   > 多数带 `var(--x, 兜底值)` 回退未致崩坏，但回退值本身就是硬编码（见 1.3）；`--danger-dark`、`--font-size-2xl/3xl`、`--spacing-2xl`、`--gray-lightest-color` 无回退，样式已失效（字体会落到继承值 / 背景透明）。
+  > 注：审计后 INT-745 公共页新增 `--foreground-deep` 引用（`views/UserGuide/UserGuide.vue:331`，带回退 #1a1a1a），未计入上表基线，随 CSS-1 收编。
 
 - **家族缺口（关键）**：tokens.css 未定义间距/字号/阴影/动效/z-index，这五大家族的唯一正源在 variables.css：`--spacing-*`（variables.css:63-69，全库 832 处引用）、`--font-size-*`（:49-55，265 处）、`--shadow-*`（:88-91，136 处）、`--transition-*`（:94-96，155 处）、`--z-index-*`（:99-102，5 处）——**「一套语义变量」目前名不副实，语义层只做了一半**。
 - **z-index 值域与变量体系脱节**：实际写死值含 `14000`(5 处)、`15000`、`10001`、`9999`(2)、`1050`(2)（见 1.3），而 variables.css 只定义了 1000/3000/10000/13000 四档——`--z-index-modal-top:13000` 之下已有 14000 在用，体系必须扩档。
@@ -131,12 +133,12 @@ main.css:5-60   39 条 @import（38 个存量 css + fontawesome）→ 全部全�
 | `.btn-secondary` | 17 | `components/button.css`、`AudioListComponent.css`、`api-test.css`、`common.css`、`reports/base.css`、8 个模态窗 css…… |
 | `.btn-primary` | 16 | 同上 |
 | `.modal-footer` | 13 | `components/modal.css`、`audioImport.css`、`splMapping.css`、4 个模态窗 css…… |
-| `.form-input` | 13 | `components/form.css`、`main.css:120`、`test-case-manager.css`、`DynamicForm.css`…… |
-| `.form-group` | 11 | `components/form.css`、`FormField.css`、`DynamicForm.css`、`ImportExportModal.css`…… |
+| `.form-input` | 15 | `components/form.css`、`main.css:120`、`test-case-manager.css`、`DynamicForm.css`…… |
+| `.form-group` | 12 | `components/form.css`、`FormField.css`、`DynamicForm.css`、`ImportExportModal.css`…… |
 | `.search-box` | 11 | `layouts/main.css`、`toolbar.css`、`Evaluation.css`、`AudioListComponent.css`…… |
 | `.empty-state` | 8 | `test-common.css`、`CaseForm.css`、`e2etest.css`…… |
 | `.checkbox-label` | 8 | `components/log.css`、`button.css`、`UploadFileModal.css`…… |
-| `.card-header` | 6 | `card.css`、`device.css`、`reports/base.css`、`AudioListComponent.css`…… |
+| `.card-header` | 7 | `card.css`、`device.css`、`reports/base.css`、`AudioListComponent.css`…… |
 
 - **全局泄漏**：`<style src>` 非 scoped 注入的 `home.css`（`.home-page*` 族 218 处行首选择器）、`reportView.css`、`tagManagement.css`；`main.css:62-222` 自身就带一段全局覆写（`.filter-bar/.toolbar-filters/.device-toolbar/.form-input` 系列 + `!important`，如 :75）。
 - **`:deep()` 滥用**：**0 处**（Vue 3 scoped 隔离正常，无穿透依赖）。
@@ -165,7 +167,7 @@ newAPI 实测（`web/src/styles/` + `web/src/lib/` + `components/ui/`）：
 | --- | --- | --- | --- |
 | 入口 | 单入口 `styles/index.css`：`@import 'tailwindcss'` + shadcn + 字体 + theme.css + theme-presets.css；`@layer base/components/utilities` 分层（`index.css:57,73,362`） | `index.css` 单入口已建（`index.css:6-11`），但无 `@layer` 分层（全库 `@layer` 0 处） | 入口有了，分层缺失 |
 | 令牌 | `theme.css`：`:root` + `.dark` 全家族语义令牌（颜色/圆角/字体/骨架/表格 50+ 项）+ `@theme inline` 映射 Tailwind 色板（`theme.css:21-94`） | tokens.css 抄了结构，但**只有颜色/布局/圆角**，间距/字号/阴影/动效/z-index 仍在 variables.css（§1.2） | 令牌家族缺 5 项 |
-| 主题预设 | `theme-presets.css`：`[data-theme-preset='xxx']` 10 套预设，每套含浅/深两色板 + 默认 `--radius`（`theme-presets.css:57-66` rose-garden 等）；`lib/theme-customization.ts` 预设注册表；`context/theme-customization-provider.tsx:56` 把 `data-theme-preset/radius/scale` 写到 body | 无预设文件；`.dark` 预留未启用；无 provider | **本平台单品牌双色，不做 10 预设**（00 总表 §1.2）；但要补「浅/深两套 + 切换入口」 |
+| 主题预设 | `theme-presets.css`：`[data-theme-preset='xxx']` 10 套预设，每套含浅/深两色板 + 默认 `--radius`（`theme-presets.css:73` rose-garden 等）；`lib/theme-customization.ts` 预设注册表；`context/theme-customization-provider.tsx:132/149/156` 把 `data-theme-preset/radius/scale` 写到 body | 无预设文件；`.dark` 预留未启用；无 provider | **本平台单品牌双色，不做 10 预设**（00 总表 §1.2）；但要补「浅/深两套 + 切换入口」 |
 | 深浅色 | `context/theme-provider.tsx` 切换 `.dark` 类 | 零切换逻辑（§1.5） | 需补切换机制（右上角入口见 INT-703 总表 §2.4） |
 | 组件样式 | `components/ui/*.tsx` **0 个 .css 文件**，样式全在 `cva()` + Tailwind 原子类 + `cn()` 里（`button.tsx:26-65`）；全局只剩 base/工具类 | 30 个组件旁 .css + 1.6 万行 `<style scoped>`；组件样式散落且含硬编码 | 组件样式**归属组件**的方向一致（scoped 即归属），但要「值全部走令牌 + 消灭硬编码」；不强制改 Tailwind 原子类（视觉照原 Vue） |
 | 工具类 | `@utility` 自定义工具类（`index.css:259-329`：container/no-scrollbar/hover-scrollbar/fade-*） | 0 处 `@utility`；业务 CSS 自造类名但无规则约束 | 可少量补充平台级工具类（如 `.scrollbar-thin`） |
@@ -297,7 +299,7 @@ export default {
     'no-duplicate-selectors': true,                          // 禁跨文件重复类
     'no-descending-specificity': null,                        // 存量太深，先关
     'selector-max-compound-selectors': [5, { severity: 'warning' }],
-    'custom-property-no-missing-var': true,                  // 用未定义变量即报（§1.2 的 17 个现形）
+    'custom-property-no-missing-var': true,                  // 用未定义变量即报（§1.2 的 18 个现形）
   },
 }
 ```
@@ -305,7 +307,7 @@ export default {
 
 ### 2.5 迁移计划（可并行拆卡）
 
-**原则**：基座卡先行（token 全家族 + 双色板 + base + 公共件壳 + lint），之后按域并行；每张卡「**只搬值、不改值**」，验收 = 同页截图像素级对比（§5.7）。
+**原则**：基座卡先行（token 全家族 + 双色板 + base + 公共件壳 + lint），之后按域并行；每张卡「**只搬值、不改值**」，验收 = 同页截图像素级对比（§3）。
 
 **卡清单**：
 
@@ -317,7 +319,7 @@ export default {
 | CSS-3 | 报告域/AI工作台/配置运维/个人中心样式收敛 | `views/{ReportView,HistoryReports,OAuthProviders,Account,LogView,AlgorithmConfig}` 旁 css + `components/report/*.css` + `assets/styles/{reports/*,api-test/*,layouts/main.css,components/{comparison-common,report-filter-card,log,progress,navigation}}` | CSS-0；INT-741/742/743/744 合并后 | Vue页面工程师 | 同上 |
 | CSS-4 | **收尾**：variables.css 别名层删除、`main.css` 聚合器清零删除、死代码清理（3 空壳 style、双 reset、未用变量） | `variables.css`、`main.css`、全部存量遗留 | CSS-1~3 全落 | Vue基座工程师 | 全站截图回归 + `grep` 无残留旧变量 |
 
-> 与在办页卡（INT-735~745）关系：**CSS-0 与页面实施卡并行安全**（纯增量 token/主题/base，旧别名继续可用，实施卡可直接消费新 token）；**CSS-1~3 排在对应 INT-73x 之后**——那些卡正在重写同一批页面文件，避免互踩（§5.6 详述）。
+> 与在办页卡（INT-735~745）关系：**CSS-0 与页面实施卡并行安全**（纯增量 token/主题/base，旧别名继续可用，实施卡可直接消费新 token）；**CSS-1~3 排在对应 INT-73x 之后**——那些卡正在重写同一批页面文件，避免互踩（§4 详述）。
 
 **每张域卡的内部步骤**：
 1. `git status` 确认工作区干净、目标文件未被在办卡占用；
@@ -343,7 +345,7 @@ export default {
 | 在办卡 | 与本卡关系 |
 | --- | --- |
 | **INT-756（圆角统一，in_progress）** | 圆角轴的**上游**：CSS-0 的 `--radius-*` 值域以 INT-756 定案为准（§2.2 圆角行「并入 INT-756」）；CSS-0 排在 INT-756 之后启动，或两卡按「INT-756 先出 token、CSS-0 再并入」接力。 |
-| **INT-735（基座壳，in_review）** | 与 CSS-0 共享 `App.vue`/壳样式边界：CSS-0 **不碰**壳文件（token/base/公共件），壳的样式收敛留给 CSS-1 且排在 INT-735 合并后；实施卡可直接用 CSS-0 的 token。 |
+| **INT-735（基座壳，in_progress）** | 与 CSS-0 共享 `App.vue`/壳样式边界：CSS-0 **不碰**壳文件（token/base/公共件），壳的样式收敛留给 CSS-1 且排在 INT-735 合并后；实施卡可直接用 CSS-0 的 token。 |
 | **INT-736~745（页面实施卡）** | 同域文件重叠：CSS-1~3 **必须排在对应 INT-73x 合并之后**（先落地的实施卡会重写页面，重建时直接按新 token 规范写，天然完成大半收敛）；CSS-0 先行提供 token 供实施卡消费，避免实施卡继续写硬编码。 |
 | **00 总表（INT-703）** | 本方案与总表 §1.1 保留清单（tokens/variables/Fa/Inter/组件库）一致；§1.2「不引入多预设/Public Sans」本方案遵守（仅浅/深两套）。 |
 
@@ -364,7 +366,7 @@ export default {
 | 未定义变量使用 | `AudioListComponent.css:675,859,880,887,965,970`、`HistoryReports.css:101`、`LogArchivePanel.vue:282`、`TestCaseListContainer.css:32`、`tagManagement.css:10,150,154,180,275,405`、`BatchAnnotationModal.css:340`、`TestExecutionComponent.vue:396` |
 | 硬编码重灾 | `CherryPickDialog.css:6,14,20,29,54-56,64` |
 | !important 重灾 | `views/splMapping/splMapping.css:21-30`（59 处全文件）、`views/HistoryReports/HistoryReports.css`（18） |
-| 通用类跨文件重复 | `.btn-primary/.btn-secondary` 16/17 文件、`.modal-footer/.form-input/.form-group/.search-box` 11-13 文件（§1.4 表） |
+| 通用类跨文件重复 | `.btn-primary/.btn-secondary` 16/17 文件、`.modal-footer` 13、`.form-input` 15、`.form-group` 12、`.card-header` 7、`.search-box` 11（§1.4 表） |
 | z-index 值域脱节 | 写死 14000/15000/10001（`grep -rh 'z-index'`）vs `variables.css:99-102` |
 | Tailwind 原子类零采用 | 语义色类全库仅 6 处（`grep -rhoE 'class="[^"]*"'`） |
 | 无 stylelint | `frontend/package.json`（devDependencies 无 stylelint） |
