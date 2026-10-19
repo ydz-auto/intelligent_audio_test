@@ -830,6 +830,7 @@
 </template>
 
 <script setup lang="ts">
+import "../../assets/styles/tasks/task-status.css"
 import BasicModal from '../common/modal/BasicModal.vue'
 import MappingEditor from './MappingEditor.vue'
 import ColumnFilter from '../common/ColumnFilter.vue'

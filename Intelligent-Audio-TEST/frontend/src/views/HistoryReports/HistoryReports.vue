@@ -335,6 +335,7 @@
 </template>
 
 <script setup lang="ts">
+import "../../assets/styles/tasks/filter-sort.css"
 import { computed, ref } from 'vue';
 import { ReportStatus, PermissionPoint } from '@/domain/enums';
 import type { Report } from '../../domain';

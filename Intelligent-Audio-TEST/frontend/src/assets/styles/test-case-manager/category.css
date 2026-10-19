@@ -21,7 +21,7 @@
 
 /* ── [恢复] 死类误删的样式（HEAD 原样） ── */
 .category-count {
-    background-color: var(--primary-color);
+    background-color: var(--primary);
     color: var(--color-white);
     font-size: 12px;
     font-weight: 500;

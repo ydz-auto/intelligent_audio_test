@@ -142,6 +142,8 @@
 </template>
 
 <script setup>
+import "../../../assets/styles/components/test-case-card.css"
+import "../../../assets/styles/test-case-manager/test-case-manager.css"
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useAlgorithmLabels } from '../../../composables/algorithm/useAlgorithmLabels';
 import CaseIdBadge from '../CaseIdBadge.vue';
@@ -574,4 +576,3 @@ white-space: nowrap;
 
 
 </style>
-

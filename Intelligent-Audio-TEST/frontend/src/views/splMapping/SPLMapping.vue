@@ -427,6 +427,8 @@
 </template>
 
 <script setup lang="ts">
+import "../../assets/styles/tasks/stats.css"
+import "../../assets/styles/device/device.css"
 import { useSplMapping, SPL_MAPPING_FETCH_LIMIT } from '../../composables/device/useSplMapping';
 import { useApiRmsSpl, CALIBRATION_STATUS_LABELS } from '../../composables/apiTest/useApiRmsSpl';
 import { onMounted, ref, computed } from 'vue';

@@ -1,8 +1,9 @@
-/* 任务卡片样式 - 现代化设计 */
-.task-card, .card{
+/* 任务卡片样式 - 现代化设计
+   （.card/.card-header 共享基类已迁 components/card.css，本文件只留任务卡片专属选择器） */
+.task-card {
     background: linear-gradient(135deg, var(--color-white) 0%, var(--color-slate-50) 100%);
     border: 2px solid transparent;
-    border-radius: var(--border-radius-xl);
+    border-radius: var(--radius-xl);
     padding: 24px;
     margin-bottom: 20px;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -18,7 +19,7 @@
 }
 
 .task-card.selected{
-    border-color: var(--primary-color);
+    border-color: var(--primary);
     background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 3%, transparent) 0%, color-mix(in srgb, var(--primary) 1%, transparent) 100%);
     box-shadow: 0 12px 32px color-mix(in srgb, var(--primary) 15%, transparent);
 }
@@ -26,7 +27,7 @@
 /* 添加卡片选中状态支持 - 仅应用于任务卡片，不影响测试用例卡片 */
 .task-card.card-selected,
 .task-card:has(input[type="checkbox"].test-task-checkbox:checked){
-    border-color: var(--primary-color);
+    border-color: var(--primary);
     background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 3%, transparent) 0%, color-mix(in srgb, var(--primary) 1%, transparent) 100%);
     box-shadow: 0 12px 32px color-mix(in srgb, var(--primary) 15%, transparent);
 }
@@ -47,16 +48,8 @@
     padding: 0 ;
 }
 
-/* 确保卡片不会被截断 */
-.card{
-    margin-right: 0 ;
-    margin-left: 0 ;
-    width: 100% ;
-    box-sizing: border-box;
-}
-
-/* 任务卡片头部 */
-.task-header, .card-header{
+/* 任务卡片头部（.card-header 共享部分已迁 components/card.css） */
+.task-header{
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
@@ -72,8 +65,7 @@
 
 
 
-.task-card:hover .task-title,
-.card:hover .card__head{
+.task-card:hover .task-title{
     color: inherit;
 }
 
@@ -92,8 +84,8 @@
 
 .task-type.e2e{
     background: transparent;
-    color: var(--success-color);
-    border: 1px solid var(--success-color);
+    color: var(--success);
+    border: 1px solid var(--success);
 }
 
 /* 选中状态下的任务描述背景（important 已去：特异性/加载序仍覆盖 card.css 同款规则） */

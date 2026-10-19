@@ -347,6 +347,11 @@
 </template>
 
 <script setup lang="ts">
+import "../../assets/styles/tasks/charts.css"
+import "../../assets/styles/tasks/task-card.css"
+import "../../assets/styles/tasks/task-status.css"
+import "../../assets/styles/tasks/filter-sort.css"
+import "../../assets/styles/tasks/stats.css"
 import { ref, computed, reactive, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTasks } from './tasks';

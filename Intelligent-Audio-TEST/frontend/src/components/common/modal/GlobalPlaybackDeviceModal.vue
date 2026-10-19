@@ -91,6 +91,7 @@
 </template>
 
 <script setup>
+import "../../../assets/styles/test-case-manager/test-case-manager.css"
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { playbackPort } from '../../../composables/device/playbackPort'
 

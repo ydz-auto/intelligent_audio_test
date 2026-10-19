@@ -549,6 +549,7 @@
 </template>
 
 <script setup>
+import "../../assets/styles/e2etest/e2etest.css"
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { TaskStatus, ExecutionStatus, EvaluationStatus, ViewMode, DeviceStatus, REEXECUTE_ELIGIBLE_STATUSES, PermissionPoint } from '@/domain/enums';
 import { useAuthStore } from '../../store/authStore';

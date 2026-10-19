@@ -286,6 +286,7 @@
 </template>
 
 <script setup lang="ts">
+import "../../assets/styles/tasks/task-status.css"
 import AlgorithmConfigModal from '../../components/algorithm/AlgorithmConfigModal.vue'
 import AlgorithmGroupManagerModal from '../../components/algorithm/AlgorithmGroupManagerModal.vue'
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue'

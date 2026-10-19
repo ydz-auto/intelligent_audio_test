@@ -257,6 +257,8 @@
 </template>
 
 <script setup lang="ts">
+import "../../assets/styles/tasks/stats.css"
+import "../../assets/styles/device/device.css"
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';

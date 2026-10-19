@@ -301,6 +301,8 @@
 </template>
 
 <script setup lang="ts">
+import "../../assets/styles/e2etest/dropdown.css"
+import "../../assets/styles/e2etest/e2etest.css"
 import { ref, computed } from 'vue'
 import { ViewMode, DeviceStatus, ApiEndpointStatus } from '@/domain/enums'
 import { useMergedTestFlow } from '../../composables/shared/useMergedTestFlow'

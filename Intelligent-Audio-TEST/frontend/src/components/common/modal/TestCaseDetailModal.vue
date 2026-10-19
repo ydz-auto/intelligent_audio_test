@@ -135,6 +135,8 @@
 </template>
 
 <script setup>
+import "../../../assets/styles/components/test-case-card.css"
+import "../../../assets/styles/test-case-manager/test-case-manager.css"
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { tasksPort } from '@/composables/task/tasksPort'
 import { logsPort } from '@/composables/task/logsPort'

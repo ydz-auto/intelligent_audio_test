@@ -174,6 +174,7 @@
 </template>
 
 <script setup lang="ts">
+import "../../../assets/styles/tasks/task-status.css"
 import { computed, onMounted, reactive, ref } from 'vue'
 import PaginationComponent from '@/components/common/data/PaginationComponent.vue'
 import BasicModal from '@/components/common/modal/BasicModal.vue'

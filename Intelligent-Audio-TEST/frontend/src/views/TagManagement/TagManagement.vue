@@ -66,6 +66,7 @@
 </template>
 
 <script setup lang="ts">
+import "../../assets/styles/components/dropdown-multi-select.css"
 import { ref, computed, onMounted } from 'vue';
 import { tagsPort } from '@/composables/shared/tagsPort';
 import type { TagCategory, TagItem } from '@/domain/model/tag';

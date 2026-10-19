@@ -53,6 +53,10 @@
 </template>
 
 <script setup lang="ts">
+import "../../assets/styles/test-case-manager/base.css"
+import "../../assets/styles/test-case-manager/toolbar.css"
+import "../../assets/styles/test-case-manager/category.css"
+import "../../assets/styles/test-case-manager/test-case-manager.css"
 import TestCaseListContainer from '../../components/common/test-case/TestCaseListContainer.vue';
 import FavoriteTrashBar from '../../components/common/FavoriteTrashBar.vue';
 import { useTestCaseManager } from './TestCaseManager';

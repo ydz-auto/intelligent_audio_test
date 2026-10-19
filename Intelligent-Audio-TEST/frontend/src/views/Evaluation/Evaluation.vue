@@ -214,6 +214,8 @@
 </template>
 
 <script setup>
+import "../../assets/styles/e2etest/dropdown.css"
+import "../../assets/styles/tasks/filter-sort.css"
 import { computed } from 'vue';
 import BadgeFilter from '../../components/common/BadgeFilter.vue';
 import VisibilityBadge from '../../components/common/visibility/VisibilityBadge.vue';

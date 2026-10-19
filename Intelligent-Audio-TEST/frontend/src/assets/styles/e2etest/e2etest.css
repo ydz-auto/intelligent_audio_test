@@ -7,7 +7,7 @@
     padding: 12px 24px;
     font-size: 14px;
     font-weight: var(--font-weight-medium);
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
@@ -16,13 +16,13 @@
 }
 
 .association-tabs .tab-btn:hover{
-    color: var(--primary-color);
-    border-bottom-color: var(--primary-color);
+    color: var(--primary);
+    border-bottom-color: var(--primary);
 }
 
 .association-tabs .tab-btn.active{
-    color: var(--primary-color);
-    border-bottom-color: var(--primary-color);
+    color: var(--primary);
+    border-bottom-color: var(--primary);
 }
 
 /* E2E Test Steps Section */
@@ -47,34 +47,34 @@
 
 
 .test-step-badge.pending{
-    background-color: var(--pending-color);
+    background-color: var(--warning);
 }
 
 .test-step-badge.in-progress{
-    background-color: var(--in-progress-color);
+    background-color: var(--info);
 }
 
 .test-step-badge.completed{
-    background-color: var(--success-color);
+    background-color: var(--success);
 }
 
 .test-step-badge.failed{
-    background-color: var(--error-color);
+    background-color: var(--destructive);
 }
 
 .associated-items-list .progress-item-small.completed{
     background-color: var(--success-light);
-    border-left: 4px solid var(--success-color);
+    border-left: 4px solid var(--success);
 }
 
 .associated-items-list .progress-item-small.in-progress{
     background-color: var(--warning-light);
-    border-left: 4px solid var(--warning-color);
+    border-left: 4px solid var(--warning);
 }
 
 .associated-items-list .progress-item-small.pending{
-    background-color: var(--pending-light);
-    border-left: 4px solid var(--pending-color);
+    background-color: var(--warning-light);
+    border-left: 4px solid var(--warning);
 }
 
 .associated-items-list .status-icon{
@@ -90,7 +90,7 @@
 .device-item{
     padding: 12px;
     border-radius: var(--radius-control);
-    background-color: var(--background-secondary);
+    background-color: var(--muted);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -114,11 +114,11 @@
 }
 
 .device-status.status-online{
-    color: var(--success-color);
+    color: var(--success);
 }
 
 .device-status.status-offline{
-    color: var(--error-color);
+    color: var(--destructive);
 }
 
 .online-indicator{
@@ -139,20 +139,20 @@
 
 .status-badge.completed{
     background-color: var(--success-light);
-    color: var(--success-color);
-    border: 1px solid var(--success-border);
+    color: var(--success);
+    border: 1px solid var(--success);
 }
 
 .status-badge.in-progress{
     background-color: var(--warning-light);
-    color: var(--warning-color);
-    border: 1px solid var(--warning-border);
+    color: var(--warning);
+    border: 1px solid var(--warning);
 }
 
 .status-badge.pending{
-    background-color: var(--pending-light);
-    color: var(--pending-color);
-    border: 1px solid var(--pending-border);
+    background-color: var(--warning-light);
+    color: var(--warning);
+    border: 1px solid var(--warning);
 }
 
 
@@ -165,7 +165,7 @@
     margin: 0 0 12px 0;
     font-size: 14px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--foreground);
 }
 
 .audio-info{
@@ -178,20 +178,20 @@
 
 .info-label{
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--foreground);
     margin-right: 4px;
 }
 
 .step-status.completed{
-    color: var(--success-color);
+    color: var(--success);
 }
 
 .step-status.in-progress{
-    color: var(--warning-color);
+    color: var(--warning);
 }
 
 .step-status.pending{
-    color: var(--pending-color);
+    color: var(--warning);
 }
 
 
@@ -218,9 +218,9 @@
     justify-content: center;
     padding: 64px 24px;
     text-align: center;
-    background-color: var(--background-secondary);
-    border-radius: var(--border-radius-lg);
-    border: 1px dashed var(--border-color);
+    background-color: var(--muted);
+    border-radius: var(--radius-lg);
+    border: 1px dashed var(--border);
 }
 
 .empty-state i{
@@ -231,7 +231,7 @@
 
 .empty-state p{
     margin: 0;
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
     font-size: 16px;
 }
 
@@ -248,13 +248,13 @@
     align-items: center;
     justify-content: center;
     padding: 64px 24px;
-    background-color: var(--background-secondary);
-    border-radius: var(--border-radius-lg);
+    background-color: var(--muted);
+    border-radius: var(--radius-lg);
 }
 
 .spinner{
-    border: 4px solid var(--background-tertiary);
-    border-top: 4px solid var(--primary-color);
+    border: 4px solid var(--gray-light);
+    border-top: 4px solid var(--primary);
     border-radius: 50%;
     width: 40px;
     height: 40px;
@@ -269,14 +269,14 @@
 
 .loading-state p{
     margin: 0;
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
     font-size: 16px;
 }
 
 /* ── [恢复] 死类误删的样式（HEAD 原样） ── */
 .audio-duration {
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
 }
 
 .audio-player {
@@ -299,27 +299,27 @@
     margin: 0;
     font-size: 16px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--foreground);
 }
 
 .metric-item {
     display: flex;
     gap: 8px;
     align-items: center;
-    background-color: var(--background-secondary);
+    background-color: var(--muted);
     padding: 8px 16px;
     border-radius: var(--radius-6);
 }
 
 .metric-name {
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--foreground);
 }
 
 .metric-value {
     font-size: 16px;
     font-weight: 600;
-    color: var(--primary-color);
+    color: var(--primary);
 }
 
 .step-item {
@@ -327,11 +327,11 @@
     justify-content: space-between;
     align-items: center;
     padding: 8px 12px;
-    background-color: var(--background-secondary);
+    background-color: var(--muted);
     border-radius: var(--radius-6);
 }
 
 .step-name {
     font-size: 14px;
-    color: var(--text-primary);
+    color: var(--foreground);
 }
