@@ -3,10 +3,7 @@
 /* 模态框遮罩层 - 基础样式 */
 .modal-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    inset: 0;
     background-color: color-mix(in srgb, var(--color-black) 50%, transparent);
     display: flex;
     justify-content: center;
@@ -81,10 +78,7 @@
 /* 弹窗功能性共享样式（原 AddTestCaseModal/BatchSplModal 裸 style 收编，供消费方按需加载） */
 .modal-backdrop {
     position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    inset: 0;
     background-color: color-mix(in srgb, var(--color-black) 50%, transparent);
     display: flex;
     justify-content: center;
@@ -143,7 +137,7 @@
 }
 
 /* 弹窗响应式（原 AddTestCaseModal 裸 style 收编） */
-@media (max-width: 768px) {
+@media (width <= 768px) {
     .modal-container {
         width: 95%;
         margin: 20px;
@@ -205,7 +199,7 @@
 }
 
 /* 响应式设计 */
-@media (max-width: 768px) {
+@media (width <= 768px) {
     .modal {
         width: 95%;
         margin: var(--spacing-md);
