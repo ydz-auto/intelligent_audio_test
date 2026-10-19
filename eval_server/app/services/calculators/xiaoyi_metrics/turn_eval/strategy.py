@@ -6,7 +6,8 @@
   2. 仅对"接管"轮计算接管时延
   3. 仅对"接管"轮评分回复质量
 
-整体评估默认由 full_timeline_judge 基于原始累计双路ASR决定边界，代码仅校验与投影。
+整体评估默认将全部播放音源互相关对齐到累计用户录音后做ASR，模型端使用原始录音ASR。
+full_timeline_judge 基于完整双路ASR决定边界，代码仅校验与投影；对齐失败或低置信度时回退原始用户录音。
 turn_eval_full_timeline=False 可显式运行旧流程；裁判失败不会自动回退。
 
 旧流程的 ASR 共享：优先复用上层编排器（XiaoyiMetricsCalculator）注入的 _shared_asr，

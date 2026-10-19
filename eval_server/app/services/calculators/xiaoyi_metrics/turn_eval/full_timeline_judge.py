@@ -120,13 +120,19 @@ def judge(packet, task_params, call=None):
 
 
 def evaluate(calculator, task_params):
-    from app.services.calculators.xiaoyi_metrics.turn_taking.strategy import TurnTakingBase
     from app.services.calculators.xiaoyi_metrics.shared.llm_client import build_interaction_text
     rounds = task_params.get('rounds') or []
     last = rounds[-1]
-    # Original cumulative recordings only: never FFT replacement or pre-cut windows.
-    user = TurnTakingBase._get_asr_chunks(last.get('user_wav') or task_params.get('user_wav') or '')
-    model = TurnTakingBase._get_asr_chunks(last.get('ai_wav') or task_params.get('ai_wav') or '', filter_punct=False)
+    # Align all played sources to the cumulative user recording before ASR.
+    # Keep the full timeline; semantic round boundaries still belong to the LLM.
+    played_audios, _ = calculator._merge_all_played_audios(task_params)
+    shared = calculator._build_shared_asr(
+        last.get('user_wav') or task_params.get('user_wav') or '',
+        last.get('ai_wav') or task_params.get('ai_wav') or '',
+        played_audios,
+    )
+    user = shared.get('user_chunks') or []
+    model = shared.get('ai_word_chunks') or []
     packet = build_input(user, model, rounds)
     turns, tokens = judge(packet, task_params)
     # Reuse the existing pure projection contract, not the old segmentation/classifier.

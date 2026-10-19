@@ -46,7 +46,6 @@ def test_whole_case_bypasses_local_segmentation_and_projects_contract(example,mo
     monkeypatch.setattr(TurnTakingBase,'_get_asr_chunks',staticmethod(asr))
     monkeypatch.setattr(f,'judge',lambda packet,params:(f.validate_and_derive(packet,parsed),123))
     calc=TurnEvalCalculator()
-    monkeypatch.setattr(calc,'_build_shared_asr',lambda *a:pytest.fail('old alignment path used'))
     monkeypatch.setattr(calc,'_eval_one_round',lambda *a,**kw:pytest.fail('old segmentation used'))
     result=calc.calculate({'task_params':{'rounds':rounds}})
     assert result['evaluation_mode']=='full_timeline'
@@ -63,6 +62,45 @@ def test_invalid_full_case_does_not_fallback(example,monkeypatch):
     def invalid(*args):raise ValueError('word overlap')
     monkeypatch.setattr(f,'judge',invalid)
     with pytest.raises(ValueError,match='word overlap'):TurnEvalCalculator().calculate({'task_params':{'rounds':rounds}})
+
+
+@pytest.mark.parametrize('alignment', ['aligned', 'low_confidence', 'failed', 'exception'])
+def test_full_case_uses_aligned_user_asr_with_safe_fallback(example, monkeypatch, alignment):
+    from app.services.calculators.xiaoyi_metrics.shared import audio_alignment
+    data, rounds, _, parsed = example
+    rounds[0]['played_audios'] = [{'audio_path': 'first.wav'}]
+    rounds[1]['played_audios'] = [{'audio_path': 'second.wav'}]
+    calls = []
+
+    def align(path, sources):
+        assert path == 'raw_user.wav'
+        assert sources == [{'audio_path': 'first.wav'}, {'audio_path': 'second.wav'}]
+        if alignment == 'exception':
+            raise RuntimeError('alignment unavailable')
+        return {'aligned_wav': None if alignment == 'failed' else 'aligned_user.wav',
+                'ncc': 0.1 if alignment == 'low_confidence' else 0.9}
+
+    def asr(path, **kwargs):
+        calls.append((path, kwargs))
+        if path == 'raw_model.wav':
+            return data['model']
+        expected = 'aligned_user.wav' if alignment == 'aligned' else 'raw_user.wav'
+        assert path == expected
+        return data['user']
+
+    monkeypatch.setattr(audio_alignment, 'generate_aligned_clean_audio', align)
+    monkeypatch.setattr(TurnTakingBase, '_get_asr_chunks', staticmethod(asr))
+
+    def judge(packet, params):
+        user_words = [w for w in packet['full_word_timeline'] if w['speaker'] == 'user']
+        assert [w['text'] for w in user_words] == [w['text'] for w in data['user']]
+        assert [w['start'] for w in user_words] == [w['timestamp'][0] for w in data['user']]
+        return f.validate_and_derive(packet, parsed), 1
+
+    monkeypatch.setattr(f, 'judge', judge)
+    result = TurnEvalCalculator().calculate({'task_params': {'rounds': rounds}})
+    assert result['turn_classification']['normal_takeover_count'] == 3
+    assert ('raw_model.wav', {'filter_punct': False}) in calls
 
 def test_duplicate_json_is_rejected(example):
     _,_,packet,_=example
