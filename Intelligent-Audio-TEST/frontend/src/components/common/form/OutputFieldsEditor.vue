@@ -16,8 +16,8 @@
         <span class="th-type">字段类型</span>
         <span class="th-role">字段角色</span>
         <span class="th-agg">聚合角色</span>
-        <span class="th-threshold">达标阈值</span>
         <span class="th-default">默认值</span>
+        <span class="th-threshold">达标阈值</span>
         <span class="th-visible">显示</span>
         <span class="th-action">操作</span>
       </div>
