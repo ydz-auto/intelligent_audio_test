@@ -35,7 +35,7 @@
 /* 卡片底部 */
 .card-footer{
     padding: var(--spacing-md);
-    border-top: var(--card-border);
+    border-top: 1px solid var(--gray-light);
     display: flex;
     justify-content: center;
     align-items: center;

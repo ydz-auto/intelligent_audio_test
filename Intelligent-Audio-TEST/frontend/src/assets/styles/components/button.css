@@ -1,6 +1,16 @@
 
 /* 基础按钮样式 */
 .btn{
+    padding: 10px 24px;
+    border: none;
+    border-radius: var(--radius-control);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
 }
 
 /* 按钮样式 - 统一为文本和SVG有颜色，背景无颜色
@@ -10,6 +20,37 @@
    加入豁免避免全局基类（特异性 0,3,1）以 !important 之外的覆盖链压制页面内样式（INT-757 要求不用 !important）。
    .api-copy-btn：INT-736 工作台「开发者 API 示例」复制按钮，同 .chart-mode-btn 机制加入豁免，
    使 Dashboard.css 内声明的 color: var(--color-white) 生效，不被全局基类 color: var(--primary) 覆盖。 */
+
+/* 功能按钮基类（原 AddTestCaseModal/BatchSplModal 裸 style 收编） */
+.btn-primary {
+    background-color: var(--primary);
+    color: var(--color-white);
+    border: none;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background-color: var(--primary-hover);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+
+.btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    background-color: var(--muted);
+    color: var(--foreground);
+    border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+    background-color: var(--gray-light);
+    border-color: var(--primary);
+    transform: translateY(-1px);
+}
+
 button:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only):not([data-layout-btn]):not(.chart-mode-btn):not(.api-copy-btn),
 .btn:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only):not([data-layout-btn]):not(.chart-mode-btn):not(.api-copy-btn),
 label.btn:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only):not([data-layout-btn]):not(.chart-mode-btn):not(.api-copy-btn) {
@@ -252,7 +293,7 @@ button.danger, .btn-danger {
 button.danger:hover, .btn-danger:hover {
     background: linear-gradient(135deg, var(--color-red-600) 0%, var(--destructive) 100%) ;
 
-    color: var(--white-color) ;
+    color: var(--color-white) ;
     box-shadow: var(--shadow-lg) ;
     transform: translateY(-2px) ;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) ;

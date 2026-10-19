@@ -12,6 +12,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--spacing-xs);
+    margin-bottom: 16px;
 }
 
 /* 全宽表单组 */
@@ -22,10 +23,20 @@
 
 /* 表单标签 */
 .form-group label {
+    display: block;
     font-size: var(--font-size-md);
     font-weight: var(--font-weight-medium);
     color: var(--foreground);
-    margin-bottom: var(--spacing-xs);
+    margin-bottom: 8px;
+}
+
+/* 通用表单控件（原 BatchSplModal 裸 style 收编） */
+.form-control {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-control);
+    font-size: 14px;
 }
 
 /* 表单输入框和选择器 */
@@ -288,7 +299,7 @@ input[type="checkbox"]:checked {
 /* 复选框选中标记 */
 input[type="checkbox"]:checked::after {
     content: '✓';
-    color: var(--white-color);
+    color: var(--color-white);
     font-size: 12px;
     font-weight: bold;
 }
@@ -321,7 +332,7 @@ input[type="checkbox"]:disabled {
     justify-content: flex-end;
     margin-top: var(--spacing-lg);
     padding-top: var(--spacing-lg);
-    border-top: var(--card-border);
+    border-top: 1px solid var(--gray-light);
 }
 
 /* 错误提示文本 */

@@ -233,7 +233,7 @@ nav a:hover .nav-icon, nav a.active .nav-icon, nav .router-link-active .nav-icon
 
 .progress-step.completed .progress-step-number {
     background: var(--success);
-    color: var(--white-color);
+    color: var(--color-white);
     border-color: var(--success);
     box-shadow: 0 0 15px color-mix(in srgb, var(--success) 40%, transparent);
     
