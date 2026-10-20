@@ -19,7 +19,6 @@
         </h4>
         <div class="case-meta">
           <div class="meta-item flex items-center gap-2">
-          <div class="meta-item flex items-center gap-2">
             <i class="fas fa-info-circle"></i>
             <span class="meta-label">状态: </span>
             <span :class="'status-tag ' + (detail.executionStatus || ExecutionStatus.PENDING).toLowerCase()">
@@ -40,7 +39,6 @@
             <i class="fas fa-star"></i>
             <span class="meta-label">评分: </span>
             <span :class="'status-tag ' + (detail.evaluationStatus || EvaluationStatus.PENDING).toLowerCase()">
-              {{ detail.evaluationStatus === EvaluationStatus.COMPLETED ? '评分完成' : '待评分' }}
               {{ detail.evaluationStatus === EvaluationStatus.COMPLETED ? '评分完成' : '待评分' }}
             </span>
           </div>
