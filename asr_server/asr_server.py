@@ -272,13 +272,11 @@ def call_modelscope_asr(wav_path):
 
 
 def call_modelscope_asr_word(wav_path):
-    """Paraformer 词级转写：返回 {text, chunks}（chunks 为单字级时间戳）
-
-    Paraformer 的 text 含标点（由 punc_model 添加），但 timestamp 列表
-    只对应非标点字符。用独立索引遍历 timestamp，遇到标点时跳过且不消耗
-    timestamp 槽位，确保字与时间戳正确对齐。
-    """
-    import unicodedata
+    """Paraformer词级转写：中文逐字、英文保留模型时间粒度。"""
+    if __package__:
+        from .word_timestamps import paraformer_chunks
+    else:
+        from word_timestamps import paraformer_chunks
 
     model = _load_paraformer()
     res = model.generate(input=wav_path, batch_size_s=300)
@@ -289,26 +287,7 @@ def call_modelscope_asr_word(wav_path):
     text = item.get("text", "")
     timestamp = item.get("timestamp") or []
 
-    chunks = []
-    ts_idx = 0
-    for char in text:
-        if char.strip() == "":
-            continue
-        if ts_idx >= len(timestamp):
-            logger.warning(
-                f"Paraformer timestamp 不足: text={len(text)}字, "
-                f"timestamp={len(timestamp)}条, 已消耗{ts_idx}"
-            )
-            break
-        cat = unicodedata.category(char)
-        if cat.startswith('P') or cat.startswith('Z'):
-            continue
-        start_ms, end_ms = timestamp[ts_idx][0], timestamp[ts_idx][1]
-        chunks.append({
-            "text": char,
-            "timestamp": [round(start_ms / 1000.0, 3), round(end_ms / 1000.0, 3)],
-        })
-        ts_idx += 1
+    chunks = paraformer_chunks(text, timestamp)
 
     logger.info(f"Paraformer 转写完成: {len(chunks)} 字 -> {text[:80]}")
     return {"text": text, "chunks": chunks}
