@@ -144,15 +144,15 @@ export function useBatchAnnotationModal(props: any, emit: any) {
   const confirmLargeBatch = async (count: number): Promise<boolean> => {
     if (count <= LARGE_THRESHOLD) return true
     try {
-      await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+      const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
         title: '批量标注',
         content: `即将处理 ${count} 个文件，可能耗时较长。是否继续？`,
         confirmText: '继续',
         cancelText: '取消'
       })
-      return true
+      return !!confirmed
     } catch {
-      return false // 用户取消
+      return false // 异常路径兜底：视为取消
     }
   }
 

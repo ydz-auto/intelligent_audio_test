@@ -267,8 +267,9 @@ async function confirmDelete(role: SystemRole) {
     error.value = '该角色仍有用户归属，请先转移用户'
     return
   }
+  let confirmed: unknown = null
   try {
-    await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+    confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
       title: '确认删除角色',
       content: `将删除角色「${role.name}」，该操作不可恢复。`,
       confirmText: '删除',
@@ -276,8 +277,9 @@ async function confirmDelete(role: SystemRole) {
       danger: true,
     })
   } catch {
-    return
+    return // 异常路径兜底：视为取消
   }
+  if (!confirmed) return // 用户取消
   try {
     await rolesPort.remove(role.id)
     notice.value = '角色已删除'

@@ -208,8 +208,9 @@ async function deleteGroup(group: DeviceGroup) {
     ? `分组「${group.name}」包含 ${group.deviceCount} 个设备。删除分组会把设备移出分组（设备本身保留），确定删除吗？`
     : `确定删除分组「${group.name}」吗？`
   // INT-286：删除分组改 BASIC_CONFIRM（danger）模态，替换原生 window.confirm
+  let confirmed: unknown = null
   try {
-    await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+    confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
       title: '删除设备分组',
       content: message,
       confirmText: '删除',
@@ -217,8 +218,9 @@ async function deleteGroup(group: DeviceGroup) {
       danger: true,
     })
   } catch {
-    return // 用户取消
+    return // 异常路径兜底：视为取消
   }
+  if (!confirmed) return // 用户取消
   try {
     await devicesPort.deleteGroup(group.id, true)
     notification.success('分组已删除')

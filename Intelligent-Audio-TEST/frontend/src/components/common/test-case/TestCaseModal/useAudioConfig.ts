@@ -345,16 +345,18 @@ export function useAudioConfig() {
 
   async function clearAllAudioConfigs(audios: AudioConfig[]) {
     if (audios.length === 0) return;
+    let confirmed: unknown = null;
     try {
-      await modalControl.open(MODAL_TYPES.DELETE_CONFIRM, {
+      confirmed = await modalControl.open(MODAL_TYPES.DELETE_CONFIRM, {
         title: '清空音频配置',
         content: '确定要清空所有音频配置吗？',
         confirmText: '清空',
         cancelText: '取消'
       });
     } catch {
-      return; // 用户取消
+      return; // 异常路径兜底：视为取消
     }
+    if (!confirmed) return; // 用户取消
     audios.length = 0;
   }
 

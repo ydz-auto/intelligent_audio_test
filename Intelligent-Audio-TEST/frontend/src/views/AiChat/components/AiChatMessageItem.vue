@@ -297,18 +297,19 @@ function resetEdit(): void {
 /** 取消：有未保存更改 → 离开确认（ConfirmDialog，§3.4）；无更改直接退出编辑 */
 async function handleCancelEdit(): Promise<void> {
   if (hasChanged.value) {
+    let confirmed: unknown = null
     try {
-      await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+      confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
         title: MESSAGE_COPY.leaveConfirmTitle,
         content: MESSAGE_COPY.leaveConfirm,
         confirmText: MESSAGE_COPY.leave,
         cancelText: MESSAGE_COPY.stay,
         danger: true,
       })
-      emit('cancel-edit')
     } catch {
-      // 留在编辑态
+      return // 异常路径兜底：视为取消（留在编辑态）
     }
+    if (confirmed) emit('cancel-edit')
   } else {
     emit('cancel-edit')
   }

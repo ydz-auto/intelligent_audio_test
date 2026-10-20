@@ -48,7 +48,8 @@
               @cancel="(data: any) => {
                 if (isNativeEvent(data)) return;
                 console.log('[GlobalModalContainer] cancel事件触发, data:', data);
-                modalItem.reject();
+                // INT-1011：取消收敛为 resolve(null)，不再 reject（避免 Uncaught (in promise)）
+                modalItem.resolve(null);
                 handleClose(modalId);
               }"
               @save="(data: any) => {

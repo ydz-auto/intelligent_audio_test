@@ -103,20 +103,22 @@ function handleSubmit(text: string): void {
 
 /** 清空对话（与整页同款：确认弹窗 + 成功 toast，§3.5/§3.1B 两形态一致） */
 async function handleClear(): Promise<void> {
+  let confirmed: unknown = null
   try {
-    await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+    confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
       title: INPUT_COPY.clearConfirmTitle,
       content: INPUT_COPY.clearConfirmContent,
       confirmText: INPUT_COPY.clearConfirm,
       cancelText: '取消',
       danger: true,
     })
-    store.clearMessages()
-    draftText.value = ''
-    notification.success(INPUT_COPY.clearDone)
   } catch {
-    // 用户取消清空
+    return // 异常路径兜底：视为取消
   }
+  if (!confirmed) return // 用户取消清空
+  store.clearMessages()
+  draftText.value = ''
+  notification.success(INPUT_COPY.clearDone)
 }
 
 /** 展开整页（保留会话：浮窗与整页共用同一 store，§3.1B 不分裂会话） */

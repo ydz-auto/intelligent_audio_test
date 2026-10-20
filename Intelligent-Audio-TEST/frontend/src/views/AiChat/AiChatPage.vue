@@ -165,19 +165,21 @@ function handleSubmit(text: string): void {
 }
 
 async function handleClear(): Promise<void> {
+  let confirmed: unknown = null
   try {
-    await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+    confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
       title: INPUT_COPY.clearConfirmTitle,
       content: INPUT_COPY.clearConfirmContent,
       confirmText: INPUT_COPY.clearConfirm,
       cancelText: '取消',
       danger: true,
     })
-    store.clearMessages()
-    notification.success(INPUT_COPY.clearDone)
   } catch {
-    // 用户取消清空
+    return // 异常路径兜底：视为取消
   }
+  if (!confirmed) return // 用户取消清空
+  store.clearMessages()
+  notification.success(INPUT_COPY.clearDone)
 }
 
 onMounted(() => {

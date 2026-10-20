@@ -313,16 +313,18 @@ const cancelEditConclusion = () => {
 
 const publishReport = async () => {
   if (!report.value) return
+  let confirmed: unknown = null
   try {
-    await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+    confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
       title: '发布报告',
       content: '确定要发布该报告吗？',
       confirmText: '发布',
       cancelText: '取消'
     })
   } catch {
-    return // 用户取消
+    return // 异常路径兜底：视为取消
   }
+  if (!confirmed) return // 用户取消
   try {
     await reportsPort.publish(report.value.id)
     report.value.status = ReportStatus.PUBLISHED
