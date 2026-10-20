@@ -264,7 +264,8 @@ class SecondaryCompareRequest(APIModel):
 
 
 class GetCaseAveragesRequest(APIModel):
-    task_id: int = Field(..., alias='taskId', validation_alias='taskId')
+    task_id: Optional[int] = Field(None, alias='taskId', validation_alias='taskId')
+    report_id: Optional[int] = Field(None, alias='reportId', validation_alias='reportId')
     category: Optional[str] = Field(None, alias='category', validation_alias='category')
     tags: Optional[List[str]] = Field(None, alias='tags', validation_alias='tags')
     categories: Optional[List[str]] = Field(None, alias='categories', validation_alias='categories')

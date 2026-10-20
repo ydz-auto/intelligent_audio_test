@@ -996,95 +996,6 @@ const resetFilters = () => {
   applyFilters()
 }
 
-const computeMetricDataFromCases = (cases) => {
-  const reconstructedData = {}
-  const accumulator = {}
-
-  const selectedCategorySet = new Set(selectedCategories.value || [])
-  const selectedTagSet = new Set(selectedTags.value || [])
-  const includeUntagged = selectedTagSet.has('无标签') || selectedTagSet.has('未标记')
-  selectedTagSet.delete('无标签')
-  selectedTagSet.delete('未标记')
-  const useCategoryFilter = selectedCategorySet.size > 0 && selectedCategorySet.size !== (allAvailableCategories.value || []).length
-  const useTagFilter =
-    (selectedTagSet.size > 0 || includeUntagged) &&
-    ((selectedTags.value || []).length !== (allAvailableTags.value || []).length)
-
-  ;(cases || []).forEach(caseItem => {
-    if (!caseItem) return
-    const category = caseItem.category || '未分类'
-    if (useCategoryFilter && !selectedCategorySet.has(category)) return
-
-    const caseTagsRaw = caseItem.tags || []
-    const caseTagNames = Array.isArray(caseTagsRaw)
-      ? caseTagsRaw.map(t => (typeof t === 'object' ? t?.name : t)).filter(Boolean)
-      : []
-    if (useTagFilter) {
-      const hasTagMatch = caseTagNames.some(t => selectedTagSet.has(t))
-      const isUntagged = caseTagNames.length === 0
-      if (!hasTagMatch && !(includeUntagged && isUntagged)) return
-    }
-
-    const caseMetrics = caseItem.metrics || {}
-    if (!accumulator[category]) accumulator[category] = {}
-
-    if (Array.isArray(caseMetrics)) {
-      caseMetrics.forEach(group => {
-        if (!group || !group.resource || !Array.isArray(group.metrics)) return
-        const resourceKey = group.resource
-        if (!accumulator[category][resourceKey]) accumulator[category][resourceKey] = {}
-        group.metrics.forEach(m => {
-          if (!m || !m.metric) return
-          const dim = m.metric
-          if (!accumulator[category][resourceKey][dim]) {
-            accumulator[category][resourceKey][dim] = { sum: 0, count: 0, values: [] }
-          }
-          const val = m.value
-          if (val !== null && val !== undefined) {
-            accumulator[category][resourceKey][dim].sum += Number(val)
-            accumulator[category][resourceKey][dim].count += 1
-            accumulator[category][resourceKey][dim].values.push(Number(val))
-          }
-        })
-      })
-    } else {
-      Object.keys(caseMetrics).forEach(resourceKey => {
-        if (!accumulator[category][resourceKey]) accumulator[category][resourceKey] = {}
-        const metrics = caseMetrics[resourceKey] || {}
-        Object.keys(metrics).forEach(dim => {
-          if (!accumulator[category][resourceKey][dim]) {
-            accumulator[category][resourceKey][dim] = { sum: 0, count: 0, values: [] }
-          }
-          const val = metrics[dim]
-          if (val !== null && val !== undefined) {
-            accumulator[category][resourceKey][dim].sum += Number(val)
-            accumulator[category][resourceKey][dim].count += 1
-            accumulator[category][resourceKey][dim].values.push(Number(val))
-          }
-        })
-      })
-    }
-  })
-
-  Object.keys(accumulator).forEach(category => {
-    reconstructedData[category] = {}
-    Object.keys(accumulator[category]).forEach(resourceKey => {
-      reconstructedData[category][resourceKey] = {}
-      Object.keys(accumulator[category][resourceKey]).forEach(dim => {
-        const stats = accumulator[category][resourceKey][dim]
-        if (stats.count > 0) {
-          reconstructedData[category][resourceKey][dim] = Number((stats.sum / stats.count).toFixed(4))
-          reconstructedData[category][resourceKey][`${dim}_raw`] = stats.values
-        } else {
-          reconstructedData[category][resourceKey][dim] = 0
-        }
-      })
-    })
-  })
-
-  return reconstructedData
-}
-
 // 应用筛选条件
 const applyFilters = async () => {
   console.log('应用筛选条件', {
@@ -1131,17 +1042,20 @@ const applyFilters = async () => {
 
     const reportId = reportData.id || reportData.reportId || reportData.report_id
     if (reportId) {
-      const body = {
-        page: 1,
-        per_page: 5000,
+      // 对比/二次对比报告：同样走后端聚合工具（后端按 reportId 解析源任务集合聚合）
+      const result = await reportsApi.getCaseAveragesByFilters(reportId, {
         tags: normalizedTags,
         includeUntagged,
-        category: (selectedCategories.value || []).length === 1 ? selectedCategories.value[0] : null
-      }
+        categories: selectedCategories.value
+      }, {}, true);
 
-      const res = await reportsApi.searchCases(reportId, body)
-      const cases = res?.items || res?.data?.items || []
-      metricData.value = computeMetricDataFromCases(cases)
+      // 合并报告自带的分组列表：接口响应的 metricData 为 resource 级别全局平均，
+      // extractInitialMetricData 需按已知分组复制数据，否则会落到"未分类"
+      const merged = {
+        ...result,
+        caseCategories: reportData.caseCategories || reportData.summary?.caseCategories || result.caseCategories
+      };
+      metricData.value = extractInitialMetricData(merged);
       return
     }
   } catch (error) {

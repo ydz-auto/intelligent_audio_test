@@ -1030,9 +1030,13 @@ export const reportsApi = {
   async getCaseAveragesByFilters(
     taskId: string | number,
     filters: Record<string, any> = {},
-    options: RequestOptions = {}
+    options: RequestOptions = {},
+    asReportId = false
   ) {
-    return request('POST', '/reports/case-averages', { taskId, ...filters }, options);
+    const body = asReportId
+      ? { reportId: taskId, ...filters }
+      : { taskId, ...filters };
+    return request('POST', '/reports/case-averages', body, options);
   },
 
   async create(reportData: any) {

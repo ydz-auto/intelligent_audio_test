@@ -542,30 +542,57 @@ class ReportController(ReportControllerBase):
             return error_response(f"请求参数错误: {str(e)}")
 
         task_id = req.task_id
+        report_id = req.report_id
         category = req.category
         tags = req.tags or []
         categories = req.categories or []
         include_untagged = req.include_untagged or False
         
         try:
-            task = db.session.get(Task, task_id)
-            if not task:
-                return error_response("未找到指定任务")
+            from backend.models.models import TaskMergeRelation, ReportComparisonMatrix
 
-            from backend.models.models import TaskMergeRelation
+            # 对比/二次对比报告：无 task_id，通过 report_id 解析其源任务集合
+            if report_id and not task_id:
+                report = db.session.get(Report, report_id)
+                if not report:
+                    return error_response("未找到指定报告")
 
-            if task.type == 'merged':
-                merge_relations = TaskMergeRelation.query.filter_by(merged_task_id=task_id).all()
-                if merge_relations:
-                    source_task_ids = [r.source_task_id for r in merge_relations]
-                    task_id_filter = source_task_ids
-                    result_task_filter = source_task_ids
+                matrix = ReportComparisonMatrix.query.filter_by(report_id=report_id).first()
+                matrix_data = matrix.comparison_matrix if matrix and matrix.comparison_matrix else {}
+
+                source_task_ids = []
+                if matrix_data.get('task_ids'):
+                    source_task_ids = list(matrix_data['task_ids'])
+                elif matrix_data.get('report_ids'):
+                    src_reports = Report.query.filter(Report.id.in_(matrix_data['report_ids'])).all()
+                    source_task_ids = list({r.task_id for r in src_reports if r.task_id})
+                if not source_task_ids:
+                    return error_response("对比报告未关联任何任务")
+
+                task = db.session.get(Task, source_task_ids[0]) if source_task_ids else None
+                if not task:
+                    return error_response("未找到指定任务")
+                task_id_filter = source_task_ids
+                result_task_filter = source_task_ids
+            elif task_id:
+                task = db.session.get(Task, task_id)
+                if not task:
+                    return error_response("未找到指定任务")
+
+                if task.type == 'merged':
+                    merge_relations = TaskMergeRelation.query.filter_by(merged_task_id=task_id).all()
+                    if merge_relations:
+                        source_task_ids = [r.source_task_id for r in merge_relations]
+                        task_id_filter = source_task_ids
+                        result_task_filter = source_task_ids
+                    else:
+                        task_id_filter = task_id
+                        result_task_filter = task_id
                 else:
                     task_id_filter = task_id
                     result_task_filter = task_id
             else:
-                task_id_filter = task_id
-                result_task_filter = task_id
+                return error_response("缺少必要参数: taskId 或 reportId")
 
             filtered_case_ids, test_results = ReportController._query_test_cases_and_results(
                 task_id_filter, result_task_filter,
@@ -608,8 +635,16 @@ class ReportController(ReportControllerBase):
             dim_results_map, dim_stats = ReportControllerTask._get_dimension_results_batch(res_ids)
             
             from backend.models.models import TaskDevice, Device, TaskAPI, API
-            task_devices = TaskDevice.query.filter_by(task_id=task_id).all()
-            task_apis = TaskAPI.query.filter_by(task_id=task_id).all()
+            if isinstance(task_id_filter, list):
+                task_devices = TaskDevice.query.filter(
+                    TaskDevice.task_id.in_(task_id_filter)
+                ).all()
+                task_apis = TaskAPI.query.filter(
+                    TaskAPI.task_id.in_(task_id_filter)
+                ).all()
+            else:
+                task_devices = TaskDevice.query.filter_by(task_id=task_id_filter).all()
+                task_apis = TaskAPI.query.filter_by(task_id=task_id_filter).all()
             
             # 构建资源列表：与报告生成时口径一致（无时间前缀、含版本、含 result_type 后缀）
             devices = []

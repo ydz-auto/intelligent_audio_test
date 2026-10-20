@@ -1065,132 +1065,23 @@ const applyFilters = async () => {
 
     const reportId = reportData.id || reportData.reportId || reportData.report_id
     if (reportId) {
-      const selectedTagList = selectedTags.value || []
-      const includeUntagged = selectedTagList.includes('无标签') || selectedTagList.includes('未标记')
-      const normalizedTags = selectedTagList.filter(t => t !== '无标签' && t !== '未标记')
+      // 对比/二次对比报告：同样走后端聚合工具（后端按 reportId 解析源任务集合聚合）
+      const result = await reportsApi.getCaseAveragesByFilters(reportId, {
+        tags: selectedTags.value,
+        categories: selectedCategories.value
+      }, {}, true);
 
-      const body = {
-        page: 1,
-        per_page: 5000,
-        tags: normalizedTags,
-        includeUntagged,
-        category: (selectedCategories.value || []).length === 1 ? selectedCategories.value[0] : null
+      console.log('API返回结果(reportId):', result);
+
+      const extractedFromApi = extractInitialTagMetricData(result);
+      if (extractedFromApi && Object.keys(extractedFromApi).length > 0) {
+        tagMetricData.value = extractedFromApi;
+        return;
       }
-
-      const res = await reportsApi.searchCases(reportId, body)
-      const cases = res?.items || res?.data?.items || []
-      tagMetricData.value = computeTagMetricDataFromCases(cases)
-      return
     }
   } catch (error) {
     console.error('调用API失败:', error);
   }
-}
-
-const normalizeMetricName = (name) => String(name).replace(/@round:\d+$|@overall$/i, '')
-
-const computeTagMetricDataFromCases = (cases) => {
-  const selectedTagSet = new Set(selectedTags.value || [])
-  const selectedCategorySet = new Set(selectedCategories.value || [])
-  const includeUntagged = selectedTagSet.has('无标签') || selectedTagSet.has('未标记')
-  selectedTagSet.delete('无标签')
-  selectedTagSet.delete('未标记')
-  const useTagFilter = selectedTagSet.size > 0 || includeUntagged
-  const useCategoryFilter = selectedCategorySet.size > 0
-
-  // 百分比维度：搜索接口返回的是 0~1 小数，聚合时乘 100 与报告口径一致
-  const percentMetricSet = new Set(
-    (allMetrics.value || []).filter(m => m.unit === '%').map(m => m.name)
-  )
-
-  const accumulator = {}
-
-  ;(cases || []).forEach(caseItem => {
-    if (!caseItem) return
-
-    const category = caseItem.category || '未分类'
-    if (useCategoryFilter && !selectedCategorySet.has(category)) return
-
-    const caseTagsRaw = caseItem.tags || []
-    const caseTagNames = Array.isArray(caseTagsRaw)
-      ? caseTagsRaw.map(t => (typeof t === 'object' ? t?.name : t)).filter(Boolean)
-      : []
-
-    const tagsToAggregate = useTagFilter
-      ? caseTagNames.filter(t => selectedTagSet.has(t))
-      : caseTagNames
-
-    if (useTagFilter && includeUntagged && caseTagNames.length === 0) {
-      tagsToAggregate.push('未标记')
-    }
-
-    if (tagsToAggregate.length === 0) return
-
-    const caseMetrics = caseItem.metrics || {}
-
-    tagsToAggregate.forEach(tagName => {
-      if (!accumulator[tagName]) accumulator[tagName] = {}
-
-      if (Array.isArray(caseMetrics)) {
-        caseMetrics.forEach(group => {
-          if (!group || !group.resource || !Array.isArray(group.metrics)) return
-          const resourceKey = group.resource
-          if (!accumulator[tagName][resourceKey]) accumulator[tagName][resourceKey] = {}
-          group.metrics.forEach(m => {
-            if (!m || !m.metric) return
-            const dim = normalizeMetricName(m.metric)
-            if (!accumulator[tagName][resourceKey][dim]) {
-              accumulator[tagName][resourceKey][dim] = { sum: 0, count: 0, values: [] }
-            }
-            const val = m.value
-            if (val !== null && val !== undefined) {
-              const numVal = percentMetricSet.has(dim) ? Number(val) * 100 : Number(val)
-              accumulator[tagName][resourceKey][dim].sum += numVal
-              accumulator[tagName][resourceKey][dim].count += 1
-              accumulator[tagName][resourceKey][dim].values.push(numVal)
-            }
-          })
-        })
-      } else {
-        Object.keys(caseMetrics).forEach(resourceKey => {
-          if (!accumulator[tagName][resourceKey]) accumulator[tagName][resourceKey] = {}
-          const metrics = caseMetrics[resourceKey] || {}
-          Object.keys(metrics).forEach(rawDim => {
-            const dim = normalizeMetricName(rawDim)
-            if (!accumulator[tagName][resourceKey][dim]) {
-              accumulator[tagName][resourceKey][dim] = { sum: 0, count: 0, values: [] }
-            }
-            const val = metrics[rawDim]
-            if (val !== null && val !== undefined) {
-              const numVal = percentMetricSet.has(dim) ? Number(val) * 100 : Number(val)
-              accumulator[tagName][resourceKey][dim].sum += numVal
-              accumulator[tagName][resourceKey][dim].count += 1
-              accumulator[tagName][resourceKey][dim].values.push(numVal)
-            }
-          })
-        })
-      }
-    })
-  })
-
-  const reconstructedData = {}
-  Object.keys(accumulator).forEach(tag => {
-    reconstructedData[tag] = {}
-    Object.keys(accumulator[tag]).forEach(resourceKey => {
-      reconstructedData[tag][resourceKey] = {}
-      Object.keys(accumulator[tag][resourceKey]).forEach(dim => {
-        const stats = accumulator[tag][resourceKey][dim]
-        if (stats.count > 0) {
-          reconstructedData[tag][resourceKey][dim] = Number((stats.sum / stats.count).toFixed(4))
-          reconstructedData[tag][resourceKey][`${dim}_raw`] = stats.values
-        } else {
-          reconstructedData[tag][resourceKey][dim] = 0
-        }
-      })
-    })
-  })
-
-  return reconstructedData
 }
 
 const buildResourceKey = (device) => {
