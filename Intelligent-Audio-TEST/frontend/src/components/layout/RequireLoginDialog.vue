@@ -26,6 +26,13 @@
 </template>
 
 <script setup lang="ts">
+import '../../assets/styles/test-common.css'
+import '../../assets/styles/components/common.css'
+import '../../assets/styles/components/button.css'
+import '../../assets/styles/components/modal.css'
+import '../../assets/styles/components/table.css'
+import '../../assets/styles/components/log.css'
+
 import BasicModal from '../common/modal/BasicModal.vue'
 import { useRequireLogin } from '../../composables/layout/useRequireLogin'
 

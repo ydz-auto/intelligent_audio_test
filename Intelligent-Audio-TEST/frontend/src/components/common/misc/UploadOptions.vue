@@ -1,4 +1,13 @@
 <script setup lang="ts">
+import '../../../assets/styles/test-common.css'
+import '../../../assets/styles/components/common.css'
+import '../../../assets/styles/components/button.css'
+import '../../../assets/styles/components/form.css'
+import '../../../assets/styles/components/navigation.css'
+import '../../../assets/styles/components/tag.css'
+import '../../../assets/styles/components/log.css'
+import '../../../assets/styles/layouts/main.css'
+
 import AudioSelectModal from '../audio/AudioSelectModal.vue'
 import AlgorithmSelector from '../audio/AlgorithmSelector.vue'
 import DimensionConfigPanel from './DimensionConfigPanel.vue'

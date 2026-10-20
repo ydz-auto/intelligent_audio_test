@@ -21,7 +21,7 @@
 
     <!-- 公共站头：未登录 → 登录按钮；已登录 → 头像下拉 -->
     <template v-if="mode === 'public'">
-      <button v-if="!authStore.isLoggedIn" class="login-btn" @click="goLogin">登 录</button>
+      <button v-if="!authStore.isLoggedIn" class="login-btn" data-layout-btn @click="goLogin">登 录</button>
       <ProfileDropdown v-else />
     </template>
 
@@ -31,6 +31,12 @@
 </template>
 
 <script setup lang="ts">
+import '../../assets/styles/test-common.css'
+import '../../assets/styles/components/common.css'
+import '../../assets/styles/components/button.css'
+import '../../assets/styles/components/table.css'
+import '../../assets/styles/components/log.css'
+
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../store/authStore'
@@ -70,7 +76,7 @@ function goLogin() {
   margin-left: auto;
 }
 .login-btn {
-  height: 32px;
+  height: var(--control-height);
   padding: 0 16px;
   border: 1px solid var(--ring);
   border-radius: var(--radius-sm);
@@ -79,6 +85,9 @@ function goLogin() {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: all var(--transition-fast);
 }
 .login-btn:hover {

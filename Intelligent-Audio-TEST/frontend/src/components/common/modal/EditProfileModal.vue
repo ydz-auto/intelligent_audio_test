@@ -33,6 +33,15 @@
 </template>
 
 <script setup lang="ts">
+import '../../../assets/styles/test-common.css'
+import '../../../assets/styles/components/common.css'
+import '../../../assets/styles/components/button.css'
+import '../../../assets/styles/components/form.css'
+import '../../../assets/styles/components/modal.css'
+import '../../../assets/styles/components/table.css'
+import '../../../assets/styles/components/tag.css'
+import '../../../assets/styles/components/log.css'
+
 /**
  * 编辑资料对话框壳（13_个人中心 §3.4 / 总表 §3.3 F3，自我资料更新）：
  * 用户名只读（平台口径不可改）+ 邮箱编辑。

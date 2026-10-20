@@ -19,7 +19,7 @@
 .step-title{
     font-size: 24px;
     font-weight: var(--font-weight-bold);
-    color: var(--text-primary);
+    color: var(--foreground);
     margin: 0 0 var(--spacing-lg) 0;
     display: flex;
     align-items: center;
@@ -30,7 +30,7 @@
     content: '';
     width: 48px;
     height: 4px;
-    background: linear-gradient(90deg, var(--primary-color));
+    background: linear-gradient(90deg, var(--primary));
     border-radius: var(--radius-2);
 }
 
@@ -41,6 +41,6 @@
     align-items: center;
     margin-top: var(--spacing-xl);
     padding-top: var(--spacing-lg);
-    border-top: 1px solid var(--border-color);
+    border-top: 1px solid var(--border);
     flex-wrap: wrap;
 }

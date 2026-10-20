@@ -42,6 +42,12 @@
 </template>
 
 <script setup lang="ts">
+import '../../../assets/styles/components/common.css'
+import '../../../assets/styles/components/button.css'
+import '../../../assets/styles/components/card.css'
+import '../../../assets/styles/components/table.css'
+import '../../../assets/styles/components/progress.css'
+
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDashboardPermission } from '../../../composables/dashboard/useDashboardPermission'

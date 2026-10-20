@@ -64,6 +64,9 @@
 </template>
 
 <script setup>
+import '../../assets/styles/components/tag.css'
+import '../../assets/styles/components/log.css'
+
 import { ref, computed, watch } from 'vue';
 import TaskCard from './TaskCard.vue';
 import PaginationComponent from '../common/data/PaginationComponent.vue';

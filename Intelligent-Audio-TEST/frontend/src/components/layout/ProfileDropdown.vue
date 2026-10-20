@@ -34,6 +34,8 @@
 </template>
 
 <script setup lang="ts">
+import '../../assets/styles/components/button.css'
+
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../../store/authStore'
@@ -95,7 +97,7 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  height: 36px;
+  height: var(--control-height);
   padding: 0 6px;
   border: none;
   border-radius: var(--radius-sm);

@@ -3,7 +3,7 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <div class="header-left">
-        <h2 class="page-title" style="color: var(--primary-color);">
+        <h2 class="page-title" style="color: var(--primary);">
           <i class="fas fa-chart-simple"></i>
           排行榜
         </h2>
@@ -86,6 +86,18 @@
 </template>
 
 <script setup lang="ts">
+import '../../assets/styles/test-common.css'
+import '../../assets/styles/components/common.css'
+import '../../assets/styles/components/button.css'
+import '../../assets/styles/components/card.css'
+import '../../assets/styles/components/form.css'
+import '../../assets/styles/components/table.css'
+import '../../assets/styles/components/navigation.css'
+import '../../assets/styles/components/progress.css'
+import '../../assets/styles/components/tag.css'
+import '../../assets/styles/components/log.css'
+import '../../assets/styles/layouts/main.css'
+
 import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useBenchmarkStore } from '../../store/benchmarkStore'
@@ -323,3 +335,6 @@ onMounted(() => {
   text-align: right;
 }
 </style>
+
+<!-- INT-768 CSS-1 拆搬：标签统计域样式由排行榜页按需加载 -->
+<style src="../../assets/styles/api-test/tag-stats.css"></style>

@@ -153,6 +153,11 @@
   /* ── CSS-3 结构值收编（INT-771，值保真；域散色进 theme-presets.css） ── */
   --z-index-overlay: 9999; /* 浮层/悬停层（实测 9999） */
   --font-size-base: 16px; /* 兼容别名：报告页正文标签（原未定义→继承 body 16px，定案同 --font-size-md） */
+
+  /* ── 控件统一高度（INT-894：顶栏文本链接与按钮底边对齐） ──
+     顶栏导航链接 / 右上角功能区按钮（Agent 工作台、算法切换、搜索、通知、主题、头像）
+     统一为一档高度，align-items:center 下底边一条线对齐。照 React size-8（32px）口径。 */
+  --control-height: 32px;
 }
 
 /*

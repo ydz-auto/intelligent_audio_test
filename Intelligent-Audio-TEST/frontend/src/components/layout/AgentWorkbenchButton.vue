@@ -29,8 +29,8 @@ function goAiChat() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 34px;
-  min-height: 34px;
+  height: var(--control-height);
+  min-height: var(--control-height);
   padding: 0 14px;
   border: 0;
   border-radius: var(--radius-full);

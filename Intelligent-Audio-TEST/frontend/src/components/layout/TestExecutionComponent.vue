@@ -4,7 +4,7 @@
 
     <!-- INT-203：实时链路降级提示（WS 断开，HTTP 轮询兜底中） -->
     <div v-if="connectionFallback" class="conn-fallback-alert" role="alert"
-      style="display: flex; align-items: center; gap: 8px; padding: 10px 16px; margin-bottom: 16px; background-color: var(--warning-light); border: 1px solid var(--warning-color); border-radius: var(--border-radius-md); color: var(--warning-color); font-size: 14px;">
+      style="display: flex; align-items: center; gap: 8px; padding: 10px 16px; margin-bottom: 16px; background-color: var(--warning-light); border: 1px solid var(--warning-color); border-radius: var(--radius-md); color: var(--warning-color); font-size: 14px;">
       <i class="fas fa-plug-circle-exclamation"></i>
       <span>实时连接已断开，进度已切换为 HTTP 轮询刷新（日志暂不可用），正在自动重连...</span>
     </div>
@@ -13,19 +13,19 @@
     <div class="test-progress-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 24px;">
       <!-- 任务信息卡片 -->
       <div class="task-info-panel">
-        <div class="task-basic-info" style="margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--border-color);">
-          <h4 style="margin: 0 0 12px 0; font-size: 18px; font-weight: var(--font-weight-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
-            <i class="fas fa-tasks" style="color: var(--primary-color);"></i>
+        <div class="task-basic-info" style="margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--border);">
+          <h4 style="margin: 0 0 12px 0; font-size: 18px; font-weight: var(--font-weight-semibold); color: var(--foreground); display: flex; align-items: center; gap: 8px;">
+            <i class="fas fa-tasks" style="color: var(--primary);"></i>
             {{ testType }}测试任务
           </h4>
           <div class="task-meta" style="display: flex; gap: 20px; flex-wrap: wrap; align-items: center;">
             <div class="meta-item flex items-center gap-2">
-              <i class="fas fa-clock" style="color: var(--text-secondary); font-size: 14px;"></i>
-              <span style="font-size: 14px; color: var(--text-secondary);">{{ taskInfo.testDate || new Date().toLocaleDateString() }}</span>
+              <i class="fas fa-clock" style="color: var(--muted-foreground); font-size: 14px;"></i>
+              <span style="font-size: 14px; color: var(--muted-foreground);">{{ taskInfo.testDate || new Date().toLocaleDateString() }}</span>
             </div>
             <div class="meta-item flex items-center gap-2">
-              <i class="fas fa-user" style="color: var(--text-secondary); font-size: 14px;"></i>
-              <span style="font-size: 14px; color: var(--text-secondary);">{{ taskInfo.creator || '系统管理员' }}</span>
+              <i class="fas fa-user" style="color: var(--muted-foreground); font-size: 14px;"></i>
+              <span style="font-size: 14px; color: var(--muted-foreground);">{{ taskInfo.creator || '系统管理员' }}</span>
             </div>
             <!-- INT-301：任务详情头双状态徽章（执行/评估完全分离；taskStatus 兼容旧调用缺省回退） -->
             <div v-if="taskStatus" class="meta-item flex items-center gap-2">
@@ -43,61 +43,61 @@
         
         <!-- 任务详细信息 -->
         <div class="task-details" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px;">
-          <div v-if="taskInfo.taskName" class="task-detail-item" style="background-color: var(--background-secondary); padding: 16px; border-radius: var(--border-radius-md); display: flex; flex-direction: column; gap: 8px;">
-            <div class="detail-label" style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-secondary);">
+          <div v-if="taskInfo.taskName" class="task-detail-item" style="background-color: var(--muted); padding: 16px; border-radius: var(--radius-md); display: flex; flex-direction: column; gap: 8px;">
+            <div class="detail-label" style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted-foreground);">
               <i class="fas fa-tag" style="font-size: 14px;"></i>
               任务名称
             </div>
-            <div class="detail-value" style="font-size: 16px; font-weight: var(--font-weight-medium); color: var(--text-primary);">{{ taskInfo.taskName }}</div>
+            <div class="detail-value" style="font-size: 16px; font-weight: var(--font-weight-medium); color: var(--foreground);">{{ taskInfo.taskName }}</div>
           </div>
-          <div class="task-detail-item" style="background-color: var(--background-secondary); padding: 16px; border-radius: var(--border-radius-md); display: flex; flex-direction: column; gap: 8px;">
-            <div class="detail-label" style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-secondary);">
+          <div class="task-detail-item" style="background-color: var(--muted); padding: 16px; border-radius: var(--radius-md); display: flex; flex-direction: column; gap: 8px;">
+            <div class="detail-label" style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted-foreground);">
               <i class="fas fa-calendar-check" style="font-size: 14px;"></i>
               预计完成时间
             </div>
-            <div class="detail-value" style="font-size: 16px; font-weight: var(--font-weight-medium); color: var(--text-primary);">{{ taskInfo.expectedCompleteTime || '--' }}</div>
+            <div class="detail-value" style="font-size: 16px; font-weight: var(--font-weight-medium); color: var(--foreground);">{{ taskInfo.expectedCompleteTime || '--' }}</div>
           </div>
-          <div class="task-detail-item" style="background-color: var(--background-secondary); padding: 16px; border-radius: var(--border-radius-md); display: flex; flex-direction: column; gap: 8px;">
-            <div class="detail-label" style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-secondary);">
+          <div class="task-detail-item" style="background-color: var(--muted); padding: 16px; border-radius: var(--radius-md); display: flex; flex-direction: column; gap: 8px;">
+            <div class="detail-label" style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted-foreground);">
               <i class="fas fa-hourglass-half" style="font-size: 14px;"></i>
               预计总时长
             </div>
-            <div class="detail-value" style="font-size: 16px; font-weight: var(--font-weight-medium); color: var(--text-primary);">{{ taskInfo.expectedTotalTime || '--' }}</div>
+            <div class="detail-value" style="font-size: 16px; font-weight: var(--font-weight-medium); color: var(--foreground);">{{ taskInfo.expectedTotalTime || '--' }}</div>
           </div>
-          <div class="task-detail-item" style="background-color: var(--background-secondary); padding: 16px; border-radius: var(--border-radius-md); display: flex; flex-direction: column; gap: 8px;">
-            <div class="detail-label" style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-secondary);">
+          <div class="task-detail-item" style="background-color: var(--muted); padding: 16px; border-radius: var(--radius-md); display: flex; flex-direction: column; gap: 8px;">
+            <div class="detail-label" style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted-foreground);">
               <i class="fas fa-clock" style="font-size: 14px;"></i>
               已用时长
             </div>
-            <div class="detail-value" style="font-size: 16px; font-weight: var(--font-weight-medium); color: var(--text-primary);">{{ taskInfo.usedTime || '0分钟' }}</div>
+            <div class="detail-value" style="font-size: 16px; font-weight: var(--font-weight-medium); color: var(--foreground);">{{ taskInfo.usedTime || '0分钟' }}</div>
           </div>
-          <div v-if="taskInfo.apiCount" class="task-detail-item" style="background-color: var(--background-secondary); padding: 16px; border-radius: var(--border-radius-md); display: flex; flex-direction: column; gap: 8px;">
-            <div class="detail-label" style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-secondary);">
+          <div v-if="taskInfo.apiCount" class="task-detail-item" style="background-color: var(--muted); padding: 16px; border-radius: var(--radius-md); display: flex; flex-direction: column; gap: 8px;">
+            <div class="detail-label" style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted-foreground);">
               <i class="fas fa-exchange-alt" style="font-size: 14px;"></i>
               测试API数量
             </div>
-            <div class="detail-value" style="font-size: 16px; font-weight: var(--font-weight-medium); color: var(--text-primary);">{{ taskInfo.apiCount }}</div>
+            <div class="detail-value" style="font-size: 16px; font-weight: var(--font-weight-medium); color: var(--foreground);">{{ taskInfo.apiCount }}</div>
           </div>
-          <div v-if="taskInfo.deviceCount" class="task-detail-item" style="background-color: var(--background-secondary); padding: 16px; border-radius: var(--border-radius-md); display: flex; flex-direction: column; gap: 8px;">
-            <div class="detail-label" style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-secondary);">
+          <div v-if="taskInfo.deviceCount" class="task-detail-item" style="background-color: var(--muted); padding: 16px; border-radius: var(--radius-md); display: flex; flex-direction: column; gap: 8px;">
+            <div class="detail-label" style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted-foreground);">
               <i class="fas fa-device" style="font-size: 14px;"></i>
               测试设备数量
             </div>
-            <div class="detail-value" style="font-size: 16px; font-weight: var(--font-weight-medium); color: var(--text-primary);">{{ taskInfo.deviceCount }}</div>
+            <div class="detail-value" style="font-size: 16px; font-weight: var(--font-weight-medium); color: var(--foreground);">{{ taskInfo.deviceCount }}</div>
           </div>
-          <div class="task-detail-item" style="background-color: var(--background-secondary); padding: 16px; border-radius: var(--border-radius-md); display: flex; flex-direction: column; gap: 8px;">
-            <div class="detail-label" style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-secondary);">
+          <div class="task-detail-item" style="background-color: var(--muted); padding: 16px; border-radius: var(--radius-md); display: flex; flex-direction: column; gap: 8px;">
+            <div class="detail-label" style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted-foreground);">
               <i class="fas fa-list-check" style="font-size: 14px;"></i>
               测试用例数量
             </div>
-            <div class="detail-value" style="font-size: 16px; font-weight: var(--font-weight-medium); color: var(--text-primary);">{{ taskInfo.totalTestCases || 0 }}</div>
+            <div class="detail-value" style="font-size: 16px; font-weight: var(--font-weight-medium); color: var(--foreground);">{{ taskInfo.totalTestCases || 0 }}</div>
           </div>
-          <div v-if="taskInfo.concurrentTasks" class="task-detail-item" style="background-color: var(--background-secondary); padding: 16px; border-radius: var(--border-radius-md); display: flex; flex-direction: column; gap: 8px;">
-            <div class="detail-label" style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-secondary);">
+          <div v-if="taskInfo.concurrentTasks" class="task-detail-item" style="background-color: var(--muted); padding: 16px; border-radius: var(--radius-md); display: flex; flex-direction: column; gap: 8px;">
+            <div class="detail-label" style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted-foreground);">
               <i class="fas fa-bolt" style="font-size: 14px;"></i>
               并发数
             </div>
-            <div class="detail-value" style="font-size: 16px; font-weight: var(--font-weight-medium); color: var(--text-primary);">{{ taskInfo.concurrentTasks }}</div>
+            <div class="detail-value" style="font-size: 16px; font-weight: var(--font-weight-medium); color: var(--foreground);">{{ taskInfo.concurrentTasks }}</div>
           </div>
         </div>
       </div>
@@ -105,79 +105,79 @@
       <!-- 进度概览卡片 -->
       <div class="progress-overview">
         <div class="progress-item" style="margin-bottom: 20px;">
-          <div class="progress-label" style="font-size: 16px; font-weight: var(--font-weight-semibold); color: var(--text-primary); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-            <i class="fas fa-chart-line" style="color: var(--primary-color);"></i>
+          <div class="progress-label" style="font-size: 16px; font-weight: var(--font-weight-semibold); color: var(--foreground); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+            <i class="fas fa-chart-line" style="color: var(--primary);"></i>
             总进度
           </div>
-          <div class="progress-bar-large" style="width: 100%; height: 12px; background-color: var(--secondary-color); border-radius: var(--border-radius-full); overflow: hidden; margin-bottom: 8px;">
+          <div class="progress-bar-large" style="width: 100%; height: 12px; background-color: var(--secondary); border-radius: var(--radius-full); overflow: hidden; margin-bottom: 8px;">
             <div class="progress-fill" :style="{
               width: progressInfo.totalProgress + '%',
               height: '100%',
-              background: 'var(--primary-gradient)',
-              borderBorderRadius: 'var(--border-radius-full)',
+              background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%)',
+              borderBorderRadius: 'var(--radius-full)',
               transition: 'width 0.3s ease'
             }"></div>
           </div>
-          <div class="progress-percentage" style="font-size: 24px; font-weight: var(--font-weight-bold); color: var(--primary-color); text-align: center;">{{ progressInfo.totalProgress }}%</div>
-          <div v-if="taskInfo.usedTime && taskInfo.expectedTotalTime" class="progress-time-info" style="text-align: center; font-size: 14px; color: var(--text-secondary); margin-top: 8px;">
+          <div class="progress-percentage" style="font-size: 24px; font-weight: var(--font-weight-bold); color: var(--primary); text-align: center;">{{ progressInfo.totalProgress }}%</div>
+          <div v-if="taskInfo.usedTime && taskInfo.expectedTotalTime" class="progress-time-info" style="text-align: center; font-size: 14px; color: var(--muted-foreground); margin-top: 8px;">
             已用时间{{ taskInfo.usedTime }} / 预计时间{{ taskInfo.expectedTotalTime }}
           </div>
         </div>
         <div class="progress-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 16px; margin-top: 20px;">
-          <div class="stat-item" style="background-color: var(--success-light); padding: 16px; border-radius: var(--border-radius-md); text-align: center; display: flex; flex-direction: column; gap: 8px;">
-            <div class="stat-value" style="font-size: 24px; font-weight: var(--font-weight-bold); color: var(--success-color);">{{ progressInfo.completed }}</div>
-            <div class="stat-label" style="font-size: 14px; color: var(--text-primary);">已完成</div>
+          <div class="stat-item" style="background-color: var(--success-light); padding: 16px; border-radius: var(--radius-md); text-align: center; display: flex; flex-direction: column; gap: 8px;">
+            <div class="stat-value" style="font-size: 24px; font-weight: var(--font-weight-bold); color: var(--success);">{{ progressInfo.completed }}</div>
+            <div class="stat-label" style="font-size: 14px; color: var(--foreground);">已完成</div>
           </div>
-          <div class="stat-item" style="background-color: var(--warning-light); padding: 16px; border-radius: var(--border-radius-md); text-align: center; display: flex; flex-direction: column; gap: 8px;">
+          <div class="stat-item" style="background-color: var(--warning-light); padding: 16px; border-radius: var(--radius-md); text-align: center; display: flex; flex-direction: column; gap: 8px;">
             <div class="stat-value" style="font-size: 24px; font-weight: var(--font-weight-bold); color: var(--warning-color);">{{ progressInfo.inProgress }}</div>
-            <div class="stat-label" style="font-size: 14px; color: var(--text-primary);">进行中</div>
+            <div class="stat-label" style="font-size: 14px; color: var(--foreground);">进行中</div>
           </div>
-          <div class="stat-item" style="background-color: var(--secondary-light); padding: 16px; border-radius: var(--border-radius-md); text-align: center; display: flex; flex-direction: column; gap: 8px;">
-            <div class="stat-value" style="font-size: 24px; font-weight: var(--font-weight-bold); color: var(--secondary-color);">{{ progressInfo.pending }}</div>
-            <div class="stat-label" style="font-size: 14px; color: var(--text-primary);">待执行</div>
+          <div class="stat-item" style="background-color: var(--secondary-light); padding: 16px; border-radius: var(--radius-md); text-align: center; display: flex; flex-direction: column; gap: 8px;">
+            <div class="stat-value" style="font-size: 24px; font-weight: var(--font-weight-bold); color: var(--secondary);">{{ progressInfo.pending }}</div>
+            <div class="stat-label" style="font-size: 14px; color: var(--foreground);">待执行</div>
           </div>
-          <div class="stat-item" style="background-color: var(--danger-light); padding: 16px; border-radius: var(--border-radius-md); text-align: center; display: flex; flex-direction: column; gap: 8px;">
-            <div class="stat-value" style="font-size: 24px; font-weight: var(--font-weight-bold); color: var(--danger-color);">{{ progressInfo.executionFailed }}</div>
-            <div class="stat-label" style="font-size: 14px; color: var(--text-primary);">执行失败</div>
+          <div class="stat-item" style="background-color: var(--danger-light); padding: 16px; border-radius: var(--radius-md); text-align: center; display: flex; flex-direction: column; gap: 8px;">
+            <div class="stat-value" style="font-size: 24px; font-weight: var(--font-weight-bold); color: var(--destructive);">{{ progressInfo.executionFailed }}</div>
+            <div class="stat-label" style="font-size: 14px; color: var(--foreground);">执行失败</div>
           </div>
-          <div class="stat-item" style="background-color: var(--secondary-light); padding: 16px; border-radius: var(--border-radius-md); text-align: center; display: flex; flex-direction: column; gap: 8px;">
+          <div class="stat-item" style="background-color: var(--secondary-light); padding: 16px; border-radius: var(--radius-md); text-align: center; display: flex; flex-direction: column; gap: 8px;">
             <div class="stat-value" style="font-size: 24px; font-weight: var(--font-weight-bold); color: var(--info);">{{ progressInfo.evaluationFailed }}</div>
-            <div class="stat-label" style="font-size: 14px; color: var(--text-primary);">评估失败</div>
+            <div class="stat-label" style="font-size: 14px; color: var(--foreground);">评估失败</div>
           </div>
         </div>
       </div>
     </div>
 
     <!-- API资源管理（仅API测试时显示） -->
-    <div v-if="testType !== 'E2E' && apiResources && apiResources.length > 0" class="api-resources-section" style="margin-top: 24px; background-color: var(--background-primary); border-radius: var(--border-radius-lg); box-shadow: var(--shadow-sm); padding: 24px; border: 1px solid var(--border-color);">
-      <h4 style="margin: 0 0 16px 0; font-size: 18px; font-weight: var(--font-weight-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
-        <i class="fas fa-server" style="color: var(--primary-color);"></i>
+    <div v-if="testType !== 'E2E' && apiResources && apiResources.length > 0" class="api-resources-section" style="margin-top: 24px; background-color: var(--background); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 24px; border: 1px solid var(--border);">
+      <h4 style="margin: 0 0 16px 0; font-size: 18px; font-weight: var(--font-weight-semibold); color: var(--foreground); display: flex; align-items: center; gap: 8px;">
+        <i class="fas fa-server" style="color: var(--primary);"></i>
         API资源管理
       </h4>
       <div class="api-resources-list" style="display: flex; flex-direction: column; gap: 12px;">
-        <div v-for="api in apiResources" :key="api.id" class="api-resource-item" style="padding: 16px; background-color: var(--background-secondary); border-radius: var(--border-radius-md); display: flex; justify-content: space-between; align-items: center;">
-          <div class="resource-name" style="font-weight: 500; color: var(--text-primary);">{{ api.name }}</div>
+        <div v-for="api in apiResources" :key="api.id" class="api-resource-item" style="padding: 16px; background-color: var(--muted); border-radius: var(--radius-md); display: flex; justify-content: space-between; align-items: center;">
+          <div class="resource-name" style="font-weight: 500; color: var(--foreground);">{{ api.name }}</div>
           <div class="resource-stats" style="display: flex; gap: 20px; align-items: center;">
             <div class="resource-stat flex items-center gap-2">
-              <span class="stat-label" style="font-size: 14px; color: var(--text-secondary);">当前并发:</span>
-              <span class="stat-value" style="font-weight: 500; color: var(--text-primary);">{{ api.currentConcurrent || 0 }}/{{ api.maxConcurrent || 10 }}</span>
+              <span class="stat-label" style="font-size: 14px; color: var(--muted-foreground);">当前并发:</span>
+              <span class="stat-value" style="font-weight: 500; color: var(--foreground);">{{ api.currentConcurrent || 0 }}/{{ api.maxConcurrent || 10 }}</span>
             </div>
             <div class="resource-stat flex items-center gap-2">
-              <span class="stat-label" style="font-size: 14px; color: var(--text-secondary);">队列长度:</span>
-              <span class="stat-value" style="font-weight: 500; color: var(--text-primary);">{{ api.queueLength || 0 }}</span>
+              <span class="stat-label" style="font-size: 14px; color: var(--muted-foreground);">队列长度:</span>
+              <span class="stat-value" style="font-weight: 500; color: var(--foreground);">{{ api.queueLength || 0 }}</span>
             </div>
             <div class="resource-stat flex items-center gap-2">
-              <span class="stat-label" style="font-size: 14px; color: var(--text-secondary);">平均响应时间:</span>
-              <span class="stat-value" style="font-weight: 500; color: var(--text-primary);">{{ api.avgResponseTime || 0 }}ms</span>
+              <span class="stat-label" style="font-size: 14px; color: var(--muted-foreground);">平均响应时间:</span>
+              <span class="stat-value" style="font-weight: 500; color: var(--foreground);">{{ api.avgResponseTime || 0 }}ms</span>
             </div>
           </div>
           <div class="resource-progress" style="width: 100px;">
-            <div class="progress-bar" style="width: 100%; height: 8px; background-color: var(--secondary-color); border-radius: var(--border-radius-full); overflow: hidden;">
+            <div class="progress-bar" style="width: 100%; height: 8px; background-color: var(--secondary); border-radius: var(--radius-full); overflow: hidden;">
               <div class="progress-fill" :style="{
                 width: (api.currentConcurrent / (api.maxConcurrent || 10)) * 100 + '%',
                 height: '100%',
-                background: 'var(--primary-gradient)',
-                borderBorderRadius: 'var(--border-radius-full)'
+                background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%)',
+                borderBorderRadius: 'var(--radius-full)'
               }"></div>
             </div>
           </div>
@@ -186,12 +186,12 @@
     </div>
 
     <!-- 关联信息卡片 -->
-    <div class="task-association-section" style="margin-top: 24px; background-color: var(--background-primary); border-radius: var(--border-radius-lg); box-shadow: var(--shadow-sm); padding: 24px; border: 1px solid var(--border-color);">
-      <div class="association-tabs" style="display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color);">
-        <button class="tab-btn" :class="{ active: activeTab === 'cases' }" @click="$emit('update:active-tab', 'cases')" style="padding: 12px 24px; border: none; background: none; font-size: 16px; font-weight: 500; color: var(--text-secondary); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.3s ease;">
+    <div class="task-association-section" style="margin-top: 24px; background-color: var(--background); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 24px; border: 1px solid var(--border);">
+      <div class="association-tabs" style="display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border);">
+        <button class="tab-btn" :class="{ active: activeTab === 'cases' }" @click="$emit('update:active-tab', 'cases')" style="padding: 12px 24px; border: none; background: none; font-size: 16px; font-weight: 500; color: var(--muted-foreground); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.3s ease;">
           关联用例
         </button>
-        <button class="tab-btn" :class="{ active: activeTab === 'devices' }" @click="$emit('update:active-tab', 'devices')" style="padding: 12px 24px; border: none; background: none; font-size: 16px; font-weight: 500; color: var(--text-secondary); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.3s ease;">
+        <button class="tab-btn" :class="{ active: activeTab === 'devices' }" @click="$emit('update:active-tab', 'devices')" style="padding: 12px 24px; border: none; background: none; font-size: 16px; font-weight: 500; color: var(--muted-foreground); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.3s ease;">
           关联{{ testType === 'API' ? 'API' : '设备' }}
         </button>
       </div>
@@ -199,20 +199,20 @@
         <!-- 关联用例列表 -->
         <div class="associated-cases" v-show="activeTab === 'cases'" style="display: flex; flex-direction: column; gap: 12px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
-            <h5 style="margin: 0; font-size: 16px; font-weight: var(--font-weight-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
-              <i class="fas fa-list-check" style="color: var(--primary-color);"></i>
+            <h5 style="margin: 0; font-size: 16px; font-weight: var(--font-weight-semibold); color: var(--foreground); display: flex; align-items: center; gap: 8px;">
+              <i class="fas fa-list-check" style="color: var(--primary);"></i>
               关联用例
             </h5>
             <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
               <!-- 视图切换 -->
-              <div class="case-view-switcher" style="display: inline-flex; border: 1px solid var(--border-color); border-radius: var(--border-radius-md); overflow: hidden;">
-                <button class="case-view-btn" :class="{ active: caseViewMode === 'flat' }" @click="caseViewMode = 'flat'" style="padding: 6px 12px; border: none; background: transparent; font-size: 13px; color: var(--text-secondary); cursor: pointer; transition: all 0.2s;">
+              <div class="case-view-switcher" style="display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden;">
+                <button class="case-view-btn" :class="{ active: caseViewMode === 'flat' }" @click="caseViewMode = 'flat'" style="padding: 6px 12px; border: none; background: transparent; font-size: 13px; color: var(--muted-foreground); cursor: pointer; transition: all 0.2s;">
                   <i class="fas fa-list"></i> 平铺
                 </button>
-                <button class="case-view-btn" :class="{ active: caseViewMode === ViewMode.TAG }" @click="caseViewMode = ViewMode.TAG" style="padding: 6px 12px; border: none; background: transparent; font-size: 13px; color: var(--text-secondary); cursor: pointer; transition: all 0.2s;">
+                <button class="case-view-btn" :class="{ active: caseViewMode === ViewMode.TAG }" @click="caseViewMode = ViewMode.TAG" style="padding: 6px 12px; border: none; background: transparent; font-size: 13px; color: var(--muted-foreground); cursor: pointer; transition: all 0.2s;">
                   <i class="fas fa-tags"></i> 标签
                 </button>
-                <button class="case-view-btn" :class="{ active: caseViewMode === ViewMode.GROUP }" @click="caseViewMode = ViewMode.GROUP" style="padding: 6px 12px; border: none; background: transparent; font-size: 13px; color: var(--text-secondary); cursor: pointer; transition: all 0.2s;">
+                <button class="case-view-btn" :class="{ active: caseViewMode === ViewMode.GROUP }" @click="caseViewMode = ViewMode.GROUP" style="padding: 6px 12px; border: none; background: transparent; font-size: 13px; color: var(--muted-foreground); cursor: pointer; transition: all 0.2s;">
                   <i class="fas fa-folder"></i> 分组
                 </button>
               </div>
@@ -221,14 +221,14 @@
                    「已删除」项去除：后端 TaskCaseStatus 无 deleted 值，INT-305 移除用例
                    已从进度/详情 payload 剔除，该行不可能出现，属死选项） -->
               <div class="filter-select" style="display: flex; align-items: center; gap: 6px;">
-                <label style="font-size: 13px; color: var(--text-secondary); white-space: nowrap;">执行:</label>
+                <label style="font-size: 13px; color: var(--muted-foreground); white-space: nowrap;">执行:</label>
                 <select v-model="caseFilterExecution" class="form-input" style="height: 32px; padding: 0 8px; font-size: 13px; min-width: 100px;">
                   <option value="all">全部执行</option>
                   <option v-for="opt in CASE_EXECUTION_FILTER_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
                 </select>
               </div>
               <div class="filter-select" style="display: flex; align-items: center; gap: 6px;">
-                <label style="font-size: 13px; color: var(--text-secondary); white-space: nowrap;">评估:</label>
+                <label style="font-size: 13px; color: var(--muted-foreground); white-space: nowrap;">评估:</label>
                 <select v-model="caseFilterEvaluation" class="form-input" style="height: 32px; padding: 0 8px; font-size: 13px; min-width: 100px;">
                   <option value="all">全部评估</option>
                   <option v-for="opt in CASE_EVALUATION_FILTER_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
@@ -255,11 +255,11 @@
                style="max-height: 400px; overflow-y: auto; position: relative;">
             <div :style="{ height: caseTotalHeight + 'px', position: 'relative' }">
               <div :style="{ transform: `translateY(${caseOffset}px)` }">
-                <div v-if="filteredAssociatedCases.length === 0" class="no-items-message" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                <div v-if="filteredAssociatedCases.length === 0" class="no-items-message" style="text-align: center; padding: 40px; color: var(--muted-foreground);">
                   <i class="fas fa-info-circle" style="font-size: 24px; margin-bottom: 12px; display: block;"></i>
                   暂无关联用例
                 </div>
-                <div v-for="testCase in visibleCases" :key="testCase.id" class="progress-item-small" :class="testCase.status" style="padding: 12px; border-radius: var(--radius-control); background-color: var(--background-secondary); display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; min-height: 52px; box-sizing: border-box; cursor: pointer;" @click="handleTestCaseClick(testCase)">
+                <div v-for="testCase in visibleCases" :key="testCase.id" class="progress-item-small" :class="testCase.status" style="padding: 12px; border-radius: var(--radius-control); background-color: var(--muted); display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; min-height: 52px; box-sizing: border-box; cursor: pointer;" @click="handleTestCaseClick(testCase)">
                   <!-- INT-796 §3.1：批量复核勾选（终态任务 + task.result.review；点击不冒泡） -->
                   <label
                     v-if="canReview && isTerminal"
@@ -276,15 +276,15 @@
                   </label>
                   <div class="progress-info" style="flex: 1; overflow: hidden;">
                     <div class="progress-name" style="font-weight: 500; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ testCase.name }}</div>
-                    <div class="progress-time" style="font-size: 12px; color: var(--text-secondary);">
+                    <div class="progress-time" style="font-size: 12px; color: var(--muted-foreground);">
                       <span v-if="testCase.duration">{{ testCase.duration }}s</span>
                     </div>
                     <div v-if="testCase.roundProgress" class="round-progress" style="display: flex; align-items: center; gap: 6px; margin-top: 2px;">
-                      <span style="font-size: 11px; color: var(--text-secondary); white-space: nowrap;">
+                      <span style="font-size: 11px; color: var(--muted-foreground); white-space: nowrap;">
                         第 {{ testCase.roundProgress.current }}/{{ testCase.roundProgress.total }} 轮
                       </span>
-                      <div style="flex: 1; height: 3px; background: var(--border-color); border-radius: var(--radius-2); overflow: hidden; min-width: 40px;">
-                        <div style="height: 100%; background: var(--primary-color); border-radius: var(--radius-2); transition: width 0.3s ease;"
+                      <div style="flex: 1; height: 3px; background: var(--border); border-radius: var(--radius-2); overflow: hidden; min-width: 40px;">
+                        <div style="height: 100%; background: var(--primary); border-radius: var(--radius-2); transition: width 0.3s ease;"
                              :style="{ width: (testCase.roundProgress.current / testCase.roundProgress.total * 100) + '%' }">
                         </div>
                       </div>
@@ -329,7 +329,7 @@
                     <button v-if="canRemoveCase"
                             class="case-remove-btn"
                             :title="'移除用例'"
-                            style="border: none; background: transparent; cursor: pointer; padding: 4px 6px; color: var(--text-secondary); transition: color 0.2s;"
+                            style="border: none; background: transparent; cursor: pointer; padding: 4px 6px; color: var(--muted-foreground); transition: color 0.2s;"
                             @click.stop="handleRemoveCaseClick(testCase)">
                       <i class="fas fa-trash-alt"></i>
                     </button>
@@ -341,20 +341,20 @@
 
           <!-- 标签视图 / 分组视图 -->
           <div v-else class="associated-items-list-container" style="max-height: 400px; overflow-y: auto; position: relative;">
-            <div v-if="filteredAssociatedCases.length === 0" class="no-items-message" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+            <div v-if="filteredAssociatedCases.length === 0" class="no-items-message" style="text-align: center; padding: 40px; color: var(--muted-foreground);">
               <i class="fas fa-info-circle" style="font-size: 24px; margin-bottom: 12px; display: block;"></i>
               暂无关联用例
             </div>
-            <div v-for="(cases, key) in (caseViewMode === ViewMode.TAG ? groupedCasesByTag : groupedCasesByGroupName)" :key="key" class="case-group-card" style="background-color: var(--background-secondary); border-radius: var(--border-radius-md); margin-bottom: 8px; border: 1px solid var(--border-color);">
+            <div v-for="(cases, key) in (caseViewMode === ViewMode.TAG ? groupedCasesByTag : groupedCasesByGroupName)" :key="key" class="case-group-card" style="background-color: var(--muted); border-radius: var(--radius-md); margin-bottom: 8px; border: 1px solid var(--border);">
               <div class="case-group-header" @click="toggleCaseGroup(key)" style="padding: 10px 12px; cursor: pointer; display: flex; align-items: center; gap: 8px;">
                 <i class="fas fa-chevron-down" :class="{ expanded: expandedCaseGroups[key] }" style="font-size: 12px; transition: transform 0.2s; transform: rotate(-90deg);"></i>
-                <i v-if="caseViewMode === ViewMode.TAG" class="fas fa-tag" style="color: var(--primary-color); font-size: 13px;"></i>
-                <i v-else class="fas fa-folder" style="color: var(--primary-color); font-size: 13px;"></i>
-                <span style="font-weight: 500; color: var(--text-primary);">{{ key }}</span>
-                <span style="background-color: var(--primary-color); color: var(--color-white); font-size: 12px; padding: 2px 8px; border-radius: var(--radius-pill); min-width: 20px; text-align: center;">{{ cases.length }}</span>
+                <i v-if="caseViewMode === ViewMode.TAG" class="fas fa-tag" style="color: var(--primary); font-size: 13px;"></i>
+                <i v-else class="fas fa-folder" style="color: var(--primary); font-size: 13px;"></i>
+                <span style="font-weight: 500; color: var(--foreground);">{{ key }}</span>
+                <span style="background-color: var(--primary); color: var(--color-white); font-size: 12px; padding: 2px 8px; border-radius: var(--radius-pill); min-width: 20px; text-align: center;">{{ cases.length }}</span>
               </div>
               <div v-if="expandedCaseGroups[key]" class="case-group-content" style="padding: 0 12px 12px 12px; display: flex; flex-direction: column; gap: 2px;">
-                <div v-for="testCase in cases" :key="testCase.id" class="progress-item-small" :class="testCase.status" style="padding: 10px; border-radius: var(--radius-control); background-color: var(--background-primary); display: flex; justify-content: space-between; align-items: center; min-height: 48px; box-sizing: border-box; cursor: pointer;" @click="handleTestCaseClick(testCase)">
+                <div v-for="testCase in cases" :key="testCase.id" class="progress-item-small" :class="testCase.status" style="padding: 10px; border-radius: var(--radius-control); background-color: var(--background); display: flex; justify-content: space-between; align-items: center; min-height: 48px; box-sizing: border-box; cursor: pointer;" @click="handleTestCaseClick(testCase)">
                   <!-- INT-796 §3.1：批量复核勾选（标签/分组视图同款） -->
                   <label
                     v-if="canReview && isTerminal"
@@ -371,15 +371,15 @@
                   </label>
                   <div class="progress-info" style="flex: 1; overflow: hidden;">
                     <div class="progress-name" style="font-weight: 500; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ testCase.name }}</div>
-                    <div class="progress-time" style="font-size: 12px; color: var(--text-secondary);">
+                    <div class="progress-time" style="font-size: 12px; color: var(--muted-foreground);">
                       <span v-if="testCase.duration">{{ testCase.duration }}s</span>
                     </div>
                     <div v-if="testCase.roundProgress" class="round-progress" style="display: flex; align-items: center; gap: 6px; margin-top: 2px;">
-                      <span style="font-size: 11px; color: var(--text-secondary); white-space: nowrap;">
+                      <span style="font-size: 11px; color: var(--muted-foreground); white-space: nowrap;">
                         第 {{ testCase.roundProgress.current }}/{{ testCase.roundProgress.total }} 轮
                       </span>
-                      <div style="flex: 1; height: 3px; background: var(--border-color); border-radius: var(--radius-2); overflow: hidden; min-width: 40px;">
-                        <div style="height: 100%; background: var(--primary-color); border-radius: var(--radius-2); transition: width 0.3s ease;"
+                      <div style="flex: 1; height: 3px; background: var(--border); border-radius: var(--radius-2); overflow: hidden; min-width: 40px;">
+                        <div style="height: 100%; background: var(--primary); border-radius: var(--radius-2); transition: width 0.3s ease;"
                              :style="{ width: (testCase.roundProgress.current / testCase.roundProgress.total * 100) + '%' }">
                         </div>
                       </div>
@@ -418,7 +418,7 @@
                     <button v-if="canRemoveCase"
                             class="case-remove-btn"
                             :title="'移除用例'"
-                            style="border: none; background: transparent; cursor: pointer; padding: 4px 6px; color: var(--text-secondary); transition: color 0.2s;"
+                            style="border: none; background: transparent; cursor: pointer; padding: 4px 6px; color: var(--muted-foreground); transition: color 0.2s;"
                             @click.stop="handleRemoveCaseClick(testCase)">
                       <i class="fas fa-trash-alt"></i>
                     </button>
@@ -431,16 +431,16 @@
 
         <!-- 关联设备/API列表 -->
         <div class="associated-devices" v-show="activeTab === 'devices'" style="display: flex; flex-direction: column; gap: 12px;">
-          <h5 style="margin: 0 0 16px 0; font-size: 16px; font-weight: var(--font-weight-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
-            <i class="fas fa-{{ testType === 'API' ? 'server' : 'mobile-alt' }}" style="color: var(--primary-color);"></i>
+          <h5 style="margin: 0 0 16px 0; font-size: 16px; font-weight: var(--font-weight-semibold); color: var(--foreground); display: flex; align-items: center; gap: 8px;">
+            <i class="fas fa-{{ testType === 'API' ? 'server' : 'mobile-alt' }}" style="color: var(--primary);"></i>
         关联{{ testType === 'API' ? 'API' : '设备' }}
           </h5>
           <div class="associated-items-list" style="display: flex; flex-direction: column; gap: 12px;">
-            <div v-if="associatedDevices && associatedDevices.length === 0" class="no-items-message" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+            <div v-if="associatedDevices && associatedDevices.length === 0" class="no-items-message" style="text-align: center; padding: 40px; color: var(--muted-foreground);">
               <i class="fas fa-info-circle" style="font-size: 24px; margin-bottom: 12px; display: block;"></i>
               暂无关联{{ testType === 'API' ? 'API' : '设备' }}
             </div>
-            <div v-for="device in associatedDevices" :key="device.id" class="associated-device-item" style="padding: 12px; border-radius: var(--radius-control); background-color: var(--background-secondary); display: flex; justify-content: space-between; align-items: center;">
+            <div v-for="device in associatedDevices" :key="device.id" class="associated-device-item" style="padding: 12px; border-radius: var(--radius-control); background-color: var(--muted); display: flex; justify-content: space-between; align-items: center;">
               <div class="device-info">
                 <div class="device-name" style="font-weight: 500; margin-bottom: 4px;">{{ device.name }}</div>
                 <div class="device-status" :class="`status-${device.status}`" style="font-size: 12px;">
@@ -448,7 +448,7 @@
                 </div>
               </div>
               <div v-if="device.currentConcurrent !== undefined" class="device-stats" style="display: flex; align-items: center; gap: 12px;">
-                <span class="stat-item" style="font-size: 14px; color: var(--text-secondary);">当前并发{{ device.currentConcurrent }}/{{ device.maxConcurrent }}</span>
+                <span class="stat-item" style="font-size: 14px; color: var(--muted-foreground);">当前并发{{ device.currentConcurrent }}/{{ device.maxConcurrent }}</span>
               </div>
             </div>
           </div>
@@ -457,11 +457,11 @@
     </div>
 
     <!-- 实时日志区域 -->
-    <div v-if="showLogs" class="real-time-logs" style="margin-top: 24px; background-color: var(--background-primary); border-radius: var(--border-radius-lg); box-shadow: var(--shadow-sm); padding: 24px; border: 1px solid var(--border-color);">
+    <div v-if="showLogs" class="real-time-logs" style="margin-top: 24px; background-color: var(--background); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 24px; border: 1px solid var(--border);">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-        <h4 style="margin: 0; font-size: 18px; font-weight: var(--font-weight-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
-          <i class="fas fa-file-alt" style="color: var(--primary-color);"></i>
-          实时日志 <span style="font-size: 14px; color: var(--text-secondary);">({{ logs.length }})</span>
+        <h4 style="margin: 0; font-size: 18px; font-weight: var(--font-weight-semibold); color: var(--foreground); display: flex; align-items: center; gap: 8px;">
+          <i class="fas fa-file-alt" style="color: var(--primary);"></i>
+          实时日志 <span style="font-size: 14px; color: var(--muted-foreground);">({{ logs.length }})</span>
         </h4>
         <button v-if="logs.length > 0" class="btn btn-secondary" @click="scrollToBottom" style="padding: 6px 12px; font-size: 12px;">
           <i class="fas fa-arrow-down"></i> 滚动到底部
@@ -470,14 +470,14 @@
       <div class="logs-container" 
            ref="logScrollContainer"
            @scroll="handleLogScroll"
-           style="max-height: 400px; overflow-y: auto; background-color: var(--background-secondary); padding: 16px; border-radius: var(--border-radius-md); font-family: var(--font-mono); font-size: 14px; position: relative;">
+           style="max-height: 400px; overflow-y: auto; background-color: var(--muted); padding: 16px; border-radius: var(--radius-md); font-family: var(--font-mono); font-size: 14px; position: relative;">
         <div :style="{ height: logTotalHeight + 'px', position: 'relative' }">
           <div :style="{ transform: `translateY(${logOffset}px)` }">
-            <div v-if="logs && logs.length === 0" class="no-logs-message" style="color: var(--text-secondary); text-align: center; padding: 20px;">
+            <div v-if="logs && logs.length === 0" class="no-logs-message" style="color: var(--muted-foreground); text-align: center; padding: 20px;">
               暂无日志
             </div>
             <div v-for="log in visibleLogs" :key="log.id" class="log-item" :class="log.type" style="margin-bottom: 0; display: flex; gap: 12px; height: 28px; align-items: center; white-space: nowrap;">
-              <span class="log-time" style="color: var(--text-secondary); min-width: 150px; font-size: 12px;">{{ formatLogTime(log.time) }}</span>
+              <span class="log-time" style="color: var(--muted-foreground); min-width: 150px; font-size: 12px;">{{ formatLogTime(log.time) }}</span>
               <span class="log-content" style="overflow: hidden; text-overflow: ellipsis;">{{ log.content }}</span>
             </div>
           </div>
@@ -549,6 +549,19 @@
 </template>
 
 <script setup>
+import '../../assets/styles/test-common.css'
+import '../../assets/styles/components/common.css'
+import '../../assets/styles/components/button.css'
+import '../../assets/styles/components/card.css'
+import '../../assets/styles/components/form.css'
+import '../../assets/styles/components/modal.css'
+import '../../assets/styles/components/table.css'
+import '../../assets/styles/components/navigation.css'
+import '../../assets/styles/components/progress.css'
+import '../../assets/styles/components/tag.css'
+import '../../assets/styles/components/log.css'
+import '../../assets/styles/layouts/main.css'
+import "../../assets/styles/e2etest/e2etest.css"
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { TaskStatus, ExecutionStatus, EvaluationStatus, ViewMode, DeviceStatus, REEXECUTE_ELIGIBLE_STATUSES, PermissionPoint } from '@/domain/enums';
 import { useAuthStore } from '../../store/authStore';
@@ -1111,9 +1124,9 @@ const scrollToBottom = () => {
   border-radius: var(--radius-10);
   font-size: 11px;
   font-weight: 500;
-  color: var(--primary-color);
-  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
 }
 
 /* INT-796 §3：任务详情人工复核/AI复核 交互（入口/批量浮条/历史 link） */
@@ -1122,17 +1135,17 @@ const scrollToBottom = () => {
   align-items: center;
   gap: 4px;
   padding: 4px 10px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 12px;
   cursor: pointer;
   transition: color 0.2s;
 }
 .review-history-link:hover {
-  color: var(--primary-color);
-  border-color: var(--primary-color);
+  color: var(--primary);
+  border-color: var(--primary);
 }
 .review-select {
   flex-shrink: 0;
@@ -1141,31 +1154,31 @@ const scrollToBottom = () => {
   width: 15px;
   height: 15px;
   cursor: pointer;
-  accent-color: var(--primary-color);
+  accent-color: var(--primary);
 }
 .review-row-btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 3px 8px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 12px;
   cursor: pointer;
   transition: color 0.2s, border-color 0.2s;
 }
 .review-row-btn:hover {
-  color: var(--primary-color);
-  border-color: var(--primary-color);
+  color: var(--primary);
+  border-color: var(--primary);
 }
 .review-row-btn--ai {
-  color: var(--secondary-color);
+  color: var(--secondary);
 }
 .review-row-btn--ai:hover {
-  color: var(--primary-color);
-  border-color: var(--primary-color);
+  color: var(--primary);
+  border-color: var(--primary);
 }
 .review-row-btn:disabled {
   opacity: 0.5;
@@ -1181,15 +1194,15 @@ const scrollToBottom = () => {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: var(--background-primary);
-  border: 1px solid var(--border-color);
+  background: var(--background);
+  border: 1px solid var(--border);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-lg);
 }
 .review-batch-clear {
   border: none;
   background: none;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   cursor: pointer;
   font-size: 14px;
   padding: 2px 4px;
@@ -1201,27 +1214,27 @@ const scrollToBottom = () => {
   min-width: 24px;
   padding: 0 6px;
   border-radius: var(--radius-control);
-  background: var(--primary-color);
+  background: var(--primary);
   color: #fff;
   font-size: 13px;
   font-weight: 500;
 }
 .review-batch-text {
   font-size: 13px;
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 .review-batch-btn {
   padding: 5px 12px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
-  background: var(--background-primary);
-  color: var(--text-primary);
+  background: var(--background);
+  color: var(--foreground);
   font-size: 13px;
   cursor: pointer;
 }
 .review-batch-btn:hover {
-  border-color: var(--primary-color);
-  color: var(--primary-color);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 .review-batch-btn:disabled {
   opacity: 0.5;
@@ -1282,10 +1295,10 @@ const scrollToBottom = () => {
 
 .association-content{
     padding: 24px;
-    background-color: var(--background-primary);
+    background-color: var(--background);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--border);
     margin: 20px 0;
 }
 
@@ -1293,7 +1306,7 @@ const scrollToBottom = () => {
     margin: 0 0 16px 0;
     font-size: 18px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--foreground);
 }
 
 .associated-items-list{
@@ -1306,7 +1319,7 @@ const scrollToBottom = () => {
     cursor: pointer;
     padding: 12px;
     border-radius: var(--radius-control);
-    background-color: var(--background-secondary);
+    background-color: var(--muted);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -1325,7 +1338,7 @@ const scrollToBottom = () => {
 
 .associated-items-list .progress-time{
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
 }
 
 .associated-items-list .progress-status{
@@ -1355,12 +1368,12 @@ const scrollToBottom = () => {
 
 /* 视图切换按钮激活态 */
 .case-view-btn.active{
-  background: var(--primary-color, var(--secondary));
+  background: var(--primary, var(--secondary));
   color: var(--background);
 }
 
 .case-view-btn:hover:not(.active){
-  background: var(--background-tertiary, var(--muted));
+  background: var(--gray-light, var(--muted));
 }
 
 /* 分组展开图标旋转 */
@@ -1368,3 +1381,6 @@ const scrollToBottom = () => {
   transform: rotate(0deg);
 }
 </style>
+
+<!-- INT-768 CSS-1 拆搬：API 卡片域样式由工作台/测试执行组件按需加载 -->
+<style src="../../assets/styles/api-test/api-card.css"></style>

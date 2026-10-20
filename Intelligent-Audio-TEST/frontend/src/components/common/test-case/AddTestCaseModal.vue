@@ -53,6 +53,17 @@
 </template>
 
 <script setup>
+import '../../../assets/styles/test-common.css'
+import '../../../assets/styles/components/common.css'
+import '../../../assets/styles/components/button.css'
+import '../../../assets/styles/components/form.css'
+import '../../../assets/styles/components/modal.css'
+import '../../../assets/styles/components/table.css'
+import '../../../assets/styles/components/navigation.css'
+import '../../../assets/styles/components/tag.css'
+import '../../../assets/styles/components/log.css'
+import '../../../assets/styles/layouts/main.css'
+
 import { ref, computed, watch } from 'vue';
 import TestCaseCard from './TestCaseCard.vue';
 
@@ -135,137 +146,6 @@ watch(() => props.visible, (newValue) => {
 });
 </script>
 
-<style>
-.modal-backdrop {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: color-mix(in srgb, var(--color-black) 50%, transparent);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 10002;
-  animation: fadeIn 0.3s ease;
-}
-
-.modal-container {
-  background-color: white;
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-lg);
-  width: 90%;
-  max-width: 800px;
-  max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  animation: slideIn 0.3s ease;
-}
-
-.modal-header h3 {
-  margin: 0;
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  font-size: 24px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-pill);
-  transition: all 0.3s ease;
-}
-
-.close-btn:hover {
-  background-color: var(--background-secondary);
-  color: var(--text-primary);
-}
-
-.modal-body {
-  padding: 24px;
-  overflow-y: auto;
-  flex: 1;
-}
-
-.btn {
-  padding: 10px 24px;
-  border: none;
-  border-radius: var(--radius-control);
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.btn-primary {
-  background-color: var(--primary-color);
-  color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background-color: var(--primary-hover);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  background-color: var(--background-secondary);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-}
-
-.btn-secondary:hover {
-  background-color: var(--background-tertiary);
-  border-color: var(--primary-color);
-  transform: translateY(-1px);
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@media (max-width: 768px) {
-  .modal-container {
-    width: 95%;
-    margin: 20px;
-    max-height: calc(100vh - 40px);
-  }
-}
-</style>
-
 <style scoped>
 
 .close-btn{
@@ -273,13 +153,13 @@ watch(() => props.visible, (newValue) => {
     border: none;
     font-size: 24px;
     cursor: pointer;
-    color: var(--color-slate-500);
+    color: var(--text-secondary);
     padding: 0;
     line-height: 1;
 }
 
 .close-btn:hover{
-    color: var(--color-slate-700);
+    color: var(--text-primary);
 }
 
 

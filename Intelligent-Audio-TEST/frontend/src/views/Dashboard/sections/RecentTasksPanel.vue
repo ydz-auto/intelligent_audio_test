@@ -47,6 +47,14 @@
 </template>
 
 <script setup lang="ts">
+import '../../../assets/styles/components/common.css'
+import '../../../assets/styles/components/button.css'
+import '../../../assets/styles/components/card.css'
+import '../../../assets/styles/components/table.css'
+import '../../../assets/styles/components/progress.css'
+import '../../../assets/styles/components/tag.css'
+import '../../../assets/styles/components/log.css'
+
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getTaskStatusLabel } from '../../../domain/constants/reportLabels'

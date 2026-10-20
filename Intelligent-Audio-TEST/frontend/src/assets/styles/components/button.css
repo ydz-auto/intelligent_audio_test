@@ -1,6 +1,16 @@
 
 /* 基础按钮样式 */
 .btn{
+    padding: 10px 24px;
+    border: none;
+    border-radius: var(--radius-control);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
 }
 
 /* 按钮样式 - 统一为文本和SVG有颜色，背景无颜色
@@ -9,7 +19,38 @@
    .chart-mode-btn：INT-736 工作台图表模式切换段，样式在 views/Dashboard/Dashboard.css 内定义，
    加入豁免避免全局基类（特异性 0,3,1）以 !important 之外的覆盖链压制页面内样式（INT-757 要求不用 !important）。
    .api-copy-btn：INT-736 工作台「开发者 API 示例」复制按钮，同 .chart-mode-btn 机制加入豁免，
-   使 Dashboard.css 内声明的 color: var(--color-white) 生效，不被全局基类 color: var(--primary-color) 覆盖。 */
+   使 Dashboard.css 内声明的 color: var(--color-white) 生效，不被全局基类 color: var(--primary) 覆盖。 */
+
+/* 功能按钮基类（原 AddTestCaseModal/BatchSplModal 裸 style 收编） */
+.btn-primary {
+    background-color: var(--primary);
+    color: var(--color-white);
+    border: none;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background-color: var(--primary-hover);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+
+.btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    background-color: var(--muted);
+    color: var(--foreground);
+    border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+    background-color: var(--gray-light);
+    border-color: var(--primary);
+    transform: translateY(-1px);
+}
+
 button:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only):not([data-layout-btn]):not(.chart-mode-btn):not(.api-copy-btn),
 .btn:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only):not([data-layout-btn]):not(.chart-mode-btn):not(.api-copy-btn),
 label.btn:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only):not([data-layout-btn]):not(.chart-mode-btn):not(.api-copy-btn) {
@@ -34,7 +75,7 @@ label.btn:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only):not([data-l
     gap: var(--spacing-xs);
     will-change: transform, background-color;
     background: transparent;
-    color: var(--primary-color);
+    color: var(--primary);
     /* 固定按钮大小，不随屏幕变化 */
     min-height: 36px;
     flex-shrink: 0;
@@ -54,28 +95,28 @@ label.btn:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only):not([data-l
 .btn-icon-only:disabled i, .btn-icon-only:disabled svg, 
 .svg-btn-only:disabled i, .svg-btn-only:disabled svg, 
 .icon-btn-only:disabled i, .icon-btn-only:disabled svg {
-    color: var(--gray-color);
+    color: var(--gray);
 }
 
 /* 正常状态下的图标颜色 */
 .btn-icon-only:not(:disabled) i, .btn-icon-only:not(:disabled) svg, 
 .svg-btn-only:not(:disabled) i, .svg-btn-only:not(:disabled) svg, 
 .icon-btn-only:not(:disabled) i, .icon-btn-only:not(:disabled) svg {
-    color: var(--primary-color);
+    color: var(--primary);
 }
 
 /* 悬停效果 */
 .btn-icon-only:hover:not(:disabled), .svg-btn-only:hover:not(:disabled), .icon-btn-only:hover:not(:disabled) {
     transform: translateY(-2px);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    background: var(--primary-light);
+    background: var(--accent);
 }
 
 /* 悬停状态下的图标颜色 */
 .btn-icon-only:hover:not(:disabled) i, .btn-icon-only:hover:not(:disabled) svg, 
 .svg-btn-only:hover:not(:disabled) i, .svg-btn-only:hover:not(:disabled) svg, 
 .icon-btn-only:hover:not(:disabled) i, .icon-btn-only:hover:not(:disabled) svg {
-    color: var(--primary-dark);
+    color: var(--primary-hover);
 }
 
 /* 修复纯图标按钮样式 - 当按钮同时使用btn-sm和btn-secondary等类时 */
@@ -91,7 +132,7 @@ label.btn:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only):not([data-l
 /* 文本按钮变体 */
 .btn-text.btn-icon-only, .btn-text.svg-btn-only, .btn-text.icon-btn-only {
     background: transparent;
-    color: var(--primary-color);
+    color: var(--primary);
     box-shadow: none;
 }
 
@@ -182,15 +223,15 @@ label.btn:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only):not([data-l
 .btn-icon-only:hover, .svg-btn-only:hover, .icon-btn-only:hover {
     transform: translateY(-2px);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    background: var(--primary-light);
-    color: var(--primary-dark);
+    background: var(--accent);
+    color: var(--primary-hover);
 }
 
 .btn-text.btn-icon-only:hover, .btn-text.svg-btn-only:hover, .btn-text.icon-btn-only:hover {
     transform: translateY(-2px);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    background: var(--primary-light);
-    color: var(--primary-dark);
+    background: var(--accent);
+    color: var(--primary-hover);
 }
 
 /* 移除渐变覆盖层 */
@@ -207,36 +248,36 @@ button:active {
 /* 外框按钮样式 */
 .btn-outline {
     background: transparent;
-    color: var(--primary-color);
-    border: 2px solid var(--primary-color);
+    color: var(--primary);
+    border: 2px solid var(--primary);
 }
 
 .btn-outline-primary {
     background: transparent;
-    color: var(--primary-color);
-    border: 2px solid var(--primary-color);
+    color: var(--primary);
+    border: 2px solid var(--primary);
 }
 
 
 .btn-outline-danger {
     background: transparent;
-    color: var(--danger-color);
-    border: 2px solid var(--danger-color);
+    color: var(--destructive);
+    border: 2px solid var(--destructive);
 }
 
 
 
 /* 外框按钮悬停效果 */
 .btn-outline:hover {
-    background: var(--primary-light);
-    color: var(--primary-dark);
+    background: var(--accent);
+    color: var(--primary-hover);
     transform: translateY(-2px);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 
 button.primary:hover, .btn-primary:hover {
-        background: var(--primary-light);
+        background: var(--accent);
     transform: translateY(-2px);
     box-shadow: var(--shadow-lg);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -245,14 +286,14 @@ button.primary:hover, .btn-primary:hover {
 
 /* 危险按钮 - 渐变背景 */
 button.danger, .btn-danger {
-    color: var(--danger-color);
+    color: var(--destructive);
     border: none;
 
 }
 button.danger:hover, .btn-danger:hover {
-    background: linear-gradient(135deg, var(--color-red-600) 0%, var(--danger-color) 100%) ;
+    background: linear-gradient(135deg, var(--color-red-600) 0%, var(--destructive) 100%) ;
 
-    color: var(--white-color) ;
+    color: var(--color-white) ;
     box-shadow: var(--shadow-lg) ;
     transform: translateY(-2px) ;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) ;
@@ -265,7 +306,7 @@ label.btn.btn-secondary:hover,
 button.secondary:hover,
 .modal-footer .btn-secondary:hover {
     background: var(--secondary-light) ;
-    color: var(--secondary-dark) ;
+    color: var(--secondary-deep) ;
     transform: translateY(-2px) ;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) ;
     opacity: 1 ;
@@ -274,8 +315,8 @@ button.secondary:hover,
 
 
 .btn-outline-danger:hover {
-    background: var(--danger-light) ;
-    color: var(--danger-color) ;
+    background: var(--destructive-light) ;
+    color: var(--destructive) ;
     transform: translateY(-2px) ;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) ;
     opacity: 1 ;
@@ -337,7 +378,7 @@ button.secondary:hover,
 }
 
 .checkbox-label:hover {
-    color: var(--primary-color);
+    color: var(--primary);
 }
 
 .checkbox-label input[type="checkbox"] {
@@ -360,17 +401,17 @@ button.secondary:hover,
     display: inline-block;
     width: 20px;
     height: 20px;
-    border: 2px solid var(--border-color);
+    border: 2px solid var(--border);
     border-radius: var(--radius-tag);
-    background-color: var(--background-primary);
+    background-color: var(--background);
     transition: all var(--transition-normal);
     box-shadow: 0 1px 2px color-mix(in srgb, var(--color-black) 5%, transparent);
     flex-shrink: 0;
 }
 
 .checkbox-label input[type="checkbox"]:checked + .checkbox-text::before {
-    background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
-    border-color: var(--primary-color);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+    border-color: var(--primary);
     box-shadow: 0 2px 8px color-mix(in srgb, var(--primary) 25%, transparent);
     transform: scale(0.95);
 }
@@ -395,20 +436,20 @@ button.secondary:hover,
 
 .checkbox-label input[type="checkbox"]:disabled + .checkbox-text::before {
     border-color: var(--text-disabled);
-    background-color: var(--background-tertiary);
+    background-color: var(--gray-light);
     cursor: not-allowed;
 }
 
 .checkbox-label input[type="checkbox"]:focus + .checkbox-text::before {
     outline: none;
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 10%, transparent);
-    border-color: var(--primary-color);
+    border-color: var(--primary);
 }
 
 /* 成功按钮 - 透明背景 */
 button.success, .btn-success {
     background: transparent;
-    color: var(--success-color);
+    color: var(--success);
     border: none;
     box-shadow: none;
 }
@@ -595,7 +636,7 @@ button.success:hover, .btn-success:hover {
 /* 警告按钮 - 透明背景 */
 button.warning, .btn-warning {
     background: transparent;
-    color: var(--warning-color);
+    color: var(--warning);
     border: none;
     box-shadow: none;
 }
@@ -612,7 +653,7 @@ button.warning:hover, .btn-warning:hover {
 button.text:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only),
 .btn-text:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only) {
     background: transparent;
-    color: var(--primary-color);
+    color: var(--primary);
     border: none;
     box-shadow: none;
     padding: var(--spacing-sm) var(--spacing-sm);
@@ -637,8 +678,8 @@ button.text:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only) svg,
 
 button.text:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only):hover,
 .btn-text:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only):hover {
-    background: var(--primary-light);
-    color: var(--primary-dark);
+    background: var(--accent);
+    color: var(--primary-hover);
     border-radius: var(--radius-control);
     transform: translateY(-2px);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -646,8 +687,8 @@ button.text:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only):hover,
 
 /* 危险文本按钮特殊悬停效果 */
 button.text.danger:hover, .btn-text.btn-danger:hover {
-    background: var(--danger-light);
-    color: var(--danger-color);
+    background: var(--destructive-light);
+    color: var(--destructive);
     transform: translateY(-2px);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -893,19 +934,19 @@ button.large:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only),
 button:hover, .btn:hover {
     transform: translateY(-2px);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    background: var(--primary-light);
-    color: var(--primary-dark);
+    background: var(--accent);
+    color: var(--primary-hover);
 }
 button.danger:hover, .btn-danger:hover {
-    background: var(--danger-light);
-    color: var(--danger-color);
+    background: var(--destructive-light);
+    color: var(--destructive);
     transform: translateY(-2px);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 /* 特定颜色按钮悬停效果 */
 button.secondary:hover, .btn-secondary:hover {
     background: var(--secondary-light);
-    color: var(--secondary-dark);
+    color: var(--secondary-deep);
     transform: translateY(-2px);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: none;
@@ -925,4 +966,40 @@ button.warning:hover, .btn-warning:hover {
     color: var(--warning-dark);
     transform: translateY(-2px);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── [INT-771 拆搬] 通用按钮尺寸/变体（共享组件样式 · 自 reports/base.css 归位，值原样） ── */
+.btn-sm{
+    border-radius: var(--radius-md);
+    font-weight: var(--font-weight-medium);
+    transition: all var(--transition-normal);
+}
+
+.btn-primary{
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+    border: none;
+}
+
+.btn-secondary{
+    background: var(--background);
+}
+
+.btn-success{
+    background: linear-gradient(135deg, var(--success) 0%, var(--success-dark) 100%);
+    border: none;
+}
+
+.btn-danger{
+    background: linear-gradient(135deg, var(--destructive) 0%, var(--destructive) 100%);
+    color: var(--color-white);
+    border: none;
+}
+
+/* ── [INT-771 拆搬] 按钮 hover（共享组件样式 · 自 components/comparison-common.css 归位，值原样） ── */
+.btn-primary:hover {
+  background: var(--secondary);
+}
+
+.btn-secondary:hover {
+  background: var(--color-slate-200);
 }

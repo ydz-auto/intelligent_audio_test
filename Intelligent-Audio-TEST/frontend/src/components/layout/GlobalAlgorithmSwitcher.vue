@@ -36,6 +36,16 @@
 </template>
 
 <script setup lang="ts">
+import '../../assets/styles/test-common.css'
+import '../../assets/styles/components/common.css'
+import '../../assets/styles/components/button.css'
+import '../../assets/styles/components/modal.css'
+import '../../assets/styles/components/table.css'
+import '../../assets/styles/components/navigation.css'
+import '../../assets/styles/components/tag.css'
+import '../../assets/styles/components/log.css'
+import '../../assets/styles/layouts/main.css'
+
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useGlobalAlgorithmStore } from '../../store/globalAlgorithmStore'
 
@@ -87,7 +97,7 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 34px;
+  height: var(--control-height);
   padding: 0 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);

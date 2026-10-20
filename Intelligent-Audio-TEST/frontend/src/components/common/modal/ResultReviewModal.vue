@@ -103,6 +103,15 @@
 </template>
 
 <script setup lang="ts">
+import '../../../assets/styles/test-common.css'
+import '../../../assets/styles/components/common.css'
+import '../../../assets/styles/components/button.css'
+import '../../../assets/styles/components/form.css'
+import '../../../assets/styles/components/modal.css'
+import '../../../assets/styles/components/table.css'
+import '../../../assets/styles/components/tag.css'
+import '../../../assets/styles/components/log.css'
+
 /**
  * 人工复核弹窗（19 规范 §3.2/§3.3；单条=results 长度 1 → 单条复核，多条 → 批量复核，共用组件）。
  * 结果摘要 + 改判 UI（执行/评估 Select + 备注必填）+ 说明行 + 已有复核时「查看复核历史」link（开 §3.4 抽屉）。

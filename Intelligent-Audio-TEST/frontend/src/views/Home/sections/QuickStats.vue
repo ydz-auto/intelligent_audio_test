@@ -19,6 +19,10 @@
 </template>
 
 <script setup lang="ts">
+import '../../../assets/styles/components/common.css'
+import '../../../assets/styles/components/card.css'
+import "../../../assets/styles/tasks/stats.css"
+import "../../../assets/styles/device/device.css"
 import { statCards, type AnimatedStats } from '../homeData'
 
 defineProps<{

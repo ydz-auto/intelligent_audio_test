@@ -33,6 +33,16 @@
 </template>
 
 <script setup lang="ts">
+import '../../assets/styles/test-common.css'
+import '../../assets/styles/components/common.css'
+import '../../assets/styles/components/button.css'
+import '../../assets/styles/components/modal.css'
+import '../../assets/styles/components/table.css'
+import '../../assets/styles/components/navigation.css'
+import '../../assets/styles/components/tag.css'
+import '../../assets/styles/components/log.css'
+import '../../assets/styles/layouts/main.css'
+
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useThemeStore, type ThemeMode } from '../../store/themeStore'
 
@@ -63,8 +73,8 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
 
 <style scoped>
 .header-icon-btn {
-  width: 36px;
-  height: 36px;
+  width: var(--control-height);
+  height: var(--control-height);
   border-radius: var(--radius-control);
   border: none;
   background: transparent;

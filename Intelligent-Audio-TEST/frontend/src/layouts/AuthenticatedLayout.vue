@@ -16,13 +16,28 @@
 </template>
 
 <script setup lang="ts">
+import '../assets/styles/components/navigation.css'
+import '../assets/styles/layouts/main.css'
+
 import { ref } from 'vue'
 import SystemBrand from '../components/layout/SystemBrand.vue'
 import TopNav from '../components/layout/TopNav.vue'
 import TopBarRight from '../components/layout/TopBarRight.vue'
 import AppSidebar from '../components/layout/AppSidebar.vue'
+import { SIDEBAR_STATE_KEY } from '../config/navigation'
 
-const sidebarCollapsed = ref(true)
+// 侧栏「固定/收起」偏好（INT-894）：默认展开，localStorage 持久化、刷新/重登保持。
+// 语义照 React `getCookie('iatp:sidebar:v1:state') !== 'false'`——存「展开」布尔，缺省展开。
+// 显式切换由 AppSidebar 写回；本值同时接收 hover 临时展开的 display 态（内容区随之平移）。
+function readSidebarCollapsed(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_STATE_KEY) === 'false'
+  } catch {
+    return false
+  }
+}
+
+const sidebarCollapsed = ref(readSidebarCollapsed())
 </script>
 
 <style scoped>

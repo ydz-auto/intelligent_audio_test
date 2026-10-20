@@ -347,6 +347,20 @@
 </template>
 
 <script setup lang="ts">
+import '../../assets/styles/test-common.css'
+import '../../assets/styles/components/common.css'
+import '../../assets/styles/components/button.css'
+import '../../assets/styles/components/modal.css'
+import '../../assets/styles/components/table.css'
+import '../../assets/styles/components/navigation.css'
+import '../../assets/styles/components/tag.css'
+import '../../assets/styles/components/log.css'
+import '../../assets/styles/layouts/main.css'
+import "../../assets/styles/tasks/charts.css"
+import "../../assets/styles/tasks/task-card.css"
+import "../../assets/styles/tasks/task-status.css"
+import "../../assets/styles/tasks/filter-sort.css"
+import "../../assets/styles/tasks/stats.css"
 import { ref, computed, reactive, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTasks } from './tasks';
@@ -359,6 +373,8 @@ import { useModalControl, MODAL_TYPES } from '../../composables/modal/useModal';
 import { useNotification } from '../../composables/modal/useNotification';
 import TaskListWithPagination from '../../components/task/TaskListWithPagination.vue';
 import TaskComparisonReport from './TaskComparisonReport.vue';
+import '../../assets/styles/reports/base.css';
+import '../../assets/styles/reports/reports.css';
 import TaskTypeModal from '../../components/common/modal/TaskTypeModal.vue';
 import TaskDataExportDialog from '../../components/task/TaskDataExportDialog.vue';
 import TaskDataImportDialog from '../../components/task/TaskDataImportDialog.vue';
