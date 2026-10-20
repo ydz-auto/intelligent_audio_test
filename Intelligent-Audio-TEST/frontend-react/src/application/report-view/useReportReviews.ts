@@ -3,10 +3,11 @@
  * - useReportReviews：源任务复核数据（review_count 统计徽章 + 用例 reviewed 标记 map +
  *   复核历史 + 提交 mutation）
  * - useCaseResults：复核弹窗数据源（GET /tasks/{id}/cases/{caseId}/results → result_id/复核标注）
- * - useAiReview：AI 复核状态机（待发起→执行中→已完成→已采纳/已驳回/待查；§2.1）
+ * - useAiReview：AI 复核状态机（待发起→执行中→已完成→已采纳/已驳回/待查；§2.1，真实端点轮询）
  *
  * 报告为落库快照；复核操作按 §4.2 路径 A 跳来源任务结果（task_id + result_id 溯源），
  * 提交后 invalidate 源任务详情（review_count / reviewed 标记），报告重新生成后快照刷新。
+ * AI 复核异步执行（后端 ai_reviews.status=pending/running → completed/failed）由轮询历史推进（INT-1063 去桩）。
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
@@ -161,7 +162,7 @@ export function useAiReview(taskId: number, caseId: string) {
     }
   }
 
-  /** 采纳：AI 结论转人工复核语义（打开复核弹窗预填由消费侧处理；记录标已采纳） */
+  /** 采纳：AI 结论落人工复核语义（真实端点 POST adopt；打开复核弹窗预填由消费侧处理） */
   const adopt = async (): Promise<boolean> => {
     if (!record) return false
     try {

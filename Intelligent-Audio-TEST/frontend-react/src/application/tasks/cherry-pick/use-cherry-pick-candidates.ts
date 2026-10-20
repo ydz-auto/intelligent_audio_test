@@ -7,7 +7,12 @@ import { useQuery } from '@tanstack/react-query'
 
 import { usePickCartStore } from '@/application/tasks/cherry-pick/use-pick-cart-store'
 import type { CherryPickCandidate } from '@/domain/models/cherryPick'
-import { buildPickCaseView, buildPickTree } from '@/domain/lib/cherry-pick-tree'
+import {
+  buildPickCaseView,
+  buildPickDeviceView,
+  buildPickResultTypeView,
+  buildPickTree,
+} from '@/domain/lib/cherry-pick-tree'
 import type { CherryPickFilters } from '@/infrastructure/api/cherry-pick-api'
 import {
   fetchCherryPickCandidates,
@@ -123,11 +128,29 @@ export function useCherryPickTree(candidates: CherryPickCandidate[] | undefined)
   )
 }
 
-/** 用例视角树（§3.7.3：用例→来源任务→设备/API→result_type→结果行；与任务视角共享 selectedResultIds） */
+/** 用例视图树（§3.8.3：用例→设备/API→result_type→结果行；与设备/结果类型视图共享 selectedResultIds） */
 export function useCherryPickCaseView(candidates: CherryPickCandidate[] | undefined) {
   const resultIdSet = usePickCartStore((s) => s.resultIdSet)
   return useMemo(
     () => buildPickCaseView(candidates ?? [], resultIdSet),
+    [candidates, resultIdSet]
+  )
+}
+
+/** 设备视图树（§3.8.3：设备/API→result_type→用例→结果行，新增） */
+export function useCherryPickDeviceView(candidates: CherryPickCandidate[] | undefined) {
+  const resultIdSet = usePickCartStore((s) => s.resultIdSet)
+  return useMemo(
+    () => buildPickDeviceView(candidates ?? [], resultIdSet),
+    [candidates, resultIdSet]
+  )
+}
+
+/** 结果类型视图树（§3.8.3：result_type→设备/API→用例→结果行，新增） */
+export function useCherryPickResultTypeView(candidates: CherryPickCandidate[] | undefined) {
+  const resultIdSet = usePickCartStore((s) => s.resultIdSet)
+  return useMemo(
+    () => buildPickResultTypeView(candidates ?? [], resultIdSet),
     [candidates, resultIdSet]
   )
 }

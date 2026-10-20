@@ -7,14 +7,12 @@
 import type {
   ReviewHistoryItem,
   ReviewSubmitResult,
-  AiReviewRecord,
   CaseResultForReview,
   CaseResultsForReview,
 } from '@/domain/models/review'
 import type {
   ReviewHistoryItemDto,
   ReviewSubmitResponseDto,
-  AiReviewRecordDto,
   CaseResultForReviewDto,
 } from '@/infrastructure/dto/review.dto'
 
@@ -50,35 +48,6 @@ export function toReviewSubmitResult(dto: ReviewSubmitResponseDto): ReviewSubmit
       message: f.message,
     })),
   }
-}
-
-/** AI 复核记录：DTO（ai_reviews 契约定稿 INT-824）→ 领域 */
-export function toAiReviewRecord(dto: AiReviewRecordDto): AiReviewRecord {
-  return {
-    id: dto.id,
-    resultId: dto.result_id,
-    taskId: dto.task_id,
-    testCaseId: dto.test_case_id ?? '',
-    status: dto.status as AiReviewRecord['status'],
-    // 执行中/失败的记录无判定字段；领域模型非空契约，消费侧只在 completed 展示
-    verdict: dto.verdict ?? 'uncertain',
-    confidence: dto.confidence ?? 0,
-    reasoning: dto.reasoning ?? '',
-    adopted: dto.adopted === 1,
-    adoptedByUserId: dto.adopted_by_user_id,
-    adoptedAt: dto.adopted_at,
-    rejected: dto.rejected === 1,
-    rejectedByUserId: dto.rejected_by_user_id,
-    rejectedAt: dto.rejected_at,
-    createdAt: dto.created_at ?? '',
-  }
-}
-
-/** AI 复核历史：DTO items → 领域 */
-export function toAiReviewHistoryList(
-  items: AiReviewRecordDto[]
-): AiReviewRecord[] {
-  return (items ?? []).map(toAiReviewRecord)
 }
 
 /** 用例执行结果行（复核消费侧字段子集；执行状态/设备名/API 名/复核标注） */

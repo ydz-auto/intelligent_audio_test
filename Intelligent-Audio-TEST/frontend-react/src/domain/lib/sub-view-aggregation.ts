@@ -6,19 +6,29 @@
  *   客户端聚合（单用例单分组→单次呈现）；无分组用例归入「未分组」桶（末尾）。
  *   防御（审计 P3-2）：groupId 非空但 groupName 缺失时 label 以 groupId 兜底，
  *   避免与真「未分组」桶（key='__ungrouped__'）文案混淆。
- * 两条纯函数可单测；数据源均为列表 DTO 自带字段（TestCaseListItem.tags / groupId / groupName），
- * 不新增后端请求。
+ * 入参已泛化（INT-1046，方案一致性审计员非阻塞观察 #1）：收敛 tags/groupId/groupName/totalDuration
+ *   子集的通用入参 `SubViewCaseItem`，各消费域模型结构兼容（用例管理 TestCaseListItem、挑选候选、
+ *   报告用例等均满足）；用例管理分组/标签聚合结果与泛化前一致。
+ * 两条纯函数可单测；数据源均为列表 DTO 自带字段，不新增后端请求。
  */
-import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TagItem } from '@/domain/models/testTag'
 
+/** 子视图客户端聚合的用例子集（收敛 tags/groupId/groupName/totalDuration；接线层不改） */
+export interface SubViewCaseItem {
+  tags: string[]
+  groupId: string | null
+  groupName: string | null
+  /** 总时长（秒；缺省/null 按 0 计，展示「总时长 {x}」徽章） */
+  totalDuration?: number | null
+}
+
 /** 子分组（只读组织行：名称/计数/总时长；按标签子组带色点与分类角标） */
-export interface CaseSubGroup {
+export interface CaseSubGroup<T extends SubViewCaseItem = SubViewCaseItem> {
   /** 稳定 key（标签名/分组 id；未设置标签/未分组桶用固定字符串） */
   key: string
   /** 子分组头文案（标签名/分组名/「未设置标签」/「未分组」） */
   label: string
-  cases: TestCaseListItem[]
+  cases: T[]
   /** 数据驱动色（仅按标签子组；未设置标签桶/按分组子组为 null） */
   color: string | null
   /** 分类名角标（仅按标签子组） */
@@ -27,7 +37,7 @@ export interface CaseSubGroup {
   totalDuration: number
 }
 
-const sumDuration = (cases: TestCaseListItem[]): number =>
+const sumDuration = <T extends SubViewCaseItem>(cases: T[]): number =>
   cases.reduce((sum, c) => sum + (c.totalDuration ?? 0), 0)
 
 const UNTAGGED_BUCKET_KEY = '__untagged__'
@@ -39,12 +49,12 @@ const UNGROUPED_BUCKET_KEY = '__ungrouped__'
  * - 子组默认按用例数降序（同数按名称升序稳定）；
  * - 无标签用例归入「未设置标签」桶（末尾）。
  */
-export function groupCasesByTag(
-  cases: TestCaseListItem[],
+export function groupCasesByTag<T extends SubViewCaseItem>(
+  cases: T[],
   tagRegistry: TagItem[]
-): CaseSubGroup[] {
+): CaseSubGroup<T>[] {
   const registry = new Map(tagRegistry.map((t) => [t.name, t]))
-  const buckets = new Map<string, CaseSubGroup>()
+  const buckets = new Map<string, CaseSubGroup<T>>()
 
   for (const c of cases) {
     for (const tagName of c.tags) {
@@ -94,10 +104,10 @@ export function groupCasesByTag(
  * - 子组默认按用例数降序（同数按名称升序稳定）；
  * - 无分组用例归入「未分组」桶（末尾）。
  */
-export function groupCasesByCaseGroup(
-  cases: TestCaseListItem[]
-): CaseSubGroup[] {
-  const buckets = new Map<string, CaseSubGroup>()
+export function groupCasesByCaseGroup<T extends SubViewCaseItem>(
+  cases: T[]
+): CaseSubGroup<T>[] {
+  const buckets = new Map<string, CaseSubGroup<T>>()
 
   for (const c of cases) {
     const key = c.groupId ?? UNGROUPED_BUCKET_KEY

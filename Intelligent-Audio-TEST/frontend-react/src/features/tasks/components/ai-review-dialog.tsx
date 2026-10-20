@@ -2,8 +2,8 @@
  * AI 复核弹窗（19 规范 §5.2 + §2.1 AI 复核状态机：待发起→执行中→已完成→已采纳/已驳回/待查）。
  * 定位：建议层，不直接改统计；只有人工「采纳」才落入人工复核语义（开 §3.2 复核弹窗预填
  * AI 判定的评估状态 + 备注=AI 理由 → 人工确认提交 → test_result_reviews 留痕 + 统计重算）。
- * 后端 AI 复核端点未立项（§8-2）→ infrastructure 留桩（// 待接线），桩返回符合 §5.3 契约的示例；
- * 本组件只消费共享 API（requestAiReview / adoptAiReview / rejectAiReview），不感知桩/真实。
+ * 端点已真实接线（INT-824 契约）；异步执行（ai_reviews.status=pending/running）由轮询历史推进
+ * （completed/failed 收敛），采纳走 POST /tasks/results/ai-review/{id}/adopt 落人工复核语义。
  */
 import { Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -32,7 +32,12 @@ import {
   AI_VERDICT_VARIANTS,
   EVALUATION_STATUS_LABELS,
 } from '@/domain/models/review'
-import { adoptAiReview, rejectAiReview, requestAiReview } from '@/infrastructure/api/reviewApi'
+import {
+  adoptAiReview,
+  fetchAiReviewHistory,
+  rejectAiReview,
+  requestAiReview,
+} from '@/infrastructure/api/reviewApi'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 
 /** AI 结论 → 人工复核弹窗预填的评估状态（§2.1：通过→已完成，不通过→评估失败，存疑→留给人工） */
@@ -67,6 +72,8 @@ export function AiReviewDialog({
   const [phase, setPhase] = useState<AiReviewPhase>('idle')
   const [record, setRecord] = useState<AiReviewRecord | null>(null)
   const [error, setError] = useState<string | null>(null)
+  /** 本次发起的记录 id（执行中按它从历史定位推进状态） */
+  const [recordId, setRecordId] = useState<number | null>(null)
 
   // 弹窗关闭（忽略/待查）后重置状态机
   useEffect(() => {
@@ -74,8 +81,40 @@ export function AiReviewDialog({
       setPhase('idle')
       setRecord(null)
       setError(null)
+      setRecordId(null)
     }
   }, [open])
+
+  // 真实后端异步执行：发起返回 pending/running → 每 3s 轮询历史推进到 completed/failed
+  useEffect(() => {
+    if (!recordId || !open) return
+    const timer = window.setInterval(() => {
+      void (async () => {
+        try {
+          const history = await fetchAiReviewHistory(taskId)
+          const current = history.find((r) => r.id === recordId)
+          if (!current) return
+          if (current.status === 'completed') {
+            setRecord(current)
+            setPhase('completed')
+            setRecordId(null)
+          } else if (current.status === 'failed' || current.status === 'canceled') {
+            setError(
+              current.status === 'failed'
+                ? 'AI 复核执行失败，请稍后重试'
+                : 'AI 复核已取消'
+            )
+            setPhase('idle')
+            setRecordId(null)
+          }
+          // pending/running：保持执行中，下次轮询继续
+        } catch {
+          // 轮询失败保持执行中，下次继续
+        }
+      })()
+    }, 3000)
+    return () => window.clearInterval(timer)
+  }, [recordId, open, taskId])
 
   const handleLaunch = async () => {
     setPhase('running')
@@ -87,7 +126,19 @@ export function AiReviewDialog({
         { resultIds: results.map((r) => r.id) }
       )
       setRecord(created)
-      setPhase('completed')
+      if (created.status === 'completed') {
+        setPhase('completed')
+      } else if (created.status === 'failed' || created.status === 'canceled') {
+        setError(
+          created.status === 'failed'
+            ? 'AI 复核执行失败，请稍后重试'
+            : 'AI 复核已取消'
+        )
+        setPhase('idle')
+      } else {
+        // pending/running：异步执行中，轮询 effect 推进
+        setRecordId(created.id)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'AI 复核发起失败，请稍后重试')
       setPhase('idle')

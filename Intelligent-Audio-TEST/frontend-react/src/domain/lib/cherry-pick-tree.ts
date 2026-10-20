@@ -74,6 +74,27 @@ interface DeviceLevelKeys {
   resultType: (dk: string, rt: string) => string
 }
 
+/** 结果行叶构造（§3.7.1 叶行口径；三视图共享，叶携带来源任务名消歧 §3.8.3） */
+function buildLeafRows(
+  rows: CherryPickCandidate[],
+  addedResultIds: ReadonlySet<number>
+): PickTreeLeaf[] {
+  return rows.map((c) => ({
+    kind: 'leaf',
+    key: `leaf:${c.resultId}`,
+    resultId: c.resultId,
+    taskName: c.taskName,
+    caseName: caseDisplayName(c.caseName, c.caseId),
+    deviceName: c.deviceName,
+    apiName: c.apiName,
+    resultType: c.resultType,
+    executionStatus: c.executionStatus,
+    evaluationStatus: c.evaluationStatus,
+    createdAt: c.createdAt,
+    added: addedResultIds.has(c.resultId),
+  }))
+}
+
 /**
  * 设备/result_type/结果行叶 三级子树（任务视角与用例视角共用，§3.7.1 层级完整性：
  * 同一设备多个 result_type 各成独立并列分支，不压平为平铺叶）。
@@ -108,19 +129,7 @@ function buildDeviceBranches(
 
     const resultTypes: PickTreeBranch[] = []
     for (const [rt, rtRows] of resultTypeMap) {
-      const leaves: PickTreeLeaf[] = rtRows.map((c) => ({
-        kind: 'leaf',
-        key: `leaf:${c.resultId}`,
-        resultId: c.resultId,
-        caseName: caseDisplayName(c.caseName, c.caseId),
-        deviceName: c.deviceName,
-        apiName: c.apiName,
-        resultType: c.resultType,
-        executionStatus: c.executionStatus,
-        evaluationStatus: c.evaluationStatus,
-        createdAt: c.createdAt,
-        added: addedResultIds.has(c.resultId),
-      }))
+      const leaves = buildLeafRows(rtRows, addedResultIds)
       resultTypes.push({
         kind: 'branch',
         key: keys.resultType(dk, rt),
@@ -206,11 +215,35 @@ export function buildPickTree(
   return tasks
 }
 
-/**
- * 用例视角树（§3.6 裁定③ / §3.7.3）：用例 → 来源任务 → 设备/API → result_type → 结果行。
- * 按 caseId 跨任务聚合（同一用例多任务各自挂「设备→result_type」子树），默认收起至用例级；
- * 与任务视角共享同一 selectedResultIds；取消任务级节点仅清该任务下的结果行（R1-R7 复用）。
- */
+/* ============================================================
+ * 三视图树构建（§3.8.3 裁定③，INT-1047）：用例 / 设备 / 结果类型
+ * 任务维度由阶段 1 承载（§3.8.2），三视图树内不再设任务级分支；
+ * 叶结果行携带 taskName 消歧（同一叶在任务 A/B 各出现一次，按 result_id 独立勾选）。
+ * ============================================================ */
+
+/** 用例级分支构造（三视图用例节点共用：名称 + CaseIdBadge + 算法徽章 + 计数，§3.8.3） */
+function buildCaseNode(
+  caseId: string,
+  rows: CherryPickCandidate[],
+  addedResultIds: ReadonlySet<number>,
+  prefix: string,
+  /** 用例下子层构造（用例视图=device→result_type→叶；设备/结果类型视图=叶直挂） */
+  buildChildren: (rows: CherryPickCandidate[], added: ReadonlySet<number>) => PickTreeItem[]
+): PickTreeBranch {
+  return {
+    kind: 'branch',
+    key: `${prefix}:${caseId}`,
+    level: 'case',
+    name: caseDisplayName(rows[0]?.caseName, caseId),
+    caseId,
+    algorithmType: rows[0]?.algorithmType ?? null,
+    count: rows.length,
+    resultIds: rows.map((c) => c.resultId),
+    children: buildChildren(rows, addedResultIds),
+  }
+}
+
+/** 用例视图（§3.8.3）：用例（用例管理卡）→ 设备/API → result_type → 结果行 */
 export function buildPickCaseView(
   candidates: CherryPickCandidate[],
   addedResultIds: ReadonlySet<number> = new Set()
@@ -224,44 +257,155 @@ export function buildPickCaseView(
 
   const cases: PickTreeBranch[] = []
   for (const [caseId, caseRows] of caseMap) {
-    const taskMap = new Map<number, CherryPickCandidate[]>()
-    for (const c of caseRows) {
-      const list = taskMap.get(c.taskId) ?? []
-      list.push(c)
-      taskMap.set(c.taskId, list)
-    }
-
-    const tasks: PickTreeBranch[] = []
-    for (const [taskId, taskRows] of taskMap) {
-      const taskName = taskRows[0]?.taskName ?? `任务 ${taskId}`
-      tasks.push({
-        kind: 'branch',
-        key: `cv-task:${caseId}:${taskId}`,
-        level: 'task',
-        name: taskName,
-        count: taskRows.length,
-        resultIds: taskRows.map((c) => c.resultId),
-        children: buildDeviceBranches(taskRows, addedResultIds, {
-          device: (dk) => `cv-device:${caseId}:${taskId}:${dk}`,
-          resultType: (dk, rt) => `cv-resultType:${caseId}:${taskId}:${dk}:${rt}`,
-        }),
-      })
-    }
-
-    cases.push({
-      kind: 'branch',
-      key: `cv-case:${caseId}`,
-      level: 'case',
-      name: caseDisplayName(caseRows[0]?.caseName, caseId),
-      caseId,
-      algorithmType: caseRows[0]?.algorithmType ?? null,
-      count: caseRows.length,
-      resultIds: caseRows.map((c) => c.resultId),
-      children: tasks,
-    })
+    cases.push(
+      buildCaseNode(caseId, caseRows, addedResultIds, 'pcase', (rows, added) =>
+        buildDeviceBranches(rows, added, {
+          device: (dk) => `pcase-device:${caseId}:${dk}`,
+          resultType: (dk, rt) => `pcase-resultType:${caseId}:${dk}:${rt}`,
+        })
+      )
+    )
   }
 
   return cases
+}
+
+/** 设备视图（§3.8.3）：设备/API → result_type → 用例 → 结果行（设备/结果类型视图用例级叶直挂） */
+export function buildPickDeviceView(
+  candidates: CherryPickCandidate[],
+  addedResultIds: ReadonlySet<number> = new Set()
+): PickTreeBranch[] {
+  const deviceMap = new Map<string, CherryPickCandidate[]>()
+  for (const c of candidates) {
+    const k = deviceKey(c)
+    const list = deviceMap.get(k) ?? []
+    list.push(c)
+    deviceMap.set(k, list)
+  }
+
+  const devices: PickTreeBranch[] = []
+  for (const [dk, deviceRows] of deviceMap) {
+    const deviceDisplay = deviceGroupDisplayName(
+      deviceName(deviceRows[0]),
+      deviceRows[0]?.deviceId ?? null,
+      deviceRows[0]?.apiId ?? null
+    )
+    const resultTypeMap = new Map<string, CherryPickCandidate[]>()
+    for (const c of deviceRows) {
+      const rt = resultTypeKey(c)
+      const list = resultTypeMap.get(rt) ?? []
+      list.push(c)
+      resultTypeMap.set(rt, list)
+    }
+
+    const resultTypes: PickTreeBranch[] = []
+    for (const [rt, rtRows] of resultTypeMap) {
+      const caseMap = new Map<string, CherryPickCandidate[]>()
+      for (const c of rtRows) {
+        const list = caseMap.get(c.caseId) ?? []
+        list.push(c)
+        caseMap.set(c.caseId, list)
+      }
+      const cases: PickTreeBranch[] = []
+      for (const [caseId, caseRows] of caseMap) {
+        cases.push(
+          buildCaseNode(caseId, caseRows, addedResultIds, `dv-case:${dk}:${rt}`, (rows, added) =>
+            buildLeafRows(rows, added)
+          )
+        )
+      }
+      resultTypes.push({
+        kind: 'branch',
+        key: `dv-resultType:${dk}:${rt}`,
+        level: 'resultType',
+        name: rt === PENDING_RESULT_TYPE_KEY ? PENDING_RESULT_TYPE_LABEL : rt,
+        count: rtRows.length,
+        resultIds: rtRows.map((c) => c.resultId),
+        children: cases,
+      })
+    }
+
+    devices.push({
+      kind: 'branch',
+      key: `dv-device:${dk}`,
+      level: 'device',
+      name: deviceDisplay,
+      count: deviceRows.length,
+      resultIds: deviceRows.map((c) => c.resultId),
+      children: resultTypes,
+    })
+  }
+
+  return devices
+}
+
+/** 结果类型视图（§3.8.3）：result_type → 设备/API → 用例 → 结果行 */
+export function buildPickResultTypeView(
+  candidates: CherryPickCandidate[],
+  addedResultIds: ReadonlySet<number> = new Set()
+): PickTreeBranch[] {
+  const rtMap = new Map<string, CherryPickCandidate[]>()
+  for (const c of candidates) {
+    const rt = resultTypeKey(c)
+    const list = rtMap.get(rt) ?? []
+    list.push(c)
+    rtMap.set(rt, list)
+  }
+
+  const resultTypes: PickTreeBranch[] = []
+  for (const [rt, rtRows] of rtMap) {
+    const deviceMap = new Map<string, CherryPickCandidate[]>()
+    for (const c of rtRows) {
+      const k = deviceKey(c)
+      const list = deviceMap.get(k) ?? []
+      list.push(c)
+      deviceMap.set(k, list)
+    }
+
+    const devices: PickTreeBranch[] = []
+    for (const [dk, deviceRows] of deviceMap) {
+      const deviceDisplay = deviceGroupDisplayName(
+        deviceName(deviceRows[0]),
+        deviceRows[0]?.deviceId ?? null,
+        deviceRows[0]?.apiId ?? null
+      )
+      const caseMap = new Map<string, CherryPickCandidate[]>()
+      for (const c of deviceRows) {
+        const list = caseMap.get(c.caseId) ?? []
+        list.push(c)
+        caseMap.set(c.caseId, list)
+      }
+      const cases: PickTreeBranch[] = []
+      for (const [caseId, caseRows] of caseMap) {
+        cases.push(
+          buildCaseNode(caseId, caseRows, addedResultIds, `rtv-case:${rt}:${dk}`, (rows, added) =>
+            buildLeafRows(rows, added)
+          )
+        )
+      }
+      devices.push({
+        kind: 'branch',
+        key: `rtv-device:${rt}:${dk}`,
+        level: 'device',
+        name: deviceDisplay,
+        count: deviceRows.length,
+        resultIds: deviceRows.map((c) => c.resultId),
+        children: cases,
+      })
+    }
+
+    resultTypes.push({
+      kind: 'branch',
+      key: `rtv-resultType:${rt}`,
+      level: 'resultType',
+      name: rt === PENDING_RESULT_TYPE_KEY ? PENDING_RESULT_TYPE_LABEL : rt,
+      count: rtRows.length,
+      resultIds: rtRows.map((c) => c.resultId),
+      children: devices,
+    })
+  }
+
+  return resultTypes
 }
 
 /* ============================================================
@@ -378,31 +522,22 @@ export function computeSelectionStats(
   const deviceSet = new Set<string>()
   const caseSet = new Set<string>()
 
-  for (const id of collectVisibleResultIds(items)) {
-    if (!selectedIds.has(id)) continue
-    stats.results += 1
-  }
-
-  // 通过树结构统计选中项归属的任务/设备/用例（已选叶的祖先计数）
-  for (const task of items) {
-    if (task.kind !== 'branch') continue
-    for (const c of task.children) {
-      if (c.kind !== 'branch') continue
-      for (const d of c.children) {
-        if (d.kind !== 'branch') continue
-        for (const rt of d.children) {
-          if (rt.kind !== 'branch') continue
-          for (const leaf of rt.children) {
-            if (leaf.kind === 'leaf' && selectedIds.has(leaf.resultId)) {
-              taskSet.add(task.name)
-              caseSet.add(leaf.caseName)
-              deviceSet.add(leaf.deviceName ?? leaf.apiName ?? '—')
-            }
-          }
-        }
+  // 叶携带任务/用例/设备名（§3.8.3 三视图叶行消歧字段），按叶统计与视图无关——
+  // 用例/设备/结果类型三视图对同一 selectedResultIds 统计口径一致。
+  const walk = (nodes: PickTreeItem[]) => {
+    for (const node of nodes) {
+      if (node.kind === 'leaf') {
+        if (!selectedIds.has(node.resultId)) continue
+        stats.results += 1
+        taskSet.add(node.taskName)
+        caseSet.add(node.caseName)
+        deviceSet.add(node.deviceName ?? node.apiName ?? '—')
+      } else {
+        walk(node.children)
       }
     }
   }
+  walk(items)
 
   stats.tasks = taskSet.size
   stats.cases = caseSet.size
@@ -500,6 +635,7 @@ export function buildCartTree(groups: { taskId: number; taskName: string; entrie
         key: `cart-case:${group.taskId}:${caseKey}`,
         level: 'case',
         name: caseName,
+        caseId: caseRows[0]?.sourceCaseId ?? undefined,
         count: caseRows.length,
         entryIds: caseRows.map((e) => e.itemId),
         children: devices,

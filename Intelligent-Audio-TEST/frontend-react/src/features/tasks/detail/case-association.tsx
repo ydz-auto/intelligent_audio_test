@@ -22,7 +22,6 @@ import { useTaskActions } from '@/application/tasks/use-task-actions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
 import {
   Collapsible,
   CollapsibleContent,
@@ -49,8 +48,8 @@ import type { CaseResultForReview } from '@/domain/models/review'
 import type { TaskCaseBrief, TaskDetailData } from '@/domain/models/task'
 import { fetchCaseResults } from '@/infrastructure/api/reviewApi'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
-import { formatDuration } from '@/features/tasks/constants'
 import { Progress } from '@/features/tasks/components/ui/progress'
+import { CaseCard } from '@/features/testcases/components/case-card'
 import { AiReviewDialog } from '@/features/tasks/components/ai-review-dialog'
 import { ManualReviewBatchBar } from '@/features/tasks/components/manual-review-batch-bar'
 import { ManualReviewDialog } from '@/features/tasks/components/manual-review-dialog'
@@ -115,9 +114,10 @@ interface ReviewTarget {
 }
 
 /**
- * 用例卡（照 11_用例域 case-card 卡片流形态，任务域关联用例统一口径，INT-1033）：
- * 勾选框 + 名称（点击开用例详情弹窗）+ 分组名 → 执行/评估徽章 + 「人工复核」Badge →
- * 耗时/轮次 → 底栏 人工复核/AI复核/移除用例。平铺（卡片网格）与标签/分组（组内卡片）共用。
+ * 关联用例卡（INT-1046 全站统一：复用 `features/testcases/components/case-card.tsx` 统一 `CaseCard`，
+ * 11_用例域 §3.3 显示口径——名称/CaseIdBadge/算法徽章/标签/时长·轮次；任务域专属标记保留：
+ * 分组名次行、执行/评估状态徽章 + 「人工复核」Badge、第 x/y 轮进度、移除钮、人工/AI 复核底栏）。
+ * 平铺（卡片网格）与标签/分组（组内卡片）共用。
  */
 function TaskCaseCard({
   c,
@@ -145,39 +145,37 @@ function TaskCaseCard({
   onAiReview: () => void
 }) {
   return (
-    <div
-      data-state={selected ? 'selected' : undefined}
-      className={cn(
-        'bg-card ring-foreground/10 rounded-xl ring-1 p-3 transition-colors',
-        selected && 'bg-accent/40 ring-primary/30'
-      )}
-    >
-      <div className='flex items-start justify-between gap-2'>
-        <div className='flex min-w-0 items-start gap-2'>
-          <Checkbox
-            checked={selected}
-            onCheckedChange={onToggle}
-            aria-label={`选择 ${c.name}`}
-            className='mt-0.5'
-          />
-          <div className='min-w-0 flex-1'>
-            {onCaseSelect ? (
-              <button
-                type='button'
-                className='block max-w-full truncate text-left font-medium hover:text-primary'
-                title='查看用例详情'
-                onClick={() => onCaseSelect(c.case_id)}
-              >
-                {c.name}
-              </button>
-            ) : (
-              <span className='block truncate font-medium'>{c.name}</span>
-            )}
-            <span className='text-muted-foreground block truncate text-xs'>
-              {c.group_name ?? ''}
-            </span>
+    <CaseCard
+      caseItem={{
+        id: c.case_id,
+        name: c.name,
+        tags: c.tags,
+        // 任务侧耗时（ms）→ CaseCard 口径总时长（秒）；null 不落空徽章
+        totalDuration: c.duration != null ? Math.round(c.duration / 1000) : null,
+      }}
+      selected={selected}
+      onToggleSelect={(_id, checked) => onToggle(checked)}
+      onNameClick={onCaseSelect ? () => onCaseSelect(c.case_id) : undefined}
+      meta={
+        <>
+          {c.group_name && (
+            <p className='text-muted-foreground text-xs truncate'>{c.group_name}</p>
+          )}
+          {/* 轮次进度（09_任务域 §4.4：第 x/y 轮 + Progress h-1） */}
+          <div className='text-muted-foreground mt-1 flex items-center gap-2 text-xs'>
+            <span className='font-mono tabular-nums'>第 {c.duration != null ? 2 : 1}/2 轮</span>
+            <Progress value={c.duration != null ? 50 : 0} size='xs' className='min-w-0 flex-1' />
           </div>
-        </div>
+        </>
+      }
+      badgeLeading={
+        <>
+          <CaseStatusBadge status={c.execution_status} />
+          {c.reviewed && <ReviewBadge />}
+          <CaseStatusBadge status={c.evaluation_status} />
+        </>
+      }
+      actions={
         <Button
           variant='ghost'
           size='icon-sm'
@@ -187,53 +185,40 @@ function TaskCaseCard({
         >
           <Trash2 aria-hidden='true' />
         </Button>
-      </div>
-
-      <div className='mt-2 flex flex-wrap items-center gap-1.5'>
-        <CaseStatusBadge status={c.execution_status} />
-        {c.reviewed && <ReviewBadge />}
-        <CaseStatusBadge status={c.evaluation_status} />
-      </div>
-
-      <div className='text-muted-foreground mt-2 flex items-center gap-3 text-xs'>
-        <span className='tabular-nums'>{formatDuration(c.duration)}</span>
-        <span className='min-w-0 flex-1'>
-          <span className='font-mono tabular-nums'>第 {c.duration != null ? 2 : 1}/2 轮</span>
-          <Progress value={c.duration != null ? 50 : 0} size='xs' className='mt-1' />
-        </span>
-      </div>
-
-      <div className='mt-2 flex items-center justify-end gap-1 border-t pt-1.5'>
-        {/* INT-795：人工复核入口（终态任务 + task.result.review；§3.1） */}
-        {canReview && isTerminal && (
-          <Button
-            variant='ghost'
-            size='sm'
-            className='h-6 gap-1 px-1.5 text-xs'
-            disabled={reviewLoading}
-            onClick={onReview}
-            title='人工复核该用例结果'
-          >
-            <ClipboardCheck aria-hidden='true' className='size-3' />
-            人工复核
-          </Button>
-        )}
-        {/* INT-795：AI 复核入口（evaluation:execute；§5.2 待后端立项） */}
-        {canAiReview && isTerminal && (
-          <Button
-            variant='ghost'
-            size='sm'
-            className='text-muted-foreground h-6 gap-1 px-1.5 text-xs'
-            disabled={reviewLoading}
-            onClick={onAiReview}
-            title='AI 复核该用例结果（建议层，不直接修改统计）'
-          >
-            <Sparkles aria-hidden='true' className='size-3' />
-            AI 复核
-          </Button>
-        )}
-      </div>
-    </div>
+      }
+      footer={
+        <div className='mt-2 flex items-center justify-end gap-1 border-t pt-1.5'>
+          {/* INT-795：人工复核入口（终态任务 + task.result.review；§3.1） */}
+          {canReview && isTerminal && (
+            <Button
+              variant='ghost'
+              size='sm'
+              className='h-6 gap-1 px-1.5 text-xs'
+              disabled={reviewLoading}
+              onClick={onReview}
+              title='人工复核该用例结果'
+            >
+              <ClipboardCheck aria-hidden='true' className='size-3' />
+              人工复核
+            </Button>
+          )}
+          {/* INT-795：AI 复核入口（evaluation:execute；§5.2 待后端立项） */}
+          {canAiReview && isTerminal && (
+            <Button
+              variant='ghost'
+              size='sm'
+              className='text-muted-foreground h-6 gap-1 px-1.5 text-xs'
+              disabled={reviewLoading}
+              onClick={onAiReview}
+              title='AI 复核该用例结果（建议层，不直接修改统计）'
+            >
+              <Sparkles aria-hidden='true' className='size-3' />
+              AI 复核
+            </Button>
+          )}
+        </div>
+      }
+    />
   )
 }
 

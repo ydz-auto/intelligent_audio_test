@@ -1,13 +1,19 @@
 /**
- * 购物车树（18_挑选合并交互重设计.md §4.2/§4.3，INT-600）。
+ * 购物车树（18_挑选合并交互重设计.md §4.2/§4.3，INT-600/INT-1047）。
  * 与挑选页同层级口径（任务→用例→设备→result_type，§11-5 缺 source_result_type 折叠缺省）；
  * 管理态：勾选批量移除（R1-R5 同构）+ 单条 X + 节点「移除该组」+ 整组「移除整组」+ 失效标记。
+ * §3.8.4 全站用例显示统一：用例节点改走 CaseCard（pick-case-card.tsx compact 变体）。
  * 购物车抽屉与复核步骤两处共用（§4.4）。
  */
 import { ChevronDown, ChevronRight, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 
-import type { CartTreeBranch, CartTreeItem, CartTreeLeaf } from '@/domain/models/cherryPick'
+import type {
+  CartTreeBranch,
+  CartTreeItem,
+  CartTreeLeaf,
+  PickCartGroup,
+} from '@/domain/models/cherryPick'
 import {
   buildCartTree,
   collectEntryIds,
@@ -25,7 +31,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import { cn } from '@/lib/utils'
-import type { PickCartGroup } from '@/domain/models/cherryPick'
+import { PickCaseCard } from '@/features/tasks/cherry-pick/components/pick-case-card'
 
 function LeafRow({
   leaf,
@@ -257,7 +263,8 @@ export interface CartTreeProps {
 }
 
 /**
- * 购物车树：按来源任务分组（组头=任务名 + 移除整组 + 计数 Badge），组内同 3.1 层级下钻。
+ * 购物车树：按来源任务分组（组头=任务名 + 移除整组 + 计数 Badge），组内同 3.1 层级下钻；
+ * 用例节点 = CaseCard compact（§3.8.4 全站用例显示统一）。
  */
 export function CartTree({
   groups,
@@ -280,6 +287,99 @@ export function CartTree({
   if (expandSignal && expandSignal !== lastSignal) {
     setLastSignal(expandSignal)
     setOpenKeys(expandSignal.all ? collectAllCartKeys(items) : new Set())
+  }
+
+  /** 节点「移除该组」确认（层级文案，§4.3） */
+  const handleRemoveGroup = (branch: CartTreeBranch) => {
+    const levelLabel =
+      branch.level === 'device'
+        ? '设备'
+        : branch.level === 'case'
+          ? '用例'
+          : branch.level === 'resultType'
+            ? '结果类型'
+            : '任务'
+    onRemoveNode(
+      collectEntryIds([branch]),
+      levelLabel,
+      branch.name,
+      branch.count
+    )
+  }
+
+  /** 用例节点（CaseCard compact，§4.2/§3.8.4）+ 卡内 device/result_type/leaf 子树 */
+  const renderCaseNode = (branch: CartTreeBranch) => {
+    const open = openKeys.has(branch.key)
+    return (
+      <PickCaseCard
+        key={branch.key}
+        name={branch.name}
+        caseId={branch.caseId}
+        count={branch.count}
+        state={getCartBranchSelectionState(branch, selectedEntryIds)}
+        onToggle={(select) => onToggleBranch(branch, select)}
+        open={open}
+        onToggleOpen={() =>
+          setOpenKeys((prev) => {
+            const next = new Set(prev)
+            if (next.has(branch.key)) next.delete(branch.key)
+            else next.add(branch.key)
+            return next
+          })
+        }
+        actions={
+          !readOnly ? (
+            <Button
+              variant='ghost'
+              size='icon-xs'
+              aria-label='移除该组'
+              className='text-muted-foreground shrink-0'
+              onClick={() => handleRemoveGroup(branch)}
+            >
+              <Trash2 aria-hidden='true' className='size-3.5' />
+            </Button>
+          ) : undefined
+        }
+      >
+        {open ? (
+          <div className='space-y-0.5 px-3 pb-3'>
+            {branch.children.map((child) =>
+              child.kind === 'leaf' ? (
+                <LeafRow
+                  key={child.key}
+                  leaf={child}
+                  selected={selectedEntryIds.has(child.entryId)}
+                  onToggleLeaf={onToggleLeaf}
+                  onRemoveSingle={onRemoveEntry}
+                  readOnly={readOnly}
+                />
+              ) : (
+                <BranchRow
+                  key={child.key}
+                  branch={child}
+                  selectedEntryIds={selectedEntryIds}
+                  openKeys={openKeys}
+                  depth={2}
+                  onToggleOpen={(key) =>
+                    setOpenKeys((prev) => {
+                      const next = new Set(prev)
+                      if (next.has(key)) next.delete(key)
+                      else next.add(key)
+                      return next
+                    })
+                  }
+                  onToggleLeaf={onToggleLeaf}
+                  onToggleBranch={onToggleBranch}
+                  onRemoveGroup={handleRemoveGroup}
+                  onRemoveEntry={onRemoveEntry}
+                  readOnly={readOnly}
+                />
+              )
+            )}
+          </div>
+        ) : undefined}
+      </PickCaseCard>
+    )
   }
 
   return (
@@ -321,40 +421,43 @@ export function CartTree({
                 </Button>
               )}
             </div>
-            <BranchRow
-              branch={task}
-              selectedEntryIds={selectedEntryIds}
-              openKeys={openKeys}
-              depth={1}
-              readOnly={readOnly}
-              onToggleOpen={(key) =>
-                setOpenKeys((prev) => {
-                  const next = new Set(prev)
-                  if (next.has(key)) next.delete(key)
-                  else next.add(key)
-                  return next
-                })
-              }
-              onToggleLeaf={onToggleLeaf}
-              onToggleBranch={onToggleBranch}
-              onRemoveEntry={onRemoveEntry}
-              onRemoveGroup={(branch) => {
-                const levelLabel =
-                  branch.level === 'device'
-                    ? '设备'
-                    : branch.level === 'case'
-                      ? '用例'
-                      : branch.level === 'resultType'
-                        ? '结果类型'
-                        : '任务'
-                onRemoveNode(
-                  collectEntryIds([branch]),
-                  levelLabel,
-                  branch.name,
-                  branch.count
+            <div className='mt-1 flex flex-col gap-2'>
+              {task.children.map((child) =>
+                child.kind === 'leaf' ? (
+                  <LeafRow
+                    key={child.key}
+                    leaf={child}
+                    selected={selectedEntryIds.has(child.entryId)}
+                    onToggleLeaf={onToggleLeaf}
+                    onRemoveSingle={onRemoveEntry}
+                    readOnly={readOnly}
+                  />
+                ) : child.level === 'case' ? (
+                  renderCaseNode(child)
+                ) : (
+                  <BranchRow
+                    key={child.key}
+                    branch={child}
+                    selectedEntryIds={selectedEntryIds}
+                    openKeys={openKeys}
+                    depth={1}
+                    onToggleOpen={(key) =>
+                      setOpenKeys((prev) => {
+                        const next = new Set(prev)
+                        if (next.has(key)) next.delete(key)
+                        else next.add(key)
+                        return next
+                      })
+                    }
+                    onToggleLeaf={onToggleLeaf}
+                    onToggleBranch={onToggleBranch}
+                    onRemoveGroup={handleRemoveGroup}
+                    onRemoveEntry={onRemoveEntry}
+                    readOnly={readOnly}
+                  />
                 )
-              }}
-            />
+              )}
+            </div>
           </section>
         )
       })}

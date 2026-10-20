@@ -2,8 +2,8 @@
  * 人工复核 + AI 复核 DTO（infrastructure/dto，19_人工审核与AI复核交互设计.md §3.6/§4.4，INT-793）。
  * 对照 review_bp.py / schemas/review.py / schemas/ai_review.py / task_service review_repository
  * / ai_review_repository 实测响应形态。
- * snake_case 唯一出现层；经 adapters/reviewAdapter.ts 转 camelCase Domain。
- * AI 复核契约定稿 INT-824（ai_reviews 表），真实请求经 client.ts 统一信封解包。
+ * snake_case 唯一出现层；经 adapters 转 camelCase Domain。
+ * AI 复核契约定稿 INT-824（ai_reviews 表），真实请求经 client.ts 统一信封解包（INT-1063 去桩）。
  */
 
 /** 复核留痕行（GET /tasks/results/{task_id}/review-history items；_review_po_to_dict 实测） */
@@ -67,7 +67,7 @@ export interface CaseResultsDataDto {
 
 // ---------------------------------------------------------------------------
 // AI 复核（INT-824 契约定稿：api_gateway/schemas/ai_review.py AiReviewRecordDto，
-// task_service ai_reviews 表全字段透传）
+// task_service ai_reviews 表全字段透传；INT-1063 去桩切真实请求）
 // ---------------------------------------------------------------------------
 
 /** AI 复核记录（ai_reviews 全字段；adopted/rejected 为 0/1 整数，status 任务状态） */
@@ -77,7 +77,7 @@ export interface AiReviewRecordDto {
   task_id: number
   test_case_id: string | null
   dimension_id: number | null
-  /** AI 复核任务状态：pending/running/completed/failed/canceled */
+  /** AI 复核任务状态（表 DEFAULT pending，实际 running/completed/failed；前端容错未知值） */
   status: string
   verdict: 'passed' | 'failed' | 'uncertain' | null
   confidence: number | null

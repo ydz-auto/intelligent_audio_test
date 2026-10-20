@@ -56,6 +56,8 @@ export interface PickTreeLeaf {
   kind: 'leaf'
   key: string
   resultId: number
+  /** §3.8.3 三视图叶行来源任务名消歧（阶段 1 承载任务维度后树内无任务级，叶行补任务名） */
+  taskName: string
   caseName: string
   deviceName: string | null
   apiName: string | null
@@ -109,6 +111,8 @@ export interface CartTreeBranch {
   /** 本节点全部子孙条目 id 快照（批量移除用） */
   entryIds: string[]
   children: CartTreeItem[]
+  /** 用例级：sourceCaseId（§4.2 用例节点 CaseCard compact 展示） */
+  caseId?: string
 }
 
 /** 购物车树——叶 */

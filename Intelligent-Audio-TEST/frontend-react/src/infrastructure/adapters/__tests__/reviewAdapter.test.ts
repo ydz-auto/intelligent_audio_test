@@ -1,17 +1,23 @@
 /**
- * infrastructure/adapters/reviewAdapter + 复核领域模型 纯函数测试（19 规范 §3.6/§4.4，INT-793）。
- * 对位 review_repository._review_po_to_dict / review_service.submit_review 实测响应形态。
+ * infrastructure/adapters（reviewAdapter + aiReviewAdapter）+ 复核领域模型 纯函数测试
+ * （19 规范 §3.6/§4.4，INT-793；AI 复核契约定稿 INT-824）。
+ * 对位 review_repository._review_po_to_dict / review_service.submit_review /
+ * api_gateway/schemas/ai_review.py AiReviewRecordDto 实测响应形态。
  */
 import { describe, expect, it } from 'vitest'
 
 import {
-  toAiReviewRecord,
   toReviewHistoryItem,
   toReviewHistoryList,
   toReviewSubmitResult,
 } from '@/infrastructure/adapters/reviewAdapter'
 import {
+  toAiReviewRecord,
+  toAiReviewHistoryList,
+} from '@/infrastructure/adapters/aiReviewAdapter'
+import {
   aiConfidenceLabel,
+  aiReviewStatusLabel,
   evaluationStatusLabel,
   executionStatusLabel,
 } from '@/domain/models/review'
@@ -66,14 +72,14 @@ describe('toReviewSubmitResult', () => {
 })
 
 describe('toAiReviewRecord', () => {
-  it('AI 复核记录 DTO（ai_reviews 契约定稿 INT-824）→ 领域', () => {
+  it('AI 复核记录 DTO（ai_reviews 契约定稿）→ 领域（含 status/dimensionId/0-1 处置位）', () => {
     expect(
       toAiReviewRecord({
         id: 1001,
         result_id: 4690,
         task_id: 407,
         test_case_id: '86756aa2-2c97-4548-b493-b2312b20a8c4',
-        dimension_id: 21,
+        dimension_id: 3,
         status: 'completed',
         verdict: 'passed',
         confidence: 0.85,
@@ -87,11 +93,12 @@ describe('toAiReviewRecord', () => {
         created_at: '2026-10-19T04:00:00',
         updated_at: '2026-10-19T04:00:00',
       })
-    ).toMatchObject({
+    ).toEqual({
       id: 1001,
       resultId: 4690,
       taskId: 407,
       testCaseId: '86756aa2-2c97-4548-b493-b2312b20a8c4',
+      dimensionId: 3,
       status: 'completed',
       verdict: 'passed',
       confidence: 0.85,
@@ -103,17 +110,18 @@ describe('toAiReviewRecord', () => {
       rejectedByUserId: null,
       rejectedAt: null,
       createdAt: '2026-10-19T04:00:00',
+      updatedAt: '2026-10-19T04:00:00',
     })
   })
 
-  it('执行中的记录无判定字段 → 领域回退值（status 保留）', () => {
+  it('执行中记录（无判定字段 + 未知 status）→ 领域容错（verdict 兜底 uncertain，status 原样）', () => {
     expect(
       toAiReviewRecord({
         id: 1002,
         result_id: 4691,
         task_id: 407,
-        test_case_id: '86756aa2-2c97-4548-b493-b2312b20a8c4',
-        dimension_id: 21,
+        test_case_id: null,
+        dimension_id: null,
         status: 'running',
         verdict: null,
         confidence: null,
@@ -124,7 +132,7 @@ describe('toAiReviewRecord', () => {
         rejected: 0,
         rejected_by_user_id: null,
         rejected_at: null,
-        created_at: '2026-10-19T04:01:00',
+        created_at: '2026-10-19T04:00:00',
         updated_at: null,
       })
     ).toMatchObject({
@@ -136,6 +144,10 @@ describe('toAiReviewRecord', () => {
       adopted: false,
       rejected: false,
     })
+  })
+
+  it('空历史 → 空列表', () => {
+    expect(toAiReviewHistoryList([])).toEqual([])
   })
 })
 
@@ -151,5 +163,14 @@ describe('复核领域文案（§7 页面文案）', () => {
   it('AI 置信度 0-1 → 百分比', () => {
     expect(aiConfidenceLabel(0.85)).toBe('85%')
     expect(aiConfidenceLabel(undefined)).toBe('—')
+  })
+
+  it('AI 复核任务状态中文映射（未知值回退原值，表 DEFAULT pending 容错）', () => {
+    expect(aiReviewStatusLabel('running')).toBe('复核中')
+    expect(aiReviewStatusLabel('completed')).toBe('已完成')
+    expect(aiReviewStatusLabel('failed')).toBe('失败')
+    expect(aiReviewStatusLabel('pending')).toBe('排队中')
+    expect(aiReviewStatusLabel('unknown-x')).toBe('unknown-x')
+    expect(aiReviewStatusLabel(null)).toBe('未知')
   })
 })

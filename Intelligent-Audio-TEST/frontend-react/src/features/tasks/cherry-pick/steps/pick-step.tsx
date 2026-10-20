@@ -1,13 +1,15 @@
 /**
- * 挑选步骤（Step 1/4，18_挑选合并交互重设计.md §3.3/§5.1，INT-600）。
- * 筛选栏 + 树形/平铺切换 + 全部展开/收起 + 多级挑选树 + 已选汇总条（sticky）。
+ * 挑选步骤（Step 1/4，18_挑选合并交互重设计.md §3.8.2/§3.8.3/§5.1，INT-600/INT-1047）。
+ * 两阶段状态机（§3.8.2）：阶段 1 选择任务（PickTaskStage）→ 阶段 2 选择结果；
+ * 阶段 2 三视图（用例视图 / 设备视图 / 结果类型视图，§3.8.3），共享同一 selectedResultIds；
+ * 勾选跨阶段保留；已选汇总条（sticky）。
  */
 import {
   ChevronsDownUp,
   ChevronsUpDown,
-  Layers,
-  List,
-  TreePine,
+  ListChecks,
+  Smartphone,
+  Tag,
   TriangleAlert,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -15,13 +17,19 @@ import { toast } from 'sonner'
 
 import type { PickFilters } from '@/application/tasks/cherry-pick/use-cherry-pick-candidates'
 import {
+  EMPTY_PICK_FILTERS,
   useCherryPickCandidates,
   useCherryPickCaseView,
-  useCherryPickTree,
+  useCherryPickDeviceView,
+  useCherryPickResultTypeView,
   usePickFilterOptions,
 } from '@/application/tasks/cherry-pick/use-cherry-pick-candidates'
 import { usePickCartStore } from '@/application/tasks/cherry-pick/use-pick-cart-store'
-import type { PickTreeBranch, PickTreeLeaf, PickTreeItem } from '@/domain/models/cherryPick'
+import type {
+  PickTreeBranch,
+  PickTreeItem,
+  PickTreeLeaf,
+} from '@/domain/models/cherryPick'
 import { ApiError } from '@/infrastructure/api/api-error'
 import {
   clearSelection,
@@ -33,43 +41,106 @@ import {
 } from '@/domain/lib/cherry-pick-tree'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
-import { Badge } from '@/components/ui/badge'
-import { formatPickDateTime } from '@/features/tasks/cherry-pick/constants'
-import { getEvaluationStatusMeta } from '@/features/tasks/constants'
 import { PickFilterBar } from '@/features/tasks/cherry-pick/components/pick-filter-bar'
+import {
+  PickTaskStage,
+  getTaskStatusOrder,
+  type PickTaskRow,
+} from '@/features/tasks/cherry-pick/components/pick-task-stage'
+import { PickCaseView } from '@/features/tasks/cherry-pick/components/pick-case-view'
 import { PickTree } from '@/features/tasks/cherry-pick/components/pick-tree'
 import { SelectedSummaryBar } from '@/features/tasks/cherry-pick/components/selected-summary-bar'
+
+/** 阶段 2 三视图（§3.8.3：用例/设备/结果类型，任务维度由阶段 1 承载） */
+export type PickResultView = 'case' | 'device' | 'resultType'
 
 export function PickStep({
   filters,
   onFiltersChange,
   onResetFilters,
   onAdded,
+  presetTaskIds,
 }: {
   filters: PickFilters
   onFiltersChange: (filters: PickFilters) => void
   onResetFilters: () => void
   /** 加购成功（已转购物车步骤） */
   onAdded: (addedCount: number, skippedCount: number) => void
+  /** 批量「加入挑选」预选任务：非空 → 跳过阶段 1 直达阶段 2（§3.8.2/§6.1） */
+  presetTaskIds?: number[]
 }) {
   const options = usePickFilterOptions()
+  // 阶段 1 任务集聚合（全量候选，不受阶段 2 任务筛选影响，§3.8.2 数据源=候选行聚合）
+  const allCandidatesQuery = useCherryPickCandidates(EMPTY_PICK_FILTERS)
   const candidatesQuery = useCherryPickCandidates(filters)
-  const tree = useCherryPickTree(candidatesQuery.data)
-  const caseTree = useCherryPickCaseView(candidatesQuery.data)
+  const caseView = useCherryPickCaseView(candidatesQuery.data)
+  const deviceView = useCherryPickDeviceView(candidatesQuery.data)
+  const resultTypeView = useCherryPickResultTypeView(candidatesQuery.data)
   const addEntries = usePickCartStore((s) => s.addEntries)
 
+  const [phase, setPhase] = useState<'tasks' | 'results'>(
+    presetTaskIds && presetTaskIds.length > 0 ? 'results' : 'tasks'
+  )
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<number>>(
+    () => new Set(presetTaskIds ?? filters.taskIds)
+  )
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
-  const [view, setView] = useState<'tree' | 'case' | 'flat'>('tree')
+  const [view, setView] = useState<PickResultView>('case')
   const [expandSignal, setExpandSignal] = useState<{ all: boolean; tick: number }>({
     all: false,
     tick: 0,
   })
   const [adding, setAdding] = useState(false)
 
+  /** 阶段 1 任务行聚合（终态候选按 taskId 分组，§3.8.2 按状态/名称排序） */
+  const taskRows = useMemo<PickTaskRow[]>(() => {
+    const rows = allCandidatesQuery.data ?? []
+    const map = new Map<number, PickTaskRow>()
+    for (const c of rows) {
+      const cur = map.get(c.taskId)
+      if (cur) {
+        cur.count += 1
+        if (!cur.createdAt && c.createdAt) cur.createdAt = c.createdAt
+      } else {
+        map.set(c.taskId, {
+          taskId: c.taskId,
+          taskName: c.taskName,
+          executionStatus: c.executionStatus,
+          createdAt: c.createdAt,
+          count: 1,
+        })
+      }
+    }
+    return [...map.values()].sort(
+      (a, b) =>
+        getTaskStatusOrder(a.executionStatus) - getTaskStatusOrder(b.executionStatus) ||
+        a.taskName.localeCompare(b.taskName, 'zh-CN')
+    )
+  }, [allCandidatesQuery.data])
+
+  /** 任务名映射（阶段 2 任务集摘要条；fetchPickableTasks 兜底补未入候选页的任务） */
+  const taskNameById = useMemo(() => {
+    const map = new Map<number, string>()
+    for (const c of allCandidatesQuery.data ?? []) map.set(c.taskId, c.taskName)
+    for (const t of options.tasks) if (!map.has(t.id)) map.set(t.id, t.name)
+    return map
+  }, [allCandidatesQuery.data, options.tasks])
+
+  const selectedTaskNames = useMemo(
+    () => [...selectedTaskIds].map((id) => taskNameById.get(id)).filter(Boolean) as string[],
+    [selectedTaskIds, taskNameById]
+  )
+
+  /** 当前视图树（用例/设备/结果类型，三视图共享同一 selectedResultIds） */
+  const currentTree = useMemo<PickTreeItem[]>(() => {
+    if (view === 'case') return caseView
+    if (view === 'device') return deviceView
+    return resultTypeView
+  }, [view, caseView, deviceView, resultTypeView])
+
   const stats = useMemo(
-    () => computeSelectionStats(tree, selectedIds),
-    [tree, selectedIds]
+    () => computeSelectionStats(currentTree, selectedIds),
+    [currentTree, selectedIds]
   )
 
   const handleToggleLeaf = (leaf: PickTreeLeaf) =>
@@ -77,6 +148,21 @@ export function PickStep({
 
   const handleToggleBranch = (branch: PickTreeBranch, select: boolean) =>
     setSelectedIds((prev) => toggleBranchSelection(branch, prev, select))
+
+  /** 阶段 1「下一步：选择结果」——提交任务集锁定阶段 2 候选，勾选跨阶段保留 */
+  const handleNext = () => {
+    onFiltersChange({ ...filters, taskIds: [...selectedTaskIds] })
+    setPhase('results')
+  }
+
+  /** 重置：阶段 2 保留阶段 1 锁定的任务集（§6.2 筛选与勾选解耦） */
+  const handleResetFilters = () => {
+    if (phase === 'results') {
+      onFiltersChange({ ...EMPTY_PICK_FILTERS, taskIds: [...selectedTaskIds] })
+    } else {
+      onResetFilters()
+    }
+  }
 
   const handleAddToCart = async () => {
     if (stats.results === 0) return
@@ -109,64 +195,93 @@ export function PickStep({
     }
   }
 
-  const flatLeaves = useMemo(() => {
-    const leaves: PickTreeLeaf[] = []
-    const walk = (items: PickTreeItem[]) => {
-      for (const item of items) {
-        if (item.kind === 'leaf') leaves.push(item)
-        else walk(item.children)
-      }
-    }
-    walk(tree)
-    return leaves
-  }, [tree])
+  /** 阶段 1 · 选择任务 */
+  if (phase === 'tasks') {
+    return (
+      <PickTaskStage
+        tasks={taskRows}
+        selectedTaskIds={selectedTaskIds}
+        loading={allCandidatesQuery.isLoading}
+        isError={allCandidatesQuery.isError}
+        onRetry={() => void allCandidatesQuery.refetch()}
+        onToggle={(taskId) =>
+          setSelectedTaskIds((prev) => {
+            const next = new Set(prev)
+            if (next.has(taskId)) next.delete(taskId)
+            else next.add(taskId)
+            return next
+          })
+        }
+        onSelectAll={(ids) => setSelectedTaskIds(new Set(ids))}
+        onClear={() => setSelectedTaskIds(new Set())}
+        onNext={handleNext}
+      />
+    )
+  }
 
+  /** 阶段 2 · 选择结果（三视图） */
   return (
     <div className='flex min-h-0 flex-1 flex-col gap-3'>
+      <h3 className='text-sm font-medium'>挑选 · 阶段 2：选择结果</h3>
       <PickFilterBar
         filters={filters}
         onChange={onFiltersChange}
         options={options}
-        onReset={onResetFilters}
+        onReset={handleResetFilters}
+        hideTaskFacet
       />
+
+      {/* 任务集摘要条 +「更换任务」（§3.8.2，勾选跨阶段保留不清空） */}
+      <div className='flex flex-wrap items-center gap-2'>
+        <span className='text-sm font-medium'>已选任务：</span>
+        <span className='text-muted-foreground min-w-0 flex-1 truncate text-sm'>
+          {selectedTaskNames.length > 0 ? selectedTaskNames.join(' · ') : '—'}
+        </span>
+        <Button
+          variant='ghost'
+          size='sm'
+          className='text-muted-foreground h-7 text-xs'
+          onClick={() => setPhase('tasks')}
+        >
+          更换任务
+        </Button>
+      </div>
 
       <div className='flex flex-wrap items-center gap-2'>
         <div className='bg-muted/60 flex items-center gap-0.5 rounded-lg p-0.5'>
-          <Button
-            variant={view === 'tree' ? 'default' : 'ghost'}
-            size='sm'
-            className='h-6 gap-1 px-2 text-xs'
-            onClick={() => setView('tree')}
-          >
-            <TreePine aria-hidden='true' className='size-3.5' />
-            树形
-          </Button>
           <Button
             variant={view === 'case' ? 'default' : 'ghost'}
             size='sm'
             className='h-6 gap-1 px-2 text-xs'
             onClick={() => setView('case')}
           >
-            <Layers aria-hidden='true' className='size-3.5' />
-            用例视角
+            <ListChecks aria-hidden='true' className='size-3.5' />
+            用例视图
           </Button>
           <Button
-            variant={view === 'flat' ? 'default' : 'ghost'}
+            variant={view === 'device' ? 'default' : 'ghost'}
             size='sm'
             className='h-6 gap-1 px-2 text-xs'
-            onClick={() => setView('flat')}
+            onClick={() => setView('device')}
           >
-            <List aria-hidden='true' className='size-3.5' />
-            平铺
+            <Smartphone aria-hidden='true' className='size-3.5' />
+            设备视图
+          </Button>
+          <Button
+            variant={view === 'resultType' ? 'default' : 'ghost'}
+            size='sm'
+            className='h-6 gap-1 px-2 text-xs'
+            onClick={() => setView('resultType')}
+          >
+            <Tag aria-hidden='true' className='size-3.5' />
+            结果类型视图
           </Button>
         </div>
         <Button
           variant='ghost'
           size='sm'
           className='text-muted-foreground h-7 gap-1 text-xs'
-          onClick={() =>
-            setExpandSignal((s) => ({ all: true, tick: s.tick + 1 }))
-          }
+          onClick={() => setExpandSignal((s) => ({ all: true, tick: s.tick + 1 }))}
         >
           <ChevronsDownUp aria-hidden='true' className='size-3.5' />
           全部展开
@@ -175,9 +290,7 @@ export function PickStep({
           variant='ghost'
           size='sm'
           className='text-muted-foreground h-7 gap-1 text-xs'
-          onClick={() =>
-            setExpandSignal((s) => ({ all: false, tick: s.tick + 1 }))
-          }
+          onClick={() => setExpandSignal((s) => ({ all: false, tick: s.tick + 1 }))}
         >
           <ChevronsUpDown aria-hidden='true' className='size-3.5' />
           全部收起
@@ -207,97 +320,53 @@ export function PickStep({
               重试
             </Button>
           </div>
-        ) : tree.length === 0 ? (
+        ) : currentTree.length === 0 ? (
           <div className='flex flex-col items-center gap-1 py-10 text-center'>
             <p className='text-muted-foreground text-sm'>无符合条件的执行结果</p>
             <p className='text-muted-foreground/70 text-xs'>
               仅已完成、执行失败、已停止的终态任务可挑选，默认剔除已删除用例的结果
             </p>
           </div>
-        ) : view === 'tree' ? (
-          <PickTree
-            className='p-2'
-            items={tree}
+        ) : view === 'case' ? (
+          <PickCaseView
+            branches={caseView}
             selectedIds={selectedIds}
             onToggleLeaf={handleToggleLeaf}
             onToggleBranch={handleToggleBranch}
             expandSignal={expandSignal}
           />
-        ) : view === 'case' ? (
+        ) : view === 'device' ? (
           <PickTree
             className='p-2'
-            items={caseTree}
+            items={deviceView}
             selectedIds={selectedIds}
             onToggleLeaf={handleToggleLeaf}
             onToggleBranch={handleToggleBranch}
             expandSignal={expandSignal}
+            showLeafTask
           />
         ) : (
-          <div className='flex flex-col p-2'>
-            {flatLeaves.map((leaf) => {
-              const evalMeta = getEvaluationStatusMeta(leaf.evaluationStatus)
-              return (
-                <div
-                  key={leaf.key}
-                  className='hover:bg-muted/40 flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-[13px] transition-colors'
-                >
-                  <input
-                    type='checkbox'
-                    checked={selectedIds.has(leaf.resultId)}
-                    onChange={() => handleToggleLeaf(leaf)}
-                    className='accent-primary size-3.5'
-                    aria-label={`结果 ${leaf.resultId}`}
-                  />
-                  <span className='min-w-0 flex-1 truncate font-medium'>
-                    {leaf.caseName}
-                  </span>
-                  <span className='text-muted-foreground min-w-0 max-w-40 truncate'>
-                    {leaf.deviceName ?? leaf.apiName ?? '—'}
-                  </span>
-                  <Badge variant='outline' className='font-mono text-[10px]'>
-                    {leaf.resultType}
-                  </Badge>
-                  <StatusBadge
-                    label={
-                      leaf.executionStatus === 'completed'
-                        ? '已完成'
-                        : leaf.executionStatus === 'failed'
-                          ? '执行失败'
-                          : '已停止'
-                    }
-                    variant={
-                      leaf.executionStatus === 'completed'
-                        ? 'success'
-                        : leaf.executionStatus === 'failed'
-                          ? 'danger'
-                          : 'neutral'
-                    }
-                  />
-                  <StatusBadge
-                    label={evalMeta.label}
-                    variant={evalMeta.variant}
-                    pulse={evalMeta.pulse}
-                  />
-                  <span className='text-muted-foreground shrink-0 font-mono text-[10px] whitespace-nowrap tabular-nums'>
-                    {formatPickDateTime(leaf.createdAt)}
-                  </span>
-                  {leaf.added && (
-                    <span className='text-muted-foreground/70 shrink-0 text-xs'>
-                      已加购
-                    </span>
-                  )}
-                </div>
-              )
-            })}
-          </div>
+          <PickTree
+            className='p-2'
+            items={resultTypeView}
+            selectedIds={selectedIds}
+            onToggleLeaf={handleToggleLeaf}
+            onToggleBranch={handleToggleBranch}
+            expandSignal={expandSignal}
+            showLeafTask
+          />
         )}
       </div>
 
       <SelectedSummaryBar
         stats={stats}
-        hasVisibleItems={tree.length > 0}
-        onSelectAll={() => setSelectedIds((prev) => selectAllVisible(tree, prev))}
-        onInvert={() => setSelectedIds((prev) => invertVisibleSelection(tree, prev))}
+        hasVisibleItems={currentTree.length > 0}
+        onSelectAll={() =>
+          setSelectedIds((prev) => selectAllVisible(currentTree, prev))
+        }
+        onInvert={() =>
+          setSelectedIds((prev) => invertVisibleSelection(currentTree, prev))
+        }
         onClear={() => setSelectedIds(clearSelection())}
         onAddToCart={handleAddToCart}
         adding={adding}

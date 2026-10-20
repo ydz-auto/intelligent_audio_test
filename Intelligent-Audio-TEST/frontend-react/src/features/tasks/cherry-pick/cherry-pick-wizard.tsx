@@ -123,6 +123,7 @@ export function CherryPickWizard({
             onFiltersChange={setFilters}
             onResetFilters={() => setFilters(EMPTY_PICK_FILTERS)}
             onAdded={() => onStepChange('cart')}
+            presetTaskIds={presetTaskIds}
           />
         )}
         {step === 'cart' && (

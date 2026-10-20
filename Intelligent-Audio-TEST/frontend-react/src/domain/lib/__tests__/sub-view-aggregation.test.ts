@@ -8,6 +8,8 @@ import { describe, expect, it } from 'vitest'
 import {
   groupCasesByCaseGroup,
   groupCasesByTag,
+  type CaseSubGroup,
+  type SubViewCaseItem,
 } from '@/domain/lib/sub-view-aggregation'
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TagItem } from '@/domain/models/testTag'
@@ -122,5 +124,49 @@ describe('groupCasesByCaseGroup', () => {
     const last = groups[groups.length - 1]
     expect(last.key).toBe('__ungrouped__')
     expect(last.label).toBe('未分组')
+  })
+})
+
+describe('入参泛化（INT-1046：SubViewCaseItem 子集输入）', () => {
+  /** 最小子集输入（仅收敛 tags/groupId/groupName/totalDuration，非 TestCaseListItem） */
+  const subset = (
+    id: string,
+    patch: Partial<SubViewCaseItem>
+  ): SubViewCaseItem & { id: string } => ({
+    id,
+    tags: [],
+    groupId: null,
+    groupName: null,
+    totalDuration: 0,
+    ...patch,
+  })
+
+  it('groupCasesByTag 接受收敛子集输入，聚合结果与 TestCaseListItem 输入同口径', () => {
+    const cases: Array<SubViewCaseItem & { id: string }> = [
+      subset('c-1', { tags: ['1人'], totalDuration: 60 }),
+      subset('c-2', { tags: ['1人', '客厅'], totalDuration: 30 }),
+    ]
+    const groups = groupCasesByTag(cases, MOCK_TAGS)
+    expect(groups).toHaveLength(2)
+    const onePerson = groups.find((g) => g.label === '1人')
+    expect(onePerson?.cases.map((c) => c.id)).toEqual(['c-1', 'c-2'])
+    expect(onePerson?.color).toBe('#f97316')
+    expect(onePerson?.totalDuration).toBe(90)
+    // 子组类型保持泛化（cases 为输入子集类型）
+    const typed = groups as CaseSubGroup<SubViewCaseItem>[]
+    expect(typed[0].cases[0].tags).toEqual(['1人'])
+  })
+
+  it('groupCasesByCaseGroup 接受收敛子集输入，未分组兜底与泛化前一致', () => {
+    const cases: Array<SubViewCaseItem & { id: string }> = [
+      subset('c-1', { groupId: 'g1', groupName: '智能音箱功能测试' }),
+      subset('c-2', { groupId: null, groupName: null }),
+    ]
+    const groups = groupCasesByCaseGroup(cases)
+    const last = groups[groups.length - 1]
+    expect(groups).toHaveLength(2)
+    expect(last.label).toBe('未分组')
+    expect(last.key).toBe('__ungrouped__')
+    expect(last.cases.map((c) => c.id)).toEqual(['c-2'])
   })
 })
