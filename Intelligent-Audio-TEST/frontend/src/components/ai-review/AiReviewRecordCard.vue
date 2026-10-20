@@ -10,7 +10,7 @@
       <span v-else-if="record.rejected" class="record-card-rejected"><i class="fas fa-times-circle"></i> {{ AI_REVIEW_RECORD_COPY.rejectedAt }}</span>
     </div>
 
-    <div class="record-card-verdict" :class="`record-verdict--${record.verdict}`">
+    <div class="record-card-verdict" :class="`record-verdict--${record.verdict}`" v-if="showVerdict">
       <i :class="verdictIcon"></i>
       <span class="record-verdict-label">{{ AI_REVIEW_VERDICT_LABELS[record.verdict] }}</span>
       <span class="record-verdict-confidence">
@@ -18,7 +18,7 @@
       </span>
     </div>
 
-    <div class="record-card-compare" v-if="originalEvaluationStatus">
+    <div class="record-card-compare" v-if="showVerdict && originalEvaluationStatus">
       <span class="compare-label">{{ AI_REVIEW_VERDICT_COPY.compareTitle }}</span>
       <span class="compare-row">
         <span class="compare-item">AI：{{ AI_REVIEW_VERDICT_LABELS[record.verdict] }}</span>
@@ -62,6 +62,12 @@ const verdictIcon = computed(() => {
     default: return 'fas fa-circle-question'
   }
 })
+
+/**
+ * 结论行只在后端落位成功（status=completed）时展示；
+ * running/failed 时后端无 verdict/confidence，避免「复核失败 + 复核通过」矛盾呈现。
+ */
+const showVerdict = computed(() => props.record.status === 'completed')
 
 function evalLabel(status?: string | null): string {
   switch (status) {

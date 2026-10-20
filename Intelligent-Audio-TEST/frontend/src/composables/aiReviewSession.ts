@@ -85,13 +85,13 @@ function buildContextText(ctx: AiReviewContext): string {
   return parts.join('｜')
 }
 
-/** 设备×维度表 → 低分维度摘要（score < 60 或维度名含「失败」） */
+/** 设备×维度表 → 低分维度摘要（score < 0.6，对齐 React aiReviewDialog lowScoreDim 口径 0-1 标度） */
 function summarizeLowDimensions(results: AiReviewSessionResult[]): string {
   const hits: string[] = []
   for (const r of results) {
     for (const d of r.dimensions ?? []) {
       const score = typeof d.score === 'number' ? d.score : Number(d.score ?? NaN)
-      if (Number.isFinite(score) && score < 60) {
+      if (Number.isFinite(score) && score < 0.6) {
         hits.push(`${r.deviceName ?? r.apiName ?? '设备'}/${d.name ?? '维度'}（${score}）`)
       }
     }
