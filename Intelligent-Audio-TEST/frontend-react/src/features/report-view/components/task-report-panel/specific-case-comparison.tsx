@@ -8,8 +8,9 @@
  * 选中「按分组 / 按标签」即按该维度组头分组渲染（组头=组名+计数「{n} 个用例」，
  * 未分类/未设置标签兜底组末尾），组内用例卡照全站统一 CaseCard；客户端聚合见 specific-case-grouping.ts，
  * 不新增后端请求——用例行自带 category/tags（ReportCaseItem）。
- * 人工复核 + AI 复核交互（19 规范 §4.1~§4.3，INT-793）：卡片标记（复核 Badge → 复核明细抽屉）
- * + 明细操作（「人工复核」弹窗 / 「AI 复核」弹窗）双路径；源任务 result_id 溯源（§4.2 路径 A）。
+ * 人工复核 + AI 复核交互（19 规范 §4/§5，INT-793/INT-1065）：卡片标记（复核 Badge → 复核明细抽屉）
+ * + 明细操作（「人工复核」弹窗 / 「AI 复核」灵犀Agent 复核会话 / 「快速复核」一次性状态机）多路径；
+ * 源任务 result_id 溯源（§4.2 路径 A）。
  */
 import {
   ArrowDownWideNarrow,
@@ -43,8 +44,12 @@ import { useReportCases } from '@/application/report-view/use-report-cases'
 import { useReportReviews } from '@/application/report-view/useReportReviews'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import type { ReportCaseItem, ReportDetailData } from '@/domain/models/report'
+import type { CaseResultForReview } from '@/domain/models/review'
 import type { TagItem } from '@/domain/models/testTag'
 import { cn } from '@/lib/utils'
+import { fetchCaseResults } from '@/infrastructure/api/reviewApi'
+import { AiReviewSessionDialog } from '@/features/ai-review/ai-review-session-dialog'
+import { QuickAiReviewDialog } from '@/features/ai-review/quick-ai-review-dialog'
 import { CaseCard } from '@/features/testcases/components/case-card'
 import {
   groupReportCasesByCategory,
@@ -58,7 +63,6 @@ import { CaseDetailDialog } from '../modals/case-detail-dialog'
 import { LogDownloadProgressDialog } from '../modals/log-download-progress-dialog'
 import { ReviewBadge } from '../review/review-badge'
 import { ManualReviewDialog } from '../review/manual-review-dialog'
-import { AiReviewDialog } from '../review/ai-review-dialog'
 import { ReviewHistoryDrawer } from '../review/review-history-drawer'
 import { MultiSelectFilter, SelectedConditionsBar } from './multi-select-filter'
 
@@ -94,30 +98,64 @@ export function SpecificCaseComparison({
   // 人工复核 + AI 复核（19 规范 §4：源任务 review_count / reviewed 标记 / 复核弹窗 / AI 结论）
   const reviews = useReportReviews(report)
   const { hasPermission } = usePermissions()
+  // 人工复核提交（task.result.review）；AI 复核发起/对话/保存/驳回（task.result.ai_review，INT-800 已注册）
   const canReview = hasPermission('task.result.review')
+  const canAiReview = hasPermission('task.result.ai_review')
   const isTaskReport = report.type === 'task' && Boolean(report.task_id)
 
   const [reviewCase, setReviewCase] = useState<ReportCaseItem>()
   const [aiCase, setAiCase] = useState<ReportCaseItem>()
-  const [aiPrefill, setAiPrefill] = useState<{
-    evaluationStatus?: 'completed' | 'failed'
-    comment?: string
+  const [quickTarget, setQuickTarget] = useState<{
+    caseId: string
+    caseName?: string
+    results: CaseResultForReview[]
+    evaluationStatus?: string | null
   }>()
   const [historyCase, setHistoryCase] = useState<ReportCaseItem>()
-
-  // AI 采纳 → 打开人工复核弹窗预填（AI 判定评估状态 + 理由；§4.3 关键闭环）
-  const handleAiAdopt = (prefill: {
-    evaluationStatus?: 'completed' | 'failed'
-    comment?: string
-  }) => {
-    setAiPrefill(prefill)
-    setAiCase(undefined)
-    setReviewCase(aiCase)
-  }
 
   // 用例当前评估状态（任务侧用例简报 evaluation_status → AI 结论卡「原评估判定」）
   const caseEvaluationStatus = (caseId: string): string | null | undefined =>
     reviews.taskCases.find((c) => c.case_id === caseId)?.evaluation_status
+
+  /** AI 复核入口（§5.2 主形态）：取源任务该用例结果行校验有结果 → 打开灵犀Agent 复核会话（可追问） */
+  const openAiReview = async (c: ReportCaseItem) => {
+    if (!reviews.taskId) return
+    try {
+      const res = await fetchCaseResults(reviews.taskId, c.id)
+      // 无执行结果的用例不开放 AI 复核（§5.2 可发起对象须有结果）
+      if (res.results.length === 0) {
+        toast.error('该用例无执行结果，无法复核')
+        return
+      }
+      setAiCase(c)
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? `用例结果加载失败：${err.message}` : '用例结果加载失败'
+      )
+    }
+  }
+
+  /** 快速复核入口（§5.1 次要形态）：一次性状态机弹窗（批量/低分初筛，不可追问） */
+  const openQuickReview = async (c: ReportCaseItem) => {
+    if (!reviews.taskId) return
+    try {
+      const res = await fetchCaseResults(reviews.taskId, c.id)
+      if (res.results.length === 0) {
+        toast.error('该用例无执行结果，无法复核')
+        return
+      }
+      setQuickTarget({
+        caseId: c.id,
+        caseName: res.caseName || c.name,
+        results: res.results,
+        evaluationStatus: caseEvaluationStatus(c.id),
+      })
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? `用例结果加载失败：${err.message}` : '用例结果加载失败'
+      )
+    }
+  }
 
   // 筛选卡可选项（分组/标签/评估维度；标签合并自用例 + summary 标签池）
   const availableGroups = useMemo(
@@ -220,31 +258,37 @@ export function SpecificCaseComparison({
         hideMeta
         actions={
           <>
-            {/* 明细操作（§4.2 双路径入口之二）：人工复核 / AI 复核 */}
+            {/* 明细操作（§4.2 双路径入口之二）：人工复核 / AI 复核（灵犀Agent 会话）+ 快速复核（§5.1 次要入口） */}
             {isTaskReport && canReview && (
+              <Button
+                variant='outline'
+                size='sm'
+                className='h-7 gap-1 px-2 text-xs'
+                onClick={() => setReviewCase(c)}
+              >
+                <ShieldCheck aria-hidden='true' className='size-3.5' />
+                人工复核
+              </Button>
+            )}
+            {isTaskReport && canAiReview && (
               <>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  className='h-7 gap-1 px-2 text-xs'
-                  onClick={() => {
-                    setAiPrefill(undefined)
-                    setReviewCase(c)
-                  }}
-                >
-                  <ShieldCheck aria-hidden='true' className='size-3.5' />
-                  人工复核
-                </Button>
                 <Button
                   variant='ghost'
                   size='sm'
                   className='h-7 gap-1 px-2 text-xs'
-                  onClick={() => {
-                    setAiCase(c)
-                  }}
+                  onClick={() => void openAiReview(c)}
                 >
                   <Sparkles aria-hidden='true' className='size-3.5' />
                   AI 复核
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='text-muted-foreground/70 h-7 gap-1 px-2 text-xs'
+                  onClick={() => void openQuickReview(c)}
+                  title='快速复核（一次性状态机，无需追问的快速复检）'
+                >
+                  快速复核
                 </Button>
               </>
             )}
@@ -618,36 +662,42 @@ export function SpecificCaseComparison({
         report={report}
       />
 
-      {/* 人工复核 + AI 复核（19 规范 §4：卡片标记 → 明细抽屉 / 明细操作 → 复核弹窗；源任务 result_id 溯源） */}
+      {/* 人工复核 + AI 复核（19 规范 §4/§5：卡片标记 → 明细抽屉 / 明细操作 → 复核弹窗；源任务 result_id 溯源） */}
       {isTaskReport && reviews.taskId && (
         <>
           <ManualReviewDialog
             open={reviewCase !== undefined}
             onOpenChange={(open) => {
-              if (!open) {
-                setReviewCase(undefined)
-                setAiPrefill(undefined)
-              }
+              if (!open) setReviewCase(undefined)
             }}
             taskId={reviews.taskId}
             caseItem={reviewCase}
-            prefill={aiPrefill}
             onSubmitted={() => void reviews.refetchTask()}
             onViewHistory={() => {
               setHistoryCase(reviewCase)
             }}
           />
-          <AiReviewDialog
+          {/* §5.2 AI 复核主入口（灵犀Agent 复核会话，可追问；复核上下文由会话自身预填 §5.3） */}
+          <AiReviewSessionDialog
             open={aiCase !== undefined}
             onOpenChange={(open) => {
               if (!open) setAiCase(undefined)
             }}
             taskId={reviews.taskId}
-            caseItem={aiCase}
-            originalEvaluationStatus={
-              aiCase ? caseEvaluationStatus(aiCase.id) : undefined
-            }
-            onAdopt={handleAiAdopt}
+            caseId={aiCase?.id ?? ''}
+            caseName={aiCase?.name}
+          />
+          {/* §5.1 快速复核次要入口（一次性状态机，批量/低分初筛场景） */}
+          <QuickAiReviewDialog
+            open={quickTarget !== undefined}
+            onOpenChange={(open) => {
+              if (!open) setQuickTarget(undefined)
+            }}
+            taskId={reviews.taskId}
+            caseId={quickTarget?.caseId ?? ''}
+            caseName={quickTarget?.caseName}
+            results={quickTarget?.results ?? []}
+            evaluationStatus={quickTarget?.evaluationStatus}
           />
           <ReviewHistoryDrawer
             open={historyCase !== undefined}
