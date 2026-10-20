@@ -1,6 +1,6 @@
 /**
  * 分组卡片流测试（V9.7.10 TestCaseListContainer 分组视图等价移植，11_用例域.md §3.5）：
- * INT-490 P2 回归——groups 异步加载后分组卡默认展开（首屏组内用例可见）；
+ * INT-1027 回归——groups 异步加载后分组卡默认收起（组头可见、组内用例需点击展开）；
  * 组头勾选全选/全不选；组内懒加载「已显示 {n} / {总} 条 · 加载更多」。
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -150,15 +150,23 @@ describe('GroupedCaseList', () => {
     useSessionMap.setState({ groupSubView: {}, tagSubView: {} })
   })
 
-  it('INT-490 P2：分组异步到达后默认展开，首屏组内用例可见（无需手动展开）', async () => {
+  it('INT-1027：分组异步到达后默认收起，组头可展开、组内用例点击后可见', async () => {
+    const user = setupUser()
     const { rerender } = render(<Harness loading />)
     // 首帧 groups 为空（React Query 未返回）→ 骨架态
     expect(screen.queryByText('智能音箱功能测试')).not.toBeInTheDocument()
-    // 分组到达后补齐展开集，组内用例卡可见
+    // 分组到达后默认收起：组头可见，组内用例卡不可见
     rerender(<Harness />)
     await waitFor(() => {
-      expect(screen.getByText('智能音箱-播放音乐')).toBeInTheDocument()
+      expect(screen.getByText('智能音箱功能测试')).toBeInTheDocument()
     })
+    expect(screen.queryByText('智能音箱-播放音乐')).not.toBeInTheDocument()
+    expect(screen.queryByText('车载-导航指令')).not.toBeInTheDocument()
+    // 点组头展开后组内用例可见；另一个组保持收起
+    await user.click(screen.getByText('智能音箱功能测试'))
+    expect(screen.getByText('智能音箱-播放音乐')).toBeInTheDocument()
+    expect(screen.queryByText('车载-导航指令')).not.toBeInTheDocument()
+    await user.click(screen.getByText('车载语音交互'))
     expect(screen.getByText('车载-导航指令')).toBeInTheDocument()
   })
 
@@ -178,6 +186,8 @@ describe('GroupedCaseList', () => {
   it('组内懒加载分页：超过 5 条显示「已显示 5 / 6 条 · 加载更多」，点击后全部可见', async () => {
     const user = setupUser()
     render(<Harness />)
+    // 默认收起 → 先展开 g1 分组卡
+    await user.click(screen.getByText('智能音箱功能测试'))
     // 第 6 条初始不可见
     expect(screen.queryByText('智能音箱-闹钟设置2')).not.toBeInTheDocument()
     expect(screen.getByText(/已显示 5 \/ 6 条 · 加载更多/)).toBeInTheDocument()
@@ -199,6 +209,9 @@ describe('GroupedCaseList', () => {
   it('INT-584 子视图切换：默认平铺；切「按标签」客户端聚合（标签子组 + 未设置标签桶，per-card 会话保留）', async () => {
     const user = setupUser()
     render(<Harness />)
+    // 默认收起 → 展开两个分组卡（组头子视图切换钮与组内内容均需可见）
+    await user.click(screen.getByText('智能音箱功能测试'))
+    await user.click(screen.getByText('车载语音交互'))
     // 默认态 = 平铺：用例卡直接渲染，无子分组头
     expect(screen.getByText('智能音箱-播放音乐')).toBeInTheDocument()
     expect(screen.queryByText('未设置标签')).not.toBeInTheDocument()
@@ -214,8 +227,11 @@ describe('GroupedCaseList', () => {
   })
 
   it('INT-584 子视图空态：组内可见用例全部无标签时显示空态，切换控件保持选中', async () => {
+    const user = setupUser()
     useSessionMap.getState().setGroupSubView('g2', 'byTag')
     render(<Harness />)
+    // 默认收起 → 先展开 g2 分组卡（空态在组内内容区）
+    await user.click(screen.getByText('车载语音交互'))
     // g2 用例全部无标签 → 按标签子视图空态
     expect(screen.getByText('该分组下用例均未设置标签')).toBeInTheDocument()
     expect(screen.getByText('切换回「平铺」可查看该分组全部用例')).toBeInTheDocument()
@@ -230,6 +246,8 @@ describe('GroupedCaseList', () => {
       render(<Harness />)
       // Tabs 胶囊不渲染（组头空间收紧）
       expect(screen.queryAllByRole('tab')).toHaveLength(0)
+      // 默认收起 → 先展开 g1（「未设置标签」桶在组内内容区）
+      await user.click(screen.getByText('智能音箱功能测试'))
       // 打开第一个分组卡（g1）的「批量修改」下拉 → 首项「显示方式」子菜单
       await user.click(screen.getAllByRole('button', { name: /批量修改/ })[0])
       // base-ui 子菜单触发器 hover 展开；jsdom 指针几何为零，子项点击用 fireEvent（绕过 pointer-events 守卫）

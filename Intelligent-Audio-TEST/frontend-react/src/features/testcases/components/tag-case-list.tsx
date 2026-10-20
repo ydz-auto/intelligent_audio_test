@@ -2,12 +2,14 @@
  * 标签视图卡片流（V9.7.10 TestCaseListContainer.vue 标签视图等价移植，11_用例域.md §3.6）。
  * 标签分组卡：组头（勾选全选 + ChevronDown 展开/折叠 + 标签色点图标 + 标签名 + 计数 Badge）+
  * 组内用例卡（CaseCard）；标签级懒加载分页（每页 5 个标签 +「已显示 {n} / {总} 个标签 · 加载更多」）。
+ * 展开态持久化：本会话内存；默认收起（INT-1027 走查裁定：进入页面/筛选变化后标签默认 collapsed，
+ * 用户点标签头展开后会话内保持展开态——INT-490 P2 默认全展开口径废弃）。
  * 数据契约：后端 view=tag 返回 {items:[{tag,testCases}]}，mock 阶段由平铺 cases 按 tag 聚合派生
  * （同一用例命中多个标签时多卡呈现，对齐 V9.7.10 tagViewData Record<tagName, cases>）。
  * INT-487 按分类呈现：标签色点/角标走 TagItem.color/categoryName 数据驱动色。
  */
 import { ArrowUpDown, ChevronDown, FolderOpen, Tags } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useIsFetching } from '@tanstack/react-query'
 
 import { useSessionMap } from '@/application/testcases/use-session-map'
@@ -89,23 +91,6 @@ export function TagCaseList({
   const dimmed = fetching > 0 && !loading
   /** §3.6 移动端（≤640px）子视图切换收进「显示方式」下拉（组头右区空间收紧） */
   const isMobile = useMediaQuery('(max-width: 640px)')
-
-  // INT-490 P2 同源修复：标签卡默认全展开（标签分组由平铺用例聚合派生，加载后补齐）
-  useEffect(() => {
-    if (cases.length === 0) return
-    const names = new Set(cases.flatMap((c) => c.tags))
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      let changed = false
-      for (const name of names) {
-        if (!next.has(name)) {
-          next.add(name)
-          changed = true
-        }
-      }
-      return changed ? next : prev
-    })
-  }, [cases])
 
   const registry = useMemo(() => {
     const map = new Map<string, TagItem>()
