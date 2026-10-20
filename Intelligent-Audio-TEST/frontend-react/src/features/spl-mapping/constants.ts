@@ -27,12 +27,6 @@ export const DIGITAL_PROTOCOL_OPTIONS = [
   { value: 'http', label: 'HTTP' },
 ] as const
 
-/** 数字域表单协议选项（§6.12：WebSocket(Realtime) 默认 ws） */
-export const DIGITAL_PROTOCOL_FORM_OPTIONS = [
-  { value: 'websocket', label: 'WebSocket (Realtime)' },
-  { value: 'http', label: 'HTTP (非实时/流式)' },
-] as const
-
 /** 列表分页每页条数选项（§3.9 PAGE_SIZE_OPTIONS 语义） */
 export const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50, 100]
 

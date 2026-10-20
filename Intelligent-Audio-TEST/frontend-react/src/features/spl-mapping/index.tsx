@@ -144,8 +144,6 @@ export function SplMappingPage() {
         const apiName = apis.find((a) => a.id === row.apiId)?.name ?? ''
         return (
           (row.name ?? '').toLowerCase().includes(keyword) ||
-          (row.vendor ?? '').toLowerCase().includes(keyword) ||
-          (row.protocol ?? '').toLowerCase().includes(keyword) ||
           apiName.toLowerCase().includes(keyword)
         )
       })
