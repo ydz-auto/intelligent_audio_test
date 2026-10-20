@@ -527,7 +527,10 @@ export function CaseMutateDrawer({
       tags: tagValue,
       algorithmType: algorithmType || null,
       config,
-      algorithmParams: algorithmParams.length > 0 ? algorithmParams : caseItem?.algorithmParams ?? undefined,
+      // INT-996 返工：轮次草稿已含全量存量参数（roundsFromConfig→algorithmParamsForRound），
+      // 空数组直接透传——回退取 caseItem.algorithmParams 会在禁用声纹（各轮 params 过滤后为 []）时
+      // 重新带上存量 voiceprint，违反「enabled=false 不入列」（INT-996 验收打回 P2）。
+      algorithmParams,
       referenceParams: caseItem?.referenceParams ?? undefined,
       ...(strategyValue ? { strategyId, strategyOverrides } : {}),
     }
