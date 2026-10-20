@@ -42,14 +42,16 @@ export function groupReportCasesByCategory(
     const raw = c.category?.trim() ?? ''
     const isUncategorized =
       !raw || raw === UNCATEGORIZED_LABEL
-    const key = isUncategorized ? UNCATEGORIZED_BUCKET_KEY : c.category
+    const key = isUncategorized
+      ? UNCATEGORIZED_BUCKET_KEY
+      : (c.category ?? UNCATEGORIZED_BUCKET_KEY)
     const existing = buckets.get(key)
     if (existing) {
       existing.cases.push(c)
     } else {
       buckets.set(key, {
         key,
-        label: isUncategorized ? UNCATEGORIZED_LABEL : c.category,
+        label: isUncategorized ? UNCATEGORIZED_LABEL : raw,
         cases: [c],
         color: null,
         categoryName: null,
