@@ -75,6 +75,8 @@ class TaskQueryService:
         execution_status = query.execution_status
         # INT-273：派生任务类型过滤（api/e2e/mixed）
         task_type = query.task_type
+        # INT-466：可见性筛选（shared/private；空=全部）
+        visibility = query.visibility
 
         result = _task_acl.list_tasks(
             page=page,
@@ -93,6 +95,7 @@ class TaskQueryService:
             merge_type=merge_type,
             stats=stats,
             task_type=task_type,
+            visibility=visibility,
         )
 
         if not result.get('success'):
@@ -148,6 +151,9 @@ class TaskQueryService:
                         deleted=item.get('deleted'),
                         deleted_at=item.get('deleted_at'),
                         deleted_by_user_id=item.get('deleted_by_user_id'),
+                        # INT-423/466：资源可见性与归属人（read model 透出，此处透传）
+                        visibility=item.get('visibility'),
+                        created_by_user_id=item.get('created_by_user_id'),
                         reports=TaskReportsData(
                             count=report_info.get('count', 0),
                             reports=[
@@ -197,6 +203,11 @@ class TaskQueryService:
 
         try:
             item = result.get('data') or {}
+            # INT-466：admin 访问私有任务详情落 PRIVATE_RESOURCE_ACCESS 审计（旁路）
+            from api_gateway.application.services.visibility.visibility_audit import (
+                maybe_audit_private_detail,
+            )
+            maybe_audit_private_detail('task', task_id, item)
             cases = [
                 TaskCaseBrief(
                     case_id=c.get('case_id'),
@@ -261,6 +272,9 @@ class TaskQueryService:
                     labs=labs,
                     created_at=item.get('created_at'),
                     updated_at=item.get('updated_at'),
+                    # INT-423/466：资源可见性与归属人（read model 透出，此处透传）
+                    visibility=item.get('visibility'),
+                    created_by_user_id=item.get('created_by_user_id'),
                 )
             )
         except Exception as e:

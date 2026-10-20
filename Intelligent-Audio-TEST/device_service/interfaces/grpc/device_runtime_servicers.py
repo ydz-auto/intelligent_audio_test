@@ -35,6 +35,7 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
         """创建设备驱动 / 分发设备操作
 
         根据 device_config 的 action 字段分发：
+        - action='register': 仅登记任务设备（不驱动解析/初始化）
         - 无 action 或 action='initialize': 创建/初始化 driver
         - action='pre_process': 预处理
         - action='post_process': 后处理
@@ -50,12 +51,13 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
             device_info_list_raw = None
             if isinstance(device_config, list):
                 device_info_list_raw = device_config
-                # 从第一个元素提取 action 及其他字段（默认 initialize，保持向后兼容）
+                # 从第一个元素提取 action 及其他字段（INT-574：list 缺省收紧为
+                # register，避免再被误当 initialize 触发缺 system 的驱动解析）
                 first_item = device_info_list_raw[0] if device_info_list_raw else {}
                 if not isinstance(first_item, dict):
                     first_item = {}
                 device_config = {
-                    'action': first_item.get('action', 'initialize'),
+                    'action': first_item.get('action', 'register'),
                     'device_info_list': device_info_list_raw,
                     'device_sn': first_item.get('device_sn'),
                     'test_case_id': first_item.get('test_case_id'),
@@ -68,6 +70,16 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
             device_sn = device_config.get('device_sn')
             test_case_id = device_config.get('test_case_id')
             kwargs = device_config.get('kwargs', {})
+
+            # action=register：仅登记任务设备，不做驱动解析/初始化（INT-574）
+            if action == 'register':
+                if not device_info_list_raw:
+                    device_info_list_raw = device_config.get('device_info_list', [])
+                self.factory.register_task_devices(task_id, device_info_list_raw)
+                return e2e_pb.CreateDriverResponse(
+                    success=True, message="ok",
+                    data=_dumps({"device_sn": device_sn, "action": "register",
+                                 "registered": len(device_info_list_raw) or 0}))
 
             # action=initialize 时可能传入 device_info_list（列表）
             if action == 'initialize':

@@ -348,6 +348,8 @@ class CherryPickService:
         """
         from task_service.infrastructure.persistence.models import Task, TestResult
         from shared.models.database import get_db_session
+        from shared.infrastructure.visibility_filter import visible_condition
+        from task_service.infrastructure.visibility_context import visibility_identity
         from sqlalchemy import func as sa_func, or_
 
         direct_task_ids = list(task_ids)
@@ -358,13 +360,17 @@ class CherryPickService:
                 # 所选来源任务全部为不可再挑容器任务（§10）：无候选命中（INT-657）
                 return [], 0
 
+        _vis_uid, _vis_admin = visibility_identity()
         session = get_db_session()
         try:
             q = session.query(TestResult, Task).join(
                 Task, TestResult.task_id == Task.id)
             # §10：仅终态任务可挑选（显式集合，拒绝魔法字符串）
             q = q.filter(Task.status.in_([s.value for s in PickableTaskStatus]),
-                         Task.deleted == False)  # noqa: E712
+                         Task.deleted == False,  # noqa: E712
+                         # INT-423：私有任务对非 owner 不可挑选（列表不可见）
+                         visible_condition(
+                             Task.created_by_user_id, Task.visibility, _vis_uid, _vis_admin))
             if task_ids:
                 # INT-657：容器任务经引用关系解析命中（源任务直查 ∪ 容器引用结果）
                 conds = []
@@ -405,7 +411,10 @@ class CherryPickService:
                 else:
                     scope_ids = [t.id for t in session.query(Task.id).filter(
                         Task.status.in_([s.value for s in PickableTaskStatus]),
-                        Task.deleted == False).all()]  # noqa: E712
+                        Task.deleted == False,  # noqa: E712
+                        visible_condition(
+                            Task.created_by_user_id, Task.visibility, _vis_uid, _vis_admin),
+                    ).all()]  # noqa: E712
                     result_ids_in_scope = [r[0] for r in session.query(TestResult.id).filter(
                         TestResult.task_id.in_(scope_ids),
                         TestResult.excluded == 0).all()] if scope_ids else []
@@ -666,18 +675,31 @@ class CherryPickService:
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 
     def _load_results_with_tasks(self, result_ids: List[int]) -> Dict[int, tuple]:
-        """批量加载 (result_id → (TestResult, Task))，源任务被删视为失效。"""
+        """批量加载 (result_id → (TestResult, Task))，源任务被删视为失效。
+
+        INT-423：源任务私有对非 owner 视为失效（越权读取源数据不可下单）。
+        """
         from task_service.infrastructure.persistence.models import Task, TestResult
         from shared.models.database import get_db_session
+        from shared.infrastructure.visibility_filter import visible_condition
+        from task_service.infrastructure.visibility_context import visibility_identity
         ids = [int(r) for r in result_ids]
         if not ids:
             return {}
+        _vis_uid, _vis_admin = visibility_identity()
         session = get_db_session()
         try:
             results = session.query(TestResult).filter(TestResult.id.in_(ids)).all()
             task_ids = {r.task_id for r in results if r.task_id}
-            tasks = {t.id: t for t in session.query(Task).filter(
-                Task.id.in_(list(task_ids)), Task.deleted == False).all()} if task_ids else {}  # noqa: E712
+            if task_ids:
+                tasks = {t.id: t for t in session.query(Task).filter(
+                    Task.id.in_(list(task_ids)),
+                    Task.deleted == False,  # noqa: E712
+                    visible_condition(
+                        Task.created_by_user_id, Task.visibility, _vis_uid, _vis_admin),
+                ).all()}
+            else:
+                tasks = {}
             out: Dict[int, tuple] = {}
             for result in results:
                 task = tasks.get(result.task_id)

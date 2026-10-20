@@ -21,6 +21,23 @@ def _bind_in(sql: str):
     return text(sql).bindparams(bindparam('ids', expanding=True))
 
 
+def _visibility_where(table_alias: str, user_id, is_admin: bool):
+    """INT-423 回收站行级可见性 WHERE 片段（非 admin 仅 shared 或自己创建的行）。
+
+    Returns:
+        (sql_fragment, params)；admin 返回空片段。片段以空格开头以便直接拼接。
+    """
+    if is_admin:
+        return '', {}
+    if user_id is None:
+        return f" AND {table_alias}.visibility = 'shared'", {}
+    return (
+        f" AND ({table_alias}.visibility = 'shared' "
+        f"OR {table_alias}.created_by_user_id = :vis_uid)",
+        {'vis_uid': user_id},
+    )
+
+
 class TrashRepository:
     """test_tasks / test_cases 回收站读写"""
 
@@ -29,9 +46,13 @@ class TrashRepository:
     # ------------------------------------------------------------------
     @with_session(auto_commit=False)
     def list_deleted_tasks(self, page: int = 1, per_page: int = 20, search: str | None = None) -> dict:
+        """回收站任务列表（INT-423：私有任务对非 owner 不可见）。"""
+        from shared.infrastructure.user_context import get_current_user_id, get_current_user_is_admin
         session = get_db_session()
-        where = "WHERE deleted = TRUE"
-        params = {}
+        vis_sql, vis_params = _visibility_where(
+            'test_tasks', get_current_user_id(), get_current_user_is_admin())
+        where = "WHERE deleted = TRUE" + vis_sql
+        params = dict(vis_params)
         if search:
             where += " AND (lower(name) LIKE lower(:kw) OR lower(CAST(id AS VARCHAR)) LIKE lower(:kw))"
             params['kw'] = f"%{search}%"
@@ -46,17 +67,23 @@ class TrashRepository:
 
     @with_session(auto_commit=True)
     def restore_tasks(self, task_ids: list) -> int:
-        """恢复任务（仅恢复当前处于软删除状态的行；回填 updated_by 记录恢复人）"""
+        """恢复任务（仅恢复当前处于软删除状态的行；回填 updated_by 记录恢复人）。
+
+        INT-423：仅恢复当前用户可见的行（共享 + 自己创建的私有行）。
+        """
         if not task_ids:
             return 0
+        from shared.infrastructure.user_context import get_current_user_id, get_current_user_is_admin
         session = get_db_session()
+        vis_sql, vis_params = _visibility_where(
+            'test_tasks', get_current_user_id(), get_current_user_is_admin())
         count = session.execute(
             text("UPDATE test_tasks SET deleted = FALSE, deleted_at = NULL, "
                  "deleted_by_user_id = NULL, updated_by_user_id = :uid "
-                 "WHERE id IN :ids AND deleted = TRUE").bindparams(
+                 "WHERE id IN :ids AND deleted = TRUE" + vis_sql).bindparams(
                 bindparam('ids', expanding=True)),
             {"ids": [int(i) for i in task_ids],
-             'uid': get_current_user_id()}).rowcount
+             'uid': get_current_user_id(), **vis_params}).rowcount
         return int(count or 0)
 
     @with_session(auto_commit=True)
@@ -119,9 +146,13 @@ class TrashRepository:
     # ------------------------------------------------------------------
     @with_session(auto_commit=False)
     def list_deleted_testcases(self, page: int = 1, per_page: int = 20, keyword: str | None = None) -> dict:
+        """回收站用例列表（INT-423：私有用例对非 owner 不可见）。"""
+        from shared.infrastructure.user_context import get_current_user_id, get_current_user_is_admin
         session = get_db_session()
-        where = "WHERE deleted = TRUE"
-        params = {}
+        vis_sql, vis_params = _visibility_where(
+            'test_cases', get_current_user_id(), get_current_user_is_admin())
+        where = "WHERE deleted = TRUE" + vis_sql
+        params = dict(vis_params)
         if keyword:
             where += " AND (lower(name) LIKE lower(:kw) OR lower(id) LIKE lower(:kw))"
             params['kw'] = f"%{keyword}%"
@@ -136,17 +167,23 @@ class TrashRepository:
 
     @with_session(auto_commit=True)
     def restore_testcases(self, case_ids: list) -> int:
-        """恢复用例（衔接 testcase 批量恢复口径；回填 updated_by 记录恢复人）"""
+        """恢复用例（衔接 testcase 批量恢复口径；回填 updated_by 记录恢复人）。
+
+        INT-423：仅恢复当前用户可见的行（共享 + 自己创建的私有行）。
+        """
         if not case_ids:
             return 0
+        from shared.infrastructure.user_context import get_current_user_id, get_current_user_is_admin
         session = get_db_session()
+        vis_sql, vis_params = _visibility_where(
+            'test_cases', get_current_user_id(), get_current_user_is_admin())
         count = session.execute(
             text("UPDATE test_cases SET deleted = FALSE, deleted_at = NULL, "
                  "deleted_by_user_id = NULL, updated_by_user_id = :uid, updated_at = :now "
-                 "WHERE id IN :ids AND deleted = TRUE").bindparams(
+                 "WHERE id IN :ids AND deleted = TRUE" + vis_sql).bindparams(
                 bindparam('ids', expanding=True)),
             {"ids": [str(i) for i in case_ids], 'now': utc8now(),
-             'uid': get_current_user_id()}).rowcount
+             'uid': get_current_user_id(), **vis_params}).rowcount
         return int(count or 0)
 
     @with_session(auto_commit=True)

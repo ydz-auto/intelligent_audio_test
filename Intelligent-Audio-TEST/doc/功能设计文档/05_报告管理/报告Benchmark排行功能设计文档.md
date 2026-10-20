@@ -207,10 +207,12 @@
 
 ### 5.2 场景匹配
 
-- 排行按 **测试集 + 场景标签** 分组：同一测试集、同一场景下的被测主体才互相排名。
-- 测试集取自正式任务快照中的 `caseIds` 聚合所属 `test_case_groups`。
-- 场景标签取自已执行用例的标签聚合；无匹配场景时使用 `通用` 场景。
-- 每个被测主体在每个指标上最多一条排行记录；无数据的指标不参与排行。
+> 【实现演进裁定 2026-10-20（INT-1040 一致性审计回写）】实际实施的分组口径与本节原文不同，以本裁定为准：排行分组键为 **被测类别 + 指标 + 场景键**（`(category, metric_code, scenario_key)`），`suite`（测试集标识）仅作行级展示元数据与筛选维度、**不作为分组键**——外部基线数据无测试集概念，以「类别 + 指标 + 场景」作公共分组键保证双轨（platform_test / external_import）数据可合并排行。场景键取自指标映射 `scenario_tags` 首个非空标签（外部基线条目自带 `scenario_tags` 时优先）；无匹配场景时使用 `通用` 场景。INT-970 报告详情排行区块验收即按此口径（快照行含 `category/metric_code/scenario_key`，前端按 (category × metric_code × scenario_key) 分组、组内 rank 升序）。
+
+- 排行分组键 = 被测类别 × 指标 × 场景键：同一分组内的被测主体才互相排名。
+- `suite`（测试集标识）仅作行级展示元数据与筛选维度（排行计算 / 查询 / 报告发布可按 `suite` 限定范围），不参与分组。
+- 场景键取自指标映射 `scenario_tags` 首个非空标签（外部基线条目自带 `scenario_tags` 时优先）；无匹配场景时使用 `通用` 场景。
+- 每个被测主体在每个分组内至多一条排行记录（按 `source` 维度；同模型双轨并存可有两条：platform_test + external_import）；无数据的指标不参与排行。
 
 ### 5.3 排行算法
 
@@ -364,6 +366,13 @@
 | `published_at` | datetime | 发布时间 |
 | `created_at` | datetime | 创建时间 |
 | `updated_at` | datetime | 更新时间 |
+
+> 【实现演进裁定 2026-10-20（INT-1040 一致性审计回写）】`ranking_data` 快照内层结构（发布时点排行 ReadModel 定格，INT-970 报告详情排行区块契约）：
+> - `filters`：`{suite, category, source}`——发布筛选口径（字符串，空串 = 全量）
+> - `counts`：`{published_task_count, subject_count, metric_count, row_count}`——参与排行的正式任务数 / 被测主体数 / 指标数 / 行数
+> - `rows`：排行行数组，每行字段同 `benchmark_rankings` 列口径（§6.3）：`source`（platform_test|external_import）/`published_task_id`/`published_task_version`/`report_id`/`baseline_id`/`subject_name`/`subject_type`/`device_type`/`benchmark_suite`/`category`/`metric_code`/`metric_name`/`metric_value`/`unit`/`direction`（lower_is_better|higher_is_better）/`rank`/`total`/`percentile`/`score100`/`gap_best`/`gap_median`/`delta_external`/`scenario_key`/`computed_at`
+>
+> 列表接口（`GET /api/v1/benchmarks/reports`）不携带 `ranking_data`（列表体积控制，详情再取）；详情接口（`GET /api/v1/benchmarks/reports/{reportId}`）返回完整快照。前端按 (category × metric_code × scenario_key) 分组呈现（组内 rank 升序）。
 
 ## 7. 接口设计
 

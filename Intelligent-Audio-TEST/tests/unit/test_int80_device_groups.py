@@ -21,7 +21,7 @@ from device_service.domain.entities import DeviceGroupEntity
 
 
 class FakeDeviceGroupRepository:
-    """内存设备分组仓储"""
+    """内存设备分组仓储（INT-832：支持 parent_id 嵌套 / move / 子树删除）"""
 
     def __init__(self):
         self.groups = {}
@@ -29,10 +29,11 @@ class FakeDeviceGroupRepository:
         self.existing_device_ids = {1, 2, 3}
         self._seq = 0
 
-    def _add(self, group_id, name, description='', group_type='test', member_device_ids=None):
+    def _add(self, group_id, name, parent_id=None, description='', group_type='test',
+             member_device_ids=None):
         self.groups[group_id] = DeviceGroupEntity(
-            id=group_id, name=name, description=description, group_type=group_type,
-            member_device_ids=list(member_device_ids or []))
+            id=group_id, name=name, parent_id=parent_id, description=description,
+            group_type=group_type, member_device_ids=list(member_device_ids or []))
         self.members[group_id] = set()
 
     def create_group(self, data, member_device_ids=None):
@@ -41,8 +42,10 @@ class FakeDeviceGroupRepository:
         # 对齐真实仓储语义：初始成员过滤不存在/已删除设备
         valid_ids = sorted(int(did) for did in (member_device_ids or [])
                            if int(did) in self.existing_device_ids)
-        self._add(group_id, data['name'], data.get('description', ''),
-                  data.get('group_type', 'test'), member_device_ids=valid_ids)
+        self._add(group_id, data['name'], parent_id=data.get('parent_id'),
+                  description=data.get('description', ''),
+                  group_type=data.get('group_type', 'test'),
+                  member_device_ids=valid_ids)
         for did in valid_ids:
             self.members[group_id].add(did)
         return self.groups[group_id]
@@ -58,19 +61,22 @@ class FakeDeviceGroupRepository:
     def get_group(self, group_id):
         return self.groups.get(group_id)
 
-    def get_group_by_name(self, name):
+    def get_group_by_name(self, name, parent_id=None):
         for group in self.groups.values():
-            if group.name == name:
+            if group.name == name and group.parent_id == parent_id:
                 return group
         return None
 
     def delete_group(self, group_id, cascade=False):
         if group_id not in self.groups:
             return False
-        if self.members.get(group_id) and not cascade:
+        child_count = sum(1 for g in self.groups.values() if g.parent_id == group_id)
+        if (self.members.get(group_id) or child_count) and not cascade:
             return False
-        del self.groups[group_id]
-        self.members.pop(group_id, None)
+        subtree = self.get_descendant_group_ids(group_id) + [group_id]
+        for gid in subtree:
+            self.groups.pop(gid, None)
+            self.members.pop(gid, None)
         return True
 
     def list_groups(self, page=1, per_page=100, keyword=None, group_type=None):
@@ -113,6 +119,27 @@ class FakeDeviceGroupRepository:
 
     def get_group_device_ids(self, group_id):
         return sorted(self.members.get(group_id, set()))
+
+    def get_descendant_group_ids(self, group_id):
+        descendants = []
+        frontier = [group_id]
+        seen = {group_id}
+        while frontier:
+            children = [g.id for g in self.groups.values() if g.parent_id in frontier]
+            frontier = []
+            for cid in children:
+                if cid not in seen:
+                    seen.add(cid)
+                    descendants.append(cid)
+                    frontier.append(cid)
+        return descendants
+
+    def move_group(self, group_id, parent_id, updated_by_user_id=None):
+        group = self.groups.get(group_id)
+        if not group:
+            return None
+        group.parent_id = parent_id or None
+        return group
 
 
 @pytest.fixture
@@ -222,3 +249,154 @@ class TestQueries:
 
     def test_get_one_missing_404(self, query):
         assert query.get_one('nope')['code'] == 404
+
+
+class TestNestedCreate:
+    """INT-832：嵌套创建 + 按父级作用域重名校验"""
+
+    def test_create_child_under_parent(self, command):
+        root = command.create({'name': '根组'})['data']
+        child = command.create({'name': '子组', 'parent_id': root['id']})['data']
+        assert child['parent_id'] == root['id']
+        assert root['parent_id'] is None
+
+    def test_list_includes_parent_id(self, command, query):
+        root = command.create({'name': '根组'})['data']
+        command.create({'name': '子组', 'parent_id': root['id']})
+        result = query.get_all()
+        by_name = {item['name']: item for item in result['data']['items']}
+        assert by_name['根组']['parent_id'] is None
+        assert by_name['子组']['parent_id'] == root['id']
+
+    def test_same_name_different_parent_allowed(self, command):
+        root_a = command.create({'name': 'A'})['data']
+        root_b = command.create({'name': 'B'})['data']
+        r1 = command.create({'name': '同名', 'parent_id': root_a['id']})
+        r2 = command.create({'name': '同名', 'parent_id': root_b['id']})
+        assert r1['success'] is True
+        assert r2['success'] is True
+
+    def test_duplicate_name_same_parent_rejected(self, command):
+        root = command.create({'name': 'A'})['data']
+        command.create({'name': '子组', 'parent_id': root['id']})
+        result = command.create({'name': '子组', 'parent_id': root['id']})
+        assert result['success'] is False
+        assert '已存在' in result['message']
+
+    def test_root_duplicate_name_rejected(self, command):
+        command.create({'name': '同名'})
+        result = command.create({'name': '同名'})
+        assert result['success'] is False
+
+    def test_create_parent_missing_404(self, command):
+        result = command.create({'name': '子组', 'parent_id': 'no-such-group'})
+        assert result['success'] is False
+        assert result['code'] == 404
+
+    def test_update_moves_parent_scope(self, command, repo):
+        root_a = command.create({'name': 'A'})['data']
+        root_b = command.create({'name': 'B'})['data']
+        group = command.create({'name': 'X', 'parent_id': root_a['id']})['data']
+        # B 下已有同名 'X' → 把 group 移到 B 下被拒（局部唯一）
+        command.create({'name': 'X', 'parent_id': root_b['id']})
+        result = command.update(group['id'], {'parent_id': root_b['id']})
+        assert result['success'] is False
+        # 改名后再移到 B 下成功
+        result = command.update(group['id'], {'name': 'X2', 'parent_id': root_b['id']})
+        assert result['success'] is True
+        assert repo.groups[group['id']].parent_id == root_b['id']
+
+    def test_update_parent_missing_404(self, command):
+        group = command.create({'name': 'X'})['data']
+        result = command.update(group['id'], {'parent_id': 'no-such-group'})
+        assert result['success'] is False
+        assert result['code'] == 404
+
+    def test_update_moves_to_descendant_cycle_400(self, command, repo):
+        """审计返工：update 改父级必须与 move 一致做后代链环检测"""
+        root = command.create({'name': '根组'})['data']
+        child = command.create({'name': '子组', 'parent_id': root['id']})['data']
+        grand = command.create({'name': '孙组', 'parent_id': child['id']})['data']
+        # 把根组 update 到自己的孙组下 → 成环 400
+        result = command.update(root['id'], {'parent_id': grand['id']})
+        assert result['success'] is False
+        assert result['code'] == 400
+        assert repo.groups[root['id']].parent_id is None
+
+
+class TestMoveGroup:
+    """INT-832：移动分组（含环检测、父存在性、新父级重名）"""
+
+    def test_move_to_other_group_success(self, command, repo):
+        root = command.create({'name': '根组'})['data']
+        child = command.create({'name': '子组'})['data']
+        result = command.move(child['id'], root['id'])
+        assert result['success'] is True
+        assert repo.groups[child['id']].parent_id == root['id']
+
+    def test_move_to_root_success(self, command, repo):
+        root = command.create({'name': '根组'})['data']
+        child = command.create({'name': '子组', 'parent_id': root['id']})['data']
+        result = command.move(child['id'], '')
+        assert result['success'] is True
+        assert repo.groups[child['id']].parent_id is None
+
+    def test_move_to_self_cycle_400(self, command):
+        group = command.create({'name': 'g'})['data']
+        result = command.move(group['id'], group['id'])
+        assert result['success'] is False
+        assert result['code'] == 400
+
+    def test_move_to_descendant_cycle_400(self, command):
+        root = command.create({'name': '根组'})['data']
+        child = command.create({'name': '子组', 'parent_id': root['id']})['data']
+        grand = command.create({'name': '孙组', 'parent_id': child['id']})['data']
+        # 把根组移到自己的孙子组下 → 成环
+        result = command.move(root['id'], grand['id'])
+        assert result['success'] is False
+        assert result['code'] == 400
+
+    def test_move_parent_missing_404(self, command):
+        group = command.create({'name': 'g'})['data']
+        result = command.move(group['id'], 'no-such-group')
+        assert result['success'] is False
+        assert result['code'] == 404
+
+    def test_move_missing_group_404(self, command):
+        assert command.move('nope', '')['code'] == 404
+
+    def test_move_name_conflict_under_new_parent_400(self, command):
+        root = command.create({'name': '根组'})['data']
+        other = command.create({'name': '同名', 'parent_id': root['id']})['data']
+        moving = command.create({'name': '同名'})['data']
+        result = command.move(moving['id'], root['id'])
+        assert result['success'] is False
+        assert result['code'] == 400
+        assert other['id'] != moving['id']
+
+    def test_move_keeps_members(self, command, repo):
+        root = command.create({'name': '根组'})['data']
+        child = command.create({'name': '子组', 'device_ids': [1, 2]})['data']
+        command.move(child['id'], root['id'])
+        assert repo.members[child['id']] == {1, 2}
+
+
+class TestDeleteSubtree:
+    """INT-832：删除父分组 —— cascade 语义"""
+
+    def test_delete_group_with_children_requires_cascade(self, command, repo):
+        root = command.create({'name': '根组'})['data']
+        command.create({'name': '子组', 'parent_id': root['id']})
+        result = command.delete(root['id'], cascade=False)
+        assert result['success'] is False
+        assert root['id'] in repo.groups
+
+    def test_delete_cascade_removes_subtree(self, command, repo):
+        root = command.create({'name': '根组'})['data']
+        child = command.create({'name': '子组', 'parent_id': root['id']})['data']
+        grand = command.create({'name': '孙组', 'parent_id': child['id'], 'device_ids': [1]})['data']
+        result = command.delete(root['id'], cascade=True)
+        assert result['success'] is True
+        for gid in (root['id'], child['id'], grand['id']):
+            assert gid not in repo.groups
+            assert gid not in repo.members

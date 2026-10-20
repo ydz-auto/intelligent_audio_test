@@ -72,6 +72,13 @@
   border-color: var(--primary);
 }
 
+/* INT-553 P3-2：不可跳步骤（非顺序跳转受限）视觉反馈 */
+.cp-step.locked {
+  opacity: 0.55;
+  cursor: not-allowed;
+  color: var(--color-slate-400, #94a3b8);
+}
+
 .cp-close {
   border: none;
   background: transparent;

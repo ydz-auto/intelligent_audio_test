@@ -63,7 +63,8 @@ class TagCategoryQueryService:
         if not result.get('success'):
             code = result.get('code', 400)
             if code == 404:
-                return error_response("未找到标签分类", 404)
+                # INT-566 P1-5：私有非 owner/不存在详情按 404 映射（防探测口径统一）
+                return error_response("未找到标签分类", code=404, http_code=404)
             return error_response(result.get('message', '查询失败'))
 
         item = result.get('data') or {}
@@ -133,10 +134,16 @@ class TagQueryService:
         if not result.get('success'):
             code = result.get('code', 400)
             if code == 404:
-                return error_response("未找到标签", 404)
+                # INT-566 P1-5：私有非 owner/不存在详情按 404 映射（防探测口径统一）
+                return error_response("未找到标签", code=404, http_code=404)
             return error_response(result.get('message', '查询失败'))
 
         item = result.get('data') or {}
+        # INT-466：admin 访问私有标签详情落 PRIVATE_RESOURCE_ACCESS 审计（旁路）
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_detail,
+        )
+        maybe_audit_private_detail('tag', tag_id, item)
         return success_response(TagItem(**item))
 
     @staticmethod

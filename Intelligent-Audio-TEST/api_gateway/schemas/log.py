@@ -20,6 +20,8 @@ class LogItem(APIModel):
     test_case_id: Optional[str] = None
     thread_id: Optional[str] = None
     algorithm_type: Optional[str] = None
+    # INT-838：读侧响应补带操作人 user_id（DB 行 created_by_user_id / 业务文件条目 user_id）
+    user_id: Optional[int] = None
 
 
 class LogListData(PaginatedData[LogItem]):
@@ -59,6 +61,10 @@ class LogClearRequest(APIModel):
 class LogExportRequest(APIModel):
     log_ids: Optional[List[int]] = None
     format: str = "excel"
+    # INT-274：导出条件从 POST body 读取（doc/接口文档 6. 导出日志），
+    # level/module 与 query（LogExportQuery，GET 兼容）可任一侧传入。
+    level: Optional[str] = None
+    module: Optional[str] = None
 
 
 class LogArchiveRequest(APIModel):

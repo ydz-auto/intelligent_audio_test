@@ -50,7 +50,12 @@ class TaskDetailReadModelMixin:
         return list(seen.values())
 
     def find_by_id_with_relations(self, task_id: int) -> Optional[Dict[str, Any]]:
-        """按 ID 查询单个任务，含关联用例/设备/API/标签详情。"""
+        """按 ID 查询单个任务，含关联用例/设备/API/标签详情。
+
+        INT-423：私有任务对非 owner 视为不存在（返回 None → 网关 404）。
+        """
+        from shared.infrastructure.visibility_filter import VisibilityDenied, check_visible
+        from task_service.infrastructure.visibility_context import visibility_identity
         from task_service.infrastructure.read_models.task_dual_status_expr import (
             EXECUTION_STATUS_EXPR, EVALUATION_STATUS_EXPR,
         )
@@ -62,6 +67,11 @@ class TaskDetailReadModelMixin:
             if row is None:
                 return None
             task, execution_status, evaluation_status = row
+            uid, is_admin = visibility_identity()
+            try:
+                check_visible(task.created_by_user_id, task.visibility, uid, is_admin)
+            except VisibilityDenied:
+                return None
             dto = self._to_detail_dto(task, session)
             # INT-301：SQL 派生的任务级执行/评估双状态（与列表同口径）
             dto['execution_status'] = execution_status
@@ -185,6 +195,11 @@ class TaskDetailReadModelMixin:
             'name': task.name,
             'description': task.description,
             'status': task.status,
+            # INT-573/INT-982：可见性字段——网关侧 admin 私有任务审计预取
+            # （preload_private_state）与 legacy /api/v1/execution/ 防旁路守卫
+            # 依赖，详情经网关 TaskDetailData schema 显式挑选，不外泄给前端
+            'visibility': task.visibility,
+            'created_by_user_id': task.created_by_user_id,
             'device_types': device_types,
             'config': task.config or {},
             'algorithm_type': task.algorithm_type,
@@ -204,4 +219,7 @@ class TaskDetailReadModelMixin:
             'labs': labs,
             'created_at': task.created_at.isoformat() if task.created_at else None,
             'updated_at': task.updated_at.isoformat() if task.updated_at else None,
+            # INT-423/466：资源可见性与归属人（网关路由层 owner 校验 / 前端徽标）
+            'visibility': task.visibility,
+            'created_by_user_id': task.created_by_user_id,
         }

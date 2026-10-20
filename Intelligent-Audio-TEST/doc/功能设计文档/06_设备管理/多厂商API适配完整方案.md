@@ -21,11 +21,14 @@
 >    `APISessionExecutor` / `RealtimeSessionExecutor`，不再存在 `APIExecutor` 等中间编排层。
 > 2. **APIDriver 扩展方案作废**：本文第 4.2 节对 `APIDriver` 的"适配器模式"扩展不再实施；
 >    `APIDriver` 本身已列入废弃清单（见同目录《api_driver_documentation.md》废弃声明）。
-> 3. **工厂/注册机制以最新设计为准**：适配器创建由 `APIAdapterFactory` 按 `(protocol, vendor)` 或 `apis` 表新增的
->    `adapter_class` 列完成（第 5.4 节 `f"{vendor}_{api_type}"` 字符串 key 方案不再采用）；
+> 3. **工厂/注册机制以最新设计为准（INT-497 起与设备驱动同构）**：适配器创建由 `APIAdapterFactory` 按 `(protocol, vendor)`
+>    或 `apis` 表新增的 `adapter_class` 列完成（第 5.4 节 `f"{vendor}_{api_type}"` 字符串 key 方案不再采用）；
 >    设备侧 App 驱动注册则由 `backend/utils/device_driver/registry.py` 的 `DriverRegistry` 实现
 >    （`@register_driver` 装饰器注册、三元 key `(AppType, AppVersion, DevicePlatform)`、依赖检测、
->    版本降级 resolve、热更新），两套注册表相互独立、互不混用。
+>    版本降级 resolve、热更新），**与 API 适配器注册表（`api_test_service/infrastructure/adapters/registry.py`）为同构机制**：
+>    API 侧按 `(AdapterProtocol, AdapterVendor)` 多维 key（装饰器注册 + 依赖检测 + resolve
+>    精确→同协议基线兜底 + 热更新），三级继承 `ApiVendorAdapter → 协议_base_adaptor
+>    （如 RealtimeAdapterBase）→ 品牌适配器（如 OpenAIRealtimeAdapter）`。**裁定日期：2026-10-16**。
 > 4. **仍然有效的信息资产**：厂商协议调研结论、API `meta` 配置结构理念（`response_mappings` / `streaming` / `adapter_specific`）、
 >    `ExecutionConfig` 的字段拆分思想、LLM 中转站复用 OpenAI 适配器的策略，可在实施 API Adapter 体系时参考。
 
@@ -1468,7 +1471,7 @@ class VolcASRAdapter(ASRAdapter):
 
 ### 5.4 适配器工厂
 
-> ⚠️ **一致性修订（2026-09）**：注册/解析机制以最新设计为准，本节的字符串 key（`f"{vendor}_{api_type}"`）方案不再采用。最新设计中，API 适配器统一由主服务内的 `APIAdapterFactory` 承接（按 `(protocol, vendor)` 组合键或显式 `adapter_class` 创建）；设备驱动侧由 `backend/utils/device_driver/registry.py` 的 `DriverRegistry`（三元 key：`(AppType, AppVersion, DevicePlatform)`，装饰器注册 + 依赖检测 + 版本降级 resolve + 热更新）承接，两套注册表相互独立。以下代码仅作历史方案存档。
+> ⚠️ **一致性修订（2026-09，INT-497 2026-10-16 复核）**：注册/解析机制以最新设计为准，本节的字符串 key（`f"{vendor}_{api_type}"`）方案不再采用。最新设计中，API 适配器统一由主服务内的适配器注册表（`api_test_service/infrastructure/adapters/registry.py`，按 `(AdapterProtocol, AdapterVendor)` 多维 key）承接，三级继承 `ApiVendorAdapter → 协议_base_adaptor → 品牌适配器`；设备驱动侧由 `backend/utils/device_driver/registry.py` 的 `DriverRegistry`（三元 key：`(AppType, AppVersion, DevicePlatform)`，装饰器注册 + 依赖检测 + 版本降级 resolve + 热更新）承接，**两套注册表为同构机制（INT-497 起，不再相互独立）**。以下代码仅作历史方案存档。
 
 **文件**: `api_adaper_service/services/adapter_factory.py`
 

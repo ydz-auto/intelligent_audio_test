@@ -59,6 +59,9 @@ export function useTaskList(options?: UseTaskListOptions) {
   const visibilityFilter = ref('');
   const customDateRange = ref({ start: '', end: '' });
   const algorithmOptions = ref<{ value: string; label: string }[]>([]);
+  // INT-288：列表拉取加载态 / 错误态（错误文案供视图渲染错误条；失败保留旧数据不清空）
+  const isLoading = ref(false);
+  const error = ref('');
 
   const tagCurrentPage = ref(1);
   const tagPageSize = ref(15);
@@ -133,6 +136,8 @@ export function useTaskList(options?: UseTaskListOptions) {
   }
 
   const fetchTasks = async () => {
+    isLoading.value = true;
+    error.value = '';
     try {
       // 查询参数保持 camelCase（TaskListQuery），snake_case 化由 tasksApi 内部完成
       const params: Record<string, any> = {
@@ -241,8 +246,12 @@ export function useTaskList(options?: UseTaskListOptions) {
           onTasksUpdated();
         }, 0);
       }
-    } catch (error) {
-      console.error('Failed to fetch tasks:', error);
+    } catch (err) {
+      console.error('Failed to fetch tasks:', err);
+      // INT-288：失败不清空旧数据，仅暴露错误文案供视图渲染错误条（区别于空态）
+      error.value = '加载任务失败，请稍后重试';
+    } finally {
+      isLoading.value = false;
     }
   };
 
@@ -361,6 +370,9 @@ export function useTaskList(options?: UseTaskListOptions) {
     taskStats,
     statsGranularity,
     fetchTaskStats,
+    // INT-288：加载态 / 错误态
+    isLoading,
+    error,
     pendingTasks,
     inProgressTasks,
     completedTasks,

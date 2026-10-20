@@ -110,7 +110,14 @@ class ReportCompareDataMixin:
             if tc_id is not None:
                 test_case_ids.add(tc_id)
 
-        test_cases = _grpc_list_testcases_by_ids(list(test_case_ids)) if test_case_ids else []
+        # INT-419：_grpc_list_testcases_by_ids 契约返回 {id: dict} 映射
+        # （grpc_clients.py:206 注释；单任务路径 _get_task_test_cases 亦按此归一为
+        # dict 值列表）。修复前把映射直接当列表迭代 → str 键被当用例传入
+        # extract_case_categories_and_tags（静默丢分组/标签）与
+        # _build_case_data_compare（AttributeError → 对比报告恒 400），
+        # 此处统一归一为 dict 值列表。
+        test_cases_map = _grpc_list_testcases_by_ids(list(test_case_ids)) if test_case_ids else {}
+        test_cases = list(test_cases_map.values()) if test_cases_map else []
 
         case_categories_list, case_tags_list = ReportQueryBuilder.extract_case_categories_and_tags(test_cases)
 

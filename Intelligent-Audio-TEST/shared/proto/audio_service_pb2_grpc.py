@@ -811,6 +811,11 @@ class AudioConfigServiceStub:
                 request_serializer=audio__service__pb2.UpdateAudioMetadataRequest.SerializeToString,
                 response_deserializer=audio__service__pb2.AudioConfigResponse.FromString,
                 _registered_method=True)
+        self.UpdateAudioVisibility = channel.unary_unary(
+                '/audio_service.AudioConfigService/UpdateAudioVisibility',
+                request_serializer=audio__service__pb2.UpdateAudioVisibilityRequest.SerializeToString,
+                response_deserializer=audio__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
         self.BatchUpdateAnnotations = channel.unary_unary(
                 '/audio_service.AudioConfigService/BatchUpdateAnnotations',
                 request_serializer=audio__service__pb2.BatchUpdateAnnotationsRequest.SerializeToString,
@@ -951,6 +956,26 @@ class AudioConfigServiceStub:
                 request_serializer=audio__service__pb2.GetAudioSpeakersRequest.SerializeToString,
                 response_deserializer=audio__service__pb2.AudioConfigResponse.FromString,
                 _registered_method=True)
+        self.GetPlaybackHistory = channel.unary_unary(
+                '/audio_service.AudioConfigService/GetPlaybackHistory',
+                request_serializer=audio__service__pb2.GetPlaybackHistoryRequest.SerializeToString,
+                response_deserializer=audio__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.AnalyzeAudioFeatures = channel.unary_unary(
+                '/audio_service.AudioConfigService/AnalyzeAudioFeatures',
+                request_serializer=audio__service__pb2.AnalyzeAudioFeaturesRequest.SerializeToString,
+                response_deserializer=audio__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.AssessAudioQuality = channel.unary_unary(
+                '/audio_service.AudioConfigService/AssessAudioQuality',
+                request_serializer=audio__service__pb2.AnalyzeAudioFeaturesRequest.SerializeToString,
+                response_deserializer=audio__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.ProcessAudio = channel.unary_unary(
+                '/audio_service.AudioConfigService/ProcessAudio',
+                request_serializer=audio__service__pb2.ProcessAudioRequest.SerializeToString,
+                response_deserializer=audio__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
 
 
 class AudioConfigServiceServicer:
@@ -959,6 +984,13 @@ class AudioConfigServiceServicer:
 
     def UpdateAudioMetadata(self, request, context):
         """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateAudioVisibility(self, request, context):
+        """仅更新音频可见性（INT-464：task_service 用例建/改后经 gRPC 跟随用例同步，内部通道，不对外暴露）
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -1132,12 +1164,44 @@ class AudioConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetPlaybackHistory(self, request, context):
+        """分页查询音频播放历史（INT-782#2：新表 + 写侧 + GET 分页）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AnalyzeAudioFeatures(self, request, context):
+        """音频特征分析（频谱/能量分布/时域特征）与质量评估（INT-820：§3.3.2）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AssessAudioQuality(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ProcessAudio(self, request, context):
+        """音频处理（降噪/增益调整/剪辑，INT-820：§3.3.2 处理）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_AudioConfigServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'UpdateAudioMetadata': grpc.unary_unary_rpc_method_handler(
                     servicer.UpdateAudioMetadata,
                     request_deserializer=audio__service__pb2.UpdateAudioMetadataRequest.FromString,
+                    response_serializer=audio__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'UpdateAudioVisibility': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateAudioVisibility,
+                    request_deserializer=audio__service__pb2.UpdateAudioVisibilityRequest.FromString,
                     response_serializer=audio__service__pb2.AudioConfigResponse.SerializeToString,
             ),
             'BatchUpdateAnnotations': grpc.unary_unary_rpc_method_handler(
@@ -1280,6 +1344,26 @@ def add_AudioConfigServiceServicer_to_server(servicer, server):
                     request_deserializer=audio__service__pb2.GetAudioSpeakersRequest.FromString,
                     response_serializer=audio__service__pb2.AudioConfigResponse.SerializeToString,
             ),
+            'GetPlaybackHistory': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetPlaybackHistory,
+                    request_deserializer=audio__service__pb2.GetPlaybackHistoryRequest.FromString,
+                    response_serializer=audio__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'AnalyzeAudioFeatures': grpc.unary_unary_rpc_method_handler(
+                    servicer.AnalyzeAudioFeatures,
+                    request_deserializer=audio__service__pb2.AnalyzeAudioFeaturesRequest.FromString,
+                    response_serializer=audio__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'AssessAudioQuality': grpc.unary_unary_rpc_method_handler(
+                    servicer.AssessAudioQuality,
+                    request_deserializer=audio__service__pb2.AnalyzeAudioFeaturesRequest.FromString,
+                    response_serializer=audio__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'ProcessAudio': grpc.unary_unary_rpc_method_handler(
+                    servicer.ProcessAudio,
+                    request_deserializer=audio__service__pb2.ProcessAudioRequest.FromString,
+                    response_serializer=audio__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
             'audio_service.AudioConfigService', rpc_method_handlers)
@@ -1308,6 +1392,33 @@ class AudioConfigService:
             target,
             '/audio_service.AudioConfigService/UpdateAudioMetadata',
             audio__service__pb2.UpdateAudioMetadataRequest.SerializeToString,
+            audio__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateAudioVisibility(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/audio_service.AudioConfigService/UpdateAudioVisibility',
+            audio__service__pb2.UpdateAudioVisibilityRequest.SerializeToString,
             audio__service__pb2.AudioConfigResponse.FromString,
             options,
             channel_credentials,
@@ -2064,6 +2175,114 @@ class AudioConfigService:
             target,
             '/audio_service.AudioConfigService/GetAudioSpeakers',
             audio__service__pb2.GetAudioSpeakersRequest.SerializeToString,
+            audio__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetPlaybackHistory(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/audio_service.AudioConfigService/GetPlaybackHistory',
+            audio__service__pb2.GetPlaybackHistoryRequest.SerializeToString,
+            audio__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AnalyzeAudioFeatures(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/audio_service.AudioConfigService/AnalyzeAudioFeatures',
+            audio__service__pb2.AnalyzeAudioFeaturesRequest.SerializeToString,
+            audio__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AssessAudioQuality(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/audio_service.AudioConfigService/AssessAudioQuality',
+            audio__service__pb2.AnalyzeAudioFeaturesRequest.SerializeToString,
+            audio__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ProcessAudio(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/audio_service.AudioConfigService/ProcessAudio',
+            audio__service__pb2.ProcessAudioRequest.SerializeToString,
             audio__service__pb2.AudioConfigResponse.FromString,
             options,
             channel_credentials,

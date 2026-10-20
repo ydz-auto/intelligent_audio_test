@@ -5,6 +5,7 @@ from audio_service.infrastructure.persistence.models.audio_models import (
     AudioAnnotation,
     AudioTag,
     AudioAlgorithmRelation,
+    AudioPlaybackHistory,
 )
 from audio_service.infrastructure.persistence.models.upload_models import (
     UploadTask,
@@ -14,5 +15,6 @@ from audio_service.infrastructure.persistence.models.upload_models import (
 
 __all__ = [
     'Audio', 'AudioAnnotation', 'AudioTag', 'AudioAlgorithmRelation',
+    'AudioPlaybackHistory',
     'UploadTask', 'UploadFile', 'UploadChunk',
 ]

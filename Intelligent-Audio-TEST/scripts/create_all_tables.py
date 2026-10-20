@@ -44,11 +44,11 @@ def _import_all_models():
         ParamMapping, AlgorithmDimensionRelation, CaseAlgorithmParam,
         AlgorithmDefinitionDraft,
     )
-    # report_service: 7 张表
+    # report_service: 8 张表（INT-971 新增 report_shares 分享表）
     from report_service.infrastructure.persistence.models import (  # noqa: F401
         Report, ReportSummary, ReportSummaryMeta, ReportRawData,
         ReportCase, ReportMetricStats, ReportComparisonMatrix,
-        ReportFavorite,
+        ReportFavorite, ReportShare,
     )
     # report_service: Benchmark 排行 4 张表（D1）
     from report_service.infrastructure.persistence.models import (  # noqa: F401

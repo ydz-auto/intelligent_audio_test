@@ -11,7 +11,7 @@
 """
 from shared.models.database import Base, utc8now
 from sqlalchemy import (
-    func, Column, Integer, String, Text, DateTime, Boolean, JSON, Index,
+    func, Column, Integer, BigInteger, String, Text, DateTime, Boolean, JSON, Index,
 )
 
 # 已发布任务类型取值（对齐 V9.7.10 published_tasks.type：api/e2e）
@@ -33,10 +33,13 @@ class PublishedTask(Base):
         Index('idx_published_task_is_current', 'is_current'),
         Index('idx_published_task_benchmark_status', 'benchmark', 'status'),
         Index('idx_published_task_algorithm_type', 'algorithm_type'),
+        Index('idx_published_task_created_by_user_id', 'created_by_user_id'),
     )
     id = Column(Integer, primary_key=True, autoincrement=True, comment='已发布任务 ID')
     task_group_id = Column(Integer, comment='已发布任务逻辑分组 ID（首个版本 ID，版本链锚点）')
     source_task_id = Column(Integer, comment='来源日常任务 ID，可为空')
+    created_by_user_id = Column(BigInteger, nullable=True, comment='创建者用户ID（INT-423 数据可见性 owner）')
+    visibility = Column(String(20), nullable=False, default='shared', server_default='shared', comment='数据可见性 (shared/private，INT-423)')
     name = Column(String(255), nullable=False, comment='已发布任务名称')
     description = Column(Text, comment='说明')
     type = Column(String(50), comment='任务类型 (api/e2e)，发布时由快照用例级 device_type 派生（对齐 V9.7.10）')

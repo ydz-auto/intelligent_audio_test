@@ -257,11 +257,12 @@ class TestRealDbPersistence:
 
     def setup_method(self):
         from shared.models.database import init_db
-        from task_service.infrastructure.persistence.models import TestCase
+        from task_service.infrastructure.persistence.models import TestCase, TestCaseGroup
         from shared.models.database import Base, get_engine
 
         init_db(pool_size=2)
-        Base.metadata.create_all(bind=get_engine(), tables=[TestCase.__table__])
+        # INT-463：create 经 group_id 直传路径会回查分组可见性，需建 test_case_groups 表
+        Base.metadata.create_all(bind=get_engine(), tables=[TestCase.__table__, TestCaseGroup.__table__])
 
     def teardown_method(self):
         from shared.models.database import get_db_session, remove_db_session

@@ -14,6 +14,11 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import func
 
+from shared.infrastructure.user_context import (
+    get_current_user_id,
+    get_current_user_is_admin,
+)
+from shared.infrastructure.visibility_filter import visible_condition
 from shared.models.database import get_db_session
 from evaluation_service.infrastructure.persistence.orm_models import Category, Dimension
 from evaluation_service.infrastructure.acl.algorithm_acl_repository import (
@@ -59,22 +64,35 @@ class EvaluationRepository(EvaluationRepositoryABC):
         return session.get(Category, cat_id)
 
     def create_category(self, data: Dict[str, Any]) -> Category:
-        """创建分类（含 flush，未 commit）。"""
+        """创建分类（含 flush，未 commit）。
+
+        created_by_user_id（INT-841）：从 x-user-id 上下文取 JWT 操作人，
+        未认证（AUTH_MODE=off）为 None → NULL。
+        INT-465 修复：新建分类写 owner——行级过滤/命令侧校验依赖
+        created_by_user_id，缺 owner 会使私有分类创建者本人被锁死。
+        """
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         cat = Category(
             name=data.get('name'),
             description=data.get('description'),
             icon=data.get('icon'),
+            created_by_user_id=get_current_user_id(),
+            visibility=data.get('visibility', 'shared'),
         )
         session.add(cat)
         session.flush()
         return cat
 
     def list_categories(self) -> List[Category]:
-        """查询所有未删除分类。"""
+        """查询所有未删除分类（INT-423 行级过滤：私有仅 owner/admin 可见）。"""
         session = get_db_session()
         return session.query(Category).filter(
-            Category.deleted == False  # noqa: E712
+            Category.deleted == False,  # noqa: E712
+            visible_condition(
+                Category.created_by_user_id, Category.visibility,
+                get_current_user_id(), get_current_user_is_admin(),
+            ),
         ).all()
 
     # ========== Dimension CRUD ==========
@@ -85,28 +103,52 @@ class EvaluationRepository(EvaluationRepositoryABC):
         return session.get(Dimension, dim_id)
 
     def create_dimension(self, create_data: Dict[str, Any]) -> Dimension:
-        """创建维度记录（含 flush，未 commit）。"""
+        """创建维度记录（含 flush，未 commit）。
+
+        created_by_user_id（INT-841）：从 x-user-id 上下文取 JWT 操作人，
+        未认证（AUTH_MODE=off）为 None → NULL。create_data 来自应用层
+        字段白名单（DIMENSION_MODEL_FIELDS），不含操作人列。
+        INT-465 修复：新建维度写 owner——行级过滤/命令侧校验依赖
+        created_by_user_id，缺 owner 会使私有维度创建者本人被锁死。
+        setdefault：调用方显式携带 owner（如导入/seed）时保留原值。
+        """
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
+        create_data = dict(create_data)
+        create_data.setdefault('created_by_user_id', get_current_user_id())
         dim = Dimension(**create_data)
         session.add(dim)
         session.flush()
         return dim
 
     def soft_delete_dimension(self, dim: Dimension) -> None:
-        """软删除维度（含 flush，未 commit）。"""
+        """软删除维度（含 flush，未 commit）。
+
+        补盖 deleted_by_user_id（INT-841）：软删操作人从 x-user-id 上下文取，
+        未认证为 None → NULL。deleted_at/updated_at 语义保持原状不动。
+        """
+        from shared.infrastructure.user_context import get_current_user_id
         now = _now()
         dim.deleted = True
+        dim.deleted_by_user_id = get_current_user_id()
         dim.updated_at = now
         get_db_session().flush()
 
     def batch_update_dimensions(self, ids: List[int], update_data: Dict[str, Any]) -> int:
-        """按 ID 列表批量更新维度（含 flush，未 commit）。返回受影响行数。"""
+        """按 ID 列表批量更新维度（含 flush，未 commit）。返回受影响行数。
+
+        更新操作人（updated_by_user_id）从 x-user-id 上下文统一盖（INT-841）。
+        """
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         if not ids:
             return 0
         count = session.query(Dimension).filter(
             Dimension.id.in_(ids)
-        ).update(update_data, synchronize_session=False)
+        ).update(
+            {**update_data, 'updated_by_user_id': get_current_user_id()},
+            synchronize_session=False,
+        )
         session.flush()
         return count
 
@@ -133,9 +175,15 @@ class EvaluationRepository(EvaluationRepositoryABC):
         per_page: int = 10,
         search: str = '',
     ):
-        """分页查询维度（带搜索）。"""
+        """分页查询维度（带搜索；INT-423 行级过滤：私有仅 owner/admin 可见）。"""
         session = get_db_session()
         query = session.query(Dimension).filter_by(deleted=False)
+
+        # INT-423 行级过滤：user_id 取 x-user-id context，禁止从业务表反查
+        query = query.filter(visible_condition(
+            Dimension.created_by_user_id, Dimension.visibility,
+            get_current_user_id(), get_current_user_is_admin(),
+        ))
 
         if category_id:
             query = query.filter_by(category_id=category_id)
@@ -150,13 +198,18 @@ class EvaluationRepository(EvaluationRepositoryABC):
         return query.order_by(Dimension.sort_order, Dimension.id).paginate(page=page, per_page=per_page, error_out=False)
 
     def list_dimension_options(self, algorithm_type: str = '') -> List[Dimension]:
-        """查询维度选项列表（可按 algorithm_type 过滤）。
+        """查询维度选项列表（可按 algorithm_type 过滤；INT-423 行级过滤）。
 
         当指定 algorithm_type 但无关联维度时，返回空列表由调用方短路处理。
         通过 gRPC 调用 algorithm_service.GetAlgorithmDimensions 获取关联 dimension_ids。
         """
         session = get_db_session()
         query = session.query(Dimension).filter_by(deleted=False)
+        # INT-423 行级过滤：私有维度不作为非 owner 的可用选项
+        query = query.filter(visible_condition(
+            Dimension.created_by_user_id, Dimension.visibility,
+            get_current_user_id(), get_current_user_is_admin(),
+        ))
         if algorithm_type:
             associated_dim_ids = self._algo.get_algorithm_dimensions(algorithm_type)
             if associated_dim_ids:
@@ -171,6 +224,37 @@ class EvaluationRepository(EvaluationRepositoryABC):
         for field, value in data.items():
             setattr(dim, field, value)
         session.flush()
+
+    def list_dimension_visibility_rows(self, ids: List[int]) -> List[tuple]:
+        """批量查询维度可见性三元组 [(id, created_by_user_id, visibility), ...]。
+
+        供 batch_action / export 逐行过滤（filter_visible_owners），私有非 owner 行跳过。
+        """
+        session = get_db_session()
+        if not ids:
+            return []
+        rows = (
+            session.query(Dimension.id, Dimension.created_by_user_id,
+                          Dimension.visibility)
+            .filter(Dimension.id.in_(ids),
+                    Dimension.deleted == False)  # noqa: E712
+            .all()
+        )
+        return [tuple(r) for r in rows]
+
+    def list_category_visibility_rows(self, ids: List[int]) -> List[tuple]:
+        """批量查询分类可见性三元组 [(id, created_by_user_id, visibility), ...]。"""
+        session = get_db_session()
+        if not ids:
+            return []
+        rows = (
+            session.query(Category.id, Category.created_by_user_id,
+                          Category.visibility)
+            .filter(Category.id.in_(ids),
+                    Category.deleted == False)  # noqa: E712
+            .all()
+        )
+        return [tuple(r) for r in rows]
 
     def reorder_dimensions(self, ordered_ids: List[int]) -> Optional[List[int]]:
         """按数组顺序重排维度 sort_order（含 flush，未 commit）。

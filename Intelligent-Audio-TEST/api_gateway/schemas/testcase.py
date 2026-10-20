@@ -152,6 +152,9 @@ class TestCaseListItem(APIModel):
     deleted_at: Optional[str] = Field(None)
     deleted_by_user_id: Optional[int] = Field(None)
     total_duration: Optional[float] = Field(None)
+    # INT-423/466：资源可见性与归属人（前端徽标 + 路由层 owner 校验）
+    visibility: Optional[str] = Field(None)
+    created_by_user_id: Optional[int] = Field(None)
     # INT-539：lab 归属透出（config JSONB 解析；空/缺失 = 通用用例 → lab_id=null）
     lab_id: Optional[int] = Field(None)
     lab_name: Optional[str] = Field(None)
@@ -188,6 +191,9 @@ class TestCaseDetailData(APIModel):
     created_at: Optional[str] = Field(None)
     updated_at: Optional[str] = Field(None)
     total_duration: Optional[float] = Field(None)
+    # INT-423/466：资源可见性与归属人（前端徽标 + 路由层 owner 校验）
+    visibility: Optional[str] = Field(None)
+    created_by_user_id: Optional[int] = Field(None)
 
 
 class TestCasePreviewData(APIModel):
@@ -228,6 +234,9 @@ class TagCategoryItem(APIModel):
     tag_count: int = Field(0)
     created_at: Optional[str] = Field(None)
     updated_at: Optional[str] = Field(None)
+    # INT-423/466：资源可见性与归属人（前端徽标 + 路由层 owner 校验）
+    visibility: Optional[str] = Field(None)
+    created_by_user_id: Optional[int] = Field(None)
 
 
 class TagCategoryListData(PaginatedData[TagCategoryItem]):
@@ -258,6 +267,9 @@ class TagItem(APIModel):
     category_name: Optional[str] = Field(None)
     created_at: Optional[str] = Field(None)
     updated_at: Optional[str] = Field(None)
+    # INT-423/466：资源可见性与归属人（前端徽标 + 路由层 owner 校验）
+    visibility: Optional[str] = Field(None)
+    created_by_user_id: Optional[int] = Field(None)
 
 
 class TagDetailListData(PaginatedData[TagItem]):
@@ -452,6 +464,8 @@ class TestCaseCreateSchema(APIModel):
     # 解析结果落库 config.dimensions / config.background_noise，引用与覆盖源另列）
     strategy_id: Optional[str] = Field(None)
     strategy_overrides: Optional[Dict[str, Any]] = Field(None)
+    # INT-566：新建用例可见性（shared/private；None 服务端默认 shared）
+    visibility: Optional[str] = Field(None)
 
     @field_validator('algorithm_params', mode='before')
     @classmethod
@@ -588,6 +602,8 @@ class TestCaseUpdateSchema(APIModel):
     # INT-590：评估策略引用 + 覆盖（写时物化；显式传空字符串清空引用）
     strategy_id: Optional[str] = Field(None)
     strategy_overrides: Optional[Dict[str, Any]] = Field(None)
+    # INT-566：更新载荷携带可见性时落库（可见性切换走专用 share 端点）
+    visibility: Optional[str] = Field(None)
 
     @field_validator('algorithm_params', mode='before')
     @classmethod
@@ -649,3 +665,5 @@ class TestCaseListQuery(APIModel):
     dimension_id: Optional[int] = Field(None, validation_alias=AliasChoices('dimension_id', 'dimensionId'))
     # INT-539：按实验室过滤（含通用用例；config JSONB 无 lab_id 的用例任意实验室可见）
     lab_id: Optional[int] = Field(None, validation_alias=AliasChoices('lab_id', 'labId'))
+    # INT-466：可见性筛选（shared/private；空=全部，走服务端行级过滤）
+    visibility: Optional[str] = Field(None)

@@ -93,6 +93,9 @@ class AudioAclRepository(ABC):
     def get_folder_tree(self, params) -> CommandResultDTO: ...
 
     @abstractmethod
+    def get_playback_history(self, audio_id, params) -> CommandResultDTO: ...
+
+    @abstractmethod
     def get_upload_progress(self, data) -> CommandResultDTO: ...
 
     @abstractmethod

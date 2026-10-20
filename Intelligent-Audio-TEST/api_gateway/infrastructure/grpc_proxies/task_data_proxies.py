@@ -62,6 +62,8 @@ class _TaskDataProxy:
 
         test_type 为执行口径（api/e2e，task_service 侧按配置形态派生）；
         keyword/dimension_id 供分组列表筛选（INT-146）。
+        group_id 为 TestCaseGroup ID（UUID 字符串），必须字符串透传——
+        int 强转会击穿删除守卫（INT-468）。
         favorite（INT-528）：True 仅当前用户收藏；deleted（INT-528）：
         True 统计回收站（软删除）用例，默认统计未删除（镜像 get_task_stats）。
         reraise=True 时失败上抛（首页统计链路 INT-204，同 get_task_stats）；
@@ -71,7 +73,7 @@ class _TaskDataProxy:
             stub = get_task_data_service_stub()
             resp = stub.GetTestCaseStats(task_pb.TestCaseAggStatsRequest(
                 algorithm_type=algorithm_type or '',
-                group_id=int(group_id) if group_id else 0,
+                group_id=str(group_id) if group_id else '',
                 group_by=group_by or '',
                 test_type=test_type or '',
                 keyword=keyword or '',
@@ -206,7 +208,8 @@ class _TaskDataProxy:
             return json.loads(resp.data) if resp.data else None
         return _grpc_call(_call, default_return=None, error_msg_prefix='GetTestCaseGroupByName gRPC 失败')
 
-    def create_testcase_group(self, name, description='', algorithm_type='', group_id=None):
+    def create_testcase_group(self, name, description='', algorithm_type='', group_id=None,
+                              visibility=None):
         """通过 gRPC 创建 TestCaseGroup（写操作失败时抛出，禁止吞错假成功）"""
         def _call():
             stub = get_task_data_service_stub()
@@ -215,6 +218,7 @@ class _TaskDataProxy:
                 description=description or '',
                 algorithm_type=algorithm_type or '',
                 group_id=group_id or '',
+                visibility=visibility or '',
             ))
             if not resp.success:
                 raise RuntimeError(f"CreateTestCaseGroup gRPC 失败: {resp.message}")
@@ -222,8 +226,12 @@ class _TaskDataProxy:
         return _grpc_call(_call, default_return={}, error_msg_prefix='CreateTestCaseGroup gRPC 失败',
                           reraise=True)
 
-    def update_testcase_group(self, group_id, name='', description='', algorithm_type=''):
-        """通过 gRPC 更新 TestCaseGroup（写操作失败时抛出，禁止吞错假成功）"""
+    def update_testcase_group(self, group_id, name='', description='', algorithm_type='',
+                              visibility=None):
+        """通过 gRPC 更新 TestCaseGroup（写操作失败时抛出，禁止吞错假成功）
+
+        visibility（INT-466）：可见性切换（shared/private；None 不更新）。
+        """
         def _call():
             stub = get_task_data_service_stub()
             resp = stub.UpdateTestCaseGroup(task_pb.UpdateTestCaseGroupRequest(
@@ -231,6 +239,7 @@ class _TaskDataProxy:
                 name=name or '',
                 description=description or '',
                 algorithm_type=algorithm_type or '',
+                visibility=visibility or '',
             ))
             if not resp.success:
                 raise RuntimeError(f"UpdateTestCaseGroup gRPC 失败: {resp.message}")

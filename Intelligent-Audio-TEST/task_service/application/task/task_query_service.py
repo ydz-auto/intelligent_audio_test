@@ -40,7 +40,7 @@ class TaskQueryService:
                    favorite=False, deleted=False, user_id=None,
                    evaluation_status=None, merged=False, cherry_pick=False,
                    execution_status=None, merge_type=None, stats=False,
-                   task_type=None) -> dict:
+                   task_type=None, visibility=None) -> dict:
         """获取任务列表（device_type 按用例级被测设备类型过滤，可选）。
 
         favorite（INT-141）：仅当前用户收藏；deleted（INT-141）：仅回收站。
@@ -54,6 +54,7 @@ class TaskQueryService:
         stats（INT-577）：恒返回合并容器统计块（merged ∪ cherry_pick 并集）。
         task_type（INT-273）：按派生任务类型过滤（api/e2e/mixed；口径与
             /tasks/stats type_counts 一致——用例级 device_type 派生）。
+        visibility（INT-466）：可见性筛选（shared/private；None=全部）。
         """
         try:
             result = task_read_model.search_tasks(
@@ -66,6 +67,7 @@ class TaskQueryService:
                 cherry_pick=cherry_pick, execution_status=execution_status,
                 merge_type=merge_type, stats=stats,
                 task_type=task_type,
+                visibility=visibility,
             )
             return {'success': True, 'message': '', 'data': result}
         except Exception as e:

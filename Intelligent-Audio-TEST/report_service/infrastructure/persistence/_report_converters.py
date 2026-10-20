@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 from typing import Optional
 
+from shared.models.common_enums import Visibility
 from report_service.infrastructure.persistence.models import (
     Report,
     ReportSummary,
@@ -228,6 +229,8 @@ def _report_po_to_entity(po: Report) -> ReportAggregate:
         metric_stats=[],
         raw_data=[],
         deleted=po.deleted or False,
+        visibility=getattr(po, 'visibility', None) or Visibility.SHARED.value,
+        created_by_user_id=getattr(po, 'created_by_user_id', None),
         deleted_at=getattr(po, 'deleted_at', None),
         deleted_by_user_id=getattr(po, 'deleted_by_user_id', None),
     )

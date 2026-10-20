@@ -25,6 +25,15 @@ def _parse_query_params(model_cls):
 _testcase_acl = TestCaseConfigAclRepositoryImpl()
 
 
+def _group_data(group_id):
+    """预取分组详情 data（含 visibility/created_by_user_id），供写路径审计旁路判定。"""
+    try:
+        from api_gateway.infrastructure.grpc_proxies import task_data_service
+        return task_data_service.get_testcase_group_by_id(group_id) or {}
+    except Exception:
+        return {}
+
+
 class GroupService:
     """测试用例分组 CRUD 服务"""
 
@@ -98,6 +107,9 @@ class GroupService:
                     created_at='',
                     updated_at='',
                     test_case_count=case_counts.get(str(group.get('id')), 0),
+                    # INT-423/466：资源可见性与归属人（read model 透出，此处透传）
+                    visibility=group.get('visibility'),
+                    created_by_user_id=group.get('created_by_user_id'),
                 )
             )
 
@@ -132,6 +144,8 @@ class GroupService:
                 description=validated_data.description or '',
                 algorithm_type=validated_data.algorithm_type or '',
                 group_id=group_id,
+                # INT-566：新建分组透传可见性（shared/private；None 服务端默认 shared）
+                visibility=validated_data.visibility,
             )
             if not new_group or not new_group.get('id'):
                 return error_response("创建分组失败：服务未确认创建结果")
@@ -147,6 +161,13 @@ class GroupService:
         except Exception as e:
             return error_response(f"请求参数错误: {str(e)}")
 
+        # INT-466：admin 修改私有分组落 PRIVATE_RESOURCE_ACCESS 审计（旁路预取，仅 admin 取数）
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_write,
+            preload_private_state,
+        )
+        pre_data = preload_private_state(lambda: _group_data(group_id))
+
         try:
             from api_gateway.infrastructure.grpc_proxies import task_data_service
             from api_gateway.schemas.common import StringIdData
@@ -159,30 +180,41 @@ class GroupService:
             )
             if not updated or not updated.get('id'):
                 return error_response("更新分组失败：服务未确认更新结果")
+            maybe_audit_private_write('group', group_id, 'update', pre_data)
             return success_response(StringIdData(id=updated['id']), "分组信息更新成功")
         except Exception as e:
             return error_response(str(e))
 
     @staticmethod
     def delete(group_id):
-        """通过 gRPC 软删除 TestCaseGroup"""
+        """通过 gRPC 软删除 TestCaseGroup（守卫：分组下有未删除用例且不带级联时拒绝删除）"""
         query = _parse_query_params(GroupDeleteQuery)
         cascade = query.cascade
 
         from api_gateway.infrastructure.grpc_proxies import task_data_service
+        # 删除前守卫：确认分组下无未删除用例。stats 查询失败必须拒绝删除（fail-closed），
+        # 不得把「查询失败」静默降级为「无用例」绕过守卫（INT-468）。
         try:
-            stats = task_data_service.get_testcase_stats(group_id=group_id)
+            stats = task_data_service.get_testcase_stats(group_id=group_id, reraise=True)
             active_cases = stats.get('total', 0) if stats else 0
-        except Exception:
-            active_cases = 0
+        except Exception as e:
+            return error_response(f"删除分组失败：无法查询分组用例统计（{e}）")
         if active_cases > 0 and not cascade:
             return error_response("该分组下存在测试用例，无法删除")
+
+        # INT-466：admin 删除私有分组落 PRIVATE_RESOURCE_ACCESS 审计（旁路预取，仅 admin 取数）
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_write,
+            preload_private_state,
+        )
+        pre_data = preload_private_state(lambda: _group_data(group_id))
 
         try:
             from api_gateway.schemas.common import StringIdData
             result = task_data_service.delete_testcase_group(group_id, cascade=cascade)
             if not result or not result.get('id'):
                 return error_response("删除分组失败：服务未确认删除结果")
+            maybe_audit_private_write('group', group_id, 'delete', pre_data)
             return success_response(StringIdData(id=group_id), "分组已删除")
         except Exception as e:
             return error_response(str(e))

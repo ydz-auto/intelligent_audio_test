@@ -136,7 +136,7 @@ class BaseConfig:
 
     # --- api_adapter_service gRPC ---
     ADAPTER_SERVICE_HOST: str = _get_env('ADAPTER_SERVICE_HOST', 'localhost')
-    ADAPTER_SERVICE_GRPC_PORT: int = _get_int('ADAPTER_SERVICE_GRPC_PORT', 50081)
+    ADAPTER_SERVICE_GRPC_PORT: int = _get_int('ADAPTER_SERVICE_GRPC_PORT', 51081)
 
     # --- evaluation_service gRPC ---
     EVALUATION_SERVICE_HOST: str = _get_env('EVALUATION_SERVICE_HOST', 'localhost')
@@ -150,9 +150,9 @@ class BaseConfig:
     REPORT_SERVICE_HOST: str = _get_env('REPORT_SERVICE_HOST', 'localhost')
     REPORT_SERVICE_GRPC_PORT: int = _get_int('REPORT_SERVICE_GRPC_PORT', 51068)
 
-    # --- auth_service gRPC ---
+    # --- auth_service gRPC（51069，INT-926 平移避开 Windows Hyper-V 排除端口段）---
     AUTH_SERVICE_HOST: str = _get_env('AUTH_SERVICE_HOST', 'localhost')
-    AUTH_SERVICE_GRPC_PORT: int = _get_int('AUTH_SERVICE_GRPC_PORT', 50069)
+    AUTH_SERVICE_GRPC_PORT: int = _get_int('AUTH_SERVICE_GRPC_PORT', 51069)
 
     # --- gRPC 客户端默认 deadline（INT-54）---
     # 未显式传 timeout 的 gRPC 客户端调用统一注入该 deadline（秒）。

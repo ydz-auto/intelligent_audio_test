@@ -449,7 +449,8 @@ class PlaybackOrchestrator:
         return bool((audio_id or audio_name) and (device_ids or device_names))
 
     def preview(self, audio_configs, case_config, task_id,
-                offset=0, overlap_rate=0, overlap_time=0):
+                offset=0, overlap_rate=0, overlap_time=0,
+                testcase_id=None, testcase_name=None):
         """
         用例预览播放（testcase_controller 调用）。
 
@@ -460,10 +461,14 @@ class PlaybackOrchestrator:
             offset: 播放起始偏移（秒）
             overlap_rate: 重叠率
             overlap_time: 重叠时间（秒）
+            testcase_id: 用例ID（UUID，INT-782#2 返工：预览写侧携带用例上下文）
+            testcase_name: 用例名称快照
 
         Returns:
             dict: {'audio_timelines': [...], 'total_duration': float}
         """
+        dry_audios_info = []
+        playback_devices_map = {}
         try:
             # 1. 解析干声/噪声
             dry_audios_info, noise_audio_info, dry_devices, noise_devices = (
@@ -510,6 +515,12 @@ class PlaybackOrchestrator:
 
             if not audio_to_play:
                 self._log('WARNING', 'preview: no audio to play', task_id=task_id)
+                # 用例预览写侧：干声存在但无一可播放 → 全部 failed
+                self._record_preview_playback_history(
+                    dry_audios_info, playback_devices_map,
+                    testcase_id=testcase_id, testcase_name=testcase_name,
+                    scheduled_audio_ids=set(),
+                )
                 return None
 
             # 6. 播放（异步）
@@ -556,6 +567,14 @@ class PlaybackOrchestrator:
                 ))
                 timeline['playback_end_time_ms'] = int(round(timeline['actual_end_time'] * 1000))
 
+            # 用例预览写侧：实际安排播放的干声音频 → success（INT-782#2 返工）
+            scheduled_audio_ids = {cfg.get('audio_id') for cfg in offset_configs}
+            self._record_preview_playback_history(
+                dry_audios_info, playback_devices_map,
+                testcase_id=testcase_id, testcase_name=testcase_name,
+                scheduled_audio_ids=scheduled_audio_ids,
+            )
+
             return {
                 'audio_timelines': audio_timelines,
                 'total_duration': total_duration,
@@ -563,7 +582,54 @@ class PlaybackOrchestrator:
 
         except Exception as e:
             self._log('ERROR', f'preview failed: {e}', task_id=task_id)
+            # 用例预览写侧：预览异常 → 已解析的干声全部 failed（INT-782#2 返工）
+            try:
+                if dry_audios_info:
+                    self._record_preview_playback_history(
+                        dry_audios_info, playback_devices_map,
+                        testcase_id=testcase_id, testcase_name=testcase_name,
+                        scheduled_audio_ids=set(),
+                    )
+            except Exception:
+                pass
             return None
+
+    def _record_preview_playback_history(self, dry_audios_info, playback_devices_map,
+                                         testcase_id=None, testcase_name=None,
+                                         scheduled_audio_ids=None):
+        """用例预览播放历史落库（INT-782#2 返工：testcase preview 写侧）。
+
+        对每个尝试播放的干声音频落一条历史：已安排播放 → success，
+        未安排（设备不可用/文件缺失/被 offset 跳过）→ failed。
+        失败只记日志，不阻塞试听主流程。
+        """
+        from audio_service.infrastructure.persistence.audio_repository import audio_repository
+        scheduled_audio_ids = scheduled_audio_ids or set()
+        try:
+            for audio_config, audio_obj in dry_audios_info:
+                audio_id = audio_config.get('audio_id')
+                result = 'success' if audio_id in scheduled_audio_ids else 'failed'
+                dev_id = audio_config.get('playback_device_id')
+                # 兼容字符串/整数设备ID：先原样，再尝试归一化查询
+                device_info = playback_devices_map.get(dev_id) or {}
+                if not device_info and dev_id is not None:
+                    try:
+                        device_info = playback_devices_map.get(int(dev_id)) or {}
+                    except (TypeError, ValueError):
+                        pass
+                audio_repository.record_playback_history({
+                    'audio_id': audio_id,
+                    'testcase_id': testcase_id,
+                    'testcase_name': testcase_name,
+                    'device_id': str(dev_id) if dev_id is not None else '',
+                    'device_name': device_info.get('name') or '未知设备',
+                    'result': result,
+                    'duration': getattr(audio_obj, 'duration', None),
+                    'source': 'preview',
+                })
+            audio_repository.commit()
+        except Exception as e:
+            self._log('ERROR', f"记录用例预览播放历史失败: {e}")
 
     @staticmethod
     def _build_auxiliary_audio_timelines(noise_configs, interferer_configs, dry_timelines):

@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
+from shared.models.common_enums import Visibility
+
 
 class ReportStatus(str, Enum):
     """报告状态枚举（与 PO Report.status 字段值保持一致）。"""
@@ -162,6 +164,9 @@ class ReportAggregate:
     metric_stats: List[ReportMetricStatsEntity] = field(default_factory=list)
     raw_data: List[ReportRawDataEntity] = field(default_factory=list)
     deleted: bool = False
+    # INT-423 数据可见性：private/shared 二值（默认 shared）；owner 为创建者 user_id
+    visibility: str = Visibility.SHARED.value
+    created_by_user_id: Optional[int] = None
     # INT-141：回收站展示字段（软删除时间/操作人，deleted=True 时有意义）
     deleted_at: Optional[Any] = None
     deleted_by_user_id: Optional[int] = None

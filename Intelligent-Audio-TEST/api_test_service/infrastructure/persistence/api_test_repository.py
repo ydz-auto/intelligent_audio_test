@@ -64,6 +64,8 @@ def _api_po_to_entity(po: API) -> APIAggregate:
         adapter_class=po.adapter_class,
         audio_config=po.audio_config,
         rms_spl_mapping_id=po.rms_spl_mapping_id,
+        proxy_type=po.proxy_type,
+        proxy_url=po.proxy_url,
     )
 
 
@@ -80,6 +82,8 @@ def _apply_aggregate_to_po(aggregate: APIAggregate, po: API) -> None:
     po.deleted = aggregate.deleted
     po.max_timeout = aggregate.timeout_seconds
     po.rms_spl_mapping_id = aggregate.rms_spl_mapping_id
+    po.proxy_type = aggregate.proxy_type
+    po.proxy_url = aggregate.proxy_url
 
 
 class APITestRepository(APITestRepositoryABC):
@@ -146,6 +150,8 @@ class APITestRepository(APITestRepositoryABC):
                 meta={},  # PO 必填字段，聚合根未承载，使用空对象
                 deleted=aggregate.deleted,
                 max_timeout=aggregate.timeout_seconds,
+                proxy_type=aggregate.proxy_type,
+                proxy_url=aggregate.proxy_url,
             )
             session.add(po)
             session.flush()
@@ -159,13 +165,19 @@ class APITestRepository(APITestRepositoryABC):
             raise
 
     def soft_delete(self, api_id: int) -> bool:
-        """软删除 API。"""
+        """软删除 API。
+
+        apis 表无 deleted_by_user_id 列（INT-842 现状注记），软删操作人
+        以 updated_by_user_id 记录（对齐 api_gateway laboratory 仓储口径）。
+        """
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         try:
             po = session.get(API, api_id)
             if po is None:
                 return False
             po.deleted = True
+            po.updated_by_user_id = get_current_user_id()
             session.commit()
             return True
         except Exception:
@@ -185,6 +197,7 @@ class APITestRepository(APITestRepositoryABC):
         """
         session = get_db_session()
         try:
+            from shared.infrastructure.user_context import get_current_user_id
             new_api = API(
                 name=data['name'],
                 vendor=data.get('vendor'),
@@ -205,7 +218,9 @@ class APITestRepository(APITestRepositoryABC):
                 device_type=data.get('device_type') or 'http_api',
                 adapter_class=data.get('adapter_class'),
                 audio_config=data.get('audio_config'),
-            )
+                created_by_user_id=get_current_user_id(),
+                proxy_type=data.get('proxy_type'),
+                proxy_url=data.get('proxy_url'),            )
             session.add(new_api)
             session.commit()
             # PO → Entity 显式转换后再返回，避免泄漏 ORM
@@ -226,6 +241,7 @@ class APITestRepository(APITestRepositoryABC):
         """
         session = get_db_session()
         try:
+            from shared.infrastructure.user_context import get_current_user_id
             api = session.query(API).filter(API.id == api_id, API.deleted == False).first()
             if not api:
                 return None
@@ -233,6 +249,9 @@ class APITestRepository(APITestRepositoryABC):
             for key, value in data.items():
                 if hasattr(api, key):
                     setattr(api, key, value)
+
+            # 操作人以上下文为准（客户端自报值不充当操作人）；最后设置覆盖 data 中同名键
+            api.updated_by_user_id = get_current_user_id()
 
             session.commit()
             return _api_po_to_entity(api)

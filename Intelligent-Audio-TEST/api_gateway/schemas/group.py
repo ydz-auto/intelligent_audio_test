@@ -13,6 +13,9 @@ class GroupItem(APIModel):
     created_at: str = Field(...)
     updated_at: str = Field(...)
     test_case_count: int = Field(...)
+    # INT-423/466：资源可见性与归属人（前端徽标 + 路由层 owner 校验）
+    visibility: Optional[str] = Field(None)
+    created_by_user_id: Optional[int] = Field(None)
 
 
 class GroupCreateRequest(APIModel):
@@ -20,6 +23,8 @@ class GroupCreateRequest(APIModel):
     name: str = Field(..., validation_alias=AliasChoices('groupName', 'group_name'))
     description: Optional[str] = Field(None, validation_alias=AliasChoices('groupDescription', 'group_description'))
     algorithm_type: Optional[str] = Field(None)
+    # INT-566：新建分组可见性（shared/private；None 服务端默认 shared）
+    visibility: Optional[str] = Field(None)
 
 
 class GroupUpdateRequest(APIModel):

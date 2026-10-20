@@ -316,6 +316,21 @@ class DeviceConfigServiceServicer(e2e_grpc.DeviceConfigServiceServicer):
         except Exception as e:
             return e2e_pb.RemoveDevicesFromGroupResponse(success=False, message=str(e), data="")
 
+    def MoveDeviceGroup(self, request, context=None):
+        try:
+            result = self.group_command.move(
+                request.group_id, request.parent_id or None,
+                updated_by_user_id=request.updated_by_user_id or None,
+            )
+            return e2e_pb.MoveDeviceGroupResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+                code=int(result.get('code') or (200 if result.get('success') else 400)),
+            )
+        except Exception as e:
+            return e2e_pb.MoveDeviceGroupResponse(success=False, message=str(e), data="", code=400)
+
     # ========== INT-80 设备操作/批量 ==========
 
     def ControlDevice(self, request, context=None):

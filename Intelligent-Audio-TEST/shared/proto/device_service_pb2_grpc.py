@@ -842,6 +842,11 @@ class DeviceConfigServiceStub:
                 request_serializer=device__service__pb2.RemoveDevicesFromGroupRequest.SerializeToString,
                 response_deserializer=device__service__pb2.RemoveDevicesFromGroupResponse.FromString,
                 _registered_method=True)
+        self.MoveDeviceGroup = channel.unary_unary(
+                '/device_service.DeviceConfigService/MoveDeviceGroup',
+                request_serializer=device__service__pb2.MoveDeviceGroupRequest.SerializeToString,
+                response_deserializer=device__service__pb2.MoveDeviceGroupResponse.FromString,
+                _registered_method=True)
         self.ControlDevice = channel.unary_unary(
                 '/device_service.DeviceConfigService/ControlDevice',
                 request_serializer=device__service__pb2.ControlDeviceRequest.SerializeToString,
@@ -1013,6 +1018,13 @@ class DeviceConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def MoveDeviceGroup(self, request, context):
+        """移动分组到新父级（INT-832 嵌套分组；parent_id 空串=移到根）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def ControlDevice(self, request, context):
         """设备操作（INT-80：connect/disconnect/reboot/shutdown/install_app/uninstall_app）
         """
@@ -1175,6 +1187,11 @@ def add_DeviceConfigServiceServicer_to_server(servicer, server):
                     servicer.RemoveDevicesFromGroup,
                     request_deserializer=device__service__pb2.RemoveDevicesFromGroupRequest.FromString,
                     response_serializer=device__service__pb2.RemoveDevicesFromGroupResponse.SerializeToString,
+            ),
+            'MoveDeviceGroup': grpc.unary_unary_rpc_method_handler(
+                    servicer.MoveDeviceGroup,
+                    request_deserializer=device__service__pb2.MoveDeviceGroupRequest.FromString,
+                    response_serializer=device__service__pb2.MoveDeviceGroupResponse.SerializeToString,
             ),
             'ControlDevice': grpc.unary_unary_rpc_method_handler(
                     servicer.ControlDevice,
@@ -1741,6 +1758,33 @@ class DeviceConfigService:
             '/device_service.DeviceConfigService/RemoveDevicesFromGroup',
             device__service__pb2.RemoveDevicesFromGroupRequest.SerializeToString,
             device__service__pb2.RemoveDevicesFromGroupResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def MoveDeviceGroup(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.DeviceConfigService/MoveDeviceGroup',
+            device__service__pb2.MoveDeviceGroupRequest.SerializeToString,
+            device__service__pb2.MoveDeviceGroupResponse.FromString,
             options,
             channel_credentials,
             insecure,

@@ -55,6 +55,29 @@ _BEARER_PATTERN = re.compile(r'(?i)\b(bearer\s+)([A-Za-z0-9._~+/=-]{8,})')
 # OpenAI 风格裸密钥（sk- 前缀长 token，直接粘贴进文本的场景）
 _OPENAI_KEY_PATTERN = re.compile(r'\b(sk-[A-Za-z0-9_-]{16,})\b')
 
+# proxy_url 值内 user:pass@ 段掩码（INT-839）：保留 host:port，掩码认证段。
+# 形如 "proxy_url": "user:pass@host:8080" / proxy_url=user:pass@host:8080 /
+# proxy_url: user:pass@host:8080 —— 复用 authorization/proxy_authorization
+# 的 KV 掩码思路，但只掩 user:pass 前缀，host:port 保留便于排查。
+# 两点边界（INT-846 审计 P2/P3）：
+# - 容错误带 scheme 前缀（http:// 等），仍掩 userinfo（scheme 保留可见）；
+# - userinfo 按末个 @ 切分（执行侧 split_proxy_url 亦按 urlparse 末个 @
+#   解析），密码含字面 @ 时不再只掩到首个 @ 而泄露后续段。
+_PROXY_USERINFO_PATTERN = re.compile(
+    r'(?i)(?P<prefix>proxy[-_]?url["\']?\s*[:=]\s*["\']?)'
+    r'(?P<scheme>[A-Za-z][A-Za-z0-9+.-]*://)?'
+    r'(?P<userinfo>[^\r\n]*)@'
+    r'(?P<hostport>[^\s@/;,"\'\\:]+(?::[0-9]{1,5})?)'
+)
+
+
+def _mask_proxy_userinfo(match: 're.Match') -> str:
+    return '%s%s****@%s' % (
+        match.group('prefix'),
+        match.group('scheme') or '',
+        match.group('hostport'),
+    )
+
 
 def mask_value(value) -> str:
     """单值全掩码（零明文：不保留任何前后缀片段）。"""
@@ -85,6 +108,7 @@ def mask_text(text: Any) -> Any:
     """
     if not isinstance(text, str) or not text:
         return text
+    text = _PROXY_USERINFO_PATTERN.sub(_mask_proxy_userinfo, text)
     text = _KV_PATTERN.sub(_mask_kv, text)
     text = _BEARER_PATTERN.sub(
         lambda m: '%s%s' % (m.group(1), _MASK), text)
@@ -95,13 +119,17 @@ def mask_text(text: Any) -> Any:
 def mask_mapping(obj: Any) -> Any:
     """结构化 payload 递归脱敏：dict 键名命中敏感键 → 值全掩码。
 
-    dict/list 原地语义之外不修改入参（返回新结构），其余类型原样返回。
+    proxy_url 键（INT-839）例外：仅掩码值内 user:pass 认证段，保留 host:port
+    （与 mask_text 的 _PROXY_USERINFO_PATTERN 口径一致）。dict/list 原地
+    语义之外不修改入参（返回新结构），其余类型原样返回。
     """
     if isinstance(obj, dict):
         masked = {}
         for key, value in obj.items():
             if isinstance(key, str) and _is_sensitive_key(key):
                 masked[key] = _MASK if value else value
+            elif isinstance(key, str) and _is_proxy_url_key(key):
+                masked[key] = _mask_proxy_url_value(value)
             else:
                 masked[key] = mask_mapping(value)
         return masked
@@ -109,6 +137,31 @@ def mask_mapping(obj: Any) -> Any:
         masked = [mask_mapping(item) for item in obj]
         return masked if isinstance(obj, list) else type(obj)(masked)
     return obj
+
+
+def _is_proxy_url_key(key: str) -> bool:
+    return key.strip().strip('"\'').lower().replace('-', '_') == 'proxy_url'
+
+
+def _mask_proxy_url_value(value: Any) -> Any:
+    """掩码 proxy_url 值内 user:pass 段，保留 host:port；非字符串递归脱敏。
+
+    INT-846 审计 P2/P3：剥 scheme 前缀（scheme 保留可见）、按末个 @ 切分，
+    与执行侧 split_proxy_url（urlparse 末个 @）口径一致。
+    """
+    if not isinstance(value, str):
+        return mask_mapping(value)
+    scheme = ''
+    rest = value
+    # 仅剥合法 scheme 前缀（[scheme]://，scheme 为字母开头）；密码含 `://`
+    # 字面时不误判为 scheme
+    if re.match(r'[A-Za-z][A-Za-z0-9+.-]*://', rest):
+        scheme, _, rest = rest.partition('://')
+        scheme = scheme + '://'
+    head, sep, tail = rest.rpartition('@')
+    if not sep:
+        return value
+    return '%s****@%s' % (scheme, tail)
 
 
 def _is_sensitive_key(key: str) -> bool:

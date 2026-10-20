@@ -23,6 +23,16 @@ Redis 用 db1，日志 `logs/ui_stack/`。栈常驻复用；Postgres 未监听 5
 python tests/ui/utils/parallel_stack.py stop
 ```
 
+> **容器化落地后（2026-10-16 INT-472）**：compose 栈接管 5432/6379/9000 后，
+> 并行栈服务连接的就是容器 postgres（5432 已监听则启动器不再起宿主
+> postgres）——隔离库 `intelligent_audio_test_test` 必须已预建于容器 postgres
+> （`docker compose exec -T postgres psql -U intelligent_audio_test -d
+> intelligent_audio_test -c "CREATE DATABASE intelligent_audio_test_test"`，
+> 再经 db_bootstrap 镜像对隔离库跑引导链建表/迁移/种子，见部署文档）。
+> **INT-472 落地时本机已完成隔离库预建与引导**（71 表 + RBAC + admin +
+> voice_llm/turn_eval 种子，turn_eval api_url=http://127.0.0.1:5097 宿主裁判）。
+> 并行栈服务进程仍宿主形态（端口 +1000），仅 infra 复用容器栈。
+
 **方式 B —— 主栈切隔离库**（共享栈空闲时，INT-246 标准口径）：
 
 ```

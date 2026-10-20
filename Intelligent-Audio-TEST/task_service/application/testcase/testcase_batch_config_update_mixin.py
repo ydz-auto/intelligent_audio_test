@@ -29,6 +29,30 @@ LAST_ROUND_KEY = '-1'
 TARGET_ALIASES = {'interferer': 'interferers'}
 
 
+def _filter_visible_testcases(test_cases):
+    """批量写取数后逐行可见性过滤（INT-463）：私有非 owner 行跳过，不整批放行。
+
+    list_testcases_by_ids 刻意不做行级过滤（供 reference_refresh 后台任务等
+    无用户上下文场景使用），因此由用户触发的批量写 handler 必须在取数后
+    逐行判定可见性。与 TestCaseCopyMoveMixin._case_visible 同口径；
+    visibility / created_by_user_id 缺省的对象（测试替身、旧形态 PO）按
+    shared 放行（零回归）。
+    """
+    from shared.infrastructure.visibility_filter import check_visible
+    from task_service.infrastructure.visibility_context import visibility_identity
+    uid, is_admin = visibility_identity()
+    visible = []
+    for tc in test_cases:
+        vis = getattr(tc, 'visibility', 'shared') or 'shared'
+        owner = getattr(tc, 'created_by_user_id', None)
+        try:
+            check_visible(owner, vis, uid, is_admin)
+            visible.append(tc)
+        except PermissionError:
+            continue
+    return visible
+
+
 class TestCaseConfigUpdateMixin:
     """测试用例批量配置更新 Mixin。"""
 
@@ -297,7 +321,7 @@ class TestCaseConfigUpdateMixin:
         round_mode = data.get('round_mode') or 'all'
         round_numbers = data.get('round_numbers') or []
 
-        test_cases = self.repo.list_testcases_by_ids(ids)
+        test_cases = _filter_visible_testcases(self.repo.list_testcases_by_ids(ids))
         updated_count = 0
         for tc in test_cases:
             existing = tc.algorithm_params or []
@@ -388,7 +412,7 @@ class TestCaseConfigUpdateMixin:
 
         device_id = self._extract_device_id(playback_devices)
 
-        test_cases = self.repo.list_testcases_by_ids(ids)
+        test_cases = _filter_visible_testcases(self.repo.list_testcases_by_ids(ids))
         updated_count = 0
         for tc in test_cases:
             # 差异#2 收尾：E2E（物理执行）形态由配置承载 —— 含播放设备音频才适用
@@ -444,7 +468,7 @@ class TestCaseConfigUpdateMixin:
         # 兼容 spl 为 float 或 dict
         spl_value = self._extract_value(spl_data)
 
-        test_cases = self.repo.list_testcases_by_ids(ids)
+        test_cases = _filter_visible_testcases(self.repo.list_testcases_by_ids(ids))
         updated_count = 0
         for tc in test_cases:
             # 差异#2 收尾：E2E（物理执行）形态由配置承载 —— 含播放设备音频才适用
@@ -512,7 +536,7 @@ class TestCaseConfigUpdateMixin:
         if round_mode == 'per_round' and not has_round_dims and not has_multi_dims:
             return ("逐轮设置模式需要 'round_dimensions' 或 'multi_dimensions'", True)
 
-        test_cases = self.repo.list_testcases_by_ids(ids)
+        test_cases = _filter_visible_testcases(self.repo.list_testcases_by_ids(ids))
 
         def _build_dim_list(dim_data):
             """从维度数据构建标准化的维度列表"""
@@ -611,7 +635,7 @@ class TestCaseConfigUpdateMixin:
         # 整体（case 级）：只写 config.background_noise
         case_level = data.get('case_level')
 
-        test_cases = self.repo.list_testcases_by_ids(ids)
+        test_cases = _filter_visible_testcases(self.repo.list_testcases_by_ids(ids))
         updated_count = 0
         for tc in test_cases:
             # 差异#2 收尾：E2E（物理执行）形态由配置承载 —— 含播放设备音频才适用

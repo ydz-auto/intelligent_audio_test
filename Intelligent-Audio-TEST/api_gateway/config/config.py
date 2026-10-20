@@ -88,6 +88,11 @@ class Config(BaseConfig):
         'HW_OAUTH_USERINFO_URL', 'https://oauth.huaweicloud.com/oauth2/userinfo'
     )
 
+    # ===== 报告分享（INT-971）=====
+    # 分享链接拼接用公开 origin（请求 base URL 不可用时回退；
+    # 形态与前端路由 /report/:reportId?share= 一致）
+    PUBLIC_ORIGIN = os.environ.get('PUBLIC_ORIGIN', 'http://localhost:5000')
+
     @classmethod
     def validate(cls):
         """启动校验必填项 + AUTH_MODE 枚举合法性（INT-180：非法取值启动即自曝，

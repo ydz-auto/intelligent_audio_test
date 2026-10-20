@@ -179,7 +179,8 @@ def cmd_health(args):
     for name, container_port, host_env in HTTP_PROBES:
         host_p = host_port(host_env, container_port)
         checks.append((f"{name} :{host_p}", lambda p=host_p: _http_health(p)))
-    checks.append((f"frontend :{FRONTEND_PORT}", lambda: _http_ok(FRONTEND_PORT, '/')))
+    checks.append((f"frontend :{host_port('FRONTEND_PORT', FRONTEND_PORT)}",
+                   lambda: _http_ok(host_port('FRONTEND_PORT', FRONTEND_PORT), '/')))
     for name, container_port, host_env in GRPC_PROBES:
         if host_env is None:
             # api_test_service：宿主不发布端口，容器网络内 exec 探测
@@ -189,9 +190,12 @@ def cmd_health(args):
             host_p = host_port(host_env, container_port)
             checks.append((f"{name} gRPC :{host_p}",
                            lambda p=host_p: _tcp_open('127.0.0.1', p)))
-    checks.append((f"postgres :{POSTGRES_PORT}", lambda: _tcp_open('127.0.0.1', POSTGRES_PORT)))
-    checks.append((f"redis :{REDIS_PORT}", lambda: _tcp_open('127.0.0.1', REDIS_PORT)))
-    checks.append((f"rustfs :{RUSTFS_PORT}", lambda: _tcp_open('127.0.0.1', RUSTFS_PORT)))
+    checks.append((f"postgres :{host_port('POSTGRES_PORT', POSTGRES_PORT)}",
+                   lambda: _tcp_open('127.0.0.1', host_port('POSTGRES_PORT', POSTGRES_PORT))))
+    checks.append((f"redis :{host_port('REDIS_PORT', REDIS_PORT)}",
+                   lambda: _tcp_open('127.0.0.1', host_port('REDIS_PORT', REDIS_PORT))))
+    checks.append((f"rustfs :{host_port('RUSTFS_PORT', RUSTFS_PORT)}",
+                   lambda: _tcp_open('127.0.0.1', host_port('RUSTFS_PORT', RUSTFS_PORT))))
 
     passed, failed = 0, []
     for name, probe in checks:

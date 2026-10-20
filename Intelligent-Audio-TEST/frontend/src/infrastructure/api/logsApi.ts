@@ -71,9 +71,9 @@ export const logsApi = {
     return request('PUT', '/logs/mark', toLogMarkDto(input, DEFAULT_MARK) satisfies LogMarkDto);
   },
 
-  /** 导出日志（GET /logs/export：条件查询 + format） */
+  /** 导出日志（POST /logs/export：条件查询 + format + log_ids 走请求体） */
   async export(params: LogExportQuery = {}, options: RequestOptions = {}) {
-    return request('GET', '/logs/export', null, { ...options, params: toLogExportQueryDto(params) });
+    return request('POST', '/logs/export', toLogExportQueryDto(params), options);
   },
 
   /** 清除日志（POST /logs/clear：before_datetime + keep_marked） */

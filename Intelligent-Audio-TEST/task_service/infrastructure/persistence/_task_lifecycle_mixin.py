@@ -487,6 +487,24 @@ class TaskLifecycleMixin:
         finally:
             session.close()
 
+    def record_task_starter(self, task_id: int, user_id=None) -> None:
+        """记录任务启动操作人（INT-573：start/retry 实际启动时写入）。
+
+        控制操作（stop/control/remove_case/rextract）校验「owner 或启动人」——
+        启动人经此列留痕。user_id 为 None（未认证）时置 NULL，控制回落 owner
+        校验。镜像 touch_task_updated_by 的最小列更新模式。
+        """
+        session = get_db_session()
+        try:
+            session.query(Task).filter(Task.id == task_id).update(
+                {Task.last_started_by_user_id: user_id}, synchronize_session=False)
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
     def expire_progress_cache(self, task_id: int) -> None:
         """失效共享层进度缓存（INT-305：删除后立即拉新，不等 TTL）。
 

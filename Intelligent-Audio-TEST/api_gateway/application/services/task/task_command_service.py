@@ -305,6 +305,14 @@ class TaskCommandService:
     # 删除任务
     @staticmethod
     def delete(task_id):
+        # INT-466：admin 删除私有任务落 PRIVATE_RESOURCE_ACCESS 审计（旁路预取，仅 admin 取数）
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_write,
+            preload_private_state,
+        )
+        pre_data = preload_private_state(
+            lambda: _task_acl.get_task_detail(task_id).get('data') or {})
+
         result = _task_acl.delete(task_id)
 
         if not result.get('success'):
@@ -313,6 +321,7 @@ class TaskCommandService:
                 return error_response("未找到任务", 404)
             return error_response(result.get('message', '删除失败'), code=code)
 
+        maybe_audit_private_write('task', task_id, 'delete', pre_data)
         return success_response(None, result.get('message', '任务已删除'))
 
     # 更新任务
@@ -322,6 +331,14 @@ class TaskCommandService:
         if not json_data:
             return error_response("请求数据不能为空", 400)
 
+        # INT-466：admin 修改私有任务落 PRIVATE_RESOURCE_ACCESS 审计（旁路预取，仅 admin 取数）
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_write,
+            preload_private_state,
+        )
+        pre_data = preload_private_state(
+            lambda: _task_acl.get_task_detail(task_id).get('data') or {})
+
         result = _task_acl.update(task_id, json_data)
 
         if not result.get('success'):
@@ -330,4 +347,5 @@ class TaskCommandService:
                 return error_response("未找到任务", 404)
             return error_response(result.get('message', '更新失败'), code=code)
 
+        maybe_audit_private_write('task', task_id, 'update', pre_data)
         return success_response(result.get('data'), result.get('message', '任务已更新'))

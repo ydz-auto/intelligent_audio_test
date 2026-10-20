@@ -61,6 +61,20 @@ _evaluation_acl = EvaluationConfigAclRepositoryImpl()
 _task_acl = TaskConfigAclRepositoryImpl()
 _reevaluation_acl = ReevaluationAclRepositoryImpl()
 
+
+def _eval_category_data(cat_id):
+    """预取评估分类详情 data（含 visibility/created_by_user_id），供写路径审计旁路判定。"""
+    try:
+        raw = _evaluation_acl.list_categories().get('data') or {}
+        items = raw.get('items', []) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])
+        for item in items:
+            if str(item.get('id')) == str(cat_id):
+                return item or {}
+        return {}
+    except Exception:
+        return {}
+
+
 # 文件导出取全量维度的分页大小（对齐旧库"导出全部"语义）
 _EXPORT_ALL_PER_PAGE = 100000
 
@@ -92,9 +106,18 @@ class EvaluationCommandService:
             return error_response(f"数据验证失败: {str(e)}")
 
         data = req.model_dump(by_alias=False, exclude_none=True)
+
+        # INT-466：admin 修改私有评估分类落 PRIVATE_RESOURCE_ACCESS 审计（旁路预取，仅 admin 取数）
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_write,
+            preload_private_state,
+        )
+        pre_data = preload_private_state(lambda: _eval_category_data(cat_id))
+
         result = _evaluation_acl.update_category(cat_id, data)
 
         if result.get('success'):
+            maybe_audit_private_write('category', cat_id, 'update', pre_data)
             return success_response(result.get('data'), result.get('message', '分类更新成功'))
         code = result.get('code', 400)
         if code == 404:
@@ -103,9 +126,17 @@ class EvaluationCommandService:
 
     @staticmethod
     def delete_category(cat_id):
+        # INT-466：admin 删除私有评估分类落 PRIVATE_RESOURCE_ACCESS 审计（旁路预取，仅 admin 取数）
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_write,
+            preload_private_state,
+        )
+        pre_data = preload_private_state(lambda: _eval_category_data(cat_id))
+
         result = _evaluation_acl.delete_category(cat_id)
 
         if result.get('success'):
+            maybe_audit_private_write('category', cat_id, 'delete', pre_data)
             return success_response(None, result.get('message', '分类已删除'))
         code = result.get('code', 400)
         if code == 404:
@@ -167,9 +198,18 @@ class EvaluationCommandService:
                 if not is_valid:
                     return error_response(f"规则格式错误: {msg}")
 
+        # INT-466：admin 修改私有维度落 PRIVATE_RESOURCE_ACCESS 审计（旁路预取，仅 admin 取数）
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_write,
+            preload_private_state,
+        )
+        pre_data = preload_private_state(
+            lambda: _evaluation_acl.get_dimension(dim_id).get('data') or {})
+
         result = _evaluation_acl.update_dimension(dim_id, data)
 
         if result.get('success'):
+            maybe_audit_private_write('dimension', dim_id, 'update', pre_data)
             return success_response(result.get('data'), result.get('message', '评分维度更新成功'))
         code = result.get('code', 400)
         if code == 404:
@@ -229,9 +269,18 @@ class EvaluationCommandService:
     # 删除评分维度 (逻辑删除)
     @staticmethod
     def delete(dim_id):
+        # INT-466：admin 删除私有维度落 PRIVATE_RESOURCE_ACCESS 审计（旁路预取，仅 admin 取数）
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_write,
+            preload_private_state,
+        )
+        pre_data = preload_private_state(
+            lambda: _evaluation_acl.get_dimension(dim_id).get('data') or {})
+
         result = _evaluation_acl.delete_dimension(dim_id)
 
         if result.get('success'):
+            maybe_audit_private_write('dimension', dim_id, 'delete', pre_data)
             return success_response(None, result.get('message', '评分维度已删除'))
         code = result.get('code', 400)
         if code == 404:

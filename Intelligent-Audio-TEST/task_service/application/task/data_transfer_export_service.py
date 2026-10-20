@@ -87,6 +87,15 @@ class DataTransferExportService:
         if not clean_ids:
             return {'success': False, 'message': 'task_ids 不能为空', 'code': 400}
 
+        # INT-423：导出逐行可见性过滤——私有非 owner 任务跳过（不整批放行）
+        from shared.infrastructure.user_context import get_current_user_id, get_current_user_is_admin
+        from task_service.infrastructure.persistence.task_repository import task_repository
+        clean_ids = task_repository.filter_visible_task_ids(
+            clean_ids, user_id=get_current_user_id(),
+            is_admin=get_current_user_is_admin())
+        if not clean_ids:
+            return {'success': False, 'message': '没有可导出的任务', 'code': 404}
+
         _sweep_expired_exports()
 
         # 1) task_service 段 8 表（含 cherry-pick 容器关系表与内联结果，INT-656）

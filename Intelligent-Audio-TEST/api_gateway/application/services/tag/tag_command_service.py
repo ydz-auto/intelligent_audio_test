@@ -57,6 +57,14 @@ class TagCategoryCommandService:
 
         data_dict = data.model_dump(by_alias=False, exclude_none=True)
 
+        # INT-466：admin 修改私有标签分类落 PRIVATE_RESOURCE_ACCESS 审计（旁路预取，仅 admin 取数）
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_write,
+            preload_private_state,
+        )
+        pre_data = preload_private_state(
+            lambda: _tag_acl.get_category(category_id).get('data') or {})
+
         result = _tag_acl.update_category(category_id, data_dict)
 
         if not result.get('success'):
@@ -66,6 +74,7 @@ class TagCategoryCommandService:
             return error_response(result.get('message', '更新失败'), code=code)
 
         item = result.get('data') or {}
+        maybe_audit_private_write('category', category_id, 'update', pre_data)
         return success_response(
             TagCategoryItem(**item),
             result.get('message', '标签分类更新成功'),
@@ -73,6 +82,14 @@ class TagCategoryCommandService:
 
     @staticmethod
     def delete(category_id):
+        # INT-466：admin 删除私有标签分类落 PRIVATE_RESOURCE_ACCESS 审计（旁路预取，仅 admin 取数）
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_write,
+            preload_private_state,
+        )
+        pre_data = preload_private_state(
+            lambda: _tag_acl.get_category(category_id).get('data') or {})
+
         result = _tag_acl.delete_category(category_id)
 
         if not result.get('success'):
@@ -81,6 +98,7 @@ class TagCategoryCommandService:
                 return error_response("未找到标签分类", 404)
             return error_response(result.get('message', '删除失败'), code=code)
 
+        maybe_audit_private_write('category', category_id, 'delete', pre_data)
         return success_response(None, result.get('message', '标签分类删除成功'))
 
 
@@ -118,6 +136,14 @@ class TagCommandService:
 
         data_dict = data.model_dump(by_alias=False, exclude_none=True)
 
+        # INT-466：admin 修改私有标签落 PRIVATE_RESOURCE_ACCESS 审计（旁路预取，仅 admin 取数）
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_write,
+            preload_private_state,
+        )
+        pre_data = preload_private_state(
+            lambda: _tag_acl.get_tag(tag_id).get('data') or {})
+
         result = _tag_acl.update_tag(tag_id, data_dict)
 
         if not result.get('success'):
@@ -127,6 +153,7 @@ class TagCommandService:
             return error_response(result.get('message', '更新失败'), code=code)
 
         item = result.get('data') or {}
+        maybe_audit_private_write('tag', tag_id, 'update', pre_data)
         return success_response(
             TagItem(**item),
             result.get('message', '标签更新成功'),
@@ -134,6 +161,14 @@ class TagCommandService:
 
     @staticmethod
     def delete(tag_id, cascade: bool = False):
+        # INT-466：admin 删除私有标签落 PRIVATE_RESOURCE_ACCESS 审计（旁路预取，仅 admin 取数）
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_write,
+            preload_private_state,
+        )
+        pre_data = preload_private_state(
+            lambda: _tag_acl.get_tag(tag_id).get('data') or {})
+
         result = _tag_acl.delete_tag(tag_id, cascade=cascade)
 
         if not result.get('success'):
@@ -142,6 +177,7 @@ class TagCommandService:
                 return error_response("未找到标签", 404)
             return error_response(result.get('message', '删除失败'), code=code)
 
+        maybe_audit_private_write('tag', tag_id, 'delete', pre_data)
         return success_response(None, result.get('message', '标签删除成功'))
 
     @staticmethod

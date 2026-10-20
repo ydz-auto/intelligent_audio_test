@@ -176,6 +176,9 @@ class TestBatchEventPublishing:
         monkeypatch.setattr(
             'task_service.application.testcase.reference_refresh_task.submit_reference_refresh_task',
             lambda case_ids, refresher=None, executor=None: 'task-123')
+        # INT-463：批量刷新先经 list_testcases_by_ids 取数再逐行可见性过滤，
+        # mock 取数返回与请求等量的替身用例（缺省 shared → 全部可见）
+        service.repo.list_testcases_by_ids.side_effect = lambda ids: [FakeTC(i) for i in ids]
         ids = [f'c{i}' for i in range(51)]  # 超阈值走异步提交
 
         resp = service.batch_action({'action': 'refresh_reference', 'ids': ids})

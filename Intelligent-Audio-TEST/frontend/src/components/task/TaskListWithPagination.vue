@@ -38,7 +38,10 @@
         </div>
       </template>
 
-      <div class="empty-state" v-if="paginatedTasks.length === 0">
+      <!-- INT-288：错误态（统一错误条 + 重试）；失败保留旧数据，错误条悬于列表上方 -->
+      <LoadErrorState v-if="error" :message="error" @retry="$emit('retry')" />
+
+      <div class="empty-state" v-if="paginatedTasks.length === 0 && !error && !isLoading">
         <i class="fas fa-tasks"></i>
         <p>没有找到任务</p>
         <p class="empty-state-hint">请尝试调整筛选条件或添加新的任务</p>
@@ -70,6 +73,7 @@ import '../../assets/styles/components/log.css'
 import { ref, computed, watch } from 'vue';
 import TaskCard from './TaskCard.vue';
 import PaginationComponent from '../common/data/PaginationComponent.vue';
+import LoadErrorState from '../common/misc/LoadErrorState.vue';
 
 const props = defineProps({
   tasks: {type: Array, default: () => []},
@@ -78,6 +82,8 @@ const props = defineProps({
   actions: {type: Array, default: () => []},
   searchQuery: {type: String, default: ''},
   isLoading: {type: Boolean, default: false},
+  /** INT-288：拉取失败的用户可见错误文案（空串 = 无错误）；错误条 + 重试 */
+  error: {type: String, default: ''},
   isSelected: {type: Function, default: (task) => task.selected || false},
   totalItems: {type: Number, default: 0},
   totalPages: {type: Number, default: 1},
@@ -85,7 +91,7 @@ const props = defineProps({
   pageSize: {type: Number, default: 10}
 });
 
-const emit = defineEmits(['toggle-selection', 'action', 'page-change', 'page-size-change', 'name-updated']);
+const emit = defineEmits(['toggle-selection', 'action', 'page-change', 'page-size-change', 'name-updated', 'retry']);
 
 /** 合并任务源任务列表展开状态（taskId -> expanded） */
 const expandedMergedSources = ref(new Set());

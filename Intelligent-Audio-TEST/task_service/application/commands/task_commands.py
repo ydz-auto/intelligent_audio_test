@@ -38,6 +38,8 @@ class CreateTaskCommand(Command):
     case_devices: List[Dict[str, Any]] = field(default_factory=list)
     # 实验室扩展（INT-493/INT-540）：关联实验室 ID 列表（可选，缺省=不限定）
     lab_ids: List[int] = field(default_factory=list)
+    # INT-566：新建任务可见性（shared/private；None 默认 shared）
+    visibility: Optional[str] = None
 
 
 @dataclass(frozen=True)

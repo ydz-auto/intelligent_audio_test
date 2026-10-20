@@ -281,6 +281,10 @@ export interface DeviceGroup {
   description?: string
   /** 分组类型：test 测试设备组 / playback 播放设备组 */
   groupType?: string
+  /** 父分组 ID（INT-832 嵌套/移动）；根分组为 null/undefined */
+  parentId?: string | null
+  /** 子分组（INT-832 前端按 parent_id 建树，adapter 填充） */
+  children?: DeviceGroup[]
   deviceCount?: number
   /** 分组详情接口返回的成员设备 ID 集合 */
   deviceIds?: (string | number)[]

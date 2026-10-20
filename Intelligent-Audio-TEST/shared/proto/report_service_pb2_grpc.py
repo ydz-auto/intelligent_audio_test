@@ -195,6 +195,26 @@ class ReportConfigServiceStub:
                 request_serializer=report__service__pb2.GenerateStatisticsReportRequest.SerializeToString,
                 response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
                 _registered_method=True)
+        self.CreateReportShare = channel.unary_unary(
+                '/report.ReportConfigService/CreateReportShare',
+                request_serializer=report__service__pb2.CreateReportShareRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
+        self.ListReportShares = channel.unary_unary(
+                '/report.ReportConfigService/ListReportShares',
+                request_serializer=report__service__pb2.ListReportSharesRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
+        self.RevokeReportShare = channel.unary_unary(
+                '/report.ReportConfigService/RevokeReportShare',
+                request_serializer=report__service__pb2.RevokeReportShareRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
+        self.GetSharedReport = channel.unary_unary(
+                '/report.ReportConfigService/GetSharedReport',
+                request_serializer=report__service__pb2.GetSharedReportRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
 
 
 class ReportConfigServiceServicer:
@@ -431,6 +451,37 @@ class ReportConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def CreateReportShare(self, request, context):
+        """---- 报告分享（INT-971：生成/列表/撤销/公开读取）----
+        POST /reports/{id}/share：创建分享（token 服务端生成；recipients 为网关已解析的
+        [{user_id, label}] 列表；password 非空落哈希，响应只回 password_set）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListReportShares(self, request, context):
+        """GET /reports/{id}/share：分享管理与统计列表（按 created_at 倒序）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RevokeReportShare(self, request, context):
+        """DELETE /reports/{id}/share/{token}：软撤销（幂等：已撤销再次撤销仍 200）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetSharedReport(self, request, context):
+        """GET /reports/shared/{token}：公开读取（handler 自校验 access/密码/过期；
+        200 时原子递增 visits——访问统计唯一入口；错误经 code 透出 404/410/401/403）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ReportConfigServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -592,6 +643,26 @@ def add_ReportConfigServiceServicer_to_server(servicer, server):
             'GenerateStatisticsReport': grpc.unary_unary_rpc_method_handler(
                     servicer.GenerateStatisticsReport,
                     request_deserializer=report__service__pb2.GenerateStatisticsReportRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'CreateReportShare': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateReportShare,
+                    request_deserializer=report__service__pb2.CreateReportShareRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'ListReportShares': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListReportShares,
+                    request_deserializer=report__service__pb2.ListReportSharesRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'RevokeReportShare': grpc.unary_unary_rpc_method_handler(
+                    servicer.RevokeReportShare,
+                    request_deserializer=report__service__pb2.RevokeReportShareRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'GetSharedReport': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetSharedReport,
+                    request_deserializer=report__service__pb2.GetSharedReportRequest.FromString,
                     response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
             ),
     }
@@ -1459,6 +1530,114 @@ class ReportConfigService:
             target,
             '/report.ReportConfigService/GenerateStatisticsReport',
             report__service__pb2.GenerateStatisticsReportRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateReportShare(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/CreateReportShare',
+            report__service__pb2.CreateReportShareRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListReportShares(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/ListReportShares',
+            report__service__pb2.ListReportSharesRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RevokeReportShare(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/RevokeReportShare',
+            report__service__pb2.RevokeReportShareRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetSharedReport(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/GetSharedReport',
+            report__service__pb2.GetSharedReportRequest.SerializeToString,
             report__service__pb2.ReportConfigResponse.FromString,
             options,
             channel_credentials,

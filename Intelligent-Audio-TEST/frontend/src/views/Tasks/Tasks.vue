@@ -270,18 +270,21 @@
             :total-pages="totalPages"
             :actions="taskActions"
             :search-query="searchTerm"
+            :is-loading="isLoading"
+            :error="error"
             @toggle-selection="toggleTaskSelection"
             @action="handleTaskAction"
             @name-updated="handleNameUpdated"
             @page-change="handlePageChange"
             @page-size-change="handlePageSizeChange"
+            @retry="fetchTasks"
           />
         </div>
         </template>
 
         <!-- 已发布任务面板 -->
         <template v-else-if="activeTab === 'published'">
-          <PublishedTaskPanel ref="publishedPanelRef" :pt="published" />
+          <PublishedTaskPanel ref="publishedPanelRef" :pt="published" @task-action="handleTaskAction" />
         </template>
 
         <!-- 挑选合并面板（INT-577：统一容器页签，merged ∪ cherry_pick + 合并方式 facet + 页内四步向导） -->
@@ -509,6 +512,9 @@ const {
   isFavorite,
   favoriteIds,
   batchPurge,
+  // INT-288：列表加载态 / 错误态（TaskListWithPagination 错误条 + 重试）
+  isLoading,
+  error,
   // INT-423/467：可见性筛选
   visibilityFilter,
   handleTaskVisibilityFilterChange,

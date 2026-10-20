@@ -129,6 +129,7 @@ class ReportFavoriteTrashRepository:
         from report_service.infrastructure.persistence.models import (
             Report, ReportSummary, ReportSummaryMeta, ReportRawData,
             ReportCase, ReportMetricStats, ReportComparisonMatrix, ReportFavorite,
+            ReportShare,
         )
         ids = [int(i) for i in report_ids]
         rows = session.query(
@@ -141,6 +142,13 @@ class ReportFavoriteTrashRepository:
         for model in (ReportSummary, ReportSummaryMeta, ReportRawData,
                       ReportCase, ReportMetricStats, ReportComparisonMatrix):
             session.query(model).filter(model.report_id.in_(purgeable)).delete(
+                synchronize_session=False)
+        # INT-971 报告分享：部分建表测试环境可能未建 report_shares，has_table 守卫
+        from sqlalchemy import inspect
+        from shared.models.database import get_engine
+        if inspect(get_engine()).has_table(ReportShare.__tablename__):
+            session.query(ReportShare).filter(
+                ReportShare.report_id.in_(purgeable)).delete(
                 synchronize_session=False)
         session.query(ReportFavorite).filter(
             ReportFavorite.entity_type == EntityType.REPORT.value,

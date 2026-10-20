@@ -13,5 +13,5 @@ class Config(BaseConfig):
     - gRPC: 50067
     """
     PORT = int(os.environ.get('PORT', 5007))
-    GRPC_PORT = int(os.environ.get('GRPC_PORT', 50067))
+    GRPC_PORT = int(os.environ.get('GRPC_PORT', 51067))
     SERVICE_NAME = 'algorithm_service'

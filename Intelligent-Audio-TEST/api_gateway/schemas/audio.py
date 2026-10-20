@@ -31,6 +31,9 @@ class AudioItem(APIModel):
     annotations: List[Dict] = Field(default_factory=list)
     created_at: Optional[str] = Field(None)
     updated_at: Optional[str] = Field(None)
+    # INT-423/466：资源可见性与归属人（前端徽标 + 路由层 owner 校验）
+    visibility: Optional[str] = Field(None)
+    created_by_user_id: Optional[int] = Field(None)
 
 
 class AudioListStats(APIModel):
@@ -242,6 +245,18 @@ class ConvertFormatRequest(APIModel):
         return s
 
 
+class AudioProcessRequest(APIModel):
+    """音频处理请求（INT-820 §3.3.2 处理：降噪/增益/剪辑）。
+
+    mode 默认 new：生成新文件并创建新音频记录；overwrite：更新原记录 file_path。
+    """
+    operation: str = Field(...)
+    mode: Optional[str] = Field('new')
+    gain_db: Optional[float] = Field(0.0)
+    start_ms: Optional[int] = Field(0)
+    end_ms: Optional[int] = Field(None)
+
+
 class BatchActionRequest(APIModel):
     audio_ids: List[int] = Field(...)
     action: str = Field(...)
@@ -275,6 +290,30 @@ class UpdateMetadataRequest(APIModel):
 
 class AudioItemWithAlgorithms(AudioItem):
     algorithms: List[AudioAlgorithmRelationItem] = Field(default_factory=list)
+
+
+class PlaybackHistoryItem(APIModel):
+    """音频播放历史条目（INT-782#2；字段与 React audio-playback-history-dialog 期望一致）"""
+    id: int = Field(...)
+    audio_id: int = Field(...)
+    testcase_id: Optional[str] = Field(None)
+    testcase_name: Optional[str] = Field(None)
+    device_id: Optional[str] = Field(None)
+    device_name: str = Field(...)
+    result: str = Field('success')
+    duration: Optional[float] = Field(None)
+    source: str = Field('preview')
+    played_at: Optional[str] = Field(None)
+
+
+class PlaybackHistoryListData(PaginatedData[PlaybackHistoryItem]):
+    """播放历史分页列表（INT-297 信封统一）"""
+
+
+class PlaybackHistoryQuery(APIModel):
+    """播放历史分页查询参数"""
+    page: int = Field(1)
+    per_page: int = Field(10)
 
 
 class UpdateAudioAlgorithmsRequest(APIModel):

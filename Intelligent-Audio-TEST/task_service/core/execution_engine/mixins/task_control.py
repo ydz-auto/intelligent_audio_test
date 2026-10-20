@@ -61,9 +61,16 @@ class TaskControlMixin:
         finally:
             local_db_session.close()
 
-        # 检查是否可以立即执行
+        # INT-418：收窄 queue_lock 至纯决策段（队列查重/互斥判定/槽位抢占），
+        # gRPC 注册与 DB CAS 移出锁外。原实现锁横跨 gRPC+CAS 全路径，CAS
+        # 失败回滚分支在同一持锁线程上重入非重入 threading.Lock → 自死锁，
+        # 任务启动链路与 DB 兜底调度整体瘫痪（INT-321 py-spy 实锤）。
+        can_run = False
         with self.queue_lock:
-            can_run = False
+            # 槽位在途（本进程另一 start/调度线程正在启动同一任务）→ 幂等拒绝，
+            # 防止并发抢占下 CAS 输家误释放胜者槽位（破坏 e2e 单飞/API 互斥）
+            if task_id in self.running_tasks:
+                return False, "任务已在启动中"
 
             # 物理用例占 e2e 单飞槽位；API 用例要求同 API 不重叠
             if has_physical and self.running_e2e:
@@ -74,61 +81,12 @@ class TaskControlMixin:
                 can_run = True
 
             if can_run:
-                # 可以立即执行，创建停止和暂停事件
-                stop_event = threading.Event()
-                pause_event = threading.Event()
-                pause_event.set()  # 初始状态为非暂停
-
-                # 创建任务完成事件（用于替代忙等待）
-                self.task_completion_events[task_id] = threading.Event()
-
-                # 注册任务控制事件（通过 gRPC 同步到 e2e_test_service）
-                _register_task_events_via_grpc(task_id, stop_event, pause_event)
-
-                # 更新运行状态
+                # 锁内抢占内存槽位；DB CAS 失败时由 _release_running_slot 回滚
                 self.running_tasks[task_id] = profile
                 if has_physical:
                     self.running_e2e = True
                 if api_ids:
                     self.running_apis.update(api_ids)
-
-                # 更新任务状态为running
-                # 多实例下用 DB 条件 UPDATE 做任务抢占 CAS，避免重复启动
-                local_db_session = get_db_session()
-                try:
-                    # CAS: 只有 pending/queued 状态才能翻转为 running
-                    claimed = local_db_session.query(Task).filter(
-                        Task.id == task_id,
-                        Task.status.in_([TaskStatus.PENDING, TaskStatus.QUEUED])
-                    ).update({Task.status: TaskStatus.RUNNING}, synchronize_session=False)
-                    if claimed != 1:
-                        # 已被其它实例抢占，回滚本地运行状态
-                        local_db_session.rollback()
-                        with self.queue_lock:
-                            self.running_tasks.pop(task_id, None)
-                            if has_physical:
-                                self.running_e2e = False
-                            if api_ids:
-                                self.running_apis.difference_update(api_ids)
-                        return False, "任务已被其它实例启动"
-                    local_db_session.commit()
-                finally:
-                    local_db_session.close()
-
-                # 创建任务执行线程（user_id 跨线程透传，INT-141）
-                from shared.infrastructure.user_context import get_current_user_id
-                thread = threading.Thread(
-                    target=self._task_thread_main,
-                    args=(task_id, stop_event, pause_event, get_current_user_id()),
-                    name=f"task-worker-{task_id}",
-                )
-                self.workers[task_id] = thread
-                self.stop_flags[task_id] = stop_event
-                self.pause_flags[task_id] = pause_event
-
-                # 启动线程
-                thread.start()
-                return True, "任务已启动"
             else:
                 if len(self.task_queue) >= self.max_queue_size:
                     return False, f"任务队列已满 ({self.max_queue_size})"
@@ -139,22 +97,66 @@ class TaskControlMixin:
                     'api_ids': api_ids,
                     'user_id': get_current_user_id(),
                 })
-            
-            # 更新任务状态为queued
-            local_db_session = get_db_session()
-            try:
-                task = local_db_session.get(Task, task_id)
-                if task:
-                    task.status = TaskStatus.QUEUED
-                    local_db_session.commit()
-            finally:
-                local_db_session.close()
-            
-            # 触发调度器立即检查
-            self.trigger_scheduler_check()
-            
-            return True, "任务已加入队列"
-    
+
+                # 更新任务状态为queued（锁内与入队保持原子，避免 _check_queue
+                # 抢先消费并置 running 后又被此处降级为 queued）
+                local_db_session = get_db_session()
+                try:
+                    task = local_db_session.get(Task, task_id)
+                    if task:
+                        task.status = TaskStatus.QUEUED
+                        local_db_session.commit()
+                finally:
+                    local_db_session.close()
+
+                # 触发调度器立即检查
+                self.trigger_scheduler_check()
+
+                return True, "任务已加入队列"
+
+        # 可以立即执行：创建停止/暂停/完成事件（锁外）
+        stop_event = threading.Event()
+        pause_event = threading.Event()
+        pause_event.set()  # 初始状态为非暂停
+        self.task_completion_events[task_id] = threading.Event()
+
+        # 多实例下用 DB 条件 UPDATE 做任务抢占 CAS，避免重复启动
+        local_db_session = get_db_session()
+        try:
+            # CAS: 只有 pending/queued 状态才能翻转为 running
+            claimed = local_db_session.query(Task).filter(
+                Task.id == task_id,
+                Task.status.in_([TaskStatus.PENDING, TaskStatus.QUEUED])
+            ).update({Task.status: TaskStatus.RUNNING}, synchronize_session=False)
+            if claimed != 1:
+                # 已被其它实例抢占，回滚本地内存槽位。此时未持 queue_lock，
+                # _release_running_slot 内部取锁 —— 原自死锁分支不复存在
+                local_db_session.rollback()
+                self._release_running_slot(task_id)
+                return False, "任务已被其它实例启动"
+            local_db_session.commit()
+        finally:
+            local_db_session.close()
+
+        # 注册任务控制事件（通过 gRPC 同步到 e2e_test_service；
+        # CAS 成功后注册，失败分支不残留无主事件）
+        _register_task_events_via_grpc(task_id, stop_event, pause_event)
+
+        # 创建任务执行线程（user_id 跨线程透传，INT-141）
+        from shared.infrastructure.user_context import get_current_user_id
+        thread = threading.Thread(
+            target=self._task_thread_main,
+            args=(task_id, stop_event, pause_event, get_current_user_id()),
+            name=f"task-worker-{task_id}",
+        )
+        self.workers[task_id] = thread
+        self.stop_flags[task_id] = stop_event
+        self.pause_flags[task_id] = pause_event
+
+        # 启动线程
+        thread.start()
+        return True, "任务已启动"
+
     def _check_queue(self):
         """检查任务队列，启动可以执行的任务，一次启动多个可执行任务"""
         # INT-40：本方法被 control_task（外层仍持有 scoped session 上的 Task

@@ -125,15 +125,22 @@ class DeviceGroup(Base):
     """设备分组模型（INT-80，区别于 task_service 的用例分组 test_case_groups）
 
     对设备进行逻辑分组，方便管理和批量操作。
+    INT-832：支持嵌套分组 —— parent_id 指向父分组（根分组为 NULL），
+    组名唯一约束按父级作用域拆分（根分组 name 唯一 / 同父子分组 (parent_id, name) 唯一）。
     """
     __tablename__ = 'device_groups'
     __table_args__ = (
         # 并发重名兜底（应用层重名检查存在 TOCTOU）：仅约束未删除分组
-        Index('uq_device_group_name_active', 'name', unique=True,
-              postgresql_where=text('deleted = false')),
+        # INT-832 嵌套后改局部唯一：根分组（parent_id IS NULL）同名互斥
+        Index('uq_device_group_root_name_active', 'name', unique=True,
+              postgresql_where=text('deleted = false AND parent_id IS NULL')),
+        # 同父下的子分组同名互斥（parent_id IS NOT NULL）
+        Index('uq_device_group_child_name_active', 'parent_id', 'name', unique=True,
+              postgresql_where=text('deleted = false AND parent_id IS NOT NULL')),
     )
     id = Column(String(50), primary_key=True, comment='分组唯一标识符 (UUID)')
     name = Column(String(100), nullable=False, index=True, comment='分组名称')
+    parent_id = Column(String(50), nullable=True, index=True, comment='父分组ID（根分组为 NULL，INT-832）')
     description = Column(Text, comment='分组描述')
     group_type = Column(String(20), nullable=False, default='test', comment='分组类型 (test: 测试设备组 / playback: 播放设备组)')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')

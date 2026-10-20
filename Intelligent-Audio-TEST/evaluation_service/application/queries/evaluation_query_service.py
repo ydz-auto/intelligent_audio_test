@@ -53,6 +53,8 @@ class EvaluationQueryService:
                     'name': cat.name,
                     'description': cat.description,
                     'icon': cat.icon,
+                    'visibility': getattr(cat, 'visibility', 'shared'),
+                    'created_by_user_id': getattr(cat, 'created_by_user_id', None),
                     'created_at': created_at_iso,
                     'updated_at': updated_at_iso,
                 })
@@ -118,6 +120,20 @@ class EvaluationQueryService:
             dim = self.repo.get_dimension(dim_id)
             if not dim or getattr(dim, 'deleted', False):
                 return {'success': False, 'message': '未找到评估维度', 'code': 404}
+            # INT-423 详情可见性：私有维度非 owner 按不存在处理（404，防探测）
+            from shared.infrastructure.user_context import (
+                get_current_user_id, get_current_user_is_admin,
+            )
+            from shared.infrastructure.visibility_filter import (
+                VisibilityDenied, check_visible,
+            )
+            try:
+                check_visible(
+                    getattr(dim, 'created_by_user_id', None),
+                    getattr(dim, 'visibility', 'shared'),
+                    get_current_user_id(), get_current_user_is_admin())
+            except VisibilityDenied:
+                return {'success': False, 'message': '未找到评估维度', 'code': 404}
 
             params = self.repo.list_dimension_params(dim.id)
             relations = self.repo.list_relations_by_dimension(dim.id)
@@ -180,6 +196,8 @@ class EvaluationQueryService:
             'agg_denominator': getattr(dim, 'agg_denominator', 'case') or 'case',
             'exclude_rounds': dim.exclude_rounds or [],
             'status': dim.status,
+            'visibility': getattr(dim, 'visibility', 'shared'),
+            'created_by_user_id': getattr(dim, 'created_by_user_id', None),
             'created_at': dim.created_at.isoformat() if dim.created_at else None,
             'updated_at': dim.updated_at.isoformat() if dim.updated_at else None,
         }

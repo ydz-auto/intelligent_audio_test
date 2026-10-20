@@ -2,7 +2,7 @@
 """audio_service 音频文件管理 PO 定义
 
 归属：audio_service（e2e 测试上下文，音频素材所有权）
-表：audios / audio_annotations / audio_tags / audio_algorithm_relations
+表：audios / audio_annotations / audio_tags / audio_algorithm_relations / audio_playback_history
 
 P5 改造：从 shared/models/models/audio_models.py 真正下沉到本服务。
 
@@ -26,6 +26,8 @@ class Audio(Base):
         Index('idx_audios_deleted', 'deleted'),
         Index('idx_audios_created_at', 'created_at'),
         Index('idx_audios_deleted_created', 'deleted', 'created_at'),
+        # INT-423 数据可见性：行级过滤高频列表表复合索引（与迁移脚本对齐）
+        Index('idx_audios_created_visibility', 'created_by_user_id', 'visibility'),
     )
     id = Column(Integer, primary_key=True, autoincrement=True, comment='音频唯一ID')
     name = Column(String(255), nullable=False, comment='音频显示名称')
@@ -46,6 +48,8 @@ class Audio(Base):
     deleted_by_user_id = Column(BigInteger, nullable=True, comment='执行删除操作的用户ID（JWT，INT-299）')
     source_language = Column(String(32), comment='源语言')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
+    visibility = Column(String(20), nullable=False, default='shared', server_default='shared',
+                        comment='数据可见性（shared/private，INT-423）')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
     created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
@@ -133,3 +137,26 @@ class AudioAlgorithmRelation(Base):
             'weight': self.weight,
             'params': self.params
         }
+
+
+class AudioPlaybackHistory(Base):
+    """音频播放历史模型 (Audio Playback History Model)
+    记录音频文件的播放历史（INT-782#2：试听 preview 落点，播放时间/测试用例/播放设备/结果/时长）。
+    """
+    __tablename__ = 'audio_playback_history'
+    __table_args__ = (
+        Index('idx_aph_audio_played_at', 'audio_id', 'created_at'),
+        Index('idx_aph_created_at', 'created_at'),
+    )
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment='主键ID')
+    audio_id = Column(Integer, ForeignKey('audios.id'), nullable=False, comment='关联音频ID')
+    testcase_id = Column(String(50), nullable=True, comment='关联测试用例ID（UUID，INT-782#2 返工；纯音频试听为空）')
+    testcase_name = Column(String(255), nullable=True, comment='测试用例名称快照')
+    device_id = Column(String(100), nullable=True, comment='播放设备标识快照（设备ID/唯一ID）')
+    device_name = Column(String(255), nullable=False, comment='播放设备名称快照')
+    result = Column(String(20), nullable=False, default='success', comment='播放结果 (success/failed)')
+    duration = Column(Float, nullable=True, comment='播放时长（秒，音频时长快照）')
+    source = Column(String(20), nullable=False, default='preview', comment='记录来源 (preview: 试听 / execution: 测试执行回放)')
+    created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='触发播放的用户ID')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='播放时间/创建时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')

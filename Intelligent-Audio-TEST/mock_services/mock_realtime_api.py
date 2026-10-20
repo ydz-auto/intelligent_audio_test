@@ -38,6 +38,7 @@ import json
 import os
 import sys
 import threading
+import time
 from dataclasses import dataclass, asdict, field
 from enum import Enum
 
@@ -75,6 +76,11 @@ class MockRealtimeBehavior:
     barge_in: bool = False
     disconnect_after_events: int = 0
     protocol_error_on_event: str = ''
+    # INT-475 输入推流中提前回话注入（验收「模型长回复时输入帧推送暂停」所需）
+    speak_during_stream: bool = False
+    speak_during_stream_after: int = 1
+    speak_during_stream_barge_in: bool = False
+    speak_during_stream_complete: bool = True
 
     def validate(self) -> None:
         if self.response_chunks < 0 or self.response_chunks > 1000:
@@ -87,13 +93,19 @@ class MockRealtimeBehavior:
                 f'非法 disconnect_after_events: {self.disconnect_after_events}（允许 0=关闭）')
         if self.chunk_interval_ms < 0 or self.chunk_interval_ms > 1000:
             raise ValueError(f'非法 chunk_interval_ms: {self.chunk_interval_ms}（允许 0~1000）')
+        if self.speak_during_stream_after < 1 or self.speak_during_stream_after > 100000:
+            raise ValueError(
+                f'非法 speak_during_stream_after: {self.speak_during_stream_after}'
+                '（允许 1~100000）')
 
     def update(self, changes: dict) -> None:
         """部分字段热更新（WS 控制帧入口），非法值 fail-closed 整体拒绝。"""
         allowed = {'session_created', 'per_frame_ack', 'auto_response',
                    'response_chunks', 'chunk_interval_ms', 'first_delta_delay_ms',
                    'answer_text', 'barge_in', 'disconnect_after_events',
-                   'protocol_error_on_event'}
+                   'protocol_error_on_event',
+                   'speak_during_stream', 'speak_during_stream_after',
+                   'speak_during_stream_barge_in', 'speak_during_stream_complete'}
         unknown = set(changes) - allowed
         if unknown:
             raise ValueError(f'未知行为字段: {sorted(unknown)}（允许 {sorted(allowed)}）')
@@ -111,6 +123,9 @@ class MockRealtimeBehavior:
             'chunk_interval_ms': int, 'first_delta_delay_ms': int,
             'answer_text': str, 'barge_in': _env_bool,
             'disconnect_after_events': int, 'protocol_error_on_event': str,
+            'speak_during_stream': _env_bool, 'speak_during_stream_after': int,
+            'speak_during_stream_barge_in': _env_bool,
+            'speak_during_stream_complete': _env_bool,
         }
         kwargs = {}
         for key, cast in mapping.items():
@@ -138,15 +153,25 @@ class MockRealtimeState:
     sent: dict = field(default_factory=dict)       # 服务端发出事件类型 -> 次数
     connections: int = 0
     responses_streamed: int = 0
+    received_timeline: list = field(default_factory=list)  # {'type','ts'} 客户端→mock 事件时间序
+    sent_timeline: list = field(default_factory=list)      # {'type','ts'} mock→客户端 事件时间序
     lock: threading.Lock = field(default_factory=threading.Lock)
 
     def record_received(self, event_type: str) -> None:
         with self.lock:
             self.received.append(event_type)
 
+    def record_received_at(self, event_type: str, ts: float) -> None:
+        with self.lock:
+            self.received_timeline.append({'type': event_type, 'ts': ts})
+
     def record_sent(self, event_type: str) -> None:
         with self.lock:
             self.sent[event_type] = self.sent.get(event_type, 0) + 1
+
+    def record_sent_at(self, event_type: str, ts: float) -> None:
+        with self.lock:
+            self.sent_timeline.append({'type': event_type, 'ts': ts})
 
     def snapshot(self) -> dict:
         with self.lock:
@@ -155,6 +180,8 @@ class MockRealtimeState:
                 'sent': dict(self.sent),
                 'connections': self.connections,
                 'responses_streamed': self.responses_streamed,
+                'received_timeline': list(self.received_timeline),
+                'sent_timeline': list(self.sent_timeline),
             }
 
     def reset(self) -> None:
@@ -163,15 +190,19 @@ class MockRealtimeState:
             self.sent.clear()
             self.connections = 0
             self.responses_streamed = 0
+            self.received_timeline.clear()
+            self.sent_timeline.clear()
 
 
 class MockRealtimeSession:
-    """单连接会话状态（响应流计数 / barge-in 预置标记）。"""
+    """单连接会话状态（响应流计数 / barge-in 预置标记 / 提前回话收口标记）。"""
 
     def __init__(self):
         self.append_seq = 0
         self.commits = 0
         self.barge_in_prequeued = False
+        self.response_streamed = False   # 当前输入周期是否已流式回复（commit 复用判定）
+        self.speak_during_stream_fired = False  # 提前回话注入是否已触发（每连接一次）
         self.events_in_connection = 0
 
 
@@ -192,6 +223,7 @@ class MockRealtimeService:
                 etype = str(event.get('type') or '')
                 session.events_in_connection += 1
                 self.state.record_received(etype)
+                self.state.record_received_at(etype, time.time())
 
                 if etype == CONTROL_EVENT_TYPE:
                     await self._handle_control(ws, event)
@@ -209,7 +241,7 @@ class MockRealtimeService:
                     await self._handle_commit(ws, session)
                 elif etype == 'response.create':
                     if self.behavior.auto_response:
-                        await self._stream_response(ws)
+                        await self._stream_response(ws, session)
                 # 其余客户端事件：记录后忽略（对齐厂商宽松语义）
 
                 if self._should_disconnect(session):
@@ -235,12 +267,20 @@ class MockRealtimeService:
             'seq': session.append_seq,
             'bytes': len(base64.b64decode(audio)) if audio else 0,
         })
+        # INT-475 提前回话注入：输入推流中（commit 前）模型提前回话，
+        # 供 WAIT_TURN_END / ALLOW_BARGE_IN 时序验收（每连接触发一次）。
+        if (self.behavior.speak_during_stream and not session.speak_during_stream_fired
+                and session.append_seq >= self.behavior.speak_during_stream_after):
+            session.speak_during_stream_fired = True
+            await self._stream_response(ws, session, during_stream=True)
 
     async def _handle_commit(self, ws, session: MockRealtimeSession) -> None:
         session.commits += 1
         await self._send(ws, {'type': 'input_audio_buffer.committed'})
-        if self.behavior.auto_response:
-            await self._stream_response(ws)
+        if self.behavior.auto_response and not session.response_streamed:
+            await self._stream_response(ws, session)
+        # 当前输入周期已收口：复位标记，下一轮输入（新 commit）允许重新响应
+        session.response_streamed = False
         if self.behavior.barge_in and not session.barge_in_prequeued:
             # 预置"AI 正在说话 + 打断"事件序列（对齐既有集成测试伪厂商模式，
             # 供下一轮打断轮 wait_ai_speaking / barge-in 窗口消费）
@@ -250,17 +290,28 @@ class MockRealtimeService:
             await self._send(ws, {'type': 'input_audio_buffer.speech_started'})
             await self._send(ws, {'type': 'response.cancelled'})
 
-    async def _stream_response(self, ws) -> None:
-        """响应流：可选延迟 → text.delta → audio.delta × N → done（单一 done 收口）。"""
+    async def _stream_response(self, ws, session: MockRealtimeSession,
+                               during_stream: bool = False) -> None:
+        """响应流：可选延迟 → text.delta → audio.delta × N → done（单一 done 收口）。
+
+        during_stream=True（INT-475 提前回话）：可携带打断信号（speech_started +
+        cancelled，供 ALLOW_BARGE_IN 验收）；done 是否发出由
+        speak_during_stream_complete 决定（False 模拟长回复未收口，供超时兜底验收）。
+        """
         behavior = self.behavior
         if behavior.first_delta_delay_ms > 0:
             await asyncio.sleep(behavior.first_delta_delay_ms / 1000.0)
+        if during_stream and behavior.speak_during_stream_barge_in:
+            await self._send(ws, {'type': 'input_audio_buffer.speech_started'})
+            await self._send(ws, {'type': 'response.cancelled'})
         await self._send(ws, {'type': 'response.text.delta', 'delta': behavior.answer_text})
         for index in range(behavior.response_chunks):
             await self._send(ws, {'type': 'response.audio.delta', 'delta': _pcm_delta_b64()})
             if index < behavior.response_chunks - 1 and behavior.chunk_interval_ms > 0:
                 await asyncio.sleep(behavior.chunk_interval_ms / 1000.0)
-        await self._send(ws, {'type': 'response.done'})
+        if (not during_stream) or behavior.speak_during_stream_complete:
+            await self._send(ws, {'type': 'response.done'})
+        session.response_streamed = True
         self.state.responses_streamed += 1
 
     # ---- 注入判定 ----
@@ -295,6 +346,7 @@ class MockRealtimeService:
     async def _send(self, ws, payload: dict) -> None:
         await ws.send(json.dumps(payload, ensure_ascii=False))
         self.state.record_sent(str(payload.get('type') or ''))
+        self.state.record_sent_at(str(payload.get('type') or ''), time.time())
 
     def snapshot(self) -> dict:
         return {'behavior': asdict(self.behavior), 'state': self.state.snapshot()}
@@ -337,19 +389,39 @@ class MockRealtimeServer:
             self._started.set()
             await self._server.serve_forever()
 
+        def _run():
+            try:
+                self._loop.run_until_complete(serve())
+            except Exception:
+                # stop() 强制收口时 serve_forever 中途退出属预期，不抛线程异常
+                pass
+
         self._loop = asyncio.new_event_loop()
         self._thread = threading.Thread(
-            target=self._loop.run_until_complete, args=(serve(),), daemon=True,
+            target=_run, daemon=True,
             name='mock-realtime-api')
         self._thread.start()
         assert self._started.wait(timeout=5), 'mock realtime 服务器启动超时'
 
     def stop(self):
+        """停止 mock 服务器（宿主环境容错，不阻塞测试）。
+
+        wait_closed 在 hypium/devicetest（nest_asyncio 类 asyncio 补丁）下永不收敛，
+        故仅 close 不强等；线程未退出（连接处理器仍在收尾）时强制停循环线程
+        （daemon 线程随进程退出回收）。
+        """
         if self._server is not None and self._loop is not None:
-            async def _close():
-                self._server.close()
-                await self._server.wait_closed()
-            asyncio.run_coroutine_threadsafe(_close(), self._loop).result(timeout=5)
+            try:
+                async def _close():
+                    self._server.close()
+                asyncio.run_coroutine_threadsafe(_close(), self._loop).result(timeout=3)
+            except Exception:
+                pass
+            if self._thread is not None and self._thread.is_alive():
+                try:
+                    self._loop.call_soon_threadsafe(self._loop.stop)
+                except Exception:
+                    pass
         if self._thread is not None:
             self._thread.join(timeout=5)
 
@@ -382,6 +454,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--barge-in', action='store_true')
     parser.add_argument('--disconnect-after-events', type=int)
     parser.add_argument('--protocol-error-on-event')
+    parser.add_argument('--speak-during-stream', action='store_true')
+    parser.add_argument('--speak-during-stream-after', type=int)
+    parser.add_argument('--speak-during-stream-barge-in', action='store_true')
+    parser.add_argument('--no-speak-during-stream-complete', action='store_true')
     return parser
 
 
@@ -410,6 +486,14 @@ def main(argv=None) -> int:
         cli_changes['disconnect_after_events'] = args.disconnect_after_events
     if args.protocol_error_on_event is not None:
         cli_changes['protocol_error_on_event'] = args.protocol_error_on_event
+    if args.speak_during_stream:
+        cli_changes['speak_during_stream'] = True
+    if args.speak_during_stream_after is not None:
+        cli_changes['speak_during_stream_after'] = args.speak_during_stream_after
+    if args.speak_during_stream_barge_in:
+        cli_changes['speak_during_stream_barge_in'] = True
+    if args.no_speak_during_stream_complete:
+        cli_changes['speak_during_stream_complete'] = False
     if cli_changes:
         behavior.update(cli_changes)
 
