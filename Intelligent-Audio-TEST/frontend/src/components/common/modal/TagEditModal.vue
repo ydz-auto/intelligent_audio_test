@@ -252,7 +252,7 @@ input[type="color"] {
 }
 
 .btn-secondary {
-  background: var(--btn-secondary-bg, var(--color-slate-100));
+  background: var(--secondary-btn-bg, var(--color-slate-100));
   color: var(--muted-foreground, var(--color-slate-600));
   border: 1px solid var(--border, var(--color-slate-200));
 }

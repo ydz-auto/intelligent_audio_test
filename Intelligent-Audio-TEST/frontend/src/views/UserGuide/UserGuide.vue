@@ -339,7 +339,7 @@ onBeforeUnmount(() => {
 .code-pre {
   margin: 0;
   padding: 16px;
-  background: var(--foreground-deep, #1a1a1a);
+  background: var(--color-foreground-deep, #1a1a1a);
   color: #e6edf3;
   overflow-x: auto;
   font-family: var(--font-mono);

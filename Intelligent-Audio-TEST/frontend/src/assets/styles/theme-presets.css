@@ -61,6 +61,7 @@
   --warning-light: rgba(255, 169, 64, 0.1);
   --warning-dark: #d48806;
   --destructive-light: rgba(245, 34, 45, 0.1);
+  --danger-dark: #dc2626; /* 危险按钮 hover 深红（原 AudioListComponent .btn-danger:hover 未定义引用，INT-772 补正源） */
   /* 收藏星标色（INT-215：收敛三视图魔法色 #f5a623，取 amber 标度） */
   --favorite-star: var(--color-amber-500);
 
@@ -172,5 +173,6 @@
   --btn-primary-hover-color: #ffa05c;
   --btn-primary-disabled-bg: #3a3a3a;
   --btn-secondary-hover-bg: #444444;
+  --danger-dark: #ff6b70; /* 危险按钮 hover 深红（深色预设，INT-772 补正源） */
   --danger-required: #ff6b70;
 }

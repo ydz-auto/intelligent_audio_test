@@ -176,11 +176,11 @@ export default {
 
 .btn-primary {
   background: var(--primary-gradient);
-  color: var(--white-color);
+  color: var(--color-white);
 }
 
 .btn-secondary {
-  background: var(--btn-secondary-bg);
+  background: var(--secondary-btn-bg);
   color: var(--foreground);
   border: 1px solid var(--border);
 }
@@ -199,7 +199,7 @@ export default {
 
 .btn-warning:hover {
   background: var(--warning);
-  color: var(--white-color);
+  color: var(--color-white);
 }
 
 .btn-danger {
@@ -210,6 +210,6 @@ export default {
 
 .btn-danger:hover {
   background: var(--destructive);
-  color: var(--white-color);
+  color: var(--color-white);
 }
 </style>

@@ -42,7 +42,7 @@
   padding: 8px 12px;
   border: 2px solid var(--border);
   border-radius: var(--radius-control);
-  background: var(--white-color);
+  background: var(--color-white);
   cursor: pointer;
   transition: all var(--transition-fast);
 }
@@ -108,7 +108,7 @@
 }
 
 .dropdown-menu {
-  background: var(--white-color);
+  background: var(--color-white);
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
   box-shadow: var(--shadow-lg);
@@ -205,7 +205,7 @@
   font-size: 11px;
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
-  background: var(--white-color);
+  background: var(--color-white);
   color: var(--muted-foreground);
   cursor: pointer;
   transition: all var(--transition-fast);

@@ -1023,7 +1023,7 @@ function handleRemove(record: any) {
   background: var(--primary-gradient);
   color: var(--color-white);
 }
-.form-input-sm { width: 100%; padding: var(--spacing-xs) var(--spacing-sm); font-size: var(--font-size-sm); height: 32px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--white-color); color: var(--foreground); transition: all var(--transition-fast); }
+.form-input-sm { width: 100%; padding: var(--spacing-xs) var(--spacing-sm); font-size: var(--font-size-sm); height: 32px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--color-white); color: var(--foreground); transition: all var(--transition-fast); }
 .form-input-sm:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px var(--accent); }
 .form-input-sm::placeholder { color: var(--muted-foreground); }
 .btn-danger { color: var(--destructive); }

@@ -56,7 +56,7 @@
 
 .view-toggle .btn.active {
   background-color: var(--primary);
-  color: var(--white-color);
+  color: var(--color-white);
   box-shadow: var(--shadow-sm);
 }
 
@@ -346,7 +346,7 @@
 .filter-actions .btn-primary {
   background: var(--primary-gradient);
   border: none;
-  color: var(--white-color);
+  color: var(--color-white);
 }
 
 .filter-actions .btn-secondary {
@@ -635,7 +635,7 @@
 .btn-primary {
   background: var(--primary-gradient);
   border: none;
-  color: var(--white-color);
+  color: var(--color-white);
   border-radius: var(--radius-control);
   transition: all var(--transition-normal);
   box-shadow: var(--shadow-sm);
@@ -666,7 +666,7 @@
 .btn-danger {
   background-color: var(--destructive);
   border: none;
-  color: var(--white-color);
+  color: var(--color-white);
   border-radius: var(--radius-control);
   transition: all var(--transition-normal);
   box-shadow: var(--shadow-sm);
