@@ -74,7 +74,7 @@ const modeOptions: Array<{ value: ThemeMode; label: string }> = [
 <style scoped>
 .axis-section {
   padding: var(--spacing-md) 0;
-  border-bottom: 1px solid var(--gray-light-color);
+  border-bottom: 1px solid var(--gray-light);
 }
 
 .axis-section:last-child {
@@ -96,12 +96,12 @@ const modeOptions: Array<{ value: ThemeMode; label: string }> = [
 
 .axis-reset {
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   cursor: pointer;
 }
 
 .axis-reset:hover {
-  color: var(--primary-color);
+  color: var(--primary);
 }
 
 .axis-options {
@@ -114,8 +114,8 @@ const modeOptions: Array<{ value: ThemeMode; label: string }> = [
   align-items: center;
   gap: 6px;
   padding: var(--spacing-sm) var(--spacing-md);
-  border: 1px solid var(--gray-light-color);
-  border-radius: var(--border-radius-md);
+  border: 1px solid var(--gray-light);
+  border-radius: var(--radius-md);
   cursor: pointer;
   font-size: 14px;
   color: var(--foreground);
@@ -123,13 +123,13 @@ const modeOptions: Array<{ value: ThemeMode; label: string }> = [
 }
 
 .axis-option:hover {
-  border-color: var(--primary-color);
+  border-color: var(--primary);
 }
 
 .axis-option.selected {
-  border-color: var(--primary-color);
-  background: var(--primary-light);
-  color: var(--primary-color);
+  border-color: var(--primary);
+  background: var(--accent);
+  color: var(--primary);
 }
 
 .axis-option input {
@@ -138,7 +138,7 @@ const modeOptions: Array<{ value: ThemeMode; label: string }> = [
 
 .reserved-hint {
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   margin: 0;
 }
 

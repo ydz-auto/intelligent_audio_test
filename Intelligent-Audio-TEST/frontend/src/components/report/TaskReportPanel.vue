@@ -316,14 +316,14 @@ const scrollToCaseSection = () => {
 .api-name{
     font-size: var(--font-size-lg);
     font-weight: var(--font-weight-bold);
-    color: var(--text-primary);
+    color: var(--foreground);
     margin: 0;
 }
 
 .api-name{
     font-size: var(--font-size-lg);
     font-weight: var(--font-weight-bold);
-    color: var(--text-primary);
+    color: var(--foreground);
     margin: 0;
 }
 

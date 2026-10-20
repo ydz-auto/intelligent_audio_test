@@ -78,7 +78,7 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
   border-radius: var(--radius-control);
   border: none;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 16px;
   cursor: pointer;
   display: inline-flex;
@@ -121,7 +121,7 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text-primary);
+  color: var(--foreground);
   font-size: 14px;
   cursor: pointer;
   transition: all var(--transition-fast);

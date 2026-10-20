@@ -40,8 +40,8 @@ defineEmits<{
   align-items: stretch;
   gap: 0;
   padding: 0 16px;
-  background: var(--background-primary, var(--background));
-  border-bottom: 1px solid var(--border-color, var(--border));
+  background: var(--background, var(--background));
+  border-bottom: 1px solid var(--border, var(--border));
   flex-shrink: 0;
 }
 
@@ -51,7 +51,7 @@ defineEmits<{
   gap: 8px;
   padding: 12px 18px;
   font-size: 14px;
-  color: var(--text-secondary, var(--color-gray-400));
+  color: var(--muted-foreground, var(--color-gray-400));
   cursor: pointer;
   transition: all 0.2s ease;
   white-space: nowrap;
@@ -64,16 +64,16 @@ defineEmits<{
   bottom: 0;
   width: 0;
   height: 2px;
-  background: var(--primary-color, var(--primary));
+  background: var(--primary, var(--primary));
   border-radius: var(--radius-tag);
   transform: translateX(-50%);
   transition: width 0.2s ease;
 }
 .rce-toc-item:hover {
-  color: var(--text-primary, var(--foreground));
+  color: var(--foreground, var(--foreground));
 }
 .rce-toc-item.active {
-  color: var(--primary-color, var(--primary));
+  color: var(--primary, var(--primary));
   font-weight: 600;
 }
 .rce-toc-item.active::after {
@@ -85,7 +85,7 @@ defineEmits<{
   height: 22px;
   border-radius: var(--radius-pill);
   background: var(--gray-light);
-  color: var(--text-secondary, var(--color-gray-400));
+  color: var(--muted-foreground, var(--color-gray-400));
   font-size: 12px;
   font-weight: 600;
   display: flex;
@@ -98,7 +98,7 @@ defineEmits<{
   background: var(--border);
 }
 .rce-toc-item.active .rce-toc-num {
-  background: var(--primary-color, var(--primary));
+  background: var(--primary, var(--primary));
   color: var(--background);
 }
 

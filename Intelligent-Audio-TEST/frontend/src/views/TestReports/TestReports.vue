@@ -263,7 +263,7 @@ const {
 }
 
 .tr-error-state i {
-  color: var(--warning-color);
+  color: var(--warning);
 }
 
 .tr-empty-state i {
@@ -322,12 +322,12 @@ const {
   padding: 2px 8px;
   border-radius: var(--radius-sm);
   background-color: var(--info-light);
-  color: var(--info-color);
+  color: var(--info);
 }
 
 .report-card-status.draft {
   background-color: var(--warning-light);
-  color: var(--warning-color);
+  color: var(--warning);
 }
 
 .report-card-actions,

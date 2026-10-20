@@ -113,6 +113,6 @@ const onFavoriteFilterChange = (value: boolean) => {
 }
 /* 页面标题品牌色（原内联 style 迁入，INT-739 CSS 冻结） */
 .test-case-manager .page-title {
-    color: var(--primary-color, var(--color-indigo-500));
+    color: var(--primary, var(--color-indigo-500));
 }
 </style>

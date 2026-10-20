@@ -3,7 +3,7 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <div class="header-left">
-        <h2 class="page-title" style="color: var(--primary-color);">
+        <h2 class="page-title" style="color: var(--primary);">
           <i class="fas fa-play-circle"></i>
           开始测试
         </h2>
@@ -430,9 +430,9 @@ const clearGlobalAlgorithm = () => {
 margin-bottom: 20px;
 padding: 16px;
 background: linear-gradient(135deg, var(--card) 0%, var(--muted) 100%);
-border-radius: var(--border-radius-lg);
+border-radius: var(--radius-lg);
 box-shadow: var(--shadow-sm);
-border: 1px solid var(--gray-light-color);
+border: 1px solid var(--gray-light);
 }
 
 .section-header{
@@ -463,10 +463,10 @@ border: 1px solid var(--gray-light-color);
   align-items: center;
   gap: var(--spacing-sm, 8px);
   padding: var(--spacing-sm, 8px) var(--spacing-md, 16px);
-  background: var(--primary-light, var(--secondary-light));
-  border: 1px solid var(--primary-color, var(--secondary));
-  border-radius: var(--border-radius-md);
-  color: var(--primary-color, var(--secondary));
+  background: var(--accent, var(--secondary-light));
+  border: 1px solid var(--primary, var(--secondary));
+  border-radius: var(--radius-md);
+  color: var(--primary, var(--secondary));
   font-size: var(--font-size-sm, 13px);
   margin-bottom: var(--spacing-md, 16px);
 }
@@ -482,9 +482,9 @@ border: 1px solid var(--gray-light-color);
   gap: 8px;
   padding: 6px 12px;
   background: color-mix(in srgb, var(--primary) 10%, transparent);
-  border: 1px solid var(--primary-color);
-  border-radius: var(--border-radius-full);
-  color: var(--primary-color);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-full);
+  color: var(--primary);
   font-size: 13px;
   font-weight: 500;
 }
@@ -492,7 +492,7 @@ border: 1px solid var(--gray-light-color);
 .global-algorithm-chip .chip-clear{
   background: none;
   border: none;
-  color: var(--primary-color);
+  color: var(--primary);
   cursor: pointer;
   font-size: 12px;
   padding: 0;
@@ -506,7 +506,7 @@ border: 1px solid var(--gray-light-color);
 /* step-content - 自全局样式就近迁移（语义 token，深浅两套成立） */
 .step-content{
 background-color: var(--card);
-border-radius: var(--border-radius-lg);
+border-radius: var(--radius-lg);
 box-shadow: var(--shadow-sm);
 padding: 24px;
 margin-top: 24px;

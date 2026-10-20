@@ -244,16 +244,16 @@ onMounted(() => {
 
 .archive-section {
   padding: var(--spacing-md);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-md);
-  background-color: var(--background-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background-color: var(--background);
 }
 
 .archive-section-title {
   margin: 0 0 var(--spacing-md) 0;
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
+  color: var(--foreground);
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
@@ -270,8 +270,8 @@ onMounted(() => {
   flex-direction: column;
   gap: var(--spacing-xs);
   padding: var(--spacing-sm) var(--spacing-md);
-  background-color: var(--background-secondary);
-  border-radius: var(--border-radius-md);
+  background-color: var(--muted);
+  border-radius: var(--radius-md);
 }
 
 .archive-stat--wide {
@@ -280,13 +280,13 @@ onMounted(() => {
 
 .archive-stat-label {
   font-size: var(--font-size-xs);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .archive-stat-value {
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 
 .archive-stat-value.archive-dir {
@@ -310,7 +310,7 @@ onMounted(() => {
 
 .archive-field-label {
   font-size: var(--font-size-xs);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .archive-days-input {
@@ -328,19 +328,19 @@ onMounted(() => {
   gap: var(--spacing-xs);
   padding-bottom: 8px;
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   cursor: pointer;
 }
 
 .archive-result-message {
   margin: var(--spacing-md) 0 0 0;
   font-size: var(--font-size-sm);
-  color: var(--success-color);
+  color: var(--success);
   word-break: break-all;
 }
 
 .archive-result-message.archive-error {
-  color: var(--danger-color);
+  color: var(--destructive);
 }
 
 .archive-empty-hint {
@@ -352,7 +352,7 @@ onMounted(() => {
 .archived-count-hint {
   margin: var(--spacing-md) 0 0 0;
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .archive-file-hint {

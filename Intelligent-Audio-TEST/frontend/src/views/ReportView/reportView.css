@@ -58,7 +58,7 @@
   background: var(--secondary);
   color: var(--color-white);
   border: none;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s;
@@ -139,7 +139,7 @@
 .rv-analysis-conclusion-card {
   background: var(--color-white);
   border: 1px solid var(--color-slate-200);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   padding: 24px;
   margin-bottom: 24px;
   display: flex;
@@ -150,7 +150,7 @@
   width: 48px;
   height: 48px;
   background: var(--secondary-light);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -185,7 +185,7 @@
   color: var(--color-slate-500);
   background: var(--color-slate-100);
   padding: 4px 12px;
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
 }
 
 .rv-analysis-status .rv-status-dot {
@@ -297,7 +297,7 @@
 .rv-comparison-selectors {
   background: var(--color-white);
   border: 1px solid var(--color-slate-200);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   padding: 24px;
   margin-bottom: 24px;
 }
@@ -341,7 +341,7 @@
 .rv-collapse-btn:hover {
   color: var(--color-slate-700);
   background: var(--color-slate-100);
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
 }
 
 .rv-collapse-btn.collapsed {
@@ -402,7 +402,7 @@
 .rv-device-icon-wrapper {
   width: 40px;
   height: 40px;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -469,7 +469,7 @@
   align-items: center;
   gap: 10px;
   padding: 12px 20px;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   font-size: 14px;
   color: var(--color-white);
   box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 15%, transparent);
@@ -510,7 +510,7 @@
   z-index: var(--z-index-floating);
   padding: 16px 24px;
   background: color-mix(in srgb, var(--color-white) 95%, transparent);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 15%, transparent);
   backdrop-filter: blur(10px);
   border: 1px solid color-mix(in srgb, var(--color-slate-200) 80%, transparent);

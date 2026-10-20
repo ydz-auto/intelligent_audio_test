@@ -231,7 +231,7 @@
                      @click.stop
                      :checked="tagSelectionStates[tagName]">
               <i class="fas fa-chevron-down category-toggle" :class="{ expanded: expandedTagCategories[tagName] }"></i>
-              <i class="fas fa-tag" style="color: var(--primary-color); margin-right: 6px;"></i>
+              <i class="fas fa-tag" style="color: var(--primary); margin-right: 6px;"></i>
               <h4 class="category-title">{{ tagName }}</h4>
               <span class="category-count">{{ filteredTagCases[tagName]?.length || 0 }}</span>
               <span v-if="getTagDurationStats(tagName).totalDuration > 0" class="group-duration-tags">
@@ -567,7 +567,7 @@ const handleTagAddCase = (tagName: string) => {
 
 .category-card:has(.group-checkbox:checked){
     background-color: color-mix(in srgb, var(--primary) 5%, transparent);
-    border-color: var(--primary-color);
+    border-color: var(--primary);
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent);
 }
 
@@ -586,7 +586,7 @@ const handleTagAddCase = (tagName: string) => {
 }
 
 .group-checkbox:checked ~ .category-title{
-    color: var(--primary-color);
+    color: var(--primary);
     font-weight: 700;
 }
 

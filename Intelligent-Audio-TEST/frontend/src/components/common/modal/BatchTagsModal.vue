@@ -388,7 +388,7 @@ select.form-control {
 
 .tag-item {
   background-color: var(--secondary-light);
-  color: var(--secondary-color);
+  color: var(--secondary);
   padding: 4px 10px;
   border-radius: var(--radius-pill);
   font-size: 12px;
@@ -410,7 +410,7 @@ select.form-control {
 .tag-remove {
   background: none;
   border: none;
-  color: var(--secondary-color);
+  color: var(--secondary);
   cursor: pointer;
   font-size: 12px;
   padding: 0;
@@ -422,7 +422,7 @@ select.form-control {
 }
 
 .tag-remove:hover {
-  color: var(--secondary-dark);
+  color: var(--secondary-deep);
 }
 
 .existing-tags {
@@ -445,12 +445,12 @@ select.form-control {
 
 .existing-tag:hover {
   background-color: var(--secondary-light);
-  border-color: var(--secondary-color);
+  border-color: var(--secondary);
 }
 
 .existing-tag.selected {
   background-color: var(--secondary-light);
-  border-color: var(--secondary-color);
+  border-color: var(--secondary);
 }
 
 .mt-2 {

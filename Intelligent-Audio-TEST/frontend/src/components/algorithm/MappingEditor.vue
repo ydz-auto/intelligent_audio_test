@@ -146,13 +146,14 @@
             <td :colspan="colspanCount" class="empty-row">无匹配映射</td>
           </tr>
           <template v-else v-for="(record, index) in displayRows" :key="record.__isGroupHeader ? `group-${record.__dimensionKey}` : (record.__isGroupFooter ? `group-footer-${record.__dimensionKey}` : (record.id || `${record.source || ''}-${record.sourceParam}-${record.targetParam}-${record.dimensionId || ''}`))">
-            <tr v-if="record.__isGroupHeader" class="dimension-group-header-row">
+            <tr v-if="record.__isGroupHeader" class="dimension-group-header-row" @click="toggleGroupCollapsed(record.__dimensionKey)">
               <td :colspan="colspanCount">
-                <span class="dimension-group-title">
-                  <i class="fas fa-layer-group dimension-group-icon"></i>
+                <div class="dimension-group-header-inner">
+                  <i class="fas fa-chevron-down dimension-group-toggle" :class="{ collapsed: isGroupCollapsed(record.__dimensionKey) }"></i>
+                  <i class="fas fa-folder dimension-group-icon"></i>
                   <span class="dimension-group-name">{{ record.__dimensionName }}</span>
-                  <span class="dimension-group-count">共 {{ record.__count }} 条</span>
-                </span>
+                  <span class="dimension-group-count">{{ record.__count }}</span>
+                </div>
               </td>
             </tr>
             <tr v-else-if="record.__isGroupFooter" class="add-row dimension-group-add-row" @click="handleAdd(record.__dimensionId)">
@@ -349,6 +350,8 @@ const viewMode = ref<'flat' | 'dimension'>('dimension')
 // 分页状态
 const currentPage = ref(1)
 const pageSize = ref(10)
+// 评估维度视图下被折叠的分组（dimensionKey 集合），缺省默认展开
+const collapsedGroups = ref<Set<string>>(new Set())
 
 const colspanCount = computed(() => (props.componentType === 'evaluation' ? 7 : 6))
 
@@ -414,6 +417,8 @@ const displayRows = computed(() => {
         __dimensionName: dimensionNameForGroup(key),
         __count: mappings.length
       })
+      // 折叠的分组不展示其映射行与"添加映射"尾行
+      if (collapsedGroups.value.has(key)) continue
       rows.push(...mappings)
       // 分组末尾追加整行"添加映射"按钮
       rows.push({
@@ -453,6 +458,21 @@ function handleNextPage() {
 function switchViewMode(mode: 'flat' | 'dimension') {
   viewMode.value = mode
   currentPage.value = 1
+}
+
+// 评估维度视图：折叠/展开分组
+function isGroupCollapsed(key: string): boolean {
+  return collapsedGroups.value.has(key)
+}
+
+function toggleGroupCollapsed(key: string) {
+  const next = new Set(collapsedGroups.value)
+  if (next.has(key)) {
+    next.delete(key)
+  } else {
+    next.add(key)
+  }
+  collapsedGroups.value = next
 }
 
 // 过滤条件/映射数据变化时回到第一页
@@ -847,10 +867,10 @@ function handleRemove(record: any) {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-full);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
   padding: 3px;
-  background: var(--background-secondary);
+  background: var(--muted);
   box-shadow: inset 0 1px 2px color-mix(in srgb, var(--color-black) 4%, transparent);
 }
 .view-mode-tab {
@@ -860,9 +880,9 @@ function handleRemove(record: any) {
   padding: 5px 14px;
   border: none;
   background: transparent;
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-full);
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   cursor: pointer;
   transition: all var(--transition-fast);
   white-space: nowrap;
@@ -871,7 +891,7 @@ function handleRemove(record: any) {
   font-size: 12px;
 }
 .view-mode-tab:hover {
-  color: var(--primary-color);
+  color: var(--primary);
   background: color-mix(in srgb, var(--color-indigo-500) 8%, transparent);
 }
 .view-mode-tab.active {
@@ -880,47 +900,80 @@ function handleRemove(record: any) {
   box-shadow: 0 2px 6px color-mix(in srgb, var(--color-indigo-500) 35%, transparent);
 }
 
-/* 评估维度分组头行 */
+/* 评估维度分组头行（参考 Evaluation 分组视图卡片头样式：渐变底 + 折叠 chevron + folder 图标 + count 徽章） */
 /* V9.7.10 792b3de7 补差：分组头 td 是该行唯一单元格（即 :last-child），
    会被全局 .data-table td:last-child 的 display:flex 压出表格布局导致 colspan 塌缩，
    这里恢复 table-cell 布局让 colspan 生效（与组尾 .add-row td 同一修复口径） */
 .dimension-group-header-row td {
+  padding: 0 !important;
   display: table-cell !important;
   min-width: 0 !important;
-  background: var(--primary-light) !important;
-  font-weight: var(--font-weight-medium);
-  color: var(--primary-color);
-  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
   white-space: normal;
   overflow: visible;
-  text-overflow: clip;
+  cursor: pointer;
+}
+.dimension-group-header-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #eef1f5 100%);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.3s ease;
+}
+.dimension-group-header-row:hover .dimension-group-header-inner {
+  background: linear-gradient(135deg, #eef1f5 0%, #e2e6ea 100%);
+}
+.dimension-group-toggle {
+  color: var(--text-light, #999);
+  font-size: 13px;
+  transition: transform 0.25s ease;
+  flex-shrink: 0;
+}
+.dimension-group-toggle.collapsed {
+  transform: rotate(-90deg);
 }
 .dimension-group-icon {
-  margin-right: 6px;
-  font-size: 12px;
+  color: var(--primary);
+  font-size: 16px;
+  flex-shrink: 0;
 }
 .dimension-group-name {
-  font-size: var(--font-size-sm);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .dimension-group-count {
-  margin-left: 8px;
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
+  background-color: var(--primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 10px;
+  border-radius: 12px;
+  min-width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 /* 分组末尾整行添加按钮 */
 .dimension-group-add-row td {
-  background: var(--background-secondary) !important;
-  color: var(--text-secondary);
-  border-top: 1px dashed var(--border-color);
+  background: var(--muted) !important;
+  color: var(--muted-foreground);
+  border-top: 1px dashed var(--border);
 }
 .dimension-group-add-row:hover td {
-  background: var(--primary-light) !important;
-  color: var(--primary-color);
+  background: var(--accent) !important;
+  color: var(--primary);
 }
 .dimension-group-add-row .add-row-icon {
-  background: var(--primary-light);
-  color: var(--primary-color);
+  background: var(--accent);
+  color: var(--primary);
 }
 .dimension-group-add-row:hover .add-row-icon {
   background: var(--primary-gradient); /* 去掉死回退（同 .view-mode-tab.active） */
@@ -958,11 +1011,11 @@ function handleRemove(record: any) {
 
 .table-container { overflow-x: auto; }
 .data-table { width: 100%; border-collapse: collapse; font-size: var(--font-size-sm); }
-.data-table th, .data-table td { padding: var(--spacing-sm); text-align: left; border-bottom: 1px solid var(--border-color); }
-.data-table th { background: var(--background-secondary); font-weight: var(--font-weight-medium); color: var(--text-secondary); }
-.data-table tbody tr:hover { background: var(--background-hover); }
-.empty-row { text-align: center; color: var(--text-muted); padding: var(--spacing-lg); }
-.param-name-cell { color: var(--text-secondary); font-size: var(--font-size-sm); }
+.data-table th, .data-table td { padding: var(--spacing-sm); text-align: left; border-bottom: 1px solid var(--border); }
+.data-table th { background: var(--muted); font-weight: var(--font-weight-medium); color: var(--muted-foreground); }
+.data-table tbody tr:hover { background: var(--gray-light); }
+.empty-row { text-align: center; color: var(--muted-foreground); padding: var(--spacing-lg); }
+.param-name-cell { color: var(--muted-foreground); font-size: var(--font-size-sm); }
 
 /* 表格底部"添加"行：整行可点击 */
 .add-row {
@@ -984,11 +1037,11 @@ function handleRemove(record: any) {
 }
 
 .add-row:hover td {
-  background: var(--primary-light);
+  background: var(--accent);
 }
 
 .add-row:active td {
-  background: var(--primary-light);
+  background: var(--accent);
 }
 
 .add-row-content {
@@ -996,7 +1049,7 @@ function handleRemove(record: any) {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
   transition: color var(--transition-normal);
@@ -1008,24 +1061,24 @@ function handleRemove(record: any) {
   justify-content: center;
   width: 22px;
   height: 22px;
-  border-radius: var(--border-radius-full);
-  background: var(--primary-light);
-  color: var(--primary-color);
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: var(--primary);
   font-size: 11px;
   transition: all var(--transition-normal);
 }
 
 .add-row:hover .add-row-content {
-  color: var(--primary-color);
+  color: var(--primary);
 }
 
 .add-row:hover .add-row-icon {
   background: var(--primary-gradient);
   color: var(--color-white);
 }
-.form-input-sm { width: 100%; padding: var(--spacing-xs) var(--spacing-sm); font-size: var(--font-size-sm); height: 32px; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); background: var(--white-color); color: var(--text-primary); transition: all var(--transition-fast); }
-.form-input-sm:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 2px var(--primary-light); }
-.form-input-sm::placeholder { color: var(--text-muted); }
-.btn-danger { color: var(--danger-color); }
-.btn-danger:hover { background: var(--danger-light); color: var(--danger-color); }
+.form-input-sm { width: 100%; padding: var(--spacing-xs) var(--spacing-sm); font-size: var(--font-size-sm); height: 32px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--color-white); color: var(--foreground); transition: all var(--transition-fast); }
+.form-input-sm:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px var(--accent); }
+.form-input-sm::placeholder { color: var(--muted-foreground); }
+.btn-danger { color: var(--destructive); }
+.btn-danger:hover { background: var(--destructive-light); color: var(--destructive); }
 </style>

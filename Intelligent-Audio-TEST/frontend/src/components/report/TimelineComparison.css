@@ -1,6 +1,6 @@
 .timeline-comparison {
   background: var(--color-white);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   padding: 16px;
   margin-top: 16px;
 }
@@ -37,7 +37,7 @@
 .resource-select {
   padding: 4px 8px;
   border: 1px solid var(--border);
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
   font-size: 14px;
   background: var(--color-white);
   cursor: pointer;
@@ -57,7 +57,7 @@
 .speaker-select {
   padding: 4px 8px;
   border: 1px solid var(--border);
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
   font-size: 14px;
   background: var(--color-white);
   cursor: pointer;
@@ -106,7 +106,7 @@
 .zoom-btn {
   padding: 4px 8px;
   border: 1px solid var(--border);
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
   background: var(--color-white);
   cursor: pointer;
   transition: all 0.2s;
@@ -211,7 +211,7 @@
   position: relative;
   height: 28px;
   background: var(--muted);
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 

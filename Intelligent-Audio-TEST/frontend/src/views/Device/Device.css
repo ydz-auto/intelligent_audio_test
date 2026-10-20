@@ -34,6 +34,6 @@
 
 .algo-label {
   font-size: 0.85rem;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-weight: 500;
 }

@@ -171,7 +171,7 @@ const handleJump = () => {
 
 /* pagination-ellipsis - 自全局样式就近迁移 */
 .pagination-ellipsis {
-    color: var(--text-primary);
+    color: var(--foreground);
     font-size: var(--font-size-sm);
     padding: var(--spacing-xs) var(--spacing-sm);
     cursor: default;
@@ -181,17 +181,17 @@ const handleJump = () => {
 .pagination-input {
     width: 50px;
     padding: var(--spacing-xs) var(--spacing-sm);
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--border);
     border-radius: var(--radius-control);
-    background-color: var(--background-primary);
+    background-color: var(--background);
     font-size: var(--font-size-sm);
-    color: var(--text-primary);
+    color: var(--foreground);
     text-align: center;
 }
 
 .pagination-input:focus {
     outline: none;
-    border-color: var(--primary-color);
+    border-color: var(--primary);
 }
 
 </style>

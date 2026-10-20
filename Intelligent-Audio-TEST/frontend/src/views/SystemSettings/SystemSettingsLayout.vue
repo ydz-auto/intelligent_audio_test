@@ -137,7 +137,7 @@ function goDashboard() {
   width: 240px;
   flex-shrink: 0;
   background: linear-gradient(180deg, var(--background) 0%, var(--muted) 100%);
-  border-right: 1px solid var(--gray-light-color);
+  border-right: 1px solid var(--gray-light);
   padding: var(--spacing-md);
   box-sizing: border-box;
   overflow-y: auto;
@@ -151,9 +151,9 @@ function goDashboard() {
   padding: var(--spacing-md);
   margin-bottom: var(--spacing-md);
   border: none;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-medium);
   cursor: pointer;
@@ -161,8 +161,8 @@ function goDashboard() {
 }
 
 .back-to-workbench:hover {
-  color: var(--primary-color);
-  background: var(--primary-light);
+  color: var(--primary);
+  background: var(--accent);
 }
 
 .settings-group {
@@ -176,9 +176,9 @@ function goDashboard() {
   width: 100%;
   padding: var(--spacing-md);
   border: none;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-medium);
   cursor: pointer;
@@ -186,8 +186,8 @@ function goDashboard() {
 }
 
 .settings-group-header:hover {
-  color: var(--primary-color);
-  background: var(--gray-light-color);
+  color: var(--primary);
+  background: var(--gray-light);
 }
 
 .settings-group-header .group-title {
@@ -206,7 +206,7 @@ function goDashboard() {
 
 .settings-sections {
   margin-left: var(--spacing-lg);
-  border-left: 1px solid var(--gray-light-color);
+  border-left: 1px solid var(--gray-light);
 }
 
 .settings-section-link {
@@ -214,22 +214,22 @@ function goDashboard() {
   align-items: center;
   padding: var(--spacing-sm) var(--spacing-md);
   margin: 2px 0;
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
   text-decoration: none;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: var(--font-size-sm);
   transition: all var(--transition-normal);
 }
 
 .settings-section-link:hover {
-  color: var(--primary-color);
-  background: var(--primary-light);
+  color: var(--primary);
+  background: var(--accent);
 }
 
 .settings-section-link.active {
-  color: var(--primary-color);
+  color: var(--primary);
   font-weight: var(--font-weight-semibold);
-  background: var(--primary-light);
+  background: var(--accent);
 }
 
 .settings-content {
@@ -245,25 +245,25 @@ function goDashboard() {
   align-items: center;
   justify-content: center;
   height: 60%;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   text-align: center;
   gap: var(--spacing-md);
 }
 
 .settings-forbidden i {
   font-size: 48px;
-  color: var(--danger-color);
+  color: var(--destructive);
 }
 
 /* ── INT-743 深色模式：全局遗留白底（.page-header/.card）与 slate 标签色不随 .dark 切换，
      本工作区在深色下统一走语义 token（浅色零变化、深色可读）。
      基座 INT-735 / CSS 重构 INT-757 全局收敛前此处先行；不写死数值 ── */
 .dark .system-settings-workspace :deep(.page-header) {
-  background-color: var(--background-primary);
+  background-color: var(--background);
 }
 
 .dark .system-settings-workspace :deep(.page-description) {
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .dark .system-settings-workspace :deep(.card) {

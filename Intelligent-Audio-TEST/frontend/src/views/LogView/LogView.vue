@@ -7,7 +7,7 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <div class="header-left">
-        <h2 class="page-title" style="color: var(--primary-color);">
+        <h2 class="page-title" style="color: var(--primary);">
           <i class="fas fa-file-alt"></i>
           日志查看
         </h2>
@@ -15,26 +15,26 @@
       </div>
       <div class="header-right">
         <div class="header-actions">
-          <button class="btn btn-text" @click="toggleRealTimeLog" :class="{ 'active': realTimeLogEnabled }" style="color: var(--primary-color);">
-            <i class="fas fa-sync-alt btn-icon" :class="{ 'fa-spin': realTimeLogEnabled }" style="color: var(--primary-color);"></i>
-            <span style="color: var(--primary-color);">{{ realTimeLogStatus  }}</span>
+          <button class="btn btn-text" @click="toggleRealTimeLog" :class="{ 'active': realTimeLogEnabled }" style="color: var(--primary);">
+            <i class="fas fa-sync-alt btn-icon" :class="{ 'fa-spin': realTimeLogEnabled }" style="color: var(--primary);"></i>
+            <span style="color: var(--primary);">{{ realTimeLogStatus  }}</span>
           </button>
-          <button class="btn btn-text" @click="refreshLogs" style="color: var(--primary-color);">
-            <i class="fas fa-redo-alt btn-icon" style="color: var(--primary-color);"></i>
-            <span style="color: var(--primary-color);">刷新日志</span>
+          <button class="btn btn-text" @click="refreshLogs" style="color: var(--primary);">
+            <i class="fas fa-redo-alt btn-icon" style="color: var(--primary);"></i>
+            <span style="color: var(--primary);">刷新日志</span>
           </button>
-          <button class="btn btn-text" @click="exportLogs" style="color: var(--primary-color);">
-            <i class="fas fa-download btn-icon" style="color: var(--primary-color);"></i>
-            <span style="color: var(--primary-color);">导出日志</span>
+          <button class="btn btn-text" @click="exportLogs" style="color: var(--primary);">
+            <i class="fas fa-download btn-icon" style="color: var(--primary);"></i>
+            <span style="color: var(--primary);">导出日志</span>
           </button>
-          <button class="btn btn-text" @click="clearLogs" style="color: var(--primary-color);">
-            <i class="fas fa-trash-alt btn-icon" style="color: var(--primary-color);"></i>
-            <span style="color: var(--primary-color);">清除日志</span>
+          <button class="btn btn-text" @click="clearLogs" style="color: var(--primary);">
+            <i class="fas fa-trash-alt btn-icon" style="color: var(--primary);"></i>
+            <span style="color: var(--primary);">清除日志</span>
           </button>
           <!-- INT-743：归档面板迁移至系统设置「运维设置 → 日志维护」，此处保留直达入口 -->
-          <button class="btn btn-text" @click="goArchive" style="color: var(--primary-color);">
-            <i class="fas fa-archive btn-icon" style="color: var(--primary-color);"></i>
-            <span style="color: var(--primary-color);">查看归档</span>
+          <button class="btn btn-text" @click="goArchive" style="color: var(--primary);">
+            <i class="fas fa-archive btn-icon" style="color: var(--primary);"></i>
+            <span style="color: var(--primary);">查看归档</span>
           </button>
         </div>
       </div>
@@ -386,7 +386,7 @@ const {
 }
 
 .sortable:hover .sort-icon {
-    color: var(--primary-color);
+    color: var(--primary);
 }
 /* log-checkbox - 自全局样式就近迁移 */
 .log-checkbox {
@@ -398,15 +398,15 @@ const {
 /* log-module - 自全局样式就近迁移 */
 .log-module {
     font-weight: var(--font-weight-medium);
-    color: var(--text-primary);
+    color: var(--foreground);
 }
 
 /* monitor-indicator - 自全局样式就近迁移 */
 .monitor-indicator {
     margin-bottom: var(--spacing-xl);
     padding: var(--spacing-md);
-    background-color: var(--background-secondary);
-    border-radius: var(--border-radius-lg);
+    background-color: var(--muted);
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
     display: flex;
     align-items: center;
@@ -424,21 +424,21 @@ const {
 /* monitor-icon - 自全局样式就近迁移 */
 .monitor-icon {
     font-size: var(--font-size-xs);
-    color: var(--success-color);
+    color: var(--success);
     animation: pulse 2s infinite;
 }
 
 /* error-icon - 自全局样式就近迁移 */
 .error-icon {
     font-size: 48px;
-    color: var(--danger-color);
+    color: var(--destructive);
     margin-bottom: var(--spacing-md);
 }
 
 /* warning-icon - 自全局样式就近迁移 */
 .warning-icon {
     font-size: 48px;
-    color: var(--warning-color);
+    color: var(--warning);
     margin-bottom: var(--spacing-md);
 }
 

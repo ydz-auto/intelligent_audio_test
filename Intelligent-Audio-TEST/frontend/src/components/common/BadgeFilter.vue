@@ -161,13 +161,13 @@ function select(value: string | number) {
   gap: 6px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-secondary, #64748b);
+  color: var(--muted-foreground, #64748b);
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .badge-filter__title i {
-  color: var(--primary-color, #ff6a00);
+  color: var(--primary, #ff6a00);
   font-size: 12px;
 }
 
@@ -203,14 +203,14 @@ function select(value: string | number) {
 }
 
 .badge-filter__badge:hover {
-  border-color: var(--primary-color, #ff6a00) !important;
-  color: var(--primary-color, #ff6a00) !important;
-  background: color-mix(in srgb, var(--primary-color) 12%, transparent) !important;
+  border-color: var(--primary, #ff6a00) !important;
+  color: var(--primary, #ff6a00) !important;
+  background: color-mix(in srgb, var(--primary) 12%, transparent) !important;
 }
 
 .badge-filter__badge--active {
-  border-color: var(--primary-color, #ff6a00) !important;
-  background: var(--primary-color, #ff6a00) !important;
+  border-color: var(--primary, #ff6a00) !important;
+  background: var(--primary, #ff6a00) !important;
   color: var(--primary-foreground) !important;
   box-shadow: 0 2px 6px rgba(255, 106, 0, 0.25) !important;
 }
@@ -222,7 +222,7 @@ function select(value: string | number) {
 
 .badge-filter__toggle {
   border-style: dashed !important;
-  color: var(--text-secondary, #64748b) !important;
+  color: var(--muted-foreground, #64748b) !important;
 }
 
 .badge-filter__toggle i {

@@ -11,8 +11,8 @@
   gap: 8px;
   margin-bottom: 12px;
 }
-.rce-step-icon { font-size: 14px; color: var(--primary-color, var(--primary)); }
-.rce-step-title { font-size: 14px; font-weight: 600; color: var(--text-primary, var(--foreground)); }
+.rce-step-icon { font-size: 14px; color: var(--primary, var(--primary)); }
+.rce-step-title { font-size: 14px; font-weight: 600; color: var(--foreground, var(--foreground)); }
 
 .rce-tag {
   padding: 2px 8px;
@@ -24,7 +24,7 @@
 
 .rce-audio-count {
   font-size: 12px;
-  color: var(--text-secondary, var(--color-gray-500));
+  color: var(--muted-foreground, var(--color-gray-500));
   margin-left: auto;
 }
 
@@ -35,7 +35,7 @@
   gap: 6px;
   margin-bottom: 10px;
   padding: 6px 10px;
-  background: var(--background-secondary, var(--muted));
+  background: var(--muted, var(--muted));
   border-radius: var(--radius-control);
   flex-wrap: wrap;
 }
@@ -45,25 +45,25 @@
   gap: 4px;
   padding: 4px 10px;
   font-size: 12px;
-  border: 1px solid var(--border-color, var(--border));
+  border: 1px solid var(--border, var(--border));
   border-radius: var(--radius-control);
-  background: var(--background-primary, var(--color-white));
-  color: var(--text-secondary, var(--color-gray-500));
+  background: var(--background, var(--color-white));
+  color: var(--muted-foreground, var(--color-gray-500));
   cursor: pointer;
   transition: all 0.15s ease;
 }
 .rce-tool-btn:hover {
-  border-color: var(--primary-color, var(--primary));
-  color: var(--primary-color, var(--primary));
+  border-color: var(--primary, var(--primary));
+  color: var(--primary, var(--primary));
 }
 .rce-tool-btn-danger:hover {
-  border-color: var(--danger-color, var(--destructive));
-  color: var(--danger-color, var(--destructive));
+  border-color: var(--destructive, var(--destructive));
+  color: var(--destructive, var(--destructive));
 }
 .rce-tool-divider {
   width: 1px;
   height: 18px;
-  background: var(--border-color, var(--border));
+  background: var(--border, var(--border));
   margin: 0 4px;
 }
 
@@ -72,14 +72,14 @@
 .rce-tag-device-panel {
   margin-bottom: 10px;
   padding: 10px 12px;
-  background: var(--background-primary, var(--color-white));
-  border: 1px solid var(--border-color, var(--border));
+  background: var(--background, var(--color-white));
+  border: 1px solid var(--border, var(--border));
   border-radius: var(--radius-control);
 }
 .rce-tag-selector-hint,
 .rce-tag-device-hint {
   font-size: 12px;
-  color: var(--text-secondary, var(--color-gray-500));
+  color: var(--muted-foreground, var(--color-gray-500));
   margin-bottom: 8px;
 }
 .rce-tag-selector-list {
@@ -92,17 +92,17 @@
   padding: 4px 12px;
   font-size: 12px;
   background: var(--secondary-light, var(--gray-light));
-  color: var(--text-secondary, var(--color-gray-500));
+  color: var(--muted-foreground, var(--color-gray-500));
   border-radius: var(--radius-pill);
   cursor: pointer;
   border: 1px solid transparent;
   transition: all 0.15s ease;
 }
 .rce-tag-chip:hover {
-  border-color: var(--primary-color, var(--primary));
+  border-color: var(--primary, var(--primary));
 }
 .rce-tag-chip.selected {
-  background: var(--primary-color, var(--primary));
+  background: var(--primary, var(--primary));
   color: var(--color-white);
 }
 .rce-tag-selector-actions {
@@ -126,7 +126,7 @@
 .rce-tag-name {
   min-width: 60px;
   font-weight: 500;
-  color: var(--text-primary, var(--foreground));
+  color: var(--foreground, var(--foreground));
 }
 .rce-arrow { color: var(--text-light, var(--text-light)); }
 .rce-device-select { flex: 1; max-width: 300px; }
@@ -135,7 +135,7 @@
 .rce-empty-state {
   text-align: center;
   padding: 30px 20px;
-  color: var(--text-secondary, var(--text-light));
+  color: var(--muted-foreground, var(--text-light));
 }
 .rce-empty-state i {
   font-size: 36px;
@@ -151,7 +151,7 @@
 .rce-audio-list { display: flex; flex-direction: column; gap: 8px; }
 
 .rce-audio-card {
-  border: 1px solid var(--border-color, var(--border));
+  border: 1px solid var(--border, var(--border));
   border-radius: var(--radius-control);
   overflow: hidden;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
@@ -161,7 +161,7 @@
   border-style: dashed;
 }
 .rce-audio-card.drag-over {
-  border-color: var(--primary-color, var(--primary));
+  border-color: var(--primary, var(--primary));
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 15%, transparent);
 }
 
@@ -170,8 +170,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  background: var(--background-secondary, var(--muted));
-  border-bottom: 1px solid var(--border-color, var(--border));
+  background: var(--muted, var(--muted));
+  border-bottom: 1px solid var(--border, var(--border));
   font-size: 13px;
   font-weight: 500;
 }
@@ -189,14 +189,14 @@
 .rce-drag-handle:active { cursor: grabbing; }
 .rce-audio-index {
   font-weight: 600;
-  color: var(--text-secondary, var(--color-gray-500));
+  color: var(--muted-foreground, var(--color-gray-500));
   white-space: nowrap;
 }
 .rce-audio-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-primary, var(--foreground));
+  color: var(--foreground, var(--foreground));
   font-weight: 400;
 }
 .rce-audio-card-actions {
@@ -206,10 +206,10 @@
 .rce-icon-btn {
   width: 24px;
   height: 24px;
-  border: 1px solid var(--border-color, var(--border));
+  border: 1px solid var(--border, var(--border));
   border-radius: var(--radius-control);
   background: transparent;
-  color: var(--text-secondary, var(--color-gray-500));
+  color: var(--muted-foreground, var(--color-gray-500));
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -218,12 +218,12 @@
   transition: all 0.15s ease;
 }
 .rce-icon-btn:hover {
-  border-color: var(--primary-color, var(--primary));
-  color: var(--primary-color, var(--primary));
+  border-color: var(--primary, var(--primary));
+  color: var(--primary, var(--primary));
 }
 .rce-icon-btn-danger:hover {
-  border-color: var(--danger-color, var(--destructive));
-  color: var(--danger-color, var(--destructive));
+  border-color: var(--destructive, var(--destructive));
+  color: var(--destructive, var(--destructive));
 }
 
 .rce-audio-card-body {
@@ -235,14 +235,14 @@
 .rce-field { display: flex; flex-direction: column; gap: 3px; }
 .rce-field-full { flex: 1 1 100%; }
 .rce-field-sm { max-width: 120px; }
-.rce-field-label { font-size: 12px; font-weight: 500; color: var(--text-secondary, var(--color-gray-500)); }
-.rce-required { color: var(--danger-color, var(--destructive)); }
+.rce-field-label { font-size: 12px; font-weight: 500; color: var(--muted-foreground, var(--color-gray-500)); }
+.rce-required { color: var(--destructive, var(--destructive)); }
 
 .rce-audio-input { display: flex; gap: 4px; align-items: center; }
 .rce-audio-input input {
   flex: 1;
   cursor: pointer;
-  background: var(--background-primary, var(--color-white));
+  background: var(--background, var(--color-white));
 }
 
 .rce-audio-tags {
@@ -251,20 +251,20 @@
   gap: 4px;
   margin-top: 4px;
   padding: 4px 6px;
-  background: var(--background-secondary, var(--color-neutral-50));
+  background: var(--muted, var(--color-neutral-50));
   border-radius: var(--radius-tag);
   flex-wrap: wrap;
 }
 .rce-audio-tags-label {
   font-size: 11px;
-  color: var(--text-secondary, var(--text-light));
+  color: var(--muted-foreground, var(--text-light));
   flex-shrink: 0;
 }
 .rce-audio-tag {
   padding: 1px 8px;
   font-size: 11px;
-  background: var(--primary-light);
-  color: var(--primary-color, var(--primary));
+  background: var(--accent);
+  color: var(--primary, var(--primary));
   border-radius: var(--radius-pill);
 }
 
@@ -276,8 +276,8 @@
   gap: 4px;
   padding: 1px 8px;
   font-size: 11px;
-  background: var(--background-secondary, var(--gray-light));
-  color: var(--text-secondary, var(--color-gray-500));
+  background: var(--muted, var(--gray-light));
+  color: var(--muted-foreground, var(--color-gray-500));
   border-radius: var(--radius-control);
   white-space: nowrap;
 }

@@ -78,10 +78,10 @@ function onChange(value: VisibilityType) {
   align-items: flex-start;
   gap: 10px;
   padding: 10px 14px;
-  border: 1px solid var(--border-color, #d0d5dd);
+  border: 1px solid var(--border, #d0d5dd);
   border-radius: var(--radius-control);
   cursor: pointer;
-  background: var(--background-primary, #fff);
+  background: var(--background, #fff);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
   min-width: 180px;
 }
@@ -91,18 +91,18 @@ function onChange(value: VisibilityType) {
 }
 
 .vis-option--active {
-  border-color: var(--primary-color, #ff6a00);
-  box-shadow: 0 0 0 1px var(--primary-color, #ff6a00);
+  border-color: var(--primary, #ff6a00);
+  box-shadow: 0 0 0 1px var(--primary, #ff6a00);
 }
 
 .vis-option__icon {
-  color: var(--text-secondary, #64748b);
+  color: var(--muted-foreground, #64748b);
   font-size: 14px;
   margin-top: 1px;
 }
 
 .vis-option--active .vis-option__icon {
-  color: var(--primary-color, #ff6a00);
+  color: var(--primary, #ff6a00);
 }
 
 .vis-option__main {
@@ -114,7 +114,7 @@ function onChange(value: VisibilityType) {
 .vis-option__label {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-primary, #1e293b);
+  color: var(--foreground, #1e293b);
 }
 
 .vis-option__desc {

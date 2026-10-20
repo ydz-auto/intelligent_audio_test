@@ -102,7 +102,7 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--card);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 13px;
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -151,7 +151,7 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
 }
 .algorithm-popover__hint {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 .algorithm-popover__clear {
   padding: 8px 14px 0;
@@ -165,7 +165,7 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
   border: 1px dashed var(--border);
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 13px;
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -188,7 +188,7 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text-primary);
+  color: var(--foreground);
   font-size: 14px;
   cursor: pointer;
   text-align: left;
@@ -210,7 +210,7 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
 }
 .algorithm-item__group {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 .algorithm-item__check {
   font-size: 12px;
@@ -220,7 +220,7 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
   margin: 0;
   padding: 16px;
   text-align: center;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 13px;
 }
 </style>

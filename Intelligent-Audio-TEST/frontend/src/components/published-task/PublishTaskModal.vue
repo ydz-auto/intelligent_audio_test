@@ -229,7 +229,7 @@ function handleConfirm() {
 
 .modal {
   background-color: #fff;
-  border-radius: var(--border-radius-xl);
+  border-radius: var(--radius-xl);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   max-height: 90vh;
   overflow: hidden;
@@ -270,7 +270,7 @@ function handleConfirm() {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-full);
   transition: all 0.2s;
 }
 
@@ -303,7 +303,7 @@ function handleConfirm() {
 .btn {
   padding: 8px 18px;
   border: none;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
@@ -355,7 +355,7 @@ function handleConfirm() {
   width: 100%;
   padding: 8px 10px;
   border: 1px solid #d1d5db;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   font-size: 13px;
   background: #fff;
   color: #1f2937;
@@ -376,7 +376,7 @@ function handleConfirm() {
   gap: 8px;
   padding: 10px 12px;
   border: 1px solid #e2e8f0;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   background: #f8fafc;
   font-size: 13px;
   color: #334155;
@@ -415,7 +415,7 @@ function handleConfirm() {
 .form-checkbox-label input[type='checkbox'] {
   width: 15px;
   height: 15px;
-  accent-color: var(--primary-color, #ff6a00);
+  accent-color: var(--primary, #ff6a00);
   cursor: pointer;
 }
 </style>

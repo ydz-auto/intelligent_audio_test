@@ -53,7 +53,7 @@ import '../../assets/styles/layouts/main.css'
 .page-header p {
   margin: 4px 0 0;
   font-size: 14px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 .start-test-grid {
   display: grid;
@@ -96,7 +96,7 @@ import '../../assets/styles/layouts/main.css'
 .test-type-card p {
   margin: 0;
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   line-height: 1.6;
 }
 </style>

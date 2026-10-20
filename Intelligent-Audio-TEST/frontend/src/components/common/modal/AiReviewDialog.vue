@@ -228,25 +228,25 @@ async function reject() {
   align-items: center;
   gap: 8px;
   padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color, var(--color-slate-200));
+  border-bottom: 1px solid var(--border, var(--color-slate-200));
 }
 .ai-header h3 {
   margin: 0;
   flex: 1;
   font-size: 16px;
   font-weight: var(--font-weight-semibold, 600);
-  color: var(--text-primary, var(--foreground));
+  color: var(--foreground, var(--foreground));
   display: flex;
   align-items: center;
   gap: 8px;
 }
 .ai-header h3 i {
-  color: var(--primary-color, var(--primary));
+  color: var(--primary, var(--primary));
 }
 .ai-close {
   border: none;
   background: none;
-  color: var(--text-secondary, var(--color-slate-500));
+  color: var(--muted-foreground, var(--color-slate-500));
   font-size: 16px;
   cursor: pointer;
   padding: 4px;
@@ -259,7 +259,7 @@ async function reject() {
 .ai-tip {
   margin: 0 0 12px;
   font-size: 13px;
-  color: var(--text-secondary, var(--color-slate-500));
+  color: var(--muted-foreground, var(--color-slate-500));
 }
 .ai-target {
   display: flex;
@@ -267,7 +267,7 @@ async function reject() {
   gap: 8px;
   flex-wrap: wrap;
   padding: 10px 12px;
-  border: 1px solid var(--border-color, var(--color-slate-200));
+  border: 1px solid var(--border, var(--color-slate-200));
   border-radius: var(--radius-control);
   margin-bottom: 14px;
   font-size: 12px;
@@ -278,7 +278,7 @@ async function reject() {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 500;
-  color: var(--text-primary, var(--foreground));
+  color: var(--foreground, var(--foreground));
 }
 .ai-target-rt {
   padding: 1px 6px;
@@ -287,7 +287,7 @@ async function reject() {
   color: var(--color-slate-600);
 }
 .ai-target-results {
-  color: var(--text-secondary, var(--color-slate-500));
+  color: var(--muted-foreground, var(--color-slate-500));
 }
 .ai-idle {
   text-align: center;
@@ -299,7 +299,7 @@ async function reject() {
   justify-content: center;
   gap: 8px;
   padding: 24px 0;
-  color: var(--text-secondary, var(--color-slate-500));
+  color: var(--muted-foreground, var(--color-slate-500));
   font-size: 13px;
 }
 .ai-record {
@@ -327,16 +327,16 @@ async function reject() {
 .ai-verdict-badge--uncertain { background: var(--color-amber-100); color: var(--color-amber-700); }
 .ai-confidence {
   font-size: 12px;
-  color: var(--text-secondary, var(--color-slate-500));
+  color: var(--muted-foreground, var(--color-slate-500));
 }
 .ai-reasoning {
   margin: 0;
   padding: 10px 12px;
-  border: 1px solid var(--border-color, var(--color-slate-200));
+  border: 1px solid var(--border, var(--color-slate-200));
   border-radius: var(--radius-control);
   background: color-mix(in srgb, var(--muted) 20%, transparent);
   font-size: 13px;
-  color: var(--text-primary, var(--foreground));
+  color: var(--foreground, var(--foreground));
 }
 .ai-compare {
   display: flex;
@@ -344,7 +344,7 @@ async function reject() {
   justify-content: space-between;
   gap: 8px;
   font-size: 12px;
-  color: var(--text-secondary, var(--color-slate-500));
+  color: var(--muted-foreground, var(--color-slate-500));
 }
 .ai-compare-row {
   display: flex;
@@ -352,12 +352,12 @@ async function reject() {
   gap: 6px;
 }
 .ai-compare-arrow {
-  color: var(--danger-color, #dc2626);
+  color: var(--destructive, #dc2626);
 }
 .ai-adopt-hint {
   margin: 0;
   font-size: 12px;
-  color: var(--text-secondary, var(--color-slate-500));
+  color: var(--muted-foreground, var(--color-slate-500));
 }
 .ai-actions {
   display: flex;
@@ -372,17 +372,17 @@ async function reject() {
   font-size: 13px;
 }
 .ai-done--adopted { color: var(--color-emerald-600); }
-.ai-done--rejected { color: var(--danger-color, #dc2626); }
+.ai-done--rejected { color: var(--destructive, #dc2626); }
 .ai-error {
   margin: 8px 0 0;
   font-size: 12px;
-  color: var(--danger-color, #dc2626);
+  color: var(--destructive, #dc2626);
 }
 .ai-footer {
   display: flex;
   justify-content: flex-end;
   padding: 12px 20px;
-  border-top: 1px solid var(--border-color, var(--color-slate-200));
+  border-top: 1px solid var(--border, var(--color-slate-200));
 }
 .ai-btn {
   display: inline-flex;
@@ -406,7 +406,7 @@ async function reject() {
   color: #fff;
 }
 .ai-btn-primary:hover {
-  background: var(--primary-dark, #e55d00);
+  background: var(--primary-hover, #e55d00);
   color: #fff;
 }
 </style>

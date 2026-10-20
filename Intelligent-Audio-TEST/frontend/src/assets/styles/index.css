@@ -1,14 +1,15 @@
 /*
  * 全局样式唯一入口（照 newAPI web/src/styles/index.css 结构）
  * 职责：只做引入汇总，业务样式一律走组件级（<style scoped> + 原子类）。
- * 加载顺序：Tailwind(preflight) → 主题令牌 theme.css → 浅/深预设 theme-presets.css
- *           → base/reset（@layer base）→ 存量样式库（迁移期聚合器 main.css，逐域拆解中）。
+ * 加载顺序：Tailwind(preflight) → Font Awesome → 主题令牌 theme.css → 浅/深预设 theme-presets.css
+ *           → base/reset（@layer base）。存量聚合器 main.css 已随 CSS-4（INT-772）清零删除，
+ *           其「通用搜索框和筛选框布局规则」全局覆写段归位至 test-common.css（消费组件按需 import）。
  */
 @import 'tailwindcss';
+@import '@fortawesome/fontawesome-free/css/all.min.css';
 @import './theme.css';
 @import './theme-presets.css';
 @import './base/index.css';
-@import './main.css';
 
 /* Tailwind 内容扫描范围：src 下所有源码（.vue/.ts/.css） */
 @source '../../';

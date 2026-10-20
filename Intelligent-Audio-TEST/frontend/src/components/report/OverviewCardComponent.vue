@@ -428,15 +428,15 @@ const getAverageValue = (metricName, device) => {
   border-radius: var(--radius-10);
   font-size: 12px;
   font-weight: 500;
-  color: var(--primary-color);
-  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
 }
 .reviewed-badge.clickable {
   cursor: pointer;
 }
 .reviewed-badge.clickable:hover {
-  background: color-mix(in srgb, var(--primary-color) 18%, transparent);
+  background: color-mix(in srgb, var(--primary) 18%, transparent);
 }
 
 .section-content {
@@ -520,7 +520,7 @@ const getAverageValue = (metricName, device) => {
 .dim-group-header {
   font-weight: 600;
   font-size: 13px;
-  color: var(--primary-color, var(--secondary));
+  color: var(--primary, var(--secondary));
   display: inline-block;
   padding: 2px 0;
 }

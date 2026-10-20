@@ -83,9 +83,9 @@ const onFavoriteChange = (event: Event) => {
   align-items: center;
   gap: 6px;
   padding: 4px 12px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
-  background: var(--background-primary);
+  background: var(--background);
   cursor: pointer;
   user-select: none;
   font-size: 13px;
