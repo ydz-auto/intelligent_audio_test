@@ -36,7 +36,25 @@ def migrate(dry_run=False):
         WHERE table_name = 'dimensions' AND column_name = 'sort_order'
     """)
     if cur.fetchone():
-        print("[SKIP] dimensions.sort_order 已存在")
+        # 列已存在：全新库经 create_all_tables（ORM nullable=False 但无 server
+        # default）建列时缺服务端默认值——202609 种子（seed_interruption_dimensions
+        # 等）以原生 SQL INSERT 不带 sort_order，NOT NULL 无默认必败（INT-993
+        # 隔离栈全新库实测 NotNullViolation）。此处补 server default 使两种
+        # 建列路径（旧库 ALTER 新增 / 新库 ORM create_all）均带默认。
+        cur.execute("""
+            SELECT column_default FROM information_schema.columns
+            WHERE table_name = 'dimensions' AND column_name = 'sort_order'
+        """)
+        has_default = cur.fetchone()[0]
+        if not has_default:
+            sql = "ALTER TABLE dimensions ALTER COLUMN sort_order SET DEFAULT 0"
+            if dry_run:
+                print(f"[DRY-RUN] {sql}")
+            else:
+                print(f"[EXEC] {sql}")
+                cur.execute(sql)
+                conn.commit()
+        print("[SKIP] dimensions.sort_order 已存在（已确保 server default）")
         cur.close()
         conn.close()
         return
