@@ -160,7 +160,7 @@ function goLogin() {
 }
 .register-header p {
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   margin-top: 4px;
 }
 .form-group {
@@ -169,7 +169,7 @@ function goLogin() {
 .form-group label {
   display: block;
   margin-bottom: 5px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 14px;
 }
 .form-group input {
@@ -213,7 +213,7 @@ function goLogin() {
   text-align: center;
   margin-top: 16px;
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 .register-link {
   color: var(--primary);

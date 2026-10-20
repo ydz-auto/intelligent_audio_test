@@ -1,7 +1,7 @@
 /* 报告页面筛选卡片统一样式 - 基于参考设计 */
 .report-filter-card {
   background: var(--color-white);
-  border-radius: var(--border-radius-xl);
+  border-radius: var(--radius-xl);
   border: 1px solid var(--color-slate-200);
   box-shadow: none;
   padding: 20px;
@@ -89,7 +89,7 @@
   align-items: center;
   margin-bottom: 12px;
   border: 1px solid var(--color-slate-200) ;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   padding: 0 12px;
   background-color: var(--color-white);
   transition: all 0.2s ease;
@@ -179,7 +179,7 @@
   box-sizing: border-box;
   background: transparent;
   border: none;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
 }
 
 .report-filter-card .tag-filter.has-pagination {
@@ -192,7 +192,7 @@
   background: var(--color-white) ;
   color: var(--color-slate-500) ;
   border: 1px solid var(--color-slate-200) ;
-  border-radius: var(--border-radius-xl);
+  border-radius: var(--radius-xl);
   cursor: pointer;
   transition: all 0.2s ease;
   font-size: 13px;
@@ -227,7 +227,7 @@
   box-sizing: border-box;
   background: transparent;
   border: none;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
 }
 
 .report-filter-card .case-type-filter.has-pagination {
@@ -240,7 +240,7 @@
   background: var(--color-white) ;
   color: var(--color-slate-500) ;
   border: 1px solid var(--color-slate-200) ;
-  border-radius: var(--border-radius-xl);
+  border-radius: var(--radius-xl);
   cursor: pointer;
   transition: all 0.2s ease;
   font-size: 13px;
@@ -326,7 +326,7 @@
   gap: 6px;
   padding: 8px 16px;
   border: none;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -423,7 +423,7 @@
   box-sizing: border-box;
   background: transparent;
   border: none;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
 }
 
 .report-filter-card .tag-filter-orange.has-pagination {
@@ -436,7 +436,7 @@
   background: var(--color-white) ;
   color: var(--color-slate-500) ;
   border: 1px solid var(--color-slate-200) ;
-  border-radius: var(--border-radius-xl);
+  border-radius: var(--radius-xl);
   cursor: pointer;
   transition: all 0.2s ease;
   font-size: 13px;
@@ -471,7 +471,7 @@
   box-sizing: border-box;
   background: transparent;
   border: none;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
 }
 
 .report-filter-card .metric-filter.has-pagination {
@@ -484,7 +484,7 @@
   background: var(--color-white) ;
   color: var(--color-slate-500) ;
   border: 1px solid var(--color-slate-200) ;
-  border-radius: var(--border-radius-xl);
+  border-radius: var(--radius-xl);
   cursor: pointer;
   transition: all 0.2s ease;
   font-size: 13px;
@@ -524,7 +524,7 @@
   align-items: center;
   margin-bottom: 12px;
   border: 1px solid var(--color-slate-200) ;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   padding: 0 12px;
   background-color: var(--color-white);
   transition: all 0.2s ease;
@@ -590,7 +590,7 @@
   align-items: center;
   margin-bottom: 0;
   border: 1px solid var(--color-slate-200) ;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   padding: 0 12px;
   background-color: var(--color-white);
   transition: all 0.2s ease;
@@ -725,7 +725,7 @@
   width: 100%;
   padding: 8px 12px;
   border: 1px solid var(--color-slate-200);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   font-size: 14px;
   transition: all 0.3s ease;
   background: var(--color-white);
@@ -746,7 +746,7 @@
   width: 100%;
   padding: 8px 12px;
   border: 1px solid var(--color-slate-200);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   font-size: 14px;
   background: var(--color-white);
   cursor: pointer;

@@ -179,17 +179,17 @@ defineExpose({
   padding: 64px 24px;
   margin-top: 16px;
   margin-bottom: 16px;
-  background-color: var(--background-secondary);
-  border-radius: var(--border-radius-lg);
-  color: var(--text-secondary);
+  background-color: var(--muted);
+  border-radius: var(--radius-lg);
+  color: var(--muted-foreground);
   font-size: 14px;
 }
 
 .loading-state .spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid color-mix(in srgb, var(--primary-color) 20%, transparent);
-  border-top-color: var(--primary-color);
+  border: 3px solid color-mix(in srgb, var(--primary) 20%, transparent);
+  border-top-color: var(--primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -208,9 +208,9 @@ defineExpose({
   margin-top: 16px;
   margin-bottom: 16px;
   text-align: center;
-  background-color: var(--background-secondary);
-  border-radius: var(--border-radius-lg);
-  border: 1px dashed var(--border-color);
+  background-color: var(--muted);
+  border-radius: var(--radius-lg);
+  border: 1px dashed var(--border);
 }
 
 .empty-state i {
@@ -221,7 +221,7 @@ defineExpose({
 
 .empty-state p {
   margin: 0;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 16px;
 }
 
@@ -247,7 +247,7 @@ defineExpose({
 /* ===== 合并任务源任务列表 ===== */
 .merged-source-list {
   border: 1px dashed var(--color-gray-300, #d1d5db);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   margin: 0 0 12px;
   padding: 0;
   background: var(--color-gray-50, #f9fafb);
@@ -302,7 +302,7 @@ defineExpose({
 .merged-source-status {
   font-size: 12px;
   padding: 1px 8px;
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-full);
   background: var(--color-gray-200, #e5e7eb);
   color: var(--color-gray-700, #374151);
 }

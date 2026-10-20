@@ -123,14 +123,14 @@ const getDisplaySpecs = (item) => {
 
 .spec-label{
     font-size: 14px;
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
     font-weight: 500;
     min-width: 80px;
 }
 
 .spec-value{
     font-size: 14px;
-    color: var(--text-primary);
+    color: var(--foreground);
     font-weight: 500;
 }
 
@@ -159,12 +159,12 @@ const getDisplaySpecs = (item) => {
 }
 
 .resource-card:hover{
-  border-color: var(--primary-color);
+  border-color: var(--primary);
   box-shadow: 0 4px 12px color-mix(in srgb, var(--primary) 15%, transparent);
 }
 
 .resource-card.selected{
-  border: 2px solid var(--primary-color);
+  border: 2px solid var(--primary);
   background-color: color-mix(in srgb, var(--primary) 15%, transparent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 20%, transparent), 0 4px 16px color-mix(in srgb, var(--primary) 10%, transparent);
 }
@@ -267,9 +267,9 @@ const getDisplaySpecs = (item) => {
 }
 
 .resource-card.selected .resource-select-btn{
-  background: var(--primary-color);
+  background: var(--primary);
   color: white;
-  border-color: var(--primary-color);
+  border-color: var(--primary);
 }
 
 .resource-select-btn.disabled{

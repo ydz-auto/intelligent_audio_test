@@ -134,7 +134,7 @@ function handleConfirm() {
 }
 
 .spl-unit {
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 14px;
   font-weight: 500;
 }
@@ -142,14 +142,14 @@ function handleConfirm() {
 .spl-hint {
   margin-top: 8px;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
 .spl-hint i {
-  color: var(--info-color);
+  color: var(--info);
 }
 
 .spl-quick-select {
@@ -162,7 +162,7 @@ function handleConfirm() {
 
 .quick-label {
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .btn-quick {
@@ -170,19 +170,19 @@ function handleConfirm() {
   font-size: 12px;
   border-radius: var(--radius-pill);
   background: var(--secondary-light);
-  color: var(--secondary-color);
+  color: var(--secondary);
   border: 1px solid transparent;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .btn-quick:hover {
-  background: var(--secondary-color);
+  background: var(--secondary);
   color: white;
 }
 
 .btn-quick.active {
-  background: var(--primary-color);
+  background: var(--primary);
   color: white;
 }
 </style>

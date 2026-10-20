@@ -107,8 +107,8 @@ const startExport = async () => {
   max-width: 92vw;
   max-height: 84vh;
   overflow-y: auto;
-  background: var(--bg-color, #fff);
-  border-radius: var(--border-radius-xl);
+  background: var(--background, #fff);
+  border-radius: var(--radius-xl);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
   display: flex;
   flex-direction: column;
@@ -118,38 +118,38 @@ const startExport = async () => {
   align-items: center;
   justify-content: space-between;
   padding: 14px 18px;
-  border-bottom: 1px solid var(--border-color, #eee);
+  border-bottom: 1px solid var(--border, #eee);
 }
 .dt-dialog-header h3 { margin: 0; font-size: 16px; }
 .dt-close-btn { background: none; border: none; cursor: pointer; font-size: 15px; color: inherit; }
 .dt-dialog-body { padding: 14px 18px; flex: 1; }
 .dt-section { margin-bottom: 14px; }
-.dt-section h4 { margin: 0 0 8px; font-size: 13px; color: var(--text-secondary, #666); }
+.dt-section h4 { margin: 0 0 8px; font-size: 13px; color: var(--muted-foreground, #666); }
 .dt-task-list { list-style: none; margin: 0; padding: 0; max-height: 160px; overflow-y: auto; }
 .dt-task-list li { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
-.dt-task-meta { color: var(--text-secondary, #888); }
+.dt-task-meta { color: var(--muted-foreground, #888); }
 .dt-check { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; cursor: pointer; }
-.dt-error { color: var(--danger-color, #d9534f); font-size: 13px; margin-top: 8px; }
-.dt-info { color: var(--text-secondary, #666); font-size: 13px; margin-top: 8px; }
+.dt-error { color: var(--destructive, #d9534f); font-size: 13px; margin-top: 8px; }
+.dt-info { color: var(--muted-foreground, #666); font-size: 13px; margin-top: 8px; }
 .dt-dialog-footer {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
   padding: 12px 18px;
-  border-top: 1px solid var(--border-color, #eee);
+  border-top: 1px solid var(--border, #eee);
 }
 .dt-btn {
   padding: 7px 16px;
-  border-radius: var(--border-radius-md);
-  border: 1px solid var(--border-color, #ddd);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border, #ddd);
   background: transparent;
   color: inherit;
   cursor: pointer;
   font-size: 13px;
 }
 .dt-btn-primary {
-  background: var(--primary-color, #3b82f6);
-  border-color: var(--primary-color, #3b82f6);
+  background: var(--primary, #3b82f6);
+  border-color: var(--primary, #3b82f6);
   color: #fff;
 }
 .dt-btn:disabled { opacity: 0.55; cursor: not-allowed; }

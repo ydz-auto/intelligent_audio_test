@@ -64,7 +64,7 @@
                   <template v-else-if="column.type === 'percentage'">
                     <div class="percentage-cell">
                       <span class="percentage-value">{{ row[column.key] }}%</span>
-                      <div class="progress-bar" style="background-color: var(--secondary-color);">
+                      <div class="progress-bar" style="background-color: var(--secondary);">
                         <div class="progress-fill" :style="{ width: `${row[column.key]}%`, backgroundColor: getProgressColor(row[column.key]) }"></div>
                       </div>
                     </div>
@@ -327,7 +327,7 @@ export default {
 
 .comparison-table-container{
   background: var(--color-white);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 8%, transparent);
   padding: 24px;
   margin-bottom: 24px;
@@ -381,7 +381,7 @@ export default {
 
 .table-wrapper{
   overflow-x: auto;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   border: 1px solid var(--color-slate-200);
 }
 
@@ -480,15 +480,15 @@ export default {
 .progress-bar{
   width: 100%;
   height: 6px;
-  background: var(--secondary-color);
-  border-radius: var(--border-radius-full);
+  background: var(--secondary);
+  border-radius: var(--radius-full);
   overflow: hidden;
 }
 
 .progress-fill{
   height: 100%;
   background: var(--primary-gradient);
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-full);
   transition: width 0.3s ease;
   position: relative;
   overflow: hidden;

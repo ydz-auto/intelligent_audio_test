@@ -51,7 +51,7 @@
               <CaseIdBadge :case-id="testCase.id" />
             </div>
             <div class="case-description">{{ testCase.description || '' }}</div>
-            <div v-if="testCase.lastEditTime || testCase.createdAt || testCase.updatedAt" style="margin-bottom: 8px; font-size: 12px; color: var(--text-secondary);">
+            <div v-if="testCase.lastEditTime || testCase.createdAt || testCase.updatedAt" style="margin-bottom: 8px; font-size: 12px; color: var(--muted-foreground);">
               <span class="meta-label">最后编辑时间:</span> {{ testCase.lastEditTime || testCase.updatedAt || testCase.createdAt || '未知' }}
             </div>
             <!-- INT-215：回收站条目展示删除人/删除时间（AUTH_MODE=off 时 NULL 显示「—」） -->
@@ -318,7 +318,7 @@ input[type="checkbox"].test-case-checkbox{
     -webkit-appearance: none ;
     appearance: none ;
     background-color: var(--card) !important;
-    border: 2px solid var(--border-color) !important;
+    border: 2px solid var(--border) !important;
     border-radius: var(--radius-tag);
     position: relative ;
     transition: all 0.2s ease ;
@@ -335,8 +335,8 @@ input[type="checkbox"].test-case-checkbox{
 }
 
 input[type="checkbox"].test-case-checkbox:checked{
-    background-color: var(--primary-color) !important;
-    border-color: var(--primary-color) !important;
+    background-color: var(--primary) !important;
+    border-color: var(--primary) !important;
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent) ;
 }
 
@@ -352,11 +352,11 @@ input[type="checkbox"].test-case-checkbox:checked::after{
 }
 
 input[type="checkbox"].test-case-checkbox:hover{
-    border-color: var(--primary-color) !important;
+    border-color: var(--primary) !important;
 }
 
 .case-config{
-    background-color: var(--background-secondary);
+    background-color: var(--muted);
     border-radius: var(--radius-tag);
     padding: 12px;
     margin-bottom: 12px;
@@ -369,13 +369,13 @@ input[type="checkbox"].test-case-checkbox:hover{
 .config-title{
     font-size: 14px;
     font-weight: 500;
-    color: var(--text-primary);
+    color: var(--foreground);
     margin-bottom: 6px;
 }
 
 .config-details{
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
 }
 
 .config-label{
@@ -415,7 +415,7 @@ input[type="checkbox"].test-case-checkbox:hover{
 .case-deleted-meta{
   margin-bottom: 8px;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   display: flex;
   gap: 16px;
   flex-wrap: wrap;
@@ -437,7 +437,7 @@ input[type="checkbox"].test-case-checkbox:hover{
   position: absolute;
   left: 0;
   bottom: 100%;
-  background-color: var(--text-primary);
+  background-color: var(--foreground);
   color: white;
   padding: 8px 12px;
   border-radius: var(--radius-control);
@@ -460,7 +460,7 @@ input[type="checkbox"].test-case-checkbox:hover{
   left: 16px;
   border-width: 6px;
   border-style: solid;
-  border-color: var(--text-primary) transparent transparent transparent;
+  border-color: var(--foreground) transparent transparent transparent;
 }
 
 .case-name:hover .case-name-tooltip{
@@ -564,7 +564,7 @@ input[type="checkbox"].test-case-checkbox:hover{
 /* meta-label - 自全局样式就近迁移 */
 .meta-label{
 font-size: var(--font-size-xs);
-color: var(--text-primary);
+color: var(--foreground);
 font-weight: 500;
 text-transform: uppercase;
 letter-spacing: 0.5px;

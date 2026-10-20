@@ -3,7 +3,7 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <div class="header-left">
-        <h2 class="page-title" style="color: var(--primary-color);">
+        <h2 class="page-title" style="color: var(--primary);">
           <i class="fas fa-headphones"></i>
           设备管理
         </h2>
@@ -520,7 +520,7 @@ function setPlaybackTypeFilter(value: string | number) {
 }
 
 .status-good{
-    color: var(--success-color);
+    color: var(--success);
 }
 
 .dropdown{
@@ -537,9 +537,9 @@ function setPlaybackTypeFilter(value: string | number) {
     display: flex;
     gap: 8px;
     margin-bottom: var(--spacing-xl);
-    background-color: var(--background-secondary);
+    background-color: var(--muted);
     padding: 4px;
-    border-radius: var(--border-radius-lg);
+    border-radius: var(--radius-lg);
 }
 
 /* INT-289 加载/错误态：spinner 与错误横幅 */
@@ -549,9 +549,9 @@ function setPlaybackTypeFilter(value: string | number) {
     gap: 10px;
     padding: 12px 16px;
     margin-bottom: var(--spacing-lg);
-    background: color-mix(in srgb, var(--primary-color) 5%, transparent);
-    border-radius: var(--border-radius-lg);
-    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--primary) 5%, transparent);
+    border-radius: var(--radius-lg);
+    color: var(--muted-foreground);
     font-size: 14px;
 }
 
@@ -559,8 +559,8 @@ function setPlaybackTypeFilter(value: string | number) {
     display: inline-block;
     width: 16px;
     height: 16px;
-    border: 2px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
-    border-top-color: var(--primary-color);
+    border: 2px solid color-mix(in srgb, var(--primary) 30%, transparent);
+    border-top-color: var(--primary);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
 }
@@ -571,10 +571,10 @@ function setPlaybackTypeFilter(value: string | number) {
     gap: 10px;
     padding: 12px 16px;
     margin-bottom: var(--spacing-lg);
-    background: color-mix(in srgb, var(--danger-color, #f5222d) 8%, transparent);
-    border: 1px solid color-mix(in srgb, var(--danger-color, #f5222d) 30%, transparent);
-    border-radius: var(--border-radius-lg);
-    color: var(--danger-color, #f5222d);
+    background: color-mix(in srgb, var(--destructive, #f5222d) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--destructive, #f5222d) 30%, transparent);
+    border-radius: var(--radius-lg);
+    color: var(--destructive, #f5222d);
     font-size: 14px;
 }
 

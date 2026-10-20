@@ -153,7 +153,7 @@ function handleClose() {
 
 .modal {
   background-color: var(--background);
-  border-radius: var(--border-radius-xl);
+  border-radius: var(--radius-xl);
   box-shadow: 0 4px 20px color-mix(in srgb, var(--color-black) 15%, transparent);
   max-height: 90vh;
   overflow: hidden;
@@ -212,7 +212,7 @@ function handleClose() {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-full);
   transition: all 0.2s;
 }
 
@@ -259,7 +259,7 @@ function handleClose() {
   gap: 10px;
   padding: 5px 8px;
   background: var(--muted);
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
   font-size: 13px;
   margin-bottom: 4px;
 }
@@ -281,13 +281,13 @@ function handleClose() {
   color: var(--color-slate-400);
   background: var(--muted);
   border: 1px dashed var(--border);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   font-size: 13px;
 }
 
 .ts-case {
   border: 1px solid var(--border);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   margin-bottom: 8px;
   overflow: hidden;
 }
@@ -327,7 +327,7 @@ function handleClose() {
 .ts-case-tag {
   font-size: 11px;
   padding: 1px 6px;
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--primary) 10%, transparent);
   color: var(--primary);
   white-space: nowrap;
@@ -358,7 +358,7 @@ function handleClose() {
   padding: 10px;
   background: var(--muted);
   border: 1px solid var(--border);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   font-size: 12px;
   line-height: 1.5;
   overflow-x: auto;

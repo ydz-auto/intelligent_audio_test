@@ -409,7 +409,7 @@ const {
 }
 
 .sortable:hover .sort-icon {
-    color: var(--primary-color);
+    color: var(--primary);
 }
 /* log-checkbox - 自全局样式就近迁移 */
 .log-checkbox {
@@ -421,15 +421,15 @@ const {
 /* log-module - 自全局样式就近迁移 */
 .log-module {
     font-weight: var(--font-weight-medium);
-    color: var(--text-primary);
+    color: var(--foreground);
 }
 
 /* monitor-indicator - 自全局样式就近迁移 */
 .monitor-indicator {
     margin-bottom: var(--spacing-xl);
     padding: var(--spacing-md);
-    background-color: var(--background-secondary);
-    border-radius: var(--border-radius-lg);
+    background-color: var(--muted);
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
     display: flex;
     align-items: center;
@@ -447,21 +447,21 @@ const {
 /* monitor-icon - 自全局样式就近迁移 */
 .monitor-icon {
     font-size: var(--font-size-xs);
-    color: var(--success-color);
+    color: var(--success);
     animation: pulse 2s infinite;
 }
 
 /* error-icon - 自全局样式就近迁移 */
 .error-icon {
     font-size: 48px;
-    color: var(--danger-color);
+    color: var(--destructive);
     margin-bottom: var(--spacing-md);
 }
 
 /* warning-icon - 自全局样式就近迁移 */
 .warning-icon {
     font-size: 48px;
-    color: var(--warning-color);
+    color: var(--warning);
     margin-bottom: var(--spacing-md);
 }
 

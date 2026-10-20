@@ -326,12 +326,12 @@ const {
   align-items: center;
   cursor: pointer;
   padding: 8px 0;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--border);
   transition: background-color 0.2s ease;
 }
 
 .config-header:hover {
-  background-color: var(--background-secondary);
+  background-color: var(--muted);
 }
 
 </style>

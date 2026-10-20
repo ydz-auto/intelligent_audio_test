@@ -3,7 +3,7 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <div class="header-left">
-        <h2 class="page-title" style="color: var(--primary-color);">
+        <h2 class="page-title" style="color: var(--primary);">
           <i class="fas fa-sliders-h"></i>
           声压级映射管理
         </h2>
@@ -605,11 +605,11 @@ onMounted(async () => {
     border: 1px solid color-mix(in srgb, var(--color-ant-gold-6, #faad14) 40%, transparent);
     border-radius: var(--radius-control, 8px);
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
 }
 
 .spl-truncated-hint i {
-    color: var(--warning-color, #faad14);
+    color: var(--warning, #faad14);
     margin-top: 2px;
     flex-shrink: 0;
 }
@@ -623,12 +623,12 @@ onMounted(async () => {
 /* active-icon - 自全局样式就近迁移 */
 .active-icon {
     background: color-mix(in srgb, var(--success) 10%, transparent);
-    color: var(--success-color);
+    color: var(--success);
 }
 /* test-icon - 自全局样式就近迁移 */
 .test-icon {
     background: color-mix(in srgb, var(--color-ant-gold-6) 10%, transparent);
-    color: var(--warning-color);
+    color: var(--warning);
 }
 
 /* ===== 口径页签（INT-300 双分区）—— 对齐 Device.vue 页签形态 ===== */
@@ -636,7 +636,7 @@ onMounted(async () => {
     display: flex;
     gap: 8px;
     margin-bottom: 20px;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border);
     padding-bottom: 0;
 }
 
@@ -647,7 +647,7 @@ onMounted(async () => {
     padding: 10px 20px;
     border: none;
     background: transparent;
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
     font-size: 14px;
     cursor: pointer;
     border-bottom: 2px solid transparent;
@@ -655,12 +655,12 @@ onMounted(async () => {
 }
 
 .domain-tab-btn:hover {
-    color: var(--primary-color);
+    color: var(--primary);
 }
 
 .domain-tab-btn.active {
-    color: var(--primary-color);
-    border-bottom-color: var(--primary-color);
+    color: var(--primary);
+    border-bottom-color: var(--primary);
     font-weight: 600;
 }
 
@@ -679,18 +679,18 @@ onMounted(async () => {
 .rms-spl-table td {
     padding: 10px 12px;
     text-align: left;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border);
     white-space: nowrap;
 }
 
 .rms-spl-table th {
-    background: var(--background-secondary, #f7f8fa);
-    color: var(--text-secondary);
+    background: var(--muted, #f7f8fa);
+    color: var(--muted-foreground);
     font-weight: 600;
 }
 
 .rms-spl-table tbody tr:hover {
-    background: color-mix(in srgb, var(--primary-color) 4%, transparent);
+    background: color-mix(in srgb, var(--primary) 4%, transparent);
 }
 
 .cell-name {
@@ -705,8 +705,8 @@ onMounted(async () => {
     padding: 2px 8px;
     border-radius: var(--radius-control, 8px);
     font-size: 11px;
-    background: color-mix(in srgb, var(--primary-color) 8%, transparent);
-    color: var(--primary-color);
+    background: color-mix(in srgb, var(--primary) 8%, transparent);
+    color: var(--primary);
 }
 
 .default-badge {
@@ -717,7 +717,7 @@ onMounted(async () => {
     border-radius: var(--radius-control, 8px);
     font-size: 11px;
     background: color-mix(in srgb, var(--color-ant-gold-6, #faad14) 12%, transparent);
-    color: var(--warning-color, #faad14);
+    color: var(--warning, #faad14);
 }
 
 .text-muted {
@@ -749,10 +749,10 @@ onMounted(async () => {
 }
 
 .calibration-detail-card {
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--border);
     border-radius: var(--radius-control, 8px);
     padding: 14px 16px;
-    background: var(--background-primary);
+    background: var(--background);
 }
 
 .detail-card-header {
@@ -765,7 +765,7 @@ onMounted(async () => {
 .detail-card-header h5 {
     margin: 0;
     font-size: 14px;
-    color: var(--text-primary);
+    color: var(--foreground);
 }
 
 .detail-api {
@@ -790,7 +790,7 @@ onMounted(async () => {
 
 .point-spl {
     font-weight: 600;
-    color: var(--primary-color);
+    color: var(--primary);
     min-width: 64px;
 }
 
@@ -800,12 +800,12 @@ onMounted(async () => {
 }
 
 .point-gain {
-    color: var(--text-primary);
+    color: var(--foreground);
     font-weight: 500;
 }
 
 .point-db {
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
 }
 
 .point-rms {
@@ -820,27 +820,27 @@ onMounted(async () => {
     align-items: flex-start;
     margin-top: 20px;
     padding: 12px 16px;
-    background: color-mix(in srgb, var(--primary-color) 5%, transparent);
-    border-left: 3px solid var(--primary-color);
+    background: color-mix(in srgb, var(--primary) 5%, transparent);
+    border-left: 3px solid var(--primary);
     border-radius: var(--radius-control, 8px);
 }
 
 .symmetric-hint i {
-    color: var(--primary-color);
+    color: var(--primary);
     margin-top: 2px;
 }
 
 .symmetric-hint p {
     margin: 0;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
     line-height: 1.7;
 }
 
 /* btn-warning（清除默认按钮态） */
 .btn-warning {
     background: color-mix(in srgb, var(--color-ant-gold-6, #faad14) 12%, transparent);
-    color: var(--warning-color, #faad14);
+    color: var(--warning, #faad14);
     border: 1px solid color-mix(in srgb, var(--color-ant-gold-6, #faad14) 40%, transparent);
 }
 </style>

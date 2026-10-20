@@ -326,8 +326,8 @@ onUnmounted(() => {
 
 .btn-secondary:hover {
     background-color: transparent;
-    color: var(--primary-color);
-    border-color: var(--primary-color);
+    color: var(--primary);
+    border-color: var(--primary);
   }
 
 .btn:disabled {

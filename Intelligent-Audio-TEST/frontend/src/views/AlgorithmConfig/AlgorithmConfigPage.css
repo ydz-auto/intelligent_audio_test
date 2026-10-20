@@ -22,12 +22,12 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  color: var(--primary-color);
+  color: var(--primary);
 }
 
 .page-description {
   margin: 0;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: var(--font-size-md);
 }
 
@@ -51,21 +51,21 @@
   padding: var(--spacing-sm) var(--spacing-md);
   border: none;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: var(--font-size-md);
   cursor: pointer;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   transition: all var(--transition-normal);
 }
 
 .tab-btn:hover {
-  background: var(--primary-light);
-  color: var(--primary-color);
+  background: var(--accent);
+  color: var(--primary);
 }
 
 .tab-btn.active {
-  background: var(--primary-color);
-  color: var(--white-color);
+  background: var(--primary);
+  color: var(--color-white);
 }
 
 .tab-content {
@@ -108,7 +108,7 @@
   margin: 0;
   font-size: var(--font-size-xl);
   font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 
 .detail-section {
@@ -120,9 +120,9 @@
 .section-title {
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
+  color: var(--foreground);
   padding-bottom: var(--spacing-sm);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border);
 }
 
 .info-grid {
@@ -143,12 +143,12 @@
 
 .info-label {
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .info-value {
   font-size: var(--font-size-md);
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 
 .mapping-tabs {
@@ -160,7 +160,7 @@
 .empty-state {
   text-align: center;
   padding: var(--spacing-xxl);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .empty-state i {
@@ -175,22 +175,22 @@
 }
 
 .btn-danger {
-  color: var(--danger-color);
+  color: var(--destructive);
 }
 
 .btn-danger:hover {
-  background: var(--danger-light);
-  color: var(--danger-color);
+  background: var(--destructive-light);
+  color: var(--destructive);
 }
 
 .text-muted {
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 /* INT-295：组件形态标签——内联 style 收敛为 CSS 类，色板走语义 token */
 .status-tag.component {
   background-color: var(--secondary-light);
-  color: var(--secondary-color);
+  color: var(--secondary);
 }
 
 @media (max-width: 768px) {
@@ -216,7 +216,7 @@
      本页在深色下统一走语义 token（浅色零变化、深色可读）。
      基座 INT-735 / CSS 重构 INT-757 全局收敛前此处先行；不写死数值 ── */
 .dark .algorithm-config-page .page-header {
-  background-color: var(--background-primary);
+  background-color: var(--background);
 }
 
 .dark .algorithm-config-page .card {

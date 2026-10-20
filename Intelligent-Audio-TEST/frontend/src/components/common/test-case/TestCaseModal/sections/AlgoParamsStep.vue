@@ -209,8 +209,8 @@ function onDynamicFormUpdate(values: Record<string, any>) {
   gap: 8px;
   margin-bottom: 12px;
 }
-.rce-step-icon { font-size: 14px; color: var(--primary-color, var(--primary)); }
-.rce-step-title { font-size: 14px; font-weight: 600; color: var(--text-primary, var(--foreground)); }
+.rce-step-icon { font-size: 14px; color: var(--primary, var(--primary)); }
+.rce-step-title { font-size: 14px; font-weight: 600; color: var(--foreground, var(--foreground)); }
 
 .rce-tag {
   padding: 2px 8px;
@@ -225,7 +225,7 @@ function onDynamicFormUpdate(values: Record<string, any>) {
 .rce-sub-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary, var(--foreground));
+  color: var(--foreground, var(--foreground));
   margin-bottom: 8px;
   display: flex;
   align-items: center;

@@ -485,7 +485,7 @@ onMounted(() => {
 
 .field-hint {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   margin: var(--spacing-xs) 0 0;
 }
 
@@ -522,7 +522,7 @@ onMounted(() => {
 }
 
 .perm-desc {
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 12px;
 }
 
@@ -570,7 +570,7 @@ onMounted(() => {
 .load-error-desc {
   margin: 0;
   font-size: 14px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 </style>

@@ -189,7 +189,7 @@ onUnmounted(() => {
   border-radius: var(--radius-control);
   border: none;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 16px;
   cursor: pointer;
   display: inline-flex;
@@ -242,7 +242,7 @@ onUnmounted(() => {
   border: none;
   border-bottom: 2px solid transparent;
   font-size: 14px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   cursor: pointer;
   transition: all var(--transition-fast);
 }
@@ -274,11 +274,11 @@ onUnmounted(() => {
   font-size: 11px;
   margin-right: 8px;
   background: var(--gray-light);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 .notification-item__tag--report { background: var(--success-light); color: var(--success-dark); }
 .notification-item__tag--import { background: var(--warning-light); color: var(--warning-dark); }
-.notification-item__tag--task { background: var(--secondary-light); color: var(--secondary-dark); }
+.notification-item__tag--task { background: var(--secondary-light); color: var(--secondary-deep); }
 .notification-item__time {
   font-size: 12px;
   color: var(--text-tertiary);
@@ -286,7 +286,7 @@ onUnmounted(() => {
 .notification-item__text {
   margin: 4px 0 0;
   font-size: 13px;
-  color: var(--text-primary);
+  color: var(--foreground);
   line-height: 1.5;
 }
 .notice-content {
@@ -295,7 +295,7 @@ onUnmounted(() => {
 .notice-text {
   margin: 0;
   font-size: 14px;
-  color: var(--text-primary);
+  color: var(--foreground);
   line-height: 1.7;
   white-space: pre-wrap;
   word-break: break-word;

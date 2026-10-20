@@ -17,14 +17,14 @@
 
 .result-audio-group {
   padding: 10px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
 }
 
 .result-audio-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--primary-color);
+  color: var(--primary);
   margin-bottom: 8px;
 }
 
@@ -39,17 +39,17 @@
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
-  background: var(--background-secondary);
+  background: var(--muted);
   border-radius: var(--radius-tag);
   font-size: 13px;
 }
 
 .result-audio-label {
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 
 .result-audio-link {
-  color: var(--primary-color);
+  color: var(--primary);
   text-decoration: none;
   font-size: 12px;
   display: inline-flex;
@@ -64,13 +64,13 @@
 .section-title {
   font-size: 15px;
   font-weight: 600;
-  color: var(--primary-color);
+  color: var(--primary);
   margin-bottom: 16px;
   display: flex;
   align-items: center;
   gap: 8px;
   padding-bottom: 8px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border);
 }
 
 .metrics-table-wrapper {
@@ -81,19 +81,19 @@
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: var(--radius-tag);
   overflow: hidden;
   table-layout: auto;
 }
 
 .modern-metrics-table th {
-  background-color: var(--background-secondary);
+  background-color: var(--muted);
   text-align: left;
   padding: 10px 12px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-weight: 500;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border);
   white-space: normal;
   word-break: break-word;
   max-width: 120px;
@@ -106,7 +106,7 @@
 
 .modern-metrics-table td {
   padding: 10px 12px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border);
 }
 
 .modern-metrics-table td:first-child {
@@ -147,7 +147,7 @@
 }
 
 .dim-detail {
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 12px;
   max-width: 400px;
 }
@@ -185,7 +185,7 @@
 .subsection-label {
   font-size: 13px;
   font-weight: 600;
-  color: var(--primary-color);
+  color: var(--primary);
   padding-bottom: 3px;
   border-bottom: 1px solid var(--border);
   margin-bottom: 2px;
@@ -195,7 +195,7 @@
 }
 
 .subsection-label i {
-  color: var(--primary-color);
+  color: var(--primary);
   font-size: 12px;
 }
 
@@ -249,7 +249,7 @@
 .result-label {
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   margin-bottom: 4px;
 }
 
@@ -336,7 +336,7 @@
   gap: 16px;
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--border);
 }
 
 .pagination-btn {
@@ -344,18 +344,18 @@
   align-items: center;
   gap: 4px;
   padding: 6px 12px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
   background: white;
-  color: var(--text-primary);
+  color: var(--foreground);
   font-size: 13px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .pagination-btn:hover:not(:disabled) {
-  border-color: var(--primary-color);
-  color: var(--primary-color);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .pagination-btn:disabled {
@@ -365,7 +365,7 @@
 
 .pagination-info {
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .text-comparison-container {
@@ -434,7 +434,7 @@
 .collapsible-text .text-content {
   line-height: 1.6;
   font-size: 13px;
-  color: var(--text-primary);
+  color: var(--foreground);
   display: -webkit-box;
   -webkit-line-clamp: 3;
   line-clamp: 3;
@@ -462,7 +462,7 @@
 }
 
 .expand-toggle {
-  color: var(--primary-color);
+  color: var(--primary);
   cursor: pointer;
   font-size: 12px;
   margin-top: 4px;
@@ -492,21 +492,21 @@
   flex-direction: column;
   align-items: center;
   padding: 12px 20px;
-  background: var(--background-secondary);
+  background: var(--muted);
   border-radius: var(--radius-control);
   min-width: 120px;
 }
 
 .aggregated-label {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   margin-bottom: 4px;
 }
 
 .aggregated-value {
   font-size: 18px;
   font-weight: 600;
-  color: var(--primary-color);
+  color: var(--primary);
 }
 
 .round-list {
@@ -516,13 +516,13 @@
 }
 
 .round-item {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
   overflow: hidden;
 }
 
 .round-item.expanded {
-  border-color: var(--primary-color);
+  border-color: var(--primary);
 }
 
 .round-header {
@@ -531,7 +531,7 @@
   gap: 12px;
   padding: 10px 14px;
   cursor: pointer;
-  background: var(--background-secondary);
+  background: var(--muted);
   transition: background 0.2s;
 }
 
@@ -542,12 +542,12 @@
 .round-number {
   font-weight: 600;
   font-size: 14px;
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 
 .round-latency {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .round-interruption-badge {
@@ -562,7 +562,7 @@
 .expand-icon {
   margin-left: auto;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .round-detail {
@@ -581,12 +581,12 @@
 .round-field-label {
   font-size: 12px;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .round-field-value {
   font-size: 13px;
-  color: var(--text-primary);
+  color: var(--foreground);
   line-height: 1.5;
 }
 
@@ -618,7 +618,7 @@
 .dim-tab-bar {
   display: flex;
   gap: 2px;
-  border-bottom: 2px solid var(--primary-color);
+  border-bottom: 2px solid var(--primary);
   flex-wrap: wrap;
 }
 
@@ -629,7 +629,7 @@
   border: 1px solid transparent;
   border-bottom: none;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   cursor: pointer;
   border-radius: var(--radius-control) var(--radius-control) 0 0;
   transition: all 0.2s;
@@ -640,11 +640,11 @@
 
 .dim-tab-btn:hover {
   background: var(--secondary-light);
-  color: var(--primary-color);
+  color: var(--primary);
 }
 
 .dim-tab-btn.active {
-  background: var(--primary-color);
+  background: var(--primary);
   color: white;
   font-weight: 600;
 }
@@ -667,7 +667,7 @@
   font-weight: 500;
   border: 1px solid var(--border);
   background: var(--color-neutral-50);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   cursor: pointer;
   border-radius: var(--radius-lg);
   transition: all 0.2s ease;
@@ -676,13 +676,13 @@
 }
 
 .round-tab-btn:hover {
-  border-color: var(--primary-color);
-  color: var(--primary-color);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .round-tab-btn.active {
-  background: var(--primary-color);
-  border-color: var(--primary-color);
+  background: var(--primary);
+  border-color: var(--primary);
   color: white;
   font-weight: 600;
 }
@@ -728,7 +728,7 @@
 .dimension-block-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--primary-color);
+  color: var(--primary);
   background: var(--secondary-light);
   padding: 4px 10px;
   border-radius: var(--radius-tag);
@@ -746,7 +746,7 @@
 .device-block-title {
   font-weight: 600;
   font-size: 13px;
-  color: var(--primary-color);
+  color: var(--primary);
   padding: 2px 0;
 }
 

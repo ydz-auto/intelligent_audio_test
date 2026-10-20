@@ -382,7 +382,7 @@ onMounted(() => {
   max-height: 60vh;
   min-height: 400px;
   gap: 0;
-  border: 1px solid var(--border-color, var(--border));
+  border: 1px solid var(--border, var(--border));
   border-radius: var(--radius-control);
   overflow: hidden;
 }
@@ -399,7 +399,7 @@ onMounted(() => {
   flex: 1;
   overflow-y: auto;
   padding: 16px 20px;
-  background: var(--background-primary, var(--background));
+  background: var(--background, var(--background));
 }
 
 /* 评估维度步骤的共享样式 */
@@ -417,8 +417,8 @@ onMounted(() => {
   margin-bottom: 12px;
 }
 
-.rce-step-icon { font-size: 14px; color: var(--primary-color, var(--primary)); }
-.rce-step-title { font-size: 14px; font-weight: 600; color: var(--text-primary, var(--foreground)); }
+.rce-step-icon { font-size: 14px; color: var(--primary, var(--primary)); }
+.rce-step-title { font-size: 14px; font-weight: 600; color: var(--foreground, var(--foreground)); }
 
 .rce-tag {
   padding: 2px 8px;

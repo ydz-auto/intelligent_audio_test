@@ -258,13 +258,13 @@ onMounted(() => {
 
 .group-count {
   font-size: 14px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .group-form {
   margin-top: var(--spacing-md);
   padding-top: var(--spacing-md);
-  border-top: 1px solid var(--gray-light-color);
+  border-top: 1px solid var(--gray-light);
 }
 
 .form-row {

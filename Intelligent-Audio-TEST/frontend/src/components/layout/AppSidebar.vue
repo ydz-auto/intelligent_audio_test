@@ -230,7 +230,7 @@ function go(path: string) {
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 14px;
   cursor: pointer;
   display: inline-flex;
@@ -258,7 +258,7 @@ function go(path: string) {
   border: none;
   border-radius: var(--radius-sm);
   background: var(--muted);
-  color: var(--text-primary);
+  color: var(--foreground);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -317,7 +317,7 @@ function go(path: string) {
   gap: 10px;
   padding: 9px 12px;
   border-radius: var(--radius-sm);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 14px;
   text-decoration: none;
   transition: all var(--transition-fast);

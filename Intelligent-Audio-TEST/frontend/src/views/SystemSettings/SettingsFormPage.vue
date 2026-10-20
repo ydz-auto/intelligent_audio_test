@@ -110,13 +110,13 @@ function toFormField(field: SettingsFormField) {
 }
 
 .page-title i {
-  color: var(--primary-color);
+  color: var(--primary);
 }
 
 .page-description {
   margin-top: var(--spacing-xs);
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .dirty-indicator {
@@ -150,7 +150,7 @@ function toFormField(field: SettingsFormField) {
   gap: var(--spacing-sm);
   margin-top: var(--spacing-lg);
   padding-top: var(--spacing-md);
-  border-top: 1px solid var(--gray-light-color);
+  border-top: 1px solid var(--gray-light);
 }
 
 .error-msg {

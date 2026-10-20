@@ -378,7 +378,7 @@ defineExpose({ openWizardWithTasks, startWizard });
   gap: 6px;
   padding: 7px 14px;
   border: 1px solid var(--color-slate-300, #cbd5e1);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   background: #fff;
   color: var(--foreground, #1e293b);
   font-size: 13px;
@@ -388,7 +388,7 @@ defineExpose({ openWizardWithTasks, startWizard });
 .cpp-btn:hover { border-color: var(--primary, #ff6a00); color: var(--primary, #ff6a00); }
 .cpp-btn.active {
   border-color: var(--primary, #ff6a00);
-  background: var(--primary-light, #fff7ed);
+  background: var(--accent, #fff7ed);
   color: var(--primary, #ff6a00);
 }
 .cpp-btn-primary {
@@ -396,9 +396,9 @@ defineExpose({ openWizardWithTasks, startWizard });
   border-color: var(--primary, #ff6a00);
   color: #fff;
 }
-.cpp-btn-primary:hover { background: var(--primary-dark, #e55d00); color: #fff; }
+.cpp-btn-primary:hover { background: var(--primary-hover, #e55d00); color: #fff; }
 .cpp-btn-sm { padding: 4px 10px; font-size: 12px; }
-.cpp-btn-danger { border-color: var(--danger-color, #dc2626); color: var(--danger-color, #dc2626); }
+.cpp-btn-danger { border-color: var(--destructive, #dc2626); color: var(--destructive, #dc2626); }
 .cpp-badge {
   display: inline-flex;
   align-items: center;
@@ -406,7 +406,7 @@ defineExpose({ openWizardWithTasks, startWizard });
   min-width: 18px;
   height: 18px;
   padding: 0 6px;
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-full);
   background: var(--primary, #ff6a00);
   color: #fff;
   font-size: 11px;
@@ -423,7 +423,7 @@ defineExpose({ openWizardWithTasks, startWizard });
   min-width: 260px;
   background: #fff;
   border: 1px solid var(--color-slate-200, #e2e8f0);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
   padding: 8px;
 }
@@ -444,7 +444,7 @@ defineExpose({ openWizardWithTasks, startWizard });
 .cpp-count {
   flex-shrink: 0;
   padding: 1px 8px;
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-full);
   background: var(--color-slate-100, #f1f5f9);
   color: var(--color-slate-500, #64748b);
   font-size: 11px;
@@ -490,7 +490,7 @@ defineExpose({ openWizardWithTasks, startWizard });
 }
 .cpp-card {
   border: 1px solid var(--color-slate-200, #e2e8f0);
-  border-radius: var(--border-radius-xl);
+  border-radius: var(--radius-xl);
   padding: 12px;
 }
 .cpp-source-toggle {
@@ -509,7 +509,7 @@ defineExpose({ openWizardWithTasks, startWizard });
   margin-top: 8px;
   padding: 8px 12px;
   background: var(--color-slate-50, #f8fafc);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
 }
 .cpp-source-head {
   font-size: 12px;
@@ -549,14 +549,14 @@ defineExpose({ openWizardWithTasks, startWizard });
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
   background: var(--color-slate-100, #f1f5f9);
   font-size: 12px;
   color: var(--color-slate-600, #475569);
 }
 .cpp-source-result.missing {
   background: var(--color-red-50);
-  color: var(--danger-color);
+  color: var(--destructive, #dc2626);
 }
 .cpp-row-badge {
   display: inline-flex;
@@ -567,7 +567,7 @@ defineExpose({ openWizardWithTasks, startWizard });
 .cpp-source-case { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cpp-row-badge.missing-badge {
   flex-shrink: 0;
-  color: var(--warning-color, #b45309);
+  color: var(--warning, #b45309);
   font-size: 11px;
 }
 /* INT-552：溯源加载失败可见错误（含重试） */
@@ -577,7 +577,7 @@ defineExpose({ openWizardWithTasks, startWizard });
   gap: 8px;
   padding: 8px 0;
   font-size: 13px;
-  color: var(--danger-color, #dc2626);
+  color: var(--destructive, #dc2626);
 }
 .source-retry-btn {
   padding: 2px 10px;
@@ -585,7 +585,7 @@ defineExpose({ openWizardWithTasks, startWizard });
   color: var(--color-primary, #2563eb);
   background: transparent;
   border: 1px solid var(--color-slate-300, #cbd5e1);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   cursor: pointer;
 }
 .source-retry-btn:hover {

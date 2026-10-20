@@ -161,7 +161,7 @@
 }
 
 .test-spl-btn {
-  background-color: var(--primary-color, var(--primary));
+  background-color: var(--primary, var(--primary));
   color: white;
   border: 2px solid transparent;
   padding: 6px 10px;
@@ -178,7 +178,7 @@
 
 .test-spl-btn:hover:not(:disabled) {
   box-shadow: 0 2px 8px color-mix(in srgb, var(--primary) 30%, transparent);
-  border: 2px solid var(--primary-color, var(--primary));
+  border: 2px solid var(--primary, var(--primary));
 }
 
 .test-spl-btn:disabled {

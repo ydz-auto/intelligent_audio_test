@@ -391,8 +391,8 @@ async function handleSubmit() {
   display: flex;
   gap: 8px;
   padding: 10px 12px;
-  background: var(--background-secondary, #f7f8fa);
-  border-left: 3px solid var(--primary-color, #4080ff);
+  background: var(--muted, #f7f8fa);
+  border-left: 3px solid var(--primary, #4080ff);
   border-radius: var(--radius-control);
   margin-bottom: 14px;
 }
@@ -400,7 +400,7 @@ async function handleSubmit() {
 .mode-info p {
   margin: 0;
   font-size: 12px;
-  color: var(--text-secondary, #666);
+  color: var(--muted-foreground, #666);
   line-height: 1.6;
 }
 
@@ -416,8 +416,8 @@ async function handleSubmit() {
   flex-direction: column;
   gap: 4px;
   padding: 8px 10px;
-  background: var(--background-primary, #fff);
-  border: 1px solid var(--border-color, #e5e6eb);
+  background: var(--background, #fff);
+  border: 1px solid var(--border, #e5e6eb);
   border-radius: var(--radius-control);
 }
 
@@ -429,7 +429,7 @@ async function handleSubmit() {
 .ref-value {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary, #333);
+  color: var(--foreground, #333);
 }
 
 .points-section {
@@ -447,14 +447,14 @@ async function handleSubmit() {
 .preview-section h4 {
   margin: 0;
   font-size: 14px;
-  color: var(--text-primary, #333);
+  color: var(--foreground, #333);
 }
 
 .empty-points {
   padding: 20px;
   text-align: center;
   color: var(--text-light, #999);
-  border: 1px dashed var(--border-color, #ddd);
+  border: 1px dashed var(--border, #ddd);
   border-radius: var(--radius-control);
 }
 
@@ -476,14 +476,14 @@ async function handleSubmit() {
 .point-row--head {
   font-size: 12px;
   color: var(--text-light, #999);
-  border-bottom: 1px solid var(--border-color, #eee);
+  border-bottom: 1px solid var(--border, #eee);
   padding-bottom: 8px;
 }
 
 .point-row input {
   width: 100%;
   padding: 6px 8px;
-  border: 1px solid var(--border-color, #ddd);
+  border: 1px solid var(--border, #ddd);
   border-radius: var(--radius-control);
   font-size: 13px;
   box-sizing: border-box;
@@ -491,23 +491,23 @@ async function handleSubmit() {
 
 .point-row input:focus {
   outline: none;
-  border-color: var(--primary-color, #4080ff);
+  border-color: var(--primary, #4080ff);
 }
 
 .point-row.has-error input {
-  border-color: var(--error-color, #f53f3f);
+  border-color: var(--destructive, #f53f3f);
 }
 
 .readonly-cell {
   font-size: 12px;
-  color: var(--text-secondary, #666);
+  color: var(--muted-foreground, #666);
   font-variant-numeric: tabular-nums;
 }
 
 .point-error {
   grid-column: 1 / -1;
   font-size: 11px;
-  color: var(--error-color, #f53f3f);
+  color: var(--destructive, #f53f3f);
 }
 
 .col-actions {
@@ -525,8 +525,8 @@ async function handleSubmit() {
 }
 
 .icon-btn:hover:not(:disabled) {
-  color: var(--error-color, #f53f3f);
-  background: var(--error-light, #fdecec);
+  color: var(--destructive, #f53f3f);
+  background: var(--destructive-light, #fdecec);
 }
 
 .icon-btn:disabled {
@@ -540,8 +540,8 @@ async function handleSubmit() {
 
 /* 按参考生成两步确认态（INT-330 缺陷2）：警示色提示即将覆盖既有点集 */
 .points-toolbar .btn-regenerate--armed {
-  border-color: var(--warning-color, #faad14);
-  color: var(--warning-color, #faad14);
+  border-color: var(--warning, #faad14);
+  color: var(--warning, #faad14);
 }
 
 .preview-section {
@@ -549,7 +549,7 @@ async function handleSubmit() {
 }
 
 .preview-table {
-  border: 1px solid var(--border-color, #eee);
+  border: 1px solid var(--border, #eee);
   border-radius: var(--radius-control);
   overflow: hidden;
   max-height: 180px;
@@ -561,12 +561,12 @@ async function handleSubmit() {
   grid-template-columns: 1fr 1fr 1fr;
   padding: 6px 12px;
   font-size: 12px;
-  border-bottom: 1px solid var(--border-color, #f2f2f2);
+  border-bottom: 1px solid var(--border, #f2f2f2);
   font-variant-numeric: tabular-nums;
 }
 
 .preview-row--head {
-  background: var(--background-secondary, #f7f8fa);
+  background: var(--muted, #f7f8fa);
   color: var(--text-light, #999);
   position: sticky;
   top: 0;
@@ -589,7 +589,7 @@ async function handleSubmit() {
   justify-content: flex-end;
   gap: 12px;
   padding: 14px 20px;
-  border-top: 1px solid var(--border-color, #eee);
+  border-top: 1px solid var(--border, #eee);
 }
 
 .loading-spinner {

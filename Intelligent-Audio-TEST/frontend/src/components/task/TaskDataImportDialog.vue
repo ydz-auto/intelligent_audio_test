@@ -231,8 +231,8 @@ onUnmounted(stopWatching);
   max-width: 92vw;
   max-height: 84vh;
   overflow-y: auto;
-  background: var(--bg-color, #fff);
-  border-radius: var(--border-radius-xl);
+  background: var(--background, #fff);
+  border-radius: var(--radius-xl);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
   display: flex;
   flex-direction: column;
@@ -242,56 +242,56 @@ onUnmounted(stopWatching);
   align-items: center;
   justify-content: space-between;
   padding: 14px 18px;
-  border-bottom: 1px solid var(--border-color, #eee);
+  border-bottom: 1px solid var(--border, #eee);
 }
 .dt-dialog-header h3 { margin: 0; font-size: 16px; }
 .dt-close-btn { background: none; border: none; cursor: pointer; font-size: 15px; color: inherit; }
 .dt-dialog-body { padding: 14px 18px; flex: 1; }
 .dt-section { margin-bottom: 14px; }
-.dt-section h4 { margin: 0 0 8px; font-size: 13px; color: var(--text-secondary, #666); }
+.dt-section h4 { margin: 0 0 8px; font-size: 13px; color: var(--muted-foreground, #666); }
 .dt-file-label input { font-size: 13px; }
-.dt-meta { font-size: 12px; color: var(--text-secondary, #666); margin-bottom: 8px; }
+.dt-meta { font-size: 12px; color: var(--muted-foreground, #666); margin-bottom: 8px; }
 .dt-task-list { list-style: none; margin: 0 0 8px; padding: 0; max-height: 140px; overflow-y: auto; }
 .dt-task-list li { display: flex; justify-content: space-between; padding: 3px 0; font-size: 13px; }
-.dt-task-meta { color: var(--text-secondary, #888); }
-.dt-stats { font-size: 12px; color: var(--text-secondary, #666); margin-bottom: 6px; }
-.dt-warn { font-size: 12px; color: var(--warning-color, #b8860b); margin: 6px 0; }
-.dt-warning-list { margin: 4px 0 0; padding-left: 18px; font-size: 12px; color: var(--warning-color, #b8860b); }
-.dt-error { color: var(--danger-color, #d9534f); font-size: 13px; margin-top: 8px; }
-.dt-info { color: var(--text-secondary, #666); font-size: 13px; margin-top: 8px; }
+.dt-task-meta { color: var(--muted-foreground, #888); }
+.dt-stats { font-size: 12px; color: var(--muted-foreground, #666); margin-bottom: 6px; }
+.dt-warn { font-size: 12px; color: var(--warning, #b8860b); margin: 6px 0; }
+.dt-warning-list { margin: 4px 0 0; padding-left: 18px; font-size: 12px; color: var(--warning, #b8860b); }
+.dt-error { color: var(--destructive, #d9534f); font-size: 13px; margin-top: 8px; }
+.dt-info { color: var(--muted-foreground, #666); font-size: 13px; margin-top: 8px; }
 .dt-progress-track {
   height: 10px;
-  border-radius: var(--border-radius-full);
-  background: var(--border-color, #e5e7eb);
+  border-radius: var(--radius-full);
+  background: var(--border, #e5e7eb);
   overflow: hidden;
   margin-bottom: 6px;
 }
 .dt-progress-bar {
   height: 100%;
-  background: var(--primary-color, #3b82f6);
+  background: var(--primary, #3b82f6);
   transition: width 0.4s ease;
 }
-.dt-progress-error { background: var(--danger-color, #d9534f); }
-.dt-progress-text { font-size: 12px; color: var(--text-secondary, #666); }
+.dt-progress-error { background: var(--destructive, #d9534f); }
+.dt-progress-text { font-size: 12px; color: var(--muted-foreground, #666); }
 .dt-dialog-footer {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
   padding: 12px 18px;
-  border-top: 1px solid var(--border-color, #eee);
+  border-top: 1px solid var(--border, #eee);
 }
 .dt-btn {
   padding: 7px 16px;
-  border-radius: var(--border-radius-md);
-  border: 1px solid var(--border-color, #ddd);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border, #ddd);
   background: transparent;
   color: inherit;
   cursor: pointer;
   font-size: 13px;
 }
 .dt-btn-primary {
-  background: var(--primary-color, #3b82f6);
-  border-color: var(--primary-color, #3b82f6);
+  background: var(--primary, #3b82f6);
+  border-color: var(--primary, #3b82f6);
   color: #fff;
 }
 .dt-btn:disabled { opacity: 0.55; cursor: not-allowed; }

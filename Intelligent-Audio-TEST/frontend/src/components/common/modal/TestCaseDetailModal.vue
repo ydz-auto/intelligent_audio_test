@@ -19,6 +19,7 @@
         </h4>
         <div class="case-meta">
           <div class="meta-item flex items-center gap-2">
+          <div class="meta-item flex items-center gap-2">
             <i class="fas fa-info-circle"></i>
             <span class="meta-label">状态: </span>
             <span :class="'status-tag ' + (detail.executionStatus || ExecutionStatus.PENDING).toLowerCase()">
@@ -40,6 +41,7 @@
             <span class="meta-label">评分: </span>
             <span :class="'status-tag ' + (detail.evaluationStatus || EvaluationStatus.PENDING).toLowerCase()">
               {{ detail.evaluationStatus === EvaluationStatus.COMPLETED ? '评分完成' : '待评分' }}
+              {{ detail.evaluationStatus === EvaluationStatus.COMPLETED ? '评分完成' : '待评分' }}
             </span>
           </div>
           <div class="meta-item flex items-center gap-2">
@@ -48,20 +50,31 @@
         </div>
       </div>
 
-      <!-- INT-340：人工复核入口（结果列表多选批量复核，逐条留痕） -->
+      <!-- INT-340：人工复核入口（结果列表多选批量复核，逐条留痕）
+           INT-1069：AI 复核会话入口（灵犀Agent 对话式复核，可追问；建议层，不直接修改统计）。
+           无执行结果的用例不开放复核（本工具栏整体 v-if 于 detail.results 非空） -->
       <div v-if="detail.results && detail.results.length" class="review-toolbar">
         <div class="review-toolbar-header">
           <h5>
             <i class="fas fa-clipboard-check"></i>
             人工复核
           </h5>
-          <button
-            class="btn-review"
-            :disabled="selectedResultIds.length === 0"
-            @click="openReview(selectedResultIds)"
-          >
-            批量复核（{{ selectedResultIds.length }}）
-          </button>
+          <div class="review-toolbar-actions">
+            <button
+              class="btn-review btn-review--ai"
+              :title="'AI 复核该用例结果（灵犀Agent 对话式复核，可追问；建议层，不直接修改统计）'"
+              @click="openAiReview"
+            >
+              <i class="fas fa-sparkles"></i> AI 复核
+            </button>
+            <button
+              class="btn-review"
+              :disabled="selectedResultIds.length === 0"
+              @click="openReview(selectedResultIds)"
+            >
+              批量复核（{{ selectedResultIds.length }}）
+            </button>
+          </div>
         </div>
         <div class="review-result-list">
           <label v-for="r in detail.results" :key="r.id" class="review-result-item">
@@ -72,6 +85,18 @@
           </label>
         </div>
       </div>
+
+      <!-- INT-1069：AI 复核会话（灵犀Agent 对话式复核，可追问；建议层，采纳后落人工复核语义） -->
+      <AiReviewSessionDialog
+        v-if="aiReviewVisible"
+        :visible="true"
+        :task-id="props.taskId"
+        :case-id="String(props.caseId)"
+        :case-name="detail.caseName"
+        :results="aiReviewResults"
+        @close="aiReviewVisible = false"
+        @adopted="handleAiReviewAdopted"
+      />
 
       <!-- 执行结果与指标 - 有任何数据时才显示 -->
       <div v-if="hasAnyResultData" class="results-section">
@@ -155,6 +180,8 @@ import { useModalControl, MODAL_TYPES } from '../../../composables/modal/useModa
 import { useNotification } from '../../../composables/modal/useNotification'
 import TestCaseReportDetail from '../misc/TestCaseReportDetail.vue'
 import CaseIdBadge from '../CaseIdBadge.vue'
+// INT-1069：AI 复核会话（灵犀Agent 对话式复核，可追问；建议层，不直接修改统计）
+import AiReviewSessionDialog from '../../ai-review/AiReviewSessionDialog.vue'
 import { ExecutionStatus, EvaluationStatus } from '@/domain/enums'
 
 const props = defineProps({
@@ -211,6 +238,36 @@ const openReview = async (resultIds) => {
     console.error('人工复核失败:', err)
     notification.error('人工复核提交失败，请稍后重试')
   }
+}
+
+// INT-1069：AI 复核会话（灵犀Agent 对话式复核，可追问；建议层，不直接修改统计）
+const aiReviewVisible = ref(false)
+
+/** 复核对象（设备×结果）→ AI 复核会话结果行（真实数据，随执行详情接口返回） */
+const aiReviewResults = computed(() =>
+  (detail.value?.results ?? []).map(r => ({
+    id: r.id,
+    deviceName: r.deviceName ?? r.deviceId ?? null,
+    apiName: r.apiName ?? null,
+    executionStatus: r.executionStatus ?? null,
+    evaluationStatus: r.evaluationStatus ?? null,
+    reviewed: Boolean(r.reviewed),
+    dimensions: (r.dimensions ?? []).map(d => ({
+      name: d.name,
+      score: d.score ?? d.value,
+      reasoning: d.reasoning ?? undefined,
+    })),
+  }))
+)
+
+const openAiReview = () => {
+  aiReviewVisible.value = true
+}
+
+/** AI 复核结论采纳落位成功 → 关闭会话并刷新详情（复核标记/统计随任务详情接口更新） */
+const handleAiReviewAdopted = async () => {
+  aiReviewVisible.value = false
+  await fetchDetail()
 }
 
 const loading = ref(true)
@@ -448,10 +505,10 @@ onMounted(() => {
 <style scoped>
 
 .test-case-detail{
-    background-color: var(--background-primary);
+    background-color: var(--background);
     border-radius: var(--radius-control);
     padding: 16px;
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--border);
 }
 
 
@@ -466,14 +523,14 @@ onMounted(() => {
   justify-content: center;
   padding: 60px;
   gap: 16px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .spinner{
   width: 40px;
   height: 40px;
   border: 4px solid color-mix(in srgb, var(--color-black) 10%, transparent);
-  border-left-color: var(--primary-color);
+  border-left-color: var(--primary);
   border-radius: var(--radius-pill);
   animation: spin 1s linear infinite;
 }
@@ -490,28 +547,28 @@ onMounted(() => {
   font-weight: 500;
 }
 
-.status-tag.completed{ background-color: var(--success-light); color: var(--success-color); }
-.status-tag.failed{ background-color: var(--error-light); color: var(--error-color); }
-.status-tag.inProgress{ background-color: var(--warning-light); color: var(--warning-color); }
-.status-tag.pending{ background-color: var(--secondary-light); color: var(--secondary-color); }
+.status-tag.completed{ background-color: var(--success-light); color: var(--success); }
+.status-tag.failed{ background-color: var(--destructive-light); color: var(--destructive); }
+.status-tag.inProgress{ background-color: var(--warning-light); color: var(--warning); }
+.status-tag.pending{ background-color: var(--secondary-light); color: var(--secondary); }
 
 /* case-header-panel - 自内联 style 就近迁移（INT-1002 CSS冻结） */
 .case-header-panel{
   margin-bottom: var(--spacing-lg);
   padding-bottom: 20px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border);
 }
 .case-header-panel h4{
   margin: 0 0 12px 0;
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
+  color: var(--foreground);
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
 }
 .case-header-panel h4 i{
-  color: var(--primary-color);
+  color: var(--primary);
 }
 
 .meta-item{
@@ -520,20 +577,20 @@ onMounted(() => {
   gap: var(--spacing-sm);
 }
 .meta-item > i{
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: var(--font-size-sm);
 }
 .meta-label{
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 /* review-toolbar - 自内联 style 就近迁移（INT-1002 CSS冻结） */
 .review-toolbar{
   margin-top: var(--spacing-md);
   padding: 12px 16px;
-  background-color: var(--background-primary);
-  border: 1px solid var(--border-color);
+  background-color: var(--background);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
 }
 .review-toolbar-header{
@@ -546,11 +603,16 @@ onMounted(() => {
   margin: 0;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 .review-toolbar-header h5 i{
-  color: var(--primary-color);
+  color: var(--primary);
   margin-right: 6px;
+}
+.review-toolbar-actions{
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
 }
 .review-result-list{
   display: flex;
@@ -562,7 +624,7 @@ onMounted(() => {
   align-items: center;
   gap: 6px;
   padding: 4px 8px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: var(--radius-tag);
   font-size: var(--font-size-xs);
   cursor: pointer;
@@ -571,28 +633,28 @@ onMounted(() => {
 /* results-section - 自内联 style 就近迁移（INT-1002 CSS冻结） */
 .results-section{
   margin-top: var(--spacing-lg);
-  background-color: var(--background-primary);
+  background-color: var(--background);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   padding: 20px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
 }
 .results-section h5{
   margin: 0 0 var(--spacing-md) 0;
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
+  color: var(--foreground);
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
 }
 .results-section h5 i{
-  color: var(--primary-color);
+  color: var(--primary);
 }
 .no-items-message{
   text-align: center;
   padding: 30px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 /* logs-section - 自内联 style 就近迁移（INT-1002 CSS冻结；终端观感不随主题换肤） */
@@ -603,13 +665,13 @@ onMounted(() => {
   margin: 0 0 var(--spacing-md) 0;
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
+  color: var(--foreground);
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
 }
 .logs-section h5 i{
-  color: var(--primary-color);
+  color: var(--primary);
 }
 .modern-log-container{
   background-color: var(--terminal-bg);
@@ -704,10 +766,10 @@ onMounted(() => {
 
 .btn-load-more-logs{
   padding: 4px 12px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
-  background: var(--background-secondary);
-  color: var(--primary-color);
+  background: var(--muted);
+  color: var(--primary);
   font-size: 12px;
   cursor: pointer;
 }
@@ -722,7 +784,7 @@ onMounted(() => {
   padding: 6px 16px;
   border: none;
   border-radius: var(--radius-control);
-  background: var(--primary-color);
+  background: var(--primary);
   color: white;
   font-size: 13px;
   cursor: pointer;
@@ -731,27 +793,37 @@ onMounted(() => {
   opacity: 0.5;
   cursor: not-allowed;
 }
+/* INT-1069：AI 复核会话入口（描边次要形态，区别于批量复核主按钮） */
+.btn-review--ai{
+  background: transparent;
+  border: 1px solid var(--primary);
+  color: var(--primary);
+}
+.btn-review--ai:hover{
+  background: var(--primary);
+  color: white;
+}
 .status-pill{
   padding: 1px 6px;
   border-radius: var(--radius-tag);
   font-size: 11px;
   background: var(--secondary-light);
-  color: var(--secondary-color);
+  color: var(--secondary);
 }
-.status-pill.completed{ background: var(--success-light); color: var(--success-color); }
-.status-pill.failed{ background: var(--error-light); color: var(--error-color); }
-.status-pill.stopped{ background: var(--warning-light); color: var(--warning-color); }
+.status-pill.completed{ background: var(--success-light); color: var(--success); }
+.status-pill.failed{ background: var(--destructive-light); color: var(--destructive); }
+.status-pill.stopped{ background: var(--warning-light); color: var(--warning); }
 .reviewed-badge{
   padding: 1px 6px;
   border-radius: var(--radius-tag);
   font-size: 11px;
-  background: var(--primary-light, color-mix(in srgb, var(--primary-color) 15%, transparent));
-  color: var(--primary-color);
+  background: var(--accent, color-mix(in srgb, var(--primary) 15%, transparent));
+  color: var(--primary);
 }
 
 .log-count{
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 

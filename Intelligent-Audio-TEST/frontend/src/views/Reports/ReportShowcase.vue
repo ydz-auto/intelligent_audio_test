@@ -11,7 +11,7 @@
     <!-- 页面标题 -->
     <div class="page-header rs-page-header">
       <div class="header-left">
-        <h2 class="page-title" style="color: var(--primary-color);">
+        <h2 class="page-title" style="color: var(--primary);">
           <i class="fas fa-file-alt"></i>
           报告
         </h2>
@@ -335,7 +335,7 @@ function getReportSummary(report: any): string {
 
 .page-description {
   margin: var(--spacing-xs) 0 0 0;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: var(--font-size-sm);
 }
 
@@ -353,20 +353,20 @@ function getReportSummary(report: any): string {
   margin: 0;
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
+  color: var(--foreground);
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
 .rs-section-title i {
-  color: var(--primary-color);
+  color: var(--primary);
   font-size: 1rem;
 }
 
 .rs-section-sub {
   margin: var(--spacing-xs) 0 0 0;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: var(--font-size-sm);
 }
 
@@ -381,9 +381,9 @@ function getReportSummary(report: any): string {
   flex-direction: column;
   gap: 8px;
   padding: var(--spacing-md);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-lg);
-  background: var(--background-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--background);
   text-align: left;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -391,14 +391,14 @@ function getReportSummary(report: any): string {
 }
 
 .rs-algorithm-card:hover {
-  border-color: var(--primary-color);
+  border-color: var(--primary);
   box-shadow: var(--shadow-md);
 }
 
 .rs-algorithm-card--active {
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px var(--primary-light);
-  background: var(--primary-light);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--accent);
+  background: var(--accent);
 }
 
 .rs-algo-head {
@@ -410,27 +410,27 @@ function getReportSummary(report: any): string {
 
 .rs-algo-icon {
   font-size: 1.2rem;
-  color: var(--primary-color);
+  color: var(--primary);
 }
 
 .rs-algo-name {
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 
 .rs-algo-group {
   font-size: var(--font-size-xs);
   padding: 1px 8px;
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
   background: var(--secondary-light);
-  color: var(--secondary-color);
+  color: var(--secondary);
 }
 
 .rs-algo-status {
   font-size: var(--font-size-xs);
   padding: 1px 8px;
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
   font-weight: var(--font-weight-medium);
 }
 
@@ -446,16 +446,16 @@ function getReportSummary(report: any): string {
 
 .rs-algo-desc {
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   line-height: 1.5;
 }
 
 .rs-algo-error {
   margin-top: var(--spacing-md);
   padding: var(--spacing-sm) var(--spacing-md);
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
   background: var(--warning-light);
-  color: var(--warning-color);
+  color: var(--warning);
   font-size: var(--font-size-sm);
 }
 
@@ -480,7 +480,7 @@ function getReportSummary(report: any): string {
 
 .rs-filter-item label {
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   white-space: nowrap;
 }
 
@@ -491,17 +491,17 @@ function getReportSummary(report: any): string {
 
 .rs-search-filter :deep(.search-input) {
   border: 2px solid var(--color-gray-300) !important;
-  background-color: var(--background-primary) !important;
-  border-radius: var(--border-radius-lg) !important;
+  background-color: var(--background) !important;
+  border-radius: var(--radius-lg) !important;
   padding: var(--spacing-sm) var(--spacing-md) !important;
   font-size: var(--font-size-md) !important;
-  color: var(--text-primary) !important;
+  color: var(--foreground) !important;
   width: 100%;
 }
 
 .rs-search-filter :deep(.search-input:focus) {
-  border-color: var(--primary-color) !important;
-  box-shadow: 0 0 0 3px var(--primary-light) !important;
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px var(--accent) !important;
 }
 
 .rs-custom-time-range {
@@ -513,11 +513,11 @@ function getReportSummary(report: any): string {
 
 .rs-custom-time-range .date-input {
   border: 2px solid var(--color-gray-300) !important;
-  background-color: var(--background-primary) !important;
-  border-radius: var(--border-radius-md) !important;
+  background-color: var(--background) !important;
+  border-radius: var(--radius-md) !important;
   padding: var(--spacing-xs) var(--spacing-sm) !important;
   font-size: var(--font-size-sm) !important;
-  color: var(--text-primary) !important;
+  color: var(--foreground) !important;
 }
 
 .rs-sort-row {
@@ -529,7 +529,7 @@ function getReportSummary(report: any): string {
   align-items: center;
   gap: var(--spacing-sm);
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .rs-sort-item {
@@ -538,12 +538,12 @@ function getReportSummary(report: any): string {
   gap: 4px;
   cursor: pointer;
   padding: 4px 8px;
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
   user-select: none;
 }
 
 .rs-sort-item.active {
-  color: var(--primary-color);
+  color: var(--primary);
   font-weight: var(--font-weight-semibold);
 }
 
@@ -555,12 +555,12 @@ function getReportSummary(report: any): string {
   gap: var(--spacing-md);
   margin-bottom: var(--spacing-md);
   padding: var(--spacing-sm) 0;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border);
 }
 
 .rs-toolbar-count {
   font-size: var(--font-size-sm);
-  color: var(--text-primary);
+  color: var(--foreground);
   font-weight: var(--font-weight-semibold);
 }
 
@@ -576,9 +576,9 @@ function getReportSummary(report: any): string {
   gap: 10px;
   padding: 12px 16px;
   margin-bottom: var(--spacing-md);
-  background: color-mix(in srgb, var(--primary-color) 5%, transparent);
-  border-radius: var(--border-radius-lg);
-  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--primary) 5%, transparent);
+  border-radius: var(--radius-lg);
+  color: var(--muted-foreground);
   font-size: 14px;
 }
 
@@ -586,8 +586,8 @@ function getReportSummary(report: any): string {
   display: inline-block;
   width: 16px;
   height: 16px;
-  border: 2px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
-  border-top-color: var(--primary-color);
+  border: 2px solid color-mix(in srgb, var(--primary) 30%, transparent);
+  border-top-color: var(--primary);
   border-radius: 50%;
   animation: rs-spin 0.8s linear infinite;
 }
@@ -620,10 +620,10 @@ function getReportSummary(report: any): string {
 /* ===== 报告卡片 ===== */
 .rs-report-card {
   border: var(--card-border);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   padding: var(--spacing-md);
   margin-bottom: var(--spacing-sm);
-  background-color: var(--background-primary);
+  background-color: var(--background);
 }
 
 .rs-report-card .card-header {
@@ -644,7 +644,7 @@ function getReportSummary(report: any): string {
   margin: 0 0 var(--spacing-xs) 0;
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 
 .rs-report-card-meta-tags {
@@ -660,9 +660,9 @@ function getReportSummary(report: any): string {
 .rs-report-card-algorithm-type {
   font-size: var(--font-size-xs);
   padding: 2px 8px;
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
   background-color: var(--info-light);
-  color: var(--info-color);
+  color: var(--info);
 }
 
 .rs-report-card-status--published {
@@ -676,8 +676,8 @@ function getReportSummary(report: any): string {
 }
 
 .rs-report-card-task-name {
-  background-color: var(--primary-light);
-  color: var(--primary-color);
+  background-color: var(--accent);
+  color: var(--primary);
 }
 
 .rs-card-actions {
@@ -687,7 +687,7 @@ function getReportSummary(report: any): string {
 }
 
 .rs-report-card-description {
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: var(--font-size-sm);
   margin: 0 0 var(--spacing-sm) 0;
 }
@@ -707,7 +707,7 @@ function getReportSummary(report: any): string {
 }
 
 .rs-report-card-meta-item i {
-  color: var(--primary-color);
+  color: var(--primary);
 }
 
 /* ===== Toast ===== */

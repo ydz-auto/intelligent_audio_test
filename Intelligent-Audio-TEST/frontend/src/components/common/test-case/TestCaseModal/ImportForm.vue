@@ -273,7 +273,7 @@ defineExpose({
 }
 
 .file-upload {
-  border: 2px dashed var(--border-color, var(--border));
+  border: 2px dashed var(--border, var(--border));
   border-radius: var(--radius-control);
   padding: 24px;
   text-align: center;
@@ -284,13 +284,13 @@ defineExpose({
 /* 上传区图标 / 文案 / 隐藏 file input - 自内联 style 就近迁移（INT-1002 CSS冻结） */
 .file-upload-icon {
   font-size: var(--font-size-xxxl);
-  color: var(--primary-color);
+  color: var(--primary);
   margin-bottom: 12px;
 }
 
 .upload-hint {
   margin: 0 0 12px 0;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .upload-limit {
@@ -304,12 +304,12 @@ defineExpose({
 }
 
 .file-upload:hover {
-  border-color: var(--primary-color, var(--secondary));
+  border-color: var(--primary, var(--secondary));
   background: color-mix(in srgb, var(--secondary) 5%, transparent);
 }
 
 .file-upload.is-dragging {
-  border-color: var(--primary-color, var(--secondary));
+  border-color: var(--primary, var(--secondary));
   background: color-mix(in srgb, var(--secondary) 10%, transparent);
 }
 

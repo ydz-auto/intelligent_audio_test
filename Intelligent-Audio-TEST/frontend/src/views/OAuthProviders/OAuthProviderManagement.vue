@@ -360,7 +360,7 @@ onMounted(load)
 }
 .page-title {
   font-size: 20px;
-  color: var(--primary-color, var(--foreground));
+  color: var(--primary, var(--foreground));
 }
 .page-title i {
   margin-right: 8px;
@@ -373,7 +373,7 @@ onMounted(load)
 .btn {
   padding: 8px 16px;
   border: 1px solid var(--color-gray-300);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   background: var(--card, var(--color-white));
   cursor: pointer;
   font-size: 14px;
@@ -400,7 +400,7 @@ onMounted(load)
 .form-panel {
   background: var(--card, var(--color-white));
   border: 1px solid var(--color-gray-300);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   padding: 20px;
   margin-bottom: 20px;
 }
@@ -417,7 +417,7 @@ onMounted(load)
   flex: 1;
   padding: 8px 10px;
   border: 1px solid var(--color-gray-300);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   font-size: 14px;
   box-sizing: border-box;
 }
@@ -442,7 +442,7 @@ onMounted(load)
   width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--color-gray-300);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   font-size: 14px;
   box-sizing: border-box;
 }
@@ -456,7 +456,7 @@ onMounted(load)
   border-collapse: collapse;
   background: var(--card, var(--color-white));
   border: 1px solid var(--color-gray-300);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   overflow: hidden;
 }
 .provider-table th,
@@ -480,7 +480,7 @@ onMounted(load)
 }
 .status-badge {
   padding: 2px 10px;
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-full);
   font-size: 12px;
 }
 .status-badge.enabled {
@@ -536,6 +536,6 @@ onMounted(load)
 .load-error-desc {
   margin: 0;
   font-size: 14px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 </style>

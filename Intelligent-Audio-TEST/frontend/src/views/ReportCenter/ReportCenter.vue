@@ -497,12 +497,12 @@ async function handleBenchmarkPublish(payload: { name: string; description?: str
 .page-title {
   margin: 0;
   font-size: var(--font-size-xl);
-  color: var(--primary-color);
+  color: var(--primary);
 }
 
 .page-description {
   margin: var(--spacing-xs) 0 0 0;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: var(--font-size-sm);
 }
 
@@ -531,28 +531,28 @@ async function handleBenchmarkPublish(payload: { name: string; description?: str
   align-items: center;
   gap: var(--spacing-md);
   padding: var(--spacing-md);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-lg);
-  background: var(--background-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--background);
   cursor: pointer;
   transition: all 0.2s ease;
   text-align: left;
 }
 
 .rc-stat-badge:hover {
-  border-color: var(--primary-color);
+  border-color: var(--primary);
   box-shadow: var(--shadow-md);
 }
 
 .rc-stat-badge--active {
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px var(--primary-light);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--accent);
 }
 
 .rc-stat-icon {
   width: 40px;
   height: 40px;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -560,10 +560,10 @@ async function handleBenchmarkPublish(payload: { name: string; description?: str
   flex-shrink: 0;
 }
 
-.rc-stat-icon--primary { background: var(--primary-light); color: var(--primary-color); }
+.rc-stat-icon--primary { background: var(--accent); color: var(--primary); }
 .rc-stat-icon--success { background: var(--success-light); color: var(--success-dark); }
 .rc-stat-icon--warning { background: var(--warning-light); color: var(--warning-dark); }
-.rc-stat-icon--info { background: var(--secondary-light); color: var(--secondary-color); }
+.rc-stat-icon--info { background: var(--secondary-light); color: var(--secondary); }
 
 .rc-stat-info {
   display: flex;
@@ -574,14 +574,14 @@ async function handleBenchmarkPublish(payload: { name: string; description?: str
 
 .rc-stat-label {
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   white-space: nowrap;
 }
 
 .rc-stat-count {
   font-size: var(--font-size-xl);
   font-weight: var(--font-weight-bold);
-  color: var(--text-primary);
+  color: var(--foreground);
   font-variant-numeric: tabular-nums;
 }
 
@@ -602,7 +602,7 @@ async function handleBenchmarkPublish(payload: { name: string; description?: str
 
 .rc-filter-item label {
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   white-space: nowrap;
 }
 
@@ -612,19 +612,18 @@ async function handleBenchmarkPublish(payload: { name: string; description?: str
 }
 
 .rc-search-filter :deep(.search-input) {
-  /* 仅 background / padding 需 !important 覆盖全局 common.css .search-input 同名规则 */
-  border: 2px solid var(--color-gray-300);
-  background-color: var(--background-primary) !important;
-  border-radius: var(--border-radius-lg);
+  border: 2px solid var(--color-gray-300) !important;
+  background-color: var(--background) !important;
+  border-radius: var(--radius-lg) !important;
   padding: var(--spacing-sm) var(--spacing-md) !important;
-  font-size: var(--font-size-md);
-  color: var(--text-primary);
+  font-size: var(--font-size-md) !important;
+  color: var(--foreground) !important;
   width: 100%;
 }
 
 .rc-search-filter :deep(.search-input:focus) {
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px var(--primary-light);
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px var(--accent) !important;
 }
 
 .rc-custom-time-range {
@@ -635,12 +634,12 @@ async function handleBenchmarkPublish(payload: { name: string; description?: str
 }
 
 .rc-custom-time-range .date-input {
-  border: 2px solid var(--color-gray-300);
-  background-color: var(--background-primary);
-  border-radius: var(--border-radius-md);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
+  border: 2px solid var(--color-gray-300) !important;
+  background-color: var(--background) !important;
+  border-radius: var(--radius-md) !important;
+  padding: var(--spacing-xs) var(--spacing-sm) !important;
+  font-size: var(--font-size-sm) !important;
+  color: var(--foreground) !important;
 }
 
 .rc-sort-options {
@@ -648,7 +647,7 @@ async function handleBenchmarkPublish(payload: { name: string; description?: str
   align-items: center;
   gap: var(--spacing-sm);
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .rc-sort-item {
@@ -657,12 +656,12 @@ async function handleBenchmarkPublish(payload: { name: string; description?: str
   gap: 4px;
   cursor: pointer;
   padding: 4px 8px;
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
   user-select: none;
 }
 
 .rc-sort-item.active {
-  color: var(--primary-color);
+  color: var(--primary);
   font-weight: var(--font-weight-semibold);
 }
 
@@ -683,7 +682,7 @@ async function handleBenchmarkPublish(payload: { name: string; description?: str
 
 .rc-select-all-label {
   font-size: var(--font-size-base);
-  color: var(--text-primary);
+  color: var(--foreground);
   user-select: none;
 }
 
@@ -699,9 +698,9 @@ async function handleBenchmarkPublish(payload: { name: string; description?: str
   gap: 10px;
   padding: 12px 16px;
   margin-bottom: var(--spacing-md);
-  background: color-mix(in srgb, var(--primary-color) 5%, transparent);
-  border-radius: var(--border-radius-lg);
-  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--primary) 5%, transparent);
+  border-radius: var(--radius-lg);
+  color: var(--muted-foreground);
   font-size: 14px;
 }
 
@@ -709,8 +708,8 @@ async function handleBenchmarkPublish(payload: { name: string; description?: str
   display: inline-block;
   width: 16px;
   height: 16px;
-  border: 2px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
-  border-top-color: var(--primary-color);
+  border: 2px solid color-mix(in srgb, var(--primary) 30%, transparent);
+  border-top-color: var(--primary);
   border-radius: 50%;
   animation: rc-spin 0.8s linear infinite;
 }
@@ -766,21 +765,21 @@ async function handleBenchmarkPublish(payload: { name: string; description?: str
 /* ===== 报告卡片 ===== */
 .rc-report-card {
   border: var(--card-border);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   padding: var(--spacing-md);
   margin-bottom: var(--spacing-sm);
-  background-color: var(--background-primary);
+  background-color: var(--background);
   cursor: pointer;
   transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .rc-report-card:hover {
-  border-color: var(--primary-color);
+  border-color: var(--primary);
 }
 
 .rc-card-selected {
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px var(--primary-light);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--accent);
 }
 
 .rc-report-card .card-header {
@@ -807,7 +806,7 @@ async function handleBenchmarkPublish(payload: { name: string; description?: str
   margin: 0 0 var(--spacing-xs) 0;
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 
 .rc-report-card-meta-tags {
@@ -823,12 +822,12 @@ async function handleBenchmarkPublish(payload: { name: string; description?: str
 .rc-report-card-test-type {
   font-size: var(--font-size-xs);
   padding: 2px 8px;
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
 }
 
 .rc-report-card-type {
   background-color: var(--info-light);
-  color: var(--info-color);
+  color: var(--info);
 }
 
 .rc-status-published {
@@ -838,7 +837,7 @@ async function handleBenchmarkPublish(payload: { name: string; description?: str
 
 .rc-status-draft {
   background-color: var(--warning-light);
-  color: var(--warning-color);
+  color: var(--warning);
 }
 
 .rc-report-card-algorithm-type {
@@ -847,12 +846,12 @@ async function handleBenchmarkPublish(payload: { name: string; description?: str
 }
 
 .rc-report-card-test-type {
-  background-color: var(--primary-light);
-  color: var(--primary-color);
+  background-color: var(--accent);
+  color: var(--primary);
 }
 
 .rc-report-card-description {
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: var(--font-size-sm);
   margin: 0 0 var(--spacing-sm) 0;
 }
@@ -872,13 +871,13 @@ async function handleBenchmarkPublish(payload: { name: string; description?: str
 }
 
 .rc-report-card-meta-item i {
-  color: var(--primary-color);
+  color: var(--primary);
 }
 
 .task-checkbox {
   width: 18px;
   height: 18px;
   cursor: pointer;
-  accent-color: var(--primary-color);
+  accent-color: var(--primary);
 }
 </style>

@@ -73,7 +73,7 @@ const footerText = '智能语音测试系统'
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 13px;
 }
 .public-layout__footer-brand i {

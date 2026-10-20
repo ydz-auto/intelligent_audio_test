@@ -3,7 +3,7 @@
     <!-- 页面标题（INT-738：文案对齐 React 09_任务域「任务管理」） -->
     <section class="page-header">
       <div class="header-left">
-        <h2 class="page-title" style="color: var(--primary-color);">
+        <h2 class="page-title" style="color: var(--primary);">
           <i class="fas fa-tasks"></i>
           任务管理
         </h2>
@@ -853,7 +853,7 @@ watch(activeTab, (tab, prev) => {
   gap: 6px;
   padding: 8px 18px;
   border: 1px solid var(--color-slate-200, #e2e8f0);
-  border-radius: var(--border-radius-md) var(--border-radius-md) 0 0;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
   background: var(--color-slate-50, #f8fafc);
   color: var(--color-slate-500, #64748b);
   font-size: 14px;
@@ -869,7 +869,7 @@ watch(activeTab, (tab, prev) => {
 }
 
 .task-tab.active {
-  background: var(--background-primary, #fff);
+  background: var(--background, #fff);
   color: var(--primary, #FF6A00);
   border-color: var(--primary, #FF6A00);
   box-shadow: 0 -2px 0 0 var(--primary, #FF6A00) inset;
@@ -883,7 +883,7 @@ watch(activeTab, (tab, prev) => {
   min-width: 18px;
   height: 18px;
   padding: 0 6px;
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-full);
   background: var(--primary, #ff6a00);
   color: var(--color-white);
   font-size: 11px;
@@ -926,7 +926,7 @@ watch(activeTab, (tab, prev) => {
   min-width: 18px;
   height: 18px;
   padding: 0 6px;
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-full);
   background: var(--primary, #ff6a00);
   color: var(--color-white);
   font-size: 11px;

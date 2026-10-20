@@ -85,7 +85,7 @@
         />
       </TestStepContainer>
 
-      <!-- 步骤2：选择资源（设备/API） -->
+      <!-- 步骤2：选择资源（设备/API 混选 + 执行参数） -->
       <TestStepContainer
         :is-active="currentStep === 2"
         panel-id="test-step2"
@@ -94,53 +94,137 @@
         @prev="prevStep"
         @next="handleStartTask"
       >
-        <template #header-extra>
+        <div v-if="voiceLlmHint" class="info-alert">
+          <i class="fas fa-info-circle"></i> {{ voiceLlmHint }}
+        </div>
+
+        <!-- 设备区 -->
+        <div class="resource-section">
+          <div class="resource-section-header">
+            <h4><i class="fas fa-mobile-alt"></i> 测试设备</h4>
+          </div>
           <div class="device-toolbar">
-            <button class="btn btn-primary" @click="handleAddResource">
-              <i class="fas fa-plus"></i> {{ addResourceLabel }}
+            <button class="btn btn-primary" @click="() => addDevice()">
+              <i class="fas fa-plus"></i> 新增设备
             </button>
-            <button v-if="testType === TestType.E2E" class="btn btn-secondary" @click.stop="scanDevices('test')">
+            <button class="btn btn-secondary" @click.stop="() => scanDevices('test')">
               <i class="fas fa-search"></i> 扫描设备
             </button>
             <div class="search-box">
               <i class="fas fa-search search-icon"></i>
-              <input type="text" class="search-input" :placeholder="searchPlaceholder" v-model="resourceSearchQuery">
+              <input type="text" class="search-input" placeholder="搜索设备名称或型号..." v-model="deviceSearchQuery">
             </div>
             <div class="filter-select">
-              <select class="form-input" v-model="resourceStatusFilter">
+              <select class="form-input" v-model="selectedDeviceStatus">
                 <option :value="ViewMode.ALL">所有状态</option>
                 <option :value="DeviceStatus.ONLINE">在线</option>
                 <option :value="DeviceStatus.OFFLINE">离线</option>
               </select>
             </div>
           </div>
-        </template>
 
-        <div v-if="voiceLlmHint" class="info-alert">
-          <i class="fas fa-info-circle"></i> {{ voiceLlmHint }}
+          <ResourceSelectionGrid
+            :items="algorithmFilteredDevices"
+            :selected-ids="selectedDeviceIdsList"
+            :display-fields="deviceDisplayFields"
+            :empty-text="emptyDeviceText"
+            @toggle-selection="handleToggleDeviceSelection"
+            @action-click="handleDeviceResourceAction"
+          />
+
+          <div class="pagination-container" v-if="totalItems > pageSize">
+            <PaginationComponent
+              :current-page="currentPage"
+              :page-size="pageSize"
+              :total-items="totalItems"
+              :total-pages="totalPages"
+              @prev-page="handlePrevPage"
+              @next-page="handleNextPage"
+              @go-to-page="handlePageChange"
+              @page-size-change="handlePageSizeChange"
+            />
+          </div>
         </div>
 
-        <ResourceSelectionGrid
-          :items="resourceItems"
-          :selected-ids="selectedDeviceIdsList"
-          :display-fields="resourceDisplayFields"
-          :empty-text="emptyResourceText"
-          @toggle-selection="toggleResourceSelection"
-          @action-click="handleResourceAction"
-        />
+        <!-- 被测 API 区 -->
+        <div class="resource-section">
+          <div class="resource-section-header">
+            <h4><i class="fas fa-server"></i> 被测 API</h4>
+          </div>
+          <div class="device-toolbar">
+            <button class="btn btn-primary" @click="() => openAPIEditModal()">
+              <i class="fas fa-plus"></i> 新增API
+            </button>
+            <div class="search-box">
+              <i class="fas fa-search search-icon"></i>
+              <input type="text" class="search-input" placeholder="搜索API名称或端点..." v-model="apiSearchQuery">
+            </div>
+            <div class="filter-select">
+              <select class="form-input" v-model="apiFilter">
+                <option :value="ViewMode.ALL">所有状态</option>
+                <option :value="ApiEndpointStatus.ONLINE">在线</option>
+                <option :value="ApiEndpointStatus.OFFLINE">离线</option>
+              </select>
+            </div>
+          </div>
 
-        <!-- 分页控件 -->
-        <div class="pagination-container" v-if="totalItems > pageSize">
-          <PaginationComponent
-            :current-page="currentPage"
-            :page-size="pageSize"
-            :total-items="totalItems"
-            :total-pages="totalPages"
-            @prev-page="handlePrevPage"
-            @next-page="handleNextPage"
-            @go-to-page="handlePageChange"
-            @page-size-change="handlePageSizeChange"
+          <ResourceSelectionGrid
+            :items="filteredAPIs"
+            :selected-ids="selectedAPIIds"
+            :display-fields="apiDisplayFields"
+            :empty-text="emptyApiText"
+            @toggle-selection="toggleAPISelection"
+            @action-click="handleApiResourceAction"
           />
+
+          <div class="pagination-container" v-if="apiTotalItems > apiPageSize">
+            <PaginationComponent
+              :current-page="apiCurrentPage"
+              :page-size="apiPageSize"
+              :total-items="apiTotalItems"
+              :total-pages="apiTotalPages"
+              @prev-page="handleApiPrevPage"
+              @next-page="handleApiNextPage"
+              @go-to-page="handleApiPageChange"
+              @page-size-change="handleApiPageSizeChange"
+            />
+          </div>
+        </div>
+
+        <!-- 执行参数区（INT-604：执行模式 并行/串行 + 串行优先侧） -->
+        <div class="execution-params-panel">
+          <div class="params-title"><i class="fas fa-cog"></i> 执行参数</div>
+          <div class="params-body">
+            <div class="param-group" :class="{ disabled: !isMixedSelection }" :title="executionModeDisabledTip">
+              <span class="param-label">执行模式</span>
+              <div class="radio-group">
+                <label class="radio-label">
+                  <input type="radio" :value="'parallel'" v-model="executionMode" :disabled="!isMixedSelection" />
+                  <span>并行</span>
+                </label>
+                <label class="radio-label">
+                  <input type="radio" :value="'serial'" v-model="executionMode" :disabled="!isMixedSelection" />
+                  <span>串行</span>
+                </label>
+              </div>
+            </div>
+            <div class="param-group" v-if="executionMode === 'serial'" :class="{ disabled: !isMixedSelection }" :title="executionModeDisabledTip">
+              <span class="param-label">串行优先侧</span>
+              <div class="radio-group">
+                <label class="radio-label">
+                  <input type="radio" :value="'device'" v-model="serialFirst" :disabled="!isMixedSelection" />
+                  <span>设备先</span>
+                </label>
+                <label class="radio-label">
+                  <input type="radio" :value="'api'" v-model="serialFirst" :disabled="!isMixedSelection" />
+                  <span>API先</span>
+                </label>
+              </div>
+            </div>
+            <div v-if="!isMixedSelection" class="param-hint">
+              <i class="fas fa-info-circle"></i> 仅同时选择设备与 API 时可用
+            </div>
+          </div>
         </div>
       </TestStepContainer>
 
@@ -150,6 +234,9 @@
         panel-id="test-step3"
         :show-actions="false"
       >
+        <!-- INT-1072 返工 P1：关联设备/API 页签数据源并入混选两侧——TestExecutionComponent 该页签按
+             associatedDevices 渲染（与 TaskDetailModal 的 devices+apis 合并口径一致），
+             API 模式纯选 API 时亦须展示所选 API（旧语义 associatedDevices=所选资源） -->
         <TestExecutionComponent
           :test-type="testTypeLabel"
           :active-tab="activeTab"
@@ -161,8 +248,8 @@
             expectedTotalTime: estimatedTime,
             usedTime: elapsedTime,
             expectedCompleteTime: expectedCompleteTime,
-            deviceCount: testType === TestType.E2E ? associatedDevices.length : undefined,
-            apiCount: testType === TestType.API ? selectedAPIIds.length : undefined,
+            deviceCount: associatedDevices.length || undefined,
+            apiCount: selectedAPIIds.length || undefined,
             totalTestCases: totalTestCases,
             concurrentTasks: concurrentTasks,
             testDate: new Date().toLocaleDateString(),
@@ -178,7 +265,7 @@
           }"
           :api-resources="apiResources"
           :associated-cases="associatedCases"
-          :associated-devices="associatedDevices"
+          :associated-devices="[...associatedDevices, ...associatedAPIs]"
           :logs="logs"
           :show-logs="true"
           :is-paused="isPaused"
@@ -288,7 +375,7 @@ import '../../assets/styles/components/log.css'
 import '../../assets/styles/layouts/main.css'
 
 import { ref, computed } from 'vue'
-import { TestType, ViewMode, DeviceStatus } from '@/domain/enums'
+import { TestType, ViewMode, DeviceStatus, ApiEndpointStatus } from '@/domain/enums'
 import type { AlgorithmDefinition } from '@/domain'
 import { useTestFlow } from '../../composables/shared/useTestFlow'
 import ProgressNav from '../../components/layout/ProgressNav.vue'
@@ -316,12 +403,13 @@ const flow = useTestFlow(props.testType)
 const {
   currentStep, taskName, activeTab, concurrentTasks,
   taskVisibility, handleVisibilityChange,
+  executionMode, serialFirst, isMixedSelection,
   selectedAPIIds, selectedDeviceIdsList,
   testCaseGroups, tags, tagViewData, tagViewPagination, tagViewLoading, isLoading,
   algorithmList, selectedAlgorithmType, algorithmModalVisible, algorithmModalMode,
   algorithmEditData, algorithmSearchQuery,
   apis, apiSearchQuery, apiFilter,
-  associatedDevices, isExecuting, isPaused, isControlling,
+  associatedDevices, associatedAPIs, isExecuting, isPaused, isControlling,
   progressPercentage, completedTests, inProgressTests, pendingTests,
   executionFailedTests, evaluationFailedTests, totalTestCases,
   taskStatus, taskExecutionStatus, taskEvaluationStatus,
@@ -331,16 +419,20 @@ const {
   algorithmFilteredDevices, voiceLlmHint, stepHints,
   filteredDevices, deviceSearchQuery, selectedDeviceStatus,
   currentPage, pageSize, totalItems, totalPages,
-  filteredAPIs,
+  filteredAPIs, apiCurrentPage, apiPageSize, apiTotalItems, apiTotalPages,
+  handleApiPageChange, handleApiPageSizeChange, handleApiPrevPage, handleApiNextPage,
+  deviceDisplayFields, apiDisplayFields,
   goToStep, nextStep, prevStep,
   selectAlgorithm, openCreateAlgorithmModal, openAlgorithmConfigModal,
   handleDeleteGroup, handleDeleteTestCase, handleOpenAddModal, handleOpenEditModal,
   openCreateGroupModal, openEditGroupModal, openImportTestCaseModal, openExportTestCaseModal,
   updateSelectedCases, handleTagFilterChange, handleGroupFilterChange,
   loadMoreTagView,
-  toggleResourceSelection, handleResourceAction, handleAddResource,
+  handleToggleDeviceSelection, toggleAPISelection,
+  handleDeviceResourceAction, handleApiResourceAction,
+  handleResourceAction, handleAddResource, openAPIEditModal,
   handlePageChange, handlePageSizeChange, handlePrevPage, handleNextPage,
-  scanDevices,
+  scanDevices, addDevice,
   pauseTest, resumeTest, stopTest, showTestCaseDetails,
   saveReport, toggleEditReport, cancelEditReport,
   toggleEditConclusion, cancelEditConclusion, saveConclusion,
@@ -357,46 +449,15 @@ const algorithmEditDataForModal = computed<AlgorithmDefinition | null>(() =>
 const pageTitle = computed(() => props.testType === TestType.E2E ? '端到端测试' : 'API测试')
 const pageTitleIcon = computed(() => props.testType === TestType.E2E ? 'fas fa-project-diagram' : 'fas fa-exchange-alt')
 const pageDescription = computed(() => props.testType === TestType.E2E ? '通过完整的测试流程验证语音产品的功能和性能' : '测试语音服务API的功能和性能，验证接口响应和数据正确性')
-const stepLabels = computed(() => props.testType === TestType.E2E
-  ? ['选择算法', '选择测试用例', '选择测试设备', '执行测试', '查看结果']
-  : ['选择算法', '选择测试用例', '选择被测API', '执行测试', '查看结果'])
-const step2Tooltip = computed(() => props.testType === TestType.E2E ? '选择要使用的测试设备' : '选择要测试的API端点')
-const step2Title = computed(() => props.testType === TestType.E2E ? '选择测试设备' : '选择被测API')
-const addResourceLabel = computed(() => props.testType === TestType.E2E ? '新增设备' : '新增API')
-const searchPlaceholder = computed(() => props.testType === TestType.E2E ? '搜索设备名称或型号...' : '搜索API名称或端点...')
-const emptyResourceText = computed(() => props.testType === TestType.E2E ? '未找到相关设备' : '未找到相关API')
+// INT-604/INT-1072：混选前置——步骤二同屏选择设备与 API（不再按模式二选一）
+const stepLabels = computed(() => ['选择算法', '选择测试用例', '选择设备/API', '执行测试', '查看结果'])
+const step2Tooltip = computed(() => '选择测试设备与被测API，同一任务可混选')
+const step2Title = computed(() => '选择设备/API 与执行参数')
 const testTypeLabel = computed(() => props.testType === TestType.E2E ? 'E2E' : 'API')
-
-// 统一资源项
-const resourceItems = computed(() => props.testType === TestType.E2E ? algorithmFilteredDevices.value : filteredAPIs.value)
-// 统一搜索 query
-const resourceSearchQuery = computed({
-  get: () => props.testType === TestType.E2E ? deviceSearchQuery.value : apiSearchQuery.value,
-  set: (val: string) => {
-    if (props.testType === TestType.E2E) (deviceSearchQuery as any).value = val
-    else (apiSearchQuery as any).value = val
-  },
-})
-// 统一状态筛选
-const resourceStatusFilter = computed({
-  get: () => props.testType === TestType.E2E ? selectedDeviceStatus.value : apiFilter.value,
-  set: (val: string) => {
-    if (props.testType === TestType.E2E) (selectedDeviceStatus as any).value = val
-    else (apiFilter as any).value = val
-  },
-})
-// 资源显示字段
-const resourceDisplayFields = computed(() => props.testType === TestType.E2E
-  ? [
-      { label: '设备名称', key: 'name' },
-      { label: '型号', key: 'model' },
-      { label: '序列号', key: 'serialNumber' },
-      { label: '状态', key: 'status', isStatus: true },
-    ]
-  : [
-      { key: 'apiUrl', label: '端点' },
-      { key: 'description', label: '描述' },
-    ])
+const emptyDeviceText = '未找到相关设备'
+const emptyApiText = '未找到相关API'
+// INT-604：未混选时执行模式控件置灰提示
+const executionModeDisabledTip = '仅同时选择设备与 API 时可用'
 
 // ============ 任务名称模态窗 ============
 const handleStartTask = () => {
@@ -421,6 +482,84 @@ background: linear-gradient(135deg, var(--color-white) 0%, var(--muted) 100%);
 border-radius: var(--radius-lg);
 box-shadow: var(--shadow-sm);
 border: 1px solid var(--gray-light);
+}
+
+/* INT-604/INT-1072：混选分区 + 执行参数区 */
+.resource-section{
+  margin-bottom: 24px;
+}
+.resource-section-header{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.resource-section-header h4{
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--primary);
+}
+.execution-params-panel{
+  margin-top: 8px;
+  padding: 16px;
+  background: linear-gradient(135deg, var(--color-white) 0%, var(--muted) 100%);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--gray-light);
+}
+.params-title{
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--primary);
+  margin-bottom: 12px;
+}
+.params-body{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+.param-group{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.param-group.disabled{
+  opacity: 0.5;
+}
+.param-group.disabled .radio-label{
+  cursor: not-allowed;
+}
+.param-label{
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  min-width: 64px;
+}
+.param-hint{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.radio-group{
+  display: flex;
+  gap: 16px;
+}
+.radio-label{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--foreground);
+  cursor: pointer;
+}
+.radio-label input[type="radio"]{
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
 }
 
 .info-alert{

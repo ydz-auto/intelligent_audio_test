@@ -705,12 +705,12 @@ watch(trendSubTab, () => {
 .page-title {
   margin: 0;
   font-size: var(--font-size-xl);
-  color: var(--primary-color);
+  color: var(--primary);
 }
 
 .page-description {
   margin: var(--spacing-xs) 0 0 0;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: var(--font-size-sm);
 }
 
@@ -741,26 +741,26 @@ watch(trendSubTab, () => {
 
 .rst-control-item label {
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   white-space: nowrap;
 }
 
 .rst-select {
-  border: 2px solid var(--color-gray-300);
-  background-color: var(--background-primary);
-  border-radius: var(--border-radius-md);
-  padding: var(--spacing-sm) var(--spacing-md);
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
+  border: 2px solid var(--color-gray-300) !important;
+  background-color: var(--background) !important;
+  border-radius: var(--radius-md) !important;
+  padding: var(--spacing-sm) var(--spacing-md) !important;
+  font-size: var(--font-size-sm) !important;
+  color: var(--foreground) !important;
 }
 
 .date-input {
-  border: 2px solid var(--color-gray-300);
-  background-color: var(--background-primary);
-  border-radius: var(--border-radius-md);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
+  border: 2px solid var(--color-gray-300) !important;
+  background-color: var(--background) !important;
+  border-radius: var(--radius-md) !important;
+  padding: var(--spacing-xs) var(--spacing-sm) !important;
+  font-size: var(--font-size-sm) !important;
+  color: var(--foreground) !important;
 }
 
 .rst-content-item {
@@ -772,18 +772,18 @@ watch(trendSubTab, () => {
 .rst-textarea {
   flex: 1;
   border: 2px solid var(--color-gray-300);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   padding: var(--spacing-sm) var(--spacing-md);
   font-size: var(--font-size-sm);
-  color: var(--text-primary);
-  background-color: var(--background-primary);
+  color: var(--foreground);
+  background-color: var(--background);
   resize: vertical;
   width: 100%;
 }
 
 .rst-textarea:focus {
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px var(--primary-light);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--accent);
   outline: none;
 }
 
@@ -793,9 +793,9 @@ watch(trendSubTab, () => {
   gap: var(--spacing-sm);
   margin-bottom: var(--spacing-lg);
   padding: var(--spacing-sm);
-  background: var(--background-secondary);
-  border-radius: var(--border-radius-lg);
-  border: 1px solid var(--border-color);
+  background: var(--muted);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
   flex-wrap: wrap;
 }
 
@@ -805,9 +805,9 @@ watch(trendSubTab, () => {
   gap: var(--spacing-sm);
   padding: var(--spacing-sm) var(--spacing-lg);
   border: 1px solid transparent;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-medium);
   cursor: pointer;
@@ -815,14 +815,14 @@ watch(trendSubTab, () => {
 }
 
 .rst-tab:hover {
-  background: var(--background-primary);
-  color: var(--primary-color);
+  background: var(--background);
+  color: var(--primary);
 }
 
 .rst-tab.active {
-  background: var(--primary-color);
+  background: var(--primary);
   color: var(--color-white);
-  border-color: var(--primary-color);
+  border-color: var(--primary);
   box-shadow: var(--shadow-sm);
 }
 
@@ -835,24 +835,24 @@ watch(trendSubTab, () => {
 
 .rst-sub-tab {
   padding: var(--spacing-xs) var(--spacing-md);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-full);
-  background: var(--background-primary);
-  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--background);
+  color: var(--muted-foreground);
   font-size: var(--font-size-sm);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .rst-sub-tab:hover {
-  border-color: var(--primary-color);
-  color: var(--primary-color);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .rst-sub-tab.active {
-  background: var(--primary-color);
+  background: var(--primary);
   color: var(--color-white);
-  border-color: var(--primary-color);
+  border-color: var(--primary);
 }
 
 /* ===== 趋势工具栏 ===== */
@@ -872,7 +872,7 @@ watch(trendSubTab, () => {
 
 .rst-sub-description {
   margin-bottom: var(--spacing-lg);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: var(--font-size-sm);
 }
 
@@ -888,37 +888,37 @@ watch(trendSubTab, () => {
   flex-direction: column;
   gap: 8px;
   padding: var(--spacing-md);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-lg);
-  background: var(--background-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--background);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .rst-dimension-card:hover {
-  border-color: var(--primary-color);
+  border-color: var(--primary);
   box-shadow: var(--shadow-md);
 }
 
 .rst-dimension-card--active {
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px var(--primary-light);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--accent);
 }
 
 .rst-dimension-card i {
   font-size: 1.2rem;
-  color: var(--primary-color);
+  color: var(--primary);
 }
 
 .rst-dimension-name {
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 
 .rst-dimension-desc {
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   line-height: 1.5;
 }
 
@@ -930,7 +930,7 @@ watch(trendSubTab, () => {
 .rst-section-title {
   margin: 0 0 var(--spacing-md) 0;
   font-size: var(--font-size-md);
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 
 /* ===== 总览卡片 ===== */
@@ -946,28 +946,28 @@ watch(trendSubTab, () => {
   flex-direction: column;
   gap: 6px;
   padding: var(--spacing-md);
-  border-radius: var(--border-radius-lg);
-  background: var(--background-primary);
-  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--background);
+  border: 1px solid var(--border);
 }
 
 .rst-overview-label {
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .rst-overview-value {
   font-size: var(--font-size-xl);
   font-weight: var(--font-weight-semibold);
-  color: var(--primary-color);
+  color: var(--primary);
 }
 
 /* ===== 表格 ===== */
 .rst-table-wrap {
   overflow-x: auto;
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-lg);
-  background: var(--background-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--background);
 }
 
 .rst-table {
@@ -979,19 +979,19 @@ watch(trendSubTab, () => {
 .rst-table th,
 .rst-table td {
   padding: var(--spacing-sm) var(--spacing-md);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border);
   text-align: left;
   white-space: nowrap;
 }
 
 .rst-table th {
-  background: var(--background-secondary);
-  color: var(--text-secondary);
+  background: var(--muted);
+  color: var(--muted-foreground);
   font-weight: var(--font-weight-semibold);
 }
 
 .rst-table tbody tr:hover {
-  background: var(--background-secondary);
+  background: var(--muted);
 }
 
 .rst-table tbody tr:last-child td {
@@ -1002,7 +1002,7 @@ watch(trendSubTab, () => {
 .rst-anomaly-badge {
   display: inline-block;
   padding: 2px 10px;
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-full);
   font-size: var(--font-size-sm);
 }
 
@@ -1023,9 +1023,9 @@ watch(trendSubTab, () => {
 
 /* ===== 图表 ===== */
 .rst-chart-box {
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-lg);
-  background: var(--background-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--background);
   padding: var(--spacing-lg);
 }
 
