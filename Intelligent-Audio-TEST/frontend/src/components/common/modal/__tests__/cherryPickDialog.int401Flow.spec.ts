@@ -250,6 +250,9 @@ describe('步骤3 下单：merge 任务级配置 + 跨任务配置不一致强�
     const w = await mountDialog()
     const vm = w.vm as any
     vm.preview = previewData
+    // INT-553 P3-2：非顺序跳转受限，需顺序经「购物车」到达「下单」步骤
+    await w.findAll('.cp-step').find(s => s.text().includes('购物车'))!.trigger('click')
+    await flushPromises()
     await w.findAll('.cp-step').find(s => s.text().includes('下单'))!.trigger('click')
     await flushPromises()
     return w
@@ -270,6 +273,7 @@ describe('步骤3 下单：merge 任务级配置 + 跨任务配置不一致强�
     })
     const vm = w.vm as any
     vm.mergeName = '合并任务'
+    await flushPromises() // INT-553 P3-3：名称非空解除提交禁用，需等响应式 DOM 更新后再点击
     await w.findAll('button').find(b => b.text().includes('提交下单'))!.trigger('click')
     await flushPromises()
 
@@ -291,6 +295,7 @@ describe('步骤3 下单：merge 任务级配置 + 跨任务配置不一致强�
     })
     const vm = w.vm as any
     vm.mergeName = '合并任务'
+    await flushPromises() // INT-553 P3-3：名称非空解除提交禁用，需等响应式 DOM 更新后再点击
     await w.findAll('button').find(b => b.text().includes('提交下单'))!.trigger('click')
     await flushPromises()
 
@@ -311,6 +316,7 @@ describe('步骤3 下单：merge 任务级配置 + 跨任务配置不一致强�
     vm.mergeAlgorithmType = 'tts'
     vm.mergeAlgorithmParams = '{"model":"x"}'
     vm.mergeConfig = '{"batch":2}'
+    await flushPromises() // INT-553 P3-3：名称非空解除提交禁用，需等响应式 DOM 更新后再点击
     await w.findAll('button').find(b => b.text().includes('提交下单'))!.trigger('click')
     await flushPromises()
 
@@ -331,6 +337,7 @@ describe('步骤3 下单：merge 任务级配置 + 跨任务配置不一致强�
     vm.mergeName = '合并任务'
     vm.showMergeConfig = true
     vm.mergeAlgorithmParams = 'not-json'
+    await flushPromises() // INT-553 P3-3：确保提交按钮已启用，点击走真实校验路径
     await w.findAll('button').find(b => b.text().includes('提交下单'))!.trigger('click')
     await flushPromises()
 
@@ -351,7 +358,8 @@ describe('步骤3 下单：购物车空禁用门控（INT-401）', () => {
   it('cartCount=0 时「提交下单」禁用（下单门控）', async () => {
     cartCountValue.value = 0
     const w = await mountDialog()
-    await w.findAll('.cp-step').find(s => s.text().includes('下单'))!.trigger('click')
+    // INT-553 P3-2：空购物车不可经步骤条进入下单，直接置 checkout 验证提交门控
+    ;(w.vm as any).step = 'checkout'
     await flushPromises()
     const submit = w.findAll('button').find(b => b.text().includes('提交下单'))!
     expect(submit.attributes('disabled')).toBeDefined()

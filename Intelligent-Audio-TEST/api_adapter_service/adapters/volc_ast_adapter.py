@@ -25,6 +25,8 @@ from api_adapter_service.adapters.audio_output import (
     save_output_audio, strip_wav_container)
 from api_adapter_service.adapters.base import BaseAdapter
 from api_adapter_service.utils.logger import logger
+from api_adapter_service.utils.proxy import (
+    is_supported_proxy_scheme, mask_proxy_userinfo, masked_exc_info)
 
 # 火山 AST protobuf
 from products.understanding.ast.ast_service_pb2 import (
@@ -85,12 +87,14 @@ class VolcAstAdapter(BaseAdapter):
             result['session_id'] = session_id
             return result
         except Exception as e:
-            logger.error(f'VolcAstAdapter error: {e}', exc_info=True)
+            safe_err = mask_proxy_userinfo(str(e))
+            logger.error(f'VolcAstAdapter error: {safe_err}',
+                         exc_info=masked_exc_info(e))
             return {
                 'asr_text': '', 'trans_text': '', 'output': '',
                 'session_id': session_id,
                 'latency': round(time.time() - start_time, 3),
-                'raw_response': {'error': str(e)},
+                'raw_response': {'error': safe_err},
             }
 
     # ── 内部实现 ───────────────────────────────────────────────
@@ -233,16 +237,35 @@ class VolcAstAdapter(BaseAdapter):
             }
         logger.info(f'VolcAstAdapter: 读取音频 {len(audio_chunks)} 个分片')
 
+        # INT-839 #2 打回修复：代理 scheme 白名单（http/https/socks5/socks5h，
+        # 不做 socks4）。非白名单不把完整 URL 交给 websockets——其 InvalidProxy
+        # 异常消息会原样带出明文 user:pass；直接返回不含 URL 的通用错误。
+        if getattr(self, 'proxy_url', None) and \
+                not is_supported_proxy_scheme(self.proxy_url):
+            return {
+                'asr_text': '', 'trans_text': '', 'output': '',
+                'raw_response': {
+                    'error': '不支持的代理类型（仅支持 http/https/socks5/socks5h）',
+                },
+            }
         conn = None
         try:
             # 2. 连接 WebSocket API
             conn_id = str(uuid.uuid4())
             headers = self._build_headers(conn_id)
+            connect_kwargs = {
+                'additional_headers': headers,
+                'max_size': 1000000000,
+                'ping_interval': None,
+            }
+            # INT-839 #2：配置代理时经 proxy 走完整代理 URL；未配置保持
+            # websockets 默认行为（不显式传 proxy，避免改动自动探测语义）。
+            # getattr 兜底 __init__ 未走的子类（单测假对象不建真实会话）
+            if getattr(self, 'proxy_url', None):
+                connect_kwargs['proxy'] = self.proxy_url
             conn = await websockets.connect(
                 self.ws_url,
-                additional_headers=headers,
-                max_size=1000000000,
-                ping_interval=None,
+                **connect_kwargs,
             )
             log_id = conn.response.headers.get('X-Tt-Logid', '未知') if conn.response else '未知'
             logger.info(f'VolcAstAdapter: 连接 API 成功(log_id={log_id})')
@@ -338,12 +361,14 @@ class VolcAstAdapter(BaseAdapter):
             # 等待发送任务完成
             await sender_task
         except Exception as e:
-            logger.error(f'VolcAstAdapter: 翻译过程异常: {e}', exc_info=True)
+            safe_err = mask_proxy_userinfo(str(e))
+            logger.error(f'VolcAstAdapter: 翻译过程异常: {safe_err}',
+                         exc_info=masked_exc_info(e))
             return {
                 'asr_text': ' '.join(asr_text_list).strip(),
                 'trans_text': ' '.join(translated_text_list).strip(),
                 'output': '',
-                'raw_response': {'error': str(e)},
+                'raw_response': {'error': safe_err},
             }
         finally:
             if conn:

@@ -5,6 +5,7 @@ from api_gateway.application.services.audio.audio_upload_service import AudioUpl
 from api_gateway.application.services.audio.audio_command_service import AudioCommandService
 from api_gateway.application.services.audio.audio_preview_service import AudioPreviewService
 from api_gateway.application.services.audio.audio_convert_service import AudioConvertService
+from api_gateway.application.services.audio.audio_analysis_service import AudioAnalysisService
 from api_gateway.routes._response import to_response
 from api_gateway.application.services.auth.dependencies import require_permission
 
@@ -106,6 +107,24 @@ def stop_preview(audio_id: int, _: None = require_permission('audio:read')):
     return to_response(AudioPreviewService.stop_preview(audio_id))
 
 
+@router.get('/{audio_id}/features')
+def analyze_features(audio_id: int, _: None = require_permission('audio:read')):
+    """音频特征分析（频谱/能量分布/时域特征，INT-820 §3.3.2）"""
+    return to_response(AudioAnalysisService.analyze_features(audio_id))
+
+
+@router.get('/{audio_id}/quality')
+def assess_quality(audio_id: int, _: None = require_permission('audio:read')):
+    """音频质量评估（信噪比/动态范围/频率响应/质量评分，INT-820 §3.3.2）"""
+    return to_response(AudioAnalysisService.assess_quality(audio_id))
+
+
+@router.post('/{audio_id}/process')
+def process_audio(audio_id: int, _: None = require_permission('audio:update')):
+    """音频处理（降噪/增益调整/剪辑，INT-820 §3.3.2 处理）"""
+    return to_response(AudioAnalysisService.process(audio_id))
+
+
 @router.delete('/{audio_id}')
 def delete(audio_id: int, _: None = require_permission('audio:delete')):
     return to_response(AudioCommandService.delete(audio_id))
@@ -152,6 +171,11 @@ def complete_direct_upload(_: None = require_permission('audio:upload')):
 @router.get('/{audio_id}/algorithms')
 def get_audio_algorithms(audio_id: int, _: None = require_permission('audio:read')):
     return to_response(AudioQueryService.get_audio_algorithms(audio_id))
+
+
+@router.get('/{audio_id}/playback-history')
+def get_playback_history(audio_id: int, _: None = require_permission('audio:read')):
+    return to_response(AudioQueryService.get_playback_history(audio_id))
 
 
 @router.put('/{audio_id}/algorithms')

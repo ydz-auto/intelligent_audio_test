@@ -25,8 +25,17 @@ class AudioCommandService:
         except ValidationError as e:
             return error_response(f"参数验证失败: {e}")
 
+        # INT-466：admin 修改私有音频落 PRIVATE_RESOURCE_ACCESS 审计（旁路预取，仅 admin 取数）
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_write,
+            preload_private_state,
+        )
+        pre_data = preload_private_state(
+            lambda: _audio_acl.get_one(audio_id).get('data') or {})
+
         result = _audio_acl.update_metadata(audio_id, data)
         if result.get('success'):
+            maybe_audit_private_write('audio', audio_id, 'update', pre_data)
             return success_response(result.get('data'), result.get('message', '元数据更新成功'))
         return error_response(result.get('message', '更新失败'), code=result.get('code', 400))
 
@@ -72,9 +81,17 @@ class AudioCommandService:
     # 删除音频文件（逻辑删除）
     @staticmethod
     def delete(audio_id):
-        
+        # INT-466：admin 删除私有音频落 PRIVATE_RESOURCE_ACCESS 审计（旁路预取，仅 admin 取数）
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_write,
+            preload_private_state,
+        )
+        pre_data = preload_private_state(
+            lambda: _audio_acl.get_one(audio_id).get('data') or {})
+
         result = _audio_acl.delete(audio_id)
         if result.get('success'):
+            maybe_audit_private_write('audio', audio_id, 'delete', pre_data)
             return success_response(result.get('data'), result.get('message', '音频文件已删除'))
         return error_response(result.get('message', '删除失败'), code=result.get('code', 400))
 
@@ -89,8 +106,17 @@ class AudioCommandService:
         except Exception as e:
             return error_response(f"参数验证失败: {e}")
 
+        # INT-466：admin 修改私有音频关联落 PRIVATE_RESOURCE_ACCESS 审计（旁路预取，仅 admin 取数）
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_write,
+            preload_private_state,
+        )
+        pre_data = preload_private_state(
+            lambda: _audio_acl.get_one(audio_id).get('data') or {})
+
         result = _audio_acl.update_audio_algorithms(audio_id, data)
         if result.get('success'):
+            maybe_audit_private_write('audio', audio_id, 'update', pre_data)
             return success_response(result.get('data'), result.get('message', '算法关联更新成功'))
         return error_response(result.get('message', '更新失败'), code=result.get('code', 400))
 

@@ -184,6 +184,16 @@ class AudioAclRepositoryImpl(AudioAclRepository):
         from api_gateway.infrastructure.grpc_proxies import audio_config_service
         return _wrap(audio_config_service.get_folder_tree(params))
 
+    def get_playback_history(self, audio_id, params) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import audio_config_service
+        return _wrap(audio_config_service.get_playback_history(audio_id, params))
+    def analyze_audio_features(self, audio_id) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import audio_config_service
+        return _wrap(audio_config_service.analyze_audio_features(audio_id))
+
+    def assess_audio_quality(self, audio_id) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import audio_config_service
+        return _wrap(audio_config_service.assess_audio_quality(audio_id))
     def get_upload_progress(self, data) -> CommandResultDTO:
         from api_gateway.infrastructure.grpc_proxies import audio_config_service
         return _wrap(audio_config_service.get_upload_progress(data))
@@ -215,6 +225,10 @@ class AudioAclRepositoryImpl(AudioAclRepository):
     def convert_audio(self, audio_id, data) -> CommandResultDTO:
         from api_gateway.infrastructure.grpc_proxies import audio_config_service
         return _wrap(audio_config_service.convert_audio(audio_id, data))
+
+    def process_audio(self, audio_id, data) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import audio_config_service
+        return _wrap(audio_config_service.process_audio(audio_id, data))
 
     def preview_audio(self, audio_id, data) -> CommandResultDTO:
         from api_gateway.infrastructure.grpc_proxies import audio_config_service

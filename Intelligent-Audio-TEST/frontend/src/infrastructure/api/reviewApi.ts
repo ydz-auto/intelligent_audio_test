@@ -1,17 +1,16 @@
 /**
- * 复核 API —— 人工审核（真实接口 INT-340）+ AI 复核（真实接口 INT-822/823/824）
+ * 复核 API —— 人工审核（真实接口 INT-340）+ AI 复核（真实接口 INT-800，INT-1068 接线）
  *
  * 出口契约：Domain（camelCase）；DTO 转换收敛在 adapters。
  * - 人工审核：POST /tasks/results/review、GET /tasks/results/{task_id}/review-count|review-history
  *   （同 tasksApi，报告页消费侧独立收敛，避免跨域直接引用任务域 api）
- * - AI 复核：端点见 reviewAiApi.ts（发起/历史/采纳/驳回，异步回写结论）；
- *   本段委派 reviewAiApi，避免双实现口径。
+ * - AI 复核：真实端点委托 reviewAiApi（发起/历史/采纳/驳回；采纳单次 adopt 防双写留痕）
  */
 import { request } from '../http/client';
-import type { ReviewSubmitPayload, ReviewHistoryItemDomain, AiReviewRecord } from '../../domain/model/review';
+import type { ReviewSubmitPayload, ReviewHistoryItemDomain, AiReviewRecord, AiReviewAdoptPayload } from '../../domain/model/review';
 import { toReviewHistoryDomain } from '../adapters/reviewAdapter';
 import {
-  requestAiReview,
+  requestAiReview as submitAiReviewRequest,
   fetchAiReviewHistory,
   adoptAiReview as adoptAiReviewRequest,
   rejectAiReview as rejectAiReviewRequest,
@@ -43,37 +42,26 @@ export const reviewApi = {
     return (raw?.items ?? []).map(toReviewHistoryDomain);
   },
 
-  /**
-   * 发起 AI 复核（POST /tasks/results/ai-review，异步回写结论；委派 reviewAiApi）。
-   * 轮询 ai-review-history 直至 completed 返回记录；失败/超时抛错由调用方提示。
-   */
-  async submitAiReview(
-    taskId: string | number,
-    payload: { resultIds: (string | number)[]; dimensionIds?: number[] },
-  ): Promise<AiReviewRecord> {
-    return requestAiReview(Number(taskId), '', {
+  /** 发起 AI 复核（POST /tasks/results/ai-review；委托 reviewAiApi 真实端点） */
+  async submitAiReview(payload: { resultIds: (string | number)[]; dimensionIds?: number[]; force?: boolean }): Promise<AiReviewRecord> {
+    return submitAiReviewRequest({
       resultIds: payload.resultIds.map((id) => Number(id)),
-      dimensionIds: payload.dimensionIds?.map((id) => Number(id)),
+      dimensionIds: payload.dimensionIds,
+      force: payload.force,
     });
   },
 
-  /** 查询 AI 复核历史（GET /tasks/results/{task_id}/ai-review-history，委派 reviewAiApi）。 */
-  async getAiReviewHistory(taskId: string | number, filters?: { resultId?: number; status?: string }): Promise<AiReviewRecord[]> {
-    return fetchAiReviewHistory(Number(taskId), filters);
+  /** 查询 AI 复核历史（GET /tasks/results/{task_id}/ai-review-history；委托真实端点） */
+  async getAiReviewHistory(taskId: string | number): Promise<AiReviewRecord[]> {
+    return fetchAiReviewHistory(taskId);
   },
 
-  /**
-   * 采纳 AI 复核结论（POST /tasks/results/ai-review/{id}/adopt，委派 reviewAiApi）。
-   * 载荷 executionStatus?/evaluationStatus? + comment 必填；后端落人工复核语义（改判+留痕+统计重算+标记采纳）。
-   */
-  async adoptAiReview(
-    aiReviewId: number,
-    payload: { executionStatus?: string; evaluationStatus?: string; comment: string },
-  ): Promise<AiReviewRecord> {
-    return adoptAiReviewRequest(aiReviewId, payload);
+  /** 采纳 AI 复核结论（POST /tasks/results/ai-review/{id}/adopt；单次落人工复核语义，防双写留痕） */
+  async adoptAiReview(aiReviewId: number, payload?: AiReviewAdoptPayload): Promise<AiReviewRecord> {
+    return adoptAiReviewRequest(aiReviewId, payload ?? { comment: '' });
   },
 
-  /** 驳回 AI 复核结论（POST /tasks/results/ai-review/{id}/reject，委派 reviewAiApi；原判定不变）。 */
+  /** 驳回 AI 复核结论（POST /tasks/results/ai-review/{id}/reject；原判定不变，记录标记已驳回） */
   async rejectAiReview(aiReviewId: number): Promise<AiReviewRecord> {
     return rejectAiReviewRequest(aiReviewId);
   },

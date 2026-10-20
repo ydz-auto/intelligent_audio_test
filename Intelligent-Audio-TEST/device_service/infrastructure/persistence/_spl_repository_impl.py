@@ -40,6 +40,7 @@ class SPLRepository(SPLRepositoryInterface):
 
     def create_spl_mapping(self, data: dict) -> SPLMappingEntity:
         """创建 SPL 映射，返回 SPLMappingEntity 实体。"""
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         new_mapping = SPLMapping(
             name=data['name'],
@@ -52,6 +53,7 @@ class SPLRepository(SPLRepositoryInterface):
             test_frequency=data.get('test_frequency') or 1000,
             calibration_status=data.get('calibration_status') or CalibrationStatus.UNCALIBRATED.value,
             calibration_data=data.get('calibration_data'),
+            created_by_user_id=get_current_user_id(),
         )
         session.add(new_mapping)
         session.flush()
@@ -59,6 +61,7 @@ class SPLRepository(SPLRepositoryInterface):
 
     def update_spl_mapping(self, mapping_id: int, update_fields: dict) -> Optional[SPLMappingEntity]:
         """更新 SPL 映射字段，返回更新后的 SPLMappingEntity。"""
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         mapping = session.get(SPLMapping, mapping_id)
         if not mapping or mapping.deleted:
@@ -66,6 +69,7 @@ class SPLRepository(SPLRepositoryInterface):
         for key, value in update_fields.items():
             setattr(mapping, key, value)
         mapping.updated_at = _now()
+        mapping.updated_by_user_id = get_current_user_id()
         session.commit()
         return _spl_mapping_po_to_entity(mapping)
 
@@ -198,12 +202,14 @@ class SPLRepository(SPLRepositoryInterface):
 
     def create_calibration_history(self, mapping_id: int, calibration_data, distance, test_frequency) -> CalibrationHistoryEntity:
         """创建校准历史记录，返回 CalibrationHistoryEntity 实体。"""
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         history = CalibrationHistory(
             mapping_id=mapping_id,
             calibration_data=calibration_data,
             distance=distance,
             test_frequency=test_frequency,
+            created_by_user_id=get_current_user_id(),
         )
         session.add(history)
         session.commit()

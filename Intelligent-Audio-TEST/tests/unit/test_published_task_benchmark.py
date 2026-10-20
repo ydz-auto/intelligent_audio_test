@@ -33,7 +33,10 @@ from task_service.infrastructure.persistence.published_task_repository import (
 
 
 def make_task(**overrides):
-    """来源日常任务替身（Task PO 形状）。"""
+    """来源日常任务替身（Task PO 形状）。
+
+    INT-423：created_by_user_id 默认 NULL（存量无 owner）+ visibility 默认 shared。
+    """
     task = type('TaskPO', (), {})()
     task.id = 123
     task.deleted = False
@@ -41,13 +44,18 @@ def make_task(**overrides):
     task.config = {}
     task.algorithm_type = None
     task.algorithm_params = {}
+    task.created_by_user_id = None
+    task.visibility = 'shared'
     for k, v in overrides.items():
         setattr(task, k, v)
     return task
 
 
 def make_pt(**overrides):
-    """已发布任务 PO 替身。"""
+    """已发布任务 PO 替身。
+
+    INT-423：created_by_user_id 默认 NULL + visibility 默认 shared。
+    """
     pt = type('PublishedTaskPO', (), {})()
     pt.id = 1001
     pt.task_group_id = 1001
@@ -65,6 +73,8 @@ def make_pt(**overrides):
     pt.archived_by = None
     pt.archived_at = None
     pt.created_at = None
+    pt.created_by_user_id = None
+    pt.visibility = 'shared'
     for k, v in overrides.items():
         setattr(pt, k, v)
     return pt

@@ -64,6 +64,8 @@ service DeviceConfigService {
   rpc GetDeviceGroup(GetDeviceGroupRequest) returns (GetDeviceGroupResponse);
   rpc AddDevicesToGroup(AddDevicesToGroupRequest) returns (AddDevicesToGroupResponse);
   rpc RemoveDevicesFromGroup(RemoveDevicesFromGroupRequest) returns (RemoveDevicesFromGroupResponse);
+  // 移动分组到新父级（INT-832 嵌套分组；parent_id 空串=移到根）
+  rpc MoveDeviceGroup(MoveDeviceGroupRequest) returns (MoveDeviceGroupResponse);
   // 设备操作（INT-80：connect/disconnect/reboot/shutdown/install_app/uninstall_app）
   rpc ControlDevice(ControlDeviceRequest) returns (ControlDeviceResponse);
   // 设备批量操作（INT-80：幂等模式对齐 testcase batch）
@@ -462,6 +464,18 @@ message RemoveDevicesFromGroupResponse {
   bool success = 1;
   string message = 2;
   string data = 3;
+}
+
+message MoveDeviceGroupRequest {
+  string group_id = 1;
+  string parent_id = 2;  // 目标父分组 ID；空串表示移到根
+  string updated_by_user_id = 3;
+}
+message MoveDeviceGroupResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+  int32 code = 4;  // 业务码：200 成功 / 400 成环·重名 / 404 分组或父分组不存在
 }
 
 // ==================== INT-80 设备操作/批量 Messages ====================

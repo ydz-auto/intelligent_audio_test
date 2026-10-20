@@ -29,6 +29,9 @@ class AudioPreviewService:
         if self._task_acl.has_running_e2e_tasks():
             return {'success': False, 'message': '当前有待执行的E2E测试任务，不允许使用后端扬声器播放', 'data': None, 'code': 403}
 
+        testcase_id = None
+        testcase_name = None
+
         audio = self.repo.get_audio_with_deleted(audio_id)
         if not audio or audio.deleted:
             # audio_id 实为 testcase_id，从用例 config 解析真实 audio_id
@@ -38,6 +41,10 @@ class AudioPreviewService:
                 actual_audio_id = audio_item.get('audio_id')
                 if actual_audio_id:
                     audio = self.repo.get_audio_with_deleted(actual_audio_id)
+                    testcase_id = audio_id
+                    tc = self._task_acl.get_testcase_by_id(audio_id)
+                    if tc:
+                        testcase_name = tc.name
 
         if not audio or audio.deleted:
             return {'success': False, 'message': '音频不存在', 'data': None, 'code': 404}
@@ -115,8 +122,18 @@ class AudioPreviewService:
                 )
                 device_names.append(device_name)
                 gains.append(round(gain, 4))
+                self._record_playback_history(
+                    audio, device, result='success',
+                    testcase_id=testcase_id, testcase_name=testcase_name,
+                )
 
             if not device_names:
+                # 解析到设备但全部不可用/未真正发起播放：落一条失败记录
+                attempted = devices_to_use[0] if devices_to_use else {'name': '未知设备', 'id': ''}
+                self._record_playback_history(
+                    audio, attempted, result='failed',
+                    testcase_id=testcase_id, testcase_name=testcase_name,
+                )
                 return {'success': False, 'message': '没有找到可用的播放设备', 'data': None, 'code': 404}
 
             response_data = {
@@ -135,7 +152,34 @@ class AudioPreviewService:
             }
         except Exception as e:
             logger.error(f"Audio preview error: {str(e)}", exc_info=True)
+            # 硬件播放失败：落一条失败记录（不阻塞错误返回）
+            try:
+                attempted = devices_to_use[0] if devices_to_use else {'name': '未知设备', 'id': ''}
+                self._record_playback_history(
+                    audio, attempted, result='failed',
+                    testcase_id=testcase_id, testcase_name=testcase_name,
+                )
+            except Exception:
+                pass
             return {'success': False, 'message': f'硬件播放失败: {str(e)}', 'data': None, 'code': 400}
+
+    def _record_playback_history(self, audio, device, result, testcase_id=None, testcase_name=None):
+        """落一条播放历史（INT-782#2）；失败只记日志，不阻塞试听主流程。"""
+        try:
+            device_id = device.get('id') if device.get('id') not in (None, '') else device.get('device_unique_id', '')
+            self.repo.record_playback_history({
+                'audio_id': audio.id,
+                'testcase_id': testcase_id,
+                'testcase_name': testcase_name,
+                'device_id': str(device_id) if device_id is not None else '',
+                'device_name': device.get('name', '未知设备'),
+                'result': result,
+                'duration': audio.duration,
+                'source': 'preview',
+            })
+            self.repo.commit()
+        except Exception as e:
+            logger.error(f"记录播放历史失败: {e}", exc_info=True)
 
     def stop_preview_audio(self, audio_id: int) -> dict:
         """停止音频试听"""

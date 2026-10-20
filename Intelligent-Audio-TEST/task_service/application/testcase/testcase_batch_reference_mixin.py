@@ -91,19 +91,28 @@ class TestCaseReferenceRefreshMixin:
     """测试用例参考参数刷新 Mixin。"""
 
     def _batch_refresh_reference(self, data, common=None):
-        """批量刷新参考参数（超过阈值时提交异步任务）。"""
+        """批量刷新参考参数（超过阈值时提交异步任务）。
+
+        INT-463：取数后逐行可见性过滤——私有非 owner 用例跳过，不整批放行；
+        异步提交的 case_ids 同样只含可见行（后台任务无用户上下文，可见性
+        在用户请求入口处已裁定）。
+        """
         ids = data.get('ids', [])
         round_mode = data.get('round_mode') or 'all'
         round_numbers = data.get('round_numbers') or []
         logger.info(f"[refresh_reference] 开始处理, ids: {ids}, round_mode: {round_mode}, round_numbers: {round_numbers}")
 
-        test_cases = self.repo.list_testcases_by_ids(ids)
+        from task_service.application.testcase.testcase_batch_config_update_mixin import (
+            _filter_visible_testcases,
+        )
+        test_cases = _filter_visible_testcases(self.repo.list_testcases_by_ids(ids))
+        visible_ids = [tc.id for tc in test_cases]
 
         from task_service.config.config import Config
         if len(ids) > Config.REFERENCE_REFRESH_ASYNC_THRESHOLD:
             from task_service.application.testcase.reference_refresh_task import submit_reference_refresh_task
             task_id = submit_reference_refresh_task(
-                ids,
+                visible_ids,
                 refresher=lambda tc: _apply_reference_params_to_config(tc),
             )
             return {

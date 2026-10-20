@@ -124,6 +124,14 @@ class AudioRepositoryInterface(ABC):
     @abstractmethod
     def create_audio_algorithm_relation(self, audio_id: int, item: dict) -> AudioAlgorithmRelationEntity: ...
 
+    # ========== 播放历史相关 ==========
+
+    @abstractmethod
+    def record_playback_history(self, data: dict) -> Optional[int]: ...
+
+    @abstractmethod
+    def list_playback_history(self, audio_id: int, params: dict) -> dict: ...
+
     # ========== Session 管理 ==========
 
     @abstractmethod

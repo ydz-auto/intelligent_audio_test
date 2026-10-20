@@ -40,6 +40,7 @@ export { optionsApi } from './optionsApi';
 export { usersApi } from './usersApi';
 export { rolesApi } from './rolesApi';
 export { reviewApi } from './reviewApi';
+export * from './reviewAiApi';
 
 // Shared types (re-exported for backward compatibility with existing imports)
 // TagCategory/TagItem 单一来源已收敛到 domain/model/tag.ts（businessTypes 链路）

@@ -15,6 +15,7 @@ class DeviceGroupEntity:
     """设备分组聚合根"""
     id: Optional[str] = None
     name: str = ""
+    parent_id: Optional[str] = None
     description: str = ""
     group_type: str = "test"
     created_by_user_id: Optional[int] = None
@@ -29,6 +30,7 @@ class DeviceGroupEntity:
         return {
             'id': self.id,
             'name': self.name,
+            'parent_id': self.parent_id,
             'description': self.description,
             'group_type': self.group_type,
             'created_by_user_id': self.created_by_user_id,

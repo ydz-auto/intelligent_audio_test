@@ -17,6 +17,7 @@
         <span class="th-role">字段角色</span>
         <span class="th-agg">聚合角色</span>
         <span class="th-default">默认值</span>
+        <span class="th-threshold">达标阈值</span>
         <span class="th-visible">显示</span>
         <span class="th-action">操作</span>
       </div>
@@ -61,12 +62,24 @@
             <option value="value">直接值</option>
             <option value="numerator">分子</option>
             <option value="denominator">分母</option>
+            <option value="pass_le">达标线(≤)</option>
+            <option value="pass_ge">达标线(≥)</option>
+            <option value="pass_eq">精确匹配(==)</option>
           </select>
           <input
             type="text"
             v-model="field.defaultValue"
             placeholder="如: 0 或空"
             class="default-input"
+            @input="handleChange"
+          />
+          <input
+            type="number"
+            step="any"
+            v-model="field.passThreshold"
+            :placeholder="isPassRole(field.aggRole) ? '如: 0.1' : '选填'"
+            class="threshold-input"
+            :disabled="!isPassRole(field.aggRole)"
             @input="handleChange"
           />
           <label class="visible-checkbox">
@@ -132,6 +145,7 @@ function addField() {
     fieldType: 'number',
     outputRole: 'main',
     aggRole: '',
+    passThreshold: null,
     defaultValue: '',
     visibleInReport: true
   })
@@ -146,6 +160,10 @@ function removeField(index) {
 function handleChange() {
   emit('update:modelValue', localValue.value)
   emit('change', localValue.value)
+}
+
+function isPassRole(role) {
+  return role === 'pass_le' || role === 'pass_ge' || role === 'pass_eq'
 }
 </script>
 
@@ -239,7 +257,8 @@ function handleChange() {
 .th-path { flex: 1.3; }
 .th-type { width: 80px; flex-shrink: 0; }
 .th-role { width: 90px; flex-shrink: 0; }
-.th-agg { width: 90px; flex-shrink: 0; }
+.th-agg { width: 110px; flex-shrink: 0; }
+.th-threshold { width: 90px; flex-shrink: 0; }
 .th-default { flex: 1; }
 .th-visible { width: 50px; flex-shrink: 0; text-align: center; }
 .th-action { width: 40px; flex-shrink: 0; }
@@ -247,7 +266,8 @@ function handleChange() {
 .key-input,
 .label-input,
 .path-input,
-.default-input {
+.default-input,
+.threshold-input {
   padding: 8px 12px;
   border: 1px solid var(--color-slate-200);
   border-radius: var(--radius-control);
@@ -260,6 +280,7 @@ function handleChange() {
 .label-input { flex: 1; }
 .path-input { flex: 1.3; }
 .default-input { flex: 1; }
+.threshold-input { width: 90px; flex-shrink: 0; }
 
 .type-select,
 .role-select,
@@ -273,7 +294,13 @@ function handleChange() {
 
 .type-select { width: 80px; }
 .role-select { width: 90px; }
-.agg-select { width: 90px; }
+.agg-select { width: 110px; }
+
+.threshold-input:disabled {
+  background: var(--color-slate-100);
+  cursor: not-allowed;
+  color: var(--color-slate-300);
+}
 
 .visible-checkbox {
   display: flex;
@@ -293,6 +320,7 @@ function handleChange() {
 .label-input:focus,
 .path-input:focus,
 .default-input:focus,
+.threshold-input:focus,
 .type-select:focus,
 .role-select:focus {
   outline: none;

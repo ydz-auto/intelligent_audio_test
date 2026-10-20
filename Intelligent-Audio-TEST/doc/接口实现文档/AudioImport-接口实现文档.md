@@ -47,9 +47,14 @@
 
 ### 1.5 音频格式转换 (POST /api/v1/audios/:id/convert)
 **实现思路：**
-1. **参数验证**：校验目标格式、采样率、声道数、位深是否在支持范围内。
-2. **转换引擎**：调用 `ffmpeg` 执行异步转换任务，ffmpeg 路径写在配置里。
-3. **文件管理**：转换完成后，可选择替换原文件或另存为新文件。更新数据库中的元数据信息。
+1. **参数验证**：校验目标格式、采样率、声道数、位深、比特率是否在支持范围内（INT-817 附加参数，2026-10-19 实现演进裁定）：
+   - 目标采样率 `sample_rate`（可选）：8000-192000 Hz，超范围 400 且提示明确。
+   - 目标声道数 `channels`（可选）：1-8，超范围 400。
+   - 目标位深度 `bit_depth`（可选）：8 / 16 / 24 / 32 bit，仅 wav/flac 等无损失格式生效（WAV 走 PCM codec、FLAC 走 sample_fmt）。
+   - 目标比特率 `bitrate`（可选）：正数 kbps，接受 `128` / `"128k"` / `"1m"`，仅 mp3/aac/ogg 等有损格式生效（`-b:a`）。
+   - 全部附加参数可选，不传时保持原行为（仅转换格式）；旧前端透传任意数据向后兼容。
+2. **转换引擎**：调用 `ffmpeg`（经 pydub）执行转换，采样率→`-ar`、声道数→`-ac`、位深→codec / sample_fmt、比特率→`-b:a`。
+3. **文件管理**：转换产物统一另存为新文件（`conv_{uuid}.{format}`）并更新 `audios` 记录的 `file_path` / `format` / `size`，同时刷新 `sample_rate` / `channels` / `bitrate` 元数据（与 V9.7.10 行为一致；「替换原文件」选项未实现）。
 
 ### 1.6 元数据管理 (PUT /api/v1/audios/:id/metadata)
 **实现思路：**
@@ -66,9 +71,21 @@
 1. **批量删除**：
    - 物理删除文件。
    - 删除 `audio_tags`, `audio_translations`, `test_case_audios` (注意级联影响) 中的关联记录。
-   - 从 `audios` 表中移除记录。
-2. **批量导出**：将选中的音频文件打包为 `zip` 提供下载。
+   - 从 `audios` 表中移除记录（逻辑删除）。
+   - 被测试用例 / 设备提示词 / 任务引用的音频跳过并计入返回（与 V9.7.10 四重引用检查一致）。
+2. **批量导出**：将选中的音频文件打包为 `zip` 提供下载（base64 返回）。
 3. **批量修改标签**：批量更新 `audio_tags` 关联表。
+4. **批量移动 / 复制 / 重命名 / 修改属性**（INT-818 扩展，2026-10-19 实现演进裁定）：
+   - 请求扩展字段（React 弹窗 `targetFolder` / `renameRule` / `property` 一一对应；snake_case / camelCase 双口径接受，旧 Vue extraParams 透传向后兼容）：
+     - `target_folder` / `targetFolder`：move / copy 目标文件夹（如 `test_data/dry`；兼容 folder-tree `direct/` 前缀，拒绝空目录 / `.` / `..` 穿越 / 绝对路径）。
+     - `rename_rule` / `renameRule`：rename 统一命名规则前缀，自动追加序号（`{rule}{01..N}{原扩展名}`，如 `测试音频_01.wav`）。
+     - `property`：modify-properties 属性名（`metadata` / `audio-type`）。
+     - `property_value` / `propertyValue`：modify-properties 属性值（`metadata` 为字段字典，白名单列 `name` / `audio_type` / `asr_text` / `description` / `source_language`；`audio-type` 为 `dry` / `noise` / `prompt` / `mixed`）。
+   - **move**：存储对象迁移（下载→重存→删源）+ 更新 `file_path`；目标 key 与源相同视为原地不动；目标已存在追加 `_N` 序号去重。
+   - **copy**：存储对象复制 + 新建 `audios` 记录（元数据照搬，源记录与源文件保留）。
+   - **rename**：仅更新 `name` 列（不碰物理文件）。
+   - **modify-properties**：更新 `audios` 白名单列；`spl` 明确拒绝（`audios` 无 per-audio SPL 列，SPL 为设备/API 级 `spl_mappings` 映射，返回 400 说明原因，非静默跳过）。
+   - 返回 `{action, success_count, failed_count}`（含失败 audio_id 明细）。
 
 ### 1.8 预览与播放 (GET /api/v1/audios/:id/stream)
 **实现思路：**
@@ -151,3 +168,40 @@
    - 查询 `upload_tasks` 表获取任务基本信息。
    - 查询 `upload_files` 表获取所有文件的上传进度。
 3. **响应返回**：返回任务的当前状态、总文件数、已完成文件数、总大小、已上传大小，以及每个文件的详细进度信息。
+
+### 1.12 播放历史 (GET /api/v1/audios/:id/playback-history)
+（INT-819 新增，2026-10-19 实现演进裁定）
+**实现思路：**
+1. **数据表**：新增 `audio_playback_history` 表（见数据库设计文档 §2.5.4），记录播放时间 / 测试用例 / 播放设备 / 结果 / 时长。
+2. **写侧**：
+   - 试听 preview 落点：`audio_preview_service.preview_audio` 播放成功时每设备落一条 `success`；解析到设备但不可用 / 硬件播放失败落一条 `failed`（不阻塞试听主流程）。
+   - 用例预览落点：`playback_orchestrator` 对每个尝试播放的干声音频落一条（已安排播放 → `success`，未安排 → `failed`），携带 `testcase_id`（UUID，String 列）与 `testcase_name` 快照。
+   - `source` 字段标识记录来源，本期写侧为 `preview`（`execution` 为测试执行回放预留）。
+3. **读侧**：按 `audio_id` 过滤，`created_at` 倒序分页（`page` / `per_page`，默认 1 / 10，INT-297 信封 `items/total/page/per_page/pages`）。
+4. **响应条目字段**：`id` / `audio_id` / `testcase_id` / `testcase_name` / `device_id` / `device_name` / `result`（`success` | `failed`）/ `duration`（秒）/ `source` / `played_at`（= 播放时间 `created_at`），与 React 播放历史弹窗期望一致。
+5. **权限**：`audio:read`。
+6. **迁移**：`scripts/migrations/202610/add_audio_playback_history_table.py`（幂等；新建库经 `create_all_tables` 带出）。
+
+### 1.13 音频特征分析 / 质量评估 / 处理
+（INT-820 新增，2026-10-19 实现演进裁定）
+**实现思路：**
+
+1. **特征分析** (GET /api/v1/audios/:id/features，权限 `audio:read`)：
+   - 频谱特征：基频范围（帧级自相关估计 min/max）、主频能量峰（Welch PSD 峰值频率）、谐波失真（THD%）。
+   - 能量分布：平均能量（整体 RMS dBFS）、峰值能量（峰值 dBFS）、能量集中度（1 - 谱平坦度）。
+   - 时域特征：过零率、活跃时长占比（帧 RMS 相对峰值 -50dB 门限）、起始时间（首个活跃帧）。
+   - 响应：`{spectral: {fundamental_range_low, fundamental_range_high, dominant_frequency, harmonic_distortion}, energy: {average_energy_db, peak_energy_db, energy_concentration}, time_domain: {zero_crossing_rate, active_duration_ratio, onset_time}, audio_id, duration}`。
+
+2. **质量评估** (GET /api/v1/audios/:id/quality，权限 `audio:read`)：
+   - 信噪比（谱域 SNR：信号平均功率密度 vs PSD 中位数宽带噪声底）。
+   - 动态范围（峰值幅度 vs 噪声底幅度）。
+   - 频率响应评分（-40dB 带宽覆盖可闻频带比例）。
+   - 整体质量评分（SNR / 动态范围 / 频率响应加权，0-100）。
+   - 响应：`{snr_db, dynamic_range_db, frequency_response_score, quality_score, audio_id, duration}`。
+
+3. **处理** (POST /api/v1/audios/:id/process，权限 `audio:update`)：
+   - 请求：`operation`（`denoise` | `gain` | `trim`，必填）、`mode`（`new` 默认：生成新文件并创建新音频记录；`overwrite`：更新原记录 `file_path` / `format` / `size` / `duration` / `sample_rate` / `channels`）、`gain_db`（增益调整，有限值且 clamp 到 ±60dB）、`start_ms` / `end_ms`（剪辑区间，ms；省略默认取全长，非法区间 400）。
+   - 处理产物统一导出为 wav 落存储（`processed/{uuid}.wav`）；`mode=new` 时新记录命名「原名 + 操作后缀」。
+   - 响应：`{audio_id, operation, mode, format: 'wav', file_path, duration, size[, new_audio_id]}`。
+   - DSP：降噪 = STFT 谱门降噪（软增益掩码 + 响度保持）；增益 = 线性增益 + 削波保护；剪辑 = pydub 切片。
+

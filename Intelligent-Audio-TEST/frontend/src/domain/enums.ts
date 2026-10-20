@@ -57,6 +57,19 @@ export const REEXECUTE_ELIGIBLE_STATUSES = [
   TaskStatus.STOPPED,
 ] as const
 
+/**
+ * 可挑选（加入购物车）任务状态集合（INT-553 P3-4，INT-339 §10 默认仅终态任务可挑选）。
+ * 挑选入口可见性（TestExecutionComponent）与 openCherryPick 门控（TaskDetailModal）同源此集合，
+ * 禁止散落字面量。后端历史遗留 'finished'/'success' 不在集合内——入口不可见即不可点，
+ * 消除「按钮可见但点击仅 warning」的前后口径不一致。
+ * 类型用 readonly string[]：门控以任意 task status 字符串入参，字面量联合会让 includes 报类型错。
+ */
+export const PICKABLE_STATUSES: readonly string[] = [
+  TaskStatus.COMPLETED,
+  TaskStatus.FAILED,
+  TaskStatus.STOPPED,
+]
+
 /** 用例执行状态枚举 */
 export const ExecutionStatus = {
   PENDING: 'pending',
@@ -257,6 +270,17 @@ export const OutputType = {
 /** API 输出类型（由 OutputType 派生的字符串联合） */
 export type OutputTypeType = typeof OutputType[keyof typeof OutputType]
 
+/** 被测 API 网络代理类型枚举（INT-839，值 = 后端 api 表 proxy_type 原值；NULL 或空 = 不用代理） */
+export const ProxyType = {
+  HTTP: 'http',
+  HTTPS: 'https',
+  SOCKS5: 'socks5',
+  SOCKS5H: 'socks5h',
+} as const
+
+/** 被测 API 网络代理类型（由 ProxyType 派生的字符串联合） */
+export type ProxyTypeType = typeof ProxyType[keyof typeof ProxyType]
+
 /** SPL 校准状态枚举（值 = 后端 shared.models.common_enums.CalibrationStatus 原值） */
 export const CalibrationStatus = {
   CALIBRATED: 'calibrated',
@@ -402,6 +426,21 @@ export const Visibility = {
 /** 资源可见性类型（由 Visibility 派生；字符串兜底兼容后端扩展） */
 export type VisibilityType = typeof Visibility[keyof typeof Visibility] | (string & {})
 
+/** Realtime 输入节奏策略枚举（INT-475，值 = 后端 shared RealtimePacingStrategy 原值，禁止改动值）。
+ *  FIXED 恒定节奏（默认=现状）/ WAIT_TURN_END 等输出 turn 结束再推下一帧 /
+ *  ALLOW_BARGE_IN 允许输入推流中模型提前回话/打断 / TIMEOUT_FALLBACK 无输出按配置超时兜底。
+ */
+export const RealtimePacingStrategy = {
+  FIXED: 'fixed',
+  WAIT_TURN_END: 'wait_turn_end',
+  ALLOW_BARGE_IN: 'allow_barge_in',
+  TIMEOUT_FALLBACK: 'timeout_fallback',
+} as const
+
+/** Realtime 输入节奏策略类型（由 RealtimePacingStrategy 派生） */
+export type RealtimePacingStrategyType =
+  typeof RealtimePacingStrategy[keyof typeof RealtimePacingStrategy]
+
 /** 权限点（INT-298，对齐 V9.7.10 / 后端 RBAC seed「资源:操作」命名；值 = 后端 PermissionPoints 原值，禁止改动值） */
 export const PermissionPoint = {
   /** 发布已发布任务（POST /published-tasks） */
@@ -430,3 +469,19 @@ export const PermissionPoint = {
 
 /** 权限点类型（由 PermissionPoint 派生） */
 export type PermissionPointValue = typeof PermissionPoint[keyof typeof PermissionPoint]
+
+/**
+ * 列表加载失败分类（INT-255：错误态与空态分离；前端 UI 状态枚举，值非后端契约，禁止魔法字符串）。
+ * 供列表类 composable 在请求失败时以枚举表达错误类型，视图据此渲染错误提示与重试入口。
+ */
+export const ListLoadErrorType = {
+  /** 网络不可达（后端离线 / fetch 无响应 / http=000） */
+  NETWORK: 'network',
+  /** 服务端错误（HTTP 5xx / 业务系统错误码 3xx） */
+  SERVER: 'server',
+  /** 其它 / 未分类错误 */
+  UNKNOWN: 'unknown',
+} as const
+
+/** 列表加载失败分类类型（由 ListLoadErrorType 派生） */
+export type ListLoadErrorTypeValue = typeof ListLoadErrorType[keyof typeof ListLoadErrorType]

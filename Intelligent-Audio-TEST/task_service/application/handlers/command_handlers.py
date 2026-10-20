@@ -158,6 +158,8 @@ class TaskCommandHandler:
                 now=now,
                 case_devices=cmd.case_devices,
                 lab_ids=cmd.lab_ids,
+                # INT-566：透传命令可见性落库（默认 shared）
+                visibility=getattr(cmd, 'visibility', None),
             )
 
             log_and_emit(

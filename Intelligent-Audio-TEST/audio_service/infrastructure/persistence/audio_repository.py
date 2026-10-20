@@ -19,6 +19,11 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import func
 
 from shared.models.database import get_db_session
+from shared.infrastructure.user_context import (
+    get_current_user_id,
+    get_current_user_is_admin,
+)
+from shared.infrastructure.visibility_filter import visible_condition
 from audio_service.infrastructure.persistence.models import Audio
 from audio_service.domain.entities import AudioAggregate
 from audio_service.domain.repositories.audio_repository_abc import (
@@ -147,10 +152,15 @@ class AudioRepository(AudioRelationMixin, AudioRepositoryInterface, UploadReposi
     def list_audios(self, params: dict) -> dict:
         """分页查询音频列表。
 
+        INT-423 行级可见性：admin 全量 / 共享全可见 / 私有仅 owner
+        （user_id/is_admin 取 x-user-id / x-user-is-admin context）。
         返回 SQLAlchemy Pagination 对象，其中 items 已转换为 AudioAggregate。
         """
         session = get_db_session()
         query = session.query(Audio).filter_by(deleted=False)
+        query = query.filter(visible_condition(
+            Audio.created_by_user_id, Audio.visibility,
+            get_current_user_id(), get_current_user_is_admin()))
         query = apply_audio_list_filters(query, session, params, self._get_tag_name_to_id_map)
 
         page = params.get('page', 1)
@@ -190,19 +200,29 @@ class AudioRepository(AudioRelationMixin, AudioRepositoryInterface, UploadReposi
         return [_audio_po_to_entity(po) for po in pos]
 
     def get_all_audio_ids(self, params: dict) -> List[int]:
-        """按条件查询所有音频 ID（用于全选功能）"""
+        """按条件查询所有音频 ID（用于全选功能）。
+
+        INT-423 行级可见性：与 list_audios 同一套可见性口径（全选只含可见行）。
+        """
         session = get_db_session()
         query = session.query(Audio).filter_by(deleted=False)
+        query = query.filter(visible_condition(
+            Audio.created_by_user_id, Audio.visibility,
+            get_current_user_id(), get_current_user_is_admin()))
         query = apply_audio_list_filters(query, session, params, self._get_tag_name_to_id_map)
         return [a.id for a in query.with_entities(Audio.id).all()]
 
     def collect_folder_files(self, params: dict) -> List[Any]:
         """按条件查询用于构建文件夹树的音频记录（仅选择必要列）。
 
+        INT-423 行级可见性：文件夹树同样只含可见行，私有非 owner 不进入树。
         返回的是轻量元组列表（非聚合根），用于文件夹树构建。
         """
         session = get_db_session()
         query = session.query(Audio).filter_by(deleted=False)
+        query = query.filter(visible_condition(
+            Audio.created_by_user_id, Audio.visibility,
+            get_current_user_id(), get_current_user_is_admin()))
         query = apply_folder_tree_filters(query, session, params, self._get_tag_name_to_id_map)
 
         audios = query.with_entities(
@@ -213,12 +233,15 @@ class AudioRepository(AudioRelationMixin, AudioRepositoryInterface, UploadReposi
         return audios
 
     def get_audio_stats(self) -> dict:
-        """获取音频统计信息"""
+        """获取音频统计信息（INT-423：与 list_audios 同一可见性口径，统计只含可见行）"""
         session = get_db_session()
+        visible_cond = visible_condition(
+            Audio.created_by_user_id, Audio.visibility,
+            get_current_user_id(), get_current_user_is_admin())
         stats_result = session.query(
             func.sum(Audio.size),
             func.sum(Audio.duration)
-        ).filter(Audio.deleted == False).first()
+        ).filter(Audio.deleted == False, visible_cond).first()  # noqa: E712
 
         total_size = stats_result[0] or 0
         total_duration = stats_result[1] or 0
@@ -227,7 +250,8 @@ class AudioRepository(AudioRelationMixin, AudioRepositoryInterface, UploadReposi
         today_start = now_cst().replace(hour=0, minute=0, second=0, microsecond=0)
         today_uploads = session.query(func.count(Audio.id)).filter(
             Audio.created_at >= today_start,
-            Audio.deleted == False
+            Audio.deleted == False,  # noqa: E712
+            visible_cond,
         ).scalar() or 0
 
         return {
@@ -235,6 +259,21 @@ class AudioRepository(AudioRelationMixin, AudioRepositoryInterface, UploadReposi
             'total_duration': total_duration,
             'today_uploads': today_uploads,
         }
+
+    def update_audio_visibility(self, audio_id: int, visibility: str) -> bool:
+        """仅更新音频可见性（INT-464 跟随用例 gRPC 同步专用）。
+
+        内部同步语义：不修改 updated_by_user_id（非用户编辑，跨服务系统写），
+        仅更新 visibility 与 updated_at。返回是否命中并更新。
+        """
+        session = get_db_session()
+        audio = session.query(Audio).filter_by(id=audio_id, deleted=False).first()
+        if not audio:
+            return False
+        audio.visibility = visibility
+        audio.updated_at = _now()
+        session.flush()
+        return True
 
     def find_audio_by_name(self, name: str) -> Optional[AudioAggregate]:
         """按文件名查音频（用于补全 rounds_config 中的 audio_id），返回 AudioAggregate。
@@ -260,6 +299,75 @@ class AudioRepository(AudioRelationMixin, AudioRepositoryInterface, UploadReposi
         if po is None:
             return None
         return _audio_po_to_entity(po)
+
+    # ========== 播放历史（INT-782#2） ==========
+
+    def record_playback_history(self, data: dict) -> Optional[int]:
+        """新增一条播放历史记录，返回记录 ID（不 commit，由调用方统一提交）。"""
+        from shared.infrastructure.user_context import get_current_user_id
+        from audio_service.infrastructure.persistence.models import AudioPlaybackHistory
+        session = get_db_session()
+        row = AudioPlaybackHistory(
+            audio_id=data.get('audio_id'),
+            testcase_id=data.get('testcase_id'),
+            testcase_name=data.get('testcase_name'),
+            device_id=data.get('device_id'),
+            device_name=data.get('device_name') or '未知设备',
+            result=data.get('result', 'success'),
+            duration=data.get('duration'),
+            source=data.get('source', 'preview'),
+            created_by_user_id=get_current_user_id(),
+        )
+        session.add(row)
+        session.flush()
+        return row.id
+
+    def list_playback_history(self, audio_id: int, params: dict) -> dict:
+        """分页查询音频播放历史（按播放时间倒序，最近在前）。"""
+        from audio_service.infrastructure.persistence.models import AudioPlaybackHistory
+        session = get_db_session()
+        try:
+            page = max(int(params.get('page', 1)), 1)
+        except (TypeError, ValueError):
+            page = 1
+        try:
+            per_page = max(int(params.get('per_page', 10)), 1)
+        except (TypeError, ValueError):
+            per_page = 10
+
+        query = session.query(AudioPlaybackHistory).filter_by(audio_id=audio_id)
+        total = query.count()
+        rows = (
+            query
+            .order_by(AudioPlaybackHistory.created_at.desc(), AudioPlaybackHistory.id.desc())
+            .limit(per_page)
+            .offset((page - 1) * per_page)
+            .all()
+        )
+        pages = (total + per_page - 1) // per_page
+        return {
+            'items': [self._playback_history_to_dict(r) for r in rows],
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'pages': pages,
+        }
+
+    @staticmethod
+    def _playback_history_to_dict(row) -> dict:
+        """播放历史 PO → 接口 dict（played_at 用 created_at 承载播放时间）。"""
+        return {
+            'id': row.id,
+            'audio_id': row.audio_id,
+            'testcase_id': row.testcase_id,
+            'testcase_name': row.testcase_name,
+            'device_id': row.device_id,
+            'device_name': row.device_name,
+            'result': row.result,
+            'duration': row.duration,
+            'source': row.source,
+            'played_at': row.created_at.isoformat() if row.created_at else None,
+        }
 
     # ========== Session 管理 ==========
 

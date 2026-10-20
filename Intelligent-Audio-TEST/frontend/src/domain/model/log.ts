@@ -102,15 +102,12 @@ export interface LogClearInput {
   keepMarked?: boolean
 }
 
-/** 日志导出查询（对应后端 LogExportQuery + LogExportRequest） */
-export interface LogExportQuery {
-  level?: string
-  module?: string
-  /** 逗号分隔的日志 id 串（后端 log_ids 原样） */
+/** 日志导出查询（对应后端 LogExportQuery + LogExportRequest，POST body 契约）。
+ * 携带与列表查询相同的过滤条件（LogQuery）+ 导出专有字段 logIds/format。 */
+export interface LogExportQuery extends LogQuery {
+  /** 逗号分隔的日志 id 串（导出范围「选中数据」）；adapter 转为后端 log_ids int 数组 */
   logIds?: string
   format?: string
-  page?: number
-  perPage?: number
 }
 
 /** 归档状态（对应后端 GET /logs/archive/status 返回体；后端为 raw dict，字段即 camelCase） */

@@ -14,6 +14,7 @@ import type { SPLByDeviceItem } from '../../../domain/model/spl'
 import type { PlaybackDevice } from '../../../domain/model/device'
 import { matchDriverOptionValue } from '../../../domain/model/device'
 import type { Dimension } from '../../../domain/model/dimension'
+import { validateProxy } from '../../../utils/proxyValidation'
 
 /** CRUD 弹窗 props 契约（与 CRUDFormModal.vue defineProps 保持一致） */
 interface CrudFormModalProps {
@@ -533,6 +534,13 @@ export function useCRUDFormModal(props: CrudFormModalProps, emit: CrudFormModalE
       }
     }
 
+    // 网络代理配置互斥校验（INT-839，与后端同规则，前后端双校验）
+    const proxyError = validateProxy(formValues.value.proxyType, formValues.value.proxyUrl)
+    if (proxyError) {
+      notification.warning(proxyError)
+      return
+    }
+
     submitting.value = true
 
     try {
@@ -543,6 +551,10 @@ export function useCRUDFormModal(props: CrudFormModalProps, emit: CrudFormModalE
           if (field.conditional && !checkCondition(field.conditional)) return
 
           let value = formValues.value[field.key]
+
+          if (field.key === 'proxyUrl' && typeof value === 'string') {
+            value = value.trim()
+          }
 
           if (field.arrayItemType === 'apiEndpoint' && Array.isArray(value)) {
             value = (value as any[]).map((item: any) => ({ ...item, endpoint: item.url || item.endpoint || '', url: item.url || item.endpoint || '' }))

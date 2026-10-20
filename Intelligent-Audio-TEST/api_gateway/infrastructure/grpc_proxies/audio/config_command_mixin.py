@@ -317,3 +317,21 @@ class _AudioConfigCommandMixin:
             default_return=lambda e: {'success': False, 'message': f'停止预览失败: {e}', 'data': None, 'code': 400},
             error_msg_prefix='停止预览失败',
         )
+
+    def process_audio(self, audio_id, data):
+        """音频处理（降噪/增益/剪辑，INT-820 §3.3.2 处理）"""
+        from shared.proto import audio_service_pb2 as audio_pb
+
+        def _call():
+            stub = get_audio_config_service_stub()
+            resp = stub.ProcessAudio(audio_pb.ProcessAudioRequest(
+                audio_id=int(audio_id),
+                data=json.dumps(data or {}, ensure_ascii=False, default=str),
+            ))
+            return self._resp(resp)
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'音频处理失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='音频处理失败',
+        )

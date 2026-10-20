@@ -74,6 +74,8 @@ class TestCaseQueryService:
         dimension_id = query.dimension_id
         # INT-539：按实验室过滤（含通用用例；下推 task_service lab_ids 过滤）
         lab_id = query.lab_id
+        # INT-466：可见性筛选（shared/private；空=全部）
+        visibility = getattr(query, 'visibility', None)
 
         result = _testcase_acl.list_testcases(
             page=page,
@@ -89,6 +91,7 @@ class TestCaseQueryService:
             favorite=favorite,
             only_deleted=only_deleted,
             lab_ids=[lab_id] if lab_id is not None else None,
+            visibility=visibility,
         )
 
         if not result.get('success'):
@@ -127,6 +130,9 @@ class TestCaseQueryService:
                     deleted_at=item.get('deleted_at'),
                     deleted_by_user_id=item.get('deleted_by_user_id'),
                     total_duration=item.get('total_duration'),
+                    # INT-423/466：资源可见性与归属人（read model 透出，此处透传）
+                    visibility=item.get('visibility'),
+                    created_by_user_id=item.get('created_by_user_id'),
                     # INT-539：lab 归属透出（config JSONB 解析，task_service 返回）
                     lab_id=item.get('lab_id'),
                     lab_name=item.get('lab_name'),
@@ -150,10 +156,17 @@ class TestCaseQueryService:
         if not result.get('success'):
             code = result.get('code', 400)
             if code == 404:
-                return error_response("未找到测试用例", 404)
+                # INT-566 P1-5：私有非 owner/不存在详情按 404 映射（防探测口径统一）
+                return error_response("未找到测试用例", code=404, http_code=404)
             return error_response(result.get('message', '查询失败'))
 
         item = result.get('data') or {}
+
+        # INT-466：admin 访问私有用例详情落 PRIVATE_RESOURCE_ACCESS 审计（旁路）
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_detail,
+        )
+        maybe_audit_private_detail('testcase', tc_id, item)
 
         # 构建 Pydantic 模型返回
         audios = [
@@ -199,6 +212,9 @@ class TestCaseQueryService:
                 created_at=item.get('created_at'),
                 updated_at=item.get('updated_at'),
                 total_duration=item.get('total_duration'),
+                # INT-423/466：资源可见性与归属人（read model 透出，此处透传）
+                visibility=item.get('visibility'),
+                created_by_user_id=item.get('created_by_user_id'),
             )
         )
 
@@ -218,7 +234,8 @@ class TestCaseQueryService:
         if not result.get('success'):
             code = result.get('code', 400)
             if code == 404:
-                return error_response("未找到测试用例", 404)
+                # INT-566 P1-5：私有非 owner/不存在详情按 404 映射（防探测口径统一）
+                return error_response("未找到测试用例", code=404, http_code=404)
             return error_response(result.get('message', '查询失败'))
 
         tc = result.get('data') or {}
@@ -376,6 +393,8 @@ class TestCaseQueryService:
                 offset=offset,
                 overlap_rate=overlap_rate,
                 overlap_time=overlap_time,
+                testcase_id=tc_id,
+                testcase_name=tc.get('name'),
             )
             if not preview_result or not preview_result.result_data:
                 return error_response("用例未配置有效的干声音频")

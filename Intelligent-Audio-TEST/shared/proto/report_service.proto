@@ -76,6 +76,18 @@ service ReportConfigService {
   // POST /reports/statistics/report：报表生成（report_type × format × time_range），
   // 复用 binary 下载结构（mime_type/filename/content_base64）
   rpc GenerateStatisticsReport(GenerateStatisticsReportRequest) returns (ReportConfigResponse);
+
+  // ---- 报告分享（INT-971：生成/列表/撤销/公开读取）----
+  // POST /reports/{id}/share：创建分享（token 服务端生成；recipients 为网关已解析的
+  // [{user_id, label}] 列表；password 非空落哈希，响应只回 password_set）
+  rpc CreateReportShare(CreateReportShareRequest) returns (ReportConfigResponse);
+  // GET /reports/{id}/share：分享管理与统计列表（按 created_at 倒序）
+  rpc ListReportShares(ListReportSharesRequest) returns (ReportConfigResponse);
+  // DELETE /reports/{id}/share/{token}：软撤销（幂等：已撤销再次撤销仍 200）
+  rpc RevokeReportShare(RevokeReportShareRequest) returns (ReportConfigResponse);
+  // GET /reports/shared/{token}：公开读取（handler 自校验 access/密码/过期；
+  // 200 时原子递增 visits——访问统计唯一入口；错误经 code 透出 404/410/401/403）
+  rpc GetSharedReport(GetSharedReportRequest) returns (ReportConfigResponse);
 }
 
 message CreateReportRequest {
@@ -128,6 +140,7 @@ message ReportConfigResponse {
   bool success = 1;
   string message = 2;
   string data = 3;  // JSON 序列化的结果
+  int32 code = 4;   // HTTP 语义业务码（INT-971：分享读取错误 404/410/401/403；0 = 200）
 }
 message GenerateTaskReportRequest {
   int32 task_id = 1;
@@ -199,6 +212,20 @@ message GetStatisticsTrendRequest {
 }
 message GenerateStatisticsReportRequest {
   string data = 1;  // JSON: {report_type, content, format, time_range: {start_time, end_time}}
+}
+
+// ===== 报告分享（INT-971）=====
+message CreateReportShareRequest {
+  string data = 1;  // JSON: {report_id, access, expiry, expires_at?, password?, recipients}
+}
+message ListReportSharesRequest {
+  string data = 1;  // JSON: {report_id}
+}
+message RevokeReportShareRequest {
+  string data = 1;  // JSON: {report_id, token}
+}
+message GetSharedReportRequest {
+  string data = 1;  // JSON: {token, password?, user_id}
 }
 
 // ===== Benchmark 排行服务（D1 双轨排行：实测轨 + 外部基线导入 + 6 算法 + 指标映射）=====

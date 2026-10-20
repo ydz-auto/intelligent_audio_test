@@ -25,6 +25,17 @@ class EntityType(str, Enum):
     TESTCASE = 'testcase'
 
 
+class Visibility(str, Enum):
+    """数据可见性枚举（INT-423 数据可见性体系一期基座）
+
+    仅二值（负责人拍板，共享范围由 RBAC 角色承载，不加团队/多级可见性）：
+    - SHARED  共享（默认；存量行为，所有有权用户可见）
+    - PRIVATE 私有（仅 owner 与 admin 可见，行级过滤走 visibility_filter）
+    """
+    SHARED = 'shared'
+    PRIVATE = 'private'
+
+
 class ReportStatus(str, Enum):
     """报告状态枚举"""
     DRAFT = 'draft'
@@ -186,14 +197,44 @@ class LabStatus(str, Enum):
     MAINTENANCE = 'maintenance'
 
 
-class VendorAdapterType(str, Enum):
-    """厂商适配器类型枚举 — api_test_service infrastructure/adapters 注册表 key（INT-62 新增）
+class AdapterProtocol(str, Enum):
+    """适配器协议维度枚举 — vendor_adapter_registry 多维 key（INT-497 新增）
 
-    新增厂商适配器 = 新增枚举成员 + @register_vendor_adapter 注册实现
-    + 用例配置 vendor_adapter 选择，执行链（core/）零改动。
+    语义域区别于 APIProtocol（传输协议分型）：AdapterProtocol 是适配器三级体系
+    （base_adaptor → 协议_base_adaptor → 品牌适配器）中协议级 base 的分型依据，
+    覆盖 HTTP / WEBSOCKET / REALTIME；ANY 为遗留适配器（仅 adapter_type）注册时的
+    协议通配维度。REALTIME 落本枚举，不复用/扩展 APIProtocol（方案审计 2026-10-16 拍板）。
     """
-    API_DRIVER = 'api_driver'  # 内置 HTTP/WS 协议适配器（原 clients/api_driver + api_client 迁移）
-    MOCK = 'mock'              # mock 厂商适配器（扩展性验证 / 测试替身）
+    HTTP = 'http'
+    WEBSOCKET = 'websocket'
+    REALTIME = 'realtime'
+    ANY = 'any'
+
+
+class AdapterVendor(str, Enum):
+    """适配器品牌维度枚举 — vendor_adapter_registry 多维 key（INT-497 新增）
+
+    API_DRIVER 为内置 HTTP/WS 协议适配器的品牌兜底，MOCK 为测试替身，
+    OPENAI 为 OpenAI 品牌适配器；ANY 为未声明品牌维度时的通配。
+    """
+    API_DRIVER = 'api_driver'
+    MOCK = 'mock'
+    OPENAI = 'openai'
+    ANY = 'any'
+
+
+class VendorAdapterType(str, Enum):
+    """厂商适配器类型枚举 — 用例配置 vendor_adapter 扁平 key 兼容层（INT-62 / INT-497）
+
+    注册表主 key 已升级为 (AdapterProtocol, AdapterVendor) 多维（INT-497 与设备驱动
+    注册表同构）；本枚举保留为用例配置的扁平 key 层，create_from_config 经
+    adapter_type_from_config 映射为多维 key。新增厂商适配器 = 新增本枚举扁平 key
+    + @register_vendor_adapter 注册实现 + 用例配置 vendor_adapter 选择。
+    """
+    API_DRIVER = 'api_driver'        # 内置 HTTP/WS 协议适配器（原 clients/api_driver + api_client 迁移）
+    MOCK = 'mock'                    # mock 厂商适配器（扩展性验证 / 测试替身）
+    OPENAI = 'openai'                # OpenAI 品牌扁平 key（首期 websocket_api 路径 → (REALTIME, OPENAI)）
+    OPENAI_REALTIME = 'openai_realtime'  # OpenAI Realtime 组合扁平 key → (REALTIME, OPENAI)
 
 
 class RealtimeChannel(str, Enum):
@@ -230,6 +271,29 @@ class RealtimeRoundMode(str, Enum):
     """Realtime 轮次模式枚举 — 正常轮 / 打断轮（barge-in）（INT-61 新增）"""
     NORMAL = 'normal'
     INTERRUPTION = 'interruption'
+
+
+class RealtimePacingStrategy(str, Enum):
+    """Realtime 输入节奏策略枚举（INT-475 新增）
+
+    驱动输入推送节奏的输出信号来自被测厂商 Realtime API 实时输出
+    （RealtimeWSClient 归一化事件实例内回流），执行器据此调整后续音频
+    输入帧的推送时机，而非固定间隔盲推。
+
+    - FIXED              恒定节奏（默认 = 现状，回归基准）
+    - WAIT_TURN_END      模型输出 turn 进行中则暂停输入推流，turn 结束后续推
+    - ALLOW_BARGE_IN     允许输入推流中模型提前回话/打断，打断信号到达即收敛输入推流
+    - TIMEOUT_FALLBACK   模型无输出/无 turn 结束时按配置超时兜底，不无限等待
+                         （可与 WAIT_TURN_END / ALLOW_BARGE_IN 组合）
+
+    配置取值：单值字符串或组合列表/逗号分隔字符串（如 ['wait_turn_end',
+    'timeout_fallback']）；case_config['pacing'] / api_config.meta['pacing']
+    可覆盖 realtime_session 全局配置。
+    """
+    FIXED = 'fixed'
+    WAIT_TURN_END = 'wait_turn_end'
+    ALLOW_BARGE_IN = 'allow_barge_in'
+    TIMEOUT_FALLBACK = 'timeout_fallback'
 
 
 class OutputType(str, Enum):
@@ -349,6 +413,8 @@ class AuditEvent(str, Enum):
     AI_REVIEW_INITIATED = 'AI_REVIEW_INITIATED'
     AI_REVIEW_ADOPTED = 'AI_REVIEW_ADOPTED'
     AI_REVIEW_REJECTED = 'AI_REVIEW_REJECTED'
+    # 数据可见性审计（INT-423，category='System'）——私有资源被非 owner 访问（越权命中/尝试）时落一条
+    PRIVATE_RESOURCE_ACCESS = 'PRIVATE_RESOURCE_ACCESS'
 
 
 class AuthErrorCode(str, Enum):
@@ -386,6 +452,8 @@ class AuditLogCategory(str, Enum):
     BENCHMARK = 'benchmark'
     # 设备管理审计（INT-80：分组/操作/批量端点）
     DEVICE = 'device'
+    # 数据可见性审计（INT-466/573：PRIVATE_RESOURCE_ACCESS / 可见性切换 / admin 访问私有资源）
+    VISIBILITY = 'visibility'
 
 
 AUDIT_LOG_CATEGORIES = frozenset(item.value for item in AuditLogCategory)

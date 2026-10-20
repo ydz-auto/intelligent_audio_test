@@ -50,6 +50,7 @@ import {
   normalizeScannedDeviceList,
   toDeviceGroupPage,
   toDeviceGroupUpsertDto,
+  toDeviceGroupMoveDto,
   toDeviceStatusHistoryPage,
   toDeviceAlarmRulePage,
   toDeviceAlarmRuleUpsertDto,
@@ -270,6 +271,11 @@ export const devicesApi = {
   /** 更新设备分组 */
   async updateGroup(id: string, groupData: Partial<DeviceGroup>, options: RequestOptions = {}) {
     return request('PUT', `/test-devices/device-groups/${id}`, toDeviceGroupUpsertDto(groupData), options);
+  },
+
+  /** 移动设备分组到新父级（INT-832；parentId null/空串 = 移到顶层根） */
+  async moveGroup(id: string, parentId: string | null, options: RequestOptions = {}) {
+    return request('PUT', `/test-devices/device-groups/${id}/move`, toDeviceGroupMoveDto(parentId), options);
   },
 
   /** 删除设备分组（cascade=true 时组内设备移出分组） */

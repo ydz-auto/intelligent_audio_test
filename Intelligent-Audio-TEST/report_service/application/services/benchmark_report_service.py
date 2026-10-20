@@ -24,6 +24,7 @@ from report_service.application.services.benchmark_audit import write_benchmark_
 from report_service.domain.entities import ReportAggregate, ReportStatus
 from report_service.domain.entities.benchmark import BenchmarkCategory, RankingSource
 from report_service.infrastructure.persistence.report_repository import report_repository
+from shared.infrastructure.user_context import get_current_user_id
 from shared.models.common_enums import AuditEvent
 from shared.utils.query_utils import now_cst
 
@@ -187,7 +188,10 @@ class BenchmarkReportService:
                     'metric_count': counts['metric_count'],
                     'ranking_data': snapshot,
                     'version': version,
+                    # V9.7.10 兼容旧列（客户端自报仅作展示，非操作人依据）
                     'published_by': command.published_by or '',
+                    # INT-844：发布操作人认证 user_id（AUTH_MODE=off → None → NULL）
+                    'created_by_user_id': get_current_user_id(),
                 })
             except Exception:
                 # 快照落库失败：删除已建的报告主记录（含子表级联），避免半成品

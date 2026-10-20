@@ -2,10 +2,13 @@
  * APIConfig（外部被测 API 服务）领域模型 —— camelCase
  * 对应后端 api_gateway/schemas/api.py::ApiItem
  */
-import type { ApiEndpointStatusType } from '../enums'
+import type { ApiEndpointStatusType, ProxyTypeType } from '../enums'
 
 /** API 端点状态（语义与 ../../domain/enums.ts 的 ApiEndpointStatus 对齐，禁止各自硬编码） */
 export type ApiEndpointStatus = ApiEndpointStatusType
+
+/** 被测 API 网络代理类型（值 = 后端 proxy_type 原值；不配置 = 不用代理） */
+export type ProxyType = ProxyTypeType
 
 /** API 端点（对应后端 ApiEndpointItem） */
 export interface ApiEndpoint {
@@ -71,6 +74,10 @@ export interface APIConfig {
   deviceType?: string
   /** 指定适配器类名（未指定时按 protocol+vendor 自动匹配） */
   adapterClass?: string
+  /** 网络代理类型（http/https/socks5/socks5h；未配置 = 不用代理） */
+  proxyType?: ProxyType
+  /** 网络代理地址 [user:pass@]host:port（不含 scheme，INT-839：认证必填时校验必须带 user:pass@ 前缀） */
+  proxyUrl?: string
   /** 目标音频格式声明 {sampleRate, bitDepth, channels, container} */
   audioConfig?: ApiAudioConfig
   /** 当前默认 RMS→SPL 映射 ID（api_rms_spl_mappings） */

@@ -26,15 +26,31 @@ import logging
 import time
 import wave
 
-from shared.models.common_enums import RealtimeRoundMode
+from shared.models.common_enums import (
+    AdapterProtocol,
+    AdapterVendor,
+    RealtimeFrameType,
+    RealtimePacingStrategy,
+    RealtimeRoundMode,
+    VendorAdapterType,
+)
 from shared.utils.config_manager import config_manager
 from shared.utils.api_key_provider import resolver_from_config
 from api_test_service.application.round_render_service import RoundRenderService
 from api_test_service.domain.services.api_rms_spl_service import ApiRmsSplService
+from api_test_service.domain.services.realtime_pacing_service import (
+    RealtimePacingContext,
+    RealtimePacingService,
+)
 from api_test_service.infrastructure.acl import (
     AudioConfigAclRepositoryImpl,
     AudioRenderACLRepositoryImpl,
     EvaluationAclRepositoryImpl,
+)
+from api_test_service.infrastructure.adapters import (
+    _ADAPTER_TYPE_CONFIG_KEY,
+    adapter_type_from_config,
+    vendor_adapter_registry,
 )
 from api_test_service.infrastructure.messaging import RealtimeStreamPublisher
 from api_test_service.infrastructure.vendor_ws import RealtimeWSClient
@@ -68,6 +84,7 @@ class RealtimeSessionExecutor:
         self._session_registry = RealtimeSessionRegistry(
             bind_ttl_seconds=int(config_manager.get_value(
                 'realtime_session', 'bind_ttl_seconds', 3600)))
+        self._pacing_service = RealtimePacingService()
         self._frame_seq = 0
 
     @property
@@ -147,13 +164,13 @@ class RealtimeSessionExecutor:
                 api_config,
                 case_api_key=self._case_level_key(
                     data.get('api_specific_config'), case_config))
-            client = RealtimeWSClient(
-                url, headers=headers,
-                vendor=(getattr(api_config, 'vendor', None) or 'openai'),
-                event_listener=lambda frame: self._on_frame(
-                    task_id, test_case_id, session_id, frame),
-                chunk_duration_ms=chunk_ms,
-            )
+            client = self._resolve_realtime_transport(
+                api_config, case_config, data.get('api_specific_config'),
+                url, headers, chunk_ms, task_id, test_case_id, session_id,
+                # INT-839：被测 API 网络代理（websocket-client 代理参数注入，
+                # 适配器路径与 RealtimeWSClient 默认路径同口径透传）
+                proxy_type=getattr(api_config, 'proxy_type', None),
+                proxy_url=getattr(api_config, 'proxy_url', None))
             if not client.connect():
                 raise ConnectionError(f"Realtime WS 连接失败: {url}")
 
@@ -247,6 +264,48 @@ class RealtimeSessionExecutor:
                 client.close()
             self._session_registry.release(task_id)
 
+    def _resolve_realtime_transport(self, api_config, case_config, api_specific_config,
+                                    url, headers, chunk_ms, task_id, test_case_id,
+                                    session_id, *, proxy_type=None, proxy_url=None):
+        """Realtime 传输对象工厂（INT-497 最小接线，仅替换构造对象一处）
+
+        配置了 REALTIME 品牌适配器（vendor_adapter=openai / openai_realtime，
+        方案审计 2026-10-16 拍板第 5 项）时经注册表严格分发（fallback=False：
+        resolve 失败必须抛错，不静默回退 RealtimeWSClient，防双通道语义歧义）；
+        否则保持既有 RealtimeWSClient 默认行为（api_driver / mock / 未配置，
+        向后兼容）。轮次编排零改动——适配器暴露 RealtimeWSClient 同形方法面。
+
+        配置来源与 HTTP 路径同口径：api_specific_config（API 级）优先，
+        回退 case_config（用例级），再经 api.meta（adapter_type_from_config 内置）。
+        proxy_type / proxy_url（INT-839）两条路径同口径透传，避免新适配器
+        路径静默丢失基线已具备的被测 API 网络代理能力。
+        """
+        sel_config = dict(api_specific_config or {})
+        if isinstance(case_config, dict):
+            for key in (_ADAPTER_TYPE_CONFIG_KEY,):
+                if key not in sel_config and case_config.get(key) is not None:
+                    sel_config[key] = case_config[key]
+        a_type = adapter_type_from_config(api_config, sel_config)
+        if a_type in (VendorAdapterType.OPENAI, VendorAdapterType.OPENAI_REALTIME):
+            adapter_cls = vendor_adapter_registry.resolve(
+                AdapterProtocol.REALTIME, AdapterVendor.OPENAI, fallback=False)
+            return adapter_cls(
+                api_config=api_config, case_config=case_config, endpoint=url,
+                headers=headers,
+                event_listener=lambda frame: self._on_frame(
+                    task_id, test_case_id, session_id, frame),
+                chunk_duration_ms=chunk_ms,
+                test_case_id=test_case_id, task_id=task_id,
+                proxy_type=proxy_type, proxy_url=proxy_url)
+        return RealtimeWSClient(
+            url, headers=headers,
+            vendor=(getattr(api_config, 'vendor', None) or 'openai'),
+            event_listener=lambda frame: self._on_frame(
+                task_id, test_case_id, session_id, frame),
+            chunk_duration_ms=chunk_ms,
+            proxy_type=proxy_type, proxy_url=proxy_url,
+        )
+
     # ── 轮次执行 ──
     def _execute_round(self, client, api_config, round_config, round_number,
                        total_rounds, task_id, case_config) -> dict:
@@ -260,13 +319,20 @@ class RealtimeSessionExecutor:
 
     def _execute_normal_round(self, client, api_config, round_config,
                               round_number, task_id, case_config) -> dict:
-        """正常轮：流式推送混音音频（RenderAudioStream 消费链路）→ commit → 等 AI 完整回复"""
+        """正常轮：流式推送混音音频（RenderAudioStream 消费链路）→ commit → 等 AI 完整回复
+
+        INT-475 节奏：推流中按 RealtimePacingStrategy 插 recv() 检输出事件，
+        模型输出 turn 进行中暂停推流（WAIT_TURN_END）或打断收敛（ALLOW_BARGE_IN）；
+        默认 FIXED 恒定节奏，不消费事件（回归基线）。
+        """
         start_time = time.time()
         chunk_ms = int(self._cfg('chunk_duration_ms', 100))
         ai_start_timeout = float(self._cfg('ai_start_timeout_seconds', 25))
         ai_complete_timeout = float(self._cfg('ai_complete_timeout_seconds', 60))
+        pacing = self._resolve_pacing(api_config, case_config)
 
         input_chunk_count = 0
+        input_interrupted = False
         # 混音渲染经 ACL（多源时间轴混音在 audio_service 进程内，08 设计文档 §7.1）；
         # chunk 恒定时长，逐 chunk 推送 + sleep 模拟实时速率
         chunks = self._render_service.stream_round_chunks(
@@ -277,15 +343,24 @@ class RealtimeSessionExecutor:
                 return {'round_number': round_number, 'success': False,
                         'error': f'混音渲染失败: {chunk.message}'}
             self._executor._handle_control(task_id)
+            decision = self._pacing_gate(client, pacing, task_id)
+            if decision == 'interrupt':
+                # ALLOW_BARGE_IN：模型提前回话/打断，收敛输入推流（剩余输入不再推）
+                input_interrupted = True
+                break
+            if decision == 'abort':
+                break
             client.send_audio_chunk(chunk.data_b64)
             input_chunk_count += 1
             time.sleep(chunk_ms / 1000.0)
 
         client.commit_input()
         # INT-308 停止传播：等 AI 回复期间检查任务停止，停止时立即中断等待
-        complete = client.wait_ai_complete(start_timeout=ai_start_timeout,
-                                           end_timeout=ai_complete_timeout,
-                                           stop_check=self._stop_check(task_id))
+        # INT-475 TIMEOUT_FALLBACK：模型无输出时按配置兜底超时不无限等待
+        complete = client.wait_ai_complete(
+            start_timeout=pacing.effective_fallback_end_timeout(ai_start_timeout),
+            end_timeout=pacing.effective_fallback_end_timeout(ai_complete_timeout),
+            stop_check=self._stop_check(task_id))
         latency = round(time.time() - start_time, 3)
         output = client.output
 
@@ -295,6 +370,7 @@ class RealtimeSessionExecutor:
             'success': bool(complete and output['ai_complete']),
             'latency': latency,
             'input_chunk_count': input_chunk_count,
+            'input_interrupted': input_interrupted,
             'output_audio_size': len(output['audio']),
             'answer_text': output['text'],
             'first_frame_latency_ms': output['latency_ms'],
@@ -306,7 +382,12 @@ class RealtimeSessionExecutor:
 
     def _execute_interruption_round(self, client, api_config, round_config,
                                     round_number, task_id, case_config) -> dict:
-        """打断轮（barge-in）：等 AI 开始 → 推打断混音音频 → 检测打断 → 等新回复"""
+        """打断轮（barge-in）：等 AI 开始 → 推打断混音音频 → 检测打断 → 等新回复
+
+        INT-475 节奏策略不套打断轮推流阶段：步骤①已确认 AI 在说话，步骤④已有
+        独立 barge-in 检测窗口（recv 轮询），若在步骤③推流中套节奏门会抢占
+        user_speech_started / response_cancelled 信号源，故打断轮保持既有时序。
+        """
         start_time = time.time()
         chunk_ms = int(self._cfg('chunk_duration_ms', 100))
         ai_start_timeout = float(self._cfg('ai_start_timeout_seconds', 25))
@@ -315,6 +396,7 @@ class RealtimeSessionExecutor:
         interrupt_delay_ms = float(
             round_config.get('interruption_delay_ms')
             or self._cfg('interruption_delay_ms', 1000))
+        pacing = self._resolve_pacing(api_config, case_config)
 
         # ① 等 AI 开始说话（INT-308：等待期间检查任务停止）
         ai_started = client.wait_ai_speaking(
@@ -359,12 +441,13 @@ class RealtimeSessionExecutor:
         at_window_end_size = len(client.output['audio'])
         barge_in_detected = client.output['barge_in_detected']
 
-        # ⑤ 打断成功则等 AI 重新回复（INT-308：等待期间检查任务停止）
+        # ⑤ 打断成功则等 AI 重新回复（INT-308：等待期间检查任务停止；
+        # INT-475 TIMEOUT_FALLBACK：打断后 AI 未重新回复同样按兜底超时收敛）
         renewed = False
         if barge_in_detected:
             renewed = client.wait_ai_complete(
-                start_timeout=ai_start_timeout,
-                end_timeout=ai_complete_timeout,
+                start_timeout=pacing.effective_fallback_end_timeout(ai_start_timeout),
+                end_timeout=pacing.effective_fallback_end_timeout(ai_complete_timeout),
                 stop_check=self._stop_check(task_id))
 
         # 打断后音频量 = 重新回复部分（整轮累计扣除打断窗口结束时已有量）
@@ -387,6 +470,77 @@ class RealtimeSessionExecutor:
         }
         result.update(self._collect_eval_fields(round_config, client.output))
         return result
+
+    # ── 节奏（INT-475：输出调输入）──
+    def _resolve_pacing(self, api_config, case_config) -> RealtimePacingContext:
+        """解析节奏上下文：case_config['pacing'] → meta['pacing'] → 全局配置 → 默认"""
+        return self._pacing_service.resolve(api_config, case_config, cfg_getter=self._cfg)
+
+    def _pacing_gate(self, client, pacing: RealtimePacingContext,
+                     task_id) -> str:
+        """推流节奏门：推流中检模型输出事件，按策略决定是否放行下一帧。
+
+        返回 'pass'（放行下一帧）/ 'interrupt'（模型提前回话/打断，收敛输入推流）/
+        'abort'（任务停止）。默认 FIXED 恒定节奏：不消费事件，恒放行（零回归）。
+
+        输出信号经 RealtimeWSClient 内部事件队列 + recv() 轮询回流（评审修订③）；
+        事件归一化与帧记录在收包侧（_parse_event），本方法只读状态、不改变产出链路。
+        """
+        if pacing.is_fixed():
+            return 'pass'
+        want_turn_end = pacing.has(RealtimePacingStrategy.WAIT_TURN_END)
+        allow_barge_in = pacing.has(RealtimePacingStrategy.ALLOW_BARGE_IN)
+        stop_check = self._stop_check(task_id)
+
+        def stopped():
+            return stop_check is not None and stop_check()
+
+        # ① 非阻塞排空已有输出事件，判定输出 turn 是否进行中
+        turn_active = False
+        while True:
+            event = client.recv(timeout=0)
+            etype = event.get('type')
+            if etype == 'recv_timeout':
+                break
+            if etype in (RealtimeFrameType.AI_AUDIO_DELTA.value,
+                         RealtimeFrameType.AI_TEXT_DELTA.value):
+                turn_active = True
+            elif etype in (RealtimeFrameType.AI_AUDIO_DONE.value,
+                           RealtimeFrameType.AI_TEXT_DONE.value):
+                return 'pass'   # 输出 turn 已结束：放行下一帧
+            elif etype in (RealtimeFrameType.USER_SPEECH_STARTED.value,
+                           RealtimeFrameType.RESPONSE_CANCELLED.value):
+                if allow_barge_in:
+                    return 'interrupt'
+            elif etype in (RealtimeFrameType.CONNECTION_CLOSED.value,
+                           RealtimeFrameType.ERROR.value):
+                return 'pass'   # 连接收敛：放行，由 wait_ai_complete 收敛轮次失败
+
+        if not (turn_active and want_turn_end):
+            return 'pass'   # 无输出 turn：恒定节奏放行
+
+        # ② WAIT_TURN_END：输出 turn 进行中 → 暂停推流，等 turn 结束（或超时兜底）
+        deadline = time.time() + pacing.effective_turn_end_timeout()
+        while time.time() < deadline:
+            if stopped():
+                return 'abort'
+            event = client.recv(timeout=0.2)
+            etype = event.get('type')
+            if etype in (RealtimeFrameType.AI_AUDIO_DONE.value,
+                         RealtimeFrameType.AI_TEXT_DONE.value):
+                return 'pass'   # turn 结束：放行下一帧
+            if etype in (RealtimeFrameType.USER_SPEECH_STARTED.value,
+                         RealtimeFrameType.RESPONSE_CANCELLED.value):
+                if allow_barge_in:
+                    return 'interrupt'
+            if etype in (RealtimeFrameType.CONNECTION_CLOSED.value,
+                         RealtimeFrameType.ERROR.value):
+                return 'pass'
+
+        # ③ 超时兜底：节奏等待非硬阻断，超时一律放行（模型无输出不无限等待）
+        logger.info('Realtime 节奏等待超时（策略=%s），放行推流兜底',
+                    [s.value for s in pacing.strategies])
+        return 'pass'
 
     # ── 帧推送（frame 通道，客户端解析回调在执行线程触发）──
     def _on_frame(self, task_id, test_case_id, session_id, frame: dict):

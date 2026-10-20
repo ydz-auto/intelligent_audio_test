@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from shared.proto import task_service_pb2 as task_pb
 from shared.proto import task_service_pb2_grpc as task_grpc
-from shared.utils.grpc_json import loads as _loads, dumps as _dumps
+from shared.utils.grpc_json import loads as _loads, dumps as _dumps, fold_business_code
 
 
 class TestCaseConfigServiceServicer(task_grpc.TestCaseConfigServiceServicer):
@@ -35,10 +35,14 @@ class TestCaseConfigServiceServicer(task_grpc.TestCaseConfigServiceServicer):
     @staticmethod
     def _resp(result):
         """统一包装返回结果为 TestCaseConfigResponse"""
+        data = result.get('data')
+        # INT-566 P1-5：失败响应把顶层业务码折进 data JSON，网关代理按 data.code 提升
+        if not result.get('success', False):
+            data = fold_business_code(data, result.get('code'))
         return task_pb.TestCaseConfigResponse(
             success=result.get('success', False),
             message=result.get('message', ''),
-            data=_dumps(result.get('data')) if result.get('data') is not None else "",
+            data=_dumps(data) if data is not None else "",
         )
 
     # ---- 写操作 ----
@@ -117,6 +121,8 @@ class TestCaseConfigServiceServicer(task_grpc.TestCaseConfigServiceServicer):
                 user_id=user_id_from_context(context),
                 # INT-539：按实验室过滤（含通用用例；lab_ids 空 = 不过滤）
                 lab_ids=list(request.lab_ids) or None,
+                # INT-466：可见性筛选（shared/private；空=全部）
+                visibility=getattr(request, 'visibility', '') or None,
             )
             return self._resp(self.qry.handle_list_testcases(query))
         except Exception as e:

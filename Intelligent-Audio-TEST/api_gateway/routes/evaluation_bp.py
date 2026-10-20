@@ -3,6 +3,8 @@ from fastapi.responses import JSONResponse
 from api_gateway.application.services.auth.dependencies import require_permission
 from api_gateway.application.services.evaluation.evaluation_query_service import EvaluationQueryService
 from api_gateway.application.services.evaluation.evaluation_command_service import EvaluationCommandService
+from api_gateway.application.services.visibility.visibility_service import VisibilityService
+from api_gateway.schemas.visibility import VisibilityUpdateRequest
 from api_gateway.routes._response import to_response
 
 router = APIRouter()
@@ -38,6 +40,15 @@ def export_dimensions(_: None = require_permission('evaluation:import_export')):
 @router.get('/dimensions/{dim_id}')
 def get_one(dim_id: int, _: None = require_permission('evaluation:read')):
     result = EvaluationQueryService.get_one(dim_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
+
+# INT-466：评估维度可见性切换（evaluation:share + owner 校验，admin 豁免）
+@router.patch('/dimensions/{dim_id}/visibility')
+def update_visibility(dim_id: int, body: VisibilityUpdateRequest,
+                      _: None = require_permission('evaluation:share')):
+    result = VisibilityService.update_dimension_visibility(dim_id, body.visibility)
     if isinstance(result, tuple) and len(result) == 2:
         return to_response(result)
     return result

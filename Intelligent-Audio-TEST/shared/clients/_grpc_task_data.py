@@ -728,7 +728,7 @@ def get_testcase_stats(algorithm_type=None, group_id=None, group_by=None):
     stub = get_task_data_service_stub()
     req = task_pb.TestCaseAggStatsRequest(
         algorithm_type=algorithm_type or '',
-        group_id=int(group_id) if group_id else 0,
+        group_id=str(group_id) if group_id else '',
         group_by=group_by or '',
     )
     resp = stub.GetTestCaseStats(req)

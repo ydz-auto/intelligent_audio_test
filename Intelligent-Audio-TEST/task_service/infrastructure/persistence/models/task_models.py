@@ -41,6 +41,9 @@ class Task(Base):
     failed_cases = Column(Integer, nullable=False, default=0, comment='执行失败的用例数量')
     created_by = Column(Integer, comment='创建者用户ID')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
+    visibility = Column(String(20), nullable=False, default='shared', server_default='shared', comment='数据可见性 (shared/private，INT-423)')
+    # INT-573：最后启动操作人（start/retry 记录；控制操作校验 owner 或启动人）
+    last_started_by_user_id = Column(BigInteger, nullable=True, index=True, comment='最后启动操作人用户ID（INT-573 启动人记录）')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
     created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')

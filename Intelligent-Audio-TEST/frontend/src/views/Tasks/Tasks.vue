@@ -285,13 +285,14 @@
             @name-updated="handleNameUpdated"
             @page-change="handlePageChange"
             @page-size-change="handlePageSizeChange"
+            @retry="fetchTasks"
           />
         </div>
         </template>
 
         <!-- 已发布任务面板 -->
         <template v-else-if="activeTab === 'published'">
-          <PublishedTaskPanel ref="publishedPanelRef" :pt="published" />
+          <PublishedTaskPanel ref="publishedPanelRef" :pt="published" @task-action="handleTaskAction" />
         </template>
 
         <!-- 挑选合并面板（INT-577：统一容器页签，merged ∪ cherry_pick + 合并方式 facet + 页内四步向导） -->

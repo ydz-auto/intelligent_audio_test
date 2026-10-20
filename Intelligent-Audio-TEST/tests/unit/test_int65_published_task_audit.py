@@ -29,7 +29,7 @@ from task_service.application.services.published_task_service import (
 
 
 def make_task(**overrides):
-    """来源日常任务替身（Task PO 形状）。"""
+    """来源日常任务替身（Task PO 形状）。INT-423：owner/visibility 默认存量形态。"""
     task = type('TaskPO', (), {})()
     task.id = 123
     task.deleted = False
@@ -37,13 +37,15 @@ def make_task(**overrides):
     task.config = {}
     task.algorithm_type = None
     task.algorithm_params = {}
+    task.created_by_user_id = None
+    task.visibility = 'shared'
     for k, v in overrides.items():
         setattr(task, k, v)
     return task
 
 
 def make_pt(**overrides):
-    """已发布任务 PO 替身。"""
+    """已发布任务 PO 替身。INT-423：owner/visibility 默认存量形态。"""
     pt = type('PublishedTaskPO', (), {})()
     pt.id = 1001
     pt.task_group_id = 1001
@@ -60,6 +62,8 @@ def make_pt(**overrides):
     pt.published_at = None
     pt.archived_at = None
     pt.created_at = None
+    pt.created_by_user_id = None
+    pt.visibility = 'shared'
     for k, v in overrides.items():
         setattr(pt, k, v)
     return pt

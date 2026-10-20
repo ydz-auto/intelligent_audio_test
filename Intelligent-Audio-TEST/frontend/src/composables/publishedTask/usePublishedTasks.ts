@@ -5,6 +5,7 @@
  */
 import { ref, reactive } from 'vue';
 import { publishedTasksApi } from '../../infrastructure/api';
+import { ListLoadErrorType, type ListLoadErrorTypeValue } from '../../domain/enums';
 import type {
   PublishedTaskDetail,
   PublishedTaskExecuteResult,
@@ -47,6 +48,32 @@ function buildTimeRangeParams(timeRange: string, customRange: { start: string; e
   return {};
 }
 
+/** 列表加载错误态（INT-255：错误态与空态分离；camelCase Domain 表达，type 走 ListLoadErrorType 枚举） */
+export interface PublishedTaskListLoadError {
+  type: ListLoadErrorTypeValue;
+  message: string;
+}
+
+/**
+ * 加载失败分类：网络不可达（无 HTTP/业务信封，http=000）/ 服务端错误（HTTP 5xx 或业务系统错误码 3xx）/ 其它。
+ * 前端 Infrastructure 抛错仅附业务信封（error.code / error.status），此处按信封形状归类为 Domain 枚举。
+ */
+function classifyListLoadError(error: unknown): PublishedTaskListLoadError {
+  if (!(error instanceof Error)) {
+    return { type: ListLoadErrorType.UNKNOWN, message: '已发布任务加载失败' };
+  }
+  const raw = error as any;
+  const status = Number(raw.status);
+  const code = Number(raw.code);
+  if ((Number.isFinite(status) && status >= 500) || (Number.isFinite(code) && code >= 300)) {
+    return { type: ListLoadErrorType.SERVER, message: error.message || '服务器错误' };
+  }
+  if (Number.isFinite(status) || Number.isFinite(code)) {
+    return { type: ListLoadErrorType.UNKNOWN, message: error.message || '已发布任务加载失败' };
+  }
+  return { type: ListLoadErrorType.NETWORK, message: error.message || '无法连接服务器' };
+}
+
 export function usePublishedTasks() {
   const items = ref<PublishedTaskItem[]>([]);
   const detail = ref<PublishedTaskDetail | null>(null);
@@ -56,6 +83,8 @@ export function usePublishedTasks() {
   const pages = ref(0);
   const loading = ref(false);
   const actionLoading = ref(false);
+  /** 列表加载错误态（INT-255：请求失败置位，成功清空；视图据此渲染错误提示 + 重试，不落空态） */
+  const loadError = ref<PublishedTaskListLoadError | null>(null);
 
   // 列表筛选（ReadModel 缓存于本 composable）
   const filters = ref<{
@@ -119,9 +148,11 @@ export function usePublishedTasks() {
       page.value = list.page || page.value;
       perPage.value = list.perPage || perPage.value;
       pages.value = list.pages || 0;
+      loadError.value = null;
       sortItems();
     } catch (error) {
       console.error('Failed to fetch published tasks:', error);
+      loadError.value = classifyListLoadError(error);
     } finally {
       loading.value = false;
     }
@@ -232,6 +263,7 @@ export function usePublishedTasks() {
     pages,
     loading,
     actionLoading,
+    loadError,
     filters,
     statusOptions: [
       { value: 'all', label: '全部状态' },

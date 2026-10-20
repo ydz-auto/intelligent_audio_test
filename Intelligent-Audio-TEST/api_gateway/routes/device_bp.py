@@ -64,6 +64,12 @@ def update_device_group(group_id: str, _: None = require_permission('device:upda
     return to_response(DeviceCommandService.update_group(group_id))
 
 
+@router.put('/device-groups/{group_id}/move')
+def move_device_group(group_id: str, _: None = require_permission('device:update')):
+    """移动设备分组到新父级（INT-832），body {parent_id: string|null}"""
+    return to_response(DeviceCommandService.move_group(group_id))
+
+
 @router.delete('/device-groups/{group_id}')
 def delete_device_group(group_id: str, _: None = require_permission('device:delete')):
     return to_response(DeviceCommandService.delete_group(group_id))

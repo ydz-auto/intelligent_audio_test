@@ -93,16 +93,25 @@ class DeviceAclRepositoryImpl(DeviceAclRepository):
             return False
 
     def register_task_devices(self, task_id: str, device_info_list: List[Dict]) -> bool:
-        """注册任务设备（通过 CreateDriver 传递设备元数据）"""
+        """注册任务设备（通过 CreateDriver action=register 传递设备元数据）
+
+        INT-574：显式声明 action=register，消除 device_service 对 list 格式
+        缺省 action='initialize' 的隐式语义（会触发驱动解析，缺 system 时
+        报「设备系统 system 不能为空」）。仅登记、不初始化，真正的驱动初始化
+        由后续 initialize_driver(action=initialize) 显式承担。
+        """
         from shared.clients.grpc_clients import get_device_service_stub
         from shared.proto import device_service_pb2 as device_pb
         try:
             stub = get_device_service_stub()
             serializable_info = [
                 {
+                    'action': 'register',
                     'device_id': info.get('device_id'),
                     'device_sn': info.get('device_sn'),
                     'device_name': info.get('device_name'),
+                    'system': info.get('system'),
+                    'keywords': info.get('keywords'),
                     'needs_prompt_audio': info.get('needs_prompt_audio'),
                     'prompt_audio_path': info.get('prompt_audio_path'),
                     'prompt_audio_name': info.get('prompt_audio_name'),

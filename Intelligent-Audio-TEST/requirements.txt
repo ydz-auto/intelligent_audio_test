@@ -35,6 +35,10 @@ requests>=2.31.0
 httpx>=0.27.0
 urllib3>=2.0.0
 websocket-client>=1.7.0
+# INT-839：requests socks 代理支持（proxies={'http': 'socks5://...'}，被测 API 代理）
+PySocks>=1.7.1
+# INT-839：websocket-client / websockets socks 代理依赖（proxy_type=socks5/socks5h）
+python-socks>=2.0.0
 
 # ===== Data Processing =====
 numpy>=1.24.0
@@ -60,7 +64,9 @@ pymodbus>=3.6.0
 pyserial>=3.5
 # INT-272：PyPI 实际最高 0.3.0（宿主现装即 0.3.0），原 >=1.0.0 永远装不上（容器构建不可复现）
 wda>=0.3.0
-hypium>=6.0.0
+# hypium 已拆至 requirements-device.txt（2026-10-15 拍板：device_service 鸿蒙链路专属依赖，
+# 传递依赖 opencv-python ~190MB + xdevice 与主 requirements 冲突；容器统一镜像不装，启动时
+# 懒加载兜底 "Failed to import hypium → UiDriver=None"，宿主环境亦无此包）
 filelock>=3.12.0
 
 # ===== Cryptography =====

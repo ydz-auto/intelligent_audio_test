@@ -27,6 +27,9 @@
 | 9 | 枚举 | `shared/models/common_enums.py` 与 `frontend/src/domain/enums.ts` 同步新增 DeviceType / OutputType / CalibrationStatus |
 | 10 | 密钥链 | OpenAI 密钥：case_config → meta → env `OPENAI_API_KEY` 逐级回退 |
 | 11 | 前端 | DDD 四层镜像，Infrastructure 唯一知道 snake_case；SPLMapping 五层对称模板为页面模板 |
+| 12 | 网络代理 | `apis` 新增 `proxy_type` / `proxy_url` 两列（NULL=不用代理）；被测 API 请求面（HTTP / WS / 健康检查 / adapter 服务）统一走代理（INT-839，实现演进裁定 2026-10-19） |
+| 13 | 依赖 | `requirements.txt` 新增 PySocks（requests socks 支持）+ websockets socks 代理依赖（INT-839） |
+| 14 | 脱敏 | `shared/utils/secret_mask.py` 扩展掩码 `proxy_url` 值内 `user:pass` 段、保留 host:port（INT-839） |
 
 原文档第 7 章中 QPS / RTT / SLA / 并发压测等通用性能指标**保留**，标注见 7.1 节。
 
@@ -65,6 +68,8 @@
 | RenderAudioStream | audio_service 新增的 server-streaming 混音渲染 RPC（新增） |
 | ApiRmsSplMapping | API 侧 RMS→SPL 映射聚合（新增），物理侧对称物为 SPLMapping |
 | 孤儿收养 | `_adopt_orphan_tasks`：worker 接管心跳过期实例遗留任务（见 02_架构设计.md） |
+| proxy_type | 被测 API 网络代理类型枚举（INT-839）：http / https / socks5 / socks5h；NULL 或空 = 不用代理 |
+| proxy_url | 被测 API 网络代理地址 `[user:pass@]host:port`（不含 scheme，INT-839）；配置代理时认证段必填 |
 
 ### 1.4 架构原则
 
@@ -182,7 +187,8 @@ sequenceDiagram
 
 - gRPC 契约：`shared/proto/api_test_service.proto` 既有 RPC —— `StartAPITest`（L10）、`CreateAPITest`、`CreateAPIConfig`、`UpdateAPIConfig`、`DeleteAPIConfig`、`ListAPIConfigs`、`GetAPIConfig`、`TestAPIConnection`；
 - 聚合：`api_test_service/infrastructure/persistence/models/api_models.py` L15 `class API`，既有列：`id / name / vendor / api_url / status / meta / algorithm_type / max_process / max_timeout / max_audio_duration / health_score / api_endpoints`；
-- 新增四列：`device_type / adapter_class / audio_config / output_types`（见 6.2）；
+- 新增四列：`device_type / adapter_class / audio_config / output_types`（见 6.2）；再新增两列 `proxy_type / proxy_url`（INT-839，见 3.9）；
+- 前端 API 编辑弹窗（CRUDFormModal / APIEditModal）提供代理类型下拉 + 地址输入，校验规则与后端同口径（见 3.9）；
 - `health_score` 健康分与连接测试沿用，口径见 7.1【保留：通用性能测试口径】。
 
 ### 3.2 API 适配器工厂（新增）
@@ -292,6 +298,40 @@ DistributedLock(key=f"calibration:api_rms_spl:{api_id}:{mapping_id}", ttl=30)
 
 **执行中删除用例联动评估侧**：同 E2E 口径（见 `端到端测试功能设计文档.md` §3.1.3）——已提交评估的用例删除时取消评估任务，评估中则中断 + 结果丢弃 + 审计事件，走 gRPC + 事件通道且幂等。
 
+### 3.9 被测 API 网络代理（INT-839，新增）
+
+被测 API 支持网络代理配置，请求被测 API 时统一走代理（HTTP / WS / 健康检查 / adapter 服务四类请求面；不影响音频 OSS/存储直传）。
+
+**数据模型**（`apis` 表新增两列，NULL 或空 = 不用代理）：
+
+| 列 | 类型 | 说明 |
+| --- | --- | --- |
+| `proxy_type` | VARCHAR(20) NULL | 枚举 http / https / socks5 / socks5h；NULL 或空 = 不用代理 |
+| `proxy_url` | VARCHAR(255) NULL | `[user:pass@]host:port`，不含 scheme；配置代理时认证段必填 |
+
+**校验规则**（前后端同口径，后端 `api_test_service/infrastructure/adapters/proxy_utils.py` `validate_proxy` / 前端 `frontend/src/utils/proxyValidation.ts` 镜像）：
+
+- `proxy_type` 为空 → `proxy_url` 必须为空；
+- `proxy_type` 非空 → 必须是 http / https / socks5 / socks5h，`proxy_url` 必填且带 `user:pass@` 认证段；
+- `proxy_url` 不含 scheme 前缀（带则源头拒绝，避免执行侧拼双重 scheme 与脱敏失效）；端口若存在必须为数字。
+
+**执行链路代理行为**（后端拼完整 URL `{proxy_type}://{proxy_url}` 分发）：
+
+| 请求面 | 传输实现 | 代理参数 |
+| --- | --- | --- |
+| HTTP 执行（`api_client._call_http`） | `requests` | `proxies={'http': url, 'https': url}`，凭据内嵌 URL |
+| HTTP 会话直接路由（`api_session_executor._send_direct`，`meta.use_adapter=false` 时多轮 HTTP 直发） | `requests` | 同 `_call_http`：`proxies={'http': url, 'https': url}` |
+| WS 执行（`api_client._call_websocket`） | websocket-client | `http_proxy_host/port` + `http_proxy_auth=(user, pass)` + `proxy_type` 映射（http→http、socks5→socks5、socks5h→socks5h；https 代理端点走 http CONNECT 隧道语义） |
+| Realtime WS（`realtime_ws_client.connect()`，websocket_api 实际执行路径） | websocket-client | 同 `_call_websocket` 同套参数，url 分解复用 `proxy_utils` |
+| 健康检查双分支（`api_crud_service.test_connection`） | http/https → `requests.get`（proxies）；ws/wss → 裸 `websocket.WebSocket().connect` | 同上 |
+| adapter 服务四件（`http_adapter` / `sse_adapter` / `qwen_adapter` / `volc_ast_adapter`） | http/sse → `requests.post`（proxies）；qwen/volc → `websockets.connect(proxy=url)` | 跨服务透传：`api_session_executor` vendor_config 构建显式携带 → `api_adapter_service` gRPC servicer + REST 双胞胎白名单 merge |
+
+**跨服务透传三落点**：`api_test_service/core/api_session_executor.py` vendor_config 构建（`proxy_type` / `proxy_url` 显式加入）→ `api_adapter_service/interfaces/grpc/servicers.py` 白名单 merge → `api_adapter_service/routes/api.py` REST 双胞胎。任一落点漏加都会造成「配置能存、执行/检查不过代理」假象，三处必须同步。
+
+**依赖变更**：`requirements.txt` 新增 `PySocks>=1.7.1`（requests socks 支持）与 websockets socks 代理依赖；不新增 socks4（遗留协议不做）。
+
+**日志脱敏**：`shared/utils/secret_mask.py` 扩展掩码 `proxy_url` 值内 `user:pass` 段（保留 host:port 便于排查），覆盖文本日志（`mask_text`）与结构化 payload（`mask_mapping`）；adapter 侧 `utils/proxy.py` 对 websockets 异常消息做 userinfo 掩码（`mask_proxy_userinfo` / `masked_exc_info`），日志与异常上下文不出现明文凭据。
+
 ---
 
 ## 4. 核心流程图
@@ -382,6 +422,8 @@ Domain          domain/model/ + enums.ts        camelCase、零依赖、无索�
 Infrastructure  api/ + adapters/ + dto/ + http/ 唯一知道 snake_case
 ```
 
+网络代理字段（INT-839）四层镜像：Domain `proxyType` / `proxyUrl`（camelCase，类型引用 `domain/enums.ts` `ProxyType`）⇄ DTO `proxy_type` / `proxy_url`（snake_case）⇄ adapter `apiConfigAdapter.ts` 转换，Infrastructure 层唯一做 snake_case↔camelCase 转换；校验规则 `frontend/src/utils/proxyValidation.ts` 镜像后端（见 3.9）。
+
 ### 5.3 实时推送展示
 
 - Socket.IO 客户端按 `room = task_id` 订阅（UC-1001）；
@@ -423,6 +465,7 @@ SPLMapping 页面为本轮前端四层的**对称模板**，API 测试页按其�
   - `adapter_class`：显式适配器类名（可空；注册表中优先）；
   - `audio_config`：JSON（目标采样率 / 位深 / 声道，供 AudioFormatAdapter）；
   - `output_types`：JSON（OutputType 集合，声明产出类型）；
+- **再新增两列（INT-839，见 3.9）**：`proxy_type`（VARCHAR(20)，http/https/socks5/socks5h，NULL=不用代理）、`proxy_url`（VARCHAR(255)，`user:pass@host:port`，不含 scheme）；迁移脚本 `scripts/migrations/202610/add_api_proxy_columns.py`（幂等可重跑，存量行 NULL 不报错）；
 - `task_service/infrastructure/persistence/models/task_models.py` L84 `TaskCase`：`device_id` 列**已有**（L111）；`device_type` 列**新增**；
 - 新表 `api_rms_spl_mappings`（**新增**）：api 关联的 RMS→SPL 采样点集 + 校准状态 + 审计字段；完整 DDL 以 `05_路由与废弃.md` 为准。
 
@@ -438,6 +481,7 @@ SPLMapping 页面为本轮前端四层的**对称模板**，API 测试页按其�
   - `OutputType`：产出类型（text / audio 等）；
   - `CalibrationStatus`：校准状态机；
 - **新增** `RealtimeEventType`：11 种归一化事件（见 3.6）；
+- **新增** 被测 API 网络代理类型枚举（INT-839）：`proxy_type` 四值 http / https / socks5 / socks5h（无代理为 NULL/空），后端收敛于 `proxy_utils.PROXY_TYPES`，前端 `frontend/src/domain/enums.ts` `ProxyType` 同步（值 = 后端原值）；
 - 前端 `frontend/src/domain/enums.ts` 同步**新增**三枚举；`TaskType`（L24）**不引入** `'realtime_api'`；
 - result_type 映射（评估侧，详见 `06_评估与前端.md`）：
 
@@ -501,6 +545,7 @@ SPLMapping 页面为本轮前端四层的**对称模板**，API 测试页按其�
 
 - OpenAI 密钥链逐级回退：case_config → meta → env `OPENAI_API_KEY`（见 3.7）；
 - 密钥与敏感头不出 Infrastructure 层；日志与 summary 报告统一脱敏。
+- 被测 API 网络代理（INT-839）：`proxy_url` 明文落库（与 `meta.api_key` 明文存法一致，DB 权限面需知悉）；日志/异常上下文中 `user:pass` 段经 `secret_mask`（文本 + 结构化）与 adapter 侧 `mask_proxy_userinfo` 统一掩码，保留 host:port 便于排查（见 3.9）。
 
 ### 8.2 并发与互斥安全
 
@@ -521,7 +566,7 @@ SPLMapping 页面为本轮前端四层的**对称模板**，API 测试页按其�
 
 ## 9. 测试与维护
 
-- **单元测试**：适配器归一化（RealtimeEventType 11 种全覆盖）、`spl_to_gain` 多点插值边界、OpenAI 密钥链回退顺序；
+- **单元测试**：适配器归一化（RealtimeEventType 11 种全覆盖）、`spl_to_gain` 多点插值边界、OpenAI 密钥链回退顺序；网络代理（INT-839）：CRUD 校验（含 scheme 前缀拒绝 / 端口数字 / user:pass 必填）、URL 拼接、websocket-client 参数分解（含 realtime_ws_client）、requests proxies 注入、adapter 透传白名单 merge、socks 类型可用性（`tests/unit/test_int839_api_proxy.py` / `test_int847_adapter_proxy.py` / `test_int848_*`）；
 - **集成测试**：api_gateway ↔ task_service ↔ api_test_service 双副本链路；EventBus → Socket.IO 房间隔离（UC-1001）；RenderAudioStream 分片连续性；
 - **灰度策略**：device_type 白名单开关，旧 `task.type` 路径并行运行直至废弃清单收尾（先重构，再管消费方）；
 - **监控维护**：task:queue 深度、worker 心跳 TTL、锁等待时长、replicas 副本均衡。

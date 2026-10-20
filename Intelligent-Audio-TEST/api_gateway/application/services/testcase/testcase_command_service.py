@@ -143,6 +143,14 @@ class TestCaseCommandService:
 
         data_dict = data.model_dump(by_alias=False, exclude_none=True)
 
+        # INT-466：admin 修改私有用例落 PRIVATE_RESOURCE_ACCESS 审计（旁路预取，仅 admin 取数）
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_write,
+            preload_private_state,
+        )
+        pre_data = preload_private_state(
+            lambda: _testcase_acl.get_testcase_detail(tc_id).get('data') or {})
+
         result = _testcase_acl.update(tc_id, data_dict)
 
         if not result.get('success'):
@@ -151,11 +159,20 @@ class TestCaseCommandService:
                 return error_response("未找到测试用例", 404)
             return error_response(result.get('message', '更新失败'), code=code)
 
+        maybe_audit_private_write('testcase', tc_id, 'update', pre_data)
         return success_response(None, result.get('message', '测试用例更新成功'))
 
     # 删除测试用例（逻辑删除）
     @staticmethod
     def delete(tc_id):
+        # INT-466：admin 删除私有用例落 PRIVATE_RESOURCE_ACCESS 审计（旁路预取，仅 admin 取数）
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_write,
+            preload_private_state,
+        )
+        pre_data = preload_private_state(
+            lambda: _testcase_acl.get_testcase_detail(tc_id).get('data') or {})
+
         result = _testcase_acl.delete(tc_id)
 
         if not result.get('success'):
@@ -164,6 +181,7 @@ class TestCaseCommandService:
                 return error_response("未找到测试用例", 404)
             return error_response(result.get('message', '删除失败'), code=code)
 
+        maybe_audit_private_write('testcase', tc_id, 'delete', pre_data)
         return success_response(None, result.get('message', '测试用例已删除'))
 
     # 复制测试用例

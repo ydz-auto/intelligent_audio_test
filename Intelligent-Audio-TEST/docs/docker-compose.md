@@ -4,6 +4,10 @@
 Docker daemon，与一切 agent run 树彻底解耦——run 退出收割不带走任何服务，
 run_all 启动清场也不会击穿栈（清场模式已废除）。
 
+> **落地状态**：2026-10-16（INT-472）容器化部署落地——本机实测 compose 全栈 up、
+> 健康探测全绿、四步冒烟通过（登录→建用例→dry 执行→报告，自建自清零残留）。
+> 落地缺陷修复见「已知边界」§1/§2。
+
 ## 快速开始
 
 ```bash
@@ -86,6 +90,22 @@ python docker/run_stack.py down -v --yes
 
 ## 已知边界
 
+- **frontend 构建需前端专用 dockerignore（2026-10-16 修复）**：根 `.dockerignore`
+  为后端镜像瘦身排除 `frontend/`（后端 `COPY . .` 不需要），但 `Dockerfile.frontend`
+  依赖 `frontend/` 进构建上下文。已新增 `docker/Dockerfile.frontend.dockerignore`
+  （= 根忽略移除 `frontend/` 行，BuildKit 对命名 Dockerfile 取同目录
+  `<名>.dockerignore` 替代根忽略）——前端构建恢复，后端镜像瘦身不受影响。
+- **OSS presign 直传 URL 宿主侧需可达 `rustfs`**：容器内 `OSS_ENDPOINT=http://rustfs:9000`，
+  presign 直传 URL 宿主为容器网络名 `rustfs`，宿主侧脚本/浏览器无法解析。冒烟脚本
+  把 netloc 改写为 `127.0.0.1:9000` 并保留原 `Host: rustfs:9000` 头（S3 SigV4 签名
+  覆盖 Host 头，改连接目标不改 Host 则签名仍有效）。部署建议：宿主 hosts 加
+  `127.0.0.1 rustfs`（需管理员），或引入「公网 OSS 端点」配置分离两种 base URL。
+- **测试栈 infra 复用容器栈后的隔离库预建**：compose postgres 占 5432 后宿主
+  postgres 不再起（parallel_stack `_ensure_postgres` 探测到 5432 已监听即跳过）；
+  并行隔离栈（服务仍宿主形态，端口 +1000）连接 127.0.0.1:5432 的隔离库
+  `intelligent_audio_test_test`，需在容器 postgres 预建：
+  `docker compose exec -T postgres psql -U intelligent_audio_test -d intelligent_audio_test -c "CREATE DATABASE intelligent_audio_test_test"`，
+  再按 scripts/migrations/README.md 引导链对其建表/迁移。
 - **device_service 物理设备链路**：容器内 adb/hdc 无法触达宿主 USB 实机
   （Linux 容器无宿主 USB 栈）。容器形态覆盖设备管理面全链路（CRUD/状态/
   告警）；E2E 物理链（真机放音/采集）验收时该服务可保留宿主形态例外

@@ -40,6 +40,7 @@ class TaskCrudMixin:
         now: Optional[datetime] = None,
         case_devices: Optional[List[Dict[str, Any]]] = None,
         lab_ids: Optional[List[int]] = None,
+        visibility: Optional[str] = None,
     ) -> int:
         """创建任务记录及其关联关系（用例/设备/API/实验室）。
 
@@ -59,6 +60,7 @@ class TaskCrudMixin:
             lab_ids: 关联实验室 ID 列表（实验室扩展 INT-493/INT-540，可选；
                 缺省/None = 不限定实验室，兼容现状）。按传入顺序写入
                 task_laboratory_relations.priority（1 起），N:M 多实验室。
+            visibility: 新建任务可见性（INT-566；shared/private；None 默认 shared）
 
         Returns:
             新任务 ID。
@@ -76,6 +78,7 @@ class TaskCrudMixin:
                 config=config, algorithm_type=algorithm_type,
                 algorithm_params=algorithm_params,
                 total_cases=len(case_ids), created_by=created_by, now=now,
+                visibility=visibility,
             )
             session.add(task)
             session.flush()  # 获取自增 ID
@@ -103,11 +106,13 @@ class TaskCrudMixin:
                         algorithm_type: Optional[str],
                         algorithm_params: Optional[Dict[str, Any]],
                         total_cases: int, created_by: Optional[int],
-                        now: datetime) -> Task:
+                        now: datetime,
+                        visibility: Optional[str] = None) -> Task:
         """构造新 Task PO（统一字段初始化，消除重复）。
 
         created_by_user_id（INT-141）：统一从 x-user-id 上下文取 JWT 操作人，
         不信任客户端自报 user_id（红线：0/None 不充当真实用户，保持 NULL）。
+        visibility（INT-566）：新建任务可见性透传（默认 shared，与迁移一致）。
         """
         from shared.infrastructure.user_context import get_current_user_id
         return Task(
@@ -122,6 +127,7 @@ class TaskCrudMixin:
             failed_cases=0,
             created_by=created_by,
             created_by_user_id=get_current_user_id(),
+            visibility=visibility or 'shared',
             created_at=now,
             updated_at=now,
         )
@@ -482,8 +488,10 @@ class TaskCrudMixin:
     # ========== task_crud_service 兼容方法 ==========
 
     def update_task(self, task_id: int, name: str = None,
-                    description: str = None) -> bool:
+                    description: str = None, visibility: str = None) -> bool:
         """更新任务名称/描述（updated_by_user_id 记录操作人，INT-141）。
+
+        visibility（INT-466）：可见性切换（shared/private；None 不更新）。
 
         Returns:
             True 如果任务存在且已更新；False 如果任务不存在。
@@ -498,6 +506,8 @@ class TaskCrudMixin:
                 task.name = name
             if description is not None:
                 task.description = description
+            if visibility is not None:
+                task.visibility = visibility
             task.updated_by_user_id = get_current_user_id()
             task.updated_at = datetime.now(_UTC_PLUS_8)
             session.commit()
@@ -595,15 +605,23 @@ class TaskCrudMixin:
 
         Returns:
             实际删除的条数
+
+        INT-423：逐行可见性过滤——私有非 owner 任务跳过，不整批放行
+        （与应用层 filter_visible_task_ids 双保险）。
         """
         if not task_ids:
             return 0
-        from shared.infrastructure.user_context import get_current_user_id
+        from shared.infrastructure.user_context import get_current_user_id, get_current_user_is_admin
         from shared.models.database import utc8now
         session = get_db_session()
         try:
+            ids = self.filter_visible_task_ids(
+                task_ids, user_id=get_current_user_id(),
+                is_admin=get_current_user_is_admin())
+            if not ids:
+                return 0
             count = session.query(Task).filter(
-                Task.id.in_(task_ids)
+                Task.id.in_(ids)
             ).update({
                 Task.deleted: True,
                 Task.deleted_at: utc8now(),
@@ -617,6 +635,27 @@ class TaskCrudMixin:
         finally:
             session.close()
 
+    def filter_visible_task_ids(self, task_ids: List[int], user_id=None,
+                                is_admin: bool = False) -> List[int]:
+        """批量任务可见性逐行过滤（INT-423）：返回可见 id 子集。
+
+        私有非 owner 行跳过（共享 + owner 放行；admin 全量），
+        供 batch delete / batch export 等批量操作逐行收敛。
+        """
+        if not task_ids:
+            return []
+        from shared.infrastructure.visibility_filter import filter_visible_owners
+        session = get_db_session()
+        try:
+            ids = [int(i) for i in task_ids]
+            rows = session.query(Task.id, Task.created_by_user_id, Task.visibility).filter(
+                Task.id.in_(ids)).all()
+            visible = filter_visible_owners([(r[0], r[1], r[2]) for r in rows], user_id, is_admin)
+            visible_set = set(visible)
+            return [i for i in ids if i in visible_set]
+        finally:
+            session.close()
+
     def batch_restore(self, task_ids: List[int]) -> int:
         """批量恢复软删除任务（仅已删除行会恢复）。
 
@@ -625,13 +664,21 @@ class TaskCrudMixin:
 
         Returns:
             实际恢复的条数（已删除行数；未删除/不存在的 ID 不计入）
+
+        INT-423：仅恢复当前用户可见的行（共享 + 自己创建的私有行）。
         """
         if not task_ids:
             return 0
+        from shared.infrastructure.user_context import get_current_user_id, get_current_user_is_admin
         session = get_db_session()
         try:
+            ids = self.filter_visible_task_ids(
+                task_ids, user_id=get_current_user_id(),
+                is_admin=get_current_user_is_admin())
+            if not ids:
+                return 0
             count = session.query(Task).filter(
-                Task.id.in_(task_ids),
+                Task.id.in_(ids),
                 Task.deleted == True,  # noqa: E712
             ).update(
                 {Task.deleted: False, Task.deleted_at: None},

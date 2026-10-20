@@ -20,11 +20,17 @@ class _TagConfigProxy:
 
     def _resp(self, resp):
         """统一解析 TagConfigResponse 为 dict"""
-        return {
+        data = json.loads(resp.data) if resp.data else None
+        result = {
             'success': resp.success,
             'message': resp.message,
-            'data': json.loads(resp.data) if resp.data else None,
+            'data': data,
         }
+        # INT-566 P1-5：失败响应的业务码经 data JSON 透传（服务侧 fold_business_code），
+        # 提升到顶层供 BFF/路由映射 HTTP 状态（INT-141 F2 同口径）
+        if not resp.success and isinstance(data, dict) and isinstance(data.get('code'), int):
+            result['code'] = data['code']
+        return result
 
     @property
     def stub(self):

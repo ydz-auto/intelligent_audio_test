@@ -90,6 +90,9 @@ class TaskListItem(APIModel):
     deleted: Optional[bool] = Field(None)
     deleted_at: Optional[str] = Field(None)
     deleted_by_user_id: Optional[int] = Field(None)
+    # INT-423/466：资源可见性与归属人（前端徽标 + 路由层 owner 校验）
+    visibility: Optional[str] = Field(None)
+    created_by_user_id: Optional[int] = Field(None)
     reports: Optional[TaskReportsData] = Field(None)
     devices: List[TaskDeviceBrief] = Field(default_factory=list)
     apis: List[TaskApiBrief] = Field(default_factory=list)
@@ -159,6 +162,9 @@ class TaskDetailData(APIModel):
     labs: List[TaskLabBrief] = Field(default_factory=list)
     created_at: Optional[str] = Field(None)
     updated_at: Optional[str] = Field(None)
+    # INT-423/466：资源可见性与归属人（前端徽标 + 路由层 owner 校验）
+    visibility: Optional[str] = Field(None)
+    created_by_user_id: Optional[int] = Field(None)
 
 
 class TaskProgressCurrentCase(APIModel):
@@ -243,6 +249,8 @@ class TaskCreateRequest(APIModel):
     # 由网关显式字段承接，task_service 合并进 Task.config 落库；取值见 ExecutionMode/SerialFirst 枚举。
     execution_mode: Optional[str] = Field('parallel')
     serial_first: Optional[str] = Field('device')
+    # INT-566：新建任务可见性（shared/private；None 服务端默认 shared）
+    visibility: Optional[str] = Field(None)
 
     @field_validator('execution_mode')
     @classmethod
@@ -350,6 +358,8 @@ class TaskListQuery(APIModel):
     execution_status: Optional[str] = Field(None)
     # INT-273：按派生任务类型过滤（api/e2e/mixed；口径与 /tasks/stats type_counts 一致）
     task_type: Optional[str] = Field(None)
+    # INT-466：可见性筛选（shared/private；空=全部，走服务端行级过滤）
+    visibility: Optional[str] = Field(None)
 
 
 class TaskDomainStatsQuery(APIModel):

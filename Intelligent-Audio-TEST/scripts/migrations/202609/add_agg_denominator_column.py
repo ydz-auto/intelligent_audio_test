@@ -36,7 +36,24 @@ def migrate(dry_run=False):
         WHERE table_name = 'dimensions' AND column_name = 'agg_denominator'
     """)
     if cur.fetchone():
-        print("[SKIP] dimensions.agg_denominator 已存在")
+        # 列已存在：全新库经 create_all_tables（ORM nullable=False 但无 server
+        # default）建列时缺服务端默认值——202609 种子（seed_interruption_dimensions
+        # 等）以原生 SQL INSERT 不带 agg_denominator，NOT NULL 无默认必败
+        # （INT-993 隔离栈全新库实测 NotNullViolation）。补 server default。
+        cur.execute("""
+            SELECT column_default FROM information_schema.columns
+            WHERE table_name = 'dimensions' AND column_name = 'agg_denominator'
+        """)
+        has_default = cur.fetchone()[0]
+        if not has_default:
+            sql = "ALTER TABLE dimensions ALTER COLUMN agg_denominator SET DEFAULT 'case'"
+            if dry_run:
+                print(f"[DRY-RUN] {sql}")
+            else:
+                print(f"[EXEC] {sql}")
+                cur.execute(sql)
+                conn.commit()
+        print("[SKIP] dimensions.agg_denominator 已存在（已确保 server default）")
         cur.close()
         conn.close()
         return

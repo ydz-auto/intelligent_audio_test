@@ -5,7 +5,7 @@
 """
 from shared.proto import evaluation_service_pb2 as eval_pb
 from shared.proto import evaluation_service_pb2_grpc as eval_grpc
-from shared.utils.grpc_json import loads as _loads, dumps as _dumps
+from shared.utils.grpc_json import loads as _loads, dumps as _dumps, fold_business_code
 
 
 class EvaluationConfigServiceServicer(eval_grpc.EvaluationConfigServiceServicer):
@@ -23,10 +23,14 @@ class EvaluationConfigServiceServicer(eval_grpc.EvaluationConfigServiceServicer)
 
     @staticmethod
     def _resp(result):
+        data = result.get('data')
+        # INT-566 P1-5：失败响应把顶层业务码折进 data JSON，网关代理按 data.code 提升
+        if not result.get('success', False):
+            data = fold_business_code(data, result.get('code'))
         return eval_pb.EvaluationConfigResponse(
             success=result.get('success', False),
             message=result.get('message', ''),
-            data=_dumps(result.get('data')) if result.get('data') is not None else "",
+            data=_dumps(data) if data is not None else "",
         )
 
     # ---- 分类 CRUD ----

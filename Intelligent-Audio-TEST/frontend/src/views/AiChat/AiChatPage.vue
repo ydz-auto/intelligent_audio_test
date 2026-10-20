@@ -150,11 +150,14 @@ const workModeOpen = ref(false)
 /** URL 契约进入态报告对象（报告工作模式右栏预览用；立项后放开） */
 const reportPreview = ref<Record<string, any> | null>(null)
 
-/** URL 契约预填指令（§3.7：/ai-chat?report={id} / /ai-chat?task={id}） */
+/** URL 契约预填指令（§3.7：/ai-chat?report={id} / /ai-chat?task={id}；INT-1068 复核会话展开扩展 reviewCase） */
 const initialPrompt = computed(() => {
   const report = typeof route.query.report === 'string' ? route.query.report : undefined
   const task = typeof route.query.task === 'string' ? route.query.task : undefined
+  const reviewCase = typeof route.query.reviewCase === 'string' ? route.query.reviewCase : undefined
   if (report) return `帮我把报告 #${report} 的测试结果生成一份可交付报告`
+  // §5.2「展开到 /ai-chat」：复核会话带入主会话继续讨论——预填对来源任务该用例的复核指令
+  if (reviewCase && task) return `帮我对任务 #${task} 的用例 ${reviewCase} 的评估结果进行复核分析，给出复核通过/不通过/存疑结论 + 置信度 + 理由`
   if (task) return `帮我把任务 #${task} 的测试结果生成一份报告`
   return ''
 })

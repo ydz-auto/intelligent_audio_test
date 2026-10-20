@@ -114,13 +114,23 @@ class ReportCommandHandler:
 
         Returns:
             新创建的报告 ID
+
+        Raises:
+            ValueError: visibility 非 shared/private 时（与 evaluation 同口径 400）
         """
+        from shared.models.common_enums import Visibility
+        vis = command.visibility or Visibility.SHARED.value
+        # INT-465 修复（P3）：与 evaluation parse_visibility 同口径校验——
+        # 非法值直接透传会落库并被行级过滤降级为近似私有，口径不一致
+        if vis not in (Visibility.SHARED.value, Visibility.PRIVATE.value):
+            raise ValueError('visibility 仅支持 shared/private')
         aggregate = ReportAggregate(
             id=0,
             task_id=command.task_id,
             report_type=command.report_type,
             status=ReportStatus.PENDING.value,
             config=dict(command.config),
+            visibility=vis,
         )
         return self.repository.add(aggregate)
 
@@ -174,10 +184,40 @@ class ReportCommandHandler:
     def handle_update_status(self, command: UpdateReportStatusCommand) -> None:
         """处理更新报告状态命令。
 
-        Args:
-            command: UpdateReportStatusCommand
+        用于报告生成流转（pending → generating → completed/failed）与
+        发布路径（网关 PUT /reports/{id}/status，对应 POST /reports/{id}/publish）。
+
+        INT-465 命令侧校验：私有报告非 owner 发布/流转抛 VisibilityDenied（403），
+        与 update/delete 写口径闭合（内部生成引擎直调 repository.update_status，
+        不经本 Handler，不受此校验影响）。
         """
+        self._ensure_report_visible(command.report_id)
         self.repository.update_status(command.report_id, command.status)
+
+    def _ensure_report_visible(self, report_id: int) -> None:
+        """命令侧可见性校验（INT-423）。
+
+        私有非 owner 的 update/delete 抛 VisibilityDenied（网关映射 403）；
+        报告不存在（含已软删）不抛——由后续 update/delete 返回 False（404 语义）。
+        """
+        from shared.infrastructure.user_context import (
+            get_current_user_id,
+            get_current_user_is_admin,
+        )
+        from shared.infrastructure.visibility_filter import (
+            VisibilityDenied,
+            check_visible,
+        )
+
+        info = self.repository.get_report_visibility_info(report_id)
+        if info is None:
+            return
+        try:
+            check_visible(
+                info[0], info[1],
+                get_current_user_id(), get_current_user_is_admin())
+        except VisibilityDenied:
+            raise
 
     def handle_update(self, command: UpdateReportCommand) -> bool:
         """处理更新报告命令（对齐旧库 PUT /reports/{id}）。
@@ -193,6 +233,8 @@ class ReportCommandHandler:
         Returns:
             True 表示更新成功，False 表示报告不存在或无可更新字段
         """
+        # INT-423 命令侧 owner 校验：私有非 owner 更新抛 VisibilityDenied
+        self._ensure_report_visible(command.report_id)
         fields = {
             'name': command.name,
             'description': command.description,
@@ -205,6 +247,12 @@ class ReportCommandHandler:
             if normalized is None:
                 raise ValueError('summary 字段格式错误，应为对象')
             fields['summary'] = normalized
+        # INT-466：可见性切换（None 不更新；值校验对齐 Visibility 二值）
+        if command.visibility is not None:
+            from shared.models.common_enums import Visibility
+            if command.visibility not in (Visibility.SHARED.value, Visibility.PRIVATE.value):
+                raise ValueError('visibility 仅支持 shared/private')
+            fields['visibility'] = command.visibility
         if not fields:
             return False
         return self.repository.update_report_fields(command.report_id, fields)
@@ -222,6 +270,8 @@ class ReportCommandHandler:
             True 表示删除成功，False 表示报告不存在
         """
         from shared.infrastructure.user_context import get_current_user_id
+        # INT-423 命令侧 owner 校验：私有非 owner 删除抛 VisibilityDenied（网关映射 403）
+        self._ensure_report_visible(command.report_id)
         if command.hard:
             return self.repository.hard_delete(command.report_id)
         return self.repository.soft_delete(
@@ -284,6 +334,23 @@ class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
         # 详情接口补充完整摘要视图（all_metrics/case_categories/all_case_tags/
         # metric_data/tag_metric_data 等），序列化层优先输出到 summary 字段
         aggregate.full_summary = self.repository.load_full_report_data(query.report_id)
+        return aggregate
+
+    def handle_get_shared(self, report_id: int) -> Optional[ReportAggregate]:
+        """处理分享链接读取报告详情（跳过行级可见性过滤，INT-1043）。
+
+        分享有效性（token 未撤销/未过期/密码/访问口径）已在
+        ReportShareService.get_shared_report 校验通过——分享链接即 owner
+        显式授权，此处直取未删报告（不走 check_visible，授权不因
+        visibility 收回）；其余与 handle_get 一致（加载摘要与完整摘要视图）。
+        """
+        aggregate = self.repository.get_by_id_unchecked(report_id)
+        if aggregate is None:
+            return None
+        # 加载摘要统计，供序列化层派生出对外契约 summary 字段
+        aggregate.summaries = self.repository.load_summaries(report_id)
+        # 详情接口补充完整摘要视图（同 handle_get 口径）
+        aggregate.full_summary = self.repository.load_full_report_data(report_id)
         return aggregate
 
     def handle_get_by_task(self, query: GetReportByTaskQuery) -> Optional[ReportAggregate]:

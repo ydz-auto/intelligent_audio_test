@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """transfer_agent gRPC server 启动模块。
 
-端口：50101（shared/config/service_ports.py 集中管理）
+端口：51101（shared/config/service_ports.py 集中管理）
 注册 servicer：
 - TransferAgentServicer（传输会话/分片/状态/完成/审计查询）
 """
@@ -28,7 +28,7 @@ def start_grpc_server(port=TRANSFER_AGENT_GRPC_PORT):
     """启动 transfer_agent 的 gRPC server。
 
     Args:
-        port: gRPC 监听端口，默认 50101
+        port: gRPC 监听端口，默认 51101
 
     Returns:
         grpc.Server: 已启动的 server 实例，调用方持有引用以防被 GC 回收

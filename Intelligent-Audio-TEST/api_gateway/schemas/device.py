@@ -213,6 +213,7 @@ class DeviceGroupListQuery(APIModel):
 
 class DeviceGroupCreateSchema(APIModel):
     name: str = Field(...)
+    parent_id: Optional[str] = Field(None)
     description: Optional[str] = Field(None)
     group_type: Optional[str] = Field('test')
     device_ids: Optional[List[int]] = Field(None)
@@ -220,8 +221,14 @@ class DeviceGroupCreateSchema(APIModel):
 
 class DeviceGroupUpdateSchema(APIModel):
     name: Optional[str] = Field(None)
+    parent_id: Optional[str] = Field(None)
     description: Optional[str] = Field(None)
     group_type: Optional[str] = Field(None)
+
+
+class DeviceGroupMoveSchema(APIModel):
+    """移动分组请求体（INT-832）：parent_id 为空串/null 表示移到根"""
+    parent_id: Optional[str] = Field(None)
 
 
 class DeviceGroupMembersRequest(APIModel):

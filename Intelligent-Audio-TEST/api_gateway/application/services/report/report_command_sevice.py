@@ -4,6 +4,7 @@
 职责：参数校验 + gRPC 调用 report_service，不含业务逻辑。
 """
 import logging
+from typing import Dict, List, Tuple
 
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
@@ -12,12 +13,81 @@ from api_gateway.schemas.report import (
     GenerateTaskReportRequest,
     CompareReportsRequest,
     SecondaryCompareRequest,
+    ReportShareCreateRequest,
 )
 from api_gateway.infrastructure.grpc_proxies import report_config_service
 from shared.proto import report_service_pb2 as report_pb
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps
 
 logger = logging.getLogger(__name__)
+
+# 分享访问口径 / 有效期取值（对齐卡面契约与 report_service 校验）
+_SHARE_ACCESS_VALUES = ('login', 'specific', 'public')
+_SHARE_EXPIRY_VALUES = ('none', '7d', '30d', 'custom')
+
+
+def _resolve_recipients(raw_recipients: str) -> Tuple[List[Dict], List[str]]:
+    """逗号分隔用户名/邮箱 → [{user_id, label}]；返回 (resolved, unrecognized)。
+
+    逐项经 auth_service ListUsers(keyword) 模糊匹配后按 username/email
+    精确比对（不新增 RPC、不改 auth_service）。label 供弹窗回显（用户名/邮箱）。
+    """
+    from api_gateway.infrastructure.grpc_proxies import auth_config_service
+    from shared.proto import auth_service_pb2 as auth_pb
+
+    resolved: List[Dict] = []
+    unrecognized: List[str] = []
+    seen_ids = set()
+    for item in (raw_recipients or '').split(','):
+        item = item.strip()
+        if not item:
+            continue
+        try:
+            resp = auth_config_service.stub.ListUsers(auth_pb.ListUsersRequest(
+                keyword=item, page_size=100))
+        except Exception as e:
+            logger.warning('解析分享收件人失败 keyword=%s: %s', item, e)
+            unrecognized.append(item)
+            continue
+        if not resp.success:
+            unrecognized.append(item)
+            continue
+        users = _loads(resp.data, {}) or {}
+        matched = [u for u in users.get('items', [])
+                   if u.get('username') == item or u.get('email') == item]
+        if not matched:
+            unrecognized.append(item)
+            continue
+        u = matched[0]
+        uid = u.get('id')
+        if uid in seen_ids:
+            continue  # 重复收件人去重
+        seen_ids.add(uid)
+        resolved.append({
+            'user_id': uid,
+            'label': u.get('username') or u.get('email') or item,
+        })
+    return resolved, unrecognized
+
+
+def _build_share_url(report_id: int, token: str) -> str:
+    """拼接分享链接：网关请求 base URL（或配置公开 origin）+ 前端路由形态。
+
+    形态与前端路由 /report/:reportId?share= 一致。
+    """
+    from api_gateway.infrastructure.request_adapter import get_current_request
+    from api_gateway.config.config import Config
+
+    origin = None
+    req = get_current_request()
+    if req is not None:
+        try:
+            origin = str(req.base_url).rstrip('/')
+        except Exception:
+            origin = None
+    if not origin:
+        origin = (getattr(Config, 'PUBLIC_ORIGIN', '') or 'http://localhost:5000').rstrip('/')
+    return f"{origin}/report/{report_id}?share={token}"
 
 
 class ReportCommandService:
@@ -29,6 +99,17 @@ class ReportCommandService:
 
     @staticmethod
     def delete(report_id):
+        # INT-466：admin 删除私有报告落 PRIVATE_RESOURCE_ACCESS 审计（旁路预取，仅 admin 取数）
+        from api_gateway.application.services.report.report_query_sevice import (
+            ReportQueryService,
+        )
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_write,
+            preload_private_state,
+        )
+        pre_data = preload_private_state(
+            lambda: (ReportQueryService.get_one(report_id)[0].get('data') or {}))
+
         try:
             stub = report_config_service.stub
             resp = stub.DeleteReport(report_pb.DeleteReportRequest(
@@ -36,6 +117,7 @@ class ReportCommandService:
             if not resp.success:
                 return error_response(resp.message or '删除失败')
             data = _loads(resp.data, {}) or {}
+            maybe_audit_private_write('report', report_id, 'delete', pre_data)
             return success_response(data)
         except Exception as e:
             return error_response(f'删除报告失败: {str(e)}')
@@ -52,6 +134,17 @@ class ReportCommandService:
         except Exception as e:
             return error_response(f'参数错误: {str(e)}', 400)
 
+        # INT-466：admin 修改私有报告落 PRIVATE_RESOURCE_ACCESS 审计（旁路预取，仅 admin 取数）
+        from api_gateway.application.services.report.report_query_sevice import (
+            ReportQueryService,
+        )
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_write,
+            preload_private_state,
+        )
+        pre_data = preload_private_state(
+            lambda: (ReportQueryService.get_one(report_id)[0].get('data') or {}))
+
         try:
             stub = report_config_service.stub
             resp = stub.UpdateReport(report_pb.UpdateReportRequest(
@@ -60,6 +153,7 @@ class ReportCommandService:
             if not resp.success:
                 return error_response(resp.message or '更新失败')
             data = _loads(resp.data, {}) or {}
+            maybe_audit_private_write('report', report_id, 'update', pre_data)
             return success_response(data)
         except Exception as e:
             return error_response(f'更新报告失败: {str(e)}')
@@ -70,6 +164,17 @@ class ReportCommandService:
 
     @staticmethod
     def publish(report_id):
+        # INT-466：admin 发布私有报告（状态修改）落 PRIVATE_RESOURCE_ACCESS 审计（旁路预取，仅 admin 取数）
+        from api_gateway.application.services.report.report_query_sevice import (
+            ReportQueryService,
+        )
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_write,
+            preload_private_state,
+        )
+        pre_data = preload_private_state(
+            lambda: (ReportQueryService.get_one(report_id)[0].get('data') or {}))
+
         try:
             stub = report_config_service.stub
             resp = stub.UpdateReportStatus(report_pb.UpdateReportStatusRequest(
@@ -78,6 +183,7 @@ class ReportCommandService:
             if not resp.success:
                 return error_response(resp.message or '发布失败')
             data = _loads(resp.data, {}) or {}
+            maybe_audit_private_write('report', report_id, 'update', pre_data)
             return success_response(data)
         except Exception as e:
             return error_response(f'发布报告失败: {str(e)}')
@@ -93,20 +199,38 @@ class ReportCommandService:
             ids = body.get('ids', [])
             if not ids or not isinstance(ids, list):
                 return error_response('ids 列表不能为空', 400)
+            # 先做 int 化校验：畸形 ids（如 "abc"）返回 400，不落到审计预取/gRPC
+            ids = [int(i) for i in ids]
         except Exception as e:
             return error_response(f'参数错误: {str(e)}', 400)
+
+        # INT-466：admin 批量删除私有报告落 PRIVATE_RESOURCE_ACCESS 审计（旁路预取，仅 admin 取数）
+        from api_gateway.application.services.report.report_query_sevice import (
+            ReportQueryService,
+        )
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_write,
+            preload_private_state,
+        )
+        pre_items = {
+            i: preload_private_state(
+                lambda rid=i: (ReportQueryService.get_one(rid)[0].get('data') or {}))
+            for i in ids
+        }
 
         try:
             stub = report_config_service.stub
             resp = stub.BatchActionReports(report_pb.BatchActionReportsRequest(
                 data=_dumps({
-                    'ids': [int(i) for i in ids],
+                    'ids': ids,
                     'action': 'delete',
                     'hard_delete': bool(body.get('hard_delete', False)),
                 })))
             if not resp.success:
                 return error_response(resp.message or '批量删除失败')
             data = _loads(resp.data, {}) or {}
+            for rid, pre_data in pre_items.items():
+                maybe_audit_private_write('report', rid, 'delete', pre_data)
             return success_response(data)
         except Exception as e:
             return error_response(f'批量删除报告失败: {str(e)}')
@@ -236,3 +360,81 @@ class ReportCommandService:
             return success_response(result)
         except Exception as e:
             return error_response(f'重新生成报告失败: {str(e)}')
+
+    # ------------------------------------------------------------------
+    # 报告分享（INT-971）
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def create_share(report_id):
+        """创建报告分享链接（POST /reports/{report_id}/share，report:update）。
+
+        recipients（仅 access=specific）经 auth_service ListUsers 解析为
+        [{user_id, label}]；存在未识别项 → 400 带明细。share_url 由网关拼接。
+        """
+        try:
+            body = request.get_json() or {}
+            req = ReportShareCreateRequest.model_validate(body)
+        except Exception as e:
+            return error_response(f'参数错误: {str(e)}', 400)
+
+        access = req.access
+        if access not in _SHARE_ACCESS_VALUES:
+            return error_response('access 仅支持 login / specific / public', 400)
+        if req.expiry not in _SHARE_EXPIRY_VALUES:
+            return error_response('expiry 仅支持 none / 7d / 30d / custom', 400)
+        if req.expiry == 'custom' and not req.expires_at:
+            return error_response('expiry=custom 时 expires_at 必填', 400)
+        if access == 'specific':
+            if not req.recipients:
+                return error_response('access=specific 时 recipients 必填', 400)
+            resolved, unrecognized = _resolve_recipients(req.recipients)
+            if unrecognized:
+                return error_response(
+                    '存在未识别的收件人: ' + '、'.join(unrecognized),
+                    400, detail={'unrecognized': unrecognized})
+            recipients = resolved
+        else:
+            recipients = []
+
+        try:
+            stub = report_config_service.stub
+            resp = stub.CreateReportShare(report_pb.CreateReportShareRequest(
+                data=_dumps({
+                    'report_id': int(report_id),
+                    'access': access,
+                    'expiry': req.expiry,
+                    'expires_at': req.expires_at or None,
+                    'password': req.password or '',
+                    'recipients': recipients,
+                })))
+            if not resp.success:
+                return error_response(resp.message or '创建分享失败',
+                                      http_code=resp.code or 400,
+                                      detail=_loads(resp.data, {}) or None)
+            data = _loads(resp.data, {}) or {}
+            data['share_url'] = _build_share_url(int(report_id), data.get('token'))
+            return success_response(data)
+        except Exception as e:
+            return error_response(f'创建分享失败: {str(e)}')
+
+    @staticmethod
+    def revoke_share(report_id, token):
+        """撤销报告分享（DELETE /reports/{report_id}/share/{token}，report:update）。
+
+        软撤销幂等：已撤销再次撤销仍 200；token 不存在/不属于该报告 → 404。
+        """
+        if not token:
+            return error_response('缺少分享 token', 400)
+        try:
+            stub = report_config_service.stub
+            resp = stub.RevokeReportShare(report_pb.RevokeReportShareRequest(
+                data=_dumps({'report_id': int(report_id), 'token': token})))
+            if not resp.success:
+                return error_response(resp.message or '撤销分享失败',
+                                      http_code=resp.code or 404,
+                                      detail=_loads(resp.data, {}) or None)
+            data = _loads(resp.data, {}) or {}
+            return success_response(data)
+        except Exception as e:
+            return error_response(f'撤销分享失败: {str(e)}')

@@ -206,9 +206,6 @@
             <div class="filter-item flex-1">
               <label class="filter-label">
                 <i class="fas fa-clipboard-check review-filter-icon"></i> 复核状态
-                <span v-if="loadingReviews" class="review-loading-hint">
-                  <i class="fas fa-spinner fa-spin"></i> 复核数据加载中…
-                </span>
               </label>
               <div class="review-filter-options">
                 <button
@@ -226,11 +223,11 @@
         </div>
       </div>
 
-    <!-- INT-1042：复核错误横幅（reviewsError 绑定渲染：提交失败 / 无结果行 / 历史加载失败不再静默） -->
-    <div v-if="reviewsError" class="review-error-banner" role="alert">
-      <i class="fas fa-exclamation-triangle"></i>
-      <span class="review-error-text">{{ reviewsError }}</span>
-      <button class="review-error-dismiss" @click="clearReviewsError" title="关闭提示" aria-label="关闭提示">
+    <!-- INT-1068：复核操作错误提示（缺来源任务 / 复核失败给用户可见反馈，可关闭） -->
+    <div v-if="reviewsErrorText" class="review-error-alert">
+      <i class="fas fa-circle-exclamation review-error-icon"></i>
+      <span class="review-error-text">{{ reviewsErrorText }}</span>
+      <button type="button" class="review-error-close" title="关闭" @click="clearReviewsError">
         <i class="fas fa-times"></i>
       </button>
     </div>
@@ -449,21 +446,15 @@
       </div>
     </teleport>
 
-    <!-- INT-797：AI 复核发起弹窗 + 结论卡 + 人工处置（§4.3） -->
-    <AiReviewDialog
-      :visible="aiReviewDialogVisible"
-      :case-name="aiReviewCaseName"
-      :dimension-name="aiReviewDimensionName"
-      :original-evaluation-status="aiReviewOriginalEvaluationStatus"
-      :phase="aiReviewPhase"
-      :record="aiReviewRecord"
-      :error="aiReviewError"
-      :initiating="aiReviewInitiating"
-      @close="closeAiReviewDialog"
-      @initiate="initiateAiReviewForDialog"
-      @adopt="adoptAiReviewForDialog"
-      @reject="rejectAiReviewForDialog"
-      @ignore="ignoreAiReviewForDialog"
+    <!-- INT-1068：AI 复核灵犀Agent 会话（§5.2 对话式复核，可追问；独立会话 scope） -->
+    <AiReviewSessionDialog
+      v-if="aiReviewSessionTarget"
+      :visible="true"
+      :task-id="aiReviewSessionTarget.taskId"
+      :case-id="aiReviewSessionTarget.caseId"
+      :case-name="aiReviewSessionTarget.caseName"
+      @close="aiReviewSessionTarget = null"
+      @adopted="handleAiAdopted"
     />
     </div>
   </div>
@@ -488,7 +479,7 @@ import TestCaseReportDetail from '../common/misc/TestCaseReportDetail.vue'
 import PaginationComponent from '../common/data/PaginationComponent.vue'
 import CaseIdBadge from '../common/CaseIdBadge.vue'
 import CaseReviewBadge from './CaseReviewBadge.vue'
-import AiReviewDialog from './AiReviewDialog.vue'
+import AiReviewSessionDialog from '../ai-review/AiReviewSessionDialog.vue'
 import { useAuthStore } from '@/store/authStore'
 import { AuthMode, getEffectiveAuthMode } from '@/domain/enums'
 import { computed, ref } from 'vue'
@@ -581,15 +572,6 @@ const {
   reviewFilter
 } = useSpecificCaseComparison(props)
 
-// INT-1042：复核错误 / 加载态绑定渲染（reviewsError / loadingReviews 此前未消费，错误静默；现绑定横幅 + 加载提示）
-const reviewsError = reportReviews.reviewsError
-const loadingReviews = reportReviews.loadingReviews
-
-/** 关闭复核错误横幅（清除 reviewsError，页面不再残留过期提示） */
-const clearReviewsError = () => {
-  reviewsError.value = ''
-}
-
 // INT-797：复核筛选选项
 const reviewFilterOptions = [
   { value: 'all', label: '全部' },
@@ -617,81 +599,39 @@ const getCaseReview = (caseItem) => {
 
 /** 双路径入口 A：跳来源任务复核（§3.2 复核弹窗） */
 const handleManualReview = (caseItem) => {
+  reportReviews.reviewsError.value = ''
   reportReviews.openManualReview(caseItem)
 }
 
-// ---- AI 复核（§4.3）弹窗状态 ----
-const aiReviewDialogVisible = ref(false)
-const aiReviewCase = ref(null)
-const aiReviewCaseName = ref('')
-const aiReviewDimensionName = ref('')
-const aiReviewOriginalEvaluationStatus = ref('')
-const aiReviewInitiating = ref(false)
+// ---- AI 复核（§4.3/§5.2，INT-1068 灵犀Agent 对话式会话） ----
+const aiReviewSessionTarget = ref(null)
 
-const aiReviewPhase = ref('idle')
-const aiReviewRecord = ref(null)
-const aiReviewError = ref('')
+/** 复核操作错误提示（reviewsError 只写不读修复，P3-1：缺来源任务/失败可见反馈） */
+const reviewsErrorText = computed(() => reportReviews.reviewsError.value || '')
 
-const closeAiReviewDialog = () => {
-  if (aiReviewPhase.value === 'running') return // 执行中不关闭
-  aiReviewDialogVisible.value = false
-  aiReviewCase.value = null
-  aiReviewPhase.value = 'idle'
-  aiReviewRecord.value = null
-  aiReviewError.value = ''
+function clearReviewsError() {
+  reportReviews.reviewsError.value = ''
 }
 
 const handleAiReview = (caseItem) => {
-  aiReviewCase.value = caseItem
-  aiReviewCaseName.value = caseItem?.name ?? '用例'
-  aiReviewDimensionName.value = ''
-  aiReviewOriginalEvaluationStatus.value = ''
-  const key = String(caseItem?.id ?? '')
-  const run = reportReviews.aiReviewMap.value[key]
-  aiReviewPhase.value = run?.phase ?? 'idle'
-  aiReviewRecord.value = run?.record ?? null
-  aiReviewError.value = run?.error ?? ''
-  aiReviewDialogVisible.value = true
-}
-
-const initiateAiReviewForDialog = async () => {
-  if (!aiReviewCase.value) return
-  aiReviewInitiating.value = true
-  try {
-    await reportReviews.initiateAiReview(aiReviewCase.value)
-    const key = String(aiReviewCase.value?.id ?? '')
-    const run = reportReviews.aiReviewMap.value[key]
-    aiReviewPhase.value = run?.phase ?? 'idle'
-    aiReviewRecord.value = run?.record ?? null
-    aiReviewError.value = run?.error ?? ''
-  } finally {
-    aiReviewInitiating.value = false
+  // §5.2 可发起对象：该用例存在执行结果（评估已完成/评估失败）；报告缺来源任务时不可发起
+  if (reportReviews.sourceTaskId.value === '') {
+    reportReviews.reviewsError.value = '报告缺少来源任务，无法发起 AI 复核'
+    return
+  }
+  reportReviews.reviewsError.value = ''
+  aiReviewSessionTarget.value = {
+    taskId: reportReviews.sourceTaskId.value,
+    caseId: String(caseItem?.id ?? caseItem?.testCaseId ?? ''),
+    caseName: caseItem?.name ?? '用例',
   }
 }
 
-const adoptAiReviewForDialog = async () => {
-  if (!aiReviewCase.value) return
-  await reportReviews.adoptAiReview(aiReviewCase.value)
-  const key = String(aiReviewCase.value?.id ?? '')
-  const run = reportReviews.aiReviewMap.value[key]
-  aiReviewPhase.value = run?.phase ?? 'idle'
-  if (aiReviewPhase.value === 'adopted') {
-    aiReviewDialogVisible.value = false
+/** 采纳落位成功：刷新来源任务复核历史与报告级计数 */
+const handleAiAdopted = () => {
+  if (props.reportData) {
+    reportReviews.loadReportReviews(props.reportData)
   }
-}
-
-const rejectAiReviewForDialog = async () => {
-  if (!aiReviewCase.value) return
-  await reportReviews.rejectAiReview(aiReviewCase.value)
-  const key = String(aiReviewCase.value?.id ?? '')
-  const run = reportReviews.aiReviewMap.value[key]
-  aiReviewPhase.value = run?.phase ?? 'idle'
-}
-
-const ignoreAiReviewForDialog = () => {
-  if (!aiReviewCase.value) return
-  reportReviews.ignoreAiReview(aiReviewCase.value)
-  aiReviewDialogVisible.value = false
 }
 </script>
 
@@ -768,6 +708,40 @@ justify-content: flex-end;
   color: var(--info);
 }
 
+/* INT-1068：复核操作错误提示（P3-1：缺来源任务/复核失败可见反馈） */
+.review-error-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border: 1px solid color-mix(in srgb, var(--destructive) 30%, transparent);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--destructive) 8%, transparent);
+  color: var(--destructive);
+  font-size: 12px;
+}
+.review-error-icon {
+  flex-shrink: 0;
+}
+.review-error-text {
+  flex: 1;
+  min-width: 0;
+}
+.review-error-close {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px;
+  opacity: 0.8;
+}
+.review-error-close:hover {
+  opacity: 1;
+}
+
 /* INT-797：复核状态筛选选项 */
 .review-filter-row {
   margin-top: 12px;
@@ -800,47 +774,6 @@ justify-content: flex-end;
   background: var(--accent);
   color: var(--primary);
   font-weight: 500;
-}
-
-/* INT-1042：复核错误横幅（reviewsError 绑定渲染；对齐任务/日志页错误横幅口径，用 --destructive token） */
-.review-error-banner {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: var(--spacing-md) var(--spacing-lg);
-  margin-bottom: var(--spacing-lg);
-  background: var(--destructive-light);
-  border: 1px solid color-mix(in srgb, var(--destructive) 30%, transparent);
-  border-radius: var(--radius-md);
-  color: var(--destructive);
-  font-size: var(--font-size-sm);
-}
-.review-error-text {
-  flex: 1;
-}
-.review-error-dismiss {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  color: var(--destructive);
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-  padding: var(--spacing-xs);
-  border-radius: var(--radius-sm);
-  transition: all 0.2s ease;
-}
-.review-error-dismiss:hover {
-  background: color-mix(in srgb, var(--destructive) 10%, transparent);
-}
-.review-loading-hint {
-  margin-left: 8px;
-  font-size: var(--font-size-xs);
-  color: var(--muted-foreground);
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
 }
 
 </style>

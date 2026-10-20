@@ -178,6 +178,9 @@ class TestCaseBatchService(
 
         Returns:
             {success, message, data, code?}
+
+        INT-423：批量写操作逐行可见性过滤在仓储写方法内完成（私有非 owner 行跳过，
+        copy_by_group/copy_by_tag 由列表查询过滤，rename_tag 由单资源校验覆盖）。
         """
         from shared.utils import testcase_helpers as common
 

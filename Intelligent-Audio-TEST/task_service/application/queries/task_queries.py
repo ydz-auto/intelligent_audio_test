@@ -87,6 +87,8 @@ class ListTasksConfigQuery(Query):
     execution_status: Optional[str] = None
     task_type: Optional[str] = None
     stats: bool = False
+    # INT-466：可见性筛选（shared/private；None=全部）
+    visibility: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -172,6 +174,8 @@ class ListTestCasesQuery(Query):
     only_deleted: bool = False
     user_id: Optional[int] = None
     lab_ids: Optional[List[int]] = None
+    # INT-466：可见性筛选（shared/private；None=全部）
+    visibility: Optional[str] = None
 
 
 @dataclass(frozen=True)

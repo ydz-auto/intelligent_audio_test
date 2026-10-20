@@ -653,7 +653,8 @@ class APIExecutor(BaseExecutor):
         processed = []
         for api_config in api_configs:
             class MockAPIConfig:
-                def __init__(self, id, endpoint, api_endpoints, default_max_process, meta, max_timeout, vendor, adapter_class=None):
+                def __init__(self, id, endpoint, api_endpoints, default_max_process, meta, max_timeout, vendor, adapter_class=None,
+                             proxy_type=None, proxy_url=None):
                     self.id = id
                     self.endpoint = endpoint
                     self.api_endpoints = api_endpoints
@@ -662,6 +663,8 @@ class APIExecutor(BaseExecutor):
                     self.max_timeout = max_timeout
                     self.vendor = vendor
                     self.adapter_class = adapter_class
+                    self.proxy_type = proxy_type
+                    self.proxy_url = proxy_url
 
             processed.append(MockAPIConfig(
                 id=api_config.id,
@@ -671,7 +674,9 @@ class APIExecutor(BaseExecutor):
                 meta=api_config.meta or {},
                 max_timeout=api_config.max_timeout or 30,
                 vendor=api_config.vendor or None,
-                adapter_class=getattr(api_config, 'adapter_class', None)
+                adapter_class=getattr(api_config, 'adapter_class', None),
+                proxy_type=getattr(api_config, 'proxy_type', None),
+                proxy_url=getattr(api_config, 'proxy_url', None),
             ))
         return processed
 
