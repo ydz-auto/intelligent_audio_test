@@ -95,6 +95,9 @@ def _create_mock_api_config(client, base, headers, adapter_url=None):
         'algorithm_type': 'voice_llm',
         'device_type': 'http_api',
         'adapter_class': 'MockDialogAdapter',
+        # api_url = 本栈 adapter 容器网络地址——api_test 执行健康检查/调用
+        # 链以它作 base URL（容器形态下缺省空串 → "/health" 无 scheme 必败）
+        'api_url': adapter_url or 'http://api_adapter_service:5008',
         'status': 'online',
         'meta': {'purpose': 'int993-iso-smoke', 'mode': 'dialog'},
     }
