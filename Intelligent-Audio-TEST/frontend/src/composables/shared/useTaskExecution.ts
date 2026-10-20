@@ -22,6 +22,9 @@ interface UseTaskExecutionOptions {
   selectedAPIIds: Ref<(string | number)[]>
   apis: Ref<APIConfig[]>
   testCaseGroups: Ref<Record<string, TestCase[]>>
+  // INT-604：执行模式（并行/串行）+ 串行优先侧（device/api）
+  executionMode: Ref<'parallel' | 'serial'>
+  serialFirst: Ref<'device' | 'api'>
   // 进度相关（由 useTaskProgress 提供）
   resetProgress: () => void
   associatedCases: Ref<any[]>
@@ -45,16 +48,17 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
     selectedTestCaseIds,
     selectedDeviceIds, e2eTestCases,
     selectedAPIIds, apis, testCaseGroups,
+    executionMode, serialFirst,
     resetProgress, associatedCases, totalTestCases, pendingTests,
     estimatedTime, expectedCompleteTime, addLog, onE2eStart,
   } = options
 
   const e2eIsExecuting = ref(false)
 
-  /** e2e: 是否可以开始测试 */
+  /** e2e: 是否可以开始测试（混选：设备或 API 任一选中即可） */
   const canStartTest = computed(() => {
     if (testType !== TestType.E2E) return false
-    return selectedDeviceIds.value.length > 0 && !e2eIsExecuting.value
+    return (selectedDeviceIds.value.length > 0 || selectedAPIIds.value.length > 0) && !e2eIsExecuting.value
   })
 
   /** e2e 启动测试 */
@@ -63,8 +67,8 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
     if (!canStartTest.value) return false
 
     try {
-      if (selectedDeviceIds.value.length === 0) {
-        throw new Error('请选择至少一个测试设备')
+      if (selectedDeviceIds.value.length === 0 && selectedAPIIds.value.length === 0) {
+        throw new Error('请至少选择一个测试设备或API')
       }
 
       const selectedCaseIds = selectedTestCaseIds.value.length > 0
@@ -85,9 +89,14 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
         type: TestType.E2E,
         // INT-423/467：新建可见性（缺省后端回落 shared）
         visibility: taskVisibility.value,
+        // INT-604/INT-1072：混选设备 + API，同任务同时携带 device_ids + api_ids
         deviceIds: selectedDeviceIds.value,
+        apiIds: selectedAPIIds.value,
         caseIds: selectedCaseIds,
-        config: { parallel: true, concurrentTasks: concurrentTasks.value },
+        // INT-604：执行模式 / 串行优先侧（显式透传，后端合并进 Task.config）
+        executionMode: executionMode.value,
+        serialFirst: serialFirst.value,
+        config: { parallel: executionMode.value === 'parallel', concurrentTasks: concurrentTasks.value },
       }
 
       addLog({ content: '正在创建测试任务...', level: 'info' })
@@ -149,8 +158,8 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
       addLog({ content: '当前筛选条件下没有可用的测试用例，请选择用例或调整筛选条件', level: 'warn' })
       return false
     }
-    if (selectedAPIIds.value.length === 0) {
-      addLog({ content: '请至少选择一个在线API', level: 'warn' })
+    if (selectedAPIIds.value.length === 0 && selectedDeviceIds.value.length === 0) {
+      addLog({ content: '请至少选择一个在线API或测试设备', level: 'warn' })
       return false
     }
 
@@ -182,6 +191,11 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
         visibility: taskVisibility.value,
         caseIds,
         apiIds: selectedAPIIds.value,
+        // INT-604/INT-1072：混选 API + 设备，同任务同时携带 api_ids + device_ids
+        deviceIds: selectedDeviceIds.value,
+        // INT-604：执行模式 / 串行优先侧（显式透传，后端合并进 Task.config）
+        executionMode: executionMode.value,
+        serialFirst: serialFirst.value,
         tags: [],
       }
 

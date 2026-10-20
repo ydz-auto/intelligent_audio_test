@@ -149,6 +149,10 @@ export interface TaskCreateDraft {
   deviceIds?: number[]
   /** 对应 api_ids: List[int] */
   apiIds?: number[]
+  /** INT-604：任务执行模式（parallel=并行/默认，serial=串行逐用例；对应 execution_mode） */
+  executionMode?: 'parallel' | 'serial'
+  /** INT-604：串行优先侧（device=设备先/默认，api=API先；仅 serial 模式生效，对应 serial_first） */
+  serialFirst?: 'device' | 'api'
   tags?: string[]
   algorithmType?: string
   algorithmParams?: Record<string, any>

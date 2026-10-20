@@ -54,6 +54,9 @@ const buildFlow = (overrides: {
     selectedAPIIds: ref<(string | number)[]>(overrides.selectedAPIIds ?? [3]),
     apis: ref<any[]>(overrides.apis ?? [{ id: 3, name: 'voice-llm API', status: 'online', maxConcurrent: 5 }]),
     testCaseGroups: ref<Record<string, any[]>>({}),
+    // INT-604：执行模式 / 串行优先侧（默认并行 + 设备先）
+    executionMode: ref<'parallel' | 'serial'>('parallel'),
+    serialFirst: ref<'device' | 'api'>('device'),
     resetProgress: vi.fn(),
     associatedCases: ref<any[]>([]),
     totalTestCases: ref(0),
@@ -123,5 +126,25 @@ describe('INT-282：startApiTask 全量回退分支', () => {
 
     expect(started).toBe(false)
     expect(mocks.create).not.toHaveBeenCalled()
+  })
+
+  it('INT-604：创建载荷携带 execution_mode/serial_first（混选 + 执行模式透传）', async () => {
+    mocks.create.mockResolvedValueOnce({ id: 9 })
+    mocks.start.mockResolvedValueOnce({})
+
+    const flow = buildFlow({
+      selectedTestCaseIds: ['c1'],
+      selectedAPIIds: [3],
+    })
+    const started = await flow.startApiTask()
+
+    expect(started).toBe(true)
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'api',
+      caseIds: ['c1'],
+      apiIds: [3],
+      executionMode: 'parallel',
+      serialFirst: 'device',
+    }))
   })
 })

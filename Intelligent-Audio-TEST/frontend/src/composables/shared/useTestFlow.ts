@@ -42,6 +42,9 @@ export function useTestFlow(testType: typeof TestType[keyof typeof TestType]) {
   const concurrentTasks = ref(testType === TestType.E2E ? 4 : 5)
   const selectedTestCaseIds = ref<(string | number)[]>([])
   const currentTaskId = ref<number | string | null>(null)
+  // INT-604：执行模式（并行/串行，默认并行）+ 串行优先侧（device/api，默认设备先）
+  const executionMode = ref<'parallel' | 'serial'>('parallel')
+  const serialFirst = ref<'device' | 'api'>('device')
 
   /** INT-423/467：可见性选择器切换 → 记录偏好（各表单新建一致沿用） */
   const handleVisibilityChange = (v: VisibilityType) => {
@@ -141,14 +144,17 @@ export function useTestFlow(testType: typeof TestType[keyof typeof TestType]) {
     addLog,
   })
 
-  // ============ 资源选择（设备/API） ============
+  // ============ 资源选择（设备/API 混选，INT-604/INT-1072） ============
   const {
     deviceManagement, apis, apiSearchQuery, apiFilter, selectedAPIIds,
     filteredAPIs, allFilteredAPIs,
     apiCurrentPage, apiPageSize, apiTotalItems, apiTotalPages,
     handleApiPageChange, handleApiPageSizeChange, handleApiPrevPage, handleApiNextPage,
-    associatedResources, selectedResourceIds, algorithmFilteredDevices,
+    associatedResources, selectedResourceIds,
+    associatedDevices, selectedDeviceIds, associatedAPIs,
+    algorithmFilteredDevices,
     toggleResourceSelection, handleToggleDeviceSelection, toggleAPISelection,
+    handleDeviceResourceAction, handleApiResourceAction,
     handleResourceAction, handleAddResource, openAPIEditModal, deleteAPI, testAPI, editAPI, loadAPIs,
     deviceSearchQuery, selectedDeviceStatus,
     currentPage, pageSize, totalItems, totalPages,
@@ -160,6 +166,9 @@ export function useTestFlow(testType: typeof TestType[keyof typeof TestType]) {
     addLog,
   })
 
+  /** INT-604：混选判定——设备与 API 同时勾选（执行模式控件可用性前置） */
+  const isMixedSelection = computed(() => selectedDeviceIds.value.length > 0 && selectedAPIIds.value.length > 0)
+
   // ============ 任务执行（依赖以上 composable 的 ref） ============
   const {
     e2eIsExecuting, canStartTest, startE2eTest, startApiTask, startTask,
@@ -169,10 +178,13 @@ export function useTestFlow(testType: typeof TestType[keyof typeof TestType]) {
     taskName,
     taskVisibility,
     concurrentTasks,
+    // INT-604：执行模式 / 串行优先侧
+    executionMode,
+    serialFirst,
     // INT-282：未勾选用例按筛选拉全量回退需要算法筛选条件
     selectedAlgorithmType,
     selectedTestCaseIds,
-    selectedDeviceIds: selectedResourceIds as any,
+    selectedDeviceIds: selectedDeviceIds as any,
     e2eTestCases,
     selectedAPIIds,
     apis,
@@ -273,18 +285,19 @@ export function useTestFlow(testType: typeof TestType[keyof typeof TestType]) {
 
   // ============ nextStep / prevStep ============
   const nextStep = async () => {
-    if (testType === TestType.E2E) {
-      if (currentStep.value === 2) {
-        const nonOnlineDevices = associatedResources.value.filter((d: any) => d.status !== DeviceStatus.ONLINE)
-        if (associatedResources.value.length === 0) {
-          addLog({ content: '请选择至少一个测试设备', level: 'warn' })
-          return
-        }
-        if (nonOnlineDevices.length > 0) {
-          addLog({ content: `以下设备处于离线状态，无法执行测试：${nonOnlineDevices.map((d: any) => d.name).join(', ')}`, level: 'warn' })
-          return
-        }
+    // INT-604/INT-1072：步骤2 混选校验——设备/API 任一在线即可启动（合并口径）
+    if (currentStep.value === 2) {
+      if (associatedResources.value.length === 0) {
+        addLog({ content: '请至少选择一个测试设备或API', level: 'warn' })
+        return
       }
+      const nonOnline = associatedResources.value.filter((r: any) => r.status !== DeviceStatus.ONLINE)
+      if (nonOnline.length > 0) {
+        addLog({ content: `以下资源处于离线状态，无法执行测试：${nonOnline.map((r: any) => r.name).join('、')}`, level: 'warn' })
+        return
+      }
+    }
+    if (testType === TestType.E2E) {
       if (currentStep.value < 4) {
         if (currentStep.value === 2) {
           const started = await startE2eTest()
@@ -325,17 +338,12 @@ export function useTestFlow(testType: typeof TestType[keyof typeof TestType]) {
     const algorithmType = selectedAlgorithmType.value || undefined
     // INT-249：默认视图为标签视图，挂载时须同时预取标签视图数据源，否则首屏空列表
     await Promise.all([initializeTestCases(algorithmType), fetchTagView({ testType })])
-    if (testType === TestType.API) {
-      await loadAPIs()
-    }
+    // INT-604/INT-1072：混选前置——设备/API 同屏同选，两种模式都加载 API 列表
+    await loadAPIs()
   }
 
   onMounted(async () => {
-    if (testType === TestType.E2E) {
-      await Promise.all([initializeTestCases(), loadAlgorithms(), fetchTagView({ testType })])
-    } else {
-      await initTest()
-    }
+    await initTest()
   })
 
   onUnmounted(() => {
@@ -346,14 +354,18 @@ export function useTestFlow(testType: typeof TestType[keyof typeof TestType]) {
     testType,
     currentStep, steps, selectedTestCaseIds, taskName, activeTab, concurrentTasks,
     taskVisibility, handleVisibilityChange,
+    // INT-604：执行模式 / 串行优先侧 / 混选判定
+    executionMode, serialFirst, isMixedSelection,
     currentTaskId, taskStartTime, taskElapsedTimeDisplay,
     testCaseGroups, tags, tagViewData, tagViewPagination, tagViewLoading, isLoading, casePaginationInfo,
     fetchTagView, loadMoreTagView, handleTagFilterChange, handleGroupFilterChange,
-    associatedDevices: associatedResources, selectedDeviceIdsList: selectedResourceIds,
+    associatedDevices, selectedDeviceIdsList: selectedDeviceIds,
+    associatedAPIs, selectedResourceIds,
     apis, apiSearchQuery, apiFilter, selectedAPIIds, filteredAPIs, allFilteredAPIs,
     apiCurrentPage, apiPageSize, apiTotalItems, apiTotalPages,
     handleApiPageChange, handleApiPageSizeChange, handleApiPrevPage, handleApiNextPage,
     toggleResourceSelection, handleToggleDeviceSelection, toggleAPISelection,
+    handleDeviceResourceAction, handleApiResourceAction,
     handleResourceAction, handleAddResource, openAPIEditModal, deleteAPI, testAPI, editAPI,
     deviceDisplayFields, apiDisplayFields,
     isExecuting, executionProgress, isPaused, isControlling, pauseTest, resumeTest, stopTest,

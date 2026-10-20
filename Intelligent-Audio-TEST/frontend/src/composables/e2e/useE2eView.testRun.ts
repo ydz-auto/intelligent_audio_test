@@ -160,6 +160,9 @@ export function createE2eViewTestRunModule(deps: E2eViewTestRunDeps) {
         type: TestType.E2E,
         deviceIds: selectedDeviceIds,
         caseIds: selectedCaseIds,
+        // INT-604：执行模式/串行优先侧显式透传（E2E 单设备流默认并行 + 设备先）
+        executionMode: 'parallel',
+        serialFirst: 'device',
         config: { parallel: true, concurrentTasks: concurrentTasks.value }
       }
 
