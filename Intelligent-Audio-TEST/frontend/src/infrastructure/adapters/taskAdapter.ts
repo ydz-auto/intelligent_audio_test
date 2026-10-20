@@ -197,6 +197,9 @@ export function toTaskCreateDto(draft: TaskCreateDraft): TaskCreateDto {
     case_ids: draft.caseIds,
     device_ids: draft.deviceIds,
     api_ids: draft.apiIds,
+    // INT-604：任务执行模式 / 串行优先侧（显式透传；后端缺省 parallel/device）
+    execution_mode: draft.executionMode,
+    serial_first: draft.serialFirst,
     tags: draft.tags,
     algorithm_type: draft.algorithmType,
     algorithm_params: draft.algorithmParams,

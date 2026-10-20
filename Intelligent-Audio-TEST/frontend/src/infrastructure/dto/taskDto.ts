@@ -140,6 +140,10 @@ export interface TaskCreateDto {
   case_ids?: string[]
   device_ids?: number[]
   api_ids?: number[]
+  /** INT-604：任务执行模式（parallel=并行/默认，serial=串行逐用例；后端 ExecutionMode 校验） */
+  execution_mode?: 'parallel' | 'serial'
+  /** INT-604：串行优先侧（device=设备先/默认，api=API先；仅 serial 模式生效，后端 SerialFirst 校验） */
+  serial_first?: 'device' | 'api'
   tags?: string[]
   algorithm_type?: string | null
   algorithm_params?: Record<string, any> | null

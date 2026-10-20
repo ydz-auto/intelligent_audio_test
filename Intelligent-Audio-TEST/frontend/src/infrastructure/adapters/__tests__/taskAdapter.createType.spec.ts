@@ -42,4 +42,29 @@ describe('INT-282：toTaskCreateDto type 映射', () => {
     } as TaskCreateDraft)
     expect(dto.type).toBeUndefined()
   })
+
+  it('INT-604：executionMode/serialFirst → 请求体 execution_mode/serial_first 透传', () => {
+    const dto = toTaskCreateDto({
+      name: '混选串行任务',
+      caseIds: ['1', '2'],
+      deviceIds: [3],
+      apiIds: [5],
+      executionMode: 'serial',
+      serialFirst: 'api',
+    })
+    expect(dto.device_ids).toEqual([3])
+    expect(dto.api_ids).toEqual([5])
+    expect(dto.execution_mode).toBe('serial')
+    expect(dto.serial_first).toBe('api')
+  })
+
+  it('INT-604：executionMode 缺省 → 不携带（后端回落默认 parallel/device）', () => {
+    const dto = toTaskCreateDto({
+      name: '并行任务',
+      caseIds: ['1'],
+      apiIds: [5],
+    } as TaskCreateDraft)
+    expect(dto.execution_mode).toBeUndefined()
+    expect(dto.serial_first).toBeUndefined()
+  })
 })

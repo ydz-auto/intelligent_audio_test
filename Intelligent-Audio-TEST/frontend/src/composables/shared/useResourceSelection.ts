@@ -4,7 +4,7 @@ import { generateDeviceFields } from '../../utils/utils'
 import { useDeviceManagement } from '../device/useDeviceManagement'
 import { useModalControl, MODAL_TYPES } from '../modal/useModal'
 import type { APIConfig } from '../../domain'
-import { ViewMode, DeviceStatus, ApiEndpointStatus, TestType, DeviceTabType } from '@/domain/enums'
+import { ViewMode, DeviceStatus, ApiEndpointStatus, DeviceTabType } from '@/domain/enums'
 
 interface UseResourceSelectionOptions {
   testType: 'e2e' | 'api'
@@ -13,17 +13,19 @@ interface UseResourceSelectionOptions {
 }
 
 /**
- * 步骤2 资源选择：e2e 管理测试设备，api 管理被测 API
+ * 步骤2 资源选择：设备 + 被测 API 同屏混选（INT-604/INT-1072）
  * 统一暴露 associatedResources / selectedResourceIds / toggleSelection / handleResourceAction 等
+ * 不再按 testType 二选一：物理设备与 API 两列表同时加载、可同时勾选，
+ * 创建请求同时携带 device_ids + api_ids（执行模式串行/并行在任务级生效）。
  */
 export function useResourceSelection(options: UseResourceSelectionOptions) {
   const { testType, selectedAlgorithmType, addLog } = options
   const modalManager = useModalControl()
 
-  // 共用一个 deviceManagement 实例（e2e -> 物理设备页签, api -> API页签）
-  const deviceManagement = useDeviceManagement(testType === TestType.E2E ? DeviceTabType.TEST : DeviceTabType.API)
+  // 物理设备列表（e2e 测试设备页签；api 模式也复用同一实例，混选时设备/API 同屏）
+  const deviceManagement = useDeviceManagement(DeviceTabType.TEST)
 
-  // ============ api 模式独立状态 ============
+  // ============ API 列表状态 ============
   const apis = ref<APIConfig[]>([])
   const apiSearchQuery = ref('')
   const apiFilter = ref(ViewMode.ALL)
@@ -36,23 +38,32 @@ export function useResourceSelection(options: UseResourceSelectionOptions) {
   const apiTotalPages = computed(() => Math.ceil(apiTotalItems.value / apiPageSize.value))
 
   // ============ 统一的资源列表 ============
-  const associatedResources = computed<any[]>(() => {
-    if (testType === 'e2e') {
-      return (deviceManagement.devices.value as any[]).filter((d: any) => d.selected)
-    }
+  /** 已选物理设备（selected 标记） */
+  const associatedDevices = computed<any[]>(() => {
+    return (deviceManagement.devices.value as any[]).filter((d: any) => d.selected)
+  })
+
+  /** 已选物理设备 id */
+  const selectedDeviceIds = computed<(string | number)[]>(() => {
+    return associatedDevices.value.map((d: any) => d.id)
+  })
+
+  /** 已选被测 API */
+  const associatedAPIs = computed<any[]>(() => {
     return apis.value.filter(api => api && selectedAPIIds.value.map(id => String(id)).includes(String(api.id)))
   })
 
-  const selectedResourceIds = computed<(string | number)[]>(() => {
-    if (testType === 'e2e') {
-      return associatedResources.value.map((d: any) => d.id)
-    }
-    return selectedAPIIds.value
-  })
+  /** 合并资源列表（设备 + API，执行模式判定 / 步骤三摘要用） */
+  const associatedResources = computed<any[]>(() => [...associatedDevices.value, ...associatedAPIs.value])
+
+  /** 合并已选 id（设备 + API） */
+  const selectedResourceIds = computed<(string | number)[]>(() => [
+    ...selectedDeviceIds.value,
+    ...selectedAPIIds.value,
+  ])
 
   // ============ e2e 算法过滤设备 ============
   const algorithmFilteredDevices = computed(() => {
-    if (testType !== 'e2e') return []
     if (!selectedAlgorithmType.value) {
       return deviceManagement.filteredDevices.value
     }
@@ -65,14 +76,16 @@ export function useResourceSelection(options: UseResourceSelectionOptions) {
 
   // ============ api 筛选 ============
   const allFilteredAPIs = computed(() => {
-    if (testType !== 'api') return []
     return apis.value.filter(api => {
       if (!api) return false
 
       let matchesAlgorithm = true
       if (selectedAlgorithmType.value) {
-        // APIConfig Domain 已是 camelCase：algorithmType
-        matchesAlgorithm = api.algorithmType === selectedAlgorithmType.value
+        // APIConfig Domain 已是 camelCase：algorithmType。
+        // INT-604/INT-1072：对齐 React（useResourceSelection.ts:88-91）——未声明
+        // 算法类型的 API 不被排除（algorithmType 为空视为通配），否则混选在
+        // 具体算法下永远只能看到带类型标记的 API。
+        matchesAlgorithm = api.algorithmType == null || api.algorithmType === selectedAlgorithmType.value
       }
 
       let matchesStatus = true
@@ -98,21 +111,18 @@ export function useResourceSelection(options: UseResourceSelectionOptions) {
   })
 
   const filteredAPIs = computed(() => {
-    if (testType !== 'api') return []
     const start = (apiCurrentPage.value - 1) * apiPageSize.value
     const end = start + apiPageSize.value
     return allFilteredAPIs.value.slice(start, end)
   })
 
   // api 分页总数
-  if (testType === 'api') {
-    watch(allFilteredAPIs, (newVal) => {
-      apiTotalItems.value = newVal.length
-      if (apiCurrentPage.value > apiTotalPages.value && apiTotalPages.value > 0) {
-        apiCurrentPage.value = 1
-      }
-    }, { immediate: true })
-  }
+  watch(allFilteredAPIs, (newVal) => {
+    apiTotalItems.value = newVal.length
+    if (apiCurrentPage.value > apiTotalPages.value && apiTotalPages.value > 0) {
+      apiCurrentPage.value = 1
+    }
+  }, { immediate: true })
 
   const handleApiPageChange = (page: number) => {
     if (page >= 1 && page <= apiTotalPages.value) apiCurrentPage.value = page
@@ -130,7 +140,6 @@ export function useResourceSelection(options: UseResourceSelectionOptions) {
 
   // ============ 资源选择切换 ============
   const handleToggleDeviceSelection = (deviceId: string | number) => {
-    if (testType !== 'e2e') return
     const device = (deviceManagement.devices.value as any[]).find(d => String(d.id) === String(deviceId))
     if (device) {
       if (device.status !== DeviceStatus.ONLINE) {
@@ -142,7 +151,6 @@ export function useResourceSelection(options: UseResourceSelectionOptions) {
   }
 
   const toggleAPISelection = (apiId: string | number) => {
-    if (testType !== 'api') return
     const api = apis.value.find(a => String(a?.id) === String(apiId))
     if (!api || api.status !== ApiEndpointStatus.ONLINE) {
       addLog({ content: '只能选择在线API', level: 'warn' })
@@ -156,7 +164,7 @@ export function useResourceSelection(options: UseResourceSelectionOptions) {
     }
   }
 
-  // 统一的切换方法
+  // 统一的切换方法（单网格旧交互兜底：按 testType 走对应网格）
   const toggleResourceSelection = (id: string | number) => {
     if (testType === 'e2e') {
       handleToggleDeviceSelection(id)
@@ -166,27 +174,38 @@ export function useResourceSelection(options: UseResourceSelectionOptions) {
   }
 
   // ============ 资源操作（测试/编辑/删除） ============
+  /** 设备网格操作（e2e 分支） */
+  const handleDeviceResourceAction = ({ actionId, itemId }: { actionId: string; itemId: string | number }) => {
+    if (actionId === 'test') {
+      deviceManagement.testDeviceConnection(itemId, 'test')
+    } else if (actionId === 'edit') {
+      deviceManagement.editDevice(itemId)
+    } else if (actionId === 'delete') {
+      deviceManagement.deleteDevice(itemId)
+    }
+  }
+
+  /** API 网格操作（api 分支） */
+  const handleApiResourceAction = ({ actionId, itemId }: { actionId: string; itemId: string | number }) => {
+    switch (actionId) {
+      case 'test':
+        testAPI(itemId)
+        break
+      case 'edit':
+        editAPI(itemId)
+        break
+      case 'delete':
+        deleteAPI(itemId)
+        break
+    }
+  }
+
+  /** 统一入口（按 testType 分支；混选视图按网格分别调用上两方法） */
   const handleResourceAction = ({ actionId, itemId }: { actionId: string; itemId: string | number }) => {
     if (testType === 'e2e') {
-      if (actionId === 'test') {
-        deviceManagement.testDeviceConnection(itemId, 'test')
-      } else if (actionId === 'edit') {
-        deviceManagement.editDevice(itemId)
-      } else if (actionId === 'delete') {
-        deviceManagement.deleteDevice(itemId)
-      }
+      handleDeviceResourceAction({ actionId, itemId })
     } else {
-      switch (actionId) {
-        case 'test':
-          testAPI(itemId)
-          break
-        case 'edit':
-          editAPI(itemId)
-          break
-        case 'delete':
-          deleteAPI(itemId)
-          break
-      }
+      handleApiResourceAction({ actionId, itemId })
     }
   }
 
@@ -263,9 +282,8 @@ export function useResourceSelection(options: UseResourceSelectionOptions) {
     }
   }
 
-  // ============ 初始化 api 列表 ============
+  // ============ 初始化 api 列表（混选：两种模式都加载） ============
   const loadAPIs = async () => {
-    if (testType !== 'api') return
     try {
       const apiDataResult = await apisPort.getAll()
       if (Array.isArray(apiDataResult)) {
@@ -300,10 +318,15 @@ export function useResourceSelection(options: UseResourceSelectionOptions) {
     handleApiNextPage,
     associatedResources,
     selectedResourceIds,
+    associatedDevices,
+    selectedDeviceIds,
+    associatedAPIs,
     algorithmFilteredDevices,
     toggleResourceSelection,
     handleToggleDeviceSelection,
     toggleAPISelection,
+    handleDeviceResourceAction,
+    handleApiResourceAction,
     handleResourceAction,
     handleAddResource,
     openAPIEditModal,
@@ -311,7 +334,7 @@ export function useResourceSelection(options: UseResourceSelectionOptions) {
     testAPI,
     editAPI,
     loadAPIs,
-    // 设备分页（e2e 用）
+    // 设备分页
     deviceSearchQuery: deviceManagement.deviceSearchQuery,
     selectedDeviceStatus: deviceManagement.selectedDeviceStatus,
     currentPage: deviceManagement.currentPage,
