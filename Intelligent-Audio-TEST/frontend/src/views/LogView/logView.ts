@@ -18,6 +18,7 @@ import type {
 import { MODAL_TYPES } from '../../composables/modal/constants';
 import { usePagination } from '../../composables/usePagination';
 import { formatLogTime } from '../../utils/timeFormat';
+import { downloadBlob } from '../../utils/utils';
 // 引入视图模式枚举，消除魔法字符串
 import { LogLevel, ViewMode, TestType } from '@/domain/enums';
 
@@ -410,53 +411,51 @@ export function useLogView(refs?: LogViewRefs) {
     });
   };
 
-  const exportLogs = () => {
-    modalManager.open(MODAL_TYPES.IMPORT_EXPORT, {
-      mode: 'export',
-      title: '导出日志',
-      formatOptions: [
-        { value: 'json', label: 'JSON文件 (.json)' },
-        { value: 'excel', label: 'Excel文件 (.xlsx)' }
-      ],
-      rangeOptions: [
-        { value: 'current', label: '当前页面' },
-        { value: 'all', label: '所有日志' },
-        { value: 'selected', label: '选中的日志' }
-      ],
-      fields: [
-        { key: 'time', label: '时间', default: true },
-        { key: 'level', label: '级别', default: true },
-        { key: 'module', label: '模块', default: true },
-        { key: 'source', label: '来源', default: true },
-        { key: 'content', label: '内容', default: true },
-        { key: 'context', label: '上下文', default: false }
-      ],
-      onConfirm: async (options: {range: string; format: string}) => {
-        try {
-          isLoading.value = true;
-          const params = buildQueryParams();
-          let exportParams = {...params};
-          
-          if (options.range === 'current') {
-            exportParams.page = currentPage.value;
-            exportParams.perPage = pageSize.value;
-          } else if (options.range === 'selected') {
-            (exportParams as any).logIds = logs.value.filter(l => l.selected).map(l => l.id).join(',');
-          }
-          
-          await logsPort.export({ ...exportParams, format: options.format } as any);
-        } catch (error) {
-          // INT-974：导出失败不再静默
-          console.error('Failed to export logs:', error);
-          notification.error(
-            toUserErrorMessage(error, '导出日志失败，请稍后重试'),
-            toUserErrorDetail(error),
-          );
-        } finally {
-          isLoading.value = false;
-        }
+  // 导出格式 → 下载文件名扩展名（后端 LogExportRequest.format：excel/csv/json/txt）
+  const EXPORT_EXT_MAP: Record<string, string> = { json: 'json', excel: 'xlsx', csv: 'csv', txt: 'txt' };
+
+  const exportLogs = async () => {
+    let config: { range?: string; format?: string } | undefined;
+    try {
+      const result = await modalManager.open(MODAL_TYPES.IMPORT_EXPORT, {
+        mode: 'export',
+        title: '导出日志',
+        supportedFormats: ['json', 'excel'],
+        exportFields: [
+          { key: 'time', label: '时间', defaultChecked: true },
+          { key: 'level', label: '级别', defaultChecked: true },
+          { key: 'module', label: '模块', defaultChecked: true },
+          { key: 'source', label: '来源', defaultChecked: true },
+          { key: 'content', label: '内容', defaultChecked: true },
+          { key: 'context', label: '上下文', defaultChecked: false }
+        ]
+      });
+      config = result?.config;
+    } catch {
+      return; // 取消/关闭
+    }
+    if (!config?.format) return;
+
+    try {
+      isLoading.value = true;
+      const params = buildQueryParams();
+      const exportParams: any = { ...params };
+      if (config.range === 'selected') {
+        exportParams.logIds = logs.value.filter(l => l.selected).map(l => l.id).join(',');
       }
-    });
+      const blob = await logsPort.export({ ...exportParams, format: config.format } as any);
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
+      downloadBlob(blob, `logs_export_${stamp}.${EXPORT_EXT_MAP[config.format] || 'xlsx'}`);
+    } catch (error) {
+      // INT-974：导出失败不再静默
+      console.error('Failed to export logs:', error);
+      notification.error(
+        toUserErrorMessage(error, '导出日志失败，请稍后重试'),
+        toUserErrorDetail(error),
+      );
+    } finally {
+      isLoading.value = false;
+    }
   };
 
   const toggleRealTimeLog = () => {

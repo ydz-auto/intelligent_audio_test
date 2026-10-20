@@ -30,6 +30,7 @@ import type {
   LogMarkDto,
   LogClearDto,
   LogRefreshRequestDto,
+  LogExportRequestDto,
 } from '../dto/logDto'
 import { toSafeNumber as toNum, toPaginated } from './commonAdapter'
 
@@ -150,12 +151,17 @@ export function toLogQueryDto(query: LogQuery): Record<string, string | number |
   return params
 }
 
-/** 日志导出查询 → snake_case query（含逗号分隔 log_ids 与 format） */
-export function toLogExportQueryDto(query: LogExportQuery): Record<string, string | number> {
-  const params: Record<string, string | number> = toLogQueryDto(query) as Record<string, string | number>
-  if (query.logIds) params.log_ids = query.logIds
-  if (query.format) params.format = query.format
-  return params
+/**
+ * 日志导出请求体 → LogExportRequestDto（POST /logs/export，doc/接口文档 6. 导出日志契约）。
+ * Domain logIds 为逗号串（导出范围「选中数据」），此处转为后端 LogExportRequest 期望的
+ * log_ids int 数组；format 透传。level/module 过滤走 query（后端 LogExportQuery 仅
+ * level/module），由 logsApi.export 单独拆出，不混入请求体（INT-1000，INT-274 契约同步）。
+ */
+export function toLogExportQueryDto(query: LogExportQuery): LogExportRequestDto {
+  const dto: LogExportRequestDto = {}
+  if (query.logIds) dto.log_ids = query.logIds.split(',').map(Number).filter(n => Number.isFinite(n))
+  if (query.format) dto.format = query.format
+  return dto
 }
 
 /** 标记请求体：logIds + mark → LogMarkDto */

@@ -100,3 +100,9 @@ export interface LogArchiveRequestDto {
   days: number
   dry_run: boolean
 }
+
+/** 对应后端 LogExportRequest（POST /logs/export 请求体；log_ids 为 int 数组） */
+export interface LogExportRequestDto {
+  log_ids?: number[]
+  format?: string
+}

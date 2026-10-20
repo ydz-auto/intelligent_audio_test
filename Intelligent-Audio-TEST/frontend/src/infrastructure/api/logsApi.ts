@@ -71,9 +71,21 @@ export const logsApi = {
     return request('PUT', '/logs/mark', toLogMarkDto(input, DEFAULT_MARK) satisfies LogMarkDto);
   },
 
-  /** 导出日志（GET /logs/export：条件查询 + format） */
-  async export(params: LogExportQuery = {}, options: RequestOptions = {}) {
-    return request('GET', '/logs/export', null, { ...options, params: toLogExportQueryDto(params) });
+  /**
+   * 导出日志（POST /logs/export，doc/接口文档 6. 导出日志契约）。
+   * log_ids/format 走请求体（LogExportRequest），level/module 走 query（LogExportQuery）；
+   * 响应为后端 FileResponse 原始文件流，responseType:'blob' 落盘下载（INT-274 契约同步）。
+   */
+  async export(params: LogExportQuery = {}, options: RequestOptions = {}): Promise<Blob> {
+    const query: Record<string, string> = {};
+    if (params.level) query.level = params.level;
+    if (params.module) query.module = params.module;
+    const data = await request<Blob>('POST', '/logs/export', toLogExportQueryDto(params), {
+      ...options,
+      params: query,
+      responseType: 'blob',
+    });
+    return data instanceof Blob ? data : new Blob([data as unknown as BlobPart]);
   },
 
   /** 清除日志（POST /logs/clear：before_datetime + keep_marked） */
