@@ -7,6 +7,7 @@
  * 接线后替换为 application/testcases mutations + URL 态 useTableUrlState。
  */
 import { Link, useNavigate } from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { FileDown, FileSpreadsheet, FileUp, Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -40,10 +41,18 @@ import { CaseMutateDrawer } from '@/features/testcases/modals/case-mutate-drawer
 import { ExportDialog } from '@/features/testcases/modals/export-dialog'
 import { GroupMutateDialog } from '@/features/testcases/modals/group-mutate-dialog'
 import { AudioPreviewConfigDialog } from '@/features/testcases/modals/audio-preview-config-dialog'
+import {
+  batchTestcaseAction,
+} from '@/infrastructure/api/testcases-batch-api'
+import {
+  copyTestCase,
+  setTestCaseFavorite,
+} from '@/infrastructure/api/testcases-api'
 
 export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   const { hasPermission } = usePermissions()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const algorithmId = useAlgorithmStore((s) => s.algorithmId)
 
   const [filters, setFilters] = useState<TestCaseListFilters>({})
@@ -99,6 +108,15 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
 
   /** 批量弹窗状态机（七件套弹窗 + 两确认；INT-1026 共享 host 双挂） */
   const batch = useCaseBatchActions({ onClearSelection: clearSelection })
+
+  /** 分组新建/编辑弹窗关闭后刷新分组与用例列表（INT-997 接线：提交/取消后均刷新，成本低） */
+  useEffect(() => {
+    if (!groupDialog.open) return
+    return () => {
+      void queryClient.invalidateQueries({ queryKey: ['groups'] })
+      void queryClient.invalidateQueries({ queryKey: ['testcases'] })
+    }
+  }, [groupDialog.open, queryClient])
 
   // ESC 清选（11_用例域.md §3.7「X 清选钮 + ESC 清选 + aria-live 播报照搬」）：
   // 批量浮条可见时页面级 keydown Escape → 清空勾选、浮条消失。
@@ -170,19 +188,42 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   const rowCallbacks = useMemo<CaseCardCallbacks>(
     () => ({
       onPreview: (c) => setPreviewCase(c),
-      onCopy: (c) =>
-        toast.success('已复制测试用例', { description: `已创建副本：${c.name}_copy` }),
-      onFavorite: (c) => toast.success(c.isFavorite ? '已取消收藏' : '已加入收藏'),
+      onCopy: (c) => {
+        // INT-997：行复制接 POST /testcases/{id}/copy（深度克隆，新名 {name}_copy）
+        void (async () => {
+          try {
+            await copyTestCase(c.id)
+            toast.success('已复制测试用例', {
+              description: `已创建副本：${c.name}_copy`,
+            })
+            await queryClient.invalidateQueries({ queryKey: ['testcases'] })
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : '复制测试用例失败')
+          }
+        })()
+      },
+      onFavorite: (c) => {
+        // INT-997：行收藏接 POST/DELETE /testcases/{id}/favorite（INT-141 per-user）
+        void (async () => {
+          try {
+            await setTestCaseFavorite(c.id, !c.isFavorite)
+            toast.success(c.isFavorite ? '已取消收藏' : '已加入收藏')
+            await queryClient.invalidateQueries({ queryKey: ['testcases'] })
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : '收藏操作失败')
+          }
+        })()
+      },
       onEdit: (c) => {
         setPresetGroupId(null)
         setMutateCase(c)
         setMutateOpen(true)
       },
-      onDelete: (c) => batch.setConfirm({ kind: 'delete', name: c.name }),
-      onRestore: (c) => batch.setConfirm({ kind: 'restore', name: c.name }),
-      onPurge: (c) => batch.setConfirm({ kind: 'purge', name: c.name }),
+      onDelete: (c) => batch.setConfirm({ kind: 'delete', ids: [c.id], name: c.name }),
+      onRestore: (c) => batch.setConfirm({ kind: 'restore', ids: [c.id], name: c.name }),
+      onPurge: (c) => batch.setConfirm({ kind: 'purge', ids: [c.id], name: c.name }),
     }),
-    []
+    [queryClient, batch.setConfirm]
   )
 
   const groupCallbacks = useMemo<GroupActionCallbacks>(
@@ -193,12 +234,29 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
         setMutateOpen(true)
       },
       onEditGroup: (group) => setGroupDialog({ open: true, group }),
-      onDeleteGroup: (group) => batch.setConfirm({ kind: 'delete-group', name: group.name }),
+      onDeleteGroup: (group) =>
+        batch.setConfirm({ kind: 'delete-group', ids: [group.id], name: group.name }),
       onCopyGroup: (group) => {
-        toast.success('已复制分组', { description: `新分组：${group.name}_copy` })
+        // INT-997：分组复制接 POST /testcases/batch（copy_by_group → 新分组 {name}_copy）
+        void (async () => {
+          try {
+            await batchTestcaseAction('copy_by_group', [], {
+              groupName: group.name,
+            })
+            toast.success('已复制分组', {
+              description: `新分组：${group.name}_copy`,
+            })
+            await queryClient.invalidateQueries({
+              queryKey: ['testcases'],
+            })
+            await queryClient.invalidateQueries({ queryKey: ['groups'] })
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : '复制分组失败')
+          }
+        })()
       },
     }),
-    []
+    [queryClient, batch.setConfirm]
   )
 
   const openCreate = () => {
@@ -309,7 +367,11 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
               categories={categories}
               cases={items}
               onRestoreAll={() =>
-                batch.setConfirm({ kind: 'restore-all', count: trashCount })
+                batch.setConfirm({
+                  kind: 'restore-all',
+                  count: trashCount,
+                  ids: items.filter((c) => c.deleted).map((c) => c.id),
+                })
               }
             />
 

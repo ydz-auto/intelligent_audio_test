@@ -11,6 +11,10 @@ import { apiClient } from './client'
 
 /** 批量操作动作（对照旧 Vue testcasesApi.batchAction 的 action 取值） */
 export type TestcaseBatchAction =
+  | 'delete'
+  | 'restore'
+  | 'copy'
+  | 'copy_by_group'
   | 'update_algorithm_params'
   | 'update_playback_devices'
   | 'update_spl'
@@ -45,6 +49,8 @@ export interface TestcaseBatchPayload {
   multiDimensions?: Array<Record<string, unknown>>
   /** 目标分组（move_to_group / copy_to_group） */
   targetGroupId?: string
+  /** 按分组复制（copy_by_group）：源分组名，复制到「{名称}_copy」新分组 */
+  groupName?: string
   /** 标签（add_tags / remove_tags） */
   tags?: string[]
   oldTagName?: string
@@ -76,6 +82,7 @@ const BATCH_ACTION_KEY_MAP: Record<string, string> = {
   noiseSpl: 'noise_spl',
   noiseDeviceIds: 'noise_device_ids',
   targetGroupId: 'target_group_id',
+  groupName: 'group_name',
   roundMode: 'round_mode',
   roundNumbers: 'round_numbers',
   roundDimensions: 'round_dimensions',
@@ -129,6 +136,14 @@ export async function batchTestcaseAction(
       (raw?.refreshedTestCaseIds as string[] | undefined) ??
       [],
   }
+}
+
+/**
+ * 批量彻底删除（POST /testcases/purge；INT-141 favorite_trash_bp，batch 无 purge 动作，
+ * 走独立批量路由）。admin 放行整批；非 admin 逐行 owner 校验，全部不可 purge 时后端 403。
+ */
+export async function purgeTestcases(ids: string[]): Promise<void> {
+  await apiClient.post('/testcases/purge', { ids })
 }
 
 /** 参考刷新任务状态（GET /testcases/refresh_task/{taskId}；对照 Vue pollRefreshTaskStatus） */
