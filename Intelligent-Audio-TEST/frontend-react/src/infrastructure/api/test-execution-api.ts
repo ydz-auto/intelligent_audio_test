@@ -150,7 +150,7 @@ export async function fetchFlowReport(reportId: number): Promise<ReportDetailDat
   return data
 }
 
-/** 创建任务（步骤三开始测试；POST /tasks，task:create；filter-all 口径显性化） */
+/** 创建任务（步骤三开始测试；POST /tasks，task:create；filter-all 口径显性化；INT-604 携带 execution_mode/serial_first） */
 export async function createTask(input: TaskLaunchInput): Promise<{ id: number }> {
   const caseIds = input.filterAllMode
     // filter-all：按启动时当前筛选条件全量圈定（INT-646 代码审计 P2——不再是仅算法维度；
@@ -165,6 +165,10 @@ export async function createTask(input: TaskLaunchInput): Promise<{ id: number }
     case_ids: caseIds,
     device_ids: input.deviceIds,
     api_ids: input.apiIds,
+    // INT-604：执行模式（并行/串行）+ 串行优先侧（device/api）——网关 TaskCreateRequest
+    // 顶层显式字段（api_gateway/schemas/task.py:250-251 实测），task_service 并入 Task.config。
+    execution_mode: input.params.executionMode,
+    serial_first: input.params.serialFirst,
     config: {
       rounds: input.params.rounds,
       timeout: input.params.timeout,
