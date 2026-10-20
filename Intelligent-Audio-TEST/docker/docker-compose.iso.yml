@@ -17,6 +17,11 @@
 services:
   rustfs:
     container_name: ${ISO_STACK_NAME:-intelligent-audio-test}-rustfs
+    environment:
+      # rustfs 新版对本地 erasure 端点强制「独立物理盘」安全校验；Docker 单盘
+      # VM 上多卷同盘必败（FATAL: local erasure endpoints must use distinct
+      # physical disks），仅测试/CI 场景按官方提示绕过（INT-993 起栈实测）。
+      RUSTFS_UNSAFE_BYPASS_DISK_CHECK: "true"
 
   # ============ mock 评估服务（INT-597 增补，INT-993 基线重交付）============
   # 外部算法服务 100.70.20.135:8888 不可达时，隔离栈自带的评估替身：
