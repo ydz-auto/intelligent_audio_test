@@ -33,7 +33,8 @@ POLL_INTERVAL = 3
 API_TASK_TIMEOUT = 420
 REPORT_TIMEOUT = 240
 EVIDENCE_DIR = '/tmp/iso_smoke_evidence'
-CK = dict(timeout=30, trust_env=False)
+# trust_env=False 只在 Client 构造时传（Windows 代理劫持规避，INT-102）；方法调用只传 timeout
+CK = dict(timeout=30)
 
 
 def _resp_data(resp):
