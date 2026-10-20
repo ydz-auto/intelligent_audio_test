@@ -133,14 +133,15 @@ function handleClose() {
 
 <style scoped>
 /* opacity/visibility 显式声明，规避全局 .modal-overlay{visibility:hidden;opacity:0}
-   （test-case-manager.css，仅 .active 才可见）串扰；transform: none 对齐全局 .modal 位移 */
+   （test-case-manager.css，仅 .active 才可见）串扰；transform: none 对齐全局 .modal 位移。
+   INT-1081：颜色全部收敛为语义令牌（modal 域令牌 / --background / --muted / --border 等），深浅两套自动换肤。 */
 .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
   width: 100vw;
   height: 100vh;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: color-mix(in srgb, var(--color-black) 50%, transparent);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -151,9 +152,9 @@ function handleClose() {
 }
 
 .modal {
-  background-color: #fff;
+  background-color: var(--background);
   border-radius: var(--border-radius-xl);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 20px color-mix(in srgb, var(--color-black) 15%, transparent);
   max-height: 90vh;
   overflow: hidden;
   display: flex;
@@ -171,8 +172,8 @@ function handleClose() {
   justify-content: space-between;
   align-items: center;
   padding: 14px 20px;
-  border-bottom: 1px solid #e9ecef;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-bottom: 1px solid var(--modal-border-color);
+  background: linear-gradient(135deg, var(--modal-surface-top) 0%, var(--modal-border-color) 100%);
   flex-shrink: 0;
 }
 
@@ -180,17 +181,17 @@ function handleClose() {
   margin: 0;
   font-size: 17px;
   font-weight: 600;
-  color: #343a40;
+  color: var(--modal-title-color);
 }
 
 .modal-title i {
-  color: #ff6a00;
+  color: var(--primary);
 }
 
 .modal-subtitle {
   font-size: 12px;
   font-weight: 400;
-  color: #94a3b8;
+  color: var(--color-slate-400);
   margin-left: 4px;
 }
 
@@ -205,7 +206,7 @@ function handleClose() {
   border: none;
   font-size: 18px;
   cursor: pointer;
-  color: #6c757d;
+  color: var(--modal-muted);
   width: 30px;
   height: 30px;
   display: flex;
@@ -216,8 +217,8 @@ function handleClose() {
 }
 
 .modal-close:hover {
-  color: #343a40;
-  background-color: #e9ecef;
+  color: var(--modal-title-color);
+  background-color: var(--modal-border-color);
 }
 
 .modal-scroll-container {
@@ -225,7 +226,7 @@ function handleClose() {
   overflow-y: auto;
   flex: 1;
   padding: 16px 20px;
-  background-color: #fff;
+  background-color: var(--background);
 }
 
 .ts-section {
@@ -236,14 +237,14 @@ function handleClose() {
   margin: 0 0 8px;
   font-size: 13px;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--modal-text);
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
 .ts-section-title i {
-  color: #ff6a00;
+  color: var(--primary);
 }
 
 .ts-kv-grid {
@@ -257,7 +258,7 @@ function handleClose() {
   align-items: baseline;
   gap: 10px;
   padding: 5px 8px;
-  background: #f8fafc;
+  background: var(--muted);
   border-radius: var(--border-radius-sm);
   font-size: 13px;
   margin-bottom: 4px;
@@ -265,27 +266,27 @@ function handleClose() {
 
 .ts-kv-label {
   flex-shrink: 0;
-  color: #9ca3af;
+  color: var(--color-gray-400);
   min-width: 64px;
 }
 
 .ts-kv-value {
-  color: #1f2937;
+  color: var(--modal-text);
   word-break: break-all;
 }
 
 .ts-empty {
   padding: 20px;
   text-align: center;
-  color: #94a3b8;
-  background: #f8fafc;
-  border: 1px dashed #e2e8f0;
+  color: var(--color-slate-400);
+  background: var(--muted);
+  border: 1px dashed var(--border);
   border-radius: var(--border-radius-md);
   font-size: 13px;
 }
 
 .ts-case {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: var(--border-radius-md);
   margin-bottom: 8px;
   overflow: hidden;
@@ -298,7 +299,7 @@ function handleClose() {
   flex-wrap: wrap;
   padding: 8px 12px;
   cursor: pointer;
-  background: #fafafa;
+  background: var(--muted);
   user-select: none;
   list-style: none;
 }
@@ -309,7 +310,7 @@ function handleClose() {
 
 .ts-case-summary::before {
   content: '▸';
-  color: #9ca3af;
+  color: var(--color-gray-400);
   transition: transform 0.15s;
 }
 
@@ -319,7 +320,7 @@ function handleClose() {
 
 .ts-case-name {
   font-weight: 600;
-  color: #1f2937;
+  color: var(--modal-text);
   font-size: 13px;
 }
 
@@ -327,19 +328,19 @@ function handleClose() {
   font-size: 11px;
   padding: 1px 6px;
   border-radius: var(--border-radius-sm);
-  background: #fff1e6;
-  color: #ff6a00;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary);
   white-space: nowrap;
 }
 
 .ts-case-meta {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--color-gray-400);
 }
 
 .ts-case-body {
   padding: 10px 12px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--gray-light);
 }
 
 .ts-json-block {
@@ -348,15 +349,15 @@ function handleClose() {
 
 .ts-json-label {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--color-gray-400);
   margin-bottom: 4px;
 }
 
 .ts-json-block pre {
   margin: 0;
   padding: 10px;
-  background: #f8fafc;
-  border: 1px solid #e5e7eb;
+  background: var(--muted);
+  border: 1px solid var(--border);
   border-radius: var(--border-radius-md);
   font-size: 12px;
   line-height: 1.5;

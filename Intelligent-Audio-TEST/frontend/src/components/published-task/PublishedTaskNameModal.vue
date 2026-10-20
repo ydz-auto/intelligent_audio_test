@@ -91,14 +91,15 @@ onMounted(() => {
 
 <style scoped>
 /* opacity/visibility 显式声明，规避全局 .modal-overlay{visibility:hidden;opacity:0}
-   （test-case-manager.css，仅 .active 才可见）串扰；transform: none 对齐全局 .modal 位移 */
+   （test-case-manager.css，仅 .active 才可见）串扰；transform: none 对齐全局 .modal 位移。
+   INT-1081：颜色全部收敛为语义令牌（modal 域令牌 / --background / --primary 等），深浅两套自动换肤。 */
 .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
   width: 100vw;
   height: 100vh;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: color-mix(in srgb, var(--color-black) 50%, transparent);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -109,9 +110,9 @@ onMounted(() => {
 }
 
 .modal {
-  background-color: #fff;
+  background-color: var(--background);
   border-radius: var(--border-radius-xl);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 20px color-mix(in srgb, var(--color-black) 15%, transparent);
   display: flex;
   flex-direction: column;
   transform: none;
@@ -127,15 +128,15 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 16px 20px;
-  border-bottom: 1px solid #e9ecef;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-bottom: 1px solid var(--modal-border-color);
+  background: linear-gradient(135deg, var(--modal-surface-top) 0%, var(--modal-border-color) 100%);
 }
 
 .modal-title {
   margin: 0;
   font-size: 17px;
   font-weight: 600;
-  color: #343a40;
+  color: var(--modal-title-color);
 }
 
 .modal-close {
@@ -143,7 +144,7 @@ onMounted(() => {
   border: none;
   font-size: 18px;
   cursor: pointer;
-  color: #6c757d;
+  color: var(--modal-muted);
   width: 30px;
   height: 30px;
   display: flex;
@@ -154,8 +155,8 @@ onMounted(() => {
 }
 
 .modal-close:hover {
-  color: #343a40;
-  background-color: #e9ecef;
+  color: var(--modal-title-color);
+  background-color: var(--modal-border-color);
 }
 
 .modal-body {
@@ -168,8 +169,8 @@ onMounted(() => {
   align-items: center;
   gap: 12px;
   padding: 14px 24px;
-  border-top: 1px solid #e9ecef;
-  background-color: #f8f9fa;
+  border-top: 1px solid var(--modal-border-color);
+  background-color: var(--modal-surface-top);
 }
 
 .btn {
@@ -183,8 +184,8 @@ onMounted(() => {
 }
 
 .btn-primary {
-  background-color: var(--primary-color, #ff6a00);
-  color: #fff;
+  background-color: var(--primary);
+  color: var(--color-white);
 }
 
 .btn-primary:hover {
@@ -192,17 +193,17 @@ onMounted(() => {
 }
 
 .btn-primary:disabled {
-  background-color: #d9d9d9;
+  background-color: var(--btn-primary-disabled-bg);
   cursor: not-allowed;
 }
 
 .btn-secondary {
-  background-color: var(--background-secondary, #f0f0f0);
-  color: #333;
+  background-color: var(--gray-light);
+  color: var(--foreground);
 }
 
 .btn-secondary:hover {
-  background-color: #e0e0e0;
+  background-color: var(--btn-secondary-hover-bg);
 }
 
 .form-group {
@@ -214,33 +215,33 @@ onMounted(() => {
   margin-bottom: 6px;
   font-size: 13px;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--modal-text);
 }
 
 .required {
-  color: #e53e3e;
+  color: var(--danger-required);
 }
 
 .form-input {
   width: 100%;
   padding: 8px 10px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--color-gray-300);
   border-radius: var(--border-radius-md);
   font-size: 13px;
-  background: #fff;
-  color: #1f2937;
+  background: var(--background);
+  color: var(--modal-text);
   box-sizing: border-box;
 }
 
 .form-input:focus {
   outline: none;
-  border-color: var(--primary-color, #ff6a00);
-  box-shadow: 0 0 0 2px rgba(255, 106, 0, 0.15);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 15%, transparent);
 }
 
 .form-hint {
   margin-top: 6px;
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--color-gray-400);
 }
 </style>
