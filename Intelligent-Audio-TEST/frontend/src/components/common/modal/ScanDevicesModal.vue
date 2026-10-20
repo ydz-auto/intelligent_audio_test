@@ -24,9 +24,6 @@
                 <p v-if="device.ip">
                   IP{{ device.ip }}
                 </p>
-                <p v-if="device.connectionType">
-                  连接方式{{ device.connectionType === 'usb' ? 'usb连接' : '远程连接' }}
-                </p>
               </div>
               <div class="scan-device-actions">
                 <button class="btn btn-primary" @click="handleAddDevice($event, device)">
@@ -61,32 +58,18 @@
         
         <div v-else-if="deviceType === 'api'" class="scan-device-type-section">
           <h5>API 服务</h5>
-          <div v-if="scanResults.length > 0" class="api-list">
-            <div v-for="device in scanResults" 
-                 :key="device.id || device.name" 
-                 class="scan-device-item">
-              <div class="scan-device-info">
-                <h5>{{ device.name }}</h5>
-                <p>端点{{ device.endpoint }}</p>
-                <p>协议{{ device.protocol }}</p>
-              </div>
-              <div class="scan-device-actions">
-                <button class="btn btn-primary" @click="handleAddDevice($event, device)">
-                  <i class="fas fa-plus"></i>
-                  添加
-                </button>
-              </div>
-            </div>
+          <div class="no-results">
+            <p>API 暂不支持自动扫描，请手动添加</p>
           </div>
         </div>
-        
-        <div v-if="scanResults.length === 0 && !isScanning" class="no-results">
+
+        <div v-if="deviceType !== 'api' && scanResults.length === 0 && !isScanning" class="no-results">
           <p>未扫描到任何设备</p>
           <p>请确保 ADB 设备已连接，或选择正确的设备类型</p>
         </div>
       </div>
       
-      <div class="scan-actions">
+      <div v-if="deviceType !== 'api'" class="scan-actions">
         <button 
           class="btn btn-secondary" 
           @click="startScan" 
@@ -100,7 +83,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import '../../../assets/styles/test-common.css'
 import '../../../assets/styles/components/common.css'
 import '../../../assets/styles/components/button.css'
@@ -110,9 +93,10 @@ import '../../../assets/styles/components/progress.css'
 import '../../../assets/styles/components/tag.css'
 import '../../../assets/styles/components/log.css'
 
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { devicesPort } from '../../../composables/device/devicesPort'
 import { playbackPort } from '../../../composables/device/playbackPort'
+import type { ScannedDevice } from '../../../domain/model/device'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -130,203 +114,57 @@ const emit = defineEmits(['close', 'confirm'])
 const isScanning = ref(false)
 const scanProgress = ref(0)
 const scanStatus = ref('准备扫描')
-const scanResults = ref([])
+const scanResults = ref<ScannedDevice[]>([])
 
 let isProcessingAddDevice = false
 
-const handleAddDevice = (event, device) => {
+const handleAddDevice = (event: Event, device: ScannedDevice) => {
   event.stopPropagation()
   event.preventDefault()
-  
-  console.log('[ScanDevicesModal] handleAddDevice called for device:', device.name || device.deviceUniqueId)
-  console.log('[ScanDevicesModal] Current isProcessingAddDevice:', isProcessingAddDevice)
-  console.log('[ScanDevicesModal] Device details:', JSON.stringify(device, null, 2))
-  
-  if (isProcessingAddDevice) {
-    console.log('[ScanDevicesModal] Already processing add device, skipping')
-    return
-  }
-  
+
+  if (isProcessingAddDevice) return
+
   isProcessingAddDevice = true
-  console.log('[ScanDevicesModal] Processing device:', device.name || device.deviceUniqueId)
-  
   emit('confirm', device)
-  console.log("[ScanDevicesModal] emit('confirm') called with device:", JSON.stringify(device, null, 2))
-  
+
   setTimeout(() => {
     isProcessingAddDevice = false
-    console.log('[ScanDevicesModal] isProcessingAddDevice reset to false')
   }, 3000)
-}
-
-const getDeviceKey = (device) => {
-  if (device.serial) return device.serial
-  if (device.deviceUniqueId) return device.deviceUniqueId
-  if (device.id) return device.id
-  return JSON.stringify(device)
-}
-
-const getDeviceIcon = (system) => {
-  if (!system) return 'fa-mobile-alt'
-  const s = system.toLowerCase()
-  if (s.includes('android')) return 'fa-android'
-  if (s.includes('ios') || s.includes('iphone') || s.includes('ipad')) return 'fa-apple'
-  if (s.includes('harmony')) return 'fa-huawei'
-  return 'fa-mobile-alt'
 }
 
 const startScan = async () => {
   if (isScanning.value) return
-  
+
   isScanning.value = true
   scanProgress.value = 0
   scanStatus.value = '正在初始化扫描...'
   scanResults.value = []
-  
+
   try {
-    let devices = []
-    
+    let devices: ScannedDevice[] = []
+
     if (props.deviceType === 'test') {
       scanStatus.value = '正在扫描测试设备...'
-      
-      try {
-        // devicesPort.scan 已通过 adapter 返回 ScannedDevice[]（camelCase）
-        const response = await devicesPort.scan()
-        console.log('[ScanDevicesModal] 测试设备扫描响应:', response)
-        
-        if (Array.isArray(response)) {
-          devices = response
-        } else {
-          console.log('[ScanDevicesModal] 无法解析测试设备扫描响应，使用模拟数据')
-          devices = []
-        }
-      } catch (error) {
-        console.error('[ScanDevicesModal] 测试设备扫描失败:', error)
-        devices = []
-      }
-      
-      if (devices.length === 0) {
-        console.log('[ScanDevicesModal] 无测试设备，使用模拟数据 (开发环境)')
-        devices = [
-          {
-            serial: 'MOCK-ADB-123456',
-            name: 'Android Pixel 6 Pro',
-            model: 'Pixel 6 Pro',
-            system: 'android',
-            systemVersion: '13.0',
-            appName: 'Default App',
-            appVersion: '1.0.0',
-            ipAddress: '192.168.1.100',
-            connectionType: 'usb'
-          },
-          {
-            serial: 'MOCK-IOS-789012',
-            name: 'iPhone 14',
-            model: 'iPhone 14',
-            system: 'ios',
-            systemVersion: '16.5',
-            appName: 'Default App',
-            appVersion: '1.0.0',
-            ipAddress: '192.168.1.101',
-            connectionType: 'remote'
-          },
-          {
-            serial: 'MOCK-HARMONY-345678',
-            name: 'HarmonyOS Mate 60 Pro',
-            model: 'Mate 60 Pro',
-            system: 'harmony',
-            systemVersion: '4.0',
-            appName: 'Default App',
-            appVersion: '1.0.0',
-            ipAddress: '192.168.1.102',
-            connectionType: 'remote'
-          }
-        ]
-      }
+      // devicesPort.scan 已通过 adapter 返回 ScannedDevice[]（camelCase）；扫描为空/失败不注入模拟数据
+      devices = await devicesPort.scan()
     } else if (props.deviceType === 'playback') {
       scanStatus.value = '正在获取系统音频设备...'
-      
-      try {
-        // playbackPort.scan 已通过 adapter 返回 ScannedDevice[]（camelCase）
-        const response = await playbackPort.scan()
-        console.log('[ScanDevicesModal] 播放设备扫描响应:', response)
-        
-        if (Array.isArray(response)) {
-          devices = response
-        } else {
-          console.log('[ScanDevicesModal] 无法解析播放设备扫描响应，使用模拟数据')
-          devices = []
-        }
-      } catch (error) {
-        console.error('[ScanDevicesModal] 播放设备扫描失败:', error)
-        devices = []
-      }
-      
-      if (devices.length === 0) {
-        console.log('[ScanDevicesModal] 无播放设备，使用模拟数据 (开发环境)')
-        devices = [
-          {
-            deviceUniqueId: 'audio-output-1',
-            name: '扬声器 (Realtek Audio)',
-            channelIndex: 0,
-            sampleRate: 48000,
-            type: 'output'
-          },
-          {
-            deviceUniqueId: 'audio-output-2',
-            name: '耳机 (Bluetooth Audio)',
-            channelIndex: 0,
-            sampleRate: 44100,
-            type: 'output'
-          }
-        ]
-      }
-    } else if (props.deviceType === 'api') {
+      devices = await playbackPort.scan()
+    } else {
+      // API 页签：功能口径照 React（16_设备域.md §6.1 / §11-11）——后端无 API 自动扫描数据源，仅手动添加
       scanStatus.value = '正在扫描 API 服务...'
-      devices = []
     }
-    
+
     scanProgress.value = 50
-    
-    scanResults.value = devices.map((device) => {
-      const normalized = { ...device }
-      
-      if (props.deviceType === 'test') {
-        normalized.serialNumber = device.serialNumber || device.serial || device.deviceId || device.id || device.deviceUniqueId
-        normalized.serial = normalized.serialNumber
-        normalized.name = device.name || device.model || device.label || '未知设备'
-        normalized.system = device.system || device.platform || device.os || 'android'
-        normalized.model = device.model || normalized.name
-        normalized.systemVersion = device.systemVersion || device.version || device.osVersion || '1.0.0'
-      }
-      
-      if (props.deviceType === 'playback') {
-        normalized.deviceUniqueId = device.deviceUniqueId || device.id || device.serial || device.uid
-        normalized.name = device.name || device.model || device.label || '未知播放设备'
-        normalized.model = device.model || normalized.name
-        normalized.sampleRate = device.sampleRate || 48000
-        normalized.channelIndex = device.channelIndex !== undefined ? device.channelIndex : 0
-        normalized.type = device.type || device.playbackType || 'output'
-      }
-      
-      if (props.deviceType === 'api') {
-        normalized.name = device.name || device.label || '未知 API'
-        normalized.endpoint = device.endpoint || device.url || device.address || ''
-        normalized.protocol = device.protocol || 'http'
-        normalized.id = device.id || device.uid || device.name
-      }
-      
-      return normalized
-    })
-    
+
+    // DTO → Domain 归一化已由 infrastructure adapter 完成（deviceAdapter），组件只消费 Domain 对象
+    scanResults.value = devices
+
     scanProgress.value = 100
     scanStatus.value = '扫描完成'
-    
-    console.log('[ScanDevicesModal] 扫描结果:', scanResults.value.length, '个设备')
-    
   } catch (error) {
     console.error('扫描设备失败:', error)
-    scanStatus.value = '扫描失败: ' + (error.message || '未知错误')
+    scanStatus.value = '扫描失败: ' + (error instanceof Error ? error.message : '未知错误')
   } finally {
     setTimeout(() => {
       isScanning.value = false
@@ -334,27 +172,19 @@ const startScan = async () => {
   }
 }
 
-const deviceTypeLabel = computed(() => {
-  const labels = { test: '测试设备', playback: '播放设备', api: 'API' }
-  return labels[props.deviceType] || '设备'
-})
-
 onMounted(() => {
-  console.log('[ScanDevicesModal] 组件已挂载')
-  
-  if (props.autoStartScan) {
-    console.log('[ScanDevicesModal] 自动开始扫描...')
+  if (props.autoStartScan && props.deviceType !== 'api') {
     startScan()
   }
 })
 
 onUnmounted(() => {
-  console.log('[ScanDevicesModal] 组件已卸载')
   if (typeof props.onClose === 'function') {
     props.onClose()
   }
 })
 </script>
+
 
 <style scoped>
 .scan-devices-modal {
@@ -409,8 +239,7 @@ onUnmounted(() => {
 }
 
 .serial-numbers-list,
-.audio-channels-list,
-.api-list {
+.audio-channels-list {
   display: flex;
   flex-direction: column;
   gap: 10px;
