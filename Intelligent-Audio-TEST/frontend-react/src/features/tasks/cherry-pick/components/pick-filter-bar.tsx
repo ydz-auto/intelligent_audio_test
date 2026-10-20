@@ -116,6 +116,8 @@ export interface PickFilterBarProps {
   onChange: (filters: PickFilters) => void
   options: { tasks: { id: number; name: string }[]; devices: { id: number; name: string }[]; resultTypes: string[] }
   onReset: () => void
+  /** §3.8.2 阶段 2：任务维度由阶段 1 锁定，隐藏「来源任务」facet */
+  hideTaskFacet?: boolean
 }
 
 /** 挑选筛选栏（会话级记忆：state 由父向导持有，切页签不持久） */
@@ -124,6 +126,7 @@ export function PickFilterBar({
   onChange,
   options,
   onReset,
+  hideTaskFacet = false,
 }: PickFilterBarProps) {
   const [searchDraft, setSearchDraft] = useState(filters.search ?? '')
   const searchTimer = useRef<number | null>(null)
@@ -143,7 +146,7 @@ export function PickFilterBar({
 
   const isFiltered =
     searchDraft.trim() !== '' ||
-    filters.taskIds.length > 0 ||
+    (hideTaskFacet ? false : filters.taskIds.length > 0) ||
     filters.deviceIds.length > 0 ||
     filters.apiIds.length > 0 ||
     filters.resultType.length > 0 ||
@@ -170,17 +173,19 @@ export function PickFilterBar({
         className='h-7 w-44 text-[0.8rem]'
         aria-label='搜索用例名称或 ID'
       />
-      <MultiFacet
-        label='来源任务'
-        options={taskOptions}
-        selected={filters.taskIds.map(String)}
-        onChange={(values) =>
-          onChange({
-            ...filters,
-            taskIds: values.map((v) => Number(v)),
-          })
-        }
-      />
+      {!hideTaskFacet && (
+        <MultiFacet
+          label='来源任务'
+          options={taskOptions}
+          selected={filters.taskIds.map(String)}
+          onChange={(values) =>
+            onChange({
+              ...filters,
+              taskIds: values.map((v) => Number(v)),
+            })
+          }
+        />
+      )}
       <MultiFacet
         label='设备'
         options={deviceOptions}

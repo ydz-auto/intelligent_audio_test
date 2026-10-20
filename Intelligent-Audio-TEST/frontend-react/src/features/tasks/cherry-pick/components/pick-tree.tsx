@@ -79,10 +79,13 @@ function LeafRow({
   leaf,
   selected,
   onToggle,
+  showLeafTask,
 }: {
   leaf: PickTreeLeaf
   selected: boolean
   onToggle: (leaf: PickTreeLeaf) => void
+  /** §3.8.3 三视图叶行携带来源任务名消歧（设备/结果类型/用例视图内树） */
+  showLeafTask?: boolean
 }) {
   const evalMeta = getEvaluationStatusMeta(leaf.evaluationStatus)
   return (
@@ -95,6 +98,14 @@ function LeafRow({
         onCheckedChange={() => onToggle(leaf)}
         aria-label={`结果 ${leaf.resultId}`}
       />
+      {showLeafTask && (
+        <span
+          className='text-muted-foreground/60 max-w-28 shrink-0 truncate font-mono text-[10px] tabular-nums'
+          title={`来源任务：${leaf.taskName}`}
+        >
+          {leaf.taskName}
+        </span>
+      )}
       <span className='min-w-0 flex-1 truncate font-medium'>{leaf.caseName}</span>
       <span className='text-muted-foreground min-w-0 max-w-40 truncate'>
         {leafDeviceName(leaf)}
@@ -148,6 +159,7 @@ function BranchRow({
   onToggleOpen,
   onToggleLeaf,
   onToggleBranch,
+  showLeafTask,
 }: {
   branch: PickTreeBranch
   selectedIds: ReadonlySet<number>
@@ -156,6 +168,7 @@ function BranchRow({
   onToggleOpen: (key: string) => void
   onToggleLeaf: (leaf: PickTreeLeaf) => void
   onToggleBranch: (branch: PickTreeBranch, select: boolean) => void
+  showLeafTask?: boolean
 }) {
   const state = getBranchSelectionState(branch, selectedIds)
   const Icon = isApiDeviceBranch(branch) ? ArrowLeftRight : LEVEL_ICONS[branch.level]
@@ -238,6 +251,7 @@ function BranchRow({
                   leaf={child}
                   selected={selectedIds.has(child.resultId)}
                   onToggle={onToggleLeaf}
+                  showLeafTask={showLeafTask}
                 />
               ) : (
                 <BranchRow
@@ -249,6 +263,7 @@ function BranchRow({
                   onToggleOpen={onToggleOpen}
                   onToggleLeaf={onToggleLeaf}
                   onToggleBranch={onToggleBranch}
+                  showLeafTask={showLeafTask}
                 />
               )
             )}
@@ -278,6 +293,8 @@ export interface PickTreeProps {
   onToggleBranch: (branch: PickTreeBranch, select: boolean) => void
   /** 外部「全部展开/全部收起」信号（{ all, tick }，tick 自增触发重放） */
   expandSignal?: { all: boolean; tick: number }
+  /** §3.8.3 三视图叶行携带来源任务名消歧（阶段 1 承载任务维度后的视图） */
+  showLeafTask?: boolean
   className?: string
 }
 
@@ -291,6 +308,7 @@ export function PickTree({
   onToggleLeaf,
   onToggleBranch,
   expandSignal,
+  showLeafTask,
   className,
 }: PickTreeProps) {
   const [openKeys, setOpenKeys] = useState<Set<string>>(new Set())
@@ -312,6 +330,7 @@ export function PickTree({
             leaf={item}
             selected={selectedIds.has(item.resultId)}
             onToggle={onToggleLeaf}
+            showLeafTask={showLeafTask}
           />
         ) : (
           <BranchRow
@@ -330,6 +349,7 @@ export function PickTree({
             }
             onToggleLeaf={onToggleLeaf}
             onToggleBranch={onToggleBranch}
+            showLeafTask={showLeafTask}
           />
         )
       )}
