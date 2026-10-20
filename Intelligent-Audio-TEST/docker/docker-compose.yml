@@ -494,6 +494,7 @@ services:
       - "${API_ADAPTER_SERVICE_HTTP_PORT:-5008}:5008"
       - "${API_ADAPTER_SERVICE_GRPC_PORT:-50081}:50081"
     environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-intelligent_audio_test}:${POSTGRES_PASSWORD:-intelligent_audio_test666}@postgres:5432/${POSTGRES_DB:-intelligent_audio_test}
       - ADAPTER_SERVICE_HTTP_PORT=5008
       - ADAPTER_SERVICE_GRPC_PORT=50081
       - VOICE_LLM_API_BASE=${VOICE_LLM_API_BASE:-}
