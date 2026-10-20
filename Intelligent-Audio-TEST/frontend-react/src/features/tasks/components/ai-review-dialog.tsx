@@ -147,6 +147,8 @@ export function AiReviewDialog({
 
   const handleAdopt = async () => {
     if (!record) return
+    // 存疑无明确判定可采纳（§5.5「uncertain→不预填留人工」）：入口已隐藏，兜底避免空改判载荷触发后端 400
+    if (record.verdict === 'uncertain') return
     setPhase('adopted')
     try {
       await adoptAiReview(record.id, {
@@ -278,6 +280,11 @@ export function AiReviewDialog({
               </div>
               <p className='text-muted-foreground mt-2 text-xs leading-5'>{record.reasoning}</p>
             </div>
+            {record.verdict === 'uncertain' && (
+              <p className='text-muted-foreground text-xs'>
+                存疑结论无明确判定可采纳，可驳回或忽略，或经人工复核确定结果
+              </p>
+            )}
           </div>
         )}
 
@@ -313,7 +320,10 @@ export function AiReviewDialog({
               <Button variant='ghost' onClick={handleReject}>
                 驳回
               </Button>
-              <Button onClick={handleAdopt}>采纳为复核结果</Button>
+              {/* 存疑无明确判定可采纳（§5.5「uncertain→不预填留人工」）：隐藏采纳钮，兜底走驳回/人工复核 */}
+              {record.verdict !== 'uncertain' && (
+                <Button onClick={handleAdopt}>采纳为复核结果</Button>
+              )}
             </>
           )}
           {(phase === 'rejected' || phase === 'adopted') && (

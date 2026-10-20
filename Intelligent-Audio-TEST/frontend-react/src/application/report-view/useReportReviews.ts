@@ -165,6 +165,8 @@ export function useAiReview(taskId: number, caseId: string) {
   /** 采纳：AI 结论落人工复核语义（真实端点 POST adopt；打开复核弹窗预填由消费侧处理） */
   const adopt = async (): Promise<boolean> => {
     if (!record) return false
+    // 存疑无明确判定可采纳（§5.5「uncertain→不预填留人工」）：入口已隐藏，兜底避免空改判载荷触发后端 400
+    if (record.verdict === 'uncertain') return false
     try {
       const updated = await adoptAiReview(record.id, {
         evaluationStatus: aiVerdictToEvaluationStatus(record.verdict),
