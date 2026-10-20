@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import { MOCK_TAGS } from '@/infrastructure/mock/testcases-mock'
+import { Badge } from '@/components/ui/badge'
 import { CaseCard, type CaseCardCallbacks } from '@/features/testcases/components/case-card'
 
 const makeCase = (overrides: Partial<TestCaseListItem> = {}): TestCaseListItem => ({
@@ -143,5 +144,68 @@ describe('CaseCard', () => {
     expect(screen.queryByLabelText('编辑用例')).not.toBeInTheDocument()
     // INT-486：不渲染类型徽章
     expect(screen.queryByText(/E2E测试|API测试/)).not.toBeInTheDocument()
+  })
+})
+
+describe('CaseCard 全站统一插槽（INT-1046：报告/任务域消费）', () => {
+  it('报告式：hideMeta + 自定义 actions + expandedContent，不渲染默认五钮', () => {
+    render(
+      <CaseCard
+        caseItem={makeCase({
+          algorithmType: null,
+          tags: ['音箱'],
+          totalDuration: null,
+          rounds: undefined,
+        })}
+        selected={false}
+        showCheckbox={false}
+        tagRegistry={[]}
+        leading={<span aria-label='状态点' />}
+        titleExtra={<Badge variant='outline'>未分类</Badge>}
+        hideMeta
+        actions={
+          <button type='button' aria-label='下载日志'>
+            下载日志
+          </button>
+        }
+        expandedContent={<div>展开详情区</div>}
+      />
+    )
+    expect(screen.getByLabelText('状态点')).toBeInTheDocument()
+    expect(screen.getByText('未分类')).toBeInTheDocument()
+    expect(screen.getByLabelText('下载日志')).toBeInTheDocument()
+    expect(screen.getByText('展开详情区')).toBeInTheDocument()
+    // 报告侧无勾选/无默认五钮/无描述次行
+    expect(screen.queryByLabelText(/选择 /)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('预览音频')).not.toBeInTheDocument()
+    expect(screen.queryByText(/最后编辑时间/)).not.toBeInTheDocument()
+    // 数据缺省不落空徽章（报告无时长/轮次/算法）
+    expect(screen.queryByText(/轮/)).not.toBeInTheDocument()
+  })
+
+  it('任务式：可点击名称 + meta 次行 + badgeLeading + footer，勾选回调生效', () => {
+    const onNameClick = vi.fn()
+    const onToggle = vi.fn()
+    render(
+      <CaseCard
+        caseItem={makeCase({ tags: [] })}
+        selected={false}
+        tagRegistry={[]}
+        onToggleSelect={(id, checked) => onToggle(id, checked)}
+        onNameClick={onNameClick}
+        meta={<span className='meta-line'>远场唤醒</span>}
+        badgeLeading={<span className='status-badge'>执行中</span>}
+        footer={<button type='button'>人工复核</button>}
+      />
+    )
+    expect(screen.getByText('远场唤醒')).toBeInTheDocument()
+    expect(screen.getByText('执行中')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '人工复核' })).toBeInTheDocument()
+    // 名称可点击 → 详情回调
+    fireEvent.click(screen.getByText('智能音箱-播放音乐-中文-客厅'))
+    expect(onNameClick).toHaveBeenCalledTimes(1)
+    // 勾选回调走 onToggleSelect（id + checked）
+    fireEvent.click(screen.getByLabelText('选择 智能音箱-播放音乐-中文-客厅'))
+    expect(onToggle).toHaveBeenCalledWith('tc-001', true)
   })
 })
