@@ -160,7 +160,7 @@ def _upload_audio_and_create_case(client, base, headers, audio_path, dim_id, dim
                 'uploadId': upload_id, 'partNumber': 1},
                 params={'oss_key': oss_key, 'category': 'audios'}, headers=headers, **CK)
             part_url = _resp_data(r).get('url')
-        put = client.put(part_url, content=content, timeout=60, **CK)
+        put = client.put(part_url, content=content, **{**CK, 'timeout': 60})
         assert put.status_code == 200, f'OSS PUT 失败: {put.status_code} {put.text[:200]}'
         etag = put.headers.get('ETag', '').strip('"')
         r = client.post(f'{base}/audios/upload/complete-direct', json={
