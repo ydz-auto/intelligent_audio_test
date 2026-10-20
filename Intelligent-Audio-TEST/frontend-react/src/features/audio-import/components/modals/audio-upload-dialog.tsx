@@ -69,7 +69,6 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
   const [customGroupName, setCustomGroupName] = useState('')
   const [tags, setTags] = useState('')
   const [inheritTags, setInheritTags] = useState(true)
-  const [annotationCode, setAnnotationCode] = useState('')
   const [folderConfig, setFolderConfig] = useState('select')
   const [naming, setNaming] = useState('keep')
   const [conflict, setConflict] = useState('rename')
@@ -106,11 +105,11 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
     }
     setUploading(true)
     try {
-      // 标注文件（json/jsonl/rttm/stm/txt）按文件名匹配音频解析；标注代码随 merge 落库
+      // 标注文件（json/jsonl/rttm/stm/txt）按文件名匹配音频解析；标注代码取上传算法类型随 merge 落库
       const perFileAnnotations = await parseAnnotationsForAudios(
         files,
         audioFiles,
-        annotationCode || algorithmType || undefined
+        algorithmType || undefined
       )
       const perFile: PerFileUploadConfig[] = audioFiles.map((f, idx) => ({
         groupName:
@@ -339,8 +338,6 @@ export function AudioUploadDialog(props: AudioUploadDialogProps) {
             onInheritTagsChange={setInheritTags}
             tags={tags}
             onTagsChange={setTags}
-            annotationCode={annotationCode}
-            onAnnotationCodeChange={setAnnotationCode}
           />
         </div>
 
