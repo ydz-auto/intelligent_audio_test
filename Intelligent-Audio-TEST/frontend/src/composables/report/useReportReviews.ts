@@ -238,40 +238,37 @@ export function useReportReviews(reportDataRef: () => any) {
     }
   }
 
-  /** 采纳 AI 复核结论 → 落人工复核语义（打开 §3.2 复核弹窗预填 AI 判定，§4.3） */
+  /** 采纳 AI 复核结论 → 落人工复核语义（打开 §3.2 复核弹窗预填 AI 判定；确认后单次 adopt，防双写留痕） */
   async function adoptAiReview(caseItem: any) {
     const caseId = String(caseItem?.id ?? caseItem?.testCaseId ?? '')
     const run = getAiRun(caseId)
     if (!run.record) return
-    // 待接线：POST /tasks/results/ai-review/{id}/adopt（§8-2 待后端立项）
-    await reviewApi.adoptAiReview(run.record.id)
+    const record = run.record
 
     // AI 判定 → 评估状态预填（对齐 React aiVerdictToEvaluationStatus：通过→已完成；不通过→评估失败；存疑→不预填）
-    const suggestedEvaluation = run.record.verdict === 'passed'
+    const suggestedEvaluation = record.verdict === 'passed'
       ? 'completed'
-      : run.record.verdict === 'failed'
+      : record.verdict === 'failed'
         ? 'failed'
         : undefined
-    const resultId = run.record.resultId
     try {
       // 打开复核弹窗预填 AI 判定的评估状态 + 备注（AI 理由），用户确认即可提交；
       // 点「取消」是正常操作（open() 取消即 reject），不落错误分支
       const res = await modalControl.open(MODAL_TYPES.RESULT_REVIEW, {
         title: '人工复核',
         taskId: sourceTaskId.value,
-        results: [{ resultId, executionStatus: undefined, evaluationStatus: suggestedEvaluation }],
+        results: [{ resultId: record.resultId, executionStatus: undefined, evaluationStatus: suggestedEvaluation }],
         reviewHistory: [],
-        initialEvaluationStatus: suggestedEvaluation,
-        initialComment: run.record.reasoning,
+        preset: { evaluationStatus: suggestedEvaluation, comment: record.reasoning },
       }).catch(() => undefined)
       if (res) {
-        const payload: ReviewSubmitPayload = {
-          resultIds: [resultId],
+        // 单次 adopt：POST /ai-review/{id}/adopt 内部复用 apply_review 落 test_result_reviews + 统计重算，
+        // 前端不补调 /tasks/results/review（防双写留痕）
+        await reviewApi.adoptAiReview(record.id, {
           executionStatus: res.executionStatus,
           evaluationStatus: res.evaluationStatus || suggestedEvaluation,
-          comment: res.comment || run.record.reasoning,
-        }
-        await reviewApi.submitReview(payload)
+          comment: res.comment || record.reasoning,
+        })
         aiReviewMap.value[caseId] = { ...run, phase: 'adopted' }
         const report = reportDataRef()
         if (report) await loadReportReviews(report)

@@ -40,7 +40,7 @@
               <span class="ai-verdict-badge" :class="verdictClass">
                 <i :class="verdictIcon"></i> {{ AI_VERDICT_LABELS[record.verdict] }}
               </span>
-              <span class="ai-confidence">置信度 {{ aiConfidenceLabel(record.confidence) }}（{{ Math.round(record.confidence * 100) }}%）</span>
+              <span class="ai-confidence">置信度 {{ aiConfidenceLabel(record.confidence.value) }}（{{ Math.round(record.confidence.value * 100) }}%）</span>
             </div>
             <p class="ai-reasoning">{{ record.reasoning }}</p>
             <div class="ai-compare">
@@ -104,9 +104,10 @@ import '../../../assets/styles/layouts/main.css'
  * 本组件只消费 reviewAiApi（requestAiReview / adoptAiReview / rejectAiReview），不感知桩/真实。
  */
 import { ref, computed } from 'vue'
+import type { AiReviewRecord } from '../../../domain/model/review'
 import {
-  AI_VERDICT_LABELS, aiConfidenceLabel, requestAiReview, adoptAiReview, rejectAiReview,
-  type AiReviewRecord, type AiReviewPhase,
+  AI_VERDICT_LABELS, aiConfidenceLabel, requestAiReview, rejectAiReview,
+  type AiReviewPhase,
 } from '../../../infrastructure/api/reviewAiApi'
 
 const props = defineProps<{
@@ -121,8 +122,11 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void
-  /** 人工采纳 → 父级打开 §3.2 复核弹窗预填（评估状态 + 备注=AI 理由） */
-  (e: 'adopt', preset: { evaluationStatus?: string; comment: string }): void
+  /**
+   * 人工采纳 → 父级打开 §3.2 复核弹窗预填（评估状态 + 备注=AI 理由），
+   * 人工确认后由父级**单次 adopt**（POST /ai-review/{id}/adopt，防双写留痕）。
+   */
+  (e: 'adopt', preset: { recordId: number; evaluationStatus?: string; comment: string }): void
 }>()
 
 const phase = ref<AiReviewPhase>('idle')
@@ -171,11 +175,12 @@ async function adopt() {
   if (!record.value) return
   phase.value = 'adopted'
   try {
-    await adoptAiReview(record.value.id)
     const verdict = record.value.verdict
     // §2.1：通过→已完成，不通过→评估失败，存疑→留给人工
     const presetEvaluation = verdict === 'passed' ? 'completed' : verdict === 'failed' ? 'failed' : undefined
+    // 采纳不在此处落库：打开 §3.2 复核弹窗预填，人工确认后由父级单次 adopt（防双写留痕）
     emit('adopt', {
+      recordId: record.value.id,
       evaluationStatus: presetEvaluation,
       comment: record.value.reasoning,
     })

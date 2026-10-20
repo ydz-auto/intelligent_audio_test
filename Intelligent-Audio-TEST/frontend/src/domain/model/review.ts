@@ -58,6 +58,33 @@ export const AI_REVIEW_VERDICT_LABELS: Record<AiReviewVerdict, string> = {
   uncertain: '存疑',
 }
 
+/**
+ * AI 复核记录状态（表 ai_reviews.status，INT-800 实测 pending/running/completed/failed/canceled）。
+ * 未知值容错渲染：展示兜底文案而非空白/报错（19 §5.7）。
+ */
+export type AiReviewRecordStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'canceled'
+  | (string & {})
+
+/** AI 复核记录状态中文映射（未知值兜底 = 原值，仍无则「未知」） */
+export const AI_REVIEW_STATUS_LABELS: Record<string, string> = {
+  pending: '待执行',
+  running: '复核中',
+  completed: '已完成',
+  failed: '复核失败',
+  canceled: '已取消',
+}
+
+/** ai_reviews.status 容错渲染：已知值映射中文，未知值原样展示（不报错） */
+export function aiReviewStatusLabel(status: string | null | undefined): string {
+  if (status === null || status === undefined || status === '') return '未知'
+  return AI_REVIEW_STATUS_LABELS[status] ?? status
+}
+
 /** AI 复核置信度（0-1 或高/中/低文本） */
 export interface AiReviewConfidence {
   value: number
@@ -65,8 +92,9 @@ export interface AiReviewConfidence {
 }
 
 /**
- * AI 复核记录（§5.3 数据契约建议；后端待立项，
- * 落地前 infrastructure 层返回符合 schema 的示例数据，代码标 `// 待接线`）。
+ * AI 复核记录（§5.7 契约定稿，后端表 ai_reviews 全字段 → camelCase Domain）。
+ * INT-1068：补 status/adoptedAt/rejectedAt/updatedAt 等落地字段；
+ * status 未知值由 aiReviewStatusLabel 容错渲染。
  */
 export interface AiReviewRecord {
   id: number
@@ -75,14 +103,21 @@ export interface AiReviewRecord {
   testCaseId?: string | null
   dimensionId?: number | null
   dimensionName?: string | null
+  /** 复核任务状态（pending/running/completed/failed/canceled；未知值容错渲染） */
+  status?: AiReviewRecordStatus | null
   verdict: AiReviewVerdict
   confidence: AiReviewConfidence
   reasoning: string
   /** 原评估判定（对比行「AI 判定 vs 原评估判定」） */
   originalEvaluationStatus?: string | null
   adopted: boolean
+  adoptedByUserId?: number | null
+  adoptedAt?: string | null
   rejected: boolean
+  rejectedByUserId?: number | null
+  rejectedAt?: string | null
   createdAt: string
+  updatedAt?: string | null
 }
 
 /** 报告侧复核统计徽章数据（§4.1 统计入口） */
@@ -110,6 +145,13 @@ export interface ReviewHistoryItemDomain {
 /** 人工复核提交载荷（POST /tasks/results/review） */
 export interface ReviewSubmitPayload {
   resultIds: (string | number)[]
+  executionStatus?: string
+  evaluationStatus?: string
+  comment: string
+}
+
+/** AI 复核采纳载荷（POST /tasks/results/ai-review/{id}/adopt；执行/评估至少一项 + 备注必填） */
+export interface AiReviewAdoptPayload {
   executionStatus?: string
   evaluationStatus?: string
   comment: string

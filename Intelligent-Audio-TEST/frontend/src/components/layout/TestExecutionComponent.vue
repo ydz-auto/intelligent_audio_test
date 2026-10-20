@@ -570,6 +570,7 @@ import { useModalControl, MODAL_TYPES } from '../../composables/modal/useModal';
 import { useNotification } from '../../composables/modal/useNotification';
 import AiReviewDialog from '../common/modal/AiReviewDialog.vue';
 import ReviewHistoryDrawer from '../common/modal/ReviewHistoryDrawer.vue';
+import * as reviewAiApi from '../../infrastructure/api/reviewAiApi';
 // INT-301 F3：双徽章图标/文案单一定义源 utils/taskStatusBadge.ts；配色单一定义源 TaskCard.css
 
 const props = defineProps({
@@ -819,7 +820,7 @@ async function submitReview(resultIds, payload, _testCase) {
   }
 }
 
-/** AI 采纳 → 打开 §3.2 复核弹窗预填（AI 判定的评估状态 + 备注=AI 理由） */
+/** AI 采纳 → 打开 §3.2 复核弹窗预填（AI 判定的评估状态 + 备注=AI 理由），人工确认后单次 adopt */
 async function adoptAiReviewIntoManual(preset) {
   if (!aiReviewTarget.value) return;
   const results = aiReviewTarget.value.results.map((r) => ({
@@ -841,7 +842,16 @@ async function adoptAiReviewIntoManual(preset) {
     preset,
   });
   if (payload) {
-    await submitReview(results.map((r) => r.resultId), payload);
+    // 单次 adopt：POST /ai-review/{id}/adopt 内部落人工复核语义（test_result_reviews + 统计重算），
+    // 不补调 /tasks/results/review（防双写留痕）
+    await reviewAiApi.adoptAiReview(preset.recordId, {
+      executionStatus: payload.executionStatus,
+      evaluationStatus: payload.evaluationStatus,
+      comment: payload.comment,
+    });
+    notification.success('已采纳 AI 复核结论，复核已提交');
+    await loadReviewCount();
+    emit('refreshReview');
     aiReviewTarget.value = null;
   }
 }

@@ -25,7 +25,7 @@ export function toReviewHistoryDomain(raw: Record<string, unknown>): ReviewHisto
   };
 }
 
-/** AI 复核记录 → AiReviewRecord（后端 §5.3 建议 schema） */
+/** AI 复核记录 → AiReviewRecord（后端表 ai_reviews 全字段，INT-800 契约定稿） */
 export function toAiReviewRecord(raw: Record<string, unknown>): AiReviewRecord {
   const confidenceRaw = raw.confidence;
   const confidenceValue = typeof confidenceRaw === 'number' ? confidenceRaw : Number(confidenceRaw ?? 0);
@@ -44,6 +44,7 @@ export function toAiReviewRecord(raw: Record<string, unknown>): AiReviewRecord {
     testCaseId: raw.test_case_id === null || raw.test_case_id === undefined ? null : s(raw.test_case_id),
     dimensionId: raw.dimension_id === null || raw.dimension_id === undefined ? null : Number(raw.dimension_id),
     dimensionName: raw.dimension_name === null || raw.dimension_name === undefined ? null : s(raw.dimension_name),
+    status: raw.status === null || raw.status === undefined ? null : s(raw.status) as AiReviewRecord['status'],
     verdict,
     confidence,
     reasoning: raw.reasoning === null || raw.reasoning === undefined ? '' : s(raw.reasoning),
@@ -52,7 +53,16 @@ export function toAiReviewRecord(raw: Record<string, unknown>): AiReviewRecord {
         ? null
         : s(raw.original_evaluation_status),
     adopted: Boolean(raw.adopted),
+    adoptedByUserId: raw.adopted_by_user_id === null || raw.adopted_by_user_id === undefined
+      ? null
+      : Number(raw.adopted_by_user_id),
+    adoptedAt: raw.adopted_at === null || raw.adopted_at === undefined ? null : s(raw.adopted_at),
     rejected: Boolean(raw.rejected),
+    rejectedByUserId: raw.rejected_by_user_id === null || raw.rejected_by_user_id === undefined
+      ? null
+      : Number(raw.rejected_by_user_id),
+    rejectedAt: raw.rejected_at === null || raw.rejected_at === undefined ? null : s(raw.rejected_at),
     createdAt: raw.created_at === null || raw.created_at === undefined ? '' : s(raw.created_at),
+    updatedAt: raw.updated_at === null || raw.updated_at === undefined ? null : s(raw.updated_at),
   };
 }

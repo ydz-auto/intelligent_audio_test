@@ -437,21 +437,15 @@
       </div>
     </teleport>
 
-    <!-- INT-797：AI 复核发起弹窗 + 结论卡 + 人工处置（§4.3） -->
-    <AiReviewDialog
-      :visible="aiReviewDialogVisible"
-      :case-name="aiReviewCaseName"
-      :dimension-name="aiReviewDimensionName"
-      :original-evaluation-status="aiReviewOriginalEvaluationStatus"
-      :phase="aiReviewPhase"
-      :record="aiReviewRecord"
-      :error="aiReviewError"
-      :initiating="aiReviewInitiating"
-      @close="closeAiReviewDialog"
-      @initiate="initiateAiReviewForDialog"
-      @adopt="adoptAiReviewForDialog"
-      @reject="rejectAiReviewForDialog"
-      @ignore="ignoreAiReviewForDialog"
+    <!-- INT-1068：AI 复核灵犀Agent 会话（§5.2 对话式复核，可追问；独立会话 scope） -->
+    <AiReviewSessionDialog
+      v-if="aiReviewSessionTarget"
+      :visible="true"
+      :task-id="aiReviewSessionTarget.taskId"
+      :case-id="aiReviewSessionTarget.caseId"
+      :case-name="aiReviewSessionTarget.caseName"
+      @close="aiReviewSessionTarget = null"
+      @adopted="handleAiAdopted"
     />
     </div>
   </div>
@@ -476,7 +470,7 @@ import TestCaseReportDetail from '../common/misc/TestCaseReportDetail.vue'
 import PaginationComponent from '../common/data/PaginationComponent.vue'
 import CaseIdBadge from '../common/CaseIdBadge.vue'
 import CaseReviewBadge from './CaseReviewBadge.vue'
-import AiReviewDialog from './AiReviewDialog.vue'
+import AiReviewSessionDialog from '../ai-review/AiReviewSessionDialog.vue'
 import { useAuthStore } from '@/store/authStore'
 import { AuthMode, getEffectiveAuthMode } from '@/domain/enums'
 import { computed, ref } from 'vue'
@@ -599,78 +593,27 @@ const handleManualReview = (caseItem) => {
   reportReviews.openManualReview(caseItem)
 }
 
-// ---- AI 复核（§4.3）弹窗状态 ----
-const aiReviewDialogVisible = ref(false)
-const aiReviewCase = ref(null)
-const aiReviewCaseName = ref('')
-const aiReviewDimensionName = ref('')
-const aiReviewOriginalEvaluationStatus = ref('')
-const aiReviewInitiating = ref(false)
-
-const aiReviewPhase = ref('idle')
-const aiReviewRecord = ref(null)
-const aiReviewError = ref('')
-
-const closeAiReviewDialog = () => {
-  if (aiReviewPhase.value === 'running') return // 执行中不关闭
-  aiReviewDialogVisible.value = false
-  aiReviewCase.value = null
-  aiReviewPhase.value = 'idle'
-  aiReviewRecord.value = null
-  aiReviewError.value = ''
-}
+// ---- AI 复核（§4.3/§5.2，INT-1068 灵犀Agent 对话式会话） ----
+const aiReviewSessionTarget = ref(null)
 
 const handleAiReview = (caseItem) => {
-  aiReviewCase.value = caseItem
-  aiReviewCaseName.value = caseItem?.name ?? '用例'
-  aiReviewDimensionName.value = ''
-  aiReviewOriginalEvaluationStatus.value = ''
-  const key = String(caseItem?.id ?? '')
-  const run = reportReviews.aiReviewMap.value[key]
-  aiReviewPhase.value = run?.phase ?? 'idle'
-  aiReviewRecord.value = run?.record ?? null
-  aiReviewError.value = run?.error ?? ''
-  aiReviewDialogVisible.value = true
-}
-
-const initiateAiReviewForDialog = async () => {
-  if (!aiReviewCase.value) return
-  aiReviewInitiating.value = true
-  try {
-    await reportReviews.initiateAiReview(aiReviewCase.value)
-    const key = String(aiReviewCase.value?.id ?? '')
-    const run = reportReviews.aiReviewMap.value[key]
-    aiReviewPhase.value = run?.phase ?? 'idle'
-    aiReviewRecord.value = run?.record ?? null
-    aiReviewError.value = run?.error ?? ''
-  } finally {
-    aiReviewInitiating.value = false
+  // §5.2 可发起对象：该用例存在执行结果（评估已完成/评估失败）；报告缺来源任务时不可发起
+  if (reportReviews.sourceTaskId.value === '') {
+    reportReviews.reviewsError.value = '报告缺少来源任务，无法发起 AI 复核'
+    return
+  }
+  aiReviewSessionTarget.value = {
+    taskId: reportReviews.sourceTaskId.value,
+    caseId: String(caseItem?.id ?? caseItem?.testCaseId ?? ''),
+    caseName: caseItem?.name ?? '用例',
   }
 }
 
-const adoptAiReviewForDialog = async () => {
-  if (!aiReviewCase.value) return
-  await reportReviews.adoptAiReview(aiReviewCase.value)
-  const key = String(aiReviewCase.value?.id ?? '')
-  const run = reportReviews.aiReviewMap.value[key]
-  aiReviewPhase.value = run?.phase ?? 'idle'
-  if (aiReviewPhase.value === 'adopted') {
-    aiReviewDialogVisible.value = false
+/** 采纳落位成功：刷新来源任务复核历史与报告级计数 */
+const handleAiAdopted = () => {
+  if (props.reportData) {
+    reportReviews.loadReportReviews(props.reportData)
   }
-}
-
-const rejectAiReviewForDialog = async () => {
-  if (!aiReviewCase.value) return
-  await reportReviews.rejectAiReview(aiReviewCase.value)
-  const key = String(aiReviewCase.value?.id ?? '')
-  const run = reportReviews.aiReviewMap.value[key]
-  aiReviewPhase.value = run?.phase ?? 'idle'
-}
-
-const ignoreAiReviewForDialog = () => {
-  if (!aiReviewCase.value) return
-  reportReviews.ignoreAiReview(aiReviewCase.value)
-  aiReviewDialogVisible.value = false
 }
 </script>
 
