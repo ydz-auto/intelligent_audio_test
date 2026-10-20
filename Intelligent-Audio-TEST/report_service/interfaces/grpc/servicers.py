@@ -780,16 +780,40 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
         请求字段（proto DownloadCaseLogsRequest）：
             report_id: int   报告 ID
             case_id: str     用例 ID
+            files: repeated string  可选，逻辑文件名筛选（缺省 = 整包，INT-1062）
         """
         try:
             report_id = getattr(request, 'report_id', 0)
             case_id = getattr(request, 'case_id', '')
-            data = self.query_handler.handle_download_case_logs(report_id, case_id)
+            files = list(getattr(request, 'files', []) or [])
+            data = self.query_handler.handle_download_case_logs(
+                report_id, case_id, files or None)
             if not data.get('content_base64'):
-                return self._resp(False, data.get('message', 'download failed'), data)
+                return self._resp(False, data.get('message', 'download failed'),
+                                  data, code=data.get('code', 0))
             return self._resp(True, 'ok', data)
         except Exception as e:
             logger.exception("DownloadCaseLogs failed")
+            return self._resp(False, str(e), {})
+
+    def ListCaseLogs(self, request, context=None):
+        """查询用例日志文件列表（INT-1062）。
+
+        请求字段（proto ListCaseLogsRequest）：
+            report_id: int   报告 ID
+            case_id: str     用例 ID
+        返回：{items: [{name, size, updated_at?}]}
+        """
+        try:
+            report_id = getattr(request, 'report_id', 0)
+            case_id = getattr(request, 'case_id', '')
+            data = self.query_handler.handle_list_case_logs(report_id, case_id)
+            if data.get('success') is False:
+                return self._resp(False, data.get('message', '查询日志文件列表失败'),
+                                  data, code=data.get('code', 0))
+            return self._resp(True, 'ok', data)
+        except Exception as e:
+            logger.exception("ListCaseLogs failed")
             return self._resp(False, str(e), {})
 
     def BuildReferenceParams(self, request, context=None):

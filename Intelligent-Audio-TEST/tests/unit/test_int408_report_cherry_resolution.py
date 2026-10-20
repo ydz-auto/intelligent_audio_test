@@ -308,7 +308,11 @@ class TestCaseLogsCherryResolution:
         assert test_result['id'] == 55
 
     def test_write_case_log_files_uses_source_task_prefix(self, stub_cherry, monkeypatch):
-        """验收3：按挑选关系落源任务前缀解析存储目录并写入 ZIP。"""
+        """验收3：按挑选关系落源任务前缀解析存储目录并写入 ZIP。
+
+        INT-1062 起 _write_case_log_files 经 list_objects_with_meta 枚举
+        （列表/打包共用同一套逻辑名），mock 随之切换。
+        """
         from report_service.application.handlers._report_stats_query_mixin import (
             ReportStatsQueryMixin,
         )
@@ -316,11 +320,13 @@ class TestCaseLogsCherryResolution:
 
         seen_prefixes = []
 
-        def _list_objects(category, prefix=''):
+        def _list_objects_with_meta(category, prefix=''):
             seen_prefixes.append(prefix)
-            return [f'{SOURCE_TASK_ID}/ACC408-C1/out.wav']
+            return [{'key': f'{SOURCE_TASK_ID}/ACC408-C1/out.wav',
+                     'sizeBytes': 4, 'lastModified': None}]
 
-        monkeypatch.setattr(storage_mod.storage, 'list_objects', _list_objects)
+        monkeypatch.setattr(storage_mod.storage, 'list_objects_with_meta',
+                            _list_objects_with_meta)
         monkeypatch.setattr(storage_mod.storage, 'load_bytes',
                             lambda path: b'DATA')
 

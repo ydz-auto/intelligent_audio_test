@@ -124,7 +124,7 @@ class ReportStatsQueryMixin:
             }
         }
 
-    def handle_download_case_logs(self, report_id: int, case_id: str) -> dict:
+    def handle_download_case_logs(self, report_id: int, case_id: str, files=None) -> dict:
         """处理下载用例日志。
 
         查询报告关联任务的合并关系、TestResult，从存储列出 case 日志文件，
@@ -133,6 +133,8 @@ class ReportStatsQueryMixin:
         Args:
             report_id: 报告 ID
             case_id: 用例 ID
+            files: 可选，逻辑文件名筛选（INT-1062，与列表端点 name / ZIP arcname
+                同一套逻辑名）；None 或缺省 = 整包（向后兼容）
 
         Returns:
             dict: {filename, content_base64, size} 或 {success: False, message}
@@ -142,7 +144,8 @@ class ReportStatsQueryMixin:
             return query_result
         task_ids_to_search, test_result = query_result
 
-        return self._format_logs_download(task_ids_to_search, test_result, report_id, case_id)
+        return self._format_logs_download(
+            task_ids_to_search, test_result, report_id, case_id, files)
 
     # ---- 日志下载私有辅助 ----
 
@@ -201,14 +204,19 @@ class ReportStatsQueryMixin:
         return task_ids_to_search, test_result
 
     @staticmethod
-    def _format_logs_download(task_ids_to_search: list, test_result, report_id: int, case_id: str) -> dict:
+    def _format_logs_download(task_ids_to_search: list, test_result, report_id: int,
+                              case_id: str, files=None) -> dict:
         """根据查询到的日志数据构建 ZIP 并以 base64 编码返回。
+
+        INT-1062：files 为逻辑文件名筛选（同一套逻辑名 = 列表 name = ZIP arcname）；
+        缺省整包；按选时 ZIP 仅含所选文件，任一所选文件未命中 → 404。
 
         Args:
             task_ids_to_search: 需搜索的任务 ID 列表
             test_result: 测试结果对象
             report_id: 报告 ID
             case_id: 用例 ID
+            files: 可选，逻辑文件名列表（None = 整包）
 
         Returns:
             dict: {filename, content_base64, size} 或 {success: False, message}
@@ -216,11 +224,12 @@ class ReportStatsQueryMixin:
         import base64
         import io as _io
         import json as _json
-        import os as _os
         import zipfile as _zipfile
         from shared.utils.result_data_store import load_full_result_data
 
         zip_filename = f"case_{case_id}_logs.zip"
+        selected = set(files) if files else None
+        written = set()
 
         # INT-81：用例日志下载含业务日志文件（logs/business/{task}/{device}/...），
         # 按结果的被测设备收敛范围（结果无设备信息时取任务全量）
@@ -233,10 +242,10 @@ class ReportStatsQueryMixin:
         found_any = False
         with _zipfile.ZipFile(zip_buffer, 'w', _zipfile.ZIP_DEFLATED) as zf:
             found_any = ReportStatsQueryMixin._write_case_log_files(
-                zf, task_ids_to_search, case_id, found_any)
+                zf, task_ids_to_search, case_id, found_any, selected, written)
 
             if ReportStatsQueryMixin._write_business_log_files(
-                    zf, task_ids_to_search, device_id):
+                    zf, task_ids_to_search, device_id, selected, written):
                 found_any = True
 
             full_data = {}
@@ -248,7 +257,18 @@ class ReportStatsQueryMixin:
                 adjusted_params = full_data['adjusted_reference_params']
                 if adjusted_params:
                     params_json = _json.dumps(adjusted_params, ensure_ascii=False, indent=2)
-                    zf.writestr("adjusted_reference_params.json", params_json)
+                    if selected is None or 'adjusted_reference_params.json' in selected:
+                        zf.writestr("adjusted_reference_params.json", params_json)
+                        written.add("adjusted_reference_params.json")
+                        found_any = True
+
+        # INT-1062：按选打包时，任一所选文件未命中 → 404（清单不可用语义）
+        if selected is not None:
+            missing = sorted(selected - written)
+            if missing:
+                return {'success': False,
+                        'message': f'以下日志文件不存在: {", ".join(missing)}',
+                        'code': 404}
 
         if not found_any:
             return {'success': False, 'message': '未找到用例日志目录'}
@@ -264,49 +284,182 @@ class ReportStatsQueryMixin:
         }
 
     @staticmethod
-    def _write_business_log_files(zf, task_ids_to_search: list, device_id) -> bool:
-        """将任务的业务日志文件（INT-81 路径体系）写入 ZIP，返回是否写入文件。"""
+    def _write_business_log_files(zf, task_ids_to_search: list, device_id,
+                                  files=None, written=None) -> bool:
+        """将任务的业务日志文件（INT-81 路径体系）写入 ZIP，返回是否写入文件。
+
+        INT-1062：files 为逻辑文件名筛选（business_logs/{rel}），缺省整包；
+        written 非空时记录实际写入的逻辑名（供按选打包缺文件 404 判定）。
+        """
         from shared.logging import BusinessLogReader
 
+        selected = set(files) if files else None
         reader = BusinessLogReader()
         wrote_any = False
         for task_id in task_ids_to_search:
             try:
-                files = reader.load_file_bytes(task_id=task_id, device_id=device_id)
+                files_ = reader.load_file_bytes(task_id=task_id, device_id=device_id)
             except Exception:
                 logger.debug("收集业务日志文件失败 task_id=%s", task_id, exc_info=True)
                 continue
-            for rel_path, content in files:
-                zf.writestr(f"business_logs/{rel_path}", content)
+            for rel_path, content in files_:
+                arcname = f"business_logs/{rel_path}"
+                if selected is not None and arcname not in selected:
+                    continue
+                zf.writestr(arcname, content)
+                if written is not None:
+                    written.add(arcname)
                 wrote_any = True
         return wrote_any
 
     @staticmethod
-    def _write_case_log_files(zf, task_ids_to_search: list, case_id: str, found_any: bool) -> bool:
-        """遍历各任务从存储收集 case 日志文件写入 ZIP。返回是否有文件被写入。"""
+    def _write_case_log_files(zf, task_ids_to_search: list, case_id: str,
+                              found_any: bool, files=None, written=None) -> bool:
+        """遍历各任务从存储收集 case 日志文件写入 ZIP。返回是否有文件被写入。
+
+        INT-1062：files 为逻辑文件名筛选（{task_id}/{case_id}/ 相对路径，
+        multi-source 带 task_{id}/ 前缀，与列表端点同一套逻辑名），缺省整包；
+        written 非空时记录实际写入的逻辑名。
+        """
         from shared.infrastructure.storage import storage
 
+        selected = set(files) if files else None
+        for src in ReportStatsQueryMixin._iter_case_log_sources(task_ids_to_search, case_id):
+            if selected is not None and src['arcname'] not in selected:
+                continue
+            # 下载文件内容
+            try:
+                file_data = storage.load_bytes(f'case_result/{src["oss_key"]}')
+            except Exception:
+                continue
+            zf.writestr(src['arcname'], file_data)
+            if written is not None:
+                written.add(src['arcname'])
+            found_any = True
+        return found_any
+
+    @staticmethod
+    def _iter_case_log_sources(task_ids_to_search: list, case_id: str):
+        """枚举 case 日志存储条目（INT-1062：列表/打包共用同一套逻辑名）。
+
+        yield {arcname, oss_key, size, last_modified}：
+            arcname（ZIP 内逻辑名）= {task_id}/{case_id}/ 下相对路径；
+            multi-source（task_ids_to_search > 1）时带 task_{id}/ 前缀
+            （对齐 _write_case_log_files 既有口径）。
+        """
+        from shared.infrastructure.storage import storage
+
+        multi = len(task_ids_to_search) > 1
         for search_task_id in task_ids_to_search:
             # OSS: 列出 case-result bucket 下 {task_id}/{case_id}/ 的所有文件
             oss_prefix = f'{search_task_id}/{case_id}/'
             try:
-                oss_keys = storage.list_objects('case_result', prefix=oss_prefix)
+                metas = storage.list_objects_with_meta('case_result', prefix=oss_prefix)
             except Exception:
-                oss_keys = []
-            if not oss_keys:
                 continue
-            found_any = True
-            for oss_key in oss_keys:
-                # 下载文件内容
-                try:
-                    file_data = storage.load_bytes(f'case_result/{oss_key}')
-                    arcname = oss_key[len(oss_prefix):]  # 去掉前缀
-                    if len(task_ids_to_search) > 1:
-                        arcname = _os_path_join(f"task_{search_task_id}", arcname)
-                    zf.writestr(arcname, file_data)
-                except Exception:
+            for meta in metas:
+                oss_key = meta.get('key', '')
+                if not oss_key.startswith(oss_prefix):
                     continue
-        return found_any
+                arcname = oss_key[len(oss_prefix):]  # 去掉前缀
+                if multi:
+                    arcname = _os_path_join(f"task_{search_task_id}", arcname)
+                yield {
+                    'arcname': arcname,
+                    'oss_key': oss_key,
+                    'size': int(meta.get('sizeBytes', 0) or 0),
+                    'last_modified': meta.get('lastModified'),
+                }
+
+    # ---- 日志文件列表（INT-1062）----
+
+    def handle_list_case_logs(self, report_id: int, case_id: str) -> dict:
+        """查询用例日志文件列表（INT-1062，GET /reports/{id}/cases/{cid}/logs）。
+
+        与下载打包共用同一套逻辑名（列表 name = ZIP arcname = files= 匹配值），
+        枚举 case 日志 / business 日志 / 根级 adjusted_reference_params.json。
+
+        Args:
+            report_id: 报告 ID
+            case_id: 用例 ID
+
+        Returns:
+            {items: [{name, size, updated_at?}]} 或 {success: False, message}
+        """
+        query_result = self._query_case_logs(report_id, case_id)
+        if not isinstance(query_result, tuple):
+            return query_result
+        task_ids_to_search, test_result = query_result
+
+        items = ReportStatsQueryMixin._enumerate_log_entries(
+            task_ids_to_search, test_result, report_id, case_id)
+        return {'items': items}
+
+    @staticmethod
+    def _enumerate_log_entries(task_ids_to_search: list, test_result,
+                               report_id: int, case_id: str) -> list:
+        """枚举用例日志逻辑文件列表（INT-1062）。
+
+        逻辑名与 ZIP arcname 同一套：case 日志（{task_id}/{case_id}/ 相对路径，
+        multi-source 带 task_{id}/ 前缀）、business 日志（business_logs/{rel}）、
+        根级 adjusted_reference_params.json。business 日志无 mtime 时省略
+        updated_at（字段可选，不为无 mtime 数据补造时间）。
+
+        Returns:
+            [{'name': str, 'size': int, 'updated_at': str|None}]
+        """
+        import json as _json
+        from datetime import datetime
+        from shared.logging import BusinessLogReader
+        from shared.utils.result_data_store import load_full_result_data
+
+        items = []
+
+        # 1. case 日志（OSS case_result bucket）
+        for src in ReportStatsQueryMixin._iter_case_log_sources(task_ids_to_search, case_id):
+            item = {'name': src['arcname'], 'size': int(src.get('size', 0) or 0)}
+            last_mod = src.get('last_modified')
+            if last_mod is not None:
+                item['updated_at'] = (last_mod.isoformat() if isinstance(last_mod, datetime)
+                                      else str(last_mod))
+            items.append(item)
+
+        # 2. business 日志（business_logs/{rel}）
+        reader = BusinessLogReader()
+        device_id = None
+        if test_result:
+            device_id = (test_result.get('device_id') if isinstance(test_result, dict)
+                         else getattr(test_result, 'device_id', None))
+        for task_id in task_ids_to_search:
+            try:
+                log_metas = reader.list_log_files_with_meta(
+                    task_id=task_id, device_id=device_id)
+            except Exception:
+                logger.debug("枚举业务日志文件失败 task_id=%s", task_id, exc_info=True)
+                continue
+            for meta in log_metas:
+                item = {'name': f"business_logs/{meta['rel']}", 'size': int(meta['size'] or 0)}
+                mtime = meta.get('mtime')
+                if mtime is not None:
+                    item['updated_at'] = mtime.isoformat()
+                items.append(item)
+
+        # 3. 根级 adjusted_reference_params.json
+        if test_result:
+            tr_result_data = (test_result.get('result_data') if isinstance(test_result, dict)
+                              else getattr(test_result, 'result_data', None))
+            tr_result_data_path = (test_result.get('result_data_path') if isinstance(test_result, dict)
+                                   else getattr(test_result, 'result_data_path', None))
+            full_data = load_full_result_data(tr_result_data, tr_result_data_path)
+            if full_data and full_data.get('adjusted_reference_params'):
+                params_json = _json.dumps(full_data['adjusted_reference_params'],
+                                          ensure_ascii=False, indent=2)
+                items.append({
+                    'name': 'adjusted_reference_params.json',
+                    'size': len(params_json.encode('utf-8')),
+                })
+
+        return items
 
     # ---- 平均值统计私有辅助 ----
 
@@ -440,6 +593,10 @@ class ReportStatsQueryMixin:
 
 
 def _os_path_join(*parts) -> str:
-    """os.path.join 的模块级代理（保持 _format_logs_download 结构清晰）。"""
-    import os
-    return os.path.join(*parts)
+    """模块级路径拼接代理（保持 _format_logs_download 结构清晰）。
+
+    INT-1062：统一返回 '/' 分隔的逻辑名——ZIP 内 arcname 经 zipfile 归一为 '/'
+    （Windows os.path.join 产出 '\\' 会使列表 name 与 ZIP namelist 不一致），
+    列表 name = ZIP arcname = files= 匹配值三处必须同一套逻辑名。
+    """
+    return '/'.join(str(p).replace('\\', '/').strip('/') for p in parts if p)

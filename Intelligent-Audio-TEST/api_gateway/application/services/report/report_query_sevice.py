@@ -4,6 +4,7 @@
 职责：参数校验 + gRPC 调用 report_service，不含业务逻辑。
 """
 import base64
+import json
 import logging
 
 from api_gateway.infrastructure.request_adapter import request
@@ -394,13 +395,33 @@ class ReportQueryService:
         if not case_id:
             return error_response('case_id 不能为空', 400)
 
+        # INT-1062：?files= URL 编码 JSON 字符串数组（如 ["a.txt","b.log"]），
+        # 缺省 = 整包（向后兼容）；空数组/非法元素 → 400
+        files = None
+        files_raw = request.args.get('files')
+        if files_raw:
+            try:
+                parsed = json.loads(files_raw)
+            except (ValueError, TypeError):
+                return error_response('files 参数必须是 URL 编码的 JSON 字符串数组', 400)
+            if not isinstance(parsed, list):
+                return error_response('files 参数必须是数组', 400)
+            if not parsed:
+                return error_response('files 参数为空数组', 400)
+            if not all(isinstance(f, str) and f for f in parsed):
+                return error_response('files 参数必须是非空字符串数组', 400)
+            files = parsed
+
         try:
             stub = report_config_service.stub
             resp = stub.DownloadCaseLogs(report_pb.DownloadCaseLogsRequest(
                 report_id=int(report_id),
-                case_id=str(case_id)))
+                case_id=str(case_id),
+                files=files or []))
             if not resp.success:
-                return error_response(resp.message or '下载失败')
+                return error_response(resp.message or '下载失败',
+                                      http_code=resp.code or 400,
+                                      detail=_loads(resp.data, {}) or None)
             data = _loads(resp.data, {}) or {}
             if data.get('content_base64'):
                 return {
@@ -412,6 +433,30 @@ class ReportQueryService:
             return success_response(data)
         except Exception as e:
             return error_response(f'下载用例日志失败: {str(e)}')
+
+    @staticmethod
+    def list_case_logs(report_id, case_id):
+        """查询用例日志文件列表（GET /reports/{id}/cases/{cid}/logs，report:read）。
+
+        返回 {items: [{name, size, updated_at?}]}，name 与下载 ZIP arcname / files=
+        同一套逻辑名（INT-1062）。
+        """
+        if not case_id:
+            return error_response('case_id 不能为空', 400)
+
+        try:
+            stub = report_config_service.stub
+            resp = stub.ListCaseLogs(report_pb.ListCaseLogsRequest(
+                report_id=int(report_id),
+                case_id=str(case_id)))
+            if not resp.success:
+                return error_response(resp.message or '查询日志文件列表失败',
+                                      http_code=resp.code or 400,
+                                      detail=_loads(resp.data, {}) or None)
+            data = _loads(resp.data, {}) or {}
+            return success_response(data)
+        except Exception as e:
+            return error_response(f'查询日志文件列表失败: {str(e)}')
 
     # ------------------------------------------------------------------
     # 报告分享（INT-971）
