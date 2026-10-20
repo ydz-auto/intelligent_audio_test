@@ -154,6 +154,8 @@ export function DailyTaskTable({
   onPublish,
   onBatchPublish,
   onJoinPick,
+  selected,
+  onSelectionChange,
   onCreate,
 }: {
   tasks: TaskListItem[]
@@ -167,26 +169,26 @@ export function DailyTaskTable({
   onBatchPublish: (tasks: TaskListItem[]) => void
   /** 加入挑选（§2.2 裁定②） */
   onJoinPick?: (tasks: TaskListItem[]) => void
+  /** 勾选任务 id 集（受控：18 §3.8.1 工具栏「开始挑选」读取预选） */
+  selected: Set<number>
+  onSelectionChange: (next: Set<number>) => void
   onCreate: () => void
 }) {
   const { hasPermission } = usePermissions()
   const navigate = useNavigate()
-  const [selected, setSelected] = useState<Set<number>>(new Set())
   const [visible, setVisible] = useState<Set<ColumnKey>>(
     () => new Set(DEFAULT_VISIBLE)
   )
 
   const toggleRow = (id: number, checked: boolean) => {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (checked) next.add(id)
-      else next.delete(id)
-      return next
-    })
+    const next = new Set(selected)
+    if (checked) next.add(id)
+    else next.delete(id)
+    onSelectionChange(next)
   }
 
   const toggleAll = (checked: boolean) => {
-    setSelected(checked ? new Set(tasks.map((t) => t.id)) : new Set())
+    onSelectionChange(checked ? new Set(tasks.map((t) => t.id)) : new Set())
   }
 
   const allChecked = tasks.length > 0 && tasks.every((t) => selected.has(t.id))
@@ -437,7 +439,7 @@ export function DailyTaskTable({
       <TaskBulkActions
         tasks={tasks}
         selected={selected}
-        onClear={() => setSelected(new Set())}
+        onClear={() => onSelectionChange(new Set())}
         trash={trash}
         onBatchPublish={onBatchPublish}
         onJoinPick={onJoinPick}
