@@ -142,7 +142,7 @@ describe('入参泛化（INT-1046：SubViewCaseItem 子集输入）', () => {
   })
 
   it('groupCasesByTag 接受收敛子集输入，聚合结果与 TestCaseListItem 输入同口径', () => {
-    const cases: SubViewCaseItem[] = [
+    const cases: Array<SubViewCaseItem & { id: string }> = [
       subset('c-1', { tags: ['1人'], totalDuration: 60 }),
       subset('c-2', { tags: ['1人', '客厅'], totalDuration: 30 }),
     ]
@@ -158,7 +158,7 @@ describe('入参泛化（INT-1046：SubViewCaseItem 子集输入）', () => {
   })
 
   it('groupCasesByCaseGroup 接受收敛子集输入，未分组兜底与泛化前一致', () => {
-    const cases: SubViewCaseItem[] = [
+    const cases: Array<SubViewCaseItem & { id: string }> = [
       subset('c-1', { groupId: 'g1', groupName: '智能音箱功能测试' }),
       subset('c-2', { groupId: null, groupName: null }),
     ]

@@ -137,7 +137,7 @@ function TaskCaseCard({
         totalDuration: c.duration != null ? Math.round(c.duration / 1000) : null,
       }}
       selected={selected}
-      onToggleSelect={(id, checked) => onToggle(checked)}
+      onToggleSelect={(_id, checked) => onToggle(checked)}
       onNameClick={onCaseSelect ? () => onCaseSelect(c.case_id) : undefined}
       meta={
         <>
