@@ -81,32 +81,35 @@ class ReportStatsQueryMixin:
 
         流程：解析参数 -> 查询用例和结果 -> 计算平均值/正态分布/资源列表 -> 格式化响应。
 
+        支持 task_id（任务筛选）与 report_id（对比/二次对比报告筛选，INT-1059 对齐
+        0c6b2028a：从对比矩阵/摘要解析源任务集合，与 taskId 走同一聚合工具）。
+
         Args:
-            params_dict: 参数字典，含 task_id/category/tags/categories/include_untagged
+            params_dict: 参数字典，含 task_id/report_id/category/tags/categories/include_untagged
 
         Returns:
             dict: 平均值统计响应
         """
-        from report_service.application.services.report_helpers import ReportHelpers
         from report_service.application.services.report_utils import ReportUtils
 
         task_id = params_dict.get('task_id')
+        report_id = params_dict.get('report_id')
         category = params_dict.get('category')
         tags = params_dict.get('tags') or []
         categories = params_dict.get('categories') or []
         include_untagged = params_dict.get('include_untagged') or False
 
-        if not task_id:
-            return {'success': False, 'message': '缺少必要参数: task_id'}
+        if not task_id and not report_id:
+            return {'success': False, 'message': '缺少必要参数: task_id 或 report_id'}
 
         query_result = self._query_cases_for_averages(
-            task_id, category, categories, tags, include_untagged
+            task_id, category, categories, tags, include_untagged, report_id
         )
         if not isinstance(query_result, tuple):
             return query_result
-        task, filtered_case_ids, test_results = query_result
+        task, task_id_filter, filtered_case_ids, test_results = query_result
 
-        stats = self._calculate_averages(task, filtered_case_ids, test_results, task_id)
+        stats = self._calculate_averages(task, filtered_case_ids, test_results, task_id_filter)
 
         return {
             "total_cases": len(stats['filtered_case_ids']),
@@ -114,6 +117,7 @@ class ReportStatsQueryMixin:
             "overall_averages": stats['overall_averages'],
             "overall_averages_map": stats['averages_map'],
             "metric_data": ReportUtils.flatten_metric_data(stats['metric_data'], {}, stats['metric_name_to_id']),
+            "tag_metric_data": ReportUtils.flatten_tag_metric_data(stats['tag_metric_data'], {}, stats['metric_name_to_id']),
             "raw_data": ReportUtils.flatten_raw_data(stats['raw_data']),
             "normal_distribution": stats['normal_distribution_data'],
             "resources": stats['resources'],
@@ -310,54 +314,105 @@ class ReportStatsQueryMixin:
 
     # ---- 平均值统计私有辅助 ----
 
-    def _query_cases_for_averages(self, task_id: int, category, categories, tags, include_untagged):
+    def _query_cases_for_averages(self, task_id, category, categories, tags, include_untagged, report_id=None):
         """查询用例和结果（含任务解析、合并/挑选关系处理）。
 
         Args:
-            task_id: 任务 ID
+            task_id: 任务 ID（int；reportId 场景传 None）
             category: 单个分类
             categories: 分类列表
             tags: 标签列表
             include_untagged: 是否包含未标记用例
+            report_id: 对比/二次对比报告 ID（INT-1059 对齐 0c6b2028a：经对比矩阵/摘要
+                解析源任务集合，无 task_id 时与 taskId 走同一聚合工具）
 
         Returns:
-            tuple(task, filtered_case_ids, test_results) 或错误 dict
+            tuple(task, task_id_filter, filtered_case_ids, test_results) 或错误 dict
         """
         from report_service.infrastructure.clients.grpc_clients import _grpc_get_tasks_by_ids
 
-        _tasks = _grpc_get_tasks_by_ids([task_id])
-        task = _tasks[0] if _tasks else None
-        if not task:
-            return {'success': False, 'message': '未找到指定任务'}
+        # 对比/二次对比报告：report_id 解析源任务集合，源任务结果直接参与聚合
+        if report_id and not task_id:
+            source_task_ids = self._resolve_report_source_task_ids(report_id)
+            if source_task_ids is None:
+                return {'success': False, 'message': '未找到指定报告'}
+            if not source_task_ids:
+                return {'success': False, 'message': '对比报告未关联任何任务'}
+            _tasks = _grpc_get_tasks_by_ids(source_task_ids)
+            task = _tasks[0] if _tasks else None
+            if not task:
+                return {'success': False, 'message': '未找到指定任务'}
+            task_id_filter = source_task_ids
+            result_task_filter = source_task_ids
+            cherry_result_ids = None
+        else:
+            _tasks = _grpc_get_tasks_by_ids([task_id])
+            task = _tasks[0] if _tasks else None
+            if not task:
+                return {'success': False, 'message': '未找到指定任务'}
 
-        # 差异#2 收尾：合并容器任务由 TaskMergeRelation(merged_task_id) 存在性判定（task.type 已废弃）
-        # INT-408：cherry-pick 容器任务 TaskCase 取自容器自身（下单已继承），
-        # 结果按引用关系直查 result_id（容器自身无 test_results 行）
-        task_id_filter = task_id
-        result_task_filter = task_id
-        cherry_result_ids = None
-        try:
-            from report_service.application.services.task_result_resolver import (
-                resolve_cherry_pick_sources,
-                resolve_merge_source_task_ids,
-            )
-            cherry = resolve_cherry_pick_sources(task_id)
-            if cherry:
-                cherry_result_ids = cherry['result_ids']
-            else:
-                source_task_ids = resolve_merge_source_task_ids(task_id)
-                if source_task_ids:
-                    task_id_filter = source_task_ids
-                    result_task_filter = source_task_ids
-        except Exception:
-            logger.debug("gRPC 查询任务合并关系失败 task_id=%s", task_id, exc_info=True)
+            # 差异#2 收尾：合并容器任务由 TaskMergeRelation(merged_task_id) 存在性判定（task.type 已废弃）
+            # INT-408：cherry-pick 容器任务 TaskCase 取自容器自身（下单已继承），
+            # 结果按引用关系直查 result_id（容器自身无 test_results 行）
+            task_id_filter = task_id
+            result_task_filter = task_id
+            cherry_result_ids = None
+            try:
+                from report_service.application.services.task_result_resolver import (
+                    resolve_cherry_pick_sources,
+                    resolve_merge_source_task_ids,
+                )
+                cherry = resolve_cherry_pick_sources(task_id)
+                if cherry:
+                    cherry_result_ids = cherry['result_ids']
+                else:
+                    source_task_ids = resolve_merge_source_task_ids(task_id)
+                    if source_task_ids:
+                        task_id_filter = source_task_ids
+                        result_task_filter = source_task_ids
+            except Exception:
+                logger.debug("gRPC 查询任务合并关系失败 task_id=%s", task_id, exc_info=True)
 
         filtered_case_ids, test_results = self._query_test_cases_and_results(
             task_id_filter, result_task_filter,
             category, categories, tags, include_untagged,
             cherry_result_ids=cherry_result_ids,
         )
-        return task, filtered_case_ids, test_results
+        return task, task_id_filter, filtered_case_ids, test_results
+
+    def _resolve_report_source_task_ids(self, report_id: int):
+        """解析对比/二次对比报告的源任务 ID 集合（reportId 筛选）。
+
+        优先级：报告主表 task_id（普通任务报告）→ comparison matrix.task_ids
+        → summary metadata.task_ids（兜底）。
+
+        Returns:
+            list[int] 源任务 ID；None 表示报告不存在/不可见；[] 表示报告未关联任务。
+        """
+        aggregate = self.repository.get_by_id(report_id)
+        if aggregate is None:
+            return None
+        if getattr(aggregate, 'task_id', None):
+            return [aggregate.task_id]
+        try:
+            comparison = self.repository.load_comparison(report_id)
+            if comparison is not None:
+                comparison_data = getattr(comparison, 'comparison_data', None) or {}
+                if isinstance(comparison_data, dict):
+                    task_ids = comparison_data.get('task_ids')
+                    if task_ids:
+                        return list(task_ids)
+        except Exception:
+            logger.debug("加载对比矩阵失败 report_id=%s", report_id, exc_info=True)
+        try:
+            summaries = self.repository.load_summaries(report_id)
+            for s in summaries:
+                metadata = getattr(s, 'metadata', None) or {}
+                if isinstance(metadata, dict) and metadata.get('task_ids'):
+                    return list(metadata['task_ids'])
+        except Exception:
+            logger.debug("加载摘要 task_ids 失败 report_id=%s", report_id, exc_info=True)
+        return []
 
     def _query_test_cases_and_results(self, task_id_filter, result_task_filter,
                                       category, categories, tags, include_untagged,

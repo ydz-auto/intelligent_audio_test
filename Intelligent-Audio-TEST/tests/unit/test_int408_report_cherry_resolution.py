@@ -184,10 +184,12 @@ class TestAveragesCherryResolution:
             lambda task, fcid, tr, tid: {'overall_averages': 1, 'filtered_case_ids': fcid,
                                          'test_results': tr})
 
-        task, filtered_case_ids, test_results = m._query_cases_for_averages(
+        task, task_id_filter, filtered_case_ids, test_results = m._query_cases_for_averages(
             CONTAINER_ID, None, [], [], True)
 
         assert task['id'] == CONTAINER_ID
+        # 容器查询走自身 task_id 过滤（结果经引用直查）
+        assert task_id_filter == CONTAINER_ID
         assert sorted(filtered_case_ids) == ['ACC408-C1', 'ACC408-C2']
         assert {r['id'] for r in test_results} == {101, 102}
         # 源结果 task_id 未被改写（红线：引用方案 A，不改 test_results.task_id）

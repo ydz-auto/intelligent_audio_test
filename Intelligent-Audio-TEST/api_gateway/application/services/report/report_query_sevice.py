@@ -292,8 +292,8 @@ class ReportQueryService:
         try:
             body = request.get_json() or {}
             req = GetCaseAveragesRequest.model_validate(body)
-            if not req.task_id:
-                return error_response('taskId 不能为空', 400)
+            if not req.task_id and not req.report_id:
+                return error_response('缺少必要参数: taskId 或 reportId', 400)
         except Exception as e:
             return error_response(f'参数错误: {str(e)}', 400)
 
@@ -302,6 +302,7 @@ class ReportQueryService:
             resp = stub.GetCaseAverages(report_pb.GetCaseAveragesRequest(
                 data=_dumps({
                     'task_id': req.task_id,
+                    'report_id': req.report_id,
                     'category': req.category or '',
                     'tags': req.tags or [],
                     'categories': req.categories or [],
