@@ -532,9 +532,14 @@ def _fake_gw_request(user_id=None, permissions=None, json_body=None):
 
 
 def _gw_acl(**kwargs):
-    """构造 TaskConfigAclRepositoryImpl 替身：默认各操作成功 + get_task_detail。"""
+    """构造 TaskConfigAclRepositoryImpl 替身：默认各操作成功 + get_task_detail。
+
+    get_task_detail 按真实 gRPC 代理信封形状（{success, message, data}，data 为
+    详情 DTO，含 visibility/created_by_user_id——INT-982 P1-2 修复后详情 DTO
+    契约字段）。
+    """
     defaults = dict(
-        get_task_detail=lambda tid: {'data': {
+        get_task_detail=lambda tid: {'success': True, 'message': 'ok', 'data': {
             'id': tid, 'visibility': 'shared', 'created_by_user_id': 100}},
         start=lambda tid: {'success': True, 'message': 'ok', 'data': {'task_id': tid}},
         retry=lambda tid, data: {'success': True, 'message': 'ok', 'data': {'task_id': tid}},
@@ -558,9 +563,14 @@ class TestGateway403Mapping:
                  'reextract': {'task_id': 5, 'executionStatus': 'completed'}}
 
     def _run_denied(self, method_name, *args):
-        """monkeypatch _task_acl 返回 code=403，跑网关方法并断言 HTTP 403。"""
+        """monkeypatch _task_acl 返回 code=403，跑网关方法并断言 HTTP 403。
+
+        信封按真实 gRPC 代理形状（失败 code 内嵌 data，经代理 _resp 提升顶层——
+        INT-982 P1-1 修复后与真实序列化链一致）。
+        """
         acl = _gw_acl(**{method_name: (lambda *a, **k: {
-            'success': False, 'message': '资源不存在或无权访问', 'code': 403})})
+            'success': False, 'message': '资源不存在或无权访问',
+            'data': {'code': 403}, 'code': 403})})
         with patch.object(gw_lifecycle_mod, '_task_acl', acl), \
                 patch.object(gw_lifecycle_mod, '_audit_task_private_operation'):
             set_current_request(_fake_gw_request(
@@ -642,20 +652,20 @@ class TestGatewayAdminAudit:
 
     def test_admin_start_private_writes_audit(self):
         acl = _gw_acl(
-            get_task_detail=lambda tid: {'data': {
+            get_task_detail=lambda tid: {'success': True, 'message': 'ok', 'data': {
                 'id': tid, 'visibility': 'private', 'created_by_user_id': 100}})
         self._run('start', acl, 'start', 5)
 
     def test_admin_stop_private_writes_audit(self):
         acl = _gw_acl(
-            get_task_detail=lambda tid: {'data': {
+            get_task_detail=lambda tid: {'success': True, 'message': 'ok', 'data': {
                 'id': tid, 'visibility': 'private', 'created_by_user_id': 100}})
         self._run('stop', acl, 'stop', 5)
 
     def test_admin_shared_no_audit(self):
         """admin 操作共享任务：不落审计。"""
         acl = _gw_acl(
-            get_task_detail=lambda tid: {'data': {
+            get_task_detail=lambda tid: {'success': True, 'message': 'ok', 'data': {
                 'id': tid, 'visibility': 'shared', 'created_by_user_id': 100}})
         with patch.object(gw_lifecycle_mod, '_task_acl', acl), \
                 patch('api_gateway.application.services.visibility.visibility_audit'
@@ -671,7 +681,7 @@ class TestGatewayAdminAudit:
     def test_non_admin_private_no_audit(self):
         """非 admin 操作私有任务：不预取、不落审计（旁路短路）。"""
         acl = _gw_acl(
-            get_task_detail=lambda tid: {'data': {
+            get_task_detail=lambda tid: {'success': True, 'message': 'ok', 'data': {
                 'id': tid, 'visibility': 'private', 'created_by_user_id': 100}})
         with patch.object(gw_lifecycle_mod, '_task_acl', acl), \
                 patch('api_gateway.application.services.visibility.visibility_audit'
@@ -755,3 +765,106 @@ class TestLegacyExecutionRouteGuard:
                 set_current_request(None)
         assert http_code == 403
         assert body['code'] == 403
+
+
+# ---------------- 9. 详情 DTO 契约：visibility / created_by_user_id ----------------
+
+class TestTaskDetailDtoVisibilityFields:
+    """详情 DTO 契约（INT-982 P1-2 回归）：detail 数据须含 visibility / created_by_user_id。
+
+    网关侧 admin 私有任务审计预取（preload_private_state）与 legacy
+    /api/v1/execution/ 防旁路守卫（_check_execution_visible）都依赖这两个字段；
+    此前详情 DTO 缺该两键导致真实链路审计永不落库、legacy 守卫形同虚设。
+    """
+
+    def test_private_detail_carries_visibility_and_owner(self):
+        _set_user(100)
+        tid = _make_task(100)
+        _set_task_visibility(tid, 'private')
+        _set_user(999, is_admin=True)
+        from task_service.infrastructure.read_models.task_read_model import TaskReadModel
+        dto = TaskReadModel().find_by_id_with_relations(tid)
+        assert dto is not None
+        assert dto['visibility'] == 'private'
+        assert dto['created_by_user_id'] == 100
+
+    def test_shared_detail_carries_visibility_and_owner(self):
+        _set_user(100)
+        tid = _make_task(100)
+        _set_user(999, is_admin=True)
+        from task_service.infrastructure.read_models.task_read_model import TaskReadModel
+        dto = TaskReadModel().find_by_id_with_relations(tid)
+        assert dto is not None
+        assert dto['visibility'] == 'shared'
+        assert dto['created_by_user_id'] == 100
+
+
+# ---------------- 10. 跨两端 _resp 真实序列化链（P1-1 回归） ----------------
+
+class TestGrpcSerializationChain:
+    """应用层失败信封 → servicer `_resp` → proto → 网关代理 `_resp` 的真实链路。
+
+    INT-982 P1-1 回归：失败 code 必须经 gRPC data JSON 透传（proto 仅
+    success/message/data 三字段），网关 `_resp` 提升顶层 code 后映射 HTTP
+    403/404。此前 data=None 导致 code 在序列化链丢失、网关误映射 HTTP 400。
+    """
+
+    @staticmethod
+    def _through_chain(result):
+        """应用层失败信封经两端 `_resp` 的真实序列化，返回网关侧结果 dict。"""
+        from task_service.interfaces.grpc.task_config import TaskConfigServiceServicer
+        from api_gateway.infrastructure.grpc_proxies.task_testcase_config_proxies import _TaskConfigProxy
+        proto = TaskConfigServiceServicer._resp(result)
+        return _TaskConfigProxy()._resp(proto)
+
+    def test_403_survives_serialization(self):
+        result = self._through_chain(
+            {'success': False, 'message': '资源不存在或无权访问', 'data': {'code': 403}, 'code': 403})
+        assert result['success'] is False
+        assert result['code'] == 403
+        assert result['data']['code'] == 403
+
+    def test_404_survives_serialization(self):
+        result = self._through_chain(
+            {'success': False, 'message': '未找到任务', 'data': {'code': 404}, 'code': 404})
+        assert result['code'] == 404
+
+    def test_400_survives_serialization(self):
+        result = self._through_chain(
+            {'success': False, 'message': '环境预检失败', 'data': {'code': 400}, 'code': 400})
+        assert result['code'] == 400
+
+    def test_real_denied_chain_maps_http_403(self):
+        """真实链路端到端：应用层 403 信封经序列化链 → 网关 `_task_acl` → HTTP 403。
+
+        把网关测试从 mock `_task_acl` 下沉到真实序列化链：_task_acl 返回的即
+        是两端 `_resp` 的真实产物，不再手工捏造顶层 code。
+        """
+        acl = _gw_acl(**{'start': lambda tid: self._through_chain(
+            {'success': False, 'message': '资源不存在或无权访问',
+             'data': {'code': 403}, 'code': 403})})
+        with patch.object(gw_lifecycle_mod, '_task_acl', acl), \
+                patch.object(gw_lifecycle_mod, '_audit_task_private_operation'):
+            set_current_request(_fake_gw_request(
+                user_id=200, permissions=['task:execute'], json_body={}))
+            try:
+                body, http_code = gw_lifecycle_mod.TaskLifecycleService.start(5)
+            finally:
+                set_current_request(None)
+        assert http_code == 403
+        assert body['code'] == 403
+
+    def test_real_not_found_chain_maps_http_404(self):
+        acl = _gw_acl(**{'start': lambda tid: self._through_chain(
+            {'success': False, 'message': '任务 ID 不存在',
+             'data': {'code': 404}, 'code': 404})})
+        with patch.object(gw_lifecycle_mod, '_task_acl', acl), \
+                patch.object(gw_lifecycle_mod, '_audit_task_private_operation'):
+            set_current_request(_fake_gw_request(user_id=200))
+            try:
+                body, http_code = gw_lifecycle_mod.TaskLifecycleService.start(5)
+            finally:
+                set_current_request(None)
+        # 404 路径网关 body 业务码用 ErrorCode.NOT_FOUND（201），HTTP 状态透传 404
+        assert http_code == 404
+

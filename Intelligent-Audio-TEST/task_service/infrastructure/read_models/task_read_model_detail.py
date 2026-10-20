@@ -195,6 +195,11 @@ class TaskDetailReadModelMixin:
             'name': task.name,
             'description': task.description,
             'status': task.status,
+            # INT-573/INT-982：可见性字段——网关侧 admin 私有任务审计预取
+            # （preload_private_state）与 legacy /api/v1/execution/ 防旁路守卫
+            # 依赖，详情经网关 TaskDetailData schema 显式挑选，不外泄给前端
+            'visibility': task.visibility,
+            'created_by_user_id': task.created_by_user_id,
             'device_types': device_types,
             'config': task.config or {},
             'algorithm_type': task.algorithm_type,
