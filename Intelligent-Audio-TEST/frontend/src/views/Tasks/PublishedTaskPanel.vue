@@ -177,6 +177,14 @@
 </template>
 
 <script setup lang="ts">
+import '../../assets/styles/test-common.css'
+import '../../assets/styles/components/common.css'
+import '../../assets/styles/components/button.css'
+import '../../assets/styles/components/card.css'
+import '../../assets/styles/components/modal.css'
+import '../../assets/styles/components/table.css'
+import '../../assets/styles/components/log.css'
+
 /**
  * PublishedTaskPanel —— 已发布任务面板（INT-298：迁入 Tasks 页「已发布任务」页签）。
  *

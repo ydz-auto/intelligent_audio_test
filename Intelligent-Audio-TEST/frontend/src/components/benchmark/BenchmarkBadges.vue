@@ -11,6 +11,11 @@
 </template>
 
 <script setup lang="ts">
+import '../../assets/styles/components/button.css'
+import '../../assets/styles/components/card.css'
+import '../../assets/styles/components/tag.css'
+import '../../assets/styles/components/log.css'
+
 import { computed } from 'vue'
 import type { BenchmarkRankingRow } from '../../domain/model/benchmark'
 import {

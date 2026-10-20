@@ -27,6 +27,16 @@
 </template>
 
 <script setup>
+import '../../../assets/styles/test-common.css'
+import '../../../assets/styles/components/common.css'
+import '../../../assets/styles/components/button.css'
+import '../../../assets/styles/components/modal.css'
+import '../../../assets/styles/components/table.css'
+import '../../../assets/styles/components/navigation.css'
+import '../../../assets/styles/components/tag.css'
+import '../../../assets/styles/components/log.css'
+import '../../../assets/styles/layouts/main.css'
+
 defineProps({
   isActive: { type: Boolean, default: false },
   panelId: String,
@@ -48,7 +58,7 @@ defineEmits(['prev', 'next']);
 
 .step-panel{
 background: var(--color-white);
-border: 2px solid var(--border-color);
+border: 2px solid var(--border);
 border-radius: var(--radius-card);
 padding: var(--spacing-xl);
 margin-bottom: var(--spacing-lg);
@@ -104,3 +114,6 @@ display: none;
   to { opacity: 1; transform: translateY(0); }
 }
 </style>
+
+<!-- INT-768 CSS-1 拆搬：步骤面板域样式由 TestStepContainer 按需加载 -->
+<style src="../../../assets/styles/api-test/step-panel.css"></style>

@@ -16,6 +16,10 @@
 </template>
 
 <script setup lang="ts">
+import '../../assets/styles/components/button.css'
+import '../../assets/styles/components/navigation.css'
+import '../../assets/styles/layouts/main.css'
+
 /** 页脚（总表 §2.1：品牌列 + 版权行；法务开关 site.legal.* 待后端立项前不渲染） */
 const year = new Date().getFullYear()
 </script>

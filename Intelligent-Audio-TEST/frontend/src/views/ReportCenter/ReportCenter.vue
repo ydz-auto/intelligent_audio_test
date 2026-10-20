@@ -317,6 +317,18 @@
 </template>
 
 <script setup lang="ts">
+import '../../assets/styles/test-common.css'
+import '../../assets/styles/components/common.css'
+import '../../assets/styles/components/button.css'
+import '../../assets/styles/components/card.css'
+import '../../assets/styles/components/form.css'
+import '../../assets/styles/components/modal.css'
+import '../../assets/styles/components/table.css'
+import '../../assets/styles/components/navigation.css'
+import '../../assets/styles/components/tag.css'
+import '../../assets/styles/components/log.css'
+import '../../assets/styles/layouts/main.css'
+
 import { computed, ref } from 'vue'
 import { ReportStatus, PermissionPoint } from '@/domain/enums'
 import { useReportCenter } from './reportCenter'
@@ -329,6 +341,9 @@ import VisibilityBadge from '../../components/common/visibility/VisibilityBadge.
 import { VISIBILITY_FILTER_OPTIONS, canEditResource } from '../../composables/visibility/useVisibility'
 import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue'
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue'
+import '../../assets/styles/reports/base.css'
+import '../../assets/styles/reports/reports.css'
+import '../../assets/styles/components/comparison-common.css'
 
 const {
   allReports,

@@ -47,6 +47,15 @@
 </template>
 
 <script setup lang="ts">
+import '../../../assets/styles/components/common.css'
+import '../../../assets/styles/components/button.css'
+import '../../../assets/styles/components/card.css'
+import '../../../assets/styles/components/form.css'
+import '../../../assets/styles/components/navigation.css'
+import '../../../assets/styles/components/tag.css'
+import '../../../assets/styles/components/log.css'
+import '../../../assets/styles/layouts/main.css'
+
 import { systemInfo, helpLinks } from '../homeData'
 import { useLoginRequired } from '../../../composables/shared/useLoginRequired'
 

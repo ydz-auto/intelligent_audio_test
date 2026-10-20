@@ -82,6 +82,13 @@
 </template>
 
 <script setup lang="ts">
+import '../../../../assets/styles/test-common.css'
+import '../../../../assets/styles/components/common.css'
+import '../../../../assets/styles/components/button.css'
+import '../../../../assets/styles/components/form.css'
+import '../../../../assets/styles/components/table.css'
+import '../../../../assets/styles/components/log.css'
+
 import { ref, watch, onMounted } from 'vue';
 import { testcasesPort } from '@/composables/testCase/testcasesPort';
 import { downloadBlob } from '../../../../utils/utils';

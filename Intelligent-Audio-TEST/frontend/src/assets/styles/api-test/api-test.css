@@ -71,7 +71,7 @@
     gap: 10px;
     background-color: var(--color-white);
     padding: 12px 20px;
-    border-radius: var(--border-radius-md);
+    border-radius: var(--radius-md);
     box-shadow: var(--shadow-sm);
     flex: 1;
     min-width: 200px;
@@ -218,7 +218,7 @@
 
 
 .api-actions .btn{
-    border-radius: var(--border-radius-md);
+    border-radius: var(--radius-md);
     font-weight: var(--font-weight-medium);
     padding: var(--spacing-sm) var(--spacing-md);
     font-size: var(--font-size-sm);
@@ -228,8 +228,8 @@
 }
 
 .api-actions .btn-primary{
-    background: var(--primary-gradient);
-    color: var(--white-color);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+    color: var(--color-white);
     box-shadow: var(--shadow-sm);
 }
 
@@ -239,17 +239,17 @@
 }
 
 .api-actions .btn-secondary{
-    background: linear-gradient(135deg, var(--background-tertiary) 0%, var(--background-secondary) 100%);
-    color: var(--text-primary);
-    border: 1px solid var(--border-color);
+    background: linear-gradient(135deg, var(--gray-light) 0%, var(--muted) 100%);
+    color: var(--foreground);
+    border: 1px solid var(--border);
     box-shadow: var(--shadow-sm);
 }
 
 .api-actions .btn-secondary:hover{
-    background: linear-gradient(135deg, var(--background-secondary) 0%, var(--background-tertiary) 100%);
+    background: linear-gradient(135deg, var(--muted) 0%, var(--gray-light) 100%);
     transform: translateY(-2px);
     box-shadow: var(--shadow-md);
-    border-color: var(--primary-color);
+    border-color: var(--primary);
 }
 
 
@@ -298,7 +298,7 @@
     left: 0;
     width: 100%;
     height: 1px;
-    background: var(--border-color);
+    background: var(--border);
     opacity: 0;
     transition: opacity var(--transition-normal);
 }
@@ -335,7 +335,7 @@
 
 
 .group-actions .btn{
-    border-radius: var(--border-radius-full);
+    border-radius: var(--radius-full);
     font-weight: var(--font-weight-medium);
     padding: var(--spacing-sm) var(--spacing-lg);
     font-size: var(--font-size-sm);
@@ -346,8 +346,8 @@
 }
 
 .group-actions .btn-primary{
-    background: var(--primary-gradient);
-    color: var(--white-color);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+    color: var(--color-white);
 }
 
 .group-actions .btn-primary:hover{
@@ -356,16 +356,16 @@
 }
 
 .group-actions .btn-secondary{
-    background: linear-gradient(135deg, var(--background-tertiary) 0%, var(--background-secondary) 100%);
-    color: var(--text-primary);
-    border: 1px solid var(--border-color);
+    background: linear-gradient(135deg, var(--gray-light) 0%, var(--muted) 100%);
+    color: var(--foreground);
+    border: 1px solid var(--border);
 }
 
 .group-actions .btn-secondary:hover{
-    background: linear-gradient(135deg, var(--background-secondary) 0%, var(--background-tertiary) 100%);
+    background: linear-gradient(135deg, var(--muted) 0%, var(--gray-light) 100%);
     transform: translateY(-2px);
     box-shadow: var(--shadow-md);
-    border-color: var(--primary-color);
+    border-color: var(--primary);
 }
 
 
@@ -377,14 +377,14 @@
 .case-name{
     font-size: 18px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: var(--foreground);
     margin: 0 0 8px 0;
 }
 
 /* 用例描述样式 */
 .case-description{
     font-size: 14px;
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
     margin: 0 0 12px 0;
     line-height: 1.6;
 }
@@ -430,7 +430,7 @@
 /* 测试用例标签样式 - 仅适用于测试用例的标签 */
 .case-tags .tag{
     padding: 4px 12px;
-    border-radius: var(--border-radius-full);
+    border-radius: var(--radius-full);
     font-size: 12px;
     font-weight: 500;
     white-space: nowrap;
@@ -441,7 +441,7 @@
     visibility: visible;
     box-sizing: border-box;
     background-color: var(--secondary-light);
-    color: var(--secondary-color);
+    color: var(--secondary);
 }
 
 /* 确保任务类型标签样式不受影响 */
@@ -458,9 +458,9 @@
 /* 省略号按钮样式 */
 .tag-more{
     background-color: var(--secondary-light) ;
-    color: var(--secondary-color) ;
+    color: var(--secondary) ;
     padding: 4px 12px ;
-    border-radius: var(--border-radius-full) ;
+    border-radius: var(--radius-full) ;
     font-size: 12px ;
     font-weight: 500 ;
     white-space: nowrap ;
@@ -476,8 +476,8 @@
 }
 
 .tag-more:hover{
-    background-color: var(--primary-light) ;
-    color: var(--primary-color) ;
+    background-color: var(--accent) ;
+    color: var(--primary) ;
 }
 
 /* 标签分页容器 */
@@ -487,30 +487,30 @@
     margin-top: 8px;
     align-items: center;
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
     justify-content: flex-start;
 }
 
 /* 标签页按钮样式 */
 .tag-page-btn{
     background: transparent;
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-sm);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
     padding: 2px 8px;
     font-size: 12px;
     cursor: pointer;
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
     transition: all 0.2s ease;
 }
 
 .tag-page-btn:hover{
-    border-color: var(--primary-color);
-    color: var(--primary-color);
+    border-color: var(--primary);
+    color: var(--primary);
 }
 
 .tag-page-btn.active{
-    background-color: var(--primary-color);
-    border-color: var(--primary-color);
+    background-color: var(--primary);
+    border-color: var(--primary);
     color: var(--color-white);
 }
 
@@ -522,7 +522,7 @@
 /* 标签页信息 */
 .tag-page-info{
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
     margin-right: 8px;
 }
 
@@ -552,7 +552,7 @@
 .btn-icon-only:hover{
     transform: translateY(-2px);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    background: var(--primary-light);
+    background: var(--accent);
 }
 
 /* 测试用例分组样式 - 单栏布局 */
@@ -572,7 +572,7 @@
     background: var(--color-white);
     border: 1px solid var(--border);
     box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 4%, transparent);
-    border-radius: var(--border-radius-lg);
+    border-radius: var(--radius-lg);
     overflow: hidden;
 }
 
@@ -589,7 +589,7 @@
     border: 1px solid var(--border);
     cursor: pointer;
     transition: all 0.2s ease;
-    border-radius: var(--border-radius-lg);
+    border-radius: var(--radius-lg);
     margin: 0;
     height: auto;
     min-height: 80px;
@@ -629,7 +629,7 @@
 
 
 .group-actions .btn{
-    border-radius: var(--border-radius-md);
+    border-radius: var(--radius-md);
     font-weight: var(--font-weight-medium);
     padding: var(--spacing-sm) var(--spacing-md);
     font-size: var(--font-size-md);
@@ -640,7 +640,7 @@
 
 .group-actions .btn-secondary{
     background: linear-gradient(135deg, var(--border) 0%, var(--color-gray-100) 100%);
-    color: var(--text-primary);
+    color: var(--foreground);
     border: none;
     box-shadow: var(--shadow-md);
 }
@@ -652,14 +652,14 @@
 }
 
 .group-actions .btn-primary{
-    background: var(--primary-gradient);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
     color: var(--color-white);
     border: none;
     box-shadow: var(--shadow-md);
 }
 
 .group-actions .btn-primary:hover{
-    background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-color) 100%);
+    background: linear-gradient(135deg, var(--primary-hover) 0%, var(--primary) 100%);
     transform: translateY(-2px);
     box-shadow: var(--shadow-lg);
 }
@@ -671,7 +671,7 @@
 .table-container{
     position: relative;
     overflow-x: auto;
-    border-radius: var(--border-radius-md);
+    border-radius: var(--radius-md);
     box-shadow: var(--shadow-sm);
     margin-bottom: var(--spacing-lg);
     width: 100%;
@@ -679,7 +679,7 @@
     min-width: 0;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
-    background-color: var(--background-primary);
+    background-color: var(--background);
 }
 
 .tag-result-content .data-table{
@@ -690,7 +690,7 @@
 
 /* 表头样式 - 与日志查看页面一致 */
 .tag-result-content .data-table th{
-    background-color: var(--background-secondary);
+    background-color: var(--muted);
     font-weight: var(--font-weight-semibold);
     text-align: left;
     padding: var(--spacing-sm) var(--spacing-md);
@@ -798,7 +798,7 @@
     color: var(--color-white);
     border: none;
     padding: 6px 12px;
-    border-radius: var(--border-radius-sm);
+    border-radius: var(--radius-sm);
     cursor: pointer;
     font-size: 13px;
     transition: all 0.2s ease;
@@ -819,7 +819,7 @@
 /* 状态标签样式优化 */
 .status-badge{
     padding: 4px 12px;
-    border-radius: var(--border-radius-lg);
+    border-radius: var(--radius-lg);
     font-size: 12px;
     font-weight: 500;
     text-transform: uppercase;
@@ -898,7 +898,7 @@
 }
 
 .comparison-table-wrapper .data-table th{
-    background-color: var(--background-secondary);
+    background-color: var(--muted);
     font-weight: var(--font-weight-semibold);
     text-align: left;
     padding: var(--spacing-sm) var(--spacing-md);
@@ -906,7 +906,7 @@
     top: 0;
     z-index: 10;
     border-bottom: 2px solid var(--color-slate-200);
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
 }
 
 .comparison-table-wrapper .data-table td{
@@ -1051,7 +1051,7 @@
     max-width: 800px;
     max-height: 80%;
     overflow-y: auto;
-    border-radius: var(--border-radius-lg);
+    border-radius: var(--radius-lg);
     box-shadow: 0 20px 25px -5px color-mix(in srgb, var(--color-black) 10%, transparent), 0 10px 10px -5px color-mix(in srgb, var(--color-black) 4%, transparent);
     position: relative;
 }
@@ -1095,7 +1095,7 @@
     margin-top: 24px;
     padding: 16px;
     background: var(--color-slate-50);
-    border-radius: var(--border-radius-md);
+    border-radius: var(--radius-md);
     border: 1px solid var(--color-slate-200);
 }
 
@@ -1145,11 +1145,11 @@
 
 
 .toggle-switch input:checked + .toggle-slider{
-    background-color: var(--primary-color, var(--color-blue-500));
+    background-color: var(--primary, var(--color-blue-500));
 }
 
 .toggle-switch input:focus + .toggle-slider{
-    box-shadow: 0 0 1px var(--primary-color, var(--color-blue-500));
+    box-shadow: 0 0 1px var(--primary, var(--color-blue-500));
 }
 
 .toggle-switch input:checked + .toggle-slider:before{
@@ -1178,8 +1178,8 @@
 
 /* Highlighting for selected APIs */
 .api-selector .btn.active{
-    border: 2px solid var(--primary-color, var(--primary)) ;
-    background: var(--primary-color, var(--primary)) ;
+    border: 2px solid var(--primary, var(--primary)) ;
+    background: var(--primary, var(--primary)) ;
     color: var(--color-white) ;
     box-shadow: 0 4px 12px color-mix(in srgb, var(--primary) 40%, transparent) ;
     font-weight: bold;
@@ -1230,12 +1230,12 @@
   font-size: 16px;
   color: var(--color-gray-500);
   padding: 4px;
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
   transition: all 0.3s ease;
 }
 
 .btn-icon-only:hover{
-  color: var(--primary-color);
+  color: var(--primary);
   background-color: color-mix(in srgb, var(--secondary) 10%, transparent);
 }
 
@@ -1306,7 +1306,7 @@
 }
 
 .form-input:focus{
-  border-color: var(--primary-color);
+  border-color: var(--primary);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--secondary) 10%, transparent);
 }
 
@@ -1321,7 +1321,7 @@
   gap: 8px;
   padding: 20px;
   background: linear-gradient(135deg, var(--color-neutral-50) 0%, var(--muted) 100%);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   border: 1px solid var(--color-slate-200);
   margin-bottom: 24px;
   box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 5%, transparent);
@@ -1352,7 +1352,7 @@
 .report-save-section{
   background: linear-gradient(to right, var(--secondary-light), var(--color-white));
   border: 1px solid var(--secondary-light);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   padding: 20px;
   margin-bottom: 24px;
   display: flex;
@@ -1365,7 +1365,7 @@
 .analysis-conclusion-card{
   background: linear-gradient(to right, var(--secondary-light), var(--color-white));
   border: 1px solid var(--secondary-light);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   padding: 20px;
   margin-bottom: 32px;
   display: flex;
@@ -1424,7 +1424,7 @@
   align-items: center;
   gap: 6px;
   padding: 4px 12px;
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   font-size: 0.8rem;
   font-weight: 500;
   background-color: var(--color-sky-50);
@@ -1478,7 +1478,7 @@
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   font-size: 0.95rem;
   line-height: 1.6;
   transition: all 0.3s ease;
@@ -1515,7 +1515,7 @@
 .selector-content{
   background: var(--color-white);
   padding: 24px;
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   border: 1px solid var(--color-slate-200);
   box-shadow: 0 1px 3px color-mix(in srgb, var(--color-black) 5%, transparent);
 }
@@ -1535,7 +1535,7 @@
   gap: 16px;
   padding: 20px;
   border: 2px solid var(--secondary);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   background: var(--color-white);
   cursor: pointer;
   transition: all 0.3s ease;
@@ -1566,7 +1566,7 @@
   z-index: var(--z-index-dropdown);
   padding: 16px 24px;
   background: color-mix(in srgb, var(--color-white) 95%, transparent);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 15%, transparent);
   backdrop-filter: blur(10px);
   border: 1px solid color-mix(in srgb, var(--color-slate-200) 80%, transparent);
@@ -1634,7 +1634,7 @@
 /* ── [恢复] 死类误删的样式（HEAD 原样） ── */
 .api-endpoint {
     font-size: var(--font-size-md);
-    color: var(--secondary-color);
+    color: var(--secondary);
     font-weight: var(--font-weight-medium);
     word-break: break-all;
 }
@@ -1661,10 +1661,10 @@
 }
 
 .category-count {
-    background-color: var(--primary-color);
+    background-color: var(--primary);
     color: var(--color-white);
     padding: var(--spacing-xs) var(--spacing-sm);
-    border-radius: var(--border-radius-full);
+    border-radius: var(--radius-full);
     font-size: var(--font-size-xs);
     font-weight: var(--font-weight-medium);
 }
@@ -1673,7 +1673,7 @@
     margin: 0;
     font-size: var(--font-size-lg);
     font-weight: var(--font-weight-bold);
-    color: var(--text-primary);
+    color: var(--foreground);
     display: flex;
     align-items: center;
     gap: var(--spacing-md);
@@ -1692,7 +1692,7 @@
 
 .meta-value {
     font-size: var(--font-size-sm);
-    color: var(--text-primary);
+    color: var(--foreground);
     font-weight: var(--font-weight-medium);
 }
 
@@ -1703,7 +1703,7 @@
 .metric-value {
     font-size: 20px;
     font-weight: 700;
-    color: var(--text-primary);
+    color: var(--foreground);
 }
 
 .test-case-toolbar {
@@ -1715,7 +1715,7 @@
     margin-bottom: var(--spacing-lg);
     padding: var(--spacing-md);
     background: linear-gradient(135deg, var(--color-white) 0%, var(--gray-lightest) 100%);
-    border-radius: var(--border-radius-lg);
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
-    border: 1px solid var(--gray-light-color);
+    border: 1px solid var(--gray-light);
 }

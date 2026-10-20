@@ -16,6 +16,11 @@
 </template>
 
 <script setup lang="ts">
+import '../../assets/styles/test-common.css'
+import '../../assets/styles/components/navigation.css'
+import '../../assets/styles/components/log.css'
+import '../../assets/styles/layouts/main.css'
+
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { SETTINGS_DOMAINS } from '../../config/navigation'

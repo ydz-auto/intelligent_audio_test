@@ -6,17 +6,17 @@
 }
 
 .sidebar::-webkit-scrollbar-track {
-    background: var(--background-secondary);
+    background: var(--muted);
     border-radius: var(--radius-tag);
 }
 
 .sidebar::-webkit-scrollbar-thumb {
-    background: var(--gray-color);
+    background: var(--gray);
     border-radius: var(--radius-tag);
 }
 
 .sidebar::-webkit-scrollbar-thumb:hover {
-    background: var(--text-secondary);
+    background: var(--muted-foreground);
 }
 
 /* 侧边栏折叠状态 */
@@ -73,14 +73,14 @@
 .sidebar .header {
     margin-bottom: var(--spacing-xl);
     padding-bottom: var(--spacing-lg);
-    border-bottom: 1px solid var(--gray-light-color);
+    border-bottom: 1px solid var(--gray-light);
 }
 
 /* 侧边栏logo */
 .sidebar .logo {
     font-size: var(--font-size-xxl);
     font-weight: 700;
-    color: var(--primary-color);
+    color: var(--primary);
     margin: 0;
     display: flex;
     align-items: center;
@@ -92,7 +92,7 @@
     display: flex;
     height: 100vh;
     overflow: hidden;
-    background-color: var(--background-primary);
+    background-color: var(--background);
 }
 
 /* 主内容区域 */
@@ -127,7 +127,7 @@
 .page-title {
     font-size: var(--font-size-xxl);
     font-weight: 700;
-    color: var(--text-primary);
+    color: var(--foreground);
     margin: 0;
     display: flex;
     align-items: center;
@@ -160,7 +160,7 @@
 
 
 .middle-content, .content-middle{
-    background-color: var(--background-primary);
+    background-color: var(--background);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
     overflow: visible;
@@ -173,12 +173,16 @@
 
 
 .section-header {
+    margin-bottom: 20px;
+    cursor: pointer;
+    width: 100%;
+    box-sizing: border-box;
     padding: var(--spacing-lg);
-    border-bottom: var(--card-border);
+    border-bottom: 1px solid var(--gray-light);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background-color: var(--background-primary);
+    background-color: var(--background);
 }
 
 
@@ -218,16 +222,16 @@
 }
 
 .task-indicator.pending {
-    background-color: var(--secondary-color);
+    background-color: var(--secondary);
 }
 
 .task-indicator.in-progress {
-    background-color: var(--primary-color);
+    background-color: var(--primary);
     animation: pulse 2s infinite;
 }
 
 .task-indicator.completed {
-    background-color: var(--success-color);
+    background-color: var(--success);
 }
 
 .task-info {
@@ -238,7 +242,7 @@
 .task-name {
     font-size: var(--font-size-lg);
     font-weight: var(--font-weight-semibold);
-    color: var(--text-primary);
+    color: var(--foreground);
     margin: 0 0 var(--spacing-xs) 0;
     transition: all var(--transition-normal);
 }
@@ -303,13 +307,14 @@
 
 /* 搜索栏 */
 .search-box {
+    width: 100%;
     margin-bottom: var(--spacing-lg);
 }
 
 /* 筛选栏 */
 .filter-bar {
     margin-bottom: var(--spacing-lg);
-    background-color: var(--background-secondary);
+    background-color: var(--muted);
 }
 
 .filter-group {
@@ -322,7 +327,7 @@
 .filter-group label {
     font-size: var(--font-size-sm);
     font-weight: var(--font-weight-medium);
-    color: var(--text-primary);
+    color: var(--foreground);
     white-space: nowrap;
 }
 
@@ -333,7 +338,7 @@
     align-items: center;
     margin-bottom: var(--spacing-lg);
     padding: var(--spacing-md);
-    background-color: var(--background-secondary);
+    background-color: var(--muted);
     border-radius: var(--radius-lg);
     flex-wrap: wrap;
     gap: var(--spacing-md);
@@ -358,7 +363,27 @@
     font-size: var(--font-size-lg);
     font-weight: 500;
     margin: 0;
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
+}
+
+/* ── [INT-771 拆搬] 区块标题/内容（共享组件样式 · 自 components/comparison-common.css 归位，值原样） ── */
+.section-title {
+  font-size: var(--font-size-xxl);
+  font-weight: var(--font-weight-bold);
+  color: var(--foreground);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.section-title i {
+  color: var(--color-slate-500);
+}
+
+.section-content {
+  overflow: hidden;
+  transition: all 0.3s ease;
 }
 
 /* 响应式设计 */
@@ -468,7 +493,7 @@
     flex: 1;
     transform: translateX(0);
     padding: var(--spacing-xl);
-    background-color: var(--background-primary);
+    background-color: var(--background);
     overflow-y: auto;
     min-height: 100vh;
     display: flex;
@@ -517,8 +542,8 @@
 }
 
 .sidebar-hover-trigger:hover .sidebar-hint {
-    background: var(--white-color);
-    color: var(--primary-color);
+    background: var(--color-white);
+    color: var(--primary);
     box-shadow: var(--shadow-md);
 }
 
@@ -539,9 +564,38 @@
     margin: 0;
     font-size: var(--font-size-lg);
     font-weight: var(--font-weight-bold);
-    color: var(--text-primary);
+    color: var(--foreground);
     display: flex;
     align-items: center;
     gap: var(--spacing-md);
     flex: 1;
+}
+
+/* ── [INT-771 拆搬] 搜索框输入（共享组件样式 · 自 components/comparison-common.css 归位，值原样） ── */
+.search-box input {
+  width: 100%;
+  padding: 8px 12px 8px 36px;
+  border: 1px solid var(--color-slate-200);
+  border-radius: var(--radius-6);
+  font-size: 14px;
+  color: var(--color-slate-700);
+  background: var(--color-white);
+  transition: all 0.2s ease;
+}
+
+.search-box input:focus {
+  outline: none;
+  border-color: var(--secondary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--secondary) 10%, transparent);
+}
+
+.search-box input::placeholder {
+  color: var(--color-slate-400);
+}
+
+.search-box i {
+  position: absolute;
+  left: 12px;
+  color: var(--color-slate-400);
+  font-size: 14px;
 }

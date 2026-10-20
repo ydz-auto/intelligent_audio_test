@@ -11,7 +11,7 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <div class="header-left">
-        <h2 class="page-title" style="color: var(--primary-color);">
+        <h2 class="page-title" style="color: var(--primary);">
           <i class="fas fa-file-alt"></i>
           测试历史报告数据
         </h2>
@@ -63,7 +63,7 @@
       <div class="reports-section">
         <div class="section-header">
           <h3 class="section-title">
-            <i class="fas fa-layer-group" style="color: var(--primary-color);"></i>
+            <i class="fas fa-layer-group" style="color: var(--primary);"></i>
             报告列表 ({{ total }})
           </h3>
         </div>
@@ -143,6 +143,19 @@
 </template>
 
 <script setup lang="ts">
+import '../../assets/styles/test-common.css'
+import '../../assets/styles/components/common.css'
+import '../../assets/styles/components/button.css'
+import '../../assets/styles/components/card.css'
+import '../../assets/styles/components/form.css'
+import '../../assets/styles/components/modal.css'
+import '../../assets/styles/components/table.css'
+import '../../assets/styles/components/navigation.css'
+import '../../assets/styles/components/progress.css'
+import '../../assets/styles/components/tag.css'
+import '../../assets/styles/components/log.css'
+import '../../assets/styles/layouts/main.css'
+
 import { ReportStatus } from '@/domain/enums';
 import { useTestReports } from './testReports';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
@@ -198,7 +211,7 @@ const {
 
 .page-description {
   margin: var(--spacing-xs) 0 0 0;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: var(--font-size-sm);
 }
 
@@ -239,7 +252,7 @@ const {
 .tr-empty-state h3 {
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
+  color: var(--foreground);
   margin: 0 0 8px 0;
 }
 
@@ -273,10 +286,10 @@ const {
 
 .report-card {
   border: var(--card-border);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   padding: var(--spacing-md);
   margin-bottom: var(--spacing-sm);
-  background-color: var(--background-primary);
+  background-color: var(--background);
 }
 
 .report-card .card-header {
@@ -292,7 +305,7 @@ const {
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-semibold);
   margin: 0 0 var(--spacing-xs) 0;
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 
 .report-card-meta-tags {
@@ -307,7 +320,7 @@ const {
 .report-card-test-type {
   font-size: var(--font-size-xs);
   padding: 2px 8px;
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
   background-color: var(--info-light);
   color: var(--info-color);
 }
@@ -325,7 +338,7 @@ const {
 }
 
 .report-card-description {
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: var(--font-size-sm);
   margin: 0 0 var(--spacing-sm) 0;
 }
@@ -344,3 +357,6 @@ const {
   gap: 4px;
 }
 </style>
+
+<!-- INT-768 CSS-1 拆搬：可视化域样式由测试报告页按需加载 -->
+<style src="../../assets/styles/api-test/visualization.css"></style>

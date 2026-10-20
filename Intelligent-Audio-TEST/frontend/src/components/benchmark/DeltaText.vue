@@ -13,6 +13,8 @@
 </template>
 
 <script setup lang="ts">
+import '../../assets/styles/components/button.css'
+
 import { computed } from 'vue'
 import type { BenchmarkRankingRow } from '../../domain/model/benchmark'
 import { BenchmarkSource, BenchmarkDirection } from '../../domain/enums'

@@ -4,10 +4,14 @@
  * INT-767 CSS-0：本文件为「迁移期聚合器」，按域分组标注归属（CSS-1~4 逐域拆解后删除）：
  *  - reset 段：已移入 base/（@layer base），与 Tailwind preflight 去重合并
  *  - 公共组件样式（components/{common,button,batch-shared,card,form,modal,table,
- *    navigation,progress,tag,log,dropdown-multi-select}.css）：迁移目标=被组件按需 import
- *    （照 report-filter-card.css 正例），由 CSS-1~3 随各域组件收敛时接线；本卡保持全局以零风险
- *  - 页面/域样式：test-common/layouts/tasks/reports/device/test-case-manager/e2etest/api-test
+ *    navigation,progress,tag,log,dropdown-multi-select}.css、test-common.css、
+ *    layouts/main.css）：已按卡面步骤 4 收归消费组件按需 import（<script> 内
+ *    import 该 css 的组件级 loader），本文件不再全局注入
+ *  - 页面/域样式：tasks/reports/device/test-case-manager/e2etest/api-test
  *    由对应 CSS-1~3 拆回各视图 <style scoped> 或就近共享 css
+ *  - CSS-2 已拆搬（INT-770）：tasks/*、test-case-manager/*、device/*、e2etest/*、
+ *    components/{dropdown-multi-select,test-case-card}.css 已 re-home 到使用它们的
+ *    页面/组件（<style src>），本文件不再 @import
  */
 
 /* 1. 重置样式（已移入 base/reset.css，见 index.css 引入链） */
@@ -18,55 +22,12 @@
 /* 2. CSS变量定义 - 旧变量兼容别名层（迁移期专用，CSS-4 删除；语义正源在 theme.css/theme-presets.css） */
 @import './variables.css';
 
-/* 2.1 测试公共样式 - 端到端测试/API测试共用的步骤、算法选择等样式（CSS-1 拆） */
-@import './test-common.css';
+/* 3. 领域共享组件样式（已 re-home：CSS-2 → INT-770，CSS-3 comparison-common → INT-771 比较组件） */
 
-/* 3. 基础组件样式（公共组件共享样式，CSS-1~3 随域收敛为组件按需 import） */
-@import './components/common.css';
-@import './components/button.css';
-@import './components/batch-shared.css';
-@import './components/card.css';
-@import './components/form.css';
-@import './components/modal.css';
-@import './components/table.css';
-@import './components/navigation.css';
-@import './components/progress.css';
-@import './components/tag.css';
-@import './components/log.css';
-@import './components/dropdown-multi-select.css';
+/* 5. 任务页面样式（CSS-2 已 re-home，INT-770） */
+/* 6. 报告相关样式（CSS-3 已 re-home，INT-771） */
 
-/* 3.1 领域共享组件样式（CSS-2：test-case-card；CSS-3：comparison-common） */
-@import './components/test-case-card.css';
-@import './components/comparison-common.css';
-@import './device/device-card.css';
-@import './e2etest/dropdown.css';
-
-/* 4. 页面布局样式 - 响应式设计实现（CSS-1 拆） */
-@import './layouts/main.css';
-
-/* 5. 任务页面样式（CSS-2 拆） */
-@import './tasks/charts.css';
-@import './tasks/task-card.css';
-@import './tasks/task-status.css';
-@import './tasks/filter-sort.css';
-@import './tasks/stats.css';
-
-/* 6. 报告相关样式（CSS-3 拆） */
-@import './reports/base.css';
-@import './reports/reports.css';
-
-/* 7. 页面特定样式（CSS-2：device/test-case-manager/e2etest；CSS-1：api-test） */
-@import './device/device.css';
-@import './test-case-manager/base.css';
-@import './test-case-manager/toolbar.css';
-@import './test-case-manager/category.css';
-@import './test-case-manager/test-case-manager.css';
-@import './e2etest/e2etest.css';
-@import './api-test/api-test.css';
-@import './api-test/visualization.css';
-@import './api-test/step-panel.css';
-@import './api-test/tag-stats.css';
-@import './api-test/api-card.css';
+/* 7. 页面特定样式（已拆搬：CSS-1 api-test → INT-768；CSS-2 device/test-case-manager/e2etest → INT-770 组件级 loader） */
 
 /* 通用搜索框和筛选框布局规则（全局覆写段，CSS-1~4 收敛时并入对应域） */
 .filter-bar,

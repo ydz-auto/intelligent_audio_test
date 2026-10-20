@@ -50,6 +50,15 @@
 </template>
 
 <script setup lang="ts">
+import '../../../assets/styles/test-common.css'
+import '../../../assets/styles/components/common.css'
+import '../../../assets/styles/components/button.css'
+import '../../../assets/styles/components/form.css'
+import '../../../assets/styles/components/modal.css'
+import '../../../assets/styles/components/table.css'
+import '../../../assets/styles/components/tag.css'
+import '../../../assets/styles/components/log.css'
+
 /**
  * 修改密码对话框（13_个人中心 §3.5.1 / §6，对位 newAPI change-password-dialog.tsx）：
  * 三字段（当前/新/确认），新密码下限 6 位对齐平台 AUTH_PASSWORD_MIN_LENGTH（默认 6）。

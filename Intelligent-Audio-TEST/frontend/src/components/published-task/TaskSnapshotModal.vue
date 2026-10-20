@@ -67,6 +67,11 @@
 </template>
 
 <script setup lang="ts">
+import '../../assets/styles/components/modal.css'
+import '../../assets/styles/components/navigation.css'
+import '../../assets/styles/components/tag.css'
+import '../../assets/styles/layouts/main.css'
+
 import { computed } from 'vue';
 import type { TaskSnapshot } from '../../domain/model/publishedTask';
 

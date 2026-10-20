@@ -39,6 +39,9 @@
 </template>
 
 <script setup lang="ts">
+import '../../assets/styles/components/navigation.css'
+import '../../assets/styles/layouts/main.css'
+
 /**
  * 用例卡片「人工复核」Badge（§4.1 卡片标记）+ 卡片内复核明细弹窗（§4.1 明细）。
  *

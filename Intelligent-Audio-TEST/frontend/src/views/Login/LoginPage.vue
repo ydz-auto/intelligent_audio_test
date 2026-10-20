@@ -58,6 +58,17 @@
 </template>
 
 <script setup lang="ts">
+import '../../assets/styles/test-common.css'
+import '../../assets/styles/components/common.css'
+import '../../assets/styles/components/button.css'
+import '../../assets/styles/components/card.css'
+import '../../assets/styles/components/form.css'
+import '../../assets/styles/components/table.css'
+import '../../assets/styles/components/navigation.css'
+import '../../assets/styles/components/tag.css'
+import '../../assets/styles/components/log.css'
+import '../../assets/styles/layouts/main.css'
+
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../../store/authStore'
@@ -167,7 +178,7 @@ onMounted(async () => {
 .form-group label {
   display: block;
   margin-bottom: 5px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 14px;
 }
 .form-group input {
@@ -211,7 +222,7 @@ onMounted(async () => {
   text-align: center;
   margin-top: 16px;
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 .login-link {
   color: var(--primary);

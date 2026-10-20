@@ -99,6 +99,9 @@
 </template>
 
 <script setup>
+import '../../../assets/styles/components/table.css'
+import '../../../assets/styles/components/log.css'
+
 import { ref, computed, watch, nextTick, onUnmounted } from 'vue'
 
 const props = defineProps({

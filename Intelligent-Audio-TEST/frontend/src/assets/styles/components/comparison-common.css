@@ -1,28 +1,9 @@
 /* Comparison Components Common Styles */
 /* Used by: CaseTagComparisonComponent, CaseCategoryComparisonComponent, SpecificCaseComparisonComponent */
+/* INT-771 拆搬：共享壳（section 系列 / search-box / btn / modal 系列 / status-badge / pagination / table-container）
+   已归位至 layouts/main.css + components/button.css、modal.css、table.css、log.css；本文件保留比较域专属样式。 */
 
-/* ==================== Card Header Styles ==================== */
-.section-header {
-  margin-bottom: 20px;
-  cursor: pointer;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.section-title {
-  font-size: var(--font-size-xxl);
-  font-weight: var(--font-weight-bold);
-  color: var(--text-primary);
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-}
-
-.section-title i {
-  color: var(--color-slate-500);
-}
-
+/* ==================== Collapse Button Styles ==================== */
 .collapse-btn {
   background: transparent;
   border: none;
@@ -38,16 +19,11 @@
 .collapse-btn:hover {
   color: var(--color-slate-700);
   background: var(--color-slate-100);
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
 }
 
 .collapse-btn.collapsed {
   transform: rotate(-90deg);
-}
-
-.section-content {
-  overflow: hidden;
-  transition: all 0.3s ease;
 }
 
 /* ==================== Filter Card Styles ==================== */
@@ -78,39 +54,6 @@
   width: 100%;
 }
 
-/* ==================== Search Box Styles ==================== */
-.search-box {
-  width: 100%;
-}
-
-.search-box input {
-  width: 100%;
-  padding: 8px 12px 8px 36px;
-  border: 1px solid var(--color-slate-200);
-  border-radius: var(--radius-6);
-  font-size: 14px;
-  color: var(--color-slate-700);
-  background: var(--color-white);
-  transition: all 0.2s ease;
-}
-
-.search-box input:focus {
-  outline: none;
-  border-color: var(--secondary);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--secondary) 10%, transparent);
-}
-
-.search-box input::placeholder {
-  color: var(--color-slate-400);
-}
-
-.search-box i {
-  position: absolute;
-  left: 12px;
-  color: var(--color-slate-400);
-  font-size: 14px;
-}
-
 /* ==================== Case Type Filter ==================== */
 .case-type-filter {
   display: flex;
@@ -127,7 +70,7 @@
   background: var(--color-white) ;
   color: var(--color-slate-500) ;
   border: 1px solid var(--color-slate-200) ;
-  border-radius: var(--border-radius-xl);
+  border-radius: var(--radius-xl);
   cursor: pointer;
   transition: all 0.2s ease;
   font-size: 13px;
@@ -156,7 +99,7 @@
   padding: 0;
   margin-bottom: 20px;
   width: 100%;
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
 }
 
 .metric-selection-title {
@@ -180,7 +123,7 @@
   background: var(--color-white) ;
   color: var(--color-slate-500) ;
   border: 1px solid var(--color-slate-200) ;
-  border-radius: var(--border-radius-xl);
+  border-radius: var(--radius-xl);
   cursor: pointer;
   transition: all 0.2s ease;
   font-size: 13px;
@@ -201,30 +144,6 @@
   color: var(--color-white) ;
   border-color: var(--secondary) ;
   box-shadow: 0 2px 8px color-mix(in srgb, var(--secondary) 30%, transparent);
-}
-
-/* ==================== Table Container Styles ==================== */
-.table-container {
-  padding: 0;
-}
-
-.table-container::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-.table-container::-webkit-scrollbar-track {
-  background: var(--color-slate-50);
-  border-radius: var(--radius-3);
-}
-
-.table-container::-webkit-scrollbar-thumb {
-  background: var(--color-slate-300);
-  border-radius: var(--radius-3);
-}
-
-.table-container::-webkit-scrollbar-thumb:hover {
-  background: var(--color-slate-400);
 }
 
 /* ==================== Report Data Table Styles ==================== */
@@ -307,8 +226,7 @@
   background: var(--color-slate-50);
 }
 
-/* ==================== Pagination Styles ==================== */
-.pagination,
+/* ==================== Comparison Pagination Styles ==================== */
 .metric-pagination,
 .specific-case-pagination {
   display: flex;
@@ -349,68 +267,6 @@
   background: var(--secondary);
   border-color: var(--secondary);
   color: var(--color-white);
-}
-
-/* ==================== Button Styles ==================== */
-.btn {
-}
-
-.btn-primary {
-}
-
-.btn-primary:hover {
-  background: var(--secondary);
-}
-
-.btn-secondary {
-}
-
-.btn-secondary:hover {
-  background: var(--color-slate-200);
-}
-
-/* ==================== Modal Styles ==================== */
-.modal-overlay {
-  background: color-mix(in srgb, var(--color-black) 50%, transparent);
-}
-
-.modal-content {
-  background: var(--color-white);
-  overflow: auto;
-}
-
-.modal-header {
-}
-
-.modal-title {
-}
-
-
-
-.modal-body {
-  padding: 20px;
-}
-
-/* ==================== Status Badge Styles ==================== */
-.status-badge {
-}
-
-.status-badge.success {
-  background: var(--color-green-100);
-}
-
-.status-badge.failed,
-.status-badge.error {
-  background: var(--color-red-100);
-  color: var(--color-red-800);
-}
-
-.status-badge.warning {
-  background: var(--color-amber-100);
-}
-
-.status-badge.pending {
-  background: var(--color-slate-100);
 }
 
 /* ==================== Chart Container Styles ==================== */

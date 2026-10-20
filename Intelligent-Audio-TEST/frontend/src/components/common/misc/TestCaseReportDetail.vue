@@ -349,6 +349,16 @@
 </template>
 
 <script setup>
+import '../../../assets/styles/test-common.css'
+import '../../../assets/styles/components/common.css'
+import '../../../assets/styles/components/button.css'
+import '../../../assets/styles/components/modal.css'
+import '../../../assets/styles/components/table.css'
+import '../../../assets/styles/components/navigation.css'
+import '../../../assets/styles/components/tag.css'
+import '../../../assets/styles/components/log.css'
+import '../../../assets/styles/layouts/main.css'
+
 import DataTable from '../data/DataTable.vue';
 import TimelineComparison from '../../report/TimelineComparison.vue';
 import AudioPlayerModal from '../audio/AudioPlayerModal.vue';
@@ -356,6 +366,7 @@ import AudioTimelineVisualization from '../audio/AudioTimelineVisualization.vue'
 import { useTestCaseReportDetail } from './TestCaseReportDetail';
 import { TestType } from '@/domain/enums';
 import { readCamel } from '@/utils/keyTransform';
+import '../../../assets/styles/components/comparison-common.css';
 
 const props = defineProps({
   dimensions: { type: Array, default: () => [] },
