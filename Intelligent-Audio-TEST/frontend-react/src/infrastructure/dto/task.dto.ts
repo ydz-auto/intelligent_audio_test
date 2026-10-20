@@ -111,12 +111,10 @@ export interface TaskDetailDto {
   cases: TaskCaseBriefDto[]
   devices: TaskDeviceBriefDto[]
   apis: TaskApiBriefDto[]
-  /** INT-734/755：任务级已复核结果计数（上游可缺省 → 容错 0） */
+  /** INT-734/755：任务级已复核结果计数（上游可缺省 → 容错 0；TaskDetailData.review_count，§5.7 硬确认层数据源） */
   review_count?: number | null
   created_at: string | null
   updated_at: string | null
-  /** 人工复核结果条数（TaskDetailData.review_count；null/缺省按 0 处理，§5.7 硬确认层数据源） */
-  review_count?: number | null
 }
 
 export interface TaskCaseBriefDto {
