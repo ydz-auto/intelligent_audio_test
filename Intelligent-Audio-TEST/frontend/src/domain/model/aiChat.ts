@@ -68,6 +68,11 @@ export interface ChatMessage {
   toolCalls?: AgentToolCall[]
   documentChanges?: ChatDocumentChange[]
   sourceRefs?: ChatSourceRef[]
+  /** 复核会话专用元信息（19 §5.2：AI 复核会话独立 scope，不影响主会话渲染） */
+  reviewMeta?: {
+    /** 该条 assistant 为「AI 复核结论」结构化卡（对话结论，供人工参考） */
+    verdict?: boolean
+  }
 }
 
 /**

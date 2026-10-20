@@ -320,8 +320,8 @@
                       v-if="canAiReview && isTerminal"
                       class="review-row-btn review-row-btn--ai"
                       :disabled="reviewLoading"
-                      :title="'AI 复核该用例结果（建议层，不直接修改统计）'"
-                      @click.stop="openAiReview(testCase)"
+                      :title="'AI 复核该用例结果（灵犀Agent 对话式复核，可追问；建议层，不直接修改统计）'"
+                      @click.stop="openAiReviewSession(testCase)"
                     >
                       <i class="fas fa-sparkles"></i> AI 复核
                     </button>
@@ -409,8 +409,8 @@
                       v-if="canAiReview && isTerminal"
                       class="review-row-btn review-row-btn--ai"
                       :disabled="reviewLoading"
-                      :title="'AI 复核该用例结果（建议层，不直接修改统计）'"
-                      @click.stop="openAiReview(testCase)"
+                      :title="'AI 复核该用例结果（灵犀Agent 对话式复核，可追问；建议层，不直接修改统计）'"
+                      @click.stop="openAiReviewSession(testCase)"
                     >
                       <i class="fas fa-sparkles"></i> AI 复核
                     </button>
@@ -522,6 +522,10 @@
         <button type="button" class="review-batch-btn" :disabled="reviewLoading" @click="openBatchReview">
           <i class="fas fa-clipboard-check"></i> 批量复核
         </button>
+        <!-- §5.1：「快速复核」次要入口（一次性状态机，批量/低分初筛场景，不可追问；主形态=灵犀Agent 对话式复核） -->
+        <button v-if="canAiReview" type="button" class="review-batch-btn review-batch-btn--ai" :disabled="reviewLoading" title="快速复核（一次性状态机，批量初筛，不可追问）" @click="openQuickAiReview">
+          <i class="fas fa-sparkles"></i> 快速复核
+        </button>
       </div>
     </Teleport>
 
@@ -534,7 +538,18 @@
       @close="historyOpen = false"
     />
 
-    <!-- INT-796：AI 复核弹窗（§5.2，建议层；采纳后开人工复核弹窗预填） -->
+    <!-- INT-1068：AI 复核灵犀Agent 会话（§5.1 主形态：任务侧「AI 复核」打开对话式复核，可追问） -->
+    <AiReviewSessionDialog
+      v-if="aiReviewSessionTarget"
+      :visible="true"
+      :task-id="aiReviewSessionTarget.taskId"
+      :case-id="aiReviewSessionTarget.caseId"
+      :case-name="aiReviewSessionTarget.caseName"
+      @close="aiReviewSessionTarget = null"
+      @adopted="handleAiReviewAdopted"
+    />
+
+    <!-- §5.1：「快速复核」一次性状态机弹窗（次要入口，批量/低分初筛；采纳后开人工复核弹窗预填） -->
     <AiReviewDialog
       v-if="aiReviewTarget"
       :task-id="Number(props.taskId)"
@@ -569,7 +584,9 @@ import { tasksApi } from '../../infrastructure/api';
 import { useModalControl, MODAL_TYPES } from '../../composables/modal/useModal';
 import { useNotification } from '../../composables/modal/useNotification';
 import AiReviewDialog from '../common/modal/AiReviewDialog.vue';
+import AiReviewSessionDialog from '../ai-review/AiReviewSessionDialog.vue';
 import ReviewHistoryDrawer from '../common/modal/ReviewHistoryDrawer.vue';
+import * as reviewAiApi from '../../infrastructure/api/reviewAiApi';
 // INT-301 F3：双徽章图标/文案单一定义源 utils/taskStatusBadge.ts；配色单一定义源 TaskCard.css
 
 const props = defineProps({
@@ -665,6 +682,9 @@ const selectedCaseIds = ref(new Set());
 const reviewLoading = ref(false);
 const historyOpen = ref(false);
 const reviewCount = ref(0);
+/** §5.1 主形态：灵犀Agent 对话式复核会话目标（任务侧「AI 复核」入口） */
+const aiReviewSessionTarget = ref(null);
+/** §5.1 次要形态：「快速复核」一次性状态机弹窗目标（批量/低分初筛） */
 const aiReviewTarget = ref(null);
 
 const toggleCaseSelect = (caseId) => {
@@ -723,21 +743,39 @@ async function openCaseReview(testCase) {
   }
 }
 
-/** AI 复核入口（§5.2）：取该用例结果行 → AI 复核状态机弹窗 */
-async function openAiReview(testCase) {
+/** AI 复核入口（§5.1 主形态）：打开灵犀Agent 对话式复核会话（可追问；复核上下文由会话内部装配真实数据） */
+function openAiReviewSession(testCase) {
   if (!props.taskId) return;
+  aiReviewSessionTarget.value = {
+    taskId: props.taskId,
+    caseId: String(testCase.id),
+    caseName: testCase.name,
+  };
+}
+
+/** 「快速复核」入口（§5.1 次要形态）：勾选多行 → 聚合结果 → 一次性状态机弹窗（批量/低分初筛，不可追问） */
+async function openQuickAiReview() {
+  if (!props.taskId || selectedCaseIds.value.size === 0) return;
   reviewLoading.value = true;
   try {
-    const res = await tasksApi.getCaseResults(props.taskId, testCase.id);
-    if (!res.results || res.results.length === 0) {
-      notification.warning('该用例无执行结果，无法复核');
+    const entries = await Promise.all(
+      [...selectedCaseIds.value].map(async (caseId) => {
+        const c = props.associatedCases.find((x) => String(x.id) === caseId);
+        const res = await tasksApi.getCaseResults(props.taskId, caseId);
+        return { caseId, caseName: c?.name || res.caseName || String(caseId), results: res.results ?? [] };
+      }),
+    );
+    const allResults = entries.flatMap((e) => e.results);
+    if (allResults.length === 0) {
+      notification.warning('所选用例均无执行结果，无法快速复核');
       return;
     }
+    const first = entries.find((e) => e.results.length > 0);
     aiReviewTarget.value = {
-      caseId: String(testCase.id),
-      caseName: res.caseName || testCase.name,
-      results: res.results,
-      evaluationStatus: testCase.evaluationStatus || null,
+      caseId: first.caseId,
+      caseName: first.caseName,
+      results: allResults,
+      evaluationStatus: null,
     };
   } catch (err) {
     console.error('加载用例结果失败:', err);
@@ -816,10 +854,14 @@ async function submitReview(resultIds, payload, _testCase) {
   }
 }
 
-/** AI 采纳 → 打开 §3.2 复核弹窗预填（AI 判定的评估状态 + 备注=AI 理由） */
+/** AI 采纳 → 打开 §3.2 复核弹窗预填（AI 判定的评估状态 + 备注=AI 理由），人工确认后单次 adopt */
 async function adoptAiReviewIntoManual(preset) {
   if (!aiReviewTarget.value) return;
-  const results = aiReviewTarget.value.results.map((r) => ({
+  // 人工复核范围收敛到被采纳的 AI 记录（批量「快速复核」聚合多结果时只落单条，§5.5 单次 adopt）
+  const targetResults = preset.resultId != null
+    ? aiReviewTarget.value.results.filter((r) => Number(r.id) === Number(preset.resultId))
+    : aiReviewTarget.value.results;
+  const results = targetResults.map((r) => ({
     resultId: Number(r.id),
     executionStatus: r.executionStatus,
     deviceName: r.deviceName,
@@ -836,11 +878,26 @@ async function adoptAiReviewIntoManual(preset) {
     reviewHistory: [],
     evaluationStatus: aiReviewTarget.value.evaluationStatus,
     preset,
-  });
+  }).catch(() => undefined);
   if (payload) {
-    await submitReview(results.map((r) => r.resultId), payload);
+    // 单次 adopt：POST /ai-review/{id}/adopt 内部落人工复核语义（test_result_reviews + 统计重算），
+    // 不补调 /tasks/results/review（防双写留痕）
+    await reviewAiApi.adoptAiReview(preset.recordId, {
+      executionStatus: payload.executionStatus,
+      evaluationStatus: payload.evaluationStatus,
+      comment: payload.comment,
+    });
+    notification.success('已采纳 AI 复核结论，复核已提交');
+    await loadReviewCount();
+    emit('refreshReview');
     aiReviewTarget.value = null;
   }
+}
+
+/** 对话式会话采纳落位成功：刷新任务详情复核标记/统计 */
+async function handleAiReviewAdopted() {
+  await loadReviewCount();
+  emit('refreshReview');
 }
 
 /** 用例名映射（历史抽屉 testCaseId → 名称；从关联用例构建） */
