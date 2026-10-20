@@ -603,25 +603,9 @@ class ReportController(ReportControllerBase):
             if hidden_dim_ids:
                 all_dimensions = [d for d in all_dimensions if d.id not in hidden_dim_ids]
             metric_name_to_id = {str(dim.name): int(dim.id) for dim in all_dimensions if getattr(dim, "id", None) is not None and getattr(dim, "name", None) is not None}
-            
-            dimension_scores = {}
-            dimension_counts = {}
-            
-            for result in test_results:
-                dim_values = ReportControllerBase.extract_dimension_values(result.id, all_dimensions)
-                for dim_name, score in dim_values.items():
-                    if score is not None:
-                        if dim_name not in dimension_scores:
-                            dimension_scores[dim_name] = 0
-                            dimension_counts[dim_name] = 0
-                        dimension_scores[dim_name] += score
-                        dimension_counts[dim_name] += 1
-            
-            averages_map = {dim_name: (total / dimension_counts[dim_name]) for dim_name, total in dimension_scores.items() if dimension_counts[dim_name] > 0}
-            overall_averages = [
-                {"id": metric_name_to_id.get(str(dim_name)), "metric": str(dim_name), "value": value}
-                for dim_name, value in sorted(averages_map.items(), key=lambda kv: kv[0])
-            ]
+
+            res_ids = [r.id for r in test_results]
+            dim_results_map, dim_stats = ReportControllerTask._get_dimension_results_batch(res_ids)
             
             from backend.models.models import TaskDevice, Device, TaskAPI, API
             task_devices = TaskDevice.query.filter_by(task_id=task_id).all()
@@ -677,42 +661,34 @@ class ReportController(ReportControllerBase):
                     }
                 )
             
-            metric_data = {}
-            raw_data = {res: {dim.name: [] for dim in all_dimensions} for res in resources}
-            
-            accumulator = {}
-            
-            for result in test_results:
-                # 使用带时间前缀的资源名称
-                resource = ReportControllerBase.get_resource_name(result, task, use_time_prefix=False)
-                if resource not in resources:
-                    continue
-                
-                test_case = db.session.get(TestCase, result.test_case_id)
-                if not test_case: continue
-                
-                cat_name = test_case.group.name if test_case.group else "未分类"
-                
-                if cat_name not in accumulator:
-                    accumulator[cat_name] = {}
-                if resource not in accumulator[cat_name]:
-                    accumulator[cat_name][resource] = {dim.name: {'sum': 0, 'count': 0} for dim in all_dimensions}
-                
-                dim_values = ReportControllerBase.extract_dimension_values(result.id, all_dimensions)
-                for dim_name, score in dim_values.items():
-                    if score is not None:
-                        accumulator[cat_name][resource][dim_name]['sum'] += score
-                        accumulator[cat_name][resource][dim_name]['count'] += 1
-                        if dim_name in raw_data[resource]:
-                            raw_data[resource][dim_name].append(score)
-            
-            for cat_name, res_data in accumulator.items():
-                metric_data[cat_name] = {}
-                for res, dims in res_data.items():
-                    metric_data[cat_name][res] = {}
-                    for dim_name, stats in dims.items():
-                        metric_data[cat_name][res][dim_name] = (stats['sum'] / stats['count']) if stats['count'] > 0 else None
-            
+            # 复用报告聚合工具：metric_data/raw_data 口径与报告生成完全一致
+            # （average 维度取平均；pass_rate/ratio 等非 average 维度按聚合策略计算并转百分比）
+            core_metrics = ReportUtils.calculate_core_metrics(
+                test_results, all_dimensions, resources,
+                dim_results_map=dim_results_map,
+                tasks_map=None,
+                use_time_prefix=False
+            )
+            metric_data = core_metrics["metric_data"]
+            raw_data = core_metrics["raw_data"]
+
+            # 整体平均值：跨资源求各维度平均值（与资源列展示口径一致，百分比已乘 100）
+            resource_dims = list(metric_data.values())
+            if resource_dims:
+                all_dim_names = {d.name for d in all_dimensions}
+                averages_map = {}
+                for dim_name in all_dim_names:
+                    vals = [res_data.get(dim_name) for res_data in resource_dims]
+                    non_none = [v for v in vals if v is not None]
+                    if non_none:
+                        averages_map[dim_name] = sum(non_none) / len(non_none)
+            else:
+                averages_map = {}
+            overall_averages = [
+                {"id": metric_name_to_id.get(str(dim_name)), "metric": str(dim_name), "value": value}
+                for dim_name, value in sorted(averages_map.items(), key=lambda kv: kv[0])
+            ]
+
             normal_distribution_data = ReportControllerBase.calculate_normal_distribution(raw_data)
             
             return success_response({

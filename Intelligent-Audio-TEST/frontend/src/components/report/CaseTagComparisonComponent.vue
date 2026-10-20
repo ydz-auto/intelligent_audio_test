@@ -1097,6 +1097,11 @@ const computeTagMetricDataFromCases = (cases) => {
   const useTagFilter = selectedTagSet.size > 0 || includeUntagged
   const useCategoryFilter = selectedCategorySet.size > 0
 
+  // 百分比维度：搜索接口返回的是 0~1 小数，聚合时乘 100 与报告口径一致
+  const percentMetricSet = new Set(
+    (allMetrics.value || []).filter(m => m.unit === '%').map(m => m.name)
+  )
+
   const accumulator = {}
 
   ;(cases || []).forEach(caseItem => {
@@ -1138,9 +1143,10 @@ const computeTagMetricDataFromCases = (cases) => {
             }
             const val = m.value
             if (val !== null && val !== undefined) {
-              accumulator[tagName][resourceKey][dim].sum += Number(val)
+              const numVal = percentMetricSet.has(dim) ? Number(val) * 100 : Number(val)
+              accumulator[tagName][resourceKey][dim].sum += numVal
               accumulator[tagName][resourceKey][dim].count += 1
-              accumulator[tagName][resourceKey][dim].values.push(Number(val))
+              accumulator[tagName][resourceKey][dim].values.push(numVal)
             }
           })
         })
@@ -1155,9 +1161,10 @@ const computeTagMetricDataFromCases = (cases) => {
             }
             const val = metrics[rawDim]
             if (val !== null && val !== undefined) {
-              accumulator[tagName][resourceKey][dim].sum += Number(val)
+              const numVal = percentMetricSet.has(dim) ? Number(val) * 100 : Number(val)
+              accumulator[tagName][resourceKey][dim].sum += numVal
               accumulator[tagName][resourceKey][dim].count += 1
-              accumulator[tagName][resourceKey][dim].values.push(Number(val))
+              accumulator[tagName][resourceKey][dim].values.push(numVal)
             }
           })
         })
