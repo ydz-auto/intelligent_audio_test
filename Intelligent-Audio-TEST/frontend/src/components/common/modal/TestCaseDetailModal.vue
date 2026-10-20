@@ -508,7 +508,7 @@ onMounted(() => {
   color: var(--text-primary);
   display: flex;
   align-items: center;
-  gap: var(--spacing-xs);
+  gap: var(--spacing-sm);
 }
 .case-header-panel h4 i{
   color: var(--primary-color);
@@ -584,7 +584,7 @@ onMounted(() => {
   color: var(--text-primary);
   display: flex;
   align-items: center;
-  gap: var(--spacing-xs);
+  gap: var(--spacing-sm);
 }
 .results-section h5 i{
   color: var(--primary-color);
@@ -606,7 +606,7 @@ onMounted(() => {
   color: var(--text-primary);
   display: flex;
   align-items: center;
-  gap: var(--spacing-xs);
+  gap: var(--spacing-sm);
 }
 .logs-section h5 i{
   color: var(--primary-color);
