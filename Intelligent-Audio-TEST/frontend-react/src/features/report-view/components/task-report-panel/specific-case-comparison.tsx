@@ -43,7 +43,7 @@ import { Input } from '@/components/ui/input'
 import { useReportCases } from '@/application/report-view/use-report-cases'
 import { useReportReviews } from '@/application/report-view/useReportReviews'
 import { usePermissions } from '@/application/hooks/use-permissions'
-import type { ReportCaseItem, ReportDetailData } from '@/domain/models/report'
+import type { ReportCaseItem, ReportDetailData, ReportLogFile } from '@/domain/models/report'
 import type { CaseResultForReview } from '@/domain/models/review'
 import type { TagItem } from '@/domain/models/testTag'
 import { cn } from '@/lib/utils'
@@ -61,10 +61,25 @@ import { CaseReportDetail } from '../case-report-detail'
 import { getDeviceName } from '../case-report-detail/case-report-utils'
 import { CaseDetailDialog } from '../modals/case-detail-dialog'
 import { LogDownloadProgressDialog } from '../modals/log-download-progress-dialog'
+import { LogFileSelectDialog } from '../modals/log-file-select-dialog'
 import { ReviewBadge } from '../review/review-badge'
 import { ManualReviewDialog } from '../review/manual-review-dialog'
 import { ReviewHistoryDrawer } from '../review/review-history-drawer'
 import { MultiSelectFilter, SelectedConditionsBar } from './multi-select-filter'
+
+/** 日志下载进度视图态（§4.10b：进度 Dialog 受控数据，由真实下载流计算） */
+interface LogDownloadViewState {
+  /** 所选文件数（正在下载日志（{n} 个文件）） */
+  fileCount: number
+  /** 所选文件总大小（bytes；进度分母） */
+  totalSize: number
+  /** 已下载字节 */
+  downloaded: number
+  /** 下载速度（bytes/s，500ms 采样） */
+  speed: number
+  /** 是否完成 */
+  done: boolean
+}
 
 export function SpecificCaseComparison({
   report,
@@ -199,21 +214,58 @@ export function SpecificCaseComparison({
 
   const [collapsed, setCollapsed] = useState(false)
   const [detailCase, setDetailCase] = useState<ReportCaseItem>()
-  const [downloadingId, setDownloadingId] = useState<string>()
+  // INT-1067 两段流程：① 下载日志 → 文件选择 Dialog（§4.10a）→ ② 确认 → 打包下载 + 进度 Dialog（§4.10b）
+  const [fileSelectCase, setFileSelectCase] = useState<ReportCaseItem>()
   const [downloadTarget, setDownloadTarget] = useState<ReportCaseItem>()
-  const [downloadSize, setDownloadSize] = useState(0)
+  const [downloadState, setDownloadState] = useState<LogDownloadViewState>()
 
-  const handleDownload = async (caseId: string) => {
-    setDownloadingId(caseId)
+  /** ① 点击「下载日志」：打开文件选择 Dialog（确认后进入下载） */
+  const openLogFileSelect = (c: ReportCaseItem) => setFileSelectCase(c)
+
+  /** ② 确认所选文件：?files= 打包下载 + 真实进度 Dialog；完成后触发浏览器下载 */
+  const startLogDownload = async (files: ReportLogFile[]) => {
+    const target = fileSelectCase
+    if (!target) return
+    setFileSelectCase(undefined)
+    const totalSize = files.reduce((sum, f) => sum + (f.size || 0), 0)
+    setDownloadTarget(target)
+    setDownloadState({
+      fileCount: files.length,
+      totalSize,
+      downloaded: 0,
+      speed: 0,
+      done: false,
+    })
     try {
-      const { size } = await downloadLogs(caseId)
-      const target =
-        items.find((c) => c.id === caseId) ??
-        fallbackCases.find((c) => c.id === caseId)
-      setDownloadSize(size)
-      setDownloadTarget(target)
-    } finally {
-      setDownloadingId(undefined)
+      const { blob } = await downloadLogs(
+        target.id,
+        files.map((f) => f.name),
+        (progress) => {
+          setDownloadState((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  downloaded: progress.loaded,
+                  speed: progress.speed,
+                }
+              : prev
+          )
+        }
+      )
+      // 触发浏览器下载（对照 use-report-actions triggerBlobDownload 先例）
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `case_${target.id}_logs.zip`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      setDownloadState((prev) => (prev ? { ...prev, done: true } : prev))
+    } catch (err) {
+      setDownloadTarget(undefined)
+      setDownloadState(undefined)
+      toast.error(err instanceof Error ? err.message : '下载日志失败，请稍后重试')
     }
   }
 
@@ -296,8 +348,7 @@ export function SpecificCaseComparison({
               variant='ghost'
               size='sm'
               className='h-7 gap-1 px-2 text-xs'
-              onClick={() => void handleDownload(c.id)}
-              disabled={downloadingId === c.id}
+              onClick={() => openLogFileSelect(c)}
             >
               <Download aria-hidden='true' className='size-3.5' />
               下载日志
@@ -641,15 +692,33 @@ export function SpecificCaseComparison({
         )}
       </CollapsibleContent>
 
+      {/* INT-1067 两段流程：① 文件选择 Dialog（§4.10a）→ ② 下载进度 Dialog（§4.10b） */}
+      <LogFileSelectDialog
+        open={fileSelectCase !== undefined}
+        onOpenChange={(open) => {
+          if (!open) setFileSelectCase(undefined)
+        }}
+        reportId={report.id}
+        caseItem={fileSelectCase}
+        onConfirm={(files) => void startLogDownload(files)}
+      />
       <LogDownloadProgressDialog
         open={downloadTarget !== undefined}
         onOpenChange={(open) => {
-          if (!open) setDownloadTarget(undefined)
+          if (!open) {
+            setDownloadTarget(undefined)
+            setDownloadState(undefined)
+          }
         }}
         caseName={downloadTarget?.name ?? ''}
-        totalSize={downloadSize}
+        fileCount={downloadState?.fileCount ?? 0}
+        downloaded={downloadState?.downloaded ?? 0}
+        totalSize={downloadState?.totalSize ?? 0}
+        speed={downloadState?.speed ?? 0}
+        done={downloadState?.done ?? false}
         onComplete={() => {
           setDownloadTarget(undefined)
+          setDownloadState(undefined)
           toast.success('日志下载完成')
         }}
       />

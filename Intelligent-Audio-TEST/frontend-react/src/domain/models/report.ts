@@ -426,6 +426,19 @@ export interface ReportCaseListData {
   pages: number
 }
 
+/**
+ * 用例日志文件（GET /reports/{id}/cases/{caseId}/logs 项；15_报告域.md §4.10a，INT-1067）。
+ * name 与下载 ZIP arcname / ?files= 匹配值同一套逻辑名（INT-1062 命名一致性）。
+ */
+export interface ReportLogFile {
+  /** 文件名（= 下载 ZIP arcname = files= 匹配值） */
+  name: string
+  /** 文件大小（bytes） */
+  size: number
+  /** 修改时间（RFC3339；business 日志无 mtime 时后端省略该字段） */
+  updatedAt?: string
+}
+
 /** POST /reports/{id}/cases/search（report.py ReportSearchCasesRequest 全参） */
 export interface ReportSearchCasesRequest {
   keyword?: string

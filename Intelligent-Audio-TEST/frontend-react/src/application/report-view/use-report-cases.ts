@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   downloadCaseLogs,
   searchReportCases,
+  type CaseLogDownloadProgress,
 } from '@/infrastructure/api/reports-api'
 import type {
   ReportCaseItem,
@@ -113,11 +114,18 @@ export function useReportCases(
     []
   )
 
+  /**
+   * 下载用例日志（INT-1067 两段流程第二步）：按所选文件名打包（?files=），
+   * 流式上报真实进度（onProgress 500ms 采样），返回 zip Blob。
+   */
   const downloadLogs = useCallback(
-    async (caseId: string) => {
-      // 消费桩返回的真实 blob 大小（P2-7：不再伪造 size，进度 Dialog 按实值推进）
-      const result = await downloadCaseLogs(reportId, caseId)
-      return { size: result.size }
+    async (
+      caseId: string,
+      files: string[],
+      onProgress?: (progress: CaseLogDownloadProgress) => void
+    ) => {
+      // 消费真实端点返回的 blob（进度 Dialog 按所选总量与真实速率推进）
+      return downloadCaseLogs(reportId, caseId, files, onProgress)
     },
     [reportId]
   )
