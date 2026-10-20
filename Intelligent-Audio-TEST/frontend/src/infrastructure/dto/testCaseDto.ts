@@ -54,6 +54,8 @@ export interface TestCaseUpsertDto {
   name?: string
   description?: string
   group_id?: string | number | null
+  /** 分组名（group_id 缺失时交后端按名称解析/自动建组，与 task_service create/update 契约一致，INT-972） */
+  group?: string
   tags?: string[]
   config?: TestCaseConfigRaw
   algorithm_params?: unknown

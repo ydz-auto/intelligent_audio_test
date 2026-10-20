@@ -103,10 +103,9 @@ export function toTagViewItem(dto: TagViewItemDto): TagViewItem {
 // ===== Domain → DTO（请求体） =====
 
 export function toTestCaseUpsertDto(draft: TestCaseDraft): TestCaseUpsertDto {
-  return {
+  const dto: TestCaseUpsertDto = {
     name: draft.name,
     description: draft.description,
-    group_id: draft.groupId,
     tags: draft.tags,
     // config 深度 snakify：fieldCode→field_code, roundNumber→round_number 等
     config: draft.config ? snakifyKeys(draft.config) as TestCaseUpsertDto['config'] : undefined,
@@ -116,5 +115,13 @@ export function toTestCaseUpsertDto(draft: TestCaseDraft): TestCaseUpsertDto {
     algorithm_type: draft.algorithmType,
     // INT-423/467：新建/编辑可见性（缺省不发，后端回落 shared）
     visibility: draft.visibility,
+  };
+  // 分组归属：groupId 存在时优先；新建分组流（handleCaseSave）清掉 groupId 仅携带 group 名，
+  // 此时回退 group 名交后端按名称解析/自动建组（与 task_service create/update 契约一致，INT-195）
+  if (draft.groupId != null && draft.groupId !== '') {
+    dto.group_id = draft.groupId;
+  } else if (draft.group) {
+    dto.group = draft.group;
   }
+  return dto;
 }

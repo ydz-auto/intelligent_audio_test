@@ -71,3 +71,38 @@ describe('convertTestCaseFormData · algorithmParams 独立列', () => {
     ])
   })
 })
+
+describe('toTestCaseUpsertDto · 分组归属（INT-972 P1 回归）', () => {
+  it('groupId 存在时优先映射 group_id，不透传 group 名', () => {
+    const out = toTestCaseUpsertDto(convertTestCaseFormData({
+      name: 'x',
+      group: '默认分组',
+      groupId: 'g1_id',
+      config: { rounds: [{ roundNumber: 1, audios: [] }], dimensions: [] },
+    } as any))
+    expect((out as any).group_id).toBe('g1_id')
+    expect((out as any).group).toBeUndefined()
+  })
+
+  it('新建分组流：groupId 缺失时回退 group 名交后端解析/自动建组（不再丢分组导致 400）', () => {
+    const out = toTestCaseUpsertDto(convertTestCaseFormData({
+      name: 'x',
+      group: '新组名',
+      createNewGroup: true,
+      config: { rounds: [{ roundNumber: 1, audios: [] }], dimensions: [] },
+    } as any))
+    expect((out as any).group_id).toBeUndefined()
+    expect((out as any).group).toBe('新组名')
+  })
+
+  it('groupId 为空串视为缺失，同样回退 group 名', () => {
+    const out = toTestCaseUpsertDto(convertTestCaseFormData({
+      name: 'x',
+      group: '新组名',
+      groupId: '',
+      config: { rounds: [{ roundNumber: 1, audios: [] }], dimensions: [] },
+    } as any))
+    expect((out as any).group_id).toBeUndefined()
+    expect((out as any).group).toBe('新组名')
+  })
+})
