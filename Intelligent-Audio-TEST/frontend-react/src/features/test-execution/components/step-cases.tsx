@@ -17,6 +17,8 @@ import { useTestCasesList, type TestCaseListFilters } from '@/application/testca
 import { useCaseGroups } from '@/application/testcases/use-case-groups'
 import { useCaseTags } from '@/application/testcases/use-case-tags'
 import { useDimensionOptions } from '@/application/testcases/use-evaluation-dimensions'
+import { useEvaluationDimensions, useEvaluationCategories } from '@/application/evaluation/use-dimensions'
+import { useCaseBatchActions } from '@/application/testcases/use-case-batch-actions'
 import { useCaseSelectionStore } from '@/infrastructure/stores/case-selection-store'
 import { fetchCaseIdsByFilter } from '@/infrastructure/api/testcases-ids-api'
 import { Button } from '@/components/ui/button'
@@ -28,6 +30,7 @@ import {
 } from '@/features/testcases/constants'
 import { TestCasesFilterToolbar } from '@/features/testcases/components/testcases-filter-toolbar'
 import { GroupedCaseList, type GroupActionCallbacks } from '@/features/testcases/components/grouped-case-list'
+import { CaseBatchActionsHost } from '@/features/testcases/components/case-batch-actions-host'
 import { TagCaseList } from '@/features/testcases/components/tag-case-list'
 import type { CaseCardCallbacks } from '@/features/testcases/components/case-card'
 import { SelectionSummary } from '@/features/test-execution/components/selection-summary'
@@ -62,12 +65,18 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
   const groupsQuery = useCaseGroups()
   const tagsQuery = useCaseTags()
   const dimsQuery = useDimensionOptions(algorithmType)
+  /** 全量评估维度（含子维度；批量设置评估维度 DimensionPicker 主/子分组云用，参考 V9.7.10） */
+  const allDimsQuery = useEvaluationDimensions()
+  /** 评估维度分类（DimensionPicker 分类分组组头；负责人 2026-10-19 口径） */
+  const categoriesQuery = useEvaluationCategories()
 
   const items = listQuery.data?.items ?? []
   const total = listQuery.data?.total ?? items.length
   const groups = groupsQuery.data ?? []
   const tags = tagsQuery.data ?? []
   const dimensions = dimsQuery.data ?? []
+  const allDimensions = allDimsQuery.data ?? []
+  const categories = categoriesQuery.data ?? []
 
   const isFiltered = useMemo(
     () =>
@@ -82,6 +91,15 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
   const selectedSet = useMemo(
     () => new Set(selection.manualCaseIds),
     [selection.manualCaseIds]
+  )
+
+  /** 批量弹窗状态机（七件套弹窗 + 两确认；INT-1026 与用例管理页共享 host 双挂） */
+  const batch = useCaseBatchActions({ onClearSelection: selection.clearSelection })
+
+  /** 批量设置评估维度透传的 testType（取第一个选中用例；INT-486 口径对齐 /testcases） */
+  const selectedTestType = useMemo(
+    () => items.find((c) => selectedSet.has(c.id))?.type ?? null,
+    [items, selectedSet]
   )
 
   const handleToggleSelect = (id: string, checked: boolean) => {
@@ -219,7 +237,7 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
             selected={selectedSet}
             tagRegistry={tags}
             callbacks={rowCallbacks}
-            onBatchAction={() => {}}
+            onBatchAction={batch.openBatch}
             actionCallbacks={groupCallbacks}
             onToggleSelect={handleToggleSelect}
             onToggleAll={handleToggleAll}
@@ -249,6 +267,21 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
           onClear={selection.clearSelection}
         />
       )}
+
+      {/* 批量弹窗群（INT-1026：组头「批量修改」九项与 /testcases 同款弹窗，共享 host） */}
+      <CaseBatchActionsHost
+        batchDialog={batch.batchDialog}
+        setBatchDialog={batch.setBatchDialog}
+        confirm={batch.confirm}
+        setConfirm={batch.setConfirm}
+        handleConfirm={batch.handleConfirm}
+        groups={groups}
+        tags={tags}
+        dimensions={allDimensions}
+        categories={categories}
+        algorithmType={algorithmType}
+        testType={selectedTestType}
+      />
     </div>
   )
 }

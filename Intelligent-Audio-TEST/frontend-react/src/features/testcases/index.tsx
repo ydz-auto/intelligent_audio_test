@@ -7,7 +7,6 @@
  * 接线后替换为 application/testcases mutations + URL 态 useTableUrlState。
  */
 import { Link, useNavigate } from '@tanstack/react-router'
-import { useQueryClient } from '@tanstack/react-query'
 import { FileDown, FileSpreadsheet, FileUp, Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -16,6 +15,7 @@ import { usePermissions } from '@/application/hooks/use-permissions'
 import { useEvaluationDimensions, useEvaluationCategories } from '@/application/evaluation/use-dimensions'
 import { useCaseGroups } from '@/application/testcases/use-case-groups'
 import { useCaseTags } from '@/application/testcases/use-case-tags'
+import { useCaseBatchActions } from '@/application/testcases/use-case-batch-actions'
 import {
   useTestCasesList,
   type TestCaseListFilters,
@@ -33,33 +33,18 @@ import {
 import { TestCasesFilterToolbar } from '@/features/testcases/components/testcases-filter-toolbar'
 import { GroupedCaseList, type GroupActionCallbacks } from '@/features/testcases/components/grouped-case-list'
 import { TagCaseList } from '@/features/testcases/components/tag-case-list'
-import { CaseBulkActions, type BatchActionKey } from '@/features/testcases/components/case-bulk-actions'
+import { CaseBulkActions } from '@/features/testcases/components/case-bulk-actions'
+import { CaseBatchActionsHost } from '@/features/testcases/components/case-batch-actions-host'
 import type { CaseCardCallbacks } from '@/features/testcases/components/case-card'
 import { CaseMutateDrawer } from '@/features/testcases/modals/case-mutate-drawer'
 import { ExportDialog } from '@/features/testcases/modals/export-dialog'
 import { GroupMutateDialog } from '@/features/testcases/modals/group-mutate-dialog'
-import { BatchDimensionsDialog } from '@/features/testcases/modals/batch-dimensions-dialog'
-import { BatchAdjustGroupDialog } from '@/features/testcases/modals/batch-adjust-group-dialog'
-import { BatchManageTagsDialog } from '@/features/testcases/modals/batch-manage-tags-dialog'
-import { BatchAlgoParamsDialog } from '@/features/testcases/modals/batch-algo-params-dialog'
-import { BatchDeviceDialog } from '@/features/testcases/modals/batch-device-dialog'
-import { BatchSplDialog } from '@/features/testcases/modals/batch-spl-dialog'
-import { BatchNoiseDialog } from '@/features/testcases/modals/batch-noise-dialog'
 import { AudioPreviewConfigDialog } from '@/features/testcases/modals/audio-preview-config-dialog'
-import {
-  CaseConfirmDialog,
-  type CaseConfirmState,
-} from '@/features/testcases/modals/case-confirms'
-import {
-  batchTestcaseAction,
-  fetchRefreshTaskStatus,
-} from '@/infrastructure/api/testcases-batch-api'
 
 export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   const { hasPermission } = usePermissions()
   const navigate = useNavigate()
   const algorithmId = useAlgorithmStore((s) => s.algorithmId)
-  const queryClient = useQueryClient()
 
   const [filters, setFilters] = useState<TestCaseListFilters>({})
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -71,12 +56,6 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   const [exportOpen, setExportOpen] = useState(false)
   const [groupDialog, setGroupDialog] = useState<{ open: boolean; group: TestCaseGroup | null }>({ open: false, group: null })
   const [previewCase, setPreviewCase] = useState<TestCaseListItem | null>(null)
-  const [batchDialog, setBatchDialog] = useState<{
-    kind: 'dimensions' | 'group' | 'tags' | 'params' | 'device' | 'spl' | 'noise'
-    count: number
-    ids: string[]
-  } | null>(null)
-  const [confirm, setConfirm] = useState<CaseConfirmState | null>(null)
 
   const listQuery = useTestCasesList(view, {
     ...filters,
@@ -118,6 +97,9 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
 
   const clearSelection = useCallback(() => setSelected(new Set()), [])
 
+  /** 批量弹窗状态机（七件套弹窗 + 两确认；INT-1026 共享 host 双挂） */
+  const batch = useCaseBatchActions({ onClearSelection: clearSelection })
+
   // ESC 清选（11_用例域.md §3.7「X 清选钮 + ESC 清选 + aria-live 播报照搬」）：
   // 批量浮条可见时页面级 keydown Escape → 清空勾选、浮条消失。
   // 弹窗/抽屉打开时 ESC 归其消费（base-ui dialog 在 document 层 stopPropagation，此处再兜底）；
@@ -132,8 +114,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
         exportOpen ||
         groupDialog.open ||
         previewCase != null ||
-        batchDialog != null ||
-        confirm != null
+        batch.isBatchOpen
       )
         return
       const target = event.target as HTMLElement | null
@@ -155,8 +136,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
     exportOpen,
     groupDialog.open,
     previewCase,
-    batchDialog,
-    confirm,
+    batch.isBatchOpen,
   ])
 
   const toggleSelect = useCallback((id: string, checked: boolean) => {
@@ -167,14 +147,6 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
       return next
     })
   }, [])
-
-  /** 批量弹窗关闭后刷新列表（设置成功/取消后均刷新，成本低；INT-710 真实提交后列表可见结果） */
-  useEffect(() => {
-    if (batchDialog === null) return
-    return () => {
-      void queryClient.invalidateQueries({ queryKey: ['testcases'] })
-    }
-  }, [batchDialog, queryClient])
 
   const toggleAll = useCallback((ids: string[], checked: boolean) => {
     setSelected((prev) => {
@@ -206,9 +178,9 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
         setMutateCase(c)
         setMutateOpen(true)
       },
-      onDelete: (c) => setConfirm({ kind: 'delete', name: c.name }),
-      onRestore: (c) => setConfirm({ kind: 'restore', name: c.name }),
-      onPurge: (c) => setConfirm({ kind: 'purge', name: c.name }),
+      onDelete: (c) => batch.setConfirm({ kind: 'delete', name: c.name }),
+      onRestore: (c) => batch.setConfirm({ kind: 'restore', name: c.name }),
+      onPurge: (c) => batch.setConfirm({ kind: 'purge', name: c.name }),
     }),
     []
   )
@@ -221,132 +193,13 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
         setMutateOpen(true)
       },
       onEditGroup: (group) => setGroupDialog({ open: true, group }),
-      onDeleteGroup: (group) => setConfirm({ kind: 'delete-group', name: group.name }),
+      onDeleteGroup: (group) => batch.setConfirm({ kind: 'delete-group', name: group.name }),
       onCopyGroup: (group) => {
         toast.success('已复制分组', { description: `新分组：${group.name}_copy` })
       },
     }),
     []
   )
-
-  const handleBatchAction = (action: BatchActionKey, ids: string[]) => {
-    const count = ids.length
-    switch (action) {
-      case 'dimensions':
-      case 'group':
-      case 'tags':
-      case 'params':
-      case 'device':
-      case 'spl':
-      case 'noise':
-        setBatchDialog({ kind: action, count, ids })
-        break
-      case 'copy':
-        setConfirm({ kind: 'batch-copy', count })
-        break
-      case 'delete':
-        setConfirm({ kind: 'batch-delete', count })
-        break
-      case 'restore':
-        setConfirm({ kind: 'batch-restore', count })
-        break
-      case 'purge':
-        setConfirm({ kind: 'batch-purge', count })
-        break
-      case 'name':
-        setConfirm({ kind: 'auto-name', count })
-        break
-      case 'refresh':
-        setConfirm({ kind: 'refresh', count })
-        break
-      default:
-        toast.success('批量操作执行成功（演示：完整弹窗随接线批次落地）')
-    }
-  }
-
-  const handleConfirm = (state: CaseConfirmState) => {
-    switch (state.kind) {
-      case 'delete':
-        toast.success('已移入回收站')
-        break
-      case 'purge':
-        toast.success('已彻底删除')
-        break
-      case 'restore':
-        toast.success(`用例「${state.name}」已恢复`)
-        break
-      case 'delete-group':
-        toast.success('删除分组成功')
-        break
-      case 'restore-all':
-        toast.success(`已恢复 ${state.count ?? 0} 个用例`)
-        break
-      case 'batch-copy':
-        toast.success('批量复制成功')
-        break
-      case 'batch-delete':
-        toast.success('已批量移入回收站')
-        break
-      case 'batch-restore':
-        toast.success('已批量恢复')
-        break
-      case 'batch-purge':
-        toast.success('已批量彻底删除')
-        break
-      case 'auto-name':
-        // INT-710：批量自动生成名称走真实 POST /testcases/batch（auto_generate_name）
-        void (async () => {
-          try {
-            await batchTestcaseAction('auto_generate_name', [...selected], {})
-            toast.success('自动生成名称完成')
-            await queryClient.invalidateQueries({ queryKey: ['testcases'] })
-          } catch (error) {
-            toast.error(error instanceof Error ? error.message : '自动生成名称失败')
-          }
-        })()
-        break
-      case 'refresh':
-        // INT-710：刷新参考参数走真实 POST /testcases/batch（refresh_reference → 异步任务）
-        void refreshReferenceParams([...selected])
-        break
-    }
-    clearSelection()
-    setConfirm(null)
-  }
-
-  /** 刷新参考参数（§5.3.9）：POST /testcases/batch → task_id → 1s 轮询完成统计 */
-  const refreshReferenceParams = async (ids: string[]) => {
-    try {
-      const result = await batchTestcaseAction('refresh_reference', ids, {})
-      if (result.taskId) {
-        void pollRefreshTask(result.taskId)
-        toast.success('已提交刷新任务')
-      } else {
-        toast.success(`已成功刷新 ${ids.length} 个用例的参考参数`)
-      }
-      queryClient.invalidateQueries({ queryKey: ['testcases'] })
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '刷新用例参考失败')
-    }
-  }
-
-  const pollRefreshTask = async (taskId: string) => {
-    try {
-      let status = await fetchRefreshTaskStatus(taskId)
-      while (status.status !== 'completed' && status.status !== 'failed') {
-        await new Promise((r) => setTimeout(r, 1000))
-        status = await fetchRefreshTaskStatus(taskId)
-      }
-      if (status.status === 'completed') {
-        toast.success(`用例参考更新完成！成功刷新: ${status.updated} 个｜失败: ${status.failed} 个`)
-      } else {
-        toast.error('用例参考更新任务执行失败，请稍后重试')
-      }
-      queryClient.invalidateQueries({ queryKey: ['testcases'] })
-    } catch {
-      // 轮询失败不阻断（后台任务仍可能完成）
-    }
-  }
 
   const openCreate = () => {
     setPresetGroupId(null)
@@ -456,7 +309,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
               categories={categories}
               cases={items}
               onRestoreAll={() =>
-                setConfirm({ kind: 'restore-all', count: trashCount })
+                batch.setConfirm({ kind: 'restore-all', count: trashCount })
               }
             />
 
@@ -471,7 +324,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
                   selected={selected}
                   tagRegistry={tags}
                   callbacks={rowCallbacks}
-                  onBatchAction={handleBatchAction}
+                  onBatchAction={batch.openBatch}
                   actionCallbacks={groupCallbacks}
                   onToggleSelect={toggleSelect}
                   onToggleAll={toggleAll}
@@ -498,7 +351,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
         selectedIds={[...selected]}
         onClear={clearSelection}
         trash={filters.trash ?? false}
-        onBatchAction={handleBatchAction}
+        onBatchAction={batch.openBatch}
       />
 
       {/* 弹窗群（Provider 挂页级，§5） */}
@@ -525,71 +378,19 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
         onOpenChange={(open) => !open && setPreviewCase(null)}
         caseItem={previewCase}
       />
-      {batchDialog?.kind === 'dimensions' && (
-        <BatchDimensionsDialog
-          open
-          onOpenChange={(open) => !open && setBatchDialog(null)}
-          count={batchDialog.count}
-          ids={batchDialog.ids}
-          dimensions={allDimensions}
-          categories={categories}
-          algorithmType={algorithmId}
-          testType={selectedTestType}
-        />
-      )}
-      {batchDialog?.kind === 'group' && (
-        <BatchAdjustGroupDialog
-          open
-          onOpenChange={(open) => !open && setBatchDialog(null)}
-          count={batchDialog.count}
-          groups={groups}
-        />
-      )}
-      {batchDialog?.kind === 'tags' && (
-        <BatchManageTagsDialog
-          open
-          onOpenChange={(open) => !open && setBatchDialog(null)}
-          count={batchDialog.count}
-          tags={tags}
-        />
-      )}
-      {batchDialog?.kind === 'params' && (
-        <BatchAlgoParamsDialog
-          open
-          onOpenChange={(open) => !open && setBatchDialog(null)}
-          count={batchDialog.count}
-          ids={batchDialog.ids}
-        />
-      )}
-      {batchDialog?.kind === 'device' && (
-        <BatchDeviceDialog
-          open
-          onOpenChange={(open) => !open && setBatchDialog(null)}
-          count={batchDialog.count}
-          ids={batchDialog.ids}
-        />
-      )}
-      {batchDialog?.kind === 'spl' && (
-        <BatchSplDialog
-          open
-          onOpenChange={(open) => !open && setBatchDialog(null)}
-          count={batchDialog.count}
-          ids={batchDialog.ids}
-        />
-      )}
-      {batchDialog?.kind === 'noise' && (
-        <BatchNoiseDialog
-          open
-          onOpenChange={(open) => !open && setBatchDialog(null)}
-          count={batchDialog.count}
-          ids={batchDialog.ids}
-        />
-      )}
-      <CaseConfirmDialog
-        open={confirm != null}
-        onOpenChange={(open) => !open && setConfirm(null)}
-        state={confirm}
-        onConfirm={handleConfirm}
+      {/* 批量弹窗群（INT-1026 共享 host；/start-test 与用例管理页双挂同一批弹窗） */}
+      <CaseBatchActionsHost
+        batchDialog={batch.batchDialog}
+        setBatchDialog={batch.setBatchDialog}
+        confirm={batch.confirm}
+        setConfirm={batch.setConfirm}
+        handleConfirm={batch.handleConfirm}
+        groups={groups}
+        tags={tags}
+        dimensions={allDimensions}
+        categories={categories}
+        algorithmType={algorithmId}
+        testType={selectedTestType}
       />
     </>
   )

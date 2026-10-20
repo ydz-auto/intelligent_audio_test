@@ -22,6 +22,9 @@ export interface CaseConfirmState {
   /** 用例名 / 分组名 */
   name?: string
   count?: number
+  /** 批量确认的用例 id 集（INT-1026：auto-name/refresh 用弹窗打开时捕获的 ids，
+   *  组头「批量修改」无勾选时也正确作用于组内全量——resolveCaseIds 语义） */
+  ids?: string[]
 }
 
 /** 确认文案构建（§5.6 逐字；用例名引号/书名号口径保留现实现） */
