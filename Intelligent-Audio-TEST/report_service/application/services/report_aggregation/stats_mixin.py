@@ -352,7 +352,11 @@ class _AggregationStatsMixin:
 
     @staticmethod
     def _get_case_category_name(test_case) -> str:
-        """从测试用例中提取分类名称（group.name），缺失则返回"未分类"。"""
+        """从测试用例中提取分类名称（group.name），缺失则返回"未分类"。
+
+        task_service ListTestCases 透传 group_name/group_id 顶层字段（无 group 对象），
+        回退 group_name（INT-1059 P2：分组筛选聚合侧口径）。
+        """
         if isinstance(test_case, dict):
             g = test_case.get('group')
             if isinstance(g, dict):
@@ -360,10 +364,12 @@ class _AggregationStatsMixin:
             elif g is not None:
                 return getattr(g, 'name', None) or "未分类"
             else:
-                return "未分类"
+                return test_case.get('group_name') or "未分类"
         else:
             g = getattr(test_case, 'group', None)
-            return getattr(g, 'name', None) if g else "未分类"
+            if g:
+                return getattr(g, 'name', None) or "未分类"
+            return getattr(test_case, 'group_name', None) or "未分类"
 
     @staticmethod
     def _get_case_tags(test_case) -> list:

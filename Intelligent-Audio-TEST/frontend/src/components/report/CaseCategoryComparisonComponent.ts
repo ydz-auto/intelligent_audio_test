@@ -292,7 +292,12 @@ export function useCaseCategoryComparison(props: CaseCategoryComparisonProps) {
           categories: selectedCategories.value
         })
 
-        metricData.value = extractInitialMetricData(result)
+        // 空结果守卫：API 返回空 metric_data 时保留默认值，避免整表清空为 0.00
+        // （对齐 CaseTagComparisonComponent；INT-1059 P2）
+        const extracted = extractInitialMetricData(result)
+        if (extracted && Object.keys(extracted).length > 0) {
+          metricData.value = extracted
+        }
         return
       }
 
@@ -306,7 +311,10 @@ export function useCaseCategoryComparison(props: CaseCategoryComparisonProps) {
           categories: selectedCategories.value
         }, {}, true)
 
-        metricData.value = extractInitialMetricData(result)
+        const extracted = extractInitialMetricData(result)
+        if (extracted && Object.keys(extracted).length > 0) {
+          metricData.value = extracted
+        }
         return
       }
     } catch (error) {

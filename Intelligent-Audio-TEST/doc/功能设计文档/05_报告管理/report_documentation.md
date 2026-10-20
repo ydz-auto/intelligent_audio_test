@@ -181,6 +181,7 @@ test_reports + report_summaries / report_summary_meta / report_raw_data
   - 同一源任务共享的设备/API 在对比筛选下不跨任务合并，各源任务独立成列。
 - **响应**：`metricData`（分组×资源×指标）、`tagMetricData`（标签×资源×指标，新增）、`rawData`、`normalDistribution`、`resources`、`resourceHeaders`、`overallAverages` / `overallAveragesMap`、`filters`。
 - **百分比口径**：非 `average` 维度（pass_rate / ratio / weighted_sum_ratio）按维度 `statistic_method` 策略聚合，产出 0~100；**逐轮失败值 0 是合法数据点**，计入分子/分母（失败轮不会从分母消失，pass_rate 不误报 100%，INT-1059 对齐 a9c4adc56）；`average` 维度按轮次口径取算术平均。
+- **分组筛选口径（INT-1059 返工裁定 2026-10-21）**：`task_service TestCaseConfigService.ListTestCases` 透传 `group_name`/`group_id` 顶层字段（无 `group` 对象），`_report_case_filters.tc_group_name`、聚合侧 `_get_case_category_name`、报告摘要 `extract_case_categories_and_tags` 均回退 `group_name`，保证按真实分组名筛选命中且分类/摘要不落「未分类」；无分组用例归类「未分类」，`categories=['未分类']`（或 `category='未分类'`）命中未分组用例。前端分组对比组件 `applyFilters` 加空结果守卫（与标签组件一致），API 返回空矩阵时保留默认值不清空为 0.00。
 - **前端**：旧 Vue 分组/标签对比组件筛选一律走后端聚合，移除 `searchCases` + 前端手写平均（避免按用例简单平均导致超 100%，INT-1059 对齐 7bb9fd339/e4e5dface/0c6b2028a）。
 
 ## 5. 报告生成流程

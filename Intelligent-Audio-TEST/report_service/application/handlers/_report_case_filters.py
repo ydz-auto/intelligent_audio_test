@@ -8,16 +8,23 @@ from typing import Any, Dict, List, Optional
 
 
 def tc_group_name(tc) -> Optional[str]:
-    """提取用例的分组名（兼容 dict / 对象载荷）。"""
+    """提取用例的分组名（兼容 dict / 对象载荷）。
+
+    task_service TestCaseConfigService.ListTestCases 透传 group_name/group_id
+    顶层字段（无 group 对象），此处回退 group_name（INT-1059 P2：分组筛选
+    恒 0 用例根因）。
+    """
     if isinstance(tc, dict):
         g = tc.get('group')
         if isinstance(g, dict):
             return g.get('name')
-        return g
+        if g is not None:
+            return g
+        return tc.get('group_name')
     g = getattr(tc, 'group', None)
     if g is not None:
         return getattr(g, 'name', None)
-    return None
+    return getattr(tc, 'group_name', None)
 
 
 def tc_tags(tc) -> List[Any]:
@@ -61,7 +68,9 @@ def filter_test_cases(test_cases, category, categories, tags,
     """按 category / categories / tags / include_untagged 客户端过滤用例。"""
     filtered_cases = []
     for tc in test_cases.values() if isinstance(test_cases, dict) else test_cases:
-        group_name = tc_group_name(tc)
+        # 无分组用例归类为「未分类」（与聚合侧 _get_case_category_name 同口径），
+        # 使「未分类」筛选命中未分组用例（INT-1059 P2）
+        group_name = tc_group_name(tc) or '未分类'
         # category 过滤
         if category and category != 'all':
             if group_name != category:

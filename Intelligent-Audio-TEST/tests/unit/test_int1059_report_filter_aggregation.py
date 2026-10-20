@@ -454,3 +454,126 @@ class TestGatewaySchema:
         req = GetCaseAveragesRequest.model_validate({})
         assert req.task_id is None
         assert req.report_id is None
+
+
+# ======================================================================
+# 3.6 分组筛选口径（INT-1059 P2 返工：group_name 透传 + 未分类命中）
+# ======================================================================
+
+class TestGroupFilterCaliber:
+    """task_service ListTestCases 透传 group_name/group_id 顶层字段（无 group 对象），
+    分组筛选与聚合分类名均须回退 group_name，且「未分类」命中未分组用例。"""
+
+    @staticmethod
+    def _tc_payload(tid, group_name):
+        """真实 gRPC 载荷形态：group_name/group_id 顶层字段，无 group 对象。"""
+        tc = {'id': tid, 'name': f'用例{tid}'}
+        if group_name is not None:
+            tc['group_name'] = group_name
+            tc['group_id'] = 5
+        tc['tags'] = []
+        return tc
+
+    def test_tc_group_name_fallback_to_group_name(self):
+        from report_service.application.handlers._report_case_filters import (
+            tc_group_name,
+        )
+        # 新载荷：group_name 顶层字段
+        assert tc_group_name({'id': 1, 'group_name': 'g1', 'group_id': 5}) == 'g1'
+        # 旧载荷：group 对象仍兼容
+        assert tc_group_name({'id': 2, 'group': {'id': 5, 'name': 'g2'}}) == 'g2'
+        assert tc_group_name({'id': 3, 'group': 'g3'}) == 'g3'
+        # 无分组 → None
+        assert tc_group_name({'id': 4}) is None
+
+    def test_filter_test_cases_matches_group_name(self):
+        from report_service.application.handlers._report_case_filters import (
+            filter_test_cases,
+        )
+        cases = [
+            self._tc_payload(101, 'g1'),
+            self._tc_payload(102, 'g2'),
+            self._tc_payload(103, None),
+        ]
+        got = filter_test_cases(cases, None, ['g1'], [], False)
+        assert [c['id'] for c in got] == [101]
+        # category 单数口径同样命中
+        got = filter_test_cases(cases, 'g2', [], [], False)
+        assert [c['id'] for c in got] == [102]
+
+    def test_filter_test_cases_matches_uncategorized(self):
+        from report_service.application.handlers._report_case_filters import (
+            filter_test_cases,
+        )
+        cases = [self._tc_payload(101, 'g1'), self._tc_payload(103, None)]
+        got = filter_test_cases(cases, None, ['未分类'], [], False)
+        assert [c['id'] for c in got] == [103]
+
+    def test_get_case_category_name_fallback(self):
+        from report_service.application.services.report_aggregation.stats_mixin import (
+            _AggregationStatsMixin,
+        )
+        assert _AggregationStatsMixin._get_case_category_name(
+            {'id': 1, 'group_name': 'g1'}) == 'g1'
+        assert _AggregationStatsMixin._get_case_category_name({'id': 2}) == '未分类'
+        assert _AggregationStatsMixin._get_case_category_name(
+            {'id': 3, 'group': {'id': 1, 'name': 'g3'}}) == 'g3'
+
+    def test_calculate_averages_groups_by_group_name(self):
+        """聚合侧按 group_name 分类：g1/g2 两分组分别聚合（不再全部落入未分类）。"""
+        task = {'id': 7, 'name': 't', 'total_cases': 2,
+                'completed_cases': 2, 'failed_cases': 0}
+        results = [
+            _result(1, 101, device_id=1),
+            _result(2, 102, device_id=1),
+        ]
+        dim_map = {
+            1: [_dim_row(1, 0.8), _dim_row(2, 80.0)],
+            2: [_dim_row(1, 0.0), _dim_row(2, 60.0)],
+        }
+        tc_map = _test_cases_map([
+            self._tc_payload(101, 'g1'),
+            self._tc_payload(102, 'g2'),
+        ])
+
+        import report_service.application.services.report_aggregation.stats_mixin as stats_mod
+        import report_service.application.services.report_aggregation.resource_mixin as agg_resource_mod
+        import report_service.application.services.report_utils.resource_mixin as utils_resource_mod
+
+        device = {'id': 1, 'name': 'dev', 'app_version': '1.0'}
+        api = {'id': 2, 'name': 'api', 'api_type': 'http', 'base_url': 'http://x',
+               'headers': None}
+
+        with patch.object(stats_mod, '_grpc_list_dimensions_all', return_value=_DIMS), \
+             patch.object(stats_mod, '_grpc_get_dimension_params',
+                          return_value=[{'param_direction': 'output', 'agg_role': 'pass_ge',
+                                         'pass_threshold': 0.6}]), \
+             patch.object(stats_mod, '_grpc_get_dim_results', return_value=dim_map), \
+             patch.object(agg_resource_mod, '_grpc_get_task_devices',
+                          return_value=[{'device_id': 1}]), \
+             patch.object(agg_resource_mod, '_grpc_get_task_apis',
+                          return_value=[{'api_id': 2}]), \
+             patch.object(agg_resource_mod, '_grpc_get_devices_by_ids',
+                          return_value={1: device}), \
+             patch.object(agg_resource_mod, '_grpc_get_apis_by_ids',
+                          return_value={2: api}), \
+             patch.object(agg_resource_mod, '_grpc_list_testcases_by_ids',
+                          return_value=tc_map), \
+             patch.object(utils_resource_mod, '_grpc_get_device',
+                          return_value=device), \
+             patch.object(utils_resource_mod, '_grpc_get_api',
+                          return_value=api):
+            from report_service.application.services.report_aggregation_service import (
+                ReportAggregationService,
+            )
+            stats = ReportAggregationService.calculate_averages(
+                task, [101, 102], results, 7)
+
+        md = stats['metric_data']
+        assert set(md.keys()) == {'g1', 'g2'}
+        # g1 用例达标 → 100%；g2 用例失败 → 0%（按分组各自聚合，不混入未分类）
+        assert '未分类' not in md
+        assert md['g1']['1-dev-1.0']['达标率'] == 100.0
+        assert md['g2']['1-dev-1.0']['达标率'] == 0.0
+        assert md['g1']['1-dev-1.0']['准确率'] == 80.0
+        assert md['g2']['1-dev-1.0']['准确率'] == 60.0
