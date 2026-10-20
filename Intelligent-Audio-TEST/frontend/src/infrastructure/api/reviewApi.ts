@@ -44,7 +44,7 @@ export const reviewApi = {
 
   /** 发起 AI 复核（POST /tasks/results/ai-review；委托 reviewAiApi 真实端点） */
   async submitAiReview(payload: { resultIds: (string | number)[]; dimensionIds?: number[]; force?: boolean }): Promise<AiReviewRecord> {
-    return submitAiReviewRequest(0, '', {
+    return submitAiReviewRequest({
       resultIds: payload.resultIds.map((id) => Number(id)),
       dimensionIds: payload.dimensionIds,
       force: payload.force,

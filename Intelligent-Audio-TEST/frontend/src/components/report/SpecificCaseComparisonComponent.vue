@@ -223,6 +223,15 @@
         </div>
       </div>
 
+    <!-- INT-1068：复核操作错误提示（缺来源任务 / 复核失败给用户可见反馈，可关闭） -->
+    <div v-if="reviewsErrorText" class="review-error-alert">
+      <i class="fas fa-circle-exclamation review-error-icon"></i>
+      <span class="review-error-text">{{ reviewsErrorText }}</span>
+      <button type="button" class="review-error-close" title="关闭" @click="clearReviewsError">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+
     <!-- Pinned Cases Section -->
     <div v-if="pinnedCases.length > 0" class="pinned-section">
       <h4 class="pinned-title">已固定用例</h4>
@@ -590,11 +599,19 @@ const getCaseReview = (caseItem) => {
 
 /** 双路径入口 A：跳来源任务复核（§3.2 复核弹窗） */
 const handleManualReview = (caseItem) => {
+  reportReviews.reviewsError.value = ''
   reportReviews.openManualReview(caseItem)
 }
 
 // ---- AI 复核（§4.3/§5.2，INT-1068 灵犀Agent 对话式会话） ----
 const aiReviewSessionTarget = ref(null)
+
+/** 复核操作错误提示（reviewsError 只写不读修复，P3-1：缺来源任务/失败可见反馈） */
+const reviewsErrorText = computed(() => reportReviews.reviewsError.value || '')
+
+function clearReviewsError() {
+  reportReviews.reviewsError.value = ''
+}
 
 const handleAiReview = (caseItem) => {
   // §5.2 可发起对象：该用例存在执行结果（评估已完成/评估失败）；报告缺来源任务时不可发起
@@ -602,6 +619,7 @@ const handleAiReview = (caseItem) => {
     reportReviews.reviewsError.value = '报告缺少来源任务，无法发起 AI 复核'
     return
   }
+  reportReviews.reviewsError.value = ''
   aiReviewSessionTarget.value = {
     taskId: reportReviews.sourceTaskId.value,
     caseId: String(caseItem?.id ?? caseItem?.testCaseId ?? ''),
@@ -688,6 +706,40 @@ justify-content: flex-end;
 }
 .review-ai-btn i {
   color: var(--info);
+}
+
+/* INT-1068：复核操作错误提示（P3-1：缺来源任务/复核失败可见反馈） */
+.review-error-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border: 1px solid color-mix(in srgb, var(--destructive) 30%, transparent);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--destructive) 8%, transparent);
+  color: var(--destructive);
+  font-size: 12px;
+}
+.review-error-icon {
+  flex-shrink: 0;
+}
+.review-error-text {
+  flex: 1;
+  min-width: 0;
+}
+.review-error-close {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px;
+  opacity: 0.8;
+}
+.review-error-close:hover {
+  opacity: 1;
 }
 
 /* INT-797：复核状态筛选选项 */

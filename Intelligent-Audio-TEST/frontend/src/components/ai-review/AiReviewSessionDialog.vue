@@ -43,14 +43,14 @@
               {{ currentContent(message) }}
             </div>
 
-            <!-- assistant：左侧文档面（结论卡 + 正文） -->
+            <!-- assistant：左侧文档面（结论卡 + 正文；结论卡渲染时不重复展示纯文本） -->
             <div v-else class="session-assistant-doc">
               <AiReviewVerdictCard
                 v-if="message.reviewMeta?.verdict && message.status === 'complete'"
                 :content="currentContent(message)"
                 :original-evaluation-status="originalEvaluationStatus"
               />
-              <div v-if="message.status === 'loading'" class="session-loading">
+              <div v-else-if="message.status === 'loading'" class="session-loading">
                 <span class="loading-spinner-small"></span>
                 <span>{{ AI_REVIEW_CHAT_COPY.thinking }}</span>
               </div>

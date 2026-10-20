@@ -42,10 +42,9 @@ export function aiConfidenceLabel(confidence: number): string {
   return '低'
 }
 
-/** 发起 AI 复核（POST /tasks/results/ai-review；幂等：同结果同维度已有时后端复用最近结论） */
+/** 发起 AI 复核（POST /tasks/results/ai-review；幂等：同结果同维度已有时后端复用最近结论）。
+ * taskId/caseId 不参与请求（端点为结果级，路径无 task_id），签名只保留载荷。 */
 export async function requestAiReview(
-  taskId: number,
-  caseId: string,
   payload: AiReviewRequest,
 ): Promise<AiReviewRecord> {
   const raw = await request<{ items?: Record<string, unknown>[] }>('POST', '/tasks/results/ai-review', {

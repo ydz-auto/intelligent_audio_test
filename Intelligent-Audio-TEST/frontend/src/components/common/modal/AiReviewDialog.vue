@@ -125,8 +125,9 @@ const emit = defineEmits<{
   /**
    * 人工采纳 → 父级打开 §3.2 复核弹窗预填（评估状态 + 备注=AI 理由），
    * 人工确认后由父级**单次 adopt**（POST /ai-review/{id}/adopt，防双写留痕）。
+   * resultId 供父级把人工复核范围收敛到被采纳的记录（批量「快速复核」时多结果只落单条）。
    */
-  (e: 'adopt', preset: { recordId: number; evaluationStatus?: string; comment: string }): void
+  (e: 'adopt', preset: { recordId: number; resultId: number; evaluationStatus?: string; comment: string }): void
 }>()
 
 const phase = ref<AiReviewPhase>('idle')
@@ -161,7 +162,7 @@ async function launch() {
   phase.value = 'running'
   errorText.value = ''
   try {
-    record.value = await requestAiReview(props.taskId, props.caseId, {
+    record.value = await requestAiReview({
       resultIds: props.results.map((r) => Number(r.id)),
     })
     phase.value = 'completed'
@@ -173,20 +174,20 @@ async function launch() {
 
 async function adopt() {
   if (!record.value) return
-  phase.value = 'adopted'
   try {
     const verdict = record.value.verdict
     // §2.1：通过→已完成，不通过→评估失败，存疑→留给人工
     const presetEvaluation = verdict === 'passed' ? 'completed' : verdict === 'failed' ? 'failed' : undefined
-    // 采纳不在此处落库：打开 §3.2 复核弹窗预填，人工确认后由父级单次 adopt（防双写留痕）
+    // 不在此处置 phase='adopted'：人工复核弹窗确认后由父级单次 adopt 并关闭本弹窗；
+    // 用户取消则保持 completed（P3-6：避免「取消后仍显示已采纳」的假状态）
     emit('adopt', {
       recordId: record.value.id,
+      resultId: record.value.resultId,
       evaluationStatus: presetEvaluation,
       comment: record.value.reasoning,
     })
   } catch (err: any) {
     errorText.value = err?.message || 'AI 复核采纳失败，请稍后重试'
-    phase.value = 'completed'
   }
 }
 

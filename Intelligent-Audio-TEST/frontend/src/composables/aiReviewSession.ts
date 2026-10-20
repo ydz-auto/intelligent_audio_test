@@ -37,7 +37,7 @@ export interface AiReviewSessionResult {
   executionStatus?: string | null
   evaluationStatus?: string | null
   reviewed?: boolean
-  dimensions?: Array<{ name?: string; score?: number | string }>
+  dimensions?: Array<{ name?: string; score?: number | string; reasoning?: string }>
 }
 
 /** 复核上下文（§5.3 契约，前端聚合真实数据） */
@@ -47,7 +47,7 @@ export interface AiReviewContext {
   caseName: string
   /** 设备×结果列表（真实 GET /tasks/{taskId}/cases/{caseId}/results） */
   results: AiReviewSessionResult[]
-  /** 低分维度摘要（设备×维度表：score < 60 的维度名，默认复核维度） */
+  /** 低分维度摘要（设备×维度表：score < 0.6 的维度名——对齐 React aiReviewDialog lowScoreDim 0-1 标度，默认复核维度） */
   lowDimensionText: string
   /** LLM 评语摘要（voice_llm evaluation.reasoning / llm_judge 维度分） */
   llmCommentText: string
@@ -99,14 +99,14 @@ function summarizeLowDimensions(results: AiReviewSessionResult[]): string {
   return hits.slice(0, 4).join('、')
 }
 
-/** LLM 评语摘要（voice_llm evaluation.reasoning 等，取首条结果的首段） */
+/** LLM 评语摘要（voice_llm evaluation.reasoning 优先；维度无 reasoning 时兜底 llm 维度分） */
 function summarizeLlmComment(results: AiReviewSessionResult[]): string {
   for (const r of results) {
-    if (r.dimensions) {
-      for (const d of r.dimensions) {
-        if (d.name && d.name.toLowerCase().includes('llm')) {
-          return String(d.score ?? '') || ''
-        }
+    for (const d of r.dimensions ?? []) {
+      if (d.name && d.name.toLowerCase().includes('llm')) {
+        const reasoning = d.reasoning?.trim()
+        if (reasoning) return reasoning.slice(0, 120)
+        return String(d.score ?? '') || ''
       }
     }
   }
@@ -168,7 +168,11 @@ export function useAiReviewSession(options: {
           executionStatus: r.executionStatus ?? null,
           evaluationStatus: r.evaluationStatus ?? null,
           reviewed: Boolean(r.reviewed),
-          dimensions: (r.dimensions ?? []).map((d: any) => ({ name: d.name, score: d.score })),
+          dimensions: (r.dimensions ?? []).map((d: any) => ({
+            name: d.name,
+            score: d.score,
+            reasoning: d.reasoning ?? d.comment ?? undefined,
+          })),
         }))
       }
       // 维度分兜底：用例详情设备×维度表（低分维度识别）
@@ -214,7 +218,7 @@ export function useAiReviewSession(options: {
     return ''
   }
 
-  /** 打开复核会话：装配真实上下文 → 首条 assistant 摘要卡 + 首条用户指令 */
+  /** 打开复核会话：装配真实上下文 → 首条 assistant 摘要卡 + 首条用户指令 → 自动发起 Agent 流式分析（§5.4） */
   async function initialize(): Promise<void> {
     phase.value = 'loading'
     errorText.value = ''
@@ -242,6 +246,10 @@ export function useAiReviewSession(options: {
         },
       ]
       phase.value = 'ready'
+      // §5.4：预填 + 首条用户指令 → 自动发起 Agent 流式分析。
+      // 首条 user 已随 messages 预填，此处只追加 assistant 流式回复（不重复追加 user）；
+      // 未配置 LLM 供应商时 sendFollowUp 早退并给出配置引导（输入区/chips 仍可用）。
+      sendFollowUp(AI_REVIEW_CHAT_COPY.initialUserPrompt, { appendUserMessage: false })
     } catch (e: any) {
       errorText.value = e?.message || '复核上下文加载失败'
       phase.value = 'ready'
@@ -281,8 +289,8 @@ export function useAiReviewSession(options: {
     isGenerating.value = false
   }
 
-  /** 发送追问：追加用户消息 + Agent 流式回复（对话结论卡标记在首轮回复上） */
-  function sendFollowUp(text: string): void {
+  /** 发送追问：追加用户消息 + Agent 流式回复（结论卡标记在首轮回复上） */
+  function sendFollowUp(text: string, options: { appendUserMessage?: boolean } = {}): void {
     const trimmed = text.trim()
     if (!trimmed || runId !== null) return
     const provider = chatStore.providers.find((p) => p.id === chatStore.config.providerId) ?? chatStore.defaultProvider
@@ -298,24 +306,26 @@ export function useAiReviewSession(options: {
     const userKey = createId('user')
     const assistantKey = createId('assistant')
     const now = Date.now()
-    messages.value = [
-      ...messages.value,
-      {
+    const appendUserMessage = options.appendUserMessage ?? true
+    const next: ChatMessage[] = [...messages.value]
+    if (appendUserMessage) {
+      next.push({
         key: userKey,
         from: 'user',
         versions: [{ id: `${userKey}-v1`, content: trimmed }],
         createdAt: now,
         status: MESSAGE_STATUS.COMPLETE,
-      },
-      {
-        key: assistantKey,
-        from: 'assistant',
-        versions: [{ id: `${assistantKey}-v1`, content: '' }],
-        createdAt: now,
-        startedAt: now,
-        status: MESSAGE_STATUS.LOADING,
-      },
-    ]
+      })
+    }
+    next.push({
+      key: assistantKey,
+      from: 'assistant',
+      versions: [{ id: `${assistantKey}-v1`, content: '' }],
+      createdAt: now,
+      startedAt: now,
+      status: MESSAGE_STATUS.LOADING,
+    })
+    messages.value = next
     isGenerating.value = true
     errorText.value = ''
     const currentRunId = Date.now()
@@ -349,10 +359,13 @@ export function useAiReviewSession(options: {
           if (index < content.length) {
             timers.push(setTimeout(stream, STREAM_CHUNK_MS))
           } else {
+            // §5.4：该条 assistant 完成 = 当前「AI 复核结论」（结构化卡 + 正文），
+            // 置 reviewMeta.verdict 使 AiReviewVerdictCard 渲染（P2-1 死代码修复）
             patch(assistantKey, {
               status: MESSAGE_STATUS.COMPLETE,
               completedAt: Date.now(),
               durationMs: Date.now() - now,
+              reviewMeta: { verdict: true },
             })
             runId = null
             abortController = null
@@ -412,7 +425,7 @@ export function useAiReviewSession(options: {
     phase.value = 'saving'
     errorText.value = ''
     try {
-      await requestAiReview(taskId, caseId, {
+      await requestAiReview({
         resultIds,
         force: Boolean(existingRecord.value),
       })
