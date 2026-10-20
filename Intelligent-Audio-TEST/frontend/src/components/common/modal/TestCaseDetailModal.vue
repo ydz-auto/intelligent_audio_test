@@ -146,7 +146,8 @@ import '../../../assets/styles/components/progress.css'
 import '../../../assets/styles/components/tag.css'
 import '../../../assets/styles/components/log.css'
 import '../../../assets/styles/layouts/main.css'
-
+import "../../../assets/styles/components/test-case-card.css"
+import "../../../assets/styles/test-case-manager/test-case-manager.css"
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { tasksPort } from '@/composables/task/tasksPort'
 import { logsPort } from '@/composables/task/logsPort'

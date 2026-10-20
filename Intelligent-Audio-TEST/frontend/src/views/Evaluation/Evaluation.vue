@@ -226,7 +226,8 @@ import '../../assets/styles/components/progress.css'
 import '../../assets/styles/components/tag.css'
 import '../../assets/styles/components/log.css'
 import '../../assets/styles/layouts/main.css'
-
+import "../../assets/styles/e2etest/dropdown.css"
+import "../../assets/styles/tasks/filter-sort.css"
 import { computed } from 'vue';
 import BadgeFilter from '../../components/common/BadgeFilter.vue';
 import VisibilityBadge from '../../components/common/visibility/VisibilityBadge.vue';

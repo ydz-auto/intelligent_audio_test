@@ -268,7 +268,8 @@ import '../../assets/styles/components/navigation.css'
 import '../../assets/styles/components/tag.css'
 import '../../assets/styles/components/log.css'
 import '../../assets/styles/layouts/main.css'
-
+import "../../assets/styles/tasks/stats.css"
+import "../../assets/styles/device/device.css"
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';

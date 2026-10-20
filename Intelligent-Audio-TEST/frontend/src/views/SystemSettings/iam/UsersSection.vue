@@ -185,7 +185,7 @@ import '../../../assets/styles/components/navigation.css'
 import '../../../assets/styles/components/tag.css'
 import '../../../assets/styles/components/log.css'
 import '../../../assets/styles/layouts/main.css'
-
+import "../../../assets/styles/tasks/task-status.css"
 import { computed, onMounted, reactive, ref } from 'vue'
 import PaginationComponent from '@/components/common/data/PaginationComponent.vue'
 import BasicModal from '@/components/common/modal/BasicModal.vue'

@@ -102,7 +102,7 @@ import '../../../assets/styles/components/progress.css'
 import '../../../assets/styles/components/tag.css'
 import '../../../assets/styles/components/log.css'
 import '../../../assets/styles/layouts/main.css'
-
+import "../../../assets/styles/test-case-manager/test-case-manager.css"
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { playbackPort } from '../../../composables/device/playbackPort'
 

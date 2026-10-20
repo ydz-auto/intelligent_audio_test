@@ -529,8 +529,11 @@
 .offline-indicator {
 }
 
-/* 状态标签样式 */
+/* 状态标签样式（display/align/gap 基类 INT-770 自 device/device.css 迁入：.status-badge 为跨页共享基类） */
 .status-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     justify-content: center;
     line-height: 1.2;
     white-space: nowrap ;

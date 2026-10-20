@@ -356,7 +356,11 @@ import '../../assets/styles/components/navigation.css'
 import '../../assets/styles/components/tag.css'
 import '../../assets/styles/components/log.css'
 import '../../assets/styles/layouts/main.css'
-
+import "../../assets/styles/tasks/charts.css"
+import "../../assets/styles/tasks/task-card.css"
+import "../../assets/styles/tasks/task-status.css"
+import "../../assets/styles/tasks/filter-sort.css"
+import "../../assets/styles/tasks/stats.css"
 import { ref, computed, reactive, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTasks } from './tasks';

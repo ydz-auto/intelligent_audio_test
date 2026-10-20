@@ -75,7 +75,7 @@ import '../../assets/styles/components/navigation.css'
 import '../../assets/styles/components/tag.css'
 import '../../assets/styles/components/log.css'
 import '../../assets/styles/layouts/main.css'
-
+import "../../assets/styles/components/dropdown-multi-select.css"
 import { ref, computed, onMounted } from 'vue';
 import { tagsPort } from '@/composables/shared/tagsPort';
 import type { TagCategory, TagItem } from '@/domain/model/tag';

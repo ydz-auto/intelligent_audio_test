@@ -311,7 +311,8 @@ import '../../assets/styles/components/navigation.css'
 import '../../assets/styles/components/tag.css'
 import '../../assets/styles/components/log.css'
 import '../../assets/styles/layouts/main.css'
-
+import "../../assets/styles/e2etest/dropdown.css"
+import "../../assets/styles/e2etest/e2etest.css"
 import { ref, computed } from 'vue'
 import { ViewMode, DeviceStatus, ApiEndpointStatus } from '@/domain/enums'
 import { useMergedTestFlow } from '../../composables/shared/useMergedTestFlow'

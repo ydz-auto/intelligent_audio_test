@@ -29,14 +29,14 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    color: var(--text-primary);
+    color: var(--foreground);
     text-decoration: none;
     transition: all var(--transition-normal);
 }
 
 .dropdown-item:hover{
-    background-color: var(--primary-light);
-    color: var(--primary-color);
+    background-color: var(--accent);
+    color: var(--primary);
 }
 
 /* 修复点击事件冒泡问题 */
@@ -49,12 +49,12 @@
     display: block;
     padding: 10px 15px;
     cursor: pointer;
-    color: var(--text-primary);
+    color: var(--foreground);
     text-decoration: none;
     transition: background-color var(--transition-normal);
 }
 
 .dropdown-menu a:hover{
-    background-color: var(--primary-light);
-    color: var(--primary-color);
+    background-color: var(--accent);
+    color: var(--primary);
 }

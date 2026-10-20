@@ -345,7 +345,7 @@ import '../../assets/styles/components/navigation.css'
 import '../../assets/styles/components/tag.css'
 import '../../assets/styles/components/log.css'
 import '../../assets/styles/layouts/main.css'
-
+import "../../assets/styles/tasks/filter-sort.css"
 import { computed, ref } from 'vue';
 import { ReportStatus, PermissionPoint } from '@/domain/enums';
 import type { Report } from '../../domain';
