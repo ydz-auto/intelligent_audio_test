@@ -35,14 +35,18 @@ class _AggregationStatsMixin:
     # ==================================================================
 
     @classmethod
-    def calculate_averages(cls, task, filtered_case_ids: list, test_results: list, task_id: int) -> dict:
+    def calculate_averages(cls, task, filtered_case_ids: list, test_results: list, task_id: int,
+                           tasks_map: dict = None, use_time_prefix: bool = False) -> dict:
         """计算平均值、正态分布、资源列表等统计信息（编排入口）。
 
         Args:
             task: 任务对象
             filtered_case_ids: 过滤后的用例 ID 列表
             test_results: 测试结果列表
-            task_id: 任务 ID
+            task_id: 任务 ID（int 或 list，对比报告传源任务集合）
+            tasks_map: {task_id: task}（对比报告传源任务映射，用于按源任务聚合资源 key）
+            use_time_prefix: 对比/二次对比报告为 True——资源 key 带 t{task}-{time} 前缀，
+                与对比报告摘要列一致（INT-1059 返工）；任务报告为 False 保持无前缀口径
 
         Returns:
             dict: 统计信息字典
@@ -67,8 +71,11 @@ class _AggregationStatsMixin:
             test_results, all_dimensions, metric_name_to_id, dim_strategy_info, dim_results_map
         )
 
-        # 3. 聚合设备/API 资源列表（与报告生成口径一致：无时间前缀、含版本、含 result_type 后缀）
-        resources, resource_headers = cls._aggregate_resource_list(task, task_id, test_results)
+        # 3. 聚合设备/API 资源列表（任务报告：无时间前缀、含版本、含 result_type 后缀；
+        #    对比报告：带 t{task}-{time} 前缀、按源任务聚合，与对比摘要列一致）
+        resources, resource_headers = cls._aggregate_resource_list(
+            task, task_id, test_results, tasks_map, use_time_prefix
+        )
 
         # 4. 加载测试用例映射表
         test_cases_map = cls._load_test_cases_map(test_results)
@@ -80,12 +87,14 @@ class _AggregationStatsMixin:
         tag_accumulator = {}
         cls._accumulate_category_resource_scores(
             test_results, test_cases_map, all_dimensions,
-            dim_names, resources, raw_data, accumulator, dim_strategy_info, dim_results_map
+            dim_names, resources, raw_data, accumulator, dim_strategy_info, dim_results_map,
+            tasks_map, use_time_prefix,
         )
         # 5.1 按标签×资源累积（供 tag_metric_data：对比/二次对比与任务筛选标签聚合共用）
         cls._accumulate_tag_resource_scores(
             test_results, test_cases_map, all_dimensions,
-            dim_names, resources, tag_accumulator, dim_strategy_info, dim_results_map
+            dim_names, resources, tag_accumulator, dim_strategy_info, dim_results_map,
+            tasks_map, use_time_prefix,
         )
 
         # 6. 计算分类×资源 / 标签×资源的平均值矩阵
@@ -291,16 +300,21 @@ class _AggregationStatsMixin:
     def _accumulate_category_resource_scores(
         test_results: list, test_cases_map: dict, all_dimensions: list,
         dim_names: list, resources: list, raw_data: dict, accumulator: dict,
-        dim_strategy_info: dict = None, dim_results_map: dict = None
+        dim_strategy_info: dict = None, dim_results_map: dict = None,
+        tasks_map: dict = None, use_time_prefix: bool = False
     ) -> None:
         """遍历测试结果，按分类×资源累积维度分数和原始数据。
 
         结果直接写入 accumulator 和 raw_data（原地修改）。
         非 average 维度收集策略聚合 item（items），average 维度累积 sum/count。
+        对比/二次对比报告（use_time_prefix=True）按结果所属源任务聚合资源 key
+        （t{task}-{time}-{resource} 前缀），与对比摘要列一致（INT-1059 返工）。
         """
         dim_strategy_info = dim_strategy_info or {}
         for result in test_results:
-            resource = ReportHelpers.get_resource_name(result, task=None, use_time_prefix=False)
+            resource = _AggregationStatsMixin._resource_key_for_result(
+                result, tasks_map, use_time_prefix
+            )
             if resource not in resources:
                 continue
 
@@ -366,20 +380,37 @@ class _AggregationStatsMixin:
         return names
 
     @staticmethod
+    def _resource_key_for_result(result, tasks_map: dict = None, use_time_prefix: bool = False) -> str:
+        """按结果计算资源 key（对比/二次对比报告按源任务加 t{task}-{time} 前缀）。
+
+        tasks_map 为空或找不到结果所属任务时回退无前缀口径（任务报告行为）。
+        """
+        if use_time_prefix and tasks_map:
+            result_task_id = _r_get(result, 'task_id')
+            result_task = tasks_map.get(result_task_id) if result_task_id is not None else None
+            if result_task is not None:
+                return ReportHelpers.get_resource_name(result, result_task, use_time_prefix=True)
+        return ReportHelpers.get_resource_name(result, None, use_time_prefix=False)
+
+    @staticmethod
     def _accumulate_tag_resource_scores(
         test_results: list, test_cases_map: dict, all_dimensions: list,
         dim_names: list, resources: list, tag_accumulator: dict,
-        dim_strategy_info: dict = None, dim_results_map: dict = None
+        dim_strategy_info: dict = None, dim_results_map: dict = None,
+        tasks_map: dict = None, use_time_prefix: bool = False
     ) -> None:
         """遍历测试结果，按标签×资源累积维度分数（供 tag_metric_data）。
 
         与 _accumulate_category_resource_scores 同口径：非 average 维度收集策略聚合
         item（含失败轮 0 值），average 维度累积 sum/count；无标签用例归入"未标记"。
+        对比/二次对比报告（use_time_prefix=True）按源任务聚合资源 key。
         结果直接写入 tag_accumulator（原地修改）。
         """
         dim_strategy_info = dim_strategy_info or {}
         for result in test_results:
-            resource = ReportHelpers.get_resource_name(result, task=None, use_time_prefix=False)
+            resource = _AggregationStatsMixin._resource_key_for_result(
+                result, tasks_map, use_time_prefix
+            )
             if resource not in resources:
                 continue
 

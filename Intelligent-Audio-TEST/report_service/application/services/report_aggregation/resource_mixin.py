@@ -24,18 +24,32 @@ class _AggregationResourceMixin:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _aggregate_resource_list(task, task_id, test_results=None) -> tuple:
+    def _aggregate_resource_list(task, task_id, test_results=None, tasks_map=None,
+                                 use_time_prefix=False) -> tuple:
         """聚合设备/API 资源列表，返回 (resources, resource_headers)。
 
-        与报告生成口径完全一致（INT-1059 对齐 b47cae340）：
+        任务报告口径（与报告生成完全一致，INT-1059 对齐 b47cae340）：
         资源 key 无时间前缀、含版本、含 result_type 后缀（get_resource_name 形态），
         修复筛选聚合匹配恒失败导致 metricData 为空（筛选后数据全为 "-"）。
+        多源任务（对比报告源任务集合）去重保序。
+
+        对比/二次对比报告口径（INT-1059 返工，use_time_prefix=True）：
+        资源 key 带 t{task}-{time} 前缀、按源任务各自聚合，与对比报告摘要资源列一致
+        （report_compare_generator_data_mixin._collect_resources_batch 同源），
+        修复前端对比面板列（按源任务展示）与筛选响应 key 不匹配导致数值不显示。
 
         Args:
             task: 任务对象（取第一个源任务即可满足标签格式化）
             task_id: 任务 ID（int 或 list，对比报告传源任务集合）
             test_results: 已过滤测试结果（用于派生 device/api result_type 后缀）
+            tasks_map: {task_id: task}（use_time_prefix=True 时必传源任务映射）
+            use_time_prefix: 对比/二次对比报告为 True——按源任务加 t{task}-{time} 前缀
         """
+        if use_time_prefix:
+            return _AggregationResourceMixin._aggregate_resource_list_per_task(
+                test_results, tasks_map
+            )
+
         task_devices, task_apis = _AggregationResourceMixin._collect_task_resources(task_id)
 
         device_ids = _AggregationResourceMixin._extract_ids(task_devices, 'device_id')
@@ -84,6 +98,33 @@ class _AggregationResourceMixin:
             key = resources[len(devices) + idx] if len(devices) + idx < len(resources) else _AggregationResourceMixin._fallback_key(a)
             resource_headers.append(_AggregationResourceMixin._build_api_resource_header(task, key, a))
 
+        return resources, resource_headers
+
+    @staticmethod
+    def _aggregate_resource_list_per_task(test_results=None, tasks_map=None) -> tuple:
+        """对比/二次对比报告筛选：按源任务聚合资源 key（t{task}-{time}-{resource} 前缀）。
+
+        与对比报告摘要 _collect_resources_batch 同源（get_resource_name + use_time_prefix=True），
+        保证筛选响应资源/指标 key 与前端对比面板列（summary.resources）一一对应；
+        缺失任务映射时回退无前缀（任务报告行为）。
+        """
+        resource_set = set()
+        for r in test_results or []:
+            r_task_id = r.get('task_id') if isinstance(r, dict) else getattr(r, 'task_id', None)
+            r_task = tasks_map.get(r_task_id) if tasks_map and r_task_id is not None else None
+            if r_task is None:
+                continue
+            key = ReportUtils.get_resource_name(r, r_task, use_time_prefix=True)
+            if key:
+                resource_set.add(key)
+
+        resources = sorted(resource_set)
+        resource_headers = ReportUtils.build_resource_headers(
+            resources=resources,
+            results=test_results,
+            tasks_map=tasks_map,
+            use_time_prefix=True,
+        ) if resources else []
         return resources, resource_headers
 
     @staticmethod
