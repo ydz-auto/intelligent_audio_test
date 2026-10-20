@@ -43,9 +43,15 @@
 
       <div class="context-row">
         <span class="context-label">{{ AI_REVIEW_CONTEXT_COPY.existingConclusion }}</span>
+        <!-- §5.7 容错口径：非 completed 只显状态（不显结论），completed 才拼中文结论（P2-1） -->
         <span v-if="context.existingRecord" class="context-badge context-badge--existing">
           <i class="fas fa-circle-check"></i>
-          {{ aiReviewStatusLabel(context.existingRecord.status) }}·{{ context.existingRecord.verdict }}（{{ formatTime(context.existingRecord.createdAt) }}）
+          <template v-if="context.existingRecord.status === 'completed' && context.existingRecord.verdict">
+            {{ aiReviewStatusLabel(context.existingRecord.status) }}·{{ aiReviewVerdictLabel(context.existingRecord.verdict) }}（{{ formatTime(context.existingRecord.createdAt) }}）
+          </template>
+          <template v-else>
+            {{ aiReviewStatusLabel(context.existingRecord.status) }}（{{ formatTime(context.existingRecord.createdAt) }}）
+          </template>
         </span>
         <span v-else class="context-value context-value--muted">{{ AI_REVIEW_CONTEXT_COPY.noExisting }}</span>
       </div>
@@ -61,7 +67,7 @@ import '../../assets/styles/components/tag.css'
 import '../../assets/styles/components/log.css'
 
 import { AI_REVIEW_CONTEXT_COPY } from '@/domain/constants/aiReviewSession'
-import { aiReviewStatusLabel } from '@/domain/model/review'
+import { aiReviewStatusLabel, aiReviewVerdictLabel } from '@/domain/model/review'
 import CaseIdBadge from '@/components/common/CaseIdBadge.vue'
 import type { AiReviewContext } from '@/composables/aiReviewSession'
 

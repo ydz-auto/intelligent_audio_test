@@ -108,7 +108,7 @@ import '../../assets/styles/components/modal.css'
 import '../../assets/styles/components/log.css'
 
 import { computed } from 'vue'
-import { AI_REVIEW_VERDICT_LABELS, aiReviewStatusLabel } from '@/domain/model/review'
+import { aiReviewStatusLabel, aiReviewVerdictLabel } from '@/domain/model/review'
 import type { AiReviewRecord } from '@/domain/model/review'
 
 /**
@@ -135,11 +135,7 @@ const emit = defineEmits<{
   (e: 'ignore'): void
 }>()
 
-const verdictLabel = computed(() => {
-  const v = props.record?.verdict as string | undefined
-  if (!v) return ''
-  return AI_REVIEW_VERDICT_LABELS[v as keyof typeof AI_REVIEW_VERDICT_LABELS] ?? v
-})
+const verdictLabel = computed(() => aiReviewVerdictLabel(props.record?.verdict))
 const verdictClass = computed(() => {
   const v = props.record?.verdict
   if (v === 'passed') return 'qreview-verdict--passed'

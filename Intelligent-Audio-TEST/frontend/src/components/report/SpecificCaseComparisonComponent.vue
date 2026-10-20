@@ -309,7 +309,7 @@
               <i class="fas fa-clipboard-check"></i>
               <span>人工复核</span>
             </button>
-            <!-- INT-797：AI 复核入口（§4.3，待后端立项） -->
+            <!-- INT-797/INT-1070：AI 复核主入口（灵犀Agent 对话式复核会话，可追问；真实上下文 + 追问闭环） -->
             <button
               v-if="canManualReview && hasSourceTask"
               class="review-action-btn review-ai-btn"
@@ -678,10 +678,24 @@ const handleAiAdopted = () => {
 
 // ---- INT-1070：「快速复核」次要入口（§5.1 一次性状态机，批量/低分初筛，不可追问） ----
 const quickReviewTarget = ref(null)
-const quickReviewPhase = ref('idle')
-const quickReviewRecord = ref(null)
-const quickReviewError = ref('')
 const quickReviewInitiating = ref(false)
+
+/** 快速复核目标用例 id（派生自 quickReviewTarget） */
+const quickReviewCaseId = computed(() => {
+  const t = quickReviewTarget.value
+  return t ? String(t.caseItem?.id ?? t.caseItem?.testCaseId ?? '') : ''
+})
+
+/**
+ * 运行态直接读 aiReviewMap（P2-2：发起后轮询落位自动推进弹窗状态行，
+ * 不再拷贝到本地 ref——轮询更新 aiReviewMap 即驱动 computed 重算）。
+ */
+const quickReviewRun = computed(() =>
+  quickReviewCaseId.value ? (reportReviews.aiReviewMap.value[quickReviewCaseId.value] ?? null) : null,
+)
+const quickReviewPhase = computed(() => quickReviewRun.value?.phase ?? 'idle')
+const quickReviewRecord = computed(() => quickReviewRun.value?.record ?? null)
+const quickReviewError = computed(() => quickReviewRun.value?.error ?? '')
 
 const openQuickReview = (caseItem) => {
   if (reportReviews.sourceTaskId.value === '') {
@@ -690,23 +704,12 @@ const openQuickReview = (caseItem) => {
   }
   reportReviews.reviewsError.value = ''
   quickReviewTarget.value = { caseItem, caseName: caseItem?.name ?? '用例' }
-  syncQuickReviewFromRun(caseItem)
 }
 
 const closeQuickReview = () => {
   if (quickReviewPhase.value === 'running') return // 执行中不关闭
   quickReviewTarget.value = null
-  quickReviewPhase.value = 'idle'
-  quickReviewRecord.value = null
-  quickReviewError.value = ''
-}
-
-const syncQuickReviewFromRun = (caseItem) => {
-  const key = String(caseItem?.id ?? caseItem?.testCaseId ?? '')
-  const run = reportReviews.aiReviewMap.value[key]
-  quickReviewPhase.value = run?.phase ?? 'idle'
-  quickReviewRecord.value = run?.record ?? null
-  quickReviewError.value = run?.error ?? ''
+  quickReviewInitiating.value = false
 }
 
 const initiateQuickReview = async () => {
@@ -714,7 +717,6 @@ const initiateQuickReview = async () => {
   quickReviewInitiating.value = true
   try {
     await reportReviews.initiateAiReview(quickReviewTarget.value.caseItem)
-    syncQuickReviewFromRun(quickReviewTarget.value.caseItem)
   } finally {
     quickReviewInitiating.value = false
   }
@@ -723,7 +725,6 @@ const initiateQuickReview = async () => {
 const adoptQuickReview = async () => {
   if (!quickReviewTarget.value) return
   await reportReviews.adoptAiReview(quickReviewTarget.value.caseItem)
-  syncQuickReviewFromRun(quickReviewTarget.value.caseItem)
   if (quickReviewPhase.value === 'adopted') {
     closeQuickReview()
   }
@@ -732,7 +733,6 @@ const adoptQuickReview = async () => {
 const rejectQuickReview = async () => {
   if (!quickReviewTarget.value) return
   await reportReviews.rejectAiReview(quickReviewTarget.value.caseItem)
-  syncQuickReviewFromRun(quickReviewTarget.value.caseItem)
 }
 
 const ignoreQuickReview = () => {

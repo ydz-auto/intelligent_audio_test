@@ -100,8 +100,8 @@
                     <i class="fas fa-sparkles"></i>
                     {{ aiReviewStatusLabel(rec.status) }}
                   </span>
-                  <span v-if="rec.status === 'completed'" class="rhd2-ai-verdict">
-                    {{ AI_REVIEW_VERDICT_LABELS[rec.verdict] }}
+                  <span v-if="rec.status === 'completed' && rec.verdict" class="rhd2-ai-verdict">
+                    {{ aiReviewVerdictLabel(rec.verdict) }}
                   </span>
                   <span v-if="rec.status === 'completed'" class="rhd2-ai-confidence">
                     置信度 {{ Math.round((rec.confidence?.value ?? 0) * 100) }}%（{{ rec.confidence?.label ?? '—' }}）
@@ -143,7 +143,7 @@ import '../../assets/styles/components/log.css'
 
 import { ref, watch, computed } from 'vue'
 import { reviewApi } from '@/infrastructure/api/reviewApi'
-import { AI_REVIEW_VERDICT_LABELS, aiReviewStatusLabel } from '@/domain/model/review'
+import { aiReviewStatusLabel, aiReviewVerdictLabel } from '@/domain/model/review'
 import type { ReviewHistoryItemDomain, AiReviewRecord } from '@/domain/model/review'
 
 /**

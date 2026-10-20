@@ -26,6 +26,7 @@ import {
   rejectAiReview,
 } from '@/infrastructure/api/reviewAiApi'
 import type { AiReviewRecord } from '@/domain/model/review'
+import { aiReviewStatusLabel, aiReviewVerdictLabel } from '@/domain/model/review'
 import { useModalControl, MODAL_TYPES } from '@/composables/modal/useModal'
 import { useNotification } from '@/composables/modal/useNotification'
 
@@ -80,7 +81,11 @@ function buildContextText(ctx: AiReviewContext): string {
   if (ctx.llmCommentText) parts.push(`LLM 评语：${ctx.llmCommentText}`)
   if (ctx.existingRecord) {
     const time = ctx.existingRecord.createdAt ? new Date(ctx.existingRecord.createdAt).toLocaleString('zh-CN') : ''
-    parts.push(`已有 AI 复核结论：${ctx.existingRecord.verdict}（${time}）`)
+    // §5.7：非 completed 只显状态（后端无结论），completed 才拼中文结论（P2-1 不伪造 verdict）
+    const conclusion = ctx.existingRecord.status === 'completed' && ctx.existingRecord.verdict
+      ? `·${aiReviewVerdictLabel(ctx.existingRecord.verdict)}`
+      : ''
+    parts.push(`已有 AI 复核结论：${aiReviewStatusLabel(ctx.existingRecord.status)}${conclusion}（${time}）`)
   }
   return parts.join('｜')
 }

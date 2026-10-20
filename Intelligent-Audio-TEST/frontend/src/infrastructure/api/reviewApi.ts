@@ -51,9 +51,9 @@ export const reviewApi = {
     });
   },
 
-  /** 查询 AI 复核历史（GET /tasks/results/{task_id}/ai-review-history；委托真实端点） */
-  async getAiReviewHistory(taskId: string | number): Promise<AiReviewRecord[]> {
-    return fetchAiReviewHistory(taskId);
+  /** 查询 AI 复核历史（GET /tasks/results/{task_id}/ai-review-history；委托真实端点；可选 result_id/status 过滤用于 §5.6 轮询） */
+  async getAiReviewHistory(taskId: string | number, filters?: { resultId?: number | string; status?: string }): Promise<AiReviewRecord[]> {
+    return fetchAiReviewHistory(taskId, filters);
   },
 
   /** 采纳 AI 复核结论（POST /tasks/results/ai-review/{id}/adopt；单次落人工复核语义，防双写留痕） */

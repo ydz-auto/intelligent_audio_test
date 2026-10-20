@@ -36,17 +36,17 @@
 
           <!-- 已完成 -->
           <div v-else-if="phase === 'completed' && record" class="ai-record">
-            <div class="ai-verdict">
+            <div v-if="record.verdict" class="ai-verdict">
               <span class="ai-verdict-badge" :class="verdictClass">
-                <i :class="verdictIcon"></i> {{ AI_VERDICT_LABELS[record.verdict] }}
+                <i :class="verdictIcon"></i> {{ aiReviewVerdictLabel(record.verdict) }}
               </span>
               <span class="ai-confidence">置信度 {{ aiConfidenceLabel(record.confidence.value) }}（{{ Math.round(record.confidence.value * 100) }}%）</span>
             </div>
             <p class="ai-reasoning">{{ record.reasoning }}</p>
-            <div class="ai-compare">
+            <div v-if="record.verdict" class="ai-compare">
               <span>AI 判定 vs 原评估判定</span>
               <span class="ai-compare-row">
-                <span class="ai-compare-item"><b>AI：</b>{{ AI_VERDICT_LABELS[record.verdict] }}</span>
+                <span class="ai-compare-item"><b>AI：</b>{{ aiReviewVerdictLabel(record.verdict) }}</span>
                 <span class="ai-compare-arrow">→</span>
                 <span class="ai-compare-item"><b>原评估：</b>{{ evalLabel(evaluationStatus) }}</span>
               </span>
@@ -105,8 +105,9 @@ import '../../../assets/styles/layouts/main.css'
  */
 import { ref, computed } from 'vue'
 import type { AiReviewRecord } from '../../../domain/model/review'
+import { aiReviewVerdictLabel } from '../../../domain/model/review'
 import {
-  AI_VERDICT_LABELS, aiConfidenceLabel, requestAiReview, rejectAiReview,
+  aiConfidenceLabel, requestAiReview, rejectAiReview,
   type AiReviewPhase,
 } from '../../../infrastructure/api/reviewAiApi'
 

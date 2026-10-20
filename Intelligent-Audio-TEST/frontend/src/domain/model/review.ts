@@ -59,6 +59,16 @@ export const AI_REVIEW_VERDICT_LABELS: Record<AiReviewVerdict, string> = {
 }
 
 /**
+ * AI 复核结论中文标签（null/未知值容错，§5.7）。
+ * 非 completed 记录后端无结论（verdict=null），调用侧按状态门控后才拼接；
+ * 兜底返回空串而非伪造「复核通过」。
+ */
+export function aiReviewVerdictLabel(verdict: AiReviewVerdict | null | undefined): string {
+  if (!verdict) return ''
+  return AI_REVIEW_VERDICT_LABELS[verdict] ?? verdict
+}
+
+/**
  * AI 复核记录状态（表 ai_reviews.status，INT-800 实测 pending/running/completed/failed/canceled）。
  * 未知值容错渲染：展示兜底文案而非空白/报错（19 §5.7）。
  */
@@ -105,7 +115,8 @@ export interface AiReviewRecord {
   dimensionName?: string | null
   /** 复核任务状态（pending/running/completed/failed/canceled；未知值容错渲染） */
   status?: AiReviewRecordStatus | null
-  verdict: AiReviewVerdict
+  /** 复核结论（非 completed 记录为 null；渲染侧按状态门控，§5.7） */
+  verdict: AiReviewVerdict | null
   confidence: AiReviewConfidence
   reasoning: string
   /** 原评估判定（对比行「AI 判定 vs 原评估判定」） */

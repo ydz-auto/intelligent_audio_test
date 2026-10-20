@@ -10,9 +10,9 @@
       <span v-else-if="record.rejected" class="record-card-rejected"><i class="fas fa-times-circle"></i> {{ AI_REVIEW_RECORD_COPY.rejectedAt }}</span>
     </div>
 
-    <div class="record-card-verdict" :class="`record-verdict--${record.verdict}`" v-if="showVerdict">
+    <div class="record-card-verdict" :class="`record-verdict--${record.verdict ?? 'unknown'}`" v-if="showVerdict">
       <i :class="verdictIcon"></i>
-      <span class="record-verdict-label">{{ AI_REVIEW_VERDICT_LABELS[record.verdict] }}</span>
+      <span class="record-verdict-label">{{ aiReviewVerdictLabel(record.verdict) }}</span>
       <span class="record-verdict-confidence">
         {{ AI_REVIEW_RECORD_COPY.confidence }} {{ Math.round((record.confidence?.value ?? 0) * 100) }}%（{{ record.confidence?.label ?? '—' }}）
       </span>
@@ -21,7 +21,7 @@
     <div class="record-card-compare" v-if="showVerdict && originalEvaluationStatus">
       <span class="compare-label">{{ AI_REVIEW_VERDICT_COPY.compareTitle }}</span>
       <span class="compare-row">
-        <span class="compare-item">AI：{{ AI_REVIEW_VERDICT_LABELS[record.verdict] }}</span>
+        <span class="compare-item">AI：{{ aiReviewVerdictLabel(record.verdict) }}</span>
         <span class="compare-arrow">→</span>
         <span class="compare-item">原评估：{{ evalLabel(originalEvaluationStatus) }}</span>
       </span>
@@ -46,7 +46,7 @@ import '../../assets/styles/components/log.css'
 
 import { computed } from 'vue'
 import { AI_REVIEW_RECORD_COPY, AI_REVIEW_VERDICT_COPY } from '@/domain/constants/aiReviewSession'
-import { AI_REVIEW_VERDICT_LABELS, aiReviewStatusLabel } from '@/domain/model/review'
+import { aiReviewStatusLabel, aiReviewVerdictLabel } from '@/domain/model/review'
 import type { AiReviewRecord } from '@/domain/model/review'
 
 const props = defineProps<{
@@ -64,10 +64,10 @@ const verdictIcon = computed(() => {
 })
 
 /**
- * 结论行只在后端落位成功（status=completed）时展示；
+ * 结论行只在后端落位成功（status=completed 且有 verdict）时展示；
  * running/failed 时后端无 verdict/confidence，避免「复核失败 + 复核通过」矛盾呈现。
  */
-const showVerdict = computed(() => props.record.status === 'completed')
+const showVerdict = computed(() => props.record.status === 'completed' && !!props.record.verdict)
 
 function evalLabel(status?: string | null): string {
   switch (status) {
