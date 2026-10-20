@@ -42,48 +42,29 @@ describe('toReviewHistoryDomain', () => {
 });
 
 describe('toAiReviewRecord', () => {
-  it('verdict/confidence/status → 领域对象（高置信度映射「高」，后端 adopted/rejected 0/1 → boolean）', () => {
+  it('verdict/confidence/reasoning → 领域对象（高置信度映射「高」）', () => {
     const r = toAiReviewRecord({
       id: 1,
       result_id: 9,
       task_id: 407,
-      test_case_id: 'tc-9',
-      dimension_id: 12,
-      status: 'completed',
       verdict: 'passed',
       confidence: 0.9,
       reasoning: '大模型复核通过',
-      adopted: 1,
-      rejected: 0,
+      original_evaluation_status: 'completed',
+      adopted: false,
+      rejected: false,
       created_at: '2026-10-18T10:00:00',
     });
     expect(r.verdict).toBe('passed');
-    expect(r.status).toBe('completed');
-    expect(r.confidence?.value).toBe(0.9);
-    expect(r.confidence?.label).toBe('高');
+    expect(r.confidence.value).toBe(0.9);
+    expect(r.confidence.label).toBe('高');
     expect(r.reasoning).toBe('大模型复核通过');
-    expect(r.testCaseId).toBe('tc-9');
-    expect(r.dimensionId).toBe(12);
-    expect(r.adopted).toBe(true);
-    expect(r.rejected).toBe(false);
+    expect(r.originalEvaluationStatus).toBe('completed');
   });
 
-  it('运行中记录：verdict/confidence 未回写 → null；status 原样保留', () => {
-    const r = toAiReviewRecord({ id: 2, result_id: 9, task_id: 407, status: 'running' });
-    expect(r.status).toBe('running');
-    expect(r.verdict).toBeNull();
-    expect(r.confidence).toBeNull();
-    expect(r.adopted).toBe(false);
-  });
-
-  it('verdict 仅 passed/failed/uncertain 原样保留，其余为 null；置信度中档映射「中」', () => {
-    expect(toAiReviewRecord({ verdict: 'failed', confidence: 0.4, status: 'completed' }).verdict).toBe('failed');
-    expect(toAiReviewRecord({ verdict: 'uncertain', confidence: 0.5, status: 'completed' }).verdict).toBe('uncertain');
-    expect(toAiReviewRecord({ verdict: 'weird', confidence: 0.6, status: 'completed' }).verdict).toBeNull();
-    expect(toAiReviewRecord({ verdict: 'passed', confidence: 0.6, status: 'completed' }).confidence?.label).toBe('中');
-  });
-
-  it('status 未知值兜底 pending', () => {
-    expect(toAiReviewRecord({ status: 'whatever' }).status).toBe('pending');
+  it('unknown verdict 兜底为 passed；失败/存疑原样保留', () => {
+    expect(toAiReviewRecord({ verdict: 'failed', confidence: 0.4 }).verdict).toBe('failed');
+    expect(toAiReviewRecord({ verdict: 'uncertain', confidence: 0.5 }).verdict).toBe('uncertain');
+    expect(toAiReviewRecord({ verdict: 'weird', confidence: 0.6 }).verdict).toBe('passed');
   });
 });
