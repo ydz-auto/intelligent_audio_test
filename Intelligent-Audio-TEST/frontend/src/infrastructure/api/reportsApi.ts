@@ -17,17 +17,20 @@ import {
   toGetCaseAveragesDto,
   toReportSearchCasesDto,
   toSearchCaseResult,
+  toCaseLogFiles,
 } from '../adapters/reportAdapter';
 import type {
   Report,
   ReportListQuery,
   CompareResult,
+  CaseLogFile,
 } from '../../domain/model/report';
 import type {
   ReportListDataDto,
   ReportDto,
   ReportCaseListQueryDto,
   CompareResultDto,
+  ReportCaseLogFilesDto,
 } from '../dto/reportDto';
 
 export const reportsApi = {
@@ -184,8 +187,22 @@ export const reportsApi = {
     return toSearchCaseResult(raw);
   },
 
-  async downloadCaseLogs(reportId: string | number, caseId: string | number): Promise<Blob> {
-    return request<Blob>('GET', `/reports/${reportId}/cases/${caseId}/logs/download`, null, { responseType: 'blob' });
+  /**
+   * 用例日志文件列表（INT-1062：GET /reports/{id}/cases/{cid}/logs，report:read）
+   * 响应 { items: [{ name, size, updated_at? }] } → CaseLogFile[]（camelCase）。
+   */
+  async listCaseLogFiles(reportId: string | number, caseId: string | number): Promise<CaseLogFile[]> {
+    const dto = await request<ReportCaseLogFilesDto>('GET', `/reports/${reportId}/cases/${caseId}/logs`);
+    return toCaseLogFiles(dto);
+  },
+
+  /**
+   * 下载用例日志（INT-1062）：files 为所选文件名数组（URL 编码 JSON，如 ["a.txt","b.log"]），
+   * 缺省 / 空数组 = 整包 logs.zip（向后兼容）。
+   */
+  async downloadCaseLogs(reportId: string | number, caseId: string | number, files?: string[]): Promise<Blob> {
+    const params = files && files.length > 0 ? { files: JSON.stringify(files) } : undefined;
+    return request<Blob>('GET', `/reports/${reportId}/cases/${caseId}/logs/download`, null, { responseType: 'blob', params });
   },
 
   getCaseLogsDownloadUrl(reportId: string | number, caseId: string | number): string {

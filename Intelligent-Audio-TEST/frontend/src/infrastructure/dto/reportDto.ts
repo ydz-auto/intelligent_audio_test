@@ -418,6 +418,19 @@ export interface ReportCaseListQueryDto {
   tags?: string[]
 }
 
+/** 用例日志文件列表项（INT-1062：GET /reports/{id}/cases/{cid}/logs 响应元素） */
+export interface ReportCaseLogFileDto {
+  name: string
+  size: number
+  /** 可选：business 日志无 mtime 时后端省略该字段 */
+  updated_at?: string | null
+}
+
+/** 用例日志文件列表响应（INT-1062） */
+export interface ReportCaseLogFilesDto {
+  items: ReportCaseLogFileDto[]
+}
+
 /** 报告用例搜索请求体（ReportSearchCasesRequest） */
 export interface ReportSearchCasesDto {
   keyword?: string | null
