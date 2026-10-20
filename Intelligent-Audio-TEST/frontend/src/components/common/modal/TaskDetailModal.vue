@@ -115,6 +115,8 @@ const props = defineProps({
 
 const emit = defineEmits<{
   (e: 'save', payload: { taskId: string | number; visibilityOnly: true; visibility: string }): void
+  /** INT-1007：下单成功跳转前通知宿主关闭父级 TASK_DETAIL 模态（GlobalModalContainer 监听 close → 关模态） */
+  (e: 'close'): void
 }>();
 
 const modalControl = useModalControl();
@@ -609,6 +611,9 @@ function openCherryPick() {
 function handleCheckedOut(payload: { action: string; taskId?: number }) {
   cherryPickVisible.value = false;
   if (payload.taskId) {
+    // INT-1007：下单成功跳转前先关闭父级 TASK_DETAIL 模态（emit close → GlobalModalContainer
+    // handleClose(modalId)），否则模态残留覆盖跳转后的页面（顶栏/页面交互被遮罩拦截）。
+    emit('close');
     router.push(`/tasks/${Number(payload.taskId)}`);
   }
 }
