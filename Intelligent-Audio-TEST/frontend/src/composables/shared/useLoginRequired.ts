@@ -31,11 +31,12 @@ export function useLoginRequired() {
     }
     const path = typeof to === 'string' ? to : ((to as { path?: string }).path ?? '/')
     modal.open(MODAL_TYPES.LOGIN_REQUIRED, { moduleName, redirect: path })
-      .then(() => {
+      .then((result) => {
+        if (!result) return // 取消/关闭：留在当前页
         router.push({ name: 'login', query: { redirect: path } })
       })
       .catch(() => {
-        // 用户取消：留在当前页
+        // 异常路径：留在当前页
       })
   }
 

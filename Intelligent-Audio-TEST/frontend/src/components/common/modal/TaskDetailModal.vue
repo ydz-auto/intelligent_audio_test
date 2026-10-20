@@ -663,8 +663,7 @@ async function removeCase(evt: RemoveCaseEvent) {
   if (confirmed?.confirmed !== true) return;
 
   // 边界：任务只剩 1 个用例时二次确认（任务将空，提示是否连任务一并停止）。
-  // 语义：确认=移除并停止任务；取消按钮（仅移除用例）=继续移除但不停止；
-  // 仅关闭弹窗（X/ESC，promise 悬置不落 reject）视为放弃。
+  // 语义：确认=移除并停止任务；取消/关闭（INT-1011 收敛为 resolve(null)）=仅移除用例但不停止；
   if (associatedCases.value.length === 1) {
     let stopConfirmed: { confirmed: boolean } | null = null;
     try {
@@ -676,7 +675,7 @@ async function removeCase(evt: RemoveCaseEvent) {
         cancelText: '仅移除用例'
       });
     } catch {
-      // 「仅移除用例」按钮走 ModalConfirm cancel→reject 路径：按仅移除语义继续（不停止任务）
+      // 异常路径兜底：视为仅移除（不停止任务）
       stopConfirmed = null;
     }
     if (stopConfirmed?.confirmed === true) {

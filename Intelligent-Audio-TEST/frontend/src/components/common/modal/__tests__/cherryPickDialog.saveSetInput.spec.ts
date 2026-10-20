@@ -98,8 +98,9 @@ describe('CherryPickDialog 另存挑选集（INT-286）', () => {
     expect(notifications.success).toHaveBeenCalledWith('挑选集「我的挑选集」已保存（2 条）')
   })
 
-  it('取消（open reject）→ 不下发 saveAsSet', async () => {
-    modalOpen.mockRejectedValue(new Error('cancel'))
+  it('取消（resolve null）→ 不下发 saveAsSet', async () => {
+    // INT-1011：取消收敛为 resolve(null)，不再是 rejection
+    modalOpen.mockResolvedValue(null)
     const w = await mountOnCartStep()
 
     await w.findAll('button').find(b => b.text().includes('另存为挑选集'))!.trigger('click')

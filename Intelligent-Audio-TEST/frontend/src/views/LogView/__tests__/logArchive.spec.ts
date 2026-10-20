@@ -148,7 +148,8 @@ describe('触发归档（POST /logs/archive）', () => {
 
   it('用户取消确认时不发请求', async () => {
     setPermissions(['*']);
-    mockedOpen.mockRejectedValue(new Error('cancelled'));
+    // 真实契约：取消收敛为 resolve(null)（INT-1011），不再是 rejection
+    mockedOpen.mockResolvedValue(null);
     const view = useLogArchive();
     await view.triggerArchive();
     expect(mockedPort.archive).not.toHaveBeenCalled();
