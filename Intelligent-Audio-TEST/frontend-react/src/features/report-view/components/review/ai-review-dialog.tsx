@@ -1,7 +1,8 @@
 /**
  * 发起 AI 复核弹窗（19 规范 §4.3，INT-793）：待发起→执行中→已完成（AI 结论卡）→已采纳/已驳回/待查。
  * 入口：具体用例行「AI 复核」ghost 钮（Sparkles）；仅评估状态为已完成/评估失败且存在 LLM 判分/评语可发起。
- * 端点待后端立项（§8-2）→ 异步执行由 infrastructure 桩 `// 待接线` 模拟；采纳落人工复核语义
+ * 端点已真实接线（INT-824 契约 POST /tasks/results/ai-review）；异步执行由后端 status 驱动
+ * （pending/running → 轮询历史推进 → completed/failed），采纳落人工复核语义
  * （打开 §3.2 复核弹窗预填评估状态 + 备注），驳回保留原判定，忽略保留待查。
  */
 import { Sparkles, X } from 'lucide-react'
@@ -121,7 +122,8 @@ export function AiReviewDialog({
 
   const handleAdopt = async () => {
     if (!ai.record) return
-    await ai.adopt()
+    const ok = await ai.adopt()
+    if (!ok) return
     onAdopt({
       evaluationStatus: aiVerdictToEvaluationStatus(ai.record.verdict),
       comment: ai.record.reasoning,

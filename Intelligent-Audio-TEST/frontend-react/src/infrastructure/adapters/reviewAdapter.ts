@@ -7,14 +7,12 @@
 import type {
   ReviewHistoryItem,
   ReviewSubmitResult,
-  AiReviewRecord,
   CaseResultForReview,
   CaseResultsForReview,
 } from '@/domain/models/review'
 import type {
   ReviewHistoryItemDto,
   ReviewSubmitResponseDto,
-  AiReviewRecordDto,
   CaseResultForReviewDto,
 } from '@/infrastructure/dto/review.dto'
 
@@ -50,31 +48,6 @@ export function toReviewSubmitResult(dto: ReviewSubmitResponseDto): ReviewSubmit
       message: f.message,
     })),
   }
-}
-
-/** AI 复核记录：DTO（契约建议）→ 领域 */
-export function toAiReviewRecord(dto: AiReviewRecordDto): AiReviewRecord {
-  return {
-    id: dto.id,
-    resultId: dto.result_id,
-    taskId: dto.task_id,
-    testCaseId: dto.test_case_id,
-    verdict: dto.verdict,
-    confidence: dto.confidence,
-    reasoning: dto.reasoning,
-    adopted: dto.adopted,
-    adoptedByUserId: dto.adopted_by_user_id,
-    adoptedAt: dto.adopted_at,
-    rejected: dto.rejected,
-    createdAt: dto.created_at,
-  }
-}
-
-/** AI 复核历史：DTO items → 领域 */
-export function toAiReviewHistoryList(
-  items: AiReviewRecordDto[]
-): AiReviewRecord[] {
-  return (items ?? []).map(toAiReviewRecord)
 }
 
 /** 用例执行结果行（复核消费侧字段子集；执行状态/设备名/API 名/复核标注） */

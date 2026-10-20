@@ -2,7 +2,8 @@
  * 复核历史抽屉（19 规范 §3.4/§4.3，INT-793）：人工复核 / AI 复核 两 Tab。
  * 人工 Tab：GET /tasks/results/{task_id}/review-history（服务端时间正序，展示倒序），
  * 行 = 时间 + 操作人 + 用例名 + 字段徽章 + 改判 {原值} → {新值} + 备注（LongText 截断）。
- * AI Tab：AI 复核记录（§8-2 待后端立项，infrastructure 桩 `// 待接线`），空态「暂无 AI 复核记录」。
+ * AI Tab：AI 复核记录（GET /tasks/results/{task_id}/ai-review-history，INT-824），空态「暂无 AI 复核记录」；
+ * 记录状态（pending/running/completed/failed 及未知值）容错渲染（§5.7 注记 2），结论仅在 completed 展示。
  * 用例卡片入口按 caseId 过滤；任务级入口不过滤。
  */
 import { ShieldCheck, Sparkles } from 'lucide-react'
@@ -24,6 +25,7 @@ import type { ReviewHistoryItem } from '@/domain/models/review'
 import {
   AI_VERDICT_LABELS,
   aiConfidenceLabel,
+  aiReviewStatusLabel,
   executionStatusLabel,
   evaluationStatusLabel,
 } from '@/domain/models/review'
@@ -156,11 +158,22 @@ export function ReviewHistoryDrawer({
                 {aiItems.map((rec) => (
                   <div key={rec.id} className='rounded-lg border p-2.5 text-xs'>
                     <div className='flex flex-wrap items-center gap-2'>
-                      <Badge variant='outline' className='gap-1 text-[10px]'>
+                      {/* 记录状态（unknown 值回退原值；§5.7 注记 2 容错渲染） */}
+                      <Badge
+                        variant={rec.status === 'completed' ? 'secondary' : 'outline'}
+                        className='gap-1 text-[10px]'
+                      >
                         <Sparkles aria-hidden='true' className='size-3' />
-                        {AI_VERDICT_LABELS[rec.verdict]}
+                        {aiReviewStatusLabel(rec.status)}
                       </Badge>
-                      <span className='font-mono tabular-nums'>置信度 {aiConfidenceLabel(rec.confidence)}</span>
+                      {rec.status === 'completed' && (
+                        <Badge variant='outline' className='text-[10px]'>
+                          {AI_VERDICT_LABELS[rec.verdict]}
+                        </Badge>
+                      )}
+                      {rec.status === 'completed' && (
+                        <span className='font-mono tabular-nums'>置信度 {aiConfidenceLabel(rec.confidence)}</span>
+                      )}
                       <span className='font-mono tabular-nums'>{formatTime(rec.createdAt)}</span>
                       {rec.adopted && (
                         <Badge variant='secondary' className='text-[10px]'>已采纳</Badge>
