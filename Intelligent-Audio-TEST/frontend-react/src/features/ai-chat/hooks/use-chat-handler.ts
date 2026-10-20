@@ -42,10 +42,11 @@ const STREAM_CHUNK_SIZE = 12
 /** 组装 OpenAI 兼容 messages（系统提示 + 历史完整消息 + 当前输入） */
 function buildChatHistory(
   messages: ChatMessage[],
-  text: string
+  text: string,
+  systemPrompt = SYSTEM_PROMPT
 ): ChatCompletionMessage[] {
   const history: ChatCompletionMessage[] = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: systemPrompt },
   ]
   for (const message of messages) {
     if (
@@ -83,12 +84,15 @@ export function useChatHandler({
   provider,
   messages,
   onMessageUpdate,
+  /** 系统提示覆盖（AI 复核等有界会话注入专用上下文；缺省用通用灵犀Agent 提示） */
+  systemPrompt,
 }: {
   config: ChatConfig
   /** 当前供应商（调用方从 useLlmProviders 解析：config.providerId 命中或默认） */
   provider: LlmProvider | null
   messages: ChatMessage[]
   onMessageUpdate: UpdateMessagesFn
+  systemPrompt?: string
 }) {
   const [isGenerating, setIsGenerating] = useState(false)
   const runRef = useRef<number | null>(null)
@@ -102,6 +106,8 @@ export function useChatHandler({
   providerRef.current = provider
   const messagesRef = useRef(messages)
   messagesRef.current = messages
+  const systemPromptRef = useRef(systemPrompt)
+  systemPromptRef.current = systemPrompt
 
   const schedule = useCallback((fn: () => void, delay: number) => {
     const id = window.setTimeout(fn, delay)
@@ -218,7 +224,8 @@ export function useChatHandler({
             // 重新生成=截断重建（§3.4）：请求体用截断后历史构造，旧 assistant 回复不残留
             messages: buildChatHistory(
               options?.historyMessages ?? messagesRef.current,
-              text
+              text,
+              systemPromptRef.current
             ),
             signal: abort.signal,
           })

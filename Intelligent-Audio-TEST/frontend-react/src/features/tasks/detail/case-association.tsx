@@ -50,7 +50,8 @@ import { fetchCaseResults } from '@/infrastructure/api/reviewApi'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import { Progress } from '@/features/tasks/components/ui/progress'
 import { CaseCard } from '@/features/testcases/components/case-card'
-import { AiReviewDialog } from '@/features/tasks/components/ai-review-dialog'
+import { AiReviewSessionDialog } from '@/features/ai-review/ai-review-session-dialog'
+import { QuickAiReviewDialog } from '@/features/ai-review/quick-ai-review-dialog'
 import { ManualReviewBatchBar } from '@/features/tasks/components/manual-review-batch-bar'
 import { ManualReviewDialog } from '@/features/tasks/components/manual-review-dialog'
 import { ReviewBadge } from '@/features/tasks/components/review-badge'
@@ -131,6 +132,7 @@ function TaskCaseCard({
   reviewLoading,
   onReview,
   onAiReview,
+  onQuickReview,
 }: {
   c: TaskCaseBrief
   selected: boolean
@@ -143,6 +145,7 @@ function TaskCaseCard({
   reviewLoading: boolean
   onReview: () => void
   onAiReview: () => void
+  onQuickReview: () => void
 }) {
   return (
     <CaseCard
@@ -202,7 +205,7 @@ function TaskCaseCard({
               人工复核
             </Button>
           )}
-          {/* INT-795：AI 复核入口（evaluation:execute；§5.2 待后端立项） */}
+          {/* INT-795/INT-1064：AI 复核主入口（task.result.ai_review；§5.2 灵犀Agent 复核会话可追问） */}
           {canAiReview && isTerminal && (
             <Button
               variant='ghost'
@@ -210,10 +213,23 @@ function TaskCaseCard({
               className='text-muted-foreground h-6 gap-1 px-1.5 text-xs'
               disabled={reviewLoading}
               onClick={onAiReview}
-              title='AI 复核该用例结果（建议层，不直接修改统计）'
+              title='AI 复核（灵犀Agent 对话式复核，可追问）'
             >
               <Sparkles aria-hidden='true' className='size-3' />
               AI 复核
+            </Button>
+          )}
+          {/* INT-1064：快速复核次要入口（一次性状态机，批量/低分初筛场景，§5.1 裁定） */}
+          {canAiReview && isTerminal && (
+            <Button
+              variant='ghost'
+              size='sm'
+              className='text-muted-foreground/70 h-6 gap-1 px-1.5 text-xs'
+              disabled={reviewLoading}
+              onClick={onQuickReview}
+              title='快速复核（一次性状态机，无需追问的快速复检）'
+            >
+              快速复核
             </Button>
           )}
         </div>
@@ -230,7 +246,7 @@ export function CaseAssociation({
   /** 用例行点击回调（10_测试执行.md §3.7：步骤四关联用例行点击 → 用例详情弹窗 §5.2） */
   onCaseSelect?: (caseId: string) => void
 }) {
-  const { hasPermission, hasAnyPermission } = usePermissions()
+  const { hasPermission } = usePermissions()
   const actions = useTaskActions()
   const [tab, setTab] = useState('cases')
   const [view, setView] = useState<ViewMode>('flat')
@@ -238,6 +254,7 @@ export function CaseAssociation({
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [reviewTarget, setReviewTarget] = useState<ReviewTarget | null>(null)
   const [aiReviewTarget, setAiReviewTarget] = useState<ReviewTarget | null>(null)
+  const [quickReviewTarget, setQuickReviewTarget] = useState<ReviewTarget | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [reviewLoading, setReviewLoading] = useState(false)
   /** INT-949 移除用例确认（§5.9：两段后果文案 + 末例二次确认） */
@@ -260,9 +277,9 @@ export function CaseAssociation({
 
   const resourceLabel = detail.device_types.includes('http_api') ? '关联API' : '关联设备'
   const isTerminal = TERMINAL_STATUSES.includes(detail.status)
-  // 人工复核提交权限（task.result.review）；AI 复核发起/查看结论 evaluation:execute（§6）
+  // 人工复核提交权限（task.result.review）；AI 复核发起/对话/保存结论/驳回（task.result.ai_review，INT-800 已注册）
   const canReview = hasPermission('task.result.review')
-  const canAiReview = hasAnyPermission(['task.result.review', 'evaluation:execute'])
+  const canAiReview = hasPermission('task.result.ai_review')
 
   // 标签分组（按用例 tags 首标签粗分）
   const tagGroups = filtered.reduce<Record<string, typeof filtered>>((acc, c) => {
@@ -387,7 +404,7 @@ export function CaseAssociation({
     }
   }
 
-  /** AI 复核入口：取该用例结果行 → AI 复核状态机弹窗 */
+  /** AI 复核入口（主形态）：取该用例结果行校验有结果 → 打开灵犀Agent 复核会话（§5.2，可追问） */
   const openAiReview = async (c: TaskCaseBrief) => {
     setReviewLoading(true)
     try {
@@ -398,6 +415,30 @@ export function CaseAssociation({
         return
       }
       setAiReviewTarget({
+        caseId: c.case_id,
+        caseName: res.caseName || c.name,
+        results: res.results,
+        evaluationStatus: c.evaluation_status,
+      })
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? `用例结果加载失败：${err.message}` : '用例结果加载失败'
+      )
+    } finally {
+      setReviewLoading(false)
+    }
+  }
+
+  /** 快速复核入口（次要形态）：一次性状态机弹窗（批量/低分初筛，§5.1 裁定） */
+  const openQuickReview = async (c: TaskCaseBrief) => {
+    setReviewLoading(true)
+    try {
+      const res = await fetchCaseResults(detail.id, c.case_id)
+      if (res.results.length === 0) {
+        toast.error('该用例无执行结果，无法复核')
+        return
+      }
+      setQuickReviewTarget({
         caseId: c.case_id,
         caseName: res.caseName || c.name,
         results: res.results,
@@ -453,13 +494,6 @@ export function CaseAssociation({
     }
   }
 
-  /** AI 采纳 → 转人工复核弹窗（预填 AI 判定的评估状态 + 备注=AI 理由，§5.2） */
-  const handleAiAdopt = (preset: { evaluationStatus?: string; comment: string }) => {
-    if (!aiReviewTarget) return
-    setReviewTarget({ ...aiReviewTarget, preset })
-    setAiReviewTarget(null)
-  }
-
   /** 用例卡渲染（平铺卡片网格与标签/分组组内卡片共用，照 11_用例域 case-card 形态） */
   const renderCaseCard = (c: TaskCaseBrief) => (
     <TaskCaseCard
@@ -483,6 +517,7 @@ export function CaseAssociation({
       reviewLoading={reviewLoading}
       onReview={() => openCaseReview(c)}
       onAiReview={() => openAiReview(c)}
+      onQuickReview={() => openQuickReview(c)}
     />
   )
 
@@ -636,8 +671,8 @@ export function CaseAssociation({
         preset={reviewTarget?.preset}
       />
 
-      {/* §5.2 AI 复核弹窗（状态机：待发起→执行中→已完成→已采纳/已驳回/待查） */}
-      <AiReviewDialog
+      {/* §5.2 AI 复核主入口（灵犀Agent 复核会话，可追问；上下文由会话自身预填 §5.3） */}
+      <AiReviewSessionDialog
         open={aiReviewTarget != null}
         onOpenChange={(next) => {
           if (!next) setAiReviewTarget(null)
@@ -645,9 +680,19 @@ export function CaseAssociation({
         taskId={detail.id}
         caseId={aiReviewTarget?.caseId ?? ''}
         caseName={aiReviewTarget?.caseName}
-        results={aiReviewTarget?.results ?? []}
-        evaluationStatus={aiReviewTarget?.evaluationStatus}
-        onAdopt={handleAiAdopt}
+      />
+
+      {/* §5.1 快速复核次要入口（一次性状态机，批量/低分初筛场景） */}
+      <QuickAiReviewDialog
+        open={quickReviewTarget != null}
+        onOpenChange={(next) => {
+          if (!next) setQuickReviewTarget(null)
+        }}
+        taskId={detail.id}
+        caseId={quickReviewTarget?.caseId ?? ''}
+        caseName={quickReviewTarget?.caseName}
+        results={quickReviewTarget?.results ?? []}
+        evaluationStatus={quickReviewTarget?.evaluationStatus}
       />
 
       {/* §3.4 任务复核历史抽屉 */}

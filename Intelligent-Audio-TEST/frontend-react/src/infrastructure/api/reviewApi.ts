@@ -111,6 +111,7 @@ export async function requestAiReview(
     {
       result_ids: payload.resultIds,
       dimension_ids: payload.dimensionIds?.length ? payload.dimensionIds : undefined,
+      force: payload.force || undefined,
     }
   )
   const item = (dto.items ?? [])[0]

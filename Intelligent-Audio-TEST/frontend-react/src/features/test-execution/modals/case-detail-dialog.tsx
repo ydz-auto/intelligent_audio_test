@@ -7,12 +7,15 @@
  * 分节②执行日志——「加载更多日志」+ 等宽容器 + 分页 100 条/页。
  * 数据源 GET /tasks/{taskId}/cases/{caseId}/detail + /results + GET /logs?task_id&test_case_id。
  */
-import { Clipboard, ListChecks, Play, ScrollText } from 'lucide-react'
+import { Clipboard, ListChecks, Play, ScrollText, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import { fetchCaseExecutionDetail, fetchCaseLogs } from '@/infrastructure/api/test-execution-api'
+import { fetchTaskDetail } from '@/infrastructure/api/tasks-list-api'
+import { fetchCaseResults } from '@/infrastructure/api/reviewApi'
+import { usePermissions } from '@/application/hooks/use-permissions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -25,6 +28,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import { AudioPlayerModal } from '@/features/report-view/components/case-report-detail/audio-player-modal'
+import { AiReviewSessionDialog } from '@/features/ai-review/ai-review-session-dialog'
 import { cn } from '@/lib/utils'
 
 interface CaseDetailDialogProps {
@@ -39,6 +43,8 @@ const LOG_PER_PAGE = 100
 export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDetailDialogProps) {
   const [page, setPage] = useState(1)
   const [playingAudio, setPlayingAudio] = useState<string | null>(null)
+  const [aiReviewOpen, setAiReviewOpen] = useState(false)
+  const { hasPermission } = usePermissions()
 
   const detailQuery = useQuery({
     queryKey: ['test-execution', 'case-detail', taskId, caseId],
@@ -52,9 +58,29 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
     enabled: open,
     staleTime: 15_000,
   })
+  // INT-1064 复核入口准入（10 §5.2：终态任务 + fetchCaseResults 有执行结果 + task.result.ai_review）
+  const taskQuery = useQuery({
+    queryKey: ['tasks', 'detail', taskId],
+    queryFn: () => fetchTaskDetail(taskId),
+    enabled: open && taskId > 0,
+    staleTime: 30_000,
+  })
+  const resultsQuery = useQuery({
+    queryKey: ['tasks', 'cases', taskId, caseId, 'results'],
+    queryFn: () => fetchCaseResults(taskId, caseId),
+    enabled: open && taskId > 0 && Boolean(caseId),
+    staleTime: 15_000,
+  })
 
   const detail = detailQuery.data
   const logs = logsQuery.data
+  const taskTerminal = ['completed', 'failed', 'stopped', 'skipped'].includes(
+    taskQuery.data?.status ?? ''
+  )
+  const hasCaseResults = (resultsQuery.data?.results.length ?? 0) > 0
+  // 复核按钮位置以 10 §5.2「分节①区头右侧」收口（注记 3）：终态任务 + 有执行结果 + AI 复核权限
+  const canAiReview =
+    taskTerminal && hasCaseResults && hasPermission('task.result.ai_review')
 
   const copyCaseId = () => {
     void navigator.clipboard?.writeText(caseId)
@@ -122,12 +148,26 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
           </Alert>
         ) : (
           <div className='max-h-[min(72dvh,720px)] space-y-6 overflow-y-auto pr-1'>
-            {/* ①执行结果与指标 */}
+            {/* ①执行结果与指标（区头右侧 = 复核入口，10 §5.2 注记 3） */}
             <section>
-              <h4 className='mb-2 flex items-center gap-1.5 text-sm font-semibold'>
-                <ListChecks aria-hidden='true' className='text-muted-foreground size-4' />
-                执行结果与指标
-              </h4>
+              <div className='mb-2 flex items-center justify-between gap-2'>
+                <h4 className='flex items-center gap-1.5 text-sm font-semibold'>
+                  <ListChecks aria-hidden='true' className='text-muted-foreground size-4' />
+                  执行结果与指标
+                </h4>
+                {canAiReview && (
+                  <Button
+                    variant='ghost'
+                    size='sm'
+                    className='text-muted-foreground h-7 gap-1 text-xs'
+                    onClick={() => setAiReviewOpen(true)}
+                    title='AI 复核（灵犀Agent 对话式复核，可追问；建议层不直接修改统计）'
+                  >
+                    <Sparkles aria-hidden='true' className='size-3' />
+                    AI 复核
+                  </Button>
+                )}
+              </div>
               {detail.devices.length === 0 ? (
                 <p className='text-muted-foreground py-6 text-center text-sm'>暂无执行结果</p>
               ) : (
@@ -300,6 +340,15 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
             ? { audio_id: playingAudio, audio_name: playingAudio, audio_type: 'result' }
             : undefined
         }
+      />
+
+      {/* 分节①区头「AI 复核」入口（10 §5.2）→ 灵犀Agent 复核会话（19 §5，可追问） */}
+      <AiReviewSessionDialog
+        open={aiReviewOpen}
+        onOpenChange={setAiReviewOpen}
+        taskId={taskId}
+        caseId={caseId}
+        caseName={detail?.name}
       />
     </Dialog>
   )

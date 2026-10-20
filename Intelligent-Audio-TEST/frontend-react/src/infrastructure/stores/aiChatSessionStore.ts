@@ -14,21 +14,26 @@ import { DEFAULT_CONFIG } from '@/features/ai-chat/constants'
 import { aiChatPrefs } from '@/infrastructure/storage/aiChatPrefs'
 import { MOCK_REPORTS } from '@/infrastructure/mock/ai-chat-mock'
 
-/** URL 契约上下文（§3.7：/ai-chat?report={id} / /ai-chat?task={id}） */
+/** URL 契约上下文（§3.7：/ai-chat?report={id} / /ai-chat?task={id} / /ai-chat?reviewTask={id}&reviewCase={caseId}） */
 export type AiChatInitialContext = {
   report?: string
   task?: string
+  /** AI 复核会话「展开到 /ai-chat」进入态（08 §3.7 URL 契约扩展） */
+  reviewTask?: string
+  reviewCase?: string
 }
 
 function buildInitialConfig(context?: AiChatInitialContext): ChatConfig {
   const saved = aiChatPrefs.loadConfig()
   if (saved) return saved
 
-  // URL 契约：/ai-chat?report={id} / /ai-chat?task={id}（§3.7）
+  // URL 契约：/ai-chat?report={id} / /ai-chat?task={id} / /ai-chat?reviewTask={id}（§3.7）
   const report = context?.report
   const task = context?.task
+  const reviewTask = context?.reviewTask
   const reportId = Number(report)
   const taskId = Number(task)
+  const reviewTaskId = Number(reviewTask)
 
   if (report && Number.isFinite(reportId)) {
     const found = MOCK_REPORTS.find((item) => item.id === reportId)
@@ -41,11 +46,12 @@ function buildInitialConfig(context?: AiChatInitialContext): ChatConfig {
       }
     }
   }
-  if (task && Number.isFinite(taskId)) {
+  if ((task || reviewTask) && (Number.isFinite(taskId) || Number.isFinite(reviewTaskId))) {
+    const id = Number.isFinite(taskId) ? taskId : reviewTaskId
     return {
       ...DEFAULT_CONFIG,
-      reportContextId: String(taskId),
-      reportContextLabel: `任务 #${taskId}`,
+      reportContextId: String(id),
+      reportContextLabel: `任务 #${id}`,
       reportContextType: 'task_context',
     }
   }
@@ -76,8 +82,8 @@ export const useAiChatSession = create<AiChatSessionState>()((set, get) => ({
     set((state) => ({ config: { ...state.config, [key]: value } })),
   clearMessages: () => set({ messages: [] }),
   applyInitialContext: (context) => {
-    if (!context?.report && !context?.task) return
-    const requestedId = context.report ?? context.task
+    if (!context?.report && !context?.task && !context?.reviewTask) return
+    const requestedId = context.report ?? context.task ?? context.reviewTask
     if (get().appliedContextKey === requestedId) return
     set({
       config: buildInitialConfig(context),

@@ -146,10 +146,12 @@ export interface AiReviewRecord {
   updatedAt: string | null
 }
 
-/** AI 发起请求（§5.3：result_ids + dimension_ids 可选） */
+/** AI 发起请求（§5.3：result_ids + dimension_ids 可选 + force 重新复核） */
 export interface AiReviewRequest {
   resultIds: number[]
   dimensionIds?: number[]
+  /** 已有 AI 复核结论时重新复核（绕过幂等复用，§5.4） */
+  force?: boolean
 }
 
 /** AI 采纳请求（INT-824 契约定稿：改判状态至少一项 + 备注必填；采纳落人工复核语义） */
@@ -232,4 +234,37 @@ export interface CaseResultsForReview {
   caseId: string
   caseName: string
   results: CaseResultForReview[]
+}
+
+// ---------------------------------------------------------------------------
+// AI 复核会话上下文（19 规范 §5.3：灵犀Agent 复核会话预填契约）
+// ---------------------------------------------------------------------------
+
+/** 复核维度分数（设备×维度表，低分维度识别） */
+export interface AiReviewDimensionScore {
+  /** 维度名（@round:{n}/@overall 后缀已剥离） */
+  name: string
+  /** 平均分（多设备/多轮聚合；缺失 null） */
+  score: number | null
+}
+
+/**
+ * 复核上下文（19 §5.3：用例名/CaseId + 设备×结果 + 维度分数 + LLM 评语 +
+ * 已有 ai_reviews 结论——现有端点聚合，无新后端）。作为灵犀Agent 复核会话的
+ * 系统提示 + 首条 assistant 摘要卡输入；独立于全局主会话（19 §5.2）。
+ */
+export interface AiReviewContext {
+  taskId: number
+  caseId: string
+  caseName: string
+  /** 用例当前评估状态（GET /tasks/{id}/cases/{id}/detail；AI 判定 vs 原评估判定对比行） */
+  evaluationStatus: string | null
+  /** 设备×结果列表（GET /tasks/{id}/cases/{id}/results） */
+  deviceResults: CaseResultForReview[]
+  /** 评估维度分数（GET /tasks/{id}/cases/{id}/detail 设备×维度表聚合） */
+  dimensionScores: AiReviewDimensionScore[]
+  /** 现有复核/评语（results 行的 lastReviewComment；无则 null） */
+  reasoning: string | null
+  /** 已有 ai_reviews 结论（GET /tasks/results/{task_id}/ai-review-history，按 testCaseId 过滤） */
+  existingReviews: AiReviewRecord[]
 }

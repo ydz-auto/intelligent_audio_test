@@ -1,8 +1,8 @@
 /**
- * AI 复核弹窗组件测试（INT-1063 返工，19 规范 §5.5）。
- * 覆盖 P2 修复：verdict=uncertain（存疑）时隐藏「采纳为复核结果」钮 + 不调 adopt 端点
+ * 快速复核弹窗组件测试（INT-1064 迁移，19 规范 §5.5）。
+ * 覆盖 P2 修复保留：verdict=uncertain（存疑）时隐藏「采纳为复核结果」钮 + 不调 adopt 端点
  * （存疑无明确判定可采纳，后端 adopt 要求至少一项改判状态，避免空载荷 400）；
- * verdict=passed 时采纳钮可见且载荷 = {evaluation_status: completed, comment: AI 理由}。
+ * verdict=passed 时采纳钮可见且单次调 adopt（**不补调 /tasks/results/review，双写留痕**）。
  */
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -14,7 +14,7 @@ import type {
   CaseResultForReview,
 } from '@/domain/models/review'
 
-import { AiReviewDialog } from '../ai-review-dialog'
+import { QuickAiReviewDialog } from '../quick-ai-review-dialog'
 
 const requestAiReviewMock = vi.hoisted(() => vi.fn())
 const adoptAiReviewMock = vi.hoisted(() => vi.fn())
@@ -76,7 +76,7 @@ function completedRecord(verdict: AiReviewVerdict): AiReviewRecord {
 function renderDialog(verdict: AiReviewVerdict) {
   requestAiReviewMock.mockResolvedValue(completedRecord(verdict))
   return render(
-    <AiReviewDialog
+    <QuickAiReviewDialog
       open
       onOpenChange={vi.fn()}
       taskId={417}
@@ -84,20 +84,19 @@ function renderDialog(verdict: AiReviewVerdict) {
       caseName='用例一'
       results={[singleResult]}
       evaluationStatus='failed'
-      onAdopt={vi.fn()}
     />
   )
 }
 
 async function reachCompleted(verdict: AiReviewVerdict) {
   renderDialog(verdict)
-  await userEvent.click(screen.getByRole('button', { name: '发起 AI 复核' }))
+  await userEvent.click(screen.getByRole('button', { name: '发起快速复核' }))
   await waitFor(() => {
     expect(screen.getByText('AI 复核结论')).toBeInTheDocument()
   })
 }
 
-describe('AiReviewDialog（INT-1063 返工 P2：存疑不采纳）', () => {
+describe('QuickAiReviewDialog（快速复核，INT-1064 迁移）', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     fetchAiReviewHistoryMock.mockResolvedValue([])
@@ -112,7 +111,7 @@ describe('AiReviewDialog（INT-1063 返工 P2：存疑不采纳）', () => {
     expect(adoptAiReviewMock).not.toHaveBeenCalled()
   })
 
-  it('verdict=passed：采纳钮可见，点击后 adopt 载荷 = 评估状态 completed + AI 理由', async () => {
+  it('verdict=passed：采纳钮可见，点击后单次调 adopt（不补调 /tasks/results/review）', async () => {
     adoptAiReviewMock.mockResolvedValue(completedRecord('passed'))
     await reachCompleted('passed')
     const adoptBtn = screen.getByRole('button', { name: '采纳为复核结果' })
