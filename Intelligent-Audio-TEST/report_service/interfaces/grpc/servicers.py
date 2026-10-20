@@ -925,7 +925,9 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
                 return self._resp(False, result.get('message', '读取分享失败'),
                                   result.get('data'), code=result.get('code', 404))
             report_id = (result.get('data') or {}).get('report_id')
-            aggregate = self.query_handler.handle_get(GetReportQuery(report_id=report_id))
+            # INT-1043 F1：token 校验通过即 owner 显式授权，跳过行级可见性过滤
+            # 直取未删报告（授权不因 visibility 收回；私有报告经分享链接匿名可读）
+            aggregate = self.query_handler.handle_get_shared(report_id)
             if aggregate is None:
                 return self._resp(False, '报告不存在或已删除', {'code': 404}, code=404)
             return self._resp(True, 'ok', _aggregate_to_dict(aggregate))

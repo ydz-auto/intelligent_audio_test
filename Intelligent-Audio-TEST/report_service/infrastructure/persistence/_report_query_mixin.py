@@ -53,6 +53,21 @@ class ReportQueryMixin:
         return _report_po_to_entity(po)
 
     @with_session
+    def get_by_id_unchecked(self, report_id: int) -> Optional[object]:
+        """按 ID 加载报告聚合根（不做行级可见性过滤，INT-1043 分享读取专用）。
+
+        有效未撤销的分享链接是 owner 的显式授权：GetSharedReport 成功路径
+        直取未删报告详情，不受 report.visibility 行级过滤拦截（授权不因
+        visibility 收回）；分享有效性已在 report_share_service.get_shared_report
+        校验。报告不存在 / 已软删除仍返回 None（调用方映射 404）。
+        """
+        session = get_db_session()
+        po = session.get(self.PO_CLASS, report_id)
+        if po is None or po.deleted:
+            return None
+        return _report_po_to_entity(po)
+
+    @with_session
     def get_by_task(self, task_id: int) -> Optional[object]:
         """按任务 ID 加载报告聚合根（取最新一条未删除报告）。
 

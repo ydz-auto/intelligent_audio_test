@@ -61,11 +61,14 @@ def _cleanup_tables(tables):
         remove_db_session()
 
 
-def _make_report(name='r1', status='published'):
+def _make_report(name='r1', status='published', visibility='shared',
+                 created_by_user_id=None):
     """创建报告样本，返回 report_id。"""
     from report_service.infrastructure.persistence.models import Report
     session = get_db_session()
-    po = Report(name=name, type='task', status=status)
+    po = Report(name=name, type='task', status=status,
+                visibility=visibility,
+                created_by_user_id=created_by_user_id)
     session.add(po)
     session.flush()
     rid = po.id
@@ -293,6 +296,69 @@ class TestShareService:
         assert report_share_service.revoke_share(other_rid,
                                                  token)['code'] == 404
 
+    # ---------- 行级可见性（INT-1043 F2） ----------
+
+    def test_private_share_ops_owner_only(self):
+        """F2：私有报告 create/list/revoke 仅 owner/admin；非 owner → 403。"""
+        from shared.infrastructure.user_context import (
+            set_current_user_id, set_current_user_is_admin,
+        )
+        from report_service.application.services.report_share_service import report_share_service
+
+        rid = _make_report(visibility='private', created_by_user_id=1)
+        try:
+            set_current_user_id(2)
+            set_current_user_is_admin(False)
+            # 非 owner 生成分享 → 403
+            res = report_share_service.create_share(
+                {'report_id': rid, 'access': 'public'})
+            assert res['success'] is False and res['code'] == 403
+            # 非 owner 列表 → 403
+            res = report_share_service.list_shares(rid)
+            assert res['success'] is False and res['code'] == 403
+            # 非 owner 撤销 → 403（token 任意）
+            res = report_share_service.revoke_share(rid, 'any_token')
+            assert res['success'] is False and res['code'] == 403
+
+            # owner 可生成/列表/撤销
+            set_current_user_id(1)
+            res = report_share_service.create_share(
+                {'report_id': rid, 'access': 'public'})
+            assert res['success'] is True
+            token = res['data']['token']
+            assert report_share_service.list_shares(rid)['success'] is True
+            assert report_share_service.revoke_share(rid, token)['success'] is True
+
+            # admin 可对非 owner 私有报告生成分享
+            set_current_user_id(2)
+            set_current_user_is_admin(True)
+            assert report_share_service.create_share(
+                {'report_id': rid, 'access': 'public'})['success'] is True
+        finally:
+            set_current_user_id(None)
+            set_current_user_is_admin(False)
+
+    def test_shared_report_share_ops_any_user(self):
+        """F2 回归：shared 报告回落角色权限——非 owner 生成/列表/撤销仍放行。"""
+        from shared.infrastructure.user_context import (
+            set_current_user_id, set_current_user_is_admin,
+        )
+        from report_service.application.services.report_share_service import report_share_service
+
+        rid = _make_report(visibility='shared', created_by_user_id=1)
+        try:
+            set_current_user_id(2)
+            set_current_user_is_admin(False)
+            res = report_share_service.create_share(
+                {'report_id': rid, 'access': 'public'})
+            assert res['success'] is True
+            token = res['data']['token']
+            assert report_share_service.list_shares(rid)['success'] is True
+            assert report_share_service.revoke_share(rid, token)['success'] is True
+        finally:
+            set_current_user_id(None)
+            set_current_user_is_admin(False)
+
 
 # ======================================================================
 # report_service gRPC servicer
@@ -381,6 +447,41 @@ class TestShareServicer:
                 data=grpc_dumps({'token': 'bad', 'password': '', 'user_id': None})),
             context=None)
         assert resp.success is False and resp.code == 404
+
+    def test_get_shared_report_private_anonymous_200(self):
+        """F1：私有报告 public 分享 → 匿名经分享链接读取 200（授权不因 visibility 收回）。"""
+        from shared.infrastructure.user_context import (
+            set_current_user_id, set_current_user_is_admin,
+        )
+        from shared.proto import report_service_pb2 as report_pb
+        from report_service.interfaces.grpc.servicers import ReportServicer
+
+        set_current_user_id(1)  # owner
+        set_current_user_is_admin(False)
+        try:
+            rid = _make_report(visibility='private', created_by_user_id=1)
+            servicer = ReportServicer()
+            created = servicer.CreateReportShare(
+                report_pb.CreateReportShareRequest(
+                    data=grpc_dumps({'report_id': rid, 'access': 'public',
+                                     'expiry': 'none', 'password': '',
+                                     'recipients': []})),
+                context=None)
+            assert created.success is True
+            token = grpc_loads(created.data, {})['token']
+
+            # 匿名（user_id=None）读取私有报告 → 200 报告详情
+            resp = servicer.GetSharedReport(
+                report_pb.GetSharedReportRequest(
+                    data=grpc_dumps({'token': token, 'password': '',
+                                     'user_id': None})),
+                context=None)
+            assert resp.success is True and resp.code == 0
+            detail = grpc_loads(resp.data, {}) or {}
+            assert detail.get('id') == rid
+        finally:
+            set_current_user_id(None)
+            set_current_user_is_admin(False)
 
 
 # ======================================================================

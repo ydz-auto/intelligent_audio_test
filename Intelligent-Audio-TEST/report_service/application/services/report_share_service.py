@@ -18,7 +18,14 @@ import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from shared.infrastructure.user_context import get_current_user_id
+from shared.infrastructure.user_context import (
+    get_current_user_id,
+    get_current_user_is_admin,
+)
+from shared.infrastructure.visibility_filter import (
+    VisibilityDenied,
+    check_visible,
+)
 from shared.models.database import utc8now
 from report_service.infrastructure.persistence.report_share_repository import (
     report_share_repository,
@@ -99,6 +106,30 @@ class ReportShareService:
         self.repository = repository
 
     # ------------------------------------------------------------------
+    # 报告存在 + 行级可见性校验（INT-1043 F2）
+    # ------------------------------------------------------------------
+
+    def _ensure_report_accessible(self, report_id: int) -> Optional[dict]:
+        """分享三操作入口校验：报告存在 + 行级可见性（与 _ensure_report_visible 同款）。
+
+        私有报告仅 owner/admin 可生成/列表/撤销分享；shared 报告回落网关
+        report:update 角色权限（行级可见性双门闭合）。报告不存在/已软删 → 404，
+        私有非 owner（含匿名）→ 403。返回 None 表示放行，否则为错误响应 dict。
+        """
+        info = self.repository.get_report_visibility_info(report_id)
+        if info is None:
+            return {'success': False, 'message': '报告不存在或已删除',
+                    'data': {'code': 404}, 'code': 404}
+        try:
+            check_visible(
+                info[0], info[1],
+                get_current_user_id(), get_current_user_is_admin())
+        except VisibilityDenied:
+            return {'success': False, 'message': '无权访问该报告',
+                    'data': {'code': 403}, 'code': 403}
+        return None
+
+    # ------------------------------------------------------------------
     # 创建分享
     # ------------------------------------------------------------------
 
@@ -134,9 +165,10 @@ class ReportShareService:
             if access == 'specific' and not recipients:
                 return {'success': False, 'message': 'access=specific 时 recipients 必填',
                         'data': {'code': 400}, 'code': 400}
-            if not self.repository.report_exists(report_id):
-                return {'success': False, 'message': '报告不存在或已删除',
-                        'data': {'code': 404}, 'code': 404}
+            # INT-1043 F2：私有报告仅 owner/admin 可生成分享（shared 回落角色权限）
+            blocked = self._ensure_report_accessible(report_id)
+            if blocked:
+                return blocked
 
             # expires_at 换算：none→NULL、7d/30d→now+7/30天、custom→body.expires_at
             # （统一 naive UTC+8，见 _now_naive 注记）
@@ -195,9 +227,10 @@ class ReportShareService:
             if not report_id:
                 return {'success': False, 'message': '缺少 report_id',
                         'data': {'code': 400}, 'code': 400}
-            if not self.repository.report_exists(report_id):
-                return {'success': False, 'message': '报告不存在或已删除',
-                        'data': {'code': 404}, 'code': 404}
+            # INT-1043 F2：私有报告仅 owner/admin 可查看分享列表（shared 回落角色权限）
+            blocked = self._ensure_report_accessible(report_id)
+            if blocked:
+                return blocked
             shares = self.repository.list_by_report(report_id)
             return {'success': True, 'message': 'ok',
                     'data': {'shares': [_share_to_dict(s) for s in shares]}}
@@ -212,6 +245,10 @@ class ReportShareService:
             if not report_id or not token:
                 return {'success': False, 'message': '缺少 report_id 或 token',
                         'data': {'code': 400}, 'code': 400}
+            # INT-1043 F2：私有报告仅 owner/admin 可撤销分享（shared 回落角色权限）
+            blocked = self._ensure_report_accessible(report_id)
+            if blocked:
+                return blocked
             ok = self.repository.revoke(report_id, token)
             if not ok:
                 return {'success': False, 'message': '分享不存在或不属于该报告',

@@ -336,6 +336,23 @@ class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
         aggregate.full_summary = self.repository.load_full_report_data(query.report_id)
         return aggregate
 
+    def handle_get_shared(self, report_id: int) -> Optional[ReportAggregate]:
+        """处理分享链接读取报告详情（跳过行级可见性过滤，INT-1043）。
+
+        分享有效性（token 未撤销/未过期/密码/访问口径）已在
+        ReportShareService.get_shared_report 校验通过——分享链接即 owner
+        显式授权，此处直取未删报告（不走 check_visible，授权不因
+        visibility 收回）；其余与 handle_get 一致（加载摘要与完整摘要视图）。
+        """
+        aggregate = self.repository.get_by_id_unchecked(report_id)
+        if aggregate is None:
+            return None
+        # 加载摘要统计，供序列化层派生出对外契约 summary 字段
+        aggregate.summaries = self.repository.load_summaries(report_id)
+        # 详情接口补充完整摘要视图（同 handle_get 口径）
+        aggregate.full_summary = self.repository.load_full_report_data(report_id)
+        return aggregate
+
     def handle_get_by_task(self, query: GetReportByTaskQuery) -> Optional[ReportAggregate]:
         """处理按任务 ID 查询最新报告。
 

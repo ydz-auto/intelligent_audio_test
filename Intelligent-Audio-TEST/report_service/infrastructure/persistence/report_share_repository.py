@@ -57,6 +57,23 @@ class ReportShareRepository:
         return share.id
 
     @with_session(auto_commit=False)
+    def get_report_visibility_info(self, report_id: int) -> Optional[tuple]:
+        """按 ID 查询报告可见性二元信息（未删除行），供分享三操作行级可见性校验。
+
+        Returns:
+            (created_by_user_id, visibility) 或 None（报告不存在/已软删除）。
+        """
+        from report_service.infrastructure.persistence.models import Report
+        session = get_db_session()
+        row = (
+            session.query(Report.created_by_user_id, Report.visibility)
+            .filter(Report.id == int(report_id),
+                    Report.deleted == False)  # noqa: E712
+            .first()
+        )
+        return (row[0], row[1]) if row else None
+
+    @with_session(auto_commit=False)
     def list_by_report(self, report_id: int) -> List:
         """报告的全部分享记录（含已撤销，按 created_at 倒序）。"""
         from report_service.infrastructure.persistence.models import ReportShare
