@@ -191,7 +191,7 @@
   <text x="664" y="822" class="note">GetRelationsByDimension</text>
 
   <rect x="950" y="736" width="266" height="90" rx="8" fill="#ffffff" stroke="#64748b" stroke-width="1.2"/>
-  <text x="966" y="756" font-size="11" font-weight="700" fill="#1e293b">auth_service :5009/:50069</text>
+  <text x="966" y="756" font-size="11" font-weight="700" fill="#1e293b">auth_service :5009/:51069</text>
   <text x="966" y="774" class="body">认证 / OAuth / RBAC 角色权限</text>
   <text x="966" y="790" class="body">User/OAuthClient/RefreshToken 表</text>
   <text x="966" y="808" class="note">AUTH_MODE = off/dev/prod</text>

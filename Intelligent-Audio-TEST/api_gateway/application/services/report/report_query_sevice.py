@@ -123,6 +123,11 @@ class ReportQueryService:
             if not resp.success:
                 return error_response(resp.message or '查询失败', 404)
             data = _loads(resp.data, {}) or {}
+            # INT-466：admin 访问私有报告详情落 PRIVATE_RESOURCE_ACCESS 审计（旁路）
+            from api_gateway.application.services.visibility.visibility_audit import (
+                maybe_audit_private_detail,
+            )
+            maybe_audit_private_detail('report', report_id, data)
             return success_response(data)
         except Exception as e:
             return error_response(f'查询报告失败: {str(e)}')
@@ -399,3 +404,66 @@ class ReportQueryService:
             return success_response(data)
         except Exception as e:
             return error_response(f'下载用例日志失败: {str(e)}')
+
+    # ------------------------------------------------------------------
+    # 报告分享（INT-971）
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def list_shares(report_id):
+        """报告分享列表（GET /reports/{report_id}/share，report:update）。"""
+        try:
+            stub = report_config_service.stub
+            resp = stub.ListReportShares(report_pb.ListReportSharesRequest(
+                data=_dumps({'report_id': int(report_id)})))
+            if not resp.success:
+                return error_response(resp.message or '查询分享列表失败',
+                                      http_code=resp.code or 400,
+                                      detail=_loads(resp.data, {}) or None)
+            data = _loads(resp.data, {}) or {}
+            return success_response(data)
+        except Exception as e:
+            return error_response(f'查询分享列表失败: {str(e)}')
+
+    @staticmethod
+    def get_shared_report(token):
+        """公开读取分享（GET /reports/shared/{token}，PUBLIC_PATHS 免登录路由）。
+
+        handler 内自校验（token 有效性/密码/访问口径），可选解析 Bearer 得
+        user_id（失败当匿名）。访问计数在 report_service 200 放行时原子递增。
+        """
+        if not token:
+            return error_response('缺少分享 token', 404)
+
+        # 可选解析 Bearer token → user_id（TokenService.verify 失败当匿名）
+        user_id = None
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            try:
+                from api_gateway.application.services.auth.token_service import TokenService
+                payload = TokenService.verify(auth_header[7:])
+                user_id = payload.get('user_id') or None
+            except Exception:
+                user_id = None
+
+        password = request.args.get('password')
+        try:
+            stub = report_config_service.stub
+            resp = stub.GetSharedReport(report_pb.GetSharedReportRequest(
+                data=_dumps({
+                    'token': token,
+                    'password': password,
+                    'user_id': user_id,
+                })))
+            if not resp.success:
+                data = _loads(resp.data, {}) or {}
+                detail = data or None
+                if data.get('share_requires_password'):
+                    detail = {'share_requires_password': True}
+                return error_response(resp.message or '读取分享失败',
+                                      http_code=resp.code or 404,
+                                      detail=detail)
+            data = _loads(resp.data, {}) or {}
+            return success_response(data)
+        except Exception as e:
+            return error_response(f'读取分享失败: {str(e)}')

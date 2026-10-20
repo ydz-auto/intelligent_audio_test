@@ -7,6 +7,7 @@ import json
 import logging
 
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps
+from shared.utils.json_utils import deserialize_algorithm_result
 from shared.utils.status_utils import derive_task_case_status
 from shared.utils.status_constants import ExecutionStatus, EvaluationStatus
 from shared.utils.query_utils import now_cst
@@ -128,6 +129,20 @@ class E2EAggregator:
                 content=f"[aggregate] 更新失败: result_id={result_id}, error={str(e)}",
                 task_id=task_id
             )
+            # INT-422：聚合回填失败不静默存活——升级为任务级告警（WARNING），
+            # 避免"设计功能从未生效"这类缺陷无感存活；告警发送自身异常由 emit_alert 兜底。
+            # EventManager 构造必须传 execution_engine（BaseEventManagerMixin.__init__ 必填），
+            # 聚合器已持有 executor 引用；无参构造会在生产每次抛 TypeError 且被内层 except 吞掉
+            # （审计 P1：TASK_ALERT 从未发布，正是"异常被吞、静默存活"反模式）。
+            try:
+                from shared.utils.event_manager import EventManager
+                EventManager(self._executor).emit_alert(
+                    task_id,
+                    f"E2E 评估聚合回填失败: result_id={result_id}, error={str(e)}",
+                    level='warning',
+                )
+            except Exception as alert_err:
+                logger.warning("聚合回填失败告警发送失败（忽略）: %s", alert_err, exc_info=True)
 
     def update_test_result(self, result_id, algo_result, execution_status, response_time=0,
                            error_message=None, task_id=None, result_data_path=None):

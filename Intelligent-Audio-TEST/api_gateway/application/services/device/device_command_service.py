@@ -260,6 +260,32 @@ class DeviceCommandService:
 
         return success_response(result.get('data'), result.get('message', '设备已移出分组'))
 
+    @staticmethod
+    def move_group(group_id: str):
+        """移动设备分组到新父级（INT-832）。parent_id 为空串/null 表示移到根。"""
+        from api_gateway.schemas.device import DeviceGroupMoveSchema
+        try:
+            req = DeviceGroupMoveSchema.model_validate(request.get_json())
+        except Exception as e:
+            return error_response(f"请求数据验证失败: {str(e)}", 400)
+
+        result = _device_group_acl.move(group_id, req.parent_id or None)
+
+        from shared.models.common_enums import AuditEvent
+        write_device_audit(
+            AuditEvent.DEVICE_GROUP_UPDATED, 'device_group',
+            {'group_id': group_id, 'op': 'move', 'parent_id': req.parent_id,
+             'success': bool(result.get('success'))},
+        )
+
+        if not result.get('success'):
+            code = result.get('code', 400)
+            if code == 404:
+                return error_response(result.get('message', '未找到设备分组或父分组'), http_code=404)
+            return error_response(result.get('message', '移动失败'), code=code)
+
+        return success_response(result.get('data'), result.get('message', '设备分组移动成功'))
+
     # ==================== INT-80 告警规则/确认 ====================
 
     @staticmethod

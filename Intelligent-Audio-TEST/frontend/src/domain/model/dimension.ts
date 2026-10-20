@@ -56,6 +56,8 @@ export interface DimensionOutputField {
   fieldType?: string
   outputRole?: string
   aggRole?: string
+  /** 达标阈值（pass_le/pass_ge/pass_eq 达标线专用，对齐 V9.7.10） */
+  passThreshold?: number
   defaultValue?: unknown
   visibleInReport?: boolean
   helpText?: string

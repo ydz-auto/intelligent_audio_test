@@ -27,7 +27,7 @@ python scripts/migrations/202609/seed_voice_llm.py                        # ⑪ 
 
 # ── 202610 ──────────────────────────────────────────────
 python scripts/migrations/202610/add_timestamp_db_defaults.py             # ⑫ 时间戳列补 DB 级 DEFAULT（INT-47，既有库对齐；全新库为 no-op）
-python scripts/migrations/202610/add_benchmark_tables.py                  # ⑬ Benchmark 排行 4 表 + 指标映射种子（D1 双轨排行，INT-27）
+python scripts/migrations/202610/add_benchmark_tables.py                  # ⑬ Benchmark 排行 5 表 + 指标映射种子（D1 双轨排行，INT-27 + INT-481 五表缺口）
 python scripts/migrations/202610/fix_users_email_unique.py --apply        # ⑭ users 空邮箱归一化 + 非空 email 部分唯一索引（INT-84；默认 dry-run）
 python scripts/migrations/202610/add_device_management_tables.py          # ⑮ 设备管理 5 表 + 索引（INT-80：分组/状态历史/告警规则/告警记录）
 python scripts/migrations/202610/drop_task_type_and_testcase_test_type.py # ⑯ 废弃字段收尾：按 test_tasks.type 回填 device_type 并删 task.type / test_cases.test_type（INT-79；published_tasks.type 保留不删，INT-148；**回填被 test_tasks.type 列存在性门控，列已删即整体 SKIP——历史 NULL 行由 ㉝ INT-789 补齐**）
@@ -50,6 +50,9 @@ python scripts/migrations/202610/add_report_studio_tables.py                 # �
 python scripts/migrations/202610/add_cherry_pick_source_result_type_int577.py  # ㉜ 挑选合并购物车/挑选集条目补 source_result_type 列（INT-577 §11-5；依赖 INT-339 cherry-pick 表已建）
 python scripts/migrations/202610/backfill_task_case_device_type_int789.py --apply  # ㉝ 历史 task_case_relations.device_type/device_id 按关系表回填（INT-789：⑯ 的回填被 test_tasks.type 列存在性门控 SKIP，历史 NULL 行未补齐 → 误显「API测试」；见下执行记录）
 python scripts/migrations/202610/backfill_log_operator_int806.py --apply  # ㉞ 历史审计日志操作人回填（INT-806 可选回填：category∈{auth,benchmark} 且 content 可解析 JSON 且含 operator_id 的审计行 → created_by_user_id；解析失败放弃不阻塞；默认 dry-run）
+python scripts/migrations/202610/add_evaluation_deleted_by_int841.py      # ㉟ evaluation categories/dimensions 补 deleted_by_user_id（INT-841，软删操作人列）
+python scripts/migrations/202610/add_benchmark_operator_columns_int844.py  # ㊱ 基准线管理操作人 user_id 补齐（INT-844：benchmark_sources/benchmark_metric_mappings 补 created_by_user_id+updated_by_user_id，benchmark_baselines/benchmark_reports 补 created_by_user_id + created_by 索引）
+python scripts/migrations/202610/add_api_proxy_columns.py                 # ㊲ apis 加 proxy_type/proxy_url 两列（INT-839 被测 API 网络代理；两列均可 NULL，存量行不迁移数据）
 ```
 
 > ✅ **2026-09-07 全量迁移记录**：当前环境已执行 ①③④⑧（`remove_foreign_keys_and_soft_delete` 12 步 + `add_audit_columns` 补 24 处 + `add_reevaluated_at` + `add_pass_threshold_to_eval_params`），执行后 `UndefinedColumn` 类报错全部消除。②⑤⑥⑦⑨ 视功能需要执行。
@@ -67,6 +70,8 @@ python scripts/migrations/202610/backfill_log_operator_int806.py --apply  # ㉞ 
 > ✅ **2026-10-19 执行记录（INT-789）**：任务用例被测设备类型数据回填。⑯ 的 device_type 回填被 `test_tasks.type` 列存在性门控整体 SKIP（运行库该列先删），历史 NULL 行从未补齐 → 任务列表 E2E 任务误显「API测试」。已执行 ㉝ `--apply`：按关系表确定性回填——task_api_relations→http_api、task_device_relations→physical、websocket 前缀→websocket_api，合并容器任务按设计 §3.3 不回填；device_id 一并回填（physical=task_device_relations.device_id / API=task_api_relations.api_id）。运行库本次 ① 0 行 / ② 4154 行 / ③ 0 行：执行前 `device_type` 已全量非 NULL（FEAT 评审前实测 2877 行 NULL；开发自测阶段一次 psycopg2 隐性事务回滚失败使该批提前落为 physical，值符合评审结论"本库全 dev_only"，`device_id` 全量 NULL）；执行后 `device_type` 全量 physical + `device_id` 4154 行全部回填；重复执行三步均 0 行（幂等）。临时库红-绿自测：fresh 库九分支（device-only/api-only/兼有/合并容器/既有值/无关系/ws 前缀/http 前缀/部分迁移态）全断言通过，重跑三步全 0。
 
 > ✅ **2026-10-19 执行记录（INT-806）**：历史审计日志操作人回填 ㉞。运行库 `logs.created_by_user_id` 列已存在（列迁移先行），存量行全 NULL → 按 content JSON `operator_id` 回填（category=auth 审计行；benchmark 行 content 为用户名串无 operator_id，按脚本设计不回填）。dry-run 共 578 行：待回填 452、解析失败/无 operator_id 跳过 126；`--apply` 回填 452 行（全部 category=auth，operator=admin/183 364 行 + 其余 88 行）。执行后 `logs.created_by_user_id` NULL 计数 300,673 → 300,221，auth 行已回填 452；重跑 dry-run 待回填 0（幂等）。数据仅 UPDATE、无 DDL，无需停服务。
+
+> ✅ **2026-10-19 执行记录（INT-844）**：基准线管理操作人 user_id 补齐 ㉟。运行库与隔离库各执行一次：benchmark_sources / benchmark_metric_mappings 补 created_by_user_id + updated_by_user_id、benchmark_baselines / benchmark_reports 补 created_by_user_id + 各 created_by 索引，重复执行全 [SKIP]（幂等）。存量旧 created_by / published_by 字符串列保留（V9.7.10 兼容，客户端自报不再作为操作人依据）。实测（report_service gRPC 直连隔离库）：带 x-user-id 创建数据源/指标映射/导入基线 → 行 created_by_user_id=当前用户；更新映射 → updated_by_user_id 正确；无 metadata（AUTH_MODE=off 等价）→ 列 NULL。同批修复 `list_baseline_versions` 的 Postgres `max(boolean)` 不兼容（is_current 转 int 聚合），此前基线导入在 Postgres 库必败（SQLite 单测未暴露）。
 
 > ✅ **2026-10-13 移植记录（INT-192）**：补齐三族维度 seed（㉓ turn_eval / ㉔ env_judge / ㉕ interruption_v2，V9.7.10 蓝本金标对齐后移植）。运行库执行实测零插入（全原地更新/SKIP，仅 updated_at 移动，逐字段前后比对无差）；临时库（create_all + seed_voice_llm）fresh 路径实测：首轮 25 维/322 参数/110 映射全插入、重跑全 SKIP/更新零插入，临时库终态与运行库金标逐字段等价（含 api_settings deep-equal）后销毁。UPDATE 不写 status：运行库「逐轮三分类评估」status=FALSE 为现状保留（fresh 库该维为启用态，验收方如判定需对齐可手工关闭）。三个脚本依赖 ⑪ seed_voice_llm 先行（param_mappings/关联外键引用 algorithm_definitions）。
 
@@ -94,7 +99,7 @@ python scripts/migrations/202610/backfill_log_operator_int806.py --apply  # ㉞ 
 | [add_reevaluated_at.py](202608/add_reevaluated_at.py) | 重新评估功能 | `test_tasks` 加 `reevaluated_at` / `reevaluation_count` |
 | [fix_audio_tags_types.py](202608/fix_audio_tags_types.py) | 类型修复 | `audio_tags` 审计列 VARCHAR(36) → BIGINT（历史临时脚本遗留）；⚠️ 连接串硬编码 |
 | [fix_partial_unique_indexes.py](202608/fix_partial_unique_indexes.py) | 唯一约束与软删除冲突 | 将 UniqueConstraint 替换为部分唯一索引（`WHERE deleted = false`），软删除记录不再占用唯一键；默认 dry-run，`--apply` 执行 |
-| [seed_rbac.py](202608/seed_rbac.py) | RBAC 种子数据 | 108 个权限点、5 个系统角色（admin/tester/algo_engineer/device_admin/guest）及角色-权限映射；依赖 RBAC 表已存在（① 已建） |
+| [seed_rbac.py](202608/seed_rbac.py) | RBAC 种子数据 | 130 个权限点、5 个系统角色（admin/tester/algo_engineer/device_admin/guest）及角色-权限映射；依赖 RBAC 表已存在（① 已建） |
 
 ### 202609 — 评估维度与算法种子
 
@@ -116,7 +121,7 @@ python scripts/migrations/202610/backfill_log_operator_int806.py --apply  # ㉞ 
 | 脚本 | 用途 |
 |------|------|
 | [add_timestamp_db_defaults.py](202610/add_timestamp_db_defaults.py) | 时间戳列 DB 级 DEFAULT 对齐（INT-47）：以 ORM 元数据为准，对缺失 DB 级默认值的 created_at/updated_at 等时间戳列 `SET DEFAULT now()`；既有库对齐用，全新库（PO 已带 server_default）为 no-op；幂等，支持 `--dry-run` |
-| [add_benchmark_tables.py](202610/add_benchmark_tables.py) | 建 `benchmark_rankings`（排行 ReadModel）/ `benchmark_metric_mappings`（指标映射单一事实源，含设计文档 §5.1 默认映射种子 13 条）/ `benchmark_sources`（外部基线数据源）/ `benchmark_baselines`（外部基线条目，导入即不可变版本快照）四表及索引；支持 `--dry-run` |
+| [add_benchmark_tables.py](202610/add_benchmark_tables.py) | 建 `benchmark_rankings`（排行 ReadModel）/ `benchmark_metric_mappings`（指标映射单一事实源，含设计文档 §5.1 默认映射种子 13 条）/ `benchmark_sources`（外部基线数据源）/ `benchmark_baselines`（外部基线条目，导入即不可变版本快照）/ `benchmark_reports`（Benchmark 报告发布记录第五表，INT-481：发布即排行快照）五表及索引；支持 `--dry-run` |
 | [add_device_management_tables.py](202610/add_device_management_tables.py) | 建 `device_groups`（设备分组，含组名未删除部分唯一索引并发兜底）/ `device_group_members`（成员关联，组内设备唯一）/ `device_status_events`（状态历史：在线/离线/健康检查/操作事件）/ `device_alarm_rules`（告警规则：离线时长/健康失败次数/CPU/内存/电池阈值）/ `device_alarms`（告警记录与确认流）五表及索引，DDL 与 device_service ORM 元数据逐列对齐；支持 `--dry-run` |
 | [drop_task_type_and_testcase_test_type.py](202610/drop_task_type_and_testcase_test_type.py) | 废弃字段收尾（INT-79/差异#2） | 先按 `test_tasks.type` 回填 `task_case_relations.device_type`（api→http_api / e2e→physical / 其他→physical），再 DROP `test_tasks.type` / `test_cases.test_type`；`published_tasks.type` **保留不删**（INT-148 裁定，见 add_published_task_type_algorithm_type.py）；幂等（列已删即 SKIP）。⚠️ 回填被 `test_tasks.type` 列存在性门控——运行库该列先删即整体 SKIP，历史 NULL 行由 INT-789 ㉝ 按关系表补齐 |
 | [fix_leftover_foreign_keys_and_indexes.py](202610/fix_leftover_foreign_keys_and_indexes.py) | 修复 202608 基线未生效的残留约束（INT-88） | 动态枚举并删除全库残留外键（应用层管理引用完整性，含多轮 lock_timeout 重试，被长事务阻塞时跳过并汇总）；删 `test_case_groups.name` 单列唯一约束；补建 202608 Step 11 外键替代索引清单与 Step 12 `deleted_at` 部分索引（动态枚举含 deleted/deleted_at 列的表）。例外保留 `algorithm_definitions_type_key`；支持 `--dry-run` |
@@ -135,6 +140,8 @@ python scripts/migrations/202610/backfill_log_operator_int806.py --apply  # ㉞ 
 | [add_uq_task_case_route_int604.py](202610/add_uq_task_case_route_int604.py) | task_case_relations (task, case, 路由) 唯一索引（INT-604 混选前置 + 评审①补录） | 同一用例可同时存在设备侧/API 侧多条 TaskCase，但 (task_id, test_case_id, COALESCE(device_type,''), COALESCE(device_id,'')) 不得重复；**建索引前先查重**——历史无 DB 唯一约束，理论存在 (task,case) 重复行，检测到即 ABORT 并列出重复行（交人工去重），避免唯一索引创建失败；幂等（索引已存在即 SKIP），支持 `--dry-run` |
 | [add_cherry_pick_source_result_type_int577.py](202610/add_cherry_pick_source_result_type_int577.py) | 挑选合并购物车/挑选集条目补 `source_result_type` 列（INT-577 §11-5） | `cherry_pick_cart_items` / `cherry_pick_set_items` 各补 `source_result_type VARCHAR(50) NULL`（购物车/挑选集条目来源结果类型快照；依赖 INT-339 `add_cherry_pick_tables_int339.py` 建表先行）；幂等（逐列 information_schema 检查），支持 `--dry-run` |
 | [backfill_log_operator_int806.py](202610/backfill_log_operator_int806.py) | 历史审计日志操作人回填（INT-806 可选回填） | `created_by_user_id` 为 NULL 的 category∈{auth,benchmark} 审计行：content 可解析为 JSON 且含 `operator_id`（int>0）→ 回填 `created_by_user_id=operator_id`，使「仅自己」上线即有数据；解析失败/无 operator_id 放弃不阻塞（已核验 benchmark 审计 content 为 operator 用户名串、不含 operator_id，实际只覆盖 auth 行）；幂等（非 NULL 行一律 SKIP）；默认 dry-run，`--apply` 执行 |
+| [add_evaluation_deleted_by_int841.py](202610/add_evaluation_deleted_by_int841.py) | evaluation categories/dimensions 补软删操作人列（INT-841） | `categories` / `dimensions` 补 `deleted_by_user_id BIGINT NULL`（created_by/updated_by 已由 add_audit_columns 补齐；软删路径无删除人列可写）；补 `created_by_user_id` 索引兜底（幂等）；全新库 create_all 已含，执行为全 SKIP；幂等，支持 `--dry-run` |
+| [add_api_proxy_columns.py](202610/add_api_proxy_columns.py) | `apis` 加网络代理两列（INT-839） | `proxy_type VARCHAR(20)`（http/https/socks5/socks5h，NULL=不用代理）+ `proxy_url VARCHAR(255)`（`user:pass@host:port`，不含 scheme，认证段必填）；两列均可 NULL，存量行不迁移数据（老数据 NULL 不报错，回归行为不变）；幂等（逐列 information_schema 检查，列已存在即 SKIP），支持 `--dry-run` |
 
 ## 新增迁移脚本约定
 

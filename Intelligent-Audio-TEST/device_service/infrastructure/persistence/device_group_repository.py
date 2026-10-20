@@ -27,6 +27,7 @@ def _group_po_to_entity(po: DeviceGroup, member_device_ids: Optional[List[int]] 
     return DeviceGroupEntity(
         id=po.id,
         name=po.name,
+        parent_id=po.parent_id,
         description=po.description or '',
         group_type=po.group_type or 'test',
         created_by_user_id=po.created_by_user_id,
@@ -58,6 +59,7 @@ class DeviceGroupRepository(DeviceGroupRepositoryInterface):
         group = DeviceGroup(
             id=data.get('id') or str(uuid.uuid4()),
             name=data['name'],
+            parent_id=data.get('parent_id'),
             description=data.get('description') or '',
             group_type=data.get('group_type') or 'test',
             created_by_user_id=data.get('created_by_user_id'),
@@ -94,25 +96,45 @@ class DeviceGroupRepository(DeviceGroupRepositoryInterface):
             return None
         return _group_po_to_entity(group, self.get_group_device_ids(group_id))
 
-    def get_group_by_name(self, name: str) -> Optional[DeviceGroupEntity]:
+    def get_group_by_name(self, name: str, parent_id: Optional[str] = None) -> Optional[DeviceGroupEntity]:
+        """按名称查询分组，作用域限定在父级（INT-832）。
+
+        parent_id=None 查根分组（parent_id IS NULL）；传入父分组 ID 查同父子分组。
+        """
         session = get_db_session()
-        group = session.query(DeviceGroup).filter_by(name=name, deleted=False).first()
+        group = session.query(DeviceGroup).filter(
+            DeviceGroup.name == name,
+            DeviceGroup.deleted == False,  # noqa: E712
+            DeviceGroup.parent_id == parent_id,  # None 生成 IS NULL
+        ).first()
         if not group:
             return None
         return _group_po_to_entity(group, self.get_group_device_ids(group.id))
 
     def delete_group(self, group_id: str, cascade: bool = False) -> bool:
-        """软删除分组；cascade=True 时组内设备成员关系一并清除（设备本身保留）"""
+        """软删除分组（INT-832 嵌套语义）。
+
+        cascade=False：分组含成员设备**或子分组** → 删除失败。
+        cascade=True：软删整棵子树（本组 + 全部后代分组），清空所有涉及的成员行；
+        设备本身保留（移出分组）。
+        """
         session = get_db_session()
         group = session.query(DeviceGroup).filter_by(id=group_id, deleted=False).first()
         if not group:
             return False
         member_count = session.query(DeviceGroupMember).filter_by(group_id=group_id).count()
-        if member_count > 0 and not cascade:
+        child_count = session.query(DeviceGroup).filter(
+            DeviceGroup.parent_id == group_id,
+            DeviceGroup.deleted == False,  # noqa: E712
+        ).count()
+        if (member_count > 0 or child_count > 0) and not cascade:
             return False
-        group.deleted = True
-        group.deleted_at = datetime.now()
-        session.query(DeviceGroupMember).filter_by(group_id=group_id).delete()
+        subtree_ids = [group_id] + list(self.get_descendant_group_ids(group_id))
+        now = datetime.now()
+        session.query(DeviceGroup).filter(DeviceGroup.id.in_(subtree_ids)).update(
+            {'deleted': True, 'deleted_at': now}, synchronize_session=False)
+        session.query(DeviceGroupMember).filter(
+            DeviceGroupMember.group_id.in_(subtree_ids)).delete(synchronize_session=False)
         session.commit()
         return True
 
@@ -172,6 +194,46 @@ class DeviceGroupRepository(DeviceGroupRepositoryInterface):
         ).delete(synchronize_session=False)
         session.commit()
         return count
+
+    def get_descendant_group_ids(self, group_id: str) -> List[str]:
+        """收集某分组的全部后代分组 ID（含间接后代，不含自身）。"""
+        session = get_db_session()
+        descendants: List[str] = []
+        frontier = [group_id]
+        seen = {group_id}
+        while frontier:
+            batch = session.query(DeviceGroup.id).filter(
+                DeviceGroup.parent_id.in_(frontier),
+                DeviceGroup.deleted == False,  # noqa: E712
+            ).all()
+            children = [row[0] for row in batch]
+            frontier = []
+            for cid in children:
+                if cid not in seen:
+                    seen.add(cid)
+                    descendants.append(cid)
+                    frontier.append(cid)
+        return descendants
+
+    def move_group(self, group_id: str, parent_id: Optional[str],
+                   updated_by_user_id: Optional[int] = None) -> Optional[DeviceGroupEntity]:
+        """移动分组到新父级（INT-832）。环检测由 application 层完成。
+
+        parent_id=None 表示移到根。更新 parent_id 并刷新 updated_at。
+        """
+        session = get_db_session()
+        group = session.query(DeviceGroup).filter_by(id=group_id, deleted=False).first()
+        if not group:
+            return None
+        group.parent_id = parent_id or None
+        group.updated_at = datetime.now()
+        if updated_by_user_id is not None:
+            try:
+                group.updated_by_user_id = int(updated_by_user_id)
+            except (TypeError, ValueError):
+                pass
+        session.commit()
+        return _group_po_to_entity(group, self.get_group_device_ids(group_id))
 
     def count_group_devices(self, group_ids: List[str]) -> Dict[str, int]:
         if not group_ids:

@@ -5,6 +5,8 @@ from api_gateway.application.services.testcase.testcase_command_service import T
 from api_gateway.application.services.testcase.testcase_import_export_service import TestCaseImportExportService
 from api_gateway.routes._response import to_response
 from api_gateway.application.services.auth.dependencies import require_permission
+from api_gateway.application.services.visibility.visibility_service import VisibilityService
+from api_gateway.schemas.visibility import VisibilityUpdateRequest
 
 router = APIRouter()
 
@@ -27,6 +29,12 @@ def get_tags(_: None = require_permission('testcase:read')):
 @router.get('/{tc_id}')
 def get_one(tc_id: str):
     return to_response(TestCaseQueryService.get_one(tc_id))
+
+# INT-466：用例可见性切换（资源:share + owner 校验，admin 豁免）
+@router.patch('/{tc_id}/visibility')
+def update_visibility(tc_id: str, body: VisibilityUpdateRequest,
+                      _: None = require_permission('testcase:share')):
+    return to_response(VisibilityService.update_testcase_visibility(tc_id, body.visibility))
 
 
 @router.post('')

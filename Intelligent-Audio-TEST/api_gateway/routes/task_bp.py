@@ -5,6 +5,8 @@ from api_gateway.application.services.task.task_command_service import TaskComma
 from api_gateway.application.services.task.task_lifecycle_service import TaskLifecycleService
 from api_gateway.routes._response import to_response
 from api_gateway.application.services.auth.dependencies import require_permission
+from api_gateway.application.services.visibility.visibility_service import VisibilityService
+from api_gateway.schemas.visibility import VisibilityUpdateRequest
 
 router = APIRouter()
 
@@ -41,6 +43,12 @@ def get_one(task_id: int, _: None = require_permission('task:read')):
     if isinstance(result, tuple) and len(result) == 2:
         return to_response(result)
     return result
+
+# INT-466：任务可见性切换（资源:share + owner 校验，admin 豁免）
+@router.patch('/{task_id}/visibility')
+def update_visibility(task_id: int, body: VisibilityUpdateRequest,
+                      _: None = require_permission('task:share')):
+    return to_response(VisibilityService.update_task_visibility(task_id, body.visibility))
 
 @router.get('/{task_id}/cases/{case_id}/detail')
 def get_case_detail(task_id: int, case_id: str, _: None = require_permission('task:read')):
@@ -128,7 +136,7 @@ def merge(_: None = require_permission('task:merge')):
     return result
 
 @router.post('/{task_id}/stop')
-def stop(task_id: int):
+def stop(task_id: int, _: None = require_permission('task:execute')):
     result = TaskLifecycleService.stop(task_id)
     if isinstance(result, tuple) and len(result) == 2:
         return to_response(result)

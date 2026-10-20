@@ -41,6 +41,8 @@ export function toAPIConfig(dto: APIConfigDto): APIConfig {
     outputTypes: dto.output_types,
     deviceType: dto.device_type,
     adapterClass: dto.adapter_class,
+    proxyType: dto.proxy_type,
+    proxyUrl: dto.proxy_url,
     audioConfig: dto.audio_config as import('../../domain/model/apiConfig').ApiAudioConfig,
     rmsSplMappingId: dto.rms_spl_mapping_id ?? undefined,
     createdAt: dto.created_at,
@@ -103,6 +105,8 @@ export function toApiUpsertDto(config: Partial<APIConfig>): ApiUpsertDto {
     output_types: config.outputTypes,
     device_type: config.deviceType,
     adapter_class: config.adapterClass,
+    proxy_type: config.proxyType,
+    proxy_url: config.proxyUrl,
     audio_config: config.audioConfig
       ? {
           sample_rate: config.audioConfig.sampleRate,

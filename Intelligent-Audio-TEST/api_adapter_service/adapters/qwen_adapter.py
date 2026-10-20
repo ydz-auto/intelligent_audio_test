@@ -17,6 +17,8 @@ from api_adapter_service.adapters.base import BaseAdapter
 from api_adapter_service.infrastructure.secrets.api_key_provider import (
     api_key_provider)
 from api_adapter_service.utils.logger import logger
+from api_adapter_service.utils.proxy import (
+    is_supported_proxy_scheme, mask_proxy_userinfo, masked_exc_info)
 
 
 class QwenAdapter(BaseAdapter):
@@ -66,12 +68,14 @@ class QwenAdapter(BaseAdapter):
             result['session_id'] = session_id
             return result
         except Exception as e:
-            logger.error(f'QwenAdapter error: {e}', exc_info=True)
+            safe_err = mask_proxy_userinfo(str(e))
+            logger.error(f'QwenAdapter error: {safe_err}',
+                         exc_info=masked_exc_info(e))
             return {
                 'asr_text': '', 'trans_text': '', 'output': '',
                 'session_id': session_id,
                 'latency': round(time.time() - start_time, 3),
-                'raw_response': {'error': str(e)},
+                'raw_response': {'error': safe_err},
             }
 
     # ── 内部实现 ───────────────────────────────────────────────
@@ -147,11 +151,28 @@ class QwenAdapter(BaseAdapter):
         output_audio_chunks = []
         full_transcript = ''
         usage_info = {}
+        # INT-839 #2 打回修复：代理 scheme 白名单（http/https/socks5/socks5h，
+        # 不做 socks4）。非白名单不把完整 URL 交给 websockets——其 InvalidProxy
+        # 异常消息会原样带出明文 user:pass；直接返回不含 URL 的通用错误。
+        if getattr(self, 'proxy_url', None) and \
+                not is_supported_proxy_scheme(self.proxy_url):
+            return {
+                'asr_text': '', 'trans_text': '', 'output': '',
+                'raw_response': {
+                    'error': '不支持的代理类型（仅支持 http/https/socks5/socks5h）',
+                },
+            }
         ws = None
         try:
             # 2. 连接 WebSocket
             headers = {'Authorization': f'Bearer {self.api_key}'}
-            ws = await websockets.connect(self.api_url, additional_headers=headers)
+            connect_kwargs = {'additional_headers': headers}
+            # INT-839 #2：配置代理时经 proxy 走完整代理 URL；未配置保持
+            # websockets 默认行为（不显式传 proxy，避免改动自动探测语义）。
+            # getattr 兜底 __init__ 未走的子类（单测假对象不建真实会话）
+            if getattr(self, 'proxy_url', None):
+                connect_kwargs['proxy'] = self.proxy_url
+            ws = await websockets.connect(self.api_url, **connect_kwargs)
             self.connected = True
             logger.info(f'QwenAdapter: 已连接 {self.api_url}')
 
@@ -248,12 +269,14 @@ class QwenAdapter(BaseAdapter):
             await sender_task
 
         except Exception as e:
-            logger.error(f'QwenAdapter: 翻译过程异常: {e}', exc_info=True)
+            safe_err = mask_proxy_userinfo(str(e))
+            logger.error(f'QwenAdapter: 翻译过程异常: {safe_err}',
+                         exc_info=masked_exc_info(e))
             return {
                 'asr_text': ''.join(asr_text_list).strip(),
                 'trans_text': full_transcript or ''.join(trans_text_list).strip(),
                 'output': '',
-                'raw_response': {'error': str(e)},
+                'raw_response': {'error': safe_err},
             }
         finally:
             self.connected = False

@@ -255,9 +255,12 @@ class PlaybackServiceServicer(e2e_grpc.PlaybackServiceServicer):
                 offset = playback_config.get('offset', 0)
                 overlap_rate = playback_config.get('overlap_rate', 0)
                 overlap_time = playback_config.get('overlap_time', 0)
+                _kwargs = playback_config.get('kwargs', {})
                 result = self.orchestrator.preview(
                     audio_configs, case_config, task_id,
                     offset=offset, overlap_rate=overlap_rate, overlap_time=overlap_time,
+                    testcase_id=_kwargs.get('testcase_id'),
+                    testcase_name=_kwargs.get('testcase_name'),
                 )
             elif mode == 'voiceprint':
                 vp_config = playback_config.get('vp_config', {})
@@ -346,6 +349,18 @@ class AudioConfigServiceServicer(e2e_grpc.AudioConfigServiceServicer):
             from audio_service.application.commands import UpdateAudioMetadataCommand
             result = self.cmd_handler.handle_update_metadata(
                 UpdateAudioMetadataCommand(audio_id=request.audio_id, data=data)
+            )
+            return self._wrap(result)
+        except Exception as e:
+            return e2e_pb.AudioConfigResponse(success=False, message=str(e), data="")
+
+    def UpdateAudioVisibility(self, request, context=None):
+        """仅更新音频可见性（INT-464 跟随用例 gRPC 同步，内部通道）。"""
+        try:
+            from audio_service.application.commands import UpdateAudioVisibilityCommand
+            result = self.cmd_handler.handle_update_audio_visibility(
+                UpdateAudioVisibilityCommand(audio_id=request.audio_id,
+                                             visibility=request.visibility)
             )
             return self._wrap(result)
         except Exception as e:
@@ -511,6 +526,17 @@ class AudioConfigServiceServicer(e2e_grpc.AudioConfigServiceServicer):
         except Exception as e:
             return e2e_pb.AudioConfigResponse(success=False, message=str(e), data="")
 
+    def GetPlaybackHistory(self, request, context=None):
+        try:
+            data = _loads(request.data, {})
+            from audio_service.application.queries import GetAudioPlaybackHistoryQuery
+            result = self.query_handler.handle_get_playback_history(
+                GetAudioPlaybackHistoryQuery(audio_id=request.audio_id, params=data)
+            )
+            return self._wrap(result)
+        except Exception as e:
+            return e2e_pb.AudioConfigResponse(success=False, message=str(e), data="")
+
     # ---------- 上传操作 ----------
 
     def PresignUpload(self, request, context=None):
@@ -622,6 +648,40 @@ class AudioConfigServiceServicer(e2e_grpc.AudioConfigServiceServicer):
             from audio_service.application.commands import StopPreviewAudioCommand
             result = self.cmd_handler.handle_stop_preview_audio(
                 StopPreviewAudioCommand(audio_id=request.audio_id)
+            )
+            return self._wrap(result)
+        except Exception as e:
+            return e2e_pb.AudioConfigResponse(success=False, message=str(e), data="")
+
+    def AnalyzeAudioFeatures(self, request, context=None):
+        """音频特征分析（频谱/能量分布/时域特征，INT-820 §3.3.2）"""
+        try:
+            from audio_service.application.queries import AnalyzeAudioFeaturesQuery
+            result = self.query_handler.handle_analyze_audio_features(
+                AnalyzeAudioFeaturesQuery(audio_id=request.audio_id)
+            )
+            return self._wrap(result)
+        except Exception as e:
+            return e2e_pb.AudioConfigResponse(success=False, message=str(e), data="")
+
+    def AssessAudioQuality(self, request, context=None):
+        """音频质量评估（信噪比/动态范围/频率响应/质量评分，INT-820 §3.3.2）"""
+        try:
+            from audio_service.application.queries import AssessAudioQualityQuery
+            result = self.query_handler.handle_assess_audio_quality(
+                AssessAudioQualityQuery(audio_id=request.audio_id)
+            )
+            return self._wrap(result)
+        except Exception as e:
+            return e2e_pb.AudioConfigResponse(success=False, message=str(e), data="")
+
+    def ProcessAudio(self, request, context=None):
+        """音频处理（降噪/增益调整/剪辑，INT-820 §3.3.2 处理）"""
+        try:
+            data = _loads(request.data, {})
+            from audio_service.application.commands import ProcessAudioCommand
+            result = self.cmd_handler.handle_process_audio(
+                ProcessAudioCommand(audio_id=request.audio_id, data=data)
             )
             return self._wrap(result)
         except Exception as e:

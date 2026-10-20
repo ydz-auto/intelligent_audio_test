@@ -42,6 +42,8 @@ def make_task(**overrides):
     task.config = {}
     task.algorithm_type = 'translation'
     task.algorithm_params = {}
+    task.created_by_user_id = None
+    task.visibility = 'shared'
     for k, v in overrides.items():
         setattr(task, k, v)
     return task
@@ -67,6 +69,8 @@ def make_pt(**overrides):
     pt.archived_by = None
     pt.archived_at = None
     pt.created_at = None
+    pt.created_by_user_id = None
+    pt.visibility = 'shared'
     for k, v in overrides.items():
         setattr(pt, k, v)
     return pt

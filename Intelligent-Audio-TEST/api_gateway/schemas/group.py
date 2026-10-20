@@ -13,6 +13,9 @@ class GroupItem(APIModel):
     created_at: str = Field(...)
     updated_at: str = Field(...)
     test_case_count: int = Field(...)
+    # INT-423/466：资源可见性与归属人（前端徽标 + 路由层 owner 校验）
+    visibility: Optional[str] = Field(None)
+    created_by_user_id: Optional[int] = Field(None)
 
 
 class GroupCreateRequest(APIModel):

@@ -6,8 +6,13 @@
   （原 clients/api_driver 原样迁移）渲染/执行/解析行为不变
 - AC2 扩展性：mock 厂商适配器仅经注册表注册分发，核心执行链零改动；
   现场注册新厂商实现立即对 create_from_config 可见
-- enum 化：VendorAdapterType 注册表 key / APIProtocol 传输协议分派
+- enum 化：VendorAdapterType 扁平 key / APIProtocol 传输协议分派
 - 注册表契约：校验、覆盖告警、未知配置值拒绝
+
+INT-497 注册表同构改造（与设备驱动注册表对齐）：主 key 升级 (protocol, vendor)
+多维，resolve 抛 VendorAdapterNotFoundError（替代 KeyError）；本文件仅
+test_builtin_adapters_registered / test_resolve_returns_port_subclass /
+test_resolve_unregistered_raises 三处结构性断言随之更新，行为断言不变。
 """
 import json
 import os
@@ -102,19 +107,29 @@ def _make_api_config(endpoint, meta=None, max_timeout=5, vendor_adapter=None):
 
 class TestRegistryContract:
     def test_builtin_adapters_registered(self):
-        types = {a['adapter_type'] for a in vendor_adapter_registry.list_adapters()}
+        """INT-497 注册表同构：主 key 升级 (protocol, vendor) 多维，既有扁平 key
+        适配器 + 新增 REALTIME 协议级 base + OPENAI 品牌适配器齐备"""
+        types = {a['adapter_type'] for a in vendor_adapter_registry.list_adapters()
+                 if a['adapter_type'] is not None}
         assert types == {VendorAdapterType.API_DRIVER.value,
-                         VendorAdapterType.MOCK.value}
+                         VendorAdapterType.MOCK.value,
+                         VendorAdapterType.OPENAI_REALTIME.value}
+        keys = {(a['protocol'], a['vendor'])
+                for a in vendor_adapter_registry.list_adapters()}
+        assert ('realtime', 'openai') in keys
+        assert ('realtime', 'any') in keys
 
     def test_resolve_returns_port_subclass(self):
-        for t in VendorAdapterType:
+        for t in (VendorAdapterType.API_DRIVER, VendorAdapterType.MOCK,
+                  VendorAdapterType.OPENAI_REALTIME):
             cls = vendor_adapter_registry.resolve(t)
             assert issubclass(cls, ApiVendorAdapter)
             assert cls.adapter_type is t
 
     def test_resolve_unregistered_raises(self):
+        from api_test_service.infrastructure.adapters import VendorAdapterNotFoundError
         registry = VendorAdapterRegistry()
-        with pytest.raises(KeyError, match='未注册的厂商适配器类型'):
+        with pytest.raises(VendorAdapterNotFoundError, match='未注册的厂商适配器'):
             registry.resolve(VendorAdapterType.MOCK)
 
     def test_register_rejects_non_port_subclass(self):

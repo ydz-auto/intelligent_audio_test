@@ -24,7 +24,9 @@ from audio_service.application.queries.audio_queries import (
     GetAudioAlgorithmsQuery,
     GetAudioFolderTreeQuery,
     GetAudioSpeakersQuery,
-)
+    GetAudioPlaybackHistoryQuery,
+    AnalyzeAudioFeaturesQuery,
+    AssessAudioQualityQuery,)
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +57,8 @@ def _audio_to_dict(audio, tags=None, annotations=None) -> dict:
         'description': audio.description,
         'source_language': audio.source_language,
         'md5': audio.md5,
+        'visibility': audio.visibility,
+        'created_by_user_id': audio.created_by_user_id,
         'tags': tags or [],
         'annotations': annotations or [],
         'created_at': audio.created_at.isoformat() if audio.created_at else None,
@@ -221,6 +225,15 @@ class AudioQueryHandler:
             speakers_map[str(audio_id)] = sorted(speakers)
         return _ok(data={'speakers_map': speakers_map})
 
+    def handle_get_playback_history(self, query: GetAudioPlaybackHistoryQuery) -> Dict[str, Any]:
+        """分页查询音频播放历史（INT-782#2，播放时间倒序）。"""
+        try:
+            data = self.repo.list_playback_history(query.audio_id, query.params or {})
+            return _ok(data=data)
+        except Exception as e:
+            logger.error(f"查询播放历史失败: {e}", exc_info=True)
+            return _fail(f'查询播放历史失败: {e}')
+
     def handle_stream_audio(self, query: StreamAudioQuery) -> Dict[str, Any]:
         audio = self.repo.get_audio_with_deleted(query.audio_id)
 
@@ -325,6 +338,14 @@ class AudioQueryHandler:
 
         result = self._build_folder_structure(audios, base_normalized, parent_path, depth)
         return _ok(data=result)
+
+    def handle_analyze_audio_features(self, query: AnalyzeAudioFeaturesQuery) -> Dict[str, Any]:
+        from audio_service.application.services.audio_analysis_service import audio_analysis_service
+        return audio_analysis_service.analyze_features(query.audio_id)
+
+    def handle_assess_audio_quality(self, query: AssessAudioQualityQuery) -> Dict[str, Any]:
+        from audio_service.application.services.audio_analysis_service import audio_analysis_service
+        return audio_analysis_service.assess_quality(query.audio_id)
 
     @staticmethod
     def _build_folder_structure(audios, base_normalized, parent_path, depth):

@@ -43,7 +43,11 @@ def _to_iso_utc(value):
 
 
 def _to_log_item(log: dict) -> LogItem:
-    """dict（DB 行或业务文件条目）→ LogItem。"""
+    """dict（DB 行或业务文件条目）→ LogItem。
+
+    INT-838：读侧响应补带操作人 user_id——DB 行取 created_by_user_id
+    （_log_po_to_dict 输出），业务文件条目取 user_id（JSONL 行新字段）。
+    """
     return LogItem(
         id=log.get('id'),
         time=log.get('time') or '',
@@ -59,6 +63,7 @@ def _to_log_item(log: dict) -> LogItem:
         test_case_id=log.get('test_case_id'),
         thread_id=log.get('thread_id'),
         algorithm_type=log.get('algorithm_type'),
+        user_id=log.get('user_id', log.get('created_by_user_id')),
     )
 
 
@@ -355,6 +360,7 @@ class LogQueryService:
                     test_case_id=log.get('test_case_id'),
                     thread_id=log.get('thread_id'),
                     algorithm_type=log.get('algorithm_type'),
+                    user_id=log.get('created_by_user_id'),
                 )
             )
 
@@ -375,6 +381,9 @@ class LogQueryService:
     @staticmethod
     def export_logs():
         import os
+        # INT-274：导出条件走 POST body（doc/接口文档 6. 导出日志：log_ids + format），
+        # 修复 GET 空 body 下 format 落默认 excel、log_ids 落 None 的静默失真；
+        # level/module 从 body 或 query（GET 兼容）均可读取，body 优先。
         req = LogExportRequest.model_validate(request.get_json() or {})
         query = _parse_query_params(LogExportQuery)
 
@@ -382,8 +391,8 @@ class LogQueryService:
         from api_gateway.infrastructure.grpc_proxies import task_data_service
         resp = task_data_service.get_logs_for_export(
             log_ids=req.log_ids if req.log_ids else None,
-            level=query.level,
-            module=query.module,
+            level=req.level or query.level,
+            module=req.module or query.module,
         )
         logs = resp.get('items', [])
 
@@ -523,6 +532,7 @@ class LogQueryService:
                     test_case_id=log.get('test_case_id'),
                     thread_id=log.get('thread_id'),
                     algorithm_type=log.get('algorithm_type'),
+                    user_id=log.get('created_by_user_id'),
                 ))
 
             return success_response({

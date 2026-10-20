@@ -150,10 +150,14 @@ export function toLogQueryDto(query: LogQuery): Record<string, string | number |
   return params
 }
 
-/** 日志导出查询 → snake_case query（含逗号分隔 log_ids 与 format） */
-export function toLogExportQueryDto(query: LogExportQuery): Record<string, string | number> {
-  const params: Record<string, string | number> = toLogQueryDto(query) as Record<string, string | number>
-  if (query.logIds) params.log_ids = query.logIds
+/**
+ * 日志导出请求体 → snake_case JSON（POST /logs/export，doc/接口文档 6. 导出日志）。
+ * Domain logIds 为逗号串（导出范围「选中数据」），此处转为后端 LogExportRequest
+ * log_ids 期望的 int 数组；format 透传。
+ */
+export function toLogExportQueryDto(query: LogExportQuery): Record<string, string | number | number[]> {
+  const params: Record<string, string | number | number[]> = toLogQueryDto(query) as Record<string, string | number | number[]>
+  if (query.logIds) params.log_ids = query.logIds.split(',').map(Number).filter(n => Number.isFinite(n))
   if (query.format) params.format = query.format
   return params
 }

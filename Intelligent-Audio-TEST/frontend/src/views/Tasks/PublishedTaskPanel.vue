@@ -3,6 +3,15 @@
     <!-- 列表（筛选排序由 Tasks 页共享筛选栏承载，绑定同一 usePublishedTasks 实例） -->
     <section class="pt-list">
       <div v-if="pt.loading" class="pt-empty">加载中...</div>
+      <!-- INT-255：错误态与空态分离 —— 请求失败显示错误提示 + 重试入口，不落空态 -->
+      <div v-else-if="pt.loadError" class="pt-error" role="alert">
+        <i class="fas fa-triangle-exclamation"></i>
+        <p class="pt-error-title">{{ loadErrorTitle }}</p>
+        <p class="pt-error-hint">{{ pt.loadError.message || '后端服务暂不可用，请稍后重试' }}</p>
+        <button class="btn btn-primary btn-sm" :disabled="pt.loading" @click="pt.fetchList()">
+          <i class="fas fa-rotate"></i> 重试
+        </button>
+      </div>
       <div v-else-if="pt.items.length === 0" class="pt-empty">
         <i class="fas fa-bookmark"></i>
         <p>暂无已发布任务</p>
@@ -91,6 +100,15 @@
                 <span class="pt-detail-name">{{ pt.detail?.sourceTaskName }}</span>
                 <span class="pt-card-status" :class="pt.detail?.sourceTaskStatus">{{ statusText(pt.detail?.sourceTaskStatus || '') }}</span>
                 <span class="pt-detail-time" v-if="pt.detail?.sourceTaskTotalCases != null">用例 {{ pt.detail?.sourceTaskCompletedCases ?? 0 }}/{{ pt.detail?.sourceTaskTotalCases }}</span>
+                <!-- INT-283：跳转来源日常任务详情/报告（对齐基线 V9.7.10 行尾按钮） -->
+                <span class="pt-detail-actions">
+                  <button class="btn btn-secondary btn-sm" :disabled="pt.actionLoading" @click="emitTaskAction('view-details', { id: sourceTaskId })">
+                    <i class="fas fa-eye"></i> 详情
+                  </button>
+                  <button class="btn btn-primary btn-sm" :disabled="pt.actionLoading" @click="emitTaskAction('view-report', { id: sourceTaskId, name: pt.detail?.sourceTaskName })">
+                    <i class="fas fa-file-alt"></i> 报告
+                  </button>
+                </span>
               </div>
               <div class="pt-legacy-banner">
                 <i class="fas fa-clock-rotate-left"></i>
@@ -120,13 +138,22 @@
               <span class="pt-card-status" :class="exec.status">{{ statusText(exec.status) }}</span>
               <span class="pt-detail-time">用例 {{ exec.completedCases }}/{{ exec.totalCases }}</span>
               <span class="pt-detail-time">{{ formatDate(exec.createdAt) }}</span>
+              <!-- INT-283：跳转执行生成的日常任务详情/报告（对齐基线 V9.7.10 行尾按钮） -->
+              <span class="pt-detail-actions">
+                <button class="btn btn-secondary btn-sm" :disabled="pt.actionLoading" @click="emitTaskAction('view-details', { id: exec.taskId })">
+                  <i class="fas fa-eye"></i> 详情
+                </button>
+                <button class="btn btn-primary btn-sm" :disabled="pt.actionLoading" @click="emitTaskAction('view-report', { id: exec.taskId, name: exec.taskName })">
+                  <i class="fas fa-file-alt"></i> 报告
+                </button>
+              </span>
             </div>
           </div>
         </div>
       </div>
 
       <!-- 分页 -->
-      <div class="pt-pagination" v-if="pt.total > 0">
+      <div class="pt-pagination" v-if="!pt.loadError && pt.total > 0">
         <button class="btn btn-secondary btn-sm" :disabled="pt.page <= 1" @click="pt.setPage(pt.page - 1)">
           <i class="fas fa-chevron-left"></i>
         </button>
@@ -193,7 +220,7 @@ import { useNotification } from '../../composables/modal/useNotification';
 import { useModalControl } from '../../composables/modal/useModal';
 import { MODAL_TYPES } from '../../composables/modal/constants';
 import { useAuthStore } from '../../store/authStore';
-import { BenchmarkCategoryLabels, type BenchmarkCategoryType, PermissionPoint } from '../../domain/enums';
+import { BenchmarkCategoryLabels, type BenchmarkCategoryType, PermissionPoint, ListLoadErrorType } from '../../domain/enums';
 import type { Task } from '../../domain/model/task';
 import type { PublishedTaskItem } from '../../domain/model/publishedTask';
 import PublishTaskModal from '../../components/published-task/PublishTaskModal.vue';
@@ -204,6 +231,11 @@ import PublishedTaskNameModal from '../../components/published-task/PublishedTas
 const props = defineProps<{
   /** 宿主注入的已发布任务 Application 状态（Tasks 页共享筛选栏与面板同源） */
   pt: ReturnType<typeof usePublishedTasks>;
+}>();
+
+/** INT-283：行内详情/报告跳转透传给宿主（对齐 MergedTaskPanel/CherryPickPanel 的 task-action 契约） */
+const emit = defineEmits<{
+  (e: 'task-action', payload: { action: { id: string }; task: any }): void;
 }>();
 
 const router = useRouter();
@@ -295,6 +327,18 @@ const benchmarkInfo = computed(() => {
   };
 });
 
+/** INT-255：错误态标题按失败分类（ListLoadErrorType 枚举，拒绝魔法字符串） */
+const loadErrorTitle = computed(() => {
+  switch (pt.loadError?.type) {
+    case ListLoadErrorType.NETWORK:
+      return '无法连接服务器，请检查后端服务';
+    case ListLoadErrorType.SERVER:
+      return '服务器开小差了，请稍后重试';
+    default:
+      return '已发布任务加载失败';
+  }
+});
+
 function statusText(status: string): string {
   const map: Record<string, string> = {
     [PublishedTaskStatusEnum.PUBLISHED]: '已发布',
@@ -324,13 +368,27 @@ function formatPassRate(val?: number | null): string {
 
 // ---------- 发布 ----------
 
+/** 拉取日常任务候选全量（INT-292：逐页拉全，避免 perPage:100 首页截断候选列表） */
+async function fetchAllDailyTasks(): Promise<Task[]> {
+  const perPage = 100;
+  const all: Task[] = [];
+  let page = 1;
+  let pages = 1;
+  do {
+    const data = await tasksPort.getAll({ page, perPage }) as any;
+    all.push(...((data?.items ?? []) as Task[]));
+    pages = data?.pages ?? Math.max(1, Math.ceil((data?.total ?? 0) / perPage));
+    page += 1;
+  } while (page <= pages && all.length < 5000); // 5000 安全上限，防异常响应死循环
+  return all;
+}
+
 /** 打开发布弹窗（INT-298：由 Tasks 页头部/工具栏入口调用，expose 供宿主触发） */
 async function openPublishModal() {
   presetSourceTaskId.value = null;
   // 拉取日常任务作为来源候选（可发布状态由弹窗过滤）
   try {
-    const data = await tasksPort.getAll({ page: 1, perPage: 100 });
-    dailyTasks.value = (data as any).items ?? [];
+    dailyTasks.value = await fetchAllDailyTasks();
   } catch (error) {
     console.error('Failed to fetch tasks for publish modal:', error);
     dailyTasks.value = [];
@@ -472,6 +530,17 @@ function handleRename(ptItem: PublishedTaskItem) {
     hint: '作用于整个版本链',
     initialValue: ptItem.name,
   });
+}
+
+// ---------- 详情/报告跳转（INT-283） ----------
+
+/**
+ * 行内跳转入口（对齐基线 V9.7.10 已发布 Tab 行尾按钮）：透传给宿主 Tasks.vue 的
+ * handleTaskAction（view-details → 任务详情模态 TaskDetailModal，view-report → /report/:id），
+ * 与日常任务列表/合并任务源行共用同一动作分发，行为一致。
+ */
+function emitTaskAction(actionId: 'view-details' | 'view-report', task: { id: number | string | null | undefined; name?: string | null }) {
+  emit('task-action', { action: { id: actionId }, task });
 }
 
 onMounted(() => {
@@ -710,6 +779,13 @@ defineExpose({ openPublishModal });
   font-size: 12px;
 }
 
+/* INT-283：行内详情/报告跳转按钮（对齐基线 V9.7.10 已发布 Tab 行尾按钮，右对齐） */
+.pt-detail-actions {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
 /* INT-303：存量版本（发布时未冻结任务详情）历史标注 */
 .pt-legacy-banner {
   display: flex;
@@ -744,6 +820,38 @@ defineExpose({ openPublishModal });
 .pt-empty-hint {
   font-size: 12px;
   margin-top: 4px;
+}
+
+/* INT-255：错误态（请求失败提示 + 重试入口，与空态视觉分离） */
+.pt-error {
+  text-align: center;
+  padding: 48px 16px;
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+}
+
+.pt-error i {
+  font-size: 32px;
+  margin-bottom: 8px;
+  color: #dc2626;
+}
+
+.pt-error-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #991b1b;
+}
+
+.pt-error-hint {
+  font-size: 12px;
+  margin-top: 4px;
+  color: #b91c1c;
+}
+
+.pt-error .btn {
+  margin-top: 12px;
 }
 
 .pt-pagination {

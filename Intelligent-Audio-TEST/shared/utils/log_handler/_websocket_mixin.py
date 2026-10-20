@@ -38,6 +38,7 @@ class _WebSocketMixin:
                 "test_case_id": data.get('test_case_id'),
                 "category": data.get('category'),
                 "source": data.get('source'),
+                "user_id": data.get('user_id'),
             }
             message = {
                 'log_payload': log_payload,

@@ -255,6 +255,7 @@ import type {
   DeviceGroupItemDto,
   DeviceGroupListDto,
   DeviceGroupUpsertDto,
+  DeviceGroupMoveDto,
   DeviceStatusEventDto,
   DeviceStatusHistoryDto,
   DeviceAlarmRuleDto,
@@ -279,6 +280,8 @@ export function toDeviceGroup(dto: DeviceGroupItemDto): DeviceGroup {
     name: dto?.name ?? '',
     description: dto?.description ?? '',
     groupType: dto?.group_type ?? 'test',
+    parentId: dto?.parent_id ?? null,
+    children: [],
     deviceCount: dto?.device_count ?? 0,
     deviceIds: dto?.device_ids,
     createdAt: dto?.created_at,
@@ -286,19 +289,52 @@ export function toDeviceGroup(dto: DeviceGroupItemDto): DeviceGroup {
   }
 }
 
-/** 设备分组分页 → Paginated<DeviceGroup> */
+/**
+ * 扁平设备分组列表 → 按 parent_id 建树（children）。
+ * INT-832：GET /test-devices/device-groups 返回扁平 parent_id，
+ * 前端在此按父级挂接 children；根分组 parentId 为 null/undefined。
+ */
+export function toDeviceGroupTree(dtos: DeviceGroupItemDto[] | null | undefined): DeviceGroup[] {
+  const groups = (dtos ?? []).map(toDeviceGroup)
+  const byId = new Map<string, DeviceGroup>()
+  groups.forEach((g) => byId.set(g.id, g))
+  groups.forEach((g) => {
+    if (g.parentId) {
+      const parent = byId.get(g.parentId)
+      if (parent) parent.children!.push(g)
+    }
+  })
+  return groups
+}
+
+/** 设备分组分页 → Paginated<DeviceGroup>（列表项已建树） */
 export function toDeviceGroupPage(dto: DeviceGroupListDto | null | undefined): Paginated<DeviceGroup> {
-  return toPaginated(dto, toDeviceGroup)
+  const items = toDeviceGroupTree(dto?.items)
+  if (!dto) return { items, total: 0, page: 1, perPage: 0, pages: 1 }
+  return {
+    items,
+    total: dto.total ?? items.length,
+    page: dto.page ?? 1,
+    perPage: dto.per_page ?? items.length,
+    pages: dto.pages ?? 1,
+  }
 }
 
 /** camelCase Domain 分组 → snake_case 请求体 */
 export function toDeviceGroupUpsertDto(data: Partial<DeviceGroup>): DeviceGroupUpsertDto {
   const dto: DeviceGroupUpsertDto = {}
   if (data.name !== undefined) dto.name = data.name
+  // parent_id：'' 表示根分组（update 时后端以 '' → None 处理为移到根；null 在 update 表示保持原父级）
+  if (data.parentId !== undefined) dto.parent_id = data.parentId
   if (data.description !== undefined) dto.description = data.description
   if (data.groupType !== undefined) dto.group_type = data.groupType
   if (data.deviceIds !== undefined) dto.device_ids = data.deviceIds
   return dto
+}
+
+/** 移动分组请求体（camelCase parentId → snake_case parent_id；null/空串 = 移到根） */
+export function toDeviceGroupMoveDto(parentId: string | null): DeviceGroupMoveDto {
+  return { parent_id: parentId || null }
 }
 
 /** DeviceStatusEventDto → DeviceStatusEvent */

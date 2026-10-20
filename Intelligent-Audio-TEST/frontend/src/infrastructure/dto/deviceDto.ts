@@ -154,6 +154,8 @@ export interface PlaybackStatusItemDto {
 export interface DeviceGroupItemDto {
   id: string
   name: string
+  /** 父分组 ID（INT-832）；根分组为 null */
+  parent_id?: string | null
   description?: string
   group_type?: string
   device_count?: number
@@ -170,9 +172,17 @@ export interface DeviceGroupListDto extends PaginatedBaseDto {
 /** 创建/更新设备分组请求体（snake_case） */
 export interface DeviceGroupUpsertDto {
   name?: string
+  /** 父分组 ID（INT-832）；空串/null 表示根分组 */
+  parent_id?: string | null
   description?: string
   group_type?: string
   device_ids?: (number | string)[]
+}
+
+/** 移动设备分组请求体（INT-832；PUT /test-devices/device-groups/{id}/move） */
+export interface DeviceGroupMoveDto {
+  /** 目标父分组 ID；空串/null 表示移到顶层（根） */
+  parent_id?: string | null
 }
 
 /** 设备批量操作请求体（snake_case） */

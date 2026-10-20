@@ -22,7 +22,7 @@
 /* ── [恢复] 死类误删的样式（HEAD 原样） ── */
 .category-count {
     background-color: var(--primary-color) !important;
-    color: white !important;
+    color: var(--color-white) !important;
     font-size: 12px !important;
     font-weight: 500 !important;
     padding: 4px 8px !important;

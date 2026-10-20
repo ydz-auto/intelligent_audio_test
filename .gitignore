@@ -189,6 +189,7 @@ Intelligent-Audio-TEST/frontend/snake-props.txt
 # ===== 运行时数据目录（V9.7.31 主项目，2026-10-15 追加）=====
 Intelligent-Audio-TEST/storage/
 Intelligent-Audio-TEST/storage_local/
+Intelligent-Audio-TEST/exports/
 /TEMP/
 TEMP/
 Intelligent-Audio-TEST/TEMP/
@@ -203,6 +204,7 @@ Intelligent-Audio-TEST/tests/ui/_pg_start.cmd
 *_pid*.txt
 Intelligent-Audio-TEST/_stack.pid
 Intelligent-Audio-TEST/_int*_pid*.txt
+Intelligent-Audio-TEST/scripts/_frontend_start.cmd
 
 # docker 过渡残留
 Intelligent-Audio-TEST/docker/Dockerfile.service.new

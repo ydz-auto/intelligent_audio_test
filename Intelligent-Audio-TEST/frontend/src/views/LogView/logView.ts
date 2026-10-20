@@ -96,6 +96,8 @@ export function useLogView(refs?: LogViewRefs) {
   const showLevelDropdown = ref(false);
   const markColor = ref('yellow');
   const isLoading = ref(false);
+  // INT-288：日志列表拉取错误态（错误文案供视图渲染错误条；失败保留旧数据不清空）
+  const error = ref('');
 
   const modalManager = useModalControl();
 
@@ -192,13 +194,14 @@ export function useLogView(refs?: LogViewRefs) {
 
   const fetchLogs = async () => {
     isLoading.value = true;
+    error.value = '';
     try {
       const params = buildQueryParams();
       params.page = currentPage.value;
       params.perPage = pageSize.value;
 
       const response = await logsPort.getAll(params);
-      
+
       logs.value = (response.items || []).map((log: Log) => {
         let formattedTime = log.time?.toString() || log.timestamp?.toString() || '';
         try {
@@ -209,14 +212,16 @@ export function useLogView(refs?: LogViewRefs) {
         } catch (e) {
           console.error('Failed to format log time:', e);
         }
-        
+
         return {...log, time: formattedTime, selected: false, isExpanded: false} as UILog;
       });
-      
+
       totalLogs.value = response?.total || 0;
       fetchStats();
-    } catch (error) {
-      console.error('Failed to fetch logs:', error);
+    } catch (err) {
+      console.error('Failed to fetch logs:', err);
+      // INT-288：失败不清空旧数据，仅暴露错误文案（区别于空态「暂无日志」）
+      error.value = '加载日志失败，请稍后重试';
     } finally {
       isLoading.value = false;
     }
@@ -342,12 +347,14 @@ export function useLogView(refs?: LogViewRefs) {
 
   const refreshLogs = async () => {
     isLoading.value = true;
+    error.value = '';
     try {
       const lastId = logs.value.length > 0 ? logs.value[0].id : 0;
       await logsPort.refresh(lastId);
       await fetchLogs();
-    } catch (error) {
-      console.error('Failed to refresh logs:', error);
+    } catch (err) {
+      console.error('Failed to refresh logs:', err);
+      error.value = '刷新日志失败，请稍后重试';
     } finally {
       isLoading.value = false;
     }
@@ -356,10 +363,10 @@ export function useLogView(refs?: LogViewRefs) {
   const clearLogs = () => {
     modalManager.open(MODAL_TYPES.DELETE_CONFIRM, {
       title: '确认清除',
-      message: '确定要清除所有日志吗？此操作不可撤销。',
+      content: '确定要清除所有日志吗？此操作不可撤销。',
       confirmText: '确定清除',
       cancelText: '取消',
-      onConfirm: async () => {
+      onSave: async () => {
         try {
           isLoading.value = true;
           await logsPort.clear();
@@ -378,37 +385,29 @@ export function useLogView(refs?: LogViewRefs) {
     modalManager.open(MODAL_TYPES.IMPORT_EXPORT, {
       mode: 'export',
       title: '导出日志',
-      formatOptions: [
-        { value: 'json', label: 'JSON文件 (.json)' },
-        { value: 'excel', label: 'Excel文件 (.xlsx)' }
+      // ImportExportModal 消费 supportedFormats/exportFields（formatOptions/rangeOptions/fields 不被其消费）
+      supportedFormats: ['json', 'excel'],
+      exportFields: [
+        { key: 'time', label: '时间', defaultChecked: true },
+        { key: 'level', label: '级别', defaultChecked: true },
+        { key: 'module', label: '模块', defaultChecked: true },
+        { key: 'source', label: '来源', defaultChecked: true },
+        { key: 'content', label: '内容', defaultChecked: true },
+        { key: 'context', label: '上下文', defaultChecked: false }
       ],
-      rangeOptions: [
-        { value: 'current', label: '当前页面' },
-        { value: 'all', label: '所有日志' },
-        { value: 'selected', label: '选中的日志' }
-      ],
-      fields: [
-        { key: 'time', label: '时间', default: true },
-        { key: 'level', label: '级别', default: true },
-        { key: 'module', label: '模块', default: true },
-        { key: 'source', label: '来源', default: true },
-        { key: 'content', label: '内容', default: true },
-        { key: 'context', label: '上下文', default: false }
-      ],
-      onConfirm: async (options: {range: string; format: string}) => {
+      onSave: async (result: { mode?: string; config?: { range?: string; format?: string } }) => {
         try {
           isLoading.value = true;
           const params = buildQueryParams();
           let exportParams = {...params};
-          
-          if (options.range === 'current') {
-            exportParams.page = currentPage.value;
-            exportParams.perPage = pageSize.value;
-          } else if (options.range === 'selected') {
+          // ImportExportModal confirm 事件载荷：{ mode:'export', config:{ range, format, fields } }
+          const { range, format } = result.config || {};
+
+          if (range === 'selected') {
             (exportParams as any).logIds = logs.value.filter(l => l.selected).map(l => l.id).join(',');
           }
-          
-          await logsPort.export({ ...exportParams, format: options.format } as any);
+
+          await logsPort.export({ ...exportParams, format } as any);
         } catch (error) {
           console.error('Failed to export logs:', error);
         } finally {
@@ -546,13 +545,13 @@ export function useLogView(refs?: LogViewRefs) {
   const batchMarkLogs = () => {
     const selectedLogIds = logs.value.filter(log => log.selected).map(log => log.id);
     if (selectedLogIds.length === 0) return;
-    
+
     modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
       title: '确认标记',
-      message: `确定要标记选中的 ${selectedLogIds.length} 条日志吗？`,
+      content: `确定要标记选中的 ${selectedLogIds.length} 条日志吗？`,
       confirmText: '确定标记',
       cancelText: '取消',
-      onConfirm: async () => {
+      onSave: async () => {
         try {
           await logsPort.mark(selectedLogIds, markColor.value);
           logs.value.forEach(log => {
@@ -708,6 +707,7 @@ export function useLogView(refs?: LogViewRefs) {
     logs,
     totalLogs,
     isLoading,
+    error,
     logStats,
     currentPage,
     pageSize,

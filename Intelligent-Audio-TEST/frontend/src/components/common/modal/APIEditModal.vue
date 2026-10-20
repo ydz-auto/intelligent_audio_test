@@ -37,14 +37,36 @@
       
       <div class="form-group">
         <label class="form-label">模型</label>
-        <input 
-          type="text" 
-          v-model="editableData.model" 
+        <input
+          type="text"
+          v-model="editableData.model"
           class="form-input"
           placeholder="请输入模型名称"
         >
       </div>
-      
+
+      <div class="form-group">
+        <label class="form-label">代理类型</label>
+        <select v-model="editableData.proxyType" class="form-input">
+          <option value="">不使用代理</option>
+          <option value="http">http</option>
+          <option value="https">https</option>
+          <option value="socks5">socks5</option>
+          <option value="socks5h">socks5h</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">代理地址</label>
+        <input
+          type="text"
+          v-model="editableData.proxyUrl"
+          class="form-input"
+          placeholder="user:pass@host:port"
+        >
+        <span class="form-hint">格式 user:pass@host:port，不含 scheme；选择代理类型时必填</span>
+      </div>
+
       <div class="form-group">
         <label class="form-label">其他配置</label>
         <textarea 
@@ -70,12 +92,18 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue';
 import { useNotification } from '@/composables/modal/useNotification';
+import { validateProxy } from '@/utils/proxyValidation';
+import type { ProxyType } from '@/domain/model/apiConfig';
 
 interface APIEditData {
   name?: string;
   apiKey?: string;
   apiUrl?: string;
   model?: string;
+  /** 网络代理类型（http/https/socks5/socks5h；空 = 不使用代理） */
+  proxyType?: ProxyType | '';
+  /** 网络代理地址 [user:pass@]host:port（不含 scheme） */
+  proxyUrl?: string;
   config?: Record<string, any>;
   [key: string]: any;
 }
@@ -104,20 +132,34 @@ const handleClose = () => {
   emit('close');
 };
 
+/**
+ * 代理配置校验（与后端同规则，前后端双校验）：
+ * proxy_type 非空 → proxy_url 必填且必须带 user:pass@ 前缀；
+ * proxy_type 为空 → proxy_url 必须为空。
+ * 规则与 CRUDFormModal 共用 utils/proxyValidation.ts。
+ */
 const handleSave = () => {
+  const proxyError = validateProxy(editableData.value.proxyType, editableData.value.proxyUrl);
+  if (proxyError) {
+    notification.warning(proxyError);
+    return;
+  }
   try {
     const config = configJson.value ? JSON.parse(configJson.value) : {};
-    const settings = {
-      ...editableData.value,
-      config
-    };
-    
+    const proxyUrl = editableData.value.proxyUrl?.trim();
+    const settings: APIEditData = { ...editableData.value, config };
+    if (proxyUrl) {
+      settings.proxyUrl = proxyUrl;
+    } else {
+      delete settings.proxyUrl;
+    }
+
     if (props.onSave) {
       props.onSave(settings);
     } else {
       emit('save', settings);
     }
-    
+
     emit('close');
   } catch (e) {
     notification.warning('配置JSON格式不正确，请检查JSON语法');
@@ -168,6 +210,11 @@ const handleSave = () => {
   font-size: 14px;
   font-weight: 500;
   color: var(--color-slate-600);
+}
+
+.form-hint{
+  font-size: 12px;
+  color: var(--color-slate-500);
 }
 
 .form-input,

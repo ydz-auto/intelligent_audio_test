@@ -57,7 +57,15 @@ class TaskLifecycleService:
                     'data': {'id': task.id, 'status': task.status},
                 }
 
-            if task.status not in [TaskStatus.PENDING, TaskStatus.FAILED, TaskStatus.STOPPED, TaskStatus.COMPLETED]:
+            # INT-418：COMPLETED 不再允许直接 start —— 已完成的整任务重跑须走
+            # retry（重新执行）语义（含结果清理/计数重置）。原实现放行 COMPLETED
+            # 后 CAS 只匹配 pending/queued 恒失败，旧回滚分支触发自死锁（已修复），
+            # 此处显式拒绝并给出业务指引
+            if task.status not in [TaskStatus.PENDING, TaskStatus.FAILED, TaskStatus.STOPPED]:
+                if task.status == TaskStatus.COMPLETED:
+                    return {'success': False,
+                            'message': '任务已完成，不能直接启动；如需重新执行请使用重新执行功能',
+                            'data': None, 'code': 400}
                 return {'success': False, 'message': '非法的任务状态转换操作', 'data': None, 'code': 400}
 
             # 重置失败/停止状态（原子提交）

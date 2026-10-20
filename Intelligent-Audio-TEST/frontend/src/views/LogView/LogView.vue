@@ -150,89 +150,106 @@
           </div>
           <div class="card-body">
             <div class="table-container">
-              <table class="data-table" data-manual-sort>
-                <thead>
-                  <tr>
-                    <th class="checkbox-col" style="width: 40px; min-width: 40px;">
-                      <input type="checkbox" id="selectAllLogs" @change="selectAllLogs">
-                    </th>
-                    <th class="expand-header" style="width: 30px; min-width: 30px;"></th>
-                    <th class="sortable core-col" @click="sortLogs('time')" style="width: 150px; min-width: 150px;">
-                      时间
-                      <i class="fas fa-sort sort-icon"></i>
-                    </th>
-                    <th class="sortable core-col" @click="sortLogs('level')" style="width: 100px; min-width: 100px;">
-                      级别
-                      <i class="fas fa-sort sort-icon"></i>
-                    </th>
-                    <th class="sortable secondary-col" @click="sortLogs('module')" style="width: 120px; min-width: 120px;">
-                      模块
-                      <i class="fas fa-sort sort-icon"></i>
-                    </th>
-                    <th class="secondary-col" style="width: 100px; min-width: 100px;">
-                      算法
-                    </th>
-                    <th class="sortable secondary-col" @click="sortLogs('source')" style="width: 120px; min-width: 120px;">
-                      来源
-                      <i class="fas fa-sort sort-icon"></i>
-                    </th>
-                    <th class="core-col" style="flex: 1; min-width: 200px;">内容</th>
-                    <th class="core-col" style="width: 200px; min-width: 200px;">操作</th>
-                  </tr>
-                </thead>
-                <tbody id="logsTable">
-                  <template v-for="log in paginatedLogs" :key="log.id">
-                    <!-- 日志行 -->
-                    <tr class="log-row" @click="toggleLogDetails(log.id)" :class="{ 'marked': log.mark, [`marked-${log.mark}`]: log.mark }" style="cursor: pointer;">
-                      <td class="checkbox-col">
-                        <input type="checkbox" class="log-checkbox" v-model="log.selected" @click.stop>
-                      </td>
-                      <td class="expand-col">
-                        <i class="fas fa-chevron-down expand-icon" :class="{ 'fa-chevron-up': log.isExpanded }"></i>
-                      </td>
-                      <td @click.stop="toggleLogDetails(log.id)">{{ log.time }}</td>
-                      <td @click.stop="toggleLogDetails(log.id)"><span class="log-level" :class="log.level">{{ log.level.toUpperCase() }}</span></td>
-                      <td @click.stop="toggleLogDetails(log.id)"><span class="log-module">{{ log.module }}</span></td>
-                      <td @click.stop="toggleLogDetails(log.id)"><span v-if="log.algorithmType" class="log-algorithm" :class="log.algorithmType">{{ getAlgorithmLabel(log.algorithmType) }}</span><span v-else>-</span></td>
-                      <td @click.stop="toggleLogDetails(log.id)"><span class="log-source" :class="log.source">{{ log.source }}</span></td>
-                      <td @click.stop="toggleLogDetails(log.id)" title="{{ log.content }}">
-                        <span v-if="log.mark" class="log-mark" :class="log.mark"></span>
-                        {{ log.content }}
-                      </td>
-                      <td>
-                        <button class="btn btn-secondary" @click.stop="markLog(log.id)">
-                          <i class="fas fa-tag btn-icon"></i>
-                          标记
-                        </button>
-                        <button class="btn btn-secondary" @click.stop="copyLog(log.id)">
-                          <i class="fas fa-copy btn-icon"></i>
-                          复制
-                        </button>
-                      </td>
+              <!-- INT-288 加载态：首屏/无数据拉取期间显示 spinner（非裸文本行） -->
+              <div v-if="isLoading && paginatedLogs.length === 0" class="lv-loading-state">
+                <div class="lv-loading-spinner"></div>
+                <p>正在加载日志...</p>
+              </div>
+              <!-- INT-288 错误态：无数据且拉取失败 → 错误条 + 重试（区别于空态） -->
+              <LoadErrorState v-else-if="error && paginatedLogs.length === 0" :message="error" @retry="fetchLogs" />
+              <!-- INT-288 空态：无日志时给出「暂无日志」占位（不再空白表格） -->
+              <div v-else-if="paginatedLogs.length === 0" class="lv-empty-state">
+                <i class="fas fa-file-alt"></i>
+                <p>暂无日志</p>
+                <p class="lv-empty-hint">当前筛选条件下没有匹配的日志</p>
+              </div>
+              <!-- 有数据：错误时错误条悬于表格上方，旧数据保留不清空 -->
+              <template v-else>
+                <LoadErrorState v-if="error" :message="error" @retry="fetchLogs" />
+                <table class="data-table" data-manual-sort>
+                  <thead>
+                    <tr>
+                      <th class="checkbox-col" style="width: 40px; min-width: 40px;">
+                        <input type="checkbox" id="selectAllLogs" @change="selectAllLogs">
+                      </th>
+                      <th class="expand-header" style="width: 30px; min-width: 30px;"></th>
+                      <th class="sortable core-col" @click="sortLogs('time')" style="width: 150px; min-width: 150px;">
+                        时间
+                        <i class="fas fa-sort sort-icon"></i>
+                      </th>
+                      <th class="sortable core-col" @click="sortLogs('level')" style="width: 100px; min-width: 100px;">
+                        级别
+                        <i class="fas fa-sort sort-icon"></i>
+                      </th>
+                      <th class="sortable secondary-col" @click="sortLogs('module')" style="width: 120px; min-width: 120px;">
+                        模块
+                        <i class="fas fa-sort sort-icon"></i>
+                      </th>
+                      <th class="secondary-col" style="width: 100px; min-width: 100px;">
+                        算法
+                      </th>
+                      <th class="sortable secondary-col" @click="sortLogs('source')" style="width: 120px; min-width: 120px;">
+                        来源
+                        <i class="fas fa-sort sort-icon"></i>
+                      </th>
+                      <th class="core-col" style="flex: 1; min-width: 200px;">内容</th>
+                      <th class="core-col" style="width: 200px; min-width: 200px;">操作</th>
                     </tr>
-                    <!-- 详情行 - 紧跟在对应日志行之后 -->
-                    <tr class="log-details" :style="{ display: log.isExpanded ? 'table-row' : 'none' }">
-                      <td colspan="9">
-                        <div class="log-details-content">
-                          <h4>详细信息</h4>
-                          <p><strong>时间:</strong> {{ log.time }}</p>
-                          <p><strong>级别:</strong> <span class="log-level" :class="log.level">{{ log.level.toUpperCase() }}</span></p>
-                          <p><strong>分类:</strong> {{ log.category }}</p>
-                          <p><strong>模块:</strong> <span class="log-module">{{ log.module }}</span></p>
-                          <p><strong>算法类型:</strong> {{ log.algorithmType ? getAlgorithmLabel(log.algorithmType) : '-' }}</p>
-                          <p><strong>来源:</strong> <span class="log-source" :class="log.source">{{ log.source }}</span></p>
-                          <p><strong>设备ID:</strong> {{ log.deviceId || '-' }}</p>
-                      <p><strong>任务ID:</strong> {{ log.taskId || '-' }}</p>
-                      <p><strong>线程ID:</strong> {{ log.threadId || '-' }}</p>
-                          <p><strong>内容:</strong> {{ log.content }}</p>
-                          <h5>上下文信息</h5>
-                          <pre>{{ JSON.stringify({ category: log.category, deviceDeviceId: log.deviceId, taskTaskId: log.taskId, threadThreadId: log.threadId, algorithmType: log.algorithmType }, null, 2) }}</pre>
-                        </div>
-                      </td>
-                    </tr>
-                  </template>
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody id="logsTable">
+                    <template v-for="log in paginatedLogs" :key="log.id">
+                      <!-- 日志行 -->
+                      <tr class="log-row" @click="toggleLogDetails(log.id)" :class="{ 'marked': log.mark, [`marked-${log.mark}`]: log.mark }" style="cursor: pointer;">
+                        <td class="checkbox-col">
+                          <input type="checkbox" class="log-checkbox" v-model="log.selected" @click.stop>
+                        </td>
+                        <td class="expand-col">
+                          <i class="fas fa-chevron-down expand-icon" :class="{ 'fa-chevron-up': log.isExpanded }"></i>
+                        </td>
+                        <td @click.stop="toggleLogDetails(log.id)">{{ log.time }}</td>
+                        <td @click.stop="toggleLogDetails(log.id)"><span class="log-level" :class="log.level">{{ log.level.toUpperCase() }}</span></td>
+                        <td @click.stop="toggleLogDetails(log.id)"><span class="log-module">{{ log.module }}</span></td>
+                        <td @click.stop="toggleLogDetails(log.id)"><span v-if="log.algorithmType" class="log-algorithm" :class="log.algorithmType">{{ getAlgorithmLabel(log.algorithmType) }}</span><span v-else>-</span></td>
+                        <td @click.stop="toggleLogDetails(log.id)"><span class="log-source" :class="log.source">{{ log.source }}</span></td>
+                        <td @click.stop="toggleLogDetails(log.id)" title="{{ log.content }}">
+                          <span v-if="log.mark" class="log-mark" :class="log.mark"></span>
+                          {{ log.content }}
+                        </td>
+                        <td>
+                          <button class="btn btn-secondary" @click.stop="markLog(log.id)">
+                            <i class="fas fa-tag btn-icon"></i>
+                            标记
+                          </button>
+                          <button class="btn btn-secondary" @click.stop="copyLog(log.id)">
+                            <i class="fas fa-copy btn-icon"></i>
+                            复制
+                          </button>
+                        </td>
+                      </tr>
+                      <!-- 详情行 - 紧跟在对应日志行之后 -->
+                      <tr class="log-details" :style="{ display: log.isExpanded ? 'table-row' : 'none' }">
+                        <td colspan="9">
+                          <div class="log-details-content">
+                            <h4>详细信息</h4>
+                            <p><strong>时间:</strong> {{ log.time }}</p>
+                            <p><strong>级别:</strong> <span class="log-level" :class="log.level">{{ log.level.toUpperCase() }}</span></p>
+                            <p><strong>分类:</strong> {{ log.category }}</p>
+                            <p><strong>模块:</strong> <span class="log-module">{{ log.module }}</span></p>
+                            <p><strong>算法类型:</strong> {{ log.algorithmType ? getAlgorithmLabel(log.algorithmType) : '-' }}</p>
+                            <p><strong>来源:</strong> <span class="log-source" :class="log.source">{{ log.source }}</span></p>
+                            <p><strong>设备ID:</strong> {{ log.deviceId || '-' }}</p>
+                        <p><strong>任务ID:</strong> {{ log.taskId || '-' }}</p>
+                        <p><strong>线程ID:</strong> {{ log.threadId || '-' }}</p>
+                            <p><strong>内容:</strong> {{ log.content }}</p>
+                            <h5>上下文信息</h5>
+                            <pre>{{ JSON.stringify({ category: log.category, deviceDeviceId: log.deviceId, taskTaskId: log.taskId, threadThreadId: log.threadId, algorithmType: log.algorithmType }, null, 2) }}</pre>
+                          </div>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </template>
             </div>
           </div>
           <div class="card-footer">
@@ -259,6 +276,7 @@ import { ref, onMounted } from 'vue';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
 import LogFilterPanel from './LogFilterPanel.vue';
 import LogArchivePanel from './LogArchivePanel.vue';
+import LoadErrorState from '../../components/common/misc/LoadErrorState.vue';
 import { useLogView } from './logView';
 
 // 日期时间选择器的引用（由 LogFilterPanel 暴露的 DOM 元素同步填充）
@@ -299,6 +317,10 @@ const {
   markColor,
   logs,
   totalLogs,
+  // INT-288：加载态 / 错误态（模板消费三态：加载 spinner / 错误条 + 重试 / 空态）
+  isLoading,
+  error,
+  fetchLogs,
   logStats,
   paginatedLogs,
   currentPage,
@@ -343,6 +365,49 @@ const {
 
 <style scoped>
 @import './LogView.css';
+
+/* ===== INT-288：日志列表加载 / 空态（lv- 前缀命名空间，对齐 tr-/rv- 方案避免全局泄漏） ===== */
+.lv-loading-state,
+.lv-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 30vh;
+  text-align: center;
+  color: var(--text-tertiary, #9ca3af);
+  padding: 40px 16px;
+}
+
+.lv-loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--color-slate-200, #e2e8f0);
+  border-top-color: var(--secondary, #ff6a00);
+  border-radius: 50%;
+  animation: lv-spin 1s linear infinite;
+  margin-bottom: 16px;
+}
+
+@keyframes lv-spin {
+  to { transform: rotate(360deg); }
+}
+
+.lv-loading-state p,
+.lv-empty-state p {
+  margin: 8px 0 0;
+}
+
+.lv-empty-state i {
+  font-size: 32px;
+  margin-bottom: 8px;
+  color: var(--text-disabled, #d1d5db);
+}
+
+.lv-empty-hint {
+  font-size: 12px;
+  color: var(--text-tertiary, #9ca3af);
+}
 
 
 /* sort-icon - 自全局样式就近迁移 */

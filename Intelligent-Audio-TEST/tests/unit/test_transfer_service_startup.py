@@ -2,7 +2,7 @@
 """transfer_agent 服务启动与 gRPC 端到端测试（INT-28 验收标准 1）。
 
 - FastAPI app 可创建、/health 暴露服务与 zone
-- gRPC server 可启动并监听注册端口（50101）
+- gRPC server 可启动并监听注册端口（51101）
 - gRPC 全链路：经 proto stub 调用 CreateTransfer → 验签失败语义透传
 - gRPC 满片 4MB 传输可达（server/stub 两侧消息上限放开，审计 P3 回归锁定）
 
@@ -56,7 +56,7 @@ def test_health_exposes_service_and_zone():
 def test_ports_registered_in_service_ports():
     from shared.config import service_ports
     assert service_ports.TRANSFER_AGENT_HTTP_PORT == 5010
-    assert service_ports.TRANSFER_AGENT_GRPC_PORT == 50101
+    assert service_ports.TRANSFER_AGENT_GRPC_PORT == 51101
 
 
 def test_grpc_server_end_to_end(db_env):

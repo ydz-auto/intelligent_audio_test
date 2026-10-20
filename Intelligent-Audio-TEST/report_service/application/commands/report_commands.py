@@ -28,6 +28,8 @@ class CreateReportCommand:
     task_id: int
     report_type: str = ReportType.STANDARD.value
     config: Dict[str, Any] = field(default_factory=dict)
+    # INT-423 数据可见性：新建时可指定 private/shared，默认 shared
+    visibility: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -60,6 +62,7 @@ class UpdateReportCommand:
         analysis: 分析/结论文本（含 conclusion 别名，由 Handler 归一）
         status: 目标状态
         summary: 摘要快照 dict（键已归一为 snake_case）
+        visibility: 目标可见性（shared/private；None 不更新）
     """
     report_id: int
     name: Optional[str] = None
@@ -67,6 +70,7 @@ class UpdateReportCommand:
     analysis: Optional[str] = None
     status: Optional[str] = None
     summary: Optional[Dict[str, Any]] = None
+    visibility: Optional[str] = None
 
 
 @dataclass(frozen=True)

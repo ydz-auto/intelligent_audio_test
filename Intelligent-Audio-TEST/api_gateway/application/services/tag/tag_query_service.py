@@ -137,6 +137,11 @@ class TagQueryService:
             return error_response(result.get('message', '查询失败'))
 
         item = result.get('data') or {}
+        # INT-466：admin 访问私有标签详情落 PRIVATE_RESOURCE_ACCESS 审计（旁路）
+        from api_gateway.application.services.visibility.visibility_audit import (
+            maybe_audit_private_detail,
+        )
+        maybe_audit_private_detail('tag', tag_id, item)
         return success_response(TagItem(**item))
 
     @staticmethod

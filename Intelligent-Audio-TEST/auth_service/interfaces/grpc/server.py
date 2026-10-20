@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """auth_service gRPC server 启动模块。
 
-端口：50069
+端口：51069（INT-926 平移，避开 Windows Hyper-V 排除端口段）
 注册 servicer：
 - AuthServicer（用户管理 + 认证校验）
 """
@@ -27,7 +27,7 @@ def start_grpc_server(port=AUTH_SERVICE_GRPC_PORT):
     """启动 auth_service 的 gRPC server。
 
     Args:
-        port: gRPC 监听端口，默认 50069
+        port: gRPC 监听端口，默认 51069
 
     Returns:
         grpc.Server: 已启动的 server 实例

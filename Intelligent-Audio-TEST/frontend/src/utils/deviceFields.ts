@@ -255,6 +255,26 @@ export function generateDeviceFields(deviceType: string): DynamicFormField[] {
         defaultValue: defaultMaxAudioDuration,
         hint: '未单独设置时，所有端点将使用此默认值'
       }, {
+        key: 'proxyType',
+        label: '代理类型',
+        type: 'select',
+        required: false,
+        placeholder: '不使用代理',
+        hint: '不使用代理时类型留空；选择类型后需填写代理地址（user:pass@host:port）',
+        options: [
+          { value: 'http', label: 'http' },
+          { value: 'https', label: 'https' },
+          { value: 'socks5', label: 'socks5' },
+          { value: 'socks5h', label: 'socks5h' }
+        ]
+      }, {
+        key: 'proxyUrl',
+        label: '代理地址',
+        type: 'text',
+        required: false,
+        placeholder: 'user:pass@host:port',
+        hint: '格式 user:pass@host:port（不含 scheme）；选择代理类型后必填，且必须带 user:pass@ 前缀'
+      }, {
         key: 'endpoints',
         label: 'API端点列表',
         type: 'array',

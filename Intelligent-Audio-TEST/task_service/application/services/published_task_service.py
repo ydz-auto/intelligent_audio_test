@@ -218,6 +218,15 @@ class PublishedTaskService:
             if err:
                 return {'success': False, 'message': err, 'data': None, 'code': code}
 
+            # INT-423：源任务私有非 owner 不允许发布（越权读取源数据 → 403）
+            from shared.infrastructure.visibility_filter import check_visible
+            from task_service.infrastructure.visibility_context import visibility_identity
+            _uid, _is_admin = visibility_identity()
+            try:
+                check_visible(task.created_by_user_id, task.visibility, _uid, _is_admin)
+            except PermissionError as e:
+                return {'success': False, 'message': str(e), 'data': None, 'code': 403}
+
             snapshot = PublishedTaskService._build_snapshot(task)
             snapshot = PublishedTaskService._merge_benchmark_snapshot_fields(snapshot, data)
             _, err, code, _ = PublishedTaskService._validate_snapshot(snapshot)
@@ -322,10 +331,22 @@ class PublishedTaskService:
 
     @staticmethod
     def get_detail(published_task_id: int) -> dict:
-        """详情（元数据 + 快照 + 来源任务摘要 + 版本历史 + 执行历史）。"""
+        """详情（元数据 + 快照 + 来源任务摘要 + 版本历史 + 执行历史）。
+
+        INT-423：私有已发布任务对非 owner 视为不存在（404 语义，存量 NULL
+        owner 行默认 shared 不受影响）。
+        """
         try:
             pt = repo.get_by_id(published_task_id)
             if not pt:
+                return {'success': False, 'message': '已发布任务不存在', 'data': None, 'code': 201}
+
+            from shared.infrastructure.visibility_filter import VisibilityDenied, check_visible
+            from task_service.infrastructure.visibility_context import visibility_identity
+            _uid, _is_admin = visibility_identity()
+            try:
+                check_visible(pt.created_by_user_id, pt.visibility, _uid, _is_admin)
+            except VisibilityDenied:
                 return {'success': False, 'message': '已发布任务不存在', 'data': None, 'code': 201}
 
             source_summary = repo.get_source_task_summary(pt.source_task_id)
@@ -396,6 +417,15 @@ class PublishedTaskService:
             if pt.status == 'archived':
                 return {'success': False, 'message': '已归档任务禁止执行，请选择可用版本', 'data': None, 'code': 203}
 
+            # INT-423：私有已发布任务非 owner 不允许执行（写操作 403 语义）
+            from shared.infrastructure.visibility_filter import check_visible
+            from task_service.infrastructure.visibility_context import visibility_identity
+            _uid, _is_admin = visibility_identity()
+            try:
+                check_visible(pt.created_by_user_id, pt.visibility, _uid, _is_admin)
+            except PermissionError as e:
+                return {'success': False, 'message': str(e), 'data': None, 'code': 403}
+
             snapshot = pt.snapshot_config or {}
             frozen_cases, case_ids, err, code = PublishedTaskService._resolve_executable_cases(snapshot)
             if err:
@@ -453,6 +483,15 @@ class PublishedTaskService:
             if not pt:
                 return {'success': False, 'message': '已发布任务不存在', 'data': None, 'code': 201}
 
+            # INT-423：私有已发布任务非 owner 不允许建新版本（写操作 403 语义）
+            from shared.infrastructure.visibility_filter import check_visible
+            from task_service.infrastructure.visibility_context import visibility_identity
+            _uid, _is_admin = visibility_identity()
+            try:
+                check_visible(pt.created_by_user_id, pt.visibility, _uid, _is_admin)
+            except PermissionError as e:
+                return {'success': False, 'message': str(e), 'data': None, 'code': 403}
+
             group_id = pt.task_group_id or pt.id
             current = repo.get_current_version(group_id) or pt
 
@@ -461,6 +500,14 @@ class PublishedTaskService:
                 task, err, code, _ = PublishedTaskService._get_publishable_task(source_task_id)
                 if err:
                     return {'success': False, 'message': err, 'data': None, 'code': code}
+                # INT-423：新版本指定新来源任务时，源任务私有非 owner 不允许（403）
+                from shared.infrastructure.visibility_filter import check_visible
+                from task_service.infrastructure.visibility_context import visibility_identity
+                _uid, _is_admin = visibility_identity()
+                try:
+                    check_visible(task.created_by_user_id, task.visibility, _uid, _is_admin)
+                except PermissionError as e:
+                    return {'success': False, 'message': str(e), 'data': None, 'code': 403}
                 snapshot = PublishedTaskService._build_snapshot(task)
                 new_source_task_id = task.id
                 new_task_type = PublishedTaskService._derive_task_type(
@@ -546,6 +593,14 @@ class PublishedTaskService:
                     'success': True, 'message': '任务已归档',
                     'data': {'id': pt.id, 'status': pt.status}, 'code': 0,
                 }
+            # INT-423：私有已发布任务非 owner 不允许归档（写操作 403 语义）
+            from shared.infrastructure.visibility_filter import check_visible
+            from task_service.infrastructure.visibility_context import visibility_identity
+            _uid, _is_admin = visibility_identity()
+            try:
+                check_visible(pt.created_by_user_id, pt.visibility, _uid, _is_admin)
+            except PermissionError as e:
+                return {'success': False, 'message': str(e), 'data': None, 'code': 403}
             pt = repo.archive(published_task_id, archived_by=operator_user_id)
             PublishedTaskService._write_audit(AuditEvent.PUBLISHED_TASK_ARCHIVED, {
                 'published_task_id': pt.id,
@@ -574,6 +629,14 @@ class PublishedTaskService:
             pt = repo.get_by_id(published_task_id)
             if not pt:
                 return {'success': False, 'message': '已发布任务不存在', 'data': None, 'code': 201}
+            # INT-423：私有已发布任务非 owner 不允许重命名（写操作 403 语义）
+            from shared.infrastructure.visibility_filter import check_visible
+            from task_service.infrastructure.visibility_context import visibility_identity
+            _uid, _is_admin = visibility_identity()
+            try:
+                check_visible(pt.created_by_user_id, pt.visibility, _uid, _is_admin)
+            except PermissionError as e:
+                return {'success': False, 'message': str(e), 'data': None, 'code': 403}
             repo.update_name(published_task_id, name)
             return {
                 'success': True, 'message': '任务名称已更新',

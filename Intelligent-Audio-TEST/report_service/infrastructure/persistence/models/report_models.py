@@ -37,6 +37,8 @@ class Report(Base):
     task_id = Column(Integer, comment='关联测试任务ID')
     status = Column(String(20), nullable=False, default='draft', comment='报告状态 (draft/published)')
     analysis = Column(Text, comment='人工/自动分析结论')
+    # INT-423 数据可见性：private/shared 二值，默认 shared（存量零回归）；7 张报告子表跟随父报告，不单独设列
+    visibility = Column(String(20), nullable=False, default='shared', server_default='shared', comment='可见性 (shared/private)')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
     created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')

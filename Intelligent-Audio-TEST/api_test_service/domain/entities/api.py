@@ -93,6 +93,10 @@ class APIAggregate:
     # 当前默认 RMS→SPL 映射 ID（apis.rms_spl_mapping_id 指针，UC-0902 步骤6；
     # 读侧透出供前端「默认」星标/清除默认，执行侧 get_default_mapping 同源）
     rms_spl_mapping_id: Optional[int] = None
+    # 网络代理（INT-839）：proxy_type=http/https/socks5/socks5h，proxy_url=
+    # `user:pass@host:port`（不含 scheme）；两者皆空 = 不用代理
+    proxy_type: Optional[str] = None
+    proxy_url: Optional[str] = None
 
     def set_output_types(self, raw) -> List[str]:
         """设置输出类型列表（经 OutputType 枚举归一化），返回归一化结果"""

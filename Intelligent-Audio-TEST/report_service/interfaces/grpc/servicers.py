@@ -55,6 +55,9 @@ from report_service.application.queries.report_queries import (
 )
 from report_service.domain.entities import ReportAggregate
 from report_service.domain.entities.benchmark import BaselineDraftEntry
+from report_service.application.services.report_share_service import (
+    report_share_service,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +93,9 @@ def _aggregate_to_dict(aggregate: Optional[ReportAggregate]) -> Optional[Dict[st
         'analysis': config.get('analysis') or '',
         'conclusion': config.get('conclusion') or config.get('analysis') or '',
         'created_at': str(aggregate.created_at) if aggregate.created_at is not None else None,
+        # INT-423 数据可见性：透出 visibility/owner，供网关路由级 owner 校验与前端徽标
+        'visibility': getattr(aggregate, 'visibility', None) or 'shared',
+        'created_by_user_id': getattr(aggregate, 'created_by_user_id', None),
         # INT-141：回收站展示字段
         'deleted': bool(getattr(aggregate, 'deleted', False)),
         'deleted_at': str(aggregate.deleted_at) if getattr(aggregate, 'deleted_at', None) else None,
@@ -172,12 +178,16 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
         return self._query_handler
 
     @staticmethod
-    def _resp(success: bool, message: str = '', data: Any = None) -> report_pb.ReportConfigResponse:
-        """构造统一响应。"""
+    def _resp(success: bool, message: str = '', data: Any = None, code: int = 0) -> report_pb.ReportConfigResponse:
+        """构造统一响应。
+
+        code: HTTP 语义业务码（INT-971：GetSharedReport 错误 404/410/401/403；0 = 200）。
+        """
         return report_pb.ReportConfigResponse(
             success=success,
             message=message,
             data=_dumps(data) if data is not None else '',
+            code=code,
         )
 
     # ---- 写操作 ----
@@ -197,6 +207,7 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
                 task_id=data.get('task_id'),
                 report_type=data.get('report_type') or 'standard',
                 config=data.get('config') or {},
+                visibility=data.get('visibility'),
             )
             report_id = self.command_handler.handle_create(command)
             return self._resp(True, 'ok', {'report_id': report_id})
@@ -226,6 +237,8 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
                 analysis=analysis,
                 status=data.get('status'),
                 summary=data.get('summary'),
+                # INT-466：可见性切换（data 携带 visibility 时更新；None 不更新）
+                visibility=data.get('visibility'),
             )
             updated = self.command_handler.handle_update(command)
             return self._resp(updated, 'ok' if updated else 'report not found', {
@@ -293,8 +306,23 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
                 return self._resp(False, '单次最多删除100个报告', {})
 
             hard = bool(data.get('hard_delete', False))
+            # INT-423 批量逐行过滤：私有非 owner 行跳过（镜像 purge filter 口径，
+            # 不整批放行）；被跳过行按 deleted=False 记入 items
+            from shared.infrastructure.user_context import (
+                get_current_user_id,
+                get_current_user_is_admin,
+            )
+            from shared.infrastructure.visibility_filter import filter_visible_owners
+            visible_ids = set(filter_visible_owners(
+                self.query_handler.repository.list_report_visibility_rows(report_ids),
+                get_current_user_id(),
+                get_current_user_is_admin(),
+            ))
             results = []
             for rid in report_ids:
+                if rid not in visible_ids:
+                    results.append({'report_id': rid, 'deleted': False})
+                    continue
                 command = DeleteReportCommand(report_id=rid, hard=hard)
                 ok = self.command_handler.handle_delete(command)
                 results.append({'report_id': rid, 'deleted': ok})
@@ -824,6 +852,81 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
         except Exception as e:
             logger.exception("RollbackReportImport failed")
             return self._resp(False, str(e), {})
+
+    # ==================== 报告分享（INT-971） ====================
+
+    def CreateReportShare(self, request, context=None):
+        """创建报告分享链接。
+
+        请求字段（proto CreateReportShareRequest）：
+            data: str  JSON：{report_id, access, expiry, expires_at?, password?,
+                             recipients（网关已解析的 [{user_id, label}] 列表）}
+        """
+        try:
+            data = _loads(getattr(request, 'data', ''), {}) or {}
+            result = report_share_service.create_share(data)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), code=result.get('code', 0))
+        except Exception as e:
+            logger.exception("CreateReportShare failed")
+            return self._resp(False, str(e), {}, 500)
+
+    def ListReportShares(self, request, context=None):
+        """报告分享列表（分享管理与统计展示，按 created_at 倒序）。
+
+        请求字段（proto ListReportSharesRequest）：
+            data: str  JSON：{report_id}
+        """
+        try:
+            data = _loads(getattr(request, 'data', ''), {}) or {}
+            result = report_share_service.list_shares(data.get('report_id'))
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), code=result.get('code', 0))
+        except Exception as e:
+            logger.exception("ListReportShares failed")
+            return self._resp(False, str(e), {}, 500)
+
+    def RevokeReportShare(self, request, context=None):
+        """撤销报告分享（软撤销，幂等：已撤销再次撤销仍 200）。
+
+        请求字段（proto RevokeReportShareRequest）：
+            data: str  JSON：{report_id, token}
+        """
+        try:
+            data = _loads(getattr(request, 'data', ''), {}) or {}
+            result = report_share_service.revoke_share(
+                data.get('report_id'), data.get('token'))
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), code=result.get('code', 0))
+        except Exception as e:
+            logger.exception("RevokeReportShare failed")
+            return self._resp(False, str(e), {}, 500)
+
+    def GetSharedReport(self, request, context=None):
+        """公开读取分享（token 自校验 + 密码 + 访问口径；200 时递增 visits）。
+
+        请求字段（proto GetSharedReportRequest）：
+            data: str  JSON：{token, password?, user_id}
+            错误经 code 透出 404/410/401/403（网关映射 HTTP 状态码）。
+        """
+        try:
+            data = _loads(getattr(request, 'data', ''), {}) or {}
+            result = report_share_service.get_shared_report(
+                data.get('token'),
+                data.get('password'),
+                data.get('user_id'),
+            )
+            if not result.get('success'):
+                return self._resp(False, result.get('message', '读取分享失败'),
+                                  result.get('data'), code=result.get('code', 404))
+            report_id = (result.get('data') or {}).get('report_id')
+            aggregate = self.query_handler.handle_get(GetReportQuery(report_id=report_id))
+            if aggregate is None:
+                return self._resp(False, '报告不存在或已删除', {'code': 404}, code=404)
+            return self._resp(True, 'ok', _aggregate_to_dict(aggregate))
+        except Exception as e:
+            logger.exception("GetSharedReport failed")
+            return self._resp(False, str(e), None, 500)
 
 
 class BenchmarkServicer:

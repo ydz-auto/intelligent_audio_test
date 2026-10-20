@@ -753,6 +753,29 @@ class _DeviceConfigProxy:
             error_msg_prefix='分组移除设备失败',
         )
 
+    def move_group(self, group_id, parent_id):
+        """移动分组到新父级（INT-832）；parent_id 为空串/None 表示移到根。"""
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_device_config_service_stub()
+            resp = stub.MoveDeviceGroup(device_pb.MoveDeviceGroupRequest(
+                group_id=str(group_id),
+                parent_id=str(parent_id or ''),
+            ))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+                'code': int(resp.code or (200 if resp.success else 400)),
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'移动设备分组失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='移动设备分组失败',
+        )
+
     def list_alarm_rules(self, page=1, per_page=50, metric_type=None, enabled=None):
         from shared.proto import device_service_pb2 as device_pb
 

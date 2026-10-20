@@ -146,7 +146,7 @@ input[type="checkbox"].group-checkbox:checked, input[type="checkbox"].test-case-
 
 input[type="checkbox"].group-checkbox:checked::after, input[type="checkbox"].test-case-checkbox:checked::after{
     content: '✓' ;
-    color: white ;
+    color: var(--color-white) ;
     font-size: 16px ;
     font-weight: bold ;
     position: absolute ;
@@ -262,7 +262,7 @@ input[type="checkbox"].group-checkbox:hover, input[type="checkbox"].test-case-ch
     opacity: 1;
     visibility: visible;
     box-sizing: border-box;
-    background-color: white;
+    background-color: var(--color-white);
     color: var(--secondary-color);
     border: 1px solid var(--gray-light-color);
 }
@@ -665,7 +665,7 @@ input[type="checkbox"].group-checkbox:hover, input[type="checkbox"].test-case-ch
 /* ── [恢复] 死类误删的样式（HEAD 原样） ── */
 .category-count {
     background-color: var(--primary-color);
-    color: white;
+    color: var(--color-white);
     font-size: 12px;
     font-weight: 500;
     padding: 4px 8px;
@@ -689,7 +689,7 @@ input[type="checkbox"].group-checkbox:hover, input[type="checkbox"].test-case-ch
     flex-wrap: wrap;
     margin-bottom: var(--spacing-lg);
     padding: var(--spacing-lg);
-    background: linear-gradient(135deg, var(--color-white) 0%, #F8F9FA 100%);
+    background: linear-gradient(135deg, var(--color-white) 0%, var(--color-gray-50) 100%);
     border-radius: var(--border-radius-lg);
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--gray-light-color);

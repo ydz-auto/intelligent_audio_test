@@ -31,13 +31,14 @@ class TestCaseQueryService:
                        group_id=None, algorithm_type=None, test_type=None,
                        view=None, include_deleted=False, dimension_id=None,
                        favorite=False, only_deleted=False, user_id=None,
-                       lab_ids=None) -> dict:
+                       lab_ids=None, visibility=None) -> dict:
         """查询测试用例列表。
 
         favorite（INT-141）：仅当前用户收藏；only_deleted（INT-141）：仅回收站。
         test_type（INT-193）：执行口径 api/e2e，按配置形态派生过滤。
         lab_ids（INT-539）：按实验室过滤（含通用用例；None/空 = 不过滤），
         列表项透出 lab_id/lab_name（config JSONB 解析 + laboratories join）。
+        visibility（INT-466）：可见性筛选（shared/private；None=全部）。
         """
         from shared.utils import testcase_helpers as common
 
@@ -49,7 +50,8 @@ class TestCaseQueryService:
                                           test_type=test_type,
                                           dimension_id=dimension_id,
                                           favorite=favorite, only_deleted=only_deleted,
-                                          user_id=user_id, lab_ids=lab_ids)
+                                          user_id=user_id, lab_ids=lab_ids,
+                                          visibility=visibility)
 
             pagination = self.repo.query_testcases(
                 page=page, per_page=per_page, keyword=keyword, tag=tag,
@@ -59,6 +61,7 @@ class TestCaseQueryService:
                 dimension_id=dimension_id,
                 favorite=favorite, only_deleted=only_deleted, user_id=user_id,
                 lab_ids=lab_ids,
+                visibility=visibility,
             )
             test_cases = pagination.items
 
@@ -132,6 +135,9 @@ class TestCaseQueryService:
                     'deleted_at': tc.deleted_at.isoformat() if getattr(tc, 'deleted_at', None) else None,
                     'deleted_by_user_id': getattr(tc, 'deleted_by_user_id', None),
                     'total_duration': round(total_duration, 2) if total_duration > 0 else None,
+                    # INT-423/466：资源可见性与归属人（网关路由层 owner 校验 / 前端徽标）
+                    'visibility': getattr(tc, 'visibility', 'shared'),
+                    'created_by_user_id': getattr(tc, 'created_by_user_id', None),
                     # INT-539：lab 归属透出（config JSONB 解析；通用用例 lab_id=null）
                     'lab_id': lab_id,
                     'lab_name': lab_map.get(lab_id) if lab_id else None,
@@ -171,7 +177,7 @@ class TestCaseQueryService:
                       algorithm_type, include_deleted, common, test_type=None,
                       dimension_id=None,
                       favorite=False, only_deleted=False, user_id=None,
-                      lab_ids=None):
+                      lab_ids=None, visibility=None):
         """标签视图：按标签聚合用例。lab_ids（INT-539）：按实验室过滤（含通用用例）。"""
         tag_pagination = self.repo.list_tags_paginated(page=page, per_page=per_page)
         page_tags = tag_pagination.items
@@ -198,6 +204,7 @@ class TestCaseQueryService:
             dimension_id=dimension_id,
             favorite=favorite, only_deleted=only_deleted, user_id=user_id,
             lab_ids=lab_ids,
+            visibility=visibility,
         )
 
         audio_ids = set()
@@ -274,6 +281,9 @@ class TestCaseQueryService:
                     "deletedAt": tc.deleted_at.isoformat() if getattr(tc, 'deleted_at', None) else None,
                     "deletedByUserId": getattr(tc, 'deleted_by_user_id', None),
                     "totalDuration": round(total_duration, 2) if total_duration > 0 else None,
+                    # INT-423/466：资源可见性与归属人（前端徽标，标签视图 camelCase 输出）
+                    "visibility": getattr(tc, 'visibility', 'shared'),
+                    "createdByUserId": getattr(tc, 'created_by_user_id', None),
                     # INT-539：lab 归属透出（config JSONB 解析；通用用例 lab_id=null）
                     "labId": lab_id,
                     "labName": lab_map.get(lab_id) if lab_id else None,
@@ -297,12 +307,24 @@ class TestCaseQueryService:
         }
 
     def get_testcase_detail(self, tc_id: str) -> dict:
-        """获取单个测试用例详情。"""
+        """获取单个测试用例详情。
+
+        INT-423：私有用例对非 owner 视为不存在（404）。
+        """
         from shared.utils import testcase_helpers as common
+        from shared.infrastructure.visibility_filter import VisibilityDenied
+        from task_service.infrastructure.visibility_context import (
+            check_object_visible, visibility_identity,
+        )
 
         try:
             tc = self.repo.get_testcase(tc_id)
             if not tc:
+                return {'success': False, 'message': '未找到测试用例', 'data': None, 'code': 404}
+            _uid, _is_admin = visibility_identity()
+            try:
+                check_object_visible(tc, _uid, _is_admin)
+            except VisibilityDenied:
                 return {'success': False, 'message': '未找到测试用例', 'data': None, 'code': 404}
 
             config = tc.config or {}
@@ -370,6 +392,9 @@ class TestCaseQueryService:
                 'created_at': tc.created_at.isoformat() if tc.created_at else None,
                 'updated_at': tc.updated_at.isoformat() if tc.updated_at else None,
                 'total_duration': round(total_duration, 2) if total_duration > 0 else None,
+                # INT-423/466：资源可见性与归属人（网关路由层 owner 校验 / 前端徽标）
+                'visibility': getattr(tc, 'visibility', 'shared'),
+                'created_by_user_id': getattr(tc, 'created_by_user_id', None),
             }
 
             return {'success': True, 'message': '', 'data': detail_data}
@@ -458,6 +483,17 @@ class TestCaseQueryService:
         try:
             tc = self.repo.get_testcase(tc_id)
             if not tc:
+                return {'success': False, 'message': '未找到测试用例', 'data': None, 'code': 404}
+
+            # INT-423：私有用例对非 owner 视为不存在（404）
+            from shared.infrastructure.visibility_filter import VisibilityDenied
+            from task_service.infrastructure.visibility_context import (
+                check_object_visible, visibility_identity,
+            )
+            _uid, _is_admin = visibility_identity()
+            try:
+                check_object_visible(tc, _uid, _is_admin)
+            except VisibilityDenied:
                 return {'success': False, 'message': '未找到测试用例', 'data': None, 'code': 404}
 
             config = tc.config or {}

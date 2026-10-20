@@ -32,6 +32,11 @@ class SseAdapter(BaseAdapter):
         self.model = vendor_config.get('model', 'gpt-4o')
         self.endpoint = vendor_config.get('endpoint', '/v1/chat/completions')
         self.timeout = vendor_config.get('timeout', 60)
+        # INT-839 #2：代理配置存在时 requests.post 走 proxies（含认证 URL）；
+        # 无代理字段时 None，行为与改动前一致（requests 仍按环境变量代理）
+        self.proxies = None
+        if self.proxy_url:
+            self.proxies = {'http': self.proxy_url, 'https': self.proxy_url}
 
     def send_request(self, task_id, session_id, input_type, input_data,
                      source_lang='zh', target_lang='en',
@@ -66,6 +71,7 @@ class SseAdapter(BaseAdapter):
             response = requests.post(
                 url, json=payload, headers=headers,
                 timeout=self.timeout, stream=True,
+                proxies=self.proxies,
             )
             response.raise_for_status()
 

@@ -186,6 +186,7 @@ class TaskQueryHandler:
             execution_status=query.execution_status,
             task_type=query.task_type,
             stats=query.stats,
+            visibility=query.visibility,
         )
 
     def handle_get_task_detail(self, query: GetTaskDetailQuery) -> Dict[str, Any]:
@@ -230,6 +231,7 @@ class TaskQueryHandler:
             only_deleted=query.only_deleted,
             user_id=query.user_id,
             lab_ids=query.lab_ids,
+            visibility=query.visibility,
         )
 
     # ==================================================================

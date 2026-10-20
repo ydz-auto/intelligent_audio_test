@@ -45,6 +45,8 @@ class API(Base):
     device_type = Column(String(20), nullable=False, default='http_api', comment='被测设备类型 (DeviceType 枚举: physical/http_api/websocket_api，UC-0901)')
     adapter_class = Column(String(100), nullable=True, comment='指定适配器类名 (如 OpenAIRealtimeAdapter，未指定时按 protocol+vendor 自动匹配，UC-0901)')
     audio_config = Column(JSON, nullable=True, comment='目标音频格式声明 {"sample_rate","bit_depth","channels","container"} (AudioBitDepth/AudioContainer 枚举，未配置回退 24000/s16/mono/pcm，UC-0901)')
+    proxy_type = Column(String(20), nullable=True, comment='代理类型 (http/https/socks5/socks5h，NULL或空=不用代理，INT-839)')
+    proxy_url = Column(String(255), nullable=True, comment='代理地址 user:pass@host:port，不含 scheme（配置代理时认证段必填，INT-839）')
 
 
 class ApiRmsSplMappingPO(Base):

@@ -6,15 +6,19 @@
 #   ③ requirements 里 playwright 仅作 gRPC 排障用途时也可评估拆出（~140MB），本轮先保留
 
 ARG PY_IMAGE=python:3.11-slim
+ARG PIP_INDEX_URL=https://pypi.org/simple
 
 FROM ${PY_IMAGE} AS builder
+ARG PIP_INDEX_URL
 WORKDIR /build
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# deb.debian.org 慢/抖（2026-10-16 实测多次 fetch 失败）；切 tsinghua 镜像源（tuna 同域名结构）
+RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update && apt-get install -y --no-install-recommends \
         gcc libc6-dev libffi-dev portaudio19-dev \
     && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt ./requirements.txt
-# 编译 pyaudio 等需要编译的包到独立目录
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+# 编译 pyaudio 等需要编译的包到独立目录（PIP_INDEX_URL 供内网/镜像源加速覆盖）
+RUN pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" --prefix=/install -r requirements.txt
 
 FROM ${PY_IMAGE}
 WORKDIR /app
@@ -24,7 +28,8 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONUTF8=1
 
 # 运行阶段只装运行时库：ffmpeg + adb（二进制）+ curl（健康检查），不带编译器
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg \
         adb \
         curl \

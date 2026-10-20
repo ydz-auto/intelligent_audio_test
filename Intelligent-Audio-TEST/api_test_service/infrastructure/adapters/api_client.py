@@ -17,6 +17,10 @@ except ImportError:
 
 from shared.utils.path_extractor import extract_by_path
 from shared.models.common_enums import APIProtocol
+from api_test_service.infrastructure.adapters.proxy_utils import (
+    build_proxy_url,
+    websocket_proxy_kwargs,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,17 +38,24 @@ class APIClient:
     """
 
     @staticmethod
-    def call(endpoint, method='POST', headers=None, data=None, files=None, timeout=30, meta=None):
+    def call(endpoint, method='POST', headers=None, data=None, files=None, timeout=30, meta=None,
+             proxy_type=None, proxy_url=None):
         """
         根据 endpoint 协议自动选择调用方式
+
+        proxy_type / proxy_url（INT-839）：被测 API 网络代理配置，
+        http/https → requests.proxies，ws/wss → websocket-client 代理参数。
         """
         if endpoint_protocol(endpoint) is APIProtocol.WEBSOCKET:
-            return APIClient._call_websocket(endpoint, data, headers, timeout, meta)
+            return APIClient._call_websocket(endpoint, data, headers, timeout, meta,
+                                             proxy_type=proxy_type, proxy_url=proxy_url)
         else:
-            return APIClient._call_http(endpoint, method, headers, data, files, timeout)
+            return APIClient._call_http(endpoint, method, headers, data, files, timeout,
+                                        proxy_type=proxy_type, proxy_url=proxy_url)
 
     @staticmethod
-    def _call_http(endpoint, method='POST', headers=None, data=None, files=None, timeout=30):
+    def _call_http(endpoint, method='POST', headers=None, data=None, files=None, timeout=30,
+                   proxy_type=None, proxy_url=None):
         start_time = time.time()
         response_data = {
             "status_code": 0,
@@ -54,17 +65,23 @@ class APIClient:
             "error": None
         }
 
+        # INT-839：requests 代理注入（http/https 统一，凭据内嵌 URL）
+        proxies = None
+        full_proxy_url = build_proxy_url(proxy_type, proxy_url)
+        if full_proxy_url:
+            proxies = {'http': full_proxy_url, 'https': full_proxy_url}
+
         try:
             method = method.upper()
             if method == 'GET':
-                resp = requests.get(endpoint, params=data, headers=headers, timeout=timeout)
+                resp = requests.get(endpoint, params=data, headers=headers, timeout=timeout, proxies=proxies)
             elif method == 'POST':
                 if files:
-                    resp = requests.post(endpoint, files=files, data=data, headers=headers, timeout=timeout)
+                    resp = requests.post(endpoint, files=files, data=data, headers=headers, timeout=timeout, proxies=proxies)
                 else:
-                    resp = requests.post(endpoint, json=data, headers=headers, timeout=timeout)
+                    resp = requests.post(endpoint, json=data, headers=headers, timeout=timeout, proxies=proxies)
             else:
-                resp = requests.request(method, endpoint, json=data, headers=headers, timeout=timeout)
+                resp = requests.request(method, endpoint, json=data, headers=headers, timeout=timeout, proxies=proxies)
 
             response_data["latency"] = int((time.time() - start_time) * 1000)
             response_data["status_code"] = resp.status_code
@@ -84,7 +101,8 @@ class APIClient:
         return response_data
 
     @staticmethod
-    def _call_websocket(endpoint, data=None, headers=None, timeout=30, meta=None):
+    def _call_websocket(endpoint, data=None, headers=None, timeout=30, meta=None,
+                        proxy_type=None, proxy_url=None):
         if websocket is None:
             return {
                 "status_code": 500,
@@ -97,6 +115,9 @@ class APIClient:
         start_time = time.time()
         meta = meta or {}
 
+        # INT-839：websocket-client 代理参数（http_proxy_host/port + auth + proxy_type）
+        ws_proxy_kwargs = websocket_proxy_kwargs(proxy_type, proxy_url)
+
         all_responses = []
         last_json = {}
         error = None
@@ -106,7 +127,8 @@ class APIClient:
         ws = None
         while retry_count <= max_retries:
             try:
-                ws = websocket.create_connection(endpoint, timeout=timeout, header=headers)
+                ws = websocket.create_connection(endpoint, timeout=timeout, header=headers,
+                                                 **ws_proxy_kwargs)
 
                 if data:
                     if isinstance(data, (dict, list)):

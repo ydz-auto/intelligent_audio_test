@@ -211,6 +211,7 @@ message ListTasksRequest {
   bool cherry_pick = 14;  // INT-339：仅挑选合并容器任务（task_cherry_pick_relations 存在性判定，§5.4）
   string task_type = 15;  // INT-273：按派生任务类型过滤（api/e2e/mixed；用例级 device_type 派生口径，与 /tasks/stats type_counts 一致）
   bool stats = 16;  // INT-577：仅「挑选合并」页签（stats=true）计算合并容器统计块（merged ∪ cherry_pick 并集，total/whole/picked），否则 None
+  string visibility = 17;  // INT-466：可见性筛选（shared/private；空=全部）
 }
 message GetTaskDetailRequest {
   int32 task_id = 1;
@@ -489,6 +490,7 @@ message ListTestCasesRequest {
   // INT-539：按实验室过滤（含通用用例）。config JSONB 无 lab_id 的用例
   // 视为通用用例，任意实验室下均可见；有值则须属于本集合。
   repeated int32 lab_ids = 13;
+  string visibility = 14;  // INT-466：可见性筛选（shared/private；空=全部）
 }
 message GetTestCaseDetailRequest {
   string tc_id = 1;
@@ -1062,6 +1064,7 @@ message UpdateTestCaseGroupRequest {
   string name = 2;              // 新名称（可选，空则不更新）
   string description = 3;      // 新描述（可选，空则不更新）
   string algorithm_type = 4;   // 新算法类型（可选，空则不更新）
+  string visibility = 5;       // INT-466：新可见性（shared/private；空则不更新）
 }
 message DeleteTestCaseGroupRequest {
   string group_id = 1;
@@ -1080,7 +1083,7 @@ message TaskAggStatsRequest {
 }
 message TestCaseAggStatsRequest {
   string algorithm_type = 1;  // 可选
-  int32 group_id = 2;         // 可选
+  string group_id = 2;        // 可选，TestCaseGroup ID（UUID 字符串，INT-468：不得 int 强转）
   string group_by = 3;        // 可选，分组字段（如 algorithm_type / group_id）
   string test_type = 4;       // 可选，按用例类型过滤（api / e2e；test_type 列已废弃，按配置形态派生）
   string keyword = 5;         // 可选，按用例 id/name/description 模糊匹配（分组列表筛选）

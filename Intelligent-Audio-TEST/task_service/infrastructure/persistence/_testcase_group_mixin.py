@@ -5,7 +5,10 @@ TestCaseGroup 查询 / 创建 / 更新 / 软删除（含级联）/ 多维筛选�
 """
 from typing import Any, Dict, List, Optional
 
+from shared.infrastructure.user_context import get_current_user_id
 from shared.models.database import get_db_session
+from shared.infrastructure.visibility_filter import visible_condition
+from task_service.infrastructure.visibility_context import visibility_identity
 from task_service.infrastructure.persistence.models import TestCase, TestCaseGroup
 from task_service.infrastructure.persistence._testcase_repo_common import (
     _now,
@@ -27,12 +30,17 @@ class TestCaseGroupMixin:
         return session.query(TestCaseGroup).filter_by(id=group_id).first()
 
     def create_group(self, group_id: str, name: str, description: str = None) -> TestCaseGroup:
-        """创建分组（含 flush，未 commit）。"""
+        """创建分组（含 flush，未 commit）。
+
+        INT-423：created_by_user_id 从 x-user-id 上下文取操作人。
+        """
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         group = TestCaseGroup(
             id=group_id,
             name=name,
             description=description,
+            created_by_user_id=get_current_user_id(),
         )
         session.add(group)
         session.flush()
@@ -46,10 +54,17 @@ class TestCaseGroupMixin:
         多维筛选：algorithm_type / dimension_id / keyword
         其中 dimension_id / keyword 按用例级条件统计各分组下匹配的用例数，
         只返回含匹配用例的分组。
+        INT-423：私有分组对非 owner 不可见（共享 + 自己创建的私有行）。
         """
         session = get_db_session()
         try:
-            query = session.query(TestCaseGroup).filter(TestCaseGroup.deleted == False)  # noqa: E712
+            _vis_uid, _vis_admin = visibility_identity()
+            query = session.query(TestCaseGroup).filter(
+                TestCaseGroup.deleted == False,  # noqa: E712
+                visible_condition(
+                    TestCaseGroup.created_by_user_id, TestCaseGroup.visibility,
+                    _vis_uid, _vis_admin),
+            )
             if algorithm_type:
                 query = query.filter(TestCaseGroup.algorithm_type == algorithm_type)
 
@@ -73,8 +88,17 @@ class TestCaseGroupMixin:
             session.close()
 
     def _count_group_matched_cases(self, session, dimension_id, keyword) -> Dict[str, int]:
-        """按用例级筛选条件统计各分组下匹配用例数 {group_id: count}。"""
-        case_filters = [TestCase.deleted == False]  # noqa: E712
+        """按用例级筛选条件统计各分组下匹配用例数 {group_id: count}。
+
+        INT-423：私有用例对非 owner 不计数（与 query_testcases 同口径）。
+        """
+        from task_service.infrastructure.visibility_context import visibility_identity
+        _vis_uid, _vis_admin = visibility_identity()
+        case_filters = [
+            TestCase.deleted == False,  # noqa: E712
+            visible_condition(
+                TestCase.created_by_user_id, TestCase.visibility, _vis_uid, _vis_admin),
+        ]
         if dimension_id:
             case_filters.append(build_dim_id_filter(str(dimension_id)))
         if keyword:
@@ -92,15 +116,25 @@ class TestCaseGroupMixin:
         return {str(gid): count for gid, count in counts_query}
 
     def get_groups_by_ids(self, group_ids: list) -> list:
-        """按 ID 列表批量查询 TestCaseGroup（返回 dict 列表）。"""
+        """按 ID 列表批量查询 TestCaseGroup（返回 dict 列表）。
+
+        INT-423：私有分组对非 owner 不可见（共享 + 自己创建的私有行）。
+        """
         session = get_db_session()
         try:
             ids = [gid for gid in group_ids if gid]
             if not ids:
                 return []
+            _vis_uid, _vis_admin = visibility_identity()
             rows = (
                 session.query(TestCaseGroup)
-                .filter(TestCaseGroup.id.in_(ids), TestCaseGroup.deleted == False)  # noqa: E712
+                .filter(
+                    TestCaseGroup.id.in_(ids),
+                    TestCaseGroup.deleted == False,  # noqa: E712
+                    visible_condition(
+                        TestCaseGroup.created_by_user_id, TestCaseGroup.visibility,
+                        _vis_uid, _vis_admin),
+                )
                 .all()
             )
             return [self._group_to_dict(r) for r in rows]
@@ -108,15 +142,25 @@ class TestCaseGroupMixin:
             session.close()
 
     def get_groups_by_names(self, names: list) -> list:
-        """按名称列表批量查询 TestCaseGroup（返回 dict 列表）。"""
+        """按名称列表批量查询 TestCaseGroup（返回 dict 列表）。
+
+        INT-423：私有分组对非 owner 不可见。
+        """
         session = get_db_session()
         try:
             valid_names = [n for n in names if n]
             if not valid_names:
                 return []
+            _vis_uid, _vis_admin = visibility_identity()
             rows = (
                 session.query(TestCaseGroup)
-                .filter(TestCaseGroup.name.in_(valid_names), TestCaseGroup.deleted == False)  # noqa: E712
+                .filter(
+                    TestCaseGroup.name.in_(valid_names),
+                    TestCaseGroup.deleted == False,  # noqa: E712
+                    visible_condition(
+                        TestCaseGroup.created_by_user_id, TestCaseGroup.visibility,
+                        _vis_uid, _vis_admin),
+                )
                 .all()
             )
             return [self._group_to_dict(r) for r in rows]
@@ -131,21 +175,34 @@ class TestCaseGroupMixin:
             'name': r.name,
             'description': getattr(r, 'description', ''),
             'algorithm_type': getattr(r, 'algorithm_type', ''),
+            # INT-423/466：资源可见性与归属人（网关路由层 owner 校验 / 前端徽标）
+            'visibility': getattr(r, 'visibility', 'shared'),
+            'created_by_user_id': getattr(r, 'created_by_user_id', None),
         }
 
     def get_group_by_id_as_dict(self, group_id: str) -> Optional[dict]:
-        """按 ID 查询单个 TestCaseGroup（返回 dict 或 None）。"""
+        """按 ID 查询单个 TestCaseGroup（返回 dict 或 None）。
+
+        INT-423：私有分组对非 owner 视为不存在（返回 None → 404）。
+        """
+        from task_service.infrastructure.visibility_context import is_visible
         session = get_db_session()
         try:
             r = session.get(TestCaseGroup, group_id)
             if r is None or getattr(r, 'deleted', False):
+                return None
+            if not is_visible(r.created_by_user_id, r.visibility):
                 return None
             return self._group_to_dict(r)
         finally:
             session.close()
 
     def get_group_by_name_as_dict(self, group_name: str) -> Optional[dict]:
-        """按名称查询单个 TestCaseGroup（返回 dict 或 None）。"""
+        """按名称查询单个 TestCaseGroup（返回 dict 或 None）。
+
+        INT-423：私有分组对非 owner 视为不存在（返回 None → 404）。
+        """
+        from task_service.infrastructure.visibility_context import is_visible
         session = get_db_session()
         try:
             r = (
@@ -155,13 +212,19 @@ class TestCaseGroupMixin:
             )
             if r is None:
                 return None
+            if not is_visible(r.created_by_user_id, r.visibility):
+                return None
             return self._group_to_dict(r)
         finally:
             session.close()
 
     def create_group_and_commit(self, group_id: str, name: str, description: str = '',
                                 algorithm_type: str = '') -> dict:
-        """创建 TestCaseGroup 并 commit（返回 dict）。"""
+        """创建 TestCaseGroup 并 commit（返回 dict）。
+
+        INT-423：created_by_user_id 从 x-user-id 上下文取操作人。
+        """
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         try:
             po = TestCaseGroup(
@@ -169,6 +232,7 @@ class TestCaseGroupMixin:
                 name=name,
                 description=description or '',
                 algorithm_type=algorithm_type or '',
+                created_by_user_id=get_current_user_id(),
             )
             session.add(po)
             session.commit()
@@ -181,17 +245,24 @@ class TestCaseGroupMixin:
 
     def update_group_and_commit(self, group_id: str, name: str = '',
                                 description: str = '',
-                                algorithm_type: str = '') -> dict:
+                                algorithm_type: str = '',
+                                visibility: str = None) -> dict:
         """更新 TestCaseGroup 并 commit（返回 dict）。
 
         若 name 非空且与当前不同，会先检查名称冲突。
         raise ValueError 当分组不存在或名称冲突时。
+        INT-423：私有分组非 owner 更新抛 VisibilityDenied（写操作 403 语义）。
+        visibility（INT-466）：None 不更新；非 None 时校验二值后落库。
         """
+        from shared.infrastructure.visibility_filter import check_visible
+        from task_service.infrastructure.visibility_context import visibility_identity
         session = get_db_session()
         try:
             r = session.get(TestCaseGroup, group_id)
             if r is None or getattr(r, 'deleted', False):
                 raise ValueError('未找到分组')
+            uid, is_admin = visibility_identity()
+            check_visible(r.created_by_user_id, r.visibility, uid, is_admin)
 
             self._check_group_name_conflict(session, r, name)
 
@@ -199,7 +270,13 @@ class TestCaseGroupMixin:
                 r.description = description
             if algorithm_type:
                 r.algorithm_type = algorithm_type
+            if visibility is not None:
+                from shared.models.common_enums import Visibility
+                if visibility not in (Visibility.SHARED.value, Visibility.PRIVATE.value):
+                    raise ValueError('visibility 仅支持 shared/private')
+                r.visibility = visibility
 
+            r.updated_by_user_id = get_current_user_id()
             r.updated_at = _now()
             session.commit()
             return self._group_to_dict(r)
@@ -228,16 +305,25 @@ class TestCaseGroupMixin:
         group.name = name
 
     def delete_group_and_commit(self, group_id: str, cascade: bool = False) -> dict:
-        """软删除 TestCaseGroup 并 commit（cascade=True 时同时软删分组下所有 TestCase）。"""
+        """软删除 TestCaseGroup 并 commit（cascade=True 时同时软删分组下所有 TestCase）。
+
+        INT-423：私有分组非 owner 删除抛 VisibilityDenied（写操作 403 语义）。
+        """
+        from shared.infrastructure.visibility_filter import check_visible
+        from task_service.infrastructure.visibility_context import visibility_identity
         session = get_db_session()
         try:
             r = session.get(TestCaseGroup, group_id)
             if r is None or getattr(r, 'deleted', False):
                 raise ValueError('未找到分组')
+            uid, is_admin = visibility_identity()
+            check_visible(r.created_by_user_id, r.visibility, uid, is_admin)
 
             now = _now()
+            operator_id = get_current_user_id()
             r.deleted = True
             r.deleted_at = now
+            r.deleted_by_user_id = operator_id
             r.updated_at = now
 
             if cascade:
@@ -247,6 +333,7 @@ class TestCaseGroupMixin:
                 ).update({
                     'deleted': True,
                     'deleted_at': now,
+                    'deleted_by_user_id': operator_id,
                     'updated_at': now,
                 }, synchronize_session=False)
 

@@ -4,7 +4,7 @@ RBAC 种子数据初始化
 ===================================
 
 向 permissions / roles / role_permissions 表插入系统内置数据：
-  - 117 个权限点（permissions）
+  - 130 个权限点（permissions）
   - 5 个系统角色（roles: admin / tester / algo_engineer / device_admin / guest）
   - 超级通配权限 * → admin
   - tester / algo_engineer / device_admin / guest 各自的角色-权限映射
@@ -40,11 +40,11 @@ POSTGRES_URI = os.environ.get(
 
 
 # ========================================================================
-# 权限点定义（117 个）
+# 权限点定义（130 个）
 # ========================================================================
 
 PERMISSIONS = [
-    # 任务 (8)
+    # 任务 (16)
     ('task:read', '查看任务'),
     ('task:create', '创建任务'),
     ('task:update', '修改任务'),
@@ -59,6 +59,8 @@ PERMISSIONS = [
     ('task:cherry_pick', '挑选合并（购物车/下单三出口，INT-339）'),
     ('task.result.review', '人工复核测试结果（终态改判留痕，INT-340）'),
     ('task.result.ai_review', 'AI 复核测试结果（发起/驳回，INT-800）'),
+    ('task:share', '分享任务（数据可见性，INT-423）'),
+    ('task:read_execute_view', '查看任务执行只读视图（INT-449：仅读开放执行页）'),
     # 已发布任务 (4)
     ('published_task:read', '查看已发布任务'),
     ('published_task:execute', '执行已发布任务'),
@@ -72,6 +74,7 @@ PERMISSIONS = [
     ('testcase:copy', '复制测试用例'),
     ('testcase:preview', '预览测试用例'),
     ('testcase:import_export', '导入/导出测试用例'),
+    ('testcase:share', '分享测试用例（数据可见性，INT-423）'),
     # 音频 (6)
     ('audio:read', '查看音频'),
     ('audio:upload', '上传音频'),
@@ -79,6 +82,7 @@ PERMISSIONS = [
     ('audio:delete', '删除音频'),
     ('audio:convert', '音频转码'),
     ('audio:folder', '音频文件夹管理'),
+    ('audio:share', '分享音频（数据可见性，INT-423）'),
     # 被测设备 (5)
     ('device:read', '查看被测设备'),
     ('device:create', '创建被测设备'),
@@ -121,6 +125,7 @@ PERMISSIONS = [
     ('report:studio:edit', 'Report Studio 编辑文档'),
     ('report:studio:undo', 'Report Studio 版本恢复'),
     ('report:studio:export', 'Report Studio 导出作业'),
+    ('report:share', '分享报告（数据可见性，INT-423）'),
     # Benchmark 排行 (6)（INT-429：benchmark_bp.py 实际挂载码全量，冒号风格对齐现有编码）
     ('benchmark:ranking:read', '查看 Benchmark 排行/指标映射'),
     ('benchmark:ranking:compute', '触发 Benchmark 排行计算'),
@@ -137,6 +142,7 @@ PERMISSIONS = [
     ('evaluation:dim_manage', '维度 CRUD/批量/计算'),
     ('evaluation:category_manage', '评估分类 CRUD'),
     ('evaluation:import_export', '维度导入/导出'),
+    ('evaluation:share', '分享评估维度/分类（数据可见性，INT-423）'),
     # 算法配置 (5)
     ('algorithm:read', '查看算法配置'),
     ('algorithm:definition_manage', '算法定义 CRUD'),
@@ -148,11 +154,13 @@ PERMISSIONS = [
     ('group:create', '创建分组'),
     ('group:update', '修改分组/移动用例'),
     ('group:delete', '删除分组'),
+    ('group:share', '分享用例分组（数据可见性，INT-423）'),
     # 标签 (4)
     ('tag:read', '查看标签/分类'),
     ('tag:create', '创建标签/分类'),
     ('tag:update', '修改标签/分类'),
     ('tag:delete', '删除标签/分类'),
+    ('tag:share', '分享标签/分类（数据可见性，INT-423）'),
     # 日志 (3)
     ('log:read', '查看日志/统计/归档'),
     ('log:manage', '标记/刷新/清空/归档日志'),
@@ -214,13 +222,13 @@ TESTER_PERMS = [
     'task:read', 'task:create', 'task:update', 'task:delete', 'task:execute',
     'task:merge', 'task:batch', 'task:reextract', 'task:publish',
     'task:export', 'task:import', 'task:cherry_pick', 'task.result.review',
-    'task.result.ai_review',
+    'task.result.ai_review', 'task:share',
     'published_task:read', 'published_task:execute', 'published_task:version',
     'published_task:archive',
     'testcase:read', 'testcase:create', 'testcase:update', 'testcase:delete',
-    'testcase:copy', 'testcase:preview', 'testcase:import_export',
+    'testcase:copy', 'testcase:preview', 'testcase:import_export', 'testcase:share',
     'audio:read', 'audio:upload', 'audio:update', 'audio:delete',
-    'audio:convert', 'audio:folder',
+    'audio:convert', 'audio:folder', 'audio:share',
     'device:read',
     'api_config:read', 'api_config:create', 'api_config:update',
     'api_config:delete', 'api_config:test',
@@ -228,6 +236,7 @@ TESTER_PERMS = [
     'report:compare', 'report:download_log',
     # Report Studio（INT-673：tester 建/编/恢复/导出草稿）
     'report:studio:create', 'report:studio:edit', 'report:studio:undo', 'report:studio:export',
+    'report:share',
     # Benchmark（INT-429：tester 可读排行榜并参与排行生命周期）
     'benchmark:ranking:read', 'benchmark:ranking:compute',
     'benchmark:baseline:read', 'benchmark:baseline:write',
@@ -235,10 +244,10 @@ TESTER_PERMS = [
     # Benchmark 报告（INT-481：tester 可查看/发布）
     'benchmark:report:read', 'benchmark:report:publish',
     'evaluation:read', 'evaluation:execute', 'evaluation:dim_manage',
-    'evaluation:category_manage', 'evaluation:import_export',
+    'evaluation:category_manage', 'evaluation:import_export', 'evaluation:share',
     'algorithm:read', 'algorithm:case_param_manage',
-    'group:read', 'group:create', 'group:update', 'group:delete',
-    'tag:read', 'tag:create', 'tag:update', 'tag:delete',
+    'group:read', 'group:create', 'group:update', 'group:delete', 'group:share',
+    'tag:read', 'tag:create', 'tag:update', 'tag:delete', 'tag:share',
     'log:read', 'log:manage', 'log:websocket',
     'home:read', 'home:refresh',
     'status:read', 'option:read', 'option:write',
@@ -249,6 +258,8 @@ TESTER_PERMS = [
 # algo_engineer 权限
 ALGO_ENGINEER_PERMS = [
     'task:read',
+    # INT-449：任务执行页只读观察（E2ETest/APITest/任务详情结构/流程/只读数据可见，按钮/控制/提交隐藏）
+    'task:read_execute_view',
     'published_task:read',
     'testcase:read',
     'audio:read',
@@ -257,6 +268,7 @@ ALGO_ENGINEER_PERMS = [
     'report:compare', 'report:download_log',
     # Report Studio（INT-673：algo_engineer 质量负责人建/编/恢复/导出草稿）
     'report:studio:create', 'report:studio:edit', 'report:studio:undo', 'report:studio:export',
+    'report:share',
     # Benchmark（INT-429：质量负责人趋势分析/排行参与）
     'benchmark:ranking:read', 'benchmark:ranking:compute',
     'benchmark:baseline:read', 'benchmark:baseline:write',
@@ -264,7 +276,7 @@ ALGO_ENGINEER_PERMS = [
     # Benchmark 报告（INT-481：质量负责人可查看/发布）
     'benchmark:report:read', 'benchmark:report:publish',
     'evaluation:read', 'evaluation:dim_manage', 'evaluation:category_manage',
-    'evaluation:import_export',
+    'evaluation:import_export', 'evaluation:share',
     'algorithm:read', 'algorithm:definition_manage', 'algorithm:group_manage',
     'algorithm:param_manage', 'algorithm:case_param_manage',
     'group:read',

@@ -22,6 +22,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 
 from shared.models.common_enums import RealtimeFrameType
+from api_test_service.infrastructure.adapters.proxy_utils import websocket_proxy_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -62,12 +63,17 @@ class RealtimeWSClient:
     def __init__(self, url: str, headers: Optional[Dict[str, str]] = None,
                  vendor: str = 'openai',
                  event_listener: Optional[Callable[[dict], None]] = None,
-                 chunk_duration_ms: int = 100):
+                 chunk_duration_ms: int = 100,
+                 proxy_type: Optional[str] = None,
+                 proxy_url: Optional[str] = None):
         self._url = url
         self._headers = headers or {}
         self._vendor = vendor
         self._listener = event_listener
         self._chunk_duration_ms = chunk_duration_ms
+        # INT-839：被测 API 网络代理（websocket-client 代理参数注入）
+        self._proxy_type = proxy_type
+        self._proxy_url = proxy_url
 
         self._ws = None
         self._event_queue: queue.Queue = queue.Queue()
@@ -92,12 +98,22 @@ class RealtimeWSClient:
         self._speech_started_ts: Optional[float] = None
 
     # ── 连接生命周期 ──
-    def connect(self) -> bool:
-        """建立 WebSocket 连接并启动后台接收线程"""
+    def connect(self, proxy_type: Optional[str] = None,
+                proxy_url: Optional[str] = None) -> bool:
+        """建立 WebSocket 连接并启动后台接收线程
+
+        proxy_type / proxy_url（INT-839）：显式入参优先于 __init__ 注入值；
+        websocket-client 代理参数经 proxy_utils 分解（与 _call_websocket 同套）。
+        """
         try:
             import websocket  # websocket-client
+            ws_proxy_kwargs = websocket_proxy_kwargs(
+                proxy_type if proxy_type is not None else self._proxy_type,
+                proxy_url if proxy_url is not None else self._proxy_url,
+            )
             self._ws = websocket.create_connection(
-                self._url, header=self._headers, timeout=10, enable_multithread=True)
+                self._url, header=self._headers, timeout=10, enable_multithread=True,
+                **ws_proxy_kwargs)
             self._connected = True
         except Exception as e:
             logger.error(f"Realtime WS 连接失败 url={self._url}: {e}")
