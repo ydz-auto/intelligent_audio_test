@@ -1,7 +1,7 @@
 /**
- * 用例执行详情模态窗「AI 复核」入口测试（INT-1064，10 规范 §5.2 注记 3）。
- * 分节①区头右侧「AI 复核」钮：终态任务 + fetchCaseResults 有执行结果 + task.result.ai_review
- * 权限 → 打开灵犀Agent 复核会话（复用 features/ai-review/ai-review-session-dialog）。
+ * 用例执行详情模态窗「人工复核 / AI 复核」入口测试（INT-1064/INT-1066，10 规范 §5.2 注记 3）。
+ * 分节①区头右侧「人工复核」/「AI 复核」两钮：终态任务 + fetchCaseResults 有执行结果 + 对应权限
+ * （task.result.review → 19 §3.2 弹窗；task.result.ai_review → 19 §5 灵犀Agent 复核会话）。
  * 无执行结果/非终态/无权限 → 入口隐藏。
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -28,10 +28,14 @@ vi.mock('@/infrastructure/api/tasks-list-api', () => ({
 vi.mock('@/infrastructure/api/reviewApi', () => ({
   fetchCaseResults: fetchResultsMock,
 }))
-// 复核会话本体已由浏览器实测 + 关联用例入口验证；本测试聚焦入口接线，用轻量桩
+// 复核会话/弹窗本体已由浏览器实测 + 关联用例入口验证；本测试聚焦入口接线，用轻量桩
 vi.mock('@/features/ai-review/ai-review-session-dialog', () => ({
   AiReviewSessionDialog: ({ open, caseId }: { open: boolean; caseId: string }) =>
     open ? <div data-testid='ai-review-session-dialog' data-case={caseId} /> : null,
+}))
+vi.mock('@/features/tasks/components/manual-review-dialog', () => ({
+  ManualReviewDialog: ({ open, caseName }: { open: boolean; caseName?: string }) =>
+    open ? <div data-testid='manual-review-dialog' data-case={caseName} /> : null,
 }))
 
 const detail = {
@@ -75,7 +79,7 @@ function renderDialog() {
   )
 }
 
-describe('CaseDetailDialog 分节①「AI 复核」入口（INT-1064）', () => {
+describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1064/INT-1066）', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     fetchDetailMock.mockResolvedValue(detail)
@@ -92,6 +96,17 @@ describe('CaseDetailDialog 分节①「AI 复核」入口（INT-1064）', () => 
     })
   })
 
+  it('终态任务 + 有执行结果 + 权限 → 分节①区头右侧「人工复核」钮显，点击打开复核弹窗', async () => {
+    fetchTaskMock.mockResolvedValue(taskTerminal)
+    renderDialog()
+    const btn = await screen.findByRole('button', { name: '人工复核' })
+    expect(btn).toBeInTheDocument()
+    await userEvent.click(btn)
+    await waitFor(() => {
+      expect(screen.getByTestId('manual-review-dialog')).toBeInTheDocument()
+    })
+  })
+
   it('终态任务 + 有执行结果 + 权限 → 分节①区头右侧「AI 复核」钮显，点击打开复核会话', async () => {
     fetchTaskMock.mockResolvedValue(taskTerminal)
     renderDialog()
@@ -103,21 +118,43 @@ describe('CaseDetailDialog 分节①「AI 复核」入口（INT-1064）', () => 
     })
   })
 
-  it('非终态任务 → 入口隐藏', async () => {
+  it('非终态任务 → 人工复核/AI 复核入口均隐藏', async () => {
     fetchTaskMock.mockResolvedValue({ ...taskTerminal, status: 'running' })
     renderDialog()
     await waitFor(() => {
       expect(fetchResultsMock).toHaveBeenCalled()
     })
+    expect(screen.queryByRole('button', { name: '人工复核' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'AI 复核' })).not.toBeInTheDocument()
   })
 
-  it('无执行结果 → 入口隐藏', async () => {
+  it('无执行结果 → 人工复核/AI 复核入口均隐藏', async () => {
     fetchTaskMock.mockResolvedValue(taskTerminal)
     fetchResultsMock.mockResolvedValue({ ...caseResults, results: [] })
     renderDialog()
     await waitFor(() => {
-      expect(screen.queryByRole('button', { name: 'AI 复核' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: '人工复核' })).not.toBeInTheDocument()
     })
+    expect(screen.queryByRole('button', { name: 'AI 复核' })).not.toBeInTheDocument()
+  })
+
+  it('无 task.result.review 权限 → 人工复核入口隐藏、AI 复核仍显', async () => {
+    fetchTaskMock.mockResolvedValue(taskTerminal)
+    useAuthStore.setState({
+      user: {
+        id: '1',
+        username: 'algo_engineer',
+        displayName: 'algo_engineer',
+        roleName: 'algo_engineer',
+        permissions: ['task.result.ai_review'],
+      },
+    })
+    renderDialog()
+    await waitFor(() => {
+      expect(fetchResultsMock).toHaveBeenCalled()
+    })
+    expect(screen.queryByRole('button', { name: '人工复核' })).not.toBeInTheDocument()
+    const aiBtn = await screen.findByRole('button', { name: 'AI 复核' })
+    expect(aiBtn).toBeInTheDocument()
   })
 })

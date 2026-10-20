@@ -6,8 +6,12 @@
  * ASR/翻译参考文本块 + 结果音频列表（试听→INT-356 弹窗复用）；
  * 分节②执行日志——「加载更多日志」+ 等宽容器 + 分页 100 条/页。
  * 数据源 GET /tasks/{taskId}/cases/{caseId}/detail + /results + GET /logs?task_id&test_case_id。
+ * 复核入口（INT-1055/INT-1066，10 §5.2 注记 3）：分节①区头右侧「人工复核」/「AI 复核」两钮
+ * （终态任务 + fetchCaseResults 有执行结果时显；无执行结果不开放）——人工复核 → 19 §3.2 弹窗
+ * （task.result.review）；AI 复核 → 19 §5 灵犀Agent 复核会话（task.result.ai_review，可追问）。
+ * 接线：任务详情路由页（09 §4.4 onCaseSelect）与测试执行步骤四共用本组件。
  */
-import { Clipboard, ListChecks, Play, ScrollText, Sparkles } from 'lucide-react'
+import { Clipboard, ClipboardCheck, ListChecks, Play, ScrollText, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -29,6 +33,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import { AudioPlayerModal } from '@/features/report-view/components/case-report-detail/audio-player-modal'
 import { AiReviewSessionDialog } from '@/features/ai-review/ai-review-session-dialog'
+import { ManualReviewDialog } from '@/features/tasks/components/manual-review-dialog'
 import { cn } from '@/lib/utils'
 
 interface CaseDetailDialogProps {
@@ -43,6 +48,7 @@ const LOG_PER_PAGE = 100
 export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDetailDialogProps) {
   const [page, setPage] = useState(1)
   const [playingAudio, setPlayingAudio] = useState<string | null>(null)
+  const [manualReviewOpen, setManualReviewOpen] = useState(false)
   const [aiReviewOpen, setAiReviewOpen] = useState(false)
   const { hasPermission } = usePermissions()
 
@@ -78,7 +84,10 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
     taskQuery.data?.status ?? ''
   )
   const hasCaseResults = (resultsQuery.data?.results.length ?? 0) > 0
-  // 复核按钮位置以 10 §5.2「分节①区头右侧」收口（注记 3）：终态任务 + 有执行结果 + AI 复核权限
+  // 复核按钮位置以 10 §5.2「分节①区头右侧」收口（注记 3）：终态任务 + 有执行结果 + 权限
+  // 人工复核（task.result.review）→ 19 §3.2 弹窗；AI 复核（task.result.ai_review）→ 19 §5 会话
+  const canManualReview =
+    taskTerminal && hasCaseResults && hasPermission('task.result.review')
   const canAiReview =
     taskTerminal && hasCaseResults && hasPermission('task.result.ai_review')
 
@@ -155,6 +164,18 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
                   <ListChecks aria-hidden='true' className='text-muted-foreground size-4' />
                   执行结果与指标
                 </h4>
+                {canManualReview && (
+                  <Button
+                    variant='ghost'
+                    size='sm'
+                    className='text-muted-foreground h-7 gap-1 text-xs'
+                    onClick={() => setManualReviewOpen(true)}
+                    title='人工复核（改判执行/评估状态 + 备注必填留痕）'
+                  >
+                    <ClipboardCheck aria-hidden='true' className='size-3' />
+                    人工复核
+                  </Button>
+                )}
                 {canAiReview && (
                   <Button
                     variant='ghost'
@@ -340,6 +361,17 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
             ? { audio_id: playingAudio, audio_name: playingAudio, audio_type: 'result' }
             : undefined
         }
+      />
+
+      {/* 分节①区头「人工复核」入口（10 §5.2）→ 19 §3.2 复核弹窗（结果区真实结果行，无执行结果不开放） */}
+      <ManualReviewDialog
+        open={manualReviewOpen}
+        onOpenChange={setManualReviewOpen}
+        taskId={taskId}
+        taskName={taskQuery.data?.name}
+        caseName={detail?.name}
+        results={resultsQuery.data?.results ?? []}
+        evaluationStatus={detail?.evaluationStatus}
       />
 
       {/* 分节①区头「AI 复核」入口（10 §5.2）→ 灵犀Agent 复核会话（19 §5，可追问） */}
