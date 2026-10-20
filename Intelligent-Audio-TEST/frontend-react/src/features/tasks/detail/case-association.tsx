@@ -97,6 +97,129 @@ interface ReviewTarget {
   preset?: { evaluationStatus?: string; comment?: string }
 }
 
+/**
+ * 用例卡（照 11_用例域 case-card 卡片流形态，任务域关联用例统一口径，INT-1033）：
+ * 勾选框 + 名称（点击开用例详情弹窗）+ 分组名 → 执行/评估徽章 + 「人工复核」Badge →
+ * 耗时/轮次 → 底栏 人工复核/AI复核/移除用例。平铺（卡片网格）与标签/分组（组内卡片）共用。
+ */
+function TaskCaseCard({
+  c,
+  selected,
+  onToggle,
+  onCaseSelect,
+  onRemove,
+  canReview,
+  canAiReview,
+  isTerminal,
+  reviewLoading,
+  onReview,
+  onAiReview,
+}: {
+  c: TaskCaseBrief
+  selected: boolean
+  onToggle: (checked: boolean) => void
+  onCaseSelect?: (caseId: string) => void
+  onRemove: () => void
+  canReview: boolean
+  canAiReview: boolean
+  isTerminal: boolean
+  reviewLoading: boolean
+  onReview: () => void
+  onAiReview: () => void
+}) {
+  return (
+    <div
+      data-state={selected ? 'selected' : undefined}
+      className={cn(
+        'bg-card ring-foreground/10 rounded-xl ring-1 p-3 transition-colors',
+        selected && 'bg-accent/40 ring-primary/30'
+      )}
+    >
+      <div className='flex items-start justify-between gap-2'>
+        <div className='flex min-w-0 items-start gap-2'>
+          <Checkbox
+            checked={selected}
+            onCheckedChange={onToggle}
+            aria-label={`选择 ${c.name}`}
+            className='mt-0.5'
+          />
+          <div className='min-w-0 flex-1'>
+            {onCaseSelect ? (
+              <button
+                type='button'
+                className='block max-w-full truncate text-left font-medium hover:text-primary'
+                title='查看用例详情'
+                onClick={() => onCaseSelect(c.case_id)}
+              >
+                {c.name}
+              </button>
+            ) : (
+              <span className='block truncate font-medium'>{c.name}</span>
+            )}
+            <span className='text-muted-foreground block truncate text-xs'>
+              {c.group_name ?? ''}
+            </span>
+          </div>
+        </div>
+        <Button
+          variant='ghost'
+          size='icon-sm'
+          className='text-destructive hover:text-destructive'
+          aria-label='移除用例'
+          onClick={onRemove}
+        >
+          <Trash2 aria-hidden='true' />
+        </Button>
+      </div>
+
+      <div className='mt-2 flex flex-wrap items-center gap-1.5'>
+        <CaseStatusBadge status={c.execution_status} />
+        {c.reviewed && <ReviewBadge />}
+        <CaseStatusBadge status={c.evaluation_status} />
+      </div>
+
+      <div className='text-muted-foreground mt-2 flex items-center gap-3 text-xs'>
+        <span className='tabular-nums'>{formatDuration(c.duration)}</span>
+        <span className='min-w-0 flex-1'>
+          <span className='font-mono tabular-nums'>第 {c.duration != null ? 2 : 1}/2 轮</span>
+          <Progress value={c.duration != null ? 50 : 0} size='xs' className='mt-1' />
+        </span>
+      </div>
+
+      <div className='mt-2 flex items-center justify-end gap-1 border-t pt-1.5'>
+        {/* INT-795：人工复核入口（终态任务 + task.result.review；§3.1） */}
+        {canReview && isTerminal && (
+          <Button
+            variant='ghost'
+            size='sm'
+            className='h-6 gap-1 px-1.5 text-xs'
+            disabled={reviewLoading}
+            onClick={onReview}
+            title='人工复核该用例结果'
+          >
+            <ClipboardCheck aria-hidden='true' className='size-3' />
+            人工复核
+          </Button>
+        )}
+        {/* INT-795：AI 复核入口（evaluation:execute；§5.2 待后端立项） */}
+        {canAiReview && isTerminal && (
+          <Button
+            variant='ghost'
+            size='sm'
+            className='text-muted-foreground h-6 gap-1 px-1.5 text-xs'
+            disabled={reviewLoading}
+            onClick={onAiReview}
+            title='AI 复核该用例结果（建议层，不直接修改统计）'
+          >
+            <Sparkles aria-hidden='true' className='size-3' />
+            AI 复核
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function CaseAssociation({
   detail,
   onCaseSelect,
@@ -133,6 +256,13 @@ export function CaseAssociation({
   // 标签分组（按用例 tags 首标签粗分）
   const tagGroups = filtered.reduce<Record<string, typeof filtered>>((acc, c) => {
     const key = c.tags[0] ?? '未分组'
+    acc[key] ??= []
+    acc[key].push(c)
+    return acc
+  }, {})
+  // 用例分组（按后端 group_name；无分组归「未分组」，INT-1033 对齐用例管理分组口径）
+  const groupGroups = filtered.reduce<Record<string, typeof filtered>>((acc, c) => {
+    const key = c.group_name ?? '未分组'
     acc[key] ??= []
     acc[key].push(c)
     return acc
@@ -245,6 +375,31 @@ export function CaseAssociation({
     setAiReviewTarget(null)
   }
 
+  /** 用例卡渲染（平铺卡片网格与标签/分组组内卡片共用，照 11_用例域 case-card 形态） */
+  const renderCaseCard = (c: TaskCaseBrief) => (
+    <TaskCaseCard
+      key={c.case_id}
+      c={c}
+      selected={selected.has(c.case_id)}
+      onToggle={(checked) => toggleRow(c.case_id, checked)}
+      onCaseSelect={onCaseSelect}
+      onRemove={() => {
+        toast.success('已移除用例（末例二次确认见 §5.9）')
+        setSelected((prev) => {
+          const next = new Set(prev)
+          next.delete(c.case_id)
+          return next
+        })
+      }}
+      canReview={canReview}
+      canAiReview={canAiReview}
+      isTerminal={isTerminal}
+      reviewLoading={reviewLoading}
+      onReview={() => openCaseReview(c)}
+      onAiReview={() => openAiReview(c)}
+    />
+  )
+
   return (
     <Card size='sm' className='gap-3 py-3'>
       <CardHeader className='px-4'>
@@ -348,142 +503,20 @@ export function CaseAssociation({
         ) : filtered.length === 0 ? (
           <p className='text-muted-foreground py-6 text-center text-sm'>暂无关联用例</p>
         ) : view === 'flat' ? (
-          <div className='overflow-x-auto'>
-            <table className='w-full min-w-[720px] text-[13px]'>
-              <thead>
-                <tr className='bg-[var(--table-header)] text-xs'>
-                  <th className='w-11 px-3 py-2'>
-                    <Checkbox
-                      checked={filtered.length > 0 && filtered.every((c) => selected.has(c.case_id))}
-                      aria-label='全选用例'
-                      onCheckedChange={(checked) =>
-                        setSelected(checked ? new Set(filtered.map((c) => c.case_id)) : new Set())
-                      }
-                    />
-                  </th>
-                  <th className='px-3 py-2 text-left font-medium'>用例名称</th>
-                  <th className='px-3 py-2 text-left font-medium'>执行状态</th>
-                  <th className='px-3 py-2 text-left font-medium'>评估状态</th>
-                  <th className='px-3 py-2 text-left font-medium'>耗时</th>
-                  <th className='px-3 py-2 text-left font-medium'>轮次</th>
-                  <th className='min-w-28 px-3 py-2 text-right font-medium'>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((c) => (
-                  <tr key={c.case_id} className='hover:bg-muted/40 border-border/60 border-b transition-colors'>
-                    <td className='px-3 py-2'>
-                      <Checkbox
-                        checked={selected.has(c.case_id)}
-                        onCheckedChange={(checked) => toggleRow(c.case_id, checked)}
-                        aria-label={`选择 ${c.name}`}
-                      />
-                    </td>
-                    <td className='max-w-56 px-3 py-2'>
-                      {onCaseSelect ? (
-                        <button
-                          type='button'
-                          className='block max-w-full truncate text-left font-medium hover:text-primary'
-                          title='查看用例详情'
-                          onClick={() => onCaseSelect(c.case_id)}
-                        >
-                          {c.name}
-                        </button>
-                      ) : (
-                        <span className='block truncate font-medium'>{c.name}</span>
-                      )}
-                      <span className='text-muted-foreground block truncate text-xs'>
-                        {c.group_name ?? ''}
-                      </span>
-                    </td>
-                    <td className='px-3 py-2'>
-                      <div className='flex flex-wrap items-center gap-1'>
-                        <CaseStatusBadge status={c.execution_status} />
-                        {c.reviewed && <ReviewBadge />}
-                      </div>
-                    </td>
-                    <td className='px-3 py-2'>
-                      <CaseStatusBadge status={c.evaluation_status} />
-                    </td>
-                    <td className='px-3 py-2 font-mono text-xs tabular-nums'>
-                      {formatDuration(c.duration)}
-                    </td>
-                    <td className='min-w-24 px-3 py-2'>
-                      <div className='font-mono text-xs tabular-nums'>
-                        第 {c.duration != null ? 2 : 1}/2 轮
-                      </div>
-                      <Progress value={c.duration != null ? 50 : 0} size='xs' className='mt-1' />
-                    </td>
-                    <td className='px-3 py-2 text-right'>
-                      <div className='flex items-center justify-end gap-1'>
-                        {/* INT-795：人工复核入口（终态任务 + task.result.review；§3.1） */}
-                        {canReview && isTerminal && (
-                          <Button
-                            variant='ghost'
-                            size='sm'
-                            className='h-6 gap-1 px-1.5 text-xs'
-                            disabled={reviewLoading}
-                            onClick={() => openCaseReview(c)}
-                            title='人工复核该用例结果'
-                          >
-                            <ClipboardCheck aria-hidden='true' className='size-3' />
-                            人工复核
-                          </Button>
-                        )}
-                        {/* INT-795：AI 复核入口（evaluation:execute；§5.2 待后端立项） */}
-                        {canAiReview && isTerminal && (
-                          <Button
-                            variant='ghost'
-                            size='sm'
-                            className='text-muted-foreground h-6 gap-1 px-1.5 text-xs'
-                            disabled={reviewLoading}
-                            onClick={() => openAiReview(c)}
-                            title='AI 复核该用例结果（建议层，不直接修改统计）'
-                          >
-                            <Sparkles aria-hidden='true' className='size-3' />
-                            AI 复核
-                          </Button>
-                        )}
-                        <Button
-                          variant='ghost'
-                          size='icon-sm'
-                          className='text-destructive hover:text-destructive'
-                          aria-label='移除用例'
-                          onClick={() => {
-                            toast.success('已移除用例（末例二次确认见 §5.9）')
-                            setSelected((prev) => {
-                              const next = new Set(prev)
-                              next.delete(c.case_id)
-                              return next
-                            })
-                          }}
-                        >
-                          <Trash2 aria-hidden='true' />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className='grid gap-2 md:grid-cols-2 xl:grid-cols-3'>
+            {filtered.map(renderCaseCard)}
           </div>
         ) : (
           <div className='flex flex-col gap-2'>
-            {Object.entries(tagGroups).map(([group, rows]) => (
+            {Object.entries(view === 'group' ? groupGroups : tagGroups).map(([group, rows]) => (
               <Collapsible key={group} className='rounded-lg border'>
                 <CollapsibleTrigger className='hover:bg-muted/40 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors'>
                   {group}
                   <Badge className='rounded-sm px-1 font-normal'>{rows.length}</Badge>
                 </CollapsibleTrigger>
                 <CollapsibleContent className='px-3 pb-2'>
-                  <div className='flex flex-col'>
-                    {rows.map((c) => (
-                      <div key={c.case_id} className='flex items-center gap-2 py-1.5 text-xs'>
-                        <span className='min-w-0 flex-1 truncate'>{c.name}</span>
-                        <CaseStatusBadge status={c.execution_status} />
-                        {c.reviewed && <ReviewBadge />}
-                      </div>
-                    ))}
+                  <div className='grid gap-2 md:grid-cols-2'>
+                    {rows.map(renderCaseCard)}
                   </div>
                 </CollapsibleContent>
               </Collapsible>

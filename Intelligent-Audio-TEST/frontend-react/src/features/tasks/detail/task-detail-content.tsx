@@ -74,26 +74,34 @@ export function TaskDetailContent({
 
   const detail = detailQuery.data
   if (detailQuery.isError) {
-    // 详情接口失败（如后端 TaskCaseBrief 校验 422）→ 错误态 + 重试，不渲染空白
+    // 详情接口失败（如后端 TaskCaseBrief 校验 422）→ 错误态 + 重试，不渲染空白：
+    // 详情卡以 Empty 提示并给重试，实时日志（独立 /logs 数据源）仍正常渲染（INT-1033）
     return (
-      <Empty className='border-dashed rounded-xl border px-6 py-12'>
-        <EmptyHeader>
-          <EmptyMedia variant='icon'>
-            <RefreshCw aria-hidden='true' className='size-4' />
-          </EmptyMedia>
-          <EmptyTitle>任务详情加载失败</EmptyTitle>
-          <EmptyDescription>
-            {detailQuery.error instanceof Error
-              ? detailQuery.error.message
-              : '请稍后重试或联系管理员'}
-          </EmptyDescription>
-          <EmptyContent>
-            <Button variant='outline' size='sm' onClick={() => detailQuery.refetch()}>
-              重试
-            </Button>
-          </EmptyContent>
-        </EmptyHeader>
-      </Empty>
+      <div className='flex flex-col gap-4'>
+        <Empty className='border-dashed rounded-xl border px-6 py-12'>
+          <EmptyHeader>
+            <EmptyMedia variant='icon'>
+              <RefreshCw aria-hidden='true' className='size-4' />
+            </EmptyMedia>
+            <EmptyTitle>任务详情加载失败</EmptyTitle>
+            <EmptyDescription>
+              {detailQuery.error instanceof Error
+                ? detailQuery.error.message
+                : '请稍后重试或联系管理员'}
+            </EmptyDescription>
+            <EmptyContent>
+              <Button variant='outline' size='sm' onClick={() => detailQuery.refetch()}>
+                重试
+              </Button>
+            </EmptyContent>
+          </EmptyHeader>
+        </Empty>
+        <RealtimeLogs
+          taskId={taskId}
+          executionMode={mode === 'execution'}
+          hasRealtimeDevice={false}
+        />
+      </div>
     )
   }
   if (!detail) return null

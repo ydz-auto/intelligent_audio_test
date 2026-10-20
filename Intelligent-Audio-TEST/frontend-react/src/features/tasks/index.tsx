@@ -11,6 +11,7 @@ import { ChartLine, FileDown, Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
+import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
 import { useTasksList, type TaskListFilters } from '@/application/tasks/use-tasks-list'
 import { useCherryPickContainers } from '@/application/tasks/cherry-pick/use-cherry-pick-containers'
 import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
@@ -42,6 +43,7 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
   const { hasPermission } = usePermissions()
   const navigate = useNavigate()
   const algorithmId = useAlgorithmStore((s) => s.algorithmId)
+  const { options: algorithmOptions } = useAlgorithmOptions()
 
   const [filters, setFilters] = useState<TaskListFilters>({ page: 1, pageSize: 10 })
   const [quickViewTask, setQuickViewTask] = useState<TaskListItem | null>(null)
@@ -54,7 +56,13 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
     setFilters({ page: 1, pageSize: 10 })
   }, [tab])
 
-  const algorithmType = algorithmId ? algorithmId : null
+  // 全局算法不在真实 /algorithm/options 内时视为无效——不继承、按「全部算法」查询
+  // （对齐评估页 globalAlgorithmValid 口径；持久化陈旧算法值会让列表带着无效
+  // algorithm_type 请求而筛空，见 INT-1033）
+  const globalAlgorithmValid = Boolean(
+    algorithmId && algorithmOptions.some((o) => o.value === algorithmId)
+  )
+  const algorithmType = globalAlgorithmValid ? algorithmId : null
   const listQuery = useTasksList(tab, {
     ...filters,
     algorithmType: filters.algorithmType ?? algorithmType,
