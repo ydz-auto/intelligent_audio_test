@@ -48,20 +48,31 @@
         </div>
       </div>
 
-      <!-- INT-340：人工复核入口（结果列表多选批量复核，逐条留痕） -->
+      <!-- INT-340：人工复核入口（结果列表多选批量复核，逐条留痕）
+           INT-1069：AI 复核会话入口（灵犀Agent 对话式复核，可追问；建议层，不直接修改统计）。
+           无执行结果的用例不开放复核（本工具栏整体 v-if 于 detail.results 非空） -->
       <div v-if="detail.results && detail.results.length" class="review-toolbar" style="margin-top: 16px; padding: 12px 16px; background-color: var(--background-primary); border: 1px solid var(--border-color); border-radius: var(--radius-lg);">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
           <h5 style="margin: 0; font-size: 14px; font-weight: var(--font-weight-semibold); color: var(--text-primary);">
             <i class="fas fa-clipboard-check" style="color: var(--primary-color); margin-right: 6px;"></i>
             人工复核
           </h5>
-          <button
-            class="btn-review"
-            :disabled="selectedResultIds.length === 0"
-            @click="openReview(selectedResultIds)"
-          >
-            批量复核（{{ selectedResultIds.length }}）
-          </button>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <button
+              class="btn-review btn-review--ai"
+              :title="'AI 复核该用例结果（灵犀Agent 对话式复核，可追问；建议层，不直接修改统计）'"
+              @click="openAiReview"
+            >
+              <i class="fas fa-sparkles"></i> AI 复核
+            </button>
+            <button
+              class="btn-review"
+              :disabled="selectedResultIds.length === 0"
+              @click="openReview(selectedResultIds)"
+            >
+              批量复核（{{ selectedResultIds.length }}）
+            </button>
+          </div>
         </div>
         <div class="review-result-list" style="display: flex; flex-wrap: wrap; gap: 8px;">
           <label v-for="r in detail.results" :key="r.id" class="review-result-item" style="display: flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid var(--border-color); border-radius: var(--radius-tag); font-size: 12px; cursor: pointer;">
@@ -72,6 +83,18 @@
           </label>
         </div>
       </div>
+
+      <!-- INT-1069：AI 复核会话（灵犀Agent 对话式复核，可追问；建议层，采纳后落人工复核语义） -->
+      <AiReviewSessionDialog
+        v-if="aiReviewVisible"
+        :visible="true"
+        :task-id="props.taskId"
+        :case-id="String(props.caseId)"
+        :case-name="detail.caseName"
+        :results="aiReviewResults"
+        @close="aiReviewVisible = false"
+        @adopted="handleAiReviewAdopted"
+      />
 
       <!-- 执行结果与指标 - 有任何数据时才显示 -->
       <div v-if="hasAnyResultData" class="results-section" style="margin-top: 24px; background-color: var(--background-primary); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 20px; border: 1px solid var(--border-color);">
@@ -155,6 +178,8 @@ import { useModalControl, MODAL_TYPES } from '../../../composables/modal/useModa
 import { useNotification } from '../../../composables/modal/useNotification'
 import TestCaseReportDetail from '../misc/TestCaseReportDetail.vue'
 import CaseIdBadge from '../CaseIdBadge.vue'
+// INT-1069：AI 复核会话（灵犀Agent 对话式复核，可追问；建议层，不直接修改统计）
+import AiReviewSessionDialog from '../../ai-review/AiReviewSessionDialog.vue'
 import { ExecutionStatus, EvaluationStatus } from '@/domain/enums'
 
 const props = defineProps({
@@ -211,6 +236,36 @@ const openReview = async (resultIds) => {
     console.error('人工复核失败:', err)
     notification.error('人工复核提交失败，请稍后重试')
   }
+}
+
+// INT-1069：AI 复核会话（灵犀Agent 对话式复核，可追问；建议层，不直接修改统计）
+const aiReviewVisible = ref(false)
+
+/** 复核对象（设备×结果）→ AI 复核会话结果行（真实数据，随执行详情接口返回） */
+const aiReviewResults = computed(() =>
+  (detail.value?.results ?? []).map(r => ({
+    id: r.id,
+    deviceName: r.deviceName ?? r.deviceId ?? null,
+    apiName: r.apiName ?? null,
+    executionStatus: r.executionStatus ?? null,
+    evaluationStatus: r.evaluationStatus ?? null,
+    reviewed: Boolean(r.reviewed),
+    dimensions: (r.dimensions ?? []).map(d => ({
+      name: d.name,
+      score: d.score ?? d.value,
+      reasoning: d.reasoning ?? undefined,
+    })),
+  }))
+)
+
+const openAiReview = () => {
+  aiReviewVisible.value = true
+}
+
+/** AI 复核结论采纳落位成功 → 关闭会话并刷新详情（复核标记/统计随任务详情接口更新） */
+const handleAiReviewAdopted = async () => {
+  aiReviewVisible.value = false
+  await fetchDetail()
 }
 
 const loading = ref(true)
@@ -571,6 +626,16 @@ onMounted(() => {
 .btn-review:disabled{
   opacity: 0.5;
   cursor: not-allowed;
+}
+/* INT-1069：AI 复核会话入口（描边次要形态，区别于批量复核主按钮） */
+.btn-review--ai{
+  background: transparent;
+  border: 1px solid var(--primary-color);
+  color: var(--primary-color);
+}
+.btn-review--ai:hover{
+  background: var(--primary-color);
+  color: white;
 }
 .status-pill{
   padding: 1px 6px;
