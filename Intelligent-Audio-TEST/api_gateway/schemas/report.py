@@ -280,7 +280,8 @@ class SecondaryCompareRequest(APIModel):
 
 
 class GetCaseAveragesRequest(APIModel):
-    task_id: int = Field(...)
+    task_id: Optional[int] = Field(None)
+    report_id: Optional[int] = Field(None)
     category: Optional[str] = Field(None)
     tags: Optional[List[str]] = Field(None)
     categories: Optional[List[str]] = Field(None)

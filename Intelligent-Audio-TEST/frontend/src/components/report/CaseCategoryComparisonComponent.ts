@@ -14,7 +14,7 @@ import type {
 import { ref, computed, watch, type Ref } from 'vue'
 import { reportsPort } from '@/composables/report/reportsPort'
 import { useCollapse, useMetricCollapse, useTableRefs, useDisplayTypes, useSaveSummary, useResourceHeaders, chartColors, chartBorderColors, generateDistributionChartData, toggle as toggleSelection, usePaginatedSelection } from './shared/useReportShared'
-import { extractInitialMetricData, computeMetricDataFromCases, createCategoryChartData, createCategoryMetricValueGetters } from './caseCategoryComparisonHelpers'
+import { extractInitialMetricData, createCategoryChartData, createCategoryMetricValueGetters } from './caseCategoryComparisonHelpers'
 import { createResourceLabelGetter } from './caseTagResourceHelpers'
 import { usePagination } from '../../composables/usePagination'
 
@@ -298,22 +298,15 @@ export function useCaseCategoryComparison(props: CaseCategoryComparisonProps) {
 
       const reportIdValue = report?.id
       if (reportIdValue) {
-        const body = {
-          page: 1,
-          perPage: 5000,
+        // 对比/二次对比报告：走后端聚合（reportId → 源任务集合 → 策略聚合，
+        // INT-1059 对齐 0c6b2028a），不再前端手写聚合
+        const result = await reportsPort.getCaseAveragesByFilters(reportIdValue, {
           tags: normalizedTags,
           includeUntagged,
-          category: (selectedCategories.value || []).length === 1 ? selectedCategories.value[0] : null
-        }
+          categories: selectedCategories.value
+        }, {}, true)
 
-        const res = await reportsPort.searchCases(reportIdValue, body)
-        const cases = res?.items || []
-        metricData.value = computeMetricDataFromCases(cases, {
-          selectedCategories,
-          selectedTags,
-          allAvailableCategories,
-          allAvailableTags
-        })
+        metricData.value = extractInitialMetricData(result)
         return
       }
     } catch (error) {

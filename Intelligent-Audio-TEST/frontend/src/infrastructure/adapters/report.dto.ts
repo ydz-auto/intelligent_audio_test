@@ -191,6 +191,18 @@ export function toGetCaseAveragesDto(
 ): GetCaseAveragesDto {
   return {
     task_id: taskId,
+    ...toGetCaseAveragesFilterDto(filters),
+  }
+}
+
+/** 用例平均值查询筛选字段（reportId 分支复用，INT-1059 对齐 0c6b2028a） */
+export function toGetCaseAveragesFilterDto(filters: {
+  category?: string | null
+  tags?: string[]
+  categories?: string[]
+  includeUntagged?: boolean | null
+} = {}): Omit<GetCaseAveragesDto, 'task_id' | 'report_id'> {
+  return {
     ...(filters.category !== undefined ? { category: filters.category } : {}),
     ...(filters.tags !== undefined ? { tags: filters.tags } : {}),
     ...(filters.categories !== undefined ? { categories: filters.categories } : {}),

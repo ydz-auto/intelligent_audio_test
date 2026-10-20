@@ -398,7 +398,8 @@ export interface ReportExportDto {
 
 /** 用例平均值查询请求体（GetCaseAveragesRequest） */
 export interface GetCaseAveragesDto {
-  task_id: string | number
+  task_id?: string | number
+  report_id?: string | number
   category?: string | null
   tags?: string[]
   categories?: string[]

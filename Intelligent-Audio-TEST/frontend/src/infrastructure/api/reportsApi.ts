@@ -4,6 +4,7 @@
  */
 import type { PaginatedResult } from '../../domain';
 import { request, apiBaseUrl, type RequestOptions } from '../http/client';
+import { camelizeKeys } from '../../utils/keyTransform';
 import {
   toReport,
   toReportListData,
@@ -15,6 +16,7 @@ import {
   toReportExportDto,
   toGenerateTaskReportDto,
   toGetCaseAveragesDto,
+  toGetCaseAveragesFilterDto,
   toReportSearchCasesDto,
   toSearchCaseResult,
 } from '../adapters/reportAdapter';
@@ -109,7 +111,11 @@ export const reportsApi = {
     return request('POST', `/reports/${reportId}/regenerate`);
   },
 
-  /** 用例平均值查询（GetCaseAveragesRequest: task_id/category/tags/categories/include_untagged） */
+  /** 用例平均值查询（GetCaseAveragesRequest: task_id 或 report_id + category/tags/categories/include_untagged）
+   *
+   * 对比/二次对比报告筛选传 asReportId=true → 请求体走 reportId（后端解析源任务集合聚合，
+   * INT-1059 对齐 0c6b2028a）；响应经 camelizeKeys 收敛为 camelCase Domain 契约。
+   */
   async getCaseAveragesByFilters(
     taskId: string | number,
     filters: {
@@ -118,9 +124,14 @@ export const reportsApi = {
       categories?: string[]
       includeUntagged?: boolean | null
     } = {},
-    options: RequestOptions = {}
+    options: RequestOptions = {},
+    asReportId = false
   ) {
-    return request('POST', '/reports/case-averages', toGetCaseAveragesDto(taskId, filters), options);
+    const body = asReportId
+      ? { report_id: taskId, ...toGetCaseAveragesFilterDto(filters) }
+      : toGetCaseAveragesDto(taskId, filters)
+    const data = await request('POST', '/reports/case-averages', body, options)
+    return camelizeKeys(data)
   },
 
   /**

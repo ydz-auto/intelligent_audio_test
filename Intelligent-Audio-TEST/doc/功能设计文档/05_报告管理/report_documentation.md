@@ -167,6 +167,19 @@ test_reports + report_summaries / report_summary_meta / report_raw_data
 
 报告展示的指标维度由 `dimensions` 表配置驱动（小艺维度经 `backend/scripts/migrations/202606/seed_xiaoyi_dimensions.py` 以中文名 + `task_type_code` 注册），维度名与 `xiaoyi_metrics` 评估指标体系的 12 个 task_type（Calculator 注册表）一一对应：turn_taking（话轮接管主维度，统一双路 ASR 后遍历子维度）、tor、false_takeover、takeover_latency、high_freq_turn_taking、high_freq_llm_judge、interruption_metrics、non_interactive_latency、noise_latency、rejection_judge、interruption_judge、llm_judge。报告侧不重新定义指标含义，仅按上述体系展示与聚合；`input_asr`（输入识别准确率）为 turn_taking 包内的辅助计算函数，非独立注册维度。
 
+#### 4.2.6 筛选聚合（POST /reports/case-averages）
+
+> 口径裁定 2026-10-21（INT-1059，V9.7.10 五连移植等价核验）：筛选聚合与报告生成共用同一套维度取值与策略聚合工具，避免「筛选后数据全为 -」「百分比维度超 100%」「pass_rate 误报 100%」三类口径偏差。
+
+用例分组/标签对比卡片的筛选聚合由 `POST /reports/case-averages` 服务端完成（report_service `handle_get_case_averages` → `ReportAggregationService.calculate_averages`）：
+
+- **请求**：`taskId`（任务筛选）或 `reportId`（对比/二次对比报告筛选）二者必传其一；`category` / `tags` / `categories` / `includeUntagged` 为筛选条件。
+- **reportId 解析**：对比/二次对比报告经 `report_comparison_matrix.comparison_matrix.task_ids`（兜底 `report_summary.task_ids`）解析源任务集合，与 `taskId` 走同一聚合工具（INT-1059 对齐 V9.7.10 0c6b2028a）。
+- **资源 key 口径**：设备/API 资源唯一 key 与报告生成一致——无时间前缀、含版本、含 `result_type` 后缀（`get_resource_name` 形态）；筛选结果与资源列按同一 key 匹配，修复聚合匹配恒失败导致 `metricData` 为空（INT-1059 对齐 b47cae340）。
+- **响应**：`metricData`（分组×资源×指标）、`tagMetricData`（标签×资源×指标，新增）、`rawData`、`normalDistribution`、`resources`、`resourceHeaders`、`overallAverages` / `overallAveragesMap`、`filters`。
+- **百分比口径**：非 `average` 维度（pass_rate / ratio / weighted_sum_ratio）按维度 `statistic_method` 策略聚合，产出 0~100；**逐轮失败值 0 是合法数据点**，计入分子/分母（失败轮不会从分母消失，pass_rate 不误报 100%，INT-1059 对齐 a9c4adc56）；`average` 维度按轮次口径取算术平均。
+- **前端**：旧 Vue 分组/标签对比组件筛选一律走后端聚合，移除 `searchCases` + 前端手写平均（避免按用例简单平均导致超 100%，INT-1059 对齐 7bb9fd339/e4e5dface/0c6b2028a）。
+
 ## 5. 报告生成流程
 
 ### 5.1 任务报告生成流程
