@@ -7,7 +7,7 @@
  * RBAC（§5）：report:read 门槛同整页——device_admin 无 report:read 时整窗不渲染。
  */
 import { Maximize2, Minus, Sparkles, X } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from '@tanstack/react-router'
 
@@ -70,6 +70,18 @@ function AgentWorkbenchSession({
     providers.find((p) => p.id === config.providerId) ??
     defaultProvider ??
     null
+
+  /** 配置即用（§3.11/INT-1032 走查）：供应商带模型而会话未选模型/所选模型已不在
+   * 清单时自动落首个模型——与 /ai-chat 整页同口径，添加供应商后无需再手动选模型
+   * 即可对话；手动切换模型后命中校验、效果不再覆写。 */
+  useEffect(() => {
+    if (!currentProvider) return
+    const modelValid = currentProvider.models.includes(config.modelId ?? '')
+    if (currentProvider.models.length > 0 && !modelValid) {
+      updateConfig('providerId', currentProvider.id)
+      updateConfig('modelId', currentProvider.models[0])
+    }
+  }, [currentProvider, config.modelId, updateConfig])
 
   const { sendChat, stopGeneration, isGenerating } = useChatHandler({
     config,

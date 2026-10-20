@@ -14,6 +14,8 @@ type MessageErrorProps = {
   onDelete?: () => void
   disabled?: boolean
   errorCode?: string | null
+  /** 语义化错误详情（use-chat-handler fail() 落的内容：无供应商/无模型/网络失败等） */
+  detail?: string
 }
 
 export function MessageError({
@@ -22,6 +24,7 @@ export function MessageError({
   onDelete,
   disabled,
   errorCode,
+  detail,
 }: MessageErrorProps) {
   const isInterrupted = errorCode === 'interrupted'
 
@@ -30,9 +33,13 @@ export function MessageError({
       <AlertCircle className='size-4' aria-hidden='true' />
       <AlertTitle>{ERROR_MESSAGES.title}</AlertTitle>
       <AlertDescription>
-        {isInterrupted ? ERROR_MESSAGES.interrupted : ERROR_MESSAGES.generic}
-        {!isInterrupted && (
-          <p className='mt-0.5 text-xs'>{ERROR_MESSAGES.fallback}</p>
+        {isInterrupted ? (
+          ERROR_MESSAGES.interrupted
+        ) : (
+          <>
+            <p>{detail?.trim() ? detail.trim() : ERROR_MESSAGES.generic}</p>
+            <p className='mt-0.5 text-xs'>{ERROR_MESSAGES.fallback}</p>
+          </>
         )}
       </AlertDescription>
       <div className='mt-2 flex items-center gap-1.5'>

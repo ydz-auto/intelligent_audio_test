@@ -95,8 +95,7 @@ export function AiChatInput({
         variant='secondary'
       >
         <Square className='size-4 fill-current' />
-        <span className='hidden sm:inline'>停止</span>
-        <span className='sr-only sm:hidden'>停止</span>
+        <span className='sr-only'>停止</span>
       </PromptInputButton>
     ) : (
       <PromptInputButton
@@ -106,8 +105,7 @@ export function AiChatInput({
         variant='default'
       >
         <Send className='size-4' />
-        <span className='hidden sm:inline'>发送</span>
-        <span className='sr-only sm:hidden'>发送</span>
+        <span className='sr-only'>发送</span>
       </PromptInputButton>
     )
 
