@@ -65,7 +65,11 @@ services:
       - "${RUSTFS_PORT:-9000}:9000"   # S3 API
       - "${RUSTFS_CONSOLE_PORT:-9001}:9001"   # Console
     environment:
-      - RUSTFS_VOLUMES=/data/rustfs{0...3}
+      # 单卷 /data 形态（INT-993 起栈实测）：`{0...3}` 多端点在 Docker 单盘 VM
+      # 上触发 rustfs「独立物理盘」校验 + 卷权限必败（FATAL: distinct physical
+      # disks / Permission denied）；现役栈（intelligent-audio-test / int597iso）
+      # 均为单卷 /data 运行形态，回写一致。
+      - RUSTFS_VOLUMES=/data
       - RUSTFS_ADDRESS=0.0.0.0:9000
       - RUSTFS_CONSOLE_ADDRESS=0.0.0.0:9001
       - RUSTFS_CONSOLE_ENABLE=true
@@ -74,10 +78,7 @@ services:
       - RUSTFS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
       - RUSTFS_OBS_LOGGER_LEVEL=info
     volumes:
-      - rustfs_data_0:/data/rustfs0
-      - rustfs_data_1:/data/rustfs1
-      - rustfs_data_2:/data/rustfs2
-      - rustfs_data_3:/data/rustfs3
+      - rustfs_data:/data
     healthcheck:
       test: ["CMD", "sh", "-ec", "curl -fsS http://localhost:9000/health && curl -fsS http://localhost:9001/rustfs/console/health"]
       interval: 10s
@@ -581,9 +582,6 @@ volumes:
   # INT-81：服务运行日志/业务日志统一卷
   service_logs:
   postgres_data:
-  rustfs_data_0:
-  rustfs_data_1:
-  rustfs_data_2:
-  rustfs_data_3:
+  rustfs_data:
   # 网关 ↔ task_service 数据导入/导出 ZIP 中转卷（INT-25 链路依赖）
   data_transfer_tmp:
