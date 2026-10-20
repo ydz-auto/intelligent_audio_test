@@ -269,131 +269,96 @@ def _build_semantic_prompt(correct_answer: str, model_output_text: str = '') -> 
 
 # ─────────── 时延计算 ───────────
 def _calculate_response_latency(played_audios, user_wav, ai_wav):
-    """计算用户询问到模型回复的时延
+    """当前轮用户实际ASR末词到模型新回复首词；环境声定位不参与问句过滤。"""
+    import math
+    import re
+    import unicodedata
 
-    1. 用 FFT 互相关在 user_wav 中定位环境声(played_audios)的起止时间
-    2. 从 user_wav ASR chunks 中找到环境声后的用户询问，获取其结束时间
-    3. 从 ai_wav ASR chunks 中找到模型首字时间
-    4. 时延 = 模型首字时间 - 用户询问结束时间
-    """
-    result: Dict[str, Any] = {
-        'response_latency_ms': None,
-        'env_sound_start_ms': None,
-        'env_sound_end_ms': None,
-        'user_question_end_ms': None,
-        'model_first_word_start_ms': None,
-        'ncc': None,
-        'message': '',
-    }
+    result = dict(response_latency_ms=None, env_sound_start_ms=None,
+                  env_sound_end_ms=None, user_question_end_ms=None,
+                  model_first_word_start_ms=None, ncc=None, message='')
 
-    # 解析 played_audios 路径
-    played_audio_path = _resolve_played_audio_path(played_audios)
-    if not played_audio_path or not os.path.isfile(played_audio_path):
-        result['message'] = f'played_audios 文件不存在: {played_audios!r}'
-        logger.error(result['message'])
+    def valid_words(chunks):
+        words = []
+        for chunk in chunks or []:
+            if not isinstance(chunk, dict):
+                continue
+            text = str(chunk.get('text') or '')
+            ts = chunk.get('timestamp')
+            if not any(not c.isspace() and not unicodedata.category(c).startswith(('P', 'Z')) for c in text):
+                continue
+            if (not isinstance(ts, (list, tuple)) or len(ts) != 2
+                    or any(isinstance(v, bool) or not isinstance(v, (float, int))
+                           or not math.isfinite(v) for v in ts)
+                    or ts[0] < 0 or ts[1] < ts[0]):
+                raise ValueError('ASR字词时间戳无效，不能计算时延')
+            words.append(chunk)
+        return sorted(words, key=lambda c: (c['timestamp'][0], c['timestamp'][1]))
+
+    user_words = valid_words(get_asr_chunks(user_wav))
+    if not user_words:
+        result.update(is_success=False, message='评估异常：query ASR为空')
         return result
-
-    if not user_wav or not os.path.isfile(user_wav):
-        result['message'] = f'user_wav 文件不存在: {user_wav!r}'
-        logger.error(result['message'])
-        return result
-
-    if not ai_wav or not os.path.isfile(ai_wav):
-        result['message'] = f'ai_wav 文件不存在: {ai_wav!r}'
-        logger.error(result['message'])
-        return result
-
-    # 1. FFT 互相关定位环境声在 user_wav 中的起止时间
-    try:
-        sr_clean, clean = _load_audio(played_audio_path)
-        sr_user, user_audio = _load_audio(user_wav)
-        if sr_clean != sr_user:
-            clean = resample_poly(clean, sr_user, sr_clean)
-        start, end = _detect_speech_region(clean, sr_user)
-        clean_speech = clean[start:end]
-        if len(clean_speech) < 1:
-            result['message'] = '环境声有效语料区间为空，无法对齐'
-            logger.error(result['message'])
+    # 本维度用户通道包含环境播报和随后的询问。优先定位实际ASR中
+    # “刚才/刚刚…什么”等询问，不把前面的环境播报视作用户问题。
+    # 保留字符到chunk的映射，既支持中文逐字，也支持整词/整句chunk。
+    text = ''.join(c['text'] for c in user_words)
+    anchors = list(re.finditer(r'(?:刚才|刚刚|方才|刚)(?=[^。！？?]*(?:什么|啥|哪))', text))
+    if anchors:
+        offset = anchors[-1].start()
+        consumed = 0
+        first = 0
+        for index, chunk in enumerate(user_words):
+            if consumed + len(chunk['text']) > offset:
+                first = index
+                break
+            consumed += len(chunk['text'])
+        question_words = user_words[first:]
+        # 起点落在整句chunk内部时没有可靠词级起点，不能借用整句开头。
+        if consumed != offset:
+            result['message'] = '时延不可计算：问句与环境播报位于同一ASR片段，缺少问句起点时间'
             return result
-        offset, ncc = _coarse_to_fine_align(clean_speech, user_audio)
-        env_sound_start_s = offset / sr_user
-        env_sound_end_s = (offset + len(clean_speech)) / sr_user
-    except Exception as exc:
-        logger.exception('[env_judge] 音频对齐失败')
-        result['message'] = f'音频对齐失败: {exc}'
-        return result
-
-    result['env_sound_start_ms'] = round(env_sound_start_s * 1000.0, 1)
-    result['env_sound_end_ms'] = round(env_sound_end_s * 1000.0, 1)
-    result['ncc'] = round(ncc, 4)
-
-    logger.info(
-        f'[env_judge] 环境声定位: start={result["env_sound_start_ms"]}ms '
-        f'end={result["env_sound_end_ms"]}ms ncc={result["ncc"]}'
-    )
-
-    # 2. 从 user_wav ASR 中找到环境声后的用户询问
-    user_chunks = get_asr_chunks(user_wav)
-    if user_chunks:
-        user_speech_after_env = [
-            c for c in user_chunks
-            if isinstance(c, dict) and c.get('timestamp')
-            and c['timestamp'][0] is not None
-            and c['timestamp'][1] is not None
-            and c['timestamp'][0] >= env_sound_end_s
-        ]
-        if user_speech_after_env:
-            user_question_end_s = max(c['timestamp'][1] for c in user_speech_after_env)
-        else:
-            # 没找到用户询问，用环境声结束时间作为近似
-            user_question_end_s = env_sound_end_s
     else:
-        user_question_end_s = env_sound_end_s
-
-    result['user_question_end_ms'] = round(user_question_end_s * 1000.0, 1)
-
-    # 3. 从 ai_wav ASR 中找到模型首字
-    ai_chunks = get_asr_chunks(ai_wav)
-    if not ai_chunks:
-        result['message'] = 'ai_wav ASR chunks 为空，无法获取模型首字时间戳'
-        logger.error(result['message'])
+        # 无询问锚点时，仅接受单段实际输入；多段混合输入不自动猜轮。
+        if any(b['timestamp'][0] - a['timestamp'][1] > 1.5
+               for a, b in zip(user_words, user_words[1:])):
+            result['message'] = '时延不可计算：用户通道含多段内容，无法可靠定位实际询问'
+            return result
+        question_words = user_words
+    question_start = question_words[0]['timestamp'][0]
+    question_end = max(c['timestamp'][1] for c in question_words)
+    result['user_question_start_ms'] = round(question_start * 1000, 1)
+    result['user_question_text'] = ''.join(c['text'] for c in question_words)
+    result['user_question_end_ms'] = round(question_end * 1000, 1)
+    model_words = valid_words(get_asr_chunks(ai_wav))
+    if not model_words:
+        result.update(is_success=False, message='评估异常：模型回复ASR为空')
         return result
-
-    valid_chunks = [
-        c for c in ai_chunks
-        if isinstance(c, dict) and c.get('timestamp')
-        and c['timestamp'][0] is not None
-        and c['timestamp'][0] >= user_question_end_s
-    ]
-
-    if not valid_chunks:
-        # 如果没有找到用户询问后的模型首字，取所有 ai chunks 的第一个
-        valid_chunks = [
-            c for c in ai_chunks
-            if isinstance(c, dict) and c.get('timestamp')
-            and c['timestamp'][0] is not None
-        ]
-
-    if not valid_chunks:
-        result['message'] = 'ai_wav ASR chunks 中无有效时间戳'
-        logger.error(result['message'])
+    # 累积录音可能含问句开始之前的模型发言，不能把它当作本轮回复。
+    # 不要求模型开始晚于问句末词，否则会掩盖真实负时延。
+    # 按停顿分组后选新的发言起点，不能截取提问前已开始的旧回答中间词。
+    utterances = []
+    for word in model_words:
+        if not utterances or word['timestamp'][0] - utterances[-1][-1]['timestamp'][1] > 1.5:
+            utterances.append([])
+        utterances[-1].append(word)
+    responses = [group[0] for group in utterances
+                 if group[0]['timestamp'][0] >= question_start]
+    if not responses:
+        result['message'] = '时延不可计算：当前问句开始后无可确认的模型回复词'
         return result
-
-    model_first_word_start_s = min(c['timestamp'][0] for c in valid_chunks)
-    result['model_first_word_start_ms'] = round(model_first_word_start_s * 1000.0, 1)
-
-    # 4. 时延 = 模型首字时间 - 用户询问结束时间
-    result['response_latency_ms'] = round(
-        result['model_first_word_start_ms'] - result['user_question_end_ms'], 1
-    )
-    result['message'] = 'OK'
-
-    logger.info(
-        f'[env_judge] 回复时延: {result["response_latency_ms"]}ms '
-        f'(model_first_word={result["model_first_word_start_ms"]}ms - '
-        f'user_question_end={result["user_question_end_ms"]}ms)'
-    )
-
+    model_start = responses[0]['timestamp'][0]
+    result['model_first_word_start_ms'] = round(model_start * 1000, 1)
+    latency = round((model_start - question_end) * 1000, 1)
+    if latency < 0:
+        result.update(is_success=False, raw_response_latency_ms=latency,
+                      message='评估异常：响应时延为负值')
+        return result
+    result.update(response_latency_ms=latency,
+                  message='OK：模型回复首词开始时间减去当前轮用户ASR末词结束时间')
+    logger.info('[env_judge] 问句=%s 起止=%s–%sms 回复首词=%sms 时延=%sms',
+                result['user_question_text'], result['user_question_start_ms'],
+                result['user_question_end_ms'], result['model_first_word_start_ms'], latency)
     return result
 
 
@@ -462,20 +427,35 @@ def evaluate_env_judge(
         'message': '',
     }
 
+    def evaluation_error(message):
+        # 数据异常属于已完成但无有效统计值，不触发任务failed。
+        result.update(enabled=True, excluded_from_statistics=True,
+                      exclusion_reason=message,
+                      understand_correct=None, understand_correct_pass=None,
+                      score=None, response_latency_ms=None,
+                      reason='评估异常：' + message, message='评估异常：' + message)
+        return result
+
+    try:
+        query_text = get_asr_text(user_wav) if user_wav and os.path.isfile(user_wav) else ''
+    except Exception as exc:
+        return evaluation_error(f'query ASR获取失败: {exc}')
+    result['query_asr'] = query_text or ''
+    if not result['query_asr'].strip():
+        return evaluation_error('query ASR为空')
+
     # ─── 1. LLM 判定 True/False ───
     if not ai_wav or not os.path.isfile(ai_wav):
-        result['message'] = f'模型回复音频(ai_wav)不存在或路径无效: ai_wav={ai_wav!r}'
-        result['enabled'] = False
-        logger.error(f'[env_judge] {result["message"]}')
-        return result
+        return evaluation_error(f'模型回复音频为空或不存在: ai_wav={ai_wav!r}')
 
     # 从 ai_wav 提取 ASR 文本（供参考）
     try:
         answer_text = get_asr_text(ai_wav) or ''
     except Exception as exc:
-        logger.warning('[env_judge] auxiliary ASR unavailable: %s', exc)
-        answer_text = ''
+        return evaluation_error(f'模型回复ASR获取失败: {exc}')
     result['ai_answer'] = answer_text
+    if not answer_text.strip():
+        return evaluation_error('模型回复ASR为空')
 
     # Text overlap is diagnostic only; semantic correctness belongs to the judge.
     if script_type == 'semantic' and answer_text.strip():
@@ -486,15 +466,19 @@ def evaluate_env_judge(
     # Timing is independent of content scoring and judge transport/JSON failures.
     # Keep its status separate so a missing timestamp cannot mask a scoring failure.
     try:
-        resolved_audio = _resolve_played_audio_path(played_audios)
-        if resolved_audio and os.path.isfile(resolved_audio):
-            latency_result = _calculate_response_latency(played_audios, user_wav, ai_wav)
-            for key in ('response_latency_ms', 'env_sound_start_ms', 'env_sound_end_ms',
-                        'user_question_end_ms', 'model_first_word_start_ms', 'ncc'):
-                result[key] = latency_result.get(key)
-            result['latency_message'] = latency_result.get('message') or 'OK'
-        else:
-            result['latency_message'] = 'skipped latency: no played_audios'
+        latency_result = _calculate_response_latency(played_audios, user_wav, ai_wav)
+        for key in ('response_latency_ms', 'env_sound_start_ms', 'env_sound_end_ms',
+                    'user_question_end_ms', 'user_question_start_ms', 'user_question_text',
+                    'model_first_word_start_ms', 'ncc'):
+            result[key] = latency_result.get(key)
+        result['latency_message'] = latency_result.get('message') or 'OK'
+        if latency_result.get('is_success') is False:
+            result['raw_response_latency_ms'] = latency_result.get('raw_response_latency_ms')
+            return evaluation_error(result['latency_message'].removeprefix('评估异常：'))
+        if result['response_latency_ms'] is not None and result['response_latency_ms'] < 0:
+            result['raw_response_latency_ms'] = result['response_latency_ms']
+            result['response_latency_ms'] = None
+            return evaluation_error('响应时延为负值')
     except Exception as exc:
         logger.exception('[env_judge] latency calculation failed')
         result['latency_message'] = f'时延计算失败: {exc}'

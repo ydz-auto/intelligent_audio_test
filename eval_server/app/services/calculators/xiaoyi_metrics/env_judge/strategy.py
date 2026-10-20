@@ -68,6 +68,27 @@ class EnvJudgeCalculator(_BaseEnvJudgeCalculator):
     task_type = 'env_judge'
     supports_per_round = True
 
+    def _calculate_per_round(self, task_params):
+        self._agg_result = None
+        results = super()._calculate_per_round(task_params)
+        failed = [r for r in results if r.get('is_success') is False
+                  or r.get('excluded_from_statistics') is True]
+        if failed:
+            self._agg_result = dict(failed[0])
+            self._agg_result['message'] = '; '.join(
+                f"round={r.get('round_number')}: {r.get('message')}" for r in failed)
+            if any(r.get('excluded_from_statistics') for r in failed):
+                self._agg_result.update(excluded_from_statistics=True,
+                                        understand_correct=None, understand_correct_pass=None,
+                                        score=None, response_latency_ms=None)
+                # 整条用例排除，避免正常轮经per_round回填后仍进入报告统计。
+                for row in results:
+                    for key in ('understand_correct', 'understand_correct_pass',
+                                'score', 'response_latency_ms'):
+                        row[key] = None
+                    row['excluded_from_statistics'] = True
+        return results
+
     def validate(self, task_params):
         idx = self._get_target_round_index(task_params)
         rd = self._get_round_safe(task_params, idx)

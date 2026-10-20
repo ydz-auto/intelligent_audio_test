@@ -1,6 +1,7 @@
 """Full-case takeover judge: semantic boundaries remote, validation/arithmetic local."""
 import copy
 import json
+import logging
 import math
 from pathlib import Path
 
@@ -101,22 +102,184 @@ def validate_and_derive(packet, parsed):
     return turns
 
 
-def judge(packet, task_params, call=None):
-    from app.services.calculators.xiaoyi_metrics.shared.llm_client import call_llm, resolve_model
-    call = call or call_llm
-    prompt = Path(__file__).with_name('full_timeline_prompt.txt').read_text(encoding='utf-8')
-    response = call(model=task_params.get('model') or resolve_model(dimension='turn_eval'), prompt=json.dumps(packet, ensure_ascii=False),
-                    system_message=prompt, temperature=0, max_tokens=task_params.get('max_tokens') or 16000,
-                    log_context={'dimension': 'turn_eval_full_timeline'})
+_LOGGER = logging.getLogger(__name__)
+_CLOSERS = {'{': '}', '[': ']'}
+
+
+class TurnEvalOutputError(ValueError):
+    """Invalid output after bounded retries; raw evidence is kept off platform data."""
+
+    def __init__(self, message, attempts):
+        super().__init__(message)
+        self.attempts = attempts
+
+
+def _remove_trailing_commas(content):
+    """Remove only commas before ]/} outside JSON strings; never alter values."""
+    output, in_string, escaped, removed = [], False, False, 0
+    for index, char in enumerate(content):
+        if in_string:
+            output.append(char)
+            if escaped:
+                escaped = False
+            elif char == '\\':
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == ',':
+            following = index + 1
+            while following < len(content) and content[following] in ' \t\r\n':
+                following += 1
+            if following < len(content) and content[following] in ']}':
+                removed += 1
+                continue
+        output.append(char)
+    return ''.join(output), removed
+
+
+def _repair_tail(content):
+    """保守修复 JSON 尾部括号错误（仅严格解析失败后的兜底）。
+
+    只处理结构层，绝不改动键、值、字符串内容：
+    - 丢弃栈顶不匹配的多余闭合符（模型多写的 } / ]）
+    - 丢弃根对象已闭合之后的尾部垃圾字符
+    - 结尾缺闭合符时按括号平衡补上缺失的 ] / }
+
+    修复产物仍必须通过 validate_and_derive 的严格语义复核，
+    因此无法靠补括号蒙混任何编造内容。无法修复时返回 (None, False)。
+    """
+    out, stack, in_string, escaped, root_closed = [], [], False, False, False
+    for ch in content:
+        if in_string:
+            out.append(ch)
+            if escaped:
+                escaped = False
+            elif ch == '\\':
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+            out.append(ch)
+        elif ch in '{[':
+            stack.append(ch)
+            out.append(ch)
+        elif ch in '}]':
+            expected = _CLOSERS.get(stack[-1]) if stack else None
+            if expected == ch:
+                stack.pop()
+                out.append(ch)
+                if not stack:
+                    root_closed = True
+            elif root_closed:
+                continue  # 根对象已闭合，之后全是垃圾，丢弃
+            else:
+                continue  # 栈顶不匹配的多余闭合符，丢弃
+        elif root_closed:
+            continue
+        else:
+            out.append(ch)
+    cleaned = ''.join(out)
+    if stack:
+        # 尾部可能夹带非 JSON 垃圾字符：从后往前去掉，再按平衡补闭合符
+        end = len(cleaned)
+        while end > 0 and cleaned[end - 1] not in '}"])0123456789':
+            end -= 1
+        cleaned = cleaned[:end] + ''.join(_CLOSERS[ch] for ch in reversed(stack))
+    if cleaned == content:
+        return None, False
+    return cleaned, True
+
+
+def _parse_judge_content(content):
+    """解析 LLM 输出为 dict；优先严格解析，失败时依次做保守修复：
+    去围栏 → 去尾逗号 → 尾部括号配平。修复不臆造键、ID、轮次、引号或内容。
+    """
+    if not isinstance(content, str):
+        raise ValueError('Judge content must be a JSON string')
+    content = content.strip()
+    if content.startswith('```') and content.endswith('```') and '\n' in content:
+        first, rest = content.split('\n', 1)
+        if first.strip().lower() in ('```', '```json'):
+            content = rest.rsplit('```', 1)[0].strip()
+
     def pairs(items):
         result = {}
         for k, v in items:
             if k in result:
-                raise ValueError('Duplicate JSON key')
+                raise ValueError('Duplicate JSON key: ' + k)
             result[k] = v
         return result
-    parsed = json.loads(response.get('content', ''), object_pairs_hook=pairs)
-    return validate_and_derive(packet, parsed), response.get('tokens_used', 0)
+
+    def reject_constant(value):
+        raise ValueError('Non-finite JSON constant: ' + value)
+
+    def load(value):
+        parsed = json.loads(value, object_pairs_hook=pairs, parse_constant=reject_constant)
+        if not isinstance(parsed, dict):
+            raise ValueError('Judge JSON root must be an object')
+        return parsed
+
+    try:
+        return load(content), dict(repaired=False, removed_trailing_commas=0, tail_repaired=False)
+    except json.JSONDecodeError:
+        repaired, removed = _remove_trailing_commas(content)
+        if removed:
+            try:
+                return load(repaired), dict(repaired=True, removed_trailing_commas=removed, tail_repaired=False)
+            except (json.JSONDecodeError, ValueError):
+                pass
+        cleaned, changed = _repair_tail(content)
+        if changed:
+            try:
+                return load(cleaned), dict(repaired=True, removed_trailing_commas=0, tail_repaired=True)
+            except (json.JSONDecodeError, ValueError):
+                pass
+        raise
+
+
+def judge(packet, task_params, call=None):
+    from app.services.calculators.xiaoyi_metrics.shared.llm_client import call_llm, resolve_model
+    call = call or call_llm
+    base_prompt = Path(__file__).with_name('full_timeline_prompt.txt').read_text(encoding='utf-8')
+    request = json.dumps(packet, ensure_ascii=False)
+    attempts, tokens_used = [], 0
+    for attempt in range(2):
+        attempt_prompt = base_prompt
+        if attempt:
+            attempt_prompt += ('\n【输出校验重试】上次输出未通过解析或轮次/词ID校验。'
+                '请根据同一输入重新输出完整严格JSON，不要解释、不要尾逗号、不要重复键，'
+                'rounds只能包含全部完整的轮对象，禁止追加字符串或补充对象。'
+                '结尾括号必须与开头完全配平：不多、不少、不截断，也不要夹带无关字符。'
+                '不要为了通过校验虚构词ID、轮次或边界。')
+        response = call(model=task_params.get('model') or resolve_model(dimension='turn_eval'),
+                        prompt=request, system_message=attempt_prompt, temperature=0,
+                        max_tokens=task_params.get('max_tokens') or 16000,
+                        log_context={'dimension': 'turn_eval_full_timeline', 'output_attempt': attempt + 1})
+        tokens_used += response.get('tokens_used', 0) or 0
+        content = response.get('content', '')
+        record = dict(attempt=attempt + 1, raw_content=content)
+        attempts.append(record)
+        try:
+            parsed, parse_info = _parse_judge_content(content)
+            record.update(parse_info)
+            turns = validate_and_derive(packet, parsed)
+        except ValueError as exc:
+            record.update(validation_passed=False, error=str(exc))
+            _LOGGER.warning('[turn_eval] output attempt %s failed: %s', attempt + 1, exc)
+            if attempt == 0:
+                continue
+            raise TurnEvalOutputError(
+                'Turn eval output invalid after 2 attempts: ' + str(exc), attempts) from exc
+        record['validation_passed'] = True
+        if parse_info['repaired']:
+            _LOGGER.warning('[turn_eval] repaired LLM output: trailing_commas=%s tail_repaired=%s',
+                            parse_info.get('removed_trailing_commas', 0), parse_info.get('tail_repaired', False))
+        return turns, tokens_used
 
 
 def evaluate(calculator, task_params):

@@ -108,6 +108,42 @@ def test_duplicate_json_is_rejected(example):
         f.judge(packet,{'model':'offline'},call=lambda **kw:{'content':'{"rounds":[],"rounds":[]}'})
 
 
+def test_tail_repair_recovers_broken_json():
+    # 模型真实坏输出：多一个 } / 缺闭合 + 夹带垃圾字符 / 直接截断 / 尾逗号
+    cases = [
+        ('{"rounds":[]}}', {'rounds': []}),
+        ('{"rounds":[{"round_number":0}]}箍', {'rounds': [{'round_number': 0}]}),
+        ('{"rounds":[{"round_number":0}', {'rounds': [{'round_number': 0}]}),
+        ('{"rounds":[],}', {'rounds': []}),  # 尾逗号
+    ]
+    for raw, expected in cases:
+        parsed, info = f._parse_judge_content(raw)
+        assert parsed == expected, raw
+        assert info['repaired'] is True
+    # 围栏剥离不算“修复”，repaired 保持 False
+    parsed, info = f._parse_judge_content('```json\n{"rounds":[]}\n```')
+    assert parsed == {'rounds': []} and info['repaired'] is False
+    # 重复键仍然严格拒绝，不得被修复蒙混
+    with pytest.raises(ValueError, match='Duplicate JSON key'):
+        f._parse_judge_content('{"rounds":[],"rounds":[]}')
+    # 纯垃圾无法修复，原样抛错
+    with pytest.raises(json.JSONDecodeError):
+        f._parse_judge_content('not json at all')
+
+
+def test_broken_tail_passes_judge_with_repair(example):
+    _,_,packet,parsed=example
+    good=json.dumps(parsed,ensure_ascii=False)
+    def broken(*args,**kw):
+        # 第 1 次语义错误（不可修复）→ 触发重试；第 2 次坏尾部靠修复救回
+        if kw.get('log_context',{}).get('output_attempt')==1:
+            return {'content':good.replace('"接管"','"xxx"'),'tokens_used':1}
+        return {'content':good[:-1]+'箍','tokens_used':1}
+    turns,tokens=f.judge(packet,{'model':'offline'},call=broken)
+    assert len(turns)==3 and tokens==2
+    assert turns[0]['classification']=='接管'
+
+
 def test_false_takeover_and_no_takeover_project_without_fake_quality(example,monkeypatch):
     data,rounds,packet,parsed=example
     parsed['rounds'][0]['classification']='误接管'
