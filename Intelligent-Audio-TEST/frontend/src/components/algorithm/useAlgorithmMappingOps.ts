@@ -9,7 +9,6 @@ export function useAlgorithmMappingOps(formState: any) {
 
   function updateMappings(componentType: 'device' | 'api' | 'evaluation', mappings: any[]) {
     formState.mappings[componentType] = mappings
-    console.log('更新映射:', componentType, mappings)
   }
 
   function toggleMapping(key: 'device' | 'api' | 'evaluation') {

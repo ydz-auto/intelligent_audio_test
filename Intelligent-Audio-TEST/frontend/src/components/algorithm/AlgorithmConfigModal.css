@@ -77,6 +77,11 @@
   color: var(--danger-color);
 }
 
+/* 新建分组名输入：与上方「所属分组」下拉的间距 */
+.new-group-input {
+  margin-top: var(--spacing-sm);
+}
+
 .switch-container {
   display: flex;
   align-items: center;
@@ -94,7 +99,7 @@
 }
 
 .status-switch-group .switch-container {
-  margin-top: 4px;
+  margin-top: var(--spacing-xs);
 }
 
 .custom-switch {
@@ -135,7 +140,7 @@
   right: 0;
   bottom: 0;
   background-color: var(--border-color);
-  transition: 0.3s;
+  transition: var(--transition-normal);
   border-radius: var(--radius-xxl);
 }
 
@@ -144,10 +149,10 @@
   content: "";
   height: 18px;
   width: 18px;
-  left: 3px;
-  bottom: 3px;
+  left: var(--spacing-3);
+  bottom: var(--spacing-3);
   background-color: var(--color-white);
-  transition: 0.3s;
+  transition: var(--transition-normal);
   border-radius: 50%;
 }
 
@@ -167,7 +172,7 @@
 .form-input-sm {
   padding: var(--spacing-xs) var(--spacing-sm);
   font-size: var(--font-size-sm);
-  height: 32px;
+  height: var(--control-height);
 }
 
 .params-toolbar,
@@ -307,13 +312,13 @@
 .range-constraints {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--spacing-2);
 }
 .range-input {
   width: 36px;
   min-width: 36px;
-  padding: 2px 4px;
-  font-size: 11px;
+  padding: var(--spacing-2) var(--spacing-xs);
+  font-size: var(--font-size-11);
   text-align: center;
 }
 .range-unit {
@@ -322,19 +327,19 @@
   text-align: left;
 }
 .range-sep {
-  font-size: 11px;
+  font-size: var(--font-size-11);
   color: var(--text-light);
   flex-shrink: 0;
 }
 .text-muted {
   color: var(--color-gray-300);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 
 /* 功能特性快捷开关 */
 .feature-bundles {
-  margin-bottom: 16px;
-  padding: 12px 16px;
+  margin-bottom: var(--spacing-md);
+  padding: var(--spacing-12) var(--spacing-md);
   background: var(--muted);
   border: 1px solid var(--color-indigo-100);
   border-radius: var(--radius-control);
@@ -342,39 +347,39 @@
 .feature-bundles-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-10);
 }
 .feature-bundles-header i {
   color: var(--color-indigo-500);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
 }
 .feature-bundles-title {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-13);
+  font-weight: var(--font-weight-semibold);
   color: var(--foreground);
 }
 .feature-bundles-hint {
-  font-size: 11px;
+  font-size: var(--font-size-11);
   color: var(--text-light);
   margin-left: auto;
 }
 .feature-bundles-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--spacing-sm);
 }
 .feature-bundle-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
+  gap: var(--spacing-6);
+  padding: var(--spacing-6) var(--spacing-14);
   border: 1px solid var(--color-indigo-100);
   border-radius: var(--radius-20);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all var(--transition-fast);
   background: var(--color-white);
-  font-size: 13px;
+  font-size: var(--font-size-13);
 }
 .feature-bundle-chip:hover {
   border-color: var(--color-indigo-500);
@@ -392,13 +397,13 @@
   margin: 0;
 }
 .feature-bundle-label {
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 .feature-bundle-count {
-  font-size: 10px;
+  font-size: var(--font-size-10);
   color: var(--color-gray-muted);
   background: var(--muted);
-  padding: 1px 6px;
+  padding: var(--spacing-1) var(--spacing-6);
   border-radius: var(--radius-control);
 }
 .feature-bundle-chip--active .feature-bundle-count {
@@ -417,7 +422,7 @@
 .params-toolbar-actions .search-box,
 .dimensions-toolbar .search-box {
   width: 220px;
-  height: 32px;
+  height: var(--control-height);
   margin-bottom: 0;
   flex: none;
 }
@@ -425,12 +430,40 @@
 .params-toolbar-actions .search-box .search-input,
 .dimensions-toolbar .search-box .search-input {
   width: 220px;
-  height: 32px;
+  height: var(--control-height);
 }
 
 .param-filter-select {
   width: auto;
   min-width: 96px;
-  height: 32px;
+  height: var(--control-height);
   box-sizing: border-box;
 }
+
+/* ── 用例参数表 / 参考参数表：table-layout: fixed 与列宽（原内联 style，INT-1020 迁 scoped）── */
+.case-params-table,
+.reference-table {
+  table-layout: fixed;
+}
+
+.case-params-table th:nth-child(1) { width: 110px; }
+.case-params-table th:nth-child(2) { width: 100px; }
+.case-params-table th:nth-child(3) { width: 90px; }
+.case-params-table th:nth-child(4) { width: 80px; }
+.case-params-table th:nth-child(5) { width: 50px; }
+.case-params-table th:nth-child(6) { width: 80px; }
+.case-params-table th:nth-child(7) { width: 160px; }
+.case-params-table th:nth-child(8) { width: 120px; }
+.case-params-table th:nth-child(9) { width: 120px; }
+.case-params-table th:nth-child(10) { width: 100px; }
+.case-params-table th:nth-child(11) { width: 50px; }
+
+.reference-table th:nth-child(1) { width: 120px; }
+.reference-table th:nth-child(2) { width: 120px; }
+.reference-table th:nth-child(3) { width: 100px; }
+.reference-table th:nth-child(4) { width: 100px; }
+.reference-table th:nth-child(5) { width: 100px; }
+.reference-table th:nth-child(6) { width: 140px; }
+.reference-table th:nth-child(7) { width: 90px; }
+.reference-table th:nth-child(8) { width: 120px; }
+.reference-table th:nth-child(9) { width: 60px; }

@@ -57,7 +57,7 @@
         <thead>
           <tr>
             <template v-if="componentType === 'evaluation'">
-              <th style="width: 100px;">
+              <th class="col-source">
                 来源
                 <ColumnFilter
                   v-model="filters.source"
@@ -66,7 +66,7 @@
                   :active="filters.source !== 'all'"
                 />
               </th>
-              <th style="width: 120px;">
+              <th class="col-code">
                 源参数代码
                 <ColumnFilter
                   v-model="filters.sourceParam"
@@ -75,7 +75,7 @@
                   :active="filters.sourceParam !== 'all'"
                 />
               </th>
-              <th style="width: 120px;">源参数名称</th>
+              <th class="col-name">源参数名称</th>
               <th>
                 目标评估维度
                 <ColumnFilter
@@ -94,7 +94,7 @@
                   :active="filters.targetParam !== 'all'"
                 />
               </th>
-              <th style="width: 100px;">
+              <th class="col-transform">
                 转换
                 <ColumnFilter
                   v-model="filters.transformType"
@@ -105,7 +105,7 @@
               </th>
             </template>
             <template v-else>
-              <th style="width: 120px;">
+              <th class="col-code">
                 源参数代码
                 <ColumnFilter
                   v-model="filters.sourceParam"
@@ -114,8 +114,8 @@
                   :active="filters.sourceParam !== 'all'"
                 />
               </th>
-              <th style="width: 120px;">源参数名称</th>
-              <th style="width: 120px;">
+              <th class="col-name">源参数名称</th>
+              <th class="col-code">
                 目标参数代码
                 <ColumnFilter
                   v-model="filters.targetParam"
@@ -124,8 +124,8 @@
                   :active="filters.targetParam !== 'all'"
                 />
               </th>
-              <th style="width: 120px;">目标参数名称</th>
-              <th style="width: 100px;">
+              <th class="col-name">目标参数名称</th>
+              <th class="col-transform">
                 转换
                 <ColumnFilter
                   v-model="filters.transformType"
@@ -135,7 +135,7 @@
                 />
               </th>
             </template>
-            <th style="width: 60px;">操作</th>
+            <th class="col-action">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -834,6 +834,13 @@ function handleRemove(record: any) {
 
 <style scoped>
 .mapping-editor { width: 100%; }
+
+/* 列宽（原内联 style，INT-1020 迁 scoped） */
+.col-source,
+.col-transform { width: 100px; }
+.col-code,
+.col-name { width: 120px; }
+.col-action { width: 60px; }
 .mapping-toolbar { margin-bottom: var(--spacing-sm); }
 .mapping-toolbar-actions {
   display: flex;

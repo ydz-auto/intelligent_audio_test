@@ -124,6 +124,18 @@
   --radius-2: 2px;
   --radius-1: 1px;
 
+  /* 间距/字号散值收编（INT-1020 算法域模态窗 CSS 冻结 · 值保真；与 --radius-6/10/3/20 同一口径） */
+  --spacing-1: 1px;
+  --spacing-2: 2px;
+  --spacing-3: 3px;
+  --spacing-6: 6px;
+  --spacing-10: 10px;
+  --spacing-12: 12px;
+  --spacing-14: 14px;
+  --font-size-10: 10px;
+  --font-size-11: 11px;
+  --font-size-13: 13px;
+
   /* ── 阴影 ── */
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);

@@ -5,7 +5,7 @@
 .form-groups {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--spacing-md);
 }
 
 .form-group-item {
@@ -17,13 +17,13 @@
 .group-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 16px;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
   background-color: var(--color-gray-50);
   cursor: pointer;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--foreground);
-  transition: background-color 0.2s ease;
+  transition: background-color var(--transition-fast);
 }
 
 .group-header:hover {
@@ -31,9 +31,9 @@
 }
 
 .group-icon {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   color: var(--muted-foreground);
-  transition: transform 0.2s ease;
+  transition: transform var(--transition-fast);
 }
 
 .group-title {
@@ -41,18 +41,18 @@
 }
 
 .group-content {
-  padding: 16px;
+  padding: var(--spacing-md);
 }
 
 .form-rows {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--spacing-md);
 }
 
 .form-row {
   display: flex;
-  gap: 16px;
+  gap: var(--spacing-md);
 }
 
 .form-row:last-child {
@@ -63,12 +63,12 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--spacing-xs);
 }
 
 .form-group label {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
   color: var(--foreground);
 }
 
@@ -80,13 +80,13 @@
 .form-input {
   width: 100%;
   height: 40px;
-  padding: 0 16px;
+  padding: 0 var(--spacing-md);
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   color: var(--foreground);
   background-color: var(--color-white);
-  transition: all 0.3s ease;
+  transition: all var(--transition-normal);
   box-sizing: border-box;
   outline: none;
 }
@@ -108,14 +108,14 @@
 textarea.form-input {
   height: auto;
   min-height: 80px;
-  padding: 8px 16px;
+  padding: var(--spacing-sm) var(--spacing-md);
   resize: vertical;
 }
 
 .slider-field {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: var(--spacing-md);
 }
 
 .slider-input {
@@ -136,7 +136,7 @@ textarea.form-input {
   background: var(--primary);
   border-radius: 50%;
   cursor: pointer;
-  transition: transform 0.2s ease;
+  transition: transform var(--transition-fast);
 }
 
 .slider-input::-webkit-slider-thumb:hover {
@@ -147,7 +147,7 @@ textarea.form-input {
   min-width: 50px;
   text-align: right;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 
 .switch-container {
@@ -172,7 +172,7 @@ textarea.form-input {
   bottom: 0;
   background-color: var(--border);
   border-radius: var(--radius-full);
-  transition: 0.2s ease;
+  transition: var(--transition-fast);
 }
 
 .switch-slider::before {
@@ -180,11 +180,11 @@ textarea.form-input {
   content: "";
   height: 18px;
   width: 18px;
-  left: 3px;
-  bottom: 3px;
+  left: var(--spacing-3);
+  bottom: var(--spacing-3);
   background-color: var(--color-white);
   border-radius: 50%;
-  transition: 0.2s ease;
+  transition: var(--transition-fast);
 }
 
 .switch-input:checked + .switch-slider {
@@ -202,18 +202,18 @@ textarea.form-input {
 
 .code-editor {
   font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   line-height: 1.5;
 }
 
 .help-text {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   color: var(--color-gray-400);
   line-height: 1.4;
 }
 
 .error-message {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   color: var(--color-red-500);
   line-height: 1.4;
 }
@@ -221,14 +221,14 @@ textarea.form-input {
 .slider-number-input {
   width: 80px;
   text-align: center;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--primary);
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
-  padding: 4px 8px;
-  font-size: 13px;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-13);
   outline: none;
-  transition: all 0.3s ease;
+  transition: all var(--transition-normal);
 }
 
 .slider-number-input:hover {

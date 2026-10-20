@@ -210,7 +210,7 @@ export function useAlgorithmConfigPage() {
   }
 
   function handleSelect(data: AlgorithmDefinition) {
-    console.log('Selected algorithm:', data)
+    // INT-1020：移除调试 console.log；选择动作由上层接线方按需回填
   }
 
   function handleSearch() {

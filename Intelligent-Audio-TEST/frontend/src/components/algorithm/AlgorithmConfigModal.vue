@@ -125,8 +125,7 @@
               <input
                 v-if="creatingNewGroup"
                 type="text"
-                class="form-input"
-                style="margin-top: 8px;"
+                class="form-input new-group-input"
                 placeholder="输入新分组名称"
                 v-model="newGroupName"
               >
@@ -350,10 +349,10 @@
 
           <!-- 用例参数表格 -->
           <div v-if="paramConfigType === 'case'" class="table-container">
-            <table class="data-table" style="table-layout: fixed;">
+            <table class="data-table case-params-table">
               <thead>
                 <tr>
-                  <th style="width: 110px;">
+                  <th>
                     参数代码
                     <ColumnFilter
                       v-model="caseFilters.paramCode"
@@ -362,7 +361,7 @@
                       :active="caseFilters.paramCode !== 'all'"
                     />
                   </th>
-                  <th style="width: 100px;">
+                  <th>
                     参数名称
                     <ColumnFilter
                       v-model="caseFilters.paramName"
@@ -371,7 +370,7 @@
                       :active="caseFilters.paramName !== 'all'"
                     />
                   </th>
-                  <th style="width: 90px;">
+                  <th>
                     类型
                     <ColumnFilter
                       v-model="caseFilters.paramType"
@@ -380,7 +379,7 @@
                       :active="caseFilters.paramType !== 'all'"
                     />
                   </th>
-                  <th style="width: 80px;">
+                  <th>
                     适用范围
                     <ColumnFilter
                       v-model="caseFilters.scope"
@@ -389,7 +388,7 @@
                       :active="caseFilters.scope !== 'all'"
                     />
                   </th>
-                  <th style="width: 50px;">
+                  <th>
                     必填
                     <ColumnFilter
                       v-model="caseFilters.required"
@@ -398,7 +397,7 @@
                       :active="caseFilters.required !== 'all'"
                     />
                   </th>
-                  <th style="width: 80px;">
+                  <th>
                     默认值
                     <ColumnFilter
                       v-model="caseFilters.defaultValue"
@@ -407,8 +406,8 @@
                       :active="caseFilters.defaultValue !== 'all'"
                     />
                   </th>
-                  <th style="width: 160px;">范围约束</th>
-                  <th style="width: 120px;">
+                  <th>范围约束</th>
+                  <th>
                     标注代码
                     <ColumnFilter
                       v-model="caseFilters.annotationCode"
@@ -417,7 +416,7 @@
                       :active="caseFilters.annotationCode !== 'all'"
                     />
                   </th>
-                  <th style="width: 120px;">
+                  <th>
                     字段路径
                     <ColumnFilter
                       v-model="caseFilters.fieldPath"
@@ -426,7 +425,7 @@
                       :active="caseFilters.fieldPath !== 'all'"
                     />
                   </th>
-                  <th style="width: 100px;">
+                  <th>
                     帮助文本
                     <ColumnFilter
                       v-model="caseFilters.helpText"
@@ -435,7 +434,7 @@
                       :active="caseFilters.helpText !== 'all'"
                     />
                   </th>
-                  <th style="width: 50px;">操作</th>
+                  <th>操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -551,10 +550,10 @@
           </div>
 
           <div class="table-container">
-            <table class="data-table" style="table-layout: fixed;">
+            <table class="data-table reference-table">
               <thead>
                   <tr>
-                    <th style="width: 120px;">
+                    <th>
                       参数代码
                       <ColumnFilter
                         v-model="referenceFilters.code"
@@ -563,7 +562,7 @@
                         :active="referenceFilters.code !== 'all'"
                       />
                     </th>
-                    <th style="width: 120px;">
+                    <th>
                       标注代码
                       <ColumnFilter
                         v-model="referenceFilters.annotationCode"
@@ -572,7 +571,7 @@
                         :active="referenceFilters.annotationCode !== 'all'"
                       />
                     </th>
-                    <th style="width: 100px;">
+                    <th>
                       参数名称
                       <ColumnFilter
                         v-model="referenceFilters.name"
@@ -581,7 +580,7 @@
                         :active="referenceFilters.name !== 'all'"
                       />
                     </th>
-                    <th style="width: 100px;">
+                    <th>
                       参考类型
                       <ColumnFilter
                         v-model="referenceFilters.type"
@@ -590,7 +589,7 @@
                         :active="referenceFilters.type !== 'all'"
                       />
                     </th>
-                    <th style="width: 100px;">
+                    <th>
                       标注格式
                       <ColumnFilter
                         v-model="referenceFilters.annotationFormat"
@@ -599,7 +598,7 @@
                         :active="referenceFilters.annotationFormat !== 'all'"
                       />
                     </th>
-                    <th style="width: 140px;">
+                    <th>
                       字段路径
                       <ColumnFilter
                         v-model="referenceFilters.fieldPath"
@@ -608,7 +607,7 @@
                         :active="referenceFilters.fieldPath !== 'all'"
                       />
                     </th>
-                    <th style="width: 90px;">
+                    <th>
                       合并方式
                       <ColumnFilter
                         v-model="referenceFilters.mergeMode"
@@ -617,7 +616,7 @@
                         :active="referenceFilters.mergeMode !== 'all'"
                       />
                     </th>
-                    <th style="width: 120px;">
+                    <th>
                       帮助文本
                       <ColumnFilter
                         v-model="referenceFilters.helpText"
@@ -626,7 +625,7 @@
                         :active="referenceFilters.helpText !== 'all'"
                       />
                     </th>
-                    <th style="width: 60px;">操作</th>
+                    <th>操作</th>
                   </tr>
                 </thead>
                 <tbody>
