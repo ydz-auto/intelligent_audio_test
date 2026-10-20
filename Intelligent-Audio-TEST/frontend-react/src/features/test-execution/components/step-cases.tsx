@@ -16,7 +16,7 @@ import { usePermissions } from '@/application/hooks/use-permissions'
 import { useTestCasesList, type TestCaseListFilters } from '@/application/testcases/use-testcases-list'
 import { useCaseGroups } from '@/application/testcases/use-case-groups'
 import { useCaseTags } from '@/application/testcases/use-case-tags'
-import { useDimensionOptions } from '@/application/testcases/use-evaluation-dimensions'
+import { useEvaluationDimensions, useEvaluationCategories } from '@/application/evaluation/use-dimensions'
 import { useCaseSelectionStore } from '@/infrastructure/stores/case-selection-store'
 import { fetchCaseIdsByFilter } from '@/infrastructure/api/testcases-ids-api'
 import { Button } from '@/components/ui/button'
@@ -61,13 +61,17 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
   })
   const groupsQuery = useCaseGroups()
   const tagsQuery = useCaseTags()
-  const dimsQuery = useDimensionOptions(algorithmType)
+  /** 全量评估维度（含子维度）+ 分类：与用例管理页同源（INT-1030 走查打回 P2-2——不再用
+   *  /evaluation/dimensions/options 旧 facet 子集，保证 开始测试 筛选 facet 与用例管理分组一致） */
+  const allDimsQuery = useEvaluationDimensions()
+  const categoriesQuery = useEvaluationCategories()
 
   const items = listQuery.data?.items ?? []
   const total = listQuery.data?.total ?? items.length
   const groups = groupsQuery.data ?? []
   const tags = tagsQuery.data ?? []
-  const dimensions = dimsQuery.data ?? []
+  const dimensions = allDimsQuery.data ?? []
+  const categories = categoriesQuery.data ?? []
 
   const isFiltered = useMemo(
     () =>
@@ -178,6 +182,7 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
         groups={groups}
         tags={tags}
         dimensions={dimensions}
+        categories={categories}
         cases={items}
         onRestoreAll={() => {}}
       />

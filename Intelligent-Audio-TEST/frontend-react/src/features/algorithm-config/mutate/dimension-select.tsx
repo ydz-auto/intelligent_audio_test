@@ -138,6 +138,7 @@ export function DimensionSelect({
   onValueChange: (value: string) => void
   /** 维度 → 选项值的提取器（评估映射 target 用 name，关联维度用 id） */
   valueOf?: (dimension: Dimension) => string
+  /** 空值占位；值为空且未选中时显示。未匹配选项的存量值（如已删除维度的映射 target）回退显示原值（数据保全，与 annotation-code-select 同口径） */
   placeholder?: string
   triggerClassName?: string
   ariaLabel?: string
@@ -163,7 +164,9 @@ export function DimensionSelect({
             ? selected.parentDimensionId
               ? `└ ${selected.name}`
               : selected.name
-            : placeholder}
+            : value !== ''
+              ? value
+              : placeholder}
         </SelectValue>
       </SelectTrigger>
       <SelectContent>
