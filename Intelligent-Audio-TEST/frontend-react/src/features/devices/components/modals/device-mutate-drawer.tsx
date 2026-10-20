@@ -11,7 +11,7 @@
  * P2-1 返修：编辑提交 patch 只携带表单可编辑字段，不重置 status/occupied/labId/labName/
  * driverName/lastOnlineAt/createdAt 等非表单字段。
  */
-import { ChevronDown, Plus, X } from 'lucide-react'
+import { ChevronDown, Plus, ScanLine, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -59,6 +59,14 @@ export interface DeviceMutateDrawerProps {
   onOpenChange: (open: boolean) => void
   /** 扫描预填（§6.1：随页签分叉） */
   prefill?: Partial<TestDevice> | Partial<PlaybackDevice> | Partial<ApiDevice> | null
+  /** INT-1029 扫描入口：测试/播放信息分节「扫描设备」钮 → 打开扫描弹窗 */
+  onScan?: () => void
+  /** INT-1029 抽屉内扫描「选择」→ 回填当前表单（编辑/新增态均可用；nonce 递增触发） */
+  scanFill?: {
+    nonce: number
+    kind: DevicesTabKey
+    prefill: Partial<TestDevice> | Partial<PlaybackDevice> | Partial<ApiDevice>
+  } | null
 }
 
 const SYSTEM_OPTIONS = [
@@ -77,6 +85,14 @@ const ENV_OPTIONS = [
   { value: 'development', label: '开发' },
   { value: 'testing', label: '测试' },
   { value: 'production', label: '生产' },
+]
+/** 代理类型选项（api_test_service PROXY_TYPES 契约 http/https/socks5/socks5h；空=不使用代理） */
+const PROXY_TYPE_OPTIONS = [
+  { value: '', label: '不使用代理' },
+  { value: 'http', label: 'HTTP' },
+  { value: 'https', label: 'HTTPS' },
+  { value: 'socks5', label: 'SOCKS5' },
+  { value: 'socks5h', label: 'SOCKS5H' },
 ]
 
 /** API 端点编辑行（§6.2 apiEndpoint ArrayField；INT-355 §5.3 口径子集） */
@@ -104,11 +120,51 @@ function endpointKey(): string {
   return Math.random().toString(36).slice(2, 9)
 }
 
-/** 三页签表单 schema（§6.2 分叉；z.discriminatedUnion 单 useForm 承载） */
+/**
+ * INT-1029 扫描结果回填当前表单（对齐 V9.7.10 useDeviceSelection.selectDevice 口径）：
+ * - 名称编辑态保留用户已填值（V9.7.10 `(!isEditMode || !formValues.name)` 语义），为空时取扫描值；
+ * - 硬件字段（型号/序列号/系统/系统版本/应用名/应用版本/IP）一律以扫描值为准。
+ */
+export function mergeScanPrefill(
+  form: ReturnType<typeof useForm<DeviceForm>>,
+  kind: DevicesTabKey,
+  prefill: Partial<TestDevice> | Partial<PlaybackDevice> | Partial<ApiDevice>
+): void {
+  if (kind === 'test') {
+    const p = prefill as Partial<TestDevice>
+    const current = form.getValues() as Extract<DeviceForm, { kind: 'test' }>
+    form.reset({
+      ...current,
+      name: (current.name ?? '').trim() ? current.name : (p.name ?? current.name),
+      model: p.model ?? current.model,
+      system: p.system ? (normalizeDeviceSystem(p.system)?.label ?? current.system) : current.system,
+      systemVersion: p.systemVersion ?? current.systemVersion,
+      appName: p.appName ?? current.appName,
+      appVersion: p.appVersion ?? current.appVersion,
+      serialNumber: p.serialNumber ?? current.serialNumber,
+      ip: p.ip ?? current.ip,
+    })
+  } else if (kind === 'playback') {
+    const p = prefill as Partial<PlaybackDevice>
+    const current = form.getValues() as Extract<DeviceForm, { kind: 'playback' }>
+    form.reset({
+      ...current,
+      name: (current.name ?? '').trim() ? current.name : (p.name ?? current.name),
+      model: p.model ?? current.model,
+      deviceUniqueId: p.deviceUniqueId ?? current.deviceUniqueId,
+      channelIndex: p.channelIndex != null ? String(p.channelIndex) : current.channelIndex,
+      sampleRate: p.sampleRate != null ? String(p.sampleRate) : current.sampleRate,
+      deviceType: p.deviceType ?? current.deviceType,
+    })
+  }
+}
+
+/** 三页签表单 schema（§6.2 分叉；z.discriminatedUnion 单 useForm 承载）。
+ * 用 extend 而非展开 shape：保留各页签 schema 的 superRefine（如 API 代理跨字段校验）。 */
 const deviceFormSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('test'), ...testDeviceFormSchema.shape }),
-  z.object({ kind: z.literal('playback'), ...playbackDeviceFormSchema.shape }),
-  z.object({ kind: z.literal('api'), ...apiDeviceFormSchema.shape }),
+  testDeviceFormSchema.extend({ kind: z.literal('test') }),
+  playbackDeviceFormSchema.extend({ kind: z.literal('playback') }),
+  apiDeviceFormSchema.extend({ kind: z.literal('api') }),
 ])
 
 type DeviceForm = z.infer<typeof deviceFormSchema>
@@ -172,6 +228,8 @@ function buildDefaults(
     apiUrl: device?.apiUrl ?? '',
     protocol: device?.protocol ?? 'https',
     environment: device?.environment ?? 'testing',
+    proxyType: device?.proxyType ?? '',
+    proxyUrl: device?.proxyUrl ?? '',
     algorithmType: device?.algorithmType ?? 'asr_streaming',
     maxProcess: String(device?.defaultMaxProcess ?? 5),
     maxTimeout: String(device?.defaultMaxTimeout ?? 30),
@@ -241,7 +299,7 @@ function ChipField({
 }
 
 export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
-  const { state, prefill } = props
+  const { state, prefill, onScan, scanFill } = props
   const open = state.open
   const kind = state.kind
   const isEdit = state.mode === 'edit' && state.device != null
@@ -260,6 +318,14 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
     resolver: zodResolver(deviceFormSchema),
     values: buildDefaults(state, prefill),
   })
+
+  // INT-1029 抽屉内扫描「选择」→ 回填当前表单（编辑/新增态均可用；nonce 递增触发）
+  useEffect(() => {
+    if (scanFill && state.open && scanFill.kind === kind) {
+      mergeScanPrefill(form, scanFill.kind, scanFill.prefill)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scanFill?.nonce])
 
   // API 端点数组（§6.2 apiEndpoint ArrayField；受控于本地 state，编辑回显）
   const [endpoints, setEndpoints] = useState<EndpointFormRow[]>([])
@@ -391,6 +457,9 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
           protocol: values.protocol,
           environment: values.environment || null,
           meta: { protocol: values.protocol, environment: values.environment },
+          // INT-1029：每 API 代理配置（契约格式 user:pass@host:port；空串归一 null）
+          proxyType: values.proxyType?.trim() || null,
+          proxyUrl: values.proxyUrl?.trim() || null,
           algorithmType: values.algorithmType,
           defaultMaxProcess: Number(values.maxProcess) || 5,
           defaultMaxTimeout: Number(values.maxTimeout) || 30,
@@ -475,7 +544,19 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
 
             {kind === 'test' && (
               <section className='flex flex-col gap-2'>
-                <h3 className='text-sm font-medium'>测试设备信息</h3>
+                <div className='flex items-center justify-between'>
+                  <h3 className='text-sm font-medium'>测试设备信息</h3>
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='sm'
+                    className='h-7 gap-1 text-xs'
+                    onClick={onScan}
+                  >
+                    <ScanLine aria-hidden='true' className='size-3.5' />
+                    扫描设备
+                  </Button>
+                </div>
                 <div className='grid grid-cols-2 gap-2.5'>
                   <Field label='型号' required error={errors.model?.message}>
                     <Input {...form.register('model')} placeholder='如：旗舰 S1' className='h-8' />
@@ -681,7 +762,19 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
 
             {kind === 'playback' && (
               <section className='flex flex-col gap-2'>
-                <h3 className='text-sm font-medium'>播放设备信息</h3>
+                <div className='flex items-center justify-between'>
+                  <h3 className='text-sm font-medium'>播放设备信息</h3>
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='sm'
+                    className='h-7 gap-1 text-xs'
+                    onClick={onScan}
+                  >
+                    <ScanLine aria-hidden='true' className='size-3.5' />
+                    扫描设备
+                  </Button>
+                </div>
                 <div className='grid grid-cols-2 gap-2.5'>
                   <Field label='型号' required error={errors.model?.message}>
                     <Input {...form.register('model')} className='h-8' />
@@ -781,6 +874,35 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                       </SelectContent>
                     </Select>
                   </Field>
+                  {/* 代理配置（INT-1029：每 API 可配代理；proxy_url 契约格式 user:pass@host:port 不含 scheme） */}
+                  <Field label='代理类型'>
+                    <Select
+                      value={form.watch('proxyType') ?? ''}
+                      onValueChange={(value) => form.setValue('proxyType', value ?? '')}
+                    >
+                      <SelectTrigger size='sm' className='w-full'>
+                        <SelectValue placeholder='不使用代理'>
+                          {PROXY_TYPE_OPTIONS.find((o) => o.value === form.watch('proxyType'))
+                            ?.label ?? '不使用代理'}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PROXY_TYPE_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label='代理地址' error={errors.proxyUrl?.message}>
+                    <Input
+                      {...form.register('proxyUrl')}
+                      placeholder='user:pass@host:port'
+                      aria-invalid={Boolean(errors.proxyUrl)}
+                      className='h-8'
+                    />
+                  </Field>
                   <Field label='关联算法' required error={errors.algorithmType?.message}>
                     <Select
                       value={form.watch('algorithmType')}
@@ -808,6 +930,9 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                     <Input {...form.register('maxAudioDuration')} type='number' className='h-8' />
                   </Field>
                 </div>
+                <p className='text-muted-foreground text-xs'>
+                  代理地址格式：user:pass@host:port（不含 http:// 前缀）；选择代理类型后必填。
+                </p>
                 <Field label='API 端点' required error={errors.apiUrl?.message}>
                   <Input {...form.register('apiUrl')} placeholder='https://api.example.com/v1/asr' className='h-8' />
                 </Field>

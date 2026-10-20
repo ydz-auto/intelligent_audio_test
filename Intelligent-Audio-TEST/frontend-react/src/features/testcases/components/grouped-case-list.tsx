@@ -5,10 +5,11 @@
  * （懒加载分页：每页 5 条 +「已显示 {n} / {总} 条 · 加载更多」）。
  * 列表级：排序（按用例数量/分组名称/创建时间 × 升降序）+ 分组分页（每页 5 组 + 加载更多）。
  * 「未分组」虚拟组（INT-249：计数=可见数据集中 groupId 为空的用例数；收藏/回收站态不挂载）。
- * 展开态持久化：本会话内存；默认全展开（groups 异步加载后补齐展开集——INT-490 P2 修复）。
+ * 展开态持久化：本会话内存；默认收起（INT-1027 走查裁定：进入页面/筛选变化后分组默认 collapsed，
+ * 用户点组头展开后会话内保持展开态——INT-490 P2 默认全展开口径废弃）。
  */
 import { ArrowUpDown, ChevronDown, Clock3, FolderOpen, SearchX, Tags, Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useIsFetching } from '@tanstack/react-query'
 
 import { useSessionMap } from '@/application/testcases/use-session-map'
@@ -109,22 +110,6 @@ export function GroupedCaseList({
   const dimmed = fetching > 0 && !loading
   /** §3.5 移动端（≤640px）子视图切换收进 CaseGroupActions 下拉首项「显示方式」 */
   const isMobile = useMediaQuery('(max-width: 640px)')
-
-  // INT-490 P2 修复：groups 异步到达后补齐展开集（默认全展开），保留用户手动折叠
-  useEffect(() => {
-    if (groups.length === 0) return
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      let changed = false
-      for (const g of groups) {
-        if (!next.has(g.id)) {
-          next.add(g.id)
-          changed = true
-        }
-      }
-      return changed ? next : prev
-    })
-  }, [groups])
 
   const groupCases = useMemo(() => {
     const map = new Map<string, TestCaseListItem[]>()
@@ -423,22 +408,35 @@ export function GroupedCaseList({
 
       {paginatedGroups.map(renderGroupCard)}
 
-      {/* 未分组虚拟组（INT-249；同样支持子视图切换 §3.5） */}
+      {/* 未分组虚拟组（INT-249；同样支持子视图切换 §3.5；INT-1027 默认收起、组头可展开） */}
       {ungroupedCases.length > 0 && (
         <div className='bg-card ring-foreground/10 overflow-hidden rounded-xl ring-1'>
-          <div className='flex cursor-pointer items-center justify-between gap-2 px-3 py-2'>
+          <div
+            className='flex cursor-pointer items-center justify-between gap-2 px-3 py-2'
+            onClick={() => toggleGroupExpanded('__ungrouped__')}
+          >
             <div className='flex min-w-0 items-center gap-2'>
               <Checkbox
                 checked={ungroupedCases.length > 0 && ungroupedCases.every((c) => selected.has(c.id))}
                 aria-label='全选未分组用例'
                 onCheckedChange={(c) => onToggleAll(ungroupedCases.map((x) => x.id), c)}
               />
+              <ChevronDown
+                aria-hidden='true'
+                className={cn(
+                  'size-4 text-muted-foreground transition-transform',
+                  !expanded.has('__ungrouped__') && '-rotate-90'
+                )}
+              />
               <span className='font-medium truncate'>未分组</span>
               <Badge variant='secondary' className='rounded-md px-1.5 font-mono text-[11px] tabular-nums'>
                 {ungroupedCases.length} 条
               </Badge>
             </div>
-            <div className='flex shrink-0 flex-wrap items-center gap-1.5'>
+            <div
+              className='flex shrink-0 flex-wrap items-center gap-1.5'
+              onClick={(e) => e.stopPropagation()}
+            >
               {!isMobile && (
                 <CaseSubViewToggle
                   value={groupSubView['__ungrouped__'] ?? 'flat'}
@@ -472,9 +470,11 @@ export function GroupedCaseList({
               />
             </div>
           </div>
-          <div className='space-y-2 border-t px-3 py-3'>
-            {renderGroupBody(ungroupedCases, groupSubView['__ungrouped__'] ?? 'flat')}
-          </div>
+          {expanded.has('__ungrouped__') && (
+            <div className='space-y-2 border-t px-3 py-3'>
+              {renderGroupBody(ungroupedCases, groupSubView['__ungrouped__'] ?? 'flat')}
+            </div>
+          )}
         </div>
       )}
 

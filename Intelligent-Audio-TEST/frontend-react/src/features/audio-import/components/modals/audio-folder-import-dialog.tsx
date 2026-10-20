@@ -1,10 +1,11 @@
 /**
  * 批量从文件夹导入弹窗（§6.17；Dialog sm:max-w-2xl）。
  * 拖放/选择文件夹（webkitdirectory + 递归子文件夹 + 按文件类型筛选）+ 真实统计四枚
- * + 文件夹分组设置（custom 时逐文件夹自定义分组名）+ 标注代码 select + 复用 UploadOptions
+ * + 文件夹分组设置（custom 时逐文件夹自定义分组名）+ 复用 UploadOptions
  * + 主钮「开始导入」→ 走真实上传（startRealAudioUpload，与上传弹窗同链路）。
  * V9.7.10 FolderImportModal 对位：per-folder 分组名（root/folder/custom 三型）与标注文件
- * 解析（json/jsonl/rttm/stm/txt）随 merge 载荷逐文件落库；JSON 用例分组策略（testCaseStrategy
+ * 解析（json/jsonl/rttm/stm/txt）随 merge 载荷逐文件落库；标注代码取上传时选择的算法类型
+ * （INT-1028 口径：导入窗口不选标注代码）。JSON 用例分组策略（testCaseStrategy
  * buildTestCaseGroups：Rounds/Flat/TxtArray 多轮用例）本卡未实现，显式标缺口（见交付评论）。
  */
 import { FolderInput, FolderTree } from 'lucide-react'
@@ -49,14 +50,6 @@ const FORMAT_FILTER_OPTIONS = [
   { value: 'M4A', label: 'M4A' },
 ] as const
 
-/** 标注代码选项（文件夹导入静态选项；上传弹窗走 /algorithm/reference-params 联动算法类型） */
-const ANNOTATION_CODE_OPTIONS = [
-  { value: '', label: '留空' },
-  { value: 'asr', label: 'ASR 标注' },
-  { value: 'translation', label: '翻译标注' },
-  { value: 'diarization', label: '说话人分离标注' },
-] as const
-
 /** 支持的音频扩展名（§6.17 supportedFormats 对位；目录选择后按此过滤） */
 const AUDIO_EXTS = ['.wav', '.mp3', '.m4a', '.flac', '.aac', '.ogg']
 
@@ -86,7 +79,6 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
   const [customGroupName, setCustomGroupName] = useState('')
   const [tags, setTags] = useState('')
   const [inheritTags, setInheritTags] = useState(true)
-  const [annotationCode, setAnnotationCode] = useState('')
   const [importing, setImporting] = useState(false)
   const dirRef = useRef<HTMLInputElement | null>(null)
 
@@ -138,11 +130,11 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
     }
     setImporting(true)
     try {
-      // 标注文件（json/jsonl/rttm/stm/txt）按文件名匹配音频解析；标注代码随 merge 落库
+      // 标注文件（json/jsonl/rttm/stm/txt）按文件名匹配音频解析；标注代码取导入算法类型随 merge 落库
       const perFileAnnotations = await parseAnnotationsForAudios(
         files,
         audioFiles,
-        annotationCode || algorithmType || undefined
+        algorithmType || undefined
       )
       // per-folder 分组名（V9.7.10 groupNameType 对位：root=根目录 / folder=最子级文件夹 / custom=逐文件夹自定义名）
       const perFile: PerFileUploadConfig[] = audioFiles.map((f, idx) => {
@@ -311,28 +303,6 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
             </div>
           )}
 
-          {/* 标注代码（V9.7.10 对位：留空则使用 JSON 内 code/name 字段；真实解析接入上传链路） */}
-          <div className='space-y-2'>
-            <Label htmlFor='folder-import-annotation'>标注代码</Label>
-            <Select
-              value={annotationCode}
-              onValueChange={(value) => setAnnotationCode(value ?? '')}
-            >
-              <SelectTrigger id='folder-import-annotation' size='sm' className='w-full'>
-                <SelectValue placeholder='留空则使用 JSON 内 code/name 字段'>
-                  {ANNOTATION_CODE_OPTIONS.find((o) => o.value === annotationCode)?.label ?? ''}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {ANNOTATION_CODE_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           {/* 上传选项 */}
           <UploadOptions
             audioType={audioType}
@@ -355,8 +325,6 @@ export function AudioFolderImportDialog(props: AudioFolderImportDialogProps) {
             onInheritTagsChange={setInheritTags}
             tags={tags}
             onTagsChange={setTags}
-            annotationCode={annotationCode}
-            onAnnotationCodeChange={setAnnotationCode}
           />
         </div>
 

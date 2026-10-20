@@ -14,7 +14,6 @@ import { toast } from 'sonner'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useEvaluationDimensions, useEvaluationCategories } from '@/application/evaluation/use-dimensions'
-import { useDimensionOptions } from '@/application/testcases/use-evaluation-dimensions'
 import { useCaseGroups } from '@/application/testcases/use-case-groups'
 import { useCaseTags } from '@/application/testcases/use-case-tags'
 import {
@@ -85,8 +84,8 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   })
   const groupsQuery = useCaseGroups()
   const tagsQuery = useCaseTags()
-  const dimsQuery = useDimensionOptions(algorithmId)
-  /** 全量评估维度（含子维度；批量设置评估维度 DimensionPicker 主/子分组云用，参考 V9.7.10） */
+  /** 全量评估维度（含子维度；批量设置评估维度 DimensionPicker 主/子分组云 + 列表筛选
+   *  评估维度 facet 分组/主维度/子维度 共用，参考 V9.7.10；INT-1030 全站一致性） */
   const allDimsQuery = useEvaluationDimensions()
   /** 评估维度分类（DimensionPicker 分类分组组头；负责人 2026-10-19 口径） */
   const categoriesQuery = useEvaluationCategories()
@@ -94,7 +93,6 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   const items = listQuery.data?.items ?? []
   const groups = groupsQuery.data ?? []
   const tags = tagsQuery.data ?? []
-  const dimensions = dimsQuery.data ?? []
   const allDimensions = allDimsQuery.data ?? []
   const categories = categoriesQuery.data ?? []
 
@@ -454,7 +452,8 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
               isFiltered={isFiltered}
               groups={groups}
               tags={tags}
-              dimensions={dimensions}
+              dimensions={allDimensions}
+              categories={categories}
               cases={items}
               onRestoreAll={() =>
                 setConfirm({ kind: 'restore-all', count: trashCount })

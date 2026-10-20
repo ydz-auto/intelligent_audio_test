@@ -20,7 +20,6 @@ import {
   type SaveAlgorithmInput,
   type SaveGroupInput,
 } from '@/infrastructure/api/algorithm-config-api'
-import { fetchDimensionOptions } from '@/infrastructure/api/evaluation-api'
 
 /** 算法定义列表（全量；前端过滤/分页） */
 export function useAlgorithmDefinitions() {
@@ -40,18 +39,8 @@ export function useAlgorithmGroups() {
   })
 }
 
-/** 评估维度选项（§6.6 关联维度 Select / §6.5 评估映射 target 选项；
- *  数据源 GET /evaluation/dimensions/options，仅主维度） */
-export function useAlgorithmDimensionOptions() {
-  return useQuery({
-    queryKey: ['evaluation-dimension-options'],
-    queryFn: async () => {
-      const items = await fetchDimensionOptions()
-      return items.map((d) => ({ id: d.id, name: d.name }))
-    },
-    staleTime: 5 * 60_000,
-  })
-}
+/** 评估维度全量/分类由 index.tsx 直接经 useEvaluationDimensions/useEvaluationCategories
+ *  拉取（INT-1030：映射/关联维度选择改分组/主维度/子维度，原仅主维度 options 退役） */
 
 /** 新建/编辑/复制/删除/批量删除/重载（聚合 CRUD + invalidate） */
 export function useAlgorithmMutations() {

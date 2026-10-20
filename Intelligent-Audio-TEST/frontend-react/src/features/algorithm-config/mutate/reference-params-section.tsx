@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import type { AlgorithmFormValues } from '@/features/algorithm-config/types'
+import { AnnotationCodeSelect, type AlgorithmOption } from './annotation-code-select'
 import {
   REFERENCE_PARAMS_DESCRIPTION,
   REFERENCE_PARAM_MERGE_OPTIONS,
@@ -34,8 +35,11 @@ const ANNOTATION_FORMAT_OPTIONS = [
 
 export function ReferenceParamsSection({
   form,
+  algorithmOptions,
 }: {
   form: UseFormReturn<AlgorithmFormValues>
+  /** 算法列表（标注代码下拉选项：标注代码=算法类型） */
+  algorithmOptions: AlgorithmOption[]
 }) {
   const referenceParams = useFieldArray({
     control: form.control,
@@ -147,7 +151,12 @@ export function ReferenceParamsSection({
             <thead>
               <tr className='bg-[var(--table-header)] text-xs'>
                 <th className='px-3 py-2 text-left font-medium'>参数代码</th>
-                <th className='px-3 py-2 text-left font-medium'>标注代码</th>
+                <th
+                  title='标注代码=算法类型代码；默认同本算法，选其它算法表示复用该算法的标注'
+                  className='px-3 py-2 text-left font-medium'
+                >
+                  标注代码
+                </th>
                 <th className='px-3 py-2 text-left font-medium'>参数名称</th>
                 <th className='px-3 py-2 text-left font-medium'>参考类型</th>
                 <th className='px-3 py-2 text-left font-medium'>标注格式</th>
@@ -185,11 +194,12 @@ export function ReferenceParamsSection({
                       />
                     </td>
                     <td className='px-2 py-1.5'>
-                      <Input
-                        aria-label='标注代码'
-                        placeholder='标注匹配代码，默认同算法代码'
-                        className='h-7 text-xs'
-                        {...form.register(`referenceParams.${index}.annotationCode`)}
+                      <AnnotationCodeSelect
+                        value={form.watch(`referenceParams.${index}.annotationCode`) ?? ''}
+                        onValueChange={(value) =>
+                          form.setValue(`referenceParams.${index}.annotationCode`, value)
+                        }
+                        algorithmOptions={algorithmOptions}
                       />
                     </td>
                     <td className='px-2 py-1.5'>

@@ -9,7 +9,11 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { EvaluationDimensionItem } from '@/domain/models/evaluationDimension'
+import type {
+  Dimension,
+  EvaluationCategory,
+  EvaluationDimensionItem,
+} from '@/domain/models/evaluationDimension'
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import { MOCK_TAGS, MOCK_TEST_CASES } from '@/infrastructure/mock/testcases-mock'
@@ -51,6 +55,19 @@ const DIMENSIONS: EvaluationDimensionItem[] = [
     updatedAt: '2026-09-20 11:00',
   },
 ]
+
+/** INT-1030：评估维度 facet 分组/主维度/子维度 fixtures（全量维度 + 分类） */
+const GROUPED_DIMENSIONS: Dimension[] = [
+  {
+    id: 1,
+    name: '识别准确率',
+    dimensionType: 'main',
+    parentDimensionId: null,
+    categoryId: 1,
+  },
+  { id: 11, name: '字准率', dimensionType: 'sub', parentDimensionId: 1, categoryId: 1 },
+]
+const GROUPED_CATEGORIES: EvaluationCategory[] = [{ id: 1, name: '基础质量' }]
 
 const tagCount = (name: string) =>
   MOCK_TEST_CASES.filter((c) => !c.deleted && c.tags.includes(name)).length
@@ -278,6 +295,42 @@ describe('TestCasesFilterToolbar', () => {
     await user.click(await screen.findByText('复制标签下用例'))
     expect(screen.getByText(/复制后将生成新标签：音箱_copy/)).toBeInTheDocument()
     expect(screen.getByText('同时复制到新分组')).toBeInTheDocument()
+  })
+
+  it('INT-1030 回归：评估维度 facet 按 分组→主维度→子维度 展示并可单选', async () => {
+    const user = setupUser()
+    const props = {
+      filters: {} as never,
+      onChange: vi.fn(),
+      onReset: vi.fn(),
+      isFiltered: false,
+      groups: GROUPS,
+      tags: MOCK_TAGS,
+      dimensions: GROUPED_DIMENSIONS,
+      categories: GROUPED_CATEGORIES,
+      cases: MOCK_TEST_CASES,
+      onRestoreAll: vi.fn(),
+    }
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TestCasesFilterToolbar {...props} />
+      </QueryClientProvider>
+    )
+
+    // 分类组头 + 主维度 + 其子维度 展示（分组→主维度→子维度）
+    await user.click(screen.getByRole('combobox', { name: '评估维度筛选' }))
+    expect(screen.getByText('基础质量')).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /识别准确率/ })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /字准率/ })).toBeInTheDocument()
+
+    // 选中子维度 → onChange({ dimensionId: 11 })
+    await user.click(screen.getByRole('option', { name: /字准率/ }))
+    expect(props.onChange).toHaveBeenCalledWith(expect.objectContaining({ dimensionId: 11 }))
+
+    // 「全部」清除项 → onChange({ dimensionId: null })
+    await user.click(screen.getByRole('combobox', { name: '评估维度筛选' }))
+    await user.click(screen.getByRole('option', { name: '全部' }))
+    expect(props.onChange).toHaveBeenCalledWith(expect.objectContaining({ dimensionId: null }))
   })
 
   it('P2-1 回归：权限态变化时无 hook 早退——只读角色「标签操作」整组保留、逐钮禁用（§7 注 1）', async () => {

@@ -67,6 +67,8 @@ import {
   publishAlgorithm,
   saveAlgorithmDraft,
 } from '@/infrastructure/api/algorithm-config-api'
+import type { Dimension, EvaluationCategory } from '@/domain/models/evaluationDimension'
+import type { AlgorithmOption } from './annotation-code-select'
 
 export type AlgorithmMutateSheetProps = {
   open: boolean
@@ -74,7 +76,12 @@ export type AlgorithmMutateSheetProps = {
   mode: MutateMode
   algorithm: AlgorithmDefinition | null
   groups: AlgorithmGroup[]
-  dimensionOptions: Array<{ id: number; name: string }>
+  /** 算法列表（标注代码下拉选项：标注代码=算法类型） */
+  algorithmOptions: AlgorithmOption[]
+  /** 评估维度全量（含子维度；映射/关联维度按 分组/主维度/子维度 展示） */
+  dimensions: Dimension[]
+  /** 评估维度分类（分类分组组头） */
+  categories: EvaluationCategory[]
 }
 
 const MODE_TITLES: Record<MutateMode, string> = {
@@ -270,13 +277,15 @@ export function AlgorithmMutateSheet(props: AlgorithmMutateSheetProps) {
 
               {/* 统一参数表 + 作用域 chips（§6.4） */}
               <div onBlur={handleParamsBlur}>
-                <ParamsTable form={form} />
+                <ParamsTable form={form} algorithmOptions={props.algorithmOptions} />
               </div>
 
               {/* 高级配置折叠区（§6.5 默认收起） */}
               <AdvancedConfigCollapsible
                 form={form}
-                dimensionOptions={props.dimensionOptions}
+                algorithmOptions={props.algorithmOptions}
+                dimensions={props.dimensions}
+                categories={props.categories}
               />
             </div>
           </form>

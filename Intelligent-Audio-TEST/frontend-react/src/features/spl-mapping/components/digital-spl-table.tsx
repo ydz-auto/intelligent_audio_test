@@ -1,7 +1,7 @@
 /**
- * 数字域 RMS-SPL 映射数据表（§4.3；DataTablePage 对位——列=映射名称/关联 API/协议/供应商/
- * 参考基准/校准点数/增益限幅/校准状态/默认/操作）。
- * 保留现状 10 列表格形态；「默认」列由 apis.rmsSplMappingId 指针命中判定（§4.3）。
+ * 数字域 RMS-SPL 映射数据表（§4.3 简化口径 INT-1031；DataTablePage 对位——列=映射名称/
+ * 关联 API/参考基准/校准点数/增益限幅/校准状态/默认/操作；协议/供应商列隐藏）。
+ * 「默认」列由 apis.rmsSplMappingId 指针命中判定（§4.3）。
  */
 import { Star, Waves } from 'lucide-react'
 
@@ -18,7 +18,6 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import type { ApiConfigRef, ApiRmsSplMapping } from '@/domain/models/digitalSpl'
-import { DIGITAL_PROTOCOL_OPTIONS } from '@/features/spl-mapping/constants'
 import {
   formatGainClamp,
   formatReferenceBase,
@@ -52,17 +51,6 @@ function resolveApiName(apis: ApiConfigRef[], apiId: number): string {
 function isDefaultMapping(apis: ApiConfigRef[], mapping: ApiRmsSplMapping): boolean {
   const api = apis.find((a) => a.id === mapping.apiId)
   return api?.rmsSplMappingId != null && api.rmsSplMappingId === mapping.id
-}
-
-/** 协议徽章（§4.3 websocket→WebSocket/HTTP） */
-function ProtocolBadge({ protocol }: { protocol: ApiRmsSplMapping['protocol'] }) {
-  if (!protocol) return <span className='text-muted-foreground'>—</span>
-  const option = DIGITAL_PROTOCOL_OPTIONS.find((o) => o.value === protocol)
-  return (
-    <Badge variant='outline' className='rounded-md px-1.5 font-normal'>
-      {option?.label ?? protocol}
-    </Badge>
-  )
 }
 
 export function DigitalSplTable(props: DigitalSplTableProps) {
@@ -112,13 +100,11 @@ export function DigitalSplTable(props: DigitalSplTableProps) {
   return (
     <div className='bg-card ring-foreground/10 overflow-hidden rounded-xl ring-1'>
       <div className='overflow-x-auto'>
-        <table className='w-full min-w-[1000px] text-[13px]'>
+        <table className='w-full min-w-[860px] text-[13px]'>
           <thead>
             <tr className='bg-[var(--table-header)] text-xs'>
               <th className='px-3 py-2 text-left font-medium'>映射名称</th>
               <th className='px-3 py-2 text-left font-medium'>关联 API</th>
-              <th className='px-3 py-2 text-left font-medium'>协议</th>
-              <th className='px-3 py-2 text-left font-medium'>供应商</th>
               <th className='px-3 py-2 text-right font-medium'>参考基准</th>
               <th className='px-3 py-2 text-right font-medium'>校准点数</th>
               <th className='px-3 py-2 text-right font-medium'>增益限幅</th>
@@ -146,16 +132,6 @@ export function DigitalSplTable(props: DigitalSplTableProps) {
                     <span className='min-w-0 block truncate'>
                       {resolveApiName(props.apis, row.apiId)}
                     </span>
-                  </td>
-                  <td className='px-3 py-2'>
-                    <ProtocolBadge protocol={row.protocol} />
-                  </td>
-                  <td className='max-w-28 px-3 py-2'>
-                    {row.vendor ? (
-                      <span className='min-w-0 block truncate'>{row.vendor}</span>
-                    ) : (
-                      <span className='text-muted-foreground'>-</span>
-                    )}
                   </td>
                   <td className='px-3 py-2 text-right font-mono text-xs tabular-nums'>
                     {formatReferenceBase(row.referenceSpl, row.referenceGainLinear)}

@@ -14,17 +14,26 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
 import { cn } from '@/lib/utils'
+import type { Dimension, EvaluationCategory } from '@/domain/models/evaluationDimension'
 import type { AlgorithmFormValues } from '@/features/algorithm-config/types'
 import { ReferenceParamsSection } from './reference-params-section'
 import { MappingsSection } from './mappings-section'
 import { DimensionsSection } from './dimensions-section'
+import type { AlgorithmOption } from './annotation-code-select'
 
 export function AdvancedConfigCollapsible({
   form,
-  dimensionOptions,
+  algorithmOptions,
+  dimensions,
+  categories = [],
 }: {
   form: UseFormReturn<AlgorithmFormValues>
-  dimensionOptions: Array<{ id: number; name: string }>
+  /** 算法列表（标注代码下拉选项） */
+  algorithmOptions: AlgorithmOption[]
+  /** 评估维度全量（含子维度；映射/关联维度按 分组/主维度/子维度 展示） */
+  dimensions: Dimension[]
+  /** 评估维度分类（分类分组组头） */
+  categories?: EvaluationCategory[]
 }) {
   const [open, setOpen] = useState(false)
 
@@ -76,9 +85,17 @@ export function AdvancedConfigCollapsible({
         </CollapsibleTrigger>
 
         <CollapsibleContent className='mt-4 flex flex-col gap-5'>
-          <ReferenceParamsSection form={form} />
-          <MappingsSection form={form} dimensionOptions={dimensionOptions} />
-          <DimensionsSection form={form} dimensionOptions={dimensionOptions} />
+          <ReferenceParamsSection form={form} algorithmOptions={algorithmOptions} />
+          <MappingsSection
+            form={form}
+            dimensions={dimensions}
+            categories={categories}
+          />
+          <DimensionsSection
+            form={form}
+            dimensions={dimensions}
+            categories={categories}
+          />
         </CollapsibleContent>
       </Collapsible>
     </div>

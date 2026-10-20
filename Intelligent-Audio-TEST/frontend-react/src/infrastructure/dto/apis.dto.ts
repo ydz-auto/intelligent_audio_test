@@ -26,6 +26,9 @@ export interface ApiItemDto {
   description: string | null
   status: string | null
   meta: Record<string, unknown>
+  /** 代理配置（api.py ApiItem proxy_type/proxy_url 实测；INT-1029） */
+  proxy_type: string | null
+  proxy_url: string | null
   algorithm_type: string | null
   default_max_process: number | null
   default_max_timeout: number | null

@@ -131,6 +131,7 @@ export function AiChatMessageContent({
       {isError && (
         <>
           <MessageError
+            detail={versionContent}
             disabled={!isMessageFinal}
             errorCode={message.errorCode}
             onDelete={onDeleteMessage ? () => onDeleteMessage(message) : undefined}

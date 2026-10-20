@@ -54,17 +54,49 @@ export const playbackDeviceFormSchema = z.object({
 export type PlaybackDeviceForm = z.infer<typeof playbackDeviceFormSchema>
 
 /** 测试 API 表单（§6.2：名称/API端点/协议必填；端点列表复用 INT-355 §5.3 口径） */
-export const apiDeviceFormSchema = z.object({
-  name: z.string().min(1, '请填写 API 名称'),
-  description: z.string().optional(),
-  vendor: z.string().optional(),
-  apiUrl: z.string().min(1, '请填写 API 端点'),
-  protocol: z.string().min(1, '请选择协议'),
-  environment: z.string().optional(),
-  algorithmType: z.string().min(1, '请选择关联算法'),
-  maxProcess: z.string().optional(),
-  maxTimeout: z.string().optional(),
-  maxAudioDuration: z.string().optional(),
-})
+export const apiDeviceFormSchema = z
+  .object({
+    name: z.string().min(1, '请填写 API 名称'),
+    description: z.string().optional(),
+    vendor: z.string().optional(),
+    apiUrl: z.string().min(1, '请填写 API 端点'),
+    protocol: z.string().min(1, '请选择协议'),
+    environment: z.string().optional(),
+    /** 代理类型（INT-1029：http/https/socks5/socks5h，空=不使用代理；api_test_service PROXY_TYPES 契约） */
+    proxyType: z.string().optional(),
+    /** 代理地址（契约格式 user:pass@host:port，不含 scheme 前缀，INT-846 口径） */
+    proxyUrl: z.string().optional(),
+    algorithmType: z.string().min(1, '请选择关联算法'),
+    maxProcess: z.string().optional(),
+    maxTimeout: z.string().optional(),
+    maxAudioDuration: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    const type = (data.proxyType ?? '').trim()
+    const url = (data.proxyUrl ?? '').trim()
+    if (!type && url) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['proxyUrl'],
+        message: '未选择代理类型时无需填写代理地址',
+      })
+      return
+    }
+    if (type && !url) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['proxyUrl'],
+        message: '配置代理时代理地址必填（格式：user:pass@host:port）',
+      })
+      return
+    }
+    if (url.includes('://')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['proxyUrl'],
+        message: '代理地址不应包含 http:// 前缀，格式：user:pass@host:port',
+      })
+    }
+  })
 
 export type ApiDeviceForm = z.infer<typeof apiDeviceFormSchema>

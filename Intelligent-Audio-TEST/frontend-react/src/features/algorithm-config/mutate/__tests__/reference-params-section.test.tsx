@@ -10,6 +10,12 @@ import { describe, expect, it } from 'vitest'
 
 import type { AlgorithmFormValues } from '@/features/algorithm-config/types'
 import { ReferenceParamsSection } from '../reference-params-section'
+import type { AlgorithmOption } from '../annotation-code-select'
+
+const ALGORITHM_OPTIONS: AlgorithmOption[] = [
+  { type: 'asr_v3', name: '语音识别' },
+  { type: 'mt_2026', name: '机器翻译' },
+]
 
 function buildValues(): AlgorithmFormValues {
   return {
@@ -64,7 +70,7 @@ function buildValues(): AlgorithmFormValues {
 
 function Harness({ values = buildValues() }: { values?: AlgorithmFormValues }) {
   const form = useForm<AlgorithmFormValues>({ defaultValues: values })
-  return <ReferenceParamsSection form={form} />
+  return <ReferenceParamsSection form={form} algorithmOptions={ALGORITHM_OPTIONS} />
 }
 
 describe('ReferenceParamsSection 参考参数筛选行（§6.4）', () => {
@@ -126,5 +132,16 @@ describe('ReferenceParamsSection 参考参数筛选行（§6.4）', () => {
     expect(screen.getByDisplayValue('ref_text')).toBeInTheDocument()
     expect(screen.queryByDisplayValue('ref_audio')).not.toBeInTheDocument()
     expect(screen.queryByDisplayValue('ref_rttm')).not.toBeInTheDocument()
+  })
+
+  it('标注代码为下拉（算法类型/标注代码映射，INT-1030）', async () => {
+    const user = userEvent.setup()
+    render(<Harness />)
+    const annotations = screen.getAllByRole('combobox', { name: '标注代码' })
+    // r-1 annotationCode='text_ann' 不在选项 → 回退显示原始值；r-2/r-3 空 → 默认同算法类型
+    expect(annotations[0]).toHaveTextContent('text_ann')
+    expect(annotations[1]).toHaveTextContent('默认同算法类型')
+    await user.click(annotations[1])
+    expect(screen.getByRole('option', { name: '语音识别（asr_v3）' })).toBeInTheDocument()
   })
 })

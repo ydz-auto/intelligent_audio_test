@@ -17,10 +17,13 @@ import { PageFooterPortal } from '@/components/layout/components/page-footer'
 import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
 import {
   useAlgorithmDefinitions,
-  useAlgorithmDimensionOptions,
   useAlgorithmGroups,
   useAlgorithmMutations,
 } from '@/application/algorithm-config/useAlgorithmDefinitions'
+import {
+  useEvaluationCategories,
+  useEvaluationDimensions,
+} from '@/application/evaluation/use-dimensions'
 import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { toast } from 'sonner'
@@ -76,7 +79,10 @@ export function AlgorithmConfigPage() {
 
   const definitionsQuery = useAlgorithmDefinitions()
   const groupsQuery = useAlgorithmGroups()
-  const dimensionOptionsQuery = useAlgorithmDimensionOptions()
+  /** 评估维度全量（含子维度；映射/关联维度按 分组/主维度/子维度 展示，INT-1030） */
+  const dimensionsQuery = useEvaluationDimensions()
+  /** 评估维度分类（分类分组组头） */
+  const categoriesQuery = useEvaluationCategories()
   const { remove, bulkRemove, reload } = useAlgorithmMutations()
 
   const globalAlgorithmType = useAlgorithmStore((s) => s.algorithmId)
@@ -354,7 +360,9 @@ export function AlgorithmConfigPage() {
         mode={mutateSheet.mode}
         algorithm={mutateSheet.algorithm}
         groups={groups}
-        dimensionOptions={dimensionOptionsQuery.data ?? []}
+        algorithmOptions={definitions.map(({ type, name }) => ({ type, name }))}
+        dimensions={dimensionsQuery.data ?? []}
+        categories={categoriesQuery.data ?? []}
       />
       <AlgorithmDetailDialog
         open={detailDialog.open}

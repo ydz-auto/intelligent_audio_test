@@ -161,6 +161,13 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
     Partial<TestDevice> | Partial<PlaybackDevice> | Partial<ApiDevice> | null
   >(null)
   const [scanOpen, setScanOpen] = useState(false)
+  /** INT-1029 扫描弹窗来源（header=更多操作扫描 → 开新增；drawer=抽屉内扫描 → 回填当前表单） */
+  const [scanInvoker, setScanInvoker] = useState<'header' | 'drawer'>('header')
+  const [mutateScanFill, setMutateScanFill] = useState<{
+    nonce: number
+    kind: DevicesTabKey
+    prefill: Partial<TestDevice> | Partial<PlaybackDevice> | Partial<ApiDevice>
+  } | null>(null)
   const [detailState, setDetailState] = useState<DeviceDetailState>({
     open: false,
     kind: 'test',
@@ -447,6 +454,13 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
     kind: DevicesTabKey,
     prefill: Partial<TestDevice> | Partial<PlaybackDevice> | Partial<ApiDevice>
   ) => {
+    // INT-1029：抽屉内扫描「选择」→ 回填当前抽屉表单（编辑/新增态均保持打开）；头部扫描 → 开新增抽屉
+    if (scanInvoker === 'drawer' && mutateState.open) {
+      setMutateScanFill({ nonce: Date.now(), kind, prefill })
+      setScanOpen(false)
+      setScanInvoker('header')
+      return
+    }
     setScanOpen(false)
     openMutate({ open: true, mode: 'create', kind }, prefill)
   }
@@ -541,7 +555,10 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
             canGroupManage={canGroupManage}
             canLabManage={canLabManage}
             onAdd={() => openMutate({ open: true, mode: 'create', kind: tab })}
-            onScan={() => setScanOpen(true)}
+            onScan={() => {
+              setScanInvoker('header')
+              setScanOpen(true)
+            }}
             onGroupManage={() => setGroupManagerOpen(true)}
             onLabManage={() => setLabManagerOpen(true)}
             onBatchHealth={() => void handleBatchAction('health_check')}
@@ -718,12 +735,21 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
         onOpenChange={(open) =>
           setMutateState((prev) => ({ ...prev, open, mode: open ? prev.mode : 'create' }))
         }
+        onScan={() => {
+          setScanInvoker('drawer')
+          setScanOpen(true)
+        }}
+        scanFill={mutateScanFill}
       />
       <ScanDevicesDialog
         open={scanOpen}
-        onOpenChange={setScanOpen}
+        onOpenChange={(open) => {
+          setScanOpen(open)
+          if (!open) setScanInvoker('header')
+        }}
         tab={tab}
         onAddToMutate={handleScanAdd}
+        fillMode={scanInvoker === 'drawer'}
       />
       <DeviceDetailDialog
         state={detailState}

@@ -10,6 +10,12 @@ import { describe, expect, it } from 'vitest'
 
 import type { AlgorithmFormValues } from '@/features/algorithm-config/types'
 import { ParamsTable } from '../params-table'
+import type { AlgorithmOption } from '../annotation-code-select'
+
+const ALGORITHM_OPTIONS: AlgorithmOption[] = [
+  { type: 'asr_v3', name: '语音识别' },
+  { type: 'mt_2026', name: '机器翻译' },
+]
 
 function buildValues(): AlgorithmFormValues {
   return {
@@ -69,7 +75,7 @@ function buildValues(): AlgorithmFormValues {
 
 function Harness({ values = buildValues() }: { values?: AlgorithmFormValues }) {
   const form = useForm<AlgorithmFormValues>({ defaultValues: values })
-  return <ParamsTable form={form} />
+  return <ParamsTable form={form} algorithmOptions={ALGORITHM_OPTIONS} />
 }
 
 describe('ParamsTable 统一参数表（§6.4）', () => {
@@ -126,6 +132,19 @@ describe('ParamsTable 统一参数表（§6.4）', () => {
     expect(screen.getByText('添加设备参数')).toBeInTheDocument()
     expect(screen.getByText('添加API参数')).toBeInTheDocument()
     expect(screen.getByText('添加用例参数')).toBeInTheDocument()
+  })
+
+  it('用例行标注代码为下拉（算法类型/标注代码映射，INT-1030）', async () => {
+    const user = userEvent.setup()
+    render(<Harness />)
+
+    await user.click(screen.getByRole('button', { name: /用例 \(1\)/ }))
+
+    const annotation = screen.getByRole('combobox', { name: '标注代码' })
+    expect(annotation).toHaveTextContent('默认同算法类型')
+    await user.click(annotation)
+    expect(screen.getByRole('option', { name: '语音识别（asr_v3）' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '机器翻译（mt_2026）' })).toBeInTheDocument()
   })
 })
 

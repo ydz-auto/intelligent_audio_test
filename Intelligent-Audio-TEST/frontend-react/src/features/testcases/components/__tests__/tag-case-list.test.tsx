@@ -111,6 +111,8 @@ describe('TagCaseList', () => {
       render(<Harness />)
       // Tabs 胶囊不渲染
       expect(screen.queryAllByRole('tab')).toHaveLength(0)
+      // 默认收起 → 先展开第一个标签卡「音箱」（分组子组头/未分组桶在标签组内内容区）
+      await user.click(screen.getAllByText('音箱')[0])
       // 「显示方式」下拉触发钮存在（每个标签卡一枚，取第一个「音箱」卡）
       await user.click(screen.getAllByRole('button', { name: '显示方式' })[0])
       expect(await screen.findByText('按用例分组')).toBeInTheDocument()

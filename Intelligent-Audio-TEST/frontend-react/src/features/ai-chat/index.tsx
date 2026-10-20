@@ -8,7 +8,7 @@
  */
 import { Badge } from '@/components/ui/badge'
 import { PanelRight } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -86,6 +86,18 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
     providers.find((p) => p.id === config.providerId) ??
     defaultProvider ??
     null
+
+  /** 配置即用（§3.11/INT-1032 走查）：供应商带模型而会话未选模型/所选模型已不在
+   * 清单时自动落首个模型——添加供应商后无需再手动选模型即可对话；手动切换模型后
+   * 命中校验、效果不再覆写。 */
+  useEffect(() => {
+    if (!currentProvider) return
+    const modelValid = currentProvider.models.includes(config.modelId ?? '')
+    if (currentProvider.models.length > 0 && !modelValid) {
+      updateConfig('providerId', currentProvider.id)
+      updateConfig('modelId', currentProvider.models[0])
+    }
+  }, [currentProvider, config.modelId, updateConfig])
 
   const { sendChat, stopGeneration, isGenerating } = useChatHandler({
     config,
