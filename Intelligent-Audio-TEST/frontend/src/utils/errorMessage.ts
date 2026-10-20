@@ -83,11 +83,16 @@ export function toUserErrorMessage(err: unknown, fallback: string): string {
 /**
  * 供 Toast 折叠区（details）保留的原始详情：
  * 仅当为原始 RPC 异常时返回（detail 优先，更全），否则为空串不显示折叠区。
+ * 网络/服务端级失败（Failed to fetch / 5xx / 非 JSON）不算原始 RPC 异常——
+ * 折叠区不保留其原文（INT-972），仅真正 RPC/gRPC 异常文本（InactiveRpcError/StatusCode.* 等）才保留。
  */
 export function toUserErrorDetail(err: unknown): string {
   const detail = extractStringField(err, 'detail')
   const message = extractStringField(err, 'message')
   const raw = detail || message
   if (!raw || !isRawRpcErrorText(raw)) return ''
+  // INT-974 把 /failed to fetch/i 归入 RAW_RPC_TEXT_PATTERNS（toUserErrorMessage 需降级），
+  // 但浏览器级网络失败无可保留的 RPC 原文，折叠区不应显示（INT-972 语义）
+  if (isNetworkOrServerErrorText(raw)) return ''
   return raw
 }
