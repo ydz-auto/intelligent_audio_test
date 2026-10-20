@@ -219,12 +219,31 @@ export async function request<T = any>(
 }
 
 async function handleResponse(response: Response, responseType: string = 'json', unwrapResponse: boolean = true, skipAuthRedirect: boolean = false): Promise<any> {
-  if (responseType === 'blob') {
-    return await response.blob();
-  }
-
-  if (responseType === 'arraybuffer') {
-    return await response.arrayBuffer();
+  // 二进制分支（blob / arraybuffer）：非 2xx 错误响应多为 JSON error body，
+  // 必须先行判 response.ok——否则错误 JSON 会被当作成功二进制下载成损坏文件
+  // （INT-1001 根因，本卡 INT-1005 修复：非 ok 时 clone 读 message/detail 抛给调用方）
+  if (responseType === 'blob' || responseType === 'arraybuffer') {
+    if (!response.ok) {
+      let errorData: any = null;
+      try {
+        errorData = await response.clone().json();
+      } catch {
+        try {
+          const text = await response.clone().text();
+          if (text) errorData = { message: text };
+        } catch {
+          errorData = null;
+        }
+      }
+      const error: any = new Error(errorData?.message || errorData?.detail || 'API Request failed');
+      if (errorData) {
+        error.code = errorData.code;
+        error.detail = errorData.detail;
+        error.errors = errorData.errors;
+      }
+      throw error;
+    }
+    return responseType === 'blob' ? await response.blob() : await response.arrayBuffer();
   }
 
   let data : any;
