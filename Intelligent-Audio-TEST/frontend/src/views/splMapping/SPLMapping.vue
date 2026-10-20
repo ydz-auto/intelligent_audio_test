@@ -589,8 +589,8 @@ onMounted(async () => {
 /* 徽章筛选替换原生 select 后：card-actions 允许换行（splMapping.css 原为 nowrap），
    对齐 Device.vue 筛选栏视觉 */
 .card-actions {
-    flex-wrap: wrap !important;
-    white-space: normal !important;
+    flex-wrap: wrap;
+    white-space: normal;
     row-gap: 10px;
 }
 
@@ -737,7 +737,7 @@ onMounted(async () => {
 
 .table-empty {
     text-align: center;
-    padding: 28px 12px !important;
+    padding: 28px 12px;
     color: var(--text-light);
 }
 

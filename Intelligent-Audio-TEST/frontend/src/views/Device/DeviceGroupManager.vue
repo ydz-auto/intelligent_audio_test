@@ -292,7 +292,7 @@ async function removeMember(group: DeviceGroup, deviceId: string | number) {
 .dg-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: color-mix(in srgb, var(--color-black) 45%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -305,7 +305,7 @@ async function removeMember(group: DeviceGroup, deviceId: string | number) {
   max-height: 82vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-dialog, 0 12px 40px rgba(0, 0, 0, 0.25));
 }
 .dg-header {
   display: flex;

@@ -596,8 +596,8 @@ async function handleSubmit() {
   display: inline-block;
   width: 12px;
   height: 12px;
-  border: 2px solid rgba(255, 255, 255, 0.4);
-  border-top-color: #fff;
+  border: 2px solid color-mix(in srgb, var(--color-white) 40%, transparent);
+  border-top-color: var(--color-white);
   border-radius: var(--radius-pill);
   animation: spin 0.8s linear infinite;
   margin-right: 4px;

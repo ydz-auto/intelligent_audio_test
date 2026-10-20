@@ -205,7 +205,6 @@ export function useSplMapping() {
   }
 
   function filterByDevice() {
-    console.log('Filtering by device:', deviceFilter.value);
     searchMappings();
   }
 
@@ -226,9 +225,6 @@ export function useSplMapping() {
       value: String(d.id),
       label: `${d.name}${d.model ? ` (${d.model})` : ''}`
     }));
-
-    console.log('[openAddMappingModal] playbackDevices:', playbackDevices.value.length);
-    console.log('[openAddMappingModal] deviceOptions:', deviceOptions);
 
     modalManager.open(MODAL_TYPES.CRUD_FORM, {
       title: '添加增益映射',
@@ -261,14 +257,13 @@ export function useSplMapping() {
       ],
       onConfirm: async (result: any) => {
         if (isSubmitting) {
-          console.log('[SPLMapping] 提交中，跳过重复提交');
           return;
         }
-        
+
         isSubmitting = true;
         try {
           const submitData = { ...result.data };
-          
+
           if (submitData.calibrationPoints !== undefined) {
             submitData.calibrationData = {
               points: submitData.calibrationPoints
@@ -314,9 +309,6 @@ export function useSplMapping() {
       label: `${d.name}${d.model ? ` (${d.model})` : ''}`
     }));
 
-    console.log('[editMapping] formData:', formData);
-    console.log('[editMapping] deviceOptions:', deviceOptions);
-
     modalManager.open(MODAL_TYPES.CRUD_FORM, {
       title: '编辑增益映射',
       entityName: '声压级映射',
@@ -348,10 +340,9 @@ export function useSplMapping() {
       ],
       onConfirm: async (result: any) => {
         if (isSubmitting) {
-          console.log('[SPLMapping] 编辑提交中，跳过重复提交');
           return;
         }
-        
+
         if (selectedMappingId.value) {
           isSubmitting = true;
           try {

@@ -90,15 +90,15 @@ input:focus, textarea:focus, select:focus {
   background-color: var(--color-rose-50);
   border: 1px solid var(--color-rose-300);
   border-radius: var(--radius-control);
-  color: #be123c;
+  color: var(--color-rose-700, #be123c);
   font-size: 14px;
   margin-bottom: 8px;
   animation: fadeIn 0.3s ease-out;
-  box-shadow: 0 2px 4px rgba(225, 29, 72, 0.05);
+  box-shadow: var(--shadow-rose-tint, 0 2px 4px rgba(225, 29, 72, 0.05));
 }
 
 .empty-select-guidance i {
-  color: #e11d48;
+  color: var(--color-rose-600, #e11d48);
   font-size: 16px;
 }
 
@@ -201,7 +201,7 @@ textarea {
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
-  background-color: #e7f3ff;
+  background-color: var(--color-info-bg, #e7f3ff);
   border: 1px solid var(--secondary-light);
   border-radius: var(--radius-tag);
   color: var(--secondary);

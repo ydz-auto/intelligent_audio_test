@@ -137,25 +137,17 @@ let isProcessingAddDevice = false
 const handleAddDevice = (event, device) => {
   event.stopPropagation()
   event.preventDefault()
-  
-  console.log('[ScanDevicesModal] handleAddDevice called for device:', device.name || device.deviceUniqueId)
-  console.log('[ScanDevicesModal] Current isProcessingAddDevice:', isProcessingAddDevice)
-  console.log('[ScanDevicesModal] Device details:', JSON.stringify(device, null, 2))
-  
+
   if (isProcessingAddDevice) {
-    console.log('[ScanDevicesModal] Already processing add device, skipping')
     return
   }
-  
+
   isProcessingAddDevice = true
-  console.log('[ScanDevicesModal] Processing device:', device.name || device.deviceUniqueId)
-  
+
   emit('confirm', device)
-  console.log("[ScanDevicesModal] emit('confirm') called with device:", JSON.stringify(device, null, 2))
-  
+
   setTimeout(() => {
     isProcessingAddDevice = false
-    console.log('[ScanDevicesModal] isProcessingAddDevice reset to false')
   }, 3000)
 }
 
@@ -192,21 +184,18 @@ const startScan = async () => {
       try {
         // devicesPort.scan 已通过 adapter 返回 ScannedDevice[]（camelCase）
         const response = await devicesPort.scan()
-        console.log('[ScanDevicesModal] 测试设备扫描响应:', response)
-        
+
         if (Array.isArray(response)) {
           devices = response
         } else {
-          console.log('[ScanDevicesModal] 无法解析测试设备扫描响应，使用模拟数据')
           devices = []
         }
       } catch (error) {
         console.error('[ScanDevicesModal] 测试设备扫描失败:', error)
         devices = []
       }
-      
+
       if (devices.length === 0) {
-        console.log('[ScanDevicesModal] 无测试设备，使用模拟数据 (开发环境)')
         devices = [
           {
             serial: 'MOCK-ADB-123456',
@@ -249,21 +238,18 @@ const startScan = async () => {
       try {
         // playbackPort.scan 已通过 adapter 返回 ScannedDevice[]（camelCase）
         const response = await playbackPort.scan()
-        console.log('[ScanDevicesModal] 播放设备扫描响应:', response)
-        
+
         if (Array.isArray(response)) {
           devices = response
         } else {
-          console.log('[ScanDevicesModal] 无法解析播放设备扫描响应，使用模拟数据')
           devices = []
         }
       } catch (error) {
         console.error('[ScanDevicesModal] 播放设备扫描失败:', error)
         devices = []
       }
-      
+
       if (devices.length === 0) {
-        console.log('[ScanDevicesModal] 无播放设备，使用模拟数据 (开发环境)')
         devices = [
           {
             deviceUniqueId: 'audio-output-1',
@@ -321,9 +307,7 @@ const startScan = async () => {
     
     scanProgress.value = 100
     scanStatus.value = '扫描完成'
-    
-    console.log('[ScanDevicesModal] 扫描结果:', scanResults.value.length, '个设备')
-    
+
   } catch (error) {
     console.error('扫描设备失败:', error)
     scanStatus.value = '扫描失败: ' + (error.message || '未知错误')
@@ -340,16 +324,12 @@ const deviceTypeLabel = computed(() => {
 })
 
 onMounted(() => {
-  console.log('[ScanDevicesModal] 组件已挂载')
-  
   if (props.autoStartScan) {
-    console.log('[ScanDevicesModal] 自动开始扫描...')
     startScan()
   }
 })
 
 onUnmounted(() => {
-  console.log('[ScanDevicesModal] 组件已卸载')
   if (typeof props.onClose === 'function') {
     props.onClose()
   }
@@ -482,7 +462,7 @@ onUnmounted(() => {
 
 .btn-primary {
   background-color: var(--color-blue-500);
-  color: white;
+  color: var(--color-white);
 }
 
 .btn-primary:hover {

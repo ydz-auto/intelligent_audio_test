@@ -81,8 +81,8 @@
 }
 
 .has-error {
-  border-color: var(--color-amber-500) !important;
-  background-color: color-mix(in srgb, var(--color-amber-500) 5%, transparent) !important;
+  border-color: var(--color-amber-500);
+  background-color: color-mix(in srgb, var(--color-amber-500) 5%, transparent);
 }
 
 .api-endpoint-row {

@@ -190,7 +190,6 @@ export function useArrayField(
   const testSPL = (index: number) => {
     // 如果当前有正在播放的其他测试音，先停止它
     if (playingIndex.value !== null && playingIndex.value !== index) {
-      console.log(`[testSPL] 正在播放索引 ${playingIndex.value}，先停止它`);
       stopSPL(playingIndex.value);
     }
 
@@ -210,14 +209,12 @@ export function useArrayField(
               gainOffset: gainOffsetInput.value !== '' ? Number(gainOffsetInput.value) : null,
               spl: splInput && splInput.value !== '' ? Number(splInput.value) : null
             };
-            console.log(`[testSPL] 从DOM读取数据:`, item);
           }
         }
       }
     }
 
     if (!item) {
-      console.warn(`[testSPL] 未找到索引 ${index} 的校准点数据`);
       return;
     }
 
@@ -242,7 +239,6 @@ export function useArrayField(
     }
 
     if (gainOffsetValue === null || isNaN(gainOffsetValue)) {
-      console.warn(`[testSPL] 增益偏移无效:`, item.gainOffset);
       return;
     }
 
@@ -250,15 +246,11 @@ export function useArrayField(
       ? Number(item.spl)
       : null;
 
-    console.log(`[testSPL] 点击测试声压按钮: index=${index}, item=`, item, 'gainValue=', gainValue, 'gainOffset=', gainOffsetValue, 'splValue=', splValue);
-
     playingIndex.value = index;
-    console.log(`[testSPL] 发送 test-spl 事件`);
     emit('test-spl', { index, gainValue: gainValue as number, splValue: splValue as any, gainOffset: gainOffsetValue });
   }
 
   const stopSPL = (index: number) => {
-    console.log(`[stopSPL] 停止测试声压: index=${index}`);
     playingIndex.value = null;
     emit('stop-spl', { index });
   }

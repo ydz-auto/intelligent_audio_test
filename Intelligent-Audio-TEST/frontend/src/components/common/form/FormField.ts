@@ -142,10 +142,6 @@ export function useFormField(props: FormFieldProps, emit: FormFieldEmit) {
     }
   })
 
-  watch(() => props.field.options, (newOptions) => {
-    console.log(`[FormField] ${props.field.key} options changed: ${newOptions ? newOptions.length : 0} items`);
-  }, { deep: true })
-
   const handleInput = () => {
     let valueToEmit = localValue.value
     if (props.field.type === 'algorithmSelect' && localValue.value && !Array.isArray(localValue.value)) {
@@ -154,8 +150,6 @@ export function useFormField(props: FormFieldProps, emit: FormFieldEmit) {
     emit('update:value', valueToEmit)
     emit('update:modelValue', valueToEmit)
     emit('input', valueToEmit)
-
-    console.log(`[FormField] ${props.field.key} value changed to:`, valueToEmit)
   }
 
   const handleAlgorithmChange = (value: any) => {

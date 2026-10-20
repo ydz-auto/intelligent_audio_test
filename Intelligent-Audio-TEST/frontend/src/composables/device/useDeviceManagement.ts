@@ -66,8 +66,6 @@ export function useDeviceManagement(deviceType: DeviceTabTypeType = DeviceTabTyp
       }
 
       if (deviceIds.length > 0) {
-        console.log(`执行${activeDeviceType.value}设备健康检查，设备ID:`, deviceIds);
-
         if (activeDeviceType.value === DeviceTabType.TEST) {
           const result = await devicesPort.healthCheck(deviceIds);
           result.forEach((item) => {
@@ -104,7 +102,6 @@ export function useDeviceManagement(deviceType: DeviceTabTypeType = DeviceTabTyp
                 if (error.response?.status === HttpStatus.NOT_FOUND) {
                   // 从设备列表中移除不存在的设备
                   devices.value = devices.value.filter((d: DeviceUnion) => String(d.id) !== String(deviceId));
-                  console.log(`API设备 ${deviceId} 不存在，已从列表中移除`);
                 } else {
                   // 其他错误（如网络超时等），标记为离线
                   devices.value[deviceIndex].status = DeviceStatus.OFFLINE;
@@ -220,7 +217,6 @@ export function useDeviceManagement(deviceType: DeviceTabTypeType = DeviceTabTyp
 
   const addDevice = (type?: string, initialData?: any) => {
     const targetType = type || activeDeviceType.value;
-    console.log(`[useDeviceManagement] Opening add device modal for type: ${targetType}`, initialData);
     modalManager.open(MODAL_TYPES.ADD_DEVICE, {
       title: targetType === DeviceTabType.API ? '添加 API' : '添加设备',
       mode: 'create',
@@ -250,7 +246,6 @@ export function useDeviceManagement(deviceType: DeviceTabTypeType = DeviceTabTyp
 
   const editDevice = async (id: number | string, type?: string) => {
     const targetType = type || activeDeviceType.value;
-    console.log(`[useDeviceManagement] Opening edit device modal for id: ${id}, type: ${targetType}`);
     try {
       let deviceData: any;
       if (targetType === DeviceTabType.TEST) {
@@ -370,15 +365,12 @@ export function useDeviceManagement(deviceType: DeviceTabTypeType = DeviceTabTyp
 
   const scanDevices = (type?: string) => {
     const targetType = type || activeDeviceType.value;
-    console.log(`[useDeviceManagement] Opening scan devices modal for type: ${targetType}`);
 
     modalManager.open(MODAL_TYPES.SCAN_DEVICES, {
       title: `扫描${targetType === DeviceTabType.TEST ? '测试' : targetType === DeviceTabType.PLAYBACK ? '播放' : 'API'}设备`,
       deviceType: targetType,
       autoStartScan: true,
       onConfirm: (scannedDevice: any) => {
-        console.log('[useDeviceManagement] Scanned device confirmed:', scannedDevice);
-
         // 将扫描到的数据转换为表单数据格式
         let formData: any = {};
         if (targetType === DeviceTabType.TEST) {

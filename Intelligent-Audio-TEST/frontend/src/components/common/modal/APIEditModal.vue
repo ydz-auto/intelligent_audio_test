@@ -230,7 +230,7 @@ const handleSave = () => {
 .btn-primary{
   background-color: var(--color-blue-500);
   border: 1px solid var(--color-blue-500);
-  color: white;
+  color: var(--color-white);
 }
 
 .btn-primary:hover{

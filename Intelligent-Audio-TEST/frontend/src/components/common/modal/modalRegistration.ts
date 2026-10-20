@@ -19,7 +19,6 @@ import UploadFileModal from './UploadFileModal.vue'
 import URLImportModal from './URLImportModal.vue'
 import FolderImportModal from './FolderImportModal.vue'
 import ScanDevicesModal from './ScanDevicesModal.vue'
-import SPLCalibrationModal from './SPLCalibrationModal.vue'
 import ApiRmsSplCalibrationModal from './ApiRmsSplCalibrationModal.vue'
 import GlobalPlaybackDeviceModal from './GlobalPlaybackDeviceModal.vue'
 import BatchAlgorithmParamsModal from './BatchAlgorithmParamsModal.vue'
@@ -160,11 +159,6 @@ export function registerGlobalModals() {
   manager.registerModal(MODAL_TYPES.EDIT_METADATA, {
     component: CRUDFormModal,
     defaultConfig: { mode: 'edit', entityName: '元数据' }
-  });
-
-  manager.registerModal(MODAL_TYPES.SPL_CALIBRATION, {
-    component: SPLCalibrationModal,
-    defaultConfig: { title: '声压级(SPL)校准' }
   });
 
   manager.registerModal(MODAL_TYPES.API_RMS_SPL_CALIBRATION, {
