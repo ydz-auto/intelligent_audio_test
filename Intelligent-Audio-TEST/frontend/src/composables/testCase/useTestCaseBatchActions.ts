@@ -3,6 +3,7 @@ import type { TestCase } from '../../domain';
 import { useTestCaseStore } from '../../store/testCaseStore';
 import { useModalControl, MODAL_TYPES } from '../modal/useModal';
 import { useNotification } from '../modal/useNotification';
+import type { ModalType } from '../modal/types';
 import { TestType, ViewMode } from '@/domain/enums';
 
 /**
@@ -34,6 +35,25 @@ export function useTestCaseBatchActions(
   // 本组件内部使用的批量操作上下文（保留原 let 变量语义）
   let currentBatchGroup = '';
   let currentBatchCaseIds: (string | number)[] = [];
+
+  /**
+   * 打开弹窗并安全等待结果。
+   *
+   * GlobalModalContainer 在弹窗「取消」时会对 open 返回的 Promise 调用 `reject()`（无 reason），
+   * 取消是高频正常路径，调用方不包裹就会产生未捕获 promise rejection（INT-1010）。
+   * 统一在这里吞掉取消 rejection，按「未确认（undefined）」处理——与各调用点 `if (result?.xxx)`
+   * 的判空语义一致；真实打开失败（类型未注册）同样按 undefined 返回。
+   */
+  const openModalSafely = async <T = any>(
+    type: ModalType,
+    props?: Record<string, any>
+  ): Promise<T | undefined> => {
+    try {
+      return await modalControl.open<T>(type, props);
+    } catch {
+      return undefined;
+    }
+  };
 
   /**
    * 统一获取批量操作的目标用例ID
@@ -89,7 +109,7 @@ export function useTestCaseBatchActions(
     currentBatchCaseIds = groupCases.map((tc: TestCase) => tc.id);
 
     try {
-      const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+      const confirmed = await openModalSafely(MODAL_TYPES.BASIC_CONFIRM, {
         title: '复制分组',
         content: `确定要复制分组 "${group}" 下的 ${groupCases.length} 个用例吗？\n\n复制后将成为新分组：${group}_copy`,
         confirmText: '复制',
@@ -123,7 +143,7 @@ export function useTestCaseBatchActions(
       return;
     }
 
-    const result = await modalControl.open(MODAL_TYPES.BATCH_SPL, {
+    const result = await openModalSafely(MODAL_TYPES.BATCH_SPL, {
       title: '批量设置声压级',
       caseCount: ids.length,
       selectionMode,
@@ -158,7 +178,7 @@ export function useTestCaseBatchActions(
       return;
     }
 
-    const result = await modalControl.open(MODAL_TYPES.BATCH_PLAYBACK_DEVICE, {
+    const result = await openModalSafely(MODAL_TYPES.BATCH_PLAYBACK_DEVICE, {
       title: '批量设置播放设备',
       caseCount: ids.length,
       selectionMode
@@ -192,7 +212,7 @@ export function useTestCaseBatchActions(
       return;
     }
 
-    const result = await modalControl.open(MODAL_TYPES.BATCH_NOISE, {
+    const result = await openModalSafely(MODAL_TYPES.BATCH_NOISE, {
       title: '批量设置噪声',
       caseCount: ids.length,
       selectionMode
@@ -232,7 +252,7 @@ export function useTestCaseBatchActions(
       return;
     }
 
-    const result = await modalControl.open(MODAL_TYPES.BATCH_ALGORITHM_PARAMS, {
+    const result = await openModalSafely(MODAL_TYPES.BATCH_ALGORITHM_PARAMS, {
       title: '批量设置用例专属参数',
       caseCount: ids.length,
       selectionMode,
@@ -266,7 +286,7 @@ export function useTestCaseBatchActions(
       return;
     }
 
-    const result = await modalControl.open(MODAL_TYPES.BATCH_DIMENSION, {
+    const result = await openModalSafely(MODAL_TYPES.BATCH_DIMENSION, {
       title: '批量设置评价维度',
       caseCount: ids.length,
       selectionMode,
@@ -302,7 +322,7 @@ export function useTestCaseBatchActions(
       return;
     }
 
-    const result = await modalControl.open(MODAL_TYPES.BATCH_ADJUST_GROUP, {
+    const result = await openModalSafely(MODAL_TYPES.BATCH_ADJUST_GROUP, {
       title: '批量调整分组',
       caseCount: ids.length,
       selectionMode,
@@ -339,7 +359,7 @@ export function useTestCaseBatchActions(
     }
 
     const selectionText = selectionMode === 'selected' ? `您勾选了 ${ids.length} 个用例` : `将对 ${ids.length} 个用例`;
-    const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+    const confirmed = await openModalSafely(MODAL_TYPES.BASIC_CONFIRM, {
       title: '批量通过标签自动生成用例名',
       content: `${selectionText}自动生成名称（按标签长度排序，用"-"连接）\n\n是否继续？`,
       confirmText: '确定',
@@ -371,7 +391,7 @@ export function useTestCaseBatchActions(
       return;
     }
 
-    const result = await modalControl.open(MODAL_TYPES.BATCH_TAGS, {
+    const result = await openModalSafely(MODAL_TYPES.BATCH_TAGS, {
       title: '批量管理用例标签',
       caseCount: ids.length,
       selectionMode
@@ -409,7 +429,7 @@ export function useTestCaseBatchActions(
       return;
     }
 
-    const confirmed = await modalControl.open(MODAL_TYPES.BATCH_REFRESH_REFERENCE, {
+    const confirmed = await openModalSafely(MODAL_TYPES.BATCH_REFRESH_REFERENCE, {
       title: '用例参考更新',
       caseCount: ids.length,
       selectionMode
@@ -491,7 +511,7 @@ export function useTestCaseBatchActions(
     const caseCount = tagCases.length;
 
     try {
-      const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+      const confirmed = await openModalSafely(MODAL_TYPES.BASIC_CONFIRM, {
         title: '删除标签',
         content: `确定要删除标签 "${tagName}" 及其下所有测试用例吗？\n\n该操作将级联删除标签下的 ${caseCount} 个用例，不可恢复！`,
         confirmText: '删除',
@@ -519,7 +539,7 @@ export function useTestCaseBatchActions(
     }
 
     try {
-      const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+      const confirmed = await openModalSafely(MODAL_TYPES.BASIC_CONFIRM, {
         title: '复制标签用例',
         content: `确定要复制标签 "${tagName}" 下的 ${tagCases.length} 个用例吗？\n\n复制后将生成新标签：${tagName}_copy`,
         confirmText: '复制',
