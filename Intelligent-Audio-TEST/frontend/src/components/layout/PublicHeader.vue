@@ -155,11 +155,12 @@ function handleRestricted(item: PublicNavItem) {
     return
   }
   modal.open(MODAL_TYPES.LOGIN_REQUIRED, { moduleName: item.label, redirect: item.path })
-    .then(() => {
+    .then((result) => {
+      if (!result) return // 取消/关闭：留在当前页
       router.push({ name: 'login', query: { redirect: item.path } })
     })
     .catch(() => {
-      // 取消：留在当前页
+      // 异常路径：留在当前页
     })
 }
 

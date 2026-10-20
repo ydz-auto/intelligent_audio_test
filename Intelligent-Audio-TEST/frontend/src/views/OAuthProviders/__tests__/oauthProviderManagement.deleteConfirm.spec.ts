@@ -75,8 +75,9 @@ describe('OAuthProviderManagement 删除提供方（INT-286）', () => {
     expect(ports.listOAuthProviders.mock.calls.length).toBeGreaterThan(callsBefore)
   })
 
-  it('取消（open reject）→ 不下发删除', async () => {
-    modalOpen.mockRejectedValue(new Error('cancel'))
+  it('取消（resolve null）→ 不下发删除', async () => {
+    // INT-1011：取消收敛为 resolve(null)，不再是 rejection
+    modalOpen.mockResolvedValue(null)
     const w = await mountPage()
 
     await w.findAll('button').find(b => b.text().includes('删除'))!.trigger('click')

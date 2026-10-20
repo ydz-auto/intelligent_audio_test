@@ -212,8 +212,9 @@ async function confirmDelete(group: AlgorithmGroup) {
   const content = (group.algorithmCount ?? 0) > 0
     ? `分组「${group.name}」包含 ${group.algorithmCount} 个算法。删除分组不会删除算法（算法将变为未分组），确定删除吗？`
     : `确定要删除分组「${group.name}」吗？`
+  let confirmed: unknown = null
   try {
-    await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+    confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
       title: '确认删除分组',
       content,
       confirmText: '删除',
@@ -221,8 +222,9 @@ async function confirmDelete(group: AlgorithmGroup) {
       danger: true,
     })
   } catch {
-    return
+    return // 异常路径兜底：视为取消
   }
+  if (!confirmed) return // 用户取消
   try {
     await algorithmPort.deleteGroup(group.id)
     notice.value = '分组已删除'

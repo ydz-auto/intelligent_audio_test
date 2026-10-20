@@ -408,16 +408,15 @@ async function handleExecute(ptItem: PublishedTaskItem) {
     notification.warning('已归档任务禁止执行，请先创建新版本');
     return;
   }
-  let confirmed = false;
+  let confirmed: unknown = null;
   try {
-    await modal.open(MODAL_TYPES.BASIC_CONFIRM, {
+    confirmed = await modal.open(MODAL_TYPES.BASIC_CONFIRM, {
       title: '执行确认',
       content: `将按版本 v${ptItem.version} 的快照创建新的日常任务「${ptItem.name}」，创建后前往任务详情页。是否继续？`,
       confirmText: '创建日常任务',
     });
-    confirmed = true;
   } catch {
-    confirmed = false;
+    confirmed = null; // 异常路径兜底：视为取消
   }
   if (!confirmed) return;
   try {
@@ -449,16 +448,15 @@ function handleCreateVersion(ptItem: PublishedTaskItem) {
 // ---------- 归档 ----------
 
 async function handleArchive(ptItem: PublishedTaskItem) {
-  let confirmed = false;
+  let confirmed: unknown = null;
   try {
-    await modal.open(MODAL_TYPES.DELETE_CONFIRM, {
+    confirmed = await modal.open(MODAL_TYPES.DELETE_CONFIRM, {
       title: '归档确认',
       content: `确定归档「${ptItem.name}」v${ptItem.version} 吗？归档后不可直接执行。`,
       confirmText: '归档',
     });
-    confirmed = true;
   } catch {
-    confirmed = false;
+    confirmed = null; // 异常路径兜底：视为取消
   }
   if (!confirmed) return;
   try {

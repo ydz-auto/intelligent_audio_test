@@ -74,8 +74,9 @@ describe('handleDeviceOperate（INT-286 装卸应用表单模态）', () => {
     expect(modalOpen.mock.calls.some(([type]) => type === MODAL_TYPES.BASIC_CONFIRM)).toBe(false)
   })
 
-  it('install_app：用户取消（reject）→ 不下发 control', async () => {
-    modalOpen.mockRejectedValue(new Error('cancel'))
+  it('install_app：用户取消（resolve null）→ 不下发 control', async () => {
+    // INT-1011：取消收敛为 resolve(null)，不再是 rejection
+    modalOpen.mockResolvedValue(null)
 
     await handleDeviceOperate('dev-1', 'install_app')
 

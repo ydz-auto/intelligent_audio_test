@@ -282,16 +282,18 @@ function copyCurrentRound() {
 
 async function removeCurrentRound() {
   if (localRounds.value.length <= 1) return
+  let confirmed: unknown = null
   try {
-    await modalControl.open(MODAL_TYPES.DELETE_CONFIRM, {
+    confirmed = await modalControl.open(MODAL_TYPES.DELETE_CONFIRM, {
       title: '删除轮次',
       content: `确定要删除第 ${activeRoundIndex.value + 1} 轮吗？该操作不可撤销。`,
       confirmText: '删除',
       cancelText: '取消'
     })
   } catch {
-    return // 用户取消
+    return // 异常路径兜底：视为取消
   }
+  if (!confirmed) return // 用户取消
   const idx = activeRoundIndex.value
 
   // 剩余轮的旧轮号顺序（删除后各轮按位置重编号为 1..n-1）

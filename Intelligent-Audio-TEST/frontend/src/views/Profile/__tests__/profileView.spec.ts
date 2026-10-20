@@ -130,8 +130,9 @@ describe('ProfileView 个人中心（INT-744）', () => {
     expect(ports.listOAuthBindings.mock.calls.length).toBeGreaterThan(callsBefore)
   })
 
-  it('解绑：取消（open reject）→ 不下发解绑', async () => {
-    modalOpen.mockRejectedValue(new Error('cancel'))
+  it('解绑：取消（resolve null）→ 不下发解绑', async () => {
+    // INT-1011：取消收敛为 resolve(null)，不再是 rejection
+    modalOpen.mockResolvedValue(null)
     const w = await mountPage()
 
     await w.findAll('button').find((b) => b.text().includes('解绑'))!.trigger('click')

@@ -79,8 +79,9 @@ describe('DeviceGroupManager 删除分组（INT-286）', () => {
     expect(notifications.success).toHaveBeenCalledWith('分组已删除')
   })
 
-  it('取消（open reject）→ 不下发 deleteGroup', async () => {
-    modalOpen.mockRejectedValue(new Error('cancel'))
+  it('取消（resolve null）→ 不下发 deleteGroup', async () => {
+    // INT-1011：取消收敛为 resolve(null)，不再是 rejection
+    modalOpen.mockResolvedValue(null)
     const w = await mountWithGroups()
 
     await findRowDeleteButton(w, '空分组').trigger('click')

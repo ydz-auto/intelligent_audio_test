@@ -241,19 +241,21 @@ async function handleFetchModels(): Promise<void> {
 }
 
 async function confirmDelete(provider: LlmProvider): Promise<void> {
+  let confirmed: unknown = null
   try {
-    await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+    confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
       title: PROVIDER_MANAGER_COPY.deleteConfirmTitle,
       content: PROVIDER_MANAGER_COPY.deleteConfirmContent,
       confirmText: PROVIDER_MANAGER_COPY.delete,
       cancelText: PROVIDER_MANAGER_COPY.cancel,
       danger: true,
     })
-    store.removeProvider(provider.id)
-    notification.success('供应商已删除')
   } catch {
-    // 用户取消删除
+    return // 异常路径兜底：视为取消
   }
+  if (!confirmed) return // 用户取消删除
+  store.removeProvider(provider.id)
+  notification.success('供应商已删除')
 }
 
 watch(

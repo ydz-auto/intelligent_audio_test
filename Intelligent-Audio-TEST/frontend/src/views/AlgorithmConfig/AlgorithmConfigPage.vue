@@ -319,16 +319,18 @@ const groupModalVisible = ref(false)
 
 /** INT-743：重载后端算法配置缓存 */
 async function handleReload() {
+  let confirmed: unknown = null
   try {
-    await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+    confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
       title: '确认重载',
       content: '将重载后端算法配置缓存，使最近变更立即生效。确定重载吗？',
       confirmText: '重载',
       cancelText: '取消',
     })
   } catch {
-    return
+    return // 异常路径兜底：视为取消
   }
+  if (!confirmed) return // 用户取消
   try {
     const result = await algorithmPort.reloadConfig()
     notification.success(result?.message || '配置已重载')

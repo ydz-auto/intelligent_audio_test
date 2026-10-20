@@ -143,8 +143,9 @@ export function useProfilePage() {
 
   /** 解绑：BASIC_CONFIRM（danger）确认 → DELETE 落库 → 刷新 */
   async function unbind(b: OAuthBinding) {
+    let confirmed: unknown = null
     try {
-      await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+      confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
         title: '确认解绑',
         content: `确认解绑「${b.providerName}」？解绑后将无法使用该第三方账号登录。`,
         confirmText: '解绑',
@@ -152,8 +153,9 @@ export function useProfilePage() {
         danger: true,
       })
     } catch {
-      return // 用户取消
+      return // 异常路径兜底：视为取消
     }
+    if (!confirmed) return // 用户取消
     unbinding.value = true
     try {
       await profilePort.unbindOAuthProvider(b.providerId)
@@ -173,28 +175,32 @@ export function useProfilePage() {
    * 成功后清本地登录态跳登录页，用新密码重新登录。
    */
   async function openChangePassword() {
+    let result: unknown = null
     try {
-      await modalControl.open(MODAL_TYPES.CHANGE_PASSWORD, { username: username.value })
-      notification.success('密码修改成功，请重新登录')
-      await authStore.logout()
-      router.push('/login')
+      result = await modalControl.open(MODAL_TYPES.CHANGE_PASSWORD, { username: username.value })
     } catch {
-      // 用户取消
+      return // 异常路径兜底：视为取消
     }
+    if (!result) return // 用户取消
+    notification.success('密码修改成功，请重新登录')
+    await authStore.logout()
+    router.push('/login')
   }
 
   /** 编辑资料：模态窗走真实请求，成功回传新邮箱；本地刷新展示 */
   async function openEditProfile() {
+    let data: Record<string, unknown> | null = null
     try {
-      const data = await modalControl.open<Record<string, unknown>>(MODAL_TYPES.EDIT_PROFILE, {
+      data = await modalControl.open<Record<string, unknown> | null>(MODAL_TYPES.EDIT_PROFILE, {
         username: username.value,
         email: email.value,
       })
-      email.value = typeof data?.email === 'string' ? data.email.trim() : ''
-      notification.success('资料更新成功')
     } catch {
-      // 用户取消
+      return // 异常路径兜底：视为取消
     }
+    if (!data) return // 用户取消
+    email.value = typeof data.email === 'string' ? data.email.trim() : ''
+    notification.success('资料更新成功')
   }
 
   // ===== 权限概览 =====

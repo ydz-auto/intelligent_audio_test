@@ -87,8 +87,9 @@ export function useLogArchive() {
     if (!canManage.value) return;
     const days = Number(archiveDays.value) || 7;
     const dryRun = archiveDryRun.value;
+    let confirmed: unknown = null;
     try {
-      await modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
+      confirmed = await modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
         title: '确认归档',
         content: dryRun
           ? `将预览归档 ${days} 天前的冷日志（仅统计，不执行归档）。`
@@ -97,8 +98,9 @@ export function useLogArchive() {
         cancelText: '取消',
       });
     } catch {
-      return; // 用户取消
+      return; // 异常路径兜底：视为取消
     }
+    if (!confirmed) return; // 用户取消
 
     resultLoading.value = true;
     try {
@@ -179,16 +181,18 @@ export function useLogArchive() {
   /** 删除归档文件：确认后 DELETE，成功后刷新状态 */
   async function deleteArchive(filename: string) {
     if (!canManage.value || !filename) return;
+    let confirmed: unknown = null;
     try {
-      await modalManager.open(MODAL_TYPES.DELETE_CONFIRM, {
+      confirmed = await modalManager.open(MODAL_TYPES.DELETE_CONFIRM, {
         title: '确认删除归档',
         content: `确定要删除归档文件「${filename}」吗？此操作不可撤销。`,
         confirmText: '确定删除',
         cancelText: '取消',
       });
     } catch {
-      return; // 用户取消
+      return; // 异常路径兜底：视为取消
     }
+    if (!confirmed) return; // 用户取消
 
     fileBusy.value = true;
     try {

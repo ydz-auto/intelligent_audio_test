@@ -64,19 +64,21 @@ function go(path: string) {
 
 async function handleLogout() {
   open.value = false
+  let confirmed: unknown = null
   try {
-    await modal.open(MODAL_TYPES.BASIC_CONFIRM, {
+    confirmed = await modal.open(MODAL_TYPES.BASIC_CONFIRM, {
       title: '确认登出',
       content: '确定要退出当前账号吗？',
       confirmText: '登出',
       cancelText: '取消',
       danger: true,
     })
-    await authStore.logout()
-    router.push('/')
   } catch {
-    // 用户取消登出
+    return // 异常路径兜底：视为取消登出
   }
+  if (!confirmed) return // 用户取消登出
+  await authStore.logout()
+  router.push('/')
 }
 
 function handleOutsideClick(event: MouseEvent) {

@@ -321,8 +321,9 @@ async function remove(p: OAuthProviderDetail) {
   error.value = ''
   notice.value = ''
   // INT-286：删除提供方改 BASIC_CONFIRM（danger）模态，替换原生 window.confirm
+  let confirmed: unknown = null
   try {
-    await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+    confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
       title: '删除提供方',
       content: `确认删除提供方「${p.name}」？该操作不可恢复。`,
       confirmText: '删除',
@@ -330,8 +331,9 @@ async function remove(p: OAuthProviderDetail) {
       danger: true,
     })
   } catch {
-    return // 用户取消
+    return // 异常路径兜底：视为取消
   }
+  if (!confirmed) return // 用户取消
   try {
     await authPort.deleteOAuthProvider(p.id)
     notice.value = '删除成功'

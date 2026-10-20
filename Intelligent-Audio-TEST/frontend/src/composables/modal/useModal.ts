@@ -10,6 +10,8 @@ interface ModalInstance {
   type: ModalType
   component: Component
   props: Record<string, any>
+  /** 是否已 settle（resolve/reject 幂等 + 关闭路径收敛用） */
+  settled: boolean
   resolve: (value: any) => void
   reject: (reason?: any) => void
 }
@@ -104,12 +106,17 @@ const getModalManager = (): ModalManager => {
       type,
       component,
       props: mergedProps,
+      settled: false,
       resolve: (value) => {
+        if (modalInstance.settled) return
+        modalInstance.settled = true
         console.log(`[ModalManager] Resolving modal ${id} with value:`, value)
         resolveCallback(value)
         close(id)
       },
       reject: (reason) => {
+        if (modalInstance.settled) return
+        modalInstance.settled = true
         console.log(`[ModalManager] Rejecting modal ${id} with reason:`, reason)
         rejectCallback(reason)
         close(id)
@@ -140,11 +147,20 @@ const getModalManager = (): ModalManager => {
     console.log('[ModalManager] id parameter:', id)
     console.log('[ModalManager] Current activeModals:', activeModals.value.map(m => m.id))
     if (id) {
+      const modal = activeModals.value.find(m => m.id === id)
       console.log(`[ModalManager] Closing modal with id: ${id}`)
+      if (modal && !modal.settled) {
+        // INT-1011：任何关闭路径（X / ESC / 遮罩 / 外部 close）都收敛为 resolve(null)，
+        // 避免 open() 返回的 Promise 永久挂起，也避免取消被当作错误
+        modal.resolve(null)
+      }
       activeModals.value = activeModals.value.filter(m => m.id !== id)
     } else if (activeModals.value.length > 0) {
       const lastModal = activeModals.value[activeModals.value.length - 1]
       console.log(`[ModalManager] Closing last modal with id: ${lastModal?.id}`)
+      if (lastModal && !lastModal.settled) {
+        lastModal.resolve(null)
+      }
       activeModals.value = activeModals.value.slice(0, -1)
     }
     console.log(`[ModalManager] Active modals after close:`, activeModals.value.length)
@@ -152,6 +168,9 @@ const getModalManager = (): ModalManager => {
 
   const closeAll = () => {
     console.log(`[ModalManager] Closing all modals (${activeModals.value.length} active)`)
+    for (const modal of activeModals.value) {
+      if (!modal.settled) modal.resolve(null)
+    }
     activeModals.value = []
     console.log(`[ModalManager] All modals closed, active count:`, activeModals.value.length)
   }

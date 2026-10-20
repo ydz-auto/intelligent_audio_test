@@ -281,7 +281,8 @@ describe('步骤3 下单：merge 任务级配置 + 跨任务配置不一致强�
   })
 
   it('用户取消配置确认 → 不发 checkout', async () => {
-    modalOpen.mockRejectedValue(new Error('cancel'))
+    // INT-1011：取消收敛为 resolve(null)，不再是 rejection
+    modalOpen.mockResolvedValue(null)
     const w = await mountOnCheckout({
       totalResults: 2, invalidResultIds: [], sourceTaskCount: 2,
       sourceTaskIds: [1, 2], deviceIds: [7], deviceNames: ['设备7'],

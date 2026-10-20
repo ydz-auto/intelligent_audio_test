@@ -365,8 +365,9 @@ async function save() {
 
 // —— 删除 ——
 async function confirmDelete(user: SystemUser) {
+  let confirmed: unknown = null
   try {
-    await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+    confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
       title: '确认删除用户',
       content: `将删除用户「${user.username}」，该操作不可恢复。`,
       confirmText: '删除',
@@ -374,8 +375,9 @@ async function confirmDelete(user: SystemUser) {
       danger: true,
     })
   } catch {
-    return
+    return // 异常路径兜底：视为取消
   }
+  if (!confirmed) return // 用户取消
   try {
     await usersPort.remove(user.id)
     notice.value = '用户已删除'
