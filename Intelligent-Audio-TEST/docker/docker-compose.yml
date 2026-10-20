@@ -391,6 +391,8 @@ services:
       - GRPC_PORT=51068
       - TASK_SERVICE_HOST=task_service
       - TASK_SERVICE_GRPC_PORT=50061
+      - EVALUATION_SERVICE_HOST=evaluation_service
+      - EVALUATION_SERVICE_GRPC_PORT=50091
     volumes:
       # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
       - service_logs:/app/logs
