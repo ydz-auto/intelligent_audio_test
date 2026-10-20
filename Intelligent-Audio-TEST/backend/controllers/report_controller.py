@@ -627,43 +627,55 @@ class ReportController(ReportControllerBase):
             task_devices = TaskDevice.query.filter_by(task_id=task_id).all()
             task_apis = TaskAPI.query.filter_by(task_id=task_id).all()
             
-            # 构建带时间前缀的资源列表
-            time_prefix = ReportControllerBase.get_task_time_prefix(task)
-            resources = []
-            resource_headers = []
+            # 构建资源列表：与报告生成时口径一致（无时间前缀、含版本、含 result_type 后缀）
+            devices = []
             for td in task_devices:
                 d = db.session.get(Device, td.device_id)
                 if d:
-                    key = f"{time_prefix}-{d.id}-{d.name.lower()}"
-                    resources.append(key)
-                    resource_headers.append(
-                        {
-                            "key": key,
-                            "label": ReportUtils._format_resource_label(task, d.name, getattr(d, "app_version", None), use_time_prefix=False) or key,
-                            "type": "device",
-                            "id": int(d.id),
-                            "name": str(d.name),
-                            "version": str(getattr(d, "app_version", None)) if getattr(d, "app_version", None) is not None else None,
-                            "editable": True,
-                        }
-                    )
+                    devices.append(d)
+            apis = []
             for ta in task_apis:
                 a = db.session.get(API, ta.api_id)
                 if a:
-                    key = f"{time_prefix}-{a.id}-{a.name.lower()}"
-                    resources.append(key)
-                    version = ReportUtils._extract_api_version(a)
-                    resource_headers.append(
-                        {
-                            "key": key,
-                            "label": ReportUtils._format_resource_label(task, a.name, version, use_time_prefix=False) or key,
-                            "type": "api",
-                            "id": int(a.id),
-                            "name": str(a.name),
-                            "version": version,
-                            "editable": True,
-                        }
-                    )
+                    apis.append(a)
+
+            device_ids = [d.id for d in devices]
+            api_ids = [a.id for a in apis]
+            device_result_types, api_result_types = ReportControllerTask._get_resource_result_types_batch(
+                result_task_filter, device_ids, api_ids
+            )
+            resources = ReportControllerTask._build_resources_list(
+                devices, apis, task, device_result_types, api_result_types
+            )
+
+            resource_headers = []
+            for idx, d in enumerate(devices):
+                key = resources[idx] if idx < len(resources) else f"{d.id}-{d.name.lower()}"
+                resource_headers.append(
+                    {
+                        "key": key,
+                        "label": ReportUtils._format_resource_label(task, d.name, getattr(d, "app_version", None), use_time_prefix=False) or key,
+                        "type": "device",
+                        "id": int(d.id),
+                        "name": str(d.name),
+                        "version": str(getattr(d, "app_version", None)) if getattr(d, "app_version", None) is not None else None,
+                        "editable": True,
+                    }
+                )
+            for idx, a in enumerate(apis):
+                key = resources[len(devices) + idx] if len(devices) + idx < len(resources) else f"{a.id}-{a.name.lower()}"
+                version = ReportUtils._extract_api_version(a)
+                resource_headers.append(
+                    {
+                        "key": key,
+                        "label": ReportUtils._format_resource_label(task, a.name, version, use_time_prefix=False) or key,
+                        "type": "api",
+                        "id": int(a.id),
+                        "name": str(a.name),
+                        "version": version,
+                        "editable": True,
+                    }
+                )
             
             metric_data = {}
             raw_data = {res: {dim.name: [] for dim in all_dimensions} for res in resources}

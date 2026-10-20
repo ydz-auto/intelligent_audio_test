@@ -1086,6 +1086,8 @@ const applyFilters = async () => {
   }
 }
 
+const normalizeMetricName = (name) => String(name).replace(/@round:\d+$|@overall$/i, '')
+
 const computeTagMetricDataFromCases = (cases) => {
   const selectedTagSet = new Set(selectedTags.value || [])
   const selectedCategorySet = new Set(selectedCategories.value || [])
@@ -1130,7 +1132,7 @@ const computeTagMetricDataFromCases = (cases) => {
           if (!accumulator[tagName][resourceKey]) accumulator[tagName][resourceKey] = {}
           group.metrics.forEach(m => {
             if (!m || !m.metric) return
-            const dim = m.metric
+            const dim = normalizeMetricName(m.metric)
             if (!accumulator[tagName][resourceKey][dim]) {
               accumulator[tagName][resourceKey][dim] = { sum: 0, count: 0, values: [] }
             }
@@ -1146,11 +1148,12 @@ const computeTagMetricDataFromCases = (cases) => {
         Object.keys(caseMetrics).forEach(resourceKey => {
           if (!accumulator[tagName][resourceKey]) accumulator[tagName][resourceKey] = {}
           const metrics = caseMetrics[resourceKey] || {}
-          Object.keys(metrics).forEach(dim => {
+          Object.keys(metrics).forEach(rawDim => {
+            const dim = normalizeMetricName(rawDim)
             if (!accumulator[tagName][resourceKey][dim]) {
               accumulator[tagName][resourceKey][dim] = { sum: 0, count: 0, values: [] }
             }
-            const val = metrics[dim]
+            const val = metrics[rawDim]
             if (val !== null && val !== undefined) {
               accumulator[tagName][resourceKey][dim].sum += Number(val)
               accumulator[tagName][resourceKey][dim].count += 1
