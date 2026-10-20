@@ -1,8 +1,8 @@
 /**
  * 用例编辑音频列表批量工具（application 层，11_用例域.md §5.1 音频列表工具栏）。
  * 五件纯前端派生动作：标签交错 / 标签设备 / 批量设备 / 设备交叉 / 批量声压。
- * 均为不可变派生（返回新数组，不修改入参），底层复用 domain/lib/audio-batch-ops 纯函数；
- * mock 态不接后端，后续接线替换为 mutations。
+ * 均为不可变派生（返回新数组，不修改入参），底层复用 domain/lib/audio-batch-ops 纯函数。
+ * 标签源由调用方注入（真实音频库 tags 映射），不持 mock 数据。
  */
 import { useMemo } from 'react'
 
@@ -14,12 +14,15 @@ import {
   type BatchScope,
 } from '@/domain/lib/audio-batch-ops'
 
-/** 批量动作的最小行结构（与界面 RoundAudioDraft 结构兼容） */
-interface RoundAudioLike {
+/** 批量动作的最小行结构（与界面 RoundAudioDraft 结构兼容；deviceId 为 string 归一） */
+export interface RoundAudioLike {
   id: string
-  fileId: string
   deviceId: string
   spl: number
+  /** 真实音频 id（标签源解析用；可选） */
+  audioId?: number | string | null
+  /** 行内标签（标签源解析 fallback；可选） */
+  tags?: readonly string[]
 }
 
 export interface AudioListBatchActions {
@@ -50,13 +53,12 @@ export interface AudioListBatchActions {
 }
 
 /**
- * 音频列表批量动作工厂（页面级 mock 标签源不变，actions 身份稳定）。
+ * 音频列表批量动作工厂（标签源由调用方注入 tagsOf，身份稳定）。
  */
 export function useAudioListBatch(
-  tagsByFile: ReadonlyMap<string, readonly string[]>
+  tagsOf: (row: RoundAudioLike) => readonly string[]
 ): AudioListBatchActions {
   return useMemo(() => {
-    const tagsOf = (r: RoundAudioLike) => tagsByFile.get(r.fileId) ?? []
     return {
       tagInterleave: (rows, tags, newId) =>
         interleaveByTags(rows, tagsOf, tags, (r) => ({ ...r, id: newId() })),
@@ -79,5 +81,5 @@ export function useAudioListBatch(
           (r) => ({ ...r, spl })
         ),
     }
-  }, [tagsByFile])
+  }, [tagsOf])
 }

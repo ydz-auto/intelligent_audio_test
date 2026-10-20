@@ -13,10 +13,13 @@
  * （serializeEvaluationStrategy，含存量直载字段，§5.1.3 契约）。
  * ⚠️ 实施注意②：addRound 已有轮次时复制上一轮 evaluation（RoundConfigEditor.vue:252-254），
  * 「新轮次默认关闭」严格仅首轮成立——本卡等价移植保持复制行为、不额外重置 enabled。
+ * INT-877/INT-996 合流：轮次草稿（RoundDraft）同时携带 audios（音频回填/保存 P1-1）+
+ * algorithmParams（独立列）+ noise（segment 级噪声段）；评估维度/策略选项接真实接口
+ * （P2-1/P2-2），overrides 键 snake_case（P3-1），新选维度补 name（P3-3）。
  */
 import { useQueryClient } from '@tanstack/react-query'
 import { Sparkles } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -43,6 +46,14 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
+import {
+  useEvaluationCategories,
+  useEvaluationDimensions,
+} from '@/application/evaluation/use-dimensions'
+import type {
+  Dimension,
+  EvaluationCategory,
+} from '@/domain/models/evaluationDimension'
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import type { TagItem } from '@/domain/models/testTag'
@@ -51,7 +62,6 @@ import type {
   TestCaseBackgroundNoiseItem,
   TestCaseDimensionItem,
 } from '@/domain/models/evaluationStrategy'
-import { MOCK_CASE_DIMENSIONS, MOCK_EVALUATION_CATEGORIES } from '@/infrastructure/mock/testcases-mock'
 import {
   createTestCase,
   updateTestCase,
@@ -62,19 +72,21 @@ import {
   newRoundEvaluation,
   emptyRoundNoise,
   type RoundAlgorithmParamItem,
+  type RoundAudioDraft,
   type RoundDraft,
   type RoundEvaluationDraft,
   type RoundNoiseDraft,
 } from '@/features/testcases/modals/round-config/round-nav'
+import {
+  defaultRounds,
+  roundsFromConfig,
+  roundsToConfig,
+  toStrategyOverridesDto,
+} from '@/domain/lib/testcase-round-config'
 import { AlgorithmParamsStep } from '@/features/testcases/modals/round-config/algo-params-step'
 import { AudioListStep } from '@/features/testcases/modals/round-config/audio-list-step'
 import { NoiseInterferenceStep } from '@/features/testcases/modals/round-config/noise-interference-step'
-import {
-  algorithmParamsForRound,
-  applyNoiseToRound,
-  noiseDraftFromRound,
-  serializeVoiceprint,
-} from '@/features/testcases/modals/round-config/round-noise-codec'
+import { serializeVoiceprint } from '@/features/testcases/modals/round-config/round-noise-codec'
 import { EvaluationStep } from '@/features/testcases/modals/round-config/evaluation-step'
 import { ReferenceStep } from '@/features/testcases/modals/round-config/reference-step'
 import {
@@ -168,134 +180,6 @@ function CaseTagInput({
   )
 }
 
-/** 新建态默认轮次（单轮空评估 + 空算法参数/噪声与干扰；rounds 由保存侧序列化为 config.rounds） */
-function defaultRounds(): RoundDraft[] {
-  return [
-    {
-      number: 1,
-      audioCount: 0,
-      dimensionCount: 0,
-      evaluation: { enabled: true, selectedIds: [], params: {} },
-      algorithmParams: [],
-      noise: emptyRoundNoise(),
-    },
-  ]
-}
-
-/** 后端 config.rounds 单轮 → RoundDraft（编辑回填：轮次数 + 音频/维度摘要 + 评估内容 + INT-996 算法参数/噪声与干扰） */
-function roundDraftFromConfig(
-  raw: Record<string, unknown>,
-  index: number,
-  paramsForRound: RoundAlgorithmParamItem[]
-): RoundDraft {
-  const number = Number(raw.round_number ?? raw.roundNumber ?? index + 1)
-  const audios = Array.isArray(raw.audios) ? (raw.audios as Array<Record<string, unknown>>) : []
-  const evaluation =
-    raw.evaluation && typeof raw.evaluation === 'object'
-      ? (raw.evaluation as Record<string, unknown>)
-      : null
-  const dimensions = Array.isArray(evaluation?.dimensions)
-    ? (evaluation.dimensions as Array<Record<string, unknown>>)
-    : []
-  const draft: RoundEvaluationDraft = {
-    enabled: evaluation?.enabled !== false,
-    selectedIds: dimensions
-      .map((d) => Number(d.id))
-      .filter((id) => Number.isFinite(id) && id !== 0),
-    params: {},
-  }
-  for (const d of dimensions) {
-    const id = Number(d.id)
-    if (!Number.isFinite(id) || id === 0) continue
-    const llm =
-      d.llmJudgeConfig && typeof d.llmJudgeConfig === 'object'
-        ? (d.llmJudgeConfig as Record<string, unknown>)
-        : null
-    draft.params[id] = {
-      weight: Number(d.weight ?? 50),
-      threshold: Number(d.threshold ?? 80),
-      ...(llm?.model != null ? { model: String(llm.model) } : {}),
-      ...(llm?.promptTemplate != null ? { promptTemplate: String(llm.promptTemplate) } : {}),
-    }
-  }
-  return {
-    number,
-    audioCount: audios.length,
-    dimensionCount: dimensions.length,
-    evaluation: draft,
-    algorithmParams: paramsForRound,
-    noise: noiseDraftFromRound(raw, paramsForRound),
-  }
-}
-
-/** 真实 config.rounds → RoundDraft[]（空/缺失回退默认轮次；INT-996 按轮读独立列 algorithmParams） */
-function roundsFromConfig(
-  config: Record<string, unknown> | null | undefined,
-  algorithmParams: unknown
-): RoundDraft[] {
-  const rawRounds = Array.isArray(config?.rounds)
-    ? (config.rounds as Array<Record<string, unknown>>)
-    : []
-  if (rawRounds.length === 0) return defaultRounds()
-  return rawRounds.map((raw, i) =>
-    roundDraftFromConfig(raw, i, algorithmParamsForRound(algorithmParams, Number(raw.round_number ?? raw.roundNumber ?? i + 1)))
-  )
-}
-
-/** RoundDraft[] → 后端 config.rounds（合并原始轮次保留 audios 等；evaluation 序列化为 {enabled, dimensions}；
- *  INT-996 噪声与干扰写入 segment 级 audios[].background_noise/interferers） */
-function roundsToConfig(
-  drafts: RoundDraft[],
-  originalRounds: Array<Record<string, unknown>> | null | undefined
-): Array<Record<string, unknown>> {
-  return drafts.map((draft) => {
-    const orig =
-      originalRounds?.find(
-        (r) => Number(r.round_number ?? r.roundNumber) === draft.number
-      ) ?? null
-    // 原始单轮 evaluation（保留 name 等未在抽屉编辑的字段；INT-922 保存不得丢维度名）
-    const origEval =
-      orig?.evaluation && typeof orig.evaluation === 'object'
-        ? (orig.evaluation as Record<string, unknown>)
-        : null
-    const origDims = Array.isArray(origEval?.dimensions)
-      ? (origEval.dimensions as Array<Record<string, unknown>>)
-      : []
-    const base: Record<string, unknown> = { ...(orig ?? {}) }
-    // 独立列字段/round 级 algorithmParams 由 CRUD 服务弹出，round 内不携带（INT-996 口径）
-    delete base.algorithmParams
-    delete base.algorithm_params
-    return applyNoiseToRound(
-      {
-        ...base,
-        round_number: draft.number,
-        evaluation: {
-          enabled: draft.evaluation.enabled,
-          dimensions: draft.evaluation.selectedIds.map((id) => {
-            const p = draft.evaluation.params[id]
-            const origDim = origDims.find((d) => Number(d.id) === id) ?? null
-            return {
-              ...(origDim ?? {}),
-              id,
-              weight: p?.weight ?? Number(origDim?.weight ?? 50),
-              threshold: p?.threshold ?? Number(origDim?.threshold ?? 80),
-              ...(p?.model || p?.promptTemplate
-                ? {
-                    llmJudgeConfig: {
-                      model: p?.model ?? '',
-                      promptTemplate: p?.promptTemplate ?? '',
-                    },
-                  }
-                : {}),
-            }
-          }),
-        },
-      },
-      draft.noise
-    )
-  })
-}
-
 /**
  * 存量 config → 评估策略节初始值（编辑回填 §5.1.3；config 值内 snake_case 契约 →
  * camelCase Domain，editor 直接消费）。
@@ -355,6 +239,16 @@ export function CaseMutateDrawer({
   const queryClient = useQueryClient()
   const strategiesQuery = useEvaluationStrategies()
   const strategies = strategiesQuery.data ?? []
+  /** INT-877 P2-1：评估维度选项接真实 GET /evaluation/dimensions 同源（批量弹窗 INT-710 已接） */
+  const dimensionsQuery = useEvaluationDimensions()
+  const categoriesQuery = useEvaluationCategories()
+  const dimensions = dimensionsQuery.data ?? []
+  const categories = categoriesQuery.data ?? []
+  /** 维度 id → name（roundsToConfig 新选维度补 name；INT-877 P3-3） */
+  const dimNameById = useMemo(
+    () => new Map(dimensions.map((d) => [Number(d.id), d.name])),
+    [dimensions]
+  )
   const [step, setStep] = useState<(typeof STEPS)[number]>('算法参数')
   const [nameValue, setNameValue] = useState(caseItem?.name ?? '')
   const [tagValue, setTagValue] = useState<string[]>(caseItem?.tags ?? [])
@@ -393,7 +287,18 @@ export function CaseMutateDrawer({
             params: { ...src.params },
           }
         : newRoundEvaluation()
-      return [...prev, { number, audioCount: 0, dimensionCount: 0, evaluation, algorithmParams: [], noise: emptyRoundNoise() }]
+      return [
+        ...prev,
+        {
+          number,
+          audioCount: 0,
+          dimensionCount: 0,
+          evaluation,
+          audios: [],
+          algorithmParams: [],
+          noise: emptyRoundNoise(),
+        },
+      ]
     })
     setActiveRound(number)
   }
@@ -412,6 +317,11 @@ export function CaseMutateDrawer({
           selectedIds: [...src.evaluation.selectedIds],
           params: { ...src.evaluation.params },
         },
+        // 复制当前轮次：音频草稿深拷贝 + 独立行身份（编辑互不串扰）
+        audios: src.audios.map((a, i) => ({
+          ...a,
+          id: `round-${number}-audio-${i}`,
+        })),
         algorithmParams: [...src.algorithmParams],
         noise: {
           backgroundNoise: src.noise.backgroundNoise ? { ...src.noise.backgroundNoise, deviceIds: [...src.noise.backgroundNoise.deviceIds] } : null,
@@ -442,6 +352,14 @@ export function CaseMutateDrawer({
     )
   }
 
+  /** 音频列表步骤受控回写（INT-877 P1-1：变更并入轮次草稿，保存序列化到 config.rounds[].audios） */
+  const updateAudios = (number: number | undefined, audios: RoundAudioDraft[]) => {
+    if (number == null) return
+    setRounds((prev) =>
+      prev.map((r) => (r.number === number ? { ...r, audios, audioCount: audios.length } : r))
+    )
+  }
+
   /** INT-996 算法参数步骤：更新指定轮 algorithmParams（独立列 params） */
   const updateRoundAlgorithmParams = (number: number | undefined, params: RoundAlgorithmParamItem[]) => {
     if (number == null) return
@@ -458,8 +376,8 @@ export function CaseMutateDrawer({
 
   /**
    * 保存（INT-922 P1-1：走真实 testcase create/update 写接口，对照 V9.7.10 Vue）。
-   * config.rounds 由轮次草稿序列化并与原始轮次合并（保留未在抽屉编辑的
-   * audios/background_noise 等结构）；评估策略节仅在用户操作过时改写。
+   * config.rounds 由轮次草稿序列化并与原始轮次合并（音频 P1-1 + 评估 + INT-996 噪声段）；
+   * 评估策略节仅在用户操作过时改写。
    */
   const handleSave = async () => {
     if (!nameValue.trim()) {
@@ -476,7 +394,7 @@ export function CaseMutateDrawer({
       : []
     const config: Record<string, unknown> = {
       ...(caseItem?.config ?? {}),
-      rounds: roundsToConfig(rounds, originalRounds),
+      rounds: roundsToConfig(rounds, originalRounds, dimNameById),
     }
 
     // INT-996 算法参数独立列 [{round_number, params:[{field_code, field_value}]}]：
@@ -496,7 +414,9 @@ export function CaseMutateDrawer({
     let strategyOverrides: Record<string, unknown> | null | undefined
     if (strategyValue?.mode === 'reference') {
       strategyId = strategyValue.strategyId ?? null
-      strategyOverrides = (strategyValue.overrides ?? null) as Record<string, unknown> | null
+      // INT-877 P3-1：用例级覆盖 camelCase → snake_case（backgroundNoise → background_noise），
+      // 后端 EvaluationStrategyMergeService 读 raw dict snake_case 键
+      strategyOverrides = toStrategyOverridesDto(strategyValue.overrides)
       // 引用态：清存量直载字段（策略写时物化到 config.dimensions/background_noise）
       delete config.dimensions
       delete config.background_noise
@@ -757,13 +677,18 @@ export function CaseMutateDrawer({
                         </TabsList>
                       </Tabs>
                     </div>
-                    <div className='px-3 py-3'>
+                    <div className='px-3 py-3' data-testid='case-step-body'>
                       <StepBody
                         step={step}
                         activeRound={activeRoundDraft}
                         algorithmType={algorithmType}
+                        dimensions={dimensions}
+                        categories={categories}
                         onEvaluationChange={(evaluation) =>
                           updateEvaluation(activeRoundDraft?.number, evaluation)
+                        }
+                        onAudiosChange={(audios) =>
+                          updateAudios(activeRoundDraft?.number, audios)
                         }
                         onAlgorithmParamsChange={(params) =>
                           updateRoundAlgorithmParams(activeRoundDraft?.number, params)
@@ -785,8 +710,8 @@ export function CaseMutateDrawer({
                 initialValue={initialValue}
                 legacyDimensions={legacyDimensions}
                 legacyBackgroundNoise={legacyBackgroundNoise}
-                dimensions={MOCK_CASE_DIMENSIONS}
-                categories={MOCK_EVALUATION_CATEGORIES}
+                dimensions={dimensions}
+                categories={categories}
                 algorithmType={algorithmType}
                 onChange={setStrategyValue}
               />
@@ -813,14 +738,20 @@ function StepBody({
   step,
   activeRound,
   algorithmType,
+  dimensions,
+  categories,
   onEvaluationChange,
+  onAudiosChange,
   onAlgorithmParamsChange,
   onNoiseChange,
 }: {
   step: (typeof STEPS)[number]
   activeRound: RoundDraft | undefined
   algorithmType: string
+  dimensions: Dimension[]
+  categories: EvaluationCategory[]
   onEvaluationChange: (evaluation: RoundEvaluationDraft) => void
+  onAudiosChange: (audios: RoundAudioDraft[]) => void
   onAlgorithmParamsChange: (params: RoundAlgorithmParamItem[]) => void
   onNoiseChange: (noise: RoundNoiseDraft) => void
 }) {
@@ -834,7 +765,7 @@ function StepBody({
         />
       )
     case '音频列表':
-      return <AudioListStep presetCount={activeRound?.audioCount || 1} />
+      return <AudioListStep value={activeRound?.audios ?? []} onChange={onAudiosChange} />
     case '噪声与干扰':
       return (
         <NoiseInterferenceStep
@@ -845,8 +776,8 @@ function StepBody({
     case '评估维度':
       return (
         <EvaluationStep
-          dimensions={MOCK_CASE_DIMENSIONS}
-          categories={MOCK_EVALUATION_CATEGORIES}
+          dimensions={dimensions}
+          categories={categories}
           algorithmType={algorithmType || null}
           value={activeRound?.evaluation ?? newRoundEvaluation()}
           onChange={onEvaluationChange}

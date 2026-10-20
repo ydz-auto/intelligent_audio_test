@@ -1,11 +1,14 @@
 /**
  * 轮次步骤②：音频列表（11_用例域.md §5.1，音频卡列表 + 工具栏）。
- * 卡头「音频 {n}｜文件名｜时长｜勾选」+ 操作（复制/删除/试听）+ 标签 chips 行；
- * 卡体字段：音频文件*（Select 演示 Combobox）/播放设备（Select「{设备名} (通道 {n})」）/
- * 声压级 dB（number 40-100，默认 65）。
- * 工具栏：升序/降序/随机排序｜标签交错（≥2 标签 chip 选择面板）｜标签设备（标签→设备映射面板）｜
- * 批量设备｜设备交叉（多选设备按序轮转分配）｜批量声压｜清空（ghost sm + Tooltip）——
- * 五件批量工具真实交互（application/domain 纯函数派生，mock 态不接后端，INT-588 补全）。
+ * 受控组件：value=RoundAudioDraft[]、onChange 回写轮次草稿——编辑真实用例由
+ * config.rounds[].audios 回填（INT-877 P1-1：audio_id/audio_name/spl/playback_device_id
+ * /playback_device_name 真实数据），变更并入保存侧 config.rounds[].audios。
+ * 播放设备 Select 走真实 GET /playback-devices；音频文件选择/更换走音频库子弹窗
+ * （AudioSelectDialog 真实 GET /audios）。卡头「音频 {n}｜文件名｜时长｜勾选」+ 操作
+ * （复制/删除/试听）+ 标签 chips 行；卡体字段：音频文件*（真实文件名 + 更换钮）/
+ * 播放设备（Select「{设备名} (通道 {n})」）/声压级 dB（number 40-100，默认 65）。
+ * 工具栏：升序/降序/随机排序｜标签交错｜标签设备｜批量设备｜设备交叉｜批量声压｜清空——
+ * 批量工具纯函数派生（application/domain），标签源=真实音频库 tags。
  */
 import {
   ArrowDownAZ,
@@ -22,7 +25,7 @@ import {
   Trash2,
   Volume2,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -42,11 +45,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { useAudioListBatch } from '@/application/testcases/use-audio-list-batch'
-import type {
-  MockAudioFile,
-  MockDevice,
-} from '@/features/testcases/modals/round-config/audio-list-types'
+import { useAudioListBatch, type RoundAudioLike } from '@/application/testcases/use-audio-list-batch'
+import { usePlaybackDevices } from '@/application/devices/use-devices'
+import { fetchAudioLibrary } from '@/infrastructure/api/audioLibraryApi'
+import type { RoundAudioDraft } from '@/features/testcases/modals/round-config/round-nav'
+import type { MockDevice } from '@/features/testcases/modals/round-config/audio-list-types'
 import { BatchDevicePanel } from '@/features/testcases/modals/round-config/batch-device-panel'
 import { BatchSplPanel } from '@/features/testcases/modals/round-config/batch-spl-panel'
 import { CrossDevicePanel } from '@/features/testcases/modals/round-config/cross-device-panel'
@@ -54,44 +57,19 @@ import { TagDevicePanel } from '@/features/testcases/modals/round-config/tag-dev
 import { TagInterleavePanel } from '@/features/testcases/modals/round-config/tag-interleave-panel'
 import { AudioSelectDialog } from '@/features/testcases/modals/audio/audio-select-dialog'
 
-const MOCK_AUDIO_FILES: MockAudioFile[] = [
-  { id: 'au-01', name: '客厅_中文_命令集.wav', duration: '00:42', tags: ['客厅', '中文', '命令集'] },
-  { id: 'au-02', name: '车内_导航_1人.wav', duration: '01:05', tags: ['车内', '导航', '单人'] },
-  { id: 'au-03', name: '会议室_多人_中文.wav', duration: '02:30', tags: ['会议室', '多人', '中文'] },
-  { id: 'au-04', name: '音乐背景_闹钟.wav', duration: '00:18', tags: ['音乐背景', '闹钟'] },
-  { id: 'au-05', name: '英文_短信指令.flac', duration: '00:25', tags: ['英文', '短信'] },
-]
-
-const MOCK_DEVICES: MockDevice[] = [
-  { id: 'dev-1', name: '音频接口 A', channel: 1, type: '干声' },
-  { id: 'dev-2', name: '音频接口 B', channel: 2, type: '噪声' },
-  { id: 'dev-3', name: '蓝牙音箱', channel: 3, type: '干声' },
-]
-
-/** 标签源（页面级 mock；音频文件标签去重并集，INT-588 批量工具选择面板共用） */
-const MOCK_TAGS = [...new Set(MOCK_AUDIO_FILES.flatMap((f) => f.tags))]
-
-/** fileId → tags 映射（application 批量动作标签源；模块级常量保持身份稳定） */
-const TAGS_BY_FILE = new Map(MOCK_AUDIO_FILES.map((f) => [f.id, f.tags]))
-
-interface AudioDraft {
-  id: string
-  fileId: string
-  deviceId: string
-  spl: number
-  /** 音频选择子弹窗（多选）回填的音频简报；存在时优先于 fileId 的 mock 解析 */
-  fileOverride?: {
-    id: number | string
-    name: string
-    duration: number | null
-    tags: string[]
-  } | null
-}
-
-/** 列表 + 勾选态合并（批量工具替换列表后清理失效勾选，勾选态不残留） */
-interface AudioListState {
-  audios: AudioDraft[]
-  selectedIds: ReadonlySet<string>
+/** 真实播放设备（/playback-devices）→ 面板/Select 展示项「{设备名} (通道 {n}) [干声/噪声]」 */
+function toDeviceOption(d: {
+  id: number | string
+  name: string
+  channelIndex?: number | null
+  deviceType?: string | null
+}): MockDevice {
+  return {
+    id: String(d.id),
+    name: d.name,
+    channel: d.channelIndex ?? 1,
+    type: d.deviceType === 'noise' ? '噪声' : '干声',
+  }
 }
 
 type BatchPanel =
@@ -104,55 +82,122 @@ type BatchPanel =
 let audioSeq = 0
 const nextId = () => `audio-${++audioSeq}`
 
-const defaultAudio = (n: number): AudioDraft => ({
-  id: nextId(),
-  fileId: MOCK_AUDIO_FILES[n % MOCK_AUDIO_FILES.length].id,
-  deviceId: MOCK_DEVICES[0].id,
-  spl: 65,
-  fileOverride: null,
-})
+/** 音频库选择结果 → 轮次音频草稿（真实 audio_id/name/duration/tags；spl 默认 65、设备待选） */
+function audioDraftFromAsset(file: {
+  id: number | string
+  name: string
+  duration?: number | null
+  tags?: string[]
+}): RoundAudioDraft {
+  return {
+    id: nextId(),
+    audioId: file.id,
+    audioName: file.name,
+    spl: 65,
+    deviceId: '',
+    deviceName: null,
+    duration: file.duration ?? null,
+    tags: file.tags ?? [],
+  }
+}
 
-export function AudioListStep({ presetCount = 2 }: { presetCount?: number }) {
-  const batch = useAudioListBatch(TAGS_BY_FILE)
-  const [state, setState] = useState<AudioListState>(() => ({
-    audios: Array.from({ length: presetCount }, (_, i) => defaultAudio(i)),
-    selectedIds: new Set(),
-  }))
+const formatSeconds = (s: number | null | undefined): string | null => {
+  if (s == null) return null
+  const sec = Math.round(s)
+  return sec < 60 ? `${sec}s` : sec % 60 === 0 ? `${sec / 60}m` : `${Math.floor(sec / 60)}m ${sec % 60}s`
+}
+
+export function AudioListStep({
+  value,
+  onChange,
+}: {
+  value: RoundAudioDraft[]
+  onChange: (audios: RoundAudioDraft[]) => void
+}) {
+  const devicesQuery = usePlaybackDevices()
+  /** 真实播放设备（Select + 批量工具面板共用） */
+  const deviceOptions = useMemo<MockDevice[]>(
+    () => (devicesQuery.data ?? []).map(toDeviceOption),
+    [devicesQuery.data]
+  )
+
+  /** 真实音频库（标签工具数据源 + 时长/标签展示；GET /audios 大页拉取） */
+  const [audioLibrary, setAudioLibrary] = useState<
+    ReadonlyMap<string, { tags: string[]; duration: number | null }>
+  >(new Map())
+  useEffect(() => {
+    let cancelled = false
+    void fetchAudioLibrary({ perPage: 200 })
+      .then((r) => {
+        if (cancelled) return
+        setAudioLibrary(
+          new Map(
+            r.items.map((a) => [
+              String(a.id),
+              { tags: a.tags ?? [], duration: a.duration ?? null },
+            ])
+          )
+        )
+      })
+      .catch(() => {
+        // 音频库加载失败不阻断步骤；标签工具降级为行内 tags
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  /** 单条音频标签解析（真实音频库 tags 优先，行内 tags fallback） */
+  const tagsOfDraft = (audio: RoundAudioLike): readonly string[] => {
+    if (audio.audioId != null) {
+      const lib = audioLibrary.get(String(audio.audioId))
+      if (lib && lib.tags.length > 0) return lib.tags
+    }
+    return audio.tags ?? []
+  }
+
+  /** 批量工具（标签源=真实音频库 tags；身份随 audioLibrary 变化） */
+  const batch = useAudioListBatch(tagsOfDraft)
+
+  /** 面板可选标签源（音频库 + 行内并集） */
+  const allTags = useMemo(
+    () => [
+      ...new Set(
+        [...audioLibrary.values()].flatMap((v) => v.tags).concat(value.flatMap((a) => a.tags ?? []))
+      ),
+    ],
+    [audioLibrary, value]
+  )
+
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set())
   const [panel, setPanel] = useState<BatchPanel | null>(null)
   const [pickingFromLibrary, setPickingFromLibrary] = useState(false)
+  /** 单卡更换音频（replacingIndex 非空 → 音频库子弹窗单选确认） */
+  const [replacingIndex, setReplacingIndex] = useState<number | null>(null)
 
-  const { audios, selectedIds } = state
+  // 行身份变更（复制/标签交错克隆/批量工具）时清理失效勾选
+  useEffect(() => {
+    const alive = new Set(value.map((a) => a.id))
+    setSelectedIds((prev) =>
+      prev.size === 0 || [...prev].every((id) => alive.has(id))
+        ? prev
+        : new Set([...prev].filter((id) => alive.has(id)))
+    )
+  }, [value])
 
-  const fileOf = (id: string) => MOCK_AUDIO_FILES.find((a) => a.id === id)
-  const deviceOf = (id: string) => MOCK_DEVICES.find((d) => d.id === id)
-  /** 显示用音频文件（子弹窗回填优先于 mock 解析） */
-  const displayFileOf = (audio: AudioDraft) => audio.fileOverride ?? fileOf(audio.fileId)
+  const update = (id: string, patch: Partial<RoundAudioDraft>) =>
+    onChange(value.map((a) => (a.id === id ? { ...a, ...patch } : a)))
 
-  /** 普通替换（复制/排序/单行更新：id 集合不变） */
-  const setAudios = (fn: (prev: AudioDraft[]) => AudioDraft[]) =>
-    setState((s) => ({ ...s, audios: fn(s.audios) }))
-
-  /** 批量替换（批量工具/清空：id 集合可能变化，清理失效勾选） */
-  const replaceAudios = (fn: (prev: AudioDraft[]) => AudioDraft[]) =>
-    setState((s) => {
-      const audios = fn(s.audios)
-      const alive = new Set(audios.map((a) => a.id))
-      const selectedIds =
-        s.selectedIds.size === 0 || [...s.selectedIds].every((id) => alive.has(id))
-          ? s.selectedIds
-          : new Set([...s.selectedIds].filter((id) => alive.has(id)))
-      return { audios, selectedIds }
-    })
-
-  const update = (id: string, patch: Partial<AudioDraft>) =>
-    setAudios((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)))
+  /** 批量替换（批量工具/清空：id 集合可能变化，失效勾选由上方 useEffect 清理） */
+  const replaceAudios = (fn: (prev: RoundAudioDraft[]) => RoundAudioDraft[]) =>
+    onChange(fn(value))
 
   const toggleSelect = (id: string) =>
-    setState((s) => {
-      const next = new Set(s.selectedIds)
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
-      return { ...s, selectedIds: next }
+      return next
     })
 
   const tool = (label: string, icon: React.ReactNode, onClick: () => void) => (
@@ -176,21 +221,17 @@ export function AudioListStep({ presetCount = 2 }: { presetCount?: number }) {
       {/* 工具栏 */}
       <div className='flex flex-wrap items-center gap-1'>
         {tool('升序', <ArrowUpAZ aria-hidden='true' className='size-3.5' />, () =>
-          setAudios((prev) =>
-            [...prev].sort((a, b) =>
-              (displayFileOf(a)?.name ?? '').localeCompare(displayFileOf(b)?.name ?? '')
-            )
+          replaceAudios((prev) =>
+            [...prev].sort((a, b) => (a.audioName ?? '').localeCompare(b.audioName ?? ''))
           )
         )}
         {tool('降序', <ArrowDownAZ aria-hidden='true' className='size-3.5' />, () =>
-          setAudios((prev) =>
-            [...prev].sort((a, b) =>
-              (displayFileOf(b)?.name ?? '').localeCompare(displayFileOf(a)?.name ?? '')
-            )
+          replaceAudios((prev) =>
+            [...prev].sort((a, b) => (b.audioName ?? '').localeCompare(a.audioName ?? ''))
           )
         )}
         {tool('随机排序', <Shuffle aria-hidden='true' className='size-3.5' />, () =>
-          setAudios((prev) => [...prev].sort(() => Math.random() - 0.5))
+          replaceAudios((prev) => [...prev].sort(() => Math.random() - 0.5))
         )}
         {tool('标签交错', <Tags aria-hidden='true' className='size-3.5' />, () => setPanel('interleave'))}
         {tool('标签设备', <Tag aria-hidden='true' className='size-3.5' />, () => setPanel('tagDevice'))}
@@ -200,12 +241,15 @@ export function AudioListStep({ presetCount = 2 }: { presetCount?: number }) {
         {tool('清空', <Trash2 aria-hidden='true' className='size-3.5' />, () => replaceAudios(() => []))}
       </div>
 
-      {audios.length === 0 ? (
+      {value.length === 0 ? (
         <p className='text-muted-foreground py-6 text-center text-sm'>尚未添加音频，点击下方「添加音频」</p>
       ) : (
-        audios.map((audio, index) => {
-          const file = displayFileOf(audio)
-          const device = deviceOf(audio.deviceId)
+        value.map((audio, index) => {
+          const device = deviceOptions.find((d) => d.id === audio.deviceId)
+          const duration = formatSeconds(
+            audio.audioId != null ? audioLibrary.get(String(audio.audioId))?.duration ?? audio.duration : audio.duration
+          )
+          const tags = tagsOfDraft(audio)
           return (
             <div key={audio.id} className='bg-background ring-foreground/10 rounded-lg p-3 ring-1'>
               <div className='flex items-center gap-2'>
@@ -217,8 +261,8 @@ export function AudioListStep({ presetCount = 2 }: { presetCount?: number }) {
                 />
                 <GripVertical aria-hidden='true' className='text-muted-foreground size-4 shrink-0' />
                 <span className='text-sm font-medium'>音频 {index + 1}</span>
-                <span className='text-muted-foreground min-w-0 flex-1 truncate text-xs'>{file?.name}</span>
-                <span className='text-muted-foreground/60 font-mono text-xs tabular-nums'>{file?.duration}</span>
+                <span className='text-muted-foreground min-w-0 flex-1 truncate text-xs'>{audio.audioName ?? '—'}</span>
+                <span className='text-muted-foreground/60 font-mono text-xs tabular-nums'>{duration ?? ''}</span>
                 <div className='ms-auto flex shrink-0 items-center gap-0.5'>
                   <Button type='button' variant='ghost' size='icon-sm' aria-label='试听' className='size-7'>
                     <Play aria-hidden='true' className='size-3.5' />
@@ -229,7 +273,9 @@ export function AudioListStep({ presetCount = 2 }: { presetCount?: number }) {
                     size='icon-sm'
                     aria-label='复制音频'
                     className='size-7'
-                    onClick={() => setAudios((prev) => [...prev, { ...audio, id: nextId() }])}
+                    onClick={() =>
+                      replaceAudios((prev) => [...prev, { ...audio, id: nextId() }])
+                    }
                   >
                     <Copy aria-hidden='true' className='size-3.5' />
                   </Button>
@@ -246,44 +292,51 @@ export function AudioListStep({ presetCount = 2 }: { presetCount?: number }) {
                 </div>
               </div>
               {/* 标签 chips（§5.1 卡头；标签交错/标签设备走查依赖可见标签） */}
-              <div className='mt-2 flex flex-wrap gap-1'>
-                {file?.tags.map((t) => (
-                  <Badge key={t} variant='outline' className='rounded-md px-1.5 text-[10px]'>
-                    {t}
-                  </Badge>
-                ))}
-              </div>
+              {tags.length > 0 && (
+                <div className='mt-2 flex flex-wrap gap-1'>
+                  {tags.map((t) => (
+                    <Badge key={t} variant='outline' className='rounded-md px-1.5 text-[10px]'>
+                      {t}
+                    </Badge>
+                  ))}
+                </div>
+              )}
               <div className='mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-3'>
                 <div className='space-y-1.5'>
                   <Label className='text-sm'>音频文件 *</Label>
-                  {audio.fileOverride ? (
-                    <div className='bg-background ring-foreground/10 flex h-8 items-center gap-1 rounded-md px-2 ring-1'>
+                  <div className='flex items-center gap-1.5'>
+                    <div className='bg-background ring-foreground/10 flex h-8 min-w-0 flex-1 items-center gap-1 rounded-md px-2 ring-1'>
                       <Play aria-hidden='true' className='text-muted-foreground size-3 shrink-0' />
-                      <span className='min-w-0 flex-1 truncate text-xs'>{audio.fileOverride.name}</span>
+                      <span className='min-w-0 flex-1 truncate text-xs'>{audio.audioName ?? '—'}</span>
                     </div>
-                  ) : (
-                    <Select value={audio.fileId} onValueChange={(v) => v != null && update(audio.id, { fileId: v })}>
-                      <SelectTrigger size='sm' className='h-8'>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {MOCK_AUDIO_FILES.map((a) => (
-                          <SelectItem key={a.id} value={a.id}>
-                            {a.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
+                    <Button
+                      type='button'
+                      variant='outline'
+                      size='sm'
+                      className='h-8 shrink-0'
+                      onClick={() => setReplacingIndex(index)}
+                    >
+                      更换
+                    </Button>
+                  </div>
                 </div>
                 <div className='space-y-1.5'>
                   <Label className='text-sm'>播放设备</Label>
-                  <Select value={audio.deviceId} onValueChange={(v) => v != null && update(audio.id, { deviceId: v })}>
+                  <Select
+                    value={audio.deviceId}
+                    onValueChange={(v) =>
+                      v != null &&
+                      update(audio.id, {
+                        deviceId: v,
+                        deviceName: deviceOptions.find((d) => d.id === v)?.name ?? null,
+                      })
+                    }
+                  >
                     <SelectTrigger size='sm' className='h-8'>
-                      <SelectValue />
+                      <SelectValue placeholder='请选择设备' />
                     </SelectTrigger>
                     <SelectContent>
-                      {MOCK_DEVICES.map((d) => (
+                      {deviceOptions.map((d) => (
                         <SelectItem key={d.id} value={d.id}>
                           {d.name} (通道 {d.channel}) [{d.type}]
                         </SelectItem>
@@ -317,7 +370,7 @@ export function AudioListStep({ presetCount = 2 }: { presetCount?: number }) {
           variant='outline'
           size='sm'
           className='h-8 gap-1'
-          onClick={() => setAudios((prev) => [...prev, defaultAudio(prev.length)])}
+          onClick={() => setPickingFromLibrary(true)}
         >
           + 添加音频
         </Button>
@@ -333,23 +386,23 @@ export function AudioListStep({ presetCount = 2 }: { presetCount?: number }) {
         </Button>
       </div>
 
-      {/* 批量工具面板（§4 工具栏九件中的五件弹窗，mock 态真实交互） */}
+      {/* 批量工具面板（§4 工具栏九件中的五件弹窗，真实设备/真实标签源） */}
       <TagInterleavePanel
         open={panel === 'interleave'}
         onOpenChange={closePanel}
-        tags={MOCK_TAGS}
+        tags={allTags}
         onConfirm={(tags) => {
-          replaceAudios(() => batch.tagInterleave(audios, tags, nextId))
+          replaceAudios(() => batch.tagInterleave(value, tags, nextId))
           toast.success(`已按标签「${tags.join(' / ')}」交错排序`)
         }}
       />
       <TagDevicePanel
         open={panel === 'tagDevice'}
         onOpenChange={closePanel}
-        tags={MOCK_TAGS}
-        devices={MOCK_DEVICES}
+        tags={allTags}
+        devices={deviceOptions}
         onConfirm={(tag, deviceId) => {
-          const hit = audios.some((a) => TAGS_BY_FILE.get(a.fileId)?.includes(tag))
+          const hit = value.some((a) => tagsOfDraft(a).includes(tag))
           if (!hit) {
             toast.warning(`未找到命中标签「${tag}」的音频`)
             return
@@ -361,7 +414,7 @@ export function AudioListStep({ presetCount = 2 }: { presetCount?: number }) {
       <BatchDevicePanel
         open={panel === 'batchDevice'}
         onOpenChange={closePanel}
-        devices={MOCK_DEVICES}
+        devices={deviceOptions}
         selectedCount={selectedIds.size}
         onConfirm={(deviceId, scope) => {
           replaceAudios((prev) => batch.batchDevice(prev, deviceId, scope, selectedIds))
@@ -373,7 +426,7 @@ export function AudioListStep({ presetCount = 2 }: { presetCount?: number }) {
       <CrossDevicePanel
         open={panel === 'crossDevice'}
         onOpenChange={closePanel}
-        devices={MOCK_DEVICES}
+        devices={deviceOptions}
         onConfirm={(deviceIds) => {
           replaceAudios((prev) => batch.crossDevice(prev, deviceIds))
           toast.success(`已按列表顺序轮转分配 ${deviceIds.length} 个设备`)
@@ -393,30 +446,47 @@ export function AudioListStep({ presetCount = 2 }: { presetCount?: number }) {
         }}
       />
 
-      {/* 音频选择子弹窗（多选；选中所用音频追加为轮次音频行） */}
+      {/* 音频选择子弹窗（真实 GET /audios；添加/从音频库选择=追加，单卡更换=替换） */}
       <AudioSelectDialog
-        open={pickingFromLibrary}
-        onOpenChange={setPickingFromLibrary}
+        open={pickingFromLibrary || replacingIndex != null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPickingFromLibrary(false)
+            setReplacingIndex(null)
+          }
+        }}
         mode='multi'
-        title='选择音频文件'
+        title={replacingIndex != null ? '更换音频文件' : '选择音频文件'}
+        initialSelected={
+          replacingIndex != null && value[replacingIndex]?.audioId != null
+            ? [{ id: value[replacingIndex].audioId as number | string }]
+            : []
+        }
         onConfirm={(selected) => {
           if (selected.length === 0) return
-          replaceAudios((prev) => [
-            ...prev,
-            ...selected.map((file) => ({
-              id: nextId(),
-              fileId: `lib-${file.id}`,
-              deviceId: MOCK_DEVICES[0].id,
-              spl: 65,
-              fileOverride: {
-                id: file.id,
-                name: file.name,
-                duration: file.duration,
-                tags: file.tags ?? [],
-              },
-            })),
-          ])
-          toast.success(`已添加 ${selected.length} 个音频到轮次`)
+          if (replacingIndex != null && value[replacingIndex]) {
+            const current = value[replacingIndex]
+            // 多选态：当前音频预勾选，用户新增勾选=目标更换音频（与当前 id 不同者优先）
+            const file =
+              selected.find((a) => String(a.id) !== String(current.audioId)) ?? selected[0]
+            onChange(
+              value.map((a, i) =>
+                i === replacingIndex
+                  ? {
+                      ...a,
+                      audioId: file.id,
+                      audioName: file.name,
+                      duration: file.duration ?? null,
+                      tags: file.tags ?? [],
+                    }
+                  : a
+              )
+            )
+            toast.success('已更换音频文件')
+          } else {
+            onChange([...value, ...selected.map(audioDraftFromAsset)])
+            toast.success(`已添加 ${selected.length} 个音频到轮次`)
+          }
         }}
       />
     </div>
