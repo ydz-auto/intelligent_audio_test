@@ -4,6 +4,10 @@
  * 用例行照 11_用例域 §3.3 统一 `CaseCard` 口径呈现——名称 / CaseIdBadge / 算法徽章 / 标签，
  * 保留报告侧专属标记：状态指示点、分组 Badge、人工复核/AI复核 Badge、下载日志/固定/详情/展开）+ 展开详情
  * = TestCaseReportDetail 七块（§3.5）。
+ * 用例卡片分组（INT-1034 同步，INT-1049 实施）：排序方式新增「按标签」，
+ * 选中「按分组 / 按标签」即按该维度组头分组渲染（组头=组名+计数「{n} 个用例」，
+ * 未分类/未设置标签兜底组末尾），组内用例卡照全站统一 CaseCard；客户端聚合见 specific-case-grouping.ts，
+ * 不新增后端请求——用例行自带 category/tags（ReportCaseItem）。
  * 人工复核 + AI 复核交互（19 规范 §4.1~§4.3，INT-793）：卡片标记（复核 Badge → 复核明细抽屉）
  * + 明细操作（「人工复核」弹窗 / 「AI 复核」弹窗）双路径；源任务 result_id 溯源（§4.2 路径 A）。
  */
@@ -42,6 +46,11 @@ import type { ReportCaseItem, ReportDetailData } from '@/domain/models/report'
 import type { TagItem } from '@/domain/models/testTag'
 import { cn } from '@/lib/utils'
 import { CaseCard } from '@/features/testcases/components/case-card'
+import {
+  groupReportCasesByCategory,
+  groupReportCasesByTag,
+  type ReportCaseSubGroup,
+} from './specific-case-grouping'
 
 import { CaseReportDetail } from '../case-report-detail'
 import { getDeviceName } from '../case-report-detail/case-report-utils'
@@ -170,6 +179,125 @@ export function SpecificCaseComparison({
     }
   }
 
+  /** 分组组织（§3.3.7 用例卡片分组：按分组/按标签选中即组头分组渲染，未选中保持平铺列表） */
+  const grouped = useMemo<ReportCaseSubGroup[] | null>(() => {
+    if (filters.sortBy === 'tag') return groupReportCasesByTag(items, reportTagRegistry)
+    if (filters.sortBy === 'category') return groupReportCasesByCategory(items)
+    return null
+  }, [filters.sortBy, items, reportTagRegistry])
+
+  /** 用例卡渲染（平铺 / 组内共用同一条 CaseCard 口径） */
+  const renderCaseCard = (c: ReportCaseItem) => {
+    const status = c.overall_status ?? overallStatusOf(c)
+    const expanded = expandedIds.includes(c.id)
+    const pinned = pinnedIds.includes(c.id)
+    return (
+      <CaseCard
+        key={c.id}
+        caseItem={c}
+        selected={false}
+        showCheckbox={false}
+        tagRegistry={reportTagRegistry}
+        leading={<StatusDot status={status} className='mt-1.5' />}
+        titleExtra={
+          <>
+            <Badge variant='outline' className='text-xs'>
+              {c.category ?? '未分类'}
+            </Badge>
+            {/* 卡片标记（§4.1：用例卡片头行「人工复核」Badge → 复核明细抽屉） */}
+            {isTaskReport && reviews.reviewedCases[c.id] === true && (
+              <button
+                type='button'
+                className='cursor-pointer'
+                onClick={() => setHistoryCase(c)}
+                aria-label='查看复核明细'
+              >
+                <ReviewBadge />
+              </button>
+            )}
+          </>
+        }
+        hideMeta
+        actions={
+          <>
+            {/* 明细操作（§4.2 双路径入口之二）：人工复核 / AI 复核 */}
+            {isTaskReport && canReview && (
+              <>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  className='h-7 gap-1 px-2 text-xs'
+                  onClick={() => {
+                    setAiPrefill(undefined)
+                    setReviewCase(c)
+                  }}
+                >
+                  <ShieldCheck aria-hidden='true' className='size-3.5' />
+                  人工复核
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='h-7 gap-1 px-2 text-xs'
+                  onClick={() => {
+                    setAiCase(c)
+                  }}
+                >
+                  <Sparkles aria-hidden='true' className='size-3.5' />
+                  AI 复核
+                </Button>
+              </>
+            )}
+            <Button
+              variant='ghost'
+              size='sm'
+              className='h-7 gap-1 px-2 text-xs'
+              onClick={() => void handleDownload(c.id)}
+              disabled={downloadingId === c.id}
+            >
+              <Download aria-hidden='true' className='size-3.5' />
+              下载日志
+            </Button>
+            <Button
+              variant='ghost'
+              size='sm'
+              className='text-muted-foreground h-7 px-1.5'
+              aria-pressed={pinned}
+              aria-label={pinned ? '取消固定' : '固定'}
+              title={pinned ? '取消固定' : '固定'}
+              onClick={() => togglePin(c.id)}
+            >
+              <Pin aria-hidden='true' className={cn('size-3.5', pinned && 'text-primary fill-primary/20')} />
+            </Button>
+            <Button variant='ghost' size='sm' className='h-7 px-1.5' onClick={() => setDetailCase(c)}>
+              详情
+            </Button>
+            <Button
+              variant='ghost'
+              size='sm'
+              className='h-7 px-1.5'
+              aria-label={expanded ? '收起详情' : '展开详情'}
+              aria-expanded={expanded}
+              onClick={() => toggleExpand(c.id)}
+            >
+              <ChevronDown
+                aria-hidden='true'
+                className={cn('size-4 transition-transform', expanded && 'rotate-180')}
+              />
+            </Button>
+          </>
+        }
+        expandedContent={
+          expanded ? (
+            <div className='border-t p-3'>
+              <CaseReportDetail caseItem={c} report={report} />
+            </div>
+          ) : undefined
+        }
+      />
+    )
+  }
+
   return (
     <Collapsible open={!collapsed || isExporting} onOpenChange={setCollapsed} className='space-y-3'>
       <div className='flex items-center justify-between'>
@@ -217,6 +345,7 @@ export function SpecificCaseComparison({
                   <SelectContent>
                     <SelectItem value='name'>按名称</SelectItem>
                     <SelectItem value='category'>按分组</SelectItem>
+                    <SelectItem value='tag'>按标签</SelectItem>
                     <SelectItem value='createdat'>按创建时间</SelectItem>
                     <SelectItem value='metric'>按评估维度</SelectItem>
                   </SelectContent>
@@ -434,117 +563,21 @@ export function SpecificCaseComparison({
             <div className='text-muted-foreground flex h-20 items-center justify-center rounded-lg border text-xs'>
               暂无数据
             </div>
+          ) : grouped ? (
+            /* §3.3.7 用例卡片分组：组头 = 组名 + 计数「{n} 个用例」，未分类/未设置标签兜底组末尾弱化 */
+            <div className='space-y-2'>
+              {grouped.map((g) => (
+                <div key={g.key} className='space-y-2'>
+                  <ReportGroupHeader
+                    group={g}
+                    muted={g.key === '__untagged__' || g.key === '__uncategorized__'}
+                  />
+                  <div className='space-y-2'>{g.cases.map(renderCaseCard)}</div>
+                </div>
+              ))}
+            </div>
           ) : (
-            items.map((c) => {
-              const status = c.overall_status ?? overallStatusOf(c)
-              const expanded = expandedIds.includes(c.id)
-              const pinned = pinnedIds.includes(c.id)
-              return (
-                <CaseCard
-                  key={c.id}
-                  caseItem={c}
-                  selected={false}
-                  showCheckbox={false}
-                  tagRegistry={reportTagRegistry}
-                  leading={<StatusDot status={status} className='mt-1.5' />}
-                  titleExtra={
-                    <>
-                      <Badge variant='outline' className='text-xs'>
-                        {c.category ?? '未分类'}
-                      </Badge>
-                      {/* 卡片标记（§4.1：用例卡片头行「人工复核」Badge → 复核明细抽屉） */}
-                      {isTaskReport && reviews.reviewedCases[c.id] === true && (
-                        <button
-                          type='button'
-                          className='cursor-pointer'
-                          onClick={() => setHistoryCase(c)}
-                          aria-label='查看复核明细'
-                        >
-                          <ReviewBadge />
-                        </button>
-                      )}
-                    </>
-                  }
-                  hideMeta
-                  actions={
-                    <>
-                      {/* 明细操作（§4.2 双路径入口之二）：人工复核 / AI 复核 */}
-                      {isTaskReport && canReview && (
-                        <>
-                          <Button
-                            variant='outline'
-                            size='sm'
-                            className='h-7 gap-1 px-2 text-xs'
-                            onClick={() => {
-                              setAiPrefill(undefined)
-                              setReviewCase(c)
-                            }}
-                          >
-                            <ShieldCheck aria-hidden='true' className='size-3.5' />
-                            人工复核
-                          </Button>
-                          <Button
-                            variant='ghost'
-                            size='sm'
-                            className='h-7 gap-1 px-2 text-xs'
-                            onClick={() => {
-                              setAiCase(c)
-                            }}
-                          >
-                            <Sparkles aria-hidden='true' className='size-3.5' />
-                            AI 复核
-                          </Button>
-                        </>
-                      )}
-                      <Button
-                        variant='ghost'
-                        size='sm'
-                        className='h-7 gap-1 px-2 text-xs'
-                        onClick={() => void handleDownload(c.id)}
-                        disabled={downloadingId === c.id}
-                      >
-                        <Download aria-hidden='true' className='size-3.5' />
-                        下载日志
-                      </Button>
-                      <Button
-                        variant='ghost'
-                        size='sm'
-                        className='text-muted-foreground h-7 px-1.5'
-                        aria-pressed={pinned}
-                        aria-label={pinned ? '取消固定' : '固定'}
-                        title={pinned ? '取消固定' : '固定'}
-                        onClick={() => togglePin(c.id)}
-                      >
-                        <Pin aria-hidden='true' className={cn('size-3.5', pinned && 'text-primary fill-primary/20')} />
-                      </Button>
-                      <Button variant='ghost' size='sm' className='h-7 px-1.5' onClick={() => setDetailCase(c)}>
-                        详情
-                      </Button>
-                      <Button
-                        variant='ghost'
-                        size='sm'
-                        className='h-7 px-1.5'
-                        aria-label={expanded ? '收起详情' : '展开详情'}
-                        aria-expanded={expanded}
-                        onClick={() => toggleExpand(c.id)}
-                      >
-                        <ChevronDown
-                          aria-hidden='true'
-                          className={cn('size-4 transition-transform', expanded && 'rotate-180')}
-                        />
-                      </Button>
-                    </>
-                  }
-                  expandedContent={
-                    expanded ? (
-                      <div className='border-t p-3'>
-                        <CaseReportDetail caseItem={c} report={report} />
-                      </div>
-                    ) : undefined
-                  }
-                />
-              )
-            })
+            items.map(renderCaseCard)
           )}
         </div>
 
@@ -691,4 +724,46 @@ function StatusDot({ status, className }: { status: string; className?: string }
             ? 'bg-muted'
             : 'bg-muted-foreground/40'
   return <span aria-hidden='true' className={cn('size-2 shrink-0 rounded-full', color, className)} />
+}
+
+/**
+ * 报告用例分组头（§3.3.7 用例卡片分组：组头 = 组名 + 计数「{n} 个用例」；
+ * 照 case-sub-group-header 形态——按标签子组带色点 + 分类角标，「未分类 / 未设置标签」兜底组末尾弱化）。
+ */
+function ReportGroupHeader({
+  group,
+  muted = false,
+}: {
+  group: ReportCaseSubGroup
+  /** 未分类/未设置标签桶：弱化（末尾） */
+  muted?: boolean
+}) {
+  return (
+    <div
+      className={cn(
+        'flex flex-wrap items-center gap-2 px-1 py-1.5',
+        muted && 'bg-muted/40 rounded-md px-2'
+      )}
+    >
+      {group.color && (
+        <span
+          aria-hidden='true'
+          className='size-2 shrink-0 rounded-full'
+          style={{ backgroundColor: group.color }}
+        />
+      )}
+      <span className={cn('text-sm font-medium', muted && 'text-muted-foreground')}>
+        {group.label}
+      </span>
+      {group.categoryName && (
+        <span className='text-muted-foreground text-xs'>{group.categoryName}</span>
+      )}
+      <Badge
+        variant='secondary'
+        className='rounded-md px-1.5 font-mono text-[11px] tabular-nums'
+      >
+        {group.cases.length} 个用例
+      </Badge>
+    </div>
+  )
 }
