@@ -545,6 +545,8 @@ services:
       - SERVICE_HOST=api_test_service
       - SERVICE_NAME=api_test_service
       - GRPC_PORT=50071
+      - TASK_SERVICE_HOST=task_service
+      - TASK_SERVICE_GRPC_PORT=50061
       - ADAPTER_SERVICE_HOST=api_adapter_service
       - ADAPTER_SERVICE_HTTP_PORT=5008
       - EVALUATION_SERVICE_HOST=evaluation_service
