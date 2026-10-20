@@ -93,17 +93,27 @@ export function AiReviewResultCard({
           )}
         </div>
       ) : (
-        <div className='mt-3 flex flex-wrap items-center gap-2'>
-          <Button size='sm' onClick={onAdopt} disabled={disabled}>
-            采纳为复核结果
-          </Button>
-          <Button variant='ghost' size='sm' onClick={onReject} disabled={disabled}>
-            驳回
-          </Button>
-          <Button variant='ghost' size='sm' onClick={onIgnore} disabled={disabled}>
-            忽略
-          </Button>
-        </div>
+        <>
+          <div className='mt-3 flex flex-wrap items-center gap-2'>
+            {/* 存疑无明确判定可采纳（§5.5「uncertain→不预填留人工」）：隐藏采纳钮，处置走驳回/忽略/人工复核 */}
+            {record.verdict !== 'uncertain' && (
+              <Button size='sm' onClick={onAdopt} disabled={disabled}>
+                采纳为复核结果
+              </Button>
+            )}
+            <Button variant='ghost' size='sm' onClick={onReject} disabled={disabled}>
+              驳回
+            </Button>
+            <Button variant='ghost' size='sm' onClick={onIgnore} disabled={disabled}>
+              忽略
+            </Button>
+          </div>
+          {record.verdict === 'uncertain' && (
+            <p className='text-muted-foreground mt-2 text-xs'>
+              存疑结论无明确判定可采纳，可驳回或忽略，或经人工复核确定结果
+            </p>
+          )}
+        </>
       )}
     </div>
   )
