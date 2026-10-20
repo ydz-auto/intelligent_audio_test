@@ -236,6 +236,9 @@ import BadgeFilter from '../../components/common/BadgeFilter.vue'
 import VisibilityBadge from '../../components/common/visibility/VisibilityBadge.vue'
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue'
 import { useReportShowcase } from './reportShowcase'
+import '../../assets/styles/reports/base.css'
+import '../../assets/styles/reports/reports.css'
+import '../../assets/styles/components/comparison-common.css'
 import { useAlgorithmLabels } from '../../composables/algorithm/useAlgorithmLabels'
 
 const REPORT_TYPE_OPTIONS: { value: string; label: string }[] = [

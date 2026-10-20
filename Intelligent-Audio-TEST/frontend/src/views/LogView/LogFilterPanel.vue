@@ -223,6 +223,7 @@ import '../../assets/styles/components/log.css'
 import '../../assets/styles/layouts/main.css'
 
 import { ref } from 'vue'
+import '../../assets/styles/components/comparison-common.css'
 
 defineProps<{
   filters: any

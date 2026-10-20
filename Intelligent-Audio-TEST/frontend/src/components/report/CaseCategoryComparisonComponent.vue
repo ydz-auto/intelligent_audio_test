@@ -286,6 +286,7 @@ import { inject, ref, watch } from 'vue'
 import ChartComponent from './ChartComponent.vue'
 import DataTable from '../common/data/DataTable.vue'
 import '../../assets/styles/components/report-filter-card.css'
+import '../../assets/styles/components/comparison-common.css'
 import { useCaseCategoryComparison } from './CaseCategoryComparisonComponent'
 
 const props = defineProps({

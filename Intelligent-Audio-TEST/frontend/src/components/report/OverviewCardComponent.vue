@@ -77,6 +77,7 @@ import '../../assets/styles/layouts/main.css'
 import { ref, computed, inject, watch } from 'vue'
 import DataTable from '../common/data/DataTable.vue'
 import { readCamel } from '../../utils/keyTransform'
+import '../../assets/styles/components/comparison-common.css'
 
 const props = defineProps({
   reportData: {

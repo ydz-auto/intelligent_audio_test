@@ -156,6 +156,7 @@ import '../../assets/styles/components/log.css'
 import '../../assets/styles/layouts/main.css'
 
 import { TaskStatus, ReportStatus, ExecutionStatus } from '@/domain/enums';
+import '../../assets/styles/components/comparison-common.css';
 
 export default {
   name: 'ComparisonTableComponent',

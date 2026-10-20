@@ -359,6 +359,8 @@ import VisibilityBadge from '../../components/common/visibility/VisibilityBadge.
 import { VISIBILITY_FILTER_OPTIONS, canEditResource } from '../../composables/visibility/useVisibility';
 import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
+import '../../assets/styles/reports/base.css';
+import '../../assets/styles/reports/reports.css';
 
 const {
   allReports,

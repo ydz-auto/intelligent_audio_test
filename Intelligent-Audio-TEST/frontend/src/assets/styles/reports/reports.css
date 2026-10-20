@@ -2,8 +2,8 @@
 
 /* 筛选和排序栏 */
 .filter-sort-section{
-    background: var(--background-primary);
-    border-radius: var(--border-radius-lg);
+    background: var(--background);
+    border-radius: var(--radius-lg);
     padding: var(--spacing-lg);
     margin-bottom: var(--spacing-lg);
     box-shadow: var(--shadow-sm);
@@ -20,7 +20,7 @@
 /* 确保历史报告页面的搜索框样式正确应用 */
 .filter-sort-section .search-input{
     border: 2px solid var(--color-gray-300) ;
-    border-radius: var(--border-radius-md) ;
+    border-radius: var(--radius-md) ;
     padding: var(--spacing-sm) var(--spacing-md) ;
     font-size: var(--font-size-md) ;
     background-color: var(--color-white) ;
@@ -28,8 +28,8 @@
 
 /* 历史报告页面搜索框聚焦状态 */
 .filter-sort-section .search-input:focus{
-    border-color: var(--primary-color) ;
-    box-shadow: 0 0 0 3px var(--primary-light) ;
+    border-color: var(--primary) ;
+    box-shadow: 0 0 0 3px var(--accent) ;
     background-color: var(--color-white) ;
 }
 
@@ -37,7 +37,7 @@
 .filter-select{
     padding: var(--spacing-sm) var(--spacing-md);
     border: 2px solid var(--color-gray-300);
-    border-radius: var(--border-radius-md);
+    border-radius: var(--radius-md);
     font-size: var(--font-size-md);
     background-color: var(--color-white);
     transition: all var(--transition-normal);
@@ -46,8 +46,8 @@
 /* 下拉选择框聚焦状态 */
 .filter-select:focus{
     outline: none;
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px var(--primary-light);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--accent);
 }
 
 /* 确保select元素也应用相同样式 */
@@ -60,7 +60,7 @@ select.filter-select{
 .filter-sort-section .filter-select select,
 .filter-sort-section select.filter-select{
     border: 2px solid var(--color-gray-300) ;
-    border-radius: var(--border-radius-md) ;
+    border-radius: var(--radius-md) ;
     padding: var(--spacing-sm) var(--spacing-md) ;
     font-size: var(--font-size-md) ;
     background-color: var(--color-white) ;
@@ -69,8 +69,8 @@ select.filter-select{
 /* 历史报告页面下拉选择框聚焦状态 */
 .filter-sort-section .filter-select select:focus,
 .filter-sort-section select.filter-select:focus{
-    border-color: var(--primary-color) ;
-    box-shadow: 0 0 0 3px var(--primary-light) ;
+    border-color: var(--primary) ;
+    box-shadow: 0 0 0 3px var(--accent) ;
 }
 
 
@@ -78,7 +78,7 @@ select.filter-select{
 .filter-item label{
     font-size: var(--font-size-sm);
     font-weight: var(--font-weight-medium);
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
 }
 
 
@@ -89,14 +89,14 @@ select.filter-select{
     align-items: center;
     gap: var(--spacing-md);
     padding: var(--spacing-sm);
-    background-color: var(--background-secondary);
-    border-radius: var(--border-radius-md);
+    background-color: var(--muted);
+    border-radius: var(--radius-md);
 }
 
 .date-input{
     padding: var(--spacing-sm) var(--spacing-md);
-    border: 2px solid var(--border-color);
-    border-radius: var(--border-radius-md);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-md);
     font-size: var(--font-size-md);
 }
 
@@ -108,53 +108,23 @@ select.filter-select{
 
 /* 报告列表容器 */
 #reports-list{
-    background: var(--background-primary);
-    border-radius: var(--border-radius-lg);
+    background: var(--background);
+    border-radius: var(--radius-lg);
     padding: var(--spacing-lg);
     box-shadow: var(--shadow-sm);
 }
 
 .report-card-status.draft{
     background-color: var(--warning-light);
-    color: var(--warning-color);
+    color: var(--warning);
 }
 
 .report-card-status.published{
     background-color: var(--success-light);
-    color: var(--success-color);
+    color: var(--success);
 }
 
-/* 分页样式 */
-
-
-.pagination button{
-    padding: var(--spacing-sm) var(--spacing-lg);
-    border: 2px solid var(--border-color);
-    border-radius: var(--border-radius-md);
-    font-size: var(--font-size-md);
-    font-weight: var(--font-weight-medium);
-    background-color: var(--background-primary);
-    color: var(--text-primary);
-    cursor: pointer;
-    transition: all var(--transition-normal);
-}
-
-.pagination button:hover:not(:disabled){
-    background-color: var(--primary-light);
-    border-color: var(--primary-color);
-    color: var(--primary-color);
-}
-
-.pagination button:disabled{
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-#page-info{
-    font-size: var(--font-size-md);
-    color: var(--text-secondary);
-    font-weight: var(--font-weight-medium);
-}
+/* 分页样式（INT-771 拆搬：已归位至 components/log.css，值原样） */
 
 /* 报告表格样式 */
 
@@ -244,9 +214,9 @@ select.filter-select{
 
 
 .chart-type-btn.active{
-    background: var(--primary-color);
-    color: var(--background-primary);
-    border-color: var(--primary-color);
+    background: var(--primary);
+    color: var(--background);
+    border-color: var(--primary);
     box-shadow: 0 4px 12px color-mix(in srgb, var(--secondary) 30%, transparent);
 }
 
@@ -428,7 +398,7 @@ select.filter-select{
 /* ── [恢复] 死类误删的样式（HEAD 原样） ── */
 .report-card-description {
     font-size: var(--font-size-md);
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
     margin-bottom: var(--spacing-md);
     line-height: 1.6;
 }
@@ -448,7 +418,7 @@ select.filter-select{
 }
 
 .report-card-meta-item i {
-    color: var(--primary-color);
+    color: var(--primary);
 }
 
 .report-card-meta-tags {
@@ -459,7 +429,7 @@ select.filter-select{
 
 .report-card-test-type {
     padding: var(--spacing-xs) var(--spacing-sm);
-    border-radius: var(--border-radius-full);
+    border-radius: var(--radius-full);
     font-size: var(--font-size-xs);
     font-weight: var(--font-weight-medium);
     text-transform: uppercase;
@@ -467,14 +437,14 @@ select.filter-select{
 }
 
 .report-card-test-type {
-    background-color: var(--primary-light);
-    color: var(--primary-color);
+    background-color: var(--accent);
+    color: var(--primary);
 }
 
 .report-card-title {
     font-size: var(--font-size-xl);
     font-weight: var(--font-weight-semibold);
-    color: var(--text-primary);
+    color: var(--foreground);
     margin-bottom: var(--spacing-xs);
 }
 

@@ -22,13 +22,10 @@
 /* 2. CSS变量定义 - 旧变量兼容别名层（迁移期专用，CSS-4 删除；语义正源在 theme.css/theme-presets.css） */
 @import './variables.css';
 
-/* 3. 领域共享组件样式（CSS-3：comparison-common；CSS-2 test-case-card/device-card/e2etest-dropdown 已 re-home，INT-770） */
-@import './components/comparison-common.css';
+/* 3. 领域共享组件样式（已 re-home：CSS-2 → INT-770，CSS-3 comparison-common → INT-771 比较组件） */
 
-/* 5. 任务页面样式（CSS-2 拆） */
-/* 6. 报告相关样式（CSS-3 拆） */
-@import './reports/base.css';
-@import './reports/reports.css';
+/* 5. 任务页面样式（CSS-2 已 re-home，INT-770） */
+/* 6. 报告相关样式（CSS-3 已 re-home，INT-771） */
 
 /* 7. 页面特定样式（已拆搬：CSS-1 api-test → INT-768；CSS-2 device/test-case-manager/e2etest → INT-770 组件级 loader） */
 

@@ -137,6 +137,7 @@ import '../../assets/styles/components/log.css'
 import '../../assets/styles/layouts/main.css'
 
 import { useTimelineComparison } from './TimelineComparison'
+import '../../assets/styles/components/comparison-common.css'
 
 const props = defineProps({
   algorithmResults: {

@@ -552,3 +552,45 @@
     color: var(--muted-foreground);
     border: 1px solid var(--border);
 }
+
+/* ── [INT-771 拆搬] 状态徽标色 + 表格容器（共享组件样式 · 自 components/comparison-common.css 归位，值原样） ── */
+.status-badge.success {
+  background: var(--color-green-100);
+}
+
+.status-badge.failed,
+.status-badge.error {
+  background: var(--color-red-100);
+  color: var(--color-red-800);
+}
+
+.status-badge.warning {
+  background: var(--color-amber-100);
+}
+
+.status-badge.pending {
+  background: var(--color-slate-100);
+}
+
+.table-container {
+  padding: 0;
+}
+
+.table-container::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.table-container::-webkit-scrollbar-track {
+  background: var(--color-slate-50);
+  border-radius: var(--radius-3);
+}
+
+.table-container::-webkit-scrollbar-thumb {
+  background: var(--color-slate-300);
+  border-radius: var(--radius-3);
+}
+
+.table-container::-webkit-scrollbar-thumb:hover {
+  background: var(--color-slate-400);
+}

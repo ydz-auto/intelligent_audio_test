@@ -154,6 +154,8 @@ import {
 } from '../../composables/report/useReportComparison'
 import { generateExportZip } from './reportExport'
 import { useModalControl, MODAL_TYPES } from '@/composables/modal/useModal'
+import '../../assets/styles/reports/base.css'
+import '../../assets/styles/reports/reports.css'
 
 const route = useRoute()
 const router = useRouter()

@@ -373,6 +373,8 @@ import { useModalControl, MODAL_TYPES } from '../../composables/modal/useModal';
 import { useNotification } from '../../composables/modal/useNotification';
 import TaskListWithPagination from '../../components/task/TaskListWithPagination.vue';
 import TaskComparisonReport from './TaskComparisonReport.vue';
+import '../../assets/styles/reports/base.css';
+import '../../assets/styles/reports/reports.css';
 import TaskTypeModal from '../../components/common/modal/TaskTypeModal.vue';
 import TaskDataExportDialog from '../../components/task/TaskDataExportDialog.vue';
 import TaskDataImportDialog from '../../components/task/TaskDataImportDialog.vue';
