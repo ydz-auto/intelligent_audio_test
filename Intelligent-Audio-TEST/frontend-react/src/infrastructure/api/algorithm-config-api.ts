@@ -26,7 +26,7 @@ import type {
 } from '@/domain/models/algorithmConfig'
 import { request } from '@/infrastructure/api/client'
 import { ApiError } from '@/infrastructure/api/api-error'
-import { fetchDimensionOptions } from '@/infrastructure/api/evaluation-api'
+import { fetchEvaluationDimensions } from '@/infrastructure/api/evaluation-api'
 import { fetchTestCases } from '@/infrastructure/api/testcases-api'
 import {
   toAlgorithmDefinition,
@@ -130,15 +130,19 @@ let dimensionOptionsCache: Map<string, number> | null = null
 let dimensionOptionsCachedAt = 0
 const DIMENSION_OPTIONS_TTL_MS = 5 * 60_000
 
-/** 评估维度名 → id 映射（短 TTL 缓存；失败返回 null 由调用方按空表兜底） */
+/**
+ * 评估维度名 → id 映射（短 TTL 缓存；失败返回 null 由调用方按空表兜底）。
+ * INT-1030：评估映射 target 改分组/主维度/子维度可选择，名→id 解析必须覆盖子维度
+ * （/evaluation/dimensions/options 仅主维度，换 /evaluation/dimensions 全量）。
+ */
 async function resolveDimensionIdByName(): Promise<Map<string, number>> {
   const now = Date.now()
   if (dimensionOptionsCache && now - dimensionOptionsCachedAt < DIMENSION_OPTIONS_TTL_MS) {
     return dimensionOptionsCache
   }
   try {
-    const options = await fetchDimensionOptions()
-    const map = new Map(options.map((d) => [d.name, d.id]))
+    const dimensions = await fetchEvaluationDimensions()
+    const map = new Map(dimensions.map((d) => [d.name, Number(d.id)]))
     dimensionOptionsCache = map
     dimensionOptionsCachedAt = now
     return map

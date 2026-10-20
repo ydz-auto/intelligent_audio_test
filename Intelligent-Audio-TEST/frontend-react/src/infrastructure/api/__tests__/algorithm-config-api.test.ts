@@ -1,6 +1,6 @@
 /**
  * 算法配置 API 单测（infrastructure/api；INT-647 接线后真实端点契约）。
- * mock client.ts 的 request（及 evaluation-api 的 fetchDimensionOptions），断言：
+ * mock client.ts 的 request（及 evaluation-api 的 fetchEvaluationDimensions），断言：
  * 端点路径/方法、snake_case 请求体、INT-297 信封解包、响应 camelCase 映射；
  * §154 用例引用聚合兜底（后端未返 case_count 时经 testcases-api 拉用例计数）。
  */
@@ -18,11 +18,11 @@ vi.mock('@/infrastructure/api/client', () => ({
 }))
 
 vi.mock('@/infrastructure/api/evaluation-api', () => ({
-  fetchDimensionOptions: vi.fn(),
+  fetchEvaluationDimensions: vi.fn(),
 }))
 
 import { request, apiClient } from '@/infrastructure/api/client'
-import { fetchDimensionOptions } from '@/infrastructure/api/evaluation-api'
+import { fetchEvaluationDimensions } from '@/infrastructure/api/evaluation-api'
 import { ApiError } from '@/infrastructure/api/api-error'
 import {
   bulkDeleteAlgorithms,
@@ -43,7 +43,7 @@ import {
 
 const mockRequest = request as unknown as ReturnType<typeof vi.fn>
 const mockApiClientGet = apiClient.get as unknown as ReturnType<typeof vi.fn>
-const mockFetchDimensionOptions = fetchDimensionOptions as unknown as ReturnType<typeof vi.fn>
+const mockFetchEvaluationDimensions = fetchEvaluationDimensions as unknown as ReturnType<typeof vi.fn>
 
 function saveInput(type: string): SaveAlgorithmInput {
   return {
@@ -100,8 +100,8 @@ describe('algorithm-config-api（真实端点接线）', () => {
   beforeEach(() => {
     mockRequest.mockReset()
     mockApiClientGet.mockReset()
-    mockFetchDimensionOptions.mockReset()
-    mockFetchDimensionOptions.mockResolvedValue([])
+    mockFetchEvaluationDimensions.mockReset()
+    mockFetchEvaluationDimensions.mockResolvedValue([])
   })
 
   it('fetchAlgorithmDefinitions 走 GET /algorithm/definitions 并解 INT-297 信封', async () => {
