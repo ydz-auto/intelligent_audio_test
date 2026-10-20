@@ -319,8 +319,10 @@ export function useTasks() {
   }, { deep: true });
 
   onMounted(async () => {
+    // INT-1015：首载仅一次拉取——applyFilters 会重置 currentPage=1 再 fetchTasks，
+    // 与上一行 fetchTasks 重复（首载 currentPage 本就是 1、筛选未变更），
+    // 造成列表渲染后二次「加载中」闪烁（INT-973 补上加载态后显性化），故移除。
     await listModule.fetchTasks();
-    listModule.applyFilters();
     // INT-141：加载当前用户收藏集合
     await favoritesModule.loadFavorites();
     // 初始化时获取日志
