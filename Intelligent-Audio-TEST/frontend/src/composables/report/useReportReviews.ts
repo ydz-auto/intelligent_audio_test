@@ -16,6 +16,8 @@
  */
 import { ref, computed, onUnmounted } from 'vue';
 import { useModalControl, MODAL_TYPES } from '@/composables/modal/useModal';
+import { useNotification } from '@/composables/modal/useNotification';
+import { toUserErrorMessage, toUserErrorDetail } from '@/utils/errorMessage';
 import { reviewApi } from '@/infrastructure/api/reviewApi';
 import { tasksApi } from '@/infrastructure/api/tasksApi';
 import type {
@@ -44,6 +46,7 @@ export interface AiReviewRun {
 
 export function useReportReviews(reportDataRef: () => any) {
   const modalControl = useModalControl()
+  const notification = useNotification()
 
   /** 报告级复核统计（驱动报告头/总览徽章） */
   const reportReviewCount = ref(0)
@@ -138,7 +141,7 @@ export function useReportReviews(reportDataRef: () => any) {
         }
         caseReviewMap.value = map
       } catch (e: any) {
-        reviewsError.value = e?.message || '复核数据加载失败'
+        reviewsError.value = toUserErrorMessage(e, '复核数据加载失败，请稍后重试')
         console.error('加载报告复核历史失败:', e)
       }
     }
@@ -154,7 +157,9 @@ export function useReportReviews(reportDataRef: () => any) {
    */
   async function openManualReview(caseItem: any) {
     if (sourceTaskId.value === '') {
-      reviewsError.value = '报告缺少来源任务，无法在报告页发起人工复核'
+      const msg = '报告缺少来源任务，无法在报告页发起人工复核'
+      reviewsError.value = msg
+      notification.error(msg)
       return
     }
     const caseId = caseItem?.id ?? caseItem?.testCaseId
@@ -165,7 +170,9 @@ export function useReportReviews(reportDataRef: () => any) {
       const resultsData = await tasksApi.getCaseResults(sourceTaskId.value, caseId)
       const resultRows = (resultsData?.results ?? []).filter((r: any) => r?.id != null)
       if (!resultRows.length) {
-        reviewsError.value = '来源任务未查询到该用例结果行，无法复核'
+        const msg = '来源任务未查询到该用例结果行，无法复核'
+        reviewsError.value = msg
+        notification.error(msg)
         return
       }
       const resultMetas = resultRows.map((r: any) => ({
@@ -199,7 +206,9 @@ export function useReportReviews(reportDataRef: () => any) {
       }
     } catch (e: any) {
       console.error('人工复核失败:', e)
-      reviewsError.value = e?.message || '人工复核提交失败，请稍后重试'
+      const msg = toUserErrorMessage(e, '人工复核提交失败，请稍后重试')
+      reviewsError.value = msg
+      notification.error(msg, toUserErrorDetail(e))
     }
   }
 
@@ -282,7 +291,9 @@ export function useReportReviews(reportDataRef: () => any) {
       }
     } catch (e: any) {
       console.error('采纳 AI 复核失败:', e)
-      reviewsError.value = e?.message || '采纳 AI 复核失败，请稍后重试'
+      const msg = toUserErrorMessage(e, '采纳 AI 复核失败，请稍后重试')
+      reviewsError.value = msg
+      notification.error(msg, toUserErrorDetail(e))
     }
   }
 
@@ -296,7 +307,9 @@ export function useReportReviews(reportDataRef: () => any) {
       aiReviewMap.value[caseId] = { ...run, phase: 'rejected' }
     } catch (e: any) {
       console.error('驳回 AI 复核失败:', e)
-      reviewsError.value = e?.message || '驳回 AI 复核失败，请稍后重试'
+      const msg = toUserErrorMessage(e, '驳回 AI 复核失败，请稍后重试')
+      reviewsError.value = msg
+      notification.error(msg, toUserErrorDetail(e))
     }
   }
 

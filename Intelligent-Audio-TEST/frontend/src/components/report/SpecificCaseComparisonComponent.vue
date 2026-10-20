@@ -206,6 +206,9 @@
             <div class="filter-item flex-1">
               <label class="filter-label">
                 <i class="fas fa-clipboard-check review-filter-icon"></i> 复核状态
+                <span v-if="loadingReviews" class="review-loading-hint">
+                  <i class="fas fa-spinner fa-spin"></i> 复核数据加载中…
+                </span>
               </label>
               <div class="review-filter-options">
                 <button
@@ -222,6 +225,15 @@
           </div>
         </div>
       </div>
+
+    <!-- INT-1042：复核错误横幅（reviewsError 绑定渲染：提交失败 / 无结果行 / 历史加载失败不再静默） -->
+    <div v-if="reviewsError" class="review-error-banner" role="alert">
+      <i class="fas fa-exclamation-triangle"></i>
+      <span class="review-error-text">{{ reviewsError }}</span>
+      <button class="review-error-dismiss" @click="clearReviewsError" title="关闭提示" aria-label="关闭提示">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
 
     <!-- Pinned Cases Section -->
     <div v-if="pinnedCases.length > 0" class="pinned-section">
@@ -569,6 +581,15 @@ const {
   reviewFilter
 } = useSpecificCaseComparison(props)
 
+// INT-1042：复核错误 / 加载态绑定渲染（reviewsError / loadingReviews 此前未消费，错误静默；现绑定横幅 + 加载提示）
+const reviewsError = reportReviews.reviewsError
+const loadingReviews = reportReviews.loadingReviews
+
+/** 关闭复核错误横幅（清除 reviewsError，页面不再残留过期提示） */
+const clearReviewsError = () => {
+  reviewsError.value = ''
+}
+
 // INT-797：复核筛选选项
 const reviewFilterOptions = [
   { value: 'all', label: '全部' },
@@ -779,6 +800,47 @@ justify-content: flex-end;
   background: var(--accent);
   color: var(--primary);
   font-weight: 500;
+}
+
+/* INT-1042：复核错误横幅（reviewsError 绑定渲染；对齐任务/日志页错误横幅口径，用 --destructive token） */
+.review-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: var(--spacing-md) var(--spacing-lg);
+  margin-bottom: var(--spacing-lg);
+  background: var(--destructive-light);
+  border: 1px solid color-mix(in srgb, var(--destructive) 30%, transparent);
+  border-radius: var(--radius-md);
+  color: var(--destructive);
+  font-size: var(--font-size-sm);
+}
+.review-error-text {
+  flex: 1;
+}
+.review-error-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--destructive);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  padding: var(--spacing-xs);
+  border-radius: var(--radius-sm);
+  transition: all 0.2s ease;
+}
+.review-error-dismiss:hover {
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
+}
+.review-loading-hint {
+  margin-left: 8px;
+  font-size: var(--font-size-xs);
+  color: var(--muted-foreground);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 </style>
