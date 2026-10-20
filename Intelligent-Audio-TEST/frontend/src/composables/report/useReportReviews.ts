@@ -175,10 +175,15 @@ export function useReportReviews(reportDataRef: () => any) {
         notification.error(msg)
         return
       }
+      // 结果摘要行完整透传（对齐任务详情侧 TestExecutionComponent 契约）：
+      // caseName=用例名，deviceName/apiName=设备/API 名，reviewed=已复核徽标
       const resultMetas = resultRows.map((r: any) => ({
         resultId: r.id,
         executionStatus: r.executionStatus,
         evaluationStatus: r.evaluationStatus,
+        deviceName: r.deviceName,
+        apiName: r.apiName,
+        reviewed: r.reviewed,
       }))
       // 单条复核附带该结果复核历史（多次复核追加不覆盖）
       const reviewHistory = resultRows.length === 1
@@ -189,6 +194,7 @@ export function useReportReviews(reportDataRef: () => any) {
       const res = await modalControl.open(MODAL_TYPES.RESULT_REVIEW, {
         title: '人工复核',
         taskId: sourceTaskId.value,
+        caseName: caseItem?.name ?? resultsData?.caseName,
         results: resultMetas,
         reviewHistory,
       }).catch(() => undefined)
@@ -266,12 +272,24 @@ export function useReportReviews(reportDataRef: () => any) {
         : undefined
     const resultId = run.record.resultId
     try {
+      // 溯源该结果行补设备/API 名与当前执行状态（摘要行展示，与人工复核入口同源；取数失败不阻断弹窗）
+      const resultsData = sourceTaskId.value !== ''
+        ? await tasksApi.getCaseResults(sourceTaskId.value, caseId).catch(() => null)
+        : null
+      const row = resultsData?.results?.find((r: any) => String(r.id) === String(resultId))
       // 打开复核弹窗预填 AI 判定的评估状态 + 备注（AI 理由），用户确认即可提交；
       // 点「取消」是正常操作（open() 取消即 reject），不落错误分支
       const res = await modalControl.open(MODAL_TYPES.RESULT_REVIEW, {
         title: '人工复核',
         taskId: sourceTaskId.value,
-        results: [{ resultId, executionStatus: undefined, evaluationStatus: suggestedEvaluation }],
+        caseName: caseItem?.name ?? resultsData?.caseName,
+        results: [{
+          resultId,
+          executionStatus: row?.executionStatus,
+          evaluationStatus: suggestedEvaluation,
+          deviceName: row?.deviceName,
+          apiName: row?.apiName,
+        }],
         reviewHistory: [],
         preset: {
           evaluationStatus: suggestedEvaluation,
