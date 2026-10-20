@@ -4,7 +4,7 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <div class="header-left">
-        <h2 class="page-title" style="color: var(--primary-color);">
+        <h2 class="page-title" style="color: var(--primary);">
           <i class="fas fa-music"></i>
           音频管理
         </h2>
@@ -446,9 +446,9 @@ const handleAnnotationSuccess = (_result: { updatedCount: number; failedCount: n
 .algorithm-filter-row {
   margin-bottom: 16px;
   padding: 12px 16px;
-  background: var(--background-secondary, #f8fafc);
-  border: 1px solid var(--border-color, #e2e8f0);
-  border-radius: var(--border-radius-lg);
+  background: var(--muted, #f8fafc);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-lg);
 }
 
 .test-case-generated-tip {

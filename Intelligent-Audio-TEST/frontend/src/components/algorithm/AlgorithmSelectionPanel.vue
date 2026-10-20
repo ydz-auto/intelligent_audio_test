@@ -193,7 +193,7 @@
 
 /* selected-label - 自全局样式就近迁移 */
 .selected-label{
-  color: var(--primary-color);
+  color: var(--primary);
   font-weight: 600;
   font-size: 14px;
 }
@@ -268,6 +268,3 @@ function getAlgorithmIcon(groupName?: string): string {
   return iconMap[groupName || ''] || 'fa-cog'
 }
 </script>
-
-<style>
-</style>

@@ -142,35 +142,35 @@ onMounted(loadHistory)
   align-items: center;
   gap: 10px;
   padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color, var(--color-slate-200));
+  border-bottom: 1px solid var(--border, var(--color-slate-200));
 }
 .rhd-header h3 {
   margin: 0;
   flex: 1;
   font-size: 16px;
   font-weight: var(--font-weight-semibold, 600);
-  color: var(--text-primary, var(--foreground));
+  color: var(--foreground, var(--foreground));
   display: flex;
   align-items: center;
   gap: 8px;
 }
 .rhd-header h3 i {
-  color: var(--primary-color, var(--primary));
+  color: var(--primary, var(--primary));
 }
 .rhd-count {
   font-size: 12px;
-  color: var(--text-secondary, var(--color-slate-500));
+  color: var(--muted-foreground, var(--color-slate-500));
 }
 .rhd-close {
   border: none;
   background: none;
-  color: var(--text-secondary, var(--color-slate-500));
+  color: var(--muted-foreground, var(--color-slate-500));
   font-size: 16px;
   cursor: pointer;
   padding: 4px;
 }
 .rhd-close:hover {
-  color: var(--primary-color, var(--primary));
+  color: var(--primary, var(--primary));
 }
 .rhd-body {
   flex: 1;
@@ -180,7 +180,7 @@ onMounted(loadHistory)
 .rhd-empty {
   padding: 40px 16px;
   text-align: center;
-  color: var(--text-secondary, var(--color-slate-400));
+  color: var(--muted-foreground, var(--color-slate-400));
   font-size: 13px;
 }
 .rhd-empty i {
@@ -193,12 +193,12 @@ onMounted(loadHistory)
   margin: 4px 0;
 }
 .rhd-error {
-  color: var(--danger-color, #dc2626);
+  color: var(--destructive, #dc2626);
 }
 .rhd-retry {
   margin-top: 8px;
   padding: 4px 12px;
-  border: 1px solid var(--border-color, var(--color-slate-200));
+  border: 1px solid var(--border, var(--color-slate-200));
   border-radius: var(--radius-control);
   background: var(--background, #fff);
   font-size: 12px;
@@ -214,7 +214,7 @@ onMounted(loadHistory)
 }
 .rhd-item {
   padding: 10px 12px;
-  border: 1px solid var(--border-color, var(--color-slate-200));
+  border: 1px solid var(--border, var(--color-slate-200));
   border-radius: var(--radius-control);
   background: color-mix(in srgb, var(--muted) 20%, transparent);
 }
@@ -231,16 +231,16 @@ onMounted(loadHistory)
 .rhd-time {
   font-family: var(--font-mono, monospace);
   font-size: 11px;
-  color: var(--text-secondary, var(--color-slate-500));
+  color: var(--muted-foreground, var(--color-slate-500));
 }
 .rhd-operator {
-  color: var(--text-secondary, var(--color-slate-500));
+  color: var(--muted-foreground, var(--color-slate-500));
 }
 .rhd-case {
   padding: 0 6px;
   border-radius: var(--radius-tag);
   background: var(--color-slate-100);
-  color: var(--text-primary, var(--color-slate-700));
+  color: var(--foreground, var(--color-slate-700));
   font-size: 11px;
   max-width: 160px;
   overflow: hidden;
@@ -251,7 +251,7 @@ onMounted(loadHistory)
   padding: 0 6px;
   border-radius: var(--radius-tag);
   background: var(--color-slate-200);
-  color: var(--text-primary, var(--color-slate-700));
+  color: var(--foreground, var(--color-slate-700));
   font-size: 11px;
 }
 .rhd-change {
@@ -259,10 +259,10 @@ onMounted(loadHistory)
   font-size: 12px;
 }
 .rhd-arrow {
-  color: var(--danger-color, #dc2626);
+  color: var(--destructive, #dc2626);
 }
 .rhd-comment {
-  color: var(--text-secondary, var(--color-slate-500));
+  color: var(--muted-foreground, var(--color-slate-500));
   max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;

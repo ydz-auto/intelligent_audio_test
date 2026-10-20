@@ -780,7 +780,7 @@ onUnmounted(() => {
   width: 40px;
   height: 40px;
   border: 4px solid color-mix(in srgb, var(--color-black) 10%, transparent);
-  border-left-color: var(--primary-color);
+  border-left-color: var(--primary);
   border-radius: var(--radius-pill);
   animation: spin 1s linear infinite;
 }
@@ -791,7 +791,7 @@ onUnmounted(() => {
 
 .error-state i {
   font-size: 48px;
-  color: var(--danger-color);
+  color: var(--destructive);
 }
 
 .modal-content-wrapper {
@@ -819,8 +819,8 @@ onUnmounted(() => {
   gap: 12px;
   padding: 10px 16px;
   margin: 12px 0 0;
-  border-top: 1px solid var(--border-color);
-  background: var(--background-secondary);
+  border-top: 1px solid var(--border);
+  background: var(--muted);
 }
 
 .task-visibility-label {
@@ -829,7 +829,7 @@ onUnmounted(() => {
   gap: 6px;
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .task-visibility-denied {

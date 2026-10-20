@@ -3,7 +3,7 @@
   justify-content: space-between;
   align-items: center;
   padding: var(--spacing-lg);
-  background-color: var(--background-primary);
+  background-color: var(--background);
   border-bottom: var(--card-border);
 }
 
@@ -11,7 +11,7 @@
   margin: 0;
   font-size: var(--font-size-xl);
   font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 
 .card-actions {
@@ -23,8 +23,8 @@
 .view-toggle {
   display: flex;
   gap: var(--spacing-xs);
-  background-color: var(--background-primary);
-  border: 1px solid var(--border-color);
+  background-color: var(--background);
+  border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   padding: var(--spacing-xs);
   box-shadow: var(--shadow-sm);
@@ -37,7 +37,7 @@
   border-radius: var(--radius-pill);
   cursor: pointer;
   transition: all var(--transition-normal);
-  color: var(--text-primary);
+  color: var(--foreground);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -45,24 +45,24 @@
 }
 
 .view-toggle .btn:focus-visible {
-  outline: 2px solid var(--primary-color);
+  outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 
 .view-toggle .btn:hover {
-  background-color: var(--background-primary);
-  color: var(--primary-color);
+  background-color: var(--background);
+  color: var(--primary);
 }
 
 .view-toggle .btn.active {
-  background-color: var(--primary-color);
-  color: var(--white-color);
+  background-color: var(--primary);
+  color: var(--color-white);
   box-shadow: var(--shadow-sm);
 }
 
 .card-filter-section {
   padding: var(--spacing-lg);
-  background-color: var(--background-primary);
+  background-color: var(--background);
   border-bottom: var(--card-border);
 }
 
@@ -79,8 +79,8 @@
 }
 
 .filter-panel {
-  background-color: var(--background-primary);
-  border: 1px solid var(--border-color);
+  background-color: var(--background);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: var(--spacing-lg);
   box-shadow: var(--shadow-sm);
@@ -116,7 +116,7 @@
 .filter-item-tagcloud .filter-label {
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   white-space: nowrap;
   flex-shrink: 0;
   padding-top: var(--spacing-sm);
@@ -134,17 +134,17 @@
   align-items: center;
   margin-top: var(--spacing-lg);
   padding-top: var(--spacing-lg);
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--border);
 }
 
 .filter-select {
   border-radius: var(--radius-control);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   padding: var(--spacing-xs) var(--spacing-md);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
-  background-color: var(--background-primary);
-  color: var(--text-secondary);
+  background-color: var(--background);
+  color: var(--muted-foreground);
   transition: all var(--transition-normal);
   min-height: auto;
   height: auto;
@@ -167,14 +167,14 @@
 .tag-search-input {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
   font-size: 13px;
   outline: none;
   transition: all 0.2s ease;
   box-sizing: border-box;
-  background: var(--background-primary);
-  color: var(--text-primary);
+  background: var(--background);
+  color: var(--foreground);
 }
 
 .tag-search-input:focus {
@@ -190,8 +190,8 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  background: var(--background-primary);
-  border: 1px solid var(--border-color);
+  background: var(--background);
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
   padding: 12px;
   min-height: 80px;
@@ -203,9 +203,9 @@
 
 .tag-filter-item {
   padding: 6px 12px;
-  background: var(--background-secondary);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
+  background: var(--muted);
+  color: var(--muted-foreground);
+  border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   cursor: pointer;
   transition: all 0.2s ease;
@@ -214,8 +214,8 @@
 }
 
 .tag-filter-item:hover {
-  background: var(--background-tertiary);
-  color: var(--text-primary);
+  background: var(--gray-light);
+  color: var(--foreground);
 }
 
 .tag-filter-item.active {
@@ -248,8 +248,8 @@
 
 .tag-mode-menu {
   position: fixed;
-  background: var(--background-primary);
-  border: 1px solid var(--border-color);
+  background: var(--background);
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
   box-shadow: 0 4px 16px color-mix(in srgb, var(--color-black) 15%, transparent);
   z-index: 1000;
@@ -264,17 +264,17 @@
   padding: 10px 14px;
   cursor: pointer;
   font-size: 13px;
-  color: var(--text-primary);
+  color: var(--foreground);
   transition: background 0.2s;
 }
 
 .tag-mode-menu-item:hover {
-  background: var(--background-secondary);
+  background: var(--muted);
 }
 
 .tag-mode-menu-divider {
   height: 1px;
-  background: var(--border-color);
+  background: var(--border);
   margin: 4px 0;
 }
 
@@ -346,24 +346,24 @@
 .filter-actions .btn-primary {
   background: var(--primary-gradient);
   border: none;
-  color: var(--white-color);
+  color: var(--color-white);
 }
 
 .filter-actions .btn-secondary {
-  background-color: var(--background-secondary);
-  border: 2px solid var(--border-color);
-  color: var(--text-primary);
+  background-color: var(--muted);
+  border: 2px solid var(--border);
+  color: var(--foreground);
 }
 
 .filter-actions .btn-secondary:hover {
-  background-color: var(--background-tertiary);
-  border-color: var(--primary-color);
-  color: var(--primary-color);
+  background-color: var(--gray-light);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .card-body {
   padding: var(--spacing-lg);
-  background-color: var(--background-primary);
+  background-color: var(--background);
 }
 
 .table-container {
@@ -377,7 +377,7 @@
   min-width: 0;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
-  background-color: var(--background-primary);
+  background-color: var(--background);
 }
 
 .data-table {
@@ -390,7 +390,7 @@
 }
 
 .data-table th {
-  background-color: var(--background-secondary);
+  background-color: var(--muted);
   font-weight: var(--font-weight-semibold);
   text-align: left;
   padding: var(--spacing-sm) var(--spacing-md);
@@ -406,16 +406,16 @@
 
 .data-table tbody tr {
   transition: background-color var(--transition-fast);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border);
   cursor: pointer;
 }
 
 .data-table tbody tr:hover {
-  background-color: var(--background-secondary);
+  background-color: var(--muted);
 }
 
 .data-table tbody tr.highlighted {
-  background-color: var(--primary-light);
+  background-color: var(--accent);
 }
 
 .data-table td {
@@ -444,8 +444,8 @@
   font-size: 11px;
   cursor: default;
   background-color: transparent;
-  color: var(--primary-color);
-  border: 1px solid var(--primary-color);
+  color: var(--primary);
+  border: 1px solid var(--primary);
   border-radius: var(--radius-pill);
   white-space: normal;
   word-wrap: break-word;
@@ -455,9 +455,9 @@
 }
 
 .tags-container .tag-item:hover {
-  background-color: var(--primary-light);
-  border-color: var(--primary-color);
-  color: var(--primary-color);
+  background-color: var(--accent);
+  border-color: var(--primary);
+  color: var(--primary);
   transform: none;
   box-shadow: none;
 }
@@ -466,18 +466,18 @@
   padding: 3px 8px;
   font-size: 11px;
   cursor: pointer;
-  background-color: var(--background-secondary);
-  color: var(--text-secondary);
-  border: 1px dashed var(--border-color);
+  background-color: var(--muted);
+  color: var(--muted-foreground);
+  border: 1px dashed var(--border);
   border-radius: var(--radius-pill);
   white-space: nowrap;
   transition: all 0.2s ease;
 }
 
 .tags-container .tag-more:hover {
-  background-color: var(--primary-light);
-  color: var(--primary-color);
-  border-color: var(--primary-color);
+  background-color: var(--accent);
+  color: var(--primary);
+  border-color: var(--primary);
   border-style: solid;
 }
 
@@ -485,9 +485,9 @@
   padding: 3px 8px;
   font-size: 11px;
   cursor: pointer;
-  background-color: var(--background-secondary);
-  color: var(--text-secondary);
-  border: 1px dashed var(--border-color);
+  background-color: var(--muted);
+  color: var(--muted-foreground);
+  border: 1px dashed var(--border);
   border-radius: var(--radius-pill);
   white-space: nowrap;
   transition: all 0.2s ease;
@@ -495,8 +495,8 @@
 
 .tags-container .tag-collapse:hover {
   background-color: var(--warning-light);
-  color: var(--warning-color);
-  border-color: var(--warning-color);
+  color: var(--warning);
+  border-color: var(--warning);
   border-style: solid;
 }
 
@@ -517,8 +517,8 @@
   justify-content: center;
   width: 40px;
   height: 40px;
-  background-color: var(--primary-light);
-  color: var(--primary-color);
+  background-color: var(--accent);
+  color: var(--primary);
   border-radius: var(--radius-control);
   font-size: var(--font-size-xl);
 }
@@ -529,7 +529,7 @@
 
 .audio-name {
   font-weight: var(--font-weight-medium);
-  color: var(--text-primary);
+  color: var(--foreground);
   margin-bottom: var(--spacing-xs);
   white-space: normal;
   word-wrap: break-word;
@@ -539,7 +539,7 @@
 
 .audio-path {
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .format-badge {
@@ -552,23 +552,23 @@
 }
 
 .format-badge.wav {
-  background-color: var(--primary-light);
-  color: var(--primary-color);
+  background-color: var(--accent);
+  color: var(--primary);
 }
 
 .format-badge.mp3 {
   background-color: var(--secondary-light);
-  color: var(--secondary-color);
+  color: var(--secondary);
 }
 
 .format-badge.flac {
   background-color: var(--success-light);
-  color: var(--success-color);
+  color: var(--success);
 }
 
 .format-badge.aac {
   background-color: var(--warning-light);
-  color: var(--warning-color);
+  color: var(--warning);
 }
 
 .audio-type-badge {
@@ -582,17 +582,17 @@
 
 .audio-type-badge.dry {
   background-color: var(--secondary-light);
-  color: var(--secondary-color);
+  color: var(--secondary);
 }
 
 .audio-type-badge.noise {
   background-color: var(--warning-light);
-  color: var(--warning-color);
+  color: var(--warning);
 }
 
 .audio-type-badge.mixed {
   background-color: var(--info-light);
-  color: var(--info-color);
+  color: var(--info);
 }
 
 .status-badge {
@@ -606,7 +606,7 @@
 
 .status-badge.active {
   background-color: var(--success-light);
-  color: var(--success-color);
+  color: var(--success);
 }
 
 .action-buttons {
@@ -635,7 +635,7 @@
 .btn-primary {
   background: var(--primary-gradient);
   border: none;
-  color: var(--white-color);
+  color: var(--color-white);
   border-radius: var(--radius-control);
   transition: all var(--transition-normal);
   box-shadow: var(--shadow-sm);
@@ -647,26 +647,26 @@
 }
 
 .btn-secondary {
-  background-color: var(--background-secondary);
-  border: 1px solid var(--border-color);
-  color: var(--text-primary);
+  background-color: var(--muted);
+  border: 1px solid var(--border);
+  color: var(--foreground);
   border-radius: var(--radius-control);
   transition: all var(--transition-normal);
   box-shadow: var(--shadow-sm);
 }
 
 .btn-secondary:hover {
-  background-color: var(--background-tertiary);
-  border-color: var(--primary-color);
-  color: var(--primary-color);
+  background-color: var(--gray-light);
+  border-color: var(--primary);
+  color: var(--primary);
   transform: translateY(-1px);
   box-shadow: var(--shadow-md);
 }
 
 .btn-danger {
-  background-color: var(--danger-color);
+  background-color: var(--destructive);
   border: none;
-  color: var(--white-color);
+  color: var(--color-white);
   border-radius: var(--radius-control);
   transition: all var(--transition-normal);
   box-shadow: var(--shadow-sm);
@@ -683,7 +683,7 @@
 }
 
 .folder-view {
-  background-color: var(--background-primary);
+  background-color: var(--background);
   border-radius: var(--radius-control);
   overflow: hidden;
   padding: var(--spacing-md);
@@ -704,40 +704,40 @@
   align-items: center;
   gap: var(--spacing-sm);
   padding: var(--spacing-sm) var(--spacing-md);
-  background-color: var(--background-secondary);
-  border: 1px solid var(--border-color);
+  background-color: var(--muted);
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
   cursor: pointer;
   transition: all var(--transition-normal);
 }
 
 .folder-header:hover {
-  background-color: var(--background-tertiary);
-  border-color: var(--primary-color);
+  background-color: var(--gray-light);
+  border-color: var(--primary);
 }
 
 .folder-header i {
-  color: var(--primary-color);
+  color: var(--primary);
   font-size: var(--font-size-md);
   transition: transform var(--transition-normal);
 }
 
 .folder-name {
   font-weight: var(--font-weight-medium);
-  color: var(--text-primary);
+  color: var(--foreground);
   flex: 1;
 }
 
 .folder-stats {
   font-size: var(--font-size-xs);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-weight: var(--font-weight-normal);
 }
 
 .folder-children {
   margin-left: var(--spacing-lg);
   padding-left: var(--spacing-md);
-  border-left: 2px solid var(--border-color);
+  border-left: 2px solid var(--border);
 }
 
 .folder-content {
@@ -746,7 +746,7 @@
 
 .file-list {
   margin-top: var(--spacing-sm);
-  background-color: var(--background-primary);
+  background-color: var(--background);
   border-radius: var(--radius-control);
   overflow: hidden;
 }
@@ -756,7 +756,7 @@
   align-items: center;
   gap: var(--spacing-md);
   padding: var(--spacing-sm) var(--spacing-md);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
   margin-bottom: var(--spacing-xs);
   transition: all var(--transition-normal);
@@ -764,19 +764,19 @@
 }
 
 .file-item:hover {
-  background-color: var(--background-secondary);
-  border-color: var(--primary-color);
+  background-color: var(--muted);
+  border-color: var(--primary);
   transform: translateY(-1px);
   box-shadow: var(--shadow-sm);
 }
 
 .file-item.highlighted {
-  background-color: var(--primary-light);
-  border-color: var(--primary-color);
+  background-color: var(--accent);
+  border-color: var(--primary);
 }
 
 .file-icon {
-  color: var(--primary-color);
+  color: var(--primary);
   font-size: var(--font-size-lg);
   width: 24px;
   text-align: center;
@@ -789,7 +789,7 @@
 
 .file-name {
   font-weight: var(--font-weight-medium);
-  color: var(--text-primary);
+  color: var(--foreground);
   margin-bottom: var(--spacing-xs);
   white-space: normal;
   word-wrap: break-word;
@@ -825,7 +825,7 @@
 }
 
 .audio-checkbox {
-  accent-color: var(--primary-color);
+  accent-color: var(--primary);
   cursor: pointer;
   width: 16px;
   height: 16px;
@@ -833,7 +833,7 @@
 
 .diagnostics-view {
   padding: var(--spacing-lg);
-  background-color: var(--background-primary);
+  background-color: var(--background);
 }
 
 .diagnostics-header {
@@ -859,12 +859,12 @@
 .stat-number {
   font-size: var(--font-size-2xl);
   font-weight: var(--font-weight-bold);
-  color: var(--warning-color);
+  color: var(--warning);
 }
 
 .stat-label {
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .diagnostics-list {
@@ -879,14 +879,14 @@
   align-items: center;
   justify-content: center;
   padding: var(--spacing-2xl);
-  background-color: var(--background-secondary);
+  background-color: var(--muted);
   border-radius: var(--radius-lg);
   text-align: center;
 }
 
 .success-icon {
   font-size: var(--font-size-3xl);
-  color: var(--success-color);
+  color: var(--success);
   margin-bottom: var(--spacing-md);
 }
 
@@ -895,14 +895,14 @@
   flex-direction: column;
   gap: var(--spacing-md);
   padding: var(--spacing-md);
-  background-color: var(--background-secondary);
-  border: 1px solid var(--border-color);
+  background-color: var(--muted);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   transition: all var(--transition-normal);
 }
 
 .diagnostics-item:hover {
-  border-color: var(--warning-color);
+  border-color: var(--warning);
   box-shadow: var(--shadow-md);
 }
 
@@ -930,21 +930,21 @@
 }
 
 .problem-item.severe {
-  background-color: var(--danger-light);
-  color: var(--danger-color);
-  border: 1px solid var(--danger-color);
+  background-color: var(--destructive-light);
+  color: var(--destructive);
+  border: 1px solid var(--destructive);
 }
 
 .problem-item.warning {
   background-color: var(--warning-light);
-  color: var(--warning-color);
-  border: 1px solid var(--warning-color);
+  color: var(--warning);
+  border: 1px solid var(--warning);
 }
 
 .problem-item.info {
   background-color: var(--info-light);
-  color: var(--info-color);
-  border: 1px solid var(--info-color);
+  color: var(--info);
+  border: 1px solid var(--info);
 }
 
 .diagnostics-actions {
@@ -964,7 +964,7 @@
   align-items: center;
   justify-content: center;
   padding: var(--spacing-2xl);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .empty-state i {
@@ -975,13 +975,13 @@
 
 .folder-loading {
   margin-left: 8px;
-  color: var(--primary-color);
+  color: var(--primary);
   font-size: 12px;
 }
 
 .lazy-load-hint {
   padding: 12px 20px;
-  color: var(--text-muted, var(--text-light));
+  color: var(--muted-foreground, var(--text-light));
   font-size: 13px;
   text-align: center;
 }
@@ -1009,7 +1009,7 @@
   align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color, #e2e8f0);
+  border-bottom: 1px solid var(--border, #e2e8f0);
 }
 
 .skeleton-cell {
@@ -1047,8 +1047,8 @@
   display: inline-block;
   width: 14px;
   height: 14px;
-  border: 2px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
-  border-top-color: var(--primary-color);
+  border: 2px solid color-mix(in srgb, var(--primary) 30%, transparent);
+  border-top-color: var(--primary);
   border-radius: var(--radius-pill);
   animation: spin 0.8s linear infinite;
 }

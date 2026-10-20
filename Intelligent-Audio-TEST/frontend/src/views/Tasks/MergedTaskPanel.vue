@@ -203,7 +203,7 @@ onMounted(() => {
   padding: 10px 12px;
   background: var(--color-slate-50, #f8fafc);
   border: 1px dashed var(--color-slate-200, #e2e8f0);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
 }
 
 .merged-source-list-title {
@@ -294,7 +294,7 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   padding: 2px 8px;
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-full);
   font-size: 11px;
   font-weight: 500;
   background: var(--color-slate-200, #e2e8f0);

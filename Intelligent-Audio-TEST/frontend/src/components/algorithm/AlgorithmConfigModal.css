@@ -22,7 +22,7 @@
 .tabs-nav {
   display: flex;
   gap: var(--spacing-xs);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border);
   padding-bottom: var(--spacing-sm);
 }
 
@@ -30,21 +30,21 @@
   padding: var(--spacing-sm) var(--spacing-md);
   border: none;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: var(--font-size-md);
   cursor: pointer;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   transition: all var(--transition-normal);
 }
 
 .tab-btn:hover {
-  background: var(--primary-light);
-  color: var(--primary-color);
+  background: var(--accent);
+  color: var(--primary);
 }
 
 .tab-btn.active {
-  background: var(--primary-color);
-  color: var(--white-color);
+  background: var(--primary);
+  color: var(--color-white);
 }
 
 .tab-content {
@@ -70,11 +70,11 @@
   display: block;
   margin-bottom: var(--spacing-xs);
   font-weight: var(--font-weight-medium);
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 
 .form-group label .required {
-  color: var(--danger-color);
+  color: var(--destructive);
 }
 
 .switch-container {
@@ -134,7 +134,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: var(--border-color);
+  background-color: var(--border);
   transition: 0.3s;
   border-radius: var(--radius-xxl);
 }
@@ -152,7 +152,7 @@
 }
 
 .custom-switch input:checked + .switch-slider {
-  background-color: var(--primary-color);
+  background-color: var(--primary);
 }
 
 .custom-switch input:checked + .switch-slider:before {
@@ -161,7 +161,7 @@
 
 .switch-label {
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .form-input-sm {
@@ -185,26 +185,26 @@
 
 .param-type-tab {
   padding: var(--spacing-xs) var(--spacing-md);
-  border: 1px solid var(--border-color);
-  background: var(--background-primary);
-  border-radius: var(--border-radius-sm);
+  border: 1px solid var(--border);
+  background: var(--background);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all var(--transition-normal);
 }
 
 .param-type-tab:hover {
-  border-color: var(--primary-color);
+  border-color: var(--primary);
 }
 
 .param-type-tab.active {
-  background: var(--primary-color);
+  background: var(--primary);
   color: var(--color-white);
-  border-color: var(--primary-color);
+  border-color: var(--primary);
 }
 
 .mapping-section {
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   margin-bottom: var(--spacing-sm);
 }
 
@@ -213,14 +213,14 @@
   align-items: center;
   gap: var(--spacing-sm);
   padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--background-secondary);
+  background: var(--muted);
   cursor: pointer;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   transition: all var(--transition-normal);
 }
 
 .mapping-header:hover {
-  background: var(--primary-light);
+  background: var(--accent);
 }
 
 .mapping-header .expand-icon {
@@ -238,24 +238,24 @@
 }
 
 .btn-danger {
-  color: var(--danger-color);
+  color: var(--destructive);
 }
 
 .btn-danger:hover {
-  background: var(--danger-light);
-  color: var(--danger-color);
+  background: var(--destructive-light);
+  color: var(--destructive);
 }
 
 .reference-config-intro {
-  background: var(--background-secondary);
+  background: var(--muted);
   padding: var(--spacing-md);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   margin-bottom: var(--spacing-md);
 }
 
 .reference-config-intro p {
   margin: 0;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: var(--font-size-sm);
 }
 
@@ -270,8 +270,8 @@
 }
 
 .reference-panel {
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 
@@ -280,18 +280,18 @@
   align-items: center;
   gap: var(--spacing-sm);
   padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--background-secondary);
+  background: var(--muted);
   font-weight: var(--font-weight-medium);
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 
 .reference-panel-header i {
-  color: var(--primary-color);
+  color: var(--primary);
 }
 
 .reference-panel-body {
   padding: var(--spacing-md);
-  background: var(--background-primary);
+  background: var(--background);
 }
 
 @media (max-width: 768px) {

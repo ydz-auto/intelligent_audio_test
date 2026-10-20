@@ -25,7 +25,7 @@
 .log-algorithm {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
   font-size: 12px;
 }
 
@@ -54,11 +54,11 @@
      基座 INT-735 / CSS 重构 INT-757 全局收敛前此处先行；不写死数值 ── */
 .dark .log-view .page-header,
 .dark .logs-content .page-header {
-  background-color: var(--background-primary);
+  background-color: var(--background);
 }
 
 .dark .log-view .page-description {
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .dark .log-view .card,
@@ -67,5 +67,5 @@
 }
 
 .dark .log-view .filter-label {
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }

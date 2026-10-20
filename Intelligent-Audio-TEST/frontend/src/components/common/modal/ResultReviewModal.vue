@@ -262,7 +262,7 @@ function handleConfirm() {
 .review-tip {
   margin: 0 0 12px;
   font-size: 13px;
-  color: var(--text-secondary, var(--color-slate-400));
+  color: var(--muted-foreground, var(--color-slate-400));
 }
 .review-summary {
   margin-bottom: 14px;
@@ -270,7 +270,7 @@ function handleConfirm() {
 .review-summary-list {
   max-height: 176px;
   overflow-y: auto;
-  border: 1px solid var(--border-color, var(--color-slate-200));
+  border: 1px solid var(--border, var(--color-slate-200));
   border-radius: var(--radius-control);
   padding: 8px 10px;
 }
@@ -287,7 +287,7 @@ function handleConfirm() {
 }
 .rs-index {
   font-family: var(--font-mono, monospace);
-  color: var(--text-secondary, var(--color-slate-400));
+  color: var(--muted-foreground, var(--color-slate-400));
 }
 .rs-name {
   max-width: 180px;
@@ -298,7 +298,7 @@ function handleConfirm() {
   color: var(--foreground, var(--color-slate-800));
 }
 .rs-dim {
-  color: var(--text-secondary, var(--color-slate-500));
+  color: var(--muted-foreground, var(--color-slate-500));
 }
 .rs-badge {
   padding: 1px 6px;
@@ -357,7 +357,7 @@ function handleConfirm() {
 .field-hint {
   margin: 4px 0 0;
   font-size: 12px;
-  color: var(--text-secondary, var(--color-slate-500));
+  color: var(--muted-foreground, var(--color-slate-500));
 }
 .form-error {
   margin: 6px 0 0;
@@ -372,13 +372,13 @@ function handleConfirm() {
   border: none;
   background: none;
   font-size: 12px;
-  color: var(--text-secondary, var(--color-slate-500));
+  color: var(--muted-foreground, var(--color-slate-500));
   text-decoration: underline;
   cursor: pointer;
   margin-top: 4px;
 }
 .history-link:hover {
-  color: var(--primary, var(--primary-color));
+  color: var(--primary, var(--primary));
 }
 .modal-footer {
   display: flex;
@@ -399,7 +399,7 @@ function handleConfirm() {
   color: var(--foreground);
 }
 .btn-primary {
-  background: var(--primary, var(--primary-color));
+  background: var(--primary, var(--primary));
   color: var(--background);
 }
 .btn:disabled {

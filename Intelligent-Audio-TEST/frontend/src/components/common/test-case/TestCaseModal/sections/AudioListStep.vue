@@ -268,8 +268,8 @@ const {
 /* btn-outline-secondary - 自全局样式就近迁移 */
 .btn-outline-secondary {
     background: transparent;
-    color: var(--secondary-color);
-    border: 2px solid var(--secondary-color);
+    color: var(--secondary);
+    border: 2px solid var(--secondary);
 }
 
 </style>

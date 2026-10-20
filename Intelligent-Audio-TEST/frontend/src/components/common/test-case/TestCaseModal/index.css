@@ -13,8 +13,8 @@
   justify-content: flex-end;
   gap: 12px;
   padding: 16px 20px;
-  border-top: 1px solid var(--border-color);
-  background: var(--background-secondary);
+  border-top: 1px solid var(--border);
+  background: var(--muted);
 }
 
 /* INT-423/467：可见性守卫 + 分享/设为私有

@@ -110,7 +110,7 @@ onMounted(() => {
 
 .modal {
   background-color: #fff;
-  border-radius: var(--border-radius-xl);
+  border-radius: var(--radius-xl);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   display: flex;
   flex-direction: column;
@@ -149,7 +149,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-full);
   transition: all 0.2s;
 }
 
@@ -175,7 +175,7 @@ onMounted(() => {
 .btn {
   padding: 8px 18px;
   border: none;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
@@ -183,7 +183,7 @@ onMounted(() => {
 }
 
 .btn-primary {
-  background-color: var(--primary-color, #ff6a00);
+  background-color: var(--primary, #ff6a00);
   color: #fff;
 }
 
@@ -197,7 +197,7 @@ onMounted(() => {
 }
 
 .btn-secondary {
-  background-color: var(--background-secondary, #f0f0f0);
+  background-color: var(--muted, #f0f0f0);
   color: #333;
 }
 
@@ -225,7 +225,7 @@ onMounted(() => {
   width: 100%;
   padding: 8px 10px;
   border: 1px solid #d1d5db;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   font-size: 13px;
   background: #fff;
   color: #1f2937;
@@ -234,7 +234,7 @@ onMounted(() => {
 
 .form-input:focus {
   outline: none;
-  border-color: var(--primary-color, #ff6a00);
+  border-color: var(--primary, #ff6a00);
   box-shadow: 0 0 0 2px rgba(255, 106, 0, 0.15);
 }
 

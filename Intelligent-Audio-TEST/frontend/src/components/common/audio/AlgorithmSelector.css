@@ -21,7 +21,7 @@
 .option-item label {
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .option-item label .hint {
@@ -40,15 +40,15 @@
   justify-content: space-between;
   min-height: 42px;
   padding: 8px 12px;
-  border: 2px solid var(--border-color);
+  border: 2px solid var(--border);
   border-radius: var(--radius-control);
-  background: var(--white-color);
+  background: var(--color-white);
   cursor: pointer;
   transition: all var(--transition-fast);
 }
 
 .select-header:hover {
-  border-color: var(--secondary-color);
+  border-color: var(--secondary);
 }
 
 .selected-tags {
@@ -64,14 +64,14 @@
   gap: 4px;
   padding: 4px 8px;
   background: var(--secondary-light);
-  color: var(--secondary-color);
+  color: var(--secondary);
   border-radius: var(--radius-tag);
   font-size: 12px;
   font-weight: 500;
 }
 
 .algo-tag.is-primary {
-  background: var(--secondary-color);
+  background: var(--secondary);
   color: white;
 }
 
@@ -108,8 +108,8 @@
 }
 
 .dropdown-menu {
-  background: var(--white-color);
-  border: 1px solid var(--border-color);
+  background: var(--color-white);
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
   box-shadow: var(--shadow-lg);
   max-height: 300px;
@@ -120,20 +120,20 @@
 
 .dropdown-search {
   padding: 8px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border);
 }
 
 .search-input {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
   font-size: 13px;
   outline: none;
 }
 
 .search-input:focus {
-  border-color: var(--secondary-color);
+  border-color: var(--secondary);
 }
 
 .dropdown-list {
@@ -146,10 +146,10 @@
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px 4px;
-  background: var(--background-secondary);
+  background: var(--muted);
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   position: sticky;
   top: 0;
   z-index: 1;
@@ -161,7 +161,7 @@
 }
 
 .group-count {
-  background: var(--border-color);
+  background: var(--border);
   color: var(--text-light);
   padding: 2px 6px;
   border-radius: var(--radius-control);
@@ -178,7 +178,7 @@
 }
 
 .dropdown-item:hover {
-  background: var(--background-secondary);
+  background: var(--muted);
 }
 
 .dropdown-item.selected {
@@ -191,34 +191,34 @@
 }
 
 .dropdown-item.selected .item-checkbox {
-  color: var(--secondary-color);
+  color: var(--secondary);
 }
 
 .item-name {
   flex: 1;
   font-size: 14px;
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 
 .set-primary-btn {
   padding: 4px 8px;
   font-size: 11px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
-  background: var(--white-color);
-  color: var(--text-secondary);
+  background: var(--color-white);
+  color: var(--muted-foreground);
   cursor: pointer;
   transition: all var(--transition-fast);
 }
 
 .set-primary-btn:hover {
-  border-color: var(--secondary-color);
-  color: var(--secondary-color);
+  border-color: var(--secondary);
+  color: var(--secondary);
 }
 
 .set-primary-btn.primary {
-  background: var(--secondary-color);
-  border-color: var(--secondary-color);
+  background: var(--secondary);
+  border-color: var(--secondary);
   color: white;
 }
 
@@ -245,7 +245,7 @@
 
 .algo-type-hint {
   font-weight: normal;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 12px;
 }
 

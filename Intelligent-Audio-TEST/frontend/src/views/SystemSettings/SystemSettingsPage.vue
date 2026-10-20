@@ -54,7 +54,7 @@ const sectionTitle = computed(() => {
 .page-header p {
   margin: 4px 0 0;
   font-size: 14px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 .settings-placeholder-card {
   display: flex;
@@ -80,7 +80,7 @@ const sectionTitle = computed(() => {
 .settings-placeholder-card p.settings-placeholder-hint {
   font-size: 13px;
   font-weight: 400;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   line-height: 1.6;
   max-width: 520px;
 }

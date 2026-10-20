@@ -1,7 +1,7 @@
 .task-card {
   background-color: var(--color-white);
   border: 1px solid var(--border);
-  border-radius: var(--border-radius-xl);
+  border-radius: var(--radius-xl);
   padding: 16px;
   margin-bottom: 12px;
   box-shadow: 0 1px 3px color-mix(in srgb, var(--color-black) 10%, transparent);
@@ -13,7 +13,7 @@
 }
 
 .task-card-selected {
-  border-color: var(--primary-color);
+  border-color: var(--primary);
   background-color: color-mix(in srgb, var(--primary) 5%, transparent);
 }
 
@@ -57,7 +57,7 @@
 .task-name {
   font-size: 16px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--foreground);
   flex: 1;
 }
 
@@ -65,7 +65,7 @@
   font-size: 12px;
   font-weight: 500;
   padding: 4px 12px;
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-full);
   text-transform: capitalize;
 }
 
@@ -209,7 +209,7 @@
 .task-description {
   font-size: 14px;
   margin-bottom: 8px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   line-height: 1.4;
 }
 
@@ -218,14 +218,14 @@
   gap: 16px;
   margin-bottom: 8px;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .task-meta-item.algorithm-type {
   background-color: var(--color-sky-100);
   color: var(--color-sky-700);
   padding: 2px 8px;
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
 }
 
 .meta-item {
@@ -245,10 +245,10 @@
   display: inline-block;
   padding: 4px 12px;
   background-color: var(--color-white);
-  border: 1px solid var(--gray-light-color);
-  border-radius: var(--border-radius-sm);
+  border: 1px solid var(--gray-light);
+  border-radius: var(--radius-sm);
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .task-actions {
@@ -260,7 +260,7 @@
 
 
 .btn-primary {
-  background-color: var(--primary-color);
+  background-color: var(--primary);
   color: var(--color-white);
 }
 
@@ -288,14 +288,14 @@
 .task-steps {
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--border);
 }
 
 .steps-title {
   font-size: 14px;
   font-weight: 600;
   margin-bottom: 12px;
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 
 .steps-list {
@@ -310,15 +310,15 @@
   gap: 12px;
   font-size: 13px;
   padding: 8px;
-  background-color: var(--background-secondary);
-  border-radius: var(--border-radius-sm);
+  background-color: var(--muted);
+  border-radius: var(--radius-sm);
 }
 
 .step-status {
   font-size: 11px;
   font-weight: 500;
   padding: 2px 8px;
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-full);
   min-width: 60px;
   text-align: center;
   text-transform: capitalize;
@@ -327,12 +327,12 @@
 .step-name {
   flex: 1;
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 
 .step-meta {
   font-size: 11px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 /* 步骤状态样式 */
@@ -359,7 +359,7 @@
 .task-title {
   font-size: 22px;
   font-weight: 700;
-  color: var(--text-primary);
+  color: var(--foreground);
   margin: 0 0 10px 0;
   line-height: 1.4;
   overflow: hidden;
@@ -371,7 +371,7 @@
   transition: color 0.3s ease;
   cursor: pointer;
   padding: 2px 4px;
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
 }
 
 .task-title-section {
@@ -392,8 +392,8 @@
   font-size: 16px;
   font-weight: 600;
   padding: 2px 8px;
-  border: 2px solid var(--primary-color);
-  border-radius: var(--border-radius-md);
+  border: 2px solid var(--primary);
+  border-radius: var(--radius-md);
   outline: none;
   min-width: 200px;
 }

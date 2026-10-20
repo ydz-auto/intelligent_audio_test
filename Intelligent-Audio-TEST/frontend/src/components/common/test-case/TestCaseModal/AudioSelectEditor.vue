@@ -107,7 +107,7 @@ function clearAudio() {
 
 <style scoped>
 .audio-select-editor {
-  border: 1px solid var(--border-color, var(--border));
+  border: 1px solid var(--border, var(--border));
   border-radius: var(--radius-control);
   overflow: hidden;
 }
@@ -117,14 +117,14 @@ function clearAudio() {
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  background: var(--background-secondary, var(--muted));
-  border-bottom: 1px solid var(--border-color, var(--border));
+  background: var(--muted, var(--muted));
+  border-bottom: 1px solid var(--border, var(--border));
 }
 
 .as-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary, var(--foreground));
+  color: var(--foreground, var(--foreground));
   display: flex;
   align-items: center;
   gap: 6px;

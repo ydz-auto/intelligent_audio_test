@@ -324,7 +324,7 @@ async function restoreSet(setId: number) {
   gap: 6px;
   padding: 6px 12px;
   border: 1px solid var(--color-slate-300, #cbd5e1);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   background: #fff;
   font-size: 13px;
   cursor: pointer;
@@ -342,12 +342,12 @@ async function restoreSet(setId: number) {
   color: #fff;
 }
 .cd-btn-primary:hover {
-  background: var(--primary-dark, #e55d00);
+  background: var(--primary-hover, #e55d00);
   color: #fff;
 }
 .cd-btn-danger {
-  border-color: var(--danger-color, #dc2626);
-  color: var(--danger-color, #dc2626);
+  border-color: var(--destructive, #dc2626);
+  color: var(--destructive, #dc2626);
 }
 .cd-btn-danger:hover { background: #fee2e2; }
 .cd-btn-sm { padding: 3px 8px; font-size: 12px; }
@@ -373,7 +373,7 @@ async function restoreSet(setId: number) {
 .cd-empty-hint { font-size: 12px !important; color: var(--color-slate-400, #94a3b8); }
 .cd-group {
   border: 1px solid var(--color-slate-200, #e2e8f0);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 .cd-group-head {
@@ -396,7 +396,7 @@ async function restoreSet(setId: number) {
 .cd-count {
   flex-shrink: 0;
   padding: 1px 8px;
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-full);
   background: var(--color-slate-100, #f1f5f9);
   color: var(--color-slate-500, #64748b);
   font-size: 11px;
@@ -422,13 +422,13 @@ async function restoreSet(setId: number) {
 .cd-row-dim { color: var(--color-slate-500, #64748b); min-width: 70px; }
 .cd-row-rt {
   padding: 0 6px;
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
   background: var(--color-amber-50, #fffbeb);
   color: #b45309;
   font-family: var(--font-mono, monospace);
   font-size: 11px;
 }
-.cd-row-invalid { color: var(--danger-color, #dc2626); font-size: 11px; }
+.cd-row-invalid { color: var(--destructive, #dc2626); font-size: 11px; }
 .cd-sets {
   padding: 12px 16px;
   border-top: 1px solid var(--color-slate-100, #f1f5f9);

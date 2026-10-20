@@ -35,7 +35,7 @@
         <div
           class="device-description"
           v-if="device.description"
-          style="margin-top: 8px; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;"
+          style="margin-top: 8px; font-size: 0.85rem; color: var(--muted-foreground); line-height: 1.4;"
         >
           {{ device.description }}
         </div>
@@ -124,7 +124,7 @@ margin-right: 8px ;
 -webkit-appearance: none ;
 appearance: none ;
 background-color: var(--color-white) !important;
-border: 2px solid var(--border-color) !important;
+border: 2px solid var(--border) !important;
 border-radius: var(--radius-tag, 4px) ;
 position: relative ;
 transition: all 0.2s ease ;
@@ -159,7 +159,7 @@ overflow: hidden;
 }
 
 .device-card:hover{
-border-color: var(--primary-color);
+border-color: var(--primary);
 transform: translateY(-5px);
 box-shadow: 0 8px 24px color-mix(in srgb, var(--color-black) 12%, transparent);
 }
@@ -167,8 +167,8 @@ box-shadow: 0 8px 24px color-mix(in srgb, var(--color-black) 12%, transparent);
 
 
 .device-checkbox:checked{
-    background-color: var(--primary-color) !important;
-    border-color: var(--primary-color) ;
+    background-color: var(--primary) !important;
+    border-color: var(--primary) ;
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent) ;
 }
 
@@ -221,8 +221,8 @@ display: grid;
 grid-template-columns: 1fr 1fr;
 gap: 12px;
 padding: 16px;
-border-top: 1px solid var(--border-color);
-border-bottom: 1px solid var(--border-color);
+border-top: 1px solid var(--border);
+border-bottom: 1px solid var(--border);
 background: var(--color-bs-gray-100);
 border-radius: var(--radius-control, 8px);
 }
@@ -272,7 +272,7 @@ border-radius: var(--radius-control, 8px);
     right: 0;
     min-width: 150px;
     background: var(--color-white, #fff);
-    border: 1px solid var(--border-color, #e5e5e5);
+    border: 1px solid var(--border, #e5e5e5);
     border-radius: var(--radius-control, 8px);
     box-shadow: 0 8px 24px color-mix(in srgb, var(--color-black) 12%, transparent);
     padding: 4px;
@@ -285,13 +285,13 @@ border-radius: var(--radius-control, 8px);
     gap: 8px;
     padding: 7px 12px;
     border-radius: var(--radius-control, 8px);
-    color: var(--text-primary, #333);
+    color: var(--foreground, #333);
     text-decoration: none;
     font-size: 0.85rem;
 }
 
 .ops-item:hover{
-    background: var(--background-secondary, #f5f5f5);
+    background: var(--muted, #f5f5f5);
 }
 
 /* fade-in - 自全局样式就近迁移 */
@@ -308,9 +308,9 @@ border-radius: var(--radius-control, 8px);
     font-weight: 500;
     line-height: 1.4;
     vertical-align: middle;
-    color: var(--text-secondary, #6b7280);
+    color: var(--muted-foreground, #6b7280);
     background: var(--color-bs-gray-100, #f3f4f6);
-    border: 1px solid var(--border-color, #e5e7eb);
+    border: 1px solid var(--border, #e5e7eb);
     border-radius: var(--radius-control, 8px);
     white-space: nowrap;
 }

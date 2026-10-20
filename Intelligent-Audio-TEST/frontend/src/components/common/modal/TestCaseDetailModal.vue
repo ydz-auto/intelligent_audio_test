@@ -12,15 +12,15 @@
     </div>
     
     <div v-else class="detail-content">
-      <div class="case-header-panel" style="margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--border-color);">
-        <h4 style="margin: 0 0 12px 0; font-size: 18px; font-weight: var(--font-weight-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
-          <i class="fas fa-file-alt" style="color: var(--primary-color);"></i>
+      <div class="case-header-panel" style="margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--border);">
+        <h4 style="margin: 0 0 12px 0; font-size: 18px; font-weight: var(--font-weight-semibold); color: var(--foreground); display: flex; align-items: center; gap: 8px;">
+          <i class="fas fa-file-alt" style="color: var(--primary);"></i>
           {{ detail.caseName }}
         </h4>
         <div class="case-meta" style="display: flex; gap: 20px; flex-wrap: wrap;">
           <div class="meta-item flex items-center gap-2">
-            <i class="fas fa-info-circle" style="color: var(--text-secondary); font-size: 14px;"></i>
-            <span style="font-size: 14px; color: var(--text-secondary);">状态: </span>
+            <i class="fas fa-info-circle" style="color: var(--muted-foreground); font-size: 14px;"></i>
+            <span style="font-size: 14px; color: var(--muted-foreground);">状态: </span>
             <span :class="'status-tag ' + (detail.executionStatus || ExecutionStatus.PENDING).toLowerCase()" style="font-size: 12px; padding: 2px 8px; border-radius: var(--radius-tag); font-weight: 500;">
               {{ 
                 detail.executionStatus === ExecutionStatus.COMPLETED ? (
@@ -32,12 +32,12 @@
             </span>
           </div>
           <div class="meta-item" style="display: flex; align-items: center; gap: 8px;" v-if="detail.duration">
-            <i class="fas fa-clock" style="color: var(--text-secondary); font-size: 14px;"></i>
-            <span style="font-size: 14px; color: var(--text-secondary);">耗时{{ (detail.duration / 1000).toFixed(2) }}s</span>
+            <i class="fas fa-clock" style="color: var(--muted-foreground); font-size: 14px;"></i>
+            <span style="font-size: 14px; color: var(--muted-foreground);">耗时{{ (detail.duration / 1000).toFixed(2) }}s</span>
           </div>
           <div class="meta-item flex items-center gap-2">
-            <i class="fas fa-star" style="color: var(--text-secondary); font-size: 14px;"></i>
-            <span style="font-size: 14px; color: var(--text-secondary);">评分: </span>
+            <i class="fas fa-star" style="color: var(--muted-foreground); font-size: 14px;"></i>
+            <span style="font-size: 14px; color: var(--muted-foreground);">评分: </span>
             <span :class="'status-tag ' + (detail.evaluationStatus || EvaluationStatus.PENDING).toLowerCase()" style="font-size: 12px; padding: 2px 8px; border-radius: var(--radius-tag); font-weight: 500;">
               {{ detail.evaluationStatus === EvaluationStatus.COMPLETED ? '评分完成' : '待评分' }}
             </span>
@@ -49,10 +49,10 @@
       </div>
 
       <!-- INT-340：人工复核入口（结果列表多选批量复核，逐条留痕） -->
-      <div v-if="detail.results && detail.results.length" class="review-toolbar" style="margin-top: 16px; padding: 12px 16px; background-color: var(--background-primary); border: 1px solid var(--border-color); border-radius: var(--radius-lg);">
+      <div v-if="detail.results && detail.results.length" class="review-toolbar" style="margin-top: 16px; padding: 12px 16px; background-color: var(--background); border: 1px solid var(--border); border-radius: var(--radius-lg);">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-          <h5 style="margin: 0; font-size: 14px; font-weight: var(--font-weight-semibold); color: var(--text-primary);">
-            <i class="fas fa-clipboard-check" style="color: var(--primary-color); margin-right: 6px;"></i>
+          <h5 style="margin: 0; font-size: 14px; font-weight: var(--font-weight-semibold); color: var(--foreground);">
+            <i class="fas fa-clipboard-check" style="color: var(--primary); margin-right: 6px;"></i>
             人工复核
           </h5>
           <button
@@ -64,7 +64,7 @@
           </button>
         </div>
         <div class="review-result-list" style="display: flex; flex-wrap: wrap; gap: 8px;">
-          <label v-for="r in detail.results" :key="r.id" class="review-result-item" style="display: flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid var(--border-color); border-radius: var(--radius-tag); font-size: 12px; cursor: pointer;">
+          <label v-for="r in detail.results" :key="r.id" class="review-result-item" style="display: flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--radius-tag); font-size: 12px; cursor: pointer;">
             <input type="checkbox" :value="r.id" v-model="selectedResultIds" />
             <span>{{ r.deviceName || ('设备 ' + (r.deviceId ?? r.id)) }}</span>
             <span class="status-pill" :class="(r.executionStatus || 'pending').toLowerCase()">{{ execStatusLabel(r.executionStatus) }}</span>
@@ -74,9 +74,9 @@
       </div>
 
       <!-- 执行结果与指标 - 有任何数据时才显示 -->
-      <div v-if="hasAnyResultData" class="results-section" style="margin-top: 24px; background-color: var(--background-primary); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 20px; border: 1px solid var(--border-color);">
-        <h5 style="margin: 0 0 16px 0; font-size: 16px; font-weight: var(--font-weight-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
-          <i class="fas fa-chart-bar" style="color: var(--primary-color);"></i>
+      <div v-if="hasAnyResultData" class="results-section" style="margin-top: 24px; background-color: var(--background); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 20px; border: 1px solid var(--border);">
+        <h5 style="margin: 0 0 16px 0; font-size: 16px; font-weight: var(--font-weight-semibold); color: var(--foreground); display: flex; align-items: center; gap: 8px;">
+          <i class="fas fa-chart-bar" style="color: var(--primary);"></i>
           执行结果与指标
         </h5>
         <TestCaseReportDetail 
@@ -97,20 +97,20 @@
       </div>
       
       <!-- 完全没有执行数据时的提示 -->
-      <div v-else-if="!detail.results || detail.results.length === 0" class="results-section" style="margin-top: 24px; background-color: var(--background-primary); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 20px; border: 1px solid var(--border-color);">
-        <h5 style="margin: 0 0 16px 0; font-size: 16px; font-weight: var(--font-weight-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
-          <i class="fas fa-chart-bar" style="color: var(--primary-color);"></i>
+      <div v-else-if="!detail.results || detail.results.length === 0" class="results-section" style="margin-top: 24px; background-color: var(--background); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 20px; border: 1px solid var(--border);">
+        <h5 style="margin: 0 0 16px 0; font-size: 16px; font-weight: var(--font-weight-semibold); color: var(--foreground); display: flex; align-items: center; gap: 8px;">
+          <i class="fas fa-chart-bar" style="color: var(--primary);"></i>
           执行结果与指标
         </h5>
-        <div class="no-items-message" style="text-align: center; padding: 30px; color: var(--text-secondary);">
+        <div class="no-items-message" style="text-align: center; padding: 30px; color: var(--muted-foreground);">
           暂无执行结果
         </div>
       </div>
 
       <!-- 执行日志 -->
       <div class="logs-section" style="margin-top: 24px;">
-        <h5 style="margin: 0 0 16px 0; font-size: 16px; font-weight: var(--font-weight-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
-          <i class="fas fa-terminal" style="color: var(--primary-color);"></i>
+        <h5 style="margin: 0 0 16px 0; font-size: 16px; font-weight: var(--font-weight-semibold); color: var(--foreground); display: flex; align-items: center; gap: 8px;">
+          <i class="fas fa-terminal" style="color: var(--primary);"></i>
           执行日志
         </h5>
         <div class="log-toolbar">
@@ -448,10 +448,10 @@ onMounted(() => {
 <style scoped>
 
 .test-case-detail{
-    background-color: var(--background-primary);
+    background-color: var(--background);
     border-radius: var(--radius-control);
     padding: 16px;
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--border);
 }
 
 
@@ -466,14 +466,14 @@ onMounted(() => {
   justify-content: center;
   padding: 60px;
   gap: 16px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .spinner{
   width: 40px;
   height: 40px;
   border: 4px solid color-mix(in srgb, var(--color-black) 10%, transparent);
-  border-left-color: var(--primary-color);
+  border-left-color: var(--primary);
   border-radius: var(--radius-pill);
   animation: spin 1s linear infinite;
 }
@@ -486,10 +486,10 @@ onMounted(() => {
   display: inline-block;
 }
 
-.status-tag.completed{ background-color: var(--success-light); color: var(--success-color); }
-.status-tag.failed{ background-color: var(--error-light); color: var(--error-color); }
-.status-tag.inProgress{ background-color: var(--warning-light); color: var(--warning-color); }
-.status-tag.pending{ background-color: var(--secondary-light); color: var(--secondary-color); }
+.status-tag.completed{ background-color: var(--success-light); color: var(--success); }
+.status-tag.failed{ background-color: var(--destructive-light); color: var(--destructive); }
+.status-tag.inProgress{ background-color: var(--warning-light); color: var(--warning); }
+.status-tag.pending{ background-color: var(--secondary-light); color: var(--secondary); }
 
 .log-line.error .log-lvl{ background-color: var(--color-red-500); color: white; }
 .log-line.warn .log-lvl{ background-color: var(--color-amber-500); color: white; }
@@ -545,10 +545,10 @@ onMounted(() => {
 
 .btn-load-more-logs{
   padding: 4px 12px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
-  background: var(--background-secondary);
-  color: var(--primary-color);
+  background: var(--muted);
+  color: var(--primary);
   font-size: 12px;
   cursor: pointer;
 }
@@ -563,7 +563,7 @@ onMounted(() => {
   padding: 6px 16px;
   border: none;
   border-radius: var(--radius-control);
-  background: var(--primary-color);
+  background: var(--primary);
   color: white;
   font-size: 13px;
   cursor: pointer;
@@ -577,22 +577,22 @@ onMounted(() => {
   border-radius: var(--radius-tag);
   font-size: 11px;
   background: var(--secondary-light);
-  color: var(--secondary-color);
+  color: var(--secondary);
 }
-.status-pill.completed{ background: var(--success-light); color: var(--success-color); }
-.status-pill.failed{ background: var(--error-light); color: var(--error-color); }
-.status-pill.stopped{ background: var(--warning-light); color: var(--warning-color); }
+.status-pill.completed{ background: var(--success-light); color: var(--success); }
+.status-pill.failed{ background: var(--destructive-light); color: var(--destructive); }
+.status-pill.stopped{ background: var(--warning-light); color: var(--warning); }
 .reviewed-badge{
   padding: 1px 6px;
   border-radius: var(--radius-tag);
   font-size: 11px;
-  background: var(--primary-light, color-mix(in srgb, var(--primary-color) 15%, transparent));
-  color: var(--primary-color);
+  background: var(--accent, color-mix(in srgb, var(--primary) 15%, transparent));
+  color: var(--primary);
 }
 
 .log-count{
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 

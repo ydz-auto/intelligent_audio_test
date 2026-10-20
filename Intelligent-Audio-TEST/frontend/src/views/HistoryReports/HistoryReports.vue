@@ -11,7 +11,7 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <div class="header-left">
-        <h2 class="page-title" style="color: var(--primary-color);">
+        <h2 class="page-title" style="color: var(--primary);">
           <i class="fas fa-history"></i>
           历史报告
         </h2>
@@ -466,8 +466,8 @@ interface ReportViewSection {
 const reportSections = computed<ReportViewSection[]>(() => {
   if (activeTab.value === REPORT_TABS.ALL) {
     return [
-      { key: 'published', draft: false, title: '已发布报告', icon: 'fas fa-check-circle', iconColor: 'var(--success-color)', reports: publishedReports.value },
-      { key: 'draft', draft: true, title: '草稿报告', icon: 'fas fa-edit', iconColor: 'var(--warning-color)', reports: draftReports.value },
+      { key: 'published', draft: false, title: '已发布报告', icon: 'fas fa-check-circle', iconColor: 'var(--success)', reports: publishedReports.value },
+      { key: 'draft', draft: true, title: '草稿报告', icon: 'fas fa-edit', iconColor: 'var(--warning)', reports: draftReports.value },
     ].filter(section => section.reports.length > 0);
   }
   return [{
@@ -475,7 +475,7 @@ const reportSections = computed<ReportViewSection[]>(() => {
     draft: false,
     title: activeTabMeta.value.label,
     icon: activeTabMeta.value.icon,
-    iconColor: 'var(--primary-color)',
+    iconColor: 'var(--primary)',
     reports: visibleReports.value,
   }].filter(section => section.reports.length > 0);
 });
@@ -532,9 +532,9 @@ function handleAlgorithmFilterChange(value: string | number) {
     gap: 10px;
     padding: 12px 16px;
     margin-bottom: var(--spacing-lg);
-    background: color-mix(in srgb, var(--primary-color) 5%, transparent);
-    border-radius: var(--border-radius-lg);
-    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--primary) 5%, transparent);
+    border-radius: var(--radius-lg);
+    color: var(--muted-foreground);
     font-size: 14px;
 }
 
@@ -542,8 +542,8 @@ function handleAlgorithmFilterChange(value: string | number) {
     display: inline-block;
     width: 16px;
     height: 16px;
-    border: 2px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
-    border-top-color: var(--primary-color);
+    border: 2px solid color-mix(in srgb, var(--primary) 30%, transparent);
+    border-top-color: var(--primary);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
 }
@@ -561,8 +561,8 @@ function handleAlgorithmFilterChange(value: string | number) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background-color: var(--primary-color); /* 去掉 hex 回退：--primary-color 已定义（#ff6a00） */
-  border-color: var(--primary-color);
+  background-color: var(--primary); /* 去掉 hex 回退：--primary-color 已定义（#ff6a00） */
+  border-color: var(--primary);
   color: var(--color-white);
   white-space: nowrap;
 }
@@ -594,7 +594,7 @@ color: var(--text-disabled);
 
 .report-card-status{
     background-color: var(--info-light);
-    color: var(--info-color);
+    color: var(--info);
 }
 
 

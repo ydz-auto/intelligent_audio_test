@@ -498,20 +498,20 @@ border: 1px solid var(--gray-light);
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: var(--primary-color);
+  color: var(--primary);
 }
 .execution-params-panel{
   margin-top: 8px;
   padding: 16px;
   background: linear-gradient(135deg, var(--color-white) 0%, var(--muted) 100%);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
-  border: 1px solid var(--gray-light-color);
+  border: 1px solid var(--gray-light);
 }
 .params-title{
   font-size: 15px;
   font-weight: 600;
-  color: var(--primary-color);
+  color: var(--primary);
   margin-bottom: 12px;
 }
 .params-body{
@@ -533,7 +533,7 @@ border: 1px solid var(--gray-light);
 .param-label{
   font-size: 14px;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   min-width: 64px;
 }
 .param-hint{
@@ -542,7 +542,7 @@ border: 1px solid var(--gray-light);
   gap: 6px;
   width: 100%;
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 .radio-group{
   display: flex;
@@ -553,13 +553,13 @@ border: 1px solid var(--gray-light);
   align-items: center;
   gap: 6px;
   font-size: 14px;
-  color: var(--text-primary);
+  color: var(--foreground);
   cursor: pointer;
 }
 .radio-label input[type="radio"]{
   width: 16px;
   height: 16px;
-  accent-color: var(--primary-color);
+  accent-color: var(--primary);
 }
 
 .info-alert{

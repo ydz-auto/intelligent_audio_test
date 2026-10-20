@@ -54,7 +54,7 @@ const route = useRoute()
 .placeholder-card p {
   margin: 0 0 8px;
   font-size: 14px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   line-height: 1.6;
 }
 .placeholder-path {

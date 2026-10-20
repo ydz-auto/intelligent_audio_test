@@ -5,15 +5,15 @@
 .form-section {
   margin-bottom: 24px;
   padding: 20px;
-  background: var(--background-secondary);
+  background: var(--muted);
   border-radius: var(--radius-lg);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
 }
 
 .empty-state {
   text-align: center;
   padding: 40px 20px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .empty-state i {
@@ -46,12 +46,12 @@
   display: block;
   margin-bottom: 6px;
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--foreground);
   font-size: 13px;
 }
 
 .required {
-  color: var(--danger-color);
+  color: var(--destructive);
 }
 
 .input-with-action {
@@ -87,7 +87,7 @@
   font-size: 12px;
   font-weight: 500;
   background: var(--secondary-light);
-  color: var(--secondary-color);
+  color: var(--secondary);
   border-radius: var(--radius-pill);
   border: 1px solid transparent;
   max-width: 200px;
@@ -111,7 +111,7 @@
   border: none;
   margin-left: 4px;
   cursor: pointer;
-  color: var(--secondary-color);
+  color: var(--secondary);
   opacity: 0.7;
   padding: 2px;
   display: flex;
@@ -127,7 +127,7 @@
   background: var(--color-white);
   border-radius: var(--radius-control);
   padding: 12px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
 }
 
 .existing-tags-header {
@@ -141,15 +141,15 @@
 
 .existing-tags-label {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .tag-search-box {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: var(--background-secondary);
-  border: 1px solid var(--border-color);
+  background: var(--muted);
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
   padding: 4px 8px;
   flex: 1;
@@ -157,7 +157,7 @@
 }
 
 .tag-search-box i {
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 12px;
 }
 
@@ -167,7 +167,7 @@
   outline: none;
   font-size: 12px;
   width: 100%;
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 
 .tag-search-input::placeholder {
@@ -182,17 +182,17 @@
 
 .tag-page-btn {
   background: transparent;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
   padding: 2px 6px;
   cursor: pointer;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 11px;
 }
 
 .tag-page-btn:hover:not(:disabled) {
-  border-color: var(--primary-color);
-  color: var(--primary-color);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .tag-page-btn:disabled {
@@ -202,7 +202,7 @@
 
 .tag-page-info {
   font-size: 11px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .existing-tags-list {
@@ -214,18 +214,18 @@
 .tag-item.selectable {
   cursor: pointer;
   background: var(--secondary-light);
-  color: var(--secondary-color);
+  color: var(--secondary);
   transition: all 0.2s ease;
 }
 
 .tag-item.selectable:hover {
-  background: var(--secondary-color);
+  background: var(--secondary);
   color: var(--color-white);
   transform: translateY(-1px);
 }
 
 .tag-item.selectable.already-added {
-  background: var(--secondary-color);
+  background: var(--secondary);
   color: var(--color-white);
   cursor: default;
 }
@@ -244,12 +244,12 @@
 .test-type-label {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 
 .test-type-switcher {
   display: flex;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
   overflow: hidden;
 }
@@ -259,8 +259,8 @@
   font-size: 13px;
   font-weight: 500;
   border: none;
-  background: var(--background-primary);
-  color: var(--text-secondary);
+  background: var(--background);
+  color: var(--muted-foreground);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -269,11 +269,11 @@
 }
 
 .test-type-btn:hover {
-  background: var(--background-secondary);
+  background: var(--muted);
 }
 
 .test-type-btn.active {
-  background: var(--primary-color);
+  background: var(--primary);
   color: var(--color-white);
 }
 
@@ -283,7 +283,7 @@
 }
 
 .test-type-btn + .test-type-btn {
-  border-left: 1px solid var(--border-color);
+  border-left: 1px solid var(--border);
 }
 
 /* ===== round-editor-section ===== */

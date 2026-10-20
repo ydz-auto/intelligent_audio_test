@@ -19,8 +19,8 @@
             @dragleave.prevent="isDragging = false"
             @drop.prevent="handleDrop"
           >
-            <i class="fas fa-upload" style="font-size: 32px; color: var(--primary-color); margin-bottom: 12px;"></i>
-            <p style="margin: 0 0 12px 0; color: var(--text-secondary);">点击或拖拽文件到此处上传</p>
+            <i class="fas fa-upload" style="font-size: 32px; color: var(--primary); margin-bottom: 12px;"></i>
+            <p style="margin: 0 0 12px 0; color: var(--muted-foreground);">点击或拖拽文件到此处上传</p>
             <p style="margin: 0; font-size: 12px; color: var(--text-tertiary);">支持 .xlsx/.xls, .json 格式文件，单个文件不超过10MB</p>
             <input ref="fileInputRef" type="file" id="import-file" accept=".xlsx,.xls,.json" style="display: none;" @change="handleFileChange">
             <div v-if="localFile" class="file-info mt-2">
@@ -273,7 +273,7 @@ defineExpose({
 }
 
 .file-upload {
-  border: 2px dashed var(--border-color, var(--border));
+  border: 2px dashed var(--border, var(--border));
   border-radius: var(--radius-control);
   padding: 24px;
   text-align: center;
@@ -282,12 +282,12 @@ defineExpose({
 }
 
 .file-upload:hover {
-  border-color: var(--primary-color, var(--secondary));
+  border-color: var(--primary, var(--secondary));
   background: color-mix(in srgb, var(--secondary) 5%, transparent);
 }
 
 .file-upload.is-dragging {
-  border-color: var(--primary-color, var(--secondary));
+  border-color: var(--primary, var(--secondary));
   background: color-mix(in srgb, var(--secondary) 10%, transparent);
 }
 

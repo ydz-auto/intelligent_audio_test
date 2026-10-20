@@ -66,7 +66,7 @@
   h1, h2, h3, h4, h5, h6 {
     font-weight: var(--font-weight-bold);
     line-height: 1.3;
-    color: var(--text-primary);
+    color: var(--foreground);
   }
 
   /* 重置块级元素 */
@@ -89,9 +89,9 @@
   input[type="datetime-local"],
   textarea,
   select {
-    background-color: var(--background-primary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-md);
+    background-color: var(--background);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
     padding: var(--spacing-sm) var(--spacing-md);
     transition: all var(--transition-normal);
   }
@@ -99,14 +99,14 @@
   input:focus,
   textarea:focus,
   select:focus {
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px var(--primary-light);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--accent);
   }
 
   /* 移除按钮默认样式 */
   button:focus {
     outline: none;
-    box-shadow: 0 0 0 3px var(--primary-light);
+    box-shadow: 0 0 0 3px var(--accent);
   }
 
   /* 移除引用默认样式 */
@@ -119,31 +119,31 @@
   code {
     font-family: Monaco, Menlo, 'Ubuntu Mono', monospace;
     font-size: 0.9em;
-    background-color: var(--background-tertiary);
+    background-color: var(--gray-light);
     padding: 2px 4px;
-    border-radius: var(--border-radius-sm);
+    border-radius: var(--radius-sm);
   }
 
   /* 移除pre默认样式 */
   pre {
     font-family: Monaco, Menlo, 'Ubuntu Mono', monospace;
-    background-color: var(--background-tertiary);
+    background-color: var(--gray-light);
     padding: var(--spacing-md);
-    border-radius: var(--border-radius-md);
+    border-radius: var(--radius-md);
     overflow-x: auto;
   }
 
   /* 移除hr默认样式 */
   hr {
     border: none;
-    border-top: 1px solid var(--border-color);
+    border-top: 1px solid var(--border);
     margin: var(--spacing-lg) 0;
   }
 
   /* 移除表单标签默认样式 */
   label {
     font-weight: var(--font-weight-medium);
-    color: var(--text-primary);
+    color: var(--foreground);
     margin-bottom: var(--spacing-xs);
     display: block;
   }
@@ -158,7 +158,7 @@
   /* 移除legend默认样式 */
   legend {
     font-weight: var(--font-weight-bold);
-    color: var(--text-primary);
+    color: var(--foreground);
     margin-bottom: var(--spacing-md);
   }
 
@@ -177,8 +177,8 @@
   progress {
     width: 100%;
     height: 20px;
-    background-color: var(--background-tertiary);
-    border-radius: var(--border-radius-sm);
+    background-color: var(--gray-light);
+    border-radius: var(--radius-sm);
   }
 
   /* 移除select默认箭头 */

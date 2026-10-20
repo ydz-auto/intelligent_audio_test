@@ -257,7 +257,7 @@ onMounted(() => {
 }
 
 .unit {
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 14px;
 }
 
@@ -269,13 +269,13 @@ onMounted(() => {
 
 .field-hint {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   margin: var(--spacing-xs) 0 0;
 }
 
 .archive-section {
   padding: var(--spacing-md) 0;
-  border-bottom: 1px solid var(--gray-light-color);
+  border-bottom: 1px solid var(--gray-light);
 }
 
 .archive-section:last-child {
@@ -307,7 +307,7 @@ onMounted(() => {
 
 .status-label {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .status-value {
@@ -329,7 +329,7 @@ onMounted(() => {
 
 .result-msg {
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   margin: 0;
 }
 
@@ -345,7 +345,7 @@ onMounted(() => {
 
 .count-hint {
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   margin: var(--spacing-xs) 0 0;
 }
 

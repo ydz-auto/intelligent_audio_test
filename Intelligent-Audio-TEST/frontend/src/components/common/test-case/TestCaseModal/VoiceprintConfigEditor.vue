@@ -215,7 +215,7 @@ function clearAudio() {
 
 <style scoped>
 .voiceprint-editor {
-  border: 1px solid var(--border-color, var(--border));
+  border: 1px solid var(--border, var(--border));
   border-radius: var(--radius-control);
   overflow: hidden;
 }
@@ -225,14 +225,14 @@ function clearAudio() {
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  background: var(--background-secondary, var(--muted));
-  border-bottom: 1px solid var(--border-color, var(--border));
+  background: var(--muted, var(--muted));
+  border-bottom: 1px solid var(--border, var(--border));
 }
 
 .vp-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary, var(--foreground));
+  color: var(--foreground, var(--foreground));
   display: flex;
   align-items: center;
   gap: 6px;
@@ -245,10 +245,10 @@ function clearAudio() {
 .vp-remove-btn {
   padding: 4px 10px;
   font-size: 12px;
-  border: 1px solid var(--danger-color, var(--destructive));
+  border: 1px solid var(--destructive, var(--destructive));
   border-radius: var(--radius-control);
   background: transparent;
-  color: var(--danger-color, var(--destructive));
+  color: var(--destructive, var(--destructive));
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -256,7 +256,7 @@ function clearAudio() {
   transition: all 0.15s;
 }
 .vp-remove-btn:hover {
-  background: var(--danger-color, var(--destructive));
+  background: var(--destructive, var(--destructive));
   color: var(--background);
 }
 
@@ -276,7 +276,7 @@ function clearAudio() {
 .vp-field-label {
   font-size: 12px;
   font-weight: 500;
-  color: var(--text-secondary, var(--color-gray-500));
+  color: var(--muted-foreground, var(--color-gray-500));
 }
 
 .vp-hint {
