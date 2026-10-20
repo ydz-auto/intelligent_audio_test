@@ -46,6 +46,7 @@ import {
   PARAM_DIRECTION_OPTIONS,
 } from '@/features/algorithm-config/constants'
 import { ParamScopeChips, type FeatureBundleItem } from './param-scope-chips'
+import { AnnotationCodeSelect, type AlgorithmOption } from './annotation-code-select'
 
 const PRESET_DATALIST_ID = 'case-param-code-presets'
 
@@ -74,8 +75,11 @@ const ARRAY_NAME: Record<ParamRowKind, ParamArrayName> = {
 
 export function ParamsTable({
   form,
+  algorithmOptions,
 }: {
   form: UseFormReturn<AlgorithmFormValues>
+  /** 算法列表（标注代码下拉选项：标注代码=算法类型） */
+  algorithmOptions: AlgorithmOption[]
 }) {
   const device = useFieldArray({ control: form.control, name: 'deviceParams' })
   const api = useFieldArray({ control: form.control, name: 'apiParams' })
@@ -370,7 +374,12 @@ export function ParamsTable({
                   <th className='px-3 py-2 text-left font-medium'>范围约束</th>
                 )}
                 {showCaseOnly && (
-                  <th className='px-3 py-2 text-left font-medium'>标注代码</th>
+                  <th
+                    title='标注代码=算法类型代码；默认同本算法，选其它算法表示复用该算法的标注'
+                    className='px-3 py-2 text-left font-medium'
+                  >
+                    标注代码
+                  </th>
                 )}
                 {showCaseOnly && (
                   <th className='px-3 py-2 text-left font-medium'>字段路径</th>
@@ -399,6 +408,7 @@ export function ParamsTable({
                     cases={cases}
                     showDirection={showDirection}
                     showCaseOnly={showCaseOnly}
+                    algorithmOptions={algorithmOptions}
                   />
                 ))
               )}
@@ -461,6 +471,7 @@ function ParamRow({
   cases,
   showDirection,
   showCaseOnly,
+  algorithmOptions,
 }: {
   row: MergedRow
   form: UseFormReturn<AlgorithmFormValues>
@@ -469,6 +480,7 @@ function ParamRow({
   cases: UseFieldArrayReturn<AlgorithmFormValues, 'caseParams'>
   showDirection: boolean
   showCaseOnly: boolean
+  algorithmOptions: AlgorithmOption[]
 }) {
   const isCase = row.kind === 'case'
   const arrayName = ARRAY_NAME[row.kind]
@@ -692,15 +704,14 @@ function ParamRow({
           )}
         </td>
       )}
-      {/* 标注代码（仅用例行） */}
+      {/* 标注代码（仅用例行；INT-1030 下拉=算法类型/标注代码映射，不再输原始代码） */}
       {showCaseOnly && (
         <td className='px-2 py-1.5'>
           {isCase ? (
-            <Input
-              aria-label='标注代码'
-              placeholder='默认同算法类型'
-              className='h-7 text-xs'
-              {...form.register(casePath('annotationCode'))}
+            <AnnotationCodeSelect
+              value={form.watch(casePath('annotationCode')) ?? ''}
+              onValueChange={(value) => form.setValue(casePath('annotationCode'), value)}
+              algorithmOptions={algorithmOptions}
             />
           ) : (
             <span className='text-muted-foreground text-xs'>—</span>

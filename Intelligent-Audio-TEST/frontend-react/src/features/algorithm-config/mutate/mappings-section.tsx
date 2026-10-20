@@ -22,7 +22,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import type { Dimension, EvaluationCategory } from '@/domain/models/evaluationDimension'
 import type { AlgorithmFormValues } from '@/features/algorithm-config/types'
+import { DimensionSelect } from './dimension-select'
 import {
   API_TRANSFORM_TYPE_OPTIONS,
   TRANSFORM_TYPE_OPTIONS,
@@ -54,12 +56,15 @@ function MappingTable({
   sourceLabel,
   targetOptions,
   transformOptions,
+  targetSelect,
 }: {
   form: UseFormReturn<AlgorithmFormValues>
   arrayName: MappingArrayName
   sourceLabel: string
   targetOptions: Array<{ value: string; label: string }>
   transformOptions: ReadonlyArray<{ value: string; label: string }>
+  /** 评估映射 target 渲染覆盖（分组/主维度/子维度 DimensionSelect；未传走平铺 targetOptions） */
+  targetSelect?: (index: number) => React.ReactNode
 }) {
   const mappings = useFieldArray({ control: form.control, name: arrayName })
   const sourceOptions = SourceOptions({ form })
@@ -124,26 +129,30 @@ function MappingTable({
                       </Select>
                     </td>
                     <td className='px-2 py-1.5'>
-                      <Select
-                        value={form.watch(`${arrayName}.${index}.targetParam`)}
-                        onValueChange={(value) =>
-                          form.setValue(
-                            `${arrayName}.${index}.targetParam` as FieldPath<AlgorithmFormValues>,
-                            value ?? ''
-                          )
-                        }
-                      >
-                        <SelectTrigger size='sm' className='w-44'>
-                          <SelectValue placeholder='选择目标参数' />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {targetOptions.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      {targetSelect ? (
+                        targetSelect(index)
+                      ) : (
+                        <Select
+                          value={form.watch(`${arrayName}.${index}.targetParam`)}
+                          onValueChange={(value) =>
+                            form.setValue(
+                              `${arrayName}.${index}.targetParam` as FieldPath<AlgorithmFormValues>,
+                              value ?? ''
+                            )
+                          }
+                        >
+                          <SelectTrigger size='sm' className='w-44'>
+                            <SelectValue placeholder='选择目标参数' />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {targetOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
                     </td>
                     <td className='px-2 py-1.5'>
                       <Select
@@ -194,10 +203,14 @@ function MappingTable({
 
 export function MappingsSection({
   form,
-  dimensionOptions,
+  dimensions,
+  categories = [],
 }: {
   form: UseFormReturn<AlgorithmFormValues>
-  dimensionOptions: Array<{ id: number; name: string }>
+  /** 评估维度全量（含子维度；评估映射 target 按 分组/主维度/子维度 展示） */
+  dimensions: Dimension[]
+  /** 评估维度分类（分类分组组头） */
+  categories?: EvaluationCategory[]
 }) {
   const deviceParams = useWatch({ control: form.control, name: 'deviceParams' })
   const apiParams = useWatch({ control: form.control, name: 'apiParams' })
@@ -211,11 +224,6 @@ export function MappingsSection({
     value: param.paramCode,
     label: param.paramCode || '（未填）',
   })).filter((option) => option.value)
-
-  const evaluationTargets = dimensionOptions.map((dimension) => ({
-    value: dimension.name,
-    label: dimension.name,
-  }))
 
   const deviceCount = useWatch({ control: form.control, name: 'mappings.device' }).length
   const apiCount = useWatch({ control: form.control, name: 'mappings.api' }).length
@@ -261,8 +269,24 @@ export function MappingsSection({
           form={form}
           arrayName='mappings.evaluation'
           sourceLabel='源参数'
-          targetOptions={evaluationTargets}
+          targetOptions={[]}
           transformOptions={TRANSFORM_TYPE_OPTIONS}
+          targetSelect={(index) => (
+            <DimensionSelect
+              dimensions={dimensions}
+              categories={categories}
+              value={form.watch(`mappings.evaluation.${index}.targetParam`) ?? ''}
+              onValueChange={(name) =>
+                form.setValue(
+                  `mappings.evaluation.${index}.targetParam` as FieldPath<AlgorithmFormValues>,
+                  name
+                )
+              }
+              valueOf={(dimension) => dimension.name}
+              placeholder='选择评估维度'
+              triggerClassName='w-52'
+            />
+          )}
         />
       </MappingCollapsible>
     </div>

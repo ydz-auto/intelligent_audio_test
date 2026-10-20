@@ -33,8 +33,12 @@ import { cn } from '@/lib/utils'
 import type { TestCaseListFilters } from '@/application/testcases/use-testcases-list'
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
-import type { EvaluationDimensionItem } from '@/domain/models/evaluationDimension'
+import type {
+  Dimension,
+  EvaluationCategory,
+} from '@/domain/models/evaluationDimension'
 import type { TagItem } from '@/domain/models/testTag'
+import { DimensionSelect } from '@/features/algorithm-config/mutate/dimension-select'
 import { FavoriteTrashToggle } from '@/features/testcases/components/favorite-trash-toggle'
 import { TestCasesAlgorithmChip } from '@/features/testcases/components/global-algorithm-chip'
 
@@ -45,7 +49,10 @@ export interface TestCasesFilterToolbarProps {
   isFiltered: boolean
   groups: TestCaseGroup[]
   tags: TagItem[]
-  dimensions: EvaluationDimensionItem[]
+  /** 评估维度全量（含子维度；评估维度 facet 按 分组/主维度/子维度 单选，INT-1030 全站一致性） */
+  dimensions: Dimension[]
+  /** 评估维度分类（分类分组组头） */
+  categories?: EvaluationCategory[]
   /** 已加载/已筛选用例集（INT-677：标签 facet 计数从该集实时聚合，与列表同源；回收站项不计入） */
   cases: TestCaseListItem[]
   /** 回收站「全部恢复」 */
@@ -459,6 +466,7 @@ export function TestCasesFilterToolbar({
   groups,
   tags,
   dimensions,
+  categories = [],
   cases,
   onRestoreAll,
 }: TestCasesFilterToolbarProps) {
@@ -498,10 +506,11 @@ export function TestCasesFilterToolbar({
     ...groups.map((g) => ({ value: g.id, label: g.name })),
     { value: '__ungrouped__', label: '未分组' },
   ]
-  const dimensionOptions = dimensions.map((d) => ({
-    value: String(d.id),
-    label: d.name,
-  }))
+  /** 评估维度 facet 当前选中（按 id 精确匹配；维度可能不在候选集时回退原值） */
+  const currentDimension =
+    filters.dimensionId != null
+      ? dimensions.find((d) => String(d.id) === String(filters.dimensionId)) ?? null
+      : null
 
   return (
     <div className='bg-card/50 rounded-lg border p-2.5 sm:p-3'>
@@ -533,11 +542,18 @@ export function TestCasesFilterToolbar({
           caseCounts={tagCaseCounts}
           onChange={(tag) => update({ tag })}
         />
-        <SingleFacet
-          label='评估维度'
-          value={filters.dimensionId != null ? String(filters.dimensionId) : null}
-          options={dimensionOptions}
-          onChange={(v) => update({ dimensionId: v ? Number(v) : null })}
+        {/* 评估维度 facet（INT-1030：按 分组→主维度→子维度 单选，全站一致性；「全部」清除） */}
+        <DimensionSelect
+          dimensions={dimensions}
+          categories={categories}
+          value={currentDimension ? String(currentDimension.id) : ''}
+          onValueChange={(v) => update({ dimensionId: v === '' ? null : Number(v) })}
+          valueOf={(d) => String(d.id)}
+          placeholder='全部'
+          clearLabel='全部'
+          triggerLabel='评估维度'
+          ariaLabel='评估维度筛选'
+          triggerClassName='h-8 gap-1.5 rounded-lg px-2.5 font-normal'
         />
 
         <TestCasesAlgorithmChip />
