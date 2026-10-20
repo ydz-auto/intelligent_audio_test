@@ -697,6 +697,7 @@ class ReportController(ReportControllerBase):
                 "overall_averages": overall_averages,
                 "overall_averages_map": averages_map,
                 "metric_data": ReportUtils.flatten_metric_data(metric_data, {}, metric_name_to_id),
+                "tag_metric_data": ReportUtils.flatten_tag_metric_data(core_metrics["tag_metric_data"], {}, metric_name_to_id),
                 "raw_data": ReportUtils.flatten_raw_data(raw_data),
                 "normal_distribution": normal_distribution_data,
                 "resources": resources,

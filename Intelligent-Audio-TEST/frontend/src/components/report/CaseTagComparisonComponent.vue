@@ -1045,8 +1045,25 @@ const applyFilters = async () => {
   
   try {
     const reportData = props.reportData || {}
-    const reportId = reportData.id || reportData.reportId || reportData.report_id
+    const taskId = reportData.taskId || reportData.task_id || reportData.summary?.taskId || reportData.summary?.task_id
 
+    // 优先走后端聚合工具（与报告生成同口径：按维度 statistic_method 聚合，百分比已乘 100）
+    if (taskId) {
+      const result = await reportsApi.getCaseAveragesByFilters(taskId, {
+        tags: selectedTags.value,
+        categories: selectedCategories.value
+      });
+
+      console.log('API返回结果:', result);
+
+      const extractedFromApi = extractInitialTagMetricData(result);
+      if (extractedFromApi && Object.keys(extractedFromApi).length > 0) {
+        tagMetricData.value = extractedFromApi;
+        return;
+      }
+    }
+
+    const reportId = reportData.id || reportData.reportId || reportData.report_id
     if (reportId) {
       const selectedTagList = selectedTags.value || []
       const includeUntagged = selectedTagList.includes('无标签') || selectedTagList.includes('未标记')
@@ -1064,22 +1081,6 @@ const applyFilters = async () => {
       const cases = res?.items || res?.data?.items || []
       tagMetricData.value = computeTagMetricDataFromCases(cases)
       return
-    }
-
-    const taskId = reportData.taskId || reportData.summary?.taskId;
-    if (taskId) {
-      const result = await reportsApi.getCaseAveragesByFilters(taskId, {
-        tags: selectedTags.value,
-        categories: selectedCategories.value
-      });
-      
-      console.log('API返回结果:', result);
-      
-      const extractedFromApi = extractInitialTagMetricData(result);
-      if (extractedFromApi && Object.keys(extractedFromApi).length > 0) {
-        tagMetricData.value = extractedFromApi;
-        return;
-      }
     }
   } catch (error) {
     console.error('调用API失败:', error);

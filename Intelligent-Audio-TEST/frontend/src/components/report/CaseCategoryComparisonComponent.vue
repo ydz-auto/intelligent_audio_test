@@ -1118,8 +1118,14 @@ const applyFilters = async () => {
         categories: selectedCategories.value
       });
 
+      // 合并报告自带的分组列表：接口响应的 metricData 为 resource 级别全局平均，
+      // extractInitialMetricData 需按已知分组复制数据，否则会落到"未分类"
+      const merged = {
+        ...result,
+        caseCategories: reportData.caseCategories || reportData.summary?.caseCategories || result.caseCategories
+      };
       // 更新内部metricData ref，触发重新渲染
-      metricData.value = extractInitialMetricData(result);
+      metricData.value = extractInitialMetricData(merged);
       return
     }
 
