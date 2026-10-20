@@ -234,6 +234,9 @@
         panel-id="test-step3"
         :show-actions="false"
       >
+        <!-- INT-1072 返工 P1：关联设备/API 页签数据源并入混选两侧——TestExecutionComponent 该页签按
+             associatedDevices 渲染（与 TaskDetailModal 的 devices+apis 合并口径一致），
+             API 模式纯选 API 时亦须展示所选 API（旧语义 associatedDevices=所选资源） -->
         <TestExecutionComponent
           :test-type="testTypeLabel"
           :active-tab="activeTab"
@@ -262,7 +265,7 @@
           }"
           :api-resources="apiResources"
           :associated-cases="associatedCases"
-          :associated-devices="associatedDevices"
+          :associated-devices="[...associatedDevices, ...associatedAPIs]"
           :logs="logs"
           :show-logs="true"
           :is-paused="isPaused"
