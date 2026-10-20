@@ -2,11 +2,20 @@ import { algorithmPort } from '../../composables/algorithm/algorithmPort'
 import { useModalControl, MODAL_TYPES } from '../../composables/modal/useModal'
 import { normalizeParamFields, normalizeCaseParamFields } from './algorithmParamHelpers'
 import { useNotification } from '../../composables/modal/useNotification'
+import { toUserErrorMessage } from '../../utils/errorMessage'
 import type { AlgorithmDefinition, AlgorithmGroup, Dimension } from '@/domain'
 import { ApiEndpointStatus, ApiEndpointStatusType } from '@/domain/enums'
 
 // source 合法值校验：与后端 VALID_SOURCES 对齐（含 case_config；缺了会把存量评估映射改写为 case，评估取数分支失配）
 const VALID_SOURCES = ['case', 'reference', 'device', 'api', 'case_config']
+
+/** INT-899（INT-858 N1）：错误消息安全化——原始 gRPC 异常文本不直出 Toast；
+ *  非 Error 抛出（字符串等）保持「未知错误」兜底口径（INT-291 契约）。
+ *  INT-1019：模态窗保存/编辑/启停/删除失败路径统一复用（与 AlgorithmConfigPage.errorText 同源）。 */
+function errorText(error: unknown): string {
+  if (!(error instanceof Error)) return '未知错误'
+  return toUserErrorMessage(error, '算法服务暂不可用，请稍后重试')
+}
 
 export function normalizeMappings(raw: any): { device: any[]; api: any[]; evaluation: any[] } {
   const empty = { device: [], api: [], evaluation: [] }
@@ -178,7 +187,8 @@ export function useAlgorithmCrudOps(
     } catch (error) {
       console.error('操作失败:', error)
       // INT-259：失败必须可见——原先仅 console.error，弹窗停留但无任何提示（假成功观感）
-      notification.error('保存算法失败: ' + (error instanceof Error ? error.message : '未知错误'))
+      // INT-1019：原始 gRPC 异常文本经 errorText 降级为固定文案，不直出 <InactiveRpcError...> Toast
+      notification.error('保存算法失败: ' + errorText(error))
     }
   }
 
@@ -236,6 +246,8 @@ export function useAlgorithmCrudOps(
       }
     } catch (error) {
       console.error('加载算法详情失败:', error)
+      // INT-1019：编辑详情加载失败不再静默（与页面级 loadAlgorithmDetail 一致），友好文案提示
+      notification.error('加载算法详情失败: ' + errorText(error))
     }
   }
 
@@ -253,6 +265,8 @@ export function useAlgorithmCrudOps(
       loadAlgorithms()
     } catch (error) {
       console.error(`${action}失败:`, error)
+      // INT-1019：启/禁用失败不再静默（INT-291 失败必须可见），友好文案提示
+      notification.error(`${action}失败: ` + errorText(error))
     }
   }
 
@@ -278,6 +292,8 @@ export function useAlgorithmCrudOps(
       loadAlgorithms()
     } catch (error) {
       console.error('删除失败:', error)
+      // INT-1019：删除失败不再静默（与页面级 executeDelete 一致），友好文案提示
+      notification.error('删除算法失败: ' + errorText(error))
     }
   }
 
