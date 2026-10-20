@@ -181,10 +181,10 @@ class TestAveragesCherryResolution:
         m = ReportStatsQueryMixin.__new__(ReportStatsQueryMixin)
         monkeypatch.setattr(
             m, '_calculate_averages',
-            lambda task, fcid, tr, tid: {'overall_averages': 1, 'filtered_case_ids': fcid,
-                                         'test_results': tr})
+            lambda task, fcid, tr, tid, **kw: {'overall_averages': 1, 'filtered_case_ids': fcid,
+                                                'test_results': tr})
 
-        task, task_id_filter, filtered_case_ids, test_results = m._query_cases_for_averages(
+        task, task_id_filter, filtered_case_ids, test_results, tasks_map, use_time_prefix = m._query_cases_for_averages(
             CONTAINER_ID, None, [], [], True)
 
         assert task['id'] == CONTAINER_ID
@@ -194,6 +194,9 @@ class TestAveragesCherryResolution:
         assert {r['id'] for r in test_results} == {101, 102}
         # 源结果 task_id 未被改写（红线：引用方案 A，不改 test_results.task_id）
         assert {r['task_id'] for r in test_results} == {SOURCE_TASK_ID}
+        # 任务报告：资源 key 无时间前缀（use_time_prefix=False）
+        assert use_time_prefix is False
+        assert tasks_map == {}
 
     def test_plain_task_keeps_own_ids(self, stub_cherry, monkeypatch):
         from report_service.application.handlers._report_stats_query_mixin import (

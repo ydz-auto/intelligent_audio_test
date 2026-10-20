@@ -175,7 +175,10 @@ test_reports + report_summaries / report_summary_meta / report_raw_data
 
 - **请求**：`taskId`（任务筛选）或 `reportId`（对比/二次对比报告筛选）二者必传其一；`category` / `tags` / `categories` / `includeUntagged` 为筛选条件。
 - **reportId 解析**：对比/二次对比报告经 `report_comparison_matrix.comparison_matrix.task_ids`（兜底 `report_summary.task_ids`）解析源任务集合，与 `taskId` 走同一聚合工具（INT-1059 对齐 V9.7.10 0c6b2028a）。
-- **资源 key 口径**：设备/API 资源唯一 key 与报告生成一致——无时间前缀、含版本、含 `result_type` 后缀（`get_resource_name` 形态）；筛选结果与资源列按同一 key 匹配，修复聚合匹配恒失败导致 `metricData` 为空（INT-1059 对齐 b47cae340）。
+- **资源 key 口径**：设备/API 资源唯一 key 与对应报告摘要列一致——
+  - 任务报告（`taskId` 或报告主表含 `task_id` 的 `reportId`）：无时间前缀、含版本、含 `result_type` 后缀（`get_resource_name` 形态，INT-1059 对齐 b47cae340）；
+  - 对比/二次对比报告（`reportId`，报告主表无 `task_id`）：**按源任务聚合，key 带 `t{task}-{time}-` 前缀**（`get_resource_name(result, 源任务, use_time_prefix=True)`，与对比摘要资源列 `report_compare_generator_data_mixin._collect_resources_batch` 同源）——保证筛选响应资源/指标 key 与前端对比面板列（按源任务展示）一一对应，避免列 key 与数据 key 不匹配导致数值不显示（INT-1059 返工裁定 2026-10-21）。
+  - 同一源任务共享的设备/API 在对比筛选下不跨任务合并，各源任务独立成列。
 - **响应**：`metricData`（分组×资源×指标）、`tagMetricData`（标签×资源×指标，新增）、`rawData`、`normalDistribution`、`resources`、`resourceHeaders`、`overallAverages` / `overallAveragesMap`、`filters`。
 - **百分比口径**：非 `average` 维度（pass_rate / ratio / weighted_sum_ratio）按维度 `statistic_method` 策略聚合，产出 0~100；**逐轮失败值 0 是合法数据点**，计入分子/分母（失败轮不会从分母消失，pass_rate 不误报 100%，INT-1059 对齐 a9c4adc56）；`average` 维度按轮次口径取算术平均。
 - **前端**：旧 Vue 分组/标签对比组件筛选一律走后端聚合，移除 `searchCases` + 前端手写平均（避免按用例简单平均导致超 100%，INT-1059 对齐 7bb9fd339/e4e5dface/0c6b2028a）。

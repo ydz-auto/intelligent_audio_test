@@ -107,9 +107,12 @@ class ReportStatsQueryMixin:
         )
         if not isinstance(query_result, tuple):
             return query_result
-        task, task_id_filter, filtered_case_ids, test_results = query_result
+        task, task_id_filter, filtered_case_ids, test_results, tasks_map, use_time_prefix = query_result
 
-        stats = self._calculate_averages(task, filtered_case_ids, test_results, task_id_filter)
+        stats = self._calculate_averages(
+            task, filtered_case_ids, test_results, task_id_filter,
+            tasks_map=tasks_map, use_time_prefix=use_time_prefix,
+        )
 
         return {
             "total_cases": len(stats['filtered_case_ids']),
@@ -327,12 +330,22 @@ class ReportStatsQueryMixin:
                 解析源任务集合，无 task_id 时与 taskId 走同一聚合工具）
 
         Returns:
-            tuple(task, task_id_filter, filtered_case_ids, test_results) 或错误 dict
+            tuple(task, task_id_filter, filtered_case_ids, test_results,
+                  tasks_map, use_time_prefix) 或错误 dict
+            - tasks_map: {task_id: task}（对比报告为源任务集合，用于按源任务聚合资源 key）
+            - use_time_prefix: 对比/二次对比报告为 True（资源 key 带 t{task}-{time} 前缀，
+              与对比报告摘要列一致）；任务报告为 False（无前缀，与任务报告摘要列一致）
         """
         from report_service.infrastructure.clients.grpc_clients import _grpc_get_tasks_by_ids
 
         # 对比/二次对比报告：report_id 解析源任务集合，源任务结果直接参与聚合
         if report_id and not task_id:
+            _aggregate = self.repository.get_by_id(report_id)
+            if _aggregate is None:
+                return {'success': False, 'message': '未找到指定报告'}
+            # 报告主表含 task_id → 普通任务报告（reportId 等价于 taskId 路径，资源 key 无前缀）；
+            # 无 task_id → 对比/二次对比报告（按源任务聚合，资源 key 带 t{task}-{time} 前缀）
+            is_task_report = bool(getattr(_aggregate, 'task_id', None))
             source_task_ids = self._resolve_report_source_task_ids(report_id)
             if source_task_ids is None:
                 return {'success': False, 'message': '未找到指定报告'}
@@ -345,6 +358,12 @@ class ReportStatsQueryMixin:
             task_id_filter = source_task_ids
             result_task_filter = source_task_ids
             cherry_result_ids = None
+            tasks_map = {}
+            for _t in _tasks:
+                _t_id = _t.get('id') if isinstance(_t, dict) else getattr(_t, 'id', None)
+                if _t_id is not None:
+                    tasks_map[_t_id] = _t
+            use_time_prefix = not is_task_report
         else:
             _tasks = _grpc_get_tasks_by_ids([task_id])
             task = _tasks[0] if _tasks else None
@@ -373,12 +392,16 @@ class ReportStatsQueryMixin:
             except Exception:
                 logger.debug("gRPC 查询任务合并关系失败 task_id=%s", task_id, exc_info=True)
 
+            # 任务报告：资源 key 无时间前缀（与任务报告摘要列一致，b47cae340 口径）
+            tasks_map = {}
+            use_time_prefix = False
+
         filtered_case_ids, test_results = self._query_test_cases_and_results(
             task_id_filter, result_task_filter,
             category, categories, tags, include_untagged,
             cherry_result_ids=cherry_result_ids,
         )
-        return task, task_id_filter, filtered_case_ids, test_results
+        return task, task_id_filter, filtered_case_ids, test_results, tasks_map, use_time_prefix
 
     def _resolve_report_source_task_ids(self, report_id: int):
         """解析对比/二次对比报告的源任务 ID 集合（reportId 筛选）。
@@ -478,7 +501,8 @@ class ReportStatsQueryMixin:
 
         return filtered_case_ids, test_results
 
-    def _calculate_averages(self, task, filtered_case_ids: list, test_results: list, task_id: int) -> dict:
+    def _calculate_averages(self, task, filtered_case_ids: list, test_results: list, task_id: int,
+                            tasks_map: dict = None, use_time_prefix: bool = False) -> dict:
         """计算平均值、正态分布、资源列表等统计信息（委托服务层）。
 
         Args:
@@ -486,12 +510,17 @@ class ReportStatsQueryMixin:
             filtered_case_ids: 过滤后的用例 ID 列表
             test_results: 测试结果列表
             task_id: 任务 ID
+            tasks_map: {task_id: task}（对比报告为源任务集合，INT-1059 返工：按源任务聚合资源 key）
+            use_time_prefix: 对比/二次对比报告为 True（资源 key 带 t{task}-{time} 前缀）
 
         Returns:
             dict: 统计信息字典
         """
         from report_service.application.services.report_aggregation_service import ReportAggregationService
-        return ReportAggregationService.calculate_averages(task, filtered_case_ids, test_results, task_id)
+        return ReportAggregationService.calculate_averages(
+            task, filtered_case_ids, test_results, task_id,
+            tasks_map=tasks_map, use_time_prefix=use_time_prefix,
+        )
 
 
 def _os_path_join(*parts) -> str:

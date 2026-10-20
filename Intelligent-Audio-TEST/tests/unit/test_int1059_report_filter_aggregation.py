@@ -44,10 +44,11 @@ def _dim_row(dim_id, value, round_number=None, api_raw_response=None):
     }
 
 
-def _result(rid, tc_id, device_id=None, api_id=None, result_data=None, result_data_path=None):
+def _result(rid, tc_id, device_id=None, api_id=None, result_data=None, result_data_path=None,
+            task_id=7):
     return {
         'id': rid,
-        'task_id': 7,
+        'task_id': task_id,
         'test_case_id': tc_id,
         'device_id': device_id,
         'api_id': api_id,
@@ -231,13 +232,16 @@ class TestReportIdResolution:
 
         monkeypatch.setattr(m, '_query_test_cases_and_results', _fake_query)
 
-        task, task_id_filter, fcid, tr = m._query_cases_for_averages(
+        task, task_id_filter, fcid, tr, tasks_map, use_time_prefix = m._query_cases_for_averages(
             None, None, [], [], True, report_id=101)
 
         assert task['id'] == 7  # 取第一个源任务作为标签格式化代表
         assert task_id_filter == [7, 8]
         assert captured['tf'] == [7, 8]
         assert captured['rf'] == [7, 8]
+        # INT-1059 返工：对比报告按源任务聚合（use_time_prefix=True + 源任务映射）
+        assert use_time_prefix is True
+        assert set(tasks_map.keys()) == {7, 8}
 
     def test_report_id_resolves_summary_task_ids_fallback(self, monkeypatch):
         """无对比矩阵时回退 summary metadata.task_ids。"""
@@ -256,10 +260,12 @@ class TestReportIdResolution:
 
         monkeypatch.setattr(m, '_query_test_cases_and_results', _fake_query)
 
-        task, task_id_filter, fcid, tr = m._query_cases_for_averages(
+        task, task_id_filter, fcid, tr, tasks_map, use_time_prefix = m._query_cases_for_averages(
             None, None, [], [], True, report_id=102)
         assert task_id_filter == [3, 4]
         assert captured['tf'] == [3, 4]
+        assert use_time_prefix is True
+        assert set(tasks_map.keys()) == {3, 4}
 
     def test_report_id_missing_report_returns_error(self, monkeypatch):
         """报告不存在 → 错误 dict（非 tuple）。"""
@@ -276,6 +282,26 @@ class TestReportIdResolution:
         out = m._query_cases_for_averages(None, None, [], [], True, report_id=103)
         assert isinstance(out, dict)
         assert out['message'] == '对比报告未关联任何任务'
+
+    def test_report_id_task_report_keeps_no_prefix(self, monkeypatch):
+        """普通任务报告经 reportId 查询：报告主表含 task_id → 资源 key 无前缀（use_time_prefix=False）。"""
+        repo = _FakeRepo(
+            aggregate=_FakeAggregate(task_id=91),
+            comparison=None,
+            summaries=[],
+        )
+        m = self._make_handler(repo, monkeypatch)
+
+        def _fake_query(task_id_filter, result_task_filter, *a, **k):
+            return ['c-1'], []
+
+        monkeypatch.setattr(m, '_query_test_cases_and_results', _fake_query)
+
+        task, task_id_filter, fcid, tr, tasks_map, use_time_prefix = m._query_cases_for_averages(
+            None, None, [], [], True, report_id=91)
+        assert task_id_filter == [91]
+        assert use_time_prefix is False
+        assert tasks_map == {91: {'id': 91, 'name': 't91', 'status': 'completed'}}
 
     def test_handle_get_case_averages_report_id_passthrough(self, monkeypatch):
         """handle_get_case_averages：report_id 走通，响应含 tag_metric_data 键。"""
@@ -295,7 +321,7 @@ class TestReportIdResolution:
             lambda ids: [{'id': i, 'name': f't{i}', 'status': 'completed'} for i in ids])
         monkeypatch.setattr(
             m, '_calculate_averages',
-            lambda task, fcid, tr, tid: {
+            lambda task, fcid, tr, tid, **kw: {
                 'filtered_case_ids': fcid, 'test_results': tr,
                 'overall_averages': [], 'averages_map': {},
                 'metric_data': {}, 'tag_metric_data': {},
@@ -316,6 +342,92 @@ class TestReportIdResolution:
         m = ReportStatsQueryMixin.__new__(ReportStatsQueryMixin)
         out = m.handle_get_case_averages({})
         assert out['message'] == '缺少必要参数: task_id 或 report_id'
+
+
+# ======================================================================
+# 2.5 对比报告按源任务聚合（INT-1059 返工：P2 打回修复）
+# ======================================================================
+
+class TestComparisonPerTaskAggregation:
+    """对比/二次对比报告筛选（use_time_prefix=True）：资源/指标 key 按源任务加前缀，
+    与对比摘要列一致，前端对比面板列不再 0.00/空白。"""
+
+    def _run_calculate(self):
+        """两源任务共享同一 API 资源：任务7 用例101 达标、任务8 用例102 失败。"""
+        tasks_map = {
+            7: {'id': 7, 'name': 't7'},   # 无 started_at → notime 前缀
+            8: {'id': 8, 'name': 't8'},
+        }
+        results = [
+            _result(1, 101, api_id=2, task_id=7),
+            _result(2, 102, api_id=2, task_id=8),
+        ]
+        dim_map = {
+            1: [_dim_row(1, 0.8), _dim_row(2, 80.0)],
+            2: [_dim_row(1, 0.0), _dim_row(2, 60.0)],
+        }
+        tc_map = _test_cases_map([
+            _tc(101, 'g1', []),
+            _tc(102, 'g1', [{'name': 'tagA'}]),
+        ])
+
+        import report_service.application.services.report_aggregation.stats_mixin as stats_mod
+        import report_service.application.services.report_aggregation.resource_mixin as agg_resource_mod
+        import report_service.application.services.report_utils.resource_mixin as utils_resource_mod
+
+        api = {'id': 2, 'name': 'api', 'api_type': 'http', 'base_url': 'http://x',
+               'headers': None, 'meta': {'version': '1.0'}}
+
+        with patch.object(stats_mod, '_grpc_list_dimensions_all', return_value=_DIMS), \
+             patch.object(stats_mod, '_grpc_get_dimension_params',
+                          return_value=[{'param_direction': 'output', 'agg_role': 'pass_ge',
+                                         'pass_threshold': 0.6}]), \
+             patch.object(stats_mod, '_grpc_get_dim_results', return_value=dim_map), \
+             patch.object(agg_resource_mod, '_grpc_list_testcases_by_ids',
+                          return_value=tc_map), \
+             patch.object(utils_resource_mod, '_grpc_get_api',
+                          return_value=api), \
+             patch.object(utils_resource_mod, '_grpc_get_device',
+                          return_value=None):
+            from report_service.application.services.report_aggregation_service import (
+                ReportAggregationService,
+            )
+            return ReportAggregationService.calculate_averages(
+                tasks_map[7], [101, 102], results, [7, 8],
+                tasks_map=tasks_map, use_time_prefix=True,
+            )
+
+    def test_resources_keep_per_task_prefix(self):
+        """资源 key 带 t{task}-notime- 前缀（与对比摘要列一致），不合并去重。"""
+        stats = self._run_calculate()
+        assert 't7-notime-2-api-1.0' in stats['resources']
+        assert 't8-notime-2-api-1.0' in stats['resources']
+        # 两个源任务共享同一 API → 两条资源列（不跨任务合并）
+        assert stats['resources'] == ['t7-notime-2-api-1.0', 't8-notime-2-api-1.0']
+
+    def test_metric_data_keyed_per_task(self):
+        """metric_data 按源任务各自聚合：任务7 达标 100%、任务8 失败 0%。"""
+        stats = self._run_calculate()
+        md = stats['metric_data']['g1']
+        assert md['t7-notime-2-api-1.0']['达标率'] == 100.0
+        assert md['t8-notime-2-api-1.0']['达标率'] == 0.0
+        assert md['t7-notime-2-api-1.0']['准确率'] == 80.0
+        assert md['t8-notime-2-api-1.0']['准确率'] == 60.0
+
+    def test_tag_metric_data_keyed_per_task(self):
+        """tag_metric_data 同样按源任务聚合（未标记→任务7，tagA→任务8）。"""
+        stats = self._run_calculate()
+        tag_data = stats['tag_metric_data']
+        assert tag_data['未标记']['t7-notime-2-api-1.0']['达标率'] == 100.0
+        assert tag_data['tagA']['t8-notime-2-api-1.0']['达标率'] == 0.0
+        assert 't8-notime-2-api-1.0' not in tag_data['未标记']
+        assert 't7-notime-2-api-1.0' not in tag_data['tagA']
+
+    def test_resource_headers_match_resources(self):
+        """resource_headers key 与 resources 一一对应。"""
+        stats = self._run_calculate()
+        header_keys = [h['key'] for h in stats['resource_headers']]
+        assert header_keys == stats['resources']
 
 
 # ======================================================================
