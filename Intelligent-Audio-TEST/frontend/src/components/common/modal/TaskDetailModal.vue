@@ -258,9 +258,7 @@ async function loadOlderLogs(page: number, perPage = 100, maxRetries = 3, delayM
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`[TaskDetailModal] 尝试加载历史日志 (${attempt}/${maxRetries}), 页: ${page}`);
-      
-      const response = await logsPort.getAll({ 
+      const response = await logsPort.getAll({
         taskId: String(props.taskId),
         page: page,
         perPage: perPage
@@ -281,7 +279,6 @@ async function loadOlderLogs(page: number, perPage = 100, maxRetries = 3, delayM
         
         logPagination.value.total = response.total || 0;
         logPagination.value.hasMore = localLogs.value.length < logPagination.value.total;
-        console.log(`[TaskDetailModal] 成功加载 ${newItems.length} 条历史日志, 总计: ${localLogs.value.length}/${logPagination.value.total}`);
         return true;
       }
       return true;
@@ -325,7 +322,6 @@ async function startLogPolling() {
           // 新日志按时间升序追加到尾部（localLogs 为 ASC 顺序）
           const sortedNew = [...newLogs].sort((a: Log, b: Log) => getLogTimestamp(a) - getLogTimestamp(b));
           localLogs.value = [...localLogs.value, ...sortedNew];
-          console.log(`[TaskDetailModal] 轮询获取 ${newLogs.length} 条新日志, 总计: ${localLogs.value.length}`);
         }
       }
     } catch (err) {
@@ -470,7 +466,6 @@ async function fetchTaskDetails() {
       localLogs.value = [...firstResponse.items].reverse();
       logPagination.value.total = firstResponse.total || 0;
       logPagination.value.hasMore = localLogs.value.length < logPagination.value.total;
-      console.log(`[TaskDetailModal] 初始加载 ${localLogs.value.length}/${logPagination.value.total} 条最新日志`);
     }
     
     if (String(taskData.status) === TaskStatus.RUNNING || String(taskData.status) === TaskStatus.STARTING) {
