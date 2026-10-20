@@ -46,6 +46,8 @@ export function apiDeviceFromDto(dto: ApiItemDto): ApiDevice {
     meta: dto.meta,
     protocol: metaProtocol ?? fallbackProtocol(dto.api_url),
     environment: metaEnv,
+    proxyType: dto.proxy_type ?? null,
+    proxyUrl: dto.proxy_url ?? null,
     algorithmType: dto.algorithm_type,
     defaultMaxProcess: dto.default_max_process,
     defaultMaxTimeout: dto.default_max_timeout,

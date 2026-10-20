@@ -41,6 +41,8 @@ export interface ScanDevicesDialogProps {
     kind: DevicesTabKey,
     prefill: Partial<TestDevice> | Partial<PlaybackDevice> | Partial<ApiDevice>
   ) => void
+  /** INT-1029 抽屉内扫描回填：允许选择已注册设备（编辑态回填当前表单，按钮「选择」） */
+  fillMode?: boolean
 }
 
 /** 扫描结果行（device.py DeviceScanItem / playback.py PlaybackScanItem，snake_case 直出） */
@@ -78,6 +80,7 @@ export function ScanDevicesDialog(props: ScanDevicesDialogProps) {
   const [adding, setAdding] = useState<Set<number>>(new Set())
   const timerRef = useRef<number | null>(null)
   const { scan } = useDeviceMutations()
+  const fillMode = props.fillMode === true
 
   const clearTimer = () => {
     if (timerRef.current != null) {
@@ -161,7 +164,7 @@ export function ScanDevicesDialog(props: ScanDevicesDialogProps) {
             deviceType: (row?.type as PlaybackDevice['deviceType']) ?? 'dry',
           }
     props.onAddToMutate(props.tab, prefill)
-    toast.success('已添加到设备登记表单，请补充信息后保存')
+    toast.success(fillMode ? '已回填设备信息，可修改后保存' : '已添加到设备登记表单，请补充信息后保存')
   }
 
   const stageIndex = Math.min(Math.floor(progress / 25), SCAN_STAGES.length - 1)
@@ -230,7 +233,7 @@ export function ScanDevicesDialog(props: ScanDevicesDialogProps) {
                         {row.ip ? ` · ${row.ip}` : ''}
                       </span>
                     </span>
-                    {registered ? (
+                    {registered && !fillMode ? (
                       <Badge variant='secondary' className='rounded-md px-1.5 font-normal'>
                         已添加
                       </Badge>
@@ -241,14 +244,16 @@ export function ScanDevicesDialog(props: ScanDevicesDialogProps) {
                         disabled={adding.has(index)}
                         onClick={() => handleAdd(index)}
                       >
-                        {adding.has(index) ? '已添加…' : '添加'}
+                        {adding.has(index) ? (fillMode ? '已选择…' : '已添加…') : fillMode ? '选择' : '添加'}
                       </Button>
                     )}
                   </div>
                 )
               })}
               <p className='text-muted-foreground text-xs'>
-                已注册设备显示「已添加」，可跳转登记表单补充信息后保存（§6.1）
+                {fillMode
+                  ? '选择设备将回填登记表单（已注册设备也可选择，INT-1029）'
+                  : '已注册设备显示「已添加」，可跳转登记表单补充信息后保存（§6.1）'}
               </p>
             </div>
           )}

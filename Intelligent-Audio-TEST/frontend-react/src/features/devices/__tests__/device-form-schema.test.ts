@@ -106,4 +106,62 @@ describe('设备表单 schema（16_设备域.md §6.2 必填口径；AGENTS §3.
       }).success
     ).toBe(true)
   })
+
+  describe('API 代理配置校验（INT-1029：proxy_type/proxy_url 契约 user:pass@host:port 不含 scheme）', () => {
+    const baseApi = {
+      name: '语音识别 API',
+      description: '',
+      vendor: '',
+      apiUrl: 'https://api.example.com/v1/asr',
+      protocol: 'https',
+      environment: 'testing',
+      algorithmType: 'asr_streaming',
+      maxProcess: '5',
+      maxTimeout: '30',
+      maxAudioDuration: '60',
+    }
+
+    it('代理类型已选但代理地址为空 → 校验失败', () => {
+      const result = apiDeviceFormSchema.safeParse({ ...baseApi, proxyType: 'http', proxyUrl: '' })
+      expect(result.success).toBe(false)
+      if (!result.success) {
+        expect(result.error.issues.map((i) => i.path[0])).toContain('proxyUrl')
+      }
+    })
+
+    it('代理地址带 scheme 前缀 → 校验失败（INT-846 契约）', () => {
+      const result = apiDeviceFormSchema.safeParse({
+        ...baseApi,
+        proxyType: 'socks5',
+        proxyUrl: 'http://user:pass@127.0.0.1:7890',
+      })
+      expect(result.success).toBe(false)
+      if (!result.success) {
+        expect(result.error.issues.map((i) => i.path[0])).toContain('proxyUrl')
+      }
+    })
+
+    it('未选代理类型但填了代理地址 → 校验失败', () => {
+      const result = apiDeviceFormSchema.safeParse({
+        ...baseApi,
+        proxyType: '',
+        proxyUrl: 'user:pass@127.0.0.1:7890',
+      })
+      expect(result.success).toBe(false)
+    })
+
+    it('合法代理配置通过校验（user:pass@host:port）', () => {
+      const result = apiDeviceFormSchema.safeParse({
+        ...baseApi,
+        proxyType: 'http',
+        proxyUrl: 'user:pass@127.0.0.1:7890',
+      })
+      expect(result.success).toBe(true)
+    })
+
+    it('不配置代理（类型空+地址空）通过校验', () => {
+      const result = apiDeviceFormSchema.safeParse({ ...baseApi, proxyType: '', proxyUrl: '' })
+      expect(result.success).toBe(true)
+    })
+  })
 })

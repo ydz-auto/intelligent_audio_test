@@ -29,6 +29,10 @@ export interface ApiDevice {
   meta: Record<string, unknown>
   protocol: string | null
   environment: string | null
+  /** 代理类型（http/https/socks5/socks5h；空=不代理），api.py ApiItem proxy_type 实测 */
+  proxyType: string | null
+  /** 代理地址（契约格式 user:pass@host:port，不含 scheme 前缀；INT-1029 前端可配置） */
+  proxyUrl: string | null
   algorithmType: string | null
   defaultMaxProcess: number | null
   defaultMaxTimeout: number | null

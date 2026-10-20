@@ -349,6 +349,9 @@ function toApiDeviceUpsertDto(data: Partial<ApiDevice>): Record<string, unknown>
   pick('defaultMaxAudioDuration', 'default_max_audio_duration')
   pick('status', 'status')
   pick('rmsSplMappingId', 'rms_spl_mapping_id')
+  // INT-1029：每 API 代理配置（api_test_service ApiCreateInput/ApiUpdateInput 契约 proxy_type/proxy_url）
+  pick('proxyType', 'proxy_type')
+  pick('proxyUrl', 'proxy_url')
   if (data.endpoints !== undefined) {
     dto.endpoints = data.endpoints.map(toApiEndpointUpsertDto)
   }
