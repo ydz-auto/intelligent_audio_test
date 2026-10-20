@@ -184,7 +184,7 @@ const isSelected = (id) => props.selectedDimensions.includes(id);
 /* 评估维度记录行选中样式（原在父组件 scoped，子组件需自带） */
 tr:has(.dimension-checkbox:checked) {
   background-color: color-mix(in srgb, var(--primary) 5%, transparent);
-  border-left: 4px solid var(--primary-color);
+  border-left: 4px solid var(--primary);
 }
 
 /* 评估维度复选框样式 */
@@ -198,11 +198,11 @@ tr:has(.dimension-checkbox:checked) {
 
 /* 子维度行背景微调 */
 .sub-dimension-row {
-  background-color: var(--background-secondary, var(--color-neutral-50));
+  background-color: var(--muted, var(--color-neutral-50));
 }
 
 .sub-dimension-row:hover {
-  background-color: var(--background-tertiary, var(--muted));
+  background-color: var(--gray-light, var(--muted));
 }
 
 /* 维度名称单元格容器 */
@@ -236,9 +236,9 @@ tr:has(.dimension-checkbox:checked) {
 }
 
 .main-dim-badge {
-  background-color: var(--primary-light, var(--warning-light));
-  color: var(--primary-color, var(--primary));
-  border: 1px solid var(--primary-color, var(--primary));
+  background-color: var(--accent, var(--warning-light));
+  color: var(--primary, var(--primary));
+  border: 1px solid var(--primary, var(--primary));
 }
 
 .sub-dim-badge {
@@ -250,7 +250,7 @@ tr:has(.dimension-checkbox:checked) {
 /* 维度名称文字 */
 .dimension-name-text {
   font-weight: var(--font-weight-medium, 500);
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 
 /* 父维度提示文字 */
@@ -272,15 +272,15 @@ tr:has(.dimension-checkbox:checked) {
   padding: 2px 8px;
   font-size: 12px;
   border-radius: 4px;
-  background-color: var(--background-secondary);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
+  background-color: var(--muted);
+  color: var(--muted-foreground);
+  border: 1px solid var(--border);
 }
 
 .algo-tag.is-default {
-  background-color: var(--primary-light);
-  color: var(--primary-color);
-  border-color: var(--primary-color);
+  background-color: var(--accent);
+  color: var(--primary);
+  border-color: var(--primary);
 }
 
 .text-muted {

@@ -311,12 +311,12 @@ onMounted(() => {
 
 .perm-count {
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .field-hint {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   margin: var(--spacing-xs) 0 var(--spacing-sm);
 }
 
@@ -351,7 +351,7 @@ onMounted(() => {
 }
 
 .perm-desc {
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 12px;
 }
 

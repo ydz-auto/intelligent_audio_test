@@ -340,11 +340,11 @@ function getTypeLabel(type: string): string {
 }
 
 .folder-header:hover {
-  background-color: var(--background-secondary, var(--muted));
+  background-color: var(--muted, var(--muted));
 }
 
 .folder-header i {
-  color: var(--primary-color, var(--secondary));
+  color: var(--primary, var(--secondary));
   font-size: 14px;
   width: 16px;
   text-align: center;
@@ -352,12 +352,12 @@ function getTypeLabel(type: string): string {
 
 .folder-name {
   font-weight: 500;
-  color: var(--text-primary, var(--foreground));
+  color: var(--foreground, var(--foreground));
 }
 
 .folder-stats {
   font-size: 12px;
-  color: var(--text-muted, var(--color-gray-400));
+  color: var(--muted-foreground, var(--color-gray-400));
 }
 
 .folder-content {
@@ -377,7 +377,7 @@ function getTypeLabel(type: string): string {
   align-items: center;
   gap: var(--spacing-md, 12px);
   padding: var(--spacing-sm, 8px) var(--spacing-md, 12px);
-  border: 1px solid var(--border-color, var(--border));
+  border: 1px solid var(--border, var(--border));
   border-radius: var(--radius-control);
   margin-bottom: var(--spacing-xs, 4px);
   transition: all 0.15s;
@@ -385,19 +385,19 @@ function getTypeLabel(type: string): string {
 }
 
 .file-item:hover {
-  background-color: var(--background-secondary, var(--muted));
-  border-color: var(--primary-color, var(--secondary));
+  background-color: var(--muted, var(--muted));
+  border-color: var(--primary, var(--secondary));
   transform: translateY(-1px);
   box-shadow: 0 2px 4px color-mix(in srgb, var(--color-black) 5%, transparent);
 }
 
 .file-item.highlighted {
-  background-color: var(--primary-light, var(--color-indigo-100));
-  border-color: var(--primary-color, var(--secondary));
+  background-color: var(--accent, var(--color-indigo-100));
+  border-color: var(--primary, var(--secondary));
 }
 
 .file-icon {
-  color: var(--primary-color, var(--secondary));
+  color: var(--primary, var(--secondary));
   font-size: var(--font-size-lg, 18px);
   width: 24px;
   text-align: center;
@@ -410,7 +410,7 @@ function getTypeLabel(type: string): string {
 
 .file-name {
   font-weight: 500;
-  color: var(--text-primary, var(--foreground));
+  color: var(--foreground, var(--foreground));
   margin-bottom: var(--spacing-xs, 4px);
   white-space: normal;
   word-wrap: break-word;
@@ -429,11 +429,11 @@ function getTypeLabel(type: string): string {
 }
 
 .file-size {
-  color: var(--text-muted, var(--color-gray-400));
+  color: var(--muted-foreground, var(--color-gray-400));
 }
 
 .file-duration {
-  color: var(--text-muted, var(--color-gray-400));
+  color: var(--muted-foreground, var(--color-gray-400));
 }
 
 .format-badge {
@@ -443,8 +443,8 @@ function getTypeLabel(type: string): string {
   font-size: 11px;
   font-weight: 500;
   text-transform: uppercase;
-  background-color: var(--background-tertiary, var(--color-gray-200));
-  color: var(--text-secondary, var(--color-gray-500));
+  background-color: var(--gray-light, var(--color-gray-200));
+  color: var(--muted-foreground, var(--color-gray-500));
 }
 
 .format-badge.wav { background-color: var(--color-secondary-light); color: var(--secondary-deep); }
@@ -488,15 +488,15 @@ function getTypeLabel(type: string): string {
 }
 
 .btn-secondary {
-  background-color: var(--background-secondary, var(--muted));
-  border: 1px solid var(--border-color, var(--border)) ;
-  color: var(--text-primary, var(--foreground));
+  background-color: var(--muted, var(--muted));
+  border: 1px solid var(--border, var(--border)) ;
+  color: var(--foreground, var(--foreground));
 }
 
 .btn-secondary:hover {
-  background-color: var(--background-tertiary, var(--color-gray-200));
-  border-color: var(--primary-color, var(--secondary)) ;
-  color: var(--primary-color, var(--secondary));
+  background-color: var(--gray-light, var(--color-gray-200));
+  border-color: var(--primary, var(--secondary)) ;
+  color: var(--primary, var(--secondary));
 }
 
 .btn-danger {
@@ -513,14 +513,14 @@ function getTypeLabel(type: string): string {
 }
 
 .audio-checkbox {
-  accent-color: var(--primary-color, var(--secondary));
+  accent-color: var(--primary, var(--secondary));
   cursor: pointer;
   width: 16px;
   height: 16px;
 }
 
 .folder-checkbox {
-  accent-color: var(--primary-color, var(--secondary));
+  accent-color: var(--primary, var(--secondary));
   cursor: pointer;
   width: 16px;
   height: 16px;
@@ -530,13 +530,13 @@ function getTypeLabel(type: string): string {
 
 .folder-loading {
   margin-left: 8px;
-  color: var(--primary-color, var(--secondary));
+  color: var(--primary, var(--secondary));
   font-size: 12px;
 }
 
 .lazy-load-hint {
   padding: 12px 20px;
-  color: var(--text-muted, var(--color-gray-400));
+  color: var(--muted-foreground, var(--color-gray-400));
   font-size: 13px;
   text-align: center;
 }

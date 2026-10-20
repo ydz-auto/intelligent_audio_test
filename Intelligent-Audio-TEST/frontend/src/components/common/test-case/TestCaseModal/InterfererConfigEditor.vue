@@ -299,7 +299,7 @@ function onInterfererDeviceChange(index: number, deviceId: string) {
 
 <style scoped>
 .interferer-editor {
-  border: 1px solid var(--border-color, var(--border));
+  border: 1px solid var(--border, var(--border));
   border-radius: var(--radius-control);
   overflow: hidden;
 }
@@ -309,14 +309,14 @@ function onInterfererDeviceChange(index: number, deviceId: string) {
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  background: var(--background-secondary, var(--muted));
-  border-bottom: 1px solid var(--border-color, var(--border));
+  background: var(--muted, var(--muted));
+  border-bottom: 1px solid var(--border, var(--border));
 }
 
 .intf-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary, var(--foreground));
+  color: var(--foreground, var(--foreground));
   display: flex;
   align-items: center;
   gap: 6px;
@@ -343,7 +343,7 @@ function onInterfererDeviceChange(index: number, deviceId: string) {
 }
 
 .intf-card {
-  border-bottom: 1px solid var(--border-color, var(--border));
+  border-bottom: 1px solid var(--border, var(--border));
 }
 .intf-card:last-child {
   border-bottom: none;
@@ -354,14 +354,14 @@ function onInterfererDeviceChange(index: number, deviceId: string) {
   align-items: center;
   justify-content: space-between;
   padding: 8px 14px;
-  background: var(--background-primary, var(--background));
+  background: var(--background, var(--background));
   border-bottom: 1px solid var(--gray-light);
 }
 
 .intf-card-title {
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-primary, var(--foreground));
+  color: var(--foreground, var(--foreground));
 }
 
 .intf-remove-btn {
@@ -370,7 +370,7 @@ function onInterfererDeviceChange(index: number, deviceId: string) {
   border: 1px solid var(--destructive-light);
   border-radius: var(--radius-control);
   background: transparent;
-  color: var(--danger-color, var(--destructive));
+  color: var(--destructive, var(--destructive));
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -400,7 +400,7 @@ function onInterfererDeviceChange(index: number, deviceId: string) {
 .intf-field-label {
   font-size: 12px;
   font-weight: 500;
-  color: var(--text-secondary, var(--color-gray-500));
+  color: var(--muted-foreground, var(--color-gray-500));
   min-width: 80px;
 }
 
@@ -416,12 +416,12 @@ function onInterfererDeviceChange(index: number, deviceId: string) {
   gap: 6px;
   cursor: pointer;
   font-size: 12px;
-  color: var(--text-secondary, var(--color-gray-500));
+  color: var(--muted-foreground, var(--color-gray-500));
 }
 .intf-switch input[type="checkbox"] {
   width: 16px;
   height: 16px;
-  accent-color: var(--primary-color, var(--primary));
+  accent-color: var(--primary, var(--primary));
 }
 
 /* 音频卡片样式 */

@@ -29,12 +29,12 @@ const allowed = computed(() =>
   align-items: center;
   justify-content: center;
   padding: 60px 0;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   gap: var(--spacing-sm);
 }
 
 .settings-forbidden i {
   font-size: 40px;
-  color: var(--danger-color);
+  color: var(--destructive);
 }
 </style>

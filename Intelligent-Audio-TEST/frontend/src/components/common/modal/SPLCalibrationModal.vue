@@ -228,12 +228,12 @@ const handleStart = async () => {
 
 .modal-header h3 {
   margin: 0 0 5px 0;
-  color: var(--primary-color)
+  color: var(--primary)
 }
 
 .subtitle {
   margin: 0 0 20px 0;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 0.9em;
 }
 
@@ -312,13 +312,13 @@ const handleStart = async () => {
 
 .progress-bar {
   height: 100%;
-  background-color: var(--primary-color);
+  background-color: var(--primary);
   transition: width 0.3s ease;
 }
 
 .current-step {
   font-size: 0.9em;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .loading-spinner {
@@ -326,7 +326,7 @@ const handleStart = async () => {
   width: 40px;
   height: 40px;
   border: 4px solid color-mix(in srgb, var(--color-black) 10%, transparent);
-  border-left-color: var(--primary-color);
+  border-left-color: var(--primary);
   border-radius: var(--radius-pill);
   animation: spin 1s linear infinite;
 }
@@ -394,7 +394,7 @@ const handleStart = async () => {
   display: block;
   margin-bottom: 10px;
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 
 .curve-visualization {
@@ -418,7 +418,7 @@ const handleStart = async () => {
 .curve-bar {
   width: 8px;
   min-width: 4px;
-  background-color: var(--primary-color);
+  background-color: var(--primary);
   border-radius: var(--radius-tag) var(--radius-tag) 0 0;
   transition: height 0.2s ease;
   cursor: pointer;
@@ -434,6 +434,6 @@ const handleStart = async () => {
   width: 100%;
   padding: 0 5px;
   font-size: 0.75em;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 </style>

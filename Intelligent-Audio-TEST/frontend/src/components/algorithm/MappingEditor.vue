@@ -847,10 +847,10 @@ function handleRemove(record: any) {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-full);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
   padding: 3px;
-  background: var(--background-secondary);
+  background: var(--muted);
   box-shadow: inset 0 1px 2px color-mix(in srgb, var(--color-black) 4%, transparent);
 }
 .view-mode-tab {
@@ -860,9 +860,9 @@ function handleRemove(record: any) {
   padding: 5px 14px;
   border: none;
   background: transparent;
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-full);
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   cursor: pointer;
   transition: all var(--transition-fast);
   white-space: nowrap;
@@ -871,7 +871,7 @@ function handleRemove(record: any) {
   font-size: 12px;
 }
 .view-mode-tab:hover {
-  color: var(--primary-color);
+  color: var(--primary);
   background: color-mix(in srgb, var(--color-indigo-500) 8%, transparent);
 }
 .view-mode-tab.active {
@@ -887,9 +887,9 @@ function handleRemove(record: any) {
 .dimension-group-header-row td {
   display: table-cell !important;
   min-width: 0 !important;
-  background: var(--primary-light) !important;
+  background: var(--accent) !important;
   font-weight: var(--font-weight-medium);
-  color: var(--primary-color);
+  color: var(--primary);
   padding: 6px 12px;
   white-space: normal;
   overflow: visible;
@@ -905,22 +905,22 @@ function handleRemove(record: any) {
 .dimension-group-count {
   margin-left: 8px;
   font-size: var(--font-size-xs);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 /* 分组末尾整行添加按钮 */
 .dimension-group-add-row td {
-  background: var(--background-secondary) !important;
-  color: var(--text-secondary);
-  border-top: 1px dashed var(--border-color);
+  background: var(--muted) !important;
+  color: var(--muted-foreground);
+  border-top: 1px dashed var(--border);
 }
 .dimension-group-add-row:hover td {
-  background: var(--primary-light) !important;
-  color: var(--primary-color);
+  background: var(--accent) !important;
+  color: var(--primary);
 }
 .dimension-group-add-row .add-row-icon {
-  background: var(--primary-light);
-  color: var(--primary-color);
+  background: var(--accent);
+  color: var(--primary);
 }
 .dimension-group-add-row:hover .add-row-icon {
   background: var(--primary-gradient); /* 去掉死回退（同 .view-mode-tab.active） */
@@ -958,11 +958,11 @@ function handleRemove(record: any) {
 
 .table-container { overflow-x: auto; }
 .data-table { width: 100%; border-collapse: collapse; font-size: var(--font-size-sm); }
-.data-table th, .data-table td { padding: var(--spacing-sm); text-align: left; border-bottom: 1px solid var(--border-color); }
-.data-table th { background: var(--background-secondary); font-weight: var(--font-weight-medium); color: var(--text-secondary); }
-.data-table tbody tr:hover { background: var(--background-hover); }
-.empty-row { text-align: center; color: var(--text-muted); padding: var(--spacing-lg); }
-.param-name-cell { color: var(--text-secondary); font-size: var(--font-size-sm); }
+.data-table th, .data-table td { padding: var(--spacing-sm); text-align: left; border-bottom: 1px solid var(--border); }
+.data-table th { background: var(--muted); font-weight: var(--font-weight-medium); color: var(--muted-foreground); }
+.data-table tbody tr:hover { background: var(--gray-light); }
+.empty-row { text-align: center; color: var(--muted-foreground); padding: var(--spacing-lg); }
+.param-name-cell { color: var(--muted-foreground); font-size: var(--font-size-sm); }
 
 /* 表格底部"添加"行：整行可点击 */
 .add-row {
@@ -984,11 +984,11 @@ function handleRemove(record: any) {
 }
 
 .add-row:hover td {
-  background: var(--primary-light);
+  background: var(--accent);
 }
 
 .add-row:active td {
-  background: var(--primary-light);
+  background: var(--accent);
 }
 
 .add-row-content {
@@ -996,7 +996,7 @@ function handleRemove(record: any) {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
   transition: color var(--transition-normal);
@@ -1008,24 +1008,24 @@ function handleRemove(record: any) {
   justify-content: center;
   width: 22px;
   height: 22px;
-  border-radius: var(--border-radius-full);
-  background: var(--primary-light);
-  color: var(--primary-color);
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: var(--primary);
   font-size: 11px;
   transition: all var(--transition-normal);
 }
 
 .add-row:hover .add-row-content {
-  color: var(--primary-color);
+  color: var(--primary);
 }
 
 .add-row:hover .add-row-icon {
   background: var(--primary-gradient);
   color: var(--color-white);
 }
-.form-input-sm { width: 100%; padding: var(--spacing-xs) var(--spacing-sm); font-size: var(--font-size-sm); height: 32px; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); background: var(--white-color); color: var(--text-primary); transition: all var(--transition-fast); }
-.form-input-sm:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 2px var(--primary-light); }
-.form-input-sm::placeholder { color: var(--text-muted); }
-.btn-danger { color: var(--danger-color); }
-.btn-danger:hover { background: var(--danger-light); color: var(--danger-color); }
+.form-input-sm { width: 100%; padding: var(--spacing-xs) var(--spacing-sm); font-size: var(--font-size-sm); height: 32px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--white-color); color: var(--foreground); transition: all var(--transition-fast); }
+.form-input-sm:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px var(--accent); }
+.form-input-sm::placeholder { color: var(--muted-foreground); }
+.btn-danger { color: var(--destructive); }
+.btn-danger:hover { background: var(--destructive-light); color: var(--destructive); }
 </style>

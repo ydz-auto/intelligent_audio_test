@@ -282,7 +282,7 @@ watch(enabled, () => {
   flex-direction: column;
   gap: 12px;
   margin-top: 24px;
-  border-top: 2px dashed var(--primary-color, var(--primary));
+  border-top: 2px dashed var(--primary, var(--primary));
   padding-top: 24px;
 }
 

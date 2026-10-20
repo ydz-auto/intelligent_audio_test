@@ -153,13 +153,13 @@ watch(() => props.visible, (newValue) => {
     border: none;
     font-size: 24px;
     cursor: pointer;
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
     padding: 0;
     line-height: 1;
 }
 
 .close-btn:hover{
-    color: var(--text-primary);
+    color: var(--foreground);
 }
 
 
@@ -179,14 +179,14 @@ watch(() => props.visible, (newValue) => {
   left: 12px;
   top: 50%;
   transform: translateY(-50%);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 16px;
 }
 
 .search-input{
   width: 100%;
   padding: 10px 12px 10px 40px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
   font-size: 14px;
   transition: all 0.3s ease;
@@ -194,7 +194,7 @@ watch(() => props.visible, (newValue) => {
 
 .search-input:focus{
   outline: none;
-  border-color: var(--primary-color);
+  border-color: var(--primary);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 10%, transparent);
 }
 
@@ -205,7 +205,7 @@ watch(() => props.visible, (newValue) => {
 .form-input{
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: var(--radius-control);
   font-size: 14px;
   transition: all 0.3s ease;
@@ -213,7 +213,7 @@ watch(() => props.visible, (newValue) => {
 
 .form-input:focus{
   outline: none;
-  border-color: var(--primary-color);
+  border-color: var(--primary);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 10%, transparent);
 }
 
@@ -227,7 +227,7 @@ watch(() => props.visible, (newValue) => {
   align-items: center;
   justify-content: center;
   padding: 60px 20px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .no-items-message i{

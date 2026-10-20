@@ -208,7 +208,7 @@ export default {
 <style scoped>
 .analysis-editor-container {
   background: var(--color-white);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 8%, transparent);
   padding: 0;
   margin-bottom: 24px;
@@ -229,7 +229,7 @@ export default {
 .section-title {
   font-size: var(--font-size-xxl);
   font-weight: var(--font-weight-bold);
-  color: var(--text-primary);
+  color: var(--foreground);
   margin: 0;
   display: flex;
   align-items: center;
@@ -245,7 +245,7 @@ export default {
 
 .status {
   padding: 6px 12px;
-  border-radius: var(--border-radius-xl);
+  border-radius: var(--radius-xl);
   font-size: 14px;
   font-weight: 500;
 }
@@ -285,7 +285,7 @@ export default {
 .analysis-text-wrapper {
   position: relative;
   border: 1px solid var(--color-slate-200);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   min-height: 150px;
   background: var(--color-neutral-50);
 }
@@ -297,7 +297,7 @@ export default {
   line-height: 1.6;
   color: var(--foreground);
   background: var(--color-white);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   transition: all 0.3s ease;
 }
 
@@ -368,7 +368,7 @@ export default {
 .tool-btn {
   background: var(--muted);
   border: 1px solid var(--border);
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
   padding: 8px 12px;
   cursor: pointer;
   font-size: 14px;
@@ -411,7 +411,7 @@ export default {
 
 .tag-item {
   padding: 6px 14px;
-  border-radius: var(--border-radius-xl);
+  border-radius: var(--radius-xl);
   background: var(--muted);
   color: var(--color-gray-500);
   font-size: 14px;
@@ -441,7 +441,7 @@ export default {
   flex: 1;
   padding: 8px 12px;
   border: 1px solid var(--border);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   font-size: 14px;
   max-width: 200px;
 }
@@ -458,7 +458,7 @@ export default {
   gap: 6px;
   padding: 8px 16px;
   border: none;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;

@@ -161,12 +161,12 @@ onBeforeUnmount(() => {
   line-height: 1;
 }
 .col-filter-icon:hover {
-  color: var(--primary-color, #1677ff);
-  background: var(--primary-light, rgba(22, 119, 255, 0.1));
+  color: var(--primary, #1677ff);
+  background: var(--accent, rgba(22, 119, 255, 0.1));
 }
 .col-filter-icon--active {
-  color: var(--primary-color, #1677ff);
-  background: var(--primary-light, rgba(22, 119, 255, 0.1));
+  color: var(--primary, #1677ff);
+  background: var(--accent, rgba(22, 119, 255, 0.1));
 }
 .col-filter-popover {
   position: fixed;
@@ -174,7 +174,7 @@ onBeforeUnmount(() => {
   z-index: 21000;
   width: 180px;
   background: #fff;
-  border: 1px solid var(--border-color, #e5e7eb);
+  border: 1px solid var(--border, #e5e7eb);
   border-radius: var(--radius-control);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
   padding: 8px;
@@ -189,12 +189,12 @@ onBeforeUnmount(() => {
 .col-filter-popover-title {
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-primary, #333);
+  color: var(--foreground, #333);
 }
 .col-filter-popover-reset {
   border: none;
   background: none;
-  color: var(--primary-color, #1677ff);
+  color: var(--primary, #1677ff);
   font-size: 11px;
   cursor: pointer;
   padding: 0;

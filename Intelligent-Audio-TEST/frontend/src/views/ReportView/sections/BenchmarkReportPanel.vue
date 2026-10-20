@@ -351,9 +351,9 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 20px;
   padding: 24px;
-  background: var(--card-bg);
+  background: var(--card);
   border: 1px solid var(--border);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   font-size: 14px;
   color: var(--color-gray-800);
 }
@@ -375,18 +375,18 @@ onBeforeUnmount(() => {
 }
 
 .bmr-error {
-  color: var(--danger-color);
+  color: var(--destructive);
 }
 
 .bmr-error i {
-  color: var(--danger-color);
+  color: var(--destructive);
 }
 
 .bmr-spinner {
   width: 28px;
   height: 28px;
   border: 3px solid var(--border);
-  border-top-color: var(--primary-color);
+  border-top-color: var(--primary);
   border-radius: 50%;
   animation: bmr-spin 0.8s linear infinite;
 }
@@ -423,7 +423,7 @@ onBeforeUnmount(() => {
   padding: 2px 10px;
   border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--primary) 12%, transparent);
-  color: var(--primary-color);
+  color: var(--primary);
   font-size: 12px;
   font-weight: 600;
 }
@@ -441,7 +441,7 @@ onBeforeUnmount(() => {
   padding: 4px 10px;
   border-radius: var(--radius-6);
   background: var(--muted);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 12px;
 }
 
@@ -464,7 +464,7 @@ onBeforeUnmount(() => {
 .bmr-count-value {
   font-size: 22px;
   font-weight: 700;
-  color: var(--primary-color);
+  color: var(--primary);
 }
 
 .bmr-count-label {
@@ -496,19 +496,19 @@ onBeforeUnmount(() => {
   border-radius: var(--radius-full);
   background: transparent;
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .bmr-group-tab:hover {
-  border-color: var(--primary-color);
-  color: var(--primary-color);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .bmr-group-tab.active {
-  background: var(--primary-color);
-  border-color: var(--primary-color);
+  background: var(--primary);
+  border-color: var(--primary);
   color: var(--color-white);
 }
 
@@ -546,7 +546,7 @@ onBeforeUnmount(() => {
 .bmr-table th {
   background: var(--muted);
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 12px;
 }
 
@@ -556,7 +556,7 @@ onBeforeUnmount(() => {
 
 .bmr-rank {
   font-weight: 700;
-  color: var(--primary-color);
+  color: var(--primary);
 }
 
 .bmr-subject {
@@ -598,7 +598,7 @@ onBeforeUnmount(() => {
 .bmr-chart-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .bmr-chart-canvas-wrap {

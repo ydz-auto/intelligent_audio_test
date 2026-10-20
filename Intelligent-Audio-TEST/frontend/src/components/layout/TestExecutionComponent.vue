@@ -4,7 +4,7 @@
 
     <!-- INT-203：实时链路降级提示（WS 断开，HTTP 轮询兜底中） -->
     <div v-if="connectionFallback" class="conn-fallback-alert" role="alert"
-      style="display: flex; align-items: center; gap: 8px; padding: 10px 16px; margin-bottom: 16px; background-color: var(--warning-light); border: 1px solid var(--warning-color); border-radius: var(--radius-md); color: var(--warning-color); font-size: 14px;">
+      style="display: flex; align-items: center; gap: 8px; padding: 10px 16px; margin-bottom: 16px; background-color: var(--warning-light); border: 1px solid var(--warning); border-radius: var(--radius-md); color: var(--warning); font-size: 14px;">
       <i class="fas fa-plug-circle-exclamation"></i>
       <span>实时连接已断开，进度已切换为 HTTP 轮询刷新（日志暂不可用），正在自动重连...</span>
     </div>
@@ -129,14 +129,14 @@
             <div class="stat-label" style="font-size: 14px; color: var(--foreground);">已完成</div>
           </div>
           <div class="stat-item" style="background-color: var(--warning-light); padding: 16px; border-radius: var(--radius-md); text-align: center; display: flex; flex-direction: column; gap: 8px;">
-            <div class="stat-value" style="font-size: 24px; font-weight: var(--font-weight-bold); color: var(--warning-color);">{{ progressInfo.inProgress }}</div>
+            <div class="stat-value" style="font-size: 24px; font-weight: var(--font-weight-bold); color: var(--warning);">{{ progressInfo.inProgress }}</div>
             <div class="stat-label" style="font-size: 14px; color: var(--foreground);">进行中</div>
           </div>
           <div class="stat-item" style="background-color: var(--secondary-light); padding: 16px; border-radius: var(--radius-md); text-align: center; display: flex; flex-direction: column; gap: 8px;">
             <div class="stat-value" style="font-size: 24px; font-weight: var(--font-weight-bold); color: var(--secondary);">{{ progressInfo.pending }}</div>
             <div class="stat-label" style="font-size: 14px; color: var(--foreground);">待执行</div>
           </div>
-          <div class="stat-item" style="background-color: var(--danger-light); padding: 16px; border-radius: var(--radius-md); text-align: center; display: flex; flex-direction: column; gap: 8px;">
+          <div class="stat-item" style="background-color: var(--destructive-light); padding: 16px; border-radius: var(--radius-md); text-align: center; display: flex; flex-direction: column; gap: 8px;">
             <div class="stat-value" style="font-size: 24px; font-weight: var(--font-weight-bold); color: var(--destructive);">{{ progressInfo.executionFailed }}</div>
             <div class="stat-label" style="font-size: 14px; color: var(--foreground);">执行失败</div>
           </div>

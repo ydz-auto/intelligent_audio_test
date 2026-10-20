@@ -82,7 +82,7 @@ export default {
   align-items: center;
   padding: 20px;
   background: var(--color-white);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 8%, transparent);
   margin-bottom: 24px;
 }
@@ -112,7 +112,7 @@ export default {
 .report-type, .report-date, .report-status {
   font-size: 14px;
   padding: 6px 12px;
-  border-radius: var(--border-radius-xl);
+  border-radius: var(--radius-xl);
   font-weight: 500;
 }
 
@@ -146,13 +146,13 @@ export default {
 }
 
 .report-status-draft {
-  background: var(--danger-light);
-  color: var(--danger-color);
+  background: var(--destructive-light);
+  color: var(--destructive);
 }
 
 .report-status-published {
   background: var(--success-light);
-  color: var(--success-color);
+  color: var(--success);
 }
 
 .report-actions {
@@ -166,7 +166,7 @@ export default {
   gap: var(--spacing-xs);
   padding: var(--spacing-sm) var(--spacing-md);
   border: none;
-  border-radius: var(--btn-border-radius);
+  border-radius: var(--radius-control);
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-medium);
   cursor: pointer;
@@ -175,41 +175,41 @@ export default {
 }
 
 .btn-primary {
-  background: var(--btn-primary-bg);
+  background: var(--primary-gradient);
   color: var(--white-color);
 }
 
 .btn-secondary {
   background: var(--btn-secondary-bg);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
+  color: var(--foreground);
+  border: 1px solid var(--border);
 }
 
 .btn-secondary:hover {
   background: var(--secondary-light);
-  border-color: var(--secondary-color);
-  color: var(--secondary-color);
+  border-color: var(--secondary);
+  color: var(--secondary);
 }
 
 .btn-warning {
   background: var(--warning-light);
-  color: var(--warning-color);
-  border: 1px solid var(--warning-color);
+  color: var(--warning);
+  border: 1px solid var(--warning);
 }
 
 .btn-warning:hover {
-  background: var(--warning-color);
+  background: var(--warning);
   color: var(--white-color);
 }
 
 .btn-danger {
-  background: var(--danger-light);
-  color: var(--danger-color);
-  border: 1px solid var(--danger-color);
+  background: var(--destructive-light);
+  color: var(--destructive);
+  border: 1px solid var(--destructive);
 }
 
 .btn-danger:hover {
-  background: var(--danger-color);
+  background: var(--destructive);
   color: var(--white-color);
 }
 </style>

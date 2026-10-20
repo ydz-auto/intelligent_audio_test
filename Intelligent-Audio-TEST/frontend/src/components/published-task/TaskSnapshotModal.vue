@@ -152,7 +152,7 @@ function handleClose() {
 
 .modal {
   background-color: #fff;
-  border-radius: var(--border-radius-xl);
+  border-radius: var(--radius-xl);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   max-height: 90vh;
   overflow: hidden;
@@ -211,7 +211,7 @@ function handleClose() {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-full);
   transition: all 0.2s;
 }
 
@@ -258,7 +258,7 @@ function handleClose() {
   gap: 10px;
   padding: 5px 8px;
   background: #f8fafc;
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
   font-size: 13px;
   margin-bottom: 4px;
 }
@@ -280,13 +280,13 @@ function handleClose() {
   color: #94a3b8;
   background: #f8fafc;
   border: 1px dashed #e2e8f0;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   font-size: 13px;
 }
 
 .ts-case {
   border: 1px solid #e5e7eb;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   margin-bottom: 8px;
   overflow: hidden;
 }
@@ -326,7 +326,7 @@ function handleClose() {
 .ts-case-tag {
   font-size: 11px;
   padding: 1px 6px;
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
   background: #fff1e6;
   color: #ff6a00;
   white-space: nowrap;
@@ -357,7 +357,7 @@ function handleClose() {
   padding: 10px;
   background: #f8fafc;
   border: 1px solid #e5e7eb;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   font-size: 12px;
   line-height: 1.5;
   overflow-x: auto;

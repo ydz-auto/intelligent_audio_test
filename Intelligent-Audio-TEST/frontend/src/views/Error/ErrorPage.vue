@@ -88,7 +88,7 @@ function goLogin() {
 }
 .error-desc {
   font-size: 14px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   margin: 0 0 24px;
 }
 .error-actions {

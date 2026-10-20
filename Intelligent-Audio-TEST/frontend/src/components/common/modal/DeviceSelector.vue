@@ -88,7 +88,7 @@ defineEmits(['select', 'rescan'])
 
 .device-details{
     font-size: 14px;
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
 }
 
 
@@ -131,8 +131,8 @@ defineEmits(['select', 'rescan'])
 
 .btn-scan:hover:not(:disabled){
   background-color: transparent;
-  color: var(--primary-color);
-  border: 1px solid var(--primary-color);
+  color: var(--primary);
+  border: 1px solid var(--primary);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px color-mix(in srgb, var(--primary) 30%, transparent);
 }
@@ -199,13 +199,13 @@ defineEmits(['select', 'rescan'])
 }
 
 .device-item:hover{
-  border-color: var(--primary-color);
+  border-color: var(--primary);
   box-shadow: 0 2px 8px color-mix(in srgb, var(--primary) 20%, transparent);
   transform: translateY(-1px);
 }
 
 .device-item.active{
-  border: 2px solid var(--primary-color);
+  border: 2px solid var(--primary);
   background-color: color-mix(in srgb, var(--primary) 20%, transparent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent), 0 4px 12px color-mix(in srgb, var(--primary) 25%, transparent);
   transform: translateY(-2px);
@@ -213,18 +213,18 @@ defineEmits(['select', 'rescan'])
 }
 
 .device-item.current{
-  border: 2px solid var(--success-color);
+  border: 2px solid var(--success);
   background-color: color-mix(in srgb, var(--success) 20%, transparent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 30%, transparent);
 }
 
 .device-item.added{
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   background-color: color-mix(in srgb, var(--muted-foreground) 5%, transparent);
 }
 
 .device-item.added.active{
-  border: 2px solid var(--primary-color);
+  border: 2px solid var(--primary);
   background-color: color-mix(in srgb, var(--primary) 25%, transparent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent), 0 4px 12px color-mix(in srgb, var(--primary) 25%, transparent);
   transform: translateY(-2px);
@@ -269,7 +269,7 @@ defineEmits(['select', 'rescan'])
 }
 
 .select-badge{
-  background-color: var(--primary-color);
+  background-color: var(--primary);
   color: white;
   padding: 4px 12px;
   border-radius: var(--radius-pill);

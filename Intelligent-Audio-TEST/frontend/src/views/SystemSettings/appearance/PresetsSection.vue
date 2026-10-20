@@ -79,8 +79,8 @@ function selectPreset(presetMode: ThemeMode) {
 }
 
 .preset-card {
-  border: 1px solid var(--gray-light-color);
-  border-radius: var(--border-radius-md);
+  border: 1px solid var(--gray-light);
+  border-radius: var(--radius-md);
   padding: var(--spacing-md);
   background: var(--card);
   cursor: pointer;
@@ -92,17 +92,17 @@ function selectPreset(presetMode: ThemeMode) {
 }
 
 .preset-card:hover {
-  border-color: var(--primary-color);
+  border-color: var(--primary);
 }
 
 .preset-card.selected {
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 30%, transparent);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 30%, transparent);
 }
 
 .preset-swatch {
   height: 64px;
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
   display: flex;
   overflow: hidden;
 }
@@ -157,7 +157,7 @@ function selectPreset(presetMode: ThemeMode) {
 }
 
 .preset-check {
-  color: var(--primary-color);
+  color: var(--primary);
   font-size: 16px;
 }
 

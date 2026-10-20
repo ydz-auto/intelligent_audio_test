@@ -299,8 +299,8 @@ async function removeMember(group: DeviceGroup, deviceId: string | number) {
   z-index: 2000;
 }
 .dg-modal {
-  background: var(--background-primary, #fff);
-  border-radius: var(--border-radius-lg, 12px);
+  background: var(--background, #fff);
+  border-radius: var(--radius-lg, 12px);
   width: min(720px, 92vw);
   max-height: 82vh;
   display: flex;
@@ -312,19 +312,19 @@ async function removeMember(group: DeviceGroup, deviceId: string | number) {
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color, #eee);
+  border-bottom: 1px solid var(--border, #eee);
 }
 .dg-header h3 {
   margin: 0;
   font-size: 1.05rem;
-  color: var(--primary-color);
+  color: var(--primary);
 }
 .dg-close {
   border: none;
   background: transparent;
   cursor: pointer;
   font-size: 1rem;
-  color: var(--text-secondary, #888);
+  color: var(--muted-foreground, #888);
 }
 .dg-body {
   padding: 16px 20px;
@@ -340,7 +340,7 @@ async function removeMember(group: DeviceGroup, deviceId: string | number) {
   flex: 1;
 }
 .dg-form {
-  border: 1px solid var(--border-color, #eee);
+  border: 1px solid var(--border, #eee);
   border-radius: var(--radius-control, 8px);
   padding: 12px;
   margin-bottom: 12px;
@@ -355,7 +355,7 @@ async function removeMember(group: DeviceGroup, deviceId: string | number) {
 .dg-form-row label {
   width: 72px;
   font-size: 0.88rem;
-  color: var(--text-secondary, #666);
+  color: var(--muted-foreground, #666);
 }
 .dg-form-row .form-input {
   flex: 1;
@@ -373,7 +373,7 @@ async function removeMember(group: DeviceGroup, deviceId: string | number) {
 .dg-table td {
   text-align: left;
   padding: 8px 10px;
-  border-bottom: 1px solid var(--border-color, #eee);
+  border-bottom: 1px solid var(--border, #eee);
   font-size: 0.9rem;
 }
 .dg-actions {
@@ -385,7 +385,7 @@ async function removeMember(group: DeviceGroup, deviceId: string | number) {
   font-size: 0.8rem;
 }
 .dg-members-cell {
-  background: var(--background-secondary, #fafafa);
+  background: var(--muted, #fafafa);
 }
 .dg-members {
   display: flex;
@@ -397,19 +397,19 @@ async function removeMember(group: DeviceGroup, deviceId: string | number) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: var(--background-primary, #fff);
-  border: 1px solid var(--border-color, #ddd);
+  background: var(--background, #fff);
+  border: 1px solid var(--border, #ddd);
   border-radius: var(--radius-card, 16px);
   padding: 3px 10px;
   font-size: 0.82rem;
 }
 .dg-remove {
   cursor: pointer;
-  color: var(--danger-color, #d33);
+  color: var(--destructive, #d33);
   font-size: 0.75rem;
 }
 .dg-empty {
-  color: var(--text-secondary, #999);
+  color: var(--muted-foreground, #999);
   font-size: 0.85rem;
 }
 .dg-add-member {
@@ -421,7 +421,7 @@ async function removeMember(group: DeviceGroup, deviceId: string | number) {
 }
 .dg-empty-state {
   text-align: center;
-  color: var(--text-secondary, #999);
+  color: var(--muted-foreground, #999);
   padding: 32px 0;
 }
 </style>

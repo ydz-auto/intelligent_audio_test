@@ -10,14 +10,14 @@
 
 /* 音频管理页面布局 */
 .audio-import-view {
-    background-color: var(--background-primary);
+    background-color: var(--background);
 }
 
 .main-content.audio-main-content {
     flex: 1;
     margin-left: var(--sidebar-width);
     padding: var(--spacing-xl);
-    background-color: var(--background-primary);
+    background-color: var(--background);
     overflow-y: auto;
     min-height: 100vh;
     display: flex;
@@ -58,12 +58,12 @@
 
 .page-title i {
     font-size: 24px;
-    color: var(--primary-color);
+    color: var(--primary);
 }
 
 .page-description {
     font-size: var(--font-size-md);
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
     margin: 0;
 }
 
@@ -86,7 +86,7 @@
     align-items: center;
     gap: var(--spacing-xs);
     padding: var(--spacing-sm) var(--spacing-lg);
-    border-radius: var(--border-radius-md);
+    border-radius: var(--radius-md);
     font-weight: var(--font-weight-medium);
     transition: all var(--transition-normal);
     box-shadow: var(--shadow-sm);
@@ -99,9 +99,9 @@
 }
 
 .action-buttons .btn-secondary {
-    background-color: var(--background-secondary);
-    border: 1px solid var(--border-color);
-    color: var(--text-primary);
+    background-color: var(--muted);
+    border: 1px solid var(--border);
+    color: var(--foreground);
 }
 
 .btn-icon {
@@ -131,9 +131,9 @@
 
 /* 卡片样式 */
 .card {
-    background-color: var(--background-primary);
+    background-color: var(--background);
     border: var(--card-border);
-    border-radius: var(--border-radius-lg);
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
     overflow: hidden;
     transition: all var(--transition-normal);
@@ -150,14 +150,14 @@
     align-items: center;
     padding: var(--spacing-lg);
     border-bottom: var(--card-border);
-    background-color: var(--background-primary);
+    background-color: var(--background);
 }
 
 .card-title {
     margin: 0;
     font-size: var(--font-size-xl);
     font-weight: var(--font-weight-semibold);
-    color: var(--text-primary);
+    color: var(--foreground);
 }
 
 .card-actions {
@@ -170,15 +170,15 @@
 .view-toggle {
     display: flex;
     gap: var(--spacing-xs);
-    background-color: var(--background-primary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-full);
+    background-color: var(--background);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
     padding: var(--spacing-xs);
     box-shadow: var(--shadow-sm);
 }
 
 .view-toggle .btn {
-    border-radius: var(--border-radius-full);
+    border-radius: var(--radius-full);
     background: transparent;
     border: none;
     padding: var(--spacing-sm) var(--spacing-md);
@@ -186,12 +186,12 @@
 }
 
 .view-toggle .btn:hover {
-    background-color: var(--background-primary);
-    color: var(--primary-color);
+    background-color: var(--background);
+    color: var(--primary);
 }
 
 .view-toggle .btn.active {
-    background-color: var(--primary-color);
+    background-color: var(--primary);
     color: var(--white-color);
     box-shadow: var(--shadow-sm);
 }
@@ -199,7 +199,7 @@
 /* 卡片筛选区域 */
 .card-filter-section {
     padding: var(--spacing-lg);
-    background-color: var(--background-primary);
+    background-color: var(--background);
     border-bottom: var(--card-border);
 }
 
@@ -218,9 +218,9 @@
 
 /* 筛选面板 */
 .filter-panel {
-    background-color: var(--background-primary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-lg);
+    background-color: var(--background);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
     padding: var(--spacing-lg);
     box-shadow: var(--shadow-sm);
     transition: all var(--transition-normal);
@@ -262,7 +262,7 @@
     align-items: center;
     margin-top: var(--spacing-lg);
     padding-top: var(--spacing-lg);
-    border-top: 1px solid var(--border-color);
+    border-top: 1px solid var(--border);
 }
 
 .filter-actions {
@@ -275,7 +275,7 @@
     align-items: center;
     gap: var(--spacing-xs);
     padding: var(--spacing-sm) var(--spacing-lg);
-    border-radius: var(--border-radius-md);
+    border-radius: var(--radius-md);
     font-weight: var(--font-weight-medium);
     transition: all var(--transition-normal);
     box-shadow: var(--shadow-sm);
@@ -288,9 +288,9 @@
 }
 
 .filter-actions .btn-secondary {
-    background-color: var(--background-secondary);
-    border: 1px solid var(--border-color);
-    color: var(--text-primary);
+    background-color: var(--muted);
+    border: 1px solid var(--border);
+    color: var(--foreground);
 }
 
 .filter-actions .btn:hover {
@@ -305,25 +305,25 @@
 .filter-label {
     font-size: var(--font-size-sm);
     font-weight: var(--font-weight-semibold);
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     transition: color var(--transition-normal);
 }
 
 .filter-item:hover .filter-label {
-    color: var(--primary-color);
+    color: var(--primary);
 }
 
 /* 筛选选择器样式 */
 .filter-select {
-    border-radius: var(--border-radius-md);
-    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
     padding: var(--spacing-xs) var(--spacing-md);
     font-size: var(--font-size-sm);
     font-weight: var(--font-weight-medium);
-    background-color: var(--background-primary);
-    color: var(--text-secondary);
+    background-color: var(--background);
+    color: var(--muted-foreground);
     transition: all var(--transition-normal);
     min-height: auto;
     height: auto;
@@ -345,17 +345,17 @@
     max-height: 120px;
     overflow-y: auto;
     padding: var(--spacing-sm);
-    background-color: var(--background-secondary);
-    border-radius: var(--border-radius-md);
-    border: 1px solid var(--border-color);
+    background-color: var(--muted);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
 }
 
 .tag-item {
     padding: var(--spacing-xs) var(--spacing-md);
-    background-color: var(--background-primary);
-    color: var(--text-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-full);
+    background-color: var(--background);
+    color: var(--muted-foreground);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
     font-size: var(--font-size-sm);
     font-weight: var(--font-weight-medium);
     cursor: pointer;
@@ -371,9 +371,9 @@
     max-height: 180px;
     overflow-y: auto;
     padding: var(--spacing-md);
-    background-color: var(--background-secondary);
-    border-radius: var(--border-radius-md);
-    border: 1px solid var(--border-color);
+    background-color: var(--muted);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
 }
 
 .checkbox-item {
@@ -381,24 +381,24 @@
     align-items: center;
     gap: var(--spacing-sm);
     padding: var(--spacing-xs) var(--spacing-sm);
-    border-radius: var(--border-radius-sm);
+    border-radius: var(--radius-sm);
     transition: all var(--transition-normal);
 }
 
 .checkbox-item:hover {
-    background-color: var(--background-primary);
+    background-color: var(--background);
 }
 
 .checkbox-item input[type="checkbox"] {
     width: 16px;
     height: 16px;
-    accent-color: var(--primary-color);
+    accent-color: var(--primary);
     cursor: pointer;
 }
 
 .checkbox-item label {
     font-size: var(--font-size-sm);
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
     cursor: pointer;
     margin: 0;
     transition: color var(--transition-normal);
@@ -406,40 +406,40 @@
 }
 
 .checkbox-item:hover label {
-    color: var(--primary-color);
+    color: var(--primary);
 }
 
 .tag-item:hover {
-    background-color: var(--primary-light);
-    border-color: var(--primary-color);
-    color: var(--primary-color);
+    background-color: var(--accent);
+    border-color: var(--primary);
+    color: var(--primary);
     transform: translateY(-1px);
     box-shadow: var(--shadow-sm);
 }
 
 .tag-item.active {
-    background-color: var(--primary-color);
+    background-color: var(--primary);
     color: var(--white-color);
-    border-color: var(--primary-color);
+    border-color: var(--primary);
     box-shadow: var(--shadow-sm);
 }
 
 .filter-select:hover {
-    background-color: var(--background-secondary);
-    color: var(--text-primary);
-    border-color: var(--primary-color);
+    background-color: var(--muted);
+    color: var(--foreground);
+    border-color: var(--primary);
     transform: translateY(-1px);
     box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 8%, transparent);
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.293 6.293a1 1 0 0 1 1.414 0L8 10.586l3.293-3.293a1 1 0 0 1 1.414 1.414l-4 4a1 1 0 0 1-1.414 0l-4-4a1 1 0 0 1 0-1.414z' fill='var(--primary-color)'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.293 6.293a1 1 0 0 1 1.414 0L8 10.586l3.293-3.293a1 1 0 0 1 1.414 1.414l-4 4a1 1 0 0 1-1.414 0l-4-4a1 1 0 0 1 0-1.414z' fill='var(--primary)'/%3E%3C/svg%3E");
 }
 
 .filter-select:focus {
     outline: none;
-    background-color: var(--primary-light);
-    color: var(--primary-color);
-    border-color: var(--primary-color);
+    background-color: var(--accent);
+    color: var(--primary);
+    border-color: var(--primary);
     box-shadow: 0 4px 12px color-mix(in srgb, var(--primary) 10%, transparent);
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.293 6.293a1 1 0 0 1 1.414 0L8 10.586l3.293-3.293a1 1 0 0 1 1.414 1.414l-4 4a1 1 0 0 1-1.414 0l-4-4a1 1 0 0 1 0-1.414z' fill='var(--primary-color)'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.293 6.293a1 1 0 0 1 1.414 0L8 10.586l3.293-3.293a1 1 0 0 1 1.414 1.414l-4 4a1 1 0 0 1-1.414 0l-4-4a1 1 0 0 1 0-1.414z' fill='var(--primary)'/%3E%3C/svg%3E");
 }
 
 /* 筛选操作按钮 */
@@ -455,7 +455,7 @@
     padding: var(--spacing-sm) var(--spacing-xl);
     font-size: var(--font-size-md);
     font-weight: var(--font-weight-medium);
-    border-radius: var(--border-radius-full);
+    border-radius: var(--radius-full);
     transition: all var(--transition-normal);
     box-shadow: var(--shadow-sm);
 }
@@ -471,15 +471,15 @@
 }
 
 .filter-actions .btn-secondary {
-    background-color: var(--background-secondary);
-    border: 2px solid var(--border-color);
-    color: var(--text-primary);
+    background-color: var(--muted);
+    border: 2px solid var(--border);
+    color: var(--foreground);
 }
 
 .filter-actions .btn-secondary:hover {
-    background-color: var(--background-tertiary);
-    border-color: var(--primary-color);
-    color: var(--primary-color);
+    background-color: var(--gray-light);
+    border-color: var(--primary);
+    color: var(--primary);
 }
 
 /* 卡片主体 */
@@ -494,7 +494,7 @@
     align-items: center;
     padding: var(--spacing-lg);
     border-top: var(--card-border);
-    background-color: var(--background-primary);
+    background-color: var(--background);
     flex-wrap: wrap;
     gap: var(--spacing-lg);
 }
@@ -508,35 +508,35 @@
 
 .pagination .btn {
     padding: var(--spacing-xs) var(--spacing-md);
-    border-radius: var(--border-radius-md);
+    border-radius: var(--radius-md);
     font-size: var(--font-size-sm);
     transition: all var(--transition-normal);
 }
 
 .pagination .btn.active {
-    background-color: var(--primary-color);
+    background-color: var(--primary);
     color: var(--white-color);
     border: none;
 }
 
 .pagination-info {
     font-size: var(--font-size-sm);
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
 }
 
 /* 上传区域 */
 .upload-area {
-    border: 2px dashed var(--border-color);
-    border-radius: var(--border-radius-lg);
+    border: 2px dashed var(--border);
+    border-radius: var(--radius-lg);
     padding: var(--spacing-xxl);
     text-align: center;
     transition: all var(--transition-normal);
-    background-color: var(--background-secondary);
+    background-color: var(--muted);
 }
 
 .upload-area:hover {
-    border-color: var(--primary-color);
-    background-color: var(--primary-light);
+    border-color: var(--primary);
+    background-color: var(--accent);
 }
 
 .upload-icon {
@@ -547,13 +547,13 @@
 
 .upload-text h4 {
     margin: 0 0 var(--spacing-lg) 0;
-    color: var(--text-primary);
+    color: var(--foreground);
 }
 
 .upload-hint {
     margin-top: var(--spacing-lg);
     font-size: var(--font-size-sm);
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
 }
 
 /* 上传进度 */
@@ -563,8 +563,8 @@
 
 .upload-progress .progress-bar {
     height: 8px;
-    background-color: var(--secondary-color);
-    border-radius: var(--border-radius-full);
+    background-color: var(--secondary);
+    border-radius: var(--radius-full);
     overflow: hidden;
     margin-bottom: var(--spacing-xs);
 }
@@ -572,7 +572,7 @@
 .upload-progress .progress-fill {
     height: 100%;
     background: var(--primary-gradient);
-    border-radius: var(--border-radius-full);
+    border-radius: var(--radius-full);
     transition: width 0.3s ease;
 }
 
@@ -580,15 +580,15 @@
 .global-upload-progress {
     margin: 15px 0;
     padding: 10px;
-    background-color: var(--background-secondary);
-    border-radius: var(--border-radius-lg);
+    background-color: var(--muted);
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
 }
 
 .global-upload-progress .progress-container {
     height: 8px;
-    background-color: var(--secondary-color);
-    border-radius: var(--border-radius-full);
+    background-color: var(--secondary);
+    border-radius: var(--radius-full);
     overflow: hidden;
     margin-bottom: var(--spacing-xs);
 }
@@ -596,20 +596,20 @@
 .global-upload-progress .progress-bar {
     height: 100%;
     background: var(--primary-gradient);
-    border-radius: var(--border-radius-full);
+    border-radius: var(--radius-full);
     transition: width 0.3s ease;
 }
 
 .global-upload-progress .progress-text {
     font-size: var(--font-size-sm);
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
     text-align: center;
     margin-bottom: var(--spacing-sm);
 }
 
 .progress-text {
     font-size: var(--font-size-sm);
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
     text-align: center;
 }
 
@@ -617,19 +617,19 @@
 .file-progress-detail {
     margin-top: var(--spacing-md);
     padding: var(--spacing-md);
-    background-color: var(--background-primary);
-    border-radius: var(--border-radius-md);
-    border: 1px solid var(--border-color);
+    background-color: var(--background);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
     box-shadow: var(--shadow-sm);
 }
 
 .detail-title {
     font-size: var(--font-size-md);
     font-weight: var(--font-weight-semibold);
-    color: var(--text-primary);
+    color: var(--foreground);
     margin: 0 0 var(--spacing-md) 0;
     padding-bottom: var(--spacing-sm);
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border);
 }
 
 .file-progress-list {
@@ -642,8 +642,8 @@
 .file-progress-item {
     margin-bottom: var(--spacing-md);
     padding: var(--spacing-sm);
-    background-color: var(--background-secondary);
-    border-radius: var(--border-radius-sm);
+    background-color: var(--muted);
+    border-radius: var(--radius-sm);
     transition: all var(--transition-normal);
 }
 
@@ -661,7 +661,7 @@
 
 .file-name {
     font-weight: var(--font-weight-medium);
-    color: var(--text-primary);
+    color: var(--foreground);
     font-size: var(--font-size-sm);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -677,32 +677,32 @@
     font-size: var(--font-size-xs);
     font-weight: var(--font-weight-medium);
     padding: 2px 8px;
-    border-radius: var(--border-radius-full);
+    border-radius: var(--radius-full);
     white-space: nowrap;
 }
 
 .file-status.pending {
-    color: var(--text-secondary);
-    background-color: var(--background-tertiary);
+    color: var(--muted-foreground);
+    background-color: var(--gray-light);
 }
 
 .file-status.uploading {
-    color: var(--primary-color);
-    background-color: var(--primary-light);
+    color: var(--primary);
+    background-color: var(--accent);
 }
 
 .file-status.completed {
-    color: var(--success-color);
+    color: var(--success);
     background-color: var(--success-light);
 }
 
 .file-status.failed {
-    color: var(--error-color);
-    background-color: var(--error-light);
+    color: var(--destructive);
+    background-color: var(--destructive-light);
 }
 
 .error-message {
-    color: var(--error-color);
+    color: var(--destructive);
     font-size: var(--font-size-xs);
     margin-left: var(--spacing-xs);
     white-space: nowrap;
@@ -719,21 +719,21 @@
 .file-progress-bar {
     flex: 1;
     height: 6px;
-    background-color: var(--secondary-color);
-    border-radius: var(--border-radius-full);
+    background-color: var(--secondary);
+    border-radius: var(--radius-full);
     overflow: hidden;
 }
 
 .file-progress-fill {
     height: 100%;
     background: var(--primary-gradient);
-    border-radius: var(--border-radius-full);
+    border-radius: var(--radius-full);
     transition: width 0.3s ease;
 }
 
 .file-progress-text {
     font-size: var(--font-size-xs);
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
     white-space: nowrap;
     width: 40px;
     text-align: right;
@@ -743,7 +743,7 @@
     text-align: center;
     margin-top: var(--spacing-md);
     padding-top: var(--spacing-md);
-    border-top: 1px solid var(--border-color);
+    border-top: 1px solid var(--border);
 }
 
 .retry-section .btn {
@@ -769,24 +769,24 @@
 .record-timer {
     font-size: var(--font-size-xl);
     font-weight: var(--font-weight-bold);
-    color: var(--text-primary);
+    color: var(--foreground);
 }
 
 .record-preview {
-    background-color: var(--background-secondary);
-    border-radius: var(--border-radius-lg);
+    background-color: var(--muted);
+    border-radius: var(--radius-lg);
     padding: var(--spacing-lg);
 }
 
 .record-preview h4 {
     margin: 0 0 var(--spacing-lg) 0;
-    color: var(--text-primary);
+    color: var(--foreground);
     text-align: center;
 }
 
 .waveform-container {
-    background-color: var(--background-primary);
-    border-radius: var(--border-radius-md);
+    background-color: var(--background);
+    border-radius: var(--radius-md);
     padding: var(--spacing-lg);
     height: 80px;
     display: flex;
@@ -803,30 +803,30 @@
     display: block;
     font-size: var(--font-size-sm);
     font-weight: var(--font-weight-medium);
-    color: var(--text-primary);
+    color: var(--foreground);
     margin-bottom: var(--spacing-xs);
 }
 
 .form-input {
     width: 100%;
     padding: var(--spacing-sm) var(--spacing-md);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-md);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
     font-size: var(--font-size-md);
-    color: var(--text-primary);
+    color: var(--foreground);
     transition: all var(--transition-normal);
 }
 
 .form-input:focus {
     outline: none;
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px var(--primary-light);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--accent);
 }
 
 .form-hint {
     display: block;
     font-size: var(--font-size-xs);
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
     margin-top: var(--spacing-xs);
 }
 
@@ -954,7 +954,7 @@
 
 .translation-item {
     background-color: var(--color-slate-50);
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--border);
     border-radius: var(--radius-tag);
     padding: 15px;
     margin-bottom: 15px;
@@ -969,7 +969,7 @@
 
 .translation-item-title {
     font-weight: bold;
-    color: var(--primary-color);
+    color: var(--primary);
 }
 
 .translation-item-content {
@@ -988,23 +988,23 @@
 .test-case-options {
     margin-top: var(--spacing-xl);
     padding: var(--spacing-lg);
-    background-color: var(--background-secondary);
-    border-radius: var(--border-radius-lg);
-    border: 1px solid var(--border-color);
+    background-color: var(--muted);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
 }
 
 .test-case-options .options-title {
     margin: 0 0 var(--spacing-lg) 0;
     font-size: var(--font-size-md);
     font-weight: var(--font-weight-semibold);
-    color: var(--text-primary);
+    color: var(--foreground);
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
 }
 
 .test-case-options .options-title i {
-    color: var(--primary-color);
+    color: var(--primary);
 }
 
 .test-case-options .option-row {
@@ -1022,7 +1022,7 @@
     gap: var(--spacing-sm);
     cursor: pointer;
     font-size: var(--font-size-md);
-    color: var(--text-primary);
+    color: var(--foreground);
 }
 
 .checkbox-label input[type="checkbox"] {
@@ -1032,8 +1032,8 @@
 .checkbox-custom {
     width: 20px;
     height: 20px;
-    border: 2px solid var(--border-color);
-    border-radius: var(--border-radius-sm);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-sm);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1042,8 +1042,8 @@
 }
 
 .checkbox-label input[type="checkbox"]:checked + .checkbox-custom {
-    background-color: var(--primary-color);
-    border-color: var(--primary-color);
+    background-color: var(--primary);
+    border-color: var(--primary);
 }
 
 .checkbox-label input[type="checkbox"]:checked + .checkbox-custom::after {
@@ -1070,7 +1070,7 @@
     gap: var(--spacing-sm);
     cursor: pointer;
     font-size: var(--font-size-sm);
-    color: var(--text-primary);
+    color: var(--foreground);
 }
 
 .radio-label input[type="radio"] {
@@ -1080,7 +1080,7 @@
 .radio-custom {
     width: 18px;
     height: 18px;
-    border: 2px solid var(--border-color);
+    border: 2px solid var(--border);
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -1090,14 +1090,14 @@
 }
 
 .radio-label input[type="radio"]:checked + .radio-custom {
-    border-color: var(--primary-color);
+    border-color: var(--primary);
 }
 
 .radio-label input[type="radio"]:checked + .radio-custom::after {
     content: '';
     width: 10px;
     height: 10px;
-    background-color: var(--primary-color);
+    background-color: var(--primary);
     border-radius: 50%;
 }
 
@@ -1113,22 +1113,22 @@
 
 .modal .modal-footer {
     padding-top: var(--spacing-lg);
-    border-top: 1px solid var(--border-color);
+    border-top: 1px solid var(--border);
 }
 
 /* 选中文件列表样式 */
 .selected-files-list {
     margin-top: var(--spacing-lg);
     padding: var(--spacing-md);
-    background-color: var(--background-primary);
-    border-radius: var(--border-radius-md);
-    border: 1px solid var(--border-color);
+    background-color: var(--background);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
 }
 
 .selected-files-list p {
     margin: 0 0 var(--spacing-sm) 0;
     font-size: var(--font-size-sm);
-    color: var(--text-primary);
+    color: var(--foreground);
     font-weight: var(--font-weight-medium);
 }
 
@@ -1140,7 +1140,7 @@
 
 .selected-files-list li {
     font-size: var(--font-size-sm);
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
     margin-bottom: var(--spacing-xs);
 }
 
@@ -1148,26 +1148,26 @@
 .folder-import-info {
     text-align: center;
     padding: var(--spacing-xl);
-    background-color: var(--background-secondary);
-    border-radius: var(--border-radius-lg);
+    background-color: var(--muted);
+    border-radius: var(--radius-lg);
     margin-bottom: var(--spacing-lg);
 }
 
 .folder-import-info i {
     font-size: 48px;
-    color: var(--primary-color);
+    color: var(--primary);
     margin-bottom: var(--spacing-md);
 }
 
 .folder-import-info p {
     margin: 0 0 var(--spacing-sm) 0;
     font-size: var(--font-size-md);
-    color: var(--text-primary);
+    color: var(--foreground);
 }
 
 .folder-import-info .import-hint {
     font-size: var(--font-size-sm);
-    color: var(--text-secondary);
+    color: var(--muted-foreground);
 }
 
 /* 分组名称输入框样式 */
@@ -1188,7 +1188,7 @@
 }
 
 .select-all-container input[type="checkbox"] {
-    accent-color: var(--primary-color);
+    accent-color: var(--primary);
     cursor: pointer;
 }
 
@@ -1197,9 +1197,9 @@
     top: 100%;
     left: 0;
     z-index: 1000;
-    background-color: var(--background-primary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-md);
+    background-color: var(--background);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
     box-shadow: var(--shadow-lg);
     padding: var(--spacing-xs) 0;
     min-width: 120px;
@@ -1211,13 +1211,13 @@
     cursor: pointer;
     transition: all var(--transition-normal);
     font-size: var(--font-size-sm);
-    color: var(--text-primary);
+    color: var(--foreground);
     text-align: left;
 }
 
 .option-item:hover {
-    background-color: var(--primary-light);
-    color: var(--primary-color);
+    background-color: var(--accent);
+    color: var(--primary);
 }
 
 /* 批量更新标注弹窗 overlay（INT-293：独立类取代 .modal-overlay 全局默认隐藏规则上的内联 !important hack） */
@@ -1240,8 +1240,8 @@
     max-width: 640px;
     max-height: 90vh;
     overflow-y: auto;
-    background-color: var(--background-primary);
-    border-radius: var(--border-radius-lg);
+    background-color: var(--background);
+    border-radius: var(--radius-lg);
     box-shadow: var(--shadow-lg);
 }
 

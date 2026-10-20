@@ -11,7 +11,7 @@
     <!-- 页面标题 -->
     <div class="page-header rst-page-header">
       <div class="header-left">
-        <h2 class="page-title" style="color: var(--primary-color);">
+        <h2 class="page-title" style="color: var(--primary);">
           <i class="fas fa-chart-line"></i>
           报告统计分析
         </h2>
@@ -275,7 +275,7 @@ const getDimensionDesc = (value: string): string => {
 
 .page-description {
   margin: var(--spacing-xs) 0 0 0;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: var(--font-size-sm);
 }
 
@@ -291,11 +291,11 @@ const getDimensionDesc = (value: string): string => {
   gap: 10px;
   padding: 12px 16px;
   margin-bottom: var(--spacing-lg);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   background: var(--warning-light);
   color: var(--warning-dark);
   font-size: 14px;
-  border: 1px solid var(--warning-color);
+  border: 1px solid var(--warning);
 }
 
 .rst-pending-banner i {
@@ -324,26 +324,26 @@ const getDimensionDesc = (value: string): string => {
 
 .rst-control-item label {
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   white-space: nowrap;
 }
 
 .rst-select {
   border: 2px solid var(--color-gray-300) !important;
-  background-color: var(--background-primary) !important;
-  border-radius: var(--border-radius-md) !important;
+  background-color: var(--background) !important;
+  border-radius: var(--radius-md) !important;
   padding: var(--spacing-sm) var(--spacing-md) !important;
   font-size: var(--font-size-sm) !important;
-  color: var(--text-primary) !important;
+  color: var(--foreground) !important;
 }
 
 .date-input {
   border: 2px solid var(--color-gray-300) !important;
-  background-color: var(--background-primary) !important;
-  border-radius: var(--border-radius-md) !important;
+  background-color: var(--background) !important;
+  border-radius: var(--radius-md) !important;
   padding: var(--spacing-xs) var(--spacing-sm) !important;
   font-size: var(--font-size-sm) !important;
-  color: var(--text-primary) !important;
+  color: var(--foreground) !important;
 }
 
 .rst-content-item {
@@ -355,18 +355,18 @@ const getDimensionDesc = (value: string): string => {
 .rst-textarea {
   flex: 1;
   border: 2px solid var(--color-gray-300);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   padding: var(--spacing-sm) var(--spacing-md);
   font-size: var(--font-size-sm);
-  color: var(--text-primary);
-  background-color: var(--background-primary);
+  color: var(--foreground);
+  background-color: var(--background);
   resize: vertical;
   width: 100%;
 }
 
 .rst-textarea:focus {
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px var(--primary-light);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--accent);
   outline: none;
 }
 
@@ -376,9 +376,9 @@ const getDimensionDesc = (value: string): string => {
   gap: var(--spacing-sm);
   margin-bottom: var(--spacing-lg);
   padding: var(--spacing-sm);
-  background: var(--background-secondary);
-  border-radius: var(--border-radius-lg);
-  border: 1px solid var(--border-color);
+  background: var(--muted);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
   flex-wrap: wrap;
 }
 
@@ -388,9 +388,9 @@ const getDimensionDesc = (value: string): string => {
   gap: var(--spacing-sm);
   padding: var(--spacing-sm) var(--spacing-lg);
   border: 1px solid transparent;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-medium);
   cursor: pointer;
@@ -398,14 +398,14 @@ const getDimensionDesc = (value: string): string => {
 }
 
 .rst-tab:hover {
-  background: var(--background-primary);
-  color: var(--primary-color);
+  background: var(--background);
+  color: var(--primary);
 }
 
 .rst-tab.active {
-  background: var(--primary-color);
+  background: var(--primary);
   color: var(--color-white);
-  border-color: var(--primary-color);
+  border-color: var(--primary);
   box-shadow: var(--shadow-sm);
 }
 
@@ -419,24 +419,24 @@ const getDimensionDesc = (value: string): string => {
 
 .rst-sub-tab {
   padding: var(--spacing-xs) var(--spacing-md);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-full);
-  background: var(--background-primary);
-  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--background);
+  color: var(--muted-foreground);
   font-size: var(--font-size-sm);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .rst-sub-tab:hover {
-  border-color: var(--primary-color);
-  color: var(--primary-color);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .rst-sub-tab.active {
-  background: var(--primary-color);
+  background: var(--primary);
   color: var(--color-white);
-  border-color: var(--primary-color);
+  border-color: var(--primary);
 }
 
 /* ===== 页签内容 ===== */
@@ -446,7 +446,7 @@ const getDimensionDesc = (value: string): string => {
 
 .rst-sub-description {
   margin-bottom: var(--spacing-lg);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: var(--font-size-sm);
 }
 
@@ -462,37 +462,37 @@ const getDimensionDesc = (value: string): string => {
   flex-direction: column;
   gap: 8px;
   padding: var(--spacing-md);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-lg);
-  background: var(--background-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--background);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .rst-dimension-card:hover {
-  border-color: var(--primary-color);
+  border-color: var(--primary);
   box-shadow: var(--shadow-md);
 }
 
 .rst-dimension-card--active {
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px var(--primary-light);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--accent);
 }
 
 .rst-dimension-card i {
   font-size: 1.2rem;
-  color: var(--primary-color);
+  color: var(--primary);
 }
 
 .rst-dimension-name {
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 
 .rst-dimension-desc {
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   line-height: 1.5;
 }
 

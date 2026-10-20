@@ -118,7 +118,7 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
 .profile-trigger__name {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--foreground);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -126,7 +126,7 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
 }
 .profile-trigger__role {
   font-size: 11px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -159,12 +159,12 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
   margin: 0;
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 .profile-panel__role {
   margin: 2px 0 0;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 .profile-panel__menu {
   padding: 6px;
@@ -178,7 +178,7 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text-primary);
+  color: var(--foreground);
   font-size: 14px;
   cursor: pointer;
   text-align: left;
@@ -189,7 +189,7 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
 }
 .profile-menu-item i {
   width: 16px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 14px;
 }
 .profile-menu-item--danger {

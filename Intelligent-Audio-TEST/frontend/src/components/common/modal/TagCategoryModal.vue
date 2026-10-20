@@ -151,28 +151,28 @@ function handleCancel() {
   display: block;
   margin-bottom: 8px;
   font-weight: 500;
-  color: var(--text-primary, var(--color-slate-700));
+  color: var(--foreground, var(--color-slate-700));
   font-size: 14px;
 }
 
 .required {
-  color: var(--danger-color, var(--color-red-500));
+  color: var(--destructive, var(--color-red-500));
 }
 
 .form-input {
   width: 100%;
   padding: 10px 14px;
-  border: 1px solid var(--border-color, var(--color-slate-200));
+  border: 1px solid var(--border, var(--color-slate-200));
   border-radius: var(--radius-control);
   font-size: 14px;
   box-sizing: border-box;
   transition: all 0.2s;
-  background: var(--input-bg, var(--background));
+  background: var(--background, var(--background));
 }
 
 .form-input:focus {
   outline: none;
-  border-color: var(--primary-color, var(--color-indigo-500));
+  border-color: var(--primary, var(--color-indigo-500));
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-indigo-500) 10%, transparent);
 }
 
@@ -181,7 +181,7 @@ function handleCancel() {
   right: 0;
   bottom: -18px;
   font-size: 11px;
-  color: var(--text-muted, var(--color-slate-400));
+  color: var(--muted-foreground, var(--color-slate-400));
 }
 
 .form-row {
@@ -204,18 +204,18 @@ input[type="color"] {
   padding: 4px;
   width: 60px;
   cursor: pointer;
-  border: 1px solid var(--border-color, var(--color-slate-200));
+  border: 1px solid var(--border, var(--color-slate-200));
   border-radius: var(--radius-control);
 }
 
 .color-value {
   font-size: 13px;
-  color: var(--text-secondary, var(--color-slate-500));
+  color: var(--muted-foreground, var(--color-slate-500));
   font-family: monospace;
 }
 
 .error-message {
-  color: var(--danger-color, var(--color-red-500));
+  color: var(--destructive, var(--color-red-500));
   font-size: 13px;
   margin-bottom: 12px;
 }
@@ -226,7 +226,7 @@ input[type="color"] {
   gap: 12px;
   margin-top: 24px;
   padding-top: 20px;
-  border-top: 1px solid var(--border-color, var(--color-slate-200));
+  border-top: 1px solid var(--border, var(--color-slate-200));
 }
 
 .btn {
@@ -243,7 +243,7 @@ input[type="color"] {
 }
 
 .btn-primary {
-  background: var(--primary-color, var(--color-indigo-500));
+  background: var(--primary, var(--color-indigo-500));
   color: var(--background);
 }
 
@@ -252,17 +252,17 @@ input[type="color"] {
 }
 
 .btn-primary:disabled {
-  background: var(--disabled-bg, var(--color-slate-300));
+  background: var(--gray-light, var(--color-slate-300));
   cursor: not-allowed;
 }
 
 .btn-secondary {
   background: var(--btn-secondary-bg, var(--color-slate-100));
-  color: var(--text-secondary, var(--color-slate-600));
-  border: 1px solid var(--border-color, var(--color-slate-200));
+  color: var(--muted-foreground, var(--color-slate-600));
+  border: 1px solid var(--border, var(--color-slate-200));
 }
 
 .btn-secondary:hover {
-  background: var(--btn-secondary-hover, var(--color-slate-200));
+  background: var(--secondary-light, var(--color-slate-200));
 }
 </style>

@@ -1,15 +1,15 @@
 .upload-options {
   padding: 20px;
-  background: var(--background-primary);
+  background: var(--background);
   border-radius: var(--radius-lg);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
 }
 
 .upload-options h4 {
   margin: 0 0 20px 0;
   font-size: 16px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 
 .options-grid {
@@ -32,16 +32,16 @@
 .option-item label:not(.checkbox-label):not(.radio-label) {
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .option-item .required {
-  color: var(--error-color);
+  color: var(--destructive);
 }
 
 .form-input {
   padding: 10px 14px;
-  border: 2px solid var(--border-color);
+  border: 2px solid var(--border);
   border-radius: var(--radius-control);
   font-size: 14px;
   outline: none;
@@ -50,7 +50,7 @@
 }
 
 .form-input:focus {
-  border-color: var(--secondary-color);
+  border-color: var(--secondary);
   box-shadow: 0 0 0 3px var(--secondary-light);
 }
 
@@ -80,7 +80,7 @@
   gap: 8px;
   cursor: pointer;
   font-size: 14px;
-  color: var(--text-primary);
+  color: var(--foreground);
   padding: 8px 12px;
   border-radius: var(--radius-tag);
   transition: all var(--transition-fast);
@@ -96,7 +96,7 @@
   width: 18px;
   height: 18px;
   cursor: pointer;
-  accent-color: var(--secondary-color);
+  accent-color: var(--secondary);
   position: static;
   opacity: 1;
   height: auto;
@@ -120,7 +120,7 @@
 }
 
 .option-hint.error {
-  color: var(--error-color);
+  color: var(--destructive);
 }
 
 .config-hint {
@@ -155,15 +155,15 @@
   white-space: nowrap;
   padding: 10px 14px;
   background: var(--white-color);
-  border: 2px dashed var(--border-color);
+  border: 2px dashed var(--border);
   border-radius: var(--radius-control);
-  color: var(--secondary-color);
+  color: var(--secondary);
   font-weight: 500;
   transition: all var(--transition-fast);
 }
 
 .audio-select-btn:hover {
-  border-color: var(--secondary-color);
+  border-color: var(--secondary);
   background: var(--secondary-light);
 }
 
@@ -177,8 +177,8 @@
 }
 
 .clear-btn:hover {
-  color: var(--error-color);
-  background: var(--error-light);
+  color: var(--destructive);
+  background: var(--destructive-light);
 }
 
 .test-type-config-row {
@@ -195,9 +195,9 @@
 .test-type-config {
   margin-top: 20px;
   padding: 20px;
-  background-color: var(--background-primary);
+  background-color: var(--background);
   border-radius: var(--radius-lg);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
 }
 
@@ -211,7 +211,7 @@
   gap: 10px;
   margin-bottom: 20px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--foreground);
   font-size: 15px;
 }
 
@@ -226,21 +226,21 @@
 }
 
 .api-config {
-  border-left: 4px solid var(--secondary-color);
+  border-left: 4px solid var(--secondary);
 }
 
 .api-config .config-header i {
   background: var(--secondary-light);
-  color: var(--secondary-color);
+  color: var(--secondary);
 }
 
 .e2e-config {
-  border-left: 4px solid var(--success-color);
+  border-left: 4px solid var(--success);
 }
 
 .e2e-config .config-header i {
   background: var(--success-light);
-  color: var(--success-color);
+  color: var(--success);
 }
 
 .btn {
@@ -270,13 +270,13 @@
 
 .btn-secondary {
   background: var(--white-color);
-  color: var(--text-primary);
-  border-color: var(--border-color);
+  color: var(--foreground);
+  border-color: var(--border);
 }
 
 .btn-secondary:hover {
-  border-color: var(--secondary-color);
-  color: var(--secondary-color);
+  border-color: var(--secondary);
+  color: var(--secondary);
   background: var(--secondary-light);
 }
 
@@ -287,7 +287,7 @@
 }
 
 .btn-text:hover {
-  color: var(--secondary-color);
+  color: var(--secondary);
   background: var(--secondary-light);
   border-radius: var(--radius-control);
 }

@@ -79,7 +79,7 @@ defineEmits<{
   align-items: center;
   justify-content: space-between;
   padding: 12px 14px;
-  background: var(--background-secondary, var(--muted));
+  background: var(--muted, var(--muted));
   border-radius: var(--radius-control);
   margin-bottom: 16px;
 }
@@ -94,7 +94,7 @@ defineEmits<{
   width: 36px;
   height: 36px;
   border-radius: var(--radius-pill);
-  background: var(--primary-color, var(--primary));
+  background: var(--primary, var(--primary));
   color: var(--background);
   font-size: 16px;
   font-weight: 700;
@@ -106,7 +106,7 @@ defineEmits<{
 .rce-round-label {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-primary, var(--foreground));
+  color: var(--foreground, var(--foreground));
 }
 
 .rce-round-meta {
@@ -135,34 +135,34 @@ defineEmits<{
 .rce-pager-btn {
   width: 26px;
   height: 26px;
-  border: 1px solid var(--border-color, var(--border));
+  border: 1px solid var(--border, var(--border));
   border-radius: var(--radius-control);
-  background: var(--background-primary, var(--background));
+  background: var(--background, var(--background));
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 11px;
-  color: var(--text-secondary, var(--color-gray-500));
+  color: var(--muted-foreground, var(--color-gray-500));
 }
 .rce-pager-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 .rce-pager-btn:hover:not(:disabled) {
-  border-color: var(--primary-color, var(--primary));
-  color: var(--primary-color, var(--primary));
+  border-color: var(--primary, var(--primary));
+  color: var(--primary, var(--primary));
 }
 
 .rce-pager-info {
   font-size: 12px;
-  color: var(--text-secondary, var(--color-gray-500));
+  color: var(--muted-foreground, var(--color-gray-500));
 }
 
 .rce-icon-btn {
   width: 28px;
   height: 28px;
-  border: 1px solid var(--border-color, var(--border));
+  border: 1px solid var(--border, var(--border));
   border-radius: var(--radius-control);
   background: transparent;
   cursor: pointer;
@@ -170,19 +170,19 @@ defineEmits<{
   align-items: center;
   justify-content: center;
   font-size: 12px;
-  color: var(--text-secondary, var(--color-gray-500));
+  color: var(--muted-foreground, var(--color-gray-500));
   transition: all 0.15s;
 }
 .rce-icon-btn:hover:not(:disabled) {
-  border-color: var(--primary-color, var(--primary));
-  color: var(--primary-color, var(--primary));
+  border-color: var(--primary, var(--primary));
+  color: var(--primary, var(--primary));
 }
 .rce-icon-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 .rce-icon-btn-danger:hover:not(:disabled) {
-  border-color: var(--danger-color, var(--destructive));
-  color: var(--danger-color, var(--destructive));
+  border-color: var(--destructive, var(--destructive));
+  color: var(--destructive, var(--destructive));
 }
 </style>

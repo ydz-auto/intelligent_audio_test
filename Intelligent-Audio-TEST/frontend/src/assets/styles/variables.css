@@ -59,7 +59,7 @@
     --border-radius-full: var(--radius-full);
 
     /* 卡片样式 */
-    --card-border: var(--border-width) solid var(--gray-light-color);
+    --card-border: var(--border-width) solid var(--gray-light);
     --card-radius: var(--radius-card);
     --card-shadow: var(--shadow-md);
     --card-shadow-hover: var(--shadow-lg);

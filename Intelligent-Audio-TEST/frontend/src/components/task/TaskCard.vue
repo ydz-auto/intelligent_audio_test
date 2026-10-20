@@ -276,7 +276,7 @@ const resolveActionIconStyle = (action) => {
     gap: 8px;
     padding: 6px 12px;
     background: color-mix(in srgb, var(--color-white) 80%, transparent);
-    border-radius: var(--border-radius-full);
+    border-radius: var(--radius-full);
     font-size: 14px;
     font-weight: 500;
     box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 5%, transparent);
@@ -293,17 +293,17 @@ const resolveActionIconStyle = (action) => {
 .task-meta-item i{
     width: 16px;
     text-align: center;
-    color: var(--primary-color);
+    color: var(--primary);
     font-size: 14px;
 }
 
 .task-type{
     background: transparent;
-    color: var(--primary-color);
+    color: var(--primary);
     font-weight: 600;
-    border: 1px solid var(--primary-color);
+    border: 1px solid var(--primary);
     padding: 4px 12px;
-    border-radius: var(--border-radius-full);
+    border-radius: var(--radius-full);
 }
 
 /* INT-215：回收站「已删除」徽章（替代原状态徽章展示） */
@@ -340,7 +340,7 @@ const resolveActionIconStyle = (action) => {
     background: transparent;
     color: var(--color-slate-500);
     padding: 6px 16px;
-    border-radius: var(--border-radius-full);
+    border-radius: var(--radius-full);
     font-size: 13px;
     font-weight: 500;
     transition: all 0.3s ease;

@@ -137,7 +137,7 @@ const handleRetry = () => {
 .global-upload-progress {
   margin: 15px 0;
   padding: 10px;
-  background-color: var(--background-secondary);
+  background-color: var(--muted);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
 }
@@ -155,18 +155,18 @@ const handleRetry = () => {
 
 .progress-text {
   font-size: var(--font-size-sm);
-  color: var(--text-primary);
+  color: var(--foreground);
   font-weight: var(--font-weight-medium);
   margin-bottom: var(--spacing-xs);
 }
 
 .progress-detail {
   font-size: var(--font-size-xs);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .progress-detail .error-text {
-  color: var(--error-color);
+  color: var(--destructive);
 }
 
 .progress-actions {
@@ -176,7 +176,7 @@ const handleRetry = () => {
 
 .progress-container {
   height: 8px;
-  background-color: var(--secondary-color);
+  background-color: var(--secondary);
   border-radius: var(--radius-pill);
   overflow: hidden;
   margin-bottom: var(--spacing-sm);
@@ -192,19 +192,19 @@ const handleRetry = () => {
 .file-progress-detail {
   margin-top: var(--spacing-md);
   padding: var(--spacing-md);
-  background-color: var(--background-primary);
+  background-color: var(--background);
   border-radius: var(--radius-control);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
 }
 
 .detail-title {
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
+  color: var(--foreground);
   margin: 0 0 var(--spacing-md) 0;
   padding-bottom: var(--spacing-sm);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border);
 }
 
 .file-progress-list {
@@ -217,7 +217,7 @@ const handleRetry = () => {
 .file-progress-item {
   margin-bottom: var(--spacing-md);
   padding: var(--spacing-sm);
-  background-color: var(--background-secondary);
+  background-color: var(--muted);
   border-radius: var(--radius-tag);
   transition: all var(--transition-normal);
 }
@@ -236,7 +236,7 @@ const handleRetry = () => {
 
 .file-name {
   font-weight: var(--font-weight-medium);
-  color: var(--text-primary);
+  color: var(--foreground);
   font-size: var(--font-size-sm);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -257,27 +257,27 @@ const handleRetry = () => {
 }
 
 .file-status.pending {
-  color: var(--text-secondary);
-  background-color: var(--background-tertiary);
+  color: var(--muted-foreground);
+  background-color: var(--gray-light);
 }
 
 .file-status.uploading {
-  color: var(--primary-color);
-  background-color: var(--primary-light);
+  color: var(--primary);
+  background-color: var(--accent);
 }
 
 .file-status.completed {
-  color: var(--success-color);
+  color: var(--success);
   background-color: var(--success-light);
 }
 
 .file-status.failed {
-  color: var(--error-color);
-  background-color: var(--error-light);
+  color: var(--destructive);
+  background-color: var(--destructive-light);
 }
 
 .error-message {
-  color: var(--error-color);
+  color: var(--destructive);
   font-size: var(--font-size-xs);
   margin-left: var(--spacing-xs);
   white-space: nowrap;
@@ -294,7 +294,7 @@ const handleRetry = () => {
 .file-progress-bar {
   flex: 1;
   height: 6px;
-  background-color: var(--secondary-color);
+  background-color: var(--secondary);
   border-radius: var(--radius-pill);
   overflow: hidden;
 }
@@ -308,7 +308,7 @@ const handleRetry = () => {
 
 .file-progress-text {
   font-size: var(--font-size-xs);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   white-space: nowrap;
   width: 40px;
   text-align: right;
@@ -318,7 +318,7 @@ const handleRetry = () => {
   text-align: center;
   margin-top: var(--spacing-md);
   padding-top: var(--spacing-md);
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--border);
 }
 
 .retry-section .btn {

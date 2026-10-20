@@ -1,6 +1,6 @@
 .filter-component-container {
   background: var(--color-white);
-  border-radius: var(--border-radius-lg);
+  border-radius: var(--radius-lg);
   box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 8%, transparent);
   padding: 24px;
   margin-bottom: 24px;
@@ -51,7 +51,7 @@
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   font-size: 14px;
   transition: all 0.3s ease;
   box-sizing: border-box;
@@ -143,7 +143,7 @@ select.filter-select {
   padding: 6px 12px;
   background: var(--muted);
   color: var(--color-gray-500);
-  border-radius: var(--border-radius-xl);
+  border-radius: var(--radius-xl);
   font-size: 14px;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -196,7 +196,7 @@ select.filter-select {
   padding: 8px 12px;
   background: var(--secondary-light);
   color: var(--secondary);
-  border-radius: var(--border-radius-xl);
+  border-radius: var(--radius-xl);
   font-size: 14px;
 }
 
@@ -236,7 +236,7 @@ select.filter-select {
   gap: 6px;
   padding: 8px 16px;
   border: none;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;

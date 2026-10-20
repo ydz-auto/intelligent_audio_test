@@ -183,7 +183,7 @@ defineExpose({
 /* ===== 合并任务源任务列表 ===== */
 .merged-source-list {
   border: 1px dashed var(--color-gray-300, #d1d5db);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   margin: 0 0 12px;
   padding: 0;
   background: var(--color-gray-50, #f9fafb);
@@ -238,7 +238,7 @@ defineExpose({
 .merged-source-status {
   font-size: 12px;
   padding: 1px 8px;
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-full);
   background: var(--color-gray-200, #e5e7eb);
   color: var(--color-gray-700, #374151);
 }

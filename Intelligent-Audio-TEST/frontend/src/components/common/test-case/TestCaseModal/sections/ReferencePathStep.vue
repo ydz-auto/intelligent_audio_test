@@ -133,8 +133,8 @@ async function saveRefParams() {
   gap: 8px;
   margin-bottom: 12px;
 }
-.rce-step-icon { font-size: 14px; color: var(--primary-color, var(--primary)); }
-.rce-step-title { font-size: 14px; font-weight: 600; color: var(--text-primary, var(--foreground)); }
+.rce-step-icon { font-size: 14px; color: var(--primary, var(--primary)); }
+.rce-step-title { font-size: 14px; font-weight: 600; color: var(--foreground, var(--foreground)); }
 
 .rce-tag {
   padding: 2px 8px;
@@ -149,27 +149,27 @@ async function saveRefParams() {
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
-  background: var(--background-secondary, var(--muted));
+  background: var(--muted, var(--muted));
   border-radius: var(--radius-control);
   font-size: 12px;
-  color: var(--text-secondary, var(--color-gray-500));
+  color: var(--muted-foreground, var(--color-gray-500));
 }
 .rce-ref-info i { color: var(--text-light, var(--color-gray-400)); }
 
 .rce-ref-btn {
   margin-left: auto;
   padding: 4px 10px;
-  border: 1px solid var(--border-color, var(--border));
+  border: 1px solid var(--border, var(--border));
   border-radius: var(--radius-control);
-  background: var(--background-primary, var(--background));
-  color: var(--text-secondary, var(--color-gray-500));
+  background: var(--background, var(--background));
+  color: var(--muted-foreground, var(--color-gray-500));
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
 }
-.rce-ref-btn:hover:not(:disabled) { color: var(--primary-color, var(--primary)); }
+.rce-ref-btn:hover:not(:disabled) { color: var(--primary, var(--primary)); }
 .rce-ref-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.rce-ref-btn-primary { margin-left: 0; color: var(--primary-color, var(--primary)); }
+.rce-ref-btn-primary { margin-left: 0; color: var(--primary, var(--primary)); }
 
 .rce-ref-empty {
   padding: 16px;
@@ -189,7 +189,7 @@ async function saveRefParams() {
   width: 100%;
   min-height: 200px;
   padding: 10px;
-  border: 1px solid var(--border-color, var(--border));
+  border: 1px solid var(--border, var(--border));
   border-radius: var(--radius-control);
   font-family: monospace;
   font-size: 12px;

@@ -80,7 +80,7 @@ function handleCancel() {
 .tag-count {
   margin: 0;
   font-size: 13px;
-  color: var(--text-secondary, var(--color-slate-500));
+  color: var(--muted-foreground, var(--color-slate-500));
 }
 
 .modal-body {
@@ -106,7 +106,7 @@ function handleCancel() {
   width: 100%;
   padding: 8px 12px;
   border: 1px solid var(--color-gray-300);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   font-size: 14px;
   background: var(--background);
   color: var(--foreground);
@@ -129,7 +129,7 @@ function handleCancel() {
 
 .btn {
   padding: 8px 20px;
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   font-size: 14px;
   cursor: pointer;
   border: none;

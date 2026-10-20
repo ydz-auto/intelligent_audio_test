@@ -7,7 +7,7 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--bg-color, var(--color-slate-50));
+  background: var(--background, var(--color-slate-50));
   min-height: 100vh;
 }
 
@@ -31,7 +31,7 @@
   align-items: center;
   gap: calc(var(--spacing-sm) + var(--spacing-xs) / 2);
   font-weight: var(--font-weight-semibold);
-  color: var(--primary-color, var(--color-indigo-500));
+  color: var(--primary, var(--color-indigo-500));
 }
 
 .tg-page-title i {
@@ -40,7 +40,7 @@
 
 .tg-page-description {
   margin: 0;
-  color: var(--text-secondary, var(--color-slate-500));
+  color: var(--muted-foreground, var(--color-slate-500));
   font-size: var(--font-size-sm);
 }
 
@@ -67,7 +67,7 @@
 }
 
 .tg-card {
-  background: var(--card-bg, var(--color-white));
+  background: var(--card, var(--color-white));
   border-radius: var(--radius-card);
   box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 8%, transparent);
   display: flex;
@@ -77,7 +77,7 @@
 
 .tg-card-header {
   padding: var(--spacing-md) calc(var(--spacing-md) + var(--spacing-xs));
-  border-bottom: 1px solid var(--border-color, var(--color-slate-200));
+  border-bottom: 1px solid var(--border, var(--color-slate-200));
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -86,7 +86,7 @@
 .tg-card-title {
   margin: 0;
   font-size: var(--font-size-md);
-  color: var(--text-primary, var(--color-slate-700));
+  color: var(--foreground, var(--color-slate-700));
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
@@ -94,13 +94,13 @@
 }
 
 .tg-card-title i {
-  color: var(--primary-color, var(--color-indigo-500));
+  color: var(--primary, var(--color-indigo-500));
 }
 
 .tg-total-count,
 .tg-tag-total-count {
   font-size: calc(var(--font-size-sm) - var(--border-width));
-  color: var(--text-muted, var(--color-slate-400));
+  color: var(--muted-foreground, var(--color-slate-400));
   font-weight: var(--font-weight-normal);
   margin-left: var(--spacing-sm);
 }
@@ -113,7 +113,7 @@
 
 .tg-card-search {
   padding: calc(var(--spacing-sm) + var(--spacing-xs)) var(--spacing-md);
-  border-bottom: 1px solid var(--border-color, var(--color-slate-200));
+  border-bottom: 1px solid var(--border, var(--color-slate-200));
 }
 
 .tg-card-body {
@@ -138,7 +138,7 @@
 
 .tg-category-item {
   padding: calc(var(--spacing-sm) + var(--spacing-xs)) calc(var(--spacing-md) - var(--spacing-xs) / 2);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   cursor: pointer;
   display: flex;
   justify-content: space-between;
@@ -148,12 +148,12 @@
 }
 
 .tg-category-item:hover {
-  background: var(--hover-bg, var(--color-slate-100));
+  background: var(--muted, var(--color-slate-100));
 }
 
 .tg-category-item.tg-active {
   background: var(--active-bg, var(--color-indigo-50));
-  border-color: var(--primary-color, var(--color-indigo-500));
+  border-color: var(--primary, var(--color-indigo-500));
 }
 
 .tg-category-info {
@@ -165,22 +165,22 @@
 .tg-category-color {
   width: calc(var(--spacing-sm) + var(--spacing-xs));
   height: calc(var(--spacing-sm) + var(--spacing-xs));
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--radius-sm);
   flex-shrink: 0;
 }
 
 .tg-category-name {
   font-weight: var(--font-weight-medium);
-  color: var(--text-primary, var(--color-slate-700));
+  color: var(--foreground, var(--color-slate-700));
   font-size: var(--font-size-sm);
 }
 
 .tg-tag-count-badge {
   font-size: calc(var(--font-size-xs) - var(--border-width));
-  color: var(--text-muted, var(--color-slate-500));
-  background: var(--badge-bg, var(--color-slate-100));
+  color: var(--muted-foreground, var(--color-slate-500));
+  background: var(--muted, var(--color-slate-100));
   padding: calc(var(--spacing-xs) / 2) var(--spacing-sm);
-  border-radius: var(--border-radius-full);
+  border-radius: var(--radius-full);
   font-weight: var(--font-weight-medium);
 }
 
@@ -195,7 +195,7 @@
   justify-content: center;
   gap: var(--spacing-sm);
   padding: var(--spacing-md);
-  color: var(--text-muted, var(--color-slate-400));
+  color: var(--muted-foreground, var(--color-slate-400));
   font-size: calc(var(--font-size-sm) - var(--border-width));
 }
 
@@ -206,7 +206,7 @@
 .tg-no-more-categories {
   text-align: center;
   padding: calc(var(--spacing-sm) + var(--spacing-xs));
-  color: var(--text-muted, var(--color-slate-400));
+  color: var(--muted-foreground, var(--color-slate-400));
   font-size: var(--font-size-xs);
 }
 
@@ -221,28 +221,28 @@
   position: absolute;
   left: calc(var(--spacing-sm) + var(--spacing-xs));
   font-size: var(--font-size-sm);
-  color: var(--text-muted, var(--color-slate-400));
+  color: var(--muted-foreground, var(--color-slate-400));
 }
 
 .tg-search-input {
   padding: var(--spacing-sm) calc(var(--spacing-sm) + var(--spacing-xs)) var(--spacing-sm) calc(var(--spacing-xl) + var(--spacing-xs));
-  border: 1px solid var(--border-color, var(--color-slate-200));
-  border-radius: var(--border-radius-md);
+  border: 1px solid var(--border, var(--color-slate-200));
+  border-radius: var(--radius-md);
   font-size: var(--font-size-sm);
   width: 100%;
   transition: all 0.2s;
-  background: var(--input-bg, var(--color-white));
+  background: var(--background, var(--color-white));
 }
 
 .tg-search-input:focus {
   outline: none;
-  border-color: var(--primary-color, var(--color-indigo-500));
+  border-color: var(--primary, var(--color-indigo-500));
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-indigo-500) 10%, transparent);
 }
 
 .tg-empty-state {
   text-align: center;
-  color: var(--text-muted, var(--color-slate-400));
+  color: var(--muted-foreground, var(--color-slate-400));
   padding: calc(var(--spacing-xxxl) - var(--spacing-xs)) calc(var(--spacing-md) + var(--spacing-xs));
 }
 
@@ -250,7 +250,7 @@
   font-size: calc(var(--font-size-xxxl) + var(--font-size-md));
   margin-bottom: var(--spacing-md);
   display: block;
-  color: var(--text-muted, var(--color-slate-300));
+  color: var(--muted-foreground, var(--color-slate-300));
 }
 
 .tg-empty-state p {
@@ -265,15 +265,15 @@
 }
 
 .tg-tag-card {
-  background: var(--card-bg, var(--color-white));
-  border: 1px solid var(--border-color, var(--color-slate-200));
+  background: var(--card, var(--color-white));
+  border: 1px solid var(--border, var(--color-slate-200));
   border-radius: var(--radius-card);
   overflow: hidden;
   transition: all 0.2s;
 }
 
 .tg-tag-card:hover {
-  border-color: var(--border-hover, var(--color-slate-300));
+  border-color: var(--border, var(--color-slate-300));
   box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 8%, transparent);
 }
 
@@ -294,7 +294,7 @@
 
 .tg-tag-name {
   font-weight: var(--font-weight-semibold);
-  color: var(--text-primary, var(--color-slate-800));
+  color: var(--foreground, var(--color-slate-800));
   font-size: var(--font-size-sm);
 }
 
@@ -311,7 +311,7 @@
 
 .tg-tag-description {
   font-size: calc(var(--font-size-sm) - var(--border-width));
-  color: var(--text-secondary, var(--color-slate-500));
+  color: var(--muted-foreground, var(--color-slate-500));
   margin: 0 0 calc(var(--spacing-sm) + var(--spacing-xs) / 2);
   line-height: 1.5;
   display: -webkit-box;
@@ -324,7 +324,7 @@
   display: flex;
   gap: calc(var(--spacing-sm) + var(--spacing-xs));
   font-size: var(--font-size-xs);
-  color: var(--text-muted, var(--color-slate-400));
+  color: var(--muted-foreground, var(--color-slate-400));
 }
 
 .tg-tag-category {
@@ -340,7 +340,7 @@
   justify-content: center;
   gap: var(--spacing-sm);
   padding: calc(var(--spacing-md) + var(--spacing-xs));
-  color: var(--text-muted, var(--color-slate-400));
+  color: var(--muted-foreground, var(--color-slate-400));
   font-size: var(--font-size-sm);
 }
 
@@ -352,13 +352,13 @@
   grid-column: 1 / -1;
   text-align: center;
   padding: var(--spacing-md);
-  color: var(--text-muted, var(--color-slate-400));
+  color: var(--muted-foreground, var(--color-slate-400));
   font-size: calc(var(--font-size-sm) - var(--border-width));
 }
 
 .tg-btn {
   padding: var(--spacing-sm) var(--spacing-md);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-md);
   font-size: var(--font-size-sm);
   cursor: pointer;
   border: none;
@@ -374,7 +374,7 @@
 }
 
 .tg-btn-primary {
-  background: var(--primary-color, var(--color-indigo-500));
+  background: var(--primary, var(--color-indigo-500));
   color: var(--color-white);
 }
 
@@ -383,22 +383,22 @@
 }
 
 .tg-btn-primary:disabled {
-  background: var(--disabled-bg, var(--color-slate-300));
+  background: var(--gray-light, var(--color-slate-300));
   cursor: not-allowed;
 }
 
 .tg-btn-secondary {
   background: var(--btn-secondary-bg, var(--color-slate-100));
-  color: var(--text-secondary, var(--color-slate-600));
-  border: 1px solid var(--border-color, var(--color-slate-200));
+  color: var(--muted-foreground, var(--color-slate-600));
+  border: 1px solid var(--border, var(--color-slate-200));
 }
 
 .tg-btn-secondary:hover {
-  background: var(--btn-secondary-hover, var(--color-slate-200));
+  background: var(--secondary-light, var(--color-slate-200));
 }
 
 .tg-btn-danger {
-  background: var(--danger-color, var(--color-red-500));
+  background: var(--destructive, var(--color-red-500));
   color: var(--color-white);
 }
 
@@ -412,19 +412,19 @@
 }
 
 .tg-btn-text.tg-btn-primary {
-  color: var(--primary-color, var(--color-indigo-500));
+  color: var(--primary, var(--color-indigo-500));
 }
 
 .tg-btn-text.tg-btn-primary:hover {
-  background: var(--primary-light, color-mix(in srgb, var(--color-indigo-500) 10%, transparent));
+  background: var(--accent, color-mix(in srgb, var(--color-indigo-500) 10%, transparent));
 }
 
 .tg-btn-text.tg-btn-danger {
-  color: var(--danger-color, var(--color-red-500));
+  color: var(--destructive, var(--color-red-500));
 }
 
 .tg-btn-text.tg-btn-danger:hover {
-  background: var(--danger-light, color-mix(in srgb, var(--color-red-500) 10%, transparent));
+  background: var(--destructive-light, color-mix(in srgb, var(--color-red-500) 10%, transparent));
 }
 
 /* ===== INT-739：批量改分类（勾选 + 浮动条）===== */
@@ -442,11 +442,11 @@
   height: 16px;
   cursor: pointer;
   flex-shrink: 0;
-  accent-color: var(--primary-color, var(--color-indigo-500));
+  accent-color: var(--primary, var(--color-indigo-500));
 }
 
 .tg-tag-card--selected {
-  border-color: var(--primary-color, var(--color-indigo-500));
+  border-color: var(--primary, var(--color-indigo-500));
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-indigo-500) 15%, transparent);
 }
 
@@ -460,27 +460,27 @@
   align-items: center;
   gap: calc(var(--spacing-md) - var(--spacing-xs) / 2);
   padding: calc(var(--spacing-sm) + var(--spacing-xs) / 2) var(--spacing-md);
-  background: var(--card-bg, var(--color-white));
-  border: 1px solid var(--border-color, var(--color-slate-200));
-  border-radius: var(--border-radius-md);
+  background: var(--card, var(--color-white));
+  border: 1px solid var(--border, var(--color-slate-200));
+  border-radius: var(--radius-md);
   box-shadow: 0 8px 24px color-mix(in srgb, var(--color-black) 18%, transparent);
 }
 
 .tg-bulk-count {
   font-size: var(--font-size-sm);
-  color: var(--text-primary, var(--color-slate-700));
+  color: var(--foreground, var(--color-slate-700));
   font-weight: var(--font-weight-medium);
 }
 
 .tg-bulk-clear {
-  color: var(--text-muted, var(--color-slate-400));
+  color: var(--muted-foreground, var(--color-slate-400));
   font-size: var(--font-size-sm);
   padding: var(--spacing-xs);
 }
 
 .tg-bulk-clear:hover {
-  color: var(--text-primary, var(--color-slate-700));
-  background: var(--hover-bg, var(--color-slate-100));
+  color: var(--foreground, var(--color-slate-700));
+  background: var(--muted, var(--color-slate-100));
 }
 
 .tg-bulk-fade-enter-active,

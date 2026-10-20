@@ -448,7 +448,7 @@ onMounted(async () => {
   align-items: center;
   gap: 8px;
   padding: 24px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 13px;
 }
 
@@ -471,7 +471,7 @@ onMounted(async () => {
 .case-item-name {
   flex: 1;
   font-size: 13px;
-  color: var(--text-primary);
+  color: var(--foreground);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -480,7 +480,7 @@ onMounted(async () => {
 .case-item-meta {
   flex-shrink: 0;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
 }
 
 .checkbox-input {
@@ -535,7 +535,7 @@ onMounted(async () => {
 
 .dimension-item-name {
   font-size: 13px;
-  color: var(--text-primary);
+  color: var(--foreground);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

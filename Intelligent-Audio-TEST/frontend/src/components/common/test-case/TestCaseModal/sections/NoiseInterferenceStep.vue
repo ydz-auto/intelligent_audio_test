@@ -311,8 +311,8 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   gap: 8px;
   margin-bottom: 12px;
 }
-.rce-step-icon { font-size: 14px; color: var(--primary-color, var(--primary)); }
-.rce-step-title { font-size: 14px; font-weight: 600; color: var(--text-primary, var(--foreground)); }
+.rce-step-icon { font-size: 14px; color: var(--primary, var(--primary)); }
+.rce-step-title { font-size: 14px; font-weight: 600; color: var(--foreground, var(--foreground)); }
 
 .rce-tag {
   padding: 2px 8px;
@@ -329,15 +329,15 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  background: var(--background-secondary, var(--muted));
-  border: 1px solid var(--border-color, var(--border));
+  background: var(--muted, var(--muted));
+  border: 1px solid var(--border, var(--border));
   border-radius: var(--radius-control) var(--radius-control) 0 0;
   border-bottom: none;
 }
 .rce-noise-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary, var(--foreground));
+  color: var(--foreground, var(--foreground));
   display: flex;
   align-items: center;
   gap: 6px;
@@ -347,10 +347,10 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
 .rce-noise-remove-btn {
   padding: 4px 10px;
   font-size: 12px;
-  border: 1px solid var(--danger-color, var(--destructive));
+  border: 1px solid var(--destructive, var(--destructive));
   border-radius: var(--radius-control);
   background: transparent;
-  color: var(--danger-color, var(--destructive));
+  color: var(--destructive, var(--destructive));
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -358,7 +358,7 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   transition: all 0.15s;
 }
 .rce-noise-remove-btn:hover {
-  background: var(--danger-color, var(--destructive));
+  background: var(--destructive, var(--destructive));
   color: var(--background);
 }
 
@@ -375,8 +375,8 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
 }
 
 .rce-noise-body {
-  background: var(--background-primary, var(--background));
-  border: 1px solid var(--border-color, var(--border));
+  background: var(--background, var(--background));
+  border: 1px solid var(--border, var(--border));
   border-radius: 0 0 var(--radius-control) var(--radius-control);
   padding: 12px;
   display: flex;
@@ -453,13 +453,13 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
 
 .rce-field { display: flex; flex-direction: column; gap: 3px; }
 .rce-field-row { display: flex; gap: 12px; }
-.rce-field-label { font-size: 12px; font-weight: 500; color: var(--text-secondary, var(--color-gray-500)); }
+.rce-field-label { font-size: 12px; font-weight: 500; color: var(--muted-foreground, var(--color-gray-500)); }
 
 .rce-audio-input { display: flex; gap: 4px; align-items: center; }
 .rce-audio-input input {
   flex: 1;
   cursor: pointer;
-  background: var(--background-primary, var(--background)) ;
+  background: var(--background, var(--background)) ;
 }
 
 .rce-switch {
@@ -468,12 +468,12 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   gap: 6px;
   cursor: pointer;
   font-size: 12px;
-  color: var(--text-secondary, var(--color-gray-500));
+  color: var(--muted-foreground, var(--color-gray-500));
 }
 .rce-switch input[type="checkbox"] {
   width: 16px;
   height: 16px;
-  accent-color: var(--primary-color, var(--primary));
+  accent-color: var(--primary, var(--primary));
 }
 
 .rce-param-grid { display: flex; gap: 12px; flex-wrap: wrap; }
@@ -482,7 +482,7 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   display: block;
   font-size: 12px;
   font-weight: 500;
-  color: var(--text-secondary, var(--color-gray-500));
+  color: var(--muted-foreground, var(--color-gray-500));
   margin-bottom: 4px;
 }
 
@@ -492,7 +492,7 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   -webkit-appearance: none;
   height: 4px;
   border-radius: var(--radius-tag);
-  background: var(--border-color, var(--border));
+  background: var(--border, var(--border));
   outline: none;
 }
 .rce-slider::-webkit-slider-thumb {
@@ -500,12 +500,12 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   width: 14px;
   height: 14px;
   border-radius: var(--radius-pill);
-  background: var(--primary-color, var(--primary));
+  background: var(--primary, var(--primary));
   cursor: pointer;
 }
 .rce-slider-val {
   font-size: 12px;
-  color: var(--primary-color, var(--primary));
+  color: var(--primary, var(--primary));
   font-weight: 600;
   min-width: 40px;
   text-align: right;
