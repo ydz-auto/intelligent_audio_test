@@ -100,7 +100,8 @@ import '../../../assets/styles/layouts/main.css'
  * AI 复核弹窗（19 规范 §5.2 + §2.1 AI 复核状态机：待发起→执行中→已完成→已采纳/已驳回/待查）。
  * 定位：建议层，不直接改统计；只有人工「采纳」才落入人工复核语义（开 §3.2 复核弹窗预填
  * AI 判定的评估状态 + 备注=AI 理由 → 人工确认提交 → test_result_reviews 留痕 + 统计重算）。
- * 后端 AI 复核端点未合入常驻栈（FEAT INT-800 已 done，待集成）→ infrastructure 留桩 `// 待接线`；
+ * 后端 AI 复核端点已合入常驻栈（FEAT INT-800 done）→ reviewAiApi 全真实端点
+ * （POST /tasks/results/ai-review、POST /tasks/results/ai-review/{id}/adopt|reject）；
  * 本组件只消费 reviewAiApi（requestAiReview / adoptAiReview / rejectAiReview），不感知桩/真实。
  */
 import { ref, computed } from 'vue'
