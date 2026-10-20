@@ -7,15 +7,12 @@ INT-339 挑选合并容器任务创建即 completed、自身无 test_results 行
    有数据、加权值非 0；
 2. 分组/标签平均值：_query_cases_for_averages / _query_test_cases_and_results
    按引用 result_id 直查源结果（容器 TaskCase 取自身，下单已继承）；
-3. 用例日志下载：_query_case_logs 落源任务前缀 + _write_case_log_files 按
-   源任务搜索存储目录。
+3. 用例日志下载：_query_case_logs 落源任务前缀 + 文件清单构建器按源任务搜索存储目录。
 
 gRPC helper 以 monkeypatch 替换（对齐 test_int339 惯例）；容器任务沿用
 INT-339 验收口径（source_task_id / result_id 溯源快照形状）。
 """
-import io
 import os
-import zipfile
 
 os.environ.setdefault('OSS_ACCESS_KEY', 'test')
 os.environ.setdefault('OSS_SECRET_KEY', 'test')
@@ -307,29 +304,31 @@ class TestCaseLogsCherryResolution:
         assert task_ids_to_search == [1234]
         assert test_result['id'] == 55
 
-    def test_write_case_log_files_uses_source_task_prefix(self, stub_cherry, monkeypatch):
-        """验收3：按挑选关系落源任务前缀解析存储目录并写入 ZIP。"""
+    def test_manifest_uses_source_task_prefix(self, stub_cherry, monkeypatch):
+        """验收3：按挑选关系落源任务前缀解析存储目录，清单 arcname 对齐下载 zip。"""
+        from datetime import datetime, timezone
         from report_service.application.handlers._report_stats_query_mixin import (
             ReportStatsQueryMixin,
         )
         from shared.infrastructure import storage as storage_mod
 
         seen_prefixes = []
+        base_dt = datetime(2026, 10, 18, 4, 0, 0, tzinfo=timezone.utc)
 
-        def _list_objects(category, prefix=''):
+        def _list_objects_with_meta(category, prefix=''):
             seen_prefixes.append(prefix)
-            return [f'{SOURCE_TASK_ID}/ACC408-C1/out.wav']
+            return [{'key': f'{SOURCE_TASK_ID}/ACC408-C1/out.wav',
+                     'sizeBytes': 4, 'lastModified': base_dt}]
 
-        monkeypatch.setattr(storage_mod.storage, 'list_objects', _list_objects)
-        monkeypatch.setattr(storage_mod.storage, 'load_bytes',
-                            lambda path: b'DATA')
+        monkeypatch.setattr(storage_mod.storage, 'list_objects_with_meta',
+                            _list_objects_with_meta)
 
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
-            found = ReportStatsQueryMixin._write_case_log_files(
-                zf, [SOURCE_TASK_ID], 'ACC408-C1', False)
+        # INT-1056：单任务源清单（_write_case_log_files 已并入共享文件清单构建器）
+        manifest = ReportStatsQueryMixin._build_case_log_manifest(
+            [SOURCE_TASK_ID], SOURCE_RESULTS[0], 'ACC408-C1')
 
-        assert found is True
         assert seen_prefixes == [f'{SOURCE_TASK_ID}/ACC408-C1/']
-        with zipfile.ZipFile(buf, 'r') as zf2:
-            assert zf2.namelist() == ['out.wav']
+        assert manifest[0]['filename'] == 'out.wav'
+        assert manifest[0]['size_bytes'] == 4
+        assert manifest[0]['updated_at'].endswith('Z')
+        assert manifest[0]['storage_key'] == f'case_result/{SOURCE_TASK_ID}/ACC408-C1/out.wav'

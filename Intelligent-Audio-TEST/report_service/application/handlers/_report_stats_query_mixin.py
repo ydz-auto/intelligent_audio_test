@@ -6,7 +6,11 @@ handle_get_case_averages / handle_download_case_logs 及其私有查询辅助；
 INT-791 新增 handle_get_statistics / handle_get_statistics_trend /
 handle_generate_statistics_report（委托 StatisticsService）。
 """
+import json
 import logging
+import os
+from datetime import datetime, timezone
+from typing import Optional
 
 from report_service.application.handlers._report_case_filters import (
     extract_case_ids,
@@ -128,7 +132,8 @@ class ReportStatsQueryMixin:
         """处理下载用例日志。
 
         查询报告关联任务的合并关系、TestResult，从存储列出 case 日志文件，
-        打包成 ZIP 以 base64 编码返回。
+        打包成 ZIP 以 base64 编码返回（INT-1056：改用共享文件清单构建器，
+        缺省全量输出与 download-selected 缺省分支字节一致）。
 
         Args:
             report_id: 报告 ID
@@ -143,6 +148,96 @@ class ReportStatsQueryMixin:
         task_ids_to_search, test_result = query_result
 
         return self._format_logs_download(task_ids_to_search, test_result, report_id, case_id)
+
+    def handle_list_case_log_files(self, report_id: int, case_id: str) -> dict:
+        """处理用例日志文件列表（GET .../logs/files，INT-1056）。
+
+        与下载共用同一「文件清单构建器」；filename = 下载 zip 内 arcname，
+        保证 list 与 download-selected 命名空间一致。
+
+        Args:
+            report_id: 报告 ID
+            case_id: 用例 ID
+
+        Returns:
+            成功：{files: [{filename, size_bytes, updated_at}]}（空态 []）
+            失败：{success: False, message, code}（404：报告不存在/无关联任务）
+        """
+        query_result = self._query_case_logs(report_id, case_id)
+        if not isinstance(query_result, tuple):
+            return query_result
+        task_ids_to_search, test_result = query_result
+
+        manifest = self._build_case_log_manifest(task_ids_to_search, test_result, case_id)
+        return {
+            'files': [{
+                'filename': entry['filename'],
+                'size_bytes': entry['size_bytes'],
+                'updated_at': entry['updated_at'],
+            } for entry in manifest],
+        }
+
+    def handle_download_selected_case_logs(self, report_id: int, case_id: str,
+                                           filenames: list) -> dict:
+        """处理按选打包下载用例日志（POST .../logs/download-selected，INT-1056）。
+
+        与列表/全量下载共用同一文件清单；filenames 缺省或空数组 = 全部
+        （与现 download_case_logs 完全一致）。
+
+        Args:
+            report_id: 报告 ID
+            case_id: 用例 ID
+            filenames: 按选文件名列表（缺省/空 = 全部）
+
+        Returns:
+            成功：{filename, content_base64, size}
+            失败：{success: False, message, code}（400：未知名/未找到日志目录；
+                  404：报告不存在/无关联任务）
+        """
+        import base64
+        import io as _io
+        import zipfile as _zipfile
+
+        query_result = self._query_case_logs(report_id, case_id)
+        if not isinstance(query_result, tuple):
+            return query_result
+        task_ids_to_search, test_result = query_result
+
+        manifest = self._build_case_log_manifest(task_ids_to_search, test_result, case_id)
+
+        selected = [str(fn) for fn in (filenames or []) if fn]
+        if not selected:
+            # 缺省全量：与现 download_case_logs 行为一致（仅虚拟文件不算有日志）
+            if not self._manifest_has_logs(manifest):
+                return {'success': False, 'message': '未找到用例日志目录'}
+            entries = manifest
+            zip_filename = f"case_{case_id}_logs.zip"
+        else:
+            by_name = {entry['filename']: entry for entry in manifest}
+            unknown = [fn for fn in selected if fn not in by_name]
+            if unknown:
+                return {'success': False, 'message': '未知的文件名: ' + ', '.join(unknown)}
+            # 保持请求顺序并去重；zip 内容与所选文件名一致
+            entries = []
+            seen = set()
+            for fn in selected:
+                if fn in seen:
+                    continue
+                seen.add(fn)
+                entries.append(by_name[fn])
+            zip_filename = f"case_{case_id}_logs_selected.zip"
+
+        zip_buffer = _io.BytesIO()
+        with _zipfile.ZipFile(zip_buffer, 'w', _zipfile.ZIP_DEFLATED) as zf:
+            self._write_manifest_to_zip(zf, entries)
+        zip_buffer.seek(0)
+        zip_data = zip_buffer.getvalue()
+
+        return {
+            'filename': zip_filename,
+            'content_base64': base64.b64encode(zip_data).decode('utf-8'),
+            'size': len(zip_data),
+        }
 
     # ---- 日志下载私有辅助 ----
 
@@ -163,11 +258,11 @@ class ReportStatsQueryMixin:
 
         aggregate = self.repository.get_by_id(report_id)
         if aggregate is None:
-            return {'success': False, 'message': '未找到测试报告'}
+            return {'success': False, 'message': '未找到测试报告', 'code': 404}
 
         task_id = aggregate.task_id
         if not task_id:
-            return {'success': False, 'message': '该报告没有关联的任务ID'}
+            return {'success': False, 'message': '该报告没有关联的任务ID', 'code': 404}
 
         # 通过 gRPC 查询 TaskMergeRelation / TaskCherryPickRelation（INT-408 接入挑选关系）：
         # cherry-pick 容器日志目录在源任务前缀下，结果按引用 result_id 精确解析
@@ -201,8 +296,143 @@ class ReportStatsQueryMixin:
         return task_ids_to_search, test_result
 
     @staticmethod
+    def _build_case_log_manifest(task_ids_to_search: list, test_result, case_id: str) -> list:
+        """构建用例日志文件清单（list / download-selected / 全量下载三处共用）。
+
+        三来源统一映射到 zip arcname 命名空间（审计 §四，关键契约）：
+        - case 文件：单任务源 = case_result 桶相对 {task_id}/{case_id}/ 路径；
+          多任务/挑选/合并（task_ids_to_search > 1）加 task_{task_id}/ 前缀
+          （与现 arcname 规则一致，字节级对齐）；
+        - 业务日志：business_logs/{rel}（load_file_bytes 相对 task 目录路径）；
+        - 虚拟文件：adjusted_reference_params.json（full_data 判定，即时算 size）。
+
+        Returns:
+            list[dict]：{filename, size_bytes, updated_at, source,
+                         storage_key|abs_path|content}
+        """
+        from shared.infrastructure.storage import storage
+        from shared.logging import BusinessLogReader
+        from shared.utils.result_data_store import load_full_result_data
+
+        manifest = []
+        # INT-81：业务日志按结果的被测设备收敛范围（结果无设备信息时取任务全量）
+        device_id = None
+        if test_result:
+            device_id = (test_result.get('device_id') if isinstance(test_result, dict)
+                         else getattr(test_result, 'device_id', None))
+
+        # 1) case 文件（case_result 桶 {task_id}/{case_id}/）
+        for search_task_id in task_ids_to_search:
+            oss_prefix = f'{search_task_id}/{case_id}/'
+            try:
+                objects = storage.list_objects_with_meta('case_result', prefix=oss_prefix)
+            except Exception:
+                objects = []
+            for obj in objects or []:
+                oss_key = obj.get('key')
+                if not oss_key:
+                    continue
+                arcname = oss_key[len(oss_prefix):]  # 去掉前缀
+                if len(task_ids_to_search) > 1:
+                    arcname = _os_path_join(f"task_{search_task_id}", arcname)
+                manifest.append({
+                    'filename': arcname,
+                    'size_bytes': obj.get('sizeBytes', 0),
+                    'updated_at': ReportStatsQueryMixin._format_iso_utc(obj.get('lastModified')),
+                    'source': 'case',
+                    'storage_key': f'case_result/{oss_key}',
+                })
+
+        # 2) 业务日志（business/{task}/...，按被测设备收敛）
+        reader = BusinessLogReader()
+        for task_id in task_ids_to_search:
+            try:
+                files = reader.list_log_files(task_id=task_id, device_id=device_id)
+            except Exception:
+                logger.debug("收集业务日志文件失败 task_id=%s", task_id, exc_info=True)
+                continue
+            task_dir = os.path.join(reader._root_dir, reader._path_builder.build_task_dir(task_id))
+            for abs_path in files:
+                try:
+                    st = os.stat(abs_path)
+                except OSError:
+                    continue
+                rel = os.path.relpath(abs_path, task_dir).replace(os.sep, '/')
+                manifest.append({
+                    'filename': f"business_logs/{rel}",
+                    'size_bytes': st.st_size,
+                    'updated_at': ReportStatsQueryMixin._format_iso_utc(
+                        datetime.fromtimestamp(st.st_mtime, tz=timezone.utc)),
+                    'source': 'business',
+                    'abs_path': abs_path,
+                })
+
+        # 3) 虚拟文件 adjusted_reference_params.json（full_data 判定保证字节级一致）
+        full_data = {}
+        if test_result:
+            tr_result_data = (test_result.get('result_data') if isinstance(test_result, dict)
+                              else getattr(test_result, 'result_data', None))
+            tr_result_data_path = (test_result.get('result_data_path') if isinstance(test_result, dict)
+                                   else getattr(test_result, 'result_data_path', None))
+            full_data = load_full_result_data(tr_result_data, tr_result_data_path)
+        if test_result and full_data and 'adjusted_reference_params' in full_data:
+            adjusted_params = full_data['adjusted_reference_params']
+            if adjusted_params:
+                params_json = json.dumps(adjusted_params, ensure_ascii=False, indent=2)
+                manifest.append({
+                    'filename': 'adjusted_reference_params.json',
+                    'size_bytes': len(params_json.encode('utf-8')),
+                    'updated_at': None,
+                    'source': 'virtual',
+                    'content': params_json,
+                })
+
+        return manifest
+
+    @staticmethod
+    def _manifest_has_logs(manifest: list) -> bool:
+        """判定是否「有日志」：与现 download_case_logs found_any 语义一致
+        （仅 case 文件或业务日志；虚拟文件单独存在不算）。"""
+        return any(entry.get('source') in ('case', 'business') for entry in manifest)
+
+    @staticmethod
+    def _write_manifest_to_zip(zf, manifest: list) -> None:
+        """按清单顺序把文件写入 ZIP（case → business → virtual）。
+
+        读取失败的文件跳过（与现 download_case_logs 逐文件跳过语义一致）。
+        """
+        for entry in manifest:
+            content = ReportStatsQueryMixin._load_log_file_bytes(entry)
+            if content is None:
+                continue
+            zf.writestr(entry['filename'], content)
+
+    @staticmethod
+    def _load_log_file_bytes(entry: dict) -> Optional[bytes]:
+        """按清单条目 source 取字节内容；读取失败返回 None。"""
+        source = entry.get('source')
+        if source == 'case':
+            from shared.infrastructure.storage import storage
+            try:
+                return storage.load_bytes(entry['storage_key'])
+            except Exception:
+                return None
+        if source == 'business':
+            try:
+                with open(entry['abs_path'], 'rb') as handle:
+                    return handle.read()
+            except OSError:
+                return None
+        if source == 'virtual':
+            return entry['content'].encode('utf-8')
+        return None
+
+    @staticmethod
     def _format_logs_download(task_ids_to_search: list, test_result, report_id: int, case_id: str) -> dict:
         """根据查询到的日志数据构建 ZIP 并以 base64 编码返回。
+
+        INT-1056：改用共享文件清单构建器；缺省全量输出与
+        download-selected 缺省分支（空 filenames）字节一致。
 
         Args:
             task_ids_to_search: 需搜索的任务 ID 列表
@@ -215,98 +445,40 @@ class ReportStatsQueryMixin:
         """
         import base64
         import io as _io
-        import json as _json
-        import os as _os
         import zipfile as _zipfile
-        from shared.utils.result_data_store import load_full_result_data
 
-        zip_filename = f"case_{case_id}_logs.zip"
+        manifest = ReportStatsQueryMixin._build_case_log_manifest(
+            task_ids_to_search, test_result, case_id)
 
-        # INT-81：用例日志下载含业务日志文件（logs/business/{task}/{device}/...），
-        # 按结果的被测设备收敛范围（结果无设备信息时取任务全量）
-        device_id = None
-        if test_result:
-            device_id = (test_result.get('device_id') if isinstance(test_result, dict)
-                         else getattr(test_result, 'device_id', None))
-
-        zip_buffer = _io.BytesIO()
-        found_any = False
-        with _zipfile.ZipFile(zip_buffer, 'w', _zipfile.ZIP_DEFLATED) as zf:
-            found_any = ReportStatsQueryMixin._write_case_log_files(
-                zf, task_ids_to_search, case_id, found_any)
-
-            if ReportStatsQueryMixin._write_business_log_files(
-                    zf, task_ids_to_search, device_id):
-                found_any = True
-
-            full_data = {}
-            if test_result:
-                tr_result_data = test_result.get('result_data') if isinstance(test_result, dict) else getattr(test_result, 'result_data', None)
-                tr_result_data_path = test_result.get('result_data_path') if isinstance(test_result, dict) else getattr(test_result, 'result_data_path', None)
-                full_data = load_full_result_data(tr_result_data, tr_result_data_path)
-            if test_result and full_data and 'adjusted_reference_params' in full_data:
-                adjusted_params = full_data['adjusted_reference_params']
-                if adjusted_params:
-                    params_json = _json.dumps(adjusted_params, ensure_ascii=False, indent=2)
-                    zf.writestr("adjusted_reference_params.json", params_json)
-
-        if not found_any:
+        if not ReportStatsQueryMixin._manifest_has_logs(manifest):
             return {'success': False, 'message': '未找到用例日志目录'}
 
+        zip_filename = f"case_{case_id}_logs.zip"
+        zip_buffer = _io.BytesIO()
+        with _zipfile.ZipFile(zip_buffer, 'w', _zipfile.ZIP_DEFLATED) as zf:
+            ReportStatsQueryMixin._write_manifest_to_zip(zf, manifest)
         zip_buffer.seek(0)
         zip_data = zip_buffer.getvalue()
-        total_size = len(zip_data)
 
         return {
             'filename': zip_filename,
             'content_base64': base64.b64encode(zip_data).decode('utf-8'),
-            'size': total_size,
+            'size': len(zip_data),
         }
 
     @staticmethod
-    def _write_business_log_files(zf, task_ids_to_search: list, device_id) -> bool:
-        """将任务的业务日志文件（INT-81 路径体系）写入 ZIP，返回是否写入文件。"""
-        from shared.logging import BusinessLogReader
+    def _format_iso_utc(value) -> Optional[str]:
+        """datetime → ISO8601 UTC（'Z' 后缀；对齐 log_query_service._to_iso_utc）。
 
-        reader = BusinessLogReader()
-        wrote_any = False
-        for task_id in task_ids_to_search:
-            try:
-                files = reader.load_file_bytes(task_id=task_id, device_id=device_id)
-            except Exception:
-                logger.debug("收集业务日志文件失败 task_id=%s", task_id, exc_info=True)
-                continue
-            for rel_path, content in files:
-                zf.writestr(f"business_logs/{rel_path}", content)
-                wrote_any = True
-        return wrote_any
-
-    @staticmethod
-    def _write_case_log_files(zf, task_ids_to_search: list, case_id: str, found_any: bool) -> bool:
-        """遍历各任务从存储收集 case 日志文件写入 ZIP。返回是否有文件被写入。"""
-        from shared.infrastructure.storage import storage
-
-        for search_task_id in task_ids_to_search:
-            # OSS: 列出 case-result bucket 下 {task_id}/{case_id}/ 的所有文件
-            oss_prefix = f'{search_task_id}/{case_id}/'
-            try:
-                oss_keys = storage.list_objects('case_result', prefix=oss_prefix)
-            except Exception:
-                oss_keys = []
-            if not oss_keys:
-                continue
-            found_any = True
-            for oss_key in oss_keys:
-                # 下载文件内容
-                try:
-                    file_data = storage.load_bytes(f'case_result/{oss_key}')
-                    arcname = oss_key[len(oss_prefix):]  # 去掉前缀
-                    if len(task_ids_to_search) > 1:
-                        arcname = _os_path_join(f"task_{search_task_id}", arcname)
-                    zf.writestr(arcname, file_data)
-                except Exception:
-                    continue
-        return found_any
+        虚拟文件无时间 → None 原样返回；naive datetime 按 UTC 处理。
+        """
+        if value is None or isinstance(value, str):
+            return value
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        else:
+            value = value.astimezone(timezone.utc)
+        return value.isoformat().replace('+00:00', 'Z')
 
     # ---- 平均值统计私有辅助 ----
 
