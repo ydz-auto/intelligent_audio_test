@@ -43,6 +43,10 @@ service ReportConfigService {
   rpc GetCaseAverages(GetCaseAveragesRequest) returns (ReportConfigResponse);
   // 下载用例日志
   rpc DownloadCaseLogs(DownloadCaseLogsRequest) returns (ReportConfigResponse);
+  // 用例日志文件列表（INT-1056：文件名+大小+时间；与下载共用同一文件清单构建器）
+  rpc ListCaseLogFiles(ListCaseLogFilesRequest) returns (ReportConfigResponse);
+  // 按选打包下载用例日志（INT-1056：filenames 缺省/空数组 = 全部，与 DownloadCaseLogs 一致）
+  rpc DownloadSelectedCaseLogs(DownloadSelectedCaseLogsRequest) returns (ReportConfigResponse);
   // 构建参考参数（供 api_gateway task_query_service 调用）
   rpc BuildReferenceParams(BuildReferenceParamsRequest) returns (ReportConfigResponse);
   // 任务数据导出：按 task_id 列表拉取报告 7 表只读行
@@ -170,6 +174,18 @@ message GetCaseAveragesRequest {
 message DownloadCaseLogsRequest {
   int32 report_id = 1;
   string case_id = 2;
+}
+// INT-1056：用例日志文件列表（文件名 = 下载 zip 内 arcname，与 DownloadCaseLogs /
+// DownloadSelectedCaseLogs 共用同一文件清单命名空间）
+message ListCaseLogFilesRequest {
+  int32 report_id = 1;
+  string case_id = 2;
+}
+// INT-1056：按选打包下载；filenames 缺省或空数组 = 全部（与 DownloadCaseLogs 完全一致）
+message DownloadSelectedCaseLogsRequest {
+  int32 report_id = 1;
+  string case_id = 2;
+  repeated string filenames = 3;
 }
 message BuildReferenceParamsRequest {
   string data = 1;  // JSON: {case_info: dict, case_results: list, test_type: str}

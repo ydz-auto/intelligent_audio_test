@@ -792,6 +792,53 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
             logger.exception("DownloadCaseLogs failed")
             return self._resp(False, str(e), {})
 
+    def ListCaseLogFiles(self, request, context=None):
+        """用例日志文件列表（GET .../logs/files，INT-1056）。
+
+        请求字段（proto ListCaseLogFilesRequest）：
+            report_id: int   报告 ID
+            case_id: str     用例 ID
+
+        成功 data：{files: [{filename, size_bytes, updated_at}]}（空态 []）；
+        错误经 code 透出 404（报告不存在/无关联任务）。
+        """
+        try:
+            report_id = getattr(request, 'report_id', 0)
+            case_id = getattr(request, 'case_id', '')
+            data = self.query_handler.handle_list_case_log_files(report_id, case_id)
+            if data.get('success') is False:
+                return self._resp(False, data.get('message', 'list failed'), data,
+                                  code=data.get('code', 0))
+            return self._resp(True, 'ok', data)
+        except Exception as e:
+            logger.exception("ListCaseLogFiles failed")
+            return self._resp(False, str(e), {})
+
+    def DownloadSelectedCaseLogs(self, request, context=None):
+        """按选打包下载用例日志（POST .../logs/download-selected，INT-1056）。
+
+        请求字段（proto DownloadSelectedCaseLogsRequest）：
+            report_id: int      报告 ID
+            case_id: str        用例 ID
+            filenames: list[str] 按选文件名（缺省/空数组 = 全部）
+
+        成功 data：{filename, content_base64, size}；
+        错误经 code 透出 400（未知名/未找到日志目录）/ 404（报告不存在/无关联任务）。
+        """
+        try:
+            report_id = getattr(request, 'report_id', 0)
+            case_id = getattr(request, 'case_id', '')
+            filenames = list(getattr(request, 'filenames', []) or [])
+            data = self.query_handler.handle_download_selected_case_logs(
+                report_id, case_id, filenames)
+            if not data.get('content_base64'):
+                return self._resp(False, data.get('message', 'download failed'), data,
+                                  code=data.get('code', 0))
+            return self._resp(True, 'ok', data)
+        except Exception as e:
+            logger.exception("DownloadSelectedCaseLogs failed")
+            return self._resp(False, str(e), {})
+
     def BuildReferenceParams(self, request, context=None):
         """构建参考参数（供 api_gateway task_query_service 调用）。
 

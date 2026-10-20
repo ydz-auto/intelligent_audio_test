@@ -171,5 +171,21 @@ def search_report_cases(report_id: int):
 
 
 @router.get('/{report_id}/cases/{case_id}/logs/download')
-def download_case_logs(report_id: int, case_id: str):
+def download_case_logs(report_id: int, case_id: str,
+                       _: None = require_permission('report:download_log')):
     return _handle(ReportQueryService.download_case_logs(report_id, case_id))
+
+
+# ---- INT-1056：用例日志文件列表与按选打包下载 ----
+# 均与 GET .../logs/download 段数不同（多一/两段），无路由冲突；
+# 旧端点补挂 report:download_log 权限码（审计 §一.4 ⚠️）。
+@router.get('/{report_id}/cases/{case_id}/logs/files')
+def list_case_log_files(report_id: int, case_id: str,
+                        _: None = require_permission('report:download_log')):
+    return _handle(ReportQueryService.list_case_log_files(report_id, case_id))
+
+
+@router.post('/{report_id}/cases/{case_id}/logs/download-selected')
+def download_selected_case_logs(report_id: int, case_id: str,
+                                _: None = require_permission('report:download_log')):
+    return _handle(ReportQueryService.download_selected_case_logs(report_id, case_id))

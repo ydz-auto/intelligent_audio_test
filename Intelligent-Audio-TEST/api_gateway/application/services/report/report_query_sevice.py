@@ -414,6 +414,72 @@ class ReportQueryService:
             return error_response(f'下载用例日志失败: {str(e)}')
 
     # ------------------------------------------------------------------
+    # 用例日志文件列表与按选打包下载（INT-1056）
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def list_case_log_files(report_id, case_id):
+        """用例日志文件列表（GET .../logs/files，report:download_log）。
+
+        200 data：[{filename, size_bytes, updated_at}]（空态 []）；
+        报告不存在/无关联任务 → 404；guest 无 report:download_log → 403。
+        """
+        if not case_id:
+            return error_response('case_id 不能为空', 400)
+
+        try:
+            stub = report_config_service.stub
+            resp = stub.ListCaseLogFiles(report_pb.ListCaseLogFilesRequest(
+                report_id=int(report_id),
+                case_id=str(case_id)))
+            if not resp.success:
+                return error_response(resp.message or '查询失败',
+                                      http_code=resp.code or 400,
+                                      detail=_loads(resp.data, {}) or None)
+            data = _loads(resp.data, {}) or {}
+            return success_response(data.get('files', []))
+        except Exception as e:
+            return error_response(f'查询用例日志文件列表失败: {str(e)}')
+
+    @staticmethod
+    def download_selected_case_logs(report_id, case_id):
+        """按选打包下载用例日志（POST .../logs/download-selected，report:download_log）。
+
+        filenames 缺省/空数组 = 全部（与现 download_case_logs 行为一致）；
+        未知名 → 400（消息列出未知名）；报告不存在 → 404。
+        全部 → case_{case_id}_logs.zip；按选 → case_{case_id}_logs_selected.zip。
+        """
+        if not case_id:
+            return error_response('case_id 不能为空', 400)
+
+        body = request.get_json() or {}
+        filenames = body.get('filenames', []) or []
+        if not isinstance(filenames, list):
+            return error_response('filenames 必须是数组', 400)
+
+        try:
+            stub = report_config_service.stub
+            resp = stub.DownloadSelectedCaseLogs(report_pb.DownloadSelectedCaseLogsRequest(
+                report_id=int(report_id),
+                case_id=str(case_id),
+                filenames=[str(fn) for fn in filenames]))
+            if not resp.success:
+                return error_response(resp.message or '下载失败',
+                                      http_code=resp.code or 400,
+                                      detail=_loads(resp.data, {}) or None)
+            data = _loads(resp.data, {}) or {}
+            if data.get('content_base64'):
+                return {
+                    'binary': True,
+                    'content': base64.b64decode(data['content_base64']),
+                    'mime_type': 'application/zip',
+                    'filename': data.get('filename', 'logs.zip'),
+                }
+            return success_response(data)
+        except Exception as e:
+            return error_response(f'下载用例日志失败: {str(e)}')
+
+    # ------------------------------------------------------------------
     # 报告分享（INT-971）
     # ------------------------------------------------------------------
 
