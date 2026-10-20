@@ -63,7 +63,6 @@ export function useTestCaseAudioPreview(
     const apiAudioId = hasAPIConfig ? allAudios[0]?.audioId : null;
     const e2eAudioIds = hasE2eConfig ? allAudios.map((a: any) => a.audioId) : [];
 
-    console.log('检查测试用例配置:', { hasAPIConfig, hasE2eConfig, apiAudioId, e2eAudioIds });
     return { hasAPIConfig, hasE2eConfig, apiAudioId, e2eAudioIds };
   };
 
@@ -106,7 +105,6 @@ export function useTestCaseAudioPreview(
    */
   const handleAction = async (actionEvent: { action: { id: string }; testCase: TestCase }, _group: string) => {
     const testCase = actionEvent.testCase;
-    console.log('[TestCaseListContainer] 处理测试用例操作:', { action: actionEvent.action.id, testCase: testCase.name });
 
     switch (actionEvent.action.id) {
       case 'preview': {

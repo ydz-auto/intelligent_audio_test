@@ -418,8 +418,8 @@ export function useCRUDFormModal(props: CrudFormModalProps, emit: CrudFormModalE
     }
   }
 
-  const handleTestSPLComplete = (index: number) => {
-    // 测试声压播放完成回调（预留：后续可在此触发后续流程）
+  const handleTestSPLComplete = (_index: number) => {
+    // 子组件声压播放完成事件：无需额外处理（真正的 test-spl-complete 由 handleTestSPL 内 emit 上抛）
   }
 
   const handleStopSPL = async ({ index }: SplTestPayload) => {

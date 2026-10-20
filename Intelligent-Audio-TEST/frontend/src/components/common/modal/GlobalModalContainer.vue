@@ -31,61 +31,48 @@
               @close="handleClose(modalId)"
               @confirm="(data: any) => {
                 if (isNativeEvent(data)) return;
-                console.log('[GlobalModalContainer] confirm事件触发, data:', data);
                 if (modalItem.props && typeof modalItem.props.onSave === 'function') {
-                  console.log('[GlobalModalContainer] 调用onSave回调');
                   try {
                     modalItem.props.onSave(data);
                   } catch (error) {
                     console.error('[GlobalModalContainer] onSave回调执行失败:', error);
                   }
-                } else {
-                  console.log('[GlobalModalContainer] 无onSave回调');
                 }
                 modalItem.resolve(data);
                 handleClose(modalId);
               }"
               @cancel="(data: any) => {
                 if (isNativeEvent(data)) return;
-                console.log('[GlobalModalContainer] cancel事件触发, data:', data);
                 modalItem.reject();
                 handleClose(modalId);
               }"
               @save="(data: any) => {
                 if (isNativeEvent(data)) return;
-                console.log('[GlobalModalContainer] save事件触发, data:', data);
                 if (modalItem.props && typeof modalItem.props.onSave === 'function') {
-                  console.log('[GlobalModalContainer] 调用onSave回调');
                   try {
                     modalItem.props.onSave(data);
                   } catch (error) {
                     console.error('[GlobalModalContainer] onSave回调执行失败:', error);
                   }
-                } else {
-                  console.log('[GlobalModalContainer] 无onSave回调');
                 }
                 modalItem.resolve(data);
                 handleClose(modalId);
               }"
               @select="(data: any) => {
                 if (isNativeEvent(data)) return;
-                console.log('[GlobalModalContainer] select事件触发, data:', data);
                 modalItem.resolve(data);
                 handleClose(modalId);
               }"
               @selectMultiple="(data: any) => {
                 if (isNativeEvent(data)) return;
-                console.log('[GlobalModalContainer] selectMultiple事件触发, data:', data);
                 modalItem.resolve(data);
                 handleClose(modalId);
               }"
               @uploadRequest="() => {
-                console.log('[GlobalModalContainer] uploadRequest事件触发');
                 handleClose(modalId);
                 requestUploadAction('openUploadModal');
               }"
               @folderImportRequest="() => {
-                console.log('[GlobalModalContainer] folderImportRequest事件触发');
                 handleClose(modalId);
                 requestUploadAction('openFolderImport');
               }"
@@ -179,7 +166,6 @@ const addDeviceModalCreationLock = (() => {
   return {
     tryLock: (newModalId: string): boolean => {
       if (locked && modalId === newModalId) {
-        console.log(`[GlobalModalContainer] ADDDevice modal ${newModalId} already being created, blocking duplicate`)
         return false
       }
       locked = true
@@ -205,37 +191,30 @@ const confirmHandlerCache = new Map<string, (data: any) => void>()
 // 这里只需要处理模态框的关闭和状态管理
 const getConfirmHandler = (modalId: string) => {
   if (confirmHandlerCache.has(modalId)) {
-    const cached = confirmHandlerCache.get(modalId)!
-    console.log(`[GlobalModalContainer] Using cached handler for modalId: ${modalId}`)
-    return cached
+    return confirmHandlerCache.get(modalId)!
   }
-  
+
   modalExecutionState.set(modalId, { confirmed: false, closed: false, processing: false })
-  
+
   const handler = ((data: any) => {
     const state = modalExecutionState.get(modalId)
     if (!state) {
-      console.log(`[GlobalModalContainer] No execution state for ${modalId}, skipping`)
       return
     }
-    
+
     if (state.processing || state.confirmed || state.closed) {
-      console.log(`[GlobalModalContainer] Confirm SKIPPED for ${modalId}, processing: ${state.processing}, confirmed: ${state.confirmed}, closed: ${state.closed}`)
       return
     }
-    
+
     state.processing = true
-    console.log(`[GlobalModalContainer] handleConfirm EXECUTING for ${modalId}`, data)
-    
+
     // useModal.ts 中的 ModalManager 不支持 confirm 方法，这里只更新状态
     setTimeout(() => {
       state.confirmed = true
       state.processing = false
-      console.log(`[GlobalModalContainer] Modal ${modalId} processing finished, confirmed: true`)
     }, 100)
   })
-  
-  console.log(`[GlobalModalContainer] Creating NEW handler for modalId: ${modalId}`)
+
   confirmHandlerCache.set(modalId, handler)
   return handler
 }
@@ -244,10 +223,6 @@ const getConfirmHandler = (modalId: string) => {
 const activeModals = computed(() => {
   const modals = manager.getActiveModals()
   // 将 ModalInstance 数组转换为 [id, modal] 元组数组，适配模板中的 v-for
-  console.log('[GlobalModalContainer] getActiveModals returned:', modals.length, 'modals')
-  modals.forEach(modal => {
-    console.log('[GlobalModalContainer] Modal:', modal.id, modal.type, 'props:', Object.keys(modal.props || {}))
-  })
   return modals.map(modal => [modal.id, modal] as [string, any])
 })
 
@@ -317,7 +292,6 @@ const getModalComponent = (type: string) => {
 }
 
 const handleClose = (modalId: string) => {
-  console.log('[GlobalModalContainer] handleClose called, modalId:', modalId)
   if (modalExecutionState.has(modalId)) {
     const state = modalExecutionState.get(modalId)
     if (state) {
@@ -328,7 +302,6 @@ const handleClose = (modalId: string) => {
 
   // 使用 useModal.ts 中的 ModalManager 的 close 方法
   if (typeof manager.close === 'function') {
-    console.log(`[GlobalModalContainer] Closing modal ${modalId}`)
     manager.close(modalId)
   }
 }
@@ -351,48 +324,35 @@ const handleConfigChange = (modalId: string, config: any) => {
 }
 
 const handleSave = async (modalId: string, data: any) => {
-  console.log('[GlobalModalContainer] handleSave called with data:', JSON.stringify(data, null, 2));
-  
   if (data?.mode === 'export' && data?.data) {
     try {
       const exportData = data.data;
-      console.log('[GlobalModalContainer] exportData:', JSON.stringify(exportData, null, 2));
-      
+
       const ids = exportData.ids || [];
       const format = exportData.format === 'xlsx' ? 'xlsx' : 'json';
       const includeDeleted = exportData.includeDeleted || false;
-      
-      console.log('[GlobalModalContainer] 导出参数:', { ids: ids.length, format, includeDeleted });
-      
+
       if (ids.length === 0) {
         notification.warning('没有可导出的用例');
         handleClose(modalId);
         return;
       }
-      
+
       const response = await testcasesPort.export(ids, format, includeDeleted);
-      
-      console.log('[GlobalModalContainer] 导出响应类型:', typeof response);
-      console.log('[GlobalModalContainer] 导出响应是否为Blob:', response instanceof Blob);
-      console.log('[GlobalModalContainer] 导出响应大小:', response instanceof Blob ? response.size : 'N/A');
-      
+
       if (response instanceof Blob) {
         const url = URL.createObjectURL(response);
         const a = document.createElement('a');
         a.href = url;
-        
+
         const extension = format;
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
         a.download = `testcases_export_${timestamp}.${extension}`;
-        
+
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        
-        console.log('[GlobalModalContainer] 导出成功');
-      } else {
-        console.log('[GlobalModalContainer] 导出响应:', response);
       }
     } catch (error) {
       console.error('[GlobalModalContainer] 导出失败:', error);
@@ -400,7 +360,7 @@ const handleSave = async (modalId: string, data: any) => {
       notification.error('导出失败: ' + errorMessage);
     }
   }
-  
+
   handleClose(modalId)
 }
 

@@ -109,7 +109,6 @@ const modalStyle = computed(() => {
 const modalContentRef = ref<HTMLElement | null>(null)
 
 const handleClose = () => {
-  console.log('[BasicModal] handleClose called, modal:', props.modalId)
   emit('close')
   emit('update:visible', false)
 }

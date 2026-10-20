@@ -52,7 +52,6 @@ export function useTestCaseCard() {
   });
 
   const openAddTestCaseModal = async (group = '', options?: { algorithmType?: string; testType?: 'api' | 'e2e'; tags?: string[] }) => {
-    console.log('[useTestCaseCard] 调用openAddTestCaseModal，分组:', group, '算法类型:', options?.algorithmType, '测试类型:', options?.testType);
     editingTestCase.value = null;
     const testType = options?.testType || TestType.E2E;
     const presetTags = options?.tags || [];
@@ -86,8 +85,6 @@ export function useTestCaseCard() {
   };
 
   const openEditTestCaseModal = async (testCase: TestCase) => {
-    console.log('[useTestCaseCard] 调用openEditTestCaseModal，测试用例:', testCase.id);
-    console.log('[useTestCaseCard] 测试用例完整数据:', JSON.stringify(testCase));
     editingTestCase.value = testCase;
     
     const normalized = normalizeTestCaseConfig(testCase.config || {});
@@ -240,10 +237,8 @@ export function useTestCaseCard() {
       try {
         // playbackPort.getAll 已展平为 Domain 数组
         const playbackDevices = await playbackPort.getAll();
-        console.log('[useTestCaseCard] 可用播放设备:', playbackDevices.length);
-        
+
         await testcasesPort.preview(testCase.id);
-        console.log(`[useTestCaseCard] 开始试听测试用例 ${testCase.id} 的音频`);
       } catch (err: any) {
         console.error('[useTestCaseCard] 音频试听失败:', err);
         notification.error('音频试听失败: ' + (err.message || '未知错误'));
@@ -257,9 +252,7 @@ export function useTestCaseCard() {
     try {
       const store = useTestCaseStore();
       const success = await store.copyTestCase(testCase.id);
-      if (success) {
-        console.log('[useTestCaseCard] 复制测试用例成功:', testCase.id);
-      } else {
+      if (!success) {
         notification.error('复制测试用例失败');
       }
     } catch (error: any) {
@@ -304,7 +297,8 @@ export function useTestCaseCard() {
         deleteTestCase(testCase.id);
         break;
       default:
-        console.log('未处理的操作:', action.id);
+        // 未支持的操作，忽略
+        break;
     }
   };
 
@@ -334,7 +328,6 @@ export function useTestCaseCard() {
       } else if (mode === ViewMode.GROUP) {
         if (isEdit) {
           const groupId = editingGroup.value || id;
-          console.log('[useTestCaseCard] 编辑分组，editingGroup:', editingGroup.value, 'id:', id, '最终使用的groupId:', groupId);
           if (!groupId) {
             throw new Error('编辑分组时缺少分组标识符');
           }
@@ -343,7 +336,6 @@ export function useTestCaseCard() {
           success = await store.addGroup(data);
         }
       } else if (mode === 'import') {
-        console.log('执行导入逻辑:', data);
         const importFormData = new FormData();
         if (!data.file) {
           throw new Error('请选择要导入的文件');
@@ -352,7 +344,6 @@ export function useTestCaseCard() {
         
         success = await store.importTestCases(importFormData);
       } else if (mode === 'export') {
-        console.log('执行导出逻辑:', data);
         const format = data.format === 'xlsx' ? 'xlsx' : 'json';
         const res = await testcasesPort.export(data.ids || [], format);
         
