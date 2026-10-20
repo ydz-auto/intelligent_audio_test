@@ -1,5 +1,5 @@
 /**
- * 报告侧复核编排 —— 人工审核（真实接口）+ AI 复核（§8-2 待后端立项，桩）
+ * 报告侧复核编排 —— 人工审核（真实接口）+ AI 复核（真实接口，INT-800 已落地，INT-1070 接线）
  *
  * 消费面：报告详情「具体用例卡片」（SpecificCaseComparisonComponent）。
  * 数据源：
@@ -9,9 +9,10 @@
  *   逐条含 test_case_id，按用例聚合）
  * - 双路径入口 A（跳来源任务复核，默认）：经 `GET /tasks/{task_id}/cases/{caseId}/results`
  *   溯源结果行 → 打开 §3.2 复核弹窗（ResultReviewModal）预填 → POST /tasks/results/review
- * - 路径 B（报告内直接复核）：§4.2 待后端立项 → 未落地，仅路径 A
+ * - 路径 B（报告内直接复核）：§4.2 待后端立项 → 未落地，人工复核仅路径 A
  * - AI 复核：§4.3 状态机（待发起→执行中→已完成→已采纳/已驳回/待查），
- *   端点 `// 待接线`（reviewApi.submitAiReview 等返回 §5.3 schema 示例），开 FEAT 卡
+ *   真实端点 POST /tasks/results/ai-review + GET /tasks/results/{task_id}/ai-review-history
+ *   + POST /ai-review/{id}/adopt|reject（INT-800 done，INT-1068/INT-1070 接线）
  */
 import { ref, computed, onUnmounted } from 'vue';
 import { useModalControl, MODAL_TYPES } from '@/composables/modal/useModal';
@@ -41,6 +42,11 @@ export interface AiReviewRun {
   error: string
 }
 
+/** AI 复核历史轮询（§5.6：发起后后端异步复检，轮询至 completed/failed；每 3s 一次） */
+const AI_REVIEW_POLL_INTERVAL_MS = 3000
+/** 轮询上限（3s×20 ≈ 60s；后端复检通常 5s 内落位） */
+const AI_REVIEW_POLL_MAX_ATTEMPTS = 20
+
 export function useReportReviews(reportDataRef: () => any) {
   const modalControl = useModalControl()
 
@@ -55,6 +61,8 @@ export function useReportReviews(reportDataRef: () => any) {
   const reviewsError = ref('')
   /** AI 复核运行态（test_case_id → AiReviewRun） */
   const aiReviewMap = ref<Record<string, AiReviewRun>>({})
+  /** AI 复核轮询定时器（test_case_id → timer；卸载/重置时清理） */
+  const aiPollTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
   /** 报告总复核条数（徽章展示用） */
   const totalReviewCount = computed(() => reportReviewCount.value)
@@ -210,9 +218,56 @@ export function useReportReviews(reportDataRef: () => any) {
     return state
   }
 
-  // ===== AI 复核（§4.3，端点待后端立项 `// 待接线`） =====
+  // ===== AI 复核（§4.3 状态机；真实端点 INT-800/INT-1068/INT-1070） =====
 
-  /** 发起 AI 复核：待发起 → 执行中 → 已完成（桩返回示例结论） */
+  /** 清理该用例轮询定时器（落位/超时/重置时调用） */
+  function clearAiPoll(caseId: string): void {
+    const timer = aiPollTimers.get(caseId)
+    if (timer) {
+      clearTimeout(timer)
+      aiPollTimers.delete(caseId)
+    }
+  }
+
+  /**
+   * 轮询该用例首个结果的 AI 复核历史至落位（§5.6）。
+   * `GET /tasks/results/{task_id}/ai-review-history`（Query result_id，每 3s）；
+   * completed/failed 即推进弹窗到结论阶段；超时保留 running 态并给出可关闭的错误提示。
+   */
+  function pollAiReviewUntilSettled(caseId: string, taskId: string | number, resultId: number | string, attempt = 0): void {
+    if (attempt >= AI_REVIEW_POLL_MAX_ATTEMPTS) {
+      clearAiPoll(caseId)
+      // 超时：置 completed 并给错误（弹窗显错误行且可关闭，不卡「复核中」）
+      const run = aiReviewMap.value[caseId]
+      if (run && run.phase === 'running') {
+        aiReviewMap.value[caseId] = { phase: 'completed', record: run.record, error: 'AI 复核超时未出结论，请稍后重试' }
+      }
+      return
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const history = await reviewApi.getAiReviewHistory(taskId, { resultId })
+        const settled = history.find(
+          (r) => r.resultId === Number(resultId) && (r.status === 'completed' || r.status === 'failed'),
+        )
+        if (settled) {
+          clearAiPoll(caseId)
+          aiReviewMap.value[caseId] = { phase: 'completed', record: settled, error: '' }
+          return
+        }
+        pollAiReviewUntilSettled(caseId, taskId, resultId, attempt + 1)
+      } catch {
+        pollAiReviewUntilSettled(caseId, taskId, resultId, attempt + 1)
+      }
+    }, AI_REVIEW_POLL_INTERVAL_MS)
+    aiPollTimers.set(caseId, timer)
+  }
+
+  /**
+   * 发起 AI 复核：待发起 → 执行中 → 已完成。
+   * `POST /tasks/results/ai-review`（真实端点，幂等：同结果同维度已有时后端复用最近结论）；
+   * 后端异步复检（status=running/pending）时按 §5.6 轮询历史直至 completed/failed，弹窗状态行自动推进。
+   */
   async function initiateAiReview(caseItem: any) {
     const caseId = String(caseItem?.id ?? caseItem?.testCaseId ?? '')
     if (!caseId) return
@@ -230,10 +285,16 @@ export function useReportReviews(reportDataRef: () => any) {
         aiReviewMap.value[caseId] = { phase: 'completed', record: null, error: '该用例无可发起 AI 复核的结果' }
         return
       }
-      // 待接线：POST /tasks/results/ai-review（§8-2 待后端立项）
       const record = await reviewApi.submitAiReview({ resultIds })
-      aiReviewMap.value[caseId] = { phase: 'completed', record, error: '' }
+      // 同步已落位（completed/failed）直接进结论阶段；否则异步复检 → 轮询推进（§5.6）
+      if (record.status === 'completed' || record.status === 'failed') {
+        aiReviewMap.value[caseId] = { phase: 'completed', record, error: '' }
+      } else {
+        aiReviewMap.value[caseId] = { phase: 'running', record, error: '' }
+        pollAiReviewUntilSettled(caseId, sourceTaskId.value, record.resultId || Number(resultIds[0]))
+      }
     } catch (e: any) {
+      clearAiPoll(caseId)
       aiReviewMap.value[caseId] = { phase: 'completed', record: null, error: e?.message || 'AI 复核失败' }
     }
   }
@@ -279,12 +340,11 @@ export function useReportReviews(reportDataRef: () => any) {
     }
   }
 
-  /** 驳回 AI 复核结论：保留原判定，AI 记录标记已驳回（待接线） */
+  /** 驳回 AI 复核结论：保留原判定，AI 记录标记已驳回（POST /ai-review/{id}/reject，真实端点） */
   async function rejectAiReview(caseItem: any) {
     const caseId = String(caseItem?.id ?? caseItem?.testCaseId ?? '')
     const run = getAiRun(caseId)
     if (!run.record) return
-    // 待接线：POST /tasks/results/ai-review/{id}/reject（§8-2 待后端立项）
     await reviewApi.rejectAiReview(run.record.id)
     aiReviewMap.value[caseId] = { ...run, phase: 'rejected' }
   }
@@ -299,6 +359,9 @@ export function useReportReviews(reportDataRef: () => any) {
 
   /** 重置状态（组件卸载） */
   function resetReportReviews() {
+    // 清理 AI 复核轮询定时器（§5.6：卸载/重置不残留后台轮询）
+    aiPollTimers.forEach((timer) => clearTimeout(timer))
+    aiPollTimers.clear()
     reportReviewCount.value = 0
     caseReviewMap.value = {}
     aiReviewMap.value = {}

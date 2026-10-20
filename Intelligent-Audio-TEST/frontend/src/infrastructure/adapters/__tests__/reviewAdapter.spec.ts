@@ -62,9 +62,10 @@ describe('toAiReviewRecord', () => {
     expect(r.originalEvaluationStatus).toBe('completed');
   });
 
-  it('unknown verdict 兜底为 passed；失败/存疑原样保留', () => {
+  it('通过/失败/存疑原样保留；缺省/未知 verdict 保留 null（不伪造 passed，§5.7/P2-1）', () => {
     expect(toAiReviewRecord({ verdict: 'failed', confidence: 0.4 }).verdict).toBe('failed');
     expect(toAiReviewRecord({ verdict: 'uncertain', confidence: 0.5 }).verdict).toBe('uncertain');
-    expect(toAiReviewRecord({ verdict: 'weird', confidence: 0.6 }).verdict).toBe('passed');
+    expect(toAiReviewRecord({ verdict: 'weird', confidence: 0.6 }).verdict).toBeNull();
+    expect(toAiReviewRecord({ confidence: 0.6 }).verdict).toBeNull();
   });
 });

@@ -36,17 +36,17 @@
 
           <!-- 已完成 -->
           <div v-else-if="phase === 'completed' && record" class="ai-record">
-            <div class="ai-verdict">
+            <div v-if="record.verdict" class="ai-verdict">
               <span class="ai-verdict-badge" :class="verdictClass">
-                <i :class="verdictIcon"></i> {{ AI_VERDICT_LABELS[record.verdict] }}
+                <i :class="verdictIcon"></i> {{ aiReviewVerdictLabel(record.verdict) }}
               </span>
               <span class="ai-confidence">置信度 {{ aiConfidenceLabel(record.confidence.value) }}（{{ Math.round(record.confidence.value * 100) }}%）</span>
             </div>
             <p class="ai-reasoning">{{ record.reasoning }}</p>
-            <div class="ai-compare">
+            <div v-if="record.verdict" class="ai-compare">
               <span>AI 判定 vs 原评估判定</span>
               <span class="ai-compare-row">
-                <span class="ai-compare-item"><b>AI：</b>{{ AI_VERDICT_LABELS[record.verdict] }}</span>
+                <span class="ai-compare-item"><b>AI：</b>{{ aiReviewVerdictLabel(record.verdict) }}</span>
                 <span class="ai-compare-arrow">→</span>
                 <span class="ai-compare-item"><b>原评估：</b>{{ evalLabel(evaluationStatus) }}</span>
               </span>
@@ -100,13 +100,15 @@ import '../../../assets/styles/layouts/main.css'
  * AI 复核弹窗（19 规范 §5.2 + §2.1 AI 复核状态机：待发起→执行中→已完成→已采纳/已驳回/待查）。
  * 定位：建议层，不直接改统计；只有人工「采纳」才落入人工复核语义（开 §3.2 复核弹窗预填
  * AI 判定的评估状态 + 备注=AI 理由 → 人工确认提交 → test_result_reviews 留痕 + 统计重算）。
- * 后端 AI 复核端点未合入常驻栈（FEAT INT-800 已 done，待集成）→ infrastructure 留桩 `// 待接线`；
+ * 后端 AI 复核端点已合入常驻栈（FEAT INT-800 done）→ reviewAiApi 全真实端点
+ * （POST /tasks/results/ai-review、POST /tasks/results/ai-review/{id}/adopt|reject）；
  * 本组件只消费 reviewAiApi（requestAiReview / adoptAiReview / rejectAiReview），不感知桩/真实。
  */
 import { ref, computed } from 'vue'
 import type { AiReviewRecord } from '../../../domain/model/review'
+import { aiReviewVerdictLabel } from '../../../domain/model/review'
 import {
-  AI_VERDICT_LABELS, aiConfidenceLabel, requestAiReview, rejectAiReview,
+  aiConfidenceLabel, requestAiReview, rejectAiReview,
   type AiReviewPhase,
 } from '../../../infrastructure/api/reviewAiApi'
 

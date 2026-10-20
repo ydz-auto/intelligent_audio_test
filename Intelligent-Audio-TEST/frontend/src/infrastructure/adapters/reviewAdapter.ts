@@ -34,8 +34,10 @@ export function toAiReviewRecord(raw: Record<string, unknown>): AiReviewRecord {
     label: confidenceValue >= 0.8 ? '高' : confidenceValue >= 0.5 ? '中' : '低',
   };
   const verdictRaw = s(raw.verdict);
-  const verdict: AiReviewVerdict =
-    verdictRaw === 'failed' || verdictRaw === 'uncertain' ? verdictRaw : 'passed';
+  // 缺省/未知 verdict 保留 null（域类型 AiReviewVerdict | null），渲染侧按状态门控
+  // （running/failed 等非 completed 记录不得伪造结论；§5.7 容错口径，P2-1）
+  const verdict: AiReviewVerdict | null =
+    verdictRaw === 'passed' || verdictRaw === 'failed' || verdictRaw === 'uncertain' ? verdictRaw : null;
 
   return {
     id: Number(raw.id ?? 0),
