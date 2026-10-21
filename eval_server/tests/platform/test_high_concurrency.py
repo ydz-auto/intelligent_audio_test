@@ -1,7 +1,11 @@
 import asyncio
-import aiohttp
 import time
 import json
+
+try:
+    import aiohttp
+except ImportError:
+    aiohttp = None  # 缺依赖时仅脚本运行报错，pytest 收集不受影响
 
 # 测试配置
 BASE_URL = "http://localhost:5001"
@@ -36,8 +40,8 @@ async def create_task(session, task_type, request_id):
             response_time = time.time() - start_time
             result = await response.json()
             
-            # 获取任务ID和状态URL
-            task_id = result.get("data", {}).get("task_id")
+            # 获取任务ID和状态URL（主键为 eval_task_id）
+            task_id = result.get("data", {}).get("eval_task_id")
             status_url = result.get("data", {}).get("status_url")
             final_result_url = result.get("data", {}).get("final_result_url")
             
@@ -170,5 +174,7 @@ async def main():
     print(f"每秒处理请求数: {total_tasks / total_time:.2f} QPS")
 
 if __name__ == "__main__":
+    if aiohttp is None:
+        raise SystemExit('缺少依赖 aiohttp，请先 pip install aiohttp 再运行高并发压测')
     # 运行测试
     asyncio.run(main())

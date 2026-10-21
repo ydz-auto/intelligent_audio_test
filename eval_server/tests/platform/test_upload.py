@@ -63,8 +63,8 @@ def test_binary_file_upload():
     resp_json = resp.json()
     print(f"Response: {resp_json}")
 
-    # 检查文件是否保存到 uploads/caller_test_002/ 目录
-    upload_base = os.path.join(os.path.dirname(__file__), '..', '..', 'static', 'eval_server', 'uploads')
+    # 检查文件是否保存到 uploads/<task_id>/ 目录
+    upload_base = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'static', 'eval_server', 'uploads')
     expected_dir = os.path.join(upload_base, 'caller_test_002')
     if os.path.exists(expected_dir):
         saved_files = os.listdir(expected_dir)
