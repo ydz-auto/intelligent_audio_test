@@ -200,6 +200,16 @@ class AuthServiceStub:
                 request_serializer=auth__service__pb2.UnbindUserOAuthIdentityRequest.SerializeToString,
                 response_deserializer=auth__service__pb2.AuthResponse.FromString,
                 _registered_method=True)
+        self.ValidateAccessToken = channel.unary_unary(
+                '/auth.AuthService/ValidateAccessToken',
+                request_serializer=auth__service__pb2.ValidateAccessTokenRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.AuthResponse.FromString,
+                _registered_method=True)
+        self.GetAccessTokenByHash = channel.unary_unary(
+                '/auth.AuthService/GetAccessTokenByHash',
+                request_serializer=auth__service__pb2.GetAccessTokenByHashRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.AuthResponse.FromString,
+                _registered_method=True)
 
 
 class AuthServiceServicer:
@@ -443,6 +453,22 @@ class AuthServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ValidateAccessToken(self, request, context):
+        """===== Access Token 校验（INT-1140，BE2 网关鉴权分支调用）=====
+        校验明文 token（at_xxx），成功更新 last_used_at/last_used_ip，
+        返回生效 scopes（空=继承用户全部权限）；失败 error_code 按 401 语义映射
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetAccessTokenByHash(self, request, context):
+        """按 SHA-256 哈希获取 token（服务间内部查询，无副作用）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_AuthServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -609,6 +635,16 @@ def add_AuthServiceServicer_to_server(servicer, server):
             'UnbindUserOAuthIdentity': grpc.unary_unary_rpc_method_handler(
                     servicer.UnbindUserOAuthIdentity,
                     request_deserializer=auth__service__pb2.UnbindUserOAuthIdentityRequest.FromString,
+                    response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
+            ),
+            'ValidateAccessToken': grpc.unary_unary_rpc_method_handler(
+                    servicer.ValidateAccessToken,
+                    request_deserializer=auth__service__pb2.ValidateAccessTokenRequest.FromString,
+                    response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
+            ),
+            'GetAccessTokenByHash': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetAccessTokenByHash,
+                    request_deserializer=auth__service__pb2.GetAccessTokenByHashRequest.FromString,
                     response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
             ),
     }
@@ -1503,6 +1539,60 @@ class AuthService:
             target,
             '/auth.AuthService/UnbindUserOAuthIdentity',
             auth__service__pb2.UnbindUserOAuthIdentityRequest.SerializeToString,
+            auth__service__pb2.AuthResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ValidateAccessToken(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/ValidateAccessToken',
+            auth__service__pb2.ValidateAccessTokenRequest.SerializeToString,
+            auth__service__pb2.AuthResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetAccessTokenByHash(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/GetAccessTokenByHash',
+            auth__service__pb2.GetAccessTokenByHashRequest.SerializeToString,
             auth__service__pb2.AuthResponse.FromString,
             options,
             channel_credentials,
