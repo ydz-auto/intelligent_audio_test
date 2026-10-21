@@ -25,6 +25,7 @@ import {
   usePickFilterOptions,
 } from '@/application/tasks/cherry-pick/use-cherry-pick-candidates'
 import { usePickCartStore } from '@/application/tasks/cherry-pick/use-pick-cart-store'
+import { usePickOrg } from '@/application/tasks/cherry-pick/use-pick-org'
 import type {
   PickTreeBranch,
   PickTreeItem,
@@ -48,6 +49,10 @@ import {
   type PickTaskRow,
 } from '@/features/tasks/cherry-pick/components/pick-task-stage'
 import { PickCaseView } from '@/features/tasks/cherry-pick/components/pick-case-view'
+import {
+  PickCaseOrgControls,
+  PickCaseOrgList,
+} from '@/features/tasks/cherry-pick/components/pick-case-org-list'
 import { PickTree } from '@/features/tasks/cherry-pick/components/pick-tree'
 import { SelectedSummaryBar } from '@/features/tasks/cherry-pick/components/selected-summary-bar'
 
@@ -91,6 +96,8 @@ export function PickStep({
     tick: 0,
   })
   const [adding, setAdding] = useState(false)
+  /** §3.8.3 用例层组织（三视图共享：分组/标签 + 平铺/交叉，阶段 2 会话态，usePickOrg） */
+  const { org, subView, setOrg, setSubView } = usePickOrg()
 
   /** 阶段 1 任务行聚合（终态候选按 taskId 分组，§3.8.2 按状态/名称排序） */
   const taskRows = useMemo<PickTaskRow[]>(() => {
@@ -334,27 +341,46 @@ export function PickStep({
             onToggleLeaf={handleToggleLeaf}
             onToggleBranch={handleToggleBranch}
             expandSignal={expandSignal}
-          />
-        ) : view === 'device' ? (
-          <PickTree
-            className='p-2'
-            items={deviceView}
-            selectedIds={selectedIds}
-            onToggleLeaf={handleToggleLeaf}
-            onToggleBranch={handleToggleBranch}
-            expandSignal={expandSignal}
-            showLeafTask
+            org={org}
+            subView={subView}
+            onOrgChange={setOrg}
+            onSubViewChange={setSubView}
           />
         ) : (
-          <PickTree
-            className='p-2'
-            items={resultTypeView}
-            selectedIds={selectedIds}
-            onToggleLeaf={handleToggleLeaf}
-            onToggleBranch={handleToggleBranch}
-            expandSignal={expandSignal}
-            showLeafTask
-          />
+          // 设备/结果类型视图：顶/二层分支行 + 每 result_type/设备 节点下用例层组织（§3.8.3 用例层组织）
+          <div className='flex min-h-0 flex-col'>
+            <div className='border-b py-2'>
+              <PickCaseOrgControls
+                org={org}
+                subView={subView}
+                onOrgChange={setOrg}
+                onSubViewChange={setSubView}
+              />
+            </div>
+            <PickTree
+              className='p-2'
+              items={view === 'device' ? deviceView : resultTypeView}
+              selectedIds={selectedIds}
+              onToggleLeaf={handleToggleLeaf}
+              onToggleBranch={handleToggleBranch}
+              expandSignal={expandSignal}
+              showLeafTask
+              renderCaseLayer={(caseBranches) => (
+                <PickCaseOrgList
+                  branches={caseBranches}
+                  selectedIds={selectedIds}
+                  onToggleLeaf={handleToggleLeaf}
+                  onToggleBranch={handleToggleBranch}
+                  expandSignal={expandSignal}
+                  org={org}
+                  subView={subView}
+                  onOrgChange={setOrg}
+                  onSubViewChange={setSubView}
+                  showControls={false}
+                />
+              )}
+            />
+          </div>
         )}
       </div>
 

@@ -13,7 +13,7 @@ import {
   Smartphone,
   Tag,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 
 import type {
@@ -160,6 +160,7 @@ function BranchRow({
   onToggleLeaf,
   onToggleBranch,
   showLeafTask,
+  renderCaseLayer,
 }: {
   branch: PickTreeBranch
   selectedIds: ReadonlySet<number>
@@ -169,12 +170,26 @@ function BranchRow({
   onToggleLeaf: (leaf: PickTreeLeaf) => void
   onToggleBranch: (branch: PickTreeBranch, select: boolean) => void
   showLeafTask?: boolean
+  /** §3.8.3 用例层组织：设备/结果类型视图 result_type/设备 节点下用例层改由组织列表渲染 */
+  renderCaseLayer?: (caseBranches: PickTreeBranch[]) => ReactNode
 }) {
   const state = getBranchSelectionState(branch, selectedIds)
   const Icon = isApiDeviceBranch(branch) ? ArrowLeftRight : LEVEL_ICONS[branch.level]
   const hasChildren = branch.children.length > 0
   const open = openKeys.has(branch.key)
   const indent = depth * 14 + 4
+
+  /** 用例层（children 全为用例级分支 → 走 renderCaseLayer 组织列表，替代内联文本行） */
+  const caseLayerChildren =
+    renderCaseLayer &&
+    branch.children.length > 0 &&
+    branch.children.every(
+      (c) => c.kind === 'branch' && c.level === 'case'
+    )
+      ? (branch.children.filter(
+          (c): c is PickTreeBranch => c.kind === 'branch' && c.level === 'case'
+        ) as PickTreeBranch[])
+      : null
 
   return (
     <Collapsible open={open} onOpenChange={() => onToggleOpen(branch.key)}>
@@ -244,27 +259,32 @@ function BranchRow({
       {hasChildren && (
         <CollapsibleContent>
           <div className='flex flex-col'>
-            {branch.children.map((child) =>
-              child.kind === 'leaf' ? (
-                <LeafRow
-                  key={child.key}
-                  leaf={child}
-                  selected={selectedIds.has(child.resultId)}
-                  onToggle={onToggleLeaf}
-                  showLeafTask={showLeafTask}
-                />
-              ) : (
-                <BranchRow
-                  key={child.key}
-                  branch={child}
-                  selectedIds={selectedIds}
-                  openKeys={openKeys}
-                  depth={depth + 1}
-                  onToggleOpen={onToggleOpen}
-                  onToggleLeaf={onToggleLeaf}
-                  onToggleBranch={onToggleBranch}
-                  showLeafTask={showLeafTask}
-                />
+            {caseLayerChildren ? (
+              renderCaseLayer?.(caseLayerChildren)
+            ) : (
+              branch.children.map((child) =>
+                child.kind === 'leaf' ? (
+                  <LeafRow
+                    key={child.key}
+                    leaf={child}
+                    selected={selectedIds.has(child.resultId)}
+                    onToggle={onToggleLeaf}
+                    showLeafTask={showLeafTask}
+                  />
+                ) : (
+                  <BranchRow
+                    key={child.key}
+                    branch={child}
+                    selectedIds={selectedIds}
+                    openKeys={openKeys}
+                    depth={depth + 1}
+                    onToggleOpen={onToggleOpen}
+                    onToggleLeaf={onToggleLeaf}
+                    onToggleBranch={onToggleBranch}
+                    showLeafTask={showLeafTask}
+                    renderCaseLayer={renderCaseLayer}
+                  />
+                )
               )
             )}
           </div>
@@ -295,6 +315,8 @@ export interface PickTreeProps {
   expandSignal?: { all: boolean; tick: number }
   /** §3.8.3 三视图叶行携带来源任务名消歧（阶段 1 承载任务维度后的视图） */
   showLeafTask?: boolean
+  /** §3.8.3 用例层组织：设备/结果类型视图 result_type/设备 节点下用例层改由组织列表渲染 */
+  renderCaseLayer?: (caseBranches: PickTreeBranch[]) => ReactNode
   className?: string
 }
 
@@ -309,6 +331,7 @@ export function PickTree({
   onToggleBranch,
   expandSignal,
   showLeafTask,
+  renderCaseLayer,
   className,
 }: PickTreeProps) {
   const [openKeys, setOpenKeys] = useState<Set<string>>(new Set())
@@ -350,6 +373,7 @@ export function PickTree({
             onToggleLeaf={onToggleLeaf}
             onToggleBranch={onToggleBranch}
             showLeafTask={showLeafTask}
+            renderCaseLayer={renderCaseLayer}
           />
         )
       )}
