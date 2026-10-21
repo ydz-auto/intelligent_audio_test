@@ -10,6 +10,7 @@ import { createCaseMetricsComputeds, createFilteredCases } from './specificCaseC
 import { usePagination } from '../../composables/usePagination'
 import { readCamel } from '../../utils/keyTransform'
 import { useReportReviews } from '@/composables/report/useReportReviews'
+import { groupReportCasesByCategory, groupReportCasesByTag, type ReportCaseSubGroup } from './specificCaseGrouping'
 
 /** 具体用例对比组件 props（reportData 由父组件注入的 Report Domain，adapter 出口 camelCase） */
 interface SpecificCaseComparisonProps {
@@ -336,6 +337,33 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
       .map((caseItem: any) => prepareCaseItem(caseItem))
   })
 
+  // ===== §3.3.7 用例卡片分组（INT-1049 对齐）：排序选「按分组/按标签」即组头分组渲染，否则平铺 =====
+  /** 报告侧标签登记表（allCaseTags 为名字扁平；色值后端未下发，TagBadge 灰色兜底 + 分类角标缺省 null） */
+  const reportTagRegistry = computed(() =>
+    (allTags.value || []).map((name: string) => ({ name, color: null, categoryName: null })),
+  )
+
+  /** 组头分组（组名 + 计数「{n} 个用例」；未分类/未设置标签兜底组末尾弱化） */
+  const groupedCases = computed<ReportCaseSubGroup[] | null>(() => {
+    const items = paginatedCasesWithPreparedData.value
+    if (sortDimension.value === 'tag') return groupReportCasesByTag(items, reportTagRegistry.value)
+    if (sortDimension.value === 'category') return groupReportCasesByCategory(items)
+    return null
+  })
+
+  /** 用例列表组织（§3.3.7）：未选分组/标签时为平铺伪组（无组头），选中即组头分组渲染 */
+  const caseListGroups = computed(() => {
+    const grouped = groupedCases.value
+    if (grouped) return grouped
+    return [{
+      key: '__flat__',
+      label: '',
+      cases: paginatedCasesWithPreparedData.value,
+      color: null,
+      categoryName: null,
+    }]
+  })
+
   // 筛选/排序条件变化时重新请求后端（复核筛选模式拉全量供客户端过滤）
   const debouncedReload = debounce(() => {
     const reportId = props.reportData?.id
@@ -595,6 +623,7 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
     pinnedCases, togglePin,
     getResourceLabel, resourceHeaders,
     paginatedCasesWithPreparedData, toggleCaseExpand, getOverallStatus,
+    groupedCases, caseListGroups,
     ...download,
     expandedCases, allDevices,
     unpinnedFilteredCases, totalCases, displayTotalCases, currentPage, pageSize, handlePrevPage, handleNextPage, handleGoToPage, handlePageSizeChange,

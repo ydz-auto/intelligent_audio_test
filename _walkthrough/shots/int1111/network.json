@@ -1,0 +1,17 @@
+[
+ {
+  "flat": [
+   "POST http://127.0.0.1:5530/api/v1/reports/65/cases/search"
+  ]
+ },
+ {
+  "category": [
+   "POST http://127.0.0.1:5530/api/v1/reports/65/cases/search"
+  ]
+ },
+ {
+  "tag": [
+   "POST http://127.0.0.1:5530/api/v1/reports/65/cases/search"
+  ]
+ }
+]

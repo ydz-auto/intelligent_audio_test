@@ -173,6 +173,7 @@
                   <select class="filter-select" v-model="sortDimension">
                     <option value="name">按名称</option>
                     <option value="category">按分组</option>
+                    <option value="tag">按标签</option>
                     <option value="createdAt">按创建时间</option>
                     <option value="评估维度">按评估维度</option>
                   </select>
@@ -264,17 +265,30 @@
       </div>
     </div>
 
-    <!-- Case List（INT-1103：报告具体用例统一消费全站 TestCaseCard，不再另造平铺卡片结构） -->
+    <!-- Case List（INT-1103：报告具体用例统一消费全站 TestCaseCard；INT-1111：按 分组/标签 组织，组头 = 组名 + 计数「{n} 个用例」，未分类/未设置标签兜底组末尾弱化） -->
     <div class="case-list">
-      <TestCaseCard
-        v-for="caseItem in paginatedCasesWithPreparedData"
-        :key="caseItem.id"
-        :test-case="caseItem"
-        :is-selected="false"
-        :show-checkbox="false"
-        hide-meta
-        @click="toggleCaseExpand(caseItem.id)"
-      >
+      <div v-for="group in caseListGroups" :key="group.key" class="case-group">
+        <!-- 组头（平铺伪组 label 为空不渲染；兜底组末尾弱化） -->
+        <div
+          v-if="group.label"
+          class="case-group-header"
+          :class="{ 'case-group-header-muted': isFallbackGroup(group.key) }"
+        >
+          <span v-if="group.color" class="case-group-dot" :style="{ backgroundColor: group.color }"></span>
+          <span class="case-group-name">{{ group.label }}</span>
+          <span v-if="group.categoryName" class="case-group-category">{{ group.categoryName }}</span>
+          <span class="case-group-count">{{ group.cases.length }} 个用例</span>
+        </div>
+
+        <TestCaseCard
+          v-for="caseItem in group.cases"
+          :key="caseItem.id"
+          :test-case="caseItem"
+          :is-selected="false"
+          :show-checkbox="false"
+          hide-meta
+          @click="toggleCaseExpand(caseItem.id)"
+        >
 
         <!-- 状态指示点（leading） -->
         <template #leading>
@@ -366,6 +380,7 @@
           </div>
         </template>
       </TestCaseCard>
+      </div>
     </div>
 
     <PaginationComponent
@@ -665,6 +680,7 @@ const {
   paginatedCasesWithPreparedData,
   toggleCaseExpand,
   getOverallStatus,
+  caseListGroups,
   showLogFileDialog,
   logDialogCaseName,
   logFiles,
@@ -712,6 +728,9 @@ const reviewFilterOptions = [
   { value: 'reviewed', label: '已复核' },
   { value: 'unreviewed', label: '未复核' },
 ]
+
+/** INT-1111：兜底组（未分类/未设置标签）末尾弱化判定 */
+const isFallbackGroup = (key) => key === '__untagged__' || key === '__uncategorized__'
 
 // INT-797：人工复核/AI 复核权限（按钮级 task.result.review）
 const authStore = useAuthStore()

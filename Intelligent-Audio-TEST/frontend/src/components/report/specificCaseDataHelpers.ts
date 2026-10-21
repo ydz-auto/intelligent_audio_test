@@ -303,7 +303,8 @@ export function createCaseDataHelpers(deps: {
       params.sortResource = selectedSortResource.value || undefined
       params.sortOrder = sortOrder.value
     } else {
-      params.sortBy = sortDimension.value
+      // 'tag' 为 UI 分组组织维度（后端无 tag 排序，INT-1049 口径），请求回退 name 排序，组内客户端聚合
+      params.sortBy = sortDimension.value === 'tag' ? 'name' : sortDimension.value
       params.sortOrder = sortOrder.value
     }
     return params

@@ -1,0 +1,13 @@
+{
+ "flat_light": [],
+ "flat_dark": [],
+ "category_light": [],
+ "category_dark": [],
+ "tag_light": [],
+ "tag_dark": [],
+ "network": {
+  "flat": [],
+  "category": [],
+  "tag": []
+ }
+}
