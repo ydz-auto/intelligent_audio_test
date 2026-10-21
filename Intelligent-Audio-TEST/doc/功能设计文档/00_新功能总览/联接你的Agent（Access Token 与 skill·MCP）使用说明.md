@@ -32,7 +32,7 @@
 | --- | --- | --- |
 | auth_service Access Token 领域（表 / CRUD / 校验 RPC） | INT-1148（BE1） | ✅ done（已合入开发基线） |
 | api_gateway 鉴权扩展 + access-token CRUD 路由 | INT-1149（BE2） | 👀 in_review |
-| skill 下载 + MCP 适配端点（网关内） | INT-1150（BE3） | ⏳ 待实施（本文档按 INT-1142 已裁定契约编写，落地后回写） |
+| skill 下载 + MCP 适配端点（网关内） | INT-1150（BE3） | 🔄 实施中（未落地；本文档按 INT-1142 已裁定契约编写，落地后回写） |
 | 旧 Vue 前端（导航入口 / 入口页面 / 个人配置页 token 管理） | INT-1151 | ⏳ 待实施 |
 | 本文档 | INT-1152 | 本卡 |
 
