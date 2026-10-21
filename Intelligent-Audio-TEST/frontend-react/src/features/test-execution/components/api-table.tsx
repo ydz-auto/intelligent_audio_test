@@ -1,7 +1,9 @@
 /**
  * 被测 API 表格（interfaces/features/test-execution/components；10_测试执行.md §3.6.2）。
- * 列=☑选择（表头全选，离线行禁用）/名称/端点/算法/状态/最大并发/操作（连接测试+
- * 编辑/删除行菜单，api_config:test/update/delete 权限显隐）；离线行视觉禁用 + Tooltip。
+ * 列=☑选择（表头全选，离线行禁用）/执行模式/名称/端点/算法/状态/最大并发/操作
+ * （连接测试+编辑/删除行菜单，api_config:test/update/delete 权限显隐）；离线行视觉禁用 + Tooltip。
+ * INT-1119（2026-10-21）：执行模式列——仅**选中**行显示「并行｜串行」紧凑 SegmentedControl
+ * （默认并行）；未选行显示「—」；readOnly 观察态展示模式 Badge，无控件。
  */
 import { MoreHorizontal, PlugZap } from 'lucide-react'
 
@@ -19,9 +21,14 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import {
+  ExecutionModeBadge,
+  ExecutionModeControl,
+} from '@/features/test-execution/components/execution-mode-control'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import { cn } from '@/lib/utils'
 import type { ApiConfig } from '@/domain/models/apiConfig'
+import type { ExecutionMode } from '@/domain/models/testExecution'
 
 interface ApiTableProps {
   apis: ApiConfig[]
@@ -31,6 +38,9 @@ interface ApiTableProps {
   canEdit: boolean
   canDelete: boolean
   testingIds: Set<number>
+  /** 每 API 当前执行模式（受控值经 useTargetModes；缺省并行） */
+  modes?: Record<number, ExecutionMode>
+  onModeChange?: (apiId: number, mode: ExecutionMode) => void
   onToggle: (id: number) => void
   onToggleAll: () => void
   onTestConnection: (api: ApiConfig) => void
@@ -46,6 +56,8 @@ export function ApiTable({
   canEdit,
   canDelete,
   testingIds,
+  modes,
+  onModeChange,
   onToggle,
   onToggleAll,
   onTestConnection,
@@ -70,6 +82,7 @@ export function ApiTable({
                 />
               )}
             </th>
+            <th className='w-28 px-2 py-2.5 font-medium'>执行模式</th>
             <th className='px-2 py-2.5 font-medium'>API 名称</th>
             <th className='px-2 py-2.5 font-medium'>端点</th>
             <th className='px-2 py-2.5 font-medium'>算法</th>
@@ -82,6 +95,7 @@ export function ApiTable({
           {apis.map((api) => {
             const online = api.status === 'online'
             const selected = selectedIds.includes(api.id)
+            const mode = modes?.[api.id] ?? 'parallel'
             return (
               <tr
                 key={api.id}
@@ -111,6 +125,24 @@ export function ApiTable({
                     </Tooltip>
                   ) : (
                     <span className='text-primary flex justify-center text-xs'>✓</span>
+                  )}
+                </td>
+                <td className='px-2 py-2.5'>
+                  {selected ? (
+                    readOnly ? (
+                      <ExecutionModeBadge mode={mode} />
+                    ) : (
+                      onModeChange && (
+                        <ExecutionModeControl
+                          compact
+                          value={mode}
+                          onChange={(next) => onModeChange(api.id, next)}
+                          ariaLabel={`${api.name} 执行模式`}
+                        />
+                      )
+                    )
+                  ) : (
+                    <span className='text-muted-foreground text-xs'>—</span>
                   )}
                 </td>
                 <td className='px-2 py-2.5'>

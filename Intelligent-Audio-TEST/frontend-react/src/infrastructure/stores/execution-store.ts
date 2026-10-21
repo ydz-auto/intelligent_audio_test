@@ -4,11 +4,18 @@
  */
 import { create } from 'zustand'
 
-import type { ExecutionParams } from '@/domain/models/testExecution'
+import type { ExecutionMode, ExecutionParams, TargetType } from '@/domain/models/testExecution'
 import { DEFAULT_EXECUTION_PARAMS } from '@/domain/models/testExecution'
+
+/** 目标模式键（`${targetType}:${targetId}`，缺省视为并行） */
+function targetModeKey(targetType: TargetType, targetId: number): string {
+  return `${targetType}:${targetId}`
+}
 
 type ExecutionState = {
   params: ExecutionParams
+  /** 逐目标执行模式 map（INT-1119 §3.6.5；缺省=并行；取消选择即删项） */
+  targetModes: Record<string, ExecutionMode>
   /** 进行中任务 id（启动成功写入；URL step=3 依赖） */
   taskId: number | null
   taskName: string | null
@@ -20,6 +27,9 @@ type ExecutionState = {
   reportError: string | null
   setParams: (patch: Partial<ExecutionParams>) => void
   resetParams: () => void
+  setTargetMode: (targetType: TargetType, targetId: number, mode: ExecutionMode) => void
+  removeTargetMode: (targetType: TargetType, targetId: number) => void
+  resetTargetModes: () => void
   setTask: (taskId: number, taskName: string, deviceTypes?: string[]) => void
   setReportGenerating: () => void
   setReportReady: (reportId: number) => void
@@ -30,6 +40,7 @@ type ExecutionState = {
 
 export const useExecutionStore = create<ExecutionState>((set) => ({
   params: { ...DEFAULT_EXECUTION_PARAMS },
+  targetModes: {},
   taskId: null,
   taskName: null,
   deviceTypes: [],
@@ -40,6 +51,20 @@ export const useExecutionStore = create<ExecutionState>((set) => ({
   setParams: (patch) => set((s) => ({ params: { ...s.params, ...patch } })),
 
   resetParams: () => set({ params: { ...DEFAULT_EXECUTION_PARAMS } }),
+
+  setTargetMode: (targetType, targetId, mode) =>
+    set((s) => ({ targetModes: { ...s.targetModes, [targetModeKey(targetType, targetId)]: mode } })),
+
+  removeTargetMode: (targetType, targetId) =>
+    set((s) => {
+      const key = targetModeKey(targetType, targetId)
+      if (!(key in s.targetModes)) return s
+      const next = { ...s.targetModes }
+      delete next[key]
+      return { targetModes: next }
+    }),
+
+  resetTargetModes: () => set({ targetModes: {} }),
 
   setTask: (taskId, taskName, deviceTypes = []) =>
     set({ taskId, taskName, deviceTypes }),
@@ -56,6 +81,7 @@ export const useExecutionStore = create<ExecutionState>((set) => ({
   resetFlow: () =>
     set({
       params: { ...DEFAULT_EXECUTION_PARAMS },
+      targetModes: {},
       taskId: null,
       taskName: null,
       deviceTypes: [],
