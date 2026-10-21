@@ -49,7 +49,7 @@ class _WerBaseCalculator(BaseCalculator):
         flat = BaseCalculator._collect_flat_from_rounds(task_params, self.flat_keys)
 
         return {
-            'normalize': task_params.get('normalize', False),
+            'normalize': task_params.get('normalize', True),
             'source_lang': task_params.get('source_lang'),
             'target_lang': task_params.get('target_lang'),
             'translate_direct': translate_direct,
