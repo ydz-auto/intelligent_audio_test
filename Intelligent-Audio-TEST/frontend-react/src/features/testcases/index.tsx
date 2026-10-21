@@ -113,7 +113,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   useEffect(() => {
     if (!groupDialog.open) return
     return () => {
-      void queryClient.invalidateQueries({ queryKey: ['groups'] })
+      void queryClient.invalidateQueries({ queryKey: ['testcase-groups'] })
       void queryClient.invalidateQueries({ queryKey: ['testcases'] })
     }
   }, [groupDialog.open, queryClient])
@@ -249,7 +249,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
             await queryClient.invalidateQueries({
               queryKey: ['testcases'],
             })
-            await queryClient.invalidateQueries({ queryKey: ['groups'] })
+            await queryClient.invalidateQueries({ queryKey: ['testcase-groups'] })
           } catch (error) {
             toast.error(error instanceof Error ? error.message : '复制分组失败')
           }

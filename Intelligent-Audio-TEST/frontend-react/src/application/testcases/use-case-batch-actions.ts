@@ -58,7 +58,7 @@ export function useCaseBatchActions({
     return () => {
       void queryClient.invalidateQueries({ queryKey: ['testcases'] })
       if (batchDialog.kind === 'group') {
-        void queryClient.invalidateQueries({ queryKey: ['groups'] })
+        void queryClient.invalidateQueries({ queryKey: ['testcase-groups'] })
       }
       if (batchDialog.kind === 'tags') {
         void queryClient.invalidateQueries({ queryKey: ['tags'] })
@@ -195,7 +195,7 @@ export function useCaseBatchActions({
       }
       await queryClient.invalidateQueries({ queryKey: ['testcases'] })
       if (state.kind === 'delete-group') {
-        await queryClient.invalidateQueries({ queryKey: ['groups'] })
+        await queryClient.invalidateQueries({ queryKey: ['testcase-groups'] })
       }
       onClearSelection()
       setConfirm(null)
