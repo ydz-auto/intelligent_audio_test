@@ -127,6 +127,9 @@ export interface CartTreeLeaf {
   executionStatus: string
   evaluationStatus: string | null
   invalid: boolean
+  /** §4.2 三视图（INT-1128）：叶行来源任务名/ID 消歧（用例/设备/结果类型视图任务维度保留） */
+  sourceTaskId: number
+  sourceTaskName: string
 }
 
 export type CartTreeItem = CartTreeBranch | CartTreeLeaf

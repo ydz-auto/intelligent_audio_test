@@ -13,6 +13,9 @@ import type {
   PickTreeLeaf,
 } from '@/domain/models/cherryPick'
 import {
+  buildCartCaseView,
+  buildCartDeviceView,
+  buildCartResultTypeView,
   buildCartTree,
   buildPickCaseView,
   buildPickDeviceView,
@@ -20,6 +23,7 @@ import {
   buildPickTree,
   clearSelection,
   collectEntryIds,
+  collectSourceTaskCount,
   collectVisibleResultIds,
   computeSelectionStats,
   getBranchSelectionState,
@@ -635,6 +639,141 @@ describe('购物车树与移除矩阵（§4.2/§4.3）', () => {
     expect(once).toEqual(new Set(['a1']))
     const twice = toggleCartLeafSelection(leaf, once)
     expect(twice.size).toBe(0)
+  })
+})
+
+describe('购物车三视图树构建（§4.2 ②，INT-1128）', () => {
+  /** 跨任务样例：任务A 用例c1/c2 设备-01；任务B 用例c1 设备-02、用例c2 设备-01 */
+  const multiCartGroups = [
+    {
+      taskId: 1042,
+      taskName: '任务A',
+      entries: [
+        { itemId: 'a1', resultId: 1, sourceTaskId: 1042, sourceTaskName: '任务A', sourceCaseId: 'c1', sourceCaseName: '用例001', sourceDeviceId: 1, sourceDeviceName: '设备-01', sourceApiId: null, sourceApiName: null, sourceResultType: 'real-time', executionStatus: 'completed', evaluationStatus: 'completed', invalid: false },
+        { itemId: 'a2', resultId: 2, sourceTaskId: 1042, sourceTaskName: '任务A', sourceCaseId: 'c2', sourceCaseName: '用例002', sourceDeviceId: 1, sourceDeviceName: '设备-01', sourceApiId: null, sourceApiName: null, sourceResultType: 'final', executionStatus: 'completed', evaluationStatus: 'completed', invalid: false },
+        { itemId: 'a3', resultId: 5, sourceTaskId: 1042, sourceTaskName: '任务A', sourceCaseId: 'c2', sourceCaseName: '用例002', sourceDeviceId: 1, sourceDeviceName: '设备-01', sourceApiId: null, sourceApiName: null, sourceResultType: null, executionStatus: 'completed', evaluationStatus: 'completed', invalid: true },
+      ],
+    },
+    {
+      taskId: 1043,
+      taskName: '任务B',
+      entries: [
+        { itemId: 'b1', resultId: 3, sourceTaskId: 1043, sourceTaskName: '任务B', sourceCaseId: 'c1', sourceCaseName: '用例001', sourceDeviceId: 2, sourceDeviceName: '设备-02', sourceApiId: null, sourceApiName: null, sourceResultType: 'real-time', executionStatus: 'completed', evaluationStatus: 'completed', invalid: false },
+        { itemId: 'b2', resultId: 4, sourceTaskId: 1043, sourceTaskName: '任务B', sourceCaseId: 'c2', sourceCaseName: '用例002', sourceDeviceId: 1, sourceDeviceName: '设备-01', sourceApiId: null, sourceApiName: null, sourceResultType: 'real-time', executionStatus: 'completed', evaluationStatus: 'completed', invalid: false },
+      ],
+    },
+  ]
+
+  const collectCases = (items: CartTreeBranch[]) =>
+    items.filter((n): n is CartTreeBranch => n.level === 'case')
+  const collectDevices = (items: CartTreeBranch[]) =>
+    items.filter((n): n is CartTreeBranch => n.level === 'device')
+  const collectResultTypes = (items: CartTreeBranch[]) =>
+    items.filter((n): n is CartTreeBranch => n.level === 'resultType')
+  const collectLeaves = (branch: CartTreeBranch) =>
+    branch.children.filter((n): n is CartTreeLeaf => n.kind === 'leaf')
+
+  it('用例视图：用例（顶层，跨任务聚合）→ 设备 → result_type → 叶，顶层「来自 {m} 个任务」', () => {
+    const tree = buildCartCaseView(multiCartGroups)
+    const cases = collectCases(tree)
+    expect(cases).toHaveLength(2)
+    expect(cases[0].name).toBe('用例001')
+    expect(cases[0].count).toBe(2)
+    expect(cases[0].entryIds).toEqual(['a1', 'b1'])
+    expect(collectSourceTaskCount([cases[0]])).toBe(2)
+    // 用例001 下：设备-01（a1）+ 设备-02（b1）
+    const devices = collectDevices(cases[0].children)
+    expect(devices.map((d) => d.name)).toEqual(['设备-01', '设备-02'])
+    // 设备-01 → real-time → 叶 a1（来源任务名消歧）
+    const rt = collectResultTypes(devices[0].children)[0]
+    expect(rt.name).toBe('real-time')
+    const leaf = collectLeaves(rt)[0]
+    expect(leaf.entryId).toBe('a1')
+    expect(leaf.sourceTaskId).toBe(1042)
+    expect(leaf.sourceTaskName).toBe('任务A')
+    // 设备-02 → real-time → 叶 b1（任务B）
+    const rt2 = collectResultTypes(devices[1].children)[0]
+    expect(collectLeaves(rt2)[0].sourceTaskName).toBe('任务B')
+  })
+
+  it('用例视图：快照缺 source_result_type → 折叠「结果类型待补充」单组（§11-5 不变）', () => {
+    const tree = buildCartCaseView(multiCartGroups)
+    const cases = collectCases(tree)
+    const c2 = cases.find((c) => c.name === '用例002')
+    expect(c2).toBeDefined()
+    const device = collectDevices(c2!.children)[0]
+    const rts = collectResultTypes(device.children)
+    // a2(final) 与 a3(待补充) 各成独立 result_type 分支；b2(real-time) 也在设备-01
+    const pending = rts.find((r) => r.name === '结果类型待补充')
+    expect(pending).toBeDefined()
+    expect(pending!.entryIds).toEqual(['a3'])
+    const leaf = collectLeaves(pending!)[0]
+    expect(leaf.invalid).toBe(true)
+  })
+
+  it('设备视图：设备（顶层）→ result_type → 用例（PickCaseCard 子树）→ 叶，跨任务整组统计', () => {
+    const tree = buildCartDeviceView(multiCartGroups)
+    const devices = collectDevices(tree)
+    expect(devices).toHaveLength(2)
+    expect(devices[0].name).toBe('设备-01')
+    expect(devices[0].count).toBe(4) // a1/a2/a3/b2 同设备
+    expect(collectSourceTaskCount([devices[0]])).toBe(2)
+    // 设备-01 下 result_type：real-time（a1、b2 跨任务）、final（a2）、待补充（a3）
+    const rts = collectResultTypes(devices[0].children)
+    expect(rts.map((r) => r.name)).toEqual(['real-time', 'final', '结果类型待补充'])
+    const realtime = rts[0]
+    expect(realtime.entryIds).toEqual(['a1', 'b2'])
+    // real-time 下用例层：用例001（a1）+ 用例002（b2），叶携带来源任务名消歧
+    const realtimeCases = collectCases(realtime.children)
+    expect(realtimeCases.map((c) => c.name)).toEqual(['用例001', '用例002'])
+    expect(collectLeaves(realtimeCases[0])[0].sourceTaskName).toBe('任务A')
+    expect(collectLeaves(realtimeCases[1])[0].sourceTaskName).toBe('任务B')
+  })
+
+  it('结果类型视图：result_type（顶层）→ 设备 → 用例（PickCaseCard 子树）→ 叶', () => {
+    const tree = buildCartResultTypeView(multiCartGroups)
+    const rts = collectResultTypes(tree)
+    expect(rts.map((r) => r.name)).toEqual(['real-time', 'final', '结果类型待补充'])
+    expect(rts[0].count).toBe(3) // a1/b1/b2
+    expect(collectSourceTaskCount([rts[0]])).toBe(2)
+    const devices = collectDevices(rts[0].children)
+    expect(devices.map((d) => d.name)).toEqual(['设备-01', '设备-02'])
+    // 设备-01 下用例层：用例001（a1）+ 用例002（b2）
+    const device0Cases = collectCases(devices[0].children)
+    expect(device0Cases.map((c) => c.name)).toEqual(['用例001', '用例002'])
+    expect(collectLeaves(device0Cases[0])[0].entryId).toBe('a1')
+    // 设备-02 下用例001（b1）
+    const device1Cases = collectCases(devices[1].children)
+    expect(device1Cases.map((c) => c.name)).toEqual(['用例001'])
+    expect(collectLeaves(device1Cases[0])[0].entryId).toBe('b1')
+  })
+
+  it('三视图共享同一购物车条目集（同一 entryId 集，§4.2 切换不丢条目）', () => {
+    const allIds = multiCartGroups.flatMap((g) => g.entries.map((e) => e.itemId)).sort()
+    const caseTree = buildCartCaseView(multiCartGroups)
+    const deviceTree = buildCartDeviceView(multiCartGroups)
+    const rtTree = buildCartResultTypeView(multiCartGroups)
+    expect(collectEntryIds(caseTree).sort()).toEqual(allIds)
+    expect(collectEntryIds(deviceTree).sort()).toEqual(allIds)
+    expect(collectEntryIds(rtTree).sort()).toEqual(allIds)
+    // 勾选/移除矩阵在三种视图下对同一 entryId 集一致（节点级批量选择）
+    const caseTop = caseTree[0]
+    const deviceTop = deviceTree[0]
+    const rtTop = rtTree[0]
+    const selected = toggleCartBranchSelection(deviceTop, new Set(), true)
+    expect(getCartBranchSelectionState(deviceTop, selected)).toBe('checked')
+    expect(getCartBranchSelectionState(caseTop, selected)).toBe('indeterminate')
+    expect(getCartBranchSelectionState(rtTop, selected)).toBe('indeterminate')
+  })
+
+  it('collectSourceTaskCount：叶级去重来源任务数（跨任务节点）', () => {
+    const tree = buildCartDeviceView(multiCartGroups)
+    const devices = collectDevices(tree)
+    expect(collectSourceTaskCount([devices[0]])).toBe(2)
+    const leaves = collectLeaves(
+      collectResultTypes(devices[0].children)[0].children[0] as CartTreeBranch
+    )
+    expect(collectSourceTaskCount(leaves)).toBe(1) // 单个用例下两条叶同源
   })
 })
 

@@ -13,6 +13,10 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import type { CartTreeBranch, CartTreeLeaf } from '@/domain/models/cherryPick'
 import { CartTree } from '@/features/tasks/cherry-pick/components/cart-tree'
+import {
+  CartViewSwitcher,
+  type CartView,
+} from '@/features/tasks/cherry-pick/components/cart-view-switcher'
 import { SavePickSetDialog } from '@/features/tasks/cherry-pick/components/save-pick-set-dialog'
 
 interface ConfirmState {
@@ -52,6 +56,8 @@ export function CartPanel({
   const [selectedEntryIds, setSelectedEntryIds] = useState<Set<string>>(new Set())
   const [confirm, setConfirm] = useState<ConfirmState | null>(null)
   const [saveOpen, setSaveOpen] = useState(false)
+  /** §4.2 三视图切换（任务分组默认；切换不改变勾选/失效标记） */
+  const [view, setView] = useState<CartView>('task')
 
   const selectedCount = selectedEntryIds.size
 
@@ -75,11 +81,15 @@ export function CartPanel({
     entryIds: string[],
     levelLabel: string,
     name: string,
-    count: number
+    count: number,
+    sourceTaskCount?: number
   ) => {
+    // §4.2 ② 三视图顶层组头「移除整组」跨任务：确认文案注明来源任务数
+    const taskSuffix =
+      sourceTaskCount != null ? `（来自 ${sourceTaskCount} 个任务）` : ''
     askRemove(
       `移除${levelLabel}「${name}」`,
-      `将移除该${levelLabel}下的 ${count} 条结果，是否继续？`,
+      `将移除该${levelLabel}下的 ${count} 条结果${taskSuffix}，是否继续？`,
       () => void removeMany(entryIds)
     )
   }
@@ -116,6 +126,12 @@ export function CartPanel({
           </div>
         ) : (
           <>
+            {/* §4.2 三视图切换器（任务分组默认 + 用例/设备/结果类型；购物车抽屉与复核步骤共用） */}
+            <CartViewSwitcher
+              view={view}
+              onChange={setView}
+              className='mb-3 w-max'
+            />
             {!readOnly && invalidItemIds.length > 0 && (
               <div className='border-warning/40 bg-warning/10 mb-3 flex items-center gap-2 rounded-lg border px-3 py-2 text-xs'>
                 <span className='flex-1'>
@@ -136,6 +152,7 @@ export function CartPanel({
             )}
             <CartTree
               groups={groups}
+              view={view}
               selectedEntryIds={selectedEntryIds}
               readOnly={readOnly}
               onToggleLeaf={(leaf: CartTreeLeaf) =>
