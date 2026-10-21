@@ -54,6 +54,21 @@ def normalize_audio_config(raw) -> Optional[Dict]:
     return {k: raw[k] for k in _AUDIO_CONFIG_KEYS if k in raw}
 
 
+def derive_api_keys_summary(raw) -> Optional[Dict]:
+    """从 meta.api_keys 原始值派生密钥池非敏感摘要 {count, tails[]}（INT-1177）。
+
+    完整密钥不进入摘要（仅尾号，零明文）；非法形态返回 None。聚合根承载
+    摘要而非完整密钥，读侧序列化（_api_to_dict）只输出摘要、meta 中完整
+    api_keys 一律不输出（PO/聚合根双兼容防御）。
+    """
+    if not isinstance(raw, list):
+        return None
+    cleaned = [str(k).strip() for k in raw if k is not None and str(k).strip()]
+    if not cleaned:
+        return None
+    return {'count': len(cleaned), 'tails': [k[-4:] for k in cleaned]}
+
+
 @dataclass(frozen=True)
 class APISnapshot:
     """API 快照值对象 — 不可变，记录某一时刻 API 的核心信息。"""
@@ -97,6 +112,10 @@ class APIAggregate:
     # `user:pass@host:port`（不含 scheme）；两者皆空 = 不用代理
     proxy_type: Optional[str] = None
     proxy_url: Optional[str] = None
+    # 密钥池非敏感摘要（INT-1177）：{count, tails[]}，尾号 = 每 key 末 4 位；
+    # 聚合根不承载完整密钥（零响应），`_api_po_to_entity` 从 po.meta.api_keys
+    # 派生；读侧序列化只读本字段
+    api_keys_summary: Optional[Dict] = None
 
     def set_output_types(self, raw) -> List[str]:
         """设置输出类型列表（经 OutputType 枚举归一化），返回归一化结果"""

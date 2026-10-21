@@ -1,11 +1,27 @@
 /**
  * APIConfig Adapter —— APIConfigDto(snake_case) ⇄ APIConfig(camelCase)
  */
-import type { APIConfig, ApiEndpoint, ApiHealthCheckResult } from '../../domain/model/apiConfig'
+import type { APIConfig, ApiEndpoint, ApiHealthCheckResult, ApiKeysSummary } from '../../domain/model/apiConfig'
 import type { APIConfigDto, ApiEndpointDto, ApiUpsertDto, ApiHealthCheckDto } from '../dto/apiConfigDto'
 import { ApiEndpointStatus } from '../../domain/enums'
 
 // ===== DTO → Domain =====
+
+/** meta blob 键名归一化：后端 snake_case api_key / api_keys → 前端 camelCase。
+ * 仅转换密钥键，其余 meta 键整块透传（后端按 Dict 原样存储）。 */
+function normalizeMetaFromDto(raw: Record<string, any> | undefined): APIConfig['meta'] {
+  if (!raw || typeof raw !== 'object') return undefined
+  const out: Record<string, any> = { ...raw }
+  if ('api_key' in out) {
+    out.apiKey = out.api_key
+    delete out.api_key
+  }
+  if ('api_keys' in out) {
+    out.apiKeys = out.api_keys
+    delete out.api_keys
+  }
+  return out as APIConfig['meta']
+}
 
 function toEndpoint(raw: ApiEndpointDto): ApiEndpoint {
   return {
@@ -32,7 +48,8 @@ export function toAPIConfig(dto: APIConfigDto): APIConfig {
     method: undefined,
     status: (dto.status || ApiEndpointStatus.OFFLINE) as APIConfig['status'],
     healthScore: dto.health_score,
-    meta: dto.meta as APIConfig['meta'],
+    meta: normalizeMetaFromDto(dto.meta),
+    apiKeysSummary: dto.api_keys_summary as ApiKeysSummary | undefined,
     algorithmType: dto.algorithm_type,
     defaultMaxProcess: dto.default_max_process,
     defaultMaxTimeout: dto.default_max_timeout,
@@ -89,6 +106,32 @@ function toEndpointDto(ep: ApiEndpoint): ApiEndpointDto {
   }
 }
 
+/**
+ * meta blob 键名归一化（写侧，INT-1177 密钥池）：
+ * - 单值 apiKey（camelCase，表单） → api_key（后端密钥链 meta_key）
+ * - 多密钥 apiKeys（camelCase，表单） → api_keys（后端轮换池）
+ *   空数组不发送（编辑未改动时保留既有密钥池，不误清空）
+ * - apiKeysSummary 摘要不回传（后端写侧拒收；防污染存储）
+ * 其余 meta 键整块透传（后端按 Dict 原样存储）。
+ */
+function normalizeMetaForUpsert(meta: Record<string, any> | undefined): Record<string, any> | undefined {
+  if (!meta || typeof meta !== 'object') return undefined
+  const out: Record<string, any> = {}
+  for (const [key, value] of Object.entries(meta)) {
+    if (key === 'apiKey') {
+      out.api_key = value
+    } else if (key === 'apiKeys') {
+      const cleaned = Array.isArray(value) ? value.map(v => String(v).trim()).filter(v => v !== '') : []
+      if (cleaned.length > 0) {
+        out.api_keys = cleaned
+      }
+    } else if (key !== 'apiKeysSummary') {
+      out[key] = value
+    }
+  }
+  return out
+}
+
 export function toApiUpsertDto(config: Partial<APIConfig>): ApiUpsertDto {
   return {
     name: config.name,
@@ -96,7 +139,7 @@ export function toApiUpsertDto(config: Partial<APIConfig>): ApiUpsertDto {
     api_url: config.apiUrl,
     description: config.description,
     status: config.status,
-    meta: config.meta as Record<string, any>,
+    meta: normalizeMetaForUpsert(config.meta as Record<string, any>),
     algorithm_type: config.algorithmType,
     default_max_process: config.defaultMaxProcess,
     default_max_timeout: config.defaultMaxTimeout,

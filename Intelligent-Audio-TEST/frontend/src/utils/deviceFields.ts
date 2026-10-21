@@ -223,7 +223,7 @@ export function generateDeviceFields(deviceType: string): DynamicFormField[] {
         label: 'API元数据',
         type: 'apiMeta',
         required: true,
-        hint: '配置API的协议、环境、版本等信息'
+        hint: '配置API的协议、环境、版本与密钥；密钥池支持多密钥轮换（列表增删，密码输入不回显）'
       }, {
         key: 'defaultMaxProcess',
         label: '默认最大进程数',

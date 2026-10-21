@@ -27,6 +27,8 @@ export interface APIConfigDto {
   description?: string
   status?: string
   meta?: Record<string, any>
+  /** INT-1177 密钥池非敏感摘要（顶层字段，网关读侧原始 dict 直出） */
+  api_keys_summary?: { count: number; tails: string[] }
   algorithm_type?: string
   default_max_process?: number
   default_max_timeout?: number
