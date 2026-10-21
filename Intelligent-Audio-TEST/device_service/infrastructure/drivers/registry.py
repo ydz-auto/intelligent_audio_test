@@ -6,15 +6,15 @@
 贡献者使用:
     @register_driver
     class MyDriver(AppDriver):
-        app_type = AppType.MY_APP
+        app_type = "my_app"
         ...
 
 调度器使用:
-    driver_cls = driver_registry.resolve(AppType.PLAUD, AppVersion.V1, DevicePlatform.ANDROID)
+    driver_cls = driver_registry.resolve("plaud", "v1", DevicePlatform.ANDROID)
 
 热更新:
     driver_registry.reload_module('device_service.infrastructure.drivers.android_plaud')
-    driver_registry.unregister(AppType.PLAUD, AppVersion.V1, DevicePlatform.ANDROID)
+    driver_registry.unregister("plaud", "v1", DevicePlatform.ANDROID)
     driver_registry.register(NewDriverClass)
 """
 
@@ -24,7 +24,7 @@ import logging
 import threading
 from typing import Optional
 
-from .driver_types import AppType, AppVersion, DevicePlatform, DriverStatus
+from .driver_types import DevicePlatform, DriverStatus
 from .contracts import AppDriver
 
 logger = logging.getLogger(__name__)
@@ -65,8 +65,8 @@ class DriverEntry:
     def __init__(self, driver_cls, status: DriverStatus, missing_dep: str = "",
                  module_name: str = ""):
         self.driver_cls = driver_cls
-        self.app_type: AppType = driver_cls.app_type
-        self.version: AppVersion = driver_cls.version
+        self.app_type: str = driver_cls.app_type
+        self.version: str = driver_cls.version
         self.platform: DevicePlatform = driver_cls.platform
         self.display_name: str = getattr(driver_cls, "display_name", driver_cls.__name__)
         self.dependencies: list[str] = getattr(driver_cls, "dependencies", [])
@@ -82,8 +82,8 @@ class DriverEntry:
     def to_dict(self) -> dict:
         """自描述信息（供管理界面/调试用）"""
         return {
-            "app_type": self.app_type.value,
-            "version": self.version.value,
+            "app_type": self.app_type,
+            "version": self.version,
             "platform": self.platform.value,
             "display_name": self.display_name,
             "status": self.status.value,
@@ -97,7 +97,7 @@ class DriverEntry:
 class DriverRegistry:
     """驱动注册表 — 调度器唯一依赖
 
-    Key = (AppType, AppVersion, DevicePlatform) 三元组
+    Key = (app_type: str, version: str, DevicePlatform) 三元组
     同一 key 只能注册一个驱动，后注册覆盖先注册（并告警）。
     线程安全：所有写操作加锁，读操作走快照。
     """
@@ -151,16 +151,24 @@ class DriverRegistry:
                     f"{driver_cls.__name__} 缺少必需的类属性 '{attr}'，"
                     f"请声明 app_type / version / platform"
                 )
-            if not isinstance(val, (AppType, AppVersion, DevicePlatform)):
+            if attr == "platform":
+                # 封闭集合（DevicePlatform）仍需枚举校验
+                if not isinstance(val, DevicePlatform):
+                    raise TypeError(
+                        f"{driver_cls.__name__}.{attr} 必须是 DevicePlatform 枚举，"
+                        f"而不是 {type(val).__name__}"
+                    )
+            elif not isinstance(val, str) or not val.strip():
+                # app_type / version 为自定义开放字符串（INT-1167 追加）
                 raise TypeError(
-                    f"{driver_cls.__name__}.{attr} 必须是 Enum 类型，"
+                    f"{driver_cls.__name__}.{attr} 必须是非空字符串，"
                     f"而不是 {type(val).__name__}"
                 )
 
     # —— 注销 ——
 
     def unregister(
-        self, app_type: AppType, version: AppVersion, platform: DevicePlatform
+        self, app_type: str, version: str, platform: DevicePlatform
     ) -> Optional[DriverEntry]:
         """从注册表移除一个驱动（热删）
 
@@ -241,8 +249,8 @@ class DriverRegistry:
 
     def resolve(
         self,
-        app_type: AppType,
-        version: AppVersion,
+        app_type: str,
+        version: str,
         platform: DevicePlatform,
         *,
         fallback_v1: bool = True,
@@ -250,10 +258,10 @@ class DriverRegistry:
         """精确匹配 → 版本降级 → 抛 DriverNotFoundError
 
         Args:
-            app_type: 应用类型
-            version: 期望版本
+            app_type: 应用类型（驱动自声明字符串）
+            version: 期望版本（驱动自声明字符串；"latest" 走现有降级链）
             platform: 设备平台
-            fallback_v1: 找不到精确版本时是否降级到 V1
+            fallback_v1: 找不到精确版本时是否降级到 "v1"
 
         Returns:
             驱动类（type，未实例化）
@@ -264,9 +272,9 @@ class DriverRegistry:
         if entry and entry.is_available:
             return entry.driver_cls
 
-        # 2. 自动降级到 V1。驱动实现版本可以复用给其他设备版本。
-        if fallback_v1 and version != AppVersion.V1:
-            key_v1 = (app_type, AppVersion.V1, platform)
+        # 2. 自动降级到 "v1"。驱动实现版本可以复用给其他设备版本。
+        if fallback_v1 and version != "v1":
+            key_v1 = (app_type, "v1", platform)
             entry_v1 = self._table.get(key_v1)
             if entry_v1 and entry_v1.is_available:
                 return entry_v1.driver_cls
@@ -281,7 +289,7 @@ class DriverRegistry:
         raise DriverNotFoundError(app_type, version, platform, reason=reason)
 
     def get_by_key(
-        self, app_type: AppType, version: AppVersion, platform: DevicePlatform
+        self, app_type: str, version: str, platform: DevicePlatform
     ) -> Optional[DriverEntry]:
         """精确查一个条目（不降级），返回原始 entry"""
         return self._table.get((app_type, version, platform))
@@ -307,7 +315,7 @@ class DriverRegistry:
             ]
 
     def is_available(
-        self, app_type: AppType, version: AppVersion, platform: DevicePlatform
+        self, app_type: str, version: str, platform: DevicePlatform
     ) -> bool:
         """检查驱动是否可用"""
         entry = self._table.get((app_type, version, platform))

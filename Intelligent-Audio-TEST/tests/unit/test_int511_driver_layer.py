@@ -4,7 +4,7 @@
 覆盖（验收标准）：
 - 注册表契约：register 元数据校验 / 依赖缺失标记 / resolve 精确匹配→版本降级
   →同 app+platform 任意可用版→DriverNotFoundError / unregister / list
-- 注册完整性：与 V9.7.10 移植对齐——AppType 全量登记、三元 key 唯一、
+- 注册完整性：与 V9.7.10 移植对齐——app_type 全量登记、三元 key 唯一、
   hypium 依赖缺失仍登记（MISSING_DEPENDENCY 可见）
 - 工厂 resolve：get_driver_typed（注册表类型化入口）/ get_driver_for_device
   （关键字+平台校验）/ get_driver_by_system / get_driver_by_sn / scan_devices 容错
@@ -25,8 +25,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from device_service.infrastructure.drivers.driver_types import (
-    AppType,
-    AppVersion,
     DevicePlatform,
     DriverStatus,
 )
@@ -41,13 +39,13 @@ from device_service.infrastructure.drivers.contracts import AppDriver
 
 # ──────────────────────────── 注册表契约（隔离实例，无 hypium 依赖） ────────────────────────────
 
-def _fake_driver_cls(app_type, version=AppVersion.V1, platform=DevicePlatform.ANDROID,
+def _fake_driver_cls(app_type, version='v1', platform=DevicePlatform.ANDROID,
                      deps=None, keywords='fake.v1', display_name='Fake'):
     """动态构造驱动类（Registry 只消费类属性，无需实例化 hypium 依赖链）。
 
     继承 AppDriver 契约（INT-1167：注册表校验注册类必须是 AppDriver 子类）。
     """
-    return type('Fake%s' % app_type.value.replace('_', '').title(), (AppDriver,), {
+    return type('Fake%s' % app_type.replace('_', '').title(), (AppDriver,), {
         'app_type': app_type,
         'version': version,
         'platform': platform,
@@ -60,26 +58,27 @@ def _fake_driver_cls(app_type, version=AppVersion.V1, platform=DevicePlatform.AN
 class TestRegistryContract:
     def test_register_requires_metadata(self):
         registry = DriverRegistry()
-        Bad = type('Bad', (AppDriver,), {'version': AppVersion.V1, 'platform': DevicePlatform.ANDROID})
+        Bad = type('Bad', (AppDriver,), {'version': 'v1', 'platform': DevicePlatform.ANDROID})
         with pytest.raises(TypeError, match='app_type'):
             registry.register(Bad)
 
-    def test_register_rejects_non_enum_metadata(self):
+    def test_register_rejects_non_enum_platform(self):
+        """platform 为封闭集合（DevicePlatform 枚举），魔法字符串拒绝"""
         registry = DriverRegistry()
         Bad = type('Bad', (AppDriver,), {
-            'app_type': 'plaud',  # 魔法字符串拒绝
-            'version': AppVersion.V1,
-            'platform': DevicePlatform.ANDROID,
+            'app_type': 'plaud',
+            'version': 'v1',
+            'platform': 'android',  # 魔法字符串 platform 拒绝（封闭集合）
         })
-        with pytest.raises(TypeError, match='Enum'):
+        with pytest.raises(TypeError, match='platform'):
             registry.register(Bad)
 
     def test_register_rejects_non_appdriver_subclass(self):
         """注册表 Port 契约：非 AppDriver 子类禁止注册（TypeError）"""
         registry = DriverRegistry()
         Plain = type('Plain', (), {
-            'app_type': AppType.PLAUD,
-            'version': AppVersion.V1,
+            'app_type': 'plaud',
+            'version': 'v1',
             'platform': DevicePlatform.ANDROID,
         })
         with pytest.raises(TypeError, match='不是 AppDriver 子类'):
@@ -87,9 +86,9 @@ class TestRegistryContract:
 
     def test_register_marks_missing_dependency(self):
         registry = DriverRegistry()
-        cls = _fake_driver_cls(AppType.PLAUD, deps=['no_such_pkg_xyz'])
+        cls = _fake_driver_cls('plaud', deps=['no_such_pkg_xyz'])
         registry.register(cls)
-        entry = registry.get_by_key(AppType.PLAUD, AppVersion.V1, DevicePlatform.ANDROID)
+        entry = registry.get_by_key('plaud', 'v1', DevicePlatform.ANDROID)
         assert entry is not None
         assert entry.status == DriverStatus.MISSING_DEPENDENCY
         assert entry.missing_dep == 'no_such_pkg_xyz'
@@ -97,18 +96,18 @@ class TestRegistryContract:
 
     def test_register_available_when_deps_ok(self):
         registry = DriverRegistry()
-        registry.register(_fake_driver_cls(AppType.PLAUD))
-        entry = registry.get_by_key(AppType.PLAUD, AppVersion.V1, DevicePlatform.ANDROID)
+        registry.register(_fake_driver_cls('plaud'))
+        entry = registry.get_by_key('plaud', 'v1', DevicePlatform.ANDROID)
         assert entry.is_available is True
         assert entry.status == DriverStatus.AVAILABLE
 
     def test_key_collision_overwrites(self):
         registry = DriverRegistry()
-        a = _fake_driver_cls(AppType.PLAUD, keywords='a')
-        b = _fake_driver_cls(AppType.PLAUD, keywords='b')
+        a = _fake_driver_cls('plaud', keywords='a')
+        b = _fake_driver_cls('plaud', keywords='b')
         registry.register(a)
         registry.register(b)  # 同 key 后注册覆盖（告警）
-        assert registry.resolve(AppType.PLAUD, AppVersion.V1, DevicePlatform.ANDROID) is b
+        assert registry.resolve('plaud', 'v1', DevicePlatform.ANDROID) is b
 
     def test_dependency_check_helper(self):
         ok, missing = _check_dependencies([])
@@ -122,41 +121,40 @@ class TestRegistryContract:
 class TestResolveDowngrade:
     def _registry(self):
         reg = DriverRegistry()
-        reg.register(_fake_driver_cls(AppType.PLAUD, AppVersion.V1, DevicePlatform.ANDROID))
+        reg.register(_fake_driver_cls('plaud', 'v1', DevicePlatform.ANDROID))
         return reg
 
     def test_exact_match(self):
         reg = self._registry()
-        assert reg.resolve(AppType.PLAUD, AppVersion.V1, DevicePlatform.ANDROID).app_type \
-            is AppType.PLAUD
+        assert reg.resolve('plaud', 'v1', DevicePlatform.ANDROID).app_type == 'plaud'
 
     def test_v2_downgrades_to_v1(self):
         """V2 请求无 V2 实现 → 自动降级 V1（版本降级逻辑）"""
         reg = self._registry()
-        cls = reg.resolve(AppType.PLAUD, AppVersion.V2, DevicePlatform.ANDROID)
-        assert cls.version is AppVersion.V1
+        cls = reg.resolve('plaud', 'v2', DevicePlatform.ANDROID)
+        assert cls.version == 'v1'
 
     def test_latest_falls_back_to_v1(self):
         reg = self._registry()
-        cls = reg.resolve(AppType.PLAUD, AppVersion.LATEST, DevicePlatform.ANDROID)
-        assert cls.version is AppVersion.V1
+        cls = reg.resolve('plaud', 'latest', DevicePlatform.ANDROID)
+        assert cls.version == 'v1'
 
     def test_any_version_same_app_platform(self):
         """同 app_type+platform 下任意可用版本（V3 未注册仍可命中 V1）"""
         reg = self._registry()
-        assert reg.resolve(AppType.PLAUD, AppVersion.V1, DevicePlatform.ANDROID) \
-            is reg.resolve(AppType.PLAUD, AppVersion.V1, DevicePlatform.ANDROID)
+        assert reg.resolve('plaud', 'v1', DevicePlatform.ANDROID) \
+            is reg.resolve('plaud', 'v1', DevicePlatform.ANDROID)
 
     def test_v2_exact_match_preferred_over_v1(self):
         reg = DriverRegistry()
-        v1 = _fake_driver_cls(AppType.XIAOYI_LIVECHAT, AppVersion.V1, DevicePlatform.HARMONYOS)
-        v2 = _fake_driver_cls(AppType.XIAOYI_LIVECHAT, AppVersion.V2, DevicePlatform.HARMONYOS)
+        v1 = _fake_driver_cls('xiaoyi_livechat', 'v1', DevicePlatform.HARMONYOS)
+        v2 = _fake_driver_cls('xiaoyi_livechat', 'v2', DevicePlatform.HARMONYOS)
         reg.register(v1)
         reg.register(v2)
-        assert reg.resolve(AppType.XIAOYI_LIVECHAT, AppVersion.V2,
+        assert reg.resolve('xiaoyi_livechat', 'v2',
                            DevicePlatform.HARMONYOS) is v2
         # V1 请求精确命中 v1，不降级到 v2
-        assert reg.resolve(AppType.XIAOYI_LIVECHAT, AppVersion.V1,
+        assert reg.resolve('xiaoyi_livechat', 'v1',
                            DevicePlatform.HARMONYOS) is v1
 
     def test_missing_dependency_raises_with_reason(self, monkeypatch):
@@ -169,31 +167,31 @@ class TestResolveDowngrade:
             lambda name: None if name == 'hypium' else real_find(name))
         reg = DriverRegistry()
         reg.register(_fake_driver_cls(
-            AppType.DOUBAO, platform=DevicePlatform.HARMONYOS, deps=['hypium']))
+            'doubao', platform=DevicePlatform.HARMONYOS, deps=['hypium']))
         with pytest.raises(DriverNotFoundError) as ei:
-            reg.resolve(AppType.DOUBAO, AppVersion.V1, DevicePlatform.HARMONYOS)
+            reg.resolve('doubao', 'v1', DevicePlatform.HARMONYOS)
         assert 'hypium' in ei.value.reason
 
     def test_unregistered_app_raises(self):
         reg = self._registry()
         with pytest.raises(DriverNotFoundError, match='无可用驱动实现'):
-            reg.resolve(AppType.CHATGPT, AppVersion.V1, DevicePlatform.HARMONYOS)
+            reg.resolve('chatgpt', 'v1', DevicePlatform.HARMONYOS)
 
     def test_unregister_removes_entry(self):
         reg = self._registry()
-        assert reg.unregister(AppType.PLAUD, AppVersion.V1, DevicePlatform.ANDROID) is not None
-        assert reg.get_by_key(AppType.PLAUD, AppVersion.V1, DevicePlatform.ANDROID) is None
-        assert reg.unregister(AppType.PLAUD, AppVersion.V1, DevicePlatform.ANDROID) is None
+        assert reg.unregister('plaud', 'v1', DevicePlatform.ANDROID) is not None
+        assert reg.get_by_key('plaud', 'v1', DevicePlatform.ANDROID) is None
+        assert reg.unregister('plaud', 'v1', DevicePlatform.ANDROID) is None
 
 
 class TestListDrivers:
     def test_list_drivers_self_describe(self):
         reg = DriverRegistry()
-        reg.register(_fake_driver_cls(AppType.PLAUD, deps=[], keywords='k'))
+        reg.register(_fake_driver_cls('plaud', deps=[], keywords='k'))
         info = reg.list_drivers()
         assert len(info) == 1
         d = info[0]
-        assert d['app_type'] == AppType.PLAUD.value
+        assert d['app_type'] == 'plaud'
         assert d['status'] == DriverStatus.AVAILABLE.value
         assert d['class'] == 'FakePlaud'
         assert 'module' in d and 'display_name' in d
@@ -201,13 +199,13 @@ class TestListDrivers:
 
 # ──────────────────────────── 注册完整性（与 V9.7.10 移植对齐） ────────────────────────────
 
-# V9.7.10 移植对齐基线：V9.7.10 全量 AppType 移植 + V9.7.31 新增 XiaoyilivechatV2
+# V9.7.10 移植对齐基线：V9.7.10 全量 app_type 移植 + V9.7.31 新增 XiaoyilivechatV2
 # （harmony_xiaoyilivechat.py），总登记数 12（含基础平台驱动与 hypium 缺失驱动）。
 _EXPECTED_APP_TYPES = {
-    AppType.ANDROID_BASE, AppType.HARMONY_BASE,
-    AppType.PLAUD, AppType.DOUBAO_ASR, AppType.DOUBAO, AppType.CHATGPT,
-    AppType.XIAOYI_FACE2FACE, AppType.XIAOYI_SIMULTANEOUS,
-    AppType.XIAOYI_HUIJI, AppType.XIAOYI_LIVECHAT, AppType.XIAOYI_INPUT_METHOD,
+    'android_base', 'harmony_base',
+    'plaud', 'doubao_asr', 'doubao', 'chatgpt',
+    'xiaoyi_face2face', 'xiaoyi_simultaneous',
+    'xiaoyi_huiji', 'xiaoyi_livechat', 'xiaoyi_input_method',
 }
 
 
@@ -217,7 +215,7 @@ class TestRegistrationCompleteness:
         drivers = driver_registry.list_drivers()
         registered = {d['app_type'] for d in drivers}
         assert _EXPECTED_APP_TYPES <= registered, \
-            f"缺少 V9.7.10 对齐 AppType: {_EXPECTED_APP_TYPES - registered}"
+            f"缺少 V9.7.10 对齐 app_type: {_EXPECTED_APP_TYPES - registered}"
 
     def test_total_count_includes_v2_livechat(self):
         from device_service.infrastructure.drivers.registry import driver_registry
@@ -225,8 +223,8 @@ class TestRegistrationCompleteness:
         # V9.7.10 = 11（无 V2）；V9.7.31 移植后 +XiaoyilivechatV2 = 12
         assert len(drivers) == 12, f"登记驱动数={len(drivers)}，期望 12"
         v2_entries = [d for d in drivers
-                      if d['app_type'] == AppType.XIAOYI_LIVECHAT.value
-                      and d['version'] == AppVersion.V2.value]
+                      if d['app_type'] == 'xiaoyi_livechat'
+                      and d['version'] == 'v2']
         assert len(v2_entries) == 1
 
     def test_three_tuple_key_unique(self):
@@ -245,7 +243,7 @@ class TestRegistrationCompleteness:
         from device_service.infrastructure.drivers.registry import driver_registry
         real_find = importlib.util.find_spec
         chatgpt = driver_registry.get_by_key(
-            AppType.CHATGPT, AppVersion.V1, DevicePlatform.HARMONYOS)
+            'chatgpt', 'v1', DevicePlatform.HARMONYOS)
         assert chatgpt is not None, 'CHATGPT 必须登记（无论 hypium 装否）'
         chatgpt_cls = chatgpt.driver_cls
         try:
@@ -254,7 +252,7 @@ class TestRegistrationCompleteness:
                 lambda name: None if name == 'hypium' else real_find(name))
             driver_registry.register(chatgpt_cls)   # 覆盖重注册 → 重新依赖检测
             entry = driver_registry.get_by_key(
-                AppType.CHATGPT, AppVersion.V1, DevicePlatform.HARMONYOS)
+                'chatgpt', 'v1', DevicePlatform.HARMONYOS)
             assert entry.status == DriverStatus.MISSING_DEPENDENCY
             assert entry.missing_dep == 'hypium'
         finally:
@@ -268,10 +266,10 @@ class TestRegistrationCompleteness:
     def test_base_and_non_hypium_drivers_available(self):
         from device_service.infrastructure.drivers.registry import driver_registry
         for (app, ver, plat) in [
-            (AppType.ANDROID_BASE, AppVersion.V1, DevicePlatform.ANDROID),
-            (AppType.HARMONY_BASE, AppVersion.V1, DevicePlatform.HARMONYOS),
-            (AppType.PLAUD, AppVersion.V1, DevicePlatform.ANDROID),
-            (AppType.DOUBAO_ASR, AppVersion.V1, DevicePlatform.ANDROID),
+            ('android_base', 'v1', DevicePlatform.ANDROID),
+            ('harmony_base', 'v1', DevicePlatform.HARMONYOS),
+            ('plaud', 'v1', DevicePlatform.ANDROID),
+            ('doubao_asr', 'v1', DevicePlatform.ANDROID),
         ]:
             entry = driver_registry.get_by_key(app, ver, plat)
             assert entry is not None and entry.is_available, f'{app} 应可用'
@@ -282,7 +280,7 @@ class TestRegistrationCompleteness:
 class TestFactoryResolve:
     def test_get_driver_typed_returns_instance(self):
         from device_service.infrastructure.drivers.driver_factory import device_driver_factory
-        driver = device_driver_factory.get_driver_typed(AppType.PLAUD, DevicePlatform.ANDROID)
+        driver = device_driver_factory.get_driver_typed('plaud', DevicePlatform.ANDROID)
         assert driver is not None
         assert driver.__class__.__name__ == 'PlaudDriver'
 
@@ -296,7 +294,7 @@ class TestFactoryResolve:
         from device_service.infrastructure.drivers.driver_factory import device_driver_factory
         real_find = importlib.util.find_spec
         chatgpt = driver_registry.get_by_key(
-            AppType.CHATGPT, AppVersion.V1, DevicePlatform.HARMONYOS)
+            'chatgpt', 'v1', DevicePlatform.HARMONYOS)
         assert chatgpt is not None
         chatgpt_cls = chatgpt.driver_cls
         try:
@@ -305,7 +303,7 @@ class TestFactoryResolve:
                 lambda name: None if name == 'hypium' else real_find(name))
             driver_registry.register(chatgpt_cls)
             assert device_driver_factory.get_driver_typed(
-                AppType.CHATGPT, DevicePlatform.HARMONYOS) is None
+                'chatgpt', DevicePlatform.HARMONYOS) is None
         finally:
             try:
                 importlib.util.find_spec = real_find
@@ -396,8 +394,8 @@ def _make_chatgpt():
 class TestPortedDriverMetadata:
     def test_chatgpt_metadata_aligned(self):
         d = _make_chatgpt()
-        assert d.app_type is AppType.CHATGPT
-        assert d.version is AppVersion.V1
+        assert d.app_type == 'chatgpt'
+        assert d.version == 'v1'
         assert d.platform is DevicePlatform.HARMONYOS
         assert d.keywords == 'harmony.chatgpt.v1'
         assert d.display_name == 'ChatGPT语音通话专用驱动'
@@ -406,15 +404,15 @@ class TestPortedDriverMetadata:
     def test_other_ported_drivers_metadata(self):
         from device_service.infrastructure.drivers.harmony_doubaochat import DoubaoChat
         db = DoubaoChat()
-        assert db.app_type is AppType.DOUBAO
+        assert db.app_type == 'doubao'
         assert db.platform is DevicePlatform.HARMONYOS
 
         from device_service.infrastructure.drivers.harmony_translation_driver import (
             XiaoyiFace2FaceDriver,
             XiaoyiSimultaneousInterpretationDriver,
         )
-        assert XiaoyiFace2FaceDriver().app_type is AppType.XIAOYI_FACE2FACE
-        assert XiaoyiSimultaneousInterpretationDriver().app_type is AppType.XIAOYI_SIMULTANEOUS
+        assert XiaoyiFace2FaceDriver().app_type == 'xiaoyi_face2face'
+        assert XiaoyiSimultaneousInterpretationDriver().app_type == 'xiaoyi_simultaneous'
 
 
 class TestChatGptLifecycleMockDevice:

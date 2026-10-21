@@ -15,7 +15,7 @@ from device_service.config.config import Config
 from shared.infrastructure.storage import storage
 from .android_driver import AndroidDriver
 from .device_config import get_device_config
-from .driver_types import AppType, AppVersion, DevicePlatform
+from .driver_types import DevicePlatform
 from .registry import register_driver
 from .utils import check_stop, u2, log_and_emit, By
 
@@ -28,8 +28,8 @@ class PlaudDriver(AndroidDriver):
     """Plaud AI 录音应用安卓设备驱动实现"""
 
     # —— 驱动元数据 ——
-    app_type = AppType.PLAUD
-    version = AppVersion.V1
+    app_type = "plaud"
+    version = "v1"
     platform = DevicePlatform.ANDROID
     keywords = "android.plaud.v1"
     display_name = "Plaud AI 录音 v1"

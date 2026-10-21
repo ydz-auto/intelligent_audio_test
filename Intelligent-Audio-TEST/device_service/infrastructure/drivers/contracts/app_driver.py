@@ -12,7 +12,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from ..driver_types import AppType, AppVersion, DevicePlatform
+from ..driver_types import DevicePlatform
 
 
 @dataclass
@@ -53,8 +53,8 @@ class AppDriver(ABC):
     示例:
         @register_driver
         class PlaudDriverV1(AppDriver):
-            app_type = AppType.PLAUD
-            version = AppVersion.V1
+            app_type = "plaud"
+            version = "v1"
             platform = DevicePlatform.ANDROID
             display_name = "Plaud AI 录音 v1"
 
@@ -63,9 +63,9 @@ class AppDriver(ABC):
                 ...
     """
 
-    # —— 元数据：贡献者在类上声明 ——
-    app_type: AppType
-    version: AppVersion
+    # —— 元数据：贡献者在类上声明（app_type/version 为自定义开放字符串，INT-1167 追加）——
+    app_type: str
+    version: str
     platform: DevicePlatform
     display_name: str = ""
 
@@ -73,7 +73,7 @@ class AppDriver(ABC):
     dependencies: list[str] = []
 
     # 可选：版本降级目标，resolve 找不到本版本时尝试此版本
-    fallback_version: Optional[AppVersion] = None
+    fallback_version: Optional[str] = None
 
     def __init__(self, ctx: DriverContext):
         """接收调度器注入的上下文"""

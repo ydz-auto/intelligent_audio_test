@@ -10,7 +10,7 @@ import tempfile
 import shutil
 
 from .harmony_driver import HarmonyDriver
-from .driver_types import AppType, AppVersion, DevicePlatform
+from .driver_types import DevicePlatform
 from .registry import register_driver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry
 from .driver_constants import *
@@ -33,8 +33,8 @@ class Xiaoyilivechat(HarmonyDriver):
     """
 
     # —— 驱动元数据 ——
-    app_type = AppType.XIAOYI_LIVECHAT
-    version = AppVersion.V1
+    app_type = "xiaoyi_livechat"
+    version = "v1"
     platform = DevicePlatform.HARMONYOS
     keywords = "harmony.xiaoyi_livechat.v1"
     display_name = "小艺通话聊天 v1"
