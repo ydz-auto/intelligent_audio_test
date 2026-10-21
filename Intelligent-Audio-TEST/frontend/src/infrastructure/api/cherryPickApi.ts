@@ -50,6 +50,14 @@ export interface PickCandidate {
   caseId: string
   /** INT-577 §11-2：用例名（缺名显示 ID，容错口径） */
   caseName?: string | null
+  /** INT-1130 §11-7：用例卡元信息（三视图/购物车分组·标签组织数据源，toCamel 自动转换） */
+  tags?: string[]
+  groupId?: string | null
+  groupName?: string | null
+  /** INT-1130 §11-7：用例时长（秒；同用例管理 total_duration 口径累加，无音频/无时长 null） */
+  duration?: number | null
+  /** INT-1130 §11-7：轮次数（config.rounds 轮次数，缺省 0） */
+  rounds?: number | null
   deviceId?: number | null
   apiId?: number | null
   /** INT-577 §11-2：被测设备/API 名（TestResult 归属二选一，缺省 None） */
