@@ -119,19 +119,6 @@
         </div>
       </div>
 
-      <!-- 标注 Code 选择 -->
-      <div class="annotation-code-config" v-if="selectedFiles.length > 0 && referenceParamOptions.length > 0">
-        <div class="form-row">
-          <label>标注代码：</label>
-          <select v-model="annotationCode" class="form-input">
-            <option value="">留空则使用 JSON 内 code/name 字段</option>
-            <option v-for="opt in referenceParamOptions" :key="opt.value" :value="opt.value">
-              {{ opt.label }}
-            </option>
-          </select>
-        </div>
-      </div>
-      
       <!-- 上传选项 -->
       <UploadOptions
         v-if="hasUploadOptions"
@@ -204,8 +191,6 @@ const {
   isDragging,
   uploading,
   tags,
-  annotationCode,
-  referenceParamOptions,
   inputId,
   hasUploadOptions,
   uploadConfig,
