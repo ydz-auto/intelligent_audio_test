@@ -41,8 +41,10 @@ service ReportConfigService {
   rpc ExportReports(ExportReportsRequest) returns (ReportConfigResponse);
   // 查询用例平均值
   rpc GetCaseAverages(GetCaseAveragesRequest) returns (ReportConfigResponse);
-  // 下载用例日志
+  // 下载用例日志（INT-1062：支持 files 逻辑文件名筛选，缺省 = 整包）
   rpc DownloadCaseLogs(DownloadCaseLogsRequest) returns (ReportConfigResponse);
+  // 查询用例日志文件列表（INT-1062：文件选择 Dialog 取数，name 与下载 ZIP arcname / files= 同一套逻辑名）
+  rpc ListCaseLogs(ListCaseLogsRequest) returns (ReportConfigResponse);
   // 构建参考参数（供 api_gateway task_query_service 调用）
   rpc BuildReferenceParams(BuildReferenceParamsRequest) returns (ReportConfigResponse);
   // 任务数据导出：按 task_id 列表拉取报告 7 表只读行
@@ -168,6 +170,11 @@ message GetCaseAveragesRequest {
   string data = 1;  // JSON: {task_id, category, tags, categories, include_untagged}
 }
 message DownloadCaseLogsRequest {
+  int32 report_id = 1;
+  string case_id = 2;
+  repeated string files = 3;  // INT-1062：可选，逻辑文件名筛选（缺省 = 整包）
+}
+message ListCaseLogsRequest {
   int32 report_id = 1;
   string case_id = 2;
 }
