@@ -23,6 +23,7 @@ describe('DimensionSelect 未匹配存量值兜底（INT-1160 返工 P2）', () 
         dimensions={DIMENSIONS}
         categories={CATEGORIES}
         value='26'
+        valueOf={(d) => String(d.id)}
         onValueChange={() => {}}
         placeholder='选择维度'
       />
@@ -39,6 +40,7 @@ describe('DimensionSelect 未匹配存量值兜底（INT-1160 返工 P2）', () 
         dimensions={DIMENSIONS}
         categories={CATEGORIES}
         value='1'
+        valueOf={(d) => String(d.id)}
         onValueChange={() => {}}
         placeholder='选择维度'
       />
@@ -54,6 +56,7 @@ describe('DimensionSelect 未匹配存量值兜底（INT-1160 返工 P2）', () 
         dimensions={DIMENSIONS}
         categories={CATEGORIES}
         value=''
+        valueOf={(d) => String(d.id)}
         onValueChange={() => {}}
         placeholder='选择维度'
       />

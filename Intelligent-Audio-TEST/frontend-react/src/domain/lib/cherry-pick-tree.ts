@@ -9,6 +9,7 @@ import type {
   CartTreeLeaf,
   CherryPickCandidate,
   PickCartEntry,
+  PickCartGroup,
   PickLevel,
   PickTreeBranch,
   PickTreeItem,

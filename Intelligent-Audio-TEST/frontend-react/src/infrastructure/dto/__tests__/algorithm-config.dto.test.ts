@@ -72,7 +72,8 @@ describe('algorithm-config.dto toMappingItemDto（写侧）', () => {
       },
       new Map()
     )
-    const item = (dto.mappings.evaluation as Array<Record<string, unknown>>)[0]
+    const mappings = dto.mappings as { evaluation: Array<Record<string, unknown>> }
+    const item = mappings.evaluation[0]
     expect(item.source).toBe('evaluation')
   })
 
@@ -98,7 +99,8 @@ describe('algorithm-config.dto toMappingItemDto（写侧）', () => {
       },
       new Map()
     )
-    const item = (dto.mappings.evaluation as Array<Record<string, unknown>>)[0]
+    const mappings = dto.mappings as { evaluation: Array<Record<string, unknown>> }
+    const item = mappings.evaluation[0]
     expect(item.source).toBe('case')
   })
 })
