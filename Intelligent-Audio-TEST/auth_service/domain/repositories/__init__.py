@@ -8,8 +8,12 @@ from auth_service.domain.repositories.user_repository_abc import (
     UserRepositoryABC,
     RoleRepositoryABC,
 )
+from auth_service.domain.repositories.access_token_repository_abc import (
+    AccessTokenRepositoryABC,
+)
 
 __all__ = [
     'UserRepositoryABC',
     'RoleRepositoryABC',
+    'AccessTokenRepositoryABC',
 ]

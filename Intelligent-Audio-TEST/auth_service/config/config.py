@@ -19,6 +19,12 @@ class Config(BaseConfig):
     # compose 与 api_gateway 注入同一 AUTH_MODE，保持两侧报告一致
     AUTH_MODE = os.environ.get('AUTH_MODE', 'off')
 
+    # Access Token（INT-1140）：每用户 token 上限（0/负数=不限制，new-api 同值 20）
+    ACCESS_TOKEN_MAX_PER_USER = int(os.environ.get('ACCESS_TOKEN_MAX_PER_USER', 20))
+    # 默认有效期天数（未显式指定时生效，new-api 同值 30）
+    ACCESS_TOKEN_DEFAULT_EXPIRY_DAYS = int(
+        os.environ.get('ACCESS_TOKEN_DEFAULT_EXPIRY_DAYS', 30))
+
 
 # 兼容旧代码中的 AuthServiceConfig 引用
 AuthServiceConfig = Config

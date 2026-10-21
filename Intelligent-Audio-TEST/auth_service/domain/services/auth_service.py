@@ -163,3 +163,63 @@ def validate_role_permission_set(role_name: str, new_codes: List[str]) -> None:
         raise AuthDomainError(
             'admin 角色的通配权限 * 不可移除', AuthErrorCode.WILDCARD_FORBIDDEN,
         )
+
+
+# ---- Access Token 校验纯函数（INT-1140，无 IO，可单测）----
+
+# Access Token 允许直接设置的状态（软删只能走 DeleteAccessTokenCommand）
+_ACCESS_TOKEN_ASSIGNABLE_STATUSES = (
+    'enabled',
+    'disabled',
+)
+
+_ACCESS_TOKEN_NAME_MAX_LEN = 100
+
+
+def validate_access_token_name(name: str) -> None:
+    """校验 token 名称：非空且长度受限。
+
+    名称非法属请求参数错误（无归类错误码，网关按未知错误码映射 400）。
+    """
+    if not name or not str(name).strip():
+        raise AuthDomainError('token 名称不能为空')
+    if len(name) > _ACCESS_TOKEN_NAME_MAX_LEN:
+        raise AuthDomainError(
+            f'token 名称长度不能超过 {_ACCESS_TOKEN_NAME_MAX_LEN} 个字符',
+        )
+
+
+def validate_access_token_status(status: str) -> None:
+    """校验 token 状态值合法性（enabled/disabled）。
+
+    非法状态抛 AuthDomainError（无归类错误码，网关按未知错误码映射 400）。
+    """
+    if status not in _ACCESS_TOKEN_ASSIGNABLE_STATUSES:
+        raise AuthDomainError(
+            f'非法 token 状态: {status!r}（允许: enabled|disabled）',
+        )
+
+
+def validate_access_token_scopes(scopes: List[str],
+                                 known_codes: set) -> List[str]:
+    """校验并归一 token scopes：只允许现有 RBAC 权限码（含通配 '*'）。
+
+    known_codes 为 permissions 表全部权限码集合（由 handler 实时拉取，
+    保持本函数无 IO）。空列表/None 归一为空列表（=继承用户全部权限）。
+    非法权限码抛 PERMISSION_NOT_FOUND。
+    """
+    if not scopes:
+        return []
+    result: List[str] = []
+    for code in scopes:
+        code = str(code).strip()
+        if not code:
+            continue
+        if code not in known_codes:
+            raise AuthDomainError(
+                f'非法权限码: {code!r}（不在现有 RBAC 权限点中）',
+                AuthErrorCode.PERMISSION_NOT_FOUND,
+            )
+        if code not in result:
+            result.append(code)
+    return result

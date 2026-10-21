@@ -282,10 +282,25 @@ def _tc_group_name(tc):
 
 
 def _tc_get_group(tc):
-    """从 TestCase（dict 或 ORM）读取 group。"""
+    """从 TestCase（dict 或 ORM）读取 group。
+
+    task_service ListTestCases 透传 group_name/group_id 顶层字段（无 group 对象），
+    此处合成 {'id': group_id, 'name': group_name} 兜底（INT-1059 P2）。
+    """
     if isinstance(tc, dict):
-        return tc.get('group')
-    return getattr(tc, 'group', None)
+        g = tc.get('group')
+        if g:
+            return g
+        if tc.get('group_name'):
+            return {'id': tc.get('group_id'), 'name': tc.get('group_name')}
+        return None
+    g = getattr(tc, 'group', None)
+    if g is not None:
+        return g
+    group_name = getattr(tc, 'group_name', None)
+    if group_name:
+        return {'id': getattr(tc, 'group_id', None), 'name': group_name}
+    return None
 
 
 def _tc_get_tags(tc):

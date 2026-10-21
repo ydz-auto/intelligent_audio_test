@@ -14,7 +14,7 @@ import type {
 import { ref, computed, watch } from 'vue'
 import { reportsPort } from '@/composables/report/reportsPort'
 import { useCollapse, useMetricCollapse, useTableRefs, useDisplayTypes, useSaveSummary, useResourceHeaders, chartColors, chartBorderColors, generateDistributionChartData, toggle as toggleSelection, usePaginatedSelection } from './shared/useReportShared'
-import { extractInitialTagMetricData, computeTagMetricDataFromCases, createTagChartData } from './caseTagComparisonHelpers'
+import { extractInitialTagMetricData, createTagChartData } from './caseTagComparisonHelpers'
 import { createResourceLabelGetter, createTagMetricValueGetters } from './caseTagResourceHelpers'
 import { usePagination } from '../../composables/usePagination'
 
@@ -331,32 +331,37 @@ export function useCaseTagComparison(props: CaseTagComparisonProps) {
 
   const applyFilters = async () => {
     try {
+      // 哨兵归一化（对齐 CaseCategoryComparisonComponent）：'无标签'/'未标记'
+      // 拆成 includeUntagged 布尔 + 真实标签列表，避免把哨兵当字面标签名透传
+      // 导致后端 filter_test_cases 0 命中 → 筛选静默失效（前端UX审计 P2）
+      const selectedTagList = selectedTags.value || []
+      const includeUntagged = selectedTagList.includes('无标签') || selectedTagList.includes('未标记')
+      const normalizedTags = selectedTagList.filter(t => t !== '无标签' && t !== '未标记')
+
       const report = props.reportData
       const reportIdValue = report?.id
 
       if (reportIdValue) {
-        const selectedTagList = selectedTags.value || []
-        const includeUntagged = selectedTagList.includes('无标签') || selectedTagList.includes('未标记')
-        const normalizedTags = selectedTagList.filter(t => t !== '无标签' && t !== '未标记')
-
-        const body = {
-          page: 1,
-          perPage: 5000,
+        // 对比/二次对比报告：走后端聚合（reportId → 源任务集合 → 策略聚合，
+        // INT-1059 对齐 0c6b2028a），不再前端手写聚合
+        const result = await reportsPort.getCaseAveragesByFilters(reportIdValue, {
           tags: normalizedTags,
           includeUntagged,
-          category: (selectedCategories.value || []).length === 1 ? selectedCategories.value[0] : null
-        }
+          categories: selectedCategories.value
+        }, {}, true)
 
-        const res = await reportsPort.searchCases(reportIdValue, body)
-        const cases = res?.items || []
-        tagMetricData.value = computeTagMetricDataFromCases(cases, { selectedTags, selectedCategories })
-        return
+        const extractedFromApi = extractInitialTagMetricData(result);
+        if (extractedFromApi && Object.keys(extractedFromApi).length > 0) {
+          tagMetricData.value = extractedFromApi;
+          return;
+        }
       }
 
       const taskId = report?.taskId
       if (taskId) {
         const result = await reportsPort.getCaseAveragesByFilters(taskId, {
-          tags: selectedTags.value,
+          tags: normalizedTags,
+          includeUntagged,
           categories: selectedCategories.value
         });
 

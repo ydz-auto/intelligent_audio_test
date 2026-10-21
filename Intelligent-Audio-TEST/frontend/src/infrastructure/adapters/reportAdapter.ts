@@ -25,6 +25,7 @@ export {
   toReportExportDto,
   toGenerateTaskReportDto,
   toGetCaseAveragesDto,
+  toGetCaseAveragesFilterDto,
   toReportSearchCasesDto,
 } from './report.dto'
 export {

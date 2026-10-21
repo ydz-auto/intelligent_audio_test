@@ -30,6 +30,23 @@
       </button>
     </div>
 
+    <!-- 本页 Agent 能力条（§3.1B：每页 agent 可做的事不同；点击快捷指令回填输入框、不自动发送） -->
+    <div v-if="pageCapability" class="awb-capability">
+      <div class="awb-capability-head">
+        <span class="awb-capability-title">{{ DEMO_COPY.pageCapabilityTitle }} · {{ pageCapability.domainLabel }}</span>
+        <span class="awb-capability-badge" :title="DEMO_COPY.pageCapabilityTooltip">{{ DEMO_COPY.pageCapabilityBadge }}</span>
+      </div>
+      <div v-if="pageCapability.quickPrompts.length" class="awb-capability-prompts">
+        <button
+          v-for="prompt in pageCapability.quickPrompts"
+          :key="prompt"
+          type="button"
+          class="awb-capability-chip"
+          @click="draftText = prompt"
+        >{{ prompt }}</button>
+      </div>
+    </div>
+
     <!-- 会话区（紧凑） -->
     <div class="awb-conversation">
       <AiChatConversation
@@ -84,6 +101,7 @@ import { useRouter } from 'vue-router'
 import { useAiChatStore } from '@/store/aiChatStore'
 import { useAgentWorkbenchStore } from '@/store/agentWorkbenchStore'
 import { DEMO_COPY, INPUT_COPY } from '@/domain/constants/aiChat'
+import { usePageAgentCapability } from '@/composables/aiChat/usePageAgentCapability'
 import { useModalControl } from '@/composables/modal/useModal'
 import { MODAL_TYPES } from '@/composables/modal/constants'
 import { useNotification } from '@/composables/modal/useNotification'
@@ -96,6 +114,9 @@ const workbench = useAgentWorkbenchStore()
 const router = useRouter()
 const modalControl = useModalControl()
 const notification = useNotification()
+
+/** 本页 Agent 能力（§3.1B：每页可做的事不同；路由命中即展示，无命中为 null） */
+const { capability: pageCapability } = usePageAgentCapability()
 
 const draftText = ref('')
 const providerManagerOpen = ref(false)
@@ -186,6 +207,64 @@ function expandToPage(): void {
 
 .awb-header-spacer {
   flex: 1;
+}
+
+/* ===== 本页 Agent 能力条（§3.1B：每页 agent 可做的事不同） ===== */
+.awb-capability {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--muted);
+}
+
+.awb-capability-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.awb-capability-title {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.awb-capability-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--warning-dark, var(--foreground));
+  background: var(--warning-light, color-mix(in srgb, var(--warning) 15%, transparent));
+  border-radius: var(--radius-full);
+  padding: 1px 7px;
+  cursor: help;
+}
+
+.awb-capability-prompts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.awb-capability-chip {
+  font: inherit;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.awb-capability-chip:hover {
+  color: var(--primary);
+  border-color: var(--primary);
 }
 
 .awb-action-btn {

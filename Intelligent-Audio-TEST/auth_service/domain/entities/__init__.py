@@ -5,10 +5,13 @@ re-export User 聚合根与 Role / Permission 实体。
 """
 from .user import UserAggregate, UserStatus
 from .role import RoleEntity, PermissionEntity
+from .access_token import AccessTokenAggregate, AccessTokenStatus
 
 __all__ = [
     'UserAggregate',
     'UserStatus',
     'RoleEntity',
     'PermissionEntity',
+    'AccessTokenAggregate',
+    'AccessTokenStatus',
 ]
