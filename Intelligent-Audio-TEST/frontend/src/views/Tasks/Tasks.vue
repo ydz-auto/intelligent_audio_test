@@ -377,6 +377,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useTasks } from './tasks';
 import { TaskStatus, TaskEvaluationStatus, FINISHED_STATUSES, REEXECUTE_ELIGIBLE_STATUSES, PermissionPoint, TestType } from '@/domain/enums';
 import { useAuthStore } from '../../store/authStore';
+import { useGlobalAlgorithmStore } from '../../store/globalAlgorithmStore';
 import { usePublishedTasks } from '../../composables/publishedTask/usePublishedTasks';
 import { useCherryPickContainers } from '../../composables/task/useCherryPickContainers';
 import { useCartDrawerState } from '../../composables/task/cartDrawerState';
@@ -404,6 +405,8 @@ const router = useRouter();
 const { hasPermission: can } = useAuthStore();
 const notification = useNotification();
 const modalControl = useModalControl();
+/** INT-1112：全局算法 store（日常/收藏算法徽章与右上角切换器联动，B03） */
+const globalStore = useGlobalAlgorithmStore();
 
 // ===== 页签（INT-577 §2.2 裁定①：合并页签收编；主库恢复收藏页签 → 终态四页签 = 日常/已发布/挑选合并/收藏）=====
 type TaskTab = 'daily' | 'published' | 'cherryPick' | 'favorite';
@@ -506,6 +509,9 @@ const {
   refreshTaskLogs, filterTaskLogs,
   // 算法选项
   algorithmOptions,
+  // INT-1112：全局算法联动（日常/收藏算法徽章展示口径）
+  globalAlgorithmValid,
+  effectiveAlgorithmType,
   // 协调逻辑
   handleNameUpdated,
   // INT-973：列表加载/错误态（错误条 + 空态抑制联动）
@@ -567,8 +573,11 @@ const dailyFilterState = reactive({
   // INT-273：任务类型（派生口径 api/e2e/mixed；'all' 归一为空串不下发）
   get type() { return filters.value.type || 'all'; },
   set type(v: string) { filters.value.type = v === 'all' ? '' : v; },
-  get algorithmType() { return filters.value.algorithmType || 'all'; },
-  set algorithmType(v: string) { filters.value.algorithmType = v === 'all' ? '' : v; },
+  // INT-1112：日常/收藏算法徽章 = 全局算法联动（B03「切换一次全局生效」）——
+  // 展示口径 = 有效全局算法（陈旧/无效持久化值回落「全部算法」，React INT-1033 对齐）；
+  // 选择直接写全局 store，列表由 useTaskList effectiveAlgorithmType watch 统一刷新。
+  get algorithmType() { return effectiveAlgorithmType.value || 'all'; },
+  set algorithmType(v: string) { globalStore.setAlgorithm(v === 'all' ? null : v); },
   get status() { return filters.value.status; },
   set status(v: string) { filters.value.status = v === 'all' ? '' : v; },
   get timeRange() { return filters.value.timeRange; },
@@ -647,10 +656,14 @@ function applyCurrentFilter() {
   }
 }
 
-/** 算法徽章筛选变更（单选） */
+/** 算法徽章筛选变更（单选）。
+ *  日常/收藏：写入全局算法 store（B03 联动），由 useTaskList effectiveAlgorithmType watch 统一刷新，避免双请求；
+ *  已发布/挑选合并：保留页面本地算法筛选，立即刷新。 */
 function handleAlgorithmBadgeChange(value: string | number) {
   currentFilter.value.algorithmType = String(value);
-  applyCurrentFilter();
+  if (activeTab.value === 'published' || activeTab.value === 'cherryPick') {
+    applyCurrentFilter();
+  }
 }
 
 /** 徽章筛选变更（单选）：写入当前视图对应筛选字段并刷新 */

@@ -3,6 +3,7 @@
  * 不再由当前页 tasks 过滤计数（回归：分页下统计数字与真实总量不符）。
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 
 const mocks = vi.hoisted(() => ({
   getAll: vi.fn(),
@@ -31,6 +32,7 @@ const AGG = {
 }
 
 beforeEach(() => {
+  setActivePinia(createPinia())
   vi.clearAllMocks()
   mocks.getDomainStats.mockResolvedValue(AGG)
   // 当前页仅 1 条 running 任务；列表分页 total=22（与全量 25 错开）

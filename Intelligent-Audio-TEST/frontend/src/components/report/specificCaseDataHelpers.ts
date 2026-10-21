@@ -303,6 +303,7 @@ export function createCaseDataHelpers(deps: {
       params.sortResource = selectedSortResource.value || undefined
       params.sortOrder = sortOrder.value
     } else {
+      // 排序下拉已收敛为纯排序（INT-1125 修订：移除「按分组/按标签」，组织由组织控件承担），直接透传
       params.sortBy = sortDimension.value
       params.sortOrder = sortOrder.value
     }
