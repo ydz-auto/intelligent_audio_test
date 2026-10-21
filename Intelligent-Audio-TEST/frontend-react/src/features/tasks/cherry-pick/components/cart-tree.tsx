@@ -9,7 +9,7 @@
  * 购物车抽屉与复核步骤两处共用（§4.4）。
  */
 import { ChevronDown, ChevronRight, Trash2, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 
 import type {
   CartTreeBranch,
@@ -129,6 +129,8 @@ function BranchRow({
   onRemoveGroup,
   onRemoveEntry,
   readOnly,
+  showLeafTask,
+  renderCaseNode,
 }: {
   branch: CartTreeBranch
   selectedEntryIds: ReadonlySet<string>
@@ -140,6 +142,10 @@ function BranchRow({
   onRemoveGroup: (branch: CartTreeBranch) => void
   onRemoveEntry: (entryId: string) => void
   readOnly: boolean
+  /** §4.2 三视图：叶行携带来源任务名消歧（任务分组视图不显示；CartTree 透传） */
+  showLeafTask?: boolean
+  /** §4.2/§3.8.4：用例级子项统一渲染 PickCaseCard（设备/结果类型视图用例层） */
+  renderCaseNode?: (branch: CartTreeBranch) => ReactNode
 }) {
   const state = getCartBranchSelectionState(branch, selectedEntryIds)
   const hasChildren = branch.children.length > 0
@@ -228,7 +234,10 @@ function BranchRow({
                   onToggleLeaf={onToggleLeaf}
                   onRemoveSingle={onRemoveEntry}
                   readOnly={readOnly}
+                  showLeafTask={showLeafTask}
                 />
+              ) : child.level === 'case' && renderCaseNode ? (
+                renderCaseNode(child)
               ) : (
                 <BranchRow
                   key={child.key}
@@ -242,6 +251,8 @@ function BranchRow({
                   onRemoveGroup={onRemoveGroup}
                   onRemoveEntry={onRemoveEntry}
                   readOnly={readOnly}
+                  showLeafTask={showLeafTask}
+                  renderCaseNode={renderCaseNode}
                 />
               )
             )}
@@ -372,9 +383,14 @@ export function CartTree({
     )
   }
 
-  /** 用例节点（CaseCard compact，§4.2/§3.8.4）+ 卡内 device/result_type/leaf 子树 */
-  const renderCaseNode = (branch: CartTreeBranch) => {
+  /**
+   * 用例节点（CaseCard compact，§4.2/§3.8.4）+ 卡内 device/result_type/leaf 子树。
+   * topLevel=true（用例视图顶层）：计数旁「来自 {m} 个任务」+「移除整组」跨任务（§4.2 ② mermaid）；
+   * 否则节点「移除该组」。设备/结果类型视图用例层经 BranchRow 的 renderCaseNode 路由复用本函数。
+   */
+  const renderCaseNode = (branch: CartTreeBranch, topLevel = false) => {
     const open = openKeys.has(branch.key)
+    const taskCount = collectSourceTaskCount([branch])
     return (
       <PickCaseCard
         key={branch.key}
@@ -385,14 +401,25 @@ export function CartTree({
         onToggle={(select) => onToggleBranch(branch, select)}
         open={open}
         onToggleOpen={() => toggleOpenKey(branch.key)}
+        badgeLeading={
+          topLevel && taskCount > 0 ? (
+            <span className='text-muted-foreground/70 shrink-0 text-[11px]'>
+              来自 {taskCount} 个任务
+            </span>
+          ) : undefined
+        }
         actions={
           !readOnly ? (
             <Button
               variant='ghost'
               size='icon-xs'
-              aria-label='移除该组'
+              aria-label={topLevel ? '移除整组' : '移除该组'}
               className='text-muted-foreground shrink-0'
-              onClick={() => handleRemoveGroup(branch)}
+              onClick={() =>
+                topLevel
+                  ? handleRemoveTopGroup(branch)
+                  : handleRemoveGroup(branch)
+              }
             >
               <Trash2 aria-hidden='true' className='size-3.5' />
             </Button>
@@ -425,6 +452,8 @@ export function CartTree({
                   onRemoveGroup={handleRemoveGroup}
                   onRemoveEntry={onRemoveEntry}
                   readOnly={readOnly}
+                  showLeafTask={showLeafTask}
+                  renderCaseNode={renderCaseNode}
                 />
               )
             )}
@@ -465,12 +494,22 @@ export function CartTree({
         onRemoveGroup={handleRemoveGroup}
         onRemoveEntry={onRemoveEntry}
         readOnly={readOnly}
+        showLeafTask={showLeafTask}
+        renderCaseNode={renderCaseNode}
       />
     )
   }
 
   /** 三视图顶层组头（用例/设备/结果类型；跨任务「来自 {m} 个任务」+ 移除整组，§4.2 ②） */
   const renderTopGroup = (branch: CartTreeBranch, index: number) => {
+    /** 用例视图顶层：用例节点 = PickCaseCard（compact 计数 + 「来自 {m} 个任务」+ 移除整组，§4.2 ② mermaid） */
+    if (branch.level === 'case') {
+      return (
+        <section key={branch.key} className='mb-2'>
+          {renderCaseNode(branch, true)}
+        </section>
+      )
+    }
     const taskCount = collectSourceTaskCount([branch])
     const group = groups[index] // 任务分组视图下取来源任务组
     const state = getCartBranchSelectionState(branch, selectedEntryIds)
