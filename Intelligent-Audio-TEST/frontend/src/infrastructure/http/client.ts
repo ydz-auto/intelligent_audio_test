@@ -78,8 +78,6 @@ export async function request<T = any>(
   const responseType = options.responseType || 'json';
   const unwrapResponse = options.unwrapResponse !== false;
 
-  console.log(`[API Request] ${method} ${url}`, data || '');
-
   const normalizedUrl = url.startsWith('http') ? url : `${apiBaseUrl.replace(/\/$/, '')}/${url.replace(/^\//, '')}`;
 
   const interceptedConfig = await applyRequestInterceptors({ method, url: normalizedUrl, data, options });
@@ -136,8 +134,6 @@ export async function request<T = any>(
         options: {responseType: responseType as any, timeout: (requestOptions as any).timeout}
       });
 
-      console.log(`[IPC Response] ${method} ${normalizedUrl}:`, result);
-
       // IPC 返回的业务状态码非成功值（0 表示无业务错误，200/201 为 HTTP 成功）则抛错
       if (result && result.code !== undefined && result.code !== 0 && result.code !== HttpStatus.OK && result.code !== HttpStatus.CREATED) {
         const error : any = new Error(result.message || 'IPC Request failed');
@@ -151,26 +147,23 @@ export async function request<T = any>(
           const contentType = result.headers?.['content-type'] || 'application/octet-stream';
           const blob = new Blob([result.data], { type: contentType });
           const blobResult = responseType === 'blob' ? blob : await blob.arrayBuffer();
-          console.log(`[API Response] ${method} ${normalizedUrl}: Binary response (${blobResult instanceof Blob ? 'Blob' : 'ArrayBuffer'}, ${blobResult instanceof Blob ? blobResult.size : 'N/A'} bytes)`);
           return blobResult as unknown as T;
         }
         if (result instanceof ArrayBuffer || result instanceof Uint8Array) {
            const blob = new Blob([result as any]);
            const blobResult = responseType === 'blob' ? blob : await blob.arrayBuffer();
-           console.log(`[API Response] ${method} ${normalizedUrl}: Binary response (${blobResult instanceof Blob ? 'Blob' : 'ArrayBuffer'}, ${blobResult instanceof Blob ? blobResult.size : 'N/A'} bytes)`);
            return blobResult as unknown as T;
         }
-        console.log(`[API Response] ${method} ${normalizedUrl}: Expected binary response but got:`, typeof result, result);
+        // 异常分支：期望二进制但实际返回非二进制（如 JSON 错误体），保留告警便于定位
+        console.warn(`[API Response] ${method} ${normalizedUrl}: Expected binary response but got:`, typeof result, result);
       }
 
       if (unwrapResponse && result && result.data !== undefined && !result.isBinary) {
         const responseData = applyResponseInterceptors(result.data);
-        console.log(`[API Response] ${method} ${normalizedUrl}: Success`, responseData);
         return responseData as T;
       }
 
       const directResponse = applyResponseInterceptors(result);
-      console.log(`[API Response] ${method} ${normalizedUrl}: Success (direct format)`, directResponse);
       return directResponse as T;
     } catch (err) {
       console.error(`[IPC Error] ${method} ${normalizedUrl}:`, err);
@@ -210,7 +203,6 @@ export async function request<T = any>(
     const response = await fetch(finalUrl, fetchOptions);
     const result = await handleResponse(response, responseType, unwrapResponse, requestOptions.skipAuthRedirect);
     const responseData = applyResponseInterceptors(result);
-    console.log(`[API Response] ${method} ${finalUrl}: Success`, responseData);
     return responseData as T;
   } catch (err) {
     console.error(`[API Fetch Error] ${method} ${finalUrl}:`, err);
@@ -248,8 +240,6 @@ async function handleResponse(response: Response, responseType: string = 'json',
 
   let data : any;
   try {
-    console.log(`[Handle Response] status: ${response.status} ${response.statusText}`);
-
     try {
       const cloned = response.clone();
       data = await response.json();
