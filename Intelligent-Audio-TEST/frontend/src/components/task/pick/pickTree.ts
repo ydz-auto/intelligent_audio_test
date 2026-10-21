@@ -240,7 +240,7 @@ export function buildPickResultTypeViewTree(candidates: PickCandidate[]): PickTr
 
 // ===== 用例视图组织维度（INT-1034 §3.8.3，INT-1110 返工 P1）=====
 
-/** 用例组织字段（§11-7 待后端补：候选行 tags/groupId/groupName；缺省全落「未分组」/「未设置标签」兜底桶） */
+/** 用例组织字段（§11-7 契约：候选行 tags/groupId/groupName 经 caseOrgMap 注入；缺省全落「未分组」/「未设置标签」兜底桶） */
 export interface PickCaseOrgInfo {
   tags?: string[]
   groupId?: string | number | null

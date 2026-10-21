@@ -66,10 +66,6 @@ export interface PickCandidate {
   /** INT-577 §11-2：结果类型（result_data/result_data_path 解析，缺省 default） */
   resultType?: string | null
   algorithmType?: string | null
-  /** INT-1034 §3.8.3 用例视图组织维度（§11-7 落地：候选行已返 tags/groupId/groupName，toCamel 自动转换） */
-  tags?: string[]
-  groupId?: string | number | null
-  groupName?: string | null
   executionStatus: string
   evaluated?: boolean
   createdAt?: string | null
