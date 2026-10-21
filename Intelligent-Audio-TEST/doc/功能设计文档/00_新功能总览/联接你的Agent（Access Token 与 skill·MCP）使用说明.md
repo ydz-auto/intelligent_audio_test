@@ -81,7 +81,7 @@ Access Token 是平台为外部 agent / skill / MCP 调用能力接口签发的�
 
 - **启停**：可随时在 `enabled ⇄ disabled` 间切换；禁用后立即失效（401），重新启用即恢复。
 - **删除**：**软删除**（置 `deleted_at`，行保留供审计）；删除后不可恢复，token 立即失效。
-- **每用户上限**：默认 **20 个**（平台配置 `ACCESS_TOKEN_MAX_PER_USER`，0 = 不限制）；达到上限后需先停用 / 删除旧 token 再创建。
+- **每用户上限**：默认 **20 个**（平台配置 `ACCESS_TOKEN_MAX_PER_USER`，0 = 不限制）；达到上限后需**删除旧 token 再创建**——上限按「未软删 token 数」计（含已停用），**停用不释放配额**。
 
 ### 2.6 安全口径
 
@@ -197,5 +197,6 @@ tools 注册表 = INT-1140 覆盖能力清单：
 ## 5. 实现演进裁定记录
 
 - **2026-10-21（INT-1148 实施，实现演进裁定）**：Access Token 领域落地——明文 `at_` + 32 hex（≈128 bit）；**只存 SHA-256 哈希** + 末 4 位 `token_hint`；scopes 空列表 = 继承用户全部权限；`expires_at` `0` = 永不过期；**软删（`deleted_at`）+ status（enabled|disabled）**（对齐本平台收藏 / 回收站语义，new-api 为硬删，本平台取软删）；每用户上限默认 20、默认有效期 30 天（`ACCESS_TOKEN_MAX_PER_USER` / `ACCESS_TOKEN_DEFAULT_EXPIRY_DAYS` 配置项可调）。
+- **2026-10-21（INT-1152 一致性审计回写，实现演进裁定）**：每用户上限按「未软删 token 数」计（`count_active_by_user`，含已停用），**停用不释放配额，仅删除（软删）可释放**——§2.5 据此回写；实现侧该限额报错文案（「删除或停用」）略过宽，不改变行为语义。
 - **2026-10-21（INT-1149 实施，实现演进裁定）**：网关 AuthMiddleware **Bearer 单分支**（JWT 优先 → 非 JWT 走 access token 查证）；AUTH_MODE=off 下先尝试 access token 查证、均失败才回落 dev_user；**生效权限 = 用户当前权限 ∩ token scopes**（`GetUserPermissions` 实时拉取，不用 JWT 快照）；网关 `/api/v1/auth/access-tokens[/{id}]` 转发 auth_service 同前缀端点。
 - **2026-10-21（INT-1152 使用说明文档）**：本文档按 INT-1140 规格 + INT-1142 已裁定契约编写；**skill 包与 MCP 端点（INT-1150 / BE3）尚未落地**，落地后须回写：skill zip 内 SKILL.md / mcp.json 模板的具体字段、MCP 端点 `/api/v1/mcp` 的请求 / 响应格式、tools 注册表具体工具名与参数映射；若实现与本文档契约有出入，以本节实现演进裁定方式回写。
