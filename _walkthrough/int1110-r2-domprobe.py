@@ -23,11 +23,16 @@ def main():
                 pass
 
         page.goto(f"{BASE}/#/login", wait_until="domcontentloaded")
-        page.wait_for_selector(".login-btn", timeout=15000)
+        page.wait_for_selector(".login-btn", timeout=20000)
+        page.wait_for_timeout(500)
         page.fill('input[type="text"]', "admin")
         page.fill('input[type="password"]', "admin123")
         page.click(".login-btn")
-        page.wait_for_selector(".page-header, .dashboard, .sidebar", timeout=20000)
+        try:
+            page.wait_for_selector(".page-header, .dashboard, .sidebar", timeout=20000)
+        except Exception:
+            page.wait_for_selector("#app .sidebar, .layout-shell, .page-header", timeout=20000)
+        page.wait_for_timeout(500)
         dismiss_banner()
 
         page.goto(f"{BASE}/#/tasks", wait_until="domcontentloaded")
@@ -36,6 +41,7 @@ def main():
         page.click(".start-pick-btn")
         page.wait_for_selector(".pts-title", timeout=15000)
         dismiss_banner()
+        page.wait_for_timeout(800)
         rows = page.query_selector_all(".pts-row")
         for row in rows[:2]:
             cb = row.query_selector('input[type="checkbox"]')
@@ -64,6 +70,12 @@ def main():
         page.wait_for_selector(".pick-cart-entry", timeout=15000)
         dismiss_banner()
         page.click(".pick-cart-entry")
+        page.wait_for_selector(".cd-drawer", timeout=15000)
+        page.wait_for_timeout(800)
+        chev = page.query_selector(".cd-drawer .ctr-row .ctr-chevron")
+        if chev:
+            chev.click()
+            page.wait_for_timeout(600)
         page.wait_for_selector(".cd-drawer .case-card", timeout=15000)
         page.wait_for_timeout(500)
         cart_cards = page.query_selector_all(".cd-drawer .case-card")
