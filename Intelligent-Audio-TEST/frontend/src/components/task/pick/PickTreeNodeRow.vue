@@ -1,6 +1,74 @@
 <template>
   <div class="pt-row-wrap">
+    <!-- 用例节点 → 统一用例卡 compact（INT-1034 §3.8.3/§4.2，INT-1110）：
+         勾选 R6 用例级三态；展开 = 设备/结果类型分支（用例视图）或叶行（设备/结果类型视图） -->
+    <template v-if="node.level === 'case'">
+      <PickCaseCard
+        :name="node.name"
+        :case-id="node.id"
+        :algorithm-type="node.algorithmType"
+        :count="node.count"
+        :state="state"
+        :open="expanded"
+        class="pt-case-card"
+        @toggle="emit('toggle-node', node)"
+        @toggle-open="emit('toggle-expand', node.key)"
+      >
+        <template v-if="expanded">
+          <!-- 用例卡展开：子树分支（用例视图：设备 → result_type → 叶） -->
+          <div v-if="node.children.length > 0" class="pt-case-children">
+            <PickTreeNodeRow
+              v-for="child in node.children"
+              :key="child.key"
+              :node="child"
+              :selected="selected"
+              :expanded-keys="expandedKeys"
+              :already-added="alreadyAdded"
+              :leaf-meta="leafMeta"
+              :depth="depth + 1"
+              @toggle-node="(n) => emit('toggle-node', n)"
+              @toggle-expand="(k) => emit('toggle-expand', k)"
+              @toggle-leaf="(rid) => emit('toggle-leaf', rid)"
+            />
+          </div>
+          <!-- 用例卡展开：直挂叶（设备/结果类型视图用例层叶行） -->
+          <div v-else class="pt-case-leaves">
+            <label
+              v-for="rid in node.resultIds"
+              :key="rid"
+              class="pt-leaf"
+              :style="{ paddingLeft: `${(depth + 1) * 16 + 8}px` }"
+            >
+              <input
+                type="checkbox"
+                class="pt-checkbox"
+                :checked="selected.has(rid)"
+                @change="emit('toggle-leaf', rid)"
+              />
+              <span class="pt-leaf-case">{{ leafText(rid, 'case') }}</span>
+              <span class="pt-leaf-dim">{{ leafText(rid, 'dim') }}</span>
+              <span v-if="leafMeta.get(rid)?.resultType" class="pt-leaf-rt">{{ leafMeta.get(rid)!.resultType }}</span>
+              <span class="pt-leaf-status" :class="leafMeta.get(rid)?.executionStatus">
+                {{ statusText(leafMeta.get(rid)?.executionStatus) }}
+              </span>
+              <span class="pt-leaf-eval" :class="leafMeta.get(rid)?.evaluated ? 'evaluated' : 'pending-eval'">
+                {{ leafMeta.get(rid)?.evaluated ? '已评估' : '未评估' }}
+              </span>
+              <!-- INT-1034 §3.8.3：三视图叶行携带来源任务名消歧（多任务结果同节点并排） -->
+              <span v-if="leafMeta.get(rid)?.taskName" class="pt-leaf-task" :title="leafMeta.get(rid)!.taskName">
+                {{ leafMeta.get(rid)!.taskName }}
+              </span>
+              <span v-if="leafMeta.get(rid)?.createdAt" class="pt-leaf-time">{{ formatTime(leafMeta.get(rid)!.createdAt) }}</span>
+              <span v-if="alreadyAdded.has(rid)" class="pt-leaf-added"><i class="fas fa-cart-plus"></i> 已加购</span>
+            </label>
+          </div>
+        </template>
+      </PickCaseCard>
+    </template>
+
+    <!-- 普通节点行（非用例节点） -->
     <div
+      v-else
       class="pt-row"
       :class="{ 'pt-row--leaf': node.level === 'leaf' }"
       :style="{ paddingLeft: `${depth * 16 + 8}px` }"
@@ -33,23 +101,11 @@
 
       <span class="pt-icon" :class="iconClass"><i :class="iconName"></i></span>
       <span class="pt-name" :title="node.name">{{ node.name }}</span>
-      <!-- INT-796 §3.7.1：用例级卡片元信息（CaseIdBadge + 算法徽章；tags/时长待 §11-7 落地后补） -->
-      <CaseIdBadge
-        v-if="node.level === 'case'"
-        :case-id="node.id"
-        class="pt-case-badge"
-      />
-      <span
-        v-if="node.level === 'case' && node.algorithmType"
-        class="pt-alg-badge"
-        :title="`算法：${getAlgorithmName(node.algorithmType)}`"
-      >
-        {{ getAlgorithmName(node.algorithmType) }}
-      </span>
+      <!-- 用例节点统一在用例卡（PickCaseCard）内渲染元信息（CaseIdBadge + 算法徽章） -->
       <span v-if="node.children.length > 0" class="pt-count">{{ node.count }} 条</span>
     </div>
 
-    <!-- 结果行叶（resultType 级下钻） -->
+    <!-- 结果行叶（非用例节点直挂叶：用例视图 resultType 级下钻 / 无子级节点） -->
     <div v-if="node.level === 'resultType' || (node.children.length === 0 && node.level === 'leaf')">
       <label
         v-for="rid in node.resultIds"
@@ -72,13 +128,17 @@
         <span class="pt-leaf-eval" :class="leafMeta.get(rid)?.evaluated ? 'evaluated' : 'pending-eval'">
           {{ leafMeta.get(rid)?.evaluated ? '已评估' : '未评估' }}
         </span>
+        <!-- INT-1034 §3.8.3：三视图叶行携带来源任务名消歧 -->
+        <span v-if="leafMeta.get(rid)?.taskName" class="pt-leaf-task" :title="leafMeta.get(rid)!.taskName">
+          {{ leafMeta.get(rid)!.taskName }}
+        </span>
         <span v-if="leafMeta.get(rid)?.createdAt" class="pt-leaf-time">{{ formatTime(leafMeta.get(rid)!.createdAt) }}</span>
         <span v-if="alreadyAdded.has(rid)" class="pt-leaf-added"><i class="fas fa-cart-plus"></i> 已加购</span>
       </label>
     </div>
 
-    <!-- 递归子级 -->
-    <div v-if="expanded && node.children.length > 0">
+    <!-- 递归子级（非用例节点；用例节点子树在 PickCaseCard 展开区内渲染一次，避免重复渲染） -->
+    <div v-if="expanded && node.children.length > 0 && node.level !== 'case'">
       <PickTreeNodeRow
         v-for="child in node.children"
         :key="child.key"
@@ -102,28 +162,16 @@ import '../../../assets/styles/components/common.css'
 import '../../../assets/styles/layouts/main.css'
 
 /**
- * PickTreeNodeRow —— 挑选树节点行（递归组件）。
+ * PickTreeNodeRow —— 挑选树节点行（递归组件，INT-577 §3 / INT-1110 三视图）。
  * 节点三态由 pickTree.nodeState 派生；叶行勾选直接操作 result_id。
+ * 用例节点渲染统一用例卡 compact（PickCaseCard，INT-1103 TestCaseCard 复用）；
+ * 三视图叶行携带来源任务名消歧（§3.8.3）。
  */
 import { computed } from 'vue';
 import { nodeState } from './pickTree';
 import type { PickTreeNode, NodeCheckState } from './pickTree';
 import type { PickCandidate } from '../../../infrastructure/api/cherryPickApi';
-import CaseIdBadge from '../../common/CaseIdBadge.vue';
-
-/** 算法类型中文名（§3.6 裁定②「算法徽章」；与算法配置页同名映射同源，缺省回退原始值） */
-const ALGORITHM_LABEL: Record<string, string> = {
-  asr: 'ASR',
-  tts: 'TTS',
-  speaker_recognition: '说话人识别',
-  speaker_verification: '声纹验证',
-  speaker_identification: '说话人识别',
-};
-
-function getAlgorithmName(type: string | null | undefined): string {
-  if (!type) return '';
-  return ALGORITHM_LABEL[type] ?? type;
-}
+import PickCaseCard from './PickCaseCard.vue';
 
 /** 叶行时间（mono 口径，YYYY-MM-DD HH:mm） */
 function formatTime(iso?: string | null): string {
@@ -319,10 +367,31 @@ function statusText(status?: string | null): string {
   color: var(--primary, #ff6a00);
   font-size: 11px;
 }
+.pt-leaf-task {
+  color: var(--color-slate-400, #94a3b8);
+  font-size: 11px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .pt-leaf-time {
   color: var(--color-slate-400, #94a3b8);
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   margin-left: auto;
+}
+/* INT-1110：用例卡展开区（子树 / 直挂叶） */
+.pt-case-card {
+  margin: 2px 0;
+}
+.pt-case-children {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pt-case-leaves {
+  display: flex;
+  flex-direction: column;
 }
 </style>

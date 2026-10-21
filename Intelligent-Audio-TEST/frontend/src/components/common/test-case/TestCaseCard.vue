@@ -4,14 +4,15 @@
     <template v-if="testCase">
       <div class="case-header">
         <div class="case-info-wrapper">
-          <input 
+          <input
             v-if="showCheckbox"
-            type="checkbox" 
-            id="checkbox-{{ testCase.id }}" 
+            type="checkbox"
+            id="checkbox-{{ testCase.id }}"
             class="test-case-checkbox"
             @change="() => { console.log('[TestCaseManager] 点击测试用例复选框: 选择/取消选择测试用例 ' + testCase.name + ' (ID: ' + testCase.id + '), 时间:', new Date().toISOString()); toggleSelection(); }"
             @click.stop
             :checked="isSelected"
+            :indeterminate="indeterminate"
             tabindex="0"
           >
           <div class="case-info">
@@ -50,24 +51,24 @@
             <div class="case-id-row">
               <CaseIdBadge :case-id="testCase.id" />
             </div>
-            <div class="case-description">{{ testCase.description || '' }}</div>
-            <div v-if="testCase.lastEditTime || testCase.createdAt || testCase.updatedAt" style="margin-bottom: 8px; font-size: 12px; color: var(--muted-foreground);">
+            <div v-if="!compact" class="case-description">{{ testCase.description || '' }}</div>
+            <div v-if="!compact && (testCase.lastEditTime || testCase.createdAt || testCase.updatedAt)" style="margin-bottom: 8px; font-size: 12px; color: var(--muted-foreground);">
               <span class="meta-label">最后编辑时间:</span> {{ testCase.lastEditTime || testCase.updatedAt || testCase.createdAt || '未知' }}
             </div>
             <!-- INT-215：回收站条目展示删除人/删除时间（AUTH_MODE=off 时 NULL 显示「—」） -->
-            <div v-if="testCase.deleted" class="case-deleted-meta">
+            <div v-if="!compact && testCase.deleted" class="case-deleted-meta">
               <span><span class="meta-label">删除时间:</span> {{ testCase.deletedAt ? formatDate(testCase.deletedAt) : '—' }}</span>
               <span><span class="meta-label">删除人:</span> {{ deletedByLabel }}</span>
             </div>
-            <div v-if="testCase.totalDuration" class="case-duration-info">
+            <div v-if="!compact && testCase.totalDuration" class="case-duration-info">
               <span class="duration-tag">{{ formatDurationLong(testCase.totalDuration) }}</span>
             </div>
-            <div v-if="roundCount > 0" class="case-duration-info">
+            <div v-if="!compact && roundCount > 0" class="case-duration-info">
               <span class="round-count-tag" title="用例轮次数量">
                 <i class="fas fa-layer-group"></i> {{ roundCount }} 轮
               </span>
             </div>
-            <div class="case-tags-container" v-if="testCase.tags && testCase.tags.length > 0">
+            <div class="case-tags-container" v-if="!compact && testCase.tags && testCase.tags.length > 0">
               <template v-if="!isTagsExpanded">
                 <span v-for="(tag, index) in visibleTags" :key="index" class="tag">{{ tag }}</span>
                 <span 
@@ -96,7 +97,8 @@
             </div>
           </div>
         </div>
-          <div class="case-actions" v-if="cardActions && cardActions.length > 0">
+          <div class="case-actions" v-if="cardActions && cardActions.length > 0 || compact">
+            <span v-if="compact && count != null" class="case-count-badge">{{ count }} 条</span>
             <button
               v-for="action in cardActions"
               :key="action.id"
@@ -107,9 +109,23 @@
             >
               <i v-if="action.iconClass || action.icon" :class="action.iconClass || `fas ${action.icon}`" :style="action.iconStyle"></i>
             </button>
+            <!-- compact 模式：展开/收起三角（子树：设备/结果类型分支或叶行） -->
+            <button
+              v-if="showExpand"
+              class="btn-icon-only"
+              @click.stop="$emit('toggle-open')"
+              :title="open ? '收起' : '展开'"
+            >
+              <i class="fas" :class="open ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+            </button>
           </div>
       </div>
-      
+
+      <!-- compact 模式：展开区（子树渲染位） -->
+      <div v-if="open && $slots.expandedContent" class="case-card-expanded">
+        <slot name="expandedContent" />
+      </div>
+
       <div v-if="showConfig && testCase.config" class="case-config-container">
         <div class="config-header" @click.stop="toggleConfigExpansion" @keydown.enter="toggleConfigExpansion" @keydown.space.prevent="toggleConfigExpansion" tabindex="0" role="button" :aria-expanded="isConfigExpanded">
           <h5 class="config-toggle-title">
@@ -172,11 +188,21 @@ const props = defineProps({
   isSelected: { type: Boolean, default: false },
   showCheckbox: { type: Boolean, default: true },
   showConfig: { type: Boolean, default: true },
+  /** INT-1110：compact 模式（挑选/购物车用例节点）——隐藏描述/时间/标签/时长等元信息，
+   *  仅保留「名称 + CaseIdBadge + 算法徽章 + 计数 Badge」最小呈现（18 §3.8.3/§4.2） */
+  compact: { type: Boolean, default: false },
+  /** 节点三态的部分选中（R3 派生；原生 checkbox indeterminate 属性） */
+  indeterminate: { type: Boolean, default: false },
+  /** compact 计数 Badge「{n} 条」 */
+  count: { type: Number, default: null },
+  /** compact 展开三角显隐 + 方向 */
+  showExpand: { type: Boolean, default: false },
+  open: { type: Boolean, default: false },
   // INT-215：可为静态数组或 (testCase) => actions 工厂函数（按卡片用例动态生成，如收藏星标态）
   actions: { type: [Array, Function], default: () => [] }
 });
 
-const emit = defineEmits(['toggle-selection', 'action']);
+const emit = defineEmits(['toggle-selection', 'action', 'toggle-open']);
 
 /**
  * INT-215：actions 为工厂函数时按当前卡片用例求值（收藏星标按 isFavorite 动态生成），
@@ -570,6 +596,23 @@ text-transform: uppercase;
 letter-spacing: 0.5px;
 margin-right: 4px;
 white-space: nowrap;
+}
+
+/* INT-1110：compact 模式（挑选/购物车用例节点）计数 Badge「{n} 条」+ 展开区 */
+.case-count-badge{
+  flex-shrink: 0;
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-slate-100, #f1f5f9);
+  color: var(--color-slate-500, #64748b);
+  font-size: 11px;
+  font-weight: 500;
+  margin-right: 4px;
+}
+.case-card-expanded{
+  border-top: 1px solid var(--color-slate-100, #f1f5f9);
+  padding: 6px 0 4px 8px;
+  margin-top: 4px;
 }
 
 
