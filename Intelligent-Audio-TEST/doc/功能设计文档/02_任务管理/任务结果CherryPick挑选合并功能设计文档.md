@@ -196,6 +196,13 @@
 
 ## 13. 实现演进裁定记录
 
+- **2026-10-21（INT-1130 实施 + 方案一致性审计回写，实现演进裁定）**：挑选合并候选接口 `POST /tasks/cherry-picks/candidates`（`task_service/application/task/cherry_pick_service.py` `list_candidates → _query_candidate_results`）候选行在既有 `case_id/case_name/algorithm_type` 基础上补用例级元信息（交互规范 18_挑选合并 §11-7 落地）：
+  - `tags: string[]` — `test_cases → test_case_tags → tags.name`（去重保序；同源用例管理列表 `TestCaseListItem.tags`）
+  - `group_id` / `group_name`（`string|null`）— `test_cases.group_id → test_case_groups`（缺分组 null）
+  - `duration`（`number|null`）— `collect_audios(config)` 逐音频时长累加，同用例管理列表 `total_duration` 口径（`testcase_query_service.py` 同路径，经 audio_service gRPC 一次性批量查询）；无音频/无时长 null
+  - `rounds`（`number`）— `len(config.get('rounds') or [])`（轮次数，非 rounds 数组本身；空配置 0）
+  数据源全部既有表，无新表、无新服务；每页一次 TestCase 批量查询（joinedload group/tags）+ 一次音频 gRPC 批量，无多余请求；容器任务（INT-657）命中行按 `result.test_case_id` 取元信息天然覆盖；网关 `list_candidates` 直返 `data` 透传（无响应模型过滤），分页 per_page≤200 语义不变。
+  实现演进裁定：设计 §11-7 的 `category` 不属候选行字段——标签分类/色值由前端标签注册表（`TagItem.categoryName`）解析，与用例管理列表一致；`duration` 不读 `config.duration`（共享库 579 用例实测 config 无顶层 duration 键），按 `total_duration` 同源口径累加；字段命名保持 `duration`（设计口径），前端 adapter 桥接 `duration→totalDuration` 供 `SubViewCaseItem`/`CaseCard` 消费。旧 Vue `frontend/src/infrastructure/api/cherryPickApi.ts` `PickCandidate` 接口补 5 字段（toCamel 自动转换，契约对齐）；React 三视图/购物车分组·标签组织消费随 UX 项目接线卡（INT-1127/1128/1129）适配。
 - **2026-10-17（INT-577 实施）**：专项交互规范《18_挑选合并功能交互重设计.md》（INT-576）为唯一交互口径，本卡在 V9.7.31（Vue3 + 后端微服务）落地——页签三页签终态（「合并」收编，推翻 INT-400 #13 四页签）；批量「合并任务」钮撤销为「加入挑选」（任务级整任务加购）；四步向导（复核独立步骤）+ 多级挑选树（R1-R10）+ 购物车树形分组/移除矩阵；后端统一容器列表（`merge_type` + merged ∪ cherry_pick 并集 + stats 计数）、候选行补 case/device/api/result_type、`select-all`、购物车快照补 `source_result_type`；任务级挑选不标记源任务 merged（存量历史容器除外）；algo_engineer 只读可见、写链隐藏；筛选会话级记忆不持久化。
 - **2026-10-14 前向可行性评审修正**（方案一致性审计员评审，规划师落文档）：①任务分类标识弃用 `type=cherry_pick`（task.type 已物理删除），改为专有关系表存在性判定 + `cherry_pick=true` 列表参数（§5.4）；②§2 对现有合并的描述修正为 V9.7.31 实际实现（容器任务+关系展开引用，不搬结果）；③页签计数修正为现有四页签基础上新增（五页签）；④§10 状态限制措辞改显式终态集合。
 - **滞后回写待办**：任务合并功能设计文档.md 仍为 V9.7.10 旧内容（含已失效的 backend/blueprints 代码段），需按 V9.7.31 实现整体回写——不阻塞本功能，另行开卡。
