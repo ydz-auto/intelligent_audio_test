@@ -1,19 +1,33 @@
 <template>
-  <button class="agent-button" data-layout-btn title="灵犀Agent" @click="goAiChat">
+  <button
+    class="agent-button"
+    :class="{ 'agent-button--active': workbench.open }"
+    data-layout-btn
+    title="灵犀Agent"
+    :aria-label="'打开全局 Agent 工作台'"
+    @click="handleClick"
+  >
     <span class="agent-button__word">
       <i class="fas fa-wand-magic-sparkles"></i>
       <span class="agent-button__label">灵犀Agent</span>
+      <span class="sr-only">灵犀Agent</span>
     </span>
   </button>
 </template>
 
 <script setup lang="ts">
-import { useRouter } from 'vue-router'
+import { useAgentWorkbenchStore } from '@/store/agentWorkbenchStore'
 
-const router = useRouter()
+const workbench = useAgentWorkbenchStore()
 
-function goAiChat() {
-  router.push('/ai-chat')
+/**
+ * 灵犀Agent 魔法按钮（右上角首位，§2.4 ①）：点击唤起/关闭全局 Agent 工作台浮窗
+ * （照 React INT-415 agent-workbench-button.tsx 实测行为——toggle 浮窗而非跳转整页；
+ * 浮窗「展开整页」钮承担 /ai-chat 跳转，§3.1B）。
+ */
+function handleClick(): void {
+  if (!workbench.open) workbench.setOpen(true)
+  else workbench.toggle()
 }
 </script>
 
@@ -58,6 +72,10 @@ function goAiChat() {
 .agent-button:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
+}
+/* 浮窗打开态：主色描边（照 React `open && 'ring-2 ring-primary/40'`） */
+.agent-button--active {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 40%, transparent);
 }
 /* 文案层：收进内层 flex 容器避免 CJK 换行/失垂直居中（照 newAPI LocalSetupGuide 结构） */
 .agent-button__word {
@@ -159,5 +177,17 @@ function goAiChat() {
   .agent-button__label {
     display: inline;
   }
+}
+/* 无障碍：移动端隐藏可见文案时读屏仍可读（照 React `sr-only sm:hidden`） */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 </style>

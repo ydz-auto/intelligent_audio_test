@@ -45,19 +45,21 @@
           type="button"
           class="btn btn-primary send-btn"
           :disabled="!canSubmit"
+          :aria-label="INPUT_COPY.send"
           @click="submit"
         >
           <i class="fas fa-paper-plane"></i>
-          <span class="send-label">{{ INPUT_COPY.send }}</span>
+          <span class="sr-only">{{ INPUT_COPY.send }}</span>
         </button>
         <button
           v-else
           type="button"
           class="stop-btn"
+          :aria-label="INPUT_COPY.stop"
           @click="emit('stop')"
         >
           <i class="fas fa-square"></i>
-          <span class="send-label">{{ INPUT_COPY.stop }}</span>
+          <span class="sr-only">{{ INPUT_COPY.stop }}</span>
         </button>
       </div>
     </div>
@@ -112,7 +114,9 @@ const emit = defineEmits<{
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 let isComposing = false
 
-const canSubmit = computed(() => props.value.trim().length > 0 && !props.isGenerating)
+const canSubmit = computed(
+  () => props.value.trim().length > 0 && !props.isGenerating && props.providers.length > 0
+)
 
 function onInput(event: Event): void {
   emit('update:value', (event.target as HTMLTextAreaElement).value)
@@ -129,6 +133,8 @@ function onCompositionEnd(): void {
 function onKeydownEnter(event: KeyboardEvent): void {
   // 输入法组合态不触发（照 playground isComposing 语义）
   if (event.isComposing || isComposing) return
+  // 无供应商时不可对话（§3.11 行为：对话由用户自配 LLM 供应商驱动，照 React INT-1032）
+  if (props.providers.length === 0) return
   submit()
 }
 
@@ -268,8 +274,17 @@ defineExpose({ focusInput })
   cursor: pointer;
 }
 
-.send-label {
+/* 无障碍：发送/停止按钮去可见文字仅图标（照 React INT-1032），文案保留给读屏 */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
   white-space: nowrap;
+  border: 0;
 }
 
 .input-demo-note {

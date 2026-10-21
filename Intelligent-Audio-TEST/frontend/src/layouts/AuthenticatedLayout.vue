@@ -12,6 +12,9 @@
         <router-view />
       </main>
     </div>
+
+    <!-- 全局 Agent 工作台浮窗（§3.1B）：渲染在壳根部，切换页面不关闭；内嵌会话与 /ai-chat 共享 -->
+    <AgentWorkbench />
   </div>
 </template>
 
@@ -24,6 +27,7 @@ import SystemBrand from '../components/layout/SystemBrand.vue'
 import TopNav from '../components/layout/TopNav.vue'
 import TopBarRight from '../components/layout/TopBarRight.vue'
 import AppSidebar from '../components/layout/AppSidebar.vue'
+import AgentWorkbench from '../views/AiChat/components/AgentWorkbench.vue'
 import { SIDEBAR_STATE_KEY } from '../config/navigation'
 
 // 侧栏「固定/收起」偏好（INT-894）：默认展开，localStorage 持久化、刷新/重登保持。

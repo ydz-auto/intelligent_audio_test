@@ -1,10 +1,14 @@
 /**
  * 灵犀Agent 会话 Store 测试（§3.7 URL 契约上下文 / §3.11 无供应商/无模型语义化引导；
- * Demo 态对话由用户自配 LLM 供应商驱动，无供应商/无模型时不发起请求）。
+ * §3.11/INT-1032 配置即可对话——供应商带模型自动落首个模型；
+ * INT-861 P1 请求体当前 user 消息只出现一次 + P2 重生成截断重建回归）。
+ * Demo 态对话由用户自配 LLM 供应商驱动，无供应商/无模型时不发起请求。
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { useAiChatStore } from '../aiChatStore'
+import { llmProviderApi } from '@/infrastructure/api/llmProviderApi'
 import { ERROR_MESSAGES, MESSAGE_STATUS } from '@/domain/constants/aiChat'
 
 beforeEach(() => {
@@ -40,17 +44,63 @@ describe('aiChatStore：发送守卫（§3.11 无供应商/无模型语义化引
     expect(store.isGenerating).toBe(false)
   })
 
-  it('有供应商但无模型：noModel 错误', () => {
+  it('有供应商但无模型：noModel 错误（无模型不自动落——供应商 models 为空）', () => {
     const store = useAiChatStore()
     store.addProvider({
       name: 'OpenAI',
       baseUrl: 'https://api.openai.com/v1',
       apiKey: 'sk-test',
-      models: ['gpt-4o'],
+      models: [],
     })
     store.handleSendMessage('你好')
     expect(store.messages[1].status).toBe(MESSAGE_STATUS.ERROR)
     expect(store.messages[1].versions[0].content).toBe(ERROR_MESSAGES.noModel)
+  })
+})
+
+describe('aiChatStore：配置即可对话（§3.11/INT-1032——供应商带模型自动落首个模型）', () => {
+  it('添加带模型的供应商后自动选首个模型（无需手动选模型即可对话）', async () => {
+    const store = useAiChatStore()
+    const provider = store.addProvider({
+      name: 'OpenAI',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: 'sk-test',
+      models: ['gpt-4o', 'gpt-4o-mini'],
+    })
+    await nextTick()
+    expect(store.config.providerId).toBe(provider.id)
+    expect(store.config.modelId).toBe('gpt-4o')
+  })
+
+  it('手动切换模型后不再覆写（命中校验即停止自动落）', async () => {
+    const store = useAiChatStore()
+    const provider = store.addProvider({
+      name: 'OpenAI',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: 'sk-test',
+      models: ['gpt-4o', 'gpt-4o-mini'],
+    })
+    await nextTick()
+    expect(store.config.modelId).toBe('gpt-4o')
+    store.updateConfig({ providerId: provider.id, modelId: 'gpt-4o-mini' })
+    await nextTick()
+    expect(store.config.modelId).toBe('gpt-4o-mini')
+  })
+
+  it('所选模型已不在清单时自动落到首个模型（供应商模型列表刷新后仍可对话）', async () => {
+    const store = useAiChatStore()
+    const provider = store.addProvider({
+      name: 'OpenAI',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: 'sk-test',
+      models: ['gpt-4o'],
+    })
+    await nextTick()
+    expect(store.config.modelId).toBe('gpt-4o')
+    // 供应商模型列表变化（如 fetchModels 回填）后原所选模型不在清单 → 自动落新首个模型
+    store.updateProvider(provider.id, { models: ['gpt-4o-mini'] })
+    await nextTick()
+    expect(store.config.modelId).toBe('gpt-4o-mini')
   })
 })
 
@@ -70,5 +120,145 @@ describe('aiChatStore：清空与供应商默认（§3.11 默认=首个添加）
     store.addProvider({ name: 'B', baseUrl: 'https://b', apiKey: '', models: [] })
     expect(store.defaultProvider?.id).toBe(first.id)
     expect(first.isDefault).toBe(true)
+  })
+})
+
+/**
+ * 请求体回归（INT-861 审计 P1：buildChatHistory 结尾总会推入当前 user 指令，
+ * 历史数组里再含同一条 user 消息就会重复发送 → 发送/重生成/编辑重发三种入口
+ * 都必须保证当前 user 内容只出现一次）。
+ */
+describe('aiChatStore：发送请求体（当前 user 消息只出现一次，P1 回归）', () => {
+  const REPLY = '已为您处理。'
+  let sendChatCompletionMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    sendChatCompletionMock = vi
+      .spyOn(llmProviderApi, 'sendChatCompletion')
+      .mockResolvedValue(REPLY)
+  })
+
+  afterEach(() => {
+    sendChatCompletionMock.mockRestore()
+  })
+
+  function setupWithProvider(): ReturnType<typeof useAiChatStore> {
+    const store = useAiChatStore()
+    const provider = store.addProvider({
+      name: 'Mock',
+      baseUrl: 'https://mock.example/v1',
+      apiKey: 'sk-test',
+      models: ['mock-model'],
+    })
+    store.updateConfig({ providerId: provider.id, modelId: 'mock-model' })
+    return store
+  }
+
+  /** 抽取请求体里的 user 消息内容（system 忽略） */
+  function requestUserContents(callIndex = 0): string[] {
+    const messages: Array<{ role: string; content: string }> =
+      sendChatCompletionMock.mock.calls[callIndex][0].messages
+    return messages.filter((m) => m.role === 'user').map((m) => m.content)
+  }
+
+  it('发送：请求体当前 user 消息只出现一次', () => {
+    const store = setupWithProvider()
+    store.handleSendMessage('生成一份报告')
+    expect(sendChatCompletionMock).toHaveBeenCalledTimes(1)
+    expect(requestUserContents()).toEqual(['生成一份报告'])
+    store.stopGeneration()
+  })
+
+  it('重新生成：原 user 指令只出现一次（请求体不含重复指令）', () => {
+    const store = setupWithProvider()
+    store.messages = [
+      { key: 'u1', from: 'user', versions: [{ id: 'u1-v1', content: '第一问' }], createdAt: 1 },
+      {
+        key: 'a1',
+        from: 'assistant',
+        versions: [{ id: 'a1-v1', content: '第一答' }],
+        createdAt: 2,
+        status: MESSAGE_STATUS.COMPLETE,
+      },
+    ]
+    store.handleRegenerateMessage('a1')
+    expect(sendChatCompletionMock).toHaveBeenCalledTimes(1)
+    expect(requestUserContents()).toEqual(['第一问'])
+    store.stopGeneration()
+  })
+
+  it('编辑后重发：当前 user 消息只出现一次', () => {
+    const store = setupWithProvider()
+    store.messages = [
+      { key: 'u1', from: 'user', versions: [{ id: 'u1-v1', content: '第一问' }], createdAt: 1 },
+      {
+        key: 'a1',
+        from: 'assistant',
+        versions: [{ id: 'a1-v1', content: '第一答' }],
+        createdAt: 2,
+        status: MESSAGE_STATUS.COMPLETE,
+      },
+    ]
+    store.handleEditMessage('u1')
+    store.applyEdit('第一问（改）', true)
+    expect(sendChatCompletionMock).toHaveBeenCalledTimes(1)
+    expect(requestUserContents()).toEqual(['第一问（改）'])
+    store.stopGeneration()
+  })
+})
+
+/**
+ * 截断重建回归（INT-861 审计 P2：重生成必须在发送前把旧 assistant 回复从会话截断，
+ * 由新回复替换；否则旧答残留并污染后续请求体上下文）。
+ */
+describe('aiChatStore：重新生成截断重建（P2 回归）', () => {
+  const REPLY = '已为您处理。'
+  let sendChatCompletionMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    sendChatCompletionMock = vi
+      .spyOn(llmProviderApi, 'sendChatCompletion')
+      .mockResolvedValue(REPLY)
+  })
+
+  afterEach(() => {
+    sendChatCompletionMock.mockRestore()
+  })
+
+  function setupWithProvider(): ReturnType<typeof useAiChatStore> {
+    const store = useAiChatStore()
+    const provider = store.addProvider({
+      name: 'Mock',
+      baseUrl: 'https://mock.example/v1',
+      apiKey: 'sk-test',
+      models: ['mock-model'],
+    })
+    store.updateConfig({ providerId: provider.id, modelId: 'mock-model' })
+    return store
+  }
+
+  it('重生成后旧答被截断：消息列表回到原 user 指令处 + 新回复 loading（旧答不残留）', () => {
+    const store = setupWithProvider()
+    store.messages = [
+      { key: 'u1', from: 'user', versions: [{ id: 'u1-v1', content: '第一问' }], createdAt: 1 },
+      {
+        key: 'a1',
+        from: 'assistant',
+        versions: [{ id: 'a1-v1', content: '第一答' }],
+        createdAt: 2,
+        status: MESSAGE_STATUS.COMPLETE,
+      },
+    ]
+    store.handleRegenerateMessage('a1')
+    // 截断重建：旧 assistant 回复移除，列表 = [原 user 指令, 新回复 loading]
+    expect(store.messages).toHaveLength(2)
+    expect(store.messages[0].key).toBe('u1')
+    expect(store.messages[0].from).toBe('user')
+    expect(store.messages[1].from).toBe('assistant')
+    expect(store.messages[1].status).toBe(MESSAGE_STATUS.LOADING)
+    expect(store.messages.map((m) => m.versions[m.versions.length - 1]?.content)).not.toContain(
+      '第一答'
+    )
+    store.stopGeneration()
   })
 })
