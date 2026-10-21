@@ -172,7 +172,7 @@ class AccessTokenQueryHandler:
     """
 
     def handle_list(self, query: ListAccessTokensQuery) -> List[AccessTokenAggregate]:
-        """列出用户全部 token（含软删行，掩码由接口层负责）。"""
+        """列出用户未软删 token（掩码由接口层负责）。"""
         return access_token_repository.list_by_user(query.user_id)
 
     def handle_get(self, query: GetAccessTokenQuery) -> AccessTokenAggregate:

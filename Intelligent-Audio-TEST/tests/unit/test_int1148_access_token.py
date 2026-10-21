@@ -299,6 +299,30 @@ class TestAccessTokenCQRS:
             assert plaintext not in t.token_hint  # 仅掩码
             assert t.token_hash  # 实体含哈希（接口层负责掩去）
 
+    def test_list_excludes_soft_deleted(self, handlers, repo):
+        cmd_h, qry_h = handlers
+        from auth_service.application.commands.access_token_commands import (
+            CreateAccessTokenCommand, DeleteAccessTokenCommand,
+        )
+        from auth_service.application.queries.access_token_queries import (
+            ListAccessTokensQuery,
+        )
+        uid = _user_id()
+        # 已软删 token
+        deleted_id, _ = cmd_h.handle_create(CreateAccessTokenCommand(
+            user_id=uid, name='deleted-row'))
+        cmd_h.handle_delete(DeleteAccessTokenCommand(
+            token_id=deleted_id, user_id=uid))
+        # 未软删 token
+        keep_id, _ = cmd_h.handle_create(CreateAccessTokenCommand(
+            user_id=uid, name='keep-row'))
+        # 软删保留行语义：get_by_id 仍可查（鉴权判定用）
+        assert repo.get_by_id(deleted_id, uid).deleted_at is not None
+        ids = {t.id for t in qry_h.handle_list(
+            ListAccessTokensQuery(user_id=uid))}
+        assert keep_id in ids
+        assert deleted_id not in ids  # 软删行从管理列表消失
+
     def test_validate_success_updates_last_used(self, handlers, repo):
         cmd_h, qry_h = handlers
         from auth_service.application.commands.access_token_commands import (
@@ -638,6 +662,23 @@ class TestAccessTokenHttp:
         resp = client.get(f'/api/v1/auth/access-tokens/{token_id}',
                           headers=self._headers())
         assert resp.status_code == 200, resp.text
+
+    def test_http_list_excludes_soft_deleted(self, client):
+        uid = _user_id()
+        created = client.post('/api/v1/auth/access-tokens',
+                              headers=self._headers(),
+                              json={'name': 'del-then-list'}).json()['data']
+        token_id = created['id']
+        resp = client.delete(f'/api/v1/auth/access-tokens/{token_id}',
+                             headers=self._headers())
+        assert resp.status_code == 200, resp.text
+        resp = client.get('/api/v1/auth/access-tokens', headers=self._headers())
+        assert resp.status_code == 200, resp.text
+        data = resp.json()['data']
+        # 软删行不再出现在列表（total 同口径），且未泄露 deleted_at 字段
+        assert all(i['id'] != token_id for i in data['items'])
+        assert data['total'] == len(data['items'])
+        assert all('deleted_at' not in i for i in data['items'])
 
     def test_http_patch_unknown_token(self, client):
         resp = client.patch('/api/v1/auth/access-tokens/999999',
