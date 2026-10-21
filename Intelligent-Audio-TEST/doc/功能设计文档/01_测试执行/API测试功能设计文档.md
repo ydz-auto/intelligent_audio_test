@@ -95,7 +95,7 @@
 | evaluation_service | 5004 | 结果评估（经 EventBus 订阅） |
 | report_service | 5006 | 报告生成 |
 | algorithm_service | 5007 | 算法支撑 |
-| api_test_service | 5008 | 旧适配服务，其职责由 API 适配器注册表承接，P3 下线【适配说明】 |
+| api_adapter_service | 5008 | 旧适配服务，其职责由 API 适配器注册表承接，P3 下线（INT-1176 已删除）【适配说明】 |
 | auth_service | 5009 | 认证鉴权 |
 | audio_service | gRPC:50052 | 混音（RenderAudioStream）、SPL（spl_to_gain）、播放 |
 | device_service | gRPC:50053 | 物理设备管理 |
@@ -160,7 +160,7 @@ sequenceDiagram
 1. `task.type == 'api'` / `task.type != 'api'` 字符串判断（task_dispatch.py L91 / L35）；
 2. `test_type` 请求参数（proto 请求体）；
 3. WebSocket 直连 `ws://localhost:5000/ws/api-test`（改 Socket.IO 房间）；
-4. api_test_service 内嵌适配器 独立适配服务（P3 下线）。
+4. api_adapter_service:5008 独立适配服务（P3 下线，INT-1176 已删除）。
 
 ### 2.5 多副本执行与任务归属（新增）
 
@@ -200,7 +200,7 @@ sequenceDiagram
   - **RealtimeAPIAdapter**：WebSocket 长连接，厂商事件 → `RealtimeEventType` 归一化；
 - 适配器输出统一为 `AdapterOutput`（dataclass，定义见 `07_流式推送与结果获取.md`）；
 - UC-1003 扩展点：新增厂商仅需在注册表登记新 `(protocol, vendor)` 条目（或配置 `adapter_class`），不修改执行器；
-- 【适配说明】承接旧 api_test_service 内嵌适配器 的适配职责，后者 P3 下线。
+- 【适配说明】承接旧 api_adapter_service:5008 的适配职责，后者 P3 下线（INT-1176 已删除）。
 
 ### 3.3 会话执行器
 
@@ -580,7 +580,7 @@ SPLMapping 页面为本轮前端四层的**对称模板**，API 测试页按其�
 | P0 | device_type 路由改造（task_dispatch 枚举化）、DDL（API 四列 / TaskCase 增列 / api_rms_spl_mappings 建表）、三枚举新增、废弃清单落地 | `05_路由与废弃.md` |
 | P1 | 适配器注册表（HttpAPI / HttpStream / Realtime）、RealtimeSessionExecutor、RealtimeEventType、RenderAudioStream RPC | `02_架构设计.md`、`07_流式推送与结果获取.md` |
 | P2 | ApiRmsSplMapping 校准链路、`/api/digital-spl` 路由、SPLMapping 五层模板铺开至 APITest 页 | `08_混音与SPL映射.md` |
-| P3 | api_test_service 内嵌适配器 下线、废弃清单收尾 | `02_架构设计.md` |
+| P3 | api_adapter_service:5008 下线（INT-1176 已执行）、废弃清单收尾 | `02_架构设计.md` |
 
 排期与完整迁移时间线以 `05_路由与废弃.md` / `02_架构设计.md` 为准。
 

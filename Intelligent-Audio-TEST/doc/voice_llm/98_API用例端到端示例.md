@@ -284,7 +284,7 @@ case_config = data['case_config']
 
 rounds = case_config.get('rounds', [])   # 非空 → 进入多轮会话
 
-# 健康检查 api_test_service
+# 健康检查 api_adapter_service（已删除的独立适配服务；INT-1176 后此层内嵌 api_test_service）
 health = requests.get("http://localhost:8000/health")
 # → { status: 'healthy', dialog_sessions: 0, supported_modes: ['streaming', 'dialog'] }
 ```
@@ -330,12 +330,12 @@ Step 1 — 构建请求体
     }
   }
 
-Step 2 — 发送到 api_test_service (端口 8000)
+Step 2 — 发送到 api_adapter_service（已删除独立服务；端口 8000 为其 HTTP 入口）
 
   POST http://localhost:8000/api/v1/tasks
   Body: request_body
 
-  api_test_service 处理:
+  api_adapter_service 处理:
   ├── create_dialog_task(task_id="adapter_task_001", session_id="a1b2c3d4-...")
   ├── SessionStore.create_session(session_id, task_id, context_mode='full')
   ├── HttpAdapter.send_request(
@@ -851,7 +851,7 @@ ExecutionEngine 调度 → APIExecutor.execute_api_case()
   │    │    context = session.get_context() (全量历史)
   │    │    vendor_config = { api_url, headers, timeout }
   │    │
-  │    ├─ POST api_test_service /api/v1/tasks
+  │    ├─ 调用 api_test_service 内嵌适配器 execute（原 api_adapter_service /api/v1/tasks 已删除）
   │    │    ├── SessionStore.get_context → 适配器侧上下文
   │    │    ├── HttpAdapter.send_request → POST 被测厂商 API
   │    │    ├── 被测 API 返回 { asr_text, trans_text, response }

@@ -513,7 +513,7 @@ graph TD
 | backgroundNoise | E2E 轮次顶层的背景噪声配置，含 audioId/deviceIds/spl/loop 属性，loop 控制循环播放 |
 | 统一音频模型 | 干声/噪声/干扰人统一为 `{file, device_index, channel, gain, delay, is_noise}` 格式，play_overlap→play_multi 按设备分组混音；is_noise=True 循环播放且不计入完成判定 |
 | eval_server | 评估微服务（Flask, port 5001），执行 WER/LLM Judge 等评估任务 |
-| api_test_service | API适配微服务（Flask, port 8000），适配不同厂商的 API 协议 |
+| api_adapter_service | API适配微服务（Flask, port 8000，已删除的独立适配服务），适配不同厂商的 API 协议 |
 
 ---
 

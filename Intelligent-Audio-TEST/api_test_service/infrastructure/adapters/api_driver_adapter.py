@@ -227,7 +227,9 @@ class ApiDriverAdapter(ApiVendorAdapter):
         merged_headers = {**self._merge_headers(), **(headers or {}),
                           'X-Session-Id': session_id}
         call_meta = {**self.meta, **self.case_config}
-        effective_timeout = timeout if timeout is not None else 30
+        # 显式超时优先（调用方恒传 session.session_timeout，默认 60）；兜底对齐
+        # HttpAdapter 原默认 60——不得用 30 击杀 60s 慢调用（INT-54 deadline 回归）
+        effective_timeout = timeout if timeout is not None else 60
         proxy_type = getattr(self.api_config, 'proxy_type', None)
         proxy_url = getattr(self.api_config, 'proxy_url', None)
 

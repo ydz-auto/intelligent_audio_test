@@ -411,7 +411,7 @@ class APISessionExecutor:
                 return self._send_via_adapter(
                     task_id, algorithm_type, session, round_number, total_rounds,
                     rendered_headers, rendered_body, api_specific_config, meta,
-                    api_config, timeout, input_text, input_type, start_time,
+                    api_config, input_text, input_type, start_time,
                     input_audio_path=context_data.get('input_audio', ''),
                     case_api_key=case_api_key,
                 )
@@ -439,7 +439,7 @@ class APISessionExecutor:
 
     def _send_via_adapter(self, task_id, algorithm_type, session, round_number, total_rounds,
                           rendered_headers, rendered_body, api_specific_config, meta,
-                          api_config, timeout, input_text, input_type, start_time,
+                          api_config, input_text, input_type, start_time,
                           input_audio_path='', case_api_key=''):
         """通过内嵌适配器 execute 发送请求（INT-1169/1176 迁移）。
 
@@ -510,16 +510,28 @@ class APISessionExecutor:
                        or execute_result.get('trans')
                        or execute_result.get('output', ''))
 
-        return {
+        success = execute_result.get('success', True)
+        round_result = {
             'round_number': round_number, 'input': input_text, 'input_type': input_type,
             'output': output_text,
             'output_audio_path': (execute_result.get('raw_response') or {})
                 .get('output_audio_path'),
             'latency': round(latency, 3),
             'response_metrics': {'latency': round(latency, 3)},
-            'success': execute_result.get('success', True),
+            'success': success,
             'raw_response': execute_result,
         }
+        if not success:
+            # HTTP 失败/超时被 api_client 吞为 success=False + error（对齐迁移前
+            # HttpAdapter.raise_for_status 抛 + servicer except → SendRoundResponse
+            # success=False → ACL RuntimeError → 失败轮含 error 字段语义）。
+            # _run_rounds 仅以 error 键判失败，缺此映射会把失败轮计入成功路径、
+            # all_rounds_success=True、用例终态 COMPLETED 且照提评估（INT-1176 审计缺陷 A）。
+            round_result['error'] = (
+                execute_result.get('error')
+                or (f"HTTP {execute_result.get('status_code')}"
+                    if execute_result.get('status_code') else '请求失败'))
+        return round_result
 
     def _send_direct(self, task_id, round_number, api_config, meta, rendered_headers,
                      rendered_body, timeout, input_text, input_type, start_time):

@@ -193,7 +193,7 @@ def _plan_path(project: str) -> str:
     return os.path.join(PLAN_DIR, f'{project}.json')
 
 
-def _save_plan(project, offset, auth_mode, db, gateway_http, frontend, postgres, adapter_http):
+def _save_plan(project, offset, auth_mode, db, gateway_http, frontend, postgres):
     os.makedirs(PLAN_DIR, exist_ok=True)
     plan = {
         'project': project,
@@ -203,7 +203,6 @@ def _save_plan(project, offset, auth_mode, db, gateway_http, frontend, postgres,
         'gateway_http': gateway_http,
         'frontend': frontend,
         'postgres': postgres,
-        'adapter_http': adapter_http,
         'created_at': time.strftime('%Y-%m-%dT%H:%M:%S'),
     }
     with open(_plan_path(project), 'w', encoding='utf-8') as fh:
@@ -391,7 +390,7 @@ def cmd_smoke(args):
         '/smoke.py',
         '--api-base', 'http://api_gateway:5000/api/v1',
         '--health-url', 'http://api_gateway:5000/health',
-        '--adapter-url', 'http://mock_dut_api:5096',
+        '--dut-url', 'http://mock_dut_api:5096',
         '--audio-dir', '/data',
     ]
     if args.username:

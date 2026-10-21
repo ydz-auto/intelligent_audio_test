@@ -57,7 +57,7 @@
 | evaluation_service | 5004 / 51091 | 同左 | |
 | report_service | 5006 / 51068 | 同左 | |
 | algorithm_service | 5007 / 51067 | 同左 | |
-| api_test_service | 5008 / 51081 | 同左 | |
+| api_adapter_service | 5008 / 51081 | 同左 | 已删除的独立适配服务（INT-1176，能力内嵌 api_test_service） |
 | auth_service | 5009 / 51069 | 同左 | |
 | transfer_agent | 5010 / 51101 | 同左 | B 区实例按需 `TRANSFER_ZONE=B` 扩展 |
 | audio_service | 50052 | 50052 | gRPC-only，TCP 探测 |

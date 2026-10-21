@@ -196,7 +196,7 @@ case_config (TestCase.config 列，JSON)
 | `output_types` | API 输出类型列表 | `["audio", "text", "video", "image"]` 的子集 | （新增列） |
 
 > 【适配说明】`api_models.py` 现有列仅有 name / vendor / api_url / description / status / meta / algorithm_type / max_process / max_timeout / max_audio_duration / health_score / api_endpoints 等，**缺 `device_type` / `adapter_class` / `audio_config` / `output_types` 列，均标（新增）**；`rms_spl_mapping_id` 随 `api_rms_spl_mappings` 聚合（UC-0902）一并新增。
-> **adapter 选择逻辑**：`APIAdapterFactory.get_adapter()` 优先按 `adapter_class` 指定类名创建，未指定时按 `(protocol, vendor)` 自动匹配。`APIAdapterFactory` 现位于 `api_test_service/adapters/factory.py`；按 P3 规划 api_test_service 内嵌适配器 下线并入 api_test_service，注册表随迁（见 UC-1003）。
+> **adapter 选择逻辑**：`APIAdapterFactory.get_adapter()` 优先按 `adapter_class` 指定类名创建，未指定时按 `(protocol, vendor)` 自动匹配。`APIAdapterFactory` 原位于 `api_adapter_service/adapters/factory.py`（INT-1176 已删除）；按 P3 规划 api_adapter_service 下线并入 api_test_service，注册表随迁（见 UC-1003）。
 
 ## 0.6 多模态输出
 
@@ -625,7 +625,7 @@ Postcondition: 前端实时获取逐帧结果，评估取最终聚合结果，�
 
 ### UC-1003：新增厂商 Realtime 适配器
 
-- **落位服务**：api_test_service:5003（适配器注册表）。`APIAdapterFactory` 现位于 `api_test_service/adapters/factory.py`，【适配说明：P3 阶段 api_test_service 内嵌适配器 下线并入 api_test_service，注册表与 adapter 实现随迁】
+- **落位服务**：api_test_service:5003（适配器注册表）。`APIAdapterFactory` 原位于 `api_adapter_service/adapters/factory.py`（INT-1176 已删除），【适配说明：P3 阶段 api_adapter_service 下线并入 api_test_service（已执行），注册表与 adapter 实现随迁】
 - **入口**：代码扩展（`APIAdapterFactory` 注册表注册），无 HTTP/gRPC 新入口；生效入口为 UC-0901 的 `adapter_class` 配置
 - **领域事件**：—（开发期变更）
 
@@ -715,7 +715,7 @@ Postcondition: 新厂商适配器注册即生效，UC-0901 下拉可选，执行
 | 9 | API 表 | 单体共享模型 | `apis` 归 api_test_service（api_models.py），device_type/adapter_class/audio_config/output_types 列（新增） |
 | 10 | SPL 映射 | 与设备 SPL 混同 | `ApiRmsSplMapping` 聚合（表 api_rms_spl_mappings，新增）按 DDD 五层落位 api_test_service + gRPC `ApiRmsSplConfigService`（新增）+ `/api/digital-spl` 蓝图（新增）；校准互斥 Redis 锁 |
 | 11 | 前端 | 单体组件直调 | DDD 四层（views/components → composables/store(Ports) → domain/model+enums → api/adapters/dto/http）；SPLMapping 五层对称模板；enums.ts 补 DeviceType/OutputType/CalibrationStatus（新增） |
-| 12 | 适配器归属 | api_test_service 独立服务(5008) | P3 下线并入 api_test_service，APIAdapterFactory 注册表随迁 |
+| 12 | 适配器归属 | api_adapter_service 独立服务(5008) | P3 下线并入 api_test_service，APIAdapterFactory 注册表随迁 |
 | 13 | 密钥管理 | 单体内配置 | OpenAI 密钥链：case_config → meta → env OPENAI_API_KEY 逐级回退，日志零明文 |
 | 14 | 枚举与配置 | 局部枚举、少量魔法值 | 枚举统一入 shared/models/common_enums.py + shared/utils/status_constants.py；前端 frontend/src/domain/enums.ts；阈值/频道名/锁 TTL 全配置化，拒绝魔法数字/硬编码 |
 | 15 | 执行器基座 | 各 executor 自行实现 | 统一 BaseExecutor（shared/infrastructure/base_executor/_base.py，五 mixin）+ worker_instance_id |

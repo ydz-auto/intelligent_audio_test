@@ -332,7 +332,7 @@ class TestAudioInputWiring:
             round_number=1, total_rounds=1,
             rendered_headers={}, rendered_body={},
             api_specific_config={}, meta={'vendor_adapter': 'mock'},
-            api_config=api_config, timeout=20,
+            api_config=api_config,
             input_text='', input_type='audio', start_time=0.0,
             input_audio_path='local://audios/31/1/rendered/round_1.wav')
 
@@ -359,7 +359,7 @@ class TestAudioInputWiring:
                 rendered_headers={}, rendered_body={},
                 api_specific_config={}, meta={},
                 api_config=SimpleNamespace(id=1, meta={}),
-                timeout=20, input_text='', input_type='audio',
+                input_text='', input_type='audio',
                 start_time=0.0, input_audio_path='')
 
     def test_round_request_wires_context_audio(self, monkeypatch):

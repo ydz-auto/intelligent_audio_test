@@ -340,7 +340,8 @@ def int321_infra(api_client):
         created['playback_id'] = pb.get('id')
         assert created['playback_id'], f'RME 播放通道登记失败: {pb}'
 
-        # 4. API 配置（指向栈内 api_adapter_service，vendor=mock 本地对话处理）
+        # 4. API 配置（指向栈内 DUT mock mock_dut_api（:5096），原 api_adapter_service
+        #    已删除、单轮协议由 mock_dut_api 承接，vendor=mock 本地对话处理）
         #    注：api_test_service 侧校验 meta 必须为非空 dict（`not data.get('meta')`）
         #    幂等：按名称查残留复用（上一轮异常退出时 teardown 未跑）
         api_payload = {

@@ -87,7 +87,7 @@ def _login(client, base, username, password):
     return token
 
 
-def _create_mock_api_config(client, base, headers, adapter_url=None):
+def _create_mock_api_config(client, base, headers, dut_url=None):
     """mock 适配器 API 配置（adapter_class=MockDialogAdapter，零外部依赖）。"""
     payload = {
         'name': f'INT993_smoke_api_{int(time.time())}',
@@ -98,7 +98,7 @@ def _create_mock_api_config(client, base, headers, adapter_url=None):
         'adapter_class': 'MockDialogAdapter',
         # api_url = 本栈 DUT mock 容器网络地址——api_test 执行健康检查/调用
         # 链以它作 base URL（容器形态下缺省空串 → "/health" 无 scheme 必败）
-        'api_url': adapter_url or 'http://mock_dut_api:5096',
+        'api_url': dut_url or 'http://mock_dut_api:5096',
         'status': 'online',
         'meta': {'purpose': 'int993-iso-smoke', 'mode': 'dialog'},
     }
@@ -337,7 +337,7 @@ def main():
     ap = argparse.ArgumentParser(description='INT-597/993 隔离栈验收冒烟（登录→用例→任务→报告）')
     ap.add_argument('--api-base', default='http://api_gateway:5000/api/v1')
     ap.add_argument('--health-url', default='http://api_gateway:5000/health')
-    ap.add_argument('--adapter-url', default='http://mock_dut_api:5096')
+    ap.add_argument('--dut-url', default='http://mock_dut_api:5096')
     ap.add_argument('--audio-dir', default='/data')
     ap.add_argument('--username', default='dev_user')
     ap.add_argument('--password', default='dev_password')
@@ -359,7 +359,7 @@ def main():
         headers = _auth_headers(token)
 
         # 2) API 配置 + 维度解析
-        api_id = _create_mock_api_config(client, args.api_base, headers, args.adapter_url)
+        api_id = _create_mock_api_config(client, args.api_base, headers, args.dut_url)
         dim_id, dim_name = _resolve_turn_eval_dimension(client, args.api_base, headers)
         _dump_evidence('00_dimension', {'dim_id': dim_id, 'dim_name': dim_name})
 

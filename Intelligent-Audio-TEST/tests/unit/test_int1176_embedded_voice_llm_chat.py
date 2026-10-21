@@ -162,7 +162,7 @@ class TestSendViaAdapterResultMapping:
             task_id=31, algorithm_type='voice_llm', session=_FakeSession(),
             round_number=1, total_rounds=1, rendered_headers={}, rendered_body={},
             api_specific_config={}, meta={'vendor_adapter': 'mock'},
-            api_config=api_config, timeout=20, input_text='hi',
+            api_config=api_config, input_text='hi',
             input_type='text', start_time=0.0, input_audio_path='')
         assert set(result.keys()) == {
             'round_number', 'input', 'input_type', 'output',
@@ -181,11 +181,117 @@ class TestSendViaAdapterResultMapping:
                 task_id=31, algorithm_type='voice_llm', session=_FakeSession(),
                 round_number=1, total_rounds=1, rendered_headers={},
                 rendered_body={}, api_specific_config={}, meta={},
-                api_config=api_config, timeout=20, input_text='',
+                api_config=api_config, input_text='',
                 input_type='audio', start_time=0.0, input_audio_path='')
 
     def test_round_number_sort_key(self):
         assert exmod.APISessionExecutor._round_sort_key('3') == 3
+
+
+# ── 3. HTTP 失败 / 超时路径（INT-1176 审计缺陷 A 回归） ─────────────
+# 迁移前 HttpAdapter.raise_for_status 抛 + servicer except → SendRoundResponse
+# success=False → ACL RuntimeError → 失败轮含 error 字段 → all_rounds_success=False、
+# 用例终态 FAILED。迁移后 api_client.call 吞异常为 success=False + error，须由
+# _send_via_adapter 映射进 round dict 的 error 键，否则 _run_rounds 误判成功轮。
+
+class TestFailureAndTimeoutPath:
+    def _executor(self):
+        ex = exmod.APISessionExecutor.__new__(exmod.APISessionExecutor)
+        ex._executor = SimpleNamespace(_log=lambda *a, **k: None)
+        return ex
+
+    def test_execute_voice_llm_chat_http_500_not_success(self):
+        """api_client.call 返回 500 → execute 成功字段为 False 且不静默抛异常。"""
+        cfg = _driver_cfg()
+        adapter = ada.ApiDriverAdapter(cfg, case_config={})
+        captured = {}
+
+        def _fake_call(**kwargs):
+            captured.update(kwargs)
+            return {'status_code': 500, 'latency': 30,
+                    'raw_response': '{"error":"boom"}',
+                    'json': {}, 'error': None}
+
+        with mock.patch.object(ada.api_client, 'call', _fake_call):
+            result = adapter.execute_voice_llm_chat(
+                session_id='s-1', input_type='text', input_data='你好',
+                round_number=1, total_rounds=1, timeout=10)
+        assert result['success'] is False
+        assert result['error'] is None  # api_client 不吞 500 为 error，靠 status_code 判失败
+
+    def test_execute_voice_llm_chat_timeout_not_success(self):
+        """api_client.call 超时（status 0 + error）→ execute 成功字段为 False。"""
+        cfg = _driver_cfg()
+        adapter = ada.ApiDriverAdapter(cfg, case_config={})
+
+        def _fake_call(**kwargs):
+            return {'status_code': 0, 'latency': 0, 'raw_response': '',
+                    'json': {}, 'error': 'ReadTimeoutError'}
+
+        with mock.patch.object(ada.api_client, 'call', _fake_call):
+            result = adapter.execute_voice_llm_chat(
+                session_id='s-1', input_type='text', input_data='你好',
+                round_number=1, total_rounds=1, timeout=10)
+        assert result['success'] is False
+        assert result['error'] == 'ReadTimeoutError'
+
+    def _send_with_fake_driver(self, execute_result):
+        ex = self._executor()
+        api_config = _driver_cfg(meta={'vendor_adapter': 'mock'})
+        driver = SimpleNamespace(execute_voice_llm_chat=lambda **kw: execute_result)
+        with mock.patch.object(vendor_adapter_registry, 'create_from_config',
+                               return_value=driver):
+            return ex._send_via_adapter(
+                task_id=31, algorithm_type='voice_llm', session=_FakeSession(),
+                round_number=1, total_rounds=1, rendered_headers={}, rendered_body={},
+                api_specific_config={}, meta={'vendor_adapter': 'mock'},
+                api_config=api_config, input_text='hi',
+                input_type='text', start_time=0.0, input_audio_path='')
+
+    def test_http_500_maps_error_into_round(self):
+        """execute success=False（HTTP 500）→ round dict 带 error，_run_rounds 判失败。"""
+        result = self._send_with_fake_driver({
+            'success': False, 'status_code': 500, 'error': None,
+            'latency': 30, 'raw_response': {'error': 'boom'}, 'json': {},
+            'asr': '', 'trans': '', 'output': ''})
+        assert result['success'] is False
+        assert result['error'] == 'HTTP 500'
+
+    def test_timeout_maps_error_into_round(self):
+        """execute success=False（timeout）→ round dict 带 error 原文。"""
+        result = self._send_with_fake_driver({
+            'success': False, 'status_code': 0, 'error': 'ReadTimeoutError',
+            'latency': 0, 'raw_response': '', 'json': {},
+            'asr': '', 'trans': '', 'output': ''})
+        assert result['success'] is False
+        assert result['error'] == 'ReadTimeoutError'
+
+    def test_biz_error_preferred_over_status(self):
+        """业务错误文本优先于状态码兜底。"""
+        result = self._send_with_fake_driver({
+            'success': False, 'status_code': 500, 'error': 'BizError[7]: oops',
+            'latency': 30, 'raw_response': '', 'json': {},
+            'asr': '', 'trans': '', 'output': ''})
+        assert result['error'] == 'BizError[7]: oops'
+
+    def test_run_rounds_failed_round_breaks_all_success(self):
+        """失败轮（error 键存在）→ all_rounds_success=False（用例终态 FAILED 前置）。"""
+        ex = self._executor()
+        ex._executor._handle_control = lambda *a, **k: None
+        ex._executor.execution_engine = SimpleNamespace(
+            update_case_round_progress=lambda *a, **k: None)
+        with mock.patch.object(
+                ex, '_send_round_request',
+                return_value={'round_number': 1, 'input': 'hi', 'output': '',
+                              'error': 'HTTP 500', 'success': False}):
+            round_results = []
+            ok = ex._run_rounds(
+                task_id=31, tc_rel_id=1, rounds=[{'round_number': 1}],
+                api_config=_driver_cfg(), api_specific_config={}, session=_FakeSession(),
+                case_algorithm_params={}, algorithm_type='voice_llm',
+                round_results=round_results, case_config={})
+        assert ok is False
+        assert round_results[0]['error'] == 'HTTP 500'
 
 
 # ── 3. mock 行为 + adapter_class 通道 ───────────────────────────────
