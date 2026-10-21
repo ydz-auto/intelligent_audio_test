@@ -72,7 +72,7 @@ export const REFERENCE_PARAM_MERGE_OPTIONS = [
 
 /** 转换类型枚举（§6.5 + V9.7.10 MappingEditor transformOptions；API 映射额外支持 base64） */
 export const TRANSFORM_TYPE_OPTIONS = [
-  { value: 'none', label: '不转换' },
+  { value: 'none', label: '无转换' },
   { value: 'uppercase', label: '转大写' },
   { value: 'lowercase', label: '转小写' },
   { value: 'json_parse', label: 'JSON解析' },

@@ -63,8 +63,18 @@ export type ReferenceParam = {
   helpText: string | null
 }
 
-/** 参数来源（param_mappings.source：case/case_config/reference/device/api；设备/API 映射恒 case） */
-export type MappingSource = 'case' | 'case_config' | 'reference' | 'device' | 'api'
+/**
+ * 参数来源（param_mappings.source：case/case_config/reference/device/api；设备/API 映射恒 case）。
+ * 已知五值 + 未知字符串透传：存量脏数据（如 history source='evaluation'）读侧原样保留、
+ * 写侧原样提交，避免读时丢弃 → 保存时把 DB 行重写（后端 upsert 自然键含 source）。
+ */
+export type MappingSource =
+  | 'case'
+  | 'case_config'
+  | 'reference'
+  | 'device'
+  | 'api'
+  | (string & {})
 
 /** 转换类型（transform_type：none/uppercase/lowercase/json_parse/rttm_to_obj/stm_to_obj；API 映射另含 base64） */
 export type MappingTransformType =

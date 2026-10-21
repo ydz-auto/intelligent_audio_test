@@ -161,4 +161,34 @@ describe('form-converters', () => {
     expect(input.mappings.device).toHaveLength(1)
     expect(input.associatedDimensions[0]).toMatchObject({ dimensionId: '3' })
   })
+
+  it('存量未知 source（evaluation）toFormValues 不回退 case、toSaveInput 原样保留（INT-1160 返工 P3）', () => {
+    __resetFormKeyCounter()
+    const withDirty: AlgorithmDefinition = {
+      ...SAMPLE,
+      mappings: {
+        ...SAMPLE.mappings,
+        evaluation: [
+          {
+            id: 910,
+            source: 'evaluation',
+            sourceDirection: 'output',
+            sourceParam: 'wer',
+            paramName: '字错率',
+            dimensionId: 26,
+            dimensionName: '',
+            targetParam: '',
+            targetParamName: null,
+            transformType: 'none',
+          },
+        ],
+      },
+    }
+    const values = toFormValues(withDirty)
+    expect(values.mappings.evaluation[0].source).toBe('evaluation')
+    const input = toSaveInput(values)
+    expect(
+      (input.mappings.evaluation[0] as Record<string, unknown>).source
+    ).toBe('evaluation')
+  })
 })

@@ -80,7 +80,7 @@ export function toFormValues(algorithm: AlgorithmDefinition): AlgorithmFormValue
       device: algorithm.mappings.device.map<MappingRow>((mapping) => ({
         key: nextKey('md'),
         id: mapping.id,
-        source: mapping.source ?? 'case',
+        source: mapping.source ?? '',
         sourceDirection: mapping.sourceDirection ?? 'output',
         sourceParam: mapping.sourceParam,
         paramName: mapping.paramName ?? '',
@@ -91,7 +91,7 @@ export function toFormValues(algorithm: AlgorithmDefinition): AlgorithmFormValue
       api: algorithm.mappings.api.map<MappingRow>((mapping) => ({
         key: nextKey('ma'),
         id: mapping.id,
-        source: mapping.source ?? 'case',
+        source: mapping.source ?? '',
         sourceDirection: mapping.sourceDirection ?? 'output',
         sourceParam: mapping.sourceParam,
         paramName: mapping.paramName ?? '',
@@ -102,7 +102,7 @@ export function toFormValues(algorithm: AlgorithmDefinition): AlgorithmFormValue
       evaluation: algorithm.mappings.evaluation.map<MappingRow>((mapping) => ({
         key: nextKey('me'),
         id: mapping.id,
-        source: mapping.source ?? 'case',
+        source: mapping.source ?? '',
         sourceDirection: mapping.sourceDirection ?? 'output',
         sourceParam: mapping.sourceParam,
         paramName: mapping.paramName ?? '',

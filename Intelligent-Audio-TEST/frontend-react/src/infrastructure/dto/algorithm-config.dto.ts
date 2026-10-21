@@ -240,7 +240,9 @@ export function toParamMapping(raw: unknown): ParamMapping {
     source === 'device' ||
     source === 'api'
       ? source
-      : null
+      : typeof source === 'string' && source.length > 0
+        ? source
+        : null
   return {
     id: num(r.id) ?? 0,
     source: parsedSource,
@@ -490,7 +492,9 @@ function toMappingItemDto(
         r.source === 'device' ||
         r.source === 'api'
         ? r.source
-        : 'case'
+        : r.source !== undefined && r.source !== ''
+          ? r.source
+          : 'case'
       : section
   const dimensionId =
     r.dimensionId !== undefined && r.dimensionId !== '' && r.dimensionId != null
