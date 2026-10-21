@@ -21,6 +21,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import type { AlgorithmDefinition, DeviceApiParam } from '@/domain/models/algorithmConfig'
+import type { Dimension } from '@/domain/models/evaluationDimension'
 import { AlgorithmStatusBadge } from '@/features/algorithm-config/components/algorithm-status-badge'
 import {
   CASE_PARAM_TYPE_OPTIONS,
@@ -33,6 +34,8 @@ export type AlgorithmDetailDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   algorithm: AlgorithmDefinition | null
+  /** 评估维度全量（§7.2 静态表 evaluation 列解析 dimension_id → 名称，避免裸 id） */
+  dimensions?: Dimension[]
 }
 
 function labelOf(
@@ -233,7 +236,7 @@ export function AlgorithmDetailDialog(props: AlgorithmDetailDialogProps) {
                     <MappingRows mappings={algorithm.mappings.api} empty='无 API 参数映射' />
                   </TabsContent>
                   <TabsContent value='evaluation' className='pt-2'>
-                    <MappingRows mappings={algorithm.mappings.evaluation} empty='无评估参数映射' />
+                    <MappingRows mappings={algorithm.mappings.evaluation} empty='无评估参数映射' evaluation dimensions={props.dimensions} />
                   </TabsContent>
                 </Tabs>
               </section>
@@ -274,9 +277,15 @@ export function AlgorithmDetailDialog(props: AlgorithmDetailDialogProps) {
 function MappingRows({
   mappings,
   empty,
+  evaluation = false,
+  dimensions = [],
 }: {
   mappings: AlgorithmDefinition['mappings']['device']
   empty: string
+  /** evaluation 行带 来源/目标评估维度/维度内目标参数 列（INT-1160 列口径对齐 V9.7.10） */
+  evaluation?: boolean
+  /** 评估维度全量（evaluation 列 dimension_id → 名称解析；缺省显示 维度(id) 兜底） */
+  dimensions?: Dimension[]
 }) {
   if (mappings.length === 0) {
     return (
@@ -286,16 +295,56 @@ function MappingRows({
     )
   }
   return (
-    <StaticTable headers={['源参数', '目标参数', '转换类型']}>
-      {mappings.map((mapping) => (
-        <tr key={mapping.id} className='border-border/50 border-b last:border-b-0'>
-          <td className='px-3 py-2 font-mono text-xs'>{mapping.sourceParam}</td>
-          <td className='px-3 py-2 font-mono text-xs'>{mapping.targetParam}</td>
-          <td className='px-3 py-2 text-xs'>
-            {labelOf(TRANSFORM_TYPE_OPTIONS, mapping.transformType)}
-          </td>
-        </tr>
-      ))}
+    <StaticTable
+      headers={
+        evaluation
+          ? ['来源', '源参数代码', '源参数名称', '目标评估维度', '目标参数', '转换']
+          : ['源参数代码', '源参数名称', '目标参数代码', '目标参数名称', '转换']
+      }
+    >
+      {mappings.map((mapping) => {
+        const dimName =
+          mapping.dimensionName ||
+          (mapping.dimensionId != null
+            ? dimensions.find((d) => String(d.id) === String(mapping.dimensionId))?.name ||
+              `维度(${mapping.dimensionId})`
+            : '')
+        return (
+          <tr key={mapping.id || `${mapping.source}-${mapping.sourceParam}-${mapping.targetParam}-${mapping.dimensionId ?? ''}`} className='border-border/50 border-b last:border-b-0'>
+            {evaluation && (
+              <td className='px-3 py-2 text-xs'>
+                {labelOf(
+                  [
+                    { value: 'case', label: '用例参数' },
+                    { value: 'case_config', label: '用例配置' },
+                    { value: 'reference', label: '参考参数' },
+                    { value: 'device', label: '设备输出' },
+                    { value: 'api', label: 'API输出' },
+                  ],
+                  mapping.source ?? 'case'
+                )}
+              </td>
+            )}
+            <td className='px-3 py-2 font-mono text-xs'>{mapping.sourceParam || '—'}</td>
+            <td className='px-3 py-2 text-xs'>{mapping.paramName || '—'}</td>
+            {evaluation && (
+              <>
+                <td className='px-3 py-2 text-xs'>{dimName || '—'}</td>
+                <td className='px-3 py-2 font-mono text-xs'>{mapping.targetParam || '—'}</td>
+              </>
+            )}
+            {!evaluation && (
+              <td className='px-3 py-2 font-mono text-xs'>{mapping.targetParam || '—'}</td>
+            )}
+            {!evaluation && (
+              <td className='px-3 py-2 text-xs'>{mapping.targetParamName || '—'}</td>
+            )}
+            <td className='px-3 py-2 text-xs'>
+              {labelOf(TRANSFORM_TYPE_OPTIONS, mapping.transformType)}
+            </td>
+          </tr>
+        )
+      })}
     </StaticTable>
   )
 }

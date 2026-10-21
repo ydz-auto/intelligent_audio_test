@@ -10,6 +10,7 @@ import type {
   AlgorithmMappings,
   CaseParam,
   DeviceApiParam,
+  DimensionParam,
   DimensionRelation,
   ParamMapping,
   ReferenceParam,
@@ -109,6 +110,22 @@ export interface DimensionOptionsResultDto {
   }>
 }
 
+/** GET /algorithm/dimension-params/{dimension_id}（评估维度参数列表项） */
+export interface DimensionParamDto {
+  id?: number | null
+  dimension_id?: number | null
+  dimension_name?: string | null
+  code?: string | null
+  name?: string | null
+  label?: string | null
+  field_type?: string | null
+  required?: boolean | null
+  default_value?: unknown
+  help_text?: string | null
+  ui_order?: number | null
+  pass_threshold?: number | null
+}
+
 /* ───────────────────────── 读侧：snake_case → camelCase Domain ───────────────────────── */
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -196,7 +213,13 @@ export function toReferenceParam(raw: unknown): ReferenceParam {
   }
 }
 
-/** 参数映射列表项 → Domain ParamMapping（evaluation 项无 dimension_name 时回落 target_param） */
+/**
+ * 参数映射列表项 → Domain ParamMapping。
+ * 读侧把后端全字段映射进 camelCase Domain（INT-1160 返工）：id / source / source_direction /
+ * source_param / param_name / dimension_id / dimension_name / target_param / transform_type；
+ * param_name / target_param_name 后端 _serialize_mappings 不下发，由前端按 code 查参数表兜底。
+ * evaluation 行 target_param 兼容存量维度名形态与维度内目标参数两种取值。
+ */
 export function toParamMapping(raw: unknown): ParamMapping {
   const r = asRecord(raw)
   const transform = r.transform_type
@@ -204,14 +227,30 @@ export function toParamMapping(raw: unknown): ParamMapping {
     transform === 'uppercase' ||
     transform === 'lowercase' ||
     transform === 'json_parse' ||
+    transform === 'rttm_to_obj' ||
+    transform === 'stm_to_obj' ||
     transform === 'base64'
       ? transform
       : 'none'
-  const target = str(r.dimension_name) || str(r.target_param)
+  const source = r.source
+  const parsedSource: ParamMapping['source'] =
+    source === 'case' ||
+    source === 'case_config' ||
+    source === 'reference' ||
+    source === 'device' ||
+    source === 'api'
+      ? source
+      : null
   return {
     id: num(r.id) ?? 0,
+    source: parsedSource,
+    sourceDirection: nullableStr(r.source_direction),
     sourceParam: str(r.source_param),
-    targetParam: target,
+    paramName: nullableStr(r.param_name),
+    dimensionId: num(r.dimension_id),
+    dimensionName: nullableStr(r.dimension_name),
+    targetParam: str(r.target_param),
+    targetParamName: nullableStr(r.target_param_name),
     transformType,
   }
 }
@@ -225,6 +264,26 @@ export function toDimensionRelation(raw: unknown): DimensionRelation {
     dimensionName: nullableStr(r.dimension_name) ?? '',
     weight: typeof r.weight === 'number' ? r.weight : 1,
     isDefault: bool(r.is_default),
+  }
+}
+
+/** 评估维度参数列表项 → Domain DimensionParam（evaluation 映射目标参数选项） */
+export function toDimensionParam(raw: unknown): DimensionParam {
+  const r = asRecord(raw)
+  return {
+    id: num(r.id) ?? 0,
+    dimensionId: num(r.dimension_id) ?? 0,
+    dimensionName: nullableStr(r.dimension_name),
+    // 实测维度参数响应同时下发 code/param_code（name/param_name），双键兜底
+    code: str(r.code) || str(r.param_code),
+    name: nullableStr(r.name) || nullableStr(r.param_name),
+    label: nullableStr(r.label),
+    fieldType: nullableStr(r.field_type),
+    required: bool(r.required),
+    defaultValue: r.default_value,
+    helpText: nullableStr(r.help_text),
+    uiOrder: num(r.ui_order),
+    passThreshold: num(r.pass_threshold),
   }
 }
 
@@ -403,25 +462,48 @@ function toReferenceParamItemDto(row: Row): Row {
 }
 
 /** 参数映射行（MappingRow camelCase）→ mappings 列表项；
- *  evaluation 行 targetParam 存维度名，经 dimensionIdByName 解析为 dimension_id（后端维度主键对账） */
-function toMappingItemDto(row: Row, dimensionIdByName?: Map<string, number>): Row {
+ *  写侧把 source / source_direction / dimension_id 原样提交（INT-1160 返工）：
+ *  evaluation 行 dimension_id 从 row.dimensionId（数字）优先、维度名对账兜底；
+ *  target_param 兼容维度内目标参数代码与存量维度名两种形态。
+ *  设备/API 节 source = 节类型（device/api，后端按节派生）；评估节 source = 行来源（缺省 case）。 */
+function toMappingItemDto(
+  row: Row,
+  section: 'device' | 'api' | 'evaluation',
+  dimensionIdByName?: Map<string, number>
+): Row {
   const r = row
   const transform = r.transformType
   const transformType =
     transform === 'uppercase' ||
     transform === 'lowercase' ||
     transform === 'json_parse' ||
+    transform === 'rttm_to_obj' ||
+    transform === 'stm_to_obj' ||
     transform === 'base64'
       ? transform
       : 'none'
-  const targetParam = str(r.targetParam)
-  const dimensionId = dimensionIdByName?.get(targetParam)
+  const source =
+    section === 'evaluation'
+      ? r.source === 'case' ||
+        r.source === 'case_config' ||
+        r.source === 'reference' ||
+        r.source === 'device' ||
+        r.source === 'api'
+        ? r.source
+        : 'case'
+      : section
+  const dimensionId =
+    r.dimensionId !== undefined && r.dimensionId !== '' && r.dimensionId != null
+      ? Number(r.dimensionId)
+      : dimensionIdByName?.get(str(r.dimensionName) || str(r.targetParam))
   const item: Row = {
+    source,
     source_param: str(r.sourceParam),
-    target_param: targetParam,
+    source_direction: str(r.sourceDirection) || 'output',
+    target_param: str(r.targetParam),
     transform_type: transformType,
   }
-  if (dimensionId != null) item.dimension_id = dimensionId
+  if (dimensionId != null && Number.isFinite(dimensionId)) item.dimension_id = dimensionId
   return item
 }
 
@@ -466,10 +548,10 @@ export function toAlgorithmDefinitionDto(
     case_params: (input.caseParams ?? []).map(toCaseParamItemDto),
     reference_params: (input.referenceParams ?? []).map(toReferenceParamItemDto),
     mappings: {
-      device: (input.mappings?.device ?? []).map((row) => toMappingItemDto(row)),
-      api: (input.mappings?.api ?? []).map((row) => toMappingItemDto(row)),
+      device: (input.mappings?.device ?? []).map((row) => toMappingItemDto(row, 'device')),
+      api: (input.mappings?.api ?? []).map((row) => toMappingItemDto(row, 'api')),
       evaluation: (input.mappings?.evaluation ?? []).map((row) =>
-        toMappingItemDto(row, dimensionIdByName)
+        toMappingItemDto(row, 'evaluation', dimensionIdByName)
       ),
     },
     associated_dimensions: (input.associatedDimensions ?? []).map(

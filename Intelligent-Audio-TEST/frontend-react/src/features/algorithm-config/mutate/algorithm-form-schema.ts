@@ -48,6 +48,23 @@ function algorithmTypeField(enforcePattern: boolean) {
     : base
 }
 
+/** 映射行 schema（§6.5 设备/API/评估三节共用；INT-1160 返工字段补齐，可选字段 output 与 MappingRow 对齐） */
+function mappingRowSchema(sourceRequired: boolean, targetRequired: boolean) {
+  return z.object({
+    key: z.string(),
+    id: z.number().optional(),
+    source: z.string().optional(),
+    sourceDirection: z.string().optional(),
+    sourceParam: sourceRequired ? z.string().min(1, '请选择源参数') : z.string(),
+    paramName: z.string().optional(),
+    dimensionId: z.string().optional(),
+    dimensionName: z.string().optional(),
+    targetParam: targetRequired ? z.string().min(1, '请选择目标参数') : z.string(),
+    targetParamName: z.string().optional(),
+    transformType: z.string(),
+  })
+}
+
 const baseObjectFields = {
   type: z.string(),
   name: z.string(),
@@ -112,30 +129,9 @@ const baseObjectFields = {
     })
   ),
   mappings: z.object({
-    device: z.array(
-      z.object({
-        key: z.string(),
-        sourceParam: z.string().min(1, '请选择源参数'),
-        targetParam: z.string().min(1, '请选择目标参数'),
-        transformType: z.string().min(1),
-      })
-    ),
-    api: z.array(
-      z.object({
-        key: z.string(),
-        sourceParam: z.string().min(1, '请选择源参数'),
-        targetParam: z.string().min(1, '请选择目标参数'),
-        transformType: z.string().min(1),
-      })
-    ),
-    evaluation: z.array(
-      z.object({
-        key: z.string(),
-        sourceParam: z.string().min(1, '请选择源参数'),
-        targetParam: z.string().min(1, '请选择目标参数'),
-        transformType: z.string().min(1),
-      })
-    ),
+    device: z.array(mappingRowSchema(true, true)),
+    api: z.array(mappingRowSchema(true, true)),
+    evaluation: z.array(mappingRowSchema(true, true)),
   }),
   associatedDimensions: z.array(
     z.object({
@@ -184,30 +180,9 @@ const draftObjectFields = {
     })
   ),
   mappings: z.object({
-    device: z.array(
-      z.object({
-        ...baseObjectFields.mappings.shape.device.element.shape,
-        sourceParam: z.string(),
-        targetParam: z.string(),
-        transformType: z.string(),
-      })
-    ),
-    api: z.array(
-      z.object({
-        ...baseObjectFields.mappings.shape.api.element.shape,
-        sourceParam: z.string(),
-        targetParam: z.string(),
-        transformType: z.string(),
-      })
-    ),
-    evaluation: z.array(
-      z.object({
-        ...baseObjectFields.mappings.shape.evaluation.element.shape,
-        sourceParam: z.string(),
-        targetParam: z.string(),
-        transformType: z.string(),
-      })
-    ),
+    device: z.array(mappingRowSchema(false, false)),
+    api: z.array(mappingRowSchema(false, false)),
+    evaluation: z.array(mappingRowSchema(false, false)),
   }),
   associatedDimensions: z.array(
     z.object({

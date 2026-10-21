@@ -70,12 +70,14 @@ export const REFERENCE_PARAM_MERGE_OPTIONS = [
   { value: 'first', label: '取第一个' },
 ] as const
 
-/** 转换类型枚举（§6.5；API 映射额外支持 base64） */
+/** 转换类型枚举（§6.5 + V9.7.10 MappingEditor transformOptions；API 映射额外支持 base64） */
 export const TRANSFORM_TYPE_OPTIONS = [
   { value: 'none', label: '不转换' },
   { value: 'uppercase', label: '转大写' },
   { value: 'lowercase', label: '转小写' },
   { value: 'json_parse', label: 'JSON解析' },
+  { value: 'rttm_to_obj', label: 'RTTM转对象' },
+  { value: 'stm_to_obj', label: 'STM转对象' },
 ] as const
 
 export const API_TRANSFORM_TYPE_OPTIONS = [
