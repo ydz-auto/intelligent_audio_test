@@ -1,5 +1,34 @@
 <template>
   <div class="pt-row-wrap">
+    <!-- INT-1103：用例级节点 = 全站统一 compact 卡（名称/CaseIdBadge/算法徽章/计数 + 展开子树） -->
+    <template v-if="node.level === 'case'">
+      <PickCaseCard
+        :name="node.name"
+        :case-id="node.id"
+        :algorithm-type="node.algorithmType"
+        :count="node.count"
+        :state="state"
+        :open="expanded"
+        @toggle="() => emit('toggle-node', node)"
+        @toggle-open="() => emit('toggle-expand', node.key)"
+      >
+        <PickTreeNodeRow
+          v-for="child in node.children"
+          :key="child.key"
+          :node="child"
+          :selected="selected"
+          :expanded-keys="expandedKeys"
+          :already-added="alreadyAdded"
+          :leaf-meta="leafMeta"
+          :depth="depth + 1"
+          @toggle-node="(n) => emit('toggle-node', n)"
+          @toggle-expand="(k) => emit('toggle-expand', k)"
+          @toggle-leaf="(rid) => emit('toggle-leaf', rid)"
+        />
+      </PickCaseCard>
+    </template>
+
+    <template v-else>
     <div
       class="pt-row"
       :class="{ 'pt-row--leaf': node.level === 'leaf' }"
@@ -33,19 +62,6 @@
 
       <span class="pt-icon" :class="iconClass"><i :class="iconName"></i></span>
       <span class="pt-name" :title="node.name">{{ node.name }}</span>
-      <!-- INT-796 §3.7.1：用例级卡片元信息（CaseIdBadge + 算法徽章；tags/时长待 §11-7 落地后补） -->
-      <CaseIdBadge
-        v-if="node.level === 'case'"
-        :case-id="node.id"
-        class="pt-case-badge"
-      />
-      <span
-        v-if="node.level === 'case' && node.algorithmType"
-        class="pt-alg-badge"
-        :title="`算法：${getAlgorithmName(node.algorithmType)}`"
-      >
-        {{ getAlgorithmName(node.algorithmType) }}
-      </span>
       <span v-if="node.children.length > 0" class="pt-count">{{ node.count }} 条</span>
     </div>
 
@@ -93,6 +109,7 @@
         @toggle-leaf="(rid) => emit('toggle-leaf', rid)"
       />
     </div>
+    </template>
   </div>
 </template>
 
@@ -109,21 +126,7 @@ import { computed } from 'vue';
 import { nodeState } from './pickTree';
 import type { PickTreeNode, NodeCheckState } from './pickTree';
 import type { PickCandidate } from '../../../infrastructure/api/cherryPickApi';
-import CaseIdBadge from '../../common/CaseIdBadge.vue';
-
-/** 算法类型中文名（§3.6 裁定②「算法徽章」；与算法配置页同名映射同源，缺省回退原始值） */
-const ALGORITHM_LABEL: Record<string, string> = {
-  asr: 'ASR',
-  tts: 'TTS',
-  speaker_recognition: '说话人识别',
-  speaker_verification: '声纹验证',
-  speaker_identification: '说话人识别',
-};
-
-function getAlgorithmName(type: string | null | undefined): string {
-  if (!type) return '';
-  return ALGORITHM_LABEL[type] ?? type;
-}
+import PickCaseCard from '../../common/test-case/PickCaseCard.vue';
 
 /** 叶行时间（mono 口径，YYYY-MM-DD HH:mm） */
 function formatTime(iso?: string | null): string {

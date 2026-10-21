@@ -431,7 +431,7 @@ async function fetchTaskDetails() {
         id: tc.caseId || tc.id,
         name: tc.name,
         status: tc.status || '',
-        duration: tc.duration || '',
+        duration: tc.duration ?? '',
         executionStatus: tc.executionStatus || '',
         evaluationStatus: tc.evaluationStatus || '',
         groupName: tc.groupName,
