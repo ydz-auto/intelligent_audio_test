@@ -36,6 +36,10 @@ class ApiItem(APIModel):
     description: Optional[str] = Field(None)
     status: Optional[str] = Field(None)
     meta: Dict[str, Any] = Field(default_factory=dict)
+    # INT-1177 密钥池非敏感摘要 {count, tails[]}（读侧顶层直出；完整密钥零响应）。
+    # 网关读侧返回原始 dict（无 response_model 过滤），顶层字段直接透出，
+    # 本字段仅作文档一致性，非必需。
+    api_keys_summary: Optional[Dict[str, Any]] = Field(None)
     algorithm_type: Optional[str] = Field(None)
     default_max_process: Optional[int] = Field(None)
     default_max_timeout: Optional[int] = Field(None)

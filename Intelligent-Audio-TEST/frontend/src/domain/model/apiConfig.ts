@@ -27,17 +27,29 @@ export interface ApiEndpoint {
 /**
  * API 元信息（对应后端 ApiItem.meta JSON 对象的已知键；
  * 该对象为整块透传的 JSON blob，后端按 Dict[str, Any] 原样存储）
+ * INT-1177 密钥池：apiKeys（多密钥轮换池，adapter 层转 snake_case
+ * api_keys 落库；完整密钥响应零回显，编辑仅回显 apiKeysSummary 摘要）
  */
 export interface ApiMeta {
   protocol?: string
   environment?: string
   version?: string
   apiKey?: string
+  /** 密钥池（多密钥，轮换）：password 输入不回显，保存时转 meta.api_keys */
+  apiKeys?: string[]
+  /** 密钥池非敏感摘要（编辑态显示「已配置 N 个 / 尾号」，不回显完整值） */
+  apiKeysSummary?: ApiKeysSummary
   headers?: Record<string, string>
   /** 请求体模板（后端原值键 body_template，整块透传） */
   bodyTemplate?: Record<string, unknown>
   body_template?: Record<string, unknown>
   timeout?: number
+}
+
+/** 密钥池非敏感摘要（对应后端 ApiItem.api_keys_summary：{count, tails[]}） */
+export interface ApiKeysSummary {
+  count: number
+  tails: string[]
 }
 
 /** 目标音频格式声明（后端 apis.audio_config JSON；未配置回退 24000/s16/mono/pcm） */
@@ -63,6 +75,8 @@ export interface APIConfig {
   status: ApiEndpointStatus
   healthScore?: number
   meta?: ApiMeta
+  /** INT-1177 密钥池非敏感摘要（{count, tails[]}；完整密钥零响应） */
+  apiKeysSummary?: ApiKeysSummary
   algorithmType?: string
   defaultMaxProcess?: number
   defaultMaxTimeout?: number

@@ -16,7 +16,11 @@ from shared.utils.query_utils import now_cst
 from shared.utils.log_handler import log_not_emit
 from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
 from shared.models.common_enums import OutputType, DeviceType, AudioBitDepth, AudioContainer
-from api_test_service.domain.entities.api import normalize_output_types, normalize_audio_config
+from api_test_service.domain.entities.api import (
+    derive_api_keys_summary,
+    normalize_output_types,
+    normalize_audio_config,
+)
 from api_test_service.infrastructure.adapters.proxy_utils import (
     build_proxy_url,
     validate_proxy,
@@ -32,6 +36,8 @@ logger = logging.getLogger(__name__)
 _AUDIO_SAMPLE_RATES = (8000, 16000, 24000, 48000)
 # 位深数字与枚举别名对应（UC-0901 用数字 16，08_混音与SPL映射.md §2.2 用 s16）
 _BIT_DEPTH_ALIASES = {16: AudioBitDepth.S16, 24: AudioBitDepth.S24, 32: AudioBitDepth.S32}
+# 密钥池（meta.api_keys）上限（INT-1177 审计 D1）
+_MAX_API_KEYS = 20
 
 
 class APICrudService:
@@ -45,6 +51,10 @@ class APICrudService:
         meta = data.get('meta')
         if meta is not None and not isinstance(meta, dict):
             return "元数据 (meta) 必须是一个 JSON 对象"
+        if meta is not None and meta.get('api_keys') is not None:
+            error = APICrudService._validate_api_keys(meta.get('api_keys'))
+            if error:
+                return error
 
         if data.get('default_max_process') is not None:
             val = data['default_max_process']
@@ -92,6 +102,24 @@ class APICrudService:
         if proxy_error:
             return proxy_error
 
+        return None
+
+    @staticmethod
+    def _validate_api_keys(api_keys) -> str:
+        """校验密钥池 meta.api_keys（INT-1177 审计 D1/D2）：
+        必须为字符串数组、元素非空、去重、上限 ≤20。返回错误信息或 None。"""
+        if not isinstance(api_keys, list):
+            return "密钥池 (meta.api_keys) 必须是字符串数组"
+        if len(api_keys) > _MAX_API_KEYS:
+            return f"密钥池 (meta.api_keys) 最多支持 {_MAX_API_KEYS} 个密钥"
+        seen = set()
+        for key in api_keys:
+            if not isinstance(key, str) or not str(key).strip():
+                return "密钥池 (meta.api_keys) 元素必须为非空字符串"
+            stripped = str(key).strip()
+            if stripped in seen:
+                return "密钥池 (meta.api_keys) 元素不能重复"
+            seen.add(stripped)
         return None
 
     @staticmethod
@@ -219,6 +247,18 @@ class APICrudService:
 
         created_at = getattr(api, 'created_at', None)
         updated_at = getattr(api, 'updated_at', None)
+
+        # INT-1177 密钥池：meta 中完整 api_keys 一律不输出（防御，
+        # PO/聚合根双兼容——防未来 PO 误入序列化层导致完整密钥回显）；
+        # 非敏感摘要 api_keys_summary 顶层透出（网关读侧原始 dict 直出）
+        raw_meta = getattr(api, 'meta', None)
+        meta = raw_meta if isinstance(raw_meta, dict) else {}
+        api_keys_summary = getattr(api, 'api_keys_summary', None)
+        if api_keys_summary is None:
+            api_keys_summary = derive_api_keys_summary(meta.get('api_keys'))
+        if 'api_keys' in meta:
+            meta = {k: v for k, v in meta.items() if k != 'api_keys'}
+
         return {
             'id': api.id,
             'name': api.name,
@@ -226,7 +266,8 @@ class APICrudService:
             'api_url': getattr(api, 'api_url', None) or getattr(api, 'url', None),
             'description': getattr(api, 'description', None),
             'status': api.status,
-            'meta': getattr(api, 'meta', None) if isinstance(getattr(api, 'meta', None), dict) else {},
+            'meta': meta,
+            'api_keys_summary': api_keys_summary,
             'algorithm_type': getattr(api, 'algorithm_type', None),
             'default_max_process': getattr(api, 'default_max_process', None),
             'default_max_timeout': getattr(api, 'default_max_timeout', None),
@@ -291,6 +332,10 @@ class APICrudService:
         """
         if not data.get('name') or data.get('meta') is None:
             return {'success': False, 'message': '缺少必要字段: name, meta', 'data': None, 'code': 400}
+
+        # INT-1177：写侧拒收摘要字段（防前端回传 api_keys_summary 污染存储；
+        # 完整密钥池以 meta.api_keys 明文入库，摘要为读侧派生）
+        data = {k: v for k, v in data.items() if k != 'api_keys_summary'}
 
         error = cls._validate_api_data({
             'meta': data.get('meta'),
@@ -380,6 +425,9 @@ class APICrudService:
         api = api_test_repository.get_api(api_id)
         if not api:
             return {'success': False, 'message': '未找到API配置', 'data': None, 'code': 404}
+
+        # INT-1177：写侧拒收摘要字段（防前端回传 api_keys_summary 污染存储）
+        data = {k: v for k, v in data.items() if k != 'api_keys_summary'}
 
         # 校验 API 数据（代理字段剔除：update 为局部更新，代理对走下方
         # 合并口径校验，避免「只改 proxy_type 无 proxy_url」在此误判）

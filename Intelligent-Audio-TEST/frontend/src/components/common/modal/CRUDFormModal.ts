@@ -257,6 +257,13 @@ export function useCRUDFormModal(props: CrudFormModalProps, emit: CrudFormModalE
           } else if (typeof fieldValue !== 'object') {
             fieldValue = getDefaultValue(field)
           }
+          // INT-1177 密钥池：非敏感摘要并入 meta 编辑态（显示「已配置 N 个 / 尾号」，
+          // 不回显完整密钥；保存时 adapter 侧剔除，防回传污染存储）
+          const formDataWithSummary = props.formData as any
+          if (formDataWithSummary && formDataWithSummary.apiKeysSummary
+              && fieldValue && typeof fieldValue === 'object') {
+            fieldValue = { ...fieldValue, apiKeysSummary: formDataWithSummary.apiKeysSummary }
+          }
         } else if (field.type === 'array') {
           if (typeof fieldValue === 'string') {
             try { fieldValue = JSON.parse(fieldValue) } catch { fieldValue = getDefaultValue(field) }
@@ -360,7 +367,7 @@ export function useCRUDFormModal(props: CrudFormModalProps, emit: CrudFormModalE
       case 'number': return 0
       case 'switch': return false
       case 'multiSelect': return []
-      case 'apiMeta': return { protocol: 'https', environment: 'development', version: 'v1', apiKey: '' }
+      case 'apiMeta': return { protocol: 'https', environment: 'development', version: 'v1', apiKey: '', apiKeys: [] }
       case 'apiSettingsEditor': return { method: 'POST', headers: {}, bodyTemplate: {}, timeout: 30000 }
       default: return ''
     }

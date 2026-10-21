@@ -25,7 +25,10 @@ from api_test_service.infrastructure.acl import TaskDataAclRepositoryImpl
 from api_test_service.infrastructure.persistence.models import API
 # 领域聚合根
 from api_test_service.domain.entities import APIAggregate
-from api_test_service.domain.entities.api import normalize_output_types
+from api_test_service.domain.entities.api import (
+    derive_api_keys_summary,
+    normalize_output_types,
+)
 from api_test_service.domain.repositories.api_test_repository_abc import (
     APITestRepositoryABC,
 )
@@ -49,6 +52,8 @@ def _api_po_to_entity(po: API) -> APIAggregate:
     - po.max_timeout    → aggregate.timeout_seconds（复用 PO 的超时配置）
     - po.status         → aggregate.status（PO 使用 online/offline，聚合根 status
                           字段为 str，直接透传以保留前端可读词汇）
+    - po.meta.api_keys  → aggregate.api_keys_summary（INT-1177 密钥池非敏感
+                          摘要 {count, tails[]}；完整密钥不承载，零响应）
     - 其余 PO 无对应列的字段（method / headers / body_template / retry_count）
       使用聚合根默认值
     """
@@ -66,6 +71,7 @@ def _api_po_to_entity(po: API) -> APIAggregate:
         rms_spl_mapping_id=po.rms_spl_mapping_id,
         proxy_type=po.proxy_type,
         proxy_url=po.proxy_url,
+        api_keys_summary=derive_api_keys_summary((po.meta or {}).get('api_keys')),
     )
 
 

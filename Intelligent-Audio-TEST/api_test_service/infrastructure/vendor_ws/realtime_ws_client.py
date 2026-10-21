@@ -79,6 +79,10 @@ class RealtimeWSClient:
         self._event_queue: queue.Queue = queue.Queue()
         self._recv_thread: Optional[threading.Thread] = None
         self._connected = False
+        # INT-1177：最近一次握手失败的状态码 / 错误信息（连接前为空，
+        # 供适配器按 401/403/429 判定密钥池轮换）
+        self._handshake_error_status: Optional[int] = None
+        self._handshake_error = ''
 
         # 帧级中间状态（逐帧实时记录）
         self._frames: List[RealtimeFrame] = []
@@ -104,7 +108,13 @@ class RealtimeWSClient:
 
         proxy_type / proxy_url（INT-839）：显式入参优先于 __init__ 注入值；
         websocket-client 代理参数经 proxy_utils 分解（与 _call_websocket 同套）。
+
+        INT-1177：WS 握手异常状态码透出 —— WebSocketBadStatusException 的
+        status_code 记录到 last_handshake_status（现状吞成 generic Exception
+        只返回 False，适配器无从判定密钥池轮换）。
         """
+        self._handshake_error_status: Optional[int] = None
+        self._handshake_error = ''
         try:
             import websocket  # websocket-client
             ws_proxy_kwargs = websocket_proxy_kwargs(
@@ -116,6 +126,9 @@ class RealtimeWSClient:
                 **ws_proxy_kwargs)
             self._connected = True
         except Exception as e:
+            # INT-1177：透出握手 HTTP 状态码（401/403/429 → 密钥池轮换判定面）
+            self._handshake_error_status = getattr(e, 'status_code', None)
+            self._handshake_error = str(e)
             logger.error(f"Realtime WS 连接失败 url={self._url}: {e}")
             self._connected = False
             return False
@@ -359,3 +372,13 @@ class RealtimeWSClient:
     @property
     def connected(self) -> bool:
         return self._connected
+
+    @property
+    def last_handshake_status(self) -> Optional[int]:
+        """最近一次 WS 握手失败的 HTTP 状态码（无失败/未连接为 None）。"""
+        return self._handshake_error_status
+
+    @property
+    def last_handshake_error(self) -> str:
+        """最近一次 WS 握手失败的错误信息（无失败/未连接为空串）。"""
+        return self._handshake_error

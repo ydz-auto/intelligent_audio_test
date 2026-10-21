@@ -35,8 +35,13 @@ from api_test_service.infrastructure.vendor_ws import RealtimeWSClient
 logger = logging.getLogger(__name__)
 
 # 密钥链解析器（UC-0901 扩展流程 3a）：case_config → meta → env 逐级回退，
-# 各级键名经 config_manager secrets 段配置
+# 各级键名经 config_manager secrets 段配置；INT-1177 密钥池轮换
+# （resolve_rotating + 模块级共享 RotationStateStore，跨协议同源）
 _key_resolver = resolver_from_config(config_manager.get_value)
+
+# INT-1177 密钥池轮换触发状态码：WS 握手 401/403/429 → 切下一非冷却 key
+# （5xx/网络错误明确不轮换，非账号配额问题）
+_ROTATION_TRIGGER_STATUS_CODES = {401, 403, 429}
 
 
 @register_vendor_adapter
@@ -73,6 +78,8 @@ class RealtimeAdapterBase(ApiVendorAdapter):
         self._proxy_type = proxy_type
         self._proxy_url = proxy_url
         self._client: Optional[RealtimeWSClient] = None
+        # INT-1177：当前轮换 key（_resolve_ws_headers 解析结果，握手失败冷却用）
+        self._current_api_key = ''
 
     # ── 传输对象构造（组合复用 RealtimeWSClient）──
 
@@ -95,15 +102,58 @@ class RealtimeAdapterBase(ApiVendorAdapter):
     # ── 生命周期钩子（Port 语义）──
 
     def initialize(self) -> bool:
-        """WS 握手：构造传输对象并建立连接（initialize = connect）"""
+        """WS 握手：构造传输对象并建立连接（initialize = connect）。
+
+        INT-1177 密钥池：配置 meta.api_keys 轮换池且无 case 层单值时，
+        握手 401/403/429 自动切下一非冷却 key 重建 client（重试上限 =
+        池内 key 总数；池全冷却立即失败，不空转等待；全失败抛最后错误）。
+        执行器层不感知轮换（Domain 层只见解析结果）。
+        """
         if self._client is not None and self._client.connected:
             return True
-        self._client = self._build_client()
-        return bool(self._client.connect())
+        return self._connect_with_rotation()
 
     def connect(self) -> bool:
         """RealtimeWSClient 同形方法面：建立连接（executor 入口）"""
         return self.initialize()
+
+    def _connect_with_rotation(self) -> bool:
+        """带密钥池轮换的握手重试（无池时单次连接，现状语义）。"""
+        if self._case_level_key(self.case_config):
+            # case 层单值最高优先（现状不变）：无轮换池，单次连接
+            self._client = self._build_client()
+            return bool(self._client.connect())
+        meta = getattr(self.api_config, 'meta', None) or {}
+        pool = _key_resolver.rotating_pool(meta)
+        if not pool:
+            # 未配置密钥池：单次连接（现状语义）
+            self._client = self._build_client()
+            return bool(self._client.connect())
+        last_status = None
+        last_error = ''
+        for _ in range(len(pool)):
+            # 每次重试强制重新解析密钥：外部传入头固化于首 attempt，重建
+            # client 前丢弃，让 _resolve_ws_headers 经共享轮换游标取下一非
+            # 冷却 key（同源轮换：跨协议/跨路径同一游标）
+            self._headers = None
+            self._client = self._build_client()
+            if self._client.connect():
+                return True
+            last_status = getattr(self._client, 'last_handshake_status', None)
+            last_error = (getattr(self._client, 'last_handshake_error', '')
+                          or '')
+            if last_status not in _ROTATION_TRIGGER_STATUS_CODES:
+                # 5xx / 网络错误：明确不轮换（非账号配额问题），立即失败
+                return False
+            _key_resolver.report_failure(
+                self.api_config.id, self._current_api_key)
+            if not _key_resolver.has_available_rotating_key(
+                    self.api_config.id, meta):
+                # 池全冷却：立即失败，不空转等待
+                break
+        raise ConnectionError(
+            f"Realtime WS 握手失败 status={last_status}（密钥池轮换耗尽）: "
+            f"{last_error or self.endpoint or ''}")
 
     def pre_process(self, session_config: Optional[dict] = None,
                     wait_confirm_timeout: float = 10.0) -> bool:
@@ -213,10 +263,19 @@ class RealtimeAdapterBase(ApiVendorAdapter):
         return (case_config or {}).get(_key_resolver.case_key) or ''
 
     def _resolve_ws_headers(self, api_config, case_api_key: str = '') -> dict:
-        """解析 WS 握手头：meta.ws_headers 直传 + 密钥链注入；显式头优先"""
+        """解析 WS 握手头：meta.ws_headers 直传 + 密钥链注入；显式头优先
+
+        INT-1177：经 resolve_rotating 消费密钥池轮换（传 api_config.id，
+        同一 API 跨协议同源轮换游标）；case 层单值最高优先不变。
+        """
         meta = getattr(api_config, 'meta', None) or {}
         headers = dict(meta.get('ws_headers') or {})
-        api_key = _key_resolver.resolve(case_value=case_api_key, meta=meta)
+        api_key = _key_resolver.resolve_rotating(
+            api_id=getattr(api_config, 'id', None),
+            case_value=case_api_key,
+            meta=meta,
+        )
+        self._current_api_key = api_key or ''
         if api_key and not any(k.lower() == 'authorization' for k in headers):
             headers['Authorization'] = f'Bearer {api_key}'
         return headers

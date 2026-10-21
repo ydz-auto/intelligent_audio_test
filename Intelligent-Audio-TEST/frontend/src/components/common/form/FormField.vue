@@ -220,17 +220,59 @@
       </div>
       <div class="api-meta-row">
         <div class="api-key-wrapper">
-          <label :for="`${fieldId}-apiKey`" class="sub-label">API Key</label>
+          <label :for="`${fieldId}-apiKey`" class="sub-label">API Key（单值）</label>
           <input
               :id="`${fieldId}-apiKey`"
-              type="text"
+              type="password"
               v-model="localValue.apiKey"
-              placeholder="请输入API Key"
+              placeholder="请输入API Key（未配置密钥池时使用）"
               class="full-width"
               :disabled="field.disabled || false"
               @input="handleInput"
             />
         </div>
+      </div>
+      <div class="api-meta-row api-keys-row">
+        <label class="sub-label">密钥池（多密钥轮换）</label>
+        <div v-if="localValue.apiKeysSummary" class="api-keys-summary">
+          <i class="fas fa-key"></i>
+          已配置 {{ localValue.apiKeysSummary.count }} 个密钥
+          <span v-if="localValue.apiKeysSummary.tails && localValue.apiKeysSummary.tails.length">
+            （尾号：{{ localValue.apiKeysSummary.tails.join('、') }}）
+          </span>
+          ，如需修改请重新输入完整密钥列表。
+        </div>
+        <div
+          v-for="(keyItem, index) in (localValue.apiKeys || [])"
+          :key="index"
+          class="api-keys-item"
+        >
+          <input
+              :id="`${fieldId}-apiKey-${index}`"
+              type="password"
+              v-model="localValue.apiKeys[index]"
+              placeholder="请输入密钥（新密钥不会回显）"
+              class="full-width"
+              :disabled="field.disabled || false"
+              @input="handleInput"
+            />
+          <button
+            type="button"
+            class="remove-key-btn"
+            :disabled="field.disabled || false"
+            @click="removeApiKey(index)"
+          >
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <button
+          type="button"
+          class="add-key-btn"
+          :disabled="field.disabled || false"
+          @click="addApiKey"
+        >
+          <i class="fas fa-plus"></i> 添加密钥
+        </button>
       </div>
     </div>
     
@@ -438,6 +480,8 @@ const {
   addArrayItem,
   removeArrayItem,
   updateGainValue,
+  addApiKey,
+  removeApiKey,
   handleFileUpload,
   removeFile,
   getFileName,

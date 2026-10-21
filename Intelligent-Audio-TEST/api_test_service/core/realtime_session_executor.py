@@ -692,10 +692,18 @@ class RealtimeSessionExecutor:
     def _resolve_ws_headers(api_config, case_api_key='') -> dict:
         """解析 WS 握手头（_build_connect_headers 语义）：meta.ws_headers
         直传 + 密钥链 case_config → meta → env（UC-0901 扩展流程 3a，
-        禁止硬编码密钥）；显式 Authorization 头优先，不覆盖"""
+        禁止硬编码密钥）；显式 Authorization 头优先，不覆盖
+
+        INT-1177：经 resolve_rotating 消费密钥池轮换（传 api_config.id，
+        同一 API 跨协议同源轮换游标；case 层单值最高优先不变）。
+        """
         meta = getattr(api_config, 'meta', None) or {}
         headers = dict(meta.get('ws_headers') or {})
-        api_key = _key_resolver.resolve(case_value=case_api_key, meta=meta)
+        api_key = _key_resolver.resolve_rotating(
+            api_id=getattr(api_config, 'id', None),
+            case_value=case_api_key,
+            meta=meta,
+        )
         if api_key and not any(k.lower() == 'authorization' for k in headers):
             headers['Authorization'] = f'Bearer {api_key}'
         return headers

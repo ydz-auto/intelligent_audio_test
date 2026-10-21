@@ -48,7 +48,9 @@ export function useFormField(props: FormFieldProps, emit: FormFieldEmit) {
       case 'switch':
         return val !== undefined && val !== null ? val : false;
       case 'apiMeta':
-        return val !== undefined && val !== null && typeof val === 'object' ? val : {protocol: 'https', environment: 'development', version: 'v1', apiKey: ''};
+        return val !== undefined && val !== null && typeof val === 'object'
+          ? { protocol: 'https', environment: 'development', version: 'v1', apiKey: '', apiKeys: [], ...val }
+          : { protocol: 'https', environment: 'development', version: 'v1', apiKey: '', apiKeys: [] };
       case 'algorithmMultiSelect':
         return Array.isArray(val) ? val : [];
       case 'algorithmSelect':
@@ -221,6 +223,25 @@ export function useFormField(props: FormFieldProps, emit: FormFieldEmit) {
     handleInput();
   }
 
+  // INT-1177 密钥池：apiMeta 多密钥列表增删（password 输入不回显）
+  const addApiKey = () => {
+    if (!localValue.value || typeof localValue.value !== 'object') {
+      localValue.value = { protocol: 'https', environment: 'development', version: 'v1', apiKey: '', apiKeys: [] }
+    }
+    if (!Array.isArray(localValue.value.apiKeys)) {
+      localValue.value.apiKeys = []
+    }
+    localValue.value.apiKeys.push('')
+    handleInput()
+  }
+
+  const removeApiKey = (index: number) => {
+    if (Array.isArray(localValue.value.apiKeys)) {
+      localValue.value.apiKeys.splice(index, 1)
+      handleInput()
+    }
+  }
+
   const handleFileUpload = (event: Event) => {
     const file = (event.target as HTMLInputElement).files?.[0]
     if (file) {
@@ -284,6 +305,8 @@ export function useFormField(props: FormFieldProps, emit: FormFieldEmit) {
     addArrayItem,
     removeArrayItem,
     updateGainValue,
+    addApiKey,
+    removeApiKey,
     handleFileUpload,
     removeFile,
     getFileName,
