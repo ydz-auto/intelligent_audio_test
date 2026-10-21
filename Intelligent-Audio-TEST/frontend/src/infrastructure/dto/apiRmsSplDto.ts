@@ -36,7 +36,8 @@ export interface ApiRmsSplCreateDto {
   api_id: number
   name?: string
   description?: string
-  vendor?: string
+  /** 后端 Optional[str] Field(None)：null 与缺省同义（INT-1031 简化口径默认 null） */
+  vendor?: string | null
   protocol?: string
   reference_spl?: number
   reference_gain_linear?: number
@@ -50,7 +51,7 @@ export interface ApiRmsSplCreateDto {
 export interface ApiRmsSplUpdateDto {
   name?: string
   description?: string
-  vendor?: string
+  vendor?: string | null
   protocol?: string
   reference_spl?: number
   reference_gain_linear?: number

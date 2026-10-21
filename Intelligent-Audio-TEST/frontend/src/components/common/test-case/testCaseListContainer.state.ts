@@ -5,7 +5,7 @@
  */
 import { ref } from 'vue';
 import { ViewMode } from '@/domain/enums';
-import type { PlaybackDevice } from '../../../domain';
+import type { PlaybackDevice, Dimension, EvaluationCategory } from '../../../domain';
 
 /** 创建容器本地共享状态 */
 export function createContainerState(props: any) {
@@ -29,7 +29,9 @@ export function createContainerState(props: any) {
   const sortBy = ref('count');
   const sortOrder = ref('desc');
   const dimensionFilter = ref<number | 'all'>('all');
-  const dimensionOptions = ref<{ id: number; name: string }[]>([]);
+  // INT-1106（对齐 React INT-1030）：评估维度 facet 改用全量维度（含子维度）+ 分类分组，不再用旧 options 子集
+  const dimensionOptions = ref<Dimension[]>([]);
+  const dimensionCategories = ref<EvaluationCategory[]>([]);
 
   // hasMoreGroups 由分组分页计算属性驱动，先占位再被 composable 引用
   const hasMoreGroups = ref(true);
@@ -54,6 +56,7 @@ export function createContainerState(props: any) {
     sortOrder,
     dimensionFilter,
     dimensionOptions,
+    dimensionCategories,
     hasMoreGroups,
     paginatedGroupsRef,
     paginatedTagsRef,

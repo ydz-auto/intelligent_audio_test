@@ -348,12 +348,13 @@ function operationToPath(operation: DeviceBatchActionType): string {
 /** DeviceTestData DTO 形状（局部别名，避免直接暴露 DTO 命名冲突） */
 type DeviceTestDataDtoShape = { id: number | string; status: string; wakeup_command?: string };
 
-/** DriverKeyword DTO 形状（局部别名，避免直接暴露 DTO 命名冲突） */
-type DriverKeywordDtoShape = { name?: string; system?: string; keywords?: string[] };
+/** DriverKeyword DTO 形状（局部别名，避免直接暴露 DTO 命名冲突；keywords 后端可能为逗号分隔字符串或数组） */
+type DriverKeywordDtoShape = { name?: string; system?: string; keywords?: string | string[] };
 
 /**
  * 驱动关键字响应 → Domain DriverKeyword[]
  * 兼容裸数组 / { data: [] } / { items: [] } 三种包裹形态（后端各环境可能不同）
+ * keywords 归一化为 string[]（Domain 契约）：字符串按逗号拆分去空白，数组原样，其余空数组
  */
 function toDriverKeywords(response: unknown): DriverKeyword[] {
   const envelope = response as
@@ -371,6 +372,10 @@ function toDriverKeywords(response: unknown): DriverKeyword[] {
   return list.map(({ name, system, keywords }) => ({
     name: name ?? '',
     system: system ?? '',
-    keywords: keywords ?? [],
+    keywords: typeof keywords === 'string'
+      ? keywords.split(',').map((s) => s.trim()).filter(Boolean)
+      : Array.isArray(keywords)
+        ? keywords
+        : [],
   }))
 }
