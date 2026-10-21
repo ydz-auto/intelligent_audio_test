@@ -62,7 +62,9 @@ export function createDownloadLogic(deps: {
     } catch (error: any) {
       logFiles.value = []
       selectedLogFiles.value = []
-      logFilesError.value = error?.message || error?.detail || '日志文件列表加载失败'
+      // P3：列表加载失败用友好文案（原样透出后端 "Not Found" 过于技术化），真实原因留 console 排查
+      console.error('日志文件列表加载失败:', error?.message || error?.detail || error)
+      logFilesError.value = '日志文件列表加载失败'
     } finally {
       logFilesLoading.value = false
     }
@@ -125,10 +127,17 @@ export function createDownloadLogic(deps: {
     downloadFileCount.value = files.length
 
     try {
-      // 走 reportsPort.downloadCaseLogs（Blob 通道，JWT 由 client.ts 拦截器注入）
-      const blob = await reportsPort.downloadCaseLogs(reportId, caseInfo.caseId, files)
+      // 流式读取（同旧 Vue getReader / React ReadableStream 先例）：真实进度 % + 500ms 采样速度
+      // JWT 注入在 reportsApi 内照 client.ts（localStorage auth_token）
+      const { blob } = await reportsPort.downloadCaseLogs(reportId, caseInfo.caseId, files, (p) => {
+        if (p.total > 0) {
+          downloadTotal.value = formatFileSize(p.total)
+          downloadProgress.value = Math.round((p.loaded / p.total) * 100)
+        }
+        downloadSize.value = formatFileSize(p.loaded)
+        if (p.speed > 0) downloadSpeed.value = formatFileSize(p.speed) + '/s'
+      })
 
-      // Blob 无法流式获取进度，直接展示总大小并触发下载
       downloadTotal.value = formatFileSize(blob.size)
       downloadSize.value = formatFileSize(blob.size)
       downloadProgress.value = 100

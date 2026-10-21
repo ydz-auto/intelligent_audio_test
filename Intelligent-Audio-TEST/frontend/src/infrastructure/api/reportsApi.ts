@@ -199,10 +199,81 @@ export const reportsApi = {
   /**
    * 下载用例日志（INT-1062）：files 为所选文件名数组（URL 编码 JSON，如 ["a.txt","b.log"]），
    * 缺省 / 空数组 = 整包 logs.zip（向后兼容）。
+   * 流式读取（同旧 Vue getReader / React 参考实现先例）：fetch ReadableStream 逐块读，
+   * 按 Content-Length 算真实进度 %、500ms 采样速率上报 onProgress；JWT 注入照 client.ts
+   * （localStorage auth_token）。返回 { blob, size }，错误体沿用 client.ts 同款 JSON 解析归拢。
    */
-  async downloadCaseLogs(reportId: string | number, caseId: string | number, files?: string[]): Promise<Blob> {
-    const params = files && files.length > 0 ? { files: JSON.stringify(files) } : undefined;
-    return request<Blob>('GET', `/reports/${reportId}/cases/${caseId}/logs/download`, null, { responseType: 'blob', params });
+  async downloadCaseLogs(
+    reportId: string | number,
+    caseId: string | number,
+    files?: string[],
+    onProgress?: (progress: { loaded: number; total: number; speed: number }) => void
+  ): Promise<{ blob: Blob; size: number }> {
+    const base = apiBaseUrl.replace(/\/$/, '');
+    const path = `/reports/${reportId}/cases/${caseId}/logs/download`;
+    const query = files && files.length > 0 ? `?files=${encodeURIComponent(JSON.stringify(files))}` : '';
+    const url = `${base}${path}${query}`;
+
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    const token = localStorage.getItem('auth_token');
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    let response: Response;
+    try {
+      response = await fetch(url, { headers });
+    } catch (err: any) {
+      const error: any = new Error(err?.message || '网络错误');
+      error.isNetworkError = true;
+      throw error;
+    }
+
+    if (!response.ok) {
+      let payload: { code?: unknown; message?: unknown; detail?: unknown } = {};
+      try {
+        const text = await response.text();
+        if (text) payload = JSON.parse(text) as typeof payload;
+      } catch {
+        // 非 JSON 错误体，走 HTTP 状态码兜底文案
+      }
+      const error: any = new Error(String(payload.message || payload.detail || `HTTP ${response.status}`));
+      error.code = payload.code;
+      error.detail = payload.detail;
+      error.httpStatus = response.status;
+      throw error;
+    }
+
+    if (!response.body) {
+      const blob = await response.blob();
+      onProgress?.({ loaded: blob.size, total: blob.size, speed: 0 });
+      return { blob, size: blob.size };
+    }
+
+    const total = Number(response.headers.get('content-length') ?? 0);
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let received = 0;
+    let lastTime = Date.now();
+    let lastBytes = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        const now = Date.now();
+        if (now - lastTime >= 500) {
+          const speed = (received - lastBytes) / ((now - lastTime) / 1000);
+          onProgress?.({ loaded: received, total, speed });
+          lastTime = now;
+          lastBytes = received;
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    onProgress?.({ loaded: received, total, speed: 0 });
+    const blob = new Blob(chunks as unknown as BlobPart[], { type: 'application/zip' });
+    return { blob, size: received };
   },
 
   getCaseLogsDownloadUrl(reportId: string | number, caseId: string | number): string {

@@ -492,7 +492,7 @@
               <div class="log-file-toolbar">
                 <button class="log-file-toggle-all" @click="toggleSelectAllLogFiles">
                   <i class="fas" :class="allSelected ? 'fa-check-square' : 'fa-square'"></i>
-                  {{ allSelected ? '取消全选' : '全选' }}
+                  {{ allSelected ? '反选' : '全选' }}
                 </button>
                 <span class="log-file-summary">已选 {{ selectedFilesCount }} 个 / 共 {{ logFiles.length }} 个 · 总大小 {{ formatFileSize(selectedFilesSize) }}</span>
               </div>
