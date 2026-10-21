@@ -71,7 +71,7 @@ def create_text_task(task_type, asr_ref, asr_result, **kwargs):
     return None
 
 
-def create_stm_task(task_type, ref_stm, hyp_stm, **kwargs):
+def create_stm_task(task_type, stm_ref, stm_hyp, **kwargs):
     """创建 STM 格式任务（CPWER/TCPWER/STM_WER）并等待结果"""
     print(f"\n{'='*60}")
     print(f"创建 {task_type.upper()} 任务（STM格式）")
@@ -79,22 +79,22 @@ def create_stm_task(task_type, ref_stm, hyp_stm, **kwargs):
 
     normalize = kwargs.get('normalize', False)
 
-    if isinstance(ref_stm, dict):
+    if isinstance(stm_ref, dict):
         print(f"输入格式: JSON")
-        print(f"参考 JSON: {json.dumps(ref_stm, ensure_ascii=False)[:100]}...")
-        print(f"识别 JSON: {json.dumps(hyp_stm, ensure_ascii=False)[:100]}...")
+        print(f"参考 JSON: {json.dumps(stm_ref, ensure_ascii=False)[:100]}...")
+        print(f"识别 JSON: {json.dumps(stm_hyp, ensure_ascii=False)[:100]}...")
     else:
         print(f"输入格式: STM字符串")
-        print(f"参考 STM:\n{ref_stm}")
-        print(f"识别 STM:\n{hyp_stm}")
+        print(f"参考 STM:\n{stm_ref}")
+        print(f"识别 STM:\n{stm_hyp}")
 
     if normalize:
         print(f"处理流程: STM字符串 -> JSON -> 正则化 -> STM")
 
     payload = {
         "task_type": task_type,
-        "ref_stm": ref_stm,
-        "hyp_stm": hyp_stm,
+        "stm_ref": stm_ref,
+        "stm_hyp": stm_hyp,
         **kwargs
     }
 
@@ -197,13 +197,13 @@ def example_ser():
 
 def example_cpwer_string():
     """CPWER 计算样例（STM字符串格式）"""
-    ref_stm = """rec1 1 spk1 0 1.5 hello world this is a test
+    stm_ref = """rec1 1 spk1 0 1.5 hello world this is a test
 rec1 1 spk2 1.5 3.0 how are you today"""
 
-    hyp_stm = """rec1 1 spk1 0 1.5 hello world this is test
+    stm_hyp = """rec1 1 spk1 0 1.5 hello world this is test
 rec1 1 spk2 1.5 3.0 how are you"""
 
-    result = create_stm_task("cpwer", ref_stm, hyp_stm)
+    result = create_stm_task("cpwer", stm_ref, stm_hyp)
     if result:
         print(f"\nCPWER 结果:")
         print(json.dumps(result, indent=2, ensure_ascii=False))
@@ -211,13 +211,13 @@ rec1 1 spk2 1.5 3.0 how are you"""
 
 def example_cpwer_string_normalize():
     """CPWER 计算样例（STM字符串格式，带正则化）"""
-    ref_stm = """rec1 1 spk1 0 1.5 hello world this is a test
+    stm_ref = """rec1 1 spk1 0 1.5 hello world this is a test
 rec1 1 spk2 1.5 3.0 how are you today"""
 
-    hyp_stm = """rec1 1 spk1 0 1.5 hello world this is test
+    stm_hyp = """rec1 1 spk1 0 1.5 hello world this is test
 rec1 1 spk2 1.5 3.0 how are you"""
 
-    result = create_stm_task("cpwer", ref_stm, hyp_stm, normalize=True)
+    result = create_stm_task("cpwer", stm_ref, stm_hyp, normalize=True)
     if result:
         print(f"\nCPWER 结果 (正则化):")
         print(json.dumps(result, indent=2, ensure_ascii=False))
@@ -247,14 +247,14 @@ def example_cpwer_json():
 
 def example_tcpwer():
     """TCPWER 计算样例（STM格式，带时间约束）"""
-    ref_stm = """rec1 1 spk1 0 1.0 the quick brown fox
+    stm_ref = """rec1 1 spk1 0 1.0 the quick brown fox
 rec1 1 spk1 1.0 2.0 jumps over the
 rec1 1 spk1 2.0 3.0 lazy dog today"""
 
-    hyp_stm = """rec1 1 spk1 0 1.0 the quick brown
+    stm_hyp = """rec1 1 spk1 0 1.0 the quick brown
 rec1 1 spk1 1.0 2.0 jumps over lazy dog"""
 
-    result = create_stm_task("tcpwer", ref_stm, hyp_stm, collar=0.5)
+    result = create_stm_task("tcpwer", stm_ref, stm_hyp, collar=0.5)
     if result:
         print(f"\nTCPWER 结果:")
         print(json.dumps(result, indent=2, ensure_ascii=False))
@@ -262,13 +262,13 @@ rec1 1 spk1 1.0 2.0 jumps over lazy dog"""
 
 def example_stm_wer():
     """STM_WER 计算样例（STM格式）"""
-    ref_stm = """rec1 1 spk1 0 2.0 hello world this is a test
+    stm_ref = """rec1 1 spk1 0 2.0 hello world this is a test
 rec1 1 spk2 2.0 4.0 how are you today"""
 
-    hyp_stm = """rec1 1 spk1 0 2.0 hello world this is test
+    stm_hyp = """rec1 1 spk1 0 2.0 hello world this is test
 rec1 1 spk2 2.0 4.0 how are you"""
 
-    result = create_stm_task("stm_wer", ref_stm, hyp_stm)
+    result = create_stm_task("stm_wer", stm_ref, stm_hyp)
     if result:
         print(f"\nSTM_WER 结果:")
         print(json.dumps(result, indent=2, ensure_ascii=False))

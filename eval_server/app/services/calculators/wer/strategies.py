@@ -1,7 +1,7 @@
 """WER 系列策略：wer / ser / cpwer / tcpwer / stm_wer
 
 参数模式：
-  - 单轮：顶层 asr_ref / asr_hyp（wer/ser）或 ref_stm / hyp_stm（cpwer/tcpwer/stm_wer）
+  - 单轮：顶层 asr_ref / asr_hyp（wer/ser）或 stm_ref / stm_hyp（cpwer/tcpwer/stm_wer）
   - 多轮：rounds 内每轮含同名字段，按 \\n 拼接折叠为单条文本
   - 公共字段：normalize / source_lang / target_lang / translate_direct / collar / skip_overlap
 """
@@ -14,7 +14,7 @@ from app.services.calculators.wer.wer_calculator import (
 # WER/SER 用的扁平字段
 _WER_KEYS = ('asr_ref', 'asr_hyp')
 # CPWER/TCPWER/STM_WER 用的扁平字段
-_STM_KEYS = ('ref_stm', 'hyp_stm')
+_STM_KEYS = ('stm_ref', 'stm_hyp')
 # DER 用的扁平字段（识别结果统一 rttm_hyp/stm_hyp，旧名 rttm_res/stm_res 兼容）
 _DER_KEYS = ('rttm_ref', 'stm_ref', 'rttm_hyp', 'stm_hyp')
 
@@ -89,7 +89,7 @@ class CpwerCalculator(_WerBaseCalculator):
 
     def calculate(self, params):
         return calculate_cpwer(
-            params['ref_stm'], params['hyp_stm'],
+            params['stm_ref'], params['stm_hyp'],
             params['source_lang'], params['target_lang'], params['translate_direct'],
             normalize=params['normalize'],
         )
@@ -101,7 +101,7 @@ class TcpwerCalculator(_WerBaseCalculator):
 
     def calculate(self, params):
         return calculate_tcpwer(
-            params['ref_stm'], params['hyp_stm'],
+            params['stm_ref'], params['stm_hyp'],
             params['source_lang'], params['target_lang'], params['translate_direct'],
             params['collar'],
             normalize=params['normalize'],
@@ -114,7 +114,7 @@ class StmWerCalculator(_WerBaseCalculator):
 
     def calculate(self, params):
         return calculate_stm_wer(
-            params['ref_stm'], params['hyp_stm'],
+            params['stm_ref'], params['stm_hyp'],
             params['source_lang'], params['target_lang'], params['translate_direct'],
             normalize=params['normalize'],
         )

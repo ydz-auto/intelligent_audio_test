@@ -179,13 +179,13 @@ def parse_stm_string_to_json(stm_content):
     return json_list
 
 
-def normalize_stm_session_id(stm_content, ref_stm_content=None):
+def normalize_stm_session_id(stm_content, stm_ref_content=None):
     """
     统一 STM 内容中的 session_id
 
     Args:
         stm_content (str): 要处理的 STM 内容
-        ref_stm_content (str): 参考 STM 内容，用于提取目标 session_id
+        stm_ref_content (str): 参考 STM 内容，用于提取目标 session_id
 
     Returns:
         str: 统一后的 STM 内容
@@ -194,8 +194,8 @@ def normalize_stm_session_id(stm_content, ref_stm_content=None):
         return stm_content
 
     target_session_id = None
-    if ref_stm_content:
-        lines = ref_stm_content.strip().split('\n')
+    if stm_ref_content:
+        lines = stm_ref_content.strip().split('\n')
         for line in lines:
             line = line.strip()
             if line and not line.startswith(';'):
@@ -411,7 +411,7 @@ def calculate_ser(ref_text, hyp_text, source_lang, target_lang, translate_direct
     }
 
 
-def calculate_cpwer(ref_stm, hyp_stm, source_lang, target_lang, translate_direct, normalize=False):
+def calculate_cpwer(stm_ref, stm_hyp, source_lang, target_lang, translate_direct, normalize=False):
     if not MEETEVAL_AVAILABLE:
         return {
             'cpwer': None,
@@ -422,25 +422,25 @@ def calculate_cpwer(ref_stm, hyp_stm, source_lang, target_lang, translate_direct
         }
 
     try:
-        if isinstance(ref_stm, dict):
-            ref_stm = parse_stm_from_json(ref_stm, normalize=normalize)
-        elif isinstance(ref_stm, str) and normalize:
-            ref_json = parse_stm_string_to_json(ref_stm)
-            ref_stm = parse_stm_from_json({'json': ref_json}, normalize=True)
+        if isinstance(stm_ref, dict):
+            stm_ref = parse_stm_from_json(stm_ref, normalize=normalize)
+        elif isinstance(stm_ref, str) and normalize:
+            ref_json = parse_stm_string_to_json(stm_ref)
+            stm_ref = parse_stm_from_json({'json': ref_json}, normalize=True)
 
-        if isinstance(hyp_stm, dict):
-            hyp_stm = parse_stm_from_json(hyp_stm, normalize=normalize)
-        elif isinstance(hyp_stm, str) and normalize:
-            hyp_json = parse_stm_string_to_json(hyp_stm)
-            hyp_stm = parse_stm_from_json({'json': hyp_json}, normalize=True)
+        if isinstance(stm_hyp, dict):
+            stm_hyp = parse_stm_from_json(stm_hyp, normalize=normalize)
+        elif isinstance(stm_hyp, str) and normalize:
+            hyp_json = parse_stm_string_to_json(stm_hyp)
+            stm_hyp = parse_stm_from_json({'json': hyp_json}, normalize=True)
 
-        if isinstance(ref_stm, str):
-            ref_stm = normalize_stm_session_id(ref_stm)
-        if isinstance(hyp_stm, str):
-            hyp_stm = normalize_stm_session_id(hyp_stm, ref_stm)
+        if isinstance(stm_ref, str):
+            stm_ref = normalize_stm_session_id(stm_ref)
+        if isinstance(stm_hyp, str):
+            stm_hyp = normalize_stm_session_id(stm_hyp, stm_ref)
 
-        ref_data = meeteval.io.STM.parse(ref_stm)
-        hyp_data = meeteval.io.STM.parse(hyp_stm)
+        ref_data = meeteval.io.STM.parse(stm_ref)
+        hyp_data = meeteval.io.STM.parse(stm_hyp)
         
         wer_result = meeteval.wer.cpwer(ref_data, hyp_data)
         
@@ -469,7 +469,7 @@ def calculate_cpwer(ref_stm, hyp_stm, source_lang, target_lang, translate_direct
         }
 
 
-def calculate_tcpwer(ref_stm, hyp_stm, source_lang, target_lang, translate_direct, collar=0.0, normalize=False):
+def calculate_tcpwer(stm_ref, stm_hyp, source_lang, target_lang, translate_direct, collar=0.0, normalize=False):
     if not MEETEVAL_AVAILABLE:
         return {
             'tcpwer': None,
@@ -480,25 +480,25 @@ def calculate_tcpwer(ref_stm, hyp_stm, source_lang, target_lang, translate_direc
         }
 
     try:
-        if isinstance(ref_stm, dict):
-            ref_stm = parse_stm_from_json(ref_stm, normalize=normalize)
-        elif isinstance(ref_stm, str) and normalize:
-            ref_json = parse_stm_string_to_json(ref_stm)
-            ref_stm = parse_stm_from_json({'json': ref_json}, normalize=True)
+        if isinstance(stm_ref, dict):
+            stm_ref = parse_stm_from_json(stm_ref, normalize=normalize)
+        elif isinstance(stm_ref, str) and normalize:
+            ref_json = parse_stm_string_to_json(stm_ref)
+            stm_ref = parse_stm_from_json({'json': ref_json}, normalize=True)
 
-        if isinstance(hyp_stm, dict):
-            hyp_stm = parse_stm_from_json(hyp_stm, normalize=normalize)
-        elif isinstance(hyp_stm, str) and normalize:
-            hyp_json = parse_stm_string_to_json(hyp_stm)
-            hyp_stm = parse_stm_from_json({'json': hyp_json}, normalize=True)
+        if isinstance(stm_hyp, dict):
+            stm_hyp = parse_stm_from_json(stm_hyp, normalize=normalize)
+        elif isinstance(stm_hyp, str) and normalize:
+            hyp_json = parse_stm_string_to_json(stm_hyp)
+            stm_hyp = parse_stm_from_json({'json': hyp_json}, normalize=True)
 
-        if isinstance(ref_stm, str):
-            ref_stm = normalize_stm_session_id(ref_stm)
-        if isinstance(hyp_stm, str):
-            hyp_stm = normalize_stm_session_id(hyp_stm, ref_stm)
+        if isinstance(stm_ref, str):
+            stm_ref = normalize_stm_session_id(stm_ref)
+        if isinstance(stm_hyp, str):
+            stm_hyp = normalize_stm_session_id(stm_hyp, stm_ref)
 
         from meeteval.wer.wer import time_constrained
-        wer_result = time_constrained.tcp_word_error_rate([ref_stm], [hyp_stm], collar=collar)
+        wer_result = time_constrained.tcp_word_error_rate([stm_ref], [stm_hyp], collar=collar)
         
         error_rate = float(wer_result.error_rate) if wer_result.error_rate is not None else None
         
@@ -524,7 +524,7 @@ def calculate_tcpwer(ref_stm, hyp_stm, source_lang, target_lang, translate_direc
         }
 
 
-def calculate_stm_wer(ref_stm, hyp_stm, source_lang, target_lang, translate_direct, normalize=False):
+def calculate_stm_wer(stm_ref, stm_hyp, source_lang, target_lang, translate_direct, normalize=False):
     if not MEETEVAL_AVAILABLE:
         return {
             'stm_wer': None,
@@ -535,25 +535,25 @@ def calculate_stm_wer(ref_stm, hyp_stm, source_lang, target_lang, translate_dire
         }
 
     try:
-        if isinstance(ref_stm, dict):
-            ref_stm = parse_stm_from_json(ref_stm, normalize=normalize)
-        elif isinstance(ref_stm, str) and normalize:
-            ref_json = parse_stm_string_to_json(ref_stm)
-            ref_stm = parse_stm_from_json({'json': ref_json}, normalize=True)
+        if isinstance(stm_ref, dict):
+            stm_ref = parse_stm_from_json(stm_ref, normalize=normalize)
+        elif isinstance(stm_ref, str) and normalize:
+            ref_json = parse_stm_string_to_json(stm_ref)
+            stm_ref = parse_stm_from_json({'json': ref_json}, normalize=True)
 
-        if isinstance(hyp_stm, dict):
-            hyp_stm = parse_stm_from_json(hyp_stm, normalize=normalize)
-        elif isinstance(hyp_stm, str) and normalize:
-            hyp_json = parse_stm_string_to_json(hyp_stm)
-            hyp_stm = parse_stm_from_json({'json': hyp_json}, normalize=True)
+        if isinstance(stm_hyp, dict):
+            stm_hyp = parse_stm_from_json(stm_hyp, normalize=normalize)
+        elif isinstance(stm_hyp, str) and normalize:
+            hyp_json = parse_stm_string_to_json(stm_hyp)
+            stm_hyp = parse_stm_from_json({'json': hyp_json}, normalize=True)
 
-        if isinstance(ref_stm, str):
-            ref_stm = normalize_stm_session_id(ref_stm)
-        if isinstance(hyp_stm, str):
-            hyp_stm = normalize_stm_session_id(hyp_stm, ref_stm)
+        if isinstance(stm_ref, str):
+            stm_ref = normalize_stm_session_id(stm_ref)
+        if isinstance(stm_hyp, str):
+            stm_hyp = normalize_stm_session_id(stm_hyp, stm_ref)
 
         from meeteval.wer.wer import cp
-        wer_result = cp.cp_word_error_rate([ref_stm], [hyp_stm])
+        wer_result = cp.cp_word_error_rate([stm_ref], [stm_hyp])
         
         error_rate = float(wer_result.error_rate) if wer_result.error_rate is not None else None
         

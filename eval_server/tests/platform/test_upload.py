@@ -106,14 +106,14 @@ def test_mixed_upload():
     """测试混合上传（STM 文件 + 标量字段）"""
     print("\n=== 测试4: 混合上传（STM 文件 + 标量参数）===")
 
-    ref_stm = """1 0 0 5.0 1.0 speaker1 hello world
+    stm_ref = """1 0 0 5.0 1.0 speaker1 hello world
 1 0 5.0 10.0 1.0 speaker1 this is a test"""
-    hyp_stm = """1 0 0 5.0 1.0 speaker1 hello word
+    stm_hyp = """1 0 0 5.0 1.0 speaker1 hello word
 1 0 5.0 10.0 1.0 speaker1 this is test"""
 
     files = {
-        'ref_stm': ('ref.stm', ref_stm.encode('utf-8'), 'text/plain'),
-        'hyp_stm': ('hyp.stm', hyp_stm.encode('utf-8'), 'text/plain'),
+        'stm_ref': ('ref.stm', stm_ref.encode('utf-8'), 'text/plain'),
+        'stm_hyp': ('hyp.stm', stm_hyp.encode('utf-8'), 'text/plain'),
     }
     data = {'task_type': 'cpwer', 'task_id': 'caller_test_004'}
 

@@ -462,8 +462,8 @@ def create_task():
         asr_hyp (str): ASR 识别结果（待评估文本）
     
     CPWER/TCPWER/STM_WER 专用参数（STM格式）：
-        ref_stm (str): 参考文本的 STM 格式
-        hyp_stm (str): 识别结果的 STM 格式
+        stm_ref (str): 参考文本的 STM 格式
+        stm_hyp (str): 识别结果的 STM 格式
         collar (float, optional): tcpwer 的时间约束参数（秒），默认 0.0
     
     DER 专用参数：

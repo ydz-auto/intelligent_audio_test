@@ -18,9 +18,9 @@
 |-----------|------|---------|---------|
 | wer | 词错误率 | asr_ref, asr_hyp | JSON |
 | ser | 句错误率 | asr_ref, asr_hyp | JSON |
-| cpwer | 连接词错误率 | ref_stm, hyp_stm | JSON |
-| tcpwer | 时间约束词错误率 | ref_stm, hyp_stm | JSON |
-| stm_wer | 基于 STM 的 WER | ref_stm, hyp_stm | JSON |
+| cpwer | 连接词错误率 | stm_ref, stm_hyp | JSON |
+| tcpwer | 时间约束词错误率 | stm_ref, stm_hyp | JSON |
+| stm_wer | 基于 STM 的 WER | stm_ref, stm_hyp | JSON |
 | der | 说话人分离错误率 | rttm_ref, stm_ref, rttm_hyp, stm_hyp（旧名 rttm_res/stm_res 兼容） | JSON |
 | xiaoyi_metrics | 小艺全域编排（统一共享 ASR + 跨域聚合） | user_wav / ai_wav 至少一个 | JSON / multipart |
 | turn_taking | 话轮接管（tor + false_takeover + takeover_latency + reply_quality + high_freq_*） | user_wav / ai_wav | JSON / multipart |
@@ -102,8 +102,8 @@
 ```json
 {
   "task_type": "cpwer",
-  "ref_stm": "file1 1 speakerA 0.0 1.0 <o> hello world",
-  "hyp_stm": "file1 1 speakerA 0.0 1.0 <o> hello word"
+  "stm_ref": "file1 1 speakerA 0.0 1.0 <o> hello world",
+  "stm_hyp": "file1 1 speakerA 0.0 1.0 <o> hello word"
 }
 ```
 
