@@ -243,7 +243,7 @@ class TestMockSpeakDuringStream:
     """M3 mock 行为注入扩展契约（mock_realtime_api.speak_during_stream，经真实 WS 客户端）"""
 
     def _connect(self, harness):
-        from api_test_service.infrastructure.vendor_ws import RealtimeWSClient
+        from api_test_service.infrastructure.adapters.transport import RealtimeWSClient
         client = RealtimeWSClient(harness['server'].url, chunk_duration_ms=20)
         assert client.connect() is True
         assert client.pre_process() is True

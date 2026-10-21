@@ -36,7 +36,7 @@ class DeviceQueryService:
             )
 
             # 添加驱动名称
-            from device_service.infrastructure.drivers.device_driver import device_driver_factory
+            from device_service.infrastructure.drivers.driver_factory import device_driver_factory
             for device_data in result['items']:
                 if device_data.get('keywords'):
                     device_data['driver_name'] = device_driver_factory.get_driver_name_by_keywords(
@@ -76,7 +76,7 @@ class DeviceQueryService:
 
         data = device.to_dict()
 
-        from device_service.infrastructure.drivers.device_driver import device_driver_factory
+        from device_service.infrastructure.drivers.driver_factory import device_driver_factory
         if device.keywords:
             data['driver_name'] = device_driver_factory.get_driver_name_by_keywords(
                 device.system, device.keywords
@@ -87,7 +87,7 @@ class DeviceQueryService:
     def get_driver_keywords(self) -> dict:
         """获取所有已注册的驱动关键字"""
         try:
-            from device_service.infrastructure.drivers.device_driver import device_driver_factory
+            from device_service.infrastructure.drivers.driver_factory import device_driver_factory
             keywords_data = device_driver_factory.get_registered_keywords()
             return {'success': True, 'message': '获取驱动关键字成功', 'data': keywords_data, 'code': 200}
         except Exception as e:
@@ -95,7 +95,7 @@ class DeviceQueryService:
 
     def get_available_serials(self) -> dict:
         """获取可用设备序列号"""
-        from device_service.infrastructure.drivers.device_driver import device_driver_factory
+        from device_service.infrastructure.drivers.driver_factory import device_driver_factory
 
         all_devices = []
 

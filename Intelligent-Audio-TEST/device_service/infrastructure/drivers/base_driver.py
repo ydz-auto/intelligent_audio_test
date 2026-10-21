@@ -1,16 +1,27 @@
 from .utils import get_task_events, log_and_emit
 from shared.utils import distributed_coordinator as dc
 from shared.constants.ui_capture import UiCaptureDegradeReason
+from .contracts import AppDriver, DriverContext
 
-class BaseDeviceDriver:
-    """基础设备驱动类"""
 
-    def __init__(self):
-        """初始化基础驱动"""
-        self._task_id = None
-        self._test_case_id = None
-        self._device_id = None
-        self._mock_mode = False
+class BaseDeviceDriver(AppDriver):
+    """基础设备驱动类 — AppDriver 契约的兼容实现基类（无参构造，INT-1167）
+
+    全部既有运行时设施保留：Redis 分布式 stop/pause、UI 抓取降级、
+    teardown 自动关 App、播放时间戳提取、事件注册表等。
+    子类 ``__init__`` 继续以无参调用 ``super().__init__()`` 即保持原行为；
+    需要注入运行时上下文时传 ``ctx: DriverContext``。
+    """
+
+    def __init__(self, ctx: DriverContext = None):
+        """初始化基础驱动
+
+        Args:
+            ctx: 驱动运行时上下文；缺省时构造空 DriverContext
+                 （task_id/test_case_id/device_id/mock_mode 均为默认空值，
+                 与旧无参构造行为一致）。
+        """
+        super().__init__(ctx or DriverContext())
         # UI 抓取层能力标记（INT-296）：默认可用；降级必须由驱动 initialize 显式标记，
         # 严禁隐式默认降级（审计红线）。initialize 入口先重置，防单例跨用例残留。
         self.ui_capture_available = True

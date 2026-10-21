@@ -27,7 +27,7 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
     @property
     def factory(self):
         if self._factory is None:
-            from device_service.infrastructure.drivers.device_driver import device_driver_factory
+            from device_service.infrastructure.drivers.driver_factory import device_driver_factory
             self._factory = device_driver_factory
         return self._factory
 
@@ -413,7 +413,7 @@ class DeviceResultServiceServicer(e2e_grpc.DeviceResultServiceServicer):
         device_info_list 不含 driver 字段。此方法从 device_driver_factory
         查找并注入，使 collect_raw_results 能正常调用 driver.get_results()。
         """
-        from device_service.infrastructure.drivers.device_driver import device_driver_factory
+        from device_service.infrastructure.drivers.driver_factory import device_driver_factory
         for info in device_info_list:
             if isinstance(info, dict) and 'driver' not in info:
                 device_sn = info.get('device_sn')

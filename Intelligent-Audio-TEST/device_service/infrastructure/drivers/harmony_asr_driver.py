@@ -10,7 +10,7 @@ except ImportError:
 
 from .base_driver import BaseDeviceDriver
 from .harmony_driver import HarmonyDriver
-from .driver_types import AppType, AppVersion, DevicePlatform
+from .driver_types import DevicePlatform
 from .registry import register_driver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry
 try:
@@ -25,12 +25,12 @@ LOG_DEVICE_PATH = "/data/app/el2/100/base/com.huawei.hmos.vassistant/haps/voice_
 
 
 @register_driver
-class HarmonyHardenXiaoyi_Input_MethodDriver(HarmonyDriver):
+class HarmonyXiaoyiInputMethodDriver(HarmonyDriver):
     """鸿蒙小艺输入法驱动"""
 
     # —— 驱动元数据 ——
-    app_type = AppType.XIAOYI_INPUT_METHOD
-    version = AppVersion.V1
+    app_type = "xiaoyi_input_method"
+    version = "v1"
     platform = DevicePlatform.HARMONYOS
     keywords = "harmony.xiaoyi_input_method.v1"
     display_name = "鸿蒙小艺输入法 ASR v1"

@@ -64,7 +64,7 @@ class DeviceCommandService:
 
             # 创建设备后立即检查设备是否在线
             try:
-                from device_service.infrastructure.drivers.device_driver import device_driver_factory
+                from device_service.infrastructure.drivers.driver_factory import device_driver_factory
                 driver = device_driver_factory.get_driver_by_system(new_device.system)
                 if driver:
                     online_devices = driver.scan()
@@ -138,7 +138,7 @@ class DeviceCommandService:
 
     def scan(self) -> dict:
         """扫描物理设备（Android/iOS/HarmonyOS）"""
-        from device_service.infrastructure.drivers.device_driver import device_driver_factory
+        from device_service.infrastructure.drivers.driver_factory import device_driver_factory
 
         all_devices = []
 
@@ -208,7 +208,7 @@ class DeviceCommandService:
                   不因在线状态读取故障阻塞唤醒主流程
         """
         try:
-            from device_service.infrastructure.drivers.device_driver import device_driver_factory
+            from device_service.infrastructure.drivers.driver_factory import device_driver_factory
             driver = device_driver_factory.get_driver_by_system(device.system)
             if not driver:
                 return None
@@ -274,7 +274,7 @@ class DeviceCommandService:
             }
 
         try:
-            from device_service.infrastructure.drivers.device_driver import device_driver_factory
+            from device_service.infrastructure.drivers.driver_factory import device_driver_factory
             driver = device_driver_factory.get_driver_for_device(device.system, keywords=device.keywords)
             if driver:
                 driver.unlock(device.serial_number or device.ip)
@@ -314,7 +314,7 @@ class DeviceCommandService:
 
     def health_check(self, device_ids: list = None) -> dict:
         """批量健康检查（每次结果落状态历史事件并发布 DEVICE_EVENTS，INT-80）"""
-        from device_service.infrastructure.drivers.device_driver import device_driver_factory
+        from device_service.infrastructure.drivers.driver_factory import device_driver_factory
         from device_service.application.services.device_monitor_service import device_monitor_service
 
         if not device_ids:

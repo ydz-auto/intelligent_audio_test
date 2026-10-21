@@ -223,3 +223,58 @@ def update_self(request: Request):
     user:update（那是 admin 管他人）；body 携带 username 等其他字段 → 400。
     """
     return to_response(AuthService.update_self_profile(request.state))
+
+
+# ===== Access Token 个人配置页 CRUD（INT-1140，BE1 领域已实现）=====
+# 网关转发 auth_service 本组 HTTP 端点（同前缀 /api/v1/auth/access-tokens，
+# 由 BE1 INT-1148 提供），鉴权「当前登录用户本人」= AuthMiddleware 注入的
+# request.state.user_id（对齐 /auth/self INT-792 语义，不需新权限码）。
+# 响应透传 auth_service；off 模式 dev_user（user_id=0）→ 401。
+
+@router.post('/access-tokens')
+def create_access_token():
+    """创建个人 Access Token（明文仅本响应返回一次，库中只存哈希）。"""
+    from api_gateway.application.services.auth.access_token_service import (
+        AccessTokenService,
+    )
+    from api_gateway.infrastructure.request_adapter import request
+    return AccessTokenService.forward(
+        'POST', '/access-tokens', request.get_json())
+
+
+@router.get('/access-tokens')
+def list_access_tokens():
+    """列出当前用户 Access Token（掩码：token_hint，无明文/哈希）。"""
+    from api_gateway.application.services.auth.access_token_service import (
+        AccessTokenService,
+    )
+    return AccessTokenService.forward('GET', '/access-tokens')
+
+
+@router.get('/access-tokens/{token_id}')
+def get_access_token(token_id: int):
+    """获取当前用户单个 Access Token 详情（掩码）。"""
+    from api_gateway.application.services.auth.access_token_service import (
+        AccessTokenService,
+    )
+    return AccessTokenService.forward('GET', f'/access-tokens/{token_id}')
+
+
+@router.patch('/access-tokens/{token_id}')
+def update_access_token(token_id: int):
+    """更新当前用户 Access Token（重命名/scopes/状态/过期时间，None=不修改）。"""
+    from api_gateway.application.services.auth.access_token_service import (
+        AccessTokenService,
+    )
+    from api_gateway.infrastructure.request_adapter import request
+    return AccessTokenService.forward(
+        'PATCH', f'/access-tokens/{token_id}', request.get_json())
+
+
+@router.delete('/access-tokens/{token_id}')
+def delete_access_token(token_id: int):
+    """软删除当前用户 Access Token（保留行供审计）。"""
+    from api_gateway.application.services.auth.access_token_service import (
+        AccessTokenService,
+    )
+    return AccessTokenService.forward('DELETE', f'/access-tokens/{token_id}')
