@@ -24,6 +24,7 @@ import { Search } from '@/components/search'
 import { useNotifications } from '@/application/hooks/use-notifications'
 import { useTopNavLinks } from '@/application/hooks/use-top-nav-links'
 
+import { AgentConnectButton } from './agent-connect-button'
 import { AgentWorkbenchButton } from './agent-workbench-button'
 import { GlobalAlgorithmSwitcher } from './global-algorithm-switcher'
 import { Header } from './header'
@@ -32,7 +33,8 @@ import { TopNav } from './top-nav'
 
 /**
  * 通用应用头部（本平台适配版）。
- * 右区顺序（02_导航栏.md 定稿 + INT-598 增项）：Agent 工作台魔法按钮 → 算法切换器 → 搜索 → 通知 → 语言 → 主题 → 头像。
+ * 右区顺序（02_导航栏.md 定稿 + INT-598 增项 + INT-1153 增项）：
+ * Agent 工作台魔法按钮 → 联接你的 agent 魔法按钮 → 算法切换器 → 搜索 → 通知 → 语言 → 主题 → 头像。
  * 去 newAPI 的签到/钱包充值/系统更新项；顶部导航项本体归导航栏卡 INT-344。
  */
 type AppHeaderProps = {
@@ -86,6 +88,8 @@ export function AppHeader({
         <div className='ms-auto flex max-w-full shrink-0 basis-full items-center justify-end gap-1 sm:gap-2 lg:basis-auto'>
           {/* 全局 Agent 工作台魔法按钮（INT-598 §3.1B；INT-344 右区装配，落位置于全局算法切换器之前） */}
           <AgentWorkbenchButton />
+          {/* 全局「联接你的 agent」魔法按钮（INT-1153；右区装配，落位置于算法切换器之前） */}
+          <AgentConnectButton />
           {showGlobalAlgorithmSwitcher && <GlobalAlgorithmSwitcher />}
           {showSearch && (
             <Search className='!w-8 !flex-none !px-0 sm:!w-8 sm:!pe-0 lg:!w-8 xl:!w-8 2xl:!w-40 2xl:!pe-12 [&>kbd]:hidden 2xl:[&>kbd]:flex [&>span]:hidden 2xl:[&>span]:inline' />

@@ -53,6 +53,7 @@ import type {
   NavLink,
   NavGroup as NavGroupProps,
 } from '../types'
+import { cn } from '@/lib/utils'
 
 /**
  * Sidebar navigation group component
@@ -120,6 +121,12 @@ function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
       <SidebarMenuButton
         isActive={checkIsActive(href, item)}
         tooltip={item.title}
+        className={cn(
+          // 炫彩魔法入口（INT-1153「联接你的 agent」）：复用 ai-discount-core/
+          // ai-discount-word 魔法按钮样式（index.css:826+），覆盖侧栏 hover/active 底色
+          item.magic &&
+            'ai-discount-core ai-discount-word h-8 overflow-hidden rounded-full border-0 text-white hover:bg-transparent hover:brightness-110 active:bg-transparent data-active:bg-transparent data-active:hover:bg-transparent'
+        )}
         render={
           <Link
             to={item.url}
