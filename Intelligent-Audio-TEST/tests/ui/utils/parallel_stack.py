@@ -44,6 +44,12 @@ FRONTEND_DIR = os.path.join(BASE_DIR, 'frontend')
 # INT-528 验收：前端 vite 端口可经 UI_STACK_FRONTEND_PORT 覆盖（默认 6273）。
 SHIFT = int(os.environ.get('UI_STACK_SHIFT', '1000'))
 _suffix = '' if SHIFT == 1000 else f'_{SHIFT}'
+
+# INT-1195：显式放行连主库（生产副本 intelligent_audio_test）的验证场景。
+# 默认仍强制隔离测试库（pytest / 冒烟用，INT-246 红线）；仅当显式设置
+# UI_STACK_DATABASE_NAME 时才覆盖库名，用于「开认证验证真实库用户」类解阻卡，
+# 用法：UI_STACK_DATABASE_NAME=intelligent_audio_test python .../parallel_stack.py start
+DB_NAME = os.environ.get('UI_STACK_DATABASE_NAME', ISOLATED_TEST_DB_NAME)
 PID_FILE = os.path.join(BASE_DIR, 'tests', 'ui', f'_ui_stack{_suffix}.pid')
 LOG_DIR = os.path.join(BASE_DIR, 'logs', f'ui_stack{_suffix}')
 
@@ -97,12 +103,13 @@ def _base_env() -> dict:
     env['PYTHONUTF8'] = '1'
     env['AUTH_MODE'] = AUTH_MODE
     env['VITE_AUTH_MODE'] = AUTH_MODE
-    # 隔离库（强制）：从 .env DATABASE_URL 推导仅换库名
+    # 库名：默认隔离库（强制）；UI_STACK_DATABASE_NAME 显式覆盖（INT-1195
+    # 开认证验证真实库用户时指向主库）。从 .env DATABASE_URL 推导仅换库名
     parts = urlsplit(env.get('DATABASE_URL', ''))
     if not parts.scheme.startswith('postgres'):
         raise SystemExit('[UI-STACK] .env DATABASE_URL 非 Postgres，无法推导隔离库连接串')
     env['DATABASE_URL'] = urlunsplit(
-        (parts.scheme, parts.netloc, '/' + ISOLATED_TEST_DB_NAME, '', ''))
+        (parts.scheme, parts.netloc, '/' + DB_NAME, '', ''))
     # Redis 独立 DB index，避免与共享栈缓存互踩
     env['REDIS_URL'] = 'redis://localhost:6379/1'
     env['LOG_ROOT_DIR'] = os.path.join('logs', 'ui_stack')
@@ -250,8 +257,8 @@ def wait_ready(timeout: int = 90):
             if r.status_code == 200:
                 body = r.json()
                 print(f"[UI-STACK] 网关就绪：database={body.get('database')}", flush=True)
-                if body.get('database') != ISOLATED_TEST_DB_NAME:
-                    print('[UI-STACK][FATAL] 栈 database 字段非隔离库，立即停止', flush=True)
+                if body.get('database') != DB_NAME:
+                    print('[UI-STACK][FATAL] 栈 database 字段非目标库，立即停止', flush=True)
                     return stop()
                 _verify_auth_mode()
                 return True
