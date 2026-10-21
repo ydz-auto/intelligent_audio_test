@@ -105,8 +105,10 @@
       <span v-if="node.children.length > 0" class="pt-count">{{ node.count }} 条</span>
     </div>
 
-    <!-- 结果行叶（非用例节点直挂叶：用例视图 resultType 级下钻 / 无子级节点） -->
-    <div v-if="node.level === 'resultType' || (node.children.length === 0 && node.level === 'leaf')">
+    <!-- 结果行叶（INT-1110 返工 P1：仅最深分组节点直挂叶渲染——children 为空时该节点自身
+         携带 resultIds；设备/结果类型视图中 resultType 节点有 case 子级，叶由用例卡内
+         pt-case-leaves 呈现，此处不再平铺，避免同一条结果重复出现） -->
+    <div v-if="node.level !== 'case' && node.children.length === 0 && node.level !== 'leaf'">
       <label
         v-for="rid in node.resultIds"
         :key="rid"

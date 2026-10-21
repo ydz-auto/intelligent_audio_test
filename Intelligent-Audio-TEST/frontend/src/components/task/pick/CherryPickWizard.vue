@@ -686,7 +686,9 @@ function expandAll() {
   const roots = treeRoots.value;
   const walk = (nodes: PickTreeNode[]) => {
     for (const n of nodes) {
-      if (n.children.length) keys.add(n.key);
+      // INT-1110 返工 P1 配套：含无子级用例卡（设备/结果类型视图叶行载体）——
+      // 叶行只在用例卡内呈现后，「全部展开」需开卡才能显示卡内叶行
+      keys.add(n.key);
       walk(n.children);
     }
   };

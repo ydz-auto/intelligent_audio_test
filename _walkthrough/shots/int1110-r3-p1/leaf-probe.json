@@ -1,0 +1,20 @@
+{
+  "case_view": {
+    "pt_leaf_total": 1,
+    "in_case_card": 0,
+    "outside_case_card": 1,
+    "checkbox": 1
+  },
+  "device_view": {
+    "pt_leaf_total": 1,
+    "in_case_card": 1,
+    "outside_case_card": 0,
+    "checkbox": 1
+  },
+  "result_type_view": {
+    "pt_leaf_total": 1,
+    "in_case_card": 1,
+    "outside_case_card": 0,
+    "checkbox": 1
+  }
+}
