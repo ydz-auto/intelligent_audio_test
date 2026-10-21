@@ -3,10 +3,12 @@
 .btn{
 }
 
-/* 按钮样式 - 统一为文本和SVG有颜色，背景无颜色 */
-button:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only),
-.btn:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only),
-label.btn:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only) {
+/* 按钮样式 - 统一为文本和SVG有颜色，背景无颜色
+   INT-1140：.btn-magic 为炫彩渐变按钮（入口/下载 skill），从全局无背景规则排除，
+   使其保留自身 --magic-gradient 背景，不被下方 background: transparent 覆盖。 */
+button:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only):not(.btn-magic),
+.btn:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only):not(.btn-magic),
+label.btn:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only):not(.btn-magic) {
     padding: var(--spacing-sm) var(--spacing-md);
     border: none;
     border-radius: var(--border-radius-md);

@@ -36,7 +36,7 @@ const routes: Array<RouteRecordRaw> = [
   { path: '/AlgorithmConfig', name: 'algorithmConfig', component: () => import('../views/AlgorithmConfig/AlgorithmConfigPage.vue'), meta: { permission: 'algorithm:read', title: '算法配置' } },
   { path: '/TagManagement', name: 'tagManagement', component: () => import('../views/TagManagement/TagManagement.vue'), meta: { permission: 'tag:read', title: '标签管理' } },
   { path: '/OAuthProviders', name: 'oauthProviders', component: () => import('../views/OAuthProviders/OAuthProviderManagement.vue'), meta: { permission: 'auth:manage_provider', title: 'OAuth 提供方管理' } },
-  { path: '/agent-connect', name: 'agentConnect', component: () => import('../views/AgentConnect/AgentConnect.vue'), meta: { title: '联接你的 agent' } },
+  { path: '/agent-connect', name: 'agentConnect', component: () => import('../views/AgentConnect/AgentConnect.vue'), meta: { title: '连接你的 agent' } },
   { path: '/AccountSettings', name: 'accountSettings', component: () => import('../views/Account/AccountSettings.vue'), meta: { title: '账号设置' } },
   // 404 兜底
   { path: '/:pathMatch(.*)*', name: 'notFound', component: () => import('../views/NotFound/NotFoundPage.vue'), meta: { public: true, title: '页面不存在' } },

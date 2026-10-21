@@ -107,8 +107,8 @@ const navItems: NavItem[] = [
   { path: '/LogView', label: '日志查看', icon: 'fas fa-file-alt navIcon', permission: 'log:read' },
   { path: '/TagManagement', label: '标签管理', icon: 'fas fa-tags navIcon', permission: 'tag:read' },
   { path: '/OAuthProviders', label: 'OAuth 提供方', icon: 'fas fa-plug navIcon', permission: 'auth:manage_provider' },
-  // INT-1140：联接你的 agent（炫彩入口）——个人能力入口，登录即见（permission 占位，下方 special-case）
-  { path: '/agent-connect', label: '联接你的 agent', icon: 'fas fa-robot navIcon', permission: 'agent-connect' },
+  // INT-1140：连接你的 agent（炫彩入口）——个人能力入口，登录即见（permission 占位，下方 special-case）；文案统一「连接你的 agent」（2026-10-21 口径补记）
+  { path: '/agent-connect', label: '连接你的 agent', icon: 'fas fa-robot navIcon', permission: 'agent-connect' },
 ]
 
 // ===== Stores & refs =====

@@ -3,7 +3,7 @@
     <div class="page-header">
       <h2 class="page-title">
         <i class="fas fa-robot"></i>
-        联接你的 agent
+        连接你的 agent
       </h2>
       <p class="page-description">
         下载智能音频测试 skill，让外部 agent（Claude Code / Codex 等）经 skill / MCP 调用本系统能力
@@ -186,7 +186,8 @@ onMounted(() => {
   outline: none;
   border-color: var(--ring, #ff6a00);
 }
-/* 炫彩「下载 skill」按钮（INT-1140）：引用 tokens.css 彩虹渐变令牌，不硬编码 */
+/* 炫彩「下载 skill」按钮（INT-1140）：引用 tokens.css 彩虹渐变令牌，不硬编码。
+   已从全局 button.css 无背景规则排除（:not(.btn-magic)），此处补 cursor 指针。 */
 .btn-magic {
   flex-shrink: 0;
   display: inline-flex;
@@ -203,6 +204,7 @@ onMounted(() => {
   transition: filter 0.2s, transform 0.05s;
 }
 .btn-magic:hover:not(:disabled) {
+  background: var(--magic-gradient);
   filter: brightness(1.1);
 }
 .btn-magic:active:not(:disabled) {

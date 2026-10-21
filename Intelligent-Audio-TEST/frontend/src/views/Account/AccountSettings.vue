@@ -70,9 +70,9 @@
       </div>
     </div>
 
-    <!-- INT-1140：Access Token 管理（联接你的 agent） -->
+    <!-- INT-1140：Access Token 管理（连接你的 agent） -->
     <div class="section-card" ref="tokenSectionRef">
-      <h3>Access Token <span class="section-badge">联接你的 agent</span></h3>
+      <h3>Access Token <span class="section-badge">连接你的 agent</span></h3>
       <p class="section-hint">
         供 skill / MCP 调用本系统能力时鉴权；明文仅创建时显示一次，库中只存哈希。
       </p>
