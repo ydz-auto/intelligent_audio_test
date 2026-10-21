@@ -3,11 +3,13 @@
  * 10_测试执行.md §3.6；INT-486 2026-10-16 追加口径：开始测试不再分 E2E/API——
  * 本步同屏同选设备 + API（混合执行），筛选按设备/API 维度组合）。
  * 工具行（搜索/状态/实验室/系统类型 + API 厂商/协议筛选）+ 设备网格 + 被测 API 卡片网格
- * （INT-1061 2026-10-20：API 与设备同一套卡片形态，混选同屏一眼同形；纯 API 表格保留 api-table）
- * + 执行参数区（测试配置/并发/执行模式/网络，照 playground-parameter-panel 参数卡形态；
- *   执行模式 INT-604 2026-10-20：设备/API 目标间并行/串行编排，仅混选设备+API 可设）。
+ * （INT-1061 2026-10-20：API 与设备同一套卡片形态，混选同屏一眼同形；纯 API 表格保留 api-table 备用）
+ * + 执行参数区（测试配置/并发/网络，照 playground-parameter-panel 参数卡形态；
+ *   INT-1060 返工 / INT-1119 2026-10-21：执行模式改为**逐卡配置**——设备卡/API 卡 SegmentedControl
+ *   「并行｜串行」，底部 execution-diagram 实时示意，执行参数区不再含全局执行模式开关）。
  * 报告参数不在第二步配置（负责人 2026-10-16 口径确认：报告内容/导出在报告阶段处理）。
- * readOnly（§3.1.1）：设备/API 列表只读可见；扫描/新增/连接测试/编辑/删除隐藏；参数只读展示。
+ * readOnly（§3.1.1）：设备/API 列表只读可见；扫描/新增/连接测试/编辑/删除隐藏；参数只读展示；
+ * 逐卡模式只读 Badge + 底部示意图只读渲染（§3.6.4）。
  * 多友商口径（负责人 2026-10-16 核心业务口径）：多被测主体同集同指标同时实测=本步
  * 设备 + API 多选 + 并发自动合计（「并发任务数」由所选 API 并发上限求和）。
  */
@@ -18,6 +20,7 @@ import { useAlgorithmChannel } from '@/application/test-execution/useAlgorithmCh
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useResourceSelection } from '@/application/test-execution/useResourceSelection'
 import { useApisCrud } from '@/application/test-execution/useApisCrud'
+import { useTargetModes } from '@/application/test-execution/useTargetModes'
 import { useExecutionStore } from '@/infrastructure/stores/execution-store'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -40,12 +43,12 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { cn } from '@/lib/utils'
 
 import { DeviceCard } from '@/features/test-execution/components/device-card'
 import { ApiCard } from '@/features/test-execution/components/api-card'
 import { ParamCard } from '@/features/test-execution/components/param-card'
 import { SelectionSummary } from '@/features/test-execution/components/selection-summary'
+import { ExecutionDiagram } from '@/features/test-execution/components/execution-diagram'
 import {
   MOCK_RESOURCE_LABS,
   NETWORK_OPTIONS,
@@ -76,6 +79,7 @@ export function StepResources({
   const { hasPermission } = usePermissions()
   const { current: currentAlgorithm, algorithmType } = useAlgorithmChannel()
   const resources = useResourceSelection(algorithmType)
+  const targetModes = useTargetModes()
   const apisCrud = useApisCrud()
   const params = useExecutionStore((s) => s.params)
   const setParams = useExecutionStore((s) => s.setParams)
@@ -194,8 +198,6 @@ export function StepResources({
   const selectedDevices = resources.devices.filter((d) => resources.deviceIds.includes(d.id))
   const selectedApis = resources.apis.filter((a) => resources.apiIds.includes(a.id))
   const totalSelected = resources.deviceIds.length + resources.apiIds.length
-  /** 执行模式可设条件（INT-604：同一任务同时勾选设备与 API 目标——纯设备/纯 API 置灰） */
-  const canMixed = resources.deviceIds.length > 0 && resources.apiIds.length > 0
 
   return (
     <div className='flex flex-col gap-4'>
@@ -389,6 +391,8 @@ export function StepResources({
                   readOnly={readOnly}
                   canControl={canDeviceControl}
                   testing={testingIds.has(device.id)}
+                  mode={targetModes.getMode('device', device.id)}
+                  onModeChange={(mode) => targetModes.setMode('device', device.id, mode)}
                   onToggle={resources.toggleDevice}
                   onTestConnection={() => void handleTestConnection(device)}
                 />
@@ -435,6 +439,8 @@ export function StepResources({
                   canEdit={canApiEdit}
                   canDelete={canApiDelete}
                   testing={testingIds.has(api.id)}
+                  mode={targetModes.getMode('api', api.id)}
+                  onModeChange={(mode) => targetModes.setMode('api', api.id, mode)}
                   onToggle={resources.toggleApi}
                   onTestConnection={handleApiTest}
                   onEdit={onOpenApiEdit}
@@ -447,29 +453,6 @@ export function StepResources({
             )}
           </section>
         </>
-      )}
-
-      {/* 已选资源汇总行 */}
-      {!readOnly && (
-        <SelectionSummary
-          mode='resource'
-          count={totalSelected}
-          countText={`${resources.deviceIds.length} 台设备 · ${resources.apiIds.length} 个 API`}
-          unitText='个资源'
-          concurrencyText={`并发上限 ${apiConcurrencySum}`}
-          items={[
-            ...selectedDevices.map((d) => ({ id: d.id, name: d.name, status: d.status })),
-            ...selectedApis.map((a) => ({ id: a.id, name: a.name, status: a.status })),
-          ]}
-          onClear={() => {
-            resources.selectAllDevices([])
-            resources.selectAllApis([])
-          }}
-          onRemoveItem={(id) => {
-            if (resources.deviceIds.includes(id)) resources.removeDevice(id)
-            else resources.removeApi(id)
-          }}
-        />
       )}
 
       {/* 执行参数区（§3.6.3；报告参数不在本步配置——负责人 2026-10-16 口径） */}
@@ -547,93 +530,6 @@ export function StepResources({
           </p>
         )}
 
-        {/* 执行模式（INT-604：设备/API 目标间并行/串行编排；仅混选设备+API 可设——
-            parallel=两侧各自独立并发（现行为）；serial=逐用例门控，先跑优先侧、两侧全终态后才进下一用例。
-            readOnly（algo_engineer 观察）只读展示当前值；纯设备/纯 API 置灰 + 提示。 */}
-        <div className='mt-4'>
-          <h4 className='mb-2 text-xs font-medium'>执行模式</h4>
-          {!readOnly ? (
-            <div className='space-y-1.5'>
-              <div className='flex flex-wrap items-center gap-x-4 gap-y-1.5'>
-                <label
-                  className={cn(
-                    'flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm',
-                    !canMixed ? 'text-muted-foreground cursor-not-allowed' : 'hover:bg-accent'
-                  )}
-                >
-                  <input
-                    type='radio'
-                    name='execution-mode'
-                    value='parallel'
-                    checked={params.executionMode === 'parallel'}
-                    disabled={!canMixed}
-                    onChange={() => setParams({ executionMode: 'parallel' })}
-                  />
-                  并行
-                </label>
-                <label
-                  className={cn(
-                    'flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm',
-                    !canMixed ? 'text-muted-foreground cursor-not-allowed' : 'hover:bg-accent'
-                  )}
-                >
-                  <input
-                    type='radio'
-                    name='execution-mode'
-                    value='serial'
-                    checked={params.executionMode === 'serial'}
-                    disabled={!canMixed}
-                    onChange={() => setParams({ executionMode: 'serial' })}
-                  />
-                  串行
-                </label>
-              </div>
-              {params.executionMode === 'serial' && canMixed && (
-                <div className='border-border/60 space-y-1.5 rounded-lg border p-2'>
-                  <span className='text-xs font-medium'>串行优先侧</span>
-                  <div className='flex flex-wrap items-center gap-x-4 gap-y-1.5'>
-                    <label className='hover:bg-accent flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm'>
-                      <input
-                        type='radio'
-                        name='serial-first'
-                        value='device'
-                        checked={params.serialFirst === 'device'}
-                        onChange={() => setParams({ serialFirst: 'device' })}
-                      />
-                      设备先
-                    </label>
-                    <label className='hover:bg-accent flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm'>
-                      <input
-                        type='radio'
-                        name='serial-first'
-                        value='api'
-                        checked={params.serialFirst === 'api'}
-                        onChange={() => setParams({ serialFirst: 'api' })}
-                      />
-                      API 先
-                    </label>
-                  </div>
-                </div>
-              )}
-              <p className='text-muted-foreground text-xs'>
-                {params.executionMode === 'serial'
-                  ? '同一用例设备侧与 API 侧不重叠：先跑优先侧，两侧全终态后才执行下一用例'
-                  : '设备侧与 API 侧各自独立并发执行（现行为）'}
-              </p>
-              {!canMixed && (
-                <p className='text-muted-foreground/70 text-xs'>仅混选设备与 API 时可用</p>
-              )}
-            </div>
-          ) : (
-            <p className='text-muted-foreground text-xs'>
-              当前：
-              {params.executionMode === 'serial'
-                ? `串行（优先${params.serialFirst === 'device' ? '设备' : 'API'}）`
-                : '并行'}
-            </p>
-          )}
-        </div>
-
         {/* 网络配置（device:control 才可设；tester 无权限项隐藏只读展示） */}
         <div className='mt-4'>
           <h4 className='mb-2 text-xs font-medium'>网络配置</h4>
@@ -658,6 +554,36 @@ export function StepResources({
           )}
         </div>
       </div>
+
+      {/* 已选资源汇总行（§3.6.3；位于执行参数区下方） */}
+      {!readOnly && (
+        <SelectionSummary
+          mode='resource'
+          count={totalSelected}
+          countText={`${resources.deviceIds.length} 台设备 · ${resources.apiIds.length} 个 API`}
+          unitText='个资源'
+          concurrencyText={`并发上限 ${apiConcurrencySum}`}
+          items={[
+            ...selectedDevices.map((d) => ({ id: d.id, name: d.name, status: d.status })),
+            ...selectedApis.map((a) => ({ id: a.id, name: a.name, status: a.status })),
+          ]}
+          onClear={() => {
+            resources.selectAllDevices([])
+            resources.selectAllApis([])
+          }}
+          onRemoveItem={(id) => {
+            if (resources.deviceIds.includes(id)) resources.removeDevice(id)
+            else resources.removeApi(id)
+          }}
+        />
+      )}
+
+      {/* 底部并行/串行示意图（§3.6.4：随选中目标 + 每卡模式实时更新；readOnly 只读渲染；
+          全量列表解析名称——已选目标即使被筛选隐藏仍正确显示） */}
+      <ExecutionDiagram
+        devices={resources.allDevices}
+        apis={resources.allApis}
+      />
 
       {/* 分页 */}
       <div className='flex items-center justify-between text-xs'>

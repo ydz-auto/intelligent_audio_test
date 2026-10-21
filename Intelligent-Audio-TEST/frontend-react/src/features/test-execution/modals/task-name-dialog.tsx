@@ -4,10 +4,12 @@
  * 说明行 + 执行摘要一行；主钮「开始测试」（进行中「正在启动…」+ Loader）——
  * 确认即创建+启动+跳 step=3（useTestLaunch.launch）。
  * INT-486 2026-10-16 口径：设备+API 混合执行，摘要含设备/API 双计数。
+ * INT-1119 2026-10-21：摘要存在串行目标时附「· 串行 {s} 个目标」，全并行时省略（§5.1）。
  */
 import { useState } from 'react'
 
 import { useTestLaunch } from '@/application/test-execution/useTestLaunch'
+import { useTargetModes } from '@/application/test-execution/useTargetModes'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -46,6 +48,7 @@ export function TaskNameDialog({
   params,
 }: TaskNameDialogProps) {
   const { defaultTaskName, launch } = useTestLaunch()
+  const { serialCount } = useTargetModes()
   const [name, setName] = useState(() => defaultTaskName())
   const [starting, setStarting] = useState(false)
 
@@ -55,7 +58,10 @@ export function TaskNameDialog({
     onOpenChange(next)
   }
 
-  const summary = `${caseCount} 条 · ${deviceCount} 台 · ${apiCount} 个 · 并发 ${params.concurrency}`
+  // §5.1 摘要：存在串行目标时附「· 串行 {s} 个目标」，全并行时省略
+  const summary = `${caseCount} 条 · ${deviceCount} 台 · ${apiCount} 个 · 并发 ${params.concurrency}${
+    serialCount > 0 ? ` · 串行 ${serialCount} 个目标` : ''
+  }`
 
   /** 任务 device_types（混跑语义：设备 + HTTP API + Realtime WS 网关全链） */
   const deviceTypes = ['smart_speaker', 'http_api', 'websocket_api']

@@ -5,7 +5,9 @@
  * （端点/算法/最大并发）、API 类型徽章（device_type：http_api=Server「HTTP API」/
  * websocket_api=RadioTower「Realtime WS」）、整卡选中态 ring-2；离线禁选 + Tooltip；
  * 连接测试 ghost 钮（api_config:test 显隐）+ 编辑/删除行菜单（api_config:update/delete）。
- * 纯 API 流程表格（§3.6.2）保留于 api-table.tsx，本件仅服务同屏混选。
+ * INT-1060 返工 / INT-1119（2026-10-21）：仅**被选中**卡显示「并行｜串行」逐卡模式
+ * SegmentedControl（默认并行，与设备卡同控件；纯设备/纯 API/混选均可用）；readOnly
+ * 观察态展示模式 Badge，无控件。纯 API 流程表格（§3.6.2）保留于 api-table.tsx 备用。
  */
 import { MoreHorizontal, PlugZap, RadioTower, Server } from 'lucide-react'
 
@@ -23,8 +25,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import {
+  ExecutionModeBadge,
+  ExecutionModeControl,
+} from '@/features/test-execution/components/execution-mode-control'
 import { cn } from '@/lib/utils'
 import type { ApiConfig } from '@/domain/models/apiConfig'
+import type { ExecutionMode } from '@/domain/models/testExecution'
 
 const API_TYPE_ICON = {
   http_api: Server,
@@ -44,6 +51,9 @@ interface ApiCardProps {
   canEdit: boolean
   canDelete: boolean
   testing: boolean
+  /** 当前执行模式（受控值经 useTargetModes；缺省并行） */
+  mode?: ExecutionMode
+  onModeChange?: (mode: ExecutionMode) => void
   onToggle: (id: number) => void
   onTestConnection: (api: ApiConfig) => void
   onEdit: (api: ApiConfig) => void
@@ -58,6 +68,8 @@ export function ApiCard({
   canEdit,
   canDelete,
   testing,
+  mode = 'parallel',
+  onModeChange,
   onToggle,
   onTestConnection,
   onEdit,
@@ -123,7 +135,7 @@ export function ApiCard({
       </div>
 
       {/* 操作行 */}
-      <div className='mt-auto flex items-center gap-2'>
+      <div className='mt-auto flex flex-wrap items-center gap-2'>
         {!readOnly && (
           <Tooltip>
             <TooltipTrigger
@@ -144,6 +156,14 @@ export function ApiCard({
               {online ? '选择该 API 执行测试' : '离线不可选'}
             </TooltipContent>
           </Tooltip>
+        )}
+        {/* 逐卡执行模式（INT-1060 返工/INT-1119：仅被选中卡显示；默认并行；readOnly 展示 Badge） */}
+        {!readOnly && selected && onModeChange && (
+          <ExecutionModeControl
+            value={mode}
+            onChange={onModeChange}
+            ariaLabel={`${api.name} 执行模式`}
+          />
         )}
         {!readOnly && (
           <div className='ml-auto flex items-center gap-0.5'>
@@ -186,8 +206,8 @@ export function ApiCard({
           </div>
         )}
         {readOnly && (
-          <span className='text-muted-foreground text-xs'>
-            {selected ? '已选择' : '未选择'}
+          <span className='text-muted-foreground flex items-center gap-2 text-xs'>
+            {selected ? <ExecutionModeBadge mode={mode} /> : '未选择'}
           </span>
         )}
       </div>

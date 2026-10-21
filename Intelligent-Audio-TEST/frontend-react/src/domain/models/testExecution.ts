@@ -5,6 +5,19 @@
  * 用例执行详情（§5.2 多轮指标对比/日志分页）。
  */
 
+/** 目标类型（INT-1115 target_modes.target_type 枚举） */
+export type TargetType = 'device' | 'api'
+
+/** 执行模式（INT-1115：每目标并行/串行；缺省=并行） */
+export type ExecutionMode = 'parallel' | 'serial'
+
+/** 逐目标执行模式（INT-1115 契约；列表顺序=选中顺序=串行链顺序） */
+export interface TargetMode {
+  targetType: TargetType
+  targetId: number
+  mode: ExecutionMode
+}
+
 /** 执行参数（§3.6.3；INT-486 2026-10-16 口径：设备+API 混合执行，均可编辑） */
 export interface ExecutionParams {
   /** 测试轮数（min 1 max 20，default 1） */
@@ -15,10 +28,6 @@ export interface ExecutionParams {
   retries: number
   /** 并发任务数（default 4；API 并发上限自动合计作补充展示） */
   concurrency: number
-  /** 执行模式（INT-604：同一用例在设备/API 目标间并行/串行；parallel=两侧各自并发=现行为，serial=逐用例门控；仅混选设备+API 可设） */
-  executionMode: 'parallel' | 'serial'
-  /** 串行优先侧（serial 模式先执行的目标侧；device=设备先，api=API 先） */
-  serialFirst: 'device' | 'api'
   /** 网络环境（默认/Wi-Fi/移动网络/飞行模式；device:control 才可设） */
   network: string
   /** 报告模板（默认标准模板） */
@@ -36,8 +45,6 @@ export const DEFAULT_EXECUTION_PARAMS: ExecutionParams = {
   timeout: 60,
   retries: 0,
   concurrency: 4,
-  executionMode: 'parallel',
-  serialFirst: 'device',
   network: '默认',
   reportTemplate: '标准模板',
   includeCharts: true,
@@ -72,6 +79,11 @@ export interface TaskLaunchInput {
   deviceIds: number[]
   /** 所选 API id 集（设备+API 混合执行） */
   apiIds: number[]
+  /**
+   * 逐目标执行模式（INT-1115 契约 2026-10-21；列表顺序=选中顺序=串行链顺序，
+   * 恰好覆盖全部选中目标一次；缺省/空数组=全目标并行）。废弃全局 execution_mode/serial_first。
+   */
+  targetModes: TargetMode[]
   params: ExecutionParams
 }
 

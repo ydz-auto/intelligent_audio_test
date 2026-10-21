@@ -4,6 +4,8 @@
  * 校验（全部 toast.warning，照 setup-wizard toast.error 模式）→ 任务名称默认值 →
  * POST /tasks（task:create）+ POST /tasks/{id}/start（task:execute）→ 成功跳 step=3；
  * 失败 toast.error「创建或启动测试任务失败：{message}」。
+ * INT-1119（2026-10-21）：载荷附逐目标 target_modes（selectionOrder × targetModes 同源派生，
+ * §3.6.5），不再携带全局 execution_mode/serial_first。
  */
 import { useNavigate } from '@tanstack/react-router'
 import { useCallback, useMemo } from 'react'
@@ -13,6 +15,7 @@ import { createTask, startTask } from '@/infrastructure/api/test-execution-api'
 import { useExecutionStore } from '@/infrastructure/stores/execution-store'
 import { useCaseSelectionStore } from '@/infrastructure/stores/case-selection-store'
 import { useResourceSelectionStore } from '@/infrastructure/stores/resource-selection-store'
+import { deriveTargetModes } from '@/application/test-execution/useTargetModes'
 import { navigateWithSearch } from '@/features/test-execution/lib/navigate-search'
 import type { ExecutionParams, TaskLaunchInput } from '@/domain/models/testExecution'
 import type { Device } from '@/domain/models/device'
@@ -81,6 +84,11 @@ export function useTestLaunch() {
       params: ExecutionParams
     }) => {
       const caseStore = useCaseSelectionStore.getState()
+      const resourceStore = useResourceSelectionStore.getState()
+      const execStore = useExecutionStore.getState()
+      // INT-1119：逐目标模式载荷与 UI 同源（selectionOrder × targetModes 派生），
+      // 保选中顺序、恰好覆盖全部选中目标一次（缺省=并行）
+      const targetModes = deriveTargetModes(resourceStore.selectionOrder, execStore.targetModes)
       const input: TaskLaunchInput = {
         name,
         // 用例不分类型（test_type 残留列待 INT-79 废弃），任务不再声明测试类型
@@ -93,6 +101,7 @@ export function useTestLaunch() {
         caseFilter: caseStore.filter,
         deviceIds: opts.deviceIds,
         apiIds: opts.apiIds,
+        targetModes,
         params: opts.params,
       }
       try {
@@ -107,15 +116,19 @@ export function useTestLaunch() {
     [navigate]
   )
 
-  /** 步骤三底部摘要（§5.1 任务名称弹窗执行摘要行） */
+  /** 步骤三底部摘要（§5.1 任务名称弹窗执行摘要行；存在串行目标时附「· 串行 {s} 个目标」） */
   const summary = useCallback(
     (opts: {
       caseCount: number
       deviceCount: number
       apiCount: number
       concurrency: number
+      serialCount?: number
     }) => {
-      return `${opts.caseCount} 条 · ${opts.deviceCount} 台 · ${opts.apiCount} 个 · 并发 ${opts.concurrency}`
+      const base = `${opts.caseCount} 条 · ${opts.deviceCount} 台 · ${opts.apiCount} 个 · 并发 ${opts.concurrency}`
+      return opts.serialCount != null && opts.serialCount > 0
+        ? `${base} · 串行 ${opts.serialCount} 个目标`
+        : base
     },
     []
   )
