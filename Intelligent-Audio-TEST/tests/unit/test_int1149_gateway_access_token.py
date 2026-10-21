@@ -359,20 +359,31 @@ class TestAccessTokenCrudRoutes:
         app.add_middleware(AuthMiddleware, auth_mode='off')
         app.include_router(auth_router, prefix='/api/v1/auth', tags=['auth'])
 
-        # 打桩 httpx.request：模拟 auth_service 本组 HTTP 端点响应透传
+        # 打桩 httpx.request：模拟 auth_service 本组 HTTP 端点响应透传，
+        # 同时记录每次实际转发 URL / 头，供用例断言上游路径（INT-1149 审计 P2）
         import httpx
         upstream = {'status_code': 200, 'json': {'success': True, 'message': 'ok',
                                                  'data': {'id': 1, 'name': 't'}}}
+        captured = {'url': '', 'headers': {}}
 
         def _fake_request(method, url, json=None, headers=None, timeout=None):
+            captured['url'] = url
+            captured['headers'] = dict(headers or {})
             return SimpleNamespace(status_code=upstream['status_code'],
                                    json=lambda: upstream['json'],
                                    text=__import__('json').dumps(upstream['json']))
 
         monkeypatch.setattr(httpx, 'request', _fake_request)
         self._upstream = upstream
+        self._captured = captured
         with TestClient(app) as c:
             yield c
+
+    def _assert_upstream_url(self, suffix: str):
+        """断言转发 URL 带 /api/v1/auth 前缀打到 auth_service 本组端点。"""
+        url = self._captured['url']
+        assert url.startswith('http://'), url
+        assert url.endswith(suffix), url
 
     def _auth_headers(self):
         from api_gateway.application.services.auth.token_service import TokenService
@@ -386,34 +397,42 @@ class TestAccessTokenCrudRoutes:
                            json={'name': 't1', 'scopes': ['task:read']})
         assert resp.status_code == 200, resp.text
         assert resp.json()['data']['id'] == 1
+        # 转发打到 auth_service 本组端点（带 /api/v1/auth 前缀）+ 本人 X-User-Id
+        self._assert_upstream_url('/api/v1/auth/access-tokens')
+        assert self._captured['headers'].get('X-User-Id') == '5'
         # 无明文泄露：透传 auth_service 响应（掩码由 auth_service 保证）
 
     def test_get_list_passthrough(self, client):
         resp = client.get('/api/v1/auth/access-tokens',
                           headers=self._auth_headers())
         assert resp.status_code == 200, resp.text
+        self._assert_upstream_url('/api/v1/auth/access-tokens')
 
     def test_get_detail_passthrough(self, client):
         resp = client.get('/api/v1/auth/access-tokens/1',
                           headers=self._auth_headers())
         assert resp.status_code == 200, resp.text
+        self._assert_upstream_url('/api/v1/auth/access-tokens/1')
 
     def test_patch_forwards(self, client):
         resp = client.patch('/api/v1/auth/access-tokens/1',
                             headers=self._auth_headers(),
                             json={'status': 'disabled'})
         assert resp.status_code == 200, resp.text
+        self._assert_upstream_url('/api/v1/auth/access-tokens/1')
 
     def test_delete_forwards(self, client):
         resp = client.delete('/api/v1/auth/access-tokens/1',
                              headers=self._auth_headers())
         assert resp.status_code == 200, resp.text
+        self._assert_upstream_url('/api/v1/auth/access-tokens/1')
 
     def test_off_dev_user_401(self, client):
         # 无 token → off 模式 dev_user（user_id=0）→ 未认证 401
         resp = client.post('/api/v1/auth/access-tokens',
                            json={'name': 'no-user'})
         assert resp.status_code == 401, resp.text
+        assert self._captured['url'] == ''  # 未认证不发转发
 
     def test_upstream_error_passthrough(self, client):
         self._upstream.update({'status_code': 404,
@@ -422,6 +441,7 @@ class TestAccessTokenCrudRoutes:
                           headers=self._auth_headers())
         assert resp.status_code == 404, resp.text
         assert resp.json()['detail'] == 'Access Token 不存在'
+        self._assert_upstream_url('/api/v1/auth/access-tokens/999999')
 
     def test_upstream_unavailable_502(self, client, monkeypatch):
         import httpx

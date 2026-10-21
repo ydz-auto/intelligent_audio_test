@@ -6,6 +6,7 @@ FastAPI 中间件
 """
 import json
 import logging
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
@@ -153,7 +154,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # 管理员权限（真栈/测试栈行为一致）。
         if self.auth_mode == 'off':
             if bearer:
-                identity = self._resolve_bearer(request, bearer)
+                # access token 查证含同步 gRPC（ValidateAccessToken/
+                # GetUserPermissions/GetUser，各 10s deadline）——丢线程池异步化，
+                # 防 auth_service 假死拖垮网关事件循环全部并发请求（INT-1149 审计 P2）
+                identity = await run_in_threadpool(
+                    self._resolve_bearer, request, bearer)
                 if identity is not None:
                     self._inject_identity(request, identity)
                     # INT-141：操作人上下文（出站 gRPC 自动附加 x-user-id /
@@ -193,7 +198,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Bearer 单分支切换（INT-1140）：JWT 优先，非 JWT → access token
         # 查证（外部 agent 经 skill/MCP 持明文 token 调本网关）。两者均无效
         # → 401。不写兼容层、不留双口径：前端仍只认 Bearer。
-        identity = self._resolve_bearer(request, token)
+        # 查证含同步 gRPC（各 10s deadline）——丢线程池异步化，防 auth_service
+        # 假死阻塞事件循环（INT-1149 审计 P2）。
+        identity = await run_in_threadpool(self._resolve_bearer, request, token)
         if identity is None:
             return self._unauthorized('令牌无效')
 

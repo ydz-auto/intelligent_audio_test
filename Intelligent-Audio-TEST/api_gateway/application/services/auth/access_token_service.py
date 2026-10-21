@@ -125,7 +125,11 @@ class AccessTokenService:
     def _base_url() -> str:
         from shared.config.service_ports import AUTH_SERVICE_HTTP_PORT
         from api_gateway.config.config import Config
-        return f'http://{Config.AUTH_SERVICE_HOST}:{AUTH_SERVICE_HTTP_PORT}'
+        # auth_service 本组 access-token CRUD 挂在 /api/v1/auth 前缀
+        # （BE1 INT-1148 auth_service/interfaces/api/routes.py:336），base 必须
+        # 带上前缀，否则转发路径缺段 → 上游 404。
+        return (f'http://{Config.AUTH_SERVICE_HOST}:{AUTH_SERVICE_HTTP_PORT}'
+                '/api/v1/auth')
 
     @staticmethod
     def forward(method: str, path: str, body=None):
