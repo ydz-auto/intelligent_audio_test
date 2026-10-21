@@ -1,0 +1,64 @@
+Unmerged branches into github/design/ux-vue (branch, sha, date, subject):
+agent/ux-c/int-703 bd5dc749 2026-10-18 INT-703: 设计图预览 v2——首页/任务管理对照原 Vue 源码逐分区还原卡片（负责人「对照旧VUE项目看看卡片」反馈）
+agent/ux-c/int-757 d5df92d8 2026-10-18 INT-757: UX-VUE CSS架构审计与重构方案——全量审计（83 css/169 vue 数据盘点）+ 照 newAPI 管理方式的可拆卡重构方案（视觉保持原 Vue）
+agent/ux-d/int-703 02be264c 2026-10-18 INT-703: UX设计-VUE 信息架构前置卡——00_导航与功能对齐总表（原风格/React 导航重排/全量对齐）
+agent/ux/int-1068 e0ef62a0 2026-10-21 chore(agent): uncommitted changes from task
+agent/ux/int-1071 3cfc0e16 2026-10-21 Merge branch 'agent/vue-b/int-1071' into agent/ux/int-1071
+agent/ux/int-1103 8fce5200 2026-10-21 INT-1103 复核: merge agent/vue-a/int-1103（交付分支）并解决与 INT-1071 的冲突——报告具体用例卡采用 INT-1103 TestCaseCard 结构、下载日志沿用 INT-1071 openLogFileDialog 两段流程
+agent/ux/int-1105 68089974 2026-10-21 chore(agent): baseline — the task worktree started here
+agent/ux/int-701 8f1fb3e7 2026-10-21 chore(agent): uncommitted changes from task
+agent/ux/int-701-93b36f710ced 8f1fb3e7 2026-10-21 chore(agent): uncommitted changes from task
+agent/ux/int-701-b0ba17c42f50 880beeb5 2026-10-19 chore(agent): uncommitted changes from task
+agent/ux/int-701-f5ba12e06411 e041d2d3 2026-10-20 chore(agent): uncommitted changes from task
+agent/ux/int-735 95921644 2026-10-19 INT-735 回炉：顶导航优化 + 灵犀Agent 魔法炫彩按钮（照 React ai-discount-core 移植）
+agent/ux/int-736 4458c8aa 2026-10-19 chore(agent): uncommitted changes from task
+agent/ux/int-737 194e6348 2026-10-19 chore(agent): merge rework from agent/vue-a/int-737 (d388aa16f) — resolve INT-737 6-item audit fixes
+agent/ux/int-738 0d7551dd 2026-10-19 Merge branch 'agent/vue-b/9e29dc84871b' into agent/ux/int-738
+agent/ux/int-739 45468ec1 2026-10-19 Merge branch 'agent/vue-b/int-739' into agent/ux/int-739
+agent/ux/int-740 2b9c5fee 2026-10-19 Merge branch 'agent/vue-b/84228138ce52' into agent/ux/int-740
+agent/ux/int-741 b47fcd51 2026-10-19 Merge branch 'agent/vue-c/int-741' into agent/ux/int-741
+agent/ux/int-742 90d74899 2026-10-19 INT-742 返工：/ai-chat 消息编辑可达（P1-1）+ 编辑器全套（P2-3）+ 圆角/阴影 tokens（P2-1/P3-1/P3-5）+ 浮窗清空确认（P2-2）+ 源码视图（P3-2）+ 上下文选择器组件树（P3-3）+ 空态去重（P3-4）
+agent/ux/int-743 3b649b1a 2026-10-19 Merge branch 'agent/vue-c/int-743-245244a3aab4' into agent/ux/int-743
+agent/ux/int-744 10cef4ed 2026-10-19 INT-744: 个人中心 /profile —— 身份卡 + 个人数据快捷区 + 个人信息卡(F3 编辑壳) + 账号安全卡(F2 改密壳/会话壳/OAuth 绑定)
+agent/ux/int-745 ac8cb721 2026-10-19 INT-745 审计: 合入交付分支 agent/vue/int-745-57be9e23519f——公共页实施 + 测试 + P1 修复（App.vue 冲突解决：保留 INT-577 购物车角标，合并 INT-745 公共/业务壳分支）
+agent/ux/int-756 ef4ad689 2026-10-19 chore(agent): INT-756 复核——合入 agent/vue/int-756 最新交付（3 处 P3 修复 + 徽章令牌化），App.vue 冲突取新基线结构+--radius-pill 修复
+agent/ux/int-768 483b9813 2026-10-19 Merge branch 'agent/vue-a/int-768' into agent/ux/int-768
+agent/ux/int-770 50ba0753 2026-10-19 Merge branch 'agent/vue-b/int-770' into agent/ux/int-770
+agent/ux/int-771 f69a4158 2026-10-19 INT-771 CSS重构·报告域/AI工作台/配置运维/个人中心 域样式收敛（只搬值不改值）
+agent/ux/int-771-060a24de6db1 f69a4158 2026-10-19 INT-771 CSS重构·报告域/AI工作台/配置运维/个人中心 域样式收敛（只搬值不改值）
+agent/ux/int-771-11cde5fac862 ff659894 2026-10-19 chore(agent): baseline — the task worktree started here
+agent/ux/int-771-f9f767bfef1b 39c218a2 2026-10-19 Merge branch 'agent/vue-c/int-771-r2' into agent/ux/int-771-f9f767bfef1b
+agent/ux/int-797 62c742da 2026-10-19 Merge branch 'agent/vue-c/int-797' into agent/ux/int-797
+agent/ux/int-866 3737e8db 2026-10-19 Merge branch 'design/ux-vue' into agent/ux/int-866
+agent/ux/int-894 33ea3c1f 2026-10-19 Merge branch 'agent/vue/int-894' into agent/ux/int-894
+agent/vue-a/int-1103 5e0e7a81 2026-10-21 chore(agent): uncommitted changes from task
+agent/vue-a/int-736 bc4e5ee5 2026-10-19 INT-736: 打回修复——全局算法 store 替换为 design/ux-vue canonical（消除双口径 P1）
+agent/vue-a/int-737 d388aa16 2026-10-19 INT-737 返工：修复 UX 审计 6 项缺陷（圆角 token/深色模态窗/显式类型分发/tooltips）+ 执行步→报告步终态保底轮询
+agent/vue-a/int-744 217b1ce2 2026-10-19 INT-744 P1 返工：圆角收编——本卡页卡片/模态窗/输入框/按钮圆角全部改 token 引用（--radius-card 16px/--radius-control 8px/--radius-tag 4px，未合入前带首页卡片兜底值），删除 .btn 死代码半径与 rgba 死兜底、avatar 颜色收 var(--color-white)、popover 阴影收 --shadow-md
+agent/vue-b/252d398d390f dc6085d4 2026-10-18 INT-740: 设备域实施——实验室列/facet 接入后端 /laboratories（lab_id/lab_name 贯通 domain/dto/adapter）
+agent/vue-b/2a0bd97ca69e 0c3ba6f2 2026-10-19 chore(agent): uncommitted changes from task
+agent/vue-b/84228138ce52 86efd75c 2026-10-19 INT-740 返工: 设备域页面 25 处硬编码圆角收编 tokens——Device/AudioImport/SPLMapping 页 8 文件全部改为 var(--radius-card/control/tag) 同名变量引用（兜底首页卡片值 16/8/4px），对齐 INT-756 语义令牌与首页 .feature-card 基准；顺带清掉上一轮误入的 _chrome-int740/_int740_* 运行时残留
+agent/vue-b/92cd2dff048d cf83fdf4 2026-10-19 INT-738: 圆角 token 化返工——任务域 6 页面文件 + TaskComparisonReport 硬编码 border-radius 全部改用 --border-radius-*（卡片/容器=16px、控件/输入/按钮=8px、标签=4px、徽章/胶囊=full，对齐 INT-756 首页卡片基准；0 处硬编码残留）
+agent/vue-b/9e29dc84871b f355b207 2026-10-19 INT-738: 圆角 token 化返工·第二轮——/tasks 页卡/状态徽章/搜索框 + 导出导入/发布模态窗 + D03 挑选合并向导硬编码 border-radius 全部改 --border-radius-*（卡片/容器=xl16px、控件/输入/按钮/页签=md8px、小标签=sm4px、徽章/胶囊/进度条=full；reports.css 搜索框覆盖 lg→md 消 12px 实测）
+agent/vue-b/a36ce52b71e9 af2b8c29 2026-10-18 INT-738: 挑选合并向导——设备/执行状态/评估状态筛选变更重置页码回第 1 页（对齐 INT-339 P2-1 回归用例）
+agent/vue-b/bbd54b74bc17 c8a4dfcd 2026-10-19 Merge branch 'agent/agent/int-738' into agent/vue-b/bbd54b74bc17
+agent/vue-b/int-1104 493b50d0 2026-10-21 INT-1104 返工: 补默认收起回归测试（P3）——expandedCategories/expandedTagCategories 初始空集 + toggle 生效 + DOM .expanded 门控（对照 React INT-1027 d6bb04be6 用例语义）
+agent/vue-b/int-1105 512ac784 2026-10-21 INT-1105 返工: 驱动关键字 keywords 字符串归一化为 string[]，修复设备 test 添加/编辑弹窗下拉为空 + 控制台 TypeError
+agent/vue-b/int-739 1a51e1b5 2026-10-19 chore(agent): uncommitted changes from task
+agent/vue-b/int-796 10cc18db 2026-10-19 INT-796: 挑选合并层级展示按 React §3.7 对齐 + 任务详情人工审核/AI复核交互
+agent/vue-b/int-895 8d919091 2026-10-19 INT-895 音频管理徽章筛选横排: 与任务管理 filter-row 一致（标题与徽章同行、flex-wrap），标签云同行，主题令牌化
+agent/vue-b/int-939-acd3e5126988 ca874c29 2026-10-19 INT-939 徽章筛选横排: TestCaseListContainer 筛选区改与任务管理一致的横排换行（flex-wrap:wrap + flex-start，去掉 nowrap/flex-end/overflow-x），用例分组 BadgeFilter 加 collapsible 折叠为「更多(N)」，用例管理/开始测试/TestFlow 三处复用容器一并生效
+agent/vue-c/int-1068 e5cc6caa 2026-10-21 INT-1068 返工(P2/P3): 复核会话结论卡渲染修复 + 任务侧AI复核切对话式主形态
+agent/vue-c/int-1106 e6bc0e3e 2026-10-21 INT-1106 返工: DimensionSelect 面板 z-index 提至 21000 浮于模态遮罩之上 + 徽章圆角走 --radius-tag + TestCaseListContainer 格式修正
+agent/vue-c/int-741 5c69d355 2026-10-18 INT-741: 报告域实施——/reports 展示页（页内算法卡片网格/仅已发布/弱管理）+ /report-center 报告中心（合并 History+Test，类型=筛选非页签，Benchmark 并入）+ /report-statistics 统计分析出壳（待 FEAT INT-754）+ 旧链 redirect 去 tab 语义 + 报告卡片深浅色 token 收编
+agent/vue-c/int-742 90d74899 2026-10-19 INT-742 返工：/ai-chat 消息编辑可达（P1-1）+ 编辑器全套（P2-3）+ 圆角/阴影 tokens（P2-1/P3-1/P3-5）+ 浮窗清空确认（P2-2）+ 源码视图（P3-2）+ 上下文选择器组件树（P3-3）+ 空态去重（P3-4）
+agent/vue-c/int-743-245244a3aab4 bea553bd 2026-10-19 INT-743: 配置运维返工——审计 P1/P2/P3 修复（off 全显门控/权限目录映射/差量权限/圆角 token/单测）
+agent/vue-c/int-771 f69a4158 2026-10-19 INT-771 CSS重构·报告域/AI工作台/配置运维/个人中心 域样式收敛（只搬值不改值）
+agent/vue-c/int-797 8391e086 2026-10-19 INT-797: 返工修复 4×P2（复核筛选分页 / AI采纳预填 / Badge计数 / 取消报错）
+agent/vue-c/int-896 2bf18eda 2026-10-19 INT-896 实施: 报告域徽章筛选横排（report-filter-card 标题与徽章同行、多筛选并排 flex-flow 换行）
+agent/vue/int-735-f26a732b71b9 4e2c2044 2026-10-19 INT-735 回炉：合入本卡上一轮分支（用户目录改动）+ 修复前端UX审计 P2/P3
+agent/vue/int-745 0975a627 2026-10-18 test(ui): INT-745 验收——公共页浏览器实测用例（首页门户/文档/关于/排行榜）+ INT-482 排行页适配 /rankings 路由与「排行榜」文案 + Home 挂载用例超时放宽
+agent/vue/int-745-57be9e23519f b353e9bd 2026-10-18 INT-745: 修复测试 P1——公共页不可滚动（.app-container 裁切回归）
+agent/vue/int-745-74d9ec378418 f3e48386 2026-10-18 chore(agent): uncommitted changes from task
+agent/vue/int-756 77fa8165 2026-10-19 INT-756 复审修复：3 处漏网圆角改语义令牌（BasicModal 四角→--radius-card、TestCaseGroupActions 下拉→--radius-control、modal.css 滚动条→--radius-tag，含 727c2906 后随共享目录快照进入壳的 .nav-cart-badge 9px→--radius-pill）
+agent/vue/int-894 4abe2759 2026-10-19 INT-894 返工: 公共站头登录按钮底边对齐 — data-layout-btn 退出 legacy catch-all + 高度改 var(--control-height)

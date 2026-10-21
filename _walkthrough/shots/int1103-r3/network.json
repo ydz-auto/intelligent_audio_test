@@ -1,0 +1,35 @@
+[
+ {
+  "tasks/1257": [
+   "GET auth/me",
+   "GET auth/mode",
+   "GET algorithm/options",
+   "GET tasks/1257/progress",
+   "GET tasks/1257",
+   "GET logs?page=1&per_page=100&task_id=1257",
+   "GET tasks/results/1257/review-count"
+  ]
+ },
+ {
+  "report/65": [
+   "GET auth/me",
+   "GET auth/mode",
+   "GET algorithm/options",
+   "GET reports/65",
+   "GET tasks/results/1257/review-count",
+   "POST reports/65/cases/search",
+   "GET tasks/results/1257/review-history"
+  ]
+ },
+ {
+  "tasks/1666": [
+   "GET auth/me",
+   "GET auth/mode",
+   "GET algorithm/options",
+   "GET tasks/1666/progress",
+   "GET tasks/1666",
+   "GET logs?page=1&per_page=100&task_id=1666",
+   "GET tasks/results/1666/review-count"
+  ]
+ }
+]
