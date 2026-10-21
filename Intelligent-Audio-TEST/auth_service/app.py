@@ -89,7 +89,12 @@ def create_app(config_name='default') -> FastAPI:
 
     # 注册认证路由
     from auth_service.interfaces.api.routes import router as auth_router
+    from auth_service.interfaces.api.routes import (
+        access_token_router as auth_access_token_router,
+    )
     app.include_router(auth_router)
+    # Access Token 个人配置页 CRUD（INT-1140；前缀 /api/v1/auth 与网关对外路径一致）
+    app.include_router(auth_access_token_router)
 
     return app
 

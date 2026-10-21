@@ -118,6 +118,26 @@ def _provider_to_full_dict(provider) -> dict:
     return d
 
 
+def _access_token_to_dict(token) -> dict:
+    """AccessTokenAggregate → dict（掩码：无 token_hash、无明文）。
+
+    expires_at None=永不过期 → 0（对外契约 0=永不过期）。
+    """
+    return {
+        'id': token.id,
+        'user_id': token.user_id,
+        'name': token.name,
+        'token_hint': token.token_hint,
+        'scopes': list(token.scopes or []),
+        'status': token.status,
+        'expires_at': _datetime_str(token.expires_at) or 0,
+        'last_used_at': _datetime_str(token.last_used_at),
+        'last_used_ip': token.last_used_ip,
+        'created_at': _datetime_str(token.created_at),
+        'deleted_at': _datetime_str(token.deleted_at),
+    }
+
+
 class AuthServicer(auth_grpc.AuthServiceServicer):
     """认证服务 gRPC servicer。
 
@@ -798,3 +818,54 @@ class AuthServicer(auth_grpc.AuthServiceServicer):
         except Exception as e:
             self._rollback()
             return self._error_response(e, 'UnbindUserOAuthIdentity')
+
+    # ---- Access Token 校验（INT-1140，BE2 网关鉴权分支经 gRPC 调用）----
+
+    def ValidateAccessToken(self, request,
+                            context=None) -> auth_pb.AuthResponse:
+        """校验明文 token，成功更新 last_used_at/last_used_ip。
+
+        成功 data：{valid, token:{id,user_id,name,token_hint,scopes(生效),
+        status,expires_at,last_used_at}}；
+        失败（不存在/软删/禁用/过期）data 携带 error_code，网关按 401 映射。
+        """
+        try:
+            from auth_service.application.queries.access_token_queries import (
+                ValidateAccessTokenQuery,
+            )
+            from auth_service.application.handlers.access_token_handlers import (
+                access_token_query_handler,
+            )
+            q = ValidateAccessTokenQuery(
+                token=getattr(request, 'token', ''),
+                ip=getattr(request, 'ip', '') or None,
+            )
+            result = access_token_query_handler.handle_validate(q)
+            self._commit()  # last_used 旁路写入
+            result['last_used_at'] = _datetime_str(result.get('last_used_at'))
+            result['expires_at'] = _datetime_str(result.get('expires_at')) or 0
+            return _ok({'valid': True, 'token': result})
+        except Exception as e:
+            self._rollback()
+            return self._error_response(e, 'ValidateAccessToken')
+
+    def GetAccessTokenByHash(self, request,
+                             context=None) -> auth_pb.AuthResponse:
+        """按 SHA-256 哈希获取 token（服务间内部查询，无副作用）。"""
+        try:
+            from auth_service.application.queries.access_token_queries import (
+                GetAccessTokenByHashQuery,
+            )
+            from auth_service.application.handlers.access_token_handlers import (
+                access_token_query_handler,
+            )
+            token = access_token_query_handler.handle_get_by_hash(
+                GetAccessTokenByHashQuery(
+                    token_hash=getattr(request, 'token_hash', '')))
+            if token is None:
+                return _fail('Access Token 不存在',
+                             AuthErrorCode.ACCESS_TOKEN_NOT_FOUND)
+            return _ok({'token': _access_token_to_dict(token)})
+        except Exception as e:
+            logger.error("GetAccessTokenByHash 失败: %s", e, exc_info=True)
+            return self._error_response(e, 'GetAccessTokenByHash')

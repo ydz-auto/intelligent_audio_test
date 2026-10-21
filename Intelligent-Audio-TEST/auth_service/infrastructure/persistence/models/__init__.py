@@ -5,6 +5,7 @@
 表：roles / permissions / role_permissions / user_permissions
      / users / oauth_clients / oauth_refresh_tokens
      / custom_oauth_providers / user_oauth_bindings
+     / access_tokens（INT-1140 Access Token + skill/MCP 鉴权）
 
 P5 改造：PO 定义真正下沉到本包，shared/models/models/user_models.py
 中的 PO 改为从这里 re-export。
@@ -23,9 +24,10 @@ from .user_models import (
     UserOAuthBinding,
 )
 from .oauth_provider_models import CustomOAuthProvider
+from .access_token_models import AccessToken
 
 __all__ = [
     'Role', 'Permission', 'RolePermission', 'UserPermission',
     'User', 'OAuthClient', 'OAuthRefreshToken', 'UserOAuthBinding',
-    'CustomOAuthProvider',
+    'CustomOAuthProvider', 'AccessToken',
 ]

@@ -181,17 +181,22 @@ class TestAveragesCherryResolution:
         m = ReportStatsQueryMixin.__new__(ReportStatsQueryMixin)
         monkeypatch.setattr(
             m, '_calculate_averages',
-            lambda task, fcid, tr, tid: {'overall_averages': 1, 'filtered_case_ids': fcid,
-                                         'test_results': tr})
+            lambda task, fcid, tr, tid, **kw: {'overall_averages': 1, 'filtered_case_ids': fcid,
+                                                'test_results': tr})
 
-        task, filtered_case_ids, test_results = m._query_cases_for_averages(
+        task, task_id_filter, filtered_case_ids, test_results, tasks_map, use_time_prefix = m._query_cases_for_averages(
             CONTAINER_ID, None, [], [], True)
 
         assert task['id'] == CONTAINER_ID
+        # 容器查询走自身 task_id 过滤（结果经引用直查）
+        assert task_id_filter == CONTAINER_ID
         assert sorted(filtered_case_ids) == ['ACC408-C1', 'ACC408-C2']
         assert {r['id'] for r in test_results} == {101, 102}
         # 源结果 task_id 未被改写（红线：引用方案 A，不改 test_results.task_id）
         assert {r['task_id'] for r in test_results} == {SOURCE_TASK_ID}
+        # 任务报告：资源 key 无时间前缀（use_time_prefix=False）
+        assert use_time_prefix is False
+        assert tasks_map == {}
 
     def test_plain_task_keeps_own_ids(self, stub_cherry, monkeypatch):
         from report_service.application.handlers._report_stats_query_mixin import (
@@ -308,7 +313,11 @@ class TestCaseLogsCherryResolution:
         assert test_result['id'] == 55
 
     def test_write_case_log_files_uses_source_task_prefix(self, stub_cherry, monkeypatch):
-        """验收3：按挑选关系落源任务前缀解析存储目录并写入 ZIP。"""
+        """验收3：按挑选关系落源任务前缀解析存储目录并写入 ZIP。
+
+        INT-1062 起 _write_case_log_files 经 list_objects_with_meta 枚举
+        （列表/打包共用同一套逻辑名），mock 随之切换。
+        """
         from report_service.application.handlers._report_stats_query_mixin import (
             ReportStatsQueryMixin,
         )
@@ -316,11 +325,13 @@ class TestCaseLogsCherryResolution:
 
         seen_prefixes = []
 
-        def _list_objects(category, prefix=''):
+        def _list_objects_with_meta(category, prefix=''):
             seen_prefixes.append(prefix)
-            return [f'{SOURCE_TASK_ID}/ACC408-C1/out.wav']
+            return [{'key': f'{SOURCE_TASK_ID}/ACC408-C1/out.wav',
+                     'sizeBytes': 4, 'lastModified': None}]
 
-        monkeypatch.setattr(storage_mod.storage, 'list_objects', _list_objects)
+        monkeypatch.setattr(storage_mod.storage, 'list_objects_with_meta',
+                            _list_objects_with_meta)
         monkeypatch.setattr(storage_mod.storage, 'load_bytes',
                             lambda path: b'DATA')
 

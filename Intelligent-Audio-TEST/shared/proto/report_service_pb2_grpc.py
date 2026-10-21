@@ -130,6 +130,11 @@ class ReportConfigServiceStub:
                 request_serializer=report__service__pb2.DownloadCaseLogsRequest.SerializeToString,
                 response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
                 _registered_method=True)
+        self.ListCaseLogs = channel.unary_unary(
+                '/report.ReportConfigService/ListCaseLogs',
+                request_serializer=report__service__pb2.ListCaseLogsRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
         self.BuildReferenceParams = channel.unary_unary(
                 '/report.ReportConfigService/BuildReferenceParams',
                 request_serializer=report__service__pb2.BuildReferenceParamsRequest.SerializeToString,
@@ -349,7 +354,14 @@ class ReportConfigServiceServicer:
         raise NotImplementedError('Method not implemented!')
 
     def DownloadCaseLogs(self, request, context):
-        """下载用例日志
+        """下载用例日志（INT-1062：支持 files 逻辑文件名筛选，缺省 = 整包）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListCaseLogs(self, request, context):
+        """查询用例日志文件列表（INT-1062：文件选择 Dialog 取数，name 与下载 ZIP arcname / files= 同一套逻辑名）
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -578,6 +590,11 @@ def add_ReportConfigServiceServicer_to_server(servicer, server):
             'DownloadCaseLogs': grpc.unary_unary_rpc_method_handler(
                     servicer.DownloadCaseLogs,
                     request_deserializer=report__service__pb2.DownloadCaseLogsRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'ListCaseLogs': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListCaseLogs,
+                    request_deserializer=report__service__pb2.ListCaseLogsRequest.FromString,
                     response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
             ),
             'BuildReferenceParams': grpc.unary_unary_rpc_method_handler(
@@ -1179,6 +1196,33 @@ class ReportConfigService:
             target,
             '/report.ReportConfigService/DownloadCaseLogs',
             report__service__pb2.DownloadCaseLogsRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListCaseLogs(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/ListCaseLogs',
+            report__service__pb2.ListCaseLogsRequest.SerializeToString,
             report__service__pb2.ReportConfigResponse.FromString,
             options,
             channel_credentials,

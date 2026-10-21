@@ -54,10 +54,11 @@ def _import_all_models():
     from report_service.infrastructure.persistence.models import (  # noqa: F401
         BenchmarkRanking, BenchmarkMetricMapping, BenchmarkSource, BenchmarkBaseline,
     )
-    # auth_service: 8 张表
+    # auth_service: 9 张表
     from auth_service.infrastructure.persistence.models import (  # noqa: F401
         Role, Permission, RolePermission, UserPermission,
         User, OAuthClient, UserOAuthBinding, OAuthRefreshToken,
+        AccessToken,
     )
     # audio_service: 7 张表
     from audio_service.infrastructure.persistence.models import (  # noqa: F401
