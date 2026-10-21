@@ -1,8 +1,6 @@
-import { ref, computed, watch } from 'vue'
+import { ref, computed } from 'vue'
 import { useTestCaseConfig, createDefaultUploadConfig, type AudioTypeOption } from '../../../composables/testCase/useTestCaseConfig'
 import { parseAnnotationFormat, formatFileSize } from '../../../utils/audioUtils'
-import { algorithmPort } from '../../../composables/algorithm/algorithmPort'
-import type { ReferenceParam } from '../../../domain/model/algorithm'
 import { readCamel } from '../../../utils/keyTransform'
 
 // ─── 类型定义 ───────────────────────────────────────────────
@@ -129,8 +127,6 @@ export function useUploadFileModal(props: UploadFileModalProps, emit: EmitFn) {
   const isDragging = ref(false)
   const uploading = ref(false)
   const tags = ref('')
-  const annotationCode = ref('')
-  const referenceParamOptions = ref<Array<{label: string; value: string}>>([])
 
   const inputId = computed(() => `file-input-${props.modalId || 'default'}`)
 
@@ -152,22 +148,6 @@ export function useUploadFileModal(props: UploadFileModalProps, emit: EmitFn) {
     audioTypeOptions: audioTypeOption?.options?.filter(
       (o): o is AudioTypeOption => typeof o.value === 'string'
     ) ?? []
-  })
-
-  watch(() => uploadConfig.value.algorithmType, async (newType) => {
-    referenceParamOptions.value = []
-    annotationCode.value = ''
-    if (newType) {
-      try {
-        const res = await algorithmPort.getReferenceParams(newType)
-        referenceParamOptions.value = (res.data || []).map((p: ReferenceParam) => ({
-          label: p.code ? `${p.code}${p.name ? ' - ' + p.name : ''}` : p.name,
-          value: p.code || ''
-        }))
-      } catch (e) {
-        console.error('加载参考参数失败:', e)
-      }
-    }
   })
 
   const playbackDeviceOptions = computed(() => {
@@ -455,7 +435,6 @@ export function useUploadFileModal(props: UploadFileModalProps, emit: EmitFn) {
   const removeFile = () => {
     selectedFiles.value = []
     selectedTxtFiles.value = []
-    annotationCode.value = ''
     if (fileInput.value) {
       fileInput.value.value = ''
     }
@@ -518,8 +497,6 @@ export function useUploadFileModal(props: UploadFileModalProps, emit: EmitFn) {
     isDragging,
     uploading,
     tags,
-    annotationCode,
-    referenceParamOptions,
     inputId,
     hasUploadOptions,
     uploadConfig,
