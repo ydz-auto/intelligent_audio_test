@@ -35,8 +35,8 @@ import { TopNav } from './top-nav'
  * 右区顺序（02_导航栏.md 定稿 + INT-598 增项）：
  * Agent 工作台魔法按钮 → 算法切换器 → 搜索 → 通知 → 语言 → 主题 → 头像。
  * 去 newAPI 的签到/钱包充值/系统更新项；顶部导航项本体归导航栏卡 INT-344。
- * INT-1153 返工（2026-10-21 负责人）：顶栏「联接你的 agent」入口移除，仅保留
- * 侧栏「AI 工具」组「连接你的 agent」入口。
+ * INT-1153 二轮返工（2026-10-21 负责人）：导航栏（顶栏 + 侧栏）均不再保留
+ * 「连接你的 agent」入口；该入口改落灵犀Agent 页 /ai-chat 右上角 + Agent 工作台浮窗头行。
  */
 type AppHeaderProps = {
   showTopNav?: boolean

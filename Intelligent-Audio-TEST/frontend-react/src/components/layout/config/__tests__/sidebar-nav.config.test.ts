@@ -1,7 +1,7 @@
 /**
- * 导航壳/侧栏 config 完整性测试（INT-377 基座产出 + INT-486 六组终态对齐 + INT-1153 增项）：
+ * 导航壳/侧栏 config 完整性测试（INT-377 基座产出 + INT-486 六组终态对齐）：
  * 路由/权限/activeUrls 与 04_控制台.md §3.2（INT-486 口径）一致；URL 不重复、
- * 每项必带图标；普通项必带权限码，magic 炫彩入口（INT-1153「连接你的 agent」）除外。
+ * 每项必带图标与权限码（INT-1153 二轮返工后导航栏不再有炫彩 magic 条目）。
  */
 import { describe, expect, it } from 'vitest'
 
@@ -23,8 +23,8 @@ describe('ROOT_SIDEBAR_NAV 完整性', () => {
     ])
   })
 
-  it('每组至少一项，条目总数与规范一致（INT-486 六组 + INT-1153 AI 工具组「连接你的 agent」= 15 项）', () => {
-    expect(allItems.length).toBe(15)
+  it('每组至少一项，条目总数与规范一致（INT-486 六组十四项；INT-1153 二轮返工后导航栏无「连接你的 agent」条目）', () => {
+    expect(allItems.length).toBe(14)
     expect(ROOT_SIDEBAR_NAV.every((g) => g.items.length >= 1)).toBe(true)
   })
 
@@ -50,11 +50,9 @@ describe('ROOT_SIDEBAR_NAV 完整性', () => {
     ])
   })
 
-  it('每个条目必带 icon；普通项必带权限判定（magic 炫彩入口除外）', () => {
+  it('每个条目必带 icon 与权限判定（requiredPermission 或 requiredPermissions）', () => {
     for (const item of allItems) {
       expect(item.icon).toBeDefined()
-      // INT-1153「连接你的 agent」为 magic 炫彩入口：登录即可见（token 管理按当前用户本人），不需额外权限码
-      if (item.magic) continue
       const hasPermissionGate = Boolean(item.requiredPermission) ||
         Boolean(item.requiredPermissions?.length)
       expect(hasPermissionGate).toBe(true)

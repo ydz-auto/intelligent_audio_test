@@ -4,23 +4,26 @@
 环境：
 - dev server: http://localhost:5345（本 run 起，/api 代理 → 常驻 :5000）
 - 常驻后端 :5000 AUTH_MODE=off → 自动以 dev_user('*') 放行
-- 页面: /agent-connect（入口页）、/profile（token 管理）
+- 页面: /agent-connect（入口页）、/ai-chat（右上角入口）、/profile（token 管理）
 
 已知 env 缺口（非本卡缺陷，运行证据里注明）：
 - 后端 access-token / skill 端点（BE2/BE3，INT-1148/1149）尚未合入开发栈 →
   GET /api/v1/auth/access-tokens 与 GET /api/v1/agent/skill 返回 404。
   前端以「错误态 + 重试」「下载失败 Alert」优雅降级，真实请求（Network）可见。
 
-验收清单核对（INT-1153 卡内 + 2026-10-21 负责人返工口径）：
-① 顶栏右区**无**「联接你的 agent」入口（返工移除）；侧栏「AI 工具」组
-   「连接你的 agent」炫彩魔法入口（文案返工后，跳转 /agent-connect 不变）
-② 点击侧栏入口 → 打开 /agent-connect 页面（使用说明 / 服务地址默认取地址栏可改 /
-   token 指引跳 /profile / 炫彩下载按钮）
-③ 下载按钮 → Network 含 /api/v1/agent/skill?base_url=… 真实请求
-④ /profile 渲染 Access Token 管理卡（创建按钮 + 列表区），列表真实请求
+验收清单核对（INT-1153 卡内 + 2026-10-21 负责人二轮裁定）：
+① 导航栏**无**「连接你的 agent」入口（顶栏 header 无 agent-connect 链接/按钮；
+   侧栏 aside 无 agent-connect 链接、无「连接你的 agent」文案）；全页无「联接你的 agent」残留
+② 全局 Agent 工作台浮窗（小窗口）头行右上角炫彩「连接你的 agent」入口存在
+   （aria-label='打开连接你的 agent'），点击 → /agent-connect
+③ 灵犀Agent 页 /ai-chat 顶部条右上角炫彩「连接你的 agent」入口存在，点击 → /agent-connect
+④ /agent-connect 页面（使用说明 / 服务地址默认取地址栏可改 / token 指引跳 /profile /
+   炫彩下载按钮），页面标题/文案全页一致「连接你的 agent」
+⑤ 下载按钮 → Network 含 /api/v1/agent/skill?base_url=… 真实请求
+⑥ /profile 渲染 Access Token 管理卡（创建按钮 + 列表区），列表真实请求
    /api/v1/auth/access-tokens（当前 404 → 错误态 + 重试）
-⑤ 创建对话框渲染（名称 / 有效时间 / 权限目录勾选）
-⑥ 浅色 + 深色 + Network 截图
+⑦ 创建对话框渲染（名称 / 有效时间 / 权限目录勾选）
+⑧ 浅色 + 深色 + Network 截图
 
 失败落 tests/ui/artifacts/int1153_agent_connect/<步骤>/。
 """
@@ -40,6 +43,13 @@ BASE = os.environ.get('REACT_DEV_BASE', 'http://localhost:5345')
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ARTIFACTS = os.path.join(PROJECT_ROOT, 'tests', 'ui', 'artifacts', 'int1153_agent_connect')
 CHROME_BINARY = r'C:\Program Files\Google\Chrome\Application\chrome.exe'
+
+# Windows 控制台默认 GBK，走查输出含中文/⌘ 等特殊符号需 UTF-8（与其余 tests/ui 走查同口径）
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding='utf-8', errors='replace')
+    except (AttributeError, OSError):
+        pass
 
 os.makedirs(ARTIFACTS, exist_ok=True)
 
@@ -120,15 +130,42 @@ def _body_text(drv):
 
 
 def _header_text(drv):
-    """顶栏 <header> 文本（返工断言：顶栏无「联接你的 agent」入口）。"""
+    """顶栏 <header> 文本（断言：顶栏无「联接你的 agent」/「连接你的 agent」入口）。"""
     return ' '.join(
         e.text for e in drv.find_elements(By.CSS_SELECTOR, 'header')
     )
 
 
-def _sidebar_agent_connect_link(drv):
-    """侧栏「连接你的 agent」入口 <a>（href=/agent-connect）。"""
-    els = drv.find_elements(By.CSS_SELECTOR, "a[href='/agent-connect']")
+def _sidebar_text(drv):
+    """侧栏 <aside[data-sidebar]> 文本（断言：导航栏不再保留该入口）。"""
+    return ' '.join(
+        e.text for e in drv.find_elements(By.CSS_SELECTOR, "aside[data-sidebar='sidebar']")
+    )
+
+
+def _agent_connect_links(drv):
+    """全页 href=/agent-connect 的 <a>（入口按钮）。"""
+    return drv.find_elements(By.CSS_SELECTOR, "a[href='/agent-connect']")
+
+
+def _sidebar_agent_connect_links(drv):
+    """侧栏内 href=/agent-connect 的 <a>（应无）。"""
+    return drv.find_elements(
+        By.CSS_SELECTOR, "aside[data-sidebar='sidebar'] a[href='/agent-connect']")
+
+
+def _workbench_window(drv):
+    """全局 Agent 工作台浮窗容器（fixed 右下角小窗口）。"""
+    els = drv.find_elements(By.CSS_SELECTOR, "div.fixed.right-4.bottom-4")
+    return els[0] if els else None
+
+
+def _workbench_window_agent_connect_link(drv):
+    """浮窗头行「连接你的 agent」入口 <a>（href=/agent-connect）。"""
+    win = _workbench_window(drv)
+    if win is None:
+        return None
+    els = win.find_elements(By.CSS_SELECTOR, "a[href='/agent-connect']")
     return els[0] if els else None
 
 
@@ -163,59 +200,121 @@ def run():
             failures.append(name)
 
     try:
-        # 工作台首屏：顶栏无「联接你的 agent」入口（返工移除）+ 侧栏「连接你的 agent」炫彩入口（返工文案）
+        # ── ① 工作台 /dashboard：导航栏无「连接你的 agent」入口（二轮返工）──
         _goto(drv, '/dashboard')
         WebDriverWait(drv, 25).until(
-            lambda d: '连接你的 agent' in (d.execute_script('return document.body.textContent || ""')))
+            lambda d: '平台概览' in (d.execute_script('return document.body.textContent || ""')))
         body = _body_text(drv)
         header_txt = _header_text(drv)
-        check('顶栏无「联接你的 agent」入口（返工移除）',
+        sidebar_txt = _sidebar_text(drv)
+        check('顶栏无「联接你的 agent」入口（二轮返工）',
               '联接你的 agent' not in header_txt, header_txt[:120])
         check('顶栏无「打开联接你的 agent」按钮（aria-label 不存在）',
               len(drv.find_elements(By.XPATH, "//*[@aria-label='打开联接你的 agent']")) == 0)
+        check('顶栏无「连接你的 agent」入口（header 无 agent-connect 链接）',
+              len(drv.find_elements(By.CSS_SELECTOR, "header a[href='/agent-connect']")) == 0,
+              str(len(drv.find_elements(By.CSS_SELECTOR, "header a[href='/agent-connect']"))))
+        check('侧栏无「连接你的 agent」入口（aside 无 agent-connect 链接）',
+              len(_sidebar_agent_connect_links(drv)) == 0,
+              'sidebar_agent_connect_links=%d' % len(_sidebar_agent_connect_links(drv)))
+        check('侧栏无「连接你的 agent」文案', '连接你的 agent' not in sidebar_txt, sidebar_txt[:120])
         check('全页无「联接你的 agent」残留文案', '联接你的 agent' not in body)
-        link = _sidebar_agent_connect_link(drv)
-        check('侧栏「连接你的 agent」入口存在',
-              link is not None and '连接你的 agent' in (link.text or ''))
+        check('全页无「打开连接你的 agent」按钮（导航栏移净后该 aria-label 不在顶栏/侧栏）',
+              len(drv.find_elements(By.XPATH, "//*[@aria-label='打开连接你的 agent']")) == 0,
+              'aria-labels=%d' % len(drv.find_elements(By.XPATH, "//*[@aria-label='打开连接你的 agent']")))
         net = _network_api_calls(drv)
         urls = [n.get('url', '') for n in net]
         check('工作台真实请求 /api/v1/home', any('/home/' in u for u in urls) or any('/api/' in u for u in urls))
-        _save_evidence('01_dashboard_header_light', drv, net)
+        _save_evidence('01_dashboard_light', drv, net)
 
-        # 深色工作台（返工后顶栏无入口 + 侧栏「连接你的 agent」的深色呈现）
+        # 深色工作台（导航栏仍无入口的深色呈现）
         _set_theme(drv, 'dark')
         WebDriverWait(drv, 20).until(
-            lambda d: '连接你的 agent' in (d.execute_script('return document.body.textContent || ""')))
-        header_txt = _header_text(drv)
-        check('深色顶栏仍无「联接你的 agent」入口', '联接你的 agent' not in header_txt)
-        _save_evidence('01b_dashboard_header_dark', drv, _network_api_calls(drv))
+            lambda d: '平台概览' in (d.execute_script('return document.body.textContent || ""')))
+        check('深色侧栏仍无「连接你的 agent」入口',
+              len(_sidebar_agent_connect_links(drv)) == 0)
+        check('深色顶栏仍无「联接你的 agent」入口',
+              '联接你的 agent' not in _header_text(drv))
+        _save_evidence('01b_dashboard_dark', drv, _network_api_calls(drv))
+        # 深色浮窗（小窗口）头行入口截图
+        drv.find_element(By.XPATH, "//*[@aria-label='打开全局 Agent 工作台']").click()
+        time.sleep(1.5)
+        if _workbench_window(drv) is not None:
+            _save_evidence('02b_floating_window_dark', drv, _network_api_calls(drv))
+            _workbench_window(drv).find_element(
+                By.CSS_SELECTOR, "button[aria-label='关闭']").click()
+            time.sleep(0.8)
         _set_theme(drv, 'light')
 
-        # 点击侧栏「连接你的 agent」入口 → 进入 /agent-connect
-        link = _sidebar_agent_connect_link(drv)
-        assert link is not None, '侧栏「连接你的 agent」链接缺失'
-        link.click()
+        # ── ② 全局 Agent 工作台浮窗（小窗口）头行右上角入口 ──
+        wb_btn = drv.find_element(By.XPATH, "//*[@aria-label='打开全局 Agent 工作台']")
+        wb_btn.click()
+        time.sleep(1.5)
+        win = _workbench_window(drv)
+        check('浮窗（小窗口）打开', win is not None)
+        assert win is not None, 'Agent 工作台浮窗未打开'
+        _save_evidence('02_floating_window_light', drv, _network_api_calls(drv))
+        fw_link = _workbench_window_agent_connect_link(drv)
+        fw_text = win.text if win else ''
+        check('浮窗头行「连接你的 agent」入口存在',
+              fw_link is not None and '连接你的 agent' in (fw_link.text or ''), (fw_link.text if fw_link else '')[:60])
+        check('浮窗入口 aria-label=打开连接你的 agent',
+              len(win.find_elements(By.XPATH, ".//*[@aria-label='打开连接你的 agent']")) == 1)
+        check('浮窗头行无「联接你的 agent」文案', '联接你的 agent' not in fw_text)
+        assert fw_link is not None, '浮窗「连接你的 agent」链接缺失'
+        fw_link.click()
         WebDriverWait(drv, 20).until(
             lambda d: '/agent-connect' in d.current_url
             and '使用说明' in (d.execute_script('return document.body.textContent || ""')))
         body = _body_text(drv)
-        check('点击侧栏入口进入 /agent-connect', '/agent-connect' in drv.current_url, drv.current_url)
-        check('页面标题=联接你的 agent', '联接你的 agent' in drv.title, drv.title)
+        check('点击浮窗入口进入 /agent-connect', '/agent-connect' in drv.current_url, drv.current_url)
+        check('页面标题=连接你的 agent（全页文案一致）', '连接你的 agent' in drv.title, drv.title)
         check('使用说明区块', '使用说明' in body and '创建 Access Token' in body)
-        # 服务地址默认取地址栏（读 input value，非 body 文本）
         url_input = drv.find_element(By.ID, 'agent-connect-base-url')
         url_val = url_input.get_attribute('value') or ''
         check('服务地址默认取地址栏', url_val == 'http://localhost:5345' or url_val == 'http://127.0.0.1:5345', url_val)
         check('Token 指引跳 /profile', '前往个人中心创建 / 管理 Access Token' in body)
         check('下载 skill 按钮（炫彩）', '下载 skill' in body)
-        # 入口页顶栏仍无该入口（返工口径：仅侧栏入口）
-        header_txt = _header_text(drv)
-        check('入口页顶栏无「联接你的 agent」入口', '联接你的 agent' not in header_txt)
-        link = _sidebar_agent_connect_link(drv)
-        check('侧栏「连接你的 agent」入口保留',
-              link is not None and '连接你的 agent' in (link.text or ''))
+        check('入口页侧栏无「连接你的 agent」入口（导航栏仍无入口）',
+              len(_sidebar_agent_connect_links(drv)) == 0)
+        check('入口页全页无「联接你的 agent」残留', '联接你的 agent' not in body)
+        # 关闭浮窗，隔离 /ai-chat 右上角入口断言
+        close_btn = win.find_elements(By.CSS_SELECTOR, "button[aria-label='关闭']")
+        if close_btn:
+            close_btn[0].click()
+            time.sleep(0.8)
+        check('浮窗已关闭（后续 /ai-chat 断言不受浮窗干扰）', _workbench_window(drv) is None)
 
-        # 下载按钮 → 真实请求 /api/v1/agent/skill
+        # ── ③ 灵犀Agent 页 /ai-chat 顶部条右上角入口 ──
+        _goto(drv, '/ai-chat')
+        WebDriverWait(drv, 20).until(
+            lambda d: '用自然语言驱动平台全部能力' in (d.execute_script('return document.body.textContent || ""')))
+        ai_links = _agent_connect_links(drv)
+        ai_txt = ' / '.join(l.text or '' for l in ai_links)
+        check('/ai-chat 顶部条右上角「连接你的 agent」入口存在',
+              len(ai_links) >= 1 and '连接你的 agent' in ai_txt, f'links={len(ai_links)} {ai_txt[:80]}')
+        check('/ai-chat 无「联接你的 agent」残留', '联接你的 agent' not in _body_text(drv))
+        _save_evidence('07_ai_chat_light', drv, _network_api_calls(drv))
+        # 深色 /ai-chat（右上角入口的深色呈现）
+        _set_theme(drv, 'dark')
+        WebDriverWait(drv, 20).until(
+            lambda d: '用自然语言驱动平台全部能力' in (d.execute_script('return document.body.textContent || ""')))
+        check('深色 /ai-chat 右上角「连接你的 agent」入口存在',
+              len(_agent_connect_links(drv)) >= 1 and '连接你的 agent' in _body_text(drv))
+        _save_evidence('08_ai_chat_dark', drv, _network_api_calls(drv))
+        _set_theme(drv, 'light')
+        WebDriverWait(drv, 20).until(
+            lambda d: '用自然语言驱动平台全部能力' in (d.execute_script('return document.body.textContent || ""')))
+        ai_links = _agent_connect_links(drv)
+        assert ai_links, '/ai-chat 右上角入口缺失'
+        ai_links[0].click()
+        WebDriverWait(drv, 20).until(
+            lambda d: '/agent-connect' in d.current_url
+            and '使用说明' in (d.execute_script('return document.body.textContent || ""')))
+        check('点击 /ai-chat 右上角入口进入 /agent-connect',
+              '/agent-connect' in drv.current_url, drv.current_url)
+
+        # ── ④ 下载按钮 → 真实请求 /api/v1/agent/skill（成功链路待后端合栈）──
         dl_btn = drv.find_element(By.XPATH, "//*[@aria-label='下载智能音频测试 skill 包']")
         dl_btn.click()
         time.sleep(2.0)
@@ -231,7 +330,7 @@ def run():
         _save_evidence('03_agent_connect_dark', drv, _network_api_calls(drv))
         _set_theme(drv, 'light')
 
-        # /profile token 管理
+        # ── ⑤ /profile token 管理 ──
         _goto(drv, '/profile')
         WebDriverWait(drv, 25).until(
             lambda d: 'Access Token' in (d.execute_script('return document.body.textContent || ""')))

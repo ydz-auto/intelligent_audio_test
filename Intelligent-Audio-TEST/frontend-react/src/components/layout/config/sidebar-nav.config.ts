@@ -10,7 +10,6 @@ import {
   ListChecks,
   MessagesSquare,
   Music,
-  Plug,
   Play,
   Settings,
   Tags,
@@ -20,10 +19,12 @@ import type { NavGroup } from '../types'
 
 /**
  * 工作台侧栏树（04_控制台.md §3.2 定稿 + INT-486 负责人口径 2026-10-16 对齐）：
- * 终态六组十五项——总览（概览）/AI 工具（灵犀Agent）/测试执行（开始测试+任务管理）/
+ * 终态六组十四项——总览（概览）/AI 工具（灵犀Agent）/测试执行（开始测试+任务管理）/
  * 测试资产（用例+音频+设备+报告中心）/测试配置（算法配置+评估维度+SPL 映射+标签管理，
  * INT-417 自设置工作区提升；组名取中文业务名「测试配置」，非内部名「测试域」）/
  * 管理（日志+系统设置）。
+ * INT-1153 二轮返工（2026-10-21 负责人）：「连接你的 agent」入口不再放导航栏
+ * （改落 /ai-chat 页右上角 + Agent 工作台浮窗头行），侧栏不保留该条目。
  * 权限码与图标均为规范定稿值；系统设置入口点击进入 drill-in 视图。
  * 开始测试=端到端+API 合并入口（INT-486：一个入口内部两模式）；algo_engineer
  * 只读观察（INT-449）经 algorithm:read 命中（与 task:execute 任一）。
@@ -50,12 +51,6 @@ export const ROOT_SIDEBAR_NAV: NavGroup[] = [
         url: '/ai-chat',
         icon: MessagesSquare,
         requiredPermission: 'report:read',
-      },
-      {
-        title: '连接你的 agent',
-        url: '/agent-connect',
-        icon: Plug,
-        magic: true,
       },
     ],
   },
