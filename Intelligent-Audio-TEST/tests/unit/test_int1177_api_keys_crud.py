@@ -42,8 +42,10 @@ class _CreateRepo:
 
 
 class _UpdateRepo:
-    def __init__(self):
+    def __init__(self, stored_meta=None):
         self.captured = {}
+        # 写侧合并用：get_api_meta 读取存储 meta（聚合根不承载完整 meta）
+        self.stored_meta = stored_meta
 
     @staticmethod
     def _api():
@@ -54,6 +56,9 @@ class _UpdateRepo:
 
     def get_api(self, api_id):
         return self._api()
+
+    def get_api_meta(self, api_id):
+        return self.stored_meta
 
     def update_api(self, api_id, fields):
         self.captured.update(fields)
@@ -202,3 +207,52 @@ class TestWriteSideRejectSummary:
         assert res['code'] == 200
         assert 'api_keys_summary' not in repo.captured
         assert repo.captured['meta']['api_keys'] == ['sk-a1']
+
+
+# ── 返工(2) P1：编辑无关字段保存时保留既有密钥池（审计打回回归） ──────
+
+class TestUpdatePreservesKeyPoolOnUnrelatedEdit:
+    """update 合并语义：入参 meta 未含 api_keys 时保留既有池（读侧剥离
+    api_keys，前端编辑表单拿不到池、回传必无 api_keys——整块覆盖会静默
+    清空）；显式传完整数组才覆盖（重新输入完整密钥列表语义）。"""
+
+    def test_update_without_api_keys_preserves_pool(self, monkeypatch):
+        """前端 normalizeMetaForUpsert 对空密钥列表的真实输出（meta 无
+        api_keys）→ 编辑无关字段后池保留"""
+        repo = _UpdateRepo(stored_meta={
+            'protocol': 'https', 'api_keys': ['sk-k1', 'sk-k2'],
+        })
+        _install_repo(monkeypatch, repo)
+        res = APICrudService.update(9, {
+            'name': 'A-renamed',
+            'meta': {'protocol': 'https', 'apiKey': ''},
+        })
+        assert res['code'] == 200
+        assert repo.captured['meta']['api_keys'] == ['sk-k1', 'sk-k2']
+        assert repo.captured['meta']['protocol'] == 'https'
+        assert repo.captured['meta']['apiKey'] == ''
+
+    def test_update_explicit_api_keys_overrides_pool(self, monkeypatch):
+        """显式传完整 api_keys 数组才覆盖（重新输入完整密钥列表替换池）"""
+        repo = _UpdateRepo(stored_meta={
+            'protocol': 'https', 'api_keys': ['sk-old-1'],
+        })
+        _install_repo(monkeypatch, repo)
+        res = APICrudService.update(9, {
+            'meta': {'api_keys': ['sk-new-1', 'sk-new-2']},
+        })
+        assert res['code'] == 200
+        assert repo.captured['meta']['api_keys'] == ['sk-new-1', 'sk-new-2']
+        # 既有池被显式数组替换，未残留旧 key
+        assert 'sk-old-1' not in repo.captured['meta']['api_keys']
+
+    def test_update_no_existing_pool_unchanged(self, monkeypatch):
+        """无既有池 + 入参无 api_keys → meta 原样落库（不注入 api_keys）"""
+        repo = _UpdateRepo(stored_meta={'protocol': 'https'})
+        _install_repo(monkeypatch, repo)
+        res = APICrudService.update(9, {
+            'name': 'B', 'meta': {'protocol': 'https'},
+        })
+        assert res['code'] == 200
+        assert 'api_keys' not in repo.captured['meta']
+        assert repo.captured['meta']['protocol'] == 'https'

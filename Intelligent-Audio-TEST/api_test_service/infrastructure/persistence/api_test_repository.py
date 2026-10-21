@@ -13,7 +13,7 @@ P2.1 改造：task_service 的 PO（Task / TaskAPI）查询改为通过 gRPC 调
 TaskDataService，本仓储仅保留本地 API PO 的 DB 访问。
 """
 import logging
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from shared.models.database import get_db_session
 from shared.utils.dto_utils import dto_to_dict
@@ -335,6 +335,23 @@ class APITestRepository(APITestRepositoryABC):
     def find_api_by_id(self, api_id: int) -> Optional[APIAggregate]:
         """根据 ID 查询 API，返回聚合根（不过滤 deleted）。"""
         return self.get_by_id(api_id)
+
+    def get_api_meta(self, api_id: int) -> Optional[Dict]:
+        """读取 API 存储的 meta 原始 dict（写侧合并密钥池用，PO 不出仓储）。
+
+        INT-1177 返工(2)：update 合并语义——入参 meta 未含 api_keys 时保留
+        既有密钥池。聚合根不承载完整 meta（仅摘要），故写侧经本方法读取
+        存储原始 meta；返回拷贝，外部修改不影响 PO。
+        """
+        session = get_db_session()
+        try:
+            po = session.query(API).filter(
+                API.id == api_id, API.deleted == False).first()
+            if po is None:
+                return None
+            return dict(po.meta or {})
+        finally:
+            pass
 
     # ==================== 关联数据查询（不返回 API PO） ====================
 
