@@ -143,28 +143,24 @@ class AuthMiddleware(BaseHTTPMiddleware):
             set_current_user_id, set_current_user_is_admin,
         )
 
+        auth_header = request.headers.get('Authorization', '')
+        bearer = auth_header[7:] if auth_header.startswith('Bearer ') else ''
+
         # off 模式：可选认证（INT-774 方案 A，INT-751 拍板）——Bearer 有合法
-        # token 注入真实 user_id；无/无效 token 保持 None 空态。off 从「完全
-        # 跳过认证」演进为「可选认证」，购物车等 per-user 写侧（_require_user
-        # 拒绝 None）在常驻 off 栈 + 前端 localStorage token 下整链可用。
+        # 身份注入真实 user_id；无/无效 token 保持 None 空态。Bearer 身份优先
+        # JWT，其次 access token（INT-1140）——外部 agent 持真实 token 必须先
+        # 尝试 access token 查证，再回落 dev_user，不得被降级为 dev_user
+        # 管理员权限（真栈/测试栈行为一致）。
         if self.auth_mode == 'off':
-            auth_header = request.headers.get('Authorization', '')
-            if auth_header.startswith('Bearer '):
-                token = auth_header[7:]
-                try:
-                    from api_gateway.application.services.auth.token_service import TokenService
-                    payload = TokenService.verify(token)
-                except Exception:
-                    payload = None
-                if payload:
-                    request.state.user_id = payload.get('user_id', 0)
-                    request.state.username = payload.get('username', '')
-                    request.state.role_id = payload.get('role_id', 0)
-                    request.state.permissions = payload.get('permissions', [])
+            if bearer:
+                identity = self._resolve_bearer(request, bearer)
+                if identity is not None:
+                    self._inject_identity(request, identity)
                     # INT-141：操作人上下文（出站 gRPC 自动附加 x-user-id /
                     # x-user-is-admin metadata，下游服务据此填 CUD 操作人列）
                     set_current_user_id(request.state.user_id)
-                    set_current_user_is_admin('*' in (request.state.permissions or []))
+                    set_current_user_is_admin(
+                        '*' in (request.state.permissions or []))
                     try:
                         return await call_next(request)
                     finally:
@@ -189,24 +185,20 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # 从 Authorization 头提取 Bearer token
-        auth_header = request.headers.get('Authorization', '')
         if not auth_header.startswith('Bearer '):
             return self._unauthorized('缺少认证令牌')
 
         token = auth_header[7:]
 
-        # JWT 校验
-        try:
-            from api_gateway.application.services.auth.token_service import TokenService
-            payload = TokenService.verify(token)
-        except Exception as e:
-            return self._unauthorized(f'令牌无效: {e}')
+        # Bearer 单分支切换（INT-1140）：JWT 优先，非 JWT → access token
+        # 查证（外部 agent 经 skill/MCP 持明文 token 调本网关）。两者均无效
+        # → 401。不写兼容层、不留双口径：前端仍只认 Bearer。
+        identity = self._resolve_bearer(request, token)
+        if identity is None:
+            return self._unauthorized('令牌无效')
 
         # 注入用户信息到 request.state
-        request.state.user_id = payload.get('user_id', 0)
-        request.state.username = payload.get('username', '')
-        request.state.role_id = payload.get('role_id', 0)
-        request.state.permissions = payload.get('permissions', [])
+        self._inject_identity(request, identity)
 
         # INT-141：操作人上下文（出站 gRPC 拦截器自动附加 x-user-id /
         # x-user-is-admin metadata，下游服务据此填 CUD 操作人列与 purge 鉴权）
@@ -217,6 +209,42 @@ class AuthMiddleware(BaseHTTPMiddleware):
         finally:
             set_current_user_id(None)
             set_current_user_is_admin(False)
+
+    @staticmethod
+    def _resolve_bearer(request, token):
+        """Bearer 身份解析：JWT 优先，失败回落 access token 查证（INT-1140）。
+
+        Returns: (user_id, username, role_id, permissions) 或 None（均无效）。
+        """
+        try:
+            from api_gateway.application.services.auth.token_service import TokenService
+            payload = TokenService.verify(token)
+        except Exception:
+            return AuthMiddleware._resolve_access_token(request, token)
+        return (
+            payload.get('user_id', 0),
+            payload.get('username', ''),
+            payload.get('role_id', 0),
+            payload.get('permissions', []),
+        )
+
+    @staticmethod
+    def _resolve_access_token(request, token):
+        """Access token 查证（INT-1140）：经 auth_service gRPC 校验并计算
+        生效权限 = 用户当前权限 ∩ token scopes。失败返回 None（401 语义）。
+        """
+        from api_gateway.application.services.auth.access_token_service import (
+            resolve_access_token_identity,
+        )
+        client = getattr(request, 'client', None)
+        ip = client.host if client else ''
+        return resolve_access_token_identity(token, ip)
+
+    @staticmethod
+    def _inject_identity(request, identity):
+        """把身份元组注入 request.state（与既有 JWT 注入字段完全一致）。"""
+        request.state.user_id, request.state.username, \
+            request.state.role_id, request.state.permissions = identity
 
     @staticmethod
     def _unauthorized(detail: str) -> JSONResponse:
