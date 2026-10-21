@@ -1,7 +1,7 @@
 <template>
-  <!-- 最小化胶囊（RBAC：device_admin 无 report:read 整窗不渲染，§5） -->
+  <!-- 最小化胶囊 -->
   <button
-    v-if="permitted && workbench.open && workbench.minimized"
+    v-if="workbench.open && workbench.minimized"
     type="button"
     class="agent-workbench-capsule"
     :aria-label="'恢复 Agent 工作台'"
@@ -12,7 +12,7 @@
   </button>
 
   <!-- 浮窗主体 -->
-  <div v-else-if="permitted && workbench.open" class="agent-workbench">
+  <div v-else-if="workbench.open" class="agent-workbench">
     <!-- 头行 -->
     <div class="awb-header">
       <i class="fas fa-wand-magic-sparkles awb-header-icon"></i>
@@ -30,26 +30,20 @@
       </button>
     </div>
 
-    <!-- 本页 Agent 能力条（§3.1B 每页 agent 可做的事不同；Demo 态仅展示，不假接线） -->
-    <div v-if="pageCtx" class="awb-page-capability">
-      <div class="awb-page-capability-head">
-        <span class="awb-page-capability-title">
-          {{ DEMO_COPY.pageCapabilityTitle }} · {{ pageCtx.domainLabel }}
-        </span>
-        <span class="awb-page-capability-badge" :title="DEMO_COPY.pageCapabilityTooltip">
-          {{ DEMO_COPY.pageCapabilityBadge }}
-        </span>
+    <!-- 本页 Agent 能力条（§3.1B：每页 agent 可做的事不同；点击快捷指令回填输入框、不自动发送） -->
+    <div v-if="pageCapability" class="awb-capability">
+      <div class="awb-capability-head">
+        <span class="awb-capability-title">{{ DEMO_COPY.pageCapabilityTitle }} · {{ pageCapability.domainLabel }}</span>
+        <span class="awb-capability-badge" :title="DEMO_COPY.pageCapabilityTooltip">{{ DEMO_COPY.pageCapabilityBadge }}</span>
       </div>
-      <div class="awb-page-capability-prompts">
+      <div v-if="pageCapability.quickPrompts.length" class="awb-capability-prompts">
         <button
-          v-for="prompt in pageCtx.quickPrompts"
+          v-for="prompt in pageCapability.quickPrompts"
           :key="prompt"
           type="button"
-          class="awb-capability-prompt"
-          @click="handleFillPrompt(prompt)"
-        >
-          {{ prompt }}
-        </button>
+          class="awb-capability-chip"
+          @click="draftText = prompt"
+        >{{ prompt }}</button>
       </div>
     </div>
 
@@ -102,36 +96,30 @@ import '../../../assets/styles/components/navigation.css'
 import '../../../assets/styles/components/log.css'
 import '../../../assets/styles/layouts/main.css'
 
-import { computed, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAiChatStore } from '@/store/aiChatStore'
 import { useAgentWorkbenchStore } from '@/store/agentWorkbenchStore'
-import { useNavAccess } from '@/composables/layout/useNavAccess'
 import { DEMO_COPY, INPUT_COPY } from '@/domain/constants/aiChat'
+import { usePageAgentCapability } from '@/composables/aiChat/usePageAgentCapability'
 import { useModalControl } from '@/composables/modal/useModal'
 import { MODAL_TYPES } from '@/composables/modal/constants'
 import { useNotification } from '@/composables/modal/useNotification'
 import AiChatConversation from './AiChatConversation.vue'
 import AiChatInput from './AiChatInput.vue'
 import ProviderManagerModal from './ProviderManagerModal.vue'
-import { getPageAgentCapability } from './pageAgentCapabilities'
 
 const store = useAiChatStore()
 const workbench = useAgentWorkbenchStore()
 const router = useRouter()
-const route = useRoute()
 const modalControl = useModalControl()
 const notification = useNotification()
-const { hasNavPermission } = useNavAccess()
+
+/** 本页 Agent 能力（§3.1B：每页可做的事不同；路由命中即展示，无命中为 null） */
+const { capability: pageCapability } = usePageAgentCapability()
 
 const draftText = ref('')
 const providerManagerOpen = ref(false)
-
-/** RBAC（§5）：report:read 门槛同整页——device_admin 无 report:read 时整窗不渲染 */
-const permitted = computed(() => hasNavPermission('report:read'))
-
-/** 本页 Agent 能力（§3.1B：每页可做的事不同，路由命中即展示；登录壳兜底为 null） */
-const pageCtx = computed(() => getPageAgentCapability(route.path))
 
 function handleFillPrompt(prompt: string): void {
   draftText.value = prompt
@@ -168,8 +156,7 @@ function expandToPage(): void {
 
 <style scoped>
 /* 悬浮窗（照 Cloudflare dash「面板跨页驻留」语义，§3.1B：登录壳任意页面可开，
- * 切换页面不关闭；INT-1109 壳集成：AuthenticatedLayout 根挂载 + 右上角魔法按钮
- * toggle 浮窗开关，浮窗内会话与 /ai-chat 整页共用同一 store，切换形态不丢会话） */
+ * 切换页面不关闭；壳集成（固定定位根挂载 + 右上角魔法按钮）由基座壳卡 INT-735 落位） */
 .agent-workbench {
   position: fixed;
   bottom: 16px;
@@ -222,6 +209,64 @@ function expandToPage(): void {
   flex: 1;
 }
 
+/* ===== 本页 Agent 能力条（§3.1B：每页 agent 可做的事不同） ===== */
+.awb-capability {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--muted);
+}
+
+.awb-capability-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.awb-capability-title {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.awb-capability-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--warning-dark, var(--foreground));
+  background: var(--warning-light, color-mix(in srgb, var(--warning) 15%, transparent));
+  border-radius: var(--radius-full);
+  padding: 1px 7px;
+  cursor: help;
+}
+
+.awb-capability-prompts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.awb-capability-chip {
+  font: inherit;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.awb-capability-chip:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
 .awb-action-btn {
   width: 26px;
   height: 26px;
@@ -239,63 +284,6 @@ function expandToPage(): void {
 .awb-action-btn:hover {
   background: var(--muted);
   color: var(--foreground);
-}
-
-/* ===== 本页 Agent 能力条（§3.1B 每页 agent 可做的事不同） ===== */
-.awb-page-capability {
-  flex-shrink: 0;
-  padding: 6px 12px 8px;
-  border-bottom: 1px solid var(--border);
-  background: color-mix(in srgb, var(--muted) 50%, transparent);
-}
-
-.awb-page-capability-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.awb-page-capability-title {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--muted-foreground);
-}
-
-.awb-page-capability-badge {
-  flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--warning-dark, var(--foreground));
-  background: var(--warning-light, color-mix(in srgb, var(--warning) 20%, transparent));
-  border-radius: var(--radius-full);
-  padding: 1px 7px;
-  cursor: help;
-}
-
-.awb-page-capability-prompts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 6px;
-}
-
-.awb-capability-prompt {
-  min-height: 22px;
-  padding: 1px 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--card);
-  color: var(--muted-foreground);
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
-}
-
-.awb-capability-prompt:hover {
-  color: var(--foreground);
-  border-color: color-mix(in srgb, var(--primary) 40%, transparent);
-  background: color-mix(in srgb, var(--primary) 6%, var(--card));
 }
 
 .awb-conversation {

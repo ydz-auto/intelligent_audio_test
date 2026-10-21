@@ -46,20 +46,20 @@
           class="btn btn-primary send-btn"
           :disabled="!canSubmit"
           :aria-label="INPUT_COPY.send"
+          :title="INPUT_COPY.send"
           @click="submit"
         >
-          <i class="fas fa-paper-plane"></i>
-          <span class="sr-only">{{ INPUT_COPY.send }}</span>
+          <i class="fas fa-paper-plane" aria-hidden="true"></i>
         </button>
         <button
           v-else
           type="button"
           class="stop-btn"
           :aria-label="INPUT_COPY.stop"
+          :title="INPUT_COPY.stop"
           @click="emit('stop')"
         >
-          <i class="fas fa-square"></i>
-          <span class="sr-only">{{ INPUT_COPY.stop }}</span>
+          <i class="fas fa-square" aria-hidden="true"></i>
         </button>
       </div>
     </div>
@@ -114,6 +114,8 @@ const emit = defineEmits<{
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 let isComposing = false
 
+/** 可提交（§3.11：对话由用户自配 LLM 供应商驱动——无供应商时发送钮 disabled，
+ * 引导先配置供应商；与 React `effectiveCanSubmit = canSubmit && providers.length > 0` 同口径） */
 const canSubmit = computed(
   () => props.value.trim().length > 0 && !props.isGenerating && props.providers.length > 0
 )
@@ -133,8 +135,6 @@ function onCompositionEnd(): void {
 function onKeydownEnter(event: KeyboardEvent): void {
   // 输入法组合态不触发（照 playground isComposing 语义）
   if (event.isComposing || isComposing) return
-  // 无供应商时不可对话（§3.11 行为：对话由用户自配 LLM 供应商驱动，照 React INT-1032）
-  if (props.providers.length === 0) return
   submit()
 }
 
@@ -234,9 +234,10 @@ defineExpose({ focusInput })
 .send-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  min-width: 32px;
   min-height: 32px;
-  padding: 0 14px;
+  padding: 0 9px;
   border: none;
   border-radius: var(--radius-sm);
   background: var(--primary);
@@ -261,9 +262,10 @@ defineExpose({ focusInput })
 .stop-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  min-width: 32px;
   min-height: 32px;
-  padding: 0 14px;
+  padding: 0 9px;
   border: 1px solid color-mix(in srgb, var(--destructive) 30%, transparent);
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--destructive) 10%, transparent);
@@ -272,19 +274,6 @@ defineExpose({ focusInput })
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-}
-
-/* 无障碍：发送/停止按钮去可见文字仅图标（照 React INT-1032），文案保留给读屏 */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
 }
 
 .input-demo-note {

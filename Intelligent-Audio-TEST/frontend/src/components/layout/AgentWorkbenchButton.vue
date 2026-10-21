@@ -1,34 +1,25 @@
 <template>
   <button
     class="agent-button"
-    :class="{ 'agent-button--active': workbench.open }"
     data-layout-btn
-    title="灵犀Agent"
-    :aria-label="'打开全局 Agent 工作台'"
-    @click="handleClick"
+    :title="workbench.open ? '关闭全局 Agent 工作台' : '打开全局 Agent 工作台'"
+    :aria-label="workbench.open ? '关闭全局 Agent 工作台' : '打开全局 Agent 工作台'"
+    :class="{ 'agent-button--active': workbench.open }"
+    @click="workbench.toggle"
   >
     <span class="agent-button__word">
       <i class="fas fa-wand-magic-sparkles"></i>
       <span class="agent-button__label">灵犀Agent</span>
-      <span class="sr-only">灵犀Agent</span>
     </span>
   </button>
 </template>
 
 <script setup lang="ts">
-import { useAgentWorkbenchStore } from '@/store/agentWorkbenchStore'
+import { useAgentWorkbenchStore } from '../../store/agentWorkbenchStore'
 
+/** 右上角魔法按钮 = 全局 Agent 工作台浮窗开关（§3.1B：登录壳任意页面可开、跨页驻留；
+ * 打开时叠加激活态 ring；展开整页入口在浮窗头行「展开整页」→ /ai-chat） */
 const workbench = useAgentWorkbenchStore()
-
-/**
- * 灵犀Agent 魔法按钮（右上角首位，§2.4 ①）：点击唤起/关闭全局 Agent 工作台浮窗
- * （照 React INT-415 agent-workbench-button.tsx 实测行为——toggle 浮窗而非跳转整页；
- * 浮窗「展开整页」钮承担 /ai-chat 跳转，§3.1B）。
- */
-function handleClick(): void {
-  if (!workbench.open) workbench.setOpen(true)
-  else workbench.toggle()
-}
 </script>
 
 <style scoped>
@@ -73,7 +64,7 @@ function handleClick(): void {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
-/* 浮窗打开态：主色描边（照 React `open && 'ring-2 ring-primary/40'`） */
+/* 打开浮窗时叠加激活态 ring（照 React `ring-2 ring-primary/40`；色值用 token 不硬编码） */
 .agent-button--active {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 40%, transparent);
 }
@@ -177,17 +168,5 @@ function handleClick(): void {
   .agent-button__label {
     display: inline;
   }
-}
-/* 无障碍：移动端隐藏可见文案时读屏仍可读（照 React `sr-only sm:hidden`） */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
 }
 </style>

@@ -6,7 +6,7 @@
  * Agent 工具链 / 报告工作模式数据交互面待后端立项（F6），不做假数据兜底。
  */
 import { defineStore } from 'pinia'
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 import type {
   ChatConfig,
   ChatMessage,
@@ -113,8 +113,32 @@ export const useAiChatStore = defineStore('aiChat', () => {
       providers.value.find((p) => p.isDefault) ?? providers.value[0] ?? null
   }
 
-  // 创建即算默认供应商：首次打开浮窗（不经 initialize）也按持久化供应商清单生效
-  recomputeDefault()
+  /** 当前会话供应商（config.providerId 命中或默认；§3.11 Demo 直连驱动对话） */
+  function resolveCurrentProvider(): LlmProvider | null {
+    return (
+      providers.value.find((p) => p.id === config.value.providerId) ??
+      defaultProvider.value
+    )
+  }
+
+  /**
+   * 配置即用（§3.11/INT-1032 走查对齐）：供应商带模型而会话未选模型/所选模型已不在
+   * 清单时自动落首个模型——添加供应商后无需再手动选模型即可对话；手动切换模型后
+   * 命中校验、效果不再覆写。整页与全局浮窗共用本 store，两形态同口径。
+   */
+  function autoSelectModel(): void {
+    const currentProvider = resolveCurrentProvider()
+    if (!currentProvider) return
+    const modelValid = currentProvider.models.includes(config.value.modelId ?? '')
+    if (currentProvider.models.length > 0 && !modelValid) {
+      config.value = {
+        ...config.value,
+        providerId: currentProvider.id,
+        modelId: currentProvider.models[0],
+      }
+      savePrefs(AI_CHAT_STORAGE_KEYS.config, config.value)
+    }
+  }
 
   function scheduleSave(): void {
     if (saveTimer) clearTimeout(saveTimer)
@@ -218,9 +242,6 @@ export const useAiChatStore = defineStore('aiChat', () => {
       startedAt: now,
       status: MESSAGE_STATUS.LOADING,
     }
-    // 请求体用「追加前」历史构造（对齐 React messagesRef.current 语义）：buildChatHistory
-    // 结尾总会推入当前 user 指令，历史里再含它就会重复（INT-861 审计 P1 缺陷根因）。
-    const prior = options.historyMessages ?? [...messages.value]
     updateMessages((prev) => [
       ...(appendUserMessage ? [...prev, userMessage] : prev),
       loadingMessage,
@@ -252,9 +273,7 @@ export const useAiChatStore = defineStore('aiChat', () => {
       isGenerating.value = false
     }
 
-    const currentProvider = providers.value.find(
-      (p) => p.id === config.value.providerId
-    ) ?? defaultProvider.value
+    const currentProvider = resolveCurrentProvider()
     const currentModel = config.value.modelId
     if (!currentProvider || !currentProvider.baseUrl || !currentProvider.apiKey) {
       fail(ERROR_MESSAGES.noProviderChat)
@@ -274,7 +293,10 @@ export const useAiChatStore = defineStore('aiChat', () => {
           baseUrl: currentProvider.baseUrl,
           apiKey: currentProvider.apiKey,
           model: currentModel,
-          messages: buildChatHistory(prior, text),
+          messages: buildChatHistory(
+            options.historyMessages ?? messages.value,
+            text
+          ),
           signal: abort.signal,
         })
         if (isInterrupted()) return
@@ -330,19 +352,9 @@ export const useAiChatStore = defineStore('aiChat', () => {
     const history = messages.value.slice(0, index)
     const originalUser = [...history].reverse().find((m) => m.from === 'user')
     if (!originalUser) return
-    const originalUserIndex = history.findIndex((m) => m.key === originalUser.key)
-    if (originalUserIndex === -1) return
-    // 重新生成=截断重建（§3.4，对齐 React updateMessages((prev) => prev.slice(0, index))）：
-    // 先截断到旧 assistant 回复之前（移除旧答及其后内容），sendChat 追加新回复替换旧答（INT-861 P2）。
-    updateMessages((prev) => prev.slice(0, index))
     sendChat(
       originalUser.versions[originalUser.versions.length - 1].content,
-      // 请求体用「不含原 user 指令」的历史构造（对齐 React messages.slice(0, previousUserIndex)）：
-      // buildChatHistory 结尾推入当前指令，历史含原指令会重复（INT-861 P1）。
-      {
-        historyMessages: history.slice(0, originalUserIndex),
-        appendUserMessage: false,
-      }
+      { historyMessages: history, appendUserMessage: false }
     )
   }
 
@@ -377,9 +389,7 @@ export const useAiChatStore = defineStore('aiChat', () => {
     editingMessageKey.value = null
     if (resend) {
       sendChat(trimmed, {
-        // 请求体用「不含编辑后消息」的历史构造（同 sendChat/regenerate 的 P1 修复口径）：
-        // buildChatHistory 结尾推入当前指令（= trimmed），历史含编辑后消息会重复（INT-861 P1）。
-        historyMessages: history,
+        historyMessages: [...history, patched],
         appendUserMessage: false,
       })
     }
@@ -404,6 +414,7 @@ export const useAiChatStore = defineStore('aiChat', () => {
     providers.value = [...providers.value, created]
     savePrefs(AI_CHAT_STORAGE_KEYS.providers, providers.value)
     recomputeDefault()
+    autoSelectModel()
     return created
   }
 
@@ -413,12 +424,14 @@ export const useAiChatStore = defineStore('aiChat', () => {
     )
     savePrefs(AI_CHAT_STORAGE_KEYS.providers, providers.value)
     recomputeDefault()
+    autoSelectModel()
   }
 
   function removeProvider(id: string): void {
     providers.value = providers.value.filter((p) => p.id !== id)
     savePrefs(AI_CHAT_STORAGE_KEYS.providers, providers.value)
     recomputeDefault()
+    autoSelectModel()
   }
 
   function setDefaultProvider(id: string): void {
@@ -428,6 +441,7 @@ export const useAiChatStore = defineStore('aiChat', () => {
     }))
     savePrefs(AI_CHAT_STORAGE_KEYS.providers, providers.value)
     recomputeDefault()
+    autoSelectModel()
   }
 
   async function testConnection(
@@ -451,34 +465,8 @@ export const useAiChatStore = defineStore('aiChat', () => {
 
   function initialize(): void {
     recomputeDefault()
+    autoSelectModel()
   }
-
-  // ===== 配置即可对话（INT-1032 走查口径，照 React ai-chat/index.tsx + agent-workbench.tsx） =====
-  // 供应商带模型而会话未选模型/所选模型已不在清单时自动落首个模型——添加供应商并
-  // 获取模型后无需再手动选模型即可对话；手动切换模型后命中校验、效果不再覆写。
-  // 整页 /ai-chat 与全局浮窗共用同一 store，落一处两形态同口径（§3.1B 不分裂会话）。
-  watch(
-    () => [
-      providers.value,
-      defaultProvider.value,
-      config.value.providerId,
-      config.value.modelId,
-    ],
-    () => {
-      const currentProvider =
-        providers.value.find((p) => p.id === config.value.providerId) ??
-        defaultProvider.value
-      if (!currentProvider) return
-      const modelValid = currentProvider.models.includes(config.value.modelId ?? '')
-      if (currentProvider.models.length > 0 && !modelValid) {
-        updateConfig({
-          providerId: currentProvider.id,
-          modelId: currentProvider.models[0],
-        })
-      }
-    },
-    { immediate: true }
-  )
 
   return {
     // state
