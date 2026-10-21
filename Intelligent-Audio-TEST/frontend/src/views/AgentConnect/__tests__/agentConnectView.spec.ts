@@ -1,5 +1,5 @@
 /**
- * INT-1154：「联接你的 agent」入口页验收测试。
+ * INT-1193：「连接你的 agent」入口页验收测试（文案统一；INT-1154 基线）。
  * 覆盖：使用说明 / skill 服务地址配置（默认取地址栏、可改、保存落 localStorage）/
  * Access Token 指引（跳 /profile）/ 炫彩下载按钮 → 下载 skill（基础设施层桩）。
  */
@@ -57,11 +57,11 @@ async function mountPage() {
   return w
 }
 
-describe('AgentConnectView 「联接你的 agent」（INT-1154）', () => {
+describe('AgentConnectView 「连接你的 agent」（INT-1193）', () => {
   it('渲染使用说明 / 服务地址配置（默认取地址栏）/ Access Token 指引 / 下载按钮', async () => {
     const w = await mountPage()
     const text = w.text()
-    expect(text).toContain('联接你的 agent')
+    expect(text).toContain('连接你的 agent')
     expect(text).toContain('使用说明')
     expect(text).toContain('创建 Access Token')
     expect(text).toContain('安装 skill')

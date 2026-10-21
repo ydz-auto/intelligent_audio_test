@@ -19,6 +19,8 @@
       <span class="awb-title">灵犀Agent</span>
       <span class="awb-demo-badge" :title="DEMO_COPY.floatingTooltip">{{ DEMO_COPY.badge }}</span>
       <span class="awb-header-spacer"></span>
+      <!-- 炫彩「连接你的 agent」入口（INT-1193：落浮窗头行右上角，最小化/展开/关闭前；compact 适配头行高度） -->
+      <AgentConnectButton compact />
       <button type="button" class="awb-action-btn" :title="'最小化'" @click="workbench.setMinimized(true)">
         <i class="fas fa-minus"></i>
       </button>
@@ -107,6 +109,7 @@ import { MODAL_TYPES } from '@/composables/modal/constants'
 import { useNotification } from '@/composables/modal/useNotification'
 import AiChatConversation from './AiChatConversation.vue'
 import AiChatInput from './AiChatInput.vue'
+import AgentConnectButton from './AgentConnectButton.vue'
 import ProviderManagerModal from './ProviderManagerModal.vue'
 
 const store = useAiChatStore()

@@ -1,4 +1,4 @@
-/* 「联接你的 agent」入口页样式（INT-1154）。
+/* 「连接你的 agent」入口页样式（INT-1193 文案统一；样式基线 INT-1154）。
    非 scoped（照 Dashboard.css 经 <style src> 注入），选择器一律以 .agent-connect-page 前缀隔离，禁止裸类名全局泄漏。
    色彩/圆角/阴影/间距/字号全部走语义令牌（theme.css / theme-presets.css），浅深两套自动成立。
    炫彩按钮色值一律来自 --ai-magic-* 令牌，不在此硬编码。 */

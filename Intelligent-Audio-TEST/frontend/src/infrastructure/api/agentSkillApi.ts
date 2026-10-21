@@ -1,6 +1,6 @@
 // -*- coding: utf-8 -*-
 /**
- * Agent Skill 下载 API（INT-1154「联接你的 agent」入口页）
+ * Agent Skill 下载 API（INT-1193「连接你的 agent」入口页；INT-1154 基线）
  *
  * 契约：`GET /api/v1/agent/skill` —— 下载 skill 包 zip（SKILL.md + MCP 配置模板），
  * 服务地址 URL 默认取浏览器地址栏、可改，预填进包内 MCP 配置模板。

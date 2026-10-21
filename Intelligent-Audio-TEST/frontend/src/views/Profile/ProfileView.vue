@@ -390,7 +390,7 @@
 
             <div class="card-footnote">
               <i class="fas fa-info-circle"></i>
-              <span>Access Token 用于 skill / MCP 调用平台能力（「联接你的 agent」）。完整令牌仅在创建时显示一次，列表仅展示掩码末 4 位。</span>
+              <span>Access Token 用于 skill / MCP 调用平台能力（「连接你的 agent」）。完整令牌仅在创建时显示一次，列表仅展示掩码末 4 位。</span>
             </div>
           </div>
         </div>

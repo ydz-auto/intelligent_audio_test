@@ -47,8 +47,8 @@ const routes: Array<RouteRecordRaw> = [
   // INT-742/INT-1109：灵犀Agent /ai-chat 对话工作台实页（INT-742 建页，INT-1109 落地路由；
   // URL 契约 /ai-chat?report={id}|task={id}|reviewCase= 由页面 onMounted 消费）
   { path: '/ai-chat', name: 'aiChat', component: () => import('../views/AiChat/AiChatPage.vue'), meta: { permission: 'report:read', layout: 'authenticated', title: '灵犀Agent' } },
-  // INT-1154：「联接你的 agent」入口页（登录用户可见；Access Token + skill/MCP 使用说明/服务地址配置/下载 skill）
-  { path: '/agent-connect', name: 'agentConnect', component: () => import('../views/AgentConnect/AgentConnectView.vue'), meta: { layout: 'authenticated', title: '联接你的 agent' } },
+  // INT-1193：「连接你的 agent」入口页（登录用户可见；Access Token + skill/MCP 使用说明/服务地址配置/下载 skill）
+  { path: '/agent-connect', name: 'agentConnect', component: () => import('../views/AgentConnect/AgentConnectView.vue'), meta: { layout: 'authenticated', title: '连接你的 agent' } },
   { path: '/tasks', name: 'tasks', component: () => import('../views/Tasks/Tasks.vue'), meta: { permission: 'task:read', layout: 'authenticated', title: '任务管理' } },
   // INT-577 §2.2 裁定①：旧路径式页签 redirect——「合并」页签收编进「挑选合并」，
   // /tasks/merged 与 /tasks/cherry-picks 均归一到 /tasks?tab=cherry-picks（query 态页签）

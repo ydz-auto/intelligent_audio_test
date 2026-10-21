@@ -5,7 +5,7 @@
       <div class="header-left">
         <h2 class="page-title">
           <i class="fas fa-plug"></i>
-          联接你的 agent
+          连接你的 agent
         </h2>
         <p class="page-description">用 Access Token 与智能音频测试 skill / MCP，让外部 agent 调用平台能力</p>
       </div>
@@ -133,7 +133,7 @@ import { downloadBlob } from '../../utils/utils'
 import { toUserErrorMessage } from '../../utils/errorMessage'
 
 /**
- * 「联接你的 agent」入口页（INT-1154）
+ * 「连接你的 agent」入口页（INT-1193 文案统一）
  * 内容：使用说明（创建 Access Token / 安装 skill / 配置 MCP）+ skill 服务地址配置
  * （默认取浏览器地址栏、可改、保存后预填进下载包）+ Access Token 指引（跳 /profile）
  * + 炫彩「下载 skill」按钮（--ai-magic 令牌，不硬编码）。

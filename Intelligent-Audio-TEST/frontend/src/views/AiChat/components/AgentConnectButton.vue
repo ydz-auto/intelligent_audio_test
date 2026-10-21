@@ -1,14 +1,36 @@
 <template>
-  <button class="agent-connect-button" data-layout-btn title="联接你的 agent" @click="goAgentConnect">
+  <button
+    class="agent-connect-button"
+    :class="{ 'agent-connect-button--compact': compact }"
+    data-layout-btn
+    title="连接你的 agent"
+    :aria-label="compact ? '打开连接你的 agent' : '连接你的 agent'"
+    @click="goAgentConnect"
+  >
     <span class="agent-connect-button__word">
       <i class="fas fa-plug"></i>
-      <span class="agent-connect-button__label">联接你的 agent</span>
+      <span class="agent-connect-button__label">连接你的 agent</span>
     </span>
   </button>
 </template>
 
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
+
+/**
+ * 炫彩「连接你的 agent」入口按钮（INT-1193 返工落位）。
+ * 落点：灵犀Agent 页 /ai-chat 顶部条右上角（ai-chat-header-right）+ Agent 工作台浮窗头行
+ * 右上角（awb-header，最小化/展开/关闭前）；顶栏 TopBarRight 不再保留该入口
+ * （负责人 2026-10-22 裁定，按 React INT-1153 二轮返工同步）。
+ * 形态照 AgentWorkbenchButton（灵犀Agent）模式逐层移植：静态渐变底 + 流光扫层 + 星尘粒子流；
+ * `prefers-reduced-motion` 关停动画；`compact` 用于浮窗头行（空间紧凑，按头行高度适配）。
+ * 渐变/阴影色值收敛为 tokens `--ai-magic-*` 令牌，不在此硬编码。
+ * 按钮带 `data-layout-btn` 退出 legacy button.css catch-all（见该文件 opt-out 注释）。
+ */
+defineProps<{
+  /** 浮窗头行紧凑形态（height 28px / 内边距 10px / 12px 字重 600） */
+  compact?: boolean
+}>()
 
 const router = useRouter()
 
@@ -18,11 +40,6 @@ function goAgentConnect() {
 </script>
 
 <style scoped>
-/* 「联接你的 agent」炫彩入口按钮（INT-1154）。
-   照 AgentWorkbenchButton（灵犀Agent）模式逐层移植：静态渐变底 + 流光扫层 + 星尘粒子流；
-   `prefers-reduced-motion` 关停动画。
-   渐变/阴影色值收敛为 tokens `--ai-magic-*` 令牌，不在此硬编码。
-   按钮带 `data-layout-btn` 退出 legacy button.css catch-all（见该文件 opt-out 注释）。 */
 .agent-connect-button {
   position: relative;
   isolation: isolate;
@@ -153,6 +170,7 @@ function goAgentConnect() {
     animation: none;
   }
 }
+/* 默认隐藏文案（窄屏仅图标）；≥1280px 展开 */
 .agent-connect-button__label {
   display: none;
 }
@@ -160,5 +178,23 @@ function goAgentConnect() {
   .agent-connect-button__label {
     display: inline;
   }
+}
+/* 浮窗头行 compact：按 awb-header 头行高度适配（React compact h-7 先例；
+   height 28px = --control-height 32 - --spacing-xs 4，全 token 推演不硬编码） */
+.agent-connect-button--compact {
+  height: calc(var(--control-height) - var(--spacing-xs));
+  min-height: calc(var(--control-height) - var(--spacing-xs));
+  padding: 0 var(--spacing-10);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+}
+.agent-connect-button--compact .agent-connect-button__word {
+  gap: var(--spacing-6);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+}
+/* 浮窗头行 compact：文案始终展开（浮窗宽 < 1280px，不受默认窄屏隐藏规则影响） */
+.agent-connect-button--compact .agent-connect-button__label {
+  display: inline;
 }
 </style>

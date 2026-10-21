@@ -1,6 +1,6 @@
 // -*- coding: utf-8 -*-
 /**
- * 「联接你的 agent」入口页 Composable（INT-1154）
+ * 「连接你的 agent」入口页 Composable（INT-1193 文案统一；INT-1154 基线）
  *
  * - skill 服务地址：默认取浏览器地址栏（window.location.origin），可改；
  *   localStorage `iatp:agent-connect:v1` 持久化，下载 skill 包时预填进包内 MCP 模板。

@@ -8,6 +8,8 @@
       </div>
       <p class="ai-chat-subtitle">用自然语言驱动平台全部能力：报告、用例、任务、设备、日志</p>
       <div class="ai-chat-header-right">
+        <!-- 炫彩「连接你的 agent」入口（INT-1193：落 /ai-chat 页右上角，点击进入 /agent-connect） -->
+        <AgentConnectButton />
         <!-- 报告工作模式开关：Agent 后端（DSH + Report Studio）立项后置 true（§3.6） -->
         <button
           v-if="REPORT_WORK_MODE_ENABLED"
@@ -129,6 +131,7 @@ import {
 import { reportsPort } from '@/composables/report/reportsPort'
 import AiChatConversation from './components/AiChatConversation.vue'
 import AiChatInput from './components/AiChatInput.vue'
+import AgentConnectButton from './components/AgentConnectButton.vue'
 import ProviderManagerModal from './components/ProviderManagerModal.vue'
 import ReportWorkModePanel from './components/ReportWorkModePanel.vue'
 

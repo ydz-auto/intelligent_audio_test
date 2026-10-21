@@ -5,9 +5,6 @@
       v-if="mode === 'authenticated' && hasNavPermission('report:read')"
     />
 
-    <!-- 「联接你的 agent」炫彩入口按钮（登录用户可见，INT-1154；插在灵犀Agent 按钮旁） -->
-    <AgentConnectButton v-if="mode === 'authenticated'" />
-
     <!-- 全局算法切换器（algorithm:read 显；/reports /rankings 不渲染，页内算法卡片网格） -->
     <GlobalAlgorithmSwitcher
       v-if="mode === 'authenticated' && hasNavPermission('algorithm:read') && !isSwitcherHiddenRoute"
@@ -45,7 +42,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../store/authStore'
 import { useNavAccess } from '../../composables/layout/useNavAccess'
 import AgentWorkbenchButton from './AgentWorkbenchButton.vue'
-import AgentConnectButton from './AgentConnectButton.vue'
 import GlobalAlgorithmSwitcher from './GlobalAlgorithmSwitcher.vue'
 import SearchButton from './SearchButton.vue'
 import NotificationPopover from './NotificationPopover.vue'
