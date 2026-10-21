@@ -131,11 +131,18 @@ class RealtimeAdapterBase(ApiVendorAdapter):
             return bool(self._client.connect())
         last_status = None
         last_error = ''
-        for _ in range(len(pool)):
-            # 每次重试强制重新解析密钥：外部传入头固化于首 attempt，重建
-            # client 前丢弃，让 _resolve_ws_headers 经共享轮换游标取下一非
-            # 冷却 key（同源轮换：跨协议/跨路径同一游标）
-            self._headers = None
+        for attempt in range(len(pool)):
+            if attempt > 0:
+                # 失败后重新解析密钥：丢弃外部传入头，让 _build_client 经
+                # _resolve_ws_headers 走共享轮换游标取下一非冷却 key
+                # （同源轮换：跨协议/跨路径同一游标）
+                self._headers = None
+            if self._headers is not None:
+                # 首 attempt 沿用外部传入头（executor 预解析结果）：解析其
+                # Authorization Bearer key 记录为当前 key，供失败冷却命中
+                # 预解析 key（防止 executor→adapter 路径双推进游标 + 首
+                # attempt 失败 key 不进冷却）
+                self._current_api_key = self._auth_key_from_headers(self._headers)
             self._client = self._build_client()
             if self._client.connect():
                 return True
@@ -261,6 +268,22 @@ class RealtimeAdapterBase(ApiVendorAdapter):
     def _case_level_key(self, case_config) -> str:
         """密钥链 case 层候选：用例 api 段优先，回退用例顶层（键名可配置）"""
         return (case_config or {}).get(_key_resolver.case_key) or ''
+
+    @staticmethod
+    def _auth_key_from_headers(headers) -> str:
+        """从外部 WS 握手头提取 Bearer key（executor 预解析注入，失败冷却用）。
+
+        _resolve_ws_headers 将解析结果注入 `Authorization: Bearer <key>`；
+        显式头优先场景（meta.ws_headers 已含 Authorization）该值非池内 key，
+        置冷却亦无害（非池值不参与轮换选择）。
+        """
+        if not headers:
+            return ''
+        for k, v in headers.items():
+            if str(k).lower() == 'authorization' and isinstance(v, str) \
+                    and v.startswith('Bearer '):
+                return v[len('Bearer '):].strip()
+        return ''
 
     def _resolve_ws_headers(self, api_config, case_api_key: str = '') -> dict:
         """解析 WS 握手头：meta.ws_headers 直传 + 密钥链注入；显式头优先

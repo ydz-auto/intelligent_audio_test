@@ -426,6 +426,64 @@ class TestKeyPoolRotation:
         assert connect_calls == ['Bearer sk-case']
         assert len(connect_calls) == 1, 'case 层单值不参与轮换重试'
 
+    def test_executor_pre_resolved_headers_no_double_advance(self, monkeypatch):
+        """executor→adapter 组合路径（返工(2) P2 回归）：executor 预解析传入
+        headers 后，适配器首 attempt 沿用外部头（不二次推进游标）；首 attempt
+        失败冷却命中预解析 key。
+
+        若适配器首 attempt 就丢弃外部头重新解析（双推进），2-key 池恒用
+        第二把密钥、round-robin 失效，且失败 key 不进入冷却。
+        """
+        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+            RealtimeWSClient,
+        )
+        from shared.utils.api_key_provider import (
+            ApiKeyChainResolver,
+            InMemoryRotationStateStore,
+        )
+        from api_test_service.core import realtime_session_executor as rse
+        from api_test_service.infrastructure.adapters.protocol import (
+            realtime_adapter_base as rab,
+        )
+
+        # 共享同一隔离 store 的两个 resolver：模拟 executor 模块级 resolver
+        # 与 adapter 模块级 resolver 经共享单例同源轮换
+        fresh = InMemoryRotationStateStore()
+        resolver = ApiKeyChainResolver(cooldown_seconds=60)
+        resolver.rotation_store = fresh
+        monkeypatch.setattr(rse, '_key_resolver', resolver)
+        monkeypatch.setattr(rab, '_key_resolver', resolver)
+
+        api_config = self._make_pool_config(['sk-a1', 'sk-b2'], api_id=77)
+        # executor 预解析：推进游标取 sk-a1
+        pre_headers = rse.RealtimeSessionExecutor._resolve_ws_headers(api_config)
+        assert pre_headers['Authorization'] == 'Bearer sk-a1'
+
+        seen_auth = []
+
+        def fake_connect(self, proxy_type=None, proxy_url=None):
+            auth = (self._headers or {}).get('Authorization', '')
+            seen_auth.append(auth)
+            if len(seen_auth) == 1:
+                self._handshake_error_status = 401
+                self._handshake_error = 'mock WS 握手 401'
+                self._connected = False
+                return False
+            self._handshake_error_status = None
+            self._connected = True
+            return True
+
+        monkeypatch.setattr(RealtimeWSClient, 'connect', fake_connect)
+        adapter = OpenAIRealtimeAdapter(
+            api_config, case_config={}, headers=pre_headers)
+        assert adapter.initialize() is True
+        # 首 attempt 沿用 executor 预解析 key（sk-a1），失败后重解析取 sk-b2：
+        # 未双推进（若双推进则首 attempt 已是 sk-b2）
+        assert seen_auth == ['Bearer sk-a1', 'Bearer sk-b2']
+        # 失败冷却命中预解析 key sk-a1：后续 resolve 跳过 sk-a1 取 sk-b2
+        assert resolver.resolve_rotating(
+            api_id=77, meta={'api_keys': ['sk-a1', 'sk-b2']}) == 'sk-b2'
+
 
 # ──────────────────────────── INT-1177 RealtimeWSClient 握手状态码透出 ────────────────────────────
 

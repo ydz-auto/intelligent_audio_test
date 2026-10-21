@@ -458,7 +458,18 @@ class APICrudService:
             if data.get('description') is not None:
                 update_fields['description'] = data['description']
             if data.get('meta') is not None:
-                update_fields['meta'] = data['meta']
+                incoming_meta = data['meta']
+                # INT-1177 返工(2)：编辑无关字段保存时保留既有密钥池。
+                # 读侧防御（_api_to_dict）剥离 meta.api_keys，前端编辑表单
+                # 拿不到池、回传 meta 必无 api_keys——整块覆盖会静默清空池。
+                # 合并语义：入参 meta 未含 api_keys 时保留既有；显式传完整
+                # 数组才覆盖（空数组/清空语义另行明确，D2 口径）。
+                if 'api_keys' not in incoming_meta:
+                    current_meta = api_test_repository.get_api_meta(api_id)
+                    if isinstance(current_meta, dict) and current_meta.get('api_keys') is not None:
+                        incoming_meta = dict(incoming_meta)
+                        incoming_meta['api_keys'] = current_meta['api_keys']
+                update_fields['meta'] = incoming_meta
             if data.get('algorithm_type') is not None:
                 update_fields['algorithm_type'] = data['algorithm_type']
             if data.get('default_max_process') is not None:
