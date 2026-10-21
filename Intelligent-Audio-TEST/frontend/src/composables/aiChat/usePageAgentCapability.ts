@@ -33,7 +33,7 @@ const PAGE_AGENT_MATCHES: Array<{ match: string[]; group: CapabilityGroup }> = [
   { match: ['/dashboard'], group: CAPABILITY_GROUPS.find((g) => g.key === 'dashboard')! },
   { match: ['/audio-import'], group: CAPABILITY_GROUPS.find((g) => g.key === 'audio')! },
   { match: ['/testcases'], group: CAPABILITY_GROUPS.find((g) => g.key === 'testcase')! },
-  { match: ['/evaluation'], group: CAPABILITY_GROUPS.find((g) => g.key === 'evaluation')! },
+  { match: ['/Evaluation'], group: CAPABILITY_GROUPS.find((g) => g.key === 'evaluation')! },
   { match: ['/AlgorithmConfig'], group: CAPABILITY_GROUPS.find((g) => g.key === 'algorithm')! },
   { match: ['/tasks', '/start-test'], group: CAPABILITY_GROUPS.find((g) => g.key === 'task')! },
   { match: ['/SPLMapping'], group: CAPABILITY_GROUPS.find((g) => g.key === 'spl')! },
