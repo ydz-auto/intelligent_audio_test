@@ -331,7 +331,8 @@ onBeforeUnmount(() => {
 
 .ds-panel {
   position: fixed;
-  z-index: var(--z-index-popover);
+  /* 模态窗遮罩 z-index 为 13000，弹层需在其之上（照 ColumnFilter popover 口径） */
+  z-index: 21000;
   box-sizing: border-box;
   max-height: 320px;
   overflow-y: auto;
@@ -428,7 +429,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   width: 14px;
   height: 14px;
-  border-radius: 3px;
+  border-radius: var(--radius-tag);
   font-size: 9px;
   font-weight: var(--font-weight-semibold);
   flex-shrink: 0;

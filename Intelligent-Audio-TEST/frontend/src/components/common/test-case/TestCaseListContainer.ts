@@ -120,7 +120,8 @@ export function useTestCaseListContainer(props: any, emit: any) {
 
   const groupFilterOptions = computed(() =>
     availableGroups.value.map(g => ({ value: g, label: g }))
-  );  const tagFilterOptions = computed(() =>
+  );
+  const tagFilterOptions = computed(() =>
     (props.tags || []).map((t: string) => ({ value: t, label: t }))
   );
 
