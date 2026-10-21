@@ -54,7 +54,7 @@ SUPPORTED_TASK_TYPES = [
 |------|---------|
 | `wer` / `ser` | 无 `rounds` 时必须同时有 `asr_ref`、`asr_hyp`（多轮模式下从 rounds 逐轮取值，可缺省） |
 | `cpwer` / `tcpwer` / `stm_wer` | `stm_ref`、`stm_hyp` |
-| `der` | `rttm_ref`、`stm_ref`、`rttm_res`、`stm_res` |
+| `der` | `rttm_ref`、`stm_ref`、`rttm_hyp`、`stm_hyp` |
 | `llm_judge` | 无 `rounds` 时必须同时有 `answer`、`correct_answer`；`model`/`prompt` 有默认值，**非必填** |
 | `interruption_metrics` | `user_wav` 或 `user_asr`/`user_chunks` 至少一个 + `ai_wav`/`model_wav`/`model_asr`/`model_chunks` 至少一个 |
 | `non_interactive_latency` / `noise_latency` | 不在此拦截，交给 calculate 层返回带说明的空结果 |
