@@ -190,6 +190,104 @@
   width: 100%;
 }
 
+/* INT-1111：用例卡片分组——组头 = 组名 + 计数「{n} 个用例」；兜底组末尾弱化 */
+.case-group {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.case-group-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 6px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--foreground);
+}
+
+.case-group-header-muted {
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-weight: var(--font-weight-normal);
+}
+
+.case-group-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.case-group-category {
+  font-size: var(--font-size-xs);
+  color: var(--muted-foreground);
+}
+
+.case-group-count {
+  padding: 2px 10px;
+  border-radius: var(--radius-tag);
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* INT-1111：组织控件（分组视图/标签视图 + 平铺/交叉，照 React INT-1129 / 用例管理 btn-toggle 形态） */
+.case-org-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 0 2px var(--spacing-sm);
+}
+
+.case-org-group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.case-org-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--background);
+  color: var(--muted-foreground);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.case-org-tab:hover {
+  border-color: color-mix(in srgb, var(--primary) 40%, transparent);
+  color: var(--primary);
+}
+
+.case-org-tab.active {
+  border-color: var(--primary);
+  background: var(--accent);
+  color: var(--primary);
+  font-weight: var(--font-weight-medium);
+}
+
+/* INT-1111：交叉子视图组头（组内按另一维度再分组；内层缩进弱化） */
+.case-group-header-inner {
+  padding-left: var(--spacing-md);
+  font-weight: var(--font-weight-normal);
+}
+
+.case-group-header-inner .case-group-name {
+  color: var(--muted-foreground);
+}
+
 /* INT-1103：用例卡结构收归全站统一 TestCaseCard（本文件不再覆写 .case-card/.case-header 布局） */
 
 .status-indicator {
