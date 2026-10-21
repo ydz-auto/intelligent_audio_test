@@ -59,11 +59,11 @@
                ┌─────────────┘    │    │    └─────────────┐
                ▼                  ▼    ▼                  ▼
         ┌──────────────┐  ┌─────────────────┐   ┌──────────────────┐
-        │ 业务服务 (HTTP) │  │ 认证/算法/适配服务 │   │ gRPC-only 服务    │
+        │ 业务服务 (HTTP) │  │ 认证/算法服务    │   │ gRPC-only 服务    │
         │ task 5001     │  │ auth 5009       │   │ audio 50052       │
         │ e2e 5002      │  │ algorithm 5007  │   │ device 50053      │
-        │ api_test 5003 │  │ adapter 5008    │   └──────────────────┘
-        │ eval 5004     │  └─────────────────┘
+        │ api_test 5003 │  └─────────────────┘   └──────────────────┘
+        │ eval 5004     │
         │ report 5006   │
         └──────┬───────┘
                │
@@ -85,7 +85,6 @@
 | evaluation_service | 5004 | 50091 | 评估维度管理、指标计算（WER/DER/LLM Judge 等） |
 | report_service | 5006 | 51068 | 报告生成（异步）与查询、对比分析 |
 | algorithm_service | 5007 | 50067 | 被测算法配置、参考参数生成器 |
-| api_adapter_service | 5008 | 50081 | 被测算法适配（Qwen/火山 AST/SSE/HTTP） |
 | auth_service | 5009 | 51069 | 认证 / OAuth / RBAC 角色权限 |
 | audio_service | - | 50052 | 音频播放（gRPC-only） |
 | device_service | - | 50053 | 播放 / 环境设备驱动（gRPC-only） |
@@ -221,7 +220,6 @@ Intelligent-Audio-TEST/
 ├── evaluation_service/     # 评估维度
 ├── report_service/         # 报告生成
 ├── algorithm_service/      # 算法配置
-├── api_adapter_service/    # 算法适配
 ├── auth_service/           # 认证 / RBAC
 ├── audio_service/          # 音频播放（gRPC-only）
 ├── device_service/         # 设备驱动（gRPC-only）

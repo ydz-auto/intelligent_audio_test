@@ -142,7 +142,7 @@ class APITaskRunner:
 
             audio_path = audio.get('file_path')
             # 存储引用原样透传（DUT 侧经统一存储层解析，见
-            # api_adapter_service/adapters/audio_input.py），不做 normpath
+            # api_test_service/infrastructure/adapters/audio_input.py），不做 normpath
 
             vendor = api_specific_config.get('vendor')
             if not vendor and hasattr(api_config, 'vendor') and api_config.vendor:

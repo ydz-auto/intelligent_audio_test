@@ -54,3 +54,27 @@ services:
   db_bootstrap:
     environment:
       EVAL_SERVER_URL: http://mock_eval_server_judge:5097
+
+  # ============ 被测 API DUT 替身（INT-1176）============
+  # api_adapter_service 已删除：单轮被测协议（/health、/api/create_task、
+  # /api/get_status、/api/get_final_result、/api/delete_task）+ voice_llm
+  # /chat 由 mock_dut_api 承担，冒烟/走查 API 配置 api_url 指向本服务。
+  mock_dut_api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.mock_dut
+    command: ["python", "mock_services/mock_dut_api.py", "--port", "5096"]
+    restart: unless-stopped
+    mem_limit: ${SVC_MEM_LIMIT:-512m}
+    cpus: ${SVC_CPU_LIMIT:-0.5}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5096/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"

@@ -164,79 +164,14 @@ class TestExplicitLongCallSites:
 
     - StartE2ETask：e2e 处理器内同步跑完整个多轮用例 → 显式
       GRPC_E2E_SYNC_TIMEOUT_SECONDS（默认 600s > 默认 deadline 60s）。
-    - SendRound：同步执行被测请求，单轮上限 = request.timeout
-      （session_timeout，默认 60s，用户可调大）→ deadline = 上限 + 余量，
-      恒大于单轮上限，消除竞态击杀。
+    - （INT-1169/1176：SendRound 调用点随 api_adapter_service 删除，
+      GRPC_SENDROUND_DEADLINE_MARGIN_SECONDS 已移除。）
     """
 
     class _KwargsCaptured(Exception):
         def __init__(self, kwargs):
             super().__init__('captured')
             self.kwargs = kwargs
-
-    def test_send_round_deadline_exceeds_default_session_timeout(self, monkeypatch):
-        import types
-
-        import shared.clients.grpc_clients as gc
-
-        captured = {}
-
-        class _Stub:
-            def SendRound(self, request, **kwargs):
-                captured.update(kwargs)
-                raise TestExplicitLongCallSites._KwargsCaptured(kwargs)
-
-        monkeypatch.setattr(gc, 'get_adapter_service_stub', lambda: _Stub())
-        from api_test_service.infrastructure.acl.adapter_acl_repository import (
-            AdapterAclRepositoryImpl,
-        )
-        with pytest.raises(self._KwargsCaptured):
-            AdapterAclRepositoryImpl().send_round(types.SimpleNamespace(timeout=60))
-        # session_timeout 默认 60s == 默认 deadline（竞态）→ 显式 deadline 必须严格更大
-        assert captured['timeout'] > 60
-        assert captured['timeout'] == 60 + BaseConfig.GRPC_SENDROUND_DEADLINE_MARGIN_SECONDS
-
-    def test_send_round_deadline_follows_raised_session_timeout(self, monkeypatch):
-        import types
-
-        import shared.clients.grpc_clients as gc
-
-        captured = {}
-
-        class _Stub:
-            def SendRound(self, request, **kwargs):
-                captured.update(kwargs)
-                raise TestExplicitLongCallSites._KwargsCaptured(kwargs)
-
-        monkeypatch.setattr(gc, 'get_adapter_service_stub', lambda: _Stub())
-        from api_test_service.infrastructure.acl.adapter_acl_repository import (
-            AdapterAclRepositoryImpl,
-        )
-        # 用户调大 session_timeout 后 deadline 必须同步放大（否则必杀）
-        with pytest.raises(self._KwargsCaptured):
-            AdapterAclRepositoryImpl().send_round(types.SimpleNamespace(timeout=300))
-        assert captured['timeout'] == 300 + BaseConfig.GRPC_SENDROUND_DEADLINE_MARGIN_SECONDS
-
-    def test_send_round_zero_timeout_falls_back_to_default_base(self, monkeypatch):
-        import types
-
-        import shared.clients.grpc_clients as gc
-
-        captured = {}
-
-        class _Stub:
-            def SendRound(self, request, **kwargs):
-                captured.update(kwargs)
-                raise TestExplicitLongCallSites._KwargsCaptured(kwargs)
-
-        monkeypatch.setattr(gc, 'get_adapter_service_stub', lambda: _Stub())
-        from api_test_service.infrastructure.acl.adapter_acl_repository import (
-            AdapterAclRepositoryImpl,
-        )
-        with pytest.raises(self._KwargsCaptured):
-            AdapterAclRepositoryImpl().send_round(types.SimpleNamespace(timeout=0))
-        assert captured['timeout'] == BaseConfig.GRPC_CLIENT_DEADLINE_SECONDS + \
-            BaseConfig.GRPC_SENDROUND_DEADLINE_MARGIN_SECONDS
 
     def test_start_e2e_task_passes_explicit_sync_deadline(self, monkeypatch):
         import types

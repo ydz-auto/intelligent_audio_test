@@ -8,8 +8,8 @@
 走查映射：
 - A. E2E 实机链路复核：上传→建用例→建任务→真机执行→评估→出报告
 - B. API 测试链路全流程（实机非 dry）：API 配置→建 API 用例→任务执行
-     （api_test_service 真实 HTTP 调 api_adapter_service /health、/api/create_task、
-     /api/get_status、/api/get_final_result）→评估→API 报告
+     （api_test_service 真实 HTTP 调 mock_dut_api /health、/chat、单轮协议）
+     →评估→API 报告
 - C. 评估流程独立验证（INT-301 双状态）：执行/评估状态流转时间线 + 任务详情/
      用例结果中评估数据可见
 - D. 重新评估：任务级整任务重评（reevaluate_type=all）状态重置并重新流转；
@@ -21,7 +21,7 @@
 - HarmonyOS 真机（HDC 在线，串号见 SHARED_DEVICE_SN）——fixture 按共享库同款
   参数在隔离库登记，teardown 删除
 - RME Fireface 802 播放通道（dry）——同上
-- api_adapter_service(5008)（vendor=mock 本地对话处理，真实 HTTP 全链）
+- mock_dut_api(5096)（vendor=mock 本地对话处理，真实 HTTP 全链，INT-1176）
 
 证据：logs/int321_evidence/*.json（每步命令 + 响应摘要）。
 
@@ -346,8 +346,8 @@ def int321_infra(api_client):
         api_payload = {
             'name': 'INT321_adapter_api',
             'vendor': 'mock',
-            'apiUrl': 'http://127.0.0.1:5008',
-            'description': 'INT-321 API 链实机走查（api_adapter_service）',
+            'apiUrl': 'http://127.0.0.1:5096',
+            'description': 'INT-321 API 链实机走查（mock_dut_api）',
             'algorithmType': 'voice_llm',
             'deviceType': 'http_api',
             'defaultMaxTimeout': 60,

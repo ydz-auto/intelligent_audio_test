@@ -1,155 +1,67 @@
 # -*- coding: utf-8 -*-
-"""INT-72 单测 — APIAdapterFactory 注册表化与 adapter_class 通道（UC-1003）。
+"""INT-72 单测（INT-1169/1176 改写）— 内嵌注册表 adapter_class 通道（UC-1003）。
 
-覆盖：
-- api_test_service 侧通道：apis.adapter_class 经 SendRound vendor_config
-  透传至 adapter 服务；未配置时不携带该键（走 protocol+vendor 自动匹配）。
-- api_adapter_service 注册表默认注册快照：五个内置适配器按 (protocol,
-  vendor) 键注册即生效。
+api_adapter_service 删除后，apis.adapter_class 列保留，内嵌
+vendor_adapter_registry 负责映射/校验：
+- adapter_class=MockDialogAdapter → vendor_adapter='mock'（存量值映射）
+- 未知 adapter_class → 显式报错（拒绝静默降级到 API_DRIVER）
+- 未配置 adapter_class → 按 vendor_adapter / vendor 自动匹配
 """
-import json
 import os
 from types import SimpleNamespace
 
 import pytest
 
-# api_adapter_service 侧模块（http/qwen 适配器经 api_key_provider）导入期
-# 强校验 OSS 两键；tests/conftest.py 已兜底 DATABASE_URL，此处补 OSS 两键
-# 的进程级兜底，保证本文件可独立运行（显式配置的环境变量不受影响）
+os.environ.setdefault('DATABASE_URL', 'sqlite:///:memory:')
 os.environ.setdefault('OSS_ACCESS_KEY', 'ut-dummy-ak')
 os.environ.setdefault('OSS_SECRET_KEY', 'ut-dummy-sk')
 
-import api_test_service.core.api_session_executor as executor_mod
+from api_test_service.infrastructure.adapters import registry as reg
+from api_test_service.infrastructure.adapters import vendor_adapter_registry
 
 
-def _run_send_via_adapter(monkeypatch, api_config):
-    captured = {}
-
-    class _FakeRoundDto:
-        pass
-
-    def _fake_send_round(req):
-        captured['req'] = req
-        return _FakeRoundDto()
-
-    monkeypatch.setattr(executor_mod._adapter_acl, 'send_round',
-                        _fake_send_round)
-    monkeypatch.setattr(executor_mod, 'dto_to_dict', lambda dto: {})
-
-    ex = executor_mod.APISessionExecutor.__new__(
-        executor_mod.APISessionExecutor)
-    ex._executor = SimpleNamespace(_log=lambda *a, **k: None)
-    session = SimpleNamespace(
-        session_id='s-1', session_timeout=10,
-        get_context=lambda: [], get_context_for_request=lambda: [])
-
-    ex._send_via_adapter(
-        task_id=31, algorithm_type='voice_llm', session=session,
-        round_number=1, total_rounds=1,
-        rendered_headers={}, rendered_body={},
-        api_specific_config={}, meta={},
-        api_config=api_config, timeout=20,
-        input_text='hi', input_type='text', start_time=0.0,
-        input_audio_path='')
-
-    return json.loads(captured['req'].vendor_config)
+def _cfg(meta=None, adapter_class=None, vendor=None):
+    return SimpleNamespace(
+        id=1, meta=meta or {}, api_endpoints=[], api_url='http://api',
+        adapter_class=adapter_class, vendor=vendor, proxy_type=None,
+        proxy_url=None, max_timeout=30)
 
 
-class TestAdapterClassChannel:
-    """apis.adapter_class → SendRound vendor_config 透传（UC-0901/UC-1003）。"""
+class TestAdapterClassChannelEmbedded:
+    """apis.adapter_class → 内嵌注册表映射（UC-0901/UC-1003 通道）。"""
 
-    def test_adapter_class_forwarded(self, monkeypatch):
-        api_config = SimpleNamespace(id=1, meta={}, api_endpoints=[],
-                                     api_url='http://api',
-                                     adapter_class='DoubaoRealtimeAdapter')
-        vendor_config = _run_send_via_adapter(monkeypatch, api_config)
-        assert vendor_config['adapter_class'] == 'DoubaoRealtimeAdapter'
-        assert vendor_config['api_url'] == 'http://api'
+    def test_mock_dialog_adapter_maps_to_mock(self):
+        cls = vendor_adapter_registry.create_from_config(
+            _cfg(adapter_class='MockDialogAdapter'), {})
+        assert type(cls).__name__ == 'MockVendorAdapter'
 
-    def test_no_adapter_class_key_when_unset(self, monkeypatch):
-        """未配置 adapter_class → 不携带该键，自动匹配不受影响。"""
-        api_config = SimpleNamespace(id=1, meta={}, api_endpoints=[],
-                                     api_url='http://api', adapter_class=None)
-        vendor_config = _run_send_via_adapter(monkeypatch, api_config)
-        assert 'adapter_class' not in vendor_config
+    def test_unknown_adapter_class_raises(self):
+        with pytest.raises(ValueError, match='未注册'):
+            vendor_adapter_registry.create_from_config(
+                _cfg(adapter_class='DoubaoRealtimeAdapter'), {})
+
+    def test_no_adapter_class_falls_back_to_vendor_adapter(self):
+        cls = vendor_adapter_registry.create_from_config(
+            _cfg(meta={'vendor_adapter': 'api_driver'}), {})
+        assert type(cls).__name__ == 'ApiDriverAdapter'
+
+    def test_no_adapter_class_vendor_mock_guard(self):
+        cls = vendor_adapter_registry.create_from_config(
+            _cfg(vendor='mock'), {})
+        assert type(cls).__name__ == 'MockVendorAdapter'
 
 
-class TestAdapterRegistryDefaults:
-    """api_adapter_service 注册表默认注册快照（UC-1003 注册即生效）。"""
+class TestEmbeddedRegistryDefaults:
+    """内嵌注册表默认注册快照（INT-62/INT-497 注册即生效）。"""
 
-    def test_default_registry_snapshot(self):
-        from api_adapter_service.adapters.factory import api_adapter_factory
-        assert api_adapter_factory.list_adapters() == {
-            '(http, default)': 'HttpAdapter',
-            '(mock, default)': 'MockDialogAdapter',
-            '(mock, mock)': 'MockDialogAdapter',
-            '(sse, default)': 'SseAdapter',
-            '(websocket, qwen)': 'QwenAdapter',
-            '(websocket, volc_ast)': 'VolcAstAdapter',
-        }
+    def test_builtin_adapters_registered(self):
+        from shared.models.common_enums import VendorAdapterType
+        names = {e['class'] for e in vendor_adapter_registry.list_adapters()}
+        assert 'ApiDriverAdapter' in names
+        assert 'MockVendorAdapter' in names
+        assert 'OpenAIRealtimeAdapter' in names
 
-    def test_mock_protocol_any_vendor_hits_mock(self):
-        """protocol='mock' 且 vendor 未单独注册 → 命中 (mock, default)
-        兜底（旧版 select_adapter protocol=='mock' 行为，防回退回归）。"""
-        from api_adapter_service.adapters.factory import api_adapter_factory
-        from api_adapter_service.adapters.mock_adapter import MockDialogAdapter
-        assert api_adapter_factory.resolve(
-            'some_vendor', {'protocol': 'mock'}) is MockDialogAdapter
-
-    def test_adapter_class_priority_over_auto_match(self):
-        """adapter_class 显式类名优先于 (protocol, vendor) 自动匹配。"""
-        from api_adapter_service.adapters.factory import api_adapter_factory
-        from api_adapter_service.adapters.qwen_adapter import QwenAdapter
-        adapter = api_adapter_factory.get_adapter('openai', {
-            'protocol': 'sse', 'adapter_class': 'QwenAdapter'})
-        assert isinstance(adapter, QwenAdapter)
-
-    def test_duplicate_key_conflict_raises(self):
-        """同 (protocol, vendor) 注册不同实现 → 注册期抛错（UC-1003 5a）。"""
-        from api_adapter_service.adapters.base import BaseAdapter
-        from api_adapter_service.adapters.factory import APIAdapterFactory
-        from api_adapter_service.domain.enums import AdapterProtocol, Vendor
-
-        factory = APIAdapterFactory()
-
-        class FakeA(BaseAdapter):
-            def send_request(self, **kwargs):
-                return {}
-
-        class FakeB(BaseAdapter):
-            def send_request(self, **kwargs):
-                return {}
-
-        factory.register(AdapterProtocol.WEBSOCKET, Vendor.QWEN, FakeA)
-        with pytest.raises(ValueError, match='适配器注册冲突'):
-            factory.register(AdapterProtocol.WEBSOCKET, Vendor.QWEN, FakeB)
-
-    def test_by_name_conflict_raises(self):
-        """不同类同名注册 → adapter_class 通道会解析到错误实现，注册期抛错
-        （与 (protocol, vendor) 冲突同款语义）；同名同类重复注册幂等。"""
-        from api_adapter_service.adapters.base import BaseAdapter
-        from api_adapter_service.adapters.factory import APIAdapterFactory
-        from api_adapter_service.domain.enums import AdapterProtocol
-
-        factory = APIAdapterFactory()
-
-        def _make():
-            return type('DupAdapter', (BaseAdapter,), {
-                'send_request': lambda self, **kwargs: {}})
-
-        first, second = _make(), _make()
-        factory.register(AdapterProtocol.HTTP, 'vendor_a', first)
-        with pytest.raises(ValueError, match='适配器类名注册冲突'):
-            factory.register(AdapterProtocol.HTTP, 'vendor_b', second)
-        # 冲突注册失败不留半态：类名通道仍解析到首个实现
-        assert factory.resolve('vendor_a', {
-            'adapter_class': 'DupAdapter'}) is first
-        # 同类重复注册（不同注册键）幂等
-        factory.register(AdapterProtocol.HTTP, 'vendor_c', first)
-
-    def test_websocket_unregistered_raises(self):
-        """websocket 协议未注册 vendor → 拒绝静默降级，抛 ValueError。"""
-        from api_adapter_service.adapters.factory import APIAdapterFactory
-        factory = APIAdapterFactory()
-        with pytest.raises(ValueError, match='websocket'):
-            factory.get_adapter('doubao', {'protocol': 'websocket'})
+    def test_mock_vendor_adapter_type(self):
+        from shared.models.common_enums import VendorAdapterType
+        assert reg._FLAT_KEY_DIMENSIONS[VendorAdapterType.MOCK] == (
+            None, reg.AdapterVendor.MOCK)

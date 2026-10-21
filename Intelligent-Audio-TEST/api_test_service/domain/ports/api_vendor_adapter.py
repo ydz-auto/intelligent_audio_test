@@ -79,3 +79,13 @@ class ApiVendorAdapter(ABC):
             error / json 及协议解析附加字段）。
         """
         ...
+
+    def execute_voice_llm_chat(self, **kwargs) -> Dict[str, Any]:
+        """voice_llm chat 等价能力（INT-1169/1176 迁移默认路径）。
+
+        多轮会话默认路径（use_adapter=True）经本方法内嵌执行，HTTP/mock
+        适配器覆写；Realtime 等非 HTTP 适配器默认不支持，显式报错拒绝
+        静默降级。
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} 不支持 voice_llm chat 执行路径")

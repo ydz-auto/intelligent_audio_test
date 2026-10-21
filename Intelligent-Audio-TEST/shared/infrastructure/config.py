@@ -134,10 +134,6 @@ class BaseConfig:
     API_TEST_SERVICE_PORT: int = _get_int('API_TEST_SERVICE_PORT', 5003)
     API_TEST_SERVICE_GRPC_PORT: int = _get_int('API_TEST_SERVICE_GRPC_PORT', 50071)
 
-    # --- api_adapter_service gRPC ---
-    ADAPTER_SERVICE_HOST: str = _get_env('ADAPTER_SERVICE_HOST', 'localhost')
-    ADAPTER_SERVICE_GRPC_PORT: int = _get_int('ADAPTER_SERVICE_GRPC_PORT', 51081)
-
     # --- evaluation_service gRPC ---
     EVALUATION_SERVICE_HOST: str = _get_env('EVALUATION_SERVICE_HOST', 'localhost')
     EVALUATION_SERVICE_GRPC_PORT: int = _get_int('EVALUATION_SERVICE_GRPC_PORT', 50091)
@@ -167,9 +163,6 @@ class BaseConfig:
     # StartE2ETask 在 e2e_test_service 处理器内同步执行整个 E2E 用例
     # （多轮设备准备/播放/采集/评估），总时长结构性可超默认 deadline，须显式放宽。
     GRPC_E2E_SYNC_TIMEOUT_SECONDS: int = _get_int('GRPC_E2E_SYNC_TIMEOUT_SECONDS', 600)
-    # SendRound 同步执行被测请求：deadline = 请求单轮上限（request.timeout，
-    # 即 session_timeout，默认 60s）+ 本余量；余量覆盖适配器渲染/序列化/网络开销。
-    GRPC_SENDROUND_DEADLINE_MARGIN_SECONDS: int = _get_int('GRPC_SENDROUND_DEADLINE_MARGIN_SECONDS', 30)
     # 设备长时操作 gRPC 显式 deadline（INT-616）：device_service 侧 post_process
     # 含回复等待（BASE_REPLY_END_TIMEOUT 默认 60s）+ 录屏收尾，initialize/pre_process
     # 含 UI RPC/唤醒解锁，CollectResult(mode=round) 含 OSS 上传——均结构性可超默认

@@ -18,7 +18,6 @@ from api_test_service.infrastructure.acl import (
     AudioConfigAclRepositoryImpl,
     AudioRenderACLRepositoryImpl,
     AlgorithmQueryAclRepositoryImpl,
-    AdapterAclRepositoryImpl,
     EvaluationAclRepositoryImpl,
 )
 from api_test_service.infrastructure.persistence.api_rms_spl_repository import (
@@ -30,7 +29,6 @@ from api_test_service.infrastructure.adapters import vendor_adapter_registry
 # 跨服务出站 gRPC 经 ACL 仓储（返回 DTO），不返回 raw dict
 _task_data_acl = TaskDataAclRepositoryImpl()
 _algo_acl = AlgorithmQueryAclRepositoryImpl()
-_adapter_acl = AdapterAclRepositoryImpl()
 _evaluation_acl = EvaluationAclRepositoryImpl()
 
 # 密钥链解析器（UC-0901 扩展流程 3a）：各级键名/环境变量名经
@@ -386,9 +384,14 @@ class APISessionExecutor:
             )
             input_text = context_data.get('input_text', '')
 
-            # 厂商适配器经注册表分发（INT-62）：上层只见 ApiVendorAdapter Port
-            driver = vendor_adapter_registry.create_from_config(
-                api_config, api_specific_config, task_id=task_id)
+            # 厂商适配器经注册表分发（INT-62）：上层只见 ApiVendorAdapter Port。
+            # INT-1176：驱动按会话缓存（MockVendorAdapter 每会话轮次计数等会话态
+            # 跨轮保留，对齐 MockDialogAdapter 每会话计数），首轮创建后复用
+            driver = getattr(session, '_embedded_driver', None)
+            if driver is None:
+                driver = vendor_adapter_registry.create_from_config(
+                    api_config, api_specific_config, task_id=task_id)
+                session._embedded_driver = driver
             rendered_headers, rendered_body = driver.render_request_parts(context_data)
 
             meta = api_config.meta or {}
@@ -438,42 +441,16 @@ class APISessionExecutor:
                           rendered_headers, rendered_body, api_specific_config, meta,
                           api_config, timeout, input_text, input_type, start_time,
                           input_audio_path='', case_api_key=''):
-        """通过 ACL 仓储调用 adapter 发送请求"""
-        from shared.proto import adapter_service_pb2 as adapter_pb
+        """通过内嵌适配器 execute 发送请求（INT-1169/1176 迁移）。
 
-        vendor = api_specific_config.get('vendor', meta.get('vendor', ''))
-        vendor_config = {
-            'api_url': self._get_vendor_api_url(api_config),
-            'headers': rendered_headers,
-            'timeout': session.session_timeout,
-        }
-        # INT-839：代理配置显式入 vendor_config —— 现状白名单仅
-        # api_url/headers/timeout/adapter_class/api_key_candidates，字段不会
-        # 自动透传；此处显式携带 proxy_type/proxy_url 供 api_adapter_service
-        # 透传白名单消费（跨服务契约，adapter 侧拼完整 URL 下发）
-        _proxy_type = getattr(api_config, 'proxy_type', None)
-        _proxy_url = getattr(api_config, 'proxy_url', None)
-        if _proxy_type or _proxy_url:
-            vendor_config['proxy_type'] = _proxy_type
-            vendor_config['proxy_url'] = _proxy_url
-        # 密钥链候选（UC-0901 扩展流程 3a）：case_config/meta 层候选随
-        # vendor_config 下发，adapter 服务 Infrastructure 密钥提供者
-        # 统一按 case_config → meta → 服务配置层 → env 逐级回退解析
-        meta_key = _key_resolver.meta_key
-        candidates = {}
-        if case_api_key:
-            candidates['case_config'] = case_api_key
-        meta_api_key = meta.get(meta_key) if isinstance(meta, dict) else ''
-        if meta_api_key:
-            candidates['meta'] = meta_api_key
-        if candidates:
-            vendor_config['api_key_candidates'] = candidates
-        # adapter_class 通道（UC-0901/UC-1003）：apis.adapter_class 显式指定
-        # 适配器类名，adapter 服务注册表优先按此创建，未指定按 protocol+vendor
-        adapter_class = getattr(api_config, 'adapter_class', None)
-        if adapter_class:
-            vendor_config['adapter_class'] = adapter_class
-
+        api_adapter_service 删除后 use_adapter=True 默认路径不再经 gRPC
+        AdapterService.SendRound，改为调用本服务内嵌驱动的
+        execute_voice_llm_chat（对齐 HttpAdapter voice_llm chat 请求/响应
+        契约：URL=/chat 拼接、rendered_headers 合入 + X-Session-Id、text
+        json / audio multipart payload、session_timeout 显式超时、
+        result_parser 解析）。round 结果 dict 字段（output / output_audio_path /
+        response_metrics / raw_response）与迁移前不变。
+        """
         # 音频轮次必须携带混音产物引用（SendRoundRequest.input_data 约定：
         # text 内容 或 audio_path，adapter 侧经统一存储层读取）。
         # 缺失时定轮次失败，不静默空发送（INT-71 正确性缺陷修复）。
@@ -498,40 +475,50 @@ class APISessionExecutor:
                 source_lang = translation_direction.split('2')[0] or 'en'
                 target_lang = 'zh'
 
-        req = adapter_pb.SendRoundRequest(
-            task_type=algorithm_type,
+        # 内嵌适配器分发（INT-62/INT-497）：与渲染同源驱动实例（会话级缓存）。
+        # adapter_class / vendor_adapter / vendor 映射经
+        # registry.dimensions_from_config 统一解析（未知 adapter_class 报错，
+        # vendor='mock' 无显式配置兜底 MOCK，INT-1170 审计项 3）
+        driver = getattr(session, '_embedded_driver', None)
+        if driver is None:
+            driver = vendor_adapter_registry.create_from_config(
+                api_config, api_specific_config, task_id=task_id)
+
+        execute_result = driver.execute_voice_llm_chat(
             session_id=session.session_id,
-            round=round_number,
-            total_rounds=total_rounds,
-            vendor=vendor,
-            vendor_config=json.dumps(vendor_config, ensure_ascii=False, default=str),
-            context=json.dumps(session.get_context(), ensure_ascii=False, default=str),
-            context_for_request=json.dumps(session.get_context_for_request(), ensure_ascii=False, default=str),
-            input_data=actual_input,
             input_type=input_type_val,
+            input_data=actual_input,
             source_lang=source_lang,
             target_lang=target_lang,
-            algorithm_params=json.dumps(api_specific_config.get('algorithm_params', []), ensure_ascii=False, default=str),
-            case_algorithm_params=json.dumps(api_specific_config.get('case_algorithm_params', {}), ensure_ascii=False, default=str),
+            context=session.get_context(),
+            context_for_request=session.get_context_for_request(),
+            algorithm_params=api_specific_config.get('algorithm_params', []),
+            case_algorithm_params=api_specific_config.get('case_algorithm_params', {}),
             translation_direction=translation_direction,
-            rendered_body=json.dumps(rendered_body, ensure_ascii=False, default=str),
-            rendered_headers=json.dumps(rendered_headers, ensure_ascii=False, default=str),
-            timeout=timeout,
+            round_number=round_number,
+            total_rounds=total_rounds,
+            task_type=algorithm_type,
+            headers=rendered_headers,
+            timeout=session.session_timeout,
         )
 
-        self._log('DEBUG', f"Sending round {round_number} to adapter via gRPC", task_id=task_id)
-
-        round_dto = _adapter_acl.send_round(req)
-        task_result = dto_to_dict(round_dto) or {}
+        self._log('DEBUG', f"Sending round {round_number} via embedded adapter",
+                  task_id=task_id)
 
         latency = time.time() - start_time
-        output_text = task_result.get('output_content', task_result.get('output', ''))
+        output_text = (execute_result.get('asr')
+                       or execute_result.get('trans')
+                       or execute_result.get('output', ''))
 
         return {
             'round_number': round_number, 'input': input_text, 'input_type': input_type,
-            'output': output_text, 'output_audio_path': task_result.get('output_audio_path'),
-            'latency': round(latency, 3), 'response_metrics': task_result.get('response_metrics', {}),
-            'success': True, 'raw_response': task_result
+            'output': output_text,
+            'output_audio_path': (execute_result.get('raw_response') or {})
+                .get('output_audio_path'),
+            'latency': round(latency, 3),
+            'response_metrics': {'latency': round(latency, 3)},
+            'success': execute_result.get('success', True),
+            'raw_response': execute_result,
         }
 
     def _send_direct(self, task_id, round_number, api_config, meta, rendered_headers,
@@ -607,8 +594,8 @@ class APISessionExecutor:
                                      task_id=None):
         """AI 输出音频实测口径（与 Realtime 对称）：返回 (rms_dbfs, spl_db, ai_wav)。
 
-        数据源为 adapter 回传的轮次级输出音频存储引用（rounds[].output_audio_path，
-        契约见 api_adapter_service raw_response.output_audio_path）。任一轮缺引用
+        数据源为内嵌执行回传的轮次级输出音频存储引用（rounds[].output_audio_path，
+        契约见内嵌 execute raw_response.output_audio_path）。任一轮缺引用
         或读档失败时对应轮跳过；全缺时三项均为 None（无输出音频 = 无证据，
         不阻塞结果落库）。读档经统一存储层（oss:// / local:// 同构解析）。
         """

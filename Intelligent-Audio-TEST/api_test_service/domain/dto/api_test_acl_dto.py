@@ -75,16 +75,6 @@ class AudioDTO:
 
 
 @dataclass
-class AdapterRoundResultDTO:
-    """adapter SendRound 返回结果 DTO"""
-    output_content: Optional[str] = None
-    output: Optional[str] = None
-    output_audio_path: Optional[str] = None
-    response_metrics: Any = None
-    result_data: Any = None
-
-
-@dataclass
 class AlgoFieldMappingsDTO:
     """算法字段映射 DTO（algo_get_field_mappings 返回）"""
     original: Any = None

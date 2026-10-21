@@ -171,7 +171,7 @@
   <text x="372" y="834" class="note">spl_mappings（E2E 侧物理校准）</text>
 
   <rect x="608" y="746" width="300" height="94" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="5 4"/>
-  <text x="624" y="766" font-size="11" font-weight="700" fill="#475569">api_adapter_service :5008 / :50081（P3 下线）</text>
+  <text x="624" y="766" font-size="11" font-weight="700" fill="#475569">api_test_service 内嵌适配器（独立服务已删除）</text>
   <text x="624" y="784" class="body">APIAdapterFactory（现状）· HttpAPIAdapter</text>
   <text x="624" y="800" class="body">HttpStreamAdapter · RealtimeAPIAdapter</text>
   <text x="624" y="820" class="note">P1：并入 api_test_service/adapters/</text>
@@ -252,7 +252,7 @@
     <text x="60" y="1348" class="body">evaluation_service　<tspan fill="#64748b">5004 / 50091　用例评估　单实例</tspan></text>
     <text x="60" y="1366" class="body">report_service　<tspan fill="#64748b">5006 / —　报告生成　单实例</tspan></text>
     <text x="60" y="1384" class="body">algorithm_service　<tspan fill="#64748b">5007 / —　算法结果获取　单实例</tspan></text>
-    <text x="60" y="1402" class="body">api_adapter_service　<tspan fill="#64748b">5008 / 50081　旧适配服务　</tspan><tspan fill="#b91c1c">P3 下线</tspan></text>
+    <text x="60" y="1402" class="body">api_test_service　<tspan fill="#64748b">5008 / 50081　旧适配服务　</tspan><tspan fill="#b91c1c">P3 下线</tspan></text>
     <text x="60" y="1420" class="body">auth_service　<tspan fill="#64748b">5009 / —　认证鉴权　单实例</tspan></text>
     <text x="60" y="1438" class="body">audio_service　<tspan fill="#64748b">— / 50052　播放 · 混音 · SPL　纯 gRPC</tspan></text>
     <text x="60" y="1456" class="body">device_service　<tspan fill="#64748b">— / 50053　设备 · 环境设备 · 结果提取　纯 gRPC</tspan></text>

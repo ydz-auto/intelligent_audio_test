@@ -47,7 +47,7 @@ python docker/run_stack.py down -v --yes
 | evaluation_service | 5004 / 51091 | 同左 |
 | report_service | 5006 / 51068 | 同左 |
 | algorithm_service | 5007 / 51067 | 同左 |
-| api_adapter_service | 5008 / 51081 | 同左 |
+| api_test_service | 5008 / 51081 | 同左 |
 | auth_service | 5009 / 51069 | 同左 |
 | transfer_agent | 5010 / 51101 | 同左 |
 | audio_service (gRPC-only) | 50052 | 50052 |

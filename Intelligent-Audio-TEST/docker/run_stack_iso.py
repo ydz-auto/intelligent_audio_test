@@ -67,7 +67,6 @@ HTTP_PORTS = {
     'EVALUATION_SERVICE_HTTP_PORT': 5004,
     'REPORT_SERVICE_HTTP_PORT': 5006,
     'ALGORITHM_SERVICE_HTTP_PORT': 5007,
-    'API_ADAPTER_SERVICE_HTTP_PORT': 5008,
     'AUTH_SERVICE_HTTP_PORT': 5009,
     'FRONTEND_PORT': 8080,
 }
@@ -80,7 +79,6 @@ GRPC_PORTS = {
     'ALGORITHM_SERVICE_GRPC_PORT': 50067,
     'REPORT_SERVICE_GRPC_PORT': 51068,
     'AUTH_SERVICE_GRPC_PORT': 51069,
-    'API_ADAPTER_SERVICE_GRPC_PORT': 50081,
     'EVALUATION_SERVICE_GRPC_PORT': 50091,
     'API_TEST_SERVICE_GRPC_PORT': 50071,  # api_test_service 宿主不发布端口（UC-1001）
 }
@@ -290,7 +288,7 @@ def cmd_up(args):
     if rc != 0:
         sys.exit('[ISO-STACK] compose up 失败（见上；端口冲突不清理、交执行者处置）')
     _save_plan(project, offset, args.auth_mode, ISOLATED_TEST_DB_NAME,
-               5000 + offset, 8080 + offset, 5432 + offset, 5008 + offset)
+               5000 + offset, 8080 + offset, 5432 + offset)
     deadline = time.time() + args.wait
     while time.time() < deadline:
         if _health_check(project, env, quiet=True):
@@ -393,7 +391,7 @@ def cmd_smoke(args):
         '/smoke.py',
         '--api-base', 'http://api_gateway:5000/api/v1',
         '--health-url', 'http://api_gateway:5000/health',
-        '--adapter-url', 'http://api_adapter_service:5008',
+        '--adapter-url', 'http://mock_dut_api:5096',
         '--audio-dir', '/data',
     ]
     if args.username:

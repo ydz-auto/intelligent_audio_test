@@ -15,7 +15,7 @@
 > 《01_测试执行/Realtime_API_Adapter方案与UseCase文档.md》《01_测试执行/04_类设计.md》
 > 《01_测试执行/05_路由与废弃.md》为准，差异与处理如下：
 >
-> 1. **独立微服务已废弃**：`api_adapter_service/` 整个微服务列入废弃清单（实施阶段 4 下线），
+> 1. **独立微服务已废弃**：`api_test_service/` 整个微服务列入废弃清单（实施阶段 4 下线），
 >    其能力由主服务内的适配器体系承接：`BaseAPIAdapter` → `HttpAPIAdapter` / `HttpStreamAdapter` / `RealtimeAPIAdapter`；
 >    执行入口为 `ExecutionEngine` 按被测设备类型 `device_type`（`http_api` / `websocket_api`）路由到
 >    `APISessionExecutor` / `RealtimeSessionExecutor`，不再存在 `APIExecutor` 等中间编排层。

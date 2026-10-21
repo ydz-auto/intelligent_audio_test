@@ -5,6 +5,12 @@
 Port 实现（设计文档 §3.6 生命周期语义：pre_process 渲染 + execute 调用
 与响应解析），协议传输经同包 api_client（HTTP/WS 枚举分派）。
 请求渲染、模板占位符与响应字段映射逻辑行为不变。
+
+INT-1169/INT-1176 迁移：独立服务 api_adapter_service 删除后，voice_llm
+多轮会话默认路径（use_adapter=True）由本适配器内嵌执行——`execute_voice_llm_chat`
+对齐 HttpAdapter 请求/响应契约（URL=/chat 拼接、rendered_headers 合入 +
+X-Session-Id、text json / audio multipart payload、result_parser 解析），
+`execute`（body_template 渲染）保留为非 voice_llm 用例的另一执行路径。
 """
 import json
 
@@ -16,6 +22,7 @@ from shared.models.common_enums import VendorAdapterType
 
 from api_test_service.domain.ports import ApiVendorAdapter
 from api_test_service.infrastructure.adapters.transport import api_client
+from api_test_service.infrastructure.adapters.audio_input import resolve_audio_bytes
 from api_test_service.infrastructure.adapters.registry import register_vendor_adapter
 
 # 密钥链解析器（UC-0901 扩展流程 3a）：各级键名/环境变量名经
@@ -192,6 +199,193 @@ class ApiDriverAdapter(ApiVendorAdapter):
         rendered_body = self._render_payload(body_template, context_data)
 
         return rendered_headers, rendered_body
+
+    # ── voice_llm chat 等价能力（INT-1169/1176，对齐 HttpAdapter 契约） ──
+
+    def execute_voice_llm_chat(self, *, session_id, input_type, input_data,
+                               source_lang='zh', target_lang='en',
+                               context=None, context_for_request=None,
+                               algorithm_params=None, case_algorithm_params=None,
+                               translation_direction=None, round_number=0,
+                               total_rounds=1, task_type='voice_llm',
+                               headers=None, timeout=None):
+        """voice_llm chat payload 等价能力（api_adapter_service 迁移）。
+
+        多轮会话默认路径（use_adapter=True）由本方法内嵌执行，逐字段对齐
+        HttpAdapter.send_request：URL={base}/chat、rendered_headers 合入 +
+        X-Session-Id、text 走 json payload / audio 走 multipart、显式
+        timeout（session.session_timeout，不用 max_timeout 默认）、
+        result_parser + 通用 fallback 解析。
+
+        返回 execute 同形结果（success/latency/status_code/raw_response/
+        error/json + asr/trans/output），供 _send_via_adapter 结果字段映射层
+        消费；内嵌 _parse_response（asr_mapping/trans_mapping 体系）保留为
+        非 voice_llm 用例的另一解析路径。
+        """
+        base_url = self._resolve_base_url()
+        url = f'{base_url.rstrip("/")}/chat' if base_url else ''
+        merged_headers = {**self._merge_headers(), **(headers or {}),
+                          'X-Session-Id': session_id}
+        call_meta = {**self.meta, **self.case_config}
+        effective_timeout = timeout if timeout is not None else 30
+        proxy_type = getattr(self.api_config, 'proxy_type', None)
+        proxy_url = getattr(self.api_config, 'proxy_url', None)
+
+        if input_type == 'text':
+            payload = self._build_voice_llm_text_payload(
+                session_id, input_data, source_lang, target_lang,
+                context_for_request or context,
+                algorithm_params, case_algorithm_params,
+                translation_direction, round_number, total_rounds, task_type,
+            )
+            resp_info = api_client.call(
+                endpoint=url, method='POST', headers=merged_headers,
+                data=payload, timeout=effective_timeout, meta=call_meta,
+                proxy_type=proxy_type, proxy_url=proxy_url,
+            )
+        else:
+            # 音频引用（storage-ref/路径）统一解析为真实字节；解析失败抛错
+            # 由调用方收敛为轮次失败，禁止静默空音频（INT-71 语义保留）
+            audio_bytes = resolve_audio_bytes(input_data)
+            files = {'audio': ('audio.wav', audio_bytes, 'audio/wav')}
+            data = self._build_voice_llm_audio_data(
+                session_id, input_data, source_lang, target_lang,
+                context_for_request or context,
+                algorithm_params, case_algorithm_params,
+                translation_direction, round_number, total_rounds, task_type,
+            )
+            # multipart 请求移除 Content-Type（requests 自动设置）
+            multipart_headers = {
+                k: v for k, v in merged_headers.items()
+                if k.lower() != 'content-type'
+            }
+            resp_info = api_client.call(
+                endpoint=url, method='POST', headers=multipart_headers,
+                files=files, data=data, timeout=effective_timeout,
+                meta=call_meta, proxy_type=proxy_type, proxy_url=proxy_url,
+            )
+
+        self._log(level='DEBUG',
+                  content=f"voice_llm chat: session={session_id}, "
+                          f"round={round_number}, status={resp_info['status_code']}, "
+                          f"latency={resp_info['latency']}ms",
+                  task_id=self._task_id, test_case_id=self._test_case_id)
+
+        parsed = self._parse_voice_llm_response(resp_info)
+        # raw_response 保留结构化 JSON（HTTP 路径无 output_audio_path → None，
+        # 契约保留，INT-300 输出 SPL 证据依赖）
+        raw_response = resp_info['json'] \
+            if isinstance(resp_info['json'], dict) else resp_info['raw_response']
+        return {
+            "success": (resp_info["status_code"] >= 200
+                        and resp_info["status_code"] < 300)
+            and not resp_info["error"],
+            "latency": resp_info["latency"],
+            "status_code": resp_info["status_code"],
+            "raw_response": raw_response,
+            "error": resp_info["error"],
+            "json": resp_info["json"],
+            **parsed,
+        }
+
+    def _resolve_base_url(self) -> str:
+        """解析 voice_llm chat base URL：endpoint > api_endpoints 首项 > api_url。"""
+        if self.endpoint:
+            return self.endpoint
+        api_config = self.api_config
+        for source in (getattr(api_config, 'api_endpoints', None) or [],):
+            for ep in source:
+                url = (ep.get('endpoint') or '') if isinstance(ep, dict) else str(ep)
+                if url:
+                    return url
+        for attr in ('api_url', 'endpoint'):
+            val = getattr(api_config, attr, None)
+            if isinstance(val, str) and val:
+                return val
+        return ''
+
+    def _build_voice_llm_text_payload(self, session_id, text, source_lang,
+                                      target_lang, context, algorithm_params,
+                                      case_algorithm_params, translation_direction,
+                                      round_number, total_rounds, task_type):
+        return {
+            'session_id': session_id,
+            'task_type': task_type,
+            'round': round_number,
+            'total_rounds': total_rounds,
+            'input': {
+                'type': 'text',
+                'text': text,
+            },
+            'source_lang': source_lang,
+            'target_lang': target_lang,
+            'translation_direction': translation_direction,
+            'context': context or [],
+            'algorithm_params': algorithm_params or [],
+            'case_algorithm_params': case_algorithm_params or {},
+        }
+
+    def _build_voice_llm_audio_data(self, session_id, audio_data, source_lang,
+                                    target_lang, context, algorithm_params,
+                                    case_algorithm_params, translation_direction,
+                                    round_number, total_rounds, task_type):
+        return {
+            'session_id': session_id,
+            'task_type': task_type,
+            'round': str(round_number),
+            'total_rounds': str(total_rounds),
+            'input_type': 'audio',
+            'source_lang': source_lang,
+            'target_lang': target_lang,
+            'translation_direction': translation_direction or '',
+            'context': json.dumps(context or []),
+            'algorithm_params': json.dumps(algorithm_params or []),
+            'case_algorithm_params': json.dumps(case_algorithm_params or {}),
+        }
+
+    def _parse_voice_llm_response(self, resp_info):
+        """voice_llm chat 响应解析：result_parser 路径 + 通用 fallback。
+
+        对齐 http_adapter._parse_response（asr_text_path / trans_text_path /
+        session_id_path 逐级读取，空则回退 asr_text / output_content / output /
+        trans_text / translation 通用字段名）。
+        """
+        response_data = resp_info.get('json', {})
+        if not isinstance(response_data, dict):
+            response_data = {}
+        parser = self.meta.get('result_parser', {})
+
+        def extract(data, path, default=''):
+            if not path:
+                return default
+            keys = path.split('.')
+            value = data
+            for key in keys:
+                if isinstance(value, dict):
+                    value = value.get(key)
+                else:
+                    return default
+            return value if value is not None else default
+
+        asr_text = extract(response_data, parser.get('asr_text_path', ''), '')
+        trans_text = extract(response_data, parser.get('trans_text_path', ''), '')
+        session_id = extract(response_data, parser.get('session_id_path', ''), '')
+
+        # Fallback: try common field names if parser paths are empty
+        if not asr_text:
+            asr_text = (response_data.get('asr_text')
+                        or response_data.get('output_content')
+                        or response_data.get('output', ''))
+        if not trans_text:
+            trans_text = (response_data.get('trans_text')
+                          or response_data.get('translation', ''))
+
+        return {
+            'asr': asr_text,
+            'trans': trans_text,
+            'output': asr_text or trans_text or response_data.get('output', ''),
+            'session_id': session_id,
+        }
 
     def _replace_placeholders(self, text, context):
         """

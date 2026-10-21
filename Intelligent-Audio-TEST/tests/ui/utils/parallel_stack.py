@@ -57,7 +57,6 @@ SERVICES = [
     ('report_service',     'report_service',     5006, 51068),
     ('algorithm_service',  'algorithm_service',  5007, 51067),
     ('auth_service',       'auth_service',       5009, 51069),
-    ('api_adapter_service','api_adapter_service',5008, 51081),
     ('transfer_agent',     'transfer_agent',     5010, 51101),
     ('audio_service',      'audio_service',      None, 50052),
     ('device_service',     'device_service',     None, 50053),
@@ -73,7 +72,6 @@ CLIENT_GRPC_ENVS = {
     'REPORT_SERVICE_GRPC_PORT': 51068,
     'AUTH_SERVICE_GRPC_PORT': 51069,
     'API_TEST_SERVICE_GRPC_PORT': 51071,
-    'ADAPTER_SERVICE_GRPC_PORT': 51081,
     'EVALUATION_SERVICE_GRPC_PORT': 51091,
     'TRANSFER_AGENT_GRPC_PORT': 51101,
 }

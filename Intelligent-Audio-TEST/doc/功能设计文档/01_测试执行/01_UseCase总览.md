@@ -3,7 +3,7 @@
 > 版本：v1.0（V9.7.31 适配版）| 日期：2026-09-10 | 状态：适配自 V9.7.10《01_UseCase总览》v3.0/v3.1
 >
 > 适配目标：将 V9.7.10 单体「测试执行 v3.0 设计」映射到 V9.7.31 的 DDD + CQRS + 微服务 + 分布式部署架构。
-> 架构事实：12 微服务（api_gateway:5000 / task_service:5001 / e2e_test_service:5002 / api_test_service:5003（replicas:2）/ evaluation_service:5004 / api_adapter_service:5008 / audio_service（gRPC:50052）/ device_service（gRPC:50053）等）；服务间通信走 gRPC（`shared/proto` 11 个 proto + ACL 仓储模式）；无 MQ，事件走 Redis EventBus（`shared/utils/redis_pubsub.py`）。
+> 架构事实：12 微服务（api_gateway:5000 / task_service:5001 / e2e_test_service:5002 / api_test_service:5003（replicas:2）/ evaluation_service:5004 / api_test_service 内嵌适配器 / audio_service（gRPC:50052）/ device_service（gRPC:50053）等）；服务间通信走 gRPC（`shared/proto` 11 个 proto + ACL 仓储模式）；无 MQ，事件走 Redis EventBus（`shared/utils/redis_pubsub.py`）。
 
 ---
 
@@ -16,7 +16,7 @@
 | UC-0903 | 创建任务并关联被测设备 | task_service:5001 + device_service（gRPC:50053） | `api_gateway/routes/task_bp.py` → gRPC `TaskService` / `DeviceService` → application command | `TASK_EVENTS` / `TASK_CREATED`、`DEVICE_EVENTS` / `DEVICE_STATUS_CHANGED` |
 | UC-1001 | 事件隔离（多任务并发） | 各执行服务（发布）+ api_gateway:5000（订阅转发） | Redis EventBus 频道按 task_id 隔离 → api_gateway 转 Socket.IO 房间（room=task_id） | `TASK_EVENTS` / `CASE_EVENTS`，频道名全部来自 `EventChannel` 枚举 |
 | UC-1002 | 帧结果实时获取（frame/summary 双通道） | api_test_service（RealtimeSessionExecutor）→ api_gateway → 前端 | 执行内推送 → `CASE_EVENTS` 频道 → Socket.IO 房间 | `CASE_EVENTS` / `CASE_EXECUTION_COMPLETED`、`CASE_EVALUATION_COMPLETED` |
-| UC-1003 | 新增厂商 Realtime 适配器 | api_test_service（适配器注册表；P3 由 api_adapter_service 并入） | 代码扩展：`APIAdapterFactory` 注册表注册，无 HTTP 入口 | — |
+| UC-1003 | 新增厂商 Realtime 适配器 | api_test_service（适配器注册表；P3 由 api_test_service 并入） | 代码扩展：`APIAdapterFactory` 注册表注册，无 HTTP 入口 | — |
 
 ---
 
@@ -196,7 +196,7 @@ case_config (TestCase.config 列，JSON)
 | `output_types` | API 输出类型列表 | `["audio", "text", "video", "image"]` 的子集 | （新增列） |
 
 > 【适配说明】`api_models.py` 现有列仅有 name / vendor / api_url / description / status / meta / algorithm_type / max_process / max_timeout / max_audio_duration / health_score / api_endpoints 等，**缺 `device_type` / `adapter_class` / `audio_config` / `output_types` 列，均标（新增）**；`rms_spl_mapping_id` 随 `api_rms_spl_mappings` 聚合（UC-0902）一并新增。
-> **adapter 选择逻辑**：`APIAdapterFactory.get_adapter()` 优先按 `adapter_class` 指定类名创建，未指定时按 `(protocol, vendor)` 自动匹配。`APIAdapterFactory` 现位于 `api_adapter_service/adapters/factory.py`；按 P3 规划 api_adapter_service(5008) 下线并入 api_test_service，注册表随迁（见 UC-1003）。
+> **adapter 选择逻辑**：`APIAdapterFactory.get_adapter()` 优先按 `adapter_class` 指定类名创建，未指定时按 `(protocol, vendor)` 自动匹配。`APIAdapterFactory` 现位于 `api_test_service/adapters/factory.py`；按 P3 规划 api_test_service 内嵌适配器 下线并入 api_test_service，注册表随迁（见 UC-1003）。
 
 ## 0.6 多模态输出
 
@@ -625,7 +625,7 @@ Postcondition: 前端实时获取逐帧结果，评估取最终聚合结果，�
 
 ### UC-1003：新增厂商 Realtime 适配器
 
-- **落位服务**：api_test_service:5003（适配器注册表）。`APIAdapterFactory` 现位于 `api_adapter_service/adapters/factory.py`，【适配说明：P3 阶段 api_adapter_service(5008) 下线并入 api_test_service，注册表与 adapter 实现随迁】
+- **落位服务**：api_test_service:5003（适配器注册表）。`APIAdapterFactory` 现位于 `api_test_service/adapters/factory.py`，【适配说明：P3 阶段 api_test_service 内嵌适配器 下线并入 api_test_service，注册表与 adapter 实现随迁】
 - **入口**：代码扩展（`APIAdapterFactory` 注册表注册），无 HTTP/gRPC 新入口；生效入口为 UC-0901 的 `adapter_class` 配置
 - **领域事件**：—（开发期变更）
 
@@ -663,7 +663,7 @@ Main Flow:
 扩展流程:
   2a. OpenAI 系厂商复用密钥链（case_config → meta → env OPENAI_API_KEY），
       新厂商如需其他鉴权方式仅在 _build_connect_headers 内实现
-  4a. P3 迁移窗口期：注册表随 api_adapter_service 并入 api_test_service，
+  4a. P3 迁移窗口期：注册表随 api_test_service 并入 api_test_service，
       register 调用点同步迁移，(protocol, vendor) 键不变，apis 表配置无需变更
   5a. 自动匹配冲突（同 (protocol, vendor) 多实现）→ 启动期抛错，强制显式 adapter_class
 
@@ -715,7 +715,7 @@ Postcondition: 新厂商适配器注册即生效，UC-0901 下拉可选，执行
 | 9 | API 表 | 单体共享模型 | `apis` 归 api_test_service（api_models.py），device_type/adapter_class/audio_config/output_types 列（新增） |
 | 10 | SPL 映射 | 与设备 SPL 混同 | `ApiRmsSplMapping` 聚合（表 api_rms_spl_mappings，新增）按 DDD 五层落位 api_test_service + gRPC `ApiRmsSplConfigService`（新增）+ `/api/digital-spl` 蓝图（新增）；校准互斥 Redis 锁 |
 | 11 | 前端 | 单体组件直调 | DDD 四层（views/components → composables/store(Ports) → domain/model+enums → api/adapters/dto/http）；SPLMapping 五层对称模板；enums.ts 补 DeviceType/OutputType/CalibrationStatus（新增） |
-| 12 | 适配器归属 | api_adapter_service 独立服务(5008) | P3 下线并入 api_test_service，APIAdapterFactory 注册表随迁 |
+| 12 | 适配器归属 | api_test_service 独立服务(5008) | P3 下线并入 api_test_service，APIAdapterFactory 注册表随迁 |
 | 13 | 密钥管理 | 单体内配置 | OpenAI 密钥链：case_config → meta → env OPENAI_API_KEY 逐级回退，日志零明文 |
 | 14 | 枚举与配置 | 局部枚举、少量魔法值 | 枚举统一入 shared/models/common_enums.py + shared/utils/status_constants.py；前端 frontend/src/domain/enums.ts；阈值/频道名/锁 TTL 全配置化，拒绝魔法数字/硬编码 |
 | 15 | 执行器基座 | 各 executor 自行实现 | 统一 BaseExecutor（shared/infrastructure/base_executor/_base.py，五 mixin）+ worker_instance_id |

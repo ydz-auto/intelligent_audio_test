@@ -2,7 +2,7 @@
 
 > 本文档以一个完整的 API 多轮测试用例为例，从前端配置 → 任务创建 → 三服务执行流程 → 评估 → 结果存储 → 报告展示，完整走一遍数据流。
 >
-> 与 E2E 示例（`99_E2E用例端到端示例.md`）对比：API 测试不涉及物理设备，通过 api_adapter_service 中转调用被测云端 API。
+> 与 E2E 示例（`99_E2E用例端到端示例.md`）对比：API 测试不涉及物理设备，通过 api_test_service 中转调用被测云端 API。
 >
 > **参数驱动**：所有用例表单字段由 `case_algorithm_params` 表定义驱动，DynamicForm 动态渲染。音频走 `audios` 用例默认参数（与 E2E 一致），文本走 `algorithmParams` 中 `field_code=inputText` 的算法特定参数。
 
@@ -15,7 +15,7 @@
 - **会话模式**：`full`（完整上下文），超时 60s/轮
 - **输入方式**：3 轮纯文本 + 1 轮**文本+音频共存**（多模态输入）
 - **评估维度**：WER（词错误率）、LLM Judge（语义评分）
-- **三服务协作**：主后端 → api_adapter_service (8000) → 被测厂商 API (9000)
+- **三服务协作**：主后端 → api_test_service 内嵌适配器 → 被测厂商 API (9000)
 
 ---
 
@@ -284,7 +284,7 @@ case_config = data['case_config']
 
 rounds = case_config.get('rounds', [])   # 非空 → 进入多轮会话
 
-# 健康检查 api_adapter_service
+# 健康检查 api_test_service
 health = requests.get("http://localhost:8000/health")
 # → { status: 'healthy', dialog_sessions: 0, supported_modes: ['streaming', 'dialog'] }
 ```
@@ -304,7 +304,7 @@ session = SessionContext(session_id, {
 # session._round_results = []
 ```
 
-同时，`api_adapter_service` 端的 `SessionStore` 在收到第一轮请求时也会创建对应会话。
+同时，`api_test_service` 端的 `SessionStore` 在收到第一轮请求时也会创建对应会话。
 
 ### Phase 3: 多轮循环
 
@@ -330,12 +330,12 @@ Step 1 — 构建请求体
     }
   }
 
-Step 2 — 发送到 api_adapter_service (端口 8000)
+Step 2 — 发送到 api_test_service (端口 8000)
 
   POST http://localhost:8000/api/v1/tasks
   Body: request_body
 
-  api_adapter_service 处理:
+  api_test_service 处理:
   ├── create_dialog_task(task_id="adapter_task_001", session_id="a1b2c3d4-...")
   ├── SessionStore.create_session(session_id, task_id, context_mode='full')
   ├── HttpAdapter.send_request(
@@ -415,7 +415,7 @@ Step 1 — 构建请求体
   request_body.input = { "text": "那明天呢？" }
   request_body.context = [{ round: 1, ... }]
 
-Step 2 — api_adapter_service 处理
+Step 2 — api_test_service 处理
 
   HttpAdapter.send_request(
     input_text="那明天呢？",
@@ -479,7 +479,7 @@ Step 1 — 构建请求体
     "context": [...]
   }
 
-Step 2 — api_adapter_service 处理
+Step 2 — api_test_service 处理
 
   HttpAdapter.send_request(
     input_text="请听这段录音",
@@ -528,7 +528,7 @@ Step 1 — 构建请求体
   # → { "inputText": "帮我设个提醒，明天出门带伞" }
   context   = session.get_context() (3 轮历史, full 模式)
 
-Step 2 — api_adapter_service 处理
+Step 2 — api_test_service 处理
 
   被测 API 返回:
   {
@@ -578,7 +578,7 @@ session.destroy()
 ## 五、三服务交互时序
 
 ```
-主后端 (APIExecutor)            api_adapter_service (8000)      被测厂商 API (9000)
+主后端 (APIExecutor)            api_test_service 内嵌适配器      被测厂商 API (9000)
     │                              │                              │
     │  health_check                │                              │
     │──GET /health ───────────────→│                              │
@@ -801,7 +801,7 @@ TestResultDimension 表:
 | **噪声/干扰人** | 无 | 有 (backgroundNoise 在 round 顶层，interferers 在 algorithmParams 中) |
 | **导轨/音量** | 无 | 有 (algorithmParams 中 railDistance / volumeLevel) |
 | **会话管理** | SessionContext (上下文历史) | 无 (每轮独立) |
-| **中转服务** | api_adapter_service (8000) | 无 (直接控制设备) |
+| **中转服务** | api_test_service 内嵌适配器 | 无 (直接控制设备) |
 | **被测目标** | 云端 API (HTTP REST) | 物理设备 (ADB/HDC) |
 | **超时策略** | session_timeout (固定 60s/轮) | 无 (play + 等待设备响应) |
 | **输入方式** | algorithmParams 中 inputText/inputAudio (scope=api) + audios (音频) | audios (干声，设备播放) + algorithmParams (scope=e2e) |
@@ -834,7 +834,7 @@ tasksApi.create → 创建任务 (含 apiIds: 选中的被测 API)
 ExecutionEngine 调度 → APIExecutor.execute_api_case()
   │
   ├─ Phase 1: 初始化
-  │    health_check → api_adapter_service
+  │    health_check → api_test_service
   │    case_config.rounds 非空 → 进入多轮会话
   │
   ├─ Phase 2: 创建会话
@@ -851,7 +851,7 @@ ExecutionEngine 调度 → APIExecutor.execute_api_case()
   │    │    context = session.get_context() (全量历史)
   │    │    vendor_config = { api_url, headers, timeout }
   │    │
-  │    ├─ POST api_adapter_service /api/v1/tasks
+  │    ├─ POST api_test_service /api/v1/tasks
   │    │    ├── SessionStore.get_context → 适配器侧上下文
   │    │    ├── HttpAdapter.send_request → POST 被测厂商 API
   │    │    ├── 被测 API 返回 { asr_text, trans_text, response }

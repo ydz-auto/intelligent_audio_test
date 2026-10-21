@@ -3,9 +3,10 @@
 
 运行位置：隔离栈容器网络内（经 docker/run_stack_iso.py smoke 以 docker run 挂载执行，
 也可手动 `docker run --rm --network <project>_default --entrypoint python <image> /smoke.py ...`）。
-网络内 api_gateway / rustfs / api_adapter_service 经 Docker DNS 可达：
+网络内 api_gateway / rustfs / mock_dut_api 经 Docker DNS 可达：
   - 音频上传 presigned URL 指向本栈 rustfs（容器网络内可 PUT）；
   - API 配置经 adapter_class=MockDialogAdapter 走本地 mock 对话（无真实设备依赖）。
+  - DUT mock（mock_dut_api，:5096）承担单轮被测协议 + voice_llm /chat。
 
 冒烟覆盖：/health 隔离库门禁 → 表单登录（RSA 加密，dev 模式）→ 上传 dry 音频 →
 建 voice_llm API 用例（turn_eval 主维度绑定）→ 建 api 任务 → 执行至 completed →
@@ -95,9 +96,9 @@ def _create_mock_api_config(client, base, headers, adapter_url=None):
         'algorithm_type': 'voice_llm',
         'device_type': 'http_api',
         'adapter_class': 'MockDialogAdapter',
-        # api_url = 本栈 adapter 容器网络地址——api_test 执行健康检查/调用
+        # api_url = 本栈 DUT mock 容器网络地址——api_test 执行健康检查/调用
         # 链以它作 base URL（容器形态下缺省空串 → "/health" 无 scheme 必败）
-        'api_url': adapter_url or 'http://api_adapter_service:5008',
+        'api_url': adapter_url or 'http://mock_dut_api:5096',
         'status': 'online',
         'meta': {'purpose': 'int993-iso-smoke', 'mode': 'dialog'},
     }
@@ -336,7 +337,7 @@ def main():
     ap = argparse.ArgumentParser(description='INT-597/993 隔离栈验收冒烟（登录→用例→任务→报告）')
     ap.add_argument('--api-base', default='http://api_gateway:5000/api/v1')
     ap.add_argument('--health-url', default='http://api_gateway:5000/health')
-    ap.add_argument('--adapter-url', default='http://api_adapter_service:5008')
+    ap.add_argument('--adapter-url', default='http://mock_dut_api:5096')
     ap.add_argument('--audio-dir', default='/data')
     ap.add_argument('--username', default='dev_user')
     ap.add_argument('--password', default='dev_password')

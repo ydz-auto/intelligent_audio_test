@@ -12,7 +12,7 @@ P4-4 拆分说明：原单文件 1395 行，已按职责拆分为 3 个内部模
 - _grpc_algo_audio.py：algorithm_service / audio_service 便捷封装
 
 每个服务（e2e_test_service / task_service / api_test_service / evaluation_service /
-adapter_service / algorithm_service）只创建一个 channel，
+algorithm_service）只创建一个 channel，
 所有 stub 共享同一 channel。客户端拦截器自动附加到每个 channel。
 
 - e2e_test_service gRPC server（端口 50051）：ExecutionService
@@ -21,7 +21,6 @@ adapter_service / algorithm_service）只创建一个 channel，
 - task_service gRPC server（端口 51061）：ExecutionService / TaskConfigService / TestCaseConfigService / TagConfigService / AlgorithmConfigService
 - api_test_service gRPC server（端口 51071）：APITestService
 - evaluation_service gRPC server（端口 51091）：EvaluationService / EvaluationConfigService
-- adapter_service gRPC server（端口 51081）：AdapterService
 - algorithm_service gRPC server（端口 51067）：AlgorithmGroupService / AlgorithmDefinitionService
 - report_service gRPC server（端口 51068）：ReportConfigService
 - auth_service gRPC server（端口 51069）：AuthService
@@ -37,14 +36,12 @@ from shared.clients._grpc_channels import (
     ALGORITHM_GRPC_ADDR,
     REPORT_GRPC_ADDR,
     AUTH_GRPC_ADDR,
-    ADAPTER_GRPC_ADDR,
     _get_e2e_channel,
     _get_audio_channel,
     _get_device_channel,
     _get_task_channel,
     _get_api_test_channel,
     _get_evaluation_channel,
-    _get_adapter_channel,
     _get_algorithm_channel,
     _get_report_channel,
     _get_auth_channel,
@@ -80,7 +77,6 @@ from shared.clients._grpc_stubs import (
     get_evaluation_data_service_stub,
     get_api_test_service_stub,
     get_api_rms_spl_config_service_stub,
-    get_adapter_service_stub,
     get_algorithm_group_service_stub,
     get_algorithm_definition_service_stub,
     get_algorithm_query_service_stub,

@@ -26,7 +26,6 @@ EVALUATION_GRPC_ADDR = f"{BaseConfig.EVALUATION_SERVICE_HOST}:{BaseConfig.EVALUA
 ALGORITHM_GRPC_ADDR = f"{BaseConfig.ALGORITHM_SERVICE_HOST}:{BaseConfig.ALGORITHM_SERVICE_GRPC_PORT}"
 REPORT_GRPC_ADDR = f"{BaseConfig.REPORT_SERVICE_HOST}:{BaseConfig.REPORT_SERVICE_GRPC_PORT}"
 AUTH_GRPC_ADDR = f"{BaseConfig.AUTH_SERVICE_HOST}:{BaseConfig.AUTH_SERVICE_GRPC_PORT}"
-ADAPTER_GRPC_ADDR = f"{BaseConfig.ADAPTER_SERVICE_HOST}:{BaseConfig.ADAPTER_SERVICE_GRPC_PORT}"
 
 # 客户端拦截器列表：grpc.intercept_channel 按 reversed 顺序包裹（grpc/_interceptor.py），
 # 列表首位最外层（日志最先拦截、记录原始调用与总耗时），末位最内层（deadline
@@ -76,13 +75,6 @@ def _get_api_test_channel():
 def _get_evaluation_channel():
     """evaluation_service 共享 channel"""
     chan = grpc.insecure_channel(EVALUATION_GRPC_ADDR)
-    return grpc.intercept_channel(chan, *_CLIENT_INTERCEPTORS)
-
-
-@lru_cache(maxsize=1)
-def _get_adapter_channel():
-    """adapter_service 共享 channel"""
-    chan = grpc.insecure_channel(ADAPTER_GRPC_ADDR)
     return grpc.intercept_channel(chan, *_CLIENT_INTERCEPTORS)
 
 

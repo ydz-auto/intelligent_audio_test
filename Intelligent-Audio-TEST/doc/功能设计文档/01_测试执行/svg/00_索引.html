@@ -229,7 +229,7 @@ body{font-family:system-ui,-apple-system,'Segoe UI','Microsoft YaHei','PingFang 
   <text x="372" y="834" class="note">spl_mappings（E2E 侧物理校准）</text>
 
   <rect x="608" y="746" width="300" height="94" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="5 4"/>
-  <text x="624" y="766" font-size="11" font-weight="700" fill="#475569">api_adapter_service :5008 / :50081（P3 下线）</text>
+  <text x="624" y="766" font-size="11" font-weight="700" fill="#475569">api_test_service 内嵌适配器（独立服务已删除）</text>
   <text x="624" y="784" class="body">APIAdapterFactory（现状）· HttpAPIAdapter</text>
   <text x="624" y="800" class="body">HttpStreamAdapter · RealtimeAPIAdapter</text>
   <text x="624" y="820" class="note">P1：并入 api_test_service/adapters/</text>
@@ -310,7 +310,7 @@ body{font-family:system-ui,-apple-system,'Segoe UI','Microsoft YaHei','PingFang 
     <text x="60" y="1348" class="body">evaluation_service　<tspan fill="#64748b">5004 / 50091　用例评估　单实例</tspan></text>
     <text x="60" y="1366" class="body">report_service　<tspan fill="#64748b">5006 / —　报告生成　单实例</tspan></text>
     <text x="60" y="1384" class="body">algorithm_service　<tspan fill="#64748b">5007 / —　算法结果获取　单实例</tspan></text>
-    <text x="60" y="1402" class="body">api_adapter_service　<tspan fill="#64748b">5008 / 50081　旧适配服务　</tspan><tspan fill="#b91c1c">P3 下线</tspan></text>
+    <text x="60" y="1402" class="body">api_test_service　<tspan fill="#64748b">5008 / 50081　旧适配服务　</tspan><tspan fill="#b91c1c">P3 下线</tspan></text>
     <text x="60" y="1420" class="body">auth_service　<tspan fill="#64748b">5009 / —　认证鉴权　单实例</tspan></text>
     <text x="60" y="1438" class="body">audio_service　<tspan fill="#64748b">— / 50052　播放 · 混音 · SPL　纯 gRPC</tspan></text>
     <text x="60" y="1456" class="body">device_service　<tspan fill="#64748b">— / 50053　设备 · 环境设备 · 结果提取　纯 gRPC</tspan></text>
@@ -516,7 +516,7 @@ body{font-family:system-ui,-apple-system,'Segoe UI','Microsoft YaHei','PingFang 
   <text x="642" y="707" class="pill-t" fill="#5b21b6">OpenAIRealtimeAdapter / DoubaoRealtime…</text>
   <rect x="878" y="636" width="338" height="80" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
   <text x="894" y="656" font-size="11.5" font-weight="700" fill="#4c1d95">落位与迁移</text>
-  <text x="894" y="674" class="body">现状：api_adapter_service/adapters/factory.py</text>
+  <text x="894" y="674" class="body">现状：api_test_service/adapters/factory.py</text>
   <text x="894" y="690" class="body">P1：api_test_service/infrastructure/adapters/</text>
   <text x="894" y="707" class="note">P3：5008 下线，注册表随迁，(protocol, vendor) 键不变</text>
 
@@ -818,7 +818,7 @@ body{font-family:system-ui,-apple-system,'Segoe UI','Microsoft YaHei','PingFang 
     <text x="161" y="174" class="chip-t" fill="#64748b">api_test_service worker 实例内</text>
     <rect x="295" y="140" width="200" height="42" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
     <text x="395" y="158" class="box-name" text-anchor="middle" font-size="11">RealtimeAPIAdapter</text>
-    <text x="395" y="174" class="chip-t" fill="#64748b">api_adapter_service → P1 迁入 adapters/</text>
+    <text x="395" y="174" class="chip-t" fill="#64748b">api_test_service → P1 迁入 adapters/</text>
     <rect x="530" y="140" width="200" height="42" rx="8" fill="#cffafe" stroke="#0891b2" stroke-width="1.2"/>
     <text x="630" y="158" class="box-name" text-anchor="middle" font-size="11">audio_service</text>
     <text x="630" y="174" class="chip-t" fill="#64748b">gRPC :50052 RenderAudioStream（新增）</text>
@@ -2027,7 +2027,7 @@ body{font-family:system-ui,-apple-system,'Segoe UI','Microsoft YaHei','PingFang 
   <rect x="944" y="636" width="272" height="150" rx="8" fill="#ffffff" stroke="#7c3aed" stroke-width="1.4"/>
   <rect x="944" y="636" width="272" height="24" rx="8" fill="#7c3aed"/>
   <rect x="944" y="650" width="272" height="10" fill="#7c3aed"/>
-  <text x="960" y="653" font-size="11.5" font-weight="700" fill="#ffffff">P3 · api_adapter_service 下线</text>
+  <text x="960" y="653" font-size="11.5" font-weight="700" fill="#ffffff">P3 · api_test_service 下线</text>
   <text x="960" y="678" class="body">① 能力并入 api_test_service Adapter 体系</text>
   <text x="960" y="692" class="body">② 网关 grpc_proxies 切换调用方</text>
   <text x="960" y="706" class="body">③ 从 run_all.py / docker-compose.yml 移除</text>
@@ -2051,7 +2051,7 @@ body{font-family:system-ui,-apple-system,'Segoe UI','Microsoft YaHei','PingFang 
     <text x="60" y="928" class="note">· task.type 作为执行路由依据 —— 废弃，改 TaskCase.device_type　· test_type 冗余列 —— 废弃（由 device_type + algorithm_type 表达）</text>
     <text x="60" y="944" class="note">· TaskType 引入 'realtime_api' —— 不引入（语义由 device_type 承载）　· 进程内 dict 设备互斥 —— 废弃，改 Redis 锁</text>
     <text x="60" y="960" class="note">· log_and_emit 直发 Socket.IO —— 废弃，改 EventBus 发布 + 网关转发　· 消费侧 AudioStreamOrchestrator.chunk_audio —— 下沉 audio_service</text>
-    <text x="60" y="976" class="note">· api_adapter_service 独立服务 —— P3 下线并入 api_test_service　· 前端组件直连后端单体接口 —— 改四层镜像 + Port</text>
+    <text x="60" y="976" class="note">· api_test_service 独立服务 —— P3 下线并入 api_test_service　· 前端组件直连后端单体接口 —— 改四层镜像 + Port</text>
     <text x="60" y="996" class="note" fill="#c2410c">· 魔法值一并清零：device_type / 端口 / 并发上限 / 阈值 / 锁 TTL / 事件名 / 状态字符串 —— 全部枚举化或配置化</text>
     <text x="60" y="1016" class="body" fill="#1e3a8a" font-weight="700">落位原则：不新建服务、不引入 MQ；跨服务一律 gRPC + ACL；分布式协同复用 Redis（EventBus + task:queue + 锁/信号量 + 服务注册）；执行器统一继承 BaseExecutor 五 mixin 基座。</text>
     <text x="60" y="1036" class="note">设计目标校验：语义不变（device_type 路由 / Adapter 生命周期 / E2E 与 Realtime 对称 / SPL 映射）· 落位按服务边界重组 · 开发/生产分环境配置矩阵。</text>

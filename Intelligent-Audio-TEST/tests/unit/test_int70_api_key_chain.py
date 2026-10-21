@@ -98,100 +98,20 @@ def test_resolver_from_config():
     assert resolver.env_key == 'MY_PLATFORM_KEY'
 
 
-# ── adapter 服务密钥提供者（Infrastructure 层）────────────────
+# ── 消费点：内嵌适配器密钥链（INT-1169/1176 迁移）─────────────
+# api_adapter_service 的 ApiKeyProvider / Sse / Qwen / Http 适配器已随服务删除；
+# 内嵌等价：resolver_from_config（ApiDriverAdapter._key_resolver 同源）逐级回退 +
+# ApiDriverAdapter._merge_headers 的 Bearer 注入（HttpAdapter 等价能力）。
 
-from api_adapter_service.infrastructure.secrets.api_key_provider import (
-    ApiKeyProvider,
-)
-
-
-class _FakeConfig:
-    def __init__(self, data=None):
-        self._data = data or {}
-
-    def get(self, path, default=None):
-        node = self._data
-        for part in path.split('.'):
-            if isinstance(node, dict) and part in node:
-                node = node[part]
-            else:
-                return default
-        return node
-
-
-def test_provider_case_candidate_wins():
-    provider = ApiKeyProvider(config=_FakeConfig())
-    vendor_config = {
-        'api_key': 'sk-yml',
-        'api_key_candidates': {'case_config': 'sk-case', 'meta': 'sk-meta'},
-    }
-    assert provider.resolve(vendor_config) == 'sk-case'
-
-
-def test_provider_meta_candidate():
-    provider = ApiKeyProvider(config=_FakeConfig())
-    vendor_config = {
-        'api_key': 'sk-yml',
-        'api_key_candidates': {'meta': 'sk-meta'},
-    }
-    assert provider.resolve(vendor_config) == 'sk-meta'
-
-
-def test_provider_service_config_layer():
-    provider = ApiKeyProvider(config=_FakeConfig())
-    assert provider.resolve({'api_key': 'sk-yml'}) == 'sk-yml'
-
-
-def test_provider_env_fallback(monkeypatch):
-    monkeypatch.setenv('OPENAI_API_KEY', 'sk-env-0003')
-    provider = ApiKeyProvider(config=_FakeConfig())
-    assert provider.resolve({}) == 'sk-env-0003'
-
-
-def test_provider_env_key_via_chain_config(monkeypatch):
-    monkeypatch.setenv('MY_PLATFORM_KEY', 'sk-env-0004')
-    provider = ApiKeyProvider(config=_FakeConfig({
-        'secrets': {'api_key_chain': {'env_key': 'MY_PLATFORM_KEY'}}}))
-    assert provider.resolve({}) == 'sk-env-0004'
-
-
-# ── 消费点：Sse / Qwen / Http 适配器 ──────────────────────────
-
-from api_adapter_service.adapters.sse_adapter import SseAdapter
-from api_adapter_service.adapters.qwen_adapter import QwenAdapter
-from api_adapter_service.adapters.http_adapter import HttpAdapter
-
-
-def test_sse_adapter_resolves_chain():
-    adapter = SseAdapter({'api_key_candidates': {'case_config': 'sk-case'}})
-    assert adapter.api_key == 'sk-case'
-
-
-def test_sse_adapter_yml_layer_fallback():
-    adapter = SseAdapter({'api_key': 'sk-yml'})
-    assert adapter.api_key == 'sk-yml'
-
-
-def test_qwen_adapter_resolves_chain():
-    adapter = QwenAdapter({'api_key_candidates': {'meta': 'sk-meta'}})
-    assert adapter.api_key == 'sk-meta'
-
-
-def test_http_adapter_injects_bearer_from_chain():
-    adapter = HttpAdapter({
-        'api_key_candidates': {'case_config': 'sk-case'},
-        'headers': {'Content-Type': 'application/json'},
-    })
-    assert adapter.headers['Authorization'] == 'Bearer sk-case'
-    assert adapter.headers['Content-Type'] == 'application/json'
-
-
-def test_http_adapter_explicit_authorization_wins():
-    adapter = HttpAdapter({
-        'api_key_candidates': {'case_config': 'sk-case'},
-        'headers': {'Authorization': 'Bearer explicit'},
-    })
-    assert adapter.headers['Authorization'] == 'Bearer explicit'
+def test_resolver_from_config_chain_order():
+    """resolver_from_config 键名配置 + 链序（case > meta > env）。"""
+    resolver = resolver_from_config(
+        lambda section, key, default=None: {
+            'case_config_key': 'k1', 'meta_key': 'k2',
+            'env_key': 'MY_PLATFORM_KEY'}.get(key, default))
+    assert resolver.case_key == 'k1'
+    assert resolver.meta_key == 'k2'
+    assert resolver.env_key == 'MY_PLATFORM_KEY'
 
 
 # ── 消费点：ApiDriverAdapter（api_test_service 内置驱动）──────
@@ -231,6 +151,27 @@ def test_driver_no_key_no_injection():
     driver = _driver({}, {})
     headers, _ = driver.render_request_parts({})
     assert 'Authorization' not in headers
+
+
+def test_voice_llm_chat_headers_carry_bearer():
+    """execute_voice_llm_chat 合入 rendered_headers + X-Session-Id（Bearer 保留）。"""
+    from unittest import mock
+
+    driver = _driver({'api_key': 'sk-meta'}, {})
+    captured = {}
+
+    def _fake_call(**kwargs):
+        captured['headers'] = kwargs['headers']
+        return {'status_code': 200, 'latency': 10, 'raw_response': '',
+                'json': {}, 'error': None}
+
+    with mock.patch('api_test_service.infrastructure.adapters.'
+                    'api_driver_adapter.api_client.call', _fake_call):
+        driver.execute_voice_llm_chat(
+            session_id='s-1', input_type='text', input_data='hi',
+            round_number=1, total_rounds=1, timeout=5)
+    assert captured['headers']['Authorization'] == 'Bearer sk-meta'
+    assert captured['headers']['X-Session-Id'] == 's-1'
 
 
 # ── 消费点：RealtimeSessionExecutor WS 握手头 ─────────────────

@@ -36,8 +36,6 @@ from shared.config.service_ports import (
     REPORT_SERVICE_GRPC_PORT,
     AUTH_SERVICE_HTTP_PORT,
     AUTH_SERVICE_GRPC_PORT,
-    API_ADAPTER_SERVICE_HTTP_PORT,
-    API_ADAPTER_SERVICE_GRPC_PORT,
     AUDIO_SERVICE_GRPC_PORT,
     DEVICE_SERVICE_GRPC_PORT,
     TRANSFER_AGENT_HTTP_PORT,
@@ -50,6 +48,7 @@ from shared.config.service_ports import (
     MOCK_THIRD_PARTY_EVAL_HTTP_PORT,
     MOCK_REALTIME_API_WS_PORT,
     MOCK_EVAL_SERVER_HTTP_PORT,
+    MOCK_DUT_API_HTTP_PORT,
 )
 
 logger = logging.getLogger(__name__)
@@ -92,7 +91,7 @@ CHILD_ENV.setdefault('PYTHONUTF8', '1')
 # 这里按 services 配置在子进程环境里强制指定各自的端口
 # - HTTP 服务用 uvicorn 启动 {dir}.app:app
 # - gRPC-only 服务（audio_service / device_service）用 python -m {dir}.interfaces.grpc.server 启动
-# - report_service HTTP 端口改为 5006，避免与 api_adapter_service 的 5008 冲突
+# - report_service HTTP 端口为 5006
 # - transfer_agent（INT-28 跨区传输）HTTP 5010 / gRPC 50101
 services = [
     {'name': 'api_gateway',        'port': API_GATEWAY_PORT,            'grpc_port': None,                          'dir': 'api_gateway',         'http': True},
@@ -103,7 +102,6 @@ services = [
     {'name': 'algorithm_service',   'port': ALGORITHM_SERVICE_HTTP_PORT,'grpc_port': ALGORITHM_SERVICE_GRPC_PORT,   'dir': 'algorithm_service',   'http': True},
     {'name': 'report_service',      'port': REPORT_SERVICE_HTTP_PORT,   'grpc_port': REPORT_SERVICE_GRPC_PORT,      'dir': 'report_service',      'http': True},
     {'name': 'auth_service',        'port': AUTH_SERVICE_HTTP_PORT,      'grpc_port': AUTH_SERVICE_GRPC_PORT,         'dir': 'auth_service',        'http': True},
-    {'name': 'api_adapter_service', 'port': API_ADAPTER_SERVICE_HTTP_PORT, 'grpc_port': API_ADAPTER_SERVICE_GRPC_PORT, 'dir': 'api_adapter_service', 'http': True},
     {'name': 'transfer_agent',      'port': TRANSFER_AGENT_HTTP_PORT,   'grpc_port': TRANSFER_AGENT_GRPC_PORT,      'dir': 'transfer_agent',      'http': True},
     # gRPC-only 服务：无 app.py，仅启动 gRPC server
     {'name': 'audio_service',       'port': None,                       'grpc_port': AUDIO_SERVICE_GRPC_PORT,        'dir': 'audio_service',      'http': False},
@@ -122,6 +120,8 @@ mock_services = [
      'script': os.path.join('mock_services', 'mock_realtime_api.py')},
     {'name': 'mock_eval_server_judge', 'port': MOCK_EVAL_SERVER_HTTP_PORT,
      'script': os.path.join('mock_services', 'mock_eval_server_judge.py')},
+    {'name': 'mock_dut_api', 'port': MOCK_DUT_API_HTTP_PORT,
+     'script': os.path.join('mock_services', 'mock_dut_api.py')},
 ]
 
 # 前端 Vite dev server
@@ -585,7 +585,6 @@ def start_all():
     print(f"[INFO] Evaluation Service: http://localhost:{EVALUATION_SERVICE_HTTP_PORT}", flush=True)
     print(f"[INFO] Report Service:     http://localhost:{REPORT_SERVICE_HTTP_PORT}", flush=True)
     print(f"[INFO] Algorithm Service:  http://localhost:{ALGORITHM_SERVICE_HTTP_PORT}", flush=True)
-    print(f"[INFO] Adapter Service:    http://localhost:{API_ADAPTER_SERVICE_HTTP_PORT}", flush=True)
     print(f"[INFO] Auth Service:       http://localhost:{AUTH_SERVICE_HTTP_PORT}", flush=True)
     print(f"[INFO] Audio Service:      gRPC :{AUDIO_SERVICE_GRPC_PORT}", flush=True)
     print(f"[INFO] Device Service:     gRPC :{DEVICE_SERVICE_GRPC_PORT}", flush=True)
