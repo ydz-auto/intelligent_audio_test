@@ -298,6 +298,22 @@ def main():
         _assert(len(drv.find_elements(By.CSS_SELECTOR, '[role="radiogroup"][aria-label*="执行模式"]')) == 0,
                 '未选中任何目标时不应渲染模式控件')
 
+        # ②b 纯 API：仅勾选 API 行 → 紧凑控件出现（默认并行）；示意图含 API 并行节点
+        _set_online(gateway, 'apis', api_id)
+        _click_visible(drv, '[aria-label="选择 %s"]' % api_name)
+        time.sleep(0.6)
+        api_grp = _mode_group(drv, api_name)
+        checked = api_grp.find_elements(By.CSS_SELECTOR, 'button[aria-checked="true"]')
+        _assert(checked and '并行' in checked[0].text, '纯 API 行默认应为并行')
+        diagram = _diagram_text(drv)
+        _assert('并行 · 同时执行' in diagram and api_name in diagram, '纯 API 示意图应含 API 并行节点')
+        _assert(dev_name not in diagram, '纯 API 示意图不应含设备节点')
+        drv.save_screenshot(os.path.join(ARTIFACTS, 'step1_api_only_parallel.png'))
+        # 取消 API 勾选，恢复空选择进入设备侧流程
+        drv.find_element(By.CSS_SELECTOR, '[aria-label="选择 %s"]' % api_name).click()
+        time.sleep(0.6)
+        print('②b 纯 API 逐卡选项 + 示意图：OK')
+
         # ③ 纯设备：勾选设备卡 → 「并行｜串行」默认并行
         _click_visible(drv, '[aria-label="选择设备 %s"]' % dev_name)
         time.sleep(0.6)
