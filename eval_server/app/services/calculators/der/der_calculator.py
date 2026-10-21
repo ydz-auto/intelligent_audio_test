@@ -17,15 +17,15 @@ from ....utils.normalizer import normalize_text, normalize_stm_text, normalize_r
 import json
 
 
-def calculate_der(rttm_ref, stm_ref, rttm_res, stm_res, source_lang=None, target_lang=None, translate_direct=None, collar=0.5, skip_overlap=False, normalize=False):
+def calculate_der(rttm_ref, stm_ref, rttm_hyp, stm_hyp, source_lang=None, target_lang=None, translate_direct=None, collar=0.5, skip_overlap=False, normalize=False):
     """
     计算 Diarization Error Rate (DER)
 
     参数:
         rttm_ref (str/dict): 参考音频的 RTTM 文件路径或内容，或 JSON 格式
         stm_ref (str/dict): 参考音频的 STM 文件路径或内容，或 JSON 格式
-        rttm_res (str/dict): 识别结果的 RTTM 文件路径或内容，或 JSON 格式
-        stm_res (str/dict): 识别结果的 STM 文件路径或内容，或 JSON 格式
+        rttm_hyp (str/dict): 识别结果的 RTTM 文件路径或内容，或 JSON 格式（旧名 rttm_res 兼容）
+        stm_hyp (str/dict): 识别结果的 STM 文件路径或内容，或 JSON 格式（旧名 stm_res 兼容）
         source_lang (str, optional): 源语言
         target_lang (str, optional): 目标语言
         translate_direct (str, optional): 翻译方向
@@ -174,7 +174,7 @@ def calculate_der(rttm_ref, stm_ref, rttm_res, stm_res, source_lang=None, target
 
     try:
         ref_annotation = get_annotation(rttm_ref, 'rttm') if rttm_ref else get_annotation(stm_ref, 'stm')
-        hyp_annotation = get_annotation(rttm_res, 'rttm') if rttm_res else get_annotation(stm_res, 'stm')
+        hyp_annotation = get_annotation(rttm_hyp, 'rttm') if rttm_hyp else get_annotation(stm_hyp, 'stm')
 
         if not list(ref_annotation):
             return {

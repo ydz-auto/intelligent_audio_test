@@ -195,9 +195,15 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
             if not task_params.get('asr_ref') or not task_params.get('asr_hyp'):
                 return error_response(f"Missing required fields for {task_type}: asr_ref, asr_hyp", code=CODE_VALIDATION_ERROR)
     elif task_type == 'der':
-        required_fields = ['rttm_ref', 'stm_ref', 'rttm_res', 'stm_res']
-        missing = [f for f in required_fields if not task_params.get(f)]
-        if missing:
+        # 参考必填；识别结果字段新命名 rttm_hyp/stm_hyp，兼容旧名 rttm_res/stm_res
+        required_ref = ['rttm_ref', 'stm_ref']
+        missing = [f for f in required_ref if not task_params.get(f)]
+        has_hyp = (
+            any(task_params.get(f) for f in ('rttm_hyp', 'rttm_res'))
+            and any(task_params.get(f) for f in ('stm_hyp', 'stm_res'))
+        )
+        if missing or not has_hyp:
+            missing += ['rttm_hyp', 'stm_hyp']
             return error_response(f"Missing required fields for der: {', '.join(missing)}", code=CODE_VALIDATION_ERROR)
     # xiaoyi_metrics: record_file 可为空，无录音时跳过 ASR 相关指标
     elif task_type == 'interruption_metrics':
@@ -463,8 +469,8 @@ def create_task():
     DER 专用参数：
         rttm_ref (str): 参考音频的 RTTM 文件路径或内容
         stm_ref (str): 参考音频的 STM 文件路径或内容
-        rttm_res (str): 识别结果的 RTTM 文件路径或内容
-        stm_res (str): 识别结果的 STM 文件路径或内容
+        rttm_hyp (str): 识别结果的 RTTM 文件路径或内容（兼容旧名 rttm_res）
+        stm_hyp (str): 识别结果的 STM 文件路径或内容（兼容旧名 stm_res）
     
     其他参数将作为 task_params 传递给具体计算逻辑进行校验
     

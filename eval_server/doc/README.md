@@ -105,7 +105,7 @@ python app.py            # 默认端口见 config.yaml（8888），可用 --port
 | cpwer | 连接词错误率 | ref_stm, hyp_stm | CpwerCalculator |
 | tcpwer | 时间约束词错误率 | ref_stm, hyp_stm | TcpwerCalculator |
 | stm_wer | 基于 STM 的 WER | ref_stm, hyp_stm | StmWerCalculator |
-| der | 说话人分离错误率 | rttm_ref, stm_ref, rttm_res, stm_res | DerCalculator |
+| der | 说话人分离错误率 | rttm_ref, stm_ref, rttm_hyp, stm_hyp（旧名 rttm_res/stm_res 兼容） | DerCalculator |
 | xiaoyi_metrics | 小艺全域编排（统一共享 ASR + 跨域聚合） | user_wav / ai_wav 至少一个 | XiaoyiMetricsCalculator |
 | turn_taking | 话轮接管（tor + false_takeover + takeover_latency + reply_quality + high_freq_*） | user_wav / ai_wav | TurnTakingCalculator |
 | tor | 接话率 | user_wav, ai_wav | TorCalculator |

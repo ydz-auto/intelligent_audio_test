@@ -21,7 +21,7 @@
 | cpwer | 连接词错误率 | ref_stm, hyp_stm | JSON |
 | tcpwer | 时间约束词错误率 | ref_stm, hyp_stm | JSON |
 | stm_wer | 基于 STM 的 WER | ref_stm, hyp_stm | JSON |
-| der | 说话人分离错误率 | rttm_ref, stm_ref, rttm_res, stm_res | JSON |
+| der | 说话人分离错误率 | rttm_ref, stm_ref, rttm_hyp, stm_hyp（旧名 rttm_res/stm_res 兼容） | JSON |
 | xiaoyi_metrics | 小艺全域编排（统一共享 ASR + 跨域聚合） | user_wav / ai_wav 至少一个 | JSON / multipart |
 | turn_taking | 话轮接管（tor + false_takeover + takeover_latency + reply_quality + high_freq_*） | user_wav / ai_wav | JSON / multipart |
 | tor | 接话率 | user_wav, ai_wav | JSON |
@@ -113,8 +113,8 @@
   "task_type": "der",
   "rttm_ref": {"json": [{"speaker": "spk1", "start": 0.0, "duration": 1.0}]},
   "stm_ref": {"json": [{"file_id": "rec1", "channel": "1", "speaker": "spk1", "start": 0.0, "end": 1.0, "text": "hello"}]},
-  "rttm_res": {"json": [{"speaker": "spk1", "start": 0.0, "duration": 1.0}]},
-  "stm_res": {"json": [{"file_id": "rec1", "channel": "1", "speaker": "spk1", "start": 0.0, "end": 1.0, "text": "hello"}]}
+  "rttm_hyp": {"json": [{"speaker": "spk1", "start": 0.0, "duration": 1.0}]},
+  "stm_hyp": {"json": [{"file_id": "rec1", "channel": "1", "speaker": "spk1", "start": 0.0, "end": 1.0, "text": "hello"}]}
 }
 ```
 

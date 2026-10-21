@@ -55,7 +55,7 @@ class TaskService:
           - translate_direct（兼容 translate_direct 和 translation_direction 两种 key）
           - collar（默认 0.0；der 任务默认 0.5）
           - skip_overlap（默认 False）
-          - 原始字段：asr_ref, asr_hyp, ref_stm, hyp_stm, rttm_ref/stm_ref, rttm_res/stm_res
+          - 原始字段：asr_ref, asr_hyp, ref_stm, hyp_stm, rttm_ref/stm_ref, rttm_hyp/stm_hyp
         多轮场景（task_params['rounds'] 非空）会把每轮的同名字段按 \\n 拼接折叠成
         单轮文本，calculator 无需感知多轮。
         """
@@ -72,7 +72,7 @@ class TaskService:
 
         # 各指标用到的扁平字段：rounds 模式下按 key 从每轮取值并拼接
         flat_keys = ('asr_ref', 'asr_hyp', 'ref_stm', 'hyp_stm',
-                     'rttm_ref', 'stm_ref', 'rttm_res', 'stm_res')
+                     'rttm_ref', 'stm_ref', 'rttm_hyp', 'stm_hyp')
 
         rounds = task_params.get('rounds')
         flat = {}

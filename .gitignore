@@ -153,6 +153,11 @@ wjh/
 # eval_server temp tests
 eval_server/tests/test_xiaoyi_repro.py
 
+# 认证私钥与运行时临时文件（勿入库）
+Intelligent-Audio-TEST/backend/data/
+Intelligent-Audio-TEST/ux_*.pid
+*.pid
+
 # eval_server 临时调试脚本（跑真实数据用的 scratch，不入库）
 eval_server/_run_real_xiaoyi.py
 eval_server/_show_result.py

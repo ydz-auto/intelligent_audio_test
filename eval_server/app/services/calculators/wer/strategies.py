@@ -15,8 +15,8 @@ from app.services.calculators.wer.wer_calculator import (
 _WER_KEYS = ('asr_ref', 'asr_hyp')
 # CPWER/TCPWER/STM_WER 用的扁平字段
 _STM_KEYS = ('ref_stm', 'hyp_stm')
-# DER 用的扁平字段
-_DER_KEYS = ('rttm_ref', 'stm_ref', 'rttm_res', 'stm_res')
+# DER 用的扁平字段（识别结果统一 rttm_hyp/stm_hyp，旧名 rttm_res/stm_res 兼容）
+_DER_KEYS = ('rttm_ref', 'stm_ref', 'rttm_hyp', 'stm_hyp')
 
 
 class _WerBaseCalculator(BaseCalculator):

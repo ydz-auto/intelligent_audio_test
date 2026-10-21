@@ -120,7 +120,7 @@ def create_stm_task(task_type, ref_stm, hyp_stm, **kwargs):
     return None
 
 
-def create_der_task(rttm_ref, stm_ref, rttm_res, stm_res, **kwargs):
+def create_der_task(rttm_ref, stm_ref, rttm_hyp, stm_hyp, **kwargs):
     """创建 DER 任务并等待结果"""
     print(f"\n{'='*60}")
     print(f"创建 DER 任务")
@@ -135,8 +135,8 @@ def create_der_task(rttm_ref, stm_ref, rttm_res, stm_res, **kwargs):
         "task_type": "der",
         "rttm_ref": rttm_ref,
         "stm_ref": stm_ref,
-        "rttm_res": rttm_res,
-        "stm_res": stm_res,
+        "rttm_hyp": rttm_hyp,
+        "stm_hyp": stm_hyp,
         **kwargs
     }
 
@@ -288,20 +288,20 @@ def example_der():
             {"file_id": "rec1", "channel": "1", "speaker": "speaker2", "start": 1.0, "end": 2.0, "text": "test text"}
         ]
     }
-    rttm_res = {
+    rttm_hyp = {
         "json": [
             {"speaker": "speaker1", "start": 0.0, "duration": 1.0},
             {"speaker": "speaker1", "start": 1.0, "duration": 2.0}
         ]
     }
-    stm_res = {
+    stm_hyp = {
         "json": [
             {"file_id": "rec1", "channel": "1", "speaker": "speaker1", "start": 0.0, "end": 1.0, "text": "hello world"},
             {"file_id": "rec1", "channel": "1", "speaker": "speaker1", "start": 1.0, "end": 2.0, "text": "test"}
         ]
     }
 
-    result = create_der_task(rttm_ref, stm_ref, rttm_res, stm_res)
+    result = create_der_task(rttm_ref, stm_ref, rttm_hyp, stm_hyp)
     if result:
         print(f"\nDER 结果:")
         print(json.dumps(result, indent=2, ensure_ascii=False))
