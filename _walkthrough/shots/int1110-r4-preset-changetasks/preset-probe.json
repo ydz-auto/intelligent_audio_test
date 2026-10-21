@@ -1,0 +1,13 @@
+{
+  "preset_task": "INT314SMOKE_70ed974e (task 1257)",
+  "preset_phase2_title": "挑选 · 阶段 2：选择结果",
+  "preset_summary": "已选任务：\nINT314SMOKE_70ed974e_任务\n更换任务",
+  "selected_before_change": "已选 1 条 / 共 1 条",
+  "after_change_tasks_pts_title": "挑选 · 阶段 1：选择任务",
+  "task_row_count": 1,
+  "task_row_texts": [
+    "INT314SMOKE_70ed974e_任务\n已完成\n1 条\n2026-10-19 07:01"
+  ],
+  "selected_after_roundtrip": "已选 1 条 / 共 1 条",
+  "phase2_back_title": "挑选 · 阶段 2：选择结果"
+}

@@ -77,7 +77,7 @@
         <div class="cpw-task-summary">
           <span class="cpw-task-summary-label">已选任务：</span>
           <span class="cpw-task-summary-names">{{ selectedTaskNames || '—' }}</span>
-          <button class="cpw-btn cpw-btn-ghost" @click="phase = 'tasks'"><i class="fas fa-repeat"></i> 更换任务</button>
+          <button class="cpw-btn cpw-btn-ghost" @click="goChangeTasks"><i class="fas fa-repeat"></i> 更换任务</button>
         </div>
 
         <!-- 视图切换（三视图：用例｜设备｜结果类型，§3.8.3） -->
@@ -480,8 +480,18 @@ async function loadAllCandidates() {
   allCandidatesLoading.value = true;
   allCandidatesError.value = false;
   try {
-    const page = await cherryPickApi.listCandidates({ perPage: 200 });
-    allCandidates.value = page.items ?? [];
+    // P3：候选行总量可 >200，按页拉满（阶段 1 任务行聚合不丢页尾任务）
+    const items: PickCandidate[] = [];
+    let page = 1;
+    for (;;) {
+      const res = await cherryPickApi.listCandidates({ perPage: 200, page });
+      const batch = res.items ?? [];
+      items.push(...batch);
+      const total = res.total ?? 0;
+      if (batch.length === 0 || (total > 0 && items.length >= total)) break;
+      page += 1;
+    }
+    allCandidates.value = items;
   } catch (error) {
     console.error('Failed to load pickable task candidates:', error);
     allCandidatesError.value = true;
@@ -543,6 +553,15 @@ function clearTasks() {
 function handleNext() {
   filters.taskIds = [...selectedTaskIds.value].map(String);
   phase.value = 'results';
+}
+
+/** 阶段 2「更换任务」回阶段 1——翻转状态并加载任务源（§3.8.2）。
+ *  preset 直达阶段 2 挂载时 onMounted 只跑 loadCandidates（:1079 分支），allCandidates 从未加载，
+ *  须在此补载，否则阶段 1 任务列表恒空且空态无恢复入口（审计 01a15e8a P1）。
+ *  全量重拉（非 preset 路径同款），勾选跨阶段保留不清空。 */
+function goChangeTasks() {
+  phase.value = 'tasks';
+  loadAllCandidates();
 }
 
 /** 结果类型客户端过滤（UX 审计 P2 修复）：后端候选查询不下发 result_type 参数，
