@@ -337,31 +337,50 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
       .map((caseItem: any) => prepareCaseItem(caseItem))
   })
 
-  // ===== §3.3.7 用例卡片分组（INT-1049 对齐）：排序选「按分组/按标签」即组头分组渲染，否则平铺 =====
+  // ===== §3.3.7 用例卡片组织（INT-1125 修订 + INT-1129 React 对齐）：分组视图/标签视图 + 平铺/交叉 =====
+  // 组织控件（会话内存、不进 URL；默认 = 分组视图 + 平铺）；组织作用于当前页已加载用例集（跨页不合并）。
+  const orgView = ref<'group' | 'tag'>('group')
+  const subView = ref<'flat' | 'byTag' | 'byGroup'>('flat')
+
+  /** 交叉子视图当前值/文案（分组视图内按标签、标签视图内按用例分组，照 React GROUP/TAG_SUB_VIEW_OPTIONS） */
+  const crossSubViewValue = computed<'byTag' | 'byGroup'>(() => (orgView.value === 'group' ? 'byTag' : 'byGroup'))
+  const crossSubViewLabel = computed(() => (orgView.value === 'group' ? '按标签' : '按用例分组'))
+
+  /** 切换组织维度（对齐 React：切分组/标签时子视图回平铺） */
+  const setOrg = (v: 'group' | 'tag') => {
+    orgView.value = v
+    subView.value = 'flat'
+  }
+
   /** 报告侧标签登记表（allCaseTags 为名字扁平；色值后端未下发，TagBadge 灰色兜底 + 分类角标缺省 null） */
   const reportTagRegistry = computed(() =>
     (allTags.value || []).map((name: string) => ({ name, color: null, categoryName: null })),
   )
 
-  /** 组头分组（组名 + 计数「{n} 个用例」；未分类/未设置标签兜底组末尾弱化） */
-  const groupedCases = computed<ReportCaseSubGroup[] | null>(() => {
+  /** 顶层组织（分组视图=按分类聚合、标签视图=按标签聚合；组名 + 计数「{n} 个用例」，兜底组末尾弱化） */
+  const orgGroups = computed<ReportCaseSubGroup[]>(() => {
     const items = paginatedCasesWithPreparedData.value
-    if (sortDimension.value === 'tag') return groupReportCasesByTag(items, reportTagRegistry.value)
-    if (sortDimension.value === 'category') return groupReportCasesByCategory(items)
-    return null
+    if (orgView.value === 'tag') return groupReportCasesByTag(items, reportTagRegistry.value)
+    return groupReportCasesByCategory(items)
   })
 
-  /** 用例列表组织（§3.3.7）：未选分组/标签时为平铺伪组（无组头），选中即组头分组渲染 */
+  /** 用例列表组织：组头（组名+计数）下方为组内叶子——平铺=单叶无组头；交叉=组内按另一维度再分组 */
   const caseListGroups = computed(() => {
-    const grouped = groupedCases.value
-    if (grouped) return grouped
-    return [{
-      key: '__flat__',
-      label: '',
-      cases: paginatedCasesWithPreparedData.value,
-      color: null,
-      categoryName: null,
-    }]
+    if (subView.value === 'flat') {
+      return orgGroups.value.map((g) => ({
+        ...g,
+        leaves: [{ ...g, showHeader: false }],
+      }))
+    }
+    return orgGroups.value.map((g) => {
+      const subs = orgView.value === 'group'
+        ? groupReportCasesByTag(g.cases, reportTagRegistry.value)
+        : groupReportCasesByCategory(g.cases)
+      return {
+        ...g,
+        leaves: subs.map((sg) => ({ ...sg, showHeader: true })),
+      }
+    })
   })
 
   // 筛选/排序条件变化时重新请求后端（复核筛选模式拉全量供客户端过滤）
@@ -623,7 +642,7 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
     pinnedCases, togglePin,
     getResourceLabel, resourceHeaders,
     paginatedCasesWithPreparedData, toggleCaseExpand, getOverallStatus,
-    groupedCases, caseListGroups,
+    orgView, subView, crossSubViewValue, crossSubViewLabel, setOrg, caseListGroups,
     ...download,
     expandedCases, allDevices,
     unpinnedFilteredCases, totalCases, displayTotalCases, currentPage, pageSize, handlePrevPage, handleNextPage, handleGoToPage, handlePageSizeChange,

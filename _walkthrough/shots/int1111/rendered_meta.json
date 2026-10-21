@@ -1,116 +1,48 @@
 {
- "groups": {
-  "category_light": [
-   {
-    "name": "打断与恢复",
-    "count": "8 个用例",
-    "muted": false
-   },
-   {
-    "name": "拒识",
-    "count": "2 个用例",
-    "muted": false
-   }
-  ],
-  "category_dark": [
-   {
-    "name": "打断与恢复",
-    "count": "8 个用例",
-    "muted": false
-   },
-   {
-    "name": "拒识",
-    "count": "2 个用例",
-    "muted": false
-   }
-  ],
-  "tag_light": [
-   {
-    "name": "多轮",
-    "count": "4 个用例",
-    "muted": false
-   },
-   {
-    "name": "免唤醒",
-    "count": "4 个用例",
-    "muted": false
-   },
-   {
-    "name": "唤醒词",
-    "count": "3 个用例",
-    "muted": false
-   },
-   {
-    "name": "噪声",
-    "count": "3 个用例",
-    "muted": false
-   },
-   {
-    "name": "远场",
-    "count": "2 个用例",
-    "muted": false
-   },
-   {
-    "name": "高并发",
-    "count": "1 个用例",
-    "muted": false
-   },
-   {
-    "name": "未设置标签",
-    "count": "2 个用例",
-    "muted": true
-   }
-  ],
-  "tag_dark": [
-   {
-    "name": "多轮",
-    "count": "4 个用例",
-    "muted": false
-   },
-   {
-    "name": "免唤醒",
-    "count": "4 个用例",
-    "muted": false
-   },
-   {
-    "name": "唤醒词",
-    "count": "3 个用例",
-    "muted": false
-   },
-   {
-    "name": "噪声",
-    "count": "3 个用例",
-    "muted": false
-   },
-   {
-    "name": "远场",
-    "count": "2 个用例",
-    "muted": false
-   },
-   {
-    "name": "高并发",
-    "count": "1 个用例",
-    "muted": false
-   },
-   {
-    "name": "未设置标签",
-    "count": "2 个用例",
-    "muted": true
-   }
-  ]
- },
- "cards": {
-  "flat_light": {
-   "cards": 10,
-   "headers": 0
-  },
-  "flat_dark": {
-   "cards": 10,
-   "headers": 0
-  },
-  "category_light": 10,
-  "category_dark": 10,
-  "tag_light": 19,
-  "tag_dark": 19
- }
+ "group_light": [
+  "打断与恢复 2 个用例",
+  "话轮接管 2 个用例",
+  "环境理解 2 个用例",
+  "拒识 2 个用例",
+  "未分类 2 个用例"
+ ],
+ "group_dark": [
+  "打断与恢复 2 个用例",
+  "话轮接管 2 个用例",
+  "环境理解 2 个用例",
+  "拒识 2 个用例",
+  "未分类 2 个用例"
+ ],
+ "tagview_light": [
+  "多轮 4 个用例",
+  "免唤醒 4 个用例",
+  "唤醒词 3 个用例",
+  "噪声 3 个用例",
+  "远场 2 个用例",
+  "高并发 1 个用例",
+  "未设置标签 2 个用例"
+ ],
+ "cross_inner_headers": [
+  "唤醒词 2 个用例",
+  "多轮 1 个用例",
+  "高并发 1 个用例",
+  "免唤醒 1 个用例",
+  "免唤醒 2 个用例",
+  "多轮 1 个用例",
+  "远场 1 个用例",
+  "免唤醒 1 个用例",
+  "远场 1 个用例",
+  "噪声 1 个用例",
+  "多轮 2 个用例",
+  "噪声 2 个用例",
+  "唤醒词 1 个用例",
+  "未设置标签 2 个用例"
+ ],
+ "sort_options": [
+  "按名称",
+  "按创建时间",
+  "按评估维度",
+  "升序",
+  "降序"
+ ]
 }

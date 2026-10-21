@@ -172,8 +172,6 @@
                 <div class="sort-filter-row">
                   <select class="filter-select" v-model="sortDimension">
                     <option value="name">按名称</option>
-                    <option value="category">按分组</option>
-                    <option value="tag">按标签</option>
                     <option value="createdAt">按创建时间</option>
                     <option value="评估维度">按评估维度</option>
                   </select>
@@ -265,12 +263,51 @@
       </div>
     </div>
 
+    <!-- 组织控件（INT-1125/INT-1129：分组视图/标签视图 + 平铺/交叉，默认分组视图+平铺，会话内存不进 URL；作用于当前页已加载用例集，跨页不合并） -->
+    <div class="case-org-control">
+      <div class="case-org-group" role="group" aria-label="用例组织方式">
+        <button
+          type="button"
+          class="case-org-tab"
+          :class="{ active: orgView === 'group' }"
+          @click="setOrg('group')"
+        >
+          <i class="fas fa-folder"></i> 分组视图
+        </button>
+        <button
+          type="button"
+          class="case-org-tab"
+          :class="{ active: orgView === 'tag' }"
+          @click="setOrg('tag')"
+        >
+          <i class="fas fa-tags"></i> 标签视图
+        </button>
+      </div>
+      <div class="case-org-group" role="group" aria-label="显示方式">
+        <button
+          type="button"
+          class="case-org-tab"
+          :class="{ active: subView === 'flat' }"
+          @click="subView = 'flat'"
+        >
+          <i class="fas fa-list"></i> 平铺
+        </button>
+        <button
+          type="button"
+          class="case-org-tab"
+          :class="{ active: subView === crossSubViewValue }"
+          @click="subView = crossSubViewValue"
+        >
+          <i class="fas fa-layer-group"></i> {{ crossSubViewLabel }}
+        </button>
+      </div>
+    </div>
+
     <!-- Case List（INT-1103：报告具体用例统一消费全站 TestCaseCard；INT-1111：按 分组/标签 组织，组头 = 组名 + 计数「{n} 个用例」，未分类/未设置标签兜底组末尾弱化） -->
     <div class="case-list">
       <div v-for="group in caseListGroups" :key="group.key" class="case-group">
-        <!-- 组头（平铺伪组 label 为空不渲染；兜底组末尾弱化） -->
+        <!-- 组头（分组视图/标签视图恒显；兜底组末尾弱化） -->
         <div
-          v-if="group.label"
           class="case-group-header"
           :class="{ 'case-group-header-muted': isFallbackGroup(group.key) }"
         >
@@ -280,106 +317,120 @@
           <span class="case-group-count">{{ group.cases.length }} 个用例</span>
         </div>
 
-        <TestCaseCard
-          v-for="caseItem in group.cases"
-          :key="caseItem.id"
-          :test-case="caseItem"
-          :is-selected="false"
-          :show-checkbox="false"
-          hide-meta
-          @click="toggleCaseExpand(caseItem.id)"
-        >
-
-        <!-- 状态指示点（leading） -->
-        <template #leading>
-          <span
-            class="status-indicator"
-            :class="getOverallStatus(caseItem)"
-          ></span>
-        </template>
-        <!-- 名称旁附加：报告分类 Badge + 人工复核 Badge -->
-        <template #titleExtra>
-          <span class="case-category">{{ caseItem.category || '未分类' }}</span>
-          <!-- INT-797：用例卡片「人工复核」Badge（§4.1 卡片标记；点击开复核历史抽屉，INT-1070） -->
-          <CaseReviewBadge
-            v-if="getCaseReview(caseItem).hasReview"
-            :case-name="caseItem.name"
-            :count="getCaseReview(caseItem).count"
-            @open="openHistoryForCase(caseItem)"
-          />
-        </template>
-        <!-- 右操作区：复核入口 + 下载日志 + 展开指示 -->
-        <template #actions>
-          <!-- INT-797：双路径入口 A——跳来源任务复核（§4.2） -->
-          <button
-            v-if="canManualReview && hasSourceTask"
-            class="review-action-btn review-manual-btn"
-            @click.stop="handleManualReview(caseItem)"
-            title="人工复核：改判执行/评估状态并填写原因"
+        <!-- 组体：平铺=单叶直排卡片；交叉=组内按另一维度再分组（叶子带组头） -->
+        <template v-for="leaf in group.leaves" :key="leaf.key">
+          <div
+            v-if="leaf.showHeader"
+            class="case-group-header case-group-header-inner"
+            :class="{ 'case-group-header-muted': isFallbackGroup(leaf.key) }"
           >
-            <i class="fas fa-clipboard-check"></i>
-            <span>人工复核</span>
-          </button>
-          <!-- INT-797/INT-1070：AI 复核主入口（灵犀Agent 对话式复核会话，可追问；真实上下文 + 追问闭环） -->
-          <button
-            v-if="canManualReview && hasSourceTask"
-            class="review-action-btn review-ai-btn"
-            @click.stop="handleAiReview(caseItem)"
-            title="AI 复核：由大模型复检当前评估结果"
-          >
-            <i class="fas fa-sparkles"></i>
-            <span>AI 复核</span>
-          </button>
-          <!-- INT-1070：「快速复核」次要入口（§5.1 一次性状态机，批量/低分初筛，不可追问） -->
-          <button
-            v-if="canManualReview && hasSourceTask"
-            class="review-action-btn review-quick-btn"
-            @click.stop="openQuickReview(caseItem)"
-            title="快速复核：一次性状态机（发起 → 结论），不可追问；深度追问请用「AI 复核」会话"
-          >
-            <i class="fas fa-bolt"></i>
-            <span>快速复核</span>
-          </button>
-          <button
-            class="download-log-btn"
-            @click.stop="openLogFileDialog(caseItem)"
-            title="下载日志"
-          >
-            <i class="fas fa-download"></i>
-            <span>下载日志</span>
-          </button>
-          <span class="expand-icon">
-            <i class="fas" :class="expandedCases.includes(caseItem.id) ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
-          </span>
-        </template>
-        <!-- 展开详情 -->
-        <template #expandedContent>
-          <div class="case-details" v-if="expandedCases.includes(caseItem.id)">
-            <!-- Case Description -->
-            <div class="case-description">
-              <h5 class="detail-section-title">用例描述</h5>
-              <p>{{ caseItem.description }}</p>
-            </div>
-
-            <!-- Using Unified Component for Audio, ASR, and Metrics -->
-            <TestCaseReportDetail
-              :isComparison="true"
-              :devices="allDevices"
-              :resourceHeaders="resourceHeaders"
-              :comparisonData="caseItem._preparedComparisonData"
-              :metricConfigs="actualAllMetrics"
-              :audioList="caseItem._preparedAudioList"
-              :referenceAsr="caseItem._preparedReferenceAsr"
-              :referenceTrans="caseItem._preparedReferenceTrans"
-              :algorithmResults="caseItem._preparedAlgorithmResults"
-              :referenceParams="caseItem._preparedReferenceParams"
-              :algorithmType="caseItem._preparedAlgorithmType"
-              :fieldMapping="caseItem._preparedFieldMapping"
-              :results="caseItem.results || []"
-            />
+            <span v-if="leaf.color" class="case-group-dot" :style="{ backgroundColor: leaf.color }"></span>
+            <span class="case-group-name">{{ leaf.label }}</span>
+            <span v-if="leaf.categoryName" class="case-group-category">{{ leaf.categoryName }}</span>
+            <span class="case-group-count">{{ leaf.cases.length }} 个用例</span>
           </div>
+
+          <TestCaseCard
+            v-for="caseItem in leaf.cases"
+            :key="caseItem.id"
+            :test-case="caseItem"
+            :is-selected="false"
+            :show-checkbox="false"
+            hide-meta
+            @click="toggleCaseExpand(caseItem.id)"
+          >
+
+          <!-- 状态指示点（leading） -->
+          <template #leading>
+            <span
+              class="status-indicator"
+              :class="getOverallStatus(caseItem)"
+            ></span>
+          </template>
+          <!-- 名称旁附加：报告分类 Badge + 人工复核 Badge -->
+          <template #titleExtra>
+            <span class="case-category">{{ caseItem.category || '未分类' }}</span>
+            <!-- INT-797：用例卡片「人工复核」Badge（§4.1 卡片标记；点击开复核历史抽屉，INT-1070） -->
+            <CaseReviewBadge
+              v-if="getCaseReview(caseItem).hasReview"
+              :case-name="caseItem.name"
+              :count="getCaseReview(caseItem).count"
+              @open="openHistoryForCase(caseItem)"
+            />
+          </template>
+          <!-- 右操作区：复核入口 + 下载日志 + 展开指示 -->
+          <template #actions>
+            <!-- INT-797：双路径入口 A——跳来源任务复核（§4.2） -->
+            <button
+              v-if="canManualReview && hasSourceTask"
+              class="review-action-btn review-manual-btn"
+              @click.stop="handleManualReview(caseItem)"
+              title="人工复核：改判执行/评估状态并填写原因"
+            >
+              <i class="fas fa-clipboard-check"></i>
+              <span>人工复核</span>
+            </button>
+            <!-- INT-797/INT-1070：AI 复核主入口（灵犀Agent 对话式复核会话，可追问；真实上下文 + 追问闭环） -->
+            <button
+              v-if="canManualReview && hasSourceTask"
+              class="review-action-btn review-ai-btn"
+              @click.stop="handleAiReview(caseItem)"
+              title="AI 复核：由大模型复检当前评估结果"
+            >
+              <i class="fas fa-sparkles"></i>
+              <span>AI 复核</span>
+            </button>
+            <!-- INT-1070：「快速复核」次要入口（§5.1 一次性状态机，批量/低分初筛，不可追问） -->
+            <button
+              v-if="canManualReview && hasSourceTask"
+              class="review-action-btn review-quick-btn"
+              @click.stop="openQuickReview(caseItem)"
+              title="快速复核：一次性状态机（发起 → 结论），不可追问；深度追问请用「AI 复核」会话"
+            >
+              <i class="fas fa-bolt"></i>
+              <span>快速复核</span>
+            </button>
+            <button
+              class="download-log-btn"
+              @click.stop="openLogFileDialog(caseItem)"
+              title="下载日志"
+            >
+              <i class="fas fa-download"></i>
+              <span>下载日志</span>
+            </button>
+            <span class="expand-icon">
+              <i class="fas" :class="expandedCases.includes(caseItem.id) ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+            </span>
+          </template>
+          <!-- 展开详情 -->
+          <template #expandedContent>
+            <div class="case-details" v-if="expandedCases.includes(caseItem.id)">
+              <!-- Case Description -->
+              <div class="case-description">
+                <h5 class="detail-section-title">用例描述</h5>
+                <p>{{ caseItem.description }}</p>
+              </div>
+
+              <!-- Using Unified Component for Audio, ASR, and Metrics -->
+              <TestCaseReportDetail
+                :isComparison="true"
+                :devices="allDevices"
+                :resourceHeaders="resourceHeaders"
+                :comparisonData="caseItem._preparedComparisonData"
+                :metricConfigs="actualAllMetrics"
+                :audioList="caseItem._preparedAudioList"
+                :referenceAsr="caseItem._preparedReferenceAsr"
+                :referenceTrans="caseItem._preparedReferenceTrans"
+                :algorithmResults="caseItem._preparedAlgorithmResults"
+                :referenceParams="caseItem._preparedReferenceParams"
+                :algorithmType="caseItem._preparedAlgorithmType"
+                :fieldMapping="caseItem._preparedFieldMapping"
+                :results="caseItem.results || []"
+              />
+            </div>
+          </template>
+          </TestCaseCard>
         </template>
-      </TestCaseCard>
       </div>
     </div>
 
@@ -680,6 +731,11 @@ const {
   paginatedCasesWithPreparedData,
   toggleCaseExpand,
   getOverallStatus,
+  orgView,
+  subView,
+  crossSubViewValue,
+  crossSubViewLabel,
+  setOrg,
   caseListGroups,
   showLogFileDialog,
   logDialogCaseName,
