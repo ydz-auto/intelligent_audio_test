@@ -86,9 +86,25 @@ def _user_has_permission(user_permissions: list, required: list) -> bool:
     return bool(perms & set(required))
 
 
-def _build_target_url(request, tool: dict, args: dict) -> str:
-    """按工具定义拼目标网关 URL：base_url（取当前请求）+ path 占位符替换 + 查询串。"""
-    base = str(request.base_url).rstrip('/')
+def _self_forward_base() -> str:
+    """服务端配置的网关自转发基址（MCP tools/call → 网关自身 REST 端点）。
+
+    优先级：环境变量 MCP_SELF_FORWARD_BASE（部署显式指定内部基址）
+    → 网关自身监听地址 http://127.0.0.1:{PORT}。
+    禁止使用客户端可控的 request.base_url / Host 头 —— 已认证调用者把网关
+    当跳板向内网任意地址发注册表内工具路径请求属认证 SSRF（审计打回 P2）。
+    """
+    from api_gateway.config.config import Config
+    configured = (getattr(Config, 'MCP_SELF_FORWARD_BASE', '') or '').strip()
+    if configured:
+        return configured.rstrip('/')
+    port = int(getattr(Config, 'PORT', 5000) or 5000)
+    return f'http://127.0.0.1:{port}'
+
+
+def _build_target_url(tool: dict, args: dict) -> str:
+    """按工具定义拼目标网关 URL：内部自转发基址 + path 占位符替换 + 查询串。"""
+    base = _self_forward_base()
     path = tool['path']
     path_params = set(tool['path_params'])
     for name in path_params:
@@ -132,9 +148,13 @@ def _build_target_body(tool: dict, args: dict) -> dict | None:
 
 
 def _forward_tool_call(request, tool: dict, args: dict, token: str):
-    """把 tools/call 转发到目标 REST 能力（带原 Authorization，双鉴权）。"""
+    """把 tools/call 转发到目标 REST 能力（带原 Authorization，双鉴权）。
+
+    自转发基址服务端确定（_self_forward_base），不随客户端 Host 头 ——
+    防认证 SSRF（INT-1150 审计打回 P2）。
+    """
     import httpx
-    url = _build_target_url(request, tool, args)
+    url = _build_target_url(tool, args)
     body = _build_target_body(tool, args)
     headers = {'Authorization': f'Bearer {token}'}
     user_id = getattr(request.state, 'user_id', None)
@@ -215,7 +235,10 @@ def _handle_tools_call(request, rpc_id, params) -> dict:
 def handle_mcp_request(request, raw_body: bytes | None = None) -> dict:
     """解析并分发一个 MCP JSON-RPC 请求。
 
-    Returns: (response_payload, http_status)。无 id 的通知返回 (None, 202)。
+    raw_body 由路由层 ``await request.body()`` 显式传入（不依赖 Content-Type
+    预解析）；None 时兜底读 request.state._json_body（仅直接同步调用的
+    兼容路径）。Returns: (response_payload, http_status)。无 id 的通知返回
+    (None, 202)。
     """
     if raw_body is None:
         raw_body = getattr(getattr(request, 'state', None), '_json_body', None)

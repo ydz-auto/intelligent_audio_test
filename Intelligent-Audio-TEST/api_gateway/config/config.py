@@ -93,6 +93,15 @@ class Config(BaseConfig):
     # 形态与前端路由 /report/:reportId?share= 一致）
     PUBLIC_ORIGIN = os.environ.get('PUBLIC_ORIGIN', 'http://localhost:5000')
 
+    # ===== MCP 自转发基址（INT-1150）=====
+    # MCP tools/call 把调用转发回网关自身 REST 端点时使用的内部基址。
+    # 必须服务端配置，不得跟随客户端 Host 头 —— 已认证调用者把网关当跳板
+    # 向内网任意地址发注册表内工具路径请求属认证 SSRF（审计打回 P2）。
+    # 空 = 回退网关自身监听地址 http://127.0.0.1:{PORT}；部署在反向代理/
+    # 容器网络后如需显式指定内部入口，设 MCP_SELF_FORWARD_BASE
+    # （如 http://api_gateway:5000）。
+    MCP_SELF_FORWARD_BASE = os.environ.get('MCP_SELF_FORWARD_BASE', '')
+
     @classmethod
     def validate(cls):
         """启动校验必填项 + AUTH_MODE 枚举合法性（INT-180：非法取值启动即自曝，

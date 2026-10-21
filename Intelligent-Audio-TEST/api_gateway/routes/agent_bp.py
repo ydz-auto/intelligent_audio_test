@@ -66,19 +66,25 @@ def _format_sse_message(payload: dict) -> str:
 
 
 @mcp_router.post('')
-def mcp_endpoint(request: Request):
+async def mcp_endpoint(request: Request):
     """MCP JSON-RPC 2.0 端点。
 
     Accept 含 text/event-stream → SSE 帧包裹（streamable HTTP）；
     否则普通 JSON-RPC 响应。无 id 通知 → 202 空响应。
+    请求体直接 await request.body() 解析（不依赖 RequestAdapterMiddleware
+    仅对 application/json 的预解析；其他 Content-Type 也可提交 JSON-RPC，
+    INT-1150 审计打回 P3）。
     """
+    from starlette.concurrency import run_in_threadpool
     from api_gateway.application.services.mcp.mcp_handler import (
         handle_mcp_request,
     )
     denied = _require_login(request)
     if denied is not None:
         return denied
-    payload, status = handle_mcp_request(request)
+    raw_body = await request.body()
+    # 处理（含目标 REST 转发，可能阻塞最长 60s）在线程池执行，避免阻塞事件循环
+    payload, status = await run_in_threadpool(handle_mcp_request, request, raw_body)
     if payload is None:
         # 通知：202 Accepted 空响应（streamable HTTP 语义）
         return Response(status_code=202)

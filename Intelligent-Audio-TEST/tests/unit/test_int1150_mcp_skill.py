@@ -10,6 +10,7 @@
   resolve_base_url ?base_url= → Origin → Host 兜底
 - 路由：skill 下载 / MCP 端点需登录（无 user_id → 401）
 """
+import asyncio
 import io
 import json
 import os
@@ -31,21 +32,36 @@ from api_gateway.application.services.mcp import (  # noqa: E402
 from api_gateway.routes import agent_bp  # noqa: E402
 
 
-def _req(user_id=7, permissions=None, headers=None, query=None, base_url=None):
-    """构造测试用伪 FastAPI Request。"""
+def _req(user_id=7, permissions=None, headers=None, query=None, base_url=None,
+         body=None):
+    """构造测试用伪 FastAPI Request（body 为请求体：dict/str/bytes/None）。"""
     state = SimpleNamespace(
         user_id=user_id,
         permissions=permissions or ['task:read', 'testcase:read'],
-        _json_body=None,
+        _json_body=body if isinstance(body, dict) else None,
     )
     hdrs = dict(headers or {})
     hdrs.setdefault('Authorization', 'Bearer fake-token')
-    return SimpleNamespace(
+    req = SimpleNamespace(
         state=state,
         headers=hdrs,
         query_params=query or {},
         base_url=base_url or 'http://testserver/',
     )
+    _raw = body
+
+    async def _body():
+        """模拟 Starlette Request.body()：返回传入 body 的原始字节。"""
+        if isinstance(_raw, bytes):
+            return _raw
+        if isinstance(_raw, str):
+            return _raw.encode('utf-8')
+        if isinstance(_raw, dict):
+            return json.dumps(_raw).encode('utf-8')
+        return b''
+
+    req.body = _body
+    return req
 
 
 # ========================================================================
@@ -76,6 +92,40 @@ class TestToolsRegistry:
                      'data_transfer_export', 'data_transfer_import',
                      'benchmark_ranking', 'report_studio_create_document'):
             assert tool in names, f'{tool} 应覆盖'
+
+    def test_visibility_enum_matches_contract(self):
+        """可见性工具 enum 必须与实际契约一致（shared/private，审计打回 P3）。"""
+        for name in ('task_set_visibility', 'testcase_set_visibility',
+                     'report_set_visibility', 'tag_set_visibility',
+                     'group_set_visibility', 'evaluation_dimension_set_visibility'):
+            tool = tools_registry.get_tool(name)
+            enum = tool['inputSchema']['properties']['visibility']['enum']
+            assert enum == ['shared', 'private'], \
+                f'{name} enum {enum} 与实际契约不符'
+
+    def test_named_missing_business_subinterfaces_covered(self):
+        """审计打回 P3 覆盖完整性：补全审计点名的业务子接口。"""
+        names = {t['name'] for t in tools_registry.TOOLS}
+        for tool in ('task_validate', 'task_get_labs', 'task_get_case_detail',
+                     'task_get_case_results', 'task_remove_case',
+                     'task_update_cases', 'task_get_stats',
+                     'audio_url_import', 'audio_batch_action', 'audio_features',
+                     'audio_quality', 'audio_process', 'audio_get_algorithms',
+                     'audio_upload_init', 'audio_upload_merge',
+                     'device_group_list', 'device_group_create',
+                     'device_alarm_rule_list', 'device_alarm_acknowledge',
+                     'device_scan', 'device_batch_action',
+                     'algorithm_param_get', 'algorithm_case_param_list',
+                     'algorithm_reference_param_list', 'algorithm_mapping_list',
+                     'algorithm_dimension_list',
+                     'report_tab_counts', 'report_statistics',
+                     'report_share_create', 'report_share_revoke',
+                     'report_export', 'report_case_logs'):
+            assert tool in names, f'{tool} 应覆盖'
+        # 非 JSON 文本通道不承载的端点应刻意排除
+        excluded = {'audio_stream', 'audio_download', 'audio_upload_chunk',
+                    'report_case_logs_download'}
+        assert not (set(names) & excluded)
 
     def test_personal_and_system_settings_excluded(self):
         names = {t['name'] for t in tools_registry.TOOLS}
@@ -268,6 +318,27 @@ class TestMcpToolsCall:
         assert payload['result']['isError'] is False
         assert m.call_args[1]['json'] == {'name': '新标签'}
 
+    def test_tools_call_forward_uses_server_side_base_not_host(self):
+        """P2 认证 SSRF：自转发基址服务端确定，不得跟随客户端 Host 头。"""
+        fake_resp = mock.Mock()
+        fake_resp.status_code = 200
+        fake_resp.json.return_value = {'success': True}
+        with mock.patch('httpx.request', return_value=fake_resp) as m:
+            req = _req(headers={'Host': '192.168.50.10:12345'})
+            payload, status = mcp_handler.handle_mcp_request(
+                req, json.dumps({'jsonrpc': '2.0', 'id': 11,
+                                 'method': 'tools/call',
+                                 'params': {'name': 'task_list',
+                                            'arguments': {'page': 1}}}))
+        assert status == 200
+        assert payload['result']['isError'] is False
+        url = m.call_args[0][1]
+        assert '192.168.50.10' not in url, \
+            f'自转发 URL 不应跟随客户端 Host: {url}'
+        assert url.startswith('http://127.0.0.1:'), \
+            f'自转发应回退网关自身监听地址: {url}'
+        assert url.endswith('/api/v1/tasks?page=1')
+
 
 # ========================================================================
 # skill 包
@@ -334,7 +405,7 @@ class TestAgentRoutes:
 
     def test_mcp_requires_login(self):
         req = _req(user_id=0)
-        resp = agent_bp.mcp_endpoint(req)
+        resp = asyncio.run(agent_bp.mcp_endpoint(req))
         assert resp.status_code == 401
 
     def test_skill_download_logged_in_builds_zip(self):
@@ -349,23 +420,30 @@ class TestAgentRoutes:
         assert 'mcp.json' in zf.namelist()
 
     def test_mcp_logged_in_returns_json(self):
-        req = _req(user_id=7)
-        body = json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'ping'})
-        req.state._json_body = json.loads(body)
-        resp = agent_bp.mcp_endpoint(req)
+        req = _req(user_id=7, body={'jsonrpc': '2.0', 'id': 1,
+                                    'method': 'ping'})
+        resp = asyncio.run(agent_bp.mcp_endpoint(req))
+        assert resp.status_code == 200
+        assert json.loads(resp.body)['result'] == {}
+
+    def test_mcp_reads_body_regardless_of_content_type(self):
+        """审计打回 P3：JSON-RPC 请求体直接 await request.body() 解析，
+        不依赖 application/json 预解析（其他 Content-Type 也可提交）。"""
+        req = _req(user_id=7, headers={'Content-Type': 'text/plain'},
+                   body={'jsonrpc': '2.0', 'id': 1, 'method': 'ping'})
+        resp = asyncio.run(agent_bp.mcp_endpoint(req))
         assert resp.status_code == 200
         assert json.loads(resp.body)['result'] == {}
 
     def test_mcp_notification_returns_202(self):
-        req = _req(user_id=7)
-        req.state._json_body = {'jsonrpc': '2.0',
-                                'method': 'notifications/initialized'}
-        resp = agent_bp.mcp_endpoint(req)
+        req = _req(user_id=7, body={'jsonrpc': '2.0',
+                                    'method': 'notifications/initialized'})
+        resp = asyncio.run(agent_bp.mcp_endpoint(req))
         assert resp.status_code == 202
 
     def test_mcp_streamable_http_sse(self):
-        req = _req(user_id=7, headers={'Accept': 'text/event-stream'})
-        req.state._json_body = {'jsonrpc': '2.0', 'id': 1, 'method': 'ping'}
-        resp = agent_bp.mcp_endpoint(req)
+        req = _req(user_id=7, headers={'Accept': 'text/event-stream'},
+                   body={'jsonrpc': '2.0', 'id': 1, 'method': 'ping'})
+        resp = asyncio.run(agent_bp.mcp_endpoint(req))
         assert resp.status_code == 200
         assert resp.headers['content-type'].startswith('text/event-stream')
