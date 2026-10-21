@@ -84,11 +84,24 @@ export function caseDetailFromDto(dto: CaseDetailDto): CaseExecutionDetail {
   return {
     caseId: dto.test_case_id,
     taskId: dto.task_id,
-    name: dto.name,
+    // 后端实测返回 case_name（无 name 字段）；name 留底兼容
+    name: dto.case_name ?? dto.name ?? '',
     executionStatus: dto.execution_status,
     evaluationStatus: dto.evaluation_status,
-    duration: dto.duration ?? 0,
+    // INT-1066 返工 P3：后端 duration 为 null 时保持 null（头部不渲染「耗时」，旧 Vue 同口径）
+    duration: dto.duration ?? null,
     score: dto.score,
+    algorithmType: dto.algorithm_type ?? null,
+    algorithmResults: (dto.algorithm_results ?? []).map((r) => ({
+      paramCode: r.param_code,
+      paramType: r.param_type ?? undefined,
+      label: r.label ?? undefined,
+      roundNumber: r.round_number ?? undefined,
+      dimensionName: r.dimension_name ?? undefined,
+      device: r.device ?? undefined,
+      value: r.value,
+      rounds: r.rounds,
+    })),
     devices,
   }
 }

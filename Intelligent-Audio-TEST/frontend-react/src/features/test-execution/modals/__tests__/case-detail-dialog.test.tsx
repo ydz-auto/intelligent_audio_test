@@ -46,6 +46,8 @@ const detail = {
   evaluationStatus: 'completed',
   duration: 3,
   score: 85,
+  algorithmType: 'voice_llm',
+  algorithmResults: [],
   devices: [
     {
       deviceId: 10,
@@ -59,6 +61,29 @@ const detail = {
       audioResults: [],
     },
   ],
+}
+/** API/voice_llm 用例样本（devices 空；INT-1066 返工 P2：分节①展示结果摘要而非「暂无执行结果」） */
+const apiDetail = {
+  caseId: 'case-2',
+  taskId: 1257,
+  name: 'API用例',
+  executionStatus: 'failed',
+  evaluationStatus: 'completed',
+  duration: null,
+  score: null,
+  algorithmType: 'voice_llm',
+  algorithmResults: [
+    { paramCode: 'session_id', paramType: 'text', label: 'session ID', value: '644fcae7' },
+    { paramCode: 'round_count', paramType: 'number', label: 'round count', value: 2 },
+    { paramCode: 'total_latency', paramType: 'number', label: 'total latency(ms)', value: 16.544 },
+  ],
+  devices: [],
+}
+const apiCaseResults = {
+  taskId: 1257,
+  caseId: 'case-2',
+  caseName: 'API用例',
+  results: [{ id: 3693, deviceName: null, apiName: null, executionStatus: 'completed', responseTime: 16544 }],
 }
 const taskTerminal = { id: 417, name: '任务', status: 'completed' }
 const caseResults = {
@@ -156,5 +181,39 @@ describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1
     expect(screen.queryByRole('button', { name: '人工复核' })).not.toBeInTheDocument()
     const aiBtn = await screen.findByRole('button', { name: 'AI 复核' })
     expect(aiBtn).toBeInTheDocument()
+  })
+
+  // ---- INT-1066 返工 P2：API/voice_llm 用例（devices 空）分节①结果摘要 ----
+  it('API 用例（devices 空）有执行结果 → 分节①展示结果摘要而非「暂无执行结果」，复核钮可用', async () => {
+    fetchDetailMock.mockResolvedValue(apiDetail)
+    fetchResultsMock.mockResolvedValue(apiCaseResults)
+    fetchTaskMock.mockResolvedValue({ ...taskTerminal, status: 'completed' })
+    renderDialog()
+    // 结果行摘要渲染（执行完成 + 响应时间 + 算法结果指标），不再出现「暂无执行结果」
+    const summary = await screen.findByText('16544ms')
+    expect(summary).toBeInTheDocument()
+    expect(screen.queryByText('暂无执行结果')).not.toBeInTheDocument()
+    expect(screen.getByText('round count')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: '人工复核' })).toBeInTheDocument()
+  })
+
+  it('API 用例（devices 空）无任何结果 → 分节①「暂无执行结果」且复核入口隐藏', async () => {
+    fetchDetailMock.mockResolvedValue({ ...apiDetail, algorithmResults: [] })
+    fetchResultsMock.mockResolvedValue({ ...apiCaseResults, results: [] })
+    fetchTaskMock.mockResolvedValue({ ...taskTerminal, status: 'completed' })
+    renderDialog()
+    await waitFor(() => {
+      expect(screen.getByText('暂无执行结果')).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('button', { name: '人工复核' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'AI 复核' })).not.toBeInTheDocument()
+  })
+
+  it('E2E 用例（devices 非空）时长 null → 头部不渲染「耗时」', async () => {
+    fetchDetailMock.mockResolvedValue({ ...detail, duration: null })
+    renderDialog()
+    await waitFor(() => {
+      expect(screen.queryByText(/耗时/)).not.toBeInTheDocument()
+    })
   })
 })
