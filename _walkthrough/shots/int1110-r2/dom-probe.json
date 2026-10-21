@@ -1,0 +1,21 @@
+{
+  "phase2_case_cards": [
+    {
+      "index": 0,
+      "text": "INT314SMOKE_70ed974e_API用例\nINT314SMOKE_70ed974e_API用例\n用例ID: 5412e6d4-be58-4446-9dc0-d40f739e919f\n1 条\n小艺语音大模型",
+      "has_pcc_checkbox": true,
+      "has_pcc_count": true,
+      "has_pcc_toggle": true,
+      "has_case_id_badge": true
+    }
+  ],
+  "cart_case_cards": [
+    {
+      "index": 0,
+      "text": "INT314SMOKE_70ed974e_API用例\nINT314SMOKE_70ed974e_API用例\n用例ID: 5412e6d4-be58-4446-9dc0-d40f739e919f\n移除该组\n1 条",
+      "has_pcc_checkbox": true,
+      "has_pcc_count": true,
+      "has_case_id_badge": true
+    }
+  ]
+}
