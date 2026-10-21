@@ -90,11 +90,14 @@ export function GroupedCaseList({
   hasQueryFilters: boolean
   selected: Set<string>
   tagRegistry: TagItem[]
-  callbacks: CaseCardCallbacks
+  /** 行内五钮回调；不传（readOnly 观察态）→ 卡片不渲染操作钮 */
+  callbacks?: CaseCardCallbacks
   onBatchAction: (action: BatchActionKey, ids: string[]) => void
-  actionCallbacks: GroupActionCallbacks
-  onToggleSelect: (id: string, checked: boolean) => void
-  onToggleAll: (ids: string[], checked: boolean) => void
+  /** 组操作回调；不传（readOnly 观察态）→ 组头操作面板隐藏 */
+  actionCallbacks?: GroupActionCallbacks
+  /** 勾选切换；不传（readOnly 观察态）→ 卡片/组头勾选框隐藏 */
+  onToggleSelect?: (id: string, checked: boolean) => void
+  onToggleAll?: (ids: string[], checked: boolean) => void
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [groupPage, setGroupPage] = useState(1)
@@ -200,7 +203,7 @@ export function GroupedCaseList({
                   : '尝试清空「分组」「标签」筛选'}
             </EmptyDescription>
           </EmptyHeader>
-          {!trash && (
+          {!trash && actionCallbacks != null && (
             <EmptyContent>
               <Button size='sm' onClick={() => actionCallbacks.onCreateInGroup(null)}>
                 + 新增用例
@@ -272,11 +275,13 @@ export function GroupedCaseList({
           onClick={() => toggleGroupExpanded(group.id)}
         >
           <div className='flex min-w-0 items-center gap-2'>
-            <Checkbox
-              checked={list.length > 0 && groupSelected === list.length}
-              aria-label={`全选分组 ${group.name}`}
-              onCheckedChange={(c) => onToggleAll(list.map((x) => x.id), c)}
-            />
+            {onToggleAll != null && (
+              <Checkbox
+                checked={list.length > 0 && groupSelected === list.length}
+                aria-label={`全选分组 ${group.name}`}
+                onCheckedChange={(c) => onToggleAll(list.map((x) => x.id), c)}
+              />
+            )}
             <ChevronDown
               aria-hidden='true'
               className={cn('size-4 text-muted-foreground transition-transform', !isExpanded && '-rotate-90')}
@@ -309,26 +314,28 @@ export function GroupedCaseList({
                 options={GROUP_SUB_VIEW_OPTIONS}
               />
             )}
-            <CaseGroupActions
-              name={group.name}
-              caseIds={list.map((x) => x.id)}
-              selectedIds={list.filter((x) => selected.has(x.id)).map((x) => x.id)}
-              trash={trash}
-              onEditGroup={() => actionCallbacks.onEditGroup(group)}
-              onDeleteGroup={() => actionCallbacks.onDeleteGroup(group)}
-              onCreateInGroup={() => actionCallbacks.onCreateInGroup(group)}
-              onCopyGroup={() => actionCallbacks.onCopyGroup(group)}
-              onBatchAction={onBatchAction}
-              subViewMenu={
-                isMobile && !trash
-                  ? {
-                      value: subView as SubViewValue,
-                      onValueChange: (v) => setGroupSubView(group.id, v as 'flat' | 'byTag'),
-                      options: GROUP_SUB_VIEW_OPTIONS,
-                    }
-                  : undefined
-              }
-            />
+            {actionCallbacks != null && (
+              <CaseGroupActions
+                name={group.name}
+                caseIds={list.map((x) => x.id)}
+                selectedIds={list.filter((x) => selected.has(x.id)).map((x) => x.id)}
+                trash={trash}
+                onEditGroup={() => actionCallbacks.onEditGroup(group)}
+                onDeleteGroup={() => actionCallbacks.onDeleteGroup(group)}
+                onCreateInGroup={() => actionCallbacks.onCreateInGroup(group)}
+                onCopyGroup={() => actionCallbacks.onCopyGroup(group)}
+                onBatchAction={onBatchAction}
+                subViewMenu={
+                  isMobile && !trash
+                    ? {
+                        value: subView as SubViewValue,
+                        onValueChange: (v) => setGroupSubView(group.id, v as 'flat' | 'byTag'),
+                        options: GROUP_SUB_VIEW_OPTIONS,
+                      }
+                    : undefined
+                }
+              />
+            )}
           </div>
         </div>
         {isExpanded && (
@@ -359,11 +366,13 @@ export function GroupedCaseList({
       {/* 列表头：全选 + 已选择计数 + 排序 */}
       <div className='flex items-center justify-between gap-2'>
         <div className='flex items-center gap-2'>
-          <Checkbox
-            checked={cases.length > 0 && cases.every((c) => selected.has(c.id))}
-            aria-label='全选用例'
-            onCheckedChange={(c) => onToggleAll(cases.map((x) => x.id), c)}
-          />
+          {onToggleAll != null && (
+            <Checkbox
+              checked={cases.length > 0 && cases.every((c) => selected.has(c.id))}
+              aria-label='全选用例'
+              onCheckedChange={(c) => onToggleAll(cases.map((x) => x.id), c)}
+            />
+          )}
           <p className='text-muted-foreground text-xs'>
             {selected.size > 0 ? `已选择 ${selected.size} 个用例` : '全选以进行批量操作'}
           </p>
@@ -416,11 +425,13 @@ export function GroupedCaseList({
             onClick={() => toggleGroupExpanded('__ungrouped__')}
           >
             <div className='flex min-w-0 items-center gap-2'>
-              <Checkbox
-                checked={ungroupedCases.length > 0 && ungroupedCases.every((c) => selected.has(c.id))}
-                aria-label='全选未分组用例'
-                onCheckedChange={(c) => onToggleAll(ungroupedCases.map((x) => x.id), c)}
-              />
+              {onToggleAll != null && (
+                <Checkbox
+                  checked={ungroupedCases.length > 0 && ungroupedCases.every((c) => selected.has(c.id))}
+                  aria-label='全选未分组用例'
+                  onCheckedChange={(c) => onToggleAll(ungroupedCases.map((x) => x.id), c)}
+                />
+              )}
               <ChevronDown
                 aria-hidden='true'
                 className={cn(
@@ -451,23 +462,25 @@ export function GroupedCaseList({
                   options={GROUP_SUB_VIEW_OPTIONS}
                 />
               )}
-              <CaseGroupActions
-                name='未分组'
-                caseIds={ungroupedCases.map((x) => x.id)}
-                selectedIds={ungroupedCases.filter((x) => selected.has(x.id)).map((x) => x.id)}
-                trash={trash}
-                onCreateInGroup={() => actionCallbacks.onCreateInGroup(null)}
-                onBatchAction={onBatchAction}
-                subViewMenu={
-                  isMobile && !trash
-                    ? {
-                        value: (groupSubView['__ungrouped__'] ?? 'flat') as SubViewValue,
-                        onValueChange: (v) => setGroupSubView('__ungrouped__', v as 'flat' | 'byTag'),
-                        options: GROUP_SUB_VIEW_OPTIONS,
-                      }
-                    : undefined
-                }
-              />
+              {actionCallbacks != null && (
+                <CaseGroupActions
+                  name='未分组'
+                  caseIds={ungroupedCases.map((x) => x.id)}
+                  selectedIds={ungroupedCases.filter((x) => selected.has(x.id)).map((x) => x.id)}
+                  trash={trash}
+                  onCreateInGroup={() => actionCallbacks.onCreateInGroup(null)}
+                  onBatchAction={onBatchAction}
+                  subViewMenu={
+                    isMobile && !trash
+                      ? {
+                          value: (groupSubView['__ungrouped__'] ?? 'flat') as SubViewValue,
+                          onValueChange: (v) => setGroupSubView('__ungrouped__', v as 'flat' | 'byTag'),
+                          options: GROUP_SUB_VIEW_OPTIONS,
+                        }
+                      : undefined
+                  }
+                />
+              )}
             </div>
           </div>
           {expanded.has('__ungrouped__') && (

@@ -4,10 +4,11 @@
  * 用例行照 11_用例域 §3.3 统一 `CaseCard` 口径呈现——名称 / CaseIdBadge / 算法徽章 / 标签，
  * 保留报告侧专属标记：状态指示点、分组 Badge、人工复核/AI复核 Badge、下载日志/固定/详情/展开）+ 展开详情
  * = TestCaseReportDetail 七块（§3.5）。
- * 用例卡片分组（INT-1034 同步，INT-1049 实施）：排序方式新增「按标签」，
- * 选中「按分组 / 按标签」即按该维度组头分组渲染（组头=组名+计数「{n} 个用例」，
- * 未分类/未设置标签兜底组末尾），组内用例卡照全站统一 CaseCard；客户端聚合见 specific-case-grouping.ts，
- * 不新增后端请求——用例行自带 category/tags（ReportCaseItem）。
+ * 用例卡片组织（INT-1125 修订）：具体用例列表改照用例管理页组织控件——分组视图/标签视图
+ * + 平铺/交叉（复用 case-sub-view-toggle.tsx 同款 + specific-case-grouping.ts 聚合，默认分组视图+平铺）；
+ * 排序下拉收敛为纯排序（移除「按分组/按标签」，组织由组织控件承担）；
+ * 组头=组名+计数「{n} 个用例」，未分类/未设置标签兜底组末尾弱化；组织作用于当前页已加载用例集，
+ * 跨页不合并；纯客户端聚合、不新增后端请求——用例行自带 category/tags（ReportCaseItem）。
  * 人工复核 + AI 复核交互（19 规范 §4/§5，INT-793/INT-1065）：卡片标记（复核 Badge → 复核明细抽屉）
  * + 明细操作（「人工复核」弹窗 / 「AI 复核」灵犀Agent 复核会话 / 「快速复核」一次性状态机）多路径；
  * 源任务 result_id 溯源（§4.2 路径 A）。
@@ -39,6 +40,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+} from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { useReportCases } from '@/application/report-view/use-report-cases'
 import { useReportReviews } from '@/application/report-view/useReportReviews'
@@ -51,6 +57,12 @@ import { fetchCaseResults } from '@/infrastructure/api/reviewApi'
 import { AiReviewSessionDialog } from '@/features/ai-review/ai-review-session-dialog'
 import { QuickAiReviewDialog } from '@/features/ai-review/quick-ai-review-dialog'
 import { CaseCard } from '@/features/testcases/components/case-card'
+import {
+  CaseSubViewToggle,
+  GROUP_SUB_VIEW_OPTIONS,
+  TAG_SUB_VIEW_OPTIONS,
+  type SubViewValue,
+} from '@/features/testcases/components/case-sub-view-toggle'
 import {
   groupReportCasesByCategory,
   groupReportCasesByTag,
@@ -80,6 +92,9 @@ interface LogDownloadViewState {
   /** 是否完成 */
   done: boolean
 }
+
+/** 组织维度（INT-1125：分组视图/标签视图，照 18_挑选合并 §3.8.3 用例层组织语义） */
+type OrgDimension = 'group' | 'tag'
 
 export function SpecificCaseComparison({
   report,
@@ -269,12 +284,15 @@ export function SpecificCaseComparison({
     }
   }
 
-  /** 分组组织（§3.3.7 用例卡片分组：按分组/按标签选中即组头分组渲染，未选中保持平铺列表） */
-  const grouped = useMemo<ReportCaseSubGroup[] | null>(() => {
-    if (filters.sortBy === 'tag') return groupReportCasesByTag(items, reportTagRegistry)
-    if (filters.sortBy === 'category') return groupReportCasesByCategory(items)
-    return null
-  }, [filters.sortBy, items, reportTagRegistry])
+  // INT-1125 组织控件状态（会话内存、不进 URL；默认 = 分组视图 + 平铺，不破坏现状默认）
+  const [org, setOrg] = useState<OrgDimension>('group')
+  const [subView, setSubView] = useState<SubViewValue>('flat')
+
+  /** 组织层（INT-1125：分组视图=按分类聚合，标签视图=按标签聚合；作用于当前页已加载用例集，跨页不合并） */
+  const orgGroups = useMemo<ReportCaseSubGroup[]>(() => {
+    if (org === 'tag') return groupReportCasesByTag(items, reportTagRegistry)
+    return groupReportCasesByCategory(items)
+  }, [org, items, reportTagRegistry])
 
   /** 用例卡渲染（平铺 / 组内共用同一条 CaseCard 口径） */
   const renderCaseCard = (c: ReportCaseItem) => {
@@ -393,6 +411,30 @@ export function SpecificCaseComparison({
     )
   }
 
+  /** 组内组织（INT-1125）：平铺 或 交叉——分组视图内按标签、标签视图内按用例分组（组头复用 ReportGroupHeader 形态） */
+  const renderOrgGroupBody = (cases: ReportCaseItem[]) => {
+    if (subView === 'flat') {
+      return <div className='space-y-2'>{cases.map(renderCaseCard)}</div>
+    }
+    const subgroups =
+      org === 'group'
+        ? groupReportCasesByTag(cases, reportTagRegistry)
+        : groupReportCasesByCategory(cases)
+    return (
+      <div className='space-y-2'>
+        {subgroups.map((sg) => (
+          <div key={sg.key} className='space-y-2'>
+            <ReportGroupHeader
+              group={sg}
+              muted={sg.key === '__untagged__' || sg.key === '__uncategorized__'}
+            />
+            <div className='space-y-2'>{sg.cases.map(renderCaseCard)}</div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   return (
     <Collapsible open={!collapsed || isExporting} onOpenChange={setCollapsed} className='space-y-3'>
       <div className='flex items-center justify-between'>
@@ -439,8 +481,6 @@ export function SpecificCaseComparison({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value='name'>按名称</SelectItem>
-                    <SelectItem value='category'>按分组</SelectItem>
-                    <SelectItem value='tag'>按标签</SelectItem>
                     <SelectItem value='createdat'>按创建时间</SelectItem>
                     <SelectItem value='metric'>按评估维度</SelectItem>
                   </SelectContent>
@@ -658,21 +698,44 @@ export function SpecificCaseComparison({
             <div className='text-muted-foreground flex h-20 items-center justify-center rounded-lg border text-xs'>
               暂无数据
             </div>
-          ) : grouped ? (
-            /* §3.3.7 用例卡片分组：组头 = 组名 + 计数「{n} 个用例」，未分类/未设置标签兜底组末尾弱化 */
+          ) : (
+            /* INT-1125 组织控件：分组视图/标签视图 + 平铺/交叉（照用例管理交互，会话内存、不进 URL） */
             <div className='space-y-2'>
-              {grouped.map((g) => (
+              <div className='flex flex-wrap items-center gap-2 px-1'>
+                <Tabs
+                  value={org}
+                  onValueChange={(v) => {
+                    setOrg(v as OrgDimension)
+                    setSubView('flat')
+                  }}
+                  aria-label='用例组织方式'
+                >
+                  <TabsList className='h-7 gap-0.5 p-0.5'>
+                    <TabsTrigger value='group' className='px-2 text-xs'>
+                      分组视图
+                    </TabsTrigger>
+                    <TabsTrigger value='tag' className='px-2 text-xs'>
+                      标签视图
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+                <CaseSubViewToggle
+                  value={subView}
+                  onValueChange={setSubView}
+                  options={org === 'group' ? GROUP_SUB_VIEW_OPTIONS : TAG_SUB_VIEW_OPTIONS}
+                />
+              </div>
+              {/* 组织层：组头 = 组名 + 计数「{n} 个用例」，未分类/未设置标签兜底组末尾弱化（§3.3.7） */}
+              {orgGroups.map((g) => (
                 <div key={g.key} className='space-y-2'>
                   <ReportGroupHeader
                     group={g}
                     muted={g.key === '__untagged__' || g.key === '__uncategorized__'}
                   />
-                  <div className='space-y-2'>{g.cases.map(renderCaseCard)}</div>
+                  {renderOrgGroupBody(g.cases)}
                 </div>
               ))}
             </div>
-          ) : (
-            items.map(renderCaseCard)
           )}
         </div>
 
@@ -846,7 +909,7 @@ function StatusDot({ status, className }: { status: string; className?: string }
 }
 
 /**
- * 报告用例分组头（§3.3.7 用例卡片分组：组头 = 组名 + 计数「{n} 个用例」；
+ * 报告用例分组头（§3.3.7 用例卡片组织 INT-1125：组头 = 组名 + 计数「{n} 个用例」；
  * 照 case-sub-group-header 形态——按标签子组带色点 + 分类角标，「未分类 / 未设置标签」兜底组末尾弱化）。
  */
 function ReportGroupHeader({

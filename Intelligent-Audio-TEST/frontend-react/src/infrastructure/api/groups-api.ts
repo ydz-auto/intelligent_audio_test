@@ -55,7 +55,8 @@ export async function updateGroup(
   })
 }
 
-/** 删除分组（DELETE /groups/{id}?cascade；cascade=true 连同组下用例删除，对照 Vue deleteGroup） */
+/** 删除分组（DELETE /groups/{id}?cascade；cascade=true 连同组下用例删除，对照 Vue deleteGroup；
+ *  INT-1138 开始测试删除分组照用例管理页口径传 cascade=true） */
 export async function deleteGroup(id: string, cascade = false): Promise<void> {
   await apiClient.delete(`/groups/${id}`, { params: { cascade } })
 }

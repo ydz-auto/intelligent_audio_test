@@ -76,10 +76,25 @@ export type ReferenceParamRow = {
   helpText: string
 }
 
+/** 参数映射行（§6.5 设备/API/评估三节共用；评估行带 dimensionId/dimensionName） */
 export type MappingRow = {
   key: string
+  /** 后端映射主键（已入库行；新增行无 id，聚合提交后由后端分配） */
+  id?: number
+  /** 来源类型（设备/API 恒 case；评估：case/case_config/reference/device/api） */
+  source?: string
+  /** 源参数方向（source_direction：input/output，缺省 output） */
+  sourceDirection?: string
   sourceParam: string
+  /** 源参数名称（读侧回填或按 code 查参数表兜底） */
+  paramName?: string
+  /** 目标评估维度 id（评估行；设备/API 恒空） */
+  dimensionId?: string
+  /** 目标评估维度名（维度内目标参数的归属维度 / 分组展示键） */
+  dimensionName?: string
   targetParam: string
+  /** 目标参数名称（设备/API=目标参数名；评估=维度内参数名） */
+  targetParamName?: string
   transformType: string
 }
 

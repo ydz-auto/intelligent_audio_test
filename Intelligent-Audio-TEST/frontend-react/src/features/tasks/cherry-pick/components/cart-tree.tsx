@@ -1,12 +1,15 @@
 /**
- * 购物车树（18_挑选合并交互重设计.md §4.2/§4.3，INT-600/INT-1047）。
+ * 购物车树（18_挑选合并交互重设计.md §4.2/§4.3，INT-600/INT-1047/INT-1128）。
  * 与挑选页同层级口径（任务→用例→设备→result_type，§11-5 缺 source_result_type 折叠缺省）；
- * 管理态：勾选批量移除（R1-R5 同构）+ 单条 X + 节点「移除该组」+ 整组「移除整组」+ 失效标记。
+ * §4.2（INT-1128）三视图切换：任务分组（默认）｜用例视图｜设备视图｜结果类型视图——
+ * 三视图共享同一购物车条目集与 selectedEntryIds，切换即时生效不改变勾选/失效标记；
+ * 三视图树内不设任务级分支，任务维度以 叶行来源任务名 + 顶层组头「来自 {m} 个任务」保留。
+ * 管理态：勾选批量移除（R1-R5 同构）+ 单条 X + 节点「移除该组」+ 整组「移除整组」（跨任务）+ 失效标记。
  * §3.8.4 全站用例显示统一：用例节点改走 CaseCard（pick-case-card.tsx compact 变体）。
  * 购物车抽屉与复核步骤两处共用（§4.4）。
  */
 import { ChevronDown, ChevronRight, Trash2, X } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 
 import type {
   CartTreeBranch,
@@ -15,8 +18,12 @@ import type {
   PickCartGroup,
 } from '@/domain/models/cherryPick'
 import {
+  buildCartCaseView,
+  buildCartDeviceView,
+  buildCartResultTypeView,
   buildCartTree,
   collectEntryIds,
+  collectSourceTaskCount,
   getCartBranchSelectionState,
   PENDING_RESULT_TYPE_LABEL,
 } from '@/domain/lib/cherry-pick-tree'
@@ -32,6 +39,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import { cn } from '@/lib/utils'
 import { PickCaseCard } from '@/features/tasks/cherry-pick/components/pick-case-card'
+import type { CartView } from '@/features/tasks/cherry-pick/components/cart-view-switcher'
 
 function LeafRow({
   leaf,
@@ -39,6 +47,7 @@ function LeafRow({
   onToggleLeaf,
   onRemoveSingle,
   readOnly,
+  showLeafTask,
 }: {
   leaf: CartTreeLeaf
   selected: boolean
@@ -46,6 +55,8 @@ function LeafRow({
   onRemoveSingle: (entryId: string) => void
   /** 只读态（algo_engineer：抽屉只读，增删钮隐藏，§8） */
   readOnly: boolean
+  /** §4.2 三视图：叶行携带来源任务名消歧（任务分组视图组内同源，不显示） */
+  showLeafTask?: boolean
 }) {
   return (
     <div
@@ -58,6 +69,14 @@ function LeafRow({
           onCheckedChange={() => onToggleLeaf(leaf)}
           aria-label={`条目 ${leaf.entryId}`}
         />
+      )}
+      {showLeafTask && (
+        <span
+          className='text-muted-foreground/60 max-w-28 shrink-0 truncate font-mono text-[10px] tabular-nums'
+          title={`来源任务：${leaf.sourceTaskName}`}
+        >
+          {leaf.sourceTaskName}
+        </span>
       )}
       <span className='min-w-0 flex-1 truncate font-medium'>{leaf.caseName}</span>
       <span className='text-muted-foreground min-w-0 max-w-40 truncate'>
@@ -110,6 +129,8 @@ function BranchRow({
   onRemoveGroup,
   onRemoveEntry,
   readOnly,
+  showLeafTask,
+  renderCaseNode,
 }: {
   branch: CartTreeBranch
   selectedEntryIds: ReadonlySet<string>
@@ -121,6 +142,10 @@ function BranchRow({
   onRemoveGroup: (branch: CartTreeBranch) => void
   onRemoveEntry: (entryId: string) => void
   readOnly: boolean
+  /** §4.2 三视图：叶行携带来源任务名消歧（任务分组视图不显示；CartTree 透传） */
+  showLeafTask?: boolean
+  /** §4.2/§3.8.4：用例级子项统一渲染 PickCaseCard（设备/结果类型视图用例层） */
+  renderCaseNode?: (branch: CartTreeBranch) => ReactNode
 }) {
   const state = getCartBranchSelectionState(branch, selectedEntryIds)
   const hasChildren = branch.children.length > 0
@@ -209,7 +234,10 @@ function BranchRow({
                   onToggleLeaf={onToggleLeaf}
                   onRemoveSingle={onRemoveEntry}
                   readOnly={readOnly}
+                  showLeafTask={showLeafTask}
                 />
+              ) : child.level === 'case' && renderCaseNode ? (
+                renderCaseNode(child)
               ) : (
                 <BranchRow
                   key={child.key}
@@ -223,6 +251,8 @@ function BranchRow({
                   onRemoveGroup={onRemoveGroup}
                   onRemoveEntry={onRemoveEntry}
                   readOnly={readOnly}
+                  showLeafTask={showLeafTask}
+                  renderCaseNode={renderCaseNode}
                 />
               )
             )}
@@ -246,13 +276,21 @@ function collectAllCartKeys(items: CartTreeItem[]): Set<string> {
 
 export interface CartTreeProps {
   groups: PickCartGroup[]
+  /** §4.2 视图：任务分组（默认）/ 用例 / 设备 / 结果类型 */
+  view?: CartView
   selectedEntryIds: ReadonlySet<string>
   onToggleLeaf: (leaf: CartTreeLeaf) => void
   onToggleBranch: (branch: CartTreeBranch, select: boolean) => void
   /** 单条移除（X） */
   onRemoveEntry: (entryId: string) => void
-  /** 移除节点组（用例/设备/resultType 下全部条目） */
-  onRemoveNode: (entryIds: string[], levelLabel: string, name: string, count: number) => void
+  /** 移除节点组（用例/设备/resultType 下全部条目）；sourceTaskCount 供跨任务整组移除文案（§4.2 ②） */
+  onRemoveNode: (
+    entryIds: string[],
+    levelLabel: string,
+    name: string,
+    count: number,
+    sourceTaskCount?: number
+  ) => void
   /** 移除整组（来源任务） */
   onRemoveTask: (taskId: number, taskName: string, count: number) => void
   /** 只读态（algo_engineer：增删钮隐藏，§8） */
@@ -263,11 +301,14 @@ export interface CartTreeProps {
 }
 
 /**
- * 购物车树：按来源任务分组（组头=任务名 + 移除整组 + 计数 Badge），组内同 3.1 层级下钻；
+ * 购物车树：任务分组视图按来源任务分组（组头=任务名 + 移除整组 + 计数 Badge），
+ * 组内同 3.1 层级下钻；用例/设备/结果类型视图为聚合树（树内无任务级分支），
+ * 顶层组头「来自 {m} 个任务」+ 移除整组（跨任务）。
  * 用例节点 = CaseCard compact（§3.8.4 全站用例显示统一）。
  */
 export function CartTree({
   groups,
+  view = 'task',
   selectedEntryIds,
   onToggleLeaf,
   onToggleBranch,
@@ -278,7 +319,17 @@ export function CartTree({
   expandSignal,
   className,
 }: CartTreeProps) {
-  const items = buildCartTree(groups)
+  /** 三视图树（§4.2 ② 纯函数重建；任务分组=现状 buildCartTree） */
+  const items = useMemo<CartTreeItem[]>(() => {
+    if (view === 'case') return buildCartCaseView(groups)
+    if (view === 'device') return buildCartDeviceView(groups)
+    if (view === 'resultType') return buildCartResultTypeView(groups)
+    return buildCartTree(groups)
+  }, [view, groups])
+
+  /** 三视图叶行携带来源任务名消歧（任务分组视图组内同源，不显示） */
+  const showLeafTask = view !== 'task'
+
   const [openKeys, setOpenKeys] = useState<Set<string>>(new Set())
   const [lastSignal, setLastSignal] = useState<{ all: boolean; tick: number } | null>(
     null
@@ -288,6 +339,14 @@ export function CartTree({
     setLastSignal(expandSignal)
     setOpenKeys(expandSignal.all ? collectAllCartKeys(items) : new Set())
   }
+
+  const toggleOpenKey = (key: string) =>
+    setOpenKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
 
   /** 节点「移除该组」确认（层级文案，§4.3） */
   const handleRemoveGroup = (branch: CartTreeBranch) => {
@@ -307,9 +366,31 @@ export function CartTree({
     )
   }
 
-  /** 用例节点（CaseCard compact，§4.2/§3.8.4）+ 卡内 device/result_type/leaf 子树 */
-  const renderCaseNode = (branch: CartTreeBranch) => {
+  /** 三视图顶层组头「移除整组」（跨任务整组移除，§4.2 ②：确认文案带来源任务数） */
+  const handleRemoveTopGroup = (branch: CartTreeBranch) => {
+    const levelLabel =
+      branch.level === 'device'
+        ? '设备'
+        : branch.level === 'case'
+          ? '用例'
+          : '结果类型'
+    onRemoveNode(
+      collectEntryIds([branch]),
+      levelLabel,
+      branch.name,
+      branch.count,
+      collectSourceTaskCount([branch])
+    )
+  }
+
+  /**
+   * 用例节点（CaseCard compact，§4.2/§3.8.4）+ 卡内 device/result_type/leaf 子树。
+   * topLevel=true（用例视图顶层）：计数旁「来自 {m} 个任务」+「移除整组」跨任务（§4.2 ② mermaid）；
+   * 否则节点「移除该组」。设备/结果类型视图用例层经 BranchRow 的 renderCaseNode 路由复用本函数。
+   */
+  const renderCaseNode = (branch: CartTreeBranch, topLevel = false) => {
     const open = openKeys.has(branch.key)
+    const taskCount = collectSourceTaskCount([branch])
     return (
       <PickCaseCard
         key={branch.key}
@@ -319,22 +400,26 @@ export function CartTree({
         state={getCartBranchSelectionState(branch, selectedEntryIds)}
         onToggle={(select) => onToggleBranch(branch, select)}
         open={open}
-        onToggleOpen={() =>
-          setOpenKeys((prev) => {
-            const next = new Set(prev)
-            if (next.has(branch.key)) next.delete(branch.key)
-            else next.add(branch.key)
-            return next
-          })
+        onToggleOpen={() => toggleOpenKey(branch.key)}
+        badgeLeading={
+          topLevel && taskCount > 0 ? (
+            <span className='text-muted-foreground/70 shrink-0 text-[11px]'>
+              来自 {taskCount} 个任务
+            </span>
+          ) : undefined
         }
         actions={
           !readOnly ? (
             <Button
               variant='ghost'
               size='icon-xs'
-              aria-label='移除该组'
+              aria-label={topLevel ? '移除整组' : '移除该组'}
               className='text-muted-foreground shrink-0'
-              onClick={() => handleRemoveGroup(branch)}
+              onClick={() =>
+                topLevel
+                  ? handleRemoveTopGroup(branch)
+                  : handleRemoveGroup(branch)
+              }
             >
               <Trash2 aria-hidden='true' className='size-3.5' />
             </Button>
@@ -352,6 +437,7 @@ export function CartTree({
                   onToggleLeaf={onToggleLeaf}
                   onRemoveSingle={onRemoveEntry}
                   readOnly={readOnly}
+                  showLeafTask={showLeafTask}
                 />
               ) : (
                 <BranchRow
@@ -360,19 +446,14 @@ export function CartTree({
                   selectedEntryIds={selectedEntryIds}
                   openKeys={openKeys}
                   depth={2}
-                  onToggleOpen={(key) =>
-                    setOpenKeys((prev) => {
-                      const next = new Set(prev)
-                      if (next.has(key)) next.delete(key)
-                      else next.add(key)
-                      return next
-                    })
-                  }
+                  onToggleOpen={toggleOpenKey}
                   onToggleLeaf={onToggleLeaf}
                   onToggleBranch={onToggleBranch}
                   onRemoveGroup={handleRemoveGroup}
                   onRemoveEntry={onRemoveEntry}
                   readOnly={readOnly}
+                  showLeafTask={showLeafTask}
+                  renderCaseNode={renderCaseNode}
                 />
               )
             )}
@@ -382,85 +463,122 @@ export function CartTree({
     )
   }
 
+  /** 子项统一渲染（任务分组视图与三视图共用；depth 从顶向下递增） */
+  const renderCartItem = (item: CartTreeItem, depth: number) => {
+    if (item.kind === 'leaf') {
+      return (
+        <LeafRow
+          key={item.key}
+          leaf={item}
+          selected={selectedEntryIds.has(item.entryId)}
+          onToggleLeaf={onToggleLeaf}
+          onRemoveSingle={onRemoveEntry}
+          readOnly={readOnly}
+          showLeafTask={showLeafTask}
+        />
+      )
+    }
+    if (item.level === 'case') {
+      return renderCaseNode(item)
+    }
+    return (
+      <BranchRow
+        key={item.key}
+        branch={item}
+        selectedEntryIds={selectedEntryIds}
+        openKeys={openKeys}
+        depth={depth}
+        onToggleOpen={toggleOpenKey}
+        onToggleLeaf={onToggleLeaf}
+        onToggleBranch={onToggleBranch}
+        onRemoveGroup={handleRemoveGroup}
+        onRemoveEntry={onRemoveEntry}
+        readOnly={readOnly}
+        showLeafTask={showLeafTask}
+        renderCaseNode={renderCaseNode}
+      />
+    )
+  }
+
+  /** 三视图顶层组头（用例/设备/结果类型；跨任务「来自 {m} 个任务」+ 移除整组，§4.2 ②） */
+  const renderTopGroup = (branch: CartTreeBranch, index: number) => {
+    /** 用例视图顶层：用例节点 = PickCaseCard（compact 计数 + 「来自 {m} 个任务」+ 移除整组，§4.2 ② mermaid） */
+    if (branch.level === 'case') {
+      return (
+        <section key={branch.key} className='mb-2'>
+          {renderCaseNode(branch, true)}
+        </section>
+      )
+    }
+    const taskCount = collectSourceTaskCount([branch])
+    const group = groups[index] // 任务分组视图下取来源任务组
+    const state = getCartBranchSelectionState(branch, selectedEntryIds)
+    const isTaskView = view === 'task'
+    return (
+      <section key={branch.key} className='mb-2'>
+        <div className='hover:bg-muted/40 flex min-w-0 items-center gap-2 rounded-md py-1 pr-2 text-[13px]'>
+          {!readOnly && (
+            <Checkbox
+              checked={state === 'checked'}
+              indeterminate={state === 'indeterminate'}
+              onCheckedChange={() =>
+                onToggleBranch(branch, state !== 'checked')
+              }
+              aria-label={`${branch.name}（${branch.count} 条）`}
+              className='shrink-0'
+            />
+          )}
+          <span className='min-w-0 flex-1 truncate font-medium'>
+            {branch.name}
+          </span>
+          {!isTaskView && taskCount > 0 && (
+            <span className='text-muted-foreground/70 shrink-0 text-[11px]'>
+              来自 {taskCount} 个任务
+            </span>
+          )}
+          {!isTaskView && state === 'indeterminate' && (
+            <span className='text-muted-foreground/70 shrink-0 text-[11px]'>
+              部分选中
+            </span>
+          )}
+          <Badge variant='secondary' className='shrink-0 font-mono text-[10px]'>
+            {branch.count} 条
+          </Badge>
+          {!readOnly &&
+            (isTaskView ? (
+              <Button
+                variant='ghost'
+                size='icon-xs'
+                aria-label='移除整组'
+                className='text-muted-foreground shrink-0'
+                onClick={() =>
+                  group && onRemoveTask(group.taskId, branch.name, branch.count)
+                }
+              >
+                <Trash2 aria-hidden='true' className='size-3.5' />
+              </Button>
+            ) : (
+              <Button
+                variant='ghost'
+                size='icon-xs'
+                aria-label='移除整组'
+                className='text-muted-foreground shrink-0'
+                onClick={() => handleRemoveTopGroup(branch)}
+              >
+                <Trash2 aria-hidden='true' className='size-3.5' />
+              </Button>
+            ))}
+        </div>
+        <div className='mt-1 flex flex-col gap-2'>
+          {branch.children.map((child) => renderCartItem(child, 1))}
+        </div>
+      </section>
+    )
+  }
+
   return (
     <div className={cn('flex flex-col', className)}>
-      {items.map((task, index) => {
-        const group = groups[index]
-        const taskState = getCartBranchSelectionState(task, selectedEntryIds)
-        return (
-          <section key={task.key} className='mb-2'>
-            <div className='hover:bg-muted/40 flex min-w-0 items-center gap-2 rounded-md py-1 pr-2 text-[13px]'>
-              {!readOnly && (
-                <Checkbox
-                  checked={taskState === 'checked'}
-                  indeterminate={taskState === 'indeterminate'}
-                  onCheckedChange={() =>
-                    onToggleBranch(task, taskState !== 'checked')
-                  }
-                  aria-label={`${task.name}（${task.count} 条）`}
-                  className='shrink-0'
-                />
-              )}
-              <span className='min-w-0 flex-1 truncate font-medium'>
-                {task.name}
-              </span>
-              <Badge variant='secondary' className='shrink-0 font-mono text-[10px]'>
-                {task.count} 条
-              </Badge>
-              {!readOnly && (
-                <Button
-                  variant='ghost'
-                  size='icon-xs'
-                  aria-label='移除整组'
-                  className='text-muted-foreground shrink-0'
-                  onClick={() =>
-                    onRemoveTask(group.taskId, task.name, task.count)
-                  }
-                >
-                  <Trash2 aria-hidden='true' className='size-3.5' />
-                </Button>
-              )}
-            </div>
-            <div className='mt-1 flex flex-col gap-2'>
-              {task.children.map((child) =>
-                child.kind === 'leaf' ? (
-                  <LeafRow
-                    key={child.key}
-                    leaf={child}
-                    selected={selectedEntryIds.has(child.entryId)}
-                    onToggleLeaf={onToggleLeaf}
-                    onRemoveSingle={onRemoveEntry}
-                    readOnly={readOnly}
-                  />
-                ) : child.level === 'case' ? (
-                  renderCaseNode(child)
-                ) : (
-                  <BranchRow
-                    key={child.key}
-                    branch={child}
-                    selectedEntryIds={selectedEntryIds}
-                    openKeys={openKeys}
-                    depth={1}
-                    onToggleOpen={(key) =>
-                      setOpenKeys((prev) => {
-                        const next = new Set(prev)
-                        if (next.has(key)) next.delete(key)
-                        else next.add(key)
-                        return next
-                      })
-                    }
-                    onToggleLeaf={onToggleLeaf}
-                    onToggleBranch={onToggleBranch}
-                    onRemoveGroup={handleRemoveGroup}
-                    onRemoveEntry={onRemoveEntry}
-                    readOnly={readOnly}
-                  />
-                )
-              )}
-            </div>
-          </section>
-        )
-      })}
+      {items.map((item, index) => renderTopGroup(item as CartTreeBranch, index))}
     </div>
   )
 }

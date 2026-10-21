@@ -48,6 +48,23 @@ function algorithmTypeField(enforcePattern: boolean) {
     : base
 }
 
+/** 映射行 schema（§6.5 设备/API/评估三节共用；INT-1160 返工字段补齐，可选字段 output 与 MappingRow 对齐） */
+function mappingRowSchema(sourceRequired: boolean, targetRequired: boolean) {
+  return z.object({
+    key: z.string(),
+    id: z.number().optional(),
+    source: z.string().optional(),
+    sourceDirection: z.string().optional(),
+    sourceParam: sourceRequired ? z.string().min(1, '请选择源参数') : z.string(),
+    paramName: z.string().optional(),
+    dimensionId: z.string().optional(),
+    dimensionName: z.string().optional(),
+    targetParam: targetRequired ? z.string().min(1, '请选择目标参数') : z.string(),
+    targetParamName: z.string().optional(),
+    transformType: z.string(),
+  })
+}
+
 const baseObjectFields = {
   type: z.string(),
   name: z.string(),
@@ -112,30 +129,9 @@ const baseObjectFields = {
     })
   ),
   mappings: z.object({
-    device: z.array(
-      z.object({
-        key: z.string(),
-        sourceParam: z.string().min(1, '请选择源参数'),
-        targetParam: z.string().min(1, '请选择目标参数'),
-        transformType: z.string().min(1),
-      })
-    ),
-    api: z.array(
-      z.object({
-        key: z.string(),
-        sourceParam: z.string().min(1, '请选择源参数'),
-        targetParam: z.string().min(1, '请选择目标参数'),
-        transformType: z.string().min(1),
-      })
-    ),
-    evaluation: z.array(
-      z.object({
-        key: z.string(),
-        sourceParam: z.string().min(1, '请选择源参数'),
-        targetParam: z.string().min(1, '请选择目标参数'),
-        transformType: z.string().min(1),
-      })
-    ),
+    device: z.array(mappingRowSchema(true, true)),
+    api: z.array(mappingRowSchema(true, true)),
+    evaluation: z.array(mappingRowSchema(true, true)),
   }),
   associatedDimensions: z.array(
     z.object({
@@ -184,30 +180,9 @@ const draftObjectFields = {
     })
   ),
   mappings: z.object({
-    device: z.array(
-      z.object({
-        ...baseObjectFields.mappings.shape.device.element.shape,
-        sourceParam: z.string(),
-        targetParam: z.string(),
-        transformType: z.string(),
-      })
-    ),
-    api: z.array(
-      z.object({
-        ...baseObjectFields.mappings.shape.api.element.shape,
-        sourceParam: z.string(),
-        targetParam: z.string(),
-        transformType: z.string(),
-      })
-    ),
-    evaluation: z.array(
-      z.object({
-        ...baseObjectFields.mappings.shape.evaluation.element.shape,
-        sourceParam: z.string(),
-        targetParam: z.string(),
-        transformType: z.string(),
-      })
-    ),
+    device: z.array(mappingRowSchema(false, false)),
+    api: z.array(mappingRowSchema(false, false)),
+    evaluation: z.array(mappingRowSchema(false, false)),
   }),
   associatedDimensions: z.array(
     z.object({
@@ -254,6 +229,8 @@ function buildPublishAlgorithmFormSchema(enforcePattern: boolean) {
       checkUnique(ctx, 'referenceParams', 'code', values.referenceParams.map((p) => p.code))
       // 范围 min≤max（number/slider 型；发布严格门槛，草稿不校验）
       checkRange(ctx, values.caseParams)
+      // 参数映射判重兜底（§6.5/INT-1160 返工）：与后端 _upsert_mappings 唯一约束对齐
+      checkMappingDuplicates(ctx, values.mappings)
     })
 }
 
@@ -312,6 +289,52 @@ function checkRange(
       })
     }
   })
+}
+
+type MappingRowDupShape = {
+  source?: string
+  sourceParam: string
+  dimensionId?: string
+}
+
+/**
+ * 参数映射判重兜底（§6.5/INT-1160 返工）：与后端 `_upsert_mappings` 唯一约束
+ * (source, source_param, dimension_id) 对齐。
+ * - 设备/API 来源 = 节类型固定，唯一键 = 源参数代码（dimension_id 恒空）；
+ * - 评估 唯一键 = (来源, 源参数代码, 维度)。
+ * 发布严格门槛（草稿宽松 schema 不校验）；行内 handler 实时判重弹 toast，
+ * 此处兜底把重复行挡在发布之外（防后端 find-or-upsert 静默合并覆盖）。
+ */
+function checkMappingDuplicates(
+  ctx: z.RefinementCtx,
+  mappings: {
+    device: MappingRowDupShape[]
+    api: MappingRowDupShape[]
+    evaluation: MappingRowDupShape[]
+  }
+) {
+  const seenSection = (section: 'device' | 'api' | 'evaluation') => {
+    const rows = mappings[section]
+    const seen = new Map<string, number>()
+    rows.forEach((row, index) => {
+      if (!row.sourceParam) return
+      const key =
+        section === 'evaluation'
+          ? `${row.source || 'case'}\u0000${row.sourceParam}\u0000${row.dimensionId || ''}`
+          : row.sourceParam
+      if (seen.has(key)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['mappings', section, index, 'sourceParam'],
+          message: '映射重复：同一来源+源参数+维度不允许重复',
+        })
+      }
+      seen.set(key, index)
+    })
+  }
+  seenSection('device')
+  seenSection('api')
+  seenSection('evaluation')
 }
 
 export type AlgorithmFormSchema = z.infer<typeof algorithmFormSchema>

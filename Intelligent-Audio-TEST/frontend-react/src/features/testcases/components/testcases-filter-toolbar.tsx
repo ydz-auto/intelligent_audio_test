@@ -57,6 +57,8 @@ export interface TestCasesFilterToolbarProps {
   cases: TestCaseListItem[]
   /** 回收站「全部恢复」 */
   onRestoreAll: () => void
+  /** readOnly 观察态（10_测试执行.md §3.1.1）：收藏/回收站切换、全部恢复、重置隐藏 */
+  readOnly?: boolean
 }
 
 /** 单选 facet chip（Popover + 选项列表 + 选中态） */
@@ -469,6 +471,7 @@ export function TestCasesFilterToolbar({
   categories = [],
   cases,
   onRestoreAll,
+  readOnly = false,
 }: TestCasesFilterToolbarProps) {
   const searchRef = useRef<HTMLInputElement>(null)
   const [searchInput, setSearchInput] = useState(filters.search ?? '')
@@ -557,14 +560,16 @@ export function TestCasesFilterToolbar({
         />
 
         <TestCasesAlgorithmChip />
-        <FavoriteTrashToggle
-          value={{
-            favorite: filters.favorite ?? false,
-            trash: filters.trash ?? false,
-          }}
-          onChange={(v) => update({ favorite: v.favorite, trash: v.trash })}
-        />
-        {isTrash && (
+        {!readOnly && (
+          <FavoriteTrashToggle
+            value={{
+              favorite: filters.favorite ?? false,
+              trash: filters.trash ?? false,
+            }}
+            onChange={(v) => update({ favorite: v.favorite, trash: v.trash })}
+          />
+        )}
+        {!readOnly && isTrash && (
           <Button
             variant='ghost'
             size='sm'
@@ -584,7 +589,7 @@ export function TestCasesFilterToolbar({
           />
         )}
 
-        {isFiltered && (
+        {!readOnly && isFiltered && (
           <Button
             variant='ghost'
             size='sm'

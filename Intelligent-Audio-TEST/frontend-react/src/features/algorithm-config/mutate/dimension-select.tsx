@@ -118,18 +118,7 @@ function groupByCategory(
 const sectionCount = (section: CategorySection) =>
   section.groups.reduce((sum, g) => sum + g.children.length + (g.main ? 1 : 0), 0)
 
-export function DimensionSelect({
-  dimensions,
-  categories = [],
-  value,
-  onValueChange,
-  valueOf = (dimension: Dimension) => dimId(dimension),
-  placeholder = '选择评估维度',
-  triggerClassName = 'w-56',
-  ariaLabel = '评估维度',
-  clearLabel,
-  triggerLabel,
-}: {
+export function DimensionSelect(props: {
   dimensions: Dimension[]
   /** 评估维度分类（分类分组组头；不传=整片主/子分组云） */
   categories?: EvaluationCategory[]
@@ -138,7 +127,7 @@ export function DimensionSelect({
   onValueChange: (value: string) => void
   /** 维度 → 选项值的提取器（评估映射 target 用 name，关联维度用 id） */
   valueOf?: (dimension: Dimension) => string
-  /** 空值占位；值为空且未选中时显示。未匹配选项的存量值（如已删除维度的映射 target）回退显示原值（数据保全，与 annotation-code-select 同口径） */
+  /** 空值占位；值为空且未选中时显示。未匹配选项的存量值（如已删除维度的映射 target）回退显示「维度(id)」（与分组头/详情 §7.2 同口径，数据保全） */
   placeholder?: string
   triggerClassName?: string
   ariaLabel?: string
@@ -147,6 +136,26 @@ export function DimensionSelect({
   /** 触发器前缀标签（筛选 chip 形态：如「评估维度」+ 当前值） */
   triggerLabel?: string
 }) {
+  const {
+    dimensions,
+    categories = [],
+    value,
+    onValueChange,
+    placeholder = '选择评估维度',
+    triggerClassName = 'w-56',
+    ariaLabel = '评估维度',
+    clearLabel,
+    triggerLabel,
+  } = props
+  // valueOf 是 Object.prototype 的继承属性：调用方缺省该 prop 时解构仍会拿到原生
+  // valueOf（而非 undefined），参数默认值因此不生效（JS 解构坑）。用 hasOwnProperty
+  // 判断是否真的传入；未传入回退 dimId（INT-1160 返工 P2）。
+  const valueOf: (dimension: Dimension) => string = Object.prototype.hasOwnProperty.call(
+    props,
+    'valueOf'
+  )
+    ? (props.valueOf as (dimension: Dimension) => string)
+    : (dimension: Dimension) => dimId(dimension)
   const sections = useMemo(
     () => groupByCategory(buildCloudGroups(dimensions), categories),
     [dimensions, categories]
@@ -165,7 +174,7 @@ export function DimensionSelect({
               ? `└ ${selected.name}`
               : selected.name
             : value !== ''
-              ? value
+              ? `维度(${value})`
               : placeholder}
         </SelectValue>
       </SelectTrigger>

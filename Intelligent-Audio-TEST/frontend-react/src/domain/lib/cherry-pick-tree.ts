@@ -608,6 +608,8 @@ export function buildCartTree(groups: { taskId: number; taskName: string; entrie
             executionStatus: e.executionStatus,
             evaluationStatus: e.evaluationStatus,
             invalid: e.invalid,
+            sourceTaskId: e.sourceTaskId,
+            sourceTaskName: e.sourceTaskName,
           }))
           resultTypes.push({
             kind: 'branch',
@@ -652,6 +654,295 @@ export function buildCartTree(groups: { taskId: number; taskName: string; entrie
       children: cases,
     }
   })
+}
+
+/* ============================================================
+ * 购物车三视图树构建（§4.2 ②，INT-1128）：用例 / 设备 / 结果类型
+ * 购物车条目快照（source_task/case/device/api/result_type）重建三棵聚合树，
+ * 与挑选页同层级口径（树内不设任务级分支）；任务维度以 叶行来源任务名 +
+ * 顶层组头「来自 {m} 个任务」保留（§4.2 ②-①/②-②）。纯函数，组件仅消费。
+ * ============================================================ */
+
+/** 购物车条目 → case 分组 key（缺失折叠 unknown，与 buildCartTree 同口径） */
+function cartCaseKey(e: PickCartEntry): string {
+  return e.sourceCaseId ?? 'unknown'
+}
+
+/** 购物车条目 → 设备/API 分组 key（device_id 与 api_id 二选一，实测） */
+function cartDeviceKey(e: PickCartEntry): string {
+  return e.sourceDeviceId != null
+    ? `device:${e.sourceDeviceId}`
+    : `api:${e.sourceApiId ?? '?'}`
+}
+
+/** 购物车条目 → result_type 分组 key（缺省折叠「结果类型待补充」，§11-5） */
+function cartResultTypeKey(e: PickCartEntry): string {
+  return e.sourceResultType && e.sourceResultType.trim()
+    ? e.sourceResultType
+    : PENDING_RESULT_TYPE_KEY
+}
+
+/** 购物车叶行构造（来源任务名消歧字段 §4.2 ②-①） */
+function buildCartLeaf(e: PickCartEntry): CartTreeLeaf {
+  return {
+    kind: 'leaf',
+    key: `cart-leaf:${e.itemId}`,
+    entryId: e.itemId,
+    caseName: caseDisplayName(e.sourceCaseName, e.sourceCaseId),
+    deviceName: e.sourceDeviceName,
+    apiName: e.sourceApiName,
+    resultType: e.sourceResultType,
+    executionStatus: e.executionStatus,
+    evaluationStatus: e.evaluationStatus,
+    invalid: e.invalid,
+    sourceTaskId: e.sourceTaskId,
+    sourceTaskName: e.sourceTaskName,
+  }
+}
+
+/** 设备/API 级分支构造（购物车三视图共用：设备 → result_type → 叶） */
+function buildCartDeviceBranch(
+  entries: PickCartEntry[],
+  prefix: string
+): CartTreeBranch {
+  const dk = cartDeviceKey(entries[0])
+  const deviceDisplay = deviceGroupDisplayName(
+    entries[0]?.sourceDeviceName ?? entries[0]?.sourceApiName ?? null,
+    entries[0]?.sourceDeviceId ?? null,
+    entries[0]?.sourceApiId ?? null
+  )
+  const resultTypeMap = new Map<string, PickCartEntry[]>()
+  for (const e of entries) {
+    const rt = cartResultTypeKey(e)
+    const list = resultTypeMap.get(rt) ?? []
+    list.push(e)
+    resultTypeMap.set(rt, list)
+  }
+
+  const resultTypes: CartTreeBranch[] = []
+  for (const [rt, rtRows] of resultTypeMap) {
+    const leaves = rtRows.map(buildCartLeaf)
+    resultTypes.push({
+      kind: 'branch',
+      key: `${prefix}-resultType:${dk}:${rt}`,
+      level: 'resultType',
+      name: rt === PENDING_RESULT_TYPE_KEY ? PENDING_RESULT_TYPE_LABEL : rt,
+      count: leaves.length,
+      entryIds: rtRows.map((e) => e.itemId),
+      children: leaves,
+    })
+  }
+
+  return {
+    kind: 'branch',
+    key: `${prefix}-device:${dk}`,
+    level: 'device',
+    name: deviceDisplay,
+    count: entries.length,
+    entryIds: entries.map((e) => e.itemId),
+    children: resultTypes,
+  }
+}
+
+/** 用例级分支构造（购物车用例节点 = PickCaseCard，§3.8.4） */
+function buildCartCaseBranch(
+  entries: PickCartEntry[],
+  prefix: string,
+  buildChildren: (entries: PickCartEntry[]) => CartTreeItem[]
+): CartTreeBranch {
+  const first = entries[0]
+  return {
+    kind: 'branch',
+    key: `${prefix}-case:${cartCaseKey(first)}`,
+    level: 'case',
+    name: caseDisplayName(first?.sourceCaseName, first?.sourceCaseId ?? null),
+    caseId: first?.sourceCaseId ?? undefined,
+    count: entries.length,
+    entryIds: entries.map((e) => e.itemId),
+    children: buildChildren(entries),
+  }
+}
+
+/** 购物车用例视图（§4.2 ②）：用例（PickCaseCard）→ 设备/API → result_type → 叶 */
+export function buildCartCaseView(groups: PickCartGroup[]): CartTreeBranch[] {
+  const caseMap = new Map<string, PickCartEntry[]>()
+  for (const g of groups) {
+    for (const e of g.entries) {
+      const ck = cartCaseKey(e)
+      const list = caseMap.get(ck) ?? []
+      list.push(e)
+      caseMap.set(ck, list)
+    }
+  }
+
+  const cases: CartTreeBranch[] = []
+  for (const [ck, caseRows] of caseMap) {
+    const deviceMap = new Map<string, PickCartEntry[]>()
+    for (const e of caseRows) {
+      const dk = cartDeviceKey(e)
+      const list = deviceMap.get(dk) ?? []
+      list.push(e)
+      deviceMap.set(dk, list)
+    }
+    const devices: CartTreeBranch[] = []
+    for (const deviceRows of deviceMap.values()) {
+      devices.push(buildCartDeviceBranch(deviceRows, `cv-${ck}`))
+    }
+    cases.push(buildCartCaseBranch(caseRows, 'cv', () => devices))
+  }
+
+  return cases
+}
+
+/** 购物车设备视图（§4.2 ②）：设备/API → result_type → 用例（PickCaseCard）→ 叶 */
+export function buildCartDeviceView(groups: PickCartGroup[]): CartTreeBranch[] {
+  const deviceMap = new Map<string, PickCartEntry[]>()
+  for (const g of groups) {
+    for (const e of g.entries) {
+      const dk = cartDeviceKey(e)
+      const list = deviceMap.get(dk) ?? []
+      list.push(e)
+      deviceMap.set(dk, list)
+    }
+  }
+
+  const devices: CartTreeBranch[] = []
+  for (const [dk, deviceRows] of deviceMap) {
+    const deviceDisplay = deviceGroupDisplayName(
+      deviceRows[0]?.sourceDeviceName ?? deviceRows[0]?.sourceApiName ?? null,
+      deviceRows[0]?.sourceDeviceId ?? null,
+      deviceRows[0]?.sourceApiId ?? null
+    )
+    const resultTypeMap = new Map<string, PickCartEntry[]>()
+    for (const e of deviceRows) {
+      const rt = cartResultTypeKey(e)
+      const list = resultTypeMap.get(rt) ?? []
+      list.push(e)
+      resultTypeMap.set(rt, list)
+    }
+
+    const resultTypes: CartTreeBranch[] = []
+    for (const [rt, rtRows] of resultTypeMap) {
+      const caseMap = new Map<string, PickCartEntry[]>()
+      for (const e of rtRows) {
+        const ck = cartCaseKey(e)
+        const list = caseMap.get(ck) ?? []
+        list.push(e)
+        caseMap.set(ck, list)
+      }
+      const cases: CartTreeBranch[] = []
+      for (const caseRows of caseMap.values()) {
+        cases.push(
+          buildCartCaseBranch(caseRows, `dv-${dk}-${rt}`, (rows) =>
+            rows.map(buildCartLeaf)
+          )
+        )
+      }
+      resultTypes.push({
+        kind: 'branch',
+        key: `dv-resultType:${dk}:${rt}`,
+        level: 'resultType',
+        name: rt === PENDING_RESULT_TYPE_KEY ? PENDING_RESULT_TYPE_LABEL : rt,
+        count: rtRows.length,
+        entryIds: rtRows.map((e) => e.itemId),
+        children: cases,
+      })
+    }
+
+    devices.push({
+      kind: 'branch',
+      key: `dv-device:${dk}`,
+      level: 'device',
+      name: deviceDisplay,
+      count: deviceRows.length,
+      entryIds: deviceRows.map((e) => e.itemId),
+      children: resultTypes,
+    })
+  }
+
+  return devices
+}
+
+/** 购物车结果类型视图（§4.2 ②）：result_type → 设备/API → 用例（PickCaseCard）→ 叶 */
+export function buildCartResultTypeView(groups: PickCartGroup[]): CartTreeBranch[] {
+  const rtMap = new Map<string, PickCartEntry[]>()
+  for (const g of groups) {
+    for (const e of g.entries) {
+      const rt = cartResultTypeKey(e)
+      const list = rtMap.get(rt) ?? []
+      list.push(e)
+      rtMap.set(rt, list)
+    }
+  }
+
+  const resultTypes: CartTreeBranch[] = []
+  for (const [rt, rtRows] of rtMap) {
+    const deviceMap = new Map<string, PickCartEntry[]>()
+    for (const e of rtRows) {
+      const dk = cartDeviceKey(e)
+      const list = deviceMap.get(dk) ?? []
+      list.push(e)
+      deviceMap.set(dk, list)
+    }
+
+    const devices: CartTreeBranch[] = []
+    for (const [dk, deviceRows] of deviceMap) {
+      const deviceDisplay = deviceGroupDisplayName(
+        deviceRows[0]?.sourceDeviceName ?? deviceRows[0]?.sourceApiName ?? null,
+        deviceRows[0]?.sourceDeviceId ?? null,
+        deviceRows[0]?.sourceApiId ?? null
+      )
+      const caseMap = new Map<string, PickCartEntry[]>()
+      for (const e of deviceRows) {
+        const ck = cartCaseKey(e)
+        const list = caseMap.get(ck) ?? []
+        list.push(e)
+        caseMap.set(ck, list)
+      }
+      const cases: CartTreeBranch[] = []
+      for (const caseRows of caseMap.values()) {
+        cases.push(
+          buildCartCaseBranch(caseRows, `rtv-${rt}-${dk}`, (rows) =>
+            rows.map(buildCartLeaf)
+          )
+        )
+      }
+      devices.push({
+        kind: 'branch',
+        key: `rtv-device:${rt}:${dk}`,
+        level: 'device',
+        name: deviceDisplay,
+        count: deviceRows.length,
+        entryIds: deviceRows.map((e) => e.itemId),
+        children: cases,
+      })
+    }
+
+    resultTypes.push({
+      kind: 'branch',
+      key: `rtv-resultType:${rt}`,
+      level: 'resultType',
+      name: rt === PENDING_RESULT_TYPE_KEY ? PENDING_RESULT_TYPE_LABEL : rt,
+      count: rtRows.length,
+      entryIds: rtRows.map((e) => e.itemId),
+      children: devices,
+    })
+  }
+
+  return resultTypes
+}
+
+/** 收集节点内去重来源任务数（三视图顶层组头「来自 {m} 个任务」/移除整组确认文案，§4.2 ②-②） */
+export function collectSourceTaskCount(items: CartTreeItem[]): number {
+  const taskIds = new Set<number>()
+  const walk = (nodes: CartTreeItem[]) => {
+    for (const node of nodes) {
+      if (node.kind === 'leaf') taskIds.add(node.sourceTaskId)
+      else walk(node.children)
+    }
+  }
+  walk(items)
+  return taskIds.size
 }
 
 /** 收集购物车树节点全部条目 id（移除矩阵：节点/整组批量移除，§4.3） */

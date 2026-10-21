@@ -25,6 +25,7 @@
 import type {
   AlgorithmDefinition,
   AlgorithmGroup,
+  DimensionParam,
 } from '@/domain/models/algorithmConfig'
 import { request } from '@/infrastructure/api/client'
 import { ApiError } from '@/infrastructure/api/api-error'
@@ -39,6 +40,7 @@ import {
   toAlgorithmGroupDto,
   toBulkDeleteDto,
   toBulkDeleteResult,
+  toDimensionParam,
   toImportDto,
   toImportResult,
   toReloadConfigResult,
@@ -49,6 +51,7 @@ import {
   type AlgorithmGroupDto,
   type AlgorithmGroupListDto,
   type AlgorithmImportResultDto,
+  type DimensionParamDto,
   type ReloadConfigDto,
 } from '@/infrastructure/dto/algorithm-config.dto'
 
@@ -125,6 +128,17 @@ export type SaveAlgorithmInput = {
   referenceParams: Array<Record<string, unknown>>
   mappings: { device: unknown[]; api: unknown[]; evaluation: unknown[] }
   associatedDimensions: Array<Record<string, unknown>>
+}
+
+/** 评估维度参数（evaluation 映射「目标参数」下拉数据源；GET /algorithm/dimension-params/{id}） */
+export async function fetchDimensionParams(
+  dimensionId: number
+): Promise<DimensionParam[]> {
+  const dto = await request<{ params?: DimensionParamDto[] }>(
+    'GET',
+    `/algorithm/dimension-params/${dimensionId}`
+  )
+  return (Array.isArray(dto?.params) ? dto.params : []).map(toDimensionParam)
 }
 
 /* ───────── 评估维度名 → id 解析（写侧 evaluation 映射的 dimension_id 对账） ───────── */

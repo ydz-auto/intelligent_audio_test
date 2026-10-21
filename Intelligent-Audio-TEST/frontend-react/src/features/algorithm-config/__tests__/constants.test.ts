@@ -54,9 +54,16 @@ describe('algorithm-config constants', () => {
     ])
   })
 
-  it('转换类型枚举覆盖 none/uppercase/lowercase/json_parse', () => {
+  it('转换类型枚举覆盖 V9.7.10 六种（none/uppercase/lowercase/json_parse/rttm_to_obj/stm_to_obj）', () => {
     const values = TRANSFORM_TYPE_OPTIONS.map((o) => o.value)
-    expect(values).toEqual(['none', 'uppercase', 'lowercase', 'json_parse'])
+    expect(values).toEqual([
+      'none',
+      'uppercase',
+      'lowercase',
+      'json_parse',
+      'rttm_to_obj',
+      'stm_to_obj',
+    ])
   })
 
   it('参考参数类型与合并方式中文文案齐备', () => {

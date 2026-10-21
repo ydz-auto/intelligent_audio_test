@@ -368,6 +368,7 @@ export function AlgorithmConfigPage() {
         open={detailDialog.open}
         onOpenChange={(open) => setDetailDialog((prev) => ({ ...prev, open, algorithm: open ? prev.algorithm : null }))}
         algorithm={detailDialog.algorithm}
+        dimensions={dimensionsQuery.data ?? []}
       />
       <AlgorithmGroupManagerDialog
         open={groupManagerOpen}

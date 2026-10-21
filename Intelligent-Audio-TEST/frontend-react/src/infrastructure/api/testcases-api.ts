@@ -150,9 +150,10 @@ export async function deleteTestCase(id: string): Promise<void> {
   await apiClient.delete(`/testcases/${id}`)
 }
 
-/** 复制测试用例（POST /testcases/{id}/copy；深度克隆，新名称默认为「原名称_copy」） */
-export async function copyTestCase(id: string): Promise<void> {
-  await apiClient.post(`/testcases/${id}/copy`)
+/** 复制测试用例（POST /testcases/{id}/copy；深度克隆，新名称默认为「原名称_copy」，返回新用例 id） */
+export async function copyTestCase(id: string): Promise<string> {
+  const dto = await apiClient.post<{ id?: string | number }>(`/testcases/${id}/copy`)
+  return dto?.id != null ? String(dto.id) : ''
 }
 
 /** 恢复单个测试用例（POST /testcases/{id}/restore；favorite_trash_bp INT-141） */
@@ -165,11 +166,31 @@ export async function purgeTestCase(id: string): Promise<void> {
   await apiClient.delete(`/testcases/${id}/purge`)
 }
 
-/** 收藏 / 取消收藏（POST/DELETE /testcases/{id}/favorite；INT-141 per-user，需带 Bearer 身份） */
+/** 收藏 / 取消收藏（POST/DELETE /testcases/{id}/favorite；INT-141 per-user，需带 Bearer 身份；
+ *  testcase:read 幂等）。开始测试用例选择行内收藏（INT-1138）：调用后由调用方就地回写列表缓存，
+ *  不整表重拉。 */
 export async function setTestCaseFavorite(
   id: string,
   favorite: boolean
 ): Promise<void> {
   if (favorite) await apiClient.post(`/testcases/${id}/favorite`)
   else await apiClient.delete(`/testcases/${id}/favorite`)
+}
+
+/** 批量恢复（POST /testcases/restore，{ids}，testcase:delete；返回 restored_count） */
+export async function restoreTestCases(ids: string[]): Promise<number> {
+  const dto = await apiClient.post<{ restored_count?: number }>(
+    '/testcases/restore',
+    { ids }
+  )
+  return dto?.restored_count ?? 0
+}
+
+/** 批量彻底删除（POST /testcases/purge，{ids}，testcase:delete；返回 purged_count） */
+export async function purgeTestCases(ids: string[]): Promise<number> {
+  const dto = await apiClient.post<{ purged_count?: number }>(
+    '/testcases/purge',
+    { ids }
+  )
+  return dto?.purged_count ?? 0
 }

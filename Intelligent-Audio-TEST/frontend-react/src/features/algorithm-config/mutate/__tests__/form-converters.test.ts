@@ -76,11 +76,33 @@ const SAMPLE: AlgorithmDefinition = {
   ],
   mappings: {
     device: [
-      { id: 501, sourceParam: 'audio_file', targetParam: 'input_audio', transformType: 'none' },
+      {
+        id: 501,
+        source: 'case',
+        sourceDirection: 'output',
+        sourceParam: 'audio_file',
+        paramName: '音频文件',
+        dimensionId: null,
+        dimensionName: null,
+        targetParam: 'input_audio',
+        targetParamName: '输入音频',
+        transformType: 'none',
+      },
     ],
     api: [],
     evaluation: [
-      { id: 504, sourceParam: 'output_text', targetParam: '识别准确率', transformType: 'none' },
+      {
+        id: 504,
+        source: 'case',
+        sourceDirection: 'output',
+        sourceParam: 'output_text',
+        paramName: '输出文本',
+        dimensionId: 3,
+        dimensionName: '识别准确率',
+        targetParam: '识别准确率',
+        targetParamName: null,
+        transformType: 'none',
+      },
     ],
   },
   associatedDimensions: [{ id: 601, dimensionId: 3, dimensionName: '识别准确率', weight: 1, isDefault: true }],
@@ -138,5 +160,35 @@ describe('form-converters', () => {
     expect(input.deviceParams[0]).toMatchObject({ paramCode: 'input_audio' })
     expect(input.mappings.device).toHaveLength(1)
     expect(input.associatedDimensions[0]).toMatchObject({ dimensionId: '3' })
+  })
+
+  it('存量未知 source（evaluation）toFormValues 不回退 case、toSaveInput 原样保留（INT-1160 返工 P3）', () => {
+    __resetFormKeyCounter()
+    const withDirty: AlgorithmDefinition = {
+      ...SAMPLE,
+      mappings: {
+        ...SAMPLE.mappings,
+        evaluation: [
+          {
+            id: 910,
+            source: 'evaluation',
+            sourceDirection: 'output',
+            sourceParam: 'wer',
+            paramName: '字错率',
+            dimensionId: 26,
+            dimensionName: '',
+            targetParam: '',
+            targetParamName: null,
+            transformType: 'none',
+          },
+        ],
+      },
+    }
+    const values = toFormValues(withDirty)
+    expect(values.mappings.evaluation[0].source).toBe('evaluation')
+    const input = toSaveInput(values)
+    expect(
+      (input.mappings.evaluation[0] as Record<string, unknown>).source
+    ).toBe('evaluation')
   })
 })

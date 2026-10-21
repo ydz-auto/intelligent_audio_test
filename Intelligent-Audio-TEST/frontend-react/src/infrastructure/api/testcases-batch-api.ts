@@ -24,6 +24,7 @@ export type TestcaseBatchAction =
   | 'auto_generate_name'
   | 'move_to_group'
   | 'copy_to_group'
+  | 'copy_by_group'
   | 'add_tags'
   | 'remove_tags'
   | 'rename_tag'
@@ -49,7 +50,8 @@ export interface TestcaseBatchPayload {
   multiDimensions?: Array<Record<string, unknown>>
   /** 目标分组（move_to_group / copy_to_group） */
   targetGroupId?: string
-  /** 按分组复制（copy_by_group）：源分组名，复制到「{名称}_copy」新分组 */
+  /** 按分组整体复制（copy_by_group，task_service TestCaseBatchCopyMoveMixin._batch_copy_by_group）；
+   *  源分组名，复制到「{名称}_copy」新分组 */
   groupName?: string
   /** 标签（add_tags / remove_tags） */
   tags?: string[]

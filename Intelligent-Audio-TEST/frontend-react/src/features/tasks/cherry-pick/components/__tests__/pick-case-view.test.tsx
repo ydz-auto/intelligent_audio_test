@@ -1,5 +1,5 @@
 /**
- * 挑选用例视图测试（18_挑选合并交互重设计.md §3.8.3，INT-1047）。
+ * 挑选用例视图测试（18_挑选合并交互重设计.md §3.8.3，INT-1047/INT-1127）。
  * 用例节点 = CaseCard compact；组织维度照用例管理页（分组/标签 + 平铺/交叉），
  * 候选未返分组/标签字段 → 全落「未分组」/「未设置标签」兜底桶；
  * 用例卡展开 → 设备/result_type → 结果行叶（复用 PickTree 层级行，叶携来源任务名）。
@@ -52,16 +52,22 @@ const BRANCHES: PickTreeBranch[] = [
 function setup(overrides: Partial<Parameters<typeof PickCaseView>[0]> = {}) {
   const onToggleLeaf = vi.fn()
   const onToggleBranch = vi.fn()
+  const onOrgChange = vi.fn()
+  const onSubViewChange = vi.fn()
   render(
     <PickCaseView
       branches={BRANCHES}
       selectedIds={new Set()}
       onToggleLeaf={onToggleLeaf}
       onToggleBranch={onToggleBranch}
+      org='group'
+      subView='flat'
+      onOrgChange={onOrgChange}
+      onSubViewChange={onSubViewChange}
       {...overrides}
     />
   )
-  return { onToggleLeaf, onToggleBranch }
+  return { onToggleLeaf, onToggleBranch, onOrgChange, onSubViewChange }
 }
 
 describe('PickCaseView（§3.8.3 用例视图组织维度）', () => {
@@ -73,9 +79,8 @@ describe('PickCaseView（§3.8.3 用例视图组织维度）', () => {
     expect(screen.getByText('2 条')).toBeInTheDocument()
   })
 
-  it('切换标签视图 → 未设置标签兜底桶（候选无标签字段，§11-7 落地前）', () => {
-    setup()
-    fireEvent.click(screen.getByText('标签视图'))
+  it('标签视图 → 未设置标签兜底桶（候选无标签字段，§11-7 落地前；org 受控于 usePickOrg）', () => {
+    setup({ org: 'tag' })
     expect(screen.getByText('未设置标签')).toBeInTheDocument()
   })
 

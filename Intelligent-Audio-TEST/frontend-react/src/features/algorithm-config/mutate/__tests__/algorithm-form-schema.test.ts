@@ -250,4 +250,59 @@ describe('algorithmFormSchema', () => {
     const publish = algorithmFormSchema.safeParse(values)
     expect(publish.success).toBe(false)
   })
+
+  /* ───────── INT-1160 返工 P2：映射判重兜底（发布 schema 与后端唯一约束对齐） ───────── */
+
+  it('发布严格：设备映射源参数代码重复被拦截（唯一键 = 源参数代码）', () => {
+    const dup = validBase()
+    dup.mappings.device = [
+      { key: 'md-1', sourceParam: 'input_audio', targetParam: 'dev_1', transformType: 'none' },
+      { key: 'md-2', sourceParam: 'input_audio', targetParam: 'dev_2', transformType: 'none' },
+    ]
+    const result = algorithmFormSchema.safeParse(dup)
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      const issue = result.error.issues.find(
+        (i) => i.message === '映射重复：同一来源+源参数+维度不允许重复'
+      )
+      expect(issue).toBeTruthy()
+      // 错误指向重复行的源参数字段（发布按钮由此 disabled，阻止静默合并覆盖）
+      expect(issue!.path).toEqual(['mappings', 'device', 1, 'sourceParam'])
+    }
+  })
+
+  it('发布严格：评估映射同 来源+源参数+维度 重复被拦截；不同维度 / 不同来源不算重复', () => {
+    const dup = validBase()
+    dup.mappings.evaluation = [
+      { key: 'me-1', source: 'case', sourceParam: 'asr_result', dimensionId: '1', targetParam: 'wer', transformType: 'none' },
+      { key: 'me-2', source: 'case', sourceParam: 'asr_result', dimensionId: '1', targetParam: 'wer2', transformType: 'none' },
+    ]
+    expect(algorithmFormSchema.safeParse(dup).success).toBe(false)
+
+    // 同来源同源参数、不同维度 → 合法（维度是唯一键组成部分）
+    const diffDim = validBase()
+    diffDim.mappings.evaluation = [
+      { key: 'me-1', source: 'case', sourceParam: 'asr_result', dimensionId: '1', targetParam: 'wer', transformType: 'none' },
+      { key: 'me-2', source: 'case', sourceParam: 'asr_result', dimensionId: '2', targetParam: 'wer2', transformType: 'none' },
+    ]
+    expect(algorithmFormSchema.safeParse(diffDim).success).toBe(true)
+
+    // 同源参数同维度、不同来源 → 合法（来源是唯一键组成部分）
+    const diffSource = validBase()
+    diffSource.mappings.evaluation = [
+      { key: 'me-1', source: 'case', sourceParam: 'asr_result', dimensionId: '1', targetParam: 'wer', transformType: 'none' },
+      { key: 'me-2', source: 'reference', sourceParam: 'asr_result', dimensionId: '1', targetParam: 'wer2', transformType: 'none' },
+    ]
+    expect(algorithmFormSchema.safeParse(diffSource).success).toBe(true)
+  })
+
+  it('草稿宽松：重复映射不拦（判重兜底属发布严格门槛，草稿中间态放行）', () => {
+    const dup = validBase()
+    dup.mappings.device = [
+      { key: 'md-1', sourceParam: 'input_audio', targetParam: 'dev_1', transformType: 'none' },
+      { key: 'md-2', sourceParam: 'input_audio', targetParam: 'dev_2', transformType: 'none' },
+    ]
+    expect(algorithmDraftFormSchema.safeParse(dup).success).toBe(true)
+    expect(algorithmFormSchema.safeParse(dup).success).toBe(false)
+  })
 })

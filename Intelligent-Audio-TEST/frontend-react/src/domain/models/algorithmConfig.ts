@@ -63,12 +63,53 @@ export type ReferenceParam = {
   helpText: string | null
 }
 
-/** 参数映射（ParamMappingItem）；transformType none/uppercase/lowercase/json_parse（API 映射另含 base64） */
+/**
+ * 参数来源（param_mappings.source：case/case_config/reference/device/api；设备/API 映射恒 case）。
+ * 已知五值 + 未知字符串透传：存量脏数据（如 history source='evaluation'）读侧原样保留、
+ * 写侧原样提交，避免读时丢弃 → 保存时把 DB 行重写（后端 upsert 自然键含 source）。
+ */
+export type MappingSource =
+  | 'case'
+  | 'case_config'
+  | 'reference'
+  | 'device'
+  | 'api'
+  | (string & {})
+
+/** 转换类型（transform_type：none/uppercase/lowercase/json_parse/rttm_to_obj/stm_to_obj；API 映射另含 base64） */
+export type MappingTransformType =
+  | 'none'
+  | 'uppercase'
+  | 'lowercase'
+  | 'json_parse'
+  | 'rttm_to_obj'
+  | 'stm_to_obj'
+  | 'base64'
+
+/**
+ * 参数映射（ParamMappingItem）。
+ * 读侧对齐 algorithm_service 序列化（_serialize_mappings）全字段：
+ * id / source / source_param / source_direction / dimension_id / dimension_name /
+ * target_param / transform_type；param_name/target_param_name 后端不下发时前端按 code 查参数表兜底。
+ * 设备/API 映射：dimension_id 恒 null，target_param=目标参数代码；评估映射：dimension_id 必填，
+ * target_param=维度内目标参数代码（空串表整维度映射，兼容存量 target_param=维度名形态）。
+ */
 export type ParamMapping = {
   id: number
+  source: MappingSource | null
+  /** 源参数方向（source_direction：input/output；缺省 output） */
+  sourceDirection: string | null
   sourceParam: string
+  /** 源参数名称（后端不下发时前端按 code 查参数表兜底） */
+  paramName: string | null
+  /** 目标评估维度 id（仅 evaluation 映射；设备/API 恒 null） */
+  dimensionId: number | null
+  /** 目标评估维度名 */
+  dimensionName: string | null
   targetParam: string
-  transformType: 'none' | 'uppercase' | 'lowercase' | 'json_parse' | 'base64'
+  /** 目标参数名称（设备/API=目标参数名；评估=维度内参数名） */
+  targetParamName: string | null
+  transformType: MappingTransformType
 }
 
 /** 映射按来源分组：device / api / evaluation */
@@ -76,6 +117,27 @@ export type AlgorithmMappings = {
   device: ParamMapping[]
   api: ParamMapping[]
   evaluation: ParamMapping[]
+}
+
+/**
+ * 评估维度参数（GET /algorithm/dimension-params/{dimension_id} 响应；
+ * evaluation 映射「目标参数」下拉选项数据源）。
+ * 序列化对照 algorithm_service config_cache._serialize_dimension_param。
+ */
+export type DimensionParam = {
+  id: number
+  dimensionId: number
+  dimensionName: string | null
+  /** 参数代码（evaluation 映射 target_param 存该值） */
+  code: string
+  name: string | null
+  label: string | null
+  fieldType: string | null
+  required: boolean
+  defaultValue: unknown
+  helpText: string | null
+  uiOrder: number | null
+  passThreshold: number | null
 }
 
 /** 评估维度关联（AlgorithmDimensionRelationItem） */
