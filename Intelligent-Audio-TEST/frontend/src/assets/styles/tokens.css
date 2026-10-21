@@ -118,6 +118,13 @@
   /* 收藏星标色（INT-215：收敛三视图魔法色 #f5a623，取 amber 标度） */
   --favorite-star: var(--color-amber-500);
 
+  /* ── AI 炫彩（联接你的 agent 入口/下载按钮，INT-1140） ──
+     彩虹渐变对齐 React ai-discount-core 渐变语言（蓝→紫→粉），
+     业务 CSS 一律引用本令牌，禁止硬编码渐变值 */
+  --magic-gradient: linear-gradient(115deg, #4f7cff 0%, #9145ee 55%, #cd4bdb 100%);
+  --magic-gradient-hover: linear-gradient(115deg, #5b8cff 0%, #a055f0 55%, #d65ee3 100%);
+  --magic-foreground: #ffffff;
+
   /* ── 布局 ── */
   --radius: 8px;
   --header-height: 64px;
@@ -286,4 +293,9 @@
   --chart-3: #6fd45c;
   --chart-4: #ff6b70;
   --chart-5: #ffc069;
+
+  /* AI 炫彩（INT-1140）：暗色主题沿用同渐变（浅色文字高对比） */
+  --magic-gradient: linear-gradient(115deg, #5b8cff 0%, #a055f0 55%, #d65ee3 100%);
+  --magic-gradient-hover: linear-gradient(115deg, #6b9cff 0%, #b065f8 55%, #e06eec 100%);
+  --magic-foreground: #ffffff;
 }

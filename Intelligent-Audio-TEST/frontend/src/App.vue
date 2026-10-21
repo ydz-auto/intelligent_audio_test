@@ -16,7 +16,11 @@
       <nav>
         <ul>
           <li v-for="item in visibleNavItems" :key="item.path">
-            <router-link :to="item.path" class="navLink" :class="{ 'justify-center': sidebarCollapsed }">
+            <router-link
+              :to="item.path"
+              class="navLink"
+              :class="{ 'justify-center': sidebarCollapsed, 'nav-magic-link': item.path === '/agent-connect' }"
+            >
               <i :class="item.icon"></i>
               <span v-if="!sidebarCollapsed">{{ item.label }}</span>
             </router-link>
@@ -103,6 +107,8 @@ const navItems: NavItem[] = [
   { path: '/LogView', label: '日志查看', icon: 'fas fa-file-alt navIcon', permission: 'log:read' },
   { path: '/TagManagement', label: '标签管理', icon: 'fas fa-tags navIcon', permission: 'tag:read' },
   { path: '/OAuthProviders', label: 'OAuth 提供方', icon: 'fas fa-plug navIcon', permission: 'auth:manage_provider' },
+  // INT-1140：联接你的 agent（炫彩入口）——个人能力入口，登录即见（permission 占位，下方 special-case）
+  { path: '/agent-connect', label: '联接你的 agent', icon: 'fas fa-robot navIcon', permission: 'agent-connect' },
 ]
 
 // ===== Stores & refs =====
@@ -139,7 +145,11 @@ const visibleNavItems = computed(() => {
     // 未登录（AUTH_MODE=off 兼容）：显示全部
     return navItems
   }
-  return navItems.filter(item => authStore.hasPermission(item.permission))
+  return navItems.filter(item => {
+    // INT-1140：联接你的 agent 为个人能力入口（Access Token 个人管理），登录即见，不依赖业务权限码
+    if (item.path === '/agent-connect') return true
+    return authStore.hasPermission(item.permission)
+  })
 })
 
 // 侧边栏折叠状态
@@ -325,6 +335,29 @@ onUnmounted(() => {
 
 .navLink.justify-center .navIcon {
   margin-right: 0;
+}
+
+/* INT-1140：联接你的 agent 炫彩导航入口（引用 tokens.css --magic-gradient 令牌，不硬编码） */
+.navLink.nav-magic-link {
+  background: var(--magic-gradient);
+  color: var(--magic-foreground);
+  border-radius: 9999px;
+  box-shadow: 0 4px 14px rgba(79, 124, 255, 0.3);
+}
+.navLink.nav-magic-link .navIcon {
+  color: var(--magic-foreground);
+}
+.navLink.nav-magic-link:hover,
+.navLink.nav-magic-link.router-link-active {
+  background: var(--magic-gradient-hover);
+  color: var(--magic-foreground);
+  transform: translateX(8px);
+  box-shadow: 0 8px 24px rgba(145, 69, 238, 0.4);
+}
+/* 关掉全局 nav a::before/::after 装饰（左侧竖条与扫光），保持炫彩渐变纯净 */
+.navLink.nav-magic-link::before,
+.navLink.nav-magic-link::after {
+  display: none;
 }
 
 @media (max-width: 768px) {
