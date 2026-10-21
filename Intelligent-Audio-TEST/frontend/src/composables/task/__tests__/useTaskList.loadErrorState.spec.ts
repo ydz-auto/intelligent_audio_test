@@ -10,6 +10,7 @@
  * 3. 成功后 error 清空。
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 
 const mocks = vi.hoisted(() => ({
   getAll: vi.fn(),
@@ -41,6 +42,7 @@ const AGG = {
 }
 
 beforeEach(() => {
+  setActivePinia(createPinia())
   vi.clearAllMocks()
   mocks.getAll.mockResolvedValue(PAGE)
   mocks.getDomainStats.mockResolvedValue(AGG)
