@@ -8,6 +8,7 @@ export { request, apiBaseUrl, addRequestInterceptor, addResponseInterceptor, typ
 
 // API domain modules
 export { authApi } from './authApi';
+export { accessTokenApi } from './accessTokenApi';
 export { tasksApi } from './tasksApi';
 export { cherryPickApi } from './cherryPickApi';
 export type {

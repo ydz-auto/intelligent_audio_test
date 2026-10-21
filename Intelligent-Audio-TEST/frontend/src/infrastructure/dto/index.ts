@@ -3,6 +3,7 @@
  */
 export * from './common'
 export * from './authDto'
+export * from './accessTokenDto'
 export * from './taskDto'
 export * from './taskProgressDto'
 export * from './testCaseDto'

@@ -48,6 +48,9 @@ import LoginRequiredModal from './LoginRequiredModal.vue'
 // INT-744：个人中心·修改密码 / 编辑资料对话框（POST /auth/change-password / PUT /auth/self）
 import ChangePasswordModal from './ChangePasswordModal.vue'
 import EditProfileModal from './EditProfileModal.vue'
+// INT-1155：个人中心·Access Token 创建 / 编辑对话框（POST/PATCH /api/v1/auth/access-tokens）
+import AccessTokenCreateModal from './AccessTokenCreateModal.vue'
+import AccessTokenEditModal from './AccessTokenEditModal.vue'
 
 export function registerGlobalModals() {
   const manager = getModalManager();
@@ -351,6 +354,25 @@ export function registerGlobalModals() {
     defaultConfig: {
       title: '编辑资料',
       width: '480px'
+    }
+  });
+
+  // INT-1155：个人中心·Access Token 创建 / 编辑（创建弹窗内含「明文仅一次展示」二段态）
+  manager.registerModal(MODAL_TYPES.ACCESS_TOKEN_CREATE, {
+    component: AccessTokenCreateModal,
+    defaultConfig: {
+      title: '创建 Access Token',
+      width: '680px',
+      maxWidth: '92vw'
+    }
+  });
+
+  manager.registerModal(MODAL_TYPES.ACCESS_TOKEN_EDIT, {
+    component: AccessTokenEditModal,
+    defaultConfig: {
+      title: '编辑 Access Token',
+      width: '680px',
+      maxWidth: '92vw'
     }
   });
 }

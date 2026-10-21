@@ -1,0 +1,10 @@
+{
+  "apiEntries": 3,
+  "hasCreateBtn": true,
+  "hasProfile": true,
+  "hasTokenState": false,
+  "hasTokenTable": true,
+  "hash": "#/profile",
+  "modalCount": 0,
+  "tokenRows": 2
+}

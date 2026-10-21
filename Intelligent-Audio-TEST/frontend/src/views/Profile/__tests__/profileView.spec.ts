@@ -16,6 +16,11 @@ const ports = vi.hoisted(() => ({
   changeMyPassword: vi.fn(),
   updateMyProfile: vi.fn(),
   getMe: vi.fn(),
+  // INT-1155：Access Token 管理区
+  listAccessTokens: vi.fn(),
+  createAccessToken: vi.fn(),
+  updateAccessToken: vi.fn(),
+  deleteAccessToken: vi.fn(),
 }))
 const modalOpen = vi.hoisted(() => vi.fn())
 const authLogout = vi.hoisted(() => vi.fn())
@@ -76,6 +81,11 @@ beforeEach(() => {
   ports.getMe.mockResolvedValue({
     userId: 1, username: 'alice', roleId: 1, roleName: undefined, permissions: [], email: 'alice@example.com',
   })
+  // INT-1155：Access Token 区默认空列表（各用例按需覆盖）
+  ports.listAccessTokens.mockResolvedValue([])
+  ports.deleteAccessToken.mockResolvedValue({})
+  ports.updateAccessToken.mockResolvedValue({})
+  ports.createAccessToken.mockResolvedValue({})
 })
 
 async function mountPage() {
@@ -200,5 +210,93 @@ describe('ProfileView 个人中心（INT-744）', () => {
     await w.findAll('button').find((b) => b.text().includes('修改密码'))!.trigger('click')
     await flushPromises()
     expect(authLogout).toHaveBeenCalled()
+  })
+
+  describe('Access Token 管理区（INT-1155）', () => {
+    const TOKEN_ROW = {
+      id: 1,
+      name: 'CI 令牌',
+      tokenHint: 'a3f2',
+      scopes: ['task:read'],
+      expiresAt: null,
+      status: 'enabled' as const,
+      lastUsedAt: null,
+      createdAt: '2026-10-20T02:00:00Z',
+    }
+
+    it('列表渲染：掩码末 4 位 / 永不过期 / 状态 / 操作钮', async () => {
+      ports.listAccessTokens.mockResolvedValue([
+        TOKEN_ROW,
+        { ...TOKEN_ROW, id: 2, name: '只读令牌', tokenHint: '7c1e', scopes: [], expiresAt: '2026-12-31T23:59:59Z', status: 'disabled', lastUsedAt: '2026-10-21T05:00:00Z' },
+      ])
+      const w = await mountPage()
+      expect(w.text()).toContain('Access Token')
+      expect(w.text()).toContain('CI 令牌')
+      expect(w.text()).toContain('a3f2')
+      expect(w.text()).toContain('全部权限') // scopes 空 = 继承用户全部
+      expect(w.text()).toContain('永不过期')
+      expect(w.text()).toContain('停用')
+      expect(w.text()).toContain('编辑')
+      expect(w.text()).toContain('删除')
+    })
+
+    it('空态：无令牌时展示空态引导', async () => {
+      const w = await mountPage()
+      expect(w.text()).toContain('暂无访问令牌')
+    })
+
+    it('创建令牌钮 → 打开 ACCESS_TOKEN_CREATE 模态并刷新列表', async () => {
+      const w = await mountPage()
+      const callsBefore = ports.listAccessTokens.mock.calls.length
+      await w.findAll('button').find((b) => b.text().includes('创建令牌'))!.trigger('click')
+      expect(modalOpen).toHaveBeenCalledWith(MODAL_TYPES.ACCESS_TOKEN_CREATE, expect.any(Object))
+      // 无论弹窗如何关闭都刷新（创建可能已成功）
+      expect(ports.listAccessTokens.mock.calls.length).toBeGreaterThan(callsBefore)
+    })
+
+    it('编辑令牌钮 → 打开 ACCESS_TOKEN_EDIT 模态（预填 token）', async () => {
+      ports.listAccessTokens.mockResolvedValue([TOKEN_ROW])
+      const w = await mountPage()
+      // 限定在令牌表内找「编辑」钮，避免误命中个人信息卡的「编辑资料」
+      await w.find('.token-table').findAll('button').find((b) => b.text().trim() === '编辑')!.trigger('click')
+      expect(modalOpen).toHaveBeenCalledWith(MODAL_TYPES.ACCESS_TOKEN_EDIT, expect.objectContaining({
+        token: expect.objectContaining({ id: 1, name: 'CI 令牌' }),
+      }))
+    })
+
+    it('启停：点击状态钮 → updateAccessToken({ status }) 并刷新', async () => {
+      ports.listAccessTokens.mockResolvedValue([TOKEN_ROW])
+      const w = await mountPage()
+      const callsBefore = ports.listAccessTokens.mock.calls.length
+      await w.findAll('button').find((b) => b.text().includes('启用'))!.trigger('click')
+      await flushPromises()
+      expect(ports.updateAccessToken).toHaveBeenCalledWith(1, { status: 'disabled' })
+      expect(ports.listAccessTokens.mock.calls.length).toBeGreaterThan(callsBefore)
+    })
+
+    it('删除：BASIC_CONFIRM（danger）确认后下发 deleteAccessToken 并刷新', async () => {
+      ports.listAccessTokens.mockResolvedValue([TOKEN_ROW])
+      modalOpen.mockResolvedValue({ confirmed: true })
+      const w = await mountPage()
+      const callsBefore = ports.listAccessTokens.mock.calls.length
+      await w.findAll('button').find((b) => b.text().includes('删除'))!.trigger('click')
+      await flushPromises()
+      expect(modalOpen).toHaveBeenCalledWith(MODAL_TYPES.BASIC_CONFIRM, expect.objectContaining({
+        title: '确认删除令牌',
+        danger: true,
+        confirmText: '删除',
+      }))
+      expect(ports.deleteAccessToken).toHaveBeenCalledWith(1)
+      expect(ports.listAccessTokens.mock.calls.length).toBeGreaterThan(callsBefore)
+    })
+
+    it('删除：取消（resolve null）→ 不下发 deleteAccessToken', async () => {
+      ports.listAccessTokens.mockResolvedValue([TOKEN_ROW])
+      modalOpen.mockResolvedValue(null)
+      const w = await mountPage()
+      await w.findAll('button').find((b) => b.text().includes('删除'))!.trigger('click')
+      await flushPromises()
+      expect(ports.deleteAccessToken).not.toHaveBeenCalled()
+    })
   })
 })

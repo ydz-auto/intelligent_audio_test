@@ -9,6 +9,7 @@ export * from './common'
 // 实体
 export * from './auth'
 export * from './profile'
+export * from './accessToken'
 export * from './task'
 export * from './taskProgress'
 export * from './publishedTask'

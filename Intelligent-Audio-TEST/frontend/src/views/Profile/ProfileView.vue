@@ -278,6 +278,121 @@
               </div>
             </div>
           </div>
+
+          <!-- Access Token 管理区（INT-1155：创建明文一次 / 列表掩码 / 复制 / 编辑 / 启停 / 删除） -->
+          <div class="profile-card section-card">
+            <div class="card-header">
+              <div class="card-heading">
+                <span class="card-icon info"><i class="fas fa-key"></i></span>
+                <div class="card-title-group">
+                  <span class="card-title">Access Token</span>
+                  <span class="card-desc">为 skill / MCP 调用平台能力生成访问令牌</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                class="btn btn-outline btn-sm"
+                title="创建 Access Token"
+                @click="openCreateToken"
+              >
+                <i class="fas fa-plus"></i> 创建令牌
+              </button>
+            </div>
+
+            <div v-if="loadingTokens" class="token-state token-loading">
+              <i class="fas fa-spinner fa-spin"></i> 加载中…
+            </div>
+
+            <div v-else-if="tokenError" class="token-state token-error">
+              <i class="fas fa-exclamation-circle"></i>
+              <span>{{ tokenError }}</span>
+              <button type="button" class="btn btn-outline btn-sm" @click="loadTokens">重试</button>
+            </div>
+
+            <div v-else-if="tokens.length === 0" class="token-state token-empty">
+              <p class="empty-title">暂无访问令牌</p>
+              <p class="empty-desc">点击「创建令牌」生成后，skill / MCP 即可通过令牌调用平台能力</p>
+            </div>
+
+            <div v-else class="token-table-wrap">
+              <table class="token-table">
+                <thead>
+                  <tr>
+                    <th>名称</th>
+                    <th>令牌</th>
+                    <th>权限范围</th>
+                    <th>有效期至</th>
+                    <th>状态</th>
+                    <th>最近使用</th>
+                    <th class="col-actions">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="token in tokens" :key="token.id">
+                    <td>
+                      <div class="token-name">{{ token.name }}</div>
+                      <div class="token-created">{{ token.createdAt ? formatDate(token.createdAt, 'YYYY-MM-DD') : '' }} 创建</div>
+                    </td>
+                    <td>
+                      <div class="token-mask" :title="maskAccessToken(token.tokenHint)">
+                        <code class="mono">{{ maskAccessToken(token.tokenHint) }}</code>
+                        <button
+                          type="button"
+                          class="copy-btn"
+                          title="复制令牌掩码"
+                          :aria-label="`复制 ${token.name} 令牌掩码`"
+                          @click="copyTokenHint(token)"
+                        >
+                          <i class="fas fa-copy"></i>
+                        </button>
+                      </div>
+                    </td>
+                    <td>
+                      <div class="token-scopes">
+                        <span v-if="token.scopes.length === 0" class="badge scope-badge all">全部权限</span>
+                        <template v-else>
+                          <span
+                            v-for="code in token.scopes.slice(0, 3)"
+                            :key="code"
+                            class="badge scope-badge"
+                            :title="accessTokenScopeLabel(code)"
+                          >{{ accessTokenScopeLabel(code) }}</span>
+                          <span v-if="token.scopes.length > 3" class="scope-more">+{{ token.scopes.length - 3 }}</span>
+                        </template>
+                      </div>
+                    </td>
+                    <td>
+                      <span class="expires-label" :class="{ expired: isAccessTokenExpired(token.expiresAt) }">
+                        {{ accessTokenExpiresLabel(token.expiresAt) }}
+                      </span>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        class="status-pill"
+                        :class="token.status"
+                        :title="token.status === 'enabled' ? '点击停用' : '点击启用'"
+                        @click="toggleTokenStatus(token)"
+                      >
+                        <span class="status-dot"></span>
+                        {{ token.status === 'enabled' ? '启用' : '停用' }}
+                      </button>
+                    </td>
+                    <td class="last-used">{{ accessTokenLastUsedLabel(token.lastUsedAt) }}</td>
+                    <td class="col-actions">
+                      <button type="button" class="btn btn-ghost btn-sm" @click="openEditToken(token)">编辑</button>
+                      <button type="button" class="btn btn-ghost-danger btn-sm" @click="removeToken(token)">删除</button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="card-footnote">
+              <i class="fas fa-info-circle"></i>
+              <span>Access Token 用于 skill / MCP 调用平台能力（「联接你的 agent」）。完整令牌仅在创建时显示一次，列表仅展示掩码末 4 位。</span>
+            </div>
+          </div>
         </div>
 
         <!-- 右列：快捷入口 + 外观提示（§3.6） -->
@@ -360,6 +475,15 @@ import '../../assets/styles/layouts/main.css'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useAuthStore } from '../../store/authStore'
 import { useProfilePage } from '../../composables/profile/useProfilePage'
+import {
+  useAccessTokens,
+  maskAccessToken,
+  accessTokenExpiresLabel,
+  isAccessTokenExpired,
+  accessTokenLastUsedLabel,
+} from '../../composables/profile/useAccessTokens'
+import { accessTokenScopeLabel } from '../../composables/profile/accessTokenScopes'
+import { formatDate } from '@/utils/utils'
 
 const authStore = useAuthStore()
 const {
@@ -388,6 +512,19 @@ const {
   canSeeSettingsQuickLink,
   copyUserId,
 } = useProfilePage()
+
+// ===== Access Token 管理区（INT-1155：创建明文一次 / 列表掩码 / 复制 / 编辑 / 启停 / 删除）=====
+const {
+  tokens,
+  loadingTokens,
+  tokenError,
+  loadTokens,
+  openCreateToken,
+  openEditToken,
+  toggleTokenStatus,
+  removeToken,
+  copyTokenHint,
+} = useAccessTokens()
 
 // ===== 我的收藏明细 Popover（§3.3.1；按实体 read 权限码过滤）=====
 const activePopover = ref<'favorites' | 'permissions' | null>(null)
@@ -1304,6 +1441,207 @@ onBeforeUnmount(() => {
 @keyframes skeleton-pulse {
   0%, 100% { opacity: 0.6; }
   50% { opacity: 1; }
+}
+
+/* ===== Access Token 管理区（INT-1155）===== */
+.token-state {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 20px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-control, 8px);
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+
+.token-loading {
+  justify-content: center;
+}
+
+.token-error {
+  color: var(--destructive);
+}
+
+.token-error .btn {
+  margin-left: auto;
+}
+
+.token-empty {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.token-empty .empty-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--foreground);
+}
+
+.token-empty .empty-desc {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.token-table-wrap {
+  overflow-x: auto;
+}
+
+.token-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.token-table th {
+  padding: 8px 10px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.token-table td {
+  padding: 10px;
+  border-bottom: 1px solid var(--muted);
+  vertical-align: middle;
+  color: var(--foreground);
+}
+
+.token-table tr:last-child td {
+  border-bottom: none;
+}
+
+.token-table .col-actions {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.token-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--foreground);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.token-created {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+
+.token-mask {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.token-mask code {
+  font-size: 12px;
+  color: var(--foreground);
+}
+
+.mono {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+}
+
+.token-scopes {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 220px;
+}
+
+.scope-badge {
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+.scope-badge.all {
+  background: var(--secondary-light);
+  color: var(--secondary);
+}
+
+.scope-more {
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+
+.expires-label {
+  font-size: 12px;
+  color: var(--foreground);
+  white-space: nowrap;
+}
+
+.expires-label.expired {
+  color: var(--destructive);
+  font-weight: 500;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill, 999px);
+  border: 1px solid var(--border);
+  background: none;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.status-pill.enabled {
+  border-color: var(--success);
+  color: var(--success);
+  background: var(--success-light);
+}
+
+.status-pill.disabled {
+  border-color: var(--muted-foreground);
+  color: var(--muted-foreground);
+  background: var(--muted);
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.last-used {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+.btn-ghost {
+  background: none;
+  border: none;
+  color: var(--secondary);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: var(--secondary-light);
+}
+
+.btn-ghost:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ===== 响应式 ===== */

@@ -4,6 +4,7 @@
  */
 export * from './commonAdapter'
 export * from './authAdapter'
+export * from './accessTokenAdapter'
 export * from './taskAdapter'
 export * from './testCaseAdapter'
 export * from './apiConfigAdapter'

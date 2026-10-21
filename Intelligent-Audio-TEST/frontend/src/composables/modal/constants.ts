@@ -66,7 +66,11 @@ export const MODAL_TYPES = {
   /** INT-744：个人中心·修改密码对话框（POST /auth/change-password，INT-794） */
   CHANGE_PASSWORD: 'changePassword',
   /** INT-744：个人中心·编辑资料对话框（PUT /auth/self，INT-792） */
-  EDIT_PROFILE: 'editProfile'
+  EDIT_PROFILE: 'editProfile',
+  /** INT-1155：个人中心·Access Token 创建对话框（POST /auth/access-tokens，明文仅一次） */
+  ACCESS_TOKEN_CREATE: 'accessTokenCreate',
+  /** INT-1155：个人中心·Access Token 编辑对话框（PATCH /auth/access-tokens/{id}） */
+  ACCESS_TOKEN_EDIT: 'accessTokenEdit'
 } as const
 
 export type ModalTypeKey = keyof typeof MODAL_TYPES

@@ -9,7 +9,9 @@ import { authApi } from '../../infrastructure/api'
 import * as favoritesApi from '../../infrastructure/api/favoritesApi'
 import { changeMyPassword } from '../../infrastructure/api/passwordApi'
 import { updateMyProfile } from '../../infrastructure/api/profileApi'
+import { accessTokenApi } from '../../infrastructure/api/accessTokenApi'
 import type { ChangePasswordPayload, UpdateProfilePayload } from '../../domain/model/profile'
+import type { AccessTokenCreatePayload, AccessTokenUpdatePayload } from '../../domain/model/accessToken'
 
 export const profilePort = {
   // ===== OAuth 绑定 + 当前用户信息（authApi 现成契约，INT-147 / INT-792）=====
@@ -24,4 +26,9 @@ export const profilePort = {
   // ===== 自助改密（POST /auth/change-password）/ 自我资料更新（PUT /auth/self）=====
   changeMyPassword: (payload: ChangePasswordPayload) => changeMyPassword(payload),
   updateMyProfile: (payload: UpdateProfilePayload) => updateMyProfile(payload),
+  // ===== Access Token 管理（INT-1155；accessTokenApi 当前为 // 待接线 契约桩）=====
+  listAccessTokens: () => accessTokenApi.listAccessTokens(),
+  createAccessToken: (payload: AccessTokenCreatePayload) => accessTokenApi.createAccessToken(payload),
+  updateAccessToken: (id: number, payload: AccessTokenUpdatePayload) => accessTokenApi.updateAccessToken(id, payload),
+  deleteAccessToken: (id: number) => accessTokenApi.deleteAccessToken(id),
 }
