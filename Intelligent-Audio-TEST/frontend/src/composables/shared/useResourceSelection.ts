@@ -222,12 +222,13 @@ export function useResourceSelection(options: UseResourceSelectionOptions) {
         deviceType: 'api',
         fields: generateDeviceFields('api'),
         options: { closable: true, width: '800px' },
-        onSubmit: async (deviceData: APIConfig, submitMode: 'create' | 'edit') => {
+        onConfirm: async (result: { data: APIConfig; mode: 'create' | 'edit'; isMultipart: boolean }) => {
           try {
+            const deviceData = result?.data as APIConfig
             let response
-            if (submitMode === 'create') {
+            if (result?.mode === 'create') {
               response = await apisPort.create(deviceData)
-            } else if (submitMode === 'edit' && deviceData.id) {
+            } else if (result?.mode === 'edit' && deviceData.id) {
               response = await apisPort.update(deviceData.id, deviceData)
             }
             const apiDataResult = await apisPort.getAll()
