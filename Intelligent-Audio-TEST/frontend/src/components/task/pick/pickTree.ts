@@ -14,6 +14,12 @@
  *   R9 全选当前筛选/反选；R10 已加购标记由 resultIdSet 派生。
  */
 import type { PickCandidate } from '../../../infrastructure/api/cherryPickApi';
+import {
+  groupCasesByCaseGroup,
+  groupCasesByTag,
+  type CaseSubGroup,
+  type SubViewCaseItem,
+} from '../../../domain/lib/subViewAggregation';
 
 export type PickLevel = 'task' | 'case' | 'device' | 'resultType' | 'leaf';
 
@@ -230,6 +236,45 @@ export function buildPickResultTypeViewTree(candidates: PickCandidate[]): PickTr
     rtNode.count += 1;
   }
   return roots;
+}
+
+// ===== 用例视图组织维度（INT-1034 §3.8.3，INT-1110 返工 P1）=====
+
+/** 用例组织字段（§11-7 待后端补：候选行 tags/groupId/groupName；缺省全落「未分组」/「未设置标签」兜底桶） */
+export interface PickCaseOrgInfo {
+  tags?: string[]
+  groupId?: string | number | null
+  groupName?: string | null
+}
+
+/** 用例组织聚合入参：组织纯函数作用对象 = 用例级分支 + 其组织字段子集（收敛 SubViewCaseItem 口径） */
+export interface PickOrgCaseItem extends SubViewCaseItem {
+  branch: PickTreeNode
+}
+
+/**
+ * 用例视图组织桶（§3.8.3 分组视图/标签视图，INT-1110 返工 P1）。
+ * 组织维度照用例管理页：按用例分组聚合（+「未分组」兜底）/ 按标签聚合（+「未设置标签」兜底），
+ * 纯客户端聚合、不新增后端请求；组织只影响用例层视觉分组，勾选联动 R1-R10 与
+ * 共享 selectedResultIds 不变（本函数纯派生，不触碰选中集）。
+ * caseOrgMap 为 §11-7 扩展点：候选行未返组织字段时省略/空 Map → 全落单兜底桶，组织控件仍常显。
+ */
+export function buildPickCaseOrgBuckets(
+  roots: PickTreeNode[],
+  org: 'group' | 'tag',
+  caseOrgMap?: Map<string | number, PickCaseOrgInfo>,
+): CaseSubGroup<PickOrgCaseItem>[] {
+  const items: PickOrgCaseItem[] = roots.map((branch) => {
+    const info = caseOrgMap?.get(branch.id);
+    return {
+      branch,
+      tags: info?.tags ?? [],
+      groupId: info?.groupId != null ? String(info.groupId) : null,
+      groupName: info?.groupName ?? null,
+      totalDuration: null,
+    };
+  });
+  return org === 'group' ? groupCasesByCaseGroup(items) : groupCasesByTag(items, []);
 }
 
 export type NodeCheckState = 'checked' | 'indeterminate' | 'unchecked';

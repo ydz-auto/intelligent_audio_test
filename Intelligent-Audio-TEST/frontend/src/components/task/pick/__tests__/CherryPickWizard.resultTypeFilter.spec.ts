@@ -71,6 +71,14 @@ vi.mock('../PickTree.vue', () => ({
     template: '<div class="pick-tree-stub" />',
   },
 }))
+// INT-1110 返工 P1：用例视图改经组织列表渲染（默认视图=用例视图），桩转发 roots 保持本 spec 数据侧锁定
+vi.mock('../PickCaseOrgList.vue', () => ({
+  default: {
+    name: 'PickCaseOrgListStub',
+    props: ['roots', 'selected', 'expandedKeys', 'alreadyAdded', 'leafMeta', 'org', 'subView'],
+    template: '<div class="pick-case-org-list-stub" />',
+  },
+}))
 vi.mock('../CartTree.vue', () => ({
   default: { name: 'CartTreeStub', props: ['roots'], template: '<div class="cart-tree-stub" />' },
 }))
@@ -97,8 +105,10 @@ async function mountWizard() {
 }
 
 function treeLeafIds(w: any): number[] {
-  const roots = w.findComponent({ name: 'PickTreeStub' }).props('roots') as any[]
-  return collectLeafResultIds(roots)
+  // 用例视图（默认）经组织列表渲染 → 读组织列表桩 roots；设备/结果类型视图读树桩 roots
+  const orgList = w.findComponent({ name: 'PickCaseOrgListStub' })
+  const stub = orgList.exists() ? orgList : w.findComponent({ name: 'PickTreeStub' })
+  return collectLeafResultIds(stub.props('roots') as any[])
 }
 
 beforeEach(() => {

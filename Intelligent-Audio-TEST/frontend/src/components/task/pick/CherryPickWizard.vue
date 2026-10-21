@@ -100,17 +100,37 @@
             <p>候选加载失败，请重试</p>
             <button class="cpw-btn" @click="loadCandidates"><i class="fas fa-redo"></i> 重试</button>
           </div>
-          <PickTree
-            v-else
-            :roots="treeRoots"
-            :selected="selectedResultIds"
-            :expanded-keys="expandedKeys"
-            :already-added="resultIdSet"
-            :leaf-meta="leafMeta"
-            @toggle-node="onToggleNode"
-            @toggle-expand="onToggleExpand"
-            @toggle-leaf="onToggleLeaf"
-          />
+          <!-- 用例视图：统一用例卡 + 分组/标签组织（§3.8.3，INT-1110 返工 P1）；
+               设备/结果类型视图保持 PickTree 直渲 -->
+          <template v-else>
+            <PickCaseOrgList
+              v-if="viewMode === 'case'"
+              :roots="treeRoots"
+              :selected="selectedResultIds"
+              :expanded-keys="expandedKeys"
+              :already-added="resultIdSet"
+              :leaf-meta="leafMeta"
+              :org="caseOrg"
+              :sub-view="caseSubView"
+              :case-org-map="caseOrgMap"
+              @update:org="caseOrg = $event"
+              @update:sub-view="caseSubView = $event"
+              @toggle-node="onToggleNode"
+              @toggle-expand="onToggleExpand"
+              @toggle-leaf="onToggleLeaf"
+            />
+            <PickTree
+              v-else
+              :roots="treeRoots"
+              :selected="selectedResultIds"
+              :expanded-keys="expandedKeys"
+              :already-added="resultIdSet"
+              :leaf-meta="leafMeta"
+              @toggle-node="onToggleNode"
+              @toggle-expand="onToggleExpand"
+              @toggle-leaf="onToggleLeaf"
+            />
+          </template>
         </div>
 
         <div v-if="candidateTotal > candidates.length" class="cpw-pagination">
@@ -325,9 +345,10 @@ import { useNotification } from '../../../composables/modal/useNotification';
 import { useModalControl } from '../../../composables/modal/useModal';
 import { MODAL_TYPES } from '../../../composables/modal/constants';
 import PickTree from './PickTree.vue';
+import PickCaseOrgList from './PickCaseOrgList.vue';
 import CartTree from './CartTree.vue';
 import PickTaskStage, { getTaskStatusOrder, type PickTaskRow } from './PickTaskStage.vue';
-import { buildPickCaseViewTree, buildPickDeviceViewTree, buildPickResultTypeViewTree, toggleNode, selectAll, invertSelection, collectLeafResultIds, type PickTreeNode } from './pickTree';
+import { buildPickCaseViewTree, buildPickDeviceViewTree, buildPickResultTypeViewTree, toggleNode, selectAll, invertSelection, collectLeafResultIds, type PickTreeNode, type PickCaseOrgInfo } from './pickTree';
 import { buildCartTree, toggleCartNode, type CartTreeNode } from './cartTree';
 
 const STEPS = [
@@ -447,7 +468,6 @@ const expandedKeys = ref<Set<string>>(new Set());
 
 // ===== INT-1034 §3.8 两阶段状态机（INT-1110）：阶段 1 选任务 → 阶段 2 选结果 =====
 /** 批量「加入挑选」/「开始挑选」预选任务时跳过阶段 1 直达阶段 2（§3.8.1/§6.1） */
-const presetTaskIdSet = computed(() => new Set((props.presetTaskIds ?? []).map(Number)));
 const phase = ref<'tasks' | 'results'>(props.presetTaskIds?.length ? 'results' : 'tasks');
 const selectedTaskIds = ref<Set<number>>(new Set(props.presetTaskIds?.map(Number) ?? []));
 
@@ -539,6 +559,19 @@ const visibleTotal = computed(() =>
 /** 阶段 2 三视图（§3.8.3）：用例视图（统一用例卡 + 组织维度）/ 设备视图 / 结果类型视图，
  *  三视图共享同一 selectedResultIds 与联动规则（任务维度由阶段 1 承载） */
 const viewMode = ref<'case' | 'device' | 'resultType'>('case');
+/** §3.8.3 用例视图组织维度（INT-1110 返工 P1）：分组视图/标签视图 + 平铺/交叉子视图。
+ *  会话态（切换视图保持）；org 切换重置子视图为平铺（对齐 React PickCaseView）。 */
+const caseOrg = ref<'group' | 'tag'>('group');
+const caseSubView = ref<'flat' | 'byTag' | 'byGroup'>('flat');
+/** §11-7 组织字段映射（候选行已返 tags/groupId/groupName → 用例层按真实分组/标签聚合；
+ *  纯客户端聚合、不新增后端请求；缺字段的用例落「未分组」/「未设置标签」兜底桶） */
+const caseOrgMap = computed<Map<string | number, PickCaseOrgInfo>>(() => {
+  const m = new Map<string | number, PickCaseOrgInfo>();
+  for (const c of candidates.value) {
+    if (!m.has(c.caseId)) m.set(c.caseId, { tags: c.tags ?? [], groupId: c.groupId ?? null, groupName: c.groupName ?? null });
+  }
+  return m;
+});
 const treeRoots = computed(() => {
   const rows = filteredCandidates.value;
   switch (viewMode.value) {
