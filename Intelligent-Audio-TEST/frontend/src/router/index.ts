@@ -46,6 +46,8 @@ const routes: Array<RouteRecordRaw> = [
   { path: '/start-test', name: 'startTest', component: () => import('../views/StartTest/StartTest.vue'), meta: { permissions: ['task:execute', 'algorithm:read'], layout: 'authenticated', title: '开始测试' } },
   // INT-861：灵犀Agent 实页落地（INT-742 交付 AiChatPage 全套组件/Store），路由切实页；报告工作模式 Agent 后端立项前保持关闭
   { path: '/ai-chat', name: 'aiChat', component: () => import('../views/AiChat/AiChatPage.vue'), meta: { permission: 'report:read', layout: 'authenticated', title: '灵犀Agent' } },
+  // INT-1154：「联接你的 agent」入口页（登录用户可见；Access Token + skill/MCP 使用说明/服务地址配置/下载 skill）
+  { path: '/agent-connect', name: 'agentConnect', component: () => import('../views/AgentConnect/AgentConnectView.vue'), meta: { layout: 'authenticated', title: '联接你的 agent' } },
   { path: '/tasks', name: 'tasks', component: () => import('../views/Tasks/Tasks.vue'), meta: { permission: 'task:read', layout: 'authenticated', title: '任务管理' } },
   // INT-577 §2.2 裁定①：旧路径式页签 redirect——「合并」页签收编进「挑选合并」，
   // /tasks/merged 与 /tasks/cherry-picks 均归一到 /tasks?tab=cherry-picks（query 态页签）

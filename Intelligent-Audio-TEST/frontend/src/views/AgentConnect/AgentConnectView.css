@@ -1,0 +1,370 @@
+/* 「联接你的 agent」入口页样式（INT-1154）。
+   非 scoped（照 Dashboard.css 经 <style src> 注入），选择器一律以 .agent-connect-page 前缀隔离，禁止裸类名全局泄漏。
+   色彩/圆角/阴影/间距/字号全部走语义令牌（theme.css / theme-presets.css），浅深两套自动成立。
+   炫彩按钮色值一律来自 --ai-magic-* 令牌，不在此硬编码。 */
+.agent-connect-page {
+  min-height: 100%;
+  padding: var(--spacing-xl);
+  box-sizing: border-box;
+}
+
+/* ===== 页面标题 ===== */
+.agent-connect-page .page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.agent-connect-page .page-title {
+  margin: 0;
+  font-size: var(--font-size-xxl);
+  font-weight: var(--font-weight-bold);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  color: var(--primary);
+}
+
+.agent-connect-page .page-description {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: var(--font-size-md);
+}
+
+/* ── INT-1154 深色模式：全局遗留白底（.page-header）不随 .dark 切换，本页统一走语义 token ── */
+.dark .agent-connect-page .page-header {
+  background-color: var(--background);
+}
+
+/* ===== 主体纵向排布 ===== */
+.agent-connect-page .agent-connect-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  max-width: 920px;
+}
+
+/* ===== 卡片 ===== */
+.agent-connect-page .agent-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: var(--spacing-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.agent-connect-page .agent-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+.agent-connect-page .card-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-control);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-md);
+  flex-shrink: 0;
+}
+
+.agent-connect-page .card-icon.info {
+  background: var(--secondary-light);
+  color: var(--secondary);
+}
+
+.agent-connect-page .card-icon.neutral {
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+.agent-connect-page .card-icon.magic {
+  background: var(--ai-magic-violet);
+  color: var(--color-white);
+  text-shadow: var(--ai-magic-text-shadow);
+}
+
+.agent-connect-page .card-title-group {
+  display: grid;
+  gap: var(--spacing-xs);
+}
+
+.agent-connect-page .card-title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.agent-connect-page .card-desc {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--muted-foreground);
+}
+
+/* ===== 使用说明步骤 ===== */
+.agent-connect-page .steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--spacing-sm);
+}
+
+.agent-connect-page .step {
+  display: flex;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-xs);
+}
+
+.agent-connect-page .step-index {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: var(--primary);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.agent-connect-page .step-copy {
+  display: grid;
+  gap: var(--spacing-xs);
+  flex: 1;
+  min-width: 0;
+}
+
+.agent-connect-page .step-title {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.agent-connect-page .step-desc {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--muted-foreground);
+  line-height: 1.6;
+}
+
+/* ===== 服务地址配置 ===== */
+.agent-connect-page .url-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.agent-connect-page .url-input {
+  flex: 1;
+  min-width: 280px;
+  height: var(--control-height);
+  padding: 0 var(--spacing-sm);
+  border: 1px solid var(--input);
+  border-radius: var(--radius-control);
+  background: var(--background);
+  color: var(--foreground);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono, monospace);
+}
+
+.agent-connect-page .url-input:focus {
+  outline: none;
+  border-color: var(--ring);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.agent-connect-page .field-hint {
+  margin: var(--spacing-sm) 0 0;
+  font-size: var(--font-size-xs);
+  color: var(--muted-foreground);
+}
+
+/* ===== Access Token 指引 ===== */
+.agent-connect-page .token-copy {
+  margin: 0 0 var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  color: var(--muted-foreground);
+  line-height: 1.6;
+}
+
+/* ===== 按钮 ===== */
+.agent-connect-page .btn-sm {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-xs);
+}
+
+/* ===== 下载 skill ===== */
+.agent-connect-page .download-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+}
+
+/* 炫彩下载按钮（照 AgentWorkbenchButton 模式：静态渐变底 + 流光扫层 + 星尘粒子流；
+   色值全部来自 --ai-magic-* 令牌；data-layout-btn 退出 legacy button.css catch-all；
+   prefers-reduced-motion 关停动画） */
+.agent-connect-page .skill-download-button {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--control-height);
+  min-height: var(--control-height);
+  padding: 0 var(--spacing-lg);
+  border: 0;
+  border-radius: var(--radius-full);
+  background: linear-gradient(
+    115deg,
+    var(--ai-magic-blue),
+    var(--ai-magic-violet) 55%,
+    var(--ai-magic-pink)
+  );
+  color: var(--color-white);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    filter var(--transition-fast),
+    transform var(--transition-fast);
+  white-space: nowrap;
+}
+
+.agent-connect-page .skill-download-button:hover {
+  filter: brightness(1.1);
+}
+
+.agent-connect-page .skill-download-button:active {
+  transform: translateY(1px);
+}
+
+.agent-connect-page .skill-download-button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.agent-connect-page .skill-download-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.agent-connect-page .skill-download-button__word {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  transform: translateZ(0);
+  color: var(--color-white);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  text-shadow: var(--ai-magic-text-shadow);
+}
+
+.agent-connect-page .skill-download-button::before,
+.agent-connect-page .skill-download-button::after {
+  content: '';
+  /* legacy button.css `button::before { display:none }` 会把流光层藏掉，显式复位 */
+  display: block;
+  position: absolute;
+  pointer-events: none;
+}
+
+/* 流光层（色带 200% 循环横移） */
+.agent-connect-page .skill-download-button::before {
+  inset: 0;
+  z-index: -2;
+  background: linear-gradient(
+    110deg,
+    var(--ai-magic-blue),
+    var(--ai-magic-indigo) 25%,
+    var(--ai-magic-purple) 50%,
+    var(--ai-magic-fuchsia) 75%,
+    var(--ai-magic-blue)
+  );
+  background-size: 200% 100%;
+  animation: agent-connect-download-flow 2.8s linear infinite;
+}
+
+/* 星尘粒子流（白点径向渐变 + 横移 + 明暗交替） */
+.agent-connect-page .skill-download-button::after {
+  inset: 0 auto 0 0;
+  width: 200%;
+  z-index: -1;
+  background-image:
+    radial-gradient(circle at 5% 28%, var(--color-white) 0 0.7px, transparent 1.3px),
+    radial-gradient(circle at 12% 68%, var(--color-white) 0 0.6px, transparent 1.2px),
+    radial-gradient(circle at 22% 18%, var(--color-white) 0 0.6px, transparent 1.3px),
+    radial-gradient(circle at 30% 77%, var(--color-white) 0 0.8px, transparent 1.6px),
+    radial-gradient(circle at 42% 33%, var(--color-white) 0 0.6px, transparent 1.2px),
+    radial-gradient(circle at 51% 83%, var(--color-white) 0 0.6px, transparent 1.3px),
+    radial-gradient(circle at 60% 20%, var(--color-white) 0 0.7px, transparent 1.3px),
+    radial-gradient(circle at 73% 65%, var(--color-white) 0 0.9px, transparent 1.8px),
+    radial-gradient(circle at 84% 30%, var(--color-white) 0 0.6px, transparent 1.3px),
+    radial-gradient(circle at 94% 77%, var(--color-white) 0 0.6px, transparent 1.2px);
+  background-size: 50% 100%;
+  opacity: 0.65;
+  animation:
+    agent-connect-download-travel 4s linear infinite,
+    agent-connect-download-stardust 7s ease-in-out infinite alternate;
+}
+
+@keyframes agent-connect-download-flow {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 200% 50%;
+  }
+}
+
+@keyframes agent-connect-download-travel {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes agent-connect-download-stardust {
+  0% {
+    opacity: 0.45;
+  }
+  45% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0.6;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-connect-page .skill-download-button,
+  .agent-connect-page .skill-download-button::before,
+  .agent-connect-page .skill-download-button::after {
+    animation: none;
+  }
+}
+
+.agent-connect-page .download-note {
+  font-size: var(--font-size-xs);
+  color: var(--muted-foreground);
+  max-width: 360px;
+  line-height: 1.5;
+}

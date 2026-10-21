@@ -36,6 +36,8 @@ export { algorithmApi } from './algorithmApi';
 export { tagsApi } from './tagsApi';
 export { llmProviderApi } from './llmProviderApi';
 export { agentApi, AGENT_BACKEND_STATUS } from './agentApi';
+export { downloadSkillPackage } from './agentSkillApi';
+export type { DownloadSkillOptions } from './agentSkillApi';
 export { optionsApi } from './optionsApi';
 export { usersApi } from './usersApi';
 export { rolesApi } from './rolesApi';
