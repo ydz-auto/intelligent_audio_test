@@ -52,7 +52,7 @@ export const ROOT_SIDEBAR_NAV: NavGroup[] = [
         requiredPermission: 'report:read',
       },
       {
-        title: '联接你的 agent',
+        title: '连接你的 agent',
         url: '/agent-connect',
         icon: Plug,
         magic: true,

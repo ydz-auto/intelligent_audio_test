@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""INT-1153 联接你的 agent 入口 + 个人配置页 token 管理 浏览器走查（React wiring）。
+"""INT-1153 连接你的 agent 入口 + 个人配置页 token 管理 浏览器走查（React wiring）。
 
 环境：
 - dev server: http://localhost:5345（本 run 起，/api 代理 → 常驻 :5000）
@@ -11,9 +11,10 @@
   GET /api/v1/auth/access-tokens 与 GET /api/v1/agent/skill 返回 404。
   前端以「错误态 + 重试」「下载失败 Alert」优雅降级，真实请求（Network）可见。
 
-验收清单核对（INT-1153 卡内）：
-① 导航「联接你的 agent」入口按钮（炫彩）在顶栏右区渲染
-② 点击入口 → 打开 /agent-connect 页面（使用说明 / 服务地址默认取地址栏可改 /
+验收清单核对（INT-1153 卡内 + 2026-10-21 负责人返工口径）：
+① 顶栏右区**无**「联接你的 agent」入口（返工移除）；侧栏「AI 工具」组
+   「连接你的 agent」炫彩魔法入口（文案返工后，跳转 /agent-connect 不变）
+② 点击侧栏入口 → 打开 /agent-connect 页面（使用说明 / 服务地址默认取地址栏可改 /
    token 指引跳 /profile / 炫彩下载按钮）
 ③ 下载按钮 → Network 含 /api/v1/agent/skill?base_url=… 真实请求
 ④ /profile 渲染 Access Token 管理卡（创建按钮 + 列表区），列表真实请求
@@ -118,6 +119,19 @@ def _body_text(drv):
     return drv.execute_script('return document.body.textContent || ""')
 
 
+def _header_text(drv):
+    """顶栏 <header> 文本（返工断言：顶栏无「联接你的 agent」入口）。"""
+    return ' '.join(
+        e.text for e in drv.find_elements(By.CSS_SELECTOR, 'header')
+    )
+
+
+def _sidebar_agent_connect_link(drv):
+    """侧栏「连接你的 agent」入口 <a>（href=/agent-connect）。"""
+    els = drv.find_elements(By.CSS_SELECTOR, "a[href='/agent-connect']")
+    return els[0] if els else None
+
+
 def _network_api_calls(drv):
     out = []
     try:
@@ -149,25 +163,43 @@ def run():
             failures.append(name)
 
     try:
-        # 顶栏入口按钮（先去工作台，避免登录页重定向 quirks）
+        # 工作台首屏：顶栏无「联接你的 agent」入口（返工移除）+ 侧栏「连接你的 agent」炫彩入口（返工文案）
         _goto(drv, '/dashboard')
         WebDriverWait(drv, 25).until(
-            lambda d: '联接你的 agent' in (d.execute_script('return document.body.textContent || ""')))
+            lambda d: '连接你的 agent' in (d.execute_script('return document.body.textContent || ""')))
         body = _body_text(drv)
-        check('顶栏含「联接你的 agent」入口按钮', '联接你的 agent' in body)
+        header_txt = _header_text(drv)
+        check('顶栏无「联接你的 agent」入口（返工移除）',
+              '联接你的 agent' not in header_txt, header_txt[:120])
+        check('顶栏无「打开联接你的 agent」按钮（aria-label 不存在）',
+              len(drv.find_elements(By.XPATH, "//*[@aria-label='打开联接你的 agent']")) == 0)
+        check('全页无「联接你的 agent」残留文案', '联接你的 agent' not in body)
+        link = _sidebar_agent_connect_link(drv)
+        check('侧栏「连接你的 agent」入口存在',
+              link is not None and '连接你的 agent' in (link.text or ''))
         net = _network_api_calls(drv)
         urls = [n.get('url', '') for n in net]
         check('工作台真实请求 /api/v1/home', any('/home/' in u for u in urls) or any('/api/' in u for u in urls))
         _save_evidence('01_dashboard_header_light', drv, net)
 
-        # 点击入口按钮 → 进入 /agent-connect
-        btn = drv.find_element(By.XPATH, "//*[@aria-label='打开联接你的 agent']")
-        btn.click()
+        # 深色工作台（返工后顶栏无入口 + 侧栏「连接你的 agent」的深色呈现）
+        _set_theme(drv, 'dark')
+        WebDriverWait(drv, 20).until(
+            lambda d: '连接你的 agent' in (d.execute_script('return document.body.textContent || ""')))
+        header_txt = _header_text(drv)
+        check('深色顶栏仍无「联接你的 agent」入口', '联接你的 agent' not in header_txt)
+        _save_evidence('01b_dashboard_header_dark', drv, _network_api_calls(drv))
+        _set_theme(drv, 'light')
+
+        # 点击侧栏「连接你的 agent」入口 → 进入 /agent-connect
+        link = _sidebar_agent_connect_link(drv)
+        assert link is not None, '侧栏「连接你的 agent」链接缺失'
+        link.click()
         WebDriverWait(drv, 20).until(
             lambda d: '/agent-connect' in d.current_url
             and '使用说明' in (d.execute_script('return document.body.textContent || ""')))
         body = _body_text(drv)
-        check('点击入口进入 /agent-connect', '/agent-connect' in drv.current_url, drv.current_url)
+        check('点击侧栏入口进入 /agent-connect', '/agent-connect' in drv.current_url, drv.current_url)
         check('页面标题=联接你的 agent', '联接你的 agent' in drv.title, drv.title)
         check('使用说明区块', '使用说明' in body and '创建 Access Token' in body)
         # 服务地址默认取地址栏（读 input value，非 body 文本）
@@ -176,9 +208,12 @@ def run():
         check('服务地址默认取地址栏', url_val == 'http://localhost:5345' or url_val == 'http://127.0.0.1:5345', url_val)
         check('Token 指引跳 /profile', '前往个人中心创建 / 管理 Access Token' in body)
         check('下载 skill 按钮（炫彩）', '下载 skill' in body)
-
-        # 侧栏魔法入口项
-        check('侧栏含「联接你的 agent」项', body.count('联接你的 agent') >= 2)
+        # 入口页顶栏仍无该入口（返工口径：仅侧栏入口）
+        header_txt = _header_text(drv)
+        check('入口页顶栏无「联接你的 agent」入口', '联接你的 agent' not in header_txt)
+        link = _sidebar_agent_connect_link(drv)
+        check('侧栏「连接你的 agent」入口保留',
+              link is not None and '连接你的 agent' in (link.text or ''))
 
         # 下载按钮 → 真实请求 /api/v1/agent/skill
         dl_btn = drv.find_element(By.XPATH, "//*[@aria-label='下载智能音频测试 skill 包']")
