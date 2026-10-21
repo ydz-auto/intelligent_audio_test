@@ -32,9 +32,10 @@ const SCOPE_LABELS = new Map(
   ACCESS_TOKEN_SCOPE_FLAT.map((permission) => [permission.code, permission.name])
 )
 
-function formatTime(seconds: number): string {
-  if (!seconds) return ''
-  return new Date(seconds * 1000).toLocaleString('zh-CN', {
+/** Unix 毫秒 → 本地时间串（0/空 → 空串；领域时间字段已由 DTO 层统一为 ms） */
+function formatTime(ms: number): string {
+  if (!ms) return ''
+  return new Date(ms).toLocaleString('zh-CN', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -76,7 +77,7 @@ type AccessTokenItemProps = {
 
 export function AccessTokenItem(props: AccessTokenItemProps) {
   const { token, now } = props
-  const isExpired = token.expiresAt > 0 && token.expiresAt * 1000 <= now
+  const isExpired = token.expiresAt > 0 && token.expiresAt <= now
   const expiryNode = token.expiresAt === 0 ? (
     <span>{ACCESS_TOKEN_NEVER_EXPIRES_LABEL}</span>
   ) : isExpired ? (

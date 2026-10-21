@@ -11,6 +11,7 @@ import { z } from 'zod'
 
 import type { AccessToken } from '@/domain/models/access-token'
 import { ACCESS_TOKEN_SCOPE_CATALOG } from '@/domain/models/access-token'
+import type { AccessTokenExpiryValue } from '@/infrastructure/dto/access-token.dto'
 import { PermissionMatrix } from '@/features/system-settings/components/permission-matrix'
 import { Button } from '@/components/ui/button'
 import {
@@ -51,14 +52,16 @@ import {
 } from './constants'
 import {
   ACCESS_TOKEN_EXPIRY_DAYS,
+  datetimeLocalString,
   type AccessTokenExpiryPreset,
 } from './access-token-create-dialog'
 
 const MIN_LIFETIME_MS = 60 * 60 * 1000
 
+/** expiresAt（Unix 毫秒；0=永不过期）→ 编辑表单预设 */
 function expiryPresetFromTimestamp(expiresAt: number, nowMs: number): AccessTokenExpiryPreset {
   if (!expiresAt) return 'never'
-  const diffDays = Math.round((expiresAt * 1000 - nowMs) / (24 * 60 * 60 * 1000))
+  const diffDays = Math.round((expiresAt - nowMs) / (24 * 60 * 60 * 1000))
   if (diffDays <= 30) return '30d'
   if (diffDays <= 90) return '90d'
   if (diffDays <= 180) return '180d'
@@ -66,11 +69,10 @@ function expiryPresetFromTimestamp(expiresAt: number, nowMs: number): AccessToke
   return 'custom'
 }
 
-function timestampToDatetimeLocal(seconds: number): string {
-  if (!seconds) return ''
-  const date = new Date(seconds * 1000)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+/** expiresAt（Unix 毫秒；0=永不过期）→ datetime-local 回填值 */
+function expiryToDatetimeLocal(expiresAt: number): string {
+  if (!expiresAt) return ''
+  return datetimeLocalString(new Date(expiresAt))
 }
 
 const accessTokenEditSchema = z
@@ -110,16 +112,13 @@ type AccessTokenEditValues = z.infer<typeof accessTokenEditSchema>
 function resolveEditExpiry(
   values: Pick<AccessTokenEditValues, 'expiry' | 'customExpiresAt'>,
   nowMs: number
-): number {
+): AccessTokenExpiryValue {
   if (values.expiry === 'never') return 0
   if (values.expiry === 'custom') {
-    const time = values.customExpiresAt
-      ? new Date(values.customExpiresAt).getTime()
-      : 0
-    return Math.floor(time / 1000)
+    return values.customExpiresAt ?? 0
   }
   const days = ACCESS_TOKEN_EXPIRY_DAYS[values.expiry]
-  return Math.floor(nowMs / 1000) + days * 24 * 60 * 60
+  return datetimeLocalString(new Date(nowMs + days * 24 * 60 * 60 * 1000))
 }
 
 type AccessTokenEditDialogProps = {
@@ -129,7 +128,7 @@ type AccessTokenEditDialogProps = {
   onSave: (input: {
     name?: string
     scopes?: string[]
-    expiresAt?: number
+    expiresAt?: AccessTokenExpiryValue
   }) => Promise<boolean>
 }
 
@@ -145,7 +144,7 @@ export function AccessTokenEditDialog(props: AccessTokenEditDialogProps) {
       name: token.name,
       expiry: initialPreset,
       customExpiresAt:
-        initialPreset === 'custom' ? timestampToDatetimeLocal(token.expiresAt) : undefined,
+        initialPreset === 'custom' ? expiryToDatetimeLocal(token.expiresAt) : undefined,
       scopes: token.scopes,
     },
   })

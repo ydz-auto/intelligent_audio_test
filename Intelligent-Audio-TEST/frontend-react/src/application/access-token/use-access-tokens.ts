@@ -11,6 +11,7 @@ import type {
   AccessToken,
   AccessTokenStatus,
 } from '@/domain/models/access-token'
+import type { AccessTokenExpiryValue } from '@/infrastructure/dto/access-token.dto'
 import {
   createAccessToken,
   deleteAccessToken,
@@ -36,8 +37,11 @@ export function useAccessTokenMutations() {
     void queryClient.invalidateQueries({ queryKey: ACCESS_TOKENS_QUERY_KEY })
 
   const create = useMutation({
-    mutationFn: (input: { name: string; scopes: string[]; expiresAt: number }) =>
-      createAccessToken(input),
+    mutationFn: (input: {
+      name: string
+      scopes: string[]
+      expiresAt: AccessTokenExpiryValue
+    }) => createAccessToken(input),
     onSuccess: () => invalidate(),
     onError: (error: unknown) => {
       toast.error(
@@ -52,7 +56,7 @@ export function useAccessTokenMutations() {
       input: {
         name?: string
         scopes?: string[]
-        expiresAt?: number
+        expiresAt?: AccessTokenExpiryValue
         status?: AccessTokenStatus
       }
     }) => updateAccessToken(args.id, args.input),

@@ -1,10 +1,10 @@
 /**
- * 联接你的 agent 入口页常量（features/agent-connect，INT-1153/INT-1140 方案 2）。
+ * 连接你的 agent 入口页常量（features/agent-connect，INT-1153/INT-1140 方案 2）。
  * 文案全中文硬编码（AGENTS.md §3.1）；页面含使用说明 / skill 服务地址配置（默认取
  * 浏览器地址栏，可编辑）/ Access Token 指引（跳 /profile）/ 炫彩「下载 skill」按钮。
  */
 
-export const AGENT_CONNECT_PAGE_TITLE = '联接你的 agent'
+export const AGENT_CONNECT_PAGE_TITLE = '连接你的 agent'
 export const AGENT_CONNECT_PAGE_DESCRIPTION =
   '让外部 agent（Claude Code / Codex 等）经 skill / MCP 调用本平台的智能音频测试能力。'
 

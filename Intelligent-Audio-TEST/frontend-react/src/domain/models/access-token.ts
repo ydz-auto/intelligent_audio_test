@@ -21,14 +21,14 @@ export type AccessToken = {
   tokenHint: string
   /** 权限点列表；空数组 = 继承用户全部权限 */
   scopes: string[]
-  /** 有效时间（Unix 秒）；0 = 永不过期 */
+  /** 有效时间（Unix 毫秒，由 DTO 层把后端 ISO 解析为 ms）；0 = 永不过期 */
   expiresAt: number
   status: AccessTokenStatus
-  /** 最近使用时间（Unix 秒）；null = 从未使用 */
+  /** 最近使用时间（Unix 毫秒）；null = 从未使用 */
   lastUsedAt: number | null
   /** 最近使用 IP；null = 从未使用 */
   lastUsedIp: string | null
-  /** 创建时间（Unix 秒） */
+  /** 创建时间（Unix 毫秒） */
   createdAt: number
   deletedAt: number | null
 }

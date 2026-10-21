@@ -17,7 +17,7 @@ type BaseNavItem = {
   requiredPermission?: string
   /** 持有任一权限码即可见（如系统设置入口） */
   requiredPermissions?: string[]
-  /** 炫彩魔法按钮渲染（复用 ai-discount-core/ai-discount-word；INT-1153 联接你的 agent） */
+  /** 炫彩魔法按钮渲染（复用 ai-discount-core/ai-discount-word；INT-1153 连接你的 agent） */
   magic?: boolean
 }
 

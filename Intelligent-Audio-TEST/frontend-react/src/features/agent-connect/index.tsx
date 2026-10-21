@@ -1,5 +1,5 @@
 /**
- * 联接你的 agent 入口页（features/agent-connect，INT-1153/INT-1140 方案 2）。
+ * 连接你的 agent 入口页（features/agent-connect，INT-1153/INT-1140 方案 2）。
  * 登录壳内页面：使用说明 / skill 服务地址配置（默认取浏览器地址栏、可编辑）/
  * Access Token 指引（跳 /profile）/ 炫彩「下载 skill」按钮。
  * 下载走真实接口 GET /api/v1/agent/skill?base_url=…（accessTokenApi.downloadSkill），

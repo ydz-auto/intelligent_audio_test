@@ -1,14 +1,14 @@
 /**
  * Access Token + Agent skill 下载 API（infrastructure/api 层；INT-1153）。
- * 对照 INT-1140 端点草案 + INT-1142 评审口径（auth_service access_tokens 领域 +
- * 网关 auth_bp 挂载）：
- *   POST   /api/v1/auth/access-tokens        创建（返回明文一次，只存哈希）
- *   GET    /api/v1/auth/access-tokens        列表（key 掩码 token_hint）
- *   PATCH  /api/v1/auth/access-tokens/{id}   重命名 / 换 scopes / 改 expires / 启停
- *   DELETE /api/v1/auth/access-tokens/{id}   删除（软删）
+ * 对照 INT-1148 后端实施契约（auth_service access_tokens 领域 + 网关 auth_bp 挂载）：
+ *   POST   /api/v1/auth/access-tokens        创建（返回明文一次，只存哈希；data 扁平条目+token）
+ *   GET    /api/v1/auth/access-tokens        列表（key 掩码 token_hint；data: {total, items}）
+ *   PATCH  /api/v1/auth/access-tokens/{id}   重命名 / 换 scopes / 改 expires / 启停（成功无 data）
+ *   DELETE /api/v1/auth/access-tokens/{id}   删除（软删；成功无 data）
  *   GET    /api/v1/agent/skill?base_url=...  下载 skill 包 ZIP（SKILL.md + MCP 模板）
  * 请求一律经 infrastructure/api/client.ts（统一信封解包 + 中文 ApiError），
  * 页面层只见 camelCase Domain 对象；snake_case↔camelCase 转换只发生在 dto 层。
+ * expires_at 入参/出参均按后端契约：0=永不过期，否则 ISO 时间字符串。
  */
 import type {
   AccessToken,
@@ -18,8 +18,9 @@ import { apiClient } from '@/infrastructure/api/client'
 import {
   toAccessToken,
   toAccessTokenList,
-  type AccessTokenCreatePayload,
   type AccessTokenCreatedDto,
+  type AccessTokenCreatePayload,
+  type AccessTokenExpiryValue,
   type AccessTokenItemDto,
   type AccessTokenListDto,
   type AccessTokenUpdatePayload,
@@ -29,20 +30,23 @@ import {
 export async function createAccessToken(input: {
   name: string
   scopes: string[]
-  expiresAt: number
+  expiresAt: AccessTokenExpiryValue
 }): Promise<{ token: string; item: AccessToken }> {
   const payload: AccessTokenCreatePayload = {
     name: input.name,
     scopes: input.scopes,
     expires_at: input.expiresAt,
   }
-  const dto = await apiClient.post<AccessTokenCreatedDto>(
+  // 后端创建响应 data 为扁平条目 + 顶层 token（明文），无 item 包裹
+  const dto = await apiClient.post<AccessTokenCreatedDto | null>(
     '/auth/access-tokens',
     payload
   )
+  if (!dto) return { token: '', item: toAccessToken(emptyItem()) }
+  const { token, ...itemDto } = dto
   return {
-    token: dto?.token ?? '',
-    item: dto?.item ? toAccessToken(dto.item) : toAccessToken(emptyItem()),
+    token: token ?? '',
+    item: toAccessToken(itemDto as AccessTokenItemDto),
   }
 }
 
@@ -56,7 +60,7 @@ function emptyItem(): AccessTokenItemDto {
     status: 'enabled',
     last_used_at: null,
     last_used_ip: null,
-    created_at: 0,
+    created_at: null,
   }
 }
 
@@ -74,10 +78,10 @@ export async function updateAccessToken(
   input: {
     name?: string
     scopes?: string[]
-    expiresAt?: number
+    expiresAt?: AccessTokenExpiryValue
     status?: AccessTokenStatus
   }
-): Promise<AccessToken> {
+): Promise<void> {
   const payload: AccessTokenUpdatePayload = {
     name: input.name,
     scopes: input.scopes,
@@ -88,11 +92,8 @@ export async function updateAccessToken(
   const body: AccessTokenUpdatePayload = Object.fromEntries(
     Object.entries(payload).filter(([, value]) => value !== undefined)
   ) as AccessTokenUpdatePayload
-  const dto = await apiClient.patch<AccessTokenItemDto>(
-    `/auth/access-tokens/${id}`,
-    body
-  )
-  return toAccessToken(dto)
+  // 后端 PATCH 成功响应为 { success, message } 无 data；仅确认成功，列表由 invalidate 刷新
+  await apiClient.patch<null>(`/auth/access-tokens/${id}`, body)
 }
 
 /** 删除（软删；删除后 token 立即失效） */

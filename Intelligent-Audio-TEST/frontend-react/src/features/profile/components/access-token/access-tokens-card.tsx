@@ -12,6 +12,7 @@ import {
   useAccessTokensQuery,
 } from '@/application/access-token/use-access-tokens'
 import type { AccessToken } from '@/domain/models/access-token'
+import type { AccessTokenExpiryValue } from '@/infrastructure/dto/access-token.dto'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import {
@@ -60,7 +61,7 @@ export function AccessTokensCard() {
   const handleCreate = async (input: {
     name: string
     scopes: string[]
-    expiresAt: number
+    expiresAt: AccessTokenExpiryValue
   }): Promise<boolean> => {
     try {
       const created = await create.mutateAsync(input)
@@ -77,7 +78,7 @@ export function AccessTokensCard() {
   const handleSave = async (token: AccessToken, input: {
     name?: string
     scopes?: string[]
-    expiresAt?: number
+    expiresAt?: AccessTokenExpiryValue
   }): Promise<boolean> => {
     try {
       await update.mutateAsync({ id: token.id, input })

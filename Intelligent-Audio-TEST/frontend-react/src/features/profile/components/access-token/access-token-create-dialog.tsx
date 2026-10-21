@@ -10,6 +10,7 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 
 import { ACCESS_TOKEN_SCOPE_CATALOG } from '@/domain/models/access-token'
+import type { AccessTokenExpiryValue } from '@/infrastructure/dto/access-token.dto'
 import { PermissionMatrix } from '@/features/system-settings/components/permission-matrix'
 import { Button } from '@/components/ui/button'
 import {
@@ -103,26 +104,39 @@ const DEFAULT_VALUES: AccessTokenFormValues = {
   scopes: [],
 }
 
+/** Date → 本地「YYYY-MM-DDTHH:mm」字符串（datetime-local 同款 naive 形态）。
+ *  后端把 naive ISO 按东八区解析，与前端本地时间一致，预设/自定义可往返。 */
+export function datetimeLocalString(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+/**
+ * 表单有效时间 → 提交值（0=永不过期，否则 ISO 时间字符串，对齐后端 _parse_expires_at
+ * 契约——非零整数会 400，故不再算 Unix 秒）。
+ */
 export function resolveAccessTokenExpiry(
   values: Pick<AccessTokenFormValues, 'expiry' | 'customExpiresAt'>,
   nowMs: number
-): number {
+): AccessTokenExpiryValue {
   if (values.expiry === 'never') return 0
   if (values.expiry === 'custom') {
-    const time = values.customExpiresAt
-      ? new Date(values.customExpiresAt).getTime()
-      : 0
-    return Math.floor(time / 1000)
+    // datetime-local 值即为 naive ISO 字符串；表单校验保证已选且 ≥1h
+    return values.customExpiresAt ?? 0
   }
   const days = ACCESS_TOKEN_EXPIRY_DAYS[values.expiry]
-  return Math.floor(nowMs / 1000) + days * 24 * 60 * 60
+  return datetimeLocalString(new Date(nowMs + days * 24 * 60 * 60 * 1000))
 }
 
 type AccessTokenCreateDialogProps = {
   open: boolean
   pending: boolean
   onOpenChange: (open: boolean) => void
-  onCreate: (input: { name: string; scopes: string[]; expiresAt: number }) => Promise<boolean>
+  onCreate: (input: {
+    name: string
+    scopes: string[]
+    expiresAt: AccessTokenExpiryValue
+  }) => Promise<boolean>
 }
 
 export function AccessTokenCreateDialog(props: AccessTokenCreateDialogProps) {
