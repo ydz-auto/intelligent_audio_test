@@ -19,6 +19,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { usePermissions } from '@/application/hooks/use-permissions'
+import { AgentConnectButton } from '@/components/layout/components/agent-connect-button'
 
 import { useChatState } from '@/features/ai-chat/hooks/use-chat-state'
 import { useChatHandler } from '@/features/ai-chat/hooks/use-chat-handler'
@@ -222,7 +223,8 @@ export function AgentWorkbench() {
 
   const floatingWindow = (
     <div className='bg-background fixed right-4 bottom-4 z-50 flex w-[min(28rem,calc(100vw-1rem))] max-h-[min(44rem,calc(100svh-5rem))] flex-col overflow-hidden rounded-2xl border shadow-2xl'>
-      {/* 头行（§3.1B）：Demo 徽标 §3.10 落点② */}
+      {/* 头行（§3.1B）：Demo 徽标 §3.10 落点②；INT-1153 二轮返工：炫彩
+       * 「连接你的 agent」入口落头行右上角（最小化/展开/关闭按钮前，compact 适配头行高度） */}
       <div className='border-b px-3 py-2.5 flex shrink-0 items-center gap-2'>
         <Sparkles className='text-primary size-4 shrink-0' />
         <span className='text-sm font-semibold'>灵犀Agent</span>
@@ -238,7 +240,8 @@ export function AgentWorkbench() {
             <p>{DEMO_COPY.floatingTooltip}</p>
           </TooltipContent>
         </Tooltip>
-        <div className='ms-auto flex items-center gap-0.5'>
+        <div className='ms-auto flex items-center gap-1'>
+          <AgentConnectButton compact />
           <Button
             aria-label='最小化'
             className='text-muted-foreground hover:text-foreground size-7'

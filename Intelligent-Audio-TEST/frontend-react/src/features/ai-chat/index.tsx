@@ -17,6 +17,8 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 
+import { AgentConnectButton } from '@/components/layout/components/agent-connect-button'
+
 import { useChatHandler } from '@/features/ai-chat/hooks/use-chat-handler'
 import { useChatConversation } from '@/features/ai-chat/hooks/use-chat-conversation'
 import { useChatState } from '@/features/ai-chat/hooks/use-chat-state'
@@ -143,7 +145,8 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
 
   return (
     <div className='relative flex size-full min-h-0 flex-col overflow-hidden'>
-      {/* 顶部条（shrink-0，§3.1/§3.2）；Demo 徽标 §3.10 落点① */}
+      {/* 顶部条（shrink-0，§3.1/§3.2）；Demo 徽标 §3.10 落点①；INT-1153 二轮返工：
+       * 炫彩「连接你的 agent」入口落右上角（标题区右侧），点击跳转 /agent-connect */}
       <div className='border-border/60 flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3 sm:px-6'>
         <div className='min-w-0'>
           <div className='flex items-center gap-2'>
@@ -165,17 +168,20 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
             用自然语言驱动平台全部能力：报告、用例、任务、设备、日志
           </p>
         </div>
-        {REPORT_WORK_MODE_ENABLED && (
-          <Button
-            className='h-9 shrink-0 px-4 text-sm'
-            onClick={() => setWorkModeOpen((value) => !value)}
-            type='button'
-            variant='ghost'
-          >
-            <PanelRight className='size-4' />
-            {workModeOpen ? '关闭文档预览' : '报告工作模式'}
-          </Button>
-        )}
+        <div className='flex shrink-0 items-center gap-2'>
+          <AgentConnectButton />
+          {REPORT_WORK_MODE_ENABLED && (
+            <Button
+              className='h-9 shrink-0 px-4 text-sm'
+              onClick={() => setWorkModeOpen((value) => !value)}
+              type='button'
+              variant='ghost'
+            >
+              <PanelRight className='size-4' />
+              {workModeOpen ? '关闭文档预览' : '报告工作模式'}
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* 会话区 + 报告工作模式双栏（§3.6：Agent 后端立项前整块不渲染） */}

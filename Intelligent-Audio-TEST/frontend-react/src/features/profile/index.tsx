@@ -1,7 +1,9 @@
 /**
  * 个人中心页（13_个人中心.md §3.1）：登录壳 _authenticated 组内页面，无页头标题栏
  * （对齐 newAPI profile 页 Main 直出身份卡）；Main + CardStaggerContainer +
- * 双列栅格（左=个人信息+账号安全，右=快捷入口 sticky）。
+ * 双列栅格（左=个人信息+账号安全+Access Token，右=快捷入口 sticky）。
+ * Access Token 管理区块（INT-1153 §INT-1140）：创建（明文一次）/列表（掩码）/
+ * 复制/编辑 scopes+expires/启停/删除。
  * 页面进入动画照 page-transition CardStaggerContainer/CardStaggerItem（§3.1）。
  */
 import { useEffect } from 'react'
@@ -14,6 +16,7 @@ import {
 } from '@/components/page-transition'
 
 import { PROFILE_PAGE_TITLE } from './constants'
+import { AccessTokensCard } from './components/access-token/access-tokens-card'
 import { AccountSecurityCard } from './components/account-security-card'
 import { PersonalInfoCard } from './components/personal-info-card'
 import { ProfileHeader } from './components/profile-header'
@@ -40,6 +43,7 @@ export function ProfilePage() {
               <div className='space-y-4 sm:space-y-6'>
                 <PersonalInfoCard />
                 <AccountSecurityCard />
+                <AccessTokensCard />
               </div>
               <div className='space-y-4 sm:space-y-6 xl:sticky xl:top-6'>
                 <QuickLinksCard />

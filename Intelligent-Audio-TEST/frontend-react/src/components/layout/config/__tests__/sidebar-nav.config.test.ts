@@ -1,7 +1,7 @@
 /**
  * 导航壳/侧栏 config 完整性测试（INT-377 基座产出 + INT-486 六组终态对齐）：
  * 路由/权限/activeUrls 与 04_控制台.md §3.2（INT-486 口径）一致；URL 不重复、
- * 每项必带图标与权限码。
+ * 每项必带图标与权限码（INT-1153 二轮返工后导航栏不再有炫彩 magic 条目）。
  */
 import { describe, expect, it } from 'vitest'
 
@@ -23,7 +23,7 @@ describe('ROOT_SIDEBAR_NAV 完整性', () => {
     ])
   })
 
-  it('每组至少一项，条目总数与规范一致（INT-486 六组十四项：E2E+API 合并后执行组 2 项）', () => {
+  it('每组至少一项，条目总数与规范一致（INT-486 六组十四项；INT-1153 二轮返工后导航栏无「连接你的 agent」条目）', () => {
     expect(allItems.length).toBe(14)
     expect(ROOT_SIDEBAR_NAV.every((g) => g.items.length >= 1)).toBe(true)
   })
