@@ -283,11 +283,12 @@
                 <div class="case-name">{{ caseItem.name }}</div>
                 <span class="case-category">{{ caseItem.category || '未分类' }}</span>
                 <CaseIdBadge v-if="caseItem.id" :case-id="caseItem.id" />
-                <!-- INT-797：用例卡片「人工复核」Badge + 明细（§4.1 卡片标记/明细） -->
+                <!-- INT-797：用例卡片「人工复核」Badge（§4.1 卡片标记；点击开复核历史抽屉，INT-1070） -->
                 <CaseReviewBadge
                   v-if="getCaseReview(caseItem).hasReview"
                   :case-name="caseItem.name"
-                  :items="getCaseReview(caseItem).items"
+                  :count="getCaseReview(caseItem).count"
+                  @open="openHistoryForCase(caseItem)"
                 />
               </div>
               <div class="case-tags-container" v-if="caseItem.tags && caseItem.tags.length > 0">
@@ -308,7 +309,7 @@
               <i class="fas fa-clipboard-check"></i>
               <span>人工复核</span>
             </button>
-            <!-- INT-797：AI 复核入口（§4.3，待后端立项） -->
+            <!-- INT-797/INT-1070：AI 复核主入口（灵犀Agent 对话式复核会话，可追问；真实上下文 + 追问闭环） -->
             <button
               v-if="canManualReview && hasSourceTask"
               class="review-action-btn review-ai-btn"
@@ -317,6 +318,16 @@
             >
               <i class="fas fa-sparkles"></i>
               <span>AI 复核</span>
+            </button>
+            <!-- INT-1070：「快速复核」次要入口（§5.1 一次性状态机，批量/低分初筛，不可追问） -->
+            <button
+              v-if="canManualReview && hasSourceTask"
+              class="review-action-btn review-quick-btn"
+              @click.stop="openQuickReview(caseItem)"
+              title="快速复核：一次性状态机（发起 → 结论），不可追问；深度追问请用「AI 复核」会话"
+            >
+              <i class="fas fa-bolt"></i>
+              <span>快速复核</span>
             </button>
             <button
               class="download-log-btn"
@@ -456,6 +467,32 @@
       @close="aiReviewSessionTarget = null"
       @adopted="handleAiAdopted"
     />
+
+    <!-- INT-1070：「快速复核」一次性状态机弹窗（§5.1 次要入口，批量/低分初筛，不可追问） -->
+    <QuickAiReviewDialog
+      v-if="quickReviewTarget"
+      :visible="true"
+      :case-name="quickReviewTarget.caseName"
+      :phase="quickReviewPhase"
+      :record="quickReviewRecord"
+      :error="quickReviewError"
+      :initiating="quickReviewInitiating"
+      @close="closeQuickReview"
+      @initiate="initiateQuickReview"
+      @adopt="adoptQuickReview"
+      @reject="rejectQuickReview"
+      @ignore="ignoreQuickReview"
+    />
+
+    <!-- INT-1070：报告侧复核历史抽屉（§4.3 人工/AI 两 Tab，AI Tab 接真实 ai-review-history） -->
+    <ReportReviewHistoryDrawer
+      v-if="historyTarget"
+      :visible="true"
+      :task-id="reportSourceTaskId"
+      :case-id="historyTarget.caseId"
+      :title="historyTarget.title"
+      @close="historyTarget = null"
+    />
     </div>
   </div>
 </template>
@@ -480,6 +517,8 @@ import PaginationComponent from '../common/data/PaginationComponent.vue'
 import CaseIdBadge from '../common/CaseIdBadge.vue'
 import CaseReviewBadge from './CaseReviewBadge.vue'
 import AiReviewSessionDialog from '../ai-review/AiReviewSessionDialog.vue'
+import QuickAiReviewDialog from './QuickAiReviewDialog.vue'
+import ReportReviewHistoryDrawer from './ReportReviewHistoryDrawer.vue'
 import { useAuthStore } from '@/store/authStore'
 import { AuthMode, getEffectiveAuthMode } from '@/domain/enums'
 import { computed, ref } from 'vue'
@@ -592,6 +631,9 @@ const hasSourceTask = computed(() => {
   return reportReviews.sourceTaskId.value !== ''
 })
 
+/** 报告来源任务 id（模板透传给复核历史抽屉；嵌套 ref 需 computed 解包） */
+const reportSourceTaskId = computed(() => reportReviews.sourceTaskId.value)
+
 /** 取用例复核态（驱动 Badge 显隐/明细） */
 const getCaseReview = (caseItem) => {
   return reportReviews.getCaseReview(caseItem?.id ?? caseItem?.testCaseId ?? '')
@@ -631,6 +673,80 @@ const handleAiReview = (caseItem) => {
 const handleAiAdopted = () => {
   if (props.reportData) {
     reportReviews.loadReportReviews(props.reportData)
+  }
+}
+
+// ---- INT-1070：「快速复核」次要入口（§5.1 一次性状态机，批量/低分初筛，不可追问） ----
+const quickReviewTarget = ref(null)
+const quickReviewInitiating = ref(false)
+
+/** 快速复核目标用例 id（派生自 quickReviewTarget） */
+const quickReviewCaseId = computed(() => {
+  const t = quickReviewTarget.value
+  return t ? String(t.caseItem?.id ?? t.caseItem?.testCaseId ?? '') : ''
+})
+
+/**
+ * 运行态直接读 aiReviewMap（P2-2：发起后轮询落位自动推进弹窗状态行，
+ * 不再拷贝到本地 ref——轮询更新 aiReviewMap 即驱动 computed 重算）。
+ */
+const quickReviewRun = computed(() =>
+  quickReviewCaseId.value ? (reportReviews.aiReviewMap.value[quickReviewCaseId.value] ?? null) : null,
+)
+const quickReviewPhase = computed(() => quickReviewRun.value?.phase ?? 'idle')
+const quickReviewRecord = computed(() => quickReviewRun.value?.record ?? null)
+const quickReviewError = computed(() => quickReviewRun.value?.error ?? '')
+
+const openQuickReview = (caseItem) => {
+  if (reportReviews.sourceTaskId.value === '') {
+    reportReviews.reviewsError.value = '报告缺少来源任务，无法发起快速复核'
+    return
+  }
+  reportReviews.reviewsError.value = ''
+  quickReviewTarget.value = { caseItem, caseName: caseItem?.name ?? '用例' }
+}
+
+const closeQuickReview = () => {
+  if (quickReviewPhase.value === 'running') return // 执行中不关闭
+  quickReviewTarget.value = null
+  quickReviewInitiating.value = false
+}
+
+const initiateQuickReview = async () => {
+  if (!quickReviewTarget.value) return
+  quickReviewInitiating.value = true
+  try {
+    await reportReviews.initiateAiReview(quickReviewTarget.value.caseItem)
+  } finally {
+    quickReviewInitiating.value = false
+  }
+}
+
+const adoptQuickReview = async () => {
+  if (!quickReviewTarget.value) return
+  await reportReviews.adoptAiReview(quickReviewTarget.value.caseItem)
+  if (quickReviewPhase.value === 'adopted') {
+    closeQuickReview()
+  }
+}
+
+const rejectQuickReview = async () => {
+  if (!quickReviewTarget.value) return
+  await reportReviews.rejectAiReview(quickReviewTarget.value.caseItem)
+}
+
+const ignoreQuickReview = () => {
+  if (!quickReviewTarget.value) return
+  reportReviews.ignoreAiReview(quickReviewTarget.value.caseItem)
+  closeQuickReview()
+}
+
+// ---- INT-1070：报告侧复核历史抽屉（§4.3 人工/AI 两 Tab，AI Tab 接真实 ai-review-history） ----
+const historyTarget = ref(null)
+const openHistoryForCase = (caseItem) => {
+  historyTarget.value = {
+    caseId: String(caseItem?.id ?? caseItem?.testCaseId ?? ''),
+    title: caseItem?.name ?? '用例',
   }
 }
 </script>
@@ -706,6 +822,9 @@ justify-content: flex-end;
 }
 .review-ai-btn i {
   color: var(--info);
+}
+.review-quick-btn i {
+  color: var(--warning-dark, var(--warning));
 }
 
 /* INT-1068：复核操作错误提示（P3-1：缺来源任务/复核失败可见反馈） */
