@@ -11,12 +11,15 @@ import {
   useAiChatSession,
   type AiChatInitialContext,
 } from '@/infrastructure/stores/aiChatSessionStore'
+import { buildReviewExpandPrompt } from '@/features/ai-review/constants'
 
 type InitialContext = AiChatInitialContext
 
 /**
  * URL 入口预填指令（§3.7）：/ai-chat?report={id} 进入即预填「帮我把报告 #{id} 的测试结果
- * 生成一份可交付报告」；/ai-chat?task={id} 预填「帮我把任务 #{id} 的测试结果生成一份报告」。
+ * 生成一份可交付报告」；/ai-chat?task={id} 预填「帮我把任务 #{id} 的测试结果生成一份报告」；
+ * /ai-chat?reviewTask={id}&reviewCase={caseId}（AI 复核「展开到 /ai-chat」进入态）预填
+ * 「请复核任务 #{id} 用例 {caseId} 的评估结果…」。
  */
 function buildInitialPrompt(context?: InitialContext): string | undefined {
   const report = context?.report
@@ -28,6 +31,12 @@ function buildInitialPrompt(context?: InitialContext): string | undefined {
   const taskId = Number(task)
   if (task && Number.isFinite(taskId)) {
     return `帮我把任务 #${taskId} 的测试结果生成一份报告`
+  }
+  const reviewTask = context?.reviewTask
+  const reviewTaskId = Number(reviewTask)
+  const reviewCase = context?.reviewCase
+  if (reviewTask && Number.isFinite(reviewTaskId) && reviewCase) {
+    return buildReviewExpandPrompt(reviewTaskId, reviewCase)
   }
   return undefined
 }

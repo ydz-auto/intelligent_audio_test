@@ -28,10 +28,13 @@ import { DocumentPanel } from '@/features/ai-chat/components/studio/document-pan
 import { DEMO_COPY } from '@/features/ai-chat/constants'
 
 type AiChatPageProps = {
-  /** URL 契约：/ai-chat?report={id} / /ai-chat?task={id}（§3.7） */
+  /** URL 契约：/ai-chat?report={id} / /ai-chat?task={id} / /ai-chat?reviewTask={id}&reviewCase={caseId}（§3.7） */
   initialContext?: {
     report?: string
     task?: string
+    /** AI 复核会话「展开到 /ai-chat」进入态（08 §3.7 URL 契约扩展，INT-1064） */
+    reviewTask?: string
+    reviewCase?: string
   }
 }
 

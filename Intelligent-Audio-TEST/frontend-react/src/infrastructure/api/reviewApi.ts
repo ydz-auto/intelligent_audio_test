@@ -33,6 +33,8 @@ import type {
 import {
   toAiReviewHistoryList,
   toAiReviewRecord,
+} from '@/infrastructure/adapters/aiReviewAdapter'
+import {
   toCaseResultsForReview,
   toReviewHistoryList,
   toReviewSubmitResult,
@@ -91,7 +93,7 @@ export async function fetchCaseResults(
 
 // ---------------------------------------------------------------------------
 // AI 复核（INT-824 契约定稿：ai_reviews 表；发起/驳回 task.result.ai_review，
-// 历史 task:read，采纳 task.result.review）
+// 历史 task:read，采纳 task.result.review；INT-1063 去桩切真实请求）
 // ---------------------------------------------------------------------------
 
 /** 发起 AI 复核（POST /tasks/results/ai-review；异步执行结论落位后由消费侧轮询历史） */
@@ -108,7 +110,8 @@ export async function requestAiReview(
     '/tasks/results/ai-review',
     {
       result_ids: payload.resultIds,
-      dimension_ids: payload.dimensionIds || undefined,
+      dimension_ids: payload.dimensionIds?.length ? payload.dimensionIds : undefined,
+      force: payload.force || undefined,
     }
   )
   const item = (dto.items ?? [])[0]

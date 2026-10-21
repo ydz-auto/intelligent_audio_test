@@ -1,7 +1,8 @@
 /**
- * 批量管理标签弹窗（11_用例域.md §5.3.7，Dialog sm:max-w-lg）。
+ * 批量管理标签弹窗（11_用例域.md §5.3.7，Dialog sm:max-w-lg；INT-997 真实数据接线）。
  * 操作类型 RadioGroup「添加标签/移除标签/修改标签名字」：添加/移除→标签 TagInput + 已有标签点选区；
- * 改名→原标签 Select + 新标签名 Input。可视稿演示态：提交走 toast。
+ * 改名→原标签 Select + 新标签名 Input。提交走 POST /testcases/batch
+ * （add_tags / remove_tags / rename_tag），rename_tag 不携带 ids（标签级操作）。
  */
 import { useState } from 'react'
 import { toast } from 'sonner'
@@ -24,7 +25,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Spinner } from '@/components/ui/spinner'
 import type { TagItem } from '@/domain/models/testTag'
+import {
+  batchTestcaseAction,
+  type TestcaseBatchAction,
+} from '@/infrastructure/api/testcases-batch-api'
 
 type BatchTagMode = 'add' | 'remove' | 'rename'
 
@@ -32,11 +38,13 @@ export function BatchManageTagsDialog({
   open,
   onOpenChange,
   count,
+  ids,
   tags,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   count: number
+  ids: string[]
   tags: TagItem[]
 }) {
   const [mode, setMode] = useState<BatchTagMode>('add')
@@ -44,11 +52,39 @@ export function BatchManageTagsDialog({
   const [draft, setDraft] = useState('')
   const [renameFrom, setRenameFrom] = useState('')
   const [renameTo, setRenameTo] = useState('')
+  const [submitting, setSubmitting] = useState(false)
 
   const addChip = (name: string) => {
     const trimmed = name.trim()
     if (!trimmed || chips.includes(trimmed)) return
     setChips((prev) => [...prev, trimmed])
+  }
+
+  const handleSubmit = async () => {
+    setSubmitting(true)
+    try {
+      let action: TestcaseBatchAction
+      let payload: Parameters<typeof batchTestcaseAction>[2]
+      if (mode === 'rename') {
+        if (!renameFrom || !renameTo.trim()) return
+        action = 'rename_tag'
+        payload = { oldTagName: renameFrom, newTagName: renameTo.trim() }
+      } else {
+        if (chips.length === 0) return
+        action = mode === 'add' ? 'add_tags' : 'remove_tags'
+        payload = { tags: chips }
+      }
+      // rename_tag 为标签级操作（ids 空数组，Vue 基准）；add/remove 按选中用例 ids
+      await batchTestcaseAction(action, mode === 'rename' ? [] : ids, payload)
+      toast.success(
+        `批量操作执行成功（${mode === 'rename' ? '改名' : mode === 'add' ? '添加' : '移除'}标签）`
+      )
+      onOpenChange(false)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '批量管理标签失败')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -152,15 +188,19 @@ export function BatchManageTagsDialog({
           )}
         </div>
         <DialogFooter>
-          <Button variant='outline' onClick={() => onOpenChange(false)}>
+          <Button variant='outline' onClick={() => onOpenChange(false)} disabled={submitting}>
             取消
           </Button>
           <Button
-            onClick={() => {
-              toast.success(`批量操作执行成功（${mode === 'rename' ? '改名' : mode === 'add' ? '添加' : '移除'}标签）`)
-              onOpenChange(false)
-            }}
+            disabled={
+              submitting ||
+              (mode === 'rename'
+                ? !renameFrom || !renameTo.trim()
+                : chips.length === 0)
+            }
+            onClick={() => void handleSubmit()}
           >
+            {submitting && <Spinner className='size-3.5' />}
             确定
           </Button>
         </DialogFooter>

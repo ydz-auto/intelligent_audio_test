@@ -2,6 +2,8 @@
  * 具体用例列表（application 层，15_报告域.md §3.3.7）。
  * 服务端分页：筛选条件 300ms debounce → searchCases（失败回退 extractCasesFromReportData）；
  * 固定/展开状态本地维护；下载日志 → downloadCaseLogs（logs.zip Blob）+ 进度演示。
+ * 排序方式（INT-1049）：UI 新增「按标签」（sortBy='tag'）——分组组织维度，后端无 tag 排序，
+ * 请求回退 name 排序，组内客户端聚合（specific-case-grouping.ts）；「按分组」/「按标签」均不改数据请求。
  */
 import { useQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -9,6 +11,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   downloadCaseLogs,
   searchReportCases,
+  type CaseLogDownloadProgress,
 } from '@/infrastructure/api/reports-api'
 import type {
   ReportCaseItem,
@@ -20,7 +23,7 @@ export interface CaseFilters {
   categories?: string[]
   tags?: string[]
   metrics?: string[]
-  sortBy?: ReportSearchCasesRequest['sort_by']
+  sortBy?: ReportSearchCasesRequest['sort_by'] | 'tag'
   sortMetric?: string
   sortResource?: string
   sortOrder?: ReportSearchCasesRequest['sort_order']
@@ -56,7 +59,8 @@ export function useReportCases(
       categories: debouncedFilters.categories,
       tags: debouncedFilters.tags,
       metrics: debouncedFilters.metrics,
-      sort_by: debouncedFilters.sortBy,
+      // 'tag' 为 UI 分组组织维度（后端无 tag 排序），请求回退 name 排序，组内客户端聚合
+      sort_by: debouncedFilters.sortBy === 'tag' ? 'name' : debouncedFilters.sortBy,
       sort_metric: debouncedFilters.sortMetric,
       sort_resource: debouncedFilters.sortResource,
       sort_order: debouncedFilters.sortOrder ?? 'asc',
@@ -110,11 +114,18 @@ export function useReportCases(
     []
   )
 
+  /**
+   * 下载用例日志（INT-1067 两段流程第二步）：按所选文件名打包（?files=），
+   * 流式上报真实进度（onProgress 500ms 采样），返回 zip Blob。
+   */
   const downloadLogs = useCallback(
-    async (caseId: string) => {
-      // 消费桩返回的真实 blob 大小（P2-7：不再伪造 size，进度 Dialog 按实值推进）
-      const result = await downloadCaseLogs(reportId, caseId)
-      return { size: result.size }
+    async (
+      caseId: string,
+      files: string[],
+      onProgress?: (progress: CaseLogDownloadProgress) => void
+    ) => {
+      // 消费真实端点返回的 blob（进度 Dialog 按所选总量与真实速率推进）
+      return downloadCaseLogs(reportId, caseId, files, onProgress)
     },
     [reportId]
   )

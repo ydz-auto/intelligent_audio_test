@@ -93,7 +93,10 @@ export interface DimensionOptionsDataDto {
     is_default?: boolean
     weight?: number
     description?: string | null
+    /** 评估类型（auto/manual，domain 层 Dimension.type）；勿误当 dimensionType 用 */
     type?: string | null
+    /** 主/子维度（main/sub；options 端点实测含此字段，INT-1030 审计打回修正 type 错读） */
+    dimension_type?: string | null
   }>
 }
 
@@ -199,7 +202,8 @@ export function toDimensionOptionsList(
     id: item.id,
     name: item.name ?? '',
     description: item.description ?? null,
-    dimensionType: (item.type ?? 'main') as EvaluationDimensionItem['dimensionType'],
+    // INT-1030 审计打回：item.type 是评估类型（auto/manual），dimensionType 应取 dimension_type
+    dimensionType: (item.dimension_type ?? 'main') as EvaluationDimensionItem['dimensionType'],
     parentDimensionId: null,
     categoryId: null,
     weight: item.weight ?? null,

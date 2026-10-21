@@ -1,6 +1,7 @@
 /**
- * 批量调整分组弹窗（11_用例域.md §5.3.6，Dialog sm:max-w-md）。
+ * 批量调整分组弹窗（11_用例域.md §5.3.6，Dialog sm:max-w-md；INT-997 真实数据接线）。
  * 目标分组 Select（现有分组 +「+ 新建分组」内联）+ 操作方式 RadioGroup「移动到目标分组/复制到目标分组」。
+ * 提交走 POST /testcases/batch（move_to_group / copy_to_group）；「+ 新建分组」先 POST /groups 建组再执行。
  */
 import { useState } from 'react'
 import { toast } from 'sonner'
@@ -15,6 +16,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Spinner } from '@/components/ui/spinner'
 import {
   Select,
   SelectContent,
@@ -23,21 +25,53 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
+import { createGroup } from '@/infrastructure/api/groups-api'
+import {
+  batchTestcaseAction,
+  type TestcaseBatchAction,
+} from '@/infrastructure/api/testcases-batch-api'
 
 export function BatchAdjustGroupDialog({
   open,
   onOpenChange,
   count,
+  ids,
   groups,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   count: number
+  ids: string[]
   groups: TestCaseGroup[]
 }) {
   const [groupValue, setGroupValue] = useState('')
   const [newGroupName, setNewGroupName] = useState('')
   const [mode, setMode] = useState<'move' | 'copy'>('move')
+  const [submitting, setSubmitting] = useState(false)
+
+  const handleSubmit = async () => {
+    if (!groupValue) return
+    setSubmitting(true)
+    try {
+      // 「+ 新建分组」：先建组拿到目标分组 id，再走批量动作
+      let targetGroupId = groupValue
+      if (groupValue === '__new__') {
+        const created = await createGroup({ name: newGroupName.trim() })
+        targetGroupId = created.id
+      }
+      const action: TestcaseBatchAction =
+        mode === 'move' ? 'move_to_group' : 'copy_to_group'
+      await batchTestcaseAction(action, ids, { targetGroupId })
+      toast.success(
+        `批量操作执行成功（${mode === 'move' ? '移动' : '复制'} ${ids.length} 个用例）`
+      )
+      onOpenChange(false)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '批量调整分组失败')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -94,16 +128,16 @@ export function BatchAdjustGroupDialog({
           </div>
         </div>
         <DialogFooter>
-          <Button variant='outline' onClick={() => onOpenChange(false)}>
+          <Button variant='outline' onClick={() => onOpenChange(false)} disabled={submitting}>
             取消
           </Button>
           <Button
-            disabled={!groupValue || (groupValue === '__new__' && !newGroupName.trim())}
-            onClick={() => {
-              toast.success(`批量操作执行成功（${mode === 'move' ? '移动' : '复制'} ${count} 个用例）`)
-              onOpenChange(false)
-            }}
+            disabled={
+              submitting || !groupValue || (groupValue === '__new__' && !newGroupName.trim())
+            }
+            onClick={() => void handleSubmit()}
           >
+            {submitting && <Spinner className='size-3.5' />}
             确定
           </Button>
         </DialogFooter>

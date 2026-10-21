@@ -13,10 +13,17 @@ import { toast } from 'sonner'
 
 import type { BatchActionKey } from '@/features/testcases/components/case-bulk-actions'
 import type { CaseConfirmState } from '@/features/testcases/modals/case-confirms'
+import { deleteGroup } from '@/infrastructure/api/groups-api'
 import {
   batchTestcaseAction,
   fetchRefreshTaskStatus,
+  purgeTestcases,
 } from '@/infrastructure/api/testcases-batch-api'
+import {
+  deleteTestCase,
+  purgeTestCase,
+  restoreTestCase,
+} from '@/infrastructure/api/testcases-api'
 
 /** 七件套批量弹窗（对应组头「批量修改」/批量浮条同源载荷，BatchActionKey 子集） */
 export type BatchDialogKind =
@@ -44,11 +51,18 @@ export function useCaseBatchActions({
   const [batchDialog, setBatchDialog] = useState<BatchDialogState | null>(null)
   const [confirm, setConfirm] = useState<CaseConfirmState | null>(null)
 
-  /** 批量弹窗关闭后刷新列表（设置成功/取消后均刷新，成本低；INT-710 真实提交后列表可见结果） */
+  /** 批量弹窗关闭后刷新列表（设置成功/取消后均刷新，成本低；INT-710 真实提交后列表可见结果）。
+   * 调整分组影响分组计数、管理标签影响标签登记，一并失效对应 query。 */
   useEffect(() => {
     if (batchDialog === null) return
     return () => {
       void queryClient.invalidateQueries({ queryKey: ['testcases'] })
+      if (batchDialog.kind === 'group') {
+        void queryClient.invalidateQueries({ queryKey: ['testcase-groups'] })
+      }
+      if (batchDialog.kind === 'tags') {
+        void queryClient.invalidateQueries({ queryKey: ['tags'] })
+      }
     }
   }, [batchDialog, queryClient])
 
@@ -65,16 +79,16 @@ export function useCaseBatchActions({
         setBatchDialog({ kind: action, count, ids })
         break
       case 'copy':
-        setConfirm({ kind: 'batch-copy', count })
+        setConfirm({ kind: 'batch-copy', count, ids })
         break
       case 'delete':
-        setConfirm({ kind: 'batch-delete', count })
+        setConfirm({ kind: 'batch-delete', count, ids })
         break
       case 'restore':
-        setConfirm({ kind: 'batch-restore', count })
+        setConfirm({ kind: 'batch-restore', count, ids })
         break
       case 'purge':
-        setConfirm({ kind: 'batch-purge', count })
+        setConfirm({ kind: 'batch-purge', count, ids })
         break
       case 'name':
         setConfirm({ kind: 'auto-name', count, ids })
@@ -82,8 +96,6 @@ export function useCaseBatchActions({
       case 'refresh':
         setConfirm({ kind: 'refresh', count, ids })
         break
-      default:
-        toast.success('批量操作执行成功（演示：完整弹窗随接线批次落地）')
     }
   }
 
@@ -121,55 +133,76 @@ export function useCaseBatchActions({
     }
   }
 
-  /** 确认弹窗回调（行内/分组/批量同源；执行后清空勾选并关闭确认） */
-  const handleConfirm = (state: CaseConfirmState) => {
-    switch (state.kind) {
-      case 'delete':
-        toast.success('已移入回收站')
-        break
-      case 'purge':
-        toast.success('已彻底删除')
-        break
-      case 'restore':
-        toast.success(`用例「${state.name}」已恢复`)
-        break
-      case 'delete-group':
-        toast.success('删除分组成功')
-        break
-      case 'restore-all':
-        toast.success(`已恢复 ${state.count ?? 0} 个用例`)
-        break
-      case 'batch-copy':
-        toast.success('批量复制成功')
-        break
-      case 'batch-delete':
-        toast.success('已批量移入回收站')
-        break
-      case 'batch-restore':
-        toast.success('已批量恢复')
-        break
-      case 'batch-purge':
-        toast.success('已批量彻底删除')
-        break
-      case 'auto-name':
-        // INT-710：批量自动生成名称走真实 POST /testcases/batch（auto_generate_name）
-        void (async () => {
-          try {
-            await batchTestcaseAction('auto_generate_name', state.ids ?? [], {})
-            toast.success('自动生成名称完成')
-            await queryClient.invalidateQueries({ queryKey: ['testcases'] })
-          } catch (error) {
-            toast.error(error instanceof Error ? error.message : '自动生成名称失败')
-          }
-        })()
-        break
-      case 'refresh':
-        // INT-710：刷新参考参数走真实 POST /testcases/batch（refresh_reference → 异步任务）
-        void refreshReferenceParams(state.ids ?? [])
-        break
+  /** 确认弹窗回调（行内/分组/批量同源；INT-997 接真实接口，失败保留弹窗可重试/取消） */
+  const handleConfirm = async (state: CaseConfirmState) => {
+    try {
+      const ids = state.ids ?? []
+      switch (state.kind) {
+        case 'delete':
+          // INT-997：行删除接 DELETE /testcases/{id}（逻辑删除 → 回收站）
+          if (ids[0]) await deleteTestCase(ids[0])
+          toast.success('已移入回收站')
+          break
+        case 'purge':
+          // INT-997：行彻底删除接 DELETE /testcases/{id}/purge（admin/owner 由服务端校验）
+          if (ids[0]) await purgeTestCase(ids[0])
+          toast.success('已彻底删除')
+          break
+        case 'restore':
+          // INT-997：行恢复接 POST /testcases/{id}/restore
+          if (ids[0]) await restoreTestCase(ids[0])
+          toast.success(`用例「${state.name}」已恢复`)
+          break
+        case 'delete-group':
+          // INT-997：删除分组接 DELETE /groups/{id}?cascade=true（连同组下用例，不可逆）
+          if (ids[0]) await deleteGroup(ids[0], true)
+          toast.success('删除分组成功')
+          break
+        case 'restore-all':
+          // INT-997：全部恢复接 POST /testcases/batch（restore），ids 为当前回收站可见已删用例
+          if (ids.length > 0) await batchTestcaseAction('restore', ids, {})
+          toast.success(`已恢复 ${state.count ?? 0} 个用例`)
+          break
+        case 'batch-copy':
+          // INT-997：批量复制接 POST /testcases/batch（copy，保留原分组、名称追加 _copy）
+          await batchTestcaseAction('copy', ids, {})
+          toast.success('批量复制成功')
+          break
+        case 'batch-delete':
+          // INT-997：批量删除接 POST /testcases/batch（delete，批量软删入回收站）
+          await batchTestcaseAction('delete', ids, {})
+          toast.success('已批量移入回收站')
+          break
+        case 'batch-restore':
+          // INT-997：批量恢复接 POST /testcases/batch（restore，仅已删行计入）
+          await batchTestcaseAction('restore', ids, {})
+          toast.success('已批量恢复')
+          break
+        case 'batch-purge':
+          // INT-997：批量彻底删除接 POST /testcases/purge（batch 无 purge 动作，走独立路由）
+          await purgeTestcases(ids)
+          toast.success('已批量彻底删除')
+          break
+        case 'auto-name':
+          // INT-710：批量自动生成名称走真实 POST /testcases/batch（auto_generate_name）
+          await batchTestcaseAction('auto_generate_name', ids, {})
+          toast.success('自动生成名称完成')
+          break
+        case 'refresh':
+          // INT-710：刷新参考参数走真实 POST /testcases/batch（refresh_reference → 异步任务）
+          await refreshReferenceParams(ids)
+          break
+      }
+      await queryClient.invalidateQueries({ queryKey: ['testcases'] })
+      if (state.kind === 'delete-group') {
+        await queryClient.invalidateQueries({ queryKey: ['testcase-groups'] })
+      }
+      onClearSelection()
+      setConfirm(null)
+    } catch (error) {
+      // 失败保留确认弹窗（用户可重试 / 取消），仅 toast 报错
+      toast.error(error instanceof Error ? error.message : '操作失败')
     }
-    onClearSelection()
-    setConfirm(null)
   }
 
   return {

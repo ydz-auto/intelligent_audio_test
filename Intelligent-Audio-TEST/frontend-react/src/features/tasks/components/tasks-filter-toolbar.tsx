@@ -11,6 +11,7 @@ import {
   ChevronDown,
   FilterX,
   Search,
+  ShoppingCart,
   SlidersHorizontal,
 } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
@@ -57,6 +58,8 @@ export interface TasksFilterToolbarProps {
   onReset: () => void
   onSearch: () => void
   isFiltered: boolean
+  /** 日常页签「开始挑选」入口（18 §3.8.1：筛选工具栏右端 primary，task:cherry_pick 权限） */
+  onStartPick?: () => void
 }
 
 /** 单选 facet chip（Popover + 选项列表 + 选中态） */
@@ -236,6 +239,7 @@ export function TasksFilterToolbar({
   onReset,
   onSearch,
   isFiltered,
+  onStartPick,
 }: TasksFilterToolbarProps) {
   const { hasPermission } = usePermissions()
   const [advancedOpen, setAdvancedOpen] = useState(false)
@@ -368,6 +372,18 @@ export function TasksFilterToolbar({
             <Search aria-hidden='true' className='size-3.5' />
             查询
           </Button>
+          {/* 日常页签「开始挑选」入口（18 §3.8.1：动作行右端，primary + ShoppingCart；task:cherry_pick 权限过滤） */}
+          {isDaily && hasPermission('task:cherry_pick') && (
+            <Button
+              size='sm'
+              className='h-8 gap-1.5 px-2.5'
+              onClick={onStartPick}
+              title='从任务层级开始挑选执行结果'
+            >
+              <ShoppingCart aria-hidden='true' className='size-3.5' />
+              开始挑选
+            </Button>
+          )}
         </div>
       </div>
 

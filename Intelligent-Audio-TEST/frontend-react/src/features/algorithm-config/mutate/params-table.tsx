@@ -709,7 +709,7 @@ function ParamRow({
         <td className='px-2 py-1.5'>
           {isCase ? (
             <AnnotationCodeSelect
-              value={(form.watch(casePath('annotationCode')) as string) ?? ''}
+              value={form.watch(casePath('annotationCode')) as string | undefined ?? ''}
               onValueChange={(value) => form.setValue(casePath('annotationCode'), value)}
               algorithmOptions={algorithmOptions}
             />

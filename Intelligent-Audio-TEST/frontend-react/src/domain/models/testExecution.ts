@@ -128,6 +128,19 @@ export interface CaseDeviceResult {
   audioResults: Array<{ audioName: string; duration: number | null }>
 }
 
+/** 用例执行详情·算法结果扁平项（GET /tasks/{taskId}/cases/{caseId}/detail algorithm_results 实测；
+ * API/voice_llm 用例（devices 空）分节①结果摘要消费；对照 report 域 ReportAlgorithmResult 同构） */
+export interface CaseAlgorithmResult {
+  paramCode: string
+  paramType?: string
+  label?: string
+  roundNumber?: number
+  dimensionName?: string
+  device?: string
+  value?: unknown
+  rounds?: unknown
+}
+
 /** 用例执行详情（GET /tasks/{taskId}/cases/{caseId}/detail + /results 平移） */
 export interface CaseExecutionDetail {
   caseId: string
@@ -135,7 +148,10 @@ export interface CaseExecutionDetail {
   name: string
   executionStatus: string
   evaluationStatus: string
-  duration: number
+  /** 执行耗时（秒；后端缺省 null → 头部不渲染「耗时」，旧 Vue 同口径） */
+  duration: number | null
   score: number | null
+  algorithmType: string | null
+  algorithmResults: CaseAlgorithmResult[]
   devices: CaseDeviceResult[]
 }

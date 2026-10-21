@@ -99,7 +99,7 @@ export function evaluationStatusLabel(status?: string | null): string {
 }
 
 // ---------------------------------------------------------------------------
-// AI 复核（§5.3 契约定稿 INT-824；ai_reviews 表，infrastructure 层真实请求映射）
+// AI 复核（契约定稿 INT-824；ai_reviews 表，infrastructure 层真实请求映射，INT-1063 去桩）
 // ---------------------------------------------------------------------------
 
 /** AI 复核结论（§2.1 状态机：待发起→执行中→已完成→已采纳/已驳回/待查） */
@@ -113,7 +113,7 @@ export type AiReviewPhase =
   | 'rejected' // 已驳回
   | 'ignored' // 待查（忽略）
 
-/** AI 复核任务状态（后端 ai_reviews.status：pending/running/completed/failed/canceled） */
+/** AI 复核任务状态（后端 ai_reviews.status：表 DEFAULT pending，实际 running/completed/failed；容错未知值） */
 export type AiReviewRecordStatus =
   | 'pending'
   | 'running'
@@ -127,8 +127,11 @@ export interface AiReviewRecord {
   resultId: number
   taskId: number
   testCaseId: string
-  /** AI 复核任务状态（running=执行中 / completed=结论落位 / failed=执行失败） */
+  /** AI 复核任务状态（pending/running=执行中 / completed=结论落位 / failed=执行失败；未知值容错展示） */
   status: AiReviewRecordStatus
+  /** 复核维度 id（缺省=结果已完成评估的 LLM 判分维度） */
+  dimensionId: number | null
+  /** 结论（执行中/失败的记录无判定字段；消费侧仅在 completed 展示） */
   verdict: AiReviewVerdict
   /** 置信度 0-1（展示 {n}% 或高/中/低） */
   confidence: number
@@ -140,12 +143,15 @@ export interface AiReviewRecord {
   rejectedByUserId: number | null
   rejectedAt: string | null
   createdAt: string
+  updatedAt: string | null
 }
 
-/** AI 发起请求（§5.3：result_ids + dimension_ids 可选） */
+/** AI 发起请求（§5.3：result_ids + dimension_ids 可选 + force 重新复核） */
 export interface AiReviewRequest {
   resultIds: number[]
   dimensionIds?: number[]
+  /** 已有 AI 复核结论时重新复核（绕过幂等复用，§5.4） */
+  force?: boolean
 }
 
 /** AI 采纳请求（INT-824 契约定稿：改判状态至少一项 + 备注必填；采纳落人工复核语义） */
@@ -156,6 +162,21 @@ export interface AiReviewAdoptPayload {
   evaluationStatus?: string
   /** 复核备注（必填，min_length=1；采纳预填 AI 理由后人工确认） */
   comment: string
+}
+
+/** AI 复核任务状态中文（含未枚举回退原值；表 DEFAULT pending 容错） */
+export const AI_REVIEW_STATUS_LABELS: Record<string, string> = {
+  pending: '排队中',
+  running: '复核中',
+  completed: '已完成',
+  failed: '失败',
+  canceled: '已取消',
+}
+
+/** AI 复核任务状态中文（未知值回退原值，不抛错；§5.7 注记 2 容错口径） */
+export function aiReviewStatusLabel(status?: string | null): string {
+  const s = status ?? ''
+  return AI_REVIEW_STATUS_LABELS[s] ?? (s || '未知')
 }
 
 /** AI 结论中文（§7：复核通过/复核不通过/存疑） */
@@ -213,4 +234,37 @@ export interface CaseResultsForReview {
   caseId: string
   caseName: string
   results: CaseResultForReview[]
+}
+
+// ---------------------------------------------------------------------------
+// AI 复核会话上下文（19 规范 §5.3：灵犀Agent 复核会话预填契约）
+// ---------------------------------------------------------------------------
+
+/** 复核维度分数（设备×维度表，低分维度识别） */
+export interface AiReviewDimensionScore {
+  /** 维度名（@round:{n}/@overall 后缀已剥离） */
+  name: string
+  /** 平均分（多设备/多轮聚合；缺失 null） */
+  score: number | null
+}
+
+/**
+ * 复核上下文（19 §5.3：用例名/CaseId + 设备×结果 + 维度分数 + LLM 评语 +
+ * 已有 ai_reviews 结论——现有端点聚合，无新后端）。作为灵犀Agent 复核会话的
+ * 系统提示 + 首条 assistant 摘要卡输入；独立于全局主会话（19 §5.2）。
+ */
+export interface AiReviewContext {
+  taskId: number
+  caseId: string
+  caseName: string
+  /** 用例当前评估状态（GET /tasks/{id}/cases/{id}/detail；AI 判定 vs 原评估判定对比行） */
+  evaluationStatus: string | null
+  /** 设备×结果列表（GET /tasks/{id}/cases/{id}/results） */
+  deviceResults: CaseResultForReview[]
+  /** 评估维度分数（GET /tasks/{id}/cases/{id}/detail 设备×维度表聚合） */
+  dimensionScores: AiReviewDimensionScore[]
+  /** 现有复核/评语（results 行的 lastReviewComment；无则 null） */
+  reasoning: string | null
+  /** 已有 ai_reviews 结论（GET /tasks/results/{task_id}/ai-review-history，按 testCaseId 过滤） */
+  existingReviews: AiReviewRecord[]
 }

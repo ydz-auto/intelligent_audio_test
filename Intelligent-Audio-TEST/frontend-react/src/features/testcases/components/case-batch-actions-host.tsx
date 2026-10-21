@@ -66,6 +66,7 @@ export function CaseBatchActionsHost({
           open
           onOpenChange={(open) => !open && setBatchDialog(null)}
           count={batchDialog.count}
+          ids={batchDialog.ids}
           groups={groups}
         />
       )}
@@ -74,6 +75,7 @@ export function CaseBatchActionsHost({
           open
           onOpenChange={(open) => !open && setBatchDialog(null)}
           count={batchDialog.count}
+          ids={batchDialog.ids}
           tags={tags}
         />
       )}

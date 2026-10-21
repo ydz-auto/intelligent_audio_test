@@ -2,8 +2,10 @@
  * 被测 API 表格（interfaces/features/test-execution/components；10_测试执行.md §3.6.2）。
  * 列=☑选择（表头全选，离线行禁用）/执行模式/名称/端点/算法/状态/最大并发/操作
  * （连接测试+编辑/删除行菜单，api_config:test/update/delete 权限显隐）；离线行视觉禁用 + Tooltip。
- * INT-1119（2026-10-21）：执行模式列——仅**选中**行显示「并行｜串行」紧凑 SegmentedControl
- * （默认并行）；未选行显示「—」；readOnly 观察态展示模式 Badge，无控件。
+ * INT-1061 裁定（2026-10-20）：开始测试同屏混选改走 api-card.tsx（与设备卡同形态）；
+ * 本件保留服务 §3.6.2 纯 API 流程备用（React 侧现无独立纯 API 流程，INT-486 合并口径）。
+ * INT-1060 返工 / INT-1119（2026-10-21）：执行模式列——仅**选中**行显示「并行｜串行」
+ * 紧凑 SegmentedControl（默认并行）；未选行显示「—」；readOnly 观察态展示模式 Badge，无控件。
  */
 import { MoreHorizontal, PlugZap } from 'lucide-react'
 

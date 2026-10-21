@@ -141,3 +141,35 @@ export async function updateTestCase(
 ): Promise<void> {
   await apiClient.put(`/testcases/${id}`, toTestCaseMutateDto(payload))
 }
+
+/**
+ * 删除测试用例（DELETE /testcases/{id}；逻辑删除 → 回收站，Vue testcasesApi.delete）。
+ * 若该用例正被活跃任务引用，后端返回错误码 201。
+ */
+export async function deleteTestCase(id: string): Promise<void> {
+  await apiClient.delete(`/testcases/${id}`)
+}
+
+/** 复制测试用例（POST /testcases/{id}/copy；深度克隆，新名称默认为「原名称_copy」） */
+export async function copyTestCase(id: string): Promise<void> {
+  await apiClient.post(`/testcases/${id}/copy`)
+}
+
+/** 恢复单个测试用例（POST /testcases/{id}/restore；favorite_trash_bp INT-141） */
+export async function restoreTestCase(id: string): Promise<void> {
+  await apiClient.post(`/testcases/${id}/restore`)
+}
+
+/** 彻底删除单个测试用例（DELETE /testcases/{id}/purge；admin/owner 由服务端按 metadata 校验） */
+export async function purgeTestCase(id: string): Promise<void> {
+  await apiClient.delete(`/testcases/${id}/purge`)
+}
+
+/** 收藏 / 取消收藏（POST/DELETE /testcases/{id}/favorite；INT-141 per-user，需带 Bearer 身份） */
+export async function setTestCaseFavorite(
+  id: string,
+  favorite: boolean
+): Promise<void> {
+  if (favorite) await apiClient.post(`/testcases/${id}/favorite`)
+  else await apiClient.delete(`/testcases/${id}/favorite`)
+}

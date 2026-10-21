@@ -65,10 +65,13 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
   } | null>(null)
   const [exportTasks, setExportTasks] = useState<TaskListItem[] | null>(null)
   const [importOpen, setImportOpen] = useState(false)
+  /** 日常列表勾选任务 id 集（§3.8.1 工具栏「开始挑选」预选直达阶段 2 的数据源） */
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<number>>(new Set())
 
   // 页签切换重置筛选（URL 态回归：接线后 page/search/… 进 search，随 useTableUrlState）
   useEffect(() => {
     setFilters({ page: 1, pageSize: 10 })
+    setSelectedTaskIds(new Set())
   }, [tab])
 
   // 全局算法不在真实 /algorithm/options 内时视为无效——不继承、按「全部算法」查询
@@ -192,6 +195,20 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
     }
   }
 
+  /** 日常 tab 工具栏「开始挑选」（18 §3.8.1 裁定①：打开向导落在阶段 1 选任务；
+   *  日常列表已勾选任务时预选该批直达阶段 2） */
+  const handleStartPick = () => {
+    // 仅在日常页签渲染（daily 页签 items 为 TaskListItem）
+    const dailyItems = items as TaskListItem[]
+    const checkedTasks = dailyItems.filter((t) => selectedTaskIds.has(t.id))
+    if (checkedTasks.length > 0) {
+      handleJoinPick(checkedTasks)
+    } else {
+      setWizard({ step: 'pick' })
+      void navigate({ to: '/tasks/$tab', params: { tab: 'cherry-picks' } })
+    }
+  }
+
   /** 筛选变化/查询：回到第 1 页（分页与筛选共用 queryKey） */
   const handleFiltersChange = (next: TaskListFilters) => {
     setFilters({ ...next, page: 1, pageSize: filters.pageSize ?? 10 })
@@ -283,6 +300,7 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
               onReset={() => setFilters({ page: 1, pageSize: filters.pageSize ?? 10 })}
               onSearch={() => listQuery.refetch()}
               isFiltered={isFiltered}
+              onStartPick={handleStartPick}
             />
           )}
 
@@ -314,6 +332,8 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
                 onReexecute={handleReexecute}
                 onExport={handleExport}
                 onCompare={handleCompare}
+                selected={selectedTaskIds}
+                onSelectionChange={setSelectedTaskIds}
                 onCreate={() => setTypeDialogOpen(true)}
               />
             )}

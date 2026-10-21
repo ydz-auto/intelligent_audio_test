@@ -31,6 +31,7 @@ import type {
   ReportDetailData,
   ReportListData,
   ReportListQuery,
+  ReportLogFile,
   ReportMetricValue,
   ReportProgress,
   ReportSearchCasesRequest,
@@ -44,7 +45,9 @@ import type {
   ReportCaseAveragesData,
 } from '@/domain/models/report-statistics'
 
-import { request } from './client'
+import { ApiError } from './api-error'
+import { API_BASE_URL, request } from './client'
+import { authTokenStore } from '@/infrastructure/storage/auth-token'
 
 /** 生成报告/对比 Dialog 任务选择器数据源（GET /tasks 已完成子集映射） */
 export interface CompletedTaskOption {
@@ -181,7 +184,7 @@ export async function publishBenchmarkReport(): Promise<{ reportId: number }> {
 }
 
 // ---------------------------------------------------------------------------
-// 用例搜索 / 日志下载
+// 用例搜索 / 日志文件列表 / 日志下载
 // ---------------------------------------------------------------------------
 
 /** POST /reports/{id}/cases/search（ReportSearchCasesRequest 全参；响应 snake_case → 域模型） */
@@ -208,18 +211,123 @@ export async function searchReportCases(
   }
 }
 
-/** GET /reports/{id}/cases/{caseId}/logs/download（logs.zip Blob） */
-export async function downloadCaseLogs(
+/** 日志文件列表端点响应项（GET /reports/{id}/cases/{caseId}/logs，snake_case） */
+interface ReportLogFileRaw {
+  name: string
+  size: number
+  updated_at?: string
+}
+
+/**
+ * GET /reports/{id}/cases/{caseId}/logs（用例日志文件列表，INT-1062）。
+ * 挂 report:read；响应 { items: [{ name, size, updated_at? }] } → 域模型（camelCase）。
+ */
+export async function fetchCaseLogFiles(
   reportId: number,
   caseId: string
-): Promise<{ blob: Blob; size: number }> {
-  const blob = await request<Blob>(
+): Promise<ReportLogFile[]> {
+  const data = await request<{ items?: ReportLogFileRaw[] }>(
     'GET',
-    `/reports/${reportId}/cases/${caseId}/logs/download`,
-    undefined,
-    { responseType: 'blob' }
+    `/reports/${reportId}/cases/${caseId}/logs`
   )
-  return { blob, size: blob.size }
+  return (data.items ?? []).map((item) => ({
+    name: item.name,
+    size: item.size,
+    updatedAt: item.updated_at,
+  }))
+}
+
+/** 用例日志下载进度（loaded/total 单位 bytes；total 无 Content-Length 时为 0） */
+export interface CaseLogDownloadProgress {
+  /** 已下载字节数 */
+  loaded: number
+  /** 总字节数（Content-Length；未知为 0） */
+  total: number
+  /** 近 500ms 平均速率（bytes/s） */
+  speed: number
+}
+
+/**
+ * GET /reports/{id}/cases/{caseId}/logs/download（logs.zip Blob；INT-1062 扩展 ?files=）。
+ * files 传入选打包文件（URL 编码 JSON 字符串数组，缺省整包向后兼容）。
+ * 下载走 fetch ReadableStream 逐块读取，按旧 Vue getReader 先例上报真实进度（onProgress
+ * 500ms 采样速率）；错误体沿用 client.ts 同款 JSON 解析归拢 ApiError。
+ */
+export async function downloadCaseLogs(
+  reportId: number,
+  caseId: string,
+  files?: string[],
+  onProgress?: (progress: CaseLogDownloadProgress) => void
+): Promise<{ blob: Blob; size: number }> {
+  const path = `/reports/${reportId}/cases/${caseId}/logs/download`
+  const url = `${API_BASE_URL}${path}${
+    files && files.length > 0 ? `?files=${encodeURIComponent(JSON.stringify(files))}` : ''
+  }`
+
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  const token = authTokenStore.get()
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  let response: Response
+  try {
+    response = await fetch(url, { headers })
+  } catch (err) {
+    throw new ApiError({
+      httpStatus: null,
+      detail: err instanceof Error ? err.message : String(err),
+      isNetworkError: true,
+    })
+  }
+
+  if (!response.ok) {
+    let payload: { code?: unknown; message?: unknown; detail?: unknown } = {}
+    try {
+      const text = await response.text()
+      if (text) payload = JSON.parse(text) as typeof payload
+    } catch {
+      // 非 JSON 错误体，走 HTTP 状态码兜底文案
+    }
+    throw new ApiError({
+      code: payload.code,
+      httpStatus: response.status,
+      message: typeof payload.message === 'string' ? payload.message : '',
+      detail: payload.detail,
+    })
+  }
+
+  if (!response.body) {
+    const blob = await response.blob()
+    onProgress?.({ loaded: blob.size, total: blob.size, speed: 0 })
+    return { blob, size: blob.size }
+  }
+
+  const total = Number(response.headers.get('content-length') ?? 0)
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let received = 0
+  let lastTime = Date.now()
+  let lastBytes = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      chunks.push(value)
+      received += value.length
+      const now = Date.now()
+      if (now - lastTime >= 500) {
+        const speed = (received - lastBytes) / ((now - lastTime) / 1000)
+        onProgress?.({ loaded: received, total, speed })
+        lastTime = now
+        lastBytes = received
+      }
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  onProgress?.({ loaded: received, total, speed: 0 })
+  // reader.read() 返回 Uint8Array<ArrayBufferLike>，Blob 构造要求 BlobPart（照 audios-api 同款断言）
+  const blob = new Blob(chunks as unknown as BlobPart[], { type: 'application/zip' })
+  return { blob, size: received }
 }
 
 // ---------------------------------------------------------------------------

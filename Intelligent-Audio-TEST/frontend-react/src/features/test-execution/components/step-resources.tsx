@@ -2,9 +2,10 @@
  * 步骤二：选择设备/API 与执行参数（interfaces/features/test-execution/components；
  * 10_测试执行.md §3.6；INT-486 2026-10-16 追加口径：开始测试不再分 E2E/API——
  * 本步同屏同选设备 + API（混合执行），筛选按设备/API 维度组合）。
- * 工具行（搜索/状态/实验室/系统类型 + API 厂商/协议筛选）+ 设备网格 + 被测 API 表格
+ * 工具行（搜索/状态/实验室/系统类型 + API 厂商/协议筛选）+ 设备网格 + 被测 API 卡片网格
+ * （INT-1061 2026-10-20：API 与设备同一套卡片形态，混选同屏一眼同形；纯 API 表格保留 api-table 备用）
  * + 执行参数区（测试配置/并发/网络，照 playground-parameter-panel 参数卡形态；
- *   INT-1119 2026-10-21：执行模式改为**逐卡配置**——设备卡/API 行 SegmentedControl
+ *   INT-1060 返工 / INT-1119 2026-10-21：执行模式改为**逐卡配置**——设备卡/API 卡 SegmentedControl
  *   「并行｜串行」，底部 execution-diagram 实时示意，执行参数区不再含全局执行模式开关）。
  * 报告参数不在第二步配置（负责人 2026-10-16 口径确认：报告内容/导出在报告阶段处理）。
  * readOnly（§3.1.1）：设备/API 列表只读可见；扫描/新增/连接测试/编辑/删除隐藏；参数只读展示；
@@ -23,6 +24,7 @@ import { useTargetModes } from '@/application/test-execution/useTargetModes'
 import { useExecutionStore } from '@/infrastructure/stores/execution-store'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   Empty,
@@ -43,7 +45,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 
 import { DeviceCard } from '@/features/test-execution/components/device-card'
-import { ApiTable } from '@/features/test-execution/components/api-table'
+import { ApiCard } from '@/features/test-execution/components/api-card'
 import { ParamCard } from '@/features/test-execution/components/param-card'
 import { SelectionSummary } from '@/features/test-execution/components/selection-summary'
 import { ExecutionDiagram } from '@/features/test-execution/components/execution-diagram'
@@ -56,7 +58,6 @@ import {
 } from '@/features/test-execution/constants'
 import type { ApiConfig } from '@/domain/models/apiConfig'
 import type { Device } from '@/domain/models/device'
-import type { ExecutionMode } from '@/domain/models/testExecution'
 
 interface StepResourcesProps {
   voiceLlmAlert: string
@@ -158,14 +159,14 @@ export function StepResources({
     [resources.apis, resources.apiIds]
   )
 
-  /** API 逐卡模式受控值 map（经 useTargetModes 唯一受控源；缺省=并行） */
-  const apiModes = useMemo<Record<number, ExecutionMode>>(() => {
-    const record: Record<number, ExecutionMode> = {}
-    targetModes.payload.forEach((item) => {
-      if (item.targetType === 'api') record[item.targetId] = item.mode
-    })
-    return record
-  }, [targetModes.payload])
+  /** 卡片网格「全选在线 API」控制（当前筛选可见在线集；离线不可选） */
+  const visibleOnlineApis = useMemo(
+    () => visibleApis.filter((a) => a.status === 'online'),
+    [visibleApis]
+  )
+  const allVisibleApisSelected =
+    visibleOnlineApis.length > 0 &&
+    visibleOnlineApis.every((a) => resources.apiIds.includes(a.id))
 
   const isVoiceLlm = algorithmType === 'tts_eval'
 
@@ -402,34 +403,51 @@ export function StepResources({
             )}
           </section>
 
-          {/* 被测 API */}
+          {/* 被测 API（INT-1061：与设备同一套卡片形态，混选同屏一眼同形） */}
           <section className='space-y-2'>
-            <h3 className='text-sm font-semibold'>
-              被测 API
-              <span className='text-muted-foreground ms-2 text-xs font-normal'>
-                {visibleApis.length} 个可执行 API
-              </span>
-            </h3>
-            <ApiTable
-              apis={visibleApis}
-              selectedIds={resources.apiIds}
-              readOnly={readOnly}
-              canTest={canApiTest}
-              canEdit={canApiEdit}
-              canDelete={canApiDelete}
-              testingIds={testingIds}
-              modes={apiModes}
-              onModeChange={(apiId, mode) => targetModes.setMode('api', apiId, mode)}
-              onToggle={resources.toggleApi}
-              onToggleAll={() => {
-                const onlineIds = resources.apis.filter((a) => a.status === 'online').map((a) => a.id)
-                const allSelected = onlineIds.every((id) => resources.apiIds.includes(id))
-                resources.selectAllApis(allSelected ? [] : onlineIds)
-              }}
-              onTestConnection={handleApiTest}
-              onEdit={onOpenApiEdit}
-              onDelete={(api) => void apisCrud.remove(api)}
-            />
+            <div className='flex items-center justify-between'>
+              <h3 className='text-sm font-semibold'>
+                被测 API
+                <span className='text-muted-foreground ms-2 text-xs font-normal'>
+                  {visibleApis.length} 个可执行 API
+                </span>
+              </h3>
+              {!readOnly && visibleOnlineApis.length > 0 && (
+                <label className='flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground'>
+                  <Checkbox
+                    checked={allVisibleApisSelected}
+                    aria-label='全选在线 API'
+                    className='size-4'
+                    onCheckedChange={() =>
+                      resources.selectAllApis(
+                        allVisibleApisSelected ? [] : visibleOnlineApis.map((a) => a.id)
+                      )
+                    }
+                  />
+                  全选在线
+                </label>
+              )}
+            </div>
+            <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-3'>
+              {visibleApis.map((api) => (
+                <ApiCard
+                  key={api.id}
+                  api={api}
+                  selected={resources.apiIds.includes(api.id)}
+                  readOnly={readOnly}
+                  canTest={canApiTest}
+                  canEdit={canApiEdit}
+                  canDelete={canApiDelete}
+                  testing={testingIds.has(api.id)}
+                  mode={targetModes.getMode('api', api.id)}
+                  onModeChange={(mode) => targetModes.setMode('api', api.id, mode)}
+                  onToggle={resources.toggleApi}
+                  onTestConnection={handleApiTest}
+                  onEdit={onOpenApiEdit}
+                  onDelete={(api) => void apisCrud.remove(api)}
+                />
+              ))}
+            </div>
             {visibleApis.length === 0 && (
               <p className='text-muted-foreground text-xs'>当前筛选条件下没有可用 API</p>
             )}

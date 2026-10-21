@@ -16,7 +16,6 @@ import { usePermissions } from '@/application/hooks/use-permissions'
 import { useTestCasesList, type TestCaseListFilters } from '@/application/testcases/use-testcases-list'
 import { useCaseGroups } from '@/application/testcases/use-case-groups'
 import { useCaseTags } from '@/application/testcases/use-case-tags'
-import { useDimensionOptions } from '@/application/testcases/use-evaluation-dimensions'
 import { useEvaluationDimensions, useEvaluationCategories } from '@/application/evaluation/use-dimensions'
 import { useCaseBatchActions } from '@/application/testcases/use-case-batch-actions'
 import { useCaseSelectionStore } from '@/infrastructure/stores/case-selection-store'
@@ -64,8 +63,8 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
   })
   const groupsQuery = useCaseGroups()
   const tagsQuery = useCaseTags()
-  const dimsQuery = useDimensionOptions(algorithmType)
-  /** 全量评估维度（含子维度；批量设置评估维度 DimensionPicker 主/子分组云用，参考 V9.7.10） */
+  /** 全量评估维度（含子维度）+ 分类：与用例管理页同源（INT-1030 走查打回 P2-2——不再用
+   *  /evaluation/dimensions/options 旧 facet 子集，保证 开始测试 筛选 facet 与用例管理分组一致） */
   const allDimsQuery = useEvaluationDimensions()
   /** 评估维度分类（DimensionPicker 分类分组组头；负责人 2026-10-19 口径） */
   const categoriesQuery = useEvaluationCategories()
@@ -74,8 +73,7 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
   const total = listQuery.data?.total ?? items.length
   const groups = groupsQuery.data ?? []
   const tags = tagsQuery.data ?? []
-  const dimensions = dimsQuery.data ?? []
-  const allDimensions = allDimsQuery.data ?? []
+  const dimensions = allDimsQuery.data ?? []
   const categories = categoriesQuery.data ?? []
 
   const isFiltered = useMemo(
@@ -196,6 +194,7 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
         groups={groups}
         tags={tags}
         dimensions={dimensions}
+        categories={categories}
         cases={items}
         onRestoreAll={() => {}}
       />
@@ -277,7 +276,7 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
         handleConfirm={batch.handleConfirm}
         groups={groups}
         tags={tags}
-        dimensions={allDimensions}
+        dimensions={dimensions}
         categories={categories}
         algorithmType={algorithmType}
         testType={selectedTestType}
