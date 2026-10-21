@@ -135,7 +135,7 @@ class DeviceOperationExecutor:
         Raises:
             DeviceOperationError: 操作失败
         """
-        from device_service.infrastructure.drivers.device_driver import device_driver_factory
+        from device_service.infrastructure.drivers.driver_factory import device_driver_factory
 
         try:
             op = DeviceOperation(operation)

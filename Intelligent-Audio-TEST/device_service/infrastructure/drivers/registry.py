@@ -25,6 +25,7 @@ import threading
 from typing import Optional
 
 from .driver_types import AppType, AppVersion, DevicePlatform, DriverStatus
+from .contracts import AppDriver
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +136,13 @@ class DriverRegistry:
         return driver_cls
 
     def _validate_metadata(self, driver_cls):
-        """校验类属性完整性"""
+        """校验类属性完整性 + AppDriver 契约（对齐 api_test_service 注册表 Port 校验）。
+
+        非 AppDriver 子类禁止注册（Port 契约红线）；随后校验类属性完整性。
+        """
+        if not (isinstance(driver_cls, type) and issubclass(driver_cls, AppDriver)):
+            raise TypeError(
+                f"{driver_cls.__name__} 不是 AppDriver 子类，禁止注册")
         required = ["app_type", "version", "platform"]
         for attr in required:
             val = getattr(driver_cls, attr, None)

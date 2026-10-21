@@ -25,7 +25,7 @@ LOG_DEVICE_PATH = "/data/app/el2/100/base/com.huawei.hmos.vassistant/haps/voice_
 
 
 @register_driver
-class HarmonyHardenXiaoyi_Input_MethodDriver(HarmonyDriver):
+class HarmonyXiaoyiInputMethodDriver(HarmonyDriver):
     """鸿蒙小艺输入法驱动"""
 
     # —— 驱动元数据 ——

@@ -115,7 +115,7 @@ def _extract_device_output_from_archive(device, task_id, test_case_id, device_sn
         list: 提取的算法结果列表，每个元素包含 recording_stm_content, recording_rttm_content 等字段
     """
     try:
-        from device_service.infrastructure.drivers.device_driver import device_driver_factory
+        from device_service.infrastructure.drivers.driver_factory import device_driver_factory
 
         device_system = device.system or ''
         device_keywords = device.keywords
@@ -215,7 +215,7 @@ class DeviceResultReextractor:
 
     def _filter_reextractable_devices(self, task_id):
         """筛选支持重新提取的设备"""
-        from device_service.infrastructure.drivers.device_driver import device_driver_factory
+        from device_service.infrastructure.drivers.driver_factory import device_driver_factory
         from device_service.infrastructure.persistence.device_repository import device_repository
         from device_service.infrastructure.acl.task_data_acl_repository import task_data_acl_repository
 

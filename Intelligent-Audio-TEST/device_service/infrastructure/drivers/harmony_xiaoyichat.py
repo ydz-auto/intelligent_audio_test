@@ -133,8 +133,10 @@ class Xiaoyilivechat(HarmonyDriver):
     DSP_USER_FMT = (16000, 4, 2)                     # (sample_rate, channels, sample_width)
     DSP_AI_FMT = (24000, 2, 4)                       # 真机实测: in_raw1* 为 24kHz/2ch/32bit
     DSP_USER_EXTRACT_CHANNEL = 0                     # 4ch 取第 1 声道(ch0)→ mono
-    # audiodebug 二进制版本(对应 libaudio_proxy_<V>.z.so),本地随驱动打包
-    DSP_BIN_DIR = os.path.join(os.path.dirname(__file__), 'bin', 'dsp')
+    # audiodebug 二进制版本(对应 libaudio_proxy_<V>.z.so),随驱动打包在 device_service/resources/dsp
+    # （INT-1167：二进制移出源码目录 drivers/bin/dsp → device_service/resources/dsp）
+    DSP_BIN_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                               'resources', 'dsp')
     DSP_AUDIODEBUG_VERSIONS = ['4.0', '5.0']          # 本地有这两个版本(缺 6.0)
     DSP_HOOKCHANNEL = 196609                          # bat1 实测的 hook 通道
 

@@ -21,25 +21,28 @@ from .registry import driver_registry
 
 # 专用驱动依赖 hypium（华为内部测试框架，非 PyPI 包）
 # hypium 不可时跳过这些专用驱动，不影响基础扫描功能
+# _HYPium_AVAILABLE 是全包唯一来源（__init__.py 从本模块 re-export，INT-1167）
 try:
     from .harmony_translation_driver import (
+        HarmonyXiaoyiTranslationDriver,
         XiaoyiFace2FaceDriver,
         XiaoyiSimultaneousInterpretationDriver
     )
     from .harmony_xiaoyihuiji_driver import HarmonyHardenXiaoyiHuiJiDriver
     from .harmony_xiaoyichat import Xiaoyilivechat
     from .harmony_xiaoyilivechat import XiaoyilivechatV2
-    from .harmony_asr_driver import HarmonyHardenXiaoyi_Input_MethodDriver
+    from .harmony_asr_driver import HarmonyXiaoyiInputMethodDriver
     from .harmony_doubaochat import DoubaoChat
     from .harmony_chatgpt import ChatGptVoiceChat
     _HYPium_AVAILABLE = True
 except ImportError:
+    HarmonyXiaoyiTranslationDriver = None
     XiaoyiFace2FaceDriver = None
     XiaoyiSimultaneousInterpretationDriver = None
     HarmonyHardenXiaoyiHuiJiDriver = None
     Xiaoyilivechat = None
     XiaoyilivechatV2 = None
-    HarmonyHardenXiaoyi_Input_MethodDriver = None
+    HarmonyXiaoyiInputMethodDriver = None
     DoubaoChat = None
     ChatGptVoiceChat = None
     _HYPium_AVAILABLE = False
@@ -528,5 +531,6 @@ class DeviceDriverFactory:
         return devices
 
 
-# 全局单例
-driver_factory = DeviceDriverFactory()
+# 全局唯一工厂单例（INT-1167：合并自 device_driver.py 的 device_driver_factory，
+# 旧 driver_factory 全局名废弃；消费方统一从本模块导入）
+device_driver_factory = DeviceDriverFactory()

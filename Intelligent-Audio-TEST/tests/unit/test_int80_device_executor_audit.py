@@ -40,7 +40,7 @@ def executor():
 class TestExecutorMockMode:
     def test_mock_mode_simulates_success(self, executor):
         exec_, runner = executor
-        with patch('device_service.infrastructure.drivers.device_driver.device_driver_factory') as factory:
+        with patch('device_service.infrastructure.drivers.driver_factory.device_driver_factory') as factory:
             factory.get_mock_mode.return_value = True
             result = exec_.execute(_device(), 'reboot')
         assert result['mock'] is True
@@ -51,7 +51,7 @@ class TestExecutorMockMode:
 class TestExecutorAndroid:
     def test_reboot_command(self, executor):
         exec_, runner = executor
-        with patch('device_service.infrastructure.drivers.device_driver.device_driver_factory') as factory:
+        with patch('device_service.infrastructure.drivers.driver_factory.device_driver_factory') as factory:
             factory.get_mock_mode.return_value = False
             exec_.execute(_device(), 'reboot')
         cmd = runner.call_args[0][0]
@@ -59,35 +59,35 @@ class TestExecutorAndroid:
 
     def test_shutdown_command(self, executor):
         exec_, runner = executor
-        with patch('device_service.infrastructure.drivers.device_driver.device_driver_factory') as factory:
+        with patch('device_service.infrastructure.drivers.driver_factory.device_driver_factory') as factory:
             factory.get_mock_mode.return_value = False
             exec_.execute(_device(), 'shutdown')
         assert runner.call_args[0][0][-2:] == ['reboot', '-p']
 
     def test_connect_usb_wakes_screen(self, executor):
         exec_, runner = executor
-        with patch('device_service.infrastructure.drivers.device_driver.device_driver_factory') as factory:
+        with patch('device_service.infrastructure.drivers.driver_factory.device_driver_factory') as factory:
             factory.get_mock_mode.return_value = False
             exec_.execute(_device(), 'connect')
         assert 'KEYCODE_WAKEUP' in runner.call_args[0][0]
 
     def test_connect_remote_uses_adb_connect(self, executor):
         exec_, runner = executor
-        with patch('device_service.infrastructure.drivers.device_driver.device_driver_factory') as factory:
+        with patch('device_service.infrastructure.drivers.driver_factory.device_driver_factory') as factory:
             factory.get_mock_mode.return_value = False
             exec_.execute(_device(ip='192.168.1.8', connection_type='remote'), 'connect')
         assert runner.call_args[0][0] == ['adb', 'connect', '192.168.1.8']
 
     def test_disconnect_usb_rejected(self, executor):
         exec_, _ = executor
-        with patch('device_service.infrastructure.drivers.device_driver.device_driver_factory') as factory:
+        with patch('device_service.infrastructure.drivers.driver_factory.device_driver_factory') as factory:
             factory.get_mock_mode.return_value = False
             with pytest.raises(DeviceOperationError):
                 exec_.execute(_device(), 'disconnect')
 
     def test_install_app_requires_file_path(self, executor):
         exec_, _ = executor
-        with patch('device_service.infrastructure.drivers.device_driver.device_driver_factory') as factory:
+        with patch('device_service.infrastructure.drivers.driver_factory.device_driver_factory') as factory:
             factory.get_mock_mode.return_value = False
             with pytest.raises(DeviceOperationError):
                 exec_.execute(_device(), 'install_app')
@@ -96,7 +96,7 @@ class TestExecutorAndroid:
 
     def test_uninstall_app_requires_package(self, executor):
         exec_, runner = executor
-        with patch('device_service.infrastructure.drivers.device_driver.device_driver_factory') as factory:
+        with patch('device_service.infrastructure.drivers.driver_factory.device_driver_factory') as factory:
             factory.get_mock_mode.return_value = False
             with pytest.raises(DeviceOperationError):
                 exec_.execute(_device(), 'uninstall_app')
@@ -106,7 +106,7 @@ class TestExecutorAndroid:
     def test_command_failure_raises(self, executor):
         exec_, runner = executor
         runner.return_value = (1, 'error: device not found')
-        with patch('device_service.infrastructure.drivers.device_driver.device_driver_factory') as factory:
+        with patch('device_service.infrastructure.drivers.driver_factory.device_driver_factory') as factory:
             factory.get_mock_mode.return_value = False
             with pytest.raises(DeviceOperationError):
                 exec_.execute(_device(), 'reboot')
@@ -115,28 +115,28 @@ class TestExecutorAndroid:
 class TestExecutorHarmony:
     def test_reboot_command_hdc(self, executor):
         exec_, runner = executor
-        with patch('device_service.infrastructure.drivers.device_driver.device_driver_factory') as factory:
+        with patch('device_service.infrastructure.drivers.driver_factory.device_driver_factory') as factory:
             factory.get_mock_mode.return_value = False
             exec_.execute(_device(system='HarmonyOS'), 'reboot')
         assert runner.call_args[0][0][:2] == ['hdc', '-t']
 
     def test_uninstall_uses_bm(self, executor):
         exec_, runner = executor
-        with patch('device_service.infrastructure.drivers.device_driver.device_driver_factory') as factory:
+        with patch('device_service.infrastructure.drivers.driver_factory.device_driver_factory') as factory:
             factory.get_mock_mode.return_value = False
             exec_.execute(_device(system='HarmonyOS'), 'uninstall_app', {'package_name': 'com.x.y'})
         assert 'bm' in runner.call_args[0][0]
 
     def test_shutdown_unsupported(self, executor):
         exec_, _ = executor
-        with patch('device_service.infrastructure.drivers.device_driver.device_driver_factory') as factory:
+        with patch('device_service.infrastructure.drivers.driver_factory.device_driver_factory') as factory:
             factory.get_mock_mode.return_value = False
             with pytest.raises(DeviceOperationError):
                 exec_.execute(_device(system='HarmonyOS'), 'shutdown')
 
     def test_unknown_system_rejected(self, executor):
         exec_, _ = executor
-        with patch('device_service.infrastructure.drivers.device_driver.device_driver_factory') as factory:
+        with patch('device_service.infrastructure.drivers.driver_factory.device_driver_factory') as factory:
             factory.get_mock_mode.return_value = False
             with pytest.raises(DeviceOperationError):
                 exec_.execute(_device(system='Symbian'), 'reboot')

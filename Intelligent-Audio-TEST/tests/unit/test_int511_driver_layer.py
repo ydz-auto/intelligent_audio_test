@@ -36,14 +36,18 @@ from device_service.infrastructure.drivers.registry import (
     _check_dependencies,
 )
 from device_service.infrastructure.drivers.base_driver import BaseDeviceDriver
+from device_service.infrastructure.drivers.contracts import AppDriver
 
 
 # ──────────────────────────── 注册表契约（隔离实例，无 hypium 依赖） ────────────────────────────
 
 def _fake_driver_cls(app_type, version=AppVersion.V1, platform=DevicePlatform.ANDROID,
                      deps=None, keywords='fake.v1', display_name='Fake'):
-    """动态构造驱动类（Registry 只消费类属性，无需实例化 hypium 依赖链）"""
-    return type('Fake%s' % app_type.value.replace('_', '').title(), (), {
+    """动态构造驱动类（Registry 只消费类属性，无需实例化 hypium 依赖链）。
+
+    继承 AppDriver 契约（INT-1167：注册表校验注册类必须是 AppDriver 子类）。
+    """
+    return type('Fake%s' % app_type.value.replace('_', '').title(), (AppDriver,), {
         'app_type': app_type,
         'version': version,
         'platform': platform,
@@ -56,19 +60,30 @@ def _fake_driver_cls(app_type, version=AppVersion.V1, platform=DevicePlatform.AN
 class TestRegistryContract:
     def test_register_requires_metadata(self):
         registry = DriverRegistry()
-        Bad = type('Bad', (), {'version': AppVersion.V1, 'platform': DevicePlatform.ANDROID})
+        Bad = type('Bad', (AppDriver,), {'version': AppVersion.V1, 'platform': DevicePlatform.ANDROID})
         with pytest.raises(TypeError, match='app_type'):
             registry.register(Bad)
 
     def test_register_rejects_non_enum_metadata(self):
         registry = DriverRegistry()
-        Bad = type('Bad', (), {
+        Bad = type('Bad', (AppDriver,), {
             'app_type': 'plaud',  # 魔法字符串拒绝
             'version': AppVersion.V1,
             'platform': DevicePlatform.ANDROID,
         })
         with pytest.raises(TypeError, match='Enum'):
             registry.register(Bad)
+
+    def test_register_rejects_non_appdriver_subclass(self):
+        """注册表 Port 契约：非 AppDriver 子类禁止注册（TypeError）"""
+        registry = DriverRegistry()
+        Plain = type('Plain', (), {
+            'app_type': AppType.PLAUD,
+            'version': AppVersion.V1,
+            'platform': DevicePlatform.ANDROID,
+        })
+        with pytest.raises(TypeError, match='不是 AppDriver 子类'):
+            registry.register(Plain)
 
     def test_register_marks_missing_dependency(self):
         registry = DriverRegistry()
@@ -266,7 +281,7 @@ class TestRegistrationCompleteness:
 
 class TestFactoryResolve:
     def test_get_driver_typed_returns_instance(self):
-        from device_service.infrastructure.drivers.device_driver import device_driver_factory
+        from device_service.infrastructure.drivers.driver_factory import device_driver_factory
         driver = device_driver_factory.get_driver_typed(AppType.PLAUD, DevicePlatform.ANDROID)
         assert driver is not None
         assert driver.__class__.__name__ == 'PlaudDriver'
@@ -278,7 +293,7 @@ class TestFactoryResolve:
         """
         import importlib.util
         from device_service.infrastructure.drivers.registry import driver_registry
-        from device_service.infrastructure.drivers.device_driver import device_driver_factory
+        from device_service.infrastructure.drivers.driver_factory import device_driver_factory
         real_find = importlib.util.find_spec
         chatgpt = driver_registry.get_by_key(
             AppType.CHATGPT, AppVersion.V1, DevicePlatform.HARMONYOS)
@@ -299,24 +314,24 @@ class TestFactoryResolve:
                 pass
 
     def test_get_driver_for_device_keyword_resolution(self):
-        from device_service.infrastructure.drivers.device_driver import device_driver_factory
+        from device_service.infrastructure.drivers.driver_factory import device_driver_factory
         driver = device_driver_factory.get_driver_for_device(
             'Android', keywords='android.plaud.v1')
         assert driver.__class__.__name__ == 'PlaudDriver'
 
     def test_get_driver_for_device_unknown_keyword_raises(self):
-        from device_service.infrastructure.drivers.device_driver import device_driver_factory
+        from device_service.infrastructure.drivers.driver_factory import device_driver_factory
         with pytest.raises(ValueError, match='未注册驱动 keywords'):
             device_driver_factory.get_driver_for_device('Android', keywords='no.such')
 
     def test_get_driver_for_device_platform_mismatch_raises(self):
-        from device_service.infrastructure.drivers.device_driver import device_driver_factory
+        from device_service.infrastructure.drivers.driver_factory import device_driver_factory
         with pytest.raises(ValueError, match='平台与驱动不匹配'):
             device_driver_factory.get_driver_for_device(
                 'HarmonyOS', keywords='android.plaud.v1')
 
     def test_get_driver_by_system(self):
-        from device_service.infrastructure.drivers.device_driver import device_driver_factory
+        from device_service.infrastructure.drivers.driver_factory import device_driver_factory
         assert device_driver_factory.get_driver_by_system('HarmonyOS') is not None
         assert device_driver_factory.get_driver_by_system('Android') is not None
 

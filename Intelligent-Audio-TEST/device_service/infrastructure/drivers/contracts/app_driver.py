@@ -1,7 +1,11 @@
-"""应用驱动统一契约。
+"""应用驱动统一契约（DDD Port）。
 
 贡献者只需继承 AppDriver 并声明元数据，无需修改调度器代码。
-旧驱动（继承 BaseDeviceDriver 的）保持兼容，通过适配器注册到新体系。
+兼容实现基类：``BaseDeviceDriver``（drivers/base_driver.py）继承本契约并保留
+无参构造（``ctx: DriverContext = None``），既有运行时设施（Redis 分布式
+stop/pause、UI 抓取降级、teardown 自动关 App 等）全部保留；现有全部驱动
+（AndroidDriver/HarmonyDriver 及专用驱动）传递继承 BaseDeviceDriver，
+零改动接入新契约。注册表（registry.py）校验注册类必须是 AppDriver 子类。
 """
 
 from abc import ABC, abstractmethod
