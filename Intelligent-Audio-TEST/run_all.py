@@ -644,27 +644,37 @@ def _apply_test_db_override():
           flush=True)
 
 
-def _assert_not_shared_db():
-    """INT-453：拒绝无 --test-db 直连共享业务库（INT-246 同语义守卫）。
+def _assert_not_shared_db(allow_shared_db: bool = False):
+    """INT-453：拒绝无 --test-db / --allow-shared-db 直连共享业务库（INT-246 同语义守卫）。
 
     run_all 只面向本地调试与验收；共享业务库（intelligent_audio_test）只允许
     负责人手动操作与冒烟只读探测，实机链路回归 / 集成冒烟 / 验收一律
     --test-db 起栈（流水线约定）。生效 DATABASE_URL 指向共享业务库且未显式
-    --test-db 时，启动即 RuntimeError、零进程零写入——与 tests/conftest.py
-    的 pytest 会话守卫同语义；隔离测试库（intelligent_audio_test_test）与
-    非 Postgres URL（如 sqlite）均不受影响。
+    --test-db / --allow-shared-db 时，启动即 RuntimeError、零进程零写入——
+    与 tests/conftest.py 的 pytest 会话守卫同语义；隔离测试库
+    （intelligent_audio_test_test）与非 Postgres URL（如 sqlite）均不受影响。
+
+    INT-1190：真实库栈（常驻、连主库 intelligent_audio_test）是唯一被授权的
+    例外——必须显式 --allow-shared-db（默认仍拒绝），由 real_stack.py 启动器
+    使用；普通 run 不得直连共享业务库。
     """
     from shared.constants.database import (
         SHARED_BUSINESS_DB_NAME, ISOLATED_TEST_DB_NAME, database_name_of,
     )
     effective = database_name_of(CHILD_ENV.get('DATABASE_URL', ''))
-    if effective == SHARED_BUSINESS_DB_NAME:
+    if effective == SHARED_BUSINESS_DB_NAME and not allow_shared_db:
         raise RuntimeError(
             "INT-453 启动守卫：当前 DATABASE_URL 指向共享业务库 "
-            f"'{effective}' 且未显式 --test-db，拒绝启动（零进程零写入）。"
-            "共享业务库只允许负责人手动操作与冒烟只读探测；请带 --test-db"
+            f"'{effective}' 且未显式 --test-db / --allow-shared-db，拒绝启动（零进程零写入）。"
+            "共享业务库只允许负责人手动操作、冒烟只读探测与真实库栈"
+            "（--allow-shared-db，INT-1190）；请带 --test-db"
             f" 起栈（自动切隔离测试库 {ISOLATED_TEST_DB_NAME}），"
             "或确认 DATABASE_URL 指向隔离库。")
+    if effective == SHARED_BUSINESS_DB_NAME:
+        print(
+            f"[GUARD] INT-453 守卫已显式放行直连共享业务库 '{effective}'"
+            "（--allow-shared-db，INT-1190 真实库栈专用；仅走查/设计/页面实测）。",
+            flush=True)
 
 
 def stop_all():
@@ -687,10 +697,14 @@ if __name__ == '__main__':
         '--test-db', action='store_true',
         help='整栈切到隔离测试库（INT-246）：实机链路回归/集成冒烟/验收专用，'
              '共享业务库本栈不可见；冒烟后用 scripts/reset_test_db.py 清库')
+    parser.add_argument(
+        '--allow-shared-db', action='store_true',
+        help='显式放行直连共享业务库（INT-1190 真实库栈专用，默认拒绝）：'
+             '仅走查/设计/页面实测常驻真实库栈用；普通 run 不得使用')
     args = parser.parse_args()
     if args.test_db:
         _apply_test_db_override()
-    _assert_not_shared_db()
+    _assert_not_shared_db(allow_shared_db=args.allow_shared_db)
     try:
         start_all()
         while True:
