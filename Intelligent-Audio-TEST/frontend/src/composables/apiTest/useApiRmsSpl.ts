@@ -31,6 +31,18 @@ const MAX_FETCH_PAGES = 50;
 /** 列表默认每页展示条数（对齐 PaginationComponent 档位） */
 const DEFAULT_PAGE_SIZE = 10;
 
+// ===== 后端可缺省字段默认值（INT-1031 简化口径：表单只关联 API + 名称，其余映射默认值） =====
+/** 协议默认值（对齐后端实体 protocol: str = 'websocket'） */
+const DEFAULT_PROTOCOL = 'websocket';
+/** 参考声压级默认值（后端 reference_spl 缺省 65.0） */
+const DEFAULT_REFERENCE_SPL = 65;
+/** 参考线性增益默认值（后端 reference_gain_linear 缺省 1.0） */
+const DEFAULT_REFERENCE_GAIN_LINEAR = 1.0;
+/** 增益下限默认值（后端 min_gain_linear 缺省 0.001，防静音限幅） */
+const DEFAULT_MIN_GAIN_LINEAR = 0.001;
+/** 增益上限默认值（后端 max_gain_linear 缺省 10.0，防爆音限幅） */
+const DEFAULT_MAX_GAIN_LINEAR = 10.0;
+
 export function useApiRmsSpl() {
   const notification = useNotification();
 
@@ -112,8 +124,6 @@ export function useApiRmsSpl() {
       const term = searchTerm.value.toLowerCase();
       result = result.filter(m =>
         (m.name || '').toLowerCase().includes(term) ||
-        (m.vendor || '').toLowerCase().includes(term) ||
-        (m.protocol || '').toLowerCase().includes(term) ||
         apiName(m.apiId).toLowerCase().includes(term)
       );
     }
@@ -136,6 +146,8 @@ export function useApiRmsSpl() {
   // ===== 弹窗：新增/编辑映射 =====
   let isSubmitting = false;
 
+  /** INT-1031 简化口径：表单只保留「关联被测 API + 映射名称」；
+   *  供应商/协议/参考声压级/参考线性增益/增益上下限等后端可缺省字段一律映射默认值，不再出现在表单 */
   function upsertFields(mapping?: ApiRmsSplMapping) {
     const apiOptions = apiList.value.map(a => ({
       value: String(a.id),
@@ -152,54 +164,6 @@ export function useApiRmsSpl() {
         placeholder: '请选择被测 API（API 1:N 映射）',
       }]),
       { key: 'name', label: '映射名称', type: 'text', required: true, placeholder: '请输入映射名称' },
-      { key: 'vendor', label: '供应商 (vendor)', type: 'text', placeholder: '如 volc_ast / qwen_llm' },
-      {
-        key: 'protocol',
-        label: '协议',
-        type: 'select',
-        options: [
-          { value: 'websocket', label: 'WebSocket (Realtime)' },
-          { value: 'http', label: 'HTTP (非实时/流式)' },
-        ],
-        defaultValue: 'websocket',
-      },
-      {
-        key: 'referenceSpl',
-        label: '参考声压级 (dB SPL)',
-        type: 'number',
-        min: 30,
-        max: 120,
-        step: 0.1,
-        defaultValue: 65,
-        hint: '未校准时的参考基准（30-120 dB）',
-      },
-      {
-        key: 'referenceGainLinear',
-        label: '参考线性增益',
-        type: 'number',
-        min: 0.001,
-        step: 0.001,
-        defaultValue: 1.0,
-        hint: '未校准时的参考增益（正数）',
-      },
-      {
-        key: 'minGainLinear',
-        label: '增益下限',
-        type: 'number',
-        min: 0.001,
-        step: 0.001,
-        defaultValue: 0.001,
-        hint: '防静音限幅',
-      },
-      {
-        key: 'maxGainLinear',
-        label: '增益上限',
-        type: 'number',
-        min: 0.001,
-        step: 0.1,
-        defaultValue: 10.0,
-        hint: '防爆音限幅',
-      },
     ] as any[];
     return fields;
   }
@@ -208,12 +172,6 @@ export function useApiRmsSpl() {
     return {
       apiId: mapping ? String(mapping.apiId) : '',
       name: mapping?.name ?? '',
-      vendor: mapping?.vendor ?? '',
-      protocol: mapping?.protocol ?? 'websocket',
-      referenceSpl: mapping?.referenceSpl ?? 65,
-      referenceGainLinear: mapping?.referenceGainLinear ?? 1.0,
-      minGainLinear: mapping?.minGainLinear ?? 0.001,
-      maxGainLinear: mapping?.maxGainLinear ?? 10.0,
     };
   }
 
@@ -231,7 +189,19 @@ export function useApiRmsSpl() {
         if (isSubmitting) return;
         isSubmitting = true;
         try {
-          const input: ApiRmsSplUpsertInput = { ...result.data, apiId: result.data.apiId };
+          // INT-1031 简化口径：创建/编辑请求体默认映射后端可缺省字段（protocol=websocket、
+          // 供应商/参考基准/增益限幅为默认值），表单不再要求填写
+          const input: ApiRmsSplUpsertInput = {
+            ...result.data,
+            apiId: result.data.apiId,
+            vendor: null,
+            protocol: DEFAULT_PROTOCOL,
+            referenceSpl: DEFAULT_REFERENCE_SPL,
+            referenceGainLinear: DEFAULT_REFERENCE_GAIN_LINEAR,
+            minGainLinear: DEFAULT_MIN_GAIN_LINEAR,
+            maxGainLinear: DEFAULT_MAX_GAIN_LINEAR,
+            calibrationPoints: [],
+          };
           await apiRmsSplPort.create(input);
           notification.success('RMS-SPL 映射创建成功');
           await searchMappings();
@@ -261,7 +231,17 @@ export function useApiRmsSpl() {
         isSubmitting = true;
         try {
           const { apiId: _ignored, ...rest } = result.data;
-          await apiRmsSplPort.update(mapping.id, rest);
+          // INT-1031 简化口径：编辑只改名称，后端可缺省字段沿用映射现值或默认值（协议缺省 websocket）
+          const input: ApiRmsSplUpsertInput = {
+            ...rest,
+            vendor: mapping.vendor ?? null,
+            protocol: mapping.protocol ?? DEFAULT_PROTOCOL,
+            referenceSpl: mapping.referenceSpl ?? DEFAULT_REFERENCE_SPL,
+            referenceGainLinear: mapping.referenceGainLinear ?? DEFAULT_REFERENCE_GAIN_LINEAR,
+            minGainLinear: mapping.minGainLinear ?? DEFAULT_MIN_GAIN_LINEAR,
+            maxGainLinear: mapping.maxGainLinear ?? DEFAULT_MAX_GAIN_LINEAR,
+          };
+          await apiRmsSplPort.update(mapping.id, input);
           notification.success('RMS-SPL 映射更新成功');
           await searchMappings();
           await fetchApis();
