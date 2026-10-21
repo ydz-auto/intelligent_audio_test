@@ -16,7 +16,7 @@
 | UC-0903 | 创建任务并关联被测设备 | task_service:5001 + device_service（gRPC:50053） | `api_gateway/routes/task_bp.py` → gRPC `TaskService` / `DeviceService` → application command | `TASK_EVENTS` / `TASK_CREATED`、`DEVICE_EVENTS` / `DEVICE_STATUS_CHANGED` |
 | UC-1001 | 事件隔离（多任务并发） | 各执行服务（发布）+ api_gateway:5000（订阅转发） | Redis EventBus 频道按 task_id 隔离 → api_gateway 转 Socket.IO 房间（room=task_id） | `TASK_EVENTS` / `CASE_EVENTS`，频道名全部来自 `EventChannel` 枚举 |
 | UC-1002 | 帧结果实时获取（frame/summary 双通道） | api_test_service（RealtimeSessionExecutor）→ api_gateway → 前端 | 执行内推送 → `CASE_EVENTS` 频道 → Socket.IO 房间 | `CASE_EVENTS` / `CASE_EXECUTION_COMPLETED`、`CASE_EVALUATION_COMPLETED` |
-| UC-1003 | 新增厂商 Realtime 适配器 | api_test_service（适配器注册表；P3 由 api_test_service 并入） | 代码扩展：`APIAdapterFactory` 注册表注册，无 HTTP 入口 | — |
+| UC-1003 | 新增厂商 Realtime 适配器 | api_test_service（适配器注册表；P3 由 api_adapter_service 并入） | 代码扩展：`APIAdapterFactory` 注册表注册，无 HTTP 入口 | — |
 
 ---
 
@@ -663,7 +663,7 @@ Main Flow:
 扩展流程:
   2a. OpenAI 系厂商复用密钥链（case_config → meta → env OPENAI_API_KEY），
       新厂商如需其他鉴权方式仅在 _build_connect_headers 内实现
-  4a. P3 迁移窗口期：注册表随 api_test_service 并入 api_test_service，
+  4a. P3 迁移窗口期：注册表随 api_adapter_service 并入 api_test_service，
       register 调用点同步迁移，(protocol, vendor) 键不变，apis 表配置无需变更
   5a. 自动匹配冲突（同 (protocol, vendor) 多实现）→ 启动期抛错，强制显式 adapter_class
 

@@ -150,7 +150,7 @@
   <rect x="944" y="636" width="272" height="150" rx="8" fill="#ffffff" stroke="#7c3aed" stroke-width="1.4"/>
   <rect x="944" y="636" width="272" height="24" rx="8" fill="#7c3aed"/>
   <rect x="944" y="650" width="272" height="10" fill="#7c3aed"/>
-  <text x="960" y="653" font-size="11.5" font-weight="700" fill="#ffffff">P3 · api_test_service 下线</text>
+  <text x="960" y="653" font-size="11.5" font-weight="700" fill="#ffffff">P3 · api_adapter_service 下线</text>
   <text x="960" y="678" class="body">① 能力并入 api_test_service Adapter 体系</text>
   <text x="960" y="692" class="body">② 网关 grpc_proxies 切换调用方</text>
   <text x="960" y="706" class="body">③ 从 run_all.py / docker-compose.yml 移除</text>
@@ -174,7 +174,7 @@
     <text x="60" y="928" class="note">· task.type 作为执行路由依据 —— 废弃，改 TaskCase.device_type　· test_type 冗余列 —— 废弃（由 device_type + algorithm_type 表达）</text>
     <text x="60" y="944" class="note">· TaskType 引入 'realtime_api' —— 不引入（语义由 device_type 承载）　· 进程内 dict 设备互斥 —— 废弃，改 Redis 锁</text>
     <text x="60" y="960" class="note">· log_and_emit 直发 Socket.IO —— 废弃，改 EventBus 发布 + 网关转发　· 消费侧 AudioStreamOrchestrator.chunk_audio —— 下沉 audio_service</text>
-    <text x="60" y="976" class="note">· api_test_service 独立服务 —— P3 下线并入 api_test_service　· 前端组件直连后端单体接口 —— 改四层镜像 + Port</text>
+    <text x="60" y="976" class="note">· api_adapter_service 独立服务 —— P3 下线并入 api_test_service　· 前端组件直连后端单体接口 —— 改四层镜像 + Port</text>
     <text x="60" y="996" class="note" fill="#c2410c">· 魔法值一并清零：device_type / 端口 / 并发上限 / 阈值 / 锁 TTL / 事件名 / 状态字符串 —— 全部枚举化或配置化</text>
     <text x="60" y="1016" class="body" fill="#1e3a8a" font-weight="700">落位原则：不新建服务、不引入 MQ；跨服务一律 gRPC + ACL；分布式协同复用 Redis（EventBus + task:queue + 锁/信号量 + 服务注册）；执行器统一继承 BaseExecutor 五 mixin 基座。</text>
     <text x="60" y="1036" class="note">设计目标校验：语义不变（device_type 路由 / Adapter 生命周期 / E2E 与 Realtime 对称 / SPL 映射）· 落位按服务边界重组 · 开发/生产分环境配置矩阵。</text>
