@@ -1,0 +1,51 @@
+<html><head><meta charset="utf-8"/><style>
+body{font-family:Consolas,monospace;background:#0f172a;color:#e2e8f0;padding:24px;}
+h2{color:#fbbf24;font-size:18px;} .req{margin:16px 0;}
+.url{color:#93c5fd;font-size:14px;} .method{color:#fbbf24;font-weight:700;}
+pre{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:12px;overflow:auto;
+font-size:13px;white-space:pre-wrap;word-break:break-all;color:#a7f3d0;}
+</style></head><body>
+<h2>INT-1105 Network 捕获（真实请求载荷）</h2>
+<div class="req"><span class="method">[1] POST</span> <span class="url">http://127.0.0.1:5525/api/v1/test-devices/health-check</span>
+<pre>{
+  "device_ids": [
+    21
+  ]
+}</pre></div>
+<div class="req"><span class="method">[2] POST</span> <span class="url">http://127.0.0.1:5525/api/v1/test-devices/health-check</span>
+<pre>{
+  "device_ids": [
+    "21"
+  ]
+}</pre></div>
+<div class="req"><span class="method">[3] POST</span> <span class="url">http://127.0.0.1:5525/api/v1/test-devices/health-check</span>
+<pre>{
+  "device_ids": [
+    "21"
+  ]
+}</pre></div>
+<div class="req"><span class="method">[4] POST</span> <span class="url">http://127.0.0.1:5525/api/v1/apis/9/health</span>
+<pre>{}</pre></div>
+<div class="req"><span class="method">[5] POST</span> <span class="url">http://127.0.0.1:5525/api/v1/apis/8/health</span>
+<pre>{}</pre></div>
+<div class="req"><span class="method">[6] POST</span> <span class="url">http://127.0.0.1:5525/api/v1/apis/204/health</span>
+<pre>{}</pre></div>
+<div class="req"><span class="method">[7] POST</span> <span class="url">http://127.0.0.1:5525/api/v1/apis/205/health</span>
+<pre>{}</pre></div>
+<div class="req"><span class="method">[8] POST</span> <span class="url">http://127.0.0.1:5525/api/v1/apis/301/health</span>
+<pre>{}</pre></div>
+<div class="req"><span class="method">[9] POST</span> <span class="url">http://127.0.0.1:5525/api/v1/apis/320/health</span>
+<pre>{}</pre></div>
+<div class="req"><span class="method">[10] POST</span> <span class="url">http://127.0.0.1:5525/api/v1/apis/9/health</span>
+<pre>{}</pre></div>
+<div class="req"><span class="method">[11] POST</span> <span class="url">http://127.0.0.1:5525/api/v1/apis/8/health</span>
+<pre>{}</pre></div>
+<div class="req"><span class="method">[12] POST</span> <span class="url">http://127.0.0.1:5525/api/v1/apis/204/health</span>
+<pre>{}</pre></div>
+<div class="req"><span class="method">[13] POST</span> <span class="url">http://127.0.0.1:5525/api/v1/apis/205/health</span>
+<pre>{}</pre></div>
+<div class="req"><span class="method">[14] POST</span> <span class="url">http://127.0.0.1:5525/api/v1/apis/301/health</span>
+<pre>{}</pre></div>
+<div class="req"><span class="method">[15] POST</span> <span class="url">http://127.0.0.1:5525/api/v1/apis/320/health</span>
+<pre>{}</pre></div>
+</body></html>
