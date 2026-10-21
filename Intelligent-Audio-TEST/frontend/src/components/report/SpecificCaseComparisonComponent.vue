@@ -331,7 +331,7 @@
             </button>
             <button
               class="download-log-btn"
-              @click.stop="downloadCaseLogZip(caseItem)"
+              @click.stop="openLogFileDialog(caseItem)"
               title="下载日志"
             >
               <i class="fas fa-download"></i>
@@ -438,13 +438,15 @@
       @close="showAudioModal = false"
     />
 
-    <!-- Download Progress Modal -->
+    <!-- Download Progress Modal（§4.10b：正在下载日志（{n} 个文件）+ 进度% + 已下载·所选总量 + 速度） -->
     <teleport to="body">
       <div v-if="isDownloadingLog" class="download-loading-overlay">
         <div class="download-loading-modal">
           <div class="download-loading-spinner"></div>
           <div class="download-loading-title">正在下载日志</div>
-          <div class="download-loading-text">{{ downloadingCaseName }}</div>
+          <div class="download-loading-text">
+            {{ downloadingCaseName }}<template v-if="downloadFileCount">（{{ downloadFileCount }} 个文件）</template>
+          </div>
           <div class="download-progress-bar-container">
             <div class="download-progress-bar" :style="{ width: downloadProgress + '%' }"></div>
           </div>
@@ -452,6 +454,85 @@
             <span>{{ downloadProgress }}%</span>
             <span v-if="downloadSize && downloadTotal">{{ downloadSize }} / {{ downloadTotal }}</span>
             <span v-if="downloadSpeed">{{ downloadSpeed }}</span>
+          </div>
+        </div>
+      </div>
+    </teleport>
+
+    <!-- INT-1055/INT-1071：日志文件选择 Dialog（§4.10a：文件名 + 大小 + 全选/多选 + 已选合计） -->
+    <teleport to="body">
+      <div v-if="showLogFileDialog" class="log-file-select-overlay" @click.self="closeLogFileDialog">
+        <div class="log-file-select-dialog">
+          <div class="log-file-select-header">
+            <h3 class="log-file-select-title">
+              <i class="fas fa-download log-file-select-title-icon"></i>
+              下载日志 — {{ logDialogCaseName }}
+            </h3>
+            <button class="log-file-select-close" title="关闭" @click="closeLogFileDialog">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+
+          <div class="log-file-select-body">
+            <!-- 加载中 -->
+            <div v-if="logFilesLoading" class="log-file-select-tip">
+              <i class="fas fa-spinner fa-spin"></i> 正在加载日志文件...
+            </div>
+
+            <!-- 列表加载失败：错误提示 + 重试 / 整包下载兜底（后端缺省 files 即整包，向后兼容） -->
+            <div v-else-if="logFilesError" class="log-file-select-error">
+              <div class="log-file-error-text">
+                <i class="fas fa-circle-exclamation log-file-error-icon"></i>
+                {{ logFilesError }}
+              </div>
+              <div class="log-file-error-actions">
+                <button class="btn btn-secondary log-file-action-btn" @click="loadLogFiles">
+                  <i class="fas fa-rotate"></i> 重试
+                </button>
+                <button class="btn btn-secondary log-file-action-btn" @click="downloadAllLogZip">
+                  <i class="fas fa-file-archive"></i> 下载全部日志
+                </button>
+              </div>
+            </div>
+
+            <!-- 空态 -->
+            <div v-else-if="logFiles.length === 0" class="log-file-select-tip">该用例暂无日志文件</div>
+
+            <!-- 文件列表 -->
+            <template v-else>
+              <div class="log-file-toolbar">
+                <button class="log-file-toggle-all" @click="toggleSelectAllLogFiles">
+                  <i class="fas" :class="allSelected ? 'fa-check-square' : 'fa-square'"></i>
+                  {{ allSelected ? '反选' : '全选' }}
+                </button>
+                <span class="log-file-summary">已选 {{ selectedFilesCount }} 个 / 共 {{ logFiles.length }} 个 · 总大小 {{ formatFileSize(selectedFilesSize) }}</span>
+              </div>
+              <div class="log-file-list">
+                <div
+                  v-for="file in logFiles"
+                  :key="file.name"
+                  class="log-file-row"
+                  :class="{ selected: selectedLogFiles.includes(file.name) }"
+                  @click="toggleLogFile(file.name)"
+                >
+                  <input
+                    type="checkbox"
+                    class="log-file-checkbox"
+                    :checked="selectedLogFiles.includes(file.name)"
+                    @click.stop="toggleLogFile(file.name)"
+                  />
+                  <span class="log-file-name" :title="file.name">{{ file.name }}</span>
+                  <span class="log-file-size">{{ formatFileSize(file.size) }}</span>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <div class="log-file-select-footer">
+            <button class="btn btn-secondary" @click="closeLogFileDialog">取消</button>
+            <button class="btn btn-primary" :disabled="selectedFilesCount === 0" @click="confirmDownloadSelected">
+              <i class="fas fa-download"></i> 下载所选文件
+            </button>
           </div>
         </div>
       </div>
@@ -522,6 +603,7 @@ import ReportReviewHistoryDrawer from './ReportReviewHistoryDrawer.vue'
 import { useAuthStore } from '@/store/authStore'
 import { AuthMode, getEffectiveAuthMode } from '@/domain/enums'
 import { computed, ref } from 'vue'
+import { formatFileSize } from '../../utils/audioUtils'
 import '../../assets/styles/components/report-filter-card.css'
 import '../../assets/styles/components/comparison-common.css'
 import { useSpecificCaseComparison } from './SpecificCaseComparisonComponent'
@@ -586,7 +668,22 @@ const {
   paginatedCasesWithPreparedData,
   toggleCaseExpand,
   getOverallStatus,
-  downloadCaseLogZip,
+  showLogFileDialog,
+  logDialogCaseName,
+  logFiles,
+  logFilesLoading,
+  logFilesError,
+  selectedLogFiles,
+  selectedFilesCount,
+  selectedFilesSize,
+  allSelected,
+  openLogFileDialog,
+  closeLogFileDialog,
+  loadLogFiles,
+  toggleLogFile,
+  toggleSelectAllLogFiles,
+  confirmDownloadSelected,
+  downloadAllLogZip,
   expandedCases,
   allDevices,
   unpinnedFilteredCases,
@@ -606,6 +703,7 @@ const {
   downloadSpeed,
   downloadSize,
   downloadTotal,
+  downloadFileCount,
   reportReviews,
   isCaseFilteredByReview,
   reviewFilter

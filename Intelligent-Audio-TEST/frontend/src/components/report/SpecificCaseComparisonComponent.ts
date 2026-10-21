@@ -108,6 +108,8 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
   const downloadSpeed = ref('')
   const downloadSize = ref('')
   const downloadTotal = ref('')
+  /** INT-1055：下载所选文件数（§4.10b「正在下载日志（{n} 个文件）」） */
+  const downloadFileCount = ref(0)
 
   // 所有评测维度，确保至少有一个默认维度（初始化已上移，见 processCategories 之后）
 
@@ -457,15 +459,16 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
     return caseItem.taskId || props.reportData?.taskId || ''
   }
 
-  // 使用提取的下载逻辑
-  const { downloadCaseLogZip } = createDownloadLogic({
+  // 使用提取的下载逻辑（INT-1055 两段流程：文件选择 Dialog → 打包下载 + 进度）
+  const download = createDownloadLogic({
     props,
     isDownloadingLog,
     downloadingCaseName,
     downloadProgress,
     downloadSpeed,
     downloadSize,
-    downloadTotal
+    downloadTotal,
+    downloadFileCount
   })
 
   const formatTime = (timestamp: any) => {
@@ -592,11 +595,12 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
     pinnedCases, togglePin,
     getResourceLabel, resourceHeaders,
     paginatedCasesWithPreparedData, toggleCaseExpand, getOverallStatus,
-    downloadCaseLogZip, expandedCases, allDevices,
+    ...download,
+    expandedCases, allDevices,
     unpinnedFilteredCases, totalCases, displayTotalCases, currentPage, pageSize, handlePrevPage, handleNextPage, handleGoToPage, handlePageSizeChange,
     currentCaseDetailWithPreparedData, closeCaseDetail, openCaseDetail,
     getResourceName, getCaseTaskId, formatTime,
-    isDownloadingLog, downloadingCaseName, downloadProgress, downloadSpeed, downloadSize, downloadTotal,
+    isDownloadingLog, downloadingCaseName, downloadProgress, downloadSpeed, downloadSize, downloadTotal, downloadFileCount,
     // 复核
     reportReviews,
     isCaseFilteredByReview,
