@@ -101,14 +101,14 @@ export function generateDeviceFields(deviceType: string): DynamicFormField[] {
           required: true,
           placeholder: '由设备选择自动填充',
           disabled: true
-        }, { 
-          key: 'ipAddress',
+        }, {
+          key: 'ip',
           label: 'IP地址',
           type: 'text',
           required: false,
           placeholder: '请输入设备IP地址（远程连接时必填）',
           conditional: {field: 'connectionType', value: 'remote'}
-        }, { 
+        }, {
           key: 'port',
           label: '端口',
           type: 'number',
