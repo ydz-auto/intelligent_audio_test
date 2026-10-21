@@ -2,7 +2,7 @@
 """Mock Realtime API 服务 — Realtime 被测产品替身（INT-137，仅联调/验收/回归用）。
 
 契约对齐（生产客户端，勿改 mock 侧以外的契约）：
-- 客户端：api_test_service/infrastructure/vendor_ws/realtime_ws_client.py
+- 客户端：api_test_service/infrastructure/adapters/transport/realtime_ws_client.py
   （RealtimeSessionExecutor A1 的 WS 协议，默认 OpenAI Realtime 事件协议）
 
 会话语义：

@@ -239,7 +239,7 @@ class TestRealtimeWaitStopCheck:
 
     @staticmethod
     def _client():
-        from api_test_service.infrastructure.vendor_ws.realtime_ws_client import RealtimeWSClient
+        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import RealtimeWSClient
         return RealtimeWSClient('ws://stub')
 
     def test_wait_ai_speaking_interrupted_by_stop_check(self):

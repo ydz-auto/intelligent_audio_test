@@ -22,7 +22,7 @@ os.environ.setdefault('OSS_ACCESS_KEY', 'test')
 os.environ.setdefault('OSS_SECRET_KEY', 'test')
 
 from shared.models.common_enums import APIProtocol, VendorAdapterType
-from api_test_service.infrastructure.adapters.api_client import (
+from api_test_service.infrastructure.adapters.transport import (
     APIClient,
     endpoint_protocol,
 )

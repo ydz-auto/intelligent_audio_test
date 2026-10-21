@@ -32,7 +32,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from mock_services.mock_realtime_api import MockRealtimeBehavior, MockRealtimeServer
 from mock_services.mock_third_party_eval import MockEvalBehavior, MockEvalServer
-from api_test_service.infrastructure.vendor_ws import RealtimeWSClient
+from api_test_service.infrastructure.adapters.transport import RealtimeWSClient
 from evaluation_service.infrastructure.acl.third_party_eval_acl import (
     ThirdPartyEvalACL,
     ThirdPartyEvalSettings,

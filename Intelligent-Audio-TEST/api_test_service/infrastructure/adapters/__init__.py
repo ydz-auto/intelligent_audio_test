@@ -24,6 +24,7 @@ from api_test_service.infrastructure.adapters.registry import (
 from api_test_service.infrastructure.adapters import api_driver_adapter  # noqa: F401
 from api_test_service.infrastructure.adapters import mock_vendor_adapter  # noqa: F401
 from api_test_service.infrastructure.adapters import protocol  # noqa: F401
+from api_test_service.infrastructure.adapters import transport  # noqa: F401
 from api_test_service.infrastructure.adapters import vendors  # noqa: F401
 
 __all__ = [
