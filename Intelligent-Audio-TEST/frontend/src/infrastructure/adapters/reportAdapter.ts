@@ -51,4 +51,5 @@ export {
   toReferenceParamsDict,
   toFieldMappingItem,
   toFieldMappings,
+  toCaseLogFiles,
 } from './report.mapping'

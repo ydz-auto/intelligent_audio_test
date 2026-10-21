@@ -390,6 +390,14 @@ export interface DetailedResult {
   audioId?: string | number
 }
 
+/** 用例日志文件（INT-1055/INT-1062：文件选择 Dialog 列表项，camelCase） */
+export interface CaseLogFile {
+  name: string
+  size: number
+  /** 可选：business 日志无 mtime 时后端省略 */
+  updatedAt?: string | null
+}
+
 /** 报告详情（聚合根形状；name/taskName/title 等为兼容展示字段，来源 config JSON） */
 export interface Report {
   id: string | number

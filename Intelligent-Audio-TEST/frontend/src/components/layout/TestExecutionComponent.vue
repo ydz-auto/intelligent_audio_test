@@ -991,13 +991,11 @@ const caseCardItem = (testCase) => ({
   deleted: false,
 });
 
-/** 执行终态（shared ExecutionStatus 词汇；用于无轮次数据时派生「已执行」判定） */
-const CASE_TERMINAL_EXECUTION = ['completed', 'failed', 'stopped', 'skipped'];
-
 /**
  * INT-1103 返工 F1：任务关联用例卡轮次进度（对齐 React TaskCaseCard 恒渲染口径）。
  * 实时 round_progress（task_progress WS 事件）优先；任务详情 cases[] 无轮次字段时
- * 按执行结果派生——已执行（有耗时或执行终态）→ 末轮完成 100%，未执行 → 起始轮 0%。
+ * 按 React 纯 duration 判据派生——已执行（有耗时）→ 第 2/2 轮 50%，未执行 → 第 1/2 轮 0%
+ * （React case-association.tsx：`第 {duration!=null?2:1}/2 轮` + `Progress value={duration!=null?50:0}`）。
  * 恒返回非空结构，保证 meta 插槽恒有内容、不触发 TestCaseCard 默认「最后编辑时间」回退。
  */
 const caseRoundMeta = (testCase) => {
@@ -1006,11 +1004,9 @@ const caseRoundMeta = (testCase) => {
     const percent = Math.min(100, Math.max(0, Math.round((rp.current / rp.total) * 100)));
     return { current: rp.current, total: rp.total, percent };
   }
-  const executed =
-    (testCase.duration != null && testCase.duration !== '') ||
-    CASE_TERMINAL_EXECUTION.includes(testCase.executionStatus);
+  const executed = testCase.duration != null && testCase.duration !== '';
   return executed
-    ? { current: 2, total: 2, percent: 100 }
+    ? { current: 2, total: 2, percent: 50 }
     : { current: 1, total: 2, percent: 0 };
 };
 

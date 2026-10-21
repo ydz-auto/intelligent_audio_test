@@ -388,3 +388,226 @@
   color: var(--color-gray-500);
   width: 100%;
 }
+
+/* ===== INT-1055/INT-1071：日志文件选择 Dialog（§4.10a，专用 overlay 规避全局 .modal-overlay 默认隐藏串扰 INT-250） ===== */
+.log-file-select-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-index-modal-top, 13000) + 2);
+  background: color-mix(in srgb, var(--color-black) 50%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.log-file-select-dialog {
+  width: min(560px, 94vw);
+  max-height: min(72dvh, 640px);
+  display: flex;
+  flex-direction: column;
+  background: var(--background);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.log-file-select-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.log-file-select-title {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--foreground);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.log-file-select-title-icon {
+  color: var(--primary);
+}
+
+.log-file-select-close {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.log-file-select-close:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.log-file-select-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 18px;
+  display: flex;
+  flex-direction: column;
+}
+
+.log-file-select-tip {
+  padding: 24px 0;
+  text-align: center;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+.log-file-select-error {
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--destructive) 30%, transparent);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--destructive) 8%, transparent);
+  color: var(--destructive);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.log-file-error-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.5;
+}
+
+.log-file-error-icon {
+  flex-shrink: 0;
+}
+
+.log-file-error-actions {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.log-file-action-btn {
+  padding: 5px 12px;
+  font-size: 12px;
+}
+
+.log-file-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 0 8px;
+}
+
+.log-file-toggle-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: var(--radius-control);
+  transition: all 0.2s ease;
+}
+
+.log-file-toggle-all:hover {
+  background: var(--accent);
+}
+
+.log-file-summary {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.log-file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  overflow: hidden;
+  overflow-y: auto;
+  max-height: min(42dvh, 340px);
+}
+
+.log-file-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background-color 0.2s ease;
+}
+
+.log-file-row:last-child {
+  border-bottom: none;
+}
+
+.log-file-row:hover {
+  background: var(--muted);
+}
+
+.log-file-row.selected {
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+}
+
+.log-file-checkbox {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.log-file-name {
+  flex: 1;
+  min-width: 0;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 12px;
+  color: var(--foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.log-file-size {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  background: var(--muted);
+  border-radius: var(--radius-tag);
+  padding: 2px 8px;
+}
+
+.log-file-select-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+}
