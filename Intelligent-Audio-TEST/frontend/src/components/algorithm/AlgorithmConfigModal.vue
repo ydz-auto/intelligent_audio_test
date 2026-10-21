@@ -489,7 +489,11 @@
                     <span v-else class="text-muted">—</span>
                   </td>
                   <td>
-                    <input type="text" class="form-input form-input-sm" v-model="param.annotationCode" placeholder="默认同算法类型" @blur="handleCaseParamBlur(param, index)">
+                    <AnnotationCodeSelect
+                      :model-value="param.annotationCode"
+                      :options="algorithmOptions"
+                      @update:model-value="value => { param.annotationCode = value; handleCaseParamBlur(param, index) }"
+                    />
                   </td>
                   <td>
                     <input type="text" class="form-input form-input-sm" v-model="param.fieldPath" placeholder="默认同参数代码" @blur="handleCaseParamBlur(param, index)">
@@ -640,7 +644,11 @@
                     <input type="text" class="form-input form-input-sm" v-model="param.code" placeholder="如: asr_reference_text" @blur="handleReferenceParamBlur(param, index)">
                   </td>
                   <td>
-                    <input type="text" class="form-input form-input-sm" v-model="param.annotationCode" placeholder="标注匹配代码，默认同算法代码" @blur="handleReferenceParamBlur(param, index)">
+                    <AnnotationCodeSelect
+                      :model-value="param.annotationCode"
+                      :options="algorithmOptions"
+                      @update:model-value="value => { param.annotationCode = value; handleReferenceParamBlur(param, index) }"
+                    />
                   </td>
                   <td>
                     <input type="text" class="form-input form-input-sm" v-model="param.name" placeholder="参数名称" @blur="handleReferenceParamBlur(param, index)">
@@ -740,6 +748,7 @@
                 :device-params="[...deviceParams, ...deviceOutputParams]"
                 :api-params="[...apiParams, ...apiOutputParams]"
                 :main-dimensions="mainDimensions"
+                :categories="categories"
                 component-type="evaluation"
                 @update="updateMappings('evaluation', $event)"
               />
@@ -798,12 +807,13 @@
                 </tr>
                 <tr v-else v-for="(dim, index) in filteredDimensions" :key="index">
                   <td>
-                    <select class="form-input form-input-sm" v-model="dim.dimensionId" @blur="handleDimensionBlur(index)">
-                      <option :value="null">请选择维度</option>
-                      <option v-for="dimension in availableDimensions" :key="dimension.id" :value="dimension.id">
-                        {{ dimension.name }}
-                      </option>
-                    </select>
+                    <DimensionSelect
+                      :dimensions="availableDimensions"
+                      :categories="categories"
+                      :model-value="dim.dimensionId == null ? '' : String(dim.dimensionId)"
+                      placeholder="请选择维度"
+                      @update:model-value="value => { dim.dimensionId = value === '' ? null : Number(value); handleDimensionBlur(index) }"
+                    />
                   </td>
                   <td>
                     <input type="number" class="form-input form-input-sm" v-model.number="dim.weight" min="0" max="1" step="0.1" @blur="handleDimensionBlur(index)">
@@ -843,6 +853,8 @@ import "../../assets/styles/tasks/task-status.css"
 import BasicModal from '../common/modal/BasicModal.vue'
 import MappingEditor from './MappingEditor.vue'
 import ColumnFilter from '../common/ColumnFilter.vue'
+import AnnotationCodeSelect from './AnnotationCodeSelect.vue'
+import DimensionSelect from './DimensionSelect.vue'
 import { useAlgorithmConfigModal } from './AlgorithmConfigModal'
 import type { ModalProps } from './AlgorithmConfigModal'
 import type { AlgorithmDefinition } from '@/domain'
@@ -940,6 +952,8 @@ const {
   updateMappings,
   mainDimensions,
   availableDimensions,
+  categories,
+  algorithmOptions,
   handleAddDimension,
   handleDimensionBlur,
   handleDimensionChange,

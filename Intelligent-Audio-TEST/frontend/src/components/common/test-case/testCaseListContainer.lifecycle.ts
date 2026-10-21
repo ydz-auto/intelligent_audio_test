@@ -32,7 +32,7 @@ interface LifecycleModuleDeps {
 
 /** 创建数据加载与生命周期模块 */
 export function createLifecycleModule(props: any, emit: any, state: ContainerState, deps: LifecycleModuleDeps) {
-  const { playbackDevices, algorithmOptions, dimensionOptions } = state;
+  const { playbackDevices, algorithmOptions, dimensionOptions, dimensionCategories } = state;
   const {
     setupLoadMoreObserver,
     cleanupObserver,
@@ -64,14 +64,32 @@ export function createLifecycleModule(props: any, emit: any, state: ContainerSta
   }
 
   async function loadDimensionOptions() {
+    // INT-1106（对齐 React INT-1030 返工 8672a0a6）：facet 改用全量维度（含子维度）+ 分类分组，
+    // 不再用 /evaluation/dimensions/options 旧 facet 子集（仅主维度）——保证 开始测试 筛选 facet
+    // 与用例管理页分组一致
     try {
-      const data = await evaluationPort.getOptions();
-      dimensionOptions.value = (data?.dimensions || [])
-        .filter((d: any) => d.type !== 'sub')
-        .map((d: any) => ({ id: d.id, name: d.name }));
+      const dims: any[] = []
+      let page = 1
+      let pages = 1
+      while (page <= pages) {
+        const res = await evaluationPort.getAll({ page, perPage: 200 })
+        const items: any[] = Array.isArray(res?.items) ? res.items : []
+        pages = typeof res?.pages === 'number' ? res.pages : pages
+        dims.push(...items)
+        if (items.length < 200) break
+        page += 1
+      }
+      dimensionOptions.value = dims
     } catch (error) {
-      console.error('加载评估维度选项失败:', error);
-      dimensionOptions.value = [];
+      console.error('加载评估维度选项失败:', error)
+      dimensionOptions.value = []
+    }
+    try {
+      const catRes = await evaluationPort.getCategories()
+      dimensionCategories.value = catRes?.items || []
+    } catch (error) {
+      console.error('加载评估维度分类失败:', error)
+      dimensionCategories.value = []
     }
   }
 

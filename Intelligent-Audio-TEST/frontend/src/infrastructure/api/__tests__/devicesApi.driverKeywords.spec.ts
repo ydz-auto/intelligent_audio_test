@@ -1,8 +1,8 @@
 /**
- * devicesApi.getDriverKeywords 契约测试（INT-1014）
+ * devicesApi.getDriverKeywords 契约测试（INT-1105 返工，同步 INT-1014 已落 wiring/ux-vue 的修复）
  * 覆盖：GET /test-devices/driver-keywords 响应 → DriverKeyword Domain 转换，
  *      后端 keywords 字段为逗号分隔字符串时归一化为 string[]，避免 CRUDFormModal
- *      按数组 .join(', ') 抛 TypeError。
+ *      按数组 .join(', ') 抛 TypeError、驱动关键字下拉为空。
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 

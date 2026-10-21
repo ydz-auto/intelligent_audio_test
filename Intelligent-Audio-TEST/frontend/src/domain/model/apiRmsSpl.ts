@@ -56,7 +56,8 @@ export interface ApiRmsSplUpsertInput {
   apiId?: string | number
   name?: string
   description?: string
-  vendor?: string
+  /** 供应商；INT-1031 简化口径表单不填写，创建/编辑映射为 null 或沿用现值 */
+  vendor?: string | null
   protocol?: string
   referenceSpl?: number
   referenceGainLinear?: number

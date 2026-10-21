@@ -262,7 +262,7 @@
             <div class="card-actions">
               <div class="search-box">
                 <i class="fas fa-search search-icon"></i>
-                <input type="text" class="search-input" placeholder="搜索映射名称/供应商/API..." v-model="apiRms.searchTerm.value" @input="apiRms.filterMappings()">
+                <input type="text" class="search-input" placeholder="搜索映射名称/API..." v-model="apiRms.searchTerm.value" @input="apiRms.filterMappings()">
               </div>
               <!-- INT-293：原生 select 迁移 BadgeFilter（对齐 Device.vue 筛选栏视觉） -->
               <div class="filter-bar">
@@ -290,8 +290,6 @@
                   <tr>
                     <th>映射名称</th>
                     <th>关联 API</th>
-                    <th>协议</th>
-                    <th>供应商</th>
                     <th>参考基准</th>
                     <th>校准点数</th>
                     <th>增益限幅</th>
@@ -302,12 +300,12 @@
                 </thead>
                 <tbody>
                   <tr v-if="apiRms.loading.value">
-                    <td colspan="10" class="table-empty">
+                    <td colspan="8" class="table-empty">
                       <span class="loading-spinner"></span> 加载中...
                     </td>
                   </tr>
                   <tr v-else-if="apiRms.filteredMappings.value.length === 0">
-                    <td colspan="10" class="table-empty">
+                    <td colspan="8" class="table-empty">
                       <i class="fas fa-info-circle"></i>
                       暂无 RMS-SPL 映射。点击右上角「添加 RMS-SPL 映射」为被测 API 配置数字域灵敏度。
                     </td>
@@ -315,8 +313,6 @@
                   <tr v-else v-for="mapping in apiRms.paginatedMappings.value" :key="mapping.id">
                     <td class="cell-name">{{ mapping.name || `映射 #${mapping.id}` }}</td>
                     <td>{{ apiRms.apiName(mapping.apiId) }}</td>
-                    <td><span class="protocol-tag">{{ mapping.protocol || '-' }}</span></td>
-                    <td>{{ mapping.vendor || '-' }}</td>
                     <td>
                       {{ mapping.referenceSpl ?? '-' }} dB /
                       {{ mapping.referenceGainLinear ?? '-' }}
@@ -698,15 +694,6 @@ onMounted(async () => {
     max-width: 220px;
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-.protocol-tag {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: var(--radius-control, 8px);
-    font-size: 11px;
-    background: color-mix(in srgb, var(--primary) 8%, transparent);
-    color: var(--primary);
 }
 
 .default-badge {

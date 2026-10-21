@@ -75,14 +75,16 @@
             title="可见性"
             @update:model-value="value => emit('visibilityFilterChange', String(value))"
           />
-          <BadgeFilter
-            :options="dimensionFilterOptions"
-            :model-value="dimensionFilter"
-            all-label="所有维度"
-            title="评估维度"
-            collapsible
-            :collapsed-count="8"
-            @update:model-value="setDimensionFilter"
+          <!-- INT-1106（对齐 React INT-1030）：评估维度 facet 按 分组→主维度→子维度 单选，「全部」清除 -->
+          <DimensionSelect
+            :dimensions="dimensionOptions"
+            :categories="dimensionCategories"
+            :model-value="dimensionFilter === 'all' ? '' : String(dimensionFilter)"
+            placeholder="全部"
+            clear-label="全部"
+            trigger-label="评估维度"
+            aria-label="评估维度筛选"
+            @update:model-value="value => setDimensionFilter(value === '' ? 'all' : value)"
           />
           <BadgeFilter
             :options="groupFilterOptions"
@@ -374,6 +376,7 @@ import TestCaseListWithPagination from './TestCaseListWithPagination.vue';
 import TestCaseGroupActions from './TestCaseGroupActions.vue';
 import BadgeFilter from '../BadgeFilter.vue';
 import AlgorithmFilter from '../../algorithm/AlgorithmFilter.vue';
+import DimensionSelect from '../../algorithm/DimensionSelect.vue';
 import AudioPlayerModal from '../audio/AudioPlayerModal.vue';
 import AudioPreviewModal from '../modal/AudioPreviewModal.vue';
 import type { TestCase, PaginationInfo, PlaybackDevice } from '../../../domain';
@@ -441,10 +444,10 @@ const {
   sortOrder,
   dimensionFilter,
   dimensionOptions,
+  dimensionCategories,
   TEST_TYPE_OPTIONS,
   SORT_BY_OPTIONS,
   SORT_ORDER_OPTIONS,
-  dimensionFilterOptions,
   groupFilterOptions,
   tagFilterOptions,
   setTestTypeFilter,

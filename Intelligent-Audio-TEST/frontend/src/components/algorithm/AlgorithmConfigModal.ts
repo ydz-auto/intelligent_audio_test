@@ -1,6 +1,7 @@
 import { ref, reactive, computed, watch } from 'vue'
 import { useDimensions } from '../../composables/shared/useDimensions'
 import { useAlgorithmConfig } from '../../composables/algorithm/useAlgorithmConfig'
+import { evaluationPort } from '../../composables/evaluation/evaluationPort'
 import { PARAM_CODE_PRESETS, FEATURE_BUNDLES, NEW_GROUP_SENTINEL } from './algorithmConstants'
 import { normalizeParamFields, normalizeCaseParamFields } from './algorithmParamHelpers'
 import { useAlgorithmParamOps } from './useAlgorithmParamOps'
@@ -8,7 +9,7 @@ import { useAlgorithmDimensionOps } from './useAlgorithmDimensionOps'
 import { useAlgorithmMappingOps } from './useAlgorithmMappingOps'
 import { useAlgorithmFeatureBundles } from './useAlgorithmFeatureBundles'
 import { useAlgorithmCrudOps, normalizeMappings } from './useAlgorithmCrudOps'
-import type { AlgorithmGroup, Dimension, AlgorithmDefinition } from '@/domain'
+import type { AlgorithmGroup, Dimension, EvaluationCategory, AlgorithmDefinition } from '@/domain'
 import { TaskStatus, ApiEndpointStatus, ApiEndpointStatusType, TestType } from '@/domain/enums'
 
 // 组件级 Modal 契约：可见性 / 模式 / 编辑数据
@@ -116,8 +117,15 @@ export function useAlgorithmConfigModal(props: ModalProps, emit: any) {
   const algorithms = ref<AlgorithmDefinition[]>([])
   const groups = ref<AlgorithmGroup[]>([])
   const availableDimensions = ref<Dimension[]>([])
+  // 评估维度分类（分类分组组头，INT-1106 对齐 React INT-1030）
+  const categories = ref<EvaluationCategory[]>([])
 
   const { fetchAllDimensions } = useDimensions()
+
+  /** 标注代码下拉选项（标注代码=算法类型代码；选项=算法列表 → 名称（类型代码）） */
+  const algorithmOptions = computed(() =>
+    (algorithms.value || []).map(a => ({ type: a.type, name: a.name }))
+  )
 
   // 不再按 dimensionType 过滤，返回全部维度
   const mainDimensions = computed(() => availableDimensions.value)
@@ -529,18 +537,30 @@ export function useAlgorithmConfigModal(props: ModalProps, emit: any) {
     return classes[groupName] || ''
   }
 
+  /** 加载评估维度分类（INT-1106：分类分组组头，照 evaluationPort.getCategories） */
+  async function loadCategories() {
+    try {
+      const result = await evaluationPort.getCategories()
+      categories.value = result?.items || []
+    } catch (error) {
+      console.error('加载评估维度分类失败:', error)
+      categories.value = []
+    }
+  }
+
   watch(() => props.visible, (visible) => {
     if (visible) {
       // 每次打开都重置搜索/过滤状态，避免残留过滤导致数据不显示
       resetFilters()
       mappingEditorKey.value++
-      if (effectiveMode.value === 'list') {
-        loadAlgorithms()
-      } else if (effectiveMode.value === 'create') {
+      if (effectiveMode.value === 'create') {
         resetForm()
       }
+      // 标注代码下拉选项（algorithmOptions）依赖算法列表，create/edit/list 均需加载
+      loadAlgorithms()
       loadGroups()
       loadDimensions()
+      loadCategories()
     }
   })
 
@@ -741,6 +761,8 @@ export function useAlgorithmConfigModal(props: ModalProps, emit: any) {
     updateMappings,
     mainDimensions,
     availableDimensions,
+    categories,
+    algorithmOptions,
     handleAddDimension,
     handleDimensionBlur,
     handleDimensionChange,

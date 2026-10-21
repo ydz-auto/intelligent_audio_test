@@ -145,7 +145,14 @@ export function useDeviceScanning() {
     added: T[],
     currentDeviceId: string | number
   ): T | undefined => {
-    return added.find(d => d.deviceUniqueId === currentDeviceId || d.id === currentDeviceId || d.name === currentDeviceId)
+    return added.find(d =>
+      d.deviceUniqueId === currentDeviceId ||
+      d.id === currentDeviceId ||
+      d.name === currentDeviceId ||
+      // INT-1105：测试设备当前标识为 serialNumber（映射为 ScannedDevice.serial），
+      // 空扫描时按 serial 匹配把当前设备补进选择器（对齐 React INT-1029 编辑态可回填当前设备）
+      d.serial === currentDeviceId
+    )
   }
 
   /** 已添加设备兜底标识（deviceUniqueId → id → name → serial） */

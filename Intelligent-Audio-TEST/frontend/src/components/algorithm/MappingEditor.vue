@@ -183,13 +183,13 @@
                 </td>
                 <td class="param-name-cell">{{ getParamName(record.sourceParam, record.source, record.paramName) }}</td>
                 <td>
-                  <select v-model="record.dimensionId" class="form-input form-input-sm" @blur="handleDimensionChange(record)">
-                    <option :value="null">选择维度</option>
-                    <option v-if="record.dimensionId && !dimensionOptionIds.has(Number(record.dimensionId))" :value="record.dimensionId">
-                      {{ record.dimensionName || `已删除维度(${record.dimensionId})` }}
-                    </option>
-                    <option v-for="dim in (mainDimensions && mainDimensions.length > 0 ? mainDimensions : availableDimensions)" :key="dim.id" :value="dim.id">{{ dim.name }}</option>
-                  </select>
+                  <DimensionSelect
+                    :dimensions="evaluationDimensionOptions"
+                    :categories="categoriesSource"
+                    :model-value="record.dimensionId == null ? '' : String(record.dimensionId)"
+                    placeholder="选择维度"
+                    @update:model-value="value => handleDimensionSelect(record, value)"
+                  />
                 </td>
                 <td>
                   <select v-model="record.targetParam" class="form-input form-input-sm" :disabled="!record.dimensionId" @blur="handleTargetChange(record)">
@@ -283,10 +283,12 @@ import '../../assets/styles/layouts/main.css'
 
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { algorithmPort } from '../../composables/algorithm/algorithmPort'
+import { evaluationPort } from '../../composables/evaluation/evaluationPort'
 import { useNotification } from '../../composables/modal/useNotification'
 import ColumnFilter from '../common/ColumnFilter.vue'
 import BadgeFilter from '../common/BadgeFilter.vue'
 import PaginationComponent from '../common/data/PaginationComponent.vue'
+import DimensionSelect from './DimensionSelect.vue'
 
 const { warning, error } = useNotification()
 
@@ -314,6 +316,8 @@ interface Props {
   deviceParams?: any[]
   apiParams?: any[]
   mainDimensions?: any[]
+  /** 评估维度分类（INT-1106：目标评估维度 DimensionSelect 分类分组组头；不传则内部加载） */
+  categories?: any[]
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -324,7 +328,8 @@ const props = withDefaults(defineProps<Props>(), {
   referenceParams: () => [],
   deviceParams: () => [],
   apiParams: () => [],
-  mainDimensions: () => []
+  mainDimensions: () => [],
+  categories: () => []
 })
 
 const emit = defineEmits<{
@@ -334,6 +339,16 @@ const emit = defineEmits<{
 const availableDimensions = ref<any[]>([])
 const dimensionParamsMap = ref<Record<number, any[]>>({})
 const loadingDimensionParams = ref<Record<number, boolean>>({})
+
+// 评估维度分类（INT-1106：目标评估维度 DimensionSelect 分类分组组头；props.categories 优先，内部加载兜底）
+const categories = ref<any[]>([])
+const categoriesSource = computed(() =>
+  (props.categories && props.categories.length > 0) ? props.categories : categories.value
+)
+// 目标评估维度候选集（mainDimensions 全量 > 内部加载维度兜底）
+const evaluationDimensionOptions = computed(() =>
+  (props.mainDimensions && props.mainDimensions.length > 0 ? props.mainDimensions : availableDimensions.value)
+)
 
 // 搜索与过滤状态（顶部工具栏）
 const filters = reactive({
@@ -556,14 +571,28 @@ async function loadDimensions() {
   }
 }
 
+/** 加载评估维度分类（INT-1106：props.categories 未传时内部拉取；失败静默为空） */
+async function loadCategoriesIfNeeded() {
+  if (props.categories && props.categories.length > 0) return
+  try {
+    const res = await evaluationPort.getCategories()
+    categories.value = res?.items || []
+  } catch (error) {
+    console.error('加载评估维度分类失败:', error)
+    categories.value = []
+  }
+}
+
 onMounted(() => {
   loadDimensions()
+  loadCategoriesIfNeeded()
   // 编辑模式打开时，已有映射的 dimensionId 需要预加载参数列表，否则目标参数下拉框为空
   preloadDimensionParamsForMappings()
 })
 
 watch(() => props.algorithmType, () => {
   loadDimensions()
+  loadCategoriesIfNeeded()
 })
 
 watch(() => props.mainDimensions, (newVal) => {
@@ -708,6 +737,12 @@ function handleSourceChange(record: any) {
     if (!checkDuplicateMapping(index)) return
     autoSaveMapping(record, index)
   }
+}
+
+/** DimensionSelect 选中：更新 dimensionId 并走原 dimensionChange 自动保存链路（INT-1106） */
+function handleDimensionSelect(record: any, value: string) {
+  record.dimensionId = value === '' ? null : Number(value)
+  handleDimensionChange(record)
 }
 
 function handleDimensionChange(record: any) {
