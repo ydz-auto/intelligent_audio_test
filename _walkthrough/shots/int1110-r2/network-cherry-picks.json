@@ -1,0 +1,30 @@
+[
+  {
+    "url": "http://127.0.0.1:5516/api/v1/tasks/cherry-picks/cart",
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:5516/api/v1/tasks/cherry-picks/candidates?per_page=200",
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:5516/api/v1/tasks/cherry-picks/cart",
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:5516/api/v1/tasks/cherry-picks/sets",
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:5516/api/v1/tasks/cherry-picks/cart",
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:5516/api/v1/tasks/cherry-picks/sets",
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:5516/api/v1/tasks/cherry-picks/candidates?task_ids=1257&page=1&per_page=50",
+    "method": "GET"
+  }
+]

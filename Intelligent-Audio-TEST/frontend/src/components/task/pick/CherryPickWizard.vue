@@ -18,121 +18,140 @@
       <button class="cpw-back" @click="emit('close')"><i class="fas fa-arrow-left"></i> 返回列表</button>
     </div>
 
-    <!-- 步骤 1：挑选 -->
+    <!-- 步骤 1：挑选（INT-1034 §3.8 两阶段：阶段 1 选任务 → 阶段 2 选结果三视图） -->
     <div v-if="step === 'pick'" class="cpw-body">
-      <!-- 筛选栏 -->
-      <div class="cpw-filter-bar">
-        <input
-          v-model="filters.caseKeyword"
-          class="cpw-input"
-          placeholder="搜索用例名称或 ID"
-          @input="debouncedLoad"
-        />
-        <select v-model="filters.taskIds" class="cpw-input" multiple size="1" :title="taskIdsLabel">
-          <option v-for="t in pickableTasks" :key="t.id" :value="String(t.id)">{{ t.name }}</option>
-        </select>
-        <select v-model="filters.deviceIds" class="cpw-input" multiple size="1" :title="deviceIdsLabel">
-          <option v-for="d in deviceOptions" :key="d.id" :value="String(d.id)">{{ d.name }}</option>
-        </select>
-        <select v-model="filters.resultTypes" class="cpw-input" multiple size="1" :title="resultTypesLabel">
-          <option v-for="rt in resultTypeOptions" :key="rt" :value="rt">{{ rt }}</option>
-        </select>
-        <select v-model="filters.executionStatus" class="cpw-input">
-          <option value="">全部执行状态</option>
-          <option value="completed">执行完成</option>
-          <option value="failed">执行失败</option>
-          <option value="stopped">已停止</option>
-        </select>
-        <select v-model="filters.evaluationStatus" class="cpw-input">
-          <option value="">全部评估状态</option>
-          <option value="evaluated">已评估</option>
-          <option value="pending">未评估</option>
-        </select>
-        <select v-model="filters.timeRange" class="cpw-input">
-          <option value="all">全部时间</option>
-          <option value="today">今日</option>
-          <option value="yesterday">昨日</option>
-          <option value="week">近7天</option>
-          <option value="month">近30天</option>
-        </select>
-        <button class="cpw-btn" @click="resetFilters"><i class="fas fa-undo"></i> 重置</button>
-      </div>
+      <!-- 阶段 1 · 选择任务（PickTaskStage） -->
+      <PickTaskStage
+        v-if="phase === 'tasks'"
+        :tasks="taskRows"
+        :selected-task-ids="selectedTaskIds"
+        :loading="allCandidatesLoading"
+        :is-error="allCandidatesError"
+        :on-retry="loadAllCandidates"
+        :on-toggle="toggleTask"
+        :on-select-all="selectAllTasks"
+        :on-clear="clearTasks"
+        :on-next="handleNext"
+      />
 
-      <!-- 视图切换（INT-796 §3.6 裁定③：树形｜用例视角｜平铺；默认树形，多任务绝不默认平铺） -->
-      <div class="cpw-toolbar">
-        <div class="cpw-view-switch">
-          <button class="cpw-btn" :class="{ active: viewMode === 'tree' }" @click="viewMode = 'tree'"><i class="fas fa-sitemap"></i> 树形</button>
-          <button class="cpw-btn" :class="{ active: viewMode === 'case' }" @click="viewMode = 'case'"><i class="fas fa-list-check"></i> 用例视角</button>
-          <button class="cpw-btn" :class="{ active: viewMode === 'flat' }" @click="viewMode = 'flat'"><i class="fas fa-list"></i> 平铺</button>
-          <button class="cpw-btn" @click="expandAll"><i class="fas fa-angles-down"></i> 全部展开</button>
-          <button class="cpw-btn" @click="collapseAll"><i class="fas fa-angles-up"></i> 全部收起</button>
+      <!-- 阶段 2 · 选择结果（三视图：用例｜设备｜结果类型） -->
+      <template v-else>
+        <h3 class="cpw-phase-title">挑选 · 阶段 2：选择结果</h3>
+
+        <!-- 筛选栏（任务 facet 锁定隐藏——任务集由阶段 1 承载，§3.8.2） -->
+        <div class="cpw-filter-bar">
+          <input
+            v-model="filters.caseKeyword"
+            class="cpw-input"
+            placeholder="搜索用例名称或 ID"
+            @input="debouncedLoad"
+          />
+          <select v-model="filters.deviceIds" class="cpw-input" multiple size="1" :title="deviceIdsLabel">
+            <option v-for="d in deviceOptions" :key="d.id" :value="String(d.id)">{{ d.name }}</option>
+          </select>
+          <select v-model="filters.resultTypes" class="cpw-input" multiple size="1" :title="resultTypesLabel">
+            <option v-for="rt in resultTypeOptions" :key="rt" :value="rt">{{ rt }}</option>
+          </select>
+          <select v-model="filters.executionStatus" class="cpw-input">
+            <option value="">全部执行状态</option>
+            <option value="completed">执行完成</option>
+            <option value="failed">执行失败</option>
+            <option value="stopped">已停止</option>
+          </select>
+          <select v-model="filters.evaluationStatus" class="cpw-input">
+            <option value="">全部评估状态</option>
+            <option value="evaluated">已评估</option>
+            <option value="pending">未评估</option>
+          </select>
+          <select v-model="filters.timeRange" class="cpw-input">
+            <option value="all">全部时间</option>
+            <option value="today">今日</option>
+            <option value="yesterday">昨日</option>
+            <option value="week">近7天</option>
+            <option value="month">近30天</option>
+          </select>
+          <button class="cpw-btn" @click="resetFilters"><i class="fas fa-undo"></i> 重置</button>
         </div>
-        <span class="cpw-toolbar-info">已选 {{ selectedResultIds.size }} 条 / 共 {{ visibleTotal }} 条</span>
-      </div>
 
-      <!-- 树形（任务视角）/ 用例视角 / 平铺 -->
-      <div v-if="viewMode === 'tree'" class="cpw-tree">
-        <PickTree
-          :roots="treeRoots"
-          :selected="selectedResultIds"
-          :expanded-keys="expandedKeys"
-          :already-added="resultIdSet"
-          :leaf-meta="leafMeta"
-          @toggle-node="onToggleNode"
-          @toggle-expand="onToggleExpand"
-          @toggle-leaf="onToggleLeaf"
-        />
-      </div>
-      <div v-else-if="viewMode === 'case'" class="cpw-tree">
-        <PickTree
-          :roots="caseViewRoots"
-          :selected="selectedResultIds"
-          :expanded-keys="expandedKeys"
-          :already-added="resultIdSet"
-          :leaf-meta="leafMeta"
-          @toggle-node="onToggleNode"
-          @toggle-expand="onToggleExpand"
-          @toggle-leaf="onToggleLeaf"
-        />
-      </div>
-      <div v-else class="cpw-flat">
-        <div v-if="loadingCandidates" class="cpw-empty"><i class="fas fa-spinner fa-spin"></i> 正在加载执行结果…</div>
-        <div v-else-if="filteredCandidates.length === 0" class="cpw-empty">
-          <i class="fas fa-inbox"></i>
-          <p>无符合条件的执行结果</p>
-          <p class="cpw-empty-hint">仅已完成、执行失败、已停止的终态任务可挑选，默认剔除已删除用例的结果</p>
+        <!-- 任务集摘要条 +「更换任务」（勾选跨阶段保留不清空，§6.2 解耦口径） -->
+        <div class="cpw-task-summary">
+          <span class="cpw-task-summary-label">已选任务：</span>
+          <span class="cpw-task-summary-names">{{ selectedTaskNames || '—' }}</span>
+          <button class="cpw-btn cpw-btn-ghost" @click="goChangeTasks"><i class="fas fa-repeat"></i> 更换任务</button>
         </div>
-        <label v-for="item in filteredCandidates" :key="item.resultId" class="cpw-leaf">
-          <input type="checkbox" class="cpw-checkbox"
-                 :checked="selectedResultIds.has(item.resultId)"
-                 @change="onToggleLeaf(item.resultId)" />
-          <span class="cpw-leaf-case">{{ item.caseName || item.caseId }}</span>
-          <span class="cpw-leaf-dim">{{ item.deviceId != null ? (item.deviceName || `设备 ${item.deviceId}`) : (item.apiName || `API ${item.apiId}`) }}</span>
-          <span v-if="item.resultType" class="cpw-leaf-rt">{{ item.resultType }}</span>
-          <span class="cpw-leaf-status" :class="item.executionStatus">{{ statusText(item.executionStatus) }}</span>
-          <span class="cpw-leaf-eval" :class="item.evaluated ? 'evaluated' : 'pending-eval'">{{ item.evaluated ? '已评估' : '未评估' }}</span>
-          <span v-if="resultIdSet.has(item.resultId)" class="cpw-leaf-added"><i class="fas fa-cart-plus"></i> 已加购</span>
-        </label>
-      </div>
 
-      <div v-if="candidateTotal > candidates.length" class="cpw-pagination">
-        <button class="cpw-btn" :disabled="filters.page <= 1" @click="filters.page--; loadCandidates()">上一页</button>
-        <span>第 {{ filters.page }} 页 / 共 {{ pages }} 页</span>
-        <button class="cpw-btn" :disabled="filters.page >= pages" @click="filters.page++; loadCandidates()">下一页</button>
-      </div>
+        <!-- 视图切换（三视图：用例｜设备｜结果类型，§3.8.3） -->
+        <div class="cpw-toolbar">
+          <div class="cpw-view-switch">
+            <button class="cpw-btn" :class="{ active: viewMode === 'case' }" @click="viewMode = 'case'"><i class="fas fa-list-check"></i> 用例视图</button>
+            <button class="cpw-btn" :class="{ active: viewMode === 'device' }" @click="viewMode = 'device'"><i class="fas fa-mobile-screen"></i> 设备视图</button>
+            <button class="cpw-btn" :class="{ active: viewMode === 'resultType' }" @click="viewMode = 'resultType'"><i class="fas fa-tag"></i> 结果类型视图</button>
+            <button class="cpw-btn" @click="expandAll"><i class="fas fa-angles-down"></i> 全部展开</button>
+            <button class="cpw-btn" @click="collapseAll"><i class="fas fa-angles-up"></i> 全部收起</button>
+          </div>
+          <span class="cpw-toolbar-info">已选 {{ selectedResultIds.size }} 条 / 共 {{ visibleTotal }} 条</span>
+        </div>
 
-      <!-- 已选汇总条（sticky） -->
-      <div class="cpw-summary-bar">
-        <span class="cpw-summary-info">
-          已选 {{ selectedResultIds.size }} 条结果 · 来自 {{ selectedTaskCount }} 个任务 · 覆盖 {{ selectedDeviceCount }} 台设备
-        </span>
-        <button class="cpw-btn" @click="selectAllCurrentFilter"><i class="fas fa-check-double"></i> 全选当前筛选</button>
-        <button class="cpw-btn" @click="invertCurrent"><i class="fas fa-exchange-alt"></i> 反选</button>
-        <button class="cpw-btn" @click="clearSelection"><i class="fas fa-eraser"></i> 清空</button>
-        <button class="cpw-btn cpw-btn-primary" :disabled="selectedResultIds.size === 0" @click="commitPick">
-          <i class="fas fa-cart-plus"></i> 加入购物车（{{ selectedResultIds.size }}）
-        </button>
-      </div>
+        <!-- 树形区（按当前视图渲染） -->
+        <div class="cpw-tree">
+          <div v-if="loadingCandidates" class="cpw-empty"><i class="fas fa-spinner fa-spin"></i> 正在加载执行结果…</div>
+          <div v-else-if="candidatesError && candidates.length === 0" class="cpw-empty cpw-error">
+            <i class="fas fa-exclamation-triangle"></i>
+            <p>候选加载失败，请重试</p>
+            <button class="cpw-btn" @click="loadCandidates"><i class="fas fa-redo"></i> 重试</button>
+          </div>
+          <!-- 用例视图：统一用例卡 + 分组/标签组织（§3.8.3，INT-1110 返工 P1）；
+               设备/结果类型视图保持 PickTree 直渲 -->
+          <template v-else>
+            <PickCaseOrgList
+              v-if="viewMode === 'case'"
+              :roots="treeRoots"
+              :selected="selectedResultIds"
+              :expanded-keys="expandedKeys"
+              :already-added="resultIdSet"
+              :leaf-meta="leafMeta"
+              :org="caseOrg"
+              :sub-view="caseSubView"
+              :case-org-map="caseOrgMap"
+              @update:org="caseOrg = $event"
+              @update:sub-view="caseSubView = $event"
+              @toggle-node="onToggleNode"
+              @toggle-expand="onToggleExpand"
+              @toggle-leaf="onToggleLeaf"
+            />
+            <PickTree
+              v-else
+              :roots="treeRoots"
+              :selected="selectedResultIds"
+              :expanded-keys="expandedKeys"
+              :already-added="resultIdSet"
+              :leaf-meta="leafMeta"
+              @toggle-node="onToggleNode"
+              @toggle-expand="onToggleExpand"
+              @toggle-leaf="onToggleLeaf"
+            />
+          </template>
+        </div>
+
+        <div v-if="candidateTotal > candidates.length" class="cpw-pagination">
+          <button class="cpw-btn" :disabled="filters.page <= 1" @click="filters.page--; loadCandidates()">上一页</button>
+          <span>第 {{ filters.page }} 页 / 共 {{ pages }} 页</span>
+          <button class="cpw-btn" :disabled="filters.page >= pages" @click="filters.page++; loadCandidates()">下一页</button>
+        </div>
+
+        <!-- 已选汇总条（sticky） -->
+        <div class="cpw-summary-bar">
+          <span class="cpw-summary-info">
+            已选 {{ selectedResultIds.size }} 条结果 · 来自 {{ selectedTaskCount }} 个任务 · 覆盖 {{ selectedDeviceCount }} 台设备
+          </span>
+          <button class="cpw-btn" @click="selectAllCurrentFilter"><i class="fas fa-check-double"></i> 全选当前筛选</button>
+          <button class="cpw-btn" @click="invertCurrent"><i class="fas fa-exchange-alt"></i> 反选</button>
+          <button class="cpw-btn" @click="clearSelection"><i class="fas fa-eraser"></i> 清空</button>
+          <button class="cpw-btn cpw-btn-primary" :disabled="selectedResultIds.size === 0" @click="commitPick">
+            <i class="fas fa-cart-plus"></i> 加入购物车（{{ selectedResultIds.size }}）
+          </button>
+        </div>
+      </template>
     </div>
 
     <!-- 步骤 2：购物车 -->
@@ -326,8 +345,10 @@ import { useNotification } from '../../../composables/modal/useNotification';
 import { useModalControl } from '../../../composables/modal/useModal';
 import { MODAL_TYPES } from '../../../composables/modal/constants';
 import PickTree from './PickTree.vue';
+import PickCaseOrgList from './PickCaseOrgList.vue';
 import CartTree from './CartTree.vue';
-import { buildPickTree, buildPickCaseViewTree, toggleNode, selectAll, invertSelection, collectLeafResultIds, type PickTreeNode } from './pickTree';
+import PickTaskStage, { getTaskStatusOrder, type PickTaskRow } from './PickTaskStage.vue';
+import { buildPickCaseViewTree, buildPickDeviceViewTree, buildPickResultTypeViewTree, toggleNode, selectAll, invertSelection, collectLeafResultIds, type PickTreeNode, type PickCaseOrgInfo } from './pickTree';
 import { buildCartTree, toggleCartNode, type CartTreeNode } from './cartTree';
 
 const STEPS = [
@@ -440,10 +461,108 @@ const candidates = ref<PickCandidate[]>([]);
 const candidateTotal = ref(0);
 const pages = ref(0);
 const loadingCandidates = ref(false);
+/** INT-552 口径：候选加载失败可见错误（含重试），与「真无结果」空态区分 */
+const candidatesError = ref(false);
 const selectedResultIds = ref<Set<number>>(new Set());
 const expandedKeys = ref<Set<string>>(new Set());
-/** INT-796 §3.6 裁定①/③：默认树形（任务视角）；用例视角/平铺仅显式切换 */
-const viewMode = ref<'tree' | 'case' | 'flat'>('tree');
+
+// ===== INT-1034 §3.8 两阶段状态机（INT-1110）：阶段 1 选任务 → 阶段 2 选结果 =====
+/** 批量「加入挑选」/「开始挑选」预选任务时跳过阶段 1 直达阶段 2（§3.8.1/§6.1） */
+const phase = ref<'tasks' | 'results'>(props.presetTaskIds?.length ? 'results' : 'tasks');
+const selectedTaskIds = ref<Set<number>>(new Set(props.presetTaskIds?.map(Number) ?? []));
+
+/** 阶段 1 任务行聚合数据源：全量候选（EMPTY 筛选，不受阶段 2 任务筛选影响，§3.8.2 数据源=候选行聚合） */
+const allCandidates = ref<PickCandidate[]>([]);
+const allCandidatesLoading = ref(false);
+const allCandidatesError = ref(false);
+
+async function loadAllCandidates() {
+  allCandidatesLoading.value = true;
+  allCandidatesError.value = false;
+  try {
+    // P3：候选行总量可 >200，按页拉满（阶段 1 任务行聚合不丢页尾任务）
+    const items: PickCandidate[] = [];
+    let page = 1;
+    for (;;) {
+      const res = await cherryPickApi.listCandidates({ perPage: 200, page });
+      const batch = res.items ?? [];
+      items.push(...batch);
+      const total = res.total ?? 0;
+      if (batch.length === 0 || (total > 0 && items.length >= total)) break;
+      page += 1;
+    }
+    allCandidates.value = items;
+  } catch (error) {
+    console.error('Failed to load pickable task candidates:', error);
+    allCandidatesError.value = true;
+  } finally {
+    allCandidatesLoading.value = false;
+  }
+}
+
+/** 阶段 1 任务行（终态候选按 taskId 聚合，按状态/名称排序，§3.8.2） */
+const taskRows = computed<PickTaskRow[]>(() => {
+  const map = new Map<number, PickTaskRow>();
+  for (const c of allCandidates.value) {
+    const cur = map.get(c.taskId);
+    if (cur) {
+      cur.count += 1;
+      if (!cur.createdAt && c.createdAt) cur.createdAt = c.createdAt;
+    } else {
+      map.set(c.taskId, {
+        taskId: c.taskId,
+        taskName: c.taskName || `任务 ${c.taskId}`,
+        executionStatus: c.taskStatus || c.executionStatus,
+        createdAt: c.createdAt ?? null,
+        count: 1,
+      });
+    }
+  }
+  return [...map.values()].sort(
+    (a, b) =>
+      getTaskStatusOrder(a.executionStatus) - getTaskStatusOrder(b.executionStatus) ||
+      a.taskName.localeCompare(b.taskName, 'zh-CN'),
+  );
+});
+
+/** 任务名映射（阶段 2 任务集摘要条；options 兜底补未入候选页的任务名） */
+const taskNameById = computed(() => {
+  const map = new Map<number, string>();
+  for (const c of allCandidates.value) map.set(c.taskId, c.taskName);
+  for (const t of pickableTasks.value) if (!map.has(t.id)) map.set(t.id, t.name);
+  return map;
+});
+const selectedTaskNames = computed(() =>
+  [...selectedTaskIds.value].map((id) => taskNameById.value.get(id)).filter(Boolean).join(' · '),
+);
+
+function toggleTask(taskId: number) {
+  const next = new Set(selectedTaskIds.value);
+  if (next.has(taskId)) next.delete(taskId); else next.add(taskId);
+  selectedTaskIds.value = next;
+}
+function selectAllTasks(taskIds: number[]) {
+  selectedTaskIds.value = new Set(taskIds);
+}
+function clearTasks() {
+  selectedTaskIds.value = new Set();
+}
+
+/** 阶段 1「下一步：选择结果」——提交任务集锁定阶段 2 候选，勾选跨阶段保留（§3.8.2）。
+ *  候选重拉由 filters.taskIds 变化经筛选 watch 承担（phase 已切 results，不早退）。 */
+function handleNext() {
+  filters.taskIds = [...selectedTaskIds.value].map(String);
+  phase.value = 'results';
+}
+
+/** 阶段 2「更换任务」回阶段 1——翻转状态并加载任务源（§3.8.2）。
+ *  preset 直达阶段 2 挂载时 onMounted 只跑 loadCandidates（:1079 分支），allCandidates 从未加载，
+ *  须在此补载，否则阶段 1 任务列表恒空且空态无恢复入口（审计 01a15e8a P1）。
+ *  全量重拉（非 preset 路径同款），勾选跨阶段保留不清空。 */
+function goChangeTasks() {
+  phase.value = 'tasks';
+  loadAllCandidates();
+}
 
 /** 结果类型客户端过滤（UX 审计 P2 修复）：后端候选查询不下发 result_type 参数，
  * 取审计建议方案①——loadCandidates 后按 filters.resultTypes 过滤候选行/树；
@@ -456,9 +575,31 @@ const filteredCandidates = computed(() => {
 const visibleTotal = computed(() =>
   filters.resultTypes.length ? filteredCandidates.value.length : candidateTotal.value);
 
-const treeRoots = computed(() => buildPickTree(filteredCandidates.value));
-/** INT-796 §3.7.3：用例视角树（跨任务按用例聚合；与任务视角共享同一 selectedResultIds） */
-const caseViewRoots = computed(() => buildPickCaseViewTree(filteredCandidates.value));
+/** 阶段 2 三视图（§3.8.3）：用例视图（统一用例卡 + 组织维度）/ 设备视图 / 结果类型视图，
+ *  三视图共享同一 selectedResultIds 与联动规则（任务维度由阶段 1 承载） */
+const viewMode = ref<'case' | 'device' | 'resultType'>('case');
+/** §3.8.3 用例视图组织维度（INT-1110 返工 P1）：分组视图/标签视图 + 平铺/交叉子视图。
+ *  会话态（切换视图保持）；org 切换重置子视图为平铺（对齐 React PickCaseView）。 */
+const caseOrg = ref<'group' | 'tag'>('group');
+const caseSubView = ref<'flat' | 'byTag' | 'byGroup'>('flat');
+/** §11-7 组织字段映射（候选行已返 tags/groupId/groupName → 用例层按真实分组/标签聚合；
+ *  纯客户端聚合、不新增后端请求；缺字段的用例落「未分组」/「未设置标签」兜底桶） */
+const caseOrgMap = computed<Map<string | number, PickCaseOrgInfo>>(() => {
+  const m = new Map<string | number, PickCaseOrgInfo>();
+  for (const c of candidates.value) {
+    if (!m.has(c.caseId)) m.set(c.caseId, { tags: c.tags ?? [], groupId: c.groupId ?? null, groupName: c.groupName ?? null });
+  }
+  return m;
+});
+const treeRoots = computed(() => {
+  const rows = filteredCandidates.value;
+  switch (viewMode.value) {
+    case 'device': return buildPickDeviceViewTree(rows);
+    case 'resultType': return buildPickResultTypeViewTree(rows);
+    default: return buildPickCaseViewTree(rows);
+  }
+});
+
 /** 累计候选元数据（跨页累加不清理：跨页已选结果的任务/设备计数、R10 标记均可用） */
 const knownMeta = ref<Map<number, PickCandidate>>(new Map());
 const leafMeta = computed(() => knownMeta.value);
@@ -469,7 +610,6 @@ const resultTypeOptions = computed(() => {
   }
   return [...set].sort();
 });
-const taskIdsLabel = computed(() => filters.taskIds.length ? `来源任务：${filters.taskIds.length} 个` : '来源任务');
 const deviceIdsLabel = computed(() => filters.deviceIds.length ? `设备：${filters.deviceIds.length} 个` : '设备');
 const resultTypesLabel = computed(() => filters.resultTypes.length ? `结果类型：${filters.resultTypes.length} 个` : '结果类型');
 
@@ -491,9 +631,10 @@ const selectedDeviceCount = computed(() => {
   return s.size;
 });
 
-/** 预选任务：任务级整任务预选（批量「加入挑选」入口，R7 语义） */
+/** 预选任务：任务级整任务预选（批量「加入挑选」/「开始挑选」入口，直达阶段 2，R7 语义） */
 if (props.presetTaskIds?.length) {
   filters.taskIds = props.presetTaskIds.map(String);
+  phase.value = 'results';
 }
 
 let loadTimer: ReturnType<typeof setTimeout> | null = null;
@@ -504,6 +645,7 @@ function debouncedLoad() {
 
 async function loadCandidates() {
   loadingCandidates.value = true;
+  candidatesError.value = false;
   try {
     const page = await cherryPickApi.listCandidates({
       taskIds: filters.taskIds.length ? filters.taskIds.map(Number) : [],
@@ -524,11 +666,12 @@ async function loadCandidates() {
     const meta = new Map(knownMeta.value);
     for (const c of candidates.value) meta.set(c.resultId, c);
     knownMeta.value = meta;
-    // 筛选与勾选解耦（§6.2）：筛选变化不清空已选项；仅收起至任务级
+    // 筛选与勾选解耦（§6.2）：筛选变化不清空已选项；仅收起
     collapseAll();
   } catch (error) {
     console.error('Failed to load pick candidates:', error);
     candidates.value = [];
+    candidatesError.value = true;
   } finally {
     loadingCandidates.value = false;
   }
@@ -592,10 +735,12 @@ function onToggleExpand(key: string) {
 
 function expandAll() {
   const keys = new Set<string>();
-  const roots = viewMode.value === 'case' ? caseViewRoots.value : treeRoots.value;
+  const roots = treeRoots.value;
   const walk = (nodes: PickTreeNode[]) => {
     for (const n of nodes) {
-      if (n.children.length) keys.add(n.key);
+      // INT-1110 返工 P1 配套：含无子级用例卡（设备/结果类型视图叶行载体）——
+      // 叶行只在用例卡内呈现后，「全部展开」需开卡才能显示卡内叶行
+      keys.add(n.key);
       walk(n.children);
     }
   };
@@ -612,12 +757,8 @@ function clearSelection() {
 }
 
 function invertCurrent() {
-  const leaves = viewMode.value === 'tree'
-    ? collectLeafResultIds(treeRoots.value)
-    : viewMode.value === 'case'
-      ? collectLeafResultIds(caseViewRoots.value)
-      : filteredCandidates.value.map((c) => c.resultId);
-  selectedResultIds.value = invertSelection(leaves, selectedResultIds.value);
+  // 三视图共享同一 selectedResultIds：反选以当前视图树命中叶为准（跨视图口径一致）
+  selectedResultIds.value = invertSelection(collectLeafResultIds(treeRoots.value), selectedResultIds.value);
 }
 
 /** R9 全选当前筛选：跨页全选（§11-4 select-all，未落地前降级当前已加载）。
@@ -668,14 +809,15 @@ async function commitPick() {
 
 function resetFilters() {
   filters.caseKeyword = '';
-  filters.taskIds = [];
+  // 阶段 2 重置保留任务集（§3.8.2：任务维度由阶段 1 承载，勾选跨阶段保留不清空）
+  if (phase.value === 'tasks') filters.taskIds = [];
   filters.deviceIds = [];
   filters.resultTypes = [];
   filters.executionStatus = '';
   filters.evaluationStatus = '';
   filters.timeRange = 'all';
   filters.page = 1;
-  loadCandidates();
+  if (phase.value === 'tasks') loadAllCandidates(); else loadCandidates();
 }
 
 // ===== 步骤 2/3：购物车 =====
@@ -952,13 +1094,17 @@ function statusText(status?: string | null): string {
 }
 
 onMounted(async () => {
-  await Promise.all([loadCandidates(), loadOptions(), refreshCart(), refreshSets()]);
+  // 阶段 1 聚合任务行用全量候选；阶段 2（含预选直达）拉当前任务集候选
+  const tasksLoad = phase.value === 'tasks' ? loadAllCandidates() : loadCandidates();
+  await Promise.all([tasksLoad, loadOptions(), refreshCart(), refreshSets()]);
 });
 
 // 筛选变化 → 回第一页重拉（勾选保持，§6.2 筛选与勾选解耦）+ 会话级记忆持久化
+// 阶段 1 不渲染筛选栏，仅 handleNext 提交任务集时经 taskIds 触发一次（阶段 2 候选重拉）
 watch(
   () => [filters.taskIds, filters.deviceIds, filters.resultTypes, filters.executionStatus, filters.evaluationStatus, filters.timeRange, filters.caseKeyword],
   () => {
+    if (phase.value === 'tasks') return;
     filters.page = 1;
     scheduleFilterSave();
     loadCandidates();
@@ -1078,6 +1224,56 @@ watch(() => cartRevision.value, () => {
   font-size: 13px;
   color: var(--color-slate-500, #64748b);
 }
+/* INT-1034 §3.8：两阶段挑选（阶段 2 任务集摘要条 + 视图切换 + 错误态） */
+.cpw-phase-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--foreground, #1e293b);
+}
+.cpw-task-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--color-slate-50, #f8fafc);
+  border: 1px solid var(--color-slate-200, #e2e8f0);
+  border-radius: var(--radius-md);
+  flex-wrap: wrap;
+}
+.cpw-task-summary-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--foreground, #1e293b);
+}
+.cpw-task-summary-names {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--color-slate-500, #64748b);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cpw-btn-ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--color-slate-500, #64748b);
+}
+.cpw-btn-ghost:hover {
+  border-color: transparent;
+  background: var(--color-slate-100, #f1f5f9);
+  color: var(--primary, #ff6a00);
+}
+.cpw-error {
+  color: var(--destructive, #dc2626);
+}
+.cpw-error p {
+  color: var(--color-slate-500, #64748b);
+}
+.cpw-error .cpw-btn {
+  margin-top: 8px;
+}
 .cpw-btn {
   display: inline-flex;
   align-items: center;
@@ -1131,13 +1327,6 @@ watch(() => cartRevision.value, () => {
   border-radius: var(--radius-md);
   padding: 8px 0;
 }
-.cpw-flat {
-  max-height: 420px;
-  overflow-y: auto;
-  border: 1px solid var(--color-slate-200, #e2e8f0);
-  border-radius: var(--radius-md);
-  padding: 8px 0;
-}
 .cpw-empty {
   padding: 32px 16px;
   text-align: center;
@@ -1151,53 +1340,6 @@ watch(() => cartRevision.value, () => {
 .cpw-empty-hint {
   font-size: 12px !important;
   color: var(--color-slate-400, #94a3b8);
-}
-.cpw-leaf {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 12px;
-  font-size: 12px;
-  cursor: pointer;
-}
-.cpw-leaf:hover {
-  background: var(--color-slate-50, #f8fafc);
-}
-.cpw-leaf-case { color: var(--foreground, #1e293b); min-width: 90px; }
-.cpw-leaf-dim { color: var(--color-slate-500, #64748b); min-width: 80px; }
-.cpw-leaf-rt {
-  padding: 0 6px;
-  border-radius: var(--radius-sm);
-  background: var(--color-amber-50, #fffbeb);
-  color: #b45309;
-  font-family: var(--font-mono, monospace);
-  font-size: 11px;
-}
-/* P3（UX 审计）：状态徽章改走 tokens 与 TaskCard exec-status-badge 同源，去硬编码 hex */
-.cpw-leaf-status {
-  padding: 1px 6px;
-  border-radius: var(--radius-full);
-  font-size: 11px;
-}
-.cpw-leaf-status.completed { background: var(--color-emerald-100); color: var(--color-emerald-600); }
-.cpw-leaf-status.failed { background: var(--color-red-100); color: var(--color-red-600); }
-.cpw-leaf-status.stopped { background: var(--color-gray-100); color: var(--color-gray-500); }
-.cpw-leaf-eval {
-  padding: 1px 6px;
-  border-radius: var(--radius-full);
-  font-size: 11px;
-}
-.cpw-leaf-eval.evaluated { background: var(--color-blue-100); color: var(--color-blue-600); }
-.cpw-leaf-eval.pending-eval { background: var(--color-slate-100); color: var(--color-slate-500); }
-.cpw-leaf-added {
-  color: var(--primary, #ff6a00);
-  font-size: 11px;
-}
-.cpw-checkbox {
-  width: 15px;
-  height: 15px;
-  cursor: pointer;
-  accent-color: var(--primary, #ff6a00);
 }
 .cpw-pagination {
   display: flex;

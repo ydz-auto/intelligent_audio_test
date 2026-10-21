@@ -14,6 +14,12 @@
  *   R9 全选当前筛选/反选；R10 已加购标记由 resultIdSet 派生。
  */
 import type { PickCandidate } from '../../../infrastructure/api/cherryPickApi';
+import {
+  groupCasesByCaseGroup,
+  groupCasesByTag,
+  type CaseSubGroup,
+  type SubViewCaseItem,
+} from '../../../domain/lib/subViewAggregation';
 
 export type PickLevel = 'task' | 'case' | 'device' | 'resultType' | 'leaf';
 
@@ -103,10 +109,10 @@ export function buildPickTree(candidates: PickCandidate[]): PickTreeNode[] {
 }
 
 /**
- * 用例视角树（INT-796 §3.6 裁定③ / §3.7.3）：按用例名聚合跨任务——
- * 用例 → 来源任务列表 → 设备/API → result_type → 结果行。
- * 勾选态与任务视角共享同一 selectedResultIds；联动复用 R1-R7
- * （根=用例，勾选=跨任务全部设备×结果类型；取消任务级节点仅清该任务下结果行，用例保持部分）。
+ * 用例视图树（INT-1034 §3.8.3 裁定③，INT-1110）：用例 → 设备/API → result_type → 结果行。
+ * 任务维度由阶段 1（选择任务）承载——树内不再设任务级分支；叶行携带来源任务名消歧
+ * （§3.8.3 任务维度注记，leafMeta 按 result_id 提供 taskName）。
+ * 勾选联动 R1-R10 全复用，与设备/结果类型视图共享同一 selectedResultIds。
  */
 export function buildPickCaseViewTree(candidates: PickCandidate[]): PickTreeNode[] {
   const roots: PickTreeNode[] = [];
@@ -123,20 +129,152 @@ export function buildPickCaseViewTree(candidates: PickCandidate[]): PickTreeNode
       rootByCase.set(caseKey, caseNode);
       roots.push(caseNode);
     }
-    const tKey = `${caseKey}|t:${c.taskId}`;
-    let taskNode = caseNode.children.find((n) => n.key === tKey);
-    if (!taskNode) {
-      taskNode = {
-        key: tKey, level: 'task', id: c.taskId, name: c.taskName || `任务 ${c.taskId}`,
-        count: 0, resultIds: [], children: [],
-      };
-      caseNode.children.push(taskNode);
-    }
-    mergeDeviceResultType(taskNode, c, tKey);
-    caseNode.resultIds.push(c.resultId);
-    caseNode.count += 1;
+    // mergeDeviceResultType 已向 parent（caseNode）累计 resultIds/count，此处不重复累加
+    mergeDeviceResultType(caseNode, c, caseKey);
   }
   return roots;
+}
+
+/** 设备/API 级节点（设备视图与结果类型视图共用构造：设备名缺省降级「设备不可用/API不可用 {前 8 位}…」） */
+function mergeCaseNode(
+  parent: PickTreeNode,
+  c: PickCandidate,
+  keyPrefix: string
+): PickTreeNode {
+  const caseKey = `${keyPrefix}|c:${c.caseId}`;
+  let caseNode = parent.children.find((n) => n.key === caseKey);
+  if (!caseNode) {
+    caseNode = {
+      key: caseKey, level: 'case', id: c.caseId,
+      name: c.caseName || c.caseId, count: 0, resultIds: [], children: [],
+      algorithmType: c.algorithmType ?? null,
+    };
+    parent.children.push(caseNode);
+  }
+  caseNode.resultIds.push(c.resultId);
+  caseNode.count += 1;
+  return caseNode;
+}
+
+/**
+ * 设备视图树（INT-1034 §3.8.3 裁定③，INT-1110）：设备/API → result_type → 用例 → 结果行。
+ * 用例节点承载算法徽章/CaseIdBadge（PickCaseCard）；叶行直挂用例节点下（buildLeafRows 口径）。
+ */
+export function buildPickDeviceViewTree(candidates: PickCandidate[]): PickTreeNode[] {
+  const roots: PickTreeNode[] = [];
+  const rootByDevice = new Map<string, PickTreeNode>();
+  for (const c of candidates) {
+    const deviceId = c.deviceId ?? null;
+    const apiId = c.apiId ?? null;
+    const kind: 'device' | 'api' = deviceId != null ? 'device' : 'api';
+    const dimId = deviceId ?? apiId;
+    const dimKey = `d:${dimId ?? ''}:${kind}`;
+    let dimNode = rootByDevice.get(dimKey);
+    if (!dimNode) {
+      dimNode = {
+        key: dimKey, level: 'device', id: dimId ?? '',
+        name: kind === 'device' ? (c.deviceName || `设备 ${dimId}`) : (c.apiName || `API ${dimId}`),
+        kind, count: 0, resultIds: [], children: [],
+      };
+      rootByDevice.set(dimKey, dimNode);
+      roots.push(dimNode);
+    }
+    const rtKey = `${dimKey}|rt:${c.resultType ?? 'default'}`;
+    let rtNode = dimNode.children.find((n) => n.key === rtKey);
+    if (!rtNode) {
+      rtNode = {
+        key: rtKey, level: 'resultType', id: c.resultType ?? 'default',
+        name: resultTypeLabel(c.resultType), count: 0, resultIds: [], children: [],
+      };
+      dimNode.children.push(rtNode);
+    }
+    mergeCaseNode(rtNode, c, rtKey);
+    rtNode.resultIds.push(c.resultId);
+    rtNode.count += 1;
+    dimNode.resultIds.push(c.resultId);
+    dimNode.count += 1;
+  }
+  return roots;
+}
+
+/**
+ * 结果类型视图树（INT-1034 §3.8.3 裁定③，INT-1110）：result_type → 设备/API → 用例 → 结果行。
+ * 用例节点同设备视图（PickCaseCard）；叶行直挂用例节点下。
+ */
+export function buildPickResultTypeViewTree(candidates: PickCandidate[]): PickTreeNode[] {
+  const roots: PickTreeNode[] = [];
+  const rootByRt = new Map<string, PickTreeNode>();
+  for (const c of candidates) {
+    const rtKey = `rt:${c.resultType ?? 'default'}`;
+    let rtNode = rootByRt.get(rtKey);
+    if (!rtNode) {
+      rtNode = {
+        key: rtKey, level: 'resultType', id: c.resultType ?? 'default',
+        name: resultTypeLabel(c.resultType), count: 0, resultIds: [], children: [],
+      };
+      rootByRt.set(rtKey, rtNode);
+      roots.push(rtNode);
+    }
+    const deviceId = c.deviceId ?? null;
+    const apiId = c.apiId ?? null;
+    const kind: 'device' | 'api' = deviceId != null ? 'device' : 'api';
+    const dimId = deviceId ?? apiId;
+    const dimKey = `${rtKey}|d:${dimId ?? ''}:${kind}`;
+    let dimNode = rtNode.children.find((n) => n.key === dimKey);
+    if (!dimNode) {
+      dimNode = {
+        key: dimKey, level: 'device', id: dimId ?? '',
+        name: kind === 'device' ? (c.deviceName || `设备 ${dimId}`) : (c.apiName || `API ${dimId}`),
+        kind, count: 0, resultIds: [], children: [],
+      };
+      rtNode.children.push(dimNode);
+    }
+    mergeCaseNode(dimNode, c, dimKey);
+    dimNode.resultIds.push(c.resultId);
+    dimNode.count += 1;
+    rtNode.resultIds.push(c.resultId);
+    rtNode.count += 1;
+  }
+  return roots;
+}
+
+// ===== 用例视图组织维度（INT-1034 §3.8.3，INT-1110 返工 P1）=====
+
+/** 用例组织字段（§11-7 契约：候选行 tags/groupId/groupName 经 caseOrgMap 注入；缺省全落「未分组」/「未设置标签」兜底桶） */
+export interface PickCaseOrgInfo {
+  tags?: string[]
+  groupId?: string | number | null
+  groupName?: string | null
+}
+
+/** 用例组织聚合入参：组织纯函数作用对象 = 用例级分支 + 其组织字段子集（收敛 SubViewCaseItem 口径） */
+export interface PickOrgCaseItem extends SubViewCaseItem {
+  branch: PickTreeNode
+}
+
+/**
+ * 用例视图组织桶（§3.8.3 分组视图/标签视图，INT-1110 返工 P1）。
+ * 组织维度照用例管理页：按用例分组聚合（+「未分组」兜底）/ 按标签聚合（+「未设置标签」兜底），
+ * 纯客户端聚合、不新增后端请求；组织只影响用例层视觉分组，勾选联动 R1-R10 与
+ * 共享 selectedResultIds 不变（本函数纯派生，不触碰选中集）。
+ * caseOrgMap 为 §11-7 扩展点：候选行未返组织字段时省略/空 Map → 全落单兜底桶，组织控件仍常显。
+ */
+export function buildPickCaseOrgBuckets(
+  roots: PickTreeNode[],
+  org: 'group' | 'tag',
+  caseOrgMap?: Map<string | number, PickCaseOrgInfo>,
+): CaseSubGroup<PickOrgCaseItem>[] {
+  const items: PickOrgCaseItem[] = roots.map((branch) => {
+    const info = caseOrgMap?.get(branch.id);
+    return {
+      branch,
+      tags: info?.tags ?? [],
+      groupId: info?.groupId != null ? String(info.groupId) : null,
+      groupName: info?.groupName ?? null,
+      totalDuration: null,
+    };
+  });
+  return org === 'group' ? groupCasesByCaseGroup(items) : groupCasesByTag(items, []);
 }
 
 export type NodeCheckState = 'checked' | 'indeterminate' | 'unchecked';

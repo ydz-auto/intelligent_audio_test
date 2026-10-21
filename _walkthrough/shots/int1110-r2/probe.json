@@ -1,0 +1,13 @@
+{
+  "phase2_caseview": {
+    "case_card": 1,
+    "pcc_check": 1,
+    "pcc_count": 1,
+    "pcc_toggle": 1
+  },
+  "cart_drawer": {
+    "case_card": 1,
+    "pcc_check": 1,
+    "pcc_count": 1
+  }
+}
