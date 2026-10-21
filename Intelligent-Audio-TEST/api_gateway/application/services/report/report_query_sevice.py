@@ -6,6 +6,7 @@
 import base64
 import json
 import logging
+from urllib.parse import quote
 
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
@@ -424,11 +425,19 @@ class ReportQueryService:
                                       http_code=resp.code or 400,
                                       detail=_loads(resp.data, {}) or None)
             data = _loads(resp.data, {}) or {}
+            # INT-1116：传输层改造 —— OSS 预签名 URL 优先（整包不过 gRPC）；
+            # 本地降级（无 OSS）回退 base64 字节流
+            if data.get('download_url'):
+                return success_response({
+                    'download_url': data['download_url'],
+                    'filename': data.get('filename', 'logs.zip'),
+                    'size': data.get('size'),
+                })
             if data.get('content_base64'):
                 return {
                     'binary': True,
                     'content': base64.b64decode(data['content_base64']),
-                    'mime_type': data.get('mime_type', 'application/octet-stream'),
+                    'mime_type': data.get('mime_type', 'application/zip'),
                     'filename': data.get('filename', 'logs.zip'),
                 }
             return success_response(data)
@@ -439,8 +448,12 @@ class ReportQueryService:
     def list_case_logs(report_id, case_id):
         """查询用例日志文件列表（GET /reports/{id}/cases/{cid}/logs，report:read）。
 
-        返回 {items: [{name, size, updated_at?}]}，name 与下载 ZIP arcname / files=
-        同一套逻辑名（INT-1062）。
+        返回 {items: [{name, size, updated_at?, download_url}]}，name 与下载 ZIP
+        arcname / files= 同一套逻辑名（INT-1062）。
+
+        INT-1116：report_service 对 OSS 内 case 文件回填预签名直链 download_url；
+        无直链的条目（business 日志 / 虚拟文件 / 本地降级）由网关补回退下载 URL
+        （logs/download?files=<json>，字节流单文件 zip 语义）。
         """
         if not case_id:
             return error_response('case_id 不能为空', 400)
@@ -455,6 +468,15 @@ class ReportQueryService:
                                       http_code=resp.code or 400,
                                       detail=_loads(resp.data, {}) or None)
             data = _loads(resp.data, {}) or {}
+            items = data.get('items') or []
+            for item in items:
+                if item.get('download_url'):
+                    continue
+                files_json = json.dumps([item.get('name', '')], ensure_ascii=False)
+                item['download_url'] = (
+                    f'/api/v1/reports/{report_id}/cases/{case_id}/logs/download'
+                    f'?files={quote(files_json, safe="")}')
+            data['items'] = items
             return success_response(data)
         except Exception as e:
             return error_response(f'查询日志文件列表失败: {str(e)}')

@@ -78,14 +78,32 @@ def _make_mixin(monkeypatch, test_result=None, source_task_ids=None):
     return m
 
 
-def _install_storage(monkeypatch, case_metas=None):
-    """mock storage.list_objects_with_meta / load_bytes（对齐 INT-408 先例）。"""
+def _install_storage(monkeypatch, case_metas=None, get_url=None, save_records=None,
+                     load_bytes_data=b'CASE-DATA'):
+    """mock storage 列表/读取/上传/预签名（对齐 INT-408 先例，INT-1116 增补）。
+
+    get_url=None → 本地降级（下载回退 base64，保持原有 content_base64 断言兼容）；
+    get_url=<url> → OSS 预签名模式（下载返回 download_url，整包不过 gRPC）。
+    """
     from shared.infrastructure import storage as storage_mod
     case_metas = case_metas or []
     monkeypatch.setattr(storage_mod.storage, 'list_objects_with_meta',
                         lambda category, prefix='': list(case_metas))
     monkeypatch.setattr(storage_mod.storage, 'load_bytes',
-                        lambda path: b'CASE-DATA')
+                        lambda path: load_bytes_data)
+
+    def _save_file(local_path, category, key):
+        if save_records is not None:
+            save_records.append((category, key))
+        return f'oss://temp/{key}'
+
+    monkeypatch.setattr(storage_mod.storage, 'save_file', _save_file)
+    if get_url is None:
+        monkeypatch.setattr(storage_mod.storage, 'get_url',
+                            lambda path, expires=3600: None)
+    else:
+        monkeypatch.setattr(storage_mod.storage, 'get_url',
+                            lambda path, expires=3600: get_url)
     return storage_mod
 
 
@@ -169,6 +187,39 @@ class TestMixinListCaseLogs:
 
         assert result['success'] is False
         assert '未找到测试报告' in result['message']
+
+    def test_list_download_url_presigned_for_case_files(self, monkeypatch):
+        """INT-1116：OSS 内 case 文件给预签名直链；business 日志/虚拟文件不给。"""
+        m = _make_mixin(monkeypatch)
+        _install_storage(monkeypatch, case_metas=[
+            {'key': f'{TASK_ID}/{CASE_ID}/out.wav', 'sizeBytes': 4,
+             'lastModified': None},
+        ], get_url='http://oss.example/presigned/out.wav')
+        _install_business_logs(monkeypatch, metas=[
+            {'rel': 'device_7/shared/run.log', 'size': 5,
+             'mtime': datetime(2026, 10, 20, 8, 0, tzinfo=timezone.utc)},
+        ])
+
+        items = m.handle_list_case_logs(1, CASE_ID)['items']
+
+        out = next(it for it in items if it['name'] == 'out.wav')
+        assert out['download_url'] == 'http://oss.example/presigned/out.wav'
+        # business 日志不在 OSS，report_service 不给直链（网关补回退下载 URL）
+        biz = next(it for it in items if it['name'].startswith('business_logs/'))
+        assert 'download_url' not in biz
+
+    def test_list_no_download_url_in_local_fallback(self, monkeypatch):
+        """INT-1116：本地降级（get_url=None）列表不给直链，网关补回退。"""
+        m = _make_mixin(monkeypatch)
+        _install_storage(monkeypatch, case_metas=[
+            {'key': f'{TASK_ID}/{CASE_ID}/out.wav', 'sizeBytes': 4,
+             'lastModified': None},
+        ])
+        _install_business_logs(monkeypatch, metas=[])
+
+        items = m.handle_list_case_logs(1, CASE_ID)['items']
+
+        assert 'download_url' not in items[0]
 
 
 class TestMixinDownloadCaseLogs:
@@ -260,6 +311,62 @@ class TestMixinDownloadCaseLogs:
         dl = m.handle_download_case_logs(1, CASE_ID)
         assert sorted(_zip_names(dl['content_base64'])) == sorted(expected)
 
+    def test_download_presigned_url_when_oss_available(self, monkeypatch):
+        """INT-1116：OSS 模式下载返回预签名 URL，整包不上抛 gRPC。"""
+        save_records = []
+        m = _make_mixin(monkeypatch)
+        _install_storage(monkeypatch, case_metas=[
+            {'key': f'{TASK_ID}/{CASE_ID}/out.wav', 'sizeBytes': 4,
+             'lastModified': None},
+        ], get_url='http://oss.example/presigned/case_logs.zip',
+           save_records=save_records)
+        _install_business_logs(monkeypatch, contents=[
+            ('device_7/shared/run.log', b'BIZ'),
+        ])
+
+        result = m.handle_download_case_logs(1, CASE_ID)
+
+        assert result['mode'] == 'presigned'
+        assert result['download_url'] == 'http://oss.example/presigned/case_logs.zip'
+        assert result['filename'] == f'case_{CASE_ID}_logs.zip'
+        assert result['size'] > 0
+        assert result['mime_type'] == 'application/zip'
+        assert 'content_base64' not in result
+        # 上抛到 temp 类别，key 带 report_logs/{report_id}/ 前缀
+        assert save_records and save_records[0][0] == 'temp'
+        assert save_records[0][1].startswith(f'report_logs/1/{CASE_ID}/')
+
+    def test_download_presigned_large_package_stays_small_over_grpc(self, monkeypatch):
+        """>4MB 日志包（INT-1116）：OSS 模式响应只带预签名 URL，不整包 base64。"""
+        big = os.urandom(4 * 1024 * 1024 + 10)  # 随机字节不可压缩 → zip >4MB
+        m = _make_mixin(monkeypatch, test_result=_make_test_result(include_params=False))
+        _install_storage(monkeypatch, case_metas=[
+            {'key': f'{TASK_ID}/{CASE_ID}/big.log', 'sizeBytes': len(big),
+             'lastModified': None},
+        ], get_url='http://oss.example/presigned/big.zip', load_bytes_data=big)
+        _install_business_logs(monkeypatch, contents=[])
+
+        result = m.handle_download_case_logs(1, CASE_ID)
+
+        assert result['mode'] == 'presigned'
+        assert result['size'] >= len(big)
+        assert 'content_base64' not in result  # 整包不上抛 gRPC（绕 4MB 上限）
+
+    def test_download_fallback_base64_when_no_oss(self, monkeypatch):
+        """INT-1116：本地降级（get_url=None）回退 base64 字节流，行为可用。"""
+        m = _make_mixin(monkeypatch)
+        _install_storage(monkeypatch, case_metas=[
+            {'key': f'{TASK_ID}/{CASE_ID}/out.wav', 'sizeBytes': 4,
+             'lastModified': None},
+        ])
+        _install_business_logs(monkeypatch, contents=[])
+
+        result = m.handle_download_case_logs(1, CASE_ID)
+
+        assert result['mode'] == 'fallback'
+        assert result.get('content_base64')
+        assert 'download_url' not in result
+
 
 # ======================================================================
 # report_service gRPC servicer
@@ -324,6 +431,22 @@ class TestLogsServicer:
 
         assert resp.success is False and resp.code == 404
         assert 'no_such.txt' in resp.message
+
+    def test_download_case_logs_presigned_success(self):
+        """INT-1116：OSS 预签名 URL 载荷视为成功（不再只认 content_base64）。"""
+        from shared.proto import report_service_pb2 as report_pb
+
+        class _FakeHandler:
+            def handle_download_case_logs(self, report_id, case_id, files=None):
+                return {'filename': 'case_x.zip', 'download_url': 'http://oss.example/x',
+                        'size': 1, 'mode': 'presigned'}
+
+        servicer = self._servicer_with(_FakeHandler())
+        resp = servicer.DownloadCaseLogs(
+            report_pb.DownloadCaseLogsRequest(report_id=1, case_id='x'))
+
+        assert resp.success is True
+        assert grpc_loads(resp.data, {})['mode'] == 'presigned'
 
     def test_list_case_logs_servicer(self):
         from shared.proto import report_service_pb2 as report_pb
@@ -495,6 +618,76 @@ class TestGatewayCaseLogs:
             params={'files': '["no_such.txt"]'})
 
         assert r.status_code == 404
+
+    def test_download_presigned_url_returns_json(self, gw_client, monkeypatch):
+        """INT-1116：OSS 模式下载返回 JSON {download_url, filename, size}。"""
+        from shared.proto import report_service_pb2 as report_pb
+
+        resp = report_pb.ReportConfigResponse(
+            success=True, message='ok', data=grpc_dumps(
+                {'filename': 'case_ACC1062-C1_logs.zip',
+                 'download_url': 'http://oss.example/presigned/case_logs.zip',
+                 'size': 4, 'mime_type': 'application/zip', 'mode': 'presigned'}))
+        _install_fake_stub(monkeypatch, resp)
+
+        r = gw_client.get('/api/v1/reports/42/cases/ACC1062-C1/logs/download')
+
+        assert r.status_code == 200
+        body = r.json()['data']
+        assert body['download_url'] == 'http://oss.example/presigned/case_logs.zip'
+        assert body['filename'] == 'case_ACC1062-C1_logs.zip'
+        assert body['size'] == 4
+        assert 'content' not in body
+
+    def test_download_fallback_binary_zip(self, gw_client, monkeypatch):
+        """INT-1116：本地降级（content_base64）网关字节流回退，zip 语义可用。"""
+        from shared.proto import report_service_pb2 as report_pb
+
+        resp = report_pb.ReportConfigResponse(
+            success=True, message='ok', data=grpc_dumps(
+                {'filename': 'case_ACC1062-C1_logs.zip',
+                 'content_base64': base64.b64encode(b'PK\x03\x04DATA').decode(),
+                 'size': 4, 'mime_type': 'application/zip', 'mode': 'fallback'}))
+        _install_fake_stub(monkeypatch, resp)
+
+        r = gw_client.get('/api/v1/reports/42/cases/ACC1062-C1/logs/download')
+
+        assert r.status_code == 200
+        assert r.headers.get('content-type', '').startswith('application/zip')
+        assert r.content == b'PK\x03\x04DATA'
+
+    def test_list_download_url_fallback_filled_by_gateway(self, gw_client, monkeypatch):
+        """INT-1116：无直链条目（business 日志/本地降级）网关补回退下载 URL。"""
+        from shared.proto import report_service_pb2 as report_pb
+
+        resp = report_pb.ReportConfigResponse(
+            success=True, message='ok', data=grpc_dumps(
+                {'items': [{'name': 'business_logs/device_7/run.log', 'size': 5}]}))
+        _install_fake_stub(monkeypatch, resp)
+
+        r = gw_client.get('/api/v1/reports/42/cases/ACC1062-C1/logs')
+
+        assert r.status_code == 200
+        item = r.json()['data']['items'][0]
+        assert item['download_url'].startswith(
+            '/api/v1/reports/42/cases/ACC1062-C1/logs/download?files=')
+        assert 'business_logs' in item['download_url']
+
+    def test_list_download_url_preserved_from_service(self, gw_client, monkeypatch):
+        """INT-1116：report_service 已给的预签名直链不被网关覆盖。"""
+        from shared.proto import report_service_pb2 as report_pb
+
+        resp = report_pb.ReportConfigResponse(
+            success=True, message='ok', data=grpc_dumps(
+                {'items': [{'name': 'out.wav', 'size': 4,
+                            'download_url': 'http://oss.example/presigned/out.wav'}]}))
+        _install_fake_stub(monkeypatch, resp)
+
+        r = gw_client.get('/api/v1/reports/42/cases/ACC1062-C1/logs')
+
+        assert r.status_code == 200
+        item = r.json()['data']['items'][0]
+        assert item['download_url'] == 'http://oss.example/presigned/out.wav'
 
     def test_list_route_requires_report_read(self, monkeypatch):
         from shared.proto import report_service_pb2 as report_pb

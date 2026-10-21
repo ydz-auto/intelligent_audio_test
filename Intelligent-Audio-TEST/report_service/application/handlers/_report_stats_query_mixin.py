@@ -213,10 +213,15 @@ class ReportStatsQueryMixin:
     @staticmethod
     def _format_logs_download(task_ids_to_search: list, test_result, report_id: int,
                               case_id: str, files=None) -> dict:
-        """根据查询到的日志数据构建 ZIP 并以 base64 编码返回。
+        """根据查询到的日志数据构建 ZIP 并上抛 OSS 临时桶，返回预签名 URL。
 
         INT-1062：files 为逻辑文件名筛选（同一套逻辑名 = 列表 name = ZIP arcname）；
         缺省整包；按选时 ZIP 仅含所选文件，任一所选文件未命中 → 404。
+
+        INT-1116（传输层改造）：ZIP 不再整包 base64 过 gRPC——先写本地临时文件，
+        再上抛 OSS temp 类别（对象生命周期由 OSS 策略 ~1h 自动清理），返回预签名
+        URL（3600s）；OSS 不可用 / get_url 返回 None 时降级回退 base64 字节流
+        （与 INT-1062 现状一致，属本地降级模式，受 gRPC 4MB 消息上限约束）。
 
         Args:
             task_ids_to_search: 需搜索的任务 ID 列表
@@ -226,12 +231,17 @@ class ReportStatsQueryMixin:
             files: 可选，逻辑文件名列表（None = 整包）
 
         Returns:
-            dict: {filename, content_base64, size} 或 {success: False, message}
+            dict: {filename, download_url, size, mime_type, mode: 'presigned'}
+                或 {filename, content_base64, size, mime_type, mode: 'fallback'}
+                或 {success: False, message}
         """
         import base64
-        import io as _io
         import json as _json
+        import os as _os
+        import tempfile as _tempfile
+        import uuid as _uuid
         import zipfile as _zipfile
+        from shared.infrastructure.storage import storage
         from shared.utils.result_data_store import load_full_result_data
 
         zip_filename = f"case_{case_id}_logs.zip"
@@ -245,50 +255,75 @@ class ReportStatsQueryMixin:
             device_id = (test_result.get('device_id') if isinstance(test_result, dict)
                          else getattr(test_result, 'device_id', None))
 
-        zip_buffer = _io.BytesIO()
-        found_any = False
-        with _zipfile.ZipFile(zip_buffer, 'w', _zipfile.ZIP_DEFLATED) as zf:
-            found_any = ReportStatsQueryMixin._write_case_log_files(
-                zf, task_ids_to_search, case_id, found_any, selected, written)
+        tmp_path = None
+        try:
+            tmp_fd, tmp_path = _tempfile.mkstemp(suffix='.zip', prefix='case_logs_')
+            _os.close(tmp_fd)
+            found_any = False
+            with _zipfile.ZipFile(tmp_path, 'w', _zipfile.ZIP_DEFLATED) as zf:
+                found_any = ReportStatsQueryMixin._write_case_log_files(
+                    zf, task_ids_to_search, case_id, found_any, selected, written)
 
-            if ReportStatsQueryMixin._write_business_log_files(
-                    zf, task_ids_to_search, device_id, selected, written):
-                found_any = True
+                if ReportStatsQueryMixin._write_business_log_files(
+                        zf, task_ids_to_search, device_id, selected, written):
+                    found_any = True
 
-            full_data = {}
-            if test_result:
-                tr_result_data = test_result.get('result_data') if isinstance(test_result, dict) else getattr(test_result, 'result_data', None)
-                tr_result_data_path = test_result.get('result_data_path') if isinstance(test_result, dict) else getattr(test_result, 'result_data_path', None)
-                full_data = load_full_result_data(tr_result_data, tr_result_data_path)
-            if test_result and full_data and 'adjusted_reference_params' in full_data:
-                adjusted_params = full_data['adjusted_reference_params']
-                if adjusted_params:
-                    params_json = _json.dumps(adjusted_params, ensure_ascii=False, indent=2)
-                    if selected is None or 'adjusted_reference_params.json' in selected:
-                        zf.writestr("adjusted_reference_params.json", params_json)
-                        written.add("adjusted_reference_params.json")
-                        found_any = True
+                full_data = {}
+                if test_result:
+                    tr_result_data = test_result.get('result_data') if isinstance(test_result, dict) else getattr(test_result, 'result_data', None)
+                    tr_result_data_path = test_result.get('result_data_path') if isinstance(test_result, dict) else getattr(test_result, 'result_data_path', None)
+                    full_data = load_full_result_data(tr_result_data, tr_result_data_path)
+                if test_result and full_data and 'adjusted_reference_params' in full_data:
+                    adjusted_params = full_data['adjusted_reference_params']
+                    if adjusted_params:
+                        params_json = _json.dumps(adjusted_params, ensure_ascii=False, indent=2)
+                        if selected is None or 'adjusted_reference_params.json' in selected:
+                            zf.writestr("adjusted_reference_params.json", params_json)
+                            written.add("adjusted_reference_params.json")
+                            found_any = True
 
-        # INT-1062：按选打包时，任一所选文件未命中 → 404（清单不可用语义）
-        if selected is not None:
-            missing = sorted(selected - written)
-            if missing:
-                return {'success': False,
-                        'message': f'以下日志文件不存在: {", ".join(missing)}',
-                        'code': 404}
+            # INT-1062：按选打包时，任一所选文件未命中 → 404（清单不可用语义）
+            if selected is not None:
+                missing = sorted(selected - written)
+                if missing:
+                    return {'success': False,
+                            'message': f'以下日志文件不存在: {", ".join(missing)}',
+                            'code': 404}
 
-        if not found_any:
-            return {'success': False, 'message': '未找到用例日志目录'}
+            if not found_any:
+                return {'success': False, 'message': '未找到用例日志目录'}
 
-        zip_buffer.seek(0)
-        zip_data = zip_buffer.getvalue()
-        total_size = len(zip_data)
+            total_size = _os.path.getsize(tmp_path)
 
-        return {
-            'filename': zip_filename,
-            'content_base64': base64.b64encode(zip_data).decode('utf-8'),
-            'size': total_size,
-        }
+            # INT-1116：上抛 OSS 临时桶（temp 类别，TTL 由 OSS 生命周期策略清理）
+            key = f"report_logs/{report_id}/{case_id}/{_uuid.uuid4().hex}.zip"
+            uploaded_path = storage.save_file(tmp_path, 'temp', key)
+            url = storage.get_url(uploaded_path, expires=3600)
+            if url:
+                return {
+                    'filename': zip_filename,
+                    'download_url': url,
+                    'size': total_size,
+                    'mime_type': 'application/zip',
+                    'mode': 'presigned',
+                }
+
+            # 本地降级：读取临时文件回退 base64 字节流（网关字节流回退链路）
+            with open(tmp_path, 'rb') as fh:
+                zip_data = fh.read()
+            return {
+                'filename': zip_filename,
+                'content_base64': base64.b64encode(zip_data).decode('utf-8'),
+                'size': total_size,
+                'mime_type': 'application/zip',
+                'mode': 'fallback',
+            }
+        finally:
+            if tmp_path and _os.path.exists(tmp_path):
+                try:
+                    _os.remove(tmp_path)
+                except OSError:
+                    logger.debug("清理日志 ZIP 临时文件失败: %s", tmp_path, exc_info=True)
 
     @staticmethod
     def _write_business_log_files(zf, task_ids_to_search: list, device_id,
@@ -413,10 +448,13 @@ class ReportStatsQueryMixin:
         updated_at（字段可选，不为无 mtime 数据补造时间）。
 
         Returns:
-            [{'name': str, 'size': int, 'updated_at': str|None}]
+            [{'name': str, 'size': int, 'updated_at': str|None, 'download_url': str|None}]
+            download_url（INT-1116）仅对 OSS 内 case 文件给出预签名直链（3600s）；
+            business 日志 / 虚拟文件 / 本地降级不给直链（网关回退下载 URL）。
         """
         import json as _json
         from datetime import datetime
+        from shared.infrastructure.storage import storage
         from shared.logging import BusinessLogReader
         from shared.utils.result_data_store import load_full_result_data
 
@@ -429,6 +467,12 @@ class ReportStatsQueryMixin:
             if last_mod is not None:
                 item['updated_at'] = (last_mod.isoformat() if isinstance(last_mod, datetime)
                                       else str(last_mod))
+            # INT-1116：OSS 内 case 文件给预签名直链；get_url=None（本地降级）由
+            # 网关补回退下载 URL，此处不落 download_url
+            url = storage.get_url(storage.build_path('case_result', src['oss_key']),
+                                  expires=3600)
+            if url:
+                item['download_url'] = url
             items.append(item)
 
         # 2. business 日志（business_logs/{rel}）

@@ -781,6 +781,10 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
             report_id: int   报告 ID
             case_id: str     用例 ID
             files: repeated string  可选，逻辑文件名筛选（缺省 = 整包，INT-1062）
+
+        INT-1116 响应语义：成功载荷为 {filename, download_url, size, mime_type,
+        mode: 'presigned'}（OSS 预签名 URL，整包不过 gRPC）或 {filename,
+        content_base64, size, mime_type, mode: 'fallback'}（本地降级字节流回退）。
         """
         try:
             report_id = getattr(request, 'report_id', 0)
@@ -788,7 +792,7 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
             files = list(getattr(request, 'files', []) or [])
             data = self.query_handler.handle_download_case_logs(
                 report_id, case_id, files or None)
-            if not data.get('content_base64'):
+            if not data.get('content_base64') and not data.get('download_url'):
                 return self._resp(False, data.get('message', 'download failed'),
                                   data, code=data.get('code', 0))
             return self._resp(True, 'ok', data)
