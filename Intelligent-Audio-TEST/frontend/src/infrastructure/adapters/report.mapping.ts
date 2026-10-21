@@ -24,6 +24,7 @@ import type {
   ReportReferenceParamEntry,
   ReportFieldMapping,
   ReportFieldMappingItem,
+  CaseLogFile,
 } from '../../domain/model/report'
 import type {
   ReportMetricConfigDto,
@@ -37,6 +38,7 @@ import type {
   ReportTagMetricByResourceDto,
   ReportCaseTypeStatRowDto,
   ReportDto,
+  ReportCaseLogFilesDto,
 } from '../dto/reportDto'
 import { toSafeNumber as n } from './commonAdapter'
 import { s } from './report.utils'
@@ -387,4 +389,15 @@ export function toFieldMappings(raw: unknown): Record<string, ReportFieldMapping
     }
   }
   return result
+}
+
+/** 用例日志文件列表（ReportCaseLogFilesDto → CaseLogFile[]；updated_at 缺省省略 updatedAt，INT-1062） */
+export function toCaseLogFiles(raw: ReportCaseLogFilesDto): CaseLogFile[] {
+  const items = raw?.items
+  if (!Array.isArray(items)) return []
+  return items.map((f) => ({
+    name: s(f.name),
+    size: n(f.size),
+    ...(f.updated_at !== undefined && f.updated_at !== null ? { updatedAt: f.updated_at } : {}),
+  }))
 }
