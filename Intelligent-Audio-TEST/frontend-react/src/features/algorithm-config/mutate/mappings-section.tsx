@@ -515,25 +515,31 @@ function DeviceApiMappingSection({
     setCollapsed(next)
   }
 
-  /** 源参数变更：写入 sourceParam + 回填 paramName + 判重提示（V9.7.10 handleSourceChange 口径） */
+  /**
+   * 源参数变更：写入 sourceParam + 回填 paramName + 判重提示（V9.7.10 handleSourceChange 口径）。
+   * 判重读 form.getValues() 实时值——setValue 后 useWatch 快照要到下轮渲染才更新，
+   * 用快照判重会漏掉「编辑存量完备行 sourceParam 制造重复」的变更（INT-1160 返工 P2）。
+   */
   const handleSourceChange = (index: number, value: string) => {
     form.setValue(`${arrayName}.${index}.sourceParam` as FieldPath<AlgorithmFormValues>, value ?? '')
     const name =
       paramNameByCode(caseParams, value ?? '') || paramNameByCode(referenceParams, value ?? '')
     form.setValue(`${arrayName}.${index}.paramName` as FieldPath<AlgorithmFormValues>, name)
-    const dupIndex = findDuplicateIndex(rows, index, section)
+    const liveRows = (form.getValues(arrayName) ?? []) as MappingRow[]
+    const dupIndex = findDuplicateIndex(liveRows, index, section)
     if (dupIndex >= 0) warnDuplicate(sectionLabel, value || '', '')
   }
 
-  /** 目标参数变更（V9.7.10 handleTargetChange 口径：判重提示不阻塞） */
+  /** 目标参数变更（V9.7.10 handleTargetChange 口径：判重提示不阻塞；同样读实时值） */
   const handleTargetChange = (index: number, value: string) => {
     form.setValue(`${arrayName}.${index}.targetParam` as FieldPath<AlgorithmFormValues>, value ?? '')
     form.setValue(
       `${arrayName}.${index}.targetParamName` as FieldPath<AlgorithmFormValues>,
       paramNameByCode(targetParams, value ?? '')
     )
-    const dupIndex = findDuplicateIndex(rows, index, section)
-    if (dupIndex >= 0) warnDuplicate(sectionLabel, rows[index]?.sourceParam || '', '')
+    const liveRows = (form.getValues(arrayName) ?? []) as MappingRow[]
+    const dupIndex = findDuplicateIndex(liveRows, index, section)
+    if (dupIndex >= 0) warnDuplicate(sectionLabel, liveRows[index]?.sourceParam || '', '')
   }
 
   /** 搜索 + 转换筛选后的行 */
@@ -940,10 +946,11 @@ function EvaluationMappingSection({
     }
   }
 
-  /** 源参数变更：回填 paramName + 判重提示 */
+  /** 源参数变更：回填 paramName + 判重提示（判重读实时值，INT-1160 返工 P2） */
   const handleSourceParamChange = (index: number, value: string) => {
     form.setValue(`mappings.evaluation.${index}.sourceParam` as FieldPath<AlgorithmFormValues>, value ?? '')
-    const source = rows[index]?.source || 'case'
+    const liveRows = (form.getValues('mappings.evaluation') ?? []) as MappingRow[]
+    const source = liveRows[index]?.source || 'case'
     const name = evalSourceParamName(source, value ?? '', caseParams, referenceParams, deviceParams, apiParams)
     form.setValue(`mappings.evaluation.${index}.paramName` as FieldPath<AlgorithmFormValues>, name)
     checkDup(index)
@@ -960,10 +967,11 @@ function EvaluationMappingSection({
     checkDup(index)
   }
 
-  /** 维度内目标参数变更：回填名称 + 判重 */
+  /** 维度内目标参数变更：回填名称 + 判重（维度 id 读实时值，INT-1160 返工 P2） */
   const handleTargetChange = (index: number, value: string) => {
     form.setValue(`mappings.evaluation.${index}.targetParam` as FieldPath<AlgorithmFormValues>, value ?? '')
-    const dimId = rows[index]?.dimensionId || ''
+    const liveRows = (form.getValues('mappings.evaluation') ?? []) as MappingRow[]
+    const dimId = liveRows[index]?.dimensionId || ''
     const params = dimensionParamsMap[dimId] ?? []
     const param = params.find((p) => p.code === value)
     form.setValue(
@@ -973,11 +981,17 @@ function EvaluationMappingSection({
     checkDup(index)
   }
 
-  /** 判重（评估 = source + sourceParam + dimensionId；V9.7.10 checkDuplicateMapping） */
+  /**
+   * 判重（评估 = source + sourceParam + dimensionId；V9.7.10 checkDuplicateMapping）。
+   * 行值一律读 form.getValues() 实时快照：handler 内 setValue 后 useWatch 快照尚未更新，
+   * 用渲染快照判重会漏报（INT-1160 返工 P2：编辑存量完备行 sourceParam/dimensionId
+   * 制造重复时不弹 toast → 发布 schema 兜底拦截前必须先在交互层报出）。
+   */
   const checkDup = (index: number) => {
-    const dupIndex = findDuplicateIndex(rows, index, 'evaluation')
+    const liveRows = (form.getValues('mappings.evaluation') ?? []) as MappingRow[]
+    const dupIndex = findDuplicateIndex(liveRows, index, 'evaluation')
     if (dupIndex < 0) return
-    const row = rows[index]
+    const row = liveRows[index]
     const dimId = row?.dimensionId || ''
     const dimName = dimId ? dimById.get(dimId)?.name || row?.dimensionName || dimId : ''
     const sourceLabel =

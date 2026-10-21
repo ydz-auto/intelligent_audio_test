@@ -229,6 +229,8 @@ function buildPublishAlgorithmFormSchema(enforcePattern: boolean) {
       checkUnique(ctx, 'referenceParams', 'code', values.referenceParams.map((p) => p.code))
       // 范围 min≤max（number/slider 型；发布严格门槛，草稿不校验）
       checkRange(ctx, values.caseParams)
+      // 参数映射判重兜底（§6.5/INT-1160 返工）：与后端 _upsert_mappings 唯一约束对齐
+      checkMappingDuplicates(ctx, values.mappings)
     })
 }
 
@@ -287,6 +289,52 @@ function checkRange(
       })
     }
   })
+}
+
+type MappingRowDupShape = {
+  source?: string
+  sourceParam: string
+  dimensionId?: string
+}
+
+/**
+ * 参数映射判重兜底（§6.5/INT-1160 返工）：与后端 `_upsert_mappings` 唯一约束
+ * (source, source_param, dimension_id) 对齐。
+ * - 设备/API 来源 = 节类型固定，唯一键 = 源参数代码（dimension_id 恒空）；
+ * - 评估 唯一键 = (来源, 源参数代码, 维度)。
+ * 发布严格门槛（草稿宽松 schema 不校验）；行内 handler 实时判重弹 toast，
+ * 此处兜底把重复行挡在发布之外（防后端 find-or-upsert 静默合并覆盖）。
+ */
+function checkMappingDuplicates(
+  ctx: z.RefinementCtx,
+  mappings: {
+    device: MappingRowDupShape[]
+    api: MappingRowDupShape[]
+    evaluation: MappingRowDupShape[]
+  }
+) {
+  const seenSection = (section: 'device' | 'api' | 'evaluation') => {
+    const rows = mappings[section]
+    const seen = new Map<string, number>()
+    rows.forEach((row, index) => {
+      if (!row.sourceParam) return
+      const key =
+        section === 'evaluation'
+          ? `${row.source || 'case'}\u0000${row.sourceParam}\u0000${row.dimensionId || ''}`
+          : row.sourceParam
+      if (seen.has(key)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['mappings', section, index, 'sourceParam'],
+          message: '映射重复：同一来源+源参数+维度不允许重复',
+        })
+      }
+      seen.set(key, index)
+    })
+  }
+  seenSection('device')
+  seenSection('api')
+  seenSection('evaluation')
 }
 
 export type AlgorithmFormSchema = z.infer<typeof algorithmFormSchema>

@@ -9,11 +9,24 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useForm } from 'react-hook-form'
-import { describe, expect, it } from 'vitest'
+import { toast } from 'sonner'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AlgorithmFormValues } from '@/features/algorithm-config/types'
 import type { Dimension, EvaluationCategory } from '@/domain/models/evaluationDimension'
 import { MappingsSection } from '../mappings-section'
+
+vi.mock('sonner', () => ({
+  toast: {
+    warning: vi.fn(),
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}))
+
+beforeEach(() => {
+  vi.clearAllMocks()
+})
 
 const DIMENSIONS: Dimension[] = [
   { id: 1, name: '识别准确率', dimensionType: 'main', parentDimensionId: null, categoryId: 1 },
@@ -60,6 +73,29 @@ function buildValues(): AlgorithmFormValues {
 
 function Harness() {
   const form = useForm<AlgorithmFormValues>({ defaultValues: buildValues() })
+  return (
+    <MappingsSection
+      form={form}
+      dimensions={DIMENSIONS}
+      categories={CATEGORIES}
+    />
+  )
+}
+
+/** 两条存量完备设备映射行（判重 P2 复现：编辑第 2 行源参数制造重复） */
+function TwoDeviceRowsHarness() {
+  const form = useForm<AlgorithmFormValues>({
+    defaultValues: {
+      ...buildValues(),
+      mappings: {
+        ...buildValues().mappings,
+        device: [
+          { key: 'md-1', source: 'case', sourceDirection: 'output', sourceParam: 'asr_result', paramName: 'ASR结果', targetParam: 'audio_in', targetParamName: '音频输入', transformType: 'none' },
+          { key: 'md-2', source: 'case', sourceDirection: 'output', sourceParam: 'tts_text', paramName: 'TTS文本', targetParam: 'audio_in', targetParamName: '音频输入', transformType: 'none' },
+        ],
+      },
+    },
+  })
   return (
     <MappingsSection
       form={form}
@@ -197,5 +233,42 @@ describe('设备/API 参数映射（INT-1160 返工）', () => {
     await user.click(combos[combos.length - 1])
     // 下拉 option 含 Base64（避开工具栏转换徽章筛选的「Base64」chip）
     expect(screen.getByRole('option', { name: 'Base64' })).toBeInTheDocument()
+  })
+})
+
+describe('映射判重实时值（INT-1160 返工 P2：判重读 form.getValues() 实时快照，编辑存量完备行 sourceParam/维度制造重复必弹 toast）', () => {
+  it('设备映射：新增行源参数与存量行重复 → 选源参数即时 toast（不再迟至选目标才报）', async () => {
+    const user = userEvent.setup()
+    render(<Harness />)
+    await user.click(screen.getByRole('button', { name: '添加映射' }))
+    const combos = await screen.findAllByRole('combobox')
+    expect(combos.length).toBeGreaterThanOrEqual(6)
+    // 新增行（第 2 行）源参数下拉 = combos[3]
+    await user.click(combos[3])
+    await user.click(screen.getByRole('option', { name: 'asr_result · ASR结果' }))
+    expect(toast.warning).toHaveBeenCalledWith(expect.stringContaining('映射已存在'))
+  })
+
+  it('设备映射：编辑存量完备行 sourceParam 与另一行重复 → 即时 toast（审计 P2 复现）', async () => {
+    const user = userEvent.setup()
+    render(<TwoDeviceRowsHarness />)
+    const combos = screen.getAllByRole('combobox')
+    // 第 2 行源参数下拉（row1 combos 0-2，row2 combos 3-5）
+    await user.click(combos[3])
+    await user.click(screen.getByRole('option', { name: 'asr_result · ASR结果' }))
+    expect(toast.warning).toHaveBeenCalledWith(expect.stringContaining('映射已存在'))
+  })
+
+  it('评估映射：编辑存量完备行维度与另一行相同 → 即时 toast（维度变更路径）', async () => {
+    const user = userEvent.setup()
+    render(<Harness />)
+    await isolateSection(user, '评估参数映射')
+    await user.click(screen.getByRole('button', { name: '平铺视图' }))
+    const combos = screen.getAllByRole('combobox')
+    // 5 行 × 5 下拉；me-5（case/char/维度11）的维度下拉 = 第 5 行第 3 个 = combos[22]
+    // 改为「响应延迟」（维度2）→ (case, char, 2) 与 me-3 重复 → toast
+    await user.click(combos[22])
+    await user.click(screen.getByRole('option', { name: /响应延迟/ }))
+    expect(toast.warning).toHaveBeenCalledWith(expect.stringContaining('映射已存在'))
   })
 })
