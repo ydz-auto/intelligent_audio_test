@@ -8,6 +8,7 @@
  * - 下次成功拉取 error 复位。
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 
 const mocks = vi.hoisted(() => ({
   getAll: vi.fn(),
@@ -31,6 +32,7 @@ const EMPTY_STATS = {
 }
 
 beforeEach(() => {
+  setActivePinia(createPinia())
   vi.clearAllMocks()
   mocks.getDomainStats.mockResolvedValue(EMPTY_STATS)
   mocks.getOptions.mockResolvedValue({ algorithms: [] })
