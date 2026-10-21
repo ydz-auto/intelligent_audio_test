@@ -41,13 +41,25 @@ describe('aiChatStore：发送守卫（§3.11 无供应商/无模型语义化引
     expect(store.isGenerating).toBe(false)
   })
 
-  it('有供应商但无模型：noModel 错误', () => {
+  it('有供应商带模型：添加后自动选首个模型（配置即用，INT-1109 对齐 React INT-1032）', () => {
     const store = useAiChatStore()
     store.addProvider({
       name: 'OpenAI',
       baseUrl: 'https://api.openai.com/v1',
       apiKey: 'sk-test',
-      models: ['gpt-4o'],
+      models: ['gpt-4o', 'gpt-4o-mini'],
+    })
+    expect(store.config.providerId).toBe(store.providers[0].id)
+    expect(store.config.modelId).toBe('gpt-4o')
+  })
+
+  it('有供应商但模型清单为空：noModel 错误（无法自动落模型）', () => {
+    const store = useAiChatStore()
+    store.addProvider({
+      name: 'OpenAI',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: 'sk-test',
+      models: [],
     })
     store.handleSendMessage('你好')
     expect(store.messages[1].status).toBe(MESSAGE_STATUS.ERROR)

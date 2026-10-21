@@ -113,6 +113,33 @@ export const useAiChatStore = defineStore('aiChat', () => {
       providers.value.find((p) => p.isDefault) ?? providers.value[0] ?? null
   }
 
+  /** 当前会话供应商（config.providerId 命中或默认；§3.11 Demo 直连驱动对话） */
+  function resolveCurrentProvider(): LlmProvider | null {
+    return (
+      providers.value.find((p) => p.id === config.value.providerId) ??
+      defaultProvider.value
+    )
+  }
+
+  /**
+   * 配置即用（§3.11/INT-1032 走查对齐）：供应商带模型而会话未选模型/所选模型已不在
+   * 清单时自动落首个模型——添加供应商后无需再手动选模型即可对话；手动切换模型后
+   * 命中校验、效果不再覆写。整页与全局浮窗共用本 store，两形态同口径。
+   */
+  function autoSelectModel(): void {
+    const currentProvider = resolveCurrentProvider()
+    if (!currentProvider) return
+    const modelValid = currentProvider.models.includes(config.value.modelId ?? '')
+    if (currentProvider.models.length > 0 && !modelValid) {
+      config.value = {
+        ...config.value,
+        providerId: currentProvider.id,
+        modelId: currentProvider.models[0],
+      }
+      savePrefs(AI_CHAT_STORAGE_KEYS.config, config.value)
+    }
+  }
+
   function scheduleSave(): void {
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = setTimeout(() => {
@@ -249,9 +276,7 @@ export const useAiChatStore = defineStore('aiChat', () => {
       isGenerating.value = false
     }
 
-    const currentProvider = providers.value.find(
-      (p) => p.id === config.value.providerId
-    ) ?? defaultProvider.value
+    const currentProvider = resolveCurrentProvider()
     const currentModel = config.value.modelId
     if (!currentProvider || !currentProvider.baseUrl || !currentProvider.apiKey) {
       fail(ERROR_MESSAGES.noProviderChat)
@@ -401,6 +426,7 @@ export const useAiChatStore = defineStore('aiChat', () => {
     providers.value = [...providers.value, created]
     savePrefs(AI_CHAT_STORAGE_KEYS.providers, providers.value)
     recomputeDefault()
+    autoSelectModel()
     return created
   }
 
@@ -410,12 +436,14 @@ export const useAiChatStore = defineStore('aiChat', () => {
     )
     savePrefs(AI_CHAT_STORAGE_KEYS.providers, providers.value)
     recomputeDefault()
+    autoSelectModel()
   }
 
   function removeProvider(id: string): void {
     providers.value = providers.value.filter((p) => p.id !== id)
     savePrefs(AI_CHAT_STORAGE_KEYS.providers, providers.value)
     recomputeDefault()
+    autoSelectModel()
   }
 
   function setDefaultProvider(id: string): void {
@@ -425,6 +453,7 @@ export const useAiChatStore = defineStore('aiChat', () => {
     }))
     savePrefs(AI_CHAT_STORAGE_KEYS.providers, providers.value)
     recomputeDefault()
+    autoSelectModel()
   }
 
   async function testConnection(
@@ -448,6 +477,7 @@ export const useAiChatStore = defineStore('aiChat', () => {
 
   function initialize(): void {
     recomputeDefault()
+    autoSelectModel()
   }
 
   return {

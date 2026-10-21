@@ -4,7 +4,9 @@
 职责：参数校验 + gRPC 调用 report_service，不含业务逻辑。
 """
 import base64
+import json
 import logging
+from urllib.parse import quote
 
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
@@ -292,8 +294,8 @@ class ReportQueryService:
         try:
             body = request.get_json() or {}
             req = GetCaseAveragesRequest.model_validate(body)
-            if not req.task_id:
-                return error_response('taskId 不能为空', 400)
+            if not req.task_id and not req.report_id:
+                return error_response('缺少必要参数: taskId 或 reportId', 400)
         except Exception as e:
             return error_response(f'参数错误: {str(e)}', 400)
 
@@ -302,6 +304,7 @@ class ReportQueryService:
             resp = stub.GetCaseAverages(report_pb.GetCaseAveragesRequest(
                 data=_dumps({
                     'task_id': req.task_id,
+                    'report_id': req.report_id,
                     'category': req.category or '',
                     'tags': req.tags or [],
                     'categories': req.categories or [],
@@ -394,24 +397,90 @@ class ReportQueryService:
         if not case_id:
             return error_response('case_id 不能为空', 400)
 
+        # INT-1062：?files= URL 编码 JSON 字符串数组（如 ["a.txt","b.log"]），
+        # 缺省 = 整包（向后兼容）；空数组/非法元素 → 400
+        files = None
+        files_raw = request.args.get('files')
+        if files_raw:
+            try:
+                parsed = json.loads(files_raw)
+            except (ValueError, TypeError):
+                return error_response('files 参数必须是 URL 编码的 JSON 字符串数组', 400)
+            if not isinstance(parsed, list):
+                return error_response('files 参数必须是数组', 400)
+            if not parsed:
+                return error_response('files 参数为空数组', 400)
+            if not all(isinstance(f, str) and f for f in parsed):
+                return error_response('files 参数必须是非空字符串数组', 400)
+            files = parsed
+
         try:
             stub = report_config_service.stub
             resp = stub.DownloadCaseLogs(report_pb.DownloadCaseLogsRequest(
                 report_id=int(report_id),
-                case_id=str(case_id)))
+                case_id=str(case_id),
+                files=files or []))
             if not resp.success:
-                return error_response(resp.message or '下载失败')
+                return error_response(resp.message or '下载失败',
+                                      http_code=resp.code or 400,
+                                      detail=_loads(resp.data, {}) or None)
             data = _loads(resp.data, {}) or {}
+            # INT-1116：传输层改造 —— OSS 预签名 URL 优先（整包不过 gRPC）；
+            # 本地降级（无 OSS）回退 base64 字节流
+            if data.get('download_url'):
+                return success_response({
+                    'download_url': data['download_url'],
+                    'filename': data.get('filename', 'logs.zip'),
+                    'size': data.get('size'),
+                })
             if data.get('content_base64'):
                 return {
                     'binary': True,
                     'content': base64.b64decode(data['content_base64']),
-                    'mime_type': data.get('mime_type', 'application/octet-stream'),
+                    'mime_type': data.get('mime_type', 'application/zip'),
                     'filename': data.get('filename', 'logs.zip'),
                 }
             return success_response(data)
         except Exception as e:
             return error_response(f'下载用例日志失败: {str(e)}')
+
+    @staticmethod
+    def list_case_logs(report_id, case_id):
+        """查询用例日志文件列表（GET /reports/{id}/cases/{cid}/logs，report:read）。
+
+        返回 {items: [{name, size, updated_at?, download_url}]}，name 与下载 ZIP
+        arcname / files= 同一套逻辑名（INT-1062）。
+
+        INT-1116 返工（审计 P1）：列表只给元数据，不下发 OSS 内容直链；对所有条目
+        统一补回退下载 URL（logs/download?files=<json>，经下载端点 report:download_log
+        校验，内容下载一律收敛在下载权限；guest 仅 report:read 点链接即 403）。
+        """
+        if not case_id:
+            return error_response('case_id 不能为空', 400)
+
+        try:
+            stub = report_config_service.stub
+            resp = stub.ListCaseLogs(report_pb.ListCaseLogsRequest(
+                report_id=int(report_id),
+                case_id=str(case_id)))
+            if not resp.success:
+                return error_response(resp.message or '查询日志文件列表失败',
+                                      http_code=resp.code or 400,
+                                      detail=_loads(resp.data, {}) or None)
+            data = _loads(resp.data, {}) or {}
+            items = data.get('items') or []
+            # INT-1116 返工（审计 P1）：内容下载一律收敛在 report:download_log。
+            # 对全部条目统一补回退下载 URL（logs/download?files= 经下载端点校验权限）；
+            # 即使服务端带回直链也覆盖为回退 URL，防止越权回归。
+            for item in items:
+                files_json = json.dumps([item.get('name', '')], ensure_ascii=False)
+                item['download_url'] = (
+                    f'/api/v1/reports/{report_id}/cases/{case_id}/logs/download'
+                    f'?files={quote(files_json, safe="")}')
+            data['items'] = items
+            return success_response(data)
+        except Exception as e:
+            return error_response(f'查询日志文件列表失败: {str(e)}')
 
     # ------------------------------------------------------------------
     # 报告分享（INT-971）

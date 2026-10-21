@@ -76,6 +76,8 @@ BOOTSTRAP_STEPS = [
     ('python', 'scripts/migrations/202610/fix_users_schema_drift.py', '--apply'),
     # ㉒ user_oauth_bindings 表（全新库 create_all 已含，执行为全 SKIP）
     ('python', 'scripts/migrations/202610/add_user_oauth_bindings.py'),
+    # INT-1140 access_tokens 表（Access Token + skill/MCP 鉴权令牌；全新库 create_all 已含，执行为全 SKIP）
+    ('python', 'scripts/migrations/202610/add_access_tokens_table.py'),
     # ㉓㉔㉕ INT-192 三族维度种子（依赖 seed_voice_llm）
     ('python', 'scripts/migrations/202610/seed_turn_eval.py'),
     ('python', 'scripts/migrations/202610/seed_env_judge.py'),

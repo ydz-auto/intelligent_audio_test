@@ -167,6 +167,23 @@ test_reports + report_summaries / report_summary_meta / report_raw_data
 
 报告展示的指标维度由 `dimensions` 表配置驱动（小艺维度经 `backend/scripts/migrations/202606/seed_xiaoyi_dimensions.py` 以中文名 + `task_type_code` 注册），维度名与 `xiaoyi_metrics` 评估指标体系的 12 个 task_type（Calculator 注册表）一一对应：turn_taking（话轮接管主维度，统一双路 ASR 后遍历子维度）、tor、false_takeover、takeover_latency、high_freq_turn_taking、high_freq_llm_judge、interruption_metrics、non_interactive_latency、noise_latency、rejection_judge、interruption_judge、llm_judge。报告侧不重新定义指标含义，仅按上述体系展示与聚合；`input_asr`（输入识别准确率）为 turn_taking 包内的辅助计算函数，非独立注册维度。
 
+#### 4.2.6 筛选聚合（POST /reports/case-averages）
+
+> 口径裁定 2026-10-21（INT-1059，V9.7.10 五连移植等价核验）：筛选聚合与报告生成共用同一套维度取值与策略聚合工具，避免「筛选后数据全为 -」「百分比维度超 100%」「pass_rate 误报 100%」三类口径偏差。
+
+用例分组/标签对比卡片的筛选聚合由 `POST /reports/case-averages` 服务端完成（report_service `handle_get_case_averages` → `ReportAggregationService.calculate_averages`）：
+
+- **请求**：`taskId`（任务筛选）或 `reportId`（对比/二次对比报告筛选）二者必传其一；`category` / `tags` / `categories` / `includeUntagged` 为筛选条件。
+- **reportId 解析**：对比/二次对比报告经 `report_comparison_matrix.comparison_matrix.task_ids`（兜底 `report_summary.task_ids`）解析源任务集合，与 `taskId` 走同一聚合工具（INT-1059 对齐 V9.7.10 0c6b2028a）。
+- **资源 key 口径**：设备/API 资源唯一 key 与对应报告摘要列一致——
+  - 任务报告（`taskId` 或报告主表含 `task_id` 的 `reportId`）：无时间前缀、含版本、含 `result_type` 后缀（`get_resource_name` 形态，INT-1059 对齐 b47cae340）；
+  - 对比/二次对比报告（`reportId`，报告主表无 `task_id`）：**按源任务聚合，key 带 `t{task}-{time}-` 前缀**（`get_resource_name(result, 源任务, use_time_prefix=True)`，与对比摘要资源列 `report_compare_generator_data_mixin._collect_resources_batch` 同源）——保证筛选响应资源/指标 key 与前端对比面板列（按源任务展示）一一对应，避免列 key 与数据 key 不匹配导致数值不显示（INT-1059 返工裁定 2026-10-21）。
+  - 同一源任务共享的设备/API 在对比筛选下不跨任务合并，各源任务独立成列。
+- **响应**：`metricData`（分组×资源×指标）、`tagMetricData`（标签×资源×指标，新增）、`rawData`、`normalDistribution`、`resources`、`resourceHeaders`、`overallAverages` / `overallAveragesMap`、`filters`。
+- **百分比口径**：非 `average` 维度（pass_rate / ratio / weighted_sum_ratio）按维度 `statistic_method` 策略聚合，产出 0~100；**逐轮失败值 0 是合法数据点**，计入分子/分母（失败轮不会从分母消失，pass_rate 不误报 100%，INT-1059 对齐 a9c4adc56）；`average` 维度按轮次口径取算术平均。
+- **分组筛选口径（INT-1059 返工裁定 2026-10-21）**：`task_service TestCaseConfigService.ListTestCases` 透传 `group_name`/`group_id` 顶层字段（无 `group` 对象），`_report_case_filters.tc_group_name`、聚合侧 `_get_case_category_name`、报告摘要 `extract_case_categories_and_tags` 均回退 `group_name`，保证按真实分组名筛选命中且分类/摘要不落「未分类」；无分组用例归类「未分类」，`categories=['未分类']`（或 `category='未分类'`）命中未分组用例。前端分组对比组件 `applyFilters` 加空结果守卫（与标签组件一致），API 返回空矩阵时保留默认值不清空为 0.00。
+- **前端**：旧 Vue 分组/标签对比组件筛选一律走后端聚合，移除 `searchCases` + 前端手写平均（避免按用例简单平均导致超 100%，INT-1059 对齐 7bb9fd339/e4e5dface/0c6b2028a）。
+
 ## 5. 报告生成流程
 
 ### 5.1 任务报告生成流程

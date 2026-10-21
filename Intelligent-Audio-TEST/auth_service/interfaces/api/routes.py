@@ -11,9 +11,10 @@ interfaces 层为工作单元边界——写命令成功后由本路由 commit�
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
+from datetime import datetime, timezone, timedelta
+from typing import List, Optional, Union
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from auth_service.application.commands.auth_commands import (
@@ -320,3 +321,246 @@ def check_permission(req: CheckPermissionRequest):
     )
     has_perm = check_permission(req.permissions, req.required_permission)
     return {'success': True, 'message': 'ok', 'data': {'has_permission': has_perm}}
+
+
+# =====================================================================
+# Access Token 个人配置页 CRUD（INT-1140）
+#
+# 鉴权=当前登录用户本人（对齐 /auth/self 语义，不需新权限码）：
+# 当前用户 ID 经 X-User-Id 头（api_gateway 内部代理注入）或
+# user_context 回退解析；未认证（0/None）一律 401。
+#
+# 路由前缀 /api/v1/auth，与 api_gateway 对外路径一致，BE2 网关鉴权扩展卡
+# 负责将网关路由代理到本服务（gRPC ValidateAccessToken / 本组 HTTP CRUD）。
+# =====================================================================
+access_token_router = APIRouter(prefix='/api/v1/auth', tags=['auth-access-tokens'])
+
+_UTC8 = timezone(timedelta(hours=8))
+
+_ACCESS_TOKEN_ERR_STATUS = {
+    AuthErrorCode.ACCESS_TOKEN_NOT_FOUND: 404,
+    AuthErrorCode.ACCESS_TOKEN_LIMIT_REACHED: 400,
+}
+
+
+def _access_token_current_user(request) -> Optional[int]:
+    """当前登录用户 ID：X-User-Id 头（网关注入）→ 回退 user_context。
+
+    0/None 归一化为 None（未认证，路由层返回 401）。
+    """
+    from shared.infrastructure.user_context import (
+        get_current_user_id, normalize_user_id,
+    )
+    header = request.headers.get('X-User-Id') or request.headers.get('x-user-id')
+    uid = normalize_user_id(header) if header else None
+    if uid is None:
+        uid = get_current_user_id()
+    return uid
+
+
+def _require_user(request) -> int:
+    """取当前用户 ID，未认证抛 401（对齐 /auth/self 语义）。"""
+    uid = _access_token_current_user(request)
+    if uid is None:
+        raise HTTPException(status_code=401, detail='未认证')
+    return uid
+
+
+def _parse_expires_at(value, *, absent: bool):
+    """归一 expires_at 入参 → (expires_at, default_expiry)。
+
+    absent（字段未传）→ (None, True)：handler 取配置默认有效期；
+    value == 0 → (None, False)：永不过期；
+    ISO 字符串 → (datetime, False)：显式过期时间（转东八区 naive）。
+    """
+    if absent or value is None or value == '':
+        return None, True
+    if isinstance(value, int):
+        if value == 0:
+            return None, False
+        raise ValueError('expires_at 仅支持 0（永不过期）或 ISO 时间字符串')
+    raw = str(value).strip().replace('Z', '+00:00')
+    try:
+        dt = datetime.fromisoformat(raw)
+    except ValueError as e:
+        raise ValueError(f'expires_at 时间格式非法: {value!r}') from e
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(_UTC8).replace(tzinfo=None)
+    return dt, False
+
+
+def _expires_at_out(value) -> Union[int, str]:
+    """expires_at 序列化：None=永不过期 → 0（对外契约 0=永不过期），否则 ISO。"""
+    if value is None:
+        return 0
+    return value.isoformat() if hasattr(value, 'isoformat') else str(value)
+
+
+def _access_token_to_dict(token) -> dict:
+    """AccessTokenAggregate → 接口 dict（掩码：无 token_hash、无明文）。"""
+    return {
+        'id': token.id,
+        'user_id': token.user_id,
+        'name': token.name,
+        'token_hint': token.token_hint,
+        'scopes': list(token.scopes or []),
+        'status': token.status,
+        'expires_at': _expires_at_out(token.expires_at),
+        'last_used_at': (
+            token.last_used_at.isoformat()
+            if token.last_used_at else None
+        ),
+        'last_used_ip': token.last_used_ip,
+        'created_at': (
+            token.created_at.isoformat() if token.created_at else None
+        ),
+    }
+
+
+class CreateAccessTokenRequest(BaseModel):
+    name: str = Field(..., description='token 名称（个人配置页展示）')
+    scopes: Optional[List[str]] = Field(
+        None, description='RBAC 权限码列表；空/缺省=继承用户全部权限')
+    expires_at: Optional[Union[int, str]] = Field(
+        None, description='过期时间；0=永不过期，缺省=默认有效期，ISO 字符串=显式')
+
+
+class UpdateAccessTokenRequest(BaseModel):
+    name: Optional[str] = Field(None, description='token 名称（None=不修改）')
+    scopes: Optional[List[str]] = Field(
+        None, description='权限码列表；空列表=清空继承用户全部，None=不修改')
+    status: Optional[str] = Field(None, description='enabled|disabled；None=不修改')
+    expires_at: Optional[Union[int, str]] = Field(
+        None, description='过期时间；0=永不过期，ISO=显式；字段缺省=不修改')
+
+
+@access_token_router.post('/access-tokens')
+def create_access_token(req: CreateAccessTokenRequest, request: Request):
+    """创建 Access Token（明文仅本响应返回一次，库中只存 SHA-256 哈希）。"""
+    from auth_service.application.commands.access_token_commands import (
+        CreateAccessTokenCommand,
+    )
+    from auth_service.application.handlers.access_token_handlers import (
+        access_token_command_handler, access_token_query_handler,
+    )
+    from auth_service.application.queries.access_token_queries import (
+        GetAccessTokenQuery,
+    )
+    user_id = _require_user(request)
+    try:
+        expires_at, default_expiry = _parse_expires_at(req.expires_at, absent=False)
+        cmd = CreateAccessTokenCommand(
+            user_id=user_id,
+            name=req.name,
+            scopes=req.scopes,
+            expires_at=expires_at,
+            default_expiry=default_expiry,
+            operator_id=user_id,
+        )
+        token_id, plaintext = access_token_command_handler.handle_create(cmd)
+        _commit()
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        _fail(e, 'create_access_token', _ACCESS_TOKEN_ERR_STATUS)
+    # 回读详情（含 created_at 等仓储透出字段），并附加明文（仅此一次）
+    token = access_token_query_handler.handle_get(
+        GetAccessTokenQuery(token_id=token_id, user_id=user_id))
+    data = _access_token_to_dict(token)
+    data['token'] = plaintext  # 明文仅此一次
+    return {'success': True, 'message': 'ok', 'data': data}
+
+
+@access_token_router.get('/access-tokens')
+def list_access_tokens(request: Request):
+    """列出当前用户 token（掩码：token_hint，无明文/哈希）。"""
+    from auth_service.application.queries.access_token_queries import (
+        ListAccessTokensQuery,
+    )
+    from auth_service.application.handlers.access_token_handlers import (
+        access_token_query_handler,
+    )
+    user_id = _require_user(request)
+    tokens = access_token_query_handler.handle_list(
+        ListAccessTokensQuery(user_id=user_id))
+    return {
+        'success': True,
+        'message': 'ok',
+        'data': {
+            'total': len(tokens),
+            'items': [_access_token_to_dict(t) for t in tokens],
+        },
+    }
+
+
+@access_token_router.get('/access-tokens/{token_id}')
+def get_access_token(token_id: int, request: Request):
+    """获取当前用户单个 token 详情（掩码）。"""
+    from auth_service.application.queries.access_token_queries import (
+        GetAccessTokenQuery,
+    )
+    from auth_service.application.handlers.access_token_handlers import (
+        access_token_query_handler,
+    )
+    user_id = _require_user(request)
+    try:
+        token = access_token_query_handler.handle_get(
+            GetAccessTokenQuery(token_id=token_id, user_id=user_id))
+    except Exception as e:
+        _fail(e, 'get_access_token', _ACCESS_TOKEN_ERR_STATUS)
+    return {'success': True, 'message': 'ok', 'data': _access_token_to_dict(token)}
+
+
+@access_token_router.patch('/access-tokens/{token_id}')
+def update_access_token(token_id: int, req: UpdateAccessTokenRequest,
+                        request: Request):
+    """更新当前用户 token（None=不修改；scopes 空列表=清空继承全部）。"""
+    from auth_service.application.commands.access_token_commands import (
+        UpdateAccessTokenCommand,
+    )
+    from auth_service.application.handlers.access_token_handlers import (
+        access_token_command_handler,
+    )
+    user_id = _require_user(request)
+    try:
+        update_expires_at = req.expires_at is not None
+        expires_at = None
+        if update_expires_at:
+            expires_at, _ = _parse_expires_at(req.expires_at, absent=False)
+        cmd = UpdateAccessTokenCommand(
+            token_id=token_id,
+            user_id=user_id,
+            name=req.name,
+            scopes=req.scopes,
+            status=req.status,
+            expires_at=expires_at,
+            update_expires_at=update_expires_at,
+            operator_id=user_id,
+        )
+        access_token_command_handler.handle_update(cmd)
+        _commit()
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        _fail(e, 'update_access_token', _ACCESS_TOKEN_ERR_STATUS)
+    return {'success': True, 'message': 'ok'}
+
+
+@access_token_router.delete('/access-tokens/{token_id}')
+def delete_access_token(token_id: int, request: Request):
+    """软删除当前用户 token（置 deleted_at，保留行供审计）。"""
+    from auth_service.application.commands.access_token_commands import (
+        DeleteAccessTokenCommand,
+    )
+    from auth_service.application.handlers.access_token_handlers import (
+        access_token_command_handler,
+    )
+    user_id = _require_user(request)
+    try:
+        access_token_command_handler.handle_delete(
+            DeleteAccessTokenCommand(
+                token_id=token_id, user_id=user_id, operator_id=user_id))
+        _commit()
+    except Exception as e:
+        _fail(e, 'delete_access_token', _ACCESS_TOKEN_ERR_STATUS)
+    return {'success': True, 'message': 'ok'}

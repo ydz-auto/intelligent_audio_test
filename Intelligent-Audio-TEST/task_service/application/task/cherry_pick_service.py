@@ -448,6 +448,9 @@ class CherryPickService:
             # INT-577 §11-2：候选行补展示字段——case_name / device_name / api_name /
             # result_type（多级挑选树节点命名与 result_type 分组/筛选数据源）
             case_names = self._case_name_map({r.test_case_id for r, _t in rows if r.test_case_id})
+            # INT-1130 §11-7：候选行补用例级元信息——tags/group_id/group_name/duration/rounds
+            # （三视图与购物车分组·标签组织数据源，同源用例管理列表口径；无新表无多余请求）
+            case_meta = self._case_meta_map({r.test_case_id for r, _t in rows if r.test_case_id})
             device_ids_in_page = {r.device_id for r, _t in rows if r.device_id is not None}
             api_ids_in_page = {r.api_id for r, _t in rows if r.api_id is not None}
             device_names = self._fetch_device_names(list(device_ids_in_page)) if device_ids_in_page else {}
@@ -461,6 +464,7 @@ class CherryPickService:
                 label = container_result_map.get(result.id) if container_result_map else None
                 use_container = label is not None and (
                     not direct_task_ids_set or result.task_id not in direct_task_ids_set)
+                meta = case_meta.get(result.test_case_id) or {}
                 items.append({
                     'result_id': result.id,
                     'task_id': label['task_id'] if use_container else task.id,
@@ -469,6 +473,12 @@ class CherryPickService:
                     'case_id': result.test_case_id,
                     # INT-577 §11-2：用例名（缺省显示 ID，容错口径）
                     'case_name': case_names.get(result.test_case_id) or result.test_case_id,
+                    # INT-1130 §11-7：用例卡元信息（tags/分组/时长/轮次，缺省 []/null）
+                    'tags': meta.get('tags', []),
+                    'group_id': meta.get('group_id'),
+                    'group_name': meta.get('group_name'),
+                    'duration': meta.get('duration'),
+                    'rounds': meta.get('rounds'),
                     'device_id': result.device_id,
                     'api_id': result.api_id,
                     # INT-577 §11-2：设备/API 名（TestResult 归属二选一，缺省 None）
@@ -1096,6 +1106,66 @@ class CherryPickService:
             return {str(r[0]): r[1] for r in rows}
         except Exception as e:
             logger.warning(f"批量查询用例名称失败: {e}")
+            return {}
+        finally:
+            session.close()
+
+    @staticmethod
+    def _case_meta_map(case_ids) -> Dict[str, Dict[str, Any]]:
+        """批量查询用例级元信息（INT-1130 §11-7）：tags/group_id/group_name/duration/rounds。
+
+        与用例管理列表（TestCaseListItem tags/groupId/groupName/totalDuration）同源口径：
+        - tags：test_cases → test_case_tags → tags.name（去重保序，§11-7）
+        - group_id/group_name：test_cases.group_id → test_case_groups（缺分组 None）
+        - duration：collect_audios(config) 逐音频时长累加（同 total_duration 路径，
+          audio_service gRPC 批量查询），无音频/无时长返回 None
+        - rounds：len(config.get('rounds') or [])（轮次数，不返回 rounds 数组本身）
+
+        失败（如表异常 / gRPC 失败）返回空 dict，仅日志告警，不阻断候选查询。
+        """
+        ids = [str(c) for c in (case_ids or []) if c]
+        if not ids:
+            return {}
+        from task_service.infrastructure.persistence.models import TestCase
+        from shared.models.database import get_db_session
+        from sqlalchemy.orm import joinedload
+        from shared.utils import testcase_helpers as common
+        session = get_db_session()
+        try:
+            rows = (session.query(TestCase)
+                    .options(joinedload(TestCase.group), joinedload(TestCase.tags))
+                    .filter(TestCase.id.in_(ids)).all())
+            # duration 同源 total_duration：批量收集引用音频，经 gRPC 一次性查时长
+            audio_ids = set()
+            for tc in rows:
+                for audio_item in common.collect_audios(tc.config or {}):
+                    aid = audio_item.get('audio_id')
+                    if aid is not None:
+                        audio_ids.add(aid)
+            audio_map = {}
+            if audio_ids:
+                from task_service.infrastructure.acl.audio_acl_repository import audio_acl_repository
+                audio_map = audio_acl_repository.list_audios_by_ids(audio_ids)
+            out: Dict[str, Dict[str, Any]] = {}
+            for tc in rows:
+                config = tc.config or {}
+                duration = 0.0
+                for audio_item in common.collect_audios(config):
+                    audio_id = audio_item.get('audio_id')
+                    if audio_id:
+                        audio = audio_map.get(audio_id)
+                        if audio and audio.get('duration'):
+                            duration += float(audio.get('duration'))
+                out[str(tc.id)] = {
+                    'tags': list(dict.fromkeys(t.name for t in tc.tags)),
+                    'group_id': tc.group_id,
+                    'group_name': tc.group.name if tc.group else None,
+                    'duration': round(duration, 2) if duration > 0 else None,
+                    'rounds': len(config.get('rounds') or []),
+                }
+            return out
+        except Exception as e:
+            logger.warning(f"批量查询用例元信息失败: {e}")
             return {}
         finally:
             session.close()

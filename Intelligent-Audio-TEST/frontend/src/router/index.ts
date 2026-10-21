@@ -44,7 +44,8 @@ const routes: Array<RouteRecordRaw> = [
   { path: '/dashboard', name: 'dashboard', component: () => import('../views/Dashboard/Dashboard.vue'), meta: { permission: 'home:read', layout: 'authenticated', title: '工作台' } },
   // INT-737：开始测试合并入口 /start-test（E2E+API 单流程，四步，无选算法步骤）
   { path: '/start-test', name: 'startTest', component: () => import('../views/StartTest/StartTest.vue'), meta: { permissions: ['task:execute', 'algorithm:read'], layout: 'authenticated', title: '开始测试' } },
-  // INT-861：灵犀Agent 实页落地（INT-742 交付 AiChatPage 全套组件/Store），路由切实页；报告工作模式 Agent 后端立项前保持关闭
+  // INT-742/INT-1109：灵犀Agent /ai-chat 对话工作台实页（INT-742 建页，INT-1109 落地路由；
+  // URL 契约 /ai-chat?report={id}|task={id}|reviewCase= 由页面 onMounted 消费）
   { path: '/ai-chat', name: 'aiChat', component: () => import('../views/AiChat/AiChatPage.vue'), meta: { permission: 'report:read', layout: 'authenticated', title: '灵犀Agent' } },
   // INT-1154：「联接你的 agent」入口页（登录用户可见；Access Token + skill/MCP 使用说明/服务地址配置/下载 skill）
   { path: '/agent-connect', name: 'agentConnect', component: () => import('../views/AgentConnect/AgentConnectView.vue'), meta: { layout: 'authenticated', title: '联接你的 agent' } },

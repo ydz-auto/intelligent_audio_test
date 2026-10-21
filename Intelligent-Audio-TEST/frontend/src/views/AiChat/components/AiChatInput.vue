@@ -45,19 +45,21 @@
           type="button"
           class="btn btn-primary send-btn"
           :disabled="!canSubmit"
+          :aria-label="INPUT_COPY.send"
+          :title="INPUT_COPY.send"
           @click="submit"
         >
-          <i class="fas fa-paper-plane"></i>
-          <span class="send-label">{{ INPUT_COPY.send }}</span>
+          <i class="fas fa-paper-plane" aria-hidden="true"></i>
         </button>
         <button
           v-else
           type="button"
           class="stop-btn"
+          :aria-label="INPUT_COPY.stop"
+          :title="INPUT_COPY.stop"
           @click="emit('stop')"
         >
-          <i class="fas fa-square"></i>
-          <span class="send-label">{{ INPUT_COPY.stop }}</span>
+          <i class="fas fa-square" aria-hidden="true"></i>
         </button>
       </div>
     </div>
@@ -112,7 +114,11 @@ const emit = defineEmits<{
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 let isComposing = false
 
-const canSubmit = computed(() => props.value.trim().length > 0 && !props.isGenerating)
+/** 可提交（§3.11：对话由用户自配 LLM 供应商驱动——无供应商时发送钮 disabled，
+ * 引导先配置供应商；与 React `effectiveCanSubmit = canSubmit && providers.length > 0` 同口径） */
+const canSubmit = computed(
+  () => props.value.trim().length > 0 && !props.isGenerating && props.providers.length > 0
+)
 
 function onInput(event: Event): void {
   emit('update:value', (event.target as HTMLTextAreaElement).value)
@@ -228,9 +234,10 @@ defineExpose({ focusInput })
 .send-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  min-width: 32px;
   min-height: 32px;
-  padding: 0 14px;
+  padding: 0 9px;
   border: none;
   border-radius: var(--radius-sm);
   background: var(--primary);
@@ -255,9 +262,10 @@ defineExpose({ focusInput })
 .stop-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  min-width: 32px;
   min-height: 32px;
-  padding: 0 14px;
+  padding: 0 9px;
   border: 1px solid color-mix(in srgb, var(--destructive) 30%, transparent);
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--destructive) 10%, transparent);
@@ -266,10 +274,6 @@ defineExpose({ focusInput })
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-}
-
-.send-label {
-  white-space: nowrap;
 }
 
 .input-demo-note {

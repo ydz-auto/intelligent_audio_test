@@ -79,6 +79,13 @@ service AuthService {
   rpc BindUserOAuthIdentity(BindUserOAuthIdentityRequest) returns (AuthResponse);
   // 当前用户解绑指定提供方（幂等，无绑定亦成功）
   rpc UnbindUserOAuthIdentity(UnbindUserOAuthIdentityRequest) returns (AuthResponse);
+
+  // ===== Access Token 校验（INT-1140，BE2 网关鉴权分支调用）=====
+  // 校验明文 token（at_xxx），成功更新 last_used_at/last_used_ip，
+  // 返回生效 scopes（空=继承用户全部权限）；失败 error_code 按 401 语义映射
+  rpc ValidateAccessToken(ValidateAccessTokenRequest) returns (AuthResponse);
+  // 按 SHA-256 哈希获取 token（服务间内部查询，无副作用）
+  rpc GetAccessTokenByHash(GetAccessTokenByHashRequest) returns (AuthResponse);
 }
 
 message GetUserRequest {
@@ -258,6 +265,15 @@ message BindUserOAuthIdentityRequest {
 message UnbindUserOAuthIdentityRequest {
   int32 user_id = 1;     // 当前登录用户 ID
   int32 provider_id = 2; // 提供方 ID
+}
+
+// ===== Access Token（INT-1140）=====
+message ValidateAccessTokenRequest {
+  string token = 1;  // 明文 token（at_ + 32 hex）
+  string ip = 2;     // 客户端来源 IP（更新 last_used_ip），可为空
+}
+message GetAccessTokenByHashRequest {
+  string token_hash = 1;  // SHA-256 hex digest（64 字符）
 }
 message AuthResponse {
   bool success = 1;

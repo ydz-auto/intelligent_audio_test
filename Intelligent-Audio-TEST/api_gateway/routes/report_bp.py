@@ -170,6 +170,17 @@ def search_report_cases(report_id: int):
     return _handle(ReportQueryService.search_report_cases(report_id))
 
 
+@router.get('/{report_id}/cases/{case_id}/logs')
+def list_case_logs(report_id: int, case_id: str,
+                   _: None = require_permission('report:read')):
+    # INT-1062：报告具体用例日志文件列表（文件选择 Dialog 取数，
+    # name 与下载 ZIP arcname / ?files= 同一套逻辑名）
+    return _handle(ReportQueryService.list_case_logs(report_id, case_id))
+
+
 @router.get('/{report_id}/cases/{case_id}/logs/download')
-def download_case_logs(report_id: int, case_id: str):
+def download_case_logs(report_id: int, case_id: str,
+                       _: None = require_permission('report:download_log')):
+    # INT-1062：下载端点补路由级权限（审计要求，否则「列表端点比下载更严」口径不一致）；
+    # ?files= URL 编码 JSON 数组筛选，缺省整包（向后兼容）
     return _handle(ReportQueryService.download_case_logs(report_id, case_id))

@@ -24,7 +24,7 @@ import json
 import os
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from shared.logging.config import get_log_settings
@@ -380,4 +380,31 @@ class BusinessLogReader:
                     results.append((rel.replace(os.sep, '/'), handle.read()))
             except OSError:
                 continue
+        return results
+
+    def list_log_files_with_meta(self, *, task_id, device_id=None, api_id=None,
+                                 evaluation_id=None, round_value=None,
+                                 log_type: Optional[BusinessLogType] = None) -> List[dict]:
+        """枚举命中路径范围的日志文件元数据（相对路径/大小/mtime）。
+
+        INT-1062：报告具体用例日志文件列表取数（name/size/updated_at），
+        相对路径与 load_file_bytes 同一口径（task 根目录起、os.sep 归一为 '/'），
+        保证列表 name 与打包 ZIP arcname、下载 files= 匹配值对齐。
+        """
+        task_base = os.path.join(self._root_dir, self._path_builder.build_task_dir(task_id))
+        results = []
+        for file_path in self.list_log_files(
+                task_id=task_id, device_id=device_id, api_id=api_id,
+                evaluation_id=evaluation_id, round_value=round_value,
+                log_type=log_type):
+            rel = os.path.relpath(file_path, task_base)
+            try:
+                st = os.stat(file_path)
+            except OSError:
+                continue
+            results.append({
+                'rel': rel.replace(os.sep, '/'),
+                'size': st.st_size,
+                'mtime': datetime.fromtimestamp(st.st_mtime, tz=timezone.utc),
+            })
         return results
