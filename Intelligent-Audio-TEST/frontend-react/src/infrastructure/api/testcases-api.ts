@@ -77,3 +77,44 @@ export async function fetchTagGroupedTestCases(
 ): Promise<TestCaseListResult> {
   return fetchTestCases(query)
 }
+
+/**
+ * 收藏/取消收藏（POST/DELETE /testcases/{id}/favorite，testcase:read；幂等）。
+ * 开始测试用例选择行内收藏（INT-1138）：调用后由调用方就地回写列表缓存，不整表重拉。
+ */
+export async function setTestCaseFavorite(
+  id: string,
+  favorite: boolean
+): Promise<void> {
+  if (favorite) await apiClient.post(`/testcases/${id}/favorite`)
+  else await apiClient.delete(`/testcases/${id}/favorite`)
+}
+
+/** 复制用例（POST /testcases/{id}/copy，testcase:copy；返回新用例 id） */
+export async function copyTestCase(id: string): Promise<string> {
+  const dto = await apiClient.post<{ id?: string | number }>(`/testcases/${id}/copy`)
+  return dto?.id != null ? String(dto.id) : ''
+}
+
+/** 软删用例（DELETE /testcases/{id} → 移入回收站；恢复/彻底删除走 /restore /purge） */
+export async function deleteTestCase(id: string): Promise<void> {
+  await apiClient.delete(`/testcases/${id}`)
+}
+
+/** 批量恢复（POST /testcases/restore，{ids}，testcase:delete；返回 restored_count） */
+export async function restoreTestCases(ids: string[]): Promise<number> {
+  const dto = await apiClient.post<{ restored_count?: number }>(
+    '/testcases/restore',
+    { ids }
+  )
+  return dto?.restored_count ?? 0
+}
+
+/** 批量彻底删除（POST /testcases/purge，{ids}，testcase:delete；返回 purged_count） */
+export async function purgeTestCases(ids: string[]): Promise<number> {
+  const dto = await apiClient.post<{ purged_count?: number }>(
+    '/testcases/purge',
+    { ids }
+  )
+  return dto?.purged_count ?? 0
+}

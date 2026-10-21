@@ -25,6 +25,11 @@ type CaseSelectionState = {
   selectMany: (ids: string[]) => void
   /** 取消勾选一组 id（分组/标签卡「本组取消全选」；INT-710） */
   removeMany: (ids: string[]) => void
+  /**
+   * 移除一组 id 但保留圈定模式（INT-1138：行内删除/恢复/彻底删除、删除分组后同步移出
+   * 勾选集——不改变 filterAllMode，避免「按筛选使用全部」语义被静默切换）
+   */
+  removeSelected: (ids: string[]) => void
   /** 反选：选中集 = 全量集 − 当前选中集（对称差） */
   invertWith: (allIds: string[]) => void
   clearSelection: () => void
@@ -61,6 +66,15 @@ export const useCaseSelectionStore = create<CaseSelectionState>((set) => ({
         manualCaseIds: kept,
         invertAdded: s.invertAdded.filter((id) => !remove.has(id)),
         filterAllMode: false,
+      }
+    }),
+
+  removeSelected: (ids) =>
+    set((s) => {
+      const remove = new Set(ids)
+      return {
+        manualCaseIds: s.manualCaseIds.filter((id) => !remove.has(id)),
+        invertAdded: s.invertAdded.filter((id) => !remove.has(id)),
       }
     }),
 

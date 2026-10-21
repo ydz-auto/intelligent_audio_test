@@ -20,6 +20,7 @@ export type TestcaseBatchAction =
   | 'auto_generate_name'
   | 'move_to_group'
   | 'copy_to_group'
+  | 'copy_by_group'
   | 'add_tags'
   | 'remove_tags'
   | 'rename_tag'
@@ -45,6 +46,8 @@ export interface TestcaseBatchPayload {
   multiDimensions?: Array<Record<string, unknown>>
   /** 目标分组（move_to_group / copy_to_group） */
   targetGroupId?: string
+  /** 按分组整体复制（copy_by_group，task_service TestCaseBatchCopyMoveMixin._batch_copy_by_group） */
+  groupName?: string
   /** 标签（add_tags / remove_tags） */
   tags?: string[]
   oldTagName?: string
@@ -76,6 +79,7 @@ const BATCH_ACTION_KEY_MAP: Record<string, string> = {
   noiseSpl: 'noise_spl',
   noiseDeviceIds: 'noise_device_ids',
   targetGroupId: 'target_group_id',
+  groupName: 'group_name',
   roundMode: 'round_mode',
   roundNumbers: 'round_numbers',
   roundDimensions: 'round_dimensions',

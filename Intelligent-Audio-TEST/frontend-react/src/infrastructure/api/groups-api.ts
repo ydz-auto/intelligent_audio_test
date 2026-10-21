@@ -22,3 +22,8 @@ export async function fetchGroups(): Promise<TestCaseGroup[]> {
   })
   return (dto.items ?? []).map(toTestCaseGroup)
 }
+
+/** 删除分组（DELETE /groups/{id}?cascade=true，group:delete；级联删除分组下全部用例） */
+export async function deleteGroup(id: string): Promise<void> {
+  await apiClient.delete(`/groups/${id}`, { params: { cascade: true } })
+}

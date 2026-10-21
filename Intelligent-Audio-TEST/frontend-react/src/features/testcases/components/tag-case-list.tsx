@@ -74,10 +74,13 @@ export function TagCaseList({
   loading: boolean
   selected: Set<string>
   tagRegistry: TagItem[]
-  callbacks: CaseCardCallbacks
-  onToggleSelect: (id: string, checked: boolean) => void
-  onToggleAll: (ids: string[], checked: boolean) => void
-  onCreate: () => void
+  /** 行内五钮回调；不传（readOnly 观察态）→ 卡片不渲染操作钮 */
+  callbacks?: CaseCardCallbacks
+  /** 勾选切换；不传（readOnly 观察态）→ 卡片/标签头勾选框隐藏 */
+  onToggleSelect?: (id: string, checked: boolean) => void
+  onToggleAll?: (ids: string[], checked: boolean) => void
+  /** 空态「新增用例」；不传（readOnly 观察态）→ 隐藏 */
+  onCreate?: () => void
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [tagPage, setTagPage] = useState(1)
@@ -162,11 +165,13 @@ export function TagCaseList({
             <EmptyTitle>没有找到标签分组的测试用例</EmptyTitle>
             <EmptyDescription>请为测试用例添加标签</EmptyDescription>
           </EmptyHeader>
-          <EmptyContent>
-            <Button size='sm' onClick={onCreate}>
-              + 新增用例
-            </Button>
-          </EmptyContent>
+          {onCreate != null && (
+            <EmptyContent>
+              <Button size='sm' onClick={onCreate}>
+                + 新增用例
+              </Button>
+            </EmptyContent>
+          )}
         </Empty>
       </div>
     )
@@ -177,11 +182,13 @@ export function TagCaseList({
       {/* 列表头：全选 + 已选择计数 + 标签排序 */}
       <div className='flex items-center justify-between gap-2'>
         <div className='flex items-center gap-2'>
-          <Checkbox
-            checked={cases.length > 0 && cases.every((c) => selected.has(c.id))}
-            aria-label='全选用例'
-            onCheckedChange={(c) => onToggleAll(cases.map((x) => x.id), c)}
-          />
+          {onToggleAll != null && (
+            <Checkbox
+              checked={cases.length > 0 && cases.every((c) => selected.has(c.id))}
+              aria-label='全选用例'
+              onCheckedChange={(c) => onToggleAll(cases.map((x) => x.id), c)}
+            />
+          )}
           <p className='text-muted-foreground text-xs'>
             {selected.size > 0 ? `已选择 ${selected.size} 个用例` : '全选以进行批量操作'}
           </p>
@@ -234,11 +241,13 @@ export function TagCaseList({
               onClick={() => toggleTagExpanded(group.name)}
             >
               <div className='flex min-w-0 items-center gap-2'>
-                <Checkbox
-                  checked={group.cases.length > 0 && groupSelected === group.cases.length}
-                  aria-label={`全选标签 ${group.name}`}
-                  onCheckedChange={(c) => onToggleAll(group.cases.map((x) => x.id), c)}
-                />
+                {onToggleAll != null && (
+                  <Checkbox
+                    checked={group.cases.length > 0 && groupSelected === group.cases.length}
+                    aria-label={`全选标签 ${group.name}`}
+                    onCheckedChange={(c) => onToggleAll(group.cases.map((x) => x.id), c)}
+                  />
+                )}
                 <ChevronDown
                   aria-hidden='true'
                   className={cn('size-4 text-muted-foreground transition-transform', !isExpanded && '-rotate-90')}
