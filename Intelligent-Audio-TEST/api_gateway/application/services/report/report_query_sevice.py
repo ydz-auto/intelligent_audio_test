@@ -451,9 +451,9 @@ class ReportQueryService:
         返回 {items: [{name, size, updated_at?, download_url}]}，name 与下载 ZIP
         arcname / files= 同一套逻辑名（INT-1062）。
 
-        INT-1116：report_service 对 OSS 内 case 文件回填预签名直链 download_url；
-        无直链的条目（business 日志 / 虚拟文件 / 本地降级）由网关补回退下载 URL
-        （logs/download?files=<json>，字节流单文件 zip 语义）。
+        INT-1116 返工（审计 P1）：列表只给元数据，不下发 OSS 内容直链；对所有条目
+        统一补回退下载 URL（logs/download?files=<json>，经下载端点 report:download_log
+        校验，内容下载一律收敛在下载权限；guest 仅 report:read 点链接即 403）。
         """
         if not case_id:
             return error_response('case_id 不能为空', 400)
@@ -469,9 +469,10 @@ class ReportQueryService:
                                       detail=_loads(resp.data, {}) or None)
             data = _loads(resp.data, {}) or {}
             items = data.get('items') or []
+            # INT-1116 返工（审计 P1）：内容下载一律收敛在 report:download_log。
+            # 对全部条目统一补回退下载 URL（logs/download?files= 经下载端点校验权限）；
+            # 即使服务端带回直链也覆盖为回退 URL，防止越权回归。
             for item in items:
-                if item.get('download_url'):
-                    continue
                 files_json = json.dumps([item.get('name', '')], ensure_ascii=False)
                 item['download_url'] = (
                     f'/api/v1/reports/{report_id}/cases/{case_id}/logs/download'

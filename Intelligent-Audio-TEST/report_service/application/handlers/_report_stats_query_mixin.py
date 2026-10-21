@@ -135,7 +135,9 @@ class ReportStatsQueryMixin:
         """处理下载用例日志。
 
         查询报告关联任务的合并关系、TestResult，从存储列出 case 日志文件，
-        打包成 ZIP 以 base64 编码返回。
+        打包成 ZIP。INT-1116 传输层改造后主路径为「上抛 OSS temp 类别 → 返回
+        预签名 URL（3600s）」，整包不再 base64 过 gRPC；本地降级（OSS 不可用 /
+        get_url=None）才回退 base64 字节流（受 gRPC 4MB 消息上限约束，已知边界）。
 
         Args:
             report_id: 报告 ID
@@ -144,7 +146,9 @@ class ReportStatsQueryMixin:
                 同一套逻辑名）；None 或缺省 = 整包（向后兼容）
 
         Returns:
-            dict: {filename, content_base64, size} 或 {success: False, message}
+            dict: {filename, download_url, size, mime_type, mode: 'presigned'}
+                 或 {filename, content_base64, size, mime_type, mode: 'fallback'}
+                 或 {success: False, message}
         """
         query_result = self._query_case_logs(report_id, case_id)
         if not isinstance(query_result, tuple):
@@ -308,7 +312,12 @@ class ReportStatsQueryMixin:
                     'mode': 'presigned',
                 }
 
-            # 本地降级：读取临时文件回退 base64 字节流（网关字节流回退链路）
+            # 本地降级：先清理已保存的临时对象（避免降级模式持续累积），
+            # 再读取临时文件回退 base64 字节流（网关字节流回退链路）
+            try:
+                storage.delete(uploaded_path)
+            except Exception:
+                logger.debug("清理日志 ZIP 临时对象失败: %s", uploaded_path, exc_info=True)
             with open(tmp_path, 'rb') as fh:
                 zip_data = fh.read()
             return {
@@ -448,13 +457,12 @@ class ReportStatsQueryMixin:
         updated_at（字段可选，不为无 mtime 数据补造时间）。
 
         Returns:
-            [{'name': str, 'size': int, 'updated_at': str|None, 'download_url': str|None}]
-            download_url（INT-1116）仅对 OSS 内 case 文件给出预签名直链（3600s）；
-            business 日志 / 虚拟文件 / 本地降级不给直链（网关回退下载 URL）。
+            [{'name': str, 'size': int, 'updated_at': str|None}]
+            只给元数据；content 下载一律走下载端点（report:download_log），网关为
+            每条目补 logs/download?files= 回退 URL（INT-1116 返工 P1：不下发预签名直链）。
         """
         import json as _json
         from datetime import datetime
-        from shared.infrastructure.storage import storage
         from shared.logging import BusinessLogReader
         from shared.utils.result_data_store import load_full_result_data
 
@@ -467,12 +475,10 @@ class ReportStatsQueryMixin:
             if last_mod is not None:
                 item['updated_at'] = (last_mod.isoformat() if isinstance(last_mod, datetime)
                                       else str(last_mod))
-            # INT-1116：OSS 内 case 文件给预签名直链；get_url=None（本地降级）由
-            # 网关补回退下载 URL，此处不落 download_url
-            url = storage.get_url(storage.build_path('case_result', src['oss_key']),
-                                  expires=3600)
-            if url:
-                item['download_url'] = url
+            # INT-1116 返工（审计 P1）：列表端点只给元数据，不下发 OSS 内容直链——
+            # 日志内容下载一律收敛在 report:download_log（下载端点）。网关对所有条目
+            # 统一补 logs/download?files= 回退 URL，经下载端点校验权限（guest 仅
+            # report:read 点链接即 403）。
             items.append(item)
 
         # 2. business 日志（business_logs/{rel}）

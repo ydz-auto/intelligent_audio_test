@@ -79,11 +79,12 @@ def _make_mixin(monkeypatch, test_result=None, source_task_ids=None):
 
 
 def _install_storage(monkeypatch, case_metas=None, get_url=None, save_records=None,
-                     load_bytes_data=b'CASE-DATA'):
-    """mock storage 列表/读取/上传/预签名（对齐 INT-408 先例，INT-1116 增补）。
+                     delete_records=None, load_bytes_data=b'CASE-DATA'):
+    """mock storage 列表/读取/上传/预签名/删除（对齐 INT-408 先例，INT-1116 增补）。
 
     get_url=None → 本地降级（下载回退 base64，保持原有 content_base64 断言兼容）；
     get_url=<url> → OSS 预签名模式（下载返回 download_url，整包不过 gRPC）。
+    delete_records 非 None 时记录 storage.delete 调用（P3 清理断言）。
     """
     from shared.infrastructure import storage as storage_mod
     case_metas = case_metas or []
@@ -104,6 +105,12 @@ def _install_storage(monkeypatch, case_metas=None, get_url=None, save_records=No
     else:
         monkeypatch.setattr(storage_mod.storage, 'get_url',
                             lambda path, expires=3600: get_url)
+
+    def _delete(path):
+        if delete_records is not None:
+            delete_records.append(path)
+
+    monkeypatch.setattr(storage_mod.storage, 'delete', _delete)
     return storage_mod
 
 
@@ -188,8 +195,8 @@ class TestMixinListCaseLogs:
         assert result['success'] is False
         assert '未找到测试报告' in result['message']
 
-    def test_list_download_url_presigned_for_case_files(self, monkeypatch):
-        """INT-1116：OSS 内 case 文件给预签名直链；business 日志/虚拟文件不给。"""
+    def test_list_never_issues_direct_download_url(self, monkeypatch):
+        """INT-1116 返工（审计 P1）：列表只给元数据，即使 OSS 可用也不下发内容直链。"""
         m = _make_mixin(monkeypatch)
         _install_storage(monkeypatch, case_metas=[
             {'key': f'{TASK_ID}/{CASE_ID}/out.wav', 'sizeBytes': 4,
@@ -202,14 +209,11 @@ class TestMixinListCaseLogs:
 
         items = m.handle_list_case_logs(1, CASE_ID)['items']
 
-        out = next(it for it in items if it['name'] == 'out.wav')
-        assert out['download_url'] == 'http://oss.example/presigned/out.wav'
-        # business 日志不在 OSS，report_service 不给直链（网关补回退下载 URL）
-        biz = next(it for it in items if it['name'].startswith('business_logs/'))
-        assert 'download_url' not in biz
+        # case / business / 虚拟文件一律不带 download_url（内容下载走下载端点）
+        assert all('download_url' not in it for it in items)
 
     def test_list_no_download_url_in_local_fallback(self, monkeypatch):
-        """INT-1116：本地降级（get_url=None）列表不给直链，网关补回退。"""
+        """INT-1116：本地降级（get_url=None）列表同样不下发直链（网关补回退）。"""
         m = _make_mixin(monkeypatch)
         _install_storage(monkeypatch, case_metas=[
             {'key': f'{TASK_ID}/{CASE_ID}/out.wav', 'sizeBytes': 4,
@@ -354,11 +358,12 @@ class TestMixinDownloadCaseLogs:
 
     def test_download_fallback_base64_when_no_oss(self, monkeypatch):
         """INT-1116：本地降级（get_url=None）回退 base64 字节流，行为可用。"""
+        delete_records = []
         m = _make_mixin(monkeypatch)
         _install_storage(monkeypatch, case_metas=[
             {'key': f'{TASK_ID}/{CASE_ID}/out.wav', 'sizeBytes': 4,
              'lastModified': None},
-        ])
+        ], delete_records=delete_records)
         _install_business_logs(monkeypatch, contents=[])
 
         result = m.handle_download_case_logs(1, CASE_ID)
@@ -366,6 +371,9 @@ class TestMixinDownloadCaseLogs:
         assert result['mode'] == 'fallback'
         assert result.get('content_base64')
         assert 'download_url' not in result
+        # INT-1116 返工（审计 P3）：降级回退前清理已保存的 temp 对象，避免累积
+        assert delete_records, '降级模式应清理已保存的 temp 对象'
+        assert delete_records[0].startswith('oss://temp/report_logs/')
 
 
 # ======================================================================
@@ -639,6 +647,23 @@ class TestGatewayCaseLogs:
         assert body['size'] == 4
         assert 'content' not in body
 
+    def test_download_presigned_url_with_download_log_only(self, monkeypatch):
+        """INT-1116 返工（审计 P1）：持 report:download_log（无 report:read）即可取预签名 URL。"""
+        from shared.proto import report_service_pb2 as report_pb
+
+        resp = report_pb.ReportConfigResponse(
+            success=True, message='ok', data=grpc_dumps(
+                {'filename': 'case_ACC1062-C1_logs.zip',
+                 'download_url': 'http://oss.example/presigned/case_logs.zip',
+                 'size': 4, 'mime_type': 'application/zip', 'mode': 'presigned'}))
+        _install_fake_stub(monkeypatch, resp)
+
+        client = _make_gw_client(['report:download_log'])
+        r = client.get('/api/v1/reports/42/cases/ACC1062-C1/logs/download')
+
+        assert r.status_code == 200
+        assert r.json()['data']['download_url'].startswith('http://oss.example/presigned/')
+
     def test_download_fallback_binary_zip(self, gw_client, monkeypatch):
         """INT-1116：本地降级（content_base64）网关字节流回退，zip 语义可用。"""
         from shared.proto import report_service_pb2 as report_pb
@@ -673,8 +698,8 @@ class TestGatewayCaseLogs:
             '/api/v1/reports/42/cases/ACC1062-C1/logs/download?files=')
         assert 'business_logs' in item['download_url']
 
-    def test_list_download_url_preserved_from_service(self, gw_client, monkeypatch):
-        """INT-1116：report_service 已给的预签名直链不被网关覆盖。"""
+    def test_gateway_overwrites_service_direct_link_with_fallback(self, gw_client, monkeypatch):
+        """INT-1116 返工（审计 P1）：网关不信任服务端直链，一律覆盖为回退下载 URL。"""
         from shared.proto import report_service_pb2 as report_pb
 
         resp = report_pb.ReportConfigResponse(
@@ -687,7 +712,29 @@ class TestGatewayCaseLogs:
 
         assert r.status_code == 200
         item = r.json()['data']['items'][0]
-        assert item['download_url'] == 'http://oss.example/presigned/out.wav'
+        assert item['download_url'].startswith(
+            '/api/v1/reports/42/cases/ACC1062-C1/logs/download?files=')
+        assert 'oss.example' not in item['download_url']
+
+    def test_list_with_guest_report_read_returns_fallback_url(self, monkeypatch):
+        """INT-1116 返工（审计 P1）：guest（仅 report:read）列表 200，只有回退 URL。"""
+        from shared.proto import report_service_pb2 as report_pb
+
+        resp = report_pb.ReportConfigResponse(
+            success=True, message='ok', data=grpc_dumps(
+                {'items': [{'name': 'out.wav', 'size': 4}]}))
+        _install_fake_stub(monkeypatch, resp)
+
+        client = _make_gw_client(['report:read'])
+        r = client.get('/api/v1/reports/42/cases/ACC1062-C1/logs')
+
+        assert r.status_code == 200
+        item = r.json()['data']['items'][0]
+        assert 'oss.example' not in item['download_url']
+        assert item['download_url'].startswith(
+            '/api/v1/reports/42/cases/ACC1062-C1/logs/download?files=')
+        # 直链语义为回退下载 URL（经下载端点 report:download_log 校验）而非 OSS 预签名
+        assert 'report_logs' not in item['download_url']
 
     def test_list_route_requires_report_read(self, monkeypatch):
         from shared.proto import report_service_pb2 as report_pb
