@@ -1,0 +1,87 @@
+{
+  "light": {
+    "dimensions": {
+      "probe": {
+        "ok": true,
+        "panelZ": "21000",
+        "overlayZ": "13000",
+        "topElClass": "ds-option ds-option-sub is-selected",
+        "center": {
+          "x": 756,
+          "y": 644
+        }
+      },
+      "click": {
+        "closed": true,
+        "clicked": "逐轮话轮评估",
+        "before": "└ 未接管率占比",
+        "after": "逐轮话轮评估",
+        "changed": true
+      }
+    },
+    "mappings": {
+      "probe": {
+        "ok": true,
+        "panelZ": "21000",
+        "overlayZ": "13000",
+        "topElClass": "ds-option ds-option-sub",
+        "center": {
+          "x": 1061,
+          "y": 674
+        }
+      },
+      "click": {
+        "closed": true,
+        "clicked": "└",
+        "before": "逐轮话轮评估",
+        "after": "└ 逐轮三分类评估",
+        "changed": true
+      }
+    }
+  },
+  "dark": {
+    "dimensions": {
+      "probe": {
+        "ok": true,
+        "panelZ": "21000",
+        "overlayZ": "13000",
+        "topElClass": "ds-option ds-option-sub",
+        "center": {
+          "x": 756,
+          "y": 644
+        }
+      },
+      "click": {
+        "closed": true,
+        "clicked": "└",
+        "before": "逐轮话轮评估",
+        "after": "└ 逐轮三分类评估",
+        "changed": true
+      }
+    },
+    "mappings": {
+      "probe": {
+        "ok": true,
+        "panelZ": "21000",
+        "overlayZ": "13000",
+        "topElClass": "ds-option ds-option-sub",
+        "center": {
+          "x": 1052,
+          "y": 674
+        }
+      },
+      "click": {
+        "closed": true,
+        "clicked": "└",
+        "before": "逐轮话轮评估",
+        "after": "└ 逐轮三分类评估",
+        "changed": true
+      }
+    }
+  },
+  "console_errors": [],
+  "blocked_writes": [
+    "POST http://127.0.0.1:5511/api/v1/algorithm/dimension-relations",
+    "POST http://127.0.0.1:5511/api/v1/algorithm/dimension-relations"
+  ]
+}

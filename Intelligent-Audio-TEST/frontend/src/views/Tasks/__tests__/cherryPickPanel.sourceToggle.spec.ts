@@ -26,6 +26,11 @@ vi.mock('../../../components/task/TaskCard.vue', () => ({
     template: '<div class="task-card-stub"><div class="task-title">{{ task.name }}</div></div>',
   },
 }))
+// INT-1103：TestCaseCard 升级为全站统一组件后经 CherryPickWizard→PickTree 被间接引入；
+// 本测试只验面板溯源展开/收起，不验用例卡，卡组件以 stub 屏蔽其依赖链。
+vi.mock('../../../components/common/test-case/TestCaseCard.vue', () => ({
+  default: { template: '<div class="test-case-card-stub" />' },
+}))
 vi.mock('../../../components/common/data/PaginationComponent.vue', () => ({
   default: { name: 'PaginationComponent', template: '<div />' },
 }))

@@ -1,7 +1,6 @@
 import { ref, computed, watch, reactive, onMounted, onUnmounted } from 'vue'
 import { parseAudioTxtFile, parseAnnotationFormat, determineAnnotationType, formatFileSize } from '../../../utils/audioUtils'
 import { devicesPort } from '../../../composables/device/devicesPort'
-import { algorithmPort } from '../../../composables/algorithm/algorithmPort'
 import type { PropType } from 'vue'
 import { useTestCaseConfig, createDefaultUploadConfig } from '../../../composables/testCase/useTestCaseConfig'
 import { buildTestCaseGroups } from '../../../utils/testCaseStrategy'
@@ -53,8 +52,6 @@ export function useFolderImportModal(props: any, emit: (event: string, ...args: 
   const importProgress = ref(0)
   const selectedFiles = ref<File[]>([])
   const tags = ref('')
-  const annotationCode = ref('')
-  const referenceParamOptions = ref<Array<{label: string; value: string}>>([])
 
   const uploadConfig = reactive<Record<string, any>>(
     Object.assign(
@@ -237,20 +234,9 @@ export function useFolderImportModal(props: any, emit: (event: string, ...args: 
     }
   })
 
-  watch(() => uploadConfig.algorithmType, async (newType) => {
-    referenceParamOptions.value = []
-    annotationCode.value = ''
+  watch(() => uploadConfig.algorithmType, (newType) => {
     if (newType) {
       loadAlgorithmFormSchema(newType)
-      try {
-        const res = await algorithmPort.getReferenceParams(newType)
-        referenceParamOptions.value = (res.data || []).map((p: any) => ({
-          label: p.code ? `${p.code}${p.name ? ' - ' + p.name : ''}` : p.name,
-          value: p.code || ''
-        }))
-      } catch (e) {
-        console.error('加载参考参数失败:', e)
-      }
     } else {
       algorithmFormSchema.value = null
       algorithmParams.value = []
@@ -649,7 +635,6 @@ export function useFolderImportModal(props: any, emit: (event: string, ...args: 
       selectedFiles.value = []
       selectedFolders.value = []
       folderGroupNames.value.clear()
-      annotationCode.value = ''
     } catch (error) {
       console.error('文件夹导入失败:', error)
     } finally {
@@ -664,7 +649,6 @@ export function useFolderImportModal(props: any, emit: (event: string, ...args: 
     selectedFiles.value = []
     selectedFolders.value = []
     folderGroupNames.value.clear()
-    annotationCode.value = ''
     emit('close')
   }
 
@@ -730,8 +714,6 @@ export function useFolderImportModal(props: any, emit: (event: string, ...args: 
     importProgress,
     selectedFiles,
     tags,
-    annotationCode,
-    referenceParamOptions,
     uploadConfig,
     audioTypeOptions,
     playbackDeviceOptions,

@@ -171,7 +171,7 @@ import { computed } from 'vue';
 import { nodeState } from './pickTree';
 import type { PickTreeNode, NodeCheckState } from './pickTree';
 import type { PickCandidate } from '../../../infrastructure/api/cherryPickApi';
-import PickCaseCard from './PickCaseCard.vue';
+import PickCaseCard from '../../common/test-case/PickCaseCard.vue';
 
 /** 叶行时间（mono 口径，YYYY-MM-DD HH:mm） */
 function formatTime(iso?: string | null): string {

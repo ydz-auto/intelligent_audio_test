@@ -5,17 +5,25 @@
     <template v-if="node.level === 'case'">
       <PickCaseCard
         :name="node.name"
-        :case-id="node.caseId"
+        :case-id="node.caseId ?? undefined"
         :algorithm-type="node.algorithmType"
         :count="node.count"
         :state="state"
         :open="expanded"
-        :actions="manageable ? [{ id: 'remove-group', title: '移除该组', icon: 'fa-trash' }] : []"
         class="ctr-case-card"
         @toggle="emit('toggle-node', node)"
         @toggle-open="emit('toggle-expand', node.key)"
-        @action="onCaseAction"
       >
+        <!-- §4.3 节点「移除该组」走统一卡行内操作插槽（INT-1103 PickCaseCard 口径） -->
+        <template #actions>
+          <button
+            v-if="manageable"
+            class="ctr-btn ctr-btn-danger"
+            @click.stop="emit('remove-group', node)"
+          >
+            <i class="fas fa-trash"></i> 移除该组
+          </button>
+        </template>
         <template v-if="expanded">
           <CartTreeNodeRow
             v-for="child in node.children"
@@ -135,7 +143,7 @@ import '../../../assets/styles/layouts/main.css'
 import { computed } from 'vue';
 import { cartNodeState, type CartTreeNode, type CartNodeCheckState } from './cartTree';
 import type { PickCartItem } from '../../../infrastructure/api/cherryPickApi';
-import PickCaseCard from './PickCaseCard.vue';
+import PickCaseCard from '../../common/test-case/PickCaseCard.vue';
 
 const props = defineProps<{
   node: CartTreeNode;
@@ -158,11 +166,6 @@ defineOptions({ name: 'CartTreeNodeRow' });
 
 const state = computed<CartNodeCheckState>(() => cartNodeState(props.node, props.selected));
 const expanded = computed(() => props.expandedKeys.has(props.node.key));
-
-/** 用例卡「移除该组」图标钮（§4.3 节点移除该组） */
-function onCaseAction(payload: { action: { id: string } }) {
-  if (payload.action.id === 'remove-group') emit('remove-group', props.node);
-}
 
 const iconClass = computed(() => ({
   'ctr-icon--task': props.node.level === 'task',
