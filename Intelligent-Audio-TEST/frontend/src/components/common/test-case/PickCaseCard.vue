@@ -120,7 +120,7 @@ const caseItem = {
   width: 16px;
   height: 16px;
   cursor: pointer;
-  accent-color: var(--primary, #ff6a00);
+  accent-color: var(--primary);
 }
 .pcc-count {
   flex-shrink: 0;

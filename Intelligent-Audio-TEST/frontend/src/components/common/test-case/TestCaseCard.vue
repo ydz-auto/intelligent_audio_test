@@ -228,9 +228,14 @@ const truncatedName = computed(() => {
   return `${start}...${end}`;
 });
 
+/** INT-1103 返工 P3-2：最后编辑时间按 React CaseCard 口径展示——ISO 截取至分钟（2026-10-21T07:48:51 → 2026-10-21 07:48）；无值回退 '—' */
 const lastEditTime = computed(() => {
   const tc = props.testCase;
-  return tc.lastEditTime || tc.updatedAt || tc.createdAt || '未知';
+  const raw = tc.lastEditTime || tc.updatedAt || tc.createdAt;
+  if (!raw) return '—';
+  const s = String(raw);
+  // 对齐 React：slice(0,16) + T→空格；非 ISO 字符串原样透传
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s) ? s.slice(0, 16).replace('T', ' ') : s;
 });
 
 const toggleSelection = () => {

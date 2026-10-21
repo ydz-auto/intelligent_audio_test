@@ -280,16 +280,13 @@
                   />
                 </label>
               </template>
-              <!-- 次行：轮次进度 -->
+              <!-- INT-1103 返工 F1：次行恒有内容（分组名 + 轮次进度，对齐 React TaskCaseCard），杜绝「最后编辑时间: 未知」回退 -->
               <template #meta>
-                <div v-if="testCase.roundProgress" class="round-progress" style="display: flex; align-items: center; gap: 6px; margin-top: 2px;">
-                  <span style="font-size: 11px; color: var(--muted-foreground); white-space: nowrap;">
-                    第 {{ testCase.roundProgress.current }}/{{ testCase.roundProgress.total }} 轮
-                  </span>
-                  <div style="flex: 1; height: 3px; background: var(--border); border-radius: var(--radius-2); overflow: hidden; min-width: 40px;">
-                    <div style="height: 100%; background: var(--primary); border-radius: var(--radius-2); transition: width 0.3s ease;"
-                         :style="{ width: (testCase.roundProgress.current / testCase.roundProgress.total * 100) + '%' }">
-                    </div>
+                <div v-if="testCase.groupName" class="task-case-meta-group" :title="testCase.groupName">{{ testCase.groupName }}</div>
+                <div class="round-progress">
+                  <span class="round-progress-label">第 {{ caseRoundMeta(testCase).current }}/{{ caseRoundMeta(testCase).total }} 轮</span>
+                  <div class="round-progress-track">
+                    <div class="round-progress-fill" :style="{ width: caseRoundMeta(testCase).percent + '%' }"></div>
                   </div>
                 </div>
               </template>
@@ -382,16 +379,13 @@
                       />
                     </label>
                   </template>
-                  <!-- 次行：轮次进度（标签/分组视图同款） -->
+                  <!-- INT-1103 返工 F1：次行恒有内容（分组名 + 轮次进度，标签/分组视图同款） -->
                   <template #meta>
-                    <div v-if="testCase.roundProgress" class="round-progress" style="display: flex; align-items: center; gap: 6px; margin-top: 2px;">
-                      <span style="font-size: 11px; color: var(--muted-foreground); white-space: nowrap;">
-                        第 {{ testCase.roundProgress.current }}/{{ testCase.roundProgress.total }} 轮
-                      </span>
-                      <div style="flex: 1; height: 3px; background: var(--border); border-radius: var(--radius-2); overflow: hidden; min-width: 40px;">
-                        <div style="height: 100%; background: var(--primary); border-radius: var(--radius-2); transition: width 0.3s ease;"
-                             :style="{ width: (testCase.roundProgress.current / testCase.roundProgress.total * 100) + '%' }">
-                        </div>
+                    <div v-if="testCase.groupName" class="task-case-meta-group" :title="testCase.groupName">{{ testCase.groupName }}</div>
+                    <div class="round-progress">
+                      <span class="round-progress-label">第 {{ caseRoundMeta(testCase).current }}/{{ caseRoundMeta(testCase).total }} 轮</span>
+                      <div class="round-progress-track">
+                        <div class="round-progress-fill" :style="{ width: caseRoundMeta(testCase).percent + '%' }"></div>
                       </div>
                     </div>
                   </template>
@@ -997,6 +991,29 @@ const caseCardItem = (testCase) => ({
   deleted: false,
 });
 
+/** 执行终态（shared ExecutionStatus 词汇；用于无轮次数据时派生「已执行」判定） */
+const CASE_TERMINAL_EXECUTION = ['completed', 'failed', 'stopped', 'skipped'];
+
+/**
+ * INT-1103 返工 F1：任务关联用例卡轮次进度（对齐 React TaskCaseCard 恒渲染口径）。
+ * 实时 round_progress（task_progress WS 事件）优先；任务详情 cases[] 无轮次字段时
+ * 按执行结果派生——已执行（有耗时或执行终态）→ 末轮完成 100%，未执行 → 起始轮 0%。
+ * 恒返回非空结构，保证 meta 插槽恒有内容、不触发 TestCaseCard 默认「最后编辑时间」回退。
+ */
+const caseRoundMeta = (testCase) => {
+  const rp = testCase.roundProgress;
+  if (rp && rp.total) {
+    const percent = Math.min(100, Math.max(0, Math.round((rp.current / rp.total) * 100)));
+    return { current: rp.current, total: rp.total, percent };
+  }
+  const executed =
+    (testCase.duration != null && testCase.duration !== '') ||
+    CASE_TERMINAL_EXECUTION.includes(testCase.executionStatus);
+  return executed
+    ? { current: 2, total: 2, percent: 100 }
+    : { current: 1, total: 2, percent: 0 };
+};
+
 // 视图模式：'flat' 平铺 | 'tag' 标签视图 | 'group' 用例分组视图
 const caseViewMode = ref('flat');
 // INT-405：状态筛选按执行/评估两维独立（取值即徽章口径，见 statusOptions 单一源）
@@ -1302,6 +1319,42 @@ const scrollToBottom = () => {
 .review-batch-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* INT-1103 返工 F1：任务关联用例卡次行（分组名 + 轮次进度；对齐 React TaskCaseCard
+   meta 恒渲染口径，颜色/圆角全走 token，不引入硬编码值） */
+.task-case-meta-group {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.round-progress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+.round-progress-label {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+.round-progress-track {
+  flex: 1;
+  height: 3px;
+  background: var(--border);
+  border-radius: var(--radius-2);
+  overflow: hidden;
+  min-width: 40px;
+}
+.round-progress-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: var(--radius-2);
+  transition: width 0.3s ease;
 }
 
 /* 取值配色与 TaskCard.css 同源同值（int-301 F2/F3 统一 tokens 口径）。
