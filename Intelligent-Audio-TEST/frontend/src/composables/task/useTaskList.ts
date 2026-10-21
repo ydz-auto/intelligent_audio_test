@@ -1,7 +1,8 @@
-import { ref, computed, type Ref } from 'vue';
+import { ref, computed, watch, type Ref } from 'vue';
 import { tasksPort } from './tasksPort';
 import { algorithmPort } from '../algorithm/algorithmPort';
-import type { Task, TaskDomainStats } from '../../domain';
+import { useGlobalAlgorithmStore } from '../../store/globalAlgorithmStore';
+import type { AlgorithmOption, Task, TaskDomainStats } from '../../domain';
 import { TaskStatus } from '../../domain/enums';
 import { usePagination } from '../usePagination';
 
@@ -62,6 +63,28 @@ export function useTaskList(options?: UseTaskListOptions) {
   // INT-288：列表拉取加载态 / 错误态（错误文案供视图渲染错误条；失败保留旧数据不清空）
   const isLoading = ref(false);
   const error = ref('');
+
+  // ===== 全局算法联动（B03 全局切换器 / React INT-1033 对齐）=====
+  // 日常/收藏列表算法过滤由全局切换器承载：切换一次全局生效，请求自动附 algorithm_type。
+  // 陈旧持久化值（localStorage `iatp:algorithm:v1`）不在真实 /algorithm/options 内时视为无效——
+  // 不继承、不发 algorithm_type（后端契约：无 algorithm_type 即返回全部；无效值会把列表筛空）。
+  const globalStore = useGlobalAlgorithmStore();
+  globalStore.init();
+  globalStore.loadAlgorithms();
+
+  /** 全局选中值是否在真实算法选项内（有效才继承；算法列表未加载/为空 → 视为无效回落「全部算法」） */
+  const globalAlgorithmValid = computed(() => {
+    const type = globalStore.selectedType;
+    return Boolean(type && globalStore.algorithmList.some((o: AlgorithmOption) => o.value === type));
+  });
+
+  /** 有效算法过滤口径：页面内算法筛选优先（INT-1112 保留页面徽章，与全局联动）；未设则继承有效全局算法 */
+  const effectiveAlgorithmType = computed(() => {
+    const pageAlgo = filters.value.algorithmType;
+    if (pageAlgo && pageAlgo !== 'all') return pageAlgo;
+    if (globalAlgorithmValid.value) return globalStore.selectedType;
+    return '';
+  });
 
   const tagCurrentPage = ref(1);
   const tagPageSize = ref(15);
@@ -170,8 +193,11 @@ export function useTaskList(options?: UseTaskListOptions) {
       if (visibilityFilter.value && filters.value.status !== 'deleted') {
         params.visibility = visibilityFilter.value;
       }
-      if (filters.value.algorithmType && filters.value.algorithmType !== 'all') {
-        params.algorithmType = filters.value.algorithmType;
+      // INT-1112：全局算法联动（页面徽章优先；未设页面筛选则继承有效全局算法；
+      // 陈旧/无效全局值静默回落「全部算法」——不发 algorithm_type，后端即返回全部）
+      const algorithmType = effectiveAlgorithmType.value;
+      if (algorithmType) {
+        params.algorithmType = algorithmType;
       }
       // INT-273：任务类型筛选（api/e2e/mixed，服务端按派生 device_type 口径过滤）
       if (filters.value.type && filters.value.type !== 'all') {
@@ -259,6 +285,13 @@ export function useTaskList(options?: UseTaskListOptions) {
     currentPage.value = 1;
     fetchTasks();
   };
+
+  // INT-1112：全局算法切换（右上角切换器或页面徽章联动）→ 有效过滤口径变化即重新查询。
+  // 用 effectiveAlgorithmType（而非裸 selectedType）做触发源：算法列表异步加载后若确认
+  // 持久化值为有效算法，也能自动补一次按算法查询；无效/未选中不触发，避免加载期双请求。
+  watch(effectiveAlgorithmType, () => {
+    fetchTasks();
+  });
 
   const handleSearch = () => {
     currentPage.value = 1;
@@ -383,6 +416,9 @@ export function useTaskList(options?: UseTaskListOptions) {
     paginatedTasks,
     isAllSelected,
     loadAlgorithmOptions,
+    // INT-1112：全局算法联动（页面徽章与全局切换器联动时的有效过滤口径）
+    globalAlgorithmValid,
+    effectiveAlgorithmType,
     fetchTasks,
     applyFilters,
     handleSearch,

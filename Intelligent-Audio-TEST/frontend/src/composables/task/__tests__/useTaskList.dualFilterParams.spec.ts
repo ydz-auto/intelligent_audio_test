@@ -8,6 +8,7 @@
  * - 回收站态仍走 deleted=true，不带执行/评估参数
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createPinia, setActivePinia } from 'pinia';
 
 const http = vi.hoisted(() => ({ request: vi.fn() }));
 
@@ -36,6 +37,7 @@ const lastTasksQuery = () => {
 };
 
 beforeEach(() => {
+  setActivePinia(createPinia());
   vi.clearAllMocks();
   http.request.mockImplementation((_method: string, url: string) => {
     if (url === '/tasks/stats') return Promise.resolve(EMPTY_STATS);

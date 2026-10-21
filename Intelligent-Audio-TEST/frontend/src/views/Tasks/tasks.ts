@@ -322,6 +322,8 @@ export function useTasks() {
   onMounted(async () => {
     await listModule.fetchTasks();
     listModule.applyFilters();
+    // INT-1112：算法徽章选项（与全局切换器同源 /algorithm/options；缺省已由 AlgorithmFilter 兜底）
+    await listModule.loadAlgorithmOptions();
     // INT-141：加载当前用户收藏集合
     await favoritesModule.loadFavorites();
     // 初始化时获取日志
@@ -379,6 +381,9 @@ export function useTasks() {
     error: listModule.error,
     algorithmOptions: listModule.algorithmOptions,
     loadAlgorithmOptions: listModule.loadAlgorithmOptions,
+    // INT-1112：全局算法联动（页面徽章展示/联动用）
+    globalAlgorithmValid: listModule.globalAlgorithmValid,
+    effectiveAlgorithmType: listModule.effectiveAlgorithmType,
     fetchTasks: listModule.fetchTasks,
     applyFilters: listModule.applyFilters,
     handleSearch: listModule.handleSearch,

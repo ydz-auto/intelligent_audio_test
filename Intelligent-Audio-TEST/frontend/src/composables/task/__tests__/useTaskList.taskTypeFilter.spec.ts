@@ -7,6 +7,7 @@
  * - 'all' / '' 归一为空串，不下发 task_type
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createPinia, setActivePinia } from 'pinia';
 
 const http = vi.hoisted(() => ({ request: vi.fn() }));
 
@@ -35,6 +36,7 @@ const lastTasksQuery = () => {
 };
 
 beforeEach(() => {
+  setActivePinia(createPinia());
   vi.clearAllMocks();
   http.request.mockImplementation((_method: string, url: string) => {
     if (url === '/tasks/stats') return Promise.resolve(EMPTY_STATS);
