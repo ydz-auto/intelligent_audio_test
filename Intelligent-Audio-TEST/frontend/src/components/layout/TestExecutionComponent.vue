@@ -248,95 +248,98 @@
             </div>
           </div>
 
-          <!-- 平铺视图：保留虚拟滚动 -->
+          <!-- 平铺视图：全站统一用例卡（INT-1103；移除旧虚拟滚动行渲染，改简单卡片列表） -->
           <div v-if="caseViewMode === 'flat'" class="associated-items-list-container"
-               ref="caseScrollContainer"
-               @scroll="handleCaseScroll"
                style="max-height: 400px; overflow-y: auto; position: relative;">
-            <div :style="{ height: caseTotalHeight + 'px', position: 'relative' }">
-              <div :style="{ transform: `translateY(${caseOffset}px)` }">
-                <div v-if="filteredAssociatedCases.length === 0" class="no-items-message" style="text-align: center; padding: 40px; color: var(--muted-foreground);">
-                  <i class="fas fa-info-circle" style="font-size: 24px; margin-bottom: 12px; display: block;"></i>
-                  暂无关联用例
-                </div>
-                <div v-for="testCase in visibleCases" :key="testCase.id" class="progress-item-small" :class="testCase.status" style="padding: 12px; border-radius: var(--radius-control); background-color: var(--muted); display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; min-height: 52px; box-sizing: border-box; cursor: pointer;" @click="handleTestCaseClick(testCase)">
-                  <!-- INT-796 §3.1：批量复核勾选（终态任务 + task.result.review；点击不冒泡） -->
-                  <label
-                    v-if="canReview && isTerminal"
-                    class="review-select"
-                    style="display: inline-flex; align-items: center; margin-right: 4px; cursor: pointer;"
-                    @click.stop
-                  >
-                    <input
-                      type="checkbox"
-                      class="review-select-checkbox"
-                      :checked="selectedCaseIds.has(String(testCase.id))"
-                      @change="toggleCaseSelect(String(testCase.id))"
-                    />
-                  </label>
-                  <div class="progress-info" style="flex: 1; overflow: hidden;">
-                    <div class="progress-name" style="font-weight: 500; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ testCase.name }}</div>
-                    <div class="progress-time" style="font-size: 12px; color: var(--muted-foreground);">
-                      <span v-if="testCase.duration">{{ testCase.duration }}s</span>
-                    </div>
-                    <div v-if="testCase.roundProgress" class="round-progress" style="display: flex; align-items: center; gap: 6px; margin-top: 2px;">
-                      <span style="font-size: 11px; color: var(--muted-foreground); white-space: nowrap;">
-                        第 {{ testCase.roundProgress.current }}/{{ testCase.roundProgress.total }} 轮
-                      </span>
-                      <div style="flex: 1; height: 3px; background: var(--border); border-radius: var(--radius-2); overflow: hidden; min-width: 40px;">
-                        <div style="height: 100%; background: var(--primary); border-radius: var(--radius-2); transition: width 0.3s ease;"
-                             :style="{ width: (testCase.roundProgress.current / testCase.roundProgress.total * 100) + '%' }">
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="progress-actions flex items-center gap-2">
-                    <div class="progress-status flex items-center gap-2">
-                      <!-- INT-405：用例级执行/评估双徽章独立展示（替代原单值合成状态；图标/文案口径同 INT-301 taskStatusBadge 单一源） -->
-                      <span class="task-status exec-status-badge" :class="getCaseExecutionBadgeStatus(testCase)" :title="'执行状态'">
-                        <i class="fas task-indicator" :class="getExecutionBadgeIcon(getCaseExecutionBadgeStatus(testCase))"></i>
-                        {{ getExecutionStatusText(getCaseExecutionBadgeStatus(testCase)) }}
-                      </span>
-                      <span v-if="testCase.evaluationStatus" class="task-status eval-status-badge" :class="testCase.evaluationStatus" :title="'评估状态'">
-                        <i class="fas task-indicator" :class="getCaseEvaluationBadgeIcon(testCase.evaluationStatus)"></i>
-                        {{ getCaseEvaluationStatusText(testCase.evaluationStatus) }}
-                      </span>
-                      <!-- INT-340：人工复核标记（该用例存在复核结果） -->
-                      <span v-if="testCase.reviewed" class="reviewed-badge" title="存在人工复核结果">
-                        <i class="fas fa-clipboard-check"></i> 已复核
-                      </span>
-                    </div>
-                    <!-- INT-796 §3.1：人工复核/AI复核 入口（终态任务 + 权限门控；点击不冒泡） -->
-                    <button
-                      v-if="canReview && isTerminal"
-                      class="review-row-btn"
-                      :disabled="reviewLoading"
-                      :title="'人工复核该用例结果'"
-                      @click.stop="openCaseReview(testCase)"
-                    >
-                      <i class="fas fa-clipboard-check"></i> 人工复核
-                    </button>
-                    <button
-                      v-if="canAiReview && isTerminal"
-                      class="review-row-btn review-row-btn--ai"
-                      :disabled="reviewLoading"
-                      :title="'AI 复核该用例结果（灵犀Agent 对话式复核，可追问；建议层，不直接修改统计）'"
-                      @click.stop="openAiReviewSession(testCase)"
-                    >
-                      <i class="fas fa-sparkles"></i> AI 复核
-                    </button>
-                    <!-- INT-305：移除用例（执行详情模态窗四阶段全允许；点击不冒泡触发用例详情） -->
-                    <button v-if="canRemoveCase"
-                            class="case-remove-btn"
-                            :title="'移除用例'"
-                            style="border: none; background: transparent; cursor: pointer; padding: 4px 6px; color: var(--muted-foreground); transition: color 0.2s;"
-                            @click.stop="handleRemoveCaseClick(testCase)">
-                      <i class="fas fa-trash-alt"></i>
-                    </button>
-                  </div>
-                </div>
-              </div>
+            <div v-if="filteredAssociatedCases.length === 0" class="no-items-message" style="text-align: center; padding: 40px; color: var(--muted-foreground);">
+              <i class="fas fa-info-circle" style="font-size: 24px; margin-bottom: 12px; display: block;"></i>
+              暂无关联用例
             </div>
+            <TestCaseCard
+              v-for="testCase in filteredAssociatedCases"
+              :key="testCase.id"
+              :test-case="caseCardItem(testCase)"
+              :is-selected="false"
+              :show-checkbox="false"
+              class="task-case-card"
+              @click="handleTestCaseClick(testCase)"
+            >
+              <!-- INT-796 §3.1：批量复核勾选（终态任务 + task.result.review；点击不冒泡） -->
+              <template #leading>
+                <label
+                  v-if="canReview && isTerminal"
+                  class="review-select"
+                  style="display: inline-flex; align-items: center; margin-right: 4px; cursor: pointer;"
+                  @click.stop
+                >
+                  <input
+                    type="checkbox"
+                    class="review-select-checkbox"
+                    :checked="selectedCaseIds.has(String(testCase.id))"
+                    @change="toggleCaseSelect(String(testCase.id))"
+                  />
+                </label>
+              </template>
+              <!-- 次行：轮次进度 -->
+              <template #meta>
+                <div v-if="testCase.roundProgress" class="round-progress" style="display: flex; align-items: center; gap: 6px; margin-top: 2px;">
+                  <span style="font-size: 11px; color: var(--muted-foreground); white-space: nowrap;">
+                    第 {{ testCase.roundProgress.current }}/{{ testCase.roundProgress.total }} 轮
+                  </span>
+                  <div style="flex: 1; height: 3px; background: var(--border); border-radius: var(--radius-2); overflow: hidden; min-width: 40px;">
+                    <div style="height: 100%; background: var(--primary); border-radius: var(--radius-2); transition: width 0.3s ease;"
+                         :style="{ width: (testCase.roundProgress.current / testCase.roundProgress.total * 100) + '%' }">
+                    </div>
+                  </div>
+                </div>
+              </template>
+              <!-- 徽章行前导：执行/评估双徽章 + 已复核 -->
+              <template #badgeLeading>
+                <!-- INT-405：用例级执行/评估双徽章独立展示（替代原单值合成状态；图标/文案口径同 INT-301 taskStatusBadge 单一源） -->
+                <span class="task-status exec-status-badge" :class="getCaseExecutionBadgeStatus(testCase)" :title="'执行状态'">
+                  <i class="fas task-indicator" :class="getExecutionBadgeIcon(getCaseExecutionBadgeStatus(testCase))"></i>
+                  {{ getExecutionStatusText(getCaseExecutionBadgeStatus(testCase)) }}
+                </span>
+                <span v-if="testCase.evaluationStatus" class="task-status eval-status-badge" :class="testCase.evaluationStatus" :title="'评估状态'">
+                  <i class="fas task-indicator" :class="getCaseEvaluationBadgeIcon(testCase.evaluationStatus)"></i>
+                  {{ getCaseEvaluationStatusText(testCase.evaluationStatus) }}
+                </span>
+                <!-- INT-340：人工复核标记（该用例存在复核结果） -->
+                <span v-if="testCase.reviewed" class="reviewed-badge" title="存在人工复核结果">
+                  <i class="fas fa-clipboard-check"></i> 已复核
+                </span>
+              </template>
+              <!-- 右操作区：人工/AI 复核 + 移除 -->
+              <template #actions>
+                <!-- INT-796 §3.1：人工复核/AI复核 入口（终态任务 + 权限门控；点击不冒泡） -->
+                <button
+                  v-if="canReview && isTerminal"
+                  class="review-row-btn"
+                  :disabled="reviewLoading"
+                  :title="'人工复核该用例结果'"
+                  @click.stop="openCaseReview(testCase)"
+                >
+                  <i class="fas fa-clipboard-check"></i> 人工复核
+                </button>
+                <button
+                  v-if="canAiReview && isTerminal"
+                  class="review-row-btn review-row-btn--ai"
+                  :disabled="reviewLoading"
+                  :title="'AI 复核该用例结果（灵犀Agent 对话式复核，可追问；建议层，不直接修改统计）'"
+                  @click.stop="openAiReviewSession(testCase)"
+                >
+                  <i class="fas fa-sparkles"></i> AI 复核
+                </button>
+                <!-- INT-305：移除用例（执行详情模态窗四阶段全允许；点击不冒泡触发用例详情） -->
+                <button v-if="canRemoveCase"
+                        class="case-remove-btn"
+                        :title="'移除用例'"
+                        style="border: none; background: transparent; cursor: pointer; padding: 4px 6px; color: var(--muted-foreground); transition: color 0.2s;"
+                        @click.stop="handleRemoveCaseClick(testCase)">
+                  <i class="fas fa-trash-alt"></i>
+                </button>
+              </template>
+            </TestCaseCard>
           </div>
 
           <!-- 标签视图 / 分组视图 -->
@@ -354,26 +357,33 @@
                 <span style="background-color: var(--primary); color: var(--color-white); font-size: 12px; padding: 2px 8px; border-radius: var(--radius-pill); min-width: 20px; text-align: center;">{{ cases.length }}</span>
               </div>
               <div v-if="expandedCaseGroups[key]" class="case-group-content" style="padding: 0 12px 12px 12px; display: flex; flex-direction: column; gap: 2px;">
-                <div v-for="testCase in cases" :key="testCase.id" class="progress-item-small" :class="testCase.status" style="padding: 10px; border-radius: var(--radius-control); background-color: var(--background); display: flex; justify-content: space-between; align-items: center; min-height: 48px; box-sizing: border-box; cursor: pointer;" @click="handleTestCaseClick(testCase)">
+                <TestCaseCard
+                  v-for="testCase in cases"
+                  :key="testCase.id"
+                  :test-case="caseCardItem(testCase)"
+                  :is-selected="false"
+                  :show-checkbox="false"
+                  class="task-case-card"
+                  @click="handleTestCaseClick(testCase)"
+                >
                   <!-- INT-796 §3.1：批量复核勾选（标签/分组视图同款） -->
-                  <label
-                    v-if="canReview && isTerminal"
-                    class="review-select"
-                    style="display: inline-flex; align-items: center; margin-right: 4px; cursor: pointer;"
-                    @click.stop
-                  >
-                    <input
-                      type="checkbox"
-                      class="review-select-checkbox"
-                      :checked="selectedCaseIds.has(String(testCase.id))"
-                      @change="toggleCaseSelect(String(testCase.id))"
-                    />
-                  </label>
-                  <div class="progress-info" style="flex: 1; overflow: hidden;">
-                    <div class="progress-name" style="font-weight: 500; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ testCase.name }}</div>
-                    <div class="progress-time" style="font-size: 12px; color: var(--muted-foreground);">
-                      <span v-if="testCase.duration">{{ testCase.duration }}s</span>
-                    </div>
+                  <template #leading>
+                    <label
+                      v-if="canReview && isTerminal"
+                      class="review-select"
+                      style="display: inline-flex; align-items: center; margin-right: 4px; cursor: pointer;"
+                      @click.stop
+                    >
+                      <input
+                        type="checkbox"
+                        class="review-select-checkbox"
+                        :checked="selectedCaseIds.has(String(testCase.id))"
+                        @change="toggleCaseSelect(String(testCase.id))"
+                      />
+                    </label>
+                  </template>
+                  <!-- 次行：轮次进度（标签/分组视图同款） -->
+                  <template #meta>
                     <div v-if="testCase.roundProgress" class="round-progress" style="display: flex; align-items: center; gap: 6px; margin-top: 2px;">
                       <span style="font-size: 11px; color: var(--muted-foreground); white-space: nowrap;">
                         第 {{ testCase.roundProgress.current }}/{{ testCase.roundProgress.total }} 轮
@@ -384,9 +394,9 @@
                         </div>
                       </div>
                     </div>
-                  </div>
-                  <div class="progress-status flex items-center gap-2">
-                    <!-- INT-405：用例级执行/评估双徽章独立展示（同平铺视图口径） -->
+                  </template>
+                  <!-- 徽章行前导：执行/评估双徽章 + 已复核（标签/分组视图同款） -->
+                  <template #badgeLeading>
                     <span class="task-status exec-status-badge" :class="getCaseExecutionBadgeStatus(testCase)" :title="'执行状态'">
                       <i class="fas task-indicator" :class="getExecutionBadgeIcon(getCaseExecutionBadgeStatus(testCase))"></i>
                       {{ getExecutionStatusText(getCaseExecutionBadgeStatus(testCase)) }}
@@ -396,6 +406,12 @@
                       {{ getCaseEvaluationStatusText(testCase.evaluationStatus) }}
                     </span>
                     <!-- INT-796 §3.1：人工复核/AI复核 入口（标签/分组视图同款） -->
+                    <span v-if="testCase.reviewed" class="reviewed-badge" title="存在人工复核结果">
+                      <i class="fas fa-clipboard-check"></i> 已复核
+                    </span>
+                  </template>
+                  <!-- 右操作区：人工/AI 复核 + 移除（标签/分组视图同款） -->
+                  <template #actions>
                     <button
                       v-if="canReview && isTerminal"
                       class="review-row-btn"
@@ -422,8 +438,8 @@
                             @click.stop="handleRemoveCaseClick(testCase)">
                       <i class="fas fa-trash-alt"></i>
                     </button>
-                  </div>
-                </div>
+                  </template>
+                </TestCaseCard>
               </div>
             </div>
           </div>
@@ -586,6 +602,7 @@ import { useNotification } from '../../composables/modal/useNotification';
 import AiReviewDialog from '../common/modal/AiReviewDialog.vue';
 import AiReviewSessionDialog from '../ai-review/AiReviewSessionDialog.vue';
 import ReviewHistoryDrawer from '../common/modal/ReviewHistoryDrawer.vue';
+import TestCaseCard from '../common/test-case/TestCaseCard.vue';
 import * as reviewAiApi from '../../infrastructure/api/reviewAiApi';
 // INT-301 F3：双徽章图标/文案单一定义源 utils/taskStatusBadge.ts；配色单一定义源 TaskCard.css
 
@@ -965,10 +982,20 @@ const handleTestCaseClick = (testCase) => {
   emit('testCaseClick', testCase.id);
 };
 
-const caseItemHeight = 54;
-const caseVisibleCount = 10;
-const caseStartIndex = ref(0);
-const caseScrollContainer = ref(null);
+/** INT-1103：任务关联用例 → 全站统一 TestCaseCard 字段子集（name/id/tags/总时长[秒]，React TaskCaseCard 同口径） */
+const caseCardItem = (testCase) => ({
+  id: testCase.id ?? testCase.case_id,
+  name: testCase.name || '',
+  tags: normalizeCaseTags(testCase.tags),
+  algorithmType: null,
+  // 任务侧耗时（ms）→ CaseCard 口径总时长（秒）；null 不落空徽章
+  totalDuration: testCase.duration != null && testCase.duration !== ''
+    ? Math.round(Number(testCase.duration) / 1000)
+    : null,
+  description: '',
+  updatedAt: null,
+  deleted: false,
+});
 
 // 视图模式：'flat' 平铺 | 'tag' 标签视图 | 'group' 用例分组视图
 const caseViewMode = ref('flat');
@@ -1055,30 +1082,6 @@ const groupedCasesByGroupName = computed(() => {
   });
   return groups;
 });
-
-const visibleCases = computed(() => {
-  const list = filteredAssociatedCases.value;
-  const start = Math.max(0, caseStartIndex.value - 5);
-  const end = Math.min(list.length, caseStartIndex.value + caseVisibleCount + 5);
-  return list.slice(start, end).map((item, index) => ({
-    ...item,
-    viewIndex: start + index
-  }));
-});
-
-const caseTotalHeight = computed(() => filteredAssociatedCases.value.length * caseItemHeight);
-const caseOffset = computed(() => Math.max(0, caseStartIndex.value - 5) * caseItemHeight);
-
-// 视图或筛选变化时重置滚动位置（INT-405：筛选拆为执行/评估两维）
-watch([caseViewMode, caseFilterExecution, caseFilterEvaluation], () => {
-  caseStartIndex.value = 0;
-  if (caseScrollContainer.value) caseScrollContainer.value.scrollTop = 0;
-});
-
-const handleCaseScroll = (e) => {
-  const scrollTop = e.target.scrollTop;
-  caseStartIndex.value = Math.floor(scrollTop / caseItemHeight);
-};
 
 const logItemHeight = 28;
 const logVisibleCount = 20;

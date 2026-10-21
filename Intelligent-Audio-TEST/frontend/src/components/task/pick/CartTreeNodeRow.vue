@@ -1,5 +1,44 @@
 <template>
   <div class="ctr-wrap">
+    <!-- INT-1103：用例级节点 = 全站统一 compact 卡（购物车用例节点，§4.2 同构） -->
+    <template v-if="node.level === 'case'">
+      <PickCaseCard
+        :name="node.name"
+        :case-id="node.id"
+        :count="node.count"
+        :state="state"
+        :open="expanded"
+        @toggle="() => emit('toggle-node', node)"
+        @toggle-open="() => emit('toggle-expand', node.key)"
+      >
+        <template #actions>
+          <button
+            v-if="manageable"
+            class="ctr-btn ctr-btn-danger"
+            @click.stop="emit('remove-group', node)"
+          >
+            <i class="fas fa-trash"></i> 移除该组
+          </button>
+        </template>
+        <CartTreeNodeRow
+          v-for="child in node.children"
+          :key="child.key"
+          :node="child"
+          :selected="selected"
+          :expanded-keys="expandedKeys"
+          :leaf-meta="leafMeta"
+          :manageable="manageable"
+          :depth="depth + 1"
+          @toggle-node="(n) => emit('toggle-node', n)"
+          @toggle-expand="(k) => emit('toggle-expand', k)"
+          @toggle-leaf="(id) => emit('toggle-leaf', id)"
+          @remove-leaf="(id) => emit('remove-leaf', id)"
+          @remove-group="(n) => emit('remove-group', n)"
+        />
+      </PickCaseCard>
+    </template>
+
+    <template v-else>
     <div class="ctr-row" :style="{ paddingLeft: `${depth * 16 + 8}px` }">
       <button
         v-if="node.children.length > 0"
@@ -80,6 +119,7 @@
         @remove-group="(n) => emit('remove-group', n)"
       />
     </div>
+    </template>
   </div>
 </template>
 
@@ -98,6 +138,7 @@ import '../../../assets/styles/layouts/main.css'
 import { computed } from 'vue';
 import { cartNodeState, type CartTreeNode, type CartNodeCheckState } from './cartTree';
 import type { PickCartItem } from '../../../infrastructure/api/cherryPickApi';
+import PickCaseCard from '../../common/test-case/PickCaseCard.vue';
 
 const props = defineProps<{
   node: CartTreeNode;
