@@ -3,30 +3,21 @@
  * - useReportReviews：源任务复核数据（review_count 统计徽章 + 用例 reviewed 标记 map +
  *   复核历史 + 提交 mutation）
  * - useCaseResults：复核弹窗数据源（GET /tasks/{id}/cases/{caseId}/results → result_id/复核标注）
- * - useAiReview：AI 复核状态机（待发起→执行中→已完成→已采纳/已驳回/待查；§2.1，真实端点轮询）
+ * AI 复核状态机已收敛共用件 application/ai-review/use-ai-review（INT-1065 报告侧共用，不留双口径）。
  *
  * 报告为落库快照；复核操作按 §4.2 路径 A 跳来源任务结果（task_id + result_id 溯源），
  * 提交后 invalidate 源任务详情（review_count / reviewed 标记），报告重新生成后快照刷新。
  * AI 复核异步执行（后端 ai_reviews.status=pending/running → completed/failed）由轮询历史推进（INT-1063 去桩）。
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 
-import type {
-  AiReviewRecord,
-  AiReviewRequest,
-  AiReviewVerdict,
-  ReviewSubmitPayload,
-} from '@/domain/models/review'
+import type { ReviewSubmitPayload } from '@/domain/models/review'
 import type { ReportDetailData } from '@/domain/models/report'
 import { fetchTaskDetail } from '@/infrastructure/api/tasks-list-api'
 import {
-  adoptAiReview,
-  fetchAiReviewHistory,
   fetchCaseResults,
   fetchReviewHistory,
-  rejectAiReview,
-  requestAiReview,
   submitReview,
 } from '@/infrastructure/api/reviewApi'
 
@@ -97,133 +88,4 @@ export function useCaseResults(taskId: number, caseId: string, enabled: boolean)
     enabled,
     staleTime: 15_000,
   })
-}
-
-/** 用例 AI 复核状态机（§2.1：待发起→执行中→已完成→已采纳/已驳回/待查；真实端点 INT-824 契约 POST /tasks/results/ai-review） */
-export function useAiReview(taskId: number, caseId: string) {
-  const queryClient = useQueryClient()
-  const [phase, setPhase] = useState<
-    'idle' | 'running' | 'completed' | 'adopted' | 'rejected' | 'ignored'
-  >('idle')
-  const [record, setRecord] = useState<AiReviewRecord>()
-  /** 本次发起的记录 id（执行中按它从历史定位推进状态） */
-  const [recordId, setRecordId] = useState<number>()
-  const [error, setError] = useState<string>()
-
-  const historyQuery = useQuery({
-    queryKey: ['tasks', 'ai-reviews', 'history', taskId],
-    queryFn: () => fetchAiReviewHistory(taskId),
-    enabled: Boolean(taskId),
-    // 执行中由真实后端异步驱动（pending/running → completed/failed）：每 3s 轮询历史推进
-    refetchInterval: phase === 'running' ? 3000 : false,
-  })
-
-  // 按真实后端 status 推进：completed → 已完成；failed/canceled → 失败可重试；pending/running → 保持执行中
-  useEffect(() => {
-    if (!recordId) return
-    const current = historyQuery.data?.find((r) => r.id === recordId)
-    if (!current) return
-    if (current.status === 'completed') {
-      setRecord(current)
-      setPhase('completed')
-      setRecordId(undefined)
-    } else if (current.status === 'failed' || current.status === 'canceled') {
-      setError(current.status === 'failed' ? 'AI 复核执行失败，请稍后重试' : 'AI 复核已取消')
-      setPhase('idle')
-      setRecordId(undefined)
-    }
-    // pending/running：保持执行中，下次轮询继续
-  }, [historyQuery.data, recordId])
-
-  /** 发起：提交真实端点 → 按返回记录 status 落位（completed/failed 直接收敛；pending/running 轮询历史） */
-  const initiate = async (payload: AiReviewRequest) => {
-    setPhase('running')
-    setError(undefined)
-    try {
-      const result = await requestAiReview(taskId, caseId, payload)
-      setRecord(result)
-      if (result.status === 'completed') {
-        setPhase('completed')
-        setRecordId(undefined)
-      } else if (result.status === 'failed' || result.status === 'canceled') {
-        setError(result.status === 'failed' ? 'AI 复核执行失败，请稍后重试' : 'AI 复核已取消')
-        setPhase('idle')
-        setRecordId(undefined)
-      } else {
-        // pending/running：异步执行中，refetchInterval 驱动轮询历史推进
-        setRecordId(result.id)
-      }
-      void queryClient.invalidateQueries({
-        queryKey: ['tasks', 'ai-reviews', 'history', taskId],
-      })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'AI 复核失败')
-      setPhase('idle')
-    }
-  }
-
-  /** 采纳：AI 结论落人工复核语义（真实端点 POST adopt；打开复核弹窗预填由消费侧处理） */
-  const adopt = async (): Promise<boolean> => {
-    if (!record) return false
-    // 存疑无明确判定可采纳（§5.5「uncertain→不预填留人工」）：入口已隐藏，兜底避免空改判载荷触发后端 400
-    if (record.verdict === 'uncertain') return false
-    try {
-      const updated = await adoptAiReview(record.id, {
-        evaluationStatus: aiVerdictToEvaluationStatus(record.verdict),
-        comment: record.reasoning,
-      })
-      setRecord(updated)
-      setPhase('adopted')
-      void queryClient.invalidateQueries({
-        queryKey: ['tasks', 'ai-reviews', 'history', taskId],
-      })
-      return true
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'AI 复核采纳失败')
-      return false
-    }
-  }
-
-  /** 驳回：保留原判定，AI 记录标记已驳回备查 */
-  const reject = async () => {
-    if (!record) return
-    const updated = await rejectAiReview(record.id)
-    setRecord(updated)
-    setPhase('rejected')
-    void queryClient.invalidateQueries({
-      queryKey: ['tasks', 'ai-reviews', 'history', taskId],
-    })
-  }
-
-  /** 忽略（关闭暂不处理）：AI 结论保留待查 */
-  const ignore = () => {
-    setPhase('ignored')
-  }
-
-  return {
-    phase,
-    record,
-    error,
-    history: historyQuery.data ?? [],
-    historyLoading: historyQuery.isLoading,
-    initiate,
-    adopt,
-    reject,
-    ignore,
-    reset: () => {
-      setPhase('idle')
-      setRecord(undefined)
-      setRecordId(undefined)
-      setError(undefined)
-    },
-  }
-}
-
-/** AI 结论 → 人工复核预填评估状态（§2.1：复核通过→已完成；复核不通过→评估失败；存疑→不预填） */
-export function aiVerdictToEvaluationStatus(
-  verdict: AiReviewVerdict | undefined
-): 'completed' | 'failed' | undefined {
-  if (verdict === 'passed') return 'completed'
-  if (verdict === 'failed') return 'failed'
-  return undefined
 }
