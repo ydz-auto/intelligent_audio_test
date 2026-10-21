@@ -43,15 +43,31 @@ export interface TestCaseListDataDto {
   pages: number
 }
 
-/** 用例执行详情（task_bp.py GET /tasks/{id}/cases/{cid}/detail） */
+/** 用例执行详情·算法结果扁平项（task_bp.py get_case_detail algorithm_results 实测；API/voice_llm 用例分节①结果摘要消费） */
+export interface CaseAlgorithmResultDto {
+  param_code: string
+  param_type?: string | null
+  label?: string | null
+  round_number?: number | null
+  dimension_name?: string | null
+  device?: string | null
+  value?: unknown
+  rounds?: unknown
+}
+
+/** 用例执行详情（task_bp.py GET /tasks/{id}/cases/{cid}/detail 实测） */
 export interface CaseDetailDto {
   test_case_id: string
   task_id: number
-  name: string
+  /** 后端实测返回 case_name（无 name 字段）；name 留底兼容 */
+  case_name: string
+  name?: string
   execution_status: string
   evaluation_status: string
   duration: number | null
   score: number | null
+  algorithm_type: string | null
+  algorithm_results: CaseAlgorithmResultDto[]
   devices: Array<{
     device_id: number
     device_name: string

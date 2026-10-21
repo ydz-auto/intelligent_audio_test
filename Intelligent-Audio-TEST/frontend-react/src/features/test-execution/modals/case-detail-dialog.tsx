@@ -16,6 +16,8 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
+import type { CaseResultForReview } from '@/domain/models/review'
+import type { CaseAlgorithmResult } from '@/domain/models/testExecution'
 import { fetchCaseExecutionDetail, fetchCaseLogs } from '@/infrastructure/api/test-execution-api'
 import { fetchTaskDetail } from '@/infrastructure/api/tasks-list-api'
 import { fetchCaseResults } from '@/infrastructure/api/reviewApi'
@@ -32,6 +34,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import { AudioPlayerModal } from '@/features/report-view/components/case-report-detail/audio-player-modal'
+import { formatResultValue } from '@/features/report-view/components/case-report-detail/case-report-utils'
 import { AiReviewSessionDialog } from '@/features/ai-review/ai-review-session-dialog'
 import { ManualReviewDialog } from '@/features/tasks/components/manual-review-dialog'
 import { cn } from '@/lib/utils'
@@ -44,6 +47,97 @@ interface CaseDetailDialogProps {
 }
 
 const LOG_PER_PAGE = 100
+
+/**
+ * 分节① API/voice_llm 用例结果摘要（INT-1066 返工，10 §5.2 同口径对齐旧 Vue TestCaseDetailModal）：
+ * devices 空但 /results 或 /detail.algorithm_results 有结果时展示真实结果，与「人工复核」可用态一致，
+ * 不再直接判「暂无执行结果」。两数据源并存时依次展示「执行结果行」（/results）与「算法结果指标」
+ * （algorithm_results 扁平项，值经 report 域 formatResultValue 格式化）。
+ */
+function ApiCaseResultSummary({
+  results,
+  algorithmResults,
+}: {
+  results: CaseResultForReview[]
+  algorithmResults: CaseAlgorithmResult[]
+}) {
+  const hasResults = results.length > 0
+  const hasAlgorithm = (algorithmResults ?? []).length > 0
+  if (!hasResults && !hasAlgorithm) {
+    return <p className='text-muted-foreground py-6 text-center text-sm'>暂无执行结果</p>
+  }
+  return (
+    <div className='space-y-3'>
+      {hasResults && (
+        <div className='overflow-hidden rounded-lg border'>
+          <table className='w-full text-left text-sm'>
+            <thead className='bg-muted/50 border-b'>
+              <tr className='text-muted-foreground text-xs'>
+                <th className='px-3 py-2 font-medium'>资源</th>
+                <th className='px-3 py-2 font-medium'>结果</th>
+                <th className='px-3 py-2 text-end font-medium'>响应</th>
+              </tr>
+            </thead>
+            <tbody>
+              {results.map((r) => (
+                <tr key={r.id} className='border-b last:border-0 hover:bg-muted/30'>
+                  <td className='px-3 py-2'>
+                    <span className='font-medium'>
+                      {r.deviceName ?? r.apiName ?? `结果 ${r.id}`}
+                    </span>
+                    {r.errorMessage && (
+                      <span className='text-destructive ml-1 text-xs'>{r.errorMessage}</span>
+                    )}
+                  </td>
+                  <td className='px-3 py-2'>
+                    <StatusBadge
+                      label={r.executionStatus === 'completed' ? '执行完成' : r.executionStatus ?? '—'}
+                      variant={
+                        r.executionStatus === 'completed'
+                          ? 'success'
+                          : r.executionStatus === 'failed'
+                            ? 'danger'
+                            : 'warning'
+                      }
+                    />
+                  </td>
+                  <td className='px-3 py-2 text-end font-mono text-xs tabular-nums'>
+                    {r.responseTime != null ? `${r.responseTime}ms` : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {hasAlgorithm && (
+        <div className='overflow-hidden rounded-lg border'>
+          <table className='w-full text-left text-sm'>
+            <thead className='bg-muted/50 border-b'>
+              <tr className='text-muted-foreground text-xs'>
+                <th className='px-3 py-2 font-medium'>算法结果指标</th>
+                <th className='px-3 py-2 font-medium'>值</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(algorithmResults ?? []).map((row, index) => (
+                <tr
+                  key={row.paramCode ?? index}
+                  className='border-b align-top last:border-0 hover:bg-muted/30'
+                >
+                  <td className='px-3 py-2 font-medium'>{row.label ?? row.paramCode}</td>
+                  <td className='px-3 py-2 break-all font-mono text-xs whitespace-pre-wrap tabular-nums'>
+                    {formatResultValue(row.value, row.paramType)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
 
 export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDetailDialogProps) {
   const [page, setPage] = useState(1)
@@ -123,7 +217,9 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
                   label={detail.evaluationStatus === 'completed' ? '评估完成' : '评估中'}
                   variant={detail.evaluationStatus === 'completed' ? 'success' : 'neutral'}
                 />
-                <span className='text-muted-foreground text-sm'>耗时 {detail.duration}s</span>
+                {detail.duration != null && (
+                  <span className='text-muted-foreground text-sm'>耗时 {detail.duration}s</span>
+                )}
                 {detail.score != null && (
                   <StatusBadge
                     label={`评分 ${detail.score}`}
@@ -189,9 +285,7 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
                   </Button>
                 )}
               </div>
-              {detail.devices.length === 0 ? (
-                <p className='text-muted-foreground py-6 text-center text-sm'>暂无执行结果</p>
-              ) : (
+              {detail.devices.length > 0 ? (
                 <div className='overflow-hidden rounded-lg border'>
                   <table className='w-full text-left text-sm'>
                     <thead className='bg-muted/50 border-b'>
@@ -229,6 +323,11 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
                     </tbody>
                   </table>
                 </div>
+              ) : (
+                <ApiCaseResultSummary
+                  results={resultsQuery.data?.results ?? []}
+                  algorithmResults={detail.algorithmResults}
+                />
               )}
 
               {/* ASR / 翻译参考文本 */}
