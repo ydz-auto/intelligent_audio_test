@@ -61,35 +61,22 @@
         
         <div v-else-if="deviceType === 'api'" class="scan-device-type-section">
           <h5>API 服务</h5>
-          <div v-if="scanResults.length > 0" class="api-list">
-            <div v-for="device in scanResults" 
-                 :key="device.id || device.name" 
-                 class="scan-device-item">
-              <div class="scan-device-info">
-                <h5>{{ device.name }}</h5>
-                <p>端点{{ device.endpoint }}</p>
-                <p>协议{{ device.protocol }}</p>
-              </div>
-              <div class="scan-device-actions">
-                <button class="btn btn-primary" @click="handleAddDevice($event, device)">
-                  <i class="fas fa-plus"></i>
-                  添加
-                </button>
-              </div>
-            </div>
+          <!-- INT-1023：后端无 API 自动扫描数据源，对齐 React 16_设备域 §6.1/§11-11 空态 -->
+          <div class="no-results">
+            <p>API 暂不支持自动扫描，请手动添加</p>
           </div>
         </div>
-        
-        <div v-if="scanResults.length === 0 && !isScanning" class="no-results">
+
+        <div v-if="deviceType !== 'api' && scanResults.length === 0 && !isScanning" class="no-results">
           <p>未扫描到任何设备</p>
           <p>请确保 ADB 设备已连接，或选择正确的设备类型</p>
         </div>
       </div>
       
-      <div class="scan-actions">
-        <button 
-          class="btn btn-secondary" 
-          @click="startScan" 
+      <div class="scan-actions" v-if="deviceType !== 'api'">
+        <button
+          class="btn btn-secondary"
+          @click="startScan"
           :disabled="isScanning"
         >
           <i class="fas fa-sync-alt"></i>
@@ -204,45 +191,6 @@ const startScan = async () => {
         console.error('[ScanDevicesModal] 测试设备扫描失败:', error)
         devices = []
       }
-      
-      if (devices.length === 0) {
-        console.log('[ScanDevicesModal] 无测试设备，使用模拟数据 (开发环境)')
-        devices = [
-          {
-            serial: 'MOCK-ADB-123456',
-            name: 'Android Pixel 6 Pro',
-            model: 'Pixel 6 Pro',
-            system: 'android',
-            systemVersion: '13.0',
-            appName: 'Default App',
-            appVersion: '1.0.0',
-            ipAddress: '192.168.1.100',
-            connectionType: 'usb'
-          },
-          {
-            serial: 'MOCK-IOS-789012',
-            name: 'iPhone 14',
-            model: 'iPhone 14',
-            system: 'ios',
-            systemVersion: '16.5',
-            appName: 'Default App',
-            appVersion: '1.0.0',
-            ipAddress: '192.168.1.101',
-            connectionType: 'remote'
-          },
-          {
-            serial: 'MOCK-HARMONY-345678',
-            name: 'HarmonyOS Mate 60 Pro',
-            model: 'Mate 60 Pro',
-            system: 'harmony',
-            systemVersion: '4.0',
-            appName: 'Default App',
-            appVersion: '1.0.0',
-            ipAddress: '192.168.1.102',
-            connectionType: 'remote'
-          }
-        ]
-      }
     } else if (props.deviceType === 'playback') {
       scanStatus.value = '正在获取系统音频设备...'
       
@@ -260,26 +208,6 @@ const startScan = async () => {
       } catch (error) {
         console.error('[ScanDevicesModal] 播放设备扫描失败:', error)
         devices = []
-      }
-      
-      if (devices.length === 0) {
-        console.log('[ScanDevicesModal] 无播放设备，使用模拟数据 (开发环境)')
-        devices = [
-          {
-            deviceUniqueId: 'audio-output-1',
-            name: '扬声器 (Realtek Audio)',
-            channelIndex: 0,
-            sampleRate: 48000,
-            type: 'output'
-          },
-          {
-            deviceUniqueId: 'audio-output-2',
-            name: '耳机 (Bluetooth Audio)',
-            channelIndex: 0,
-            sampleRate: 44100,
-            type: 'output'
-          }
-        ]
       }
     } else if (props.deviceType === 'api') {
       scanStatus.value = '正在扫描 API 服务...'
