@@ -39,6 +39,7 @@ export function useTestCaseListContainer(props: any, emit: any) {
     sortOrder,
     dimensionFilter,
     dimensionOptions,
+    dimensionCategories,
     hasMoreGroups,
     paginatedGroupsRef,
     paginatedTagsRef,
@@ -117,13 +118,9 @@ export function useTestCaseListContainer(props: any, emit: any) {
     { value: 'asc', label: '升序' },
   ];
 
-  const dimensionFilterOptions = computed(() =>
-    dimensionOptions.value.map(d => ({ value: d.id, label: d.name }))
-  );
   const groupFilterOptions = computed(() =>
     availableGroups.value.map(g => ({ value: g, label: g }))
-  );
-  const tagFilterOptions = computed(() =>
+  );  const tagFilterOptions = computed(() =>
     (props.tags || []).map((t: string) => ({ value: t, label: t }))
   );
 
@@ -264,11 +261,11 @@ export function useTestCaseListContainer(props: any, emit: any) {
     sortOrder,
     dimensionFilter,
     dimensionOptions,
+    dimensionCategories,
     // 徽章筛选选项与 setter
     TEST_TYPE_OPTIONS,
     SORT_BY_OPTIONS,
     SORT_ORDER_OPTIONS,
-    dimensionFilterOptions,
     groupFilterOptions,
     tagFilterOptions,
     setTestTypeFilter,
