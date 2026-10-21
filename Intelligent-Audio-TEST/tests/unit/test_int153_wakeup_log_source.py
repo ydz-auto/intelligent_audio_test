@@ -28,7 +28,7 @@ from device_service.application.commands.playback_command_service import Playbac
 
 DEVICE_SVC = 'device_service.application.commands.device_command_service'
 PLAYBACK_SVC = 'device_service.application.commands.playback_command_service'
-FACTORY_TARGET = 'device_service.infrastructure.drivers.device_driver.device_driver_factory'
+FACTORY_TARGET = 'device_service.infrastructure.drivers.driver_factory.device_driver_factory'
 
 
 def real_signature_log_not_emit(level, module, content, category='system', source='backend',

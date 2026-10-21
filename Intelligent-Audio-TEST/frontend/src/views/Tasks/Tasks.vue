@@ -162,15 +162,24 @@
         </div>
 
         <!-- INT-215：收藏 / 回收站工具栏（日常视图专属；INT-400 #13 收藏收编为工具条筛选，
-             回收站不再作为状态徽章筛选项） -->
-        <FavoriteTrashBar
-          v-if="activeTab === 'daily'"
-          :favorite-only="favoriteOnly"
-          :trash-mode="taskTrashMode"
-          :favorite-disabled="taskTrashMode"
-          @update:favorite-only="handleTaskFavoriteFilterChange"
-          @update:trash-mode="toggleTaskTrashMode"
-        />
+             回收站不再作为状态徽章筛选项）+ INT-1034 §3.8.1（INT-1110）「开始挑选」入口 -->
+        <div v-if="activeTab === 'daily'" class="daily-toolbar-row">
+          <FavoriteTrashBar
+            :favorite-only="favoriteOnly"
+            :trash-mode="taskTrashMode"
+            :favorite-disabled="taskTrashMode"
+            @update:favorite-only="handleTaskFavoriteFilterChange"
+            @update:trash-mode="toggleTaskTrashMode"
+          />
+          <button
+            v-if="can(PermissionPoint.TASK_CHERRY_PICK)"
+            class="btn btn-primary start-pick-btn"
+            title="从任务层级开始挑选执行结果"
+            @click="startPick"
+          >
+            <i class="fas fa-cart-plus"></i> 开始挑选
+          </button>
+        </div>
       </section>
 
       <!-- 任务列表（按页签分发） -->
@@ -393,7 +402,7 @@ import TaskDataImportDialog from '../../components/task/TaskDataImportDialog.vue
 import PublishedTaskPanel from './PublishedTaskPanel.vue';
 import CherryPickPanel from './CherryPickPanel.vue';
 import { usePickCart } from '../../composables/task/usePickCart';
-import { requestPickWizard, clearPickWizardRequest } from '../../composables/task/usePickWizardRequest';
+import { requestPickWizard } from '../../composables/task/usePickWizardRequest';
 import BadgeFilter from '../../components/common/BadgeFilter.vue';
 import FavoriteTrashBar from '../../components/common/FavoriteTrashBar.vue';
 import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
@@ -775,15 +784,18 @@ function batchAddToPick() {
     notification.warning(addToPickTitle.value);
     return;
   }
-  // 经共享状态传预选任务 id（P0 修复）：App.vue `<router-view :key="$route.fullPath">`
-  // 在 query 变化时整树重挂载，本实例的 cherryPickPanelRef/wizardOpen 会被销毁——
-  // 旧实现「导航后经 ref 打开向导」开到导航前的实例 A 上即被重挂载销毁（测试实证）。
-  // 不再手动切 activeTab：交给导航后新实例按 query.tab 归位，避免面板先于导航挂载
-  // 消费请求后又随重挂载销毁；新面板经 usePickWizardRequest immediate watch 自开向导。
+  // 经共享状态传预选任务 id（P0 修复）：布局壳 router-view 无 :key=fullPath 重挂载——
+  // 显式 switchTab('cherryPick') 让 CherryPickPanel 挂载，immediate watch 消费请求自开向导
   requestPickWizard({ presetTaskIds: selected.map((t: any) => t.id) });
-  selectedTasks.value.clear();
-  router.replace({ query: { ...route.query, tab: 'cherry-picks' } })
-    .catch(() => clearPickWizardRequest());
+  switchTab('cherryPick');
+}
+
+/** INT-1034 §3.8.1（INT-1110）：日常 tab 工具栏「开始挑选」——已勾选任务预选直达阶段 2；
+ *  未勾选 → 打开向导落阶段 1（选择任务）。与批量浮条「加入挑选」并存为快捷入口（§6.1）。 */
+function startPick() {
+  const checkedTasks = tasks.value.filter((t: any) => selectedTasks.value.has(t.id));
+  requestPickWizard(checkedTasks.length > 0 ? { presetTaskIds: checkedTasks.map((t: any) => t.id) } : {});
+  switchTab('cherryPick');
 }
 
 // ===== INT-577：挑选合并下单成功处理 =====
@@ -944,6 +956,17 @@ watch(activeTab, (tab, prev) => {
   color: var(--color-white);
   font-size: 11px;
   font-weight: 600;
+}
+
+/* INT-1034 §3.8.1（INT-1110）：日常 tab 筛选工具栏右端「开始挑选」入口 */
+.daily-toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.start-pick-btn {
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 </style>

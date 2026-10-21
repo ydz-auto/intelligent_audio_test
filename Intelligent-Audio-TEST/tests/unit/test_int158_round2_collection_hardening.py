@@ -34,7 +34,7 @@ from e2e_test_service.application.services.e2e_device_manager import E2EDeviceMa
 
 MIXIN = 'device_service.infrastructure.drivers.harmony_collection_mixin'
 HD = 'device_service.infrastructure.drivers.harmony_driver'
-FACTORY_TARGET = 'device_service.infrastructure.drivers.device_driver.device_driver_factory'
+FACTORY_TARGET = 'device_service.infrastructure.drivers.driver_factory.device_driver_factory'
 
 SN = '5SM0125613000197'
 

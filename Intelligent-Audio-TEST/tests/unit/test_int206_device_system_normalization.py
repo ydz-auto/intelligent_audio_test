@@ -29,7 +29,7 @@ from pydantic import ValidationError
 
 from shared.models.common_enums import DeviceSystem
 from device_service.infrastructure.drivers.driver_types import DevicePlatform
-from device_service.infrastructure.drivers.device_driver import device_driver_factory
+from device_service.infrastructure.drivers.driver_factory import device_driver_factory
 from device_service.interfaces.grpc.device_runtime_servicers import DeviceServiceServicer
 from e2e_test_service.application.services.e2e_device_manager import E2EDeviceManager
 
@@ -175,7 +175,7 @@ class TestCreateDriverRealCause:
         factory = MagicMock()
         factory.get_driver_for_device.side_effect = ValueError('未知设备系统 system: harmony')
         servicer = DeviceServiceServicer()
-        with patch('device_service.infrastructure.drivers.device_driver.device_driver_factory', factory):
+        with patch('device_service.infrastructure.drivers.driver_factory.device_driver_factory', factory):
             resp = servicer.CreateDriver(_req({
                 'action': 'initialize', 'system': 'harmony', 'keywords': 'x',
                 'device_sn': SN, 'device_info_list': [], 'kwargs': {}}))
@@ -187,7 +187,7 @@ class TestCreateDriverRealCause:
         driver.initialize.return_value = False
         factory.get_driver_for_device.side_effect = None
         factory.get_driver_for_device.return_value = driver
-        with patch('device_service.infrastructure.drivers.device_driver.device_driver_factory', factory):
+        with patch('device_service.infrastructure.drivers.driver_factory.device_driver_factory', factory):
             resp = servicer.CreateDriver(_req({
                 'action': 'initialize', 'system': 'HarmonyOS', 'keywords': 'x',
                 'device_sn': SN, 'device_info_list': [], 'kwargs': {}}))

@@ -19,7 +19,7 @@ from unittest.mock import MagicMock, patch
 
 from device_service.interfaces.grpc.device_runtime_servicers import DeviceServiceServicer
 
-FACTORY_TARGET = 'device_service.infrastructure.drivers.device_driver.device_driver_factory'
+FACTORY_TARGET = 'device_service.infrastructure.drivers.driver_factory.device_driver_factory'
 
 
 class FakeBaseDriver:

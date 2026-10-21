@@ -10,7 +10,7 @@ import tempfile
 import shutil
 
 from .harmony_driver import HarmonyDriver
-from .driver_types import AppType, AppVersion, DevicePlatform
+from .driver_types import DevicePlatform
 from .registry import register_driver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry
 from .driver_constants import *
@@ -33,8 +33,8 @@ class Xiaoyilivechat(HarmonyDriver):
     """
 
     # —— 驱动元数据 ——
-    app_type = AppType.XIAOYI_LIVECHAT
-    version = AppVersion.V1
+    app_type = "xiaoyi_livechat"
+    version = "v1"
     platform = DevicePlatform.HARMONYOS
     keywords = "harmony.xiaoyi_livechat.v1"
     display_name = "小艺通话聊天 v1"
@@ -133,8 +133,10 @@ class Xiaoyilivechat(HarmonyDriver):
     DSP_USER_FMT = (16000, 4, 2)                     # (sample_rate, channels, sample_width)
     DSP_AI_FMT = (24000, 2, 4)                       # 真机实测: in_raw1* 为 24kHz/2ch/32bit
     DSP_USER_EXTRACT_CHANNEL = 0                     # 4ch 取第 1 声道(ch0)→ mono
-    # audiodebug 二进制版本(对应 libaudio_proxy_<V>.z.so),本地随驱动打包
-    DSP_BIN_DIR = os.path.join(os.path.dirname(__file__), 'bin', 'dsp')
+    # audiodebug 二进制版本(对应 libaudio_proxy_<V>.z.so),随驱动打包在 device_service/resources/dsp
+    # （INT-1167：二进制移出源码目录 drivers/bin/dsp → device_service/resources/dsp）
+    DSP_BIN_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                               'resources', 'dsp')
     DSP_AUDIODEBUG_VERSIONS = ['4.0', '5.0']          # 本地有这两个版本(缺 6.0)
     DSP_HOOKCHANNEL = 196609                          # bat1 实测的 hook 通道
 

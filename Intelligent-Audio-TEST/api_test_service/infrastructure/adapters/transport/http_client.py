@@ -4,6 +4,8 @@
 INT-62 迁移：自 api_test_service/clients/api_client.py 原样迁入
 infrastructure/adapters/（协议细节唯一落位，设计文档 §3.6），
 协议分派枚举化（APIProtocol），调用行为不变。
+INT-1168 迁移：原 adapters/api_client.py 迁入 adapters/transport/（传输层收拢），
+类/函数名与 docstring 保留。
 """
 import time
 import json

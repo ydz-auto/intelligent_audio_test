@@ -34,7 +34,7 @@ from api_test_service.infrastructure.adapters import (
     register_vendor_adapter,
     vendor_adapter_registry,
 )
-from api_test_service.infrastructure.adapters.api_client import (
+from api_test_service.infrastructure.adapters.transport import (
     APIClient,
     endpoint_protocol,
 )

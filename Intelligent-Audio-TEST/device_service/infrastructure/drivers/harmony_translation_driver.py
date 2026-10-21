@@ -3,7 +3,7 @@ import subprocess
 import os
 from .base_driver import BaseDeviceDriver
 from .harmony_driver import HarmonyDriver
-from .driver_types import AppType, AppVersion, DevicePlatform
+from .driver_types import DevicePlatform
 from .registry import register_driver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry
 from .driver_constants import *
@@ -80,8 +80,8 @@ class XiaoyiFace2FaceDriver(HarmonyXiaoyiTranslationDriver):
     """小艺面对面翻译专用驱动"""
 
     # —— 驱动元数据 ——
-    app_type = AppType.XIAOYI_FACE2FACE
-    version = AppVersion.V1
+    app_type = "xiaoyi_face2face"
+    version = "v1"
     platform = DevicePlatform.HARMONYOS
     keywords = "harmony.xiaoyi_face2face.v1"
     display_name = "小艺面对面翻译 v1"
@@ -160,8 +160,8 @@ class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
     """小艺同声传译专用驱动"""
 
     # —— 驱动元数据 ——
-    app_type = AppType.XIAOYI_SIMULTANEOUS
-    version = AppVersion.V1
+    app_type = "xiaoyi_simultaneous"
+    version = "v1"
     platform = DevicePlatform.HARMONYOS
     keywords = "harmony.xiaoyi_simultaneous.v1"
     display_name = "小艺同声传译 v1"

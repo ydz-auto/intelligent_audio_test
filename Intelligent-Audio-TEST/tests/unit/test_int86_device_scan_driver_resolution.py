@@ -28,7 +28,7 @@ import pytest
 from device_service.application.commands.device_command_service import DeviceCommandService
 from device_service.application.queries.device_query_service import DeviceQueryService
 
-FACTORY_TARGET = 'device_service.infrastructure.drivers.device_driver.device_driver_factory'
+FACTORY_TARGET = 'device_service.infrastructure.drivers.driver_factory.device_driver_factory'
 
 
 class FakeDriver:
@@ -175,16 +175,16 @@ class TestCreateOnlineCheck:
 class TestKeywordSemanticsUnchanged:
     def test_get_driver_for_device_without_keywords_raises(self):
         # INT-83 收紧语义不得被 INT-86 放松：无 keywords 仍拒绝
-        from device_service.infrastructure.drivers.device_driver import device_driver_factory
+        from device_service.infrastructure.drivers.driver_factory import device_driver_factory
         with pytest.raises(ValueError, match='设备必须提供明确的驱动 keywords 标识'):
             device_driver_factory.get_driver_for_device('Android')
 
     def test_get_driver_for_device_unknown_keywords_raises(self):
-        from device_service.infrastructure.drivers.device_driver import device_driver_factory
+        from device_service.infrastructure.drivers.driver_factory import device_driver_factory
         with pytest.raises(ValueError, match='未注册驱动 keywords'):
             device_driver_factory.get_driver_for_device('Android', keywords='no.such.keyword')
 
     def test_get_driver_by_system_unknown_system_returns_none(self):
-        from device_service.infrastructure.drivers.device_driver import device_driver_factory
+        from device_service.infrastructure.drivers.driver_factory import device_driver_factory
         assert device_driver_factory.get_driver_by_system('') is None
         assert device_driver_factory.get_driver_by_system('NoSuchSystem') is None

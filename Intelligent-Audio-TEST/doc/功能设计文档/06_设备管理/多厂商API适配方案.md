@@ -20,6 +20,14 @@
 >    `APISessionExecutor` / `RealtimeSessionExecutor`。
 > 2. **已废弃组件**：`api_driver.py`（APIDriver，见《api_driver_documentation.md》废弃声明）、`api_executor.py`
 >    （APIExecutor，整个文件废弃）、`api_adaper_service` 微服务（实施阶段 4 下线）。涉及引用的章节仅作历史存档。
+>
+> **【实现演进裁定 2026-10-21，INT-1168 代码核验】** `api_executor.py`（APIExecutor）**未废弃**：现为 `api_test_service`
+> 实际执行入口（gRPC `StartAPITest` → `start_task` → 懒加载 `APIExecutor`），职责收敛为 `device_type` 分发外壳
+> （`route_executor` → `APISessionExecutor` / `RealtimeSessionExecutor`）。适配器目录现状：
+> `api_test_service/infrastructure/adapters/` 按协议维度分区 —— `registry.py`（VendorAdapter 注册表）＋ `protocol/`
+> （`RealtimeAdapterBase` 协议级 base）＋ `vendors/`（`OpenAIRealtimeAdapter` 品牌适配器）＋ `transport/`（传输层收拢：
+> `http_client.py` ← 原 `adapters/api_client.py`、`realtime_ws_client.py` ← 原厂商 WS 传输包）；HTTP 单维主力
+> `ApiDriverAdapter` 暂留适配器根目录。
 > 3. **仍然有效的信息资产**：第 2 章《厂商API调研》（各家接口地址、协议、认证方式、二进制协议格式）与
 >    第 6 章《配置管理》（vendors.yml / credentials.yml 结构）是本方案最有价值的部分，实施 API Adapter 体系时可直接参考；
 >    第 4.1 节的枚举定义（APIType / ProtocolType / AuthType 等）体现了枚举化、配置化原则，同样可沿用。
@@ -191,10 +199,11 @@ transcript = openai.Audio.transcribe(
 
 ### 3.1 整体架构
 
-> ⚠️ 下图中的 `api_driver.py`（驱动封装）与 `api_executor.py`（执行引擎）均已列入《01_测试执行/05_路由与废弃.md》废弃清单：
-> `api_executor.py` 整个文件废弃（路由职责回归 `ExecutionEngine`），`APIDriver` 由 API Adapter 体系替代。
-> 最新架构中，执行入口为 `ExecutionEngine` 按 `device_type`（`http_api` / `websocket_api`）路由到
-> `APISessionExecutor` / `RealtimeSessionExecutor`，由其通过 `APIAdapterFactory` 创建适配器调用被测 API。
+> ⚠️ 下图中的 `api_driver.py`（驱动封装）与 `api_executor.py`（执行引擎）为 V9.7.10 单体架构组件，涉及引用的章节仅作历史存档：
+> `APIDriver` 由 API Adapter 体系替代；`APIExecutor` 现为 `api_test_service` 实际执行入口（INT-1168 实现演进裁定，未废弃）。
+> 最新架构中，`task_service` 的 `ExecutionEngine` 按 `device_type`（`http_api` / `websocket_api`）跨服务 gRPC 分发到
+> `APISessionExecutor` / `RealtimeSessionExecutor`，由其经 `vendor_adapter_registry` 创建适配器调用被测 API
+> （HTTP → 默认 `ApiDriverAdapter` → `transport/http_client`；Realtime → `OpenAIRealtimeAdapter`(vendors/) → `RealtimeAdapterBase`(protocol/) → `RealtimeWSClient`(transport/)）。
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐

@@ -1,5 +1,5 @@
 from ..harmony_driver import HarmonyDriver
-from ..driver_types import AppType, AppVersion, DevicePlatform
+from ..driver_types import DevicePlatform
 from ..registry import register_driver
 from ._lock_mixin import LockMixin
 from ._lifecycle_mixin import LifecycleMixin
@@ -14,8 +14,8 @@ class HarmonyHardenXiaoyiHuiJiDriver(LockMixin, LifecycleMixin, ResultsMixin, Ha
     """鸿蒙harden小艺慧记驱动"""
 
     # —— 驱动元数据 ——
-    app_type = AppType.XIAOYI_HUIJI
-    version = AppVersion.V1
+    app_type = "xiaoyi_huiji"
+    version = "v1"
     platform = DevicePlatform.HARMONYOS
     keywords = "harmony.xiaoyi_huiji.v1"
     display_name = "鸿蒙小艺慧记 v1"

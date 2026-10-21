@@ -14,7 +14,7 @@ import subprocess
 import time
 import logging
 from .android_driver import AndroidDriver
-from .driver_types import AppType, AppVersion, DevicePlatform
+from .driver_types import DevicePlatform
 from .registry import register_driver
 from .utils import check_stop
 
@@ -30,8 +30,8 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
     """
 
     # —— 驱动元数据 ——
-    app_type = AppType.DOUBAO_ASR
-    version = AppVersion.V1
+    app_type = "doubao_asr"
+    version = "v1"
     platform = DevicePlatform.ANDROID
     keywords = "android.doubao_asr.v1"
     display_name = "豆包 Android ASR v1"

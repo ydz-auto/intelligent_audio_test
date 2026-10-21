@@ -18,7 +18,7 @@ import time
 import pytest
 
 from shared.models.common_enums import RealtimeFrameType
-from api_test_service.infrastructure.vendor_ws import RealtimeWSClient
+from api_test_service.infrastructure.adapters.transport import RealtimeWSClient
 
 # 测试提速：接收轮询步长由 recv(timeout) 控制，此处保持默认即可
 

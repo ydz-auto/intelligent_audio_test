@@ -2,16 +2,12 @@
 /**
  * 挑选向导开启请求（INT-577 P0 修复）。
  *
- * 背景：App.vue `<router-view :key="$route.fullPath">` 在 query 变化时整树重挂载——
- * 批量「加入挑选」在导航前的面板实例 A 上打开向导后，A 被 `:key` 重挂载销毁，
- * 最终实例 B 向导不出现（测试实证：openWizardWithTasks 调用后 2s 内
- * cherryPickPanelRef 身份改变 refStillSame=false）。组件内 ref/wizardOpen 状态
- * 随旧实例销毁，无法跨导航存活。
- *
- * 本模块以模块级单例承载「向导开启请求」（与 usePickCart 同款单例模式）：
- * 发起方（Tasks.vue 批量「加入挑选」/ App.vue 购物车「去复核」）写请求，
- * 重挂载后的新面板经 immediate watch 消费并自开向导；向导关闭/下单时清除，
- * 避免跨会话泄漏（§10 #5 会话级记忆口径）。
+ * 背景：布局壳 router-view 无 :key=fullPath 重挂载（AuthenticatedLayout.vue），
+ * 批量「加入挑选」/「开始挑选」入口与 CherryPickPanel 分属不同页签——面板未挂载时
+ * 无法直接打开向导。本模块以模块级单例承载「向导开启请求」（与 usePickCart
+ * 同款单例模式）：发起方（Tasks.vue 批量「加入挑选」/「开始挑选」）写请求，
+ * 并显式 switchTab('cherryPick') 让 CherryPickPanel 挂载，新面板经 immediate
+ * watch 消费请求并自开向导；向导关闭/下单时清除，避免跨会话泄漏（§10 #5 会话级记忆口径）。
  */
 import { ref } from 'vue';
 
