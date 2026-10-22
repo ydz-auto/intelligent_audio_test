@@ -224,6 +224,37 @@ describe('algorithm-config-api（真实端点接线）', () => {
     expect(created.type).toBe('tts-new')
   })
 
+  it('createAlgorithm 后端 create 落 draft 时补一次 PUT 应用表单所选 status（INT-1317）', async () => {
+    // 后端 POST create 无视提交 status 落 draft（INT-1253 证据）→ 前端立即用所选 status 补 PUT
+    const draft = definitionDto('tts-new', 'tts-new 名称')
+    draft.status = 'draft'
+    const offline = definitionDto('tts-new', 'tts-new 名称')
+    offline.status = 'offline'
+    mockRequest.mockResolvedValueOnce(draft).mockResolvedValueOnce(offline)
+    const created = await createAlgorithm({ ...saveInput('tts-new'), status: 'offline' })
+    expect(mockRequest).toHaveBeenNthCalledWith(
+      1,
+      'POST',
+      '/algorithm/definitions',
+      expect.objectContaining({ type: 'tts-new', status: 'offline' })
+    )
+    expect(mockRequest).toHaveBeenNthCalledWith(
+      2,
+      'PUT',
+      '/algorithm/definitions/tts-new',
+      expect.objectContaining({ type: 'tts-new', status: 'offline' })
+    )
+    expect(created.status).toBe('offline')
+  })
+
+  it('createAlgorithm 后端已应用表单所选 status 时不再补 PUT', async () => {
+    mockRequest.mockResolvedValue(definitionDto('tts-new', 'tts-new 名称'))
+    const created = await createAlgorithm({ ...saveInput('tts-new'), status: 'online' })
+    expect(mockRequest).toHaveBeenCalledTimes(1)
+    expect(mockRequest).toHaveBeenCalledWith('POST', '/algorithm/definitions', expect.any(Object))
+    expect(created.status).toBe('online')
+  })
+
   it('updateAlgorithm 走 PUT /algorithm/definitions/{type}', async () => {
     mockRequest.mockResolvedValue(definitionDto('asr-v3', '改名后的识别引擎'))
     const updated = await updateAlgorithm('asr-v3', saveInput('asr-v3'))
@@ -376,6 +407,26 @@ describe('algorithm-config-api（真实端点接线）', () => {
     expect(mockRequest).toHaveBeenNthCalledWith(1, 'GET', '/algorithm/definitions/asr-v3')
     expect(mockRequest).toHaveBeenNthCalledWith(2, 'PUT', '/algorithm/definitions/asr-v3', expect.any(Object))
     expect(updated.name).toBe('asr-v3 名称')
+  })
+
+  it('publishAlgorithm 新建时 create 落 draft 也补 PUT 应用表单所选 status（INT-1317）', async () => {
+    // GET 探测 400-not-found → 判新 → POST 创建返回 draft → 补 PUT 应用 offline
+    mockRequest.mockRejectedValueOnce(new ApiError({ httpStatus: 400, message: 'Algorithm not found' }))
+    const draft = definitionDto('tts-new', 'tts-new 名称')
+    draft.status = 'draft'
+    const offline = definitionDto('tts-new', 'tts-new 名称')
+    offline.status = 'offline'
+    mockRequest.mockResolvedValueOnce(draft).mockResolvedValueOnce(offline)
+    const created = await publishAlgorithm({ ...saveInput('tts-new'), status: 'offline' })
+    expect(mockRequest).toHaveBeenNthCalledWith(1, 'GET', '/algorithm/definitions/tts-new')
+    expect(mockRequest).toHaveBeenNthCalledWith(2, 'POST', '/algorithm/definitions', expect.any(Object))
+    expect(mockRequest).toHaveBeenNthCalledWith(
+      3,
+      'PUT',
+      '/algorithm/definitions/tts-new',
+      expect.objectContaining({ status: 'offline' })
+    )
+    expect(created.status).toBe('offline')
   })
 
   it('saveAlgorithmDraft 走 PUT /algorithm/definitions/draft（完整快照 + algorithm_type）并回服务端 saved_at', async () => {
