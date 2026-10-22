@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import type { TaskDetailData } from '@/domain/models/task'
 import {
+  deriveTaskType,
   formatDateTime,
   getEvaluationStatusMeta,
   getExecutionStatusMeta,
@@ -31,12 +32,10 @@ function InfoGrid({ items }: { items: Array<{ label: string; value: string | num
 export function TaskInfoCard({ detail }: { detail: TaskDetailData }) {
   const execMeta = getExecutionStatusMeta(detail.execution_status)
   const evalMeta = getEvaluationStatusMeta(detail.evaluation_status)
-  const taskType = detail.device_types.includes('http_api')
-    ? detail.device_types.length > 1
-      ? 'mixed'
-      : 'api'
-    : 'e2e'
-  const isApi = detail.device_types.includes('http_api')
+  // INT-1241：与列表共用 deriveTaskType 单一来源，空 device_types 按关联资源兜底，
+  // 保证同一任务列表/详情类型标签一致（不再各自内联推导）
+  const taskType = deriveTaskType(detail.device_types, detail)
+  const isApi = taskType === 'api' || taskType === 'mixed'
 
   return (
     <Card size='sm' className='gap-3 py-3'>
@@ -68,7 +67,7 @@ export function TaskInfoCard({ detail }: { detail: TaskDetailData }) {
             { label: '预计完成时间', value: formatDateTime(detail.expected_complete_time) },
             { label: '预计总时长', value: detail.expected_total_time ?? '—' },
             { label: '已用时长', value: detail.used_time ?? '—' },
-            ...(isApi || taskType === 'mixed'
+            ...(isApi
               ? [{ label: '测试API数量', value: detail.api_count ?? 0 }]
               : []),
             ...(taskType === 'e2e' || taskType === 'mixed'

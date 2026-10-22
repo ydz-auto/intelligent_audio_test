@@ -391,7 +391,7 @@ export function DailyTaskTable({
                   {col('type') && (
                     <td className='px-3 py-2'>
                       <Badge variant='outline' className='rounded-md px-1.5'>
-                        {getTaskTypeLabel(deriveTaskType(task.device_types))}
+                        {getTaskTypeLabel(deriveTaskType(task.device_types, task))}
                       </Badge>
                     </td>
                   )}

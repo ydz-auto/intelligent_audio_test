@@ -79,19 +79,28 @@ export function getTaskTypeLabel(type: string | null | undefined): string {
 }
 
 /**
- * 任务类型派生（照旧 Vue TaskDetailModal.vue 口径 + 后端 /tasks/stats type_counts，
- * INT-200）：按用例级被测设备类型集合分桶——
+ * 任务类型派生（单一来源，INT-1241）：按用例级被测设备类型集合分桶——
  *  physical → e2e；http_api/websocket_api → api；兼有 → mixed；
- *  无 device_type 行回退 api（后端 task_service 同口径）。
+ *  无 device_type 行（旧任务用例未派生，device_types=[]）时按任务关联资源兜底：
+ *  有实体设备（device_count>0）判 e2e、有 API（api_count>0）判 api、兼有判 mixed、
+ *  均无回退 api（对齐后端 /tasks/stats type_counts 的「无用例行回退 api」兜底）。
+ * 列表与详情复用本函数，保证同一任务两处类型标签一致。
  */
 export function deriveTaskType(
-  deviceTypes: string[] | null | undefined
+  deviceTypes: string[] | null | undefined,
+  task?: { device_count?: number | null; api_count?: number | null }
 ): 'api' | 'e2e' | 'mixed' {
   const dts = deviceTypes ?? []
   const hasPhysical = dts.includes('physical')
   const hasApi = dts.includes('http_api') || dts.includes('websocket_api')
   if (hasPhysical && hasApi) return 'mixed'
   if (hasPhysical) return 'e2e'
+  if (hasApi) return 'api'
+  // 空 device_types 兜底：按任务关联实体设备 / API 计数判定（INT-1241）
+  const deviceCount = task?.device_count ?? 0
+  const apiCount = task?.api_count ?? 0
+  if (deviceCount > 0 && apiCount > 0) return 'mixed'
+  if (deviceCount > 0) return 'e2e'
   return 'api'
 }
 
