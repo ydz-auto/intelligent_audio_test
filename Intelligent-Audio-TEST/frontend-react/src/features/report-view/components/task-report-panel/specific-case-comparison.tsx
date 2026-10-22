@@ -136,6 +136,8 @@ export function SpecificCaseComparison({
 
   const [reviewCase, setReviewCase] = useState<ReportCaseItem>()
   const [aiCase, setAiCase] = useState<ReportCaseItem>()
+  /** INT-1279 P2：AI 复核会话 dimension_ids（发起时源任务用例简报解析后快照，避免异步源竞态静默缺省 400） */
+  const [aiDimensionIds, setAiDimensionIds] = useState<number[]>()
   const [quickTarget, setQuickTarget] = useState<{
     caseId: string
     caseName?: string
@@ -156,10 +158,30 @@ export function SpecificCaseComparison({
       reviews.taskCases.find((c) => c.case_id === caseId)?.evaluation_dimensions
     )
 
+  /**
+   * INT-1279 P2：报告具体用例入口 dimension_ids 源 = reviews.taskCases（['tasks','detail'] 异步加载）。
+   * 用例卡先于源任务详情解析即可渲染 → 未就绪发起则 dimension_ids 静默缺省 → 真实库 400（code 203）。
+   * 发起前等源任务详情查询解析（区分「加载中」与「真实为空」：仅 taskLoading 时 await，
+   * 解析后仍无维度 = 用例 config 无评估维度，走后端缺省口径）。await 后须用结果.data 重算，
+   * 规避闭包持有的旧 taskCases。
+   */
+  const resolveAiReviewDimensionIds = async (
+    caseId: string
+  ): Promise<number[] | undefined> => {
+    if (reviews.taskLoading) {
+      const result = await reviews.refetchTask()
+      return toAiReviewDimensionIds(
+        result.data?.cases.find((c) => c.case_id === caseId)?.evaluation_dimensions
+      )
+    }
+    return caseDimensionIds(caseId)
+  }
+
   /** AI 复核入口（§5.2 主形态）：取源任务该用例结果行校验有结果 → 打开灵犀Agent 复核会话（可追问） */
   const openAiReview = async (c: ReportCaseItem) => {
     if (!reviews.taskId) return
     try {
+      const dimensionIds = await resolveAiReviewDimensionIds(c.id)
       const res = await fetchCaseResults(reviews.taskId, c.id)
       // 无执行结果的用例不开放 AI 复核（§5.2 可发起对象须有结果）
       if (res.results.length === 0) {
@@ -167,6 +189,7 @@ export function SpecificCaseComparison({
         return
       }
       setAiCase(c)
+      setAiDimensionIds(dimensionIds)
     } catch (err) {
       toast.error(
         err instanceof Error ? `用例结果加载失败：${err.message}` : '用例结果加载失败'
@@ -178,6 +201,7 @@ export function SpecificCaseComparison({
   const openQuickReview = async (c: ReportCaseItem) => {
     if (!reviews.taskId) return
     try {
+      const dimensionIds = await resolveAiReviewDimensionIds(c.id)
       const res = await fetchCaseResults(reviews.taskId, c.id)
       if (res.results.length === 0) {
         toast.error('该用例无执行结果，无法复核')
@@ -188,7 +212,7 @@ export function SpecificCaseComparison({
         caseName: res.caseName || c.name,
         results: res.results,
         evaluationStatus: caseEvaluationStatus(c.id),
-        dimensionIds: caseDimensionIds(c.id),
+        dimensionIds,
       })
     } catch (err) {
       toast.error(
@@ -823,12 +847,15 @@ export function SpecificCaseComparison({
           <AiReviewSessionDialog
             open={aiCase !== undefined}
             onOpenChange={(open) => {
-              if (!open) setAiCase(undefined)
+              if (!open) {
+                setAiCase(undefined)
+                setAiDimensionIds(undefined)
+              }
             }}
             taskId={reviews.taskId}
             caseId={aiCase?.id ?? ''}
             caseName={aiCase?.name}
-            dimensionIds={aiCase ? caseDimensionIds(aiCase.id) : undefined}
+            dimensionIds={aiDimensionIds}
           />
           {/* §5.1 快速复核次要入口（一次性状态机，批量/低分初筛场景） */}
           <QuickAiReviewDialog

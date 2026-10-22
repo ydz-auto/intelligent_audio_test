@@ -179,6 +179,9 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
     taskQuery.data?.status ?? ''
   )
   const hasCaseResults = (resultsQuery.data?.results.length ?? 0) > 0
+  // INT-1279 P2：dimension_ids 源（taskQuery.data.cases）异步加载——与 canAiReview 同 gate
+  // 在 taskQuery.data 就绪后再计算；taskLoading 期间入口不可见，避免维度静默缺省 → 真实库 400。
+  const aiReviewReady = taskQuery.data != null && !taskQuery.isLoading
   // INT-1279：用例评估维度 id（任务用例简报 evaluation_dimensions 溯源；真实库结果无 LLM 判分维度时显式传）
   const aiReviewDimensionIds = toAiReviewDimensionIds(
     taskQuery.data?.cases.find((c) => c.case_id === caseId)?.evaluation_dimensions
@@ -188,7 +191,19 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
   const canManualReview =
     taskTerminal && hasCaseResults && hasPermission('task.result.review')
   const canAiReview =
-    taskTerminal && hasCaseResults && hasPermission('task.result.ai_review')
+    aiReviewReady &&
+    taskTerminal &&
+    hasCaseResults &&
+    hasPermission('task.result.ai_review')
+
+  /** INT-1279 P2：AI 复核发起前等任务详情查询解析（防御性 gate——canAiReview 已要求 taskQuery.data
+   *  就绪，此等待兜底极端时序，确保 dimension_ids 可用后再打开会话） */
+  const openAiReview = async () => {
+    if (taskQuery.isLoading) {
+      await taskQuery.refetch()
+    }
+    setAiReviewOpen(true)
+  }
 
   const copyCaseId = () => {
     void navigator.clipboard?.writeText(caseId)
@@ -282,7 +297,7 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
                     variant='ghost'
                     size='sm'
                     className='text-muted-foreground h-7 gap-1 text-xs'
-                    onClick={() => setAiReviewOpen(true)}
+                    onClick={() => void openAiReview()}
                     title='AI 复核（灵犀Agent 对话式复核，可追问；建议层不直接修改统计）'
                   >
                     <Sparkles aria-hidden='true' className='size-3' />

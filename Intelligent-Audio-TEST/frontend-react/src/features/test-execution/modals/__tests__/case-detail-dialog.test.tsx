@@ -30,8 +30,22 @@ vi.mock('@/infrastructure/api/reviewApi', () => ({
 }))
 // 复核会话/弹窗本体已由浏览器实测 + 关联用例入口验证；本测试聚焦入口接线，用轻量桩
 vi.mock('@/features/ai-review/ai-review-session-dialog', () => ({
-  AiReviewSessionDialog: ({ open, caseId }: { open: boolean; caseId: string }) =>
-    open ? <div data-testid='ai-review-session-dialog' data-case={caseId} /> : null,
+  AiReviewSessionDialog: ({
+    open,
+    caseId,
+    dimensionIds,
+  }: {
+    open: boolean
+    caseId: string
+    dimensionIds?: number[]
+  }) =>
+    open ? (
+      <div
+        data-testid='ai-review-session-dialog'
+        data-case={caseId}
+        data-dims={JSON.stringify(dimensionIds)}
+      />
+    ) : null,
 }))
 vi.mock('@/features/tasks/components/manual-review-dialog', () => ({
   ManualReviewDialog: ({ open, caseName }: { open: boolean; caseName?: string }) =>
@@ -140,6 +154,43 @@ describe('CaseDetailDialog 分节①「人工复核 / AI 复核」入口（INT-1
     await userEvent.click(btn)
     await waitFor(() => {
       expect(screen.getByTestId('ai-review-session-dialog')).toBeInTheDocument()
+    })
+  })
+
+  it('INT-1279 P2：任务详情查询加载中（taskQuery 未就绪）→ AI 复核入口隐藏，避免 dimension_ids 静默缺省 400', async () => {
+    // 任务详情保持 pending（永不 resolve）→ aiReviewReady=false，复核入口不可见
+    fetchTaskMock.mockReturnValue(new Promise<never>(() => {}))
+    renderDialog()
+    await waitFor(() => {
+      expect(fetchResultsMock).toHaveBeenCalled()
+    })
+    expect(screen.queryByRole('button', { name: '人工复核' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'AI 复核' })).not.toBeInTheDocument()
+  })
+
+  it('INT-1279 P2：任务详情就绪后点「AI 复核」，按用例评估维度显式传 dimension_ids 给复核会话', async () => {
+    fetchTaskMock.mockResolvedValue({
+      ...taskTerminal,
+      cases: [
+        {
+          case_id: 'case-1',
+          name: '用例一',
+          evaluation_dimensions: [
+            { id: 121, name: '识别成功' },
+            { id: 124, name: '识别失败' },
+          ],
+        },
+      ],
+    })
+    renderDialog()
+    const btn = await screen.findByRole('button', { name: 'AI 复核' })
+    expect(btn).toBeInTheDocument()
+    await userEvent.click(btn)
+    await waitFor(() => {
+      expect(screen.getByTestId('ai-review-session-dialog')).toHaveAttribute(
+        'data-dims',
+        '[121,124]'
+      )
     })
   })
 
