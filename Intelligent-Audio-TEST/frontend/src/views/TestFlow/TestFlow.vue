@@ -445,15 +445,16 @@ const algorithmEditDataForModal = computed<AlgorithmDefinition | null>(() =>
   algorithmEditData.value ? (algorithmEditData.value as unknown as AlgorithmDefinition) : null
 )
 
-// ============ 计算属性：根据 testType 派生 ============
-const pageTitle = computed(() => props.testType === TestType.E2E ? '端到端测试' : 'API测试')
-const pageTitleIcon = computed(() => props.testType === TestType.E2E ? 'fas fa-project-diagram' : 'fas fa-exchange-alt')
-const pageDescription = computed(() => props.testType === TestType.E2E ? '通过完整的测试流程验证语音产品的功能和性能' : '测试语音服务API的功能和性能，验证接口响应和数据正确性')
+// ============ 页面文案（INT-1301：统一「开始测试」口径，去 E2E/API 双概念） ============
+const pageTitle = '开始测试'
+const pageTitleIcon = 'fas fa-play-circle'
+const pageDescription = '选择用例与设备/API，在同一流程内完成语音测试与报告生成'
 // INT-604/INT-1072：混选前置——步骤二同屏选择设备与 API（不再按模式二选一）
 const stepLabels = computed(() => ['选择算法', '选择测试用例', '选择设备/API', '执行测试', '查看结果'])
 const step2Tooltip = computed(() => '选择测试设备与被测API，同一任务可混选')
 const step2Title = computed(() => '选择设备/API 与执行参数')
-const testTypeLabel = computed(() => props.testType === TestType.E2E ? 'E2E' : 'API')
+// INT-1301：执行详情统一口径（对齐 /start-test 的 test-type="混合"）
+const testTypeLabel = '混合'
 const emptyDeviceText = '未找到相关设备'
 const emptyApiText = '未找到相关API'
 // INT-604：未混选时执行模式控件置灰提示
@@ -461,8 +462,8 @@ const executionModeDisabledTip = '仅同时选择设备与 API 时可用'
 
 // ============ 任务名称模态窗 ============
 const handleStartTask = () => {
-  const prefix = props.testType === TestType.E2E ? 'E2E测试任务' : 'API测试任务'
-  localTaskName.value = `${prefix}_${new Date().toLocaleString()}`
+  // INT-1301：默认任务名统一「开始测试」口径，去 E2E/API 分型前缀
+  localTaskName.value = `开始测试任务_${new Date().toLocaleString()}`
   showTaskNameModal.value = true
 }
 

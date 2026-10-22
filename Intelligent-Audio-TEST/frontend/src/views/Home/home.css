@@ -386,14 +386,6 @@
   gap: 12px;
 }
 
-.home-page .feature-card.e2e .feature-icon { background: color-mix(in srgb, var(--secondary) 10%, transparent); color: var(--secondary); }
-.home-page .feature-card.e2e:hover .feature-icon { background: var(--secondary); color: var(--color-white); }
-.home-page .feature-card.e2e::before { background: linear-gradient(135deg, var(--secondary) 0%, var(--secondary-deep) 100%); }
-
-.home-page .feature-card.api .feature-icon { background: color-mix(in srgb, var(--success) 10%, transparent); color: var(--success); }
-.home-page .feature-card.api:hover .feature-icon { background: var(--success); color: var(--color-white); }
-.home-page .feature-card.api::before { background: linear-gradient(135deg, var(--success) 0%, var(--success-dark) 100%); }
-
 .home-page .feature-card.cases .feature-icon { background: color-mix(in srgb, var(--primary) 10%, transparent); color: var(--primary); }
 .home-page .feature-card.cases:hover .feature-icon { background: var(--primary); color: var(--color-white); }
 .home-page .feature-card.cases::before { background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%); }
@@ -512,14 +504,6 @@
   transition: transform 0.3s ease;
 }
 
-.home-page .test-type-card.e2e::before {
-  background: linear-gradient(135deg, var(--secondary) 0%, var(--secondary-deep) 100%);
-}
-
-.home-page .test-type-card.api::before {
-  background: linear-gradient(135deg, var(--success) 0%, var(--success-dark) 100%);
-}
-
 /* INT-1301：开始测试单入口（primary 同源） */
 .home-page .test-type-card.start::before {
   background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
@@ -546,35 +530,12 @@
   transition: all 0.3s ease;
 }
 
-.home-page .test-type-card.e2e .test-type-icon {
-  background: color-mix(in srgb, var(--secondary) 10%, transparent);
-  color: var(--secondary);
-}
-
-.home-page .test-type-card.api .test-type-icon {
-  background: color-mix(in srgb, var(--success) 10%, transparent);
-  color: var(--success);
-}
-
 /* INT-1301：开始测试单入口（primary 同源） */
 .home-page .test-type-card.start .test-type-icon {
   background: color-mix(in srgb, var(--primary) 10%, transparent);
   color: var(--primary);
 }
 
-.home-page .test-type-card.e2e:hover .test-type-icon {
-  background: linear-gradient(135deg, var(--secondary) 0%, var(--secondary-deep) 100%);
-  color: var(--color-white);
-  transform: scale(1.1);
-}
-
-.home-page .test-type-card.api:hover .test-type-icon {
-  background: linear-gradient(135deg, var(--success) 0%, var(--success-dark) 100%);
-  color: var(--color-white);
-  transform: scale(1.1);
-}
-
-/* INT-1301：开始测试单入口（primary 同源） */
 .home-page .test-type-card.start:hover .test-type-icon {
   background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
   color: var(--color-white);
@@ -719,11 +680,6 @@
   margin-bottom: 24px;
 }
 
-.home-page .detail-icon-large.api {
-  background: color-mix(in srgb, var(--success) 10%, transparent);
-  color: var(--success);
-}
-
 /* INT-1301：开始测试单入口（primary 同源） */
 .home-page .detail-icon-large.start {
   background: color-mix(in srgb, var(--primary) 10%, transparent);
@@ -860,10 +816,6 @@
   transform: translateX(4px);
 }
 
-.home-page .detail-cta-btn.cta-e2e { color: var(--secondary); }
-.home-page .detail-cta-btn.cta-e2e:hover { background: var(--secondary); color: var(--color-white); }
-.home-page .detail-cta-btn.cta-api { color: var(--success); }
-.home-page .detail-cta-btn.cta-api:hover { background: var(--success); color: var(--color-white); }
 /* INT-1301：开始测试单入口（primary 同源） */
 .home-page .detail-cta-btn.cta-start { color: var(--primary); }
 .home-page .detail-cta-btn.cta-start:hover { background: var(--primary); color: var(--color-white); }
@@ -950,7 +902,6 @@
   margin-bottom: 16px;
 }
 
-.home-page .detail-side-icon.api { background: color-mix(in srgb, var(--success) 10%, transparent); color: var(--success); }
 /* INT-1301：开始测试单入口（primary 同源） */
 .home-page .detail-side-icon.start { background: color-mix(in srgb, var(--primary) 10%, transparent); color: var(--primary); }
 .home-page .detail-side-icon.audio { background: color-mix(in srgb, var(--secondary) 10%, transparent); color: var(--secondary); }

@@ -164,7 +164,7 @@ export const detailSections: DetailSection[] = [
     iconLarge: 'fas fa-music',
     mainTitle: '灵活音频管理',
     mainDescription:
-      '支持多种音频导入方式，包括本地上传、文件夹批量导入。导入时可选择自动生成测试用例，支持设置测试类型、播放设备和声压级。提供音频预览、格式转换和元数据编辑功能。',
+      '支持多种音频导入方式，包括本地上传、文件夹批量导入。导入时可选择自动生成测试用例，支持设置播放设备和声压级。提供音频预览、格式转换和元数据编辑功能。',
     features: [
       { icon: 'fas fa-cloud-upload-alt', text: '多途径导入' },
       { icon: 'fas fa-magic', text: '自动生成用例' },
