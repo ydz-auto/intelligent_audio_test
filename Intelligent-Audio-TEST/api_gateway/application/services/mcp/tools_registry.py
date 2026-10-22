@@ -86,11 +86,13 @@ def _bool(desc: str, required: bool = False) -> dict:
 
 TOOLS: List[dict] = [
     # ---------------- 任务 task（/api/v1/tasks） ----------------
-    _tool('task_list', '列出任务（支持 keyword/status 等过滤参数）',
-          {'keyword': _str('关键词过滤'), 'status': _str('任务状态'),
-           'page': _int('页码'), 'page_size': _int('每页条数')},
+    # 参数名与 REST 契约对齐（INT-1150 审计后修正）：任务列表关键词过滤
+    # 为 search（TaskListQuery.search），分页为 page/per_page（全域统一信封）
+    _tool('task_list', '列出任务（支持 search/status 等过滤参数）',
+          {'search': _str('关键词过滤'), 'status': _str('任务状态'),
+           'page': _int('页码'), 'per_page': _int('每页条数')},
           ['task:read'], 'GET', '/api/v1/tasks',
-          query_params=['keyword', 'status', 'page', 'page_size']),
+          query_params=['search', 'status', 'page', 'per_page']),
     _tool('task_get', '获取任务详情',
           {'task_id': _int('任务 ID', True)},
           ['task:read'], 'GET', '/api/v1/tasks/{task_id}',
@@ -177,9 +179,9 @@ TOOLS: List[dict] = [
 
     # ---------------- 已发布任务 published_task ----------------
     _tool('published_task_list', '列出已发布任务',
-          {'page': _int('页码'), 'page_size': _int('每页条数')},
+          {'page': _int('页码'), 'per_page': _int('每页条数')},
           ['published_task:read'], 'GET', '/api/v1/published-tasks',
-          query_params=['page', 'page_size']),
+          query_params=['page', 'per_page']),
     _tool('published_task_get', '获取已发布任务详情',
           {'published_task_id': _int('已发布任务 ID', True)},
           ['published_task:read'], 'GET', '/api/v1/published-tasks/{published_task_id}',
@@ -193,9 +195,9 @@ TOOLS: List[dict] = [
     # ---------------- 测试用例 testcase（/api/v1/testcases） ----------------
     _tool('testcase_list', '列出测试用例（支持 keyword/status 等过滤参数）',
           {'keyword': _str('关键词过滤'), 'status': _str('用例状态'),
-           'page': _int('页码'), 'page_size': _int('每页条数')},
+           'page': _int('页码'), 'per_page': _int('每页条数')},
           ['testcase:read'], 'GET', '/api/v1/testcases',
-          query_params=['keyword', 'status', 'page', 'page_size']),
+          query_params=['keyword', 'status', 'page', 'per_page']),
     _tool('testcase_get', '获取测试用例详情',
           {'tc_id': _str('用例 ID', True)},
           ['testcase:read'], 'GET', '/api/v1/testcases/{tc_id}',
@@ -226,9 +228,9 @@ TOOLS: List[dict] = [
     # ---------------- 音频 audio（/api/v1/audios） ----------------
     _tool('audio_list', '列出音频（支持 keyword 等过滤参数）',
           {'keyword': _str('关键词过滤'), 'page': _int('页码'),
-           'page_size': _int('每页条数')},
+           'per_page': _int('每页条数')},
           ['audio:read'], 'GET', '/api/v1/audios',
-          query_params=['keyword', 'page', 'page_size']),
+          query_params=['keyword', 'page', 'per_page']),
     _tool('audio_get', '获取音频详情',
           {'audio_id': _int('音频 ID', True)},
           ['audio:read'], 'GET', '/api/v1/audios/{audio_id}',
@@ -324,10 +326,10 @@ TOOLS: List[dict] = [
 
     # ---------------- 被测设备 device（/api/v1/test-devices） ----------------
     _tool('device_list', '列出被测设备',
-          {'page': _int('页码'), 'page_size': _int('每页条数'),
+          {'page': _int('页码'), 'per_page': _int('每页条数'),
            'status': _str('设备状态过滤')},
           ['device:read'], 'GET', '/api/v1/test-devices',
-          query_params=['page', 'page_size', 'status']),
+          query_params=['page', 'per_page', 'status']),
     _tool('device_get', '获取被测设备详情',
           {'device_id': _int('设备 ID', True)},
           ['device:read'], 'GET', '/api/v1/test-devices/{device_id}',
@@ -420,9 +422,9 @@ TOOLS: List[dict] = [
           ['device:update'], 'DELETE', '/api/v1/test-devices/alarm-rules/{rule_id}',
           path_params=['rule_id']),
     _tool('device_alarm_list', '列出设备告警',
-          {'page': _int('页码'), 'page_size': _int('每页条数')},
+          {'page': _int('页码'), 'per_page': _int('每页条数')},
           ['device:read'], 'GET', '/api/v1/test-devices/alarms',
-          query_params=['page', 'page_size']),
+          query_params=['page', 'per_page']),
     _tool('device_alarm_acknowledge', '确认告警',
           {'alarm_id': _int('告警 ID', True)},
           ['device:control'], 'POST',
@@ -469,10 +471,10 @@ TOOLS: List[dict] = [
 
     # ---------------- 评估 evaluation（/api/v1/evaluation） ----------------
     _tool('evaluation_dimension_list', '列出评估维度',
-          {'page': _int('页码'), 'page_size': _int('每页条数'),
+          {'page': _int('页码'), 'per_page': _int('每页条数'),
            'keyword': _str('关键词过滤')},
           ['evaluation:read'], 'GET', '/api/v1/evaluation/dimensions',
-          query_params=['page', 'page_size', 'keyword']),
+          query_params=['page', 'per_page', 'keyword']),
     _tool('evaluation_dimension_get', '获取评估维度详情',
           {'dim_id': _int('维度 ID', True)},
           ['evaluation:read'], 'GET', '/api/v1/evaluation/dimensions/{dim_id}',
@@ -500,10 +502,10 @@ TOOLS: List[dict] = [
 
     # ---------------- 报告 report（/api/v1/reports） ----------------
     _tool('report_list', '列出报告',
-          {'page': _int('页码'), 'page_size': _int('每页条数'),
+          {'page': _int('页码'), 'per_page': _int('每页条数'),
            'keyword': _str('关键词过滤')},
           ['report:read'], 'GET', '/api/v1/reports',
-          query_params=['page', 'page_size', 'keyword']),
+          query_params=['page', 'per_page', 'keyword']),
     _tool('report_get', '获取报告详情',
           {'report_id': _int('报告 ID', True)},
           ['report:read'], 'GET', '/api/v1/reports/{report_id}',
@@ -763,10 +765,10 @@ TOOLS: List[dict] = [
 
     # ---------------- 标签 tag（/api/v1/tags） ----------------
     _tool('tag_list', '列出标签',
-          {'page': _int('页码'), 'page_size': _int('每页条数'),
+          {'page': _int('页码'), 'per_page': _int('每页条数'),
            'keyword': _str('关键词过滤')},
           ['tag:read'], 'GET', '/api/v1/tags',
-          query_params=['page', 'page_size', 'keyword']),
+          query_params=['page', 'per_page', 'keyword']),
     _tool('tag_get', '获取标签详情',
           {'tag_id': _int('标签 ID', True)},
           ['tag:read'], 'GET', '/api/v1/tags/{tag_id}',
@@ -880,9 +882,9 @@ TOOLS: List[dict] = [
 
     # ---------------- Benchmark 排行（INT-429） ----------------
     _tool('benchmark_ranking', '查看 Benchmark 排行',
-          {'page': _int('页码'), 'page_size': _int('每页条数')},
+          {'page': _int('页码'), 'per_page': _int('每页条数')},
           ['benchmark:ranking:read'], 'GET', '/api/v1/benchmarks/ranking',
-          query_params=['page', 'page_size']),
+          query_params=['page', 'per_page']),
     _tool('benchmark_ranking_compute', '触发 Benchmark 排行计算',
           {'body': {'type': 'object', 'description': '计算参数'}},
           ['benchmark:ranking:compute'], 'POST',
@@ -914,10 +916,10 @@ TOOLS: List[dict] = [
 
     # ---------------- 日志只读 log:read（倾向覆盖，负责人验收核对） ----------------
     _tool('log_list', '查看测试执行日志',
-          {'page': _int('页码'), 'page_size': _int('每页条数'),
+          {'page': _int('页码'), 'per_page': _int('每页条数'),
            'keyword': _str('关键词过滤'), 'level': _str('日志级别过滤')},
           ['log:read'], 'GET', '/api/v1/logs',
-          query_params=['page', 'page_size', 'keyword', 'level']),
+          query_params=['page', 'per_page', 'keyword', 'level']),
     _tool('log_stats', '日志统计',
           {}, ['log:read'], 'GET', '/api/v1/logs/stats'),
 ]
