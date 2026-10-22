@@ -111,11 +111,25 @@ export function useHistoryReports() {
   const selectedReports = ref<Set<string | number>>(new Set());
   const activeTab = ref<ReportTabValue>(REPORT_TABS.ALL);
 
-  /** INT-1390：选中报告项（selectedReports id → allReports 报告；跨页/已过滤的 id 不在当前列表则跳过） */
+  /**
+   * INT-1390 返工：选中报告元数据快照（id → Report）。
+   * 选择时同步记录，跨页/已过滤（选中项不在当前 allReports 列表）时，
+   * 批量对比可对比性判定仍基于此快照，修复「跨页残留选中绕过禁用态」。
+   * 取消选择 / 清空选择时同步删除。
+   */
+  const selectedReportMeta = ref<Map<string, Report>>(new Map());
+
+  /** 清空全部选中（selectedReports + 元数据快照） */
+  const clearSelection = () => {
+    selectedReports.value.clear();
+    selectedReportMeta.value.clear();
+  };
+
+  /** INT-1390：选中报告项（当前列表优先取最新元数据；跨页/已过滤的 id 回退选择时快照） */
   const selectedReportItems = computed<Report[]>(() => {
     const byId = new Map(allReports.value.map(r => [String(r.id), r]));
     return Array.from(selectedReports.value)
-      .map(id => byId.get(String(id)))
+      .map(id => byId.get(String(id)) ?? selectedReportMeta.value.get(String(id)))
       .filter((r): r is Report => r !== undefined);
   });
 
@@ -295,7 +309,7 @@ export function useHistoryReports() {
     }
     // INT-215/S4：数据集切换（活跃↔已删）清空选中集，防止普通态勾选的活跃报告
     // 流入回收站态批量彻底删除（误删活跃项）；对照 handleTabChange 同口径
-    selectedReports.value.clear();
+    clearSelection();
     currentPage.value = 1;
     await loadReports();
   };
@@ -479,25 +493,31 @@ export function useHistoryReports() {
    */
   const handleTabChange = (tab: ReportTabValue) => {
     activeTab.value = tab;
-    selectedReports.value.clear();
+    clearSelection();
     currentPage.value = 1;
     loadReports();
   };
 
   const toggleSelectAll = () => {
     if (isAllSelected.value) {
-      selectedReports.value.clear();
+      clearSelection();
     } else {
-      allReports.value.forEach(report => selectedReports.value.add(report.id));
+      allReports.value.forEach(report => {
+        selectedReports.value.add(report.id);
+        selectedReportMeta.value.set(String(report.id), report);
+      });
     }
   };
 
-  const toggleReportSelection = (reportId: string | number, event?: MouseEvent) => {
+  const toggleReportSelection = (report: Report, event?: Event) => {
     if (event?.target instanceof HTMLElement && event.target.closest('.card-actions')) return;
+    const reportId = report.id;
     if (selectedReports.value.has(reportId)) {
       selectedReports.value.delete(reportId);
+      selectedReportMeta.value.delete(String(reportId));
     } else {
       selectedReports.value.add(reportId);
+      selectedReportMeta.value.set(String(reportId), report);
     }
   };
 
@@ -512,7 +532,7 @@ export function useHistoryReports() {
         try {
           const ids = Array.from(selectedReports.value);
           await reportsPort.batchDelete(ids);
-          selectedReports.value.clear();
+          clearSelection();
           showToast('success', `成功删除 ${ids.length} 个报告`);
           refreshAfterMutation();
         } catch (error: any) {
@@ -523,7 +543,7 @@ export function useHistoryReports() {
   };
 
   const handleBatchCancel = () => {
-    selectedReports.value.clear();
+    clearSelection();
   };
 
   // ===== INT-215/S4：回收站态批量栏适配（对齐任务侧批量恢复/彻底删除能力）=====
@@ -540,7 +560,7 @@ export function useHistoryReports() {
       } else {
         showToast('info', '无可恢复项（报告可能已被恢复）');
       }
-      selectedReports.value.clear();
+      clearSelection();
       await refreshAfterMutation();
     } catch (error: any) {
       showToast('error', '批量恢复失败: ' + (error?.message || '未知错误'));
@@ -566,7 +586,7 @@ export function useHistoryReports() {
           } else {
             showToast('info', '无可删除项（报告可能已被删除或不满足权限）');
           }
-          selectedReports.value.clear();
+          clearSelection();
           await refreshAfterMutation();
         } catch (error: any) {
           showToast('error', '批量彻底删除失败: ' + (error?.message || '未知错误'));
@@ -651,6 +671,7 @@ export function useHistoryReports() {
         try {
           await reportsPort.delete(reportId);
           selectedReports.value.delete(reportId);
+          selectedReportMeta.value.delete(String(reportId));
           showToast('success', '报告删除成功');
           refreshAfterMutation();
         } catch (error: any) {
@@ -688,7 +709,7 @@ export function useHistoryReports() {
   });
 
   onBeforeUnmount(() => {
-    selectedReports.value.clear();
+    clearSelection();
     pendingSecondaryCompareReports.value.clear();
   });
 

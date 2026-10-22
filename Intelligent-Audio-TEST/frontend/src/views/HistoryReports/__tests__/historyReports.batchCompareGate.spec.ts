@@ -185,3 +185,67 @@ describe('INT-1390：handleBatchCompare 前置拦截（不发必然失败的后�
     expect(ctx.toast.value?.type).toBe('success');
   });
 });
+
+describe('INT-1390 返工：跨页残留选中（选中项不在当前列表时判定仍基于选择时元数据快照）', () => {
+  it('选中 Benchmark 后翻页（当前列表换为任务报告）→ 按钮仍禁用，handleBatchCompare 仍前置拦截', async () => {
+    const ctx = useHistoryReports();
+    // 第 1 页：两条 Benchmark，逐条勾选（选择时同步记录元数据快照）
+    ctx.allReports.value = [
+      makeReport({ id: 1, name: 'Benchmark 快照A', type: 'benchmark' }),
+      makeReport({ id: 2, name: 'Benchmark 快照B', type: 'benchmark' }),
+    ];
+    ctx.toggleReportSelection(ctx.allReports.value[0], undefined);
+    ctx.toggleReportSelection(ctx.allReports.value[1], undefined);
+    expect(ctx.selectedReports.value.size).toBe(2);
+    expect(ctx.batchCompareDisabled.value).toBe(true);
+
+    // 翻到第 2 页：当前列表不含选中 id（跨页残留选中）
+    ctx.allReports.value = [
+      makeReport({ id: 3, name: '任务报告C', type: 'task', taskId: 300 }),
+      makeReport({ id: 4, name: '任务报告D', type: 'task', taskId: 400 }),
+    ];
+
+    expect(ctx.batchCompareDisabled.value).toBe(true);
+
+    await ctx.handleBatchCompare();
+    expect(mocks.secondaryCompare).not.toHaveBeenCalled();
+    expect(ctx.toast.value?.type).toBe('warning');
+    expect(ctx.toast.value?.message).toContain('Benchmark 快照A');
+  });
+
+  it('跨页混合选中（1 个跨页 Benchmark + 1 个当前页任务报告）→ 按钮仍禁用', () => {
+    const ctx = useHistoryReports();
+    ctx.allReports.value = [
+      makeReport({ id: 1, name: 'Benchmark 快照A', type: 'benchmark' }),
+    ];
+    ctx.toggleReportSelection(ctx.allReports.value[0], undefined);
+
+    // 翻页后勾选当前页任务报告
+    ctx.allReports.value = [
+      makeReport({ id: 3, name: '任务报告C', type: 'task', taskId: 300 }),
+    ];
+    ctx.toggleReportSelection(ctx.allReports.value[0], undefined);
+
+    expect(ctx.selectedReports.value.size).toBe(2);
+    expect(ctx.batchCompareDisabled.value).toBe(true);
+  });
+
+  it('跨页可选报告（均为 task 带 taskId）→ 按钮保持可用，照常走接口', async () => {
+    const ctx = useHistoryReports();
+    ctx.allReports.value = [
+      makeReport({ id: 1, name: '任务报告A', type: 'task', taskId: 100 }),
+      makeReport({ id: 2, name: '任务报告B', type: 'task', taskId: 200 }),
+    ];
+    ctx.toggleReportSelection(ctx.allReports.value[0], undefined);
+    ctx.toggleReportSelection(ctx.allReports.value[1], undefined);
+
+    ctx.allReports.value = [
+      makeReport({ id: 3, name: '任务报告C', type: 'task', taskId: 300 }),
+    ];
+    expect(ctx.batchCompareDisabled.value).toBe(false);
+
+    await ctx.handleBatchCompare();
+    expect(mocks.secondaryCompare).toHaveBeenCalledTimes(1);
+    expect(mocks.secondaryCompare).toHaveBeenCalledWith([1, 2]);
+  });
+});

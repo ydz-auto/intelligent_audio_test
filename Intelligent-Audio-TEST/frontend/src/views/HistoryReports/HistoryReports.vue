@@ -207,14 +207,14 @@
         </h3>
       </div>
 
-      <div v-for="report in section.reports" :key="report.id" class="card" :class="{ 'card-selected': selectedReports.has(report.id) }" @click="toggleReportSelection(report.id, $event)">
+      <div v-for="report in section.reports" :key="report.id" class="card" :class="{ 'card-selected': selectedReports.has(report.id) }" @click="toggleReportSelection(report, $event)">
         <div class="card-header">
           <div class="report-checkbox-wrapper">
-            <input type="checkbox" 
-                   class="task-checkbox" 
-                   :id="`report-${report.id}`" 
+            <input type="checkbox"
+                   class="task-checkbox"
+                   :id="`report-${report.id}`"
                    :checked="selectedReports.has(report.id)"
-                   @change="selectedReports.has(report.id) ? selectedReports.delete(report.id) : selectedReports.add(report.id)"
+                   @change="toggleReportSelection(report, $event)"
                    @click.stop>
             <label :for="`report-${report.id}`"></label>
           </div>

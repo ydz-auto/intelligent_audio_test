@@ -187,7 +187,7 @@
       :key="report.id"
       class="card rc-report-card"
       :class="{ 'rc-card-selected': selectedReports.has(report.id) }"
-      @click="toggleReportSelection(report.id, $event)"
+      @click="toggleReportSelection(report, $event)"
     >
       <div class="card-header">
         <div class="rc-report-checkbox-wrapper">
@@ -196,7 +196,7 @@
             class="task-checkbox"
             :id="`report-${report.id}`"
             :checked="selectedReports.has(report.id)"
-            @change="selectedReports.has(report.id) ? selectedReports.delete(report.id) : selectedReports.add(report.id)"
+            @change="toggleReportSelection(report, $event)"
             @click.stop
           />
           <label :for="`report-${report.id}`"></label>
