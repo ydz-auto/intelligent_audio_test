@@ -202,5 +202,7 @@ export function fromContainerDto(
     sourceTasks,
     createdAt: dto.created_at ?? '',
     isFavorite: dto.is_favorite,
+    // 容器报告摘要（「查看报告」跳转数据源；后端返 null → 无报告禁用该项）
+    reports: dto.reports,
   }
 }

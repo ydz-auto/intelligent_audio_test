@@ -8,6 +8,7 @@
  * case_id 兜底（case_name）或 null（device_name/api_name），前端按设计降级展示
  * （§3.7.1「用例不可用/设备不可用/API不可用 {前 8 位 id}…」），不写兼容层。
  */
+import type { TaskReportsDto } from '@/infrastructure/dto/task.dto'
 
 /** 候选行（GET /tasks/cherry-picks/candidates，list_candidates 实测） */
 export interface CherryPickCandidateDto {
@@ -167,6 +168,8 @@ export interface TaskContainerItemDto {
   created_at: string | null
   is_favorite: boolean
   is_cherry_pick: boolean
+  /** 容器报告摘要（tasks list 同 TaskListItemDto.reports；「查看报告」跳转数据源） */
+  reports: TaskReportsDto | null
   source_tasks: TaskSourceBriefDto[]
   devices: { id: number; name: string; status: string }[]
   apis: { id: number; name: string; status: string }[]

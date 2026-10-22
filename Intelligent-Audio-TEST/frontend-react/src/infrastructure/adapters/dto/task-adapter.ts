@@ -187,6 +187,7 @@ export function toCherryPickContainer(
     })),
     createdAt: dto.created_at ?? '',
     isFavorite: dto.is_favorite ?? false,
+    reports: dto.reports,
   }
 }
 

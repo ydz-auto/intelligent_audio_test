@@ -195,4 +195,6 @@ export interface CherryPickContainer {
   sourceTasks: CherryPickSourceTask[]
   createdAt: string
   isFavorite: boolean
+  /** 容器报告摘要（「查看报告」跳转 /report/:id 数据源；无报告时 null） */
+  reports: { count: number; reports: { id: number; name: string | null }[] } | null
 }

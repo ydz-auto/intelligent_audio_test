@@ -10,6 +10,7 @@
  *   DELETE /tasks/{task_id}/purge                 （task:delete；单条彻底删除，服务端按 metadata 校验 admin/owner）
  *   POST   /tasks/purge                           （task:delete；body {ids} 批量彻底删除）
  *   DELETE /tasks/{task_id}/cases/{case_id}       （task:execute；INT-305 移除用例）
+ *   PUT    /tasks/{task_id}                       （task:update；更新任务名称/描述，INT-1277 挑选合并重命名）
  * 请求一律经 infrastructure/api/client.ts；snake_case 只在 infrastructure 层出现，
  * 页面层只见 camelCase；动作端点响应 data 本层不消费，成功即返回。
  */
@@ -18,6 +19,17 @@ import { apiClient } from '@/infrastructure/api/client'
 /** 单个删除（软删 → 回收站）：DELETE /tasks/{id} */
 export async function deleteTask(taskId: number): Promise<void> {
   await apiClient.delete<unknown>(`/tasks/${taskId}`)
+}
+
+/** 更新任务（重命名/描述）：PUT /tasks/{id} {name?, description?}（task:update，INT-1277） */
+export async function updateTask(
+  taskId: number,
+  patch: { name?: string; description?: string }
+): Promise<void> {
+  await apiClient.put<unknown>(`/tasks/${taskId}`, {
+    name: patch.name,
+    description: patch.description,
+  })
 }
 
 /** 批量删除（回收站）：POST /tasks/batch-action {action: 'delete', task_ids} */

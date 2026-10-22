@@ -1,6 +1,6 @@
 /**
  * 任务生命周期动作 mutation 聚合（application 层；接线 INT-932）。
- * 覆盖行操作（删除/收藏/恢复/彻底删除/暂停/继续/停止）与批量操作
+ * 覆盖行操作（删除/收藏/恢复/彻底删除/暂停/继续/停止/重命名）与批量操作
  * （批量删除/批量恢复/批量彻底删除），以及详情页暂停/继续/停止/移除用例。
  * 成功后统一失效 ['tasks'] 前缀 query（列表/详情一并刷新，分页/筛选不变）；
  * 失败统一 toast 错误（ApiError.userMessage 中文文案）。
@@ -20,6 +20,7 @@ import {
   removeTaskCase,
   restoreTask,
   unfavoriteTask,
+  updateTask,
 } from '@/infrastructure/api/tasks-actions-api'
 import { controlTask, stopTask } from '@/infrastructure/api/tasks-control-api'
 
@@ -138,6 +139,21 @@ export function useTaskActions() {
     onError: (error) => toast.error(toErrorMessage(error, '移除用例失败')),
   })
 
+  const rename = useMutation({
+    mutationFn: ({
+      taskId,
+      patch,
+    }: {
+      taskId: number
+      patch: { name?: string; description?: string }
+    }) => updateTask(taskId, patch),
+    onSuccess: () => {
+      toast.success('任务名称已更新')
+      invalidateTasks()
+    },
+    onError: (error) => toast.error(toErrorMessage(error, '更新任务失败')),
+  })
+
   return {
     remove,
     batchRemove,
@@ -150,5 +166,6 @@ export function useTaskActions() {
     control,
     stop,
     removeCase,
+    rename,
   }
 }

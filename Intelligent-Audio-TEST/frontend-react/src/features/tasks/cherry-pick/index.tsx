@@ -7,7 +7,6 @@
 import { Plus, RefreshCw, ShoppingCart } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { toast } from 'sonner'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { usePickCartStore } from '@/application/tasks/cherry-pick/use-pick-cart-store'
@@ -17,15 +16,6 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import {
   Empty,
   EmptyContent,
@@ -48,6 +38,7 @@ import {
 } from '@/features/tasks/constants'
 import { CartDrawer } from '@/features/tasks/cherry-pick/components/cart-drawer'
 import { ContainerBulkActions } from '@/features/tasks/cherry-pick/components/container-bulk-actions'
+import { ContainerRowActions } from '@/features/tasks/cherry-pick/components/container-row-actions'
 import { MergeTypeFacet } from '@/features/tasks/cherry-pick/components/merge-type-facet'
 import { PickSetPopover } from '@/features/tasks/cherry-pick/components/pick-set-popover'
 import { SourceTraceRow } from '@/features/tasks/cherry-pick/components/source-trace-row'
@@ -296,7 +287,6 @@ function ContainerRow({
   onToggle: (checked: boolean) => void
   onQuickView: (container: CherryPickContainer) => void
 }) {
-  const { hasPermission } = usePermissions()
   const execMeta = getExecutionStatusMeta(container.executionStatus)
   const evalMeta = getEvaluationStatusMeta(container.evaluationStatus)
   const mergeLabel = MERGE_TYPE_LABELS[container.mergeType]
@@ -348,52 +338,7 @@ function ContainerRow({
           {formatPickDateTime(container.createdAt)}
         </td>
         <td className='px-3 py-2 text-right'>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={<Button variant='ghost' size='icon-sm' aria-label='挑选合并任务操作' />}
-            >
-              <span className='text-lg leading-none'>⋯</span>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align='end' className='w-40'>
-              <DropdownMenuGroup>
-                <DropdownMenuLabel className='truncate'>{container.name}</DropdownMenuLabel>
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => onQuickView(container)}>
-                查看详情
-              </DropdownMenuItem>
-              {hasPermission('report:read') && (
-                <DropdownMenuItem onSelect={() => toast.success('报告页随报告域卡落地')}>
-                  查看报告
-                </DropdownMenuItem>
-              )}
-              {hasPermission('report:create') && (
-                <DropdownMenuItem onSelect={() => toast.success('报告生成成功')}>
-                  生成报告（手动）
-                </DropdownMenuItem>
-              )}
-              {hasPermission('task:publish') && (
-                <DropdownMenuItem onSelect={() => toast.success('发布流程见发布弹窗')}>
-                  发布
-                </DropdownMenuItem>
-              )}
-              {hasPermission('task:read') && (
-                <DropdownMenuItem onSelect={() => toast.success('已加入收藏')}>
-                  收藏
-                </DropdownMenuItem>
-              )}
-              {hasPermission('task:update') && (
-                <DropdownMenuItem onSelect={() => toast.success('重命名流程见任务详情')}>
-                  重命名
-                </DropdownMenuItem>
-              )}
-              {hasPermission('task:delete') && (
-                <DropdownMenuItem data-variant='destructive' onSelect={() => toast.success('已移入回收站')}>
-                  删除
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <ContainerRowActions container={container} onQuickView={onQuickView} />
         </td>
       </tr>
       <tr className='border-border/60 border-b'>
