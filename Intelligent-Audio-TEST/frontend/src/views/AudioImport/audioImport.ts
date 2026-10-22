@@ -7,7 +7,7 @@ import { useAlgorithmParams } from '../../composables/algorithm/useAlgorithmPara
 import { useDeviceManagement } from '../../composables/device/useDeviceManagement';
 import { useAudioBatchOps } from '../../composables/audio/useAudioBatchOps';
 import { useUploadModal } from '../../composables/upload/useUploadModal';
-import { TestType, UploadStatus } from '@/domain/enums';
+import { UploadStatus } from '@/domain/enums';
 
 /**
  * useAudioImport - 轻量级协调层
@@ -69,12 +69,7 @@ export function useAudioImport() {
   // 上传完成后的用例生成提示跳转
   const goToTestCaseManager = () => {
     uploadModule.showTestCaseGeneratedTip.value = false;
-    const types = uploadModule.uploadOptions.testTypes || [];
-    if (types.length === 1 && types[0] === TestType.E2E) {
-      router.push('/E2ETest');
-    } else {
-      router.push('/TestCaseManager');
-    }
+    router.push('/start-test');
   };
 
   // 搜索：同时刷新列表和文件夹树

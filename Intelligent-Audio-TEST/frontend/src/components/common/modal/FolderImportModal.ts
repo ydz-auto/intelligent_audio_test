@@ -65,14 +65,12 @@ export function useFolderImportModal(props: any, emit: (event: string, ...args: 
 
   const {
     dimensionSearchQuery,
-    e2eDimensionSearchQuery,
     dimensionsLoading,
     dimensionsError,
     audioTypeOptions,
     hasAudioType,
     groupNameTypeOptions,
     filteredDimensions,
-    e2eFilteredDimensions,
     dimensionCount,
     isDimensionSelected,
     toggleDimensionSelection,

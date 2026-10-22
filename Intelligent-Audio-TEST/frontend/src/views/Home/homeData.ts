@@ -82,11 +82,10 @@ export interface WorkflowStep {
 }
 
 export const workflowSteps: WorkflowStep[] = [
-  { label: '选择算法', desc: '配置测试算法参数' },
   { label: '选择用例', desc: '创建或选择测试用例' },
-  { label: '选择设备', desc: '配置测试设备参数' },
+  { label: '选择设备/API', desc: '配置测试设备与 API 参数' },
   { label: '执行测试', desc: '运行语音测试流程' },
-  { label: '查看结果', desc: '分析测试评估报告' }
+  { label: '查看报告', desc: '分析测试评估报告' }
 ]
 
 export interface TestTypeCard {

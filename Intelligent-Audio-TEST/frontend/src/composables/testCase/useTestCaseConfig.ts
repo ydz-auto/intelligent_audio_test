@@ -36,7 +36,6 @@ export function useTestCaseConfig(options: UseTestCaseConfigOptions = {}) {
   const availableDimensions = ref<any[]>([])
   const dimensionFilterIdSet = ref<Set<number>>(new Set(initialDimensionFilterIds))
   const dimensionSearchQuery = ref('')
-  const e2eDimensionSearchQuery = ref('')
   const dimensionsLoading = ref(false)
   const dimensionsError = ref('')
 
@@ -65,21 +64,6 @@ export function useTestCaseConfig(options: UseTestCaseConfigOptions = {}) {
     }
     if (!dimensionSearchQuery.value) return dims
     const query = dimensionSearchQuery.value.toLowerCase()
-    return dims.filter(dim =>
-      String(dim?.name || '').toLowerCase().includes(query) ||
-      String(dim?.description || '').toLowerCase().includes(query) ||
-      String(dim?.keywords || '').toLowerCase().includes(query) ||
-      String(dim?.id || '').toLowerCase().includes(query)
-    )
-  })
-
-  const e2eFilteredDimensions = computed(() => {
-    let dims = availableDimensions.value
-    if (dimensionFilterIdSet.value.size > 0) {
-      dims = dims.filter(dim => dimensionFilterIdSet.value.has(Number(dim.id)))
-    }
-    if (!e2eDimensionSearchQuery.value) return dims
-    const query = e2eDimensionSearchQuery.value.toLowerCase()
     return dims.filter(dim =>
       String(dim?.name || '').toLowerCase().includes(query) ||
       String(dim?.description || '').toLowerCase().includes(query) ||
@@ -140,7 +124,6 @@ export function useTestCaseConfig(options: UseTestCaseConfigOptions = {}) {
   return {
     availableDimensions,
     dimensionSearchQuery,
-    e2eDimensionSearchQuery,
     dimensionsLoading,
     dimensionsError,
     updateDimensionFilter,
@@ -148,7 +131,6 @@ export function useTestCaseConfig(options: UseTestCaseConfigOptions = {}) {
     hasAudioType,
     groupNameTypeOptions,
     filteredDimensions,
-    e2eFilteredDimensions,
     dimensionCount,
     isDimensionSelected,
     toggleDimensionSelection,
