@@ -252,7 +252,7 @@ class TagCrudService:
                 tag.description = (data['description'] or '')[:DESCRIPTION_MAX_LENGTH] if data['description'] else None
             if data.get('color') is not None:
                 tag.color = data['color']
-            if data.get('category_id') is not None:
+            if 'category_id' in data:
                 tag.category_id = category_id if category_id else None
             # INT-466：可见性切换（共享写入口，None 不更新；值校验对齐 Visibility 二值）
             if data.get('visibility') is not None:

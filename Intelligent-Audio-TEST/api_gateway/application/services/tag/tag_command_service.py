@@ -135,6 +135,10 @@ class TagCommandService:
             return error_response(f"请求数据验证失败: {str(e)}")
 
         data_dict = data.model_dump(by_alias=False, exclude_none=True)
+        # INT-1334：显式传入 category_id=null（未分类）时保留该键，转发 task_service 清空分类；
+        # 否则 exclude_none 丢弃后单条更新与批量改分类口径不一致（批量 batch_update_category 支持 null 清空）
+        if 'category_id' in data.model_fields_set:
+            data_dict['category_id'] = data.category_id
 
         # INT-466：admin 修改私有标签落 PRIVATE_RESOURCE_ACCESS 审计（旁路预取，仅 admin 取数）
         from api_gateway.application.services.visibility.visibility_audit import (
