@@ -34,66 +34,77 @@ _CLIENT_INTERCEPTORS = [client_log_interceptor, client_worker_context_intercepto
                         client_user_context_interceptor, client_deadline_interceptor]
 
 
+def _grpc_channel_options():
+    """gRPC channel 收发上限（INT-1224）：grpcio 默认 4MiB，聚合查询响应
+    （如用例标签视图 view=tag perPage=50 实测 4.07MiB）可能超限，显式放大。
+    服务端 server 侧需同步设置（task_service/interfaces/grpc/server.py）。"""
+    _max_message_bytes = BaseConfig.GRPC_MAX_MESSAGE_MB * 1024 * 1024
+    return [
+        ('grpc.max_send_message_length', _max_message_bytes),
+        ('grpc.max_receive_message_length', _max_message_bytes),
+    ]
+
+
 # ==================== channel 复用工厂 ====================
 
 @lru_cache(maxsize=1)
 def _get_e2e_channel():
     """e2e_test_service 共享 channel（P2.5 后仅 ExecutionService）"""
-    chan = grpc.insecure_channel(E2E_GRPC_ADDR)
+    chan = grpc.insecure_channel(E2E_GRPC_ADDR, options=_grpc_channel_options())
     return grpc.intercept_channel(chan, *_CLIENT_INTERCEPTORS)
 
 
 @lru_cache(maxsize=1)
 def _get_audio_channel():
     """audio_service 共享 channel"""
-    chan = grpc.insecure_channel(AUDIO_GRPC_ADDR)
+    chan = grpc.insecure_channel(AUDIO_GRPC_ADDR, options=_grpc_channel_options())
     return grpc.intercept_channel(chan, *_CLIENT_INTERCEPTORS)
 
 
 @lru_cache(maxsize=1)
 def _get_device_channel():
     """device_service 共享 channel"""
-    chan = grpc.insecure_channel(DEVICE_GRPC_ADDR)
+    chan = grpc.insecure_channel(DEVICE_GRPC_ADDR, options=_grpc_channel_options())
     return grpc.intercept_channel(chan, *_CLIENT_INTERCEPTORS)
 
 
 @lru_cache(maxsize=1)
 def _get_task_channel():
     """task_service 共享 channel"""
-    chan = grpc.insecure_channel(TASK_GRPC_ADDR)
+    chan = grpc.insecure_channel(TASK_GRPC_ADDR, options=_grpc_channel_options())
     return grpc.intercept_channel(chan, *_CLIENT_INTERCEPTORS)
 
 
 @lru_cache(maxsize=1)
 def _get_api_test_channel():
     """api_test_service 共享 channel"""
-    chan = grpc.insecure_channel(API_TEST_GRPC_ADDR)
+    chan = grpc.insecure_channel(API_TEST_GRPC_ADDR, options=_grpc_channel_options())
     return grpc.intercept_channel(chan, *_CLIENT_INTERCEPTORS)
 
 
 @lru_cache(maxsize=1)
 def _get_evaluation_channel():
     """evaluation_service 共享 channel"""
-    chan = grpc.insecure_channel(EVALUATION_GRPC_ADDR)
+    chan = grpc.insecure_channel(EVALUATION_GRPC_ADDR, options=_grpc_channel_options())
     return grpc.intercept_channel(chan, *_CLIENT_INTERCEPTORS)
 
 
 @lru_cache(maxsize=1)
 def _get_algorithm_channel():
     """algorithm_service 共享 channel"""
-    chan = grpc.insecure_channel(ALGORITHM_GRPC_ADDR)
+    chan = grpc.insecure_channel(ALGORITHM_GRPC_ADDR, options=_grpc_channel_options())
     return grpc.intercept_channel(chan, *_CLIENT_INTERCEPTORS)
 
 
 @lru_cache(maxsize=1)
 def _get_report_channel():
     """report_service 共享 channel"""
-    chan = grpc.insecure_channel(REPORT_GRPC_ADDR)
+    chan = grpc.insecure_channel(REPORT_GRPC_ADDR, options=_grpc_channel_options())
     return grpc.intercept_channel(chan, *_CLIENT_INTERCEPTORS)
 
 
 @lru_cache(maxsize=1)
 def _get_auth_channel():
     """auth_service 共享 channel"""
-    chan = grpc.insecure_channel(AUTH_GRPC_ADDR)
+    chan = grpc.insecure_channel(AUTH_GRPC_ADDR, options=_grpc_channel_options())
     return grpc.intercept_channel(chan, *_CLIENT_INTERCEPTORS)

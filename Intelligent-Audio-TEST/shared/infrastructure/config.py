@@ -150,6 +150,12 @@ class BaseConfig:
     AUTH_SERVICE_HOST: str = _get_env('AUTH_SERVICE_HOST', 'localhost')
     AUTH_SERVICE_GRPC_PORT: int = _get_int('AUTH_SERVICE_GRPC_PORT', 51069)
 
+    # --- gRPC 消息大小上限（INT-1224）---
+    # grpcio 默认收发上限 4MiB：用例标签视图等聚合查询响应（view=tag perPage=50
+    # 真实库实测 4.07MiB）超过默认上限 → RESOURCE_EXHAUSTED。显式放大，客户端
+    # channel 与服务端 server 两侧需同步设置（对齐 transfer_agent 既有做法）。
+    GRPC_MAX_MESSAGE_MB: int = _get_int('GRPC_MAX_MESSAGE_MB', 32)
+
     # --- gRPC 客户端默认 deadline（INT-54）---
     # 未显式传 timeout 的 gRPC 客户端调用统一注入该 deadline（秒）。
     # 依赖服务「接受连接但不响应」时，无 deadline 的调用在 grpc._channel._blocking
