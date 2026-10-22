@@ -61,6 +61,8 @@ API管理页面用于管理测试API接口，位于设备管理页面的"测试A
 
 > **实现说明**：API 添加/编辑弹窗为**全局动态表单弹窗**（`CRUDFormModal`，由 `useDeviceManagement.addDevice()/editDevice()` 经 `modalManager.open(MODAL_TYPES.ADD_DEVICE / EDIT_DEVICE)` 打开），表单字段由 `generateDeviceFields('api')` 统一生成，其中 `algorithmType` 字段通过 `action: 'loadAlgorithmTypes'` 动态加载选项（`GET /api/v1/algorithm/options`）。
 
+> **口径说明（INT-1223/1229）**：**API 端点配置（`api_endpoints`）为被测 API 的主配置入口**；下表单示意「Master入口URL」对应 `api_url`，**可选兜底**（执行链 `_get_vendor_api_url`/`_resolve_endpoint` 均 api_endpoints 优先 → 回退 api_url）。前端表单 `apiUrl` 已放开必填，空值提交归一 `null`（防 update 覆盖既有 api_url）。
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  添加测试API / 编辑测试API（CRUDFormModal 动态表单）                       │
