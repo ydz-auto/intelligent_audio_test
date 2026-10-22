@@ -1,0 +1,118 @@
+{
+  "light": [
+    {
+      "tag": "report-statistics",
+      "absent_hits": [],
+      "api": [],
+      "console_errors": []
+    },
+    {
+      "tag": "logview",
+      "absent_hits": [],
+      "api": [
+        "http://127.0.0.1:5540/api/v1/algorithm/options",
+        "http://127.0.0.1:5540/api/v1/logs"
+      ],
+      "console_errors": []
+    },
+    {
+      "tag": "testcase-manager",
+      "absent_hits": [
+        "端到端",
+        "API测试"
+      ],
+      "api": [
+        "http://127.0.0.1:5540/api/v1/algorithm/options",
+        "http://127.0.0.1:5540/api/v1/evaluation/categories",
+        "http://127.0.0.1:5540/api/v1/evaluation/dimensions",
+        "http://127.0.0.1:5540/api/v1/favorites",
+        "http://127.0.0.1:5540/api/v1/groups",
+        "http://127.0.0.1:5540/api/v1/playback-devices"
+      ],
+      "console_errors": []
+    },
+    {
+      "tag": "user-guide",
+      "absent_hits": [],
+      "api": [],
+      "console_errors": []
+    },
+    {
+      "tag": "about",
+      "absent_hits": [],
+      "api": [
+        "http://127.0.0.1:5540/api/v1/auth/mode",
+        "http://127.0.0.1:5540/api/v1/logs/stats",
+        "http://127.0.0.1:5540/api/v1/testcases"
+      ],
+      "console_errors": []
+    }
+  ],
+  "dark": [
+    {
+      "tag": "report-statistics",
+      "absent_hits": [],
+      "api": [
+        "http://127.0.0.1:5540/api/v1/algorithm/definitions",
+        "http://127.0.0.1:5540/api/v1/tasks",
+        "http://127.0.0.1:5540/api/v1/tasks/stats"
+      ],
+      "console_errors": []
+    },
+    {
+      "tag": "logview",
+      "absent_hits": [],
+      "api": [
+        "http://127.0.0.1:5540/api/v1/algorithm/options",
+        "http://127.0.0.1:5540/api/v1/home/stats/summary",
+        "http://127.0.0.1:5540/api/v1/logs",
+        "http://127.0.0.1:5540/api/v1/tasks/stats"
+      ],
+      "console_errors": []
+    },
+    {
+      "tag": "testcase-manager",
+      "absent_hits": [
+        "端到端",
+        "API测试"
+      ],
+      "api": [
+        "http://127.0.0.1:5540/api/v1/algorithm/options",
+        "http://127.0.0.1:5540/api/v1/evaluation/categories",
+        "http://127.0.0.1:5540/api/v1/evaluation/dimensions",
+        "http://127.0.0.1:5540/api/v1/favorites",
+        "http://127.0.0.1:5540/api/v1/groups",
+        "http://127.0.0.1:5540/api/v1/playback-devices"
+      ],
+      "console_errors": []
+    },
+    {
+      "tag": "user-guide",
+      "absent_hits": [],
+      "api": [],
+      "console_errors": []
+    },
+    {
+      "tag": "about",
+      "absent_hits": [],
+      "api": [
+        "http://127.0.0.1:5540/api/v1/auth/mode",
+        "http://127.0.0.1:5540/api/v1/logs/stats",
+        "http://127.0.0.1:5540/api/v1/testcases"
+      ],
+      "console_errors": []
+    }
+  ],
+  "module_options": {
+    "light": [
+      "所有模块",
+      "API模块",
+      "设备管理"
+    ],
+    "dark": [
+      "所有模块",
+      "API模块",
+      "设备管理"
+    ]
+  }
+}
