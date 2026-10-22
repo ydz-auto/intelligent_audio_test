@@ -251,7 +251,10 @@ export function useTestCaseListContainer(props: any, emit: any) {
   return {
     // props 暴露给模板的别名
     tags: props.tags,
-    isLoading: props.isLoading,
+    // INT-1296：isLoading 必须响应式透传——直接返回 props.isLoading 会拿到
+    // setup 时的静态快照，加载中状态变化无法驱动模板（加载指示/空态守卫失效）。
+    // computed 保证父级 store isLoading 变化时模板同步刷新。
+    isLoading: computed(() => props.isLoading),
     // 本地状态
     selectedCases,
     playbackDevices,

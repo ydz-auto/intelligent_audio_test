@@ -205,7 +205,13 @@
         </div>
       </div>
       
-      <div v-if="paginatedGroups.length === 0 && !error" class="empty-state">
+      <!-- INT-1296：首屏加载中显示加载指示，不以「没有找到分组」空态误导（真实栈 groups 请求可达 15s+） -->
+      <div v-if="isLoading && !error && paginatedGroups.length === 0" class="group-loading">
+        <i class="fas fa-spinner fa-spin"></i>
+        <span>加载中...</span>
+      </div>
+
+      <div v-if="paginatedGroups.length === 0 && !error && !isLoading" class="empty-state">
         <i class="fas fa-inbox"></i>
         <p>没有找到测试用例分组</p>
         <p class="empty-state-hint">请尝试添加新的测试用例或创建分组</p>
@@ -283,13 +289,19 @@
           </div>
         </div>
 
-        <div v-if="sortedTags.length === 0 && !error" class="empty-state">
+        <!-- INT-1296：标签视图首屏加载中同样显示加载指示，不以「没有找到标签」空态误导 -->
+        <div v-if="tagViewLoading && !error && sortedTags.length === 0" class="group-loading">
+          <i class="fas fa-spinner fa-spin"></i>
+          <span>加载中...</span>
+        </div>
+
+        <div v-if="sortedTags.length === 0 && !error && !tagViewLoading" class="empty-state">
           <i class="fas fa-tags"></i>
           <p>没有找到标签分组的测试用例</p>
           <p class="empty-state-hint">请为测试用例添加标签</p>
         </div>
 
-        <div v-if="tagViewLoading" class="loading-more">
+        <div v-if="tagViewLoading && sortedTags.length > 0" class="loading-more">
           <i class="fas fa-spinner fa-spin"></i>
           <span>加载更多标签...</span>
         </div>
