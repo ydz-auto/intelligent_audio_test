@@ -27,7 +27,7 @@
         :selected-task-ids="selectedTaskIds"
         :loading="allCandidatesLoading"
         :is-error="allCandidatesError"
-        :on-retry="loadAllCandidates"
+        :on-retry="loadPickableTasks"
         :on-toggle="toggleTask"
         :on-select-all="selectAllTasks"
         :on-clear="clearTasks"
@@ -471,64 +471,98 @@ const expandedKeys = ref<Set<string>>(new Set());
 const phase = ref<'tasks' | 'results'>(props.presetTaskIds?.length ? 'results' : 'tasks');
 const selectedTaskIds = ref<Set<number>>(new Set(props.presetTaskIds?.map(Number) ?? []));
 
-/** 阶段 1 任务行聚合数据源：全量候选（EMPTY 筛选，不受阶段 2 任务筛选影响，§3.8.2 数据源=候选行聚合） */
-const allCandidates = ref<PickCandidate[]>([]);
+/**
+ * 阶段 1 任务行数据源：终态任务列表（GET /tasks）+ 按任务候选计数。
+ * INT-1286：不再逐页拉全候选——真实库候选 3614 条逐页（per_page=200×19 页）单页 8~60s
+ * 且偶发 task_service gRPC Deadline Exceeded（400 落控制台 SEVERE），改为轻量任务列表
+ * 出任务行（≤30s），候选计数按任务非阻塞渐进填充，偶发失败有重试且不落 SEVERE。
+ */
+const FINISHED_TASK_STATUSES = ['completed', 'failed', 'stopped'];
 const allCandidatesLoading = ref(false);
 const allCandidatesError = ref(false);
+/** 阶段 1 任务行原始集（count 由按任务候选计数渐进填充，null → UI「—」） */
+const taskRowsRaw = ref<PickTaskRow[]>([]);
 
-async function loadAllCandidates() {
+/** 终态任务列表拉取（GET /tasks 分页并行；不查候选行，避开候选接口慢/超时） */
+async function fetchTerminalTasks(): Promise<PickTaskRow[]> {
+  // silentError：阶段 1 加载失败走 UI 重试态（PickTaskStage isError + 重试），不落控制台 SEVERE
+  const first = await tasksApi.getAll({ perPage: 50, page: 1, status: undefined }, { silentError: true }) as any;
+  const pages = Math.max(1, Number(first.pages ?? 1));
+  const rest = pages > 1
+    ? await Promise.all(
+        Array.from({ length: pages - 1 }, (_, i) =>
+          tasksApi.getAll({ perPage: 50, page: i + 2, status: undefined }, { silentError: true }) as any))
+    : [];
+  const map = new Map<number, PickTaskRow>();
+  for (const pageRes of [first, ...rest]) {
+    for (const t of (pageRes.items ?? [])) {
+      if (!FINISHED_TASK_STATUSES.includes(String(t.status))) continue;
+      const id = Number(t.id);
+      if (map.has(id)) continue;
+      map.set(id, {
+        taskId: id,
+        taskName: t.name || `任务 ${id}`,
+        executionStatus: String(t.status),
+        createdAt: t.createdAt ?? null,
+        count: null,
+      });
+    }
+  }
+  return [...map.values()];
+}
+
+/** 阶段 1 任务行加载：任务列表出行（≤30s），候选计数非阻塞渐进填充 */
+async function loadPickableTasks() {
   allCandidatesLoading.value = true;
   allCandidatesError.value = false;
   try {
-    // P3：候选行总量可 >200，按页拉满（阶段 1 任务行聚合不丢页尾任务）
-    const items: PickCandidate[] = [];
-    let page = 1;
-    for (;;) {
-      const res = await cherryPickApi.listCandidates({ perPage: 200, page });
-      const batch = res.items ?? [];
-      items.push(...batch);
-      const total = res.total ?? 0;
-      if (batch.length === 0 || (total > 0 && items.length >= total)) break;
-      page += 1;
-    }
-    allCandidates.value = items;
+    const rows = await fetchTerminalTasks();
+    taskRowsRaw.value = rows;
+    pickableTasks.value = rows.map((r) => ({ id: r.taskId, name: r.taskName }));
+    void loadTaskCounts(rows.map((r) => r.taskId));
   } catch (error) {
-    console.error('Failed to load pickable task candidates:', error);
+    console.warn('Failed to load pickable tasks:', error);
     allCandidatesError.value = true;
   } finally {
     allCandidatesLoading.value = false;
   }
 }
 
-/** 阶段 1 任务行（终态候选按 taskId 聚合，按状态/名称排序，§3.8.2） */
-const taskRows = computed<PickTaskRow[]>(() => {
-  const map = new Map<number, PickTaskRow>();
-  for (const c of allCandidates.value) {
-    const cur = map.get(c.taskId);
-    if (cur) {
-      cur.count += 1;
-      if (!cur.createdAt && c.createdAt) cur.createdAt = c.createdAt;
-    } else {
-      map.set(c.taskId, {
-        taskId: c.taskId,
-        taskName: c.taskName || `任务 ${c.taskId}`,
-        executionStatus: c.taskStatus || c.executionStatus,
-        createdAt: c.createdAt ?? null,
-        count: 1,
-      });
+/** 候选计数（阶段 1「{n} 条」）：按任务并行拉候选 total（per_page=1 轻量），
+ *  非阻塞渐进填充；单任务失败静默降级 null（UI「—」），不落控制台 SEVERE */
+const TASK_COUNT_CONCURRENCY = 6;
+async function loadTaskCounts(taskIds: number[]) {
+  let cursor = 0;
+  const worker = async () => {
+    for (;;) {
+      const id = taskIds[cursor++];
+      if (id === undefined) break;
+      try {
+        const res = await cherryPickApi.listCandidates({ taskIds: [id], perPage: 1 }, { silentError: true });
+        const row = taskRowsRaw.value.find((r) => r.taskId === id);
+        if (row) row.count = res.total ?? 0;
+      } catch {
+        // 单任务计数失败保持 null（UI「—」），不重试不报错
+      }
     }
-  }
-  return [...map.values()].sort(
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(TASK_COUNT_CONCURRENCY, taskIds.length) }, () => worker()),
+  );
+}
+
+/** 阶段 1 任务行（按状态/名称排序，§3.8.2；数据源=终态任务列表，计数渐进填充） */
+const taskRows = computed<PickTaskRow[]>(() =>
+  [...taskRowsRaw.value].sort(
     (a, b) =>
       getTaskStatusOrder(a.executionStatus) - getTaskStatusOrder(b.executionStatus) ||
       a.taskName.localeCompare(b.taskName, 'zh-CN'),
-  );
-});
+  ),
+);
 
-/** 任务名映射（阶段 2 任务集摘要条；options 兜底补未入候选页的任务名） */
+/** 任务名映射（阶段 2 任务集摘要条；数据源=终态任务列表） */
 const taskNameById = computed(() => {
   const map = new Map<number, string>();
-  for (const c of allCandidates.value) map.set(c.taskId, c.taskName);
   for (const t of pickableTasks.value) if (!map.has(t.id)) map.set(t.id, t.name);
   return map;
 });
@@ -556,12 +590,12 @@ function handleNext() {
 }
 
 /** 阶段 2「更换任务」回阶段 1——翻转状态并加载任务源（§3.8.2）。
- *  preset 直达阶段 2 挂载时 onMounted 只跑 loadCandidates（:1079 分支），allCandidates 从未加载，
+ *  preset 直达阶段 2 挂载时 onMounted 只跑 loadCandidates（:1099 分支），taskRows 从未加载，
  *  须在此补载，否则阶段 1 任务列表恒空且空态无恢复入口（审计 01a15e8a P1）。
- *  全量重拉（非 preset 路径同款），勾选跨阶段保留不清空。 */
+ *  任务列表重拉（非 preset 路径同款），勾选跨阶段保留不清空。 */
 function goChangeTasks() {
   phase.value = 'tasks';
-  loadAllCandidates();
+  loadPickableTasks();
 }
 
 /** 结果类型客户端过滤（UX 审计 P2 修复）：后端候选查询不下发 result_type 参数，
@@ -694,24 +728,16 @@ function timeRangeEnd(): string | undefined {
   return filters.timeRange === 'yesterday' ? today.toISOString() : undefined;
 }
 
+/** 阶段 2 设备筛选选项（设备表全量；任务选项由 loadPickableTasks 填充） */
 async function loadOptions() {
   try {
-    const data = await tasksApi.getAll({ perPage: 100, status: undefined }) as any;
-    const FINISHED = ['completed', 'failed', 'stopped'];
-    pickableTasks.value = (data.items ?? [])
-      .filter((t: any) => FINISHED.includes(String(t.status)))
-      .map((t: any) => ({ id: Number(t.id), name: t.name }));
-    try {
-      const devices = await devicesApi.getAllFlat({ per_page: 100 });
-      deviceOptions.value = (devices ?? []).map((d: any) => ({
-        id: Number(d.id), name: d.name ?? `设备 ${d.id}`,
-      }));
-    } catch (deviceErr) {
-      console.error('Failed to load device options:', deviceErr);
-      deviceOptions.value = [];
-    }
+    const devices = await devicesApi.getAllFlat({ per_page: 100 });
+    deviceOptions.value = (devices ?? []).map((d: any) => ({
+      id: Number(d.id), name: d.name ?? `设备 ${d.id}`,
+    }));
   } catch (error) {
-    console.error('Failed to load pick options:', error);
+    console.error('Failed to load device options:', error);
+    deviceOptions.value = [];
   }
 }
 
@@ -817,7 +843,7 @@ function resetFilters() {
   filters.evaluationStatus = '';
   filters.timeRange = 'all';
   filters.page = 1;
-  if (phase.value === 'tasks') loadAllCandidates(); else loadCandidates();
+  if (phase.value === 'tasks') loadPickableTasks(); else loadCandidates();
 }
 
 // ===== 步骤 2/3：购物车 =====
@@ -992,6 +1018,12 @@ const mergeAlgorithmParams = ref('');
 const mergeConfig = ref('');
 
 async function loadPreview() {
+  if (cartCount.value === 0) {
+    // INT-1286：购物车为空时 preview 无意义（后端 400「购物车为空」），
+    // 下单成功后购物车出清即不再发空 preview，避免控制台 SEVERE
+    preview.value = null;
+    return;
+  }
   try {
     preview.value = await cherryPickApi.preview();
   } catch (error: any) {
@@ -1094,9 +1126,13 @@ function statusText(status?: string | null): string {
 }
 
 onMounted(async () => {
-  // 阶段 1 聚合任务行用全量候选；阶段 2（含预选直达）拉当前任务集候选
-  const tasksLoad = phase.value === 'tasks' ? loadAllCandidates() : loadCandidates();
-  await Promise.all([tasksLoad, loadOptions(), refreshCart(), refreshSets()]);
+  // 阶段 1 任务行/任务名来源=终态任务列表（两阶段都加载：阶段 2 摘要条需任务名，
+  // preset 直达阶段 2 时后台补名称不阻塞候选）；阶段 2（含预选直达）另拉当前任务集候选
+  const tasksLoad = phase.value === 'tasks'
+    ? loadPickableTasks()
+    : (void loadPickableTasks(), Promise.resolve());
+  const candidatesLoad = phase.value === 'results' ? loadCandidates() : Promise.resolve();
+  await Promise.all([tasksLoad, candidatesLoad, loadOptions(), refreshCart(), refreshSets()]);
 });
 
 // 筛选变化 → 回第一页重拉（勾选保持，§6.2 筛选与勾选解耦）+ 会话级记忆持久化
@@ -1111,9 +1147,10 @@ watch(
   },
 );
 
-// 购物车变化（加购/移除/清空/下单）→ 复核摘要重拉（§6.3 复核摘要实时刷新）
+// 购物车变化（加购/移除/清空/下单）→ 复核摘要重拉（§6.3 复核摘要实时刷新）；
+// INT-1286：下单成功后购物车出清不再重拉空 preview（后端 400「购物车为空」落 SEVERE）
 watch(() => cartRevision.value, () => {
-  if (step.value === 'review' || step.value === 'checkout') loadPreview();
+  if ((step.value === 'review' || step.value === 'checkout') && cartCount.value > 0) loadPreview();
 });
 </script>
 

@@ -55,7 +55,7 @@
           <span class="pts-status" :class="statusClass(task.executionStatus)">
             {{ statusLabel(task.executionStatus) }}
           </span>
-          <span class="pts-count">{{ task.count }} 条</span>
+          <span class="pts-count">{{ task.count == null ? '—' : task.count }} 条</span>
           <span class="pts-time">{{ formatTime(task.createdAt) }}</span>
         </div>
       </div>
@@ -90,13 +90,13 @@
  * 数据源 = 候选行聚合的可挑选终态任务集合（按状态/名称排序）。
  */
 
-/** 阶段 1 任务行（候选行按 taskId 聚合） */
+/** 阶段 1 任务行（任务列表数据源；count=候选结果数，加载中/失败 null → UI「—」） */
 export interface PickTaskRow {
   taskId: number;
   taskName: string;
   executionStatus: string;
   createdAt: string | null;
-  count: number;
+  count: number | null;
 }
 
 /** 终态排序权重（§3.8.2 按状态/名称排序：已完成 → 执行失败 → 已停止） */

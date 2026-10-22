@@ -18,6 +18,8 @@ export interface RequestOptions extends RequestInit {
   skipAuthRedirect?: boolean;
   /** INT-1314：请求超时（毫秒）；fetch 分支经 AbortController 实现，IPC 分支透传给主进程 */
   timeout?: number;
+  /** 静默失败（INT-1286：后台/尽力型请求失败不落控制台 SEVERE，调用方自处理错误） */
+  silentError?: boolean;
 }
 
 /**
@@ -233,7 +235,7 @@ export async function request<T = any>(
     const responseData = applyResponseInterceptors(result);
     return responseData as T;
   } catch (err) {
-    console.error(`[API Fetch Error] ${method} ${finalUrl}:`, err);
+    if (!options.silentError) console.error(`[API Fetch Error] ${method} ${finalUrl}:`, err);
     throw err;
   } finally {
     cleanupTimeoutSignal();
