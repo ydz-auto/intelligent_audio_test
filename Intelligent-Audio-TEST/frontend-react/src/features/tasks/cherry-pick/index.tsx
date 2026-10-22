@@ -47,6 +47,7 @@ import {
   getExecutionStatusMeta,
 } from '@/features/tasks/constants'
 import { CartDrawer } from '@/features/tasks/cherry-pick/components/cart-drawer'
+import { ContainerBulkActions } from '@/features/tasks/cherry-pick/components/container-bulk-actions'
 import { MergeTypeFacet } from '@/features/tasks/cherry-pick/components/merge-type-facet'
 import { PickSetPopover } from '@/features/tasks/cherry-pick/components/pick-set-popover'
 import { SourceTraceRow } from '@/features/tasks/cherry-pick/components/source-trace-row'
@@ -71,12 +72,19 @@ export function CherryPickTab({
   const [search, setSearch] = useState('')
   const [mergeType, setMergeType] = useState<'all' | 'whole' | 'picked'>('all')
   const [cartOpen, setCartOpen] = useState(false)
+  /** 容器级批量操作勾选 id 集（§2.3 DataTablePage「☑ 选择」列；INT-1278 接线） */
+  const [selected, setSelected] = useState<Set<number>>(new Set())
 
   // 挂载即拉取购物车镜像 + 挑选集（§6.3 同步点：角标/页签计数数据源）
   useEffect(() => {
     void usePickCartStore.getState().refreshCart()
     void usePickCartStore.getState().refreshPickSets()
   }, [])
+
+  // 筛选变化清空勾选（§2.3 容器列表勾选集随当前加载集；避免跨筛选残留勾选）
+  useEffect(() => {
+    setSelected(new Set())
+  }, [search, mergeType])
 
   const containersQuery = useCherryPickContainers({
     search: search.trim() || undefined,
@@ -94,6 +102,21 @@ export function CherryPickTab({
     }
     return { total: containers.length, whole, picked }
   }, [containers])
+
+  /** 全选当前加载容器（§2.3 DataTablePage「☑ 选择」表头） */
+  const allChecked = containers.length > 0 && containers.every((c) => selected.has(c.id))
+  const someChecked = containers.some((c) => selected.has(c.id)) && !allChecked
+  const toggleAll = (checked: boolean) => {
+    setSelected(checked ? new Set(containers.map((c) => c.id)) : new Set())
+  }
+  const toggleRow = (id: number, checked: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
 
   return (
     <div className='flex min-h-0 flex-1 flex-col gap-3'>
@@ -210,7 +233,14 @@ export function CherryPickTab({
             <table className='w-full min-w-[860px] text-[13px]'>
               <thead>
                 <tr className='bg-[var(--table-header)] text-xs'>
-                  <th className='w-9 px-3 py-2 text-left font-medium'>☑ 选择</th>
+                  <th className='w-9 px-3 py-2 text-left font-medium'>
+                    <Checkbox
+                      checked={allChecked}
+                      indeterminate={someChecked}
+                      aria-label='全选合并容器'
+                      onCheckedChange={toggleAll}
+                    />
+                  </th>
                   <th className='px-3 py-2 text-left font-medium'>任务名称</th>
                   <th className='px-3 py-2 text-left font-medium'>合并方式</th>
                   <th className='px-3 py-2 text-left font-medium'>执行状态</th>
@@ -226,6 +256,8 @@ export function CherryPickTab({
                   <ContainerRow
                     key={container.id}
                     container={container}
+                    selected={selected.has(container.id)}
+                    onToggle={(checked) => toggleRow(container.id, checked)}
                     onQuickView={(c) =>
                       void navigate({ to: '/tasks/$tab', params: { tab: String(c.id) } })
                     }
@@ -234,6 +266,12 @@ export function CherryPickTab({
               </tbody>
             </table>
           </div>
+          {/* 容器级批量操作浮条（§2.3 DataTablePage 批量浮条；INT-1278 接线） */}
+          <ContainerBulkActions
+            containers={containers}
+            selected={selected}
+            onClear={() => setSelected(new Set())}
+          />
         </div>
       )}
 
@@ -248,9 +286,14 @@ export function CherryPickTab({
 
 function ContainerRow({
   container,
+  selected,
+  onToggle,
   onQuickView,
 }: {
   container: CherryPickContainer
+  /** 勾选态（受控；INT-1278 容器级批量操作接线，不再禁用） */
+  selected: boolean
+  onToggle: (checked: boolean) => void
   onQuickView: (container: CherryPickContainer) => void
 }) {
   const { hasPermission } = usePermissions()
@@ -264,10 +307,9 @@ function ContainerRow({
       <tr className='hover:bg-muted/40 border-border/60 border-b transition-colors'>
         <td className='px-3 py-2'>
           <Checkbox
+            checked={selected}
             aria-label={`选择合并容器「${container.name}」`}
-            title='容器级批量操作待接线'
-            disabled
-            className='opacity-40'
+            onCheckedChange={onToggle}
           />
         </td>
         <td className='max-w-64 px-3 py-2'>
