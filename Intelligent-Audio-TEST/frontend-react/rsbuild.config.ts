@@ -28,27 +28,22 @@ export default defineConfig(({ envMode }) => {
     },
     server: {
       host: '0.0.0.0',
-      // 3000 被 newAPI 参照实例（D:\00_code\newAPI\new-api.exe --port 3000）常驻占用（负责人 2026-10-15），
-      // React 可视稿 dev server 钉死 5273（避开 5173 Vue 主前端家族与 6xxx UI 测试栈）；strictPort 失败即报错，禁止静默漂移。
+      // 临时：真实库走查（INT-1205）指向真实库栈 5700（主库 intelligent_audio_test），
+      // dev 端口用 5300~5399 段空闲端口。走查结束会还原为 5273 + 5000。
       port: 5273,
       strictPort: true,
-      // 接线基座（INT-605）：/api 代理到 api_gateway（service_ports.py gateway=5000；
-      // 旧 Vue .env.development VITE_API_TARGET=http://localhost:5000 同款）。
-      // INT-763：/ws + /socket.io 代理到同一网关——Socket.IO /ws/logs 实时日志通道
-      // 引擎挂 /socket.io（app.py:193 mount），命名空间 /ws/logs 走协议内 handshake；
-      // ws:true 启用 engine upgrade。
       proxy: {
         '/api': {
-          target: 'http://localhost:5000',
+          target: 'http://localhost:15000',
           changeOrigin: true,
         },
         '/ws': {
-          target: 'http://localhost:5000',
+          target: 'http://localhost:15000',
           changeOrigin: true,
           ws: true,
         },
         '/socket.io': {
-          target: 'http://localhost:5000',
+          target: 'http://localhost:15000',
           changeOrigin: true,
           ws: true,
         },
