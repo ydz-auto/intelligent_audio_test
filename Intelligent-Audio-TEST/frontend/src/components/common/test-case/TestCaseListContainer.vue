@@ -234,10 +234,6 @@
         <p>没有找到测试用例分组</p>
         <p class="empty-state-hint">请尝试添加新的测试用例或创建分组</p>
       </div>
-        <i class="fas fa-inbox"></i>
-        <p>没有找到测试用例分组</p>
-        <p class="empty-state-hint">请尝试添加新的测试用例或创建分组</p>
-      </div>
 
       <div v-if="isLoadingMore" class="loading-more">
         <i class="fas fa-spinner fa-spin"></i>
