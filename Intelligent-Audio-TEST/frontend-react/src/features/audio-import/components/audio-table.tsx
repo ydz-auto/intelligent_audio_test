@@ -45,6 +45,8 @@ export type AudioTableProps = {
   canDelete: boolean
   sortOrder: 'asc' | 'desc'
   onSortChange: () => void
+  /** 是否可客户端排序（列表服务端分页时后端仅 created_at desc，排序钮隐藏） */
+  sortable?: boolean
   onEmptyUpload: () => void
   onPreview: (audio: AudioAsset) => void
   onMetadata: (audio: AudioAsset) => void
@@ -162,18 +164,22 @@ export function AudioTable(props: AudioTableProps) {
               <th className='px-3 py-2 text-left font-medium'>源语言</th>
               <th className='px-3 py-2 text-left font-medium'>标签</th>
               <th className='px-3 py-2 text-left font-medium'>
-                <button
-                  type='button'
-                  onClick={props.onSortChange}
-                  className='hover:text-foreground inline-flex items-center gap-1 transition-colors'
-                >
-                  创建时间
-                  {props.sortOrder === 'desc' ? (
-                    <ChevronDown aria-hidden='true' className='size-3' />
-                  ) : (
-                    <ChevronUp aria-hidden='true' className='size-3' />
-                  )}
-                </button>
+                {props.sortable === false ? (
+                  <span>创建时间</span>
+                ) : (
+                  <button
+                    type='button'
+                    onClick={props.onSortChange}
+                    className='hover:text-foreground inline-flex items-center gap-1 transition-colors'
+                  >
+                    创建时间
+                    {props.sortOrder === 'desc' ? (
+                      <ChevronDown aria-hidden='true' className='size-3' />
+                    ) : (
+                      <ChevronUp aria-hidden='true' className='size-3' />
+                    )}
+                  </button>
+                )}
               </th>
               <th className='w-14 px-3 py-2 text-right font-medium'>操作</th>
             </tr>

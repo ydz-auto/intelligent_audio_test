@@ -7,7 +7,7 @@
  * + 批量浮条（§5.6）+ 分页 Portal（§3.9）。
  * 数据经 infrastructure/api/audios-api.ts（INT-645 切真实后端，client.ts 统一 fetch）。
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Download, FolderOpen, List, MoreHorizontal, Plus, RefreshCw, Tags, Trash2, UploadCloud } from 'lucide-react'
 
@@ -53,7 +53,6 @@ import { AudioFeatureAnalysisDialog } from '@/features/audio-import/components/m
 import { AudioPlaybackHistoryDialog } from '@/features/audio-import/components/modals/audio-playback-history-dialog'
 import { AudioBatchTagsDialog } from '@/features/audio-import/components/modals/audio-batch-tags-dialog'
 import { AudioBatchOperationDialog } from '@/features/audio-import/components/modals/audio-batch-operation-dialog'
-import { durationBucket } from '@/features/audio-import/lib/format'
 import type { AudioAsset } from '@/domain/models/audio'
 import type {
   AudioBulkDialogState,
@@ -82,11 +81,6 @@ export function AudioImportPage() {
   const canConvert = hasPermission('audio:convert')
   const canFolder = hasPermission('audio:folder')
 
-  const audiosQuery = useAudioList()
-  const tagsQuery = useAudioTags()
-  const folderTreeQuery = useFolderTree()
-  const { remove, batch, invalidate } = useAudioMutations()
-
   const [view, setView] = useState<AudioViewMode>('list')
   const [filters, setFilters] = useState<AudioListFilters>(DEFAULT_FILTERS)
   const [page, setPage] = useState(1)
@@ -106,56 +100,70 @@ export function AudioImportPage() {
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false)
   const [confirmPending, setConfirmPending] = useState(false)
 
-  const audios = audiosQuery.data?.items ?? []
+  const audiosQuery = useAudioList({
+    page,
+    perPage: pageSize,
+    search: filters.search,
+    format: filters.format,
+    audioType: filters.audioType,
+    sampleRate: filters.sampleRate,
+    duration: filters.duration,
+    tags: filters.tags,
+    tagMode: filters.tagMode,
+    // 标签 OR 模式与文件夹视图需要跨页完整行集（后端不表达 OR / 列表接口无 folder 过滤）
+    allRows: view === 'folder' || (filters.tags.length > 0 && filters.tagMode === 'or'),
+  })
+  const tagsQuery = useAudioTags()
+  const folderTreeQuery = useFolderTree()
+  const { remove, batch, invalidate } = useAudioMutations()
+
   const tags = tagsQuery.data ?? []
   const folderTree = folderTreeQuery.data ?? []
 
-  /* ───────── 过滤 / 排序 / 分页 ───────── */
+  /* ───────── 服务端分页 / OR 标签客户端过滤 / 排序 ───────── */
 
-  const filtered = useMemo(() => {
-    let rows = audios
-    const keyword = filters.search.trim().toLowerCase()
-    if (keyword) {
-      rows = rows.filter(
-        (row) =>
-          row.name.toLowerCase().includes(keyword) ||
-          (row.asrText ?? '').toLowerCase().includes(keyword)
-      )
-    }
-    if (filters.format) rows = rows.filter((row) => row.format === filters.format)
-    if (filters.audioType) rows = rows.filter((row) => row.audioType === filters.audioType)
-    if (filters.sampleRate) {
-      rows = rows.filter(
-        (row) => row.sampleRate != null && String(row.sampleRate) === filters.sampleRate
-      )
-    }
-    if (filters.duration) {
-      rows = rows.filter((row) => durationBucket(row.duration) === filters.duration)
-    }
-    if (filters.tags.length > 0) {
-      rows = rows.filter((row) =>
-        filters.tagMode === 'or'
-          ? filters.tags.some((tag) => row.tags.includes(tag))
-          : filters.tags.every((tag) => row.tags.includes(tag))
-      )
-    }
-    return rows
-  }, [audios, filters])
+  // 后端仅 AND 标签语义（GET tags 参数 422 / POST 仅 AND）；OR 标签置 allRows 拉全量行客户端过滤
+  const tagsClientSide =
+    filters.tags.length > 0 && filters.tagMode === 'or'
+  const needAllRows = view === 'folder' || tagsClientSide
 
+  // 服务端已做 scalar facet（+ AND 标签）过滤；OR 标签在此按全量行客户端过滤
+  const displayRows = tagsClientSide
+    ? (audiosQuery.data?.items ?? []).filter((row) =>
+        filters.tags.some((tag) => row.tags.includes(tag))
+      )
+    : (audiosQuery.data?.items ?? [])
+
+  // 排序：服务端分页按后端 created_at desc（列表排序钮隐藏）；allRows 模式才可客户端排序
   const sorted = useMemo(() => {
-    const rows = [...filtered]
+    if (!needAllRows) return displayRows
+    const rows = [...displayRows]
     rows.sort((a, b) => {
-      const diff = new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
+      const diff =
+        new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
       return sortOrder === 'desc' ? diff : -diff
     })
     return rows
-  }, [filtered, sortOrder])
+  }, [displayRows, needAllRows, sortOrder])
 
-  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize))
+  const displayTotal = tagsClientSide
+    ? sorted.length
+    : (audiosQuery.data?.total ?? sorted.length)
+  const pageCount = Math.max(1, Math.ceil(displayTotal / pageSize))
   const safePage = Math.min(page, pageCount)
-  const pageRows = useMemo(
-    () => sorted.slice((safePage - 1) * pageSize, safePage * pageSize),
-    [sorted, safePage, pageSize]
+
+  // 越界兜底：筛选/删除后总页数收缩时把页码拉回
+  useEffect(() => {
+    if (page > 0 && pageCount > 0 && page > pageCount) setPage(pageCount)
+  }, [page, pageCount])
+
+  // 列表视图行：服务端分页时即当前页；OR 标签客户端过滤时按本地分页切片
+  const listRows = useMemo(
+    () =>
+      tagsClientSide
+        ? sorted.slice((safePage - 1) * pageSize, safePage * pageSize)
+        : sorted,
+    [tagsClientSide, sorted, safePage, pageSize]
   )
 
   const isFiltered =
@@ -197,8 +205,9 @@ export function AudioImportPage() {
 
   const currentRowAudio = useMemo(() => {
     if (!rowDialog) return null
-    return audios.find((a) => a.id === rowDialog.audioId) ?? null
-  }, [rowDialog, audios])
+    // 列表页行集=当前页、文件夹视图行集=全量行（allRows），弹窗音频都能在行集内找到
+    return sorted.find((a) => a.id === rowDialog.audioId) ?? null
+  }, [rowDialog, sorted])
 
   const handleDownload = async (audio: AudioAsset) => {
     // §5.3.1：二次取流（后端 stream 返 JSON 预签名 URL，前端再取字节流）
@@ -306,7 +315,7 @@ export function AudioImportPage() {
           <span className='flex flex-wrap items-center gap-2'>
             音频管理
             <Badge variant='outline' className='font-normal tabular-nums'>
-              共 {audiosQuery.data?.stats.totalFiles ?? audios.length} 个
+              共 {displayTotal} 个
             </Badge>
           </span>
         </SectionPageLayout.Title>
@@ -430,11 +439,12 @@ export function AudioImportPage() {
             {view === 'list' ? (
               <div className='min-h-0 flex-1 overflow-y-auto'>
                 <AudioTable
-                  rows={pageRows}
+                  rows={listRows}
                   loading={audiosQuery.isLoading}
-                  total={sorted.length}
+                  total={displayTotal}
                   searchKeyword={filters.search}
                   selectedIds={selectedIds}
+                  sortable={needAllRows}
                   {...audioTableCallbacks}
                 />
               </div>
@@ -470,7 +480,7 @@ export function AudioImportPage() {
                   page={safePage}
                   pageCount={pageCount}
                   pageSize={pageSize}
-                  total={sorted.length}
+                  total={displayTotal}
                   onPageChange={setPage}
                   onPageSizeChange={(size) => {
                     setPageSize(size)
