@@ -60,6 +60,7 @@ import '../../assets/styles/layouts/main.css'
 import { ref } from 'vue';
 import { dataTransferPort } from '../../composables/task/dataTransferPort';
 import { downloadBlob } from '../../utils/utils';
+import { toUserErrorMessage } from '../../utils/errorMessage';
 
 const props = defineProps<{
   tasks: Array<{ id: number | string; name: string; status: string }>;
@@ -85,7 +86,8 @@ const startExport = async () => {
     emit('exported');
     emit('close');
   } catch (e: any) {
-    errorMessage.value = e?.message || '导出失败，请稍后重试';
+    // INT-1285：导出失败经 toUserErrorMessage 降级，不把原始 gRPC/RPC 异常文本直出给用户
+    errorMessage.value = toUserErrorMessage(e, '导出失败，请稍后重试');
   } finally {
     exporting.value = false;
   }
