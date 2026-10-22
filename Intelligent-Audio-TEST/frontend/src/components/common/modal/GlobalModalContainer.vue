@@ -116,42 +116,10 @@ import '../../../assets/styles/layouts/main.css'
 import { computed, watch } from 'vue'
 import { getModalManager } from '../../../composables/modal/useModal'
 import { useUploadState } from '../../../composables/upload/useUploadState'
-import { MODAL_TYPES } from '../../../composables/modal/constants'
 import type { ActiveModal } from '../../../composables/modal/types'
 import BasicModal from './BasicModal.vue'
 import { testcasesPort } from '../../../composables/testCase/testcasesPort'
 import { useNotification } from '@/composables/modal/useNotification'
-import TestCaseModal from '../test-case/TestCaseModal/index.vue'
-import AddTestCaseModal from '../test-case/AddTestCaseModal.vue'
-import ModalConfirm from './ModalConfirm.vue'
-import InputConfirmModal from './InputConfirmModal.vue'
-import APIEditModal from './APIEditModal.vue'
-import DetailViewModal from './DetailViewModal.vue'
-import ImportExportModal from './ImportExportModal.vue'
-import CRUDFormModal from './CRUDFormModal.vue'
-import UploadFileModal from './UploadFileModal.vue'
-import URLImportModal from './URLImportModal.vue'
-import FolderImportModal from './FolderImportModal.vue'
-import ScanDevicesModal from './ScanDevicesModal.vue'
-import SPLCalibrationModal from './SPLCalibrationModal.vue'
-import ApiRmsSplCalibrationModal from './ApiRmsSplCalibrationModal.vue'
-import GlobalPlaybackDeviceModal from './GlobalPlaybackDeviceModal.vue'
-import BatchAlgorithmParamsModal from './BatchAlgorithmParamsModal.vue'
-import BatchSPLModal from './BatchSPLModal.vue'
-import BatchPlaybackDeviceModal from './BatchPlaybackDeviceModal.vue'
-import BatchAdjustGroupModal from './BatchAdjustGroupModal.vue'
-import BatchDimensionModal from './BatchDimensionModal.vue'
-import BatchNoiseModal from './BatchNoiseModal.vue'
-import BatchTagsModal from './BatchTagsModal.vue'
-import BatchRefreshReferenceModal from './BatchRefreshReferenceModal.vue'
-import TagCategoryModal from './TagCategoryModal.vue'
-import TagEditModal from './TagEditModal.vue'
-// INT-739：标签管理页批量改分类
-import BatchTagCategoryModal from './BatchTagCategoryModal.vue'
-import TaskDetailModal from './TaskDetailModal.vue'
-import TestCaseDetailModal from './TestCaseDetailModal.vue'
-import AudioPlayerModal from '../audio/AudioPlayerModal.vue'
-import AudioSelectModal from '../audio/AudioSelectModal.vue'
 
 const notification = useNotification()
 
@@ -267,55 +235,6 @@ const activeModalsWithIndex = computed(() => {
 //   },
 //   { deep: true }
 // )
-
-const getModalComponent = (type: string) => {
-  const componentMap: Record<string, any> = {
-    [MODAL_TYPES.TEST_CASE_RELATED]: TestCaseModal,
-    [MODAL_TYPES.TEST_GROUP]: TestCaseModal,
-    [MODAL_TYPES.TEST_CASE_IMPORT]: TestCaseModal,
-    [MODAL_TYPES.TEST_CASE_EXPORT]: TestCaseModal,
-    [MODAL_TYPES.ADD_TEST_CASE]: AddTestCaseModal,
-    [MODAL_TYPES.SCAN_DEVICES]: ScanDevicesModal,
-    [MODAL_TYPES.BASIC_CONFIRM]: ModalConfirm,
-    [MODAL_TYPES.DELETE_CONFIRM]: ModalConfirm,
-    [MODAL_TYPES.INPUT_CONFIRM]: InputConfirmModal,
-    [MODAL_TYPES.API_OTHER_CONFIG]: APIEditModal,
-    [MODAL_TYPES.DETAIL_VIEW]: DetailViewModal,
-    [MODAL_TYPES.IMPORT_EXPORT]: ImportExportModal,
-    [MODAL_TYPES.CRUD_FORM]: CRUDFormModal,
-    [MODAL_TYPES.UPLOAD_AUDIO_IMPORT]: UploadFileModal,
-    [MODAL_TYPES.URL_IMPORT]: URLImportModal,
-    [MODAL_TYPES.FOLDER_IMPORT]: FolderImportModal,
-    // INT-1300：任务类型选择弹窗随任务类型概念移除（创建新任务直接进 /start-test）
-    [MODAL_TYPES.TASK_DETAIL]: TaskDetailModal,
-    [MODAL_TYPES.TEST_CASE_DETAIL]: TestCaseDetailModal,
-    [MODAL_TYPES.SPL_CALIBRATION]: SPLCalibrationModal,
-    [MODAL_TYPES.API_RMS_SPL_CALIBRATION]: ApiRmsSplCalibrationModal,
-    [MODAL_TYPES.AUDIO_IMPORT]: UploadFileModal,
-    [MODAL_TYPES.ADD_DEVICE]: CRUDFormModal,
-    [MODAL_TYPES.EDIT_DEVICE]: CRUDFormModal,
-    [MODAL_TYPES.ADD_MAPPING]: CRUDFormModal,
-    [MODAL_TYPES.EDIT_MAPPING]: CRUDFormModal,
-    [MODAL_TYPES.MAPPING_DETAILS]: DetailViewModal,
-    [MODAL_TYPES.EDIT_METADATA]: CRUDFormModal,
-    [MODAL_TYPES.GLOBAL_PLAYBACK_DEVICE]: GlobalPlaybackDeviceModal,
-    [MODAL_TYPES.AUDIO_PLAYER]: AudioPlayerModal,
-    [MODAL_TYPES.AUDIO_SELECT]: AudioSelectModal,
-    [MODAL_TYPES.BATCH_ALGORITHM_PARAMS]: BatchAlgorithmParamsModal,
-    [MODAL_TYPES.BATCH_SPL]: BatchSPLModal,
-    [MODAL_TYPES.BATCH_PLAYBACK_DEVICE]: BatchPlaybackDeviceModal,
-    [MODAL_TYPES.BATCH_ADJUST_GROUP]: BatchAdjustGroupModal,
-    [MODAL_TYPES.BATCH_DIMENSION]: BatchDimensionModal,
-    [MODAL_TYPES.BATCH_NOISE]: BatchNoiseModal,
-    [MODAL_TYPES.BATCH_TAGS]: BatchTagsModal,
-    [MODAL_TYPES.BATCH_REFRESH_REFERENCE]: BatchRefreshReferenceModal,
-    [MODAL_TYPES.TAG_CATEGORY]: TagCategoryModal,
-    [MODAL_TYPES.TAG_EDIT]: TagEditModal,
-    // INT-739：标签管理页批量改分类
-    [MODAL_TYPES.BATCH_TAG_CATEGORY]: BatchTagCategoryModal
-  }
-  return componentMap[type] || null
-}
 
 const handleClose = (modalId: string) => {
   console.log('[GlobalModalContainer] handleClose called, modalId:', modalId)
