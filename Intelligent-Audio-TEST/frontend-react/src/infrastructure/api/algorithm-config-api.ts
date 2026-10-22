@@ -197,12 +197,24 @@ async function buildDefinitionDto(input: SaveAlgorithmInput): Promise<Record<str
   )
 }
 
-/** 新建算法（§6.1 create；聚合提交 POST /algorithm/definitions） */
+/** 新建算法（§6.1 create；聚合提交 POST /algorithm/definitions）
+ *  INT-1317：后端 create 走 draft 语义（无论提交 online/offline 都落库 status="draft"，
+ *  见 INT-1253 走查证据），发布后如后端返回 status 与表单所选不一致，立即补一次 PUT
+ *  应用所选 status（PUT 走 update 语义落库正常）；后端 FEAT 修复后此条件不触发、零额外请求。 */
 export async function createAlgorithm(
   input: SaveAlgorithmInput
 ): Promise<AlgorithmDefinition> {
   const body = await buildDefinitionDto(input)
   const dto = await request<AlgorithmDefinitionDto>('POST', '/algorithm/definitions', body)
+  // INT-1317：create 落 draft / 状态丢失 → 用表单所选 status 补一次 PUT，避免列表徽章误显「上线」
+  if (typeof dto?.status === 'string' && dto.status !== input.status) {
+    const patched = await request<AlgorithmDefinitionDto>(
+      'PUT',
+      `/algorithm/definitions/${encodeURIComponent(input.type)}`,
+      body
+    )
+    return toAlgorithmDefinition(patched)
+  }
   return toAlgorithmDefinition(dto)
 }
 
