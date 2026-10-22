@@ -22,9 +22,7 @@ interface UseTaskExecutionOptions {
   selectedAPIIds: Ref<(string | number)[]>
   apis: Ref<APIConfig[]>
   testCaseGroups: Ref<Record<string, TestCase[]>>
-  // INT-604：执行模式（并行/串行）+ 串行优先侧（device/api）
-  executionMode: Ref<'parallel' | 'serial'>
-  serialFirst: Ref<'device' | 'api'>
+  // INT-1115：逐目标执行模式（卡片级「并行/串行」；废弃全局 executionMode/serialFirst）
   // 进度相关（由 useTaskProgress 提供）
   resetProgress: () => void
   associatedCases: Ref<any[]>
@@ -48,7 +46,6 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
     selectedTestCaseIds,
     selectedDeviceIds, e2eTestCases,
     selectedAPIIds, apis, testCaseGroups,
-    executionMode, serialFirst,
     resetProgress, associatedCases, totalTestCases, pendingTests,
     estimatedTime, expectedCompleteTime, addLog, onE2eStart,
   } = options
@@ -93,10 +90,8 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
         deviceIds: selectedDeviceIds.value,
         apiIds: selectedAPIIds.value,
         caseIds: selectedCaseIds,
-        // INT-604：执行模式 / 串行优先侧（显式透传，后端合并进 Task.config）
-        executionMode: executionMode.value,
-        serialFirst: serialFirst.value,
-        config: { parallel: executionMode.value === 'parallel', concurrentTasks: concurrentTasks.value },
+        // INT-1115：逐目标执行模式取代全局执行模式——本流无卡片级控件，缺省全并行（不发 target_modes/旧字段）
+        config: { concurrentTasks: concurrentTasks.value },
       }
 
       addLog({ content: '正在创建测试任务...', level: 'info' })
@@ -191,11 +186,8 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
         visibility: taskVisibility.value,
         caseIds,
         apiIds: selectedAPIIds.value,
-        // INT-604/INT-1072：混选 API + 设备，同任务同时携带 api_ids + device_ids
+        // INT-1072：混选 API + 设备，同任务同时携带 api_ids + device_ids
         deviceIds: selectedDeviceIds.value,
-        // INT-604：执行模式 / 串行优先侧（显式透传，后端合并进 Task.config）
-        executionMode: executionMode.value,
-        serialFirst: serialFirst.value,
         tags: [],
       }
 

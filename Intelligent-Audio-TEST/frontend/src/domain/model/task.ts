@@ -4,6 +4,19 @@
  */
 import type { TaskStatusType, VisibilityType } from '../enums'
 
+/** 逐目标执行模式（INT-1115：parallel=并行/默认，serial=串行；复用全局旧 ExecutionMode 口径） */
+export type ExecutionMode = 'parallel' | 'serial'
+
+/** 逐目标执行模式条目（INT-1115 §5.2.4：列表顺序 = 选中顺序 = 串行链顺序） */
+export interface TargetMode {
+  /** 目标类型（device=设备 / api=被测 API） */
+  targetType: 'device' | 'api'
+  /** 目标 id（device.id / apis.id，int） */
+  targetId: number
+  /** 该目标执行模式（缺省并行；串行仅等同类道内前序终态后启动） */
+  mode: ExecutionMode
+}
+
 /** 任务关联设备简报 */
 export interface TaskDeviceBrief {
   id: number
@@ -149,10 +162,9 @@ export interface TaskCreateDraft {
   deviceIds?: number[]
   /** 对应 api_ids: List[int] */
   apiIds?: number[]
-  /** INT-604：任务执行模式（parallel=并行/默认，serial=串行逐用例；对应 execution_mode） */
-  executionMode?: 'parallel' | 'serial'
-  /** INT-604：串行优先侧（device=设备先/默认，api=API先；仅 serial 模式生效，对应 serial_first） */
-  serialFirst?: 'device' | 'api'
+  /** INT-1115：逐目标执行模式（列表顺序 = 选中顺序 = 串行链顺序；缺省/空数组 = 全目标并行）。
+   * 废弃顶层 execution_mode/serial_first：后端提交旧字段一律 422，前端不再携带 */
+  targetModes?: TargetMode[]
   tags?: string[]
   algorithmType?: string
   algorithmParams?: Record<string, any>

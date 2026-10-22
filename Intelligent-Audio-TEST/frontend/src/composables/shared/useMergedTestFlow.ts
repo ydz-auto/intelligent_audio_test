@@ -16,7 +16,7 @@ import { normalizeSelectedCaseIds } from './useTestFlow'
 import { TaskStatus, DeviceStatus, ApiEndpointStatus, DeviceTabType, ViewMode, type VisibilityType } from '../../domain/enums'
 import { getVisibilityPref, setVisibilityPref } from '../visibility/useVisibility'
 import { useModalControl, MODAL_TYPES } from '../modal/useModal'
-import type { AlgorithmOption, APIConfig, TestCase } from '../../domain'
+import type { AlgorithmOption, APIConfig, TestCase, TargetMode, ExecutionMode } from '../../domain'
 import { formatDurationSeconds, formatDurationText } from '../../utils/durationFormat'
 
 /**
@@ -35,6 +35,48 @@ export function useMergedTestFlow() {
   const concurrentTasks = ref(4)
   const selectedTestCaseIds = ref<(string | number)[]>([])
   const currentTaskId = ref<string | number | null>(null)
+
+  // INT-1268/INT-1115：逐目标执行模式（每张设备/API 卡带「并行/串行」单选，默认并行）
+  // 缺省（未记录模式项）视为并行；取消选择由 selectionOrder 同步移除并清模式项。
+  const targetModes = ref<Record<string, ExecutionMode>>({})
+  /** 统一选中顺序（勾选追加/取消移除；target_modes 列表顺序 = 选中顺序 = 串行链顺序） */
+  const selectionOrder = ref<Array<{ targetType: 'device' | 'api'; targetId: number }>>([])
+
+  const targetModeKey = (targetType: 'device' | 'api', targetId: number | string) => `${targetType}:${targetId}`
+
+  /** 某目标当前模式（缺省 = 并行；卡片受控值 / 示意图 / 载荷同源） */
+  const getTargetMode = (targetType: 'device' | 'api', targetId: number | string): ExecutionMode =>
+    targetModes.value[targetModeKey(targetType, targetId)] ?? 'parallel'
+
+  /** 某目标切换模式（即时写 map，示意图 / 载荷同步刷新） */
+  const setTargetMode = (targetType: 'device' | 'api', targetId: number | string, mode: ExecutionMode) => {
+    targetModes.value = { ...targetModes.value, [targetModeKey(targetType, targetId)]: mode }
+  }
+
+  /** 从选中顺序移除某目标（取消选择即清模式项，回默认并行） */
+  const removeSelectionEntry = (targetType: 'device' | 'api', targetId: number | string) => {
+    selectionOrder.value = selectionOrder.value.filter(
+      entry => !(entry.targetType === targetType && String(entry.targetId) === String(targetId))
+    )
+    const key = targetModeKey(targetType, targetId)
+    if (key in targetModes.value) {
+      const next = { ...targetModes.value }
+      delete next[key]
+      targetModes.value = next
+    }
+  }
+
+  /** target_modes 载荷（保选中顺序；恰好覆盖全部选中目标一次；缺省 = 并行） */
+  const targetModesPayload = computed<TargetMode[]>(() =>
+    selectionOrder.value.map(({ targetType, targetId }) => ({
+      targetType,
+      targetId,
+      mode: targetModes.value[targetModeKey(targetType, targetId)] ?? 'parallel',
+    }))
+  )
+
+  /** 串行目标数（任务名称弹窗摘要「串行 {s} 个目标」） */
+  const serialCount = computed(() => targetModesPayload.value.filter(item => item.mode === 'serial').length)
 
   /** INT-423/467：可见性选择器切换 → 记录偏好（各表单新建一致沿用） */
   const handleVisibilityChange = (v: VisibilityType) => {
@@ -187,7 +229,13 @@ export function useMergedTestFlow() {
         addLogRef({ content: '只能选择在线设备', level: 'warn' })
         return
       }
-      device.selected = device.selected === undefined ? true : !device.selected
+      const wasSelected = device.selected === true
+      device.selected = wasSelected ? false : true
+      if (wasSelected) {
+        removeSelectionEntry('device', device.id)
+      } else {
+        selectionOrder.value.push({ targetType: 'device', targetId: Number(device.id) })
+      }
     }
   }
 
@@ -200,8 +248,10 @@ export function useMergedTestFlow() {
     const index = selectedAPIIds.value.indexOf(apiId)
     if (index === -1) {
       selectedAPIIds.value.push(apiId)
+      selectionOrder.value.push({ targetType: 'api', targetId: Number(apiId) })
     } else {
       selectedAPIIds.value.splice(index, 1)
+      removeSelectionEntry('api', apiId)
     }
   }
 
@@ -314,6 +364,67 @@ export function useMergedTestFlow() {
     }
   }
 
+  // ============ 底部双道示意图（INT-1268/INT-1115 §5.2.4：随选中目标 + 每卡模式实时更新） ============
+  const deviceNameById = computed(() => {
+    const map = new Map<string | number, string>()
+    ;(deviceManagement.devices.value as any[]).forEach(d => map.set(d.id, d.name))
+    return map
+  })
+  const deviceTypeById = computed(() => {
+    const map = new Map<string | number, string>()
+    ;(deviceManagement.devices.value as any[]).forEach(d => map.set(d.id, d.type ?? 'physical'))
+    return map
+  })
+  const apiNameById = computed(() => {
+    const map = new Map<string | number, string>()
+    apis.value.forEach(a => { if (a && a.id !== undefined) map.set(a.id, a.name) })
+    return map
+  })
+
+  /** 示意图目标节点（名称/图标类型已解析，组件直接渲染） */
+  interface DiagramTarget extends TargetMode {
+    name: string
+    /** 节点图标类型（physical/http_api/websocket_api=设备类型；api=API 目标） */
+    iconKind: string
+  }
+
+  /** 单条执行道（设备道 / API 道）：道内并行组 + 串行链 + 道内阶段箭头 */
+  interface ExecutionLane {
+    targetType: 'device' | 'api'
+    parallelTargets: DiagramTarget[]
+    serialTargets: DiagramTarget[]
+    /** 阶段箭头：该道第一个串行目标前存在并行目标（该道并行完成后串行依次启动） */
+    hasStageArrow: boolean
+  }
+
+  const buildLane = (targetType: 'device' | 'api', laneTargets: DiagramTarget[]): ExecutionLane => ({
+    targetType,
+    parallelTargets: laneTargets.filter(t => t.mode === 'parallel'),
+    serialTargets: laneTargets.filter(t => t.mode === 'serial'),
+    hasStageArrow: laneTargets.findIndex(t => t.mode === 'serial') > 0,
+  })
+
+  /** 双道：设备道 / API 道各自独立（互不等待；空道折叠） */
+  const executionLanes = computed<ExecutionLane[]>(() => {
+    const deviceLane = buildLane('device', targetModesPayload.value
+      .filter(t => t.targetType === 'device')
+      .map(t => ({
+        ...t,
+        name: deviceNameById.value.get(t.targetId) ?? `设备 ${t.targetId}`,
+        iconKind: deviceTypeById.value.get(t.targetId) ?? 'physical',
+      })))
+    const apiLane = buildLane('api', targetModesPayload.value
+      .filter(t => t.targetType === 'api')
+      .map(t => ({
+        ...t,
+        name: apiNameById.value.get(t.targetId) ?? `API ${t.targetId}`,
+        iconKind: 'api',
+      })))
+    return [deviceLane, apiLane].filter(lane => lane.parallelTargets.length + lane.serialTargets.length > 0)
+  })
+
+  const executionDiagramEmpty = computed(() => targetModesPayload.value.length === 0)
+
   // ============ 任务执行（合并流程：设备 + API 混合） ============
   const testCaseStore = useTestCaseStore()
 
@@ -372,7 +483,9 @@ export function useMergedTestFlow() {
         deviceIds,
         apiIds,
         algorithmType: selectedAlgorithmType.value || undefined,
-        config: { parallel: true, concurrentTasks: concurrentTasks.value },
+        // INT-1268/INT-1115：逐目标执行模式（保选中顺序；缺省并行）；废弃顶层 execution_mode/serial_first
+        targetModes: targetModesPayload.value,
+        config: { concurrentTasks: concurrentTasks.value },
       })
       currentTaskId.value = response.id
       // INT-737：任务创建后立即订阅任务 socket 房间（在 start 之前），
@@ -546,6 +659,9 @@ export function useMergedTestFlow() {
     toggleAPISelection, openAPIEditModal, deleteAPI, testAPI, editAPI, loadAPIs,
     // 资源统一
     toggleResourceSelection, handleResourceAction, handleAddResource, scanDevices,
+    // INT-1268/INT-1115：逐目标执行模式（卡片受控 / 载荷 / 示意图同源）
+    targetModes, selectionOrder, getTargetMode, setTargetMode,
+    targetModesPayload, serialCount, executionLanes, executionDiagramEmpty,
     // 执行
     isExecuting, executionProgress, isPaused, isControlling, pauseTest, resumeTest, stopTest,
     progressPercentage, completedTests, inProgressTests, pendingTests,

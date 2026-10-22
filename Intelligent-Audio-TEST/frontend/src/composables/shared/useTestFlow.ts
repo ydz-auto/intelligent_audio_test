@@ -42,9 +42,6 @@ export function useTestFlow(testType: typeof TestType[keyof typeof TestType]) {
   const concurrentTasks = ref(testType === TestType.E2E ? 4 : 5)
   const selectedTestCaseIds = ref<(string | number)[]>([])
   const currentTaskId = ref<number | string | null>(null)
-  // INT-604：执行模式（并行/串行，默认并行）+ 串行优先侧（device/api，默认设备先）
-  const executionMode = ref<'parallel' | 'serial'>('parallel')
-  const serialFirst = ref<'device' | 'api'>('device')
 
   /** INT-423/467：可见性选择器切换 → 记录偏好（各表单新建一致沿用） */
   const handleVisibilityChange = (v: VisibilityType) => {
@@ -166,9 +163,6 @@ export function useTestFlow(testType: typeof TestType[keyof typeof TestType]) {
     addLog,
   })
 
-  /** INT-604：混选判定——设备与 API 同时勾选（执行模式控件可用性前置） */
-  const isMixedSelection = computed(() => selectedDeviceIds.value.length > 0 && selectedAPIIds.value.length > 0)
-
   // ============ 任务执行（依赖以上 composable 的 ref） ============
   const {
     e2eIsExecuting, canStartTest, startE2eTest, startApiTask, startTask,
@@ -178,10 +172,7 @@ export function useTestFlow(testType: typeof TestType[keyof typeof TestType]) {
     taskName,
     taskVisibility,
     concurrentTasks,
-    // INT-604：执行模式 / 串行优先侧
-    executionMode,
-    serialFirst,
-    // INT-282：未勾选用例按筛选拉全量回退需要算法筛选条件
+    // INT-1115：逐目标执行模式（卡片级；废弃全局 executionMode/serialFirst）
     selectedAlgorithmType,
     selectedTestCaseIds,
     selectedDeviceIds: selectedDeviceIds as any,
@@ -354,8 +345,6 @@ export function useTestFlow(testType: typeof TestType[keyof typeof TestType]) {
     testType,
     currentStep, steps, selectedTestCaseIds, taskName, activeTab, concurrentTasks,
     taskVisibility, handleVisibilityChange,
-    // INT-604：执行模式 / 串行优先侧 / 混选判定
-    executionMode, serialFirst, isMixedSelection,
     currentTaskId, taskStartTime, taskElapsedTimeDisplay,
     testCaseGroups, tags, tagViewData, tagViewPagination, tagViewLoading, isLoading, casePaginationInfo,
     fetchTagView, loadMoreTagView, handleTagFilterChange, handleGroupFilterChange,

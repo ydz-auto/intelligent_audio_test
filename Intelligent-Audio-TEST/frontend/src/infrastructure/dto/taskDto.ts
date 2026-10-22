@@ -126,6 +126,13 @@ export interface TaskDetailDto extends TaskDto {
 
 // ===== 请求体 =====
 
+/** 逐目标执行模式条目（INT-1115 §5.2.4：target_type ∈ {device, api}；target_id int；mode 复用 ExecutionMode） */
+export interface TargetModeDto {
+  target_type: 'device' | 'api'
+  target_id: number
+  mode: 'parallel' | 'serial'
+}
+
 /** 任务创建请求体（TaskCreateRequest） */
 export interface TaskCreateDto {
   name: string
@@ -140,10 +147,9 @@ export interface TaskCreateDto {
   case_ids?: string[]
   device_ids?: number[]
   api_ids?: number[]
-  /** INT-604：任务执行模式（parallel=并行/默认，serial=串行逐用例；后端 ExecutionMode 校验） */
-  execution_mode?: 'parallel' | 'serial'
-  /** INT-604：串行优先侧（device=设备先/默认，api=API先；仅 serial 模式生效，后端 SerialFirst 校验） */
-  serial_first?: 'device' | 'api'
+  /** INT-1115：逐目标执行模式（列表顺序 = 选中顺序 = 串行链顺序；缺省/空数组 = 全目标并行）。
+   * 废弃顶层 execution_mode/serial_first：后端提交旧字段一律 422，前端不再携带 */
+  target_modes?: TargetModeDto[]
   tags?: string[]
   algorithm_type?: string | null
   algorithm_params?: Record<string, any> | null

@@ -110,6 +110,8 @@
             :selected-ids="selectedDeviceIds"
             :display-fields="deviceDisplayFields"
             :empty-text="'未找到相关设备'"
+            :get-target-mode="getDeviceTargetMode"
+            :on-target-mode-change="setDeviceTargetMode"
             @toggle-selection="(id) => toggleResourceSelection(id, 'device')"
             @action-click="(e) => handleResourceAction(e, 'device')"
           />
@@ -156,6 +158,8 @@
             :selected-ids="selectedAPIIds"
             :display-fields="apiDisplayFields"
             :empty-text="'未找到相关API'"
+            :get-target-mode="getApiTargetMode"
+            :on-target-mode-change="setApiTargetMode"
             @toggle-selection="(id) => toggleResourceSelection(id, 'api')"
             @action-click="(e) => handleResourceAction(e, 'api')"
           />
@@ -174,6 +178,9 @@
             />
           </div>
         </div>
+
+        <!-- INT-1268/INT-1115：底部双道并行/串行示意图（随卡片选项实时渲染） -->
+        <ExecutionDiagram :lanes="executionLanes" :empty="executionDiagramEmpty" />
       </TestStepContainer>
 
       <!-- 步骤2：执行测试（混合） -->
@@ -290,6 +297,9 @@
         />
       </div>
       <div class="form-hint">
+        <small>已选 {{ selectedDeviceIds.length }} 台设备 · {{ selectedAPIIds.length }} 个 API<template v-if="serialCount > 0"> · 串行 {{ serialCount }} 个目标</template></small>
+      </div>
+      <div class="form-hint">
         <small>请输入一个描述性的任务名称，便于后续查看测试结果</small>
       </div>
       <div class="form-group">
@@ -315,12 +325,14 @@ import "../../assets/styles/e2etest/dropdown.css"
 import "../../assets/styles/e2etest/e2etest.css"
 import { ref, computed } from 'vue'
 import { ViewMode, DeviceStatus, ApiEndpointStatus } from '@/domain/enums'
+import type { ExecutionMode } from '@/domain'
 import { useMergedTestFlow } from '../../composables/shared/useMergedTestFlow'
 import ProgressNav from '../../components/layout/ProgressNav.vue'
 import TestCaseListContainer from '../../components/common/test-case/TestCaseListContainer.vue'
 import TestExecutionComponent from '../../components/layout/TestExecutionComponent.vue'
 import TestStepContainer from '../../components/common/misc/TestStepContainer.vue'
 import ResourceSelectionGrid from '../../components/common/data/ResourceSelectionGrid.vue'
+import ExecutionDiagram from '../../components/common/data/ExecutionDiagram.vue'
 import BasicModal from '../../components/common/modal/BasicModal.vue'
 import VisibilitySelector from '../../components/common/visibility/VisibilitySelector.vue'
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue'
@@ -347,6 +359,7 @@ const {
   handleApiPageChange, handleApiPageSizeChange, handleApiPrevPage, handleApiNextPage,
   toggleAPISelection, openAPIEditModal, deleteAPI, testAPI, editAPI, loadAPIs,
   toggleResourceSelection, handleResourceAction, handleAddResource, scanDevices,
+  getTargetMode, setTargetMode, serialCount, executionLanes, executionDiagramEmpty,
   isExecuting, executionProgress, isPaused, isControlling, pauseTest, resumeTest, stopTest,
   progressPercentage, completedTests, inProgressTests, pendingTests,
   executionFailedTests, evaluationFailedTests, totalTestCases, taskStatus,
@@ -362,6 +375,12 @@ const {
   goToStep, nextStep, prevStep,
   initTest,
 } = flow
+
+// INT-1268/INT-1115：逐卡「并行/串行」受控绑定（卡片受控值 / 载荷 / 示意图同源）
+const getDeviceTargetMode = (id: string | number): ExecutionMode => getTargetMode('device', id)
+const setDeviceTargetMode = (id: string | number, mode: ExecutionMode) => setTargetMode('device', id, mode)
+const getApiTargetMode = (id: string | number): ExecutionMode => getTargetMode('api', id)
+const setApiTargetMode = (id: string | number, mode: ExecutionMode) => setTargetMode('api', id, mode)
 
 // 步骤标签（合并流程四步）
 const stepLabels = computed(() => [
