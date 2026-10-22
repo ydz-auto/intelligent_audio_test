@@ -154,6 +154,22 @@ export interface AiReviewRequest {
   force?: boolean
 }
 
+/**
+ * INT-1279：用例评估维度 → AI 复核 dimension_ids。
+ * 真实库（如任务 419）结果行无「已完成评估的 LLM 判分维度」（task_type_code 非 llm_judge），
+ * 后端 dimension_ids 缺省口径查不到 → 发起 400。前端按用例评估维度显式传 dimension_ids
+ * （TaskCaseBrief.evaluation_dimensions 为用例 config 评估维度快照），跳过缺省解析。
+ * Number 归一（config 中 id 可为字符串）、非法/非正剔除；无维度 → undefined（走后端缺省）。
+ */
+export function toAiReviewDimensionIds(
+  dims: Array<{ id: number | string; name: string }> | null | undefined
+): number[] | undefined {
+  const ids = (dims ?? [])
+    .map((d) => Number(d?.id))
+    .filter((n) => Number.isFinite(n) && n > 0)
+  return ids.length > 0 ? ids : undefined
+}
+
 /** AI 采纳请求（INT-824 契约定稿：改判状态至少一项 + 备注必填；采纳落人工复核语义） */
 export interface AiReviewAdoptPayload {
   /** 执行状态改判（completed/failed/stopped/skipped） */

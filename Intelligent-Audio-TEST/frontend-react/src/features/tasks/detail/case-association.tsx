@@ -45,6 +45,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import type { CaseResultForReview } from '@/domain/models/review'
+import { toAiReviewDimensionIds } from '@/domain/models/review'
 import type { TaskCaseBrief, TaskDetailData } from '@/domain/models/task'
 import { fetchCaseResults } from '@/infrastructure/api/reviewApi'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
@@ -112,6 +113,8 @@ interface ReviewTarget {
   evaluationStatus: string | null
   caseNameByResultId?: Record<number, string>
   preset?: { evaluationStatus?: string; comment?: string }
+  /** INT-1279：用例评估维度 id（AI 复核按用例评估维度显式传 dimension_ids，真实库无 LLM 判分维度时避免 400） */
+  dimensionIds?: number[]
 }
 
 /**
@@ -419,6 +422,7 @@ export function CaseAssociation({
         caseName: res.caseName || c.name,
         results: res.results,
         evaluationStatus: c.evaluation_status,
+        dimensionIds: toAiReviewDimensionIds(c.evaluation_dimensions),
       })
     } catch (err) {
       toast.error(
@@ -443,6 +447,7 @@ export function CaseAssociation({
         caseName: res.caseName || c.name,
         results: res.results,
         evaluationStatus: c.evaluation_status,
+        dimensionIds: toAiReviewDimensionIds(c.evaluation_dimensions),
       })
     } catch (err) {
       toast.error(
@@ -680,6 +685,7 @@ export function CaseAssociation({
         taskId={detail.id}
         caseId={aiReviewTarget?.caseId ?? ''}
         caseName={aiReviewTarget?.caseName}
+        dimensionIds={aiReviewTarget?.dimensionIds}
       />
 
       {/* §5.1 快速复核次要入口（一次性状态机，批量/低分初筛场景） */}
@@ -693,6 +699,7 @@ export function CaseAssociation({
         caseName={quickReviewTarget?.caseName}
         results={quickReviewTarget?.results ?? []}
         evaluationStatus={quickReviewTarget?.evaluationStatus}
+        dimensionIds={quickReviewTarget?.dimensionIds}
       />
 
       {/* §3.4 任务复核历史抽屉 */}

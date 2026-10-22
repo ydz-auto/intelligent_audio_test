@@ -124,4 +124,49 @@ describe('QuickAiReviewDialog（快速复核，INT-1064 迁移）', () => {
       })
     })
   })
+
+  it('INT-1279：发起时按用例评估维度显式传 dimension_ids（真实库结果无 LLM 判分维度时避免 400）', async () => {
+    requestAiReviewMock.mockResolvedValue(completedRecord('passed'))
+    render(
+      <QuickAiReviewDialog
+        open
+        onOpenChange={vi.fn()}
+        taskId={417}
+        caseId='case-1'
+        caseName='用例一'
+        results={[singleResult]}
+        evaluationStatus='failed'
+        dimensionIds={[121, 124, 125]}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: '发起快速复核' }))
+    await waitFor(() => {
+      expect(requestAiReviewMock).toHaveBeenCalledWith(417, 'case-1', {
+        resultIds: [5400],
+        dimensionIds: [121, 124, 125],
+      })
+    })
+  })
+
+  it('INT-1279：dimensionIds 为空数组时不发送 dimension_ids（走后端缺省口径）', async () => {
+    requestAiReviewMock.mockResolvedValue(completedRecord('passed'))
+    render(
+      <QuickAiReviewDialog
+        open
+        onOpenChange={vi.fn()}
+        taskId={417}
+        caseId='case-1'
+        caseName='用例一'
+        results={[singleResult]}
+        evaluationStatus='failed'
+        dimensionIds={[]}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: '发起快速复核' }))
+    await waitFor(() => {
+      expect(requestAiReviewMock).toHaveBeenCalledWith(417, 'case-1', {
+        resultIds: [5400],
+      })
+    })
+  })
 })
