@@ -21,6 +21,12 @@ from algorithm_service.infrastructure.persistence.models import (
     AlgorithmGroup as AlgorithmGroupPO,
     AlgorithmDefinition as AlgorithmDefinitionPO,
     AlgorithmDefinitionDraft as AlgorithmDefinitionDraftPO,
+    AlgorithmDeviceParam as AlgorithmDeviceParamPO,
+    AlgorithmApiParam as AlgorithmApiParamPO,
+    CaseAlgorithmParam as CaseAlgorithmParamPO,
+    AlgorithmReferenceParam as AlgorithmReferenceParamPO,
+    ParamMapping as ParamMappingPO,
+    AlgorithmDimensionRelation as AlgorithmDimensionRelationPO,
 )
 from algorithm_service.domain.entities.algorithm_group import AlgorithmGroupAggregate
 from algorithm_service.domain.entities.algorithm_definition import AlgorithmDefinitionAggregate
@@ -39,6 +45,35 @@ from algorithm_service.infrastructure.persistence._algorithm_converters import (
 from algorithm_service.infrastructure.persistence._algorithm_full_save import (
     save_full as _save_full,
 )
+
+# 算法定义级联软删的子实体 PO（均按 algorithm_type 关联根表）
+_ALGORITHM_CHILD_MODELS = (
+    AlgorithmDeviceParamPO,
+    AlgorithmApiParamPO,
+    CaseAlgorithmParamPO,
+    AlgorithmReferenceParamPO,
+    ParamMappingPO,
+    AlgorithmDimensionRelationPO,
+)
+
+
+def _soft_delete_algorithm_children(session, algorithm_types) -> None:
+    """同事务级联软删算法定义的子实体行（INT-1382）。
+
+    删除算法定义若只置根行 deleted=True，其设备/API/用例/参考参数、参数映射、
+    维度关联仍会以 deleted=False 残留，从 /algorithm/params、/algorithm/case-params、
+    /algorithm/reference-params、/algorithm/mappings 等列表继续可见（孤儿污染）。
+    此处按 algorithm_type 批量置 deleted=True + updated_at，与根行同事务提交。
+    """
+    now = datetime.now()
+    for model in _ALGORITHM_CHILD_MODELS:
+        session.query(model).filter(
+            model.algorithm_type.in_(algorithm_types),
+            model.deleted == False,  # noqa: E712
+        ).update(
+            {"deleted": True, "updated_at": now},
+            synchronize_session=False,
+        )
 
 
 class AlgorithmGroupRepository(IAlgorithmGroupRepository):
@@ -220,7 +255,12 @@ class AlgorithmDefinitionRepository(IAlgorithmDefinitionRepository):
             raise
 
     def soft_delete(self, definition_id: int) -> bool:
-        """软删除算法定义，返回是否成功。"""
+        """软删除算法定义，返回是否成功。
+
+        级联软删其设备/API/用例/参考参数、参数映射、维度关联子实体
+        （INT-1382：此前仅置根行 deleted=True，子实体成孤儿残留于
+        /algorithm/params 等列表，需手动清理测试数据）。
+        """
         session = get_db_session()
         try:
             po = session.get(AlgorithmDefinitionPO, definition_id)
@@ -229,6 +269,7 @@ class AlgorithmDefinitionRepository(IAlgorithmDefinitionRepository):
             po.deleted = True
             po.deleted_by_user_id = get_current_user_id()
             po.updated_at = datetime.now()
+            _soft_delete_algorithm_children(session, [po.type])
             session.commit()
             return True
         except Exception:

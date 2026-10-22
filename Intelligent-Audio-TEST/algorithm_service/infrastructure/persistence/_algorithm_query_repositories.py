@@ -20,6 +20,9 @@ from algorithm_service.domain.repositories.algorithm_repositories import (
     IAlgorithmDefinitionQueryRepository,
     IAlgorithmGroupQueryRepository,
 )
+from algorithm_service.infrastructure.persistence._algorithm_aggregate_repositories import (
+    _soft_delete_algorithm_children,
+)
 
 
 # ========== 辅助：PO → dict（供 handler/servicer 查询复用） ==========
@@ -94,7 +97,11 @@ class AlgorithmDefinitionQueryRepository(IAlgorithmDefinitionQueryRepository):
         return [_po_to_dict(po) for po in items]
 
     def bulk_soft_delete(self, algorithm_types: list) -> List[str]:
-        """批量软删除算法定义，返回已删除的 type 列表。"""
+        """批量软删除算法定义，返回已删除的 type 列表。
+
+        与单删一致级联软删各算法的子实体行（INT-1382），防批量删除后
+        孤儿参数/映射/维度关联残留于列表查询。
+        """
         session = get_db_session()
         try:
             items = session.query(AlgorithmDefinitionPO).filter(
@@ -103,6 +110,10 @@ class AlgorithmDefinitionQueryRepository(IAlgorithmDefinitionQueryRepository):
             ).all()
             for po in items:
                 po.deleted = True
+            if items:
+                _soft_delete_algorithm_children(
+                    session, [po.type for po in items]
+                )
             session.flush()
             session.commit()
             return [po.type for po in items]
