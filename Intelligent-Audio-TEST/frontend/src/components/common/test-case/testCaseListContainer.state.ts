@@ -36,6 +36,10 @@ export function createContainerState(props: any) {
   // hasMoreGroups 由分组分页计算属性驱动，先占位再被 composable 引用
   const hasMoreGroups = ref(true);
 
+  // INT-1335：标签筛选下拉的全量标签名选项（来自 GET /tags/names），
+  // 不再受当前已加载用例的标签子集限制；null = 尚未加载完成
+  const tagNameOptions = ref<string[] | null>(null);
+
   // ===== 分组展开/加载 composable 的占位 ref =====
   // 预先创建占位 ref，待分组/标签分页计算属性定义后再同步。
   const paginatedGroupsRef = ref<string[]>([]);
@@ -58,6 +62,7 @@ export function createContainerState(props: any) {
     dimensionOptions,
     dimensionCategories,
     hasMoreGroups,
+    tagNameOptions,
     paginatedGroupsRef,
     paginatedTagsRef,
     hasMoreTagsRef,

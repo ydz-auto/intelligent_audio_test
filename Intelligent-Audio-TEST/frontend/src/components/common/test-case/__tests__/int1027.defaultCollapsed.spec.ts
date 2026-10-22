@@ -31,7 +31,7 @@ vi.mock('@/composables/testCase/testcasesPort', () => ({ testcasesPort: ports })
 vi.mock('@/composables/device/playbackPort', () => ({ playbackPort: { getAll: vi.fn().mockResolvedValue([]) } }));
 vi.mock('@/composables/algorithm/algorithmPort', () => ({ algorithmPort: { getOptions: vi.fn().mockResolvedValue({ algorithms: [] }) } }));
 vi.mock('@/composables/evaluation/evaluationPort', () => ({ evaluationPort: { getOptions: vi.fn().mockResolvedValue({ dimensions: [] }) } }));
-vi.mock('@/composables/shared/tagsPort', () => ({ tagsPort: { getTags: vi.fn().mockResolvedValue({ items: [] }) } }));
+vi.mock('@/composables/shared/tagsPort', () => ({ tagsPort: { getTags: vi.fn().mockResolvedValue({ items: [] }), getTagNames: vi.fn().mockResolvedValue({ items: [] }) } }));
 
 import { createContainerState } from '../testCaseListContainer.state';
 import { createGroupExpandModule } from '../testCaseListContainer.groupExpand';

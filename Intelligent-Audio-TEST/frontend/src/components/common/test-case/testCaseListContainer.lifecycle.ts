@@ -7,6 +7,7 @@ import { onMounted, onUnmounted, onBeforeUnmount } from 'vue';
 import { playbackPort } from '../../../composables/device/playbackPort';
 import { algorithmPort } from '../../../composables/algorithm/algorithmPort';
 import { evaluationPort } from '../../../composables/evaluation/evaluationPort';
+import { tagsPort } from '../../../composables/shared/tagsPort';
 import type { Ref } from 'vue';
 import type { ContainerState } from './testCaseListContainer.state';
 
@@ -32,7 +33,7 @@ interface LifecycleModuleDeps {
 
 /** 创建数据加载与生命周期模块 */
 export function createLifecycleModule(props: any, emit: any, state: ContainerState, deps: LifecycleModuleDeps) {
-  const { playbackDevices, algorithmOptions, dimensionOptions, dimensionCategories } = state;
+  const { playbackDevices, algorithmOptions, dimensionOptions, dimensionCategories, tagNameOptions } = state;
   const {
     setupLoadMoreObserver,
     cleanupObserver,
@@ -103,6 +104,30 @@ export function createLifecycleModule(props: any, emit: any, state: ContainerSta
     }
   };
 
+  // INT-1335：全量标签名（GET /tags/names）→ 标签筛选下拉选项。
+  // 按 total 分页拉全（per_page 500），保证选项数与接口返回 total 一致；
+  // 加载失败时保持 null，消费方回退到已加载用例的标签子集。
+  const loadTagNameOptions = async () => {
+    try {
+      const names: string[] = [];
+      let page = 1;
+      const perPage = 500;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const res = await tagsPort.getTagNames({ page, perPage });
+        const items: string[] = Array.isArray(res?.items) ? res.items : [];
+        names.push(...items);
+        const total = typeof res?.total === 'number' ? res.total : names.length;
+        if (items.length === 0 || names.length >= total) break;
+        page += 1;
+      }
+      tagNameOptions.value = names;
+    } catch (error) {
+      console.error('加载标签选项失败:', error);
+      tagNameOptions.value = null;
+    }
+  };
+
   // ===== 键盘快捷键 =====
   const handleGlobalKeyDown = (event: KeyboardEvent) => {
     if (event.key === 'Escape') {
@@ -129,7 +154,8 @@ export function createLifecycleModule(props: any, emit: any, state: ContainerSta
     Promise.all([
       loadPlaybackDevices(),
       loadAlgorithmOptions(),
-      loadDimensionOptions()
+      loadDimensionOptions(),
+      loadTagNameOptions()
     ]);
   });
 
@@ -146,6 +172,7 @@ export function createLifecycleModule(props: any, emit: any, state: ContainerSta
     loadAlgorithmOptions,
     loadDimensionOptions,
     loadPlaybackDevices,
+    loadTagNameOptions,
     handleGlobalKeyDown
   };
 }

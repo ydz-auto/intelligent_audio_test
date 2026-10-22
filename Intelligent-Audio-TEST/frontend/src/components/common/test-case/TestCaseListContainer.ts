@@ -41,6 +41,7 @@ export function useTestCaseListContainer(props: any, emit: any) {
     dimensionOptions,
     dimensionCategories,
     hasMoreGroups,
+    tagNameOptions,
     paginatedGroupsRef,
     paginatedTagsRef,
     hasMoreTagsRef
@@ -121,9 +122,12 @@ export function useTestCaseListContainer(props: any, emit: any) {
   const groupFilterOptions = computed(() =>
     availableGroups.value.map(g => ({ value: g, label: g }))
   );
-  const tagFilterOptions = computed(() =>
-    (props.tags || []).map((t: string) => ({ value: t, label: t }))
-  );
+  // INT-1335：标签筛选下拉选项改用 /tags/names 全量标签（不再受当前已加载用例标签子集限制，
+  // 满足「选项数与接口返回逐一对照」）；加载完成前回退到 props.tags（已加载用例的标签）保证筛选立即可用
+  const tagFilterOptions = computed(() => {
+    const source = tagNameOptions.value ?? (props.tags || []);
+    return source.map((t: string) => ({ value: t, label: t }));
+  });
 
   function setTestTypeFilter(value: string | number) {
     testTypeFilter.value = String(value);
