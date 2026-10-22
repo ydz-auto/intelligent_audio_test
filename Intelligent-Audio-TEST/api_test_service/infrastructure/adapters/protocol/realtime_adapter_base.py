@@ -14,6 +14,21 @@ create_response / wait_ai_speaking / wait_ai_complete / recv / output），
 执行链经注册表分发后可无缝互换，轮次编排零改动。
 
 执行链禁止 import 本包具体适配器，只经 vendor_adapter_registry 分发。
+
+厂商差异覆写落点（INT-1299，20 家 API 接入复用；executor 轮次编排零改动）：
+    - resolve_round_mode(round_config)  轮次语义归一化（默认 is_interruption 字段，
+                                        内部 _as_bool 兼容 int/bool/str）；厂商方言
+                                        （barge_in / interrupt 等字段名）覆写本方法
+    - pre_process(session_config)       会话握手 / session.update 载荷方言（覆写或重写）
+    - recv(timeout)                     事件归一化（默认经 RealtimeWSClient._EVENT_TYPE_MAP
+                                        映射，厂商原始事件类型不同覆写）
+    - output                            输出聚合（audio/text/latency/barge_in 状态，
+                                        厂商字段名差异在此归一化到同形键）
+    - wait_ai_speaking / wait_ai_complete   等待语义（默认 OpenAI 事件协议：ai_audio_delta
+                                        / ai_audio_done；厂商事件名不同覆写）
+    - _build_client()                   私有传输构造（复用 RealtimeWSClient 时覆写构造
+                                        参数；不走 RealtimeWSClient 的厂商自行返回同形
+                                        传输对象即可无缝接入执行链）
 """
 from __future__ import annotations
 
@@ -24,6 +39,7 @@ from shared.models.common_enums import (
     APIProtocol,
     AdapterProtocol,
     AdapterVendor,
+    RealtimeRoundMode,
 )
 from shared.utils.api_key_provider import resolver_from_config
 from shared.utils.config_manager import config_manager
@@ -196,6 +212,22 @@ class RealtimeAdapterBase(ApiVendorAdapter):
 
     def reset_round_state(self) -> None:
         self._client.reset_round_state()
+
+    @staticmethod
+    def _as_bool(value) -> bool:
+        """布尔兼容解析（int/bool/str，单一来源：RealtimeWSClient._as_bool）。"""
+        return RealtimeWSClient._as_bool(value)
+
+    def resolve_round_mode(self, round_config) -> RealtimeRoundMode:
+        """轮次语义归一化：round_config → 轮次模式（默认 is_interruption 字段）。
+
+        内部经 _as_bool 类型兼容（int/bool/str），'0'/'false' 字符串不再误判打断轮；
+        厂商协议方言（barge_in / interrupt 等字段名）覆写本方法，executor 零改动。
+        未连接也可调用（纯配置解析，不依赖传输对象）。
+        """
+        if self._as_bool((round_config or {}).get('is_interruption')):
+            return RealtimeRoundMode.INTERRUPTION
+        return RealtimeRoundMode.NORMAL
 
     def send_audio_chunk(self, pcm_b64: str) -> None:
         self._client.send_audio_chunk(pcm_b64)

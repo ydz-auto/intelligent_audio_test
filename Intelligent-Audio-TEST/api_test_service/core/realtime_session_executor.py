@@ -34,6 +34,7 @@ from shared.models.common_enums import (
 )
 from shared.utils.config_manager import config_manager
 from shared.utils.api_key_provider import resolver_from_config
+from shared.utils.dto_utils import dto_to_dict
 from api_test_service.application.round_render_service import RoundRenderService
 from api_test_service.domain.services.api_rms_spl_service import ApiRmsSplService
 from api_test_service.domain.services.realtime_pacing_service import (
@@ -41,6 +42,7 @@ from api_test_service.domain.services.realtime_pacing_service import (
     RealtimePacingService,
 )
 from api_test_service.infrastructure.acl import (
+    AlgorithmQueryAclRepositoryImpl,
     AudioConfigAclRepositoryImpl,
     AudioRenderACLRepositoryImpl,
     EvaluationAclRepositoryImpl,
@@ -61,6 +63,9 @@ logger = logging.getLogger(__name__)
 
 # 跨服务出站 gRPC 经 ACL 仓储（返回 DTO），不返回 raw dict
 _evaluation_acl = EvaluationAclRepositoryImpl()
+
+# 算法字段映射 ACL（field_mapper 配置透传，与 E2E/HTTP 同构，INT-1299）
+_algo_acl = AlgorithmQueryAclRepositoryImpl()
 
 # 密钥链解析器（UC-0901 扩展流程 3a）：case_config → meta → env
 # OPENAI_API_KEY 逐级回退，各级键名经 config_manager secrets 段配置
@@ -197,7 +202,8 @@ class RealtimeSessionExecutor:
                 try:
                     result = self._execute_round(
                         client, api_config, round_config, round_number,
-                        len(rounds), task_id, case_config)
+                        len(rounds), task_id, case_config,
+                        algorithm_type=algorithm_type)
                 except Exception as e:
                     import traceback
                     self._log(level='ERROR',
@@ -308,17 +314,22 @@ class RealtimeSessionExecutor:
 
     # ── 轮次执行 ──
     def _execute_round(self, client, api_config, round_config, round_number,
-                       total_rounds, task_id, case_config) -> dict:
-        mode = RealtimeRoundMode.INTERRUPTION if round_config.get('is_interruption') \
-            else RealtimeRoundMode.NORMAL
+                       total_rounds, task_id, case_config,
+                       algorithm_type=None) -> dict:
+        # INT-1299：轮次模式经传输对象 resolve_round_mode 归一化（默认 is_interruption，
+        # 内部 _as_bool 类型兼容；厂商方言字段覆写），executor 不再自行 get 字段
+        mode = client.resolve_round_mode(round_config)
         if mode == RealtimeRoundMode.INTERRUPTION:
             return self._execute_interruption_round(
-                client, api_config, round_config, round_number, task_id, case_config)
+                client, api_config, round_config, round_number, task_id,
+                case_config, algorithm_type=algorithm_type)
         return self._execute_normal_round(
-            client, api_config, round_config, round_number, task_id, case_config)
+            client, api_config, round_config, round_number, task_id, case_config,
+            algorithm_type=algorithm_type)
 
     def _execute_normal_round(self, client, api_config, round_config,
-                              round_number, task_id, case_config) -> dict:
+                              round_number, task_id, case_config,
+                              algorithm_type=None) -> dict:
         """正常轮：流式推送混音音频（RenderAudioStream 消费链路）→ commit → 等 AI 完整回复
 
         INT-475 节奏：推流中按 RealtimePacingStrategy 插 recv() 检输出事件，
@@ -377,11 +388,12 @@ class RealtimeSessionExecutor:
             'frame_count': len(output['frame_results']),
             'error': None if complete else 'AI 回复未在超时内完成',
         }
-        result.update(self._collect_eval_fields(round_config, output))
+        result.update(self._collect_eval_fields(round_config, output, algorithm_type))
         return result
 
     def _execute_interruption_round(self, client, api_config, round_config,
-                                    round_number, task_id, case_config) -> dict:
+                                    round_number, task_id, case_config,
+                                    algorithm_type=None) -> dict:
         """打断轮（barge-in）：等 AI 开始 → 推打断混音音频 → 检测打断 → 等新回复
 
         INT-475 节奏策略不套打断轮推流阶段：步骤①已确认 AI 在说话，步骤④已有
@@ -468,7 +480,7 @@ class RealtimeSessionExecutor:
             'answer_text': client.output['text'],
             'error': None if (barge_in_detected and renewed) else '打断未生效或 AI 未重新回复',
         }
-        result.update(self._collect_eval_fields(round_config, client.output))
+        result.update(self._collect_eval_fields(round_config, client.output, algorithm_type))
         return result
 
     # ── 节奏（INT-475：输出调输入）──
@@ -639,7 +651,6 @@ class RealtimeSessionExecutor:
             'reference_params': case_config.get('reference_params', {}),
             'algorithm_type': algorithm_type,
         }
-        from shared.utils.dto_utils import dto_to_dict
         from api_test_service.infrastructure.acl import AlgorithmQueryAclRepositoryImpl
         all_params = dto_to_dict(
             AlgorithmQueryAclRepositoryImpl().extract_case_all_params(full_case_params)) or {}
@@ -719,17 +730,48 @@ class RealtimeSessionExecutor:
         merged.setdefault('input_audio_sample_rate', audio_cfg.get('sample_rate', 24000))
         return merged
 
-    @staticmethod
-    def _collect_eval_fields(round_config, output) -> dict:
-        """评估入参字段：query/answer/original_topic（打断轮）"""
-        fields = {
-            'query': round_config.get('query', ''),
-            'question': round_config.get('question', round_config.get('query', '')),
-            'correct_answer': round_config.get('correct_answer', ''),
-            'answer': output.get('text', ''),
-        }
-        if round_config.get('original_topic'):
-            fields['original_topic'] = round_config['original_topic']
+    def _collect_eval_fields(self, round_config, output, algorithm_type=None) -> dict:
+        """评估入参字段 — field_mapper 配置透传（对齐 E2E/HTTP 同构，INT-1299）
+
+        评估入参字段名全部来自 algorithm_service FieldMappingQueryHandler 的
+        field_mappings 配置，代码内不再硬编码字段名（撤 'query'/'question'/
+        'correct_answer'/'answer'/'original_topic' 魔法字符串与兜底链）：
+
+        1. original.evaluation.output 的 param_mapping（source_param → target_param）：
+           source 为 case/reference 时从 round_config 取 source_param，其余
+           （api/device）从轮次输出取，映射 target_param 进 fields；
+        2. original.api.output 字段定义：从轮次输出取（对齐 api_task_runner
+           output_field_keys 模式，answer 等输出字段按 API 输出定义驱动）。
+
+        新增算法只改算法配置即可映射评估入参，本方法零改动；算法服务不可达时
+        （ACL 回退空 DTO）返回空 dict，round result 不携带评估字段。
+        """
+        algorithm_type = algorithm_type or 'voice_llm'
+        field_mappings = dto_to_dict(
+            _algo_acl.get_field_mappings(algorithm_type)) or {}
+        original = field_mappings.get('original') or {}
+        fields = {}
+
+        eval_output = (original.get('evaluation') or {}).get('output') or {}
+        for target_param, entry in eval_output.items():
+            if not isinstance(entry, dict):
+                continue
+            source = entry.get('source', 'api')
+            source_param = entry.get('source_param')
+            if not source_param:
+                continue
+            if source in ('case', 'reference'):
+                value = (round_config or {}).get(source_param)
+            else:
+                value = output.get(source_param)
+            if value is not None:
+                fields[target_param] = value
+
+        api_output = (original.get('api') or {}).get('output') or {}
+        for key in api_output:
+            value = output.get(key)
+            if value is not None:
+                fields[key] = value
         return fields
 
     def _refresh_progress(self, task_id):

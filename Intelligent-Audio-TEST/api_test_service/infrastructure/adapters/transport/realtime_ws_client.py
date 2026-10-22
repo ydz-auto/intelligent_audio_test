@@ -24,7 +24,7 @@ import threading
 import time
 from typing import Any, Callable, Dict, List, Optional
 
-from shared.models.common_enums import RealtimeFrameType
+from shared.models.common_enums import RealtimeFrameType, RealtimeRoundMode
 from api_test_service.infrastructure.adapters.proxy_utils import websocket_proxy_kwargs
 
 logger = logging.getLogger(__name__)
@@ -209,6 +209,34 @@ class RealtimeWSClient:
         self.barge_in_detected = False
         self.barge_in_latency_ms = None
         self._speech_started_ts = None
+
+    # ── 轮次语义（INT-1299：round_config → 轮次模式，类型兼容归一）──
+
+    @staticmethod
+    def _as_bool(value) -> bool:
+        """布尔兼容解析（int/bool/str 三形态，对齐 harmony_xiaoyichat._as_bool）。
+
+        轮次配置经 JSON 落库/传输后 is_interruption 可能为 int(1/0) / bool /
+        str('true'/'1'/'0'/'false')，统一解析避免 '0'/'false' 字符串被裸 truthy
+        误判为打断轮。
+        """
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value != 0
+        if isinstance(value, str):
+            return value.strip().lower() in ('true', '1', 'yes', 'y', '是')
+        return False
+
+    def resolve_round_mode(self, round_config) -> RealtimeRoundMode:
+        """轮次语义归一化：round_config → 轮次模式（默认 is_interruption 字段）。
+
+        RealtimeAdapterBase 同形方法面（默认传输路径直接使用本实现）；厂商协议
+        方言不同（barge_in / interrupt 等字段名）在品牌适配器覆写本方法。
+        """
+        if self._as_bool((round_config or {}).get('is_interruption')):
+            return RealtimeRoundMode.INTERRUPTION
+        return RealtimeRoundMode.NORMAL
 
     def recv(self, timeout: float = 5.0) -> dict:
         """从事件队列取一条事件并归一化；超时返回 connection_closed 语义的等待超时事件"""
