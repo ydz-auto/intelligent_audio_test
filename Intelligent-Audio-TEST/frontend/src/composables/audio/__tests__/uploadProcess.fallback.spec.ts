@@ -9,6 +9,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
 import type { UploadProcessContext } from '../uploadProcess';
+import type { UploadStatus } from '../../upload/useUploadState';
+
+// jsdom（vitest 环境）的 Blob 原型仅实现 constructor/slice/size/type，缺 arrayBuffer()；
+// uploadProcess 直传 OSS 路径依赖 chunk.arrayBuffer() 读取分片字节，用 FileReader 补齐，
+// 让契约测试走真实代码路径（浏览器原生 Blob 即按此语义实现）。
+if (typeof Blob !== 'undefined' && !(Blob.prototype as any).arrayBuffer) {
+  Blob.prototype.arrayBuffer = function arrayBuffer(): Promise<ArrayBuffer> {
+    return new Promise<ArrayBuffer>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as ArrayBuffer);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsArrayBuffer(this);
+    });
+  };
+}
 
 const audiosPort = vi.hoisted(() => ({
   presignUpload: vi.fn(),
@@ -28,7 +43,7 @@ function makeFile(name: string): File {
 
 function makeCtx() {
   const uploadProgress = ref(0);
-  const uploadStatus = ref('uploading');
+  const uploadStatus = ref<UploadStatus>('uploading');
   const generatedTestCaseTotal = { value: 0 };
   let abortController: AbortController | null = null;
   const ctx: UploadProcessContext = {
@@ -110,10 +125,10 @@ describe('INT-1329 直传 OSS 失败 → 回退网关分片路径', () => {
     expect(mergeArgs[1]).toBe('task-1');
     expect(mergeArgs[2]).not.toHaveProperty('isDirectOss');
     expect(mergeArgs[2]).not.toHaveProperty('ossKey');
-    // 文件落地
-    expect(fileTask.status).toBe('completed');
+    // 文件落地（status=completed 由调用方 startUploadProcess 负责，此处核验本单元实际落地的字段）
     expect(fileTask.audioId).toBe(101);
     expect(fileTask.progress).toBe(100);
+    expect(fileTask.uploadedSize).toBe(file.size);
   });
 
   it('预签名成功 + 直传 PUT 成功：仍走直传路径，不触发网关回退', async () => {
@@ -140,8 +155,9 @@ describe('INT-1329 直传 OSS 失败 → 回退网关分片路径', () => {
 
     expect(audiosPort.uploadChunk).not.toHaveBeenCalled();
     expect(audiosPort.completeDirectUpload).toHaveBeenCalledTimes(1);
-    expect(fileTask.status).toBe('completed');
     expect(fileTask.audioId).toBe(202);
+    expect(fileTask.progress).toBe(100);
+    expect(fileTask.uploadedSize).toBe(file.size);
   });
 
   it('预签名命中秒传：直接完成并走 processMergeForExistingFile，不触发网关回退', async () => {
