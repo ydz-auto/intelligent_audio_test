@@ -16,6 +16,10 @@ class ApiEndpointItem(APIModel):
     health_score: Optional[int] = Field(None)
     priority: Optional[int] = Field(None)
     description: Optional[str] = Field(None)
+    # INT-1177 endpoint 级密钥池非敏感摘要 {count, tails[]}（INT-1230 审计 D6'，
+    # 逐端点内嵌；完整密钥零响应）。网关读侧返回原始 dict（无 response_model
+    # 过滤），本字段仅作文档一致性，非必需。
+    api_keys_summary: Optional[Dict[str, Any]] = Field(None)
 
 
 class ApiListQuery(APIModel):
@@ -80,6 +84,10 @@ class ApiEndpointInput(APIModel):
     status: Optional[str] = Field(None)
     priority: Optional[int] = Field(None)
     description: Optional[str] = Field(None)
+    # INT-1177 endpoint 级密钥池（INT-1230 审计 D1'）：每端点 api_keys 纯字符串
+    # 数组，作为该端点轮换池。必补本字段——APIModel extra="ignore" 会丢
+    # endpoints[].api_keys 入参。写侧校验在 api_crud_service._validate_endpoint_obj。
+    api_keys: Optional[List[str]] = Field(None)
 
 
 class ApiCreateInput(APIModel):

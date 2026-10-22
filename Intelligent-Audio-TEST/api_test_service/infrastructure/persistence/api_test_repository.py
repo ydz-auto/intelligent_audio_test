@@ -28,6 +28,7 @@ from api_test_service.domain.entities import APIAggregate
 from api_test_service.domain.entities.api import (
     derive_api_keys_summary,
     normalize_output_types,
+    redact_endpoint_keys,
 )
 from api_test_service.domain.repositories.api_test_repository_abc import (
     APITestRepositoryABC,
@@ -56,6 +57,9 @@ def _api_po_to_entity(po: API) -> APIAggregate:
                           摘要 {count, tails[]}；完整密钥不承载，零响应）
     - po.meta           → aggregate.meta（INT-1338：承载但剥离 api_keys，
                           聚合根零明文；摘要继续经 api_keys_summary 承载）
+    - po.api_endpoints  → aggregate.endpoint_keys_summary（INT-1230 审计 D6'：
+                          逐端点内嵌 api_keys_summary、完整 api_keys 剥离，
+                          聚合根零明文；读侧序列化逐端点输出）
     - 其余 PO 无对应列的字段（method / headers / body_template / retry_count）
       使用聚合根默认值
     """
@@ -63,6 +67,11 @@ def _api_po_to_entity(po: API) -> APIAggregate:
     raw_meta = po.meta or {}
     if isinstance(raw_meta, dict) and 'api_keys' in raw_meta:
         raw_meta = {k: v for k, v in raw_meta.items() if k != 'api_keys'}
+    endpoint_summaries = []
+    for ep in (po.api_endpoints or []):
+        redacted = redact_endpoint_keys(ep)
+        if redacted is not None:
+            endpoint_summaries.append(redacted)
     return APIAggregate(
         id=po.id,
         name=po.name,
@@ -90,6 +99,7 @@ def _api_po_to_entity(po: API) -> APIAggregate:
         api_endpoints=po.api_endpoints or [],
         created_at=po.created_at,
         updated_at=po.updated_at,
+        endpoint_keys_summary=endpoint_summaries,
     )
 
 
@@ -399,6 +409,26 @@ class APITestRepository(APITestRepositoryABC):
             if po is None:
                 return None
             return dict(po.meta or {})
+        finally:
+            pass
+
+    def get_api_endpoints(self, api_id: int) -> Optional[List[Dict]]:
+        """读取 API 存储的 api_endpoints 原始列表（写侧合并端点级密钥池用，
+        PO 不出仓储）。
+
+        INT-1230 审计 D2'/D6'（endpoint 级返工）：读侧剥离完整 api_keys，
+        编辑表单不会重发密钥池——整块覆盖会静默清空既有池。update 经本方法
+        读取存储原始端点（含完整 api_keys）以按 URL 匹配保留未重发的池；
+        返回深拷贝，外部修改不影响 PO。
+        """
+        session = get_db_session()
+        try:
+            po = session.query(API).filter(
+                API.id == api_id, API.deleted == False).first()
+            if po is None:
+                return None
+            import copy
+            return copy.deepcopy(list(po.api_endpoints or []))
         finally:
             pass
 

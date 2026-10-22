@@ -13,11 +13,15 @@ X-Session-Id、text json / audio multipart payload、result_parser 解析），
 `execute`（body_template 渲染）保留为非 voice_llm 用例的另一执行路径。
 """
 import json
+from typing import Optional
 
 from shared.utils.log_handler import log_and_emit
 from shared.utils.path_extractor import extract_by_path
 from shared.utils.config_manager import config_manager
-from shared.utils.api_key_provider import resolver_from_config
+from shared.utils.api_key_provider import (
+    endpoint_rotation_key,
+    resolver_from_config,
+)
 from shared.models.common_enums import VendorAdapterType
 
 from api_test_service.domain.ports import ApiVendorAdapter
@@ -68,17 +72,116 @@ class ApiDriverAdapter(ApiVendorAdapter):
         kwargs.setdefault('test_case_id', self._test_case_id)
         log_and_emit(level=level, module='APIDriver', content=content, **kwargs)
 
+    def _current_endpoint(self) -> Optional[dict]:
+        """当前端点 dict：self.endpoint（含 path，api_task_runner 拼
+        `/api/create_task` 等）base 前缀匹配回 api_config.api_endpoints 条目
+        （INT-1230 审计 D3'：端点身份用 base URL，增删端点不漂移）。
+        未匹配（main url 单端点 / 未配端点）返回 None → 回退单值链。"""
+        eps = list(getattr(self.api_config, 'api_endpoints', None) or [])
+        ep_url = str(self.endpoint or '').rstrip('/')
+        best = None
+        best_len = -1
+        for ep in eps:
+            if not isinstance(ep, dict):
+                continue
+            base = str(ep.get('endpoint') or '').rstrip('/')
+            if not base:
+                continue
+            if ep_url == base or ep_url.startswith(base + '/'):
+                if len(base) > best_len:
+                    best = ep
+                    best_len = len(base)
+        return best
+
     def _merge_headers(self) -> dict:
         """合并 Headers：meta.headers + case_config.headers，并按密钥链
-        （case_config → meta → env，UC-0901 扩展流程 3a）注入 Bearer ——
-        解析到密钥且未显式配置 Authorization 头时才注入，显式头优先"""
+        （case_config → 当前端点 api_keys 池轮换 → meta → env，UC-0901 扩展
+        流程 3a + INT-1177 endpoint 级轮换）注入 Bearer —— 解析到密钥且未
+        显式配置 Authorization 头时才注入，显式头优先"""
         headers = {**self.meta.get('headers', {}), **self.case_config.get('headers', {})}
-        api_key = _key_resolver.resolve(
+        endpoint = self._current_endpoint()
+        api_key = _key_resolver.resolve_rotating(
+            rotation_key=endpoint_rotation_key(
+                getattr(self.api_config, 'id', None),
+                (endpoint or {}).get('endpoint', '') or ''),
+            endpoint=endpoint,
             case_config=self.case_config if isinstance(self.case_config, dict) else None,
             meta=self.meta if isinstance(self.meta, dict) else None)
         if api_key and not any(k.lower() == 'authorization' for k in headers):
             headers['Authorization'] = f'Bearer {api_key}'
         return headers
+
+    # ── 密钥池失败降级重试（INT-1178，HTTP 内嵌路径）────────────────
+
+    def _bearer_key_of(self, headers) -> str:
+        """提取 Authorization 头中的 Bearer key（无 Bearer 前缀/无头返回 ''）。"""
+        auth = next((v for k, v in (headers or {}).items()
+                     if k.lower() == 'authorization'), '')
+        if isinstance(auth, str) and auth.startswith('Bearer '):
+            return auth[len('Bearer '):].strip()
+        return ''
+
+    def _rotate_bearer_headers(self, headers, rotation_key, endpoint_obj) -> dict:
+        """重解析下一「非冷却」key 并替换 Authorization（其余头保持不变）。
+
+        仅替换 Authorization：渲染头（render_request_parts 占位符替换结果）与
+        X-Session-Id 等其余头原样保留，轮换不影响请求其余部分。
+        """
+        api_key = _key_resolver.resolve_rotating(
+            rotation_key=rotation_key, endpoint=endpoint_obj,
+            case_config=self.case_config if isinstance(self.case_config, dict) else None,
+            meta=self.meta if isinstance(self.meta, dict) else None)
+        new_headers = dict(headers)
+        if api_key:
+            new_headers['Authorization'] = f'Bearer {api_key}'
+        return new_headers
+
+    def _call_api_with_key_rotation(self, *, endpoint, method, headers,
+                                    data=None, files=None, timeout=30, meta=None,
+                                    proxy_type=None, proxy_url=None,
+                                    log_prefix=''):
+        """api_client.call + 密钥池失败降级重试（INT-1178）。
+
+        仅当响应状态码 ∈ {401,403,429} 时触发轮换：将当前 Authorization 携带的
+        key 报告失败（置冷却，冷却期不选），再经 resolve_rotating 解析下一
+        「非冷却」key 重试；重试上限 = 当前端点池内 key 总数（有界）。
+        5xx / 网络错误（status_code 0 / error 非空）不轮换。池全冷却立即失败
+        （不空转等待）；全失败返回最后响应（success=False 携带最后错误）。
+        未配置 api_keys（无池）退化为单次调用，行为与迁移前完全一致——
+        执行器层只见解析结果，不感知轮换。
+        """
+        endpoint_obj = self._current_endpoint()
+        rotation_key = endpoint_rotation_key(
+            getattr(self.api_config, 'id', None),
+            (endpoint_obj or {}).get('endpoint', '') or '')
+        pool = _key_resolver.rotating_pool(endpoint_obj)
+        max_attempts = max(len(pool), 1)
+
+        current_headers = dict(headers or {})
+        last_resp = None
+        for attempt in range(max_attempts):
+            last_resp = api_client.call(
+                endpoint=endpoint, method=method, headers=current_headers,
+                data=data, files=files, timeout=timeout, meta=meta,
+                proxy_type=proxy_type, proxy_url=proxy_url,
+            )
+            if last_resp.get('status_code') not in (401, 403, 429):
+                break
+            current_key = self._bearer_key_of(current_headers)
+            # 仅池内 key 触发轮换；case 单值 / 显式 Authorization / 无池不轮换
+            if not pool or current_key not in pool:
+                break
+            self._log(level='WARNING',
+                      content=f"{log_prefix}HTTP {last_resp['status_code']}，"
+                              f"切换下一非冷却 key 重试"
+                              f"（attempt {attempt + 1}/{max_attempts}）",
+                      task_id=self._task_id, test_case_id=self._test_case_id)
+            _key_resolver.report_failure(rotation_key, current_key)
+            current_headers = self._rotate_bearer_headers(
+                current_headers, rotation_key, endpoint_obj)
+            if self._bearer_key_of(current_headers) == current_key:
+                break  # 池全冷却（解析不到下一非冷却 key）→ 立即失败，不空转
+        return last_resp
 
     def execute(self, context_data, files=None, method=None):
         """
@@ -130,15 +233,11 @@ class ApiDriverAdapter(ApiVendorAdapter):
         self._log(level='DEBUG', content=f"发起请求: endpoint={endpoint}, method={method}, timeout={timeout}", task_id=self._task_id, test_case_id=self._test_case_id)
 
         # INT-839：被测 API 网络代理透传（apis.proxy_type / proxy_url），
-        # 无代理时两者为空，api_client 回退与改动前完全一致
-        resp_info = api_client.call(
-            endpoint=endpoint,
-            method=method,
-            headers=headers,
-            data=request_data,
-            files=files,
-            timeout=timeout,
-            meta=call_meta,
+        # 无代理时两者为空，api_client 回退与改动前完全一致。
+        # INT-1178：内包密钥池失败降级重试（401/403/429 切下一非冷却 key）。
+        resp_info = self._call_api_with_key_rotation(
+            endpoint=endpoint, method=method, headers=headers,
+            data=request_data, files=files, timeout=timeout, meta=call_meta,
             proxy_type=getattr(self.api_config, 'proxy_type', None),
             proxy_url=getattr(self.api_config, 'proxy_url', None),
         )
@@ -224,8 +323,14 @@ class ApiDriverAdapter(ApiVendorAdapter):
         """
         base_url = self._resolve_base_url()
         url = f'{base_url.rstrip("/")}/chat' if base_url else ''
-        merged_headers = {**self._merge_headers(), **(headers or {}),
-                          'X-Session-Id': session_id}
+        # 调用方（api_session_executor 内嵌路径）已先 render_request_parts 渲染
+        # 头（含轮换解析后的 Authorization）——直接合入 X-Session-Id，避免二次
+        # _merge_headers 推进轮换游标（INT-1178：每轮请求只消费一个 key）。
+        # 独立调用未传 headers 时再经 _merge_headers 自建（含 Bearer 注入）。
+        if headers:
+            merged_headers = {**headers, 'X-Session-Id': session_id}
+        else:
+            merged_headers = {**self._merge_headers(), 'X-Session-Id': session_id}
         call_meta = {**self.meta, **self.case_config}
         # 显式超时优先（调用方恒传 session.session_timeout，默认 60）；兜底对齐
         # HttpAdapter 原默认 60——不得用 30 击杀 60s 慢调用（INT-54 deadline 回归）
@@ -240,10 +345,11 @@ class ApiDriverAdapter(ApiVendorAdapter):
                 algorithm_params, case_algorithm_params,
                 translation_direction, round_number, total_rounds, task_type,
             )
-            resp_info = api_client.call(
+            resp_info = self._call_api_with_key_rotation(
                 endpoint=url, method='POST', headers=merged_headers,
                 data=payload, timeout=effective_timeout, meta=call_meta,
                 proxy_type=proxy_type, proxy_url=proxy_url,
+                log_prefix='voice_llm chat: ',
             )
         else:
             # 音频引用（storage-ref/路径）统一解析为真实字节；解析失败抛错
@@ -261,10 +367,11 @@ class ApiDriverAdapter(ApiVendorAdapter):
                 k: v for k, v in merged_headers.items()
                 if k.lower() != 'content-type'
             }
-            resp_info = api_client.call(
+            resp_info = self._call_api_with_key_rotation(
                 endpoint=url, method='POST', headers=multipart_headers,
                 files=files, data=data, timeout=effective_timeout,
                 meta=call_meta, proxy_type=proxy_type, proxy_url=proxy_url,
+                log_prefix='voice_llm chat: ',
             )
 
         self._log(level='DEBUG',

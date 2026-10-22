@@ -25,6 +25,7 @@ import io
 import logging
 import time
 import wave
+from typing import Optional
 
 from shared.models.common_enums import (
     AdapterProtocol,
@@ -33,7 +34,10 @@ from shared.models.common_enums import (
     RealtimeRoundMode,
 )
 from shared.utils.config_manager import config_manager
-from shared.utils.api_key_provider import resolver_from_config
+from shared.utils.api_key_provider import (
+    endpoint_rotation_key,
+    resolver_from_config,
+)
 from shared.utils.dto_utils import dto_to_dict
 from api_test_service.application.round_render_service import RoundRenderService
 from api_test_service.domain.services.api_rms_spl_service import ApiRmsSplService
@@ -673,19 +677,28 @@ class RealtimeSessionExecutor:
 
     # ── 辅助 ──
     @staticmethod
-    def _resolve_ws_url(api_config) -> str:
-        """解析 WS 连接地址：api_endpoints 优先 ws://wss://，回退 api_url 同规则"""
-        endpoints = list(getattr(api_config, 'api_endpoints', None) or [])
-        for ep in endpoints:
+    def _resolve_ws_endpoint(api_config) -> Optional[dict]:
+        """解析当前 ws 端点 dict：api_endpoints 优先 ws://wss://，回退单端点
+        包装。返回端点 dict（含 api_keys 池，INT-1177 endpoint 级轮换池来源）；
+        无 ws 端点返回 None。"""
+        for ep in (getattr(api_config, 'api_endpoints', None) or []):
             url = (ep.get('endpoint') or '') if isinstance(ep, dict) else str(ep)
             if url.startswith(('ws://', 'wss://')):
-                return url
+                return ep if isinstance(ep, dict) else {'endpoint': str(ep)}
         url = getattr(api_config, 'endpoint', None) or ''
         if url.startswith(('ws://', 'wss://')):
-            return url
-        raise ValueError(
-            f"API {getattr(api_config, 'id', '?')} 未配置 WebSocket 端点"
-            "（需 ws:// 或 wss:// 前缀）")
+            return {'endpoint': url}
+        return None
+
+    @staticmethod
+    def _resolve_ws_url(api_config) -> str:
+        """解析 WS 连接地址：api_endpoints 优先 ws://wss://，回退 api_url 同规则"""
+        endpoint = RealtimeSessionExecutor._resolve_ws_endpoint(api_config)
+        if endpoint is None:
+            raise ValueError(
+                f"API {getattr(api_config, 'id', '?')} 未配置 WebSocket 端点"
+                "（需 ws:// 或 wss:// 前缀）")
+        return endpoint.get('endpoint', '')
 
     @staticmethod
     def _case_level_key(api_specific_config, case_config) -> str:
@@ -705,13 +718,19 @@ class RealtimeSessionExecutor:
         直传 + 密钥链 case_config → meta → env（UC-0901 扩展流程 3a，
         禁止硬编码密钥）；显式 Authorization 头优先，不覆盖
 
-        INT-1177：经 resolve_rotating 消费密钥池轮换（传 api_config.id，
-        同一 API 跨协议同源轮换游标；case 层单值最高优先不变）。
+        INT-1177 endpoint 级（INT-1230 审计 D5'）：经 resolve_rotating 消费
+        **当前 ws 端点**的 api_keys 轮换池（传 `(api_id, ws endpoint URL)` 轮换
+        key，同一端点跨协议同源轮换游标；case 层单值最高优先不变；未配池
+        回退单值链）。
         """
         meta = getattr(api_config, 'meta', None) or {}
         headers = dict(meta.get('ws_headers') or {})
+        endpoint = RealtimeSessionExecutor._resolve_ws_endpoint(api_config)
         api_key = _key_resolver.resolve_rotating(
-            api_id=getattr(api_config, 'id', None),
+            rotation_key=endpoint_rotation_key(
+                getattr(api_config, 'id', None),
+                (endpoint or {}).get('endpoint', '') or ''),
+            endpoint=endpoint,
             case_value=case_api_key,
             meta=meta,
         )

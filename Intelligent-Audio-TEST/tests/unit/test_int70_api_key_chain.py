@@ -32,6 +32,7 @@ from shared.utils.api_key_provider import (
     ApiKeyChainResolver,
     InMemoryRotationStateStore,
     RotationStateStore,
+    endpoint_rotation_key,
     get_rotation_store,
     resolver_from_config,
 )
@@ -118,26 +119,35 @@ def test_resolver_from_config():
 # 内嵌等价：resolver_from_config（ApiDriverAdapter._key_resolver 同源）逐级回退 +
 # ApiDriverAdapter._merge_headers 的 Bearer 注入（HttpAdapter 等价能力）。
 
-# ── INT-1177 密钥池：轮换解析 / 冷却 / 并发 / 同源 ─────────────
+# ── INT-1177 密钥池：轮换解析 / 冷却 / 并发 / 同源（endpoint 级） ─────
+
+def _ep(url='https://ep.example.com', keys=None):
+    """端点 dict（endpoint 级密钥池挂在 api_endpoints[].api_keys）"""
+    return {'endpoint': url, 'api_keys': list(keys or [])}
+
+
+def _rk(api_id=1, url='https://ep.example.com'):
+    """轮换状态 key = (api_id, endpoint base URL)，INT-1230 审计 D3'"""
+    return endpoint_rotation_key(api_id, url)
 
 def test_rotating_round_robin():
     resolver = ApiKeyChainResolver()
-    pool = {'api_keys': ['sk-a1', 'sk-b2', 'sk-c3']}
-    assert resolver.resolve_rotating(api_id=1, meta=pool) == 'sk-a1'
-    assert resolver.resolve_rotating(api_id=1, meta=pool) == 'sk-b2'
-    assert resolver.resolve_rotating(api_id=1, meta=pool) == 'sk-c3'
-    assert resolver.resolve_rotating(api_id=1, meta=pool) == 'sk-a1'
+    ep = _ep(keys=['sk-a1', 'sk-b2', 'sk-c3'])
+    assert resolver.resolve_rotating(rotation_key=_rk(), endpoint=ep) == 'sk-a1'
+    assert resolver.resolve_rotating(rotation_key=_rk(), endpoint=ep) == 'sk-b2'
+    assert resolver.resolve_rotating(rotation_key=_rk(), endpoint=ep) == 'sk-c3'
+    assert resolver.resolve_rotating(rotation_key=_rk(), endpoint=ep) == 'sk-a1'
 
 
 def test_rotating_case_level_single_wins():
     """case 层单值最高优先（现状不变）：配置密钥池也不轮换"""
     resolver = ApiKeyChainResolver()
-    meta = {'api_keys': ['sk-a1', 'sk-b2']}
+    ep = _ep(keys=['sk-a1', 'sk-b2'])
     assert resolver.resolve_rotating(
-        api_id=1, meta=meta,
+        rotation_key=_rk(), endpoint=ep,
         case_config={'api_key': 'sk-case'}) == 'sk-case'
     assert resolver.resolve_rotating(
-        api_id=1, meta=meta,
+        rotation_key=_rk(), endpoint=ep,
         case_config={'api_key': 'sk-case'}) == 'sk-case'
 
 
@@ -145,83 +155,106 @@ def test_rotating_fallback_single_value():
     """无池回退单值链（meta.api_key → 服务配置层 → env），resolve() 行为不变"""
     resolver = ApiKeyChainResolver()
     assert resolver.resolve_rotating(
-        api_id=1, meta={'api_key': 'sk-meta'}) == 'sk-meta'
+        rotation_key=_rk(), endpoint=None,
+        meta={'api_key': 'sk-meta'}) == 'sk-meta'
     assert resolver.resolve_rotating(
-        api_id=1, meta={}, service_candidates=['sk-yml']) == 'sk-yml'
-    assert resolver.resolve_rotating(api_id=1, meta={}) == ''
+        rotation_key=_rk(), endpoint=None,
+        service_candidates=['sk-yml']) == 'sk-yml'
+    assert resolver.resolve_rotating(rotation_key=_rk(), endpoint=None) == ''
+
+
+def test_rotating_pool_only_from_endpoint_not_meta():
+    """INT-1230 审计 D1'：轮换池只取自当前端点 api_keys，meta.api_keys 不参与
+    （旧 meta 级口径已迁移；meta 仅作单值回退链）"""
+    resolver = ApiKeyChainResolver()
+    ep = _ep(keys=['sk-ep-a1'])
+    # 端点无池 + meta 含 api_keys：不回退到 meta 池，走单值链（meta 无 api_key → 空）
+    assert resolver.resolve_rotating(
+        rotation_key=_rk(), endpoint=None,
+        meta={'api_keys': ['sk-meta-a1']}) == ''
+    # 端点有池：只用端点池轮换
+    assert resolver.resolve_rotating(
+        rotation_key=_rk(), endpoint=ep,
+        meta={'api_keys': ['sk-meta-a1']}) == 'sk-ep-a1'
 
 
 def test_rotating_failure_cooldown_skips_key():
     """失败降级：report_failure 置冷却后该 key 冷却期内不再选中"""
     resolver = ApiKeyChainResolver(cooldown_seconds=60)
-    pool = {'api_keys': ['sk-a1', 'sk-b2', 'sk-c3']}
-    assert resolver.resolve_rotating(api_id=1, meta=pool) == 'sk-a1'
+    ep = _ep(keys=['sk-a1', 'sk-b2', 'sk-c3'])
+    assert resolver.resolve_rotating(rotation_key=_rk(), endpoint=ep) == 'sk-a1'
     # sk-a1 失败置冷却：下一轮跳过，直接 sk-b2
-    resolver.report_failure(1, 'sk-a1')
-    assert resolver.resolve_rotating(api_id=1, meta=pool) == 'sk-b2'
-    assert resolver.resolve_rotating(api_id=1, meta=pool) == 'sk-c3'
+    resolver.report_failure(_rk(), 'sk-a1')
+    assert resolver.resolve_rotating(rotation_key=_rk(), endpoint=ep) == 'sk-b2'
+    assert resolver.resolve_rotating(rotation_key=_rk(), endpoint=ep) == 'sk-c3'
     # sk-b2 也失败：只剩 sk-c3
-    resolver.report_failure(1, 'sk-b2')
-    assert resolver.resolve_rotating(api_id=1, meta=pool) == 'sk-c3'
+    resolver.report_failure(_rk(), 'sk-b2')
+    assert resolver.resolve_rotating(rotation_key=_rk(), endpoint=ep) == 'sk-c3'
 
 
 def test_rotating_pool_all_cooled_returns_empty():
     """池全冷却立即失败：resolve_rotating 返回空串（调用方不注入 Authorization）"""
     resolver = ApiKeyChainResolver(cooldown_seconds=60)
-    pool = {'api_keys': ['sk-a1', 'sk-b2']}
-    assert resolver.resolve_rotating(api_id=9, meta=pool) == 'sk-a1'
-    resolver.report_failure(9, 'sk-a1')
-    assert resolver.resolve_rotating(api_id=9, meta=pool) == 'sk-b2'
-    resolver.report_failure(9, 'sk-b2')
-    assert resolver.resolve_rotating(api_id=9, meta=pool) == ''
-    assert resolver.has_available_rotating_key(9, pool) is False
+    ep = _ep(keys=['sk-a1', 'sk-b2'])
+    assert resolver.resolve_rotating(rotation_key=_rk(9), endpoint=ep) == 'sk-a1'
+    resolver.report_failure(_rk(9), 'sk-a1')
+    assert resolver.resolve_rotating(rotation_key=_rk(9), endpoint=ep) == 'sk-b2'
+    resolver.report_failure(_rk(9), 'sk-b2')
+    assert resolver.resolve_rotating(rotation_key=_rk(9), endpoint=ep) == ''
+    assert resolver.has_available_rotating_key(_rk(9), ep) is False
 
 
 def test_rotating_has_available():
     resolver = ApiKeyChainResolver()
-    pool = {'api_keys': ['sk-a1', 'sk-b2']}
-    assert resolver.has_available_rotating_key(1, pool) is True
-    assert resolver.has_available_rotating_key(1, {'api_keys': []}) is False
-    assert resolver.has_available_rotating_key(1, {}) is False
+    ep = _ep(keys=['sk-a1', 'sk-b2'])
+    assert resolver.has_available_rotating_key(_rk(), ep) is True
+    assert resolver.has_available_rotating_key(_rk(), _ep(keys=[])) is False
+    assert resolver.has_available_rotating_key(_rk(), None) is False
+    assert resolver.has_available_rotating_key(_rk(), {}) is False
 
 
 def test_rotating_cooldown_expiry_restores_key():
     """冷却期过后 key 恢复可选（cooldown_seconds=0 → 立即恢复）"""
     resolver = ApiKeyChainResolver(cooldown_seconds=0)
-    pool = {'api_keys': ['sk-a1', 'sk-b2']}
-    assert resolver.resolve_rotating(api_id=2, meta=pool) == 'sk-a1'
-    resolver.report_failure(2, 'sk-a1')
+    ep = _ep(keys=['sk-a1', 'sk-b2'])
+    assert resolver.resolve_rotating(rotation_key=_rk(2), endpoint=ep) == 'sk-a1'
+    resolver.report_failure(_rk(2), 'sk-a1')
     # cooldown=0：冷却立即过期，下一轮恢复可选
-    assert resolver.resolve_rotating(api_id=2, meta=pool) == 'sk-b2'
-    assert resolver.resolve_rotating(api_id=2, meta=pool) == 'sk-a1'
+    assert resolver.resolve_rotating(rotation_key=_rk(2), endpoint=ep) == 'sk-b2'
+    assert resolver.resolve_rotating(rotation_key=_rk(2), endpoint=ep) == 'sk-a1'
 
 
 def test_rotating_shared_store_cross_resolver_same_source():
-    """同一 API 跨协议同源轮换：两个解析器实例（如 HTTP/Realtime 各自
-    模块级 resolver）经同一共享单例，同一 api_id 共享游标"""
+    """同一端点跨协议同源轮换：两个解析器实例（如 HTTP/Realtime 各自
+    模块级 resolver）经同一共享单例，同一 (api_id, endpoint URL) 共享游标"""
     r1 = ApiKeyChainResolver()
     r2 = ApiKeyChainResolver()
-    pool = {'api_keys': ['sk-a1', 'sk-b2', 'sk-c3']}
+    ep = _ep(keys=['sk-a1', 'sk-b2', 'sk-c3'])
     # HTTP 侧解析 → a1；Realtime 侧解析 → b2（共享游标）
-    assert r1.resolve_rotating(api_id=5, meta=pool) == 'sk-a1'
-    assert r2.resolve_rotating(api_id=5, meta=pool) == 'sk-b2'
-    assert r1.resolve_rotating(api_id=5, meta=pool) == 'sk-c3'
+    assert r1.resolve_rotating(rotation_key=_rk(5), endpoint=ep) == 'sk-a1'
+    assert r2.resolve_rotating(rotation_key=_rk(5), endpoint=ep) == 'sk-b2'
+    assert r1.resolve_rotating(rotation_key=_rk(5), endpoint=ep) == 'sk-c3'
 
 
-def test_rotating_api_id_independent_cursor():
-    """轮换状态按 api_id 维度：不同 API 游标独立，互不干扰"""
+def test_rotating_endpoint_independent_cursor():
+    """INT-1230 审计 D3'：轮换状态按 (api_id, endpoint URL) 维度，多端点
+    各用各池互不串扰；同 API 不同端点游标独立"""
     resolver = ApiKeyChainResolver()
-    pool = {'api_keys': ['sk-a1', 'sk-b2']}
-    assert resolver.resolve_rotating(api_id=11, meta=pool) == 'sk-a1'
-    assert resolver.resolve_rotating(api_id=12, meta=pool) == 'sk-a1'
-    assert resolver.resolve_rotating(api_id=11, meta=pool) == 'sk-b2'
-    assert resolver.resolve_rotating(api_id=12, meta=pool) == 'sk-b2'
+    ep1 = _ep(url='https://ep1.example.com', keys=['sk-a1', 'sk-a2'])
+    ep2 = _ep(url='https://ep2.example.com', keys=['sk-b1', 'sk-b2'])
+    # 同 API 两个端点：各自独立游标
+    assert resolver.resolve_rotating(rotation_key=_rk(11, 'https://ep1.example.com'), endpoint=ep1) == 'sk-a1'
+    assert resolver.resolve_rotating(rotation_key=_rk(11, 'https://ep2.example.com'), endpoint=ep2) == 'sk-b1'
+    assert resolver.resolve_rotating(rotation_key=_rk(11, 'https://ep1.example.com'), endpoint=ep1) == 'sk-a2'
+    assert resolver.resolve_rotating(rotation_key=_rk(11, 'https://ep2.example.com'), endpoint=ep2) == 'sk-b2'
+    # 不同 API 同一 URL 也独立
+    assert resolver.resolve_rotating(rotation_key=_rk(12, 'https://ep1.example.com'), endpoint=ep1) == 'sk-a1'
 
 
 def test_rotating_concurrency_stress():
     """并发压力：3 key × 多线程 resolve，计数均衡、无死锁、无重复分配"""
     resolver = ApiKeyChainResolver(cooldown_seconds=60)
-    pool = {'api_keys': ['sk-a1', 'sk-b2', 'sk-c3']}
+    ep = _ep(keys=['sk-a1', 'sk-b2', 'sk-c3'])
     total = 300
     results = []
     errors = []
@@ -229,7 +262,8 @@ def test_rotating_concurrency_stress():
     def worker():
         try:
             for _ in range(total):
-                results.append(resolver.resolve_rotating(api_id=77, meta=pool))
+                results.append(resolver.resolve_rotating(
+                    rotation_key=_rk(77), endpoint=ep))
         except Exception as e:  # pragma: no cover
             errors.append(e)
 
@@ -241,10 +275,55 @@ def test_rotating_concurrency_stress():
 
     assert not errors, f'并发解析抛异常: {errors}'
     assert len(results) == total * 8, '存在死锁/丢失'
-    counts = {k: results.count(k) for k in pool['api_keys']}
+    counts = {k: results.count(k) for k in ep['api_keys']}
     # round-robin 均衡：每 key 计数偏差 ≤1
     assert max(counts.values()) - min(counts.values()) <= 1, counts
     assert len(set(results)) == 3
+
+
+def test_rotating_concurrency_multi_endpoint_no_cross():
+    """INT-1230 审计 D4'：多端点并发计数不错乱——两个端点各 2 key × 多线程，
+    每个端点的计数独立均衡（端点间不串）"""
+    resolver = ApiKeyChainResolver(cooldown_seconds=60)
+    ep_a = _ep(url='https://ep-a.example.com', keys=['sk-a1', 'sk-a2'])
+    ep_b = _ep(url='https://ep-b.example.com', keys=['sk-b1', 'sk-b2'])
+    results_a = []
+    results_b = []
+    errors = []
+    total = 200
+
+    def worker_a():
+        try:
+            for _ in range(total):
+                results_a.append(resolver.resolve_rotating(
+                    rotation_key=_rk(88, 'https://ep-a.example.com'), endpoint=ep_a))
+        except Exception as e:  # pragma: no cover
+            errors.append(e)
+
+    def worker_b():
+        try:
+            for _ in range(total):
+                results_b.append(resolver.resolve_rotating(
+                    rotation_key=_rk(88, 'https://ep-b.example.com'), endpoint=ep_b))
+        except Exception as e:  # pragma: no cover
+            errors.append(e)
+
+    threads = [__import__('threading').Thread(target=worker_a)
+               for _ in range(4)] + [__import__('threading').Thread(target=worker_b)
+                                     for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+
+    assert not errors, f'并发解析抛异常: {errors}'
+    assert len(results_a) == total * 4 and len(results_b) == total * 4
+    counts_a = {k: results_a.count(k) for k in ep_a['api_keys']}
+    counts_b = {k: results_b.count(k) for k in ep_b['api_keys']}
+    assert max(counts_a.values()) - min(counts_a.values()) <= 1, counts_a
+    assert max(counts_b.values()) - min(counts_b.values()) <= 1, counts_b
+    assert all(k not in results_a for k in ep_b['api_keys']), '端点间串池'
+    assert all(k not in results_b for k in ep_a['api_keys']), '端点间串池'
 
 
 def test_rotating_store_port_injectable():
@@ -255,24 +334,24 @@ def test_rotating_store_port_injectable():
         def __init__(self):
             self.lock = __import__('threading').Lock()
 
-        def next_index(self, api_id, pool, cooldown_seconds):
+        def next_index(self, key, pool, cooldown_seconds):
             with self.lock:
                 return 0
 
-        def has_available(self, api_id, pool, cooldown_seconds):
+        def has_available(self, key, pool, cooldown_seconds):
             return True
 
-        def mark_failure(self, api_id, value, cooldown_seconds):
+        def mark_failure(self, key, value, cooldown_seconds):
             pass
 
     original = akp._rotation_store
     akp._rotation_store = _FixedStore()
     try:
         resolver = ApiKeyChainResolver()
-        pool = {'api_keys': ['sk-a1', 'sk-b2']}
+        ep = _ep(keys=['sk-a1', 'sk-b2'])
         # 固定实现恒返回下标 0
-        assert resolver.resolve_rotating(api_id=1, meta=pool) == 'sk-a1'
-        assert resolver.resolve_rotating(api_id=1, meta=pool) == 'sk-a1'
+        assert resolver.resolve_rotating(rotation_key=_rk(), endpoint=ep) == 'sk-a1'
+        assert resolver.resolve_rotating(rotation_key=_rk(), endpoint=ep) == 'sk-a1'
     finally:
         akp._rotation_store = original
 
@@ -350,6 +429,62 @@ def test_voice_llm_chat_headers_carry_bearer():
     assert captured['headers']['X-Session-Id'] == 's-1'
 
 
+def test_driver_endpoint_pool_rotating_injected():
+    """INT-1230 审计 D5'：ApiDriverAdapter._merge_headers 消费**当前端点**池
+    （self.endpoint 含 path，base 前缀匹配回 api_endpoints 取池）轮换注入
+    Bearer；同一端点连续解析命中各 key"""
+    api_config = SimpleNamespace(
+        id=31, meta={}, max_timeout=30,
+        endpoint='https://ep.example.com/api/create_task',
+        api_endpoints=[
+            {'endpoint': 'https://ep.example.com',
+             'api_keys': ['sk-a1', 'sk-b2']},
+            {'endpoint': 'https://ep2.example.com',
+             'api_keys': ['sk-x1', 'sk-x2']},
+        ],
+    )
+    driver = ApiDriverAdapter(api_config, case_config={})
+    h1, _ = driver.render_request_parts({})
+    h2, _ = driver.render_request_parts({})
+    assert h1['Authorization'] == 'Bearer sk-a1'
+    assert h2['Authorization'] == 'Bearer sk-b2'
+
+
+def test_driver_endpoint_pool_not_crossed():
+    """多端点各用各池：按 self.endpoint 匹配的端点池轮换，另一端点池不串"""
+    api_config = SimpleNamespace(
+        id=32, meta={}, max_timeout=30,
+        endpoint='https://ep2.example.com/api/create_task',
+        api_endpoints=[
+            {'endpoint': 'https://ep.example.com',
+             'api_keys': ['sk-a1', 'sk-a2']},
+            {'endpoint': 'https://ep2.example.com',
+             'api_keys': ['sk-b1', 'sk-b2']},
+        ],
+    )
+    driver = ApiDriverAdapter(api_config, case_config={})
+    h1, _ = driver.render_request_parts({})
+    h2, _ = driver.render_request_parts({})
+    # 命中 ep2 池（不是 ep 池）：端点间不串
+    assert h1['Authorization'] == 'Bearer sk-b1'
+    assert h2['Authorization'] == 'Bearer sk-b2'
+
+
+def test_driver_no_endpoint_match_fallback_single():
+    """self.endpoint 未匹配任何 api_endpoints（main url 单端点）→ 回退单值链"""
+    api_config = SimpleNamespace(
+        id=33, meta={'api_key': 'sk-meta'}, max_timeout=30,
+        endpoint='https://main.example.com',
+        api_endpoints=[
+            {'endpoint': 'https://ep.example.com',
+             'api_keys': ['sk-a1', 'sk-a2']},
+        ],
+    )
+    driver = ApiDriverAdapter(api_config, case_config={})
+    h, _ = driver.render_request_parts({})
+    assert h['Authorization'] == 'Bearer sk-meta'
+
+
 # ── 消费点：RealtimeSessionExecutor WS 握手头 ─────────────────
 
 from api_test_service.core.realtime_session_executor import (
@@ -394,9 +529,12 @@ def test_realtime_ws_headers_no_key_passthrough():
 
 def test_realtime_ws_headers_rotating_pool():
     """INT-1177：Realtime 静态 _resolve_ws_headers 消费 resolve_rotating
-    （传 api_config.id，同一 API 同源轮换）；连续解析命中各 key"""
+    （传 (api_id, ws endpoint URL)，同一端点同源轮换）；连续解析命中各 key"""
     api_config = SimpleNamespace(
-        id=101, meta={'api_keys': ['sk-a1', 'sk-b2', 'sk-c3']})
+        id=101, endpoint='wss://rt.example.com',
+        api_endpoints=[{'endpoint': 'wss://rt.example.com',
+                        'api_keys': ['sk-a1', 'sk-b2', 'sk-c3']}],
+        meta={})
     h1 = RealtimeSessionExecutor._resolve_ws_headers(api_config)
     h2 = RealtimeSessionExecutor._resolve_ws_headers(api_config)
     h3 = RealtimeSessionExecutor._resolve_ws_headers(api_config)
@@ -417,10 +555,13 @@ def test_realtime_ws_headers_pool_all_cooled_no_auth(monkeypatch):
     resolver = ApiKeyChainResolver(cooldown_seconds=60)
     resolver.rotation_store = fresh
     monkeypatch.setattr(rse, '_key_resolver', resolver)
-    fresh.mark_failure(202, 'sk-a1', 60)
-    fresh.mark_failure(202, 'sk-b2', 60)
+    ws_url = 'wss://rt.example.com'
+    fresh.mark_failure((202, ws_url), 'sk-a1', 60)
+    fresh.mark_failure((202, ws_url), 'sk-b2', 60)
     api_config = SimpleNamespace(
-        id=202, meta={'api_keys': ['sk-a1', 'sk-b2']})
+        id=202, endpoint=ws_url,
+        api_endpoints=[{'endpoint': ws_url, 'api_keys': ['sk-a1', 'sk-b2']}],
+        meta={})
     headers = RealtimeSessionExecutor._resolve_ws_headers(api_config)
     assert 'Authorization' not in headers
     assert headers == {}
@@ -544,6 +685,38 @@ def test_mask_mapping_suffix_api_keys_sensitive():
     assert _is_sensitive_key('openai_api_keys') is True
     assert _is_sensitive_key('Api_Keys') is True
     assert _is_sensitive_key('API-KEYS') is True
+
+
+def test_mask_mapping_endpoint_nested_api_keys():
+    """INT-1230 审计 D7'（endpoint 级返工）：api_endpoints[].api_keys 嵌套
+    数组（sk- 与非 sk-）经 mask_mapping 递归命中整组掩码，零明文"""
+    payload = {
+        'name': 'A',
+        'api_endpoints': [
+            {'endpoint': 'https://ep1.example.com',
+             'api_keys': ['sk-abcdef1234567890', 'plain-abc123']},
+            {'endpoint': 'https://ep2.example.com',
+             'api_keys': ['sk-xyz987654321']},
+        ],
+    }
+    masked = mask_mapping(payload)
+    eps = masked['api_endpoints']
+    assert eps[0]['api_keys'] == '****'
+    assert eps[1]['api_keys'] == '****'
+    assert 'sk-abcdef1234567890' not in str(masked)
+    assert 'sk-xyz987654321' not in str(masked)
+    assert 'plain-abc123' not in str(masked)
+
+
+def test_mask_text_endpoint_nested_api_keys():
+    """INT-1230 审计 D7'：端点 JSON 文本内 api_keys 数组形态（sk- 与非 sk-）
+    经 mask_text 整数组掩码"""
+    masked = mask_text(
+        '{"api_endpoints":[{"endpoint":"https://ep.example.com",'
+        '"api_keys":["sk-abcdef1234567890","plain-abc123"]}]}')
+    assert 'sk-abcdef1234567890' not in masked
+    assert 'plain-abc123' not in masked
+    assert 'api_keys":****' in masked
 
 
 def test_log_and_emit_console_masked(capsys):

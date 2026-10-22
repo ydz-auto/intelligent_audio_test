@@ -41,7 +41,10 @@ from shared.models.common_enums import (
     AdapterVendor,
     RealtimeRoundMode,
 )
-from shared.utils.api_key_provider import resolver_from_config
+from shared.utils.api_key_provider import (
+    endpoint_rotation_key,
+    resolver_from_config,
+)
 from shared.utils.config_manager import config_manager
 
 from api_test_service.domain.ports import ApiVendorAdapter
@@ -120,10 +123,10 @@ class RealtimeAdapterBase(ApiVendorAdapter):
     def initialize(self) -> bool:
         """WS 握手：构造传输对象并建立连接（initialize = connect）。
 
-        INT-1177 密钥池：配置 meta.api_keys 轮换池且无 case 层单值时，
-        握手 401/403/429 自动切下一非冷却 key 重建 client（重试上限 =
-        池内 key 总数；池全冷却立即失败，不空转等待；全失败抛最后错误）。
-        执行器层不感知轮换（Domain 层只见解析结果）。
+        INT-1177 endpoint 级密钥池：**当前 ws 端点**配置 api_keys 轮换池且无
+        case 层单值时，握手 401/403/429 自动切下一非冷却 key 重建 client
+        （重试上限 = 池内 key 总数；池全冷却立即失败，不空转等待；全失败抛
+        最后错误）。执行器层不感知轮换（Domain 层只见解析结果）。
         """
         if self._client is not None and self._client.connected:
             return True
@@ -134,17 +137,26 @@ class RealtimeAdapterBase(ApiVendorAdapter):
         return self.initialize()
 
     def _connect_with_rotation(self) -> bool:
-        """带密钥池轮换的握手重试（无池时单次连接，现状语义）。"""
+        """带密钥池轮换的握手重试（无池时单次连接，现状语义）。
+
+        INT-1177 endpoint 级（INT-1230 审计 D3'/D4'/D5'）：轮换池取**当前
+        ws 端点**的 api_keys；轮换 key = (api_id, ws endpoint URL)，同一端点
+        Realtime 与 HTTP 共享游标；失败 401/403/429 切下一非冷却 key，重试
+        上限=池内 key 数；池全冷却立即失败；5xx/网络错误不轮换。
+        """
         if self._case_level_key(self.case_config):
             # case 层单值最高优先（现状不变）：无轮换池，单次连接
             self._client = self._build_client()
             return bool(self._client.connect())
-        meta = getattr(self.api_config, 'meta', None) or {}
-        pool = _key_resolver.rotating_pool(meta)
+        endpoint = self._resolve_ws_endpoint(self.api_config)
+        pool = _key_resolver.rotating_pool(endpoint) if endpoint else []
         if not pool:
-            # 未配置密钥池：单次连接（现状语义）
+            # 未配置端点密钥池：单次连接（现状语义）
             self._client = self._build_client()
             return bool(self._client.connect())
+        rotation_key = endpoint_rotation_key(
+            getattr(self.api_config, 'id', None),
+            (endpoint or {}).get('endpoint', '') or '')
         last_status = None
         last_error = ''
         for attempt in range(len(pool)):
@@ -168,10 +180,9 @@ class RealtimeAdapterBase(ApiVendorAdapter):
             if last_status not in _ROTATION_TRIGGER_STATUS_CODES:
                 # 5xx / 网络错误：明确不轮换（非账号配额问题），立即失败
                 return False
-            _key_resolver.report_failure(
-                self.api_config.id, self._current_api_key)
+            _key_resolver.report_failure(rotation_key, self._current_api_key)
             if not _key_resolver.has_available_rotating_key(
-                    self.api_config.id, meta):
+                    rotation_key, endpoint):
                 # 池全冷却：立即失败，不空转等待
                 break
         raise ConnectionError(
@@ -283,19 +294,28 @@ class RealtimeAdapterBase(ApiVendorAdapter):
 
     # ── 连接解析辅助（与 RealtimeSessionExecutor 静态方法同语义，自包含）──
 
-    def _resolve_ws_url(self, api_config) -> str:
-        """解析 WS 连接地址：api_endpoints 优先 ws://wss://，回退 endpoint"""
+    def _resolve_ws_endpoint(self, api_config) -> Optional[dict]:
+        """解析当前 ws 端点 dict：api_endpoints 优先 ws://wss://，回退单端点
+        包装。返回端点 dict（含 api_keys 池，INT-1177 endpoint 级轮换池来源）；
+        无 ws 端点返回 None。"""
         for source in (list(getattr(api_config, 'api_endpoints', None) or []),):
             for ep in source:
                 url = (ep.get('endpoint') or '') if isinstance(ep, dict) else str(ep)
                 if url.startswith(('ws://', 'wss://')):
-                    return url
+                    return ep if isinstance(ep, dict) else {'endpoint': str(ep)}
         url = getattr(api_config, 'endpoint', None) or ''
         if url.startswith(('ws://', 'wss://')):
-            return url
-        raise ValueError(
-            f"API {getattr(api_config, 'id', '?')} 未配置 WebSocket 端点"
-            "（需 ws:// 或 wss:// 前缀）")
+            return {'endpoint': url}
+        return None
+
+    def _resolve_ws_url(self, api_config) -> str:
+        """解析 WS 连接地址：api_endpoints 优先 ws://wss://，回退 endpoint"""
+        endpoint = self._resolve_ws_endpoint(api_config)
+        if endpoint is None:
+            raise ValueError(
+                f"API {getattr(api_config, 'id', '?')} 未配置 WebSocket 端点"
+                "（需 ws:// 或 wss:// 前缀）")
+        return endpoint.get('endpoint', '')
 
     def _case_level_key(self, case_config) -> str:
         """密钥链 case 层候选：用例 api 段优先，回退用例顶层（键名可配置）"""
@@ -320,13 +340,19 @@ class RealtimeAdapterBase(ApiVendorAdapter):
     def _resolve_ws_headers(self, api_config, case_api_key: str = '') -> dict:
         """解析 WS 握手头：meta.ws_headers 直传 + 密钥链注入；显式头优先
 
-        INT-1177：经 resolve_rotating 消费密钥池轮换（传 api_config.id，
-        同一 API 跨协议同源轮换游标）；case 层单值最高优先不变。
+        INT-1177（endpoint 级，INT-1230 审计 D5'）：经 resolve_rotating 消费
+        **当前 ws 端点**的 api_keys 轮换池（传 `(api_id, ws endpoint URL)` 轮换
+        key，同一端点跨协议同源轮换游标）；case 层单值最高优先不变；未配池
+        回退单值链。
         """
         meta = getattr(api_config, 'meta', None) or {}
         headers = dict(meta.get('ws_headers') or {})
+        endpoint = self._resolve_ws_endpoint(api_config)
         api_key = _key_resolver.resolve_rotating(
-            api_id=getattr(api_config, 'id', None),
+            rotation_key=endpoint_rotation_key(
+                getattr(api_config, 'id', None),
+                (endpoint or {}).get('endpoint', '') or ''),
+            endpoint=endpoint,
             case_value=case_api_key,
             meta=meta,
         )
