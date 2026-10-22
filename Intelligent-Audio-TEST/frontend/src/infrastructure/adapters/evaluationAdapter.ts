@@ -155,6 +155,8 @@ export function toDimension(dto: DimensionItemDto): Dimension {
     decimalPlaces: dto?.decimal_places,
     weight: dto?.weight,
     estimatedExecTime: dto?.estimated_exec_time,
+    // INT-1387：读方向补映射 score_unit → scoreUnit（写方向已有，漏映射导致编辑弹窗回显恒空、保存清库值）
+    scoreUnit: dto?.score_unit ?? '',
     rule: (dto?.rule ?? undefined) as Dimension['rule'],
     requiredInputs: parseNestedList(dto?.required_inputs)?.map(item => toRequiredInput(item)),
     outputFields: parseNestedList(dto?.output_fields)?.map(item => toOutputField(item)),

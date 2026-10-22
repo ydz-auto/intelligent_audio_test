@@ -17,6 +17,8 @@ export interface DimensionItemDto {
   api_endpoints?: Record<string, unknown>[]
   api_settings?: Record<string, unknown> | string
   api_status?: string
+  /** 分数单位（回显给编辑弹窗「分数单位」字段，INT-1387） */
+  score_unit?: string
   type?: string
   result_type?: number
   result_min?: number
