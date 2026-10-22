@@ -271,9 +271,16 @@ export function SplMappingPage() {
 
   const handleConfirmDeleteDigital = async () => {
     if (!deleteDigitalTarget) return
+    const target = deleteDigitalTarget
     setConfirmPending(true)
     try {
-      const result = await removeDigital.mutateAsync(deleteDigitalTarget.id)
+      // INT-1325 P3-2：删除的是该 API 默认映射时，先清默认指针再删，避免残留悬挂指针
+      const api = apis.find((a) => a.id === target.apiId)
+      const isDefault = api?.rmsSplMappingId != null && api.rmsSplMappingId === target.id
+      if (isDefault) {
+        await setDefaultDigital.mutateAsync({ apiId: target.apiId, mappingId: null })
+      }
+      const result = await removeDigital.mutateAsync(target.id)
       if (result.success) toast.success('RMS-SPL 映射已删除')
       else toast.error(result.message ?? '删除失败，请重试')
       setDeleteDigitalTarget(null)
