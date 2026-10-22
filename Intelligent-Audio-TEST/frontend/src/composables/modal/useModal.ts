@@ -96,6 +96,19 @@ const getModalManager = (): ModalManager => {
     const { component, defaultConfig } = modalConfig
 
     const mergedProps = { ...defaultConfig, ...props }
+
+    // INT-1323：确认弹窗兼容历史调用方以 `message` 传确认文案（基座层收敛）。
+    // 全站 BASIC_CONFIRM / DELETE_CONFIRM 长期混用 message/content 两个键名（INT-274
+    // 仅统一了部分业务侧），逐一改 100+ 处成本高；此处统一归一：调用方未显式传
+    // `content` 时以 `message` 兜底，显式传 `content` 仍优先。message 键只出现在确认
+    // 弹窗调用中，对其他模态类型无副作用。
+    if (props.content === undefined && props.message !== undefined) {
+      mergedProps.content = props.message
+    }
+    // INT-1323：兼容以 `type: 'danger'` 表达危险确认（ModalConfirm 声明的是 danger: Boolean）
+    if (props.danger === undefined && props.type === 'danger') {
+      mergedProps.danger = true
+    }
     console.log(`[ModalManager] Merged props for modal ${id}:`, mergedProps)
 
     let resolveCallback: (value: T) => void = () => {}
