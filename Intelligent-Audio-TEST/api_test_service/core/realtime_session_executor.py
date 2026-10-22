@@ -677,18 +677,14 @@ class RealtimeSessionExecutor:
 
     # ── 辅助 ──
     @staticmethod
-    @staticmethod
     def _resolve_ws_endpoint(api_config) -> Optional[dict]:
-        """解析当前 ws 端点 dict：api_endpoints 优先 ws://wss://，回退单端点
-        包装。返回端点 dict（含 api_keys 池，INT-1177 endpoint 级轮换池来源）；
-        无 ws 端点返回 None。"""
+        """解析当前 ws 端点 dict：api_endpoints 中 ws://wss:// endpoint（INT-1361
+        api_url 移除后 api_endpoints 为唯一端点来源）。返回端点 dict（含 api_keys
+        池，INT-1177 endpoint 级轮换池来源）；无 ws 端点返回 None。"""
         for ep in (getattr(api_config, 'api_endpoints', None) or []):
             url = (ep.get('endpoint') or '') if isinstance(ep, dict) else str(ep)
             if url.startswith(('ws://', 'wss://')):
                 return ep if isinstance(ep, dict) else {'endpoint': str(ep)}
-        url = getattr(api_config, 'endpoint', None) or ''
-        if url.startswith(('ws://', 'wss://')):
-            return {'endpoint': url}
         return None
 
     @staticmethod

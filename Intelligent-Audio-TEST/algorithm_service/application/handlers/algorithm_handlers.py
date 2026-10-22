@@ -142,6 +142,7 @@ class AlgorithmCommandHandler:
         """处理创建算法定义命令，返回新算法定义ID。
 
         - 构造 AlgorithmDefinitionAggregate 聚合根
+        - 应用命令提交的 status（online/offline/draft；缺省按 draft）
         - 调用 repository.add 持久化
         """
         aggregate = AlgorithmDefinitionAggregate(
@@ -150,7 +151,7 @@ class AlgorithmCommandHandler:
             name=cmd.name,
             algorithm_type=cmd.algorithm_type,
             description=cmd.description,
-            status=AlgorithmStatus.DRAFT,
+            status=_status_str_to_enum(cmd.status) if cmd.status else AlgorithmStatus.DRAFT,
             icon=cmd.icon,
             display_order=cmd.display_order or 0,
         )
