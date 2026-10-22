@@ -369,7 +369,8 @@ export function useAudioSelectModal(
 
     const metadata = {
       id: audio.id,
-      fileName: audio.name || audio.filename || audio.originalFilename || audio.filename || '',
+      // 后端 UpdateMetadataRequest/handle_update_metadata 只读 name（INT-1330），fileName 上行无效
+      name: audio.name || audio.filename || audio.originalFilename || audio.filename || '',
       category: audio.filepath || audio.filePath || audio.path || '',
       audioType: audio.audioType || audio.type || 'dry',
       asrText: audio.asrText || '',
@@ -383,7 +384,7 @@ export function useAudioSelectModal(
         title: '编辑元数据',
         data: metadata,
         fields: [
-          { key: 'fileName', label: '文件名' },
+          { key: 'name', label: '文件名' },
           { key: 'category', label: '分类' },
           { key: 'audioType', label: '音频类型' },
           { key: 'asrText', label: 'ASR文本' },

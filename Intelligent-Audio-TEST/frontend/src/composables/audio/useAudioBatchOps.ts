@@ -227,7 +227,9 @@ export function useAudioBatchOps(
 
       const metadata = {
         id: audio.id,
-        fileName: audio.name || '',
+        // 后端 UpdateMetadataRequest/handle_update_metadata 只读 name（PUT /audios/{id}/metadata），
+        // 不能用 fileName 作为「文件名」上行 key（INT-1330）
+        name: audio.name || '',
         // filepath 为 Domain 契约字段（camelCase 改造后统一为小写 filepath）
         category: audio.filepath || '',
         audioType: audio.audioType || audio.type || 'dry',
@@ -246,7 +248,7 @@ export function useAudioBatchOps(
         width: '1200px',
         data: metadata,
         fields: [
-          { key: 'fileName', label: '文件名' },
+          { key: 'name', label: '文件名' },
           { key: 'audioType', label: '音频类型' },
           { key: 'tags', label: '标签' },
           { key: 'format', label: '音频格式' },
