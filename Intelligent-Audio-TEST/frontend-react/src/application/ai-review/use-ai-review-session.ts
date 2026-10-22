@@ -31,10 +31,13 @@ export function useAiReviewSession({
   taskId,
   caseId,
   open,
+  dimensionIds,
 }: {
   taskId: number
   caseId: string
   open: boolean
+  /** INT-1279：用例评估维度 id（保存复核结论显式传 dimension_ids，真实库无 LLM 判分维度时不 400） */
+  dimensionIds?: number[]
 }) {
   const navigate = useNavigate()
   const scopeKey = agentReviewSessionKey(taskId, caseId)
@@ -137,11 +140,13 @@ export function useAiReviewSession({
   const canSave = agentAnalyzed && ai.phase === 'idle'
 
   /** 保存复核结论（POST /tasks/results/ai-review；result_ids = 该用例执行结果；
+   * dimension_ids = 用例评估维度（INT-1279：真实库结果无 LLM 判分维度时显式传，避免 400）；
    * 已有 AI 复核结论时 force=true 绕过幂等复用，§5.4「重新复核」） */
   const handleSave = () => {
     if (!context || context.deviceResults.length === 0) return
     void ai.save({
       resultIds: context.deviceResults.map((r) => r.id),
+      dimensionIds: dimensionIds?.length ? dimensionIds : undefined,
       force: context.existingReviews.length > 0 ? true : undefined,
     })
   }

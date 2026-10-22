@@ -41,14 +41,17 @@ export function AiReviewSessionDialog({
   taskId,
   caseId,
   caseName,
+  dimensionIds,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   taskId: number
   caseId: string
   caseName?: string
+  /** INT-1279：用例评估维度 id（保存复核结论显式传 dimension_ids，真实库结果无 LLM 判分维度时不 400） */
+  dimensionIds?: number[]
 }) {
-  const s = useAiReviewSession({ taskId, caseId, open })
+  const s = useAiReviewSession({ taskId, caseId, open, dimensionIds })
   const context = s.contextQuery.context
 
   /** 最后一条完整 assistant 回复（Agent 分析文本；结论卡摘要源） */

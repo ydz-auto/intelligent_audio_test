@@ -17,6 +17,7 @@ import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import type { CaseResultForReview } from '@/domain/models/review'
+import { toAiReviewDimensionIds } from '@/domain/models/review'
 import type { CaseAlgorithmResult } from '@/domain/models/testExecution'
 import { fetchCaseExecutionDetail, fetchCaseLogs } from '@/infrastructure/api/test-execution-api'
 import { fetchTaskDetail } from '@/infrastructure/api/tasks-list-api'
@@ -178,6 +179,10 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
     taskQuery.data?.status ?? ''
   )
   const hasCaseResults = (resultsQuery.data?.results.length ?? 0) > 0
+  // INT-1279：用例评估维度 id（任务用例简报 evaluation_dimensions 溯源；真实库结果无 LLM 判分维度时显式传）
+  const aiReviewDimensionIds = toAiReviewDimensionIds(
+    taskQuery.data?.cases.find((c) => c.case_id === caseId)?.evaluation_dimensions
+  )
   // 复核按钮位置以 10 §5.2「分节①区头右侧」收口（注记 3）：终态任务 + 有执行结果 + 权限
   // 人工复核（task.result.review）→ 19 §3.2 弹窗；AI 复核（task.result.ai_review）→ 19 §5 会话
   const canManualReview =
@@ -480,6 +485,7 @@ export function CaseDetailDialog({ open, onOpenChange, taskId, caseId }: CaseDet
         taskId={taskId}
         caseId={caseId}
         caseName={detail?.name}
+        dimensionIds={aiReviewDimensionIds}
       />
     </Dialog>
   )

@@ -51,6 +51,7 @@ import { useReportReviews } from '@/application/report-view/useReportReviews'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import type { ReportCaseItem, ReportDetailData, ReportLogFile } from '@/domain/models/report'
 import type { CaseResultForReview } from '@/domain/models/review'
+import { toAiReviewDimensionIds } from '@/domain/models/review'
 import type { TagItem } from '@/domain/models/testTag'
 import { cn } from '@/lib/utils'
 import { fetchCaseResults } from '@/infrastructure/api/reviewApi'
@@ -140,12 +141,20 @@ export function SpecificCaseComparison({
     caseName?: string
     results: CaseResultForReview[]
     evaluationStatus?: string | null
+    /** INT-1279：用例评估维度 id（真实库结果无 LLM 判分维度时显式传 dimension_ids，避免发起 400） */
+    dimensionIds?: number[]
   }>()
   const [historyCase, setHistoryCase] = useState<ReportCaseItem>()
 
   // 用例当前评估状态（任务侧用例简报 evaluation_status → AI 结论卡「原评估判定」）
   const caseEvaluationStatus = (caseId: string): string | null | undefined =>
     reviews.taskCases.find((c) => c.case_id === caseId)?.evaluation_status
+
+  /** INT-1279：用例评估维度 id（源任务用例简报 evaluation_dimensions 溯源；AI 复核按用例评估维度显式传） */
+  const caseDimensionIds = (caseId: string): number[] | undefined =>
+    toAiReviewDimensionIds(
+      reviews.taskCases.find((c) => c.case_id === caseId)?.evaluation_dimensions
+    )
 
   /** AI 复核入口（§5.2 主形态）：取源任务该用例结果行校验有结果 → 打开灵犀Agent 复核会话（可追问） */
   const openAiReview = async (c: ReportCaseItem) => {
@@ -179,6 +188,7 @@ export function SpecificCaseComparison({
         caseName: res.caseName || c.name,
         results: res.results,
         evaluationStatus: caseEvaluationStatus(c.id),
+        dimensionIds: caseDimensionIds(c.id),
       })
     } catch (err) {
       toast.error(
@@ -818,6 +828,7 @@ export function SpecificCaseComparison({
             taskId={reviews.taskId}
             caseId={aiCase?.id ?? ''}
             caseName={aiCase?.name}
+            dimensionIds={aiCase ? caseDimensionIds(aiCase.id) : undefined}
           />
           {/* §5.1 快速复核次要入口（一次性状态机，批量/低分初筛场景） */}
           <QuickAiReviewDialog
@@ -830,6 +841,7 @@ export function SpecificCaseComparison({
             caseName={quickTarget?.caseName}
             results={quickTarget?.results ?? []}
             evaluationStatus={quickTarget?.evaluationStatus}
+            dimensionIds={quickTarget?.dimensionIds}
           />
           <ReviewHistoryDrawer
             open={historyCase !== undefined}

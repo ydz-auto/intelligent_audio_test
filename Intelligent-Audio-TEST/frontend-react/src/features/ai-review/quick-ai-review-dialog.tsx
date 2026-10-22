@@ -59,6 +59,7 @@ export function QuickAiReviewDialog({
   caseName,
   results,
   evaluationStatus,
+  dimensionIds,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -69,6 +70,8 @@ export function QuickAiReviewDialog({
   results: CaseResultForReview[]
   /** 用例当前评估状态（AI 判定 vs 原评估判定对比行） */
   evaluationStatus?: string | null
+  /** INT-1279：用例评估维度 id（真实库结果无 LLM 判分维度时显式传 dimension_ids，避免发起 400） */
+  dimensionIds?: number[]
 }) {
   const [phase, setPhase] = useState<AiReviewPhase>('idle')
   const [record, setRecord] = useState<AiReviewRecord | null>(null)
@@ -123,6 +126,7 @@ export function QuickAiReviewDialog({
     try {
       const created = await requestAiReview(taskId, caseId, {
         resultIds: results.map((r) => r.id),
+        dimensionIds: dimensionIds?.length ? dimensionIds : undefined,
       })
       setRecord(created)
       if (created.status === 'completed') {
