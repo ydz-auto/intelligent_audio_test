@@ -152,6 +152,11 @@ service TaskConfigService {
   rpc GetCaseDetail(GetCaseDetailRequest) returns (TaskConfigResponse);
   rpc GetCaseResults(GetCaseResultsRequest) returns (TaskConfigResponse);
 
+  // ---- 音频删除引用检查（INT-1306）----
+  // 按 audio_id 集合一次查被测试用例/任务引用计数（DB 侧扫描 config），
+  // 供 audio_service 删除/批量删除前调用，替代逐页 ListTestCases/ListTasks 全量拉取。
+  rpc CheckAudioReferences(CheckAudioReferencesRequest) returns (TaskConfigResponse);
+
   // ---- 收藏（INT-141：task|testcase 归 task_service，per-user，user_id 走 x-user-id metadata）----
   rpc FavoriteTask(FavoriteEntityRequest) returns (TaskConfigResponse);
   rpc UnfavoriteTask(FavoriteEntityRequest) returns (TaskConfigResponse);
@@ -259,6 +264,10 @@ message TaskConfigResponse {
   bool success = 1;
   string message = 2;
   string data = 3;
+}
+// INT-1306：音频删除引用检查请求（audio_id 列表）
+message CheckAudioReferencesRequest {
+  repeated int64 audio_ids = 1;  // 待检查的音频 ID 列表（Audio.id）
 }
 
 // ===== 收藏（INT-141）=====

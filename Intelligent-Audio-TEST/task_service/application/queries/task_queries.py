@@ -276,3 +276,13 @@ class GetTagQuery(Query):
 class GetTagsByCategoryQuery(Query):
     """获取按分类分组的标签查询。委托 tag_crud_service.get_tags_by_category。"""
     pass
+
+
+@dataclass(frozen=True)
+class CheckAudioReferencesQuery(Query):
+    """音频删除引用检查查询（INT-1306）。
+
+    按 audio_id 集合查被测试用例/任务引用计数（testcase_audio /
+    testcase_noise / task），委托 task_query_service.check_audio_references。
+    """
+    audio_ids: tuple = ()
