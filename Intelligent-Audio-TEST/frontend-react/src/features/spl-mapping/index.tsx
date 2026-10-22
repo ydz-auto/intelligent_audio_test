@@ -86,11 +86,14 @@ export function SplMappingPage() {
   const canDigitalUpdate = hasPermission('digital_spl:update')
   const canDigitalDelete = hasPermission('digital_spl:delete')
 
-  const splQuery = useSplMappings()
-  const splStatsQuery = useSplStats()
-  const playbackDevicesQuery = usePlaybackDeviceRefs()
-  const digitalQuery = useDigitalSplMappings()
-  const apiRefsQuery = useApiRefs()
+  /** INT-1215：数据查询按域读权限门控（enabled=false 不下发请求）——
+   *  路由守卫已拦截无 spl/digital_spl 读权限的角色；此处兜底权限变更瞬间与
+   *  半权限角色（如仅 digital_spl:read），避免无权限请求发出产生控制台 403。 */
+  const splQuery = useSplMappings(canSplRead)
+  const splStatsQuery = useSplStats(canSplRead)
+  const playbackDevicesQuery = usePlaybackDeviceRefs(canSplRead)
+  const digitalQuery = useDigitalSplMappings(canDigitalRead)
+  const apiRefsQuery = useApiRefs(canDigitalRead)
   const { remove: removeSpl, calibrate: calibrateSpl } = useSplMutations()
   const {
     remove: removeDigital,

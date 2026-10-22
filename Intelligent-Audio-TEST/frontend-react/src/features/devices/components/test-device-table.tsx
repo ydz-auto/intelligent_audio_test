@@ -40,6 +40,8 @@ export interface TestDeviceTableProps {
   selectedIds: Set<number>
   batchMode: boolean
   sortOrder: 'asc' | 'desc'
+  /** 支持算法 value→中文名映射（GET /algorithm/options；缺省回退原始 value，INT-1215 无裸枚举） */
+  algorithmNameMap?: Record<string, string>
   onSortChange: () => void
   onToggleSelect: (id: number) => void
   onToggleSelectAll: () => void
@@ -61,17 +63,25 @@ export interface TestDeviceTableProps {
 }
 
 /** 支持算法 BadgeListCell（最多 2 枚 + 「+N」tooltip 全量） */
-function AlgorithmsCell({ algorithms }: { algorithms: string[] | null }) {
+function AlgorithmsCell({
+  algorithms,
+  nameMap,
+}: {
+  algorithms: string[] | null
+  nameMap: Record<string, string>
+}) {
   if (!algorithms || algorithms.length === 0) {
     return <span className='text-muted-foreground'>—</span>
   }
+  /** value→中文名（照 V9.7.10 getAlgorithmTypeName 缺省回退原始 value） */
+  const label = (value: string) => nameMap[value] ?? value
   const visible = algorithms.slice(0, 2)
   const hidden = algorithms.slice(2)
   return (
     <div className='flex flex-wrap items-center gap-1'>
       {visible.map((algo) => (
         <Badge key={algo} variant='secondary' className='rounded-md px-1.5 font-normal'>
-          {algo}
+          {label(algo)}
         </Badge>
       ))}
       {hidden.length > 0 && (
@@ -85,7 +95,7 @@ function AlgorithmsCell({ algorithms }: { algorithms: string[] | null }) {
             <div className='flex flex-wrap gap-1'>
               {hidden.map((algo) => (
                 <Badge key={algo} variant='secondary' className='rounded-md px-1.5 font-normal'>
-                  {algo}
+                  {label(algo)}
                 </Badge>
               ))}
             </div>
@@ -280,7 +290,10 @@ export function TestDeviceTable(props: TestDeviceTableProps) {
                     )}
                   </td>
                   <td className='max-w-40 px-3 py-2'>
-                    <AlgorithmsCell algorithms={row.supportedAlgorithms} />
+                    <AlgorithmsCell
+                      algorithms={row.supportedAlgorithms}
+                      nameMap={props.algorithmNameMap ?? {}}
+                    />
                   </td>
                   <td className='max-w-28 px-3 py-2'>
                     <span className='min-w-0 block truncate'>{row.driverName ?? '—'}</span>

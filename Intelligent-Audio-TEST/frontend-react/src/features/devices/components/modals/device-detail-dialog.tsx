@@ -29,6 +29,8 @@ export interface DeviceDetailDialogProps {
   onEdit: (kind: DevicesTabKey, device: TestDevice | PlaybackDevice | ApiDevice) => void
   /** P3-14 返修：详情内「编辑」按 canUpdate 权限门控（行菜单已按码显隐） */
   canUpdate: boolean
+  /** 支持算法 value→中文名映射（GET /algorithm/options；缺省回退原始 value，INT-1215 无裸枚举） */
+  algorithmNameMap?: Record<string, string>
 }
 
 function Row({ label, value }: { label: string; value: ReactNode }) {
@@ -112,7 +114,16 @@ export function DeviceDetailDialog(props: DeviceDetailDialogProps) {
                 <section className='flex flex-col gap-1.5'>
                   <h3 className='text-sm font-medium'>应用与算法</h3>
                   <Row label='应用' value={testDevice.appName ? `${testDevice.appName} · ${testDevice.appVersion ?? ''}` : null} />
-                  <Row label='支持算法' value={testDevice.supportedAlgorithms?.join('、') ?? null} />
+                  <Row
+                    label='支持算法'
+                    value={
+                      testDevice.supportedAlgorithms
+                        ? testDevice.supportedAlgorithms
+                            .map((a) => props.algorithmNameMap?.[a] ?? a)
+                            .join('、')
+                        : null
+                    }
+                  />
                   <Row label='驱动' value={testDevice.driverName} />
                   <Row label='提示词' value={testDevice.needsPromptAudio ? '需要' : '不需要'} />
                 </section>

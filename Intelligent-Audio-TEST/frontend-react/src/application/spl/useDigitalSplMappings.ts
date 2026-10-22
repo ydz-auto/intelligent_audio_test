@@ -20,21 +20,23 @@ import {
   updateDigitalSplMapping,
 } from '@/infrastructure/api/digital-spl-api'
 
-/** 数字域映射列表（§4.3；GET /digital-spl） */
-export function useDigitalSplMappings() {
+/** 数字域映射列表（§4.3；GET /digital-spl；enabled=false 时不下发请求，INT-1215 权限守卫后置防御） */
+export function useDigitalSplMappings(enabled: boolean = true) {
   return useQuery({
     queryKey: ['digital-spl'],
     queryFn: fetchDigitalSplMappings,
     staleTime: 30_000,
+    enabled,
   })
 }
 
-/** 被测 API facet 选项（§4.1.1；GET /apis，含默认指针） */
-export function useApiRefs() {
+/** 被测 API facet 选项（§4.1.1；GET /apis，含默认指针；enabled=false 时不下发请求，INT-1215 权限守卫后置防御） */
+export function useApiRefs(enabled: boolean = true) {
   return useQuery({
     queryKey: ['api-refs'],
     queryFn: fetchApiRefs,
     staleTime: 5 * 60_000,
+    enabled,
   })
 }
 
