@@ -79,19 +79,20 @@ describe('INT-972：fetchTestCases 失败降级', () => {
   });
 });
 
-describe('INT-972：fetchTagView 失败降级', () => {
-  it('网络失败 → 固定友好文案，标签视图数据清空', async () => {
+describe('INT-1314：fetchTagView 失败降级（独立 tagViewError，容器据此自动降级到分组视图）', () => {
+  it('网络失败 → tagViewError 固定友好文案，分组 error 不受污染，标签数据清空', async () => {
     testcasesPortMocks.getTagView.mockRejectedValue(new Error('Failed to fetch'));
 
     const store = useTestCaseStore();
     await store.fetchTagView({});
 
-    expect(store.error).toBe('用例服务暂不可用，请稍后重试');
+    expect(store.tagViewError).toBe('标签视图加载失败，请稍后重试');
+    expect(store.error).toBeNull();
     expect(store.errorDetail).toBe('');
     expect(store.tagViewData).toEqual({});
   });
 
-  it('原始 gRPC 异常 → error 固定文案 + errorDetail 保留原文', async () => {
+  it('原始 gRPC 异常 → tagViewError 固定文案 + errorDetail 保留原文', async () => {
     const err = new Error('API Request failed') as any;
     err.detail = RAW_RPC_MESSAGE;
     testcasesPortMocks.getTagView.mockRejectedValue(err);
@@ -99,7 +100,8 @@ describe('INT-972：fetchTagView 失败降级', () => {
     const store = useTestCaseStore();
     await store.fetchTagView({});
 
-    expect(store.error).toBe('用例服务暂不可用，请稍后重试');
+    expect(store.tagViewError).toBe('标签视图加载失败，请稍后重试');
+    expect(store.error).toBeNull();
     expect(store.errorDetail).toContain('StatusCode.UNAVAILABLE');
   });
 });

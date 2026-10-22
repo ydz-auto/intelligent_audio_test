@@ -16,6 +16,35 @@ export interface RequestOptions extends RequestInit {
   params?: Record<string, any>;
   /** 跳过 401 自动登出/跳转（用于 login 接口本身，避免密码错误触发登出循环） */
   skipAuthRedirect?: boolean;
+  /** INT-1314：请求超时（毫秒）；fetch 分支经 AbortController 实现，IPC 分支透传给主进程 */
+  timeout?: number;
+}
+
+/**
+ * INT-1314：请求超时信号——调用方 signal 与超时信号合并。
+ * 返回 cleanup 用于释放定时器/外部监听；超时或外部中止后由调用方在 finally 调用。
+ */
+function createAbortTimeoutSignal(externalSignal?: AbortSignal | null, timeout?: number): { signal?: AbortSignal; cleanup: () => void } {
+  if (!timeout || typeof timeout !== 'number' || timeout <= 0) {
+    return { signal: externalSignal || undefined, cleanup: () => {} };
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  const onExternalAbort = () => controller.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort();
+    } else {
+      externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+    }
+  }
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      clearTimeout(timer);
+      externalSignal?.removeEventListener('abort', onExternalAbort);
+    },
+  };
 }
 
 const defaultRequestInterceptors: Array<(config: { method: string; url: string; data: any; options: RequestOptions }) => Promise<{ method: string; url: string; data: any; options: RequestOptions }>> = [];
@@ -77,7 +106,6 @@ export async function request<T = any>(
   const signal = options.signal;
   const responseType = options.responseType || 'json';
   const unwrapResponse = options.unwrapResponse !== false;
-
   const normalizedUrl = url.startsWith('http') ? url : `${apiBaseUrl.replace(/\/$/, '')}/${url.replace(/^\//, '')}`;
 
   const interceptedConfig = await applyRequestInterceptors({ method, url: normalizedUrl, data, options });
@@ -171,10 +199,10 @@ export async function request<T = any>(
     }
   }
 
-  const fetchOptions: RequestInit = {method, headers: requestOptions.headers || {},
-    signal,
-    ...requestOptions
-  };
+  // INT-1314：请求超时控制（fetch 分支）——调用方 signal 与超时信号合并，finally 释放定时器
+  const { signal: effectiveSignal, cleanup: cleanupTimeoutSignal } = createAbortTimeoutSignal(signal, requestOptions.timeout);
+
+  const fetchOptions: RequestInit = { ...requestOptions, method, headers: requestOptions.headers || {}, signal: effectiveSignal };
 
   // FormData 与 URLSearchParams 均为非 JSON 通道：浏览器自动设置 Content-Type（含 boundary），不覆盖
   const isFormData = requestData instanceof FormData;
@@ -207,6 +235,8 @@ export async function request<T = any>(
   } catch (err) {
     console.error(`[API Fetch Error] ${method} ${finalUrl}:`, err);
     throw err;
+  } finally {
+    cleanupTimeoutSignal();
   }
 }
 

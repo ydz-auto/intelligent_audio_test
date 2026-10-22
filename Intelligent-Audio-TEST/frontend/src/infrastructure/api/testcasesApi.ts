@@ -71,11 +71,27 @@ function toBatchActionDto(action: string, ids: (string | number)[], extraParams:
   return body;
 }
 
+/**
+ * INT-1314：用例列表接口在真实库栈上 27~50s（偶发 120s+ 未见完成），60s 超时兜底，
+ * 避免用户无限等待；后端性能优化另开 FEAT 卡。
+ */
+const LIST_FETCH_TIMEOUT_MS = 60_000;
+
+/**
+ * INT-1314：标签视图接口在真实库栈上 gRPC DEADLINE_EXCEEDED（约 60s 后 400），
+ * 30s 超时提前终止，由前端自动降级到分组视图，用户不必干等 60s。
+ */
+const TAG_VIEW_TIMEOUT_MS = 30_000;
+
 export const testcasesApi = {
   /** 分页用例列表 → PaginatedResult<TestCase>（camelCase） */
   async getAll(params: Record<string, any> = {}, options: RequestOptions = {}): Promise<PaginatedResult<TestCase>> {
     const queryParams = toQueryParams(params);
-    const dto = await request<PaginatedDto<TestCaseDto>>('GET', '/testcases', null, { ...options, params: queryParams });
+    const dto = await request<PaginatedDto<TestCaseDto>>('GET', '/testcases', null, {
+      ...options,
+      timeout: options.timeout ?? LIST_FETCH_TIMEOUT_MS,
+      params: queryParams,
+    });
     const domain = toPaginated(dto, toTestCase);
     return { items: domain.items, total: domain.total, page: domain.page, perPage: domain.perPage, pages: domain.pages };
   },
@@ -87,7 +103,11 @@ export const testcasesApi = {
    */
   async getTagView(params: Record<string, any> = {}, options: RequestOptions = {}): Promise<PaginatedResult<TagViewItem>> {
     const queryParams = toQueryParams({ ...params, view: ViewMode.TAG });
-    const dto = await request<PaginatedDto<TagViewItemDto>>('GET', '/testcases', null, { ...options, params: queryParams });
+    const dto = await request<PaginatedDto<TagViewItemDto>>('GET', '/testcases', null, {
+      ...options,
+      timeout: options.timeout ?? TAG_VIEW_TIMEOUT_MS,
+      params: queryParams,
+    });
     const domain = toPaginated(dto, toTagViewItem);
     return { items: domain.items, total: domain.total, page: domain.page, perPage: domain.perPage, pages: domain.pages };
   },
@@ -153,7 +173,11 @@ export const testcasesApi = {
   /** 分组列表 → PaginatedResult<TestCaseGroup>（camelCase，复用 groupAdapter 转换） */
   async getGroups(params: Record<string, any> = {}, options: RequestOptions = {}): Promise<PaginatedResult<TestCaseGroup>> {
     const queryParams = toQueryParams(params);
-    const dto = await request<PaginatedDto<TestCaseGroupDto & { test_case_count?: number }>>('GET', '/groups', null, { ...options, params: queryParams });
+    const dto = await request<PaginatedDto<TestCaseGroupDto & { test_case_count?: number }>>('GET', '/groups', null, {
+      ...options,
+      timeout: options.timeout ?? LIST_FETCH_TIMEOUT_MS,
+      params: queryParams,
+    });
     const domain = toPaginated(dto, toTestCaseGroup);
     return { items: domain.items, total: domain.total, page: domain.page, perPage: domain.perPage, pages: domain.pages };
   },

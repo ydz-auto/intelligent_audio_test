@@ -51,6 +51,8 @@
           :algorithm-type-filter="selectedAlgorithmType || ViewMode.ALL"
           :test-type-filter="ViewMode.ALL"
           :is-loading="isLoading || false"
+          :error="error"
+          :tag-view-error="tagViewError"
           @delete-group="handleDeleteGroup"
           @delete-test-case="handleDeleteTestCase"
           @open-add-modal="handleOpenAddModal"
@@ -346,7 +348,7 @@ const {
   taskVisibility, handleVisibilityChange,
   selectedTestCaseIds, currentTaskId,
   globalAlgorithm, algorithmList, selectedAlgorithmType, getAlgorithmName,
-  testCaseGroups, tags, tagViewData, tagViewPagination, tagViewLoading, isLoading,
+  testCaseGroups, tags, tagViewData, tagViewPagination, tagViewLoading, isLoading, error, tagViewError,
   fetchTagView, loadMoreTagView, handleTagFilterChange, handleGroupFilterChange,
   handleDeleteGroup, handleDeleteTestCase, handleSaveModal,
   handleOpenAddModal, handleOpenEditModal,

@@ -31,6 +31,7 @@
       :pagination-info="paginationInfo"
       :is-loading="isLoading"
       :error="error"
+      :tag-view-error="tagViewError"
       :trash-mode="trashMode"
       :visibility-filter="visibilityFilter"
       v-model:view-mode="viewMode"
@@ -75,6 +76,7 @@ const {
   tagViewLoading,
   isLoading,
   error,
+  tagViewError,
   viewMode,
   handleDeleteGroup,
   handleDeleteTestCase,

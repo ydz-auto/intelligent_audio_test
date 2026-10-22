@@ -78,6 +78,18 @@ export function useTestCaseOps(options: UseTestCaseOpsOptions) {
     return !!storeRefs!.isLoading.value
   })
 
+  /** 分组视图加载错误（合并流程 store 路径；容器错误横幅消费） */
+  const error = computed<string | null>(() => {
+    if (testType === TestType.E2E) return null
+    return (storeRefs!.error.value ?? null) as string | null
+  })
+
+  /** INT-1314：标签视图首拉失败（独立于分组 error；容器据此自动降级到分组视图） */
+  const tagViewError = computed<string | null>(() => {
+    if (testType === TestType.E2E) return null
+    return (storeRefs!.tagViewError.value ?? null) as string | null
+  })
+
   const casePaginationInfo = computed(() => {
     if (testType === TestType.E2E) return e2eTest!.paginationInfo.value
     return storeRefs!.paginationInfo.value
@@ -274,6 +286,8 @@ export function useTestCaseOps(options: UseTestCaseOpsOptions) {
     tagViewPagination,
     tagViewLoading,
     isLoading,
+    error,
+    tagViewError,
     casePaginationInfo,
     e2eTestCases: computed(() => e2eTest?.e2eTestCases.value || []),
     initializeTestCases,

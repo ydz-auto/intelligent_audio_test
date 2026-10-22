@@ -128,12 +128,20 @@
     </div>
     
     <div class="single-column-layout" ref="listContainerRef" @scroll="handleScroll">
-      <!-- INT-972：加载失败友好错误态（后端不可用/500 时不以空态误导用户） -->
-      <div v-if="error" class="test-case-error-banner" role="alert">
+      <!-- INT-972：加载失败友好错误态（后端不可用/500 时不以空态误导用户；仅当前视图无数据时渲染） -->
+      <div v-if="activeViewError && currentViewEmpty" class="test-case-error-banner" role="alert">
         <i class="fas fa-exclamation-triangle"></i>
         <div class="test-case-error-body">
-          <p class="test-case-error-message">{{ error }}</p>
+          <p class="test-case-error-message">{{ activeViewError }}</p>
           <p class="test-case-error-hint">请稍后重试</p>
+        </div>
+      </div>
+
+      <!-- INT-1314：标签视图加载失败自动降级到分组视图后的页内提示 -->
+      <div v-if="fallbackNotice" class="test-case-fallback-notice" role="status">
+        <i class="fas fa-info-circle"></i>
+        <div class="test-case-error-body">
+          <p class="test-case-error-message">标签视图加载失败，已自动切换至分组视图</p>
         </div>
       </div>
 
@@ -205,13 +213,27 @@
         </div>
       </div>
       
-      <!-- INT-1296：首屏加载中显示加载指示，不以「没有找到分组」空态误导（真实栈 groups 请求可达 15s+） -->
-      <div v-if="isLoading && !error && paginatedGroups.length === 0" class="group-loading">
-        <i class="fas fa-spinner fa-spin"></i>
-        <span>加载中...</span>
+      <!-- INT-1314：首屏加载骨架屏（分组数据未到达且无错误时替代空态，避免长时间空白无感知） -->
+      <div v-if="paginatedGroups.length === 0 && !activeViewError && isLoading" class="case-list-skeleton" aria-busy="true">
+        <p v-if="slowLoading" class="case-list-slow-hint"><i class="fas fa-hourglass-half"></i> 用例数据量较大，加载较慢，请稍候…</p>
+        <div v-for="n in 3" :key="n" class="case-skeleton-card">
+          <div class="case-skeleton-header">
+            <div class="skeleton-cell skeleton-checkbox"></div>
+            <div class="skeleton-cell skeleton-title"></div>
+            <div class="skeleton-cell skeleton-count"></div>
+          </div>
+          <div class="case-skeleton-body">
+            <div class="skeleton-cell skeleton-line"></div>
+            <div class="skeleton-cell skeleton-line skeleton-line-short"></div>
+          </div>
+        </div>
       </div>
 
-      <div v-if="paginatedGroups.length === 0 && !error && !isLoading" class="empty-state">
+      <div v-if="paginatedGroups.length === 0 && !activeViewError && !isLoading" class="empty-state">
+        <i class="fas fa-inbox"></i>
+        <p>没有找到测试用例分组</p>
+        <p class="empty-state-hint">请尝试添加新的测试用例或创建分组</p>
+      </div>
         <i class="fas fa-inbox"></i>
         <p>没有找到测试用例分组</p>
         <p class="empty-state-hint">请尝试添加新的测试用例或创建分组</p>
@@ -289,18 +311,29 @@
           </div>
         </div>
 
-        <!-- INT-1296：标签视图首屏加载中同样显示加载指示，不以「没有找到标签」空态误导 -->
-        <div v-if="tagViewLoading && !error && sortedTags.length === 0" class="group-loading">
-          <i class="fas fa-spinner fa-spin"></i>
-          <span>加载中...</span>
+        <!-- INT-1314：标签视图首屏骨架屏（替代长时间空白） -->
+        <div v-if="sortedTags.length === 0 && !activeViewError && isLoading" class="case-list-skeleton" aria-busy="true">
+          <p v-if="slowLoading" class="case-list-slow-hint"><i class="fas fa-hourglass-half"></i> 用例数据量较大，加载较慢，请稍候…</p>
+          <div v-for="n in 3" :key="n" class="case-skeleton-card">
+            <div class="case-skeleton-header">
+              <div class="skeleton-cell skeleton-checkbox"></div>
+              <div class="skeleton-cell skeleton-title"></div>
+              <div class="skeleton-cell skeleton-count"></div>
+            </div>
+            <div class="case-skeleton-body">
+              <div class="skeleton-cell skeleton-line"></div>
+              <div class="skeleton-cell skeleton-line skeleton-line-short"></div>
+            </div>
+          </div>
         </div>
 
-        <div v-if="sortedTags.length === 0 && !error && !tagViewLoading" class="empty-state">
+        <div v-if="sortedTags.length === 0 && !activeViewError && !isLoading" class="empty-state">
           <i class="fas fa-tags"></i>
           <p>没有找到标签分组的测试用例</p>
           <p class="empty-state-hint">请为测试用例添加标签</p>
         </div>
 
+        <!-- 加载更多标签（首屏由骨架屏承载，有数据后才显示底部加载指示） -->
         <div v-if="tagViewLoading && sortedTags.length > 0" class="loading-more">
           <i class="fas fa-spinner fa-spin"></i>
           <span>加载更多标签...</span>
@@ -384,6 +417,7 @@ import '../../../assets/styles/components/tag.css'
 import '../../../assets/styles/components/log.css'
 import '../../../assets/styles/layouts/main.css'
 
+import { computed } from 'vue';
 import TestCaseListWithPagination from './TestCaseListWithPagination.vue';
 import TestCaseGroupActions from './TestCaseGroupActions.vue';
 import BadgeFilter from '../BadgeFilter.vue';
@@ -410,6 +444,8 @@ const props = defineProps<{
   isLoading?: boolean;
   // INT-972：加载失败友好错误态（store error 由父视图透传；Toast 折叠区详情由 store 直接弹）
   error?: string | null;
+  // INT-1314：标签视图首拉失败（独立于分组 error；非空且当前为标签视图时自动降级到分组视图）
+  tagViewError?: string | null;
   algorithmTypeFilter?: string;
   testTypeFilter?: string;
   viewMode?: 'group' | 'tag';
@@ -485,6 +521,8 @@ const {
   loadMoreGroups,
   handleScroll,
   resetFilters,
+  fallbackNotice,
+  slowLoading,
   handleCopyGroup,
   handleUpdateAlgorithmParams,
   handleUpdatePlaybackDevice,
@@ -550,6 +588,21 @@ const {
 const testCaseStore = useTestCaseStore()
 const modalControl = useModalControl()
 const notification = useNotification()
+
+/** INT-1314：当前视图展示的错误——标签视图优先展示标签首拉失败，其次共享错误；分组视图展示共享错误 */
+const activeViewError = computed(() =>
+  innerViewMode.value === ViewMode.TAG ? (props.tagViewError || props.error) : props.error
+)
+
+/**
+ * INT-1314：当前视图是否无数据。错误横幅仅在无数据时渲染——
+ * 并发拉取中先失败的一侧可能在另一侧数据到达后残留 error，此时应展示数据而非陈旧错误横幅。
+ */
+const currentViewEmpty = computed(() =>
+  innerViewMode.value === ViewMode.TAG
+    ? sortedTags.value.length === 0
+    : paginatedGroups.value.length === 0
+)
 
 /** 编辑标签（重命名/颜色/分类）：对齐 V9.7.10，成功后按当前视图刷新 */
 const handleTagEdit = async (tagName: string) => {

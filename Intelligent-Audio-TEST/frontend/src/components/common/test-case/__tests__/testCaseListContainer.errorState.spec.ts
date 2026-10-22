@@ -130,3 +130,50 @@ describe('INT-972：加载失败错误横幅（标签视图）', () => {
     expect(wrapper.text()).toContain('没有找到标签分组的测试用例');
   });
 });
+
+describe('INT-1314：标签视图失败自动降级到分组视图', () => {
+  it('tagViewError 在标签视图变为非空 → 自动切到分组视图 + 页内降级提示', async () => {
+    const wrapper = mountContainer({ viewMode: 'tag' });
+    await flushPromises();
+
+    await wrapper.setProps({ tagViewError: '标签视图加载失败，请稍后重试' });
+    await flushPromises();
+
+    // 自动降级：视图切换按钮「分组视图」激活，并上抛 update:viewMode=group
+    const activeViewBtn = wrapper.find('.view-switcher .btn-toggle.active');
+    expect(activeViewBtn.exists()).toBe(true);
+    expect(activeViewBtn.text()).toContain('分组视图');
+    expect(wrapper.emitted('update:viewMode')?.flat()).toContain('group');
+    // 页内降级提示可见，且不残留标签错误横幅
+    expect(wrapper.find('.test-case-fallback-notice').exists()).toBe(true);
+    expect(wrapper.find('.test-case-error-banner').exists()).toBe(false);
+  });
+
+  it('tagViewError 非空但当前已在分组视图 → 不降级不提示', async () => {
+    const wrapper = mountContainer({ viewMode: 'group', tagViewError: '标签视图加载失败，请稍后重试' });
+    await flushPromises();
+
+    const activeViewBtn = wrapper.find('.view-switcher .btn-toggle.active');
+    expect(activeViewBtn.exists()).toBe(true);
+    expect(activeViewBtn.text()).toContain('分组视图');
+    expect(wrapper.find('.test-case-fallback-notice').exists()).toBe(false);
+  });
+});
+
+describe('INT-1314：首屏加载骨架屏', () => {
+  it('分组视图加载中且无数据 → 渲染骨架屏而非空态', async () => {
+    const wrapper = mountContainer({ viewMode: 'group', isLoading: true });
+    await flushPromises();
+
+    expect(wrapper.find('.case-list-skeleton').exists()).toBe(true);
+    expect(wrapper.text()).not.toContain('没有找到测试用例分组');
+  });
+
+  it('加载完成且无数据 → 空态照常渲染（回归）', async () => {
+    const wrapper = mountContainer({ viewMode: 'group', isLoading: false });
+    await flushPromises();
+
+    expect(wrapper.find('.case-list-skeleton').exists()).toBe(false);
+    expect(wrapper.text()).toContain('没有找到测试用例分组');
+  });
+});

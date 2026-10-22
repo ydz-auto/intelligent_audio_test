@@ -141,6 +141,7 @@ export function useMergedTestFlow() {
   // ============ 测试用例操作（用例不分类型，testType='all' 走 store 全量） ============
   const {
     testCaseGroups, tags, tagViewData, tagViewPagination, tagViewLoading, isLoading,
+    error, tagViewError,
     e2eTestCases,
     initializeTestCases, fetchTagView, loadMoreTagView, handleTagFilterChange, handleGroupFilterChange,
     handleDeleteGroup, handleDeleteTestCase, handleSaveModal,
@@ -644,6 +645,7 @@ export function useMergedTestFlow() {
     globalAlgorithm, algorithmList, selectedAlgorithmType, loadAlgorithms, getAlgorithmName,
     // 用例
     testCaseGroups, tags, tagViewData, tagViewPagination, tagViewLoading, isLoading,
+    error, tagViewError,
     fetchTagView, loadMoreTagView, handleTagFilterChange, handleGroupFilterChange,
     handleDeleteGroup, handleDeleteTestCase, handleSaveModal,
     handleOpenAddModal, handleOpenEditModal,

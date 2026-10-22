@@ -25,6 +25,9 @@ const RAW_RPC_TEXT_PATTERNS: RegExp[] = [
   // INT-974：浏览器级网络失败（后端不可达/被拦截时 fetch 直抛 TypeError），
   // 属内部技术异常，降级为友好文案而非直出英文原文
   /failed to fetch/i,
+  // INT-1314：请求超时中止（fetch 分支 AbortController 触发 DOMException AbortError），
+  // 同样属基础设施级失败，回落固定友好文案
+  /The operation was aborted|signal is aborted|AbortError/i,
 ]
 
 /** 网络/服务端级失败文本特征（后端端口不可达、5xx、非 JSON 响应等，INT-972 补充） */

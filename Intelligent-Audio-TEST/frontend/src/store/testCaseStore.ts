@@ -40,6 +40,8 @@ export const useTestCaseStore = defineStore('testCase', () => {
   const error = ref<string | null>(null);
   /** 原始 RPC/网络异常详情（INT-972：仅进 Toast 折叠区，不渲染进页面） */
   const errorDetail = ref('');
+  /** INT-1314：标签视图首拉失败（与分组 error 分离；容器据此自动降级到分组视图并提示） */
+  const tagViewError = ref<string | null>(null);
   const allGroups = ref<string[]>([]);
   const fullGroupsMap = ref<Record<string, TestCaseGroup>>({});
   const groupsList = ref<GroupWithCount[]>([]);
@@ -152,9 +154,23 @@ export const useTestCaseStore = defineStore('testCase', () => {
   // ----------------------------------------------------------------
   // 核心 CRUD：拉取用例列表 / 标签视图
   // ----------------------------------------------------------------
+  // INT-1314：分组/标签视图在 /start-test 首屏并发拉取，共享 isLoading。
+  // 用计数保证「任一请求未完成」时 isLoading 保持 true，避免先完成的一侧提前熄灭骨架屏/慢加载提示。
+  let pendingListFetches = 0;
+  const beginListLoading = () => {
+    pendingListFetches += 1;
+    isLoading.value = true;
+  };
+  const endListLoading = () => {
+    pendingListFetches = Math.max(0, pendingListFetches - 1);
+    if (pendingListFetches === 0) {
+      isLoading.value = false;
+    }
+  };
+
   const fetchTestCases = async (params: Record<string, any> = {}) => {
     try {
-      isLoading.value = true;
+      beginListLoading();
       error.value = null;
       errorDetail.value = '';
 
@@ -255,6 +271,10 @@ export const useTestCaseStore = defineStore('testCase', () => {
 
       organizeTestCasesByGroup();
       extractTags();
+      // INT-1314：并发拉取中先失败的一侧可能在此成功前残留 error（如 /start-test 首屏
+      // 标签/分组同时拉取、其中一侧 60s 超时），成功加载后清掉，避免陈旧错误横幅压在数据上
+      error.value = null;
+      errorDetail.value = '';
     } catch (err: any) {
       // INT-972：加载失败降级——固定友好文案渲染进页面 + Toast 折叠区保留原始详情；
       // 不以「没有找到分组」空态误导用户以为库里无数据
@@ -267,7 +287,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
       testCases.value = [];
       fullGroupsMap.value = {};
     } finally {
-      isLoading.value = false;
+      endListLoading();
     }
   };
 
@@ -279,7 +299,10 @@ export const useTestCaseStore = defineStore('testCase', () => {
   const fetchTagView = async (params: Record<string, any> = {}) => {
     try {
       tagViewLoading.value = true;
-      isLoading.value = true;
+      beginListLoading();
+      // INT-1314：首拉失败状态独立于分组 error——容器消费它做标签→分组自动降级；
+      // 置空保证每次重试都能重新触发降级 watch
+      tagViewError.value = null;
       error.value = null;
       errorDetail.value = '';
 
@@ -328,15 +351,17 @@ export const useTestCaseStore = defineStore('testCase', () => {
       });
       tags.value = Array.from(tagSet);
     } catch (err: any) {
-      // INT-972：标签视图加载失败同样降级为固定友好文案，不以「没有找到标签」空态误导
-      error.value = toUserErrorMessage(err, '用例服务暂不可用，请稍后重试');
+      // INT-1314/INT-972：标签视图加载失败 → 独立 tagViewError（固定友好文案），
+      // 容器据此自动降级到分组视图；不再写共享 error（避免分组视图被陈旧标签错误覆盖）
+      const msg = toUserErrorMessage(err, '标签视图加载失败，请稍后重试');
+      tagViewError.value = msg;
       errorDetail.value = toUserErrorDetail(err);
-      notification.error(error.value, errorDetail.value);
+      notification.warning(msg, errorDetail.value);
       console.error('获取标签视图数据失败:', err);
       tagViewData.value = {};
     } finally {
       tagViewLoading.value = false;
-      isLoading.value = false;
+      endListLoading();
     }
   };
 
@@ -662,6 +687,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
     tagViewData,
     tagViewPagination,
     tagViewLoading,
+    tagViewError,
     // 核心 CRUD + 本地状态操作
     fetchTestCases,
     fetchTagView,

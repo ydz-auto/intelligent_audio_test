@@ -627,6 +627,88 @@
   font-size: 13px;
 }
 
+/* INT-1314：首屏加载骨架屏（替代长时间空白/空态；深色由 tokens 自适应） */
+.case-list-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md) 0;
+}
+
+.case-list-slow-hint {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin: 0 0 var(--spacing-sm);
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+}
+
+.case-list-slow-hint i {
+  color: var(--warning);
+}
+
+.case-skeleton-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--card);
+}
+
+.case-skeleton-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: 16px 20px;
+  background: linear-gradient(135deg, var(--muted) 0%, var(--muted) 100%);
+}
+
+.case-skeleton-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md) 20px;
+}
+
+.case-skeleton-header .skeleton-cell,
+.case-skeleton-body .skeleton-cell {
+  height: 14px;
+  border-radius: var(--radius-tag);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--text-light) 12%, transparent) 25%, color-mix(in srgb, var(--text-light) 25%, transparent) 50%, color-mix(in srgb, var(--text-light) 12%, transparent) 75%);
+  background-size: 200% 100%;
+  animation: case-list-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+.skeleton-checkbox { width: 18px; height: 18px; flex: none; }
+.skeleton-title { flex: 2; max-width: 220px; }
+.skeleton-count { width: 40px; flex: none; }
+.skeleton-line { width: 100%; }
+.skeleton-line-short { width: 60%; }
+
+@keyframes case-list-skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* INT-1314：标签视图失败自动降级到分组视图的页内提示 */
+.test-case-fallback-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md) var(--spacing-lg);
+  margin-top: 16px;
+  margin-bottom: 16px;
+  background-color: var(--info-light);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.test-case-fallback-notice > i {
+  font-size: 18px;
+  color: var(--info);
+  margin-top: 2px;
+}
+
 /* 模态窗样式 */
 .modal-overlay {
   position: fixed;

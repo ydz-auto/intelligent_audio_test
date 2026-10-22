@@ -71,7 +71,9 @@ export function useTestCaseListContainer(props: any, emit: any) {
     cleanupObserver,
     debouncedSearchQuery,
     resetFilters,
-    updateViewMode
+    updateViewMode,
+    fallbackNotice,
+    slowLoading
   } = createGroupExpandModule(props, emit, state);
 
   // 3. 分组视图 / 标签视图计算属性
@@ -251,9 +253,9 @@ export function useTestCaseListContainer(props: any, emit: any) {
   return {
     // props 暴露给模板的别名
     tags: props.tags,
-    // INT-1296：isLoading 必须响应式透传——直接返回 props.isLoading 会拿到
-    // setup 时的静态快照，加载中状态变化无法驱动模板（加载指示/空态守卫失效）。
-    // computed 保证父级 store isLoading 变化时模板同步刷新。
+    // INT-1296/INT-1314：isLoading 必须保持响应式透传——直接返回 props.isLoading 会拿到
+    // setup 时的静态快照，加载中状态变化无法驱动模板（加载指示/骨架屏/空态守卫失效）。
+    // computed 保证父级 store isLoading（并发拉取共享计数）变化时模板同步刷新。
     isLoading: computed(() => props.isLoading),
     // 本地状态
     selectedCases,
@@ -301,6 +303,9 @@ export function useTestCaseListContainer(props: any, emit: any) {
     handleScroll,
     // 筛选
     resetFilters,
+    // INT-1314：标签视图失败降级提示 / 首屏慢加载提示
+    fallbackNotice,
+    slowLoading,
     // 批量操作
     handleCopyGroup,
     handleUpdateAlgorithmParams,
