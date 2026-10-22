@@ -580,11 +580,21 @@ function CategoryTreeCard({
             </div>
 
             <p className='text-muted-foreground px-2 py-1.5 text-xs'>
-              {hasMore
-                ? '加载中...'
-                : total > 0 || uncategorizedCount > 0
-                  ? '已加载全部'
-                  : ''}
+              {hasMore ? (
+                <button
+                  type='button'
+                  className='text-muted-foreground hover:text-foreground transition-colors'
+                  onClick={() =>
+                    setVisibleCount((prev) => prev + TAG_LIST_PAGE_SIZE)
+                  }
+                >
+                  已显示 {visible.length} / {total} 个分类 · 加载更多
+                </button>
+              ) : total > 0 || uncategorizedCount > 0 ? (
+                '已加载全部'
+              ) : (
+                ''
+              )}
             </p>
           </div>
         )}
@@ -852,8 +862,20 @@ function TagTableCard({
                 </tbody>
               </table>
             </div>
-            <p className='text-muted-foreground px-3 py-2 text-xs tabular-nums'>
-              {hasMore ? '加载中...' : `已加载全部 ${total} 个标签`}
+            <p className='text-muted-foreground px-3 py-2 text-center text-xs tabular-nums'>
+              {hasMore ? (
+                <button
+                  type='button'
+                  className='text-muted-foreground hover:text-foreground transition-colors'
+                  onClick={() =>
+                    setVisibleCount((prev) => prev + TAG_LIST_PAGE_SIZE)
+                  }
+                >
+                  已显示 {visible.length} / {total} 个标签 · 加载更多
+                </button>
+              ) : (
+                `已加载全部 ${total} 个标签`
+              )}
             </p>
           </div>
         )}

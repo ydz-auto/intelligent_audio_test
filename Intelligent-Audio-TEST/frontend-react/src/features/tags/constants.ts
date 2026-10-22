@@ -36,7 +36,7 @@ export const SCROLL_LOAD_MORE_THRESHOLD = 100
 /** 搜索防抖毫秒（§4.2：300ms） */
 export const TAG_SEARCH_DEBOUNCE_MS = 300
 
-/** 列表页首屏条数（mock 全量返回，仅作「已加载全部」判定） */
+/** 列表页首屏条数 + 滚动/「加载更多」追加步长（已显示 {n} / {总} 条 · 加载更多，§4.2） */
 export const TAG_LIST_PAGE_SIZE = 20
 
 /** ISO 时间串 → 「YYYY-MM-DD HH:mm」（轻量格式化，无 dayjs；异常原样返回） */
