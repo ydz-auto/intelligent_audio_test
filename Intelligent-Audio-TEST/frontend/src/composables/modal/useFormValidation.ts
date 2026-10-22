@@ -16,10 +16,6 @@ export interface ValidationField {
     field: string;
     value: any;
   };
-  /** 数字字段最小值（表单 novalidate 禁用了 HTML5 约束，需 JS 侧校验） */
-  min?: number;
-  /** 数字字段最大值 */
-  max?: number;
 }
 
 /**
@@ -91,23 +87,6 @@ export function useFormValidation() {
         if (!regex.test(formValues[field.key])) {
           errors[field.key] = field.patternMessage || `${field.label}格式不正确`
           hasErrors = true
-        }
-      }
-
-      // 数字字段 min/max 边界校验（INT-1377：表单 novalidate 禁用了 HTML5 约束，
-      // 仅校验必填/正则的 validateForm 拦不住 distance=0、test_frequency=30000 这类越界值落库）
-      if ((field.min !== undefined || field.max !== undefined) &&
-          formValues[field.key] !== null && formValues[field.key] !== undefined && formValues[field.key] !== '') {
-        const numValue = typeof formValues[field.key] === 'number' ? formValues[field.key] : Number(formValues[field.key])
-        if (Number.isFinite(numValue)) {
-          if (field.min !== undefined && numValue < field.min && !errors[field.key]) {
-            errors[field.key] = `${field.label}不能小于${field.min}`
-            hasErrors = true
-          }
-          if (field.max !== undefined && numValue > field.max && !errors[field.key]) {
-            errors[field.key] = `${field.label}不能大于${field.max}`
-            hasErrors = true
-          }
         }
       }
 
@@ -199,22 +178,6 @@ export function useFormValidation() {
       if (!regex.test(value)) {
         errors[field.key] = field.patternMessage || `${field.label}格式不正确`
         fieldHasError = true
-      }
-    }
-
-    // 数字字段 min/max 边界校验（INT-1377，口径与 validateForm 一致）
-    if ((field.min !== undefined || field.max !== undefined) &&
-        value !== null && value !== undefined && value !== '') {
-      const numValue = typeof value === 'number' ? value : Number(value)
-      if (Number.isFinite(numValue)) {
-        if (field.min !== undefined && numValue < field.min && !errors[field.key]) {
-          errors[field.key] = `${field.label}不能小于${field.min}`
-          fieldHasError = true
-        }
-        if (field.max !== undefined && numValue > field.max && !errors[field.key]) {
-          errors[field.key] = `${field.label}不能大于${field.max}`
-          fieldHasError = true
-        }
       }
     }
 
