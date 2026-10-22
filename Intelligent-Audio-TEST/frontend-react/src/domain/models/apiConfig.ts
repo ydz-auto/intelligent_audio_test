@@ -13,6 +13,9 @@ export interface ApiEndpoint {
   name: string | null
   maxProcess: number | null
   maxTimeout: number | null
+  /** 端点级音频时长/优先级（api_test_service _validate_endpoint_obj 要求四整数合法；INT-1362 补全） */
+  maxAudioDuration: number | null
+  priority: number | null
   status: string | null
   healthScore: number | null
   description: string | null

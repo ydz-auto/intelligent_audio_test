@@ -279,9 +279,10 @@ function toApiInputDto(input: Partial<ApiConfig> & { name: string }): Record<str
       name: endpoint.name,
       max_process: endpoint.maxProcess,
       max_timeout: endpoint.maxTimeout,
-      max_audio_duration: undefined,
+      // INT-1362：端点级音频时长/优先级必填（api_test_service _validate_endpoint_obj 四整数校验）
+      max_audio_duration: endpoint.maxAudioDuration,
       status: endpoint.status,
-      priority: undefined,
+      priority: endpoint.priority,
       description: endpoint.description,
     }))
   }

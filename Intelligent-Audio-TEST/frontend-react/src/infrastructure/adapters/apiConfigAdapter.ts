@@ -26,6 +26,8 @@ export function endpointFromDto(dto: ApiEndpointItemDto): ApiEndpoint {
     name: dto.name,
     maxProcess: dto.max_process,
     maxTimeout: dto.max_timeout,
+    maxAudioDuration: dto.max_audio_duration,
+    priority: dto.priority,
     status: dto.status,
     healthScore: dto.health_score,
     description: dto.description,

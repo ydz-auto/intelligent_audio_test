@@ -48,21 +48,25 @@ const apiFormSchema = z.object({
 
 type ApiForm = z.infer<typeof apiFormSchema>
 
-/** 端点编辑行（INT-1223：复用 device-mutate-drawer 端点编辑器形态；ApiConfig 端点子集不含优先级/音频时长） */
+/** 端点编辑行（INT-1223：复用 device-mutate-drawer 端点编辑器形态；端点四整数校验项齐全——INT-1362 补优先级/音频时长） */
 interface EndpointFormRow {
   key: string
   endpoint: string
   name: string
+  priority: string
   maxProcess: string
   maxTimeout: string
+  maxAudioDuration: string
 }
 
 const ENDPOINT_EMPTY: EndpointFormRow = {
   key: '',
   endpoint: '',
   name: '',
+  priority: '1',
   maxProcess: '1',
   maxTimeout: '30',
+  maxAudioDuration: '60',
 }
 
 function endpointKey(): string {
@@ -107,8 +111,10 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
           key: endpointKey(),
           endpoint: ep.endpoint,
           name: ep.name ?? '',
+          priority: String(ep.priority ?? 1),
           maxProcess: String(ep.maxProcess ?? 1),
           maxTimeout: String(ep.maxTimeout ?? 30),
+          maxAudioDuration: String(ep.maxAudioDuration ?? 60),
         }))
       )
     } else if (!open) {
@@ -150,8 +156,10 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
           id: null,
           endpoint: row.endpoint.trim(),
           name: row.name.trim() || null,
+          priority: Number(row.priority) || 1,
           maxProcess: Number(row.maxProcess) || 1,
           maxTimeout: Number(row.maxTimeout) || 30,
+          maxAudioDuration: Number(row.maxAudioDuration) || 60,
           status: 'online',
           healthScore: null,
           description: null,
@@ -275,7 +283,7 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
             </div>
             {endpoints.length === 0 ? (
               <p className='text-muted-foreground border-border/60 rounded-lg border border-dashed p-3 text-center text-xs'>
-                暂无端点，点击「添加端点」配置
+                暂无端点，点击「添加端点」配置（优先级/最大进程/超时/音频时长）
               </p>
             ) : (
               <div className='flex flex-col gap-2'>
@@ -300,11 +308,20 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                         <X aria-hidden='true' className='size-3.5' />
                       </Button>
                     </div>
-                    <div className='grid grid-cols-3 gap-1.5'>
+                    <div className='grid grid-cols-5 gap-1.5'>
                       <Input
                         value={row.name}
                         onChange={(e) => updateEndpoint(row.key, { name: e.target.value })}
                         placeholder='名称'
+                        className='h-7 text-xs'
+                      />
+                      <Input
+                        value={row.priority}
+                        type='number'
+                        min={1}
+                        max={10}
+                        onChange={(e) => updateEndpoint(row.key, { priority: e.target.value })}
+                        placeholder='优先级'
                         className='h-7 text-xs'
                       />
                       <Input
@@ -323,6 +340,14 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                         max={300}
                         onChange={(e) => updateEndpoint(row.key, { maxTimeout: e.target.value })}
                         placeholder='超时(s)'
+                        className='h-7 text-xs'
+                      />
+                      <Input
+                        value={row.maxAudioDuration}
+                        type='number'
+                        min={1}
+                        onChange={(e) => updateEndpoint(row.key, { maxAudioDuration: e.target.value })}
+                        placeholder='音频时长(s)'
                         className='h-7 text-xs'
                       />
                     </div>
