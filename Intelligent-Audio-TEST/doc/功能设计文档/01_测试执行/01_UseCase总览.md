@@ -392,7 +392,10 @@ Main Flow:
 
 扩展流程:
   3a. meta.api_key 不落明文日志；Realtime 执行时按密钥链
-      case_config → meta → env OPENAI_API_KEY 逐级回退
+      case_config → meta → env OPENAI_API_KEY 逐级回退；
+      端点级密钥池（api_endpoints[].api_keys，round-robin + 失败降级 + 冷却）
+      为 3.7 单值链的端点级扩展，Realtime / HTTP 通用（INT-1173 裁定
+      2026-10-22，详见 API测试功能设计文档 §3.10）
   4a. protocol=websocket 且 vendor=openai → 前端建议默认 adapter_class=OpenAIRealtimeAdapter
   8a. 校验失败 → api_gateway 返回统一错误码（api_gateway/utils/error_codes.py），不入库
   9a. 连通性失败 → status=offline → 发布 DEVICE_STATUS_CHANGED（DEVICE_EVENTS）

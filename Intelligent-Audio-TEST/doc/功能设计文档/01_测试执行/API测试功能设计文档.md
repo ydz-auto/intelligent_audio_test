@@ -33,6 +33,7 @@
 | 15 | 输出调输入节奏 | Realtime 输入推流按被测实时输出事件调节奏：`RealtimePacingStrategy` 枚举（fixed / wait_turn_end / allow_barge_in / timeout_fallback）+ `_pacing_gate` 事件→决策映射 + `RealtimePacingService` 解析（case_config.pacing → meta.pacing → realtime_session 全局 → 默认，FIXED 与动态互斥）（INT-475，详见 `07_流式推送与结果获取.md` 附录） |
 | 16 | 实机接入 | 新增用户说明《`doc/实机接入指南_API与Realtime测试.md`》+ 网页文档页 `docs/实机接入指南_网页文档页.html`：被测 API / REALTIME API 提供方如何接入本平台跑测试（配置字段、rounds、建任务执行、mock_dut :5096 / mock_realtime_api :5098 联调、常见问题） |
 | 17 | Realtime 新架构回写（2026-10-22，同步 INT-497 / INT-1299） | Realtime 章节按最新架构更新：适配器三级体系（`ApiVendorAdapter` Port → `RealtimeAdapterBase` 协议级 base → `OpenAIRealtimeAdapter` 品牌类）+ 特殊化覆写落点表（pre_process / recv / output+post_process / wait_ai_* / _build_client）；`registry.resolve_for(protocol, flat_key)` 表驱动分发（新厂商 = 枚举 + `_FLAT_KEY_DIMENSIONS` 一行 + `@register_vendor_adapter` 类，执行器零改动）；轮次语义 `RealtimeAdapterBase.resolve_round_mode`（`_as_bool` 兼容 int/bool/str）+ 厂商方言覆写；评估字段走 field_mapper 配置透传（与 E2E/HTTP 同构，不写代码枚举）；打断/拒识口径（打断轮 = `is_interruption` + `interruption_delay_ms` + barge-in 窗口；推流中打断 = `allow_barge_in` 节奏策略；拒识 = 评估侧 `reject_judge`，适配器如实采集轮次结果）。见 §3.6 |
+| 18 | 密钥池 | `apis.api_endpoints[].api_keys` 每端点密钥池（JSON 字符串数组），执行时按当前端点 round-robin 轮换 + 401/403/429 失败降级（冷却期默认 60s 可配），Realtime 与普通 HTTP 通用；逐端点 `api_keys_summary`（count + 尾号）摘要、完整密钥零响应；未配池回退单值链，行为与现状一致（INT-1173 / INT-1177 / INT-1178，负责人裁定 2026-10-22，见 3.10） |
 
 原文档第 7 章中 QPS / RTT / SLA / 并发压测等通用性能指标**保留**，标注见 7.1 节。
 
@@ -278,6 +279,7 @@ DistributedLock(key=f"calibration:api_rms_spl:{api_id}:{mapping_id}", ttl=30)
 
 - OpenAI 密钥链（逐级回退）：`case_config`（用例配置）→ `meta`（`api_models.API.meta`）→ 环境变量 `OPENAI_API_KEY`；
 - 密钥不落日志、不进报告；密钥解析统一收敛在 Infrastructure 层密钥提供者，Domain 层只见解析结果。
+- 端点级多密钥池（每端点 `api_keys` 轮换，Realtime + HTTP 通用）：见 3.10（INT-1173 / INT-1177 / INT-1178，负责人裁定 2026-10-22）。
 
 ### 3.8 停止立即生效与执行中删除用例联动【负责人裁定口径】
 
@@ -328,6 +330,68 @@ DistributedLock(key=f"calibration:api_rms_spl:{api_id}:{mapping_id}", ttl=30)
 **依赖变更**：`requirements.txt` 新增 `PySocks>=1.7.1`（requests socks 支持）与 websockets socks 代理依赖；不新增 socks4（遗留协议不做）。
 
 **日志脱敏**：`shared/utils/secret_mask.py` 扩展掩码 `proxy_url` 值内 `user:pass` 段（保留 host:port 便于排查），覆盖文本日志（`mask_text`）与结构化 payload（`mask_mapping`）；adapter 侧 `utils/proxy.py` 对 websockets 异常消息做 userinfo 掩码（`mask_proxy_userinfo` / `masked_exc_info`），日志与异常上下文不出现明文凭据。
+
+### 3.10 被测 API 密钥池（endpoint 级）（INT-1173 / INT-1177 / INT-1178，负责人裁定 2026-10-22）
+
+被测 API 支持**端点级多密钥配置与轮换**：每个 `api_endpoints[]` 条目可配一个密钥池（`api_keys` 字符串数组），执行时按**当前选定端点**的密钥池轮换（round-robin + 401/403/429 失败降级 + 冷却期默认 60s），Realtime 与普通 HTTP 通用。本能力为 3.7 单值密钥链的端点级扩展：**未配 `api_keys` 的端点完全回退现有单值链（`case_config.api_key → meta.api_key → 服务配置层 → env`），行为与现状一致。**
+
+#### 3.10.1 数据模型与校验
+
+- 挂载点：`apis.api_endpoints[].api_keys`（JSON 字符串数组），**每个端点一个密钥池**，不是 API 级（INT-1230 审计 D1' 端点级返工口径）；一个 API 的多个端点可各自配自己的密钥池。
+- 字段形态：纯字符串数组；元素去首尾空白后非空；**去重**；数量上限 **≤ 20**（`api_crud_service._MAX_API_KEYS = 20`）。
+- 端点级单值 `api_key` 视为池单例：端点配置 `api_keys` 为单元素数组时即等价端点单值密钥（轮换池只有 1 个 key，round-robin 恒选该 key）；未配 `api_keys`（无数组/空数组）时回退单值链。
+- 写侧校验（`APICrudService._validate_api_keys` / `_validate_endpoint_obj`，create / update 每端点逐条校验）：
+  - 必须为字符串数组（非数组拒绝）；
+  - 元素必须为非空字符串（strip 后非空）；
+  - 元素不能重复（strip 后去重）；
+  - 数量 ≤ 20。
+- **写侧拒收摘要字段**：create / update 均拒收顶层与端点级 `api_keys_summary`（`_build_endpoints_list` 与 `_api_to_dict` 均剥除），摘要为读侧派生，防前端回传污染存储。
+- **更新合并语义**（endpoint 级返工 INT-1230 审计 D2'/D6'）：读侧剥离完整 `api_keys`，编辑表单拿不到池、回传端点必无 `api_keys`——整块覆盖会静默清空既有池。故 update 合并按 **endpoint URL 匹配**保留既有池：入参端点未含 `api_keys` 时保留既有池，显式传完整数组才覆盖。
+
+#### 3.10.2 解析与轮换策略（`shared/utils/api_key_provider.py`）
+
+- 扩展函数 **`ApiKeyChainResolver.resolve_rotating(rotation_key, endpoint, case_config, service_candidates, case_value, meta_value, meta)`**（`resolve()` 单值语义保持不变，向后兼容零回归）：
+  - 候选优先级：**case 层单值（最高优先，不变）→ 当前端点 `api_keys` 轮换池 → 单值回退链（`meta.api_key` → 服务配置层 → env）**。
+  - 轮换 key = **`endpoint_rotation_key(api_id, endpoint base URL)`**（INT-1230 审计 D3'）：用 URL 而非索引，增删端点不漂移；同一 base URL 的 HTTP 与 Realtime 共享游标（**跨协议同源轮换**），不同端点各用各池不串扰。
+- **round-robin**：`RotationStateStore.next_index` 按 `(api_id, endpoint_url)` 维度维护游标，顺序取下一个非冷却 key；全冷却返回 -1（`resolve_rotating` 返回空串，调用方不注入 Authorization → 立即失败语义）。
+- **失败降级判定面**：HTTP status ∈ **{401, 403, 429}**；Realtime WS 握手异常（`last_handshake_status`）同集合（`_ROTATION_TRIGGER_STATUS_CODES = {401, 403, 429}`）。命中后经 `report_failure(rotation_key, key)` 置冷却。
+- **冷却期**：默认 **60s**（`DEFAULT_COOLDOWN_SECONDS`），可配置（`resolver_from_config` 读 `cooldown_seconds`，`ApiKeyChainResolver(cooldown_seconds=...)` 可注入）；冷却期内不选中该 key，冷却到期自动恢复。
+- **重试上限** = 当前端点池内 key 总数（有界）；**池全冷却立即失败**（不空转等待）。
+- **5xx / 网络错误不轮换**（非账号配额问题，立即失败）。
+- **并发安全**：`RotationStateStore` 抽象为端口（首版进程内 `InMemoryRotationStateStore`，`threading.Lock` 保护游标 + 冷却集合；Redis 跨副本实现列后续增强），模块级共享单例 `get_rotation_store()` —— 所有消费面（HTTP / Realtime / 多线程执行）经同一模块引用同一单例，轮换计数不错乱。
+
+#### 3.10.3 消费面（均消费**当前端点**的密钥池）
+
+| 消费面 | 实现位置 | 轮换 key | 失败降级 |
+| --- | --- | --- | --- |
+| HTTP 请求头 | `ApiDriverAdapter._merge_headers`（`api_driver_adapter.py`） | `(api_config.id, 当前端点 base URL)` | `_call_api_with_key_rotation`：响应 401/403/429 → 报告失败 → 重解析下一非冷却 key 重试；上限 = 池内 key 数；**仅池内 key 触发轮换**（case 单值 / 显式 Authorization / 无池不轮换，立即失败）；5xx/网络错误不轮换；无池退化为单次调用 |
+| HTTP 内嵌 chat 路径 | `ApiDriverAdapter.execute_voice_llm_chat` → `_call_api_with_key_rotation`（INT-1178） | 同上（`_send_via_adapter` 内嵌执行） | 同上；`X-Session-Id` 等其余头原样保留，仅替换 Authorization |
+| Realtime WS 握手头 | `RealtimeAdapterBase._resolve_ws_headers`（`realtime_adapter_base.py`） | `(api_config.id, 当前 ws 端点 URL)` | `_connect_with_rotation`：握手 401/403/429 → 报告失败 → 重建 client 取下一非冷却 key；上限 = 池内 key 数；池全冷却立即抛错；5xx/网络错误不轮换 |
+
+- **端点身份解析**：HTTP 侧 `_current_endpoint()` 按 `self.endpoint`（含 path）对 `api_config.api_endpoints` 做 base 前缀最长匹配，未匹配（main url 单端点/未配端点）返回 None → 回退单值链；Realtime 侧 `_resolve_ws_endpoint()` 取 `api_endpoints` 中 ws://wss:// 条目（无则回退单端点包装），无 ws 端点返回 None → 回退单值链。
+- case 层单值最高优先不变（Realtime `_connect_with_rotation` 检测到 case 层 key 即单次连接，不轮换）。
+
+#### 3.10.4 响应摘要与安全
+
+- **响应摘要（读侧，完整密钥零响应）**：`_api_to_dict` 逐端点内嵌 `api_keys_summary = {count, tails[]}`（count + 每个 key 尾号 4 位），完整 `api_keys` 一律不输出（`redact_endpoint_keys` / `derive_api_keys_summary` / `derive_endpoint_keys_summary`，`domain/entities/api.py`）；聚合根 `APIAggregate` 承载摘要而非完整密钥，PO 原始态读侧防御剥离。
+- **脱敏**（`shared/utils/secret_mask.py`）：敏感键集合新增 **`api_keys`**（复数）及 `*_api_keys` 后缀（与单数 `_api_key` 平行）；`mask_text` 对 `api_keys=["sk-a","sk-b"]` JSON 数组形态**整数组掩 `****`**（零明文且不拆坏数组结构），`mask_mapping` 对结构化 payload 中 `api_keys` 键整值掩码；sk- 与非 sk- 密钥均覆盖。
+- 明文存储口径：`api_keys` 与现状 `api_endpoints` / `meta.api_key` 一致明文落库（DB 权限面需知悉）；响应、日志、前端不回显完整密钥。
+
+#### 3.10.5 前端（`frontend/src`）
+
+- **端点行内多行 textarea**（`ArrayField` 组件，`arrayItemTemplate` 含 `apiKeys` 时渲染密钥池块）：每行一个 key，可**整段粘贴自动拆行**，非空行校验（`apiConfigAdapter` 按 `\r?\n` 拆分 → trim → 过滤空行）。
+- **编辑回显不出现完整密钥**：读侧只拿到 `api_keys_summary`（count + 尾号），textarea 草稿 `apiKeysText` 仅表单瞬态，保存时 adapter 层拆行转 `api_keys` 落库，留空保存保留既有池；显式 `apiKeys`（防御映射）同样转 `api_keys`。
+- **现有单值输入兼容**：`meta.api_key`（单值）保留为回退链最高级 API 级候选，未配端点池时行为与现状一致；`APIEditModal` 保留单值密钥输入。
+- **`ArrayField` 密钥池能力开关**（INT-1177 返工(4)）：仅 `arrayItemTemplate` 含 `apiKeys`（或显式 `arrayKeysEnabled`）时渲染端点行内密钥池块——**评估维度 `apiEndpoints` 字段（模板无 apiKeys）不渲染密钥池 UI**，避免泄漏密钥池配置面。
+- 前端落地范围：INT-1177 交付实现于旧 Vue `frontend/`（该分支基线含旧 Vue）；2026-10-22 负责人「旧 Vue 直接废弃」裁定后，React / 新 Vue 接线未含密钥池 UI（API 配置编辑沿用单值），密钥池接口能力已就绪，前端接线待相应接线项目排期（不在本卡范围）。
+
+#### 3.10.6 向后兼容
+
+- 未配 `api_keys`（无数组/空数组/无端点匹配）→ `resolve_rotating` 走 `resolve()` 单值链，行为与现状完全一致（4 消费面零回归）；
+- `resolve()` 单值语义、密钥链优先级、日志脱敏口径均不变；
+- 写侧对既有无 `api_keys` 数据零迁移（`_build_endpoints_list` 补空数组，摘要为 None）。
+
+> 【实现演进裁定 2026-10-22，INT-1173 负责人拍板 + INT-1230 endpoint 级修订审计】密钥池从 API 级 `meta.api_keys`（旧 INT-1177 初版口径）返工迁移至 **endpoint 级 `api_endpoints[].api_keys`**；`meta` 不再承载密钥池，仅保留单值回退链。本能力在 `api_test_service` 内嵌适配器体系实现（INT-1169 迁回后），不在独立服务 api_adapter_service 上加（该服务已删除）。
 
 ---
 
@@ -544,6 +608,7 @@ SPLMapping 页面为本轮前端四层的**对称模板**，API 测试页按其�
 ### 8.1 密钥管理（新增）
 
 - OpenAI 密钥链逐级回退：case_config → meta → env `OPENAI_API_KEY`（见 3.7）；
+- 端点级多密钥池（`api_endpoints[].api_keys`，round-robin + 失败降级 + 冷却）：明文落库、响应零完整密钥（逐端点 `api_keys_summary` 摘要）、日志经 `secret_mask` 整数组掩码（见 3.10）；
 - 密钥与敏感头不出 Infrastructure 层；日志与 summary 报告统一脱敏。
 - 被测 API 网络代理（INT-839）：`proxy_url` 明文落库（与 `meta.api_key` 明文存法一致，DB 权限面需知悉）；日志/异常上下文中 `user:pass` 段经 `secret_mask`（文本 + 结构化）与 adapter 侧 `mask_proxy_userinfo` 统一掩码，保留 host:port 便于排查（见 3.9）。
 
@@ -566,7 +631,7 @@ SPLMapping 页面为本轮前端四层的**对称模板**，API 测试页按其�
 
 ## 9. 测试与维护
 
-- **单元测试**：适配器归一化（RealtimeFrameType 全覆盖）、`spl_to_gain` 多点插值边界、OpenAI 密钥链回退顺序；网络代理（INT-839）：CRUD 校验（含 scheme 前缀拒绝 / 端口数字 / user:pass 必填）、URL 拼接、websocket-client 参数分解（含 realtime_ws_client）、requests proxies 注入、adapter 透传白名单 merge、socks 类型可用性（`tests/unit/test_int839_api_proxy.py` / `test_int847_adapter_proxy.py` / `test_int848_*`）；
+- **单元测试**：适配器归一化（RealtimeFrameType 全覆盖）、`spl_to_gain` 多点插值边界、OpenAI 密钥链回退顺序；密钥池（INT-1173/1177/1178）：`resolve_rotating` 轮换/冷却/全冷却回退/跨协议同源（`test_int70_api_key_chain.py`）、端点级 CRUD 校验 + 逐端点摘要（`test_int1177_api_keys_crud.py`）、Realtime 握手 401/403/429 轮换（`test_int497_realtime_adapter_base.py`）、HTTP 内嵌路径失败降级重试（`test_int1178_api_http_rotation_retry.py`）、前端 DTO⇄Domain 密钥池映射（`apiConfigKeys.spec.ts`）；网络代理（INT-839）：CRUD 校验（含 scheme 前缀拒绝 / 端口数字 / user:pass 必填）、URL 拼接、websocket-client 参数分解（含 realtime_ws_client）、requests proxies 注入、adapter 透传白名单 merge、socks 类型可用性（`tests/unit/test_int839_api_proxy.py` / `test_int847_adapter_proxy.py` / `test_int848_*`）；
 - **集成测试**：api_gateway ↔ task_service ↔ api_test_service 双副本链路；EventBus → Socket.IO 房间隔离（UC-1001）；RenderAudioStream 分片连续性；
 - **灰度策略**：device_type 白名单开关，旧 `task.type` 路径并行运行直至废弃清单收尾（先重构，再管消费方）；
 - **监控维护**：task:queue 深度、worker 心跳 TTL、锁等待时长、replicas 副本均衡。
@@ -609,6 +674,13 @@ v3.0 修订后，API 测试子域从"单体 + WebSocket 直连 + 通用压测"�
 - `shared/proto/audio_service.proto`（RenderAudioStream 新增）
 - `shared/models/common_enums.py`（DeviceType / OutputType / CalibrationStatus 新增）
 - `shared/utils/redis_pubsub.py`、`shared/utils/service_registry.py`、`shared/utils/distributed_coordinator.py`
+- `shared/utils/api_key_provider.py`（`ApiKeyChainResolver.resolve_rotating` / `RotationStateStore` / `endpoint_rotation_key`，INT-1173）
+- `shared/utils/secret_mask.py`（`api_keys` 数组掩码，INT-1173）
+- `api_test_service/application/api_crud_service.py`（`_validate_api_keys` / `_build_endpoints_list` / `_api_to_dict` 逐端点摘要，INT-1173）
+- `api_test_service/domain/entities/api.py`（`derive_api_keys_summary` / `redact_endpoint_keys`，INT-1173）
+- `api_test_service/infrastructure/adapters/api_driver_adapter.py`（`_merge_headers` / `_call_api_with_key_rotation`，INT-1173/1178）
+- `api_test_service/infrastructure/adapters/protocol/realtime_adapter_base.py`（`_resolve_ws_headers` / `_connect_with_rotation`，INT-1173）
+- `api_gateway/schemas/api.py`（`ApiEndpointInput.api_keys` / `ApiEndpointItem.api_keys_summary`，INT-1173）
 - `shared/infrastructure/base_executor/_base.py`
 - `task_service/core/execution_engine/mixins/task_dispatch.py`
 - `task_service/infrastructure/persistence/models/task_models.py`
