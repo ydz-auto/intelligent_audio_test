@@ -47,6 +47,12 @@ export interface FormFieldConfig {
   /** 校验规则 */
   pattern?: string
   patternMessage?: string
+  /** 数字字段最小值（type=number；配合 JS 侧 min/max 校验，表单 novalidate 不依赖 HTML5 约束） */
+  min?: number
+  /** 数字字段最大值 */
+  max?: number
+  /** 数字字段步长 */
+  step?: number
   /** 隐藏字段 */
   hidden?: boolean
 }
