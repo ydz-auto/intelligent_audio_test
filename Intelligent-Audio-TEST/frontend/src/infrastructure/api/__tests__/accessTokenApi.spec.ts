@@ -116,6 +116,18 @@ describe('accessTokenApi 真实接线（INT-1389）', () => {
     }, expect.anything())
   })
 
+  it('编辑：scopes 空数组 → PATCH 原样发送 []（清空权限=继承全部，非 null）', async () => {
+    mockedRequest
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ ...ITEM, scopes: [] })
+    const updated = await accessTokenApi.updateAccessToken(7, { scopes: [] })
+    expect(mockedRequest).toHaveBeenNthCalledWith(1, 'PATCH', '/auth/access-tokens/7', {
+      scopes: [],
+    }, expect.anything())
+    expect(mockedRequest).toHaveBeenNthCalledWith(2, 'GET', '/auth/access-tokens/7', null, expect.anything())
+    expect(updated.scopes).toEqual([])
+  })
+
   it('删除：DELETE /auth/access-tokens/{id}', async () => {
     mockedRequest.mockResolvedValueOnce(undefined)
     await accessTokenApi.deleteAccessToken(7)

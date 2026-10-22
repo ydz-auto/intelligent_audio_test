@@ -58,7 +58,9 @@ export async function updateAccessToken(
 ): Promise<AccessToken> {
   const body: AccessTokenUpdatePayloadDto = {}
   if (payload.name !== undefined) body.name = payload.name
-  if (payload.scopes !== undefined) body.scopes = payload.scopes.length > 0 ? payload.scopes : null
+  // PATCH 语义：scopes 缺省 = 不修改；空数组原样发送 = 清空权限（继承用户全部），
+  // 与创建路径（空数组 → null = 继承全部）不同，不能把 [] 转成 null（否则清空意图静默丢失）。
+  if (payload.scopes !== undefined) body.scopes = payload.scopes
   if (payload.expiresAt !== undefined) body.expires_at = payload.expiresAt ?? 0
   if (payload.status !== undefined) body.status = payload.status
   await request('PATCH', `/auth/access-tokens/${id}`, body, options)
