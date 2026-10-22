@@ -15,7 +15,8 @@ import { toast } from 'sonner'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useEvaluationDimensions, useEvaluationCategories } from '@/application/evaluation/use-dimensions'
 import { useCaseGroups } from '@/application/testcases/use-case-groups'
-import { useCaseTags } from '@/application/testcases/use-case-tags'
+import { useCaseTags, useTagCategories } from '@/application/testcases/use-case-tags'
+import { useTagMutations } from '@/application/tags/useTags'
 import { useCaseBatchActions } from '@/application/testcases/use-case-batch-actions'
 import {
   useTestCasesList,
@@ -27,6 +28,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
+import type { TagDraft } from '@/domain/models/testTag'
 import {
   TEST_CASES_TABS,
   type TestCasesViewKey,
@@ -48,6 +50,7 @@ import {
   copyTestCase,
   setTestCaseFavorite,
 } from '@/infrastructure/api/testcases-api'
+import { deleteTag } from '@/infrastructure/api/tags-api'
 
 export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   const { hasPermission } = usePermissions()
@@ -75,6 +78,10 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   const listQuery = useTestCasesList(view, effectiveFilters)
   const groupsQuery = useCaseGroups()
   const tagsQuery = useCaseTags()
+  /** 标签分类（标签操作·编辑标签弹窗所属分类选项；INT-1294 接线） */
+  const tagCategoriesQuery = useTagCategories()
+  /** 标签增改 mutation（invalidate ['tags'] 前缀，三页联动刷新；删除级联走 deleteTag 直连） */
+  const { updateTagMutation } = useTagMutations()
   /** 全量评估维度（含子维度；批量设置评估维度 DimensionPicker 主/子分组云 + 列表筛选
    *  评估维度 facet 分组/主维度/子维度 共用，参考 V9.7.10；INT-1030 全站一致性） */
   const allDimsQuery = useEvaluationDimensions()
@@ -86,6 +93,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   const tags = tagsQuery.data ?? []
   const allDimensions = allDimsQuery.data ?? []
   const categories = categoriesQuery.data ?? []
+  const tagCategories = tagCategoriesQuery.data ?? []
 
   const isFiltered = useMemo(
     () =>
@@ -268,6 +276,34 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
     [queryClient, batch.setConfirm]
   )
 
+  /** INT-1294 标签操作真实接线：编辑（PUT /tags/{id}）/ 删除（DELETE /tags/{id}?cascade=true 级联）/
+   *  复制（POST /testcases/batch copy_by_tag）。成功后刷新用例列表（updateTagMutation 已 invalidate
+   *  ['tags']）；改名/删除当前筛选标签时清空标签筛选，避免按旧名查询空列表。 */
+  const handleUpdateTag = async (id: number, draft: TagDraft) => {
+    await updateTagMutation.mutateAsync({ id, draft })
+    await queryClient.invalidateQueries({ queryKey: ['testcases'] })
+    const current = tags.find((t) => t.id === id)
+    if (current && current.name !== draft.name && filters.tag === current.name) {
+      setFilters((prev) => ({ ...prev, tag: null }))
+    }
+  }
+
+  const handleDeleteTag = async (id: number) => {
+    await deleteTag(id, true)
+    await queryClient.invalidateQueries({ queryKey: ['tags'] })
+    await queryClient.invalidateQueries({ queryKey: ['testcases'] })
+    const current = tags.find((t) => t.id === id)
+    if (current && filters.tag === current.name) {
+      setFilters((prev) => ({ ...prev, tag: null }))
+    }
+  }
+
+  const handleCopyTag = async (tagName: string, copyToNewGroup: boolean) => {
+    await batchTestcaseAction('copy_by_tag', [], { tagName, copyToNewGroup })
+    await queryClient.invalidateQueries({ queryKey: ['testcases'] })
+    await queryClient.invalidateQueries({ queryKey: ['testcase-groups'] })
+  }
+
   const openCreate = () => {
     setPresetGroupId(null)
     setMutateCase(null)
@@ -374,6 +410,10 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
               tags={tags}
               dimensions={allDimensions}
               categories={categories}
+              tagCategories={tagCategories}
+              onUpdateTag={handleUpdateTag}
+              onDeleteTag={handleDeleteTag}
+              onCopyTag={handleCopyTag}
               cases={items}
               onRestoreAll={() =>
                 batch.setConfirm({

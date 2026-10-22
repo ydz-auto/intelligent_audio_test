@@ -15,6 +15,7 @@ export type TestcaseBatchAction =
   | 'restore'
   | 'copy'
   | 'copy_by_group'
+  | 'copy_by_tag'
   | 'update_algorithm_params'
   | 'update_playback_devices'
   | 'update_spl'
@@ -24,7 +25,6 @@ export type TestcaseBatchAction =
   | 'auto_generate_name'
   | 'move_to_group'
   | 'copy_to_group'
-  | 'copy_by_group'
   | 'add_tags'
   | 'remove_tags'
   | 'rename_tag'
@@ -53,6 +53,10 @@ export interface TestcaseBatchPayload {
   /** 按分组整体复制（copy_by_group，task_service TestCaseBatchCopyMoveMixin._batch_copy_by_group）；
    *  源分组名，复制到「{名称}_copy」新分组 */
   groupName?: string
+  /** 按标签整体复制（copy_by_tag，task_service TestCaseBatchCopyMoveMixin._batch_copy_by_tag）；
+   *  源标签名，复制到「{名称}_copy」新标签；copyToNewGroup=true 时另建同名新分组 */
+  tagName?: string
+  copyToNewGroup?: boolean
   /** 标签（add_tags / remove_tags） */
   tags?: string[]
   oldTagName?: string
@@ -85,6 +89,8 @@ const BATCH_ACTION_KEY_MAP: Record<string, string> = {
   noiseDeviceIds: 'noise_device_ids',
   targetGroupId: 'target_group_id',
   groupName: 'group_name',
+  tagName: 'tag_name',
+  copyToNewGroup: 'copy_to_new_group',
   roundMode: 'round_mode',
   roundNumbers: 'round_numbers',
   roundDimensions: 'round_dimensions',

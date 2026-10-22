@@ -23,7 +23,8 @@ import { useCaseSelection } from '@/application/test-execution/useCaseSelection'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useTestCasesList, type TestCaseListFilters } from '@/application/testcases/use-testcases-list'
 import { useCaseGroups } from '@/application/testcases/use-case-groups'
-import { useCaseTags } from '@/application/testcases/use-case-tags'
+import { useCaseTags, useTagCategories } from '@/application/testcases/use-case-tags'
+import { useTagMutations } from '@/application/tags/useTags'
 import { useEvaluationDimensions, useEvaluationCategories } from '@/application/evaluation/use-dimensions'
 import { useCaseBatchActions } from '@/application/testcases/use-case-batch-actions'
 import { useCaseSelectionStore } from '@/infrastructure/stores/case-selection-store'
@@ -37,12 +38,14 @@ import {
   type TestCaseListResult,
 } from '@/infrastructure/api/testcases-api'
 import { deleteGroup } from '@/infrastructure/api/groups-api'
+import { deleteTag } from '@/infrastructure/api/tags-api'
 import { batchTestcaseAction } from '@/infrastructure/api/testcases-batch-api'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
+import type { TagDraft } from '@/domain/models/testTag'
 
 import {
   TEST_CASES_TABS,
@@ -114,6 +117,10 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
   const listQuery = useTestCasesList(caseView, effectiveFilters)
   const groupsQuery = useCaseGroups()
   const tagsQuery = useCaseTags()
+  /** 标签分类（标签操作·编辑标签弹窗所属分类选项；INT-1294 接线） */
+  const tagCategoriesQuery = useTagCategories()
+  /** 标签增改 mutation（invalidate ['tags'] 前缀，三页联动刷新；删除级联走 deleteTag 直连） */
+  const { updateTagMutation } = useTagMutations()
   /** 全量评估维度（含子维度）+ 分类：与用例管理页同源（INT-1030 走查打回 P2-2——不再用
    *  /evaluation/dimensions/options 旧 facet 子集，保证 开始测试 筛选 facet 与用例管理分组一致） */
   const allDimsQuery = useEvaluationDimensions()
@@ -125,6 +132,7 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
   const tags = tagsQuery.data ?? []
   const dimensions = allDimsQuery.data ?? []
   const categories = categoriesQuery.data ?? []
+  const tagCategories = tagCategoriesQuery.data ?? []
 
   const isFiltered = useMemo(
     () =>
@@ -218,6 +226,33 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
   const refreshGroups = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ['testcase-groups'] })
   }, [queryClient])
+
+  /** INT-1294 标签操作真实接线（与用例管理页同款：编辑 PUT /tags/{id}、删除 DELETE /tags/{id}
+   *  ?cascade=true 级联、复制 POST /testcases/batch copy_by_tag）；改名/删除当前筛选标签时清空标签筛选 */
+  const handleUpdateTag = async (id: number, draft: TagDraft) => {
+    await updateTagMutation.mutateAsync({ id, draft })
+    refreshCases()
+    const current = tags.find((t) => t.id === id)
+    if (current && current.name !== draft.name && filters.tag === current.name) {
+      setFilters((prev) => ({ ...prev, tag: null }))
+    }
+  }
+
+  const handleDeleteTag = async (id: number) => {
+    await deleteTag(id, true)
+    await queryClient.invalidateQueries({ queryKey: ['tags'] })
+    refreshCases()
+    const current = tags.find((t) => t.id === id)
+    if (current && filters.tag === current.name) {
+      setFilters((prev) => ({ ...prev, tag: null }))
+    }
+  }
+
+  const handleCopyTag = async (tagName: string, copyToNewGroup: boolean) => {
+    await batchTestcaseAction('copy_by_tag', [], { tagName, copyToNewGroup })
+    refreshCases()
+    refreshGroups()
+  }
 
   /** 收藏/取消收藏（POST/DELETE /testcases/{id}/favorite，就地回写缓存，不整表重拉） */
   const handleFavorite = useCallback(
@@ -455,6 +490,10 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
         tags={tags}
         dimensions={dimensions}
         categories={categories}
+        tagCategories={tagCategories}
+        onUpdateTag={handleUpdateTag}
+        onDeleteTag={handleDeleteTag}
+        onCopyTag={handleCopyTag}
         cases={items}
         onRestoreAll={handleRestoreAll}
         readOnly={readOnly}

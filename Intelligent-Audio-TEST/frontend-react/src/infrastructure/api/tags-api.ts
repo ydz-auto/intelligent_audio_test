@@ -67,10 +67,11 @@ export async function updateTag(
   return toTagItem(dto)
 }
 
-/** 删除标签（DELETE /tags/{id}?cascade=false；软删不级联） */
-export async function deleteTag(id: number): Promise<void> {
+/** 删除标签（DELETE /tags/{id}?cascade；cascade=true 级联软删标签下用例，对齐 11_用例域.md §3.6
+ *  级联确认；标签管理页保持 cascade=false 软删不级联口径） */
+export async function deleteTag(id: number, cascade = false): Promise<void> {
   await apiClient.delete(`/tags/${id}`, {
-    params: { cascade: false },
+    params: { cascade },
   })
 }
 

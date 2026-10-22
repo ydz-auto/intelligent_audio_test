@@ -37,10 +37,12 @@ import type {
   Dimension,
   EvaluationCategory,
 } from '@/domain/models/evaluationDimension'
-import type { TagItem } from '@/domain/models/testTag'
+import type { TagCategory, TagDraft, TagItem } from '@/domain/models/testTag'
+import { ApiError } from '@/infrastructure/api/api-error'
 import { DimensionSelect } from '@/features/algorithm-config/mutate/dimension-select'
 import { FavoriteTrashToggle } from '@/features/testcases/components/favorite-trash-toggle'
 import { TestCasesAlgorithmChip } from '@/features/testcases/components/global-algorithm-chip'
+import { TagEditDialog } from '@/features/tags/tag-mutate-dialog'
 
 export interface TestCasesFilterToolbarProps {
   filters: TestCaseListFilters
@@ -53,6 +55,14 @@ export interface TestCasesFilterToolbarProps {
   dimensions: Dimension[]
   /** 评估维度分类（分类分组组头） */
   categories?: EvaluationCategory[]
+  /** 标签分类（标签操作·编辑标签弹窗所属分类选项；页面经 useTagCategories 装配，INT-1294） */
+  tagCategories: TagCategory[]
+  /** 编辑标签提交（PUT /tags/{id}；页面装配 updateTagMutation + 刷新用例列表，INT-1294） */
+  onUpdateTag: (id: number, draft: TagDraft) => Promise<void>
+  /** 删除标签（DELETE /tags/{id}?cascade=true 级联；页面装配 deleteTag + 刷新，INT-1294） */
+  onDeleteTag: (id: number) => Promise<void>
+  /** 复制标签下用例（POST /testcases/batch copy_by_tag；页面装配 batchTestcaseAction + 刷新，INT-1294） */
+  onCopyTag: (tagName: string, copyToNewGroup: boolean) => Promise<void>
   /** 已加载/已筛选用例集（INT-677：标签 facet 计数从该集实时聚合，与列表同源；回收站项不计入） */
   cases: TestCaseListItem[]
   /** 回收站「全部恢复」 */
@@ -321,9 +331,12 @@ const fallbackTag = (name: string): TagItem => ({
 
 /**
  * 标签操作 DropdownMenu（11_用例域.md §3.6 收编①：标签 facet 单选选中态后工具栏右端出现）。
- * 三项操作逐钮按权限过滤：编辑标签（tag:update → §5.4）/ 删除标签（tag:delete，级联确认
- * destructive）/ 复制标签下用例（testcase:copy）；批量已单轨收勾选浮条（§3.7），下拉不挂批量。
- * 一等管理位=标签管理页（§4.2，对齐 INT-417 口径）。
+ * 三项操作逐钮按权限过滤：编辑标签（tag:update → §5.4 真实 TagEditDialog + PUT /tags/{id}）/
+ * 删除标签（tag:delete，级联确认 destructive → DELETE /tags/{id}?cascade=true）/
+ * 复制标签下用例（testcase:copy → POST /testcases/batch copy_by_tag）；批量已单轨收勾选浮条（§3.7），
+ * 下拉不挂批量。一等管理位=标签管理页（§4.2，对齐 INT-417 口径）。
+ * INT-1294 接线：三项操作均由页面装配真实 mutation 回调（onUpdateTag/onDeleteTag/onCopyTag），
+ * 本组件只承载交互（编辑弹窗 + 级联/复制确认 + 成功/失败 toast），不再演示。
  * 权限口径（§7 注 1）：写权限逐钮禁用+Tooltip，不整组隐藏——只读角色
  * （algo_engineer 等）无标签写能力时下拉保留、三项逐钮置灰（无 hook 早退）。
  */
@@ -331,13 +344,26 @@ function TagActionsDropdown({
   tagName,
   tags,
   caseCounts,
+  categories,
+  onUpdateTag,
+  onDeleteTag,
+  onCopyTag,
 }: {
   tagName: string
   tags: TagItem[]
   caseCounts: Record<string, number>
+  categories: TagCategory[]
+  onUpdateTag: (id: number, draft: TagDraft) => Promise<void>
+  onDeleteTag: (id: number) => Promise<void>
+  onCopyTag: (tagName: string, copyToNewGroup: boolean) => Promise<void>
 }) {
   const { hasPermission } = usePermissions()
   const [open, setOpen] = useState(false)
+  const [editTag, setEditTag] = useState<TagItem | null>(null)
+  /** 复制确认「同时复制到新分组」勾选态（§3.6 Checkbox；每次打开重置为默认勾选） */
+  const [copyToNewGroup, setCopyToNewGroup] = useState(true)
+  /** 级联/复制确认请求进行中（真实 API 接线后防重复提交） */
+  const [pending, setPending] = useState(false)
   const [confirm, setConfirm] = useState<{
     kind: 'delete' | 'copy'
     tag: TagItem
@@ -388,7 +414,13 @@ function TagActionsDropdown({
             <DropdownMenuItem
               onSelect={() => {
                 setOpen(false)
-                toast.success(`编辑标签「${tag.name}」（演示）`)
+                // 编辑弹窗需真实 TagItem.id（facet 选中标签可能不在已加载集，fallback id=-1 不可编辑）
+                const target = registry.get(tagName)
+                if (!target) {
+                  toast.error('标签数据未加载，无法编辑')
+                  return
+                }
+                setEditTag(target)
               }}
             >
               编辑标签
@@ -413,6 +445,7 @@ function TagActionsDropdown({
             <DropdownMenuItem
               onSelect={() => {
                 setOpen(false)
+                setCopyToNewGroup(true)
                 setConfirm({ kind: 'copy', tag, count })
               }}
             >
@@ -435,27 +468,63 @@ function TagActionsDropdown({
         }
         confirmText={confirm?.kind === 'delete' ? '删除' : '复制'}
         destructive={confirm?.kind === 'delete'}
-        handleConfirm={() => {
-          if (!confirm) return
-          if (confirm.kind === 'delete') {
-            toast.success('标签已删除', {
-              description: `已级联删除 ${confirm.count} 个用例`,
-            })
-          } else {
-            toast.success('已复制标签下用例', {
-              description: `新标签：${confirm.tag.name}_copy`,
-            })
+        isLoading={pending}
+        handleConfirm={async () => {
+          if (!confirm || pending) return
+          // 标签不在已加载集（fallback id=-1）时不可执行真实删除
+          if (confirm.tag.id === -1) {
+            toast.error('标签数据未加载，无法删除')
+            setConfirm(null)
+            return
           }
-          setConfirm(null)
+          setPending(true)
+          try {
+            if (confirm.kind === 'delete') {
+              await onDeleteTag(confirm.tag.id)
+              toast.success('标签已删除', {
+                description: `已级联删除 ${confirm.count} 个用例`,
+              })
+            } else {
+              await onCopyTag(confirm.tag.name, copyToNewGroup)
+              toast.success('已复制标签下用例', {
+                description: `新标签：${confirm.tag.name}_copy`,
+              })
+            }
+            setConfirm(null)
+          } catch (error) {
+            toast.error(
+              error instanceof ApiError
+                ? error.userMessage
+                : error instanceof Error
+                  ? error.message
+                  : '操作失败，请稍后重试'
+            )
+          } finally {
+            setPending(false)
+          }
         }}
       >
         {confirm?.kind === 'copy' && (
           <label className='flex items-center gap-2 text-sm'>
-            <Checkbox defaultChecked />
+            <Checkbox
+              checked={copyToNewGroup}
+              onCheckedChange={(checked) => setCopyToNewGroup(checked === true)}
+            />
             同时复制到新分组
           </label>
         )}
       </ConfirmDialog>
+
+      <TagEditDialog
+        open={editTag != null}
+        onOpenChange={(open) => !open && setEditTag(null)}
+        tag={editTag}
+        categories={categories}
+        presetCategoryId={editTag?.categoryId ?? null}
+        onSubmit={async (draft, id) => {
+          if (id != null) await onUpdateTag(id, draft)
+        }}
+      />
     </>
   )
 }
@@ -469,6 +538,10 @@ export function TestCasesFilterToolbar({
   tags,
   dimensions,
   categories = [],
+  tagCategories,
+  onUpdateTag,
+  onDeleteTag,
+  onCopyTag,
   cases,
   onRestoreAll,
   readOnly = false,
@@ -586,6 +659,10 @@ export function TestCasesFilterToolbar({
             tagName={filters.tag}
             tags={tags}
             caseCounts={tagCaseCounts}
+            categories={tagCategories}
+            onUpdateTag={onUpdateTag}
+            onDeleteTag={onDeleteTag}
+            onCopyTag={onCopyTag}
           />
         )}
 

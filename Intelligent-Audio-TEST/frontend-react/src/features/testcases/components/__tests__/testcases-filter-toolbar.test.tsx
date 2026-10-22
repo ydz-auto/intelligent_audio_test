@@ -149,6 +149,11 @@ function renderToolbarWithCases(cases: TestCaseListItem[], filters: Record<strin
     groups: GROUPS,
     tags: MOCK_TAGS,
     dimensions: DIMENSIONS,
+    // INT-1294：标签操作真实接线回调（编辑/删除/复制由页面装配，测试断言调用）
+    tagCategories: [],
+    onUpdateTag: vi.fn().mockResolvedValue(undefined),
+    onDeleteTag: vi.fn().mockResolvedValue(undefined),
+    onCopyTag: vi.fn().mockResolvedValue(undefined),
     cases,
     onRestoreAll: vi.fn(),
   }
@@ -169,6 +174,11 @@ function renderToolbar(filters: Record<string, unknown> = {}, tags = MOCK_TAGS) 
     groups: GROUPS,
     tags,
     dimensions: DIMENSIONS,
+    // INT-1294：标签操作真实接线回调（编辑/删除/复制由页面装配，测试断言调用）
+    tagCategories: [],
+    onUpdateTag: vi.fn().mockResolvedValue(undefined),
+    onDeleteTag: vi.fn().mockResolvedValue(undefined),
+    onCopyTag: vi.fn().mockResolvedValue(undefined),
     // INT-677：计数从已加载用例集（useTestCasesList items 形态）实时聚合，测试用 mock 常量模拟
     cases: MOCK_TEST_CASES,
     onRestoreAll: vi.fn(),
@@ -274,9 +284,9 @@ describe('TestCasesFilterToolbar', () => {
     expect(screen.getByRole('button', { name: /标签操作/ })).toBeInTheDocument()
   })
 
-  it('删除标签 → 级联删除确认（§3.6 destructive 文案逐字 + 计数），确认后关闭', async () => {
+  it('删除标签 → 级联删除确认（§3.6 destructive 文案逐字 + 计数），确认后真实回调并关闭', async () => {
     const user = setupUser()
-    renderToolbar({ tag: '音箱' })
+    const props = renderToolbar({ tag: '音箱' })
     await user.click(screen.getByRole('button', { name: /标签操作/ }))
     await user.click(await screen.findByText('删除标签'))
     expect(
@@ -285,6 +295,8 @@ describe('TestCasesFilterToolbar', () => {
       )
     ).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '删除' }))
+    // INT-1294：确认后走真实 DELETE /tags/{id} 回调（音箱 id=51）
+    expect(props.onDeleteTag).toHaveBeenCalledWith(51)
     expect(screen.queryByText(/确定要删除标签/)).not.toBeInTheDocument()
   })
 
@@ -295,6 +307,26 @@ describe('TestCasesFilterToolbar', () => {
     await user.click(await screen.findByText('复制标签下用例'))
     expect(screen.getByText(/复制后将生成新标签：音箱_copy/)).toBeInTheDocument()
     expect(screen.getByText('同时复制到新分组')).toBeInTheDocument()
+  })
+
+  it('INT-1294：复制标签下用例确认后走真实 copy_by_tag 回调（tagName + copyToNewGroup 默认勾选）', async () => {
+    const user = setupUser()
+    const props = renderToolbar({ tag: '音箱' })
+    await user.click(screen.getByRole('button', { name: /标签操作/ }))
+    await user.click(await screen.findByText('复制标签下用例'))
+    await user.click(screen.getByRole('button', { name: '复制' }))
+    // POST /testcases/batch copy_by_tag：tagName=音箱，copyToNewGroup 默认勾选 true
+    expect(props.onCopyTag).toHaveBeenCalledWith('音箱', true)
+    expect(screen.queryByText(/复制后将生成新标签/)).not.toBeInTheDocument()
+  })
+
+  it('INT-1294：编辑标签打开真实 TagEditDialog（预填标签名称，替代原演示 toast）', async () => {
+    const user = setupUser()
+    renderToolbar({ tag: '音箱' })
+    await user.click(screen.getByRole('button', { name: /标签操作/ }))
+    await user.click(await screen.findByText('编辑标签'))
+    expect(screen.getByText('编辑标签')).toBeInTheDocument()
+    expect(screen.getByLabelText('标签名称')).toHaveValue('音箱')
   })
 
   it('INT-1030 回归：评估维度 facet 按 分组→主维度→子维度 展示并可单选', async () => {
@@ -308,6 +340,10 @@ describe('TestCasesFilterToolbar', () => {
       tags: MOCK_TAGS,
       dimensions: GROUPED_DIMENSIONS,
       categories: GROUPED_CATEGORIES,
+      tagCategories: [],
+      onUpdateTag: vi.fn().mockResolvedValue(undefined),
+      onDeleteTag: vi.fn().mockResolvedValue(undefined),
+      onCopyTag: vi.fn().mockResolvedValue(undefined),
       cases: MOCK_TEST_CASES,
       onRestoreAll: vi.fn(),
     }
@@ -343,6 +379,10 @@ describe('TestCasesFilterToolbar', () => {
       groups: GROUPS,
       tags: MOCK_TAGS,
       dimensions: DIMENSIONS,
+      tagCategories: [],
+      onUpdateTag: vi.fn().mockResolvedValue(undefined),
+      onDeleteTag: vi.fn().mockResolvedValue(undefined),
+      onCopyTag: vi.fn().mockResolvedValue(undefined),
       cases: MOCK_TEST_CASES,
       onRestoreAll: vi.fn(),
     }
