@@ -128,6 +128,7 @@
           <div class="form-group">
             <label>邮箱</label>
             <input type="text" class="form-input" v-model="form.email" placeholder="user@example.com" />
+            <p v-if="errors.email" class="error-text">{{ errors.email }}</p>
           </div>
           <div class="form-group">
             <label>密码 {{ editingId ? '（留空不修改）' : '*' }}</label>
@@ -300,10 +301,12 @@ const form = reactive({
   role_id: 0 as number | undefined,
   status: 'active',
 })
+const errors = reactive<Record<string, string>>({})
 
 function openCreate() {
   editingId.value = null
   Object.assign(form, { username: '', email: '', password: '', role_id: undefined, status: 'active' })
+  errors.email = ''
   error.value = ''
   formVisible.value = true
 }
@@ -317,6 +320,7 @@ function openEdit(user: SystemUser) {
     role_id: user.roleId ?? undefined,
     status: user.status || 'active',
   })
+  errors.email = ''
   error.value = ''
   formVisible.value = true
 }
@@ -324,13 +328,21 @@ function openEdit(user: SystemUser) {
 function closeForm() {
   formVisible.value = false
   editingId.value = null
+  errors.email = ''
 }
 
 async function save() {
   error.value = ''
   notice.value = ''
+  errors.email = ''
   if (!form.username) {
     error.value = '用户名必填'
+    return
+  }
+  // INT-1403：邮箱非必填，但填了就必须是合法格式（口径同 EditProfileModal 轻量正则），非法阻止提交
+  const email = form.email.trim()
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    errors.email = '邮箱格式不正确'
     return
   }
   saving.value = true
@@ -486,6 +498,12 @@ onMounted(() => {
 .field-hint {
   font-size: 12px;
   color: var(--muted-foreground);
+  margin: var(--spacing-xs) 0 0;
+}
+
+.error-text {
+  font-size: 12px;
+  color: var(--destructive);
   margin: var(--spacing-xs) 0 0;
 }
 
