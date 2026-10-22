@@ -51,18 +51,8 @@ os.makedirs(ARTIFACTS, exist_ok=True)
 
 STAMP = str(int(time.time()))[-6:]
 
-# 隔离 /api/option/ 404 env 缺口：设置页外壳需 useSystemOptions 成功才渲染分区。
-# docker :15000 未挂 option_bp（INT-620 契约）→ CDP 覆写返回空 KV（走默认），
-# 让 IAM users/roles 分区以真实 /auth/users、/auth/roles 数据渲染（缺口另行记录）。
-FAKE_OPTION = r"""
-const origFetch = window.fetch;
-window.fetch = async (url, init) => {
-  if (typeof url === 'string' && url.includes('/api/option/')) {
-    return new Response(JSON.stringify({success:true, code:0, data:{}}), {status:200, headers:{'Content-Type':'application/json'}});
-  }
-  return origFetch(url, init);
-};
-"""
+# INT-1345 已修复（docker :15000 部署 /api/option/）：移除 CDP 覆写，走真实 option 路径。
+# FAKE_OPTION 定义保留注释供回归参考（隔离 404 用），不再注入。
 
 
 def _get_api(path):
@@ -262,8 +252,6 @@ def run():
         # 先导航到应用再清 localStorage
         _goto(drv, '/dashboard', wait_text='工作台', timeout=30)
         drv.execute_script('try { window.localStorage.clear() } catch(e) {}')
-        # CDP 注入 /api/option/ 覆写（隔离 env 缺口）
-        drv.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': FAKE_OPTION})
 
         # ─── ① 用户管理列表 ───
         _goto(drv, '/system-settings/iam/users', wait_text='用户管理', timeout=30)
@@ -479,7 +467,7 @@ def run():
         _click_text(drv, '保存')
         _wait_text(drv, '确认保存角色权限', timeout=15)
         _click_text(drv, '确认保存')
-        _wait_text(drv, '角色已更新', timeout=30)
+        _wait_text(drv, '角色权限已更新', timeout=30)
         net = _network_api_calls(drv)
         check('编辑角色真实请求 PUT /auth/roles/{id}', any('PUT' == n.get('method') and '/auth/roles/' in n.get('url', '') for n in net), str([n.get('url') for n in net if 'roles' in n.get('url', '')]))
         _save_evidence('15_role_edited', drv, net)
