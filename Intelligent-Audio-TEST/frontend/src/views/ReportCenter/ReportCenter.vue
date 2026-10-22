@@ -152,7 +152,9 @@
       </div>
       <div v-if="selectedReports.size > 0" class="rc-batch-action-buttons">
         <template v-if="!trashMode">
-          <button class="btn btn-success" @click="handleBatchCompare">
+          <button class="btn btn-success" @click="handleBatchCompare"
+                  :disabled="batchCompareDisabled"
+                  :title="batchCompareDisabled ? '所选报告不支持对比（Benchmark 快照或无任务关联）' : ''">
             <i class="fas fa-exchange-alt"></i> 批量对比
           </button>
           <button class="btn btn-danger" @click="handleBatchDelete">
@@ -380,6 +382,7 @@ const {
   handleBatchDelete,
   handleBatchCancel,
   handleBatchCompare,
+  batchCompareDisabled,
   handleBatchRestore,
   handleBatchPurge,
   viewReport,

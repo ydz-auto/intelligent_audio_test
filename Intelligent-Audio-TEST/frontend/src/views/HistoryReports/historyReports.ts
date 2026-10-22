@@ -44,6 +44,18 @@ export const REPORT_TAB_OPTIONS: ReadonlyArray<ReportTabOption> = [
 const COMPARISON_REPORT_TYPES: readonly string[] = ['comparison', 'secondary_comparison'];
 
 /**
+ * INT-1390：报告是否可参与二次对比（对齐后端 report_compare_helpers._validate_reports_and_get_tasks
+ * 的任务派生口径）。Benchmark 快照报告（发布时点定格，无 task 关联）后端必然
+ * 「未找到关联的任务数据」；对比家族报告经 summary_info.task_ids 派生任务视为可参与；
+ * 其余类型须列表项带 taskId 才有任务数据。
+ */
+function isReportComparableForSecondaryCompare(report: Report): boolean {
+  if (report.type === 'benchmark') return false;
+  if (COMPARISON_REPORT_TYPES.includes(report.type)) return true;
+  return report.taskId !== undefined && report.taskId !== null;
+}
+
+/**
  * Tab → 列表接口过滤参数映射（配置化，避免魔法字符串；恢复 V9.7.10 基线口径）。
  * - 草稿/已发布 Tab 下发 status 服务端过滤；
  * - 对比 Tab 下发逗号分隔多类型（report_service split_report_types IN 过滤）；
@@ -98,6 +110,22 @@ export function useHistoryReports() {
   const error = ref('');
   const selectedReports = ref<Set<string | number>>(new Set());
   const activeTab = ref<ReportTabValue>(REPORT_TABS.ALL);
+
+  /** INT-1390：选中报告项（selectedReports id → allReports 报告；跨页/已过滤的 id 不在当前列表则跳过） */
+  const selectedReportItems = computed<Report[]>(() => {
+    const byId = new Map(allReports.value.map(r => [String(r.id), r]));
+    return Array.from(selectedReports.value)
+      .map(id => byId.get(String(id)))
+      .filter((r): r is Report => r !== undefined);
+  });
+
+  /** INT-1390：选中集中不可参与二次对比的报告（Benchmark 快照 / 无 task 关联） */
+  const unsupportedCompareReports = computed<Report[]>(() =>
+    selectedReportItems.value.filter(r => !isReportComparableForSecondaryCompare(r)),
+  );
+
+  /** INT-1390：批量对比禁用态（选中集含不可对比报告时禁用，避免必然失败的后端请求） */
+  const batchCompareDisabled = computed(() => unsupportedCompareReports.value.length > 0);
 
   const { algorithmOptions, loadAlgorithms, getAlgorithmLabel } = useAlgorithmLabels();
 
@@ -554,6 +582,12 @@ export function useHistoryReports() {
       showToast('warning', '请至少选择2个报告进行对比');
       return;
     }
+    // INT-1390：Benchmark 快照 / 无 task 关联报告不可参与二次对比——前置提示而非必然失败的后端请求
+    if (unsupportedCompareReports.value.length > 0) {
+      const names = unsupportedCompareReports.value.map(r => r.name).join('、');
+      showToast('warning', `所选报告不支持对比：${names}（Benchmark 快照或无任务关联，不可参与二次对比）`);
+      return;
+    }
     try {
       const ids = Array.from(selectedReports.value);
       const result = await reportsPort.secondaryCompare(ids);
@@ -698,6 +732,7 @@ export function useHistoryReports() {
     handleBatchDelete,
     handleBatchCancel,
     handleBatchCompare,
+    batchCompareDisabled,
     // INT-215/S4：回收站态批量恢复/彻底删除
     handleBatchRestore,
     handleBatchPurge,

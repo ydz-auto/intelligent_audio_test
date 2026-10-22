@@ -164,7 +164,9 @@
         <!-- INT-215/S4：回收站态批量栏适配——对比/删除对已删报告为 no-op，屏蔽之；
              补批量恢复/批量彻底删除（对齐任务侧已有能力） -->
         <template v-if="!trashMode">
-          <button class="btn btn-success" @click="handleBatchCompare">
+          <button class="btn btn-success" @click="handleBatchCompare"
+                  :disabled="batchCompareDisabled"
+                  :title="batchCompareDisabled ? '所选报告不支持对比（Benchmark 快照或无任务关联）' : ''">
             <i class="fas fa-exchange-alt"></i> 批量对比
           </button>
           <button class="btn btn-danger" @click="handleBatchDelete">
@@ -399,6 +401,7 @@ const {
   handleBatchDelete,
   handleBatchCancel,
   handleBatchCompare,
+  batchCompareDisabled,
   // INT-215/S4：回收站态批量恢复/彻底删除
   handleBatchRestore,
   handleBatchPurge,
