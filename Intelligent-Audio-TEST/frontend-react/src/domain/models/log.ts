@@ -107,10 +107,9 @@ export const LOG_CATEGORY_OPTIONS = [
   { value: 'error', label: '错误日志' },
 ] as const
 
-/** 日志模块选项（§4.2 模块 Select；值 = 后端 Log.module 原值，TestType api/e2e 同源） */
+/** 日志模块选项（§4.2 模块 Select；值 = 后端 Log.module 原值） */
 export const LOG_MODULE_OPTIONS = [
   { value: 'api', label: 'API模块' },
-  { value: 'e2e', label: 'E2E测试' },
   { value: 'device', label: '设备管理' },
 ] as const
 

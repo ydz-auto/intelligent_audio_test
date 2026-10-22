@@ -9,7 +9,7 @@ export type LogFilterState = {
   endTime: string
   /** 'all' | 'system' | 'test' | 'error' */
   category: string
-  /** 'all' | 'api' | 'e2e' | 'device' */
+  /** 'all' | 'api' | 'device' */
   module: string
   /** 'all' | 'yellow' | 'red' | 'green' | 'blue' */
   mark: string

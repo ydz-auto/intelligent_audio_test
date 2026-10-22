@@ -71,7 +71,7 @@ export function PublicFooter({ className }: { className?: string }) {
           <div className='max-w-md'>
             <SystemBrand variant='inline' />
             <p className='text-muted-foreground mt-3 text-sm leading-7'>
-              面向语音团队的端到端测试与 API 测试平台。
+              面向语音团队的一站式测试与评估平台。
             </p>
           </div>
           <div className='text-muted-foreground flex flex-wrap items-center gap-x-5 gap-y-2 text-sm'>

@@ -1,21 +1,18 @@
 /**
- * ④ 任务统计图表区（#task-charts 锚点；04_控制台.md §3.7，自 /tasks 移交三图卡）：
- * 任务完成趋势（柱状/面积 + 粒度页签）+ 任务类型分布（饼图）+ 任务状态分布（饼图）。
+ * ④ 任务统计图表区（#task-charts 锚点；04_控制台.md §3.7，自 /tasks 移交二图卡）：
+ * 任务完成趋势（柱状/面积 + 粒度页签）+ 任务状态分布（饼图）。
  * 图表机制照 newAPI ModelCharts 全套：ThemeManager 门控 + key 整图重建 + 色板分档。
  */
 import { VChart } from '@visactor/react-vchart'
 import type { ISpec } from '@visactor/vchart'
-import { Activity, ChartNoAxesCombined, PieChart } from 'lucide-react'
+import { Activity, ChartNoAxesCombined } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 
 import { useTaskDomainStats } from '@/application/dashboard/use-task-domain-stats'
 import type { TrendGranularity } from '@/application/dashboard/use-task-domain-stats'
 import { IconBadge } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  getTaskStatusLabel,
-  getTaskTypeLabel,
-} from '@/features/dashboard/constants'
+import { getTaskStatusLabel } from '@/features/dashboard/constants'
 import {
   buildDistributionPieSpec,
   buildTrendSpec,
@@ -132,13 +129,6 @@ export function TaskCharts() {
     [statsQuery.data?.trend, trendVariant, chartRadius, statsQuery.isLoading]
   )
 
-  const typePieSpec = useMemo(() => {
-    const values = Object.entries(statsQuery.data?.type_counts ?? {}).map(
-      ([type, value]) => ({ type: getTaskTypeLabel(type), value })
-    )
-    return buildDistributionPieSpec(values, { chartRadius })
-  }, [statsQuery.data?.type_counts, chartRadius])
-
   const statusPieSpec = useMemo(() => {
     const values = Object.entries(statsQuery.data?.status_counts ?? {}).map(
       ([status, value]) => ({ type: getTaskStatusLabel(status), value })
@@ -151,7 +141,7 @@ export function TaskCharts() {
       <div id='task-charts' className='scroll-mt-20'>
         <h3 className='text-sm font-semibold'>任务统计</h3>
         <p className='text-muted-foreground text-xs'>
-          任务类型、完成趋势与状态分布的全域视图
+          完成趋势与状态分布的全域视图
         </p>
       </div>
 
@@ -179,17 +169,6 @@ export function TaskCharts() {
       >
         <div className='h-[300px] p-1.5 sm:h-96 sm:p-2'>
           <ChartCanvas spec={trendSpec} />
-        </div>
-      </ChartCardShell>
-
-      <ChartCardShell
-        tone='chart-1'
-        icon={<PieChart />}
-        title='任务类型分布'
-        loading={statsQuery.isLoading}
-      >
-        <div className='h-[300px] p-1.5 sm:h-96 sm:p-2'>
-          <ChartCanvas spec={typePieSpec} />
         </div>
       </ChartCardShell>
 
