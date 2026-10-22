@@ -1,4 +1,4 @@
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 
 export interface Field {
   key: string;
@@ -47,6 +47,15 @@ export function useArrayField(
   };
 
   const localValue = ref(getInitialValue())
+
+  // INT-1177 密钥池能力开关：仅当 field 的 arrayItemTemplate 含 apiKeys（或显式
+  // arrayKeysEnabled）时渲染端点行内密钥池块。评估维度 apiEndpoints 字段无此
+  // 能力，避免密钥池 UI 泄漏到该模态（前端UX审计 P1）。
+  const hasArrayKeys = computed(() => {
+    const tpl = props.field.arrayItemTemplate;
+    return props.field.arrayKeysEnabled === true ||
+      (tpl != null && Object.prototype.hasOwnProperty.call(tpl, 'apiKeys'));
+  })
 
   watch(() => props.modelValue, (newVal) => {
     if (Array.isArray(newVal)) {
@@ -281,6 +290,7 @@ export function useArrayField(
     fieldId,
     localValue,
     playingIndex,
+    hasArrayKeys,
     handleInput,
     addArrayItem,
     removeArrayItem,

@@ -150,7 +150,7 @@
                 />
               </div>
             </div>
-            <div class="api-endpoint-keys">
+            <div v-if="hasArrayKeys" class="api-endpoint-keys">
               <label :for="`${fieldId}-${index}-keys`" class="sub-label">密钥池（多密钥轮换）</label>
               <div v-if="item.apiKeysSummary" class="api-keys-summary">
                 <i class="fas fa-key"></i>
@@ -217,6 +217,7 @@ const {
   fieldId,
   localValue,
   handleInput,
+  hasArrayKeys,
   addArrayItem,
   removeArrayItem,
   updateAPIUrl,
