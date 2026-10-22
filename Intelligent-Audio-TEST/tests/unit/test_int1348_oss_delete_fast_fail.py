@@ -7,7 +7,8 @@ OSSClient.delete_object 复用主客户端 read_timeout=60 × 3 次重试，OSS 
 
 本测试验证：
 1. localhost endpoint 统一改写 127.0.0.1（避免 ::1/IPv4 解析歧义悬挂）；
-2. 管理类短超时客户端（admin_client）read_timeout/connect_timeout/重试收紧；
+2. 管理类短超时客户端（admin_client）read_timeout/connect_timeout/重试收紧，
+   且 retries 用 total_max_attempts（总尝试次数，含首次）语义；
 3. delete_object 走 admin_client，对「accept 但不应答」的黑盒服务端数秒内快速失败；
 4. storage.delete 在 OSS 删除失败时仍快速返回并清理本地降级副本（上层 DB 删除不受影响）。
 """
@@ -100,7 +101,10 @@ class TestAdminClient:
         assert main_cfg.read_timeout == 60
         assert main_cfg.retries == {'max_attempts': 3, 'mode': 'standard'}
         assert admin_cfg.read_timeout == 5
-        assert admin_cfg.retries == {'max_attempts': 2, 'mode': 'standard'}
+        # OSS_ADMIN_MAX_ATTEMPTS=2 即 total_max_attempts=2（总尝试次数，含首次）；
+        # botocore max_attempts 是重试次数（总尝试 = +1），语义易误解，统一用
+        # total_max_attempts（INT-1348 验收打回收口）
+        assert admin_cfg.retries == {'total_max_attempts': 2, 'mode': 'standard'}
         assert admin_cfg.connect_timeout == 3
 
         # delete_object 走 admin_client，不碰主客户端
@@ -114,18 +118,24 @@ class TestAdminClient:
         try:
             monkeypatch.setattr(
                 BaseConfig, 'OSS_ENDPOINT', f'http://127.0.0.1:{server.port}')
-            # 收紧超时让测试快速完成：read=1s × max_attempts=1
+            # 收紧超时让测试快速完成：read=1s × 单次总尝试（total_max_attempts=1）
             monkeypatch.setattr(BaseConfig, 'OSS_ADMIN_READ_TIMEOUT_SECONDS', 1)
             monkeypatch.setattr(BaseConfig, 'OSS_ADMIN_CONNECT_TIMEOUT_SECONDS', 1)
             monkeypatch.setattr(BaseConfig, 'OSS_ADMIN_MAX_ATTEMPTS', 1)
             monkeypatch.setattr(OSSClient, '_ensure_buckets_exist',
                                 lambda self: None)
 
+            client = OSSClient()
+            # 一次性客户端创建（假死端点下 boto3 客户端创建耗时波动 4~12s，INT-1348
+            # 验收实测）排除在计时外——断言只验证 delete_object 调用自身快速失败
+            client._ensure_init()
+
             start = time.monotonic()
             with pytest.raises(Exception):
-                OSSClient().delete_object('audios', 'test_key')
+                client.delete_object('audios', 'test_key')
             elapsed = time.monotonic() - start
-            # 快速失败：绝不能像主客户端那样 60s×重试悬挂
+            # 单次总尝试 + read_timeout=1s：delete_object 自身应在数秒内快速失败；
+            # 留余量覆盖 Windows TCP 每次读超时额外 ~2s 开销，确保跨环境稳定
             assert elapsed < 15, f'delete_object 未快速失败，耗时 {elapsed:.1f}s'
         finally:
             server.close()
