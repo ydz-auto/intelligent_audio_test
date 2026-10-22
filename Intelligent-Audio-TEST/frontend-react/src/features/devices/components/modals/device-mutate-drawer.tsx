@@ -2,7 +2,7 @@
  * 设备新增/编辑抽屉（16_设备域.md §6.2；Sheet sideDrawer `sm:max-w-[600px]`）。
  * 分节「基本信息」（名称/描述）+ 分节随页签分叉：
  * - 测试设备：型号/设备类型/设备系统/系统版本/API级别（随系统切换）/应用名称/应用版本/连接方式/
- *   设备序列号/IP·端口(conditional remote)/驱动关键字（V9.7.10 keywords select）/是否需要提示词/算法类型/状态采集（只读）/
+ *   设备序列号/IP·端口(conditional remote)/驱动关键字（V9.7.10 keywords select）/是否需要提示词/算法类型/
  *   高级设置（备注/标签/自定义属性/优先级）
  * - 播放设备：型号/设备类型/系统唯一标识/通道索引/支持的通道数/支持的格式/采样率/声压映射
  * - 测试 API：API名称/供应商/API端点/关联算法（默认全局算法）/协议/环境/最大进程数/超时/音频时长/
@@ -714,21 +714,6 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                 {!canReadAlgorithm && (
                   <p className='text-muted-foreground text-xs'>无算法读取权限，暂不可配置算法类型</p>
                 )}
-                {/* 状态采集字段（§6.2：只读展示设备实时采集值） */}
-                <div className='border-border/60 grid grid-cols-3 gap-2 rounded-lg border p-2.5 text-xs'>
-                  <div className='flex flex-col gap-0.5'>
-                    <span className='text-muted-foreground'>电池状态</span>
-                    <span>87% · 正常</span>
-                  </div>
-                  <div className='flex flex-col gap-0.5'>
-                    <span className='text-muted-foreground'>存储状态</span>
-                    <span>剩余 42GB</span>
-                  </div>
-                  <div className='flex flex-col gap-0.5'>
-                    <span className='text-muted-foreground'>网络状态</span>
-                    <span>Wi-Fi 已连接</span>
-                  </div>
-                </div>
                 {/* 高级设置（§6.2 Collapsible：备注/标签/自定义属性/优先级） */}
                 <Collapsible>
                   <CollapsibleTrigger
