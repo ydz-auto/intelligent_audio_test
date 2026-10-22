@@ -6,6 +6,8 @@
  * INT-1267 修复：分组卡以 /groups 全部分组渲染（空组也渲染、计数用 testCaseCount），
  * 组内用例展开时按组懒加载（Vue testCaseStore.fetchCasesByGroup 对位）——分组卡是否渲染
  * 不再由「当前已加载用例页」决定，其余分组与未分组卡始终可见、可展开浏览/勾选。
+ * 审计返修：组头全选传 group 分组名（P1）、生效筛选合并全局算法进组内懒加载/组头全选（P2）、
+ * 未分组哨兵筛选由虚拟组承接（P3）、收藏视图组头全选降级为已加载用例（P3）。
  * 列表级：排序（按用例数量/分组名称/创建时间 × 升降序）+ 分组分页（每页 5 组 + 加载更多）。
  * 「未分组」虚拟组（INT-249：计数=可见数据集中 groupId 为空的用例数；/groups 已含「未分组」
  * 条目时不重复渲染；收藏/回收站态不挂载）。
@@ -135,13 +137,14 @@ function GroupCard({
 
   /**
    * 组头「全选分组」：真实分组经 POST /testcases/ids 按当前筛选圈定全组 ID（Vue toggleGroupSelection
-   * 对位——未展开也能全选/取消全选整组）；回收站态与未分组虚拟组无 /ids 契约映射，保持已加载用例。
+   * 对位——未展开也能全选/取消全选整组）；回收站/收藏态与未分组虚拟组无 /ids 契约映射
+   * （fetch_case_ids 不支持 favorite，INT-1267 审计 P3），保持已加载用例圈定。
    * 契约：/testcases/ids body 只认 group 分组**名**（后端 filter_by(name=group)），group_id 会被
    * 忽略导致圈定全库（INT-1267 审计 P1 打回返修）。
    */
   const handleGroupToggleAll = async (checked: boolean) => {
     if (!onToggleAll) return
-    if (trash || group.id === UNGROUPED_ID) {
+    if (trash || filters.favorite || group.id === UNGROUPED_ID) {
       onToggleAll(list.map((x) => x.id), checked)
       return
     }
@@ -360,7 +363,9 @@ export function GroupedCaseList({
   const hasNamedUngrouped = useMemo(() => groups.some((g) => g.name === '未分组'), [groups])
   const ungroupedGroup = useMemo<TestCaseGroup | null>(
     () =>
-      ungroupedCases.length > 0 && !hasNamedUngrouped && !filters.groupId
+      ungroupedCases.length > 0 &&
+      !hasNamedUngrouped &&
+      (filters.groupId == null || filters.groupId === UNGROUPED_ID)
         ? {
             id: UNGROUPED_ID,
             name: '未分组',
@@ -374,7 +379,9 @@ export function GroupedCaseList({
     [ungroupedCases.length, hasNamedUngrouped, filters.groupId]
   )
 
-  /** 工具栏「分组」筛选激活时只渲染该分组卡（Vue groupFilter 口径；未筛选时全量分组卡） */
+  /** 工具栏「分组」筛选激活时只渲染该分组卡（Vue groupFilter 口径；未筛选时全量分组卡）。
+   *  未分组哨兵（__ungrouped__）时无真实分组命中 → 空数组，由下方虚拟未分组卡承接
+   *  （INT-1267 审计 P3：原先真实分组被滤空、虚拟卡又被 !filters.groupId 守卫抑制 → 空白） */
   const visibleGroups = useMemo(
     () => (filters.groupId ? groups.filter((g) => g.id === filters.groupId) : groups),
     [groups, filters.groupId]

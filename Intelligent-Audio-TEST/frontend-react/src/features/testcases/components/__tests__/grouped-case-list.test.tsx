@@ -4,6 +4,8 @@
  * 组头勾选全选/全不选；组内懒加载分页（按 group_id 懒拉 +「已显示 {n} / {总} 条 · 加载更多」）。
  * INT-1267 回归——分组卡以 /groups 全部分组渲染（空组也渲染、计数用 testCaseCount），
  * 组内用例展开时按组懒加载（Vue fetchCasesByGroup 对位）；组头全选经 /testcases/ids 圈定整组。
+ * INT-1267 审计返修回归——P2 组内懒加载/组头全选合并全局算法筛选；P3 未分组哨兵筛选虚拟组承接、
+ * 收藏视图组头全选降级为已加载用例。
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -15,6 +17,7 @@ import { useSessionMap } from '@/application/testcases/use-session-map'
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import type { TagItem } from '@/domain/models/testTag'
+import type { TestCaseListFilters } from '@/application/testcases/use-testcases-list'
 import { MOCK_TAGS } from '@/infrastructure/mock/testcases-mock'
 import { GroupedCaseList } from '@/features/testcases/components/grouped-case-list'
 import type { CaseCardCallbacks } from '@/features/testcases/components/case-card'
@@ -145,11 +148,13 @@ function Harness({
   cases = CASES,
   trash = false,
   hasQueryFilters = false,
+  filters = {},
 }: {
   loading?: boolean
   cases?: TestCaseListItem[]
   trash?: boolean
   hasQueryFilters?: boolean
+  filters?: TestCaseListFilters
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   return (
@@ -160,7 +165,7 @@ function Harness({
         loading={loading}
         trash={trash}
         hasQueryFilters={hasQueryFilters}
-        filters={{}}
+        filters={filters}
         selected={selected}
         tagRegistry={MOCK_TAGS as TagItem[]}
         callbacks={noopCallbacks}
@@ -246,6 +251,96 @@ describe('GroupedCaseList', () => {
     expect(fetchCaseIdsByFilter).not.toHaveBeenCalledWith(
       expect.objectContaining({ groupId: expect.anything() })
     )
+  })
+
+  it('INT-1267 审计 P2：全局算法生效时组内懒加载与组头全选合并算法筛选（index 生效 filters 同源）', async () => {
+    const user = setupUser()
+    // 模拟 index.tsx effectiveFilters：全局算法已合并进 filters
+    render(<Harness filters={{ algorithmType: 'asr-v3' }} />)
+    await user.click(screen.getByText('智能音箱功能测试'))
+    await screen.findByText('智能音箱-播放音乐')
+    // 组内懒加载请求携带当前生效算法筛选（与列表 query 同口径，审计 P2 根因）
+    expect(fetchTestCasesByGroup).toHaveBeenCalledWith(
+      'g1',
+      expect.objectContaining({ algorithmType: 'asr-v3' }),
+      expect.any(Number),
+      expect.any(Number)
+    )
+    // 组头全选经 /testcases/ids 圈定整组时 body 携带算法筛选（不再圈定含非当前算法用例）
+    await user.click(screen.getByLabelText('全选分组 智能音箱功能测试'))
+    await waitFor(() => {
+      expect(fetchCaseIdsByFilter).toHaveBeenCalledWith(
+        expect.objectContaining({ group: '智能音箱功能测试', algorithmType: 'asr-v3' })
+      )
+    })
+  })
+
+  it('审计 P3：工具栏「未分组」哨兵筛选（__ungrouped__）时分组视图不再空白，虚拟未分组卡承接', async () => {
+    const user = setupUser()
+    const ungroupedCases = [
+      { ...CASES[0], id: 'tc-u1', name: '未分组-用例1', groupId: null, groupName: null },
+      { ...CASES[0], id: 'tc-u2', name: '未分组-用例2', groupId: null, groupName: null },
+    ]
+    // 哨兵契约：__ungrouped__ 组内懒加载返回 groupId=null 用例（fetchTestCases 不携带 group_id 拉大页后前端过滤）
+    const originalImpl = vi.mocked(fetchTestCasesByGroup).getMockImplementation()
+    vi.mocked(fetchTestCasesByGroup).mockImplementation(
+      async (groupId: string, _filters: unknown, page = 1, perPage = 20) => {
+        const matched =
+          groupId === '__ungrouped__'
+            ? ungroupedCases
+            : CASES.filter((c) => (c.groupId ?? '__ungrouped__') === groupId)
+        return {
+          items: matched.slice((page - 1) * perPage, page * perPage),
+          total: matched.length,
+        }
+      }
+    )
+    try {
+      render(<Harness cases={ungroupedCases} filters={{ groupId: '__ungrouped__' }} />)
+      // 真实分组被哨兵筛空（visibleGroups=[]），虚拟未分组组卡承接渲染（原先被 !filters.groupId 守卫抑制）
+      expect(screen.getByText('未分组')).toBeInTheDocument()
+      expect(screen.getByText('2 条')).toBeInTheDocument()
+      // 展开可见未分组用例，组内懒加载按哨兵契约过滤（groupId=null 用例）
+      await user.click(screen.getByText('未分组'))
+      expect(await screen.findByText('未分组-用例1')).toBeInTheDocument()
+      expect(screen.getByText('未分组-用例2')).toBeInTheDocument()
+    } finally {
+      if (originalImpl) vi.mocked(fetchTestCasesByGroup).mockImplementation(originalImpl)
+      else vi.mocked(fetchTestCasesByGroup).mockReset()
+    }
+  })
+
+  it('审计 P3：收藏视图组头全选降级为已加载用例（不走 /testcases/ids，不圈定含非收藏用例）', async () => {
+    const user = setupUser()
+    const favoriteCases = [CASES[0], CASES[1]]
+    // 收藏态组内懒加载只返回收藏子集（favorite=true 进 fetchTestCases，mock 按组切片）
+    const originalImpl = vi.mocked(fetchTestCasesByGroup).getMockImplementation()
+    vi.mocked(fetchTestCasesByGroup).mockImplementation(
+      async (groupId: string, _filters: unknown, page = 1, perPage = 20) => {
+        const matched = favoriteCases.filter((c) => c.groupId === groupId)
+        return {
+          items: matched.slice((page - 1) * perPage, page * perPage),
+          total: matched.length,
+        }
+      }
+    )
+    try {
+      render(<Harness cases={favoriteCases} filters={{ favorite: true }} />)
+      await user.click(screen.getByText('智能音箱功能测试'))
+      await screen.findByText('智能音箱-播放音乐')
+      // 非收藏用例不在可见集
+      expect(screen.queryByText('智能音箱-语音点歌')).not.toBeInTheDocument()
+      // 收藏态组头全选：不触发 /testcases/ids（后端 fetch_case_ids 不支持 favorite），
+      // 降级为已加载（收藏）用例圈定——不波及不可见非收藏用例
+      await user.click(screen.getByLabelText('全选分组 智能音箱功能测试'))
+      expect(fetchCaseIdsByFilter).not.toHaveBeenCalled()
+      await waitFor(() => {
+        expect(screen.getByText('已选择 2 个用例')).toBeInTheDocument()
+      })
+    } finally {
+      if (originalImpl) vi.mocked(fetchTestCasesByGroup).mockImplementation(originalImpl)
+      else vi.mocked(fetchTestCasesByGroup).mockReset()
+    }
   })
 
   it('INT-1267 组内懒加载页续：首屏 20 条，加载更多补齐', async () => {

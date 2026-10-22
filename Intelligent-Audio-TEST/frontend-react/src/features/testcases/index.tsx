@@ -78,10 +78,18 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   } | null>(null)
   const [confirm, setConfirm] = useState<CaseConfirmState | null>(null)
 
-  const listQuery = useTestCasesList(view, {
-    ...filters,
-    algorithmType: filters.algorithmType ?? algorithmId,
-  })
+  /**
+   * 生效筛选（INT-1267 审计 P2）：全局算法合并进列表 query 与 GroupedCaseList 同源消费。
+   * 列表 query 原本就合并 algorithmId（index.tsx:83），但传给 GroupedCaseList 的 filters
+   * 漏合并——组内懒加载（useGroupCases）与组头全选（POST /testcases/ids）因此不带算法筛选，
+   * 展开分组返回该组全部用例、组头全选圈定含当前算法外用例。此处抽成同一「生效 filters」，
+   * 列表与分组消费口径一致（Vue fetchCasesByGroup({ algorithmType }) 对位）。
+   */
+  const effectiveFilters = useMemo<TestCaseListFilters>(
+    () => ({ ...filters, algorithmType: filters.algorithmType ?? algorithmId }),
+    [filters, algorithmId]
+  )
+  const listQuery = useTestCasesList(view, effectiveFilters)
   const groupsQuery = useCaseGroups()
   const tagsQuery = useCaseTags()
   /** 全量评估维度（含子维度；批量设置评估维度 DimensionPicker 主/子分组云 + 列表筛选
@@ -468,7 +476,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
                   loading={listQuery.isLoading}
                   trash={filters.trash ?? false}
                   hasQueryFilters={hasQueryFilters}
-                  filters={filters}
+                  filters={effectiveFilters}
                   selected={selected}
                   tagRegistry={tags}
                   callbacks={rowCallbacks}
