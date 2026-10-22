@@ -468,6 +468,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
                   loading={listQuery.isLoading}
                   trash={filters.trash ?? false}
                   hasQueryFilters={hasQueryFilters}
+                  filters={filters}
                   selected={selected}
                   tagRegistry={tags}
                   callbacks={rowCallbacks}

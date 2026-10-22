@@ -1,7 +1,9 @@
 /**
  * 分组卡片流测试（V9.7.10 TestCaseListContainer 分组视图等价移植，11_用例域.md §3.5）：
  * INT-1027 回归——groups 异步加载后分组卡默认收起（组头可见、组内用例需点击展开）；
- * 组头勾选全选/全不选；组内懒加载「已显示 {n} / {总} 条 · 加载更多」。
+ * 组头勾选全选/全不选；组内懒加载分页（按 group_id 懒拉 +「已显示 {n} / {总} 条 · 加载更多」）。
+ * INT-1267 回归——分组卡以 /groups 全部分组渲染（空组也渲染、计数用 testCaseCount），
+ * 组内用例展开时按组懒加载（Vue fetchCasesByGroup 对位）；组头全选经 /testcases/ids 圈定整组。
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -16,37 +18,76 @@ import type { TagItem } from '@/domain/models/testTag'
 import { MOCK_TAGS } from '@/infrastructure/mock/testcases-mock'
 import { GroupedCaseList } from '@/features/testcases/components/grouped-case-list'
 import type { CaseCardCallbacks } from '@/features/testcases/components/case-card'
+import { fetchTestCasesByGroup } from '@/infrastructure/api/testcases-api'
+import { fetchCaseIdsByFilter } from '@/infrastructure/api/testcases-ids-api'
 
-const GROUPS: TestCaseGroup[] = [
-  {
-    id: 'g1',
-    name: '智能音箱功能测试',
-    description: null,
-    algorithmType: 'asr-v3',
-    createdAt: '2026-09-01 11:00',
-    updatedAt: '2026-10-14 16:20',
-    testCaseCount: 5,
-  },
-  {
-    id: 'g2',
-    name: '车载语音交互',
-    description: null,
-    algorithmType: 'asr-v3',
-    createdAt: '2026-09-02 09:30',
-    updatedAt: '2026-10-12 15:10',
-    testCaseCount: 3,
-  },
-]
+/** vi.mock 工厂被提升到模块顶，夹具数据须经 vi.hoisted 定义（否则 TDZ 引用报错） */
+const { GROUPS, CASES } = vi.hoisted(() => {
+  const GROUPS: TestCaseGroup[] = [
+    {
+      id: 'g1',
+      name: '智能音箱功能测试',
+      description: null,
+      algorithmType: 'asr-v3',
+      createdAt: '2026-09-01 11:00',
+      updatedAt: '2026-10-14 16:20',
+      testCaseCount: 6,
+    },
+    {
+      id: 'g2',
+      name: '车载语音交互',
+      description: null,
+      algorithmType: 'asr-v3',
+      createdAt: '2026-09-02 09:30',
+      updatedAt: '2026-10-12 15:10',
+      testCaseCount: 1,
+    },
+    {
+      id: 'g3',
+      name: '待归档分组',
+      description: null,
+      algorithmType: null,
+      createdAt: '2026-09-03 08:00',
+      updatedAt: '2026-10-11 09:00',
+      testCaseCount: 0,
+    },
+  ]
+  const CASES: TestCaseListItem[] = [
+    { id: 'tc-001', name: '智能音箱-播放音乐', description: null, groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e', tags: ['音箱'], algorithmType: 'asr-v3', createdAt: '2026-09-10 10:00', updatedAt: '2026-10-15 09:32', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 156, rounds: 2 },
+    { id: 'tc-002', name: '智能音箱-调节音量', description: null, groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e', tags: [], algorithmType: 'asr-v3', createdAt: '2026-09-11 09:00', updatedAt: '2026-10-14 16:20', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 48, rounds: 1 },
+    { id: 'tc-003', name: '智能音箱-语音点歌', description: null, groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e', tags: [], algorithmType: 'asr-stream', createdAt: '2026-09-12 14:00', updatedAt: '2026-10-14 10:05', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 210, rounds: 3 },
+    { id: 'tc-004', name: '智能音箱-天气查询', description: null, groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e', tags: [], algorithmType: 'asr-v3', createdAt: '2026-09-13 10:30', updatedAt: '2026-10-13 09:50', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 12, rounds: 1 },
+    { id: 'tc-005', name: '智能音箱-闹钟设置', description: null, groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e', tags: [], algorithmType: 'asr-v3', createdAt: '2026-09-14 08:00', updatedAt: '2026-10-12 11:30', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 132, rounds: 2 },
+    { id: 'tc-006', name: '智能音箱-闹钟设置2', description: null, groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e', tags: [], algorithmType: 'asr-v3', createdAt: '2026-09-14 08:00', updatedAt: '2026-10-12 11:30', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 130, rounds: 2 },
+    { id: 'tc-007', name: '车载-导航指令', description: null, groupId: 'g2', groupName: '车载语音交互', type: 'e2e', tags: [], algorithmType: 'asr-v3', createdAt: '2026-09-15 09:00', updatedAt: '2026-10-12 15:10', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 96, rounds: 2 },
+  ]
+  return { GROUPS, CASES }
+})
 
-const CASES: TestCaseListItem[] = [
-  { id: 'tc-001', name: '智能音箱-播放音乐', description: null, groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e', tags: ['音箱'], algorithmType: 'asr-v3', createdAt: '2026-09-10 10:00', updatedAt: '2026-10-15 09:32', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 156, rounds: 2 },
-  { id: 'tc-002', name: '智能音箱-调节音量', description: null, groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e', tags: [], algorithmType: 'asr-v3', createdAt: '2026-09-11 09:00', updatedAt: '2026-10-14 16:20', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 48, rounds: 1 },
-  { id: 'tc-003', name: '智能音箱-语音点歌', description: null, groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e', tags: [], algorithmType: 'asr-stream', createdAt: '2026-09-12 14:00', updatedAt: '2026-10-14 10:05', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 210, rounds: 3 },
-  { id: 'tc-004', name: '智能音箱-天气查询', description: null, groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e', tags: [], algorithmType: 'asr-v3', createdAt: '2026-09-13 10:30', updatedAt: '2026-10-13 09:50', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 12, rounds: 1 },
-  { id: 'tc-005', name: '智能音箱-闹钟设置', description: null, groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e', tags: [], algorithmType: 'asr-v3', createdAt: '2026-09-14 08:00', updatedAt: '2026-10-12 11:30', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 132, rounds: 2 },
-  { id: 'tc-006', name: '智能音箱-闹钟设置2', description: null, groupId: 'g1', groupName: '智能音箱功能测试', type: 'e2e', tags: [], algorithmType: 'asr-v3', createdAt: '2026-09-14 08:00', updatedAt: '2026-10-12 11:30', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 130, rounds: 2 },
-  { id: 'tc-007', name: '车载-导航指令', description: null, groupId: 'g2', groupName: '车载语音交互', type: 'e2e', tags: [], algorithmType: 'asr-v3', createdAt: '2026-09-15 09:00', updatedAt: '2026-10-12 15:10', isFavorite: false, deleted: false, deletedAt: null, deletedByUserId: null, totalDuration: 96, rounds: 2 },
-]
+/** 组内懒加载按组 mock（真实 fetchTestCasesByGroup 语义：page/per_page 切片 + total） */
+vi.mock('@/infrastructure/api/testcases-api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/infrastructure/api/testcases-api')>()
+  return {
+    ...actual,
+    fetchTestCasesByGroup: vi.fn(
+      async (groupId: string, _filters: unknown, page = 1, perPage = 20) => {
+        const matched = CASES.filter((c) => (c.groupId ?? '__ungrouped__') === groupId)
+        return {
+          items: matched.slice((page - 1) * perPage, page * perPage),
+          total: matched.length,
+        }
+      }
+    ),
+  }
+})
+
+/** 组头全选经 /testcases/ids 圈定整组 ID（真实分组） */
+vi.mock('@/infrastructure/api/testcases-ids-api', () => ({
+  fetchCaseIdsByFilter: vi.fn(async (query: { groupId?: string }) => {
+    const matched = CASES.filter((c) => c.groupId === query.groupId).map((c) => c.id)
+    return { ids: matched, total: matched.length }
+  }),
+}))
 
 const noopCallbacks: CaseCardCallbacks = {
   onPreview: vi.fn(),
@@ -119,6 +160,7 @@ function Harness({
         loading={loading}
         trash={trash}
         hasQueryFilters={hasQueryFilters}
+        filters={{}}
         selected={selected}
         tagRegistry={MOCK_TAGS as TagItem[]}
         callbacks={noopCallbacks}
@@ -148,6 +190,9 @@ describe('GroupedCaseList', () => {
   beforeEach(() => {
     // 会话级 per-card 子视图状态复位（用例间隔离）
     useSessionMap.setState({ groupSubView: {}, tagSubView: {} })
+    // 共享 QueryClient 清缓存（组内懒加载 queryKey 跨用例隔离，避免上一用例缓存泄漏）
+    queryClient.clear()
+    vi.clearAllMocks()
   })
 
   it('INT-1027：分组异步到达后默认收起，组头可展开、组内用例点击后可见', async () => {
@@ -162,12 +207,12 @@ describe('GroupedCaseList', () => {
     })
     expect(screen.queryByText('智能音箱-播放音乐')).not.toBeInTheDocument()
     expect(screen.queryByText('车载-导航指令')).not.toBeInTheDocument()
-    // 点组头展开后组内用例可见；另一个组保持收起
+    // 点组头展开后组内用例懒加载可见；另一个组保持收起
     await user.click(screen.getByText('智能音箱功能测试'))
-    expect(screen.getByText('智能音箱-播放音乐')).toBeInTheDocument()
+    expect(await screen.findByText('智能音箱-播放音乐')).toBeInTheDocument()
     expect(screen.queryByText('车载-导航指令')).not.toBeInTheDocument()
     await user.click(screen.getByText('车载语音交互'))
-    expect(screen.getByText('车载-导航指令')).toBeInTheDocument()
+    expect(await screen.findByText('车载-导航指令')).toBeInTheDocument()
   })
 
   it('加载态渲染骨架而非分组头', () => {
@@ -175,26 +220,67 @@ describe('GroupedCaseList', () => {
     expect(screen.queryByText('智能音箱功能测试')).not.toBeInTheDocument()
   })
 
-  it('组头勾选全选该组用例，页级计数联动', async () => {
+  it('INT-1267：/groups 空组也渲染，组头计数用 testCaseCount', async () => {
+    render(<Harness />)
+    // 空组（testCaseCount=0）同样渲染分组卡 + 0 条徽章
+    expect(screen.getByText('待归档分组')).toBeInTheDocument()
+    expect(screen.getByText('0 条')).toBeInTheDocument()
+    // 展开空组 → 组内懒加载返回空 → 空态文案
+    const user = setupUser()
+    await user.click(screen.getByText('待归档分组'))
+    expect(await screen.findByText('该分组暂无用例')).toBeInTheDocument()
+  })
+
+  it('组头勾选全选该组用例（经 /testcases/ids 圈定整组），页级计数联动', async () => {
     const user = setupUser()
     render(<Harness />)
     await user.click(screen.getByLabelText('全选分组 智能音箱功能测试'))
     // g1 共 6 条全选，列表头「已选择 6 个用例」
-    expect(screen.getByText('已选择 6 个用例')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText('已选择 6 个用例')).toBeInTheDocument()
+    })
+    expect(fetchCaseIdsByFilter).toHaveBeenCalledWith({ groupId: 'g1' })
   })
 
-  it('组内懒加载分页：超过 5 条显示「已显示 5 / 6 条 · 加载更多」，点击后全部可见', async () => {
+  it('INT-1267 组内懒加载页续：首屏 20 条，加载更多补齐', async () => {
     const user = setupUser()
-    render(<Harness />)
-    // 默认收起 → 先展开 g1 分组卡
-    await user.click(screen.getByText('智能音箱功能测试'))
-    // 第 6 条初始不可见
-    expect(screen.queryByText('智能音箱-闹钟设置2')).not.toBeInTheDocument()
-    expect(screen.getByText(/已显示 5 \/ 6 条 · 加载更多/)).toBeInTheDocument()
-    await user.click(screen.getByText(/加载更多/))
-    // 点击后加载第 6 条，加载更多行消失
-    expect(screen.getByText('智能音箱-闹钟设置2')).toBeInTheDocument()
-    expect(screen.queryByText(/已显示 6 \/ 6 条 · 加载更多/)).not.toBeInTheDocument()
+    const bigCases = Array.from({ length: 25 }, (_, i) => ({
+      ...CASES[0],
+      id: `tc-big-${i}`,
+      name: `大组-用例-${i}`,
+      groupId: 'g1',
+      groupName: '智能音箱功能测试',
+    }))
+    // 本测试全程按组返回大组数据（持久 mock），结束后恢复基准实现
+    const originalImpl = vi.mocked(fetchTestCasesByGroup).getMockImplementation()
+    vi.mocked(fetchTestCasesByGroup).mockImplementation(
+      async (groupId: string, _filters: unknown, page = 1, perPage = 20) => {
+        const matched = bigCases.filter((c) => c.groupId === groupId)
+        return {
+          items: matched.slice((page - 1) * perPage, page * perPage),
+          total: matched.length,
+        }
+      }
+    )
+    try {
+      render(<Harness />)
+      // 默认收起 → 先展开 g1 分组卡
+      await user.click(screen.getByText('智能音箱功能测试'))
+      // 首屏 20 条（perPage=20），第 21 条不可见
+      expect(await screen.findByText('大组-用例-19')).toBeInTheDocument()
+      expect(screen.queryByText('大组-用例-20')).not.toBeInTheDocument()
+      expect(screen.getByText(/已显示 20 \/ 25 条 · 加载更多/)).toBeInTheDocument()
+      // 点击加载更多 → 补齐全部 25 条，加载更多行消失
+      await user.click(screen.getByText(/加载更多/))
+      expect(await screen.findByText('大组-用例-20')).toBeInTheDocument()
+      expect(screen.getByText('大组-用例-24')).toBeInTheDocument()
+      await waitFor(() => {
+        expect(screen.queryByText(/加载更多/)).not.toBeInTheDocument()
+      })
+    } finally {
+      if (originalImpl) vi.mocked(fetchTestCasesByGroup).mockImplementation(originalImpl)
+      else vi.mocked(fetchTestCasesByGroup).mockReset()
+    }
   })
 
   it('分组排序下拉：按用例数量/分组名称/创建时间', async () => {
@@ -212,13 +298,14 @@ describe('GroupedCaseList', () => {
     // 默认收起 → 展开两个分组卡（组头子视图切换钮与组内内容均需可见）
     await user.click(screen.getByText('智能音箱功能测试'))
     await user.click(screen.getByText('车载语音交互'))
+    await screen.findByText('智能音箱-播放音乐')
     // 默认态 = 平铺：用例卡直接渲染，无子分组头
     expect(screen.getByText('智能音箱-播放音乐')).toBeInTheDocument()
     expect(screen.queryByText('未设置标签')).not.toBeInTheDocument()
     // 点击第一个分组卡（g1）组头的「按标签」切换
     const toggles = screen.getAllByText('按标签')
     await user.click(toggles[0])
-    // g1 可见用例含 tc-001（音箱）与 4 条无标签 → 标签子组「音箱」（组头 + 卡内 TagBadge 多处出现）
+    // g1 可见用例含 tc-001（音箱）与 5 条无标签 → 标签子组「音箱」（组头 + 卡内 TagBadge 多处出现）
     // + 末尾「未设置标签」桶
     expect(screen.getAllByText('音箱').length).toBeGreaterThan(0)
     expect(screen.getByText('未设置标签')).toBeInTheDocument()
@@ -233,7 +320,7 @@ describe('GroupedCaseList', () => {
     // 默认收起 → 先展开 g2 分组卡（空态在组内内容区）
     await user.click(screen.getByText('车载语音交互'))
     // g2 用例全部无标签 → 按标签子视图空态
-    expect(screen.getByText('该分组下用例均未设置标签')).toBeInTheDocument()
+    expect(await screen.findByText('该分组下用例均未设置标签')).toBeInTheDocument()
     expect(screen.getByText('切换回「平铺」可查看该分组全部用例')).toBeInTheDocument()
     // 切换控件保持「按标签」选中态（不自动跳变）
     expect(screen.getAllByText('按标签').length).toBeGreaterThan(0)
@@ -248,6 +335,7 @@ describe('GroupedCaseList', () => {
       expect(screen.queryAllByRole('tab')).toHaveLength(0)
       // 默认收起 → 先展开 g1（「未设置标签」桶在组内内容区）
       await user.click(screen.getByText('智能音箱功能测试'))
+      await screen.findByText('智能音箱-播放音乐')
       // 打开第一个分组卡（g1）的「批量修改」下拉 → 首项「显示方式」子菜单
       await user.click(screen.getAllByRole('button', { name: /批量修改/ })[0])
       // base-ui 子菜单触发器 hover 展开；jsdom 指针几何为零，子项点击用 fireEvent（绕过 pointer-events 守卫）

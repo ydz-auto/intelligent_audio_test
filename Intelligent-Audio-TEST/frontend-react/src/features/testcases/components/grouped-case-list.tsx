@@ -2,9 +2,13 @@
  * 分组视图卡片流（V9.7.10 TestCaseListContainer.vue 分组视图等价移植，11_用例域.md §3.5）。
  * 分组卡：组头（勾选全选 + ChevronDown 展开/折叠 + 分组名 + 计数 Badge + 总时长徽章 +
  * CaseGroupActions 组操作面板：编辑/删除/新增用例/复制/批量修改九项）+ 组内用例卡
- * （懒加载分页：每页 5 条 +「已显示 {n} / {总} 条 · 加载更多」）。
+ * （组内懒加载分页：按 group_id 懒拉 GROUP_PAGE_SIZE 条 +「已显示 {n} / {总} 条 · 加载更多」）。
+ * INT-1267 修复：分组卡以 /groups 全部分组渲染（空组也渲染、计数用 testCaseCount），
+ * 组内用例展开时按组懒加载（Vue testCaseStore.fetchCasesByGroup 对位）——分组卡是否渲染
+ * 不再由「当前已加载用例页」决定，其余分组与未分组卡始终可见、可展开浏览/勾选。
  * 列表级：排序（按用例数量/分组名称/创建时间 × 升降序）+ 分组分页（每页 5 组 + 加载更多）。
- * 「未分组」虚拟组（INT-249：计数=可见数据集中 groupId 为空的用例数；收藏/回收站态不挂载）。
+ * 「未分组」虚拟组（INT-249：计数=可见数据集中 groupId 为空的用例数；/groups 已含「未分组」
+ * 条目时不重复渲染；收藏/回收站态不挂载）。
  * 展开态持久化：本会话内存；默认收起（INT-1027 走查裁定：进入页面/筛选变化后分组默认 collapsed，
  * 用户点组头展开后会话内保持展开态——INT-490 P2 默认全展开口径废弃）。
  */
@@ -12,7 +16,9 @@ import { ArrowUpDown, ChevronDown, Clock3, FolderOpen, SearchX, Tags, Trash2 } f
 import { useMemo, useState } from 'react'
 import { useIsFetching } from '@tanstack/react-query'
 
-import { useSessionMap } from '@/application/testcases/use-session-map'
+import { useSessionMap, type GroupSubView } from '@/application/testcases/use-session-map'
+import { useGroupCases } from '@/application/testcases/use-group-cases'
+import type { TestCaseListFilters } from '@/application/testcases/use-testcases-list'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -43,6 +49,7 @@ import type { TagItem } from '@/domain/models/testTag'
 import { formatCaseDuration } from '@/features/testcases/constants'
 import { CaseCard, type CaseCardCallbacks } from '@/features/testcases/components/case-card'
 import { CaseGroupActions } from '@/features/testcases/components/case-group-actions'
+import { fetchCaseIdsByFilter } from '@/infrastructure/api/testcases-ids-api'
 import {
   CaseSubViewToggle,
   GROUP_SUB_VIEW_OPTIONS,
@@ -52,12 +59,13 @@ import {
 import { CaseSubGroupHeader } from '@/features/testcases/components/case-sub-group-header'
 import type { BatchActionKey } from '@/features/testcases/components/case-bulk-actions'
 
-/** 组内懒加载每页条数（V9.7.10 itemsPerPage=5 语义平移） */
-const GROUP_INLINE_PAGE = 5
 /** 分组分页每页组数（V9.7.10 itemsPerPage=5 语义平移） */
 const GROUP_LIST_PAGE = 5
 
 type GroupSortKey = 'count' | 'name' | 'createdAt'
+
+/** 未分组虚拟组哨兵 groupId（fetchTestCases 契约：不带 group_id 拉大页后前端过滤） */
+const UNGROUPED_ID = '__ungrouped__'
 
 /** 分组级操作回调（index 页级装配，弹窗/toast 演示） */
 export interface GroupActionCallbacks {
@@ -68,12 +76,233 @@ export interface GroupActionCallbacks {
   onCopyGroup: (group: TestCaseGroup) => void
 }
 
+/** 单张分组卡操作面板回调（GroupCard 内按组装配；未分组虚拟组只给 onCreateInGroup） */
+interface GroupCardActions {
+  onCreateInGroup?: () => void
+  onEditGroup?: () => void
+  onDeleteGroup?: () => void
+  onCopyGroup?: () => void
+}
+
+/** 组卡属性（真实分组与未分组虚拟组共用；未分组用合成 TestCaseGroup） */
+interface GroupCardProps {
+  group: TestCaseGroup
+  filters: TestCaseListFilters
+  expanded: boolean
+  onToggleExpanded: () => void
+  selected: Set<string>
+  tagRegistry: TagItem[]
+  trash: boolean
+  /** 行内五钮回调；不传（readOnly 观察态）→ 卡片不渲染操作钮 */
+  callbacks?: CaseCardCallbacks
+  /** 组操作面板回调；不传（readOnly 观察态）→ 组头操作面板隐藏 */
+  actions?: GroupCardActions
+  onBatchAction: (action: BatchActionKey, ids: string[]) => void
+  /** 勾选切换；不传（readOnly 观察态）→ 卡片/组头勾选框隐藏 */
+  onToggleSelect?: (id: string, checked: boolean) => void
+  onToggleAll?: (ids: string[], checked: boolean) => void
+}
+
+function GroupCard({
+  group,
+  filters,
+  expanded,
+  onToggleExpanded,
+  selected,
+  tagRegistry,
+  trash,
+  callbacks,
+  actions,
+  onBatchAction,
+  onToggleSelect,
+  onToggleAll,
+}: GroupCardProps) {
+  /** §3.5 移动端（≤640px）子视图切换收进 CaseGroupActions 下拉首项「显示方式」 */
+  const isMobile = useMediaQuery('(max-width: 640px)')
+  /** §3.5 会话内存 per-group 子视图（缺省 flat） */
+  const groupSubView = useSessionMap((s) => s.groupSubView)
+  const setGroupSubView = useSessionMap((s) => s.setGroupSubView)
+  /** 组内用例懒加载（展开才拉；Vue fetchCasesByGroup 对位，INT-1267） */
+  const { items: list, total, hasMore, isLoading, isFetching, loadMore } = useGroupCases(
+    group.id,
+    filters,
+    expanded
+  )
+
+  const subView = (groupSubView[group.id] ?? 'flat') as GroupSubView
+  const groupDuration = list.reduce((sum, c) => sum + (c.totalDuration ?? 0), 0)
+  const groupSelected = list.filter((c) => selected.has(c.id)).length
+
+  /**
+   * 组头「全选分组」：真实分组经 POST /testcases/ids 按当前筛选圈定全组 ID（Vue toggleGroupSelection
+   * 对位——未展开也能全选/取消全选整组）；回收站态与未分组虚拟组无 /ids 契约映射，保持已加载用例。
+   */
+  const handleGroupToggleAll = async (checked: boolean) => {
+    if (!onToggleAll) return
+    if (trash || group.id === UNGROUPED_ID) {
+      onToggleAll(list.map((x) => x.id), checked)
+      return
+    }
+    try {
+      const { ids } = await fetchCaseIdsByFilter({ ...filters, groupId: group.id })
+      onToggleAll(ids, checked)
+    } catch {
+      // 全量 ID 圈定失败降级为已加载用例（组内仍可逐卡勾选）
+      onToggleAll(list.map((x) => x.id), checked)
+    }
+  }
+
+  const renderCaseCard = (c: TestCaseListItem) => (
+    <CaseCard
+      key={c.id}
+      caseItem={c}
+      selected={selected.has(c.id)}
+      tagRegistry={tagRegistry}
+      callbacks={callbacks}
+      onToggleSelect={onToggleSelect}
+    />
+  )
+
+  /** 组内内容区：平铺（懒加载分页）或 按标签子视图（§3.5 客户端聚合；「未设置标签」桶末尾弱化） */
+  const renderGroupBody = (listItems: TestCaseListItem[]) => {
+    if (subView === 'byTag') {
+      if (listItems.every((c) => c.tags.length === 0)) {
+        return (
+          <Empty className='py-8'>
+            <EmptyMedia variant='icon'>
+              <Tags aria-hidden='true' />
+            </EmptyMedia>
+            <EmptyHeader>
+              <EmptyTitle>该分组下用例均未设置标签</EmptyTitle>
+              <EmptyDescription>切换回「平铺」可查看该分组全部用例</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        )
+      }
+      const groups = groupCasesByTag(listItems, tagRegistry)
+      return (
+        <div className='space-y-2'>
+          {groups.map((g) => (
+            <div key={g.key} className='space-y-2'>
+              <CaseSubGroupHeader group={g} muted={g.key === '__untagged__'} />
+              <div className='space-y-2'>{g.cases.map(renderCaseCard)}</div>
+            </div>
+          ))}
+        </div>
+      )
+    }
+    return <div className='space-y-2'>{listItems.map(renderCaseCard)}</div>
+  }
+
+  return (
+    <div className='bg-card ring-foreground/10 overflow-hidden rounded-xl ring-1'>
+      <div
+        className='flex cursor-pointer items-center justify-between gap-2 px-3 py-2'
+        onClick={onToggleExpanded}
+      >
+        <div className='flex min-w-0 items-center gap-2'>
+          {onToggleAll != null && (
+            <Checkbox
+              checked={list.length > 0 && groupSelected === list.length}
+              aria-label={`全选分组 ${group.name}`}
+              onCheckedChange={(c) => void handleGroupToggleAll(c)}
+            />
+          )}
+          <ChevronDown
+            aria-hidden='true'
+            className={cn('size-4 text-muted-foreground transition-transform', !expanded && '-rotate-90')}
+          />
+          <span className='font-medium truncate'>{group.name}</span>
+          <Badge variant='secondary' className='rounded-md px-1.5 font-mono text-[11px] tabular-nums'>
+            {group.testCaseCount} 条
+          </Badge>
+          {groupDuration > 0 && (
+            <Badge variant='outline' className='gap-1 rounded-md px-1.5 font-mono text-[11px] tabular-nums'>
+              <Clock3 aria-hidden='true' className='size-3' />
+              总时长 {formatCaseDuration(groupDuration)}
+            </Badge>
+          )}
+        </div>
+        {/* 组头右区：子视图切换（计数/时长徽章之后、CaseGroupActions 之前，常显） */}
+        <div className='flex shrink-0 flex-wrap items-center gap-1.5' onClick={(e) => e.stopPropagation()}>
+          {!isMobile && (
+            <CaseSubViewToggle
+              value={subView as SubViewValue}
+              onValueChange={(v) => setGroupSubView(group.id, v as GroupSubView)}
+              options={GROUP_SUB_VIEW_OPTIONS}
+            />
+          )}
+          {/* 移动端回收站态 CaseGroupActions 隐藏，子视图切换仍保「显示方式」下拉（不回归桌面态） */}
+          {isMobile && trash && (
+            <SubViewDisplayMenu
+              value={subView as SubViewValue}
+              onValueChange={(v) => setGroupSubView(group.id, v as GroupSubView)}
+              options={GROUP_SUB_VIEW_OPTIONS}
+            />
+          )}
+          {actions != null && (
+            <CaseGroupActions
+              name={group.name}
+              caseIds={list.map((x) => x.id)}
+              selectedIds={list.filter((x) => selected.has(x.id)).map((x) => x.id)}
+              trash={trash}
+              onEditGroup={actions.onEditGroup}
+              onDeleteGroup={actions.onDeleteGroup}
+              onCreateInGroup={actions.onCreateInGroup}
+              onCopyGroup={actions.onCopyGroup}
+              onBatchAction={onBatchAction}
+              subViewMenu={
+                isMobile && !trash
+                  ? {
+                      value: subView as SubViewValue,
+                      onValueChange: (v) => setGroupSubView(group.id, v as GroupSubView),
+                      options: GROUP_SUB_VIEW_OPTIONS,
+                    }
+                  : undefined
+              }
+            />
+          )}
+        </div>
+      </div>
+      {expanded && (
+        <div className='space-y-2 border-t px-3 py-3'>
+          {isLoading && list.length === 0 ? (
+            <div className='space-y-2'>
+              <Skeleton className='h-16 w-full' />
+              <Skeleton className='h-16 w-full' />
+            </div>
+          ) : list.length === 0 ? (
+            <p className='text-muted-foreground py-6 text-center text-xs'>
+              {trash ? '该分组回收站暂无用例' : '该分组暂无用例'}
+            </p>
+          ) : (
+            renderGroupBody(list)
+          )}
+          {hasMore && (
+            <button
+              type='button'
+              disabled={isFetching}
+              className='text-muted-foreground hover:text-foreground w-full py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60'
+              onClick={loadMore}
+            >
+              {isFetching
+                ? '加载中…'
+                : `已显示 ${list.length} / ${total} 条 · 加载更多`}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function GroupedCaseList({
   groups,
   cases,
   loading,
   trash,
   hasQueryFilters,
+  filters,
   selected,
   tagRegistry,
   callbacks,
@@ -88,6 +317,8 @@ export function GroupedCaseList({
   trash: boolean
   /** 非回收站筛选是否激活（搜索/分组/标签/维度）——回收站空态区分「真空」与「筛选无匹配」 */
   hasQueryFilters: boolean
+  /** 当前生效筛选（搜索/分组/标签/维度/算法/收藏/回收站；组内懒加载共用） */
+  filters: TestCaseListFilters
   selected: Set<string>
   tagRegistry: TagItem[]
   /** 行内五钮回调；不传（readOnly 观察态）→ 卡片不渲染操作钮 */
@@ -103,30 +334,46 @@ export function GroupedCaseList({
   const [groupPage, setGroupPage] = useState(1)
   const [sortKey, setSortKey] = useState<GroupSortKey>('count')
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc')
-  /** 组内懒加载已显示计数（每页 GROUP_INLINE_PAGE；未记录=首页） */
-  const [inlineCounts, setInlineCounts] = useState<Record<string, number>>({})
-  /** 分组卡子视图（§3.5 会话内存 per-group，缺省 flat） */
-  const groupSubView = useSessionMap((s) => s.groupSubView)
-  const setGroupSubView = useSessionMap((s) => s.setGroupSubView)
   /** §3.3.3：isFetching 时列表不消失、降透明度（placeholderData 保上一帧） */
   const fetching = useIsFetching({ queryKey: ['testcases'] })
   const dimmed = fetching > 0 && !loading
-  /** §3.5 移动端（≤640px）子视图切换收进 CaseGroupActions 下拉首项「显示方式」 */
-  const isMobile = useMediaQuery('(max-width: 640px)')
 
   const groupCases = useMemo(() => {
     const map = new Map<string, TestCaseListItem[]>()
     for (const c of cases) {
-      const key = c.groupId ?? '__ungrouped__'
+      const key = c.groupId ?? UNGROUPED_ID
       map.set(key, [...(map.get(key) ?? []), c])
     }
     return map
   }, [cases])
 
-  const ungroupedCases = groupCases.get('__ungrouped__') ?? []
+  const ungroupedCases = groupCases.get(UNGROUPED_ID) ?? []
+  /** /groups 已含「未分组」真实条目时不重复渲染虚拟组（INT-1267 空组也渲染） */
+  const hasNamedUngrouped = useMemo(() => groups.some((g) => g.name === '未分组'), [groups])
+  const ungroupedGroup = useMemo<TestCaseGroup | null>(
+    () =>
+      ungroupedCases.length > 0 && !hasNamedUngrouped && !filters.groupId
+        ? {
+            id: UNGROUPED_ID,
+            name: '未分组',
+            description: null,
+            algorithmType: null,
+            createdAt: '',
+            updatedAt: '',
+            testCaseCount: ungroupedCases.length,
+          }
+        : null,
+    [ungroupedCases.length, hasNamedUngrouped, filters.groupId]
+  )
+
+  /** 工具栏「分组」筛选激活时只渲染该分组卡（Vue groupFilter 口径；未筛选时全量分组卡） */
+  const visibleGroups = useMemo(
+    () => (filters.groupId ? groups.filter((g) => g.id === filters.groupId) : groups),
+    [groups, filters.groupId]
+  )
 
   const sortedGroups = useMemo(() => {
-    const list = [...groups]
+    const list = [...visibleGroups]
     const dir = sortOrder === 'asc' ? 1 : -1
     switch (sortKey) {
       case 'name':
@@ -139,7 +386,7 @@ export function GroupedCaseList({
         list.sort((a, b) => dir * (a.testCaseCount - b.testCaseCount))
     }
     return list
-  }, [groups, sortKey, sortOrder])
+  }, [visibleGroups, sortKey, sortOrder])
 
   const paginatedGroups = sortedGroups.slice(0, groupPage * GROUP_LIST_PAGE)
 
@@ -150,6 +397,17 @@ export function GroupedCaseList({
       else next.add(id)
       return next
     })
+  }
+
+  /** 真实分组操作面板装配（readOnly 观察态 actionCallbacks 缺省 → 不渲染） */
+  const buildGroupActions = (group: TestCaseGroup): GroupCardActions | undefined => {
+    if (actionCallbacks == null) return undefined
+    return {
+      onCreateInGroup: () => actionCallbacks.onCreateInGroup(group),
+      onEditGroup: () => actionCallbacks.onEditGroup(group),
+      onDeleteGroup: () => actionCallbacks.onDeleteGroup(group),
+      onCopyGroup: () => actionCallbacks.onCopyGroup(group),
+    }
   }
 
   if (loading) {
@@ -171,6 +429,8 @@ export function GroupedCaseList({
   /**
    * 空态三态（§3.3 INT-592 平铺流文案）：回收站空 → 筛选无匹配 → 全空。
    * 以可见用例集为准——筛选把全部用例排除后即使分组列表非空也走空态（INT-595 补）。
+   * INT-1267：分组卡渲染不依赖「当前已加载用例页」，故只要列表页还有数据分组卡全量渲染；
+   * 空态仍以平铺集为准（真实库列表页首屏恒有数据，空组由 /groups 全量分组卡兜住）。
    */
   if (cases.length === 0) {
     return (
@@ -211,152 +471,6 @@ export function GroupedCaseList({
             </EmptyContent>
           )}
         </Empty>
-      </div>
-    )
-  }
-
-  const renderCaseCard = (c: TestCaseListItem) => (
-    <CaseCard
-      key={c.id}
-      caseItem={c}
-      selected={selected.has(c.id)}
-      tagRegistry={tagRegistry}
-      callbacks={callbacks}
-      onToggleSelect={onToggleSelect}
-    />
-  )
-
-  /** 组内内容区：平铺（懒加载分页）或 按标签子视图（§3.5 客户端聚合；「未设置标签」桶末尾弱化） */
-  const renderGroupBody = (list: TestCaseListItem[], subView: 'flat' | 'byTag') => {
-    if (subView === 'byTag') {
-      if (list.every((c) => c.tags.length === 0)) {
-        return (
-          <Empty className='py-8'>
-            <EmptyMedia variant='icon'>
-              <Tags aria-hidden='true' />
-            </EmptyMedia>
-            <EmptyHeader>
-              <EmptyTitle>该分组下用例均未设置标签</EmptyTitle>
-              <EmptyDescription>切换回「平铺」可查看该分组全部用例</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        )
-      }
-      const groups = groupCasesByTag(list, tagRegistry)
-      return (
-        <div className='space-y-2'>
-          {groups.map((g) => (
-            <div key={g.key} className='space-y-2'>
-              <CaseSubGroupHeader group={g} muted={g.key === '__untagged__'} />
-              <div className='space-y-2'>{g.cases.map(renderCaseCard)}</div>
-            </div>
-          ))}
-        </div>
-      )
-    }
-    return <div className='space-y-2'>{list.map(renderCaseCard)}</div>
-  }
-
-  const renderGroupCard = (group: TestCaseGroup) => {
-    const list = groupCases.get(group.id) ?? []
-    if (list.length === 0) return null
-    const isExpanded = expanded.has(group.id)
-    const inlineCount = inlineCounts[group.id] ?? GROUP_INLINE_PAGE
-    const shownCount = Math.min(inlineCount, list.length)
-    const groupDuration = list.reduce((sum, c) => sum + (c.totalDuration ?? 0), 0)
-    const groupSelected = list.filter((c) => selected.has(c.id)).length
-    const subView = groupSubView[group.id] ?? 'flat'
-    const visibleList = list.slice(0, shownCount)
-
-    return (
-      <div key={group.id} className='bg-card ring-foreground/10 overflow-hidden rounded-xl ring-1'>
-        <div
-          className='flex cursor-pointer items-center justify-between gap-2 px-3 py-2'
-          onClick={() => toggleGroupExpanded(group.id)}
-        >
-          <div className='flex min-w-0 items-center gap-2'>
-            {onToggleAll != null && (
-              <Checkbox
-                checked={list.length > 0 && groupSelected === list.length}
-                aria-label={`全选分组 ${group.name}`}
-                onCheckedChange={(c) => onToggleAll(list.map((x) => x.id), c)}
-              />
-            )}
-            <ChevronDown
-              aria-hidden='true'
-              className={cn('size-4 text-muted-foreground transition-transform', !isExpanded && '-rotate-90')}
-            />
-            <span className='font-medium truncate'>{group.name}</span>
-            <Badge variant='secondary' className='rounded-md px-1.5 font-mono text-[11px] tabular-nums'>
-              {list.length} 条
-            </Badge>
-            {groupDuration > 0 && (
-              <Badge variant='outline' className='gap-1 rounded-md px-1.5 font-mono text-[11px] tabular-nums'>
-                <Clock3 aria-hidden='true' className='size-3' />
-                总时长 {formatCaseDuration(groupDuration)}
-              </Badge>
-            )}
-          </div>
-          {/* 组头右区：子视图切换（计数/时长徽章之后、CaseGroupActions 之前，常显） */}
-          <div className='flex shrink-0 flex-wrap items-center gap-1.5' onClick={(e) => e.stopPropagation()}>
-            {!isMobile && (
-              <CaseSubViewToggle
-                value={subView}
-                onValueChange={(v) => setGroupSubView(group.id, v as 'flat' | 'byTag')}
-                options={GROUP_SUB_VIEW_OPTIONS}
-              />
-            )}
-            {/* 移动端回收站态 CaseGroupActions 隐藏，子视图切换仍保「显示方式」下拉（不回归桌面态） */}
-            {isMobile && trash && (
-              <SubViewDisplayMenu
-                value={subView}
-                onValueChange={(v) => setGroupSubView(group.id, v as 'flat' | 'byTag')}
-                options={GROUP_SUB_VIEW_OPTIONS}
-              />
-            )}
-            {actionCallbacks != null && (
-              <CaseGroupActions
-                name={group.name}
-                caseIds={list.map((x) => x.id)}
-                selectedIds={list.filter((x) => selected.has(x.id)).map((x) => x.id)}
-                trash={trash}
-                onEditGroup={() => actionCallbacks.onEditGroup(group)}
-                onDeleteGroup={() => actionCallbacks.onDeleteGroup(group)}
-                onCreateInGroup={() => actionCallbacks.onCreateInGroup(group)}
-                onCopyGroup={() => actionCallbacks.onCopyGroup(group)}
-                onBatchAction={onBatchAction}
-                subViewMenu={
-                  isMobile && !trash
-                    ? {
-                        value: subView as SubViewValue,
-                        onValueChange: (v) => setGroupSubView(group.id, v as 'flat' | 'byTag'),
-                        options: GROUP_SUB_VIEW_OPTIONS,
-                      }
-                    : undefined
-                }
-              />
-            )}
-          </div>
-        </div>
-        {isExpanded && (
-          <div className='space-y-2 border-t px-3 py-3'>
-            {renderGroupBody(visibleList, subView)}
-            {list.length > shownCount && (
-              <button
-                type='button'
-                className='text-muted-foreground hover:text-foreground w-full py-1 text-xs transition-colors'
-                onClick={() =>
-                  setInlineCounts((prev) => ({
-                    ...prev,
-                    [group.id]: (prev[group.id] ?? GROUP_INLINE_PAGE) + GROUP_INLINE_PAGE,
-                  }))
-                }
-              >
-                已显示 {shownCount} / {list.length} 条 · 加载更多
-              </button>
-            )}
-          </div>
-        )}
       </div>
     )
   }
@@ -409,86 +523,51 @@ export function GroupedCaseList({
             ))}
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}>
-              顺序：{sortOrder === 'asc' ? '升序 → 降序' : '降序 → 升序'}
+              顺序：{sortOrder === 'asc' ? '降序 → 升序' : '升序 → 降序'}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
 
-      {paginatedGroups.map(renderGroupCard)}
+      {paginatedGroups.map((group) => (
+        <GroupCard
+          key={group.id}
+          group={group}
+          filters={filters}
+          expanded={expanded.has(group.id)}
+          onToggleExpanded={() => toggleGroupExpanded(group.id)}
+          selected={selected}
+          tagRegistry={tagRegistry}
+          trash={trash}
+          callbacks={callbacks}
+          actions={buildGroupActions(group)}
+          onBatchAction={onBatchAction}
+          onToggleSelect={onToggleSelect}
+          onToggleAll={onToggleAll}
+        />
+      ))}
 
-      {/* 未分组虚拟组（INT-249；同样支持子视图切换 §3.5；INT-1027 默认收起、组头可展开） */}
-      {ungroupedCases.length > 0 && (
-        <div className='bg-card ring-foreground/10 overflow-hidden rounded-xl ring-1'>
-          <div
-            className='flex cursor-pointer items-center justify-between gap-2 px-3 py-2'
-            onClick={() => toggleGroupExpanded('__ungrouped__')}
-          >
-            <div className='flex min-w-0 items-center gap-2'>
-              {onToggleAll != null && (
-                <Checkbox
-                  checked={ungroupedCases.length > 0 && ungroupedCases.every((c) => selected.has(c.id))}
-                  aria-label='全选未分组用例'
-                  onCheckedChange={(c) => onToggleAll(ungroupedCases.map((x) => x.id), c)}
-                />
-              )}
-              <ChevronDown
-                aria-hidden='true'
-                className={cn(
-                  'size-4 text-muted-foreground transition-transform',
-                  !expanded.has('__ungrouped__') && '-rotate-90'
-                )}
-              />
-              <span className='font-medium truncate'>未分组</span>
-              <Badge variant='secondary' className='rounded-md px-1.5 font-mono text-[11px] tabular-nums'>
-                {ungroupedCases.length} 条
-              </Badge>
-            </div>
-            <div
-              className='flex shrink-0 flex-wrap items-center gap-1.5'
-              onClick={(e) => e.stopPropagation()}
-            >
-              {!isMobile && (
-                <CaseSubViewToggle
-                  value={groupSubView['__ungrouped__'] ?? 'flat'}
-                  onValueChange={(v) => setGroupSubView('__ungrouped__', v as 'flat' | 'byTag')}
-                  options={GROUP_SUB_VIEW_OPTIONS}
-                />
-              )}
-              {isMobile && trash && (
-                <SubViewDisplayMenu
-                  value={groupSubView['__ungrouped__'] ?? 'flat'}
-                  onValueChange={(v) => setGroupSubView('__ungrouped__', v as 'flat' | 'byTag')}
-                  options={GROUP_SUB_VIEW_OPTIONS}
-                />
-              )}
-              {actionCallbacks != null && (
-                <CaseGroupActions
-                  name='未分组'
-                  caseIds={ungroupedCases.map((x) => x.id)}
-                  selectedIds={ungroupedCases.filter((x) => selected.has(x.id)).map((x) => x.id)}
-                  trash={trash}
-                  onCreateInGroup={() => actionCallbacks.onCreateInGroup(null)}
-                  onBatchAction={onBatchAction}
-                  subViewMenu={
-                    isMobile && !trash
-                      ? {
-                          value: (groupSubView['__ungrouped__'] ?? 'flat') as SubViewValue,
-                          onValueChange: (v) => setGroupSubView('__ungrouped__', v as 'flat' | 'byTag'),
-                          options: GROUP_SUB_VIEW_OPTIONS,
-                        }
-                      : undefined
-                  }
-                />
-              )}
-            </div>
-          </div>
-          {expanded.has('__ungrouped__') && (
-            <div className='space-y-2 border-t px-3 py-3'>
-              {renderGroupBody(ungroupedCases, groupSubView['__ungrouped__'] ?? 'flat')}
-            </div>
-          )}
-        </div>
+      {/* 未分组虚拟组（INT-249；/groups 已有「未分组」真实条目时不重复渲染；
+          同样支持子视图切换 §3.5；INT-1027 默认收起、组头可展开） */}
+      {ungroupedGroup != null && (
+        <GroupCard
+          group={ungroupedGroup}
+          filters={filters}
+          expanded={expanded.has(UNGROUPED_ID)}
+          onToggleExpanded={() => toggleGroupExpanded(UNGROUPED_ID)}
+          selected={selected}
+          tagRegistry={tagRegistry}
+          trash={trash}
+          callbacks={callbacks}
+          actions={
+            actionCallbacks != null
+              ? { onCreateInGroup: () => actionCallbacks.onCreateInGroup(null) }
+              : undefined
+          }
+          onBatchAction={onBatchAction}
+          onToggleSelect={onToggleSelect}
+          onToggleAll={onToggleAll}
+        />
       )}
 
       {/* 分组分页（加载更多） */}
