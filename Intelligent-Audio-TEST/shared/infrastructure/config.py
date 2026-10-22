@@ -55,6 +55,15 @@ class BaseConfig:
     OSS_SECRET_KEY: str = _get_env('OSS_SECRET_KEY', required=True)
     OSS_REGION: str = _get_env('OSS_REGION', 'us-east-1')
 
+    # --- OSS 客户端管理类操作短超时（INT-1348）---
+    # delete_object/exists/delete_prefix 等管理操作对超时不敏感，若复用主客户端
+    # 长 read_timeout（60s）× 3 次重试，OSS 不可达或响应慢时会把调用悬挂到网关
+    # gRPC 60s 截止之后（DELETE /audios/{id} 偶发 DEADLINE_EXCEEDED 400 的根因）。
+    # 独立短超时客户端快速失败，业务侧 try/except 兜底保证数据库操作照常进行。
+    OSS_ADMIN_READ_TIMEOUT_SECONDS: int = _get_int('OSS_ADMIN_READ_TIMEOUT_SECONDS', 5)
+    OSS_ADMIN_CONNECT_TIMEOUT_SECONDS: int = _get_int('OSS_ADMIN_CONNECT_TIMEOUT_SECONDS', 3)
+    OSS_ADMIN_MAX_ATTEMPTS: int = _get_int('OSS_ADMIN_MAX_ATTEMPTS', 2)
+
     # 单桶模式：所有数据存同一桶，用 OSS_BUCKET_NAME + OSS_KEY_PREFIX 区分。
     # 配置了 OSS_BUCKET_NAME 后，下面各 category 的桶名被忽略，key 统一加前缀：
     #   {OSS_KEY_PREFIX}/{category}/{原key}
