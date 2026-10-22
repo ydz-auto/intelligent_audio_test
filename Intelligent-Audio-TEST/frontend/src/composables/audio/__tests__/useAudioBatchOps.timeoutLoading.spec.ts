@@ -5,7 +5,10 @@
  * - 删除确认后请求期间进入加载态（deletingIds / batchDeleting），完成后清除；
  * - 同一行/批量删除进行中忽略重复点击，不重复发请求；
  * - 请求超过 DELETE_REQUEST_TIMEOUT_MS 未响应 → 刷新列表核对 + 超时弹窗
- *   （confirmText=重试）；点重试以 skipConfirm 直接重发，不再二次确认。
+ *   （confirmText=重试）；点重试以 skipConfirm 直接重发，不再二次确认；
+ * - 重试在单次调用内循环完成，加载态在整个重试窗口保持（INT-1332 返工：
+ *   重试请求进行中 deletingIds/batchDeleting 仍为 true，按钮保持禁用，
+ *   并发重复点击被守卫拦截）。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ref } from 'vue';
@@ -154,6 +157,37 @@ describe('INT-1332 删除超时与重试', () => {
     expect(modalManager.open).toHaveBeenCalledWith('basicConfirm', expect.objectContaining({ title: '删除超时', confirmText: '重试' }));
     expect(audiosPort.delete).toHaveBeenCalledTimes(2);
   });
+
+  it('单删重试请求进行中：加载态保持，重复点击被拦截（INT-1332 返工 P1 回归）', async () => {
+    vi.useFakeTimers();
+    const audioList = ref([ownerAudio] as any);
+    const ops = useAudioBatchOps(audioList, ref([]) as any, onRefresh);
+    const retryDeferred = deferred();
+    // 首次挂起（触发超时），重试请求挂起（便于观察 in-flight 加载态）
+    audiosPort.delete
+      .mockReturnValueOnce(new Promise(() => {}))
+      .mockReturnValueOnce(retryDeferred.promise);
+
+    const p = ops.deleteAudio(3);
+    await vi.advanceTimersByTimeAsync(DELETE_REQUEST_TIMEOUT_MS + 1);
+
+    // 超时弹窗已确认（mock true）→ 重试请求已发出且 in-flight
+    expect(audiosPort.delete).toHaveBeenCalledTimes(2);
+    // 重试期间加载态保持：行内按钮仍为「删除中」+ 禁用（deletingIds 未被 finally 清空）
+    expect(ops.deletingIds.value).toContain(3);
+    expect(ops.isDeleting(3)).toBe(true);
+
+    // 重试进行中重复点击同一行：被 isDeleting 守卫拦截，不重复发请求
+    const p2 = ops.deleteAudio(3);
+    await Promise.resolve();
+    expect(audiosPort.delete).toHaveBeenCalledTimes(2);
+
+    retryDeferred.resolve({ success: true, code: 0, message: '音频文件已删除', data: null });
+    await Promise.all([p, p2]);
+
+    expect(ops.deletingIds.value).not.toContain(3);
+    expect(ops.isDeleting(3)).toBe(false);
+  });
 });
 
 describe('INT-1332 批量删除加载态与超时', () => {
@@ -211,6 +245,36 @@ describe('INT-1332 批量删除加载态与超时', () => {
     expect(onRefresh).toHaveBeenCalledTimes(2);
     expect(modalManager.open).toHaveBeenCalledWith('basicConfirm', expect.objectContaining({ title: '批量删除超时', confirmText: '重试' }));
     expect(audiosPort.batchAction).toHaveBeenCalledTimes(2);
+    expect(ops.batchDeleting.value).toBe(false);
+    expect(selected.value).toEqual([]);
+  });
+
+  it('批量删除重试请求进行中：batchDeleting 保持 true，重复点击被拦截（INT-1332 返工 P1 回归）', async () => {
+    vi.useFakeTimers();
+    const selected = ref([1, 2]);
+    const ops = useAudioBatchOps(ref([]) as any, selected as any, onRefresh);
+    const retryDeferred = deferred();
+    // 首次挂起（触发超时），重试请求挂起（便于观察 in-flight 加载态）
+    audiosPort.batchAction
+      .mockReturnValueOnce(new Promise(() => {}))
+      .mockReturnValueOnce(retryDeferred.promise);
+
+    const p = ops.batchDelete();
+    await vi.advanceTimersByTimeAsync(DELETE_REQUEST_TIMEOUT_MS + 1);
+
+    // 超时弹窗已确认（mock true）→ 重试请求已发出且 in-flight
+    expect(audiosPort.batchAction).toHaveBeenCalledTimes(2);
+    // 重试期间加载态保持：页头「批量删除」按钮仍为「删除中...」+ 禁用
+    expect(ops.batchDeleting.value).toBe(true);
+
+    // 重试进行中重复点击：被 batchDeleting 守卫拦截，不重复发请求
+    const p2 = ops.batchDelete();
+    await Promise.resolve();
+    expect(audiosPort.batchAction).toHaveBeenCalledTimes(2);
+
+    retryDeferred.resolve({ success: true, code: 0, message: '成功删除 2 个音频', data: null });
+    await Promise.all([p, p2]);
+
     expect(ops.batchDeleting.value).toBe(false);
     expect(selected.value).toEqual([]);
   });

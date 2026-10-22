@@ -113,56 +113,65 @@ export function useAudioBatchOps(
     }
 
     batchDeleting.value = true;
-    const controller = new AbortController();
-    const abortTimer = setTimeout(() => controller.abort(), DELETE_REQUEST_TIMEOUT_MS);
     try {
-      const response = await withRequestTimeout(
-        audiosPort.batchAction('delete', selectedAudios.value, {}, { unwrapResponse: false, signal: controller.signal }) as Promise<APIResponse<any>>,
-        DELETE_REQUEST_TIMEOUT_MS
-      );
-      const hasError = response.message && (response.message.includes('失败') || response.message.includes('没有可删除') || response.message.includes('被其他资源引用') || response.message.includes('禁止删除'));
-      if (response.success && !hasError) {
-        selectedAudios.value = [];
-        onRefresh();
-        await modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-          title: '删除成功',
-          content: response.message || `成功删除音频`,
-          danger: false
-        });
-      } else {
-        await modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-          title: '删除失败',
-          content: toUserErrorMessage(response, '部分文件删除失败'),
-          danger: true
-        });
-      }
-    } catch (e: any) {
-      const isTimeout = isDeleteTimeoutError(e);
-      // 主动超时中止是可预期流程（已弹窗提示），按 warn 记录避免误报 SEVERE；
-      // 其余失败保留 error 日志便于排查（INT-1003/1052 错误路径口径）
-      if (isTimeout) {
-        console.warn('Batch delete timed out:', e);
-      } else {
-        console.error('Batch delete failed:', e);
-      }
-      // 超时/后端截止后刷新列表核对服务端实际状态（后端可能已删除但响应迟到）
-      if (isTimeout) onRefresh();
-      const retry = await modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-        title: isTimeout ? '批量删除超时' : '删除失败',
-        content: isTimeout
-          ? `删除请求超过 ${Math.round(DELETE_REQUEST_TIMEOUT_MS / 1000)} 秒未响应（存储服务繁忙或已超时）。已刷新列表核对状态，若音频仍存在可点击「重试」再次删除。`
-          : toUserErrorMessage(e, '批量删除失败，请重试'),
-        danger: true,
-        confirmText: isTimeout ? '重试' : '确定',
-        cancelText: '取消'
-      });
-      if (retry && isTimeout) {
-        batchDeleting.value = false;
-        return batchDelete({ skipConfirm: true });
+      // 单次调用内循环重试（INT-1332 返工）：批量删除加载态在整个重试窗口保持，
+      // 直到成功 / 取消后才由外层 finally 统一清除一次——重试期间按钮保持加载态禁用、
+      // 并发点击被 batchDeleting 守卫拦截（不再用递归重入，避免外层 finally 提前清态）。
+      while (true) {
+        const controller = new AbortController();
+        const abortTimer = setTimeout(() => controller.abort(), DELETE_REQUEST_TIMEOUT_MS);
+        try {
+          const response = await withRequestTimeout(
+            audiosPort.batchAction('delete', selectedAudios.value, {}, { unwrapResponse: false, signal: controller.signal }) as Promise<APIResponse<any>>,
+            DELETE_REQUEST_TIMEOUT_MS
+          );
+          const hasError = response.message && (response.message.includes('失败') || response.message.includes('没有可删除') || response.message.includes('被其他资源引用') || response.message.includes('禁止删除'));
+          if (response.success && !hasError) {
+            selectedAudios.value = [];
+            onRefresh();
+            await modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
+              title: '删除成功',
+              content: response.message || `成功删除音频`,
+              danger: false
+            });
+          } else {
+            await modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
+              title: '删除失败',
+              content: toUserErrorMessage(response, '部分文件删除失败'),
+              danger: true
+            });
+          }
+          return;
+        } catch (e: any) {
+          const isTimeout = isDeleteTimeoutError(e);
+          // 主动超时中止是可预期流程（已弹窗提示），按 warn 记录避免误报 SEVERE；
+          // 其余失败保留 error 日志便于排查（INT-1003/1052 错误路径口径）
+          if (isTimeout) {
+            console.warn('Batch delete timed out:', e);
+          } else {
+            console.error('Batch delete failed:', e);
+          }
+          // 超时/后端截止后刷新列表核对服务端实际状态（后端可能已删除但响应迟到）
+          if (isTimeout) onRefresh();
+          const retry = await modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
+            title: isTimeout ? '批量删除超时' : '删除失败',
+            content: isTimeout
+              ? `删除请求超过 ${Math.round(DELETE_REQUEST_TIMEOUT_MS / 1000)} 秒未响应（存储服务繁忙或已超时）。已刷新列表核对状态，若音频仍存在可点击「重试」再次删除。`
+              : toUserErrorMessage(e, '批量删除失败，请重试'),
+            danger: true,
+            confirmText: isTimeout ? '重试' : '确定',
+            cancelText: '取消'
+          });
+          if (retry && isTimeout) {
+            continue; // 重试：batchDeleting 保持 true，重新发起请求
+          }
+          return; // 取消 / 非超时失败：退出，由外层 finally 统一清除加载态
+        } finally {
+          clearTimeout(abortTimer);
+        }
       }
     } finally {
       batchDeleting.value = false;
-      clearTimeout(abortTimer);
     }
   }
 
@@ -204,57 +213,65 @@ export function useAudioBatchOps(
     }
 
     deletingIds.value = [...deletingIds.value, id];
-    // 超时中止底层请求：浏览器 fetch 走 signal；Electron IPC 通道由 withRequestTimeout 计时兜底
-    const controller = new AbortController();
-    const abortTimer = setTimeout(() => controller.abort(), DELETE_REQUEST_TIMEOUT_MS);
     try {
-      const response = await withRequestTimeout(
-        audiosPort.delete(id, { unwrapResponse: false, signal: controller.signal }) as Promise<APIResponse>,
-        DELETE_REQUEST_TIMEOUT_MS
-      );
-      const hasError = response.message && (response.message.includes('失败') || response.message.includes('没有可删除') || response.message.includes('被其他资源引用') || response.message.includes('禁止删除'));
-      if (response.success && !hasError) {
-        onRefresh();
-        await modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-          title: '删除成功',
-          content: '音频删除成功',
-          danger: false
-        });
-      } else {
-        await modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-          title: '删除失败',
-          content: toUserErrorMessage(response, '音频删除失败，请稍后重试'),
-          danger: true
-        });
-      }
-    } catch (e: any) {
-      const isTimeout = isDeleteTimeoutError(e);
-      // 主动超时中止是可预期流程（已弹窗提示），按 warn 记录避免误报 SEVERE；
-      // 其余失败保留 error 日志便于排查（INT-1003/1052 错误路径口径）
-      if (isTimeout) {
-        console.warn('Delete audio timed out:', e);
-      } else {
-        console.error('Delete audio failed:', e);
-      }
-      // 超时/后端截止后刷新列表核对服务端实际状态（后端可能已删除但响应迟到）
-      if (isTimeout) onRefresh();
-      const retry = await modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-        title: isTimeout ? '删除超时' : '删除失败',
-        content: isTimeout
-          ? `删除请求超过 ${Math.round(DELETE_REQUEST_TIMEOUT_MS / 1000)} 秒未响应（存储服务繁忙或已超时）。已刷新列表核对状态，若该音频仍存在可点击「重试」再次删除。`
-          : toUserErrorMessage(e, '音频删除失败，请稍后重试'),
-        danger: true,
-        confirmText: isTimeout ? '重试' : '确定',
-        cancelText: '取消'
-      });
-      if (retry && isTimeout) {
-        // 复用本函数以 skipConfirm 重试；先移除加载态，避免重入被 isDeleting 拦截
-        deletingIds.value = deletingIds.value.filter(x => x !== id);
-        return deleteAudio(id, { skipConfirm: true });
+      // 单次调用内循环重试（INT-1332 返工）：行内加载态在整个重试窗口保持，
+      // 直到成功 / 取消后才由外层 finally 统一清除一次——重试期间按钮保持「删除中」禁用、
+      // 并发点击被 isDeleting 守卫拦截（不再用递归重入，避免外层 finally 提前清态）。
+      while (true) {
+        // 超时中止底层请求：浏览器 fetch 走 signal；Electron IPC 通道由 withRequestTimeout 计时兜底
+        const controller = new AbortController();
+        const abortTimer = setTimeout(() => controller.abort(), DELETE_REQUEST_TIMEOUT_MS);
+        try {
+          const response = await withRequestTimeout(
+            audiosPort.delete(id, { unwrapResponse: false, signal: controller.signal }) as Promise<APIResponse>,
+            DELETE_REQUEST_TIMEOUT_MS
+          );
+          const hasError = response.message && (response.message.includes('失败') || response.message.includes('没有可删除') || response.message.includes('被其他资源引用') || response.message.includes('禁止删除'));
+          if (response.success && !hasError) {
+            onRefresh();
+            await modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
+              title: '删除成功',
+              content: '音频删除成功',
+              danger: false
+            });
+          } else {
+            await modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
+              title: '删除失败',
+              content: toUserErrorMessage(response, '音频删除失败，请稍后重试'),
+              danger: true
+            });
+          }
+          return;
+        } catch (e: any) {
+          const isTimeout = isDeleteTimeoutError(e);
+          // 主动超时中止是可预期流程（已弹窗提示），按 warn 记录避免误报 SEVERE；
+          // 其余失败保留 error 日志便于排查（INT-1003/1052 错误路径口径）
+          if (isTimeout) {
+            console.warn('Delete audio timed out:', e);
+          } else {
+            console.error('Delete audio failed:', e);
+          }
+          // 超时/后端截止后刷新列表核对服务端实际状态（后端可能已删除但响应迟到）
+          if (isTimeout) onRefresh();
+          const retry = await modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
+            title: isTimeout ? '删除超时' : '删除失败',
+            content: isTimeout
+              ? `删除请求超过 ${Math.round(DELETE_REQUEST_TIMEOUT_MS / 1000)} 秒未响应（存储服务繁忙或已超时）。已刷新列表核对状态，若该音频仍存在可点击「重试」再次删除。`
+              : toUserErrorMessage(e, '音频删除失败，请稍后重试'),
+            danger: true,
+            confirmText: isTimeout ? '重试' : '确定',
+            cancelText: '取消'
+          });
+          if (retry && isTimeout) {
+            continue; // 重试：deletingIds 保持 [id]，重新发起请求
+          }
+          return; // 取消 / 非超时失败：退出，由外层 finally 统一清除加载态
+        } finally {
+          clearTimeout(abortTimer);
+        }
       }
     } finally {
       deletingIds.value = deletingIds.value.filter(x => x !== id);
-      clearTimeout(abortTimer);
     }
   }
 
