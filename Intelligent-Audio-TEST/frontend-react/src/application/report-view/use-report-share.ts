@@ -2,16 +2,18 @@
  * 报告分享链路（application 层；15_报告域.md §3.2/§4.12，报告管理功能设计文档.md:254-272 实测）。
  * 分享方式=生成分享链接 / 邮件分享 / 导出后分享；权限=访问权限（仅登录/指定人/公开）× 有效期 × 访问密码；
  * 分享统计=访问次数/访问时间；链接管理和撤销。数据经 infrastructure/api/report-share-api.ts
- * 获取（后端分享端点待立项 → 本层只编排不造数据；FEAT 卡跟踪）。
+ * 获取（INT-971 端点已部署：生成 POST /reports/{id}/share、撤销 DELETE …/share/{token}、
+ * 统计 GET /reports/{id}/share 回读）。
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import {
   createReportShare,
-  recordReportShareVisit,
+  fetchReportShareStats,
   revokeReportShare,
 } from '@/infrastructure/api/report-share-api'
+import { ApiError } from '@/infrastructure/api/api-error'
 import type {
   ShareAccess,
   ShareExpiry,
@@ -55,7 +57,7 @@ const initialState: ReportShareState = {
 
 export function useReportShare(reportId: number, _reportName: string) {
   const [state, setState] = useState<ReportShareState>(initialState)
-  // 回调内读取最新 state（generate/revoke/recordVisit 依赖当前表单值）
+  // 回调内读取最新 state（generate/revoke/refreshStats 依赖当前表单值）
   const stateRef = useRef(state)
   useEffect(() => {
     stateRef.current = state
@@ -70,47 +72,68 @@ export function useReportShare(reportId: number, _reportName: string) {
     setState((s) => ({ ...s, ...partial }))
   }, [])
 
-  /** 生成分享链接（经 infra 桩 createReportShare；成功后写 URL + 复制到剪贴板） */
+  /** 生成分享链接（POST /reports/{id}/share；成功后写 URL + 复制到剪贴板；失败 toast 后端文案） */
   const generateShareLink = useCallback(async () => {
     const s = stateRef.current
-    const info = await createReportShare({
-      reportId,
-      access: s.access,
-      expiry: s.expiry,
-      password: s.password,
-      recipients: s.recipients,
-    })
-    setState((prev) => ({
-      ...prev,
-      shareToken: info.token,
-      shareUrl: info.shareUrl,
-      visits: info.visits,
-      lastVisitedAt: info.lastVisitedAt,
-    }))
     try {
-      await navigator.clipboard?.writeText(info.shareUrl)
-      toast.success('链接已复制')
-    } catch {
-      toast.success('分享链接已生成')
+      const info = await createReportShare({
+        reportId,
+        access: s.access,
+        expiry: s.expiry,
+        password: s.password,
+        recipients: s.recipients,
+      })
+      setState((prev) => ({
+        ...prev,
+        shareToken: info.token,
+        shareUrl: info.shareUrl,
+        visits: info.visits,
+        lastVisitedAt: info.lastVisitedAt,
+      }))
+      try {
+        await navigator.clipboard?.writeText(info.shareUrl)
+        toast.success('链接已复制')
+      } catch {
+        toast.success('分享链接已生成')
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError ? error.userMessage : '生成分享链接失败，请重试'
+      )
     }
   }, [reportId])
 
-  /** 撤销分享链接（经 infra 桩 revokeReportShare） */
+  /** 撤销分享链接（DELETE /reports/{id}/share/{token}；失败 toast 不清态） */
   const revokeShare = useCallback(async () => {
     const s = stateRef.current
-    if (s.shareToken) {
-      await revokeReportShare(reportId, s.shareToken)
+    if (!s.shareToken) {
+      setState((prev) => ({ ...prev, shareToken: null, shareUrl: null, visits: 0, lastVisitedAt: null }))
+      toast.success('分享链接已撤销')
+      return
     }
-    setState((prev) => ({ ...prev, shareToken: null, shareUrl: null, visits: 0, lastVisitedAt: null }))
-    toast.success('分享链接已撤销')
+    try {
+      await revokeReportShare(reportId, s.shareToken)
+      setState((prev) => ({ ...prev, shareToken: null, shareUrl: null, visits: 0, lastVisitedAt: null }))
+      toast.success('分享链接已撤销')
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError ? error.userMessage : '撤销分享链接失败，请重试'
+      )
+    }
   }, [reportId])
 
-  /** 记录一次访问（分享统计；经 infra 桩 recordReportShareVisit，演示态点击 +1） */
-  const recordVisit = useCallback(async () => {
+  /** 刷新分享统计（GET /reports/{id}/share 回读当前 token 的 visits/last_visited_at；后端无独立 visit 端点） */
+  const refreshStats = useCallback(async () => {
     const s = stateRef.current
     if (!s.shareToken) return
-    const stat = await recordReportShareVisit(reportId, s.shareToken, s.visits)
-    setState((prev) => ({ ...prev, visits: stat.visits, lastVisitedAt: stat.lastVisitedAt }))
+    try {
+      const stat = await fetchReportShareStats(reportId, s.shareToken)
+      setState((prev) => ({ ...prev, visits: stat.visits, lastVisitedAt: stat.lastVisitedAt }))
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError ? error.userMessage : '刷新分享统计失败，请重试'
+      )
+    }
   }, [reportId])
 
   return {
@@ -120,6 +143,6 @@ export function useReportShare(reportId: number, _reportName: string) {
     patchShare: patch,
     generateShareLink,
     revokeShare,
-    recordVisit,
+    refreshStats,
   }
 }

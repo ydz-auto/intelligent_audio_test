@@ -438,7 +438,7 @@ export function ReportViewPage() {
             toast.success('链接已复制')
           }
         }}
-        onRecordVisit={share.recordVisit}
+        onRefreshStats={share.refreshStats}
       />
     </div>
   )

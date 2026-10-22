@@ -1,7 +1,7 @@
 /**
  * 报告分享领域模型（domain 层，零依赖，前端只见 camelCase）。
- * 分享方式/权限/有效期枚举；分享端点（生成/撤销/统计）后端待立项
- * （POST /reports/{id}/share 实测 404），infrastructure/api/report-share-api.ts 留桩。
+ * 分享方式/权限/有效期枚举；分享端点（生成/列表/撤销/公开读取）INT-971 已部署，
+ * infrastructure/api/report-share-api.ts 负责 DTO 映射。
  */
 
 /** 访问权限（仅登录/指定人/公开） */
