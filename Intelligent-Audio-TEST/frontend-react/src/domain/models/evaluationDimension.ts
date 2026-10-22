@@ -78,7 +78,8 @@ export interface DimensionRequiredInput {
 /**
  * 输出字段配置（output_fields 列表项）。
  * 字段对照 evaluation_service 序列化：param_code / param_name / label / field_path /
- * field_type / output_role / agg_role / default_value / visible_in_report / help_text / ui_order。
+ * field_type / output_role / agg_role / default_value / visible_in_report / help_text /
+ * ui_order / pass_threshold。
  * 兼容旧数据 name 键（adapter 归一为 paramCode）。
  */
 export interface DimensionOutputField {
@@ -99,6 +100,8 @@ export interface DimensionOutputField {
   /** 聚合角色（agg_role：'' 无 / value 直接值 / numerator 分子 / denominator 分母 / pass_* 达标线） */
   aggRole: string
   defaultValue?: unknown
+  /** 达标阈值（pass_threshold；agg_role 为 pass_* 时后端按此判达标） */
+  passThreshold?: number | null
   /** 是否在报告中可见（visible_in_report） */
   visibleInReport: boolean
   /** 帮助文本（help_text） */

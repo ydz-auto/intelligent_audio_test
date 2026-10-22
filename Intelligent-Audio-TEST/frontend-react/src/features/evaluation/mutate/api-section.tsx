@@ -70,6 +70,11 @@ const AGG_ROLE_OPTIONS = [
   { value: 'pass_eq', label: '精确匹配(==)' },
 ]
 
+/** 聚合角色是否为达标线（pass_*；此时达标阈值可填，照 V9.7.10 OutputFieldsEditor） */
+function isPassRole(aggRole: string): boolean {
+  return aggRole === 'pass_le' || aggRole === 'pass_ge' || aggRole === 'pass_eq'
+}
+
 const NEW_INPUT_ROW: RequiredInputRow = {
   paramCode: '',
   paramName: '',
@@ -89,6 +94,7 @@ const NEW_OUTPUT_ROW: OutputFieldRow = {
   outputRole: 'main',
   aggRole: 'value',
   defaultValue: '',
+  passThreshold: '',
   visibleInReport: true,
   helpText: '',
   uiOrder: 1,
@@ -403,6 +409,20 @@ export function ApiSection({
                 placeholder='默认值'
                 {...register(`outputFields.${index}.defaultValue`)}
                 className='h-8 w-20'
+              />
+              <Input
+                aria-label={`输出达标阈值 ${index + 1}`}
+                type='number'
+                step='any'
+                placeholder={
+                  isPassRole(watch(`outputFields.${index}.aggRole`))
+                    ? '如: 0.1'
+                    : '选填'
+                }
+                disabled={!isPassRole(watch(`outputFields.${index}.aggRole`))}
+                {...register(`outputFields.${index}.passThreshold`)}
+                className='h-8 w-20'
+                title='达标阈值'
               />
               <label className='flex items-center gap-1.5 text-xs'>
                 <Checkbox

@@ -41,7 +41,7 @@ export interface RequiredInputRow {
 /**
  * 输出字段配置行（API配置节「输出字段配置」编辑器行；对齐 DimensionOutputField：
  * paramCode / paramName / label / fieldPath / fieldType / outputRole / aggRole /
- * defaultValue / visibleInReport / helpText / uiOrder）。
+ * defaultValue / passThreshold / visibleInReport / helpText / uiOrder）。
  */
 export interface OutputFieldRow {
   paramCode: string
@@ -55,6 +55,8 @@ export interface OutputFieldRow {
   /** 聚合角色（agg_role：'' 无 / value 直接值 / numerator 分子 / denominator 分母 / pass_* 达标线） */
   aggRole: string
   defaultValue: string
+  /** 达标阈值（pass_threshold；聚合角色为达标线时后端按此判达标，照 V9.7.10 OutputFieldsEditor） */
+  passThreshold: string
   /** 是否在报告中可见（visible_in_report） */
   visibleInReport: boolean
   helpText: string
@@ -98,6 +100,7 @@ const outputFieldRowSchema = z.object({
   outputRole: z.string(),
   aggRole: z.string(),
   defaultValue: z.string(),
+  passThreshold: z.string(),
   visibleInReport: z.boolean(),
   helpText: z.string(),
   uiOrder: z.number(),
@@ -236,6 +239,7 @@ export function emptyDimensionFormValues(): DimensionFormValues {
         outputRole: 'main',
         aggRole: 'value',
         defaultValue: '',
+        passThreshold: '',
         visibleInReport: true,
         helpText: '',
         uiOrder: 1,
@@ -273,7 +277,7 @@ export function toDimensionFormValues(dimension: Dimension): DimensionFormValues
     label: ri.label ?? ri.paramName ?? '',
     fieldType: ri.fieldType ?? 'text',
     required: ri.required === undefined ? true : !!ri.required,
-    defaultValue: ri.defaultValue != null ? String(ri.defaultValue) : '',
+    defaultValue: formDefaultValue(ri.defaultValue),
     helpText: ri.helpText ?? '',
     uiOrder: ri.uiOrder ?? 0,
   }))
@@ -285,7 +289,9 @@ export function toDimensionFormValues(dimension: Dimension): DimensionFormValues
     fieldType: of.fieldType ?? 'number',
     outputRole: of.outputRole ?? 'main',
     aggRole: of.aggRole ?? '',
-    defaultValue: of.defaultValue != null ? String(of.defaultValue) : '',
+    defaultValue: formDefaultValue(of.defaultValue),
+    // INT-1350 三轮：pass_threshold 反填回编辑框（不丢不置空）
+    passThreshold: of.passThreshold != null ? String(of.passThreshold) : '',
     visibleInReport: of.visibleInReport === undefined ? true : !!of.visibleInReport,
     helpText: of.helpText ?? '',
     uiOrder: of.uiOrder ?? 0,
@@ -431,7 +437,10 @@ export function toDimensionSaveInput(values: DimensionFormValues): Partial<Dimen
           label: ri.label || ri.paramName,
           fieldType: ri.fieldType,
           required: ri.required,
-          defaultValue: ri.defaultValue || undefined,
+          // INT-1350 三轮：default_value 按 field_type 解析类型（number→Number /
+          // boolean→Boolean / json→JSON.parse；text/timestamp 原样），否则数值 0 等
+          // 经表单 String()→字符串上送 → 后端 json.dumps('0') 落成字符串 "0"（语义漂移）
+          defaultValue: parseDefaultValueByType(ri.defaultValue, ri.fieldType),
           helpText: ri.helpText || undefined,
           uiOrder: ri.uiOrder,
         })),
@@ -445,7 +454,8 @@ export function toDimensionSaveInput(values: DimensionFormValues): Partial<Dimen
           fieldType: of.fieldType,
           outputRole: of.outputRole,
           aggRole: of.aggRole,
-          defaultValue: of.defaultValue || undefined,
+          defaultValue: parseDefaultValueByType(of.defaultValue, of.fieldType),
+          passThreshold: toNullableNumber(of.passThreshold),
           visibleInReport: of.visibleInReport,
           helpText: of.helpText || undefined,
           uiOrder: of.uiOrder,
@@ -501,6 +511,59 @@ function parseJsonValue(value: string): unknown {
   } catch {
     return value
   }
+}
+
+/**
+ * default_value 反填编辑表单（INT-1350 三轮，P2 配套）。
+ * 对象/数组须 JSON.stringify（否则 String({k:1})='[object Object]'，保存时 JSON.parse 回不来）；
+ * 数值/布尔按原值 String；null/undefined → ''。
+ */
+function formDefaultValue(value: unknown): string {
+  if (value == null) return ''
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return ''
+    }
+  }
+  return String(value)
+}
+
+/**
+ * default_value 按 field_type 解析（INT-1350 三轮，P2）。
+ * 表单默认值输入恒为字符串；保存时数值/布尔/JSON 型须还原为对应类型，
+ * 否则后端 `json.dumps('0')` 会把数值 0 落成字符串 "0"（语义漂移）。
+ * - number → Number（NaN 回退原字符串）
+ * - boolean → 'true'/'1' → true；'false'/'0' → false；其余原样
+ * - json → JSON.parse（失败回退原字符串）
+ * - text / timestamp / audio → 原样
+ * - 空 → undefined（键不上送 → 后端 default_value=None）
+ */
+function parseDefaultValueByType(value: string, fieldType: string): unknown {
+  if (value === '') return undefined
+  switch (fieldType) {
+    case 'number': {
+      const n = Number(value)
+      return Number.isNaN(n) ? value : n
+    }
+    case 'boolean': {
+      if (value === 'true' || value === '1') return true
+      if (value === 'false' || value === '0') return false
+      return value
+    }
+    case 'json':
+      return parseJsonValue(value)
+    default:
+      return value
+  }
+}
+
+/** 表单达标阈值字符串 → number | null（空 / 非法 → null） */
+function toNullableNumber(value: string): number | null {
+  if (value === '') return null
+  const n = Number(value)
+  return Number.isNaN(n) ? null : n
 }
 
 /** 分类图标占位（§5.5 分类表单默认） */

@@ -180,5 +180,74 @@ describe('toDimensionSaveInput', () => {
       temperature: 0.5,
     })
   })
+
+  it('输出字段 passThreshold 反填与保存往返（INT-1350 三轮 P1）', () => {
+    const dim: Dimension = {
+      ...mockDimension,
+      outputFields: [
+        {
+          paramCode: 'wer',
+          paramName: 'WER值',
+          label: 'WER值',
+          fieldPath: 'wer',
+          fieldType: 'number',
+          outputRole: 'main',
+          aggRole: 'pass_le',
+          defaultValue: 0,
+          passThreshold: 0.15,
+          visibleInReport: true,
+          uiOrder: 1,
+        },
+      ],
+    }
+    const values = toDimensionFormValues(dim)
+    expect(values.outputFields[0].passThreshold).toBe('0.15')
+    const input = toDimensionSaveInput(values)
+    expect(input.outputFields?.[0].passThreshold).toBe(0.15)
+    expect(input.outputFields?.[0].defaultValue).toBe(0)
+  })
+
+  it('default_value 按 field_type 还原类型（INT-1350 三轮 P2）', () => {
+    const dim: Dimension = {
+      ...mockDimension,
+      requiredInputs: [
+        { paramCode: 'n', paramName: 'n', label: 'n', fieldType: 'number', required: false, defaultValue: 0, uiOrder: 1 },
+        { paramCode: 'b', paramName: 'b', label: 'b', fieldType: 'boolean', required: false, defaultValue: false, uiOrder: 2 },
+        { paramCode: 'j', paramName: 'j', label: 'j', fieldType: 'json', required: false, defaultValue: { k: 1 }, uiOrder: 3 },
+        { paramCode: 't', paramName: 't', label: 't', fieldType: 'text', required: false, defaultValue: 'hello', uiOrder: 4 },
+      ],
+      outputFields: [
+        {
+          paramCode: 'score',
+          paramName: '评分结果',
+          label: '评分结果',
+          fieldPath: 'score',
+          fieldType: 'number',
+          outputRole: 'main',
+          aggRole: 'value',
+          defaultValue: 0,
+          visibleInReport: true,
+          uiOrder: 1,
+        },
+      ],
+    }
+    const input = toDimensionSaveInput(toDimensionFormValues(dim))
+    // 表单 String(0)='0' → number 字段还原为数值 0
+    expect(input.requiredInputs?.[0].defaultValue).toBe(0)
+    expect(input.outputFields?.[0].defaultValue).toBe(0)
+    // boolean 'false' → false
+    expect(input.requiredInputs?.[1].defaultValue).toBe(false)
+    // json '{"k":1}' → 对象
+    expect(input.requiredInputs?.[2].defaultValue).toEqual({ k: 1 })
+    // text 原样
+    expect(input.requiredInputs?.[3].defaultValue).toBe('hello')
+  })
+
+  it('空默认值/空达标阈值不上送（undefined/null）', () => {
+    const input = toDimensionSaveInput(toDimensionFormValues(mockDimension))
+    expect(input.requiredInputs?.[0].defaultValue).toBeUndefined()
+    expect(input.outputFields?.[0].defaultValue).toBeUndefined()
+    expect(input.outputFields?.[0].passThreshold).toBeNull()
+  })
 })
 

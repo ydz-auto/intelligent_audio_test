@@ -211,6 +211,9 @@ function toDimensionOutputFields(value: unknown): DimensionOutputField[] | null 
         record.visible_in_report === undefined ? true : Boolean(record.visible_in_report),
       helpText: record.help_text ? String(record.help_text) : undefined,
       uiOrder: (record.ui_order ?? record.uiOrder) as number | null,
+      // INT-1350 三轮：pass_threshold 不随 output_fields 往返 → 编辑真实维度保存被后端
+      // 先删后写清成 NULL；读侧补齐读取（后端 _serialize_dimension_param 下发 pass_threshold）。
+      passThreshold: (record.pass_threshold ?? record.passThreshold) as number | null,
     }
   })
 }
@@ -362,7 +365,7 @@ export function toDimensionInputDto(data: Partial<Dimension>): Record<string, un
     result.output_fields = fields.map((item) => ({
       // INT-1350：后端 _save_output_params 只读 param_code（无 key/name 兜底），
       // 之前误映射为 name → param_code 恒空 → 输出字段静默丢弃。对齐 required_inputs
-      // 的 param_code 口径，并补齐 _save_output_params 全部读取键。
+      // 的 param_code 口径，并补齐 _save_output_params 全部读取键（三轮补 pass_threshold）。
       param_code: item.paramCode,
       param_name: item.paramName,
       label: item.label,
@@ -374,6 +377,7 @@ export function toDimensionInputDto(data: Partial<Dimension>): Record<string, un
       visible_in_report: item.visibleInReport,
       help_text: item.helpText,
       ui_order: item.uiOrder,
+      pass_threshold: item.passThreshold,
     }))
   }
   if (data.statisticMethod !== undefined) result.statistic_method = data.statisticMethod
