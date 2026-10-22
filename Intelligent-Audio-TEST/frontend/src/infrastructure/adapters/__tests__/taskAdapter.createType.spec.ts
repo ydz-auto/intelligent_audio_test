@@ -43,28 +43,36 @@ describe('INT-282：toTaskCreateDto type 映射', () => {
     expect(dto.type).toBeUndefined()
   })
 
-  it('INT-604：executionMode/serialFirst → 请求体 execution_mode/serial_first 透传', () => {
+  it('INT-1115：targetModes → 请求体 target_modes 透传（保选中顺序、snake_case 键）', () => {
     const dto = toTaskCreateDto({
-      name: '混选串行任务',
+      name: '混选逐目标任务',
       caseIds: ['1', '2'],
       deviceIds: [3],
       apiIds: [5],
-      executionMode: 'serial',
-      serialFirst: 'api',
+      targetModes: [
+        { targetType: 'device', targetId: 3, mode: 'serial' },
+        { targetType: 'api', targetId: 5, mode: 'parallel' },
+      ],
     })
     expect(dto.device_ids).toEqual([3])
     expect(dto.api_ids).toEqual([5])
-    expect(dto.execution_mode).toBe('serial')
-    expect(dto.serial_first).toBe('api')
+    expect(dto.target_modes).toEqual([
+      { target_type: 'device', target_id: 3, mode: 'serial' },
+      { target_type: 'api', target_id: 5, mode: 'parallel' },
+    ])
+    // 废弃顶层旧字段：TaskCreateDto 已移除 execution_mode/serial_first（不再携带）
+    expect('execution_mode' in dto).toBe(false)
+    expect('serial_first' in dto).toBe(false)
   })
 
-  it('INT-604：executionMode 缺省 → 不携带（后端回落默认 parallel/device）', () => {
+  it('INT-1115：targetModes 缺省 → 请求体 target_modes 空数组（= 全目标并行，零回归）', () => {
     const dto = toTaskCreateDto({
       name: '并行任务',
       caseIds: ['1'],
       apiIds: [5],
     } as TaskCreateDraft)
-    expect(dto.execution_mode).toBeUndefined()
-    expect(dto.serial_first).toBeUndefined()
+    expect(dto.target_modes).toEqual([])
+    expect('execution_mode' in dto).toBe(false)
+    expect('serial_first' in dto).toBe(false)
   })
 })

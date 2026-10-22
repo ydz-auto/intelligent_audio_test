@@ -42,23 +42,44 @@
         </div>
 
         <div class="card-footer">
-          <input 
-            type="checkbox" 
-            :id="`check-${item?.id || ''}`" 
-            class="resource-checkbox" 
-            :disabled="item?.status !== DeviceStatus.ONLINE" 
+          <input
+            type="checkbox"
+            :id="`check-${item?.id || ''}`"
+            class="resource-checkbox"
+            :disabled="item?.status !== DeviceStatus.ONLINE"
             :checked="item && isSelected(item.id)"
             @click.stop
             @change="item && $emit('toggle-selection', item.id)"
           >
-          <label 
-            :for="`check-${item?.id || ''}`" 
-            class="resource-select-btn" 
-            :class="{ disabled: item?.status !== DeviceStatus.ONLINE }" 
+          <label
+            :for="`check-${item?.id || ''}`"
+            class="resource-select-btn"
+            :class="{ disabled: item?.status !== DeviceStatus.ONLINE }"
             @click.stop
           >
             {{ item?.status === DeviceStatus.ONLINE ? '选择' : '离线' }}
           </label>
+
+          <!-- INT-1268/INT-1115：逐卡执行模式「并行/串行」单选（仅被选中卡显示，默认并行） -->
+          <div
+            v-if="item && isSelected(item.id) && onTargetModeChange"
+            class="mode-control"
+            role="radiogroup"
+            :aria-label="`${item.name || '目标'} 执行模式`"
+            @click.stop
+          >
+            <button
+              v-for="mode in modeOptions"
+              :key="mode"
+              type="button"
+              role="radio"
+              :aria-checked="getTargetMode && getTargetMode(item.id) === mode"
+              :class="['mode-btn', { active: getTargetMode && getTargetMode(item.id) === mode }]"
+              @click="onTargetModeChange(item.id, mode)"
+            >
+              {{ mode === 'parallel' ? '并行' : '串行' }}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -95,10 +116,15 @@ const props = defineProps({
   },
   gridClass: { type: String, default: 'standard-grid' },
   emptyText: { type: String, default: '未找到相关资源' },
-  displayFields: { type: Array, default: () => [] }
+  displayFields: { type: Array, default: () => [] },
+  /** INT-1268/INT-1115：逐卡执行模式（可选；提供后仅被选中卡渲染「并行/串行」单选） */
+  getTargetMode: { type: Function, default: null },
+  onTargetModeChange: { type: Function, default: null }
 });
 
 const emit = defineEmits(['toggle-selection', 'action-click']);
+
+const modeOptions = ['parallel', 'serial'];
 
 const isSelected = (id) => props.selectedIds.includes(id);
 
@@ -275,6 +301,40 @@ const getDisplaySpecs = (item) => {
 .resource-select-btn.disabled{
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* INT-1268/INT-1115：逐卡「并行/串行」单选胶囊（语义 token，深浅两套成立） */
+.mode-control{
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--muted);
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+}
+
+.mode-btn{
+  padding: 4px 10px;
+  font-size: var(--font-size-xs, 12px);
+  font-weight: var(--font-weight-medium, 500);
+  color: var(--muted-foreground);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+}
+
+.mode-btn.active{
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: var(--shadow-sm);
+}
+
+.mode-btn:hover:not(.active){
+  color: var(--foreground);
 }
 
 .empty-resource{
