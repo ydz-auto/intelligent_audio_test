@@ -128,7 +128,8 @@ export function useLogView(refs?: LogViewRefs) {
 
   // 日志配置默认值
   const LOGCategoryOptions = [{ value: 'all', label: '所有分类' }, { value: 'system', label: '系统日志' }, { value: 'test', label: '测试日志' }, { value: 'error', label: '错误日志' }];
-  const LOGModuleOptions = [{ value: 'all', label: '所有模块' }, { value: TestType.API, label: 'API模块' }, { value: TestType.E2E, label: 'E2E测试' }, { value: 'device', label: '设备管理' }];
+  // INT-1302：日志模块选项「E2E测试」移除（负责人 2026-10-22 口径，不再区分 API/E2E 测试概念）
+  const LOGModuleOptions = [{ value: 'all', label: '所有模块' }, { value: TestType.API, label: 'API模块' }, { value: 'device', label: '设备管理' }];
   const LOGMarkOptions = [{ value: 'all', label: '所有标记' }, { value: 'yellow', label: '黄色标记' }, { value: 'red', label: '红色标记' }, { value: 'green', label: '绿色标记' }, { value: 'blue', label: '蓝色标记' }];
 
   const getAlgorithmLabel = (algorithmType: string): string => {

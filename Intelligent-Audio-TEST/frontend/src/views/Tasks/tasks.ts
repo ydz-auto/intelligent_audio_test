@@ -221,9 +221,6 @@ export function useTasks() {
 
   // ========== 协调逻辑 ==========
 
-  const isTaskTypeModalVisible = ref(false);
-  const currentTask = ref<Task | null>(null);
-
   // 任务数据导入导出弹窗（INT-25）
   const isDataExportDialogVisible = ref(false);
   const isDataImportDialogVisible = ref(false);
@@ -250,19 +247,10 @@ export function useTasks() {
     listModule.fetchTasks();
   };
 
+  // INT-1300：任务类型概念移除（负责人 2026-10-22「不分 API/E2E 测试」）——
+  // 创建新任务不再弹类型选择，直接进 /start-test 单流程（E2E+API 合并入口，router 已注册）
   const createNewTask = () => {
-    isTaskTypeModalVisible.value = true;
-  };
-
-  // INT-309：跳转目标为已注册的测试页五步向导（/APITest、/E2ETest），
-  // 原 /create-api-task、/create-e2e-task 路由未注册，落 404 兜底
-  const handleCreateTask = (data: { testType: string }) => {
-    isTaskTypeModalVisible.value = false;
-    if (data.testType === 'APITest') {
-      router.push('/APITest');
-    } else if (data.testType === 'E2ETest') {
-      router.push('/E2ETest');
-    }
+    router.push('/start-test');
   };
 
   const initTasks = async () => {
@@ -487,11 +475,8 @@ export function useTasks() {
     toggleEditReport: reportModule.toggleEditReport,
     cancelEditReport: reportModule.cancelEditReport,
 
-    // 创建任务相关
-    isTaskTypeModalVisible,
-    currentTask,
+    // 创建任务相关（INT-1300：直接进 /start-test，无类型弹窗）
     createNewTask,
-    handleCreateTask,
 
     // 任务数据导入导出（INT-25）
     isDataExportDialogVisible,

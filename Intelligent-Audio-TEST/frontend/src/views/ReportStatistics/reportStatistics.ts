@@ -8,10 +8,9 @@
  * - generateReport     → reportStatisticsPort.generateReport（Blob 下载）
  * 空/错态由页面按 loading / error / 无数据分支渲染，本层不造数据兜底。
  *
- * 契约对应（doc/接口文档/06_报告管理.md §8 + React 15_报告域 §2.2）：
- * 统计维度=时间/任务/设备/指标；统计结果=概览/详细/图表/异常；
- * 趋势分析=时间趋势/维度趋势/趋势图表/预测分析（预测呈现归前端）；
- * 报表生成=报表类型/内容/格式/执行。
+ * 契约对应（React 15_报告域 §2.2；负责人 2026-10-22 口径：移除「任务类型」维度）：
+ * 统计维度=时间/设备/指标；统计结果=概览/详细/图表/异常；
+ * 趋势分析=时间趋势/维度趋势/趋势图表/预测分析；报表生成=报表类型/内容/格式/执行。
  */
 import { ref } from 'vue'
 import { reportStatisticsPort } from '@/composables/report/reportStatisticsPort'
@@ -39,10 +38,9 @@ export const STATISTICS_TABS: ReadonlyArray<StatisticsTabOption> = [
   { value: 'report', label: '报表生成', icon: 'fas fa-file-export' },
 ]
 
-/** 统计维度选项（§2.2：时间/任务类型/设备类型/评估维度） */
+/** 统计维度选项（负责人 2026-10-22 口径：移除「任务类型」维度，仅时间/设备类型/评估维度；后端维度仍返回时前端不展示） */
 export const DIMENSION_OPTIONS = [
   { value: 'time', label: '时间' },
-  { value: 'task_type', label: '任务类型' },
   { value: 'device_type', label: '设备类型' },
   { value: 'evaluation_metric', label: '评估维度' },
 ] as const

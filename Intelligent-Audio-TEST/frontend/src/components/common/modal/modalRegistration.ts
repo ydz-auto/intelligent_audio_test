@@ -36,7 +36,6 @@ import BatchTagCategoryModal from './BatchTagCategoryModal.vue'
 import TestCaseDetailModal from './TestCaseDetailModal.vue'
 import AudioPlayerModal from '../audio/AudioPlayerModal.vue'
 import AudioSelectModal from '../audio/AudioSelectModal.vue'
-import TaskTypeModal from './TaskTypeModal.vue'
 import TaskDetailModal from './TaskDetailModal.vue'
 // INT-302/F4：ReevaluateSelectModal（旧重评估类型选择）由 ReexecuteOptionsModal
 // 范围选择取代（含"重新提取设备输出"勾选恢复），死注册与死组件一并清理
@@ -140,11 +139,7 @@ export function registerGlobalModals() {
     defaultConfig: { deviceType: 'test' }
   });
 
-  manager.registerModal(MODAL_TYPES.TASK_RELATED, {
-    component: TaskTypeModal,
-    defaultConfig: {}
-  });
-
+  // INT-1300：任务类型选择弹窗随任务类型概念移除（创建新任务直接进 /start-test）
   manager.registerModal(MODAL_TYPES.TASK_DETAIL, {
     component: TaskDetailModal,
     defaultConfig: {

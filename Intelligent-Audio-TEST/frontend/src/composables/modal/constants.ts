@@ -34,7 +34,7 @@ export const MODAL_TYPES = {
   ADD_MAPPING: 'addMapping',
   EDIT_MAPPING: 'editMapping',
   MAPPING_DETAILS: 'mappingDetails',
-  TASK_RELATED: 'taskTypeSelect',
+  // INT-1300：任务类型选择弹窗随任务类型概念移除（创建新任务直接进 /start-test）
   TASK_DETAIL: 'taskDetail',
   TASK_CONFIG: 'taskConfig',
   REPORT_DETAIL: 'reportDetail',

@@ -483,7 +483,6 @@ const goBack = () => {
 
 const DIMENSION_LABEL: Record<string, string> = {
   time: '时间',
-  task_type: '任务类型',
   device_type: '设备类型',
   evaluation_metric: '评估维度',
 }
@@ -493,7 +492,6 @@ const getDimensionLabel = (value: string): string => DIMENSION_LABEL[value] || v
 const getDimensionIcon = (value: string): string => {
   const icons: Record<string, string> = {
     time: 'fas fa-calendar-alt',
-    task_type: 'fas fa-tasks',
     device_type: 'fas fa-headphones',
     evaluation_metric: 'fas fa-ruler',
   }
@@ -503,7 +501,6 @@ const getDimensionIcon = (value: string): string => {
 const getDimensionDesc = (value: string): string => {
   const descs: Record<string, string> = {
     time: '按创建时间区间统计报告与用例执行数量',
-    task_type: '按任务类型分组统计执行结果',
     device_type: '按被测设备/API 维度统计性能指标',
     evaluation_metric: '按评估维度统计指标得分与通过率',
   }
