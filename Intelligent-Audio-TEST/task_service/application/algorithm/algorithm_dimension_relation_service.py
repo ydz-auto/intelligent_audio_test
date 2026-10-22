@@ -155,7 +155,7 @@ class AlgorithmDimensionRelationService:
             return {'success': False, 'message': f'导入失败: {e}', 'code': 500}
 
     def bulk_delete(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """批量删除算法"""
+        """批量删除算法（软删除）"""
         algorithm_types = data.get('algorithm_types') or []
         if not algorithm_types:
             return {'success': False, 'message': 'Invalid request data', 'code': 400}
@@ -170,6 +170,9 @@ class AlgorithmDimensionRelationService:
                     deleted.append(algo_def.get('type'))
                 else:
                     deleted.append(algo_def.type)
+                # 与单删 delete_algorithm 一致：逐条软删（gRPC 自动提交），
+                # 否则只收集 deleted_types 而不落库，批量删除静默无效
+                self.repo.soft_delete_algorithm(algo_def)
             self.repo.flush()
 
             self.repo.commit()
