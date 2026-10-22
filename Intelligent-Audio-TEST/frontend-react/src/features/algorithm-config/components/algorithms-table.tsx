@@ -251,7 +251,8 @@ export function AlgorithmsTable(props: AlgorithmTableProps) {
                     {paramCount(row)}
                   </td>
                   <td className='px-3 py-2 text-right font-mono text-xs tabular-nums'>
-                    {row.caseCount}
+                    {/* P3-1（INT-1319）：后端未返 case_count、聚合未完成时显示 —，补齐后回落真实数 */}
+                    {row.caseCount ?? '—'}
                   </td>
                   <td className='px-3 py-2'>
                     <div className='flex items-center gap-1.5'>
@@ -282,7 +283,7 @@ export function AlgorithmsTable(props: AlgorithmTableProps) {
                       />
                     </div>
                     {/* 移动端不可见计数（可访问性等价文本） */}
-                    <span className='sr-only'>共 {paramCount(row)} 个参数，关联 {row.caseCount} 个用例</span>
+                    <span className='sr-only'>共 {paramCount(row)} 个参数，关联 {row.caseCount ?? '—'} 个用例</span>
                   </td>
                 </tr>
               )

@@ -17,6 +17,7 @@ import { PageFooterPortal } from '@/components/layout/components/page-footer'
 import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
 import {
   useAlgorithmDefinitions,
+  useAlgorithmCaseCounts,
   useAlgorithmGroups,
   useAlgorithmMutations,
 } from '@/application/algorithm-config/useAlgorithmDefinitions'
@@ -116,8 +117,27 @@ export function AlgorithmConfigPage() {
   const [confirm, setConfirm] = useState<AlgorithmConfirmState>(null)
   const [confirmPending, setConfirmPending] = useState(false)
 
-  const definitions = definitionsQuery.data ?? []
+  const rawDefinitions = definitionsQuery.data ?? []
   const groups = groupsQuery.data ?? []
+
+  // P3-1（INT-1319）：后端列表项未返回 case_count 时，「关联用例」列经
+  // useAlgorithmCaseCounts 异步补齐——列表首屏先渲染 definitions（<3s），
+  // 计数聚合期间该列显示 —，补齐后回落真实数
+  const needsCaseCountBackfill =
+    rawDefinitions.length > 0 && rawDefinitions.some((d) => d.caseCount == null)
+  const backfillTypes = needsCaseCountBackfill
+    ? rawDefinitions.map((d) => d.type)
+    : []
+  const caseCountsQuery = useAlgorithmCaseCounts(backfillTypes)
+  const caseCounts = caseCountsQuery.data ?? new Map<string, number>()
+  const definitions = useMemo(() => {
+    if (!needsCaseCountBackfill) return rawDefinitions
+    return rawDefinitions.map((d) => {
+      if (d.caseCount != null) return d
+      const count = caseCounts.get(d.type)
+      return count != null ? { ...d, caseCount: count } : d
+    })
+  }, [rawDefinitions, needsCaseCountBackfill, caseCounts])
 
   /* ───────── 过滤 / 排序 / 分页（§3.4 + §3.7 前端分页） ───────── */
 

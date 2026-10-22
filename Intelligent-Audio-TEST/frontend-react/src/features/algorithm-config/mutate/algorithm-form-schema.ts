@@ -1,8 +1,9 @@
 /**
  * §6 算法编辑表单 zod schema（features/algorithm-config/mutate）。
  * INT-591 §6.2 双门槛：
- * - 草稿保存 = 宽松结构级校验（algorithmDraftFormSchema）：仅参数代码非空、同作用域唯一；
- *   算法代码/名称/分组等允许暂存未完备内容（草稿是中间态）。
+ * - 草稿保存 = 宽松结构级校验（algorithmDraftFormSchema）：仅算法代码（type）非空 +
+ *   参数代码非空、同作用域唯一；名称/分组等允许暂存未完备内容（草稿是中间态，
+ *   type 是后端草稿快照归属键不可缺，INT-1319 P3-2）。
  * - 发布 = 严格全量校验（algorithmFormSchema / algorithmEditFormSchema）：结构级 +
  *   算法代码正则（新建态）、名称/分组必填、范围 min≤max、类型合法。
  * RHF 值类型见 features/algorithm-config/types.ts（AlgorithmFormValues）。
@@ -145,13 +146,18 @@ const baseObjectFields = {
 }
 
 /**
- * 草稿宽松字段集（§6.2 结构级门槛：仅参数代码非空 + 同作用域唯一）。
- * 在严格字段集（baseObjectFields）基础上仅放宽：参数代码去正则、
- * 参数类型/参考类型/映射源目/维度去非空——草稿是中间态，允许暂存未完备内容；
- * 发布 schema（buildPublishAlgorithmFormSchema）另行保持严格双门槛。
+ * 草稿宽松字段集（§6.2 结构级门槛：算法代码非空 + 参数代码非空 + 同作用域唯一）。
+ * 在严格字段集（baseObjectFields）基础上仅放宽：参数代码去正则、参数类型/参考类型/
+ * 映射源目/维度去非空——草稿是中间态，允许暂存未完备内容；算法代码（type）保持非空
+ * （后端草稿快照按 algorithm_type 落 PO，INT-1319 P3-2）；发布 schema
+ * （buildPublishAlgorithmFormSchema）另行保持严格双门槛。
  */
 const draftObjectFields = {
   ...baseObjectFields,
+  // P3-2（INT-1319）：草稿算法代码必填（非空）——后端草稿快照按 algorithm_type 落 PO，
+  // 空 type 的草稿保存 PUT /algorithm/definitions/draft 返回 400「algorithm_type 必填」；
+  // 名称/分组等仍可暂存未完备（草稿中间态），仅 type 作快照归属键不可缺
+  type: algorithmTypeField(false),
   deviceParams: z.array(
     z.object({
       ...baseObjectFields.deviceParams.element.shape,
@@ -193,8 +199,8 @@ const draftObjectFields = {
 }
 
 /**
- * 草稿宽松 schema（§6.2 结构级门槛）：仅参数代码非空 + 同作用域唯一。
- * 算法代码/名称/分组/参数类型/映射/维度等可空或未完备（草稿是中间态，允许暂存），
+ * 草稿宽松 schema（§6.2 结构级门槛）：算法代码（type）非空 + 参数代码非空 + 同作用域唯一。
+ * 名称/分组/参数类型/映射/维度等可空或未完备（草稿是中间态，允许暂存），
  * 正则/类型/范围等发布严格门槛草稿阶段不校验。
  */
 export const algorithmDraftFormSchema = z

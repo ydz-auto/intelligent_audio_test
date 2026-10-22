@@ -345,8 +345,9 @@ export function toAlgorithmDefinition(dto: AlgorithmDefinitionDto): AlgorithmDef
     referenceParams: referenceParams.map(toReferenceParam),
     mappings: toMappings(dto.mappings as Record<string, Array<Record<string, unknown>>>),
     associatedDimensions: associatedRaw.map(toDimensionRelation),
-    // §3.4/§154：case_count 后端返回时直接消费；未返回时由 infra api 层按用例引用聚合兜底
-    caseCount: num(dto.case_count) ?? 0,
+    // §3.4/§154/P3-1（INT-1319）：后端返回 case_count 时直接消费；未返回（null）时
+    // 由 useAlgorithmCaseCounts 异步补齐（列表首屏不等逐算法用例聚合）
+    caseCount: num(dto.case_count),
     hasDraft: dto.has_draft,
     revision: dto.revision,
     createdAt: str(dto.created_at),

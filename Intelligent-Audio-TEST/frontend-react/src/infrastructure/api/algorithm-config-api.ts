@@ -60,22 +60,16 @@ export async function fetchAlgorithmDefinitions(): Promise<AlgorithmDefinition[]
     'GET',
     '/algorithm/definitions'
   )
-  const list = toAlgorithmDefinitionList(dto)
-  // §3.4/§154：后端返回 case_count 时直接消费；未返回（INT-591 契约未达）时按用例引用聚合兜底，
-  // 让「关联用例」列展示真实引用数而非恒 0
-  const hasBackendCount = (dto?.items ?? []).some((item) => item.case_count != null)
-  if (!hasBackendCount) {
-    const counts = await fetchCaseCountByAlgorithmType(list.map((d) => d.type))
-    for (const def of list) {
-      const count = counts.get(def.type)
-      if (count != null) def.caseCount = count
-    }
-  }
-  return list
+  // P3-1（INT-1319）：后端列表项无 case_count 时不再在这里逐算法用例聚合兜底——
+  // 那会让整表等 8-15s 才渲染；改由 useAlgorithmCaseCounts 经
+  // fetchCaseCountByAlgorithmType 异步补齐「关联用例」列，列表首屏先渲染 definitions。
+  return toAlgorithmDefinitionList(dto)
 }
 
-/** 用例引用聚合兜底（§154）：按算法 type 逐个经 testcases 的 algorithm_type 筛选读 total 计数 */
-async function fetchCaseCountByAlgorithmType(
+/** 用例引用聚合兜底（§154/P3-1（INT-1319））：按算法 type 逐个经 testcases 的
+ *  algorithm_type 筛选读 total 计数，返回 type → count Map；由
+ *  useAlgorithmCaseCounts 异步消费，单类型计数失败不影响其余（该类型保持 null/0）。 */
+export async function fetchCaseCountByAlgorithmType(
   types: string[]
 ): Promise<Map<string, number>> {
   const counts = new Map<string, number>()
@@ -89,7 +83,7 @@ async function fetchCaseCountByAlgorithmType(
         })
         counts.set(type, total)
       } catch {
-        // 单类型计数失败不影响其余；用例端不可达时该类型归 0
+        // 单类型计数失败不影响其余；用例端不可达时该类型不落表
       }
     })
   )
