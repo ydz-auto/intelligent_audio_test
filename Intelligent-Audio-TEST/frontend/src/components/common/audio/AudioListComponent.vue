@@ -217,7 +217,7 @@
                     <i class="fas fa-file-audio"></i>
                   </div>
                   <div class="audio-details">
-                <div class="audio-name">{{ audio.filename || audio.name }}</div>
+                <div class="audio-name">{{ audio.name || audio.filename }}</div>
                 <!-- INT-423/467：可见性徽标（私有带锁图标） -->
                 <VisibilityBadge :visibility="audio.visibility" />
               </div>
@@ -358,7 +358,7 @@
           <div class="audio-basic-info">
             <i class="fas fa-file-audio audio-icon"></i>
             <div class="audio-details">
-              <div class="audio-name">{{ audio.filename || audio.name }}</div>
+              <div class="audio-name">{{ audio.name || audio.filename }}</div>
               <div class="audio-meta">
                 <span class="format-badge" :class="audio.format">{{ (audio.format || '').toUpperCase() }}</span>
                 <span class="file-size">{{ formatFileSize(audio.size ?? 0) }}</span>

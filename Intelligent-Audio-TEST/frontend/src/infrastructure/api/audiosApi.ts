@@ -53,6 +53,40 @@ function toEvaluationDimensionDto(dim: unknown): unknown {
   };
 }
 
+/**
+ * 元数据编辑载荷 → 后端 UpdateMetadataRequest（snake_case，INT-1354）：
+ * DetailViewModal 的 editableData 以 UI 键承载（fileName/audioType/asrText/sourceLanguage），
+ * 而后端 update_metadata 读 name/audio_type/asr_text/source_language（INT-1261 遗留），
+ * 此处显式归一，保证改名（name）真正落库；tags 统一为逗号分隔字符串。
+ */
+function toUpdateMetadataDto(metadata: Record<string, unknown>): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  const firstDefined = (camel: string, snake: string) =>
+    metadata[camel] !== undefined ? metadata[camel] : metadata[snake];
+  if (firstDefined('name', 'fileName') !== undefined) {
+    body.name = firstDefined('name', 'fileName');
+  }
+  if (firstDefined('audioType', 'audio_type') !== undefined) {
+    body.audio_type = firstDefined('audioType', 'audio_type');
+  }
+  if (firstDefined('asrText', 'asr_text') !== undefined) {
+    body.asr_text = firstDefined('asrText', 'asr_text');
+  }
+  if (metadata.description !== undefined) {
+    body.description = metadata.description;
+  }
+  if (firstDefined('sourceLanguage', 'source_language') !== undefined) {
+    body.source_language = firstDefined('sourceLanguage', 'source_language');
+  }
+  if (metadata.tags !== undefined) {
+    body.tags = Array.isArray(metadata.tags) ? metadata.tags.join(', ') : String(metadata.tags);
+  }
+  if (metadata.annotations !== undefined) {
+    body.annotations = metadata.annotations;
+  }
+  return body;
+}
+
 /** 批量更新标注请求条目（camelCase 域契约；annotations 为标注内容协议，原样透传） */
 export interface BatchAnnotationItem {
   audioId: string | number;
@@ -116,7 +150,7 @@ export const audiosApi = {
   },
 
   async updateMetadata(id: string | number, metadata: any, options: RequestOptions = {}) {
-    return request('PUT', `/audios/${id}/metadata`, metadata, options);
+    return request('PUT', `/audios/${id}/metadata`, toUpdateMetadataDto(metadata ?? {}), options);
   },
 
   async batchUpdateAnnotations(data: BatchUpdateAnnotationsData, options: RequestOptions = {}) {

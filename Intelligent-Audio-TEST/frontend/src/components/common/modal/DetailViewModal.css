@@ -897,3 +897,110 @@ td {
   padding: 2px 6px;
   font-size: 11px;
 }
+
+/* ── INT-1354 深色模式：内容区统一走语义 token（浅色零变化、深色可读）。
+     基座 INT-735 / CSS 重构 INT-757 全局收敛前此处先行；不写死数值 ── */
+
+/* 内容卡表面（原 --color-slate-50，深色下比弹窗底 --background 亮一档） */
+.dark .detail-view-modal .info-card,
+.dark .detail-view-modal .data-table-section,
+.dark .detail-view-modal .content-card,
+.dark .detail-view-modal .context-card,
+.dark .detail-view-modal .annotation-card,
+.dark .detail-view-modal .extra-data-fields {
+  background-color: var(--card);
+}
+
+/* 内层白底面板/表格（原 white，深色下用 --popover 保持层级） */
+.dark .detail-view-modal .table-container,
+.dark .detail-view-modal .log-content,
+.dark .detail-view-modal .log-context,
+.dark .detail-view-modal .translations-table,
+.dark .detail-view-modal .annotations-table,
+.dark .detail-view-modal .annotation-list-panel,
+.dark .detail-view-modal .annotation-edit-panel,
+.dark .detail-view-modal .annotation-edit-panel-empty,
+.dark .detail-view-modal .translation-section,
+.dark .detail-view-modal .asr-info-section {
+  background-color: var(--popover);
+}
+
+/* 表头/悬浮底（原 --color-slate-100） */
+.dark .detail-view-modal th,
+.dark .detail-view-modal .translations-table th,
+.dark .detail-view-modal .annotations-table th,
+.dark .detail-view-modal .segments-table th,
+.dark .detail-view-modal .annotation-item:hover {
+  background-color: var(--muted);
+}
+
+/* 选中标注（原 --color-blue-50，深色下走 --accent 主题色） */
+.dark .detail-view-modal .annotation-item.active {
+  background-color: var(--accent);
+}
+
+/* 主文字（原 --color-slate-700） */
+.dark .detail-view-modal .detail-header h3,
+.dark .detail-view-modal .info-card h4,
+.dark .detail-view-modal .data-table-section h4,
+.dark .detail-view-modal .content-card h4,
+.dark .detail-view-modal .context-card h4,
+.dark .detail-view-modal .annotation-card h4,
+.dark .detail-view-modal .info-value,
+.dark .detail-view-modal th,
+.dark .detail-view-modal .translations-table th,
+.dark .detail-view-modal .annotations-table th,
+.dark .detail-view-modal .segments-table th,
+.dark .detail-view-modal .annotation-name,
+.dark .detail-view-modal .annotation-list-header,
+.dark .detail-view-modal .annotation-edit-header,
+.dark .detail-view-modal .segments-header,
+.dark .detail-view-modal .extra-data-header,
+.dark .detail-view-modal .translation-header,
+.dark .detail-view-modal .translation-direction,
+.dark .detail-view-modal .asr-info-header {
+  color: var(--foreground);
+}
+
+/* 次文字（原 --color-slate-600 / --color-slate-500） */
+.dark .detail-view-modal td,
+.dark .detail-view-modal .translations-table td,
+.dark .detail-view-modal .annotations-table td,
+.dark .detail-view-modal .log-content,
+.dark .detail-view-modal .log-context,
+.dark .detail-view-modal .form-row label,
+.dark .detail-view-modal .annotation-item-meta,
+.dark .detail-view-modal .asr-info-content label,
+.dark .detail-view-modal .annotation-edit-panel-empty {
+  color: var(--muted-foreground);
+}
+
+/* 边框分隔（原 --color-slate-200） */
+.dark .detail-view-modal .detail-header,
+.dark .detail-view-modal .table-container,
+.dark .detail-view-modal th,
+.dark .detail-view-modal td,
+.dark .detail-view-modal .modal-footer,
+.dark .detail-view-modal .log-content,
+.dark .detail-view-modal .log-context,
+.dark .detail-view-modal .translations-table th,
+.dark .detail-view-modal .translations-table td,
+.dark .detail-view-modal .annotations-table th,
+.dark .detail-view-modal .annotations-table td,
+.dark .detail-view-modal .annotation-list-panel,
+.dark .detail-view-modal .annotation-list-header,
+.dark .detail-view-modal .annotation-edit-panel,
+.dark .detail-view-modal .annotation-edit-panel-empty,
+.dark .detail-view-modal .annotation-edit-header,
+.dark .detail-view-modal .annotation-basic-info,
+.dark .detail-view-modal .segments-table th,
+.dark .detail-view-modal .segments-table td,
+.dark .detail-view-modal .raw-textarea,
+.dark .detail-view-modal .translation-section,
+.dark .detail-view-modal .translation-header,
+.dark .detail-view-modal .translation-input,
+.dark .detail-view-modal .asr-info-section,
+.dark .detail-view-modal .asr-info-header,
+.dark .detail-view-modal .extra-data-fields {
+  border-color: var(--border);
+}

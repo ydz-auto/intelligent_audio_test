@@ -71,7 +71,7 @@
               <i class="fas fa-file-audio file-icon"></i>
               <div class="file-info">
                 <div class="file-name">
-                  {{ file.filename || file.name }}
+                  {{ file.name || file.filename }}
                   <VisibilityBadge :visibility="file.visibility" />
                 </div>
                 <div class="file-meta">
@@ -122,7 +122,7 @@
             <i class="fas fa-file-audio file-icon"></i>
             <div class="file-info">
               <div class="file-name">
-                {{ file.filename || file.name }}
+                {{ file.name || file.filename }}
                 <VisibilityBadge :visibility="file.visibility" />
               </div>
               <div class="file-meta">
