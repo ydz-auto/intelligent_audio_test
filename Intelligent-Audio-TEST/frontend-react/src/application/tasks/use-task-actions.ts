@@ -20,6 +20,7 @@ import {
   removeTaskCase,
   restoreTask,
   unfavoriteTask,
+  updateTaskName,
 } from '@/infrastructure/api/tasks-actions-api'
 import { controlTask, stopTask } from '@/infrastructure/api/tasks-control-api'
 
@@ -138,6 +139,17 @@ export function useTaskActions() {
     onError: (error) => toast.error(toErrorMessage(error, '移除用例失败')),
   })
 
+  /** 重命名（INT-1290：PUT /tasks/{id} {name}；成功后列表/详情经 ['tasks'] 前缀统一刷新） */
+  const rename = useMutation({
+    mutationFn: ({ taskId, name }: { taskId: number; name: string }) =>
+      updateTaskName(taskId, name),
+    onSuccess: () => {
+      toast.success('任务名称已更新')
+      invalidateTasks()
+    },
+    onError: (error) => toast.error(toErrorMessage(error, '重命名失败')),
+  })
+
   return {
     remove,
     batchRemove,
@@ -150,5 +162,6 @@ export function useTaskActions() {
     control,
     stop,
     removeCase,
+    rename,
   }
 }

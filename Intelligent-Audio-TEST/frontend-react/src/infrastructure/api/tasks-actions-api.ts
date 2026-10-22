@@ -10,10 +10,16 @@
  *   DELETE /tasks/{task_id}/purge                 （task:delete；单条彻底删除，服务端按 metadata 校验 admin/owner）
  *   POST   /tasks/purge                           （task:delete；body {ids} 批量彻底删除）
  *   DELETE /tasks/{task_id}/cases/{case_id}       （task:execute；INT-305 移除用例）
+ *   PUT    /tasks/{task_id}                       （task:update；重命名，body {name}，INT-1290）
  * 请求一律经 infrastructure/api/client.ts；snake_case 只在 infrastructure 层出现，
  * 页面层只见 camelCase；动作端点响应 data 本层不消费，成功即返回。
  */
 import { apiClient } from '@/infrastructure/api/client'
+
+/** 重命名任务：PUT /tasks/{id}（task:update；body {name}，对齐旧 Vue tasksApi.update） */
+export async function updateTaskName(taskId: number, name: string): Promise<void> {
+  await apiClient.put<unknown>(`/tasks/${taskId}`, { name })
+}
 
 /** 单个删除（软删 → 回收站）：DELETE /tasks/{id} */
 export async function deleteTask(taskId: number): Promise<void> {
