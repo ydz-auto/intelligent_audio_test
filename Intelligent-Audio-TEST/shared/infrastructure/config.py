@@ -150,12 +150,6 @@ class BaseConfig:
     AUTH_SERVICE_HOST: str = _get_env('AUTH_SERVICE_HOST', 'localhost')
     AUTH_SERVICE_GRPC_PORT: int = _get_int('AUTH_SERVICE_GRPC_PORT', 51069)
 
-    # --- gRPC 消息大小上限（INT-1224）---
-    # grpcio 默认收发上限 4MiB：用例标签视图等聚合查询响应（view=tag perPage=50
-    # 真实库实测 4.07MiB）超过默认上限 → RESOURCE_EXHAUSTED。显式放大，客户端
-    # channel 与服务端 server 两侧需同步设置（对齐 transfer_agent 既有做法）。
-    GRPC_MAX_MESSAGE_MB: int = _get_int('GRPC_MAX_MESSAGE_MB', 32)
-
     # --- gRPC 客户端默认 deadline（INT-54）---
     # 未显式传 timeout 的 gRPC 客户端调用统一注入该 deadline（秒）。
     # 依赖服务「接受连接但不响应」时，无 deadline 的调用在 grpc._channel._blocking
@@ -176,6 +170,14 @@ class BaseConfig:
     # post_process 60,016ms 被 DEADLINE_EXCEEDED 掐断）。已知长耗时设备操作调用点
     # 显式传本值；其余调用维持默认 deadline（INT-54 防假死悬挂的失败收敛路径不变）。
     GRPC_DEVICE_OP_DEADLINE_SECONDS: int = _get_int('GRPC_DEVICE_OP_DEADLINE_SECONDS', 180)
+
+    # --- gRPC 客户端收发消息上限（MB，INT-1292）---
+    # grpcio 客户端默认收包上限 4MiB：大响应 RPC（任务导出 23MB 包、报告/评估
+    # 只读导出）在客户端收不下 → RESOURCE_EXHAUSTED。统一放大到
+    # GRPC_MAX_MESSAGE_MB（默认 16MB，与 transfer_agent.TRANSFER_GRPC_MAX_MESSAGE_MB
+    # 默认一致；服务端已按该值放大，客户端 stub 侧须同步设置）。服务端 send 上限
+    # 默认不受 4MB 限制（实测可发送 >30MB），故只需客户端侧放开。
+    GRPC_MAX_MESSAGE_MB: int = _get_int('GRPC_MAX_MESSAGE_MB', 16)
 
     # --- 回收站保留期（INT-141）：软删除记录保留天数，过期由各服务
     # SoftDeleteCleaner 守护线程硬清理（定时调度走既有执行引擎/守护线程，
