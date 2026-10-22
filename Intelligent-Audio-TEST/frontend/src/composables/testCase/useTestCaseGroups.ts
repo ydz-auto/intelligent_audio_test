@@ -247,7 +247,16 @@ export function useTestCaseGroups(store: {
           id,
           name: data.name
         } as TestCaseGroup
+        // INT-1313：新分组同步进 groupsList（分组视图计数/展开按名称解析 id）
+        groupsList.value.push({
+          id: id.toString(),
+          name: data.name,
+          description: data.description,
+          testCaseCount: 0
+        })
         allGroups.value = Object.keys(fullGroupsMap.value).map(k => fullGroupsMap.value[k].name)
+        // INT-1313：重跑本地整理，testCaseGroups 立即出现新分组（无需整页刷新）
+        organizeTestCasesByGroup()
       }
       return true
     } catch (err: any) {
@@ -284,13 +293,31 @@ export function useTestCaseGroups(store: {
 
       await testcasesPort.updateGroup(groupId, data)
 
-      if (fullGroupsMap.value[groupId.toString()]) {
-        fullGroupsMap.value[groupId.toString()].name = data.name
-        fullGroupsMap.value[groupId.toString()].description = data.description
+      const groupKey = groupId.toString()
+      if (fullGroupsMap.value[groupKey]) {
+        fullGroupsMap.value[groupKey].name = data.name
+        fullGroupsMap.value[groupKey].description = data.description
         if (data.algorithmType !== undefined) {
           // Domain 侧为 camelCase：algorithmType
-          fullGroupsMap.value[groupId.toString()].algorithmType = data.algorithmType
+          fullGroupsMap.value[groupKey].algorithmType = data.algorithmType
         }
+      } else {
+        // INT-1313：fullGroupsMap 缺失（如按 algorithmType 过滤后分组不在当前集合），
+        // 补录新名称，保证 organizeTestCasesByGroup 重建 testCaseGroups 时新名称立即可见
+        fullGroupsMap.value[groupKey] = {
+          id: groupId,
+          name: data.name,
+          description: data.description,
+          algorithmType: data.algorithmType,
+        } as TestCaseGroup
+      }
+      // INT-1313：改名同步进 groupsList（分组视图计数/展开按名称解析 id）；
+      // 独立于 fullGroupsMap 判断——后端查找兜底路径（fullGroupsMap 无该分组）也同步。
+      // 兼容 id 数值/字符串两种形态（fetchGroupsList 存原始值、fetchTestCases 存 toString）
+      const entry = groupsList.value.find(g => String(g.id) === groupKey)
+      if (entry) {
+        entry.name = data.name
+        entry.description = data.description
       }
       organizeTestCasesByGroup()
       return true
