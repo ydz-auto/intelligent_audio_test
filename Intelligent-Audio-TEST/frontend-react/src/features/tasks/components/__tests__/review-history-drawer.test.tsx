@@ -107,4 +107,14 @@ describe('ReviewHistoryDrawer', () => {
     await waitFor(() => expect(screen.getByText('共 2 条')).toBeInTheDocument())
     expect(screen.queryByText('case-other')).not.toBeInTheDocument()
   })
+
+  it('抽屉未打开时不发复核历史请求（enabled 门控，防 taskId=0 无效请求）', () => {
+    renderDrawer({ open: false })
+    expect(fetchReviewHistoryMock).not.toHaveBeenCalled()
+  })
+
+  it('taskId<=0 时即使打开也不发复核历史请求', () => {
+    renderDrawer({ taskId: 0 })
+    expect(fetchReviewHistoryMock).not.toHaveBeenCalled()
+  })
 })

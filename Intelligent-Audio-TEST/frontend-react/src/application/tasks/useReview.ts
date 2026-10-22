@@ -46,11 +46,12 @@ export function useReviewCount(taskId: number) {
   })
 }
 
-/** 任务复核历史（历史抽屉数据源） */
-export function useReviewHistory(taskId: number) {
+/** 任务复核历史（历史抽屉数据源；enabled=false 时不查询——抽屉未开或 taskId<=0 时避免无效请求） */
+export function useReviewHistory(taskId: number, enabled: boolean) {
   return useQuery<ReviewHistoryItem[]>({
     queryKey: [...REVIEW_QUERY_KEY, 'history', taskId],
     queryFn: () => fetchReviewHistory(taskId),
+    enabled,
     staleTime: 30_000,
   })
 }
