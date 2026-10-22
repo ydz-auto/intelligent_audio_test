@@ -148,7 +148,6 @@ import TagCategoryModal from './TagCategoryModal.vue'
 import TagEditModal from './TagEditModal.vue'
 // INT-739：标签管理页批量改分类
 import BatchTagCategoryModal from './BatchTagCategoryModal.vue'
-import TaskTypeModal from './TaskTypeModal.vue'
 import TaskDetailModal from './TaskDetailModal.vue'
 import TestCaseDetailModal from './TestCaseDetailModal.vue'
 import AudioPlayerModal from '../audio/AudioPlayerModal.vue'
@@ -287,7 +286,7 @@ const getModalComponent = (type: string) => {
     [MODAL_TYPES.UPLOAD_AUDIO_IMPORT]: UploadFileModal,
     [MODAL_TYPES.URL_IMPORT]: URLImportModal,
     [MODAL_TYPES.FOLDER_IMPORT]: FolderImportModal,
-    [MODAL_TYPES.TASK_RELATED]: TaskTypeModal,
+    // INT-1300：任务类型选择弹窗随任务类型概念移除（创建新任务直接进 /start-test）
     [MODAL_TYPES.TASK_DETAIL]: TaskDetailModal,
     [MODAL_TYPES.TEST_CASE_DETAIL]: TestCaseDetailModal,
     [MODAL_TYPES.SPL_CALIBRATION]: SPLCalibrationModal,
