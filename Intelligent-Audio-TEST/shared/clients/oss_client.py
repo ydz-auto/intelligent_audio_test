@@ -121,13 +121,16 @@ class OSSClient:
         # 不可达/响应慢时把调用悬挂到网关 gRPC 60s 截止之后（DEADLINE_EXCEEDED
         # 400，DB 记录已删但响应超时）。独立短超时客户端快速失败，由上层
         # try/except 兜底保证业务操作照常进行。
+        # retries 用 total_max_attempts（总尝试次数，含首次）：OSS_ADMIN_MAX_ATTEMPTS
+        # 即总尝试次数，默认 2 = 首次 + 1 次重试。不用 max_attempts（botocore 语义为
+        # 重试次数，总尝试 = max_attempts + 1，易误解，INT-1348 验收打回收口）。
         self._admin_client = boto3.client(
             's3',
             endpoint_url=endpoint,
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
             config=BotoConfig(
-                retries={'max_attempts': BaseConfig.OSS_ADMIN_MAX_ATTEMPTS,
+                retries={'total_max_attempts': BaseConfig.OSS_ADMIN_MAX_ATTEMPTS,
                          'mode': 'standard'},
                 connect_timeout=BaseConfig.OSS_ADMIN_CONNECT_TIMEOUT_SECONDS,
                 read_timeout=BaseConfig.OSS_ADMIN_READ_TIMEOUT_SECONDS,

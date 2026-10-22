@@ -85,6 +85,11 @@ class BaseConfig:
     # 长 read_timeout（60s）× 3 次重试，OSS 不可达或响应慢时会把调用悬挂到网关
     # gRPC 60s 截止之后（DELETE /audios/{id} 偶发 DEADLINE_EXCEEDED 400 的根因）。
     # 独立短超时客户端快速失败，业务侧 try/except 兜底保证数据库操作照常进行。
+    # OSS_ADMIN_MAX_ATTEMPTS 语义 = botocore 的 total_max_attempts（总尝试次数，
+    # 含首次调用），不是 max_attempts（重试次数 = 总尝试 - 1，botocore/args.py
+    # total_max_attempts = max_attempts + 1，易误解，INT-1348 验收打回收口）。
+    # 默认 2 次总尝试 = 首次 + 1 次重试；read 5s/connect 3s 下 OSS 假死最坏约
+    # 10~15s 快速失败，远小于网关 gRPC 60s 截止。
     OSS_ADMIN_READ_TIMEOUT_SECONDS: int = _get_int('OSS_ADMIN_READ_TIMEOUT_SECONDS', 5)
     OSS_ADMIN_CONNECT_TIMEOUT_SECONDS: int = _get_int('OSS_ADMIN_CONNECT_TIMEOUT_SECONDS', 3)
     OSS_ADMIN_MAX_ATTEMPTS: int = _get_int('OSS_ADMIN_MAX_ATTEMPTS', 2)
