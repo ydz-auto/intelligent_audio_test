@@ -1,17 +1,66 @@
 /**
- * INT-1177 密钥池：APIConfig 密钥池字段四层镜像契约测试
+ * INT-1177 密钥池（endpoint 级，INT-1230 审计 D1'/D6' 返工口径）：
+ * APIConfig 端点级密钥池字段四层镜像契约测试
  * 锁定 DTO(snake_case) ⇄ Domain(camelCase) 双向转换：
- * - 写侧：apiKey → api_key（后端密钥链 meta_key）；apiKeys → api_keys（轮换池，
- *   空数组不发送以保留既有池）；apiKeysSummary 摘要不回传
- * - 读侧：api_keys_summary → apiKeysSummary；meta 中 api_key / api_keys → camelCase
+ * - 写侧：endpoints[].apiKeysText（textarea 草稿，每行一个 key，可整段粘贴
+ *   自动拆行）→ endpoints[].api_keys 落库；留空不发送（保留既有池）
+ * - 写侧：显式 endpoints[].apiKeys → api_keys
+ * - 读侧：endpoints[].api_keys_summary → apiKeysSummary（完整密钥零回显）；
+ *   meta 中 api_key → camelCase（单值回退链）
+ * - meta 不再承载 apiKeys/apiKeysSummary（端点级返工：防御剔除残留）
  */
 import { describe, it, expect } from 'vitest'
 import { toAPIConfig, toApiUpsertDto } from '../apiConfigAdapter'
-import type { APIConfigDto } from '../../dto/apiConfigDto'
-import type { APIConfig } from '../../../domain/model/apiConfig'
+import type { APIConfigDto, ApiEndpointDto } from '../../dto/apiConfigDto'
+import type { APIConfig, ApiEndpoint } from '../../../domain/model/apiConfig'
 
-describe('INT-1177 密钥池：APIConfig 密钥池字段 DTO ⇄ Domain 双向映射', () => {
-  it('toApiUpsertDto：apiKey(camel) → api_key(snake)，其余 meta 键透传', () => {
+describe('INT-1177 端点级密钥池：APIConfig DTO ⇄ Domain 双向映射', () => {
+  it('toApiUpsertDto：apiKeysText 草稿 → endpoints[].api_keys 数组（换行拆行）', () => {
+    const dto = toApiUpsertDto({
+      name: 'A',
+      endpoints: [{
+        endpoint: 'https://ep.example.com',
+        apiKeysText: 'sk-a1\nsk-b2  \n\n  sk-c3',
+      }] as ApiEndpoint[],
+    } as Partial<APIConfig>)
+    expect(dto.endpoints?.[0].api_keys).toEqual(['sk-a1', 'sk-b2', 'sk-c3'])
+  })
+
+  it('toApiUpsertDto：apiKeysText 留空不发送 api_keys（编辑未改动保留既有池）', () => {
+    const dto = toApiUpsertDto({
+      name: 'A',
+      endpoints: [{
+        endpoint: 'https://ep.example.com',
+        apiKeysText: '   \n',
+      }] as ApiEndpoint[],
+    } as Partial<APIConfig>)
+    expect(dto.endpoints?.[0].api_keys).toBeUndefined()
+  })
+
+  it('toApiUpsertDto：显式 apiKeys → endpoints[].api_keys', () => {
+    const dto = toApiUpsertDto({
+      name: 'A',
+      endpoints: [{
+        endpoint: 'https://ep.example.com',
+        apiKeys: ['sk-a1', 'sk-b2'],
+      }] as ApiEndpoint[],
+    } as Partial<APIConfig>)
+    expect(dto.endpoints?.[0].api_keys).toEqual(['sk-a1', 'sk-b2'])
+  })
+
+  it('toApiUpsertDto：apiKeysText 草稿不回传自身（瞬态字段）', () => {
+    const dto = toApiUpsertDto({
+      name: 'A',
+      endpoints: [{
+        endpoint: 'https://ep.example.com',
+        apiKeysText: 'sk-a1',
+      }] as ApiEndpoint[],
+    } as Partial<APIConfig>)
+    const epDto = dto.endpoints?.[0] as ApiEndpointDto
+    expect('apiKeysText' in epDto).toBe(false)
+  })
+
+  it('toApiUpsertDto：apiKey(camel) → meta.api_key(snake)，其余 meta 键透传', () => {
     const dto = toApiUpsertDto({
       name: 'A',
       meta: { protocol: 'https', apiKey: 'sk-single' },
@@ -19,26 +68,14 @@ describe('INT-1177 密钥池：APIConfig 密钥池字段 DTO ⇄ Domain 双向�
     expect(dto.meta).toEqual({ protocol: 'https', api_key: 'sk-single' })
   })
 
-  it('toApiUpsertDto：apiKeys(camel) → api_keys(snake) 数组', () => {
+  it('toApiUpsertDto：meta 不再承载 apiKeys/apiKeysSummary（防御剔除残留）', () => {
     const dto = toApiUpsertDto({
       name: 'A',
-      meta: { apiKeys: ['sk-a1', 'sk-b2'] },
-    } as Partial<APIConfig>)
-    expect(dto.meta).toEqual({ api_keys: ['sk-a1', 'sk-b2'] })
-  })
-
-  it('toApiUpsertDto：空 apiKeys 不发送（编辑未改动时保留既有池）', () => {
-    const dto = toApiUpsertDto({
-      name: 'A',
-      meta: { apiKeys: ['', '  '] },
-    } as Partial<APIConfig>)
-    expect(dto.meta).toEqual({})
-  })
-
-  it('toApiUpsertDto：apiKeysSummary 摘要不回传（防污染存储）', () => {
-    const dto = toApiUpsertDto({
-      name: 'A',
-      meta: { apiKeysSummary: { count: 1, tails: ['a1'] }, apiKey: 'sk-single' },
+      meta: {
+        apiKey: 'sk-single',
+        apiKeys: ['sk-a', 'sk-b'],
+        apiKeysSummary: { count: 2, tails: ['a', 'b'] },
+      } as any,
     } as Partial<APIConfig>)
     expect(dto.meta).toEqual({ api_key: 'sk-single' })
   })
@@ -48,26 +85,43 @@ describe('INT-1177 密钥池：APIConfig 密钥池字段 DTO ⇄ Domain 双向�
     expect(dto.meta).toBeUndefined()
   })
 
-  it('toAPIConfig：api_keys_summary → apiKeysSummary', () => {
+  it('toAPIConfig：endpoints[].api_keys_summary → apiKeysSummary（逐端点）', () => {
     const domain = toAPIConfig({
       id: 1,
       name: 'A',
-      api_keys_summary: { count: 2, tails: ['a1b2', 'c3d4'] },
+      endpoints: [{
+        endpoint: 'https://ep.example.com',
+        api_keys_summary: { count: 2, tails: ['a1b2', 'c3d4'] },
+      }],
     } as unknown as APIConfigDto)
-    expect(domain.apiKeysSummary).toEqual({ count: 2, tails: ['a1b2', 'c3d4'] })
+    expect(domain.endpoints?.[0].apiKeysSummary).toEqual({ count: 2, tails: ['a1b2', 'c3d4'] })
   })
 
-  it('toAPIConfig：meta 中 api_key / api_keys → camelCase（防御回显）', () => {
+  it('toAPIConfig：meta 中 api_key → camelCase（单值回退链）', () => {
     const domain = toAPIConfig({
       id: 1,
       name: 'A',
-      meta: { protocol: 'https', api_key: 'sk-single', api_keys: ['sk-a', 'sk-b'] },
+      meta: { protocol: 'https', api_key: 'sk-single' },
     } as unknown as APIConfigDto)
-    expect(domain.meta).toEqual({ protocol: 'https', apiKey: 'sk-single', apiKeys: ['sk-a', 'sk-b'] })
+    expect(domain.meta).toEqual({ protocol: 'https', apiKey: 'sk-single' })
   })
 
-  it('toAPIConfig：无摘要时 undefined', () => {
-    const domain = toAPIConfig({ id: 1, name: 'A' } as unknown as APIConfigDto)
-    expect(domain.apiKeysSummary).toBeUndefined()
+  it('toAPIConfig：meta 中残留 api_keys 不再映射到 meta.apiKeys（防御剔除）', () => {
+    const domain = toAPIConfig({
+      id: 1,
+      name: 'A',
+      meta: { api_keys: ['sk-a', 'sk-b'] },
+    } as unknown as APIConfigDto)
+    // 后端读侧已剥离完整 api_keys；残留仅防御透传（不做 camelCase 映射）
+    expect(domain.meta).toEqual({ api_keys: ['sk-a', 'sk-b'] })
+  })
+
+  it('toAPIConfig：无摘要时 apiKeysSummary undefined', () => {
+    const domain = toAPIConfig({
+      id: 1,
+      name: 'A',
+      endpoints: [{ endpoint: 'https://ep.example.com' }],
+    } as unknown as APIConfigDto)
+    expect(domain.endpoints?.[0].apiKeysSummary).toBeUndefined()
   })
 })

@@ -18,6 +18,7 @@
 import base64
 import os
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -274,15 +275,18 @@ class TestKeyPoolRotation:
         monkeypatch.setattr(rab, '_key_resolver', resolver)
         return resolver
 
-    def _make_pool_config(self, pool_keys, api_id=77):
-        cfg = _make_api_config('ws://127.0.0.1:1',
-                               meta={'api_keys': list(pool_keys)})
-        cfg.id = api_id
+    def _make_pool_config(self, pool_keys, api_id=77, url='ws://127.0.0.1:1'):
+        # INT-1177 endpoint 级（INT-1230 审计 D1'）：轮换池挂端点 api_keys，
+        # 不在 meta.api_keys
+        cfg = SimpleNamespace(
+            id=api_id, endpoint=url,
+            api_endpoints=[{'endpoint': url, 'api_keys': list(pool_keys)}],
+            meta={}, max_timeout=30, vendor='openai')
         return cfg
 
     def test_handshake_401_rotates_keys_then_succeeds(self, monkeypatch):
         """前两次握手 401 → 切下一 key；第三次成功。重试上限 = 池内 key 数。"""
-        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+        from api_test_service.infrastructure.vendor_ws.realtime_ws_client import (
             RealtimeWSClient,
         )
         resolver = self._install_resolver(monkeypatch)
@@ -311,11 +315,15 @@ class TestKeyPoolRotation:
         assert adapter.initialize() is True
         assert seen_auth == ['Bearer sk-a1', 'Bearer sk-b2', 'Bearer sk-c3']
         # 失败 key 已冷却，未重复分配
-        assert resolver.has_available_rotating_key(77, {'api_keys': ['sk-a1', 'sk-b2', 'sk-c3']}) is True
+        from shared.utils.api_key_provider import endpoint_rotation_key
+        ep = {'endpoint': 'ws://127.0.0.1:1',
+              'api_keys': ['sk-a1', 'sk-b2', 'sk-c3']}
+        assert resolver.has_available_rotating_key(
+            endpoint_rotation_key(77, 'ws://127.0.0.1:1'), ep) is True
 
     def test_handshake_403_rotates(self, monkeypatch):
         """403 同样触发轮换（白名单 401/403/429）"""
-        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+        from api_test_service.infrastructure.vendor_ws.realtime_ws_client import (
             RealtimeWSClient,
         )
         self._install_resolver(monkeypatch)
@@ -341,7 +349,7 @@ class TestKeyPoolRotation:
 
     def test_handshake_pool_all_cooled_raises(self, monkeypatch):
         """池全冷却立即失败：不空转等待，抛 ConnectionError"""
-        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+        from api_test_service.infrastructure.vendor_ws.realtime_ws_client import (
             RealtimeWSClient,
         )
         resolver = self._install_resolver(monkeypatch)
@@ -363,7 +371,7 @@ class TestKeyPoolRotation:
 
     def test_handshake_all_failed_raises_last_error(self, monkeypatch):
         """全失败抛最后错误：池内每 key 都 401 → ConnectionError"""
-        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+        from api_test_service.infrastructure.vendor_ws.realtime_ws_client import (
             RealtimeWSClient,
         )
         self._install_resolver(monkeypatch)
@@ -382,7 +390,7 @@ class TestKeyPoolRotation:
 
     def test_handshake_network_error_no_rotation(self, monkeypatch):
         """5xx / 网络错误明确不轮换：单次失败即返回 False，不重试"""
-        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+        from api_test_service.infrastructure.vendor_ws.realtime_ws_client import (
             RealtimeWSClient,
         )
         self._install_resolver(monkeypatch)
@@ -404,7 +412,7 @@ class TestKeyPoolRotation:
 
     def test_case_level_key_no_rotation(self, monkeypatch):
         """case 层单值最高优先（现状不变）：配置池也不轮换，单次连接"""
-        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+        from api_test_service.infrastructure.vendor_ws.realtime_ws_client import (
             RealtimeWSClient,
         )
         self._install_resolver(monkeypatch)
@@ -434,7 +442,7 @@ class TestKeyPoolRotation:
         若适配器首 attempt 就丢弃外部头重新解析（双推进），2-key 池恒用
         第二把密钥、round-robin 失效，且失败 key 不进入冷却。
         """
-        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+        from api_test_service.infrastructure.vendor_ws.realtime_ws_client import (
             RealtimeWSClient,
         )
         from shared.utils.api_key_provider import (
@@ -481,8 +489,11 @@ class TestKeyPoolRotation:
         # 未双推进（若双推进则首 attempt 已是 sk-b2）
         assert seen_auth == ['Bearer sk-a1', 'Bearer sk-b2']
         # 失败冷却命中预解析 key sk-a1：后续 resolve 跳过 sk-a1 取 sk-b2
+        from shared.utils.api_key_provider import endpoint_rotation_key
+        ep = {'endpoint': 'ws://127.0.0.1:1', 'api_keys': ['sk-a1', 'sk-b2']}
         assert resolver.resolve_rotating(
-            api_id=77, meta={'api_keys': ['sk-a1', 'sk-b2']}) == 'sk-b2'
+            rotation_key=endpoint_rotation_key(77, 'ws://127.0.0.1:1'),
+            endpoint=ep) == 'sk-b2'
 
 
 # ──────────────────────────── INT-1177 RealtimeWSClient 握手状态码透出 ────────────────────────────
@@ -491,7 +502,7 @@ class TestHandshakeStatusPassthrough:
     """RealtimeWSClient.connect 握手异常 status_code 透出（供适配器判定轮换）。"""
 
     def test_websocket_bad_status_captured(self, monkeypatch):
-        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+        from api_test_service.infrastructure.vendor_ws.realtime_ws_client import (
             RealtimeWSClient,
         )
         import websocket
@@ -506,7 +517,7 @@ class TestHandshakeStatusPassthrough:
         assert 'mock 401' in client.last_handshake_error
 
     def test_generic_error_no_status(self, monkeypatch):
-        from api_test_service.infrastructure.adapters.transport.realtime_ws_client import (
+        from api_test_service.infrastructure.vendor_ws.realtime_ws_client import (
             RealtimeWSClient,
         )
         import websocket
@@ -521,13 +532,16 @@ class TestHandshakeStatusPassthrough:
         assert 'mock 网络不可达' in client.last_handshake_error
 
     def test_resolved_headers_rotation(self):
-        """_resolve_ws_headers 消费 resolve_rotating（传 api_config.id）：
-        同一 API 连续解析轮换命中各 key"""
+        """_resolve_ws_headers 消费 resolve_rotating（传 (api_id, ws endpoint
+        URL)）：同一端点连续解析轮换命中各 key"""
         from api_test_service.infrastructure.adapters.protocol.realtime_adapter_base import (
             RealtimeAdapterBase,
         )
-        api_config = _make_api_config('ws://127.0.0.1:1',
-                                      meta={'api_keys': ['sk-a1', 'sk-b2']})
+        api_config = SimpleNamespace(
+            id=7, endpoint='ws://127.0.0.1:1',
+            api_endpoints=[{'endpoint': 'ws://127.0.0.1:1',
+                            'api_keys': ['sk-a1', 'sk-b2']}],
+            meta={}, max_timeout=30, vendor='openai')
         adapter = RealtimeAdapterBase(api_config, case_config={})
         headers1 = adapter._resolve_ws_headers(api_config)
         headers2 = adapter._resolve_ws_headers(api_config)

@@ -321,70 +321,8 @@ textarea {
   margin: 0;
 }
 
-/* INT-1177 密钥池：多密钥列表（password 输入不回显，摘要只显示 N 个/尾号） */
-.api-keys-row {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.api-keys-summary {
-  font-size: 12px;
-  color: var(--color-slate-500);
-  background-color: color-mix(in srgb, var(--color-slate-100) 60%, transparent);
-  border-radius: var(--radius-sm, 6px);
-  padding: 8px 10px;
-  line-height: 1.5;
-}
-
-.api-keys-item {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-
-.api-keys-item .full-width {
-  flex: 1;
-}
-
-.remove-key-btn {
-  flex: none;
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--color-slate-200);
-  border-radius: var(--radius-sm, 6px);
-  background: transparent;
-  color: var(--color-slate-500);
-  cursor: pointer;
-}
-
-.remove-key-btn:hover {
-  color: var(--color-red-500);
-  border-color: var(--color-red-300);
-}
-
-.add-key-btn {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--color-blue-600);
-  border: 1px dashed var(--color-blue-300);
-  border-radius: var(--radius-sm, 6px);
-  background: transparent;
-  cursor: pointer;
-}
-
-.add-key-btn:hover {
-  background-color: color-mix(in srgb, var(--color-blue-500) 8%, transparent);
-}
+/* INT-1177 endpoint 级返工：密钥池 UI 已移至 ArrayField（端点行内 textarea），
+   apiMeta 不再渲染多密钥列表，相关样式随组件移除。 */
 
 .field-hint {
   margin: 0;

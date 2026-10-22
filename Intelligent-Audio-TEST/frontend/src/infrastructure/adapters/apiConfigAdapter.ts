@@ -1,24 +1,21 @@
 /**
  * APIConfig Adapter —— APIConfigDto(snake_case) ⇄ APIConfig(camelCase)
  */
-import type { APIConfig, ApiEndpoint, ApiHealthCheckResult, ApiKeysSummary } from '../../domain/model/apiConfig'
+import type { APIConfig, ApiEndpoint, ApiHealthCheckResult } from '../../domain/model/apiConfig'
 import type { APIConfigDto, ApiEndpointDto, ApiUpsertDto, ApiHealthCheckDto } from '../dto/apiConfigDto'
 import { ApiEndpointStatus } from '../../domain/enums'
 
 // ===== DTO → Domain =====
 
-/** meta blob 键名归一化：后端 snake_case api_key / api_keys → 前端 camelCase。
- * 仅转换密钥键，其余 meta 键整块透传（后端按 Dict 原样存储）。 */
+/** meta blob 键名归一化：后端 snake_case api_key → 前端 camelCase。
+ * INT-1177 endpoint 级返工：多密钥池已移至 endpoints[].api_keys，meta 不再
+ * 承载 api_keys；仅转换单值密钥键，其余 meta 键整块透传（后端按 Dict 原样存储）。 */
 function normalizeMetaFromDto(raw: Record<string, any> | undefined): APIConfig['meta'] {
   if (!raw || typeof raw !== 'object') return undefined
   const out: Record<string, any> = { ...raw }
   if ('api_key' in out) {
     out.apiKey = out.api_key
     delete out.api_key
-  }
-  if ('api_keys' in out) {
-    out.apiKeys = out.api_keys
-    delete out.api_keys
   }
   return out as APIConfig['meta']
 }
@@ -35,6 +32,10 @@ function toEndpoint(raw: ApiEndpointDto): ApiEndpoint {
     healthScore: raw.health_score,
     priority: raw.priority,
     description: raw.description,
+    // INT-1177 endpoint 级密钥池：完整 api_keys 响应零回显（后端读侧剥离），
+    // 防御映射（若有）；编辑回显只依赖 api_keys_summary 摘要
+    apiKeys: raw.api_keys,
+    apiKeysSummary: raw.api_keys_summary,
   }
 }
 
@@ -49,7 +50,6 @@ export function toAPIConfig(dto: APIConfigDto): APIConfig {
     status: (dto.status || ApiEndpointStatus.OFFLINE) as APIConfig['status'],
     healthScore: dto.health_score,
     meta: normalizeMetaFromDto(dto.meta),
-    apiKeysSummary: dto.api_keys_summary as ApiKeysSummary | undefined,
     algorithmType: dto.algorithm_type,
     defaultMaxProcess: dto.default_max_process,
     defaultMaxTimeout: dto.default_max_timeout,
@@ -92,8 +92,21 @@ export function toApiHealthCheckResult(dto: ApiHealthCheckDto): ApiHealthCheckRe
 
 // ===== Domain → DTO（请求体） =====
 
+/** INT-1177 endpoint 级密钥池提取：textarea 草稿（apiKeysText，每行一个 key、
+ * 可整段粘贴拆行）优先，回退显式 apiKeys；空/留空返回 []。 */
+function extractEndpointApiKeys(ep: ApiEndpoint): string[] {
+  const source = ep.apiKeysText ?? (ep.apiKeys as string[] | undefined)
+  if (Array.isArray(source)) {
+    return source.map(v => String(v).trim()).filter(v => v !== '')
+  }
+  if (typeof source === 'string' && source.trim()) {
+    return source.split(/\r?\n/).map(v => v.trim()).filter(v => v !== '')
+  }
+  return []
+}
+
 function toEndpointDto(ep: ApiEndpoint): ApiEndpointDto {
-  return {
+  const dto: ApiEndpointDto = {
     id: ep.id,
     endpoint: ep.endpoint,
     name: ep.name,
@@ -104,14 +117,20 @@ function toEndpointDto(ep: ApiEndpoint): ApiEndpointDto {
     priority: ep.priority,
     description: ep.description,
   }
+  // INT-1177 endpoint 级密钥池：textarea 草稿/显式 apiKeys → api_keys 落库。
+  // 空/留空不发送（读侧剥离完整密钥，编辑未改动时保留既有池，不误清空）。
+  const keys = extractEndpointApiKeys(ep)
+  if (keys.length > 0) {
+    dto.api_keys = keys
+  }
+  return dto
 }
 
 /**
- * meta blob 键名归一化（写侧，INT-1177 密钥池）：
+ * meta blob 键名归一化（写侧，INT-1177 endpoint 级返工）：
  * - 单值 apiKey（camelCase，表单） → api_key（后端密钥链 meta_key）
- * - 多密钥 apiKeys（camelCase，表单） → api_keys（后端轮换池）
- *   空数组不发送（编辑未改动时保留既有密钥池，不误清空）
- * - apiKeysSummary 摘要不回传（后端写侧拒收；防污染存储）
+ * - 密钥池已移至 endpoints[].api_keys，meta 不再承载；apiKeys /
+ *   apiKeysSummary 防御剔除（残留不落库）
  * 其余 meta 键整块透传（后端按 Dict 原样存储）。
  */
 function normalizeMetaForUpsert(meta: Record<string, any> | undefined): Record<string, any> | undefined {
@@ -120,12 +139,10 @@ function normalizeMetaForUpsert(meta: Record<string, any> | undefined): Record<s
   for (const [key, value] of Object.entries(meta)) {
     if (key === 'apiKey') {
       out.api_key = value
-    } else if (key === 'apiKeys') {
-      const cleaned = Array.isArray(value) ? value.map(v => String(v).trim()).filter(v => v !== '') : []
-      if (cleaned.length > 0) {
-        out.api_keys = cleaned
-      }
-    } else if (key !== 'apiKeysSummary') {
+    } else if (key === 'apiKeys' || key === 'apiKeysSummary') {
+      // INT-1177 endpoint 级返工：meta 不再承载密钥池，防御剔除
+      continue
+    } else {
       out[key] = value
     }
   }

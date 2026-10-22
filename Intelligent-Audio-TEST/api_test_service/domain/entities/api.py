@@ -55,11 +55,11 @@ def normalize_audio_config(raw) -> Optional[Dict]:
 
 
 def derive_api_keys_summary(raw) -> Optional[Dict]:
-    """从 meta.api_keys 原始值派生密钥池非敏感摘要 {count, tails[]}（INT-1177）。
+    """从 api_keys 原始值派生密钥池非敏感摘要 {count, tails[]}（INT-1177）。
 
     完整密钥不进入摘要（仅尾号，零明文）；非法形态返回 None。聚合根承载
-    摘要而非完整密钥，读侧序列化（_api_to_dict）只输出摘要、meta 中完整
-    api_keys 一律不输出（PO/聚合根双兼容防御）。
+    摘要而非完整密钥，读侧序列化（_api_to_dict）只输出摘要、端点 dict 中
+    完整 api_keys 一律不输出（PO/聚合根双兼容防御）。
     """
     if not isinstance(raw, list):
         return None
@@ -67,6 +67,34 @@ def derive_api_keys_summary(raw) -> Optional[Dict]:
     if not cleaned:
         return None
     return {'count': len(cleaned), 'tails': [k[-4:] for k in cleaned]}
+
+
+def derive_endpoint_keys_summary(ep) -> Optional[Dict]:
+    """从单个端点 dict 派生 api_keys_summary（INT-1230 审计 D6'，endpoint 级）。
+
+    与 derive_api_keys_summary 同语义，作用于 api_endpoints[] 条目的
+    api_keys 字段；无 api_keys / 空数组 / 非法形态返回 None。
+    """
+    if not isinstance(ep, dict):
+        return None
+    return derive_api_keys_summary(ep.get('api_keys'))
+
+
+def redact_endpoint_keys(ep) -> Optional[Dict]:
+    """端点 dict 读侧防御：完整 api_keys 剥离、内嵌 api_keys_summary 派生。
+
+    返回新 dict（不修改入参）；已含 api_keys_summary 的端点（聚合根派生态）
+    沿用摘要；PO 原始态（含完整 api_keys）经派生后剥离。聚合根不承载完整
+    密钥（零响应），读侧序列化只读本结果。
+    """
+    if not isinstance(ep, dict):
+        return None
+    out = dict(ep)
+    summary = out.get('api_keys_summary') or derive_api_keys_summary(out.get('api_keys'))
+    out.pop('api_keys', None)
+    if summary is not None:
+        out['api_keys_summary'] = summary
+    return out
 
 
 @dataclass(frozen=True)
@@ -113,9 +141,13 @@ class APIAggregate:
     proxy_type: Optional[str] = None
     proxy_url: Optional[str] = None
     # 密钥池非敏感摘要（INT-1177）：{count, tails[]}，尾号 = 每 key 末 4 位；
-    # 聚合根不承载完整密钥（零响应），`_api_po_to_entity` 从 po.meta.api_keys
-    # 派生；读侧序列化只读本字段
+    # 聚合根不承载完整密钥（零响应），`_api_po_to_entity` 从 po.api_endpoints
+    # 派生逐端点摘要；读侧序列化只读本字段
     api_keys_summary: Optional[Dict] = None
+    # 端点级密钥池摘要（INT-1230 审计 D6'，endpoint 级返工）：逐端点内嵌
+    # `api_keys_summary` 的端点 dict 列表（完整 api_keys 已剥离，聚合根零明文）；
+    # `_api_po_to_entity` 从 po.api_endpoints 派生，读侧序列化逐端点输出
+    endpoint_keys_summary: List[Dict] = field(default_factory=list)
 
     def set_output_types(self, raw) -> List[str]:
         """设置输出类型列表（经 OutputType 枚举归一化），返回归一化结果"""

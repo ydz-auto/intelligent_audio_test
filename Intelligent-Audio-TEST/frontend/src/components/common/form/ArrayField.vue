@@ -150,6 +150,25 @@
                 />
               </div>
             </div>
+            <div class="api-endpoint-keys">
+              <label :for="`${fieldId}-${index}-keys`" class="sub-label">密钥池（多密钥轮换）</label>
+              <div v-if="item.apiKeysSummary" class="api-keys-summary">
+                <i class="fas fa-key"></i>
+                已配置 {{ item.apiKeysSummary.count }} 个密钥
+                <span v-if="item.apiKeysSummary.tails && item.apiKeysSummary.tails.length">
+                  （尾号：{{ item.apiKeysSummary.tails.join('、') }}）
+                </span>
+                ，如需修改请重新输入完整密钥列表。
+              </div>
+              <textarea
+                :id="`${fieldId}-${index}-keys`"
+                rows="2"
+                :value="localValue[index]?.apiKeysText || ''"
+                @input="updateAPIKeys($event, index)"
+                placeholder="每行一个密钥，可整段粘贴自动拆行；留空则保留已配置密钥"
+                class="full-width api-keys-textarea"
+              ></textarea>
+            </div>
           </template>
         </div>
         <button 
@@ -201,6 +220,7 @@ const {
   addArrayItem,
   removeArrayItem,
   updateAPIUrl,
+  updateAPIKeys,
   updateSPLValue,
   updateGainOffset,
   getFinalLevelDbfs,

@@ -7,12 +7,14 @@
 逐级回退；密钥解析统一收敛在密钥提供者，Domain 层只见解析结果。
 各级键名与环境变量名均可配置（默认值对齐设计约定），禁止硬编码密钥。
 
-INT-1177 密钥池扩展：
+INT-1177 密钥池扩展（endpoint 级，INT-1230 审计 D1'~D8' 返工口径）：
 - 新增 `resolve_rotating()`：候选优先级 = case 层（单值，最高优先，不变）
-  → `meta.api_keys`（轮换池）→ `meta.api_key`（单值回退）→ 服务配置层 → env。
+  → 当前端点 `api_endpoints[].api_keys`（轮换池，端点级）→ `meta.api_key`
+  （单值回退）→ 服务配置层 → env。
 - 轮换状态（round-robin 游标 + 冷却集合）经模块级共享单例
-  `RotationStateStore`（按 api_id 维度，线程安全）维护——所有消费面
-  （HTTP / Realtime）经同一模块引用同一单例，实现同一 API 跨协议同源轮换。
+  `RotationStateStore`（按 `(api_id, endpoint_url)` 端点维度 keying，线程安全）
+  维护——所有消费面（HTTP / Realtime）经同一模块引用同一单例，同一端点
+  跨协议同源轮换，不同端点各用各池互不串扰。
   `RotationStateStore` 抽象为端口，首版进程内实现；Redis 跨副本实现列后续增强。
 - `resolve()` 单值语义保持不变（向后兼容，4 消费面零回归）。
 """
@@ -30,61 +32,69 @@ DEFAULT_COOLDOWN_SECONDS = 60
 
 
 class RotationStateStore(ABC):
-    """轮换状态存储端口（INT-1177）— 按 api_id 维度维护 round-robin 游标
-    + 冷却集合（线程安全）。首版进程内实现；Redis 跨副本实现列后续增强，
-    消费面只依赖本端口，换实现零改动。
+    """轮换状态存储端口（INT-1177）— 按轮换 key（api_id + 端点 base URL）
+    维度维护 round-robin 游标 + 冷却集合（线程安全）。首版进程内实现；
+    Redis 跨副本实现列后续增强，消费面只依赖本端口，换实现零改动。
     """
 
     @abstractmethod
-    def next_index(self, api_id, pool: Sequence[str], cooldown_seconds: float) -> int:
+    def next_index(self, key, pool: Sequence[str], cooldown_seconds: float) -> int:
         """返回下一个非冷却 key 下标并前移游标；全冷却返回 -1。"""
 
     @abstractmethod
-    def has_available(self, api_id, pool: Sequence[str], cooldown_seconds: float) -> bool:
+    def has_available(self, key, pool: Sequence[str], cooldown_seconds: float) -> bool:
         """是否存在非冷却 key（不改变游标）。"""
 
     @abstractmethod
-    def mark_failure(self, api_id, value: str, cooldown_seconds: float) -> None:
+    def mark_failure(self, key, value: str, cooldown_seconds: float) -> None:
         """将某 key 值置冷却（冷却期内不再选中）。"""
 
 
+def endpoint_rotation_key(api_id, endpoint_url) -> tuple:
+    """端点轮换状态 key：api_id + 端点 base URL（INT-1230 审计 D3'）。
+    用 URL 而非索引——增删端点不漂移；同一 base URL 的 HTTP 与 Realtime
+    共享游标（跨协议同源自然成立），各端点独立不串扰。
+    """
+    return (api_id, endpoint_url or '')
+
+
 class InMemoryRotationStateStore(RotationStateStore):
-    """进程内轮换状态实现：dict[api_id] → {cursor, cooldown{value: until_ts}}。"""
+    """进程内轮换状态实现：dict[key] → {cursor, cooldown{value: until_ts}}。"""
 
     def __init__(self):
         self._lock = threading.Lock()
         self._cursor: Dict[object, int] = {}
         self._cooldown: Dict[object, Dict[str, float]] = {}
 
-    def _effective_cooled(self, api_id, cooldown_seconds) -> Dict[str, float]:
+    def _effective_cooled(self, key, cooldown_seconds) -> Dict[str, float]:
         """清洗过期冷却项后返回当前冷却集合（调用方须持锁）。"""
         now = time.time()
-        cooled = self._cooldown.setdefault(api_id, {})
+        cooled = self._cooldown.setdefault(key, {})
         expired = [v for v, until in cooled.items() if until <= now]
         for v in expired:
             cooled.pop(v, None)
         return cooled
 
-    def next_index(self, api_id, pool, cooldown_seconds):
+    def next_index(self, key, pool, cooldown_seconds):
         with self._lock:
-            cooled = self._effective_cooled(api_id, cooldown_seconds)
+            cooled = self._effective_cooled(key, cooldown_seconds)
             n = len(pool)
-            cursor = self._cursor.get(api_id, 0)
+            cursor = self._cursor.get(key, 0)
             for offset in range(n):
                 idx = (cursor + offset) % n
                 if pool[idx] not in cooled:
-                    self._cursor[api_id] = (idx + 1) % n
+                    self._cursor[key] = (idx + 1) % n
                     return idx
             return -1
 
-    def has_available(self, api_id, pool, cooldown_seconds):
+    def has_available(self, key, pool, cooldown_seconds):
         with self._lock:
-            cooled = self._effective_cooled(api_id, cooldown_seconds)
+            cooled = self._effective_cooled(key, cooldown_seconds)
             return any(v not in cooled for v in pool)
 
-    def mark_failure(self, api_id, value, cooldown_seconds):
+    def mark_failure(self, key, value, cooldown_seconds):
         with self._lock:
-            self._cooldown.setdefault(api_id, {})[value] = \
+            self._cooldown.setdefault(key, {})[value] = \
                 time.time() + cooldown_seconds
 
 
@@ -104,9 +114,10 @@ class ApiKeyChainResolver:
     （默认 OPENAI_API_KEY）。各级键名经构造参数注入，由调用方
     服务自己的配置源（yml / config_manager）提供。
 
-    resolve_rotating()（INT-1177）在 resolve() 基础上新增密钥池轮换：
-    case 层单值最高优先（不变）；`meta.api_keys` 池 round-robin 轮换，
-    失败经 report_failure 置冷却（冷却期不选）；池全冷却返回空串。
+    resolve_rotating()（INT-1177）在 resolve() 基础上新增端点级密钥池轮换：
+    case 层单值最高优先（不变）；当前端点 `api_endpoints[].api_keys` 池
+    round-robin 轮换，失败经 report_failure 置冷却（冷却期不选）；池全冷却
+    返回空串。轮换 key = (api_id, endpoint base URL)，各端点独立游标。
     """
 
     def __init__(self, case_key=DEFAULT_CASE_KEY, meta_key=DEFAULT_META_KEY,
@@ -142,32 +153,35 @@ class ApiKeyChainResolver:
                 return str(candidate).strip()
         return os.environ.get(self.env_key, '').strip()
 
-    # ── INT-1177 密钥池（轮换解析） ──
+    # ── INT-1177 密钥池（端点级轮换解析）──
 
-    def rotating_pool(self, meta) -> List[str]:
-        """meta.api_keys 清洗后的轮换池（非空字符串元素；空/非数组 = 无池）。"""
-        api_keys = (meta or {}).get(self.api_keys_key)
+    def rotating_pool(self, endpoint) -> List[str]:
+        """api_endpoints[].api_keys 清洗后的轮换池（非空字符串元素；
+        空/非数组/无端点 = 无池）。"""
+        api_keys = (endpoint or {}).get(self.api_keys_key)
         if not isinstance(api_keys, list):
             return []
         return [str(k).strip() for k in api_keys
                 if k is not None and str(k).strip()]
 
-    def resolve_rotating(self, api_id, case_config=None, meta=None,
+    def resolve_rotating(self, rotation_key, endpoint=None, case_config=None,
                          service_candidates=None, case_value=None,
-                         meta_value=None) -> str:
-        """轮换解析：case 层单值最高优先（不变）→ meta.api_keys 轮换池
+                         meta_value=None, meta=None) -> str:
+        """轮换解析：case 层单值最高优先（不变）→ 当前端点 api_keys 轮换池
         → 回退单值链（resolve() 语义）。
 
-        :param api_id: API 配置 ID（轮换状态维度；同一 API 跨协议同源）
-        :param meta: API meta dict（取 api_keys_key 轮换池 / meta_key 单值回退）
+        :param rotation_key: 轮换状态维度 key = (api_id, endpoint base URL)
+            （INT-1230 审计 D3'；同端点跨协议同源，各端点独立游标）
+        :param endpoint: 当前端点 dict（取 api_keys_key 轮换池；None 无池）
+        :param meta: API meta dict（单值回退链 meta_key 候选）
         """
         case_val = case_value if case_value else (case_config or {}).get(self.case_key)
         if case_val:
             return str(case_val).strip()
-        pool = self.rotating_pool(meta)
+        pool = self.rotating_pool(endpoint)
         if pool:
             idx = self.rotation_store.next_index(
-                api_id, pool, self.cooldown_seconds)
+                rotation_key, pool, self.cooldown_seconds)
             if idx >= 0:
                 return pool[idx]
             # 池全冷却：返回空串（调用方不注入 Authorization，立即失败语义）
@@ -176,15 +190,15 @@ class ApiKeyChainResolver:
                             service_candidates=service_candidates,
                             case_value=case_value, meta_value=meta_value)
 
-    def has_available_rotating_key(self, api_id, meta) -> bool:
+    def has_available_rotating_key(self, rotation_key, endpoint) -> bool:
         """池是否存在非冷却 key；无池返回 False（调用方按单值/无 key 处理）。"""
-        pool = self.rotating_pool(meta)
+        pool = self.rotating_pool(endpoint)
         if not pool:
             return False
         return self.rotation_store.has_available(
-            api_id, pool, self.cooldown_seconds)
+            rotation_key, pool, self.cooldown_seconds)
 
-    def report_failure(self, api_id, failed_value, cooldown_seconds=None) -> None:
+    def report_failure(self, rotation_key, failed_value, cooldown_seconds=None) -> None:
         """报告轮换池中某 key 失败：置冷却（冷却期默认 60s，可配置）。
 
         非池内 value 静默忽略（幂等；空值 no-op）。
@@ -193,7 +207,7 @@ class ApiKeyChainResolver:
             return
         cooldown = (cooldown_seconds if cooldown_seconds is not None
                     else self.cooldown_seconds)
-        self.rotation_store.mark_failure(api_id, str(failed_value), cooldown)
+        self.rotation_store.mark_failure(rotation_key, str(failed_value), cooldown)
 
 
 def resolver_from_config(get_value, section='secrets') -> ApiKeyChainResolver:

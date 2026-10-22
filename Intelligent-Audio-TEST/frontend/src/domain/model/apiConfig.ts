@@ -22,23 +22,28 @@ export interface ApiEndpoint {
   healthScore?: number
   priority?: number
   description?: string
+  /** INT-1177 endpoint 级密钥池（多密钥轮换，INT-1230 审计 D1'/D6'）：
+   * 每端点一池，password 输入不回显；保存时 adapter 层转 api_keys 落库 */
+  apiKeys?: string[]
+  /** 密钥池非敏感摘要（编辑回显「已配置 N 个 / 尾号」，不回显完整值） */
+  apiKeysSummary?: ApiKeysSummary
+  /** 端点行内密钥池 textarea 草稿（INT-1177 endpoint 级 UI）：每行一个密钥、
+   * 可整段粘贴自动拆行；完整密钥不回显（读侧无值），留空保存时保留既有池。
+   * 仅表单瞬态字段，adapter 层转 api_keys 落库，不回传自身。 */
+  apiKeysText?: string
 }
 
 /**
  * API 元信息（对应后端 ApiItem.meta JSON 对象的已知键；
  * 该对象为整块透传的 JSON blob，后端按 Dict[str, Any] 原样存储）
- * INT-1177 密钥池：apiKeys（多密钥轮换池，adapter 层转 snake_case
- * api_keys 落库；完整密钥响应零回显，编辑仅回显 apiKeysSummary 摘要）
+ * INT-1177 密钥池（endpoint 级返工）：多密钥池已移至 api_endpoints[].api_keys，
+ * meta 仅保留单值 apiKey（回退链 meta_key）；apiKeys/apiKeysSummary 不再承载。
  */
 export interface ApiMeta {
   protocol?: string
   environment?: string
   version?: string
   apiKey?: string
-  /** 密钥池（多密钥，轮换）：password 输入不回显，保存时转 meta.api_keys */
-  apiKeys?: string[]
-  /** 密钥池非敏感摘要（编辑态显示「已配置 N 个 / 尾号」，不回显完整值） */
-  apiKeysSummary?: ApiKeysSummary
   headers?: Record<string, string>
   /** 请求体模板（后端原值键 body_template，整块透传） */
   bodyTemplate?: Record<string, unknown>
@@ -46,7 +51,7 @@ export interface ApiMeta {
   timeout?: number
 }
 
-/** 密钥池非敏感摘要（对应后端 ApiItem.api_keys_summary：{count, tails[]}） */
+/** 密钥池非敏感摘要（对应后端 ApiEndpointItem.api_keys_summary：{count, tails[]}） */
 export interface ApiKeysSummary {
   count: number
   tails: string[]
@@ -75,8 +80,6 @@ export interface APIConfig {
   status: ApiEndpointStatus
   healthScore?: number
   meta?: ApiMeta
-  /** INT-1177 密钥池非敏感摘要（{count, tails[]}；完整密钥零响应） */
-  apiKeysSummary?: ApiKeysSummary
   algorithmType?: string
   defaultMaxProcess?: number
   defaultMaxTimeout?: number

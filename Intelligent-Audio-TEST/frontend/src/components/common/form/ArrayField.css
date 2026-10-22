@@ -110,6 +110,30 @@
   gap: 4px;
 }
 
+/* INT-1177 endpoint 级密钥池：端点行内多行 textarea + 非敏感摘要回显 */
+.api-endpoint-keys {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.api-keys-summary {
+  font-size: 12px;
+  color: var(--color-slate-500);
+  background-color: color-mix(in srgb, var(--color-slate-100) 60%, transparent);
+  border-radius: 6px;
+  padding: 8px 10px;
+  line-height: 1.5;
+}
+
+.api-keys-textarea {
+  resize: vertical;
+  min-height: 42px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
 .sub-label {
   font-size: 12px;
   font-weight: 500;

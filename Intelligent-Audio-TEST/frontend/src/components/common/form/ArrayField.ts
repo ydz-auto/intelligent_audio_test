@@ -109,6 +109,16 @@ export function useArrayField(
     handleInput();
   }
 
+  // INT-1177 endpoint 级密钥池：端点行内 textarea 草稿（每行一个 key、可整段
+  // 粘贴自动拆行）。只存草稿文本，不回显完整密钥；保存时 adapter 层拆行转
+  // api_keys，留空保留既有池。
+  const updateAPIKeys = (event: Event, index: number) => {
+    const value = (event.target as HTMLTextAreaElement).value;
+    const newItem = { ...localValue.value[index], apiKeysText: value };
+    localValue.value.splice(index, 1, newItem);
+    handleInput();
+  }
+
   const updateSPLValue = (event: Event, index: number) => {
     const value = Number((event.target as HTMLInputElement).value);
     const newItem = { ...localValue.value[index] };
@@ -275,6 +285,7 @@ export function useArrayField(
     addArrayItem,
     removeArrayItem,
     updateAPIUrl,
+    updateAPIKeys,
     updateSPLValue,
     updateGainOffset,
     getGainOffset,

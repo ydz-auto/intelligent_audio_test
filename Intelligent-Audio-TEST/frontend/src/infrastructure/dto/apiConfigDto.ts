@@ -17,6 +17,11 @@ export interface ApiEndpointDto {
   health_score?: number
   priority?: number
   description?: string
+  /** INT-1177 endpoint 级密钥池（INT-1230 审计 D1'/D6'）：每端点 api_keys
+   * 纯字符串数组；写侧透传，读侧完整密钥零响应 */
+  api_keys?: string[]
+  /** 端点级密钥池非敏感摘要（读侧逐端点内嵌，{count, tails[]}） */
+  api_keys_summary?: { count: number; tails: string[] }
 }
 
 export interface APIConfigDto {
@@ -27,8 +32,6 @@ export interface APIConfigDto {
   description?: string
   status?: string
   meta?: Record<string, any>
-  /** INT-1177 密钥池非敏感摘要（顶层字段，网关读侧原始 dict 直出） */
-  api_keys_summary?: { count: number; tails: string[] }
   algorithm_type?: string
   default_max_process?: number
   default_max_timeout?: number

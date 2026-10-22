@@ -7,11 +7,15 @@ Port 实现（设计文档 §3.6 生命周期语义：pre_process 渲染 + execu
 请求渲染、模板占位符与响应字段映射逻辑行为不变。
 """
 import json
+from typing import Optional
 
 from shared.utils.log_handler import log_and_emit
 from shared.utils.path_extractor import extract_by_path
 from shared.utils.config_manager import config_manager
-from shared.utils.api_key_provider import resolver_from_config
+from shared.utils.api_key_provider import (
+    endpoint_rotation_key,
+    resolver_from_config,
+)
 from shared.models.common_enums import VendorAdapterType
 
 from api_test_service.domain.ports import ApiVendorAdapter
@@ -61,12 +65,39 @@ class ApiDriverAdapter(ApiVendorAdapter):
         kwargs.setdefault('test_case_id', self._test_case_id)
         log_and_emit(level=level, module='APIDriver', content=content, **kwargs)
 
+    def _current_endpoint(self) -> Optional[dict]:
+        """当前端点 dict：self.endpoint（含 path，api_task_runner 拼
+        `/api/create_task` 等）base 前缀匹配回 api_config.api_endpoints 条目
+        （INT-1230 审计 D3'：端点身份用 base URL，增删端点不漂移）。
+        未匹配（main url 单端点 / 未配端点）返回 None → 回退单值链。"""
+        eps = list(getattr(self.api_config, 'api_endpoints', None) or [])
+        ep_url = str(self.endpoint or '').rstrip('/')
+        best = None
+        best_len = -1
+        for ep in eps:
+            if not isinstance(ep, dict):
+                continue
+            base = str(ep.get('endpoint') or '').rstrip('/')
+            if not base:
+                continue
+            if ep_url == base or ep_url.startswith(base + '/'):
+                if len(base) > best_len:
+                    best = ep
+                    best_len = len(base)
+        return best
+
     def _merge_headers(self) -> dict:
         """合并 Headers：meta.headers + case_config.headers，并按密钥链
-        （case_config → meta → env，UC-0901 扩展流程 3a）注入 Bearer ——
-        解析到密钥且未显式配置 Authorization 头时才注入，显式头优先"""
+        （case_config → 当前端点 api_keys 池轮换 → meta → env，UC-0901 扩展
+        流程 3a + INT-1177 endpoint 级轮换）注入 Bearer —— 解析到密钥且未
+        显式配置 Authorization 头时才注入，显式头优先"""
         headers = {**self.meta.get('headers', {}), **self.case_config.get('headers', {})}
-        api_key = _key_resolver.resolve(
+        endpoint = self._current_endpoint()
+        api_key = _key_resolver.resolve_rotating(
+            rotation_key=endpoint_rotation_key(
+                getattr(self.api_config, 'id', None),
+                (endpoint or {}).get('endpoint', '') or ''),
+            endpoint=endpoint,
             case_config=self.case_config if isinstance(self.case_config, dict) else None,
             meta=self.meta if isinstance(self.meta, dict) else None)
         if api_key and not any(k.lower() == 'authorization' for k in headers):

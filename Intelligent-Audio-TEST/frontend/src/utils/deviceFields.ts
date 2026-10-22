@@ -280,8 +280,8 @@ export function generateDeviceFields(deviceType: string): DynamicFormField[] {
         type: 'array',
         required: true,
         arrayItemType: 'apiEndpoint',
-        arrayItemTemplate: {endpoint: '', name: '', priority: 1, maxProcess: defaultMaxProcess, maxTimeout: defaultMaxTimeout, maxAudioDuration: defaultMaxAudioDuration},
-        hint: '配置API的各个端点，包括URL、名称和优先级、最大进程数、超时时间和音频时长。未单独设置的值将使用上方的默认值'
+        arrayItemTemplate: {endpoint: '', name: '', priority: 1, maxProcess: defaultMaxProcess, maxTimeout: defaultMaxTimeout, maxAudioDuration: defaultMaxAudioDuration, apiKeys: []},
+        hint: '配置API的各个端点，包括URL、名称和优先级、最大进程数、超时时间和音频时长。每个端点可配置密钥池（多密钥轮换：每行一个密钥，可整段粘贴自动拆行）。未单独设置的值将使用上方的默认值'
       }];
     
     default:
