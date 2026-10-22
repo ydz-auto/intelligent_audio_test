@@ -80,7 +80,8 @@ export function ApiCard({
   const isWs = api.deviceType === 'websocket_api'
   const TypeIcon = isWs ? API_TYPE_ICON.websocket_api : API_TYPE_ICON.http_api
   const typeLabel = isWs ? API_TYPE_LABEL.websocket_api : API_TYPE_LABEL.http_api
-  const endpoint = api.apiUrl ?? api.endpoints[0]?.endpoint ?? null
+  // INT-1223：Master URL 移除，端点只取 api_endpoints 首个
+  const endpoint = api.endpoints[0]?.endpoint ?? null
 
   return (
     <div

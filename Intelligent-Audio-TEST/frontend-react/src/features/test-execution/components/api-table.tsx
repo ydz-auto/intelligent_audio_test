@@ -156,8 +156,9 @@ export function ApiTable({
                   )}
                 </td>
                 <td className='px-2 py-2.5'>
-                  <span className='text-muted-foreground block max-w-52 truncate font-mono text-xs' title={api.apiUrl ?? ''}>
-                    {api.apiUrl ?? api.endpoints[0]?.endpoint ?? '—'}
+                  {/* INT-1223：Master URL 移除，端点只取 api_endpoints 首个 */}
+                  <span className='text-muted-foreground block max-w-52 truncate font-mono text-xs' title={api.endpoints[0]?.endpoint ?? ''}>
+                    {api.endpoints[0]?.endpoint ?? '—'}
                   </span>
                 </td>
                 <td className='px-2 py-2.5'>

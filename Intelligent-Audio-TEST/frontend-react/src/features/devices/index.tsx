@@ -264,7 +264,7 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
       rows = rows.filter(
         (row) =>
           row.name.toLowerCase().includes(keyword) ||
-          (row.apiUrl ?? '').toLowerCase().includes(keyword) ||
+          // INT-1223：Master URL 移除，关键字过滤只走名称与端点列表
           row.endpoints.some((ep) => ep.endpoint.toLowerCase().includes(keyword))
       )
     }

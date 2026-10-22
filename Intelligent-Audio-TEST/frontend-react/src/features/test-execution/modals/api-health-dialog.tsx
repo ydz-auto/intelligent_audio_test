@@ -63,7 +63,8 @@ export function ApiHealthDialog({
 
             <dl className='text-muted-foreground grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs'>
               <dt>端点状态</dt>
-              <dd className='text-foreground'>{result.apiUrlStatus ?? '—'}</dd>
+              {/* INT-1223：api_url_status 移除，「端点状态」行绑 endpointsStatus */}
+              <dd className='text-foreground'>{result.endpointsStatus ?? '—'}</dd>
               <dt>HTTP 状态码</dt>
               <dd className='text-foreground font-mono'>{result.statusCode ?? '—'}</dd>
               <dt>响应时间</dt>

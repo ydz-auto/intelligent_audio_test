@@ -1,12 +1,13 @@
 /**
  * 新增/编辑 API 弹窗（§5.3；interfaces/features/test-execution/modals；Dialog sm:max-w-lg）。
- * RHF + zod：名称 / Master URL（可选，非空 URL 校验）/ 关联算法（Select，默认带全局算法）/ 最大并发 /
+ * RHF + zod：名称 / 关联算法（Select，默认带全局算法）/ 最大并发 /
  * 描述 / 密钥（password + 显隐 Eye）/ 其他配置（Textarea JSON，aria-invalid 红描边 +
- * 「JSON 格式不正确」）；主钮「保存」（进行中「保存中…」）；成功 toast「API 已保存」+
- * 列表失效重拉（api_config:create/update）。
+ * 「JSON 格式不正确」）/ 端点列表（唯一端点入口——INT-1223 移除 Master URL 后补齐端点编辑器，
+ * 保证从开始测试页可新建含端点的 API；复用 device-mutate-drawer 端点编辑器形态）；
+ * 主钮「保存」（进行中「保存中…」）；成功 toast「API 已保存」+ 列表失效重拉（api_config:create/update）。
  */
-import { Eye, EyeOff } from 'lucide-react'
-import { useState } from 'react'
+import { Eye, EyeOff, Plus, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -39,8 +40,6 @@ import { cn } from '@/lib/utils'
 const apiFormSchema = z.object({
   name: z.string().min(1, '请输入必填项'),
   apiKey: z.string().optional(),
-  /** Master 入口 URL（可选；api_endpoints 为主，空值提交侧归一 null；非空仍做 URL 校验） */
-  apiUrl: z.union([z.string().url('请输入合法的 URL（https://…）'), z.literal('')]).optional(),
   algorithmType: z.string().min(1, '请输入必填项'),
   maxProcess: z.number().int().min(1).max(128),
   description: z.string().optional(),
@@ -48,6 +47,27 @@ const apiFormSchema = z.object({
 })
 
 type ApiForm = z.infer<typeof apiFormSchema>
+
+/** 端点编辑行（INT-1223：复用 device-mutate-drawer 端点编辑器形态；ApiConfig 端点子集不含优先级/音频时长） */
+interface EndpointFormRow {
+  key: string
+  endpoint: string
+  name: string
+  maxProcess: string
+  maxTimeout: string
+}
+
+const ENDPOINT_EMPTY: EndpointFormRow = {
+  key: '',
+  endpoint: '',
+  name: '',
+  maxProcess: '1',
+  maxTimeout: '30',
+}
+
+function endpointKey(): string {
+  return Math.random().toString(36).slice(2, 9)
+}
 
 interface ApiEditDialogProps {
   open: boolean
@@ -62,13 +82,13 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
   const { data: algorithmOptions } = useTestAlgorithmOptions()
   const algorithmList = algorithmOptions ?? []
   const [showKey, setShowKey] = useState(false)
+  const [endpoints, setEndpoints] = useState<EndpointFormRow[]>([])
 
   const form = useForm<ApiForm>({
     resolver: zodResolver(apiFormSchema),
     values: {
       name: api?.name ?? '',
       apiKey: '',
-      apiUrl: api?.apiUrl ?? '',
       algorithmType:
         api?.algorithmType ??
         algorithmList.find((a) => a.id === globalAlgorithmId)?.name ??
@@ -78,6 +98,35 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
       otherConfig: '',
     },
   })
+
+  // 端点列表（唯一端点入口；编辑回显，关闭清空）
+  useEffect(() => {
+    if (open && api) {
+      setEndpoints(
+        (api.endpoints ?? []).map((ep) => ({
+          key: endpointKey(),
+          endpoint: ep.endpoint,
+          name: ep.name ?? '',
+          maxProcess: String(ep.maxProcess ?? 1),
+          maxTimeout: String(ep.maxTimeout ?? 30),
+        }))
+      )
+    } else if (!open) {
+      setEndpoints([])
+    }
+  }, [open, api])
+
+  const updateEndpoint = (key: string, patch: Partial<EndpointFormRow>) => {
+    setEndpoints((prev) => prev.map((row) => (row.key === key ? { ...row, ...patch } : row)))
+  }
+
+  const addEndpoint = () => {
+    setEndpoints((prev) => [...prev, { ...ENDPOINT_EMPTY, key: endpointKey() }])
+  }
+
+  const removeEndpoint = (key: string) => {
+    setEndpoints((prev) => prev.filter((row) => row.key !== key))
+  }
 
   const handleSave = async (values: ApiForm) => {
     // 其他配置 JSON 校验（现 configJson 口径加校验态）
@@ -92,11 +141,21 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
     await save({
       id: api?.id,
       name: values.name,
-      // INT-1223/1229：Master URL 可选，空值归一 null（防 update 覆盖既有 api_url）
-      apiUrl: values.apiUrl || null,
       algorithmType: values.algorithmType,
       defaultMaxProcess: values.maxProcess,
       description: values.description || null,
+      endpoints: endpoints
+        .filter((row) => row.endpoint.trim())
+        .map((row) => ({
+          id: null,
+          endpoint: row.endpoint.trim(),
+          name: row.name.trim() || null,
+          maxProcess: Number(row.maxProcess) || 1,
+          maxTimeout: Number(row.maxTimeout) || 30,
+          status: 'online',
+          healthScore: null,
+          description: null,
+        })),
     })
     onOpenChange(false)
   }
@@ -144,19 +203,6 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                 {showKey ? <EyeOff aria-hidden='true' className='size-4' /> : <Eye aria-hidden='true' className='size-4' />}
               </button>
             </div>
-          </div>
-
-          <div className='space-y-1.5'>
-            <Label htmlFor='api-url'>Master URL（可选）</Label>
-            <Input
-              id='api-url'
-              placeholder='https://…'
-              aria-invalid={Boolean(form.formState.errors.apiUrl)}
-              {...form.register('apiUrl')}
-            />
-            {form.formState.errors.apiUrl && (
-              <p className='text-destructive text-xs'>{form.formState.errors.apiUrl.message}</p>
-            )}
           </div>
 
           <div className='space-y-1.5'>
@@ -209,6 +255,80 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
             />
             {form.formState.errors.otherConfig && (
               <p className='text-destructive text-xs'>{form.formState.errors.otherConfig.message}</p>
+            )}
+          </div>
+
+          {/* 端点列表（INT-1223：Master URL 移除后唯一端点入口——保证从开始测试页可新建含端点的 API） */}
+          <div className='space-y-1.5'>
+            <div className='flex items-center justify-between'>
+              <Label>端点列表</Label>
+              <Button
+                type='button'
+                variant='outline'
+                size='sm'
+                className='h-7 gap-1 text-xs'
+                onClick={addEndpoint}
+              >
+                <Plus aria-hidden='true' className='size-3.5' />
+                添加端点
+              </Button>
+            </div>
+            {endpoints.length === 0 ? (
+              <p className='text-muted-foreground border-border/60 rounded-lg border border-dashed p-3 text-center text-xs'>
+                暂无端点，点击「添加端点」配置
+              </p>
+            ) : (
+              <div className='flex flex-col gap-2'>
+                {endpoints.map((row) => (
+                  <div key={row.key} className='border-border/60 flex flex-col gap-1.5 rounded-lg border p-2'>
+                    <div className='flex items-center gap-1.5'>
+                      <Input
+                        value={row.endpoint}
+                        onChange={(e) => updateEndpoint(row.key, { endpoint: e.target.value })}
+                        placeholder='https://…'
+                        className='h-7 flex-1 font-mono text-xs'
+                        aria-label='端点 URL'
+                      />
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='icon-sm'
+                        className='size-6 text-destructive'
+                        aria-label='删除端点'
+                        onClick={() => removeEndpoint(row.key)}
+                      >
+                        <X aria-hidden='true' className='size-3.5' />
+                      </Button>
+                    </div>
+                    <div className='grid grid-cols-3 gap-1.5'>
+                      <Input
+                        value={row.name}
+                        onChange={(e) => updateEndpoint(row.key, { name: e.target.value })}
+                        placeholder='名称'
+                        className='h-7 text-xs'
+                      />
+                      <Input
+                        value={row.maxProcess}
+                        type='number'
+                        min={1}
+                        max={100}
+                        onChange={(e) => updateEndpoint(row.key, { maxProcess: e.target.value })}
+                        placeholder='最大进程'
+                        className='h-7 text-xs'
+                      />
+                      <Input
+                        value={row.maxTimeout}
+                        type='number'
+                        min={1}
+                        max={300}
+                        onChange={(e) => updateEndpoint(row.key, { maxTimeout: e.target.value })}
+                        placeholder='超时(s)'
+                        className='h-7 text-xs'
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
 

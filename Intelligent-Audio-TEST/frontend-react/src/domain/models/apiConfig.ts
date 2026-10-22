@@ -1,8 +1,9 @@
 /**
  * API 配置域领域模型（domain 层；10_测试执行.md §9 落位）。
  * 形态对照 api_gateway/schemas/api.py ApiItem/ApiEndpointItem 实测：
- * id/name/vendor/api_url/description/status/meta/algorithm_type/default_max_process/
- * default_max_timeout/default_max_audio_duration/health_score/endpoints/device_type。
+ * id/name/vendor/description/status/meta/algorithm_type/default_max_process/
+ * default_max_timeout/default_max_audio_duration/health_score/endpoints/device_type
+ * （INT-1223：api_url 已前后端全量移除，api_endpoints 为唯一端点配置入口）。
  * 本卡消费子集（被测 API 表格 + 编辑弹窗），完整配置域模型归设备管理页 API 页签。
  */
 
@@ -21,7 +22,6 @@ export interface ApiConfig {
   id: number
   name: string
   vendor: string | null
-  apiUrl: string | null
   description: string | null
   /** 在线/离线（列表状态徽章；schema status 实测） */
   status: string | null
@@ -36,12 +36,11 @@ export interface ApiConfig {
   deviceType: string | null
 }
 
-/** API 连接测试结果（api.py ApiHealthCheckData 平移） */
+/** API 连接测试结果（api.py ApiHealthCheckData 平移；端点状态取 endpoints_status，INT-1223） */
 export interface ApiHealthCheckResult {
   id: number
   status: string
   healthScore: number | null
-  apiUrlStatus: string | null
   endpointsStatus: string | null
   statusCode: number | null
   responseTime: string | null

@@ -17,12 +17,11 @@ export interface ApiEndpointItemDto {
   description: string | null
 }
 
-/** GET /apis 列表项（api.py ApiItem；GET /apis 实测无后端权限门槛） */
+/** GET /apis 列表项（api.py ApiItem；GET /apis 实测无后端权限门槛；INT-1223：api_url 已前后端移除） */
 export interface ApiItemDto {
   id: number
   name: string
   vendor: string | null
-  api_url: string | null
   description: string | null
   status: string | null
   meta: Record<string, unknown>
@@ -44,12 +43,11 @@ export interface ApiItemDto {
   updated_at: string | null
 }
 
-/** POST /apis/{id}/health 结果（api.py ApiHealthCheckData） */
+/** POST /apis/{id}/health 结果（api.py ApiHealthCheckData；INT-1223：api_url_status 已移除，端点状态取 endpoints_status） */
 export interface ApiHealthCheckDataDto {
   id: number
   status: string
   health_score: number | null
-  api_url_status: string | null
   endpoints_status: string | null
   status_code: number | null
   response_time: string | null

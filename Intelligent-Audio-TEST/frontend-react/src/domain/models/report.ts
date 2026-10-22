@@ -171,12 +171,11 @@ export interface ReportDeviceInfo {
   last_online_at?: string
 }
 
-/** report.py ReportApiInfo（报告快照 API 信息） */
+/** report.py ReportApiInfo（报告快照 API 信息；INT-1223：api_url 前后端移除，死字段一并删除） */
 export interface ReportApiInfo {
   id: number
   name: string
   vendor?: string
-  api_url?: string
   description?: string
   status?: string
   max_process?: number

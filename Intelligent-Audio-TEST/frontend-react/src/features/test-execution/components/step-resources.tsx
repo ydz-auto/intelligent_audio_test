@@ -143,7 +143,8 @@ export function StepResources({
         if (protocolFilter === 'http' && isWs) return false
       }
       if (q) {
-        const haystack = `${a.name} ${a.apiUrl ?? ''}`.toLowerCase()
+        // INT-1223：Master URL 移除，搜索 haystack 只含名称与首个端点
+        const haystack = `${a.name} ${a.endpoints[0]?.endpoint ?? ''}`.toLowerCase()
         if (!haystack.includes(q)) return false
       }
       return true

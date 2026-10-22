@@ -351,7 +351,6 @@ function toApiDeviceUpsertDto(data: Partial<ApiDevice>): Record<string, unknown>
   }
   pick('name', 'name')
   pick('vendor', 'vendor')
-  pick('apiUrl', 'api_url')
   pick('description', 'description')
   pick('meta', 'meta')
   pick('algorithmType', 'algorithm_type')

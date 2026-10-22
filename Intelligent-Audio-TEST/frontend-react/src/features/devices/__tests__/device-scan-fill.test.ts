@@ -121,7 +121,7 @@ describe('mergeScanPrefill（INT-1029 抽屉内扫描回填）', () => {
   })
 
   it('api 页签：不落任何回填（API 不支持扫描，§11-11）', () => {
-    const current = { kind: 'api', name: '语音识别 API', apiUrl: 'https://api.example.com' }
+    const current = { kind: 'api', name: '语音识别 API' }
     const { form, reset } = makeForm(current)
     mergeScanPrefill(form, 'api', {} as Partial<TestDevice>)
     expect(reset).not.toHaveBeenCalled()

@@ -267,7 +267,6 @@ export async function stopApiTest(apiId: number): Promise<void> {
 function toApiInputDto(input: Partial<ApiConfig> & { name: string }): Record<string, unknown> {
   const result: Record<string, unknown> = { name: input.name }
   if (input.vendor !== undefined) result.vendor = input.vendor
-  if (input.apiUrl !== undefined) result.api_url = input.apiUrl
   if (input.description !== undefined) result.description = input.description
   if (input.algorithmType !== undefined) result.algorithm_type = input.algorithmType
   if (input.defaultMaxProcess !== undefined) result.default_max_process = input.defaultMaxProcess

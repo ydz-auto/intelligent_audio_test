@@ -21,7 +21,6 @@ export interface ApiDevice {
   id: number
   name: string
   vendor: string | null
-  apiUrl: string | null
   description: string | null
   /** 在线/离线（§3.6 状态徽章 在线=success/离线=neutral） */
   status: string | null

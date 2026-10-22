@@ -133,7 +133,8 @@ export function DeviceDetailDialog(props: DeviceDetailDialogProps) {
             {kind === 'api' && apiDevice && (
               <section className='flex flex-col gap-1.5'>
                 <h3 className='text-sm font-medium'>接口信息</h3>
-                <Row label='API 端点' value={apiDevice.apiUrl} />
+                {/* INT-1223：Master URL 移除，端点只展示 api_endpoints（首个端点；多端点见列表/编辑抽屉） */}
+                <Row label='端点' value={apiDevice.endpoints[0]?.endpoint} />
                 <Row label='供应商' value={apiDevice.vendor} />
                 <Row label='算法' value={apiDevice.algorithmType} />
                 <Row label='默认并发' value={apiDevice.defaultMaxProcess} />

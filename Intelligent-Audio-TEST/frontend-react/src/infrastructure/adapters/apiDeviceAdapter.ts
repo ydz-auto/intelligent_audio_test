@@ -2,7 +2,9 @@
  * 被测 API DTO→Domain 适配器（infrastructure/adapters 层；16_设备域.md §3.6/§10）。
  * 消费 apis.dto.ts ApiItemDto（全字段），产出设备管理页 API 页签全量 ApiDevice 模型。
  * meta.protocol/meta.environment 从 meta JSON 抽取（§3.6 协议/环境列）；未显式标注时按
- * api_url 协议前缀兜底（http→http、ws→ws）。
+ * 首个 endpoint 协议前缀兜底（http→http、ws→ws），覆盖有端点但 meta 无 protocol 的存量记录
+ * （INT-1223：api_url 已移除，协议推断改 meta.protocol / 端点前缀两来源；
+ * 无端点且无 meta.protocol → protocol 为 null，列表显示「—」）。
  */
 import type { ApiDevice, ApiEndpoint } from '@/domain/models/apiDevice'
 import type { ApiItemDto } from '@/infrastructure/dto/apis.dto'
@@ -12,12 +14,12 @@ function readMetaString(meta: Record<string, unknown>, key: string): string | nu
   return typeof value === 'string' && value ? value : null
 }
 
-function fallbackProtocol(apiUrl: string | null): string | null {
-  if (!apiUrl) return null
-  if (/^wss:\/\//i.test(apiUrl)) return 'wss'
-  if (/^ws:\/\//i.test(apiUrl)) return 'ws'
-  if (/^https:\/\//i.test(apiUrl)) return 'https'
-  if (/^http:\/\//i.test(apiUrl)) return 'http'
+function fallbackProtocol(endpoint: string | null): string | null {
+  if (!endpoint) return null
+  if (/^wss:\/\//i.test(endpoint)) return 'wss'
+  if (/^ws:\/\//i.test(endpoint)) return 'ws'
+  if (/^https:\/\//i.test(endpoint)) return 'https'
+  if (/^http:\/\//i.test(endpoint)) return 'http'
   return null
 }
 
@@ -40,11 +42,10 @@ export function apiDeviceFromDto(dto: ApiItemDto): ApiDevice {
     id: dto.id,
     name: dto.name,
     vendor: dto.vendor,
-    apiUrl: dto.api_url,
     description: dto.description,
     status: dto.status,
     meta: dto.meta,
-    protocol: metaProtocol ?? fallbackProtocol(dto.api_url),
+    protocol: metaProtocol ?? fallbackProtocol(dto.endpoints[0]?.endpoint ?? null),
     environment: metaEnv,
     proxyType: dto.proxy_type ?? null,
     proxyUrl: dto.proxy_url ?? null,

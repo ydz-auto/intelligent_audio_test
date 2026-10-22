@@ -225,7 +225,6 @@ function buildDefaults(
     name: device?.name ?? '',
     description: device?.description ?? '',
     vendor: device?.vendor ?? '',
-    apiUrl: device?.apiUrl ?? '',
     protocol: device?.protocol ?? 'https',
     environment: device?.environment ?? 'testing',
     proxyType: device?.proxyType ?? '',
@@ -453,8 +452,6 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
           name: values.name.trim(),
           description: values.description?.trim() || null,
           vendor: values.vendor?.trim() || null,
-          // INT-1223/1229：Master URL 可选，空值归一 null（防 update 覆盖既有 api_url）
-          apiUrl: values.apiUrl?.trim() || null,
           protocol: values.protocol,
           environment: values.environment || null,
           meta: { protocol: values.protocol, environment: values.environment },
@@ -934,11 +931,7 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                 <p className='text-muted-foreground text-xs'>
                   代理地址格式：user:pass@host:port（不含 http:// 前缀）；选择代理类型后必填。
                 </p>
-                {/* Master URL（可选兜底，INT-1223/1229：api_endpoints 为 API 主配置入口） */}
-                <Field label='Master URL（可选）' error={errors.apiUrl?.message}>
-                  <Input {...form.register('apiUrl')} placeholder='https://api.example.com/v1/asr' className='h-8' />
-                </Field>
-                {/* 端点列表（§6.2 apiEndpoint ArrayField：URL / 名称 / 优先级 / 最大进程 / 超时 / 音频时长） */}
+                {/* 端点列表（§6.2 apiEndpoint ArrayField：URL / 名称 / 优先级 / 最大进程 / 超时 / 音频时长；INT-1223：Master URL 移除，端点列表为唯一入口） */}
                 <div className='flex flex-col gap-2'>
                   <div className='flex items-center justify-between'>
                     <Label className='text-xs'>端点列表</Label>
