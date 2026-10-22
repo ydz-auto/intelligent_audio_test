@@ -283,11 +283,20 @@ export function toDimensionInputDto(data: Partial<Dimension>): Record<string, un
   if (data.outputFields !== undefined) {
     const fields = Array.isArray(data.outputFields) ? data.outputFields : []
     result.output_fields = fields.map((item) => ({
-      name: item.paramCode,
+      // INT-1350：后端 _save_output_params 只读 param_code（无 key/name 兜底），
+      // 之前误映射为 name → param_code 恒空 → 输出字段静默丢弃。对齐 required_inputs
+      // 的 param_code 口径，并补齐 _save_output_params 全部读取键。
+      param_code: item.paramCode,
+      param_name: item.paramName,
       label: item.label,
+      field_path: item.fieldPath,
+      field_type: item.fieldType,
       output_role: item.outputRole,
       agg_role: item.aggRole,
       default_value: item.defaultValue,
+      visible_in_report: item.visibleInReport,
+      help_text: item.helpText,
+      ui_order: item.uiOrder,
     }))
   }
   if (data.statisticMethod !== undefined) result.statistic_method = data.statisticMethod
