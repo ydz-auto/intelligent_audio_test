@@ -242,14 +242,76 @@ describe('algorithm-config-api（真实端点接线）', () => {
     expect(result).toEqual({ success: true })
   })
 
-  it('bulkDeleteAlgorithms 提交 algorithm_types 并按 deleted_types 对账计数', async () => {
-    mockRequest.mockResolvedValue({ deleted_types: ['tts-brand-new'], message: '' })
+  it('bulkDeleteAlgorithms 提交 algorithm_types，并逐类型复核详情（INT-1316）', async () => {
+    // 后端 bulk-delete 报成功但记录残留（真实栈 soft_delete 未生效），详情仍 200 → 回退单删
+    mockRequest.mockImplementation((method: string, path: string) => {
+      if (method === 'POST' && path === '/algorithm/bulk-delete') {
+        return Promise.resolve({ deleted_types: ['asr-v3', 'tts-brand-new'], message: '' })
+      }
+      if (method === 'GET' && path === '/algorithm/definitions/asr-v3') {
+        return Promise.resolve(definitionDto('asr-v3'))
+      }
+      if (method === 'GET' && path === '/algorithm/definitions/tts-brand-new') {
+        return Promise.resolve(definitionDto('tts-brand-new'))
+      }
+      if (method === 'DELETE' && path === '/algorithm/definitions/asr-v3') {
+        return Promise.resolve(undefined)
+      }
+      if (method === 'DELETE' && path === '/algorithm/definitions/tts-brand-new') {
+        return Promise.resolve(undefined)
+      }
+      return Promise.reject(new ApiError({ httpStatus: 500, message: 'unexpected' }))
+    })
     const result = await bulkDeleteAlgorithms(['asr-v3', 'tts-brand-new'])
     expect(mockRequest).toHaveBeenCalledWith(
       'POST',
       '/algorithm/bulk-delete',
       { algorithm_types: ['asr-v3', 'tts-brand-new'] }
     )
+    // 批量残留两条 → 回退单删两条成功 → 实际成功 2、失败 0（不再盲信 deleted_types）
+    expect(mockRequest).toHaveBeenCalledWith('DELETE', '/algorithm/definitions/asr-v3')
+    expect(mockRequest).toHaveBeenCalledWith('DELETE', '/algorithm/definitions/tts-brand-new')
+    expect(result).toEqual({ successCount: 2, failedCount: 0 })
+  })
+
+  it('bulkDeleteAlgorithms 批量已生效（详情 400 not-found）不再回退单删', async () => {
+    mockRequest.mockImplementation((method: string, path: string) => {
+      if (method === 'POST' && path === '/algorithm/bulk-delete') {
+        return Promise.resolve({ deleted_types: ['asr-v3', 'tts-brand-new'], message: '' })
+      }
+      if (method === 'GET' && path.startsWith('/algorithm/definitions/')) {
+        return Promise.reject(new ApiError({ httpStatus: 400, message: 'Algorithm not found' }))
+      }
+      return Promise.resolve(undefined)
+    })
+    const result = await bulkDeleteAlgorithms(['asr-v3', 'tts-brand-new'])
+    expect(mockRequest).toHaveBeenCalledWith(
+      'POST',
+      '/algorithm/bulk-delete',
+      { algorithm_types: ['asr-v3', 'tts-brand-new'] }
+    )
+    expect(mockRequest).not.toHaveBeenCalledWith('DELETE', '/algorithm/definitions/asr-v3')
+    expect(result).toEqual({ successCount: 2, failedCount: 0 })
+  })
+
+  it('bulkDeleteAlgorithms 回退单删失败计入 failedCount（INT-1316）', async () => {
+    mockRequest.mockImplementation((method: string, path: string) => {
+      if (method === 'POST' && path === '/algorithm/bulk-delete') {
+        return Promise.resolve({ deleted_types: ['asr-v3'], message: '' })
+      }
+      if (method === 'GET' && path === '/algorithm/definitions/asr-v3') {
+        return Promise.resolve(definitionDto('asr-v3'))
+      }
+      if (method === 'GET' && path === '/algorithm/definitions/tts-brand-new') {
+        return Promise.reject(new ApiError({ httpStatus: 400, message: 'Algorithm not found' }))
+      }
+      if (method === 'DELETE' && path === '/algorithm/definitions/asr-v3') {
+        return Promise.reject(new ApiError({ httpStatus: 500, message: 'delete failed' }))
+      }
+      return Promise.resolve(undefined)
+    })
+    const result = await bulkDeleteAlgorithms(['asr-v3', 'tts-brand-new'])
+    // asr-v3 残留且单删失败 → 失败 1；tts-brand-new 已删 → 成功
     expect(result).toEqual({ successCount: 1, failedCount: 1 })
   })
 

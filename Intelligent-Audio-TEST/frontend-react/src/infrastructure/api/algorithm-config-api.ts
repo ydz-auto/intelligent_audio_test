@@ -39,7 +39,6 @@ import {
   toAlgorithmGroupList,
   toAlgorithmGroupDto,
   toBulkDeleteDto,
-  toBulkDeleteResult,
   toDimensionParam,
   toImportDto,
   toImportResult,
@@ -228,17 +227,53 @@ export async function deleteAlgorithm(
   return { success: true }
 }
 
-/** 批量删除（§7.8；POST /algorithm/bulk-delete，deleted_types 对账计数） */
+/** 批量删除（§7.8；POST /algorithm/bulk-delete，deleted_types 对账计数）。
+ * INT-1316：真实栈 bulk-delete 后端 soft_delete 未生效（报成功但记录残留，单删正常），
+ * 批量后逐类型复核详情，仍存在的记录回退单条删除，计数以实际落删为准。 */
 export async function bulkDeleteAlgorithms(types: string[]): Promise<{
   successCount: number
   failedCount: number
 }> {
-  const dto = await request<AlgorithmBulkDeleteResultDto>(
+  const requested = [...new Set(types.filter(Boolean))]
+  if (requested.length === 0) return { successCount: 0, failedCount: 0 }
+
+  // 1) 批量软删（后端正常时一次完成）
+  await request<AlgorithmBulkDeleteResultDto>(
     'POST',
     '/algorithm/bulk-delete',
-    toBulkDeleteDto(types)
+    toBulkDeleteDto(requested)
   )
-  return toBulkDeleteResult(dto, types)
+
+  // 2) INT-1316 复核：deleted_types 不可信（真实栈批量软删未生效），逐类型查详情，
+  //    仍存在的类型回退单条删除（单删可靠），计数以实际落删为准
+  const existsFlags = await Promise.all(
+    requested.map((type) => algorithmStillExists(type))
+  )
+  const stillPresent = requested.filter((_, index) => existsFlags[index])
+
+  const fallbackResults = await Promise.all(
+    stillPresent.map(async (type) => {
+      try {
+        await deleteAlgorithm(type)
+        return true
+      } catch {
+        return false
+      }
+    })
+  )
+  const failedCount = fallbackResults.filter((ok) => !ok).length
+  return { successCount: requested.length - failedCount, failedCount }
+}
+
+/** 算法是否仍存在（detail 200 且 type 非空 → 存在；404/400-not-found → 已删） */
+async function algorithmStillExists(type: string): Promise<boolean> {
+  try {
+    const detail = await fetchAlgorithmDetail(type)
+    return detail != null && detail.type !== ''
+  } catch (error) {
+    if (isAlgorithmNotFound(error)) return false
+    throw error
+  }
 }
 
 /** 重载配置（§7.7；POST /algorithm/reload） */

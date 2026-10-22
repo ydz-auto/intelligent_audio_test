@@ -223,7 +223,13 @@ export function AlgorithmConfigPage() {
         toast.success('配置已重载')
       } else if (confirm.kind === 'bulk-delete') {
         const result = await bulkRemove.mutateAsync(confirm.types)
-        toast.success(`成功删除 ${result.successCount} 个算法，失败 ${result.failedCount} 个`)
+        if (result.failedCount > 0) {
+          toast.error(
+            `成功删除 ${result.successCount} 个算法，失败 ${result.failedCount} 个，请刷新核对`
+          )
+        } else {
+          toast.success(`成功删除 ${result.successCount} 个算法`)
+        }
         setSelectedIds(new Set())
       }
       setConfirm(null)
