@@ -174,10 +174,12 @@ class BaseConfig:
     # --- gRPC 客户端收发消息上限（MB，INT-1292）---
     # grpcio 客户端默认收包上限 4MiB：大响应 RPC（任务导出 23MB 包、报告/评估
     # 只读导出）在客户端收不下 → RESOURCE_EXHAUSTED。统一放大到
-    # GRPC_MAX_MESSAGE_MB（默认 16MB，与 transfer_agent.TRANSFER_GRPC_MAX_MESSAGE_MB
-    # 默认一致；服务端已按该值放大，客户端 stub 侧须同步设置）。服务端 send 上限
-    # 默认不受 4MB 限制（实测可发送 >30MB），故只需客户端侧放开。
-    GRPC_MAX_MESSAGE_MB: int = _get_int('GRPC_MAX_MESSAGE_MB', 16)
+    # GRPC_MAX_MESSAGE_MB。默认 64MB：INT-1292 实测任务 419 导出跨服务响应
+    # ExportDimensionsForTasks 23,448,131B / ExportReportsForTasks 20,439,856B，
+    # 16MB（对齐 transfer_agent 分片口径 TRANSFER_GRPC_MAX_MESSAGE_MB）仍收不下；
+    # 64MB 覆盖最大实测单响应并留余量。服务端 send 上限默认不受 4MB 限制
+    # （实测可发送 >30MB），故只需客户端侧放开。
+    GRPC_MAX_MESSAGE_MB: int = _get_int('GRPC_MAX_MESSAGE_MB', 64)
 
     # --- 回收站保留期（INT-141）：软删除记录保留天数，过期由各服务
     # SoftDeleteCleaner 守护线程硬清理（定时调度走既有执行引擎/守护线程，
