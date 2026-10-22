@@ -278,16 +278,27 @@ export async function fetchPickableDevices(): Promise<{ id: number; name: string
   return [...map].map(([id, name]) => ({ id, name }))
 }
 
-/** 未筛选候选（筛选选项数据源；30s 会话缓存，避免三处选项各拉一次全量） */
+/** 未筛选候选（筛选选项数据源；30s 会话缓存，避免三处选项各拉一次全量）。
+ *  INT-1280：并发在途合并为同一 promise，向导挂载时三处选项不再各发起一条
+ *  candidates 慢查询（真实库 10–45s），改为共享一次结果。 */
 let baseCandidatesCache: { data: CherryPickCandidate[]; ts: number } | null = null
+let baseCandidatesPromise: Promise<CherryPickCandidate[]> | null = null
 
 async function fetchBaseCandidates(): Promise<CherryPickCandidate[]> {
   if (baseCandidatesCache && Date.now() - baseCandidatesCache.ts < 30_000) {
     return baseCandidatesCache.data
   }
-  const items = await fetchCherryPickCandidates({})
-  baseCandidatesCache = { data: items, ts: Date.now() }
-  return items
+  if (!baseCandidatesPromise) {
+    baseCandidatesPromise = fetchCherryPickCandidates({})
+      .then((items) => {
+        baseCandidatesCache = { data: items, ts: Date.now() }
+        return items
+      })
+      .finally(() => {
+        baseCandidatesPromise = null
+      })
+  }
+  return baseCandidatesPromise
 }
 
 /** 测试用：重置会话缓存（vitest / 走查隔离） */

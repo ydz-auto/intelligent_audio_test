@@ -48,6 +48,7 @@ import {
   getTaskStatusOrder,
   type PickTaskRow,
 } from '@/features/tasks/cherry-pick/components/pick-task-stage'
+import { SlowCandidatesNotice } from '@/features/tasks/cherry-pick/components/slow-candidates-notice'
 import { PickCaseView } from '@/features/tasks/cherry-pick/components/pick-case-view'
 import {
   PickCaseOrgControls,
@@ -209,8 +210,9 @@ export function PickStep({
         tasks={taskRows}
         selectedTaskIds={selectedTaskIds}
         loading={allCandidatesQuery.isLoading}
+        slow={allCandidatesQuery.isSlow}
         isError={allCandidatesQuery.isError}
-        onRetry={() => void allCandidatesQuery.refetch()}
+        onRetry={allCandidatesQuery.retryCandidates}
         onToggle={(taskId) =>
           setSelectedTaskIds((prev) => {
             const next = new Set(prev)
@@ -309,11 +311,15 @@ export function PickStep({
 
       <div className='min-h-0 flex-1 overflow-auto rounded-lg border'>
         {candidatesQuery.isLoading ? (
-          <div className='flex flex-col gap-2 p-3'>
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} className='h-9 w-full' />
-            ))}
-          </div>
+          candidatesQuery.isSlow ? (
+            <SlowCandidatesNotice onRetry={candidatesQuery.retryCandidates} />
+          ) : (
+            <div className='flex flex-col gap-2 p-3'>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className='h-9 w-full' />
+              ))}
+            </div>
+          )
         ) : candidatesQuery.isError ? (
           <div className='flex flex-col items-center gap-2 py-10 text-center'>
             <TriangleAlert aria-hidden='true' className='text-destructive size-6' />

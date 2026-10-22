@@ -30,6 +30,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PickTree } from '@/features/tasks/cherry-pick/components/pick-tree'
+import { SlowCandidatesNotice } from '@/features/tasks/cherry-pick/components/slow-candidates-notice'
 import { EMPTY_PICK_FILTERS } from '@/application/tasks/cherry-pick/use-cherry-pick-candidates'
 
 export function PickDialog({
@@ -105,11 +106,15 @@ export function PickDialog({
         </DialogHeader>
 
         {candidatesQuery.isLoading ? (
-          <div className='flex flex-col gap-2 py-2'>
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className='h-9 w-full' />
-            ))}
-          </div>
+          candidatesQuery.isSlow ? (
+            <SlowCandidatesNotice onRetry={candidatesQuery.retryCandidates} />
+          ) : (
+            <div className='flex flex-col gap-2 py-2'>
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className='h-9 w-full' />
+              ))}
+            </div>
+          )
         ) : candidatesQuery.isError ? (
           <div className='flex flex-col items-center gap-2 px-2 py-6 text-center'>
             <TriangleAlert aria-hidden='true' className='text-destructive size-6' />

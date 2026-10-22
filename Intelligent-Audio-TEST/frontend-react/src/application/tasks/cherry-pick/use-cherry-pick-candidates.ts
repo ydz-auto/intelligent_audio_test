@@ -2,8 +2,8 @@
  * 候选查询 hook（application/tasks/cherry-pick，18_挑选合并交互重设计.md §7.2，INT-600）。
  * filters + revision → useQuery；由平铺候选行重建挑选树（§11-3 落地前前端重建）。
  */
-import { useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { usePickCartStore } from '@/application/tasks/cherry-pick/use-pick-cart-store'
 import type { CherryPickCandidate } from '@/domain/models/cherryPick'
@@ -59,10 +59,46 @@ function toApiFilters(filters: PickFilters): CherryPickFilters {
   }
 }
 
+/** 候选查询慢加载阈值（INT-1280）：真实库 3614 行下 candidates 单查 10–45s；
+ *  超过阈值仍无数据 → UI 给出可重试提示，替代无限骨架屏。 */
+export const SLOW_CANDIDATES_THRESHOLD_MS = 15_000
+
+/** 慢加载探测：fetching 持续超过阈值 → isSlow；restartSlow 重启计时（重试后）；
+ *  fetchKey 变化（筛选条件/查询键切换）同样重启计时，避免慢提示跨查询残留。 */
+export function useSlowPending(
+  fetching: boolean,
+  thresholdMs = SLOW_CANDIDATES_THRESHOLD_MS,
+  fetchKey?: string
+) {
+  const [isSlow, setIsSlow] = useState(false)
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    if (!fetching) {
+      setIsSlow(false)
+      return
+    }
+    setIsSlow(false)
+    const timer = window.setTimeout(() => setIsSlow(true), thresholdMs)
+    return () => window.clearTimeout(timer)
+  }, [fetching, thresholdMs, tick, fetchKey])
+  const restartSlow = useCallback(() => setTick((t) => t + 1), [])
+  return { isSlow, restartSlow }
+}
+
 /** 候选行查询（多条件 AND）；用例名慢路径背景拉取，就绪后二次装饰 caseName（§11-2 降级 → 名称） */
 export function useCherryPickCandidates(filters: PickFilters) {
+  const queryClient = useQueryClient()
+  // INT-1280：retryNonce 进入查询键——无数据慢查询的 refetch 会被 query-core 去重到在途
+  // retryer 而不重发（见 query.fetch「仅已有数据才 cancelRefetch」），重试必须换键生成全新查询。
+  const [retryNonce, setRetryNonce] = useState(0)
+  const candidatesQueryKey = [
+    'cherry-pick',
+    'candidates',
+    toApiFilters(filters),
+    retryNonce,
+  ] as const
   const candidatesQuery = useQuery({
-    queryKey: ['cherry-pick', 'candidates', toApiFilters(filters)],
+    queryKey: candidatesQueryKey,
     queryFn: () => fetchCherryPickCandidates(toApiFilters(filters)),
     staleTime: 15_000,
   })
@@ -71,6 +107,18 @@ export function useCherryPickCandidates(filters: PickFilters) {
     queryFn: fetchPickCaseNames,
     staleTime: 5 * 60_000,
   })
+  // INT-1280：候选在途超阈值 → isSlow，UI 给可重试反馈而非无限骨架屏
+  const { isSlow, restartSlow } = useSlowPending(
+    candidatesQuery.isFetching,
+    SLOW_CANDIDATES_THRESHOLD_MS,
+    `${JSON.stringify(toApiFilters(filters))}:${retryNonce}`
+  )
+  const retryCandidates = () => {
+    // 中止旧在途请求（避免其继续耗后端聚合），再换 key 强制全新查询重发
+    restartSlow()
+    void queryClient.cancelQueries({ queryKey: candidatesQueryKey })
+    setRetryNonce((n) => n + 1)
+  }
   const data = useMemo(() => {
     let rows = candidatesQuery.data
     const caseNames = caseNamesQuery.data
@@ -92,7 +140,7 @@ export function useCherryPickCandidates(filters: PickFilters) {
     }
     return rows
   }, [candidatesQuery.data, caseNamesQuery.data, filters.search])
-  return { ...candidatesQuery, data }
+  return { ...candidatesQuery, data, isSlow, retryCandidates }
 }
 
 /** 筛选器选项（来源任务/设备/结果类型，动态选项数据源 §3.4） */

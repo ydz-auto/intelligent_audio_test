@@ -97,4 +97,18 @@ describe('PickTaskStage（§3.8.2 阶段 1 选择任务）', () => {
     setup(new Set(), { tasks: [] })
     expect(screen.getByText('暂无可挑选的终态任务')).toBeInTheDocument()
   })
+
+  it('加载慢（超过阈值仍无数据）：替代骨架屏给出可重试反馈，点「重新加载」触发 onRetry', () => {
+    const { onRetry } = setup(new Set(), { loading: true, slow: true })
+    expect(screen.getByText('候选数据较多或后端繁忙，加载较慢')).toBeInTheDocument()
+    expect(screen.getByText('仍在加载中，可继续等待或重新加载')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '重新加载' }))
+    expect(onRetry).toHaveBeenCalledTimes(1)
+  })
+
+  it('加载中未超时：显示骨架屏（无慢提示）', () => {
+    setup(new Set(), { loading: true })
+    expect(screen.queryByText('候选数据较多或后端繁忙，加载较慢')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '重新加载' })).not.toBeInTheDocument()
+  })
 })

@@ -13,6 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
+import { SlowCandidatesNotice } from '@/features/tasks/cherry-pick/components/slow-candidates-notice'
 import { formatPickDateTime } from '@/features/tasks/cherry-pick/constants'
 import { cn } from '@/lib/utils'
 
@@ -29,6 +30,8 @@ export interface PickTaskStageProps {
   tasks: PickTaskRow[]
   selectedTaskIds: ReadonlySet<number>
   loading: boolean
+  /** 加载超过阈值仍未就绪（INT-1280 慢加载 → 可重试反馈而非无限骨架屏） */
+  slow?: boolean
   isError: boolean
   onRetry: () => void
   onToggle: (taskId: number) => void
@@ -56,6 +59,7 @@ export function PickTaskStage({
   tasks,
   selectedTaskIds,
   loading,
+  slow = false,
   isError,
   onRetry,
   onToggle,
@@ -97,11 +101,15 @@ export function PickTaskStage({
 
       <div className='min-h-0 flex-1 overflow-auto rounded-lg border'>
         {loading ? (
-          <div className='flex flex-col gap-2 p-3'>
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} className='h-9 w-full' />
-            ))}
-          </div>
+          slow ? (
+            <SlowCandidatesNotice onRetry={onRetry} />
+          ) : (
+            <div className='flex flex-col gap-2 p-3'>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className='h-9 w-full' />
+              ))}
+            </div>
+          )
         ) : isError ? (
           <div className='flex flex-col items-center gap-2 py-10 text-center'>
             <TriangleAlert aria-hidden='true' className='text-destructive size-6' />
