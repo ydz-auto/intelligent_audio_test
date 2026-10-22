@@ -12,6 +12,7 @@ import io
 import logging
 import threading
 from typing import Optional, BinaryIO
+from urllib.parse import urlsplit, urlunsplit
 
 import boto3
 from botocore.config import Config as BotoConfig
@@ -20,6 +21,23 @@ from botocore.exceptions import ClientError
 from shared.infrastructure.config import BaseConfig
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_endpoint(endpoint: str) -> str:
+    """统一 OSS endpoint 宿主地址（INT-1348）。
+
+    localhost 常同时解析到 ::1 与 127.0.0.1；OSS（RustFS）只绑 IPv4 时，
+    boto3 走 ::1 的 SYN 悬挂到超时（delete_object 60s 阻塞的根因之一）。
+    统一改写为 127.0.0.1 消除解析歧义；非 localhost 端点原样返回。
+    """
+    if not endpoint:
+        return endpoint
+    parts = urlsplit(endpoint)
+    if parts.hostname != 'localhost':
+        return endpoint
+    host = '127.0.0.1'
+    netloc = f'{host}:{parts.port}' if parts.port else host
+    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
 
 
 class OSSClient:
@@ -56,10 +74,10 @@ class OSSClient:
             self._initialized = True
 
     def is_available(self) -> bool:
-        """探测 OSS 是否可用（head_bucket 探活）。"""
+        """探测 OSS 是否可用（head_bucket 探活，走管理类短超时快速失败）。"""
         try:
             self._ensure_init()
-            self._client.head_bucket(Bucket=self._bucket('audios'))
+            self._admin_client.head_bucket(Bucket=self._bucket('audios'))
             return True
         except Exception:
             return False
@@ -68,17 +86,18 @@ class OSSClient:
         """连通性自检（INT-84）：head_bucket 探活，返回 (是否可用, 失败原因)。
 
         与 is_available 的差异：携带失败原因，供启动自检一次性输出诊断信息
-        （凭据/endpoint 配置错误时指向问题，而非静默 False）。
+        （凭据/endpoint 配置错误时指向问题，而非静默 False）。走管理类短超时。
         """
         try:
             self._ensure_init()
-            self._client.head_bucket(Bucket=self._bucket('audios'))
+            self._admin_client.head_bucket(Bucket=self._bucket('audios'))
             return True, ''
         except Exception as e:
             return False, str(e)
 
     def _init(self):
-        endpoint = BaseConfig.OSS_ENDPOINT
+        # INT-1348：localhost 统一改写 127.0.0.1，避免 ::1/IPv4 解析歧义悬挂
+        endpoint = _normalize_endpoint(BaseConfig.OSS_ENDPOINT)
         access_key = BaseConfig.OSS_ACCESS_KEY
         secret_key = BaseConfig.OSS_SECRET_KEY
         if not access_key or not secret_key:
@@ -93,6 +112,25 @@ class OSSClient:
                 retries={'max_attempts': 3, 'mode': 'standard'},
                 connect_timeout=5,
                 read_timeout=60,
+            ),
+            region_name=BaseConfig.OSS_REGION,
+        )
+
+        # 管理类短超时客户端（INT-1348）：delete_object/exists/delete_prefix 等
+        # 管理操作对超时不敏感，复用长 read_timeout（60s）× 3 次重试会在 OSS
+        # 不可达/响应慢时把调用悬挂到网关 gRPC 60s 截止之后（DEADLINE_EXCEEDED
+        # 400，DB 记录已删但响应超时）。独立短超时客户端快速失败，由上层
+        # try/except 兜底保证业务操作照常进行。
+        self._admin_client = boto3.client(
+            's3',
+            endpoint_url=endpoint,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            config=BotoConfig(
+                retries={'max_attempts': BaseConfig.OSS_ADMIN_MAX_ATTEMPTS,
+                         'mode': 'standard'},
+                connect_timeout=BaseConfig.OSS_ADMIN_CONNECT_TIMEOUT_SECONDS,
+                read_timeout=BaseConfig.OSS_ADMIN_READ_TIMEOUT_SECONDS,
             ),
             region_name=BaseConfig.OSS_REGION,
         )
@@ -276,22 +314,22 @@ class OSSClient:
     # ---- 管理 ----
 
     def exists(self, category: str, key: str) -> bool:
-        """检查对象是否存在"""
+        """检查对象是否存在（走管理类短超时快速失败）。"""
         self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
         try:
-            self._client.head_object(Bucket=bucket, Key=full_key)
+            self._admin_client.head_object(Bucket=bucket, Key=full_key)
             return True
         except ClientError:
             return False
 
     def delete(self, category: str, key: str):
-        """删除对象"""
+        """删除对象（走管理类短超时快速失败，INT-1348）"""
         self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
-        self._client.delete_object(Bucket=bucket, Key=full_key)
+        self._admin_client.delete_object(Bucket=bucket, Key=full_key)
 
     def list_objects(self, category: str, prefix: str = '') -> list:
         """列出对象 key 列表（返回逻辑 key，已去掉前缀）"""
@@ -418,21 +456,26 @@ class OSSClient:
         return resp.get('Parts', [])
 
     def delete_object(self, category: str, key: str):
-        """删除单个对象"""
+        """删除单个对象。
+
+        INT-1348：走管理类短超时客户端——OSS 不可达/响应慢时数秒内快速失败
+        （主客户端 read_timeout=60×3 次重试会把调用悬挂到网关 gRPC 截止之后）。
+        删除是尽力而为，由上层 try/except 兜底保证业务记录删除照常进行。
+        """
         self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
-        self._client.delete_object(Bucket=bucket, Key=full_key)
+        self._admin_client.delete_object(Bucket=bucket, Key=full_key)
 
     def delete_prefix(self, category: str, prefix: str):
-        """批量删除指定前缀下的所有对象"""
+        """批量删除指定前缀下的所有对象（走管理类短超时快速失败）。"""
         self._ensure_init()
         bucket = self._bucket(category)
         full_prefix = self._full_key(category, prefix)
-        resp = self._client.list_objects_v2(Bucket=bucket, Prefix=full_prefix)
+        resp = self._admin_client.list_objects_v2(Bucket=bucket, Prefix=full_prefix)
         objects = [{'Key': obj['Key']} for obj in resp.get('Contents', [])]
         if objects:
-            self._client.delete_objects(Bucket=bucket, Delete={'Objects': objects})
+            self._admin_client.delete_objects(Bucket=bucket, Delete={'Objects': objects})
 
     # ---- 便捷方法 ----
 
