@@ -58,7 +58,7 @@ services:
   # ============ 被测 API DUT 替身（INT-1176）============
   # api_adapter_service 已删除：单轮被测协议（/health、/api/create_task、
   # /api/get_status、/api/get_final_result、/api/delete_task）+ voice_llm
-  # /chat 由 mock_dut_api 承担，冒烟/走查 API 配置 api_url 指向本服务。
+  # /chat 由 mock_dut_api 承担，冒烟/走查 API 配置 endpoints 指向本服务。
   mock_dut_api:
     build:
       context: ..

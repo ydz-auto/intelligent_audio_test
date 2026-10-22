@@ -40,8 +40,7 @@ class _FakeSession:
 
 
 def _driver_cfg(meta=None, adapter_class=None, vendor=None):
-    return SimpleNamespace(id=1, meta=meta or {}, api_endpoints=[],
-                           api_url='http://dut:5008',
+    return SimpleNamespace(id=1, meta=meta or {}, api_endpoints=[{'endpoint': 'http://dut:5008'}],
                            adapter_class=adapter_class, vendor=vendor,
                            proxy_type=None, proxy_url=None, max_timeout=30)
 

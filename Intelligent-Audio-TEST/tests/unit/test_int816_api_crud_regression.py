@@ -77,7 +77,7 @@ class TestApiCreateEmptyMeta:
         _install_repo(monkeypatch, repo)
 
         res = APICrudService.create({
-            'name': 'API-New', 'api_url': 'http://example.com',
+            'name': 'API-New',
             'vendor': 'vendor-x', 'status': 'online', 'meta': {},
         })
 
@@ -90,7 +90,7 @@ class TestApiCreateEmptyMeta:
         repo = _CreateRepo()
         _install_repo(monkeypatch, repo)
 
-        res = APICrudService.create({'name': 'API-New', 'api_url': 'http://example.com'})
+        res = APICrudService.create({'name': 'API-New'})
 
         assert res['code'] == 400
         assert '缺少必要字段' in res['message']

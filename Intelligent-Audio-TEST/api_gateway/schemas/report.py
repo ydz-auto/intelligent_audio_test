@@ -118,7 +118,6 @@ class ReportApiInfo(APIModel):
     id: int = Field(...)
     name: str = Field(...)
     vendor: Optional[str] = Field(None)
-    api_url: Optional[str] = Field(None)
     description: Optional[str] = Field(None)
     status: Optional[str] = Field(None)
     max_process: Optional[int] = Field(None)

@@ -21,7 +21,6 @@ class API(Base):
     id = Column(Integer, primary_key=True, autoincrement=True, comment='API唯一ID')
     name = Column(String(255), nullable=False, comment='API显示名称')
     vendor = Column(String(50), nullable=True, comment='供应商名称 (如 volc_ast, ali, tencent)')
-    api_url = Column(String(512), comment='API微服务主入口URL')
     description = Column(Text, comment='详细描述')
     status = Column(String(20), nullable=False, default='online', comment='服务状态 (online/offline)')
     meta = Column(JSON, nullable=False, comment='API元数据 (鉴权信息、额外参数等)')

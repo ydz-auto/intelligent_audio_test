@@ -163,6 +163,7 @@ python scripts/create_all_tables.py
 | 202608 | [seed_rbac.py](scripts/migrations/202608/seed_rbac.py) | RBAC 角色 / 权限种子数据 |
 | 202609 | [add_pass_threshold_to_eval_params.py](scripts/migrations/202609/add_pass_threshold_to_eval_params.py) | 评估参数 pass_threshold 列 |
 | 202609 | [seed_voice_llm.py](scripts/migrations/202609/seed_voice_llm.py) 等 `seed_*.py` | 评估维度种子数据（VoiceLLM / 打断 / 环境音 / 时延 / 小艺指标等） |
+| 202610 | [drop_apis_api_url.py](scripts/migrations/202610/drop_apis_api_url.py) | 移除被测 API Master 入口 URL（先回填 api_endpoints 首项，后删 `apis.api_url`；INT-1361） |
 
 执行示例：
 

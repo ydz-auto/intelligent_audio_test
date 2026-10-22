@@ -118,8 +118,8 @@ class TestUC1003OCPDrill:
             vendor_adapter_registry
         # create_from_config 按 (HTTP, API_DRIVER) 精确命中演练适配器
         cfg = SimpleNamespace(
-            id=1, meta={'vendor_adapter': 'api_driver'}, api_endpoints=[],
-            api_url='http://x', adapter_class=None, vendor=None,
+            id=1, meta={'vendor_adapter': 'api_driver'}, api_endpoints=[{'endpoint': 'http://x'}],
+            adapter_class=None, vendor=None,
             proxy_type=None, proxy_url=None, max_timeout=30)
         adapter = vendor_adapter_registry.create_from_config(cfg, {})
         assert isinstance(adapter, cls)
@@ -139,7 +139,7 @@ class TestRegistrySemantics:
 
     def test_unknown_adapter_class_lists_registered(self):
         cfg = SimpleNamespace(
-            id=1, meta={}, api_endpoints=[], api_url='http://x',
+            id=1, meta={}, api_endpoints=[{'endpoint': 'http://x'}],
             adapter_class='Nope', vendor=None, proxy_type=None,
             proxy_url=None, max_timeout=30)
         from api_test_service.infrastructure.adapters import registry as reg
@@ -150,7 +150,7 @@ class TestRegistrySemantics:
         from api_test_service.infrastructure.adapters import \
             vendor_adapter_registry
         cfg = SimpleNamespace(
-            id=1, meta={}, api_endpoints=[], api_url='http://x',
+            id=1, meta={}, api_endpoints=[{'endpoint': 'http://x'}],
             adapter_class=None, vendor='mock', proxy_type=None,
             proxy_url=None, max_timeout=30)
         adapter = vendor_adapter_registry.create_from_config(cfg, {})

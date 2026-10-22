@@ -66,11 +66,11 @@ class TestNormalizeOutputTypes:
 
 class TestAPIAggregateOutputTypes:
     def test_default_empty(self):
-        api = APIAggregate(id=1, name='n', url='http://x')
+        api = APIAggregate(id=1, name='n')
         assert api.output_types == []
 
     def test_set_output_types_normalizes(self):
-        api = APIAggregate(id=1, name='n', url='http://x')
+        api = APIAggregate(id=1, name='n')
         result = api.set_output_types(['text', 'audio', 'audio', 'bogus'])
         assert result == ['audio', 'text']
         assert api.output_types == ['audio', 'text']

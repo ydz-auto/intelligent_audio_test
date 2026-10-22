@@ -39,7 +39,9 @@ def _create_api(api_client, suffix):
     data = api_client.request('POST', '/apis', {
         'name': f'ui330_api_{suffix}',
         'vendor': 'INT-330测试',
-        'api_url': 'http://127.0.0.1:59999',
+        'endpoints': [{'endpoint': 'http://127.0.0.1:59999',
+                       'max_process': 5, 'max_timeout': 30,
+                       'max_audio_duration': 60, 'priority': 0}],
         'description': 'INT-330 校准弹窗 UI 实测',
         'status': 'online',
         'meta': {'purpose': 'INT-330 UI 实测'},

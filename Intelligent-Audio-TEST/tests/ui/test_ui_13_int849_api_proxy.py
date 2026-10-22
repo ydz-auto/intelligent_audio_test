@@ -36,7 +36,6 @@ def int849_api(api_client) -> dict:
     data = api_client.request('POST', '/apis', {
         'name': name,
         'vendor': 'volc_ast',
-        'api_url': 'http://127.0.0.1:1',
         'default_max_process': 5,
         'default_max_timeout': 30,
         'default_max_audio_duration': 60,

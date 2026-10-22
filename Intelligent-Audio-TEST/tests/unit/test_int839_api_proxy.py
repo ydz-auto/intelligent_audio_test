@@ -183,7 +183,7 @@ class _ProxyUpdateRepo:
 
     def _api(self):
         return SimpleNamespace(
-            id=9, name='API-1', url='http://example.com', status='online',
+            id=9, name='API-1', status='online',
             output_types=[], device_type='http_api', api_endpoints=[],
             proxy_type=self.current_proxy_type, proxy_url=self.current_proxy_url,
         )
@@ -202,7 +202,7 @@ class TestCrudProxy:
         repo = _CreateRepo()
         _install_repo(monkeypatch, repo)
         res = APICrudService.create({
-            'name': 'API-P', 'api_url': 'http://example.com', 'meta': {},
+            'name': 'API-P', 'meta': {},
             'proxy_type': 'http', 'proxy_url': 'user:pass@proxy.local:8080',
         })
         assert res['code'] == 201
@@ -213,7 +213,7 @@ class TestCrudProxy:
         repo = _CreateRepo()
         _install_repo(monkeypatch, repo)
         res = APICrudService.create({
-            'name': 'API-P', 'api_url': 'http://example.com', 'meta': {},
+            'name': 'API-P', 'meta': {},
             'proxy_type': '', 'proxy_url': '   ',
         })
         assert res['code'] == 201
@@ -224,7 +224,7 @@ class TestCrudProxy:
         repo = _CreateRepo()
         _install_repo(monkeypatch, repo)
         res = APICrudService.create({
-            'name': 'API-P', 'api_url': 'http://example.com', 'meta': {},
+            'name': 'API-P', 'meta': {},
             'proxy_type': 'http', 'proxy_url': 'proxy.local:8080',
         })
         assert res['code'] == 400
@@ -235,7 +235,7 @@ class TestCrudProxy:
         repo = _CreateRepo()
         _install_repo(monkeypatch, repo)
         res = APICrudService.create({
-            'name': 'API-P', 'api_url': 'http://example.com', 'meta': {},
+            'name': 'API-P', 'meta': {},
             'proxy_type': '', 'proxy_url': 'user:pass@proxy.local:8080',
         })
         assert res['code'] == 400
@@ -246,7 +246,7 @@ class TestCrudProxy:
         repo = _CreateRepo()
         _install_repo(monkeypatch, repo)
         res = APICrudService.create({
-            'name': 'API-P', 'api_url': 'http://example.com', 'meta': {},
+            'name': 'API-P', 'meta': {},
             'proxy_type': 'socks4', 'proxy_url': 'user:pass@proxy.local:1080',
         })
         assert res['code'] == 400
@@ -289,7 +289,7 @@ class TestCrudProxy:
 
     def test_api_to_dict_returns_proxy_fields(self):
         api = SimpleNamespace(
-            id=1, name='API', api_url='http://example.com', status='online', meta={},
+            id=1, name='API', status='online', meta={},
             api_endpoints=[], output_types=[], device_type='http_api',
             proxy_type='socks5', proxy_url='user:pass@host:1080',
         )
@@ -303,15 +303,14 @@ class TestCrudProxy:
 class _HealthRepo:
     """test_connection 用：聚合根形态（proxy 字段生效）。"""
 
-    def __init__(self, api_url=None, endpoints=None, proxy_type=None, proxy_url=None):
-        self.api_url = api_url or 'http://api.example.com'
-        self.endpoints = endpoints or []
+    def __init__(self, endpoints=None, proxy_type=None, proxy_url=None):
+        self.endpoints = endpoints or [{'endpoint': 'http://api.example.com'}]
         self.proxy_type = proxy_type
         self.proxy_url = proxy_url
 
     def get_api(self, api_id):
         return SimpleNamespace(
-            id=7, name='API-H', url=self.api_url, status='online',
+            id=7, name='API-H', status='online',
             output_types=[], device_type='http_api',
             api_endpoints=self.endpoints,
             proxy_type=self.proxy_type, proxy_url=self.proxy_url,
@@ -346,7 +345,7 @@ class TestHealthCheckProxy:
         self._install_log_noop(monkeypatch)
 
         res = APICrudService.test_connection(7)
-        assert res['data']['api_url_status'] == 'True'
+        assert res['data']['endpoints_status'] == 'True'
         assert captured['proxies'] == {'http': 'http://user:pass@proxy.local:8080',
                                        'https': 'http://user:pass@proxy.local:8080'}
         # 健康检查 URL 追加 /health 前缀路径
@@ -366,7 +365,7 @@ class TestHealthCheckProxy:
         self._install_log_noop(monkeypatch)
 
         res = APICrudService.test_connection(7)
-        assert res['data']['api_url_status'] == 'True'
+        assert res['data']['endpoints_status'] == 'True'
         assert captured['proxies'] is None
 
     def test_ws_health_uses_websocket_proxy_kwargs(self, monkeypatch):
@@ -385,13 +384,13 @@ class TestHealthCheckProxy:
                 pass
 
         monkeypatch.setattr(ws_client, 'WebSocket', _FakeWS)
-        repo = _HealthRepo(api_url='ws://api.example.com/ws',
+        repo = _HealthRepo(endpoints=[{'endpoint': 'ws://api.example.com/ws'}],
                            proxy_type='socks5', proxy_url='user:pass@proxy.local:1080')
         _install_repo(monkeypatch, repo)
         self._install_log_noop(monkeypatch)
 
         res = APICrudService.test_connection(7)
-        assert res['data']['api_url_status'] == 'True'
+        assert res['data']['endpoints_status'] == 'True'
         assert captured['kwargs']['http_proxy_host'] == 'proxy.local'
         assert captured['kwargs']['http_proxy_port'] == 1080
         assert captured['kwargs']['http_proxy_auth'] == ('user', 'pass')
@@ -403,7 +402,7 @@ class TestHealthCheckProxy:
         captured = {}
 
         def fake_get(url, timeout=None, headers=None, proxies=None, **kw):
-            # api_url 为 http → 走 requests.get 分支，200 避免影响端点断言
+            # 端点走 ws → 不经 requests.get 分支，200 兜底避免影响端点断言
             return SimpleNamespace(status_code=200, text='{}', encoding='utf-8', json=lambda: {})
 
         monkeypatch.setattr(requests, 'get', fake_get)
@@ -421,7 +420,6 @@ class TestHealthCheckProxy:
 
         monkeypatch.setattr(ws_client, 'WebSocket', _FakeWS)
         repo = _HealthRepo(
-            api_url='http://api.example.com',
             endpoints=[{'endpoint': 'ws://api.example.com/stream', 'max_timeout': 30}],
             proxy_type='http', proxy_url='user:pass@proxy.local:8080')
         _install_repo(monkeypatch, repo)

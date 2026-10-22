@@ -173,7 +173,7 @@ class TestExportPlaybackAndApis:
 
     def test_apis_json_export(self, monkeypatch):
         fake = FakeAcl(existing=[
-            {'id': 1, 'name': 'API-1', 'api_url': 'http://example.com'},
+            {'id': 1, 'name': 'API-1', 'endpoints': [{'endpoint': 'http://example.com'}]},
         ])
         client = _make_client(monkeypatch, fake, 'apis')
 
@@ -286,14 +286,14 @@ class TestImportApis:
 
     def test_match_by_name(self, monkeypatch):
         fake = FakeAcl(existing=[
-            {'id': 1, 'name': 'API-1', 'api_url': 'http://old'},
+            {'id': 1, 'name': 'API-1', 'endpoints': [{'endpoint': 'http://old'}]},
         ])
         client = _make_client(monkeypatch, fake, 'apis')
 
         payload = {"apis": [
-            {"name": "API-1", "api_url": "http://new", "status": "online"},  # 更新
-            {"name": "API-2", "api_url": "http://two"},                      # 新建
-            {"api_url": "http://no-name"},                                   # 无 name → 跳过
+            {"name": "API-1", "endpoints": [{"endpoint": "http://new"}], "status": "online"},  # 更新
+            {"name": "API-2", "endpoints": [{"endpoint": "http://two"}]},                      # 新建
+            {"endpoints": [{"endpoint": "http://no-name"}]},                                   # 无 name → 跳过
         ]}
         resp = _post_file(client, '/api/v1/apis/import', 'apis.json', payload)
 
@@ -304,7 +304,7 @@ class TestImportApis:
         assert body['data']['skipped_count'] == 1
 
         assert fake.update_calls[0][0] == 1
-        assert fake.update_calls[0][1]['api_url'] == 'http://new'
+        assert fake.update_calls[0][1]['endpoints'][0]['endpoint'] == 'http://new'
         assert fake.create_calls[0]['name'] == 'API-2'
 
 

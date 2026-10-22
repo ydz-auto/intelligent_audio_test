@@ -97,13 +97,29 @@ def redact_endpoint_keys(ep) -> Optional[Dict]:
     return out
 
 
+def resolve_api_endpoint(api_config) -> str:
+    """解析被测 API 主端点：仅取 api_endpoints 首个非空 endpoint（INT-1361）。
+
+    api_url 移除后 api_endpoints 为唯一端点配置入口；执行链各消费路径
+    （MockAPIConfig 构造 / registry 协议推断 / WS 地址解析）统一复用本
+    helper，避免各路径各自实现产生口径分叉。
+    """
+    if api_config is None:
+        return ''
+    for source in (getattr(api_config, 'api_endpoints', None) or [],):
+        for ep in source:
+            url = (ep.get('endpoint') or '') if isinstance(ep, dict) else str(ep)
+            if url:
+                return url
+    return ''
+
+
 @dataclass(frozen=True)
 class APISnapshot:
     """API 快照值对象 — 不可变，记录某一时刻 API 的核心信息。"""
 
     id: int
     name: str
-    url: str
     method: HTTPMethod = HTTPMethod.GET
 
 
@@ -111,13 +127,12 @@ class APISnapshot:
 class APIAggregate:
     """API 聚合根 — 被测 API 配置的聚合根实体。
 
-    聚合 API 的标识、请求定义（URL/方法/请求头/请求体）、
+    聚合 API 的标识、请求定义（方法/请求头/请求体）、
     超时与重试策略以及状态。所有对 API 的变更通过聚合根进行。
     """
 
     id: int
     name: str
-    url: str
     method: HTTPMethod = HTTPMethod.GET
     headers: Dict[str, str] = field(default_factory=dict)
     body_template: Optional[str] = None
@@ -160,7 +175,8 @@ class APIAggregate:
     default_max_audio_duration: Optional[int] = None
     # 健康度评分（0-100）
     health_score: Optional[float] = None
-    # API 接入点配置列表（JSON）
+    # API 接入点配置列表（JSON，INT-1361 api_url 移除后唯一端点配置入口；
+    # 聚合根承载供读侧序列化与健康检查消费，`_api_to_dict` 经 getattr 直取）
     api_endpoints: List[Dict] = field(default_factory=list)
     # 创建 / 更新时间（读侧透出，datetime 或字符串）
     created_at: Optional[Any] = None
@@ -192,10 +208,6 @@ class APIAggregate:
     def is_active(self) -> bool:
         """判断 API 是否处于激活态"""
         return self.status == APIStatus.active.value and not self.deleted
-
-    def update_url(self, new_url: str) -> None:
-        """更新 API 的 URL"""
-        self.url = new_url
 
     def update_headers(self, new_headers: Dict[str, str]) -> None:
         """更新 API 的请求头"""

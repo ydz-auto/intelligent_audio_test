@@ -48,14 +48,14 @@ class TestCheckApisOnline:
 
     def test_offline_api_blocks_start_with_clear_message(self, monkeypatch):
         self._patch_case_ids(monkeypatch, [7])
-        self._patch_acl(monkeypatch, {7: {'id': 7, 'status': 'offline', 'error': 'api_url连接异常: timeout'}})
+        self._patch_acl(monkeypatch, {7: {'id': 7, 'status': 'offline', 'error': '端点连接异常: timeout'}})
 
         can_start, err = TaskLifecycleMixin._check_apis_online(1)
 
         assert can_start is False
         assert '7' in err
         assert '离线' in err
-        assert 'api_url连接异常: timeout' in err
+        assert '端点连接异常: timeout' in err
 
     def test_online_api_passes(self, monkeypatch):
         self._patch_case_ids(monkeypatch, [7])

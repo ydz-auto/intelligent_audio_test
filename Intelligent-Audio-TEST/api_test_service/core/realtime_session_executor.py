@@ -677,6 +677,7 @@ class RealtimeSessionExecutor:
 
     # ── 辅助 ──
     @staticmethod
+    @staticmethod
     def _resolve_ws_endpoint(api_config) -> Optional[dict]:
         """解析当前 ws 端点 dict：api_endpoints 优先 ws://wss://，回退单端点
         包装。返回端点 dict（含 api_keys 池，INT-1177 endpoint 级轮换池来源）；
@@ -692,7 +693,7 @@ class RealtimeSessionExecutor:
 
     @staticmethod
     def _resolve_ws_url(api_config) -> str:
-        """解析 WS 连接地址：api_endpoints 优先 ws://wss://，回退 api_url 同规则"""
+        """解析 WS 连接地址：api_endpoints 中首个 ws://wss:// endpoint（INT-1361 api_url 移除）"""
         endpoint = RealtimeSessionExecutor._resolve_ws_endpoint(api_config)
         if endpoint is None:
             raise ValueError(

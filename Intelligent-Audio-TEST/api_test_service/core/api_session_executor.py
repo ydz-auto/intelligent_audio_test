@@ -352,14 +352,12 @@ class APISessionExecutor:
                 f"第 {round_number} 轮混音渲染失败（RenderAudioFile 无产物）")
         return rendered['path']
 
-    def _get_vendor_api_url(self, api_config):
-        """获取供应商 API URL"""
+    def _get_vendor_endpoint(self, api_config):
+        """获取供应商 API endpoint（api_endpoints 首个非空 endpoint，INT-1361 api_url 移除后唯一来源）"""
         if hasattr(api_config, 'api_endpoints') and api_config.api_endpoints:
             for ep in api_config.api_endpoints:
                 if ep.get('endpoint'):
                     return ep['endpoint']
-        if hasattr(api_config, 'api_url'):
-            return api_config.api_url
         return None
 
     def _send_round_request(self, task_id, api_config, api_specific_config, session,
@@ -536,7 +534,7 @@ class APISessionExecutor:
     def _send_direct(self, task_id, round_number, api_config, meta, rendered_headers,
                      rendered_body, timeout, input_text, input_type, start_time):
         """直接发送请求到供应商"""
-        vendor_url = self._get_vendor_api_url(api_config)
+        vendor_url = self._get_vendor_endpoint(api_config)
         endpoint = rendered_body.get('endpoint', vendor_url) if isinstance(rendered_body, dict) else vendor_url
 
         self._log('DEBUG', f"Sending round {round_number} directly to vendor: {endpoint}", task_id=task_id)

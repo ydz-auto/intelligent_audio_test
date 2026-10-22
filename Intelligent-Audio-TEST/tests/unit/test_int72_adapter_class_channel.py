@@ -22,7 +22,7 @@ from api_test_service.infrastructure.adapters import vendor_adapter_registry
 
 def _cfg(meta=None, adapter_class=None, vendor=None):
     return SimpleNamespace(
-        id=1, meta=meta or {}, api_endpoints=[], api_url='http://api',
+        id=1, meta=meta or {}, api_endpoints=[{'endpoint': 'http://api'}],
         adapter_class=adapter_class, vendor=vendor, proxy_type=None,
         proxy_url=None, max_timeout=30)
 

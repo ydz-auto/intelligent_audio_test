@@ -106,7 +106,7 @@ class TestEmbeddedAdapterProxyPassthrough:
 
     def _run_chat(self, proxy_type=None, proxy_url=None):
         cfg = SimpleNamespace(
-            meta={}, api_endpoints=[], api_url='http://api.example.com',
+            meta={}, api_endpoints=[{'endpoint': 'http://api.example.com'}],
             proxy_type=proxy_type, proxy_url=proxy_url, max_timeout=30)
         adapter = ada.ApiDriverAdapter(cfg, case_config={})
         captured = {}

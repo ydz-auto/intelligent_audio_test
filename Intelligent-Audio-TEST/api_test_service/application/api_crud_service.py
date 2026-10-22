@@ -282,7 +282,6 @@ class APICrudService:
             'id': api.id,
             'name': api.name,
             'vendor': getattr(api, 'vendor', None),
-            'api_url': getattr(api, 'api_url', None) or getattr(api, 'url', None),
             'description': getattr(api, 'description', None),
             'status': api.status,
             'meta': meta,
@@ -391,7 +390,6 @@ class APICrudService:
             create_data = {
                 'name': data['name'],
                 'vendor': data.get('vendor'),
-                'api_url': data.get('api_url'),
                 'description': data.get('description'),
                 'meta': data.get('meta', {}),
                 'algorithm_type': data.get('algorithm_type'),
@@ -471,8 +469,6 @@ class APICrudService:
                 update_fields['name'] = data['name']
             if data.get('vendor') is not None:
                 update_fields['vendor'] = data['vendor']
-            if data.get('api_url') is not None:
-                update_fields['api_url'] = data['api_url']
             if data.get('description') is not None:
                 update_fields['description'] = data['description']
             if data.get('meta') is not None:
@@ -704,7 +700,7 @@ class APICrudService:
         if not api:
             return {'success': False, 'message': '未找到API配置', 'data': None, 'code': 404}
 
-        # INT-148：仓储返回 APIAggregate（无 api_url/health_score/api_endpoints 属性），
+        # INT-148：仓储返回 APIAggregate（无 health_score/api_endpoints 属性），
         # 统一经 _api_to_dict（PO/聚合根双兼容）取字段，修复健康检查恒 AttributeError
         info = cls._api_to_dict(api)
 
@@ -718,45 +714,7 @@ class APICrudService:
 
         start_time = time.time()
         try:
-            # 1. 测试 api_url 本身
-            api_url_status = False
-            api_url_error = None
-            if info.get('api_url'):
-                test_api_url = info['api_url']
-                parsed_api_url = urlparse(test_api_url)
-                api_scheme = parsed_api_url.scheme.lower()
-
-                try:
-                    if api_scheme in ['ws', 'wss']:
-                        ws = websocket.WebSocket()
-                        ws.settimeout(30)
-                        ws.connect(test_api_url, **ws_proxy_kwargs)
-                        ws.close()
-                        api_url_status = True
-                    elif api_scheme in ['http', 'https']:
-                        if test_api_url and not test_api_url.endswith('/'):
-                            test_api_url += '/health'
-                        elif test_api_url and test_api_url.endswith('/'):
-                            test_api_url += 'health'
-
-                        api_url_response = requests.get(
-                            test_api_url,
-                            timeout=30,
-                            headers={"User-Agent": "Task-Manager-Health-Checker/1.0"},
-                            proxies=requests_proxies,
-                        )
-                        if 200 <= api_url_response.status_code < 400:
-                            api_url_status = True
-                        else:
-                            api_url_error = f"api_url连接失败: {api_url_response.status_code}"
-                    else:
-                        api_url_error = f"不支持的协议: {api_scheme}"
-                except Exception as e:
-                    api_url_error = f"api_url连接异常: {str(e)}"
-            else:
-                api_url_error = "未配置api_url"
-
-            # 2. 测试 endpoints
+            # 健康检查：仅测试 endpoints（INT-1361 api_url 移除后唯一端点来源）
             endpoints_status = False
             endpoint_error = None
             endpoint_response = None
@@ -809,19 +767,19 @@ class APICrudService:
                     except Exception as e:
                         endpoint_error = f"端点连接异常: {str(e)}"
 
-            # 3. 综合判断 API 状态
-            overall_status = api_url_status
+            # 综合判断 API 状态
+            overall_status = endpoints_status
 
-            # 4. 记录日志
+            # 记录日志
             if overall_status:
-                log_content = f"API [{info['name']}] 连接测试成功: 主URL在线"
+                log_content = f"API [{info['name']}] 连接测试成功: 端点在线"
                 if not endpoints_status:
                     log_content += f" (端点测试状态: {endpoint_error})"
                 elif endpoint_duration > 0:
                     log_content += f", 端点响应耗时: {endpoint_duration:.2f}ms"
                 log_level = 'INFO'
             else:
-                log_content = f"API [{info['name']}] 连接测试失败: {api_url_error}"
+                log_content = f"API [{info['name']}] 连接测试失败: {endpoint_error}"
                 log_level = 'ERROR'
 
             cls._log(
@@ -848,9 +806,8 @@ class APICrudService:
                     'id': info['id'],
                     'status': new_status,
                     'health_score': info.get('health_score'),
-                    'api_url_status': str(api_url_status),
                     'endpoints_status': str(endpoints_status),
-                    'error': api_url_error if not overall_status else None,
+                    'error': endpoint_error if not overall_status else None,
                     'warning': endpoint_error if overall_status and not endpoints_status else None,
                     'status_code': endpoint_response.status_code if endpoint_response else None,
                     'response_time': f"{endpoint_duration:.2f}ms" if endpoint_duration > 0 else None,
@@ -881,7 +838,6 @@ class APICrudService:
                     'status': 'offline',
                     'error': str(e),
                     'health_score': info.get('health_score'),
-                    'api_url_status': str(False),
                     'endpoints_status': str(False),
                 },
                 'code': 200,
@@ -914,7 +870,6 @@ class APICrudService:
                     'id': api.id,
                     'status': api.status,
                     'health_score': api.health_score,
-                    'api_url_status': str(False),
                     'endpoints_status': str(False),
                 },
                 'code': 200,

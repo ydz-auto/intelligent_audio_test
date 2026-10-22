@@ -260,8 +260,7 @@ class TestStartTaskRoutesByDeviceType:
 
         class _FakeApiConfig:
             id = 1
-            api_url = 'http://api'
-            api_endpoints = []
+            api_endpoints = [{'endpoint': 'http://api'}]
             default_max_process = 1
             meta = {}
             max_timeout = 30
@@ -324,7 +323,7 @@ class TestAudioInputWiring:
             session_id='s-1', session_timeout=10,
             get_context=lambda: [], get_context_for_request=lambda: [])
         api_config = SimpleNamespace(id=1, meta={'vendor_adapter': 'mock'},
-                                     api_endpoints=[], api_url='http://api',
+                                     api_endpoints=[{'endpoint': 'http://api'}],
                                      adapter_class=None, vendor='mock',
                                      proxy_type=None, proxy_url=None)
         result = ex._send_via_adapter(
@@ -449,7 +448,7 @@ class TestAdapterAudioResolution:
         monkeypatch.setattr(ada.api_client, 'call', _fake_call)
 
         from types import SimpleNamespace as _NS
-        api_config = _NS(id=1, meta={}, api_endpoints=[], api_url='http://api',
+        api_config = _NS(id=1, meta={}, api_endpoints=[{'endpoint': 'http://api'}],
                          proxy_type=None, proxy_url=None, max_timeout=30)
         adapter = ada.ApiDriverAdapter(api_config, case_config={})
         adapter.execute_voice_llm_chat(

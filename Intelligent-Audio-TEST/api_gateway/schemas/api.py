@@ -34,7 +34,6 @@ class ApiItem(APIModel):
     id: int = Field(...)
     name: str = Field(...)
     vendor: Optional[str] = Field(None)
-    api_url: Optional[str] = Field(None)
     proxy_type: Optional[str] = Field(None)
     proxy_url: Optional[str] = Field(None)
     description: Optional[str] = Field(None)
@@ -67,7 +66,6 @@ class ApiHealthCheckData(APIModel):
     id: int = Field(...)
     status: str = Field(...)
     health_score: Optional[int] = Field(None)
-    api_url_status: Optional[str] = Field(None)
     endpoints_status: Optional[str] = Field(None)
     status_code: Optional[int] = Field(None)
     response_time: Optional[str] = Field(None)
@@ -93,7 +91,6 @@ class ApiEndpointInput(APIModel):
 class ApiCreateInput(APIModel):
     name: str = Field(...)
     vendor: Optional[str] = Field(None)
-    api_url: Optional[str] = Field(None)
     proxy_type: Optional[str] = Field(None)
     proxy_url: Optional[str] = Field(None)
     description: Optional[str] = Field(None)
@@ -113,7 +110,6 @@ class ApiCreateInput(APIModel):
 class ApiUpdateInput(APIModel):
     name: Optional[str] = Field(None)
     vendor: Optional[str] = Field(None)
-    api_url: Optional[str] = Field(None)
     proxy_type: Optional[str] = Field(None)
     proxy_url: Optional[str] = Field(None)
     description: Optional[str] = Field(None)

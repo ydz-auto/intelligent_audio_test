@@ -49,7 +49,6 @@ def _api_po_to_entity(po: API) -> APIAggregate:
     未承载的字段读回恒 None / []（INT-1338 读侧回显缺口根因）。
 
     字段映射说明：
-    - po.api_url        → aggregate.url
     - po.max_timeout    → aggregate.timeout_seconds（复用 PO 的超时配置）
     - po.status         → aggregate.status（PO 使用 online/offline，聚合根 status
                           字段为 str，直接透传以保留前端可读词汇）
@@ -60,6 +59,7 @@ def _api_po_to_entity(po: API) -> APIAggregate:
     - po.api_endpoints  → aggregate.endpoint_keys_summary（INT-1230 审计 D6'：
                           逐端点内嵌 api_keys_summary、完整 api_keys 剥离，
                           聚合根零明文；读侧序列化逐端点输出）
+    - po.api_endpoints  → aggregate.api_endpoints（唯一端点来源，INT-1361）
     - 其余 PO 无对应列的字段（method / headers / body_template / retry_count）
       使用聚合根默认值
     """
@@ -75,7 +75,6 @@ def _api_po_to_entity(po: API) -> APIAggregate:
     return APIAggregate(
         id=po.id,
         name=po.name,
-        url=po.api_url or "",
         timeout_seconds=po.max_timeout or 30,
         status=po.status or "active",
         deleted=po.deleted or False,
@@ -115,7 +114,6 @@ def _apply_aggregate_to_po(aggregate: APIAggregate, po: API) -> None:
     时回写，避免手工构造的空缺值破坏约束。
     """
     po.name = aggregate.name
-    po.api_url = aggregate.url
     po.status = aggregate.status
     po.deleted = aggregate.deleted
     po.max_timeout = aggregate.timeout_seconds
@@ -202,7 +200,6 @@ class APITestRepository(APITestRepositoryABC):
         try:
             po = API(
                 name=aggregate.name,
-                api_url=aggregate.url,
                 status=aggregate.status or "online",
                 meta=dict(aggregate.meta or {}),  # PO 必填字段；聚合根承载（api_keys 已剥离）
                 deleted=aggregate.deleted,
@@ -255,7 +252,7 @@ class APITestRepository(APITestRepositoryABC):
         """创建 API 配置，返回聚合根。
 
         Args:
-            data: 包含 API 字段的字典（name, vendor, api_url, ...）
+            data: 包含 API 字段的字典（name, vendor, description, ...）
 
         Returns:
             创建后的 APIAggregate 聚合根（含 id）。
@@ -266,7 +263,6 @@ class APITestRepository(APITestRepositoryABC):
             new_api = API(
                 name=data['name'],
                 vendor=data.get('vendor'),
-                api_url=data.get('api_url'),
                 description=data.get('description'),
                 meta=data.get('meta', {}),
                 algorithm_type=data.get('algorithm_type'),

@@ -398,7 +398,7 @@ class ApiDriverAdapter(ApiVendorAdapter):
         }
 
     def _resolve_base_url(self) -> str:
-        """解析 voice_llm chat base URL：endpoint > api_endpoints 首项 > api_url。"""
+        """解析 voice_llm chat base URL：endpoint > api_endpoints 首项（INT-1361 api_url 移除）"""
         if self.endpoint:
             return self.endpoint
         api_config = self.api_config
@@ -407,10 +407,6 @@ class ApiDriverAdapter(ApiVendorAdapter):
                 url = (ep.get('endpoint') or '') if isinstance(ep, dict) else str(ep)
                 if url:
                     return url
-        for attr in ('api_url', 'endpoint'):
-            val = getattr(api_config, attr, None)
-            if isinstance(val, str) and val:
-                return val
         return ''
 
     def _build_voice_llm_text_payload(self, session_id, text, source_lang,

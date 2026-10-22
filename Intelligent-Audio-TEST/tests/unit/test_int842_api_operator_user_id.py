@@ -96,7 +96,7 @@ class TestRepositoryOperatorFill:
         set_current_user_id(111)
         try:
             api = repo_mod.api_test_repository.create_api({
-                'name': 'INT842-Create', 'meta': {}, 'api_url': 'http://example.com',
+                'name': 'INT842-Create', 'meta': {},
             })
             po = _get_api_po(db, api.id)
             assert po.created_by_user_id == 111
@@ -241,7 +241,7 @@ class TestGrpcUserContextReachesRepository:
         if metadata:
             kwargs['metadata'] = metadata
         resp = stub.CreateAPIConfig(api_pb.CreateAPIConfigRequest(data=_dumps({
-            'name': name, 'api_url': 'http://example.com', 'meta': {},
+            'name': name, 'meta': {},
         })), **kwargs)
         return resp
 

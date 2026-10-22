@@ -96,9 +96,11 @@ def _create_mock_api_config(client, base, headers, dut_url=None):
         'algorithm_type': 'voice_llm',
         'device_type': 'http_api',
         'adapter_class': 'MockDialogAdapter',
-        # api_url = 本栈 DUT mock 容器网络地址——api_test 执行健康检查/调用
-        # 链以它作 base URL（容器形态下缺省空串 → "/health" 无 scheme 必败）
-        'api_url': dut_url or 'http://mock_dut_api:5096',
+        # INT-1361 api_url 移除：endpoints 为唯一端点配置入口——DUT mock 容器
+        # 网络地址作首端点（容器形态下缺省空串 → "/health" 无 scheme 必败）
+        'endpoints': [{'endpoint': dut_url or 'http://mock_dut_api:5096',
+                       'max_process': 5, 'max_timeout': 30,
+                       'max_audio_duration': 60, 'priority': 0}],
         'status': 'online',
         'meta': {'purpose': 'int993-iso-smoke', 'mode': 'dialog'},
     }

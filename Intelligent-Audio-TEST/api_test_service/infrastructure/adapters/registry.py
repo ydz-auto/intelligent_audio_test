@@ -38,6 +38,7 @@ from shared.models.common_enums import (
     VendorAdapterType,
 )
 
+from api_test_service.domain.entities.api import resolve_api_endpoint
 from api_test_service.domain.ports import ApiVendorAdapter
 
 logger = logging.getLogger(__name__)
@@ -116,7 +117,7 @@ def _vendor_mock_guard(api_config=None, case_config=None) -> bool:
 
     INT-1170 审计非阻塞项 3：现 dimensions_from_config 不读 vendor 字段，
     vendor='mock' 且无显式 adapter_class/vendor_adapter 的配置会静默落到
-    API_DRIVER（直发 {api_url}/chat），与 mock 厂商语义不符——此处兜底映射。
+    API_DRIVER（直发首端点 /chat），与 mock 厂商语义不符——此处兜底映射。
     """
     vendor = None
     if isinstance(case_config, dict):
@@ -507,19 +508,8 @@ def adapter_type_from_config(api_config=None, case_config=None) -> VendorAdapter
 
 
 def _resolve_endpoint(api_config) -> str:
-    """解析候选端点（api_endpoints 优先，回退 endpoint/api_url）用于协议前缀推断"""
-    if api_config is None:
-        return ''
-    for source in (getattr(api_config, 'api_endpoints', None) or [],):
-        for ep in source:
-            url = (ep.get('endpoint') or '') if isinstance(ep, dict) else str(ep)
-            if url:
-                return url
-    for attr in ('endpoint', 'api_url'):
-        val = getattr(api_config, attr, None)
-        if isinstance(val, str) and val:
-            return val
-    return ''
+    """解析候选端点（api_endpoints 首个非空 endpoint，INT-1361 起唯一来源）用于协议前缀推断"""
+    return resolve_api_endpoint(api_config)
 
 
 def infer_protocol(api_config=None, case_config=None) -> AdapterProtocol:
