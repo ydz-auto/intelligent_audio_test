@@ -20,7 +20,7 @@ export interface SetupStep {
 export const SETUP_STEPS: SetupStep[] = [
   { key: 'cases', label: '配置用例', desc: '创建或导入测试用例', icon: 'fa-list-check' },
   { key: 'devices', label: '连接设备', desc: '接入真机或播放设备', icon: 'fa-headphones' },
-  { key: 'tasks', label: '执行任务', desc: '发起端到端 / API 测试', icon: 'fa-play' },
+  { key: 'tasks', label: '执行任务', desc: '发起语音测试任务', icon: 'fa-play' },
   { key: 'reports', label: '查看报告', desc: '分析评估结果', icon: 'fa-file-alt' },
 ]
 

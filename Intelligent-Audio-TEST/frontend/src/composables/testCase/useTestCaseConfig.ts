@@ -10,11 +10,6 @@ export interface SelectedDimension {
   threshold?: number
 }
 
-export interface TestTypeOption {
-  label: string
-  value: typeof TestType[keyof typeof TestType]
-}
-
 export interface GroupNameTypeOption {
   label: string
   value: 'root' | 'folder' | 'custom'
@@ -41,7 +36,6 @@ export function useTestCaseConfig(options: UseTestCaseConfigOptions = {}) {
   const availableDimensions = ref<any[]>([])
   const dimensionFilterIdSet = ref<Set<number>>(new Set(initialDimensionFilterIds))
   const dimensionSearchQuery = ref('')
-  const e2eDimensionSearchQuery = ref('')
   const dimensionsLoading = ref(false)
   const dimensionsError = ref('')
 
@@ -59,11 +53,6 @@ export function useTestCaseConfig(options: UseTestCaseConfigOptions = {}) {
     { label: '自定义', value: 'custom' }
   ]
 
-  const testTypeOptions: TestTypeOption[] = [
-    { label: 'E2E测试', value: TestType.E2E },
-    { label: 'API测试', value: TestType.API }
-  ]
-
   const updateDimensionFilter = (ids: number[]) => {
     dimensionFilterIdSet.value = new Set(ids)
   }
@@ -75,21 +64,6 @@ export function useTestCaseConfig(options: UseTestCaseConfigOptions = {}) {
     }
     if (!dimensionSearchQuery.value) return dims
     const query = dimensionSearchQuery.value.toLowerCase()
-    return dims.filter(dim =>
-      String(dim?.name || '').toLowerCase().includes(query) ||
-      String(dim?.description || '').toLowerCase().includes(query) ||
-      String(dim?.keywords || '').toLowerCase().includes(query) ||
-      String(dim?.id || '').toLowerCase().includes(query)
-    )
-  })
-
-  const e2eFilteredDimensions = computed(() => {
-    let dims = availableDimensions.value
-    if (dimensionFilterIdSet.value.size > 0) {
-      dims = dims.filter(dim => dimensionFilterIdSet.value.has(Number(dim.id)))
-    }
-    if (!e2eDimensionSearchQuery.value) return dims
-    const query = e2eDimensionSearchQuery.value.toLowerCase()
     return dims.filter(dim =>
       String(dim?.name || '').toLowerCase().includes(query) ||
       String(dim?.description || '').toLowerCase().includes(query) ||
@@ -150,16 +124,13 @@ export function useTestCaseConfig(options: UseTestCaseConfigOptions = {}) {
   return {
     availableDimensions,
     dimensionSearchQuery,
-    e2eDimensionSearchQuery,
     dimensionsLoading,
     dimensionsError,
     updateDimensionFilter,
     audioTypeOptions,
     hasAudioType,
     groupNameTypeOptions,
-    testTypeOptions,
     filteredDimensions,
-    e2eFilteredDimensions,
     dimensionCount,
     isDimensionSelected,
     toggleDimensionSelection,

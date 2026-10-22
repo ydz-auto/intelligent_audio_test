@@ -5,8 +5,6 @@ import type { AudioUploadOptions } from '../../domain';
 import type { useDeviceManagement } from '../device/useDeviceManagement';
 import type { useAlgorithmParams } from '../algorithm/useAlgorithmParams';
 import type { useAudioUpload } from '../audio/useAudioUpload';
-// 引入测试类型枚举，消除魔法字符串
-import { TestType } from '../../domain/enums';
 
 interface DeviceApi {
   playbackDevices: Ref<ReturnType<typeof useDeviceManagement>['playbackDevices']['value']>;
@@ -160,16 +158,6 @@ function buildUploadOptionsConfig(
       defaultValue: uploadOptions.algorithmType
     },
     {
-      key: 'testTypes',
-      label: '测试类型',
-      type: 'checkbox',
-      options: [
-        { label: 'E2E测试', value: TestType.E2E },
-        { label: 'API测试', value: TestType.API }
-      ],
-      defaultValue: uploadOptions.testTypes
-    },
-    {
       key: 'playbackDeviceId',
       label: '播放设备',
       type: 'select',
@@ -247,16 +235,6 @@ function buildFolderImportOptionsConfig(
         ...(Array.isArray(algorithmApi.algorithmOptions.value) ? algorithmApi.algorithmOptions.value : []).map(a => ({ label: a.name, value: a.value }))
       ],
       defaultValue: uploadOptions.algorithmType
-    },
-    {
-      key: 'testTypes',
-      label: '测试类型',
-      type: 'checkbox',
-      options: [
-        { label: 'E2E测试', value: TestType.E2E },
-        { label: 'API测试', value: TestType.API }
-      ],
-      defaultValue: uploadOptions.testTypes
     },
     {
       key: 'playbackDeviceId',

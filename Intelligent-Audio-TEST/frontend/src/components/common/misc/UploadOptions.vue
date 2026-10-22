@@ -13,7 +13,6 @@ import AlgorithmSelector from '../audio/AlgorithmSelector.vue'
 import DimensionConfigPanel from './DimensionConfigPanel.vue'
 import { useUploadOptions } from './UploadOptions'
 import type { AlgorithmRelationItem } from './UploadOptions'
-import { TestType } from '@/domain/enums'
 import type { DimensionConfigData } from '@/domain/model/audio'
 
 interface Props {
@@ -66,20 +65,13 @@ const {
   uploadConfig,
   computedAudioTypeOptions,
   hasAudioType,
-  testTypeOptions,
   filteredDimensions,
-  e2eFilteredDimensions,
   ensureDimensionsLoaded,
   dimensionsLoading,
   dimensionsError,
   dimensionSearchQuery,
-  e2eDimensionSearchQuery,
   updateDimensionFilter,
-  hasApiDimensions,
-  hasE2eDimensions,
   showTestCaseConfig,
-  showApiConfig,
-  showE2eConfig,
   noiseSelectModalVisible,
   algorithmParams,
   associatedDimensionIds,
@@ -206,62 +198,14 @@ const {
     
     <!-- 测试用例配置（仅在勾选生成测试用例时显示） -->
     <template v-if="showTestCaseConfig">
-      <!-- 测试类型选择 -->
+      <!-- 评估维度单组（INT-714 口径修订：不再按 E2E/API 分型平铺两组；用例类型由后端默认落库） -->
       <div class="options-grid">
         <div class="option-item full-width">
-          <label>测试类型</label>
-          <div class="checkbox-group">
-            <label class="checkbox-label">
-              <input
-                type="checkbox"
-                :value="TestType.E2E"
-                v-model="uploadConfig.testTypes"
-              >
-              <span class="checkbox-text">E2E测试</span>
-            </label>
-            <label class="checkbox-label">
-              <input
-                type="checkbox"
-                :value="TestType.API"
-                v-model="uploadConfig.testTypes"
-              >
-              <span class="checkbox-text">API测试</span>
-            </label>
-          </div>
-          <p class="option-hint">选择要生成的测试用例类型，可多选</p>
-        </div>
-      </div>
-
-      <!-- API + E2E 测试配置区域（并排显示） -->
-      <div class="test-type-config-row" v-if="showApiConfig && showE2eConfig">
-        <!-- API测试配置 -->
-        <div class="test-type-config api-config">
-          <div class="config-header">
-            <i class="fas fa-server"></i>
-            <span>API测试配置</span>
-          </div>
-          <label>API测试评估维度 <span class="required">*</span></label>
-          <DimensionConfigPanel
-            v-model="uploadConfig.apiDimensionConfig"
-            v-model:searchQuery="dimensionSearchQuery"
-            :available-dimensions="filteredDimensions"
-            :loading="dimensionsLoading"
-            :error="dimensionsError"
-            :required="true"
-          />
-        </div>
-
-        <!-- E2E测试配置 -->
-        <div class="test-type-config e2e-config">
-          <div class="config-header">
-            <i class="fas fa-mobile-alt"></i>
-            <span>E2E测试配置</span>
-          </div>
-          <label>E2E测试评估维度 <span class="required">*</span></label>
+          <label>评估维度 <span class="required">*</span></label>
           <DimensionConfigPanel
             v-model="uploadConfig.e2eDimensionConfig"
-            v-model:searchQuery="e2eDimensionSearchQuery"
-            :available-dimensions="e2eFilteredDimensions"
+            v-model:searchQuery="dimensionSearchQuery"
+            :available-dimensions="filteredDimensions"
             :loading="dimensionsLoading"
             :error="dimensionsError"
             :required="true"
@@ -270,44 +214,6 @@ const {
             <i class="fas fa-info-circle"></i>
             <span>播放设备、声压级、噪声等参数将在用例编辑页面的轮次配置中填写</span>
           </div>
-        </div>
-      </div>
-
-      <!-- 仅 API 时单独显示 -->
-      <div class="test-type-config api-config" v-if="showApiConfig && !showE2eConfig">
-        <div class="config-header">
-          <i class="fas fa-server"></i>
-          <span>API测试配置</span>
-        </div>
-        <label>API测试评估维度 <span class="required">*</span></label>
-        <DimensionConfigPanel
-          v-model="uploadConfig.apiDimensionConfig"
-          v-model:searchQuery="dimensionSearchQuery"
-          :available-dimensions="filteredDimensions"
-          :loading="dimensionsLoading"
-          :error="dimensionsError"
-          :required="true"
-        />
-      </div>
-
-      <!-- 仅 E2E 时单独显示 -->
-      <div class="test-type-config e2e-config" v-if="showE2eConfig && !showApiConfig">
-        <div class="config-header">
-          <i class="fas fa-mobile-alt"></i>
-          <span>E2E测试配置</span>
-        </div>
-        <label>E2E测试评估维度 <span class="required">*</span></label>
-        <DimensionConfigPanel
-          v-model="uploadConfig.e2eDimensionConfig"
-          v-model:searchQuery="e2eDimensionSearchQuery"
-          :available-dimensions="e2eFilteredDimensions"
-          :loading="dimensionsLoading"
-          :error="dimensionsError"
-          :required="true"
-        />
-        <div class="config-hint">
-          <i class="fas fa-info-circle"></i>
-          <span>播放设备、声压级、噪声等参数将在用例编辑页面的轮次配置中填写</span>
         </div>
       </div>
     </template>

@@ -9,7 +9,7 @@
         <h1 class="hero-title">智能语音测试系统</h1>
         <p class="hero-subtitle">Intelligent Voice Testing System</p>
         <p class="hero-description">
-          专业的端到端测试与API测试解决方案，支持多维度语音评估，
+          一站式语音测试与评估解决方案，支持多维度语音评估，
           提供完整的测试任务管理、报告分析功能。
         </p>
       </div>

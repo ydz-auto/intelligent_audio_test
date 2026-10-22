@@ -38,9 +38,9 @@
             v-if="can('task:execute')"
             type="button"
             class="btn btn-primary setup-api-cta"
-            @click="$router.push('/E2ETest')"
+            @click="$router.push('/start-test')"
           >
-            <i class="fas fa-play"></i> 开始端到端测试
+            <i class="fas fa-play"></i> 开始测试
           </button>
           <details class="setup-api-details">
             <summary>开发者 API 示例 <i class="fas fa-chevron-down"></i></summary>
@@ -160,10 +160,9 @@ interface QuickAction {
 }
 
 const QUICK_ACTIONS: QuickAction[] = [
-  { to: '/E2ETest', icon: 'fa-mobile-alt', label: '端到端测试', desc: '在真实设备上执行完整语音测试流程', permission: 'task:execute' },
-  { to: '/APITest', icon: 'fa-exchange-alt', label: 'API测试', desc: '测试语音识别与翻译 API 性能与准确率', permission: 'task:execute' },
+  { to: '/start-test', icon: 'fa-play', label: '开始测试', desc: '选择用例与设备/API，执行语音测试流程', permission: 'task:execute' },
   { to: '/tasks', icon: 'fa-clipboard-list', label: '任务管理', desc: '查看与管理所有测试任务的执行记录', permission: 'task:read' },
-  { to: '/TestCaseManager', icon: 'fa-list-check', label: '用例管理', desc: '统一管理端到端与 API 测试用例', permission: 'testcase:read' },
+  { to: '/TestCaseManager', icon: 'fa-list-check', label: '用例管理', desc: '统一管理测试用例，支持分类、标签与批量操作', permission: 'testcase:read' },
   { to: '/AudioImport', icon: 'fa-music', label: '音频管理', desc: '批量导入测试音频并自动生成用例', permission: 'audio:read' },
   { to: '/Device', icon: 'fa-headphones', label: '设备管理', desc: '管理测试设备与播放设备，监控在线状态', permission: 'device:read' },
   { to: '/history-reports', icon: 'fa-file-bar-chart', label: '报告中心', desc: '集中查看、发布与管理测试报告', permission: 'report:read' },
