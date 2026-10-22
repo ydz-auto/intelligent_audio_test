@@ -235,7 +235,13 @@ export async function request<T = any>(
     const responseData = applyResponseInterceptors(result);
     return responseData as T;
   } catch (err) {
-    if (!options.silentError) console.error(`[API Fetch Error] ${method} ${finalUrl}:`, err);
+    // 主动中止（AbortError，如删除超时 AbortController）是可预期流程，按 warn 记录
+    // 避免误报 SEVERE（INT-1332）；其余请求失败保留 error 日志便于排查（silentError 静默，INT-1286）
+    if (err && (err as any).name === 'AbortError') {
+      console.warn(`[API Request Aborted] ${method} ${finalUrl}:`, err);
+    } else if (!options.silentError) {
+      console.error(`[API Fetch Error] ${method} ${finalUrl}:`, err);
+    }
     throw err;
   } finally {
     cleanupTimeoutSignal();

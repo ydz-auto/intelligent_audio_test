@@ -274,9 +274,14 @@
                     <i class="fas fa-download btn-icon"></i>
                     下载
                   </button>
-                  <button v-if="canEditResource(audio)" class="btn btn-danger" @click.stop="deleteAudio(audio.id)">
-                    <i class="fas fa-trash-alt btn-icon"></i>
-                    删除
+                  <button
+                    v-if="canEditResource(audio)"
+                    class="btn btn-danger"
+                    :disabled="isRowDeleting(audio.id)"
+                    @click.stop="deleteAudio(audio.id)"
+                  >
+                    <i class="fas" :class="isRowDeleting(audio.id) ? 'fa-spinner fa-spin' : 'fa-trash-alt btn-icon'"></i>
+                    {{ isRowDeleting(audio.id) ? '删除中' : '删除' }}
                   </button>
                   <slot 
                     name="actions" 
@@ -319,6 +324,7 @@
             :is-selected-fn="isSelected"
             :is-folder-all-selected-fn="props.isFolderAllSelectedFn"
             :is-folder-partial-selected-fn="props.isFolderPartialSelectedFn"
+            :deleting-ids="props.deletingIds"
             @toggle-folder="toggleFolder"
             @expand-folder="(path: string) => emit('expand-folder', path)"
             :expanded-paths="expandedFolderPaths"
@@ -385,9 +391,14 @@
               <i class="fas fa-edit btn-icon"></i>
               修复
             </button>
-            <button v-if="canEditResource(audio)" class="btn btn-danger" @click.stop="deleteAudio(audio.id)">
-              <i class="fas fa-trash-alt btn-icon"></i>
-              删除
+            <button
+              v-if="canEditResource(audio)"
+              class="btn btn-danger"
+              :disabled="isRowDeleting(audio.id)"
+              @click.stop="deleteAudio(audio.id)"
+            >
+              <i class="fas" :class="isRowDeleting(audio.id) ? 'fa-spinner fa-spin' : 'fa-trash-alt btn-icon'"></i>
+              {{ isRowDeleting(audio.id) ? '删除中' : '删除' }}
             </button>
           </div>
         </div>
@@ -502,6 +513,7 @@ const {
   previewAudio,
   editMetadata,
   deleteAudio,
+  isRowDeleting,
   convertAudio,
   downloadAudio,
   getProblemIcon,

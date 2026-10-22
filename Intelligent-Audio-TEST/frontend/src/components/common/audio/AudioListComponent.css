@@ -632,6 +632,14 @@
   gap: var(--spacing-xs);
 }
 
+/* INT-1332：删除进行中的行内删除按钮禁用态 */
+.action-buttons .btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
 .btn-primary {
   background: var(--primary-gradient);
   border: none;

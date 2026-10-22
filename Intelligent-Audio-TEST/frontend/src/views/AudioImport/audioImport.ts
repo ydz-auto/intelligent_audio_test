@@ -303,6 +303,8 @@ export function useAudioImport() {
     showConvertModal: batchOpsModule.showConvertModal,
     batchDelete: batchOpsModule.batchDelete,
     batchExport: batchOpsModule.batchExport,
+    deletingIds: batchOpsModule.deletingIds,
+    batchDeleting: batchOpsModule.batchDeleting,
     previewAudio: batchOpsModule.previewAudio,
     editMetadata: batchOpsModule.editMetadata,
     downloadAudio: batchOpsModule.downloadAudio,

@@ -41,6 +41,8 @@ export interface AudioListProps {
   expandedFolderPaths?: Set<string>;
   isFolderAllSelectedFn?: (folder: any) => boolean;
   isFolderPartialSelectedFn?: (folder: any) => boolean;
+  /** 正在删除的音频 id（行内删除按钮显示加载态并禁用，INT-1332） */
+  deletingIds?: (string | number)[];
 }
 
 export function useAudioListComponent(props: AudioListProps, emit: any) {
@@ -379,6 +381,11 @@ export function useAudioListComponent(props: AudioListProps, emit: any) {
     emit('delete', audioId);
   };
 
+  /** INT-1332：该行是否正在删除（行内删除按钮加载态并禁用） */
+  const isRowDeleting = (audioId: string | number) => {
+    return !!props.deletingIds && props.deletingIds.includes(audioId);
+  };
+
   const convertAudio = (audioId: string | number) => {
     if (!audioId) {
       notification.warning('请先选择音频');
@@ -463,6 +470,7 @@ export function useAudioListComponent(props: AudioListProps, emit: any) {
     previewAudio,
     editMetadata,
     deleteAudio,
+    isRowDeleting,
     convertAudio,
     downloadAudio,
     getProblemIcon,

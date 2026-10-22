@@ -28,6 +28,7 @@
             :expanded-paths="expandedPaths"
             :is-folder-all-selected-fn="isFolderAllSelectedFn"
             :is-folder-partial-selected-fn="isFolderPartialSelectedFn"
+            :deleting-ids="deletingIds"
             @toggle-folder="(f: any) => $emit('toggleFolder', f)"
             @expand-folder="(path: string) => $emit('expandFolder', path)"
             @toggle-audio-selection="(id: string | number) => $emit('toggleAudioSelection', id)"
@@ -93,9 +94,14 @@
                   <i class="fas fa-edit btn-icon"></i>
                   详情
                 </button>
-                <button v-if="canEditResource(file)" class="btn btn-danger" @click.stop="$emit('delete', file.id)">
-                  <i class="fas fa-trash-alt btn-icon"></i>
-                  删除
+                <button
+                  v-if="canEditResource(file)"
+                  class="btn btn-danger"
+                  :disabled="isFileDeleting(file.id)"
+                  @click.stop="$emit('delete', file.id)"
+                >
+                  <i class="fas" :class="isFileDeleting(file.id) ? 'fa-spinner fa-spin' : 'fa-trash-alt btn-icon'"></i>
+                  {{ isFileDeleting(file.id) ? '删除中' : '删除' }}
                 </button>
               </div>
             </div>
@@ -193,6 +199,8 @@ const props = defineProps<{
   expandedPaths?: Set<string>;
   isFolderAllSelectedFn?: (folder: any) => boolean;
   isFolderPartialSelectedFn?: (folder: any) => boolean;
+  /** 正在删除的音频 id（文件行删除按钮显示加载态并禁用，INT-1332） */
+  deletingIds?: (string | number)[];
 }>();
 
 const emit = defineEmits<{
@@ -227,6 +235,11 @@ const folderHasFiles = computed(() => {
   }
   return hasFiles(props.folder) || (getFileCount(props.folder) > 0);
 });
+
+/** INT-1332：该文件行是否正在删除（删除按钮加载态并禁用） */
+const isFileDeleting = (fileId: string | number) => {
+  return !!props.deletingIds && props.deletingIds.includes(fileId);
+};
 
 const isFolderAllSelected = computed(() => {
   if (props.isFolderAllSelectedFn) {
@@ -485,6 +498,14 @@ function getTypeLabel(type: string): string {
   cursor: pointer;
   border: none;
   transition: all 0.15s;
+}
+
+/* INT-1332：删除进行中的文件行按钮禁用态 */
+.file-actions .btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 .btn-secondary {

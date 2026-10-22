@@ -24,10 +24,10 @@
             <i class="fas fa-file-import btn-icon"></i>
             批量更新标注
             </button>
-          <button class="btn btn-secondary" @click="batchDelete" :disabled="selectedAudios.length === 0">
-            <i class="fas fa-trash btn-icon">
+          <button class="btn btn-secondary" @click="() => batchDelete()" :disabled="selectedAudios.length === 0 || batchDeleting">
+            <i class="fas" :class="batchDeleting ? 'fa-spinner fa-spin' : 'fa-trash btn-icon'">
             </i>
-            批量删除
+            {{ batchDeleting ? '删除中...' : '批量删除' }}
           </button>
           <button class="btn btn-secondary" @click="batchExport" :disabled="selectedAudios.length === 0">
             <i class="fas fa-file-export btn-icon"></i>
@@ -85,6 +85,7 @@
           :server-folder-tree="serverFolderTree"
           :folder-loading="folderLoading"
           :expanded-folder-paths="expandedFolderPaths"
+          :deleting-ids="deletingIds"
           :is-folder-all-selected-fn="isFolderAllSelected"
           :is-folder-partial-selected-fn="isFolderPartialSelected"
           @view-change="switchView"
@@ -261,9 +262,11 @@ const {
   handleDrop: handleDrop, 
   selectedFilesForUpload: selectedFilesForUpload,
   batchImportFromFolder: batchImportFromFolder,
-  batchDelete: batchDelete, 
-  batchExport: batchExport, 
-  previewAudio: previewAudio, 
+  batchDelete: batchDelete,
+  batchExport: batchExport,
+  deletingIds,
+  batchDeleting,
+  previewAudio: previewAudio,
   editMetadata: editMetadata, 
   downloadAudio: downloadAudio, 
   deleteAudio: deleteAudio, 

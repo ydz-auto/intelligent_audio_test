@@ -104,6 +104,14 @@
     color: var(--foreground);
 }
 
+/* INT-1332：批量删除进行中禁用态 */
+.action-buttons .btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
 .btn-icon {
     font-size: var(--font-size-md);
 }
