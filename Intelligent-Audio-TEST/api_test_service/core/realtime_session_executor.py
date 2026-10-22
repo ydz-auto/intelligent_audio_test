@@ -28,11 +28,9 @@ import wave
 
 from shared.models.common_enums import (
     AdapterProtocol,
-    AdapterVendor,
     RealtimeFrameType,
     RealtimePacingStrategy,
     RealtimeRoundMode,
-    VendorAdapterType,
 )
 from shared.utils.config_manager import config_manager
 from shared.utils.api_key_provider import resolver_from_config
@@ -269,11 +267,13 @@ class RealtimeSessionExecutor:
                                     session_id, *, proxy_type=None, proxy_url=None):
         """Realtime 传输对象工厂（INT-497 最小接线，仅替换构造对象一处）
 
-        配置了 REALTIME 品牌适配器（vendor_adapter=openai / openai_realtime，
-        方案审计 2026-10-16 拍板第 5 项）时经注册表严格分发（fallback=False：
-        resolve 失败必须抛错，不静默回退 RealtimeWSClient，防双通道语义歧义）；
-        否则保持既有 RealtimeWSClient 默认行为（api_driver / mock / 未配置，
-        向后兼容）。轮次编排零改动——适配器暴露 RealtimeWSClient 同形方法面。
+        INT-1299 分发表驱动化：不再用 if/else 白名单，统一经注册表表驱动入口
+        resolve_for(REALTIME, flat_key) 查表——配置了 REALTIME 品牌适配器
+        （vendor_adapter=openai / openai_realtime）命中映射 → 严格分发
+        （resolve 失败必须抛错，不静默回退 RealtimeWSClient，防双通道语义歧义）；
+        未映射（api_driver / mock / 未配置）→ None → 保持既有 RealtimeWSClient
+        默认行为（向后兼容）。新增厂商只加注册表维度与实现，本方法零改动。
+        轮次编排零改动——适配器暴露 RealtimeWSClient 同形方法面。
 
         配置来源与 HTTP 路径同口径：api_specific_config（API 级）优先，
         回退 case_config（用例级），再经 api.meta（adapter_type_from_config 内置）。
@@ -286,9 +286,9 @@ class RealtimeSessionExecutor:
                 if key not in sel_config and case_config.get(key) is not None:
                     sel_config[key] = case_config[key]
         a_type = adapter_type_from_config(api_config, sel_config)
-        if a_type in (VendorAdapterType.OPENAI, VendorAdapterType.OPENAI_REALTIME):
-            adapter_cls = vendor_adapter_registry.resolve(
-                AdapterProtocol.REALTIME, AdapterVendor.OPENAI, fallback=False)
+        adapter_cls = vendor_adapter_registry.resolve_for(
+            AdapterProtocol.REALTIME, a_type)
+        if adapter_cls is not None:
             return adapter_cls(
                 api_config=api_config, case_config=case_config, endpoint=url,
                 headers=headers,

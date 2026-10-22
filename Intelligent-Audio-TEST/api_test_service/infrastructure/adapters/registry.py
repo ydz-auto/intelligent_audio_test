@@ -402,6 +402,38 @@ class VendorAdapterRegistry:
             reason = f"无可用适配器实现（已注册: {self._registered_keys()}）"
         raise VendorAdapterNotFoundError(protocol, vendor, reason=reason)
 
+    def resolve_for(self, protocol, adapter_type, *, fallback: bool = False) -> Optional[type]:
+        """表驱动分发入口：扁平 key 在该协议下有映射 → 严格 resolve；无映射 → None。
+
+        INT-1299 分发表驱动化（替代 if/else 白名单）：执行链按当前协议查
+        _FLAT_KEY_DIMENSIONS 扁平 key 映射，命中协议维度即 resolve
+        （fallback=False——显式配置了 REALTIME 品牌却回退默认传输对象会造成
+        双通道语义歧义，方案审计 2026-10-16 拍板）；未映射（未配置 / 默认
+        API_DRIVER / 协议不匹配 / 未知扁平 key）返回 None，由调用方保持默认
+        构造（向后兼容）。新增厂商从此只加枚举 + 映射一行 + 注册类，调用方零改动。
+
+        Args:
+            protocol: AdapterProtocol 维度（执行链当前协议）。
+            adapter_type: VendorAdapterType 扁平 key（或等值字符串）。
+            fallback: 透传 resolve 兜底开关（默认 False，严格分发）。
+
+        Returns:
+            适配器类（type）；该协议下无映射 → None。
+        """
+        if not isinstance(adapter_type, VendorAdapterType):
+            try:
+                adapter_type = VendorAdapterType(str(adapter_type))
+            except ValueError:
+                return None
+        dims = _FLAT_KEY_DIMENSIONS.get(adapter_type)
+        if dims is None:
+            return None
+        mapped_protocol, vendor = dims
+        protocol = _coerce_protocol(protocol)
+        if mapped_protocol is None or mapped_protocol != protocol:
+            return None
+        return self.resolve(protocol, vendor, fallback=fallback)
+
     def get_by_key(self, protocol, vendor) -> Optional[VendorAdapterEntry]:
         """精确查一个条目（不降级），返回原始 entry"""
         return self._table.get((_coerce_protocol(protocol), _coerce_vendor(vendor)))
