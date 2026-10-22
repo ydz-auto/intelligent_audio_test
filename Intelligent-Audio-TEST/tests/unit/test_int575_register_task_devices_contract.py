@@ -26,7 +26,7 @@ os.environ.setdefault('OSS_SECRET_KEY', 'test')
 from device_service.interfaces.grpc.device_runtime_servicers import DeviceServiceServicer
 from e2e_test_service.infrastructure.acl.device_acl_repository_impl import DeviceAclRepositoryImpl
 
-FACTORY_TARGET = 'device_service.infrastructure.drivers.device_driver.device_driver_factory'
+FACTORY_TARGET = 'device_service.infrastructure.drivers.driver_factory.device_driver_factory'
 
 SN = '5SM0125613000197'
 
