@@ -26,6 +26,9 @@ importers:
       '@hugeicons/react':
         specifier: ^1.1.9
         version: 1.1.10(react@19.3.0)
+      '@rspack/binding-win32-x64-msvc':
+        specifier: 2.2.9
+        version: 2.2.9
       '@tanstack/react-query':
         specifier: ^5.101.2
         version: 5.104.2(react@19.3.0)
@@ -4053,8 +4056,7 @@ snapshots:
   '@rspack/binding-win32-ia32-msvc@2.2.9':
     optional: true
 
-  '@rspack/binding-win32-x64-msvc@2.2.9':
-    optional: true
+  '@rspack/binding-win32-x64-msvc@2.2.9': {}
 
   '@rspack/binding@2.2.9':
     optionalDependencies:

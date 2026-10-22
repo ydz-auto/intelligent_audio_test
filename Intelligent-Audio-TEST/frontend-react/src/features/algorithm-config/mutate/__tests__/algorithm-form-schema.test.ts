@@ -1,7 +1,8 @@
 /**
  * §6 编辑表单 zod schema 单测（features/algorithm-config/mutate）。
  * 必填校验 + 算法代码正则 + 参数代码同页签唯一性；INT-591 §6.2 双门槛：
- * 草稿宽松（algorithmDraftFormSchema：仅参数代码结构级）vs 发布严格（名称/分组必填 + 范围 min≤max）。
+ * 草稿宽松（algorithmDraftFormSchema：算法代码非空 + 参数代码结构级）vs
+ * 发布严格（名称/分组必填 + 范围 min≤max）。
  */
 import { describe, expect, it } from 'vitest'
 
@@ -144,12 +145,16 @@ describe('algorithmFormSchema', () => {
 
   /* ───────── INT-591 §6.2 草稿宽松 vs 发布严格双门槛 ───────── */
 
-  it('草稿宽松：算法代码/名称/分组可空（中间态暂存）', () => {
-    const values = { ...validBase(), type: '', name: '', groupId: '' }
+  it('草稿宽松：名称/分组可空，算法代码（type）必填（后端草稿快照归属键，INT-1319 P3-2）', () => {
+    // 名称/分组空 → 草稿可暂存
+    const values = { ...validBase(), name: '', groupId: '' }
     const draft = algorithmDraftFormSchema.safeParse(values)
     expect(draft.success).toBe(true)
-    // 发布严格：同值被拦
-    const publish = algorithmFormSchema.safeParse(values)
+    // type 空 → 草稿保存 PUT /algorithm/definitions/draft 会 400「algorithm_type 必填」→ 草稿门槛拦截
+    const emptyType = algorithmDraftFormSchema.safeParse({ ...validBase(), type: '' })
+    expect(emptyType.success).toBe(false)
+    // 发布严格：同值（无 type）仍被拦
+    const publish = algorithmFormSchema.safeParse({ ...validBase(), type: '' })
     expect(publish.success).toBe(false)
   })
 

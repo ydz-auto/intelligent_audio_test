@@ -14,6 +14,7 @@ import {
   deleteAlgorithmGroup,
   fetchAlgorithmDefinitions,
   fetchAlgorithmGroups,
+  fetchCaseCountByAlgorithmType,
   reloadAlgorithmConfig,
   updateAlgorithm,
   updateAlgorithmGroup,
@@ -27,6 +28,21 @@ export function useAlgorithmDefinitions() {
     queryKey: ['algorithm-definitions'],
     queryFn: fetchAlgorithmDefinitions,
     staleTime: 30_000,
+  })
+}
+
+/**
+ * 关联用例计数（§154/P3-1（INT-1319）异步补齐）：后端列表项未返回 case_count 时启用，
+ * 按算法 type 逐个经 testcases 的 algorithm_type 聚合 total，不阻塞列表首屏；
+ * 返回 type → count Map，由页面合并进 definitions 的 caseCount。
+ * types 为 []（后端已返计数 / 列表空）时禁用，不发请求。
+ */
+export function useAlgorithmCaseCounts(types: string[]) {
+  return useQuery({
+    queryKey: ['algorithm-case-counts', types],
+    queryFn: () => fetchCaseCountByAlgorithmType(types),
+    enabled: types.length > 0,
+    staleTime: 5 * 60_000,
   })
 }
 

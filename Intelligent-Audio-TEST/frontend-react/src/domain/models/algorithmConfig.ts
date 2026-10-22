@@ -169,8 +169,9 @@ export type AlgorithmDefinition = {
   referenceParams: ReferenceParam[]
   mappings: AlgorithmMappings
   associatedDimensions: DimensionRelation[]
-  /** 引用该算法的用例数（列表列「关联用例」；definitions 响应无计数字段，mock 阶段按用例引用聚合语义补列） */
-  caseCount: number
+  /** 引用该算法的用例数（列表列「关联用例」；definitions 响应无计数字段时为 null，
+   *  由 useAlgorithmCaseCounts 经 fetchCaseCountByAlgorithmType 异步补齐，见 INT-1319 P3-1） */
+  caseCount: number | null
   /** 是否存在未发布草稿（INT-591 §3.4 可选列 Badge「有草稿」；后端 has_draft 字段返回后启用，未返回前不渲染） */
   hasDraft?: boolean
   /** 乐观锁版本号（INT-591 §6.2/§12-10；后端定义全量保存事务 RPC 带 revision，冲突 409 时刷新） */
