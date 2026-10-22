@@ -17,10 +17,10 @@
 | # | 修订点 | v3.0 语义 |
 | --- | --- | --- |
 | 1 | 执行路由 | `device_type`（physical / http_api / websocket_api）为唯一路由依据；废弃 `task.type` / `test_type` 字符串判断；`TaskType` 不引入 `'realtime_api'` |
-| 2 | 执行链路 | api_gateway:5000 → task_service:5001（`_dispatch_api_case`）→ Redis `task:queue` → api_test_service:5003（replicas:2，`worker_instance_id` 归属 + `RedisServiceRegistry` 心跳 + 孤儿收养）→ `HttpAPIAdapter` / `HttpStreamAdapter` / `RealtimeAPIAdapter` 按 `(protocol, vendor)` 注册表 |
+| 2 | 执行链路 | api_gateway:5000 → task_service:5001（`_dispatch_api_case`）→ Redis `task:queue` → api_test_service:5003（replicas:2，`worker_instance_id` 归属 + `RedisServiceRegistry` 心跳 + 孤儿收养）→ `HttpAPIAdapter` / `HttpStreamAdapter` / Realtime 三级体系（`ApiVendorAdapter` → `RealtimeAdapterBase` → `OpenAIRealtimeAdapter`）按 `(protocol, vendor)` 注册表 |
 | 3 | 混音 | audio_service gRPC:50052 新增 server-streaming RPC `RenderAudioStream`（新增）；离线混音 6 步 → 100ms base64 chunk；`AudioFormatAdapter` 格式适配到 `api.audio_config` |
 | 4 | SPL | `ApiRmsSplMapping` 聚合 + `api_rms_spl_mappings` 表（新增）；`SPLMappingService.spl_to_gain` 多点插值；`/api/digital-spl` 路由（新增）；校准互斥 `DistributedLock` |
-| 5 | Realtime | `RealtimeSessionExecutor`（新增）：生产者-消费者事件队列、frame/summary 双通道、barge-in 打断检测、「超时但已开口视为成功」、`RealtimeEventType` 11 种归一化事件（新增枚举） |
+| 5 | Realtime | `RealtimeSessionExecutor`（新增）：生产者-消费者事件队列、frame/summary 双通道、barge-in 打断检测、`RealtimeFrameType` 归一化事件（新增枚举） |
 | 6 | 事件 | Redis EventBus → api_gateway 订阅 → Socket.IO `task_id` 房间；**不再直连 WebSocket** |
 | 7 | 评估 | evaluation_service:5004 经 EventBus 订阅；result_type 映射（`'api'` / `'realtime'` 新增）；`CASE_EVALUATION_COMPLETED` |
 | 8 | 数据模型 | `api_models.py` API 类新增 device_type / adapter_class / audio_config / output_types 四列；`StartAPITestRequest` 新增 device_type |
@@ -32,6 +32,7 @@
 | 14 | 脱敏 | `shared/utils/secret_mask.py` 扩展掩码 `proxy_url` 值内 `user:pass` 段、保留 host:port（INT-839） |
 | 15 | 输出调输入节奏 | Realtime 输入推流按被测实时输出事件调节奏：`RealtimePacingStrategy` 枚举（fixed / wait_turn_end / allow_barge_in / timeout_fallback）+ `_pacing_gate` 事件→决策映射 + `RealtimePacingService` 解析（case_config.pacing → meta.pacing → realtime_session 全局 → 默认，FIXED 与动态互斥）（INT-475，详见 `07_流式推送与结果获取.md` 附录） |
 | 16 | 实机接入 | 新增用户说明《`doc/实机接入指南_API与Realtime测试.md`》+ 网页文档页 `docs/实机接入指南_网页文档页.html`：被测 API / REALTIME API 提供方如何接入本平台跑测试（配置字段、rounds、建任务执行、mock_dut :5096 / mock_realtime_api :5098 联调、常见问题） |
+| 17 | Realtime 新架构回写（2026-10-22，同步 INT-497 / INT-1299） | Realtime 章节按最新架构更新：适配器三级体系（`ApiVendorAdapter` Port → `RealtimeAdapterBase` 协议级 base → `OpenAIRealtimeAdapter` 品牌类）+ 特殊化覆写落点表（pre_process / recv / output+post_process / wait_ai_* / _build_client）；`registry.resolve_for(protocol, flat_key)` 表驱动分发（新厂商 = 枚举 + `_FLAT_KEY_DIMENSIONS` 一行 + `@register_vendor_adapter` 类，执行器零改动）；轮次语义 `RealtimeAdapterBase.resolve_round_mode`（`_as_bool` 兼容 int/bool/str）+ 厂商方言覆写；评估字段走 field_mapper 配置透传（与 E2E/HTTP 同构，不写代码枚举）；打断/拒识口径（打断轮 = `is_interruption` + `interruption_delay_ms` + barge-in 窗口；推流中打断 = `allow_barge_in` 节奏策略；拒识 = 评估侧 `reject_judge`，适配器如实采集轮次结果）。见 §3.6 |
 
 原文档第 7 章中 QPS / RTT / SLA / 并发压测等通用性能指标**保留**，标注见 7.1 节。
 
@@ -66,7 +67,7 @@
 | frame 通道 | Realtime 会话的实时帧事件流：不落库，仅经 Socket.IO 推送 |
 | summary 通道 | Realtime 会话的汇总结果：落库 + 对象存储，触发评估 |
 | barge-in | 用户开口打断 AI 播报；由 `user_speech_started` 触发打断检测 |
-| RealtimeEventType | Realtime 归一化事件枚举（11 种，新增） |
+| RealtimeFrameType | Realtime 归一化事件枚举（`shared/models/common_enums.py`，新增，前端 `frontend/src/domain/enums.ts` 镜像） |
 | RenderAudioStream | audio_service 新增的 server-streaming 混音渲染 RPC（新增） |
 | ApiRmsSplMapping | API 侧 RMS→SPL 映射聚合（新增），物理侧对称物为 SPLMapping |
 | 孤儿收养 | `_adopt_orphan_tasks`：worker 接管心跳过期实例遗留任务（见 02_架构设计.md） |
@@ -127,7 +128,7 @@ sequenceDiagram
     TS->>R: LPUSH task:queue
     API->>R: BRPOP task:queue（绑定 worker_instance_id）
     API->>R: RedisServiceRegistry 注册 + 心跳（TTL 15s）
-    API->>EXT: HttpAPIAdapter / HttpStreamAdapter / RealtimeAPIAdapter
+    API->>EXT: HttpAPIAdapter / HttpStreamAdapter / Realtime 三级体系（RealtimeAdapterBase → OpenAIRealtimeAdapter）
     EXT-->>API: 响应 / 流 / 归一化事件
     API->>EV: 发布 frame（实时）/ summary（落库）事件
     GW->>EV: 订阅
@@ -155,7 +156,7 @@ sequenceDiagram
 | --- | --- | --- | --- | --- |
 | physical | `_dispatch_e2e_case` | e2e_test_service:5002 | — | 走 audio/device gRPC 物理链路 |
 | http_api | `_dispatch_api_case` | api_test_service:5003 | HttpAPIAdapter / HttpStreamAdapter | 一问一答 / 流式 |
-| websocket_api | `_dispatch_api_case` | api_test_service:5003 | RealtimeAPIAdapter | WS 长连接，实例内闭环 |
+| websocket_api | `_dispatch_api_case` | api_test_service:5003 | Realtime 三级体系（`RealtimeAdapterBase` → `OpenAIRealtimeAdapter`） | WS 长连接，实例内闭环 |
 
 废弃清单（节选，完整 9 项见 `05_路由与废弃.md`）：
 
@@ -199,16 +200,16 @@ sequenceDiagram
 - 内置适配器：
   - **HttpAPIAdapter**：request/response 一问一答（非流式 HTTP）；
   - **HttpStreamAdapter**：HTTP 流式（SSE / chunked）；
-  - **RealtimeAPIAdapter**：WebSocket 长连接，厂商事件 → `RealtimeEventType` 归一化；
+  - **Realtime 三级体系**（INT-497，见 3.6）：`ApiVendorAdapter`（Port）→ `RealtimeAdapterBase`（协议级 base，`infrastructure/adapters/protocol/realtime_adapter_base.py`）→ 品牌适配器（`vendors/OpenAIRealtimeAdapter`）；RealtimeWSClient 作传输/状态机被组合复用；
 - 适配器输出统一为 `AdapterOutput`（dataclass，定义见 `07_流式推送与结果获取.md`）；
-- UC-1003 扩展点：新增厂商仅需在注册表登记新 `(protocol, vendor)` 条目（或配置 `adapter_class`），不修改执行器；
+- UC-1003 扩展点：新增厂商经注册表表驱动分发（`registry.resolve_for(protocol, flat_key)`，INT-1299）——新厂商 = `AdapterVendor`/`VendorAdapterType` 枚举 + `_FLAT_KEY_DIMENSIONS` 一行映射 + `@register_vendor_adapter` 类，执行器零改动；
 - 【适配说明】承接旧 api_adapter_service:5008 的适配职责，后者 P3 下线（INT-1176 已删除）。
 
 ### 3.3 会话执行器
 
 - 现状模块：`api_test_service/core/`（api_session_executor.py L33 `class APISessionExecutor`；另有 api_task_runner / api_concurrency_manager / api_executor / api_result_processor / session_context / api_test_service）；
 - 骨架：BaseExecutor 五 Mixin —— `ControlMixin / LoggingMixin / ParamsMixin / ResultsMixin / DbMixin`（`shared/infrastructure/base_executor/_base.py`）；
-- 新增 `RealtimeSessionExecutor`（`api_test_service/core/realtime_session_executor.py`，待建），见 3.6。
+- `RealtimeSessionExecutor`（`api_test_service/core/realtime_session_executor.py`，已落地，INT-497 最小接线），见 3.6。
 
 ### 3.4 混音与音频下发【适配说明】
 
@@ -255,29 +256,23 @@ DistributedLock(key=f"calibration:api_rms_spl:{api_id}:{mapping_id}", ttl=30)
 
 ### 3.6 Realtime 实时会话（新增）
 
-- 执行器：`RealtimeSessionExecutor`（待建），**生产者-消费者**事件队列：`_recv_loop` daemon 线程收包 → `queue.Queue` → 主循环消费；
-- 归一化事件 11 种（`RealtimeEventType` 枚举，**新增**）：
-
-| 事件 | 说明 |
-| --- | --- |
-| ai_audio_delta | AI 音频增量帧 |
-| ai_audio_done | AI 音频完毕 |
-| ai_text_delta | AI 文本增量 |
-| ai_text_done | AI 文本完毕 |
-| user_speech_started | 用户开口（barge-in 触发源） |
-| user_speech_stopped | 用户停顿 |
-| response_cancelled | 响应被打断取消 |
-| error | 会话错误 |
-| session.created | 会话建立 |
-| session.updated | 会话参数更新 |
-| connection_closed | 连接关闭 |
-
+- 执行器：`RealtimeSessionExecutor`（`api_test_service/core/realtime_session_executor.py`），**生产者-消费者**事件队列：`_recv_loop` daemon 线程收包 → `queue.Queue` → 主循环 `recv()` 消费；
+- 归一化事件：`RealtimeFrameType` 枚举（`shared/models/common_enums.py`，前端 `frontend/src/domain/enums.ts` 镜像），厂商原始事件经 `RealtimeWSClient._parse_event` + `_EVENT_TYPE_MAP` 归一化（默认 OpenAI 事件协议）；
+- **适配器三级体系**（INT-497）：
+  - `ApiVendorAdapter`（Port，`domain/ports/api_vendor_adapter.py`）→ `RealtimeAdapterBase`（协议级 base，`infrastructure/adapters/protocol/realtime_adapter_base.py`）→ 品牌适配器（`vendors/OpenAIRealtimeAdapter`，零覆写样例：仅 `protocol` / `vendor` / `adapter_type` / `display_name` / `_transport_vendor` 五类属性）；
+  - 组合复用 `RealtimeWSClient`（`infrastructure/adapters/transport/realtime_ws_client.py`）为传输/状态机，暴露同形方法面（connect / pre_process / send / recv / output / close）；
+  - **特殊化覆写落点**（新厂商在此选覆写点，其余继承）：`pre_process`（握手/session.update 载荷）、`recv`（事件归一化，打断依赖 `user_speech_started` ↔ 厂商打断事件、`response_cancelled` ↔ 厂商取消回复事件）、`output`+`post_process`（聚合）、`wait_ai_speaking`+`wait_ai_complete`（等待语义）、`_build_client`（私有传输替换）；配置级差异（URL / 密钥 / 代理 / session_config / audio_config）走 `api.meta` 不写代码；
+- **表驱动分发**（INT-1299）：`RealtimeSessionExecutor._resolve_realtime_transport` 查 `vendor_adapter_registry.resolve_for(AdapterProtocol.REALTIME, a_type)`（`registry.py`）——命中 → 严格分发（fallback=False）；未命中（未配置 / API_DRIVER / MOCK）→ 回退 `RealtimeWSClient` 默认构造。新厂商 = `AdapterVendor`/`VendorAdapterType` 枚举 + `_FLAT_KEY_DIMENSIONS` 一行 + `@register_vendor_adapter` 类，执行器零改动；
+- **字段归一化**（INT-1299）：轮次语义 `RealtimeAdapterBase.resolve_round_mode`（默认实现 `_as_bool` 兼容 int/bool/str，参照 `harmony_xiaoyichat._as_bool`）+ 厂商方言覆写；评估字段走 field_mapper 配置透传（与 E2E/HTTP 同构）：评估入参遍历 `field_mappings['original']['evaluation']['output']`（param_mapping source_param→target_param，case/reference 源取 round_config、api 源取轮次输出），`answer` 等按 api 输出字段定义取（output_field_keys），别名兜底（question/query）收敛到算法 param_mapping 配置，代码无硬编码字段名；
 - frame / summary 双通道（UC-1002）：
-  - **frame**：不落库，仅经 EventBus → Socket.IO（room = task_id）实时推送前端渲染；
-  - **summary**：会话汇总落库 + 对象存储 `api-test-results/<task_id>/<session_id>/summary.json`，触发评估；
-- barge-in 打断检测：捕获 `user_speech_started` 即判定用户开口，经 RealtimeAPIAdapter 下行指令下发 `response_cancelled`；
-- 判定规则：**「超时但已开口视为成功」**——会话超时但已捕获 `user_speech_started` 的，按成功收敛，进入 summary 与评估链路；
-- 连接管理：WS 长连接实例内闭环 + 亲和路由（见 2.5）。
+  - **frame**：不落库，`event_listener`（`_on_frame` 回调）逐帧经 EventBus → Socket.IO（room = task_id）实时推送前端渲染（异步观测，不参与停止）；
+  - **summary**：会话汇总落库 + AI 输出音频归档（`audios/{task}/realtime/ai_output_*.wav`），触发评估；
+- 打断/拒识口径（INT-1299）：
+  - **打断轮**（`is_interruption` 用例配置）：等 AI 开口 → `interruption_delay_ms`（默认 1000）延时 → 推打断音频 → `barge_in_window_seconds=5` 检测窗口内等 `user_speech_started` / `response_cancelled` → 等 AI 重新回复；
+  - **推流中打断** = `ALLOW_BARGE_IN` 节奏策略（INT-475）：输入推流中模型提前回话/打断 → `_pacing_gate` 返回 `interrupt` → 收敛输入推流；
+  - **拒识** = 评估侧 `reject_judge` 判定（裁判族维度），适配器只需如实采集轮次结果（output.text / audio / 是否开口），无需特殊逻辑；
+- **轮次成败语义**：起始窗口（`ai_start_timeout_seconds=25`）内无 `ai_audio_delta` → 「AI 未回复」轮失败；已开口仅表明通过起始窗口，收尾事件（`ai_audio_done`）须在 `ai_complete_timeout_seconds=60` 内到达，否则轮失败「AI 回复未在超时内完成」（`wait_ai_complete` + `success = bool(complete and output['ai_complete'])`）；
+- 连接管理：WS 长连接实例内闭环 + 亲和路由（见 2.5，`RealtimeSessionRegistry.route_or_bind` / `bind_ttl_seconds=3600`）。
 
 ### 3.7 密钥与配置（新增）
 
@@ -347,25 +342,28 @@ DistributedLock(key=f"calibration:api_rms_spl:{api_id}:{mapping_id}", ttl=30)
 ```mermaid
 sequenceDiagram
     autonumber
-    participant EXE as RealtimeSessionExecutor（新增）
-    participant AD as RealtimeAPIAdapter
+    participant EXE as RealtimeSessionExecutor
+    participant AD as OpenAIRealtimeAdapter<br/>（RealtimeAdapterBase 子类）
+    participant WS as RealtimeWSClient
     participant V as 厂商 WS 端
     participant Q as queue.Queue
     participant EV as EventBus
     participant ST as 对象存储
 
     EXE->>AD: connect（websocket_api 会话）
-    AD->>V: WebSocket 握手
-    V-->>AD: session.created / session.updated
-    AD->>EXE: _recv_loop（daemon 线程）入队
-    V-->>AD: ai_audio_delta / ai_text_delta / user_speech_started ...
-    AD-->>Q: 归一化事件（RealtimeEventType）
+    AD->>WS: RealtimeWSClient.connect（_build_client 构造）
+    WS->>V: WebSocket 握手
+    V-->>WS: session.created / session.updated
+    WS->>Q: _recv_loop（daemon 线程）归一化入队
+    V-->>WS: ai_audio_delta / ai_text_delta / user_speech_started ...
+    WS-->>Q: RealtimeFrameType 归一化事件
+    EXE->>Q: recv() 同步拉取
     EXE->>EV: frame 事件（不落库，Socket.IO room=task_id 推送）
-    EXE->>EXE: barge-in：user_speech_started → 下发 response_cancelled
-    V-->>AD: ai_audio_done / ai_text_done / connection_closed
-    EXE->>ST: summary.json（api-test-results/<task_id>/<session_id>/）
+    EXE->>EXE: _pacing_gate：user_speech_started / response_cancelled → interrupt（ALLOW_BARGE_IN）
+    V-->>WS: ai_audio_done / ai_text_done / connection_closed
+    EXE->>ST: summary（audios/{task}/realtime/ai_output_*.wav + 汇总结论落库）
     EXE->>EV: summary 事件 → 触发评估
-    Note over EXE,V: 「超时但已开口视为成功」：超时但已捕获 user_speech_started → 按成功收敛
+    Note over EXE,V: 已收到 ai_audio_delta 仅表明通过起始窗口；收尾事件 ai_audio_done 须在 ai_complete_timeout_seconds 内到达，否则轮失败「AI 回复未在超时内完成」
 ```
 
 ### 4.3 混音流式渲染流程（新增）
@@ -482,7 +480,7 @@ SPLMapping 页面为本轮前端四层的**对称模板**，API 测试页按其�
   - `DeviceType`：physical / http_api / websocket_api；
   - `OutputType`：产出类型（text / audio 等）；
   - `CalibrationStatus`：校准状态机；
-- **新增** `RealtimeEventType`：11 种归一化事件（见 3.6）；
+- **新增** `RealtimeFrameType`：归一化事件（见 3.6）；`RealtimeRoundMode`（normal / interruption）、`RealtimePacingStrategy`（INT-475，fixed / wait_turn_end / allow_barge_in / timeout_fallback）；
 - **新增** 被测 API 网络代理类型枚举（INT-839）：`proxy_type` 四值 http / https / socks5 / socks5h（无代理为 NULL/空），后端收敛于 `proxy_utils.PROXY_TYPES`，前端 `frontend/src/domain/enums.ts` `ProxyType` 同步（值 = 后端原值）；
 - 前端 `frontend/src/domain/enums.ts` 同步**新增**三枚举；`TaskType`（L24）**不引入** `'realtime_api'`；
 - result_type 映射（评估侧，详见 `06_评估与前端.md`）：
@@ -537,7 +535,7 @@ SPLMapping 页面为本轮前端四层的**对称模板**，API 测试页按其�
 - api_test_service **replicas:2**；worker 心跳 TTL 15s；心跳过期由 `_adopt_orphan_tasks` 孤儿收养接管；
 - Realtime 长连接亲和路由，保证会话事件归属一致；
 - EventBus 事件消费幂等（task_id + 事件序号去重）；
-- Realtime 判定容错：「超时但已开口视为成功」（见 3.6）。
+- Realtime 判定容错：起始窗口超时（`ai_start_timeout_seconds=25` 无 `ai_audio_delta`）→「AI 未回复」轮失败；收尾窗口超时（`ai_complete_timeout_seconds=60` 无 `ai_audio_done`）→「AI 回复未在超时内完成」轮失败；`TIMEOUT_FALLBACK` 只兜底不无限等待，不改变成败语义（见 3.6）。
 
 ---
 
@@ -568,7 +566,7 @@ SPLMapping 页面为本轮前端四层的**对称模板**，API 测试页按其�
 
 ## 9. 测试与维护
 
-- **单元测试**：适配器归一化（RealtimeEventType 11 种全覆盖）、`spl_to_gain` 多点插值边界、OpenAI 密钥链回退顺序；网络代理（INT-839）：CRUD 校验（含 scheme 前缀拒绝 / 端口数字 / user:pass 必填）、URL 拼接、websocket-client 参数分解（含 realtime_ws_client）、requests proxies 注入、adapter 透传白名单 merge、socks 类型可用性（`tests/unit/test_int839_api_proxy.py` / `test_int847_adapter_proxy.py` / `test_int848_*`）；
+- **单元测试**：适配器归一化（RealtimeFrameType 全覆盖）、`spl_to_gain` 多点插值边界、OpenAI 密钥链回退顺序；网络代理（INT-839）：CRUD 校验（含 scheme 前缀拒绝 / 端口数字 / user:pass 必填）、URL 拼接、websocket-client 参数分解（含 realtime_ws_client）、requests proxies 注入、adapter 透传白名单 merge、socks 类型可用性（`tests/unit/test_int839_api_proxy.py` / `test_int847_adapter_proxy.py` / `test_int848_*`）；
 - **集成测试**：api_gateway ↔ task_service ↔ api_test_service 双副本链路；EventBus → Socket.IO 房间隔离（UC-1001）；RenderAudioStream 分片连续性；
 - **灰度策略**：device_type 白名单开关，旧 `task.type` 路径并行运行直至废弃清单收尾（先重构，再管消费方）；
 - **监控维护**：task:queue 深度、worker 心跳 TTL、锁等待时长、replicas 副本均衡。
@@ -580,7 +578,7 @@ SPLMapping 页面为本轮前端四层的**对称模板**，API 测试页按其�
 | 阶段 | 内容 | 详见 |
 | --- | --- | --- |
 | P0 | device_type 路由改造（task_dispatch 枚举化）、DDL（API 四列 / TaskCase 增列 / api_rms_spl_mappings 建表）、三枚举新增、废弃清单落地 | `05_路由与废弃.md` |
-| P1 | 适配器注册表（HttpAPI / HttpStream / Realtime）、RealtimeSessionExecutor、RealtimeEventType、RenderAudioStream RPC | `02_架构设计.md`、`07_流式推送与结果获取.md` |
+| P1 | 适配器注册表（HttpAPI / HttpStream / Realtime 三级体系）、RealtimeSessionExecutor、RealtimeFrameType、RenderAudioStream RPC | `02_架构设计.md`、`07_流式推送与结果获取.md` |
 | P2 | ApiRmsSplMapping 校准链路、`/api/digital-spl` 路由、SPLMapping 五层模板铺开至 APITest 页 | `08_混音与SPL映射.md` |
 | P3 | api_adapter_service:5008 下线（INT-1176 已执行）、废弃清单收尾 | `02_架构设计.md` |
 
