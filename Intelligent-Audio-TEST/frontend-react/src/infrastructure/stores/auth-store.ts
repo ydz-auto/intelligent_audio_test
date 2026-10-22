@@ -70,7 +70,10 @@ export const useAuthStore = create<AuthState>()(
         // 有 token：真实会话恢复
         if (authTokenStore.get()) {
           try {
-            const user = await authApi.getMe()
+            // /auth/me 契约无 role_name（INT-1226）：沿用登录时会话缓存的角色码，
+            // DTO 层照 ROLE_META 映射中文名，不因 /auth/me 缺字段清空
+            const cachedRoleName = useAuthStore.getState().user?.roleName ?? ''
+            const user = await authApi.getMe({}, cachedRoleName)
             set({ user })
           } catch {
             // 401 已由 client 侧触发会话过期清理；其余错误保留现有状态

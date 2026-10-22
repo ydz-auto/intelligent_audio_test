@@ -5,6 +5,7 @@
  * GET /auth/me → { user_id, username, role_id, permissions }；
  * GET /auth/oauth/providers → { providers: [...] }）。
  */
+import { ROLE_META, type RoleCode } from '@/domain/models/role'
 import type { AuthUser } from '@/domain/models/user'
 import type { OAuthProvider } from '@/domain/models/auth'
 
@@ -57,13 +58,18 @@ export interface PasswordEncryptionKeyDto {
   fallback?: { kid: string; public_key: string }
 }
 
+/** 角色码 → 中文名（系统角色照 ROLE_META，自定义角色沿用原码；复用 user.dto.ts 口径） */
+function toRoleName(roleCode: string): string {
+  return ROLE_META[roleCode as RoleCode]?.name ?? roleCode
+}
+
 /** 登录响应内嵌用户 → Domain AuthUser（displayName 后端无字段，兜底 username） */
 export function toAuthUser(raw: AuthUserDto): AuthUser {
   return {
     id: String(raw.id),
     username: raw.username ?? '',
     displayName: raw.username ?? '',
-    roleName: raw.role_name ?? '',
+    roleName: toRoleName(raw.role_name ?? ''),
     permissions: raw.permissions ?? [],
   }
 }
@@ -78,13 +84,20 @@ export function toAuthLoginResult(
   }
 }
 
-/** GET /auth/me 响应 → AuthUser（roleName 后端缺省空串，displayName 兜底 username） */
-export function toAuthUserFromMe(raw: AuthMeResultDto): AuthUser {
+/**
+ * GET /auth/me 响应 → AuthUser（/auth/me 契约无 role_name——INT-1226 兜底口径：
+ * roleName 由调用方传入会话缓存角色码，照 ROLE_META 映射中文名，不因缺字段清空；
+ * displayName 兜底 username）。
+ */
+export function toAuthUserFromMe(
+  raw: AuthMeResultDto,
+  fallbackRoleName = ''
+): AuthUser {
   return {
     id: raw.user_id != null ? String(raw.user_id) : '',
     username: raw.username ?? '',
     displayName: raw.username ?? '',
-    roleName: '',
+    roleName: toRoleName(fallbackRoleName),
     permissions: raw.permissions ?? [],
   }
 }

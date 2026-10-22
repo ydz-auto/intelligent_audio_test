@@ -80,6 +80,57 @@ describe('auth-store 真实登录态', () => {
     expect(useAuthStore.getState().user?.username).toBe('tester')
   })
 
+  it('hydrateSession：/auth/me 契约缺 role_name → 保留登录时缓存的 roleName（INT-1226）', async () => {
+    authTokenStore.set('t1')
+    // 登录完成后 persist 缓存了角色名（来自 POST /auth/login user.role_name）
+    useAuthStore.setState({
+      user: {
+        id: '369',
+        username: '接线测试_admin',
+        displayName: '接线测试_admin',
+        roleName: '超级管理员',
+        permissions: ['*'],
+      },
+    })
+    // mock 模拟真实 getMe：fallback 透传（DTO 层 ROLE_META 映射由 authApi 单测覆盖）
+    vi.mocked(authApi.getMe).mockImplementation(
+      async (_options?: object, fallbackRoleName = '') => ({
+        id: '369',
+        username: '接线测试_admin',
+        displayName: '接线测试_admin',
+        roleName: fallbackRoleName,
+        permissions: ['*'],
+      })
+    )
+    await useAuthStore.getState().hydrateSession()
+    expect(authApi.getMe).toHaveBeenCalledWith({}, '超级管理员')
+    expect(useAuthStore.getState().user?.roleName).toBe('超级管理员')
+  })
+
+  it('hydrateSession：缓存 roleName 为角色码 → 透传给 getMe 映射中文名', async () => {
+    authTokenStore.set('t1')
+    // 历史 persist 数据可能存的是角色码（如 admin），恢复时由 getMe/DTO 映射为中文名
+    useAuthStore.setState({
+      user: {
+        id: '369',
+        username: '接线测试_admin',
+        displayName: '接线测试_admin',
+        roleName: 'admin',
+        permissions: ['*'],
+      },
+    })
+    vi.mocked(authApi.getMe).mockResolvedValue({
+      id: '369',
+      username: '接线测试_admin',
+      displayName: '接线测试_admin',
+      roleName: '超级管理员',
+      permissions: ['*'],
+    })
+    await useAuthStore.getState().hydrateSession()
+    expect(authApi.getMe).toHaveBeenCalledWith({}, 'admin')
+    expect(useAuthStore.getState().user?.roleName).toBe('超级管理员')
+  })
+
   it('hydrateSession：无 token 且 AUTH_MODE=off → GET /auth/me 回填 dev_user（§3.1 开放模式放行）', async () => {
     vi.mocked(authApi.getAuthMode).mockResolvedValue('off')
     vi.mocked(authApi.getMe).mockResolvedValue({
