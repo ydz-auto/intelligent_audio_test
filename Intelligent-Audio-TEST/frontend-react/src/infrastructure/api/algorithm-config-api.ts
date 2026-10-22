@@ -56,7 +56,14 @@ import {
 export async function fetchAlgorithmDefinitions(): Promise<AlgorithmDefinition[]> {
   const dto = await request<AlgorithmDefinitionListDto>(
     'GET',
-    '/algorithm/definitions'
+    '/algorithm/definitions',
+    undefined,
+    {
+      // INT-1225：/rankings 公开页算法卡片网格同源消费本端点（useRankingAlgorithm，
+      // 14_benchmark排行.md §4.5），匿名 401 不触发 sessionExpired 整页跳登录——
+      // 页面按只读降级条/「算法详情暂不可用」降级。
+      skipAuthRedirect: true,
+    }
   )
   const list = toAlgorithmDefinitionList(dto)
   // §3.4/§154：后端返回 case_count 时直接消费；未返回（INT-591 契约未达）时按用例引用聚合兜底，

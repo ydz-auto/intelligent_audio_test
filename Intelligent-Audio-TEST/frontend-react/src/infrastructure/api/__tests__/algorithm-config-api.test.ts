@@ -115,7 +115,10 @@ describe('algorithm-config-api（真实端点接线）', () => {
     // 后端无 case_count → 触发聚合兜底，用例库为空
     mockApiClientGet.mockResolvedValue(testcasesEnvelope(0))
     const list = await fetchAlgorithmDefinitions()
-    expect(mockRequest).toHaveBeenCalledWith('GET', '/algorithm/definitions')
+    // INT-1225：/rankings 公开页算法网格同源消费 → 匿名 401 不触发 sessionExpired
+    expect(mockRequest).toHaveBeenCalledWith('GET', '/algorithm/definitions', undefined, {
+      skipAuthRedirect: true,
+    })
     expect(mockApiClientGet).toHaveBeenCalledWith(
       '/testcases',
       expect.objectContaining({

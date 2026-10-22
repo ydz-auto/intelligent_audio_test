@@ -20,12 +20,15 @@ export interface BenchmarkAccess {
 
 export function useBenchmarkAccess(): BenchmarkAccess {
   const user = useAuthStore((s) => s.user)
-  // AUTH_MODE=off（现状部署）：未登录也视为全员放行；登录后按真实权限码走 RBAC 分支
-  const granted = user === null
+  // AUTH_MODE=off 开放模式：启动引导已把后端注入的 dev_user（permissions=['*']）
+  // 回填 store，hasPermission 通配即放行，无需在此为未登录特判；
+  // 真实认证模式（dev/prod）未登录访客 user=null → 无权限 → 数据 403 空态
+  // （14_benchmark排行.md §5.1/§6.2，INT-1225：匿名不再被整页跳登录，URL 直达
+  // 时榜单/算法降级为权限空态 + 只读降级条）。
   return {
-    canRead: granted || hasPermission(user, 'benchmark:ranking:read'),
-    canCompute: granted || hasPermission(user, 'benchmark:ranking:compute'),
-    canReadReport: granted || hasPermission(user, 'report:read'),
-    canReadAlgorithm: granted || hasPermission(user, 'algorithm:read'),
+    canRead: hasPermission(user, 'benchmark:ranking:read'),
+    canCompute: hasPermission(user, 'benchmark:ranking:compute'),
+    canReadReport: hasPermission(user, 'report:read'),
+    canReadAlgorithm: hasPermission(user, 'algorithm:read'),
   }
 }
