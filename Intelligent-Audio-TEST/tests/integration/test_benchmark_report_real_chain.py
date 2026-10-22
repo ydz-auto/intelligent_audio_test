@@ -95,6 +95,18 @@ def _rank_row(subject, metric='WER', category='asr', suite='librispeech-v1',
     }
 
 
+def _seed_report(report_id, deleted=False):
+    """写入 test_reports 行，使排行行 report_id 指向存在的报告（INT-1218 可见性过滤）。"""
+    from report_service.infrastructure.persistence.models import Report
+    from shared.models.database import get_db_session
+    s = get_db_session()
+    po = Report(id=report_id, name=f'bench-report-{report_id}', type='task',
+                status='completed', deleted=deleted)
+    s.add(po)
+    s.commit()
+    s.close()
+
+
 class TestBenchmarkReportRealChain:
     def test_report_publish_roundtrip_via_grpc(self, db, report_chain):
         from shared.clients.grpc_clients import get_benchmark_config_service_stub
@@ -107,6 +119,8 @@ class TestBenchmarkReportRealChain:
 
         # ---- 准备：排行 ReadModel（2 行实测） ----
         repo = BenchmarkRepositoryImpl()
+        _seed_report(101)  # _rank_row(pt_id=1) → report_id=101（INT-1218 可见性过滤）
+        _seed_report(102)  # _rank_row(pt_id=2) → report_id=102
         repo.replace_ranking_rows(
             [{'category': 'asr', 'metric_code': 'WER', 'scenario_key': '通用',
               'source': 'platform_test'}],
@@ -171,6 +185,7 @@ class TestBenchmarkReportRealChain:
         )
 
         repo = BenchmarkRepositoryImpl()
+        _seed_report(101)  # _rank_row(pt_id=1) → report_id=101（INT-1218 可见性过滤）
         repo.replace_ranking_rows(
             [{'category': 'asr', 'metric_code': 'WER', 'scenario_key': '通用',
               'source': 'platform_test'}],

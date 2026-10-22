@@ -134,6 +134,18 @@ def _platform_task(pt_id, name, wer_value, version=1):
     }
 
 
+def _seed_report(report_id, deleted=False):
+    """写入 test_reports 行，使排行行 report_id 指向存在的报告（INT-1218 可见性过滤）。"""
+    from report_service.infrastructure.persistence.models import Report
+    from shared.models.database import get_db_session
+    s = get_db_session()
+    po = Report(id=report_id, name=f'bench-report-{report_id}', type='task',
+                status='completed', deleted=deleted)
+    s.add(po)
+    s.commit()
+    s.close()
+
+
 # ==================== 验收标准 3：真仓储层不可变快照 ====================
 
 class TestRepoImmutableSnapshot:
@@ -212,6 +224,7 @@ class TestDualTrackConsistencyRealRepo:
             source_id=source['id'], category='asr',
             entries=[_entry(model_name='Moshi', value=6.0),
                      _entry(model_name='Whisper', value=8.5)]))
+        _seed_report(101)  # 平台实测 report_id=101 指向的报告存在（INT-1218 可见性过滤）
 
         pt_acl = _FakePtAcl([_platform_task(1, 'Moshi', 7.2)])
         ranking_svc = BenchmarkRankingService(repo=repo, pt_acl=pt_acl)
@@ -350,6 +363,7 @@ class TestReadModelRefreshSemantics:
         svc.import_baselines(ImportBenchmarkBaselinesCommand(
             source_id=source['id'], category='asr',
             entries=[_entry(model_name='A', value=5.0)]))
+        _seed_report(101)  # 平台实测 report_id=101 指向的报告存在（INT-1218 可见性过滤）
 
         pt_acl = _FakePtAcl([_platform_task(1, 'A', 7.0)])
         ranking_svc = BenchmarkRankingService(repo=repo, pt_acl=pt_acl)
@@ -396,3 +410,79 @@ class TestReadModelRefreshSemantics:
         codes = {r['metric_code']: r for r in rows}
         assert codes['WER']['metric_value'] == pytest.approx(5.1)   # 新值已刷新
         assert codes['CER']['metric_value'] == pytest.approx(9.0)   # 旧行残留（固化行为）
+
+
+# ==================== INT-1218：排行行源报告可见性过滤 ====================
+
+class TestRankingReportVisibilityFilter:
+    """INT-1218 回归：排行行 report_id 指向软删/缺失报告时不再外露。
+
+    benchmark_rankings 写侧冻结报告快照的 report_id；报告后续被软删（deleted=true）
+    或硬删后，GET /reports/{id} 404，前端「查看报告」入口失效。查询侧统一过滤：
+    report_id 为空（external_import 轨）或指向存在且未软删的报告。
+    """
+
+    def test_query_filters_rows_whose_source_report_is_deleted(self, sqlite_db):
+        repo = BenchmarkRepositoryImpl()
+        _seed_report(101, deleted=False)   # 有效报告
+        _seed_report(102, deleted=True)    # 软删报告
+        repo.replace_ranking_rows(
+            [{'category': 'asr', 'metric_code': 'WER', 'scenario_key': '通用',
+              'source': 'platform_test'}],
+            [
+                _platform_rank_row('Moshi', report_id=101),
+                _platform_rank_row('Nova', report_id=102),
+            ])
+        # 外部轨：report_id 为空，始终保留
+        repo.replace_ranking_rows(
+            [{'category': 'asr', 'metric_code': 'WER', 'scenario_key': '通用',
+              'source': 'external_import'}],
+            [_external_rank_row('Whisper')])
+
+        rows = repo.query_rankings({})
+        by = {(r['subject_name'], r['source']): r for r in rows}
+        assert ('Moshi', 'platform_test') in by          # 有效报告保留
+        assert ('Nova', 'platform_test') not in by       # 软删报告过滤
+        assert ('Whisper', 'external_import') in by      # 外部轨保留
+
+    def test_list_subjects_filters_deleted_report_rows(self, sqlite_db):
+        repo = BenchmarkRepositoryImpl()
+        _seed_report(101, deleted=False)
+        _seed_report(102, deleted=True)
+        repo.replace_ranking_rows(
+            [{'category': 'asr', 'metric_code': 'WER', 'scenario_key': '通用',
+              'source': 'platform_test'}],
+            [
+                _platform_rank_row('Moshi', report_id=101),
+                _platform_rank_row('Nova', report_id=102),
+            ])
+        assert repo.list_ranking_subjects() == ['Moshi']
+
+
+def _platform_rank_row(subject, report_id):
+    """平台实测排行行（report_id 指向源报告）。"""
+    return {
+        'source': 'platform_test', 'published_task_id': 1, 'published_task_version': 1,
+        'report_id': report_id, 'baseline_id': None, 'subject_name': subject,
+        'subject_type': 'app', 'device_type': 'physical', 'benchmark_suite': 'librispeech-v1',
+        'category': 'asr', 'metric_code': 'WER', 'metric_name': 'WER',
+        'metric_value': 5.0, 'unit': '%', 'direction': 'lower_is_better',
+        'rank': 1, 'total': 1, 'percentile': 100.0, 'score100': None,
+        'gap_best': 0.0, 'gap_median': 0.0, 'delta_external': None,
+        'scenario_key': '通用', 'computed_at': datetime.now(),
+    }
+
+
+def _external_rank_row(subject):
+    """外部轨排行行（report_id 为空，不受源报告可见性约束）。"""
+    return {
+        'source': 'external_import', 'published_task_id': None, 'published_task_version': None,
+        'report_id': None, 'baseline_id': 1, 'subject_name': subject,
+        'subject_type': 'closed_source', 'device_type': '', 'benchmark_suite': 'librispeech-v1',
+        'category': 'asr', 'metric_code': 'WER', 'metric_name': 'WER',
+        'metric_value': 6.0, 'unit': '%', 'direction': 'lower_is_better',
+        'rank': 1, 'total': 1, 'percentile': 100.0, 'score100': None,
+        'gap_best': 0.0, 'gap_median': 0.0, 'delta_external': None,
+        'scenario_key': '通用', 'computed_at': datetime.now(),
+    }
+

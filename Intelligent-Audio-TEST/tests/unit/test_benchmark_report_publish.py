@@ -159,6 +159,18 @@ def _rank_row(subject, metric='WER', category='asr', suite='librispeech-v1',
     }
 
 
+def _seed_report(report_id, deleted=False):
+    """写入 test_reports 行，使排行行 report_id 指向存在的报告（INT-1218 可见性过滤）。"""
+    from report_service.infrastructure.persistence.models import Report
+    from shared.models.database import get_db_session
+    s = get_db_session()
+    po = Report(id=report_id, name=f'bench-report-{report_id}', type='task',
+                status='completed', deleted=deleted)
+    s.add(po)
+    s.commit()
+    s.close()
+
+
 class TestPublish:
     def test_publish_creates_report_and_snapshot(self):
         repo = FakeBenchmarkRepo(ranking_rows=[
@@ -337,6 +349,8 @@ def sqlite_db(monkeypatch):
 class TestRealRepoPublishChain:
     def test_publish_list_detail_roundtrip(self, sqlite_db):
         repo = BenchmarkRepositoryImpl()
+        _seed_report(101)  # _rank_row(pt_id=1) → report_id=101（INT-1218 可见性过滤）
+        _seed_report(102)  # _rank_row(pt_id=2) → report_id=102
         # 预置排行 ReadModel
         repo.replace_ranking_rows(
             [{'category': 'asr', 'metric_code': 'WER', 'scenario_key': '通用',
@@ -408,6 +422,7 @@ class TestGrpcServicer:
         )
 
         repo = BenchmarkRepositoryImpl()
+        _seed_report(101)  # _rank_row(pt_id=1) → report_id=101（INT-1218 可见性过滤）
         repo.replace_ranking_rows(
             [{'category': 'asr', 'metric_code': 'WER', 'scenario_key': '通用',
               'source': 'platform_test'}],
@@ -421,7 +436,7 @@ class TestGrpcServicer:
                  'name': 'gRPC 发布', 'publishedBy': 'tester'})))
         assert resp.success is True
         record = json.loads(resp.data)
-        assert record['report_id'] == 1
+        assert record['report_id'] > 0  # 报告主记录已创建（预置 report 101 使自增偏移，不硬编码 ID）
         assert record['published_task_count'] == 1
 
         # 列表
