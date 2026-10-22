@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>实机接入指南 · API 测试与 Realtime API 测试</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #f1f5f9;
+    font-family: system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+    color: #0f172a;
+    padding: 40px 32px 64px;
+  }
+  .page { max-width: 1280px; margin: 0 auto; }
+  header { margin-bottom: 28px; }
+  header h1 { font-size: 24px; font-weight: 700; color: #0f172a; }
+  header p { margin-top: 8px; font-size: 13px; color: #64748b; }
+  header .divider { margin-top: 16px; height: 1px; background: #cbd5e1; }
+
+  h2 {
+    font-size: 18px;
+    font-weight: 700;
+    margin: 36px 0 14px;
+    padding: 10px 16px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-left: 4px solid #1971c2;
+    border-radius: 8px;
+    color: #0b3d6e;
+  }
+  h3 { font-size: 15px; font-weight: 700; margin: 22px 0 10px; color: #0f172a; }
+  p { font-size: 13.5px; line-height: 1.75; color: #334155; margin: 8px 0; }
+  ul, ol { margin: 8px 0 8px 22px; }
+  li { font-size: 13.5px; line-height: 1.75; color: #334155; margin: 4px 0; }
+
+  .card {
+    background: #ffffff;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+    padding: 18px 20px;
+    margin: 14px 0;
+  }
+  .card p, .card li { color: #334155; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 13px;
+    background: #ffffff;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+  }
+  th {
+    background: #eef2f7;
+    color: #0b3d6e;
+    font-weight: 700;
+    text-align: left;
+    padding: 9px 12px;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 12.5px;
+  }
+  td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #eef2f7;
+    color: #334155;
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+
+  code {
+    font-family: 'Cascadia Code', Consolas, 'Courier New', monospace;
+    font-size: 12px;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+    padding: 1px 5px;
+    color: #0b3d6e;
+  }
+  pre {
+    background: #0f172a;
+    color: #e2e8f0;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin: 12px 0;
+    overflow-x: auto;
+    font-size: 12.5px;
+    line-height: 1.6;
+  }
+  pre code { background: transparent; border: none; color: #e2e8f0; padding: 0; }
+
+  .fig {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px;
+    margin: 14px 0;
+    overflow-x: auto;
+    text-align: center;
+  }
+  .fig svg { max-width: 100%; height: auto; }
+  .fig-caption { font-size: 12px; color: #64748b; margin-top: 6px; }
+
+  .badge {
+    display: inline-block;
+    background: #e7f5ff;
+    color: #1971c2;
+    border: 1px solid #a5d8ff;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 12px;
+    font-weight: 700;
+    margin-right: 6px;
+  }
+
+  footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #cbd5e1; }
+  footer p { font-size: 11px; color: #94a3b8; }
+
+  @media (max-width: 640px) {
+    body { padding: 24px 14px 48px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>实机接入指南 · API 测试与 Realtime API 测试</h1>
+    <p>面向被测 API / Realtime API 提供方：把真实产品接入智能音频测试平台跑自动化测试。V9.7.31 · 2026-10-22</p>
+    <div class="divider"></div>
+  </header>
+
+  <div class="card">
+    <p>平台以「<strong>被测 API</strong>」为对象。你在平台维护一条被测 API 配置（<code>apis</code> 表），用例按 <code>device_type</code> 路由到对应执行器。接入共四步：① 维护被测 API 配置；② 配置用例 <code>rounds</code>；③ 建任务（<code>case_devices</code> 携带 <code>device_type</code>）；④ 观察执行与结果。</p>
+    <table>
+      <tr><th>接入形态</th><th>device_type</th><th>被测对象</th><th>执行器</th><th>适配器 / 客户端</th></tr>
+      <tr><td>API 测试（HTTP）</td><td><code>http_api</code></td><td>HTTP 一问一答 / 流式接口</td><td><code>APISessionExecutor</code></td><td><code>HttpAPIAdapter</code> / <code>HttpStreamAdapter</code></td></tr>
+      <tr><td>Realtime API 测试</td><td><code>websocket_api</code></td><td>WebSocket 全双工（audio delta / session 事件）</td><td><code>RealtimeSessionExecutor</code></td><td><code>OpenAIRealtimeAdapter</code> / <code>RealtimeWSClient</code></td></tr>
+    </table>
+    <p>联调优先用平台自带 mock 替身（<code>mock_dut :5096</code> / <code>mock_realtime_api :5098</code>），通后再切真实地址。</p>
+  </div>
+
+  <h2>1. API 测试（HTTP，device_type=http_api）</h2>
+
+  <h3>1.1 被测 API 配置字段</h3>
+  <div class="card">
+    <table>
+      <tr><th>字段</th><th>说明</th></tr>
+      <tr><td><code>name</code></td><td>API 显示名称</td></tr>
+      <tr><td><code>vendor</code></td><td>供应商名称（如 <code>volc_ast</code> / <code>ali</code> / <code>tencent</code>；mock 替身填 <code>mock</code>）</td></tr>
+      <tr><td><code>api_url</code></td><td>API 微服务主入口 URL</td></tr>
+      <tr><td><code>api_endpoints</code></td><td>API 接入点配置列表（JSON），优先于 <code>api_url</code> 参与端点轮询</td></tr>
+      <tr><td><code>device_type</code></td><td><code>http_api</code>（默认值）</td></tr>
+      <tr><td><code>meta</code></td><td>API 元数据（鉴权信息、<code>vendor_adapter</code>、<code>ws_headers</code> 等，JSON）</td></tr>
+      <tr><td><code>default_max_process</code></td><td>默认最大并发处理数（默认 5）</td></tr>
+      <tr><td><code>default_max_timeout</code></td><td>默认最大超时（秒，默认 30）</td></tr>
+      <tr><td><code>default_max_audio_duration</code></td><td>支持的最大音频时长（秒，默认 60）</td></tr>
+      <tr><td><code>proxy_type</code> / <code>proxy_url</code></td><td>被测 API 网络代理（INT-839）：<code>proxy_type</code> ∈ http / https / socks5 / socks5h；<code>proxy_url</code> 为 <code>user:pass@host:port</code> 不含 scheme；配置代理时认证段必填；NULL/空 = 不用代理</td></tr>
+    </table>
+    <p>校验规则（后端 <code>api_test_service/infrastructure/adapters/proxy_utils.py</code> <code>validate_proxy</code>）：<code>proxy_type</code> 为空则 <code>proxy_url</code> 必须为空；非空则类型必须是四值之一、<code>proxy_url</code> 必填且带 <code>user:pass@</code> 认证段、不得含 scheme 前缀。</p>
+  </div>
+
+  <h3>1.2 用例 rounds</h3>
+  <div class="card">
+    <p>API 测试用例由 <code>rounds</code>（轮次数组）驱动。单轮常见字段：</p>
+    <table>
+      <tr><th>字段</th><th>说明</th></tr>
+      <tr><td><code>round_number</code></td><td>轮号（从 1 起）</td></tr>
+      <tr><td><code>audio_id</code> / <code>audio_path</code></td><td>本轮输入音频（平台音频资产 ID 或存储引用）</td></tr>
+      <tr><td><code>spl</code></td><td>目标 SPL（dB，经 <code>spl_to_gain</code> 换算增益）</td></tr>
+      <tr><td><code>query</code> / <code>question</code></td><td>本轮文本问题（评估入参）</td></tr>
+      <tr><td><code>correct_answer</code></td><td>参考答案（评估入参）</td></tr>
+    </table>
+    <p>HTTP 单轮执行由 <code>APITaskRunner</code>（<code>api_test_service/core/api_task_runner.py</code>）完成，适配器经 <code>vendor_adapter_registry.create_from_config(...)</code> 分发（<code>api_test_service/infrastructure/adapters/registry.py</code>）。</p>
+  </div>
+
+  <h3>1.3 建任务与执行</h3>
+  <div class="card">
+    <p>建任务时在 <code>case_devices</code> 携带 <code>{"case_id": ..., "device_type": "http_api", "device_id": ...}</code>（用例级路由依据）。平台按 <code>_dispatch_case_by_type</code> → <code>_dispatch_api_case</code>（<code>task_service/core/execution_engine/mixins/task_dispatch.py</code>）路由到 <code>api_test_service</code>。单用例执行链路（<code>APITaskRunner</code>）：</p>
+    <ol>
+      <li><strong>health_check</strong>：请求被测侧 <code>/health</code>（端点路径可经 <code>API_PATH_HEALTH</code> 配置，默认 <code>/health</code>）；404/405 视为路径不存在可跳过，其余失败视为健康检查失败。</li>
+      <li><strong>create_task</strong>：请求 <code>/api/create_task</code>，<strong>携带 <code>audio_path</code> 存储引用</strong>（平台统一存储层解析）+ <code>vendor</code> / <code>max_process</code> / <code>max_timeout</code> / <code>endpoints</code> 显式参数，按算法字段映射组装请求体；响应须返回 <code>data.task_id</code>。</li>
+      <li><strong>wait_for_completion</strong>：轮询 <code>/api/get_status/{task_id}</code>（间隔默认 5 秒），<strong>超时 = 音频时长 × 1.5</strong>（上限 <code>api_test.max_wait_time</code> 默认 43200 秒，下限 30 秒）；<code>completed/success/failed/error/pending</code> 收口，<code>failed/error/pending</code> 记为轮失败。</li>
+      <li><strong>get_final_result</strong>：查询 <code>/api/get_final_result/{task_id}</code>，按算法输出字段映射提取结果。</li>
+      <li><strong>评估</strong>：结果经 <code>_evaluate_result</code> → <code>evaluation_acl_repository.submit_evaluate_case</code> 提交 evaluation_service。</li>
+    </ol>
+    <p>可选：<code>get_frame_results</code>（调试）、<code>delete_task</code>（清理被测侧远端任务）。</p>
+  </div>
+
+  <h3>1.4 mock DUT 联调（mock_dut :5096）</h3>
+  <div class="card">
+    <p>未接入真实被测 API 前，用平台自带 HTTP 替身联调（端口注册于 <code>shared/config/service_ports.py</code> <code>MOCK_DUT_API_HTTP_PORT = 5096</code>）：</p>
+    <pre><code>python mock_services/mock_dut_api.py [--port 5096]</code></pre>
+    <p>提供：<code>/health</code>（GET）、<code>/api/create_task</code>（POST）、<code>/api/get_status/{task_id}</code>（GET）、<code>/api/get_final_result/{task_id}</code>（GET）、<code>/api/get_frame_results/{task_id}</code>（GET）、<code>/api/delete_task/{task_id}</code>（DELETE），另有 <code>/chat</code>（POST）做 voice_llm 多轮会话替身。把被测 API 的 <code>api_url</code> 指向 <code>http://127.0.0.1:5096</code> 即可跑通端到端。</p>
+  </div>
+
+  <h2>2. REALTIME API 测试（device_type=websocket_api）</h2>
+
+  <h3>2.1 被测 Realtime API 配置</h3>
+  <div class="card">
+    <table>
+      <tr><th>配置</th><th>说明</th></tr>
+      <tr><td>WS/WSS 端点</td><td><code>api_endpoints</code> 中 <code>ws://</code> / <code>wss://</code> 前缀条目优先，回退 <code>api_url</code> 同规则；<code>_resolve_ws_url</code> 校验必须带 <code>ws://</code> / <code>wss://</code> 前缀</td></tr>
+      <tr><td><code>meta.vendor_adapter</code></td><td><code>openai</code> / <code>openai_realtime</code> → 注册表 <code>(REALTIME, OPENAI)</code> 分发 <code>OpenAIRealtimeAdapter</code>；未配置回退 <code>RealtimeWSClient</code> 默认行为（api_driver / mock / 未配置，向后兼容）</td></tr>
+      <tr><td><code>meta.session_config</code></td><td><code>session.update</code> 载荷（VAD / voice / instructions 等），<code>_build_session_config</code> 合并用例级 <code>session</code> 覆盖</td></tr>
+      <tr><td><code>meta.audio_config</code></td><td>目标音频格式声明（<code>sample_rate</code> 默认 <strong>24000</strong>），<code>_build_session_config</code> 回退 <code>input_audio_sample_rate</code></td></tr>
+      <tr><td><code>meta.ws_headers</code></td><td>WS 握手头（直传，显式 <code>Authorization</code> 头优先，不覆盖）</td></tr>
+      <tr><td><code>meta.api_key</code> / 密钥链</td><td>见 2.1.1</td></tr>
+      <tr><td><code>proxy_type</code> / <code>proxy_url</code></td><td>同 1.1；Realtime WS 连接（<code>realtime_ws_client.connect()</code>）经 <code>websocket_proxy_kwargs</code> 注入代理参数</td></tr>
+    </table>
+    <h3>2.1.1 密钥链（<code>shared/utils/api_key_provider.py</code>）</h3>
+    <ul>
+      <li><strong>单值链</strong>：<code>case_config.api_key</code> → <code>api_config.meta.api_key</code> → 环境变量 <code>OPENAI_API_KEY</code> 逐级回退（键名可配置）。</li>
+      <li><strong>密钥池轮换</strong>（INT-1177）：<code>resolve_rotating</code> = case 层单值（最高优先）→ <code>meta.api_keys</code> 轮换池（round-robin 游标 + 冷却集合，同一 API 跨协议同源）→ <code>meta.api_key</code> 单值回退 → env。WS 握手 401/403/429 时判定密钥池轮换（<code>realtime_ws_client.last_handshake_status</code>）。</li>
+      <li>密钥不落日志、不进报告；解析收敛于 Infrastructure 层，Domain 层只见结果。</li>
+    </ul>
+  </div>
+
+  <h3>2.2 用例 rounds（正常轮 + 打断轮 + pacing 策略）</h3>
+  <div class="card">
+    <p>Realtime 用例 <code>rounds</code> 除 1.2 字段外，还支持：</p>
+    <table>
+      <tr><th>字段</th><th>说明</th></tr>
+      <tr><td><code>is_interruption</code></td><td>标记打断轮（<code>RealtimeRoundMode.INTERRUPTION</code>）：等 AI 开口 → 延时后推打断音频 → 检测打断 → 等新回复</td></tr>
+      <tr><td><code>interruption_delay_ms</code></td><td>AI 开口后到推打断音频的固定延时（默认 1000，round 级可覆盖）</td></tr>
+      <tr><td><code>pacing</code></td><td>输出调输入节奏配置：<code>{"pacing_strategy": "wait_turn_end", "turn_end_wait_timeout_s": 60, "pacing_fallback_timeout_s": 30}</code>（见 2.4）</td></tr>
+    </table>
+    <p><strong>正常轮</strong>：流式推送混音 chunk（逐 chunk <code>send_audio_chunk</code> + 按 chunk 时长 sleep）→ 推流中按节奏策略插 <code>recv()</code> 检输出事件（<code>_pacing_gate</code>）→ <code>commit_input</code> → <code>wait_ai_complete</code>（<code>ai_start_timeout_seconds=25</code> / <code>ai_complete_timeout_seconds=60</code>，「超时但已开口视为成功」）。</p>
+    <p><strong>打断轮</strong>：① <code>wait_ai_speaking</code> 等 AI 开口（25s）→ ② <code>sleep(interruption_delay_ms)</code> → ③ 流式推送打断音频 + <code>commit_input</code> → ④ barge-in 检测窗口（<code>barge_in_window_seconds=5</code>，等 <code>user_speech_started</code> / <code>response_cancelled</code>）→ ⑤ 打断成功则 <code>wait_ai_complete</code> 等新回复。打断轮推流阶段不套节奏门（避免抢占打断信号源）。</p>
+  </div>
+
+  <h3>2.3 建任务与执行（case_devices 亲和）</h3>
+  <div class="card">
+    <p>Realtime 用例建任务时，<strong><code>case_devices</code> 必须携带 <code>device_type=websocket_api</code></strong>，否则按默认 <code>physical</code>（或 <code>http_api</code>）路由，不会进入 Realtime 通道。链路：</p>
+    <pre><code>建任务 case_devices: device_type=websocket_api
+  → task_service 认领用例（_dispatch_case_by_type）
+  → _route_realtime_dispatch（RealtimeSessionRegistry.route_or_bind，session:bind:{task_id} 亲和路由）
+  → StartAPITest 直连绑定实例
+  → api_test_service：RealtimeSessionExecutor</code></pre>
+    <ul>
+      <li><strong>亲和绑定</strong>：<code>RealtimeSessionRegistry.route_or_bind(task_id)</code>（<code>shared/utils/realtime_session_registry.py</code>）在派发侧解析 task → 实例绑定（无健康绑定则选最闲在册实例写入），<code>StartAPITest</code> 直连该实例，保证同任务 Realtime 会话粘同实例（Redis 不可用降级单实例语义）。</li>
+      <li><strong>实例内闭环</strong>：WS 长连接与帧状态封闭在接单实例内存，跨轮保持；会话结束 <code>release</code> 清除绑定（<code>bind_ttl_seconds=3600</code> 兜底）。</li>
+    </ul>
+  </div>
+
+  <h3>2.4 超时与节奏配置</h3>
+  <div class="card">
+    <p>Realtime 全链路超时配置化（<code>shared/config/concurrency_config.json</code> <code>realtime_session</code> 段，无魔法数字）：</p>
+    <table>
+      <tr><th>键</th><th>默认</th><th>语义</th></tr>
+      <tr><td><code>chunk_duration_ms</code></td><td>100</td><td>RenderAudioStream 切片粒度 / 逐 chunk 推送节奏</td></tr>
+      <tr><td><code>ai_start_timeout_seconds</code></td><td>25</td><td>等 AI 首个 <code>ai_audio_delta</code>（<code>wait_ai_speaking</code>）</td></tr>
+      <tr><td><code>ai_complete_timeout_seconds</code></td><td>60</td><td>等 AI 回复收尾（<code>wait_ai_complete</code> end_timeout）</td></tr>
+      <tr><td><code>barge_in_window_seconds</code></td><td>5</td><td>打断检测窗口</td></tr>
+      <tr><td><code>interruption_delay_ms</code></td><td>1000</td><td>AI 开口后到推打断音频的延时（round 级可覆盖）</td></tr>
+      <tr><td><code>bind_ttl_seconds</code></td><td>3600</td><td>会话亲和绑定 TTL</td></tr>
+      <tr><td><code>pacing_strategy</code></td><td><code>fixed</code></td><td>输出调输入节奏策略（见下）</td></tr>
+      <tr><td><code>turn_end_wait_timeout_s</code></td><td>60</td><td><code>WAIT_TURN_END</code> 的 turn 结束等待上限</td></tr>
+      <tr><td><code>pacing_fallback_timeout_s</code></td><td>30</td><td><code>TIMEOUT_FALLBACK</code> 兜底超时</td></tr>
+    </table>
+    <p><strong>输出调输入节奏（INT-475）</strong>：策略枚举 <code>RealtimePacingStrategy</code>（<code>shared/models/common_enums.py</code>，前端 <code>frontend/src/domain/enums.ts</code> 镜像同值）：</p>
+    <table>
+      <tr><th>策略</th><th>值</th><th>语义</th></tr>
+      <tr><td><code>FIXED</code></td><td><code>fixed</code></td><td>恒定节奏（默认=现状，回归基准）</td></tr>
+      <tr><td><code>WAIT_TURN_END</code></td><td><code>wait_turn_end</code></td><td>模型输出 turn 进行中暂停输入推流，turn 结束后续推</td></tr>
+      <tr><td><code>ALLOW_BARGE_IN</code></td><td><code>allow_barge_in</code></td><td>输入推流中模型提前回话/打断 → 收敛输入推流（剩余输入不再推）</td></tr>
+      <tr><td><code>TIMEOUT_FALLBACK</code></td><td><code>timeout_fallback</code></td><td>模型无输出/无 turn 结束时按配置超时兜底，不无限等待（可与前两者组合）</td></tr>
+    </table>
+    <p>配置优先级：<strong><code>case_config['pacing']</code> → <code>api_config.meta['pacing']</code> → <code>realtime_session</code> 全局 → 默认</strong>；FIXED 与动态策略互斥（含任一动态策略时 FIXED 被丢弃）。设计细节见 <code>doc/功能设计文档/01_测试执行/07_流式推送与结果获取.md</code> 附录。</p>
+  </div>
+
+  <h3>2.5 执行器 × 适配器架构（图 A）</h3>
+  <div class="fig">
+    <svg viewBox="0 0 960 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="执行器×适配器架构图">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#1971c2"/>
+        </marker>
+        <marker id="arrow-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+        </marker>
+      </defs>
+      <!-- 执行器 -->
+      <rect x="40" y="60" width="230" height="120" rx="10" fill="#e7f5ff" stroke="#1971c2" stroke-width="2"/>
+      <text x="155" y="92" text-anchor="middle" font-size="14" font-weight="700" fill="#0b3d6e">RealtimeSessionExecutor</text>
+      <text x="155" y="116" text-anchor="middle" font-size="11" fill="#334155">推流 / recv 轮询 / 节奏门</text>
+      <text x="155" y="140" text-anchor="middle" font-size="10" fill="#64748b">_pacing_gate · _execute_round</text>
+      <text x="155" y="158" text-anchor="middle" font-size="10" fill="#64748b">_on_frame(frame 回调)</text>
+      <!-- 适配器子图 -->
+      <rect x="330" y="30" width="300" height="300" rx="12" fill="#ffffff" stroke="#1971c2" stroke-width="1.5" stroke-dasharray="6 4"/>
+      <text x="480" y="56" text-anchor="middle" font-size="13" font-weight="700" fill="#0b3d6e">适配器 RealtimeWSClient</text>
+      <!-- 接收线程 -->
+      <rect x="360" y="90" width="240" height="72" rx="8" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.5"/>
+      <text x="480" y="116" text-anchor="middle" font-size="12" font-weight="700" fill="#334155">_recv_loop</text>
+      <text x="480" y="136" text-anchor="middle" font-size="10.5" fill="#64748b">daemon 线程（生产者）</text>
+      <text x="480" y="152" text-anchor="middle" font-size="10" fill="#64748b">ws.recv() → 归一化</text>
+      <!-- 事件队列 -->
+      <rect x="360" y="210" width="240" height="72" rx="8" fill="#eef2f7" stroke="#94a3b8" stroke-width="1.5"/>
+      <text x="480" y="236" text-anchor="middle" font-size="12" font-weight="700" fill="#334155">事件队列 queue.Queue</text>
+      <text x="480" y="256" text-anchor="middle" font-size="10.5" fill="#64748b">阻塞队列 · 削峰</text>
+      <text x="480" y="272" text-anchor="middle" font-size="10" fill="#64748b">异步入队 / 同步拉取</text>
+      <!-- 被测模型 -->
+      <rect x="700" y="70" width="200" height="110" rx="10" fill="#f8fafc" stroke="#1971c2" stroke-width="2"/>
+      <text x="800" y="106" text-anchor="middle" font-size="13" font-weight="700" fill="#0b3d6e">被测 Realtime API WS</text>
+      <text x="800" y="132" text-anchor="middle" font-size="10.5" fill="#64748b">audio delta / session 事件</text>
+      <text x="800" y="152" text-anchor="middle" font-size="10.5" fill="#64748b">input_audio_buffer.append</text>
+      <!-- 前端 frame 通道 -->
+      <rect x="700" y="260" width="200" height="70" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5"/>
+      <text x="800" y="288" text-anchor="middle" font-size="12" font-weight="700" fill="#334155">前端 frame 通道</text>
+      <text x="800" y="308" text-anchor="middle" font-size="10" fill="#64748b">异步观测 · 不参与停止</text>
+      <!-- 任务控制面 -->
+      <rect x="330" y="420" width="300" height="86" rx="10" fill="#fff3bf" stroke="#e67700" stroke-width="1.5"/>
+      <text x="480" y="450" text-anchor="middle" font-size="12" font-weight="700" fill="#7a4100">任务控制面</text>
+      <text x="480" y="470" text-anchor="middle" font-size="10.5" fill="#7a4100">Redis 标志位 + 本地 stop_flags</text>
+      <text x="480" y="490" text-anchor="middle" font-size="10.5" fill="#7a4100">_handle_control / stop_check</text>
+      <!-- 连接 -->
+      <!-- EX -> AD 委托 -->
+      <line x1="270" y1="80" x2="328" y2="80" stroke="#1971c2" stroke-width="1.8" marker-end="url(#arrow)"/>
+      <text x="299" y="70" text-anchor="middle" font-size="10.5" fill="#1971c2">委托构造·同形方法面</text>
+      <!-- R -> Q 入队 -->
+      <line x1="480" y1="162" x2="480" y2="208" stroke="#1971c2" stroke-width="1.8" marker-end="url(#arrow)"/>
+      <text x="540" y="188" text-anchor="middle" font-size="10.5" fill="#334155">归一化事件入队</text>
+      <!-- EX -> Q recv -->
+      <line x1="270" y1="120" x2="358" y2="240" stroke="#1971c2" stroke-width="1.8" marker-end="url(#arrow)"/>
+      <text x="302" y="225" text-anchor="start" font-size="10.5" fill="#334155">recv 同步拉取</text>
+      <!-- M <-> R -->
+      <line x1="698" y1="110" x2="602" y2="126" stroke="#1971c2" stroke-width="1.8" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+      <text x="660" y="100" text-anchor="middle" font-size="10.5" fill="#1971c2">audio delta / session</text>
+      <!-- EX -> F frame 回调 -->
+      <line x1="272" y1="160" x2="698" y2="295" stroke="#64748b" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arrow-gray)"/>
+      <text x="486" y="245" text-anchor="middle" font-size="10.5" fill="#64748b">frame 回调异步观测</text>
+      <!-- C -> EX 停止 -->
+      <line x1="330" y1="463" x2="272" y2="180" stroke="#e67700" stroke-width="1.8" marker-end="url(#arrow)"/>
+      <text x="280" y="430" text-anchor="start" font-size="10.5" fill="#e67700">停止信号</text>
+    </svg>
+    <div class="fig-caption">图 A：执行器 × 适配器架构（委托 + 生产者-消费者事件回流 + 停止控制面）</div>
+  </div>
+  <div class="card">
+    <p>要点（与代码一致）：</p>
+    <ul>
+      <li><strong>委托构造</strong>：<code>_resolve_realtime_transport</code> 按 <code>adapter_type_from_config</code> 判定 <code>vendor_adapter=openai / openai_realtime</code> 时经 <code>vendor_adapter_registry.resolve(AdapterProtocol.REALTIME, AdapterVendor.OPENAI, fallback=False)</code> 构造 <code>OpenAIRealtimeAdapter</code>，否则构造 <code>RealtimeWSClient</code>；两者暴露同一方法面（<code>connect</code> / <code>pre_process</code> / <code>send</code> / <code>recv</code> / <code>output</code> / <code>close</code>），轮次编排零改动。</li>
+      <li><strong>信号回流两段式</strong>：<code>_recv_loop</code> daemon 线程（生产者）<code>ws.recv()</code> → 厂商事件入 <code>queue.Queue</code>（异步）；执行器主线程 <code>recv()</code> 轮询（同步）→ <code>_pacing_gate</code> 决策 interrupt / 收敛。事件归一化与帧记录在收包侧（<code>_parse_event</code>），节奏门只读状态、不改变产出链路。</li>
+      <li><strong>frame 通道异步观测</strong>：<code>event_listener</code>（<code>_on_frame</code> 回调）逐帧推前端 frame 通道，不参与停止。</li>
+      <li><strong>停止控制面</strong>：任务停止走 Redis 标志位 + 本地 <code>stop_flags</code>（<code>_handle_control</code> / <code>stop_check</code>）。</li>
+    </ul>
+  </div>
+
+  <h3>2.6 事件回流停止时序（图 B）</h3>
+  <div class="fig">
+    <svg viewBox="0 0 920 500" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="事件回流停止时序图">
+      <defs>
+        <marker id="seq-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#1971c2"/>
+        </marker>
+        <marker id="seq-dash" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+        </marker>
+        <marker id="seq-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#e67700"/>
+        </marker>
+      </defs>
+      <!-- 三条 lifeline -->
+      <rect x="100" y="30" width="130" height="40" rx="8" fill="#e7f5ff" stroke="#1971c2" stroke-width="2"/>
+      <text x="165" y="55" text-anchor="middle" font-size="12" font-weight="700" fill="#0b3d6e">执行器</text>
+      <line x1="165" y1="70" x2="165" y2="460" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4 4"/>
+      <rect x="420" y="30" width="130" height="40" rx="8" fill="#eef2f7" stroke="#94a3b8" stroke-width="1.5"/>
+      <text x="485" y="55" text-anchor="middle" font-size="12" font-weight="700" fill="#334155">事件队列</text>
+      <line x1="485" y1="70" x2="485" y2="460" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4 4"/>
+      <rect x="740" y="30" width="130" height="40" rx="8" fill="#f8fafc" stroke="#1971c2" stroke-width="2"/>
+      <text x="805" y="55" text-anchor="middle" font-size="12" font-weight="700" fill="#0b3d6e">被测模型</text>
+      <line x1="805" y1="70" x2="805" y2="460" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4 4"/>
+      <!-- 1. append -->
+      <line x1="168" y1="110" x2="803" y2="110" stroke="#1971c2" stroke-width="1.8" marker-end="url(#seq-arrow)"/>
+      <text x="490" y="103" text-anchor="middle" font-size="11" fill="#0f172a">input_audio_buffer.append（推音频）</text>
+      <!-- 2. audio.delta 入队 -->
+      <line x1="803" y1="160" x2="487" y2="160" stroke="#64748b" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seq-dash)"/>
+      <text x="655" y="153" text-anchor="middle" font-size="11" fill="#334155">response.audio.delta（异步入队）</text>
+      <!-- 3. recv 拉取 -->
+      <line x1="167" y1="210" x2="483" y2="210" stroke="#1971c2" stroke-width="1.8" marker-end="url(#seq-arrow)"/>
+      <text x="325" y="203" text-anchor="middle" font-size="11" fill="#0f172a">recv() 拉取事件</text>
+      <!-- 4. pacing_gate self -->
+      <path d="M 165 250 C 200 250 200 290 165 290" fill="none" stroke="#e67700" stroke-width="1.8" marker-end="url(#seq-red)"/>
+      <text x="205" y="272" text-anchor="start" font-size="11" fill="#e67700">_pacing_gate 决策 interrupt（speech_started / cancelled）</text>
+      <!-- 5. break -->
+      <line x1="167" y1="330" x2="803" y2="330" stroke="#e67700" stroke-width="1.8" marker-end="url(#seq-red)"/>
+      <text x="490" y="323" text-anchor="middle" font-size="11" fill="#e67700">break → 剩余输入不再推</text>
+      <!-- 6. commit -->
+      <line x1="167" y1="375" x2="803" y2="375" stroke="#1971c2" stroke-width="1.8" marker-end="url(#seq-arrow)"/>
+      <text x="490" y="368" text-anchor="middle" font-size="11" fill="#0f172a">input_audio_buffer.commit</text>
+      <!-- 7. wait_ai_complete -->
+      <line x1="803" y1="425" x2="169" y2="425" stroke="#64748b" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#seq-dash)"/>
+      <text x="490" y="418" text-anchor="middle" font-size="11" fill="#334155">ai_audio_delta → wait_ai_complete</text>
+    </svg>
+    <div class="fig-caption">图 B：事件回流停止时序（模型提前回话 → 异步入队 → recv 拉取 → pacing_gate 决策 interrupt → 收敛推流 → commit → wait_ai_complete）</div>
+  </div>
+  <div class="card">
+    <p>停止点归纳（<code>_pacing_gate</code> 决策映射）：收到 <code>user_speech_started</code> / <code>response_cancelled</code> → <code>interrupt</code> → 收敛输入推流（剩余输入不再推）；收到 <code>connection_closed</code> / <code>error</code> → 放行，由 <code>wait_ai_complete</code> 收敛轮次失败。</p>
+  </div>
+
+  <h3>2.7 mock Realtime API 联调（mock_realtime_api :5098）</h3>
+  <div class="card">
+    <pre><code># 打断轮联调：--barge-in 预置「AI 正在说话 + 打断」事件序列
+python mock_services/mock_realtime_api.py --port 5098 --barge-in
+
+# 输出调输入节奏联调：--speak-during-stream 输入推流中提前回话（INT-475）
+python mock_services/mock_realtime_api.py --port 5098 --speak-during-stream \
+    --speak-during-stream-after 2 --speak-during-stream-barge-in</code></pre>
+    <p><code>mock_services/mock_realtime_api.py</code>（<code>MockRealtimeBehavior</code>）行为可经命令行 / 环境变量 <code>MOCK_RT_*</code> / 配置文件 / WS 控制帧（<code>__mock_control</code>）热更新：</p>
+    <table>
+      <tr><th>行为字段</th><th>说明</th></tr>
+      <tr><td><code>barge_in</code></td><td>首轮 commit 响应结束后预置 <code>response.audio.delta</code> + <code>speech_started</code> + <code>response.cancelled</code>（打断轮联调）</td></tr>
+      <tr><td><code>speak_during_stream</code></td><td>输入推流中（commit 前）模型提前回话，供 <code>WAIT_TURN_END</code> / <code>ALLOW_BARGE_IN</code> 验收</td></tr>
+      <tr><td><code>speak_during_stream_after</code></td><td>第 N 帧 append 后触发（默认 1）</td></tr>
+      <tr><td><code>speak_during_stream_barge_in</code></td><td>提前回话携带 <code>speech_started</code> + <code>cancelled</code> 打断信号</td></tr>
+      <tr><td><code>speak_during_stream_complete</code></td><td>False 模拟长回复未收口（供超时兜底验收）</td></tr>
+      <tr><td><code>first_delta_delay_ms</code></td><td>commit → 首个 delta 间隔（测首帧延迟）</td></tr>
+      <tr><td><code>disconnect_after_events</code></td><td>第 N 个客户端事件后主动断开（测断连收敛）</td></tr>
+      <tr><td><code>protocol_error_on_event</code></td><td>该事件回 error 帧（测协议错误）</td></tr>
+    </table>
+    <p>把被测 API 的 <code>api_endpoints</code> 指向 <code>ws://127.0.0.1:5098</code>（<code>vendor_adapter=openai</code> / <code>vendor=mock</code>）即可跑通 Realtime 端到端。</p>
+  </div>
+
+  <h2>3. 常见问题</h2>
+  <div class="card">
+    <table>
+      <tr><th>现象</th><th>原因与处置</th></tr>
+      <tr><td><strong>device_type 不生效</strong></td><td>Realtime 用例建任务时 <code>case_devices</code> 未携带 <code>device_type=websocket_api</code>（或漏传 <code>api_id</code>）。路由依据是用例级 <code>device_type</code>；检查建任务请求的 <code>case_devices</code> 与 <code>task_case_relations.device_type</code></td></tr>
+      <tr><td><strong>WS 连接失败</strong></td><td>① 端点未配置 <code>ws://</code> / <code>wss://</code> 前缀（<code>_resolve_ws_url</code> 报「未配置 WebSocket 端点」）；② 被测侧不可达/拒绝握手——检查网络与防火墙；③ 握手 401/403/429 → 密钥问题，见「密钥不生效」；④ 配置了代理但 <code>proxy_url</code> 不合规（<code>validate_proxy</code>）</td></tr>
+      <tr><td><strong>session.updated 超时</strong></td><td><code>pre_process</code> 下发 <code>session.update</code> 后等待 <code>session.updated</code> 确认（<code>wait_confirm_timeout=10s</code>）；超时 = 被测侧未按 OpenAI Realtime 协议回 <code>session.updated</code>。检查被测协议事件名（<code>_EVENT_TYPE_MAP</code> 映射面）与会话配置载荷</td></tr>
+      <tr><td><strong>AI 未回复</strong></td><td>commit 后起始窗口（<code>ai_start_timeout_seconds=25</code>）内无 <code>ai_audio_delta</code> → 轮失败「AI 未回复」；检查被测是否配置了自动回复/<code>response.create</code> 语义。注意「超时但已开口视为成功」：已收到 delta 后收尾事件迟到不抹杀轮成功</td></tr>
+      <tr><td><strong>打断未检出</strong></td><td>打断轮窗口（<code>barge_in_window_seconds=5</code>）内未收到 <code>user_speech_started</code> / <code>response_cancelled</code> → 打断失败标记写入轮结果；检查被测 VAD 打断检测是否开启、<code>interruption_delay_ms</code> 是否给 AI 留出开口时间</td></tr>
+      <tr><td><strong>密钥不生效</strong></td><td>密钥链 <code>case_config.api_key</code> → <code>meta.api_key</code> → env <code>OPENAI_API_KEY</code> 逐级回退；WS 握手 401/403/429 时判定密钥池轮换（<code>meta.api_keys</code> 轮换池）。密钥不落日志、不进报告；排查先看执行日志的握手状态码</td></tr>
+    </table>
+  </div>
+
+  <footer>
+    <p>Intelligent-Audio 测试平台 · 实机接入指南（API / Realtime API）· V9.7.31 · 与 doc/实机接入指南_API与Realtime测试.md 同源</p>
+  </footer>
+</div>
+</body>
+</html>

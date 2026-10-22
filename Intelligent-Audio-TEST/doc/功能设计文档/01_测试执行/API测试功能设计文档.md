@@ -30,6 +30,8 @@
 | 12 | 网络代理 | `apis` 新增 `proxy_type` / `proxy_url` 两列（NULL=不用代理）；被测 API 请求面（HTTP / WS / 健康检查 / adapter 服务）统一走代理（INT-839，实现演进裁定 2026-10-19） |
 | 13 | 依赖 | `requirements.txt` 新增 PySocks（requests socks 支持）+ websockets socks 代理依赖（INT-839） |
 | 14 | 脱敏 | `shared/utils/secret_mask.py` 扩展掩码 `proxy_url` 值内 `user:pass` 段、保留 host:port（INT-839） |
+| 15 | 输出调输入节奏 | Realtime 输入推流按被测实时输出事件调节奏：`RealtimePacingStrategy` 枚举（fixed / wait_turn_end / allow_barge_in / timeout_fallback）+ `_pacing_gate` 事件→决策映射 + `RealtimePacingService` 解析（case_config.pacing → meta.pacing → realtime_session 全局 → 默认，FIXED 与动态互斥）（INT-475，详见 `07_流式推送与结果获取.md` 附录） |
+| 16 | 实机接入 | 新增用户说明《`doc/实机接入指南_API与Realtime测试.md`》+ 网页文档页 `docs/实机接入指南_网页文档页.html`：被测 API / REALTIME API 提供方如何接入本平台跑测试（配置字段、rounds、建任务执行、mock_dut :5096 / mock_realtime_api :5098 联调、常见问题） |
 
 原文档第 7 章中 QPS / RTT / SLA / 并发压测等通用性能指标**保留**，标注见 7.1 节。
 
