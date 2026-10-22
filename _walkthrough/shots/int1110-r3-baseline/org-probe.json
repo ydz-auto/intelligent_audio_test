@@ -1,0 +1,42 @@
+{
+  "case_group": {
+    "org_buttons": [
+      "分组视图",
+      "标签视图",
+      "平铺",
+      "按标签"
+    ],
+    "buckets": [
+      {
+        "name": "INT314SMOKE_70ed974e_组",
+        "count": "1 个用例",
+        "muted": false
+      }
+    ]
+  },
+  "case_tag": {
+    "org_buttons": [
+      "分组视图",
+      "标签视图",
+      "平铺",
+      "按用例分组"
+    ],
+    "buckets": [
+      {
+        "name": "未设置标签",
+        "count": "1 个用例",
+        "muted": true
+      }
+    ]
+  },
+  "device_view": {
+    "pt_leaf_total": 1,
+    "in_case_card": 1,
+    "checkbox": 1
+  },
+  "result_type_view": {
+    "pt_leaf_total": 1,
+    "in_case_card": 1,
+    "checkbox": 1
+  }
+}

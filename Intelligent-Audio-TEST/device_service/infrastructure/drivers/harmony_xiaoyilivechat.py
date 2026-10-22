@@ -11,7 +11,7 @@ except ImportError:
 
 from .harmony_driver import HarmonyDriver
 from .device_config import get_device_config
-from .driver_types import AppType, AppVersion, DevicePlatform
+from .driver_types import DevicePlatform
 from .registry import register_driver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit
 from .driver_constants import *
@@ -35,8 +35,8 @@ class XiaoyilivechatV2(HarmonyDriver):
     """
 
     # —— 驱动元数据 ——
-    app_type = AppType.XIAOYI_LIVECHAT
-    version = AppVersion.V2
+    app_type = "xiaoyi_livechat"
+    version = "v2"
     platform = DevicePlatform.HARMONYOS
     keywords = "harmony.xiaoyi_livechat.v2"
     display_name = "小艺通话聊天 v2"

@@ -411,7 +411,7 @@ class TestWiringDispatch:
 
     def test_unset_keeps_realtime_ws_client(self):
         """未配置 / api_driver / mock → RealtimeWSClient 默认（向后兼容）"""
-        from api_test_service.infrastructure.vendor_ws import RealtimeWSClient
+        from api_test_service.infrastructure.adapters.transport import RealtimeWSClient
         ex = self._executor()
         for vendor_adapter in (None, 'api_driver', 'mock'):
             case_cfg = ({'vendor_adapter': vendor_adapter}

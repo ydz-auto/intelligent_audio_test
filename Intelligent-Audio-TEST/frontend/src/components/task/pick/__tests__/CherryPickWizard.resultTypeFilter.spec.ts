@@ -71,6 +71,14 @@ vi.mock('../PickTree.vue', () => ({
     template: '<div class="pick-tree-stub" />',
   },
 }))
+// INT-1110 返工 P1：用例视图改经组织列表渲染（默认视图=用例视图），桩转发 roots 保持本 spec 数据侧锁定
+vi.mock('../PickCaseOrgList.vue', () => ({
+  default: {
+    name: 'PickCaseOrgListStub',
+    props: ['roots', 'selected', 'expandedKeys', 'alreadyAdded', 'leafMeta', 'org', 'subView'],
+    template: '<div class="pick-case-org-list-stub" />',
+  },
+}))
 vi.mock('../CartTree.vue', () => ({
   default: { name: 'CartTreeStub', props: ['roots'], template: '<div class="cart-tree-stub" />' },
 }))
@@ -89,14 +97,18 @@ const CAND = (resultId: number, resultType: string, extra: Record<string, any> =
 const PAGE = (items: any[], total: number) => ({ items, total, page: 1, perPage: 50 })
 
 async function mountWizard() {
-  const w = mount(CherryPickWizard)
+  // INT-1110：向导两阶段（阶段 1 选任务 → 阶段 2 选结果）；本 spec 锁阶段 2 结果类型
+  // 客户端过滤 → 以预选任务直达阶段 2（§3.8.1 批量「加入挑选」口径）
+  const w = mount(CherryPickWizard, { props: { presetTaskIds: [10] } })
   await flushPromises()
   return w
 }
 
 function treeLeafIds(w: any): number[] {
-  const roots = w.findComponent({ name: 'PickTreeStub' }).props('roots') as any[]
-  return collectLeafResultIds(roots)
+  // 用例视图（默认）经组织列表渲染 → 读组织列表桩 roots；设备/结果类型视图读树桩 roots
+  const orgList = w.findComponent({ name: 'PickCaseOrgListStub' })
+  const stub = orgList.exists() ? orgList : w.findComponent({ name: 'PickTreeStub' })
+  return collectLeafResultIds(stub.props('roots') as any[])
 }
 
 beforeEach(() => {
@@ -123,8 +135,8 @@ describe('CherryPickWizard 结果类型筛选器（UX 审计 P2 回归）', () =
 
   it('勾选结果类型 asr → 树只含 asr 命中行且计数同步为 2', async () => {
     const w = await mountWizard()
-    // 筛选栏第 3 个 select 为结果类型（搜索 input / 来源任务 / 设备 / 结果类型 / 执行 / 评估 / 时间）
-    const rtSelect = w.findAll('.cpw-filter-bar select')[2]
+    // 阶段 2 筛选栏 select 顺序（任务 facet 锁定隐藏）：搜索 / 设备 / 结果类型 / 执行 / 评估 / 时间
+    const rtSelect = w.findAll('.cpw-filter-bar select')[1]
     await rtSelect.setValue(['asr'])
     await flushPromises()
 
@@ -133,23 +145,23 @@ describe('CherryPickWizard 结果类型筛选器（UX 审计 P2 回归）', () =
     expect(w.find('.cpw-toolbar-info').text()).toContain('共 2 条')
   })
 
-  it('平铺视图同样按结果类型过滤行', async () => {
+  it('设备视图同样按结果类型过滤行（三视图共享同一候选源）', async () => {
     const w = await mountWizard()
-    const rtSelect = w.findAll('.cpw-filter-bar select')[2]
+    const rtSelect = w.findAll('.cpw-filter-bar select')[1]
     await rtSelect.setValue(['asr'])
     await flushPromises()
 
-    // 切平铺：只渲染 asr 两行
-    const flatBtn = w.findAll('button').find((b) => b.text().includes('平铺'))!
-    await flatBtn.trigger('click')
+    // 切设备视图：树只含 asr 命中行（叶集与用例视图一致）
+    const deviceBtn = w.findAll('button').find((b) => b.text().includes('设备视图'))!
+    await deviceBtn.trigger('click')
     await flushPromises()
-    const leaves = w.findAll('.cpw-leaf')
-    expect(leaves.length).toBe(2)
+    const ids = treeLeafIds(w)
+    expect(ids.sort((a, b) => a - b)).toEqual([1, 2])
   })
 
   it('结果类型激活时「全选当前筛选」降级当前已加载树（不发后端 select-all，与展示一致）', async () => {
     const w = await mountWizard()
-    const rtSelect = w.findAll('.cpw-filter-bar select')[2]
+    const rtSelect = w.findAll('.cpw-filter-bar select')[1]
     await rtSelect.setValue(['asr'])
     await flushPromises()
 

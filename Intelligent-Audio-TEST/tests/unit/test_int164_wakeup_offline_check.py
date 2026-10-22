@@ -21,7 +21,7 @@ import pytest
 
 from device_service.application.commands.device_command_service import DeviceCommandService
 
-FACTORY_TARGET = 'device_service.infrastructure.drivers.device_driver.device_driver_factory'
+FACTORY_TARGET = 'device_service.infrastructure.drivers.driver_factory.device_driver_factory'
 SVC_MODULE = 'device_service.application.commands.device_command_service'
 
 

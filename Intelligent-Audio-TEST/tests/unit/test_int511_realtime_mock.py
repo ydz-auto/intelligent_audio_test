@@ -21,7 +21,7 @@ os.environ.setdefault('OSS_SECRET_KEY', 'test')
 
 from shared.models.common_enums import RealtimeFrameType
 from shared.utils.config_manager import config_manager
-from api_test_service.infrastructure.vendor_ws import RealtimeWSClient
+from api_test_service.infrastructure.adapters.transport import RealtimeWSClient
 from mock_services.mock_realtime_api import MockRealtimeBehavior, MockRealtimeServer
 
 # INT-475（Realtime 输出调输入 pacing）可选依赖：未合入主开发线的干净 checkout 下，

@@ -40,7 +40,7 @@ from shared.constants.ui_capture import (
 )
 
 HD = 'device_service.infrastructure.drivers.harmony_driver'
-FACTORY_TARGET = 'device_service.infrastructure.drivers.device_driver.device_driver_factory'
+FACTORY_TARGET = 'device_service.infrastructure.drivers.driver_factory.device_driver_factory'
 SN = '5SM0125613000197'
 
 

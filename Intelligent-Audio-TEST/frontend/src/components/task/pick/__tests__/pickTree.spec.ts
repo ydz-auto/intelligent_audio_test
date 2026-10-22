@@ -7,7 +7,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  buildPickTree, buildPickCaseViewTree, nodeState, toggleNode, selectAll, invertSelection, collectLeafResultIds,
+  buildPickTree, buildPickCaseViewTree, buildPickDeviceViewTree, buildPickResultTypeViewTree,
+  nodeState, toggleNode, selectAll, invertSelection, collectLeafResultIds,
 } from '../pickTree';
 import type { PickCandidate } from '../../../../infrastructure/api/cherryPickApi';
 
@@ -168,8 +169,8 @@ describe('R9 全选当前筛选 / 反选', () => {
   });
 });
 
-describe('buildPickCaseViewTree（用例视角，§3.6 裁定③ / §3.7.3）', () => {
-  it('跨任务按用例聚合：用例 → 来源任务列表 → 设备 → result_type → 叶', () => {
+describe('buildPickCaseViewTree（INT-1034 §3.8.3 用例视图，任务维度由阶段 1 承载）', () => {
+  it('用例 → 设备/API → result_type → 叶（树内无任务级分支）', () => {
     const rows = [
       cand({ resultId: 1, taskId: 1, caseId: 'C1', deviceId: 7, resultType: 'real-time', algorithmType: 'asr' }),
       cand({ resultId: 2, taskId: 1, caseId: 'C1', deviceId: 7, resultType: 'final' }),
@@ -182,30 +183,79 @@ describe('buildPickCaseViewTree（用例视角，§3.6 裁定③ / §3.7.3）', 
     expect(c1.level).toBe('case');
     expect(c1.count).toBe(3);
     expect(c1.algorithmType).toBe('asr');
-    expect(c1.children).toHaveLength(2); // 任务 1 / 任务 2
-    const task1 = c1.children.find((n) => n.id === 1)!;
-    expect(task1.level).toBe('task');
-    expect(task1.children).toHaveLength(1); // 设备 7
-    expect(task1.children[0].children.map((n) => n.name)).toEqual(['real-time', 'final']);
-    const task2 = c1.children.find((n) => n.id === 2)!;
-    expect(task2.children[0].id).toBe(9);
+    // 用例下直挂设备层（无任务级）
+    expect(c1.children).toHaveLength(2); // 设备 7 / 设备 9
+    expect(c1.children.map((n) => n.level)).toEqual(['device', 'device']);
+    const d7 = c1.children.find((n) => n.id === 7)!;
+    expect(d7.children.map((n) => n.name)).toEqual(['real-time', 'final']);
+    const d9 = c1.children.find((n) => n.id === 9)!;
+    expect(d9.children[0].id).toBe('default');
   });
 
-  it('用例视角勾选联动复用 R1-R7（取消任务级仅清该任务结果行，用例保持部分）', () => {
+  it('用例级勾选 R6 语义：勾选用例根 = 跨设备/结果类型全部结果；取消设备仅清该设备', () => {
     const rows = [
       cand({ resultId: 1, taskId: 1, caseId: 'C1', deviceId: 7, resultType: 'real-time' }),
       cand({ resultId: 2, taskId: 2, caseId: 'C1', deviceId: 9, resultType: 'default' }),
     ];
     const tree = buildPickCaseViewTree(rows);
     const c1 = tree[0];
-    const task1 = c1.children[0];
-    // R7 语义：勾选用例根 = 跨任务全部结果
+    const d7 = c1.children.find((n) => n.id === 7)!;
+    // 勾选用例根 = 全部结果
     const sel = toggleNode(c1, new Set());
     expect(sel).toEqual(new Set([1, 2]));
-    // 取消任务 1 → 仅清该任务下结果行，用例保持部分选中
-    const after = toggleNode(task1, sel);
+    expect(nodeState(c1, sel)).toBe('checked');
+    // 取消设备 7 → 仅清该设备下结果行，用例保持部分选中
+    const after = toggleNode(d7, sel);
     expect(after).toEqual(new Set([2]));
     expect(nodeState(c1, after)).toBe('indeterminate');
-    expect(nodeState(task1, after)).toBe('unchecked');
+    expect(nodeState(d7, after)).toBe('unchecked');
+  });
+});
+
+describe('buildPickDeviceViewTree（INT-1034 §3.8.3 设备视图）', () => {
+  it('设备/API → result_type → 用例 → 叶（三视图同源，叶 result_id 与用例视图一致）', () => {
+    const rows = [
+      cand({ resultId: 1, taskId: 1, caseId: 'C1', deviceId: 7, resultType: 'real-time' }),
+      cand({ resultId: 2, taskId: 2, caseId: 'C1', deviceId: 7, resultType: 'real-time' }),
+      cand({ resultId: 3, taskId: 1, caseId: 'C2', deviceId: 8, resultType: 'final' }),
+    ];
+    const tree = buildPickDeviceViewTree(rows);
+    expect(tree).toHaveLength(2); // 设备 7 / 设备 8
+    const d7 = tree.find((n) => n.id === 7)!;
+    expect(d7.level).toBe('device');
+    expect(d7.count).toBe(2);
+    expect(d7.children).toHaveLength(1); // real-time
+    const rt = d7.children[0];
+    expect(rt.level).toBe('resultType');
+    expect(rt.children).toHaveLength(1); // 用例 C1
+    const c1 = rt.children[0];
+    expect(c1.level).toBe('case');
+    expect(c1.resultIds).toEqual([1, 2]);
+    // 勾选设备 = 其下全部叶（R4 容器语义）
+    const sel = toggleNode(d7, new Set());
+    expect(sel).toEqual(new Set([1, 2]));
+  });
+});
+
+describe('buildPickResultTypeViewTree（INT-1034 §3.8.3 结果类型视图）', () => {
+  it('result_type → 设备/API → 用例 → 叶（缺省 result_type 折叠「结果类型待补充」）', () => {
+    const rows = [
+      cand({ resultId: 1, taskId: 1, caseId: 'C1', deviceId: 7, resultType: 'real-time' }),
+      cand({ resultId: 2, taskId: 2, caseId: 'C1', deviceId: 8, resultType: 'real-time' }),
+      cand({ resultId: 3, taskId: 1, caseId: 'C2', deviceId: 7, resultType: null }),
+    ];
+    const tree = buildPickResultTypeViewTree(rows);
+    expect(tree).toHaveLength(2); // real-time / 结果类型待补充
+    const rt = tree.find((n) => n.name === 'real-time')!;
+    expect(rt.count).toBe(2);
+    expect(rt.children).toHaveLength(2); // 设备 7 / 设备 8
+    const d7 = rt.children.find((n) => n.id === 7)!;
+    expect(d7.level).toBe('device');
+    expect(d7.children).toHaveLength(1); // 用例 C1
+    expect(d7.children[0].resultIds).toEqual([1]);
+    const pending = tree.find((n) => n.name === '结果类型待补充')!;
+    expect(pending.count).toBe(1);
+    // 三视图共享同一叶集：设备/结果类型视图叶 result_id 与用例视图一致
+    expect(collectLeafResultIds(tree).sort((a, b) => a - b)).toEqual([1, 2, 3]);
   });
 });

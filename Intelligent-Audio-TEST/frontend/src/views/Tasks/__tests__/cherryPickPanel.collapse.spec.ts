@@ -15,6 +15,8 @@ const api = vi.hoisted(() => ({ getSource: vi.fn() }))
 
 vi.mock('../../../infrastructure/api', () => ({
   cherryPickApi: { getSource: api.getSource },
+  // INT-1110：向导链 PickCaseCard → TestCaseCard → useAlgorithmLabels 依赖算法标签
+  algorithmApi: { getOptions: vi.fn(async () => ({ algorithms: [] })) },
 }))
 vi.mock('../../../components/task/TaskCard.vue', () => ({
   default: { template: '<div class="task-card-stub" />' },

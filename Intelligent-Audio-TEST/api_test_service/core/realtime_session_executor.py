@@ -53,7 +53,7 @@ from api_test_service.infrastructure.adapters import (
     vendor_adapter_registry,
 )
 from api_test_service.infrastructure.messaging import RealtimeStreamPublisher
-from api_test_service.infrastructure.vendor_ws import RealtimeWSClient
+from api_test_service.infrastructure.adapters.transport import RealtimeWSClient
 from api_test_service.infrastructure.persistence.api_rms_spl_repository import (
     ApiRmsSplRepositoryImpl,
 )

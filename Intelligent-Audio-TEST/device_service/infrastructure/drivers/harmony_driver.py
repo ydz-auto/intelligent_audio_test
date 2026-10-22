@@ -5,7 +5,7 @@ import logging
 from .base_driver import BaseDeviceDriver
 from .harmony_collection_mixin import HarmonyCollectionMixin
 from .device_config import get_device_config
-from .driver_types import AppType, AppVersion, DevicePlatform
+from .driver_types import DevicePlatform
 from .registry import register_driver
 from .utils import check_stop, UiDriver, By, MatchPattern, with_rpc_retry
 from .driver_constants import *
@@ -27,8 +27,8 @@ class HarmonyDriver(HarmonyCollectionMixin, BaseDeviceDriver):
     """
 
     # —— 驱动元数据 ——
-    app_type = AppType.HARMONY_BASE
-    version = AppVersion.V1
+    app_type = "harmony_base"
+    version = "v1"
     platform = DevicePlatform.HARMONYOS
     keywords = "harmony.base.v1"
     display_name = "HarmonyOS 基础驱动"

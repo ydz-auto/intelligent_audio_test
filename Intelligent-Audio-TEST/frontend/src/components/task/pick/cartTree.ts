@@ -14,6 +14,10 @@ export interface CartTreeNode {
   id: string | number
   name: string
   kind?: 'device' | 'api'
+  /** INT-1110：用例节点 CaseIdBadge（统一用例卡 compact 复用） */
+  caseId?: string | null
+  /** INT-1110：用例节点算法徽章（快照无字段时缺省 null） */
+  algorithmType?: string | null
   count: number
   itemIds: number[]
   children: CartTreeNode[]
@@ -48,6 +52,7 @@ export function buildCartTree(groups: PickCartGroup[]): CartTreeNode[] {
         caseNode = {
           key: caseKey, level: 'case', id: it.sourceCaseId ?? '',
           name: it.sourceCaseName || it.sourceCaseId || '未命名用例',
+          caseId: it.sourceCaseId ?? null,
           count: 0, itemIds: [], children: [],
         };
         task.children.push(caseNode);

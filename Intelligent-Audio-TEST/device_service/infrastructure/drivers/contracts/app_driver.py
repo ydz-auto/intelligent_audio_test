@@ -1,14 +1,18 @@
-"""应用驱动统一契约。
+"""应用驱动统一契约（DDD Port）。
 
 贡献者只需继承 AppDriver 并声明元数据，无需修改调度器代码。
-旧驱动（继承 BaseDeviceDriver 的）保持兼容，通过适配器注册到新体系。
+兼容实现基类：``BaseDeviceDriver``（drivers/base_driver.py）继承本契约并保留
+无参构造（``ctx: DriverContext = None``），既有运行时设施（Redis 分布式
+stop/pause、UI 抓取降级、teardown 自动关 App 等）全部保留；现有全部驱动
+（AndroidDriver/HarmonyDriver 及专用驱动）传递继承 BaseDeviceDriver，
+零改动接入新契约。注册表（registry.py）校验注册类必须是 AppDriver 子类。
 """
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from ..driver_types import AppType, AppVersion, DevicePlatform
+from ..driver_types import DevicePlatform
 
 
 @dataclass
@@ -49,8 +53,8 @@ class AppDriver(ABC):
     示例:
         @register_driver
         class PlaudDriverV1(AppDriver):
-            app_type = AppType.PLAUD
-            version = AppVersion.V1
+            app_type = "plaud"
+            version = "v1"
             platform = DevicePlatform.ANDROID
             display_name = "Plaud AI 录音 v1"
 
@@ -59,9 +63,9 @@ class AppDriver(ABC):
                 ...
     """
 
-    # —— 元数据：贡献者在类上声明 ——
-    app_type: AppType
-    version: AppVersion
+    # —— 元数据：贡献者在类上声明（app_type/version 为自定义开放字符串，INT-1167 追加）——
+    app_type: str
+    version: str
     platform: DevicePlatform
     display_name: str = ""
 
@@ -69,7 +73,7 @@ class AppDriver(ABC):
     dependencies: list[str] = []
 
     # 可选：版本降级目标，resolve 找不到本版本时尝试此版本
-    fallback_version: Optional[AppVersion] = None
+    fallback_version: Optional[str] = None
 
     def __init__(self, ctx: DriverContext):
         """接收调度器注入的上下文"""
