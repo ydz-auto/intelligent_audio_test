@@ -6,7 +6,7 @@
           <i class="fas fa-tasks"></i>
           测试用例管理
         </h2>
-        <p class="page-description">统一管理端到端测试用例和API测试用例</p>
+        <p class="page-description">统一管理测试用例：分组、标签、参考参数与批量导入导出</p>
       </div>
     </div>
     

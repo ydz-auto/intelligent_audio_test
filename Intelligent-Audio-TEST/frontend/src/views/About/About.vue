@@ -5,15 +5,14 @@
       <article class="about-content">
         <h1 class="about-h1">关于智能语音测试平台</h1>
         <p class="about-lead">
-          智能语音测试平台为智能语音产品提供一站式测试能力：端到端测试、API 测试、用例管理、
+          智能语音测试平台为智能语音产品提供一站式测试能力：测试执行、用例管理、
           设备管理、音频导入与报告对比，覆盖测试执行、质量评估与报告分析全流程。
         </p>
 
         <h2 class="about-h2">平台能力</h2>
         <ul class="about-list">
           <li>
-            <router-link to="/E2ETest">端到端测试</router-link> 与
-            <router-link to="/APITest">API 测试</router-link>：五步向导完成测试准备与执行，实时查看进度与日志。
+            <router-link to="/start-test">测试执行</router-link>：四步向导完成测试准备与执行，实时查看进度与日志。
           </li>
           <li>
             <router-link to="/TestCaseManager">用例管理</router-link>：分组、标签与参考参数组织测试用例，支持导入导出。
