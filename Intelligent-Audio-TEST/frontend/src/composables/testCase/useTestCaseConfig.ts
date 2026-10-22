@@ -10,11 +10,6 @@ export interface SelectedDimension {
   threshold?: number
 }
 
-export interface TestTypeOption {
-  label: string
-  value: typeof TestType[keyof typeof TestType]
-}
-
 export interface GroupNameTypeOption {
   label: string
   value: 'root' | 'folder' | 'custom'
@@ -57,11 +52,6 @@ export function useTestCaseConfig(options: UseTestCaseConfigOptions = {}) {
     { label: '根目录', value: 'root' },
     { label: '文件夹名', value: 'folder' },
     { label: '自定义', value: 'custom' }
-  ]
-
-  const testTypeOptions: TestTypeOption[] = [
-    { label: 'E2E测试', value: TestType.E2E },
-    { label: 'API测试', value: TestType.API }
   ]
 
   const updateDimensionFilter = (ids: number[]) => {
@@ -157,7 +147,6 @@ export function useTestCaseConfig(options: UseTestCaseConfigOptions = {}) {
     audioTypeOptions,
     hasAudioType,
     groupNameTypeOptions,
-    testTypeOptions,
     filteredDimensions,
     e2eFilteredDimensions,
     dimensionCount,

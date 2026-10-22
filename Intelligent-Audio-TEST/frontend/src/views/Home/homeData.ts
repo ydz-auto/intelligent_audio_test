@@ -1,5 +1,4 @@
 import type { RouteLocationRaw } from 'vue-router'
-import { TestType } from '@/domain/enums'
 
 export interface HomeStatCard {
   to: RouteLocationRaw
@@ -96,27 +95,18 @@ export interface TestTypeCard {
   title: string
   description: string
   list: string[]
-  variant: (typeof TestType)[keyof typeof TestType]
+  variant: string
 }
 
 export const testTypeCards: TestTypeCard[] = [
   {
-    to: '/E2ETest',
+    to: '/start-test',
     icon: 'fas fa-project-diagram',
-    title: '端到端测试',
+    title: '开始测试',
     description:
-      '在真实设备上执行端到端语音测试，支持多设备并行测试，实时监控测试进度和结果。',
-    list: ['多设备并行测试', '实时进度监控', '自动化测试流程'],
-    variant: TestType.E2E
-  },
-  {
-    to: '/APITest',
-    icon: 'fas fa-exchange-alt',
-    title: 'API测试',
-    description:
-      '测试语音识别和翻译API等的性能和准确率，支持批量测试和结果对比分析。',
-    list: ['API性能测试', '批量测试执行', '结果对比分析'],
-    variant: TestType.API
+      '选择测试用例与设备/API，在同一流程内完成语音测试与报告生成，支持多设备并行测试与实时进度监控。',
+    list: ['多设备并行测试', '同屏选择设备/API', '自动化测试流程'],
+    variant: 'start'
   }
 ]
 
@@ -144,54 +134,29 @@ export interface DetailSection {
 
 export const detailSections: DetailSection[] = [
   {
-    title: '端到端测试系统',
-    subtitle: '在真实设备上执行完整的语音测试流程，模拟真实用户使用场景',
-    variant: '',
-    iconLarge: 'fas fa-mobile-alt',
-    mainTitle: '真实设备测试',
+    title: '开始测试系统',
+    subtitle: '选择测试用例与设备/API，在同一流程内完成语音测试与报告生成',
+    variant: 'start',
+    iconLarge: 'fas fa-project-diagram',
+    mainTitle: '统一测试流程',
     mainDescription:
-      '在真实Android/鸿蒙设备上执行端到端语音测试，模拟真实用户使用场景。支持多设备并行测试，同时在多台设备上运行相同的测试用例，快速对比不同设备的表现差异。',
+      '选择测试用例、测试设备与被测 API，在同一流程内完成语音测试与报告生成。支持多设备并行测试与实时进度监控，快速对比不同设备与 API 的表现差异。',
     features: [
       { icon: 'fas fa-layer-group', text: '多设备并行测试' },
       { icon: 'fas fa-tachometer-alt', text: '实时进度监控' },
       { icon: 'fas fa-history', text: '完整执行记录' }
     ],
     sideCards: [
-      { icon: 'fas fa-list-ol', title: '五步测试流程', desc: '选择算法 → 选择用例 → 选择设备 → 执行测试 → 查看报告' },
+      { icon: 'fas fa-list-ol', title: '四步测试流程', desc: '选择用例 → 选择设备/API → 执行测试 → 查看报告' },
       { icon: 'fas fa-tags', title: '用例分类管理', desc: '唤醒词、命令识别、语音识别、多轮对话测试' },
       { icon: 'fas fa-chart-bar', title: '可视化报告', desc: '准确率对比、正态分布、趋势分析图表' },
       { icon: 'fas fa-exclamation-triangle', title: '异常处理', desc: '支持重试和跳过失败用例' }
     ],
-    ctaTo: '/E2ETest',
-    ctaVariant: TestType.E2E,
+    ctaTo: '/start-test',
+    ctaVariant: 'start',
     ctaText: '立即体验',
     reverse: false,
     altBg: false
-  },
-  {
-    title: 'API测试系统',
-    subtitle: '测试语音识别和翻译API的性能与准确率，支持批量测试和结果对比',
-    variant: TestType.API,
-    iconLarge: 'fas fa-exchange-alt',
-    mainTitle: 'API性能测试',
-    mainDescription:
-      '测试第三方语音识别和翻译API的性能和准确率。支持批量测试执行，自动记录响应时间、并发数和成功率。提供详细的结果对比分析，帮助优化API使用策略。',
-    features: [
-      { icon: 'fas fa-bolt', text: '性能基准测试' },
-      { icon: 'fas fa-balance-scale', text: '结果对比分析' },
-      { icon: 'fas fa-heartbeat', text: '健康状态监控' }
-    ],
-    sideCards: [
-      { icon: 'fas fa-server', title: '多API支持', desc: '支持对接多个语音识别和翻译服务' },
-      { icon: 'fas fa-users', title: '并发控制', desc: '自定义并发数和请求间隔' },
-      { icon: 'fas fa-stopwatch', title: '响应时间分析', desc: '实时统计平均响应时间和超时率' },
-      { icon: 'fas fa-file-export', title: '报告导出', desc: '支持CSV和PDF格式导出' }
-    ],
-    ctaTo: '/APITest',
-    ctaVariant: TestType.API,
-    ctaText: '立即体验',
-    reverse: true,
-    altBg: true
   },
   {
     title: '音频导入功能',
@@ -220,12 +185,12 @@ export const detailSections: DetailSection[] = [
   },
   {
     title: '用例管理',
-    subtitle: '统一管理端到端测试用例和API测试用例，支持分类、标签和批量操作',
+    subtitle: '统一管理测试用例，支持分类、标签和批量操作',
     variant: 'cases',
     iconLarge: 'fas fa-tasks',
     mainTitle: '用例集中管理',
     mainDescription:
-      '统一管理端到端测试用例和API测试用例，支持按测试类型分组管理。提供用例标签系统，方便分类和筛选。支持批量导入导出、复制和移动操作，提高用例管理效率。',
+      '统一管理测试用例，支持分类分组与标签管理。提供用例标签系统，方便分类和筛选。支持批量导入导出、复制和移动操作，提高用例管理效率。',
     features: [
       { icon: 'fas fa-folder', text: '分类管理' },
       { icon: 'fas fa-tags', text: '标签系统' },
@@ -406,22 +371,13 @@ export interface FeatureCard {
 
 export const featureCards: FeatureCard[] = [
   {
-    to: '/E2ETest',
-    icon: 'fas fa-mobile-alt',
-    title: '端到端测试',
-    description: '在真实设备上执行端到端语音测试，支持多设备并行测试和实时进度监控。',
-    list: ['多设备并行测试', '五步测试流程', '可视化报告'],
+    to: '/start-test',
+    icon: 'fas fa-project-diagram',
+    title: '开始测试',
+    description: '选择测试用例与设备/API，在同一流程内完成语音测试与报告生成，支持多设备并行测试与实时进度监控。',
+    list: ['多设备并行测试', '同屏选择设备/API', '可视化报告'],
     link: '开始测试',
-    variant: TestType.E2E
-  },
-  {
-    to: '/APITest',
-    icon: 'fas fa-exchange-alt',
-    title: 'API测试',
-    description: '测试语音识别和翻译API的性能与准确率，支持批量测试和结果对比分析。',
-    list: ['API性能测试', '并发控制', '健康状态监控'],
-    link: '开始测试',
-    variant: TestType.API
+    variant: 'start'
   },
   {
     to: '/AudioImport',
@@ -436,7 +392,7 @@ export const featureCards: FeatureCard[] = [
     to: '/TestCaseManager',
     icon: 'fas fa-tasks',
     title: '用例管理',
-    description: '统一管理端到端测试用例和API测试用例，支持用例分类、标签管理和批量操作。',
+    description: '统一管理测试用例，支持用例分类、标签管理和批量操作。',
     list: ['用例分类管理', '标签系统', '批量导入导出'],
     link: '管理用例',
     variant: 'cases'

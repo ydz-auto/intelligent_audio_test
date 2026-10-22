@@ -1,7 +1,7 @@
 <template>
   <section class="workflow-section">
     <h2 class="section-title">开始测试</h2>
-    <p class="section-subtitle">选择测试类型开始语音测试</p>
+    <p class="section-subtitle">选择测试用例与设备/API，开始语音测试</p>
 
     <div class="progress-nav">
       <template v-for="(step, idx) in workflowSteps" :key="idx">

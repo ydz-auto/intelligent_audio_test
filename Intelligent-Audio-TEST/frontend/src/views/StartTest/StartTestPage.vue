@@ -3,25 +3,17 @@
     <div class="page-header">
       <div class="header-left">
         <h2>开始测试</h2>
-        <p>选择测试类型发起测试任务（端到端 / API 合并入口建设中）</p>
+        <p>选择测试用例与设备/API，在同一流程内完成语音测试与报告生成</p>
       </div>
     </div>
 
     <div class="start-test-grid">
-      <router-link to="/E2ETest" class="test-type-card">
+      <router-link to="/start-test" class="test-type-card">
         <div class="test-type-card__icon">
           <i class="fas fa-project-diagram"></i>
         </div>
-        <h3>端到端测试</h3>
-        <p>选择测试用例与设备，执行端到端语音测试流程。</p>
-      </router-link>
-
-      <router-link to="/APITest" class="test-type-card">
-        <div class="test-type-card__icon">
-          <i class="fas fa-exchange-alt"></i>
-        </div>
-        <h3>API 测试</h3>
-        <p>配置 API 端点与参数，执行接口级语音测试流程。</p>
+        <h3>开始测试</h3>
+        <p>选择测试用例与设备/API，执行语音测试流程并生成报告。</p>
       </router-link>
     </div>
   </div>

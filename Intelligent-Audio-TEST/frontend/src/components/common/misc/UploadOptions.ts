@@ -16,15 +16,6 @@ const EMPTY_DIMENSION_CONFIG: DimensionConfigData = {
   multiDimensions: []
 }
 
-/** 判断维度配置是否已选维度（per_round 模式遍历逐轮配置） */
-function hasConfiguredDimensions(cfg?: DimensionConfigData): boolean {
-  if (!cfg) return false
-  if (cfg.roundMode === RoundMode.PER_ROUND) {
-    return Object.values(cfg.roundDimensions || {}).some(dims => dims.length > 0)
-  }
-  return (cfg.dimensions || []).length > 0
-}
-
 /** 按算法关联维度过滤维度配置（dimensions/roundDimensions/multiDimensions 同步过滤） */
 function filterDimensionConfig(
   cfg: DimensionConfigData | undefined,
@@ -96,28 +87,20 @@ export function useUploadOptions(props: any, emit: any) {
   const {
     audioTypeOptions: computedAudioTypeOptions,
     hasAudioType,
-    testTypeOptions,
     filteredDimensions,
-    e2eFilteredDimensions,
     ensureDimensionsLoaded,
     dimensionsLoading,
     dimensionsError,
     dimensionSearchQuery,
-    e2eDimensionSearchQuery,
     updateDimensionFilter
   } = useTestCaseConfig({
     audioTypeOptions: props.audioTypeOptions.length > 0 ? props.audioTypeOptions : undefined
   })
 
-  const hasApiDimensions = computed(() => hasConfiguredDimensions(uploadConfig.value.apiDimensionConfig))
-  const hasE2eDimensions = computed(() => hasConfiguredDimensions(uploadConfig.value.e2eDimensionConfig))
-
   const showTestCaseConfig = computed(() => uploadConfig.value.createTestCase)
-  const showApiConfig = computed(() => uploadConfig.value.testTypes?.includes('api'))
-  const showE2eConfig = computed(() => uploadConfig.value.testTypes?.includes('e2e'))
 
-  watch([showApiConfig, showE2eConfig], ([api, e2e]: any) => {
-    if (api || e2e) {
+  watch(showTestCaseConfig, (show) => {
+    if (show) {
       ensureDimensionsLoaded()
     }
   }, { immediate: true })
@@ -181,20 +164,13 @@ export function useUploadOptions(props: any, emit: any) {
     uploadConfig,
     computedAudioTypeOptions,
     hasAudioType,
-    testTypeOptions,
     filteredDimensions,
-    e2eFilteredDimensions,
     ensureDimensionsLoaded,
     dimensionsLoading,
     dimensionsError,
     dimensionSearchQuery,
-    e2eDimensionSearchQuery,
     updateDimensionFilter,
-    hasApiDimensions,
-    hasE2eDimensions,
     showTestCaseConfig,
-    showApiConfig,
-    showE2eConfig,
     noiseSelectModalVisible,
     algorithmParams,
     associatedDimensionIds,
