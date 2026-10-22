@@ -216,3 +216,40 @@ def test_task_type_relation_fallback_no_case_rows(db):
     api = task_read_model.search_tasks(page=1, per_page=50, task_type='api')
     assert api_id in {i['id'] for i in api['items']}
     assert dev_id not in {i['id'] for i in api['items']}
+
+
+def test_task_type_relation_fallback_both_relations_mixed(db):
+    """INT-1233：无用例行且设备/API 关系兼有的任务按关系回退为 mixed。
+
+    派生口径与列表 device_types 输出一致：无任何用例级 device_type 行时，
+    有 task_device_relations → physical、有 task_api_relations → http_api，
+    两者兼有 → ['physical', 'http_api']（mixed），与类型分布同口径。
+    """
+    from task_service.infrastructure.persistence.models import Task, TaskDevice, TaskAPI
+    from task_service.infrastructure.read_models.task_read_model import task_read_model
+    session = get_db_session()
+    try:
+        both_t = Task(name='INT1233设备API兼有关系任务', status='completed', total_cases=1)
+        session.add(both_t)
+        session.flush()
+        session.add_all([
+            TaskDevice(task_id=both_t.id, device_id=9),
+            TaskAPI(task_id=both_t.id, api_id=1),
+        ])
+        session.commit()
+        both_id = both_t.id
+    finally:
+        remove_db_session()
+
+    result = task_read_model.search_tasks(page=1, per_page=50)
+    by_id = {i['id']: i for i in result['items']}
+    # 两关系兼有 → 回退 ['physical', 'http_api']
+    assert sorted(by_id[both_id]['device_types']) == ['http_api', 'physical']
+
+    # 筛选口径与输出一致：仅出现在 mixed，不入 e2e / api
+    mixed = task_read_model.search_tasks(page=1, per_page=50, task_type='mixed')
+    assert both_id in {i['id'] for i in mixed['items']}
+    e2e = task_read_model.search_tasks(page=1, per_page=50, task_type='e2e')
+    assert both_id not in {i['id'] for i in e2e['items']}
+    api = task_read_model.search_tasks(page=1, per_page=50, task_type='api')
+    assert both_id not in {i['id'] for i in api['items']}
