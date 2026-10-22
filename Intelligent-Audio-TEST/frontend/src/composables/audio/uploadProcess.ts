@@ -427,21 +427,85 @@ export async function processMergeForExistingFile(
   }
 }
 
-export async function uploadFileChunks(
+/**
+ * 合并分片公共载荷（不含直传 OSS 字段；直传场景由调用方展开 isDirectOss/oss*）。
+ * 分组命名仅走 testCaseConfig.group_name（服务端消费口径，INT-146 缺陷5）：
+ * groupNameType/customGroupName 服务端已不消费，不再发送。
+ */
+function buildMergePayload(
+  options: any,
+  fileTask: AudioUploadFile,
+  normalizedAlgorithmParams: any,
+  tcConfig?: TestCaseConfig
+): Record<string, unknown> {
+  return {
+    audioType: options.audioType,
+    createTestCase: options.createTestCase,
+    tags: fileTask.tags && fileTask.tags.length > 0 ? fileTask.tags : options.tags,
+    description: options.description,
+    testTypes: options.testTypes,
+    playbackDeviceId: options.playbackDeviceId,
+    spl: options.spl,
+    inheritTags: options.inheritTags,
+    dimensions: options.createTestCase ? options.dimensions : undefined,
+    noiseAudioId: options.noiseAudioId,
+    noiseSpl: options.noiseSpl,
+    asrText: fileTask.asrText || '',
+    translations: fileTask.translations || [],
+    annotations: fileTask.annotations || [],
+    algorithmType: options.algorithmType,
+    algorithmRelations: options.algorithmRelations,
+    algorithmParams: normalizedAlgorithmParams || [],
+    testCaseConfig: tcConfig,
+  };
+}
+
+/**
+ * 合并响应落地：回填 audioId、累计用例数、回填轮次 audioId。
+ * 响应 data 局部映射（Infrastructure 已归一为 camelCase 出口）。
+ */
+function applyMergeResult(
+  fileTask: AudioUploadFile,
+  mergeResponse: APIResponse<MergeChunksData>,
+  generatedTestCaseTotal: { value: number },
+  tcConfig?: TestCaseConfig
+): void {
+  if (mergeResponse.code !== undefined && mergeResponse.code !== null && mergeResponse.code !== 0 && mergeResponse.code !== HttpStatus.OK && mergeResponse.code !== HttpStatus.CREATED) {
+    throw new Error(mergeResponse.message || 'Failed to merge chunks');
+  }
+
+  const mergeData: MergeChunksData = mergeResponse.data || {};
+
+  fileTask.audioId = mergeData.audioId;
+  const cnt = mergeData.testCaseCount;
+  if (typeof cnt === 'number' && cnt > 0) generatedTestCaseTotal.value += cnt;
+  if (tcConfig?.rounds && fileTask.audioId) {
+    const realName = mergeData.name || fileTask.name;
+    for (const r of tcConfig.rounds) {
+      if (!r.audios) continue;
+      for (const a of r.audios) {
+        // 回填音频 ID（camelCase，与消费方 useTestCaseAudioPreview 读取一致）
+        if (a.audioName === fileTask.name || a.audioName === realName) {
+          a.audioId = fileTask.audioId;
+        }
+      }
+    }
+  }
+}
+
+/**
+ * 预签名直传 OSS 流程（生产环境多实例部署直传路径）。
+ * 若本路径抛错/不可达，由 uploadFileChunks 统一回退到网关分片路径。
+ */
+async function uploadFileChunksViaPresign(
   ctx: UploadProcessContext,
   taskId: string,
   fileTask: AudioUploadFile,
   options: any,
-  tcConfig?: TestCaseConfig
+  tcConfig?: TestCaseConfig,
+  normalizedAlgorithmParams?: any
 ) {
-  const { uploadStatus, generatedTestCaseTotal, algorithmApi } = ctx;
-
-  await algorithmApi.dispatchParamsToRounds(tcConfig, options.algorithmType, fileTask, options);
-  const normalizedAlgorithmParams = await algorithmApi.resolveAlgorithmParamsFromAnnotations(
-    options.algorithmType,
-    fileTask.annotations,
-    options.algorithmParams
-  );
+  const { uploadStatus, generatedTestCaseTotal } = ctx;
 
   const ext = fileTask.name.split('.').pop()?.toLowerCase() || '';
   const isWav = ext === 'wav';
@@ -545,26 +609,7 @@ export async function uploadFileChunks(
     }
   } else {
     const mergeResponse = await audiosPort.mergeChunks(fileTask.fileId, taskId, {
-      audioType: options.audioType,
-      createTestCase: options.createTestCase,
-      tags: fileTask.tags && fileTask.tags.length > 0 ? fileTask.tags : options.tags,
-      description: options.description,
-      testTypes: options.testTypes,
-      playbackDeviceId: options.playbackDeviceId,
-      spl: options.spl,
-      // 分组命名仅走 testCaseConfig.group_name（服务端消费口径，INT-146 缺陷5）：
-      // groupNameType/customGroupName 服务端已不消费，不再发送
-      inheritTags: options.inheritTags,
-      dimensions: options.createTestCase ? options.dimensions : undefined,
-      noiseAudioId: options.noiseAudioId,
-      noiseSpl: options.noiseSpl,
-      asrText: fileTask.asrText || '',
-      translations: fileTask.translations || [],
-      annotations: fileTask.annotations || [],
-      algorithmType: options.algorithmType,
-      algorithmRelations: options.algorithmRelations,
-      algorithmParams: normalizedAlgorithmParams || [],
-      testCaseConfig: tcConfig,
+      ...buildMergePayload(options, fileTask, normalizedAlgorithmParams, tcConfig),
       isDirectOss: true,
       ossUploadId: uploadId,
       ossKey,
@@ -572,29 +617,101 @@ export async function uploadFileChunks(
     }, {
       signal: ctx.getAbortController()?.signal,
       unwrapResponse: false,
-    }) as APIResponse<{ audioId: string | number }>;
+    }) as APIResponse<MergeChunksData>;
 
-    if (mergeResponse.code !== undefined && mergeResponse.code !== null && mergeResponse.code !== 0 && mergeResponse.code !== HttpStatus.OK && mergeResponse.code !== HttpStatus.CREATED) {
-      throw new Error(mergeResponse.message || 'Failed to merge chunks');
+    applyMergeResult(fileTask, mergeResponse, generatedTestCaseTotal, tcConfig);
+  }
+}
+
+/**
+ * 网关分片路径回退：预签名直传 OSS 失败/不可达时（本环境 rustfs:9000 宿主不可解析、
+ * 真实库栈 SigV2 签名 403 等），改走 /upload/chunk 网关分片路径（与 React/旧 Vue 行为一致）。
+ * 复用同批注册的 file_id / chunk_size / total_chunks——后端 merge 按注册的 total_chunks
+ * 逐序号拼接本地分片，前端不得本地重算分片参数，否则会截断文件。
+ */
+async function uploadFileChunksViaGateway(
+  ctx: UploadProcessContext,
+  taskId: string,
+  fileTask: AudioUploadFile,
+  options: any,
+  tcConfig?: TestCaseConfig,
+  normalizedAlgorithmParams?: any
+) {
+  const { uploadStatus, generatedTestCaseTotal } = ctx;
+
+  const chunkSize = fileTask.chunkSize && fileTask.chunkSize > 0
+    ? fileTask.chunkSize
+    : 5 * 1024 * 1024;
+  const totalChunks = fileTask.totalChunks && fileTask.totalChunks > 0
+    ? fileTask.totalChunks
+    : Math.max(1, Math.ceil(fileTask.size / chunkSize));
+
+  // 1. 逐分片经网关入库（/upload/chunk，multipart；与注册的 file_id/total_chunks 严格对齐）
+  for (let i = 0; i < totalChunks; i++) {
+    if ((uploadStatus.value as string) === UploadStatusEnum.PAUSED || (uploadStatus.value as string) === UploadStatusEnum.STOPPED) {
+      fileTask.status = uploadStatus.value === UploadStatusEnum.PAUSED ? UploadStatusEnum.PAUSED : UploadStatusEnum.STOPPED;
+      throw new Error(`Upload ${fileTask.status}`);
     }
 
-    // 响应 data 局部映射（Infrastructure 已归一为 camelCase 出口）
-    const mergeData: MergeChunksData = mergeResponse.data || {};
+    const start = i * chunkSize;
+    const end = Math.min(start + chunkSize, fileTask.size);
+    const chunk = fileTask.file.slice(start, end);
 
-    fileTask.audioId = mergeData.audioId;
-    const cnt = mergeData.testCaseCount;
-    if (typeof cnt === 'number' && cnt > 0) generatedTestCaseTotal.value += cnt;
-    if (tcConfig?.rounds && fileTask.audioId) {
-      const realName = mergeData.name || fileTask.name;
-      for (const r of tcConfig.rounds) {
-        if (!r.audios) continue;
-        for (const a of r.audios) {
-          // 回填音频 ID（camelCase，与消费方 useTestCaseAudioPreview 读取一致）
-          if (a.audioName === fileTask.name || a.audioName === realName) {
-            a.audioId = fileTask.audioId;
-          }
-        }
-      }
+    const form = new FormData();
+    form.append('file_id', fileTask.fileId);
+    form.append('chunk_index', String(i));
+    form.append('total_chunks', String(totalChunks));
+    form.append('task_id', taskId);
+    form.append('chunk', chunk, 'chunk');
+
+    const chunkResp = await audiosPort.uploadChunk(form, {
+      signal: ctx.getAbortController()?.signal,
+      unwrapResponse: false,
+    }) as APIResponse<any>;
+
+    if (chunkResp.code !== undefined && chunkResp.code !== null && chunkResp.code !== 0 && chunkResp.code !== HttpStatus.OK) {
+      throw new Error(chunkResp.message || `分片 ${i + 1} 上传失败`);
     }
+
+    fileTask.uploadedSize = end;
+    fileTask.progress = Math.round((end / fileTask.size) * 100);
+    updateOverallProgress(ctx);
+  }
+
+  // 2. 合并分片并创建音频记录 + 测试用例（/upload/merge，不携带直传 OSS 字段）
+  const mergeResponse = await audiosPort.mergeChunks(fileTask.fileId, taskId, buildMergePayload(options, fileTask, normalizedAlgorithmParams, tcConfig), {
+    signal: ctx.getAbortController()?.signal,
+    unwrapResponse: false,
+  }) as APIResponse<MergeChunksData>;
+
+  applyMergeResult(fileTask, mergeResponse, generatedTestCaseTotal, tcConfig);
+}
+
+export async function uploadFileChunks(
+  ctx: UploadProcessContext,
+  taskId: string,
+  fileTask: AudioUploadFile,
+  options: any,
+  tcConfig?: TestCaseConfig
+) {
+  const { uploadStatus, algorithmApi } = ctx;
+
+  await algorithmApi.dispatchParamsToRounds(tcConfig, options.algorithmType, fileTask, options);
+  const normalizedAlgorithmParams = await algorithmApi.resolveAlgorithmParamsFromAnnotations(
+    options.algorithmType,
+    fileTask.annotations,
+    options.algorithmParams
+  );
+
+  try {
+    await uploadFileChunksViaPresign(ctx, taskId, fileTask, options, tcConfig, normalizedAlgorithmParams);
+  } catch (err) {
+    // 用户暂停/停止：按原路径向上抛（调用方置 PAUSED/STOPPED），不回退
+    if ((uploadStatus.value as string) === UploadStatusEnum.PAUSED || (uploadStatus.value as string) === UploadStatusEnum.STOPPED) {
+      throw err;
+    }
+    // 预签名直传 OSS 失败/不可达 → 回退网关分片路径（与 React/旧 Vue 行为一致）
+    console.warn(`[upload] 直传 OSS 不可用，回退网关分片路径（${fileTask.name}）:`, err);
+    await uploadFileChunksViaGateway(ctx, taskId, fileTask, options, tcConfig, normalizedAlgorithmParams);
   }
 }
