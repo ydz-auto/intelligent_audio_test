@@ -190,17 +190,33 @@ export async function fetchTaskDetail(taskId: number): Promise<TaskDetailData> {
   return toTaskDetail(dto)
 }
 
-/** 任务实时日志（GET /logs?task_id= 分页；page+1=更老，新→老） */
+/** 任务实时日志单页（GET /logs?task_id=；page+1=更老，后端按时间倒序返回） */
+export interface TaskLogsPage {
+  items: TaskLogEntry[]
+  total: number
+  page: number
+  perPage: number
+}
+
+/** 任务实时日志卡分页每页条数（§4.6 现口径） */
+export const TASK_LOG_PAGE_SIZE = 20
+
+/** 任务实时日志（GET /logs?task_id= 分页；新→老，展示层再反转为旧→新） */
 export async function fetchTaskLogs(
   taskId: number,
   page = 1,
-  pageSize = 20
-): Promise<TaskLogEntry[]> {
+  pageSize = TASK_LOG_PAGE_SIZE
+): Promise<TaskLogsPage> {
   const dto = await request<PaginatedDto<TaskLogEntryDto>>(
     'GET',
     '/logs',
     undefined,
     { params: { task_id: taskId, page, per_page: pageSize } }
   )
-  return (dto.items ?? []).map(toTaskLogEntry)
+  return {
+    items: (dto.items ?? []).map(toTaskLogEntry),
+    total: dto.total ?? 0,
+    page: dto.page ?? page,
+    perPage: dto.per_page ?? pageSize,
+  }
 }

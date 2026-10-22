@@ -5,9 +5,14 @@
  * 虚拟滚动 max-h-[400px]；「滚动到底部」「加载更早日志」「暂无日志」。
  * execution 模式（10_测试执行.md §3.7 差异注入）：①级别过滤（全部/INFO/WARN/ERROR）
  * ②关键词搜索（高亮匹配行）③导出完整日志 + Realtime frame 增量内容条（websocket_api 设备时）。
+ *
+ * INT-1288 接线：日志按旧→新展示（后端 /logs?task_id= 新→老，展示层反转），自动滚到底
+ * 显示最新；「加载更早日志」（page+1=更老，去重 prepend）与「导出完整日志」（经
+ * exportTaskLogs → POST /logs/export 真实请求，Blob 空时客户端兜底）由空 stub 接真实。
  */
 import { ArrowDownToLine, FileDown, ScrollText, Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -21,7 +26,11 @@ import {
 } from '@/components/ui/select'
 import { Progress } from '@/features/tasks/components/ui/progress'
 import { cn } from '@/lib/utils'
-import { useTaskLogs } from '@/application/tasks/use-task-detail'
+import {
+  exportTaskLogs,
+  useTaskLogs,
+} from '@/application/tasks/use-task-detail'
+import { fetchTaskLogs, TASK_LOG_PAGE_SIZE } from '@/infrastructure/api/tasks-list-api'
 import { useRealtimeFrameStream } from '@/infrastructure/realtime/frame-channel'
 import type { TaskLogEntry } from '@/domain/models/task'
 
@@ -32,6 +41,18 @@ const LEVEL_DOT: Record<TaskLogEntry['level'], string> = {
 }
 
 type LogLevelFilter = 'all' | TaskLogEntry['level']
+
+/** 触发 Blob 下载（导出文件名 task_{id}_logs_{日期}.log） */
+function downloadBlob(blob: Blob, taskId: number) {
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `task_${taskId}_logs_${new Date().toISOString().slice(0, 10)}.log`
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
 
 export function RealtimeLogs({
   taskId,
@@ -50,18 +71,75 @@ export function RealtimeLogs({
   const [keyword, setKeyword] = useState('')
   const frames = useRealtimeFrameStream(executionMode && hasRealtimeDevice)
 
+  /** 分页态：logs 为旧→新展示序（后端新→老，首页反转 + 更早页 prepend）；page+1=更老 */
+  const [logs, setLogs] = useState<TaskLogEntry[]>([])
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const hasMore = logs.length < total
+
+  // 首页数据到达/任务切换时重置展示序（后端倒序 → 反转成旧→新）
+  useEffect(() => {
+    if (logsQuery.data) {
+      setLogs([...logsQuery.data.items].reverse())
+      setPage(logsQuery.data.page)
+      setTotal(logsQuery.data.total)
+    }
+  }, [logsQuery.data])
+
   const scrollToBottom = () => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }
 
-  // 初始自动滚动到底（演示态；接线后运行中每 10s 轮询增量 append）
+  // 初始自动滚动到底（展示最新；prepend 更早页时不跳，保持视口）
   useEffect(() => {
     if (!manual && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [logsQuery.data, manual, frames])
+  }, [logs, manual, frames])
 
-  const logs = logsQuery.data ?? []
+  /** 加载更早日志（page+1=更老；去重 prepend 到头部；prepend 高度补偿保持视口内容稳定） */
+  const loadEarlier = async () => {
+    if (loadingMore || !hasMore) return
+    setLoadingMore(true)
+    const container = scrollRef.current
+    const prevTop = container?.scrollTop ?? 0
+    const prevHeight = container?.scrollHeight ?? 0
+    try {
+      const next = await fetchTaskLogs(taskId, page + 1, TASK_LOG_PAGE_SIZE)
+      setLogs((prev) => {
+        const existingIds = new Set(prev.map((l) => l.id))
+        const older = next.items.filter((l) => !existingIds.has(l.id)).reverse()
+        return [...older, ...prev]
+      })
+      setPage(next.page)
+      setTotal(next.total)
+      requestAnimationFrame(() => {
+        const el = scrollRef.current
+        if (el) el.scrollTop = prevTop + (el.scrollHeight - prevHeight)
+      })
+    } catch {
+      toast.error('加载更早日志失败，请稍后重试')
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
+  /** 导出完整日志（真实 POST /logs/export；文件日志未命中时客户端兜底拼装 .log） */
+  const handleExport = async () => {
+    if (exporting) return
+    setExporting(true)
+    try {
+      const { blob } = await exportTaskLogs(taskId)
+      downloadBlob(blob, taskId)
+      toast.success('日志已导出')
+    } catch {
+      toast.error('导出失败，请稍后重试')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   /** 级别过滤 + 关键词搜索（匹配行保留；关键词命中加高亮） */
   const filteredLogs = useMemo(() => {
@@ -102,6 +180,7 @@ export function RealtimeLogs({
           实时日志
           <span className='text-muted-foreground font-mono text-xs tabular-nums'>
             {logs.length}
+            {total > logs.length ? `/${total}` : ''}
           </span>
         </CardTitle>
         <div data-slot='card-action' className='flex items-center gap-1.5'>
@@ -137,11 +216,12 @@ export function RealtimeLogs({
                 variant='outline'
                 size='sm'
                 className='h-7 gap-1 text-xs'
-                onClick={() => {}}
+                onClick={() => void handleExport()}
+                disabled={exporting}
                 title='生成 .log 文件下载（Realtime 帧流事件不入导出文件，仅落库日志行导出）'
               >
                 <FileDown aria-hidden='true' className='size-3.5' />
-                导出完整日志
+                {exporting ? '导出中…' : '导出完整日志'}
               </Button>
             </>
           )}
@@ -184,6 +264,26 @@ export function RealtimeLogs({
           </div>
         )}
 
+        {/* 触顶「加载更早日志」（page+1=更老，去重 prepend；无更多/加载中禁用） */}
+        {logs.length > 0 && (
+          <div className='mb-1.5 flex items-center justify-center gap-2'>
+            <Button
+              variant='ghost'
+              size='sm'
+              className='text-muted-foreground h-6 text-xs'
+              onClick={() => void loadEarlier()}
+              disabled={!hasMore || loadingMore}
+            >
+              {loadingMore ? '加载中…' : '加载更早日志'}
+            </Button>
+            {total > logs.length && (
+              <span className='text-muted-foreground text-xs tabular-nums'>
+                已加载 {logs.length} / 共 {total} 条
+              </span>
+            )}
+          </div>
+        )}
+
         <div
           ref={scrollRef}
           className='bg-muted/30 max-h-[400px] overflow-y-auto rounded-lg p-4 font-mono text-xs leading-6'
@@ -220,11 +320,6 @@ export function RealtimeLogs({
               ))}
             </div>
           )}
-        </div>
-        <div className='mt-1.5 flex justify-center pb-3'>
-          <Button variant='ghost' size='sm' className='text-muted-foreground h-6 text-xs' onClick={() => {}}>
-            加载更早日志
-          </Button>
         </div>
       </CardContent>
     </Card>
