@@ -52,6 +52,7 @@ export function toSPLMapping(dto: SplMappingItemDto): SPLMapping {
     distance: dto.distance ?? undefined,
     targetSpl: dto.target_spl ?? undefined,
     digitalGain: dto.digital_gain ?? undefined,
+    testFrequency: dto.test_frequency ?? undefined,
     calibrationStatus: (dto.calibration_status ?? undefined) as SPLMapping['calibrationStatus'],
     calibrationData: toCalibrationData(dto.calibration_data),
     isCurrent: dto.is_current ?? undefined,
