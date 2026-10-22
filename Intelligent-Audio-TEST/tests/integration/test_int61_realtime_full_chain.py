@@ -283,7 +283,7 @@ def harness(vendor_server, audio_pcm, monkeypatch):
 
     from types import SimpleNamespace
     api_config = SimpleNamespace(
-        id=7, endpoint=vendor_server.url, api_endpoints=[],
+        id=7, api_endpoints=[{'endpoint': vendor_server.url}],
         default_max_process=2, meta={'vendor': 'openai'}, max_timeout=30,
         vendor='openai')
     data = {

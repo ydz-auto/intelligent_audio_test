@@ -90,7 +90,7 @@ def harness(mock_rt, audio_pcm, monkeypatch):
     rt_executor._render_service = RenderServiceStub(audio_pcm, chunk_ms=20)
 
     api_config = SimpleNamespace(
-        id=7, endpoint=mock_rt.url, api_endpoints=[],
+        id=7, api_endpoints=[{'endpoint': mock_rt.url}],
         default_max_process=2, meta={'vendor': 'openai'}, max_timeout=30,
         vendor='openai')
     data = {

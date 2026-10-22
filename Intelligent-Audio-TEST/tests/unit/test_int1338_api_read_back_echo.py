@@ -37,7 +37,6 @@ def _full_po(**overrides):
         id=38,
         name='接线测试_INT1338_读侧回显',
         vendor='WalkVendor',
-        api_url='https://api.walk.test/v1/asr',
         description='读侧回显验收用 API',
         status='offline',
         meta={'protocol': 'https', 'environment': 'testing',
@@ -121,12 +120,14 @@ class TestAggregateToDictEcho:
         assert out['id'] == 38
         assert out['name'] == '接线测试_INT1338_读侧回显'
         assert out['vendor'] == 'WalkVendor'
-        assert out['api_url'] == 'https://api.walk.test/v1/asr'
+        assert 'api_url' not in out  # INT-1361 api_url 移除后读侧不再输出
         assert out['description'] == '读侧回显验收用 API'
         assert out['status'] == 'offline'
         assert out['meta'] == {'protocol': 'https', 'environment': 'testing'}
-        assert out['api_keys_summary'] == {'count': 2, 'tails': ['ef12', '8765']}
         assert 'api_keys' not in out['meta']
+        # INT-1230 读侧密钥池摘要在端点级内嵌（endpoints[].api_keys_summary），
+        # 顶层不再直出；本 PO 端点未配密钥池 → 端点摘要为 None
+        assert 'api_keys_summary' not in out
         assert out['algorithm_type'] == 'asr_streaming'
         assert out['default_max_process'] == 5
         assert out['default_max_timeout'] == 30
@@ -137,6 +138,7 @@ class TestAggregateToDictEcho:
             'name': 'stream', 'max_process': 5, 'max_timeout': 30,
             'max_audio_duration': 60, 'status': 'online',
             'health_score': 100, 'priority': 0, 'description': '',
+            'api_keys_summary': None,
         }]
         assert out['created_at'] == '2026-10-22T11:00:00+00:00'
         assert out['updated_at'] == '2026-10-22T11:30:00+00:00'
@@ -253,7 +255,7 @@ class TestApplyAggregateToPoWriteBack:
         po.default_max_audio_duration = 60
         po.health_score = 100.0
         po.api_endpoints = []
-        agg = APIAggregate(id=1, name='n', url='http://x', status='online')
+        agg = APIAggregate(id=1, name='n', status='online')
 
         _apply_aggregate_to_po(agg, po)
 

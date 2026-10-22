@@ -7,7 +7,7 @@ larger than max (4,194,304)）。修复 = BaseConfig.GRPC_MAX_MESSAGE_MB 显式�
 客户端 channel 与服务端 server 两侧需同步设置（对齐 transfer_agent 既有做法）。
 
 覆盖：
-- 共享客户端 channel 选项构造（_grpc_channel_options）大于默认 4MiB
+- 共享客户端 channel 选项构造（_channel_options）大于默认 4MiB
 - task_service gRPC server 启动时传入 max_send/max_receive_message_length
 """
 import os
@@ -28,9 +28,9 @@ class TestGrpcMessageLimitClientChannel:
     """共享客户端 channel 放大（INT-1224）。"""
 
     def test_channel_options_exceed_default(self):
-        from shared.clients._grpc_channels import _grpc_channel_options
+        from shared.clients._grpc_channels import _channel_options
 
-        opts = dict(_grpc_channel_options())
+        opts = dict(_channel_options())
         assert opts['grpc.max_receive_message_length'] == _expected_bytes()
         assert opts['grpc.max_send_message_length'] == _expected_bytes()
         # 必须大于 grpcio 默认 4MiB，否则修复无效
