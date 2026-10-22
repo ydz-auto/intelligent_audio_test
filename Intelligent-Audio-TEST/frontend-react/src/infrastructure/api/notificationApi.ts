@@ -57,7 +57,8 @@ export function subscribeNotificationStream(
   })
 }
 
-/** 名称解析缓存（按 id 去重；解析失败也缓存降级文案避免反复请求） */
+/** 名称解析缓存（按 id 去重；只缓存真实名——降级文案不缓存，快照 TTL 刷新后
+ * 新建任务/报告仍可补进并解析出真实名，INT-1227 返修） */
 const taskNameCache = new Map<string, string>()
 const reportNameCache = new Map<string, string>()
 
@@ -132,15 +133,19 @@ const loadReportNames = createNameSnapshotLoader(async () => {
  * 任务名解析（INT-1227）：以最近任务列表快照判存在性，命中用真实名；未命中
  * （环境串扰引用不存在的任务 / 快照外旧任务）降级「任务 #id」——不再发
  * GET /tasks/{id}，杜绝 404 SEVERE 控制台报错。
+ * 降级文案不写缓存：快照带 TTL，miss 重查只走内存 Map（无网络开销），会话内
+ * 新建任务在快照刷新后仍能解析出真实名。
  */
 export async function resolveTaskName(taskId: string): Promise<string> {
   const cached = taskNameCache.get(taskId)
   if (cached) return cached
   const snapshot = await loadTaskNames()
   const name = snapshot?.get(taskId)
-  const resolved = name || fallbackTaskName(taskId)
-  taskNameCache.set(taskId, resolved)
-  return resolved
+  if (name) {
+    taskNameCache.set(taskId, name)
+    return name
+  }
+  return fallbackTaskName(taskId)
 }
 
 /** 报告名解析（INT-1227 同款防 404）：最近报告列表快照命中用真实名，未命中降级「报告 #id」 */
@@ -149,9 +154,11 @@ export async function resolveReportName(reportId: string): Promise<string> {
   if (cached) return cached
   const snapshot = await loadReportNames()
   const name = snapshot?.get(reportId)
-  const resolved = name || fallbackReportName(reportId)
-  reportNameCache.set(reportId, resolved)
-  return resolved
+  if (name) {
+    reportNameCache.set(reportId, name)
+    return name
+  }
+  return fallbackReportName(reportId)
 }
 
 /**

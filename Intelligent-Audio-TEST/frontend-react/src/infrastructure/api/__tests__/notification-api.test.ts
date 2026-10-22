@@ -4,8 +4,10 @@
  *   不存在的任务/报告）降级「任务 #id / 报告 #id」且不发 GET /{resource}/{id}——
  *   杜绝浏览器网络 404 SEVERE 控制台报错。
  * - 列表拉取失败同样降级、不发详情请求；同名重复解析走缓存不再重复拉列表。
+ * - 降级文案不写缓存（INT-1227 返修）：快照 TTL 过后新建任务/报告补进快照，
+ *   再次解析能返回真实名，而非被永久缓存为「任务 #id / 报告 #id」。
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AppNotification } from '@/domain/models/notification'
 
@@ -28,6 +30,10 @@ beforeEach(() => {
   vi.resetModules()
   fetchTaskListMock.mockReset()
   fetchReportListMock.mockReset()
+})
+
+afterEach(() => {
+  vi.useRealTimers()
 })
 
 function makeTaskItem(overrides: Partial<AppNotification> = {}): AppNotification {
@@ -83,6 +89,33 @@ describe('resolveTaskName（INT-1227 防 404）', () => {
     await resolveTaskName('419')
     expect(fetchTaskListMock).toHaveBeenCalledTimes(1)
   })
+
+  it('快照 miss 降级不写缓存：TTL 过后新建任务补进快照，再次解析返回真实名', async () => {
+    vi.useFakeTimers()
+    try {
+      fetchTaskListMock
+        .mockResolvedValueOnce({
+          items: [{ id: 419, name: '真实任务A' }],
+          total: 1,
+        })
+        .mockResolvedValueOnce({
+          items: [
+            { id: 419, name: '真实任务A' },
+            { id: 500, name: '新建任务N' },
+          ],
+          total: 2,
+        })
+      const { resolveTaskName } = await importApi()
+      // 首轮快照无 500：降级「任务 #500」，且不写入缓存
+      await expect(resolveTaskName('500')).resolves.toBe('任务 #500')
+      // 快照 TTL 过后重拉列表，此时已含 500 → 解析出真实名（未被降级文案永久缓存）
+      await vi.advanceTimersByTimeAsync(60_001)
+      await expect(resolveTaskName('500')).resolves.toBe('新建任务N')
+      expect(fetchTaskListMock).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
 
 describe('resolveReportName（INT-1227 同款防 404）', () => {
@@ -109,6 +142,37 @@ describe('resolveReportName（INT-1227 同款防 404）', () => {
     })
     const { resolveReportName } = await importApi()
     await expect(resolveReportName('3')).resolves.toBe('报告 #3')
+  })
+
+  it('报告快照 miss 降级不写缓存：TTL 过后新建报告补进快照，再次解析返回真实名', async () => {
+    vi.useFakeTimers()
+    try {
+      fetchReportListMock
+        .mockResolvedValueOnce({
+          items: [{ id: 57, name: '真实报告R', task_name: 'T' }],
+          total: 1,
+          page: 1,
+          per_page: 100,
+          pages: 1,
+        })
+        .mockResolvedValueOnce({
+          items: [
+            { id: 57, name: '真实报告R', task_name: 'T' },
+            { id: 58, name: '新建报告S', task_name: 'T2' },
+          ],
+          total: 2,
+          page: 1,
+          per_page: 100,
+          pages: 1,
+        })
+      const { resolveReportName } = await importApi()
+      await expect(resolveReportName('58')).resolves.toBe('报告 #58')
+      await vi.advanceTimersByTimeAsync(60_001)
+      await expect(resolveReportName('58')).resolves.toBe('新建报告S')
+      expect(fetchReportListMock).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
