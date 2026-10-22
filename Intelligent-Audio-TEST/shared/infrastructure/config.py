@@ -171,6 +171,14 @@ class BaseConfig:
     # 显式传本值；其余调用维持默认 deadline（INT-54 防假死悬挂的失败收敛路径不变）。
     GRPC_DEVICE_OP_DEADLINE_SECONDS: int = _get_int('GRPC_DEVICE_OP_DEADLINE_SECONDS', 180)
 
+    # --- gRPC 客户端收发消息上限（MB，INT-1292）---
+    # grpcio 客户端默认收包上限 4MiB：大响应 RPC（任务导出 23MB 包、报告/评估
+    # 只读导出）在客户端收不下 → RESOURCE_EXHAUSTED。统一放大到
+    # GRPC_MAX_MESSAGE_MB（默认 16MB，与 transfer_agent.TRANSFER_GRPC_MAX_MESSAGE_MB
+    # 默认一致；服务端已按该值放大，客户端 stub 侧须同步设置）。服务端 send 上限
+    # 默认不受 4MB 限制（实测可发送 >30MB），故只需客户端侧放开。
+    GRPC_MAX_MESSAGE_MB: int = _get_int('GRPC_MAX_MESSAGE_MB', 16)
+
     # --- 回收站保留期（INT-141）：软删除记录保留天数，过期由各服务
     # SoftDeleteCleaner 守护线程硬清理（定时调度走既有执行引擎/守护线程，
     # 不走五通道事件）；环境变量可覆盖默认 60 天 ---
