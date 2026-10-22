@@ -31,6 +31,10 @@ export interface TestCaseListQuery {
 export interface TestCaseListResult {
   items: TestCaseListItem[]
   total: number
+  /** 后端分页信封（INT-1284 分组内懒加载「加载更多」翻页判定；非分页消费方忽略） */
+  page?: number
+  pages?: number
+  perPage?: number
 }
 
 /** 列表页当前为客户端懒加载分页（§3.3「已显示 n / 总 条 · 加载更多」），拉大页供前端切分 */
@@ -61,10 +65,18 @@ export async function fetchTestCases(
   })
   let items = (dto.items ?? []).map(testCaseListItemFromDto)
   if (ungrouped) items = items.filter((c) => c.groupId === null)
-  return { items, total: dto.total }
+  return {
+    items,
+    total: dto.total,
+    page: dto.page,
+    pages: dto.pages,
+    perPage: dto.per_page,
+  }
 }
 
-/** 分组视图数据（grouped-case-list 消费：分组卡 + 组内用例卡；客户端按 groupId 聚合） */
+/** 分组视图数据（grouped-case-list 消费：分组卡 + 组内用例卡；客户端按 groupId 聚合）。
+ *  INT-1284：首屏单页（LIST_PAGE_SIZE）只覆盖前部分组，其余分组用例由分组卡展开时按分组
+ *  懒加载（use-group-test-cases）补齐——本函数保持单页语义，不在此循环拉全量。 */
 export async function fetchGroupedTestCases(
   query: TestCaseListQuery
 ): Promise<TestCaseListResult> {

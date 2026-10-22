@@ -10,12 +10,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useState } from 'react'
 
 import { useSessionMap } from '@/application/testcases/use-session-map'
+import type { TestCaseListFilters } from '@/application/testcases/use-testcases-list'
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import type { TagItem } from '@/domain/models/testTag'
 import { MOCK_TAGS } from '@/infrastructure/mock/testcases-mock'
+import { fetchTestCases } from '@/infrastructure/api/testcases-api'
 import { GroupedCaseList } from '@/features/testcases/components/grouped-case-list'
 import type { CaseCardCallbacks } from '@/features/testcases/components/case-card'
+
+// INT-1284 P1：部分覆盖分组组内懒加载依赖服务端取数，mock fetchTestCases 使用例确定性返回
+vi.mock('@/infrastructure/api/testcases-api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/infrastructure/api/testcases-api')>()
+  return { ...actual, fetchTestCases: vi.fn() }
+})
 
 const GROUPS: TestCaseGroup[] = [
   {
@@ -34,7 +42,7 @@ const GROUPS: TestCaseGroup[] = [
     algorithmType: 'asr-v3',
     createdAt: '2026-09-02 09:30',
     updatedAt: '2026-10-12 15:10',
-    testCaseCount: 3,
+    testCaseCount: 1,
   },
 ]
 
@@ -102,11 +110,15 @@ function restoreMatchMedia() {
 function Harness({
   loading = false,
   cases = CASES,
+  groups = GROUPS,
+  filters = {},
   trash = false,
   hasQueryFilters = false,
 }: {
   loading?: boolean
   cases?: TestCaseListItem[]
+  groups?: TestCaseGroup[]
+  filters?: TestCaseListFilters
   trash?: boolean
   hasQueryFilters?: boolean
 }) {
@@ -114,9 +126,11 @@ function Harness({
   return (
     <QueryClientProvider client={queryClient}>
       <GroupedCaseList
-        groups={loading ? [] : GROUPS}
+        groups={loading ? [] : groups}
         cases={loading ? [] : cases}
         loading={loading}
+        groupsLoading={loading}
+        filters={filters}
         trash={trash}
         hasQueryFilters={hasQueryFilters}
         selected={selected}
@@ -195,6 +209,139 @@ describe('GroupedCaseList', () => {
     // 点击后加载第 6 条，加载更多行消失
     expect(screen.getByText('智能音箱-闹钟设置2')).toBeInTheDocument()
     expect(screen.queryByText(/已显示 6 \/ 6 条 · 加载更多/)).not.toBeInTheDocument()
+  })
+
+  it('INT-1284：无已加载用例的分组仍渲染分组卡，计数取后端 test_case_count，页脚与渲染卡片数一致', () => {
+    const groupsWithEmpty: TestCaseGroup[] = [
+      ...GROUPS,
+      {
+        id: 'g3',
+        name: '音频上传生成',
+        description: null,
+        algorithmType: 'asr-v3',
+        createdAt: '2026-09-03 10:00',
+        updatedAt: '2026-10-15 09:00',
+        testCaseCount: 175,
+      },
+    ]
+    render(<Harness groups={groupsWithEmpty} />)
+    // 首屏 100 条用例覆盖不到的组（cases 里无 g3 成员）整卡仍渲染，计数取 /groups test_case_count
+    expect(screen.getByText('音频上传生成')).toBeInTheDocument()
+    expect(screen.getByText('175 条')).toBeInTheDocument()
+    // 3 个分组 ≤ 每页 5 → 全部渲染，页脚「已加载全部 3 个分组」与真实渲染卡片数一致
+    expect(screen.getByText('已加载全部 3 个分组')).toBeInTheDocument()
+  })
+
+  it('INT-1284：空分组（test_case_count=0）展开显示组内空态，不发起懒加载', async () => {
+    const user = setupUser()
+    const groupsWithEmpty: TestCaseGroup[] = [
+      ...GROUPS,
+      {
+        id: 'g4',
+        name: '空分组示例',
+        description: null,
+        algorithmType: 'asr-v3',
+        createdAt: '2026-09-03 10:00',
+        updatedAt: '2026-10-15 09:00',
+        testCaseCount: 0,
+      },
+    ]
+    render(<Harness groups={groupsWithEmpty} />)
+    expect(screen.getByText('空分组示例')).toBeInTheDocument()
+    await user.click(screen.getByText('空分组示例'))
+    expect(screen.getByText('该分组暂无用例')).toBeInTheDocument()
+  })
+
+  it('INT-1284 P1：部分覆盖分组展开挂载按分组懒加载，组内全部用例可达（审计打回 P1 回归）', async () => {
+    const user = setupUser()
+    // /groups 计数 6，父级首屏切片只含 3 条 → 0 < list.length < test_case_count 部分覆盖
+    const partialGroup: TestCaseGroup[] = [
+      {
+        id: 'pg1',
+        name: '话轮接管',
+        description: null,
+        algorithmType: 'asr-v3',
+        createdAt: '2026-09-03 10:00',
+        updatedAt: '2026-10-15 09:00',
+        testCaseCount: 6,
+      },
+    ]
+    const makeCase = (id: string, name: string): TestCaseListItem => ({
+      id,
+      name,
+      description: null,
+      groupId: 'pg1',
+      groupName: '话轮接管',
+      type: 'e2e',
+      tags: [],
+      algorithmType: 'asr-v3',
+      createdAt: '2026-09-10 10:00',
+      updatedAt: '2026-10-15 09:32',
+      isFavorite: false,
+      deleted: false,
+      deletedAt: null,
+      deletedByUserId: null,
+      totalDuration: 60,
+      rounds: 1,
+    })
+    const serverCases = Array.from({ length: 6 }, (_, i) => makeCase(`pg-${i + 1}`, `话轮接管-${i + 1}`))
+    const fetchMock = vi.mocked(fetchTestCases)
+    fetchMock.mockImplementation(async () => ({
+      items: serverCases,
+      total: 6,
+      page: 1,
+      pages: 1,
+      perPage: 20,
+    }))
+    render(<Harness groups={partialGroup} cases={serverCases.slice(0, 3)} />)
+    // 部分覆盖分组展开 → 发按分组懒加载请求（旧实现只切已加载 3 条、不发懒加载）
+    await user.click(screen.getByText('话轮接管'))
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(expect.objectContaining({ groupId: 'pg1', page: 1 }))
+    })
+    // 懒加载首屏渲染服务端第 1 页 5 条：话轮接管-4（父级切片之外的用例）可见 →
+    // 证明组内内容已走按分组取数而非只切父级切片
+    expect(screen.getByText('话轮接管-4')).toBeInTheDocument()
+    expect(screen.getByText(/已显示 5 \/ 6 条 · 加载更多/)).toBeInTheDocument()
+    // 「加载更多」翻出第 6 条，组内全部用例可达、与 test_case_count 计数一致
+    await user.click(screen.getByText(/加载更多/))
+    expect(screen.getByText('话轮接管-6')).toBeInTheDocument()
+  })
+
+  it('INT-1284：分组分页「已显示 x / 总数」按 /groups 全量计数，加载更多后分组卡全量渲染', async () => {
+    const user = setupUser()
+    // 8 个分组：7 个有已加载用例（g1 6 条 + g2 1 条 + 5 个空用例组占位），1 个空组
+    const manyGroups: TestCaseGroup[] = [
+      ...GROUPS,
+      ...[
+        ['音频上传生成', 'g3', 3],
+        ['打断与恢复', 'g4', 175],
+        ['拒识', 'g5', 138],
+        ['据识', 'g6', 2],
+        ['默认分组', 'g7', 1],
+        ['话轮接管', 'g8', 49],
+      ].map(([name, id, testCaseCount]) => ({
+        id: id as string,
+        name: name as string,
+        description: null,
+        algorithmType: 'asr-v3' as string | null,
+        createdAt: '2026-09-03 10:00',
+        updatedAt: '2026-10-15 09:00',
+        testCaseCount: testCaseCount as number,
+      })),
+    ]
+    render(<Harness groups={manyGroups} />)
+    // 首页 5 组：5 张卡片 + 页脚「已显示 5 / 8 个分组 · 加载更多」
+    expect(screen.getByText(/已显示 5 \/ 8 个分组 · 加载更多/)).toBeInTheDocument()
+    await user.click(screen.getByText(/加载更多/))
+    // 加载更多后 8 组全渲染，页脚「已加载全部 8 个分组」
+    expect(screen.getByText('已加载全部 8 个分组')).toBeInTheDocument()
+    expect(screen.getByText('音频上传生成')).toBeInTheDocument()
+    expect(screen.getByText('打断与恢复')).toBeInTheDocument()
+    expect(screen.getByText('拒识')).toBeInTheDocument()
+    expect(screen.getByText('据识')).toBeInTheDocument()
+    expect(screen.getByText('默认分组')).toBeInTheDocument()
+    expect(screen.getByText('话轮接管')).toBeInTheDocument()
   })
 
   it('分组排序下拉：按用例数量/分组名称/创建时间', async () => {

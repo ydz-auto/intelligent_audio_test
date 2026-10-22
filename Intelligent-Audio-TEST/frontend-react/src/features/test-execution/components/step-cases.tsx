@@ -105,10 +105,13 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
 
   const canSelect = hasPermission('testcase:read') && !readOnly
 
-  const listQuery = useTestCasesList(caseView, {
-    ...filters,
-    algorithmType: filters.algorithmType ?? algorithmType,
-  })
+  /** 生效筛选（全局算法联动合并；INT-1284 分组内懒加载按同一筛选取数） */
+  const effectiveFilters = useMemo(
+    () => ({ ...filters, algorithmType: filters.algorithmType ?? algorithmType }),
+    [filters, algorithmType]
+  )
+
+  const listQuery = useTestCasesList(caseView, effectiveFilters)
   const groupsQuery = useCaseGroups()
   const tagsQuery = useCaseTags()
   /** 全量评估维度（含子维度）+ 分类：与用例管理页同源（INT-1030 走查打回 P2-2——不再用
@@ -209,6 +212,8 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
   /** 列表/分组缓存刷新（删/改/复制后重拉；收藏除外——收藏走就地回写） */
   const refreshCases = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ['testcases'] })
+    // INT-1284：分组内懒加载缓存（独立前缀，避免误命中列表就地回写/透明度判定）
+    void queryClient.invalidateQueries({ queryKey: ['testcase-group-cases'] })
   }, [queryClient])
   const refreshGroups = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ['testcase-groups'] })
@@ -487,6 +492,8 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
             groups={groups}
             cases={items}
             loading={listQuery.isLoading}
+            groupsLoading={groupsQuery.isLoading}
+            filters={effectiveFilters}
             trash={filters.trash ?? false}
             hasQueryFilters={hasQueryFilters}
             selected={selectedSet}
