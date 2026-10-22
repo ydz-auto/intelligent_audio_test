@@ -13,6 +13,10 @@ export interface OptionFieldDef {
   toValue: (o: SystemOptions) => string | number | boolean | undefined
   /** 类型（保存时决定原始类型回传） */
   type: 'text' | 'textarea' | 'switch' | 'number'
+  /** 必填（值去空白后为空则禁止保存，INT-1402） */
+  required?: boolean
+  /** 字段标签（必填错误提示文案用，如「站点名称」） */
+  label?: string
 }
 
 function parseValue(v: string | number | boolean, type: OptionFieldDef['type']) {
@@ -46,6 +50,23 @@ export function useOptionForm(fields: OptionFieldDef[]) {
     fields.some(f => !looseEquals(values.value[f.key], original.value[f.key]))
   )
 
+  /** INT-1402：必填字段去空白后为空 → 该键的错误文案；用于禁用保存按钮 + save() 前置拦截 */
+  const requiredErrors = computed<Record<string, string>>(() => {
+    const errors: Record<string, string> = {}
+    for (const f of fields) {
+      if (!f.required) continue
+      const v = values.value[f.key]
+      const empty = v === undefined || v === null || (typeof v === 'string' && v.trim() === '')
+      if (empty) {
+        errors[f.key] = `${f.label || f.key}不能为空`
+      }
+    }
+    return errors
+  })
+
+  /** 必填校验通过（无必填字段留空） */
+  const valid = computed(() => Object.keys(requiredErrors.value).length === 0)
+
   async function load() {
     loading.value = true
     error.value = ''
@@ -67,6 +88,12 @@ export function useOptionForm(fields: OptionFieldDef[]) {
   async function save() {
     error.value = ''
     notice.value = ''
+    // INT-1402：必填字段留空时阻止保存（不向后端发请求）
+    const firstError = Object.values(requiredErrors.value)[0]
+    if (firstError) {
+      error.value = firstError
+      return
+    }
     const changed = fields.filter(
       f => !looseEquals(values.value[f.key], original.value[f.key])
     )
@@ -101,6 +128,8 @@ export function useOptionForm(fields: OptionFieldDef[]) {
     loading,
     saving,
     dirty,
+    valid,
+    requiredErrors,
     error,
     notice,
     load,

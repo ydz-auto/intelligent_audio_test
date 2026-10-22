@@ -28,10 +28,11 @@
             :key="field.key"
             v-model="values[field.key]"
             :field="toFormField(field)"
+            :error="requiredErrors[field.key]"
           />
         </div>
         <div class="form-actions">
-          <button class="btn btn-primary" :disabled="saving || !dirty" @click="save">
+          <button class="btn btn-primary" :disabled="saving || !dirty || !valid" @click="save">
             <i class="fas fa-save btn-icon"></i>{{ saving ? '保存中...' : '保存设置' }}
           </button>
           <button class="btn btn-secondary" :disabled="saving" @click="reset">
@@ -74,7 +75,7 @@ const props = defineProps<{
   fields: SettingsFormField[]
 }>()
 
-const { values, loading, saving, dirty, error, notice, save, reset } =
+const { values, loading, saving, dirty, valid, requiredErrors, error, notice, save, reset } =
   useOptionForm(props.fields)
 
 function toFormField(field: SettingsFormField) {
