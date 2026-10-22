@@ -62,26 +62,6 @@
         <div class="filter-row">
           <input type="text" class="search-input" placeholder="搜索任务名称、标签..." v-model="currentFilter.search" @input="applyCurrentFilter">
 
-          <!-- INT-148：任务类型筛选（已发布视图，服务端按发布冻结列过滤） -->
-          <BadgeFilter
-            v-if="activeTab === 'published'"
-            :options="published.typeOptions"
-            :model-value="currentFilter.type"
-            all-label="全部类型"
-            title="任务类型"
-            @update:model-value="handleBadgeFilterChange('type', $event)"
-          />
-
-          <!-- INT-273：任务类型筛选（日常视图；派生口径 api/e2e/mixed，对齐 V9.7.10 基线徽章） -->
-          <BadgeFilter
-            v-if="activeTab === 'daily'"
-            :options="TYPE_OPTIONS"
-            :model-value="currentFilter.type"
-            all-label="全部类型"
-            title="任务类型"
-            @update:model-value="handleBadgeFilterChange('type', $event)"
-          />
-
           <BadgeFilter
             :options="currentStatusOptions"
             :model-value="currentFilter.status"
@@ -325,14 +305,6 @@
       />
     </div>
 
-    <!-- 任务类型选择弹窗 -->
-    <TaskTypeModal
-      v-if="isTaskTypeModalVisible"
-      modalId="task-type-modal"
-      @close="isTaskTypeModalVisible = false"
-      @confirm="handleCreateTask"
-    />
-
     <!-- 任务数据导出弹窗（INT-25） -->
     <TaskDataExportDialog
       v-if="isDataExportDialogVisible"
@@ -367,7 +339,7 @@ import "../../assets/styles/tasks/stats.css"
 import { ref, computed, reactive, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTasks } from './tasks';
-import { TaskStatus, TaskEvaluationStatus, FINISHED_STATUSES, REEXECUTE_ELIGIBLE_STATUSES, PermissionPoint, TestType } from '@/domain/enums';
+import { TaskStatus, TaskEvaluationStatus, FINISHED_STATUSES, REEXECUTE_ELIGIBLE_STATUSES, PermissionPoint } from '@/domain/enums';
 import { useAuthStore } from '../../store/authStore';
 import { useGlobalAlgorithmStore } from '../../store/globalAlgorithmStore';
 import { usePublishedTasks } from '../../composables/publishedTask/usePublishedTasks';
@@ -379,7 +351,6 @@ import TaskListWithPagination from '../../components/task/TaskListWithPagination
 import TaskComparisonReport from './TaskComparisonReport.vue';
 import '../../assets/styles/reports/base.css';
 import '../../assets/styles/reports/reports.css';
-import TaskTypeModal from '../../components/common/modal/TaskTypeModal.vue';
 import TaskDataExportDialog from '../../components/task/TaskDataExportDialog.vue';
 import TaskDataImportDialog from '../../components/task/TaskDataImportDialog.vue';
 import PublishedTaskPanel from './PublishedTaskPanel.vue';
@@ -461,14 +432,6 @@ const TIME_RANGE_OPTIONS = [
   { value: 'custom', label: '自定义' },
 ];
 
-/** INT-273：任务类型选项（派生口径 api/e2e/mixed，对齐 /tasks/stats type_counts 分布；
- *  V9.7.10 基线 TYPE_OPTIONS 为 e2e/api，mixed 为 device_type 派生新增类别） */
-const TYPE_OPTIONS = [
-  { value: TestType.E2E, label: '端到端测试' },
-  { value: TestType.API, label: 'API测试' },
-  { value: 'mixed', label: '混合测试' },
-];
-
 const {
   tasks,
   filteredTasks, selectedTasks, sortConfig,
@@ -477,7 +440,7 @@ const {
   showComparisonReport, isEditingConclusion,
   totalTasks,
   isAllSelected, formatDate, applyFilters, handleSearch, toggleSort,
-  toggleTaskSelection, toggleSelectAll, cancelSelect, createNewTask, handleCreateTask,
+  toggleTaskSelection, toggleSelectAll, cancelSelect, createNewTask,
   handleTaskAction, updateTaskName, batchDelete,
   batchCompare, batchRestore, closeComparisonReport, saveComparisonReport,
   publishComparisonReport, saveConclusion, toggleEditConclusion, reevaluateTask,
@@ -493,8 +456,6 @@ const {
   reportDevices,
   deviceApiComparisonData,
   caseExecutionData,
-  isTaskTypeModalVisible,
-  currentTask,
   isControlling,
   // 日志相关
   taskLogs, filteredTaskLogs, taskLogSearchTerm, taskLogLevelFilter, taskLogFilter,
@@ -557,14 +518,11 @@ const taskActions = [
   { id: 'delete', label: '删除', icon: 'fa-trash', type: 'danger', show: (task: any) => canEditResource(task), disabled: (task: any) => isControlling.value.has(task.id) },
 ];
 
-/** 各视图筛选状态适配为统一结构（search/type/algorithmType/status/timeRange/customRange/sort），
+/** 各视图筛选状态适配为统一结构（search/algorithmType/status/timeRange/customRange/sort），
  *  使顶部筛选排序栏在四视图间可复用同一套控件 */
 const dailyFilterState = reactive({
   get search() { return searchTerm.value; },
   set search(v: string) { searchTerm.value = v; },
-  // INT-273：任务类型（派生口径 api/e2e/mixed；'all' 归一为空串不下发）
-  get type() { return filters.value.type || 'all'; },
-  set type(v: string) { filters.value.type = v === 'all' ? '' : v; },
   // INT-1112：日常/收藏算法徽章 = 全局算法联动（B03「切换一次全局生效」）——
   // 展示口径 = 有效全局算法（陈旧/无效持久化值回落「全部算法」，React INT-1033 对齐）；
   // 选择直接写全局 store，列表由 useTaskList effectiveAlgorithmType watch 统一刷新。
@@ -583,8 +541,6 @@ const dailyFilterState = reactive({
 const publishedFilterState = reactive({
   get search() { return published.filters.keyword; },
   set search(v: string) { published.filters.keyword = v; },
-  get type() { return published.filters.type; },
-  set type(v: string) { published.filters.type = v; },
   get algorithmType() { return published.filters.algorithmType; },
   set algorithmType(v: string) { published.filters.algorithmType = v; },
   get status() { return published.filters.status; },
@@ -600,7 +556,6 @@ const publishedFilterState = reactive({
 const cherryPickFilterState = reactive({
   get search() { return containers.filters.search; },
   set search(v: string) { containers.filters.search = v; },
-  type: 'all',
   get algorithmType() { return containers.filters.algorithmType; },
   set algorithmType(v: string) { containers.filters.algorithmType = v; },
   get status() { return containers.filters.status; },
@@ -658,8 +613,9 @@ function handleAlgorithmBadgeChange(value: string | number) {
   }
 }
 
-/** 徽章筛选变更（单选）：写入当前视图对应筛选字段并刷新 */
-function handleBadgeFilterChange(key: 'type' | 'status' | 'timeRange', value: string | number) {
+/** 徽章筛选变更（单选）：写入当前视图对应筛选字段并刷新
+ *  （INT-1300：任务类型筛选已移除，仅剩执行状态/时间范围） */
+function handleBadgeFilterChange(key: 'status' | 'timeRange', value: string | number) {
   currentFilter.value[key] = String(value);
   applyCurrentFilter();
 }

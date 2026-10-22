@@ -1,19 +1,12 @@
 /**
- * INT-309：任务页「创建新任务」入口贯通单测（双层断点回归锁定）。
+ * INT-1300：任务页「创建新任务」入口贯通单测（任务类型概念移除后）。
  *
- * 原断点（静态证据，均已修复）：
- * 1. TaskTypeModal emit 载荷键 `testTestType` vs handleCreateTask 读 `data.testType`
- *    → 恒 undefined → 两个 router.push 分支都不进（静默无操作）；
- * 2. 跳转目标 `/create-api-task`、`/create-e2e-task` 路由未注册 → 落 404 兜底。
- *
- * 锁定口径（选项 1，对齐 INT-265 手册 B3'——跳测试页五步向导，不新注册路由）：
- * - TaskTypeModal confirm 载荷键为 testType，值 'APITest' / 'E2ETest'；
- * - handleCreateTask 按载荷键分发，push 到已注册路由 /APITest、/E2ETest；
- * - 目标路由在真实路由表（router/index.ts）中存在，任务页与测试页权限一致
- *   （task:execute，任务页读者可进）。
+ * 负责人 2026-10-22 口径：「不分 API/E2E 测试，前端如有相关概念一律移除」。
+ * 原 INT-309 的双层断点（TaskTypeModal emit 载荷键 / handleCreateTask 分发 /
+ * /APITest·/E2ETest 路由注册）已随任务类型选择弹窗整体移除——创建新任务不再
+ * 弹类型选择，直接 push 到已注册的 /start-test 单流程（E2E+API 合并入口）。
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 
 const pushes = vi.hoisted(() => ({ list: [] as any[] }));
@@ -39,13 +32,12 @@ vi.mock('@/infrastructure/http/client', () => ({
 
 vi.mock('@/composables/modal/useModal', () => ({
   useModalControl: () => ({ open: vi.fn() }),
-  MODAL_TYPES: { BASIC_CONFIRM: 'basicConfirm', TASK_RELATED: 'taskTypeSelect' },
+  MODAL_TYPES: { BASIC_CONFIRM: 'basicConfirm' },
 }));
 
-import TaskTypeModal from '@/components/common/modal/TaskTypeModal.vue';
 import { provideNotification } from '@/composables/modal/useNotification';
 import { useTasks } from '../tasks';
-// 真实路由表（断言目标路由已注册，不再落 404 兜底）
+// 真实路由表（断言 /start-test 已注册，不再落 404 兜底）
 import router from '@/router';
 
 const show = vi.fn();
@@ -67,69 +59,24 @@ beforeEach(() => {
   });
 });
 
-describe('TaskTypeModal confirm 载荷键与值（INT-309 #1：emit 键对齐）', () => {
-  const mountModal = () =>
-    mount(TaskTypeModal, { props: { modalId: 'task-type-modal' } });
-
-  it('点「API测试」→ confirm 载荷键为 testType（非 testTestType）、值为 APITest', async () => {
-    const w = mountModal();
-    await w.findAll('.task-type-btn').find(b => b.text().includes('API测试'))!.trigger('click');
-    const payload = w.emitted('confirm')![0][0] as Record<string, any>;
-    expect(payload).toHaveProperty('testType', 'APITest');
-    expect(payload).not.toHaveProperty('testTestType');
-  });
-
-  it('点「端到端测试」→ confirm 载荷键为 testType、值为 E2ETest', async () => {
-    const w = mountModal();
-    await w.findAll('.task-type-btn').find(b => b.text().includes('端到端测试'))!.trigger('click');
-    const payload = w.emitted('confirm')![0][0] as Record<string, any>;
-    expect(payload).toHaveProperty('testType', 'E2ETest');
-    expect(payload).not.toHaveProperty('testTestType');
-  });
-
-  it('点击不再调用 ModalManager 不存在的 confirm 方法（原 TypeError 断点）', async () => {
-    const w = mountModal();
-    await w.findAll('.task-type-btn')[0].trigger('click');
-    // 无未捕获异常即通过（原实现 modalManager.confirm 抛 TypeError）
-    expect(w.emitted('confirm')).toHaveLength(1);
-  });
-});
-
-describe('handleCreateTask 分发（INT-309 #2：读取载荷键并跳已注册路由）', () => {
-  it('testType=APITest → push /APITest 并关闭弹窗', async () => {
+describe('createNewTask 直接进 /start-test（INT-1300：任务类型概念移除）', () => {
+  it('点「创建新任务」→ 直接 push /start-test，无类型选择弹窗', () => {
     const vm = useTasks();
     vm.createNewTask();
-    expect(vm.isTaskTypeModalVisible.value).toBe(true);
-
-    await vm.handleCreateTask({ testType: 'APITest' });
-    expect(vm.isTaskTypeModalVisible.value).toBe(false);
-    expect(pushes.list).toEqual(['/APITest']);
+    expect(pushes.list).toEqual(['/start-test']);
   });
 
-  it('testType=E2ETest → push /E2ETest 并关闭弹窗', async () => {
+  it('不再暴露任务类型弹窗状态与分发（isTaskTypeModalVisible / handleCreateTask 已移除）', () => {
     const vm = useTasks();
-    await vm.handleCreateTask({ testType: 'E2ETest' });
-    expect(pushes.list).toEqual(['/E2ETest']);
-  });
-
-  it('旧拼写键 testTestType 不触发跳转（防止回归回退到静默失效）', async () => {
-    const vm = useTasks();
-    await vm.handleCreateTask({ testTestType: 'APITest' } as any);
-    expect(pushes.list).toEqual([]);
+    expect((vm as any).isTaskTypeModalVisible).toBeUndefined();
+    expect((vm as any).handleCreateTask).toBeUndefined();
   });
 });
 
-describe('跳转目标路由存在性（INT-309：真实路由表核对，不再落 404 兜底）', () => {
-  it('/APITest 与 /E2ETest 均已注册且非 404 兜底', () => {
-    for (const path of ['/APITest', '/E2ETest']) {
-      const resolved = router.resolve(path);
-      expect(resolved.matched).toHaveLength(1);
-      expect(resolved.name).not.toBe('notFound');
-    }
-  });
-
-  it('目标路由权限为 task:execute（与导航栏测试页入口一致）', () => {
-    expect(router.resolve('/APITest').meta.permission).toBe('task:execute');
-    expect(router.resolve('/E2ETest').meta.permission).toBe('task:execute');
+describe('跳转目标路由存在性（/start-test 已注册，非 404 兜底）', () => {
+  it('/start-test 已注册且 name=startTest', () => {
+    const resolved = router.resolve('/start-test');
+    expect(resolved.matched).toHaveLength(1);
+    expect(resolved.name).toBe('startTest');
   });
 });
