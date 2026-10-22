@@ -42,9 +42,10 @@ def _channel_options() -> list:
     grpcio 客户端默认收包上限 4MiB，大响应 RPC（任务导出 23MB 包、报告/评估
     只读导出）在客户端收不下 → RESOURCE_EXHAUSTED（CLIENT: Received message
     larger than max）。服务端 send 上限默认不受 4MB 限制（实测可发送 >30MB），
-    故只需客户端侧放开；值对齐 transfer_agent.TRANSFER_GRPC_MAX_MESSAGE_MB
-    （默认 16MB，transfer_agent/interfaces/grpc/server.py 注释「客户端 stub 侧
-    需同步设置」）。
+    故只需客户端侧放开。值来自共享配置 GRPC_MAX_MESSAGE_MB（默认 64MB：
+    INT-1292 实测任务 419 导出跨服务响应 ExportDimensionsForTasks 23.4MB /
+    ExportReportsForTasks 20.4MB，16MB——对齐 transfer_agent 分片口径
+    TRANSFER_GRPC_MAX_MESSAGE_MB——仍收不下；64MB 覆盖最大实测单响应并留余量）。
     """
     max_bytes = max(int(BaseConfig.GRPC_MAX_MESSAGE_MB), 1) * 1024 * 1024
     return [
