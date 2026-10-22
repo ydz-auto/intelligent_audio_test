@@ -21,10 +21,11 @@ export function toAccessToken(raw: AccessTokenItemDto): AccessToken {
   }
 }
 
-/** 创建结果 → Domain（access_token 明文仅此一次，调用方只展示不落状态） */
+/** 创建结果 → Domain（access_token 明文仅此一次，调用方只展示不落状态）。
+ *  后端 data 为扁平条目 + 顶层 token（明文），无 item 包裹（INT-1148）。 */
 export function toAccessTokenCreated(raw: AccessTokenCreateResultDto): AccessTokenCreated {
   return {
-    accessToken: raw.access_token ?? '',
-    token: toAccessToken(raw.token),
+    accessToken: raw.token ?? '',
+    token: toAccessToken(raw),
   }
 }

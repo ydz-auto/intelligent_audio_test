@@ -1,8 +1,8 @@
 /**
- * 个人中心 Access Token 管理用例（application 层，INT-1155）：
+ * 个人中心 Access Token 管理用例（application 层，INT-1155 / INT-1389）：
  * 列表（掩码末 4 位）/ 创建（明文一次展示）/ 复制掩码 / 编辑（重命名 / scopes / expires / 启停）/
- * 删除（二次确认）。真实请求经 profilePort → accessTokenApi（当前为 // 待接线 契约桩，
- * 后端 INT-1149 网关鉴权合栈后换真实请求，页面零改动）。
+ * 删除（二次确认）。真实请求经 profilePort → accessTokenApi（POST/GET/PATCH/DELETE
+ * /auth/access-tokens，INT-1389 已接线，无内存桩）。
  */
 import { onMounted, ref } from 'vue'
 import { useModalControl } from '../modal/useModal'

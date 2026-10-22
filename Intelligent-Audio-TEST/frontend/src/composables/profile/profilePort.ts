@@ -26,7 +26,7 @@ export const profilePort = {
   // ===== 自助改密（POST /auth/change-password）/ 自我资料更新（PUT /auth/self）=====
   changeMyPassword: (payload: ChangePasswordPayload) => changeMyPassword(payload),
   updateMyProfile: (payload: UpdateProfilePayload) => updateMyProfile(payload),
-  // ===== Access Token 管理（INT-1155；accessTokenApi 当前为 // 待接线 契约桩）=====
+  // ===== Access Token 管理（真实接口，INT-1389 接线；POST/GET/PATCH/DELETE /auth/access-tokens）=====
   listAccessTokens: () => accessTokenApi.listAccessTokens(),
   createAccessToken: (payload: AccessTokenCreatePayload) => accessTokenApi.createAccessToken(payload),
   updateAccessToken: (id: number, payload: AccessTokenUpdatePayload) => accessTokenApi.updateAccessToken(id, payload),
