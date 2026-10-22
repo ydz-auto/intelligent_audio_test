@@ -1,0 +1,15 @@
+{
+  "login_token": true,
+  "uploaded_audios_found": [],
+  "cleanup_deleted": [],
+  "cleanup_remaining": 0,
+  "device_create": {
+    "code": 201,
+    "resp": "{'success': True, 'code': 0, 'message': '设备注册成功', 'data': {'id': 12}}"
+  },
+  "device_ui_shot": true,
+  "device_delete": {
+    "code": 200
+  },
+  "device_remaining": 0
+}
