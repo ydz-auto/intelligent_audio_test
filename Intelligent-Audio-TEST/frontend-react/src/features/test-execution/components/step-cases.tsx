@@ -146,6 +146,12 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
     [selection.manualCaseIds]
   )
 
+  /** 工具栏分组筛选对应的分组名（POST /testcases/ids 契约只认 group 名；__ungrouped__ 无 /groups 映射） */
+  const groupName = useMemo(
+    () => groups.find((g) => g.id === filters.groupId)?.name,
+    [groups, filters.groupId]
+  )
+
   const handleToggleSelect = (id: string, checked: boolean) => {
     if (canSelect && checked !== selectedSet.has(id)) store.getState().toggleCase(id)
   }
@@ -156,13 +162,13 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
     else store.getState().removeMany(ids)
   }
 
-  /** 全选结果（真实 POST /testcases/ids 按当前筛选圈定） */
+  /** 全选结果（真实 POST /testcases/ids 按当前筛选圈定；分组筛选传分组名，INT-1267 契约对齐） */
   const handleSelectAllFiltered = async () => {
     setPendingSelectAll(true)
     try {
       const { ids, total: count } = await fetchCaseIdsByFilter({
         search: filters.search,
-        groupId: filters.groupId,
+        group: groupName,
         tag: filters.tag,
         dimensionId: filters.dimensionId,
         algorithmType: filters.algorithmType ?? algorithmType,
@@ -176,12 +182,12 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
     }
   }
 
-  /** 反选（对称差） */
+  /** 反选（对称差；分组筛选传分组名，INT-1267 契约对齐） */
   const handleInvert = async () => {
     try {
       const { ids } = await fetchCaseIdsByFilter({
         search: filters.search,
-        groupId: filters.groupId,
+        group: groupName,
         tag: filters.tag,
         dimensionId: filters.dimensionId,
         algorithmType: filters.algorithmType ?? algorithmType,

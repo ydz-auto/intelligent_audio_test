@@ -81,10 +81,10 @@ vi.mock('@/infrastructure/api/testcases-api', async (importOriginal) => {
   }
 })
 
-/** 组头全选经 /testcases/ids 圈定整组 ID（真实分组） */
+/** 组头全选经 /testcases/ids 圈定整组 ID（真实分组；契约只认 group 分组名，INT-1267 审计 P1 返修） */
 vi.mock('@/infrastructure/api/testcases-ids-api', () => ({
-  fetchCaseIdsByFilter: vi.fn(async (query: { groupId?: string }) => {
-    const matched = CASES.filter((c) => c.groupId === query.groupId).map((c) => c.id)
+  fetchCaseIdsByFilter: vi.fn(async (query: { group?: string }) => {
+    const matched = CASES.filter((c) => c.groupName === query.group).map((c) => c.id)
     return { ids: matched, total: matched.length }
   }),
 }))
@@ -231,7 +231,7 @@ describe('GroupedCaseList', () => {
     expect(await screen.findByText('该分组暂无用例')).toBeInTheDocument()
   })
 
-  it('组头勾选全选该组用例（经 /testcases/ids 圈定整组），页级计数联动', async () => {
+  it('组头勾选全选该组用例（经 /testcases/ids 按分组名圈定整组，非 group_id），页级计数联动', async () => {
     const user = setupUser()
     render(<Harness />)
     await user.click(screen.getByLabelText('全选分组 智能音箱功能测试'))
@@ -239,7 +239,13 @@ describe('GroupedCaseList', () => {
     await waitFor(() => {
       expect(screen.getByText('已选择 6 个用例')).toBeInTheDocument()
     })
-    expect(fetchCaseIdsByFilter).toHaveBeenCalledWith({ groupId: 'g1' })
+    // INT-1267 审计 P1 契约：body 传 group 分组名（后端 filter_by(name=group)），不再传 group_id UUID
+    expect(fetchCaseIdsByFilter).toHaveBeenCalledWith(
+      expect.objectContaining({ group: '智能音箱功能测试' })
+    )
+    expect(fetchCaseIdsByFilter).not.toHaveBeenCalledWith(
+      expect.objectContaining({ groupId: expect.anything() })
+    )
   })
 
   it('INT-1267 组内懒加载页续：首屏 20 条，加载更多补齐', async () => {

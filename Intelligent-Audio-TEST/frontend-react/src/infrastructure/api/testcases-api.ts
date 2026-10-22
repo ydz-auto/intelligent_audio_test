@@ -18,6 +18,11 @@ export interface TestCaseListQuery {
   perPage?: number
   search?: string
   groupId?: string | null
+  /**
+   * 分组**名**（仅 POST /testcases/ids 消费：后端 fetch_case_ids 只认 group 名，
+   * INT-1267 审计 P1；GET /testcases 是 group_id，此键在 fetchTestCases 显式参数构建中不生效）
+   */
+  group?: string | null
   /** 标签筛选（INT-592 单选：后端 tag 参数为单值） */
   tag?: string | null
   dimensionId?: number | null

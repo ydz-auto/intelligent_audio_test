@@ -136,6 +136,8 @@ function GroupCard({
   /**
    * 组头「全选分组」：真实分组经 POST /testcases/ids 按当前筛选圈定全组 ID（Vue toggleGroupSelection
    * 对位——未展开也能全选/取消全选整组）；回收站态与未分组虚拟组无 /ids 契约映射，保持已加载用例。
+   * 契约：/testcases/ids body 只认 group 分组**名**（后端 filter_by(name=group)），group_id 会被
+   * 忽略导致圈定全库（INT-1267 审计 P1 打回返修）。
    */
   const handleGroupToggleAll = async (checked: boolean) => {
     if (!onToggleAll) return
@@ -144,7 +146,13 @@ function GroupCard({
       return
     }
     try {
-      const { ids } = await fetchCaseIdsByFilter({ ...filters, groupId: group.id })
+      const { ids } = await fetchCaseIdsByFilter({
+        search: filters.search,
+        tag: filters.tag,
+        dimensionId: filters.dimensionId,
+        algorithmType: filters.algorithmType,
+        group: group.name,
+      })
       onToggleAll(ids, checked)
     } catch {
       // 全量 ID 圈定失败降级为已加载用例（组内仍可逐卡勾选）
