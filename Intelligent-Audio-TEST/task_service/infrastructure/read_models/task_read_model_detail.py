@@ -183,9 +183,12 @@ class TaskDetailReadModelMixin:
         tag_names = [tag.name for tag in task.tags]
 
         # 用例级被测设备类型集合（差异#2 收尾：取代 task.type 输出）
-        device_types = [dt for (dt,) in session.query(TaskCase.device_type)
-                        .filter(TaskCase.task_id == task.id, TaskCase.device_type.isnot(None))
-                        .distinct().all()]
+        # INT-1233：无用例级 device_type 行（含无 task_case_relations 的历史任务）
+        # 按任务级设备/API 关系回退派生（与 search_tasks / stats 同口径）。
+        from task_service.infrastructure.read_models.task_device_type_derivation import (
+            fetch_task_device_types,
+        )
+        device_types = fetch_task_device_types(session, [task.id]).get(task.id, [])
 
         # 实验室扩展（INT-540）：任务关联实验室 [{id, code, name}]（多实验室 N:M）
         labs = self._fetch_labs_map(session, [task.id]).get(task.id, [])
