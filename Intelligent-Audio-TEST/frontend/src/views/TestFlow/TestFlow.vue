@@ -191,41 +191,7 @@
           </div>
         </div>
 
-        <!-- 执行参数区（INT-604：执行模式 并行/串行 + 串行优先侧） -->
-        <div class="execution-params-panel">
-          <div class="params-title"><i class="fas fa-cog"></i> 执行参数</div>
-          <div class="params-body">
-            <div class="param-group" :class="{ disabled: !isMixedSelection }" :title="executionModeDisabledTip">
-              <span class="param-label">执行模式</span>
-              <div class="radio-group">
-                <label class="radio-label">
-                  <input type="radio" :value="'parallel'" v-model="executionMode" :disabled="!isMixedSelection" />
-                  <span>并行</span>
-                </label>
-                <label class="radio-label">
-                  <input type="radio" :value="'serial'" v-model="executionMode" :disabled="!isMixedSelection" />
-                  <span>串行</span>
-                </label>
-              </div>
-            </div>
-            <div class="param-group" v-if="executionMode === 'serial'" :class="{ disabled: !isMixedSelection }" :title="executionModeDisabledTip">
-              <span class="param-label">串行优先侧</span>
-              <div class="radio-group">
-                <label class="radio-label">
-                  <input type="radio" :value="'device'" v-model="serialFirst" :disabled="!isMixedSelection" />
-                  <span>设备先</span>
-                </label>
-                <label class="radio-label">
-                  <input type="radio" :value="'api'" v-model="serialFirst" :disabled="!isMixedSelection" />
-                  <span>API先</span>
-                </label>
-              </div>
-            </div>
-            <div v-if="!isMixedSelection" class="param-hint">
-              <i class="fas fa-info-circle"></i> 仅同时选择设备与 API 时可用
-            </div>
-          </div>
-        </div>
+        <!-- INT-1115：废弃全局执行模式/串行优先侧控件——执行模式改为每张设备/API 卡「并行/串行」单选（INT-1268） -->
       </TestStepContainer>
 
       <!-- 步骤3：执行测试 -->
@@ -403,7 +369,6 @@ const flow = useTestFlow(props.testType)
 const {
   currentStep, taskName, activeTab, concurrentTasks,
   taskVisibility, handleVisibilityChange,
-  executionMode, serialFirst, isMixedSelection,
   selectedAPIIds, selectedDeviceIdsList,
   testCaseGroups, tags, tagViewData, tagViewPagination, tagViewLoading, isLoading,
   algorithmList, selectedAlgorithmType, algorithmModalVisible, algorithmModalMode,
@@ -456,8 +421,6 @@ const step2Title = computed(() => '选择设备/API 与执行参数')
 const testTypeLabel = computed(() => props.testType === TestType.E2E ? 'E2E' : 'API')
 const emptyDeviceText = '未找到相关设备'
 const emptyApiText = '未找到相关API'
-// INT-604：未混选时执行模式控件置灰提示
-const executionModeDisabledTip = '仅同时选择设备与 API 时可用'
 
 // ============ 任务名称模态窗 ============
 const handleStartTask = () => {

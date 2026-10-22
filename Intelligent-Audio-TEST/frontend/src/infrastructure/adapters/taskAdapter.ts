@@ -197,9 +197,12 @@ export function toTaskCreateDto(draft: TaskCreateDraft): TaskCreateDto {
     case_ids: draft.caseIds,
     device_ids: draft.deviceIds,
     api_ids: draft.apiIds,
-    // INT-604：任务执行模式 / 串行优先侧（显式透传；后端缺省 parallel/device）
-    execution_mode: draft.executionMode,
-    serial_first: draft.serialFirst,
+    // INT-1115：逐目标执行模式（列表顺序 = 选中顺序 = 串行链顺序；缺省/空数组 = 全目标并行）
+    target_modes: (draft.targetModes ?? []).map((item) => ({
+      target_type: item.targetType,
+      target_id: item.targetId,
+      mode: item.mode,
+    })),
     tags: draft.tags,
     algorithm_type: draft.algorithmType,
     algorithm_params: draft.algorithmParams,

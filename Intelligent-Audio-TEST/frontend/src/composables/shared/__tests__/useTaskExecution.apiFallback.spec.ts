@@ -54,9 +54,6 @@ const buildFlow = (overrides: {
     selectedAPIIds: ref<(string | number)[]>(overrides.selectedAPIIds ?? [3]),
     apis: ref<any[]>(overrides.apis ?? [{ id: 3, name: 'voice-llm API', status: 'online', maxConcurrent: 5 }]),
     testCaseGroups: ref<Record<string, any[]>>({}),
-    // INT-604：执行模式 / 串行优先侧（默认并行 + 设备先）
-    executionMode: ref<'parallel' | 'serial'>('parallel'),
-    serialFirst: ref<'device' | 'api'>('device'),
     resetProgress: vi.fn(),
     associatedCases: ref<any[]>([]),
     totalTestCases: ref(0),
@@ -128,7 +125,7 @@ describe('INT-282：startApiTask 全量回退分支', () => {
     expect(mocks.create).not.toHaveBeenCalled()
   })
 
-  it('INT-604：创建载荷携带 execution_mode/serial_first（混选 + 执行模式透传）', async () => {
+  it('INT-1115：创建载荷不再携带废弃的 executionMode/serialFirst（逐目标模式取代全局执行模式）', async () => {
     mocks.create.mockResolvedValueOnce({ id: 9 })
     mocks.start.mockResolvedValueOnce({})
 
@@ -139,12 +136,14 @@ describe('INT-282：startApiTask 全量回退分支', () => {
     const started = await flow.startApiTask()
 
     expect(started).toBe(true)
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({
+    const createArg = mocks.create.mock.calls[0][0]
+    expect(createArg).toMatchObject({
       type: 'api',
       caseIds: ['c1'],
       apiIds: [3],
-      executionMode: 'parallel',
-      serialFirst: 'device',
-    }))
+    })
+    // 废弃顶层旧字段：不再携带（缺省 targetModes → adapter 发空 target_modes = 全并行）
+    expect(createArg.executionMode).toBeUndefined()
+    expect(createArg.serialFirst).toBeUndefined()
   })
 })
