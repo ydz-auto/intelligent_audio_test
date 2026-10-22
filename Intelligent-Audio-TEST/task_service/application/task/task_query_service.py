@@ -34,21 +34,82 @@ _UTC_PLUS_8 = timezone(timedelta(hours=8))
 
 
 def _iter_background_noise(config: dict):
-    """遍历 config 中的 background_noise 配置（顶层 + rounds 内，INT-1306）。
+    """遍历 config 中的背景噪音配置（background_noise / backgroundNoise）。
 
-    兼容旧实现的字符串扫描口径：`"background_noise": {"audio_id": X}`
-    可能出现在任意层级。
+    INT-1306（P1 覆盖修复）：真实引用形态由 task_service 的
+    _apply_noise_to_round / _apply_noise_to_case_bn 写入：
+    - 顶层 config.background_noise（_apply_noise_to_case_bn）
+    - 轮次级 round_item.background_noise（snake）/ backgroundNoise（camelCase）
+      （_apply_noise_to_round 的 caseBackgroundNoise 目标）
+    - segment 级 rounds[].audios[].background_noise（snake）
+      （_apply_noise_to_round 的 segmentBackgroundNoise 目标）
+
+    旧实现只读顶层 + 轮次级 snake，漏 camelCase 与 segment 级，可能静默删除
+    被引用音频；此处对齐旧字符串扫描口径（任意层级命中即拦）。
     """
     if not isinstance(config, dict):
         return
-    bn = config.get('background_noise')
-    if bn is not None:
-        yield bn if isinstance(bn, dict) else {}
+
+    def _noise_of(obj):
+        for key in ('background_noise', 'backgroundNoise'):
+            bn = obj.get(key)
+            if bn is not None:
+                yield bn if isinstance(bn, dict) else {}
+
+    for bn in _noise_of(config):
+        yield bn
     for round_item in config.get('rounds', []) or []:
-        if isinstance(round_item, dict):
-            rbn = round_item.get('background_noise')
-            if rbn is not None:
-                yield rbn if isinstance(rbn, dict) else {}
+        if not isinstance(round_item, dict):
+            continue
+        for bn in _noise_of(round_item):
+            yield bn
+        for audio_item in round_item.get('audios', []) or []:
+            if isinstance(audio_item, dict):
+                for bn in _noise_of(audio_item):
+                    yield bn
+
+
+def _collect_case_audio_references(config: dict):
+    """收集用例 config 被引用的音频 id，返回 (direct_ids, noise_ids)。
+
+    INT-1306（P1 覆盖修复）：对齐旧实现全量字符串扫描的命中口径，按形态分类：
+    - direct：rounds[].audios[].audio_id / 顶层 audios[].audio_id /
+      rounds[].audios[].interferers[].audio_id（干扰人，_apply_noise_to_round
+      的 interferers 目标）
+    - noise：_iter_background_noise 收集（background_noise / backgroundNoise，
+      顶层 / 轮次级 / segment 级）
+
+    用例侧与任务-用例关联侧复用，保证两种引用入口口径一致。
+    """
+    from shared.utils import testcase_helpers as _case_helpers
+
+    direct = set()
+    noise = set()
+
+    def _add(container, value):
+        if value is None:
+            return
+        try:
+            container.add(int(value))
+        except (TypeError, ValueError):
+            pass
+
+    def _collect_audio_item(item):
+        if not isinstance(item, dict):
+            return
+        _add(direct, item.get('audio_id'))
+        for inf in item.get('interferers', []) or []:
+            if isinstance(inf, dict):
+                _add(direct, inf.get('audio_id'))
+
+    for audio_item in _case_helpers.collect_audios(config or {}):
+        _collect_audio_item(audio_item)
+    for audio_item in (config or {}).get('audios', []) or []:
+        _collect_audio_item(audio_item)
+    for noise_cfg in _iter_background_noise(config or {}):
+        if isinstance(noise_cfg, dict):
+            _add(noise, noise_cfg.get('audio_id'))
+    return direct, noise
 
 
 def _collect_config_audio_ids(obj) -> set:
@@ -128,7 +189,6 @@ class TaskQueryService:
                                             'testcase_noise': M,
                                             'task': K}}
         """
-        from shared.utils import testcase_helpers as _case_helpers
         from task_service.infrastructure.persistence.models import (
             Task as _Task,
             TaskCase as _TaskCase,
@@ -150,8 +210,9 @@ class TaskQueryService:
 
             session = get_db_session()
             try:
-                # 1) 未删除测试用例 config：rounds[].audios[].audio_id / 顶层 audios[] /
-                #    background_noise.audio_id（含轮次级）
+                # 1) 未删除测试用例 config：direct（rounds[].audios[].audio_id /
+                #    顶层 audios[] / interferers[].audio_id）+ noise
+                #    （background_noise / backgroundNoise，顶层 / 轮次级 / segment 级）
                 case_audio_counts = collections.Counter()
                 case_noise_counts = collections.Counter()
                 case_configs = {}
@@ -162,29 +223,11 @@ class TaskQueryService:
                 ):
                     cfg = config or {}
                     case_configs[tc_id] = cfg
-                    for audio_item in _case_helpers.collect_audios(cfg):
-                        aid = audio_item.get('audio_id') if isinstance(audio_item, dict) else None
-                        if aid is not None:
-                            try:
-                                case_audio_counts[int(aid)] += 1
-                            except (TypeError, ValueError):
-                                pass
-                    # 兼容非轮次化历史结构：顶层 audios[]
-                    for audio_item in cfg.get('audios', []) or []:
-                        aid = audio_item.get('audio_id') if isinstance(audio_item, dict) else None
-                        if aid is not None:
-                            try:
-                                case_audio_counts[int(aid)] += 1
-                            except (TypeError, ValueError):
-                                pass
-                    # 顶层 / 轮次级 background_noise.audio_id
-                    for noise_cfg in _iter_background_noise(cfg):
-                        naid = noise_cfg.get('audio_id') if isinstance(noise_cfg, dict) else None
-                        if naid is not None:
-                            try:
-                                case_noise_counts[int(naid)] += 1
-                            except (TypeError, ValueError):
-                                pass
+                    direct_ids, noise_ids = _collect_case_audio_references(cfg)
+                    for aid in direct_ids:
+                        case_audio_counts[aid] += 1
+                    for aid in noise_ids:
+                        case_noise_counts[aid] += 1
 
                 # 2) 未删除任务引用：任务 config 内嵌 audio_id + 任务-用例关联（用例 config）
                 task_audio_ids = {}
@@ -200,27 +243,10 @@ class TaskQueryService:
                     cfg = case_configs.get(tc_id)
                     if not cfg:
                         continue
-                    for audio_item in _case_helpers.collect_audios(cfg):
-                        aid = audio_item.get('audio_id') if isinstance(audio_item, dict) else None
-                        if aid is not None:
-                            try:
-                                task_audio_ids[task_id].add(int(aid))
-                            except (TypeError, ValueError):
-                                pass
-                    for audio_item in cfg.get('audios', []) or []:
-                        aid = audio_item.get('audio_id') if isinstance(audio_item, dict) else None
-                        if aid is not None:
-                            try:
-                                task_audio_ids[task_id].add(int(aid))
-                            except (TypeError, ValueError):
-                                pass
-                    for noise_cfg in _iter_background_noise(cfg):
-                        naid = noise_cfg.get('audio_id') if isinstance(noise_cfg, dict) else None
-                        if naid is not None:
-                            try:
-                                task_audio_ids[task_id].add(int(naid))
-                            except (TypeError, ValueError):
-                                pass
+                    # 与用例侧同口径（P1 覆盖修复）：direct + noise 全形态
+                    direct_ids, noise_ids = _collect_case_audio_references(cfg)
+                    task_audio_ids[task_id].update(direct_ids)
+                    task_audio_ids[task_id].update(noise_ids)
 
                 task_counts = collections.Counter()
                 for task_id, ids in task_audio_ids.items():

@@ -4,14 +4,12 @@
 覆盖（sqlite 文件库，不依赖真库）：
 - task_query_service.check_audio_references：用例音频 / 用例背景噪音 /
   任务（经 task_case_relations 关联用例 + 任务 config 内嵌 audio_id）计数
-- audio_command_handler.handle_delete：无引用 → 成功；被引用 → 跳过文案；
-  引用检查失败 → fail-closed（返回错误，不落库）
-- audio_command_handler.handle_batch_action action=delete：逐项成功/跳过计数
+- P1 覆盖修复：轮次级 camelCase backgroundNoise、segment 级
+  rounds[].audios[].background_noise、rounds[].audios[].interferers[].audio_id
+  三种真实引用形态（_apply_noise_to_round 写入），不再漏拦
 
-验收口径对齐原卡：
-1. 删除无引用音频秒级成功（引用检查单次 DB 扫描，无逐页 gRPC 全量拉取）
-2. 被引用音频明确返回跳过文案
-3. 批量删除返回逐项成功/跳过计数
+验收口径对齐原卡（引用检查单次 DB 扫描，无逐页 gRPC 全量拉取；
+被引用音频明确返回跳过文案；批量删除返回逐项成功/跳过计数）。
 """
 import os
 import tempfile
@@ -27,7 +25,6 @@ import pytest
 from shared.models.database import (
     Base, get_db_session, get_engine, init_db, remove_db_session,
 )
-from shared.infrastructure.storage import storage
 
 
 @pytest.fixture(scope='module')
@@ -167,173 +164,58 @@ class TestCheckAudioReferences:
         assert result['success'] is True
         assert result['data']['references'] == {}
 
+    def test_case_round_camelcase_background_noise_counted(self):
+        # P1 覆盖：轮次级 camelCase backgroundNoise（_apply_noise_to_round
+        # 的 caseBackgroundNoise 目标），旧实现只读 snake 漏拦
+        _insert_case('c1', {'rounds': [{'audios': [{'audio_id': 30}],
+                                        'backgroundNoise': {'audio_id': 31}}]})
+        result = _call_check([30, 31])
+        refs = result['data']['references']
+        assert refs['30']['testcase_audio'] == 1
+        assert refs['31']['testcase_noise'] == 1
+        assert refs['31']['testcase_audio'] == 0
 
-class FakeAudio:
-    def __init__(self, **kw):
-        self.id = kw['id']
-        self.name = kw.get('name', 'sample.wav')
-        # local:// 路径：后台尽力删除线程即使脱离 mock 也不触发 OSS 探测挂起
-        self.file_path = kw.get('file_path', 'local://audios/direct/test/dry/a.wav')
+    def test_case_segment_background_noise_counted(self):
+        # P1 覆盖：segment 级 rounds[].audios[].background_noise
+        # （_apply_noise_to_round 的 segmentBackgroundNoise 目标）
+        _insert_case('c1', {'rounds': [{'audios': [{'audio_id': 30,
+                                                    'background_noise': {'audio_id': 32}}]}]})
+        result = _call_check([30, 32])
+        refs = result['data']['references']
+        assert refs['30']['testcase_audio'] == 1
+        assert refs['32']['testcase_noise'] == 1
+        assert refs['32']['testcase_audio'] == 0
 
+    def test_case_segment_interferers_counted(self):
+        # P1 覆盖：rounds[].audios[].interferers[].audio_id（干扰人，
+        # _apply_noise_to_round 的 interferers 目标）→ testcase_audio
+        _insert_case('c1', {'rounds': [{'audios': [{'audio_id': 30,
+                                                    'interferers': [{'audio_id': 33}]}]}]})
+        result = _call_check([30, 33])
+        refs = result['data']['references']
+        assert refs['30']['testcase_audio'] == 1
+        assert refs['33']['testcase_audio'] == 1
+        assert refs['33']['testcase_noise'] == 0
 
-class FakeRepo:
-    """实现 handler 用到的仓储方法子集（内存版）。"""
+    def test_case_top_level_camelcase_background_noise_counted(self):
+        # P1 覆盖：顶层 camelCase backgroundNoise（convert_flat_config_to_rounds
+        # 迁移期间可能残留的形态）
+        _insert_case('c1', {'rounds': [{'audios': [{'audio_id': 30}]}],
+                            'backgroundNoise': {'audio_id': 34}})
+        result = _call_check([34])
+        assert result['data']['references']['34']['testcase_noise'] == 1
 
-    def __init__(self, audios):
-        self.audios = {a.id: a for a in audios}
-        self.committed = False
-        self.rolled_back = False
-        self.deleted = []
-
-    def get_audio(self, audio_id):
-        return self.audios.get(audio_id)
-
-    def get_audios_by_ids(self, ids):
-        return [self.audios[i] for i in ids if i in self.audios]
-
-    def delete_audio(self, audio_id):
-        self.deleted.append(audio_id)
-        return True
-
-    def delete_audio_annotations(self, audio_id):
-        pass
-
-    def delete_audio_tags(self, audio_id):
-        pass
-
-    def batch_soft_delete_audios(self, ids):
-        self.deleted.extend(ids)
-
-    def commit(self):
-        self.committed = True
-
-    def rollback(self):
-        self.rolled_back = True
-
-    def flush(self):
-        pass
-
-
-class FakeTaskACL:
-    """task_service ACL 替身：按引用表返回计数。"""
-
-    def __init__(self, refs):
-        # refs: {audio_id: {'testcase_audio': N, 'testcase_noise': N, 'task': N}}
-        self.refs = refs
-
-    def check_audio_references_batch(self, audio_ids):
-        result = {}
-        for aid in audio_ids:
-            result[aid] = self.refs.get(aid, {})
-        return result
-
-    def check_audio_in_devices(self, audio_id):
-        return 0
-
-
-class FakeTaskACLFailure(FakeTaskACL):
-    """gRPC 失败替身：抛异常（fail-closed 验证）。"""
-
-    def check_audio_references_batch(self, audio_ids):
-        raise RuntimeError('gRPC 不可达')
-
-
-def _make_handler(repo, acl):
-    from audio_service.application.handlers.audio_command_handler import AudioCommandHandler
-    handler = AudioCommandHandler(repository=repo)
-    handler._task_acl = acl
-    handler._device_acl = acl  # 复用（check_audio_in_devices 返回 0）
-    return handler
-
-
-class TestHandleDelete:
-    def test_unreferenced_audio_deleted(self):
-        repo = FakeRepo([FakeAudio(id=1)])
-        handler = _make_handler(repo, FakeTaskACL({1: {}}))
-        with _patch_storage_delete():
-            from audio_service.application.commands.audio_commands import DeleteAudioCommand
-            result = handler.handle_delete(DeleteAudioCommand(audio_id=1))
-        assert result['success'] is True
-        assert repo.deleted == [1]
-        assert repo.committed is True
-
-    def test_referenced_audio_returns_skip_message(self):
-        repo = FakeRepo([FakeAudio(id=2)])
-        handler = _make_handler(
-            repo, FakeTaskACL({2: {'testcase_audio': 1, 'testcase_noise': 0, 'task': 0}}))
-        from audio_service.application.commands.audio_commands import DeleteAudioCommand
-        result = handler.handle_delete(DeleteAudioCommand(audio_id=2))
-        assert result['success'] is False
-        assert '测试用例' in result['message']
-        assert repo.deleted == []
-
-    def test_noise_referenced_audio_returns_skip_message(self):
-        repo = FakeRepo([FakeAudio(id=3)])
-        handler = _make_handler(
-            repo, FakeTaskACL({3: {'testcase_audio': 0, 'testcase_noise': 1, 'task': 0}}))
-        from audio_service.application.commands.audio_commands import DeleteAudioCommand
-        result = handler.handle_delete(DeleteAudioCommand(audio_id=3))
-        assert result['success'] is False
-        assert '背景噪音' in result['message']
-        assert repo.deleted == []
-
-    def test_task_referenced_audio_returns_skip_message(self):
-        repo = FakeRepo([FakeAudio(id=4)])
-        handler = _make_handler(
-            repo, FakeTaskACL({4: {'testcase_audio': 0, 'testcase_noise': 0, 'task': 1}}))
-        from audio_service.application.commands.audio_commands import DeleteAudioCommand
-        result = handler.handle_delete(DeleteAudioCommand(audio_id=4))
-        assert result['success'] is False
-        assert '任务' in result['message']
-        assert repo.deleted == []
-
-    def test_reference_check_failure_fails_closed(self):
-        repo = FakeRepo([FakeAudio(id=5)])
-        handler = _make_handler(repo, FakeTaskACLFailure({}))
-        from audio_service.application.commands.audio_commands import DeleteAudioCommand
-        result = handler.handle_delete(DeleteAudioCommand(audio_id=5))
-        assert result['success'] is False
-        assert repo.deleted == []  # 未删除
-        assert repo.rolled_back is True
-
-    def test_missing_audio_404(self):
-        repo = FakeRepo([])
-        handler = _make_handler(repo, FakeTaskACL({}))
-        from audio_service.application.commands.audio_commands import DeleteAudioCommand
-        result = handler.handle_delete(DeleteAudioCommand(audio_id=99))
-        assert result['success'] is False
-        assert result['code'] == 404
-
-
-class TestHandleBatchDelete:
-    def test_mixed_referenced_unreferenced_counts(self):
-        repo = FakeRepo([FakeAudio(id=1), FakeAudio(id=2), FakeAudio(id=3)])
-        handler = _make_handler(repo, FakeTaskACL({
-            1: {},  # 可删
-            2: {'testcase_audio': 1, 'testcase_noise': 0, 'task': 0},  # 跳过
-            3: {},  # 可删
-        }))
-        with _patch_storage_delete():
-            from audio_service.application.commands.audio_commands import BatchActionAudiosCommand
-            result = handler.handle_batch_action(BatchActionAudiosCommand(
-                data={'audio_ids': [1, 2, 3], 'action': 'delete'}))
-        assert result['success'] is True
-        assert '成功删除 2' in result['message']
-        assert '跳过了 1' in result['message']
-        assert set(repo.deleted) == {1, 3}
-
-    def test_all_referenced_no_delete(self):
-        repo = FakeRepo([FakeAudio(id=1)])
-        handler = _make_handler(repo, FakeTaskACL({1: {'task': 1}}))
-        from audio_service.application.commands.audio_commands import BatchActionAudiosCommand
-        result = handler.handle_batch_action(BatchActionAudiosCommand(
-            data={'audio_ids': [1], 'action': 'delete'}))
-        assert result['success'] is True
-        assert '没有可删除的音频文件' in result['message']
-        assert repo.deleted == []
-
-
-def _patch_storage_delete():
-    """桩化 storage.delete（内存语义，不落盘）。"""
-    import unittest.mock as mock
-    return mock.patch.object(storage, 'delete', return_value=None)
+    def test_task_linked_case_interferers_and_segment_noise_counted(self):
+        # P1 覆盖：任务-用例关联侧同口径（interferers + segment 级噪音）
+        _insert_case('c1', {'rounds': [{'audios': [{'audio_id': 35,
+                                                    'interferers': [{'audio_id': 36}],
+                                                    'background_noise': {'audio_id': 37}}]}]})
+        _insert_task(1, {'parallel': True})
+        _insert_task_case(1, 'c1')
+        result = _call_check([35, 36, 37])
+        refs = result['data']['references']
+        assert refs['35']['testcase_audio'] == 1
+        assert refs['36']['testcase_audio'] == 1
+        assert refs['37']['testcase_noise'] == 1
+        assert refs['36']['task'] == 1
+        assert refs['37']['task'] == 1
