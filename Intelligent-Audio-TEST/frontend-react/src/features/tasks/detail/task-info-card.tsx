@@ -1,6 +1,6 @@
 /**
  * 任务信息卡（09_任务域.md §4.2，Card）。
- * 头行：测试类型徽章 + 任务名 + 双状态徽章 + 创建时间 + 创建人；
+ * 头行：任务名 + 双状态徽章 + 创建时间 + 创建人；
  * 信息网格 `grid gap-4 sm:grid-cols-3 lg:grid-cols-4`（label text-xs muted + 值 text-sm font-medium tabular-nums）；
  * 标签行 BadgeListCell。
  */
@@ -12,7 +12,6 @@ import {
   formatDateTime,
   getEvaluationStatusMeta,
   getExecutionStatusMeta,
-  getTaskTypeLabel,
 } from '@/features/tasks/constants'
 
 function InfoGrid({ items }: { items: Array<{ label: string; value: string | number }> }) {
@@ -31,20 +30,11 @@ function InfoGrid({ items }: { items: Array<{ label: string; value: string | num
 export function TaskInfoCard({ detail }: { detail: TaskDetailData }) {
   const execMeta = getExecutionStatusMeta(detail.execution_status)
   const evalMeta = getEvaluationStatusMeta(detail.evaluation_status)
-  const taskType = detail.device_types.includes('http_api')
-    ? detail.device_types.length > 1
-      ? 'mixed'
-      : 'api'
-    : 'e2e'
-  const isApi = detail.device_types.includes('http_api')
 
   return (
     <Card size='sm' className='gap-3 py-3'>
       <CardHeader className='px-4'>
         <div className='flex flex-wrap items-center gap-2'>
-          <Badge variant='outline' className='rounded-md px-1.5'>
-            {getTaskTypeLabel(taskType)}
-          </Badge>
           <CardTitle className='text-base font-semibold'>{detail.name}</CardTitle>
           <StatusBadge
             label={execMeta.label}
@@ -68,12 +58,9 @@ export function TaskInfoCard({ detail }: { detail: TaskDetailData }) {
             { label: '预计完成时间', value: formatDateTime(detail.expected_complete_time) },
             { label: '预计总时长', value: detail.expected_total_time ?? '—' },
             { label: '已用时长', value: detail.used_time ?? '—' },
-            ...(isApi || taskType === 'mixed'
-              ? [{ label: '测试API数量', value: detail.api_count ?? 0 }]
-              : []),
-            ...(taskType === 'e2e' || taskType === 'mixed'
-              ? [{ label: '测试设备数量', value: detail.device_count ?? 0 }]
-              : []),
+            // INT-1241：资源计数按真实数据无条件展示（不再按任务类型条件显隐）
+            { label: '测试API数量', value: detail.api_count ?? 0 },
+            { label: '测试设备数量', value: detail.device_count ?? 0 },
             { label: '测试用例数量', value: detail.case_count ?? detail.total_cases ?? 0 },
             { label: '并发数', value: detail.concurrency ?? '—' },
           ]}

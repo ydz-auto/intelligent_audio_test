@@ -7,6 +7,7 @@ import { useMemo } from 'react'
 
 import type { TaskDomainStats, TrendPoint } from '@/domain/models/stats'
 import { fetchTaskDomainStats } from '@/infrastructure/api/tasks-api'
+import { usePermissions } from '@/application/hooks/use-permissions'
 
 export type TrendGranularity = TaskDomainStats['granularity']
 
@@ -27,11 +28,23 @@ export function buildSummarySparklines(trend: TrendPoint[]): number[] {
   return buckets
 }
 
-export function useTaskDomainStats(granularity: TrendGranularity) {
+export interface TaskDomainStatsOptions {
+  /** 覆盖默认门控（默认 = task:read 权限判定；INT-1289：无权限不发 /tasks/stats 请求） */
+  enabled?: boolean
+}
+
+export function useTaskDomainStats(
+  granularity: TrendGranularity,
+  options?: TaskDomainStatsOptions
+) {
+  const { hasPermission } = usePermissions()
+  const canRead = options?.enabled ?? hasPermission('task:read')
   const query = useQuery({
     queryKey: ['tasks', 'domain-stats', granularity],
     queryFn: () => fetchTaskDomainStats(granularity),
     staleTime: 30_000,
+    // INT-1289：/tasks/stats 属 task:read 接口——无权限置 disabled，消费侧降级空 sparkline / 整行隐藏
+    enabled: canRead,
   })
 
   const taskTrendSparkline = useMemo(

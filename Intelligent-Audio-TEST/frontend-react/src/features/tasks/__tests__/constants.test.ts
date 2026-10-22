@@ -1,5 +1,6 @@
 /**
- * features/tasks/constants 状态/类型映射纯函数测试（对位 09_任务域.md §3.6.1/§9 文案）。
+ * features/tasks/constants 状态/算法类型映射纯函数测试（对位 09_任务域.md §3.6.1/§9 文案）。
+ * 任务类型（API测试/端到端测试）概念已移除（INT-1241，负责人 2026-10-22 口径），无对应用例。
  */
 import { describe, expect, it } from 'vitest'
 
@@ -7,7 +8,6 @@ import {
   getAlgorithmTypeLabel,
   getEvaluationStatusMeta,
   getExecutionStatusMeta,
-  getTaskTypeLabel,
 } from '@/features/tasks/constants'
 
 describe('getExecutionStatusMeta', () => {
@@ -56,19 +56,6 @@ describe('getEvaluationStatusMeta', () => {
       label: '—',
       variant: 'neutral',
     })
-  })
-})
-
-describe('getTaskTypeLabel', () => {
-  it('已知任务类型映射中文', () => {
-    expect(getTaskTypeLabel('e2e')).toBe('端到端测试')
-    expect(getTaskTypeLabel('api')).toBe('API测试')
-    expect(getTaskTypeLabel('mixed')).toBe('混合')
-  })
-
-  it('空值与未知值回退', () => {
-    expect(getTaskTypeLabel(null)).toBe('—')
-    expect(getTaskTypeLabel('unknown')).toBe('unknown')
   })
 })
 

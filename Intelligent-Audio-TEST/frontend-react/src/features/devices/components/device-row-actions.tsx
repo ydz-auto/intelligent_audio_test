@@ -3,6 +3,7 @@
  * 按页签 + 状态 + 权限显隐：
  * - 测试设备：详情/编辑/健康检查/测试·停止测试（占用态显「停止测试」destructive + 离线禁用
  *   Tooltip「设备离线」）/连接/断开/重启/关机/安装·卸载应用（iOS 禁用 Tooltip「iOS 设备不支持该操作」；
+ *   编辑仅受 device:update 权限控制、不受离线禁用——编辑元数据不依赖设备在线，INT-1217 P1）
  *   安装/卸载走参数小弹窗 P3-31）/删除
  * - 播放设备：详情/编辑/关联声压映射/播放测试/停止/重启播放设备/重置配置/静音·取消静音/
  *   播放测试结果分析/设备诊断·修复·优化/删除
@@ -98,7 +99,9 @@ export function DeviceRowActions(props: DeviceRowActionsProps) {
           <DropdownMenuItem onClick={props.onDetail}>详情</DropdownMenuItem>
         )}
         {props.canUpdate && (
-          <DropdownMenuItem disabled={isOffline} title={isOffline ? offlineTooltip : undefined} onClick={props.onEdit}>
+          // INT-1217：编辑设备元数据不依赖设备在线（V9.7.10 基线 editDevice 无状态限制），离线不禁用；
+          // 仅「测试/连接/健康检查/重启」等实时操作按离线态禁用。
+          <DropdownMenuItem onClick={props.onEdit}>
             编辑
           </DropdownMenuItem>
         )}

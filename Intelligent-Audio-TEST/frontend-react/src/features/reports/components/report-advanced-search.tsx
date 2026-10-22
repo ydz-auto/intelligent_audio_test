@@ -1,7 +1,8 @@
 /**
  * 报告中心高级搜索（15_报告域.md §2 + 报告管理功能设计文档.md:173-193 实测；INT-381 返修）。
- * SearchBar 展开「高级搜索」折叠区：任务类型 × 设备类型 × 创建者 × 时间范围多条件表单；
- * 工具栏排序下拉兜底。状态由 URL search（taskType/deviceType/creator）承载，页面以 navigate 回写。
+ * SearchBar 展开「高级搜索」折叠区：设备类型 × 创建者 × 时间范围多条件表单；
+ * 工具栏排序下拉兜底。状态由 URL search（deviceType/creator）承载，页面以 navigate 回写。
+ * INT-1297：移除「任务类型」筛选条件（负责人 2026-10-22：前端不再区分 API测试/E2E测试）。
  */
 import { ChevronDown } from 'lucide-react'
 import { useState } from 'react'
@@ -19,13 +20,6 @@ import { cn } from '@/lib/utils'
 
 import { TIME_RANGE_OPTIONS } from '@/features/reports/constants'
 
-const TASK_TYPE_OPTIONS = [
-  { value: 'e2e', label: 'e2e 端到端' },
-  { value: 'api', label: 'api 接口' },
-  { value: 'mixed', label: 'mixed 混合' },
-  { value: 'benchmark', label: 'Benchmark' },
-]
-
 const DEVICE_TYPE_OPTIONS = [
   { value: 'smart_speaker', label: '智能音箱' },
   { value: 'car_voice', label: '车载助手' },
@@ -39,18 +33,16 @@ const CREATOR_OPTIONS = [
 ]
 
 interface ReportAdvancedSearchProps {
-  taskType?: string
   deviceType?: string
   creator?: string
-  /** 高级搜索时间范围（§2 :117：任务类型 × 设备类型 × 创建者 × 时间范围多条件表单） */
+  /** 高级搜索时间范围（§2 :117：设备类型 × 创建者 × 时间范围多条件表单） */
   timeRange?: ReportTimeRange | 'all'
   onTimeRangeChange: (value: ReportTimeRange | 'all') => void
-  onChange: (patch: { taskType?: string; deviceType?: string; creator?: string }) => void
+  onChange: (patch: { deviceType?: string; creator?: string }) => void
   onReset: () => void
 }
 
 export function ReportAdvancedSearch({
-  taskType,
   deviceType,
   creator,
   timeRange,
@@ -59,7 +51,7 @@ export function ReportAdvancedSearch({
   onReset,
 }: ReportAdvancedSearchProps) {
   const [open, setOpen] = useState(false)
-  const hasActive = Boolean(taskType || deviceType || creator || (timeRange && timeRange !== 'all'))
+  const hasActive = Boolean(deviceType || creator || (timeRange && timeRange !== 'all'))
 
   return (
     <div className='mt-2'>
@@ -79,35 +71,13 @@ export function ReportAdvancedSearch({
         />
         {hasActive && (
           <span className='bg-primary text-primary-foreground ms-1 rounded-full px-1.5 text-[10px] tabular-nums'>
-            {[taskType, deviceType, creator, timeRange && timeRange !== 'all' ? timeRange : undefined].filter(Boolean).length}
+            {[deviceType, creator, timeRange && timeRange !== 'all' ? timeRange : undefined].filter(Boolean).length}
           </span>
         )}
       </button>
 
       {open && (
         <div className='bg-muted/40 mt-2 flex flex-wrap items-end gap-3 rounded-xl border p-3'>
-          <div className='flex flex-col gap-1.5'>
-            <label htmlFor='adv-task-type' className='text-muted-foreground text-xs font-medium'>
-              任务类型
-            </label>
-            <Select
-              value={taskType ?? 'all'}
-              onValueChange={(v) => onChange({ taskType: v === 'all' ? undefined : v ?? undefined })}
-            >
-              <SelectTrigger id='adv-task-type' className='h-9 w-40'>
-                <SelectValue placeholder='全部' />
-              </SelectTrigger>
-              <SelectContent align='start'>
-                <SelectItem value='all'>全部</SelectItem>
-                {TASK_TYPE_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           <div className='flex flex-col gap-1.5'>
             <label htmlFor='adv-device-type' className='text-muted-foreground text-xs font-medium'>
               设备类型

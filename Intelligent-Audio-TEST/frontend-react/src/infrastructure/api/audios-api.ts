@@ -42,7 +42,15 @@ import type {
 export type AudioListResult = {
   items: AudioAsset[]
   stats: AudioListStats
+  /** 当前查询匹配总数（服务端 total；页面分页/标题徽标以此为准） */
+  total: number
+  page: number
+  perPage: number
+  pages: number
 }
+
+/** 音频列表默认每页条数（与页面 §3.9 默认 20 一致） */
+const DEFAULT_LIST_PER_PAGE = 20
 
 const EMPTY_STATS: AudioListStats = {
   totalFiles: 0,
@@ -51,18 +59,48 @@ const EMPTY_STATS: AudioListStats = {
   todayUploads: 0,
 }
 
+/** 音频列表查询参数（infra 层；snake_case 化只在本层发生） */
+export interface FetchAudiosParams {
+  page?: number
+  perPage?: number
+  keyword?: string
+  format?: string
+  audioType?: string
+  /** 采样率（Hz，如 48000）；本层按后端口径转 kHz 数值（sample_rate=48） */
+  sampleRate?: number
+  duration?: 'short' | 'medium' | 'long'
+  /** 标签过滤（后端仅 AND 语义；OR 模式由页面客户端过滤，不传本参数） */
+  tags?: string[]
+}
+
 /**
- * 音频列表（GET /audios；响应信封内 data = { items, total, page, per_page, pages, stats }）。
- * 页面当前为前端过滤/排序/分页（§5.2「接线后 URL 态化」前的过渡态），故以 per_page=10000
- * 拉全量由页面 useMemo 本地派生；URL 态化后改为把 filters 传后端分页/facet。
+ * 音频列表（POST /audios；INT-1216 服务端分页）。
+ * V9.7.10 AudioImportLogic 同款：POST body 传 page/per_page + 过滤条件，切页才请求；
+ * 响应信封内 data = { items, total, page, per_page, pages, stats }。
+ * 用 POST 而非 GET：GET /audios 的 tags 参数后端按单值解析会 422（实测），
+ * 且 OR 标签语义后端不表达——AND 标签与 scalar facet 一并服务端过滤。
  */
-export async function fetchAudios(): Promise<AudioListResult> {
-  const dto = await request<AudioListDto>('GET', '/audios', undefined, {
-    params: { page: 1, per_page: 10_000 },
+export async function fetchAudios(
+  params: FetchAudiosParams = {}
+): Promise<AudioListResult> {
+  const dto = await request<AudioListDto>('POST', '/audios', {
+    page: params.page ?? 1,
+    per_page: params.perPage ?? DEFAULT_LIST_PER_PAGE,
+    keyword: params.keyword || undefined,
+    format: params.format || undefined,
+    audio_type: params.audioType || undefined,
+    sample_rate:
+      params.sampleRate != null ? String(params.sampleRate / 1000) : undefined,
+    duration: params.duration || undefined,
+    tags: params.tags && params.tags.length > 0 ? params.tags : undefined,
   })
   return {
     items: (dto?.items ?? []).map(audioFromDto),
     stats: dto?.stats ? audioStatsFromDto(dto.stats) : EMPTY_STATS,
+    total: dto?.total ?? 0,
+    page: dto?.page ?? (params.page ?? 1),
+    perPage: dto?.per_page ?? (params.perPage ?? DEFAULT_LIST_PER_PAGE),
+    pages: dto?.pages ?? 0,
   }
 }
 

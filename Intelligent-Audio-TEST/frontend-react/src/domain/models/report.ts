@@ -56,7 +56,7 @@ export interface ReportListItemSummary {
   task_id?: number
   task_name: string
   algorithm_type?: string
-  /** 任务类型（e2e/api/mixed；报告中心筛选 §2 实测 :186） */
+  /** 任务类型（e2e/api/mixed；DTO 仍返回，保留映射不展示——INT-1297 移除任务类型概念） */
   task_type?: string
   /** 设备类型（smart_speaker/car_voice/headphone；报告中心筛选 §2 实测 :187） */
   device_type?: string
@@ -101,8 +101,6 @@ export interface ReportListQuery {
   status?: string
   task_id?: number
   keyword?: string
-  /** 高级搜索：任务类型（e2e/api/mixed，§2 :186） */
-  task_type?: string
   /** 高级搜索：设备类型（§2 :187） */
   device_type?: string
   /** 高级搜索：创建者（§2 :188） */

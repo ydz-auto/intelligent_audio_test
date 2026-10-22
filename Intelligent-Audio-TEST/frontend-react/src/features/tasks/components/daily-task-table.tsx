@@ -1,6 +1,6 @@
 /**
  * 日常任务表格（09_任务域.md §3.6，DataTablePage 骨架的轻量语义表格实现）。
- * 列：选择/任务名称/执行状态/评估状态/类型/用例进度/设备·API/标签/创建时间/操作。
+ * 列：选择/任务名称/执行状态/评估状态/用例进度/设备·API/标签/创建时间/操作。
  * 单元格 `py-2`、字号 13px；数值列 mono tabular-nums；回收站行 DISABLED_ROW（muted 底 + 左标线）。
  * INT-932：排序头为客户端排序（后端 /tasks TaskListQuery 无 sort 参数，FEAT 见后端）；
  * 服务端 sortBy/sortOrder 落地后切换为 URL 化参数。
@@ -31,22 +31,19 @@ import { cn } from '@/lib/utils'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import type { TaskListItem } from '@/domain/models/task'
 import {
-  deriveTaskType,
   formatDateTime,
   getEvaluationStatusMeta,
   getExecutionStatusMeta,
-  getTaskTypeLabel,
 } from '@/features/tasks/constants'
 import { Progress } from '@/features/tasks/components/ui/progress'
 import { TaskBulkActions } from '@/features/tasks/components/task-bulk-actions'
 import { TaskRowActions } from '@/features/tasks/components/task-row-actions'
 
-/** 列显隐选项（视图下拉，§3.5） */
+/** 列显隐选项（视图下拉，§3.5；任务类型概念已移除——INT-1241，不再有「类型」列） */
 const COLUMN_OPTIONS = [
   { key: 'name', label: '任务名称' },
   { key: 'execution', label: '执行状态' },
   { key: 'evaluation', label: '评估状态' },
-  { key: 'type', label: '类型' },
   { key: 'progress', label: '用例进度' },
   { key: 'resources', label: '设备/API' },
   { key: 'tags', label: '标签' },
@@ -59,7 +56,6 @@ const DEFAULT_VISIBLE: ColumnKey[] = [
   'name',
   'execution',
   'evaluation',
-  'type',
   'progress',
   'tags',
   'createdAt',
@@ -357,9 +353,6 @@ export function DailyTaskTable({
               {col('evaluation') && (
                 <th className='px-3 py-2 text-left font-medium'>评估状态</th>
               )}
-              {col('type') && (
-                <th className='px-3 py-2 text-left font-medium'>类型</th>
-              )}
               {col('progress') && (
                 <th className='px-3 py-2 text-left font-medium'>用例进度</th>
               )}
@@ -453,13 +446,6 @@ export function DailyTaskTable({
                         variant={evalMeta.variant}
                         pulse={evalMeta.pulse}
                       />
-                    </td>
-                  )}
-                  {col('type') && (
-                    <td className='px-3 py-2'>
-                      <Badge variant='outline' className='rounded-md px-1.5'>
-                        {getTaskTypeLabel(deriveTaskType(task.device_types))}
-                      </Badge>
                     </td>
                   )}
                   {col('progress') && (

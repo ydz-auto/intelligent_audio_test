@@ -281,6 +281,51 @@ describe('authApi 真实接口', () => {
     })
   })
 
+  describe('getMe（/auth/me 契约无 role_name，INT-1226 兜底）', () => {
+    it('无 fallback：roleName 为空串', async () => {
+      queueResponses(
+        jsonResponse({
+          user_id: 369,
+          username: '接线测试_admin',
+          role_id: 1,
+          permissions: ['*'],
+        })
+      )
+      const user = await authApi.getMe()
+      expect(user.username).toBe('接线测试_admin')
+      expect(user.roleName).toBe('')
+      const call = fetchMock.mock.calls[0] as [string, RequestInit]
+      expect(call[0]).toBe(`${API_BASE_URL}/auth/me`)
+    })
+
+    it('传 fallbackRoleName：照 ROLE_META 映射中文名，不因 /auth/me 缺字段清空', async () => {
+      queueResponses(
+        jsonResponse({
+          user_id: 369,
+          username: '接线测试_admin',
+          role_id: 1,
+          permissions: ['*'],
+        })
+      )
+      const user = await authApi.getMe({}, 'admin')
+      expect(user.username).toBe('接线测试_admin')
+      expect(user.roleName).toBe('超级管理员')
+    })
+
+    it('fallback 为中文名：原样保留', async () => {
+      queueResponses(
+        jsonResponse({
+          user_id: 370,
+          username: '接线测试_tester',
+          role_id: 2,
+          permissions: ['task:read'],
+        })
+      )
+      const user = await authApi.getMe({}, '测试工程师')
+      expect(user.roleName).toBe('测试工程师')
+    })
+  })
+
   describe('getOAuthAuthorizeUrl', () => {
     it('默认 intent=login：/api/v1/auth/oauth/{slug}/authorize', () => {
       expect(authApi.getOAuthAuthorizeUrl('github')).toBe(

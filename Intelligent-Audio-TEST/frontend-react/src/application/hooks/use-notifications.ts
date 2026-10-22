@@ -47,6 +47,9 @@ export function useNotifications() {
 
   const user = useAuthStore((s) => s.user)
   const hasSseRead = hasPermission(user, 'sse:read')
+  /** INT-1289：名称解析按资源读权限门控——无 task:read / report:read 不发 /tasks、/reports 快照请求 */
+  const hasTaskRead = hasPermission(user, 'task:read')
+  const hasReportRead = hasPermission(user, 'report:read')
 
   const {
     lastReadEventSeq,
@@ -69,8 +72,12 @@ export function useNotifications() {
         const seq = eventSeqRef.current
         const item: AppNotification = { ...raw, id: `${seq}:${raw.id}` }
         setNotice((prev) => [item, ...prev].slice(0, MAX_NOTICE_ITEMS))
-        // 名称解析不阻塞行渲染：先以 id 占位，解析完成局部更新
-        void resolveNotificationNames(item).then((resolved) => {
+        // 名称解析不阻塞行渲染：先以 id 占位，解析完成局部更新；
+        // 无 task:read / report:read 时按权限跳过对应快照请求（INT-1289）
+        void resolveNotificationNames(item, {
+          task: hasTaskRead,
+          report: hasReportRead,
+        }).then((resolved) => {
           if (resolved.title === item.title) return
           setNotice((prev) =>
             prev.map((n) => (n.id === item.id ? { ...n, title: resolved.title } : n))
@@ -79,7 +86,7 @@ export function useNotifications() {
       },
     })
     return off
-  }, [hasSseRead])
+  }, [hasSseRead, hasTaskRead, hasReportRead])
 
   // ===== 公告页签：站点公告（site.notice）=====
   const { data: options, isLoading: optionsLoading } = useSystemOptions()

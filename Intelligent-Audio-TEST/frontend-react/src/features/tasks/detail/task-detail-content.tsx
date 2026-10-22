@@ -6,6 +6,7 @@
  * 经 useTaskActions 发真实请求，成功后详情/列表刷新；API 资源管理去掉 mock 并发数据，
  * 仅渲染真实 apis（id/name/status，status=online 在线）。
  * INT-949：停止/暂停/继续点击先弹 ConfirmDialog（§5.8 + 旧 Vue 基线），确认才发请求。
+ * INT-1241：任务类型概念已移除——API 资源区按真实 apis 数据无条件渲染（不再按任务类型推导显隐）。
  */
 import { Pause, Play, RefreshCw, RotateCcw, Square } from 'lucide-react'
 import { useState } from 'react'
@@ -36,7 +37,7 @@ import {
   type TaskConfirmState,
 } from '@/features/tasks/components/task-confirm-dialogs'
 
-/** API 资源管理（§4.5，仅 API/混合任务；真实 apis 简报：名称 + 在线状态） */
+/** API 资源管理（§4.5，真实 apis 简报：名称 + 在线状态；INT-1241 起无条件渲染） */
 function ApiResources({ apis }: { apis: Array<{ id: number; name: string; status: string | null }> }) {
   if (apis.length === 0) return null
   return (
@@ -156,7 +157,7 @@ export function TaskDetailContent({
   if (!detail) return null
 
   const effectiveDeviceTypes = deviceTypesOverride ?? detail.device_types
-  const isApi = effectiveDeviceTypes.includes('http_api')
+  // INT-1241：API 资源区按真实 apis 数据无条件渲染（不再按任务类型推导显隐）
   const hasRealtimeDevice = effectiveDeviceTypes.includes('websocket_api')
   const isTerminal = ['completed', 'failed', 'stopped', 'merged', 'skipped'].includes(
     detail.execution_status ?? ''
@@ -168,8 +169,9 @@ export function TaskDetailContent({
       <div className='flex flex-col gap-4'>
         <TaskInfoCard detail={detail} />
         <ProgressCard detail={detail} />
-        {isApi && <ApiResources apis={detail.apis} />}
+        <ApiResources apis={detail.apis} />
         <CaseAssociation detail={detail} onCaseSelect={onCaseSelect} />
+
 
         {!compact && (
           <div className='flex flex-wrap items-center gap-2'>

@@ -54,7 +54,6 @@ export function buildReportListQuery(search: ReportsSearch): ReportListQuery {
     // 状态筛选（draft/published）与类型同为筛选条件，默认全部
     status: search.status ?? undefined,
     keyword: search.search || undefined,
-    task_type: search.taskType || undefined,
     device_type: search.deviceType || undefined,
     creator: search.creator || undefined,
     start_time: startTime,

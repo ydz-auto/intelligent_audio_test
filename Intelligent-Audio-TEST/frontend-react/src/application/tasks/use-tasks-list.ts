@@ -19,7 +19,6 @@ export interface TaskListFilters {
   evaluationStatus?: string | null
   tags?: string[]
   timeRange?: string
-  type?: string | null
   ptStatus?: string | null
   mergeStatus?: string | null
   favorite?: boolean
@@ -66,7 +65,6 @@ export function useTasksList(tab: TasksTabKey, filters: TaskListFilters) {
             page: filters.page,
             perPage: filters.pageSize,
             search: filters.search,
-            type: filters.type,
             ptStatus: filters.ptStatus,
           })
         case 'cherry-picks':

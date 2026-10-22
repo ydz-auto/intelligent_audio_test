@@ -65,7 +65,7 @@ export function useSetupGuide(details?: HomeStatsDetails) {
       {
         key: 'tasks',
         title: '执行任务',
-        description: '发起端到端 / API 测试',
+        description: '发起语音测试任务',
         icon: Play,
         completed: (details?.tasks.total ?? 0) > 0,
       },

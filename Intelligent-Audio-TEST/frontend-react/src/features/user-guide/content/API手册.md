@@ -125,7 +125,7 @@ curl -X POST "{{API_BASE_URL}}/auth/logout" \
 ### 获取任务列表
 
 ```bash
-curl -X GET "{{API_BASE_URL}}/tasks?page=1&per_page=10&type=e2e" \
+curl -X GET "{{API_BASE_URL}}/tasks?page=1&per_page=10" \
   -H "Authorization: Bearer {token}"
 ```
 
@@ -134,7 +134,6 @@ curl -X GET "{{API_BASE_URL}}/tasks?page=1&per_page=10&type=e2e" \
 | page | INTEGER | query | 否 | 页码，默认 1 |
 | per_page | INTEGER | query | 否 | 每页记录数，默认 10 |
 | status | STRING | query | 否 | `pending`/`running`/`completed`/`failed`/`stopped` |
-| type | STRING | query | 否 | `api`/`e2e` |
 | start_date / end_date | DATE | query | 否 | ISO 格式 `YYYY-MM-DDTHH:MM:SS` |
 
 ### 创建任务
@@ -143,7 +142,7 @@ curl -X GET "{{API_BASE_URL}}/tasks?page=1&per_page=10&type=e2e" \
 curl -X POST "{{API_BASE_URL}}/tasks" \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
-  -d '{"name": "端到端回归", "type": "e2e", "case_ids": ["case_001"], "device_ids": [1], "tags": ["回归"]}'
+  -d '{"name": "回归测试任务", "case_ids": ["case_001"], "device_ids": [1], "tags": ["回归"]}'
 ```
 
 ### 启动、停止与控制

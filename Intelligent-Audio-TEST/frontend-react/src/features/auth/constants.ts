@@ -35,7 +35,7 @@ export type RegisterForm = z.infer<typeof registerFormSchema>
 
 /** 登录页品牌文案 */
 export const LOGIN_BRAND_NAME = '智能语音测试平台'
-export const LOGIN_BRAND_SLOGAN = '端到端测试 · API 测试 · 多维评估'
+export const LOGIN_BRAND_SLOGAN = '一站式语音测试 · 多维评估'
 
 /** 服务端错误呈现文案（§3.4 三层分离：字段校验内联 / 服务端 toast / 加密失败 Alert） */
 export const LOGIN_ERROR_COPY = {

@@ -2,7 +2,7 @@
  * 任务域 DTO→Domain 转换器（infrastructure/adapters/dto，09_任务域.md §10）。
  * domain/models/task.ts 任务域模型与 task.py 契约同构（snake_case 字段），
  * 本层仅补派生字段：api_count（apis.length）、source_task_count/source_task_ids
- * （合并/挑选容器）、concurrency（config.concurrency）。
+ * （合并/挑选容器）、concurrency（config.concurrent_tasks，后端真实字段）。
  * 已发布任务（PublishedTaskItemDto）与日志行（TaskLogEntryDto）为纯透传。
  */
 import type { CherryPickContainer } from '@/domain/models/cherryPick'
@@ -100,7 +100,7 @@ export function toTaskDetail(dto: TaskDetailDto): TaskDetailData {
     failed_cases: dto.failed_cases,
     api_count: (dto.apis ?? []).length,
     concurrency:
-      typeof config.concurrency === 'number' ? config.concurrency : null,
+      typeof config.concurrent_tasks === 'number' ? config.concurrent_tasks : null,
     tags: dto.tags ?? [],
     cases: (dto.cases ?? []).map((c) => ({ ...c, reviewed: c.reviewed ?? false })),
     devices: dto.devices ?? [],

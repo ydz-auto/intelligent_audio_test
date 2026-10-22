@@ -52,6 +52,9 @@ export async function fetchBenchmarkRanking(
         source: params.source,
         publishedTaskId: params.publishedTaskId,
       },
+      // INT-1225：/rankings 为公开路由，匿名/会话失效 401 不触发 sessionExpired
+      // 整页跳登录——由页面按 14_benchmark排行.md §5.1 权限空态/错误态降级。
+      skipAuthRedirect: true,
     }
   )
 }
@@ -64,7 +67,7 @@ export async function fetchBenchmarkRankingSubjects(
     'GET',
     '/benchmarks/ranking/subjects',
     undefined,
-    { params: { suite } }
+    { params: { suite }, skipAuthRedirect: true }
   )
 }
 
@@ -76,7 +79,7 @@ export async function fetchBenchmarkMetricMappings(
     'GET',
     '/benchmarks/metric-mappings',
     undefined,
-    { params: { activeOnly } }
+    { params: { activeOnly }, skipAuthRedirect: true }
   )
 }
 

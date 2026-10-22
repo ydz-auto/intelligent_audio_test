@@ -7,10 +7,9 @@ import type { StatisticDimension } from '@/domain/models/report-statistics'
 
 export type { StatisticDimension } from '@/domain/models/report-statistics'
 
-/** 统计维度（维度 Select；§2.2 时间/任务类型/设备类型/评估维度） */
+/** 统计维度（维度 Select；§2.2 时间/设备类型/评估维度——INT-1297 移除任务类型维度） */
 export const STATISTIC_DIMENSIONS: { value: StatisticDimension; label: string }[] = [
   { value: 'time', label: '时间' },
-  { value: 'task_type', label: '任务类型' },
   { value: 'device_type', label: '设备类型' },
   { value: 'metric', label: '评估维度' },
 ]

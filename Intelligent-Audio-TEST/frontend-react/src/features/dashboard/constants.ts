@@ -35,17 +35,6 @@ export function getTaskStatusLabel(status: string): string {
   return TASK_STATUS_META[status]?.label ?? status
 }
 
-/** 任务类型派生分布 → 中文（04_控制台.md §3.7.2：e2e/api/mixed） */
-export const TASK_TYPE_LABELS: Record<string, string> = {
-  e2e: '端到端测试',
-  api: 'API 测试',
-  mixed: '混合',
-}
-
-export function getTaskTypeLabel(type: string): string {
-  return TASK_TYPE_LABELS[type] ?? type
-}
-
 /**
  * 算法类型 → 中文名（mock 占位值，真实枚举随算法域接线对齐）。
  */

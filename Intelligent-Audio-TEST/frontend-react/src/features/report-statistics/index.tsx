@@ -1,8 +1,9 @@
 /**
  * /report-statistics 报告统计分析页（15_报告域.md §2.2，INT-381 返修补全；INT-500 路由定稿）。
  * 入口=报告中心工具栏「更多操作 ⋯ → 统计分析」；report:read 守卫。
- * 功能：报告数量/测试用例执行/评估指标/设备性能统计 + 时间/任务类型/设备类型/评估维度四维统计
+ * 功能：报告数量/测试用例执行/评估指标/设备性能统计 + 时间/设备类型/评估维度三维统计
  * + 统计表格/图表（散点·热力）/统计分析报告/异常统计识别 + 四标签页 + 统计结果导出（§4.3 复用）。
+ * INT-1297：移除「任务类型」统计维度（负责人 2026-10-22：前端不再区分 API测试/E2E测试）。
  */
 import { FileDown } from 'lucide-react'
 import { useCallback, useState } from 'react'
@@ -101,7 +102,9 @@ export function ReportStatisticsPage() {
 
               <StatBadge
                 label='统计维度'
-                value={dimension === 'time' ? '时间' : dimension === 'task_type' ? '任务类型' : dimension === 'device_type' ? '设备类型' : '评估维度'}
+                value={
+                  ({ time: '时间', device_type: '设备类型', metric: '评估维度' } as const)[dimension]
+                }
                 colorClass='bg-info'
               />
 

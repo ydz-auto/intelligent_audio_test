@@ -58,7 +58,9 @@ type MatchRow = {
 
 export function AudioBatchAnnotationDialog(props: AudioBatchAnnotationDialogProps) {
   const { batchAnnotations } = useAudioMutations()
-  const audioListQuery = useAudioList()
+  // 文件名匹配需要跨页完整音频集（INT-1216 列表改服务端分页后，对话框独立拉全量；
+  // 仅弹窗打开时才请求，避免页面常驻时多拉一份）
+  const audioListQuery = useAudioList({ allRows: true, enabled: props.open })
   const audioList = audioListQuery.data?.items ?? []
   const algorithmOptionsQuery = useAlgorithmOptions()
   const algorithmOptions = algorithmOptionsQuery.data ?? []

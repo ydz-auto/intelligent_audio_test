@@ -1,6 +1,6 @@
 /**
  * 已发布任务表格（09_任务域.md §3.7：表格 + 展开版本链详情行）。
- * 列：版本/名称·说明/状态/类型/Benchmark/版本数/发布人·发布时间/操作（行内按钮组）。
+ * 列：版本/名称·说明/状态/Benchmark/版本数/发布人·发布时间/操作（行内按钮组）。
  * 展开行五个 DetailSection（照 log-detail-layout 键值行）：版本历史 / Benchmark 标记 /
  * 任务详情（发布时冻结）/ 冻结报告 / 执行记录。
  * 「查看冻结任务详情」→ TaskSnapshotDialog（§5.13）；「查看冻结报告」→ ReportSnapshotDialog（§5.13）。
@@ -32,7 +32,7 @@ import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import { fetchPublishedTaskDetail } from '@/infrastructure/api/tasks-list-api'
 import type { PublishedTaskDetail, PublishedTaskItem } from '@/domain/models/task'
 import { readReportSnapshot, readReportSummary, readTaskSnapshot } from '@/domain/models/task'
-import { formatDateTime, getTaskTypeLabel } from '@/features/tasks/constants'
+import { formatDateTime } from '@/features/tasks/constants'
 import { TaskSnapshotDialog } from '@/features/tasks/components/task-snapshot-dialog'
 import { ReportSnapshotDialog } from '@/features/tasks/components/report-snapshot-dialog'
 import { ConfirmDialog } from '@/components/confirm-dialog'
@@ -143,9 +143,6 @@ function PublishedExpandRow({
           <div className='mt-2 flex flex-wrap items-center gap-2 text-xs'>
             <span className='text-muted-foreground'>来源任务：</span>
             <span className='font-medium'>{detail.source_task_name ?? '—'}</span>
-            <Badge variant='outline' className='rounded-md px-1.5'>
-              {getTaskTypeLabel(detail.versions[0]?.type ?? null)}
-            </Badge>
             <span className='text-muted-foreground'>
               用例 {detail.source_task_completed_cases ?? 0}/{detail.source_task_total_cases ?? 0}
             </span>
@@ -487,7 +484,6 @@ export function PublishedTaskTable({
                 <th className='px-3 py-2 text-left font-medium'>版本</th>
                 <th className='px-3 py-2 text-left font-medium'>名称/说明</th>
                 <th className='px-3 py-2 text-left font-medium'>状态</th>
-                <th className='px-3 py-2 text-left font-medium'>类型</th>
                 <th className='px-3 py-2 text-left font-medium'>Benchmark</th>
                 <th className='px-3 py-2 text-left font-medium'>版本数</th>
                 <th className='px-3 py-2 text-left font-medium'>发布人/发布时间</th>
@@ -684,11 +680,6 @@ function ExpandedRows({
           <StatusBadge label={meta.label} variant={meta.variant} />
         </td>
         <td className='px-3 py-2'>
-          <Badge variant='outline' className='rounded-md px-1.5'>
-            {getTaskTypeLabel(task.type ?? null)}
-          </Badge>
-        </td>
-        <td className='px-3 py-2'>
           {task.benchmark ? (
             <Tooltip>
               <TooltipTrigger
@@ -779,7 +770,7 @@ function ExpandedRows({
       </tr>
       {expanded && (
         <tr className='border-border/60 border-b'>
-          <td colSpan={9} className='p-0'>
+          <td colSpan={8} className='p-0'>
             {detailLoading ? (
               <div className='bg-muted/20 px-4 py-3'>
                 <Skeleton className='h-12 w-full' />

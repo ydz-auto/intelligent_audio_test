@@ -150,15 +150,22 @@ export const authApi = {
     return { userId: dto?.user_id ?? 0 }
   },
 
-  /** 当前登录用户信息（GET /auth/me；JWT 由 client 拦截器注入） */
-  async getMe(options: ApiRequestOptions = {}): Promise<AuthUser> {
+  /**
+   * 当前登录用户信息（GET /auth/me；JWT 由 client 拦截器注入）。
+   * fallbackRoleName：/auth/me 契约无 role_name（INT-1226），由调用方传入
+   * 会话缓存角色码，DTO 层照 ROLE_META 映射中文名，不因缺字段清空。
+   */
+  async getMe(
+    options: ApiRequestOptions = {},
+    fallbackRoleName = ''
+  ): Promise<AuthUser> {
     const dto = await request<AuthMeResultDto>(
       'GET',
       '/auth/me',
       undefined,
       options
     )
-    return toAuthUserFromMe(dto)
+    return toAuthUserFromMe(dto, fallbackRoleName)
   },
 
   /** 登出（POST /auth/logout；JWT 无状态，服务端审计旁路，失败不阻断本地清理） */

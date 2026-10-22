@@ -2,7 +2,7 @@
  * 设备新增/编辑抽屉（16_设备域.md §6.2；Sheet sideDrawer `sm:max-w-[600px]`）。
  * 分节「基本信息」（名称/描述）+ 分节随页签分叉：
  * - 测试设备：型号/设备类型/设备系统/系统版本/API级别（随系统切换）/应用名称/应用版本/连接方式/
- *   设备序列号/IP·端口(conditional remote)/驱动关键字（V9.7.10 keywords select）/是否需要提示词/算法类型/状态采集（只读）/
+ *   设备序列号/IP·端口(conditional remote)/驱动关键字（V9.7.10 keywords select）/是否需要提示词/算法类型/
  *   高级设置（备注/标签/自定义属性/优先级）
  * - 播放设备：型号/设备类型/系统唯一标识/通道索引/支持的通道数/支持的格式/采样率/声压映射
  * - 测试 API：API名称/供应商/API端点/关联算法（默认全局算法）/协议/环境/最大进程数/超时/音频时长/
@@ -12,7 +12,7 @@
  * driverName/lastOnlineAt/createdAt 等非表单字段。
  */
 import { ChevronDown, Plus, ScanLine, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
@@ -49,6 +49,8 @@ import {
 import { normalizeDeviceSystem } from '@/features/devices/lib/device-system'
 import { useDeviceMutations, useDriverKeywords } from '@/application/devices/use-devices'
 import { useSplMappingsByDevice } from '@/application/spl/useSplMappings'
+import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
+import { useGlobalAlgorithm } from '@/application/hooks/use-global-algorithm'
 import type { TestDevice } from '@/domain/models/testDevice'
 import type { PlaybackDevice } from '@/domain/models/playbackDevice'
 import type { ApiDevice } from '@/domain/models/apiDevice'
@@ -78,8 +80,6 @@ const SYSTEM_OPTIONS = [
 const ANDROID_API_LEVELS = ['26', '28', '30', '32', '33', '34']
 const HARMONY_API_LEVELS = ['3.0', '3.1', '3.2', '4.0', '4.2']
 const FORMAT_OPTIONS = ['WAV', 'MP3', 'FLAC', 'AAC', 'OGG', 'WMA']
-/** 测试设备算法类型（对照 mock supported_algorithms 值，device.py supported_algorithms 实测） */
-const ALGORITHM_OPTIONS = ['asr_streaming', 'wakeword_detect', 'tts_eval']
 const PROTOCOL_OPTIONS = ['http', 'https', 'ws', 'wss']
 const ENV_OPTIONS = [
   { value: 'development', label: '开发' },
@@ -171,7 +171,8 @@ type DeviceForm = z.infer<typeof deviceFormSchema>
 
 function buildDefaults(
   state: DeviceMutateState,
-  prefill: Partial<TestDevice> | Partial<PlaybackDevice> | Partial<ApiDevice> | null | undefined
+  prefill: Partial<TestDevice> | Partial<PlaybackDevice> | Partial<ApiDevice> | null | undefined,
+  globalAlgorithmId: string
 ): DeviceForm {
   if (state.kind === 'test') {
     const device = state.mode === 'edit' ? (state.device as TestDevice | null) : null
@@ -229,7 +230,7 @@ function buildDefaults(
     environment: device?.environment ?? 'testing',
     proxyType: device?.proxyType ?? '',
     proxyUrl: device?.proxyUrl ?? '',
-    algorithmType: device?.algorithmType ?? 'asr_streaming',
+    algorithmType: device?.algorithmType ?? globalAlgorithmId ?? '',
     maxProcess: String(device?.defaultMaxProcess ?? 5),
     maxTimeout: String(device?.defaultMaxTimeout ?? 30),
     maxAudioDuration: String(device?.defaultMaxAudioDuration ?? 60),
@@ -261,7 +262,10 @@ function Field({
   )
 }
 
-/** 标签/算法多选 chips（§6.2 BadgeListCell 输入态） */
+/**
+ * 标签/算法多选 chips（§6.2 BadgeListCell 输入态）。
+ * option 支持纯字符串或 {value,label}——算法选项显示中文名（label）、提交类型码（value）。
+ */
 function ChipField({
   label,
   options,
@@ -269,7 +273,7 @@ function ChipField({
   onToggle,
 }: {
   label: string
-  options: readonly string[]
+  options: readonly (string | { value: string; label: string })[]
   selected: string[]
   onToggle: (value: string) => void
 }) {
@@ -277,21 +281,25 @@ function ChipField({
     <div className='flex flex-col gap-1'>
       <Label className='text-xs'>{label}</Label>
       <div className='flex flex-wrap gap-1.5'>
-        {options.map((option) => (
-          <button
-            key={option}
-            type='button'
-            onClick={() => onToggle(option)}
-            className={cn(
-              'rounded-md border px-2 py-1 text-xs transition-colors',
-              selected.includes(option)
-                ? 'border-primary bg-primary/10 text-primary'
-                : 'hover:bg-muted'
-            )}
-          >
-            {option}
-          </button>
-        ))}
+        {options.map((option) => {
+          const value = typeof option === 'string' ? option : option.value
+          const display = typeof option === 'string' ? option : option.label
+          return (
+            <button
+              key={value}
+              type='button'
+              onClick={() => onToggle(value)}
+              className={cn(
+                'rounded-md border px-2 py-1 text-xs transition-colors',
+                selected.includes(value)
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'hover:bg-muted'
+              )}
+            >
+              {display}
+            </button>
+          )
+        })}
       </div>
     </div>
   )
@@ -312,10 +320,24 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
   const splMappingsQuery = useSplMappingsByDevice(editingPlaybackId)
   const driverKeywords = driverKeywordsQuery.data ?? []
   const splOptions = splMappingsQuery.data ?? []
+  // 算法类型选项（INT-1213：真实 GET /algorithm/options，显示中文名；V9.7.10 algorithmSelect 口径）
+  // INT-1239：改壳层门控版（['shell','algorithm','options']，enabled: algorithm:read）——device_admin
+  // 无 algorithm:read 不下发请求（后端 RBAC 403）；选项为 {value,name}，抽屉统一映射 {value,label}。
+  const {
+    options: algorithmRawOptions,
+    isLoading: algorithmOptionsLoading,
+    canRead: canReadAlgorithm,
+  } = useAlgorithmOptions()
+  const algorithmOptions = useMemo(
+    () => algorithmRawOptions.map((o) => ({ value: o.value, label: o.name })),
+    [algorithmRawOptions]
+  )
+  // 关联算法新增态默认全局算法（16_设备域.md §6.2「默认全局算法」）
+  const { algorithmId: globalAlgorithmId } = useGlobalAlgorithm()
 
   const form = useForm<DeviceForm>({
     resolver: zodResolver(deviceFormSchema),
-    values: buildDefaults(state, prefill),
+    values: buildDefaults(state, prefill, globalAlgorithmId),
   })
 
   // INT-1029 抽屉内扫描「选择」→ 回填当前表单（编辑/新增态均可用；nonce 递增触发）
@@ -686,25 +708,13 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                 </label>
                 <ChipField
                   label='算法类型'
-                  options={ALGORITHM_OPTIONS}
+                  options={canReadAlgorithm ? algorithmOptions : []}
                   selected={form.watch('algorithms')}
                   onToggle={toggleChip('algorithms')}
                 />
-                {/* 状态采集字段（§6.2：只读展示设备实时采集值） */}
-                <div className='border-border/60 grid grid-cols-3 gap-2 rounded-lg border p-2.5 text-xs'>
-                  <div className='flex flex-col gap-0.5'>
-                    <span className='text-muted-foreground'>电池状态</span>
-                    <span>87% · 正常</span>
-                  </div>
-                  <div className='flex flex-col gap-0.5'>
-                    <span className='text-muted-foreground'>存储状态</span>
-                    <span>剩余 42GB</span>
-                  </div>
-                  <div className='flex flex-col gap-0.5'>
-                    <span className='text-muted-foreground'>网络状态</span>
-                    <span>Wi-Fi 已连接</span>
-                  </div>
-                </div>
+                {!canReadAlgorithm && (
+                  <p className='text-muted-foreground text-xs'>无算法读取权限，暂不可配置算法类型</p>
+                )}
                 {/* 高级设置（§6.2 Collapsible：备注/标签/自定义属性/优先级） */}
                 <Collapsible>
                   <CollapsibleTrigger
@@ -905,16 +915,29 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                     <Select
                       value={form.watch('algorithmType')}
                       onValueChange={(value) => form.setValue('algorithmType', value ?? '')}
+                      disabled={!canReadAlgorithm}
                     >
                       <SelectTrigger size='sm' className='w-full'>
-                        <SelectValue placeholder='请选择算法' />
+                        <SelectValue
+                          placeholder={
+                            !canReadAlgorithm
+                              ? '无权限'
+                              : algorithmOptionsLoading
+                                ? '加载中…'
+                                : '请选择算法'
+                          }
+                        >
+                          {canReadAlgorithm &&
+                            (algorithmOptions.find((o) => o.value === form.watch('algorithmType'))?.label ?? '')}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
-                        {ALGORITHM_OPTIONS.map((value) => (
-                          <SelectItem key={value} value={value}>
-                            {value}
-                          </SelectItem>
-                        ))}
+                        {canReadAlgorithm &&
+                          algorithmOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
                       </SelectContent>
                     </Select>
                   </Field>

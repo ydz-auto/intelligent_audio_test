@@ -3,15 +3,20 @@
  * POST /testcases/ids（testcase_bp.py:72-75 fetch_case_ids；testcase:read 门槛）。
  * 按筛选条件返回全量用例 ID（不分页），对照旧 Vue getIdsByFilter（toQueryParams 同款
  * camelCase→snake_case 顶层映射后作 body）。
+ * 契约（task_service/application/testcase/testcase_query_service.py fetch_case_ids）：
+ * body 只认 group（分组**名**）/ search / tag / algorithm_type / dimension_id /
+ * only_deleted——与 GET /testcases 的 keyword/group_id 不同端点不同键；group_id 会被后端
+ * 静默忽略导致圈定全库（INT-1267 审计 P1，Vue toggleGroupSelection 传分组名对位）。
  */
 import { apiClient } from './client'
 import type { TestCaseListQuery } from '@/infrastructure/api/testcases-api'
 
 const QUERY_KEY_MAP: Record<string, string> = {
-  search: 'keyword',
-  groupId: 'group_id',
+  search: 'search',
+  group: 'group',
   dimensionId: 'dimension_id',
   algorithmType: 'algorithm_type',
+  trash: 'only_deleted',
 }
 
 /** 全量圈定（POST /testcases/ids）：返回符合筛选条件的全部用例 id */

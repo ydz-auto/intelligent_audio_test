@@ -160,7 +160,7 @@ export interface PieDatum {
   value: number
 }
 
-/** 分布饼图（任务类型分布等；键为后端原值，中文映射在 constants.ts 完成后再传入） */
+/** 分布饼图（任务状态分布等；键为后端原值，中文映射在 constants.ts 完成后再传入） */
 export function buildDistributionPieSpec(
   values: PieDatum[],
   options: DistributionPieSpecOptions

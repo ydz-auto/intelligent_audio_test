@@ -58,7 +58,14 @@ import {
 export async function fetchAlgorithmDefinitions(): Promise<AlgorithmDefinition[]> {
   const dto = await request<AlgorithmDefinitionListDto>(
     'GET',
-    '/algorithm/definitions'
+    '/algorithm/definitions',
+    undefined,
+    {
+      // INT-1225：/rankings 公开页算法卡片网格同源消费本端点（useRankingAlgorithm，
+      // 14_benchmark排行.md §4.5），匿名 401 不触发 sessionExpired 整页跳登录——
+      // 页面按只读降级条/「算法详情暂不可用」降级。
+      skipAuthRedirect: true,
+    }
   )
   // P3-1（INT-1319）：后端列表项无 case_count 时不再在这里逐算法用例聚合兜底——
   // 那会让整表等 8-15s 才渲染；改由 useAlgorithmCaseCounts 经

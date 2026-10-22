@@ -49,7 +49,8 @@ export function ReviewHistoryDrawer({
   resultId?: number
 }) {
   const queryClient = useQueryClient()
-  const { data, isLoading, isError } = useReviewHistory(taskId)
+  // 抽屉未打开或 taskId<=0（test-execution 挂载即渲染的 taskId ?? 0）时不发 /review-history 无效请求
+  const { data, isLoading, isError } = useReviewHistory(taskId, open && taskId > 0)
   // 后端按时间正序返回 → 展示侧倒序（最新在前，§3.4「服务端按时间倒序」口径）
   const items = (data ?? [])
     .filter((item) => (resultId ? item.resultId === resultId : true))

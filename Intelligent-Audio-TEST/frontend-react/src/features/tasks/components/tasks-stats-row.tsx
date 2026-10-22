@@ -13,13 +13,16 @@ import { StatBadge } from '@/features/tasks/components/ui/stat-badge'
 
 export function TasksStatsRow() {
   const { hasPermission } = usePermissions()
+  /** INT-1289：无 task:read 不发起 /tasks/stats（先于 query 判定，杜绝 403 SEVERE） */
+  const canRead = hasPermission('task:read')
   const statsQuery = useQuery({
     queryKey: ['tasks', 'stats', 'day'],
     queryFn: () => fetchTaskDomainStats('day'),
     staleTime: 30_000,
+    enabled: canRead,
   })
 
-  if (!hasPermission('task:read')) return null
+  if (!canRead) return null
 
   if (statsQuery.isError) return null // 接口失败整行隐藏不报错
 

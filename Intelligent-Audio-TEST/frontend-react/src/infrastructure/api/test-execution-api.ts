@@ -177,7 +177,7 @@ export async function createTask(input: TaskLaunchInput): Promise<{ id: number }
       rounds: input.params.rounds,
       timeout: input.params.timeout,
       retries: input.params.retries,
-      concurrency: input.params.concurrency,
+      concurrent_tasks: input.params.concurrency,
       network: input.params.network,
       report_template: input.params.reportTemplate,
       include_charts: input.params.includeCharts,

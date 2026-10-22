@@ -66,35 +66,6 @@ export function getEvaluationStatusMeta(status: string | null) {
   )
 }
 
-/** 任务类型 → 中文（§9：端到端测试/API测试/混合） */
-export const TASK_TYPE_LABELS: Record<string, string> = {
-  e2e: '端到端测试',
-  api: 'API测试',
-  mixed: '混合',
-}
-
-export function getTaskTypeLabel(type: string | null | undefined): string {
-  if (!type) return '—'
-  return TASK_TYPE_LABELS[type] ?? type
-}
-
-/**
- * 任务类型派生（照旧 Vue TaskDetailModal.vue 口径 + 后端 /tasks/stats type_counts，
- * INT-200）：按用例级被测设备类型集合分桶——
- *  physical → e2e；http_api/websocket_api → api；兼有 → mixed；
- *  无 device_type 行回退 api（后端 task_service 同口径）。
- */
-export function deriveTaskType(
-  deviceTypes: string[] | null | undefined
-): 'api' | 'e2e' | 'mixed' {
-  const dts = deviceTypes ?? []
-  const hasPhysical = dts.includes('physical')
-  const hasApi = dts.includes('http_api') || dts.includes('websocket_api')
-  if (hasPhysical && hasApi) return 'mixed'
-  if (hasPhysical) return 'e2e'
-  return 'api'
-}
-
 /** 算法类型 → 中文（mock 占位值，真实枚举随算法域接线对齐） */
 export const ALGORITHM_TYPE_LABELS: Record<string, string> = {
   asr_streaming: '流式语音识别',
@@ -135,12 +106,6 @@ export const TIME_RANGE_OPTIONS = [
   { value: 'week', label: '近7天' },
   { value: 'month', label: '近30天' },
   { value: 'custom', label: '自定义' },
-]
-
-export const PUBLISHED_TYPE_OPTIONS = [
-  { value: 'all', label: '全部类型' },
-  { value: 'e2e', label: '端到端测试' },
-  { value: 'api', label: 'API测试' },
 ]
 
 export const PUBLISHED_STATUS_OPTIONS = [

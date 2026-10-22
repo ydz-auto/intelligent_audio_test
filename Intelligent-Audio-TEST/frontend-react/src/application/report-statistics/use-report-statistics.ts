@@ -2,11 +2,12 @@
  * 报告统计分析（application 层；15_报告域.md §2.2，INT-381 返修补全）。
  * 维度 Select × 时间范围 → 执行统计分析 → 统计卡/表格/图表/异常识别。
  * INT-643 接线：数据源从 mock 常量切真实端点——
- *   GET /reports/tab-counts（报告数量卡）+ GET /reports（时间/任务类型/设备类型维度聚合、
+ *   GET /reports/tab-counts（报告数量卡）+ GET /reports（时间/设备类型维度聚合、
  *   case-averages 任务上下文取最近任务报告 task_id）
  *   + POST /reports/case-averages（评估维度/散点·热力图/指标·设备卡）。
  *   snake→camel 转换只在 infrastructure 层（reports-api），本层只见 camelCase 域数据；
  *   异常识别后端无接口 → 空态（不虚构）；统计导出见 use-statistics-export。
+ * INT-1297：移除「任务类型」统计维度（负责人 2026-10-22：前端不再区分 API测试/E2E测试）。
  * 对应报告管理功能设计文档.md §3.6.1/:318-340 + §5.2.4/:570-594。
  */
 import { useQuery } from '@tanstack/react-query'
@@ -61,16 +62,6 @@ export interface ReportStatisticsData {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
-
-const TASK_TYPE_LABELS: Record<string, string> = {
-  e2e: 'e2e 端到端',
-  api: 'api 接口',
-  mixed: 'mixed 混合',
-  task: '任务报告',
-  comparison: '对比报告',
-  secondary_comparison: '二次对比报告',
-  benchmark: 'Benchmark 报告',
-}
 
 const DEVICE_TYPE_LABELS: Record<string, string> = {
   smart_speaker: '智能音箱',
@@ -336,9 +327,6 @@ export function toReportStatisticsData(input: {
   switch (dimension) {
     case 'time':
       rows = timeRows(reports, range)
-      break
-    case 'task_type':
-      rows = groupedRows(reports, (r) => r.task_type ?? r.type, TASK_TYPE_LABELS)
       break
     case 'device_type':
       rows = groupedRows(reports, (r) => r.device_type, DEVICE_TYPE_LABELS)

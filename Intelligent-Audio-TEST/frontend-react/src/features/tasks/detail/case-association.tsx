@@ -1,8 +1,9 @@
 /**
- * 关联用例 / 关联设备（09_任务域.md §4.4，Card 内 Tabs）。
- * 页签「关联用例」（默认）/「关联{设备|API}」；工具行 = 视图切换（平铺/标签/分组）+ 状态筛选。
- * 平铺态 DataTable 列：用例名称/执行状态/评估状态/耗时/操作（移除用例）。
- * （轮次列 INT-932 P3-2 移除：TaskCaseBrief 无真实轮次数据，原 `第 n/2 轮` 为 mock 残留）
+ * 关联用例 / 关联资源（09_任务域.md §4.4，Card 内 Tabs）。
+ * 页签「关联用例」（默认）/「关联资源」（INT-1241 起中性文案，不再按任务类型定「关联API/关联设备」）；
+ * 工具行 = 视图切换（平铺/标签/分组）+ 状态筛选。
+ * 平铺态 DataTable 列：用例名称/执行状态/评估状态/耗时/轮次/操作（移除用例）。
+ * （轮次展示 INT-932 起以 TaskCaseBrief 真实 rounds 为准，不再用 mock「第 n/2 轮」）
  * 19_人工审核与AI复核交互设计.md §3 落位（INT-795）：
  * - 已复核用例行执行/评估徽章旁叠加「人工复核」Badge（TaskCaseBrief.reviewed 驱动）；
  * - 行尾「人工复核」钮（终态任务 + task.result.review）→ §3.2 单条复核弹窗（取该用例结果行）；
@@ -278,7 +279,8 @@ export function CaseAssociation({
       c.evaluation_status === status
   )
 
-  const resourceLabel = detail.device_types.includes('http_api') ? '关联API' : '关联设备'
+  // INT-1241：任务类型概念已移除（负责人 2026-10-22 口径）——关联资源区标题/空态统一中性「关联资源」
+  const resourceLabel = '关联资源'
   const isTerminal = TERMINAL_STATUSES.includes(detail.status)
   // 人工复核提交权限（task.result.review）；AI 复核发起/对话/保存结论/驳回（task.result.ai_review，INT-800 已注册）
   const canReview = hasPermission('task.result.review')
@@ -625,7 +627,7 @@ export function CaseAssociation({
             </div>
           ) : (
             <p className='text-muted-foreground py-6 text-center text-sm'>
-              暂无关联{detail.device_types.includes('http_api') ? 'API' : '设备'}
+              暂无关联资源
             </p>
           )
         ) : filtered.length === 0 ? (

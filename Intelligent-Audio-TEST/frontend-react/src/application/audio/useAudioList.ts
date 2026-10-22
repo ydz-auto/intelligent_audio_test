@@ -2,8 +2,9 @@
  * 音频管理页 query hooks（application 层；16_设备域.md §10 组件树落位）。
  * queryKey 前缀 ['audios'] / ['audio-tags'] / ['audio-folder-tree']；
  * 增删改/批量/URL导入后 invalidate 自动刷新列表与统计。
- * INT-645 已切真实后端（audios-api 经 client.ts）；列表当前仍前端过滤分页
- * （§5.2 现接口支持分页/facet，URL 态化后传参后端）。
+ * INT-645 已切真实后端（audios-api 经 client.ts）。INT-1216：列表改服务端分页——
+ * 页面按 page/perPage + scalar facet 服务端过滤；标签 OR 模式后端不表达
+ * （GET tags 参数 422 / POST 仅 AND），OR 时置 allRows 拉全量行客户端过滤。
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -22,12 +23,62 @@ import {
 } from '@/infrastructure/api/audios-api'
 import type { AudioAsset } from '@/domain/models/audio'
 
-/** 音频列表（含 data.stats；列表/统计/批量浮条共用） */
-export function useAudioList() {
+/** 全量行单次拉取上限（仅用于需要跨页完整行集的场景：OR 标签客户端过滤 / 文件夹视图 / 批量标注文件名匹配） */
+const FETCH_ALL_PER_PAGE = 10_000
+
+export interface AudioListQueryOptions {
+  page?: number
+  perPage?: number
+  search?: string
+  format?: string | null
+  audioType?: string | null
+  sampleRate?: string | null
+  duration?: 'short' | 'medium' | 'long' | null
+  tags?: string[]
+  tagMode?: 'or' | 'and'
+  /** 跨页完整行集（OR 标签客户端过滤 / 文件夹视图 / 批量标注匹配）；置 true 时按 page=1&per_page=全部 拉取 */
+  allRows?: boolean
+  /** 查询启用（批量标注弹窗懒加载，避免页面常驻时多拉一份全量） */
+  enabled?: boolean
+}
+
+/** 音频列表（含 data.stats；列表/统计/批量浮条共用；INT-1216 服务端分页） */
+export function useAudioList(options: AudioListQueryOptions = {}) {
+  const allRows = options.allRows ?? false
+  const tags = options.tags && options.tags.length > 0 ? options.tags : undefined
+  // 后端仅 AND 标签语义；OR 标签由页面客户端过滤（allRows 全量行）
+  const tagsServerSide = Boolean(tags) && options.tagMode === 'and'
+  const page = allRows ? 1 : (options.page ?? 1)
+  const perPage = allRows ? FETCH_ALL_PER_PAGE : (options.perPage ?? 20)
+
   return useQuery({
-    queryKey: ['audios'],
-    queryFn: fetchAudios,
+    queryKey: [
+      'audios',
+      {
+        page,
+        perPage,
+        keyword: options.search || undefined,
+        format: options.format ?? undefined,
+        audioType: options.audioType ?? undefined,
+        sampleRate: options.sampleRate ? Number(options.sampleRate) : undefined,
+        duration: options.duration ?? undefined,
+        tags: tagsServerSide ? tags : undefined,
+      },
+    ],
+    queryFn: () =>
+      fetchAudios({
+        page,
+        perPage,
+        keyword: options.search || undefined,
+        format: options.format ?? undefined,
+        audioType: options.audioType ?? undefined,
+        sampleRate: options.sampleRate ? Number(options.sampleRate) : undefined,
+        duration: options.duration ?? undefined,
+        tags: tagsServerSide ? tags : undefined,
+      }),
+    enabled: options.enabled,
     staleTime: 30_000,
+    placeholderData: (prev) => prev,
   })
 }
 

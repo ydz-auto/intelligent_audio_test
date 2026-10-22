@@ -118,7 +118,11 @@ describe('algorithm-config-api（真实端点接线）', () => {
     // P3-1（INT-1319）：后端无 case_count → 不再在这里逐算法聚合（列表首屏先渲染），
     // caseCount 保持 null 待 useAlgorithmCaseCounts 异步补齐
     const list = await fetchAlgorithmDefinitions()
-    expect(mockRequest).toHaveBeenCalledWith('GET', '/algorithm/definitions')
+    // INT-1225：/rankings 公开页算法网格同源消费 → 匿名 401 不触发 sessionExpired
+    expect(mockRequest).toHaveBeenCalledWith('GET', '/algorithm/definitions', undefined, {
+      skipAuthRedirect: true,
+    })
+    // P3-1（INT-1319）：列表项无 case_count → 不在列表函数内聚合（首屏先渲染）
     expect(mockApiClientGet).not.toHaveBeenCalled()
     expect(list).toHaveLength(1)
     expect(list[0].type).toBe('asr-v3')

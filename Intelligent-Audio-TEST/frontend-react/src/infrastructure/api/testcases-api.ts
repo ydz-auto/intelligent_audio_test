@@ -18,6 +18,11 @@ export interface TestCaseListQuery {
   perPage?: number
   search?: string
   groupId?: string | null
+  /**
+   * 分组**名**（仅 POST /testcases/ids 消费：后端 fetch_case_ids 只认 group 名，
+   * INT-1267 审计 P1；GET /testcases 是 group_id，此键在 fetchTestCases 显式参数构建中不生效）
+   */
+  group?: string | null
   /** 标签筛选（INT-592 单选：后端 tag 参数为单值） */
   tag?: string | null
   dimensionId?: number | null
@@ -74,9 +79,29 @@ export async function fetchTestCases(
   }
 }
 
-/** 分组视图数据（grouped-case-list 消费：分组卡 + 组内用例卡；客户端按 groupId 聚合）。
- *  INT-1284：首屏单页（LIST_PAGE_SIZE）只覆盖前部分组，其余分组用例由分组卡展开时按分组
- *  懒加载（use-group-test-cases）补齐——本函数保持单页语义，不在此循环拉全量。 */
+/** 组内懒加载每页条数（V9.7.10 testCaseStore DEFAULT_GROUP_PAGE_SIZE=20 语义平移，INT-1267） */
+export const GROUP_PAGE_SIZE = 20
+
+/**
+ * 组内用例按 group_id 懒加载（Vue testCaseStore.fetchCasesByGroup 对位，INT-1267）。
+ * 分组卡头计数以 /groups testCaseCount 为准；组内用例展开时才按组拉取，
+ * 「加载更多」页续（page/per_page 走 fetchTestCases 契约）。
+ */
+export async function fetchTestCasesByGroup(
+  groupId: string,
+  filters: Omit<TestCaseListQuery, 'groupId' | 'page' | 'perPage' | 'view'>,
+  page = 1,
+  perPage = GROUP_PAGE_SIZE
+): Promise<TestCaseListResult> {
+  const result = await fetchTestCases({ ...filters, groupId, page, perPage })
+  // 未分组虚拟组契约：fetchTestCases 不携带 group_id 拉大页后前端过滤，total 是全部用例数而非未分组数。
+  // INT-1267 兜底——/groups 无「未分组」真实条目时，虚拟组计数以已加载未分组条数为准（不显示错误的全库总数）。
+  return groupId === '__ungrouped__'
+    ? { items: result.items, total: result.items.length }
+    : result
+}
+
+/** 分组视图数据（grouped-case-list 消费：分组卡 + 组内用例卡；客户端按 groupId 聚合） */
 export async function fetchGroupedTestCases(
   query: TestCaseListQuery
 ): Promise<TestCaseListResult> {

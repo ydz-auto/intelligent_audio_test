@@ -24,12 +24,13 @@ import {
   updateSplMapping,
 } from '@/infrastructure/api/spl-api'
 
-/** 物理域映射列表（§4.2；GET /spl） */
-export function useSplMappings() {
+/** 物理域映射列表（§4.2；GET /spl；enabled=false 时不下发请求，INT-1215 权限守卫后置防御） */
+export function useSplMappings(enabled: boolean = true) {
   return useQuery({
     queryKey: ['spl'],
     queryFn: fetchSplMappings,
     staleTime: 30_000,
+    enabled,
   })
 }
 
@@ -43,21 +44,23 @@ export function useSplMappingsByDevice(deviceId: number | null) {
   })
 }
 
-/** 物理域统计（§4.1.2；GET /spl/stats） */
-export function useSplStats() {
+/** 物理域统计（§4.1.2；GET /spl/stats；enabled=false 时不下发请求，INT-1215 权限守卫后置防御） */
+export function useSplStats(enabled: boolean = true) {
   return useQuery({
     queryKey: ['spl-stats'],
     queryFn: fetchSplStats,
     staleTime: 30_000,
+    enabled,
   })
 }
 
-/** 关联播放设备 facet 选项（§4.1.1；GET /playback-devices） */
-export function usePlaybackDeviceRefs() {
+/** 关联播放设备 facet 选项（§4.1.1；GET /playback-devices；enabled=false 时不下发请求，INT-1215 权限守卫后置防御） */
+export function usePlaybackDeviceRefs(enabled: boolean = true) {
   return useQuery({
     queryKey: ['playback-device-refs'],
     queryFn: fetchPlaybackDeviceRefs,
     staleTime: 5 * 60_000,
+    enabled,
   })
 }
 

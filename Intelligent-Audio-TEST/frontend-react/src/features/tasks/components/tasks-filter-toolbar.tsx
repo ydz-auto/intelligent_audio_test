@@ -3,7 +3,8 @@
  * `bg-card/50 rounded-lg border p-2.5 sm:p-3` 容器；三行结构——
  * 筛选行（primaryFilters 网格）→ stats 徽章行 + 动作行 → 高级筛选展开区）。
  * 表单模式：点「查询」才提交（onSearch 显式查询，对齐 usage-logs 行为）。
- * 页签裁剪：评估状态仅日常；任务类型/发布状态仅已发布；合并状态仅合并。
+ * 页签裁剪：评估状态仅日常；发布状态仅已发布；合并状态仅合并。
+ * 任务类型 facet 已移除（INT-1241，负责人 2026-10-22：前端不再区分 API测试/端到端测试）。
  */
 import {
   CalendarDays,
@@ -40,7 +41,6 @@ import {
   EVALUATION_STATUS_OPTIONS,
   EXECUTION_STATUS_OPTIONS,
   PUBLISHED_STATUS_OPTIONS,
-  PUBLISHED_TYPE_OPTIONS,
   TASK_TAG_OPTIONS,
   TIME_RANGE_OPTIONS,
   type TasksTabKey,
@@ -308,14 +308,6 @@ export function TasksFilterToolbar({
           options={TIME_RANGE_OPTIONS}
           onChange={(timeRange) => update({ timeRange })}
         />
-        {isPublished && (
-          <SingleFacet
-            label='任务类型'
-            value={filters.type}
-            options={PUBLISHED_TYPE_OPTIONS}
-            onChange={(v) => update({ type: v })}
-          />
-        )}
         {isPublished && (
           <SingleFacet
             label='发布状态'

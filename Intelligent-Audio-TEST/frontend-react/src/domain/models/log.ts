@@ -130,3 +130,17 @@ export type LogRealtimeConfig = {
   /** 新日志计数 toast 开关 */
   notifyNewLogs: boolean
 }
+
+/** 日志模块选项（§4.2 模块 Select；值 = 后端 Log.module 原值；INT-1298 起移除 E2E 概念） */
+export const LOG_MODULE_OPTIONS = [
+  { value: 'api', label: 'API模块' },
+  { value: 'device', label: '设备管理' },
+] as const
+
+/** 标记颜色选项（§4.2 标记 Select + §4.5 批量标记） */
+export const LOG_MARK_OPTIONS = [
+  { value: 'yellow', label: '黄色' },
+  { value: 'red', label: '红色' },
+  { value: 'green', label: '绿色' },
+  { value: 'blue', label: '蓝色' },
+] as const

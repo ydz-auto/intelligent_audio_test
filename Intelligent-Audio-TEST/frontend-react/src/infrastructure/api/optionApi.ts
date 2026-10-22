@@ -12,9 +12,17 @@ import { apiClient } from '@/infrastructure/api/client'
 
 export const SYSTEM_OPTIONS_QUERY_KEY = ['system-options'] as const
 
-/** 全量选项拉取（GET /api/option/；信封解包后 data 即 KV Record） */
+/**
+ * 全量选项拉取（GET /api/option/；信封解包后 data 即 KV Record）。
+ * skipAuthRedirect（INT-1225）：公开页站头（PublicHeader/AppHeader）经 useNotifications
+ * 拉取站点公告，匿名 401 不触发 sessionExpired 整页跳登录——公开页走各自降级态；
+ * 系统设置页等登录态页面会话过期仍由其余鉴权查询触发登出跳转。
+ */
 export async function getSystemOptions(): Promise<SystemOptions> {
-  const data = await apiClient.get<SystemOptions>('/option/', { rootPath: true })
+  const data = await apiClient.get<SystemOptions>('/option/', {
+    rootPath: true,
+    skipAuthRedirect: true,
+  })
   return data ?? {}
 }
 

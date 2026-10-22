@@ -28,6 +28,7 @@ import { SectionPageLayout } from '@/components/layout/components/section-page-l
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { usePermissions } from '@/application/hooks/use-permissions'
+import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
 import {
   useApiDevices,
   useAlarmRules,
@@ -126,6 +127,16 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
   )
   const canGroupManage = hasPermission('device:read')
   const canLabManage = hasPermission('device:read')
+
+  /** 支持算法 value→中文名映射（照 V9.7.10 getAlgorithmTypeName；INT-1215 无裸枚举） */
+  const { options: algorithmOptions } = useAlgorithmOptions()
+  const algorithmNameMap = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const opt of algorithmOptions) {
+      if (opt.value) map[opt.value] = opt.name
+    }
+    return map
+  }, [algorithmOptions])
 
   const testQuery = useTestDevices()
   const playbackQuery = usePlaybackDevices()
@@ -664,6 +675,7 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
                   selectedIds={selectedIds}
                   batchMode={toggles.batchMode}
                   sortOrder={sortOrder}
+                  algorithmNameMap={algorithmNameMap}
                   onSortChange={() => setSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
                   onToggleSelect={toggleSelect}
                   onToggleSelectAll={toggleSelectAll}
@@ -756,6 +768,7 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
         onOpenChange={(open) => setDetailState((prev) => ({ ...prev, open, device: open ? prev.device : null }))}
         onEdit={handleDetailEdit}
         canUpdate={canUpdate}
+        algorithmNameMap={algorithmNameMap}
       />
       <DeviceGroupManagerDialog
         open={groupManagerOpen}

@@ -4,7 +4,7 @@
  * INT-643 接线：POST /reports/case-averages 响应域模型（snake→camel 转换只在 infrastructure 层，
  * 契约对位 api_gateway report_bp.py:106 get_case_averages_by_filters + report_service stats_mixin）。
  */
-export type StatisticDimension = 'time' | 'task_type' | 'device_type' | 'metric'
+export type StatisticDimension = 'time' | 'device_type' | 'metric'
 
 /** 用例平均值项（case-averages overall_averages 项：{id, metric, value}） */
 export interface ReportCaseAverageMetric {

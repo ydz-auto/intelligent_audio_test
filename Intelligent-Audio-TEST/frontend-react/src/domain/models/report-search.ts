@@ -26,8 +26,6 @@ export type ReportsSearch = {
   timeRange?: ReportTimeRange
   startTime?: string
   endTime?: string
-  /** 高级搜索：任务类型（e2e/api/mixed，§2 :186） */
-  taskType?: string
   /** 高级搜索：设备类型（§2 :187） */
   deviceType?: string
   /** 高级搜索：创建者（§2 :188） */

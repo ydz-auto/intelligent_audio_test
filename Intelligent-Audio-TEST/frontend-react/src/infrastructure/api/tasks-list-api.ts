@@ -85,11 +85,10 @@ export async function fetchTaskList(
   return items
 }
 
-/** 已发布任务列表（keyword/type/status 服务端筛选；per_page 默认 100） */
+/** 已发布任务列表（keyword/status 服务端筛选；per_page 默认 100；type 维度已移除——INT-1241） */
 export async function fetchPublishedTaskList(
   query: {
     search?: string
-    type?: string | null
     ptStatus?: string | null
     page?: number
     perPage?: number
@@ -100,7 +99,6 @@ export async function fetchPublishedTaskList(
     per_page: query.perPage ?? 100,
   }
   if (query.search) params.keyword = query.search
-  if (query.type && query.type !== 'all') params.type = query.type
   if (query.ptStatus && query.ptStatus !== 'all') params.status = query.ptStatus
 
   const dto = await request<PaginatedDto<PublishedTaskItemDto>>(
