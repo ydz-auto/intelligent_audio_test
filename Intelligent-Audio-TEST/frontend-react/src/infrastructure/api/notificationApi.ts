@@ -5,8 +5,16 @@
  *   infrastructure/realtime/sse.ts 的 subscribeSse（断线指数退避重连已有）。
  * - 公告页签 = 站点公告（system_options.site.notice，option API 读取，
  *   复用 optionApi.getSystemOptions；未配置为空态）。
- * - 任务名/报告名：task_progress → GET /tasks/{id}，report_generated →
- *   GET /reports/{id}（name 回退 task_name）；解析失败降级「任务 #id / 报告 #id」。
+ * - 任务名/报告名：task_progress → 最近任务列表快照（GET /tasks），report_generated →
+ *   最近报告列表快照（GET /reports，name 回退 task_name）；快照未命中降级
+ *   「任务 #id / 报告 #id」。
+ *
+ * INT-1227（缺陷·React基座）：真实库栈 SSE 会转发 5000 段开发栈经共享 Redis
+ * pub/sub 通道发布的测试事件，其 task_id/report_id 在主库不存在——旧实现对每个
+ * 此类事件发 GET /tasks/{id} / /reports/{id}，浏览器记网络 404 SEVERE（「控制台
+ * 报错零容忍」红线）。修复：名称解析前先以「最近列表快照」判存在性——快照命中用
+ * 真实名；未命中视为不存在，降级「任务 #id / 报告 #id」且不发详情请求（列表查询
+ * 本身不会 404，控制台零 SEVERE）。环境层根治（隔离 pub/sub 通道前缀）另开解阻卡。
  */
 import { mapSseEventToNotification } from '@/infrastructure/adapters/notificationAdapter'
 import {
@@ -15,8 +23,8 @@ import {
   type SseEvent,
   type SseStatus,
 } from '@/infrastructure/realtime/sse'
-import { fetchReportDetail } from '@/infrastructure/api/reports-api'
-import { fetchTaskDetail } from '@/infrastructure/api/tasks-list-api'
+import { fetchReportList } from '@/infrastructure/api/reports-api'
+import { fetchTaskList } from '@/infrastructure/api/tasks-list-api'
 import type { AppNotification } from '@/domain/models/notification'
 
 /** 通知中心订阅通道（TASK + REPORT；CASE/DEVICE/CONFIG 后端暂未映射推送） */
@@ -61,38 +69,89 @@ function fallbackReportName(reportId: string): string {
   return `报告 #${reportId}`
 }
 
-/** 任务名解析：GET /tasks/{id} → name；失败降级「任务 #id」 */
-export async function resolveTaskName(taskId: string): Promise<string> {
-  const cached = taskNameCache.get(taskId)
-  if (cached) return cached
-  try {
-    const detail = await fetchTaskDetail(Number(taskId))
-    const name = detail?.name?.trim()
-    const resolved = name || fallbackTaskName(taskId)
-    taskNameCache.set(taskId, resolved)
-    return resolved
-  } catch {
-    const fallback = fallbackTaskName(taskId)
-    taskNameCache.set(taskId, fallback)
-    return fallback
+/** 最近资源列表快照（id → name），用于名称解析前判存在性（INT-1227）。
+ * 快照带 TTL：会话内新建的任务/报告也能在 miss 后补进；拉取失败保留旧快照，
+ * 本次按未命中降级、下次解析重试。 */
+const NAME_SNAPSHOT_TTL_MS = 60_000
+
+function createNameSnapshotLoader(
+  load: () => Promise<Array<{ id: number; name: string }>>
+): () => Promise<Map<string, string> | null> {
+  let snapshot: Map<string, string> | null = null
+  let snapshotAt = 0
+  let loading: Promise<Map<string, string> | null> | null = null
+
+  return async function loadSnapshot(): Promise<Map<string, string> | null> {
+    if (snapshot && Date.now() - snapshotAt < NAME_SNAPSHOT_TTL_MS) {
+      return snapshot
+    }
+    if (loading) return loading
+    loading = (async () => {
+      try {
+        const items = await load()
+        const map = new Map<string, string>()
+        for (const item of items) {
+          if (item.id != null) map.set(String(item.id), item.name.trim())
+        }
+        snapshot = map
+        snapshotAt = Date.now()
+      } catch {
+        // 列表拉取失败：保留旧快照（若有），本次按未命中降级
+      } finally {
+        loading = null
+      }
+      return snapshot
+    })()
+    return loading
   }
 }
 
-/** 报告名解析：GET /reports/{id} → name（回退 task_name）；失败降级「报告 #id」 */
+/** 最近任务名快照（created_at 倒序前 100 条；活跃/执行中任务必在其中） */
+const loadTaskNames = createNameSnapshotLoader(async () => {
+  const { items } = await fetchTaskList({ perPage: 100 })
+  return items.map((item) => ({ id: item.id, name: item.name }))
+})
+
+/** 最近报告名快照（created_at 倒序前 100 条；name 空回退 task_name） */
+const loadReportNames = createNameSnapshotLoader(async () => {
+  const data = await fetchReportList({
+    page: 1,
+    per_page: 100,
+    sort_by: 'created_at',
+    order: 'desc',
+    favorite: false,
+    deleted: false,
+  })
+  return data.items.map((item) => ({
+    id: item.id,
+    name: item.name.trim() || item.task_name.trim(),
+  }))
+})
+
+/**
+ * 任务名解析（INT-1227）：以最近任务列表快照判存在性，命中用真实名；未命中
+ * （环境串扰引用不存在的任务 / 快照外旧任务）降级「任务 #id」——不再发
+ * GET /tasks/{id}，杜绝 404 SEVERE 控制台报错。
+ */
+export async function resolveTaskName(taskId: string): Promise<string> {
+  const cached = taskNameCache.get(taskId)
+  if (cached) return cached
+  const snapshot = await loadTaskNames()
+  const name = snapshot?.get(taskId)
+  const resolved = name || fallbackTaskName(taskId)
+  taskNameCache.set(taskId, resolved)
+  return resolved
+}
+
+/** 报告名解析（INT-1227 同款防 404）：最近报告列表快照命中用真实名，未命中降级「报告 #id」 */
 export async function resolveReportName(reportId: string): Promise<string> {
   const cached = reportNameCache.get(reportId)
   if (cached) return cached
-  try {
-    const detail = await fetchReportDetail(Number(reportId))
-    const name = detail?.name?.trim() || detail?.task_name?.trim()
-    const resolved = name || fallbackReportName(reportId)
-    reportNameCache.set(reportId, resolved)
-    return resolved
-  } catch {
-    const fallback = fallbackReportName(reportId)
-    reportNameCache.set(reportId, fallback)
-    return fallback
-  }
+  const snapshot = await loadReportNames()
+  const name = snapshot?.get(reportId)
+  const resolved = name || fallbackReportName(reportId)
+  reportNameCache.set(reportId, resolved)
+  return resolved
 }
 
 /**
