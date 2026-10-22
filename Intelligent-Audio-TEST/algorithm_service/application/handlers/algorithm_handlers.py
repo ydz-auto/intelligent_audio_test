@@ -108,15 +108,17 @@ class AlgorithmCommandHandler:
             name=cmd.name,
             description=cmd.description,
             algorithm_type=cmd.algorithm_type,
+            icon=cmd.icon,
+            display_order=cmd.display_order if cmd.display_order is not None else 0,
             deleted=False,
         )
         return algorithm_group_repository.add(aggregate)
 
     def handle_update_group(self, cmd: UpdateAlgorithmGroupCommand) -> None:
-        """处理更新算法分组命令。
+        """处理更新算法分组命令（PATCH 语义：icon/display_order 为 None 不改现值）。
 
         - 加载已有聚合根
-        - 更新可写字段（name / description）
+        - 更新可写字段（name / description，icon/display_order 仅非 None 覆盖）
         - 调用 repository.save 持久化
         """
         aggregate = algorithm_group_repository.get_by_id(cmd.id)
@@ -124,6 +126,10 @@ class AlgorithmCommandHandler:
             raise ValueError(f"算法分组 id={cmd.id} 不存在，无法更新")
         aggregate.name = cmd.name
         aggregate.description = cmd.description
+        if cmd.icon is not None:
+            aggregate.icon = cmd.icon
+        if cmd.display_order is not None:
+            aggregate.display_order = cmd.display_order
         algorithm_group_repository.save(aggregate)
 
     def handle_delete_group(self, cmd: DeleteAlgorithmGroupCommand) -> bool:

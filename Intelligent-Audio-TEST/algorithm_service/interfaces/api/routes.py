@@ -66,11 +66,15 @@ class CreateGroupRequest(BaseModel):
     name: str
     description: Optional[str] = None
     algorithm_type: Optional[str] = None
+    icon: Optional[str] = None
+    display_order: Optional[int] = 0
 
 
 class UpdateGroupRequest(BaseModel):
     name: str
     description: Optional[str] = None
+    icon: Optional[str] = None
+    display_order: Optional[int] = None
 
 
 class CreateDefinitionRequest(BaseModel):
@@ -92,6 +96,8 @@ def _group_to_dict(aggregate) -> Dict[str, Any]:
         "name": aggregate.name,
         "description": aggregate.description,
         "algorithm_type": aggregate.algorithm_type,
+        "icon": aggregate.icon,
+        "display_order": aggregate.display_order,
     }
 
 
@@ -114,13 +120,15 @@ def _definition_to_dict(aggregate) -> Dict[str, Any]:
 def create_group(body: CreateGroupRequest):
     """创建算法组
 
-    Body: {"name": str, "description": str?, "algorithm_type": str?}
+    Body: {"name": str, "description": str?, "algorithm_type": str?, "icon": str?, "display_order": int?}
     """
     try:
         cmd = CreateAlgorithmGroupCommand(
             name=body.name,
             description=body.description,
             algorithm_type=body.algorithm_type,
+            icon=body.icon,
+            display_order=body.display_order if body.display_order is not None else 0,
         )
         new_id = _command_handler.handle_create_group(cmd)
         return {"success": True, "message": "ok", "data": {"id": new_id, "name": cmd.name}}
@@ -165,13 +173,15 @@ def get_group(group_id: int):
 def update_group(group_id: int, body: UpdateGroupRequest):
     """更新算法组
 
-    Body: {"name": str, "description": str?}
+    Body: {"name": str, "description": str?, "icon": str?, "display_order": int?}
     """
     try:
         cmd = UpdateAlgorithmGroupCommand(
             id=group_id,
             name=body.name,
             description=body.description,
+            icon=body.icon,
+            display_order=body.display_order,
         )
         _command_handler.handle_update_group(cmd)
         return {"success": True, "message": "ok", "data": {"id": group_id, "updated": True}}

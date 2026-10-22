@@ -225,6 +225,8 @@ class _AlgorithmDefinitionMixin(_ParamBaseMixin):
                 name=data.get("name", ""),
                 description=data.get("description"),
                 algorithm_type=data.get("algorithm_type"),
+                icon=data.get("icon"),
+                display_order=data.get("display_order", 0),
             )
             new_id = self.command_handler.handle_create_group(cmd)
             self._invalidate_cache()
@@ -244,6 +246,8 @@ class _AlgorithmDefinitionMixin(_ParamBaseMixin):
                 id=int(group_id),
                 name=data.get("name", ""),
                 description=data.get("description"),
+                icon=data.get("icon"),
+                display_order=data.get("display_order"),
             )
             self.command_handler.handle_update_group(cmd)
             self._invalidate_cache()
