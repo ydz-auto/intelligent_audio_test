@@ -216,6 +216,14 @@ export interface PublishedTaskExecutionItem {
   completed_at: string | null
 }
 
+/** 已发布任务执行结果（published_task.py PublishedTaskExecuteData；POST /published-tasks/{id}/execute 创建出的日常任务） */
+export interface PublishedTaskExecuteResult {
+  task_id: number
+  task_name: string
+  published_task_id: number
+  published_task_version: number
+}
+
 // ---------------------------------------------------------------------------
 // 冻结快照（§5.13 冻结任务详情 / 冻结报告数据源）
 // `PublishedTaskDetail.snapshot_config` / `report_snapshot` 为后端不透明明文

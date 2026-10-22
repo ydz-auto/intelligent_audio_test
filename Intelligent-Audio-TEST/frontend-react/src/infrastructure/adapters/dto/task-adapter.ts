@@ -9,6 +9,7 @@ import type { CherryPickContainer } from '@/domain/models/cherryPick'
 import type {
   CherryPickTask,
   PublishedTaskDetail,
+  PublishedTaskExecuteResult,
   PublishedTaskItem,
   TaskDetailData,
   TaskListItem,
@@ -19,6 +20,7 @@ import type {
 import type {
   PaginatedDto,
   PublishedTaskDetailDto,
+  PublishedTaskExecuteResultDto,
   PublishedTaskItemDto,
   TaskDetailDto,
   TaskListItemDto,
@@ -130,6 +132,13 @@ export function toPublishedTaskDetail(dto: PublishedTaskDetailDto): PublishedTas
     ...dto,
     versions: (dto.versions ?? []).map(toPublishedTaskItem),
   }
+}
+
+/** 已发布任务执行结果（POST execute → PublishedTaskExecuteResult；纯透传） */
+export function toPublishedTaskExecuteResult(
+  dto: PublishedTaskExecuteResultDto
+): PublishedTaskExecuteResult {
+  return { ...dto }
 }
 
 /** 挑选合并任务（GET /tasks?cherry_pick=true 行 → CherryPickTask，INT-339 §8 契约） */

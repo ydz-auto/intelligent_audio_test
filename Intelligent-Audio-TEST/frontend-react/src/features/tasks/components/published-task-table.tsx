@@ -7,8 +7,11 @@
  * 数据源：列表 fetchPublishedTaskList（GET /published-tasks）；展开版本链行
  * fetchPublishedTaskDetail（GET /published-tasks/{id}）真实详情。
  */
+import { useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
 import { ChevronDown, ChevronRight, Package, RefreshCw, Trophy } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { Badge } from '@/components/ui/badge'
@@ -32,6 +35,24 @@ import { readReportSnapshot, readReportSummary, readTaskSnapshot } from '@/domai
 import { formatDateTime, getTaskTypeLabel } from '@/features/tasks/constants'
 import { TaskSnapshotDialog } from '@/features/tasks/components/task-snapshot-dialog'
 import { ReportSnapshotDialog } from '@/features/tasks/components/report-snapshot-dialog'
+import { ConfirmDialog } from '@/components/confirm-dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { ApiError } from '@/infrastructure/api/api-error'
+import {
+  archivePublishedTask,
+  createPublishedTaskVersion,
+  executePublishedTask,
+  renamePublishedTask,
+} from '@/infrastructure/api/tasks-published-actions-api'
 
 const STATUS_META: Record<string, { label: string; variant: 'success' | 'neutral' }> = {
   published: { label: '已发布', variant: 'success' },
@@ -197,6 +218,78 @@ function PublishedExpandRow({
   )
 }
 
+/** 错误 → 可展示文案（复用 use-task-actions 同款收敛） */
+function toErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) return error.userMessage || error.message || fallback
+  return fallback
+}
+
+/** 已发布任务单字段命名弹窗（§5.5 新版本 / 重命名共用：Dialog max-w-sm 单 Input） */
+function PublishedTaskNameDialog({
+  open,
+  title,
+  label,
+  placeholder,
+  hint,
+  value,
+  onChange,
+  pending,
+  confirmDisabled,
+  confirmText,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean
+  title: string
+  label: string
+  placeholder?: string
+  hint?: string
+  value: string
+  onChange: (value: string) => void
+  pending?: boolean
+  confirmDisabled?: boolean
+  confirmText?: string
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next && !pending) onClose()
+      }}
+    >
+      <DialogContent className='sm:max-w-sm'>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          {hint && <DialogDescription>{hint}</DialogDescription>}
+        </DialogHeader>
+        <div className='flex flex-col gap-1.5'>
+          <Label className='text-sm'>{label}</Label>
+          <Input
+            value={value}
+            maxLength={255}
+            placeholder={placeholder}
+            autoFocus
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !pending && !confirmDisabled) onConfirm()
+            }}
+          />
+        </div>
+        <DialogFooter>
+          <Button variant='outline' disabled={pending} onClick={onClose}>
+            取消
+          </Button>
+          <Button disabled={pending || confirmDisabled} onClick={() => void onConfirm()}>
+            {pending ? '提交中...' : (confirmText ?? '确定')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function PublishedTaskTable({
   tasks,
   loading,
@@ -210,12 +303,28 @@ export function PublishedTaskTable({
   onRetry?: () => void
 }) {
   const { hasPermission } = usePermissions()
+  const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [snapshotOpen, setSnapshotOpen] = useState(false)
   const [reportOpen, setReportOpen] = useState(false)
   const [detail, setDetail] = useState<PublishedTaskDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
+  // 已发布任务行操作（INT-1287 接线：执行/新版本/重命名/归档发真实请求 + 确认弹窗）
+  const [executeTask, setExecuteTask] = useState<PublishedTaskItem | null>(null)
+  const [executing, setExecuting] = useState(false)
+  const [versionTask, setVersionTask] = useState<PublishedTaskItem | null>(null)
+  const [versionName, setVersionName] = useState('')
+  const [creatingVersion, setCreatingVersion] = useState(false)
+  const [renameTask, setRenameTask] = useState<PublishedTaskItem | null>(null)
+  const [renameName, setRenameName] = useState('')
+  const [renaming, setRenaming] = useState(false)
+  const [archiveTask, setArchiveTask] = useState<PublishedTaskItem | null>(null)
+  const [archiving, setArchiving] = useState(false)
+
+  /** 行操作任一进行中（对齐旧 Vue published.actionLoading 置灰动作钮） */
+  const actionLoading = executing || creatingVersion || renaming || archiving
 
   // 展开版本链：取 GET /published-tasks/{id} 真实详情（版本历史/冻结快照/执行记录）
   useEffect(() => {
@@ -242,6 +351,77 @@ export function PublishedTaskTable({
       cancelled = true
     }
   }, [expandedId])
+
+  /** 列表/详情前缀统一失效（动作后刷新当前筛选态列表与计数） */
+  const invalidateTasks = () => {
+    void queryClient.invalidateQueries({ queryKey: ['tasks'] })
+  }
+
+  /** §5.4 执行已发布任务：确认 → POST execute → toast + 跳转任务详情 + 刷新 */
+  const handleExecuteConfirm = async () => {
+    if (!executeTask) return
+    setExecuting(true)
+    try {
+      const result = await executePublishedTask(executeTask.id)
+      setExecuteTask(null)
+      toast.success(`日常任务已创建（ID: ${result.task_id}），即将前往任务详情`)
+      invalidateTasks()
+      void navigate({ to: '/tasks/$tab', params: { tab: String(result.task_id) } })
+    } catch (error) {
+      toast.error(toErrorMessage(error, '创建日常任务失败'))
+    } finally {
+      setExecuting(false)
+    }
+  }
+
+  /** §5.5 创建新版本：Dialog 单字段（留空沿用当前名）→ POST versions → toast + 刷新 */
+  const handleCreateVersionConfirm = async () => {
+    if (!versionTask) return
+    setCreatingVersion(true)
+    try {
+      await createPublishedTaskVersion(versionTask.id, versionName)
+      setVersionTask(null)
+      setVersionName('')
+      toast.success('新版本创建成功')
+      invalidateTasks()
+    } catch (error) {
+      toast.error(toErrorMessage(error, '创建新版本失败'))
+    } finally {
+      setCreatingVersion(false)
+    }
+  }
+
+  /** §5.5 重命名（作用于整个版本链）：PUT /published-tasks/{id} → toast + 刷新 */
+  const handleRenameConfirm = async () => {
+    if (!renameTask) return
+    setRenaming(true)
+    try {
+      await renamePublishedTask(renameTask.id, renameName.trim())
+      setRenameTask(null)
+      toast.success('任务名称已更新')
+      invalidateTasks()
+    } catch (error) {
+      toast.error(toErrorMessage(error, '重命名失败'))
+    } finally {
+      setRenaming(false)
+    }
+  }
+
+  /** 归档已发布任务（对齐旧 Vue 文案）：确认 → POST archive → toast + 刷新 */
+  const handleArchiveConfirm = async () => {
+    if (!archiveTask) return
+    setArchiving(true)
+    try {
+      await archivePublishedTask(archiveTask.id)
+      setArchiveTask(null)
+      toast.success('任务已归档')
+      invalidateTasks()
+    } catch (error) {
+      toast.error(toErrorMessage(error, '归档失败'))
+    } finally {
+      setArchiving(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -329,6 +509,17 @@ export function PublishedTaskTable({
                     detailLoading={detailLoading}
                     detailError={detailError}
                     hasPermission={hasPermission}
+                    actionLoading={actionLoading}
+                    onExecute={() => setExecuteTask(task)}
+                    onNewVersion={() => {
+                      setVersionName('')
+                      setVersionTask(task)
+                    }}
+                    onRename={() => {
+                      setRenameName(task.name)
+                      setRenameTask(task)
+                    }}
+                    onArchive={() => setArchiveTask(task)}
                     onOpenSnapshot={() => setSnapshotOpen(true)}
                     onOpenReport={() => setReportOpen(true)}
                   />
@@ -353,6 +544,64 @@ export function PublishedTaskTable({
           />
         </>
       )}
+
+      {/* §5.4 执行确认（已发布）：按冻结快照创建日常任务 → 跳转任务详情 */}
+      <ConfirmDialog
+        open={executeTask != null}
+        onOpenChange={(open) => !open && !executing && setExecuteTask(null)}
+        title='执行此版本'
+        desc={
+          executeTask
+            ? `将按版本 v${executeTask.version} 的快照创建新的日常任务「${executeTask.name}」，创建后前往任务详情页。是否继续？`
+            : ''
+        }
+        confirmText='创建日常任务'
+        isLoading={executing}
+        handleConfirm={() => void handleExecuteConfirm()}
+      />
+      {/* §5.5 新版本：单字段命名弹窗（留空沿用当前版本名称） */}
+      <PublishedTaskNameDialog
+        open={versionTask != null}
+        title='新版本'
+        label='新版本名称'
+        placeholder={versionTask?.name}
+        hint='留空沿用当前版本名称'
+        value={versionName}
+        onChange={setVersionName}
+        pending={creatingVersion}
+        confirmDisabled={false}
+        onClose={() => setVersionTask(null)}
+        onConfirm={() => void handleCreateVersionConfirm()}
+      />
+      {/* §5.5 重命名：单字段命名弹窗（作用于整个版本链） */}
+      <PublishedTaskNameDialog
+        open={renameTask != null}
+        title='重命名'
+        label='新的任务名称'
+        placeholder={renameTask?.name}
+        hint='作用于整个版本链'
+        value={renameName}
+        onChange={setRenameName}
+        pending={renaming}
+        confirmDisabled={!renameName.trim()}
+        onClose={() => setRenameTask(null)}
+        onConfirm={() => void handleRenameConfirm()}
+      />
+      {/* 归档已发布任务（对齐旧 Vue 文案：归档后不可直接执行） */}
+      <ConfirmDialog
+        open={archiveTask != null}
+        onOpenChange={(open) => !open && !archiving && setArchiveTask(null)}
+        title='归档已发布任务'
+        desc={
+          archiveTask
+            ? `确定归档「${archiveTask.name}」v${archiveTask.version} 吗？归档后不可直接执行。`
+            : ''
+        }
+        confirmText='归档'
+        destructive
+        isLoading={archiving}
+        handleConfirm={() => void handleArchiveConfirm()}
+      />
     </>
   )
 }
@@ -366,6 +615,11 @@ function ExpandedRows({
   detailLoading,
   detailError,
   hasPermission,
+  actionLoading,
+  onExecute,
+  onNewVersion,
+  onRename,
+  onArchive,
   onOpenSnapshot,
   onOpenReport,
 }: {
@@ -377,6 +631,12 @@ function ExpandedRows({
   detailLoading: boolean
   detailError: string | null
   hasPermission: (permission: string) => boolean
+  /** 任一动作提交中：动作钮置灰（对齐旧 Vue published.actionLoading） */
+  actionLoading: boolean
+  onExecute: () => void
+  onNewVersion: () => void
+  onRename: () => void
+  onArchive: () => void
   onOpenSnapshot: () => void
   onOpenReport: () => void
 }) {
@@ -466,8 +726,8 @@ function ExpandedRows({
                       size='sm'
                       variant='default'
                       className='h-7'
-                      disabled={archived}
-                      onClick={() => {}}
+                      disabled={archived || actionLoading}
+                      onClick={onExecute}
                     >
                       执行
                     </Button>
@@ -482,12 +742,24 @@ function ExpandedRows({
               版本
             </Button>
             {hasPermission('published_task:version') && (
-              <Button size='sm' variant='outline' className='h-7' onClick={() => {}}>
+              <Button
+                size='sm'
+                variant='outline'
+                className='h-7'
+                disabled={actionLoading}
+                onClick={onNewVersion}
+              >
                 新版本
               </Button>
             )}
             {hasPermission('published_task:read') && (
-              <Button size='sm' variant='ghost' className='h-7' onClick={() => {}}>
+              <Button
+                size='sm'
+                variant='ghost'
+                className='h-7'
+                disabled={actionLoading}
+                onClick={onRename}
+              >
                 重命名
               </Button>
             )}
@@ -496,7 +768,8 @@ function ExpandedRows({
                 size='sm'
                 variant='ghost'
                 className='text-destructive hover:text-destructive h-7'
-                onClick={() => {}}
+                disabled={actionLoading}
+                onClick={onArchive}
               >
                 归档
               </Button>

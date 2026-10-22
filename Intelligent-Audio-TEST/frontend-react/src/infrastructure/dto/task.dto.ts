@@ -175,6 +175,14 @@ export interface PublishedTaskExecutionDto {
   completed_at: string | null
 }
 
+/** 已发布任务执行结果 DTO（published_task.py PublishedTaskExecuteData 实测；POST execute 响应） */
+export interface PublishedTaskExecuteResultDto {
+  task_id: number
+  task_name: string
+  published_task_id: number
+  published_task_version: number
+}
+
 /** 已发布任务详情 DTO（published_task.py PublishedTaskDetailData 实测；GET /published-tasks/{id}） */
 export interface PublishedTaskDetailDto {
   id: number
