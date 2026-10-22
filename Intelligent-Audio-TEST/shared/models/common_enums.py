@@ -128,25 +128,26 @@ class APIProtocol(str, Enum):
     WEBSOCKET = 'websocket'
 
 
-class ExecutionMode(str, Enum):
-    """任务执行模式枚举 — 同一用例在设备侧与 API 侧目标间的时序编排（INT-604）
+class TargetType(str, Enum):
+    """逐目标执行模式的目标类型枚举（INT-1115 target_modes 契约）
 
-    - PARALLEL  并行（默认/现行为）：设备侧与 API 侧各自独立并发分发、互不等待
-    - SERIAL    串行（逐用例）：同一用例两侧执行不重叠——先跑用户指定优先侧，
-                完成后再跑另一侧；该用例两侧全部到达终态后才执行下一个用例
-    """
-    PARALLEL = 'parallel'
-    SERIAL = 'serial'
-
-
-class SerialFirst(str, Enum):
-    """串行优先侧枚举 — serial 模式下先执行的目标侧（INT-604）
-
-    - DEVICE  设备先：physical 路由优先，API 路由等设备侧全部终态后启动
-    - API     API 先：http_api/websocket_api 路由优先，设备侧等 API 全部终态后启动
+    - DEVICE  物理设备目标：task_case_relations 中 device_type='physical'
+              且 device_id=str(target_id) 的用例行归属该目标
+    - API     HTTP/WebSocket API 目标：device_type ∈ {http_api, websocket_api}
+              且 device_id=str(target_id) 的用例行归属该目标
     """
     DEVICE = 'device'
     API = 'api'
+
+
+class ExecutionMode(str, Enum):
+    """逐目标执行模式枚举 — 单个目标（设备/API）在其道内的时序（INT-1115）
+
+    - PARALLEL  并行（默认/现行为）：任务启动即并发派发，不受任何目标门控
+    - SERIAL    串行：仅当同类型道内全部前序目标用例行到达终态后才派发本目标
+    """
+    PARALLEL = 'parallel'
+    SERIAL = 'serial'
 
 
 # 设备系统输入别名 → 规范成员（小写键）。harmony 为前端注册/扫描表单实际写入的别名（INT-206）

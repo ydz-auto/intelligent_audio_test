@@ -8,7 +8,6 @@
 - _handle_e2e_failure / _handle_device_check_failed：失败处理
 """
 from datetime import datetime
-from typing import Dict, List
 
 from sqlalchemy.exc import InvalidRequestError
 
@@ -32,51 +31,62 @@ class TaskDispatchMixin:
     def _get_next_pending_case(self, task_id, session):
         """获取下一个待执行的测试用例（INT-305：移除留痕行不参与领取）
 
-        INT-604：serial 模式按逐用例门控——同一用例设备侧/API 侧不重叠，
-        优先侧全终态后另一侧才派发、两侧全终态后才进入下一用例；parallel
-        模式维持现行为（最早 PENDING 先取）。
+        INT-1115：config.target_modes 含任一 serial 时按目标级门控（双道语义）
+        选行；否则维持现行为（最早 PENDING 先取，全并行零回归）。
         """
         if self._is_serial_task(task_id, session):
-            return self._get_next_pending_case_serial(task_id, session)
+            return self._get_next_pending_case_target_gated(task_id, session)
         return session.query(TaskCase).filter(
             TaskCase.task_id == task_id,
             TaskCase.execution_status == ExecutionStatus.PENDING,
             task_case_not_removed(TaskCase),
         ).order_by(TaskCase.created_at.asc()).first()
 
-    # ---- INT-604 serial 逐用例门控 ----
+    # ---- INT-1115 目标级门控（§5.2.4（三）双道语义） ----
 
-    def _task_execution_mode(self, task_id, session):
-        """读取任务执行模式（Task.config.execution_mode，缺省 parallel）"""
-        from shared.models.common_enums import ExecutionMode
+    def _target_modes(self, task_id, session):
+        """读取任务逐目标执行模式（Task.config.target_modes，缺省空列表）。
+
+        列表保序，元素为 {target_type, target_id, mode}（mode 见 ExecutionMode）。
+        历史任务旧 execution_mode/serial_first 字段引擎不再读取（按全并行处理）。
+        """
         task = session.get(Task, task_id)
         if task is None or not task.config:
-            return ExecutionMode.PARALLEL.value
-        return task.config.get('execution_mode') or ExecutionMode.PARALLEL.value
-
-    def _task_serial_first(self, task_id, session):
-        """读取任务串行优先侧（Task.config.serial_first，缺省 device）"""
-        from shared.models.common_enums import SerialFirst
-        task = session.get(Task, task_id)
-        if task is None or not task.config:
-            return SerialFirst.DEVICE.value
-        return task.config.get('serial_first') or SerialFirst.DEVICE.value
+            return []
+        return task.config.get('target_modes') or []
 
     def _is_serial_task(self, task_id, session):
-        """是否 serial 执行模式"""
+        """是否含串行目标（config.target_modes 任一 mode=serial）。
+
+        兼作主循环 keep-alive 开关：含任一 serial 时沿用串行 keep-alive，
+        避免串行门控等待期被提前收敛（_handle_no_pending_case 复用）。
+        """
         from shared.models.common_enums import ExecutionMode
-        return self._task_execution_mode(task_id, session) == ExecutionMode.SERIAL.value
+        return any(
+            item.get('mode') == ExecutionMode.SERIAL.value
+            for item in self._target_modes(task_id, session)
+        )
 
     @staticmethod
-    def _is_preferred_side(tc_rel, serial_first):
-        """按 serial_first 判定该路由行是否属于优先侧。
+    def _row_target_key(tc_rel):
+        """用例行归属目标键 (target_type, str(target_id))；不可解析返回 None。
 
-        路由身份 = device_type（NULL 兜底 physical）。device 侧=physical；
-        api 侧=http_api/websocket_api。serial_first=api 时取反。
+        目标行集合 = task_case_relations 中 (device_type, device_id) 命中者：
+        device 道 = device_type='physical' 且 device_id=str(target_id)；
+        api 道 = device_type ∈ {http_api, websocket_api} 且 device_id=str(target_id)。
+        device_id 为空 / 类型未知的行不可解析（视为 parallel 可派发，不受门控）。
         """
-        from shared.models.common_enums import DeviceType
-        is_device = (tc_rel.device_type or DeviceType.PHYSICAL.value) == DeviceType.PHYSICAL.value
-        return is_device if serial_first == 'device' else not is_device
+        from shared.models.common_enums import DeviceType, TargetType
+        device_type = tc_rel.device_type or DeviceType.PHYSICAL.value
+        if device_type == DeviceType.PHYSICAL.value:
+            target_type = TargetType.DEVICE.value
+        elif device_type in (DeviceType.HTTP_API.value, DeviceType.WEBSOCKET_API.value):
+            target_type = TargetType.API.value
+        else:
+            return None
+        if not tc_rel.device_id:
+            return None
+        return (target_type, str(tc_rel.device_id))
 
     @staticmethod
     def _is_case_row_terminal(tc_rel):
@@ -88,60 +98,64 @@ class TaskDispatchMixin:
         from shared.utils.status_constants import FINISHED_CASE_STATUSES
         return (tc_rel.status or '') in FINISHED_CASE_STATUSES
 
-    def _get_next_pending_case_serial(self, task_id, session):
-        """serial 模式逐用例门控选行。
+    def _get_next_pending_case_target_gated(self, task_id, session):
+        """目标级门控选行（INT-1115 双道语义）。
 
-        门控规则（按用例 min(created_at) 排序取第一个可派发用例）：
-        - 在途用例（任一行未全终态）：优先侧行可继续并行派发（同侧多行不互等）；
-          优先侧已无 PENDING 行且全部终态后，才派发另一侧 PENDING 行；
-          否则返回 None 等待（主循环 _handle_no_pending_case 收尾）。
-        - 无 PENDING 行但在途（执行/评估中）：返回 None 等待，后续用例不得启动。
-        - 已全终态的用例：无残留 PENDING 行则跳过，进入下一用例。
-        - 新用例（全部行仍 PENDING）：先派发优先侧最早 PENDING 行；
-          无优先侧行（单侧用例）直接派发最早 PENDING 行。
+        双道：设备道（target_type=device）与 API 道（target_type=api）始终并发、
+        互不等待。并行目标行不受任何目标门控（任务启动即并发派发，现行为）；
+        串行目标 t_k（类型 T）仅当其同类型道内全部前序目标（类型 T 内位置 < k，
+        含同类型前序并行目标）的用例行全部到达终态后才派发；两个同类型串行目标
+        不重叠（后者在前者全终态后启动）。不可解析目标的行视为 parallel 可派发。
+        目标内部门控放行后仍按现有逐用例并发分发（physical 由设备锁天然串行）。
         """
-        serial_first = self._task_serial_first(task_id, session)
+        from shared.models.common_enums import ExecutionMode
+
+        target_modes = self._target_modes(task_id, session)
         rows = session.query(TaskCase).filter(
             TaskCase.task_id == task_id,
             task_case_not_removed(TaskCase),
         ).order_by(TaskCase.created_at.asc()).all()
         if not rows:
             return None
-
-        groups: Dict[str, List[TaskCase]] = {}
-        for r in rows:
-            groups.setdefault(r.test_case_id, []).append(r)
-        ordered_cases = sorted(
-            groups.items(),
-            key=lambda kv: (min((r.created_at or datetime.min) for r in kv[1]), kv[0]),
-        )
-
-        for _case_id, case_rows in ordered_cases:
-            pending = [r for r in case_rows if r.execution_status == ExecutionStatus.PENDING]
-            started = any(r.execution_status != ExecutionStatus.PENDING for r in case_rows)
-            in_flight = any(not self._is_case_row_terminal(r) for r in case_rows)
-
-            if not pending:
-                # 无 PENDING 行：仍在途（执行/评估中）则等待，已终态则跳过
-                if in_flight:
-                    return None
-                continue
-
-            if not started:
-                # 新用例：优先侧先行；单侧用例直接取最早 PENDING
-                pref_pending = [r for r in pending if self._is_preferred_side(r, serial_first)]
-                return (pref_pending or pending)[0]
-
-            # 已开始且在途：优先侧内部并行派发，全终态后才放行另一侧
-            pref_pending = [r for r in pending if self._is_preferred_side(r, serial_first)]
-            if pref_pending:
-                return pref_pending[0]
-            pref_rows = [r for r in case_rows if self._is_preferred_side(r, serial_first)]
-            if all(self._is_case_row_terminal(r) for r in pref_rows):
-                other_pending = [r for r in pending if not self._is_preferred_side(r, serial_first)]
-                if other_pending:
-                    return other_pending[0]
+        pending = [r for r in rows if r.execution_status == ExecutionStatus.PENDING]
+        if not pending:
             return None
+
+        # 目标位置索引：(target_type, str(target_id)) → 列表位置（串行链顺序）
+        position = {}
+        for idx, item in enumerate(target_modes):
+            key = (item.get('target_type'), str(item.get('target_id')))
+            position.setdefault(key, idx)
+
+        gate_ok_cache = {}
+
+        def _gate_ok(key):
+            if key in gate_ok_cache:
+                return gate_ok_cache[key]
+            item_mode = next(
+                (item.get('mode') for item in target_modes
+                 if (item.get('target_type'), str(item.get('target_id'))) == key),
+                ExecutionMode.PARALLEL.value,
+            )
+            ok = True
+            if item_mode == ExecutionMode.SERIAL.value:
+                my_pos = position.get(key, len(target_modes))
+                my_type = key[0]
+                # 同类型道内全部前序目标（含同类型前序并行目标）用例行全部终态；
+                # 跨类型目标（另一条道）不影响本目标派发
+                for prior_key, p in position.items():
+                    if p < my_pos and prior_key[0] == my_type:
+                        prior_rows = [r for r in rows if self._row_target_key(r) == prior_key]
+                        if prior_rows and not all(self._is_case_row_terminal(r) for r in prior_rows):
+                            ok = False
+                            break
+            gate_ok_cache[key] = ok
+            return ok
+
+        for row in pending:
+            key = self._row_target_key(row)
+            if key is None or key not in position or _gate_ok(key):
+                return row
         return None
 
     def _handle_no_pending_case(self, task_id, task, session, stop_event=None):
