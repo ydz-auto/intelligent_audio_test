@@ -232,7 +232,7 @@ export function CheckoutStep({
                   <Textarea
                     value={configJson}
                     onChange={(e) => setConfigJson(e.target.value)}
-                    placeholder='可选，如 { "concurrency": 4 }'
+                    placeholder='可选，如 { "concurrent_tasks": 4 }'
                     aria-label='任务配置覆盖'
                     rows={2}
                     className='font-mono'
