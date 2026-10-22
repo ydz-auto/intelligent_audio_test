@@ -1,7 +1,8 @@
 /**
  * 统计维度选择卡（15_报告域.md §2.2：选择统计维度 → 设置统计时间范围 → 执行统计分析）。
- * 维度 Select（时间/任务类型/设备类型/评估维度）+ 时间范围 Input（CompactDateTimeRangePicker 对位）
+ * 维度 Select（时间/设备类型/评估维度）+ 时间范围 Input（CompactDateTimeRangePicker 对位）
  * +「执行统计分析」主按钮；流程 §4.4 实测。数据经 application/use-report-statistics 取数。
+ * INT-1297：移除「任务类型」维度选项。
  */
 import { BarChart3 } from 'lucide-react'
 

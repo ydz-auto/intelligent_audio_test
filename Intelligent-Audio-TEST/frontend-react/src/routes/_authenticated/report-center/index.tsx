@@ -31,8 +31,7 @@ export const reportCenterSearchSchema = z
       .catch(undefined),
     startTime: z.string().optional().catch(undefined),
     endTime: z.string().optional().catch(undefined),
-    /** 高级搜索：任务类型/设备类型/创建者（§2 :186-188） */
-    taskType: z.string().optional().catch(undefined),
+    /** 高级搜索：设备类型/创建者（§2 :187-188） */
     deviceType: z.string().optional().catch(undefined),
     creator: z.string().optional().catch(undefined),
     algorithmType: z.string().optional().catch(undefined),

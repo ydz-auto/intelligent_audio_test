@@ -180,7 +180,6 @@ export function ReportCenterPage() {
         s.timeRange ||
         s.startTime ||
         s.endTime ||
-        s.taskType ||
         s.deviceType ||
         s.creator ||
         effectiveAlgorithmType
@@ -195,7 +194,6 @@ export function ReportCenterPage() {
       timeRange: undefined,
       startTime: undefined,
       endTime: undefined,
-      taskType: undefined,
       deviceType: undefined,
       creator: undefined,
       algorithmType: undefined,
@@ -206,7 +204,7 @@ export function ReportCenterPage() {
   }, [setSearch])
 
   const handleAdvancedChange = useCallback(
-    (patch: { taskType?: string; deviceType?: string; creator?: string }) => {
+    (patch: { deviceType?: string; creator?: string }) => {
       setSearch({ ...patch, page: 1 })
     },
     [setSearch]
@@ -226,7 +224,6 @@ export function ReportCenterPage() {
     search.timeRange,
     search.favorite,
     search.trash,
-    search.taskType,
     search.deviceType,
     search.creator,
     effectiveAlgorithmType,
@@ -397,9 +394,8 @@ export function ReportCenterPage() {
             onClearAll={handleClearAll}
           />
 
-          {/* 高级搜索（任务类型 × 设备类型 × 创建者 × 时间范围，§2 实测 :173-193；INT-381 返修） */}
+          {/* 高级搜索（设备类型 × 创建者 × 时间范围，§2 实测 :173-193；INT-381 返修；INT-1297 移除任务类型） */}
           <ReportAdvancedSearch
-            taskType={search.taskType}
             deviceType={search.deviceType}
             creator={search.creator}
             timeRange={search.timeRange}
@@ -414,7 +410,6 @@ export function ReportCenterPage() {
             onChange={handleAdvancedChange}
             onReset={() =>
               setSearch({
-                taskType: undefined,
                 deviceType: undefined,
                 creator: undefined,
                 timeRange: undefined,
