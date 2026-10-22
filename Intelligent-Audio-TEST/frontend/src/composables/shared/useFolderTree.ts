@@ -271,6 +271,7 @@ export function useFolderTree() {
     toggleFolder,
     // 工具函数（也导出供外部使用）
     normalizeSampleRate,
+    sampleRateToKHz,
     buildFolderTreeParams,
   };
 }
@@ -291,4 +292,29 @@ export function normalizeSampleRate(value: unknown): string | null {
   const int = parseInt(lower.replace(/[^0-9]+/g, ''), 10);
   if (!Number.isFinite(int)) return null;
   return String(int);
+}
+
+/**
+ * 采样率 → 列表接口请求值（kHz 口径）。
+ *
+ * INT-1331：后端 apply_audio_list_filters 按 kHz 解析（float(str(sample_rate).split()[0]) * 1000），
+ * 而前端筛选态与客户端过滤（filteredAudios）均为 Hz（44100），列表请求载荷必须换算为 kHz
+ * （"44100" → "44.1"，"48000" → "48"）后端才按 Hz 命中。
+ * 文件夹树接口（apply_folder_tree_filters）以 Hz 原值 ±100 容差匹配，由 audiosApi.getFolderTree
+ * 独立下发数值 Hz，不经本函数。
+ */
+export function sampleRateToKHz(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  const str = String(value).trim();
+  if (!str || str === 'all') return null;
+  const lower = str.toLowerCase();
+  // 已是 kHz 标注（如 "44.1 kHz" / "44.1k"）：直接取数字部分
+  if (lower.includes('khz') || lower.includes('k hz') || lower.includes('k')) {
+    const num = parseFloat(lower.replace(/[^0-9.]+/g, ''));
+    return Number.isFinite(num) ? String(num) : null;
+  }
+  // 纯数字按 Hz 处理（'44100' → '44.1'，'48000' → '48'）
+  const hz = parseInt(lower.replace(/[^0-9.]+/g, ''), 10);
+  if (!Number.isFinite(hz) || hz <= 0) return null;
+  return String(hz / 1000);
 }

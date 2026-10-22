@@ -3,7 +3,7 @@ import { audiosPort } from './audiosPort';
 import { useTagFilter } from '../shared/useTagFilter';
 import { useFolderSelection } from '../shared/useFolderSelection';
 import { useNotification } from '../modal/useNotification';
-import { normalizeSampleRate } from '../shared/useFolderTree';
+import { normalizeSampleRate, sampleRateToKHz } from '../shared/useFolderTree';
 import type { AudioInfo, AudioQueryParams, AudioStats, APIResponse } from '../../domain';
 import type { Paginated } from '../../domain/model/common';
 import type { AudioListStats } from '../../domain/model/audio';
@@ -152,8 +152,10 @@ export function useAudioList() {
    * 统一的查询参数构建逻辑（避免客户端/服务端过滤逻辑重复）
    */
   function buildQueryParams(overrides: Partial<AudioQueryParams> = {}): AudioQueryParams {
+    // INT-1331：后端 apply_audio_list_filters 按 kHz 解析（float(str(sample_rate).split()[0]) * 1000），
+    // 列表请求载荷须下发 kHz（"44.1"/"48"）；筛选态与客户端过滤仍为 Hz（44100）不做变更
     const normalizedSampleRate =
-      filters.value.sampleRate === 'all' ? undefined : (normalizeSampleRate(filters.value.sampleRate) ?? filters.value.sampleRate);
+      filters.value.sampleRate === 'all' ? undefined : (sampleRateToKHz(filters.value.sampleRate) ?? filters.value.sampleRate);
     return {
       page: currentPage.value,
       perPage: pageSize.value,

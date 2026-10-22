@@ -262,7 +262,18 @@ export const audiosApi = {
   },
 
   async getFolderTree(params: any = {}, options: RequestOptions = {}) {
-    const response = await request<any>('POST', '/audios/folder-tree', params, options);
+    // INT-1331：后端 folder-tree 处理器读取原始 JSON key（不经 Pydantic alias_generator），
+    // 域参数为 camelCase，此处把 sampleRate 映射为后端读取的 sample_rate；
+    // apply_folder_tree_filters 用 between(sample_rate ± 100) 匹配，须下发 Hz 数值（44100）
+    const body: Record<string, any> = { ...params };
+    if (body.sampleRate !== undefined && body.sampleRate !== null && body.sampleRate !== '') {
+      const hz = Number(body.sampleRate);
+      if (Number.isFinite(hz) && hz > 0) {
+        body.sample_rate = hz;
+      }
+      delete body.sampleRate;
+    }
+    const response = await request<any>('POST', '/audios/folder-tree', body, options);
     // 兼容 unwrapResponse: false 时返回的 { success, data: { tree } } 包装
     if (response && response.data && response.data.tree) {
       response.data.tree = toFolderNode(response.data.tree);
