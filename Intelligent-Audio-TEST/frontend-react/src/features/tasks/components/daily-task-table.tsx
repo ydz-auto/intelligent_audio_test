@@ -194,6 +194,7 @@ export function DailyTaskTable({
   onBatchPublish,
   onJoinPick,
   onReexecute,
+  onRename,
   onExport,
   onCompare,
   selected,
@@ -213,6 +214,8 @@ export function DailyTaskTable({
   onJoinPick?: (tasks: TaskListItem[]) => void
   /** 重新执行/重新评估 → §5.7 范围选择弹窗 */
   onReexecute: (task: TaskListItem, actionType: 'retry' | 'reevaluate') => void
+  /** 重命名（INT-1290：行菜单「重命名」→ 名称编辑弹窗） */
+  onRename?: (task: TaskListItem) => void
   /** 导出数据 → §5.12 导出弹窗 */
   onExport: (tasks: TaskListItem[]) => void
   /** 任务对比（≥2）：生成对比报告后跳转报告页（INT-932 接线） */
@@ -509,6 +512,7 @@ export function DailyTaskTable({
                       onQuickView={onQuickView}
                       onPublish={onPublish}
                       onReexecute={onReexecute}
+                      onRename={onRename}
                     />
                   </td>
                 </tr>
