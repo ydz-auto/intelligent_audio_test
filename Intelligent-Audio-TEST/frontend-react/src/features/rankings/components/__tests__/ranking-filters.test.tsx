@@ -17,6 +17,15 @@ import { RankingFiltersBar } from '../ranking-filters'
 
 const initialAuth = useAuthStore.getState()
 
+/** AUTH_MODE=off 开放模式启动引导回填的 dev_user（后端 AuthMiddleware off 分支：permissions=['*']） */
+const devUser = {
+  id: '0',
+  username: 'dev_user',
+  displayName: 'dev_user',
+  roleName: '',
+  permissions: ['*'],
+}
+
 const DEFAULT_FILTERS: RankingFilters = {
   category: '',
   suite: '',
@@ -26,8 +35,10 @@ const DEFAULT_FILTERS: RankingFilters = {
 }
 
 beforeEach(() => {
-  // AUTH_MODE=off 默认态（user=null → canCompute=true），与页面走查同口径
-  useAuthStore.getState().setAuth(null)
+  // AUTH_MODE=off 开放模式：启动引导（ensureAuthSession→hydrateSession）回填
+  // dev_user（permissions=['*']）通配放行——与页面走查同口径。INT-1225 起
+  // user=null 匿名不再放行计算权限（改走 403/只读降级态），故不能再用 setAuth(null)。
+  useAuthStore.getState().setAuth(devUser)
 })
 
 afterEach(() => {
@@ -125,5 +136,14 @@ describe('RankingFiltersBar 立即计算（P2-2 上提）', () => {
   it('computePending 时按钮显示「计算中…」', async () => {
     renderBar({ computePending: true })
     expect(screen.getByText('计算中…')).toBeInTheDocument()
+  })
+
+  it('无计算权限（user=null 匿名）：「立即计算」不渲染（INT-1225 降级口径）', () => {
+    useAuthStore.getState().setAuth(null)
+    renderBar({})
+    expect(
+      screen.queryByRole('button', { name: '立即计算' })
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText('计算中…')).not.toBeInTheDocument()
   })
 })
