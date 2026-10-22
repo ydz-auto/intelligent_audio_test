@@ -16,10 +16,12 @@
           <i class="fas fa-plus btn-icon"></i>
           添加增益映射
         </button>
-        <button class="btn btn-secondary" @click="importMappingData">
-          <i class="fas fa-upload btn-icon"></i>
-          导入映射数据
-        </button>
+        <span class="spl-import-disabled-hint" title="映射导入后端建设中">
+          <button class="btn btn-secondary" disabled>
+            <i class="fas fa-upload btn-icon"></i>
+            导入映射数据
+          </button>
+        </span>
       </div>
       <div class="header-right" v-else>
         <button class="btn btn-primary" @click="apiRms.openAddMappingModal()">
@@ -490,7 +492,6 @@ const {
   editMapping,
   viewMappingDetails,
   handleDeleteMapping,
-  importMappingData,
   fetchDevices,
   initModalWatchers,
   initData,
@@ -634,6 +635,18 @@ onMounted(async () => {
     margin-bottom: 20px;
     border-bottom: 1px solid var(--border);
     padding-bottom: 0;
+}
+
+/* INT-1376：导入映射数据按钮置灰（后端 /spl/import 未落地，按 React 版设计基准）。
+   wrapper 承担 hover 提示（原生 title 悬停可见），禁用态沿用全局按钮透明度弱化 */
+.spl-import-disabled-hint {
+    display: inline-flex;
+}
+
+.spl-import-disabled-hint .btn-secondary:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none;
 }
 
 .domain-tab-btn {

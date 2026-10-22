@@ -408,14 +408,9 @@ export function useSplMapping() {
     selectedMappingId.value = null;
   }
 
-  async function importMappingData() {
-    const modalManager = getModalManager();
-    modalManager.open(MODAL_TYPES.IMPORT_EXPORT, {
-      title: '导入增益映射',
-      type: 'import',
-      onSuccess: searchMappings
-    });
-  }
+  // INT-1376：设备 SPL 批量导入移除——后端无 /spl/import 接口，原 importMappingData 经
+  // GlobalModalContainer 只消费 onSave（onSuccess 不被处理）形成空操作；按 React 版设计基准
+  // 按钮置灰（title「映射导入后端建设中」），功能待后端 FEAT 落地后接线（见 INT-1376 交付评论）。
 
   function generateChartData(mapping: SPLMapping) {
     // Domain 侧为 camelCase：calibrationStatus / calibrationData
@@ -686,7 +681,6 @@ export function useSplMapping() {
     editMapping,
     viewMappingDetails,
     handleDeleteMapping,
-    importMappingData,
     initModalWatchers,
     initData,
     initCharts
