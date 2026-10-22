@@ -413,7 +413,7 @@ POST /api/v1/playback-devices/{device_id}/associate-spl
 | GET | `/api/v1/spl` | 分页查询映射列表（keyword/search/calibrationStatus/page/perPage/deviceId） |
 | POST | `/api/v1/spl` | 创建映射（校准数据 points 规范化：gainOffset 上限 +25，超限报错；`digital_gain` 换算 `(值-50)×0.24`） |
 | GET | `/api/v1/spl/{id}` | 映射详情（含 `isCurrent` 标识） |
-| PUT | `/api/v1/spl/{id}` | 更新映射；`distance`/`testFrequency` 变化会将校准状态重置为 `uncalibrated` |
+| PUT | `/api/v1/spl/{id}` | 更新映射；`distance`/`testFrequency` 变化会将校准状态重置为 `uncalibrated`（提示重校准，校准数据保留不清空，INT-1374） |
 | DELETE | `/api/v1/spl/{id}` | 删除映射并清理设备上的 `current_spl_mapping_id` 引用 |
 | POST | `/api/v1/spl/{id}/calibrate` | 执行校准流程（写入 points 并记录 CalibrationHistory） |
 | GET | `/api/v1/spl/{id}/history` | 校准历史 |

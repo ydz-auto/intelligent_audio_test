@@ -172,8 +172,9 @@ class SPLCommandService:
                     update_fields['calibration_data'] = {'points': []}
 
             if env_params_changed:
+                # 环境参数（distance/test_frequency）变更：置未校准提示重校准，
+                # 但不清空 calibration_data——保留已存储数据，也不覆盖同请求新提交的校准点（INT-1374）
                 update_fields['calibration_status'] = CalibrationStatus.UNCALIBRATED.value
-                update_fields['calibration_data'] = None
 
             is_current = data.get('is_current')
             new_device_id = data.get('device_id')

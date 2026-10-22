@@ -237,7 +237,8 @@ class TestSPLCalibrationFlow:
         assert res['code'] == 200
         fields = repo.update_fields[1]
         assert fields['calibration_status'] == CalibrationStatus.UNCALIBRATED.value
-        assert fields['calibration_data'] is None
+        # INT-1374：环境参数变更只置未校准，不得清空已存储的校准数据
+        assert 'calibration_data' not in fields
 
     def test_update_test_frequency_change_resets_to_uncalibrated(self, spl_svc):
         svc, repo = spl_svc
@@ -247,6 +248,31 @@ class TestSPLCalibrationFlow:
         res = svc.update(1, {'test_frequency': 2000})
         assert res['code'] == 200
         assert repo.update_fields[1]['calibration_status'] == CalibrationStatus.UNCALIBRATED.value
+        # INT-1374：环境参数变更只置未校准，不得清空已存储的校准数据
+        assert 'calibration_data' not in repo.update_fields[1]
+
+    def test_update_env_param_change_keeps_same_request_new_points(self, spl_svc):
+        """INT-1374：同一请求内既改环境参数又带新校准点，新校准点不得被覆盖清空"""
+        svc, repo = spl_svc
+        assert svc.create({'name': '映射', 'device_id': 1,
+                           'calibration_data': {'points': [{'gain': 10, 'spl': 80}]}})['code'] == 201
+        repo.update_fields.clear()
+        new_points = [{'gain': 20, 'spl': 85}]
+        res = svc.update(1, {'distance': 2.0, 'test_frequency': 3000,
+                             'calibration_data': {'points': new_points}})
+        assert res['code'] == 200
+        fields = repo.update_fields[1]
+        assert fields['calibration_data']['points'] == [
+            {
+                'spl': 85,
+                'gainOffset': (float(20) - 50) * 0.24,
+                'baseLevel': -30,
+                'finalLevel': -30 + (float(20) - 50) * 0.24,
+                'digital_gain': 20,
+            }
+        ]
+        # 环境参数变更 → 置未校准提示重校准
+        assert fields['calibration_status'] == CalibrationStatus.UNCALIBRATED.value
 
     def test_update_with_new_valid_points_calibrated(self, spl_svc):
         svc, repo = spl_svc

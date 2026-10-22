@@ -117,7 +117,7 @@
 
 - **API路径**：`/api/v1/spl/{mapping_id}`
 - **方法**：PUT
-- **约束说明**：若修改了 `distance` 或 `testFrequency`，由于物理环境参数变更，系统将自动将 `calibration_status` 重置为 `uncalibrated`，并清空历史校准值。
+- **约束说明**：若修改了 `distance` 或 `testFrequency`，由于物理环境参数变更，系统将自动将 `calibration_status` 重置为 `uncalibrated` 提示重校准；**保留（不清空）** 已存储或同请求新提交的校准数据（INT-1374）。
 - **请求体**：
   | 参数名 | 类型 | 必填 | 说明 |
   |--------|------|------|------|

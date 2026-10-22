@@ -17,7 +17,7 @@ SPLMapping（声压级映射）模块是声学测试的核心组件。它负责�
   - 支持从校准数据的第一个点自动提取 `target_spl` 和 `digital_gain`
 - **PUT /api/v1/spl/:id**: 修改元数据（名称、距离、测试频率等）。
   - 支持驼峰式和下划线式参数格式
-  - **关键逻辑**：若修改了 `distance` 或 `test_frequency`，由于物理环境参数变更，自动将 `calibration_status` 重置为 `uncalibrated`，并清空历史校准数据
+  - **关键逻辑**：若修改了 `distance` 或 `test_frequency`，由于物理环境参数变更，自动将 `calibration_status` 重置为 `uncalibrated` 提示重校准；**保留（不清空）** 已存储或同请求新提交的校准数据（INT-1374）
   - 支持直接更新校准数据，自动验证格式并更新校准状态
 - **DELETE /api/v1/spl/:id**: 删除映射配置。
 
