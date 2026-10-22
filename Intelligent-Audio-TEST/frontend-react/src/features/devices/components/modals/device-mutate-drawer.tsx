@@ -49,6 +49,8 @@ import {
 import { normalizeDeviceSystem } from '@/features/devices/lib/device-system'
 import { useDeviceMutations, useDriverKeywords } from '@/application/devices/use-devices'
 import { useSplMappingsByDevice } from '@/application/spl/useSplMappings'
+import { useAlgorithmOptions } from '@/application/evaluation/use-dimensions'
+import { useGlobalAlgorithm } from '@/application/hooks/use-global-algorithm'
 import type { TestDevice } from '@/domain/models/testDevice'
 import type { PlaybackDevice } from '@/domain/models/playbackDevice'
 import type { ApiDevice } from '@/domain/models/apiDevice'
@@ -78,8 +80,6 @@ const SYSTEM_OPTIONS = [
 const ANDROID_API_LEVELS = ['26', '28', '30', '32', '33', '34']
 const HARMONY_API_LEVELS = ['3.0', '3.1', '3.2', '4.0', '4.2']
 const FORMAT_OPTIONS = ['WAV', 'MP3', 'FLAC', 'AAC', 'OGG', 'WMA']
-/** 测试设备算法类型（对照 mock supported_algorithms 值，device.py supported_algorithms 实测） */
-const ALGORITHM_OPTIONS = ['asr_streaming', 'wakeword_detect', 'tts_eval']
 const PROTOCOL_OPTIONS = ['http', 'https', 'ws', 'wss']
 const ENV_OPTIONS = [
   { value: 'development', label: '开发' },
@@ -171,7 +171,8 @@ type DeviceForm = z.infer<typeof deviceFormSchema>
 
 function buildDefaults(
   state: DeviceMutateState,
-  prefill: Partial<TestDevice> | Partial<PlaybackDevice> | Partial<ApiDevice> | null | undefined
+  prefill: Partial<TestDevice> | Partial<PlaybackDevice> | Partial<ApiDevice> | null | undefined,
+  globalAlgorithmId: string
 ): DeviceForm {
   if (state.kind === 'test') {
     const device = state.mode === 'edit' ? (state.device as TestDevice | null) : null
@@ -227,7 +228,7 @@ function buildDefaults(
     environment: device?.environment ?? 'testing',
     proxyType: device?.proxyType ?? '',
     proxyUrl: device?.proxyUrl ?? '',
-    algorithmType: device?.algorithmType ?? 'asr_streaming',
+    algorithmType: device?.algorithmType ?? globalAlgorithmId ?? '',
     maxProcess: String(device?.defaultMaxProcess ?? 5),
     maxTimeout: String(device?.defaultMaxTimeout ?? 30),
     maxAudioDuration: String(device?.defaultMaxAudioDuration ?? 60),
@@ -259,7 +260,10 @@ function Field({
   )
 }
 
-/** 标签/算法多选 chips（§6.2 BadgeListCell 输入态） */
+/**
+ * 标签/算法多选 chips（§6.2 BadgeListCell 输入态）。
+ * option 支持纯字符串或 {value,label}——算法选项显示中文名（label）、提交类型码（value）。
+ */
 function ChipField({
   label,
   options,
@@ -267,7 +271,7 @@ function ChipField({
   onToggle,
 }: {
   label: string
-  options: readonly string[]
+  options: readonly (string | { value: string; label: string })[]
   selected: string[]
   onToggle: (value: string) => void
 }) {
@@ -275,21 +279,25 @@ function ChipField({
     <div className='flex flex-col gap-1'>
       <Label className='text-xs'>{label}</Label>
       <div className='flex flex-wrap gap-1.5'>
-        {options.map((option) => (
-          <button
-            key={option}
-            type='button'
-            onClick={() => onToggle(option)}
-            className={cn(
-              'rounded-md border px-2 py-1 text-xs transition-colors',
-              selected.includes(option)
-                ? 'border-primary bg-primary/10 text-primary'
-                : 'hover:bg-muted'
-            )}
-          >
-            {option}
-          </button>
-        ))}
+        {options.map((option) => {
+          const value = typeof option === 'string' ? option : option.value
+          const display = typeof option === 'string' ? option : option.label
+          return (
+            <button
+              key={value}
+              type='button'
+              onClick={() => onToggle(value)}
+              className={cn(
+                'rounded-md border px-2 py-1 text-xs transition-colors',
+                selected.includes(value)
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'hover:bg-muted'
+              )}
+            >
+              {display}
+            </button>
+          )
+        })}
       </div>
     </div>
   )
@@ -310,10 +318,15 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
   const splMappingsQuery = useSplMappingsByDevice(editingPlaybackId)
   const driverKeywords = driverKeywordsQuery.data ?? []
   const splOptions = splMappingsQuery.data ?? []
+  // 算法类型选项（INT-1213：真实 GET /algorithm/options，显示中文名；V9.7.10 algorithmSelect 口径）
+  const algorithmOptionsQuery = useAlgorithmOptions()
+  const algorithmOptions = algorithmOptionsQuery.data ?? []
+  // 关联算法新增态默认全局算法（16_设备域.md §6.2「默认全局算法」）
+  const { algorithmId: globalAlgorithmId } = useGlobalAlgorithm()
 
   const form = useForm<DeviceForm>({
     resolver: zodResolver(deviceFormSchema),
-    values: buildDefaults(state, prefill),
+    values: buildDefaults(state, prefill, globalAlgorithmId),
   })
 
   // INT-1029 抽屉内扫描「选择」→ 回填当前表单（编辑/新增态均可用；nonce 递增触发）
@@ -685,7 +698,7 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                 </label>
                 <ChipField
                   label='算法类型'
-                  options={ALGORITHM_OPTIONS}
+                  options={algorithmOptions}
                   selected={form.watch('algorithms')}
                   onToggle={toggleChip('algorithms')}
                 />
@@ -906,12 +919,14 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                       onValueChange={(value) => form.setValue('algorithmType', value ?? '')}
                     >
                       <SelectTrigger size='sm' className='w-full'>
-                        <SelectValue placeholder='请选择算法' />
+                        <SelectValue placeholder={algorithmOptionsQuery.isLoading ? '加载中…' : '请选择算法'}>
+                          {algorithmOptions.find((o) => o.value === form.watch('algorithmType'))?.label ?? ''}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
-                        {ALGORITHM_OPTIONS.map((value) => (
-                          <SelectItem key={value} value={value}>
-                            {value}
+                        {algorithmOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
