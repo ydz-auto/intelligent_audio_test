@@ -168,6 +168,7 @@ class _AlgorithmDefinitionMixin(_ParamBaseMixin):
                 name=data.get("name", ""),
                 algorithm_type=data.get("algorithm_type") or data.get("type") or "",
                 description=data.get("description"),
+                status=data.get("status"),
                 icon=data.get("icon"),
                 display_order=data.get("display_order"),
             )

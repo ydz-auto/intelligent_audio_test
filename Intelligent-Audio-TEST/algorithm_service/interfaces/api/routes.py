@@ -78,6 +78,7 @@ class CreateDefinitionRequest(BaseModel):
     name: str
     algorithm_type: str
     description: Optional[str] = None
+    status: Optional[str] = None
 
 
 class UpdateDefinitionRequest(BaseModel):
@@ -204,6 +205,7 @@ def create_definition(body: CreateDefinitionRequest):
             name=body.name,
             algorithm_type=body.algorithm_type,
             description=body.description,
+            status=body.status,
         )
         new_id = _command_handler.handle_create_definition(cmd)
         return {"success": True, "message": "ok", "data": {"id": new_id, "name": cmd.name}}

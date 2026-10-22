@@ -71,12 +71,14 @@ class CreateAlgorithmDefinitionCommand:
     - name: 算法名称
     - algorithm_type: 算法类型代码
     - description: 算法描述
+    - status: 状态（PO 口径字符串 online/offline/draft，缺省按 draft）
     """
 
     group_id: Optional[int]
     name: str
     algorithm_type: str
     description: Optional[str] = None
+    status: Optional[str] = None
     icon: Optional[str] = None
     display_order: Optional[int] = None
 

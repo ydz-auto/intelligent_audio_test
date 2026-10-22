@@ -250,6 +250,9 @@ class AlgorithmDefinitionServicer(_ParamMethodsMixin, _pb_grpc.AlgorithmDefiniti
             name=data.get("name", ""),
             algorithm_type=data.get("algorithm_type") or data.get("type") or "",
             description=data.get("description"),
+            status=data.get("status"),
+            icon=data.get("icon"),
+            display_order=data.get("display_order"),
         )
         new_id = self.command_handler.handle_create_definition(cmd)
         return {"id": new_id, "name": cmd.name}
