@@ -66,10 +66,13 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   const [groupDialog, setGroupDialog] = useState<{ open: boolean; group: TestCaseGroup | null }>({ open: false, group: null })
   const [previewCase, setPreviewCase] = useState<TestCaseListItem | null>(null)
 
-  const listQuery = useTestCasesList(view, {
-    ...filters,
-    algorithmType: filters.algorithmType ?? algorithmId,
-  })
+  /** 生效筛选（全局算法联动合并；INT-1284 分组内懒加载按同一筛选取数） */
+  const effectiveFilters = useMemo(
+    () => ({ ...filters, algorithmType: filters.algorithmType ?? algorithmId }),
+    [filters, algorithmId]
+  )
+
+  const listQuery = useTestCasesList(view, effectiveFilters)
   const groupsQuery = useCaseGroups()
   const tagsQuery = useCaseTags()
   /** 全量评估维度（含子维度；批量设置评估维度 DimensionPicker 主/子分组云 + 列表筛选
@@ -115,6 +118,8 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
     return () => {
       void queryClient.invalidateQueries({ queryKey: ['testcase-groups'] })
       void queryClient.invalidateQueries({ queryKey: ['testcases'] })
+      // INT-1284：分组内懒加载缓存（独立前缀）同步失效
+      void queryClient.invalidateQueries({ queryKey: ['testcase-group-cases'] })
     }
   }, [groupDialog.open, queryClient])
 
@@ -197,6 +202,8 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
               description: `已创建副本：${c.name}_copy`,
             })
             await queryClient.invalidateQueries({ queryKey: ['testcases'] })
+            // INT-1284：分组内懒加载缓存（独立前缀）同步失效
+            await queryClient.invalidateQueries({ queryKey: ['testcase-group-cases'] })
           } catch (error) {
             toast.error(error instanceof Error ? error.message : '复制测试用例失败')
           }
@@ -209,6 +216,8 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
             await setTestCaseFavorite(c.id, !c.isFavorite)
             toast.success(c.isFavorite ? '已取消收藏' : '已加入收藏')
             await queryClient.invalidateQueries({ queryKey: ['testcases'] })
+            // INT-1284：分组内懒加载缓存（独立前缀）同步失效
+            await queryClient.invalidateQueries({ queryKey: ['testcase-group-cases'] })
           } catch (error) {
             toast.error(error instanceof Error ? error.message : '收藏操作失败')
           }
@@ -381,6 +390,8 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
                   groups={groups}
                   cases={items}
                   loading={listQuery.isLoading}
+                  groupsLoading={groupsQuery.isLoading}
+                  filters={effectiveFilters}
                   trash={filters.trash ?? false}
                   hasQueryFilters={hasQueryFilters}
                   selected={selected}

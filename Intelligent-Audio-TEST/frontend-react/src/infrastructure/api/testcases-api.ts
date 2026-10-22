@@ -31,6 +31,10 @@ export interface TestCaseListQuery {
 export interface TestCaseListResult {
   items: TestCaseListItem[]
   total: number
+  /** 后端分页信封（INT-1284 分组内懒加载「加载更多」翻页判定；非分页消费方忽略） */
+  page?: number
+  pages?: number
+  perPage?: number
 }
 
 /** 列表页当前为客户端懒加载分页（§3.3「已显示 n / 总 条 · 加载更多」），拉大页供前端切分 */
@@ -61,33 +65,22 @@ export async function fetchTestCases(
   })
   let items = (dto.items ?? []).map(testCaseListItemFromDto)
   if (ungrouped) items = items.filter((c) => c.groupId === null)
-  return { items, total: dto.total }
+  return {
+    items,
+    total: dto.total,
+    page: dto.page,
+    pages: dto.pages,
+    perPage: dto.per_page,
+  }
 }
 
-/**
- * 分组视图数据（grouped-case-list 消费：分组卡 + 组内用例卡；客户端按 groupId 聚合）。
- * INT-1284：分组卡按「分组列表 × 组内已加载用例」渲染——只拉首屏 100 条时，用例排在
- * 列表后部的分组（如打断与恢复、拒识）因无已加载用例而整卡不渲染，与 /groups 计数不符。
- * 故循环拉取全部用例页（每页 LIST_PAGE_SIZE，直至 total 覆盖；后端单页有上限时循环补齐），
- * 保证每个分组都有已加载用例可渲染。tag 视图仍取单页（fetchTagGroupedTestCases，首屏够聚合）。
- */
+/** 分组视图数据（grouped-case-list 消费：分组卡 + 组内用例卡；客户端按 groupId 聚合）。
+ *  INT-1284：首屏单页（LIST_PAGE_SIZE）只覆盖前部分组，其余分组用例由分组卡展开时按分组
+ *  懒加载（use-group-test-cases）补齐——本函数保持单页语义，不在此循环拉全量。 */
 export async function fetchGroupedTestCases(
   query: TestCaseListQuery
 ): Promise<TestCaseListResult> {
-  /** 防呆：后端若忽略 page 参数反复返回同一批，最多拉 50 页（5000 条）即停 */
-  const MAX_GROUP_FETCH_PAGES = 50
-  const all: TestCaseListItem[] = []
-  let page = 1
-  let total = Number.POSITIVE_INFINITY
-  while (all.length < total) {
-    const res = await fetchTestCases({ ...query, page, perPage: LIST_PAGE_SIZE })
-    all.push(...res.items)
-    total = res.total
-    if (res.items.length === 0) break
-    page += 1
-    if (page > MAX_GROUP_FETCH_PAGES) break
-  }
-  return { items: all, total }
+  return fetchTestCases(query)
 }
 
 /** 标签视图数据（tag-case-list 消费：前端按 tag 聚合为标签卡；后端 view=tag 契约不消费） */

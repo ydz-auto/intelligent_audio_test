@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useState } from 'react'
 
 import { useSessionMap } from '@/application/testcases/use-session-map'
+import type { TestCaseListFilters } from '@/application/testcases/use-testcases-list'
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import type { TagItem } from '@/domain/models/testTag'
@@ -103,12 +104,14 @@ function Harness({
   loading = false,
   cases = CASES,
   groups = GROUPS,
+  filters = {},
   trash = false,
   hasQueryFilters = false,
 }: {
   loading?: boolean
   cases?: TestCaseListItem[]
   groups?: TestCaseGroup[]
+  filters?: TestCaseListFilters
   trash?: boolean
   hasQueryFilters?: boolean
 }) {
@@ -119,6 +122,8 @@ function Harness({
         groups={loading ? [] : groups}
         cases={loading ? [] : cases}
         loading={loading}
+        groupsLoading={loading}
+        filters={filters}
         trash={trash}
         hasQueryFilters={hasQueryFilters}
         selected={selected}
@@ -199,8 +204,7 @@ describe('GroupedCaseList', () => {
     expect(screen.queryByText(/已显示 6 \/ 6 条 · 加载更多/)).not.toBeInTheDocument()
   })
 
-  it('INT-1284：无已加载用例的分组仍渲染分组卡，计数取后端 test_case_count，页脚与渲染卡片数一致', async () => {
-    const user = setupUser()
+  it('INT-1284：无已加载用例的分组仍渲染分组卡，计数取后端 test_case_count，页脚与渲染卡片数一致', () => {
     const groupsWithEmpty: TestCaseGroup[] = [
       ...GROUPS,
       {
@@ -214,13 +218,30 @@ describe('GroupedCaseList', () => {
       },
     ]
     render(<Harness groups={groupsWithEmpty} />)
-    // 首屏 100 条用例覆盖不到的组（cases 里无 g3 成员）整卡仍渲染，计数取 test_case_count
+    // 首屏 100 条用例覆盖不到的组（cases 里无 g3 成员）整卡仍渲染，计数取 /groups test_case_count
     expect(screen.getByText('音频上传生成')).toBeInTheDocument()
     expect(screen.getByText('175 条')).toBeInTheDocument()
     // 3 个分组 ≤ 每页 5 → 全部渲染，页脚「已加载全部 3 个分组」与真实渲染卡片数一致
     expect(screen.getByText('已加载全部 3 个分组')).toBeInTheDocument()
-    // 展开无已加载用例的分组 → 组内空态提示而非空白/崩溃
-    await user.click(screen.getByText('音频上传生成'))
+  })
+
+  it('INT-1284：空分组（test_case_count=0）展开显示组内空态，不发起懒加载', async () => {
+    const user = setupUser()
+    const groupsWithEmpty: TestCaseGroup[] = [
+      ...GROUPS,
+      {
+        id: 'g4',
+        name: '空分组示例',
+        description: null,
+        algorithmType: 'asr-v3',
+        createdAt: '2026-09-03 10:00',
+        updatedAt: '2026-10-15 09:00',
+        testCaseCount: 0,
+      },
+    ]
+    render(<Harness groups={groupsWithEmpty} />)
+    expect(screen.getByText('空分组示例')).toBeInTheDocument()
+    await user.click(screen.getByText('空分组示例'))
     expect(screen.getByText('该分组暂无用例')).toBeInTheDocument()
   })
 

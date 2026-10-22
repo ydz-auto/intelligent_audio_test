@@ -9,9 +9,11 @@
  * 用户点组头展开后会话内保持展开态——INT-490 P2 默认全展开口径废弃）。
  */
 import { ArrowUpDown, ChevronDown, Clock3, FolderOpen, SearchX, Tags, Trash2 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useIsFetching } from '@tanstack/react-query'
 
+import { useGroupTestCases } from '@/application/testcases/use-group-test-cases'
+import type { TestCaseListFilters } from '@/application/testcases/use-testcases-list'
 import { useSessionMap } from '@/application/testcases/use-session-map'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -68,10 +70,68 @@ export interface GroupActionCallbacks {
   onCopyGroup: (group: TestCaseGroup) => void
 }
 
+/**
+ * 分组内用例懒加载体（INT-1284）：分组卡按 /groups 全量渲染，组内用例在展开时按分组
+ * 取数（useGroupTestCases 无限查询，每页 20 条服务端翻页）——真实库栈 /testcases 单页
+ * 响应随条数超线性变慢，一次拉全量/单页 100 条不可行，按分组小页懒加载可交互。
+ * 仅首屏用例已覆盖的分组（groupCases 有成员）走父级客户端切片旧路径，不挂本组件。
+ */
+function GroupCaseLazyBody({
+  group,
+  filters,
+  subView,
+  renderBody,
+}: {
+  group: TestCaseGroup
+  filters: TestCaseListFilters
+  subView: 'flat' | 'byTag'
+  renderBody: (list: TestCaseListItem[], subView: 'flat' | 'byTag') => ReactNode
+}) {
+  const [shownCount, setShownCount] = useState(GROUP_INLINE_PAGE)
+  const query = useGroupTestCases(group.id, filters, group.testCaseCount > 0)
+  const cases = useMemo(() => (query.data?.pages ?? []).flatMap((p) => p.items), [query.data])
+  const total = query.data?.pages[0]?.total ?? group.testCaseCount
+  const hasServerMore = query.hasNextPage ?? false
+
+  // 后端计数 0 → 空分组，直接空态（不发请求：query 仍会跑但无 items，成本可忽略）
+  if (group.testCaseCount === 0) {
+    return <p className='text-muted-foreground py-3 text-center text-xs'>该分组暂无用例</p>
+  }
+  if (query.isLoading && cases.length === 0) {
+    return <p className='text-muted-foreground py-3 text-center text-xs'>加载中…</p>
+  }
+  if (cases.length === 0) {
+    return <p className='text-muted-foreground py-3 text-center text-xs'>该分组暂无用例</p>
+  }
+
+  const shown = Math.min(shownCount, cases.length)
+  const hasCachedMore = cases.length > shown
+  const shownTotal = Math.max(total, cases.length)
+  return (
+    <>
+      {renderBody(cases.slice(0, shown), subView)}
+      {(hasCachedMore || hasServerMore) && (
+        <button
+          type='button'
+          className='text-muted-foreground hover:text-foreground w-full py-1 text-xs transition-colors'
+          onClick={() => {
+            if (hasCachedMore) setShownCount((s) => s + GROUP_INLINE_PAGE)
+            else void query.fetchNextPage()
+          }}
+        >
+          已显示 {shown} / {shownTotal} 条 · 加载更多
+        </button>
+      )}
+    </>
+  )
+}
+
 export function GroupedCaseList({
   groups,
   cases,
   loading,
+  groupsLoading,
+  filters,
   trash,
   hasQueryFilters,
   selected,
@@ -85,6 +145,10 @@ export function GroupedCaseList({
   groups: TestCaseGroup[]
   cases: TestCaseListItem[]
   loading: boolean
+  /** 分组列表加载（INT-1284：分组卡渲染以 /groups 为准；缺省沿用 loading，兼容旧调用） */
+  groupsLoading?: boolean
+  /** 当前筛选（INT-1284：组内懒加载按分组 × 筛选取数，进 per-group queryKey） */
+  filters: TestCaseListFilters
   trash: boolean
   /** 非回收站筛选是否激活（搜索/分组/标签/维度）——回收站空态区分「真空」与「筛选无匹配」 */
   hasQueryFilters: boolean
@@ -152,7 +216,9 @@ export function GroupedCaseList({
     })
   }
 
-  if (loading) {
+  // INT-1284：骨架以分组列表加载为准（/groups 快）；分组到位后即使用例列表仍加载
+  // （/testcases 单页响应慢），也立即渲染分组卡（计数取 test_case_count），不阻塞卡渲染。
+  if (groupsLoading ?? loading) {
     return (
       <div className='space-y-3'>
         {Array.from({ length: 4 }).map((_, i) => (
@@ -171,8 +237,9 @@ export function GroupedCaseList({
   /**
    * 空态三态（§3.3 INT-592 平铺流文案）：回收站空 → 筛选无匹配 → 全空。
    * 以可见用例集为准——筛选把全部用例排除后即使分组列表非空也走空态（INT-595 补）。
+   * INT-1284：用例列表未返回前（loading）不判空，避免分组已到位、用例仍加载时误显空态。
    */
-  if (cases.length === 0) {
+  if (!loading && cases.length === 0) {
     return (
       <div className='bg-card ring-foreground/10 rounded-xl py-8 ring-1'>
         <Empty className='h-[400px]'>
@@ -262,9 +329,7 @@ export function GroupedCaseList({
     const isExpanded = expanded.has(group.id)
     const inlineCount = inlineCounts[group.id] ?? GROUP_INLINE_PAGE
     const shownCount = Math.min(inlineCount, list.length)
-    // INT-1284：分组卡按 /groups 全量渲染——无已加载用例（空分组 / 筛选排除）也保留卡片，
-    // 计数取后端 test_case_count（有已加载用例时展示加载数，与组内懒加载口径一致）。
-    const displayCount = list.length > 0 ? list.length : group.testCaseCount
+    // INT-1284：分组卡计数取 /groups 权威 test_case_count（首屏用例覆盖不到的分组也有正确计数）
     const groupDuration = list.reduce((sum, c) => sum + (c.totalDuration ?? 0), 0)
     const groupSelected = list.filter((c) => selected.has(c.id)).length
     const subView = groupSubView[group.id] ?? 'flat'
@@ -290,7 +355,7 @@ export function GroupedCaseList({
             />
             <span className='font-medium truncate'>{group.name}</span>
             <Badge variant='secondary' className='rounded-md px-1.5 font-mono text-[11px] tabular-nums'>
-              {displayCount} 条
+              {group.testCaseCount} 条
             </Badge>
             {groupDuration > 0 && (
               <Badge variant='outline' className='gap-1 rounded-md px-1.5 font-mono text-[11px] tabular-nums'>
@@ -343,7 +408,13 @@ export function GroupedCaseList({
         {isExpanded && (
           <div className='space-y-2 border-t px-3 py-3'>
             {list.length === 0 ? (
-              <p className='text-muted-foreground py-3 text-center text-xs'>该分组暂无用例</p>
+              // INT-1284：首屏用例覆盖不到的分组 → 展开时按分组懒加载取数（非「暂无用例」空态）
+              <GroupCaseLazyBody
+                group={group}
+                filters={filters}
+                subView={subView}
+                renderBody={(cases, v) => renderGroupBody(cases, v)}
+              />
             ) : (
               renderGroupBody(visibleList, subView)
             )}
