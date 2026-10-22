@@ -286,7 +286,7 @@ export function SpecificCaseComparison({
       done: false,
     })
     try {
-      const { blob } = await downloadLogs(
+      const result = await downloadLogs(
         target.id,
         files.map((f) => f.name),
         (progress) => {
@@ -301,15 +301,26 @@ export function SpecificCaseComparison({
           )
         }
       )
-      // 触发浏览器下载（对照 use-report-actions triggerBlobDownload 先例）
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `case_${target.id}_logs.zip`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
+      if (result.downloadUrl) {
+        // INT-1116：OSS 可用时网关回 presigned JSON 信封，浏览器直连 OSS 预签名 URL
+        // 下载（跨源导航，无 CORS 约束；rustfs 需暴露浏览器可达地址）。
+        const a = document.createElement('a')
+        a.href = result.downloadUrl
+        a.download = `case_${target.id}_logs.zip`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+      } else {
+        // 本地降级：zip 字节流 Blob → objectURL 下载（对照 use-report-actions triggerBlobDownload 先例）
+        const url = URL.createObjectURL(result.blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `case_${target.id}_logs.zip`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      }
       setDownloadState((prev) => (prev ? { ...prev, done: true } : prev))
     } catch (err) {
       setDownloadTarget(undefined)

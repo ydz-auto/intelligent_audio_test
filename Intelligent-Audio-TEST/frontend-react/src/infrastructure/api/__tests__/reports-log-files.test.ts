@@ -120,4 +120,35 @@ describe('报告日志文件列表 / 按选下载', () => {
       detail: '所选日志文件不存在',
     })
   })
+
+  it('downloadCaseLogs：INT-1116 presigned 模式回 JSON 信封 → 透传 download_url（浏览器直连 OSS 下载）', async () => {
+    // 网关在 OSS 可用时返回 presigned JSON 信封（不再直接回 zip 字节流）
+    fetchMock.mockResolvedValue(
+      jsonResponse({
+        success: true,
+        code: 0,
+        message: 'Success',
+        data: {
+          download_url:
+            'http://localhost:9000/intelligent-audio-test/intelligent_audio_test/temp/report_logs/1201/case-1/abc.zip?AWSAccessKeyId=x&Signature=y&Expires=1792714349',
+          filename: 'case_case-1_logs.zip',
+          size: 637,
+        },
+      })
+    )
+    const result = await downloadCaseLogs(1201, 'case-1', ['a.log'])
+    expect(result.downloadUrl).toBe(
+      'http://localhost:9000/intelligent-audio-test/intelligent_audio_test/temp/report_logs/1201/case-1/abc.zip?AWSAccessKeyId=x&Signature=y&Expires=1792714349'
+    )
+    expect(result.size).toBe(637)
+  })
+
+  it('downloadCaseLogs：presigned JSON 信封缺 download_url 时抛 ApiError', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ success: true, code: 0, data: { filename: 'x.zip', size: 0 } })
+    )
+    await expect(downloadCaseLogs(1201, 'case-1', ['a.log'])).rejects.toMatchObject({
+      httpStatus: 200,
+    })
+  })
 })

@@ -247,18 +247,34 @@ export interface CaseLogDownloadProgress {
   speed: number
 }
 
+/** 用例日志下载结果：presigned 模式携带 OSS 预签名 URL（浏览器直连下载），否则为 zip Blob */
+export interface CaseLogDownloadResult {
+  blob: Blob
+  size: number
+  /**
+   * INT-1116：OSS 可用时网关回 presigned JSON 信封（download_url），浏览器需直连该
+   * OSS 端点下载（跨源导航下载无 CORS 约束；缺省 undefined = 本地降级 zip 字节流）。
+   */
+  downloadUrl?: string
+}
+
 /**
- * GET /reports/{id}/cases/{caseId}/logs/download（logs.zip Blob；INT-1062 扩展 ?files=）。
+ * GET /reports/{id}/cases/{caseId}/logs/download（logs.zip；INT-1062 扩展 ?files=）。
  * files 传入选打包文件（URL 编码 JSON 字符串数组，缺省整包向后兼容）。
- * 下载走 fetch ReadableStream 逐块读取，按旧 Vue getReader 先例上报真实进度（onProgress
- * 500ms 采样速率）；错误体沿用 client.ts 同款 JSON 解析归拢 ApiError。
+ *
+ * INT-1116 契约分支：
+ * - OSS 可用 → 网关回 presigned JSON 信封 `{download_url, filename, size}`，前端消费
+ *   download_url 触发浏览器直连下载（跨源导航，rustfs 需暴露浏览器可达地址）；
+ * - OSS 不可用 / 本地降级 → 响应体即 zip 字节流，走 fetch ReadableStream 逐块读取，
+ *   按旧 Vue getReader 先例上报真实进度（onProgress 500ms 采样速率）。
+ * 错误体沿用 client.ts 同款 JSON 解析归拢 ApiError。
  */
 export async function downloadCaseLogs(
   reportId: number,
   caseId: string,
   files?: string[],
   onProgress?: (progress: CaseLogDownloadProgress) => void
-): Promise<{ blob: Blob; size: number }> {
+): Promise<CaseLogDownloadResult> {
   const path = `/reports/${reportId}/cases/${caseId}/logs/download`
   const url = `${API_BASE_URL}${path}${
     files && files.length > 0 ? `?files=${encodeURIComponent(JSON.stringify(files))}` : ''
@@ -293,6 +309,24 @@ export async function downloadCaseLogs(
       message: typeof payload.message === 'string' ? payload.message : '',
       detail: payload.detail,
     })
+  }
+
+  // INT-1116：OSS 可用时网关回 presigned JSON 信封 → 消费 download_url（浏览器直连下载）。
+  const contentType = response.headers.get('content-type') ?? ''
+  if (contentType.includes('application/json')) {
+    const envelope = (await response.json()) as {
+      data?: { download_url?: string; filename?: string; size?: number }
+    }
+    const downloadUrl = envelope?.data?.download_url
+    if (!downloadUrl) {
+      throw new ApiError({
+        httpStatus: response.status,
+        message: '日志下载响应缺少下载地址',
+      })
+    }
+    const size = Number(envelope?.data?.size ?? 0)
+    onProgress?.({ loaded: size, total: size, speed: 0 })
+    return { blob: new Blob([], { type: 'application/zip' }), size, downloadUrl }
   }
 
   if (!response.body) {

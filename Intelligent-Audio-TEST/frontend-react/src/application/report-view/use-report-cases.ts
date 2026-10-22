@@ -116,7 +116,8 @@ export function useReportCases(
 
   /**
    * 下载用例日志（INT-1067 两段流程第二步）：按所选文件名打包（?files=），
-   * 流式上报真实进度（onProgress 500ms 采样），返回 zip Blob。
+   * 流式上报真实进度（onProgress 500ms 采样）；INT-1116 presigned 模式携带 download_url
+   * 供浏览器直连 OSS 下载，否则返回 zip Blob。
    */
   const downloadLogs = useCallback(
     async (
@@ -124,7 +125,7 @@ export function useReportCases(
       files: string[],
       onProgress?: (progress: CaseLogDownloadProgress) => void
     ) => {
-      // 消费真实端点返回的 blob（进度 Dialog 按所选总量与真实速率推进）
+      // 消费真实端点返回的 blob / presigned download_url（进度 Dialog 按所选总量与真实速率推进）
       return downloadCaseLogs(reportId, caseId, files, onProgress)
     },
     [reportId]
