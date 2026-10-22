@@ -5,7 +5,7 @@
         <i class="fas fa-headset footer-logo"></i>
         <div class="footer-brand-text">
           <span class="footer-title">智能语音测试系统</span>
-          <span class="footer-desc">端到端测试 · API 测试 · 多维度评估 · 报告分析</span>
+          <span class="footer-desc">统一测试流程 · 多维度评估 · 报告分析</span>
         </div>
       </div>
       <div class="footer-copyright">
