@@ -3,7 +3,7 @@
  */
 import { request, type RequestOptions } from '../http/client';
 import type { AudioItemDto, AudioListDto } from '../dto/audioDto';
-import { toAudioInfo, toAudioInfoList, toAudioPage, toFolderNode } from '../adapters/audioAdapter';
+import { toAudioInfo, toAudioInfoList, toAudioPage, toFolderNode, toAudioAlgorithmRelationDto } from '../adapters/audioAdapter';
 import type { AudioInfo } from '../../domain/model/audio';
 import { camelizeKeys } from '../../utils/keyTransform';
 
@@ -240,6 +240,12 @@ export const audiosApi = {
     // 评估维度上行归一：Domain 侧 camelCase（testType/roundScope）→ 后端用例配置协议原文（test_type/round_scope）
     if (Array.isArray(normalizedData.dimensions)) {
       normalizedData.dimensions = normalizedData.dimensions.map(toEvaluationDimensionDto);
+    }
+    // 算法关联上行归一：Domain 侧 camelCase（algorithmType/isPrimary）→ 后端 snake_case（algorithm_type/is_primary）
+    // INT-1417：audio_service create_audio_algorithm_relation 按 snake_case 读键且无 camelCase 兜底，
+    // merge 链路无键转换，未归一即 algorithm_type=null 违约 NOT NULL（audio_algorithm_relations）。
+    if (Array.isArray(normalizedData.algorithmRelations)) {
+      normalizedData.algorithmRelations = normalizedData.algorithmRelations.map(toAudioAlgorithmRelationDto);
     }
     return camelizeUploadResult(await request('POST', '/audios/upload/merge', { fileId: fileId, taskId: taskId, ...normalizedData }, options));
   },
