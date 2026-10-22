@@ -161,20 +161,31 @@ export async function resolveReportName(reportId: string): Promise<string> {
   return fallbackReportName(reportId)
 }
 
+/** 名称解析门控选项（INT-1289：application 层按 hasPermission 传入；
+ * 无对应读权限不发起 /tasks、/reports 快照请求，通知行保留「任务 #id / 报告 #id」降级）。 */
+export interface ResolveNameOptions {
+  /** 允许解析任务名（task:read 门控；false 保留降级标题不发 GET /tasks） */
+  task?: boolean
+  /** 允许解析报告名（report:read 门控；false 保留降级标题不发 GET /reports） */
+  report?: boolean
+}
+
 /**
  * 为通知行解析真实名称并返回更新后的通知（名称解析失败保留原降级标题）。
  * 异步批处理由调用方编排（不阻塞事件行渲染，§3.6）。
+ * options 缺省 = 全部可解析（兼容既有调用/测试）；应用层按角色权限显式传 false。
  */
 export async function resolveNotificationNames(
-  item: AppNotification
+  item: AppNotification,
+  options?: ResolveNameOptions
 ): Promise<AppNotification> {
-  if (item.taskId && item.kind === 'task') {
+  if (item.taskId && item.kind === 'task' && options?.task !== false) {
     const name = await resolveTaskName(item.taskId)
     if (name && !name.startsWith('任务 #')) {
       return { ...item, title: name }
     }
   }
-  if (item.reportId && item.kind === 'report') {
+  if (item.reportId && item.kind === 'report' && options?.report !== false) {
     const name = await resolveReportName(item.reportId)
     if (name && !name.startsWith('报告 #')) {
       return { ...item, title: name }

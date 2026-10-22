@@ -198,4 +198,52 @@ describe('resolveNotificationNames 集成', () => {
     )
     expect(resolved.title).toBe('任务 #1')
   })
+
+  it('INT-1289：无 task:read（options.task=false）不发 /tasks 快照，保留降级标题', async () => {
+    const { resolveNotificationNames } = await importApi()
+    const resolved = await resolveNotificationNames(makeTaskItem(), { task: false })
+    expect(resolved.title).toBe('任务 #419')
+    expect(fetchTaskListMock).not.toHaveBeenCalled()
+  })
+
+  it('INT-1289：无 report:read（options.report=false）不发 /reports 快照，保留降级标题', async () => {
+    const { resolveNotificationNames } = await importApi()
+    const item: AppNotification = {
+      id: 'report:57:x',
+      tab: 'notice',
+      kind: 'report',
+      title: '报告 #57',
+      content: '报告已生成',
+      createdAt: '2026-10-22T00:00:00Z',
+      read: false,
+      reportId: '57',
+    }
+    const resolved = await resolveNotificationNames(item, { report: false })
+    expect(resolved.title).toBe('报告 #57')
+    expect(fetchReportListMock).not.toHaveBeenCalled()
+  })
+
+  it('INT-1289：task/report 门控互不影响——task=false 仍可解析报告名', async () => {
+    fetchReportListMock.mockResolvedValue({
+      items: [{ id: 57, name: '真实报告R', task_name: 'T' }],
+      total: 1,
+      page: 1,
+      per_page: 100,
+      pages: 1,
+    })
+    const { resolveNotificationNames } = await importApi()
+    const item: AppNotification = {
+      id: 'report:57:x',
+      tab: 'notice',
+      kind: 'report',
+      title: '报告 #57',
+      content: '报告已生成',
+      createdAt: '2026-10-22T00:00:00Z',
+      read: false,
+      reportId: '57',
+    }
+    const resolved = await resolveNotificationNames(item, { task: false })
+    expect(resolved.title).toBe('真实报告R')
+    expect(fetchReportListMock).toHaveBeenCalledTimes(1)
+  })
 })

@@ -117,4 +117,38 @@ describe('useNotifications', () => {
     expect(idB).not.toBe(idA)
     expect(result.current.unreadCount).toBe(1)
   })
+
+  it('INT-1289：无 task:read / report:read 时名称解析带 false 门控（不发 /tasks /reports 快照）', async () => {
+    const { result } = renderHook(() => useNotifications())
+
+    const handlers = mockSubscribe.mock.calls[0][0]
+    act(() => {
+      handlers.onEvent(makeEvent())
+    })
+
+    await waitFor(() => expect(mockResolveNames).toHaveBeenCalled())
+    expect(mockResolveNames).toHaveBeenCalledWith(
+      expect.objectContaining({ taskId: '1', kind: 'task' }),
+      { task: false, report: false }
+    )
+    expect(result.current.notice[0].title).toBe('任务 #1')
+  })
+
+  it('INT-1289：持 task:read / report:read 时名称解析门控为 true', async () => {
+    useAuthStore.setState({
+      user: makeUser(['sse:read', 'task:read', 'report:read']),
+    })
+    const { result } = renderHook(() => useNotifications())
+
+    const handlers = mockSubscribe.mock.calls[0][0]
+    act(() => {
+      handlers.onEvent(makeEvent())
+    })
+
+    await waitFor(() => expect(mockResolveNames).toHaveBeenCalled())
+    expect(mockResolveNames).toHaveBeenCalledWith(
+      expect.objectContaining({ taskId: '1', kind: 'task' }),
+      { task: true, report: true }
+    )
+  })
 })
