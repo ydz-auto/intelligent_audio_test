@@ -34,16 +34,16 @@ export default defineConfig(({ envMode }) => {
       strictPort: true,
       proxy: {
         '/api': {
-          target: 'http://localhost:15000',
+          target: 'http://localhost:5700',
           changeOrigin: true,
         },
         '/ws': {
-          target: 'http://localhost:15000',
+          target: 'http://localhost:5700',
           changeOrigin: true,
           ws: true,
         },
         '/socket.io': {
-          target: 'http://localhost:15000',
+          target: 'http://localhost:5700',
           changeOrigin: true,
           ws: true,
         },
