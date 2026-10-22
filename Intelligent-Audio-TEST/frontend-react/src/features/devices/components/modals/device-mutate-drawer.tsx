@@ -12,7 +12,7 @@
  * driverName/lastOnlineAt/createdAt 等非表单字段。
  */
 import { ChevronDown, Plus, ScanLine, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
@@ -49,7 +49,7 @@ import {
 import { normalizeDeviceSystem } from '@/features/devices/lib/device-system'
 import { useDeviceMutations, useDriverKeywords } from '@/application/devices/use-devices'
 import { useSplMappingsByDevice } from '@/application/spl/useSplMappings'
-import { useAlgorithmOptions } from '@/application/evaluation/use-dimensions'
+import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
 import { useGlobalAlgorithm } from '@/application/hooks/use-global-algorithm'
 import type { TestDevice } from '@/domain/models/testDevice'
 import type { PlaybackDevice } from '@/domain/models/playbackDevice'
@@ -319,8 +319,17 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
   const driverKeywords = driverKeywordsQuery.data ?? []
   const splOptions = splMappingsQuery.data ?? []
   // 算法类型选项（INT-1213：真实 GET /algorithm/options，显示中文名；V9.7.10 algorithmSelect 口径）
-  const algorithmOptionsQuery = useAlgorithmOptions()
-  const algorithmOptions = algorithmOptionsQuery.data ?? []
+  // INT-1239：改壳层门控版（['shell','algorithm','options']，enabled: algorithm:read）——device_admin
+  // 无 algorithm:read 不下发请求（后端 RBAC 403）；选项为 {value,name}，抽屉统一映射 {value,label}。
+  const {
+    options: algorithmRawOptions,
+    isLoading: algorithmOptionsLoading,
+    canRead: canReadAlgorithm,
+  } = useAlgorithmOptions()
+  const algorithmOptions = useMemo(
+    () => algorithmRawOptions.map((o) => ({ value: o.value, label: o.name })),
+    [algorithmRawOptions]
+  )
   // 关联算法新增态默认全局算法（16_设备域.md §6.2「默认全局算法」）
   const { algorithmId: globalAlgorithmId } = useGlobalAlgorithm()
 
@@ -698,10 +707,13 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                 </label>
                 <ChipField
                   label='算法类型'
-                  options={algorithmOptions}
+                  options={canReadAlgorithm ? algorithmOptions : []}
                   selected={form.watch('algorithms')}
                   onToggle={toggleChip('algorithms')}
                 />
+                {!canReadAlgorithm && (
+                  <p className='text-muted-foreground text-xs'>无算法读取权限，暂不可配置算法类型</p>
+                )}
                 {/* 状态采集字段（§6.2：只读展示设备实时采集值） */}
                 <div className='border-border/60 grid grid-cols-3 gap-2 rounded-lg border p-2.5 text-xs'>
                   <div className='flex flex-col gap-0.5'>
@@ -917,18 +929,29 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
                     <Select
                       value={form.watch('algorithmType')}
                       onValueChange={(value) => form.setValue('algorithmType', value ?? '')}
+                      disabled={!canReadAlgorithm}
                     >
                       <SelectTrigger size='sm' className='w-full'>
-                        <SelectValue placeholder={algorithmOptionsQuery.isLoading ? '加载中…' : '请选择算法'}>
-                          {algorithmOptions.find((o) => o.value === form.watch('algorithmType'))?.label ?? ''}
+                        <SelectValue
+                          placeholder={
+                            !canReadAlgorithm
+                              ? '无权限'
+                              : algorithmOptionsLoading
+                                ? '加载中…'
+                                : '请选择算法'
+                          }
+                        >
+                          {canReadAlgorithm &&
+                            (algorithmOptions.find((o) => o.value === form.watch('algorithmType'))?.label ?? '')}
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
-                        {algorithmOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
+                        {canReadAlgorithm &&
+                          algorithmOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
                       </SelectContent>
                     </Select>
                   </Field>
