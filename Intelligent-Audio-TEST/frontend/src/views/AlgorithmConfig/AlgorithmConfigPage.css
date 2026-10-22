@@ -92,6 +92,62 @@
   flex-wrap: wrap;
 }
 
+/* INT-1380：批量删除勾选列（宽 40px 对齐 LogView.checkbox-col） */
+.algorithm-config-page .data-table .checkbox-col {
+  width: 40px;
+  min-width: 40px;
+  text-align: center;
+}
+
+.algorithm-config-page .data-table td.checkbox-col {
+  cursor: default;
+}
+
+/* INT-1380：批量删除浮动条（对齐 TagManagement.tg-bulk-bar：固定底部居中） */
+.alg-bulk-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--color-black) 18%, transparent);
+}
+
+.alg-bulk-count {
+  font-size: var(--font-size-sm);
+  color: var(--foreground);
+  font-weight: var(--font-weight-medium);
+}
+
+.alg-bulk-clear {
+  color: var(--muted-foreground);
+  font-size: var(--font-size-sm);
+  padding: var(--spacing-xs);
+}
+
+.alg-bulk-clear:hover {
+  color: var(--foreground);
+  background: var(--muted);
+}
+
+.alg-bulk-fade-enter-active,
+.alg-bulk-fade-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.alg-bulk-fade-enter-from,
+.alg-bulk-fade-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(8px);
+}
+
 .algorithm-detail {
   display: flex;
   flex-direction: column;

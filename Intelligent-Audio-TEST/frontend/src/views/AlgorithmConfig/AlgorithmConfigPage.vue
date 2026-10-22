@@ -77,6 +77,9 @@
               <table class="data-table">
                 <thead>
                   <tr>
+                    <th class="checkbox-col">
+                      <input type="checkbox" :checked="isAllSelected" @change="toggleSelectAll" aria-label="全选当前页" />
+                    </th>
                     <th class="core-col">算法类型</th>
                     <th class="core-col">名称</th>
                     <th class="secondary-col">分组</th>
@@ -87,14 +90,23 @@
                 </thead>
                 <tbody>
                   <tr v-if="loading">
-                    <td colspan="7" class="empty-row">
+                    <td colspan="8" class="empty-row">
                       <i class="fas fa-spinner fa-spin"></i> 加载中...
                     </td>
                   </tr>
                   <tr v-else-if="filteredAlgorithms.length === 0">
-                    <td colspan="7" class="empty-row">暂无数据</td>
+                    <td colspan="8" class="empty-row">暂无数据</td>
                   </tr>
                   <tr v-else v-for="record in paginatedAlgorithms" :key="record.type">
+                    <td class="checkbox-col">
+                      <input
+                        type="checkbox"
+                        :checked="selectedTypes.has(record.type)"
+                        @change="toggleSelect(record)"
+                        @click.stop
+                        :aria-label="`选择算法 ${record.name}`"
+                      />
+                    </td>
                     <td class="core-col">{{ record.type }}</td>
                     <td class="core-col">{{ record.name }}</td>
                     <td class="secondary-col">
@@ -106,7 +118,7 @@
                         {{ record.status === ApiEndpointStatus.ONLINE ? '上线' : '下线' }}
                       </span>
                     </td>
-                    <td class="secondary-col">{{ record.params?.length || 0 }}</td>
+                    <td class="secondary-col">{{ paramCount(record) }}</td>
                     <td class="core-col action-col">
                       <div class="table-actions">
                         <button class="btn btn-text btn-sm" @click="handleEdit(record)">
@@ -136,6 +148,20 @@
                 @page-size-change="handlePageSizeChange"
               />
             </div>
+
+            <!-- INT-1380：批量删除浮动条（勾选 ≥1 浮起，对齐 React §7.8） -->
+            <Transition name="alg-bulk-fade">
+              <div v-if="selectedCount > 0" class="alg-bulk-bar" aria-live="polite">
+                <span class="alg-bulk-count">已选择 {{ selectedCount }} 个算法</span>
+                <button class="btn btn-danger btn-sm" @click="handleBulkDelete">
+                  <i class="fas fa-trash btn-icon"></i>
+                  批量删除
+                </button>
+                <button class="btn btn-text btn-sm alg-bulk-clear" @click="clearSelection" title="清除选择">
+                  <i class="fas fa-times"></i>
+                </button>
+              </div>
+            </Transition>
           </div>
 
           <div v-else-if="activeTab === 'detail'" class="tab-content">
@@ -183,7 +209,7 @@
                   </div>
                   <div class="info-item">
                     <span class="info-label">参数数量</span>
-                    <span class="info-value">{{ currentAlgorithm.params?.length || 0 }}</span>
+                    <span class="info-value">{{ paramCount(currentAlgorithm) }}</span>
                   </div>
                 </div>
               </div>
@@ -358,11 +384,19 @@ const {
   filteredAlgorithms,
   paginatedAlgorithms,
   getGroupName,
+  paramCount,
   loadAlgorithms,
   handleCreate,
   handleEdit,
   handleClone,
   confirmDelete,
+  handleBulkDelete,
+  selectedTypes,
+  selectedCount,
+  isAllSelected,
+  toggleSelect,
+  toggleSelectAll,
+  clearSelection,
   handleSelect,
   handleSearch,
   handleFilter,

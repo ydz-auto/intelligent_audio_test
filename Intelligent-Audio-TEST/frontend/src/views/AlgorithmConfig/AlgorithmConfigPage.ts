@@ -7,6 +7,15 @@ import { usePagination } from '../../composables/usePagination'
 import { toUserErrorMessage } from '@/utils/errorMessage'
 import type { AlgorithmGroup, AlgorithmDefinition } from '@/domain'
 
+/** INT-1380：参数总数 = 设备 + API + 用例（对齐 React paramCount；列表 `params` 仅为设备参数别名） */
+export function paramCount(record: Pick<AlgorithmDefinition, 'deviceParams' | 'apiParams' | 'caseParams'>): number {
+  return (
+    (record.deviceParams?.length ?? 0) +
+    (record.apiParams?.length ?? 0) +
+    (record.caseParams?.length ?? 0)
+  )
+}
+
 /** INT-899（INT-858 N1）：错误消息安全化——原始 gRPC 异常文本不直出 Toast；
  *  非 Error 抛出（字符串等）保持「未知错误」兜底口径（INT-291 契约）。 */
 function errorText(error: unknown): string {
@@ -65,6 +74,72 @@ export function useAlgorithmConfigPage() {
 
   // 使用通用分页 composable
   const { currentPage, pageSize, totalPages, paginatedItems: paginatedAlgorithms } = usePagination(filteredAlgorithms, ref(10))
+
+  // INT-1380：批量删除勾选（按 delete 键 type 去重；对齐 React selectedIds/selectedTypes）
+  const selectedTypes = ref<Set<string>>(new Set())
+  const selectedCount = computed(() => selectedTypes.value.size)
+  const isAllSelected = computed(() => {
+    if (paginatedAlgorithms.value.length === 0) return false
+    return paginatedAlgorithms.value.every(a => selectedTypes.value.has(a.type))
+  })
+
+  function toggleSelect(record: AlgorithmDefinition) {
+    const next = new Set(selectedTypes.value)
+    if (next.has(record.type)) {
+      next.delete(record.type)
+    } else {
+      next.add(record.type)
+    }
+    selectedTypes.value = next
+  }
+
+  function toggleSelectAll() {
+    if (isAllSelected.value) {
+      selectedTypes.value = new Set()
+      return
+    }
+    const next = new Set(selectedTypes.value)
+    for (const record of paginatedAlgorithms.value) {
+      next.add(record.type)
+    }
+    selectedTypes.value = next
+  }
+
+  function clearSelection() {
+    selectedTypes.value = new Set()
+  }
+
+  /** INT-1380：批量删除（勾选 ≥1 浮条 → 确认 → POST /algorithm/bulk-delete） */
+  async function handleBulkDelete() {
+    const types = Array.from(selectedTypes.value)
+    if (types.length === 0) return
+
+    const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+      title: '批量删除',
+      content: `将删除已选择的 ${types.length} 个算法。此操作不可恢复。`,
+      confirmText: '删除',
+      cancelText: '取消',
+      danger: true,
+    })
+    if (!confirmed) return
+
+    try {
+      const result = await algorithmPort.bulkDelete(types)
+      const deleted = new Set(result?.deletedTypes ?? [])
+      const successCount = types.filter(t => deleted.has(t)).length
+      const failedCount = types.length - successCount
+      // 对齐 React §7.8：结果 toast「成功删除 {s} 个算法，失败 {f} 个」
+      notification.success(
+        `成功删除 ${successCount} 个算法${failedCount > 0 ? `，失败 ${failedCount} 个` : ''}`
+      )
+      selectedTypes.value = new Set()
+      loadAlgorithms()
+    } catch (error) {
+      console.error('批量删除失败:', error)
+      // INT-291：失败必须可见；loadAlgorithms 仅在成功路径调用，列表现状不被误清
+      notification.error('批量删除失败: ' + errorText(error))
+    }
+  }
 
   function getGroupName(group: string | undefined): string {
     const names: Record<string, string> = {
@@ -273,12 +348,20 @@ export function useAlgorithmConfigPage() {
     filteredAlgorithms,
     paginatedAlgorithms,
     getGroupName,
+    paramCount,
     loadAlgorithms,
     handleCreate,
     handleEdit,
     handleView,
     handleClone,
     confirmDelete,
+    handleBulkDelete,
+    selectedTypes,
+    selectedCount,
+    isAllSelected,
+    toggleSelect,
+    toggleSelectAll,
+    clearSelection,
     handleSelect,
     handleSearch,
     handleFilter,
