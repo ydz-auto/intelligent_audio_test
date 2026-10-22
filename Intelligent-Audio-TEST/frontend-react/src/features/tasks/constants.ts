@@ -66,44 +66,6 @@ export function getEvaluationStatusMeta(status: string | null) {
   )
 }
 
-/** 任务类型 → 中文（§9：端到端测试/API测试/混合） */
-export const TASK_TYPE_LABELS: Record<string, string> = {
-  e2e: '端到端测试',
-  api: 'API测试',
-  mixed: '混合',
-}
-
-export function getTaskTypeLabel(type: string | null | undefined): string {
-  if (!type) return '—'
-  return TASK_TYPE_LABELS[type] ?? type
-}
-
-/**
- * 任务类型派生（单一来源，INT-1241）：按用例级被测设备类型集合分桶——
- *  physical → e2e；http_api/websocket_api → api；兼有 → mixed；
- *  无 device_type 行（旧任务用例未派生，device_types=[]）时按任务关联资源兜底：
- *  有实体设备（device_count>0）判 e2e、有 API（api_count>0）判 api、兼有判 mixed、
- *  均无回退 api（对齐后端 /tasks/stats type_counts 的「无用例行回退 api」兜底）。
- * 列表与详情复用本函数，保证同一任务两处类型标签一致。
- */
-export function deriveTaskType(
-  deviceTypes: string[] | null | undefined,
-  task?: { device_count?: number | null; api_count?: number | null }
-): 'api' | 'e2e' | 'mixed' {
-  const dts = deviceTypes ?? []
-  const hasPhysical = dts.includes('physical')
-  const hasApi = dts.includes('http_api') || dts.includes('websocket_api')
-  if (hasPhysical && hasApi) return 'mixed'
-  if (hasPhysical) return 'e2e'
-  if (hasApi) return 'api'
-  // 空 device_types 兜底：按任务关联实体设备 / API 计数判定（INT-1241）
-  const deviceCount = task?.device_count ?? 0
-  const apiCount = task?.api_count ?? 0
-  if (deviceCount > 0 && apiCount > 0) return 'mixed'
-  if (deviceCount > 0) return 'e2e'
-  return 'api'
-}
-
 /** 算法类型 → 中文（mock 占位值，真实枚举随算法域接线对齐） */
 export const ALGORITHM_TYPE_LABELS: Record<string, string> = {
   asr_streaming: '流式语音识别',
@@ -144,12 +106,6 @@ export const TIME_RANGE_OPTIONS = [
   { value: 'week', label: '近7天' },
   { value: 'month', label: '近30天' },
   { value: 'custom', label: '自定义' },
-]
-
-export const PUBLISHED_TYPE_OPTIONS = [
-  { value: 'all', label: '全部类型' },
-  { value: 'e2e', label: '端到端测试' },
-  { value: 'api', label: 'API测试' },
 ]
 
 export const PUBLISHED_STATUS_OPTIONS = [

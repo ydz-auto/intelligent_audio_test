@@ -1,6 +1,6 @@
 /**
  * 任务详情内容组件（09_任务域.md §4，双形态共享：路由页 /tasks/:id 与快览弹窗）。
- * 三卡纵排：任务信息卡 / 进度概览卡 / 关联用例·设备（Tabs）；API/混合任务追加 API 资源管理；
+ * 三卡纵排：任务信息卡 / 进度概览卡 / 关联用例·设备（Tabs）；API 资源区按真实 apis 数据渲染；
  * 底部实时日志卡 + 操作按钮组（§4.7 状态机）。
  */
 import { Pause, Play, RefreshCw, RotateCcw, Square } from 'lucide-react'
@@ -26,7 +26,7 @@ import { ProgressCard } from '@/features/tasks/detail/progress-card'
 import { RealtimeLogs } from '@/features/tasks/detail/realtime-logs'
 import { TaskInfoCard } from '@/features/tasks/detail/task-info-card'
 
-/** API 资源管理（§4.5，仅 API/混合任务；纯展示无操作） */
+/** API 资源管理（§4.5，按真实 apis 数据渲染；纯展示无操作） */
 function ApiResources({ apis }: { apis: Array<{ id: number; name: string; status: string | null }> }) {
   if (apis.length === 0) return null
   return (
@@ -107,7 +107,7 @@ export function TaskDetailContent({
   if (!detail) return null
 
   const effectiveDeviceTypes = deviceTypesOverride ?? detail.device_types
-  const isApi = effectiveDeviceTypes.includes('http_api')
+  // INT-1241：API 资源区按真实 apis 数据无条件渲染（不再按任务类型推导显隐）
   const hasRealtimeDevice = effectiveDeviceTypes.includes('websocket_api')
   const isTerminal = ['completed', 'failed', 'stopped', 'merged', 'skipped'].includes(
     detail.execution_status ?? ''
@@ -125,7 +125,7 @@ export function TaskDetailContent({
     <div className='flex flex-col gap-4'>
       <TaskInfoCard detail={detail} />
       <ProgressCard detail={detail} />
-      {isApi && <ApiResources apis={detail.apis} />}
+      <ApiResources apis={detail.apis} />
       <CaseAssociation detail={detail} onCaseSelect={onCaseSelect} />
 
       {!compact && (
