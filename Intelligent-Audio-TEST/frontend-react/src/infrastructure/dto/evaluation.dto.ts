@@ -9,6 +9,8 @@ import type {
   Dimension,
   DimensionApiSettings,
   DimensionHealthCheckData,
+  DimensionOutputField,
+  DimensionRequiredInput,
   EvaluationCategory,
   EvaluationDimensionItem,
   HealthCheckResultItem,
@@ -142,6 +144,77 @@ export interface DimensionReorderDto {
 
 // ===== DTO → Domain 适配（snake→camel 唯一转换层） =====
 
+/** 嵌套列表归一：数组原样；字符串 JSON 解析为数组（旧数据兼容，照 adapter parseNestedList） */
+function toNestedList(value: unknown): Record<string, unknown>[] | undefined {
+  if (Array.isArray(value)) return value as Record<string, unknown>[]
+  if (typeof value !== 'string' || !value.trim()) return undefined
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * required_inputs 归一（snake_case wire → camelCase domain；INT-1350 二轮：与写侧
+ * toDimensionInputDto 的 param_code 口径同源，兼容旧数据 key/description 与双形态键）。
+ */
+function toDimensionRequiredInputs(value: unknown): DimensionRequiredInput[] | null {
+  const list = toNestedList(value)
+  if (!list) return null
+  return list.map((item) => {
+    const record = item as Record<string, unknown>
+    return {
+      id: (record.id as number) ?? null,
+      dimensionId: (record.dimension_id ?? record.dimensionId) as number | null,
+      paramCode: String(record.param_code ?? record.paramCode ?? record.key ?? ''),
+      paramName: String(record.param_name ?? record.paramName ?? record.label ?? ''),
+      label: String(record.label ?? record.param_name ?? record.paramName ?? ''),
+      fieldType: String(record.field_type ?? record.fieldType ?? 'text'),
+      required: record.required === undefined ? true : Boolean(record.required),
+      defaultValue: record.default_value ?? record.defaultValue,
+      helpText: record.help_text
+        ? String(record.help_text)
+        : record.description
+          ? String(record.description)
+          : undefined,
+      uiOrder: (record.ui_order ?? record.uiOrder) as number | null,
+    }
+  })
+}
+
+/**
+ * output_fields 归一（snake_case wire → camelCase domain；INT-1350 二轮：补齐
+ * param_code 读取，否则编辑回显 paramCode 恒空、保存时清空已落库配置。兼容旧数据
+ * name 键与双形态键）。
+ */
+function toDimensionOutputFields(value: unknown): DimensionOutputField[] | null {
+  const list = toNestedList(value)
+  if (!list) return null
+  return list.map((item) => {
+    const record = item as Record<string, unknown>
+    return {
+      id: (record.id as number) ?? null,
+      dimensionId: (record.dimension_id ?? record.dimensionId) as number | null,
+      paramCode: String(record.param_code ?? record.paramCode ?? record.name ?? ''),
+      paramName: String(record.param_name ?? record.paramName ?? record.label ?? ''),
+      label: String(record.label ?? record.param_name ?? record.paramName ?? ''),
+      fieldPath: String(
+        record.field_path ?? record.fieldPath ?? record.param_code ?? record.paramCode ?? ''
+      ),
+      fieldType: String(record.field_type ?? record.fieldType ?? 'number'),
+      outputRole: String(record.output_role ?? record.outputRole ?? 'main'),
+      aggRole: String(record.agg_role ?? record.aggRole ?? ''),
+      defaultValue: record.default_value ?? record.defaultValue,
+      visibleInReport:
+        record.visible_in_report === undefined ? true : Boolean(record.visible_in_report),
+      helpText: record.help_text ? String(record.help_text) : undefined,
+      uiOrder: (record.ui_order ?? record.uiOrder) as number | null,
+    }
+  })
+}
+
 /** CategoryItemDto → EvaluationCategory */
 export function toEvaluationCategory(dto: CategoryItemDto): EvaluationCategory {
   return {
@@ -178,8 +251,12 @@ export function toDimension(dto: DimensionItemDto): Dimension {
     sortOrder: dto.sort_order,
     estimatedExecTime: dto.estimated_exec_time,
     rule: dto.rule,
-    requiredInputs: dto.required_inputs,
-    outputFields: dto.output_fields,
+    // INT-1350 二轮：读侧归一 snake_case→camelCase，与写侧 toDimensionInputDto 同口径。
+    // 此前原样透传 dto.required_inputs/output_fields（wire 为 snake_case），编辑回显
+    // paramCode 恒空 → 保存时后端 _save_output_params 空 param_code 逐行 continue 且
+    // 编辑先删后写 → 已落库输出字段/输入参数被清空。
+    requiredInputs: toDimensionRequiredInputs(dto.required_inputs),
+    outputFields: toDimensionOutputFields(dto.output_fields),
     statisticMethod: dto.statistic_method,
     aggDenominator: dto.agg_denominator,
     excludeRounds: dto.exclude_rounds,
