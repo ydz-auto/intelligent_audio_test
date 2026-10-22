@@ -10,7 +10,7 @@ import {
   EvaluationDimension,
   EvaluationCategory,
 } from '../../domain';
-import { ViewMode, TestType } from '@/domain/enums';
+import { ViewMode } from '@/domain/enums';
 import { getVisibilityPref, setVisibilityPref } from '../visibility/useVisibility';
 import {
   DEFAULT_MAX_PROCESS,
@@ -82,9 +82,10 @@ export function createEvalDimensionState() {
       ]
     },
     status: true,
+    // P3-3：模板字段名与 RequiredInputsEditor 绑定（paramCode/paramName/fieldType/defaultValue/helpText）对齐
     requiredInputs: [
-      { key: 'asr_result', label: 'ASR识别结果', source: TestType.API, required: true, description: 'ASR算法识别出的文本' },
-      { key: 'asr_ref', label: '参考文本', source: 'device', required: true, description: '标准参考文本' }
+      { paramCode: 'asr_result', paramName: 'ASR识别结果', fieldType: 'text', required: true, defaultValue: '', helpText: 'ASR算法识别出的文本' },
+      { paramCode: 'asr_ref', paramName: '参考文本', fieldType: 'text', required: true, defaultValue: '', helpText: '标准参考文本' }
     ],
     associatedAlgorithms: [],
     llmJudgeConfig: {
@@ -128,9 +129,10 @@ export function createEvalDimensionState() {
     status: true,
     // INT-423/467：新建默认可见性（localStorage 偏好，缺省共享）
     visibility: getVisibilityPref(),
+    // P3-3：模板字段名与 RequiredInputsEditor 绑定（paramCode/paramName/fieldType/defaultValue/helpText）对齐
     requiredInputs: [
-      { key: 'asr_result', label: 'ASR识别结果', source: TestType.API, required: true, description: 'ASR算法识别出的文本' },
-      { key: 'asr_ref', label: '参考文本', source: 'device', required: true, description: '标准参考文本' }
+      { paramCode: 'asr_result', paramName: 'ASR识别结果', fieldType: 'text', required: true, defaultValue: '', helpText: 'ASR算法识别出的文本' },
+      { paramCode: 'asr_ref', paramName: '参考文本', fieldType: 'text', required: true, defaultValue: '', helpText: '标准参考文本' }
     ],
     associatedAlgorithms: [],
     llmJudgeConfig: {

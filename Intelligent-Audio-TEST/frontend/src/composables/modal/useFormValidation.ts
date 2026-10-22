@@ -8,6 +8,10 @@ export interface ValidationField {
   patternMessage?: string;
   type?: string;
   arrayItemType?: string;
+  min?: number;
+  max?: number;
+  /** 跨字段/自定义校验：返回错误文案则校验失败，null 表示通过 */
+  validate?: (formValues: Record<string, any>) => string | null;
   conditional?: {
     field: string;
     value: any;
@@ -54,7 +58,7 @@ export function useFormValidation() {
       // 必填验证
       if (field.required) {
         const value = formValues[field.key]
-        
+
         if (value === null || value === undefined || value === '') {
           errors[field.key] = `${field.label}不能为空`
           hasErrors = true
@@ -63,7 +67,24 @@ export function useFormValidation() {
           hasErrors = true
         }
       }
-      
+
+      // 数值范围验证（number 类型且有 min/max）
+      if (field.type === 'number' && (field.min !== undefined || field.max !== undefined)) {
+        const rawValue = formValues[field.key]
+        if (rawValue !== null && rawValue !== undefined && rawValue !== '') {
+          const num = Number(rawValue)
+          if (!isNaN(num)) {
+            if (field.min !== undefined && num < field.min) {
+              errors[field.key] = `${field.label}不能小于 ${field.min}`
+              hasErrors = true
+            } else if (field.max !== undefined && num > field.max) {
+              errors[field.key] = `${field.label}不能大于 ${field.max}`
+              hasErrors = true
+            }
+          }
+        }
+      }
+
       // 正则表达式验证
       if (field.pattern && formValues[field.key]) {
         const regex = new RegExp(field.pattern)
@@ -118,8 +139,17 @@ export function useFormValidation() {
           }
         }
       }
+
+      // 自定义校验（跨字段等），未命中已有错误才执行
+      if (field.validate && !errors[field.key]) {
+        const customError = field.validate(formValues)
+        if (customError) {
+          errors[field.key] = customError
+          hasErrors = true
+        }
+      }
     })
-    
+
     return !hasErrors
   }
   
@@ -146,7 +176,23 @@ export function useFormValidation() {
         fieldHasError = true
       }
     }
-    
+
+    // 数值范围验证（number 类型且有 min/max）
+    if (field.type === 'number' && (field.min !== undefined || field.max !== undefined)) {
+      if (value !== null && value !== undefined && value !== '') {
+        const num = Number(value)
+        if (!isNaN(num)) {
+          if (field.min !== undefined && num < field.min) {
+            errors[field.key] = `${field.label}不能小于 ${field.min}`
+            fieldHasError = true
+          } else if (field.max !== undefined && num > field.max) {
+            errors[field.key] = `${field.label}不能大于 ${field.max}`
+            fieldHasError = true
+          }
+        }
+      }
+    }
+
     // 正则表达式验证
     if (field.pattern && value) {
       const regex = new RegExp(field.pattern)

@@ -75,12 +75,11 @@ export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsRet
       const requiredInputsObj = requiredInputsArray;
 
       if (apiSettingsObj.bodyTemplate) {
-        // 对齐 rounds 内的字段
+        // 对齐 rounds 内的字段（param_code 为后端原字段名，paramCode 为 Domain 侧 camelCase）
         if (apiSettingsObj.bodyTemplate.rounds && Array.isArray(apiSettingsObj.bodyTemplate.rounds)) {
           const roundTpl = apiSettingsObj.bodyTemplate.rounds[0] || {};
           const requiredInputKeys = new Set(
-            // TODO: param_code 为后端原字段名，apiSettings bodyTemplate 透传结构
-            requiredInputsArray.map((input: any) => input.param_code || input.key).filter(Boolean)
+            requiredInputsArray.map((input: any) => input.param_code || input.paramCode || input.key).filter(Boolean)
           );
           Object.keys(roundTpl).forEach(key => {
             if (!requiredInputKeys.has(key)) {
@@ -88,8 +87,7 @@ export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsRet
             }
           });
           requiredInputsArray.forEach((input: any) => {
-            // TODO: param_code 为后端原字段名，apiSettings bodyTemplate 透传结构
-            const inputKey = input.param_code || input.key;
+            const inputKey = input.param_code || input.paramCode || input.key;
             if (inputKey && !roundTpl[inputKey]) {
               roundTpl[inputKey] = `{{${inputKey}}}`;
             }

@@ -47,10 +47,9 @@ export function createEvalDimensionNormalizers(state: EvalDimensionState) {
     }
     const roundTpl = dimensionData.apiSettings.bodyTemplate.rounds[0];
 
-    // 添加 requiredInputs 中缺失的 key
+    // 添加 requiredInputs 中缺失的 key（param_code 为后端原字段名，paramCode 为 Domain 侧 camelCase）
     dimensionData.requiredInputs.forEach((input: any) => {
-      // TODO: param_code 为后端原字段名，apiSettings bodyTemplate 透传结构
-      const inputKey = input.param_code || input.key;
+      const inputKey = input.param_code || input.paramCode || input.key;
       if (inputKey && !roundTpl[inputKey]) {
         roundTpl[inputKey] = `{{${inputKey}}}`;
       }
@@ -58,8 +57,7 @@ export function createEvalDimensionNormalizers(state: EvalDimensionState) {
     // 清理 rounds 内不在 requiredInputs 中的 key
     Object.keys(roundTpl).forEach(key => {
       const exists = dimensionData.requiredInputs.some((input: any) => {
-        // TODO: param_code 为后端原字段名，apiSettings bodyTemplate 透传结构
-        const inputKey = input.param_code || input.key;
+        const inputKey = input.param_code || input.paramCode || input.key;
         return inputKey === key;
       });
       if (!exists) delete roundTpl[key];

@@ -83,8 +83,25 @@ export function createEvalDimensionForm(state: EvalDimensionState) {
         { key: 'temperature', label: 'Temperature', type: 'number', required: false, min: 0, max: 2, step: 0.1, default: DEFAULT_LLM_TEMPERATURE }
       ]
     },
-    { key: 'resultMin', label: '结果最小值', type: 'number', required: true, group: '结果配置' },
-    { key: 'resultMax', label: '结果最大值', type: 'number', required: true, group: '结果配置' },
+    { key: 'resultMin', label: '结果最小值', type: 'number', required: true, group: '结果配置',
+      // P3-1 跨字段校验：结果最小值不能大于结果最大值
+      validate: (values: Record<string, any>) => {
+        const min = Number(values.resultMin)
+        const max = Number(values.resultMax)
+        if (!isNaN(min) && !isNaN(max) && values.resultMin !== '' && values.resultMax !== '' && min > max) {
+          return '结果最小值不能大于结果最大值'
+        }
+        return null
+      } },
+    { key: 'resultMax', label: '结果最大值', type: 'number', required: true, group: '结果配置',
+      validate: (values: Record<string, any>) => {
+        const min = Number(values.resultMin)
+        const max = Number(values.resultMax)
+        if (!isNaN(min) && !isNaN(max) && values.resultMin !== '' && values.resultMax !== '' && min > max) {
+          return '结果最小值不能大于结果最大值'
+        }
+        return null
+      } },
     { key: 'decimalPlaces', label: '小数位数', type: 'number', required: true, min: 0, max: 4, group: '结果配置' },
     { key: 'weight', label: '权重', type: 'number', required: true, min: 1, max: 10, group: '结果配置' },
     { key: 'estimatedExecTime', label: '预计执行时间(s)', type: 'number', required: true, min: 1, group: '结果配置' },

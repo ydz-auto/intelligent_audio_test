@@ -38,7 +38,7 @@
             </button>
             <div class="dropdown-menu" id="importExportMenu">
               <button class="dropdown-item" @click="importDimensions">导入维度</button>
-              <button class="dropdown-item" @click="exportDimensions">导出维度</button>
+              <button class="dropdown-item" @click="exportDimensions('json')">导出维度</button>
             </div>
           </div>
         </div>
