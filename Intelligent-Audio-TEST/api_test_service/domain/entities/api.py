@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from shared.models.common_enums import OutputType
 
@@ -116,6 +116,27 @@ class APIAggregate:
     # 聚合根不承载完整密钥（零响应），`_api_po_to_entity` 从 po.meta.api_keys
     # 派生；读侧序列化只读本字段
     api_keys_summary: Optional[Dict] = None
+    # ===== 读侧回显字段（INT-1338：GET /apis、GET /apis/{id}、PUT 响应逐字段回显）=====
+    # 供应商名称（volc_ast / ali / tencent 等）
+    vendor: Optional[str] = None
+    # 元数据（INT-1177：聚合根不承载完整 api_keys——映射时剥离，零明文；
+    # 完整密钥池以 api_keys_summary 摘要承载，写侧经 get_api_meta 读原始 PO）
+    meta: Optional[Dict] = None
+    # 详细描述
+    description: Optional[str] = None
+    # 关联算法类型（translation / asr / speaker_recognition / tts 等）
+    algorithm_type: Optional[str] = None
+    # 默认最大并发数 / 超时时间 / 音频时长（未配置时 PO 有 DB 默认 5/30/60）
+    default_max_process: Optional[int] = None
+    default_max_timeout: Optional[int] = None
+    default_max_audio_duration: Optional[int] = None
+    # 健康度评分（0-100）
+    health_score: Optional[float] = None
+    # API 接入点配置列表（JSON）
+    api_endpoints: List[Dict] = field(default_factory=list)
+    # 创建 / 更新时间（读侧透出，datetime 或字符串）
+    created_at: Optional[Any] = None
+    updated_at: Optional[Any] = None
 
     def set_output_types(self, raw) -> List[str]:
         """设置输出类型列表（经 OutputType 枚举归一化），返回归一化结果"""

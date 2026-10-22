@@ -44,8 +44,8 @@ _task_data_acl = TaskDataAclRepositoryImpl()
 def _api_po_to_entity(po: API) -> APIAggregate:
     """API PO → APIAggregate 聚合根。
 
-    仅映射聚合根承载的字段；PO 上聚合根不需要的字段（如 vendor / meta /
-    api_endpoints / health_score / default_max_* 等）在此处丢弃。
+    PO 上聚合根承载的字段全量映射；`_api_to_dict` 经 getattr 兜底直取，
+    未承载的字段读回恒 None / []（INT-1338 读侧回显缺口根因）。
 
     字段映射说明：
     - po.api_url        → aggregate.url
@@ -54,9 +54,15 @@ def _api_po_to_entity(po: API) -> APIAggregate:
                           字段为 str，直接透传以保留前端可读词汇）
     - po.meta.api_keys  → aggregate.api_keys_summary（INT-1177 密钥池非敏感
                           摘要 {count, tails[]}；完整密钥不承载，零响应）
+    - po.meta           → aggregate.meta（INT-1338：承载但剥离 api_keys，
+                          聚合根零明文；摘要继续经 api_keys_summary 承载）
     - 其余 PO 无对应列的字段（method / headers / body_template / retry_count）
       使用聚合根默认值
     """
+    # INT-1177：聚合根不承载完整 api_keys（零明文），映射时剥离
+    raw_meta = po.meta or {}
+    if isinstance(raw_meta, dict) and 'api_keys' in raw_meta:
+        raw_meta = {k: v for k, v in raw_meta.items() if k != 'api_keys'}
     return APIAggregate(
         id=po.id,
         name=po.name,
@@ -72,6 +78,18 @@ def _api_po_to_entity(po: API) -> APIAggregate:
         proxy_type=po.proxy_type,
         proxy_url=po.proxy_url,
         api_keys_summary=derive_api_keys_summary((po.meta or {}).get('api_keys')),
+        # INT-1338 读侧回显字段：PO 全字段承载到聚合根
+        vendor=po.vendor,
+        meta=raw_meta,
+        description=po.description,
+        algorithm_type=po.algorithm_type,
+        default_max_process=po.default_max_process,
+        default_max_timeout=po.default_max_timeout,
+        default_max_audio_duration=po.default_max_audio_duration,
+        health_score=po.health_score,
+        api_endpoints=po.api_endpoints or [],
+        created_at=po.created_at,
+        updated_at=po.updated_at,
     )
 
 
@@ -81,6 +99,10 @@ def _apply_aggregate_to_po(aggregate: APIAggregate, po: API) -> None:
     聚合根中无 PO 对应列的字段（method / headers / body_template /
     retry_count）不回写。rms_spl_mapping_id 回写保持与 set-default /
     update_api 直改 PO 同源（聚合根承载后经 save 路径不丢指针）。
+
+    INT-1338：读侧新增承载字段同步回写（save 路径一致性）；NOT NULL 列
+    （meta / default_max_* / health_score / api_endpoints）仅在聚合根有值
+    时回写，避免手工构造的空缺值破坏约束。
     """
     po.name = aggregate.name
     po.api_url = aggregate.url
@@ -90,6 +112,25 @@ def _apply_aggregate_to_po(aggregate: APIAggregate, po: API) -> None:
     po.rms_spl_mapping_id = aggregate.rms_spl_mapping_id
     po.proxy_type = aggregate.proxy_type
     po.proxy_url = aggregate.proxy_url
+    po.vendor = aggregate.vendor
+    po.description = aggregate.description
+    po.algorithm_type = aggregate.algorithm_type
+    if aggregate.meta is not None:
+        new_meta = dict(aggregate.meta)
+        # 聚合根不承载完整 api_keys（零明文），回写时保留 PO 既有密钥池
+        if isinstance(po.meta, dict) and po.meta.get('api_keys') is not None:
+            new_meta['api_keys'] = po.meta['api_keys']
+        po.meta = new_meta
+    if aggregate.default_max_process is not None:
+        po.default_max_process = aggregate.default_max_process
+    if aggregate.default_max_timeout is not None:
+        po.default_max_timeout = aggregate.default_max_timeout
+    if aggregate.default_max_audio_duration is not None:
+        po.default_max_audio_duration = aggregate.default_max_audio_duration
+    if aggregate.health_score is not None:
+        po.health_score = aggregate.health_score
+    if aggregate.api_endpoints is not None:
+        po.api_endpoints = aggregate.api_endpoints
 
 
 class APITestRepository(APITestRepositoryABC):
@@ -153,11 +194,19 @@ class APITestRepository(APITestRepositoryABC):
                 name=aggregate.name,
                 api_url=aggregate.url,
                 status=aggregate.status or "online",
-                meta={},  # PO 必填字段，聚合根未承载，使用空对象
+                meta=dict(aggregate.meta or {}),  # PO 必填字段；聚合根承载（api_keys 已剥离）
                 deleted=aggregate.deleted,
                 max_timeout=aggregate.timeout_seconds,
                 proxy_type=aggregate.proxy_type,
                 proxy_url=aggregate.proxy_url,
+                vendor=aggregate.vendor,
+                description=aggregate.description,
+                algorithm_type=aggregate.algorithm_type,
+                default_max_process=aggregate.default_max_process or 5,
+                default_max_timeout=aggregate.default_max_timeout or 30,
+                default_max_audio_duration=aggregate.default_max_audio_duration or 60,
+                health_score=aggregate.health_score if aggregate.health_score is not None else 100,
+                api_endpoints=aggregate.api_endpoints or [],
             )
             session.add(po)
             session.flush()
