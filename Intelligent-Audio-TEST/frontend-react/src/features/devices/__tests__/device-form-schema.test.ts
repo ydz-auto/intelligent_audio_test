@@ -59,7 +59,7 @@ describe('设备表单 schema（16_设备域.md §6.2 必填口径；AGENTS §3.
     }
   })
 
-  it('API 必填项缺失时校验失败（API名称/端点/协议/算法）', () => {
+  it('API 必填项缺失时校验失败（API名称/协议/算法；apiUrl 已放开可选，INT-1229）', () => {
     const result = apiDeviceFormSchema.safeParse({
       name: '',
       description: '',
@@ -76,10 +76,26 @@ describe('设备表单 schema（16_设备域.md §6.2 必填口径；AGENTS §3.
     if (!result.success) {
       const paths = result.error.issues.map((i) => i.path[0])
       expect(paths).toContain('name')
-      expect(paths).toContain('apiUrl')
+      expect(paths).not.toContain('apiUrl')
       expect(paths).toContain('protocol')
       expect(paths).toContain('algorithmType')
     }
+  })
+
+  it('空 apiUrl 通过校验（api_endpoints 为主，Master URL 可选兜底；INT-1229）', () => {
+    const result = apiDeviceFormSchema.safeParse({
+      name: '语音识别 API',
+      description: '',
+      vendor: '',
+      apiUrl: '',
+      protocol: 'https',
+      environment: 'testing',
+      algorithmType: 'asr_streaming',
+      maxProcess: '5',
+      maxTimeout: '30',
+      maxAudioDuration: '60',
+    })
+    expect(result.success).toBe(true)
   })
 
   it('合法提交通过校验', () => {
@@ -108,11 +124,12 @@ describe('设备表单 schema（16_设备域.md §6.2 必填口径；AGENTS §3.
   })
 
   describe('API 代理配置校验（INT-1029：proxy_type/proxy_url 契约 user:pass@host:port 不含 scheme）', () => {
+    // apiUrl 留空（INT-1229 放开可选）——代理校验独立于 Master URL
     const baseApi = {
       name: '语音识别 API',
       description: '',
       vendor: '',
-      apiUrl: 'https://api.example.com/v1/asr',
+      apiUrl: '',
       protocol: 'https',
       environment: 'testing',
       algorithmType: 'asr_streaming',

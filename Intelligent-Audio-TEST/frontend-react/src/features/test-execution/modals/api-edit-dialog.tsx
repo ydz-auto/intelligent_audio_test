@@ -1,6 +1,6 @@
 /**
  * 新增/编辑 API 弹窗（§5.3；interfaces/features/test-execution/modals；Dialog sm:max-w-lg）。
- * RHF + zod：名称 / 端点（URL 校验）/ 关联算法（Select，默认带全局算法）/ 最大并发 /
+ * RHF + zod：名称 / Master URL（可选，非空 URL 校验）/ 关联算法（Select，默认带全局算法）/ 最大并发 /
  * 描述 / 密钥（password + 显隐 Eye）/ 其他配置（Textarea JSON，aria-invalid 红描边 +
  * 「JSON 格式不正确」）；主钮「保存」（进行中「保存中…」）；成功 toast「API 已保存」+
  * 列表失效重拉（api_config:create/update）。
@@ -39,10 +39,8 @@ import { cn } from '@/lib/utils'
 const apiFormSchema = z.object({
   name: z.string().min(1, '请输入必填项'),
   apiKey: z.string().optional(),
-  apiUrl: z
-    .string()
-    .min(1, '请输入必填项')
-    .url('请输入合法的 URL（https://…）'),
+  /** Master 入口 URL（可选；api_endpoints 为主，空值提交侧归一 null；非空仍做 URL 校验） */
+  apiUrl: z.union([z.string().url('请输入合法的 URL（https://…）'), z.literal('')]).optional(),
   algorithmType: z.string().min(1, '请输入必填项'),
   maxProcess: z.number().int().min(1).max(128),
   description: z.string().optional(),
@@ -94,7 +92,8 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
     await save({
       id: api?.id,
       name: values.name,
-      apiUrl: values.apiUrl,
+      // INT-1223/1229：Master URL 可选，空值归一 null（防 update 覆盖既有 api_url）
+      apiUrl: values.apiUrl || null,
       algorithmType: values.algorithmType,
       defaultMaxProcess: values.maxProcess,
       description: values.description || null,
@@ -148,7 +147,7 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
           </div>
 
           <div className='space-y-1.5'>
-            <Label htmlFor='api-url'>API 端点 *</Label>
+            <Label htmlFor='api-url'>Master URL（可选）</Label>
             <Input
               id='api-url'
               placeholder='https://…'

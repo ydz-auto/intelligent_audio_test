@@ -531,7 +531,7 @@ class ParamMapping(db.Model):
 子维度继承父维度的以下配置（保存主维度时自动同步，见 `evaluation_controller.py`）：
 | 字段 | 说明 |
 |------|------|
-| `api_url` | Master入口URL |
+| `api_url` | Master入口URL（可选；api_endpoints 为主，无端点时兜底——INT-1223/1229） |
 | `api_endpoints` | API端点配置 |
 | `api_settings` | API调用设置 |
 | `task_type_code` | 评估任务关键字 |

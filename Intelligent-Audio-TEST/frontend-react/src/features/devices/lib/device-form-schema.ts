@@ -53,13 +53,14 @@ export const playbackDeviceFormSchema = z.object({
 
 export type PlaybackDeviceForm = z.infer<typeof playbackDeviceFormSchema>
 
-/** 测试 API 表单（§6.2：名称/API端点/协议必填；端点列表复用 INT-355 §5.3 口径） */
+/** 测试 API 表单（§6.2：名称/协议必填；api_endpoints 为主、Master URL 可选兜底——INT-1223/1229） */
 export const apiDeviceFormSchema = z
   .object({
     name: z.string().min(1, '请填写 API 名称'),
     description: z.string().optional(),
     vendor: z.string().optional(),
-    apiUrl: z.string().min(1, '请填写 API 端点'),
+    /** Master 入口 URL（可选；api_endpoints 为主，空值提交侧归一 null 防覆盖既有 api_url） */
+    apiUrl: z.string().optional(),
     protocol: z.string().min(1, '请选择协议'),
     environment: z.string().optional(),
     /** 代理类型（INT-1029：http/https/socks5/socks5h，空=不使用代理；api_test_service PROXY_TYPES 契约） */
