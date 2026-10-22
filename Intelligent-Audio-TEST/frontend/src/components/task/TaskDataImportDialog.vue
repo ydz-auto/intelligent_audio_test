@@ -100,6 +100,7 @@ import '../../assets/styles/layouts/main.css'
 import { computed, onUnmounted, ref } from 'vue';
 import { dataTransferPort } from '../../composables/task/dataTransferPort';
 import type { ImportPreview, ImportResult, ImportProgress } from '../../domain/model/dataTransfer';
+import { toUserErrorMessage } from '../../utils/errorMessage';
 
 const emit = defineEmits(['close', 'imported']);
 
@@ -169,7 +170,8 @@ const onFileChange = async (event: Event) => {
   try {
     preview.value = await dataTransferPort.previewImport(file);
   } catch (e: any) {
-    errorMessage.value = e?.message || '预检失败：无法解析该导出包';
+    // INT-1285：预检失败经 toUserErrorMessage 降级，不直出原始 RPC 异常文本
+    errorMessage.value = toUserErrorMessage(e, '预检失败：无法解析该导出包');
     preview.value = null;
   } finally {
     previewing.value = false;
@@ -188,7 +190,8 @@ const startImport = async () => {
     result.value = await dataTransferPort.executeImport(selectedFile.value);
     phase.value = 'done';
   } catch (e: any) {
-    errorMessage.value = e?.message || '导入失败';
+    // INT-1285：导入失败经 toUserErrorMessage 降级，不直出原始 RPC 异常文本
+    errorMessage.value = toUserErrorMessage(e, '导入失败');
     phase.value = 'error';
   } finally {
     stopWatching();
