@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from shared.models.common_enums import OutputType
 
@@ -97,6 +97,22 @@ class APIAggregate:
     # `user:pass@host:port`（不含 scheme）；两者皆空 = 不用代理
     proxy_type: Optional[str] = None
     proxy_url: Optional[str] = None
+    # 供应商名称（如 volc_ast, ali, tencent）
+    vendor: Optional[str] = None
+    # 详细描述
+    description: Optional[str] = None
+    # API 元数据（鉴权信息、额外参数等，apis.meta JSON 列）
+    meta: Dict[str, Any] = field(default_factory=dict)
+    # 关联算法类型（如 translation, asr, speaker_recognition, tts）
+    algorithm_type: Optional[str] = None
+    # 端点缺省继承的最大并发/超时/时长（apis.default_max_*，INT-1364）
+    default_max_process: int = 5
+    default_max_timeout: int = 30
+    default_max_audio_duration: int = 60
+    # 健康度评分（0-100）
+    health_score: Optional[float] = None
+    # API 接入点配置列表（apis.api_endpoints JSON 列，INT-1364）
+    api_endpoints: List[Dict[str, Any]] = field(default_factory=list)
 
     def set_output_types(self, raw) -> List[str]:
         """设置输出类型列表（经 OutputType 枚举归一化），返回归一化结果"""

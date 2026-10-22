@@ -41,8 +41,9 @@ _task_data_acl = TaskDataAclRepositoryImpl()
 def _api_po_to_entity(po: API) -> APIAggregate:
     """API PO → APIAggregate 聚合根。
 
-    仅映射聚合根承载的字段；PO 上聚合根不需要的字段（如 vendor / meta /
-    api_endpoints / health_score / default_max_* 等）在此处丢弃。
+    映射聚合根承载的全部业务字段；读侧经 _api_to_dict 透出
+    vendor / meta / algorithm_type / default_max_* / api_endpoints /
+    health_score，避免编辑弹窗空回显、改名保存覆盖已持久化字段（INT-1364）。
 
     字段映射说明：
     - po.api_url        → aggregate.url
@@ -66,6 +67,15 @@ def _api_po_to_entity(po: API) -> APIAggregate:
         rms_spl_mapping_id=po.rms_spl_mapping_id,
         proxy_type=po.proxy_type,
         proxy_url=po.proxy_url,
+        vendor=po.vendor,
+        description=po.description,
+        meta=po.meta or {},
+        algorithm_type=po.algorithm_type,
+        default_max_process=po.default_max_process or 5,
+        default_max_timeout=po.default_max_timeout or 30,
+        default_max_audio_duration=po.default_max_audio_duration or 60,
+        health_score=po.health_score,
+        api_endpoints=po.api_endpoints or [],
     )
 
 
@@ -75,6 +85,10 @@ def _apply_aggregate_to_po(aggregate: APIAggregate, po: API) -> None:
     聚合根中无 PO 对应列的字段（method / headers / body_template /
     retry_count）不回写。rms_spl_mapping_id 回写保持与 set-default /
     update_api 直改 PO 同源（聚合根承载后经 save 路径不丢指针）。
+
+    INT-1364：聚合根承载的业务字段（vendor/meta/algorithm_type/default_max_*/
+    api_endpoints/health_score）一并回写，保持 DDD 读写一致——读侧加载的
+    聚合根经 save 不再丢字段。
     """
     po.name = aggregate.name
     po.api_url = aggregate.url
@@ -84,6 +98,15 @@ def _apply_aggregate_to_po(aggregate: APIAggregate, po: API) -> None:
     po.rms_spl_mapping_id = aggregate.rms_spl_mapping_id
     po.proxy_type = aggregate.proxy_type
     po.proxy_url = aggregate.proxy_url
+    po.vendor = aggregate.vendor
+    po.description = aggregate.description
+    po.meta = aggregate.meta
+    po.algorithm_type = aggregate.algorithm_type
+    po.default_max_process = aggregate.default_max_process
+    po.default_max_timeout = aggregate.default_max_timeout
+    po.default_max_audio_duration = aggregate.default_max_audio_duration
+    po.health_score = aggregate.health_score
+    po.api_endpoints = aggregate.api_endpoints
 
 
 class APITestRepository(APITestRepositoryABC):
@@ -138,8 +161,8 @@ class APITestRepository(APITestRepositoryABC):
     def add(self, aggregate: APIAggregate) -> int:
         """新增 API 聚合根，返回新 ID。
 
-        从聚合根字段构造新 PO；PO 必填但聚合根未承载的字段（如 meta）使用
-        合理默认值以满足 NOT NULL 约束。
+        从聚合根字段构造新 PO；聚合根承载的字段（meta 等）原样落库，
+        PO 必填但聚合根确实未承载的字段使用合理默认值满足 NOT NULL 约束。
         """
         session = get_db_session()
         try:
@@ -147,11 +170,19 @@ class APITestRepository(APITestRepositoryABC):
                 name=aggregate.name,
                 api_url=aggregate.url,
                 status=aggregate.status or "online",
-                meta={},  # PO 必填字段，聚合根未承载，使用空对象
+                meta=aggregate.meta,
                 deleted=aggregate.deleted,
                 max_timeout=aggregate.timeout_seconds,
                 proxy_type=aggregate.proxy_type,
                 proxy_url=aggregate.proxy_url,
+                vendor=aggregate.vendor,
+                description=aggregate.description,
+                algorithm_type=aggregate.algorithm_type,
+                default_max_process=aggregate.default_max_process,
+                default_max_timeout=aggregate.default_max_timeout,
+                default_max_audio_duration=aggregate.default_max_audio_duration,
+                health_score=aggregate.health_score,
+                api_endpoints=aggregate.api_endpoints,
             )
             session.add(po)
             session.flush()
