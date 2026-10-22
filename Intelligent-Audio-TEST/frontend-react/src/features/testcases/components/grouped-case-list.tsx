@@ -259,10 +259,12 @@ export function GroupedCaseList({
 
   const renderGroupCard = (group: TestCaseGroup) => {
     const list = groupCases.get(group.id) ?? []
-    if (list.length === 0) return null
     const isExpanded = expanded.has(group.id)
     const inlineCount = inlineCounts[group.id] ?? GROUP_INLINE_PAGE
     const shownCount = Math.min(inlineCount, list.length)
+    // INT-1284：分组卡按 /groups 全量渲染——无已加载用例（空分组 / 筛选排除）也保留卡片，
+    // 计数取后端 test_case_count（有已加载用例时展示加载数，与组内懒加载口径一致）。
+    const displayCount = list.length > 0 ? list.length : group.testCaseCount
     const groupDuration = list.reduce((sum, c) => sum + (c.totalDuration ?? 0), 0)
     const groupSelected = list.filter((c) => selected.has(c.id)).length
     const subView = groupSubView[group.id] ?? 'flat'
@@ -288,7 +290,7 @@ export function GroupedCaseList({
             />
             <span className='font-medium truncate'>{group.name}</span>
             <Badge variant='secondary' className='rounded-md px-1.5 font-mono text-[11px] tabular-nums'>
-              {list.length} 条
+              {displayCount} 条
             </Badge>
             {groupDuration > 0 && (
               <Badge variant='outline' className='gap-1 rounded-md px-1.5 font-mono text-[11px] tabular-nums'>
@@ -340,7 +342,11 @@ export function GroupedCaseList({
         </div>
         {isExpanded && (
           <div className='space-y-2 border-t px-3 py-3'>
-            {renderGroupBody(visibleList, subView)}
+            {list.length === 0 ? (
+              <p className='text-muted-foreground py-3 text-center text-xs'>该分组暂无用例</p>
+            ) : (
+              renderGroupBody(visibleList, subView)
+            )}
             {list.length > shownCount && (
               <button
                 type='button'

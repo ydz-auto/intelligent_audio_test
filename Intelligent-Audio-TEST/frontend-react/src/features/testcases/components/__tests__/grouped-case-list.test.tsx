@@ -102,11 +102,13 @@ function restoreMatchMedia() {
 function Harness({
   loading = false,
   cases = CASES,
+  groups = GROUPS,
   trash = false,
   hasQueryFilters = false,
 }: {
   loading?: boolean
   cases?: TestCaseListItem[]
+  groups?: TestCaseGroup[]
   trash?: boolean
   hasQueryFilters?: boolean
 }) {
@@ -114,7 +116,7 @@ function Harness({
   return (
     <QueryClientProvider client={queryClient}>
       <GroupedCaseList
-        groups={loading ? [] : GROUPS}
+        groups={loading ? [] : groups}
         cases={loading ? [] : cases}
         loading={loading}
         trash={trash}
@@ -195,6 +197,67 @@ describe('GroupedCaseList', () => {
     // 点击后加载第 6 条，加载更多行消失
     expect(screen.getByText('智能音箱-闹钟设置2')).toBeInTheDocument()
     expect(screen.queryByText(/已显示 6 \/ 6 条 · 加载更多/)).not.toBeInTheDocument()
+  })
+
+  it('INT-1284：无已加载用例的分组仍渲染分组卡，计数取后端 test_case_count，页脚与渲染卡片数一致', async () => {
+    const user = setupUser()
+    const groupsWithEmpty: TestCaseGroup[] = [
+      ...GROUPS,
+      {
+        id: 'g3',
+        name: '音频上传生成',
+        description: null,
+        algorithmType: 'asr-v3',
+        createdAt: '2026-09-03 10:00',
+        updatedAt: '2026-10-15 09:00',
+        testCaseCount: 175,
+      },
+    ]
+    render(<Harness groups={groupsWithEmpty} />)
+    // 首屏 100 条用例覆盖不到的组（cases 里无 g3 成员）整卡仍渲染，计数取 test_case_count
+    expect(screen.getByText('音频上传生成')).toBeInTheDocument()
+    expect(screen.getByText('175 条')).toBeInTheDocument()
+    // 3 个分组 ≤ 每页 5 → 全部渲染，页脚「已加载全部 3 个分组」与真实渲染卡片数一致
+    expect(screen.getByText('已加载全部 3 个分组')).toBeInTheDocument()
+    // 展开无已加载用例的分组 → 组内空态提示而非空白/崩溃
+    await user.click(screen.getByText('音频上传生成'))
+    expect(screen.getByText('该分组暂无用例')).toBeInTheDocument()
+  })
+
+  it('INT-1284：分组分页「已显示 x / 总数」按 /groups 全量计数，加载更多后分组卡全量渲染', async () => {
+    const user = setupUser()
+    // 8 个分组：7 个有已加载用例（g1 6 条 + g2 1 条 + 5 个空用例组占位），1 个空组
+    const manyGroups: TestCaseGroup[] = [
+      ...GROUPS,
+      ...[
+        ['音频上传生成', 'g3', 3],
+        ['打断与恢复', 'g4', 175],
+        ['拒识', 'g5', 138],
+        ['据识', 'g6', 2],
+        ['默认分组', 'g7', 1],
+        ['话轮接管', 'g8', 49],
+      ].map(([name, id, testCaseCount]) => ({
+        id: id as string,
+        name: name as string,
+        description: null,
+        algorithmType: 'asr-v3' as string | null,
+        createdAt: '2026-09-03 10:00',
+        updatedAt: '2026-10-15 09:00',
+        testCaseCount: testCaseCount as number,
+      })),
+    ]
+    render(<Harness groups={manyGroups} />)
+    // 首页 5 组：5 张卡片 + 页脚「已显示 5 / 8 个分组 · 加载更多」
+    expect(screen.getByText(/已显示 5 \/ 8 个分组 · 加载更多/)).toBeInTheDocument()
+    await user.click(screen.getByText(/加载更多/))
+    // 加载更多后 8 组全渲染，页脚「已加载全部 8 个分组」
+    expect(screen.getByText('已加载全部 8 个分组')).toBeInTheDocument()
+    expect(screen.getByText('音频上传生成')).toBeInTheDocument()
+    expect(screen.getByText('打断与恢复')).toBeInTheDocument()
+    expect(screen.getByText('拒识')).toBeInTheDocument()
+    expect(screen.getByText('据识')).toBeInTheDocument()
+    expect(screen.getByText('默认分组')).toBeInTheDocument()
+    expect(screen.getByText('话轮接管')).toBeInTheDocument()
   })
 
   it('分组排序下拉：按用例数量/分组名称/创建时间', async () => {

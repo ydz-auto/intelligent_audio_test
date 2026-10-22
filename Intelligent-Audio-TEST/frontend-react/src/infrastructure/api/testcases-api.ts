@@ -64,11 +64,30 @@ export async function fetchTestCases(
   return { items, total: dto.total }
 }
 
-/** 分组视图数据（grouped-case-list 消费：分组卡 + 组内用例卡；客户端按 groupId 聚合） */
+/**
+ * 分组视图数据（grouped-case-list 消费：分组卡 + 组内用例卡；客户端按 groupId 聚合）。
+ * INT-1284：分组卡按「分组列表 × 组内已加载用例」渲染——只拉首屏 100 条时，用例排在
+ * 列表后部的分组（如打断与恢复、拒识）因无已加载用例而整卡不渲染，与 /groups 计数不符。
+ * 故循环拉取全部用例页（每页 LIST_PAGE_SIZE，直至 total 覆盖；后端单页有上限时循环补齐），
+ * 保证每个分组都有已加载用例可渲染。tag 视图仍取单页（fetchTagGroupedTestCases，首屏够聚合）。
+ */
 export async function fetchGroupedTestCases(
   query: TestCaseListQuery
 ): Promise<TestCaseListResult> {
-  return fetchTestCases(query)
+  /** 防呆：后端若忽略 page 参数反复返回同一批，最多拉 50 页（5000 条）即停 */
+  const MAX_GROUP_FETCH_PAGES = 50
+  const all: TestCaseListItem[] = []
+  let page = 1
+  let total = Number.POSITIVE_INFINITY
+  while (all.length < total) {
+    const res = await fetchTestCases({ ...query, page, perPage: LIST_PAGE_SIZE })
+    all.push(...res.items)
+    total = res.total
+    if (res.items.length === 0) break
+    page += 1
+    if (page > MAX_GROUP_FETCH_PAGES) break
+  }
+  return { items: all, total }
 }
 
 /** 标签视图数据（tag-case-list 消费：前端按 tag 聚合为标签卡；后端 view=tag 契约不消费） */
