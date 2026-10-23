@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Union
-from pydantic import Field, field_validator
+from typing import Annotated, Any, Dict, List, Optional, Union
+from pydantic import BeforeValidator, Field, field_validator
 
 from api_gateway.schemas.base import APIModel
 from api_gateway.schemas.common import PaginatedData
@@ -338,6 +338,26 @@ class BatchUpdateAnnotationsRequest(APIModel):
     refresh_test_cases: Optional[bool] = Field(True)
 
 
+def _normalize_tags_param(value):
+    """tags 入参归一化（INT-1525）。
+
+    GET 单值（tags=a）经 query 取值后是 str，POST 既可能是 str 列表也可能是
+    `{name, mode}` dict 列表；统一交给 Pydantic 按 `List[Union[str, dict]]` 校验，
+    避免单值 str 在 List[str] 上直接 422。
+    """
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    return value
+
+
+TagsFilter = Annotated[
+    Optional[List[Union[str, Dict[str, Any]]]],
+    BeforeValidator(_normalize_tags_param),
+]
+
+
 class AudioListQuery(APIModel):
     page: int = Field(1)
     per_page: int = Field(10)
@@ -347,7 +367,7 @@ class AudioListQuery(APIModel):
     folder: Optional[str] = Field(None)
     sample_rate: Optional[str] = Field(None)
     duration: Optional[str] = Field(None)
-    tags: Optional[List[str]] = Field(default_factory=list)
+    tags: TagsFilter = Field(default_factory=list)
     direction: Optional[str] = Field(None)
     algorithm_type: Optional[str] = Field(None)
 
@@ -358,7 +378,7 @@ class AudioIdQuery(APIModel):
     audio_type: Optional[str] = Field(None)
     sample_rate: Optional[str] = Field(None)
     duration: Optional[str] = Field(None)
-    tags: Optional[List[str]] = Field(default_factory=list)
+    tags: TagsFilter = Field(default_factory=list)
     direction: Optional[str] = Field(None)
     algorithm_type: Optional[str] = Field(None)
 
