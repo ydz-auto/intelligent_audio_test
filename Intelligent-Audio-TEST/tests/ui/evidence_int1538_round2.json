@@ -1,0 +1,81 @@
+{
+ "case_name": "接线测试_INT1538_复走_P1_1024053524",
+ "group": "接线测试_INT1538_复走组",
+ "sections": {},
+ "base": "http://172.30.224.1:15173",
+ "bundle": "http://172.30.224.1:15173/static/js/lib-react.5c68ee069a.js http://172.30.224.1:15173/static/js/17.6c16fa12d9.js http://172.30.224.1:15173/static/js/index.fb6c2fe87e.js",
+ "card_found": true,
+ "config_text": "音频试听配置\n音频「url_src_A.wav」\n播放模式\n浏览器播放\n音频将通过浏览器前端直接播放\n实验室播放\n音频将通过用例配置中的播放设备在实验室播放\n偏移量（秒）\n取消\n开始试听\nClose",
+ "mode_radio_lab": [
+  {
+   "checked": false
+  },
+  {
+   "checked": true
+  }
+ ],
+ "lab_stage_title": "测试用例预览｜url_src_A.wav 音频\n浏览器播放或实验室扬声器试听中\nurl_src_A.wav\n00:00 / 00:04\n播放\n停止\n播放设备（实",
+ "lab_alerts": [],
+ "lab_fetch": [],
+ "lab_time": "00:00 / 00:04",
+ "mode_radio_browser": [
+  {
+   "checked": true
+  },
+  {
+   "checked": false
+  }
+ ],
+ "browser_alerts": [
+  "音频加载失败，请确认音频文件存在且格式有效"
+ ],
+ "browser_fetch": [
+  {
+   "method": "GET",
+   "url": "/api/v1/audios/2358/stream",
+   "status": 200,
+   "resBody": "{\"url\":\"http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=xQeaNGaghGOJIwWDONZNUX69N7Q%3D&Expires=1792795983\"}"
+  }
+ ],
+ "browser_time": "00:00 / 00:04",
+ "browser_console": [
+  "http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=xQeaNGaghGOJIwWDONZNUX69N7Q%3D&Expires=1792795983 - Failed to load resource: net::ERR_FAILED"
+ ],
+ "export_text": "导出用例\n按当前筛选条件或已选用例导出，JSON / Excel 两种格式\n导出范围\n按当前筛选条件导出（导出全部筛选结果）\n仅导出已选 0 个用例\n格式\nJSON\n取消\n开始导出\nClose",
+ "export_toasts": [
+  "已开始导出（演示：testcases_2026-10-16.json）"
+ ],
+ "export_fetch": [],
+ "group_header_buttons": 0,
+ "group_edit_btns": 1,
+ "group_dialog_text": [
+  "编辑分组\n分组用于用例的组织与批量调整\n分组名称 *\n16/50\n描述\n自动创建的分组: 接线测试_INT1538_复走组\n算法类型\n全部算法\n取消\n保存\nClose"
+ ],
+ "trash_text": "跳到主内容\nToggle Sidebar\n智能语音测试平台\n主页\n工作台\n报告\n排行榜\n文档\n关于\n灵犀Agent\n算法\n全部算法\n搜索\n⌘\nK\nD\n总览\n概览\nAI 工具\n灵犀Agent\n测试执行\n开始测试\n任务管理\n测试资产\n用例管理\n音频管理\n设备管理\n报告中心\n测试配置\n算法配置\n评估维度\nSPL 映射\n标签管理\n管理\n日志查看\n系统设置\n工作台\n/\n用例管理\n用例管理\n新增用例\n导入用例\n导出\n模板下载\n按分组\n按标签\n分组\n接线测试_INT1538_复走组\n标签\n全部\n评估维度\n全部\n只看收藏\n回收站\n全部恢复\n重置\n没有找到符合条件的回收站用例\n尝试清空「分组」「标签」等筛选条件",
+ "dark_class": "dark",
+ "dark_bg": "rgb(19, 29, 46)",
+ "dark_browser_alerts": [
+  "音频加载失败，请确认音频文件存在且格式有效"
+ ],
+ "dark_browser_fetch": [
+  {
+   "method": "GET",
+   "url": "/api/v1/audios/2358/stream",
+   "status": 200,
+   "resBody": "{\"url\":\"http://127.0.0.1:9000/intelligent-audio-test/intelligent_audio_test/audios/direct/url_src_A_6.wav?AWSAccessKeyId=intelligent_audio_test&Signature=nrzwlXbE4FkPUV5%2FhY3DXWE3sJ0%3D&Expires=1792796044\"}"
+  }
+ ],
+ "shots": [
+  "p01_preview_config_light.png",
+  "p02_player_lab_error_light.png",
+  "p03_player_browser_error_light.png",
+  "p04_preview_config_dark.png",
+  "p05_player_browser_error_dark.png",
+  "p06_export_light.png",
+  "p06b_export_dark.png",
+  "p07_group_edit_light.png",
+  "p07b_group_edit_dark.png",
+  "p08_trash_light.png",
+  "p08b_trash_dark.png"
+ ]
+}

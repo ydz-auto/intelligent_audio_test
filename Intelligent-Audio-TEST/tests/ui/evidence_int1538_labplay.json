@@ -1,0 +1,21 @@
+{
+ "radio": [
+  false,
+  true
+ ],
+ "stage": "测试用例预览｜url_src_A.wav 音频\n浏览器播放或实验室扬声器试听中\nurl_src_A.wav\n00:00 / 00:00\n播放\n停止\n播放设备（实验室播放）\n未配置播放设备\n返回试听配置\nClose",
+ "play_btn": true,
+ "wait_s": 2.1,
+ "lab_alerts": [
+  "硬件播放失败: pyaudio shadow fixture (INT-95): OS audio stack wedged (Audiosrv StartPending) - real device I/O unavailable"
+ ],
+ "time_text": "00:00 / 00:04",
+ "fetch": [
+  {
+   "method": "POST",
+   "url": "/api/v1/audios/2358/preview",
+   "status": 400,
+   "resBody": "{\"success\":false,\"code\":400,\"message\":\"硬件播放失败: pyaudio shadow fixture (INT-95): OS audio stack wedged (Audiosrv StartPending) - real device I/O unavailable\"}"
+  }
+ ]
+}
