@@ -182,6 +182,9 @@ services:
       - AUDIO_SERVICE_GRPC_PORT=50052
       - DEVICE_SERVICE_HOST=host.docker.internal
       - DEVICE_SERVICE_GRPC_PORT=50053
+      # INT-1553：算法域 gRPC（algorithm_service:51067），缺省 localhost 在容器内解析为 ::1 → 调用全部失败
+      - ALGORITHM_SERVICE_HOST=algorithm_service
+      - ALGORITHM_SERVICE_GRPC_PORT=51067
       # INT-1548：用例列表回显报告状态走 report_service 内网 gRPC（51068），缺省 localhost 在容器内
       # 解析为 ::1 → 每个用例一次 ListReports 立即失败并重试，列表 20 条耗时 14s+、200 条即超时
       - REPORT_SERVICE_HOST=report_service
@@ -233,6 +236,10 @@ services:
       # INT-1548：结果采集走 device_service gRPC（宿主机 50053），缺省 localhost 在容器内解析为 ::1
       - DEVICE_SERVICE_HOST=host.docker.internal
       - DEVICE_SERVICE_GRPC_PORT=50053
+      # INT-1553：维度参数/关联算法校验走 algorithm_service gRPC，缺 env 时回落 localhost:50067
+      # 导致 CreateDimensionParam 静默失败（DB 无 evaluation_dimension_params 行，接口仍 201）
+      - ALGORITHM_SERVICE_HOST=algorithm_service
+      - ALGORITHM_SERVICE_GRPC_PORT=51067
     volumes:
       # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
       - service_logs:/app/logs
