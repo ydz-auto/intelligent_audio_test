@@ -862,6 +862,11 @@ class DeviceConfigServiceStub:
                 request_serializer=device__service__pb2.GetDeviceStatusHistoryRequest.SerializeToString,
                 response_deserializer=device__service__pb2.GetDeviceStatusHistoryResponse.FromString,
                 _registered_method=True)
+        self.GetDeviceMonitorStats = channel.unary_unary(
+                '/device_service.DeviceConfigService/GetDeviceMonitorStats',
+                request_serializer=device__service__pb2.GetDeviceMonitorStatsRequest.SerializeToString,
+                response_deserializer=device__service__pb2.GetDeviceMonitorStatsResponse.FromString,
+                _registered_method=True)
         self.CreateAlarmRule = channel.unary_unary(
                 '/device_service.DeviceConfigService/CreateAlarmRule',
                 request_serializer=device__service__pb2.CreateAlarmRuleRequest.SerializeToString,
@@ -1046,6 +1051,13 @@ class DeviceConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetDeviceMonitorStats(self, request, context):
+        """设备监控统计（INT-1578：历史监控 → 统计分析四图，CQRS 查询侧）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def CreateAlarmRule(self, request, context):
         """告警规则（INT-80）
         """
@@ -1207,6 +1219,11 @@ def add_DeviceConfigServiceServicer_to_server(servicer, server):
                     servicer.GetDeviceStatusHistory,
                     request_deserializer=device__service__pb2.GetDeviceStatusHistoryRequest.FromString,
                     response_serializer=device__service__pb2.GetDeviceStatusHistoryResponse.SerializeToString,
+            ),
+            'GetDeviceMonitorStats': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetDeviceMonitorStats,
+                    request_deserializer=device__service__pb2.GetDeviceMonitorStatsRequest.FromString,
+                    response_serializer=device__service__pb2.GetDeviceMonitorStatsResponse.SerializeToString,
             ),
             'CreateAlarmRule': grpc.unary_unary_rpc_method_handler(
                     servicer.CreateAlarmRule,
@@ -1866,6 +1883,33 @@ class DeviceConfigService:
             '/device_service.DeviceConfigService/GetDeviceStatusHistory',
             device__service__pb2.GetDeviceStatusHistoryRequest.SerializeToString,
             device__service__pb2.GetDeviceStatusHistoryResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetDeviceMonitorStats(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.DeviceConfigService/GetDeviceMonitorStats',
+            device__service__pb2.GetDeviceMonitorStatsRequest.SerializeToString,
+            device__service__pb2.GetDeviceMonitorStatsResponse.FromString,
             options,
             channel_credentials,
             insecure,

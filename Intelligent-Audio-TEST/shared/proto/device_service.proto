@@ -72,6 +72,8 @@ service DeviceConfigService {
   rpc BatchDeviceAction(BatchDeviceActionRequest) returns (BatchDeviceActionResponse);
   // 设备状态历史/趋势（INT-80）
   rpc GetDeviceStatusHistory(GetDeviceStatusHistoryRequest) returns (GetDeviceStatusHistoryResponse);
+  // 设备监控统计（INT-1578：历史监控 → 统计分析四图，CQRS 查询侧）
+  rpc GetDeviceMonitorStats(GetDeviceMonitorStatsRequest) returns (GetDeviceMonitorStatsResponse);
   // 告警规则（INT-80）
   rpc CreateAlarmRule(CreateAlarmRuleRequest) returns (CreateAlarmRuleResponse);
   rpc UpdateAlarmRule(UpdateAlarmRuleRequest) returns (UpdateAlarmRuleResponse);
@@ -508,6 +510,15 @@ message GetDeviceStatusHistoryResponse {
   bool success = 1;
   string message = 2;
   string data = 3;  // JSON 分页事件列表（趋势查询）
+}
+
+message GetDeviceMonitorStatsRequest {
+  string data = 1;  // JSON: {device_ids?: [int], lab_id?: int, start_date: 'YYYY-MM-DD', end_date: 'YYYY-MM-DD', granularity: 'day'}
+}
+message GetDeviceMonitorStatsResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON: {granularity, start_date, end_date, device_count, points:[{date, availability, cpu, memory, battery, errors, operations, health_check_samples}]}
 }
 
 message CreateAlarmRuleRequest {

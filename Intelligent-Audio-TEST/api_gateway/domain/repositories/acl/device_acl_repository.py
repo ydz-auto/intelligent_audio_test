@@ -114,6 +114,9 @@ class DeviceMonitorAclRepository(ABC):
     @abstractmethod
     def get_alarm_stats(self) -> CommandResultDTO: ...
 
+    @abstractmethod
+    def get_monitor_stats(self, query: dict) -> CommandResultDTO: ...
+
 
 class PlaybackConfigAclRepository(ABC):
     """playback_config_service 实体 ACL 接口。"""

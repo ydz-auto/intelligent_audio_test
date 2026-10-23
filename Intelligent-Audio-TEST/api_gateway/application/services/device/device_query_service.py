@@ -11,9 +11,14 @@ from api_gateway.schemas.device import (
     DeviceListQuery,
     DeviceStatusQuery,
     DeviceHealthCheckRequest,
+    DeviceMonitorStatsQuery,
 )
 
 logger = logging.getLogger(__name__)
+
+# 监控统计口径（INT-1578 契约 §1.1）：区间跨度 ≤ 90 天（含首尾），本期仅 day 粒度
+MONITOR_STATS_MAX_RANGE_DAYS = 90
+MONITOR_STATS_GRANULARITY_DAY = 'day'
 
 _device_acl = DeviceAclRepositoryImpl()
 _device_group_acl = DeviceGroupAclRepositoryImpl()
@@ -265,6 +270,39 @@ class DeviceQueryService:
 
         if not result.get('success'):
             return wrap_grpc_response(result, default_error_msg='查询状态历史失败')
+
+        return success_response(result.get('data'))
+
+    @staticmethod
+    def get_monitor_stats(start_date, end_date, device_ids=None, lab_id=None,
+                          granularity=MONITOR_STATS_GRANULARITY_DAY):
+        """设备监控统计（历史监控 → 统计分析四图，INT-1578）。
+
+        start_date / end_date 缺参由路由层 FastAPI 校验返回 422；本方法按契约
+        校验区间与粒度，非法返回 400。
+        """
+        try:
+            query = DeviceMonitorStatsQuery.model_validate({
+                'start_date': start_date,
+                'end_date': end_date,
+                'device_ids': device_ids,
+                'lab_id': lab_id,
+                'granularity': granularity,
+            })
+        except Exception as e:
+            return error_response(f"请求参数错误: {str(e)}", 400)
+
+        if query.end_date < query.start_date:
+            return error_response('结束日期不能早于开始日期', 400)
+        if (query.end_date - query.start_date).days + 1 > MONITOR_STATS_MAX_RANGE_DAYS:
+            return error_response(f'统计区间不得超过 {MONITOR_STATS_MAX_RANGE_DAYS} 天', 400)
+        if str(query.granularity or '').strip().lower() != MONITOR_STATS_GRANULARITY_DAY:
+            return error_response(f'统计粒度仅支持 {MONITOR_STATS_GRANULARITY_DAY}', 400)
+
+        result = _device_monitor_acl.get_monitor_stats(query.model_dump(mode='json'))
+
+        if not result.get('success'):
+            return wrap_grpc_response(result, default_error_msg='查询监控统计失败')
 
         return success_response(result.get('data'))
 

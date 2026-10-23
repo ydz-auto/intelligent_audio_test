@@ -1,4 +1,6 @@
-from fastapi import APIRouter
+from typing import Optional
+
+from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from api_gateway.application.services.device.device_query_service import DeviceQueryService
 from api_gateway.application.services.device.device_command_service import DeviceCommandService
@@ -39,6 +41,26 @@ def get_available_serials(_: None = require_permission('device:read')):
 def get_status_history_all(_: None = require_permission('device:read')):
     """设备状态历史/趋势查询（全设备，INT-80）"""
     return to_response(DeviceQueryService.get_status_history())
+
+
+@router.get('/monitor-stats')
+def get_monitor_stats(
+    start_date: str = Query(..., description='起始日期 YYYY-MM-DD（含）'),
+    end_date: str = Query(..., description='结束日期 YYYY-MM-DD（含）'),
+    device_ids: Optional[str] = Query(None, description='逗号分隔的设备 id'),
+    lab_id: Optional[int] = Query(None),
+    granularity: str = Query('day', description='本期仅 day'),
+    _: None = require_permission('device:read'),
+):
+    """设备监控统计（INT-1578）：历史监控 → 统计分析四图的数据源。
+
+    静态段必须注册在 /{device_id} 之前；start_date / end_date 缺参由 FastAPI 返回 422，
+    区间与粒度校验按契约返回 400。
+    """
+    return to_response(DeviceQueryService.get_monitor_stats(
+        start_date=start_date, end_date=end_date, device_ids=device_ids,
+        lab_id=lab_id, granularity=granularity,
+    ))
 
 
 # ==================== INT-80 设备分组 ====================

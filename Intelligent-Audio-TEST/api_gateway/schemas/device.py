@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Any, Dict, List, Optional
 from pydantic import Field, field_validator
 
@@ -196,6 +197,28 @@ class DeviceStatusHistoryQuery(APIModel):
     @classmethod
     def _split_comma_ids(cls, value):
         """query 形态兼容：device_ids=1,2（URLSearchParams 数组序列化）与 1&device_ids=2 均可"""
+        if isinstance(value, str):
+            parts = [p.strip() for p in value.split(',') if p.strip()]
+            return [int(p) for p in parts] if parts else None
+        return value
+
+
+class DeviceMonitorStatsQuery(APIModel):
+    """设备监控统计查询（INT-1578，历史监控 → 统计分析四图）。
+
+    区间与粒度合法性（end >= start、跨度 ≤ 90 天、granularity 仅 day）在
+    DeviceQueryService 侧按契约返回 400；本模型负责类型与 CSV 形态归一。
+    """
+    device_ids: Optional[List[int]] = Field(None)
+    lab_id: Optional[int] = Field(None)
+    start_date: date = Field(...)
+    end_date: date = Field(...)
+    granularity: str = Field('day')
+
+    @field_validator('device_ids', mode='before')
+    @classmethod
+    def _split_comma_ids(cls, value):
+        """query 形态：device_ids=1,2,3 拆分；也允许重复参数组成的列表"""
         if isinstance(value, str):
             parts = [p.strip() for p in value.split(',') if p.strip()]
             return [int(p) for p in parts] if parts else None

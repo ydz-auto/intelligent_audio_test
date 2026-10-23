@@ -162,6 +162,10 @@ class DeviceMonitorAclRepositoryImpl(DeviceMonitorAclRepository):
         from api_gateway.infrastructure.grpc_proxies import device_config_service
         return _wrap(device_config_service.get_alarm_stats())
 
+    def get_monitor_stats(self, query: dict) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import device_config_service
+        return _wrap(device_config_service.get_monitor_stats(query))
+
 
 class PlaybackConfigAclRepositoryImpl(PlaybackConfigAclRepository):
     """playback_config_service 实体 ACL 实现。"""
