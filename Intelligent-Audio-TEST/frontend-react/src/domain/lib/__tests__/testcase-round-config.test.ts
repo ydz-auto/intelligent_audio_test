@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   audioDraftFromConfig,
+  casePlaybackDevicesFromConfig,
   defaultRounds,
   roundDraftFromConfig,
   roundsFromConfig,
@@ -316,5 +317,34 @@ describe('testcase round config 序列化（INT-877/996 合流）', () => {
       expect(toStrategyOverridesDto(null)).toBeNull()
       expect(toStrategyOverridesDto({})).toBeNull()
     })
+  })
+})
+
+describe('casePlaybackDevicesFromConfig（INT-1534 播放器设备区）', () => {
+  it('取 config.rounds[].audios 的 playback_device_id/name 去重；缺名以 ID 占位', () => {
+    const devices = casePlaybackDevicesFromConfig({
+      rounds: [
+        {
+          round_number: 1,
+          audios: [
+            { playback_device_id: 10, playback_device_name: '实验室音箱 A' },
+            { playback_device_id: 10, playback_device_name: '实验室音箱 A' },
+          ],
+        },
+        {
+          round_number: 2,
+          audios: [{ playback_device_id: 12 }],
+        },
+      ],
+    })
+    expect(devices).toEqual([
+      { id: '10', name: '实验室音箱 A' },
+      { id: '12', name: '设备 12' },
+    ])
+  })
+
+  it('无 config / 无音频设备配置时回空数组（不写死设备）', () => {
+    expect(casePlaybackDevicesFromConfig(null)).toEqual([])
+    expect(casePlaybackDevicesFromConfig({ rounds: [{ round_number: 1, audios: [] }] })).toEqual([])
   })
 })

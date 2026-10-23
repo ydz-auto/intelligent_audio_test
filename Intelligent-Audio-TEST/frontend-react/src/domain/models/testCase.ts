@@ -77,3 +77,28 @@ export interface EvaluationDimension {
   name: string
   type: string | null
 }
+
+/** 试听播放模式（POST /testcases/{id}/preview 的 preview_type/playback_mode 二值，§5.2） */
+export type PreviewPlaybackMode = 'frontend' | 'backend'
+
+/** 用例试听结果（domain；infrastructure 已把 TestCasePreviewData snake_case 转成 camelCase） */
+export interface TestCasePreview {
+  testCaseId: string
+  previewTaskId: string | null
+  status: string
+  message: string | null
+  /** 试听总时长（秒；frontend 模式为全部音频时长之和，backend 模式为编排端实测时长） */
+  duration: number | null
+  playbackMode: PreviewPlaybackMode
+  audioId: number | string | null
+  /** 浏览器播放入口（多轮时为第一段） */
+  audioStreamUrl: string | null
+  /** 多轮音频流（连续播放；单轮为空数组） */
+  audioStreamUrls: string[]
+}
+
+/** 用例已配置的播放设备（播放器设备区真实数据源：config.rounds[].audios[].playback_device_*） */
+export interface CasePlaybackDevice {
+  id: string | null
+  name: string
+}
