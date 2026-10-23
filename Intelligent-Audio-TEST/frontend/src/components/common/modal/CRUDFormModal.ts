@@ -225,19 +225,57 @@ export function useCRUDFormModal(props: CrudFormModalProps, emit: CrudFormModalE
   }
 
   /** INT-1434：API 表单 deviceType 自动派生——端点 URL（apiUrl / endpoints[0].endpoint）协议
-   * 未填时自动置 http_api / websocket_api。仅在 deviceType 仍为空（未显式选择）时生效，
-   * 用户手动选择或回显值恒优先。 */
-  const autoDeriveApiDeviceType = () => {
-    if (!props.fields.some((f) => f && f.key === 'deviceType' && f.autoDerive)) return
-    const url = (Array.isArray(formValues.value.endpoints) ? formValues.value.endpoints[0]?.endpoint : undefined)
+   * ws/wss → websocket_api，http/https → http_api（与 report_service._resolve_subject 同口径）。
+   * 派生约束（打回修复）：
+   *  - scheme 未完整（如键盘逐字输入 ws:// 途中，仅剩 w/ws:/ws:）不派生，避免中途锁错 http_api；
+   *  - 派生后端点再改（ws→https 等）自动重派生；
+   *  - 用户手动选择或表单回显值恒优先，一旦出现即停止自动派生。 */
+  const apiDeviceTypeDerive = {
+    timer: null as ReturnType<typeof setTimeout> | null,
+    inDerive: false,
+    autoValue: null as string | null,
+    userLocked: false,
+  }
+
+  /** 端点 URL 取值：endpoints[0].endpoint → endpoints[0].url → apiUrl */
+  const getApiEndpointUrl = (): string =>
+    (Array.isArray(formValues.value.endpoints) ? formValues.value.endpoints[0]?.endpoint : undefined)
       || (Array.isArray(formValues.value.endpoints) ? formValues.value.endpoints[0]?.url : undefined)
       || formValues.value.apiUrl
       || ''
-    if (!url) return
+
+  /** scheme 已完整（含 :// 且 ∈ ws/wss/http/https）才可派生；逐字输入中途不派生 */
+  const isCompleteApiScheme = (url: string): boolean => {
+    const scheme = /^([a-z][a-z0-9+.-]*):\/\//i.exec((url || '').trim())?.[1]
+    return !!scheme && ['ws', 'wss', 'http', 'https'].includes(scheme.toLowerCase())
+  }
+
+  /** 写入派生值（inDerive 置位以抑制 deviceType 用户变更判定） */
+  const writeDerivedApiDeviceType = (derived: string): void => {
+    apiDeviceTypeDerive.inDerive = true
+    formValues.value.deviceType = derived
+    apiDeviceTypeDerive.inDerive = false
+    apiDeviceTypeDerive.autoValue = derived
+  }
+
+  /** 按端点协议派生（scheme 完整且未被用户锁定时生效；派生态下端点变化自动重派生） */
+  const applyApiDeviceTypeDerivation = (url: string): void => {
+    if (apiDeviceTypeDerive.userLocked) return
+    if (!isCompleteApiScheme(url)) return
+    const derived = resolveApiDeviceType(url)
     const current = formValues.value.deviceType
     if (current === undefined || current === null || current === '') {
-      formValues.value.deviceType = resolveApiDeviceType(url)
+      writeDerivedApiDeviceType(derived)
+    } else if (apiDeviceTypeDerive.autoValue !== null && current === apiDeviceTypeDerive.autoValue) {
+      // 当前值也是自动派生的 → 端点变化时重派生（ws→https 回派 http_api）
+      writeDerivedApiDeviceType(derived)
     }
+  }
+
+  /** 表单初始化时按端点协议派生（留空时） */
+  const autoDeriveApiDeviceType = () => {
+    if (!props.fields.some((f) => f && f.key === 'deviceType' && f.autoDerive)) return
+    applyApiDeviceTypeDerivation(getApiEndpointUrl())
   }
 
   const initFormData = async () => {
@@ -656,20 +694,31 @@ export function useCRUDFormModal(props: CrudFormModalProps, emit: CrudFormModalE
     }
   }, { deep: true })
 
-  // INT-1434：API 表单端点 URL 变化 → deviceType 留空时按端点协议重新派生
+  // INT-1434：API 表单端点 URL 变化 → scheme 完整后按端点协议（重）派生（防抖 400ms 等输入稳定）
   watch(() => {
     if (!props.fields.some((f) => f && f.key === 'deviceType' && f.autoDerive)) return ''
-    return (Array.isArray(formValues.value.endpoints) ? formValues.value.endpoints[0]?.endpoint : undefined)
-      || (Array.isArray(formValues.value.endpoints) ? formValues.value.endpoints[0]?.url : undefined)
-      || formValues.value.apiUrl
-      || ''
+    return getApiEndpointUrl()
   }, (url) => {
     if (!url) return
-    const current = formValues.value.deviceType
-    if (current === undefined || current === null || current === '') {
-      formValues.value.deviceType = resolveApiDeviceType(url)
-    }
+    if (apiDeviceTypeDerive.timer) clearTimeout(apiDeviceTypeDerive.timer)
+    apiDeviceTypeDerive.timer = setTimeout(() => {
+      apiDeviceTypeDerive.timer = null
+      applyApiDeviceTypeDerivation(url)
+    }, 400)
   })
+
+  // INT-1434：deviceType 被用户手动选择（非自动派生写入）→ 锁定，停止自动派生
+  // flush:sync —— 派生写入是同步改值，只有同步刷新才能在同一次写入窗口内识别 inDerive
+  watch(() => formValues.value.deviceType, (val) => {
+    if (apiDeviceTypeDerive.inDerive) return
+    if (val === undefined || val === null || val === '') {
+      apiDeviceTypeDerive.userLocked = false
+      apiDeviceTypeDerive.autoValue = null
+      return
+    }
+    apiDeviceTypeDerive.userLocked = true
+    apiDeviceTypeDerive.autoValue = null
+  }, { flush: 'sync' })
 
   const hasConfiguredList = (value: unknown): boolean =>
     Array.isArray(value) && value.length > 0
@@ -807,6 +856,7 @@ export function useCRUDFormModal(props: CrudFormModalProps, emit: CrudFormModalE
   })
 
   onUnmounted(async () => {
+    if (apiDeviceTypeDerive.timer) clearTimeout(apiDeviceTypeDerive.timer)
     try {
       await splPort.stopTestTone()
     } catch (error) {
