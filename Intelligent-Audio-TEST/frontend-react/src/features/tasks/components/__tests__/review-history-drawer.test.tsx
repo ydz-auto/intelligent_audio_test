@@ -115,6 +115,23 @@ describe('ReviewHistoryDrawer', () => {
     expect(screen.queryByText('case-other')).not.toBeInTheDocument()
   })
 
+  it('INT-1627 长用例名不撑破抽屉：徽章 max-w-full + 名称 truncate + Tooltip 全文', async () => {
+    const longName = '测试用例_JS007_多轮拒识-非目标人拒识-上下文拒识-长时间连续对话-带背景噪声-多人交替发言'
+    fetchReviewHistoryMock.mockResolvedValue([
+      { ...historyItems[0], testCaseId: 'case-long' },
+    ])
+    renderDrawer({ caseNameMap: { 'case-long': longName } })
+
+    const name = await screen.findByText(longName)
+    // 名称在可收缩的 truncate 容器内（省略号），容器徽章宽度受父级限制
+    expect(name).toHaveClass('truncate', 'min-w-0')
+    const badge = name.parentElement
+    expect(badge).toHaveAttribute('data-slot', 'review-history-case-name')
+    expect(badge).toHaveClass('max-w-full', 'min-w-0', 'shrink')
+    // 全文未被截断丢失（Tooltip 内容同源；悬停展示由浏览器实测覆盖）
+    expect(name).toHaveTextContent(longName)
+  })
+
   it('抽屉未打开时不发复核历史请求（enabled 门控，防 taskId=0 无效请求）', () => {
     renderDrawer({ open: false })
     expect(fetchReviewHistoryMock).not.toHaveBeenCalled()

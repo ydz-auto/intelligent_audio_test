@@ -107,9 +107,21 @@ export function ReviewHistoryDrawer({
                       <span className='text-muted-foreground'>
                         操作人 {item.createdByUserId != null ? `用户 #${item.createdByUserId}` : '—'}
                       </span>
-                      <Badge variant='outline' className='rounded-sm px-1.5 text-[10px] font-normal'>
-                        {caseName}
-                      </Badge>
+                      {/* 长用例名（实测 80 字 ≈ 578px > 抽屉 512px）不得溢出抽屉：截断 + Tooltip 全文 */}
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <Badge
+                              variant='outline'
+                              className='max-w-full min-w-0 shrink rounded-sm px-1.5 text-[10px] font-normal'
+                              data-slot='review-history-case-name'
+                            />
+                          }
+                        >
+                          <span className='min-w-0 truncate'>{caseName}</span>
+                        </TooltipTrigger>
+                        <TooltipContent className='max-w-xs break-all'>{caseName}</TooltipContent>
+                      </Tooltip>
                     </div>
                     <div className='mt-1 flex flex-wrap items-center gap-1.5'>
                       <Badge variant='secondary' className='rounded-sm px-1.5 text-[10px]'>
