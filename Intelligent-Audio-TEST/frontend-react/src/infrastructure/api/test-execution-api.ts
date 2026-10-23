@@ -27,6 +27,7 @@ import type { TestAlgorithmOption } from '@/domain/models/algorithm'
 import type { ReportDetailData } from '@/domain/models/report'
 import { request } from '@/infrastructure/api/client'
 import { apiConfigFromDto, apiHealthFromDto } from '@/infrastructure/adapters/apiConfigAdapter'
+import { extractEndpointApiKeys } from '@/infrastructure/adapters/api-keys'
 import { deviceFromDto } from '@/infrastructure/adapters/deviceAdapter'
 import { caseDetailFromDto, testCaseFromDto } from '@/infrastructure/adapters/testCaseAdapter'
 import type { CaseDetailDto, TestCaseListItemDto } from '@/infrastructure/dto/testcase.dto'
@@ -286,17 +287,23 @@ function toApiInputDto(input: Partial<ApiConfig> & { name: string }): Record<str
   if (input.defaultMaxAudioDuration !== undefined) result.default_max_audio_duration = input.defaultMaxAudioDuration
   if (input.status !== undefined) result.status = input.status
   if (input.endpoints !== undefined) {
-    result.endpoints = input.endpoints.map((endpoint) => ({
-      endpoint: endpoint.endpoint,
-      name: endpoint.name,
-      max_process: endpoint.maxProcess,
-      max_timeout: endpoint.maxTimeout,
-      // INT-1362：端点级音频时长/优先级必填（api_test_service _validate_endpoint_obj 四整数校验）
-      max_audio_duration: endpoint.maxAudioDuration,
-      status: endpoint.status,
-      priority: endpoint.priority,
-      description: endpoint.description,
-    }))
+    result.endpoints = input.endpoints.map((endpoint) => {
+      const dto: Record<string, unknown> = {
+        endpoint: endpoint.endpoint,
+        name: endpoint.name,
+        max_process: endpoint.maxProcess,
+        max_timeout: endpoint.maxTimeout,
+        // INT-1362：端点级音频时长/优先级必填（api_test_service _validate_endpoint_obj 四整数校验）
+        max_audio_duration: endpoint.maxAudioDuration,
+        status: endpoint.status,
+        priority: endpoint.priority,
+        description: endpoint.description,
+      }
+      // INT-1437 密钥池：textarea 草稿拆行转 api_keys 落库；空/留空不传（后端保留既有池，不误清空）
+      const keys = extractEndpointApiKeys(endpoint)
+      if (keys.length > 0) dto.api_keys = keys
+      return dto
+    })
   }
   if (input.deviceType !== undefined) result.device_type = input.deviceType
   return result

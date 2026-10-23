@@ -15,6 +15,8 @@ export interface ApiEndpointItemDto {
   health_score: number | null
   priority: number | null
   description: string | null
+  /** 端点级密钥池摘要（INT-1177/1178：读侧只返回 count + 尾号，完整 key 一律不返回） */
+  api_keys_summary: { count: number; tails: string[] } | null
 }
 
 /** GET /apis 列表项（api.py ApiItem；GET /apis 实测无后端权限门槛；INT-1223：api_url 已前后端移除） */

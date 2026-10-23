@@ -37,6 +37,7 @@ import type {
 import { testDeviceFromDto } from '@/infrastructure/adapters/testDeviceAdapter'
 import { playbackDeviceFromDto } from '@/infrastructure/adapters/playbackDeviceAdapter'
 import { apiDeviceFromDto } from '@/infrastructure/adapters/apiDeviceAdapter'
+import { extractEndpointApiKeys } from '@/infrastructure/adapters/api-keys'
 import { deviceGroupFromDto, deviceGroupsToTree } from '@/infrastructure/adapters/deviceGroupAdapter'
 import {
   alarmFromDto,
@@ -339,6 +340,9 @@ function toApiEndpointUpsertDto(ep: ApiEndpoint): Record<string, unknown> {
   if (ep.priority !== undefined) dto.priority = ep.priority
   if (ep.status !== undefined) dto.status = ep.status
   if (ep.description !== undefined) dto.description = ep.description
+  // INT-1437 密钥池：textarea 草稿拆行转 api_keys 落库；空/留空不传（后端保留既有池，不误清空）
+  const keys = extractEndpointApiKeys(ep)
+  if (keys.length > 0) dto.api_keys = keys
   return dto
 }
 

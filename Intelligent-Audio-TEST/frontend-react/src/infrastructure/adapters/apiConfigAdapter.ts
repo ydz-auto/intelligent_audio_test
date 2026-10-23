@@ -31,6 +31,8 @@ export function endpointFromDto(dto: ApiEndpointItemDto): ApiEndpoint {
     status: dto.status,
     healthScore: dto.health_score,
     description: dto.description,
+    // INT-1177 密钥池：读侧只拿摘要（count + 尾号），完整 key 后端不返回
+    apiKeysSummary: dto.api_keys_summary,
   }
 }
 

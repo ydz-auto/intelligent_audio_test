@@ -15,6 +15,12 @@ export interface ApiEndpoint {
   status: string | null
   healthScore: number | null
   description: string | null
+  /** 端点级密钥池摘要（读侧：count + 尾号 4 位；完整密钥后端一律不返回/前端不回显） */
+  apiKeysSummary: { count: number; tails: string[] } | null
+  /** 写侧瞬态：端点级密钥池（textarea 草稿，每行一个 key；adapter 拆行转 api_keys） */
+  apiKeysText?: string
+  /** 写侧显式密钥池（数组兜底；留空不传 api_keys 保留既有池） */
+  apiKeys?: string[]
 }
 
 export interface ApiDevice {

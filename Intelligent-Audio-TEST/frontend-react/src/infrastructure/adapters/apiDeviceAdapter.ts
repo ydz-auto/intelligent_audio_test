@@ -37,6 +37,8 @@ export function apiDeviceFromDto(dto: ApiItemDto): ApiDevice {
     status: ep.status,
     healthScore: ep.health_score,
     description: ep.description,
+    // INT-1177 密钥池：读侧只拿摘要（count + 尾号），完整 key 后端不返回
+    apiKeysSummary: ep.api_keys_summary,
   }))
   return {
     id: dto.id,

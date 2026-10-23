@@ -59,6 +59,10 @@ interface EndpointFormRow {
   maxProcess: string
   maxTimeout: string
   maxAudioDuration: string
+  /** INT-1437 密钥池：textarea 草稿（瞬态，保存时 adapter 拆行转 api_keys） */
+  apiKeysText: string
+  /** 密钥池摘要（编辑回显「已配置 N 个密钥 / 尾号…」，完整密钥不回显） */
+  apiKeysSummary: { count: number; tails: string[] } | null
 }
 
 const ENDPOINT_EMPTY: EndpointFormRow = {
@@ -69,6 +73,8 @@ const ENDPOINT_EMPTY: EndpointFormRow = {
   maxProcess: '1',
   maxTimeout: '30',
   maxAudioDuration: '60',
+  apiKeysText: '',
+  apiKeysSummary: null,
 }
 
 function endpointKey(): string {
@@ -123,6 +129,8 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
           maxProcess: String(ep.maxProcess ?? 1),
           maxTimeout: String(ep.maxTimeout ?? 30),
           maxAudioDuration: String(ep.maxAudioDuration ?? 60),
+          apiKeysText: '',
+          apiKeysSummary: ep.apiKeysSummary ?? null,
         }))
       )
     } else if (!open) {
@@ -173,6 +181,9 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
           status: 'online',
           healthScore: null,
           description: null,
+          apiKeysSummary: row.apiKeysSummary,
+          // INT-1437 密钥池：textarea 草稿瞬态透传，adapter 拆行转 api_keys 落库
+          apiKeysText: row.apiKeysText,
         })),
     })
     onOpenChange(false)
@@ -389,6 +400,27 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
                         onChange={(e) => updateEndpoint(row.key, { maxAudioDuration: e.target.value })}
                         placeholder='音频时长(s)'
                         className='h-7 text-xs'
+                      />
+                    </div>
+                    {/* INT-1437 密钥池：端点行内多行 textarea（每行一个 key，整段粘贴自动拆行）；
+                        编辑回显只显示摘要（count + 尾号），完整密钥不出现 */}
+                    <div className='space-y-1'>
+                      <Label className='text-xs'>密钥池（多密钥轮换）</Label>
+                      {row.apiKeysSummary && row.apiKeysSummary.count > 0 && (
+                        <p className='text-muted-foreground text-xs'>
+                          已配置 {row.apiKeysSummary.count} 个密钥
+                          {row.apiKeysSummary.tails.length > 0 && (
+                            <>（尾号：{row.apiKeysSummary.tails.join('、')}）</>
+                          )}
+                          ，如需修改请重新输入完整密钥列表。
+                        </p>
+                      )}
+                      <Textarea
+                        rows={2}
+                        value={row.apiKeysText}
+                        onChange={(e) => updateEndpoint(row.key, { apiKeysText: e.target.value })}
+                        placeholder='每行一个密钥，可整段粘贴自动拆行；留空则保留已配置密钥'
+                        className='h-12 font-mono text-xs'
                       />
                     </div>
                   </div>
