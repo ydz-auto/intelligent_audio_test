@@ -147,6 +147,53 @@ def _role_names_by_ids(session, role_ids) -> Dict[int, str]:
     return {rid: name for rid, name in rows}
 
 
+def _effective_permission_counts(session, user_pos) -> Dict[int, int]:
+    """批量算整页用户的生效权限数：{user_id: count}（INT-1465）。
+
+    列表页要显示「生效权限数」，但不能为此加载每人的权限码全集（那是响应
+    膨胀到 30KB+ 的根因）。口径与 ``_query_user_permissions`` 完全一致
+    （角色权限 + granted 追加 - revoked 撤销），只是把逐用户的 2 次查询
+    收敛为整页 2 次：按本页 role_ids 查角色权限、按本页 user_ids 查 override，
+    Python 侧做集合并/差。SQL 条数与页大小无关。
+    """
+    role_ids = {po.role_id for po in user_pos if po.role_id}
+    user_ids = [po.id for po in user_pos]
+
+    role_perms: Dict[int, set] = {}
+    if role_ids:
+        rows = (
+            session.query(RolePermission.role_id, Permission.name)
+            .join(Permission, Permission.id == RolePermission.permission_id)
+            .filter(RolePermission.role_id.in_(role_ids))
+            .all()
+        )
+        for role_id, name in rows:
+            role_perms.setdefault(role_id, set()).add(name)
+
+    overrides: Dict[int, List[Tuple[str, bool]]] = {}
+    if user_ids:
+        rows = (
+            session.query(UserPermission.user_id, Permission.name,
+                          UserPermission.granted)
+            .join(Permission, Permission.id == UserPermission.permission_id)
+            .filter(UserPermission.user_id.in_(user_ids))
+            .all()
+        )
+        for user_id, name, granted in rows:
+            overrides.setdefault(user_id, []).append((name, granted))
+
+    counts: Dict[int, int] = {}
+    for po in user_pos:
+        perms = set(role_perms.get(po.role_id, set()))
+        for name, granted in overrides.get(po.id, ()):
+            if granted:
+                perms.add(name)
+            else:
+                perms.discard(name)
+        counts[po.id] = len(perms)
+    return counts
+
+
 def _user_po_to_entity(
     po: User,
     permissions: Optional[List[str]] = None,
@@ -467,12 +514,16 @@ class UserRepository(UserRepositoryABC):
         # INT-1465：列表查询不加载生效权限（权限明细仅详情 GetUser 给出），
         # 角色名整页一次批量查——原逐用户查权限(2 次)+角色名(1 次)是 N+1，
         # 并发下把 Postgres 连接池占满，10 条列表响应还因权限码全集膨胀到 30KB+。
+        # 列表页只需权限数，整页 2 条 SQL 批量算出（_effective_permission_counts）。
         role_names = _role_names_by_ids(session, (po.role_id for po in pos))
+        permission_counts = _effective_permission_counts(session, pos)
         aggregates = [
             _user_po_to_entity(
                 po, permissions=[], role_name=role_names.get(po.role_id, ''))
             for po in pos
         ]
+        for aggregate in aggregates:
+            aggregate.permission_count = permission_counts.get(aggregate.id, 0)
         return total, aggregates
 
     def get_user_permissions(self, user_id: int) -> List[str]:

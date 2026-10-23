@@ -8,8 +8,9 @@ avg 1006ms。根因两条，均在本卡修复：
    一页 10 条即 30 次额外查询，并发下打满连接池。
 
 本用例钉住：
-A. 列表项不含 permissions / overrides，其余字段（role_name 等）照常；
-B. 列表查询 SQL 次数与页大小无关，且不触碰权限相关表（无 N+1）；
+A. 列表项不含 permissions / overrides，带 permission_count（生效权限数），
+   其余字段（role_name 等）照常；
+B. 列表查询 SQL 条数与页大小无关（权限按整页批量查，不逐用户查、无 N+1）；
 C. 详情 GetUser 仍返回 permissions + overrides（列表瘦身不回退详情契约）。
 """
 import json
@@ -105,7 +106,7 @@ def _servicer():
 
 
 def test_list_items_drop_permissions(seeded_db):
-    """A：列表项无 permissions/overrides，role_name 等展示字段保留。"""
+    """A：列表项无 permissions/overrides，带生效权限数，role_name 等展示字段保留。"""
     from shared.proto import auth_service_pb2 as auth_pb
     svc = _servicer()
     resp = svc.ListUsers(auth_pb.ListUsersRequest(
@@ -119,39 +120,64 @@ def test_list_items_drop_permissions(seeded_db):
         assert 'overrides' not in item, '列表项不得携带 override 明细'
         assert item['role_name'] == _PREFIX + 'role'
         assert {'id', 'username', 'email', 'role_id', 'status', 'is_active',
-                'display_name', 'created_at'} <= set(item)
+                'display_name', 'created_at', 'permission_count'} <= set(item)
+    # 生效权限数：角色基线 3 个；user_00 被撤销 audio:read → 2
+    by_name = {item['username']: item for item in items}
+    assert by_name[_PREFIX + 'user_00']['permission_count'] == 2
+    assert by_name[_PREFIX + 'user_01']['permission_count'] == 3
     # 瘦身后整页响应远小于原 34KB 量级（本夹具 10 条 < 8KB）
     assert len(resp.data.encode('utf-8')) < 8 * 1024
 
 
 def test_list_query_count_independent_of_page_size(seeded_db, monkeypatch):
-    """B：列表 SQL 次数固定（count + 分页 + 角色名批量），不查权限表。"""
+    """B：列表 SQL 条数固定（count + 分页 + 角色名 + 权限数批量 2 条），与页大小无关。
+
+    权限不逐用户查：整页 role_permissions / user_permissions 各 1 条批量查询，
+    aggregate.permissions 仍为空（只带 permission_count）。
+    """
     from auth_service.infrastructure.persistence import user_repository as ur
 
+    engine = get_engine()
+    counts = {}
+
+    for page_size in (5, 20):
+        statements = []
+
+        def _record(conn, cursor, statement, parameters, context, executemany):
+            statements.append(statement)
+
+        event.listen(engine, 'before_cursor_execute', _record)
+        try:
+            total, users = ur.user_repository.list_users(
+                page=1, page_size=page_size, keyword=_PREFIX)
+        finally:
+            event.remove(engine, 'before_cursor_execute', _record)
+        assert total == 20 and len(users) == page_size
+        assert all(u.role_name == _PREFIX + 'role' for u in users)
+        # 权限明细在列表场景不加载：只带计数，不带权限码
+        assert all(u.permissions == [] for u in users)
+        assert all(
+            u.permission_count == (2 if u.username == _PREFIX + 'user_00' else 3)
+            for u in users
+        )
+        counts[page_size] = len(statements)
+
+    # 单页不分大小都是固定 5 条 SQL（原实现 1 + 1 + N×3）
+    assert counts[5] == counts[20] <= 5, counts
+    # 权限相关表只允许整页批量查询：每张表最多 1 次，不随用户数增长
     statements = []
 
-    engine = get_engine()
-
-    def _record(conn, cursor, statement, parameters, context, executemany):
+    def _record_sql(conn, cursor, statement, parameters, context, executemany):
         statements.append(statement)
 
-    event.listen(engine, 'before_cursor_execute', _record)
+    event.listen(engine, 'before_cursor_execute', _record_sql)
     try:
-        total, users = ur.user_repository.list_users(
-            page=1, page_size=20, keyword=_PREFIX)
+        ur.user_repository.list_users(page=1, page_size=20, keyword=_PREFIX)
     finally:
-        event.remove(engine, 'before_cursor_execute', _record)
-
-    assert total == 20 and len(users) == 20
-    assert all(u.role_name == _PREFIX + 'role' for u in users)
-    # 权限在列表场景不加载：aggregate.permissions 为空
-    assert all(u.permissions == [] for u in users)
-    # 单页 20 条仍是 3 条 SQL（原实现 1 + 1 + 20×3 = 62 条）
-    assert len(statements) <= 3, statements
+        event.remove(engine, 'before_cursor_execute', _record_sql)
     touched = ' '.join(statements).lower()
-    assert 'user_permissions' not in touched
-    assert 'role_permissions' not in touched
-    assert 'permissions' not in touched
+    assert touched.count('from user_permissions') <= 1, touched
+    assert touched.count('from role_permissions') <= 1, touched
 
 
 def test_detail_still_returns_permissions_and_overrides(seeded_db):

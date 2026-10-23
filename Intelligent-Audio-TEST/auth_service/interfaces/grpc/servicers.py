@@ -85,12 +85,14 @@ def _user_to_list_dict(user) -> dict:
     """UserAggregate → 列表项 dict（INT-1465：列表不返回权限明细）。
 
     单条用户的生效权限码全集约 1.6KB，per_page=10 时把响应撑到 30KB+，
-    而用户管理列表页不展示权限；权限明细由 GetUser 详情给出（含 overrides）。
-    列表场景仓储也不加载权限（见 user_repository.list_users），两处一致。
-    其余字段与详情保持同名同义，前端列表接口契约只少 permissions 一个键。
+    而用户管理列表页只需要「生效权限数」这一个整数，权限明细由 GetUser
+    详情给出（含 overrides）。因此列表项去掉 permissions 明细，改为携带
+    permission_count（整页批量算好，见 user_repository.list_users）；
+    其余字段与详情保持同名同义，前端列表契约只少 permissions、多一个计数。
     """
     d = _user_to_dict(user)
     d.pop('permissions', None)
+    d['permission_count'] = int(getattr(user, 'permission_count', 0) or 0)
     return d
 
 
