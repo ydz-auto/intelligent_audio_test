@@ -97,6 +97,10 @@ BOOTSTRAP_STEPS = [
     #    建用例/列表即 UndefinedColumn 400。脚本幂等（列/索引存在即 SKIP、回填按
     #    值比对），全新库为全 SKIP；默认 dry-run，引导链必须带 --apply。
     ('python', 'scripts/migrations/202610/add_derived_test_type_int1469.py', '--apply'),
+    # ㊴ report_export_records 报告导出历史表（INT-1555；INT-1609 补迁移守卫）：
+    #     create_all 只建缺失的表，建库早于 INT-1555 的存量库在引导链里建表自愈；
+    #     脚本幂等（表/索引存在即 SKIP），全新库为全 SKIP。
+    ('python', 'scripts/migrations/202610/add_report_export_records_int1555.py'),
 ]
 
 
