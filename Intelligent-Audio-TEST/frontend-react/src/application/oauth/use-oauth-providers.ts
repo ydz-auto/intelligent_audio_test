@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import type { OAuthProvider } from '@/domain/models/oauth-provider'
+import { ApiError } from '@/infrastructure/api/api-error'
 import {
   createProvider,
   deleteProvider,
@@ -15,6 +16,12 @@ import {
   OAUTH_PROVIDERS_QUERY_KEY,
   updateProvider,
 } from '@/infrastructure/api/oauthProviderApi'
+
+/** 错误 → 可展示文案（ApiError.userMessage 已收敛后端 message，见 infrastructure/api/api-error.ts） */
+function toErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) return error.userMessage || fallback
+  return fallback
+}
 
 export function useOAuthProvidersQuery() {
   return useQuery({
@@ -36,7 +43,7 @@ export function useOAuthProviderMutations() {
       toast.success('提供方已创建')
       invalidate()
     },
-    onError: () => toast.error('操作失败，请稍后重试'),
+    onError: (error) => toast.error(toErrorMessage(error, '创建提供方失败')),
   })
 
   const updateProviderMutation = useMutation({
@@ -46,7 +53,7 @@ export function useOAuthProviderMutations() {
       toast.success('提供方已更新')
       invalidate()
     },
-    onError: () => toast.error('操作失败，请稍后重试'),
+    onError: (error) => toast.error(toErrorMessage(error, '更新提供方失败')),
   })
 
   const deleteProviderMutation = useMutation({
@@ -55,7 +62,7 @@ export function useOAuthProviderMutations() {
       toast.success('提供方已删除')
       invalidate()
     },
-    onError: () => toast.error('操作失败，请稍后重试'),
+    onError: (error) => toast.error(toErrorMessage(error, '删除提供方失败')),
   })
 
   return {

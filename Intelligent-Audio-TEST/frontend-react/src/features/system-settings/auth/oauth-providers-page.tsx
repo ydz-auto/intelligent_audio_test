@@ -248,6 +248,21 @@ type OAuthProviderDialogProps = {
   onSave: (input: Omit<OAuthProvider, 'id' | 'createdAt'>) => void
 }
 
+/** 表单字段（字段级错误的定位键，与 Input 的 id 后缀一致） */
+type OAuthProviderField =
+  | 'name'
+  | 'slug'
+  | 'clientId'
+  | 'clientSecret'
+  | 'authorizationEndpoint'
+  | 'tokenEndpoint'
+  | 'userinfoEndpoint'
+
+type OAuthProviderFieldErrors = Partial<Record<OAuthProviderField, string>>
+
+/** Slug 口径（§6：小写字母/数字/连字符、不以连字符开头或结尾；与后端 slug 校验一致） */
+const OAUTH_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+
 function OAuthProviderDialog(props: OAuthProviderDialogProps) {
   const { discoverEndpoints } = useOAuthProviderMutations()
   const isCreate = props.provider === null
@@ -268,6 +283,7 @@ function OAuthProviderDialog(props: OAuthProviderDialogProps) {
   const [email, setEmail] = useState('email')
   const [issuerUrl, setIssuerUrl] = useState('')
   const [discovering, setDiscovering] = useState(false)
+  const [fieldErrors, setFieldErrors] = useState<OAuthProviderFieldErrors>({})
 
   useEffect(() => {
     if (!props.open) return
@@ -287,7 +303,16 @@ function OAuthProviderDialog(props: OAuthProviderDialogProps) {
     setDisplayName(target?.fieldMapping.displayName ?? 'name')
     setEmail(target?.fieldMapping.email ?? 'email')
     setIssuerUrl('')
+    setFieldErrors({})
   }, [props.open, props.provider])
+
+  const clearFieldError = (field: OAuthProviderField) =>
+    setFieldErrors((prev) => {
+      if (!prev[field]) return prev
+      const next = { ...prev }
+      delete next[field]
+      return next
+    })
 
   const handleDiscover = async () => {
     if (!issuerUrl.trim() || discovering) return
@@ -304,8 +329,26 @@ function OAuthProviderDialog(props: OAuthProviderDialogProps) {
     }
   }
 
+  /** 前端必填/格式校验（§6：Client Secret 新建必填、编辑留空保留原值；三端点必填；Slug 小写字母/数字/连字符） */
+  const validate = (): OAuthProviderFieldErrors => {
+    const errors: OAuthProviderFieldErrors = {}
+    const trimmedSlug = slug.trim()
+    if (!name.trim()) errors.name = '请输入名称'
+    if (!trimmedSlug) errors.slug = '请输入 Slug'
+    else if (!OAUTH_SLUG_PATTERN.test(trimmedSlug))
+      errors.slug = '仅允许小写字母、数字与连字符'
+    if (!clientId.trim()) errors.clientId = '请输入 Client ID'
+    if (isCreate && !clientSecret.trim()) errors.clientSecret = '请输入 Client Secret'
+    if (!authorizationEndpoint.trim()) errors.authorizationEndpoint = '请输入授权端点'
+    if (!tokenEndpoint.trim()) errors.tokenEndpoint = '请输入 Token 端点'
+    if (!userinfoEndpoint.trim()) errors.userinfoEndpoint = '请输入用户信息端点'
+    return errors
+  }
+
   const handleSave = () => {
-    if (!name.trim() || !slug.trim() || !clientId.trim()) return
+    const errors = validate()
+    setFieldErrors(errors)
+    if (Object.keys(errors).length > 0) return
     props.onSave({
       name: name.trim(),
       slug: slug.trim(),
@@ -369,31 +412,52 @@ function OAuthProviderDialog(props: OAuthProviderDialogProps) {
           {/* 基本信息 */}
           <div className='grid grid-cols-2 gap-3'>
             <div className='grid gap-1.5'>
-              <Label htmlFor='oauth-name'>
-                名称 <span className='text-destructive'>*</span>
+              <Label htmlFor='oauth-name' required>
+                名称
               </Label>
               <Input
                 id='oauth-name'
                 className={inputClass}
                 placeholder='如 GitHub'
                 value={name}
-                onChange={(event) => setName(event.target.value)}
+                aria-invalid={Boolean(fieldErrors.name)}
+                aria-describedby={fieldErrors.name ? 'oauth-name-error' : undefined}
+                onChange={(event) => {
+                  setName(event.target.value)
+                  clearFieldError('name')
+                }}
               />
+              {fieldErrors.name && (
+                <p id='oauth-name-error' className='text-destructive text-xs'>
+                  {fieldErrors.name}
+                </p>
+              )}
             </div>
             <div className='grid gap-1.5'>
-              <Label htmlFor='oauth-slug'>
-                Slug <span className='text-destructive'>*</span>
+              <Label htmlFor='oauth-slug' required>
+                Slug
               </Label>
               <Input
                 id='oauth-slug'
                 className={inputClass}
                 placeholder='github'
                 value={slug}
-                onChange={(event) => setSlug(event.target.value)}
+                aria-invalid={Boolean(fieldErrors.slug)}
+                aria-describedby={fieldErrors.slug ? 'oauth-slug-error' : 'oauth-slug-hint'}
+                onChange={(event) => {
+                  setSlug(event.target.value)
+                  clearFieldError('slug')
+                }}
               />
-              <p className='text-muted-foreground text-xs'>
-                小写字母/数字/连字符
-              </p>
+              {fieldErrors.slug ? (
+                <p id='oauth-slug-error' className='text-destructive text-xs'>
+                  {fieldErrors.slug}
+                </p>
+              ) : (
+                <p id='oauth-slug-hint' className='text-muted-foreground text-xs'>
+                  小写字母/数字/连字符
+                </p>
+              )}
             </div>
             <div className='grid gap-1.5'>
               <Label htmlFor='oauth-icon'>图标（可选）</Label>
@@ -421,59 +485,119 @@ function OAuthProviderDialog(props: OAuthProviderDialogProps) {
               </Select>
             </div>
             <div className='grid gap-1.5'>
-              <Label htmlFor='oauth-client-id'>
-                Client ID <span className='text-destructive'>*</span>
+              <Label htmlFor='oauth-client-id' required>
+                Client ID
               </Label>
               <Input
                 id='oauth-client-id'
                 className={inputClass}
                 value={clientId}
-                onChange={(event) => setClientId(event.target.value)}
+                aria-invalid={Boolean(fieldErrors.clientId)}
+                aria-describedby={fieldErrors.clientId ? 'oauth-client-id-error' : undefined}
+                onChange={(event) => {
+                  setClientId(event.target.value)
+                  clearFieldError('clientId')
+                }}
               />
+              {fieldErrors.clientId && (
+                <p id='oauth-client-id-error' className='text-destructive text-xs'>
+                  {fieldErrors.clientId}
+                </p>
+              )}
             </div>
             <div className='grid gap-1.5'>
-              <Label htmlFor='oauth-client-secret'>Client Secret</Label>
+              <Label htmlFor='oauth-client-secret' required={isCreate}>
+                Client Secret
+              </Label>
               <Input
                 id='oauth-client-secret'
                 type='password'
                 className={inputClass}
                 placeholder={isCreate ? '' : '留空保留原值'}
                 value={clientSecret}
-                onChange={(event) => setClientSecret(event.target.value)}
+                aria-invalid={Boolean(fieldErrors.clientSecret)}
+                aria-describedby={
+                  fieldErrors.clientSecret ? 'oauth-client-secret-error' : undefined
+                }
+                onChange={(event) => {
+                  setClientSecret(event.target.value)
+                  clearFieldError('clientSecret')
+                }}
               />
+              {fieldErrors.clientSecret && (
+                <p id='oauth-client-secret-error' className='text-destructive text-xs'>
+                  {fieldErrors.clientSecret}
+                </p>
+              )}
             </div>
             <div className='grid gap-1.5'>
-              <Label htmlFor='oauth-authz-endpoint'>
-                授权端点 <span className='text-destructive'>*</span>
+              <Label htmlFor='oauth-authz-endpoint' required>
+                授权端点
               </Label>
               <Input
                 id='oauth-authz-endpoint'
                 className={inputClass}
                 value={authorizationEndpoint}
-                onChange={(event) => setAuthorizationEndpoint(event.target.value)}
+                aria-invalid={Boolean(fieldErrors.authorizationEndpoint)}
+                aria-describedby={
+                  fieldErrors.authorizationEndpoint ? 'oauth-authz-endpoint-error' : undefined
+                }
+                onChange={(event) => {
+                  setAuthorizationEndpoint(event.target.value)
+                  clearFieldError('authorizationEndpoint')
+                }}
               />
+              {fieldErrors.authorizationEndpoint && (
+                <p id='oauth-authz-endpoint-error' className='text-destructive text-xs'>
+                  {fieldErrors.authorizationEndpoint}
+                </p>
+              )}
             </div>
             <div className='grid gap-1.5'>
-              <Label htmlFor='oauth-token-endpoint'>
-                Token 端点 <span className='text-destructive'>*</span>
+              <Label htmlFor='oauth-token-endpoint' required>
+                Token 端点
               </Label>
               <Input
                 id='oauth-token-endpoint'
                 className={inputClass}
                 value={tokenEndpoint}
-                onChange={(event) => setTokenEndpoint(event.target.value)}
+                aria-invalid={Boolean(fieldErrors.tokenEndpoint)}
+                aria-describedby={
+                  fieldErrors.tokenEndpoint ? 'oauth-token-endpoint-error' : undefined
+                }
+                onChange={(event) => {
+                  setTokenEndpoint(event.target.value)
+                  clearFieldError('tokenEndpoint')
+                }}
               />
+              {fieldErrors.tokenEndpoint && (
+                <p id='oauth-token-endpoint-error' className='text-destructive text-xs'>
+                  {fieldErrors.tokenEndpoint}
+                </p>
+              )}
             </div>
             <div className='grid gap-1.5'>
-              <Label htmlFor='oauth-userinfo-endpoint'>
-                用户信息端点 <span className='text-destructive'>*</span>
+              <Label htmlFor='oauth-userinfo-endpoint' required>
+                用户信息端点
               </Label>
               <Input
                 id='oauth-userinfo-endpoint'
                 className={inputClass}
                 value={userinfoEndpoint}
-                onChange={(event) => setUserinfoEndpoint(event.target.value)}
+                aria-invalid={Boolean(fieldErrors.userinfoEndpoint)}
+                aria-describedby={
+                  fieldErrors.userinfoEndpoint ? 'oauth-userinfo-endpoint-error' : undefined
+                }
+                onChange={(event) => {
+                  setUserinfoEndpoint(event.target.value)
+                  clearFieldError('userinfoEndpoint')
+                }}
               />
+              {fieldErrors.userinfoEndpoint && (
+                <p id='oauth-userinfo-endpoint-error' className='text-destructive text-xs'>
+                  {fieldErrors.userinfoEndpoint}
+                </p>
+              )}
             </div>
             <div className='grid gap-1.5'>
               <Label htmlFor='oauth-scopes'>Scopes（可选）</Label>
