@@ -353,6 +353,27 @@ def main():
             sub = d.find_elements(By.XPATH, "//div[@role='dialog']//button[normalize-space(.)='开始测试']")
             chk('B4 重开后主钮可用', bool(sub) and sub[0].get_attribute('disabled') is None,
                 'disabled=%s' % (sub[0].get_attribute('disabled') if sub else None))
+            # B5 自定义名 → Esc 关闭 → 重开恢复默认名
+            if ti:
+                set_input(d, ti, '接线测试_INT1486_残留Esc')
+                esc_ok = close_dialog(d)
+                chk('B5a Esc 关闭弹窗', esc_ok and not dialogs(d), len(dialogs(d)))
+                click_start(d)
+                ti = taskname_input(d)
+                v3 = ti.get_attribute('value') if ti else None
+                chk('B5 自定义名 Esc 后重开恢复默认名（INT-1528）',
+                    bool(v3) and v3.startswith('测试任务_'), repr(v3))
+                # B6 清空 → Esc 关闭 → 重开恢复默认名且主钮可用
+                set_input(d, ti, '')
+                close_dialog(d)
+                click_start(d)
+                ti = taskname_input(d)
+                v4 = ti.get_attribute('value') if ti else None
+                sub = d.find_elements(By.XPATH, "//div[@role='dialog']//button[normalize-space(.)='开始测试']")
+                chk('B6 清空后 Esc 重开恢复默认名 + 主钮可用',
+                    bool(v4) and v4.startswith('测试任务_')
+                    and bool(sub) and sub[0].get_attribute('disabled') is None, repr(v4))
+                shot(d, 'F_taskname_reset_after_esc_light.png')
 
         # ---------- A6. 真实提交（手动集） ----------
         ti = taskname_input(d)
