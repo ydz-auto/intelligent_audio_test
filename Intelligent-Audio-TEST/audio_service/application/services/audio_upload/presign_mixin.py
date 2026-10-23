@@ -22,6 +22,9 @@ class AudioPresignMixin:
             filename = data.get('filename', '')
             file_size = data.get('file_size', data.get('fileSize', 0))
             md5 = data.get('md5')
+            # 5MB = OSS Multipart 的分片长度（S3 要求除末片外 ≥5MiB）。此路径只
+            # 下发预签名 URL，分片字节由浏览器直传 OSS，不经 gRPC，故不适用
+            # INT-1522 中「分片 base64 后须小于 gRPC 收包上限」的约束。
             chunk_size = data.get('chunk_size', data.get('chunkSize', 5 * 1024 * 1024))
             is_wav = data.get('is_wav', data.get('isWav', False))
             relative_path = data.get('relative_path', data.get('relativePath'))

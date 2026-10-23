@@ -8,8 +8,9 @@
   - 缺失分片文件 → 400 不假成功
   - 分片未齐 merge → 400
 
-注意：10MB 标准分片 b64 后 ~14MB 超 audio_service gRPC 默认 4MB 收包上限
-（RESOURCE_EXHAUSTED，独立缺陷另行跟踪），本回归用 ≤2.5MB 分片验证链路。
+INT-1522 后 register 下发的 chunk_size 由配置决定（默认 2MB，保证分片 base64 后
+低于网关→audio_service 的 gRPC 收包上限），本回归不再硬编码分片大小，一律按
+register 返回值切片；多分片用例直接用 >10MB 文件回归。
 
 认证：后端 AUTH_MODE=dev 时经 /auth/login/encryption-key + RSA-OAEP 登录取
 token；off 模式下直接匿名请求。
@@ -26,9 +27,6 @@ import wave
 import httpx
 import pytest
 from tests.api.conftest import API_BASE
-
-CHUNK_SIZE_SERVER = 10 * 1024 * 1024   # 服务端 register 使用的分片大小
-SLICE_LIMIT = 2 * 1024 * 1024          # 本回归分片上限（绕开 gRPC 4MB 收包上限，见模块 docstring）
 
 
 # ── 认证 ──────────────────────────────────────────────────
@@ -118,8 +116,10 @@ def _register(client, headers, task_id, name, size, md5):
     f = files[0] if files else {}
     fid = f.get('fileId') or f.get('file_id')
     tchunks = f.get('totalChunks', f.get('total_chunks'))
+    chunk_size = f.get('chunkSize', f.get('chunk_size'))
     assert st == 200 and fid, f'register 失败: {st} {json.dumps(body, ensure_ascii=False)[:200]}'
-    return fid, tchunks
+    assert chunk_size, f'register 未下发 chunk_size: {json.dumps(f, ensure_ascii=False)[:200]}'
+    return fid, tchunks, chunk_size
 
 
 def _upload_chunk(client, headers, task_id, file_id, index, total, payload: bytes):
@@ -161,9 +161,9 @@ class TestInt160ChunkUploadLive:
         md5 = hashlib.md5(content).hexdigest()
 
         task_id = _init_task(api_client, headers)
-        file_id, total = _register(api_client, headers, task_id,
-                                   f'int160_{secrets.token_hex(4)}.wav',
-                                   len(content), md5)
+        file_id, total, _ = _register(api_client, headers, task_id,
+                                      f'int160_{secrets.token_hex(4)}.wav',
+                                      len(content), md5)
         assert total == 1, f'单分片文件 total_chunks 应为 1: {total}'
 
         st, body = _upload_chunk(api_client, headers, task_id, file_id, 0, 1, content)
@@ -194,23 +194,31 @@ class TestInt160ChunkUploadLive:
         assert st == 200, f'音频记录不可查: {st}'
 
     def test_multi_chunk_counters_and_merge(self, api_client):
-        """多分片：顺序上传计数 1→2、磁盘字节一致、merge 通过计数闸门建音频。"""
+        """>10MB 多分片（INT-1522 回归口径）：按 register 下发的 chunk_size 切片，
+        计数逐片推进、磁盘字节一致、merge 通过计数闸门建音频。
+
+        修复前 register 返回 10MB→首片 b64 约 13.3MB，超 audio_service gRPC
+        4MB 收包上限 → 首片即 400 RESOURCE_EXHAUSTED。
+        """
         headers = _bearer_header(api_client)
-        declared = CHUNK_SIZE_SERVER + 1024 * 1024          # 11MB → total_chunks=2
+        declared = 11 * 1024 * 1024          # >10MB 文件
         content = _make_upload_content(declared)
         md5 = hashlib.md5(content).hexdigest()
 
         task_id = _init_task(api_client, headers)
-        file_id, total = _register(api_client, headers, task_id,
-                                   f'int160_{secrets.token_hex(4)}.wav',
-                                   declared, md5)
-        assert total == 2, f'total_chunks 应为 2: {total}'
+        file_id, total, chunk_size = _register(api_client, headers, task_id,
+                                               f'int160_{secrets.token_hex(4)}.wav',
+                                               declared, md5)
+        expected_total = (declared + chunk_size - 1) // chunk_size
+        assert total == expected_total, f'total_chunks 应为 {expected_total}: {total}'
 
-        slices = [content[:SLICE_LIMIT], content[SLICE_LIMIT:2 * SLICE_LIMIT]]
+        slices = [content[i:i + chunk_size] for i in range(0, len(content), chunk_size)]
+        assert len(slices) == total, f'切片数 {len(slices)} 与 total_chunks {total} 不符'
+
         acc = 0
         for i, sl in enumerate(slices):
             acc += len(sl)
-            st, body = _upload_chunk(api_client, headers, task_id, file_id, i, 2, sl)
+            st, body = _upload_chunk(api_client, headers, task_id, file_id, i, total, sl)
             d = body.get('data') or {}
             assert st == 200, f'chunk{i} 失败: {st} {json.dumps(body, ensure_ascii=False)[:200]}'
             assert d.get('completed_chunks') == i + 1, f'chunk{i} 计数未推进'
@@ -231,9 +239,9 @@ class TestInt160ChunkUploadLive:
         md5 = hashlib.md5(content).hexdigest()
 
         task_id = _init_task(api_client, headers)
-        file_id, total = _register(api_client, headers, task_id,
-                                   f'int160_{secrets.token_hex(4)}.wav',
-                                   len(content), md5)
+        file_id, total, _ = _register(api_client, headers, task_id,
+                                      f'int160_{secrets.token_hex(4)}.wav',
+                                      len(content), md5)
 
         for payload in (content, content):
             st, body = _upload_chunk(api_client, headers, task_id, file_id, 0, 1, payload)
@@ -249,9 +257,9 @@ class TestInt160ChunkUploadLive:
         md5 = hashlib.md5(content).hexdigest()
 
         task_id = _init_task(api_client, headers)
-        file_id, _ = _register(api_client, headers, task_id,
-                               f'int160_{secrets.token_hex(4)}.wav',
-                               len(content), md5)
+        file_id, _, _ = _register(api_client, headers, task_id,
+                                  f'int160_{secrets.token_hex(4)}.wav',
+                                  len(content), md5)
         st, body = _api(api_client, headers, 'POST', '/audios/upload/chunk',
                         data={'file_id': file_id, 'chunk_index': '0',
                               'total_chunks': '1', 'task_id': task_id})
@@ -260,16 +268,17 @@ class TestInt160ChunkUploadLive:
     def test_merge_before_chunks_complete_rejected(self, api_client):
         """分片未齐 merge → 400「还有分片未上传完成」（计数真实持久化的反向验证）。"""
         headers = _bearer_header(api_client)
-        declared = CHUNK_SIZE_SERVER + 1024 * 1024
+        declared = 3 * 1024 * 1024
         content = _make_upload_content(declared)
         md5 = hashlib.md5(content).hexdigest()
 
         task_id = _init_task(api_client, headers)
-        file_id, total = _register(api_client, headers, task_id,
-                                   f'int160_{secrets.token_hex(4)}.wav',
-                                   declared, md5)
-        st, body = _upload_chunk(api_client, headers, task_id, file_id, 0, 2,
-                                 content[:SLICE_LIMIT])
+        file_id, total, chunk_size = _register(api_client, headers, task_id,
+                                               f'int160_{secrets.token_hex(4)}.wav',
+                                               declared, md5)
+        assert total >= 2, f'该用例需要多分片文件: total_chunks={total}'
+        st, body = _upload_chunk(api_client, headers, task_id, file_id, 0, total,
+                                 content[:chunk_size])
         assert st == 200
         st, body = _api(api_client, headers, 'POST', '/audios/upload/merge',
                         json={'file_id': file_id, 'task_id': task_id})

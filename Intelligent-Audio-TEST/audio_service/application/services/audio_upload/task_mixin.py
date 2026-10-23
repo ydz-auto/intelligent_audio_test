@@ -12,6 +12,7 @@ from datetime import timedelta
 
 from shared.utils.query_utils import now_cst
 from shared.utils.log_handler import log_and_emit
+from audio_service.config.config import Config
 from audio_service.domain.entities import UploadStatus
 from audio_service.application.services.audio_file_utils import (
     _safe_makedirs,
@@ -135,7 +136,9 @@ class AudioUploadTaskMixin:
 
         status = 'pending'
         file_id = str(uuid.uuid4())
-        chunk_size = 10 * 1024 * 1024
+        # INT-1522：chunk_size 必须让 base64 后的分片留在网关→audio_service 的
+        # gRPC 收包上限内，否则客户端按此值切片上传必被 RESOURCE_EXHAUSTED 拒收。
+        chunk_size = max(1, int(Config.AUDIO_UPLOAD_CHUNK_SIZE_MB)) * 1024 * 1024
         total_chunks = max(1, (file_size + chunk_size - 1) // chunk_size)
 
         if md5:

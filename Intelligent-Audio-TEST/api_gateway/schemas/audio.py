@@ -63,7 +63,9 @@ class PresignUploadRequest(APIModel):
     filename: str = Field(...)
     file_size: int = Field(0)
     md5: Optional[str] = Field(None)
-    # 分片大小（字节），默认 5MB（S3 最小分片大小）
+    # 分片大小（字节），默认 5MB：这是 OSS Multipart 的分片长度（S3 协议要求
+    # 除末片外每片 ≥5MiB），分片内容由浏览器直传 OSS，不经网关→audio_service
+    # 的 gRPC 通道，故不受 gRPC 报文上限约束（与 INT-1522 的分片上传路径不同）。
     chunk_size: Optional[int] = Field(5 * 1024 * 1024)
     # 是否是 WAV（WAV 直传 audios bucket，非 WAV 传 raw-chunks bucket）
     is_wav: Optional[bool] = Field(False)
