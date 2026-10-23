@@ -5,6 +5,7 @@
  * 断言目标是被测组件自身 resourceLabel 的接线；base-ui 原语仅透传，
  * 使 worker 启动不受重依赖图拖累（本机多 agent 并行负载高）。
  */
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
@@ -15,6 +16,15 @@ import { CaseAssociation } from '../case-association'
 // 权限桩：全部放行
 vi.mock('@/application/hooks/use-permissions', () => ({
   usePermissions: () => ({ hasPermission: () => true, hasAnyPermission: () => true }),
+}))
+
+// INT-1626：复核范围/历史 hook 桩（本测试不校验网络，只断言徽章口径）
+const reviewRecordScopeMock = vi.hoisted(() => vi.fn())
+const scopedReviewHistoryMock = vi.hoisted(() => vi.fn())
+
+vi.mock('@/application/tasks/useReview', () => ({
+  useReviewRecordScope: reviewRecordScopeMock,
+  useScopedReviewHistory: scopedReviewHistoryMock,
 }))
 
 // 复核弹窗/浮条桩：本测试聚焦资源区标签文案，不涉及复核交互
@@ -121,48 +131,92 @@ function makeDetail(overrides: Partial<TaskDetailData> = {}): TaskDetailData {
   }
 }
 
+/** 渲染被测组件（useTaskActions/复核 hook 依赖 QueryClient，测试内提供隔离客户端） */
+function renderDetail(detail: TaskDetailData) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  })
+  return render(
+    <QueryClientProvider client={client}>
+      <CaseAssociation detail={detail} />
+    </QueryClientProvider>
+  )
+}
+
 describe('CaseAssociation 资源区文案（INT-1241 移除任务类型概念）', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // 默认非容器：范围=页面任务，历史空
+    reviewRecordScopeMock.mockReturnValue({
+      scope: { taskIds: [419], resultIds: null },
+      isContainer: false,
+      isLoading: false,
+      isError: false,
+    })
+    scopedReviewHistoryMock.mockReturnValue({
+      data: [],
+      scope: { taskIds: [419], resultIds: null },
+      reviewedResultCount: 0,
+      isLoading: false,
+      isError: false,
+    })
   })
 
   it('任意 device_types 均显示中性页签「关联资源」', () => {
-    render(<CaseAssociation detail={makeDetail({ device_types: ['websocket_api'] })} />)
+    renderDetail(makeDetail({ device_types: ['websocket_api'] }))
     expect(screen.getByText('关联资源')).toBeInTheDocument()
     expect(screen.queryByText('关联API')).not.toBeInTheDocument()
     expect(screen.queryByText('关联设备')).not.toBeInTheDocument()
   })
 
   it('空 device_types + device_count>0（旧 e2e 任务）同样只显示「关联资源」', () => {
-    render(
-      <CaseAssociation
-        detail={makeDetail({ device_types: [], device_count: 1, api_count: 0 })}
-      />
-    )
+    renderDetail(makeDetail({ device_types: [], device_count: 1, api_count: 0 }))
     expect(screen.getByText('关联资源')).toBeInTheDocument()
     expect(screen.queryByText('关联API')).not.toBeInTheDocument()
     expect(screen.queryByText('关联设备')).not.toBeInTheDocument()
   })
 
   it('空 device_types + api_count>0（旧 API 任务）同样只显示「关联资源」', () => {
-    render(
-      <CaseAssociation
-        detail={makeDetail({ device_types: [], device_count: 0, api_count: 2 })}
-      />
-    )
+    renderDetail(makeDetail({ device_types: [], device_count: 0, api_count: 2 }))
     expect(screen.getByText('关联资源')).toBeInTheDocument()
     expect(screen.queryByText('关联API')).not.toBeInTheDocument()
     expect(screen.queryByText('关联设备')).not.toBeInTheDocument()
   })
 
   it('physical 任务同样只显示「关联资源」', () => {
-    render(
-      <CaseAssociation
-        detail={makeDetail({ device_types: ['physical'], device_count: 1, api_count: 0 })}
-      />
+    renderDetail(
+      makeDetail({ device_types: ['physical'], device_count: 1, api_count: 0 })
     )
     expect(screen.getByText('关联资源')).toBeInTheDocument()
     expect(screen.queryByText('关联API')).not.toBeInTheDocument()
     expect(screen.queryByText('关联设备')).not.toBeInTheDocument()
+  })
+
+  /**
+   * INT-1626：挑选合并容器详情 review_count 恒 0（容器不拥有 test_results），
+   * 复核计数须按来源任务聚合后的条数展示，否则「已复核 n 条 / 查看复核历史」入口不出现。
+   */
+  it('容器任务：复核计数取来源任务聚合结果（review_count=0 也显示徽章与历史入口）', () => {
+    reviewRecordScopeMock.mockReturnValue({
+      scope: { taskIds: [419], resultIds: [5715] },
+      isContainer: true,
+      isLoading: false,
+      isError: false,
+    })
+    scopedReviewHistoryMock.mockReturnValue({
+      data: [],
+      scope: { taskIds: [419], resultIds: [5715] },
+      reviewedResultCount: 1,
+      isLoading: false,
+      isError: false,
+    })
+    renderDetail(makeDetail({ id: 556, review_count: 0 }))
+    expect(screen.getByText('已复核 1 条')).toBeInTheDocument()
+    expect(screen.getByText('查看复核历史')).toBeInTheDocument()
+  })
+
+  it('非容器任务：复核计数沿用后端 review_count', () => {
+    renderDetail(makeDetail({ review_count: 3 }))
+    expect(screen.getByText('已复核 3 条')).toBeInTheDocument()
   })
 })

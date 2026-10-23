@@ -8,7 +8,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { History } from 'lucide-react'
 
-import { useReviewHistory } from '@/application/tasks/useReview'
+import { useScopedReviewHistory } from '@/application/tasks/useReview'
 import { Badge } from '@/components/ui/badge'
 import {
   Sheet,
@@ -49,8 +49,9 @@ export function ReviewHistoryDrawer({
   resultId?: number
 }) {
   const queryClient = useQueryClient()
-  // 抽屉未打开或 taskId<=0（test-execution 挂载即渲染的 taskId ?? 0）时不发 /review-history 无效请求
-  const { data, isLoading, isError } = useReviewHistory(taskId, open && taskId > 0)
+  // 抽屉未打开或 taskId<=0（test-execution 挂载即渲染的 taskId ?? 0）时不发 /review-history 无效请求。
+  // INT-1626：挑选合并容器按「结果归属任务」聚合（容器行引用源任务结果，复核留痕落源任务）。
+  const { data, isLoading, isError } = useScopedReviewHistory(taskId, open && taskId > 0)
   // 后端按时间正序返回 → 展示侧倒序（最新在前，§3.4「服务端按时间倒序」口径）
   const items = (data ?? [])
     .filter((item) => (resultId ? item.resultId === resultId : true))

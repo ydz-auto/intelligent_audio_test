@@ -28,6 +28,10 @@ import { toast } from 'sonner'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useTaskActions } from '@/application/tasks/use-task-actions'
+import {
+  useReviewRecordScope,
+  useScopedReviewHistory,
+} from '@/application/tasks/useReview'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -186,6 +190,7 @@ function TaskCaseRow({
   canAiReview,
   isTerminal,
   reviewLoading,
+  reviewed,
   onReview,
   onAiReview,
   onQuickReview,
@@ -199,6 +204,8 @@ function TaskCaseRow({
   canAiReview: boolean
   isTerminal: boolean
   reviewLoading: boolean
+  /** 该用例是否存在人工复核（普通任务取 TaskCaseBrief.reviewed；容器任务按来源任务留痕派生） */
+  reviewed: boolean
   onReview: () => void
   onAiReview: () => void
   onQuickReview: () => void
@@ -243,7 +250,7 @@ function TaskCaseRow({
                 {c.name}
               </span>
             )}
-            {c.reviewed && <ReviewBadge />}
+            {reviewed && <ReviewBadge />}
           </div>
           <div className='text-muted-foreground flex min-w-0 items-center gap-2 text-[11px]'>
             <button
@@ -408,6 +415,19 @@ export function CaseAssociation({
   // 人工复核提交权限（task.result.review）；AI 复核发起/对话/保存结论/驳回（task.result.ai_review，INT-800 已注册）
   const canReview = hasPermission('task.result.review')
   const canAiReview = hasPermission('task.result.ai_review')
+
+  // INT-1626：挑选合并容器不拥有 test_results（引用源结果），复核留痕落在源任务下，
+  // 容器详情 review_count 恒 0 → 容器按「结果归属任务」聚合历史后再算已复核条数；
+  // 普通任务保持后端 review_count 口径（不为计数多发历史请求）。
+  const reviewScope = useReviewRecordScope(detail.id)
+  const containerHistory = useScopedReviewHistory(detail.id, reviewScope.isContainer)
+  const reviewCount = reviewScope.isContainer
+    ? containerHistory.reviewedResultCount
+    : detail.review_count
+  /** 容器任务：用例行「人工复核」标记按来源任务留痕派生（TaskCaseBrief.reviewed 由容器 id 算恒 false） */
+  const reviewedCaseIds = new Set(
+    (containerHistory.data ?? []).map((item) => item.testCaseId)
+  )
 
   // 标签分组（按用例 tags 首标签粗分）
   const tagGroups = filtered.reduce<Record<string, typeof filtered>>((acc, c) => {
@@ -649,6 +669,10 @@ export function CaseAssociation({
       canAiReview={canAiReview}
       isTerminal={isTerminal}
       reviewLoading={reviewLoading}
+      reviewed={
+        c.reviewed ||
+        (reviewScope.isContainer && reviewedCaseIds.has(c.case_id))
+      }
       onReview={() => openCaseReview(c)}
       onAiReview={() => openAiReview(c)}
       onQuickReview={() => openQuickReview(c)}
@@ -717,8 +741,9 @@ export function CaseAssociation({
                   ))}
                 </SelectContent>
               </Select>
-              {/* INT-795：任务复核计数 + 查看复核历史（task:read；review_count 驱动，§3.5） */}
-              {detail.review_count > 0 && (
+              {/* INT-795：任务复核计数 + 查看复核历史（task:read；review_count 驱动，§3.5）
+                  INT-1626：容器任务按来源任务聚合，容器 id 直查恒空 */}
+              {reviewCount > 0 && (
                 <>
                   <Badge
                     variant='secondary'
@@ -726,7 +751,7 @@ export function CaseAssociation({
                     data-slot='review-count-badge'
                   >
                     <ClipboardCheck aria-hidden='true' className='size-3' />
-                    已复核 {detail.review_count} 条
+                    已复核 {reviewCount} 条
                   </Badge>
                   <Button
                     variant='ghost'

@@ -490,6 +490,27 @@ export interface ContainerFilters {
   mergeType?: 'whole' | 'picked' | 'all'
 }
 
+/**
+ * 容器溯源（GET /tasks/cherry-picks/{task_id}/source，§8 S3）。
+ * 挑选合并容器的每条引用结果都带回来源任务（source_task_id）——复核留痕按
+ * 结果归属任务落库，容器详情查复核计数/历史须按来源任务查（INT-1626）。
+ * 非容器任务后端返 success=false/code=404，本层归一 null，调用侧回落到页面 taskId；
+ * 其余错误同样降级为 null，不因溯源查询失败阻断任务详情。
+ */
+export async function fetchContainerSourceTrace(
+  taskId: number
+): Promise<CherryPickSourceTraceDto | null> {
+  try {
+    return await request<CherryPickSourceTraceDto>(
+      'GET',
+      `/tasks/cherry-picks/${Number(taskId)}/source`
+    )
+  } catch (err) {
+    if (err instanceof ApiError) return null
+    throw err
+  }
+}
+
 /** 统一合并容器列表（GET /tasks?merged=true ∪ GET /tasks?cherry_pick=true 双查询合并；
  *  picked 容器 source_tasks 后端 read model 未填 → 溯源端点逐容器补全） */
 export async function fetchCherryPickContainers(
