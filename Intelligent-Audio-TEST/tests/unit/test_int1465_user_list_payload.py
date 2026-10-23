@@ -62,6 +62,9 @@ def seeded_db():
         perm = Permission(name=_PREFIX + code, description=code)
         session.add(perm)
         perms.append(perm)
+    # 第 4 个权限点不挂角色，只用于用户 granted override
+    extra_perm = Permission(name=_PREFIX + 'device:read', description='device:read')
+    session.add(extra_perm)
     session.flush()
     for perm in perms:
         session.add(RolePermission(role_id=role.id, permission_id=perm.id))
@@ -72,11 +75,36 @@ def seeded_db():
             role_id=role_id, status='active', display_name=f'用户{i}',
         ))
     session.flush()
-    target = session.query(User).filter_by(username=_PREFIX + 'user_00').first()
+    by_name = {
+        po.username: po
+        for po in session.query(User).filter(
+            User.username.like(_PREFIX + '%')).all()
+    }
+    # user_00：撤销角色内的一个权限 → 3 - 1 = 2
     session.add(UserPermission(
-        user_id=target.id, permission_id=perms[0].id, granted=False))
+        user_id=by_name[_PREFIX + 'user_00'].id,
+        permission_id=perms[0].id, granted=False))
+    # user_02：授予角色外权限 → 3 + 1 = 4
+    session.add(UserPermission(
+        user_id=by_name[_PREFIX + 'user_02'].id,
+        permission_id=extra_perm.id, granted=True))
+    # user_03：授予角色内已有权限 → 去重后仍是 3
+    session.add(UserPermission(
+        user_id=by_name[_PREFIX + 'user_03'].id,
+        permission_id=perms[1].id, granted=True))
+    # user_04：同一条角色外权限既授予又撤销 → 撤销优先，仍是 3
+    session.add(UserPermission(
+        user_id=by_name[_PREFIX + 'user_04'].id,
+        permission_id=extra_perm.id, granted=True))
+    session.add(UserPermission(
+        user_id=by_name[_PREFIX + 'user_04'].id,
+        permission_id=extra_perm.id, granted=False))
     session.commit()
-    yield {'role_id': role_id, 'user_id': target.id, 'perm_codes': perms}
+    yield {
+        'role_id': role_id,
+        'user_id': by_name[_PREFIX + 'user_00'].id,
+        'perm_codes': perms,
+    }
     # 清理本用例夹具（共享库下也不留残留）
     session = get_db_session()
     try:
@@ -121,24 +149,32 @@ def test_list_items_drop_permissions(seeded_db):
         assert item['role_name'] == _PREFIX + 'role'
         assert {'id', 'username', 'email', 'role_id', 'status', 'is_active',
                 'display_name', 'created_at', 'permission_count'} <= set(item)
-    # 生效权限数：角色基线 3 个；user_00 被撤销 audio:read → 2
+    # 生效权限数口径 = 角色基线 3 个 + granted 追加 - revoked 撤销（deny 优先）
     by_name = {item['username']: item for item in items}
-    assert by_name[_PREFIX + 'user_00']['permission_count'] == 2
-    assert by_name[_PREFIX + 'user_01']['permission_count'] == 3
+    assert by_name[_PREFIX + 'user_00']['permission_count'] == 2  # 撤销角色内 1 个
+    assert by_name[_PREFIX + 'user_01']['permission_count'] == 3  # 无 override
+    assert by_name[_PREFIX + 'user_02']['permission_count'] == 4  # 授予角色外 1 个
+    assert by_name[_PREFIX + 'user_03']['permission_count'] == 3  # 授予角色内已有权限，去重
+    assert by_name[_PREFIX + 'user_04']['permission_count'] == 3  # 授予又撤销，撤销优先
     # 瘦身后整页响应远小于原 34KB 量级（本夹具 10 条 < 8KB）
     assert len(resp.data.encode('utf-8')) < 8 * 1024
 
 
 def test_list_query_count_independent_of_page_size(seeded_db, monkeypatch):
-    """B：列表 SQL 条数固定（count + 分页 + 角色名 + 权限数批量 2 条），与页大小无关。
+    """B：列表 SQL 条数固定（1 条分页主查询），与页大小无关。
 
-    权限不逐用户查：整页 role_permissions / user_permissions 各 1 条批量查询，
-    aggregate.permissions 仍为空（只带 permission_count）。
+    角色名走 LEFT JOIN、生效权限数走相关标量子查询、总数走 count(*) OVER ()，
+    整页只发 1 条 SQL；不再为计数额外发批量查询，也不额外发 count 往返。
     """
     from auth_service.infrastructure.persistence import user_repository as ur
 
     engine = get_engine()
     counts = {}
+    expected_counts = {
+        _PREFIX + 'user_00': 2,
+        _PREFIX + 'user_02': 4,
+        _PREFIX + 'user_04': 3,
+    }
 
     for page_size in (5, 20):
         statements = []
@@ -157,14 +193,14 @@ def test_list_query_count_independent_of_page_size(seeded_db, monkeypatch):
         # 权限明细在列表场景不加载：只带计数，不带权限码
         assert all(u.permissions == [] for u in users)
         assert all(
-            u.permission_count == (2 if u.username == _PREFIX + 'user_00' else 3)
+            u.permission_count == expected_counts.get(u.username, 3)
             for u in users
         )
         counts[page_size] = len(statements)
 
-    # 单页不分大小都是固定 5 条 SQL（原实现 1 + 1 + N×3）
-    assert counts[5] == counts[20] <= 5, counts
-    # 权限相关表只允许整页批量查询：每张表最多 1 次，不随用户数增长
+    # 整页固定 1 条 SQL（原实现 1 + 1 + N×3）
+    assert counts[5] == counts[20] == 1, counts
+    # 权限表的读取只发生在这一条分页主查询里（相关子查询），没有额外批量往返
     statements = []
 
     def _record_sql(conn, cursor, statement, parameters, context, executemany):
@@ -175,9 +211,29 @@ def test_list_query_count_independent_of_page_size(seeded_db, monkeypatch):
         ur.user_repository.list_users(page=1, page_size=20, keyword=_PREFIX)
     finally:
         event.remove(engine, 'before_cursor_execute', _record_sql)
-    touched = ' '.join(statements).lower()
-    assert touched.count('from user_permissions') <= 1, touched
-    assert touched.count('from role_permissions') <= 1, touched
+    assert len(statements) == 1, statements
+    assert sum('from user_permissions' in s.lower() for s in statements) == 1, statements
+    assert sum('from role_permissions' in s.lower() for s in statements) == 1, statements
+
+
+def test_empty_page_falls_back_to_count(seeded_db):
+    """B2：翻到空页时窗口计数无行可承载，回退 1 次 count，total 仍正确。"""
+    from auth_service.infrastructure.persistence import user_repository as ur
+
+    engine = get_engine()
+    statements = []
+
+    def _record(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    event.listen(engine, 'before_cursor_execute', _record)
+    try:
+        total, users = ur.user_repository.list_users(
+            page=99, page_size=10, keyword=_PREFIX)
+    finally:
+        event.remove(engine, 'before_cursor_execute', _record)
+    assert total == 20 and users == []
+    assert len(statements) == 2, statements
 
 
 def test_detail_still_returns_permissions_and_overrides(seeded_db):

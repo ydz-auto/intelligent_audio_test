@@ -13,9 +13,9 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
-from sqlalchemy import or_
+from sqlalchemy import func, or_, select
 
 from shared.models.database import get_db_session
 from auth_service.infrastructure.persistence.models import (
@@ -134,64 +134,42 @@ def _role_name_by_id(session, role_id: Optional[int]) -> str:
     return row[0] if row else ''
 
 
-def _role_names_by_ids(session, role_ids) -> Dict[int, str]:
-    """批量查角色名：{role_id: name}，一次查询覆盖整页用户（INT-1465）。
+def _permission_count_expr():
+    """列表页「生效权限数」的相关标量子查询（INT-1465）。
 
-    列表场景原按用户逐条查 roles 表（每用户 1 次），与权限查询一起构成
-    N+1；此处把角色名收敛为整页 1 次查询。
+    口径与 ``_query_user_permissions`` 一致：角色权限为基线，用户 granted
+    追加、revoked 撤销（同一权限既 granted 又 revoked 时按撤销优先）。
+    列表只需要这个整数，不需要权限码全集——这里把它并进分页主查询，整页
+    只发 1 条 SQL，不额外增加数据库往返（并发 40 下往返会被连接池排队放大）。
+
+    不用 UNION/EXCEPT 派生表：派生表在内层无法引用外层 users 列（PG 需
+    LATERAL），因此拆成两段可加计数，两段都按 permission_id 去重：
+    1. 角色权限中未被撤销的个数；
+    2. 用户 granted 中不在角色基线、且未被撤销的个数。
     """
-    ids = {rid for rid in role_ids if rid}
-    if not ids:
-        return {}
-    rows = session.query(Role.id, Role.name).filter(Role.id.in_(ids)).all()
-    return {rid: name for rid, name in rows}
-
-
-def _effective_permission_counts(session, user_pos) -> Dict[int, int]:
-    """批量算整页用户的生效权限数：{user_id: count}（INT-1465）。
-
-    列表页要显示「生效权限数」，但不能为此加载每人的权限码全集（那是响应
-    膨胀到 30KB+ 的根因）。口径与 ``_query_user_permissions`` 完全一致
-    （角色权限 + granted 追加 - revoked 撤销），只是把逐用户的 2 次查询
-    收敛为整页 2 次：按本页 role_ids 查角色权限、按本页 user_ids 查 override，
-    Python 侧做集合并/差。SQL 条数与页大小无关。
-    """
-    role_ids = {po.role_id for po in user_pos if po.role_id}
-    user_ids = [po.id for po in user_pos]
-
-    role_perms: Dict[int, set] = {}
-    if role_ids:
-        rows = (
-            session.query(RolePermission.role_id, Permission.name)
-            .join(Permission, Permission.id == RolePermission.permission_id)
-            .filter(RolePermission.role_id.in_(role_ids))
-            .all()
-        )
-        for role_id, name in rows:
-            role_perms.setdefault(role_id, set()).add(name)
-
-    overrides: Dict[int, List[Tuple[str, bool]]] = {}
-    if user_ids:
-        rows = (
-            session.query(UserPermission.user_id, Permission.name,
-                          UserPermission.granted)
-            .join(Permission, Permission.id == UserPermission.permission_id)
-            .filter(UserPermission.user_id.in_(user_ids))
-            .all()
-        )
-        for user_id, name, granted in rows:
-            overrides.setdefault(user_id, []).append((name, granted))
-
-    counts: Dict[int, int] = {}
-    for po in user_pos:
-        perms = set(role_perms.get(po.role_id, set()))
-        for name, granted in overrides.get(po.id, ()):
-            if granted:
-                perms.add(name)
-            else:
-                perms.discard(name)
-        counts[po.id] = len(perms)
-    return counts
+    role_baseline = select(RolePermission.permission_id).where(
+        RolePermission.role_id == User.role_id).correlate(User)
+    revoked = select(UserPermission.permission_id).where(
+        UserPermission.user_id == User.id,
+        UserPermission.granted.is_(False),
+    ).correlate(User)
+    role_count = (
+        select(func.count(func.distinct(RolePermission.permission_id)))
+        .where(RolePermission.role_id == User.role_id,
+               RolePermission.permission_id.notin_(revoked))
+        .correlate(User)
+        .scalar_subquery()
+    )
+    granted_extra_count = (
+        select(func.count(func.distinct(UserPermission.permission_id)))
+        .where(UserPermission.user_id == User.id,
+               UserPermission.granted.is_(True),
+               UserPermission.permission_id.notin_(role_baseline),
+               UserPermission.permission_id.notin_(revoked))
+        .correlate(User)
+        .scalar_subquery()
+    )
+    return role_count + granted_extra_count
 
 
 def _user_po_to_entity(
@@ -504,26 +482,35 @@ class UserRepository(UserRepositoryABC):
             )
         if role_id:
             q = q.filter(User.role_id == role_id)
-        total = q.count()
-        pos = (
-            q.order_by(User.id.asc())
+        # INT-1465：列表查询不加载生效权限（权限明细仅详情 GetUser 给出）。
+        # 原实现逐用户查权限(2 次)+角色名(1 次)是 N+1；上一版整页补 2 条批量
+        # 查询虽固定条数，但在并发 40 下仍因连接池排队把端点时延推过验收线。
+        # 这里把角色名、生效权限数、总数全部并进分页主查询：
+        # - 角色名：LEFT JOIN roles；
+        # - 生效权限数：相关标量子查询（_permission_count_expr）；
+        # - 总数：count(*) OVER ()，窗口在 LIMIT 之前求值，与独立 count 查询
+        #   同义，省掉一次往返。整页只发 1 条 SQL，且与页大小无关。
+        rows = (
+            q.outerjoin(Role, Role.id == User.role_id)
+            .with_entities(
+                User,
+                Role.name.label('role_name'),
+                _permission_count_expr().label('permission_count'),
+                func.count().over().label('total_count'),
+            )
+            .order_by(User.id.asc())
             .offset(max(page - 1, 0) * page_size)
             .limit(page_size)
             .all()
         )
-        # INT-1465：列表查询不加载生效权限（权限明细仅详情 GetUser 给出），
-        # 角色名整页一次批量查——原逐用户查权限(2 次)+角色名(1 次)是 N+1，
-        # 并发下把 Postgres 连接池占满，10 条列表响应还因权限码全集膨胀到 30KB+。
-        # 列表页只需权限数，整页 2 条 SQL 批量算出（_effective_permission_counts）。
-        role_names = _role_names_by_ids(session, (po.role_id for po in pos))
-        permission_counts = _effective_permission_counts(session, pos)
-        aggregates = [
-            _user_po_to_entity(
-                po, permissions=[], role_name=role_names.get(po.role_id, ''))
-            for po in pos
-        ]
-        for aggregate in aggregates:
-            aggregate.permission_count = permission_counts.get(aggregate.id, 0)
+        # 翻到空页时没有行可承载窗口计数，回退一次 count 查询（首页无数据同此）
+        total = int(rows[0].total_count) if rows else q.count()
+        aggregates = []
+        for po, role_name, permission_count, _total in rows:
+            aggregate = _user_po_to_entity(
+                po, permissions=[], role_name=role_name or '')
+            aggregate.permission_count = int(permission_count or 0)
+            aggregates.append(aggregate)
         return total, aggregates
 
     def get_user_permissions(self, user_id: int) -> List[str]:
