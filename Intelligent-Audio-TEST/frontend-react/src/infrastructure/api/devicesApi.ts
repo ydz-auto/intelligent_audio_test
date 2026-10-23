@@ -519,7 +519,8 @@ export async function controlDevice(
   return { success: true, action, id }
 }
 
-/** 「测试中」占用态：本地瞬时覆盖 + 真实测试派发端点（INT-487 §3.4 注③：测试/停止测试） */
+/** 「测试中」占用态：本地瞬时覆盖 + 真实测试派发端点（INT-487 §3.4 注③：测试/停止测试）
+ *  P3-b 返修：请求失败回滚本地覆盖（恢复原值），否则设备会一直显示「测试中」直到整页重载。 */
 export async function setDeviceOccupied(
   kind: 'test' | 'playback' | 'api',
   id: number,
@@ -527,10 +528,17 @@ export async function setDeviceOccupied(
   options: ApiRequestOptions = {}
 ): Promise<{ success: boolean }> {
   const overrides = occupiedOverrides.get(kind) ?? new Map<number, boolean>()
+  const previous = overrides.get(id)
   overrides.set(id, occupied)
   occupiedOverrides.set(kind, overrides)
   const base = kind === 'test' ? '/test-devices' : kind === 'playback' ? '/playback-devices' : '/apis'
-  await request('POST', `${base}/${id}/${occupied ? 'test' : 'stop-test'}`, undefined, options)
+  try {
+    await request('POST', `${base}/${id}/${occupied ? 'test' : 'stop-test'}`, undefined, options)
+  } catch (error) {
+    if (previous === undefined) overrides.delete(id)
+    else overrides.set(id, previous)
+    throw error
+  }
   return { success: true }
 }
 

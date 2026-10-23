@@ -542,8 +542,8 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
       onEdit: (device: ApiDevice) => openMutate({ open: true, mode: 'edit', kind: 'api', device }),
       onHealth: (device: ApiDevice) => {
         // 接线 INT-644：API 健康检查走 POST /apis/{id}/health（区别于测试设备 /test-devices/health-check）
+        // P3-a 返修：handleControl 自带成功/失败提示，页面不再无条件补「已发起」，避免失败时两条 toast 并存
         void handleControl(device.id, 'api_health_check')
-        toast.success(`健康检查已发起：${device.name}`)
       },
       // P2-4：API「停止测试」走真实端点 POST /apis/{id}/stop-test（接口文档 8.8），不再本地假成功
       onStopTest: (device: ApiDevice) => {
