@@ -120,7 +120,10 @@ def _patch_stub(monkeypatch, stub):
 
 
 class _FakeRedis:
-    """仅覆盖 stats_cache 用到的 get/setex，记录写调用供断言"""
+    """仅覆盖 stats_cache 用到的 get/setex/delete，记录写调用供断言
+
+    delete 供 INT-1464 汇总缓存失效（refresh_stats_cache 写详情快照后连带失效）。
+    """
 
     def __init__(self, initial=None):
         self._store = {}
@@ -134,6 +137,9 @@ class _FakeRedis:
     def setex(self, key, ttl, value):
         self.setex_calls.append((key, ttl, value))
         self._store[key] = value
+
+    def delete(self, key):
+        self._store.pop(key, None)
 
 
 def _patch_redis(monkeypatch, initial=None):

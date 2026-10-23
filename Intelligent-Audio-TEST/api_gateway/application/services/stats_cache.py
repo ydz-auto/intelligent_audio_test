@@ -22,6 +22,7 @@
 import json
 import logging
 import os
+import time
 from datetime import datetime, timezone, timedelta
 
 import redis as redis_lib
@@ -35,6 +36,25 @@ _CACHE_KEY = 'home_stats'
 _CACHE_TTL = int(os.environ.get('HOME_STATS_CACHE_TTL_SECONDS', '3600'))  # 1 小时
 # 降级快照 TTL（秒）：含沿用旧值的失败域，短 TTL 保证上游恢复后快速重试回正
 _CACHE_TTL_DEGRADED = int(os.environ.get('HOME_STATS_CACHE_DEGRADED_TTL_SECONDS', '30'))
+
+# ---- 首页汇总（GET /home/stats/summary）缓存 ----
+# 汇总 = 最近任务 + TOP 分组 + 设备状态，原实现每次请求实时串行回源
+# （task 列表读模型 + 2 次用例分组 RPC + 设备全量分页拉取），并发 40 下
+# avg 1.8s（INT-1464）。实时性要求远低于详情快照，故独立 key + 短 TTL，
+# 与详情快照（home_stats，1h）分开失效。
+_SUMMARY_CACHE_KEY = 'home_stats_summary'
+# 正常 TTL（秒）：首页汇总允许秒级陈旧，取 30~60s 区间
+_SUMMARY_CACHE_TTL = int(os.environ.get('HOME_STATS_SUMMARY_CACHE_TTL_SECONDS', '45'))
+# 降级 TTL（秒）：有域回源失败时短缓存，避免故障窗口内每个请求都撞上游
+_SUMMARY_CACHE_TTL_DEGRADED = int(
+    os.environ.get('HOME_STATS_SUMMARY_CACHE_DEGRADED_TTL_SECONDS', '10'))
+# 回源锁：缓存过期瞬间只放一个请求回源，其余等快照写出（防缓存击穿）
+_SUMMARY_LOCK_KEY = 'home_stats_summary:lock'
+_SUMMARY_LOCK_TTL_SECONDS = int(os.environ.get('HOME_STATS_SUMMARY_LOCK_TTL_SECONDS', '5'))
+# 等锁者最长等待（秒）与轮询间隔（秒）；超时自行回源（持锁者异常也不致卡死）
+_SUMMARY_LOCK_WAIT_SECONDS = float(os.environ.get('HOME_STATS_SUMMARY_LOCK_WAIT_SECONDS', '1.0'))
+_SUMMARY_LOCK_POLL_SECONDS = float(
+    os.environ.get('HOME_STATS_SUMMARY_LOCK_POLL_SECONDS', '0.02'))
 
 # 模块级 Redis 客户端单例：复用连接，避免每次刷新新建导致连接/内存膨胀
 _redis_client = None
@@ -206,6 +226,12 @@ def _fetch_device_stats_via_grpc():
     return online, offline
 
 
+# 首页汇总（/home/stats/summary）设备状态复用同一计数口径：ListDevices
+# per_page=1 按 status 取 total，两次 RPC 拿齐在线/离线数，禁止按
+# EXPORT_PAGE_SIZE 全量分页拉取设备（INT-1464）。
+fetch_device_status_counts = _fetch_device_stats_via_grpc
+
+
 def _fetch_playback_device_stats_via_grpc():
     """通过 gRPC 拉取播放设备总数（ListPlaybackDevices per_page=1 取 total）
 
@@ -314,6 +340,77 @@ def _stale_audio_stats(old_stats):
         _stale_value(old_stats, 'audio_files', 'duration', 'noise'),
         _stale_value(old_stats, 'audio_files', 'duration', 'prompt'),
     )
+
+
+def load_summary_cache():
+    """读取首页汇总快照；无缓存 / 载荷损坏 / Redis 不可用时返回 None（按未命中处理）"""
+    try:
+        raw = _get_redis().get(_SUMMARY_CACHE_KEY)
+        if not raw:
+            return None
+        value = json.loads(raw)
+        return value if isinstance(value, dict) else None
+    except Exception:
+        logger.warning("读取首页汇总缓存失败，按未命中处理", exc_info=True)
+        return None
+
+
+def store_summary_cache(value, degraded=False):
+    """写入首页汇总快照；degraded=True 时按降级短 TTL 写入
+
+    返回 True 表示已写入。Redis 不可用时返回 False（不影响本次响应）。
+    """
+    ttl = _SUMMARY_CACHE_TTL_DEGRADED if degraded else _SUMMARY_CACHE_TTL
+    try:
+        _get_redis().setex(
+            _SUMMARY_CACHE_KEY, ttl,
+            json.dumps(value, ensure_ascii=False, default=str))
+        return True
+    except Exception:
+        logger.warning("写入首页汇总缓存失败", exc_info=True)
+        return False
+
+
+def invalidate_summary_cache():
+    """数据变化后失效首页汇总快照，下一次请求重算（调用方不感知失败）"""
+    try:
+        _get_redis().delete(_SUMMARY_CACHE_KEY)
+    except Exception:
+        logger.warning("失效首页汇总缓存失败", exc_info=True)
+
+
+def acquire_summary_refresh_lock():
+    """抢占汇总回源锁（防缓存过期瞬间并发请求同时回源）
+
+    返回 True=本请求取得回源权；False=他人持有，应等待其写出快照；
+    None=Redis 不可用（无锁可依，调用方直接回源）。
+    """
+    try:
+        return bool(_get_redis().set(
+            _SUMMARY_LOCK_KEY, '1', nx=True, ex=_SUMMARY_LOCK_TTL_SECONDS))
+    except Exception:
+        logger.warning("首页汇总回源锁不可用，直接回源", exc_info=True)
+        return None
+
+
+def release_summary_refresh_lock():
+    """释放汇总回源锁（未持锁 / Redis 不可用时静默）"""
+    try:
+        _get_redis().delete(_SUMMARY_LOCK_KEY)
+    except Exception:
+        logger.warning("释放首页汇总回源锁失败", exc_info=True)
+
+
+def wait_summary_cache(timeout=None):
+    """等锁者轮询等待持锁者写出快照；超时返回 None（调用方自行回源）"""
+    deadline = time.monotonic() + (
+        _SUMMARY_LOCK_WAIT_SECONDS if timeout is None else timeout)
+    while time.monotonic() < deadline:
+        time.sleep(_SUMMARY_LOCK_POLL_SECONDS)
+        value = load_summary_cache()
+        if value is not None:
+            return value
+    return None
 
 
 def refresh_stats_cache():
@@ -446,6 +543,9 @@ def refresh_stats_cache():
 
         r = _get_redis()
         r.setex(_CACHE_KEY, ttl, json.dumps(cache_value, ensure_ascii=False, default=str))
+        # 数据变化触发的刷新同时失效首页汇总快照，避免汇总比详情晚一个
+        # 短 TTL（INT-1464）；下次 summary 请求重算即可。
+        invalidate_summary_cache()
         return True
 
     except Exception as e:
