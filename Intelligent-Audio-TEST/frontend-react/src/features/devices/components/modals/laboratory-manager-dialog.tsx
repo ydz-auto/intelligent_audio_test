@@ -5,8 +5,8 @@
  * 状态 StatusBadge（active=success 启用/inactive=neutral 停用/maintenance=warning 维护中）/
  * 资源统计 tabular「设备 {n} · 播放 {m} · 用例 {k}」/更新时间/操作[编辑·删除]）+
  * 新建实验室表单（名称（必填）/代码（必填）/所在楼栋/楼层/房间号/描述/状态）。
- * 数据契约按 doc/总架构/实验室扩展功能设计.md §5.1 设计；后端 /api/laboratories CRUD 未实现
- * （§11-24）——本弹窗为设计稿 mock 预览，入口在「更多操作」禁用 + Tooltip「实验室管理后端建设中」。
+ * 数据契约 INT-655：GET/POST/PUT/DELETE /api/v1/laboratories 真实端点（laboratory_bp.py），
+ * 入口在「更多操作 → 实验室管理」可用；集合由 useLaboratories 查询 + 增删改后失效重拉。
  */
 import { MapPin, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -32,6 +32,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { ApiError } from '@/infrastructure/api/api-error'
 import { StaticDataTable } from '@/features/system-settings/components/static-data-table'
 import { cn } from '@/lib/utils'
 import type { Laboratory, LaboratoryStatus } from '@/domain/models/laboratory'
@@ -123,8 +124,9 @@ export function LaboratoryManagerDialog(props: LaboratoryManagerDialogProps) {
         toast.success('实验室已创建')
       }
       resetForm()
-    } catch {
-      toast.error('操作失败，请稍后重试')
+    } catch (error) {
+      // 后端业务文案（code 冲突 409 等）经 ApiError.userMessage 直呈
+      toast.error(error instanceof ApiError ? error.userMessage : '操作失败，请稍后重试')
     }
   }
 
@@ -134,8 +136,8 @@ export function LaboratoryManagerDialog(props: LaboratoryManagerDialogProps) {
       await remove.mutateAsync(deleteTarget.id)
       toast.success('实验室已删除')
       setDeleteTarget(null)
-    } catch {
-      toast.error('删除失败，请重试')
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.userMessage : '删除失败，请重试')
     }
   }
 

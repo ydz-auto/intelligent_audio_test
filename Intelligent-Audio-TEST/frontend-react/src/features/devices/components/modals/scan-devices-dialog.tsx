@@ -63,6 +63,20 @@ interface ScanResultRow {
   /** P3-1 返修：后端扫描响应透传真实应用名/版本，预填不再硬编码默认值 */
   app_name?: string | null
   app_version?: string | null
+  /** P3-2 返修：后端若透传连接方式则直用（device.py DeviceScanItem 当前未含，按序列号/IP 兜底判定） */
+  connection_type?: string | null
+  connectionType?: string | null
+}
+
+/** 连接方式判定（§6.1/V9.7.10 ScanDevicesModal.vue:27-29）：
+ * 后端透传 connection_type 优先；未透传时按 adb 远程序列号形态（host:port）或 ip 判定，
+ * 否则按 USB 连接（与设备列表「连接方式」列同口径）。 */
+function resolveConnectionType(row: ScanResultRow): { value: 'usb' | 'remote'; label: string } {
+  const raw = row.connection_type ?? row.connectionType
+  if (raw === 'usb') return { value: 'usb', label: 'USB连接' }
+  if (raw === 'remote') return { value: 'remote', label: '远程连接' }
+  if ((row.serial ?? '').includes(':') || row.ip) return { value: 'remote', label: '远程连接' }
+  return { value: 'usb', label: 'USB连接' }
 }
 
 const SCAN_STAGES: ReadonlyArray<string> = [
@@ -151,6 +165,7 @@ export function ScanDevicesDialog(props: ScanDevicesDialogProps) {
             system: normalizeDeviceSystem(row?.system)?.label ?? 'Android',
             systemVersion: row?.system_version ?? '未知',
             ip: row?.ip ?? '',
+            connectionType: resolveConnectionType(row ?? {}).value,
             // P3-1 返修：透传扫描响应真实应用名/版本（V9.7.10 `appName || 'Default App'` 口径）
             appName: row?.app_name ?? 'Default App',
             appVersion: row?.app_version ?? '1.0.0',
@@ -228,7 +243,7 @@ export function ScanDevicesDialog(props: ScanDevicesDialogProps) {
                       </span>
                       <span className='text-muted-foreground block text-xs'>
                         {props.tab === 'test'
-                          ? `${normalizeDeviceSystem(row.system)?.label ?? row.system ?? '未知系统'} - ${row.serial ?? '—'}`
+                          ? `${normalizeDeviceSystem(row.system)?.label ?? row.system ?? '未知系统'} - ${row.serial ?? '—'} · ${resolveConnectionType(row).label}`
                           : `通道 ${row.channel_index ?? 0} · ${row.sample_rate ?? 48000} Hz`}
                         {row.ip ? ` · ${row.ip}` : ''}
                       </span>

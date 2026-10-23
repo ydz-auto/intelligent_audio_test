@@ -4,7 +4,7 @@
  * 添加测试API」）+ 更多操作下拉（扫描设备/分组管理/实验室管理/批量健康检查/导入导出）。
  * 权限：主按钮随页签 device:create/playback:create/api_config:create，无权限 disabled +
  * Tooltip「无权限执行此操作」；菜单项按码显隐（§8 隐藏而非置灰）。
- * INT-487：实验室管理入口后端 /api/laboratories 未实现 → 禁用 + Tooltip「实验室管理后端建设中」；
+ * INT-655：实验室管理入口接真实 /laboratories CRUD → 可用；
  * 导入/导出无处理器（§11-21）→ 禁用 + Tooltip「设备导入导出后端建设中」。
  */
 import {
@@ -187,17 +187,12 @@ export function DevicesPrimaryButtons(props: DevicesPrimaryButtonsProps) {
               分组管理
             </DropdownMenuItem>
           )}
-          {/* 实验室管理（§3.3/§6.26：三页签均显；INT-487 后端未实现 → 禁用 + Tooltip P3-25） */}
+          {/* 实验室管理（§3.3/§6.26：三页签均显；INT-655 /laboratories 已接线 → 入口解禁） */}
           {props.canLabManage && (
-            <Tooltip>
-              <TooltipTrigger
-                render={<DropdownMenuItem disabled className='gap-2' />}
-              >
-                <Building2 aria-hidden='true' />
-                实验室管理
-              </TooltipTrigger>
-              <TooltipContent>实验室管理后端建设中</TooltipContent>
-            </Tooltip>
+            <DropdownMenuItem onClick={props.onLabManage}>
+              <Building2 aria-hidden='true' />
+              实验室管理
+            </DropdownMenuItem>
           )}
           {/* 批量健康检查（P2-8：device:control 且仅测试页签，播放/API 不再越位显） */}
           {props.canBatchHealth && (
