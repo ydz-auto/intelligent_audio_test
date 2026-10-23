@@ -1,10 +1,11 @@
 /**
  * 分享报告 Dialog（15_报告域.md §4.12；报告管理功能设计文档.md:254-272 实测）。
- * 分享方式=生成分享链接/邮件分享/导出后分享；分享权限=访问权限（仅登录/指定人/公开）× 有效期 × 访问密码；
+ * 分享方式=生成分享链接/导出后分享（邮件分享本版本不实现，入口隐藏）；
+ * 分享权限=访问权限（仅登录/指定人/公开）× 有效期 × 访问密码；
  * 分享统计=访问次数/访问时间；链接管理和撤销。状态由 application/use-report-share 承载
  * （数据经 infrastructure/api/report-share-api.ts 接 INT-971 真实端点：生成/撤销/统计回读）。
  */
-import { Copy, ExternalLink, Mail, Share2 } from 'lucide-react'
+import { Copy, ExternalLink, Share2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -34,7 +35,6 @@ import type {
 
 const SHARE_METHODS: { value: ShareMethod; label: string }[] = [
   { value: 'link', label: '生成分享链接' },
-  { value: 'email', label: '邮件分享' },
   { value: 'export', label: '导出后分享' },
 ]
 
@@ -58,9 +58,9 @@ interface ReportShareDialogProps {
   onMethodChange: (method: ShareMethod) => void
   onAccessChange: (access: ShareAccess) => void
   onExpiryChange: (expiry: ShareExpiry) => void
+  onExpiresAtChange: (expiresAt: string | null) => void
   onPasswordChange: (password: string) => void
   onRecipientsChange: (recipients: string) => void
-  onEmailToChange: (emailTo: string) => void
   onGenerate: () => void
   onRevoke: () => void
   onCopy: () => void
@@ -74,9 +74,9 @@ export function ReportShareDialog({
   onMethodChange,
   onAccessChange,
   onExpiryChange,
+  onExpiresAtChange,
   onPasswordChange,
   onRecipientsChange,
-  onEmailToChange,
   onGenerate,
   onRevoke,
   onCopy,
@@ -88,7 +88,7 @@ export function ReportShareDialog({
         <DialogHeader>
           <DialogTitle>分享报告</DialogTitle>
           <DialogDescription>
-            「{reportName}」——生成分享链接 / 邮件分享 / 导出后分享，支持权限、有效期与访问密码。
+            「{reportName}」——生成分享链接 / 导出后分享，支持权限、有效期与访问密码。
           </DialogDescription>
         </DialogHeader>
 
@@ -118,6 +118,7 @@ export function ReportShareDialog({
               <Select
                 value={state.access}
                 onValueChange={(v) => onAccessChange((v ?? 'login') as ShareAccess)}
+                items={ACCESS_OPTIONS}
               >
                 <SelectTrigger className='h-9'>
                   <SelectValue />
@@ -136,6 +137,7 @@ export function ReportShareDialog({
               <Select
                 value={state.expiry}
                 onValueChange={(v) => onExpiryChange((v ?? 'none') as ShareExpiry)}
+                items={EXPIRY_OPTIONS}
               >
                 <SelectTrigger className='h-9'>
                   <SelectValue />
@@ -150,6 +152,20 @@ export function ReportShareDialog({
               </Select>
             </div>
           </div>
+
+          {state.expiry === 'custom' && (
+            <div className='flex flex-col gap-1.5'>
+              <Label className='text-xs'>自定义有效期</Label>
+              <Input
+                type='datetime-local'
+                value={state.expiresAt ?? ''}
+                onChange={(e) => onExpiresAtChange(e.target.value || null)}
+                className='h-9'
+                required
+              />
+              <p className='text-muted-foreground text-xs'>必填；到期后分享链接失效</p>
+            </div>
+          )}
 
           {state.access === 'specific' && (
             <div className='flex flex-col gap-1.5'>
@@ -193,22 +209,6 @@ export function ReportShareDialog({
                   生成分享链接
                 </Button>
               )}
-            </div>
-          )}
-
-          {state.method === 'email' && (
-            <div className='flex flex-col gap-1.5'>
-              <Label className='text-xs'>收件人</Label>
-              <Input
-                value={state.emailTo}
-                onChange={(e) => onEmailToChange(e.target.value)}
-                placeholder='name@example.com'
-                className='h-9'
-              />
-              <Button size='sm' variant='outline' onClick={onGenerate}>
-                <Mail data-icon='inline-start' />
-                发送邮件分享
-              </Button>
             </div>
           )}
 

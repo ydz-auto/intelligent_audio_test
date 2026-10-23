@@ -80,6 +80,7 @@ describe('报告分享 API（INT-1408 接线）', () => {
     expect(info.token).toBe('tk-abc')
     expect(info.visits).toBe(0)
     expect(info.lastVisitedAt).toBeNull()
+    expect(info.expiresAt).toBeNull()
     // share_url origin 归一化到当前前端 origin（保留 path+query）
     expect(info.shareUrl).toBe(`${window.location.origin}/report/42?share=tk-abc`)
   })
@@ -90,7 +91,7 @@ describe('报告分享 API（INT-1408 接线）', () => {
         envelope({
           token: 'tk-xyz',
           access: 'specific',
-          expires_at: null,
+          expires_at: '2030-01-01T00:00:00Z',
           password_set: false,
           recipients: [],
           visits: 0,
@@ -117,6 +118,7 @@ describe('报告分享 API（INT-1408 接线）', () => {
       recipients: 'alice,bob@example.com',
     })
     expect(info.shareUrl).toBe(`${window.location.origin}/report/7?share=tk-xyz`)
+    expect(info.expiresAt).toBe('2030-01-01T00:00:00Z')
   })
 
   it('revokeReportShare：DELETE /reports/{id}/share/{token}', async () => {

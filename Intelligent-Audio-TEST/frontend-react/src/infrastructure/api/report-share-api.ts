@@ -19,16 +19,18 @@ export interface ReportShareCreateInput {
   password?: string
   /** 指定访问人（access='specific' 时；逗号分隔用户名/邮箱，网关经 auth ListUsers 解析） */
   recipients?: string
-  /** 有效期（expiry='custom' 时必填，ISO 8601） */
-  expiresAt?: string
+  /** 有效期（expiry='custom' 时必填，ISO 8601；null/undefined=不传） */
+  expiresAt?: string | null
 }
 
-/** 分享信息（token + 分享 URL + 访问统计） */
+/** 分享信息（token + 分享 URL + 访问统计 + 有效期） */
 export interface ReportShareInfo {
   token: string
   shareUrl: string
   visits: number
   lastVisitedAt: string | null
+  /** 过期时间（ISO 8601；null=永久） */
+  expiresAt: string | null
 }
 
 /** 分享列表项（GET /reports/{id}/share 回读；含访问统计与管理态） */
@@ -85,6 +87,7 @@ export async function createReportShare(
     shareUrl: buildShareUrl(input.reportId, dto.token, dto.share_url),
     visits: dto.visits ?? 0,
     lastVisitedAt: dto.last_visited_at ?? null,
+    expiresAt: dto.expires_at ?? null,
   }
 }
 

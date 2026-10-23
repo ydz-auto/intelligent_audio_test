@@ -1,6 +1,7 @@
 /**
  * 报告分享链路（application 层；15_报告域.md §3.2/§4.12，报告管理功能设计文档.md:254-272 实测）。
- * 分享方式=生成分享链接 / 邮件分享 / 导出后分享；权限=访问权限（仅登录/指定人/公开）× 有效期 × 访问密码；
+ * 分享方式=生成分享链接 / 导出后分享（邮件分享本版本不实现，前端隐藏入口）；
+ * 权限=访问权限（仅登录/指定人/公开）× 有效期 × 访问密码；
  * 分享统计=访问次数/访问时间；链接管理和撤销。数据经 infrastructure/api/report-share-api.ts
  * 获取（INT-971 端点已部署：生成 POST /reports/{id}/share、撤销 DELETE …/share/{token}、
  * 统计 GET /reports/{id}/share 回读）。
@@ -30,8 +31,8 @@ export interface ReportShareState {
   password: string
   /** 指定访问人（access='specific' 时；逗号分隔用户名/邮箱，INT-596 P3：落 state 不丢弃） */
   recipients: string
-  /** 邮件分享收件人（method='email' 时） */
-  emailTo: string
+  /** 自定义有效期（expiry='custom' 时必填；datetime-local naive 形态 ISO 8601，后端按东八区解析） */
+  expiresAt: string | null
   /** 分享 token（infra 生成；撤销/统计凭据） */
   shareToken: string | null
   /** 生成的分享链接（infra 返回） */
@@ -48,7 +49,7 @@ const initialState: ReportShareState = {
   expiry: 'none',
   password: '',
   recipients: '',
-  emailTo: '',
+  expiresAt: null,
   shareToken: null,
   shareUrl: null,
   visits: 0,
@@ -75,11 +76,16 @@ export function useReportShare(reportId: number, _reportName: string) {
   /** 生成分享链接（POST /reports/{id}/share；成功后写 URL + 复制到剪贴板；失败 toast 后端文案） */
   const generateShareLink = useCallback(async () => {
     const s = stateRef.current
+    if (s.expiry === 'custom' && !s.expiresAt) {
+      toast.error('请选择自定义有效期的日期时间')
+      return
+    }
     try {
       const info = await createReportShare({
         reportId,
         access: s.access,
         expiry: s.expiry,
+        expiresAt: s.expiry === 'custom' ? s.expiresAt : null,
         password: s.password,
         recipients: s.recipients,
       })
@@ -89,6 +95,7 @@ export function useReportShare(reportId: number, _reportName: string) {
         shareUrl: info.shareUrl,
         visits: info.visits,
         lastVisitedAt: info.lastVisitedAt,
+        expiresAt: info.expiresAt,
       }))
       try {
         await navigator.clipboard?.writeText(info.shareUrl)
@@ -107,13 +114,13 @@ export function useReportShare(reportId: number, _reportName: string) {
   const revokeShare = useCallback(async () => {
     const s = stateRef.current
     if (!s.shareToken) {
-      setState((prev) => ({ ...prev, shareToken: null, shareUrl: null, visits: 0, lastVisitedAt: null }))
+      setState((prev) => ({ ...prev, shareToken: null, shareUrl: null, visits: 0, lastVisitedAt: null, expiresAt: null }))
       toast.success('分享链接已撤销')
       return
     }
     try {
       await revokeReportShare(reportId, s.shareToken)
-      setState((prev) => ({ ...prev, shareToken: null, shareUrl: null, visits: 0, lastVisitedAt: null }))
+      setState((prev) => ({ ...prev, shareToken: null, shareUrl: null, visits: 0, lastVisitedAt: null, expiresAt: null }))
       toast.success('分享链接已撤销')
     } catch (error) {
       toast.error(

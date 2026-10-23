@@ -429,7 +429,7 @@ export function ReportViewPage() {
         onExpiryChange={(expiry) => share.patchShare({ expiry })}
         onPasswordChange={(password) => share.patchShare({ password })}
         onRecipientsChange={(recipients) => share.patchShare({ recipients })}
-        onEmailToChange={(emailTo) => share.patchShare({ emailTo })}
+        onExpiresAtChange={(expiresAt) => share.patchShare({ expiresAt })}
         onGenerate={() => void share.generateShareLink()}
         onRevoke={share.revokeShare}
         onCopy={() => {

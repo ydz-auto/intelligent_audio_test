@@ -7,7 +7,7 @@
 /** 访问权限（仅登录/指定人/公开） */
 export type ShareAccess = 'login' | 'specific' | 'public'
 
-/** 分享方式（生成分享链接 / 邮件分享 / 导出后分享） */
+/** 分享方式（生成分享链接 / 邮件分享 / 导出后分享；邮件本版本不实现，前端隐藏入口） */
 export type ShareMethod = 'link' | 'email' | 'export'
 
 /** 有效期（不过期/7 天/30 天/自定义） */
