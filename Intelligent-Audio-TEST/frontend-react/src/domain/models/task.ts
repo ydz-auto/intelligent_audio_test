@@ -336,7 +336,8 @@ export interface ReportSnapshotCase {
   name?: string | null
   description?: string | null
   category?: string | null
-  tags: unknown[]
+  /** 标签名数组（读模型已归一化；后端快照原始形态为 `{ name }` 对象数组，INT-1650） */
+  tags: string[]
   metrics: Record<string, unknown>
   algorithmType?: string | null
   logs?: string | null
@@ -349,10 +350,37 @@ export function readTaskSnapshot(config: Record<string, unknown>): TaskSnapshot 
   return raw as unknown as TaskSnapshot
 }
 
+/**
+ * 快照标签归一化（INT-1650）：后端报告/任务快照里的 `tags` 是对象数组（`{ name }`），
+ * 存量快照也可能已是字符串数组；统一收敛成标签名数组，空值剔除。
+ * 视图层只消费 `string[]`，不再各处分类型判断。
+ */
+export function toTagNames(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((tag) => {
+      if (typeof tag === 'string') return tag
+      if (tag != null && typeof tag === 'object' && 'name' in tag) {
+        const name = (tag as { name?: unknown }).name
+        return name == null ? '' : String(name)
+      }
+      return ''
+    })
+    .filter((name) => name.length > 0)
+}
+
 /** 从 `report_snapshot` 中读取报告快照（无则 null → 空态「该快照缺少可渲染的冻结报告数据」） */
 export function readReportSnapshot(report: Record<string, unknown> | null): ReportSnapshot | null {
   if (report == null || typeof report !== 'object') return null
-  return report as unknown as ReportSnapshot
+  const snapshot = report as unknown as ReportSnapshot
+  if (!Array.isArray(snapshot.cases)) return snapshot
+  return {
+    ...snapshot,
+    cases: snapshot.cases.map((c) => ({
+      ...c,
+      tags: toTagNames((c as { tags?: unknown }).tags),
+    })),
+  }
 }
 
 /** 冻结报告摘要读取（schemaVersion=2 走 summary；存量 v1 快照走平铺 caseCount/passRate 回落） */
