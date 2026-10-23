@@ -12,9 +12,17 @@ from api_gateway.schemas.group import (
     GroupListData,
     GroupListQuery,
     GroupMoveCasesRequest,
+    GroupSummaryItem,
+    GroupSummaryListData,
     GroupUpdateRequest,
 )
 import uuid
+
+
+# INT-1470：分组列表默认页大小。原默认 100 —— 每项约 214B（含 description），
+# 单次响应 21.4KB；默认页取 40 后约 8.9KB，且分页信封（total/page/pages）不变。
+# 现有前端均显式传 per_page（React 200 / 新 Vue 100~1000），不受默认值影响。
+_DEFAULT_PAGE_SIZE = 40
 
 
 def _parse_query_params(model_cls):
@@ -41,7 +49,8 @@ class GroupService:
     def get_all():
         query = _parse_query_params(GroupListQuery)
         page = query.page
-        per_page = query.per_page if query.per_page is not None else 100
+        per_page = query.per_page if query.per_page is not None else _DEFAULT_PAGE_SIZE
+        summary_only = (query.fields or '').strip().lower() == 'summary'
         algorithm_type = query.algorithm_type
         keyword = query.keyword
         test_type = query.type
@@ -96,6 +105,28 @@ class GroupService:
                 # 仅保留当前页分组
                 case_counts = {k: v for k, v in case_counts.items() if k in group_ids}
 
+        pages = (total + per_page - 1) // per_page if per_page else 1
+
+        if summary_only:
+            # INT-1470：精简投影——仅 facet/组头行需要的 id/name/test_case_count
+            summary_items = [
+                GroupSummaryItem(
+                    id=group.get('id'),
+                    name=group.get('name'),
+                    test_case_count=case_counts.get(str(group.get('id')), 0),
+                )
+                for group in page_groups
+            ]
+            return success_response(
+                GroupSummaryListData(
+                    items=summary_items,
+                    total=total,
+                    page=page,
+                    per_page=per_page,
+                    pages=pages,
+                )
+            )
+
         data = []
         for group in page_groups:
             data.append(
@@ -119,7 +150,7 @@ class GroupService:
                 total=total,
                 page=page,
                 per_page=per_page,
-                pages=(total + per_page - 1) // per_page if per_page else 1,
+                pages=pages,
             )
         )
 
