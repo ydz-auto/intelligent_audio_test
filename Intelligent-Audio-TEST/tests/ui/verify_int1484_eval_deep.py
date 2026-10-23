@@ -30,7 +30,7 @@ DIM_NAME = P + '_维度'
 DIM_NAME_EDITED = DIM_NAME + '_改'
 OFFLINE_DIM = P + '_离线维度'
 SEARCH_NONE = 'zzz_无匹配_1484'
-BASELINE_TOTAL = 56
+BASELINE_TOTAL = int(os.environ.get('BASELINE_TOTAL', '56'))
 
 RESULT = []
 ENV = []
