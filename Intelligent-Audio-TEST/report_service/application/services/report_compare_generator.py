@@ -47,7 +47,9 @@ from report_service.domain.entities.report import GenerationStage
 from report_service.infrastructure.persistence.report_repository import report_repository
 
 
-_secondary_executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix='secondary_compare')
+# 异步二次对比报告生成线程池（INT-1505：容量配置化，原硬编码 3 并发时排队饥饿）
+_secondary_executor = ThreadPoolExecutor(
+    max_workers=Config.REPORT_COMPARE_GEN_MAX_WORKERS, thread_name_prefix='secondary_compare')
 _generating_secondary = {}
 _generating_secondary_lock = threading.Lock()
 
@@ -141,7 +143,8 @@ def start_compare_generation_watchdog():
     log_and_emit(
         'INFO', 'report',
         f'[compare_watchdog] 对比报告生成看门狗已启动：扫描周期 {Config.REPORT_GEN_WATCHDOG_INTERVAL_SECONDS}s，'
-        f'超时阈值 {Config.REPORT_GEN_TIMEOUT_SECONDS}s，队列饥饿阈值 {Config.REPORT_GEN_QUEUE_STUCK_SECONDS}s')
+        f'超时阈值 {Config.REPORT_GEN_TIMEOUT_SECONDS}s，队列饥饿阈值 {Config.REPORT_GEN_QUEUE_STUCK_SECONDS}s，'
+        f'线程池容量 {_secondary_executor._max_workers}')
     return _compare_watchdog_thread
 
 

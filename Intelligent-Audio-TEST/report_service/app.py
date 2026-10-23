@@ -130,10 +130,20 @@ def create_app(config_name='default') -> FastAPI:
 
     @app.get('/health')
     def health():
-        return {
+        payload = {
             'status': 'ok',
             'service': 'report_service',
         }
+        # INT-1505：报告生成线程池容量 / 队列深度 / 在途任务可观测（探针可直接读取，
+        # 不必翻日志判断「排队饥饿」）。生成模块已在 lifespan 导入，此处仅取快照。
+        try:
+            from report_service.application.services.report_task_generator import (
+                report_generation_status,
+            )
+            payload['report_generation'] = report_generation_status()
+        except Exception as e:
+            payload['report_generation'] = {'error': str(e)}
+        return payload
 
     from report_service.interfaces.api.routes import router as report_router
     app.include_router(report_router)

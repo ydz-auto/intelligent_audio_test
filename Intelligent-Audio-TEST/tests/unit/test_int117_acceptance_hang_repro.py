@@ -10,8 +10,8 @@
    不再多报。
 2. 看门狗扫描异常自捕获，循环线程不死（持续观测能力不因单次异常失效）。
 3. start/stop 幂等（lifespan 反复启停不叠线、不留僵尸线程）。
-4. 真实队列饥饿：3 个工作线程被占满时新提交滞留 QUEUED——提交侧队列深度 WARNING +
-   看门狗饥饿告警（事故第二症状「后续提交全部无产出」的可观察性）。
+4. 真实队列饥饿：全部工作线程（INT-1505 起容量配置化，默认 8）被占满时新提交滞留 QUEUED
+   ——提交侧队列深度 WARNING + 看门狗饥饿告警（事故第二症状「后续提交全部无产出」的可观察性）。
 不依赖真实等待超时长：阈值全部调至亚秒级，用轮询 Deadline 等待，总耗时 < 10s。
 """
 import os
@@ -191,16 +191,18 @@ class TestRealHangReproduction:
         task_id = 42
         lock = FakeLock()
 
-        # 占满全部 3 个工作线程（真实线程池饥饿）
+        # 占满全部工作线程（真实线程池饥饿；INT-1505 起容量配置化，取实际容量）
         saturate = threading.Event()
         saturated = []
+        capacity = gen_mod._report_executor._max_workers
 
         def _occupy():
             saturated.append(threading.get_ident())
             saturate.wait(timeout=10)
 
-        futures = [gen_mod._report_executor.submit(_occupy) for _ in range(3)]
-        _wait_until(lambda: len(saturated) == 3, msg='3 个工作线程未被占满')
+        futures = [gen_mod._report_executor.submit(_occupy) for _ in range(capacity)]
+        _wait_until(lambda: len(saturated) == capacity,
+                    msg=f'{capacity} 个工作线程未被占满')
 
         def _validate(tid):
             return (None, None, ({'success': False, 'message': '饥饿解除后收敛'}, 400))

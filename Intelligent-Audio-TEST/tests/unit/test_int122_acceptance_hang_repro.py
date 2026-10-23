@@ -12,8 +12,8 @@ _compare_watchdog_scan_once 验证判定逻辑；本文件补验收盲区——*
 2. 对比链路（同步）：请求线程在任务校验阶段真实阻塞，看门狗同样观测
    （CRITICAL + 栈转储），但**不**发事件（同步链路由 HTTP 调用方直接感知，
    无既定事件契约）；解除后按失败收敛。
-3. 真实队列饥饿：3 个工作线程被占满时新提交滞留 QUEUED——提交侧队列深度 WARNING +
-   看门狗饥饿告警（事故第二症状「后续提交全部无产出」的可观察性）。
+3. 真实队列饥饿：全部工作线程（INT-1505 起容量配置化，默认 8）被占满时新提交滞留 QUEUED
+   ——提交侧队列深度 WARNING + 看门狗饥饿告警（事故第二症状「后续提交全部无产出」的可观察性）。
 4. 看门狗扫描异常自捕获，循环线程不死。
 5. start/stop 幂等（lifespan 反复启停不叠线、不留僵尸线程）。
 不依赖真实等待超时长：阈值全部调至亚秒级，用轮询 Deadline 等待，总耗时 < 15s。
@@ -244,17 +244,19 @@ class TestRealQueueStarvation:
     def test_queued_submission_reports_starvation_when_workers_saturated(self, monkeypatch):
         cap = _Capture(monkeypatch, timeout=5.0, queue_stuck=0.25, interval=0.05)
 
-        # 占满全部 3 个工作线程（真实线程池饥饿）
+        # 占满全部工作线程（真实线程池饥饿；INT-1505 起容量配置化，取实际容量）
         saturate = threading.Event()
         saturated = []
+        capacity = cmp_mod._secondary_executor._max_workers
 
         def _occupy():
             saturated.append(threading.get_ident())
             saturate.wait(timeout=10)
 
-        futures = [cmp_mod._secondary_executor.submit(_occupy) for _ in range(3)]
+        futures = [cmp_mod._secondary_executor.submit(_occupy) for _ in range(capacity)]
         try:
-            _wait_until(lambda: len(saturated) == 3, msg='3 个工作线程未被占满')
+            _wait_until(lambda: len(saturated) == capacity,
+                        msg=f'{capacity} 个工作线程未被占满')
 
             def _validate(report_ids):
                 return (None, None, None, '饥饿解除后收敛')
