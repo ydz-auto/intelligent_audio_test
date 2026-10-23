@@ -21,7 +21,7 @@ import {
   type AudioBatchAction,
   type BatchAnnotationItem,
 } from '@/infrastructure/api/audios-api'
-import type { AudioAsset } from '@/domain/models/audio'
+import type { AudioAsset, AudioConvertOptions } from '@/domain/models/audio'
 
 /** 全量行单次拉取上限（仅用于需要跨页完整行集的场景：OR 标签客户端过滤 / 文件夹视图 / 批量标注文件名匹配） */
 const FETCH_ALL_PER_PAGE = 10_000
@@ -120,8 +120,8 @@ export function useAudioMutations() {
   })
 
   const convert = useMutation({
-    mutationFn: ({ id, format }: { id: number; format: string }) =>
-      convertAudio(id, format),
+    mutationFn: ({ id, options }: { id: number; options: AudioConvertOptions }) =>
+      convertAudio(id, options),
     onSuccess: invalidate,
   })
 
