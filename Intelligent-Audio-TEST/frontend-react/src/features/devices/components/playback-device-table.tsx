@@ -53,8 +53,6 @@ export interface PlaybackDeviceTableProps {
   onPlayTest: (device: PlaybackDevice) => void
   onStop: (device: PlaybackDevice) => void
   onControl: (device: PlaybackDevice, action: string) => void
-  onResultAnalysis: (device: PlaybackDevice) => void
-  onDiagnose: (device: PlaybackDevice) => void
   onDelete: (device: PlaybackDevice) => void
   onEmptyAdd: () => void
 }
@@ -279,13 +277,12 @@ export function PlaybackDeviceTable(props: PlaybackDeviceTableProps) {
                         onEdit={() => props.onEdit(row)}
                         onHealth={() => undefined}
                         onTest={() => undefined}
-                        onStopTest={() => props.onStop(row)}
+                        onStopTest={() => undefined}
                         onControl={(action) => props.onControl(row, action)}
                         onDelete={() => props.onDelete(row)}
                         onAssociateSpl={() => props.onAssociateSpl(row)}
                         onPlayTest={() => props.onPlayTest(row)}
-                        onResultAnalysis={() => props.onResultAnalysis(row)}
-                        onDiagnose={() => props.onDiagnose(row)}
+                        onStop={() => props.onStop(row)}
                         onInstallApp={() => undefined}
                         onUninstallApp={() => undefined}
                       />

@@ -367,11 +367,16 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
 
   /* ───────── 行操作分派 ───────── */
 
-  /** P2-3 返修：行级控制透传 device.id（不再打向 id=0）；P2-2：操作参数透传到请求体 */
+  /** P2-3 返修：行级控制透传 device.id（不再打向 id=0）；P2-2：操作参数透传到请求体；
+   *  P2-4：后端未提供端点的动作返回 success:false，按失败提示，不再无条件 toast 成功 */
   const handleControl = async (id: number, action: string, params?: Record<string, unknown>) => {
-    const result = await control.mutateAsync({ id, action, params })
-    void result
-    toast.success('操作已提交')
+    try {
+      const result = await control.mutateAsync({ id, action, params })
+      if (result.success) toast.success('操作已提交')
+      else toast.error(result.message ?? '操作失败，请稍后重试')
+    } catch {
+      toast.error('操作失败，请稍后重试')
+    }
   }
 
   const openMutate = (
@@ -509,11 +514,21 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
       onDetail: (device: PlaybackDevice) => setDetailState({ open: true, kind: 'playback', device }),
       onEdit: (device: PlaybackDevice) => openMutate({ open: true, mode: 'edit', kind: 'playback', device }),
       onAssociateSpl: (device: PlaybackDevice) => setAssociateSplState({ open: true, device }),
-      onPlayTest: (device: PlaybackDevice) => toast.success(`已开始播放测试：${device.name}`),
-      onStop: (device: PlaybackDevice) => toast.success(`已停止播放：${device.name}`),
+      // P2-4：播放测试/停止走真实端点 POST /playback-devices/{id}/test|stop-test（5.8/5.9），
+      // 不再只 toast 本地假成功
+      onPlayTest: (device: PlaybackDevice) => {
+        void setOccupied
+          .mutateAsync({ kind: 'playback', id: device.id, occupied: true })
+          .then(() => toast.success(`已开始播放测试：${device.name}`))
+          .catch(() => toast.error('播放测试启动失败，请稍后重试'))
+      },
+      onStop: (device: PlaybackDevice) => {
+        void setOccupied
+          .mutateAsync({ kind: 'playback', id: device.id, occupied: false })
+          .then(() => toast.success(`已停止播放：${device.name}`))
+          .catch(() => toast.error('停止播放失败，请稍后重试'))
+      },
       onControl: (device: PlaybackDevice, action: string) => void handleControl(device.id, action),
-      onResultAnalysis: (device: PlaybackDevice) => toast.success(`已生成播放测试结果分析：${device.name}`),
-      onDiagnose: (device: PlaybackDevice) => toast.success(`设备诊断完成：${device.name}`),
       onDelete: (device: PlaybackDevice) => setDeleteTarget({ kind: 'playback', device }),
       onEmptyAdd: () => openMutate({ open: true, mode: 'create', kind: 'playback' }),
     },
@@ -530,7 +545,13 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
         void handleControl(device.id, 'api_health_check')
         toast.success(`健康检查已发起：${device.name}`)
       },
-      onStopTest: (device: ApiDevice) => toast.success(`已停止测试：${device.name}`),
+      // P2-4：API「停止测试」走真实端点 POST /apis/{id}/stop-test（接口文档 8.8），不再本地假成功
+      onStopTest: (device: ApiDevice) => {
+        void setOccupied
+          .mutateAsync({ kind: 'api', id: device.id, occupied: false })
+          .then(() => toast.success(`已停止测试：${device.name}`))
+          .catch(() => toast.error('停止测试失败，请稍后重试'))
+      },
       onDelete: (device: ApiDevice) => setDeleteTarget({ kind: 'api', device }),
       onEmptyAdd: () => openMutate({ open: true, mode: 'create', kind: 'api' }),
     },

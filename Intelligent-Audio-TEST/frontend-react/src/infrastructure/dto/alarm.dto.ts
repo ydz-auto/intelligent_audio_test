@@ -55,6 +55,8 @@ export interface DeviceStatusHistoryDto {
   to_status: string | null
   source: string | null
   result: string | null
-  detail: string | null
+  /** P2-5：detail 为自由 JSON——部分事件是字符串，更多是对象（{"serial_number": "..."} /
+   *  {"operation": "install_app", "error": "..."}），按对象声明，由适配器归一为可读文本 */
+  detail: string | Record<string, unknown> | null
   created_at: string | null
 }

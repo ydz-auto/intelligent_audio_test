@@ -76,6 +76,36 @@ export function alarmRuleFromDto(dto: AlarmRuleDto): AlarmRule {
   }
 }
 
+function formatDetailValue(value: unknown): string {
+  if (value == null) return '—'
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return JSON.stringify(value)
+}
+
+/**
+ * status-history detail 归一（P2-5）。
+ * 后端 `GET /status-history` 的 detail 是自由 JSON：字符串，或对象
+ * （{"serial_number":"..."} / {"operation":"install_app","error":"..."}）。
+ * 直接当 React 子节点渲染对象会抛 React #31 整页崩溃，因此在 infrastructure 层落成可读文本
+ * （对象按 `key: value` 拼接，嵌套值 JSON 化），domain 侧只保留 string。
+ */
+export function formatStatusDetail(
+  detail: string | Record<string, unknown> | null | undefined
+): string | null {
+  if (detail == null) return null
+  if (typeof detail === 'string') {
+    const text = detail.trim()
+    return text.length > 0 ? text : null
+  }
+  if (Array.isArray(detail)) {
+    return detail.length > 0 ? JSON.stringify(detail) : null
+  }
+  const entries = Object.entries(detail)
+  if (entries.length === 0) return null
+  return entries.map(([key, value]) => `${key}: ${formatDetailValue(value)}`).join('；')
+}
+
 export function statusEventFromDto(dto: DeviceStatusHistoryDto): DeviceStatusEvent {
   const eventType = dto.event_type && EVENT_TYPE_SET.has(dto.event_type)
     ? (dto.event_type as DeviceStatusEventType)
@@ -89,7 +119,7 @@ export function statusEventFromDto(dto: DeviceStatusHistoryDto): DeviceStatusEve
     toStatus: dto.to_status,
     source: dto.source,
     result: dto.result === 'success' || dto.result === 'failed' ? dto.result : null,
-    detail: dto.detail,
+    detail: formatStatusDetail(dto.detail),
     createdAt: dto.created_at,
   }
 }

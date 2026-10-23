@@ -492,13 +492,15 @@ function controlActionToPath(action: string): string | null {
 
 /** 设备控制操作（§3.4.1；POST /test-devices/{id}/{action}；health_check 走批量端点）
  *  P2-2：操作参数按 device_command_service.control 契约放 body.params
- *  （install_app: {file_path, package_name}；uninstall_app: {package_name}）。 */
+ *  （install_app: {file_path, package_name}；uninstall_app: {package_name}）。
+ *  P2-4：后端无端点的动作（播放设备 restart/reset-config/mute/unmute 等 UX 视觉稿动作）返回
+ *  success:false + message，不再本地伪造成功；调用方据此提示并禁用入口。 */
 export async function controlDevice(
   id: number,
   action: string,
   params: Record<string, unknown> = {},
   options: ApiRequestOptions = {}
-): Promise<{ success: boolean; action?: string; id?: number }> {
+): Promise<{ success: boolean; action?: string; id?: number; message?: string }> {
   if (action === 'health_check') {
     await request('POST', '/test-devices/health-check', { device_ids: [id] }, options)
     return { success: true, action, id }
@@ -509,9 +511,8 @@ export async function controlDevice(
   }
   const path = controlActionToPath(action)
   if (!path) {
-    // 后端无此操作端点（播放设备 restart/reset-config/mute/unmute 等 UX 视觉稿动作，
-    // 无 Vue 对位/未立项 → 本地幂等成功，不产生真实调用）
-    return { success: true, action, id }
+    // 后端未提供该操作端点：不产生请求、不伪造成功（入口在 device-row-actions 中禁用 + Tooltip）
+    return { success: false, action, id, message: '后端未提供该操作（待 INT-1573）' }
   }
   const body = Object.keys(params).length > 0 ? { params } : undefined
   await request('POST', `/test-devices/${id}/${path}`, body, options)

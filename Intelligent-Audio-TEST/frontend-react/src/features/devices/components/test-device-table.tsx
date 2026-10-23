@@ -338,8 +338,7 @@ export function TestDeviceTable(props: TestDeviceTableProps) {
                         onDelete={() => props.onDelete(row)}
                         onAssociateSpl={() => undefined}
                         onPlayTest={() => undefined}
-                        onResultAnalysis={() => undefined}
-                        onDiagnose={() => undefined}
+                        onStop={() => undefined}
                         onInstallApp={() => props.onInstallApp(row)}
                         onUninstallApp={() => props.onUninstallApp(row)}
                       />

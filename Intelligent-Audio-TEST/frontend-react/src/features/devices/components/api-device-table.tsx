@@ -300,8 +300,7 @@ export function ApiDeviceTable(props: ApiDeviceTableProps) {
                           onDelete={() => props.onDelete(row)}
                           onAssociateSpl={() => undefined}
                           onPlayTest={() => undefined}
-                          onResultAnalysis={() => undefined}
-                          onDiagnose={() => undefined}
+                          onStop={() => undefined}
                           onInstallApp={() => undefined}
                           onUninstallApp={() => undefined}
                         />
