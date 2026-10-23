@@ -18,6 +18,7 @@ export function AgentConnectButton({ compact = false }: { compact?: boolean }) {
     <Link
       to='/agent-connect'
       aria-label='打开连接你的 agent'
+      data-slot='button'
       className={cn(
         'ai-discount-core relative isolate shrink-0 cursor-pointer rounded-full border-0 text-white transition-all hover:brightness-110 active:translate-y-px focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
         compact ? 'h-7 px-2.5 text-xs font-semibold' : 'h-9 px-4 font-bold'

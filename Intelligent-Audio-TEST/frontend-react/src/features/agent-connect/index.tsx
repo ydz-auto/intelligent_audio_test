@@ -183,6 +183,7 @@ export function AgentConnectPage() {
             <CardContent className='grid gap-3'>
               <button
                 type='button'
+                data-slot='button'
                 aria-label={AGENT_CONNECT_DOWNLOAD_ARIA}
                 disabled={downloading}
                 onClick={() => void handleDownload()}
