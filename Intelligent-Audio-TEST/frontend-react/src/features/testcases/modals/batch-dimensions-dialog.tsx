@@ -61,11 +61,12 @@ import {
 
 type RoundMode = 'all' | 'specific' | 'per_round'
 
-/** 轮次键：数字轮号或最后一轮 -1（§5.3.5 ④ 语义） */
+/** 轮次键：数字轮号或最后一轮 -1（§5.3.5 ④ 语义；历史配置兼容） */
 type RoundKey = number | -1
 
-/** mock 轮次数（§5.3.1~5.3.4 演示第 1~N 轮同口径；接线后按选中用例实际轮次） */
-const MOCK_ROUND_COUNT = 4
+/** 逐轮 Tab 初值：按选中用例实际轮次 1..N 展开（N=0 时为空态，不编造轮次） */
+const roundKeysOf = (roundCount: number): number[] =>
+  Array.from({ length: roundCount }, (_, i) => i + 1)
 
 const defaultParam = (): DimensionParamValue => ({ weight: 50, threshold: 80 })
 
@@ -74,6 +75,7 @@ export function BatchDimensionsDialog({
   onOpenChange,
   count,
   ids,
+  roundCount,
   dimensions,
   categories = [],
   algorithmType,
@@ -83,13 +85,15 @@ export function BatchDimensionsDialog({
   onOpenChange: (open: boolean) => void
   count: number
   ids: string[]
+  /** 选中用例实际轮次数（config.rounds 派生；0=空态） */
+  roundCount: number
   dimensions: Dimension[]
   categories?: EvaluationCategory[]
   algorithmType?: string | null
   testType?: string | null
 }) {
   const [roundMode, setRoundMode] = useState<RoundMode>('all')
-  const [rounds, setRounds] = useState<RoundKey[]>([1, 2, -1])
+  const [rounds, setRounds] = useState<RoundKey[]>(() => roundKeysOf(roundCount))
   const [activeRound, setActiveRound] = useState<RoundKey>(1)
   const [selected, setSelected] = useState<Record<RoundKey, number[]>>({})
   /** 每轮次已选维度的权重/阈值参数（§5.3.5 已选维度参数卡） */
@@ -99,13 +103,23 @@ export function BatchDimensionsDialog({
   const [multiParams, setMultiParams] = useState<Record<number, DimensionParamValue>>({})
   const [submitting, setSubmitting] = useState(false)
   /** 「指定轮次」勾选的轮次号（§5.3.5 与 §5.3.1~5.3.4 同口径） */
-  const [specificRounds, setSpecificRounds] = useState<number[]>([1])
+  const [specificRounds, setSpecificRounds] = useState<number[]>(() =>
+    roundCount > 0 ? [1] : []
+  )
   /** 逐轮快捷操作：从其他轮次复制（Popover）+ 清空/应用到所有轮次（ConfirmDialog） */
   const [copyOpen, setCopyOpen] = useState(false)
   const [copySource, setCopySource] = useState<RoundKey>(1)
   const [confirmAction, setConfirmAction] = useState<null | 'clear' | 'applyAll'>(null)
 
   const roundLabels = (key: RoundKey) => (key === -1 ? '最后一轮' : `第 ${key} 轮`)
+
+  /** 可新增的轮次号：实际轮次范围内尚未作为 Tab 打开的轮次（无则禁用「添加轮次」） */
+  const nextRound = (() => {
+    for (let r = 1; r <= roundCount; r++) {
+      if (!rounds.includes(r)) return r
+    }
+    return null
+  })()
 
   const toggleRound = (key: RoundKey, closed: boolean) => {
     setRounds((prev) => {
@@ -261,6 +275,10 @@ export function BatchDimensionsDialog({
   })
 
   const handleSubmit = async () => {
+    if (roundCount === 0) {
+      toast.error('所选用例暂无可配置的轮次信息，无法设置评估维度')
+      return
+    }
     setSubmitting(true)
     try {
       const multiDimensions = multiSelected.map((id) => ({
@@ -341,29 +359,49 @@ export function BatchDimensionsDialog({
             </label>
           </div>
 
-          {/* 指定轮次：轮次号 Checkbox 组（§5.3.5 与 §5.3.1~5.3.4 RoundScopeField 同口径） */}
+          {/* 无轮次信息：默认「所有轮次」档位同样明确空态，不编造轮次 */}
+          {roundCount === 0 && roundMode === 'all' && (
+            <div className='border-border/60 rounded-lg border border-dashed px-3 py-4 text-center'>
+              <p className='text-muted-foreground text-sm'>所选用例暂无可配置的轮次信息</p>
+            </div>
+          )}
+
+          {/* 指定轮次：轮次号 Checkbox 组（§5.3.5 与 §5.3.1~5.3.4 RoundScopeField 同口径；按实际轮次） */}
           {roundMode === 'specific' && (
             <div className='space-y-1.5'>
               <span className='text-sm font-medium'>指定轮次</span>
               <div className='border-border/60 flex flex-wrap gap-1.5 rounded-lg border p-2'>
-                {Array.from({ length: MOCK_ROUND_COUNT }, (_, i) => i + 1).map((round) => (
-                  <label
-                    key={round}
-                    className='hover:bg-accent flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm'
-                  >
-                    <Checkbox
-                      checked={specificRounds.includes(round)}
-                      onCheckedChange={() => toggleSpecificRound(round)}
-                    />
-                    第{round}轮
-                  </label>
-                ))}
+                {roundCount === 0 ? (
+                  <span className='text-muted-foreground text-xs'>
+                    所选用例暂无可配置的轮次信息
+                  </span>
+                ) : (
+                  roundKeysOf(roundCount).map((round) => (
+                    <label
+                      key={round}
+                      className='hover:bg-accent flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-sm'
+                    >
+                      <Checkbox
+                        checked={specificRounds.includes(round)}
+                        onCheckedChange={() => toggleSpecificRound(round)}
+                      />
+                      第{round}轮
+                    </label>
+                  ))
+                )}
               </div>
             </div>
           )}
 
-          {/* 逐轮模式轮次 Tab（§5.3.5 ②）+ 快捷操作工具栏（§5.3.5 ③） */}
-          {roundMode === 'per_round' && (
+          {/* 逐轮模式轮次 Tab（§5.3.5 ②；按选中用例实际轮次渲染）+ 快捷操作工具栏（§5.3.5 ③） */}
+          {roundMode === 'per_round' &&
+            (roundCount === 0 ? (
+              <div className='border-border/60 rounded-lg border border-dashed px-3 py-4 text-center'>
+                <p className='text-muted-foreground text-sm'>
+                  所选用例暂无可配置的轮次信息
+                </p>
+              </div>
+            ) : (
             <div className='space-y-1.5'>
               <div className='border-border/60 flex flex-wrap items-center gap-1.5 rounded-lg border p-2'>
                 {rounds.map((key) => {
@@ -406,8 +444,11 @@ export function BatchDimensionsDialog({
                   variant='ghost'
                   size='sm'
                   className='h-7 gap-1'
+                  disabled={nextRound === null}
                   onClick={() =>
-                    setRounds((prev) => [...prev, Math.max(...prev.filter((r) => r !== -1), 0) + 1])
+                    setRounds((prev) =>
+                      nextRound === null ? prev : [...prev, nextRound].sort((a, b) => a - b)
+                    )
                   }
                 >
                   <Plus aria-hidden='true' className='size-3.5' />
@@ -504,7 +545,7 @@ export function BatchDimensionsDialog({
                 </Button>
               </div>
             </div>
-          )}
+            ))}
 
           {/* 维度选择（DimensionPicker 主/子分组云，参考 V9.7.10 DimensionCloud） */}
           <div>
@@ -604,7 +645,7 @@ export function BatchDimensionsDialog({
           <Button variant='outline' onClick={() => onOpenChange(false)} disabled={submitting}>
             取消
           </Button>
-          <Button onClick={() => void handleSubmit()} disabled={submitting}>
+          <Button onClick={() => void handleSubmit()} disabled={submitting || roundCount === 0}>
             {submitting && <Spinner className='size-3.5' />}
             确定
           </Button>

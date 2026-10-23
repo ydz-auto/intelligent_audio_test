@@ -186,16 +186,19 @@ export function BatchAlgoParamsDialog({
   onOpenChange,
   count,
   ids,
+  roundCount,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   count: number
   ids: string[]
+  /** 选中用例实际轮次数（config.rounds 派生；0=空态） */
+  roundCount: number
 }) {
   const { options: algorithmOptions, isLoading: loadingAlgorithms } =
     useAlgorithmOptions()
   const [algorithmType, setAlgorithmType] = useState('')
-  const [scope, setScope] = useState(createRoundScope())
+  const [scope, setScope] = useState(() => createRoundScope(roundCount))
   const [submitting, setSubmitting] = useState(false)
   const {
     current: params,
@@ -348,6 +351,7 @@ export function BatchAlgoParamsDialog({
             name='batch-algo-params-round'
             value={scope}
             onChange={setScope}
+            roundCount={roundCount}
           />
         </div>
 

@@ -9,7 +9,7 @@
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { FileDown, FileSpreadsheet, FileUp, Plus } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
@@ -88,7 +88,17 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
   /** 评估维度分类（DimensionPicker 分类分组组头；负责人 2026-10-19 口径） */
   const categoriesQuery = useEvaluationCategories()
 
-  const items = listQuery.data?.items ?? []
+  /**
+   * 用例列表失败态（INT-1605，与 INT-1560 标签页 / INT-1583 音频页同型）：
+   * 失败不得伪装成「没有找到符合条件的测试用例」。
+   * React Query 的 placeholderData 只覆盖 pending 态，查询失败后 data 变 undefined，
+   * 故留一份「最近一次成功结果」快照——翻页/筛选失败时保留旧列表（行内提示条说明
+   * 「当前显示的是上一次加载的数据」），不清空。
+   */
+  const lastGoodCases = useRef<TestCaseListItem[] | null>(null)
+  if (listQuery.data) lastGoodCases.current = listQuery.data.items
+  const items = listQuery.data?.items ?? lastGoodCases.current ?? []
+  const listError = listQuery.isError
   const groups = groupsQuery.data ?? []
   const tags = tagsQuery.data ?? []
   const allDimensions = allDimsQuery.data ?? []
@@ -114,6 +124,16 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
       }),
     [filters]
   )
+
+  /** 失败但保留着上次数据（翻页/筛选失败）：toast 一次；首屏失败由列表错误态承担（INT-1605） */
+  const lastErrorToastAt = useRef(0)
+  useEffect(() => {
+    if (!listError) return
+    if (listQuery.errorUpdatedAt === lastErrorToastAt.current) return
+    lastErrorToastAt.current = listQuery.errorUpdatedAt
+    if (items.length === 0) return
+    toast.error('用例列表加载失败，已保留上一次加载的数据，请重试')
+  }, [listError, listQuery.errorUpdatedAt, items.length])
 
   const clearSelection = useCallback(() => setSelected(new Set()), [])
 
@@ -434,6 +454,8 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
                   cases={items}
                   loading={listQuery.isLoading}
                   groupsLoading={groupsQuery.isLoading}
+                  isError={listError}
+                  onRetry={() => void listQuery.refetch()}
                   filters={effectiveFilters}
                   trash={filters.trash ?? false}
                   hasQueryFilters={hasQueryFilters}
@@ -449,6 +471,8 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
                 <TagCaseList
                   cases={items}
                   loading={listQuery.isLoading}
+                  isError={listError}
+                  onRetry={() => void listQuery.refetch()}
                   selected={selected}
                   tagRegistry={tags}
                   callbacks={rowCallbacks}
@@ -503,6 +527,7 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
         handleConfirm={batch.handleConfirm}
         groups={groups}
         tags={tags}
+        cases={items}
         dimensions={allDimensions}
         categories={categories}
         algorithmType={algorithmId}

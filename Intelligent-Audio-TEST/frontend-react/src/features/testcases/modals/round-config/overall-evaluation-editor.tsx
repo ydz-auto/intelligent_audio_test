@@ -74,12 +74,12 @@ export function OverallEvaluationEditor({
           name: d.name,
           weight: defaultParams().weight,
           threshold: defaultParams().threshold,
-          // INT-1424：LLM Judge 默认值取维度自身 llmJudgeConfig，缺省对照 V9.7.10（gpt-4 / default）
+          // INT-1506：LLM Judge 默认值只取维度自身 llmJudgeConfig，缺省留空——不注入写死的假模型
           ...(llmJudge
             ? {
                 llmJudgeConfig: {
-                  model: d.llmJudgeConfig?.model ?? 'gpt-4',
-                  promptTemplate: d.llmJudgeConfig?.promptTemplate ?? 'default',
+                  model: d.llmJudgeConfig?.model ?? '',
+                  promptTemplate: d.llmJudgeConfig?.promptTemplate ?? '',
                 },
               }
             : {}),
@@ -102,9 +102,8 @@ export function OverallEvaluationEditor({
               ...(patch.model || patch.promptTemplate
                 ? {
                     llmJudgeConfig: {
-                      model: patch.model ?? v.llmJudgeConfig?.model ?? 'gpt-4',
-                      promptTemplate:
-                        patch.promptTemplate ?? v.llmJudgeConfig?.promptTemplate ?? 'default',
+                      model: patch.model ?? v.llmJudgeConfig?.model ?? '',
+                      promptTemplate: patch.promptTemplate ?? v.llmJudgeConfig?.promptTemplate ?? '',
                     },
                   }
                 : v.llmJudgeConfig

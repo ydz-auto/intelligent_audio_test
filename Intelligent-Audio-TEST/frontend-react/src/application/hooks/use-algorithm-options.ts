@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { hasPermission } from '@/domain/models/user'
@@ -33,4 +34,17 @@ export function useAlgorithmOptions() {
     refetch: query.refetch,
     canRead,
   }
+}
+
+/**
+ * 算法类型码 → 中文名映射（value→name，取真实 GET /algorithm/options）。
+ * 供用例域等无 query 依赖的同步渲染处查名（getAlgorithmLabel(type, labels)），
+ * 未登录/无权限时为空表，查名回退原始类型码。
+ */
+export function useAlgorithmLabelMap(): Record<string, string> {
+  const { options } = useAlgorithmOptions()
+  return useMemo(
+    () => Object.fromEntries(options.map((o) => [o.value, o.name])),
+    [options]
+  )
 }

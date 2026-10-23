@@ -41,6 +41,10 @@ import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TagItem } from '@/domain/models/testTag'
 import { CaseCard, type CaseCardCallbacks } from '@/features/testcases/components/case-card'
 import {
+  CaseListErrorBanner,
+  CaseListErrorState,
+} from '@/features/testcases/components/case-list-error'
+import {
   CaseSubViewToggle,
   SubViewDisplayMenu,
   TAG_SUB_VIEW_OPTIONS,
@@ -63,6 +67,8 @@ interface TagGroup {
 export function TagCaseList({
   cases,
   loading,
+  isError,
+  onRetry,
   selected,
   tagRegistry,
   callbacks,
@@ -72,6 +78,10 @@ export function TagCaseList({
 }: {
   cases: TestCaseListItem[]
   loading: boolean
+  /** 用例列表查询失败（INT-1605）：失败且无数据时渲染错误态，不得伪装成「没有找到标签分组的测试用例」 */
+  isError?: boolean
+  /** 查询失败重试（refetch） */
+  onRetry?: () => void
   selected: Set<string>
   tagRegistry: TagItem[]
   /** 行内五钮回调；不传（readOnly 观察态）→ 卡片不渲染操作钮 */
@@ -154,6 +164,17 @@ export function TagCaseList({
     )
   }
 
+  // 查询失败且无任何可展示用例：显式错误态 + 重试（INT-1605），不复用「没有找到」空态
+  if (isError && tagGroups.length === 0) {
+    return (
+      <CaseListErrorState
+        title='用例列表加载失败'
+        description='用例列表获取失败，请重试'
+        onRetry={onRetry}
+      />
+    )
+  }
+
   if (tagGroups.length === 0) {
     return (
       <div className='bg-card ring-foreground/10 rounded-xl py-8 ring-1'>
@@ -179,6 +200,13 @@ export function TagCaseList({
 
   return (
     <div className={cn('space-y-3 transition-opacity', dimmed && 'opacity-60')}>
+      {/* 翻页 / 筛选失败但有上次数据：保留旧列表 + 行内提示（INT-1605） */}
+      {isError && tagGroups.length > 0 && (
+        <CaseListErrorBanner
+          message='用例列表加载失败，当前显示的是上一次加载的数据'
+          onRetry={onRetry}
+        />
+      )}
       {/* 列表头：全选 + 已选择计数 + 标签排序 */}
       <div className='flex items-center justify-between gap-2'>
         <div className='flex items-center gap-2'>

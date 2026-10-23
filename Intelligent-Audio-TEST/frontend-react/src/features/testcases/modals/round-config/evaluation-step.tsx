@@ -3,8 +3,8 @@
  * 顶部单轮描述条 + 过滤提示条（当前算法有关联维度时才显示）+ DimensionPicker（V9.7.10
  * 主/子分组云 + 分类分组：搜索+已选计数，主维度「主」徽章/子维度「子」徽章，勾主联动子；
  * categories 传入时按分类聚合组头）+ 已选维度参数卡（权重 0-100 默认 50 + 阈值 0-100 默认 80
- * 非 LLM Judge；LLM Judge 时 模型 Select + Prompt 模板 Select，不含「最大 Token/Temperature」
- * ——属维度定义 §5.5）+ 底部「启用本轮评估」Checkbox。
+ * 非 LLM Judge；LLM Judge 时 模型/Prompt 模板自由文本，默认取维度定义 llmJudgeConfig，
+ * 不含「最大 Token/Temperature」——属维度定义 §5.5）+ 底部「启用本轮评估」Checkbox。
  * 受控组件：value=RoundEvaluationDraft（enabled/selectedIds/params），onChange 回写轮次草稿，
  * 供 addRound 复制上一轮 evaluation（⚠️ 实施注意②）。
  */
@@ -14,6 +14,7 @@ import type {
   Dimension,
   EvaluationCategory,
 } from '@/domain/models/evaluationDimension'
+import { useAlgorithmLabelMap } from '@/application/hooks/use-algorithm-options'
 import { getAlgorithmLabel } from '@/features/testcases/constants'
 import type { RoundEvaluationDraft } from '@/features/testcases/modals/round-config/round-nav'
 import {
@@ -40,6 +41,7 @@ export function EvaluationStep({
   value: RoundEvaluationDraft
   onChange: (next: RoundEvaluationDraft) => void
 }) {
+  const algorithmLabels = useAlgorithmLabelMap()
   const dimensionOf = (id: number) => dimensions.find((d) => d.id === id)
 
   const handleToggle = (ids: number[], checked: boolean) => {
@@ -79,7 +81,7 @@ export function EvaluationStep({
       </p>
       {algorithmType && (
         <p className='rounded-md bg-muted/60 px-2 py-1.5 text-xs'>
-          已根据算法类型「{getAlgorithmLabel(algorithmType)}」过滤可用维度
+          已根据算法类型「{getAlgorithmLabel(algorithmType, algorithmLabels)}」过滤可用维度
         </p>
       )}
 

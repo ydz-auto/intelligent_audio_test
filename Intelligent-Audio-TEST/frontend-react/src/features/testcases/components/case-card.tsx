@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/tooltip'
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TagItem } from '@/domain/models/testTag'
+import { useAlgorithmLabelMap } from '@/application/hooks/use-algorithm-options'
 import {
   formatCaseDuration,
   getAlgorithmLabel,
@@ -118,6 +119,7 @@ export function CaseCard<T extends CaseCardItem>({
   hideBadges = false,
 }: CaseCardProps<T>) {
   const [tagsExpanded, setTagsExpanded] = useState(false)
+  const algorithmLabels = useAlgorithmLabelMap()
   const disabled = caseItem.deleted === true
 
   const registry = new Map(tagRegistry.map((t) => [t.name, t]))
@@ -340,7 +342,7 @@ export function CaseCard<T extends CaseCardItem>({
               {badgeLeading}
               {caseItem.algorithmType && (
                 <Badge variant='secondary' className='rounded-md px-1.5'>
-                  {getAlgorithmLabel(caseItem.algorithmType)}
+                  {getAlgorithmLabel(caseItem.algorithmType, algorithmLabels)}
                 </Badge>
               )}
               {caseItem.totalDuration != null && caseItem.totalDuration > 0 && (

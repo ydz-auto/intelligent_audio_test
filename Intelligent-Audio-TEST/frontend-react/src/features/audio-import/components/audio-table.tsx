@@ -2,8 +2,9 @@
  * 音频列表数据表（§5.3；DataTablePage 对位——列=勾选/ID/文件名/格式/大小/时长/
  * 音频类型/源语言/标签/创建时间/操作）。桌面表格 + 移动端卡片同源列定义（§2.1 口径）。
  */
-import { Box, ChevronDown, ChevronUp } from 'lucide-react'
+import { AlertTriangle, Box, ChevronDown, ChevronUp, RotateCw } from 'lucide-react'
 
+import { ErrorState } from '@/components/error-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -34,6 +35,10 @@ import {
 export type AudioTableProps = {
   rows: AudioAsset[]
   loading: boolean
+  /** 列表查询失败（INT-1583）：错误态与「暂无音频文件」空态分开渲染，不得把接口失败伪装成空库 */
+  isError?: boolean
+  /** 查询失败重试（refetch） */
+  onRetry?: () => void
   total: number
   searchKeyword: string
   selectedIds: Set<number>
@@ -92,7 +97,8 @@ function TagsCell({ tags }: { tags: string[] }) {
 }
 
 export function AudioTable(props: AudioTableProps) {
-  const isEmpty = !props.loading && props.rows.length === 0
+  // 失败不等于空库（INT-1583）：isError 时不得走「暂无音频文件」空态
+  const isEmpty = !props.loading && !props.isError && props.rows.length === 0
   // 当前页全部行均被选中才视为「全选」（跨页选择不影响本页表头态）
   const allSelected =
     !isEmpty &&
@@ -106,6 +112,19 @@ export function AudioTable(props: AudioTableProps) {
         {Array.from({ length: Math.min(props.total || 8, 10) }).map((_, i) => (
           <Skeleton key={i} className='h-12 w-full rounded-none border-b' />
         ))}
+      </div>
+    )
+  }
+
+  // 查询失败且无任何可展示行：显式错误态 + 重试（不复用空态，避免用户误以为库里没有音频而重复上传）
+  if (props.isError && props.rows.length === 0) {
+    return (
+      <div className='bg-card ring-foreground/10 rounded-xl ring-1'>
+        <ErrorState
+          title='音频列表加载失败'
+          description='音频列表获取失败，请重试'
+          onRetry={props.onRetry}
+        />
       </div>
     )
   }
@@ -141,8 +160,32 @@ export function AudioTable(props: AudioTableProps) {
   }
 
   return (
-    <div className='bg-card ring-foreground/10 overflow-hidden rounded-xl ring-1'>
-      <div className='overflow-x-auto'>
+    <div className='flex min-h-0 flex-col gap-2'>
+      {/* 翻页/筛选失败但有上次数据：保留旧列表 + 行内提示（INT-1583） */}
+      {props.isError && (
+        <div
+          role='alert'
+          className='border-destructive/30 bg-destructive/5 text-destructive flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-xs'
+        >
+          <AlertTriangle aria-hidden='true' className='size-3.5 shrink-0' />
+          <span className='min-w-0 flex-1'>
+            音频列表加载失败，当前显示的是上一次加载的数据
+          </span>
+          {props.onRetry && (
+            <Button
+              variant='outline'
+              size='sm'
+              className='h-7 gap-1'
+              onClick={props.onRetry}
+            >
+              <RotateCw aria-hidden='true' className='size-3' />
+              重试
+            </Button>
+          )}
+        </div>
+      )}
+      <div className='bg-card ring-foreground/10 overflow-hidden rounded-xl ring-1'>
+        <div className='overflow-x-auto'>
         <table className='w-full min-w-[900px] text-[13px]'>
           <thead>
             <tr className='bg-[var(--table-header)] text-xs'>
@@ -269,6 +312,7 @@ export function AudioTable(props: AudioTableProps) {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   )

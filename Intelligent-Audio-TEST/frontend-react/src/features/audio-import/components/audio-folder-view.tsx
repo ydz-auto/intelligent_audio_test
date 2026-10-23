@@ -20,6 +20,10 @@ export type AudioFolderViewProps = {
   /** 已按工具栏筛选 + 排序的全量行（未按文件夹过滤） */
   rows: AudioAsset[]
   loading: boolean
+  /** 列表查询失败（INT-1583）：右表显示错误态 / 保留旧数据提示 */
+  isError?: boolean
+  /** 查询失败重试（refetch） */
+  onRetry?: () => void
   selectedIds: Set<number>
   onToggleSelect: (id: number) => void
   /** 全选当前文件夹表格行集（文件夹视图按自身 pageRows 计算，而非列表视图行） */
@@ -193,6 +197,8 @@ export function AudioFolderView(props: AudioFolderViewProps) {
           <AudioTable
             rows={pageRows}
             loading={props.loading}
+            isError={props.isError}
+            onRetry={props.onRetry}
             total={folderRows.length}
             searchKeyword=''
             selectedIds={props.selectedIds}
@@ -213,17 +219,20 @@ export function AudioFolderView(props: AudioFolderViewProps) {
             onDelete={props.onDelete}
           />
         </div>
-        <PaginationBar
-          page={safePage}
-          pageCount={pageCount}
-          pageSize={pageSize}
-          total={folderRows.length}
-          onPageChange={setPage}
-          onPageSizeChange={(size) => {
-            setPageSize(size)
-            setPage(1)
-          }}
-        />
+        {/* 失败且无行时分页无意义（不显示「共 0 条」误导为库空，INT-1583） */}
+        {!(props.isError && folderRows.length === 0) && (
+          <PaginationBar
+            page={safePage}
+            pageCount={pageCount}
+            pageSize={pageSize}
+            total={folderRows.length}
+            onPageChange={setPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size)
+              setPage(1)
+            }}
+          />
+        )}
       </div>
     </div>
   )
