@@ -165,7 +165,11 @@ export function LaboratoryManagerDialog(props: LaboratoryManagerDialogProps) {
               </div>
               <div className='flex flex-col gap-1'>
                 <Label htmlFor='lab-status'>状态</Label>
-                <Select value={status} onValueChange={(value) => setStatus(value as LaboratoryStatus)}>
+                <Select
+                  value={status}
+                  items={[...STATUS_OPTIONS]}
+                  onValueChange={(value) => setStatus(value as LaboratoryStatus)}
+                >
                   <SelectTrigger id='lab-status' size='sm' className='w-full'>
                     <SelectValue />
                   </SelectTrigger>
