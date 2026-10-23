@@ -86,11 +86,27 @@ class ReportRepositoryABC(ABC):
             满足过滤条件的报告总数。
         """
 
+    @abstractmethod
+    def count_reports_by_tabs(self, deleted: bool = False) -> dict:
+        """四个视图 Tab 的计数（INT-1463：单条条件聚合，替代 4 次串行 count）。
+
+        Returns:
+            {'all': N, 'draft': N, 'published': N, 'comparison': N}
+        """
+
     # ---- 子实体集合加载 ----
 
     @abstractmethod
     def load_summaries(self, report_id: int) -> List['ReportSummaryEntity']:
         """加载报告的摘要实体列表。"""
+
+    @abstractmethod
+    def load_summaries_batch(self, report_ids: List[int]) -> dict:
+        """按报告 ID 批量加载摘要实体（INT-1463：列表页单次 IN 查询，消除 N+1）。
+
+        Returns:
+            {report_id: [ReportSummaryEntity, ...]}
+        """
 
     @abstractmethod
     def load_cases(self, report_id: int) -> List['ReportCaseEntity']:

@@ -19,6 +19,11 @@ service ReportConfigService {
   rpc CountReports(ListReportsRequest) returns (ReportConfigResponse);
   // 页级批量：一次取回整页任务的报告摘要（INT-1462：任务列表 N+1 串行 RPC 消解）
   rpc ListReportsByTaskIds(ListReportsByTaskIdsRequest) returns (ReportConfigResponse);
+
+  // 四个视图 Tab 一次聚合计数（INT-1463：all/draft/published/comparison 单条
+  // 条件聚合 SQL，替代 4 次串行 CountReports；响应 data: {all,draft,published,comparison}）
+  rpc CountReportsByTabs(CountReportsByTabsRequest) returns (ReportConfigResponse);
+
   // 查询单个报告详情
   rpc GetReportDetail(GetReportDetailRequest) returns (ReportConfigResponse);
   // 查询报告生成进度（按报告 ID 推导任务/生成状态）
@@ -123,6 +128,11 @@ message ListReportsRequest {
   string end_date = 9;
   bool favorite = 10;         // INT-141：仅当前用户收藏（x-user-id metadata）
   bool deleted = 11;          // INT-141：仅回收站（软删除项，含删除人/删除时间）
+}
+
+message CountReportsByTabsRequest {
+  // 空请求：Tab 口径（all/draft/published/comparison）由服务端持有；
+  // 可见性 / 软删过滤沿用当前用户上下文与活跃口径。
 }
 
 message GetReportDetailRequest {

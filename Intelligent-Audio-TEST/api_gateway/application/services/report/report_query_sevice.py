@@ -23,7 +23,6 @@ from api_gateway.schemas.report import (
     GenerateStatisticsReportRequest,
 )
 from api_gateway.infrastructure.grpc_proxies import report_config_service
-from shared.models.common_enums import ReportStatus, ReportType
 from shared.proto import report_service_pb2 as report_pb
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps
 
@@ -80,38 +79,28 @@ class ReportQueryService:
 
     @staticmethod
     def get_tab_counts():
-        """四个视图 Tab 的全量计数（每 Tab 一次 CountReports RPC，page/per_page 忽略）。
+        """四个视图 Tab 的全量计数（单次 RPC：report_service 一条条件聚合 SQL）。
 
-        Tab → 过滤映射与 report_service ReportStatus/ReportType 枚举一致：
-        - all:         无过滤
-        - draft:       status=draft
-        - published:   status=published
-        - comparison:  report_type=comparison,secondary_comparison
-        单 Tab 失败时该 Tab 计数 0 并降级继续（列表仍可用，计数不阻塞主视图）。
+        Tab → 过滤映射由 report_service 持有（all/draft/published/comparison，
+        与 ReportStatus/ReportType 枚举一致）；本层只做透传，不再逐 Tab 串行
+        CountReports（INT-1463：4 次 RPC 合并为 1 次）。
+        RPC 失败时四个计数全 0 降级（列表仍可用，计数不阻塞主视图）。
         """
-        tab_filters = {
-            'all': {},
-            'draft': {'status': ReportStatus.DRAFT.value},
-            'published': {'status': ReportStatus.PUBLISHED.value},
-            'comparison': {'report_type': ','.join([
-                ReportType.COMPARISON.value,
-                ReportType.SECONDARY_COMPARISON.value,
-            ])},
-        }
-        counts = {}
+        counts = {'all': 0, 'draft': 0, 'published': 0, 'comparison': 0}
         try:
             stub = report_config_service.stub
-            for tab, filters in tab_filters.items():
-                try:
-                    resp = stub.CountReports(report_pb.ListReportsRequest(**filters))
-                    data = _loads(resp.data, {}) or {}
-                    counts[tab] = int(data.get('total', 0)) if resp.success else 0
-                except Exception:
-                    logger.exception('报告 Tab 计数失败: %s', tab)
-                    counts[tab] = 0
+            resp = stub.CountReportsByTabs(report_pb.CountReportsByTabsRequest())
+            if resp.success:
+                data = _loads(resp.data, {}) or {}
+                for tab in counts:
+                    counts[tab] = int(data.get(tab, 0) or 0)
+            else:
+                logger.warning('报告 Tab 计数失败（降级为 0）: %s', resp.message)
             return success_response(counts)
         except Exception as e:
-            return error_response(f'查询报告 Tab 计数失败: {str(e)}')
+            # 计数失败不阻塞主视图：保留 200 + 全 0 降级（INT-280 既有口径）
+            logger.exception('报告 Tab 计数失败（降级为 0）: %s', e)
+            return success_response(counts)
 
     # ------------------------------------------------------------------
     # 报告详情

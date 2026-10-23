@@ -300,24 +300,27 @@ class TestReportServiceHttpCount:
 
 
 class TestGatewayTabCounts:
-    """api_gateway：/api/v1/reports/tab-counts 四 Tab 聚合。"""
+    """api_gateway：/api/v1/reports/tab-counts 四 Tab 聚合。
+
+    INT-1463 起改为单次 CountReportsByTabs RPC（服务端一条条件聚合 SQL），
+    不再逐 Tab 串行 CountReports；Tab 口径由 report_service 持有。
+    """
 
     def test_tab_counts_assembles_four_tabs(self, gw_client, monkeypatch):
-        """逐 Tab CountReports：all 无过滤 / draft|published 按状态 / comparison 多类型。"""
+        """单次 RPC 返回四 Tab 计数，网关原样透传（不再自行拼过滤条件）。"""
         from shared.proto import report_service_pb2 as report_pb
 
-        captured = {}
+        calls = []
 
-        def _fake_count(req):
-            captured[req.status or (req.report_type or 'all')] = True
-            total_by_filter = {'all': 20, 'draft': 5, 'published': 12,
-                               'comparison,secondary_comparison': 3}
-            total = total_by_filter.get(req.status or req.report_type or 'all', 0)
+        def _fake_count_by_tabs(req):
+            calls.append(req)
             return report_pb.ReportConfigResponse(
-                success=True, message='ok', data=grpc_dumps({'total': total}))
+                success=True, message='ok',
+                data=grpc_dumps({'all': 20, 'draft': 5,
+                                 'published': 12, 'comparison': 3}))
 
         fake = _FakeStub()
-        fake.CountReports = _fake_count
+        fake.CountReportsByTabs = _fake_count_by_tabs
         monkeypatch.setattr(report_proxies_module(), 'get_report_config_service_stub',
                             lambda: fake)
 
@@ -326,55 +329,44 @@ class TestGatewayTabCounts:
         body = r.json()
         assert body['success'] is True
         assert body['data'] == {'all': 20, 'draft': 5, 'published': 12, 'comparison': 3}
-        # 四次 RPC：无过滤 + draft + published + 多类型
-        assert captured.get('all') and captured.get('draft') and captured.get('published')
-        assert captured.get('comparison,secondary_comparison')
+        # 单次 RPC（并发/串行均只有一次调用）
+        assert len(calls) == 1
 
-    def test_tab_counts_single_tab_failure_degrades_to_zero(self, gw_client, monkeypatch):
-        """单 Tab CountReports 失败：该 Tab 计数 0 降级继续，其余 Tab 正常。"""
-        from shared.proto import report_service_pb2 as report_pb
+    def test_tab_counts_rpc_failure_degrades_to_zero(self, gw_client, monkeypatch):
+        """RPC 抛错：四 Tab 全 0 降级，列表仍可用（INT-280 既有降级口径）。"""
 
-        def _fake_count(req):
-            if req.status == 'draft':
-                raise RuntimeError('rpc down')
-            if req.report_type:
-                return report_pb.ReportConfigResponse(
-                    success=True, message='ok', data=grpc_dumps({'total': 3}))
-            total = {'all': 7, 'published': 2}.get(req.status or 'all')
-            return report_pb.ReportConfigResponse(
-                success=True, message='ok', data=grpc_dumps({'total': total}))
+        def _fake_count_by_tabs(req):
+            raise RuntimeError('rpc down')
 
         fake = _FakeStub()
-        fake.CountReports = _fake_count
+        fake.CountReportsByTabs = _fake_count_by_tabs
         monkeypatch.setattr(report_proxies_module(), 'get_report_config_service_stub',
                             lambda: fake)
 
         r = gw_client.get('/api/v1/reports/tab-counts')
         assert r.status_code == 200
         body = r.json()
-        assert body['data'] == {'all': 7, 'draft': 0, 'published': 2, 'comparison': 3}
+        assert body['data'] == {'all': 0, 'draft': 0, 'published': 0, 'comparison': 0}
 
     def test_tab_counts_grpc_failure_response_counts_zero(self, gw_client, monkeypatch):
-        """CountReports 返回 success=False：该 Tab 计数 0（不假成功）。"""
+        """RPC 返回 success=False：四 Tab 计数 0（不假成功）。"""
         from shared.proto import report_service_pb2 as report_pb
 
-        def _fake_count(req):
-            if req.status == 'published':
-                return report_pb.ReportConfigResponse(
-                    success=False, message='boom', data=grpc_dumps({'total': 99}))
+        def _fake_count_by_tabs(req):
             return report_pb.ReportConfigResponse(
-                success=True, message='ok', data=grpc_dumps({'total': 4}))
+                success=False, message='boom',
+                data=grpc_dumps({'all': 99, 'draft': 99,
+                                 'published': 99, 'comparison': 99}))
 
         fake = _FakeStub()
-        fake.CountReports = _fake_count
+        fake.CountReportsByTabs = _fake_count_by_tabs
         monkeypatch.setattr(report_proxies_module(), 'get_report_config_service_stub',
                             lambda: fake)
 
         r = gw_client.get('/api/v1/reports/tab-counts')
         assert r.status_code == 200
         body = r.json()
-        assert body['data']['published'] == 0
-        assert body['data']['all'] == 4
+        assert body['data'] == {'all': 0, 'draft': 0, 'published': 0, 'comparison': 0}
 
 
 def report_proxies_module():

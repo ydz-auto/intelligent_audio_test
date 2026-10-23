@@ -610,6 +610,20 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
             logger.exception("CountReports failed")
             return self._resp(False, str(e), {'total': 0})
 
+    def CountReportsByTabs(self, request, context=None):
+        """四个视图 Tab 一次聚合计数（INT-1463：单条条件聚合 SQL）。
+
+        Tab 口径由服务端持有（all/draft/published/comparison），可见性/软删过滤
+        沿用当前用户上下文与活跃口径；响应 data: {all, draft, published, comparison}。
+        """
+        try:
+            counts = self.query_handler.handle_count_reports_by_tabs()
+            return self._resp(True, 'ok', counts)
+        except Exception as e:
+            logger.exception("CountReportsByTabs failed")
+            return self._resp(False, str(e), {'all': 0, 'draft': 0,
+                                              'published': 0, 'comparison': 0})
+
     # ---- 收藏 / 回收站（INT-141）----
 
     def FavoriteReport(self, request, context=None):

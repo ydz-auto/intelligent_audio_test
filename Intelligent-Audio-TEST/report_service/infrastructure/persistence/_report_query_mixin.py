@@ -284,6 +284,57 @@ class ReportQueryMixin:
                                  .exists())
         return query.count()
 
+    @with_session
+    def count_reports_by_tabs(self, deleted: bool = False) -> dict:
+        """四个视图 Tab 的计数（INT-1463：单条条件聚合 SQL，替代 4 次 CountReports）。
+
+        Tab 口径与 Tab 过滤映射一致（与 count_reports 同一套可见性/软删过滤）：
+        - all:        无过滤
+        - draft:      status = draft
+        - published:  status = published
+        - comparison: type IN (comparison, secondary_comparison)
+
+        Args:
+            deleted: 是否统计回收站软删除项（默认 False，与列表活跃口径一致）
+
+        Returns:
+            {'all': N, 'draft': N, 'published': N, 'comparison': N}
+        """
+        from sqlalchemy import case as sa_case, func as sa_func
+
+        from shared.models.common_enums import ReportStatus, ReportType
+
+        session = get_db_session()
+        comparison_types = [ReportType.COMPARISON.value, ReportType.SECONDARY_COMPARISON.value]
+        row = (
+            session.query(
+                sa_func.count(self.PO_CLASS.id),
+                sa_func.coalesce(
+                    sa_func.sum(sa_case((self.PO_CLASS.status == ReportStatus.DRAFT.value, 1),
+                                        else_=0)), 0),
+                sa_func.coalesce(
+                    sa_func.sum(sa_case((self.PO_CLASS.status == ReportStatus.PUBLISHED.value, 1),
+                                        else_=0)), 0),
+                sa_func.coalesce(
+                    sa_func.sum(sa_case((self.PO_CLASS.type.in_(comparison_types), 1),
+                                        else_=0)), 0),
+            )
+            .filter(self.PO_CLASS.deleted == (True if deleted else False))  # noqa: E712
+            .filter(visible_condition(
+                self.PO_CLASS.created_by_user_id,
+                self.PO_CLASS.visibility,
+                get_current_user_id(),
+                get_current_user_is_admin(),
+            ))
+            .one()
+        )
+        return {
+            'all': int(row[0] or 0),
+            'draft': int(row[1] or 0),
+            'published': int(row[2] or 0),
+            'comparison': int(row[3] or 0),
+        }
+
     # ---- 可见性辅助（INT-423，供命令侧 check_visible / 批量 filter_visible_owners） ----
 
     @with_session

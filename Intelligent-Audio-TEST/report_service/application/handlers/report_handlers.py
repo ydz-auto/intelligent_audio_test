@@ -445,11 +445,13 @@ class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
             deleted=query.deleted,
             user_id=query.user_id,
         )
-        # 逐条加载摘要统计（列表场景每页数据量小，避免默认空 summary）
+        # INT-1463：摘要统计由逐条 load_summaries（每页 20 次查询）改为单次批量加载
+        grouped = self.repository.load_summaries_batch(
+            [aggregate.id for aggregate in aggregates if aggregate is not None])
         for aggregate in aggregates:
             if aggregate is None:
                 continue
-            aggregate.summaries = self.repository.load_summaries(aggregate.id)
+            aggregate.summaries = grouped.get(aggregate.id, [])
         return aggregates
 
     def handle_count_reports(self, query: ListReportsQuery) -> int:
@@ -484,6 +486,19 @@ class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
             task_ids=query.task_ids,
             per_task_limit=query.per_task_limit,
         )
+
+
+    def handle_count_reports_by_tabs(self, deleted: bool = False) -> dict:
+        """四个视图 Tab 一次聚合计数（INT-1463：替代 4 次串行 CountReports RPC）。
+
+        Args:
+            deleted: 是否统计回收站软删除项（默认 False）
+
+        Returns:
+            {'all': N, 'draft': N, 'published': N, 'comparison': N}
+        """
+        return self.repository.count_reports_by_tabs(deleted=deleted)
+
 
     def handle_list_favorite_report_ids(self, user_id) -> dict:
         """处理收藏报告 ID 列表查询。委托 report_favorite_trash_service。"""
