@@ -49,7 +49,7 @@ import { useAudioListBatch, type RoundAudioLike } from '@/application/testcases/
 import { usePlaybackDevices } from '@/application/devices/use-devices'
 import { fetchAudioLibrary } from '@/infrastructure/api/audioLibraryApi'
 import type { RoundAudioDraft } from '@/features/testcases/modals/round-config/round-nav'
-import type { MockDevice } from '@/features/testcases/modals/round-config/audio-list-types'
+import type { PlaybackDeviceOption } from '@/features/testcases/modals/round-config/audio-list-types'
 import { BatchDevicePanel } from '@/features/testcases/modals/round-config/batch-device-panel'
 import { BatchSplPanel } from '@/features/testcases/modals/round-config/batch-spl-panel'
 import { CrossDevicePanel } from '@/features/testcases/modals/round-config/cross-device-panel'
@@ -67,7 +67,7 @@ function toDeviceOption(d: {
   name: string
   channelIndex?: number | null
   deviceType?: string | null
-}): MockDevice {
+}): PlaybackDeviceOption {
   return {
     id: String(d.id),
     name: d.name,
@@ -120,7 +120,7 @@ export function AudioListStep({
 }) {
   const devicesQuery = usePlaybackDevices()
   /** 真实播放设备（Select + 批量工具面板共用） */
-  const deviceOptions = useMemo<MockDevice[]>(
+  const deviceOptions = useMemo<PlaybackDeviceOption[]>(
     () => (devicesQuery.data ?? []).map(toDeviceOption),
     [devicesQuery.data]
   )
@@ -290,6 +290,8 @@ export function AudioListStep({
                           deviceLabels: device
                             ? [`${device.name} (通道 ${device.channel}) [${device.type}]`]
                             : [],
+                          // 实验室播放按用例配置的播放设备发送（INT-1424 终审 P2-2）
+                          deviceIds: audio.deviceId ? [audio.deviceId] : [],
                         })
                       }
                     >

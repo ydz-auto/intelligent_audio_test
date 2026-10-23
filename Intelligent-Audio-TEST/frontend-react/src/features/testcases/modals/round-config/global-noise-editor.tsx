@@ -171,6 +171,8 @@ export function GlobalNoiseEditor({
                     // 音频库时长兜底：实验室播放无浏览器流，播放器总时长靠它（INT-1424 UX 复核）
                     duration: value?.audio?.duration ?? null,
                     deviceLabels: previewDeviceLabels,
+                    // 实验室播放按全局噪声配置的设备发送（INT-1424 终审 P2-2）
+                    deviceIds: (value?.deviceIds ?? []).map(String),
                   })
                 }
               >

@@ -249,45 +249,62 @@ export function AudioSelectDialog({
     return [...tagList, ...rest.slice(0, cap)]
   }, [filteredTags, selectedTags, tagList, tagsExpanded, tagKeyword])
 
-  // 列表加载：全部视图走服务端分页；文件夹视图拉全量行后按 folder 前缀客户端过滤
-  const load = useCallback(async () => {
+  // 列表加载：全部视图走服务端分页（翻页重请求）；文件夹视图只在筛选/文件夹变化时拉一次
+  // 全量行、之后客户端分页——翻页不得重打 1 万行请求（INT-1424 终审 P3-1）。
+  const loadPage = useCallback(async () => {
     if (!open) return
     setLoading(true)
     setError(null)
     try {
-      if (activeFolder !== null) {
-        const result = await fetchAudios({
-          keyword: debouncedKeyword || undefined,
-          audioType,
-          tags: tagList,
-          page: 1,
-          perPage: FOLDER_ALL_PER_PAGE,
-        })
-        setFolderRows(
-          result.items.filter((a) => inFolder(a.filePath, activeFolder))
-        )
-        setData(null)
-      } else {
-        const result = await fetchAudios({
-          keyword: debouncedKeyword || undefined,
-          audioType,
-          tags: tagList,
-          page,
-          perPage: PAGE_SIZE,
-        })
-        setData(result)
-        setFolderRows(null)
-      }
+      const result = await fetchAudios({
+        keyword: debouncedKeyword || undefined,
+        audioType,
+        tags: tagList,
+        page,
+        perPage: PAGE_SIZE,
+      })
+      setData(result)
+      setFolderRows(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : '音频列表加载失败')
     } finally {
       setLoading(false)
     }
-  }, [open, activeFolder, debouncedKeyword, audioType, tagList, page])
+  }, [open, debouncedKeyword, audioType, tagList, page])
+
+  const loadFolder = useCallback(async () => {
+    if (!open || activeFolder === null) return
+    setLoading(true)
+    setError(null)
+    try {
+      const result = await fetchAudios({
+        keyword: debouncedKeyword || undefined,
+        audioType,
+        tags: tagList,
+        page: 1,
+        perPage: FOLDER_ALL_PER_PAGE,
+      })
+      setFolderRows(result.items.filter((a) => inFolder(a.filePath, activeFolder)))
+      setData(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '音频列表加载失败')
+    } finally {
+      setLoading(false)
+    }
+  }, [open, activeFolder, debouncedKeyword, audioType, tagList])
+
+  const reload = useCallback(
+    () => (activeFolder === null ? loadPage() : loadFolder()),
+    [activeFolder, loadPage, loadFolder]
+  )
 
   useEffect(() => {
-    if (open) void load()
-  }, [open, load])
+    if (open && activeFolder === null) void loadPage()
+  }, [open, activeFolder, loadPage])
+
+  useEffect(() => {
+    if (open && activeFolder !== null) void loadFolder()
+  }, [open, activeFolder, loadFolder])
 
   const folderItems = useMemo(() => flattenFolders(folderTree), [folderTree])
 
@@ -390,7 +407,9 @@ export function AudioSelectDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='sm:max-w-4xl'>
+      {/* grid-cols-[minmax(0,1fr)]：DialogContent 是 grid，隐式列按 min-content 撑开会让
+          底部条把弹窗撑宽 37px（横向溢出自裁）；显式 0 下限列让内部内容自行收缩（INT-1424 终审 P3-3） */}
+      <DialogContent className='grid-cols-[minmax(0,1fr)] sm:max-w-4xl'>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
@@ -490,10 +509,9 @@ export function AudioSelectDialog({
               </div>
               <div
                 data-testid='audio-tag-filter'
-                className={cn(
-                  'flex flex-wrap items-center gap-1.5',
-                  tagsExpanded && 'max-h-40 overflow-y-auto'
-                )}
+                // 恒限高滚动（V9.7.10 AudioListComponent `.tag-filter{max-height:180px;overflow-y:auto}`）：
+                // 标签搜索命中多枚或展开全部时都不撑高弹窗（INT-1424 终审 P3-2）
+                className='flex max-h-40 flex-wrap items-center gap-1.5 overflow-y-auto'
               >
                 {visibleTags.map((tag) => {
                   const active = selectedTags.has(tag)
@@ -610,7 +628,7 @@ export function AudioSelectDialog({
             ) : error ? (
               <div className='flex flex-col items-center gap-2 py-8 text-center'>
                 <p className='text-destructive text-sm'>{error}</p>
-                <Button variant='outline' size='sm' onClick={() => void load()}>
+                <Button variant='outline' size='sm' onClick={() => void reload()}>
                   重试
                 </Button>
               </div>
@@ -714,10 +732,11 @@ export function AudioSelectDialog({
           </div>
         </div>
 
-        {/* 底部计数 + 操作 */}
-        <DialogFooter>
-          <div className='flex w-full flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between'>
-            <div className='flex shrink-0 items-center gap-3'>
+        {/* 底部计数 + 操作（min-w-0：底部条 min-content 不得把 Dialog 网格列撑宽，
+            否则弹窗横向溢出自裁，INT-1424 终审 P3-3） */}
+        <DialogFooter className='min-w-0'>
+          <div className='flex w-full min-w-0 flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between'>
+            <div className='flex min-w-0 flex-1 flex-wrap items-center gap-3'>
               <p className='text-muted-foreground text-xs tabular-nums'>
                 当前页 {pageItems.length} 个音频 ({summarizeDuration(pageItems)}) ｜ 已选择{' '}
                 {selectedAudios.length} 个 ({summarizeDuration(selectedAudios)})

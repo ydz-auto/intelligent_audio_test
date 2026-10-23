@@ -10,8 +10,9 @@
  *   （设备端播放无浏览器流；offset 作为起点），停止/暂停走 POST /audios/{id}/stop-preview。
  */
 import { Pause, Play, Square, TriangleAlert, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { usePlaybackDevices } from '@/application/devices/use-devices'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
@@ -28,6 +29,7 @@ export function AudioPlayerPanel({
   audioId,
   audioName,
   deviceLabels = [],
+  deviceIds = [],
   spl,
   offset = 0,
   durationHint = null,
@@ -40,6 +42,9 @@ export function AudioPlayerPanel({
   audioName?: string | null
   /** 播放设备标签（实验室播放=用例配置设备名列表；浏览器播放可为空） */
   deviceLabels?: string[]
+  /** 播放设备记录 id（用例配置的 playback_device_id / 全局噪声 deviceIds）：
+   *  实验室播放解析成 playback_device_ids + device_unique_ids 随请求发送（INT-1424 终审 P2-2） */
+  deviceIds?: string[]
   /** 实验室播放声压级（dB） */
   spl?: number | null
   /** 实验室播放起点偏移（秒） */
@@ -59,6 +64,35 @@ export function AudioPlayerPanel({
   const [duration, setDuration] = useState(hint != null && hint > 0 ? hint : 0)
   const [playing, setPlaying] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  /** 播放设备（/playback-devices）：用例配置的设备 id → 记录 id + 设备唯一 id（V9.7.10
+   *  playOnExternalDevices 的 playbackDeviceIds / deviceUniqueIds 口径） */
+  const devicesQuery = usePlaybackDevices()
+  const backendTargets = useMemo(() => {
+    const all = devicesQuery.data ?? []
+    return deviceIds.map((raw) => {
+      const numeric = Number(raw)
+      const hit = Number.isFinite(numeric)
+        ? all.find((d) => Number(d.id) === numeric)
+        : undefined
+      return {
+        id: hit ? Number(hit.id) : Number.isFinite(numeric) ? numeric : null,
+        uniqueId: hit?.deviceUniqueId ?? null,
+        name: hit?.name ?? null,
+      }
+    })
+  }, [deviceIds, devicesQuery.data])
+  const playbackDeviceIds = backendTargets
+    .map((d) => d.id)
+    .filter((id): id is number => id != null)
+  const deviceUniqueIds = backendTargets
+    .map((d) => d.uniqueId)
+    .filter((id): id is string => !!id)
+  /** 设备展示行：调用方标签优先，缺省取解析到的真实设备名 */
+  const displayedDeviceLabels =
+    deviceLabels.length > 0
+      ? deviceLabels
+      : backendTargets.map((d) => d.name).filter((n): n is string => !!n)
 
   // 时长兜底：调用方（用例音频卡/全局噪声）未带时长时按文件名回查音频库
   useEffect(() => {
@@ -188,13 +222,14 @@ export function AudioPlayerPanel({
     }
   }
 
-  /** 实验室播放：通知后端设备输出 */
+  /** 实验室播放：通知后端设备输出（按用例配置的播放设备发送） */
   const startBackend = async () => {
     if (audioId == null) return
     setError(null)
     const result = await preview(Number(audioId), {
-      playbackDeviceId: null,
-      deviceUniqueIds: [],
+      playbackDeviceId: playbackDeviceIds[0] ?? null,
+      playbackDeviceIds,
+      deviceUniqueIds,
       spl: spl ?? 65,
       offset: offset > 0 ? offset : undefined,
     })
@@ -245,8 +280,9 @@ export function AudioPlayerPanel({
     } else if (audioId != null) {
       setCurrent(target)
       void preview(Number(audioId), {
-        playbackDeviceId: null,
-        deviceUniqueIds: [],
+        playbackDeviceId: playbackDeviceIds[0] ?? null,
+        playbackDeviceIds,
+        deviceUniqueIds,
         spl: spl ?? 65,
         offset: target,
       })
@@ -322,12 +358,16 @@ export function AudioPlayerPanel({
         <p className='text-muted-foreground text-xs font-medium'>
           播放设备{mode === 'backend' ? '（实验室播放）' : '（浏览器播放）'}
         </p>
-        {deviceLabels.length === 0 ? (
+        {displayedDeviceLabels.length === 0 ? (
           <p className='text-muted-foreground/70 text-sm'>
-            {mode === 'backend' ? '未配置播放设备' : '浏览器直接播放，无需指定设备'}
+            {mode === 'backend'
+              ? deviceIds.length > 0
+                ? '未匹配到用例配置的播放设备记录，后端将按默认设备播放'
+                : '未配置播放设备'
+              : '浏览器直接播放，无需指定设备'}
           </p>
         ) : (
-          deviceLabels.map((d) => (
+          displayedDeviceLabels.map((d) => (
             <p key={d} className='flex items-center gap-1.5 text-sm'>
               <span className='text-primary'>✓</span>
               {d}

@@ -30,6 +30,9 @@ export interface PreviewAudioItem {
   duration?: number | null
   /** 播放设备展示标签（实验室播放=用例配置设备；浏览器可为空） */
   deviceLabels?: string[]
+  /** 播放设备记录 id（用例配置的 playback_device_id / 全局噪声 deviceIds）；
+   *  实验室播放据此解析 device_unique_ids 发给后端，缺失时后端按默认设备播放（INT-1424 终审 P2-2） */
+  deviceIds?: string[]
 }
 
 /** 用例 config 首轮首个音频回退（previewCase 入口无显式 audioItem 时） */
@@ -40,6 +43,9 @@ function firstRoundAudio(caseItem: TestCaseListItem | null): PreviewAudioItem | 
         audios?: Array<{
           audio_id?: number | string | null
           audio_name?: string | null
+          /** 播放设备（轮次音频配置的设备 id） */
+          playback_device_id?: number | string | null
+          playbackDeviceId?: number | string | null
           /** 部分存量 config 冗余时长（秒） */
           duration?: number | null
           audio_duration?: number | null
@@ -48,10 +54,12 @@ function firstRoundAudio(caseItem: TestCaseListItem | null): PreviewAudioItem | 
     | undefined
   const first = rounds?.[0]?.audios?.[0]
   if (!first?.audio_id) return null
+  const deviceId = first.playback_device_id ?? first.playbackDeviceId ?? null
   return {
     id: first.audio_id,
     name: first.audio_name ?? null,
     duration: first.duration ?? first.audio_duration ?? null,
+    deviceIds: deviceId == null || deviceId === '' ? [] : [String(deviceId)],
   }
 }
 
@@ -106,6 +114,7 @@ export function AudioPreviewConfigDialog({
             audioId={target?.id ?? null}
             audioName={target?.name ?? null}
             deviceLabels={target?.deviceLabels ?? []}
+            deviceIds={target?.deviceIds ?? []}
             spl={target?.spl ?? 65}
             durationHint={target?.duration ?? null}
             offset={Number(offset) || 0}

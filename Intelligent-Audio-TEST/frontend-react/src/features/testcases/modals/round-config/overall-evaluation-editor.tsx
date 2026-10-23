@@ -10,7 +10,7 @@
  * ——TestCaseDimensionItem {id,name,weight,threshold,test_type}（schemas/testcase.py:85-90）；
  * 触发条件=顶层数组非空；报告取值整体优先、无整体结果取各轮算术平均。
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
@@ -45,7 +45,13 @@ export function OverallEvaluationEditor({
   value: TestCaseDimensionItem[]
   onChange: (next: TestCaseDimensionItem[]) => void
 }) {
-  const [enabled, setEnabled] = useState(value.length > 0)
+  // 启用开关：默认开（V9.7.10 OverallEvaluationEditor.vue `enabled = ref(true)`），带
+  // config.dimensions 打开即自动启用。不能在挂载时按 value.length 求值——抽屉的回填在
+  // useEffect 里，晚于子树挂载，挂载期快照会漏掉存量用例的维度（INT-1424 终审 P2-1）。
+  const [enabled, setEnabled] = useState(true)
+  useEffect(() => {
+    if (value.length > 0) setEnabled(true)
+  }, [value])
 
   const dimensionOf = (id: number) => dimensions.find((d) => Number(d.id) === id)
   const itemOf = (id: number) => value.find((v) => Number(v.id) === id)

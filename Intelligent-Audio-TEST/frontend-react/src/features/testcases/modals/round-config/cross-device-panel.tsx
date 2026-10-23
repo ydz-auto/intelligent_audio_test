@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import type { MockDevice } from '@/features/testcases/modals/round-config/audio-list-types'
+import type { PlaybackDeviceOption } from '@/features/testcases/modals/round-config/audio-list-types'
 
 export function CrossDevicePanel({
   open,
@@ -23,7 +23,7 @@ export function CrossDevicePanel({
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  devices: MockDevice[]
+  devices: PlaybackDeviceOption[]
   /** 确认：按顺序参与轮转的设备 id 列表 */
   onConfirm: (deviceIds: string[]) => void
 }) {

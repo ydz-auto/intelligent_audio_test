@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import type { BatchScope } from '@/domain/lib/audio-batch-ops'
-import type { MockDevice } from '@/features/testcases/modals/round-config/audio-list-types'
+import type { PlaybackDeviceOption } from '@/features/testcases/modals/round-config/audio-list-types'
 
 export function BatchDevicePanel({
   open,
@@ -33,7 +33,7 @@ export function BatchDevicePanel({
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  devices: MockDevice[]
+  devices: PlaybackDeviceOption[]
   /** 当前勾选音频数（0 时「勾选音频」项禁用） */
   selectedCount: number
   onConfirm: (deviceId: string, scope: BatchScope) => void
