@@ -280,6 +280,17 @@ export function EvaluationPage() {
     return result
   }, [filteredDimensions, dimensions])
 
+  // 分类 → 维度总数（不受筛选影响）：空分类分组渲染与删除钮可用性判定用（INT-1550）
+  const dimensionCountByCategory = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const dim of dimensions) {
+      if (dim.categoryId == null) continue
+      const key = String(dim.categoryId)
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+    return counts
+  }, [dimensions])
+
   const groupedDimensions = useMemo<DimensionGroup[]>(() => {
     const byCategory = new Map<string, HierarchicalDimension[]>()
     const uncategorized: HierarchicalDimension[] = []
@@ -293,19 +304,30 @@ export function EvaluationPage() {
       }
     }
     const groups: DimensionGroup[] = []
+    // 分类全量渲染（含 0 维度的空分类）——分组由维度派生时空分类会连同删除入口
+    // 一起消失，分类永远删不掉（INT-1550）
     for (const cat of categories) {
-      const items = byCategory.get(String(cat.id))
-      if (items && items.length > 0)
-        groups.push({ key: String(cat.id), category: cat, items })
+      const key = String(cat.id)
+      groups.push({
+        key,
+        category: cat,
+        items: byCategory.get(key) ?? [],
+        totalCount: dimensionCountByCategory.get(key) ?? 0,
+      })
     }
     for (const [key, items] of byCategory.entries()) {
       if (!groups.some((g) => g.key === key))
-        groups.push({ key, category: null, items })
+        groups.push({ key, category: null, items, totalCount: items.length })
     }
     if (uncategorized.length > 0)
-      groups.push({ key: 'uncategorized', category: null, items: uncategorized })
+      groups.push({
+        key: 'uncategorized',
+        category: null,
+        items: uncategorized,
+        totalCount: uncategorized.length,
+      })
     return groups
-  }, [hierarchicalDimensions, categories])
+  }, [hierarchicalDimensions, categories, dimensionCountByCategory])
 
   const sorted = useMemo(() => [...filteredDimensions], [filteredDimensions])
   const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize))
@@ -735,7 +757,9 @@ export function EvaluationPage() {
                     </EmptyContent>
                   </Empty>
                 </div>
-              ) : hierarchicalDimensions.length === 0 ? (
+              ) : (viewMode === 'list'
+                  ? hierarchicalDimensions.length === 0
+                  : groupedDimensions.length === 0) ? (
                 <div className='bg-card ring-foreground/10 rounded-xl ring-1'>
                   <Empty className='h-72'>
                     <EmptyMedia variant='icon'>
