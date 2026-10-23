@@ -359,6 +359,13 @@ export function BatchDimensionsDialog({
             </label>
           </div>
 
+          {/* 无轮次信息：默认「所有轮次」档位同样明确空态，不编造轮次 */}
+          {roundCount === 0 && roundMode === 'all' && (
+            <div className='border-border/60 rounded-lg border border-dashed px-3 py-4 text-center'>
+              <p className='text-muted-foreground text-sm'>所选用例暂无可配置的轮次信息</p>
+            </div>
+          )}
+
           {/* 指定轮次：轮次号 Checkbox 组（§5.3.5 与 §5.3.1~5.3.4 RoundScopeField 同口径；按实际轮次） */}
           {roundMode === 'specific' && (
             <div className='space-y-1.5'>
