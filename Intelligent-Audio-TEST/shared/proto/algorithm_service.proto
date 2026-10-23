@@ -126,6 +126,10 @@ service AlgorithmDefinitionService {
   rpc SaveAlgorithmDefinitionDraft(SaveAlgorithmDefinitionDraftRequest) returns (AlgorithmResponse);
   // GetAlgorithmDefinitionDraft：读取草稿快照（前端编辑恢复），data 为快照 JSON。
   rpc GetAlgorithmDefinitionDraft(GetAlgorithmDefinitionDraftRequest) returns (AlgorithmResponse);
+  // ClearAlgorithmDefinitionDraft：发布/删除成功后清除草稿快照（INT-1514），
+  //   与 SaveAlgorithmDefinition 的 clear_snapshot 口径一致；data 返回
+  //   {algorithm_type, cleared}，无草稿时 cleared=false 仍算成功。
+  rpc ClearAlgorithmDefinitionDraft(ClearAlgorithmDefinitionDraftRequest) returns (AlgorithmResponse);
 }
 
 // ===== 算法领域查询服务（CQRS 读侧，迁移自 shared/algorithm）=====
@@ -471,6 +475,9 @@ message SaveAlgorithmDefinitionDraftRequest {
   string data = 1;  // JSON: 完整定义快照（含 algorithm_type）
 }
 message GetAlgorithmDefinitionDraftRequest {
+  string algorithm_type = 1;
+}
+message ClearAlgorithmDefinitionDraftRequest {
   string algorithm_type = 1;
 }
 

@@ -4,6 +4,8 @@
 按 DDD 原则，网关不再直接操作 DB，而是通过 gRPC 调用 algorithm_service。
 保留 Pydantic schema 校验。
 """
+import logging
+
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
 from api_gateway.infrastructure.acl import AlgorithmConfigAclRepositoryImpl
@@ -36,6 +38,29 @@ from api_gateway.infrastructure.grpc_proxies.algorithm_proxies import (
 
 _algorithm_acl = AlgorithmConfigAclRepositoryImpl()
 
+logger = logging.getLogger(__name__)
+
+
+def _clear_definition_draft(algo_type):
+    """发布（新建/更新）或删除成功后清除该类型的草稿快照（INT-1514）。
+
+    清除失败只记日志、不改变主操作结果——与 algorithm_service
+    `handle_save_definition`「草稿清除失败不阻断发布」同口径；
+    残留快照会在下次发布/删除时再次被清除。
+    """
+    if not algo_type:
+        return
+    try:
+        result = _algorithm_service_proxy.clear_algorithm_definition_draft(algo_type)
+    except Exception as e:  # 代理层已兜底，双保险
+        logger.warning('清除算法草稿异常 algorithm_type=%s: %s', algo_type, e)
+        return
+    if not result.get('success'):
+        logger.warning(
+            '清除算法草稿失败 algorithm_type=%s: %s',
+            algo_type, result.get('message'),
+        )
+
 
 class AlgorithmCommandService:
     # ========== 算法定义 CRUD ==========
@@ -52,6 +77,8 @@ class AlgorithmCommandService:
         result = _algorithm_acl.create_algorithm(data)
 
         if result.get('success'):
+            # 新建同类型的算法时丢弃历史草稿快照，避免重开编辑回显旧草稿
+            _clear_definition_draft(data.get('type') or data.get('algorithm_type'))
             return success_response(result.get('data'), result.get('message', 'Algorithm created'))
         return error_response(result.get('message', '操作失败'), result.get('code', 400))
 
@@ -67,6 +94,8 @@ class AlgorithmCommandService:
         result = _algorithm_acl.update_algorithm(algo_type, data)
 
         if result.get('success'):
+            # 发布成功后清除草稿快照（INT-1514，与 clear_snapshot 口径一致）
+            _clear_definition_draft(algo_type)
             return success_response(result.get('data'), result.get('message', 'Algorithm updated'))
         return error_response(result.get('message', '操作失败'), result.get('code', 400))
 
@@ -76,6 +105,8 @@ class AlgorithmCommandService:
         result = _algorithm_acl.delete_algorithm(algo_type)
 
         if result.get('success'):
+            # 算法删除级联清草稿，避免残留行指向已软删算法（INT-1514）
+            _clear_definition_draft(algo_type)
             return success_response(result.get('data'), result.get('message', 'Algorithm deleted'))
         return error_response(result.get('message', '操作失败'), result.get('code', 400))
 
@@ -382,6 +413,11 @@ class AlgorithmCommandService:
         result = _algorithm_acl.bulk_delete(data)
 
         if result.get('success'):
+            # 只清实际被删的类型（未删成功的保留其草稿），级联清残留快照
+            payload = result.get('data') or {}
+            deleted_types = payload.get('deleted_types') or data.get('algorithm_types') or []
+            for algo_type in deleted_types:
+                _clear_definition_draft(algo_type)
             return success_response(result.get('data'), result.get('message', 'Bulk delete completed'))
         return error_response(result.get('message', '操作失败'), result.get('code', 400))
 

@@ -3,7 +3,7 @@
 
 从 _param_mixin.py 拆分，包含以下 RPC 方法：
 - 算法定义写操作（create/update attrs/soft delete）
-- 算法定义全量保存（SaveAlgorithmDefinition + 草稿保存/恢复，INT-589）
+- 算法定义全量保存（SaveAlgorithmDefinition + 草稿保存/恢复/清除，INT-589 / INT-1514）
 - 算法分组写操作（create/update attrs/soft delete）
 - 导入/重载（ImportAlgorithms/ReloadAlgorithmConfig）
 - 事务控制（commit/rollback/flush）
@@ -127,6 +127,28 @@ class _AlgorithmDefinitionMixin(_ParamBaseMixin):
                 algorithm_type = getattr(request, 'algorithm_type', '')
             snapshot = self.query_handler.handle_get_definition_draft(algorithm_type)
             return _success(snapshot if snapshot is not None else {})
+        except Exception as e:
+            return _failure(str(e))
+
+    def ClearAlgorithmDefinitionDraft(self, request, context=None):
+        """清除草稿快照（INT-1514：发布 / 删除成功后调用）。
+
+        与 SaveAlgorithmDefinition 成功后的 clear_snapshot 同口径；无草稿时
+        cleared=false 仍视为成功（幂等，调用方无需区分）。
+        """
+        try:
+            if isinstance(request, dict):
+                algorithm_type = request.get('algorithm_type', '')
+            else:
+                algorithm_type = getattr(request, 'algorithm_type', '')
+            algorithm_type = algorithm_type or ''
+            if not algorithm_type:
+                return _failure('algorithm_type 必填')
+            cleared = self.command_handler.handle_clear_draft(algorithm_type)
+            return _success({
+                'algorithm_type': algorithm_type,
+                'cleared': bool(cleared),
+            })
         except Exception as e:
             return _failure(str(e))
 
