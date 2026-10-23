@@ -4,6 +4,8 @@
  */
 import { describe, expect, it } from 'vitest'
 
+import integrationGuideMarkdown from '@/features/user-guide/content/接入指南.md?raw'
+
 import {
   buildGuideSource,
   extractTocEntries,
@@ -77,5 +79,30 @@ describe('guideSource', () => {
     expect(body).toContain('## 快速开始')
     expect(body).not.toContain('## 目录')
     expect(body).not.toContain('- [快速开始](#快速开始)')
+  })
+
+  it('接入指南：三章目录条目提取且锚点全部可达', () => {
+    const entries = extractTocEntries(integrationGuideMarkdown)
+    expect(entries).toHaveLength(3)
+    expect(entries[0]).toEqual({
+      title: 'Realtime API 接入（websocket_api）',
+      id: 'realtime-api-接入websocket_api',
+      nested: false,
+    })
+    expect(entries[1]).toEqual({
+      title: '普通 HTTP API 接入（http_api）',
+      id: '普通-http-api-接入http_api',
+      nested: false,
+    })
+    expect(entries[2]).toEqual({
+      title: '实体设备 E2E 接入（physical）',
+      id: '实体设备-e2e-接入physical',
+      nested: false,
+    })
+    const { body } = buildGuideSource(integrationGuideMarkdown, 'https://host/api')
+    expect(body).toContain('## Realtime API 接入（websocket_api）')
+    expect(body).toContain('## 普通 HTTP API 接入（http_api）')
+    expect(body).toContain('## 实体设备 E2E 接入（physical）')
+    expect(body).not.toContain('## 目录')
   })
 })

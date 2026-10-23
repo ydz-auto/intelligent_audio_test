@@ -12,8 +12,8 @@ export type GuideEntry = {
   nested: boolean
 }
 
-/** 手册路径（两本手册共用同一套页面骨架，仅内容不同） */
-export type GuidePath = '/user-guide' | '/user-guide-api'
+/** 手册路径（三本手册共用同一套页面骨架，仅内容不同） */
+export type GuidePath = '/user-guide' | '/user-guide-api' | '/user-guide-integration'
 
 /**
  * 组装完成的手册文档：目录条目 + 已渲染的正文 markup。

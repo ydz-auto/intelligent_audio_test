@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { BookOpen, ChevronDown, Code2 } from 'lucide-react'
+import { BookOpen, ChevronDown, Code2, Plug } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useMemo, useState } from 'react'
 
@@ -87,6 +87,22 @@ export function UserGuideContent(props: { guide?: GuideDocument }) {
           >
             <Code2 aria-hidden className='size-4 shrink-0' />
             API 手册
+          </Link>
+          <Link
+            to='/user-guide-integration'
+            aria-current={
+              guide.path === '/user-guide-integration' ? 'page' : undefined
+            }
+            className={buttonVariants({
+              variant:
+                guide.path === '/user-guide-integration' ? 'secondary' : 'ghost',
+              size: 'sm',
+              className:
+                'h-auto min-h-10 justify-start px-3 py-2 text-sm whitespace-normal',
+            })}
+          >
+            <Plug aria-hidden className='size-4 shrink-0' />
+            接入指南
           </Link>
         </nav>
         <h2 className='text-muted-foreground mb-3 hidden px-3 text-xs font-semibold tracking-wide lg:block'>

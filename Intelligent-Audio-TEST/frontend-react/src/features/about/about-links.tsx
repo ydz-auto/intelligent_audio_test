@@ -4,6 +4,7 @@ import {
   BookOpen,
   Code2,
   FileBarChart,
+  Plug,
   Shield,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -56,6 +57,12 @@ const LINKS: LinkItem[] = [
     desc: '接口认证、示例与错误码',
     icon: Code2,
     href: '/user-guide-api',
+  },
+  {
+    title: '接入指南',
+    desc: 'Realtime API / HTTP API / 实体设备接入',
+    icon: Plug,
+    href: '/user-guide-integration',
   },
   {
     title: '报告中心',
