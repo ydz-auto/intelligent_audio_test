@@ -49,6 +49,8 @@ export interface FormFieldConfig {
   patternMessage?: string
   /** 隐藏字段 */
   hidden?: boolean
+  /** INT-1434：按端点协议自动派生（deviceType ← apiUrl/endpoints[0].endpoint 的 ws/http 判定） */
+  autoDerive?: boolean
 }
 
 /** 表单值容器：字段 key → 值 */

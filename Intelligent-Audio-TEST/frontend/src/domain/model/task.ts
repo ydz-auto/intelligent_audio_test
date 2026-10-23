@@ -2,7 +2,9 @@
  * Task 领域模型 —— camelCase
  * 对应后端 api_gateway/schemas/task.py::TaskListItem / TaskDetailData
  */
-import type { TaskStatusType, VisibilityType } from '../enums'
+import type { TaskStatusType, VisibilityType, DeviceTypeType } from '../enums'
+import { DeviceType } from '../enums'
+import { resolveApiDeviceType } from './device'
 
 /** 任务关联设备简报 */
 export interface TaskDeviceBrief {
@@ -61,6 +63,55 @@ export interface TaskCaseRemoveResult {
   purged: boolean
   /** 终态任务触发报告重算 */
   reportRequeued: boolean
+}
+
+/** 用例级被测设备选择（INT-1434：对应后端 TaskCaseDeviceAssignment）
+ *
+ * 每个任务用例可独立指定被测设备类型与 ID（物理设备 / HTTP API / WebSocket API），
+ * 为空时保持旧语义（后端按用例配置形态派生兜底）。device_type 取值见 DeviceType 枚举。
+ */
+export interface TaskCaseDeviceAssignment {
+  /** 用例 ID（字符串契约，后端 TaskCase.test_case_id） */
+  caseId: string
+  /** 被测设备类型（physical / http_api / websocket_api，DeviceType 枚举原值） */
+  deviceType?: DeviceTypeType
+  /** 目标 ID：physical=设备 ID，http_api/websocket_api=API ID（后端 TaskCase.device_id 字符串契约） */
+  deviceId?: string | number
+  /** 所属实验室 ID（可选，多实验室扩展） */
+  labId?: number
+}
+
+/** 用例级被测设备选择组装入参（buildCaseDeviceAssignments） */
+export interface BuildCaseDeviceAssignmentsOptions {
+  caseIds: (string | number)[]
+  deviceIds: (string | number)[]
+  apis: Array<{
+    id: string | number
+    deviceType?: string | null
+    endpointUrl?: string
+  }>
+}
+
+/**
+ * 组装用例级被测设备选择（INT-1434）：按「所选用例 × 选中目标」生成笛卡尔积。
+ * - 物理设备目标 → { device_type: physical, device_id: 设备 id }
+ * - API 目标 → device_type 取 API 显式 device_type；未显式时按端点协议派生
+ *   （ws/wss → websocket_api，其余 → http_api，同 report_service._resolve_subject 口径）
+ */
+export function buildCaseDeviceAssignments(options: BuildCaseDeviceAssignmentsOptions): TaskCaseDeviceAssignment[] {
+  const { caseIds, deviceIds, apis } = options
+  const assignments: TaskCaseDeviceAssignment[] = []
+  for (const rawCaseId of caseIds) {
+    const caseId = String(rawCaseId)
+    for (const deviceId of deviceIds) {
+      assignments.push({ caseId, deviceType: DeviceType.PHYSICAL, deviceId })
+    }
+    for (const api of apis) {
+      const deviceType = (api.deviceType || resolveApiDeviceType(api.endpointUrl)) as DeviceTypeType
+      assignments.push({ caseId, deviceType, deviceId: api.id })
+    }
+  }
+  return assignments
 }
 
 export interface Task {
@@ -149,6 +200,8 @@ export interface TaskCreateDraft {
   deviceIds?: number[]
   /** 对应 api_ids: List[int] */
   apiIds?: number[]
+  /** INT-1434：用例级被测设备选择（所选用例 × 选中目标 笛卡尔积；缺省后端派生兜底，零回归） */
+  caseDevices?: TaskCaseDeviceAssignment[]
   /** INT-604：任务执行模式（parallel=并行/默认，serial=串行逐用例；对应 execution_mode） */
   executionMode?: 'parallel' | 'serial'
   /** INT-604：串行优先侧（device=设备先/默认，api=API先；仅 serial 模式生效，对应 serial_first） */

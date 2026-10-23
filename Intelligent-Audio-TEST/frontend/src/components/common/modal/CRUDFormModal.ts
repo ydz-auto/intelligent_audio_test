@@ -12,7 +12,7 @@ import { useNotification } from '../../../composables/modal/useNotification'
 import type { FormFieldConfig, FormValues, FieldOption, FileUploadPayload, SplTestPayload } from '../form/formFieldTypes'
 import type { SPLByDeviceItem } from '../../../domain/model/spl'
 import type { PlaybackDevice } from '../../../domain/model/device'
-import { matchDriverOptionValue } from '../../../domain/model/device'
+import { matchDriverOptionValue, resolveApiDeviceType } from '../../../domain/model/device'
 import type { Dimension } from '../../../domain/model/dimension'
 import { validateProxy } from '../../../utils/proxyValidation'
 
@@ -224,6 +224,22 @@ export function useCRUDFormModal(props: CrudFormModalProps, emit: CrudFormModalE
     }
   }
 
+  /** INT-1434：API 表单 deviceType 自动派生——端点 URL（apiUrl / endpoints[0].endpoint）协议
+   * 未填时自动置 http_api / websocket_api。仅在 deviceType 仍为空（未显式选择）时生效，
+   * 用户手动选择或回显值恒优先。 */
+  const autoDeriveApiDeviceType = () => {
+    if (!props.fields.some((f) => f && f.key === 'deviceType' && f.autoDerive)) return
+    const url = (Array.isArray(formValues.value.endpoints) ? formValues.value.endpoints[0]?.endpoint : undefined)
+      || (Array.isArray(formValues.value.endpoints) ? formValues.value.endpoints[0]?.url : undefined)
+      || formValues.value.apiUrl
+      || ''
+    if (!url) return
+    const current = formValues.value.deviceType
+    if (current === undefined || current === null || current === '') {
+      formValues.value.deviceType = resolveApiDeviceType(url)
+    }
+  }
+
   const initFormData = async () => {
     const initialValues: FormValues = {}
 
@@ -314,6 +330,9 @@ export function useCRUDFormModal(props: CrudFormModalProps, emit: CrudFormModalE
 
     formValues.value = initialValues
     clearErrors()
+
+    // INT-1434：API 表单 deviceType 按端点协议自动派生（留空时）
+    autoDeriveApiDeviceType()
 
     props.fields.forEach((field: FormFieldConfig) => {
       if (!field || typeof field !== 'object') return
@@ -636,6 +655,21 @@ export function useCRUDFormModal(props: CrudFormModalProps, emit: CrudFormModalE
       })
     }
   }, { deep: true })
+
+  // INT-1434：API 表单端点 URL 变化 → deviceType 留空时按端点协议重新派生
+  watch(() => {
+    if (!props.fields.some((f) => f && f.key === 'deviceType' && f.autoDerive)) return ''
+    return (Array.isArray(formValues.value.endpoints) ? formValues.value.endpoints[0]?.endpoint : undefined)
+      || (Array.isArray(formValues.value.endpoints) ? formValues.value.endpoints[0]?.url : undefined)
+      || formValues.value.apiUrl
+      || ''
+  }, (url) => {
+    if (!url) return
+    const current = formValues.value.deviceType
+    if (current === undefined || current === null || current === '') {
+      formValues.value.deviceType = resolveApiDeviceType(url)
+    }
+  })
 
   const hasConfiguredList = (value: unknown): boolean =>
     Array.isArray(value) && value.length > 0
