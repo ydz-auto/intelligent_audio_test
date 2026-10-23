@@ -500,7 +500,6 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
         onOpenChange={setMutateOpen}
         caseItem={mutateCase}
         groups={groups}
-        tags={tags}
         presetGroupId={presetGroupId}
       />
       <ExportDialog

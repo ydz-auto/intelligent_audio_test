@@ -56,7 +56,6 @@ import type {
 } from '@/domain/models/evaluationDimension'
 import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
-import type { TagItem } from '@/domain/models/testTag'
 import type {
   EvaluationStrategy,
   TestCaseBackgroundNoiseItem,
@@ -167,14 +166,12 @@ export function CaseMutateDrawer({
   onOpenChange,
   caseItem,
   groups,
-  tags,
   presetGroupId,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   caseItem: TestCaseListItem | null
   groups: TestCaseGroup[]
-  tags: TagItem[]
   /** 新建态预填分组（分组视图「新增用例到此分组」入口；编辑态忽略） */
   presetGroupId?: string | null
 }) {
