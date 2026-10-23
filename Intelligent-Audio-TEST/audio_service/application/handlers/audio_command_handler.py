@@ -17,6 +17,7 @@ from shared.utils.log_handler import log_and_emit
 from shared.infrastructure.storage import storage
 
 from audio_service.domain.repositories import AudioRepositoryInterface
+from audio_service.domain.exceptions import TagResolutionError
 from audio_service.application.commands.audio_commands import (
     UpdateAudioMetadataCommand,
     UpdateAudioVisibilityCommand,
@@ -263,6 +264,7 @@ class AudioCommandHandler:
                     for tag_name in tags_str.split(','):
                         tag_name = tag_name.strip()
                         if tag_name:
+                            # INT-1533：标签解析失败要整单失败并回滚，不能写 NULL 关联
                             tag = self.repo.get_or_create_tag(tag_name)
                             self.repo.add_audio_tag(cmd.audio_id, tag.id)
 
@@ -273,6 +275,10 @@ class AudioCommandHandler:
 
             self.repo.commit()
             return _ok(message='元数据更新成功')
+        except TagResolutionError as e:
+            self.repo.rollback()
+            logger.warning("更新音频元数据失败（标签解析）: audio_id=%s err=%s", cmd.audio_id, e)
+            return _fail(str(e))
         except Exception as e:
             self.repo.rollback()
             return _fail(str(e))

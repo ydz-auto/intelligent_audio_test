@@ -247,11 +247,18 @@ class AudioMergeMixin:
                 if part and part not in all_tag_names:
                     all_tag_names.append(part)
 
+        from audio_service.domain.exceptions import TagResolutionError
         for tag_name in all_tag_names:
             if not tag_name:
                 continue
-            tag = self.repo.get_or_create_tag(tag_name)
-            self.repo.add_audio_tag(audio_record.id, tag.id)
+            try:
+                tag = self.repo.get_or_create_tag(tag_name)
+                self.repo.add_audio_tag(audio_record.id, tag.id)
+            except TagResolutionError as e:
+                # INT-1533：单标签解析失败只跳过，不写 NULL 关联、也不中断导入
+                logger.warning("分片合并附加标签失败，已跳过: audio_id=%s err=%s",
+                               audio_record.id, e)
+                continue
             audio_tags.append(tag.name)
 
         return audio_tags

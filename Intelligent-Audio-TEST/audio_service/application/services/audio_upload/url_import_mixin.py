@@ -68,10 +68,16 @@ class AudioUrlImportMixin:
             return
         path_parts = relative_path.split('/')
         directory_parts = path_parts[:-1]
+        from audio_service.domain.exceptions import TagResolutionError
         for tag_name in directory_parts:
             if tag_name:
-                tag = self.repo.get_or_create_tag(tag_name)
-                self.repo.add_audio_tag(new_audio.id, tag.id)
+                try:
+                    tag = self.repo.get_or_create_tag(tag_name)
+                    self.repo.add_audio_tag(new_audio.id, tag.id)
+                except TagResolutionError as e:
+                    # INT-1533：目录标签解析失败只跳过并告警，不写 NULL 关联
+                    logger.warning("URL 导入附加目录标签失败，已跳过: audio_id=%s err=%s",
+                                   new_audio.id, e)
         self.repo.commit()
 
         try:
