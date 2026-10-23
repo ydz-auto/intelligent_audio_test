@@ -190,7 +190,7 @@ sequenceDiagram
 ### 3.1 被测 API 管理（UC-0901）
 
 - gRPC 契约：`shared/proto/api_test_service.proto` 既有 RPC —— `StartAPITest`（L10）、`CreateAPITest`、`CreateAPIConfig`、`UpdateAPIConfig`、`DeleteAPIConfig`、`ListAPIConfigs`、`GetAPIConfig`、`TestAPIConnection`；
-- 聚合：`api_test_service/infrastructure/persistence/models/api_models.py` L15 `class API`，既有列：`id / name / vendor / api_url / status / meta / algorithm_type / max_process / max_timeout / max_audio_duration / health_score / api_endpoints`；
+- 聚合：`api_test_service/infrastructure/persistence/models/api_models.py` L15 `class API`，既有列：`id / name / vendor / status / meta / algorithm_type / max_process / max_timeout / max_audio_duration / health_score / api_endpoints`（INT-1361：api_url 已移除，api_endpoints 为唯一端点配置入口）；
 - 新增四列：`device_type / adapter_class / audio_config / output_types`（见 6.2）；再新增两列 `proxy_type / proxy_url`（INT-839，见 3.9）；
 - 前端 API 编辑弹窗（CRUDFormModal / APIEditModal）提供代理类型下拉 + 地址输入，校验规则与后端同口径（见 3.9）；
 - `health_score` 健康分与连接测试沿用，口径见 7.1【保留：通用性能测试口径】。

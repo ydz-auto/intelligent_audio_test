@@ -195,7 +195,7 @@ case_config (TestCase.config 列，JSON)
 | `audio_config.chunk_duration_ms` | chunk 时长 | 20 / 40 / 100（默认 100） | （新增列，JSON） |
 | `output_types` | API 输出类型列表 | `["audio", "text", "video", "image"]` 的子集 | （新增列） |
 
-> 【适配说明】`api_models.py` 现有列仅有 name / vendor / api_url / description / status / meta / algorithm_type / max_process / max_timeout / max_audio_duration / health_score / api_endpoints 等，**缺 `device_type` / `adapter_class` / `audio_config` / `output_types` 列，均标（新增）**；`rms_spl_mapping_id` 随 `api_rms_spl_mappings` 聚合（UC-0902）一并新增。
+> 【适配说明】`api_models.py` 现有列仅有 name / vendor / description / status / meta / algorithm_type / max_process / max_timeout / max_audio_duration / health_score / api_endpoints 等（INT-1361：api_url 已移除，api_endpoints 为唯一端点配置入口），**缺 `device_type` / `adapter_class` / `audio_config` / `output_types` 列，均标（新增）**；`rms_spl_mapping_id` 随 `api_rms_spl_mappings` 聚合（UC-0902）一并新增。
 > **adapter 选择逻辑**：`APIAdapterFactory.get_adapter()` 优先按 `adapter_class` 指定类名创建，未指定时按 `(protocol, vendor)` 自动匹配。`APIAdapterFactory` 原位于 `api_adapter_service/adapters/factory.py`（INT-1176 已删除）；按 P3 规划 api_adapter_service 下线并入 api_test_service，注册表随迁（见 UC-1003）。
 
 ## 0.6 多模态输出

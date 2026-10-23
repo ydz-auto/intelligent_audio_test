@@ -61,7 +61,7 @@ API管理页面用于管理测试API接口，位于设备管理页面的"测试A
 
 > **实现说明**：API 添加/编辑弹窗为**全局动态表单弹窗**（`CRUDFormModal`，由 `useDeviceManagement.addDevice()/editDevice()` 经 `modalManager.open(MODAL_TYPES.ADD_DEVICE / EDIT_DEVICE)` 打开），表单字段由 `generateDeviceFields('api')` 统一生成，其中 `algorithmType` 字段通过 `action: 'loadAlgorithmTypes'` 动态加载选项（`GET /api/v1/algorithm/options`）。
 
-> **口径说明（INT-1223/1229）**：**API 端点配置（`api_endpoints`）为被测 API 的主配置入口**；下表单示意「Master入口URL」对应 `api_url`，**可选兜底**（执行链 `_get_vendor_api_url`/`_resolve_endpoint` 均 api_endpoints 优先 → 回退 api_url）。前端表单 `apiUrl` 已放开必填，空值提交归一 `null`（防 update 覆盖既有 api_url）。
+> **口径说明（INT-1361/1362，取代 INT-1223/1229 旧口径「api_endpoints 为主、Master URL 可选兜底」）**：**Master 入口 URL（`apis.api_url` / 前端 `apiUrl`）已前后端全量移除**（负责人 2026-10-22 裁定「直接移除这个 api url 不再开放填写，前后端都移除」）；**`api_endpoints` 为被测 API 唯一端点配置入口**。执行链共享 helper `resolve_api_endpoint`（`api_test_service/domain/entities/api.py`）只取 `api_endpoints` 首个非空 endpoint，不再有 api_url 兜底；前端表单不再提供 apiUrl 字段，健康检查只测端点（`endpoints_status`）。下表单示意已删除「Master入口URL」字段。
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -72,7 +72,6 @@ API管理页面用于管理测试API接口，位于设备管理页面的"测试A
 │  设备描述:   [__________________]                                         │
 │  API名称:    [__________________]                                         │
 │  供应商:     [__________________]  (如 volc_ast, ali, tencent)           │
-│  Master入口URL: [__________________]                                      │
 │                                                                          │
 │  算法类型:   [请选择算法类型 ▼]        ← 已落地：type='select'            │
 │             选项动态加载自 GET /api/v1/algorithm/options                  │
@@ -106,7 +105,7 @@ class API(db.Model):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False)
     vendor = Column(String(50), nullable=True)
-    api_url = Column(String(512))
+    # INT-1361：api_url（Master 入口 URL）已移除，api_endpoints 为唯一端点配置入口
     description = Column(Text)
     status = Column(String(20), nullable=False, default='online')
     meta = Column(JSON, nullable=False)
@@ -154,7 +153,6 @@ interface APIDevice {
   id: string | number;
   name: string;
   vendor?: string;
-  apiUrl?: string;
   description?: string;
   status: 'online' | 'offline' | 'testing';   // 服务状态枚举
   meta: Record<string, any>;
@@ -208,7 +206,7 @@ const allFilteredAPIDevices = computed(() => {
 
 ```typescript
 case 'api':
-  // ... 现有字段（name / vendor / apiUrl 等）...
+  // ... 现有字段（name / vendor / endpoints 等）...
   return [...apiBaseFields, /* ... */, {
     key: 'algorithmType',          // 已落地
     label: '算法类型',

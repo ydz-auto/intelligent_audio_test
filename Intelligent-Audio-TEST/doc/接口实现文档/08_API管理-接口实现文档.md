@@ -86,7 +86,7 @@ API配置管理模块负责管理外部语音服务（如 ASR, TTS, NLP）的接
 **实现思路：**
 1. **资源查找**：获取指定 API，确保 `deleted == False`。
 2. **测试逻辑**：
-   - 测试 API 的 `api_url` 和 `api_endpoints` 中的端点
+   - 测试 API 的 `api_endpoints` 中的端点（INT-1361：api_url 已移除，api_endpoints 为唯一端点入口）
    - 支持 HTTP/HTTPS 和 WebSocket 协议
 3. **发起请求**：
    - 使用 `requests` 库发起探测请求（GET）或 `websocket` 库测试 WebSocket 连接。
