@@ -8,7 +8,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
-import type { PlatformUser } from '@/domain/models/user'
 import {
   assignRole,
   createUser,
@@ -19,6 +18,7 @@ import {
   updateUser,
   USERS_QUERY_KEY,
   type UserListFilter,
+  type UserUpdatePatch,
 } from '@/infrastructure/api/userApi'
 
 export function useUsersQuery(filter: UserListFilter) {
@@ -54,15 +54,8 @@ export function useUserMutations() {
   })
 
   const updateUserMutation = useMutation({
-    mutationFn: (args: {
-      userId: string
-      patch: Partial<
-        Pick<
-          PlatformUser,
-          'displayName' | 'email' | 'status' | 'roleCode' | 'roleName'
-        >
-      >
-    }) => updateUser(args.userId, args.patch),
+    mutationFn: (args: { userId: string; patch: UserUpdatePatch }) =>
+      updateUser(args.userId, args.patch),
     onSuccess: () => {
       toast.success('用户已更新')
       invalidateUsers()
