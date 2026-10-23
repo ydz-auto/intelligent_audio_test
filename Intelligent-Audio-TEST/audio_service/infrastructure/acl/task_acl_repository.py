@@ -52,48 +52,26 @@ class TaskACLRepositoryImpl(TaskACLRepository):
             }
         return result
 
-    def _check_referenced(self, audio_id: int) -> dict:
-        """按 audio_id 调 task_service.CheckAudioReferenced 定点查询引用数。
-
-        INT-1449：替代旧实现 ListTestCases/ListTasks 全表分页 + config
-        字符串客户端扫描（真实库 579 用例下 DELETE 22-35s 的根因）。
-        返回 {testcases, background_noise, tasks} 计数；gRPC 异常时返回
-        全 0（失败开放：不因检查链路故障阻断删除，与旧实现 except 回退一致）。
-        """
-        from shared.clients.grpc_clients import get_task_config_service_stub
-        from shared.proto import task_service_pb2 as task_pb
-        from shared.utils.grpc_json import loads as _loads
-        try:
-            stub = get_task_config_service_stub()
-            resp = stub.CheckAudioReferenced(task_pb.CheckAudioReferencedRequest(
-                audio_id=int(audio_id),
-            ))
-            if not resp.success:
-                logger.warning("CheckAudioReferenced 返回失败: %s", resp.message)
-                return {'testcases': 0, 'background_noise': 0, 'tasks': 0}
-            data = _loads(resp.data, {})
-            if not isinstance(data, dict):
-                return {'testcases': 0, 'background_noise': 0, 'tasks': 0}
-            return {
-                'testcases': int(data.get('testcases', 0) or 0),
-                'background_noise': int(data.get('background_noise', 0) or 0),
-                'tasks': int(data.get('tasks', 0) or 0),
-            }
-        except Exception as e:
-            logger.warning("CheckAudioReferenced 调用失败: %s", e, exc_info=True)
-            return {'testcases': 0, 'background_noise': 0, 'tasks': 0}
-
     def check_audio_in_testcases(self, audio_id: int) -> int:
-        """检查音频是否被测试用例引用（INT-1449 定点查询）"""
-        return self._check_referenced(audio_id).get('testcases', 0)
+        """检查音频是否被测试用例引用"""
+        try:
+            return int(self.check_audio_references_batch([audio_id]).get(audio_id, {}).get('testcase_audio', 0))
+        except Exception:
+            return 0
 
     def check_audio_in_testcase_noise(self, audio_id: int) -> int:
-        """检查音频是否被测试用例作为背景噪音引用（INT-1449 定点查询）"""
-        return self._check_referenced(audio_id).get('background_noise', 0)
+        """检查音频是否被测试用例作为背景噪音引用"""
+        try:
+            return int(self.check_audio_references_batch([audio_id]).get(audio_id, {}).get('testcase_noise', 0))
+        except Exception:
+            return 0
 
     def check_audio_in_tasks(self, audio_id: int) -> int:
-        """检查音频是否被任务引用（INT-1449 定点查询：task_case_relations）"""
-        return self._check_referenced(audio_id).get('tasks', 0)
+        """检查音频是否被任务引用"""
+        try:
+            return int(self.check_audio_references_batch([audio_id]).get(audio_id, {}).get('task', 0))
+        except Exception:
+            return 0
 
     def get_testcase_by_id(self, testcase_id) -> Optional[TestCaseDTO]:
         """按 ID 查询 TestCase（返回 TestCaseDTO）"""

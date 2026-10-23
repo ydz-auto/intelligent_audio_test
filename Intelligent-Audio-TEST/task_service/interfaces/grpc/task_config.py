@@ -248,19 +248,6 @@ class TaskConfigServiceServicer(task_grpc.TaskConfigServiceServicer):
         except Exception as e:
             return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
 
-    def CheckAudioReferenced(self, request, context=None):
-        """音频引用定点查询（INT-1449）：按 audio_id 统计用例/背景噪声/任务引用数。
-
-        替代旧的全表分页 + config 字符串客户端扫描（audio_service 删除音频前调用）。
-        data JSON: {"testcases": int, "background_noise": int, "tasks": int}
-        """
-        try:
-            from shared.infrastructure.user_context import user_id_from_context
-            return self._resp(self.qry.handle_check_audio_referenced(
-                request.audio_id, user_id=user_id_from_context(context)))
-        except Exception as e:
-            return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
-
     # ---- 收藏 / 回收站（INT-141）----
 
     def FavoriteTask(self, request, context=None):
