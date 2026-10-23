@@ -194,6 +194,24 @@ class PlaybackConfigAclRepositoryImpl(PlaybackConfigAclRepository):
         from api_gateway.infrastructure.grpc_proxies import playback_config_service
         return _wrap(playback_config_service.stop_test(device_id))
 
+    # ---- INT-1579 控制端点 ----
+
+    def restart(self, device_id) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import playback_config_service
+        return _wrap(playback_config_service.restart(device_id))
+
+    def reset_config(self, device_id) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import playback_config_service
+        return _wrap(playback_config_service.reset_config(device_id))
+
+    def repair(self, device_id, actions) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import playback_config_service
+        return _wrap(playback_config_service.repair(device_id, actions))
+
+    def diagnosis(self, device_id) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import playback_config_service
+        return _wrap(playback_config_service.diagnosis(device_id))
+
     def get_all(self, **kwargs) -> CommandResultDTO:
         from api_gateway.infrastructure.grpc_proxies import playback_config_service
         return _wrap(playback_config_service.get_all(**kwargs))

@@ -2170,6 +2170,26 @@ class PlaybackConfigServiceStub:
                 request_serializer=device__service__pb2.StopPlaybackTestRequest.SerializeToString,
                 response_deserializer=device__service__pb2.StopPlaybackTestResponse.FromString,
                 _registered_method=True)
+        self.RestartPlaybackDevice = channel.unary_unary(
+                '/device_service.PlaybackConfigService/RestartPlaybackDevice',
+                request_serializer=device__service__pb2.RestartPlaybackDeviceRequest.SerializeToString,
+                response_deserializer=device__service__pb2.RestartPlaybackDeviceResponse.FromString,
+                _registered_method=True)
+        self.ResetPlaybackDeviceConfig = channel.unary_unary(
+                '/device_service.PlaybackConfigService/ResetPlaybackDeviceConfig',
+                request_serializer=device__service__pb2.ResetPlaybackDeviceConfigRequest.SerializeToString,
+                response_deserializer=device__service__pb2.ResetPlaybackDeviceConfigResponse.FromString,
+                _registered_method=True)
+        self.GetPlaybackDeviceDiagnosis = channel.unary_unary(
+                '/device_service.PlaybackConfigService/GetPlaybackDeviceDiagnosis',
+                request_serializer=device__service__pb2.GetPlaybackDeviceDiagnosisRequest.SerializeToString,
+                response_deserializer=device__service__pb2.GetPlaybackDeviceDiagnosisResponse.FromString,
+                _registered_method=True)
+        self.RepairPlaybackDevice = channel.unary_unary(
+                '/device_service.PlaybackConfigService/RepairPlaybackDevice',
+                request_serializer=device__service__pb2.RepairPlaybackDeviceRequest.SerializeToString,
+                response_deserializer=device__service__pb2.RepairPlaybackDeviceResponse.FromString,
+                _registered_method=True)
 
 
 class PlaybackConfigServiceServicer:
@@ -2236,6 +2256,31 @@ class PlaybackConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def RestartPlaybackDevice(self, request, context):
+        """播放设备控制（INT-1579，设备监控统计与播放设备控制接口契约 §2.1/§2.2/§2.5）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ResetPlaybackDeviceConfig(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetPlaybackDeviceDiagnosis(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RepairPlaybackDevice(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_PlaybackConfigServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -2288,6 +2333,26 @@ def add_PlaybackConfigServiceServicer_to_server(servicer, server):
                     servicer.StopPlaybackTest,
                     request_deserializer=device__service__pb2.StopPlaybackTestRequest.FromString,
                     response_serializer=device__service__pb2.StopPlaybackTestResponse.SerializeToString,
+            ),
+            'RestartPlaybackDevice': grpc.unary_unary_rpc_method_handler(
+                    servicer.RestartPlaybackDevice,
+                    request_deserializer=device__service__pb2.RestartPlaybackDeviceRequest.FromString,
+                    response_serializer=device__service__pb2.RestartPlaybackDeviceResponse.SerializeToString,
+            ),
+            'ResetPlaybackDeviceConfig': grpc.unary_unary_rpc_method_handler(
+                    servicer.ResetPlaybackDeviceConfig,
+                    request_deserializer=device__service__pb2.ResetPlaybackDeviceConfigRequest.FromString,
+                    response_serializer=device__service__pb2.ResetPlaybackDeviceConfigResponse.SerializeToString,
+            ),
+            'GetPlaybackDeviceDiagnosis': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetPlaybackDeviceDiagnosis,
+                    request_deserializer=device__service__pb2.GetPlaybackDeviceDiagnosisRequest.FromString,
+                    response_serializer=device__service__pb2.GetPlaybackDeviceDiagnosisResponse.SerializeToString,
+            ),
+            'RepairPlaybackDevice': grpc.unary_unary_rpc_method_handler(
+                    servicer.RepairPlaybackDevice,
+                    request_deserializer=device__service__pb2.RepairPlaybackDeviceRequest.FromString,
+                    response_serializer=device__service__pb2.RepairPlaybackDeviceResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -2561,6 +2626,114 @@ class PlaybackConfigService:
             '/device_service.PlaybackConfigService/StopPlaybackTest',
             device__service__pb2.StopPlaybackTestRequest.SerializeToString,
             device__service__pb2.StopPlaybackTestResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RestartPlaybackDevice(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.PlaybackConfigService/RestartPlaybackDevice',
+            device__service__pb2.RestartPlaybackDeviceRequest.SerializeToString,
+            device__service__pb2.RestartPlaybackDeviceResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ResetPlaybackDeviceConfig(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.PlaybackConfigService/ResetPlaybackDeviceConfig',
+            device__service__pb2.ResetPlaybackDeviceConfigRequest.SerializeToString,
+            device__service__pb2.ResetPlaybackDeviceConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetPlaybackDeviceDiagnosis(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.PlaybackConfigService/GetPlaybackDeviceDiagnosis',
+            device__service__pb2.GetPlaybackDeviceDiagnosisRequest.SerializeToString,
+            device__service__pb2.GetPlaybackDeviceDiagnosisResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RepairPlaybackDevice(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.PlaybackConfigService/RepairPlaybackDevice',
+            device__service__pb2.RepairPlaybackDeviceRequest.SerializeToString,
+            device__service__pb2.RepairPlaybackDeviceResponse.FromString,
             options,
             channel_credentials,
             insecure,

@@ -140,6 +140,16 @@ class PlaybackConfigAclRepository(ABC):
     @abstractmethod
     def stop_test(self, device_id) -> CommandResultDTO: ...
 
+    # ---- 控制端点（INT-1579，契约 §2.1/§2.2/§2.5）----
+    @abstractmethod
+    def restart(self, device_id) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def reset_config(self, device_id) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def repair(self, device_id, actions) -> CommandResultDTO: ...
+
     # ---- 读操作 ----
     @abstractmethod
     def get_all(self, **kwargs) -> CommandResultDTO: ...
@@ -152,6 +162,9 @@ class PlaybackConfigAclRepository(ABC):
 
     @abstractmethod
     def check_status(self) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def diagnosis(self, device_id) -> CommandResultDTO: ...
 
 
 class LaboratoryAclRepository(ABC):

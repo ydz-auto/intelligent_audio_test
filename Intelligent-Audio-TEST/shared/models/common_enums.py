@@ -619,6 +619,47 @@ class PlaybackQueryCode(int, Enum):
     INTERNAL_ERROR = 500
 
 
+class PlaybackControlAction(str, Enum):
+    """播放设备控制动作枚举（INT-1579，设备监控统计与播放设备控制接口契约 §2.1/§2.2）
+
+    端点级控制动作，写成 device_status_events.operation 事件的 detail.operation 值：
+    - RESTART:       音频通道层重开 + 重新枚举（不是硬件重启）
+    - RESET_CONFIG:  按硬件重新探测采样率与通道索引
+
+    修复动作（re-enumerate / reopen-channel）是 PlaybackRepairAction 的取值，
+    其中 reopen-channel 复用 restart 实现，事件仍记为 RESTART。
+    """
+    RESTART = 'restart'
+    RESET_CONFIG = 'reset-config'
+
+
+class PlaybackRepairAction(str, Enum):
+    """播放设备修复动作白名单（契约 §2.5）——仅两个安全动作，无破坏性修复"""
+    RE_ENUMERATE = 're-enumerate'
+    REOPEN_CHANNEL = 'reopen-channel'
+
+
+class PlaybackDiagnosisKey(str, Enum):
+    """播放设备诊断项 key 枚举（契约 §2.5 固定 6 项，不得臆造后端没有的能力）"""
+    ENUMERABLE = 'enumerable'
+    CHANNEL_INDEX = 'channel_index'
+    SAMPLE_RATE = 'sample_rate'
+    SPL_MAPPING = 'spl_mapping'
+    STATUS = 'status'
+    BUSY = 'busy'
+
+
+class PlaybackDiagnosisStatus(str, Enum):
+    """播放设备诊断项状态枚举（契约 §2.5）
+
+    UNSUPPORTED 专用于「硬件枚举不可用」——此时无法判定，不得记成 ERROR 制造噪声告警。
+    """
+    OK = 'ok'
+    WARN = 'warn'
+    ERROR = 'error'
+    UNSUPPORTED = 'unsupported'
+
+
 class CherryPickCheckoutAction(str, Enum):
     """购物车下单出口枚举（INT-339 挑选合并，设计文档 §3）
 
