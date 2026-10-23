@@ -14,6 +14,7 @@ import type {
   EvaluationCategory,
   EvaluationDimensionItem,
   HealthCheckResultItem,
+  LlmJudgeConfig,
 } from '@/domain/models/evaluationDimension'
 
 /** GET /evaluation/categories 列表项（evaluation.py CategoryItem；无 status 字段） */
@@ -65,6 +66,15 @@ export interface DimensionItemDto {
   agg_denominator: string | null
   exclude_rounds: number[] | null
   associated_algorithms: AlgorithmAssociationDto[] | null
+  /** LLM Judge 配置（§5.5 维度表单；写侧同名字段，读侧未下发时为 null） */
+  llm_judge_config?: {
+    model?: string | null
+    promptTemplate?: string | null
+    prompt_template?: string | null
+    maxTokens?: number | null
+    max_tokens?: number | null
+    temperature?: number | null
+  } | null
   status: boolean | null
   created_at: string | null
   updated_at: string | null
@@ -230,6 +240,35 @@ export function toEvaluationCategory(dto: CategoryItemDto): EvaluationCategory {
   }
 }
 
+/**
+ * llm_judge_config → LlmJudgeConfig。
+ * 用例参数卡的模型/Prompt 默认值取维度定义（§5.5）——读侧不映射时该默认恒为空，
+ * 用户侧只能手填；未下发配置时返回 null（参数卡留空，不注入占位模型）。
+ */
+function toLlmJudgeConfig(
+  raw: DimensionItemDto['llm_judge_config']
+): LlmJudgeConfig | null {
+  if (!raw || typeof raw !== 'object') return null
+  const model = raw.model ?? ''
+  const promptTemplate = raw.promptTemplate ?? raw.prompt_template ?? ''
+  const maxTokens = raw.maxTokens ?? raw.max_tokens
+  const temperature = raw.temperature
+  if (
+    model === '' &&
+    promptTemplate === '' &&
+    maxTokens == null &&
+    temperature == null
+  ) {
+    return null
+  }
+  return {
+    model,
+    promptTemplate,
+    maxTokens: maxTokens ?? 1024,
+    temperature: temperature ?? 0.7,
+  }
+}
+
 /** DimensionItemDto → Dimension（rule/api_settings/api_endpoints 宽松结构原样透传） */
 export function toDimension(dto: DimensionItemDto): Dimension {
   return {
@@ -268,6 +307,7 @@ export function toDimension(dto: DimensionItemDto): Dimension {
       isDefault: Boolean(a.is_default),
       weight: a.weight ?? 1,
     })),
+    llmJudgeConfig: toLlmJudgeConfig(dto.llm_judge_config),
     status: dto.status,
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
