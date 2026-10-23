@@ -7,8 +7,11 @@
  * 接线（INT-1424 返工 P2-1/P3-1，对照 V9.7.10 AudioSelectModal.vue + useAudioList）：
  * - 服务端分页：POST /audios（fetchAudios）按 page/per_page 请求，总数/页数取接口 data.total/data.pages，
  *   翻页重新请求后端；对齐 V9.7.10 useAudioList 默认 20/页、handlePageChange→loadAudios。
- * - 标签 chips 取 GET /audios/tags 全量 facet（V9.7.10 loadAllTags），选中标签按后端 AND 语义过滤。
+ * - 标签 chips 取 GET /audios/tags 全量 facet（V9.7.10 loadAllTags），选中标签按后端 AND 语义过滤；
+ *   真实库标签可达数十个，默认只露前 12 枚 + 本地「搜索标签」+ 展开后限高滚动（V9.7.10 标签云口径），
+ *   不再一次性铺满弹窗。
  * - 文件夹树取 POST /audios/folder-tree（V9.7.10 fetchFolderTree，depth 10 一次渲染）；
+ *   树上只显示文件夹名（V9.7.10 FolderNodeComponent 只渲染 name），不露完整相对路径、无路径 tooltip；
  *   后端列表无 folder 过滤参数，选中文件夹时按全量行客户端过滤（同音频管理页文件夹视图口径）。
  * - 已选对象按 id 缓存：换关键词/翻页后先前勾选的音频仍保留（对齐 V9.7.10 allAudiosCache）。
  */
@@ -41,6 +44,8 @@ import { AudioFolderImportDialog } from '@/features/audio-import/components/moda
 
 /** 服务端分页每页条数（V9.7.10 useAudioList 默认 pageSize=20） */
 const PAGE_SIZE = 20
+/** 标签 chips 默认露出枚数（其余收起，避免 77 个标签把列表挤出视口；V9.7.10 `.tag-filter` 限高滚动同义） */
+const TAG_COLLAPSED_COUNT = 12
 /** 文件夹视图整页拉取上限（后端列表接口无 folder 过滤参数，选中文件夹时按全量行客户端过滤，
  *  同音频管理页 folder 视图 allRows 口径） */
 const FOLDER_ALL_PER_PAGE = 10_000
@@ -156,6 +161,10 @@ export function AudioSelectDialog({
   const [keyword, setKeyword] = useState('')
   const [debouncedKeyword, setDebouncedKeyword] = useState('')
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set())
+  /** 标签区本地搜索（V9.7.10 `tag-search-input`；只过滤 chips，不参与列表查询） */
+  const [tagKeyword, setTagKeyword] = useState('')
+  /** 标签区展开全部（默认只露 TAG_COLLAPSED_COUNT 枚） */
+  const [tagsExpanded, setTagsExpanded] = useState(false)
   const [activeFolder, setActiveFolder] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   /** 服务端分页结果（「全部」视图） */
@@ -183,6 +192,8 @@ export function AudioSelectDialog({
       setKeyword('')
       setDebouncedKeyword('')
       setSelectedTags(new Set())
+      setTagKeyword('')
+      setTagsExpanded(false)
       setActiveFolder(null)
       setPage(1)
       setData(null)
@@ -225,6 +236,18 @@ export function AudioSelectDialog({
   }, [open])
 
   const tagList = useMemo(() => [...selectedTags].sort(), [selectedTags])
+  /** 标签本地搜索结果（按输入串过滤 chips；无输入=全量） */
+  const filteredTags = useMemo(() => {
+    const kw = tagKeyword.trim().toLowerCase()
+    return kw ? allTags.filter((tag) => tag.toLowerCase().includes(kw)) : allTags
+  }, [allTags, tagKeyword])
+  /** 实际渲染的 chips：已选永远在前且不参与收起；其余默认截断到 TAG_COLLAPSED_COUNT，搜索/展开后全量 */
+  const visibleTags = useMemo(() => {
+    const rest = filteredTags.filter((tag) => !selectedTags.has(tag))
+    const cap =
+      tagsExpanded || tagKeyword.trim() ? Infinity : Math.max(0, TAG_COLLAPSED_COUNT - tagList.length)
+    return [...tagList, ...rest.slice(0, cap)]
+  }, [filteredTags, selectedTags, tagList, tagsExpanded, tagKeyword])
 
   // 列表加载：全部视图走服务端分页；文件夹视图拉全量行后按 folder 前缀客户端过滤
   const load = useCallback(async () => {
@@ -415,41 +438,87 @@ export function AudioSelectDialog({
             </Button>
           </div>
 
-          {/* 标签筛选 chips（GET /audios/tags 全量 facet；选中按后端 AND 语义过滤） */}
+          {/* 标签筛选 chips（GET /audios/tags 全量 facet；选中按后端 AND 语义过滤）。
+              真实库标签可达数十个，默认只露前 12 枚 + 本地搜索，展开后限高滚动（V9.7.10
+              AudioListComponent 标签云 `.tag-filter{max-height:180px;overflow-y:auto}` 同义）。 */}
           {allTags.length > 0 && (
-            <div className='flex flex-wrap items-center gap-1.5'>
-              <span className='text-muted-foreground shrink-0 text-xs'>标签：</span>
-              {allTags.map((tag) => {
-                const active = selectedTags.has(tag)
-                return (
+            <div className='space-y-1.5'>
+              <div className='flex flex-wrap items-center gap-1.5'>
+                <span className='text-muted-foreground shrink-0 text-xs'>标签：</span>
+                <div className='relative min-w-0 max-w-52 flex-1'>
+                  <Search
+                    aria-hidden='true'
+                    className='text-muted-foreground absolute top-1/2 left-2 size-3.5 -translate-y-1/2'
+                  />
+                  <Input
+                    value={tagKeyword}
+                    onChange={(e) => setTagKeyword(e.target.value)}
+                    placeholder='搜索标签…'
+                    aria-label='搜索标签'
+                    className='h-7 ps-7 text-xs'
+                  />
+                </div>
+                {tagKeyword.trim() ? null : tagsExpanded ? (
                   <button
-                    key={tag}
                     type='button'
-                    aria-pressed={active}
-                    onClick={() => toggleTag(tag)}
-                    className={cn(
-                      'flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors',
-                      active
-                        ? 'bg-primary/10 border-primary/40 text-primary font-medium'
-                        : 'hover:bg-accent border-border text-muted-foreground'
-                    )}
+                    onClick={() => setTagsExpanded(false)}
+                    className='text-muted-foreground hover:text-foreground px-1 text-xs underline-offset-2 hover:underline'
                   >
-                    {tag}
+                    收起
                   </button>
-                )
-              })}
-              {selectedTags.size > 0 && (
-                <button
-                  type='button'
-                  onClick={() => {
-                    setSelectedTags(new Set())
-                    setPage(1)
-                  }}
-                  className='text-muted-foreground hover:text-foreground px-1 text-xs underline-offset-2 hover:underline'
-                >
-                  清空筛选
-                </button>
-              )}
+                ) : filteredTags.length > TAG_COLLAPSED_COUNT ? (
+                  <button
+                    type='button'
+                    onClick={() => setTagsExpanded(true)}
+                    className='text-muted-foreground hover:text-foreground px-1 text-xs underline-offset-2 hover:underline'
+                  >
+                    展开全部 ({filteredTags.length})
+                  </button>
+                ) : null}
+                {selectedTags.size > 0 && (
+                  <button
+                    type='button'
+                    onClick={() => {
+                      setSelectedTags(new Set())
+                      setPage(1)
+                    }}
+                    className='text-muted-foreground hover:text-foreground px-1 text-xs underline-offset-2 hover:underline'
+                  >
+                    清空筛选
+                  </button>
+                )}
+              </div>
+              <div
+                data-testid='audio-tag-filter'
+                className={cn(
+                  'flex flex-wrap items-center gap-1.5',
+                  tagsExpanded && 'max-h-40 overflow-y-auto'
+                )}
+              >
+                {visibleTags.map((tag) => {
+                  const active = selectedTags.has(tag)
+                  return (
+                    <button
+                      key={tag}
+                      type='button'
+                      data-testid='audio-tag-chip'
+                      aria-pressed={active}
+                      onClick={() => toggleTag(tag)}
+                      className={cn(
+                        'flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors',
+                        active
+                          ? 'bg-primary/10 border-primary/40 text-primary font-medium'
+                          : 'hover:bg-accent border-border text-muted-foreground'
+                      )}
+                    >
+                      {tag}
+                    </button>
+                  )
+                })}
+                {filteredTags.length === 0 && (
+                  <span className='text-muted-foreground/70 text-xs'>没有匹配的标签</span>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -494,7 +563,7 @@ export function AudioSelectDialog({
                             : 'hover:bg-accent text-muted-foreground'
                         )}
                         style={{ paddingInlineStart: `${depth * 12 + 8}px` }}
-                        title={node.path}
+                        data-testid='audio-folder-node'
                       >
                         <Folder aria-hidden='true' className='size-3.5 shrink-0' />
                         <span className='min-w-0 flex-1 truncate'>{node.name}</span>
@@ -517,10 +586,10 @@ export function AudioSelectDialog({
                             ? 'bg-primary/10 text-primary font-medium'
                             : 'hover:bg-accent text-muted-foreground'
                         )}
-                        title={node.path}
+                        data-testid='audio-folder-node'
                       >
                         <Folder aria-hidden='true' className='size-3.5 shrink-0' />
-                        <span className='min-w-0 flex-1 truncate'>{node.path}</span>
+                        <span className='min-w-0 flex-1 truncate'>{node.name}</span>
                         <span className='text-muted-foreground/60 font-mono text-[10px] tabular-nums'>
                           {node.fileCount}
                         </span>

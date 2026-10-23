@@ -284,6 +284,9 @@ export function AudioListStep({
                           id: audio.audioId as number | string,
                           name: audio.audioName,
                           spl: audio.spl,
+                          // 音频库时长兜底：实验室播放无浏览器流，播放器总时长靠它（INT-1424 UX 复核）
+                          duration:
+                            audioLibrary.get(String(audio.audioId))?.duration ?? audio.duration ?? null,
                           deviceLabels: device
                             ? [`${device.name} (通道 ${device.channel}) [${device.type}]`]
                             : [],

@@ -26,6 +26,8 @@ export interface PreviewAudioItem {
   id: number | string
   name?: string | null
   spl?: number | null
+  /** 音频时长（秒；音频库 AudioAsset.duration，实验室播放无浏览器流时作总时长兜底） */
+  duration?: number | null
   /** 播放设备展示标签（实验室播放=用例配置设备；浏览器可为空） */
   deviceLabels?: string[]
 }
@@ -34,11 +36,23 @@ export interface PreviewAudioItem {
 function firstRoundAudio(caseItem: TestCaseListItem | null): PreviewAudioItem | null {
   if (!caseItem) return null
   const rounds = (caseItem.config as Record<string, unknown> | undefined)?.rounds as
-    | Array<{ audios?: Array<{ audio_id?: number | string | null; audio_name?: string | null }> }>
+    | Array<{
+        audios?: Array<{
+          audio_id?: number | string | null
+          audio_name?: string | null
+          /** 部分存量 config 冗余时长（秒） */
+          duration?: number | null
+          audio_duration?: number | null
+        }>
+      }>
     | undefined
   const first = rounds?.[0]?.audios?.[0]
   if (!first?.audio_id) return null
-  return { id: first.audio_id, name: first.audio_name ?? null }
+  return {
+    id: first.audio_id,
+    name: first.audio_name ?? null,
+    duration: first.duration ?? first.audio_duration ?? null,
+  }
 }
 
 export function AudioPreviewConfigDialog({
@@ -93,6 +107,7 @@ export function AudioPreviewConfigDialog({
             audioName={target?.name ?? null}
             deviceLabels={target?.deviceLabels ?? []}
             spl={target?.spl ?? 65}
+            durationHint={target?.duration ?? null}
             offset={Number(offset) || 0}
             onBack={() => setStage('config')}
           />

@@ -168,6 +168,8 @@ export function GlobalNoiseEditor({
                     id: value.audioId as number | string,
                     name: value?.audioName ?? value?.audio?.name ?? null,
                     spl: value?.spl ?? 0,
+                    // 音频库时长兜底：实验室播放无浏览器流，播放器总时长靠它（INT-1424 UX 复核）
+                    duration: value?.audio?.duration ?? null,
                     deviceLabels: previewDeviceLabels,
                   })
                 }

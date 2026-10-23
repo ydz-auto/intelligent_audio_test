@@ -15,7 +15,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
-import { preview, stopPreview, stream } from '@/infrastructure/api/audios-api'
+import { fetchAudioDuration, preview, stopPreview, stream } from '@/infrastructure/api/audios-api'
 
 const formatClock = (s: number): string => {
   const m = Math.floor(s / 60)
@@ -30,6 +30,7 @@ export function AudioPlayerPanel({
   deviceLabels = [],
   spl,
   offset = 0,
+  durationHint = null,
   onBack,
 }: {
   mode: 'frontend' | 'backend'
@@ -43,14 +44,39 @@ export function AudioPlayerPanel({
   spl?: number | null
   /** 实验室播放起点偏移（秒） */
   offset?: number
+  /** 音频库已知总时长（秒）：浏览器播放先作占位、metadata 到达后覆盖；
+   *  实验室播放无浏览器流，总时长全靠它兜底（V9.7.10 AudioPlayerModal 全模式取 metadata 同义） */
+  durationHint?: number | null
   /** 返回试听配置（§5.2 播放器→配置双向切换） */
   onBack: () => void
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  /** 调用方未带时长时的兜底（按音频 id/文件名回查音频库，实验室播放取不到流 metadata） */
+  const [resolvedDuration, setResolvedDuration] = useState<number | null>(null)
+  /** 生效总时长：调用方传入优先，缺省用回查结果 */
+  const hint = durationHint != null && durationHint > 0 ? durationHint : resolvedDuration
   const [current, setCurrent] = useState(0)
-  const [duration, setDuration] = useState(0)
+  const [duration, setDuration] = useState(hint != null && hint > 0 ? hint : 0)
   const [playing, setPlaying] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // 时长兜底：调用方（用例音频卡/全局噪声）未带时长时按文件名回查音频库
+  useEffect(() => {
+    setResolvedDuration(null)
+    if (audioId == null) return
+    if (durationHint != null && durationHint > 0) return
+    let cancelled = false
+    void fetchAudioDuration(Number(audioId), audioName ?? null)
+      .then((value) => {
+        if (!cancelled) setResolvedDuration(value)
+      })
+      .catch(() => {
+        /* 回查失败不阻断播放，进度条按已知信息展示 */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [audioId, audioName, durationHint])
 
   // 音频元素生命周期（浏览器播放载体；加载/播放/seek 共用一个实例）
   useEffect(() => {
@@ -91,7 +117,8 @@ export function AudioPlayerPanel({
     if (mode !== 'frontend' || audioId == null) return
     let cancelled = false
     setError(null)
-    setDuration(0)
+    // 音频库时长先占位；loadedmetadata 到达后用流真实时长覆盖（回查结果不重载流，见下方同步 effect）
+    setDuration(durationHint != null && durationHint > 0 ? durationHint : 0)
     setCurrent(0)
     setPlaying(false)
     void stream(Number(audioId))
@@ -106,19 +133,42 @@ export function AudioPlayerPanel({
     return () => {
       cancelled = true
     }
-  }, [mode, audioId])
+  }, [mode, audioId, durationHint])
 
-  // 实验室播放：进度按墙钟推进（设备端播放无浏览器流；offset 为起点）
+  // 浏览器播放：回查到的时长只填补显示（流 metadata 已到达时以流为准，不重载流）
+  useEffect(() => {
+    if (mode !== 'frontend') return
+    if (resolvedDuration == null) return
+    setDuration((prev) => (prev > 0 ? prev : resolvedDuration))
+  }, [mode, resolvedDuration])
+
+  // 实验室播放：设备端播放无浏览器流，总时长取音频库时长（durationHint/回查兜底），进度按墙钟推进
+  useEffect(() => {
+    if (mode !== 'backend') return
+    setDuration(hint != null && hint > 0 ? hint : 0)
+    setCurrent(offset > 0 ? offset : 0)
+  }, [mode, audioId, hint, offset])
+
+  // 实验室播放：进度按墙钟推进（offset 为起点；已知总时长时到点自动停止）
   useEffect(() => {
     if (mode !== 'backend') return
     if (!playing) return
     const start = performance.now()
     const base = offset > 0 ? offset : 0
+    const total = hint != null && hint > 0 ? hint : 0
     const timer = window.setInterval(() => {
-      setCurrent(base + (performance.now() - start) / 1000)
+      const next = base + (performance.now() - start) / 1000
+      if (total > 0 && next >= total) {
+        window.clearInterval(timer)
+        setPlaying(false)
+        setCurrent(0)
+        if (audioId != null) void stopPreview(Number(audioId))
+        return
+      }
+      setCurrent(next)
     }, 250)
     return () => window.clearInterval(timer)
-  }, [mode, playing, offset])
+  }, [mode, playing, offset, hint, audioId])
 
   /** 浏览器播放：真正播放/暂停当前音频元素 */
   const toggleFrontend = async () => {
@@ -234,7 +284,10 @@ export function AudioPlayerPanel({
         aria-label='播放进度'
         onValueChange={onSeek}
       />
-      <p className='text-muted-foreground font-mono text-xs tabular-nums'>
+      <p
+        data-testid='player-time'
+        className='text-muted-foreground font-mono text-xs tabular-nums'
+      >
         {formatClock(current)} / {formatClock(realDuration)}
       </p>
 
