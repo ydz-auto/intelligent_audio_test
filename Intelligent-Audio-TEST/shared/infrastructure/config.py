@@ -5,6 +5,23 @@
 import os
 from typing import Optional
 
+# INT-1491：gRPC 客户端默认端口一律取自 shared/config/service_ports.py（端口唯一来源），
+# 不在本文件重复写数字。此前这里仍写 INT-901 之前的 50061/50067/50071/50091，
+# Windows 排除端口段 50060-50159 内无法监听，服务端已按 service_ports 监听 510xx，
+# 网关/服务只要没有显式环境变量就会连回旧端口 → 整批 gRPC UNAVAILABLE。
+# 改端口只改 service_ports.py，客户端默认值随之生效。
+from shared.config.service_ports import (
+    ALGORITHM_SERVICE_GRPC_PORT as _ALGORITHM_SERVICE_GRPC_PORT,
+    API_TEST_SERVICE_GRPC_PORT as _API_TEST_SERVICE_GRPC_PORT,
+    AUDIO_SERVICE_GRPC_PORT as _AUDIO_SERVICE_GRPC_PORT,
+    AUTH_SERVICE_GRPC_PORT as _AUTH_SERVICE_GRPC_PORT,
+    DEVICE_SERVICE_GRPC_PORT as _DEVICE_SERVICE_GRPC_PORT,
+    E2E_TEST_GRPC_PORT as _E2E_TEST_GRPC_PORT,
+    EVALUATION_SERVICE_GRPC_PORT as _EVALUATION_SERVICE_GRPC_PORT,
+    REPORT_SERVICE_GRPC_PORT as _REPORT_SERVICE_GRPC_PORT,
+    TASK_SERVICE_GRPC_PORT as _TASK_SERVICE_GRPC_PORT,
+)
+
 
 class ConfigValidationError(RuntimeError):
     """配置校验异常"""
@@ -138,34 +155,34 @@ class BaseConfig:
 
     # --- gRPC 服务发现 ---
     E2E_TEST_SERVICE_HOST: str = _get_env('E2E_TEST_SERVICE_HOST', 'localhost')
-    E2E_TEST_SERVICE_GRPC_PORT: int = _get_int('E2E_TEST_SERVICE_GRPC_PORT', 50051)
+    E2E_TEST_SERVICE_GRPC_PORT: int = _get_int('E2E_TEST_SERVICE_GRPC_PORT', _E2E_TEST_GRPC_PORT)
     # --- audio_service gRPC（P2.5 从 e2e_test_service 拆出）---
     AUDIO_SERVICE_HOST: str = _get_env('AUDIO_SERVICE_HOST', 'localhost')
-    AUDIO_SERVICE_GRPC_PORT: int = _get_int('AUDIO_SERVICE_GRPC_PORT', 50052)
+    AUDIO_SERVICE_GRPC_PORT: int = _get_int('AUDIO_SERVICE_GRPC_PORT', _AUDIO_SERVICE_GRPC_PORT)
     # --- device_service gRPC（P2.5 从 e2e_test_service 拆出）---
     DEVICE_SERVICE_HOST: str = _get_env('DEVICE_SERVICE_HOST', 'localhost')
-    DEVICE_SERVICE_GRPC_PORT: int = _get_int('DEVICE_SERVICE_GRPC_PORT', 50053)
+    DEVICE_SERVICE_GRPC_PORT: int = _get_int('DEVICE_SERVICE_GRPC_PORT', _DEVICE_SERVICE_GRPC_PORT)
     TASK_SERVICE_HOST: str = _get_env('TASK_SERVICE_HOST', 'localhost')
-    TASK_SERVICE_GRPC_PORT: int = _get_int('TASK_SERVICE_GRPC_PORT', 50061)
+    TASK_SERVICE_GRPC_PORT: int = _get_int('TASK_SERVICE_GRPC_PORT', _TASK_SERVICE_GRPC_PORT)
     API_TEST_SERVICE_HOST: str = _get_env('API_TEST_SERVICE_HOST', 'localhost')
     API_TEST_SERVICE_PORT: int = _get_int('API_TEST_SERVICE_PORT', 5003)
-    API_TEST_SERVICE_GRPC_PORT: int = _get_int('API_TEST_SERVICE_GRPC_PORT', 50071)
+    API_TEST_SERVICE_GRPC_PORT: int = _get_int('API_TEST_SERVICE_GRPC_PORT', _API_TEST_SERVICE_GRPC_PORT)
 
     # --- evaluation_service gRPC ---
     EVALUATION_SERVICE_HOST: str = _get_env('EVALUATION_SERVICE_HOST', 'localhost')
-    EVALUATION_SERVICE_GRPC_PORT: int = _get_int('EVALUATION_SERVICE_GRPC_PORT', 50091)
+    EVALUATION_SERVICE_GRPC_PORT: int = _get_int('EVALUATION_SERVICE_GRPC_PORT', _EVALUATION_SERVICE_GRPC_PORT)
 
-    # --- algorithm_service gRPC（端口 50067 预留，proto 待接入）---
+    # --- algorithm_service gRPC（proto 待接入）---
     ALGORITHM_SERVICE_HOST: str = _get_env('ALGORITHM_SERVICE_HOST', 'localhost')
-    ALGORITHM_SERVICE_GRPC_PORT: int = _get_int('ALGORITHM_SERVICE_GRPC_PORT', 50067)
+    ALGORITHM_SERVICE_GRPC_PORT: int = _get_int('ALGORITHM_SERVICE_GRPC_PORT', _ALGORITHM_SERVICE_GRPC_PORT)
 
     # --- report_service gRPC ---
     REPORT_SERVICE_HOST: str = _get_env('REPORT_SERVICE_HOST', 'localhost')
-    REPORT_SERVICE_GRPC_PORT: int = _get_int('REPORT_SERVICE_GRPC_PORT', 51068)
+    REPORT_SERVICE_GRPC_PORT: int = _get_int('REPORT_SERVICE_GRPC_PORT', _REPORT_SERVICE_GRPC_PORT)
 
     # --- auth_service gRPC（51069，INT-926 平移避开 Windows Hyper-V 排除端口段）---
     AUTH_SERVICE_HOST: str = _get_env('AUTH_SERVICE_HOST', 'localhost')
-    AUTH_SERVICE_GRPC_PORT: int = _get_int('AUTH_SERVICE_GRPC_PORT', 51069)
+    AUTH_SERVICE_GRPC_PORT: int = _get_int('AUTH_SERVICE_GRPC_PORT', _AUTH_SERVICE_GRPC_PORT)
 
     # --- gRPC 客户端默认 deadline（INT-54）---
     # 未显式传 timeout 的 gRPC 客户端调用统一注入该 deadline（秒）。
