@@ -39,10 +39,14 @@ import type { LogWsFilter } from '@/infrastructure/realtime/useLogRealtimeWs'
 import type { LogExportInput, LogItem, LogQuery } from '@/domain/models/log'
 import {
   DEFAULT_REALTIME_CONFIG,
+  LOG_CATEGORY_OPTIONS,
   LOG_DEFAULT_PAGE_SIZE,
   LOG_LEVEL_OPTIONS,
+  LOG_MARK_FILTER_OPTIONS,
+  LOG_MODULE_OPTIONS,
   LOG_PAGE_SIZE_OPTIONS,
   LOG_SCOPE_OPTIONS,
+  getLogOptionLabel,
   type LogScope,
 } from '@/features/logs/constants'
 import {
@@ -107,6 +111,8 @@ export function LogsPage() {
   const [exportOpen, exportDialog] = useDialog()
   const [clearOpen, clearDialog] = useDialog()
   const [realtimeConfigOpen, realtimeConfigDialog] = useDialog()
+  /** 清除弹窗的时间点（弹窗持有输入、页面持有值：估算按它另发统计，INT-1654） */
+  const [clearBefore, setClearBefore] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [expandedId, setExpandedId] = useState<number | null>(null)
 
@@ -168,6 +174,14 @@ export function LogsPage() {
 
   const listQuery = useLogListQuery(query)
   const statsQuery = useLogStatsQuery(query)
+  /* 清除弹窗范围估算：POST /logs/clear 只按 before_datetime/keep_marked 生效，
+     与分类/级别/关键词等列表筛选无关 → 另发「无筛选 + 时间点之前」的统计（INT-1654） */
+  const clearEstimateQuery = useMemo<LogQuery>(() => ({
+    page: 1,
+    perPage: 1,
+    endTime: clearBefore || undefined,
+  }), [clearBefore])
+  const clearEstimateStatsQuery = useLogStatsQuery(clearEstimateQuery, { enabled: clearOpen })
   const realtime = useLogRealtime(DEFAULT_REALTIME_CONFIG, {
     wsFilter: realtimeWsFilter,
     canPollFallback: canManage,
@@ -280,6 +294,7 @@ export function LogsPage() {
 
   const handleClear = (beforeDatetime: string | null, keepMarked: boolean) => {
     clear.mutate({ beforeDatetime, keepMarked })
+    setClearBefore('')
     clearDialog.close()
   }
 
@@ -310,7 +325,15 @@ export function LogsPage() {
     setPage(1)
   }
 
-  /* ───────── 导出弹窗筛选摘要（§7.9，随筛选实时联动） ───────── */
+  /* ───────── 导出弹窗筛选摘要（§7.9，随筛选实时联动；取值中文标签，不外露后端枚举） ───────── */
+  const algorithmTypeLabel = useMemo(() => {
+    if (algorithmType === 'all') return undefined
+    return (
+      algorithmOptionsQuery.options.find((option) => option.value === algorithmType)
+        ?.name ?? algorithmType
+    )
+  }, [algorithmType, algorithmOptionsQuery.options])
+
   const exportSummary = useMemo<LogFilterSummary>(() => {
     const levelLabel =
       selectedLevels.length === LOG_LEVEL_OPTIONS.length
@@ -319,14 +342,24 @@ export function LogsPage() {
     return {
       startTime: startTime || undefined,
       endTime: endTime || undefined,
-      category: category === 'all' ? undefined : category,
-      module: module === 'all' ? undefined : module,
+      category:
+        category === 'all'
+          ? undefined
+          : getLogOptionLabel(LOG_CATEGORY_OPTIONS, category),
+      module:
+        module === 'all' ? undefined : getLogOptionLabel(LOG_MODULE_OPTIONS, module),
       level: levelLabel,
-      mark: markFilter === 'all' ? undefined : markFilter,
-      algorithmType: algorithmType === 'all' ? undefined : algorithmType,
+      mark:
+        markFilter === 'all'
+          ? undefined
+          : getLogOptionLabel(LOG_MARK_FILTER_OPTIONS, markFilter),
+      algorithmType: algorithmTypeLabel,
       keyword: searchKeyword || undefined,
     }
-  }, [startTime, endTime, category, module, markFilter, algorithmType, searchKeyword, selectedLevels])
+  }, [
+    startTime, endTime, category, module, markFilter, algorithmTypeLabel, searchKeyword,
+    selectedLevels,
+  ])
 
   /* ───────── 页面装配（§4.1 骨架） ───────── */
   return (
@@ -547,7 +580,9 @@ export function LogsPage() {
       <ClearLogsDialog
         open={clearOpen}
         onOpenChange={(open) => (open ? clearDialog.open() : clearDialog.close())}
-        estimatedCount={statsQuery.data?.total ?? 0}
+        estimatedCount={clearEstimateStatsQuery.data?.total}
+        before={clearBefore}
+        onBeforeChange={setClearBefore}
         onClear={handleClear}
         isPending={clear.isPending}
       />

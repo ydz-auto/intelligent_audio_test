@@ -23,11 +23,19 @@ export function useLogListQuery(query: LogQuery) {
   })
 }
 
-/** 日志统计（log:read；短 TTL 3s——实时增量时徽章跟随新日志） */
-export function useLogStatsQuery(query: LogQuery) {
+/**
+ * 日志统计（log:read；短 TTL 3s——实时增量时徽章跟随新日志）。
+ * enabled=false 用于「不在页面上常驻显示」的估算（如清除弹窗范围估算），
+ * 关闭时不发请求、data 为 undefined。
+ */
+export function useLogStatsQuery(
+  query: LogQuery,
+  options: { enabled?: boolean } = {}
+) {
   return useQuery({
     queryKey: [...LOG_STATS_QUERY_KEY, query],
     queryFn: () => getLogStats(query),
     staleTime: 3_000,
+    enabled: options.enabled ?? true,
   })
 }
