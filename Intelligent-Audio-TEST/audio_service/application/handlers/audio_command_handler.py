@@ -11,7 +11,7 @@ import logging
 import os
 import threading
 import traceback
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 from shared.utils.log_handler import log_and_emit
 from shared.infrastructure.storage import storage
@@ -121,11 +121,26 @@ def _dedupe_storage_key(key: str) -> str:
     return f'{stem}_{counter}{ext}'
 
 
-def _relocate_audio_file(audio, target_folder: str, copy_mode: bool) -> str:
-    """迁移音频物理文件到目标文件夹，返回新的 file_path。
+class _RelocationResult(NamedTuple):
+    """一次文件迁移的结果（INT-1562）。
 
-    - copy_mode=False（move）：目标 key 与源 key 相同视为原地不动，直接返回旧路径；
-      否则下载→重存→删除源存储对象。
+    - new_path：新的 file_path（写回 DB）
+    - created_object：本次新写入的存储对象；原地不动（未写对象）时为 None，
+      提交失败时据此回删，避免对象泄漏
+    - stale_source：move 成功提交后待删除的源对象；copy / 原地不动为 None
+    """
+
+    new_path: str
+    created_object: Optional[str]
+    stale_source: Optional[str]
+
+
+def _relocate_audio_file(audio, target_folder: str, copy_mode: bool) -> _RelocationResult:
+    """迁移音频物理文件到目标文件夹，返回 _RelocationResult。
+
+    - copy_mode=False（move）：目标 key 与源 key 相同视为原地不动；否则只做
+      「复制到目标」——**不在这里删除源对象**，由调用方在 DB 提交成功后尽力删除
+      （INT-1562：先删源后落库时服务中断会产生指向已丢失文件的悬空记录）。
     - copy_mode=True（copy）：下载→重存，保留源对象。
     """
     old_path = audio.file_path
@@ -134,28 +149,27 @@ def _relocate_audio_file(audio, target_folder: str, copy_mode: bool) -> str:
     filename = _extract_basename(old_path)
     target_key = f'direct/{target_folder}/{filename}'
     if not copy_mode and _same_storage_location(old_path, target_key):
-        return old_path
+        return _RelocationResult(old_path, None, None)
     deduped_key = _dedupe_storage_key(target_key)
 
     if old_path.startswith(('oss://', 'local://')):
+        stale_source = None if copy_mode else old_path
         tmp = storage.load_file(old_path)
         try:
             new_path = storage.save_file(tmp, 'audios', deduped_key)
         finally:
             if tmp and os.path.exists(tmp):
                 os.remove(tmp)
-        if not copy_mode:
-            storage.delete(old_path)
-        return new_path
+        return _RelocationResult(new_path, new_path, stale_source)
 
     if os.path.isabs(old_path):
         # 传统本地绝对路径：直接以本地文件为存储源
+        stale_source = None if copy_mode else old_path
         new_path = storage.save_file(old_path, 'audios', deduped_key)
-        if not copy_mode and os.path.exists(old_path):
-            os.remove(old_path)
-        return new_path
+        return _RelocationResult(new_path, new_path, stale_source)
 
     # 裸逻辑 key（无 scheme）：按 audios 分类处理
+    stale_source = None if copy_mode else storage.build_path('audios', old_path)
     src_path = storage.build_path('audios', old_path)
     tmp = storage.load_file(src_path)
     try:
@@ -163,9 +177,7 @@ def _relocate_audio_file(audio, target_folder: str, copy_mode: bool) -> str:
     finally:
         if tmp and os.path.exists(tmp):
             os.remove(tmp)
-    if not copy_mode:
-        storage.delete(src_path)
-    return new_path
+    return _RelocationResult(new_path, new_path, stale_source)
 
 
 class AudioCommandHandler:
@@ -225,6 +237,26 @@ class AudioCommandHandler:
         threading.Thread(
             target=_run, daemon=True, name='audio-file-cleanup'
         ).start()
+
+    @staticmethod
+    def _delete_relocated_object_best_effort(path: str) -> None:
+        """尽力删除迁移产生的对象：成功后的源对象 / 失败项回删的目标对象（INT-1562）。
+
+        DB 提交后删源失败只会留下未被引用的对象，绝不能让异常冒泡把已提交的
+        批量操作变成失败响应；本地绝对路径（历史数据）走 os.remove，其余走
+        storage.delete。
+        """
+        if not path:
+            return
+        try:
+            if os.path.isabs(path):
+                if os.path.exists(path):
+                    os.remove(path)
+            else:
+                storage.delete(path)
+        except Exception:
+            logger.warning(
+                "清理批量迁移文件失败（仅对象泄漏，不影响记录）: path=%s", path, exc_info=True)
 
     # ========== 音频元数据写操作 ==========
 
@@ -489,15 +521,19 @@ class AudioCommandHandler:
         success_count = 0
         failed_count = 0
         failed_ids = []
+        pending_source_deletes: List[str] = []
+        created_objects: List[str] = []
         try:
             for audio in audios:
+                created_object = None
                 try:
-                    new_path = _relocate_audio_file(audio, folder, copy_mode=copy_mode)
+                    relocation = _relocate_audio_file(audio, folder, copy_mode=copy_mode)
+                    created_object = relocation.created_object
                     if copy_mode:
                         self.repo.create_audio({
                             'name': audio.name,
                             'original_filename': audio.original_filename,
-                            'file_path': new_path,
+                            'file_path': relocation.new_path,
                             'size': audio.size,
                             'duration': audio.duration,
                             'sample_rate': audio.sample_rate,
@@ -511,24 +547,41 @@ class AudioCommandHandler:
                             'source_language': audio.source_language,
                         })
                     else:
-                        self.repo.update_audio(audio.id, {'file_path': new_path})
+                        self.repo.update_audio(audio.id, {'file_path': relocation.new_path})
+                        if relocation.stale_source:
+                            pending_source_deletes.append(relocation.stale_source)
+                    if created_object:
+                        created_objects.append(created_object)
                     success_count += 1
                 except Exception as e:
                     logger.debug("批量%s音频失败: audio_id=%s, err=%s", action_label, audio.id, e, exc_info=True)
                     failed_count += 1
                     failed_ids.append(audio.id)
+                    if created_object:
+                        # 该项未成功，新写入的目标对象没有 DB 记录引用，尽力回删
+                        self._delete_relocated_object_best_effort(created_object)
             self.repo.commit()
-            message = f'成功{action_label} {success_count} 个音频'
-            if failed_count:
-                message += f'，{failed_count} 个失败（audio_id: {failed_ids}）'
-            return _ok(data={
-                'action': 'copy' if copy_mode else 'move',
-                'success_count': success_count,
-                'failed_count': failed_count,
-            }, message=message)
         except Exception as e:
             self.repo.rollback()
+            # 提交失败：本批新写入的目标对象均无 DB 记录引用，尽力回删；
+            # 源对象尚未删除，失败后存储回到原状（INT-1562）
+            for path in created_objects:
+                self._delete_relocated_object_best_effort(path)
             return _fail(f'批量{action_label}失败: {e}')
+
+        # DB 已提交：此刻起删除源对象即使失败也只是对象泄漏，
+        # 不会出现记录指向已丢失文件。按建议优先提交后删源（INT-1562）。
+        for path in pending_source_deletes:
+            self._delete_relocated_object_best_effort(path)
+
+        message = f'成功{action_label} {success_count} 个音频'
+        if failed_count:
+            message += f'，{failed_count} 个失败（audio_id: {failed_ids}）'
+        return _ok(data={
+            'action': 'copy' if copy_mode else 'move',
+            'success_count': success_count,
+            'failed_count': failed_count,
+        }, message=message)
 
     # ========== 批量 rename（name 列更新，INT-818） ==========
 
