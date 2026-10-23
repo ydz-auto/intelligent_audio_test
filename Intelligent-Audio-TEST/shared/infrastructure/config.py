@@ -49,6 +49,14 @@ class BaseConfig:
     # --- Redis ---
     REDIS_URL: str = _get_env('REDIS_URL', 'redis://localhost:6379')
 
+    # --- Redis 事件总线频道前缀（INT-1235）---
+    # 真实库栈与 5000 段开发栈共用同一 Redis 实例时，pub/sub 通道名跨 DB index
+    # 全局共享：真实栈 SSE 会转发测试栈发布的 task_log / task_progress 等事件，
+    # 事件里的 task_id/report_id 在主库不存在，前端名称解析逐个 404（INT-1227）。
+    # 真实栈经 real_stack.py 设置非空前缀（如 real_）把通道隔离成
+    # real_task_events 等；默认空 = 保持原通道名，5000 段等其它栈不受影响。
+    EVENT_CHANNEL_PREFIX: str = _get_env('EVENT_CHANNEL_PREFIX', '')
+
     # --- OSS (RustFS / S3 兼容) ---
     OSS_ENDPOINT: str = _get_env('OSS_ENDPOINT', 'http://localhost:9000')
     OSS_ACCESS_KEY: str = _get_env('OSS_ACCESS_KEY', required=True)
