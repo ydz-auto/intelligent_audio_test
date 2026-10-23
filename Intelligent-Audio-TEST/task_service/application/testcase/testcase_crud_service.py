@@ -670,7 +670,16 @@ class TestCaseCrudService:
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 
     def update_ref_params(self, tc_id: str, round_number: int, data: dict) -> dict:
-        """更新指定用例指定轮的参考参数文件。"""
+        """更新指定用例指定轮的参考参数文件。
+
+        INT-1645：路径以 reference_params 独立列为准（config.rounds[] 兜底）
+        并归一化；无路径的轮按规范 key 新建；读写统一走存储抽象（不再对宿主
+        绝对路径直接 open()）；写入成功后把实际落点 upsert 回独立列。
+        """
+        from task_service.infrastructure.oss.ref_params_store import (
+            build_ref_params_path, normalize_ref_params_path, resolve_round_ref_path,
+            to_round_number, upsert_round_ref_path, write_ref_params,
+        )
         from task_service.infrastructure.acl.algorithm_acl_repository import AlgorithmRepository
         _algo_repo = AlgorithmRepository()
 
@@ -692,40 +701,43 @@ class TestCaseCrudService:
             new_ref_params = data.get('referenceParams')
             if new_ref_params is None:
                 return {'success': False, 'message': '缺少 referenceParams 字段', 'data': None, 'code': 400}
+            if not isinstance(new_ref_params, list):
+                return {'success': False, 'message': 'referenceParams 必须为数组', 'data': None, 'code': 400}
 
             new_ref_params = _algo_repo.algo_get_all_reference_params(new_ref_params)
+            if not isinstance(new_ref_params, list):
+                return {'success': False, 'message': '参考参数归一化失败', 'data': None, 'code': 500}
 
-            config = tc.config or {}
-            rounds = config.get('rounds', [])
-
-            target_round = None
-            for r in rounds:
-                if isinstance(r, dict) and r.get('roundNumber') == round_number:
-                    target_round = r
-                    break
-
-            if not target_round:
+            round_number = to_round_number(round_number)
+            round_exists, raw_path = resolve_round_ref_path(tc, round_number)
+            if not round_exists:
                 return {'success': False, 'message': f"未找到第 {round_number} 轮", 'data': None, 'code': 404}
 
-            ref_path = target_round.get('referenceParamsPath')
-            if not ref_path:
-                return {'success': False, 'message': f"第 {round_number} 轮未配置参考参数路径", 'data': None, 'code': 404}
-
-            if not os.path.exists(ref_path):
-                return {'success': False, 'message': f"参考参数文件不存在: {ref_path}", 'data': None, 'code': 404}
+            ref_path = (normalize_ref_params_path(raw_path) if raw_path
+                        else build_ref_params_path(tc_id, round_number))
 
             try:
-                with open(ref_path, 'w', encoding='utf-8') as f:
-                    json.dump(new_ref_params, f, ensure_ascii=False, indent=2)
+                stored_path = write_ref_params(ref_path, new_ref_params)
             except Exception as e:
-                return {'success': False, 'message': f"写入参考参数文件失败: {str(e)}", 'data': None, 'code': 500}
+                logger.error(f"写入参考参数文件失败 {ref_path}: {e}", exc_info=True)
+                return {
+                    'success': False,
+                    'message': f"写入参考参数文件失败: {ref_path}: {str(e)}",
+                    'data': None,
+                    'code': 500,
+                }
+
+            # 只回写独立列，不把路径写回 config.rounds（卡面 §六.4）
+            tc.reference_params = upsert_round_ref_path(
+                tc.reference_params, round_number, stored_path)
+            self.repo.commit()
 
             return {
                 'success': True,
                 'message': '参考参数更新成功',
                 'data': {
                     'roundNumber': round_number,
-                    'referenceParamsPath': ref_path,
+                    'referenceParamsPath': stored_path,
                     'referenceParams': new_ref_params
                 }
             }

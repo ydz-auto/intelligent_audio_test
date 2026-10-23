@@ -458,7 +458,8 @@ class TestCaseQueryService:
         if not result.get('success'):
             code = result.get('code', 400)
             if code == 404:
-                return error_response(result.get('message', '未找到测试用例'), 404)
+                # INT-1645：HTTP 状态与 body code 对齐（原实现 body 404 / HTTP 400）
+                return error_response(result.get('message', '未找到测试用例'), 404, http_code=404)
             return error_response(result.get('message', '查询失败'))
 
         return success_response(result.get('data'))
