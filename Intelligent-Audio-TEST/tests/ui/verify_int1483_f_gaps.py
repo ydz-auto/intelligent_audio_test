@@ -174,6 +174,9 @@ try:
     close_all()
     save()
 
+    # F4~F6 由 verify_int1483_g2_params_rest.py（H1~H4）覆盖，这里提前结束
+    raise SystemExit(0)
+
     # ================= F4 列表加载态 / 500 错误态 =================
     H.goto_page(d)
     # 加载骨架：延迟 /algorithm/definitions 4s，再切状态筛选触发新查询

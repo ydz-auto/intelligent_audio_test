@@ -110,6 +110,7 @@ try:
     t2 = TYPES[0] + '_draft'
     n2 = NAMES[0] + '_草稿'
     OUT['draft_create'] = create_algo(t2, n2)
+    H.goto_page(d)  # 接口建记录后刷新列表再走行操作
     # 打开编辑、改名为 X、保存草稿（不等自动），再改名为 Y 发布，发布后读草稿
     H.open_row_menu(d, n2)
     H.click_menuitem(d, '编辑')
