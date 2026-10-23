@@ -76,6 +76,8 @@ import { AlarmPanel } from '@/features/devices/components/monitor/alarm-panel'
 import { AlarmRuleDialog } from '@/features/devices/components/monitor/alarm-rule-dialog'
 import { DeviceMutateDrawer } from '@/features/devices/components/modals/device-mutate-drawer'
 import { ScanDevicesDialog } from '@/features/devices/components/modals/scan-devices-dialog'
+import { ImportDevicesDialog } from '@/features/devices/components/modals/import-devices-dialog'
+import { ExportDevicesDialog } from '@/features/devices/components/modals/export-devices-dialog'
 import { DeviceDetailDialog } from '@/features/devices/components/modals/device-detail-dialog'
 import { DeviceGroupManagerDialog } from '@/features/devices/components/modals/device-group-manager-dialog'
 import { LaboratoryManagerDialog } from '@/features/devices/components/modals/laboratory-manager-dialog'
@@ -153,7 +155,8 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
   const alarmsQuery = useDeviceAlarms()
   const rulesQuery = useAlarmRules()
   const historyQuery = useStatusHistory()
-  const { removeTest, removePlayback, removeApi, control, setOccupied, batch } = useDeviceMutations()
+  const { removeTest, removePlayback, removeApi, control, setOccupied, batch, invalidateAll } =
+    useDeviceMutations()
   const { acknowledge } = useAlarmMutations()
 
   const [testFilters, setTestFilters] = useState<TestDeviceFilters>(DEFAULT_TEST_FILTERS)
@@ -179,6 +182,9 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
     Partial<TestDevice> | Partial<PlaybackDevice> | Partial<ApiDevice> | null
   >(null)
   const [scanOpen, setScanOpen] = useState(false)
+  /** 导入/导出弹窗（INT-1624：接 INT-816 三资源端点，按当前页签取资源） */
+  const [importOpen, setImportOpen] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
   /** INT-1029 扫描弹窗来源（header=更多操作扫描 → 开新增；drawer=抽屉内扫描 → 回填当前表单） */
   const [scanInvoker, setScanInvoker] = useState<'header' | 'drawer'>('header')
   const [mutateScanFill, setMutateScanFill] = useState<{
@@ -215,6 +221,9 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
     setSelectedIds(new Set())
     setPage(1)
     setToggles((prev) => ({ ...prev, alarmsOpen: false }))
+    // 页签切换即关导入/导出弹窗（资源随页签变化，避免在旧页签资源上继续操作）
+    setImportOpen(false)
+    setExportOpen(false)
   }, [tab])
 
   // 全局算法变更（含 chip × 清空）→ 回第一页并清空选择，避免对已不可见的设备做批量操作
@@ -579,6 +588,8 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
             toggles={toggles}
             onTogglesChange={setToggles}
             canCreate={canCreate}
+            canImport={canCreate}
+            canExport={canRead}
             canControl={canControl}
             canBatchHealth={canBatchHealth}
             canGroupManage={canGroupManage}
@@ -591,8 +602,8 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
             onGroupManage={() => setGroupManagerOpen(true)}
             onLabManage={() => setLabManagerOpen(true)}
             onBatchHealth={() => void handleBatchAction('health_check')}
-            onImport={() => toast.info('设备导入导出后端建设中')}
-            onExport={() => toast.info('设备导入导出后端建设中')}
+            onImport={() => setImportOpen(true)}
+            onExport={() => setExportOpen(true)}
           />
         </SectionPageLayout.Actions>
 
@@ -781,6 +792,20 @@ export function DevicesPage({ tab }: { tab: DevicesTabKey }) {
         tab={tab}
         onAddToMutate={handleScanAdd}
         fillMode={scanInvoker === 'drawer'}
+      />
+      {/* 导入/导出（§4.5；INT-1624 接 INT-816；导入成功刷新列表/徽章/统计卡） */}
+      <ImportDevicesDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        tab={tab}
+        onImported={invalidateAll}
+      />
+      <ExportDevicesDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        tab={tab}
+        selectedIds={[...selectedIds]}
+        filteredIds={sortedRows.map((row) => row.id)}
       />
       <DeviceDetailDialog
         state={detailState}
