@@ -5,13 +5,21 @@
  */
 import type {
   AudioAsset,
+  AudioFeatures,
   AudioFolderNode,
   AudioListStats,
+  AudioProcessMode,
+  AudioProcessOperation,
+  AudioProcessResult,
+  AudioQuality,
   AudioType,
 } from '@/domain/models/audio'
 import type {
+  AudioFeaturesDto,
   AudioItemDto,
   AudioListStatsDto,
+  AudioProcessResultDto,
+  AudioQualityDto,
   FolderTreeNodeDto,
 } from '@/infrastructure/dto/audio.dto'
 
@@ -72,5 +80,71 @@ export function folderNodeFromDto(
     fileCount: dto.file_count ?? 0,
     depth,
     children: (dto.folders ?? []).map((child) => folderNodeFromDto(child, depth + 1)),
+  }
+}
+
+const PROCESS_OPERATIONS: ReadonlySet<string> = new Set(['denoise', 'gain', 'trim'])
+
+/** operation 归一：非 denoise/gain/trim 回 denoise（后端已校验，前端仅收窄类型） */
+export function toProcessOperation(operation: string): AudioProcessOperation {
+  return PROCESS_OPERATIONS.has(operation)
+    ? (operation as AudioProcessOperation)
+    : 'denoise'
+}
+
+/** mode 归一：非 overwrite 一律按 new（后端缺省 new） */
+export function toProcessMode(mode: string): AudioProcessMode {
+  return mode === 'overwrite' ? 'overwrite' : 'new'
+}
+
+/** 特征分析 DTO→Domain（time_domain → timeDomain；三组特征原值透传，后端已四舍五入） */
+export function audioFeaturesFromDto(dto: AudioFeaturesDto): AudioFeatures {
+  return {
+    spectral: {
+      fundamentalRangeLow: dto.spectral.fundamental_range_low,
+      fundamentalRangeHigh: dto.spectral.fundamental_range_high,
+      dominantFrequency: dto.spectral.dominant_frequency,
+      harmonicDistortion: dto.spectral.harmonic_distortion,
+    },
+    energy: {
+      averageEnergyDb: dto.energy.average_energy_db,
+      peakEnergyDb: dto.energy.peak_energy_db,
+      energyConcentration: dto.energy.energy_concentration,
+    },
+    timeDomain: {
+      zeroCrossingRate: dto.time_domain.zero_crossing_rate,
+      activeDurationRatio: dto.time_domain.active_duration_ratio,
+      onsetTime: dto.time_domain.onset_time,
+    },
+    audioId: dto.audio_id,
+    duration: dto.duration,
+  }
+}
+
+/** 质量评估 DTO→Domain */
+export function audioQualityFromDto(dto: AudioQualityDto): AudioQuality {
+  return {
+    snrDb: dto.snr_db,
+    dynamicRangeDb: dto.dynamic_range_db,
+    frequencyResponseScore: dto.frequency_response_score,
+    qualityScore: dto.quality_score,
+    audioId: dto.audio_id,
+    duration: dto.duration,
+  }
+}
+
+/** 处理结果 DTO→Domain（new_audio_id 仅 mode=new 有值） */
+export function audioProcessResultFromDto(
+  dto: AudioProcessResultDto
+): AudioProcessResult {
+  return {
+    audioId: dto.audio_id,
+    operation: toProcessOperation(dto.operation),
+    mode: toProcessMode(dto.mode),
+    format: dto.format,
+    filePath: dto.file_path,
+    duration: dto.duration,
+    size: dto.size,
+    newAudioId: dto.new_audio_id ?? null,
   }
 }
