@@ -36,6 +36,11 @@ logger = logging.getLogger(__name__)
 
 _UTC_PLUS_8 = timezone(timedelta(hours=8))
 
+# 可挑选任务清单（INT-1496 §8.1）：入参取值显式枚举，拒绝魔法字符串
+_PICKABLE_TASK_STATUSES = tuple(s.value for s in PickableTaskStatus)
+_PICKABLE_TASK_SORT_KEYS = ('status', 'name', 'created_at')
+_PICKABLE_TASK_SORT_ORDERS = ('asc', 'desc')
+
 
 class CherryPickService:
     """挑选合并应用服务（S1-S5 命令与查询）。"""
@@ -331,6 +336,51 @@ class CherryPickService:
                     'data': {'code': 400}, 'code': 400}
         except Exception as e:
             logger.error(f"挑选候选结果查询失败: {e}", exc_info=True)
+            return {'success': False, 'message': str(e), 'data': None, 'code': 500}
+
+    def pickable_tasks(self, data: dict) -> dict:
+        """挑选向导阶段 1 可挑选任务清单（设计文档 §8.1，INT-1496）。
+
+        取代「candidates 首页 200 行客户端聚合」的旧数据源：聚合与分页由仓储
+        单条 SQL 完成，返回体只含任务级字段，不取评估状态 / 用例元信息 /
+        音频时长等结果级装饰（性能硬性 1/3）。
+
+        参数：keyword（任务名模糊）/ status（PickableTaskStatus 枚举值）/
+        sort_by（status|name|created_at）/ sort_order（asc|desc）/ page / per_page。
+        """
+        try:
+            keyword = (data.get('keyword') or '').strip() or None
+            status = data.get('status') or None
+            if status is not None and status not in _PICKABLE_TASK_STATUSES:
+                return {'success': False, 'message': f'不支持的任务状态: {status}',
+                        'data': {'code': 400}, 'code': 400}
+            sort_by = data.get('sort_by') or 'status'
+            if sort_by not in _PICKABLE_TASK_SORT_KEYS:
+                return {'success': False, 'message': f'不支持的排序键: {sort_by}',
+                        'data': {'code': 400}, 'code': 400}
+            sort_order = (data.get('sort_order') or 'asc').lower()
+            if sort_order not in _PICKABLE_TASK_SORT_ORDERS:
+                return {'success': False, 'message': f'不支持的排序方向: {sort_order}',
+                        'data': {'code': 400}, 'code': 400}
+            page = max(1, int(data.get('page') or 1))
+            per_page = min(200, max(1, int(data.get('per_page') or 50)))
+
+            from task_service.infrastructure.visibility_context import visibility_identity
+            user_id, is_admin = visibility_identity()
+            result = self._repo.pickable_tasks(
+                keyword=keyword, status=status, sort_by=sort_by,
+                sort_order=sort_order, page=page, per_page=per_page,
+                user_id=user_id, is_admin=is_admin,
+            )
+            return {'success': True, 'message': 'ok', 'data': {
+                'items': result['items'], 'total': result['total'],
+                'page': page, 'per_page': per_page,
+            }}
+        except (ValueError, TypeError) as e:
+            return {'success': False, 'message': f'查询参数非法: {e}',
+                    'data': {'code': 400}, 'code': 400}
+        except Exception as e:
+            logger.error(f"可挑选任务清单查询失败: {e}", exc_info=True)
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 
     def _query_candidate_results(self, task_ids, device_ids, case_ids, case_keyword,

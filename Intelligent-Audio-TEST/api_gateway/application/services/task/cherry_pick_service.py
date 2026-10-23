@@ -19,6 +19,7 @@ from api_gateway.schemas.cherry_pick import (
     CherryPickCartRemoveRequest,
     CherryPickSaveSetRequest,
     CherryPickCandidatesQuery,
+    CherryPickPickableTasksQuery,
     CherryPickCheckoutRequest,
     _CODE_HTTP_MAP,
 )
@@ -169,6 +170,29 @@ class CherryPickService:
         result = _cherry_pick_acl.list_candidates(payload)
         if not result.get('success'):
             return error_response(result.get('message', '查询挑选候选失败'))
+        return success_response(result.get('data') or {})
+
+    # INT-1496 §8.1：挑选向导阶段 1 可挑选任务清单（替代候选首页 200 行客户端聚合）。
+    # 网关只做参数校验与透传——聚合（GROUP BY t.id）与分页在 task_service 仓储
+    # 单条 SQL 内完成，响应体只含任务级字段，不接收候选结果行。
+    @staticmethod
+    def list_pickable_tasks():
+        try:
+            query = _parse_query_params(CherryPickPickableTasksQuery)
+        except Exception as e:
+            return error_response(f"数据验证失败: {e}")
+        payload = {
+            'keyword': (query.keyword or '').strip() or None,
+            'status': query.status.value if query.status else None,
+            'sort_by': query.sort_by,
+            'sort_order': query.sort_order,
+            'page': query.page,
+            'per_page': query.per_page,
+        }
+        result = _cherry_pick_acl.list_pickable_tasks(payload)
+        if not result.get('success'):
+            return error_response(result.get('message', '查询可挑选任务失败'),
+                                  http_code=_CODE_HTTP_MAP.get(result.get('code'), 400))
         return success_response(result.get('data') or {})
 
     # INT-577 §11-4：全选当前筛选（POST body 携带与 candidates 相同筛选条件，

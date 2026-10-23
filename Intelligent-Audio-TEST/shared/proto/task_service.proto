@@ -308,6 +308,8 @@ service CherryPickService {
   rpc RestoreCherryPickSetToCart(CherryPickSetIdRequest) returns (TaskConfigResponse);
   // ---- 挑选候选查询（S2 多条件 AND，设备+用例为点名必支持项）----
   rpc ListCherryPickCandidates(CherryPickCandidatesRequest) returns (TaskConfigResponse);
+  // ---- 可挑选任务清单（INT-1496 挑选向导阶段 1 数据源；服务端一次 GROUP BY 聚合）----
+  rpc ListCherryPickPickableTasks(CherryPickPickableTasksRequest) returns (TaskConfigResponse);
   // ---- 下单（三出口 action=merge/reexecute/reevaluate + 合并预览）----
   rpc CherryPickPreview(CherryPickEmptyRequest) returns (TaskConfigResponse);
   rpc CherryPickCheckout(CherryPickCheckoutRequest) returns (TaskConfigResponse);
@@ -333,6 +335,10 @@ message CherryPickSetIdRequest {
 message CherryPickCandidatesRequest {
   string data = 1;  // JSON: {task_ids?, device_ids?, case_ids?, execution_status?,
                     //       evaluation_status?, start_date?, end_date?, page, per_page}
+}
+message CherryPickPickableTasksRequest {
+  string data = 1;  // JSON: {keyword?, status?, sort_by?, sort_order?, page, per_page}
+                    // 任务级聚合结果（items 只含 id/name/execution_status/pickable_count/created_at）
 }
 message CherryPickCheckoutRequest {
   string data = 1;  // JSON: {action: 'merge'|'reexecute'|'reevaluate'（缺省 merge）,

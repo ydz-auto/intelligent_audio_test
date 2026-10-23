@@ -122,6 +122,16 @@ class _CherryPickProxy:
                           default_return=lambda e: {'success': False, 'message': f'查询挑选候选失败: {e}', 'data': None, 'code': 500},
                           error_msg_prefix='查询挑选候选失败')
 
+    # INT-1496 §8.1：可挑选任务清单（阶段 1 数据源；聚合/分页由 task_service 完成）
+    def list_pickable_tasks(self, query: dict):
+        def _call():
+            resp = self.stub.ListCherryPickPickableTasks(task_pb.CherryPickPickableTasksRequest(
+                data=json.dumps(query or {}, ensure_ascii=False, default=str)))
+            return self._resp(resp)
+        return _grpc_call(_call,
+                          default_return=lambda e: {'success': False, 'message': f'查询可挑选任务失败: {e}', 'data': None, 'code': 500},
+                          error_msg_prefix='查询可挑选任务失败')
+
     # ---- 下单（三出口 + 预览）----
 
     def preview(self):

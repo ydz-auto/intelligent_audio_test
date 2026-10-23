@@ -10,8 +10,11 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy import case, func as sa_func
 from sqlalchemy.exc import IntegrityError
 
+from shared.infrastructure.visibility_filter import visible_condition
+from shared.models.common_enums import PickableTaskStatus
 from shared.models.database import get_db_session
 from shared.utils.db_session import with_session
 from task_service.infrastructure.persistence.models import (
@@ -379,6 +382,105 @@ class CherryPickRepository:
                 .filter(TaskCherryPickRelation.cherry_pick_task_id.in_(ids))
                 .distinct().all())
         return [r[0] for r in rows]
+
+
+    # ==================== 可挑选任务清单（INT-1496 阶段 1） ====================
+
+    @with_session(auto_commit=False)
+    def pickable_tasks(self, keyword: Optional[str] = None, status: Optional[str] = None,
+                       sort_by: str = 'status', sort_order: str = 'asc',
+                       page: int = 1, per_page: int = 50,
+                       user_id=None, is_admin: bool = False) -> Dict[str, Any]:
+        """可挑选任务清单（设计文档 §8.1，INT-1496）：任务级聚合 + 服务端分页。
+
+        性能硬性 1/2：`test_tasks ⋈ test_results` 在单条 SQL 内按 `t.id`
+        GROUP BY 出 `pickable_count`，`count(*) over()` 出筛选命中的任务总数，
+        再在聚合结果上 LIMIT/OFFSET；不把结果行或全量任务行拉进进程内存。
+        返回体只含任务级字段（不含结果行 / 用例 / 设备 / 评估装饰）。
+
+        口径：
+        - keyword：任务名模糊匹配（只匹配任务名，不匹配任务 ID）
+        - status：任务状态过滤（PickableTaskStatus 枚举值；None = 全部三终态）
+        - sort_by：status（权重 completed→failed→stopped）/ name / created_at；
+          sort_order=desc 时主键与次级键同向反转
+        - 次序稳定：任何排序键后都追加 `t.id ASC` 兜底
+        - execution_status 返回的是**任务**状态（不是结果级执行状态）
+        - created_at 返回的是**任务**创建时间（不是首条结果时间）
+        - user_id / is_admin：INT-423 可见性（非 owner 非 admin 看不到私有任务）
+
+        Returns:
+            {'items': [{id, name, execution_status, pickable_count, created_at}],
+             'total': 命中任务总数（不受分页影响）}
+        """
+        session = get_db_session()
+        statuses = [s.value for s in PickableTaskStatus]
+        filters = [
+            Task.deleted == False,  # noqa: E712
+            Task.status.in_([status] if status else statuses),
+            TestResult.excluded == 0,
+            visible_condition(Task.created_by_user_id, Task.visibility, user_id, is_admin),
+        ]
+        if keyword:
+            filters.append(Task.name.ilike(f'%{keyword}%'))
+
+        # 状态权重：枚举声明顺序即 completed → failed → stopped
+        status_weight = case(
+            {s.value: idx for idx, s in enumerate(PickableTaskStatus)},
+            value=Task.status,
+            else_=len(statuses),
+        )
+        order_cols = []
+        if sort_by == 'created_at':
+            order_cols.append(Task.created_at)
+        elif sort_by == 'name':
+            order_cols.append(Task.name)
+        else:
+            order_cols.append(status_weight)
+            order_cols.append(Task.name)  # 同权重按任务名
+        if sort_order == 'desc':
+            order_cols = [col.desc() for col in order_cols]
+        else:
+            order_cols = [col.asc() for col in order_cols]
+        order_cols.append(Task.id.asc())  # 兜底稳定次序
+
+        rows = (session.query(
+                    Task.id.label('id'),
+                    Task.name.label('name'),
+                    Task.status.label('execution_status'),
+                    Task.created_at.label('created_at'),
+                    sa_func.count(TestResult.id).label('pickable_count'),
+                    sa_func.count().over().label('total'),
+                )
+                .join(TestResult, TestResult.task_id == Task.id)
+                .filter(*filters)
+                .group_by(Task.id, Task.name, Task.status, Task.created_at)
+                .having(sa_func.count(TestResult.id) > 0)
+                .order_by(*order_cols)
+                .limit(per_page)
+                .offset((page - 1) * per_page)
+                .all())
+
+        if rows:
+            total = int(rows[0].total or 0)
+        else:
+            # 翻到末页之后：窗口列无可读行，按同一筛选口径另取分组计数
+            grouped = (session.query(Task.id)
+                       .join(TestResult, TestResult.task_id == Task.id)
+                       .filter(*filters)
+                       .group_by(Task.id)
+                       .subquery())
+            total = int(session.query(sa_func.count()).select_from(grouped).scalar() or 0)
+
+        return {
+            'items': [{
+                'id': row.id,
+                'name': row.name,
+                'execution_status': row.execution_status,
+                'pickable_count': int(row.pickable_count or 0),
+                'created_at': row.created_at.isoformat() if row.created_at else None,
+            } for row in rows],
+            'total': total,
+        }
 
 
 # 单例

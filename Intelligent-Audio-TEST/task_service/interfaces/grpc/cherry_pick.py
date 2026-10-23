@@ -126,6 +126,14 @@ class CherryPickServiceServicer(task_grpc.CherryPickServiceServicer):
         except Exception as e:
             return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
 
+    def ListCherryPickPickableTasks(self, request, context=None):
+        try:
+            from task_service.application.task.cherry_pick_service import cherry_pick_service
+            data = _loads(request.data, {})
+            return self._resp(cherry_pick_service.pickable_tasks(data))
+        except Exception as e:
+            return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
+
     # ---- 下单（三出口 + 预览）----
 
     def CherryPickPreview(self, request, context=None):

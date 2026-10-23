@@ -73,6 +73,13 @@ def list_candidates(_: None = require_permission('task:read')):
     return to_response(CherryPickService.list_candidates())
 
 
+# INT-1496 §8.1：挑选向导阶段 1「可挑选任务清单」（任务级聚合，服务端分页；
+# 替代 candidates 首页 200 行的客户端聚合）。网关只做参数校验与信封，不做聚合。
+@router.get('/pickable-tasks')
+def list_pickable_tasks(_: None = require_permission('task:read')):
+    return to_response(CherryPickService.list_pickable_tasks())
+
+
 # INT-577 §11-4：全选当前筛选——返回当前筛选命中全部 result_id 集合（跨页全选语义）
 @router.post('/candidates/select-all')
 def select_all_candidates(_: None = require_permission('task:read')):
