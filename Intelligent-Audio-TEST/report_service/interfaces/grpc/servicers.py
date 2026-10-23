@@ -50,6 +50,7 @@ from report_service.application.queries.report_queries import (
     GetReportProgressQuery,
     GetReportQuery,
     GetReportSummaryQuery,
+    ListReportBriefsByTaskIdsQuery,
     ListReportsQuery,
     split_report_types,
 )
@@ -501,6 +502,30 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
             )
         except Exception as e:
             logger.exception("GetReportProgress failed")
+            return self._resp(False, str(e), None)
+
+    def ListReportsByTaskIds(self, request, context=None):
+        """页级批量列出多个任务的报告摘要（INT-1462：任务列表 N+1 消解）。
+
+        请求字段（proto ListReportsByTaskIdsRequest）：
+            task_ids: repeated int32  页面任务 ID 集合
+            per_task_limit: int32     每个任务最多返回条数（0 = 默认 100）
+
+        响应 data：{'items_by_task': {'<task_id>': [{id,name,status,type,created_at}, ...]}}
+        """
+        try:
+            query = ListReportBriefsByTaskIdsQuery(
+                task_ids=[int(t) for t in getattr(request, 'task_ids', [])],
+                per_task_limit=getattr(request, 'per_task_limit', 0) or 100,
+            )
+            if not query.task_ids:
+                return self._resp(True, 'ok', {'items_by_task': {}})
+            briefs = self.query_handler.handle_list_report_briefs_by_task_ids(query)
+            return self._resp(True, 'ok', {
+                'items_by_task': {str(tid): rows for tid, rows in briefs.items()},
+            })
+        except Exception as e:
+            logger.exception("ListReportsByTaskIds failed")
             return self._resp(False, str(e), None)
 
     def ListReports(self, request, context=None):

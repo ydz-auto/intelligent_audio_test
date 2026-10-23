@@ -65,6 +65,11 @@ class ReportConfigServiceStub:
                 request_serializer=report__service__pb2.ListReportsRequest.SerializeToString,
                 response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
                 _registered_method=True)
+        self.ListReportsByTaskIds = channel.unary_unary(
+                '/report.ReportConfigService/ListReportsByTaskIds',
+                request_serializer=report__service__pb2.ListReportsByTaskIdsRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
         self.GetReportDetail = channel.unary_unary(
                 '/report.ReportConfigService/GetReportDetail',
                 request_serializer=report__service__pb2.GetReportDetailRequest.SerializeToString,
@@ -264,6 +269,13 @@ class ReportConfigServiceServicer:
     def CountReports(self, request, context):
         """按同一套过滤条件计数（INT-280：HistoryReports Tab 计数服务端聚合；
         复用 ListReportsRequest，仅 status/report_type/favorite/deleted 过滤生效，分页字段忽略）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListReportsByTaskIds(self, request, context):
+        """页级批量：一次取回整页任务的报告摘要（INT-1462：任务列表 N+1 串行 RPC 消解）
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -525,6 +537,11 @@ def add_ReportConfigServiceServicer_to_server(servicer, server):
             'CountReports': grpc.unary_unary_rpc_method_handler(
                     servicer.CountReports,
                     request_deserializer=report__service__pb2.ListReportsRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'ListReportsByTaskIds': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListReportsByTaskIds,
+                    request_deserializer=report__service__pb2.ListReportsByTaskIdsRequest.FromString,
                     response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
             ),
             'GetReportDetail': grpc.unary_unary_rpc_method_handler(
@@ -845,6 +862,33 @@ class ReportConfigService:
             target,
             '/report.ReportConfigService/CountReports',
             report__service__pb2.ListReportsRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListReportsByTaskIds(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/ListReportsByTaskIds',
+            report__service__pb2.ListReportsByTaskIdsRequest.SerializeToString,
             report__service__pb2.ReportConfigResponse.FromString,
             options,
             channel_credentials,

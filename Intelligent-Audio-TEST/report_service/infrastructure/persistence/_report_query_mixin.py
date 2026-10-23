@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import json
 from typing import List, Optional
 
 from shared.infrastructure.user_context import (
@@ -25,6 +26,23 @@ from shared.utils.db_session import with_session
 from report_service.infrastructure.persistence._report_converters import (
     _report_po_to_entity,
 )
+
+
+def _brief_name(name, analysis) -> str:
+    """列表摘要报告名：PO.name 优先，空则回退 analysis(JSON).name。
+
+    与逐任务 ListReports → _aggregate_to_dict 的 name 口径一致
+    （'name': aggregate.name or config.get('name') or ''）。
+    """
+    if name:
+        return name
+    try:
+        config = json.loads(analysis) if analysis else {}
+    except (TypeError, ValueError):
+        config = {}
+    if isinstance(config, dict):
+        return config.get('name') or ''
+    return ''
 
 
 class ReportQueryMixin:
@@ -154,6 +172,68 @@ class ReportQueryMixin:
         page_size = max(page_size, 1)
         rows = query.limit(page_size).offset((page - 1) * page_size).all()
         return [_report_po_to_entity(po) for po in rows]
+
+    @with_session
+    def list_report_briefs_by_task_ids(
+        self, task_ids: List[int], per_task_limit: int = 100,
+    ) -> dict:
+        """页级批量：一次查询取回整页任务的报告摘要（INT-1462）。
+
+        与 list_reports 同一套软删/可见性口径；不加载摘要子表，
+        只投影列表页需要的 id/name/status/type/created_at。
+
+        Args:
+            task_ids: 页面任务 ID 集合
+            per_task_limit: 每个任务最多返回条数（超出部分不计入列表徽标）
+
+        Returns:
+            {task_id(int): [{id,name,status,type,created_at}, ...]}；
+            无报告的任务不出现在结果中。
+        """
+        ids = [int(t) for t in task_ids or []]
+        if not ids:
+            return {}
+        limit = max(int(per_task_limit or 100), 1)
+        session = get_db_session()
+        query = session.query(
+            self.PO_CLASS.id,
+            self.PO_CLASS.task_id,
+            self.PO_CLASS.name,
+            self.PO_CLASS.type,
+            self.PO_CLASS.status,
+            self.PO_CLASS.created_at,
+            # 报告名历史约定：PO.name 为空时回退 analysis(JSON) 里的 name
+            # （与 list_reports → _aggregate_to_dict 同名口径）
+            self.PO_CLASS.analysis,
+        ).filter(
+            self.PO_CLASS.deleted == False,  # noqa: E712
+            self.PO_CLASS.task_id.in_(ids),
+        )
+        # 行级可见性：与 list_reports 同口径（admin 全量 / 共享全可见 / 私有仅 owner）
+        query = query.filter(visible_condition(
+            self.PO_CLASS.created_by_user_id,
+            self.PO_CLASS.visibility,
+            get_current_user_id(),
+            get_current_user_is_admin(),
+        ))
+        query = query.order_by(
+            self.PO_CLASS.task_id,
+            self.PO_CLASS.created_at.desc(),
+            self.PO_CLASS.id.desc(),
+        )
+        briefs: dict = {}
+        for row in query.all():
+            bucket = briefs.setdefault(int(row.task_id), [])
+            if len(bucket) >= limit:
+                continue
+            bucket.append({
+                'id': row.id,
+                'name': _brief_name(row.name, row.analysis),
+                'status': row.status,
+                'type': row.type,
+                'created_at': str(row.created_at) if row.created_at is not None else None,
+            })
+        return briefs
 
     @with_session
     def count_reports(

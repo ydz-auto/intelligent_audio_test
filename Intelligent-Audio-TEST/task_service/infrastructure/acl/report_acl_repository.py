@@ -17,6 +17,9 @@ from shared.utils.grpc_json import loads as _loads
 
 _logger = logging.getLogger(__name__)
 
+# 列表页每个任务回填的报告摘要上限（沿用历史 ListReports per_page=100 口径）
+REPORT_BRIEF_PER_TASK_LIMIT = 100
+
 
 class ReportAclRepository:
     """report_service 防腐层仓储（gRPC ACL 适配层）。"""
@@ -40,6 +43,35 @@ class ReportAclRepository:
             return _loads(resp.data, {}) or {}
         except Exception as e:
             _logger.warning("ListReports gRPC 异常: %s", e)
+            return {}
+
+    def list_reports_by_task_ids(self, task_ids) -> dict:
+        """页级批量查询整页任务的报告摘要（INT-1462）。
+
+        封装 report_service.ReportConfigService.ListReportsByTaskIds RPC——
+        列表页组装任务时一次往返取回整页报告，取代逐任务 ListReports 的 N+1。
+
+        Returns:
+            {task_id(int): [{id,name,status,type,created_at}, ...]}；失败返回空 dict。
+        """
+        if not task_ids:
+            return {}
+        from shared.clients.grpc_clients import get_report_config_service_stub
+        from shared.proto import report_service_pb2 as report_pb
+        try:
+            stub = get_report_config_service_stub()
+            resp = stub.ListReportsByTaskIds(report_pb.ListReportsByTaskIdsRequest(
+                task_ids=[int(t) for t in task_ids],
+                per_task_limit=REPORT_BRIEF_PER_TASK_LIMIT,
+            ))
+            if not resp.success:
+                _logger.warning("ListReportsByTaskIds 返回失败: %s", resp.message)
+                return {}
+            payload = _loads(resp.data, {}) or {}
+            raw = payload.get('items_by_task') or {}
+            return {int(tid): rows for tid, rows in raw.items()}
+        except Exception as e:
+            _logger.warning("ListReportsByTaskIds gRPC 异常: %s", e)
             return {}
 
     def list_reports_count(self) -> int:

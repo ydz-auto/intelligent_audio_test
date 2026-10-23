@@ -83,6 +83,18 @@ class ListReportsQuery:
 
 
 @dataclass(frozen=True)
+class ListReportBriefsByTaskIdsQuery:
+    """页级批量列出多个任务的报告摘要（INT-1462）。
+
+    Attributes:
+        task_ids: 页面任务 ID 集合（一次查询取回，消除列表逐任务串行 RPC）
+        per_task_limit: 每个任务最多返回的摘要条数（与列表页历史上限一致）
+    """
+    task_ids: List[int]
+    per_task_limit: int = 100
+
+
+@dataclass(frozen=True)
 class GetReportSummaryQuery:
     """查询报告摘要（含子实体集合）。
 
