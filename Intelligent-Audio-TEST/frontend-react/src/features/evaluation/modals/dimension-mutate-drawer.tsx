@@ -5,11 +5,12 @@
  * 保存聚合提交 POST/PUT /evaluation/dimensions；成功 toast「评估维度添加成功｜更新成功」。
  */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
 
 import {
+  useEvaluationCategoryMutations,
   useEvaluationDimensionDetail,
   useEvaluationMutations,
 } from '@/application/evaluation/use-dimensions'
@@ -65,6 +66,18 @@ export function DimensionMutateDrawer({
   canManage: boolean
 }) {
   const { save } = useEvaluationMutations()
+  const { save: saveCategory } = useEvaluationCategoryMutations()
+  // 抽屉内联新建的分类：POST 返回真实 id 后先本地并入选项，避免分类 query 重拉前的空标签
+  const [createdCategories, setCreatedCategories] = useState<EvaluationCategory[]>([])
+  const categoryOptions = useMemo(
+    () => [
+      ...categories,
+      ...createdCategories.filter(
+        (created) => !categories.some((cat) => cat.id === created.id)
+      ),
+    ],
+    [categories, createdCategories]
+  )
   // 编辑反填必须走详情（列表不下发 required_inputs/output_fields）：
   // 抽屉先以列表数据渲染基础字段，详情返回后 RHF `values` 重同步全量配置
   const { data: detailDimension } = useEvaluationDimensionDetail(
@@ -95,7 +108,10 @@ export function DimensionMutateDrawer({
 
   // 关闭 Sheet 时重置表单，避免下次打开残留旧值
   useEffect(() => {
-    if (!open) form.reset(emptyDimensionFormValues())
+    if (!open) {
+      form.reset(emptyDimensionFormValues())
+      setCreatedCategories([])
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
@@ -130,8 +146,16 @@ export function DimensionMutateDrawer({
     }
   })
 
-  const handleNewCategory = (_name: string) => {
+  const handleNewCategory = async (name: string): Promise<number> => {
+    // 真实落库：POST /evaluation/categories（201 → data.id）；失败向上抛，由表单保留输入并提示
+    const result = await saveCategory.mutateAsync({ name })
+    const createdId = result.id
+    if (createdId == null) {
+      throw new Error('分类创建成功但未返回分类 id')
+    }
+    setCreatedCategories((prev) => [...prev, { id: createdId, name }])
     toast.success('分类添加成功')
+    return createdId
   }
 
   const isSub = form.watch('dimensionType') === 'sub'
@@ -176,7 +200,7 @@ export function DimensionMutateDrawer({
             <TabsContent value='basic' className='min-h-0 flex-1 overflow-y-auto pb-4'>
               <BasicInfoSection
                 form={form}
-                categories={categories}
+                categories={categoryOptions}
                 onNewCategory={handleNewCategory}
               />
             </TabsContent>

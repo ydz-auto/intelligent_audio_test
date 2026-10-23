@@ -5,6 +5,7 @@
  */
 import { useState } from 'react'
 import type { UseFormReturn } from 'react-hook-form'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -23,6 +24,7 @@ import {
   DIMENSION_EVALUATION_TYPE_OPTIONS,
 } from '@/features/evaluation/constants'
 import type { DimensionFormValues } from '@/features/evaluation/mutate/dimension-form-schema'
+import { ApiError } from '@/infrastructure/api/api-error'
 
 const NEW_CATEGORY_SENTINEL = '__new__'
 
@@ -33,13 +35,15 @@ export function BasicInfoSection({
 }: {
   form: UseFormReturn<DimensionFormValues>
   categories: EvaluationCategory[]
-  onNewCategory: (name: string) => void
+  /** 内联新建分类：调 POST /evaluation/categories 后返回真实分类 id（失败须 reject） */
+  onNewCategory: (name: string) => Promise<number>
 }) {
   const { register, watch, setValue, formState } = form
   const categoryId = watch('categoryId')
   const status = watch('status')
   const [addingCategory, setAddingCategory] = useState(false)
   const [categoryName, setCategoryName] = useState('')
+  const [creatingCategory, setCreatingCategory] = useState(false)
 
   const handleCategorySelect = (value: string | null) => {
     if (value === NEW_CATEGORY_SENTINEL) {
@@ -49,14 +53,24 @@ export function BasicInfoSection({
     setValue('categoryId', value ?? '', { shouldDirty: true })
   }
 
-  const handleCreateCategory = () => {
+  const handleCreateCategory = async () => {
     const name = categoryName.trim()
-    if (!name) return
-    onNewCategory(name)
-    // mock：内联新建分类生成临时负 id（接线后由 POST /categories 返回真实 id 回填）
-    setValue('categoryId', String(-Date.now()), { shouldDirty: true })
-    setAddingCategory(false)
-    setCategoryName('')
+    if (!name || creatingCategory) return
+    setCreatingCategory(true)
+    try {
+      // 真实落库：POST /evaluation/categories 返回真实 id，回填 categoryId（不再用临时负 id）
+      const id = await onNewCategory(name)
+      setValue('categoryId', String(id), { shouldDirty: true, shouldValidate: true })
+      setAddingCategory(false)
+      setCategoryName('')
+    } catch (error) {
+      // 失败保留输入便于改名重试（后端同名分类返回「分类名称已存在」）
+      toast.error(
+        error instanceof ApiError ? error.userMessage : '分类创建失败，请重试'
+      )
+    } finally {
+      setCreatingCategory(false)
+    }
   }
 
   return (
@@ -149,16 +163,17 @@ export function BasicInfoSection({
                 onChange={(e) => setCategoryName(e.target.value)}
                 placeholder='输入新分类名称'
                 className='h-8'
+                disabled={creatingCategory}
               />
               <Button
                 type='button'
                 variant='outline'
                 size='sm'
                 className='h-8 shrink-0'
-                disabled={!categoryName.trim()}
-                onClick={handleCreateCategory}
+                disabled={!categoryName.trim() || creatingCategory}
+                onClick={() => void handleCreateCategory()}
               >
-                创建
+                {creatingCategory ? '创建中…' : '创建'}
               </Button>
             </div>
           )}
