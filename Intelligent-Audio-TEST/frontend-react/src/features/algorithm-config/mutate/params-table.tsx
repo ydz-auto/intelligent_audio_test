@@ -47,6 +47,7 @@ import {
 } from '@/features/algorithm-config/constants'
 import { ParamScopeChips, type FeatureBundleItem } from './param-scope-chips'
 import { AnnotationCodeSelect, type AlgorithmOption } from './annotation-code-select'
+import { RANGE_MESSAGES, isRangeInvalid } from './algorithm-form-schema'
 
 const PRESET_DATALIST_ID = 'case-param-code-presets'
 
@@ -510,6 +511,17 @@ function ParamRow({
 
   const paramType = form.watch(commonPath('paramType')) as string
   const showRange = isCase && (paramType === 'number' || paramType === 'slider')
+  // 范围约束字段级红字（§6.2/§6.6 失败字段红字 + aria-invalid；INT-1540）：
+  // 按 watched 值实时判定——草稿自动保存成功后 form.reset 会清空 RHF errors，字段级提示
+  // 不能只依赖 formState.errors；判定谓词与文案与发布 schema 的 checkRange 同源。
+  const rangeInvalid =
+    isCase && showRange
+      ? isRangeInvalid(
+          paramType,
+          (form.watch(casePath('minValue')) as string) ?? '',
+          (form.watch(casePath('maxValue')) as string) ?? ''
+        )
+      : false
 
   return (
     <tr className='border-border/50 border-b last:border-b-0'>
@@ -672,32 +684,41 @@ function ParamRow({
       {showCaseOnly && (
         <td className='px-2 py-1.5'>
           {isCase && showRange ? (
-            <div className='flex items-center gap-1'>
-              <Input
-                aria-label='最小值'
-                placeholder='min'
-                className='h-7 w-14 font-mono text-xs'
-                {...form.register(casePath('minValue'))}
-              />
-              <span className='text-muted-foreground text-xs'>~</span>
-              <Input
-                aria-label='最大值'
-                placeholder='max'
-                className='h-7 w-14 font-mono text-xs'
-                {...form.register(casePath('maxValue'))}
-              />
-              <Input
-                aria-label='步长'
-                placeholder='step'
-                className='h-7 w-14 font-mono text-xs'
-                {...form.register(casePath('step'))}
-              />
-              <Input
-                aria-label='单位'
-                placeholder='单位'
-                className='h-7 w-14 text-xs'
-                {...form.register(casePath('unit'))}
-              />
+            <div className='space-y-1'>
+              <div className='flex items-center gap-1'>
+                <Input
+                  aria-label='最小值'
+                  placeholder='min'
+                  className='h-7 w-14 font-mono text-xs'
+                  aria-invalid={rangeInvalid}
+                  {...form.register(casePath('minValue'))}
+                />
+                <span className='text-muted-foreground text-xs'>~</span>
+                <Input
+                  aria-label='最大值'
+                  placeholder='max'
+                  className='h-7 w-14 font-mono text-xs'
+                  aria-invalid={rangeInvalid}
+                  {...form.register(casePath('maxValue'))}
+                />
+                <Input
+                  aria-label='步长'
+                  placeholder='step'
+                  className='h-7 w-14 font-mono text-xs'
+                  {...form.register(casePath('step'))}
+                />
+                <Input
+                  aria-label='单位'
+                  placeholder='单位'
+                  className='h-7 w-14 text-xs'
+                  {...form.register(casePath('unit'))}
+                />
+              </div>
+              {rangeInvalid && (
+                <p className='text-destructive text-xs'>
+                  {RANGE_MESSAGES.minGreaterThanMax}
+                </p>
+              )}
             </div>
           ) : (
             <span className='text-muted-foreground text-xs'>—</span>

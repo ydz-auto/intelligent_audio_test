@@ -267,6 +267,29 @@ function checkUnique(
   })
 }
 
+/** 范围 min≤max 校验文案（§6.6；参数表范围单元格与 schema 共用同一份文案，INT-1540） */
+export const RANGE_MESSAGES = {
+  minGreaterThanMax: '最小值不能大于最大值',
+  maxLessThanMin: '最大值不能小于最小值',
+} as const
+
+/**
+ * 范围约束判定（§6.6 发布严格门槛）：number/slider 型且 min/max 均已填时 min>max 即非法。
+ * schema 校验与参数表范围单元格红字共用本谓词，避免两处口径漂移（INT-1540）。
+ */
+export function isRangeInvalid(
+  paramType: string,
+  minValue: string,
+  maxValue: string
+): boolean {
+  if (paramType !== 'number' && paramType !== 'slider') return false
+  if (minValue === '' || maxValue === '') return false
+  const min = Number(minValue)
+  const max = Number(maxValue)
+  if (Number.isNaN(min) || Number.isNaN(max)) return false
+  return min > max
+}
+
 /** 范围 min≤max 行级校验（§6.6 发布严格；number/slider 且 min/max 均已填时比较） */
 function checkRange(
   ctx: z.RefinementCtx,
@@ -277,23 +300,17 @@ function checkRange(
   }>
 ) {
   caseParams.forEach((param, index) => {
-    if (param.paramType !== 'number' && param.paramType !== 'slider') return
-    if (param.minValue === '' || param.maxValue === '') return
-    const min = Number(param.minValue)
-    const max = Number(param.maxValue)
-    if (Number.isNaN(min) || Number.isNaN(max)) return
-    if (min > max) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['caseParams', index, 'minValue'],
-        message: '最小值不能大于最大值',
-      })
-      ctx.addIssue({
-        code: 'custom',
-        path: ['caseParams', index, 'maxValue'],
-        message: '最大值不能小于最小值',
-      })
-    }
+    if (!isRangeInvalid(param.paramType, param.minValue, param.maxValue)) return
+    ctx.addIssue({
+      code: 'custom',
+      path: ['caseParams', index, 'minValue'],
+      message: RANGE_MESSAGES.minGreaterThanMax,
+    })
+    ctx.addIssue({
+      code: 'custom',
+      path: ['caseParams', index, 'maxValue'],
+      message: RANGE_MESSAGES.maxLessThanMin,
+    })
   })
 }
 
