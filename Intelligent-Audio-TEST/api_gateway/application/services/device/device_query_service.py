@@ -142,22 +142,36 @@ class DeviceQueryService:
     # 获取单个设备详情
     @staticmethod
     def get_one(device_id):
-        result = _device_acl.get_one(device_id)
+        # INT-1467：占用态查询只依赖 device_id，与设备详情 RPC 无依赖关系，
+        # 并发发起（详情链路从「串行 2 次跨服务 RPC」降到 1 次），并发 10
+        # 压测下设备详情 avg/p95 明显下降；占用态为可选注入，失败降级空映射。
+        from concurrent.futures import ThreadPoolExecutor
+        import contextvars
+        executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='device-detail-occ')
+        try:
+            # 复制当前请求上下文再进线程：contextvars 不跨线程传播，而占用态 RPC
+            # 经出站拦截器附加 x-user-id / x-user-is-admin，必须与同步路径一致。
+            ctx = contextvars.copy_context()
+            occ_future = executor.submit(
+                ctx.run, DeviceQueryService._fetch_occupancy, [device_id])
+            result = _device_acl.get_one(device_id)
 
-        if not result.get('success'):
-            return wrap_grpc_response(
-                result,
-                default_error_msg='查询失败',
-                error_code_mapping={404: ('未找到设备', 404)},
-            )
+            if not result.get('success'):
+                return wrap_grpc_response(
+                    result,
+                    default_error_msg='查询失败',
+                    error_code_mapping={404: ('未找到设备', 404)},
+                )
 
-        data = result.get('data')
-        if isinstance(data, dict):
-            DeviceQueryService._inject_occupancy([data])
-            # INT-655：lab_name 由网关装饰（device_service 只返回 lab_id）
-            from api_gateway.application.services.device.lab_name_decorator import _decorate_lab_names
-            data = _decorate_lab_names([data])[0]
-        return success_response(data)
+            data = result.get('data')
+            if isinstance(data, dict):
+                DeviceQueryService._apply_occupancy([data], occ_future.result())
+                # INT-655：lab_name 缺省时由网关装饰（device_service 已返回则跳过）
+                from api_gateway.application.services.device.lab_name_decorator import _decorate_lab_names
+                data = _decorate_lab_names([data])[0]
+            return success_response(data)
+        finally:
+            executor.shutdown(wait=False)
 
     @staticmethod
     def _inject_occupancy(items):
@@ -169,11 +183,26 @@ class DeviceQueryService:
         """
         if not items:
             return items
-        from api_gateway.infrastructure.grpc_proxies.task_data_proxies import task_data_service
         device_ids = [item['id'] for item in items if item.get('id') is not None]
         if not device_ids:
             return items
-        occupancy = task_data_service.get_device_occupancy(device_ids=device_ids)
+        return DeviceQueryService._apply_occupancy(
+            items, DeviceQueryService._fetch_occupancy(device_ids))
+
+    @staticmethod
+    def _fetch_occupancy(device_ids):
+        """拉取设备占用态映射 {device_id(str): {occupied_status, task_id}}（可能为空）。"""
+        if not device_ids:
+            return {}
+        from api_gateway.infrastructure.grpc_proxies.task_data_proxies import task_data_service
+        return task_data_service.get_device_occupancy(device_ids=device_ids) or {}
+
+    @staticmethod
+    def _apply_occupancy(items, occupancy):
+        """把占用态映射回填到设备 item（无占用时置 null，保持字段存在）。"""
+        if not items:
+            return items
+        occupancy = occupancy or {}
         for item in items:
             occ = occupancy.get(str(item.get('id')))
             if occ:

@@ -16,6 +16,7 @@ ServerDbScopeInterceptor 在 RPC 结束 remove_db_session）。
 - `create_db_session()`：创建独立 Session 实例（嵌套调用链专用，close 不影响外层）
 - `get_engine()`：取全局 engine（init_db 后可用）
 - `init_db(pool_size)`：初始化连接池
+- `warm_up_pool(size)`：预建连接池连接（消除首批并发请求的建连尖峰）
 - `remove_db_session()`：清理当前 scope 的 session
 - `bind_request_session_scope()` / `release_request_session_scope(token)`：
   HTTP 请求级 scope 绑定/解绑+清理（DbSessionScopeMiddleware 专用）
@@ -23,6 +24,7 @@ ServerDbScopeInterceptor 在 RPC 结束 remove_db_session）。
 - `Query.paginate()`：分页补丁（17 处 repository 在用）
 """
 import contextvars
+import logging
 import threading
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -33,6 +35,8 @@ from sqlalchemy.orm import declarative_base, scoped_session, sessionmaker, Query
 from sqlalchemy.pool import QueuePool
 
 from shared.infrastructure.config import BaseConfig
+
+logger = logging.getLogger(__name__)
 
 
 def utc8now():
@@ -213,6 +217,47 @@ def init_db(pool_size=3):
     _engine = engine
 
     return _scoped_session
+
+
+def warm_up_pool(size: int = 0) -> int:
+    """预建连接池连接，消除服务启动后首批并发请求的建连尖峰（INT-1467）。
+
+    QueuePool 懒建连：首个请求到达时才 TCP/认证建连。跨主机/容器（如
+    Docker 端口转发）建连实测 500~1500ms，并发首屏（压测并发 10）会同时
+    触发多条建连 → 单请求被拖到 1s+，表现为「偶发慢查询尖峰」。启动时
+    预建 size 条连接并归还，把这段成本前移到启动阶段。
+
+    - 仅 QueuePool（PostgreSQL/MySQL 等）生效；SQLite 内存库等跳过
+    - 建连失败不抛异常：预热是性能优化，不得阻塞服务启动
+    - 建议在后台线程调用（多连接建连本身耗时，不能卡住服务就绪）
+
+    Args:
+        size: 预建连接数（通常取 pool_size）
+
+    Returns:
+        实际预建成功的连接数
+    """
+    engine = _engine
+    if engine is None or size <= 0:
+        return 0
+    if not isinstance(engine.pool, QueuePool):
+        return 0
+    conns = []
+    try:
+        for _ in range(size):
+            try:
+                conns.append(engine.connect())
+            except Exception:  # noqa: BLE001 - 预热失败降级，不阻塞启动
+                logger.warning('连接池预热第 %s 条失败（降级为懒建连）', len(conns) + 1,
+                               exc_info=True)
+                break
+    finally:
+        for conn in conns:
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+    return len(conns)
 
 
 def get_db_session():
