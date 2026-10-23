@@ -7,10 +7,13 @@
 
 export interface CalibrationPointDto {
   spl: number | null
-  gainOffset: number | null
-  digitalGain: number | null
-  baseLevel: number | null
-  finalLevel: number | null
+  /** 前端/表单写入键（camelCase 原样透传 JSONB） */
+  gainOffset?: number | null
+  /** 后端模拟校准写入键（device_service calibrate 写 `{"gain": n, "spl": x}`，INT-1503 实测） */
+  gain?: number | null
+  digitalGain?: number | null
+  baseLevel?: number | null
+  finalLevel?: number | null
 }
 
 export interface CalibrationDataDto {

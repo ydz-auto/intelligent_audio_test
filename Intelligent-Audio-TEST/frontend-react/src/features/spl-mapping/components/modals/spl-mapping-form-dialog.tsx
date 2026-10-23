@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import type { PlaybackDeviceRef, SplMapping } from '@/domain/models/splMapping'
+import { CALIBRATION_BASE_LEVEL_DBFS } from '@/domain/models/splMapping'
 import { DEVICE_TYPE_OPTIONS } from '@/features/spl-mapping/constants'
 import { ApiError } from '@/infrastructure/api/api-error'
 import {
@@ -267,8 +268,10 @@ export function SplMappingFormDialog(props: SplMappingFormDialogProps) {
             spl: point.spl ? Number(point.spl) : null,
             gainOffset: point.gainOffset ? Number(point.gainOffset) : null,
             digitalGain: point.gainOffset ? Number(point.gainOffset) : null,
-            baseLevel: -30,
-            finalLevel: point.gainOffset ? -30 + Number(point.gainOffset) : null,
+            baseLevel: CALIBRATION_BASE_LEVEL_DBFS,
+            finalLevel: point.gainOffset
+              ? CALIBRATION_BASE_LEVEL_DBFS + Number(point.gainOffset)
+              : null,
           })),
       }
       const base = {
@@ -303,7 +306,9 @@ export function SplMappingFormDialog(props: SplMappingFormDialogProps) {
   }
 
   const finalLevelOf = (gainOffset: string): string =>
-    gainOffset === '' || Number.isNaN(Number(gainOffset)) ? '—' : `${(-30 + Number(gainOffset)).toFixed(1)} dBFS`
+    gainOffset === '' || Number.isNaN(Number(gainOffset))
+      ? '—'
+      : `${(CALIBRATION_BASE_LEVEL_DBFS + Number(gainOffset)).toFixed(1)} dBFS`
 
   return (
     <>
@@ -443,7 +448,7 @@ export function SplMappingFormDialog(props: SplMappingFormDialogProps) {
                           const finalLevel =
                             point.gainOffset === '' || Number.isNaN(Number(point.gainOffset))
                               ? null
-                              : -30 + Number(point.gainOffset)
+                              : CALIBRATION_BASE_LEVEL_DBFS + Number(point.gainOffset)
                           return (
                             <tr key={index} className='border-border/50 border-b last:border-b-0'>
                               <td className='px-3 py-1.5'>

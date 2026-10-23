@@ -12,6 +12,9 @@ export type CalibrationStatus = 'calibrated' | 'uncalibrated'
 /** 播放设备类型（device_type dry/noise → 干声/噪声，§4.2 徽章依据） */
 export type SplDeviceType = 'dry' | 'noise'
 
+/** 校准点集基础电平（dBFS，§6.7 口径：表单与后端模拟校准同基准，最终电平 = 本值 + 增益偏移） */
+export const CALIBRATION_BASE_LEVEL_DBFS = -30
+
 /** 校准点（CalibrationPointSchema 实测五字段） */
 export interface CalibrationPoint {
   /** 实测声压级（SPL，dB） */

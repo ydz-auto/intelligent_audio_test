@@ -2,6 +2,7 @@
  * 物理域 SPL DTO→Domain 适配器（infrastructure/adapters 层；16_设备域.md §10 契约）。
  * 消费 dto/ 原始 snake_case 类型，产出 domain 模型；Presentation 层不感知 snake_case。
  */
+import { CALIBRATION_BASE_LEVEL_DBFS } from '@/domain/models/splMapping'
 import type {
   CalibrationPoint,
   PlaybackDeviceRef,
@@ -43,15 +44,31 @@ export function toCalibrationStatus(
   return status === 'calibrated' ? 'calibrated' : 'uncalibrated'
 }
 
+/** 增益偏移可为 0.1 步进小数，浮点加法尾差在展示前收敛到 0.01 dB */
+function roundDb(value: number): number {
+  return Math.round(value * 100) / 100
+}
+
+/**
+ * 校准点归一。后端模拟校准写入键为 `gain`（device_service calibrate 落库
+ * `{"gain": n, "spl": x}`，INT-1503 DB 实证），前端表单写入键为 `gainOffset`；两者都认。
+ * 缺省字段按 §6.7 口径推导：数字增益 = 增益偏移，基础电平 -30 dBFS，最终电平 = 基础 + 偏移。
+ */
 export function calibrationPointFromDto(
   dto: CalibrationPointDto
 ): CalibrationPoint {
+  const gainOffset = dto.gainOffset ?? dto.gain ?? null
   return {
-    spl: dto.spl,
-    gainOffset: dto.gainOffset,
-    digitalGain: dto.digitalGain,
-    baseLevel: dto.baseLevel,
-    finalLevel: dto.finalLevel,
+    spl: dto.spl ?? null,
+    gainOffset,
+    digitalGain: dto.digitalGain ?? gainOffset,
+    baseLevel:
+      dto.baseLevel ?? (gainOffset == null ? null : CALIBRATION_BASE_LEVEL_DBFS),
+    finalLevel:
+      dto.finalLevel ??
+      (gainOffset == null
+        ? null
+        : roundDb(CALIBRATION_BASE_LEVEL_DBFS + gainOffset)),
   }
 }
 
