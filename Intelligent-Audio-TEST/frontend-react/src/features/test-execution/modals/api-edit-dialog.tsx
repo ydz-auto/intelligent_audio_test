@@ -1,12 +1,12 @@
 /**
  * 新增/编辑 API 弹窗（§5.3；interfaces/features/test-execution/modals；Dialog sm:max-w-lg）。
  * RHF + zod：名称 / 关联算法（Select，默认带全局算法）/ 最大并发 /
- * 描述 / 密钥（password + 显隐 Eye）/ 其他配置（Textarea JSON，aria-invalid 红描边 +
+ * 描述 / 其他配置（Textarea JSON，aria-invalid 红描边 +
  * 「JSON 格式不正确」）/ 端点列表（唯一端点入口——INT-1223 移除 Master URL 后补齐端点编辑器，
  * 保证从开始测试页可新建含端点的 API；复用 device-mutate-drawer 端点编辑器形态）；
  * 主钮「保存」（进行中「保存中…」）；成功 toast「API 已保存」+ 列表失效重拉（api_config:create/update）。
  */
-import { Eye, EyeOff, Plus, X } from 'lucide-react'
+import { Plus, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
@@ -39,7 +39,6 @@ import { cn } from '@/lib/utils'
 
 const apiFormSchema = z.object({
   name: z.string().min(1, '请输入必填项'),
-  apiKey: z.string().optional(),
   algorithmType: z.string().min(1, '请输入必填项'),
   maxProcess: z.number().int().min(1).max(128),
   description: z.string().optional(),
@@ -93,7 +92,6 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
   const globalAlgorithmId = useAlgorithmStore((s) => s.algorithmId)
   const { data: algorithmOptions } = useTestAlgorithmOptions()
   const algorithmList = algorithmOptions ?? []
-  const [showKey, setShowKey] = useState(false)
   const [endpoints, setEndpoints] = useState<EndpointFormRow[]>([])
   // INT-1433：设备类型派生提示（auto 态展示实际将路由到的类型）
   const firstEndpoint = endpoints.find((e) => e.endpoint.trim())?.endpoint.trim() ?? ''
@@ -102,7 +100,6 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
     resolver: zodResolver(apiFormSchema),
     values: {
       name: api?.name ?? '',
-      apiKey: '',
       algorithmType:
         api?.algorithmType ??
         algorithmList.find((a) => a.id === globalAlgorithmId)?.name ??
@@ -211,27 +208,6 @@ export function ApiEditDialog({ open, onOpenChange, api }: ApiEditDialogProps) {
             {form.formState.errors.name && (
               <p className='text-destructive text-xs'>{form.formState.errors.name.message}</p>
             )}
-          </div>
-
-          <div className='space-y-1.5'>
-            <Label htmlFor='api-key'>API 密钥</Label>
-            <div className='relative'>
-              <Input
-                id='api-key'
-                type={showKey ? 'text' : 'password'}
-                placeholder='可选，用于鉴权调用'
-                className='pr-9'
-                {...form.register('apiKey')}
-              />
-              <button
-                type='button'
-                aria-label={showKey ? '隐藏密钥' : '显示密钥'}
-                className='text-muted-foreground hover:text-foreground absolute top-1/2 right-2 -translate-y-1/2 rounded p-0.5'
-                onClick={() => setShowKey((v) => !v)}
-              >
-                {showKey ? <EyeOff aria-hidden='true' className='size-4' /> : <Eye aria-hidden='true' className='size-4' />}
-              </button>
-            </div>
           </div>
 
           <div className='space-y-1.5'>
