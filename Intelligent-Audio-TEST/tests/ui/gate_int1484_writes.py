@@ -1,8 +1,15 @@
 # -*- coding: utf-8 -*-
-"""INT-1484 开工门禁：直连 :15000 实测评估维度 POST / PUT / DELETE 各 <15s。
+"""INT-1484 开工门禁：直连 :15000 实测评估维度 POST / PUT / DELETE。
+
+口径（需求规划师 2026-10-24 裁定，`<15s` 已撤销）：写操作不出现网关 60s
+DEADLINE_EXCEEDED、返回 2xx/预期业务 4xx、GET 回读一致；空闲态单次写 ≤40s。
+>40s 仅作为「可能环境阻塞」提示，最终按是否 60s 超时 / 是否有锁队列迹象判定。
 
 仅在 docker 真实库栈（intelligent_audio_test）上使用；fixture 带「接线测试_INT1484_」前缀，
 脚本末尾 DELETE 清理，不留残留。
+注意：output_fields.pass_threshold 必须按前端口径传 null（前端 toNullableNumber('')→null）；
+传空串会命中 evaluation_dimension_params.pass_threshold(double precision) 报
+invalid input syntax，输出参数被静默丢弃（API 侧健壮性缺口，非前端行为）。
 """
 import json, os, time, urllib.request, urllib.error
 
@@ -46,10 +53,10 @@ BODY = {
     'output_fields': [
         {'param_code': 'score', 'param_name': '评分', 'label': '评分', 'field_path': 'score',
          'field_type': 'number', 'output_role': 'main', 'agg_role': 'value', 'default_value': '',
-         'pass_threshold': '', 'visible_in_report': True, 'help_text': '', 'ui_order': 1},
+         'pass_threshold': None, 'visible_in_report': True, 'help_text': '', 'ui_order': 1},
         {'param_code': 'reason', 'param_name': '原因', 'label': '原因', 'field_path': 'reason',
          'field_type': 'text', 'output_role': 'aux', 'agg_role': None, 'default_value': '',
-         'pass_threshold': '', 'visible_in_report': True, 'help_text': '', 'ui_order': 2},
+         'pass_threshold': None, 'visible_in_report': True, 'help_text': '', 'ui_order': 2},
     ],
     'api_endpoints': [
         {'url': 'http://host.docker.internal:15000/health', 'name': '主端点(在线)', 'priority': 1,
@@ -61,7 +68,7 @@ BODY = {
     'associated_algorithms': [{'algorithm_type': 'voice_llm', 'is_default': True, 'weight': 1.0}],
 }
 
-LIMIT = 15.0
+LIMIT = float(os.environ.get('GATE_LIMIT', '40'))
 OUT = []
 
 
@@ -77,7 +84,7 @@ def main():
 
     st, body, dt = call('POST', '/evaluation/dimensions', BODY)
     did = ((body or {}).get('data') or {}).get('id') if isinstance(body, dict) else None
-    gate('POST /evaluation/dimensions <15s 且 2xx', dt < LIMIT and 200 <= st < 300 and did is not None,
+    gate('POST /evaluation/dimensions ≤%.0fs 且 2xx（无 60s 超时）' % LIMIT, dt < LIMIT and 200 <= st < 300 and did is not None,
          {'status': st, 'elapsed_s': dt, 'id': did,
           'resp': (json.dumps(body, ensure_ascii=False)[:300] if did is None else '')})
 
@@ -99,11 +106,11 @@ def main():
         upd['required_inputs'] = BODY['required_inputs']
         upd['output_fields'] = BODY['output_fields']
         st_p, body_p, dt_p = call('PUT', '/evaluation/dimensions/%s' % did, upd)
-        gate('PUT /evaluation/dimensions/{id} <15s 且 2xx', dt_p < LIMIT and 200 <= st_p < 300,
+        gate('PUT /evaluation/dimensions/{id} ≤%.0fs 且 2xx（无 60s 超时）' % LIMIT, dt_p < LIMIT and 200 <= st_p < 300,
              {'status': st_p, 'elapsed_s': dt_p, 'resp': json.dumps(body_p, ensure_ascii=False)[:300]})
 
         st_d, body_d, dt_d = call('DELETE', '/evaluation/dimensions/%s' % did)
-        gate('DELETE /evaluation/dimensions/{id} <15s 且 2xx', dt_d < LIMIT and 200 <= st_d < 300,
+        gate('DELETE /evaluation/dimensions/{id} ≤%.0fs 且 2xx（无 60s 超时）' % LIMIT, dt_d < LIMIT and 200 <= st_d < 300,
              {'status': st_d, 'elapsed_s': dt_d, 'resp': json.dumps(body_d, ensure_ascii=False)[:300]})
 
         st, body, _ = call('GET', '/evaluation/dimensions?per_page=1000')
