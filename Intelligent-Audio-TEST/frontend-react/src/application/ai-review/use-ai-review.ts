@@ -47,12 +47,17 @@ export function useAiReview(taskId: number, caseId: string) {
   const [record, setRecord] = useState<AiReviewRecord>()
   /** 本次发起的记录 id（执行中按它从历史定位推进状态） */
   const [recordId, setRecordId] = useState<number>()
+  /** INT-1545：记录归属任务 id（发起响应 item.task_id）。容器任务下页面 taskId 是合并
+   * 任务、结果归属源任务，后端 ai_reviews 写在源任务下——轮询历史须按归属任务查 */
+  const [recordTaskId, setRecordTaskId] = useState<number>()
   const [error, setError] = useState<string>()
 
+  const historyTaskId = recordTaskId ?? taskId
+
   const historyQuery = useQuery({
-    queryKey: ['tasks', 'ai-reviews', 'history', taskId],
-    queryFn: () => fetchAiReviewHistory(taskId),
-    enabled: Boolean(taskId),
+    queryKey: ['tasks', 'ai-reviews', 'history', historyTaskId],
+    queryFn: () => fetchAiReviewHistory(historyTaskId),
+    enabled: Boolean(historyTaskId),
     // 执行中由真实后端异步驱动（pending/running → completed/failed）：每 3s 轮询历史推进
     refetchInterval: phase === 'running' ? 3000 : false,
   })
@@ -85,6 +90,8 @@ export function useAiReview(taskId: number, caseId: string) {
     try {
       const result = await requestAiReview(taskId, caseId, payload)
       setRecord(result)
+      // 记录归属任务：发起响应 item.task_id（容器任务下 = 结果所属源任务）
+      setRecordTaskId(result.taskId || taskId)
       if (result.status === 'completed') {
         setPhase('completed')
         setRecordId(undefined)
@@ -101,7 +108,7 @@ export function useAiReview(taskId: number, caseId: string) {
         setRecordId(result.id)
       }
       void queryClient.invalidateQueries({
-        queryKey: ['tasks', 'ai-reviews', 'history', taskId],
+        queryKey: ['tasks', 'ai-reviews', 'history', historyTaskId],
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'AI 复核发起失败')
@@ -124,7 +131,7 @@ export function useAiReview(taskId: number, caseId: string) {
       setRecord(updated)
       setPhase('adopted')
       void queryClient.invalidateQueries({
-        queryKey: ['tasks', 'ai-reviews', 'history', taskId],
+        queryKey: ['tasks', 'ai-reviews', 'history', historyTaskId],
       })
       return true
     } catch (err) {
@@ -141,7 +148,7 @@ export function useAiReview(taskId: number, caseId: string) {
       setRecord(updated)
       setPhase('rejected')
       void queryClient.invalidateQueries({
-        queryKey: ['tasks', 'ai-reviews', 'history', taskId],
+        queryKey: ['tasks', 'ai-reviews', 'history', historyTaskId],
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'AI 复核驳回失败')
@@ -157,6 +164,7 @@ export function useAiReview(taskId: number, caseId: string) {
     setPhase('idle')
     setRecord(undefined)
     setRecordId(undefined)
+    setRecordTaskId(undefined)
     setError(undefined)
   }
 

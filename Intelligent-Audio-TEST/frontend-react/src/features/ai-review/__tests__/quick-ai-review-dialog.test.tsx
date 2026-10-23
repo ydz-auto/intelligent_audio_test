@@ -169,4 +169,68 @@ describe('QuickAiReviewDialog（快速复核，INT-1064 迁移）', () => {
       })
     })
   })
+
+  it('INT-1545：容器任务下按记录归属 task_id 轮询历史（不用页面 taskId），推进到结论卡', async () => {
+    // 页面 taskId=527（挑选合并容器任务），结果归属源任务 418；发起响应 item.task_id=418
+    requestAiReviewMock.mockResolvedValue({
+      ...completedRecord('passed'),
+      status: 'running',
+      verdict: 'uncertain',
+      taskId: 418,
+    })
+    fetchAiReviewHistoryMock.mockImplementation(async (historyTaskId: number) =>
+      historyTaskId === 418 ? [{ ...completedRecord('passed'), id: 10, taskId: 418 }] : []
+    )
+    render(
+      <QuickAiReviewDialog
+        open
+        onOpenChange={vi.fn()}
+        taskId={527}
+        caseId='case-1'
+        caseName='用例一'
+        results={[{ ...singleResult, sourceTaskId: 418 }]}
+        evaluationStatus='failed'
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: '发起快速复核' }))
+    await waitFor(
+      () => {
+        expect(screen.getByText('AI 复核结论')).toBeInTheDocument()
+      },
+      { timeout: 5000 }
+    )
+    expect(fetchAiReviewHistoryMock).toHaveBeenCalledWith(418)
+    expect(fetchAiReviewHistoryMock).not.toHaveBeenCalledWith(527)
+  }, 10000)
+
+  it('INT-1545 回归：普通任务仍按页面 taskId 轮询历史并推进到结论卡', async () => {
+    requestAiReviewMock.mockResolvedValue({
+      ...completedRecord('passed'),
+      status: 'running',
+      verdict: 'uncertain',
+      taskId: 417,
+    })
+    fetchAiReviewHistoryMock.mockImplementation(async (historyTaskId: number) =>
+      historyTaskId === 417 ? [{ ...completedRecord('passed'), id: 10, taskId: 417 }] : []
+    )
+    render(
+      <QuickAiReviewDialog
+        open
+        onOpenChange={vi.fn()}
+        taskId={417}
+        caseId='case-1'
+        caseName='用例一'
+        results={[singleResult]}
+        evaluationStatus='failed'
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: '发起快速复核' }))
+    await waitFor(
+      () => {
+        expect(screen.getByText('AI 复核结论')).toBeInTheDocument()
+      },
+      { timeout: 5000 }
+    )
+    expect(fetchAiReviewHistoryMock).toHaveBeenCalledWith(417)
+  }, 10000)
 })
