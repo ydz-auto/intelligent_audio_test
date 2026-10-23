@@ -1,8 +1,8 @@
 /**
  * 已选维度参数卡（用例编辑抽屉 §5.1 / §5.1.2 共用）。
  * 每维度：名称 + LLM Judge 徽章 + 移除钮；权重 number 0-100 默认 50 + 阈值 number 0-100 默认 80
- * （非 LLM Judge）；LLM Judge 时 模型 Select + Prompt 模板 Select（选项对照 V9.7.10
- * OverallEvaluationEditor.vue llmModelOptions/llmPromptOptions，INT-1424 移除 MOCK_ 前缀）。
+ * （非 LLM Judge）；LLM Judge 时 模型 Select + Prompt 模板 Select——选项来源改为
+ * infrastructure/api/llm-judge-options（后端口径，当前留桩待接线；INT-1658 去掉组件内硬编码）。
  * 数据契约 config.dimensions 项 = { id, name, weight, threshold, (llmJudgeConfig: {model, promptTemplate}) }
  */
 import { SlidersHorizontal } from 'lucide-react'
@@ -20,6 +20,10 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import type { Dimension } from '@/domain/models/evaluationDimension'
+import {
+  getLlmJudgeOptions,
+  withCurrentOption,
+} from '@/infrastructure/api/llm-judge-options'
 
 export interface DimensionParamValue {
   weight: number
@@ -28,10 +32,8 @@ export interface DimensionParamValue {
   promptTemplate?: string
 }
 
-/** LLM 模型选项（对照 V9.7.10 OverallEvaluationEditor llmModelOptions） */
-const LLM_MODELS = ['gpt-4', 'gpt-4o', 'gpt-3.5-turbo', 'claude-3-opus', 'claude-3-sonnet']
-/** Prompt 模板选项（对照 V9.7.10 llmPromptOptions） */
-const PROMPT_TEMPLATES = ['default', 'accuracy', 'fluency', 'relevance']
+/** LLM Judge 可选值（后端口径；infrastructure 层留桩待接线，INT-1658 去掉组件内硬编码） */
+const LLM_OPTIONS = getLlmJudgeOptions()
 
 export function DimensionParamCard({
   dimension,
@@ -45,13 +47,20 @@ export function DimensionParamCard({
   onRemove: () => void
 }) {
   const llmJudge = dimension.resultType === 'llm_judge'
-  // 默认值：维度自身 llmJudgeConfig 优先，缺省对照 V9.7.10（gpt-4 / default）
+  // 默认值：维度自身 llmJudgeConfig 优先，缺省取后端候选集首项
   const [model, setModel] = useState(
-    params.model ?? dimension.llmJudgeConfig?.model ?? LLM_MODELS[0]
+    params.model ?? dimension.llmJudgeConfig?.model ?? LLM_OPTIONS.models[0] ?? ''
   )
   const [prompt, setPrompt] = useState(
-    params.promptTemplate ?? dimension.llmJudgeConfig?.promptTemplate ?? PROMPT_TEMPLATES[0]
+    params.promptTemplate ??
+      dimension.llmJudgeConfig?.promptTemplate ??
+      LLM_OPTIONS.promptTemplates[0] ??
+      ''
   )
+
+  // 存量值可能不在后端候选集：并入选项保证回显（否则 Select 显示空白）
+  const modelOptions = withCurrentOption(LLM_OPTIONS.models, model)
+  const promptOptions = withCurrentOption(LLM_OPTIONS.promptTemplates, prompt)
 
   const commit = (patch: Partial<DimensionParamValue>) => {
     onChange(patch)
@@ -113,12 +122,13 @@ export function DimensionParamCard({
               <Select
                 value={model}
                 onValueChange={(v) => commit({ model: v ?? undefined })}
+                items={modelOptions.map((m) => ({ value: m, label: m }))}
               >
                 <SelectTrigger size='sm' className='h-8 w-full'>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {LLM_MODELS.map((m) => (
+                  {modelOptions.map((m) => (
                     <SelectItem key={m} value={m}>
                       {m}
                     </SelectItem>
@@ -131,12 +141,13 @@ export function DimensionParamCard({
               <Select
                 value={prompt}
                 onValueChange={(v) => commit({ promptTemplate: v ?? undefined })}
+                items={promptOptions.map((t) => ({ value: t, label: t }))}
               >
                 <SelectTrigger size='sm' className='h-8 w-full'>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {PROMPT_TEMPLATES.map((t) => (
+                  {promptOptions.map((t) => (
                     <SelectItem key={t} value={t}>
                       {t}
                     </SelectItem>

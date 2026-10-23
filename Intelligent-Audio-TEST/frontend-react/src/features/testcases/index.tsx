@@ -1,6 +1,6 @@
 /**
  * 用例管理页（11_用例域.md §3.1 页面总骨架，SectionPageLayout fixedContent + 双视图表格）。
- * 装配：Breadcrumb 工作台/用例管理｜Title「用例管理」｜Actions（+新增用例/导入用例/导出/模板下载）｜
+ * 装配：Breadcrumb 工作台/用例管理｜Title「用例管理」｜Actions（+新增用例/新建分组/导入用例/导出/模板下载）｜
  * Content（视图页签 line → 筛选工具栏 → 分组/平铺表格 → 批量浮条）/ Footer（分页 Portal）。
  * 「导入用例」为单入口（负责人 2026-10-17 口径：只走音频导入页生成，照 V9.7.10 跳 /AudioImport）。
  * 路由 /testcases/$view（by-group/by-tag 白名单在路由层）；mock 态全部弹窗/toast 演示，
@@ -8,7 +8,7 @@
  */
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { FileDown, FileSpreadsheet, FileUp, Plus } from 'lucide-react'
+import { FileDown, FileSpreadsheet, FileUp, FolderPlus, Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -393,6 +393,19 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
               新增用例
             </Button>
           )}
+          {/* INT-1658：页面级建组入口（V9.7.10 TestCaseListContainer「创建分组」对位；
+              仅分组视图暴露，组弹窗以 group=null 打开走 POST /groups） */}
+          {view === 'by-group' && hasPermission('group:create') && (
+            <Button
+              size='sm'
+              variant='outline'
+              className='h-7 gap-1.5'
+              onClick={() => setGroupDialog({ open: true, group: null })}
+            >
+              <FolderPlus aria-hidden='true' className='size-3.5' />
+              新建分组
+            </Button>
+          )}
           {hasPermission('testcase:import_export') && (
             <Button
               size='sm'
@@ -456,6 +469,11 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
               onUpdateTag={handleUpdateTag}
               onDeleteTag={handleDeleteTag}
               onCopyTag={handleCopyTag}
+              onCreateGroup={
+                hasPermission('group:create')
+                  ? () => setGroupDialog({ open: true, group: null })
+                  : undefined
+              }
               cases={items}
               onRestoreAll={() =>
                 batch.setConfirm({

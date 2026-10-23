@@ -51,12 +51,15 @@ export function GroupMutateDialog({
   const { options: algorithmOptions, isLoading: loadingAlgorithms } =
     useAlgorithmOptions()
 
-  // 对话框常挂载：打开/切换编辑对象时重置表单（INT-997 接线后提交须取当前对象值）
+  // 对话框常挂载：打开/切换编辑对象时重置表单（INT-997 接线后提交须取当前对象值；
+  // INT-1658 补 open 依赖——「新建分组」连续打开时 group 恒为 null，仅靠 group 变化
+  // 不会重置，会残留上次未提交的输入）
   useEffect(() => {
+    if (!open) return
     setName(group?.name ?? '')
     setDescription(group?.description ?? '')
     setAlgorithmType(group?.algorithmType ?? '')
-  }, [group])
+  }, [group, open])
 
   const handleSubmit = async () => {
     if (!name.trim()) return

@@ -419,4 +419,34 @@ describe('TestCasesFilterToolbar', () => {
     expect(screen.getByRole('menuitem', { name: '删除标签' })).toHaveAttribute('aria-disabled', 'true')
     expect(screen.getByRole('menuitem', { name: '复制标签下用例' })).toHaveAttribute('aria-disabled', 'true')
   })
+
+  it('INT-1658：分组 facet 下拉底部「+ 新增分组」触发页面级建组入口', async () => {
+    const user = setupUser()
+    const onCreateGroup = vi.fn()
+    const props = {
+      filters: {} as never,
+      onChange: vi.fn(),
+      onReset: vi.fn(),
+      isFiltered: false,
+      groups: GROUPS,
+      tags: MOCK_TAGS,
+      dimensions: DIMENSIONS,
+      tagCategories: [],
+      onUpdateTag: vi.fn().mockResolvedValue(undefined),
+      onDeleteTag: vi.fn().mockResolvedValue(undefined),
+      onCopyTag: vi.fn().mockResolvedValue(undefined),
+      cases: MOCK_TEST_CASES,
+      onRestoreAll: vi.fn(),
+      onCreateGroup,
+    }
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TestCasesFilterToolbar {...props} />
+      </QueryClientProvider>
+    )
+
+    await user.click(screen.getByRole('button', { name: /分组/ }))
+    await user.click(await screen.findByText('+ 新增分组'))
+    expect(onCreateGroup).toHaveBeenCalledTimes(1)
+  })
 })

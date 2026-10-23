@@ -25,6 +25,12 @@ import {
   type DimensionParamValue,
 } from '@/features/testcases/modals/round-config/dimension-param-card'
 import { DimensionPicker } from '@/features/testcases/modals/round-config/dimension-picker'
+import { getLlmJudgeOptions } from '@/infrastructure/api/llm-judge-options'
+
+/** LLM Judge 缺省值（后端口径；INT-1658 去掉组件内 'gpt-4'/'default' 魔法串） */
+const LLM_OPTIONS = getLlmJudgeOptions()
+const DEFAULT_LLM_MODEL = LLM_OPTIONS.models[0] ?? ''
+const DEFAULT_LLM_PROMPT = LLM_OPTIONS.promptTemplates[0] ?? ''
 
 const defaultParams = (): DimensionParamValue => ({
   weight: 50,
@@ -74,12 +80,12 @@ export function OverallEvaluationEditor({
           name: d.name,
           weight: defaultParams().weight,
           threshold: defaultParams().threshold,
-          // INT-1424：LLM Judge 默认值取维度自身 llmJudgeConfig，缺省对照 V9.7.10（gpt-4 / default）
+          // LLM Judge 默认值取维度自身 llmJudgeConfig，缺省取后端候选集首项（INT-1658）
           ...(llmJudge
             ? {
                 llmJudgeConfig: {
-                  model: d.llmJudgeConfig?.model ?? 'gpt-4',
-                  promptTemplate: d.llmJudgeConfig?.promptTemplate ?? 'default',
+                  model: d.llmJudgeConfig?.model ?? DEFAULT_LLM_MODEL,
+                  promptTemplate: d.llmJudgeConfig?.promptTemplate ?? DEFAULT_LLM_PROMPT,
                 },
               }
             : {}),
@@ -102,9 +108,11 @@ export function OverallEvaluationEditor({
               ...(patch.model || patch.promptTemplate
                 ? {
                     llmJudgeConfig: {
-                      model: patch.model ?? v.llmJudgeConfig?.model ?? 'gpt-4',
+                      model: patch.model ?? v.llmJudgeConfig?.model ?? DEFAULT_LLM_MODEL,
                       promptTemplate:
-                        patch.promptTemplate ?? v.llmJudgeConfig?.promptTemplate ?? 'default',
+                        patch.promptTemplate ??
+                        v.llmJudgeConfig?.promptTemplate ??
+                        DEFAULT_LLM_PROMPT,
                     },
                   }
                 : v.llmJudgeConfig
