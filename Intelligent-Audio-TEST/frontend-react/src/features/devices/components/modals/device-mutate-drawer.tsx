@@ -48,6 +48,7 @@ import {
   testDeviceFormSchema,
 } from '@/features/devices/lib/device-form-schema'
 import { normalizeDeviceSystem } from '@/features/devices/lib/device-system'
+import { mergeApiDeviceMeta } from '@/features/devices/lib/api-device-meta'
 import { useDeviceMutations, useDriverKeywords } from '@/application/devices/use-devices'
 import { useSplMappingsByDevice } from '@/application/spl/useSplMappings'
 import { useAlgorithmOptions } from '@/application/hooks/use-algorithm-options'
@@ -512,7 +513,14 @@ export function DeviceMutateDrawer(props: DeviceMutateDrawerProps) {
           vendor: values.vendor?.trim() || null,
           protocol: values.protocol,
           environment: values.environment || null,
-          meta: { protocol: values.protocol, environment: values.environment },
+          // INT-1621：编辑保存保留表单未识别的 meta 键（version / 旧 apiKey 等），只覆写
+          // protocol/environment；后端按入参整块覆盖 meta，不合并就会静默清空。新建仍只写两键。
+          meta: isEdit
+            ? mergeApiDeviceMeta((editingDevice as ApiDevice).meta, {
+                protocol: values.protocol,
+                environment: values.environment,
+              })
+            : { protocol: values.protocol, environment: values.environment },
           // INT-1029：每 API 代理配置（契约格式 user:pass@host:port；空串归一 null）
           proxyType: values.proxyType?.trim() || null,
           proxyUrl: values.proxyUrl?.trim() || null,
