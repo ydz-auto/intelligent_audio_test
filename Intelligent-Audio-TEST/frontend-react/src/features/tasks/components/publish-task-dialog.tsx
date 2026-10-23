@@ -134,17 +134,34 @@ export function PublishTaskDialog({
       ),
     [sourceTasks]
   )
-  /** Select 选项表（base-ui 闭合态按 items 回显 label，缺省则显示裸 id—INT-1627） */
-  const sourceItems = useMemo(() => {
+  /**
+   * Select 选项表（base-ui 闭合态按 items 回显 label，缺省则显示裸 id—INT-1627）。
+   * 关键：当前选中值必须始终有对应的**真实选项**（下方渲染成 SelectItem）。
+   * 只放进 items 映射而不渲染选项时，列表加载中→失败会让选项映射坍缩为空，
+   * base-ui（SelectPositioner.onMapChange）对「不在已渲染项里的受控值」调用
+   * onValueChange(null)：选择被清空 → 触发器回退 placeholder、主钮 disabled。
+   */
+  const sourceOptions = useMemo(() => {
+    const optionLabel = (t: TaskListItem) =>
+      `${t.name}（${getExecutionStatusMeta(t.execution_status).label} · 用例 ${t.total_cases ?? 0}）`
     const list = publishable.map((t) => ({
       value: String(t.id),
-      label: `${t.name}（${getExecutionStatusMeta(t.execution_status).label} · 用例 ${t.total_cases ?? 0}）`,
+      label: optionLabel(t),
     }))
-    if (task && !list.some((item) => item.value === String(task.id))) {
-      list.unshift({ value: String(task.id), label: task.name })
+    const selectedId = sourceTaskId
+    if (selectedId && !list.some((item) => item.value === selectedId)) {
+      const row = sourceTasks.find((t) => String(t.id) === selectedId)
+      if (row) {
+        list.unshift({ value: selectedId, label: optionLabel(row) })
+      } else if (task && String(task.id) === selectedId) {
+        list.unshift({ value: selectedId, label: task.name })
+      } else {
+        // 兜底：值仍要渲染成选项，保住受控值（名称未知时退回 id 文案）
+        list.unshift({ value: selectedId, label: `任务 ${selectedId}` })
+      }
     }
     return list
-  }, [publishable, task])
+  }, [publishable, sourceTaskId, sourceTasks, task])
 
   if (!hasPermission('task:publish')) return null
 
@@ -163,6 +180,9 @@ export function PublishTaskDialog({
   const submitTaskId = source?.id ?? (sourceTaskId ? Number(sourceTaskId) : null)
 
   const handleSourceChange = (value: string | null) => {
+    // 来源任务是必填项且无「清除」交互：base-ui 因选项映射变化回传 null 时忽略，
+    // 预选/已选任务不因列表抖动被清空（INT-1627 返工）
+    if (value == null) return
     setSourceTaskId(value)
     const next = publishable.find((t) => String(t.id) === value)
     if (next) setName(next.name)
@@ -207,22 +227,21 @@ export function PublishTaskDialog({
             <Select
               value={sourceTaskId ?? undefined}
               onValueChange={handleSourceChange}
-              items={sourceItems}
+              items={sourceOptions}
             >
               <SelectTrigger className='w-full' aria-label='选择来源任务'>
                 <SelectValue placeholder='选择要发布的任务' />
               </SelectTrigger>
               <SelectContent align='start'>
-                {tasksLoading ? (
+                {sourceOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+                {tasksLoading && (
                   <SelectItem value='__loading__' disabled>
                     加载中…
                   </SelectItem>
-                ) : (
-                  publishable.map((t) => (
-                    <SelectItem key={t.id} value={String(t.id)}>
-                      {t.name}（{getExecutionStatusMeta(t.execution_status).label} · 用例 {t.total_cases ?? 0}）
-                    </SelectItem>
-                  ))
                 )}
               </SelectContent>
             </Select>

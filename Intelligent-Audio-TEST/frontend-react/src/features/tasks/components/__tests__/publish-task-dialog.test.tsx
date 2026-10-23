@@ -70,6 +70,37 @@ describe('PublishTaskDialog', () => {
     expect(screen.getByRole('button', { name: '发布' })).not.toBeDisabled()
   })
 
+  // INT-1627 返工回归：真实 HTTP 500 下 base-ui 会因选项映射坍缩（可用项从「加载中…」变空）
+  // 对不在已渲染项里的受控值回调 onValueChange(null)。预选任务必须始终渲染成真实选项，
+  // 否则触发器回退 placeholder、sourceTaskId 被清空 → 主钮 disabled（锁死用户）。
+  it('列表失败时预选任务仍是真实选项，受控值不被清空', async () => {
+    fetchTaskListMock.mockRejectedValue(new Error('HTTP 500'))
+    renderDialog()
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeTruthy()
+    })
+
+    // 受控值仍在：触发器回显任务名而非 placeholder / 裸 id
+    const trigger = screen.getByLabelText('选择来源任务')
+    expect(trigger).toHaveTextContent(sourceTask.name)
+    expect(trigger).not.toHaveTextContent('选择要发布的任务')
+
+    // 主钮可点（由后端 _get_publishable_task 兜底校验）
+    expect(screen.getByRole('button', { name: '发布' })).not.toBeDisabled()
+
+    // 展开下拉：预选任务渲染成真实选项（选项映射不坍缩为空）
+    await userEvent.click(trigger)
+    const optionTexts = await waitFor(() => {
+      const texts = Array.from(
+        document.querySelectorAll('[role="option"]')
+      ).map((el) => (el.textContent ?? '').trim())
+      expect(texts.length).toBeGreaterThan(0)
+      return texts
+    })
+    expect(optionTexts.some((text) => text.includes(sourceTask.name))).toBe(true)
+  })
+
   it('点「重试」重新发起来源任务列表请求', async () => {
     fetchTaskListMock.mockRejectedValue(new Error('upstream timeout'))
     renderDialog()
