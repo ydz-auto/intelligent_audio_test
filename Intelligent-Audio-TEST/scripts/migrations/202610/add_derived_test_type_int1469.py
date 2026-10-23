@@ -86,6 +86,11 @@ def _backfill(cur, apply):
             break
         for tc_id, name, config_text, current in rows:
             config = json.loads(config_text) if config_text else {}
+            if not isinstance(config, dict):
+                # 存量脏数据兜底：派生函数与 ORM 写时物化都按 dict 取键，非 dict
+                # 视为空配置按 api 回填 —— 该步已进 db_bootstrap 引导链，单行
+                # 异常会整体失败并阻塞后端启动，不能因一行脏数据卡住部署。
+                config = {}
             want = derive_case_test_type(config, name)
             if want != current:
                 pending.append((want, tc_id))

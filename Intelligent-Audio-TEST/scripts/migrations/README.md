@@ -148,6 +148,8 @@ python scripts/migrations/202610/add_derived_test_type_int1469.py --apply # ㊳ 
 
 | [add_logs_query_indexes_int1468.py](202610/add_logs_query_indexes_int1468.py) | logs 表过滤索引补齐（INT-1468 日志域压测） | 读侧过滤一律走 `lower(level/module/category)`，既有裸列索引匹配不上 → 全表扫描；新增函数索引 `idx_logs_lower_level_id(lower(level), id)` / `idx_logs_lower_module_id` / `idx_logs_lower_category_id`（尾列 id 覆盖 `ORDER BY id DESC` 分页序）与 `idx_logs_task_id_id(task_id, id)`（任务日志合并视图按 id 倒序拉取）；不新增 created_at 索引（读侧从不按 created_at 过滤，业务时间列 time 已有 idx_time）；幂等（`CREATE INDEX IF NOT EXISTS`），支持 `--dry-run` |
 
+> ✅ **2026-10-23 修复记录（INT-1565）**：㊳ 的派生列迁移脚本虽随 INT-1469 落盘（`202610/add_derived_test_type_int1469.py`），但**没接 docker db_bootstrap 引导链** —— `create_all` 只建缺失的表、不给已被 `create_all` 建过的存量表补列，真实库 / 隔离库始终没有 `test_cases.derived_test_type`，task_service 新镜像一重建即 `UndefinedColumn` 400（冒烟门禁 S2）。本卡把该步纳入 `docker/db_bootstrap_entrypoint.py` 的 `BOOTSTRAP_STEPS`（带 `--apply`，脚本默认 dry-run），存量库每次部署自动补列 + 按 `derive_case_test_type` 回填 + 建索引（幂等：列/索引存在即 SKIP、回填按值比对，全新建的库为全 SKIP）。真实 Postgres 临时库红-绿验收：`tests/integration/test_int1565_derived_test_type_migration_pg.py`（存量形态插入报 UndefinedColumn → `--apply` 后列 NOT NULL DEFAULT 'api' / 索引 / e2e 存量行回填正确 → 二次执行全 SKIP、待改 0）；静态守卫：`tests/unit/test_int1565_schema_migration_guard.py`（模型列必须有迁移脚本 + 迁移必须在引导链，基线快照 `tests/data/schema_baseline.json`）。**不跑 docker 引导链的环境（如本机 Postgres 并行栈的隔离库）仍需手工执行一次**：`DATABASE_URL=<隔离库连接串> python scripts/migrations/202610/add_derived_test_type_int1469.py --apply`。
+
 
 ## 新增迁移脚本约定
 

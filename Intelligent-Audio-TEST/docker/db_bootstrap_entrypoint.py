@@ -92,6 +92,11 @@ BOOTSTRAP_STEPS = [
     ('python', 'scripts/migrations/202610/seed_custom_oauth_providers.py'),
     # ㉘ task_case_relations (task, case, 路由) 唯一索引（INT-604；建索引前先查重）
     ('python', 'scripts/migrations/202610/add_uq_task_case_route_int604.py'),
+    # ㊳ test_cases 执行口径派生列（INT-1469/INT-1565）：create_all 只建缺失的表、
+    #    不给存量表补列，存量库（真实库 / 隔离库）缺 derived_test_type 时新镜像
+    #    建用例/列表即 UndefinedColumn 400。脚本幂等（列/索引存在即 SKIP、回填按
+    #    值比对），全新库为全 SKIP；默认 dry-run，引导链必须带 --apply。
+    ('python', 'scripts/migrations/202610/add_derived_test_type_int1469.py', '--apply'),
 ]
 
 
