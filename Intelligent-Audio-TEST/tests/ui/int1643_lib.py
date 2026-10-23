@@ -117,7 +117,8 @@ def login(drv, attempts=3):
         p = drv.find_element(By.ID, 'password')
         p.clear()
         p.send_keys('JieXianTest@2026')
-        btn = drv.find_element(By.XPATH, "//button[contains(normalize-space(.), '登录')]")
+        btn = WebDriverWait(drv, 25).until(EC.presence_of_element_located(
+            (By.XPATH, "//button[contains(normalize-space(.), '登录') or contains(normalize-space(.), '进入工作台')]")))
         js_click(drv, btn)
         try:
             WebDriverWait(drv, 25).until(lambda d: '/login' not in d.current_url)
