@@ -4,7 +4,7 @@
  * 成功 toast「分类添加成功｜分类更新成功」。
  */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 
@@ -36,6 +36,15 @@ function emptyValues(): CategoryFormValues {
   return { name: '', description: '', icon: DEFAULT_CATEGORY_ICON }
 }
 
+function toFormValues(category: EvaluationCategory | null): CategoryFormValues {
+  if (!category) return emptyValues()
+  return {
+    name: category.name,
+    description: category.description ?? '',
+    icon: category.icon ?? DEFAULT_CATEGORY_ICON,
+  }
+}
+
 export function CategoryMutateDialog({
   open,
   onOpenChange,
@@ -52,30 +61,19 @@ export function CategoryMutateDialog({
   const [submitError, setSubmitError] = useState<string | null>(null)
   const isNew = !category
 
-  const defaultValues = useMemo(() => {
-    if (!open) return undefined
-    return category
-      ? {
-          name: category.name,
-          description: category.description ?? '',
-          icon: category.icon ?? DEFAULT_CATEGORY_ICON,
-        }
-      : emptyValues()
-  }, [open, category])
-
   const form = useForm<CategoryFormValues>({
     resolver: zodResolver(categorySchema),
     defaultValues: emptyValues(),
-    values: defaultValues,
   })
 
+  const categoryId = category?.id ?? null
+  // 按「打开 / 切换分类」显式重置：不用 useForm 的 values —— 它按深相等判重跳过同步，
+  // 关闭时清空后重开同一分类（值深相等）不会回填（INT-1577）。
   useEffect(() => {
-    if (!open) {
-      form.reset(emptyValues())
-      setSubmitError(null)
-    }
+    form.reset(open ? toFormValues(category) : emptyValues())
+    if (!open) setSubmitError(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  }, [open, categoryId])
 
   const handleSave = form.handleSubmit(async (values) => {
     setPending(true)
