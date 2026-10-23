@@ -286,6 +286,9 @@ services:
       - AUDIO_SERVICE_GRPC_PORT=50052
       - DEVICE_SERVICE_HOST=host.docker.internal
       - DEVICE_SERVICE_GRPC_PORT=50053
+      # INT-1541：e2e 算法的参数/字段映射/参考参数 ACL 直连 algorithm_service
+      - ALGORITHM_SERVICE_HOST=algorithm_service
+      - ALGORITHM_SERVICE_GRPC_PORT=51067
     volumes:
       # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
       - service_logs:/app/logs
@@ -340,6 +343,9 @@ services:
       # 缺省 localhost:50071 在容器内为 127.0.0.1 拒绝 → get_api 恒失败
       - API_TEST_SERVICE_HOST=api_test_service
       - API_TEST_SERVICE_GRPC_PORT=51071
+      # INT-1541：算法域 ACL 直连 algorithm_service（缺省 localhost:50067 必败）
+      - ALGORITHM_SERVICE_HOST=algorithm_service
+      - ALGORITHM_SERVICE_GRPC_PORT=51067
     volumes:
       # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
       - service_logs:/app/logs
@@ -463,6 +469,9 @@ services:
       # INT-1548：device_service 结果采集 gRPC 跑宿主机 50053，缺省 localhost 容器内为 ::1
       - DEVICE_SERVICE_HOST=host.docker.internal
       - DEVICE_SERVICE_GRPC_PORT=50053
+      # INT-1541：算法域 ACL 直连 algorithm_service（缺省 localhost:50067 必败）
+      - ALGORITHM_SERVICE_HOST=algorithm_service
+      - ALGORITHM_SERVICE_GRPC_PORT=51067
     volumes:
       # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
       - service_logs:/app/logs
