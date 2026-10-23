@@ -9,7 +9,7 @@
 | 版本 | V9.7.31（2026-10-22） |
 | 适用仓库 | `Intelligent-Audio-TEST` |
 | 关联设计 | `doc/功能设计文档/01_测试执行/07_流式推送与结果获取.md`（含 INT-475 附录）、`API测试功能设计文档.md` |
-| 关联代码 | `api_test_service/`、`task_service/core/execution_engine/mixins/task_dispatch.py`、`mock_services/`、`shared/utils/api_key_provider.py` |
+| 关联代码 | `api_test_service/`（`core/realtime_session_executor.py`、`infrastructure/adapters/`）、`task_service/core/execution_engine/mixins/task_dispatch.py`、`shared/utils/api_key_provider.py`、`mock_services/` |
 
 ---
 
@@ -21,7 +21,7 @@
 | 接入形态 | device_type | 被测对象 | 执行器 | 适配器/客户端 |
 | --- | --- | --- | --- | --- |
 | API 测试（HTTP） | `http_api` | HTTP 一问一答 / 流式接口 | `APISessionExecutor` | `HttpAPIAdapter` / `HttpStreamAdapter` |
-| Realtime API 测试 | `websocket_api` | WebSocket 全双工（audio delta / session 事件） | `RealtimeSessionExecutor` | `OpenAIRealtimeAdapter` / `RealtimeWSClient` |
+| Realtime API 测试 | `websocket_api` | WebSocket 全双工（audio delta / session 事件） | `RealtimeSessionExecutor` | `RealtimeAdapterBase` → `OpenAIRealtimeAdapter`（组合 `RealtimeWSClient`） |
 
 路由依据是**用例级** `device_type`（建任务时经 `case_devices` 携带），不是 `task.type`
 （已废弃）。两类的共同接入步骤：
@@ -136,7 +136,60 @@ Realtime 测试以 WebSocket 全双工直连被测 Realtime API：上行推音�
   （round-robin 游标 + 冷却集合，同一 API 跨协议同源轮换）→ `meta.api_key` 单值回退 → env。
   WS 握手 401/403/429 时判定密钥池轮换（`realtime_ws_client.last_handshake_status`）。
 
-### 2.2 用例 rounds（正常轮 + 打断轮 + pacing 策略）
+### 2.2 适配器三级体系（新架构）
+
+Realtime 厂商适配器按**三级体系**落地（`api_test_service/infrastructure/adapters/`）：
+
+| 层级 | 落位 | 职责 |
+| --- | --- | --- |
+| **ApiVendorAdapter（Port）** | `api_test_service/domain/ports/api_vendor_adapter.py` | 适配器统一契约（生命周期钩子 + 同形方法面） |
+| **RealtimeAdapterBase（协议级 base）** | `infrastructure/adapters/protocol/realtime_adapter_base.py` | Realtime 协议默认实现，组合复用 `RealtimeWSClient` 为传输/状态机，暴露同形方法面（`connect` / `pre_process` / `send` / `recv` / `output` / `close` 等），轮次编排零改动 |
+| **品牌适配器（vendors/）** | `infrastructure/adapters/vendors/openai_realtime_adapter.py` | 声明品牌维度，行为继承基类 |
+
+**`OpenAIRealtimeAdapter` 零覆写即官方样例**：仅声明 5 个类属性（`protocol` / `vendor` / `adapter_type` /
+`display_name` / `_transport_vendor`），全部行为继承 `RealtimeAdapterBase`。
+
+**特殊化覆写落点表**（新厂商在此选覆写点，其余继承基类/默认实现）：
+
+| 覆写点 | 默认实现 | 覆写场景 |
+| --- | --- | --- |
+| `pre_process` | `session.update` 载荷 + 等待 `session.updated` 确认（`RealtimeWSClient.pre_process`，`_build_session_config` 合并 `meta.session_config` + 用例 `session`） | 厂商握手 / 会话载荷差异 |
+| `recv` | 事件归一化（`RealtimeWSClient._parse_event` + `_EVENT_TYPE_MAP`，默认 OpenAI 事件协议）；**打断依赖** `user_speech_started` ↔ 厂商打断事件、`response_cancelled` ↔ 厂商取消回复事件 | 厂商事件方言 |
+| `output` + `post_process` | 聚合轮次/会话输出（audio / text / frame_results / latency_ms / barge_in_detected） | 聚合差异 |
+| `wait_ai_speaking` + `wait_ai_complete` | 起始窗口（`ai_start_timeout_seconds=25` 等首个 `ai_audio_delta`）/ 收尾窗口（`ai_complete_timeout_seconds=60` 等 `ai_audio_done`） | 等待语义差异 |
+| `_build_client` | 构造 `RealtimeWSClient`（url / headers / chunk_duration_ms / proxy 注入） | 私有传输替换 |
+
+**配置级差异（URL / 密钥 / 代理 / `session_config` / `audio_config`）一律走 `api.meta`，不写代码。**
+
+### 2.3 表驱动分发（INT-1299）与新增厂商接入
+
+执行器经注册表**表驱动分发**，不做 if/else 白名单：
+
+- `RealtimeSessionExecutor._resolve_realtime_transport` 只查表：
+  `vendor_adapter_registry.resolve_for(AdapterProtocol.REALTIME, a_type)`
+  （`api_test_service/infrastructure/adapters/registry.py`）——扁平 key 在该协议下有映射 → 严格分发
+  （`fallback=False`，失败抛错，防双通道语义歧义）；无映射（未配置 / 默认 `API_DRIVER` / `MOCK`）→
+  返回 `None`，回退既有 `RealtimeWSClient` 默认构造（向后兼容）。
+
+- **新厂商接入三步**（执行器零改动）：
+  1. `shared/models/common_enums.py` 新增 `AdapterVendor` + `VendorAdapterType` 枚举成员；
+  2. `_FLAT_KEY_DIMENSIONS` 加一行映射（扁平 key → `(protocol, vendor)`）；
+  3. `infrastructure/adapters/vendors/` 下实现品牌适配器类 + `@register_vendor_adapter` 装饰注册。
+
+  用例侧配置 `vendor_adapter=<扁平 key>` 即分发（`case_config` 优先于 `api_config.meta`）。
+
+### 2.4 字段归一化与评估入参（INT-1299）
+
+- **轮次语义**：`RealtimeAdapterBase.resolve_round_mode`（默认实现，`_as_bool` 兼容 int/bool/str，
+  参照 `device_service/infrastructure/drivers/harmony_xiaoyichat.py::_as_bool`）；厂商方言字段
+  （`barge_in` / `interrupt` 等）覆写一例。执行器只调 `resolve_round_mode`，不再散落 `get('is_interruption')` 硬编码。
+- **评估字段走 field_mapper 配置透传**（与 E2E/HTTP 同构）：评估入参遍历
+  `field_mappings['original']['evaluation']['output']`（param_mapping `source_param` → `target_param`，
+  source 为 case/reference 时取 `round_config`、api 时取轮次输出）；`answer` 等输出字段按 api 输出字段
+  定义取（`output_field_keys` 模式）；别名兜底（question/query）收敛到各算法 param_mapping 配置，
+  代码无硬编码字段名。新增算法仅改算法配置即可映射评估入参。
+
+### 2.5 用例 rounds（正常轮 + 打断轮 + 拒识 + pacing 策略）
 
 Realtime 用例 `rounds` 除 1.2 字段外，还支持：
 
@@ -144,19 +197,30 @@ Realtime 用例 `rounds` 除 1.2 字段外，还支持：
 | --- | --- |
 | `is_interruption` | 标记打断轮（`RealtimeRoundMode.INTERRUPTION`）：先等 AI 开口 → 延时后推打断音频 → 检测打断 → 等新回复 |
 | `interruption_delay_ms` | AI 开口后到推打断音频的固定延时（默认 1000，可被 `round_config` 覆盖） |
-| `pacing` | 输出调输入节奏配置：`{"pacing_strategy": "wait_turn_end", "turn_end_wait_timeout_s": 60, "pacing_fallback_timeout_s": 30}`（详见 2.4） |
+| `pacing` | 输出调输入节奏配置：`{"pacing_strategy": "wait_turn_end", "turn_end_wait_timeout_s": 60, "pacing_fallback_timeout_s": 30}`（详见 2.7） |
 
-正常轮时序（`RealtimeSessionExecutor._execute_normal_round`）：
+**正常轮**（`RealtimeSessionExecutor._execute_normal_round`）：
 流式推送混音 chunk（`RenderAudioStream` 消费链路，逐 chunk `send_audio_chunk` + 按 chunk 时长 sleep）
 → 推流中按节奏策略插 `recv()` 检输出事件（`_pacing_gate`）→ `commit_input` → `wait_ai_complete`
-（`ai_start_timeout_seconds=25` / `ai_complete_timeout_seconds=60`，「超时但已开口视为成功」）。
+（`ai_start_timeout_seconds=25` / `ai_complete_timeout_seconds=60`）。
 
-打断轮时序（`_execute_interruption_round`）：① `wait_ai_speaking` 等 AI 开口（25s）→
-② `sleep(interruption_delay_ms)` → ③ 流式推送打断音频 + `commit_input` → ④ barge-in 检测窗口
-（`barge_in_window_seconds=5`，recv 轮询等 `user_speech_started` / `response_cancelled`）→
-⑤ 打断成功则 `wait_ai_complete` 等新回复。打断轮推流阶段不套节奏门（避免抢占打断信号源）。
+> **成败语义**：已收到 `ai_audio_delta` 仅表明**通过起始窗口**（非「AI 未回复」）；收尾事件
+> `ai_audio_done` 须在 `ai_complete_timeout_seconds`（60s）内到达，否则轮失败
+> **「AI 回复未在超时内完成」**（`_execute_normal_round` `success = bool(complete and output['ai_complete'])`；
+> `TIMEOUT_FALLBACK` 只兜底不无限等待，不改变成败语义）。
 
-### 2.3 建任务与执行（case_devices 亲和）
+**打断轮**（`_execute_interruption_round`）：
+① `wait_ai_speaking` 等 AI 开口（25s）→ ② `sleep(interruption_delay_ms)` → ③ 流式推送打断音频 +
+`commit_input` → ④ barge-in 检测窗口（`barge_in_window_seconds=5`，recv 轮询等
+`user_speech_started` / `response_cancelled`）→ ⑤ 打断成功则 `wait_ai_complete` 等新回复。
+打断轮推流阶段不套节奏门（避免抢占打断信号源）。
+
+- **推流中打断** = `allow_barge_in` 节奏策略：输入推流中模型提前回话/打断 → `_pacing_gate` 返回
+  `interrupt` → `_execute_normal_round` `break` 收敛输入推流（剩余输入不再推）。
+- **拒识** = 评估侧 `reject_judge` 判定（`evaluation_service` 裁判族维度）；适配器只需**如实采集轮次结果**
+  （`output.text` / `output.audio` / 是否开口），无需特殊逻辑。
+
+### 2.6 建任务与执行（case_devices 亲和）
 
 Realtime 用例建任务时，**`case_devices` 必须携带 `device_type=websocket_api`**，否则按默认
 `physical`（或 `http_api`）路由，不会进入 Realtime 通道。链路：
@@ -177,7 +241,7 @@ flowchart TB
 - 实例内闭环：WS 长连接与帧状态封闭在接单实例内存，跨轮保持；会话结束 `release` 清除绑定
   （`bind_ttl_seconds=3600` 兜底）。
 
-### 2.4 超时与节奏配置
+### 2.7 超时与节奏配置
 
 Realtime 全链路超时配置化（`shared/config/concurrency_config.json` `realtime_session` 段，
 无魔法数字；执行器经 `config_manager.get_value('realtime_session', key, default)` 读取）：
@@ -185,10 +249,10 @@ Realtime 全链路超时配置化（`shared/config/concurrency_config.json` `rea
 | 键 | 默认 | 语义 |
 | --- | --- | --- |
 | `chunk_duration_ms` | 100 | RenderAudioStream 切片粒度 / 逐 chunk 推送节奏 |
-| `ai_start_timeout_seconds` | 25 | 等 AI 首个 `ai_audio_delta`（`wait_ai_speaking`） |
-| `ai_complete_timeout_seconds` | 60 | 等 AI 回复收尾（`wait_ai_complete` end_timeout） |
+| `ai_start_timeout_seconds` | 25 | 等 AI 首个 `ai_audio_delta`（`wait_ai_speaking` 起始窗口） |
+| `ai_complete_timeout_seconds` | 60 | 等 AI 回复收尾（`wait_ai_complete` end_timeout；收尾事件超窗 → 轮失败「AI 回复未在超时内完成」） |
 | `barge_in_window_seconds` | 5 | 打断检测窗口 |
-| `interruption_delay_ms` | 1000 | AI 开口后到推打断音频的延时（round 级可覆盖） |
+| `interruption_delay_ms` | 1000 | AI 开口后到推打断音频的延时（round 级可覆盖；代码默认，不在 json 段） |
 | `bind_ttl_seconds` | 3600 | 会话亲和绑定 TTL |
 | `pacing_strategy` | `fixed` | 输出调输入节奏策略（见下） |
 | `turn_end_wait_timeout_s` | 60 | `WAIT_TURN_END` 的 turn 结束等待上限 |
@@ -208,7 +272,7 @@ Realtime 全链路超时配置化（`shared/config/concurrency_config.json` `rea
 FIXED 与动态策略互斥（含任一动态策略时 FIXED 被丢弃）。设计细节见
 `doc/功能设计文档/01_测试执行/07_流式推送与结果获取.md` 附录。
 
-### 2.5 执行器 × 适配器架构（图 A）
+### 2.8 执行器 × 适配器架构（图 A）
 
 `RealtimeSessionExecutor` 经 `_resolve_realtime_transport` 委托构造适配器，只调**同形方法面**
 （`connect` / `pre_process` / `send` / `recv` / `output` / `close`），轮次编排与适配器实现解耦；
@@ -216,11 +280,12 @@ FIXED 与动态策略互斥（含任一动态策略时 FIXED 被丢弃）。设�
 
 ```mermaid
 flowchart LR
-    EX[RealtimeSessionExecutor<br/>推流 / recv 轮询 / 节奏门] -->|委托构造·同形方法面| AD
-    subgraph AD[适配器 RealtimeWSClient]
+    EX[RealtimeSessionExecutor<br/>推流 / recv 轮询 / 节奏门] -->|委托构造·同形方法面| OA[品牌适配器<br/>OpenAIRealtimeAdapter]
+    subgraph WS[RealtimeWSClient 传输 / 状态机]
         Q[(事件队列 queue.Queue)]
         R[_recv_loop daemon 线程]
     end
+    OA -->|组合复用| WS
     R -->|归一化事件入队| Q
     EX -->|recv 同步拉取| Q
     M[被测 Realtime API WS] <-->|audio delta / session| R
@@ -229,11 +294,10 @@ flowchart LR
 ```
 
 要点（与代码一致，`api_test_service/core/realtime_session_executor.py` +
-`api_test_service/infrastructure/adapters/transport/realtime_ws_client.py`）：
+`api_test_service/infrastructure/adapters/transport/realtime_ws_client.py` +
+`api_test_service/infrastructure/adapters/vendors/openai_realtime_adapter.py`）：
 
-- **委托构造**：`_resolve_realtime_transport` 按 `adapter_type_from_config` 判定
-  `vendor_adapter=openai / openai_realtime` 时经 `vendor_adapter_registry.resolve(
-  AdapterProtocol.REALTIME, AdapterVendor.OPENAI, fallback=False)` 构造 `OpenAIRealtimeAdapter`，
+- **委托构造**：`_resolve_realtime_transport` 查表分发（2.3）构造 `OpenAIRealtimeAdapter`，
   否则构造 `RealtimeWSClient`；两者暴露同一方法面，轮次编排零改动。
 - **信号回流两段式**：`_recv_loop` daemon 线程（生产者）`ws.recv()` → 厂商事件入
   `queue.Queue`（异步）；执行器主线程 `recv()` 轮询（同步）→ `_pacing_gate` 决策 interrupt / 收敛。
@@ -242,7 +306,7 @@ flowchart LR
 - **停止控制面**：任务停止走 Redis 标志位 + 本地 `stop_flags`（`_handle_control` / `stop_check`，
   见 API 测试功能设计文档 §3.8）。
 
-### 2.6 事件回流停止时序（图 B）
+### 2.9 事件回流停止时序（图 B）
 
 ```mermaid
 sequenceDiagram
@@ -262,7 +326,7 @@ sequenceDiagram
 收到 `user_speech_started` / `response_cancelled` → `interrupt` → 收敛输入推流（剩余输入不再推）；
 收到 `connection_closed` / `error` → 放行，由 `wait_ai_complete` 收敛轮次失败。
 
-### 2.7 mock Realtime API 联调（mock_realtime_api :5098）
+### 2.10 mock Realtime API 联调（mock_realtime_api :5098）
 
 ```bash
 # 打断轮联调：--barge-in 预置「AI 正在说话 + 打断」事件序列
@@ -282,7 +346,7 @@ python mock_services/mock_realtime_api.py --port 5098 --speak-during-stream \
 | `speak_during_stream` | 输入推流中（commit 前）模型提前回话，供 `WAIT_TURN_END` / `ALLOW_BARGE_IN` 验收 |
 | `speak_during_stream_after` | 第 N 帧 append 后触发（默认 1） |
 | `speak_during_stream_barge_in` | 提前回话携带 `speech_started` + `cancelled` 打断信号 |
-| `speak_during_stream_complete` | False 模拟长回复未收口（供超时兜底验收） |
+| `speak_during_stream_complete` | False 模拟长回复未收口（供超时兜底验收；收尾事件缺失 → 轮失败「AI 回复未在超时内完成」） |
 | `first_delta_delay_ms` | commit → 首个 delta 间隔（测首帧延迟） |
 | `disconnect_after_events` | 第 N 个客户端事件后主动断开（测断连收敛） |
 | `protocol_error_on_event` | 该事件回 error 帧（测协议错误） |
@@ -298,8 +362,8 @@ python mock_services/mock_realtime_api.py --port 5098 --speak-during-stream \
 | --- | --- |
 | **device_type 不生效** | Realtime 用例建任务时 `case_devices` 未携带 `device_type=websocket_api`（或漏传 `api_id`）。路由依据是**用例级** `device_type`；检查建任务请求的 `case_devices` 与 `task_case_relations.device_type` |
 | **WS 连接失败** | ① 端点未配置 `ws://` / `wss://` 前缀（`_resolve_ws_url` 报「未配置 WebSocket 端点」）；② 被测侧不可达/拒绝握手——检查网络与防火墙；③ 握手 401/403/429 → 密钥问题，见「密钥不生效」；④ 配置了代理但 `proxy_url` 不合规（`validate_proxy`） |
-| **session.updated 超时** | `pre_process` 下发 `session.update` 后等待 `session.updated` 确认（`wait_confirm_timeout=10s`）；超时 = 被测侧未按 OpenAI Realtime 协议回 `session.updated`。检查被测协议事件名（`_EVENT_TYPE_MAP` 映射面）与会话配置载荷 |
-| **AI 未回复** | commit 后起始窗口（`ai_start_timeout_seconds=25`）内无 `ai_audio_delta` → 轮失败「AI 未回复」；检查被测是否配置了自动回复/`response.create` 语义。注意「超时但已开口视为成功」：已收到 delta 后收尾事件迟到不抹杀轮成功 |
+| **session.updated 超时** | `pre_process` 下发 `session.update` 后等待 `session.updated` 确认（`wait_confirm_timeout=10s`）；超时 = 被测侧未按 OpenAI Realtime 协议回 `session.updated`。检查被测协议事件名（`_EVENT_TYPE_MAP` 映射面，见 2.2 覆写点 `recv`）与会话配置载荷 |
+| **AI 未回复** | commit 后起始窗口（`ai_start_timeout_seconds=25`）内无 `ai_audio_delta` → 轮失败「AI 未回复」；检查被测是否配置了自动回复/`response.create` 语义。**已收到 delta 仅表明通过起始窗口**；收尾事件（`ai_audio_done`）须在 `ai_complete_timeout_seconds` 内到达，否则轮失败「AI 回复未在超时内完成」 |
 | **打断未检出** | 打断轮窗口（`barge_in_window_seconds=5`）内未收到 `user_speech_started` / `response_cancelled` → 打断失败标记写入轮结果；检查被测 VAD 打断检测是否开启、`interruption_delay_ms` 是否给 AI 留出开口时间 |
 | **密钥不生效** | 密钥链 `case_config.api_key` → `meta.api_key` → env `OPENAI_API_KEY` 逐级回退；WS 握手 401/403/429 时判定密钥池轮换（`meta.api_keys` 轮换池）。密钥不落日志、不进报告；排查先看执行日志的握手状态码 |
 
