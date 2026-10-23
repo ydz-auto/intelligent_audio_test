@@ -218,6 +218,15 @@ class TaskQueryHandler:
         """处理任务用例执行结果查询。委托 task_query_service.get_case_results。"""
         return self.task_query_service.get_case_results(query.task_id, query.case_id)
 
+    def handle_check_audio_referenced(self, audio_id: int, user_id=None) -> Dict[str, Any]:
+        """处理音频引用定点查询（INT-1449）。委托 testcase_query_service。
+
+        按 audio_id 定点统计用例/背景噪声/任务引用数，替代旧的全表分页 +
+        config 字符串客户端扫描。user_id 为操作人（x-user-id metadata），
+        与 ListTestCases/ListTasks 的可见性口径一致。
+        """
+        return self.testcase_query_service.check_audio_referenced(audio_id, user_id=user_id)
+
     # ==================================================================
     # testcase 域查询（gRPC servicer 入口）
     # 委托 testcase_query_service 旧服务作为过渡

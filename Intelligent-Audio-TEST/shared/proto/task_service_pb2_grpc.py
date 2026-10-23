@@ -634,6 +634,11 @@ class TaskConfigServiceStub:
                 request_serializer=task__service__pb2.RemoveTaskCaseLifecycleRequest.SerializeToString,
                 response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
                 _registered_method=True)
+        self.CheckAudioReferenced = channel.unary_unary(
+                '/task_service.TaskConfigService/CheckAudioReferenced',
+                request_serializer=task__service__pb2.CheckAudioReferencedRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
 
 
 class TaskConfigServiceServicer:
@@ -799,6 +804,14 @@ class TaskConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def CheckAudioReferenced(self, request, context):
+        """---- 音频引用检查（INT-1449：audio_service 删除音频前定点查询，
+        替代 ListTestCases/ListTasks 全表分页 + config 字符串客户端扫描）----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_TaskConfigServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -925,6 +938,11 @@ def add_TaskConfigServiceServicer_to_server(servicer, server):
             'RemoveTaskCaseLifecycle': grpc.unary_unary_rpc_method_handler(
                     servicer.RemoveTaskCaseLifecycle,
                     request_deserializer=task__service__pb2.RemoveTaskCaseLifecycleRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'CheckAudioReferenced': grpc.unary_unary_rpc_method_handler(
+                    servicer.CheckAudioReferenced,
+                    request_deserializer=task__service__pb2.CheckAudioReferencedRequest.FromString,
                     response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
             ),
     }
@@ -1603,6 +1621,33 @@ class TaskConfigService:
             target,
             '/task_service.TaskConfigService/RemoveTaskCaseLifecycle',
             task__service__pb2.RemoveTaskCaseLifecycleRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CheckAudioReferenced(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskConfigService/CheckAudioReferenced',
+            task__service__pb2.CheckAudioReferencedRequest.SerializeToString,
             task__service__pb2.TaskConfigResponse.FromString,
             options,
             channel_credentials,

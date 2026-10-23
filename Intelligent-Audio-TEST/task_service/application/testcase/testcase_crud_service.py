@@ -780,6 +780,14 @@ class TestCaseCrudService:
         """按筛选条件返回全量用例ID（不分页，委托 TestCaseQueryService）。"""
         return self._query_service.fetch_case_ids(data)
 
+    def check_audio_referenced(self, audio_id: int, user_id=None) -> dict:
+        """按 audio_id 定点统计引用数（INT-1449，委托 TestCaseQueryService）。
+
+        返回 {success, message, data: {'testcases', 'background_noise', 'tasks'}}。
+        供 audio_service 删除音频前跨域 ACL 检查，替代全表分页扫描。
+        """
+        return self._query_service.check_audio_referenced(audio_id, user_id=user_id)
+
     def get_testcase_ref_params(self, tc_id: str, round_number: int) -> dict:
         """获取指定用例指定轮的参考参数文件内容（委托 TestCaseQueryService）。"""
         return self._query_service.get_testcase_ref_params(tc_id, round_number)

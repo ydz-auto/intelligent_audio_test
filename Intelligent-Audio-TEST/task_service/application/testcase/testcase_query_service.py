@@ -475,6 +475,20 @@ class TestCaseQueryService:
             logger.error(f"查询用例ID失败: {e}", exc_info=True)
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 
+    def check_audio_referenced(self, audio_id: int, user_id=None) -> dict:
+        """按 audio_id 定点统计引用数（INT-1449，委托 repo.check_audio_referenced）。
+
+        供 audio_service 删除音频前跨域 ACL 检查：替代旧实现全表分页 +
+        config 字符串客户端扫描。user_id 为操作人（x-user-id metadata），
+        可见性口径与 ListTestCases/ListTasks 一致。
+        """
+        try:
+            data = self.repo.check_audio_referenced(audio_id, user_id=user_id)
+            return {'success': True, 'message': '', 'data': data}
+        except Exception as e:
+            logger.error(f"检查音频引用失败: {e}", exc_info=True)
+            return {'success': False, 'message': str(e), 'data': None, 'code': 500}
+
     def get_testcase_ref_params(self, tc_id: str, round_number: int) -> dict:
         """获取指定用例指定轮的参考参数文件内容。"""
         from task_service.infrastructure.acl.algorithm_acl_repository import AlgorithmRepository

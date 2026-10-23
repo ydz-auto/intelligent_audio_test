@@ -130,6 +130,88 @@ class TestCaseRepository(
             logger.warning(f"按 ID 查询实验室名称失败: {e}")
             return {}
 
+    def check_audio_referenced(self, audio_id: int, user_id=None) -> dict:
+        """按 audio_id 定点统计引用数（INT-1449）。
+
+        替代旧 ACL 检查的全表分页 + config 字符串客户端扫描（gRPC
+        ListTestCases/ListTasks 逐页拉取后 Python 侧 json.dumps 匹配）：
+        - testcases: 用例 config 文本中出现 `"audio_id": {id}`（主音频/
+          干扰人/段级背景噪声，等价旧 check_audio_in_testcases）
+        - background_noise: 用例 config 文本出现 `"background_noise":
+          {"audio_id": {id}}`（等价旧 check_audio_in_testcase_noise）
+        - tasks: 非删除可见任务，其 task_case_relations 关联用例 config
+          引用该音频（等价旧 check_audio_in_tasks 的「任务引用」语义，
+          旧实现扫 Task.config 的字符串因任务 config 不含 audio_id 恒为 0）
+
+        可见性口径与 ListTestCases/ListTasks 一致（visible_condition）。
+        返回 {'testcases': int, 'background_noise': int, 'tasks': int}。
+        """
+        if not audio_id:
+            return {'testcases': 0, 'background_noise': 0, 'tasks': 0}
+
+        from sqlalchemy import Text, func, or_
+
+        from shared.infrastructure.visibility_filter import visible_condition
+        from task_service.infrastructure.persistence.models import (
+            Task, TaskCase, TestCase,
+        )
+        from task_service.infrastructure.visibility_context import visibility_identity
+
+        session = get_db_session()
+        _vis_uid, _vis_admin = visibility_identity(user_id)
+
+        audio_str = str(int(audio_id))
+        # JSON 数字值后紧跟 , 或 }（兼容 jsonb 紧凑文本 `"audio_id": 5,`
+        # 与 JSON 原文 `"audio_id":5}` 两种冒号后空格的排列；显式列出逗号/
+        # 闭括号两种收尾，避免把 audio_id 5 误匹配成 50/500 的前缀）。
+        # LIKE 不支持 `[...]` 字符类（sqlite/Postgres 均按字面量处理），故展开。
+        tc_like = or_(
+            TestCase.config.cast(Text).like(f'%"audio_id": {audio_str},%'),
+            TestCase.config.cast(Text).like(f'%"audio_id": {audio_str}}}%'),
+            TestCase.config.cast(Text).like(f'%"audio_id":{audio_str},%'),
+            TestCase.config.cast(Text).like(f'%"audio_id":{audio_str}}}%'),
+        )
+        bg_like = or_(
+            TestCase.config.cast(Text).like(f'%"background_noise": {{"audio_id": {audio_str},%'),
+            TestCase.config.cast(Text).like(f'%"background_noise": {{"audio_id": {audio_str}}}}}%'),
+            TestCase.config.cast(Text).like(f'%"background_noise":{{"audio_id":{audio_str},%'),
+            TestCase.config.cast(Text).like(f'%"background_noise":{{"audio_id":{audio_str}}}}}%'),
+        )
+
+        _case_visible = (
+            TestCase.deleted == False,  # noqa: E712
+            visible_condition(
+                TestCase.created_by_user_id, TestCase.visibility, _vis_uid, _vis_admin),
+        )
+
+        testcases = session.query(func.count(TestCase.id)).filter(
+            _case_visible[0], _case_visible[1], tc_like,
+        ).scalar() or 0
+
+        background_noise = session.query(func.count(TestCase.id)).filter(
+            _case_visible[0], _case_visible[1], bg_like,
+        ).scalar() or 0
+
+        # 任务引用：task_case_relations → 关联用例 config 引用该音频
+        # （主音频或背景噪声任一命中即可阻断删除）
+        case_ref_ids = session.query(TaskCase.task_id).join(
+            TestCase, TestCase.id == TaskCase.test_case_id,
+        ).filter(
+            _case_visible[0], _case_visible[1], tc_like,
+        )
+        tasks = session.query(func.count(func.distinct(Task.id))).filter(
+            Task.deleted == False,  # noqa: E712
+            visible_condition(
+                Task.created_by_user_id, Task.visibility, _vis_uid, _vis_admin),
+            Task.id.in_(case_ref_ids),
+        ).scalar() or 0
+
+        return {
+            'testcases': int(testcases),
+            'background_noise': int(background_noise),
+            'tasks': int(tasks),
+        }
+
     # ========== 事务控制 ==========
 
     def commit(self):
