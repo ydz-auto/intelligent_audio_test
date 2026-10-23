@@ -153,11 +153,10 @@ export function TestExecutionPage({
   /** 步骤一「开始测试」校验链（§3.7：失败 toast.warning，通过才开任务名称弹窗） */
   const handleStartTest = () => {
     const caseState = useCaseSelectionStore.getState()
-    // 用例校验：filterAll（未手动选择按筛选全量圈定）或已勾选任一用例
-    if (caseState.filterAllMode === false && caseState.manualCaseIds.length === 0) {
-      toast.warning('当前筛选条件下没有可用的测试用例，请选择用例或调整筛选条件')
-      return
-    }
+    // 用例校验（INT-1542）：filter-all 圈定（后端按筛选展开全量）或手动勾选至少 1 条。
+    // 手动勾选后 filterAllMode 为 false，必须以真实选中集为准，不能再用空用例集 + filter-all 过滤。
+    const hasCases =
+      caseState.filterAllMode || caseState.manualCaseIds.length > 0
     // INT-1544：filter-all 圈定现在真的按筛选条件取数——筛选结果为空时不再放行
     // （否则提交 case_ids=[] 由后端报错），与列表「全部 0 条用例」一致地拦在入口
     if (caseState.filterAllMode && caseState.filterAllTotal === 0) {
@@ -165,20 +164,15 @@ export function TestExecutionPage({
       return
     }
     const errors = launch.validate({
-      // filterAll 模式用例已满足（下方过滤空用例报错），不依赖 mock 用例常量
-      cases: [],
+      hasCases,
       devices: resources.devices,
       apis: resources.apis,
       deviceIds,
       apiIds,
       algorithmType,
     })
-    // filterAll 模式用例已满足，跳过空用例报错
-    const filteredErrors = caseState.filterAllMode
-      ? errors.filter((e) => !e.includes('没有可用的测试用例'))
-      : errors
-    if (filteredErrors.length > 0) {
-      filteredErrors.forEach((error) => toast.warning(error))
+    if (errors.length > 0) {
+      errors.forEach((error) => toast.warning(error))
       return
     }
     setTaskNameOpen(true)

@@ -25,7 +25,6 @@ import type {
 } from '@/domain/models/testExecution'
 import type { Device } from '@/domain/models/device'
 import type { ApiConfig } from '@/domain/models/apiConfig'
-import type { TestCase } from '@/domain/models/testCase'
 
 function formatNow(): string {
   const d = new Date()
@@ -39,7 +38,12 @@ export function useTestLaunch() {
   /** 启动校验链（§3.7；返回错误文案数组，空=通过） */
   const validate = useCallback(
     (opts: {
-      cases: TestCase[]
+      /**
+       * 用例校验通过条件（INT-1542）：filter-all 圈定（后端按筛选展开全量，前端不知条数）
+       * 或手动勾选 ≥1 条。此前恒传 cases: []，手动勾选路径（filterAllMode=false）必然报
+       * 「没有可用的测试用例」，任务命名弹窗打不开。
+       */
+      hasCases: boolean
       devices: Device[]
       apis: ApiConfig[]
       deviceIds: number[]
@@ -47,8 +51,7 @@ export function useTestLaunch() {
       algorithmType?: string
     }): string[] => {
       const errors: string[] = []
-      const all = opts.cases
-      if (all.length === 0) {
+      if (!opts.hasCases) {
         errors.push('当前筛选条件下没有可用的测试用例，请选择用例或调整筛选条件')
       }
       const selectedDevices = opts.devices.filter((d) => opts.deviceIds.includes(d.id))
