@@ -1,0 +1,938 @@
+merge(design): 合入 design/ux-redesign 文档更新（INT-1600 设备域/音频域弹窗口径）
+fix(frontend-react): INT-1564 OAuth 新建弹窗 Client Secret 必填 + 字段级校验 + 失败 toast 透出后端 message
+fix(frontend-react): INT-1561 日志域 Select 关闭态回显 label + 导出成功关闭弹窗
+fix(frontend-react): INT-1551 评估维度结果区间 min≥max 显示行内错误，消除无原因禁用死路
+fix(frontend-react): INT-1550 评估分类删除入口可达——分组视图保留空分类分组
+fix(frontend-react): INT-1546 Access Token 有效时间下拉闭合态显示选项文案
+docs(ux): INT-1600 前置审核打回修订——提交字段分阶段定稿 + 设备键名改正 + 上传窗收敛口径
+docs(ux): INT-1600 音频域导入/批量导入弹窗评估维度+播放设备轮次范围三档，移除播放历史
+fix(frontend-react): INT-1569 算法详情「参数定义」设备/API 页签补「默认值」列
+test(ui): INT-1552 维度抽屉内联新建分类验收脚本（真落库 + A/B 对照）
+fix(frontend-react): INT-1552 维度抽屉「+ 新建分类」真实落库——POST /evaluation/categories 返回真实 id 回填 categoryId
+fix(frontend-react): INT-1549 评估分类编辑携带 id 走 PUT + 保存失败不静默
+fix(frontend-react): INT-1528 任务命名弹窗取消后重开恢复默认名称
+test(ui): INT-1497 验收脚本支持直连 docker 前端 15173 + 时长徽章断言
+chore(agent): uncommitted changes from task
+test(ui): INT-1247 用例域复走查脚本——CRUD 闭环/批量九项/INT-1424 六项复测 + V9.7.10 基准截图
+test(ui): INT-1255 复测脚本——Access Token 浏览器 CRUD 全链 + 报告对比/日志下载/分享复测
+test(ui): INT-1255 复验脚本跟进——移除 IAM CDP 覆写（INT-1345 已修 /api/option/）+ 角色编辑 toast 文案修正（角色权限已更新）
+test(ui): INT-1255 报告与系统 CRUD 走查脚本（报告/系统设置IAM/个人中心）
+test(ui): INT-1254 评估维度 CRUD 走查脚本——新建/编辑/删除/批量/校验/计数闭环 + 两缺陷证据
+test(ui): INT-1251 收口脚本 —— INT-1333 编辑闭环重走 + 深色截图 + base-ui select 探针
+test(ui): INT-1251 设备 CRUD 走查脚本（真实库栈 docker :15000，React wiring/react）
+test(ui): INT-1245 任务域 CRUD 走查脚本（真实库栈 5700 Selenium 实测）
+docs(fix): INT-1411 合入时去除残留冲突标记行
+test(ui): INT-1481 第二轮复测——INT-1501/1502/1503/1504 修复项逐项实测脚本
+test(ui): INT-1481 SPL 映射域复走实测脚本（物理域/数字域 7 弹窗 + /apis 故障取证）
+docs(consistency-audit): INT-1411 报告分享前端接线一致性审计回写——INT-1363 已接真实端点 INT-971，报告分享口径与端点契约同步 15_报告域.md + 报告管理功能设计文档.md §3.4.2（邮件分享本版本不实现/自定义有效期/统计=生成响应+GET 列表回填/原 visit 端点取消；实现演进裁定）
+test(frontend-react): INT-1483 补 :15000「发布后清草稿」部署探测脚本
+test(frontend-react): INT-1483 当前前端构建复核补脚本（加载骨架/错误态/分组与批量深色）+ E 脚本草稿段先刷新列表
+test(frontend-react): INT-1483 补走查脚本——导入文件上传/深浅色确认弹窗/加载与错误态/参数类型范围校验/草稿复验
+test(frontend-react): INT-1483 算法配置域深走查脚本（列表/详情/新建编辑删除/分组/导入/批量/草稿核验）
+fix(frontend-react): INT-1560 标签域查询失败显式错误态与重试，不再伪装成「暂无标签」
+fix(frontend-react): INT-1558 算法详情弹窗评估维度关联列按 dimensionId 解析维度名 + 已删除维度兜底
+test(ui): INT-1482/INT-1547 报告域复走——五项修复 A/B 实测 + 生成/对比/统计接口复测脚本
+fix(frontend-react): INT-1547 报告域五项修复——编辑弹窗回填/音频真实流/统计页解耦/导出历史与统计报表接真实接口
+fix(frontend-react): INT-1545 快速复核轮询键改用记录归属 task_id（容器任务不再永久执行中）
+test(ui): INT-1543 首页平台规模条 docker 旁路验收脚本
+fix(frontend-react): INT-1543 首页平台规模条六项整项可点击 + 任务/音频副行细分 + API 在线率告警
+test(ui): INT-1542 验收脚本——手动勾选后开始测试弹窗 / 反向拦截 / filter-all 回归 / 深浅色
+fix(frontend-react): INT-1542 手动勾选用例后「开始测试」恒报无可用用例——校验改用真实选中集
+fix(frontend-react): INT-1540 参数范围约束 min>max 补字段级红字 + aria-invalid
+fix(frontend-react): INT-1424 终审返工 整体评估维度回显 + 实验室试听播放设备
+fix(frontend-react): INT-1424 返工 音频库标签收敛+文件夹只显名+实验室播放总时长兜底
+fix(frontend-react): INT-1424 返工 音频库弹窗改服务端分页并保留跨搜索已选
+test(frontend-react): INT-1424 验收探针脚本（抽屉/音频流/策略空态/roundtrip）
+fix(frontend-react): INT-1424 用例编辑抽屉音频/评估配置对照 V9.7.10 修正六项
+fix(frontend-react): INT-1544 filter-all 圈定携带步骤一筛选条件（界面「全部 1 条」= 提交 case_ids）
+fix(frontend-react): INT-1530 去掉 API 编辑弹窗中重复的 API 级「API 密钥」输入
+fix(frontend-react): INT-1503 SPL 校准态增益列/曲线——adapter 兼容后端首轮物化点集的「增益」键并派生电平
+fix(frontend-react): INT-1502 增益映射测试音接真实 /spl/test-tone（含 /stop）
+fix(frontend-react): INT-1501 SPL 映射表单 Select 显示 label + 物理域搜索含设备名 + mock 注释清理 + 导入 tooltip 可达
+fix(frontend-react): INT-1512 音频域 mock 残留清理——试听弹窗真实播放设备 + 上传进度改真实分片事件
+fix(frontend-react): INT-1492 任务详情关联用例对照 V9.7.10 修正——行式列表 + 虚拟滚动 + 失败状态筛选
+fix(frontend-react): INT-1498 日常任务列表渲染挑选合并标识
+chore(agent): uncommitted changes from task
+fix(frontend-react): INT-1495 实验室状态 Select 补 items——闭合态显示「启用」而非 raw value
+fix(frontend-react): INT-1495 设备域四项修复——实验室真实 CRUD / 安装卸载参数 / 离线删除解禁 / 端口移除 / 扫描连接方式
+feat(frontend-react): INT-1437 密钥池——endpoint 级多密钥输入 + 摘要回显（开始测试 API 编辑弹窗 + 设备管理 API 页签）
+chore(frontend-react): INT-1433 交付清理——剔除误提交 rsbuild.realstack.tmp.ts 临时实测配置
+chore(agent): uncommitted changes from task
+fix(frontend-react): INT-1447 报告分享弹窗对齐 INT-1363 规格——custom 有效期接 expires_at + 隐藏邮件分享入口
+feat(frontend-react): INT-1436 文档中心新增「接入指南」doc 页（Realtime/HTTP/设备三章）
+merge(design): 同步 design/ux-redesign —— e29a2063 删除UX分支无效代码（tests/ui 旧测试文件清理）
+fix(frontend-react): Agent 工作台最小化胶囊态下导航按钮误关整窗——胶囊态点导航改为恢复浮窗（open 且未最小化才 toggle 关闭）
+fix(frontend-react): agent 魔法按钮光效统一——连接你的agent/下载skill 补 data-slot='button' 启用流动光（对齐导航灵犀Agent ultra-button-color-flow）
+fix(frontend-react): INT-1407 日志下载 presigned JSON 信封——downloadCaseLogs 消费 download_url 浏览器直连 OSS 下载
+fix(frontend-react): INT-1350 三轮——输出字段 pass_threshold 往返保留 + default_value 按 field_type 还原类型
+fix(frontend-react): INT-1350 二轮编辑路径输出字段/输入参数清库——toDimension 读侧归一 snake_case→camelCase
+fix(frontend-react): INT-1350 输出字段保存不落库——toDimensionInputDto 输出字段映射 name→param_code 并补齐读取键
+fix(frontend-react): INT-1408 报告分享前端桩接真实端点——report-share-api 三函数接 INT-971 契约
+删除UX分支里的无效代码，UX分支只保留前端ux相关代码
+fix(frontend-react): INT-1418 接线收口 typecheck 修复 —— GroupedCaseList 恢复 groupsLoading 门控、step-cases 去重复 filters 属性、INT-1289 测试未用 result 清理
+test(ui): INT-1295 标签页右表页脚 + 批量标签弹窗已有标签分页 浏览器实测脚本
+fix(frontend-react): INT-1295 标签页右表「已显示 n / N 个标签 · 加载更多」+ 批量标签弹窗已有标签分页
+merge(design): 同步 design/ux-redesign —— INT-1031/1213/1214/1215/1216/1217/1225/1226/1227/1239/1241/1243/1244/1267/1289/1297/1298 设计更新合入 wiring/react
+fix(frontend-react): INT-1294 用例页标签操作下拉接真实 API —— 编辑/删除/复制 三项由演示 toast 改为真实请求
+fix(frontend-react): INT-1288 任务详情实时日志「导出完整日志」/「加载更早日志」接真实 + 代码注释修正
+fix(frontend-react): INT-1325 SPL映射——删除默认 RMS-SPL 映射前先清 API 默认指针，避免残留悬挂指针
+fix(frontend-react): INT-1319 算法列表首屏加速 + 草稿保存 type 必填
+fix(frontend-react): INT-1317 新建算法状态开关无效——create 落 draft 时补 PUT 应用表单所选 status
+fix(frontend-react): INT-1316 算法批量删除无效——bulk-delete 报成功但记录残留，批量后逐类型复核详情并回退单条删除
+fix(frontend-react): INT-1279 AI 复核按用例评估维度显式传 dimension_ids——真实库无 LLM 判分维度不再 400；报告/用例详情入口异步源竞态 await 源解析
+fix(frontend-react): INT-1284 分组视图只渲染 2/8 分组卡——循环补齐用例页保各组有已加载用例 + P1 返工部分覆盖分组按组懒加载
+fix(frontend-react): INT-1277 挑选合并容器行操作接线——行操作菜单接真实接口（查看详情/报告/生成报告/发布/收藏/重命名/删除）
+fix(frontend-react): INT-1362 返工 P1 —— 开始测试「新增/编辑 API」弹窗端点编辑器补优先级/音频时长
+fix(frontend-react): INT-1362 移除被测 API Master 入口 URL（apiUrl）——frontend-react 全量移除
+fix(frontend-react): INT-1280 挑选合并向导候选加载慢——慢加载可重试反馈替代无限骨架屏
+fix(frontend-react): INT-1278 挑选合并容器级批量操作接线——选择列禁用占位改真实勾选 + 批量删除/批量收藏浮条
+fix(frontend-react): INT-1267 返修（审计 P2/P3）——分组视图组内懒加载/组头全选合并全局算法筛选；未分组哨兵虚拟组承接；收藏视图组头全选降级已加载用例
+fix(frontend-react): INT-1287 已发布任务行四按钮接线（执行/新版本/重命名/归档）
+feat(frontend-react): INT-1229 被测 API 放开 apiUrl 必填——api_endpoints 为主、Master URL 可选兜底
+fix(frontend-react): INT-1241 移除任务类型概念——列表/详情/筛选不再显示 API测试/端到端测试/混合徽章与筛选（负责人 2026-10-22 口径）
+fix(frontend-react): INT-1267 返修——组头/工具栏全选传 group 分组名（审计 P1：group_id 被后端忽略圈定全库）
+INT-1298 UX走查实施：移除 API测试/端到端测试/E2E测试 概念文案
+fix(frontend-react): INT-1297 报告中心/报告统计 移除「任务类型」概念（负责人 2026-10-22：前端不再区分 API测试/E2E测试）
+fix(frontend-react): INT-1289 无 task:read 角色壳层不再发起 /tasks* 请求（403 SEVERE）
+fix(frontend-react): INT-1227 返修——名称解析降级文案不写缓存，快照 TTL 刷新后新建任务仍可解析真实名
+fix(frontend-react): INT-1214 设备新增/编辑抽屉移除 mock 状态采集块（电池 87%/存储 42GB/Wi-Fi），同步删 UX 规范 §6.2 状态采集字段
+fix(frontend-react): INT-1267 分组视图以 /groups 全量渲染 + 组内按组懒加载
+fix(frontend-react): INT-1243 任务详情并发数读后端真实字段 config.concurrent_tasks（含创建/占位对齐）
+fix(frontend-react): INT-1244 开始测试页不再发 /tasks/results/0/review-history（taskId=0 无效请求）
+fix(frontend-react): INT-1225 返修——ranking-filters 单测对齐 AUTH_MODE=off dev_user 回填并补匿名无计算权限断言
+fix(devices): 设备抽屉算法选项改用权限门控版，device_admin 无 algorithm:read 不再发起 /algorithm/options（INT-1239）
+fix(frontend-react): INT-1241 任务类型显示统一——详情复用 deriveTaskType，空 device_types 按关联资源兜底判 e2e
+fix(frontend-react): INT-1226 个人中心角色会话恢复保留缓存 roleName——/auth/me 缺 role_name 不再清空
+fix(frontend-react): INT-1227 通知名称解析不再对不存在任务发 /tasks/{id} 触发 404 SEVERE
+fix(frontend-react): INT-1217 设备离线时行菜单「编辑」不再禁用
+fix(frontend-react): INT-1225 公开路由匿名不再跳登录——公开页鉴权查询补 skipAuthRedirect + 匿名降级态落地
+fix(frontend-react): INT-1216 音频列表改服务端分页——POST /audios page/per_page(20) 切页才请求，标签订单 OR/AND 双路径保留
+fix(frontend-react): INT-1213 设备抽屉算法类型接真实 GET /algorithm/options（去硬编码枚举，显示中文名）
+fix(frontend-react): INT-1215 真实库走查 P3——设备列表支持算法映射中文 label + SPL 映射页数据查询按读权限门控
+fix(frontend-react): INT-1031 SPL 映射 RMS 声压映射简化返工——弹窗恢复参考声压级/参考线性增益/增益上下限四字段，去掉协议/供应商
+fix(frontend-react): INT-1186 收口 typecheck —— 设计线 INT-1128/1160 存量 19 处类型错误修零（cherry-pick-tree 缺 PickCartGroup import、三视图测试 helper 收 CartTreeItem、DimensionSelect 测试显式 valueOf、算法 DTO 测试 mappings 收窄）
+Merge branch 'agent/react/int-1153' into wiring/react
+merge(design): 同步 design/ux-redesign —— INT-1138/1129/1128/1127/1161/1160 设计更新合入 wiring/react
+fix(frontend-react): INT-1153 代码审计 P2-1 修复——编辑 token 未改有效时间不再静默重置 expires_at
+@ fix(frontend-react): INT-1160 返工 P2 参数映射判重实时值 + 发布 schema 兜底
+fix(frontend-react): INT-1153 二轮返工——导航栏移除「连接你的 agent」入口，改落 /ai-chat 右上角 + 浮窗头行
+fix(frontend-react): INT-1153 返工——token 管理 DTO/API 层对齐 INT-1148 后端契约
+Merge branch 'agent/react-a/int-1060' into wiring/react
+feat(frontend-react): INT-1160 返工 参数映射三节修复——维度兜底/无转换文案/source 透传
+fix(frontend-react): INT-1153 返工——顶栏「联接你的 agent」入口移除，侧栏文案改「连接你的 agent」
+feat(frontend-react): INT-1160 算法配置参数映射三节照 V9.7.10 重做——列口径+搜索/筛选+分组视图
+docs: INT-1060 文档双口径清理——§5.2.1 参数配置改写为逐卡执行模式口径，UX 规范 §3.6.3 文案全集删除旧全局执行模式条目
+docs(UX): INT-1161 返工 参数映射分页口径照 §3.7/§10 + 评估维度分组键措辞修正
+merge(design): 同步 design/ux-redesign —— INT-1137/1125/1119 设计更新合入 wiring/react
+docs(UX): INT-1161 参数映射三节照 V9.7.10 修订规范
+feat(frontend-react): INT-1153 联接你的 agent 入口 + 个人配置页 token 管理
+feat(frontend-react): INT-1128 返工 购物车三视图用例节点统一 PickCaseCard + 叶行来源任务名消歧
+INT-1127 挑选合并 设备/结果类型视图 用例层 分组/标签组织（React页面工程师B）
+merge(react): INT-1060 返工（代码审计 P1/P2 修复）——合入 wiring/react 当前头（INT-1061 API 卡形态），逐卡模式落到 api-card.tsx，API 段保持卡片网格+全选在线；step-resources 去全局执行模式、保留双道示意图；target_modes 契约 + 文档 §5.2.4 卡口径
+chore(agent): baseline — the task worktree started here
+feat(frontend-react): INT-1128 购物车 用例/设备/结果类型 三视图切换——buildCartCaseView/DeviceView/ResultTypeView 三棵聚合树 + cart-view-switcher（任务分组默认），三视图共享 entryId 集与移除矩阵（单条/节点/整组跨任务/批量/失效），顶层组头「来自 {m} 个任务」+ 叶行来源任务名
+feat(frontend-react): INT-1129 报告具体用例卡片组织控件——分组视图/标签视图 + 平铺/交叉（照用例管理交互）
+feat(frontend-react): INT-1138 开始测试用例选择行内/分组操作全功能接线——收藏/编辑/复制/删除/预览照用例管理页
+fix(frontend-react): INT-1060 双道语义返工——示意图按 设备道/API道 独立分道互不等待，功能文档 §5.2.4 双道口径
+docs(ux): INT-1137 开始测试用例选择全功能对齐用例管理——行内五钮/分组操作全可用（10_测试执行.md §3.5 重写 + §5/§7/§8/§9 同步）
+docs(ux): INT-1125 挑选合并设备/结果类型视图分组·标签组织 + 购物车三视图 + 报告用例卡片照用例管理视图（18/15/11 规范修订）
+docs(ux): INT-1119 执行模式返工第二次修订——设备/API 双轨示意图（同类型串行链，跨类型互不影响；引擎调度语义待 INT-1115 修订）
+fix(frontend-react): INT-997 返工——分组列表 query 失效 key 改对，组级操作后分组列表即时刷新
+fix(frontend-react): INT-997 返工——基于当前 wiring/react head 重做行级/批量真实接口接线
+Merge remote-tracking branch 'github/design/ux-redesign' into wiring/react
+fix(frontend-react): INT-1060 执行模式返工——逐卡 并行/串行 选项 + 底部实时示意图（INT-1115 target_modes 契约，废弃全局 execution_mode/serial_first）
+docs(ux): INT-1119 执行模式返工——逐卡并行/串行选项 + 底部实时示意图（10_测试执行.md §3.6 修订，INT-1060 前置）
+Merge remote-tracking branch 'github/design/ux-redesign' into wiring/react
+INT-1114: 日志下载大文件软守卫（>200MB 提示）+ OSS 预签名 URL 传输层裁定补入 15/19 规范
+fix(frontend-react): INT-1066 返工——P1 case_name 用例名渲染 + P2 API用例结果摘要 + P3 duration null 隐藏耗时
+INT-1067: 报告具体用例日志下载改两段流程——日志文件选择 Dialog（文件列表+大小+全选/多选+已选合计，接 GET /reports/{id}/cases/{cid}/logs 真实端点）+ ?files= 按选打包下载 + 进度 Dialog 按真实速率受控
+merge(design): INT-1096 同步 design/ux-redesign —— INT-1064 AI复核灵犀Agent会话组件合入 wiring/react
+feat(frontend-react): INT-1066 任务详情用例执行详情模态窗接线 + 窗内人工复核入口
+feat(frontend-react): INT-1065 报告具体用例卡片 AI复核入口接线——灵犀Agent 复核会话（复用 ai-review-session-dialog）+ 原报告侧 ai-review-dialog 迁移「快速复核」次要入口
+feat(frontend-react): INT-1064 AI复核灵犀Agent会话组件 + 任务侧两处入口接线（会话弹窗迁快速复核）
+merge(design): INT-1089 同步 design/ux-redesign —— INT-1063 返工（存疑结论隐藏采纳钮）合入 wiring/react
+fix(frontend-react): INT-1063 返工——存疑(uncertain)结论隐藏「采纳为复核结果」钮，杜绝空改判载荷触发 adopt 400
+fix(frontend-react): INT-1061 开始测试选择设备/API 形态统一——API 改与设备同套卡片（api-card 同骨架/选中态/操作位，全选在线替代表头全选），纯 API 表格保留 api-table 备用，UX 规范 §3.6.1/§3.6.2 同步
+feat(frontend-react): INT-1060 /start-test 执行模式控件——并行/串行 + 串行优先侧（INT-604 后端已合，前端 UI + 文档落地）
+merge(design): INT-1078 同步 design/ux-redesign —— INT-1046/1047/1030/1048/1049/1055/1063 设计更新合入 wiring/react
+fix(frontend-react): INT-1049 返工——specific-case-grouping 修 TS 严格模式（category 可选字段 undefined 不可赋 string），key/label 走 ?? 兜底与 raw 值
+feat(frontend-react): INT-1063 AI复核数据接线——reviewApi 去桩切真实端点（POST ai-review + 历史 + adopt/reject）+ useAiReview/useReportReviews 真实轮询 + ai_reviews.status 未知值容错渲染
+feat(frontend-react): INT-1048 任务域「开始挑选」入口 + 任务详情关联用例 CaseCard 对齐——日常 tab 筛选工具栏右端「开始挑选」（primary + ShoppingCart，task:cherry_pick 门控，§3.8.1），已勾选任务预选直达阶段2；批量浮条「加入挑选」保留并存；勾选状态上提页面层供工具栏读取；RBAC vitest 覆盖权限隐藏
+feat(frontend-react): INT-1060 /start-test 执行模式控件——并行/串行 + 串行优先侧（INT-604 后端已合，前端 UI + 文档落地）
+feat(frontend-react): INT-1047 挑选合并两阶段状态机 + 三视图重做（任务集→结果三视图 + 购物车 CaseCard）
+fix(frontend-react): INT-1030 返工——评估参数映射加 V9.7.10 评估维度视图（按目标维度分组折叠/组尾添加预填）+ 平铺视图切换，默认维度视图；顺带修标注代码行 TS 强类型
+feat(frontend-react): INT-1049 报告具体用例卡片分组——组头（组名+计数）+ 组内 CaseCard + 排序扩展（按标签）+ 未分类/未设置标签兜底
+chore(agent): baseline — the task worktree started here
+INT-1055 UX设计: AI复核接入灵犀Agent对话式可追问 + 任务详情用例执行详情模态窗复核入口 + 报告具体用例日志下载文件选择（19/15/10/08/09 相应节 + README 索引）
+fix(frontend-react): INT-1053 合并收口——去 task.dto 重复 review_count、补 case-association Progress 导入、标注代码 watch 收窄 string（typecheck 零错误）
+fix(frontend-react): INT-1045 用例编辑抽屉 INT-877/INT-996 合流——最新 wiring/react 上重新合入音频/维度/策略接线
+fix(frontend-react): INT-1026 /start-test 用例步骤组头「批量修改」九项弹窗接线
+merge(design): INT-1053 同步 design/ux-redesign —— INT-1027/1028/1029/1030/1031/1032/1033/1034 设计更新合入 wiring/react
+fix(frontend-react): INT-1046 返工——修 TS 严格模式编译错误（未用参数下划线豁免 + 泛化测试数组标注含 id）
+fix(frontend-react): INT-1030 返工——存量评估映射 target 回退显示原值 + start-test 评估维度 facet 改用全量维度/分类分组
+fix(frontend-react): INT-1046 全站用例显示统一——CaseCard 升级为统一组件（插槽收敛上下文差异） + sub-view-aggregation 入参泛化；报告具体用例/任务详情关联用例消费统一 CaseCard
+feat(frontend-react): INT-1029 设备编辑走扫描回填 + 每 API 可配置代理（对齐 V9.7.10 编辑/添加模态窗）
+fix(frontend-react): INT-1032 ai-chat 走查——发送/停止按钮去文字仅图标、配置供应商后自动选模型即对话、工作台 home 数据 adapter 归一修复整页崩溃（每页 Agent 入口恢复）
+fix(frontend-react): INT-1033 任务域走查修复——全部算法空列表 + 详情复核入口 + 关联用例/设备 + 用例卡片视图
+test(react): INT-881 wiring/react 基线最终确认文本版 Network 证据探针
+test(react): INT-881 复测 INT-934/935 失败项浏览器实测用例（报告不存在错误态 + 二次对比 SSE 预订阅/失败态/不跳 undefined + 报告页回归）
+test(react): INT-881 报告列表/详情/对比 接线真实数据浏览器走查用例（7 用例）
+fix(frontend-react): INT-1030 评估映射 target 可选子维度——写侧维度名→id 解析换全量维度
+fix(frontend-react): INT-881 审计打回修复——报告域三处应用层 mock 收敛到 infra 桩
+fix(frontend-react): INT-1031 SPL 映射 RMS 声压映射简化——弹窗只关联 API+名称，协议默认 websocket 并隐藏协议/供应商列
+fix(frontend-react): INT-1030 算法配置标注代码改下拉 + 评估维度按分组/主维度/子维度选择（全站一致性）
+test(frontend-react): INT-996 返工复测脚本——禁用声纹注册不持久修复浏览器验证（24/24 PASS）
+fix(frontend-react): INT-996 返工——禁用声纹注册后 algorithm_params 剔除 voiceprint（空数组透传不回退存量列）
+feat(frontend-react): INT-996 用例编辑轮次「算法参数 schema + 噪声与干扰」接真实数据
+docs(UX): INT-1034 挑选合并三视图重做设计 + 全站用例显示统一 + 报告用例卡片分组
+fix(frontend-react): INT-1028 音频导入两个弹窗去掉标注代码选择（标注代码=上传算法类型）
+fix(frontend-react): INT-1027 用例列表默认收起——分组/标签卡默认 collapsed、组头可展开（未分组虚拟组补 isExpanded 门）
+fix(frontend-react): INT-967 任务侧缺陷修复——批量发布逐任务发布+聚合toast、重新生成报告接真实generate/regenerate+覆盖确认+跳报告页、查看报告跳 /report/:id
+fix(frontend-react): INT-922 返工——策略节显式「不使用/新建」清引用发 strategy_id 空字符串 + 引用态用例浏览器覆盖
+fix(frontend-react): INT-922 返工——编辑保存不删存量评估配置 + 交付单测 TS7053 收窄 + P3 浏览器覆盖
+test(frontend-react): INT-922 用例编辑抽屉保存/回填浏览器复测脚本 + 修 typecheck TS7053
+fix(frontend-react): INT-922 用例编辑抽屉保存走真实 create/update 接口 + 全字段回填
+test(ui): INT-891 报告域模态窗验收走查——报告详情用例卡/人工审核/AI复核四端点浏览器实测
+fix(frontend-react): INT-949 任务列表/详情危险操作补确认弹窗——删除/批量删除/彻底删除/恢复/暂停/继续/停止/移除用例/批量发布（§5.3/§5.8/§5.9/§5.10 + 旧 Vue 基线）
+test(ui): INT-950 验收测试补强——任务侧 test_02 取消 skip 并修正弹窗 slot 选择器（headless 渲染崩溃实为 slot 不匹配），新增 DB 置位 fixture 保证采纳成功路径可复验、深色/控制台用例独立会话隔离套件内状态串扰，证据落盘加固
+fix(frontend-react): INT-950 报告域 AI 复核采纳闭环修复——adoptAiReview 消费侧补复核载荷
+fix(frontend-react): INT-948 评估维度编辑携带 id 走 PUT 更新原记录——修复保存后 POST 新建同名副本
+test(frontend-react): INT-928 日志实时 Socket.IO /ws/logs 主通道接线浏览器验收——WS主通道纯WS无轮询/task_log首行插顶/algo_engineer WS实时/WS不可用降级refresh轮询/浅深色截图
+fix(frontend-react): INT-928 日志实时主通道接入 Socket.IO /ws/logs——WS 已连纯主通道，不可用降级 refresh 轮询兜底；algo_engineer 可开实时
+test(ui): INT-892 复测深色草稿恢复实证——深色主题草稿保存→落库→重开恢复截图脚本（复用 test_ui_32 助手，前后清理）
+fix(frontend-react): INT-892 草稿保存/恢复接真实接口——saveAlgorithmDraft 改 PUT /algorithm/definitions/draft（完整快照+algorithm_type，回服务端 saved_at）、新增 fetchAlgorithmDraft 恢复（空 {} = 无草稿）；编辑态打开先读草稿恢复预填并实证「存在未发布草稿」横幅；更新 INT-892 浏览器用例验证落库+重开恢复+清理
+test(ui): INT-883 日志页验收浏览器实测——真实数据/筛选/实时轮询/错误态/空态/浅深色+Network 截图
+test(ui): INT-864 设备分组移动接真实端点浏览器实测——建树/移动(到组+到根)/环检测/删除含子分组 cascade 全绿，Network PUT .../move body parent_id 实证，浅深色截图+零残留
+feat(frontend-react): INT-864 设备分组移动接真实端点——PUT /test-devices/device-groups/{id}/move（目标父分组选择器，根=移到顶层）；DTO/domain/adapter 增 parent_id 并按 parentId 建嵌套树；删除确认按 INT-832 决策 2 升级（含子分组数）；设备页分组 facet/引用递归摊平
+fix(frontend-react): INT-934 补漏——notFoundError 判定接入 isReportNotFoundError
+fix(frontend-react): INT-951 报告详情用例卡时间轴对比误判 rounds(json) 修复
+fix(frontend-react): INT-935 返工 P2——generate-task/regenerate 异步快速失败事件竞态，改提交前预订阅 SSE
+fix(frontend-react): INT-935 二次对比异步契约对齐——secondary-compare 无 report_id，改经 SSE secondary_compare_generated 事件回传真实报告 id
+test(frontend-react): INT-934 补 Network 证据截图脚本（CDP performance log 提取 /reports/999999 请求+响应）
+fix(frontend-react): INT-934 报告详情无效ID错误态——404 判定过 as number 消除 TS2367
+test(ui): INT-890 设备域模态窗 3 类弹窗浏览器实测——扫描/分组管理/播放设备逐窗真实数据走查，全断言通过（分组新建重命名删除 + 播放设备创建删除往返，库内零残留）
+fix(frontend-react): INT-890 返工——播放设备扫描「添加」预填透传（P2-2 缺陷修复）
+test(ui): INT-946 IAM/OAuth 三页接口失败错误态+重试浏览器实测——users/roles/oauth-providers 页 fetch 合成失败→ErrorState（加载失败+重试）、清拦截重试恢复真实数据、OAuth 空数据空态、浅深色截图+Network 证据，8/8 全过
+fix(frontend-react): INT-946 IAM/OAuth 三页接口失败补错误态+重试——users/roles/oauth-providers 页 useQuery isError 时渲染 ErrorState（标题「加载失败」+描述+「重试」onRetry→refetch），对齐 option 分区 SettingsPage ErrorState 口径；成功且空数据维持原空态，不再把后端异常混淆为空库
+test(ui): INT-893 补验 3 项 happy path 全过——登录成功链路（POST /auth/login 200 → 跳转工作台，加密握手 200，toast 欢迎回来）、OAuth providers 200 空列表整区隐藏（无分隔线/按钮残留）、显示名编辑全链路（INT-698 用例 18 断言全过：改名 PUT 落库/刷新回填/清空兜底/回归+Network）；浅深色登录页截图
+test(ui): INT-893 日志域模态窗+通用交互浏览器实测——logs 6 用例全过（导出/清除/实时配置弹窗逐窗+浅深色+Network），登录/OAuth/错误态五页/显示名抽屉 13 项断言全过（auth gRPC 50069 缺口下验证前端优雅降级，happy path 见 INT-851/INT-926）
+test(ui): INT-888 任务域 5 类模态窗逐窗验收（Selenium 实测：冻结详情/冻结报告/重执行重评估/导出导入/挑选合并）
+test(ui): INT-887 Benchmark 页真实数据走查——连常驻 5000 栈验证真实渲染/空态/错误态/主链路，附浅深色+Network 证据
+test(frontend-react): INT-886 个人中心真实数据浏览器实测——bindings 401 env 缺口隔离后 18 断言全过，定位 /profile 被 bindings 401 弹登录缺陷
+test(ui): INT-878 音频库页真实数据走查——列表/搜索/批量四分支/上传/删除/空态/浅深色+Network 证据
+test(ui): INT-933 /profile bindings 401 弹登录缺陷修复验收——浏览器实测 18 断言全过（URL 停留 /profile、绑定空态降级、真实数据渲染、浅/深色 + Network）
+test(frontend-react): INT-932 任务列表/详情假操作接线验收——批量/行删除·恢复·彻底删除·收藏·移除用例/排序/错误态 浏览器实测脚本
+test(ui): INT-927 音频批量四分支接线浏览器实测用例（move/copy/rename/modify-properties + SPL 禁用）
+test(frontend-react): INT-889 用例域模态窗验收浏览器走查——音频选择/评估策略折叠节/批量操作四弹窗真实后端实测 + 深色截图
+test(ui): INT-885 系统设置页接线浏览器验收用例——六域真实数据/写操作还原/空态/浅深色+Network
+test(ui): INT-882 算法配置页真实数据走查脚本（wiring/react + 常驻5000后端，AUTH_MODE=off，浅深色/Network/空错态/发布落库+清理）
+test(ui): INT-875 首页/工作台真实数据走查浏览器实测——规模条六指标真实渲染无崩溃（INT-845 修复）、工作台最近任务/用例分组排行真实数据、设置引导 useSetupGuide 展开折叠持久化（浅深色截图 + Network snake_case 证据）
+fix(frontend-react): INT-937 挑选合并两处 P2 缺陷——挑选集管理 §8 门控 + 购物车抽屉页脚去重
+fix(frontend-react): INT-933 /profile 绑定子请求 401 不再弹登录——listOAuthBindings 加 skipAuthRedirect 对齐 authApi.listPublicOAuthProviders 口径，bindings 401 优雅降级为空态；补 401 不触发全局登出单测
+fix(frontend-react): INT-932 任务列表/详情假操作接线——批量/行删除恢复彻底删除、收藏、暂停继续停止、移除用例走真实接口
+fix(frontend-react): INT-927 音频库批量操作四分支接线——移除「待FEAT」禁用并透传 batch-action 扩展字段
+feat(frontend-react): INT-648 标签管理页 infra mock→api——标签/分类 CRUD 经 client.ts 切真实接口
+INT-825: reviewApi AI 复核四桩接真实请求（人工审核/AI复核 后端接线）
+merge: INT-845 首页规模条 StatsBar 修复合入 wiring/react——fetchHomeStatsDetails/Summary 过 toHomeStatsDetails/Summary DTO 适配器（snake_case→camelCase）
+fix(frontend-react): INT-845 首页/工作台统计过 DTO 适配器——fetchHomeStatsDetails/Summary 应用 toHomeStatsDetails/Summary 收敛 snake_case→camelCase，StatsBar 不再读 undefined 崩溃；补 mock request 单测
+chore(agent): baseline — the task worktree started here
+merge: 合入 design/ux-redesign 3 个新提交（2316830c..77593fa9：INT-587 评估维度分类分组 + INT-721 设备模态真实数据/返工）到 wiring/react
+fix(frontend-react): INT-721 返工 P2-1/P3-1/P3-2——分组成员/筛选走详情真实 device_ids、扫描预填真实 appName/appVersion、扫描弹窗打开自动开始
+fix(frontend-react): INT-587 负责人裁定 Option A——评估维度选择加分类分组（分组/分类）
+fix(frontend-react): INT-721 设备管理模态窗真实数据验收修复——驱动关键字/SPL选项真实化 + 分组 CRUD 接线 + 扫描预填补 appName/appVersion
+merge: INT-826 收口——合入 design/ux-redesign 55 个新提交（fe27fd03..2316830c）到 wiring/react
+fix(frontend-react): 全局算法持久化值不在真实 options 时静默回落「全部算法」（对齐评估页 globalAlgorithmValid 口径）
+fix(frontend-react): INT-725 合并冲突收尾——cherry-pick 域取 INT-713/790 新版契约、algorithm 域对齐真实 {value,name}、task/user/evaluation dto 补齐字段、typecheck 清零
+fix(frontend-react): INT-763 返工 P2/P3——归档入口 Link 改 TanStack 路由 params 形式（operations/log-maintenance）+ 删除未使用 cn import + 算法过滤 option.value 类型修正（typecheck 门通过）
+merge: INT-700 收口的 13 张接线提交合入 UX checkout（INT-725 前置）
+fix(frontend-react): INT-763 返工 P1/P3——route-guards 守卫与测试随 commit 入库（对齐 GuardLocation 基线签名）+ 用户ID 高级过滤置灰待 FEAT INT-806
+fix(frontend-react): INT-790 返工 P2-1/P3-2——购物车/复核树接 source_case_name/source_device_name/source_api_name 真实字段 + CaseIdBadge 剪贴板兜底 catch
+fix(frontend-react): INT-763 返修 P1/P2/P3——socket.io-client 依赖入库 + 算法 Select 空白项/Key 报错 + 筛选 Select 中文标签 + 仅自己置灰待 FEAT INT-806 + 清除/导出弹窗口径
+fix(frontend-react): INT-723 返修 P2-1/P2-2 补参考参数筛选行 + 关联维度搜索筛选
+fix(frontend-react): INT-724 返修 P2——evaluation-api.ts 补 DimensionItemDto 导入（代码审计 TS2304，typecheck 门）
+fix(frontend-react): INT-795 用例执行结果复核弹窗无结果收口——单条/AI/批量复核入口空 results 拦截并 toast，不打开可提交的空弹窗（前端UX审计 P2-1）
+fix(frontend-react): INT-724 返工——导出维度（Excel）接后端 xlsx blob（P1），JSON 分支不变
+fix(frontend-react): INT-793 复核弹窗 Select 触发区显示中文状态标签（base-ui v1.6 显式子项不取 item label，SelectValue 内联渲染）
+fix(frontend-react): INT-793 报告详情具体用例卡片 人工审核 + AI 复核 交互落地
+fix(frontend-react): INT-723 算法配置模态窗按 V9.7.10 补齐——参考参数帮助文本列/合并方式 join/所属分组可空/Select 中文文案
+fix(frontend-react): INT-722 返工——标注四形态段级解析+文件夹导入per-folder分组与标注接线+上传标注代码select+P2-4 Select中文label
+fix(frontend-react): INT-724 评估维度模态窗按 V9.7.10 补齐接线——编辑走详情接口、required_inputs/output_fields 全字段映射（param_code/param_name/label/field_path/field_type/output_role/agg_role/visible_in_report/help_text/ui_order）、API配置编辑器按 V9.7.10 补列、导入导出接真实接口
+test(frontend-react): INT-698 显示名编辑接线浏览器实测（验收证据，真实后端全链路）
+feat(react): INT-698 用户显示名编辑接线——display_name 全链路真实化（DTO/API/抽屉）
+test(frontend-react): INT-695 补充浏览器实测——深色截图 + 跨组件同步点走查（覆盖开关初值同源/新建策略入 Select 列表）
+feat(frontend-react): INT-695 音频选择子弹窗 + 评估策略折叠节（INT-592 口径）
+fix(frontend-react): INT-694 代码审计 P2-1 返修——重执行/重评估弹窗跨任务状态重置 + P3 顺带
+fix(frontend-react): INT-694 复测返修——tests/ui 手动选择用例断言适配后端 INT-734 422（详情失败走 P2-1 错误态+重试）
+fix(frontend-react): INT-694 审计返修——冻结弹窗真实数据 + review_count 闭合 + /tasks/0 门控 + 用例错误态
+INT-790 挑选合并层级展示按 §3.7 对齐：五级树收口 + 用例视角 + 购物车 result_type 折叠
+feat(frontend-react): INT-694 任务域弹窗补齐——冻结详情/冻结报告/重执行重评估范围/导出导入数据 4 类弹窗
+fix(frontend-react): INT-693 审计返修——P2 恢复列头排序+首载错误态，P3 用户ID过滤/常量归位/colSpan/清除估算/测试路径
+fix(frontend-react): INT-693 返修——补交 application/logs 三 hooks（.gitignore 根 logs/ 规则豁免遗漏致漏提交）+ build/typecheck 零错误
+feat(frontend-react): INT-693 日志页 infra mock→api——/logs 真实接口化 + 导出/清除/实时配置 3 弹窗
+fix(frontend-react): INT-763 日志查看 /logs 占位→整页落地（17_配置运维 §4）
+docs(frontend-react): INT-795 标注 AI 复核留桩对应 FEAT INT-800
+fix(frontend-react): INT-795 任务执行详情用例执行结果人工审核+AI复核交互落地——单条/批量复核弹窗+历史抽屉+标记统计+AI复核状态机
+fix(frontend-react): INT-710 审计返修 P2——「从其他轮次复制」源默认接线为首个其他轮次 + Select 恒显轮次标签
+fix(frontend-react): INT-732 关于页状态卡 mock 健康数据 → 真实 /api/v1/system/health，未落地降级「检测中」
+fix(frontend-react): INT-722 音频管理模态窗按 V9.7.10 补齐——文件夹导入真实化/批量标注真实解析匹配/批量标签传tags/元数据保存标注/上传补标签输入/待FEAT标注
+fix(frontend-react): INT-733 个人中心收藏计数 mock → 真实 /favorites + 第三方绑定 mock 残留清除
+fix(frontend-react): INT-710 审计返修——评估维度选择改主/子分组云 + 批量设置评估维度弹窗补齐 §5.3.5
+fix(frontend-react): INT-729 审计返修 P3——归档列表后端缺口开 FEAT 卡 INT-780，页面 marker 与 logsApi 注释改「待 INT-780」
+fix(frontend-react): INT-715 返修——补提交算法选项模块与测试（P1 干净 checkout 可构建）
+fix(frontend-react): INT-731 返修 P2-1/P3-1/P3-2——task_progress 读 total_progress、未读基线跨会话、公告已读内容哈希
+docs(UX): INT-762 挑选合并层级展示专项 + 人工审核/AI复核交互闭环补全（Vue 同步）
+fix(frontend-react): INT-769 补测试执行步骤五嵌入式报告头兜底——同走 getReport*Meta
+fix(frontend-react): INT-729 返修——权限矩阵 duplicate-key/nativeButton 控制台清零
+fix(frontend-react): INT-711 审计返修 P3-2——已发布页签角标与列表条数同源（本页签复用列表 total，其他页签 count query staleTime 对齐 15s）
+fix(frontend-react): INT-715 返修——全局算法切换器接真实 /algorithm/options（P1）+ 同族 mock 残留清理
+fix(frontend-react): INT-713 返修 P1-P3——复核预览路径修正、加购失败按钮复位+错误toast、全选当前筛选降级Tooltip
+fix(frontend-react): INT-769 报告类型/状态未知值兜底——列表/卡片/详情头不再整页 500
+chore(frontend-react): 还原 profile-mock.ts（非 INT-721 改动，误带入还原）
+fix(frontend-react): INT-721 设备添加抽屉补驱动关键字字段（V9.7.10 keywords select 对位）
+fix(frontend-react): INT-714 返修——上传弹窗移除用例类型选择，评估维度收敛单组（负责人口径修订）
+test(frontend-react): INT-710 返修——筛选工具栏测试补 QueryClient 上下文（芯片依赖 useAlgorithmOptions）
+fix(frontend-react): INT-710 审计返修补充——用例/分组编辑算法下拉与全局算法 chip 走真实 /algorithm/options
+fix(frontend-react): INT-731 顶导航通知中心接真实接口——SSE 事件流通知 + site.notice 公告，未读数真实化
+fix(frontend-react): INT-710 审计返修——批量设置逐轮设置 round_values 接线 + 播放设备应用层级受控 + 加载/错误态
+docs(UX): INT-713 负责人反馈——挑选合并多任务用例展示口径 + 人工审核/AI复核专项设计
+fix(frontend-react): INT-715 评估维度/算法页错误态与 result_type=0 兼容
+fix(frontend-react): INT-713 返修 P1——挑选树孤儿行不裸显 UUID，降级「用例不可用+前8位id」
+fix(frontend-react): INT-711 返修 P1-3——日常/已发布/挑选合并列表请求失败渲染错误态+重试（不再误示为空态）
+fix(frontend-react): INT-715 评估维度页+算法配置页真实数据接线与显示修复
+fix(frontend-react): INT-729 系统设置六域真实数据接线——用户/角色/权限 mock 切 /api/v1/auth/*，站点/认证/安全/运维/日志/OAuth 走真实接口
+fix(frontend-react): INT-730 Benchmark 排行页真实数据接线——benchmarkApi mock→api + 错误态/重试生效
+fix(frontend-react): INT-713 挑选合并接真实接口——四级挑选树/cart/预览/容器真实数据显示修复
+fix(frontend-react): INT-728 工作台概览真实数据接线——details/summary 经 client.ts 切真实接口，移除状态演示与 mock 行，最近任务卡取 summary.recent_tasks[0]
+fix(frontend-react): INT-711 任务管理真实数据走查修复——类型派生对齐后端/旧Vue + 页签计数/分页/时间筛选/标签源真实化 + 详情错误态 + 任务域真实接线（tasks infra mock→api）
+fix(frontend-react): INT-712 报告域真实数据走查修复——mock 切真实接口 + null 显示修复 + 分组对比矩阵兜底
+feat(frontend-react): INT-710 批量设置模态窗真实数据接线 + 开始测试用例选择复用用例管理组件
+fix(frontend-react): INT-714 音频导入与生成测试用例走查修复——真实接口接线 + 恢复端到端/API 用例生成
+fix(frontend-react): INT-700 收口交叉修复——13 卡合入后 typecheck/test 清零（算法域合并保留 AlgorithmSwitchOption + reports 收尾 + Select 签名 + 两测试适配真实接口）
+fix(react): INT-643 P1 返修 publishBenchmarkReport 经 client.ts 调真实端点 POST /benchmarks/reports
+feat(report): INT-643 返修复测——报告统计页真实端点 + typecheck 门清零
+feat(report): INT-643 报告域 mock→api 收尾——算法定义/第三方绑定切真实端点，删除 reports-mock/profile-mock
+feat(frontend-react): INT-650 个人中心接线——profileApi/favoritesApi 经 client.ts 切真实接口 + 删 profile-mock
+fix(frontend-react): INT-649 P1 返修——校准点 wire 契约改 camelCase（详情弹窗/编辑预填/曲线渲染恢复真实数据）
+fix(frontend-react): INT-649 SPL 映射 infra mock→api 经 client.ts 切真实接口（INT-664 解阻回收残留 worktree 未提交成果）
+fix(frontend-react): INT-647 P2 返修——算法列表「关联用例」列按用例引用聚合兜底（§154）
+feat(frontend-react): INT-647 算法配置接线 mock→api（INT-662 解阻回收：提交 INT-647 残留 worktree 中未提交成果）
+fix(frontend-react): INT-646 代码审计 P1/P2 返修——连接测试真实端点 + filter-all 圈定按当前筛选
+fix(frontend-react): INT-646 返修——UX 审计 P1-1/P1-2/P3 + 接线 P1-2 SSE 全量清零
+feat(frontend-react): INT-646 评测/测试执行域 infra mock→api 接线
+fix(frontend-react): INT-644 返修——设备分组 id 保持字符串语义（P1：UUID 不再 NaN）
+feat(frontend-react): INT-644 设备页 infra mock→api——devicesApi 经 client.ts 切真实端点（测试/播放/API 列表、CRUD、告警/规则/状态历史、分组、批量、扫描）+ 扫描弹窗与 API 健康检查接线 + 浏览器实测附图
+feat(frontend-react): INT-645 音频页接线返修——audios-api 补 stream/preview/stopPreview + 预览弹窗双模式接真实接口
+feat(frontend-react): INT-645 音频页 infra mock→api 接线——audios-api 经 client.ts 切真实后端
+chore(frontend-react): INT-638 已发布表格数据源注释改真实接口（mock 残留清零收尾）
+feat(frontend-react): INT-638 返工——已发布详情/发布弹窗 mock→api 切真实接口
+feat(frontend-react): INT-638 接线——任务域 infra mock→api 切真实接口
+fix(frontend-react): INT-691 新建用户状态选择不落库——新建态状态字段置灰固定「正常」并注明创建后可在列表启停
+INT-651: 系统设置域接线收口——optionApi 切真实接口（client.ts rootPath）+ 删除 settings-mock 双口径 + 修 users-page 未用参数
+feat(frontend-react): INT-642 首页门户+benchmark 排行 infra mock→api
+fix(frontend-react): INT-641 打回补修——移除工作台最近任务演示控件 + 清理过时 mock 注释
+feat(frontend-react): INT-641 工作台接线——statusApi/optionApi/healthApi 阻塞证据更新（INT-620 契约已落、运行栈未合入、client.ts 根路径缺口子卡 INT-672）
+test(frontend-react): INT-672 client.ts 根路径覆盖单测——回归用例 mock 队列补第二个响应
+feat(frontend-react): INT-672 client.ts 支持根路径端点——ApiRequestOptions.basePath 覆盖
+test(frontend-react): INT-681 P3批次 IAM 单测——roleApi 跨页聚合 + updateUser 不含 display_name
+fix(frontend-react): INT-681 P3批次——系统设置域 IAM 真实接口化 + 三项 P3 修复
+fix(frontend-react): INT-607 代码审计 P2 返修——壳算法 queryKey 独立前缀 + 切换器走 application 层封装 + 顶栏配置单源
+fix(frontend-react): INT-607 审计打回#1——算法切换器 DTO 对齐真实 data.algorithms（voice_llm）+ 错误态区分 + site 回落留痕
+feat(frontend-react): INT-607 壳/导航/RBAC 接线——站点配置 store + 导航真实 RBAC 过滤 + 统一 /403?from 守卫
+fix(frontend-react): INT-677 标签facet计数切已加载用例集聚合——去mock静态源
+fix(frontend-react): INT-598 代码审计返修——胶囊 fixed 右下角 + report URL 预填 + 双形态同会话 store + 重生成截断重建
+test(frontend-react): INT-504 返修回归——标签表单所属分类 P1/P2 单测
+fix(frontend-react): INT-504 返修——按 INT-661 前置审核 + 测试打回修订
+fix(frontend-react): INT-596 审计打回#1——mock 数据同步 summary.resources 9 资源口径（raw/metric/tag 矩阵无空列）
+feat(frontend-react): INT-639 用例页 infra mock→api——testcases/groups/tags 经 client.ts 切真实接口
+fix(frontend-react): INT-598 全能力呈现返修——空态升级全能力入口/分组（常用报告四卡 + 11 域分组卡）+ 浮窗能力条 /ai-chat 全能力
+test(ui): INT-596 P1/P2 复测——回收站/收藏 Switch 往返+直接URL + 播放器 V9.7.10 结构浏览器用例 test_ui_27c（P1 三用例+P2 两用例+附图四态，7/7 全过）
+feat(frontend-react): INT-504 标签分类体系落地——用例管理/报告页按标签分类分组与筛选
+test(ui): INT-584 复验——登录态适配 INT-606（localStorage 注入）+ 移动端 ≤640px 子视图切换收编浏览器实测（分组卡 CaseGroupActions 首项「显示方式」子菜单 / 标签卡 SubViewDisplayMenu 下拉 / 回收站态回退，9 用例全过）
+test(ui): INT-587 返修复测——ESC 清选复测 + 三档轮次范围/评估维度平铺云/导入单入口/导出仅导出浏览器走查 test_ui_30
+test(ui): INT-606 打回复测——新增 AUTH_MODE=off「进入工作台」直达工作台浏览器用例 + DB DSN 环境变量化（test_ui_28，7/7 全过）
+fix(frontend-react): INT-601 审计P2返修——草稿schema对齐§6.2宽松门槛（参数代码去正则、类型/映射/维度去非空），补草稿放行单测
+fix(frontend-react): INT-596 返修——报告中心回收站/收藏 Switch 布尔往返 + 播放器补全 V9.7.10 结构
+fix(frontend-react): 共享 typecheck 门修复——已提交代码三处编译错误（INT-587/INT-606）
+docs(ux): INT-637 §3.1B/§8 能力条目修订——灵犀Agent主工作台全能力呈现（负责人 2026-10-17 08:06）
+fix(frontend-react): INT-606 打回修复——AUTH_MODE=off 开放模式「进入工作台」直达工作台
+test(ui): INT-596 返修复测——审计 P2五项+P3批次浏览器验收 test_ui_27b（Benchmark发布确认弹窗/勾选态筛选清空/404语义分叉/具体用例筛选已选条件/分组对比已选条件/对比配置页签/分享受控输入/保存卡空名禁存/多资源结果）+ test_ui_27 适配 INT-606 认证预置与 P3 筛选卡新形态（25 用例全过）
+test(ui): INT-601 算法配置页重做浏览器验收 test_ui_29——列表徽标/分页/有草稿Badge、编辑Sheet单页滚动结构、作用域chips过滤+列显隐、30s自动保存倒计时/归零静默、失焦1.5s防抖草稿保存、草稿/发布乐观锁冲突、发布成功、脏态守卫、深浅主题（12 用例全过）
+feat(frontend-react): INT-635 枢纽图算法能力 floating 芯片重设计——圆形玻璃徽章+悬浮文字标签
+test(ui): INT-606 认证链路接线浏览器验收 test_ui_28（真实后端 :5000 + 5273，登录→工作台/105/106/网络失败/AUTH_MODE=off Alert/OAuth 真实渲染）
+fix(frontend-react): INT-598 前端UX审计 P1 返修——Demo 对话改真实供应商驱动，删除杜撰数据回显
+fix(frontend-react): INT-587 负责人反馈返修——评估维度选择改 V9.7.10 平铺云 + 导入收敛单入口
+feat(frontend-react): INT-596 具体用例卡片补多设备/API 多 result_type + 播放器照 V9.7.10 抄写
+fix(frontend-react): INT-598 负责人反馈返修——魔法按钮换行+搜索挡字修复、浮窗本页Agent能力条
+feat(frontend-react): INT-587 负责人反馈返修——批量操作三档轮次范围 + 评估维度选择参考 V9.7.10
+docs(ux): INT-621 §8 措辞修订——主推而非限定口径（负责人 2026-10-17）
+feat(frontend-react): INT-596 报告域返修——UX审计 P2 五项清零 + P3 批次补全
+docs(ux): INT-618 前置审核闭合回写——报告上下文选择器 Demo 态口径统一（组件树先落/整块不渲染/数据交互待后端立项）+ 浮窗开关 store 收敛单落位 infrastructure/stores/agentWorkbenchStore.ts（实现演进裁定，对齐 INT-598 实施 8836df4d）
+fix(frontend-react): INT-605 审计打回修复——SSE 解绑终止生效/会话过期默认跳登录/信封成功码枚举化
+fix(frontend-react): INT-600 挑选合并审计返修——复核清空确认+页脚另存挑选集、Select中文标签、候选错误态、叶行评估状态+时间、API图标、容器选择列
+fix(frontend-react): INT-587 负责人反馈返修——批量设置评估维度弹窗补全指定轮次 + 按钮文案对齐
+feat(frontend-react): INT-601 算法配置页重做——统一参数表+作用域chips降维、高级配置折叠、草稿/发布双态保存
+feat(frontend-react): INT-606 认证链路接线——登录/注册/OAuth/错误映射 mock→api
+test(ui): INT-596 报告域走查补齐浏览器验收 test_ui_27（排序状态/算法·时间范围·空态CTA·报告头工具条·底部操作条·API活跃·对比表导出·分组标签多选·用例卡七块·长错误折叠·正态分布图·Benchmark最佳参考线·二次对比趋势·统计趋势·console SEVERE 零，16 用例全过）
+feat(frontend-react): INT-598 AI 对话页（灵犀Agent）INT-415 四条新口径落地
+test(ui): INT-600 挑选合并交互重设计验收补充走查 test_ui_25b——联动 R2-R10/移除矩阵/三出口下单/RBAC 只读/角标同步/批量加入挑选回归
+feat(frontend-react): INT-596 附图走查——mock 补齐 §3.5.1 长错误可折叠演示数据（metricError >50 字，供 展开/收起 走查可见）
+docs(ux): INT-415 可视稿——08_AI对话页_可视稿.html（整页/全局浮窗/魔法按钮/模型供应商切换器/供应商管理/报告工作模式六景 + 深浅色）
+fix(frontend-react): INT-595 代码审计返修——P2-1 hook 早退移除 + P3-2/3/4/5 随批
+fix(frontend-react): INT-588 审计返修——标签交错多标签音频各段独立行身份（去 React key 重复 SEVERE + 勾选/编辑/删除状态耦合）+ 批量声压越界/空输入禁用确定
+fix(frontend-react): INT-587 返修——批量浮条 ESC 清选 + aria-live 播报照搬
+fix(frontend-react): INT-584 审计返修——评估维度搜索带出整组/父维度 + 移动端子视图切换收编 + 分组名兜底（P2-1/P3-1/P3-2/P4-1）
+feat(frontend-react): INT-596 报告域全量走查缺口补齐——三页逐环节对照 15_报告域.md v2.9，缺口清零
+test(ui): INT-594 标签分类筛选浏览器走查（test_ui_26：facet 分组/单选/取消/Command 搜索/重置联动 + 标签操作下拉 + 标签管理页分类树过滤/未分类兜底/空态，10 用例全过）
+feat(frontend-react): INT-605 接线基座——真实 API client 统一封装 + auth-store 真实登录态
+test(ui): INT-595 用例管理页走查补齐浏览器验收 test_ui_25（标签操作下拉/音频播放器/预览置灰/空态三态/isFetching降透明/批量浮条联动）
+test(ui): INT-600 挑选合并交互重设计浏览器冒烟走查 test_ui_25——三页签终态/合并重定向、四步向导核心链路（挑选→购物车→复核→下单三出口）、R1 任务级全选、购物车移除矩阵
+test(ui): INT-588 用例编辑音频列表批量工具浏览器走查（test_ui_24：工具栏九件/标签交错/标签设备/批量设备/设备交叉/批量声压/清空/自动生成，10 用例全过）
+feat(frontend-react): INT-600 挑选合并功能交互重设计实施——吸收合并任务为任务级挑选，四级挑选树+购物车复核合并四步闭环
+feat(frontend-react): INT-594 标签分类筛选核实补齐——标签 facet 改单选按分类分组 + Command 搜索 + 客户端聚合计数，标签操作下拉单选联动（11_用例域.md §3.4/§3.6）
+test(ui): INT-587 用例管理批量操作弹窗补全浏览器走查 test_ui_23
+feat(frontend-react): INT-595 用例管理页走查补齐——标签操作下拉/音频播放器/预览置灰/空态三态/isFetching降透明
+feat(frontend-react): INT-588 用例编辑音频列表批量工具补全（标签交错/标签设备/批量设备/设备交叉/批量声压 + 自动生成名称）
+docs(ux): INT-592 用例管理页重做——评估配置抽为可复用「评估策略」引用 + 编辑抽屉拆分瘦身 + 视图简化（分组/标签双筛选平铺卡片流）+ 批量单轨 resolveCaseIds 只认勾选（负责人 2026-10-17 拍板，INT-579/584 基础上演进）
+test(ui): INT-584 用例编辑抽屉两常驻节 + 分组/标签子视图浏览器验收（新增 test_ui_22；test_ui_12 评估维度断言随 §5.1 修正更新）
+docs(UX设计规范/17): INT-591 算法配置页重做——参数表+作用域chips降维、高级配置折叠、草稿/发布保存语义（对齐后端全量保存RPC+草稿/乐观锁）
+docs(UX设计规范/18): INT-576 勘误修订——§10 五项拍板落定（负责人 2026-10-17 裁定全 A）、§2.1 删 merged_into 口径并注明 React 基线按码过滤、补 00 总表 /tasks 路由同步注记
+feat(frontend-react): INT-587 用例管理页批量操作弹窗补全——批量设置专属参数/播放设备/声压/噪声 + 刷新参考参数（11_用例域.md §5.3.1~5.3.4）
+INT-585: 算法编辑 Sheet「30s 自动保存提醒」交互（§6.1a）
+feat(frontend-react): INT-584 用例编辑抽屉补全局背景噪声/整体评估维度常驻节 + 分组/标签子视图双向切换（INT-579 审计通过）
+docs(UX设计规范/17): INT-582 算法编辑模态窗新增30秒自动保存提醒交互子节
+docs(ux): INT-579 用例编辑抽屉补整体评估维度/全局噪声常驻节 + 分组/标签子视图双向切换——负责人 INT-490 done 反馈
+docs(ux): INT-415 修订（负责人 2026-10-17 新口径）——全局 Agent 工作台浮窗 + 魔法按钮 + Demo 态 + 模型/供应商切换 + 用户自管 LLM 供应商
+docs(ux): INT-576 挑选合并交互重设计规范入库——吸收原合并任务为任务级挑选，多级挑选树+购物车复核合并四步闭环
+fix(frontend-react): INT-378 P2-5 拍板收敛——平台概览三联改「任务总数/完成率/最近任务」+ 点击跳转
+docs(ux): INT-572 回写 14_benchmark排行.md §7 文案口径放宽（INT-544 决议 B）
+docs(frontend-react): INT-480 前端开发规范 AGENTS.md 入库（逐节移植 newAPI web/AGENTS.md，pnpm/全中文/VChart+chart.js）
+test(ux): INT-486 复测修正——test_ui_09 反选等待去竞态 + test_ui_11 Hero badge 对齐定稿（f6207251）
+test(ux): INT-508 审计返修复测——分组删除 cascade/导入计数 UI 断言 + importAlgorithms 单测补齐（P3-1 覆盖）
+fix(frontend-react): INT-500 代码审计打回返修——P1-1 XSS + P2-1~P2-7 + P3
+fix(frontend-react): INT-508 代码审计返修——分组删除 cascade 语义对齐后端/规范 + 导入计数/搜索分页 P3
+test(ux): INT-491 复验补充——分组管理弹窗回归项 ①-③（commit 478e1b8b 修复核验）
+fix(frontend-react): INT-500 UX审计打回 T-1——typecheck 三错误修复（未用 import + 面板 canEdit 必填）
+test(ux): INT-508 复测对齐——编辑保存 toast 断言改「算法已保存」（§6.3/§7.6 口径）
+fix(frontend-react): INT-491 复验回归修复——分组管理弹窗异步首载同步（P3-17 目标保留）
+fix(frontend-react): INT-508 P1 闭环——编辑/复制态算法代码豁免新建正则（存量代码含连字符）
+fix(frontend-react): INT-506 审计返修——数字校准提交过滤对齐 validCount(P2) + 数值判重(P3-1) + 409 文案区分(P3-2) + 分页首末页钮(P4) + 走查 7 用例
+fix(frontend-react): INT-500 UX审计返修——P1 四项 + P2 七项 + P3
+test(ux): INT-508 复审补强——编辑/复制保存链路显式断言（P1 覆盖缺口）
+fix(frontend-react): INT-491 设备管理页返修——审计 P2 全量 + P3 主项
+fix(frontend-react): INT-514 返修——重置清空主体搜索不回灌 + 空态计算共用重算链路 + P3 token/adapter 一致化
+fix(frontend-react): INT-506 SPL 映射页返修——数字域 .0 保留 + 校准曲线 spec 防崩 + 数字校准弹窗 hooks 顺序 + 走查 6 用例
+fix(frontend-react): INT-500 返修——报告中心弹窗群移出 SectionPageLayout + 收藏切换目标态修正
+fix(frontend-react): INT-508 P1 返修——保存按钮 isValid 死锁解除（setValue 路径实时校验）
+feat(frontend-react): INT-514 排行榜页可视稿——/rankings 公开路由 + 算法卡片网格 + 指标组卡 + 列表/表格双视图
+fix(frontend-react): INT-505 返修——批量弹窗提交 ids/文件夹全选行集/页头RBAC门控/标签弹窗接线（审计P1-P4+P5-P6）
+fix(frontend-react): INT-512 返工——错误码表对齐主库契约 + SSE 端点补 /events + 锚点解码防护（审计 P2+P3）
+feat(frontend-react): INT-500 报告域 v2.9 实施落位——report 三路由+展示/管理/统计三页+Benchmark 排行区块+分享/AI入口+高级搜索+散点热力图
+fix(frontend-react): INT-509 返修收尾——禁用钮 Tooltip 挂 span 可触发 + RBAC 走查补悬停断言
+fix(frontend-react): INT-509 返修——全局算法联动/权限Tooltip/表单子编辑器/导出双格式（审计P2-1+P3-1~4）
+fix(frontend-react): INT-492 返修——Hero 区三处文案对齐 03_首页.md 定稿（审计 P3）
+feat(frontend-react): INT-491 设备管理页全量可视稿——三页签表格+测试中占用态+实验室绑定+监控告警面板
+fix(frontend-react): INT-507 返修——左分类树行内编辑/删除钮只读态置灰+Tooltip 不整组隐藏（审计P2）
+test(frontend-react): INT-460 返修——状态卡回归测试落位（P2-1 硬性项）
+chore: 切换 worktree 模式前的快照提交（含进行中的未提交改动）
+feat(frontend-react): INT-512 文档页可视稿——使用手册/API手册双公开路由 + 左目录右正文 + shiki 高亮
+feat(frontend-react): INT-505 音频管理页全量可视稿——统计徽章行+列表/文件夹双视图+五维facet+上传进度卡+批量浮条+弹窗群
+test(ux): INT-508 算法配置页可视稿浏览器走查（tests/ui/test_ui_13）
+test(ux): INT-490 用例管理可视稿返修复测浏览器走查——P1侧栏前缀高亮/P2分组默认展开+三条新口径（tests/ui/test_ui_12_int490_testcases 10用例全通过）
+feat(frontend-react): INT-509 评估维度页可视稿——列表/分组双视图 + 维度/分类/权重/规则
+test(ux): INT-473 测试执行走查用例按返工新口径重写——单流程无 E2E/API 模式、第二步「选择设备/API」同屏混选双计数、用例不分类型、分维筛选（设备/API）、启动校验在线（至少选一）、第二步无报告参数、多友商横向对比保留验证、只读观察态+主题抽屉（10 用例全通过）
+fix(frontend-react): INT-489 返修——保存后脏徽标清零、母版B/C分节标题+说明默认显示、重置toast、OAuth复制aria-label对齐
+feat(frontend-react): 算法配置页全量可视稿（INT-508）
+feat(frontend-react): INT-490 返修——卡片流逆转+编辑抽屉五步骤全字段+侧栏高亮前缀匹配+分组默认展开
+test(ux): INT-492 首页可视稿对齐浏览器走查——Hero算法芯片/分区⑤接入测试对象/全站文案/QUICK_START四步（tests/ui/test_ui_11）
+fix(frontend-react): INT-473 命名定稿——开始测试第二步步骤名改「选择设备/API」（负责人 2026-10-16；步骤标题/禁用提示/首页快捷开始同步，不叫「选择资源」）
+feat(frontend-react): INT-507 标签管理页可视稿——左分类树+右标签表（categoryName 分组）+ TagEdit/TagCategory 模态窗
+fix(frontend-react): INT-434 审核返修——报告查看 scrollspy 绑定容器滚动+进度条修复、对比徽章计数口径对齐、打印 overflow 还原
+docs(ux): INT-439 报告域 v2.9——INT-500 前置审核打回修订（§3.8 Benchmark 报告路由改判：不新建 /benchmarks/* 前端路由、report_type='benchmark' 进 §1.1 类型枚举/§2·§2.1 类型筛选/§7 chips 与「Benchmark 报告」徽标、列表并入报告中心 /report-center、详情复用 /report/$reportId；统计分析页路由定稿 /report-statistics 并回写 00 页面清单 §2.1；00 /report-center 行改单一列表视图·类型=筛选条件、旧链 redirect 去 tab 语义；§8 DDD 命名契约标注依赖 INT-385 @yy dd 拍板；算法卡片网格区头文案/栅格按 INT-486/INT-434 可视稿统一；ECharts 排行区块独立模块标注）
+feat(frontend-react): INT-492 首页对齐——分区⑤接入测试对象三对象卡+演示Tabs、Hero算法能力六节点（INT-420/421 口径）
+fix(frontend-react): INT-486 用例不分类型 + 开始测试不再分 E2E/API（负责人 2026-10-16 口径）
+docs(ux): INT-356 用例域规范按 INT-490 口径定稿同步修订——用例不分类型，测试类型相关全部移除（负责人 2026-10-16）
+feat(frontend-react): INT-503 报告域优化——具体用例卡片七块补齐 + 正态分布图 + 报告页 bug 全修
+docs(ux): INT-415 命名定稿——「AI 对话」更名「灵犀Agent」（负责人 2026-10-16）
+fix(frontend-react): INT-492 首页文案以 V9.7.10 为基准白话化（负责人 2026-10-16 文案基准）
+docs(ux): INT-442 口径定稿收尾——/reports 页算法切换措辞并轨「算法卡片网格」（00 总表 §3.2/§3.5 + 02_导航栏 §3.4，负责人 2026-10-16 适用范围矩阵）
+test(ux): INT-473 测试执行 React 可视稿浏览器走查用例（tests/ui/test_ui_09）
+fix(frontend-react): INT-492 首页文案重写——QUICK_START 四步/删除平台架构演示/DEPLOYMENT_TRUST 白话（负责人 2026-10-16）
+docs(ux): INT-441 报告域 v2.7——多友商横向能力对比核心口径（负责人 2026-10-16）补充对比报告核心场景：多被测主体（友商模型/APP/API）同标准化环境同测试集同指标同时实测，产出横向能力对比；正式任务发布冻结 snapshot_config 保证可比，双轨对比+按指标横向排名（rank/percentile/score100/gap）；设备/API 选择器=多被测主体挑选、固定对比表=同指标横向并排、二次对比=报告间再对比（事实源 报告Benchmark排行功能设计文档 §2.1）
+fix(frontend-react): INT-492 Hero slogan 纯色可读+highlight 并入多友商横向对比（负责人 2026-10-16 定稿）
+docs(frontend-react): INT-486 测试执行卡面补多友商横向对比口径注记
+fix(ux): 报告查看页无法滚动——report-view-container 缺 overflow-auto，被 main(overflow:hidden) 截断；补 min-h-0 flex-1 overflow-auto（对齐任务页容器写法），实测可滚动
+fix(frontend-react): INT-486 全局算法切换矩阵对齐——/rankings 隐藏右上角切换器 + 任务页删算法参数关键字筛选残留
+feat(frontend-react): INT-490 用例管理 React 可视稿——双视图表格 + 标签按分类呈现 + 弹窗群
+fix(frontend-react): INT-486 首页六卡「多 API 接入」→「多友商横向对比」（负责人 2026-10-16 核心业务口径：多友商同集同指标同时实测，横向排名看清业界水平）
+docs(ux): INT-359 排行榜页 v1.5——核心业务口径对齐（负责人 2026-10-16 多友商横向能力对比）
+docs(ux): INT-439 报告域 v2.6——报告类型口径修正（负责人 2026-10-16：类型是数据属性非门类）取消「测试报告/历史报告」双页签，列表单一视图默认全部报告；类型改筛选条件（默认「全部」）非页面层级；DataTable 类型列降次要信息列（可默认隐藏）不做排序维度，名称/状态/时间/算法为主；报告卡类型徽章=元信息非分组维度；旧链 /test-reports、/history-reports redirect 到 /report-center 不带 tab 语义（移除 tab 参数）
+feat(frontend-react): INT-486 导航重排+开始测试合并+算法卡片网格+控制台文案清零
+feat(frontend-react): INT-489 系统设置工作区 React 可视稿——六域树 drill-in 全量落地
+docs(ux): INT-487 口径补充（负责人 2026-10-16）——选择被测对象筛选维度补全：10_测试执行 §3.6.1 设备卡网格工具栏新增系统类型 facet（iOS/Android/HarmonyOS）+ 补「实验室/在线离线状态/系统类型」三维度注记（实验室默认按 §3.13 已选实验室过滤）；§3.6.2 API 表格补筛选维度注记（API 不做实验室/系统类型过滤，不挂实验室、无 OS，16_设备域 §3.6 与实验室扩展文档口径）；09_任务域 §3.13 同步补「选择被测对象筛选维度」条目；两文件修订表同步
+docs(ux): INT-442 口径修正（负责人 2026-10-16）——算法切换大卡片=每算法一张大卡的算法卡片网格
+fix(frontend-react): INT-435 灵犀Agent 更名——AI 对话页标题改「灵犀Agent」（负责人 2026-10-16 命名定稿，路由 /ai-chat 保留）
+docs(ux): INT-487 设备绑定实验室+「测试中」占用态+用例标签分类——16_设备域补节（实验室列/facet/管理入口§6.26/占用态徽章+动画/被占用禁用选择/RBAC+组件树+§11 后端缺口24-28）+ 09_任务域补 §3.13 实验室筛选联动（开始测试 Step2-4 口径，INT-486 合并联动）+ 任务关联实验室列/信息格 + §11 立项清单 5-9 + 11_用例域补标签按分类呈现确认 + 04_控制台工作台设备面板「测试中」占用计数与实验室维度注记；后端缺口标「待后端立项」并开主项目卡 INT-493；注：04 工作区携并发的算法卡片网格（INT-436 口径修正）未提交内容，随本文件一并提交
+fix(frontend-react): INT-434 报告域口径修正返修——取消双页签，报告类型改筛选条件（负责人 2026-10-16 口径修正 + 代码审计打回 P1×3/P2×3 全量闭合）
+fix(ux): 收紧根 .gitignore lib/ 规则并纳入 frontend-react lib 生产源码 (INT-488)
+docs(ux): 00总表 §3.5 全局算法切换适用范围矩阵定稿——报告/排行榜页用大卡片、概览页双入口（右上角+大卡）、其余业务页只用右上角切换器零页内筛选
+feat(frontend-react): INT-473 补提交——navigateWithSearch 跨路由 search 更新辅助（.gitignore lib/ 规则 force-add）
+feat(frontend-react): INT-473 测试执行 React 可视稿——端到端/API 五步向导 + 只读观察态 + 弹窗群
+feat(frontend-react): INT-477 测试体系搭建——vitest+testing-library 照 newAPI 补齐核心页测试
+删除UX分支里的无效代码，UX分支只保留前端ux相关代码
+删除UX分支里的无效代码，UX分支只保留前端相关代码
+docs(ux): INT-344 导航栏 v1.5——INT-381 复审放行条件 #2 benchmark RBAC 旧口径按 INT-429 落地回写
+docs(ux): INT-343 基座规范 v2.2——INT-382 前置审核放行条件 4 项闭合
+docs(ux): INT-356 用例域规范按 INT-389 前置审核打回清单修订——INT-417 落位收敛（评估维度/标签管理提升侧栏「测试域」组、路由保留现名、设置域废止）+ C2 RBAC 口径统一基座 §9.2 规则 3 + P1/P2 权限码勘误 + P3 stop_preview 补注 + §10 补测试类型 facet 待确认
+docs(ux): INT-353 放行条件#1 闭合——00 总表 v1.13 / 01 基座 v2.1 按 INT-429 落地回写 benchmark RBAC
+docs(ux): INT-359 排行榜页 v1.4——INT-429 RBAC 落地回写 + INT-391 复核收口对齐
+docs(UX): INT-358 个人中心规范按 INT-454 放行条件修订
+docs(ux): INT-346 收口——INT-458 复核通过，P3 路由数核正 21→22（router path: 条目实测 22 含 404 catch-all）；修订表补复核收口行
+docs(ux): INT-380 前置审核放行条件闭合——10_测试执行 v1.4（INT-439 报告装配嵌入式契约 + 报告域 §4.3 导出口径 + §9 dto/ 层 + ParamCard 复用协调）+ 00 总表 v1.12（algo_engineer 只读观察勘误）+ 08 卡协调登记
+feat(frontend-react): INT-460 关于页 React 可视稿（公开路由 /about）
+docs(ux): INT-345 首页规范 P3 顺带清理——device_admin 入口卡行自相矛盾改 1 卡；注2 行号漂移改以 ALGO_ENGINEER_PERMS 常量名为准
+fix(frontend-react): INT-434 报告域审核返修——P1×2/P2×20/P3×14 全量闭合（typecheck+build 零错误）
+docs(UX): INT-385 前置审核打回返修——5 项放行条件闭合（§5 algo_engineer 行/注2 按 seed_rbac.py 修正、§3.1/§4 预设十项含 anthropic、§3.2 规模条整项点击跳转 已由同文件近提 15f15bab/4a42bc8d 复核闭合；补 §3.2 算法事实源路径子目录「智能语音算法配置适配/」、§4 基座 serif 定位改 §2.1 衬线轴；§7 Domain 字段契约 camelCase 转换链 vs snake_case 直通 标待裁定并升级基座 INT-343/@负责人拍板，裁定前实施卡不落）
+docs(ux): INT-381 前置审核打回返修（INT-353 信息架构规范 00~17 + DDD 命名适配文档回写）——按审计清单逐项闭合
+docs(ux): INT-349 文档页规范 INT-388 前置审核打回返修闭合——①§4.2 手册站内链接对齐新路由表（/devices、/audio-import、/testcases；报告中心 /report-center 双页签+展示页 /reports+详情 /report/$reportId，删 /test-reports、/history-reports 独立页表述，快速开始各步同步）；②保持 /user-guide+/user-guide-api 双公开路由并协调 00 页面清单 §2.1/§4.1 补登记（公开/RBAC/导航随 /user-guide，v1.11）；③§7 statusApi 补 snake_case→camelCase DTO 映射契约（application useApiBaseUrl 只消费 camelCase）；④§5 补深浅两套+预设切换观感（基座 §6.3，参考 06_关于 §5）；⑤公共壳改注消费 INT-344/INT-348 已定义件（interfaces/components/layout/）、guide.css 落位对齐基座 §10 顶层 styles/
+docs(ux): INT-456 00 总表回写报告域双入口与算法口径（INT-439/441/442，INT-430 观察项）——§0 文档地图 15 卡归属标注 INT-360 产出 → INT-439 重做 v2.3（负责人 C）；§2.1 /reports 改展示页（导航「报告」、弱管理、行操作仅查看/复制链接）+ 新增 /report-center（侧栏「报告中心」管理页、双页签、管理操作集中，INT-441）+ /report/$reportId 归属改 INT-439；§2.2 /test-reports /history-reports redirect 改 /report-center 对应页签；§2.3 新增页补 /report-center；§3.1 顶部导航「报告」补双入口口径；§3.2/§3.5 全局算法切换器补 INT-442 按路由显隐（/reports 展示页 showGlobalAlgorithmSwitcher=false、改「当前算法」大卡）；§3.3 侧栏「报告中心」路由改 /report-center；§4.1/§4.2/§5.1 报告相关行同步；变更记录 v1.10（v1.9 已被同 checkout 并发 INT-381 修订占用）。注：00 文件工作区携有并发的 INT-381 权限点数勘误等未提交内容，随本文件一并提交。
+docs(ux): INT-344 导航栏 v1.4 前置审核放行条件闭合——①§3.6 名称数据源定案（SSE payload 实测不含任务名/报告名，前端经 tasksApi.getOne/reportsApi.getOne 详情接口解析，payload 不动，失败降级任务#id/报告#id，详情接口缺失另开卡不扩本卡）；②路由勘误登记 /rankings 终定、旧功能设计文档 §8.2 /benchmarks/* 弃用（裁定 2026-10-16）；③实施清单补单向依赖注记 top-nav.config 常量按 newAPI props 注入不被 application 反向 import；§7 组件树/复用清单同步
+docs(ux): INT-442 INT-443 前置审核打回返修——①04_控制台 §3.2 侧栏「报告中心」路由改 /report-center + 路由清单补 /report-center + §9 待确认 3 勘误双入口 + 引导卡 QuickAction 落 /report-center；②02_导航栏 AppHeader 契约新增 showGlobalAlgorithmSwitcher prop（/reports 展示页置 false，其余登录壳页面默认；/rankings 公开页无 AppHeader）按路由显隐，15_报告域 §2.1 补右上角切换器隐藏机制
+docs(ux): INT-354 任务域规范 INT-387 前置审核打回返修
+docs(UX): INT-348 关于页规范 INT-446 前置审核打回返修——F-1 认证服务端口 5001→5009（docker-compose.yml:409-420 / shared/config/service_ports.py:12 / auth_service/config/config.py:15 实测，5001 为 task_service，勿混，§3.1.1/§4.2/§7 同步）；F-2 「权限说明」去杜撰站内锚点，改仓库文档路径 docs/RBAC权限划分.md + 待站点文档托管立项（对齐 §4.1/§6 正文口径；托管立项后升 /user-guide#角色与权限说明）；F-3 版本口径与首页统一取 /health version，补全失败态版本值「—」+ 徽章「检测中」（§3.1.1/§4.2/§4.4/§6 同步）
+docs(UX): INT-420 首页规范 INT-437 审核放行返修——页签③ API 连接测试演示端点改 /api/v1/apis/:id/health（后端实测 api_bp.py:36/:41，前端实测 apisApi.ts:38，响应字段不变）；P3 顺带修：algo_engineer task:read 注记勘误（seed_rbac.py:215 实测持有，任务管理卡显示）、设备连接示例 adb devices -l（android_driver.py:90,102）、组件树 hook 命名漂移修正（薄壳更名 useHomeContent、入口卡过滤复用 usePermissions）
+docs(ux): INT-346 工作台卡 INT-384 前置审核打回闭合——①§2.0 数据命名口径（后端实测 snake_case 输出，统一 camelCase Domain + Infrastructure adapter 转换、不留 snake_case 穿透，勘误现 design 分支直通模型与 use-setup-guide 直读蛇形键）；②§4 页面级新增依赖声明（@visactor/react-vchart/vchart，基座 INT-343 未列）；③§8 评估维度统计省略理由；顺带勘误路由数 19→21、§9 路径已拍板归档
+fix(frontend-react): INT-434 报告域重实施收尾——§3.1 无来源返回默认 /reports；删 v1.0 遗留孤儿组件（report-charts/case-list/case-detail/conclusion/overview/comparison-section/log-download-progress）；typecheck 归零（mock 指标 id 对齐 schema 数值型、chart.js 类型、未用变量清理）
+docs(ux): INT-355 测试执行规范 v1.3——负责人口径落地（2026-10-16 拍板）
+docs(UX): INT-344 导航栏 v1.3——负责人口径两则落定修订
+docs(ux): INT-359 排行榜页 v1.2——INT-391 审核放行条件修订
+docs(UX): 个人中心设计规范 INT-358 产出（13_个人中心.md）
+docs(UX): 关于页设计规范 INT-348 产出（06_关于.md）
+删除无效代码
+feat(frontend-react): INT-434 报告域可视稿按 INT-439 v2.2 重做——报告中心展示/管理双入口 + 报告查看 chart.js v4 图表（正态分布图前端自算）+ 用例卡片七块 + 分组/标签/分类对比
+fix(frontend-react): INT-433 任务域返修——审计 P2 三缺陷 + 弹窗/菜单/分页关联缺陷
+docs(ux): INT-442 工作台概览算法大卡「两页复用契约」注记——排行榜页（公开页，页内独立 store，榜单按算法过滤待后端立项）与报告展示页（写回全局 store，管理页保留联动 chip）复用当前算法大卡组件形态、不再渲染右上角全局切换器；§2.1 映射表/§3.4 复用契约/§7 组件树/修订记录同步
+docs(ux): INT-440 任务排队情况+插队申请；删「算法参数超集筛选」残留
+docs(ux): INT-439 报告域 v2.2——INT-442 算法切换口径落地（展示页改用「当前算法」大卡，复用 INT-436 current-algorithm-card 组件+全局 store+INT-355 §3.4 双通道选择器，写回同一 store 一次切换全局生效、列表附 algorithm_type；管理页保留全局联动 chip；无 algorithm:read 大卡只读降级仅显示当前算法名）；§2.1/§6 注4/§7/§8/§9 同步修订
+docs(ux): INT-439 报告域 v2.1——INT-441 双入口拆分落地（导航栏「报告」=展示页 /reports[仅已发布/弱管理/查看+复制链接]，侧栏「报告中心」=管理页 /report-center[生成/编辑/发布/删除/批量/导出/收藏/回收站/草稿集中]，/report/$reportId 详情阅读页共用展示形态+返回回退来源入口；旧链 /test-reports、/history-reports redirect 到管理页对应页签；RBAC 门槛不变 report:read 三页同守；全局算法联动 chip 双页保留）；§0/§2/§2.1/§3.1/§6/§7/§8/§9 同步修订，修订记录 v2.1
+fix(frontend-react): INT-378 审计打回修复——P2-1/P2-2 必改 + P3 三项 + 按规范补位 P2-3/P2-4
+docs(ux): INT-359 benchmark 排行页 v1.1——算法切换口径改判（INT-442 负责人 2026-10-15）
+fix(ux): INT-435 复核修复——前端UX审计 P1×2 + P2/P3 全量落地
+docs(ux): INT-439 报告域设计规范口径变更重做——按 V9.7.10 报告+现前端真实层级（任务级 TaskReportPanel 分区[总览/设备与API双资源统计/分析结论/对比表格/分组对比/标签对比/具体用例]+对比家族 ComparisonReportPanel[设备API选择器+两张固定对比表]+用例卡片 TestCaseReportDetail 七块[评分指标单表+多轮Tab对比+主/子维度层级分组/多轮对话结果聚合卡+每轮展开/执行结果/用例参数/评估结果/设备API执行结果/音频区]+分组/标签/分类对比[标签带分类,每标签独立均值]+正态分布图[前端自算均值/标准差/正态曲线,ChartStatsCard]+ChartComponent 全类型 Chart.js v4+zoom 重分箱[覆盖 INT-360 VChart 裁定]);schema+normalize+flatten+cases_mixin 逐字段实测,对照文件清单全量列出;报告中心列表页保留 INT-360 版式;commit design/ux-redesign 分支
+docs(ux): INT-424 前置审核打回修订——algo 侧栏计数 11→10、设置树域名统一「运维设置」
+feat(frontend-react): INT-433 任务域 React 可视稿——四页签列表+详情+模态窗
+feat(frontend-react): 报告域可视稿落地（报告中心+报告查看，INT-434）
+test(ui): INT-379 复验——test_16 断言更新为修复后行为（匿名态「立即体验」→/login、登录态「进入控制台」→/dashboard、小字「阅读使用手册」→/user-guide）
+feat(ux): INT-435 AI 对话页（Agent 工作台）React 可视稿——playground 三段式单栏 + 报告三件 starter + 会话流全套
+docs(ux): INT-436 工作台概览新增「当前算法」大卡——概览区算法展示+切换入口（联动 INT-344 全局切换器）
+fix(ux): INT-379 修复部署与数据边界右卡主按钮匿名态文案与跳转不一致（验收缺陷）
+test(ui): INT-379 登录页+首页门户+错误页三件 React 可视稿浏览器走查 test_ui_08
+tests(ui): INT-378 /dashboard 工作台可视稿浏览器走查 test_ui_07
+docs(ux): INT-360 报告域设计规范——报告中心 /reports 双页签(测试报告/历史报告)照 pricing 模型价格页版式(Hero+搜索+类型 chips+状态/时间/算法筛选+统计徽章行[tab-counts]+PricingToolbar+DataTable+收藏/回收站+批量浮条+生成报告 Dialog)+报告查看 /report/$reportId 阅读优先版式(报告头+指标卡+维度×资源矩阵+设备/API 统计+VChart 柱状/折线/雷达+分析结论编辑+具体用例[筛选/固定/展开/音频/ASR/翻译/日志下载]+对比矩阵与趋势+服务端导出+打印)；逐端点实测 RBAC 五角色矩阵(report_bp+seed_rbac)；补生成/导出/打印/重新生成入口缺口；现状缺陷 10 项全实测；回写 00 总表 v1.6
+docs(UX): INT-420 精度核改——接入演示示例对齐实测口径
+docs(ux): INT-416 补更名——16_设备域/17_配置运维正文「控制台」当前口径措辞核改为「工作台」（功能页/壳引用/归属/组件树注记/修订记录），路由与组件标识不变
+docs(ux): INT-362 回写 00 总表——17 卡状态置「✅ 产出」；§2.1 /logs /AlgorithmConfig /system-settings 三行状态收敛；§4.2 日志查看与算法配置指针置 ✅（落点 17_配置运维 §9）；v1.5 变更记录
+docs(ux): INT-362 配置运维设计规范——算法配置(/AlgorithmConfig 侧栏测试域组，照 models+channels 表格版式)+日志(/logs 照 usage-logs 筛选/流式表格)+OAuth(收编认证设置域照 custom-oauth 母版 B)；算法编辑模态窗五 Tab 全数据 CRUD 重设计(Sheet+RHF/zod+useFieldArray)；逐端点实测 RBAC 五角色矩阵；补导入/重载/批量删除/详情入口缺口；现状缺陷 8 项全实测
+docs(UX): INT-421 首页 Hero 枢纽图新增算法能力叙事——四角节点与连线不变，外圈加 6 枚「算法能力」floating 节点（实时语音大模型 voice_llm/ASR/TTS/翻译/声纹识别·说话人分割/通话与会话场景，无连接芯片，虚线描边+半透明底，配色按基座 chart-1~5+语义 token）；Badge 扩为「算法可插拔 · 从 ASR 到实时语音大模型」，五打勾换 1 项为「多算法类型支持」，说明段补算法广度；算法名以 08_算法配置 §2.3 种子数据+voice_llm 改造方案为准，「通话/会议纪要/说话人分割」按应用场景叙事不立独立条目；§1.2/§2/§3.1/§6/§7 组件树/实施断言同步；INT-420 同文件冲突检查通过
+docs(ux): INT-361 回写 00 总表——16 卡状态置「✅ 产出」；§2.1/§2.2 三路由（/devices /audio-import /SPLMapping）状态收敛；§4.2 按钮级指针补 device/playback/api_config/spl/digital_spl + 监控告警族（落点 16_设备域 §8）；§8 v1.4 变更记录（/SPLMapping 按 INT-417 保留现名独立页出全量页面规范，05 卡设置树 SPL 残留待 INT-347 勘误）
+docs(ux): INT-361 设备域设计规范——/devices 三页签 channels 版式（三开关+主按钮+更多操作页头/Title 带徽标/列 meta 移动卡片复用桌面列渲染/批量浮条/分页 Portal/API 端点展开行）+ 监控告警面板补齐（现状告警规则/告警/状态历史三族接口有 API 无 UI，逐端点实测）+ /SPLMapping 落位按 INT-417 拍板=侧栏「测试域」组保留现名独立控制台页（原收编设置工作区方案废止，壳与 /devices 同源；物理域 spl+数字域 digital_spl 双页签/校准族含数字校准 409 分布式锁互斥/三口径对称 Alert）+ 音频管理页（统计徽章行/列表+文件夹双视图/五维 facet/跨页全选走 /audios/ids/上传分片秒传按分组建用例链平移）+ 模态窗 19 件逐一重设计（扫描/设备抽屉含 gainSpl 校准行与 apiEndpoint 数组/分组管理/告警规则/上传族/批量标注/元数据标注编辑/URL 导入补入口/convert 补接线）+ RBAC 五角色矩阵（device/playback/spl/digital_spl/audio/api_config 全链码逐端点实测 seed_rbac+六 *_bp.py；api_bp GET/POST/PUT 无门槛缺口标注）+ 全量中文文案 + 组件树+DDD 四层落位；页内算法筛选器按全局切换器口径移除（联动 INT-344）；现状缺陷 22 项全实测（告警无面板/resolved 无写入/SSE 设备事件断链/tester 无 playback:read 影响上传弹窗设备下拉/播放设备组成员未实装/batch 白名单不含 delete/specs 无数据源/driver 逐字符匹配/API 扫描恒空/物理校准模拟/SPLCalibrationModal 死代码/export blob 缺陷/convert 未接线/URL 导入无入口/诊断视图无源/上传进度未接/AudioSelectModal cache 未填/统计前端聚合/导入导出无处理器）；色彩 token 引用基座卡（已定稿）
+docs(UX): INT-420 首页⑤平台架构演示重做为「接入测试对象」——三对象卡（被测设备/被测APP/被测API）+接入演示三页签（示例值标注示例数据）+§3.5底注INT-417口径/§5RBAC接入对象区列/组件树更名（platform-demo→test-object-access、terminal-demo→access-demo）同步
+test(ux): INT-377 测试默认端口对齐——REACT_DEV_BASE 3000→5273
+docs(UX): INT-417 工作台侧栏新增「测试域」组
+fix(ux-react): dev server 钉死 5273 端口——3000 被 newAPI 参照实例(new-api.exe --port 3000)常驻占用，strictPort:true 禁止静默漂移
+INT-416 UX口径: 「控制台」全量更名「工作台」（00总表 v1.1/02导航栏/04工作台/03首页/05设置等10文档）
+INT-415 UX设计规范: 08_AI对话页（Agent工作台——报告生成/对比/分析，照 playground 版式）+ 00总表回写（08行/AI对话路由/侧栏AI工具组/RBAC矩阵与侧栏结果行 v1.2）
+INT-378 UX工作台: /dashboard 可视稿四分区（引导卡+概览三卡+最近任务+VChart 图表，mock）
+INT-379 UX实施: 登录/注册/OAuth mock + 首页门户九分区 + 错误页三件（可视稿）
+fix(ux): INT-377 验收修复——用户下拉 MenuGroupContext 崩树（测试员 01a13e1e 阻断项）
+test(ux): INT-377 React 基座浏览器走查用例（tests/ui/test_ui_06）
+INT-377 UX基座: web/ 更名 frontend-react/（负责人 2026-10-15 目录口径纠正；纯 git mv 无内容改动，pnpm build + tsc -b 零错误复验）
+INT-377 UX基座: web/ React 脚手架 + 主题组件移植 + 导航壳 + 路由骨架（可视稿）
+docs(ux): INT-344 导航栏设计规范——登录壳顶栏三段装配+公共站头全套对齐 newAPI 实测
+docs(ux): INT-353 信息架构前置卡——页面清单/RBAC划分总表（19旧路由→新路由全量映射+TanStack redirect兼容表；顶部导航六项/右上角功能区/侧栏四组十项/设置树六域逐项权限；seed_rbac 五角色100权限点实测基线+benchmark:*权限缺口发现（benchmark_bp 已挂码但 seed 未授，待后端立项）；全局算法切换器跨卡契约固化（algorithm:read 可见性+列表页只读联动chip+测试执行写回+清空唯一入口）；页面可见性六态矩阵+按钮级指针表+守卫统一口径（403?from 替换跳首页旧口径）；newAPI→本平台页面/机制映射+LLM业务不引入清单；DDD四层落位+实施清单6项；待确认6项）
+docs(ux): INT-357 登录页+错误页设计规范——auth-layout 版式对齐（品牌角标+480卡+auth-shell 光斑 token 联动多主题）；登录/注册双页拆分（弃双 Tab，RHF+zod/PasswordInput/三层错误分离）；OAuth 提供方区+回调契约（oauth_bp 302→oauth_token 消化+URL 清除）；错误页五件全建（401/403/404/500/503 同构版式+GeneralError 429/ChunkLoad 特判+根路由双兜底）；403 接入守卫替换跳首页旧口径；redirect 消毒安全修复；加密登录 RSA 链/错误码 105/106 全实测映射；RBAC 认证前页面矩阵；全量中文文案；React 组件树+DDD 四层落位；不引入清单（Passkey/2FA/Turnstile/ALTCHA/WeChat 弹窗/邮件重置/条款页脚）
+docs(ux): INT-355 测试执行设计规范——playground 三段式全高布局 + setup-wizard STEPS 步骤条基准（源码实测）；五步向导重设计：算法双通道选择（Command 搜索+卡片网格）+ 全局算法 store 写回联动 INT-344；用例表格/卡片双模式 + 正选反选（/testcases/ids 全量圈定 + 对称差）；设备卡网格（离线禁选/权限钮）+ API 表格 + 并发参数卡（E2E 可改/API 求和）+ voice_llm 双提示；执行步装配复用 INT-354 任务详情组件、报告步装配壳接 INT-360；用例详情弹窗（多轮指标对比@round/@overall+日志分页+试听引用）与 API 编辑弹窗本卡出规范（边界收编 INT-356/361/362）；RBAC 五角色矩阵权限码全实测（task:execute 整页守卫 + api_config/device:control 按钮级 + report:publish 发布显隐）；全量中文文案；React 组件树+DDD 四层落位
+docs(ux): INT-346 控制台设计规范——工作台+侧栏导航壳对齐 newAPI（AuthenticatedLayout/Sidebar 全家桶/drill-in 机制实测）；侧栏树四组十项逐项权限过滤（空组隐藏）；工作台四分区（开始使用引导卡双形态/平台概览双区 StatCard+sparkline/最近任务+分组排行双 PanelWrapper/任务统计图表三卡自 /tasks 移交 #task-charts 锚点，VChart ThemeManager 门控+dataScheme 色板+key 重建整套照搬）；路径拍板 /dashboard（INT-345/347 占位同步）；RBAC 五角色矩阵权限码全实测（seed_rbac algo_engineer task:read 勘误）；全量中文文案/React组件树+DDD四层落位
+docs(ux): INT-356 用例域设计规范——用例管理表格版式对齐 newAPI（users/models 基准：双视图分组行聚合+平铺/筛选facet/批量浮条/行菜单/分页Portal）；用例编辑 Sheet 抽屉（轮次五步骤全量：算法参数/音频列表/噪声干扰/评估维度/参考参数）；批量九件套弹窗逐一重设计（载荷逐字段实测 schemas/testcase.py）；试听三弹窗；标签管理/评估维度两分区规范（对齐 INT-347 测试配置域归属）+ 维度表单抽屉六分组 + 专用 API 健康结果弹窗；RBAC 五角色矩阵权限码全实测（testcase/group/tag/evaluation/favorite 全端点门槛）；全量中文文案/React组件树+DDD四层落位；页内算法筛选器按全局切换器口径移除（联动 INT-344）
+docs(ux): INT-354 任务域设计规范——四页签表格版式对齐 newAPI（usage-logs/users 基准）
+docs(ux): INT-359 benchmark 排行页设计规范——newAPI rankings 版式对齐（Hero+类别下划线页签/指标组卡+双栏榜单/列表表格双视图/VChart 对比条形图）；B 域 benchmark 双轨排行全量实测映射（category×metric×scenario 分组/6算法 ReadModel 字段/重算语义）；数据缺口三项标注待后端立项（时间周期/厂商份额/升降榜）；RBAC 映射含 seed_rbac 无 benchmark:* 权限码缺口实测与立项建议；全量中文文案/React组件树+DDD四层落位
+docs(ux): INT-343 全局基座规范 v2.0——按负责人口径修订（复用newAPI/多主题/RBAC）
+docs(ux): INT-345 首页设计规范——门户落地页对齐 newAPI（九分区版式/品牌区枢纽图/平台规模条/控制台八入口卡/架构演示终端/RBAC 角色过滤矩阵/全量中文文案/React组件树+DDD四层落位）
+docs(ux): INT-347 系统设置规范 v1.1——负责人新口径落稿：新增用户与权限域（用户管理母版C+角色×权限串矩阵，RBAC基线全实测 seed_rbac 5角色×100权限码+user_bp/role_bp 契约）；全部分区补角色→页面→菜单/按钮映射总表；新增外观与主题域（ConfigDrawer 交互件对位，多主题预设常驻分区）；信息架构联动（返回控制台/全局算法切换器口径）；newAPI 角色化导航与 /users 源码出处补录
+docs(ux): INT-343 全局设计基座规范——字体/色彩token/间距/组件/暗色
+docs(ux): INT-349 文档页设计规范——newAPI 文档页对齐（左目录+右正文双栏/目录提取与滚动追踪/shiki 双主题代码块/手册切换/RBAC 全员可读映射/两本中文手册大纲/React组件树+DDD四层落位）
+UX重设计设计文档 v1.4 补录：算法编辑模态窗全部数据 CRUD 重设计（负责人点名）
+UX重设计功能设计文档 v1.4：页面清单与信息架构拍板（首页/控制台分开+新增页+benchmark 排行恢复+定点版式+全局算法切换器+RBAC 基线）
+docs(ux): INT-347 系统设置页设计规范——newAPI drill-in 设置工作区对齐（侧边栏设置树/分区路由/表单与资源管理双母版/保存交互全套/中文文案/React组件树+DDD四层落位）
+docs(ux): 设计文档 v1.3——所有页面含模态窗重新设计 + 页面体系按 RBAC 角色划分（角色→页面/菜单映射，参照 newAPI 角色化导航）
+docs(ux): 设计文档 v1.2——CSS/组件/模态窗直接复用 newAPI + 多主题预设体系（不得单一主题，lake-view 为默认参考预设）
+docs(ux): 工作区路径定稿 D:\00_code\V9.7.31-UX（负责人指定）同步进设计文档
+docs(ux): 整站UX重设计设计文档 v1.1——技术栈裁定（设计分支 design/ux-redesign + React 重写保留 DDD 四层 + newAPI 技术栈对齐实测）
+chore(ux): 设计规范产出目录移入项目子树 Intelligent-Audio-TEST/doc/UX设计规范（对齐主库 doc 约定）
+chore(ux): UX重设计独立工作区初始化——同步设计文档基线（整站UX重设计 v1.0 + 新功能总览）+ 建 doc/UX设计规范 产出目录
+INT-301: UX审计打回修复——F1 执行状态筛选改派生口径（P2）+ F2 执行徽章9值tokens配色 + F3 图标/样式收敛单一定义源
+INT-336: 维度 api_settings 显式 null 健壮性修复——worker_management/_get_timeout_from_dim_config 与 endpoint_worker 两处 api_settings 读取改 or {} 兜底（get(key,{}) 只兜键缺失，JSON null→None 抛 NoneType 打断评估），llm_judge 120/普通 30 默认超时语义不变；新增 9 例三态单测（None/键缺失/正常 dict）覆盖 llm_judge 与普通分支及兜底链
+INT-335: 迁移脚本 PG 语法修复——test_results excluded 三列 ALTER 去掉 MySQL 内联 COMMENT，列注释改独立 COMMENT ON COLUMN 语句（同一 _col_exists 守卫分支，幂等不变）；shadow 库从零执行三列+索引+注释验证通过、dry-run 与实跑一致、共享库实跑全 SKIP 零改动
+INT-320: 收藏页签绕过回收站互斥修复——favorite+deleted 双参数并发（规划师裁定两案并举）
+INT-308: 复验打回修复——E2E停止终态防覆盖（_dispatch_e2e_case 执行返回后 session.refresh 强制重读，_handle_e2e_failure 防护排除 STOPPED 与 INT-305 移除留痕行，失败告警仅对执行失败终态发布）+ 停止兜底收敛标签对齐停止契约（_mark_uncompleted_cases_failed 落 stopped/'任务被手动停止' 并过滤移除留痕行，INT-332 核验偏差#2）+ 循环播放停止口径澄清（偏差#1 文档字符串，仅自然完成检测退化）+ 验收实测记录归档 doc/验收/INT-308.md（偏差#5）
+INT-302: 审计打回修复（1中+3低）——F1 重评估0维度确认门控/F2 selected空集拒绝对齐retry/F3 维度候选集改任务用例聚合/F4 恢复重新提取设备输出并清理旧模态窗死代码
+INT-333: 后向审计回写——全栈Docker化部署设计文档新建（INT-272 compose 实态基线；成员裁定 2026-10-14 口径：服务生命周期归 Docker daemon/禁宿主直起/禁启动期整树清场/只连不拉/双栈过渡）
+INT-332: 负责人口头裁定补录（实现演进裁定）——报告三功能头部+任务报表/保存搜索/邮件通知搁置标注（2026-10-10）、停止立即生效口径入 E2E §3.1.3 与 API §3.8（2026-10-13 INT-308 原话）、新增日志方案.md（2026-10-12 口径对照 INT-81 实现核验）
+INT-300: 审计打回修复——qwen session_id 未定义 / 多轮 wav 拼接逐轮剥头 / volc 输出容器防御性剥头
+INT-256: INT-250 修复本体补测——三弹窗 overlay 显式可见性真实级联断言 + PublishedTasks pt- 前缀隔离回归锁
+INT-285: 注册邮箱必填口径收紧至 TS 契约层——authStore/authApi register payload email 必填（email?: string → email: string），register spec 调用补邮箱实参
+INT-330: RMS-SPL 校准弹窗行级校验阻塞提交 + 映射列表分页对齐
+INT-280: HistoryReports Tab 过滤服务端化——修复 Tab 切换退化为纯客户端过滤（分页 total 全量失真、Tab 计数只计当前页）
+INT-302 验收补充：新增 UI 实测用例 test_ui_05——任务卡片「重新执行/重新评估」范围选择模态窗主流程实测（默认全部语义/手动选择仅本任务用例集+计数+禁用门控/重评估维度步默认全选），隔离栈实机验证 3 例全绿，测试数据自建自清（任务 purge+用例 purge+标签/分组软删回收）
+INT-282: APITest 未勾选用例全量回退恢复 + 建任务载荷显式携带 type 契约
+INT-312: explicit_degrade 降级下沉至 HarmonyDriver 统一模板，覆盖自带 initialize 覆写的 6 组子类驱动
+INT-305: 任务执行详情模态窗支持删除用例（待执行/执行中/已完成/评估完成四阶段全允许）
+INT-275: 新增 UI 实测用例 test_ui_04——E2E/API 测试页「导入用例」跨页 autoOpen 主流程实测（弹窗自动打开+生成用例勾选+algorithmType 预置+无 query 不弹窗），隔离栈实机验证断链修复
+INT-319 审计回写：收藏回收站操作人交互规范设计文档迁移至 V9.7.31 并随 INT-299 终态增量更新（实现演进裁定）
+INT-275: AudioImport 跨页 autoOpen 上传弹窗断链修复——onMounted 解析 route.query（autoOpen/createTestCase/algorithmType）恢复 V9.7.10 基线行为（预置生成用例/算法类型 + nextTick 自动打开上传弹窗）；query 参数收敛 domain/constants/audioImportQuery.ts，生产者/消费者同源引用防漂移；新增 audioImport.autoOpenQuery.spec 7 例锁定契约
+INT-294: C域视觉与代码卫生（Evaluation/ReportView/HistoryReports，INT-261 P3批次）
+INT-314: 冒烟门禁固化——登录→建用例→dry 执行→报告 四步断言纳入每次批次推送（INT-95 附加条款移交）
+INT-309: 任务页创建新任务静默失效修复——TaskTypeModal emit 键 testTestType→testType + 跳转目标改已注册测试页路由（/create-*-task→/APITest、/E2ETest）；删除 ModalManager 不存在的 confirm 调用（原点击即抛 TypeError）；新增 tasks.createTaskEntry.spec 8 例锁定载荷键/分发/路由存在性
+INT-308 打回修复：审计#1取消空转双保险（翻转前发起+命令语义信任请求方）/ #2取消标记落Redis双通道 / #3子服务通知并行化限时 / #4 completed不发取消事件 / #5跨层时序单测 / #6 E2E停止分支AttributeError修复
+INT-265 验收包 B. 任务管理——终态复核增补（实现演进裁定）：INT-298 三页签回迁落地后按承诺更新本包（§1.2 图/差异#11/手册 A-B1-B5-C3-D2-D3-E1-E7/§5-#3-5-7-8-10-12/§6 判定）；INT-208 口径裁定 A 已实现关闭；INT-299/257 done、INT-303 落地记录；复核基线 c59c1dfc
+INT-302: 重执行/重评估支持按用例+按维度选择（任务卡片+执行详情模态窗双入口）
+INT-298: 任务页三页签（日常/已发布/合并）+收藏视图，废弃独立已发布页
+INT-315: auth_service HTTP 管理面写命令补 commit——register/users/status/delete/permissions 返回成功但零落库（幻影用户）修复
+INT-316: 修复 INT-308 停止传播对非 BaseExecutor 鸭子类型替身的兼容——Realtime 集成测试 int61/int137 恢复全绿
+INT-303: 已发布版本任务详情真冻结——发布时内联冻结任务详情全量数据（taskSnapshot schemaVersion=2）
+INT-300: 打回修复——apis 读侧 rms_spl_mapping_id 断链补齐 + http_api 输出侧 SPL 实测口径三口径对称
+INT-304: 修复 HEAD 构建失败——补提交 DeviceTabType 枚举化 device.ts + 收口 Device.vue/router 大小写错拼 TS1261
+INT-308: 任务停止立即生效（全链路停止传播可中断）+ 删除用例/任务停止联动取消评估
+INT-278: ReportView 页面 CSS 全局泄漏修复——选择器一律 rv- 前缀命名空间隔离（同 INT-250 pt-/INT-277 tg- 方案）
+INT-299: 收藏/回收站/操作人三件套收尾——audio/device/playback/algorithm 四域 CUD 操作人列补齐
+INT-301: 任务评估状态与执行状态完全分离（双徽章展示+重评只动评估）
+docs(INT-310): 任务发布设计文档回写报告快照冻结语义（实现演进裁定，INT-258）
+INT-300: 非E2E声压级映射管理前端补齐——SPLMapping.vue 双口径页签（设备SPL-E2E | API/Realtime RMS-SPL数字域）+ useApiRmsSpl composable + ApiRmsSplCalibrationModal 数字校准弹窗（点集 target_spl↔gain_linear↔rms_dbfs 全量替换）+ apiRmsSpl 域模型出口 + vitest 契约测试 9 例；INT-263 验收包补 F6 手册步骤与三口径对称验证
+INT-265 验收包：任务管理域（发布/合并/导入导出/回收站收藏操作人）验收材料落盘——一致性审计交付（核验基线本地 HEAD 7bb84a45，含流程图/验收手册/自动化证据/特性专项/缺口清单）
+INT-297: 列表接口分页信封统一为 {items,page,pages,per_page,total}
+INT-270: 验收包 H. 横切·平台基建——LOG1 日志体系/健康与隔离/三形态部署审计落盘
+INT-296: E2E 物理链 UI 层显式降级——驱动 initialize 支持 ui_capture_available=false 结构化降级
+INT-285: Login 注册口径按成员裁定落地——密码最短6位(配置化AUTH_PASSWORD_MIN_LENGTH)+邮箱必填(前后端双端)+OAuth本页跳转口径记录
+INT-277: TagManagement 页面 CSS 全局泄漏修复——选择器一律 tg- 前缀命名空间隔离（同 INT-250 pt- 方案）
+INT-259: 补齐算法定义 PATCH 语义回归测试——toggle 不清名/全字段落库/显式改名三态 + 未知状态容错 + 落库级验证（真实 SQLite 仓储链）
+INT-260: 并行栈 Postgres 自愈（WMI 拉起防 run 树收割）+ 未登录重定向竞态加固
+INT-257: 版本详情空快照空态明确化 + INT-208 执行后跳转日常任务详情
+INT-276: Evaluation API 健康检查按钮修复——模板 testApiHealth 命名错位回归 testAPIHealth
+INT-260: UI 自动化测试层首批——selenium Page Object 基类 + 登录/导航/视图切换 11 用例全绿 + 失败取证 + 集成门禁
+INT-262: 按任务查报告贯通——列表 task_id 精确过滤 + 网关透出 /reports/by_task
+INT-259: 模态窗专项走查修复——导入/导出确认链 emit 递归死循环 + 算法编辑假成功 + 轮次参数独立列同步
+INT-258: 发布报告快照语义修正——冻结历史报告（引用+冻结双轨）
+INT-246: 测试与业务库隔离——pytest 会话守卫/实机门禁/--test-db 起栈/冒烟清库 + 共享库残留清理脚本
+INT-250: PublishedTasks 布局堆叠修复——筛选栏类名改 pt- 前缀隔离全局样式串扰 + 三个弹窗 overlay 显式可见性
+INT-249: E2E/API 测试页默认标签视图+分组视图「未分组」虚拟分组——修复分组视图吞掉无分组用例
+INT-245: 登录密码加密双 padding 降级——修复 http+IP 非安全上下文无法登录
+INT-239: 任务回收站卡删除时间改走卡片内 formatDate（对齐报告/用例口径）
+INT-238: integration 域日志根隔离改按用例边界重定向/恢复——消除会话级夹具将绝对 LOG_ROOT_DIR 泄漏至 tests/unit 的组合运行确定性 2 failed（audit_emit 文件落点断言）
+INT-229 验收补漏: test_core_api tag_categories 同口径 teardown 修正——该表 DELETE 实为软删（tag_crud_service.delete_category→soft_delete_tag_category），原同族排查"硬删"结论有误；实测单次 live 跑批留 1 条软删 _test_cat_updated 残留。按 _RUN 进程级唯一前缀命名 + module 级 teardown 按前缀硬删修正（口径同 6cff4b4d），实跑 26 用例通过、库中零残留
+INT-234: 集成测试业务日志根按 pytest 进程隔离——消除跨运行磁盘残留污染 task 作用域日志断言的环境性假红
+INT-233: 网关统一 ValidationError→422 结构化错误——消除列表端点数值型查询参数非法输入 500
+INT-222: 验收实机回归——算法参数 default_value 非 JSON 文本全链读回原文
+INT-228: testcases 列表排序补 id 次级键 + 网关 page>=1 校验——消除同事务批量创建（created_at 全同）跨页重复/漏行风险
+INT-229: evaluation 分类测试残留清理 + pytest teardown 按唯一前缀硬删修正——test_crud_comprehensive / test_soft_delete_recreate 写入型用例数据统一携带进程级唯一前缀 _test_{_RUN}_，模块级 teardown 按前缀硬删全部触达表残留（API DELETE 仅软删会留残留，口径同 INT-218）；同族排查确认 _test_ 前缀 12 表软删泄漏并随本次清理，跑批实测 36 用例全过、库中零残留
+INT-177: 验收打回 P1 修复——头部「新增维度」按钮补调用括号，MouseEvent 不再漏传短路默认首项分类（openAddModal → openAddModal()）
+INT-193: 审计打回问题1修复——专项测试确定性加固：_add_cases 显式单调 created_at（东八区对齐 utc8now 形态），页切片精确顺序断言改确定性 DESC 新序，消除 Windows 毫秒时钟下同 flush 批插 created_at 全同、跨 tick 平局漂移的约 1/3 概率假红；产品代码零改动
+INT-192: 三族维度 seed 仓库缺失补齐——turn_eval/env_judge/interruption_v2 移植（V9.7.10 蓝本金标对齐，运行库零插入幂等，fresh create_all 显式补 NOT NULL 无默认列）
+INT-215: 验收打回 P2-R1 修复——fetch_case_ids 服务层补 algorithm_type/dimension_id 透传
+INT-215: 验收补测——标签视图回收站/收藏过滤 repo 级回归 6 例
+INT-216: INT-141 前端单测补齐 55 例 + 任务侧 favorite/deleted 参数接线补漏
+INT-163: pytest 并行跨文件序依赖隔离专项——默认文件级 xdist_group 收敛 loadgroup 假失败 + 五类根因修复与隔离规范
+INT-177: 前端维度管理——头部新增「新增分类」独立入口 + 所属分类下拉去空白占位项 + 新增维度默认选中第一个分类（对齐 V9.7.10 75cffabf）
+INT-218: 实机验收回归 4 例——整体保存 case_params 既有行不再 400（INT-210 口径）、省略删除仅打 case 表、跨算法 case 行 id 预检拒绝零部分写、四列表整体保存口径不回退；RUN_LIVE_STACK=1 纳入，teardown 按唯一前缀硬删不留残留
+INT-204: 重测补充——task 域真实 proxy 链路 × 真 Redis 端到端 2 例
+INT-211: 复制链路行隔离实机验收回归 5 例——副本保存不得改写源算法参数行
+INT-189: 认证文档对齐（RBAC 白名单表 / oauth 登录契约草图 / 测试数据卫生沉淀）
+INT-176: 打断族 per_round 幽灵行自愈（native 门控清理）+ 端点并发取最大（对齐 V9.7.10 6fb171e4+5d309ac4 主服务侧）
+INT-200: 任务管理页统计卡/图表改走任务域全量聚合——/tasks/stats 一次返回状态/类型/趋势分布，前端不再由当前页过滤计数
+INT-201: 任务合并成功提示显示新任务名（统一 snake_case 契约）
+INT-222: 算法参数 default_value 非 JSON 文本读回原文——读路径宽松语义统一
+INT-215: 补齐总控打回项 S3/S4——用例回收站分页重置+分组头收敛、报告回收站批量栏适配
+INT-218: 整体保存 case_params 必 400 收口 + 失败语义披露——既有行更新误走 UpdateParam 的两分支已由 INT-198（03615545）修复，本卡复核确认并补齐同族残留：_update_case_params 陈旧行软删仍误走 soft_delete_param/DeleteParam（设备/API 表），id 撞车静默误删他表行、无撞车静默漏删致 case 陈旧行残留，改走 soft_delete_case_param/DeleteCaseParam；新增整体保存写前预检 _preflight_row_refs——create/update_algorithm 在首条写之前对 device/api/case/mappings 四列表所有 id 对账行只读解析并复用 _assert_row_owner 归属校验（校验本体未动，符合与 INT-211 并行协调约束），跨算法 id 类失败提前整体拒绝使该类失败全成或全败零部分写，行 id 不存在沿用写循环静默跳过语义不新增失败类；新增失败响应已生效项披露 _partial_write_notice——gRPC 写逐条自动提交 + rollback no-op 下保存链中段失败必须列出已落库生效步骤（如 device_params(设备参数)、case_params(用例参数)）并提示无法自动回滚，杜绝「看到失败但部分改动已静默生效」，无已生效项保持原报错文案；四列表应用顺序抽 _apply_definition_lists 供 create/update 共用并逐步记录；跨服务事务化按规格另拆子卡评估，本卡未动 rollback 语义；新增 test_int218_case_param_rpc_routing 9 例锁定路由契约与失败语义
+INT-193: testcases 列表 type/test_type/dimension_id 过滤后端贯通（proto 字段早已存在但网关 schema→proxy→servicer→handler 四层未接线，extra="ignore" 首层静默丢弃，E2E 页第 2 页起用例永不显示）：TestCaseListQuery 补 type（AliasChoices 兼容 type/test_type/testType，镜像 GroupListQuery 范式）与 dimension_id；gRPC proxy 填入 ListTestCasesRequest.type/dimension_id；task_service servicer/query/handler/门面/查询服务全链透传；仓储 query_testcases 支持派生口径过滤——差异#2 后用例不存类型、双变体 config 形态相同（INT-129）SQL 无法区分，按 fetch_case_ids/统计同款口径物化候选行后 Python 侧 derive_case_test_type(config,name) 过滤再分页（过滤先于分页，total/pages 与页内口径一致），标签视图 query_testcases_by_tag_ids 同口径；列表/标签视图展示 type 派生补传用例名（此前双变体 _api 变体展示为 e2e，与执行路由口径不一致）；前端本就发送 type=e2e，仅更新 testcasesApi.ts 过时注释；新增 test_int193 6 例（派生过滤/过滤后分页/组合过滤/标签视图/handler 全链/servicer proto 映射），相关 12 套件 154 例与全量 tests/unit 2667 例回归通过
+INT-199: 算法定义编辑参考参数「确定」可靠落库——handleOk 编辑分支补逐条保存（后端整体保存被忽略：PUT definitions 的 Update schema 缺 reference_params 字段，编辑此前仅靠 blur 防抖兜底、防抖窗口内点确定或未失焦行落库不可靠）；savePendingReferenceParams 泛化为 saveReferenceParams（有 id 走更新、无 id 有 code 走新建并回填行 id，经行 id 与 blur 自动保存天然去重、幂等可重入），新建/编辑两分支统一在「确定」时调用；无 code 不完整行跳过对齐 blur 拒存语义；新增 saveReferenceParams 回归 spec 5 例（id 行更新不触发 create/无 id 行新建回填 p.id/空 code 行跳过/单行失败不中断后续行/新建模式补存语义不回退）
+INT-219: 报告回收站列表响应补 deleted_at/deleted_by_user_id（INT-215 P3 跨域联动收口）
+INT-204: 审计打回修复——task 域失败传播透传至统计降级链
+INT-215: INT-212 UX 审计修复——三视图（收藏/回收站）P1-P7
+INT-210: 打回缺陷1修复——normalizeMappings VALID_SOURCES 补 case_config（与 algorithm_service config_cache.py 对齐），此前模态窗加载即把存量评估映射 source='case_config' 强转为 'case'、「确定」整体保存随之落库改写（实测 57 条被改写，evaluation_service round_data_builder 按 source 分支取数，case_config 从用例配置取 audios/背景噪声/干扰人等结构性字段，改写后评估数据缺失）；非法/缺失 source 兜底为 case 的原有语义不变；新增 normalizeMappings 回归 spec 4 例（case_config 保留/五合法值原值保留/非法值兜底/空输入空分组）
+INT-196: 验收补充测试——type→testType 派生契约与编辑回填不兜底 E2E（adapter/toTestCase·toTagViewCase、useTestCaseCard、useTestCaseOps 三层）
+INT-198: 算法用例参数标注代码/字段路径全链路落库修复
+INT-202: 任务批量导出修复为全量选中任务走任务数据导出链
+INT-174: 重评打回修复三项（重启遗留非终态 TRD 收口/零提交重评主动收敛/组失败 TRD 落库重试兜底）+ m1/m2
+INT-204: 验收补充测试——refresh 接口返回语义 + 真 Redis TTL 行为锁定
+INT-211: 算法复制链路剔除行级 id——副本保存不再改写源算法参数行；后端 _update_* id 分支新增行归属校验（防御性收口）
+INT-161: 验收补充测试——失败链真库集成（写路径→收敛判定→计数聚合）
+INT-210: 算法配置整体保存 device_params/api_params/mappings/associated_dimensions 同源 camelCase 静默丢失——toAlgorithmDefinitionDto 深度转换四列表项为 snake_case（后端 _update_params/_update_mappings/_update_associated_dimensions 仅识别 snake_case 键：既有行全字段 no-op 200 假成功、新建行关键键为 None 被丢弃或写脏数据；此前仅 blur 防抖逐条保存路径正确转换），新增 toDeviceParamItemDto（device/api 共用，保留 id 对账、剔除 tempId/optionsSource，无 id 且空 param_code 的不完整新行跳过对齐 blur 拒存语义）/toParamMappingItemDto（保留 id、剔除 paramName/dimensionName 展示字段，无 id 且 sourceParam/targetParam 未填齐的新行跳过，杜绝后端原样建空键值脏行）/toAssociatedDimensionItemDto（对账键恒为 dimension_id、绝不透传关系行 id——后端 or id 回退会把关系行 id 误当维度 id 对账造成错位更新或建脏关联）、toMappingsDto 组键透传逐项转换；新增 adapter 级+API wire 契约回归 spec 14 例（四列表逐字段转换/id 保留/前端态字段剔除/关系行 id 不透传/不完整新行跳过/布尔 false 不丢/缺省与空列表语义/updateDefinition+createDefinition 请求体线上契约）
+INT-153: 验收补充测试——唤醒/播放 _log source 关键字冲突回归锁定
+INT-194: 验收补充测试——用例编辑模态窗保存保留第 2+ 轮算法参数（真实 CaseForm+模态窗组件链路锁定：两轮直接保存不丢轮/第 1 轮改动经同步链路生效且不丢后续轮/锁定模式保存/删轮后独立列同步移除并重编号/新增用例参数进入提交形态；convertTestCaseFormData 落库 wire 格式断言）
+INT-195: 用例编辑模态窗改分组静默失效——保存边界按所选分组名收敛 groupId
+INT-203: 执行页进度链路去单点——WS 断开降级 HTTP 轮询 + 估计时长单位两通道统一
+INT-197: 算法参数模态窗「确定」整体保存静默丢失 case_params——toAlgorithmDefinitionDto 深度转换 case_params 列表项为 snake_case（后端 _update_case_params 仅识别 snake_case 键：既有参数全字段 no-op、新参数 param_code=None 被 continue 丢弃，200 假成功；此前仅 blur 防抖逐条保存路径经 toCaseParamUpsertDto 正确转换得以落库），新增 toCaseParamItemDto 显式逐字段映射并保留 id（后端以 id 对账既有参数，未提交 id 会被软删除）、剔除 tempId/component 前端态字段，修复模态窗整体保存/算法复制两条 createDefinition/updateDefinition 链路；新增 adapter 级+API wire 契约回归 spec 5 例（逐字段转换/id 保留/前端态字段剔除/缺省与空列表语义/布尔 false 不丢/updateDefinition 请求体线上契约）
+INT-188: 验收补充测试——公钥获取首发失败重试成功后正常登录且提交密文（网络抖动容错路径锁定，修复 2 的成功侧覆盖）
+INT-206: 设备 system 枚举写入校验与驱动侧归一，CreateDriver 失败透传真因
+INT-169: 审计修复复验补充——评估提交失败收口的服务端推导跳验收测试（真实 TaskRepository + 内存 SQLite：E2E ACL 缺省化形状 status='' + evaluation_status=failed 到达后复合 status 收敛 failed、execution_status 不被污染、error_message 留痕、重复收口幂等），补全 executor→真实 ACL impl→task_service 推导全链路验收闭环
+INT-196: 用例编辑模态窗 testType 恒回填 e2e——toTestCase/toTagViewCase 补 testType 映射（从列表项 type 派生，后端 derive_case_test_type 口径恒为 api/e2e，非法值不映射），useTestCaseCard/useTestCaseOps 编辑回填去掉 || TestType.E2E 兜底（仅新建保留默认），API 用例编辑不再被锁成 E2E 表单
+INT-141: 复测R1回归修复——BFF restore/purge ID转换按域区分（testcase主键String(50) UUID原样字符串透传，不再int化拦截；task/report保持int化非法400口径不变），补「合法UUID过BFF原样到达代理」mock单测与「testcase非法ID服务层计数口径」锁定单测
+INT-204: 首页统计降级快照不再污染缓存（stale-while-error + 降级短 TTL）
+INT-194: 用例编辑模态窗保存清空第 2+ 轮算法参数——移除 handleCaseSave 用 CaseForm 暴露的单轮扁平对象覆写 algorithmParams 独立列的遗留逻辑（该扁平对象仅在 schema 未加载/空算法类型/锁定模式下是 initFormData 的第 1 轮快照，show-params=false 下 schema 加载后即被重置为空，任何现网流程都不承载新数据，覆写只会丢数据还会把 AlgoParamsStep 已改的第 1 轮参数回滚成旧快照）；按轮分组独立列以 caseFormData 为唯一权威（RoundConfigEditor 按轮编辑经 CaseForm emit 同步），修复后保存整体透传 grouped 数组，配合后端整体替换语义不再丢轮（后端行为未动）；新增 convertTestCaseFormData 回归 spec 锁定保存契约（grouped 透传/扁平对象归并第 1 轮与后端归一化口径一致/rounds 结构保留/round.algorithmParams 兼容合并）
+INT-180: auth_mode 启动自检联动——shared AuthMode 枚举单一来源（normalize 校验，网关 Config.validate 非法取值启动即自曝）；api_gateway 新增公开端点 GET /api/v1/auth/mode（同 /auth/oauth/providers 口径入 AuthMiddleware 白名单，仅回网关生效 AUTH_MODE 枚举值、无其他配置项，值与认证强制点同源）；auth_service 边界 GET /api/auth/mode 同口径（查询侧 GetAuthModeQuery + handler）并补 compose AUTH_MODE 注入对齐网关；前端启动自检——authApi.getAuthMode 拉取后端 mode，domain 纯逻辑 checkAuthMode 比对本地 VITE_AUTH_MODE（getEffectiveAuthMode 单一读取，router/client 401 判定改走同源读取，行为零变化），错位 → 控制台警告 + AuthModeMismatchBanner 页面提示条（两侧当前值 + 修正指引，可关闭，不阻塞启动/登录），一致/不可比静默；DTO/adapter snake→camel 转换收敛 Infrastructure 层；后端 tests/unit/test_int180_auth_mode_endpoint.py 12 例（真实路由+真实中间件、prod 强制态白名单可达性、无配置泄漏、枚举拒绝非法值）+ 前端 vitest 8 例
+INT-157: 测试补充（二轮复核）——锁定打回修复 F1/F3 domain 判定 isComparisonReportType/isSecondaryComparisonReportType 值域（后端原值 secondary_comparison + 历史遗留兼容 + task/standard/空值不命中）与 REPORT_TYPE_MAP 新旧键并存
+INT-181: 生产构建 VITE_AUTH_MODE 显式注入，禁止静默默认 off——vite.config 构建期守卫（未注入/取值不在 AuthMode 枚举内显式报错退出，仅认 process env 显式注入）；.env.production 移除写死的 VITE_AUTH_MODE=off；AuthMode 枚举入 domain/enums.ts 单一来源并替换 router/client 魔法字符串（行为零变化）；新增 docker/Dockerfile.frontend（ARG 显式注入+前置快速失败）与 nginx-frontend.conf（反代契约对齐 vite dev proxy）、compose frontend 服务以 :? 强制校验；docs/oauth.md 补第九.6节部署注入说明
+INT-175: 评估维度组间自动合并一次判定（拒识三率同源一致）+ 拒识族 seed 移植 + 前端默认分组视图（对齐 V9.7.10 394c71ad+32374572 终态口径：不用 group_key，纯运行时签名合并）
+INT-186: register 加密开启缺密文字段 400 文案按实际缺失字段区分——密文缺失逐字段点名指向 password_encrypted/encryption_key_id（替换误导的「请输入用户名、邮箱和密码」），文案常量单一来源供测试同源断言；明文模式基础必填文案与 INT-156 明文拒绝语义不回退；tests/unit 补 7 例断言（含红测对照基线）
+INT-185: 共享库 users/RBAC 历史验收残留清理——一次性清理脚本（先快照后删除/内容圈选/门禁校验/级联+孤儿核查）；防再污染补齐：INT-84 空邮箱测试补 run tag teardown、INT-30 sqlite e2e 补固定夹具名 teardown（users+roles+role_permissions 全覆盖），cleanup 助手对 custom_oauth_providers 缺表补存在性守卫
+INT-173: 验收测试——整体评估（顶层 dimensions）音频维度建/改不再 400（应用层回归锁：gRPC 桩武装旧校验触发条件并断言桩零调用，排除 gRPC 不可用静默放行假通过；真库落库回读取证；helper 删除断言；红测验证修复前 4/5 复现旧 400 文案）
+INT-188: 登录加密失败不再静默回退明文，401 区分加密/凭证语义
+INT-169: 审计修复——E2E ACL update_task_case_status 的 status 改为可缺省（对齐 task_service 服务端空 status 推导契约与 api_test_service 既有形态），executor 评估提交失败收口调用不再 TypeError 被吞；新增真实 ACL impl 契约测试（inspect.signature + 伪造 gRPC stub 直呼真实 impl，防 mock 屏蔽签名失配）
+INT-158: 第二轮验收补充——采集链硬化行为锁定 37 例（ffprobe 坏产物拒绝/size 稳定收尾/恢复 toggle/新增文件 diff 发现/servicer 透传 False/e2e 轮次失败落定/轮首唤醒解锁）
+INT-169: 验收补充——幂等复用真实 DB 独立验收测试（7 例，修复前代码红测复现事故 AttributeError）+ test_int64 _ApiHarness 模块全局补丁泄漏修复（__exit__ 恢复原值；int64→int174 同跑 4 例假失败的测试隔离根因）
+INT-182: eval_server 裁判端点替身收编进 mock_services（端口 enum 化+行为可注入）
+INT-179: 测试补充——验收发现夹具清理盲区修复（binding_env 独立 run tag 不在模块 teardown 清理范围；mock IdP 回调建号 username/email 打 run tag，共享库形态复跑不撞历史残留、不落未标记残留）
+INT-141: 审计修复——批量purge逐行owner校验(混合批量不再整批放行)、恢复回填updated_by记录恢复人、报告收藏精确捕获IntegrityError、BFF统一ID转400、删除trash_list死代码
+INT-174: 重新评估只重评失败维度+旧评估取消隔离+任务终态收敛（对齐 V9.7.10 c30d1b24，按 V9.7.31 结构重写）
+INT-179: 夹具清理 helper 兼容缺表库形态（g3 http e2e 等模块不建绑定表时跳过对应清理，修全量 tests/unit 两处 teardown ERROR）
+INT-179: 登录链路三连断修复——公钥端点白名单+旧库路径别名 / 登录 JSON+表单双格式兼容 / OAuth 验收夹具按 run tag 清理（测试残留不落共享库，公开提供方列表仅回已启用项）
+INT-157: 打回修复 F1-F4——ReportView/ComparisonReportPanel 对比类型判定收敛 domain isComparisonReportType/isSecondaryComparisonReportType（后端原值 secondary_comparison + 历史遗留值兼容），REPORT_TYPE_MAP 补原值键，删除死代码 REPORT_TYPE_OPTIONS，testReports 本地重复 map 复用 domain getReportTypeLabel
+INT-157: 测试补充——筛选对齐回归（ReportView sortResource 端到端 8 例全绿）+ 红测锁定 REPORT_TYPE_MAP 缺失 secondary_comparison 值域（HistoryReports 卡片类型徽章显示英文原值）
+INT-172: DriverScan 扫描口径对齐基础驱动 + vite allowedHosts
+INT-173: 移除整体评估音频维度限制校验（多轮建/改用例不再 400 拦截音频维度，对齐 V9.7.10 3f93b6c0；删除 shared/utils/testcase_helpers.validate_multi_round_audio_dimensions 及 task_service create/update 两处调用）
+INT-158: 验收打回修复——录屏收尾与产物校验（停止 size 稳定校验+启动恢复 toggle+ffprobe 不可播放拒绝+新增文件 diff 发现）+ 轮首唤醒解锁 + servicer 透传 initialize/pre/post 结果
+INT-169: EvaluateCase 幂等复用路径崩溃修复——DimensionScore 实体补持久化主键 id（find_score 回填），重复评估/Reevaluate 不再 AttributeError；评估提交失败口径区分——新增 EvaluationSubmitError，E2E 链单轮/整体评估提交失败不中止执行链、不判执行失败，收尾以 evaluation_status=FAILED 终态收口（对齐 INT-123 API 链约定）
+INT-165: /digital-spl query 参数 ACL 边界统一校验清洗（per_page=abc 500→400）
+INT-170: E2E 物理链采集产物落点真实性——_upload_file_to_oss 回传 save_file 真实 scheme（oss:// 或降级 local://，不再构造性拼路径）；_mp4_to_wav ffmpeg 不可用显式告警跳过；_pull_record_to_oss 透出 wav 降级原因；get_results 降级口径（wav 回退/本地降级/拉取失败）写入 message
+INT-154: 修复用例导入模板下载/导出下载失败（Flask 残留 mimetype 参数，改为 Response+media_type）
+INT-167: 分组 create/update 假成功修复——task_service 不可用时不再吞错返回 201/200（INT-152 同型，create/update_testcase_group reraise + 服务层成功校验去除本地 uuid 兜底）
+INT-148: 任务/发布域对齐缺陷包（API在线预检/重启结果残留/发布列表筛选/删除stop容错）
+INT-164: 离线设备唤醒测试返回业务性失败——test 命令发送前驱动扫描探测在线状态，离线拒发返回「设备离线，无法发送唤醒指令」，探测异常/超时降级照发；前端设备管理页测试接线唤醒命令并透传提示
+INT-160: 验收沉淀——分片上传链实机回归（单分片全链/多分片计数持久化/重传幂等/缺内容400/未齐merge400）
+INT-166: SPL stats/by-device 软删口径文档标注——有意收紧、维持新口径（裁定 2026-10-12，INT-146 审计+总控裁定）
+INT-150: 验收F1返工——get_all api_id 过滤补 int() 强转（query 参数恒 str，直传 proto int32 致 400；与 page/per_page 同层契约，跑绿 test_get_all_api_id_filter_passes_int_to_acl）
+INT-141: 验收F1/F2/F3修复——gRPC服务端拦截器按handler实际形态包装(原hasattr恒False致no-op)、业务码经data JSON提升映射HTTP状态、任务/报告列表补齐收藏与回收站字段、恢复清空deleted_by
+INT-150: 验收补 api_id 过滤 int 契约回归测试（ACL 边界须收 int，红测锁定 str 透传缺陷）
+INT-147: 审计打回修复——绑定身份接入 OAuth 登录链路(P1)/私钥路径gitignore(P2)/公钥端点异常脱敏(P3)/UTF-8解码收敛401(P4)
+INT-157: 前端筛选交互逐页对齐——BadgeFilter/ColumnFilter/AlgorithmFilter 接线 + PublishedTasks 交互修复 + HistoryReports 构建修复
+INT-145: 验收回退修复——Excel导入seek缓冲/维度导入显式主行落类型/export路由先于动态段注册
+INT-147: 补 user_oauth_bindings 存量库迁移脚本 + create_all 预期表数修正（打回修复 F1/F2）
+INT-158: E2E 物理链采集端真实化——harmony/android 基础驱动 get_results 真实采集、失败轮结果行收口、convert message 误计修复
+INT-161: API 用例失败任务级聚合与启动恢复信息保全
+INT-159: proto 模块身份收敛修复描述符池双注册 + 用例详情读取失败显式收口
+INT-152: 分组 cascade 删除假成功修复（synchronize_session 参数名 + 网关删除失败不再吞错）
+INT-160: 音频分片上传链修复——chunk_content 键对齐 + 上传进度经仓储回写持久化
+INT-156: users 表旧 schema 漂移收敛 + dev 引导用户种子
+INT-151: 设备状态轮询 ids CSV 未拆分致 500 — schema 增逗号拆分校验，非法参数改 400
+INT-150: 修复 digital-spl 列表 500（request.query_params 误用改为 request.args）
+INT-141: 修复用例列表门面签名缺 favorite/only_deleted/user_id 致全量 500
+INT-147: 认证域 V9.7.10 对齐——RSA 加密登录/邮箱登录/第三方账号绑定/OAuth Discovery/首个用户admin
+INT-145: 报告/评估域 V9.7.10 对齐缺陷包——维度批量级联/分段排序/导入导出父子列/重新生成保留元数据/重新评估计数（报告更新落库与批量删除对齐已随 INT-141 提交入库）
+INT-153: 修复设备唤醒测试 _log source 关键字冲突
+INT-141: 任务/报告/用例 收藏+回收站+CUD操作人记录
+INT-146: 音频/分组域 V9.7.10 对齐缺陷包——下载预签名适配/algorithm_type 与分组筛选恢复/本地回退下载路由/merge 分组命名对齐
+INT-143: 测试工程师验收——参考参数单条查询全链路契约钉（路由/权限/网关/servicer/proto/前端契约 11 用例）
+INT-143: 补齐参考参数单条查询 GET /algorithm/reference-params/{param_id} 后端全链路
+INT-137: 测试工程师独立验收——RealtimeSessionExecutor 执行器级对接 mock realtime 集成回归
+INT-137: 独立 mock 服务（第三方评估替身 + Realtime API 替身）
+INT-135: 测试工程师独立验收——清洗脚本去重口径/范围排除/幂等单元回归
+INT-134: 测试工程师独立验收——多轮多音频去重/跨轮合法重复/轮间timeline/字段口径回归
+INT-128: 测试工程师独立验收——TTL 扫描缓存条目物化上限公开路径回归
+INT-132: 测试工程师独立验收——module='all' 语义归一真实契约全链路回归
+INT-79: 四轮验收补充测试——合并任务平均值展开/API 兜底与文案/进度资源门禁/对比口径派生回归 + 前端结论文案 spec
+INT-135: 存量对比报告 audios 重复对象清洗脚本（dry-run/apply/幂等）
+INT-79: 三轮打回修复——合并任务平均值统计/API 兜底/对比结论三缺陷 + 全库复扫清 3 处漏网
+INT-99: 验收补充测试——测试工程师独立验收（E2E 提取链路回归 + E2E/API 时间轴同语义对照）
+INT-134: 对比报告 audios_list 同一音频重复 append 修复——移除 compare 分支多余 extend(round_dry)
+INT-133: 任务进度链对遗留任务键的防御与收敛
+INT-79: 三轮验收补充测试——报告音频口径派生回归 + GetTaskStatus 残留键回归
+INT-132: 日志查询 module='all' 语义归一——list/stats 两侧与 DB/文件侧一致、两调用点缓存键统一
+INT-128: TTL 扫描缓存内存上界——单条条目物化上限 + 惰性过期清扫
+INT-124: 验收补充测试——测试工程师独立验收
+INT-70: 二轮打回修复——服务文件出口级统一脱敏（P1：无任务上下文/审计日志文件出口绕过掩码）
+INT-79: 二轮打回修复——报告音频口径改配置形态派生、GetTaskStatus 死端点响应去残留键
+INT-79: 验收测试修复——test_int79_stats_groupby 回归测试改基线参照断言，消除共享引擎污染
+INT-130: Benchmark 指标映射创建 API + 主链 LLM 裁判维度种子 + no_mapping 告警
+INT-129: 上传双变体 API 用例建任务误路由 E2E——派生优先按 _api/_e2e 变体名后缀
+INT-100: 修复前端实时轮询 stop 竞态（审计 P1）——轮询循环世代号防僵尸轮询
+INT-92: 验收补充测试——测试工程师独立验收（真实get_one生产路径200/404/500+真实repo故障全链穿透ACL上抛真实错误/全链无设备降级None/全链成功往返）
+INT-100: 验收补充测试——测试工程师独立验收（真实契约链路大任务拉取上限/真实list+stats调用链单次扫描计数/旧client签名向后兼容/缓存键一致性/TTL时延边界）
+INT-115: 验收补充测试——测试工程师独立验收（真实proto契约13点int归一全量扫描/原bug形态锚点/伪装链路消失/skipped不进维度分发/HTTP直连入队前拦截）
+INT-122: 验收补充测试——测试工程师独立验收（真实线程池+真实看门狗循环的挂起复现/同步链路零事件契约/真实队列饥饿/扫描异常存活/启停幂等）
+INT-107: 验收补充测试——测试工程师独立验收（真实HTTP替身的兜底出分/业务级失败不切换/服务端error_message真库契约）
+INT-126: API 多轮整体评估 0 维度空转修复——整体评估入口按 round_scope 分流
+INT-99: API 侧多源时间轴 speakers_map 透传——audio_service 暴露音频标注查询 gRPC + api_test_service 经 ACL 组装透传（无标注回退 play_order）
+INT-117: 验收补充测试——测试工程师独立验收（真实线程池+真实看门狗循环的挂起复现/扫描异常存活/启停幂等/真实队列饥饿）
+INT-116: 验收补充测试——测试工程师独立验收（会话收窄编排守卫/终态入口接线/基线串扰对照）
+INT-118: 验收补充测试——测试工程师独立验收（ExtractCaseAllParams根因守卫/voice_llm多轮全链/容错降级与INT-115 skipped口径联动）
+INT-125: 全栈标准脱管启动/停止口径（根治 run 退出回收进程树）
+INT-124: 参考参数生成全空修复——get_audios_by_ids 对齐 audio_service 裸数组契约 + 0 结果显式告警
+INT-123: API 多轮 rounds[].output 纯文本串口径归一——评估整链不再崩且执行成功不被误判 failed
+INT-113: 验收补充测试——测试工程师独立验收（同名异md5陈旧记录/改名再传/混编解析/分页封顶/秒传链路wiring）
+INT-122: 对比报告生成静默挂起可观察化——阶段埋点+看门狗超时栈转储+失败路径上报（INT-117 同型）
+INT-120: 执行引擎忙等退避与评估挂起超时仲裁（代码随 0876f419 入库，此为议题标记）
+INT-62: 验收补充——test_int62_adapter_registry 注入 OSS 测试态环境变量
+INT-117: 报告生成静默挂起可观察化——阶段埋点+看门狗超时栈转储+失败路径上报
+INT-105: 验收测试——GET→PUT 全链路幂等（真实序列化器取证）
+INT-116: 评估服务连接池耗尽与用例永久 evaluating 修复
+INT-118: 修复 voice_llm 多轮评估参数提取链——ExtractCaseAllParams 空壳类 AttributeError + 评估参数为空显式告警
+INT-114: api_adapter_service gRPC 50081 随 app lifespan 自启，修复 run_all 全栈拓扑多轮链连接拒绝
+INT-103: 验收测试断言对齐 INT-115 评估侧 skipped 终态语义
+INT-113: 用例自动创建 rounds 音频解析错配修复
+INT-119: 修复 INT-98 引入的 test_task_execute_real_chain 串行确定性失败（RenderService 未注册 + evaluation=None 链）
+INT-115: 任务级重评估 str task_id 链路修复——servicer/executor/ACL 三层 int 归一 + 失败透出 + 无 mappings skipped 终态
+INT-111: 网关 multipart 预解析饿死 FastAPI UploadFile 路由修复——预解析前 body() 缓存回灌请求体
+INT-103: 验收测试补充——多轮回写真实链路集成（Postgres+gRPC）与引擎计数收敛不变量
+INT-102: 验收测试夹具去偶发超时——tests/api 默认基址 localhost 改 127.0.0.1
+INT-112: test_int72_uc1003_ocp_drill xdist 并行竞态修复——INT-72 适配器族纳入 loadgroup 同组调度
+INT-110: 网关 /home/stats/summary 400 修复——RecentTaskItem 去 type 必填迁移 device_types 口径（INT-79 收尾遗漏）
+INT-95: 验收夹具——pyaudio 影子模块（音频栈楔死期 API 链用）与 .env 引导启动器
+INT-104: 验收测试补充——创建/PATCH add 双路径 device_type 派生一致性
+INT-100: 日志读取侧查询优化——ListLogs 多级别/条件下推 + 合并视图 DB 拉取上限 + list/stats TTL 单次扫描共享 + 前端轮询空闲退避
+INT-98: api_executor._execute_linear 线性流接入 RenderService 消费链路（裁定：混音产物落存储后按引用交付）
+INT-108: audio_service 50052 不可达解阻——RLock 防锁重入死锁 + shim 启动链固化 + gRPC 端口冒烟口径
+INT-72: test_int72_adapter_class_channel 单测补 OSS 键进程级兜底，保证独立可运行
+INT-72: 交付修复——13 文件按审计清单 re-add 至最新 tip（还原 4b3106fa 旧快照回退）+ 顺手修复审计低危 #3/#4
+INT-106: 单轮 API 用例执行链三重断裂修复（OSS 音频解析/chunk 上传表单解析/模拟 DUT 单轮协议）
+INT-107: 评估/报告数据质量修复——整例失败原因落库、兜底评估端点降级、报告负数统计口径
+INT-103: 多轮会话结果落库后回写 TaskCase 终态并通知执行引擎
+INT-105: 用例 GET→PUT 回写幂等——rounds 存在时顶层 audios/dimensions 不再注入 round1
+INT-102: run_all.py GBK 管道级联故障修复——启动器 PYTHONUTF8/转发线程防爆、日志控制台直打安全化
+INT-104: 建任务路径派生 task_case_relations.device_type
+INT-72: 验收测试——UC-1003 OCP 实弹演练与注册表语义复核
+INT-78: 审计打回修复——派发侧失败收敛补 evaluation_status 终态（审计 #1 中 + #2/#3 顺手项）
+INT-79: 验收打回修复——E2E 门禁 device_type 化、test_type 口径全改配置形态派生、GetTaskStats 去 Task.type 急切引用
+INT-81: 日志审计二次打回修复——容器多副本进程标识改 hostname+pid
+INT-70: OpenAI 密钥链逐级回退与日志统一脱敏（UC-0901 3a）
+INT-76: 参考参数刷新阈值配置化与异步任务孤儿恢复
+INT-72: APIAdapterFactory 注册表化与 adapter_class 通道（UC-1003）
+INT-71: 执行分发 gRPC 契约与 API 链路正确性——StartAPITest 契约贯通 + 分发经 ACL + 音频真实送达
+INT-62: Adapter 体系落地——厂商协议隔离 infrastructure/adapters（Domain Port + 枚举注册表 + 首个适配器迁移）
+INT-69: 测试验收补充——实时转发用例五通道同步修复 + UC-1001 机制级单测锁定
+INT-94: 全量回归残留失败族根因修复——算法配置缓存监听线程陈旧 session 清空 L1
+INT-81: 日志审计打回修复——多副本轮转竞态/保留天数隔离/读取上限/时间格式统一
+INT-82: api_test_service 执行器接入 RenderService 消费链路（INT-67 ACL 调用点接线）
+INT-96: 全量回归并行化——pytest-xdist loadgroup 分片 + worker 级临时库隔离（回归 82s→33-38s，2.2-2.5 倍）
+INT-79: task.type / test_type 废弃收尾（执行路由统一 device_type）
+INT-81: 测试验收补充——跨天/组合轮转、轮次上下文与回滚开关用例 + 全局日志 worker 隔离夹具
+INT-68: 审计打回修复——gRPC 信封 code 断链 / update 路径映射归属校验 / 迁移 README 登记
+INT-73: 前端 DDD 违规点修复——views/components 零直连 infrastructure/api + useSplMapping 落位 composables
+INT-92: GetPlaybackDevice 响应增加 code 字段——区分「设备未找到」与「服务故障」
+INT-88: 补删运行库残留外键约束并补建 202608 缺失索引（新增 202610/fix_leftover_foreign_keys_and_indexes.py 幂等修复迁移：动态枚举删除全库 56 个残留 FK + 删 test_case_groups.name 唯一约束 + 补 Step11 外键替代索引与 Step12 deleted_at 部分索引，lock_timeout 多轮重试防长事务阻塞，例外保留 algorithm_definitions_type_key；README 执行顺序⑯与执行记录登记）。修复 tests/api 软删除重建 3 例 FK 违反（audio_algorithm_relations / algorithm_dimension_relations / param_mappings），自测：soft_delete 套件 9/9 通过，全量 tests/api 零 FK 违反
+INT-78: 物理设备互斥全链路统一 DistributedLock——UC-0903 4a / UC-1001 5b 收口
+INT-68: 测试验收补充——真库落库/servicer全委托/网关路由层（18 项）
+INT-80: 审计打回修复——①新增 scripts/migrations/202610/add_device_management_tables.py（设备 5 表+13 索引幂等增量迁移，含组名未删除部分唯一索引并发兜底，README 执行顺序登记⑮，PG --dry-run 验证 18 步）②publish_device_status 死方法确认已由 INT-69 五通道收敛删除，并在 04_类设计.md/服务拆分方案.md 注明设备状态发布统一走 EventBus DEVICE_EVENTS/DEVICE_STATUS_CHANGED ③枚举消费接线：AlarmStatus/DeviceStatusEventType 全链路替换裸字符串（monitor 仓储 active/acknowledged/resolved 与 health_check/online/offline、device_command health_check、device_operation operation），AuditEvent.DEVICE_ALARM_TRIGGERED 真正接入告警触发审计（JSON payload 对齐网关 write_device_audit 结构，category=device）④分组初始成员复用存在性过滤（单条 IN 查询），不写悬空成员行，device_count 取实际成员数 ⑤告警评估按设备一次聚合三快照（连续失败计数/最后上下线事件/最新健康明细）消除规则×设备 N+1，全量拉取改 QueryConstants.UNLIMITED_PAGE_SIZE 显式常量；批量方法以 max(id) 定序消除 created_at 同刻并列的取行含糊（SQLite 冒烟实测并列存在）⑥分组仓储 add_devices 存在性过滤改单条 IN 查询、count_group_devices 改 SQL COUNT+GROUP BY ⑦SMTP STARTTLS 补 ssl.create_default_context() 证书校验 ⑧告警规则 metric_type 纳入可编辑白名单（校验后落库，不再静默丢弃）。测试：INT-80 专项 69 全绿（新增分组成员过滤/唯一索引拒重名/metric_type 可编辑/无效指标 400/审计事件 payload/STARTTLS 证书 6 项断言）+ 全量回归 1464 passed/83 skipped（2 failed 为存量：INT-42 分发收敛与任务执行链在干净 HEAD ca1d03f6 同样失败，与本卡无关）+ SQLite 真实仓储冒烟通过（悬空成员过滤/唯一索引/幂等/批量聚合/确认流/评估全链路）
+INT-90: 共享 DB 会话卫生——毒化自愈+请求级 scope、audit task_id 写库边界规范化、playback ACL 失败上抛
+INT-86: 验收补充测试——扫描链路驱动解析回归锁定（scan/serials/健康检查/注册在线检查经 get_driver_by_system，keywords 必填语义不放松，11 passed）
+INT-81: 日志体系改造——服务运行日志按天+大小双条件轮转落文件，业务日志按 任务ID/设备ID/评估ID 路径去库化
+INT-87: 数据导入导出 tests/api 信封断言对齐平台契约——data 为可选键（None 省略），修 4 例实跑失败
+INT-89: e2e 用例自动创建缺省回填 playback_device_id——rounds 音频条目设备名解析与 e2e 兜底不再被空标注拦截
+INT-69: UC-1001 事件隔离与多实例落地——log_and_emit 直发废弃 + 五通道收敛 + Socket.IO 原生房间 + worker_instance_id 贯通 + api_test_service 双副本
+INT-68: apis 表扩展列与 ApiRmsSplMapping 聚合五层补齐（UC-0901/0902 数据基座）
+INT-86: 设备扫描/可用序列号接口修复——扫描链路改用 get_driver_by_system 取平台基础驱动
+INT-65: 验收补充测试——用例批量 restore 经 CASE_EVENTS 主链路发布 case_batch_action_completed 事件断言（status=completed/action/ids，复用既有替身注入，8 passed）
+INT-74: 验收修复——audio_service route() 裸 device_type 分流改 DeviceType 枚举消费 + create() 校验子集补 output_types（创建/更新 400 契约一致）+ 移除缺陷锁 xfail 标记
+INT-84: 触发器无配置刷屏治理、users_email 空邮箱修复、OSS 自检与告警限频
+INT-74: 验收补充测试——OutputType 归一/校验/读写链路 + CalibrationStatus 四态流转 + benchmark DeviceType 归类字面量锁定（24 passed + 1 xfail 缺陷锁）
+INT-80: 设备管理缺口包——设备分组/操作端点/批量操作/监控告警体系 + 物理设备互斥锁
+INT-65: 缺陷包收尾锚点——任务/用例批量restore、报告进度查询、发布审计回填、前端ref-params接线
+INT-77: 打回修复（验收 F1-F3）——F1 事件通道表述对齐 INT-75 已落地实现（提交 7270f885/6766e2f3 在本卡首提后落库）：§2.1 事件通道/§2.3 数据流/附录A#5 由「未发布事件/未接线/无幂等」改写为「批量 action 成功后经 EventBus 发布 CASE_EVENTS / CASE_BATCH_ACTION_COMPLETED（_publish_batch_event testcase_batch_service.py:151，事件类 TestCaseBatchAction events.py:31，Redis 不可用降级）+ 幂等去重（客户端幂等键优先/缺省请求指纹 sha256(action+排序ids+参数)，完成回放 idempotent_replay 标记/处理中冲突，占位 TTL 自愈，IDEMPOTENCY_*_TTL_SECONDS 配置化）」；F2 批量 action 集 16→17 种补 restore（批量恢复软删除用例，testcase_batch_copy_move_mixin.py:30）：§2.2 组件表/§3.2.2 表与适配说明/§6.2.3 handlers 示意/附录A#4 四处同步；F3 行号锚点漂移修正：proto TestCaseConfigService L282→L284（§2.1/§2.2/§6.2.2 三处）、TestCaseBatchAction :30→:31、TestCase deleted/deleted_at L32-33→L92-93（原引为 TagCategory 行号）。F1-F3 全部经代码实证（_idempotency_guard/_publish_batch_event/17 handler 字典逐条核对）；工作区并行卡未提交改动未触碰
+INT-61: 复验收口 P3#3——WS 测试夹具 Windows 关停噪音
+INT-85: 移除 service_ports.py 残留的 DEVICE_SERVICE_HTTP_PORT=5005——device_service 自 P2.5 拆出后为 gRPC-only（run_all.py http=False，无任何 HTTP 接口代码），该常量全仓零引用，仅误导心跳巡检探测 5005/health 形成误报
+INT-74: 枚举消费接线（OutputType/CalibrationStatus 零消费 + benchmark 裸字符串）
+INT-83: 修复驱动注册冲突——HarmonyHardenXiaoyiHuiJiDriver 补回 keywords 标识
+INT-75: 验收补充测试——16 action 全量事件断言 / 回放零重复事件 / 事件降级 / 409-完成-回放时序 / TTL 透传 / 网关适配器头回退（24 测）
+INT-64: 验收补充守卫——E2E 执行链收尾门控 + API 重评分支逐轮锁定（测试工程师）
+INT-75: 批量操作 16 action 全量发布 CASE_EVENTS + 幂等去重机制
+INT-61: 打回修复——会话亲和「路由」生产接线（P1）。注：本卡 13 个改动文件（shared/utils/realtime_session_registry.py、shared/clients/grpc_instance_client.py、api_test_service/infrastructure/peer_rpc.py、api_test_service/core/{api_test_service,realtime_session_executor}.py、api_test_service/application/handlers/{command_handlers,query_handlers}.py、api_test_service/app.py、task_service/.../{task_dispatch,case_execution}.py、tests/{unit/test_int61_realtime_session_registry,unit/test_int61_affinity_wiring,integration/test_int61_realtime_full_chain}.py）因共享工作区索引竞态被并行卡提交 e1121fb4（INT-77）一并入库，diff 完整含于该提交、内容与自测一致（INT-61 专项 108 全绿 + 全量 1180 passed，6 failed 均为 roving 顺序污染族且逐一隔离复跑通过、均不在本卡改动路径）；本空提交仅为审计可寻因的归属标记，不重复承载 diff。改动内容：task_service 派发侧认领即绑定（websocket_api 用例经 route_or_bind 解析 task→实例绑定并直连派发，http_api/降级回退默认通道行为不变）+ api_test_service 启动门禁（start_task resolve 绑定其它存活实例即转发持有实例，近窗去重封顶跳数）+ StopAPITest/GetAPITestStatus 处理器亲和路由（双接口共用）+ 多副本注册地址修正（_self_advertise_host：API_TEST_ADVERTISE_HOST > 本机解析 > SERVICE_HOST 兜底）+ P3 实测口径并入 algorithm_result 落库与评估入参
+INT-67: 打回修复——P1 源加载 WAV 容器剥头（domain 层新增 unwrap_source_pcm 统一入口：WAV 头解析出数据段与头部格式，非 WAV 按 元数据>默认 探测；orchestrator 源载入切换该入口，防 44B RIFF 头按 PCM 解析致 int16 路径 22 垃圾样本混入/时间轴整体偏移/24bit 因 44%3=2 持续 1 字节错位数据段全样本损毁）+ P2 RenderAudioStream 末窗补零至恒定 chunk 时长（恒定窗缓冲替代余数窗，对齐提测声明与 INT-61 RealtimeAudioRenderer 补零语义，Realtime 恒定节奏 sleep 推送契约成立；流式拼接==整段输出+末窗补零尾，整窗倍数时不变量原样成立）+ P3 记录项（专项测试数修正为 单测 30/26/4/10/18 + 双端冒烟 9 = 97、path_b 15；设计文档 §2.3 补记实现差异：bit_depth 列未落地，源格式探测实际优先级 WAV 头>元数据>默认 + unwrap_source_pcm 剥头契约，V9.7.10 文档库同款补记另提 docs commit）。测试：验收冒烟 9 测全绿（3 例 xfail strict 复现锁修复后转通过并移除标记；尾窗锁按 P2 裁定更新为恒定窗断言：16 chunk 全 3200B、内容区信号/补零区全零/is_last 终帧）+ 新增 unwrap_source_pcm 4 测（16bit 数据段剥离/24bit 3 字节对齐/裸 PCM 元数据透传/默认回退）与管线级 WAV 源==裸 PCM 源适配逐样本一致、非整窗倍数尾窗补零 2 测；INT-67 专项 97 全绿；path_b 预下载重采样 15 + gRPC proto 集成 30（.env 必填项加载后）回归全绿；全量单测 1110 passed
+INT-77: 用例管理设计文档微服务化修订——§2.1/§2.2/§2.3/§2.4 架构与组件章节由 Flask 单体（Blueprint→Controller→Schema→models.py）改写为 V9.7.31 实际链路（api_gateway FastAPI routes/testcase_bp.py+group_bp.py → 网关应用服务 → ACL TestCaseConfigAclRepositoryImpl → gRPC 代理 task_testcase_config_proxies.py:429 BatchActionTestCases → task_service interfaces/grpc/testcase_config.py:78 → command_handlers.py:417 → TestCaseBatchService，proto TestCaseConfigService 命令6+查询6 RPC，CQRS 读写分离），事件通道如实标注（同步链路未发领域事件，TestCaseBatchAction 已定义未接线，缺口 INT-75）；§3 分组补独立 CRUD 端点 /api/v1/groups（group_bp.py）、批量 action 表对齐实现 16 种（增 delete/copy）、参考参数异步刷新链路修订（>50 阈值硬编码+进程内线程+Redis 进度，缺口 INT-76）、试听预览标注网关侧跨服务编排；§5/§6.1 前端文件名对齐（useBatchActions.ts 演化为 useTestCaseBatchOps.ts+useTestCaseBatchActions.ts、testcasesApi 迁 infrastructure/api/testcasesApi.ts、TestCaseManagerLogic 演化为 views/TestCaseManager/ .ts 拆分、接口清单按 testcasesApi 实际 21 方法重写并标注 stats/ref-params 前端缺口 INT-73）；§6.2 后端实现整节重写（网关/领域两侧技术栈、逐层模块落位含行号、批量分发与维度标准化与软删除代码示意对齐现状，test_type 残留列标注 INT-79）；§9/§12 体例对齐；新增附录 A V9.7.31 适配差异清单（14 项单体↔微服务对照，体例对齐 01_UseCase总览.md）。全部 file:line 经代码实证；工作区并行卡未提交改动未触碰、未暂存
+INT-67: 验收测试（测试工程师）——双端冒烟 + 打回项复现锁定（WAV 容器头按 PCM 解析，P1）
+INT-64: 评估维度隔离闭环 + 报告主生成链轮次口径对齐 + 重评 E2E 分支逐轮
+INT-67: 混音下沉 audio_service——RenderService 双出口 + 6 步编排 + 格式适配契约 + ApiRmsSplService：①proto 新增 RenderService 服务（RenderAudioStream server-streaming 自 AudioService 迁入 + RenderAudioFile unary 整文件出口，消息补 RenderAudioFileRequest/Response，pb2 重生成），stub 工厂 get_render_service_stub 接入 grpc_clients 聚合导出；②格式适配契约落地 audio_service/domain/services/audio_format_adapter.py——BitDepth 枚举（s16/s24/s32 满量程）+ AudioFormat 值对象 + AudioFormatAdapter：转换顺序固定「位深归一化→float32→重采样→通道→目标位深度化」（重采样在源声道布局下进行，交织多声道按帧维度 resample_poly gcd 化简+edge padding 消启动瞬态），24bit 3 字节小端逐字节重组防 int16 误解析，通道下混均值/上混复制/其余组合抛配置错误，源格式探测优先级 WAV 头>库内元数据>库内默认，目标格式解析缺省回退 24kHz/s16/mono 且非法位深立即拒绝，wrap_container wav/pcm；③ApiRmsSplService 落 audio_service/domain/services/api_rms_spl_service.py（映射数据驱动，与 INT-61 落库的 api 1:N ApiRmsSplMapping 对接：render_config 携带校准点，audio_service 不反向查库）——校准点 np.interp 多点插值（边界行为配置化 clamp/extrapolate，extrapolate 增益域线性外推负值回退最小点对齐 E2E）、无映射 _linear_approx 基准 SPL_LINEAR_APPROX_BASE_DB 配置键、未配 SPL gain=1.0 原始不动不补偿（设计 §6.4）、RMS 补偿归一化 target_rms_dbfs（默认 -30 与 E2E calculate_gain_compensation 一致）、映射级+全局限幅；④AudioStreamOrchestrator 落 audio_service/application/services/audio_stream_orchestrator.py——公共前置（噪声合并复用 build_noise_info 两级配置透传 require_devices=False 扩展默认行为不变 + 源加载 TTL 缓存 pcm_cache_ttl_seconds 配置化 + 格式适配 + RMS/SPL 增益 + Step4 时间轴复用 audio_timeline.calculate_speaker_aware_audio_delays：play_order 排序/共同 speaker 顺序/overlap 交叠/干扰人 startDelay/噪声独立 loop+delay 混入，speakers_map 键 str 归一化）+ 路由分发 file/stream（physical 显式拒绝走 device_driver）；⑤RenderAudioFile（5A 整段 float32 缓冲叠加 loop 噪声铺满 + 6A 整段量化 wrap_container）与 RenderAudioStream（5B/6B 100ms 滑窗逐帧混音 loop 噪声模块索引环绕切片、不足一窗补零恒定 chunk 时长、与整段输出逐字节一致）双出口实现，RenderServiceServicer 流式逐 chunk 透传/失败 message 收敛不抛裸异常断流，server.py 注册；⑥api_test_service 消费端 ACL——domain 端口 AudioRenderAclRepository（build_render_config 组装请求：audios 透传+两级噪声透传+target_format+SPL 映射预载数据，合并归 audio_service；RenderedAudioDTO/RenderChunkDTO）+ infrastructure gRPC 实现（get_render_service_stub 出站，RenderAudioFile 显式放宽 deadline render_file_timeout_seconds 配置化对齐 INT-54 模式，RenderAudioStream 惰性迭代失败收敛终止帧）+ route_render_mode 路由表消费端镜像（DeviceType 枚举）；⑦24bit 防误解析三处收口共享解析器 AudioFormatAdapter.to_int16_scale——audio_driver.calculate_gain_compensation（原 else 分支按 int16 误解析）、_create_multi_callback 回调解析、_engine_audio_prepare_mixin._resample_to_file（原无条件按 int16 读帧）；⑧audio_render 配置段（chunk_duration_ms/spl_linear_approx_base_db/spl_interp_boundary/target_rms_dbfs/pcm_cache_ttl_seconds/render_file_timeout_seconds 全配置化，随 INT-61 并行提交先行落地）。测试：INT-67 专项 97 全绿（格式适配契约含顺序 spy 断言重采样在源声道布局/24bit 正负满量程与不完整尾字节/交织立体声按帧维度重采样中段精确仅头尾 FIR 瞬态有界 + SPL 换算 16 测含插值边界两模式与限幅 + 混音管线 24 测含路由表/两级噪声透传合并归 audio_service/时间轴顺序交叠共同 speaker/流式拼接与整段逐字节一致强不变量/loop 噪声跨窗环绕/servicer 失败收敛 + 消费端 ACL 13 测含组装透传/路由/DTO 还原/失败收敛 + 24bit 回归 5 测含 16/24bit 同幅度同增益补偿与 prepare 重采样按实际宽度解析）+ 既有 path_b 预下载重采样 20 测与 gRPC proto 集成 30 测回归全绿 + 全量单测 1053 passed（1 例既有 audit_emit 顺序 flake 单测隔离通过，干净 HEAD 对照可复现，与本卡无关）
+INT-61: Realtime 执行链路——RealtimeSessionExecutor（WS 长连接会话管理，与 APISessionExecutor 并列执行器注册表按 device_type 运行时分发，未知/缺省回退旧行为；正常轮流式推送→commit→等完整回复 / 打断轮等 AI 开始→延迟打断→barge-in 检测窗→等重新回复）+ 流式双通道（frame 逐帧归一化事件轻量载荷 + summary 会话汇总，REPORT_EVENTS 领域事件 EventType 枚举化 + sse_events SSE 桥，网关零改动）+ 实例内闭环与会话亲和（shared RealtimeSessionRegistry 以 session:bind:{task_id} 记录 task→实例绑定，同会话粘同实例，绑定实例心跳失联重路由，Redis 不可用降级单实例语义）+ SPL 对称（ApiRmsSplService 数字域口径：推送增益 effective = rms_compensate × spl_gain 与 E2E 增益链路公式同构，AI 输出实测 calculate_rms_dbfs→rms_dbfs_to_spl 落 summary；校准点 np.interp 插值/线性近似/限幅防削波；ApiRmsSplMapping 实体+端口+PO+幂等迁移脚本，api_rms_spl_mappings 表 + apis.rms_spl_mapping_id 默认映射列）+ RealtimeAudioRenderer（交织 PCM 先通道下混再重采样，非法组合显式拒绝，100ms 滑窗切片补零 base64）+ RealtimeWSClient（接收线程+阻塞事件队列+OpenAI 事件协议防腐映射表+帧级实时记录+毫秒级首帧/barge-in 延迟；集成测试实测发现跨轮 _ai_complete 残留致 wait_ai_complete 误判，新增 reset_round_state 轮次边界重置并锁定）+ RoundAudioSource（ACL 元数据+共享存储字节+WAV 解析）+ 评估异步（summary 落库复用 create_multi_round_test_result 后 submit_evaluate_case 入队，test_type='api' 评估引擎零改动）+ task_service get_task_case_dicts 补 device_type 字段（路由必需最小附加）+ concurrency_config 新增 realtime_session 段（同文件含并行工作流 audio_render 段一并落地）。测试：INT-61 专项 70 全绿（WS 客户端 10 真实握手+伪厂商服务器 / 会话亲和 10 双副本粘同+实例重启重路由+降级 / SPL 口径 18 含 E2E 公式同构对照 / 渲染器 14 / 路由分发 16 含旧行为不变守卫 / 端到端集成 2 含打断轮全时序）+ 全量回归 1060 passed / 84 skipped（1 例 roving 顺序污染 flaky benchmark_ranking 单测隔离通过且收集序先于本卡全部测试；干净 HEAD 对照运行亦复现既有 audit_emit 顺序 flake，均与本卡无关）
+INT-45: 报告字段映射快照非空回归断言（经 INT-58 审计确认收口）
+INT-53: 中枢侧中转执行生产触发器——轮询式 claim → execute_incoming → finish 收敛（B 区 execute_incoming 生产调用方补齐）：transfer_agent 新增 relay 认领/终态域事件与 RelayExecutionState 状态机（meta.relay executing/executed/failed），仓储行锁 CAS 原子认领（资格：EVAL_REQUEST/dst=本区/COMPLETED/未过期，executing 超失效窗崩溃恢复重认领；重复执行安全由 C 按 transfer_id 幂等去重与 EVAL_RESULT 同 id 回写幂等保证）+ finish 幂等收敛守卫（仅 executing 可终态），/internal/transfer/relay/claim 与 /relay/{id}/finish 两端点（claim 入站 token 任一指向本区 fail-closed 校验，finish 按包路由验签）；evaluation_service HubRelayTrigger 守护线程轮询（claim→execute_incoming→finish，执行失败收敛 failed 终态不悬挂——A 侧按 relay_result_timeout_seconds 既有路径收敛，execute_incoming 内部已按 stage 发 Failed 审计不重复发事件），ThirdPartyEvalSettings 新增 relay_trigger_enabled/relay_trigger_poll_interval_seconds/relay_trigger_claim_stale_seconds 三配置键（进既有 third_party 配置段+环境变量覆盖框架），app lifespan 接线（is_hub + relay_trigger_enabled 自门控，边缘区不启动，启动失败不阻塞服务）。事件式方案不采用：需 A 侧接线改动（违反本卡明确不做，F2.2 已交付）且传输域事件按契约不进五通道。测试：relay 执行单测 29（服务 token fail-closed/事件/幂等契约 11 + 真实仓储 CAS 资格/失效窗恢复/终态守卫 10 + HTTP 契约 8）+ 触发器单测 16（门控/配置装配/入站 token fail-closed/认领执行收敛/生命周期）+ 集成 TestHubRelayTriggerFullChain 3（真实触发器轮询真实 claim/finish 端点驱动 A→B→C→B→A 全链路自动完成、重复触发不重复执行、执行失败收敛 failed 且审计事件与传输流水完整）；既有 transfer/ACL 域 93 测与三区链路集成 6 测回归全绿
+INT-55: 全量回归 13 failed 修复——缺陷一套件顺序污染（tests/conftest 进程级 DATABASE_URL 兜底为临时文件库，:memory: 每 engine 独立空库致 G3 HTTP e2e/transfer gRPC e2e 跨线程 session 建表库与请求库不一致报 no such table；G3/oauth 管理/auth sqlite e2e 三处夹具改绑 init_db 刚建 engine 并自证非 :memory:，先清残留主线程 session；auth sqlite e2e guest 种子改幂等 check-then-insert 消除共享库下的字母序依赖）+ 缺陷二审计同载荷去重豁免失效（根因非 TTL 去重——emit 侧审计本就跳过去重、插桩证实第二条已入队；真因是 worker flush 路径同步触发归档巡检，get_log_count 真实 gRPC 在 task_service 连接池耗尽时阻塞 30s+，第二条审计滞留队列 3s 断言窗口超时，机器栈驻留 9h+ 后由偶发固化为确定性；audit_env 夹具将归档巡检链路整体 fake 空转实现单测封闭，产品侧归档巡检移出 worker 关键路径改后台线程执行+进行中不重叠，消除生产日志批刷被巡检阻塞的同款隐患）。测试：缺陷二单测 6/6 通过、G3 11 例+transfer 1 例全量复现转绿；全量 913 collected → 912 passed / 83 skipped / 1 failed（仅剩 INT 卡外附带负载敏感 flaky test_start_execute_progress_terminal，本卡不修）
+INT-54: 打回修复——同步长调用点显式放宽 deadline，杜绝默认 deadline 误杀合法慢调用（P1-1 StartE2ETask / P1-2 SendRound）
+INT-54: 验收测试（测试工程师）——打回项复现锁定：默认 deadline 无法区分假死与合法慢调用
+INT-54: gRPC 客户端统一默认 deadline——依赖服务假死时调用有界失败，集成回归不再永久悬挂
+INT-51: 审计打回修复——P1-1 OAuth 链路按用户名合并既有账户治理（仅本地密码登录与预置 huawei 保留存量合并语义并注明，自定义提供方一律不合并对齐 newAPI：新身份一律新账户、仅按 provider+subject 绑定，username 冲突降级 {slug}_{username} 建号且仍绑定外部身份）；P1-2 提供方三态显式化（servicer 不存在→OAUTH_PROVIDER_NOT_FOUND、禁用→新增 OAUTH_PROVIDER_DISABLED；网关 get_provider_config 环境预置回退仅对 NOT_FOUND 生效，禁用/无 error_code 一律拒绝）+ 连带收口 get_login_entry 旧硬编码 HuaweiOAuthProvider 授权页旁路（同为环境配置放行面，禁用/未配置改回前端登录页）；P2-1 servicers.py 补 AuthErrorCode 模块级导入修复 not-found 分支 NameError；P3-1 移除死枚举 OAUTH_PROVIDER_ENABLED_EXISTS 及其 409 映射。测试：新增 tests/unit/test_g3_oauth_security_hardening.py 12 测（同名不合并/降级建号绑定外部身份/无冲突不改名/huawei 合并锁定/密码链路锁定/三态回退矩阵/登录入口两态），test_g3_auth_http_e2e.py 增 2 e2e（同名回调建独立账户+既有账户无绑定+落库断言；禁用 huawei 下 authorize/callback/login-entry 全拒绝且回收行不污染环境回退）；既有 G3 认证域 51 测 + e2e 13 测回归全绿
+INT-51: 验收复审测试夹具加固——auth servicer/provider management 权限补种改按名幂等
+INT-51: 打回修复——AuthMiddleware 白名单段边界匹配 + OAuth 管理端错误码映射
+INT-50: A 区自动中转接线——EDGE（self_zone!=hub_zone）命中 THIRD_PARTY_C 维度时 evaluate_dimension_group 由 zone_role 拦截失败替换为自动中转：①②③ dispatch_eval_request 打包 EVAL_REQUEST 传输中枢 → ④⑤⑥⑦ 中枢 execute_incoming 执行（T-B 出站投递 C + 结果回同步，F2.1）→ ⑧ fetch_incoming_result 轮询取回回同步 EVAL_RESULT，resp_data 经既有 worker 链路交 result_processor 落库（CQRS 不变，中枢内联流程零改动）；失败一律收敛 __error__ + Failed 审计（stage：transfer=发起失败 / fetch_result=取回超时或回同步载荷缺 result 字段），任务不悬挂；Settings 新增 relay_poll_interval_seconds（默认2s）/ relay_result_timeout_seconds（默认900s）进既有 third_party 配置段+环境变量覆盖框架，capability 配置显式补键；_error_stage 的 zone_role 分支随唯一产生方移除删除。测试：ACL 编排单测改写 zone_role 拦截断言为边缘自动中转（后台线程模拟中枢执行）4 新测（全链路取回/发起失败收敛/超时收敛/坏载荷收敛），集成新增 TestEdgeAutoRelayFullChain（真实 HTTP 一跳完成 A→B→C→B→A：transfer 流水 EVAL_REQUEST A→B DELIVERED + EVAL_RESULT B→A COMPLETED + C 命中一次 + A 侧审计 Dispatched→Completed）。自测：目标域 68 过（含 INT-29 验收 10 过、三区链路集成 6 过）；全量回归 876 过/10 失败均为工作区 INT-51 未提交改动影响面的并发偶发（单跑全过，与本卡无交集）
+INT-51: 验收测试（测试工程师）——网关 HTTP 层端到端验收，暴露管理端白名单前缀碰撞缺陷（打回项复现锁定）
+INT-51: 登录体系改造——自助注册 + 自定义 OAuth 提供方（参照 newAPI 设计，Python 栈重写）
+INT-48: 验收测试（测试工程师）——新增 tests/unit/test_database_pool_kwargs.py 回归守卫 10 测：SQLite 内存库（SingletonThreadPool）装配参数不含 QueuePool 专属项（pool_size/max_overflow）；SQLite 文件库/PostgreSQL/MySQL 照传池参数（生产行为不变，验收标准 3）；_pool_kwargs 池类判定与 create_engine 实际选用池类一致；DATABASE_URL 冻结为内存库时 init_db 全链路（建表/插入/查询）可用
+INT-49: transfer_agent B→C 出站投递腿（T-B→GW-2→C），评估调用切换经 T-B——按 2026-10-09 INT-29 审计问题 2 架构裁定（选项 a）落地 F2.1：①transfer_agent 出站投递腿——新增 POST /internal/transfer/outbound/{transfer_id}/dispatch 端点 + OutboundDeliveryService（读 COMPLETED 的 EVAL_REQUEST transit 暂存包→按第三方契约三形态投递 C：multipart 直传 / feature_extract 特征提取小参投递 / presigned PUT 预签名申请后上传并携带对象引用评估，网络错误与 5xx 指数退避重试、4xx 不重试；THIRD_PARTY_C_API_BASE_URL/TIMEOUT/MAX_RETRIES/BACKOFF 出站配置进 Config），路由白名单以本实例区为源校验 →C EVAL_REQUEST（A 区实例 fail-closed 拒绝，网络隔离点复用 ZoneRoutePolicy）；EVAL_REQUEST 包协议读取器落 T-B domain（eval_request_bundle 清单/文件部件解析 + feature_extraction 纯域服务，仅 zip/json 标准库，无跨服务 import）；②传输流水与真实数据路径对齐——TransferStatus 新增 DELIVERED（交付完成；允许幂等重投，C 按 transfer_id 去重；ephemeral 暂存仍按 TTL 回收，交付事实保留 meta.delivery 与 TransferDelivered/TransferDeliveryFailed 领域事件），dst='C' 登记即真实 B→C 数据面（过渡期 staging_purpose=audit_anchor 标注退役），仓储 save() 回写 meta，complete 幂等分支覆盖 DELIVERED，list_expired 纳入 DELIVERED&ephemeral；③evaluation_service 三适配器切换——ThirdPartyEvalPort 实现改为经 T-B 出站契约（TransferAgentOutboundEvalAdapter：投递 token 按暂存包自身路由——中枢内联 B→C、中转 A→B 由 execute_incoming 注入 package_route；投递视图解析与 EVAL_RESULT 校验留 eval 侧），直连 C 的 third_party_adapters 三适配器整体删除（无残留调用，含退役守卫测试），staging_enabled/c_api_base_url/适配器重试配置退役（暂存登记成为出站投递必经前提），新增 dispatch_timeout_seconds（出站投递同步等待须大于 T-B 最坏投递时长）；④设计文档 §3.2/§4.2.2 两处「当前过渡形态说明」替换为「实现对齐说明」（§3.2/§4.2.2 设计不变，步骤⑤按原设计实现）。测试：新增 29 测（T-B 出站投递 18：三契约载荷构造/5xx·网络退避重试/4xx 不重试/幂等重投/失败保持可重投/包类型/状态/过期/token/路由白名单拦截；eval 出站适配器 11：投递视图解析/EVAL_RESULT 校验/package_route token 选择/传输异常上抛 stage=transfer/工厂 fail-closed/直连退役守卫），改写 ACL 编排单测（中枢全流程出站投递断言、中转包路由 token、直连配置退役断言、staging_enabled 用例随语义移除），集成测试切换出站链路（真实 HTTP：B 评估→T-B 出站→C 模拟端点三契约→结果同步回传 B；dst=C 流水 DELIVERED + meta.delivery 真实投递结果；幂等重发走 DELIVERED 重投 C 去重；C 4xx 不重试/5xx 退避重试经 T-B 语义回归；INT-29 验收 audit_anchor 测试改写为 DELIVERED 流水对齐测试）。自测：目标域单测 144 过；INT-29 验收 10 过；三区链路集成 5 过；全量回归 tests/ 820 过/84 跳/0 失败 0 错误（工作区内 INT-45/INT-48 相关未提交改动未触碰、未暂存）
+INT-48: init_db 按池类型条件化传参，修复 SQLite 内存库 max_overflow TypeError
+INT-29: 返工验收补充测试（测试工程师独立复审）——①flaky 修复：test_evaluation_capability_registry 两处 os.utime(path, None) 改显式错开时间戳（插桩实测 Windows 文件时间粒度下 utime(None) 与 _save() 刚记录的 mtime 同 tick 碰撞率 94/200，mtime 未变致 mtime 热加载被跳过、热加载单测偶发失败；生产配置修改间隔远大于该粒度，非业务缺陷）；②新增集成测试 test_staging_audit_anchor_meta_persisted_in_transfer_records：真实 transfer_agent 路由栈落库后回读 transfer_records.meta，锁定问题 2 过渡语义双向标注（dst='C' 暂存记录带 staging_purpose=audit_anchor、A→B 真实数据面腿不携带），审计流水与真实数据路径一致性落为永久回归。INT-29 单测 49/49、集成 63/63；全量回归 tests/ 785 过/84 跳/17 遗留错误（auth sqlite e2e DATABASE_URL import 污染，与本卡无关）
+INT-29: 审计打回修复（问题 1/3-6）+ 问题 2 过渡语义对齐——问题 1（中）execute_incoming 解包失败路径 UnboundLocalError 修复（try 前 request=None，except 经兜底参数取 task_id/test_case_id，ThirdPartyEvalFailed 审计必发且 stage='unpack'，原始错误原样上抛不再掩蔽；新增 transit 包被 TTL 回收/损坏包两单测）；问题 3（低）response_required_keys 环境变量字符串覆盖按逗号切分（"a,b"→['a','b']，list 类型行为不变）；问题 4（低）第三方 Worker 字典并发写复用 endpoint_workers_lock（与端点 Worker 字典同锁防重复建 Worker，字典初始化收进锁内）；问题 5（低）staging_enabled 落地生效（中枢内联流程 false 时跳过暂存登记仅直调 C，边缘 dispatch 路径登记即真实传输不受影响）；问题 6（低）registry.remove() 成功后 _save() 写回配置（mtime 热加载后已删条目不再复活，新增持久化单测）；问题 2（中·按 2026-10-09 架构裁定选项 a 过渡对齐，数据面切换属 F2.1/INT-49 本卡不实施）——_stage_eval_request dst='C' 登记在文档字符串与调用点注释显式标注「暂存/审计锚点，非数据面传输」，传输流水 meta 新增 staging_purpose=audit_anchor 标注（A→B 中转腿为真实数据面不携带，两条单测锁定双向语义），设计文档 09_跨区网络传输方案.md §3.2 连通性矩阵与 §4.2.2 步骤⑤后各补「当前过渡形态说明：B→C 评估数据面暂由 evaluation_service 直连 C，切换经 T-B 见 F2.1（INT-49）」；INT-29 单测 49/49、集成链路（真实 transfer_agent 路由栈+本地模拟 C 区）14/14，全量回归 784 过/17 遗留错误（auth sqlite e2e DATABASE_URL import 污染，与本卡无关）
+INT-29: 验收测试（测试工程师独立验收）——补开发自测盲区 9 项：①注册表 4 个 HTTP 管理端点真实服务（uvicorn port=0）全生命周期验证（注册/发现/禁用/启用/配置持久化/外部修改 mtime 热加载/非法 target·adapter·空 dimension fail-closed 拒绝/禁用后 resolve 回落 LOCAL）+ 仓库默认配置 THIRD_PARTY_C 项 fail-safe 守卫；②AC1→AC2 贯通——注册表登记 presigned_url 后 ACL 不显式指定 adapter_kind 按注册表选择 B→C 形态端到端（预签名申请+PUT 字节一致，排除 settings 默认值假阳性）；③确定性打包同输入字节一致（幂等重发判重前提）；④transfer_agent 不可达 __error__ 秒级收敛不悬挂+审计 ThirdPartyEvalFailed(stage=transfer)；⑤C 端持久 4xx 不重试（hits==1）链路收敛+Failed(stage=third_party_call)+传输流水先行 COMPLETED；⑥瞬时 5xx 恰好重试一次成功+审计 Dispatched→Completed 完整。INT-29 相关 55 测试（开发 46+验收 9）全过；全量回归 776 过/17 错误，错误根因独立复现确认为遗留环境问题（INT-25 test_data_transfer_real_chain.py import 期 setdefault DATABASE_URL=sqlite:///:memory: 进程级污染 → auth sqlite e2e init_db 对 SingletonThreadPool 传 max_overflow TypeError，与本卡无关）
+INT-29: 三区链路与评估能力注册表（A→B→C 评估共享，依赖 INT-28）——评估能力注册表（LOCAL/THIRD_PARTY_C 维度路由，register/list/resolve/enable/disable + 配置原子写回与 mtime 热加载 + HTTP 管理端点 4 个，默认配置 THIRD_PARTY_C 项 fail-safe 默认禁用）；B→C 三种适配形态 ThirdPartyEvalPort 实现（multipart 流式 / feature_extract 特征提取 WAV 头解析 / presigned_url 预签名 URL 拉取，枚举化工厂 fail-closed，网络错误与 5xx 指数退避重试、4xx 不重试）；8 步完整链路 ACL（①确定性 zip 打包→②transfer_agent 分片上传登记幂等+审计+transit 暂存→③C 执行→④EVAL_RESULT 回传→⑤校验→⑥落库留调用方 CQRS→⑦Dispatched/Completed/Failed 审计事件带 stage→⑧EVAL_RESULT 回同步源区）；区角色配置化 self_zone/hub_zone（B 评估中枢内联全流程，A 边缘区 dispatch/execute_incoming/fetch_incoming_result 中转三段式）；传输链路独立 ACL 客户端对接 /internal/transfer/* 契约（HMAC-SHA256 签名 + 预共享 token fail-closed，不跨服务 import transfer_agent）；调度分流（注册表命中 THIRD_PARTY_C 维度组走 ThirdPartyEndpointWorker，仅替换调 API 一步，队列/状态推进/落库全复用，注册表异常 fail-closed 回退 LOCAL）；新增 46 测试（注册表 14/适配器 13/ACL 编排 8/调度接线 4/真实 HTTP 集成联调 7：本地模拟 C 区三契约端点 + transfer_agent 真实路由栈，覆盖幂等去重、瞬时 5xx 退避重试、A→B→C→B→A 8 步中转与传输流水审计）
+INT-47: 修复全新库建表后 seed_rbac.py NotNullViolation——各服务 PO 时间戳列（created_at/updated_at/received_at/published_at/computed_at，17 文件 94 列，含 transfer_agent）统一补 server_default=func.now()，Base.metadata.create_all() 建表即生成 DB 级 DEFAULT（PG 渲染 now()，SQLite 渲染 CURRENT_TIMESTAMP，与既有验收库 schema 现状一致），ORM 层 default=utc8now 行为不变；新增 scripts/migrations/202610/add_timestamp_db_defaults.py 既有库对齐迁移（ORM 元数据驱动、逐列 ALTER SET DEFAULT now()、幂等 [SKIP]、--dry-run，全新库 no-op）；seed_rbac.py 连接串打印改 make_url render_as_string(hide_password=True)（修不含 @ 的 URI IndexError 且不再泄密码），docstring 权限数 94→96 对齐实际；README 迁移清单补 ⑫ 与 seed_rbac 权限数订正
+INT-40: 修复引擎嵌套执行链路 close 线程共享 scoped session 致外层 Task ORM 脱管（DetachedInstanceError→引擎线程死亡→任务异常终态）——shared 新增 create_db_session 独立会话工厂，case_execution._execute_api_case 两个 DB 块与 task_control._check_queue 改用独立 Session，scheduler._schedule_pending_tasks 循环抽取 (id,type) 纯数据不再跨 start_task 持有 ORM 对象；物理移除 INT-35 真实链路测试的 _emit_progress DetachedInstanceError 隔离守卫（int40_guarded），新增 INT-40 守卫单测锁独立会话语义、外层对象存活、调度整轮完成与 check_queue 隔离行为
+INT-42: 验收补充——引擎分发侧失败收敛真实链路回归（api_test_service gRPC 入口不可达 → 任务秒级收敛 failed，用例 exec=failed/eval=completed/status=failed，failed_cases 计入，被测 API 替身零命中，无 TestResult 产出），复用 INT-35 套件夹具与 int35_quarantine 隔离，修复前该场景永久卡 running
+INT-36: 修复 dev 模式首个 admin 引导缺失——LocalOAuthProvider 默认凭证建用户绑定 DEV_DEFAULT_ROLE（默认 admin），auto-create 失败改为中断登录而非放行无角色兜底建号；新增默认凭证角色绑定单测（透传/已存在跳过/失败回归守护/非默认凭证不建号）
+INT-42: 修复引擎分发侧失败未推进 evaluation_status 致任务永久卡 running——新增 TaskDispatchMixin._finalize_dispatch_failure 兜底（执行置 FAILED，评估未启动 pending/queued/None 同步补写 COMPLETED，与 api_test_service 失败逃生门语义对齐），_dispatch_api_case 异常兜底与 case_execution._execute_api_case gRPC 失败兜底统一走该入口；新增 INT-42 单测守卫锁兜底语义矩阵、两条失败路径与主循环收敛不变量
+INT-46: 清理 algorithm_result 双重编码残留——e2e 链路 _db_mixin._save_result 与 device 重提取链路 _create_test_result 写侧去掉 json.dumps 直接传 dict（JSON 列由 SQLAlchemy 序列化），与 INT-44 写侧修复对齐；读侧 builder 字符串幂等规范化兜底保留不动；新增写侧守卫单测锁落库必须 dict
+INT-41: 修复跨服务 case_ids 类型失配——api_test_service 应用层入口 CreateAPITestCommandHandler.handle 对数值字符串 case_ids 做 dataclasses.replace 幂等规范化为 int（gRPC servicer 与 HTTP admin 共同必经点），与 CreateAPITestCommand 的 List[int] 声明及执行链 int 主键比对对齐，API 用例不再被静默跳过；移除 xfail 锁定标记转常驻守卫，隔离替身自动等价于幂等操作
+INT-45: 验收补充——report_service ACL get_full_field_mapping 单测守卫
+INT-45: report_service ACL 补 get_full_field_mapping，修复字段映射快照静默降级
+INT-38: 验收补充——api 线性链 _run_single_api→_evaluate_result 参数传递单测
+INT-38: api 执行链 _run_single_api 显式传 case_reference_params——修复评估提交必然 TypeError 致用例悬挂 exec=completed/eval=pending、任务永久卡 running；隔离探针改为调用点 AST 检查，xfail 锁定测试转为常驻守卫
+INT-39: 修复进度载荷 error_message=None 崩溃 ProgressCaseItem——gRPC 载荷 None 兜底为空串，schema 放宽为 Optional[str]，移除 xfail 锁定标记与隔离探针断言
+INT-44: 验收补充——多轮会话写路径回归：create_multi_round_test_result 经真实 ACL gRPC 落库，断言 algorithm_result 为 dict 且 builder 读侧不再 TypeError
+INT-44: 修复 algorithm_result 双重编码——写侧 create_test_result/create_multi_round 直接传 dict，读侧 builder 入口 str 幂等规范化，移除 xfail 锁定并改锁落库为 dict
+INT-43: 修复 APIDriver._log 重复传参 task_id——调用方传参优先、实例属性兜底，移除锁定测试 xfail 标记
+INT-35: task_service execute 真实链路回归（真实 Postgres + 进程内 gRPC）
+INT-30: 复验打回修复——revoke '*' 通配双向封禁 + 状态变更审计事件名对齐§六 + 软删解除角色引用
+INT-37: 清理 .env.example 通配端口残留，端口唯一来源收归 service_ports.py
+INT-30: P1 打回修复——审计事件真实落 logs 表（emit 分流纳入审计类别 + 审计免 TTL 去重 + 落库回归测试）
+INT-30: 验收补充——修复 auth 单测 DATABASE_URL 泄漏导致的跨文件隔离问题
+INT-30: 用户/角色/权限管理 API（user_bp/role_bp admin 独占 + 差量授权落库修复 + 角色管理 RPC + auth 审计 + JWT 时效 notice）
+INT-27: Benchmark 审计打回修复（P2-1 全量重算唯一口径 + P3 ACL失败保留旧榜/并发兜底/NaN拦截 + P4 清理）
+INT-28: 审计修复——路径穿越防护、暂存-校验-提升时序、gRPC满片上限、transit删除门槛收紧
+INT-34: 验收补充——归档保留 Benchmark 标记测试（2 例）
+INT-27: 验收补充——Benchmark 双轨排行独立验收测试（10 例）
+INT-34: 前端发布弹窗 Benchmark 选项（开关+快照分组字段透传+列表/详情标记）
+INT-27: Benchmark 双轨排行（实测轨+外部基线导入+6算法+指标映射配置化）
+INT-28: transfer_agent 微服务骨架（传输包协议+分片续传+幂等去重）
+INT-26: 验收补充——网关 HTTP 真实链路集成测试（9 例）
+INT-26: published_tasks 增加 benchmark:true 标记钩子（B→D 衔接）
+INT-33: 修复 algorithm_service ListAlgorithms 等 4 个 RPC 的查询对象坏导入与字段错位
+INT-31: 修复审计问题1——网关与task_service共享数据传输卷
+INT-31: docker-compose 补齐 report/algorithm/auth 服务编排，11 服务全量编排
+INT-25: 修复审计问题1-5——补偿静默窗口/内存回滚/序列只上调/清理失败显式化/前端转换收敛
+INT-25: 修复缺陷3/4——网关 ACL 导入路径 500 与 gRPC timeout 参数错位；补真实链路回归
+INT-25: 修复打回缺陷——部分冲突导入撞 UNIQUE 与批次登记 HDEL 缺失
+Merge remote-tracking branch 'origin/design/deepseek-harness-migration' into design/deepseek-harness-migration
+INT-25: 补充验收测试（选项生效/无冲突导入/报表与文件段补偿注入/预检/进度契约/1h清理）
+INT-25: 任务数据导入导出（15表+ZIP打包+ID重映射+预检回滚）
+docs(agent): align report-first release criteria
+docs(agent): align report-first release criteria
+docs(agent): add report-first product delivery roadmap
+docs(agent): clarify report-first product priorities
+docs(report): elevate Report Studio as primary product and delivery gate
+docs(agent): make report studio frontend/backend first delivery
+docs(agent): prioritize report studio as primary product
+docs(agent): integrate Report Studio into frontend backend migration
+docs(report): fix DSH migration note formatting
+docs(report): unify conversational Report Studio on DSH runtime
+docs(agent): link frontend/backend DSH implementation plan
+docs(agent): add grounded front-end and back-end DSH migration plan
+docs(agent): align 03_技术设计文档.md with DSH migration
+docs(agent): align 02_用户场景.md with DSH migration
+docs(agent): align 01_功能介绍.md with DSH migration
+docs(agent): adopt DeepSeek Harness as sole agent runtime
+feat(platform): 任务发布全栈接入、rustfs 存储迁移、前端 DDD 重构与设计文档入库
+docs: 重构文档体系
+feat(task_service): 任务执行链路增强与组件更新
+refactor(device): 设备驱动更新与修复
+feat(evaluation): 迁移 V9.7.10 评估能力至微服务体系
+perf(microservices): 微服务内存优化 - 日志积压/连接池/大文件处理/全局字典泄漏治理
+feat(evaluation_service): OSS 透传模式 - oss:// 音频路径不再字节上传, 由 eval_server 从 MinIO 本地下载
+fix(fullstack): 全栈缺陷修复与优化 - 报表/评估/任务/音频链路修复 + 前端 DDD 深化 + 新增 e2e 测试/迁移脚本/文档
+refactor(fullstack): 前端 DDD 分层重构 + 删除 asr_server 单体 + 新增设备驱动
+refactor(backend): 13个>700行大文件全部拆分, 单文件最大行数降至~400 (P8)
+refactor(backend): 大文件拆分收尾 + 平铺整合为子包 + 状态枚举化 (P2-P7)
+refactor: 大文件拆分 mixin 化 — gRPC servicer/proxy 拆分 + 执行引擎生命周期抽取 (净减 9200 行)
+refactor: V9.7.31 全栈重构 — 删除 eval_server 单体 + 微服务 DDD 深化 + 前端 composable/enum 化
