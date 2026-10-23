@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import List, Optional
 
 from shared.models.common_enums import CalibrationStatus
@@ -42,6 +43,9 @@ class ApiRmsSplMapping:
     min_gain_linear: float = 0.001
     max_gain_linear: float = 10.0
     deleted: bool = False
+    # 读模型时间字段（INT-1504 缺陷3）：详情/列表展示创建/更新时间
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     def is_calibrated(self) -> bool:
         return (
