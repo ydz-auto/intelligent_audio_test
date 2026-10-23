@@ -171,16 +171,37 @@ class ApiTestAclRepository:
                 })
         return result
 
+    def fetch_api_summaries(self, api_ids: List, session=None) -> dict:
+        """批量获取 API 摘要 {api_id: {id, name, status}}。
+
+        INT-1500：api_test_service 没有按 ID 集合的批量查询接口，原实现逐个
+        调 `GetAPIConfig`（`fetch_api_list` / `fetch_api_names`），一页任务或
+        一页候选就是几十次下游调用（`/apis` 列表 400 时前端只能显示 ID 亦同源）。
+        改共享库窄字段只读投影（口径同 `GetAPIConfig`：`apis.deleted = FALSE`；
+        先例见 `_read_projection`）。
+
+        失败返回空 dict（仅日志告警），调用方按「无 API」降级。
+        """
+        ids = [int(a) for a in (api_ids or []) if a is not None]
+        if not ids:
+            return {}
+        from shared.models.database import get_db_session
+        from task_service.infrastructure.acl._read_projection import fetch_rows
+        session = session or get_db_session()
+        rows = fetch_rows(
+            session,
+            'SELECT id, name, status FROM apis WHERE id IN :ids AND deleted = FALSE',
+            ids,
+        )
+        return {int(r[0]): {'id': int(r[0]), 'name': r[1], 'status': r[2]} for r in rows}
+
     def fetch_api_names(self, api_ids: List) -> dict:
         """批量获取 API 名称，返回 {api_id: name} 映射。失败时返回空 dict。"""
         if not api_ids:
             return {}
-        name_map = {}
-        for api_id in api_ids:
-            api_data = self.get_api_config(api_id)
-            if isinstance(api_data, dict):
-                name_map[api_id] = api_data.get('name')
-        return name_map
+        summaries = self.fetch_api_summaries(api_ids)
+        return {api_id: summaries[int(api_id)]['name'] for api_id in api_ids
+                if int(api_id) in summaries}
 
     def get_api_test_stub(self):
         """获取 APITestService gRPC stub。
