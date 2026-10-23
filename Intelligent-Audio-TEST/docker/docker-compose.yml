@@ -182,6 +182,10 @@ services:
       - AUDIO_SERVICE_GRPC_PORT=50052
       - DEVICE_SERVICE_HOST=host.docker.internal
       - DEVICE_SERVICE_GRPC_PORT=50053
+      # INT-1548：用例列表回显报告状态走 report_service 内网 gRPC（51068），缺省 localhost 在容器内
+      # 解析为 ::1 → 每个用例一次 ListReports 立即失败并重试，列表 20 条耗时 14s+、200 条即超时
+      - REPORT_SERVICE_HOST=report_service
+      - REPORT_SERVICE_GRPC_PORT=51068
       - DATA_TRANSFER_TMP_DIR=/app/storage/data_transfer
     volumes:
       # 与 api_gateway 共享：数据导入/导出 ZIP 中转（INT-25），两容器必须挂同一卷
@@ -226,6 +230,9 @@ services:
       - TASK_SERVICE_GRPC_PORT=51061
       - AUDIO_SERVICE_HOST=host.docker.internal
       - AUDIO_SERVICE_GRPC_PORT=50052
+      # INT-1548：结果采集走 device_service gRPC（宿主机 50053），缺省 localhost 在容器内解析为 ::1
+      - DEVICE_SERVICE_HOST=host.docker.internal
+      - DEVICE_SERVICE_GRPC_PORT=50053
     volumes:
       # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
       - service_logs:/app/logs
@@ -315,6 +322,17 @@ services:
       - TASK_SERVICE_GRPC_PORT=51061
       - EVALUATION_SERVICE_HOST=evaluation_service
       - EVALUATION_SERVICE_GRPC_PORT=51091
+      # INT-1548：device/audio 按环境铁律跑宿主机（gRPC 50053 / 50052），容器内经
+      # host.docker.internal 访问；缺这两组变量时回落 localhost，容器内解析为 ::1 连接被拒
+      # → 报告生成「任务没有关联任何设备或API」/ 对比 60s 超时 / case-averages 504
+      - AUDIO_SERVICE_HOST=host.docker.internal
+      - AUDIO_SERVICE_GRPC_PORT=50052
+      - DEVICE_SERVICE_HOST=host.docker.internal
+      - DEVICE_SERVICE_GRPC_PORT=50053
+      # INT-1548：API 资源 ACL 走 api_test_service 内网 gRPC（GRPC_PORT=51071，多副本 DNS 轮询）；
+      # 缺省 localhost:50071 在容器内为 127.0.0.1 拒绝 → get_api 恒失败
+      - API_TEST_SERVICE_HOST=api_test_service
+      - API_TEST_SERVICE_GRPC_PORT=51071
     volumes:
       # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
       - service_logs:/app/logs
@@ -435,6 +453,9 @@ services:
       - AUDIO_SERVICE_GRPC_PORT=50052
       - EVALUATION_SERVICE_HOST=evaluation_service
       - EVALUATION_SERVICE_GRPC_PORT=51091
+      # INT-1548：device_service 结果采集 gRPC 跑宿主机 50053，缺省 localhost 容器内为 ::1
+      - DEVICE_SERVICE_HOST=host.docker.internal
+      - DEVICE_SERVICE_GRPC_PORT=50053
     volumes:
       # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
       - service_logs:/app/logs
