@@ -23,6 +23,7 @@ import {
   useAlgorithmOptions,
   useTestHealth,
 } from '@/application/evaluation/use-dimensions'
+import { ApiError } from '@/infrastructure/api/api-error'
 import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
 import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
 import { PageFooterPortal } from '@/components/layout/components/page-footer'
@@ -280,6 +281,17 @@ export function EvaluationPage() {
     return result
   }, [filteredDimensions, dimensions])
 
+  // 分类 → 维度总数（不受筛选影响）：空分类分组渲染与删除钮可用性判定用（INT-1550）
+  const dimensionCountByCategory = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const dim of dimensions) {
+      if (dim.categoryId == null) continue
+      const key = String(dim.categoryId)
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+    return counts
+  }, [dimensions])
+
   const groupedDimensions = useMemo<DimensionGroup[]>(() => {
     const byCategory = new Map<string, HierarchicalDimension[]>()
     const uncategorized: HierarchicalDimension[] = []
@@ -293,19 +305,30 @@ export function EvaluationPage() {
       }
     }
     const groups: DimensionGroup[] = []
+    // 分类全量渲染（含 0 维度的空分类）——分组由维度派生时空分类会连同删除入口
+    // 一起消失，分类永远删不掉（INT-1550）
     for (const cat of categories) {
-      const items = byCategory.get(String(cat.id))
-      if (items && items.length > 0)
-        groups.push({ key: String(cat.id), category: cat, items })
+      const key = String(cat.id)
+      groups.push({
+        key,
+        category: cat,
+        items: byCategory.get(key) ?? [],
+        totalCount: dimensionCountByCategory.get(key) ?? 0,
+      })
     }
     for (const [key, items] of byCategory.entries()) {
       if (!groups.some((g) => g.key === key))
-        groups.push({ key, category: null, items })
+        groups.push({ key, category: null, items, totalCount: items.length })
     }
     if (uncategorized.length > 0)
-      groups.push({ key: 'uncategorized', category: null, items: uncategorized })
+      groups.push({
+        key: 'uncategorized',
+        category: null,
+        items: uncategorized,
+        totalCount: uncategorized.length,
+      })
     return groups
-  }, [hierarchicalDimensions, categories])
+  }, [hierarchicalDimensions, categories, dimensionCountByCategory])
 
   const sorted = useMemo(() => [...filteredDimensions], [filteredDimensions])
   const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize))
@@ -520,10 +543,28 @@ export function EvaluationPage() {
 
   /* ───────── 分类 / 导入导出 ───────── */
 
-  const handleSaveCategory = (input: Partial<EvaluationCategory>, isNew: boolean) => {
-    void categoryMutations.save
-      .mutateAsync(input)
-      .then(() => toast.success(isNew ? '分类添加成功' : '分类更新成功'))
+  // 编辑分类必须把当前分类 id 并入 input（saveEvaluationCategory 以 id 判定 PUT，
+  // 缺失即走 POST 新建 → 出现改名后的重复分类）；失败抛回弹窗，由弹窗保留内容并提示。
+  const handleSaveCategory = async (
+    input: Partial<EvaluationCategory>,
+    isNew: boolean
+  ) => {
+    const editingId = categoryDialog.category?.id
+    try {
+      await categoryMutations.save.mutateAsync(
+        editingId != null ? { ...input, id: editingId } : input
+      )
+      toast.success(isNew ? '分类添加成功' : '分类更新成功')
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError
+          ? error.userMessage
+          : isNew
+            ? '分类添加失败'
+            : '分类更新失败'
+      )
+      throw error
+    }
   }
 
   const handleExport = (format: 'json' | 'excel') => {
@@ -735,7 +776,9 @@ export function EvaluationPage() {
                     </EmptyContent>
                   </Empty>
                 </div>
-              ) : hierarchicalDimensions.length === 0 ? (
+              ) : (viewMode === 'list'
+                  ? hierarchicalDimensions.length === 0
+                  : groupedDimensions.length === 0) ? (
                 <div className='bg-card ring-foreground/10 rounded-xl ring-1'>
                   <Empty className='h-72'>
                     <EmptyMedia variant='icon'>

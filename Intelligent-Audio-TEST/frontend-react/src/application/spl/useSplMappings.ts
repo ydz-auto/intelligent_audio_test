@@ -2,7 +2,7 @@
  * 物理域 SPL 映射 query hooks（application 层；16_设备域.md §10 组件树落位）。
  * queryKey 前缀 ['spl'] / ['spl-stats'] / ['playback-device-refs'] / ['spl-history']；
  * 增删改/校准后 invalidate 自动刷新列表与统计。
- * mock 阶段列表全量返回、前端过滤分页（接线后 URL 态化）。
+ * 列表由 GET /spl 全量返回、前端过滤分页（URL 态化待后续卡）。
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -11,16 +11,20 @@ import type {
   SplHistoryItem,
   SplMapping,
   SplStats,
+  SplTestToneInput,
 } from '@/domain/models/splMapping'
 import {
   calibrateSplMapping,
   createSplMapping,
   deleteSplMapping,
   fetchPlaybackDeviceRefs,
+  fetchPlaybackDeviceUniqueId,
   fetchSplHistory,
   fetchSplMappings,
   fetchSplMappingsByDevice,
   fetchSplStats,
+  playSplTestTone,
+  stopSplTestTone,
   updateSplMapping,
 } from '@/infrastructure/api/spl-api'
 
@@ -107,6 +111,33 @@ export function useSplMutations() {
   })
 
   return { create, update, remove, calibrate, invalidate }
+}
+
+/** SPL 测试音播放/停止（§6.5；POST /spl/test-tone、POST /spl/test-tone/stop，真实后端扬声器） */
+export function useSplTestTone() {
+  const play = useMutation({
+    mutationFn: (input: SplTestToneInput) => playSplTestTone(input),
+  })
+
+  const stop = useMutation({
+    mutationFn: (uniqueId: string | null) => stopSplTestTone(uniqueId),
+  })
+
+  return { play, stop }
+}
+
+/** 关闭弹窗/卸载时兜底停止测试音（失败静默，不打扰用户；V9.7.10 onUnmounted splApi.stopTestTone 同源） */
+export async function stopSplTestToneQuietly(uniqueId: string | null): Promise<void> {
+  try {
+    await stopSplTestTone(uniqueId)
+  } catch {
+    // 关闭路径停止失败不阻断（扬声器侧无播放时后端亦返回成功）
+  }
+}
+
+/** 播放前解析播放设备系统唯一标识（§6.5；GET /playback-devices/{id} → device_unique_id） */
+export function resolvePlaybackDeviceUniqueId(deviceId: number): Promise<string | null> {
+  return fetchPlaybackDeviceUniqueId(deviceId)
 }
 
 export type { PlaybackDeviceRef, SplHistoryItem, SplStats }

@@ -45,6 +45,23 @@ function labelOf(
   return options.find((o) => o.value === value)?.label ?? value
 }
 
+/**
+ * 维度 id → 名称解析（INT-1558）：
+ * 后端 associated_dimensions 只回 dimension_id 不回 dimension_name，名称由前端
+ * dimensionOptions（evaluation/dimensions）补；查不到的（已删除 / 接口未返回）兜底
+ * `已删除维度 #<id>`，不留空白单元格。
+ */
+export function resolveDimensionName(
+  dimensions: Dimension[],
+  dimensionId: number | string | null | undefined,
+  dimensionName?: string | null
+): string {
+  if (dimensionName) return dimensionName
+  if (dimensionId == null || dimensionId === '') return '—'
+  const name = dimensions.find((d) => String(d.id) === String(dimensionId))?.name
+  return name || `已删除维度 #${dimensionId}`
+}
+
 function FieldRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className='grid grid-cols-[100px_1fr] gap-2 text-sm'>
@@ -85,7 +102,7 @@ function DeviceParamRows({ params }: { params: DeviceApiParam[] }) {
   if (params.length === 0) {
     return (
       <tr>
-        <td colSpan={6} className='text-muted-foreground px-3 py-4 text-center'>
+        <td colSpan={7} className='text-muted-foreground px-3 py-4 text-center'>
           无设备参数
         </td>
       </tr>
@@ -105,6 +122,7 @@ function DeviceParamRows({ params }: { params: DeviceApiParam[] }) {
         {labelOf(PARAM_DIRECTION_OPTIONS, param.direction)}
       </td>
       <td className='px-3 py-2'>{param.required ? '是' : '否'}</td>
+      <td className='px-3 py-2 font-mono text-xs'>{param.defaultValue || '—'}</td>
       <td className='text-muted-foreground max-w-56 truncate px-3 py-2 text-xs' title={param.helpText ?? ''}>
         {param.helpText || '—'}
       </td>
@@ -174,12 +192,12 @@ export function AlgorithmDetailDialog(props: AlgorithmDetailDialogProps) {
                     <TabsTrigger value='case'>用例参数（{algorithm.caseParams.length}）</TabsTrigger>
                   </TabsList>
                   <TabsContent value='device' className='pt-2'>
-                    <StaticTable headers={['参数代码', '参数名称', '类型', '方向', '必填', '帮助文本']}>
+                    <StaticTable headers={['参数代码', '参数名称', '类型', '方向', '必填', '默认值', '帮助文本']}>
                       <DeviceParamRows params={algorithm.deviceParams} />
                     </StaticTable>
                   </TabsContent>
                   <TabsContent value='api' className='pt-2'>
-                    <StaticTable headers={['参数代码', '参数名称', '类型', '方向', '必填', '帮助文本']}>
+                    <StaticTable headers={['参数代码', '参数名称', '类型', '方向', '必填', '默认值', '帮助文本']}>
                       <DeviceParamRows params={algorithm.apiParams} />
                     </StaticTable>
                   </TabsContent>
@@ -249,7 +267,13 @@ export function AlgorithmDetailDialog(props: AlgorithmDetailDialogProps) {
                   <StaticTable headers={['评估维度', '权重', '默认']}>
                     {algorithm.associatedDimensions.map((relation) => (
                       <tr key={relation.id} className='border-border/50 border-b last:border-b-0'>
-                        <td className='px-3 py-2'>{relation.dimensionName}</td>
+                        <td className='px-3 py-2'>
+                          {resolveDimensionName(
+                            props.dimensions ?? [],
+                            relation.dimensionId,
+                            relation.dimensionName
+                          )}
+                        </td>
                         <td className='px-3 py-2 font-mono text-xs tabular-nums'>
                           {relation.weight}
                         </td>
@@ -306,8 +330,7 @@ function MappingRows({
         const dimName =
           mapping.dimensionName ||
           (mapping.dimensionId != null
-            ? dimensions.find((d) => String(d.id) === String(mapping.dimensionId))?.name ||
-              `维度(${mapping.dimensionId})`
+            ? resolveDimensionName(dimensions, mapping.dimensionId)
             : '')
         return (
           <tr key={mapping.id || `${mapping.source}-${mapping.sourceParam}-${mapping.targetParam}-${mapping.dimensionId ?? ''}`} className='border-border/50 border-b last:border-b-0'>

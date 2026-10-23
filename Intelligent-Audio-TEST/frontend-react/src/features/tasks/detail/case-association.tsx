@@ -1,9 +1,17 @@
 /**
  * 关联用例 / 关联资源（09_任务域.md §4.4，Card 内 Tabs）。
  * 页签「关联用例」（默认）/「关联资源」（INT-1241 起中性文案，不再按任务类型定「关联API/关联设备」）；
- * 工具行 = 视图切换（平铺/标签/分组）+ 状态筛选。
+ * 工具行 = 搜索 + 视图切换（平铺/标签/分组）+ 状态筛选。
  * 平铺态 DataTable 列：用例名称/执行状态/评估状态/耗时/轮次/操作（移除用例）。
- * （轮次展示 INT-932 起以 TaskCaseBrief 真实 rounds 为准，不再用 mock「第 n/2 轮」）
+ * INT-1492 对照 V9.7.10 基线修正三处：
+ * ① 平铺由 CaseCard 三列网格改为紧凑行式列表（名称/执行状态/评估状态/耗时/轮次/操作一行，
+ *   行高 54px 对齐基线 caseItemHeight）；标签/分组态组内同样用该行（不再卡片网格）。
+ * ② 用例区 max-h-[400px] + 虚拟滚动（scrollTop 切片 + overscan）替代全量渲染（任务 526 有 1737 条，
+ *   旧实现 scrollHeight 达 136,697px），并补搜索（按名称或用例 ID，基线 caseSearchQuery 口径）。
+ * ③ 状态筛选补「执行失败」「评估失败」两项（基线 execution_failed / evaluation_failed 口径：
+ *   执行失败 = execution_status=failed；评估失败 = evaluation_status=failed 且执行未失败），
+ *   执行/评估两列徽章分别显示「执行失败」「评估失败」，不再合并成「已失败」。
+ * （轮次列：TaskCaseBrief 无 rounds 字段，沿用 INT-932 起的派生口径「有耗时为第 2/2 轮」）
  * 19_人工审核与AI复核交互设计.md §3 落位（INT-795）：
  * - 已复核用例行执行/评估徽章旁叠加「人工复核」Badge（TaskCaseBrief.reviewed 驱动）；
  * - 行尾「人工复核」钮（终态任务 + task.result.review）→ §3.2 单条复核弹窗（取该用例结果行）；
@@ -14,8 +22,8 @@
  * INT-949：行尾「移除用例」先弹 ConfirmDialog（§5.9 按任务阶段两段后果文案），
  * 末例追加二次确认（「移除并停止任务」/「仅移除用例」）；取消不发请求。
  */
-import { ClipboardCheck, History, Sparkles, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { ClipboardCheck, History, Search, Sparkles, Trash2, Zap } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
@@ -23,6 +31,7 @@ import { useTaskActions } from '@/application/tasks/use-task-actions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Collapsible,
   CollapsibleContent,
@@ -44,6 +53,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import type { CaseResultForReview } from '@/domain/models/review'
 import { toAiReviewDimensionIds } from '@/domain/models/review'
@@ -51,7 +61,7 @@ import type { TaskCaseBrief, TaskDetailData } from '@/domain/models/task'
 import { fetchCaseResults } from '@/infrastructure/api/reviewApi'
 import { StatusBadge } from '@/features/dashboard/components/ui/status-badge'
 import { Progress } from '@/features/tasks/components/ui/progress'
-import { CaseCard } from '@/features/testcases/components/case-card'
+import { formatCaseDuration } from '@/features/testcases/constants'
 import { AiReviewSessionDialog } from '@/features/ai-review/ai-review-session-dialog'
 import { QuickAiReviewDialog } from '@/features/ai-review/quick-ai-review-dialog'
 import { ManualReviewBatchBar } from '@/features/tasks/components/manual-review-batch-bar'
@@ -74,7 +84,11 @@ const VIEW_OPTIONS: Array<{ value: ViewMode; label: string }> = [
   { value: 'group', label: '分组' },
 ]
 
-/** 选项 value 为英文枚举（对齐 case.execution_status / evaluation_status 实测值） */
+/**
+ * 选项 value 为英文枚举（对齐 case.execution_status / evaluation_status 实测值）。
+ * INT-1492：补 execution_failed / evaluation_failed 两个独立项（V9.7.10 TestExecutionComponent.vue:204-205 基线），
+ * 与「已失败」（任务级合并态 status=failed）并存——任务 526 摘要「评估失败 1737 条」可直接筛出。
+ */
 const CASE_STATUS_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'all', label: '全部状态' },
   { value: 'pending', label: '等待中' },
@@ -82,20 +96,54 @@ const CASE_STATUS_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'running', label: '执行中' },
   { value: 'evaluating', label: '计算指标中' },
   { value: 'completed', label: '已完成' },
+  { value: 'execution_failed', label: '执行失败' },
+  { value: 'evaluation_failed', label: '评估失败' },
   { value: 'failed', label: '已失败' },
   { value: 'skipped', label: '已跳过' },
   { value: 'stopped', label: '已停止' },
   { value: 'deleted', label: '已删除' },
 ]
 
-function CaseStatusBadge({ status }: { status: string | null }) {
+/** 行高（V9.7.10 caseItemHeight=54，虚拟滚动切片基准） */
+const CASE_ROW_HEIGHT = 54
+/** 用例区可视高度（09_任务域 §4.4 平铺 max-h-[400px]） */
+const CASE_LIST_MAX_HEIGHT = 400
+/** 虚拟滚动缓冲行数（上下各 5 行，基线 visibleCases 同口径） */
+const CASE_ROW_OVERSCAN = 5
+
+/**
+ * 状态筛选（V9.7.10 filteredAssociatedCases 口径）：
+ * 执行失败 = execution_status=failed（不论评估态）；评估失败 = evaluation_status=failed 且执行未失败
+ * （两类互斥）；其余按任务级/执行/评估任一命中（保留 React 侧既有 OR 口径）。
+ */
+function matchesStatusFilter(c: TaskCaseBrief, status: string): boolean {
+  if (status === 'all') return true
+  if (status === 'execution_failed') return c.execution_status === 'failed'
+  if (status === 'evaluation_failed')
+    return c.evaluation_status === 'failed' && c.execution_status !== 'failed'
+  return c.status === status || c.execution_status === status || c.evaluation_status === status
+}
+
+/** 执行/评估两列共用的状态徽章（INT-1492：failed 按列区分为「执行失败」「评估失败」） */
+function CaseStatusBadge({
+  status,
+  kind,
+}: {
+  status: string | null
+  /** execution=执行状态列 / evaluation=评估状态列 */
+  kind: 'execution' | 'evaluation'
+}) {
   const map: Record<string, { label: string; variant: 'success' | 'danger' | 'info' | 'neutral' | 'warning' }> = {
     pending: { label: '等待中', variant: 'neutral' },
     queued: { label: '排队中', variant: 'info' },
     running: { label: '执行中', variant: 'info' },
     evaluating: { label: '计算指标中', variant: 'info' },
+    calculating: { label: '计算指标中', variant: 'info' },
     completed: { label: '已完成', variant: 'success' },
-    failed: { label: '已失败', variant: 'danger' },
+    failed: {
+      label: kind === 'execution' ? '执行失败' : '评估失败',
+      variant: 'danger',
+    },
     skipped: { label: '已跳过', variant: 'neutral' },
     stopped: { label: '已停止', variant: 'neutral' },
     deleted: { label: '已删除', variant: 'neutral' },
@@ -118,13 +166,17 @@ interface ReviewTarget {
   dimensionIds?: number[]
 }
 
+/** 行式列表列网格（平铺表头与行、标签/分组组内行共用；列：名称/执行状态/评估状态/耗时/轮次/操作） */
+const CASE_ROW_GRID =
+  'grid grid-cols-[minmax(0,1fr)_5.75rem_5.75rem_4.25rem_5.25rem_7rem] items-center gap-2 px-2'
+
 /**
- * 关联用例卡（INT-1046 全站统一：复用 `features/testcases/components/case-card.tsx` 统一 `CaseCard`，
- * 11_用例域 §3.3 显示口径——名称/CaseIdBadge/算法徽章/标签/时长·轮次；任务域专属标记保留：
- * 分组名次行、执行/评估状态徽章 + 「人工复核」Badge、第 x/y 轮进度、移除钮、人工/AI 复核底栏）。
- * 平铺（卡片网格）与标签/分组（组内卡片）共用。
+ * 关联用例行（INT-1492 对照 V9.7.10 `progress-item-small`：一行放下
+ * 名称 / 执行状态 / 评估状态 / 耗时 / 轮次 / 操作，行高 54px）。
+ * 任务域专属标记保留：分组名（名称次行）、「人工复核」Badge、第 x/y 轮进度、
+ * 人工/AI/快速复核钮（终态任务）、移除钮。
  */
-function TaskCaseCard({
+function TaskCaseRow({
   c,
   selected,
   onToggle,
@@ -151,94 +203,144 @@ function TaskCaseCard({
   onAiReview: () => void
   onQuickReview: () => void
 }) {
+  /** 耗时：任务侧 ms → 秒（features/testcases 口径格式化，null 落「—」） */
+  const durationSeconds = c.duration != null ? Math.round(c.duration / 1000) : null
+  /** 轮次：TaskCaseBrief 无 rounds 字段，沿用 INT-932 起的派生口径（有耗时为第 2/2 轮） */
+  const roundCurrent = c.duration != null ? 2 : 1
+
   return (
-    <CaseCard
-      caseItem={{
-        id: c.case_id,
-        name: c.name,
-        tags: c.tags,
-        // 任务侧耗时（ms）→ CaseCard 口径总时长（秒）；null 不落空徽章
-        totalDuration: c.duration != null ? Math.round(c.duration / 1000) : null,
-      }}
-      selected={selected}
-      onToggleSelect={(_id, checked) => onToggle(checked)}
-      onNameClick={onCaseSelect ? () => onCaseSelect(c.case_id) : undefined}
-      meta={
-        <>
-          {c.group_name && (
-            <p className='text-muted-foreground text-xs truncate'>{c.group_name}</p>
-          )}
-          {/* 轮次进度（09_任务域 §4.4：第 x/y 轮 + Progress h-1） */}
-          <div className='text-muted-foreground mt-1 flex items-center gap-2 text-xs'>
-            <span className='font-mono tabular-nums'>第 {c.duration != null ? 2 : 1}/2 轮</span>
-            <Progress value={c.duration != null ? 50 : 0} size='xs' className='min-w-0 flex-1' />
+    <div
+      role='row'
+      data-testid='task-case-row'
+      data-case-id={c.case_id}
+      style={{ height: CASE_ROW_HEIGHT }}
+      className={cn(
+        'hover:bg-muted/40 border-b transition-colors last:border-0',
+        CASE_ROW_GRID,
+        selected && 'bg-accent/40'
+      )}
+    >
+      {/* 名称 + 用例 ID/分组次行 */}
+      <div role='cell' className='flex min-w-0 items-center gap-2'>
+        <Checkbox
+          checked={selected}
+          aria-label={`选择 ${c.name}`}
+          onCheckedChange={(checked) => onToggle(checked)}
+        />
+        <div className='min-w-0'>
+          <div className='flex min-w-0 items-center gap-1.5'>
+            {onCaseSelect ? (
+              <button
+                type='button'
+                className='hover:text-primary truncate text-left font-medium'
+                title={`查看用例详情：${c.name}`}
+                onClick={() => onCaseSelect(c.case_id)}
+              >
+                {c.name}
+              </button>
+            ) : (
+              <span className='truncate font-medium' title={c.name}>
+                {c.name}
+              </span>
+            )}
+            {c.reviewed && <ReviewBadge />}
           </div>
-        </>
-      }
-      badgeLeading={
-        <>
-          <CaseStatusBadge status={c.execution_status} />
-          {c.reviewed && <ReviewBadge />}
-          <CaseStatusBadge status={c.evaluation_status} />
-        </>
-      }
-      actions={
+          <div className='text-muted-foreground flex min-w-0 items-center gap-2 text-[11px]'>
+            <button
+              type='button'
+              className='hover:text-foreground shrink-0 font-mono tabular-nums hover:underline'
+              title='点击复制用例 ID'
+              onClick={() => {
+                void navigator.clipboard?.writeText(c.case_id)
+                toast.success('已复制')
+              }}
+            >
+              {c.case_id.slice(0, 8)}
+            </button>
+            {c.group_name && <span className='truncate'>{c.group_name}</span>}
+          </div>
+        </div>
+      </div>
+
+      {/* 执行状态（failed → 执行失败） */}
+      <div role='cell' data-column='execution'>
+        <CaseStatusBadge status={c.execution_status} kind='execution' />
+      </div>
+
+      {/* 评估状态（failed → 评估失败） */}
+      <div role='cell' data-column='evaluation'>
+        <CaseStatusBadge status={c.evaluation_status} kind='evaluation' />
+      </div>
+
+      {/* 耗时 */}
+      <div
+        role='cell'
+        data-column='duration'
+        className='text-muted-foreground font-mono text-xs tabular-nums'
+      >
+        {formatCaseDuration(durationSeconds)}
+      </div>
+
+      {/* 轮次（第 x/y 轮 + Progress h-1，§4.4） */}
+      <div role='cell' data-column='rounds' className='flex items-center gap-1.5'>
+        <span className='text-muted-foreground font-mono text-xs whitespace-nowrap tabular-nums'>
+          第 {roundCurrent}/2 轮
+        </span>
+        <Progress value={roundCurrent === 2 ? 50 : 0} size='xs' className='w-6 shrink-0' />
+      </div>
+
+      {/* 操作：人工复核 / AI 复核 / 快速复核（终态任务）+ 移除用例 */}
+      <div role='cell' className='flex items-center justify-end gap-0.5'>
+        {canReview && isTerminal && (
+          <Button
+            variant='ghost'
+            size='icon-sm'
+            disabled={reviewLoading}
+            aria-label='人工复核'
+            title='人工复核该用例结果'
+            onClick={onReview}
+          >
+            <ClipboardCheck aria-hidden='true' className='size-3.5' />
+          </Button>
+        )}
+        {canAiReview && isTerminal && (
+          <Button
+            variant='ghost'
+            size='icon-sm'
+            className='text-muted-foreground'
+            disabled={reviewLoading}
+            aria-label='AI 复核'
+            title='AI 复核（灵犀Agent 对话式复核，可追问）'
+            onClick={onAiReview}
+          >
+            <Sparkles aria-hidden='true' className='size-3.5' />
+          </Button>
+        )}
+        {canAiReview && isTerminal && (
+          <Button
+            variant='ghost'
+            size='icon-sm'
+            className='text-muted-foreground/70'
+            disabled={reviewLoading}
+            aria-label='快速复核'
+            title='快速复核（一次性状态机，无需追问的快速复检）'
+            onClick={onQuickReview}
+          >
+            <Zap aria-hidden='true' className='size-3.5' />
+          </Button>
+        )}
         <Button
           variant='ghost'
           size='icon-sm'
           className='text-destructive hover:text-destructive'
           aria-label='移除用例'
+          title='移除用例'
           onClick={onRemove}
         >
-          <Trash2 aria-hidden='true' />
+          <Trash2 aria-hidden='true' className='size-3.5' />
         </Button>
-      }
-      footer={
-        <div className='mt-2 flex items-center justify-end gap-1 border-t pt-1.5'>
-          {/* INT-795：人工复核入口（终态任务 + task.result.review；§3.1） */}
-          {canReview && isTerminal && (
-            <Button
-              variant='ghost'
-              size='sm'
-              className='h-6 gap-1 px-1.5 text-xs'
-              disabled={reviewLoading}
-              onClick={onReview}
-              title='人工复核该用例结果'
-            >
-              <ClipboardCheck aria-hidden='true' className='size-3' />
-              人工复核
-            </Button>
-          )}
-          {/* INT-795/INT-1064：AI 复核主入口（task.result.ai_review；§5.2 灵犀Agent 复核会话可追问） */}
-          {canAiReview && isTerminal && (
-            <Button
-              variant='ghost'
-              size='sm'
-              className='text-muted-foreground h-6 gap-1 px-1.5 text-xs'
-              disabled={reviewLoading}
-              onClick={onAiReview}
-              title='AI 复核（灵犀Agent 对话式复核，可追问）'
-            >
-              <Sparkles aria-hidden='true' className='size-3' />
-              AI 复核
-            </Button>
-          )}
-          {/* INT-1064：快速复核次要入口（一次性状态机，批量/低分初筛场景，§5.1 裁定） */}
-          {canAiReview && isTerminal && (
-            <Button
-              variant='ghost'
-              size='sm'
-              className='text-muted-foreground/70 h-6 gap-1 px-1.5 text-xs'
-              disabled={reviewLoading}
-              onClick={onQuickReview}
-              title='快速复核（一次性状态机，无需追问的快速复检）'
-            >
-              快速复核
-            </Button>
-          )}
-        </div>
-      }
-    />
+      </div>
+    </div>
   )
 }
 
@@ -255,6 +357,11 @@ export function CaseAssociation({
   const [tab, setTab] = useState('cases')
   const [view, setView] = useState<ViewMode>('flat')
   const [status, setStatus] = useState('all')
+  /** INT-1492：搜索（按用例名称或用例 ID，V9.7.10 caseSearchQuery 口径） */
+  const [keyword, setKeyword] = useState('')
+  /** INT-1492：平铺虚拟滚动窗口起点（scrollTop / CASE_ROW_HEIGHT） */
+  const [scrollTop, setScrollTop] = useState(0)
+  const caseListRef = useRef<HTMLDivElement>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [reviewTarget, setReviewTarget] = useState<ReviewTarget | null>(null)
   const [aiReviewTarget, setAiReviewTarget] = useState<ReviewTarget | null>(null)
@@ -271,13 +378,29 @@ export function CaseAssociation({
   const [caseRemovePending, setCaseRemovePending] = useState(false)
 
   const cases = detail.cases ?? []
-  const filtered = cases.filter(
-    (c) =>
-      status === 'all' ||
-      c.execution_status === status ||
-      c.status === status ||
-      c.evaluation_status === status
+  /** 状态筛选 + 搜索（名称/ID 子串，忽略大小写） */
+  const filtered = cases.filter((c) => {
+    if (!matchesStatusFilter(c, status)) return false
+    const q = keyword.trim().toLowerCase()
+    if (!q) return true
+    return c.name.toLowerCase().includes(q) || c.case_id.toLowerCase().includes(q)
+  })
+
+  /** 虚拟滚动窗口（上下各 CASE_ROW_OVERSCAN 行缓冲，基线 visibleCases 同口径） */
+  const windowStart = Math.max(
+    0,
+    Math.floor(scrollTop / CASE_ROW_HEIGHT) - CASE_ROW_OVERSCAN
   )
+  const windowSize =
+    Math.ceil(CASE_LIST_MAX_HEIGHT / CASE_ROW_HEIGHT) + CASE_ROW_OVERSCAN * 2 + 1
+  const windowEnd = Math.min(filtered.length, windowStart + windowSize)
+  const visibleCases = filtered.slice(windowStart, windowEnd)
+
+  /** 视图/筛选/搜索变化时回到列表顶部（避免深滚动位置落到过滤后越界） */
+  useEffect(() => {
+    setScrollTop(0)
+    if (caseListRef.current) caseListRef.current.scrollTop = 0
+  }, [view, status, keyword])
 
   // INT-1241：任务类型概念已移除（负责人 2026-10-22 口径）——关联资源区标题/空态统一中性「关联资源」
   const resourceLabel = '关联资源'
@@ -501,10 +624,14 @@ export function CaseAssociation({
     }
   }
 
-  /** 用例卡渲染（平铺卡片网格与标签/分组组内卡片共用，照 11_用例域 case-card 形态） */
-  const renderCaseCard = (c: TaskCaseBrief) => (
-    <TaskCaseCard
-      key={c.case_id}
+  /**
+   * 用例行渲染（平铺虚拟窗口与标签/分组组内行共用）。
+   * key 必须全局唯一：任务 526 中同一 case_id 会重复出现（1749 条记录 / 1737 个用例），
+   * 只用 case_id 作 key 会在虚拟窗口移动时复用错节点、残留旧行并把容器 scrollHeight 撑大。
+   */
+  const renderCaseRow = (c: TaskCaseBrief, key: string) => (
+    <TaskCaseRow
+      key={key}
       c={c}
       selected={selected.has(c.case_id)}
       onToggle={(checked) => toggleRow(c.case_id, checked)}
@@ -531,12 +658,38 @@ export function CaseAssociation({
   return (
     <Card size='sm' className='gap-3 py-3'>
       <CardHeader className='px-4'>
-        <CardTitle className='text-sm font-medium'>
+        <CardTitle className='flex items-center gap-2 text-sm font-medium'>
           {tab === 'cases' ? '关联用例' : resourceLabel}
+          {/* 用例计数（筛选/搜索后由 n 变「命中 n / 共 m」，作为筛选结果的可见证据） */}
+          {tab === 'cases' && cases.length > 0 && (
+            <Badge
+              variant='secondary'
+              className='rounded-md px-1.5 font-mono text-[11px] tabular-nums'
+              data-slot='case-count-badge'
+            >
+              {filtered.length === cases.length
+                ? cases.length
+                : `${filtered.length} / ${cases.length}`}
+            </Badge>
+          )}
         </CardTitle>
         <div data-slot='card-action' className='flex items-center gap-1.5'>
           {tab === 'cases' && (
             <>
+              {/* INT-1492：搜索（名称或 ID，V9.7.10 基线搜索框；1737 条用例定位） */}
+              <div className='relative'>
+                <Search
+                  aria-hidden='true'
+                  className='text-muted-foreground pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2'
+                />
+                <Input
+                  value={keyword}
+                  onChange={(event) => setKeyword(event.target.value)}
+                  placeholder='搜索用例名称或 ID…'
+                  aria-label='搜索用例'
+                  className='h-8 w-52 pl-7 text-xs'
+                />
+              </div>
               <Tabs
                 value={view}
                 onValueChange={(v) => setView(v as ViewMode)}
@@ -633,24 +786,66 @@ export function CaseAssociation({
         ) : filtered.length === 0 ? (
           <p className='text-muted-foreground py-6 text-center text-sm'>暂无关联用例</p>
         ) : view === 'flat' ? (
-          <div className='grid gap-2 md:grid-cols-2 xl:grid-cols-3'>
-            {filtered.map(renderCaseCard)}
+          /* INT-1492：平铺 = 紧凑行式列表 + 虚拟滚动（max-h-[400px]，只渲染可视窗口行） */
+          <div
+            ref={caseListRef}
+            role='table'
+            aria-label='关联用例列表'
+            data-testid='task-case-list'
+            className='max-h-[400px] overflow-y-auto rounded-lg border'
+            onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+          >
+            {/* 列头（sticky，列与行共用 CASE_ROW_GRID） */}
+            <div
+              role='row'
+              className={cn(
+                'bg-muted/60 text-muted-foreground sticky top-0 z-10 border-b text-xs font-medium backdrop-blur',
+                CASE_ROW_GRID,
+                'h-8'
+              )}
+            >
+              <div role='columnheader'>用例名称</div>
+              <div role='columnheader'>执行状态</div>
+              <div role='columnheader'>评估状态</div>
+              <div role='columnheader'>耗时</div>
+              <div role='columnheader'>轮次</div>
+              <div role='columnheader' className='text-right'>
+                操作
+              </div>
+            </div>
+            {/* 虚拟滚动占位：总高 = 命中条数 × 行高；渲染窗口整体 translateY */}
+            <div
+              style={{ height: filtered.length * CASE_ROW_HEIGHT, position: 'relative' }}
+              data-testid='task-case-list-spacer'
+            >
+              <div style={{ transform: `translateY(${windowStart * CASE_ROW_HEIGHT}px)` }}>
+                {visibleCases.map((c, index) =>
+                  renderCaseRow(c, `${windowStart + index}-${c.case_id}`)
+                )}
+              </div>
+            </div>
           </div>
         ) : (
-          <div className='flex flex-col gap-2'>
-            {Object.entries(view === 'group' ? groupGroups : tagGroups).map(([group, rows]) => (
-              <Collapsible key={group} className='rounded-lg border'>
-                <CollapsibleTrigger className='hover:bg-muted/40 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors'>
-                  {group}
-                  <Badge className='rounded-sm px-1 font-normal'>{rows.length}</Badge>
-                </CollapsibleTrigger>
-                <CollapsibleContent className='px-3 pb-2'>
-                  <div className='grid gap-2 md:grid-cols-2'>
-                    {rows.map(renderCaseCard)}
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-            ))}
+          /* 标签/分组态：分组卡内同样用紧凑行（基线组内 progress-item-small 口径），区高受控 */
+          <div
+            className='max-h-[400px] overflow-y-auto'
+            data-testid='task-case-grouped-list'
+          >
+            <div className='flex flex-col gap-2'>
+              {Object.entries(view === 'group' ? groupGroups : tagGroups).map(([group, rows]) => (
+                <Collapsible key={group} className='rounded-lg border'>
+                  <CollapsibleTrigger className='hover:bg-muted/40 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors'>
+                    {group}
+                    <Badge className='rounded-sm px-1 font-normal'>{rows.length}</Badge>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    {rows.map((c, index) =>
+                      renderCaseRow(c, `${group}-${index}-${c.case_id}`)
+                    )}
+                  </CollapsibleContent>
+                </Collapsible>
+              ))}
+            </div>
           </div>
         )}
       </CardContent>

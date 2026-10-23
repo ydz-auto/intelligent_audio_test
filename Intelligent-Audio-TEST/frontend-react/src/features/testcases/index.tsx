@@ -408,6 +408,9 @@ export function TestCasesPage({ view }: { view: TestCasesViewKey }) {
               isFiltered={isFiltered}
               groups={groups}
               tags={tags}
+              tagsError={tagsQuery.isError}
+              tagsLoading={tagsQuery.isLoading}
+              onRetryTags={() => void tagsQuery.refetch()}
               dimensions={allDimensions}
               categories={categories}
               tagCategories={tagCategories}

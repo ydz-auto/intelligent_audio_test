@@ -234,17 +234,26 @@ export async function exportEvaluationDimensions(
   return { format: 'json', rows: Array.isArray(dto) ? dto : [] }
 }
 
-/** 保存分类（新增/编辑；有 id 走 PUT /categories/{id}，无 id 走 POST；门槛 category_manage） */
+/**
+ * 保存分类（新增/编辑；有 id 走 PUT /categories/{id}，无 id 走 POST；门槛 category_manage）。
+ * 新增返回后端下发的真实分类 id（POST 201，data = { id }，evaluation_service
+ * `_category_commands_mixin.create_category`），供维度抽屉内联新建分类回填 category_id。
+ */
 export async function saveEvaluationCategory(
   input: Partial<EvaluationCategory>
-): Promise<{ success: boolean }> {
+): Promise<{ success: boolean; id: number | null }> {
   const body = toCategoryInputDto(input)
   if (input.id != null) {
     await request('PUT', `/evaluation/categories/${input.id}`, body)
-  } else {
-    await request('POST', '/evaluation/categories', body)
+    return { success: true, id: Number(input.id) }
   }
-  return { success: true }
+  const dto = await request<{ id?: number | string } | null>(
+    'POST',
+    '/evaluation/categories',
+    body
+  )
+  const id = dto?.id != null && Number.isFinite(Number(dto.id)) ? Number(dto.id) : null
+  return { success: true, id }
 }
 
 /** 删除分类（DELETE /evaluation/categories/{id}；门槛 category_manage） */

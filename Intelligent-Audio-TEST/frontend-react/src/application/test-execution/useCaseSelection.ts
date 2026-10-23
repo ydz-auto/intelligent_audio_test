@@ -7,10 +7,10 @@
 import { useMemo } from 'react'
 import { toast } from 'sonner'
 
-import { fetchCaseIdsByFilter } from '@/infrastructure/api/test-execution-api'
+import { fetchCaseIdsByFilter } from '@/infrastructure/api/testcases-ids-api'
 import { useCaseSelectionStore } from '@/infrastructure/stores/case-selection-store'
 import type { TestCase } from '@/domain/models/testCase'
-import type { TestCaseFilter } from '@/infrastructure/api/test-execution-api'
+import type { CaseSelectionFilter } from '@/domain/models/testExecution'
 
 export function useCaseSelection(list: TestCase[]) {
   const manualCaseIds = useCaseSelectionStore((s) => s.manualCaseIds)
@@ -22,14 +22,14 @@ export function useCaseSelection(list: TestCase[]) {
   const allVisibleSelected = list.length > 0 && list.every((c) => manualCaseIds.includes(c.id))
 
   /** 全选结果（POST /testcases/ids 全量圈定） */
-  const selectAllFiltered = async (filter: TestCaseFilter) => {
+  const selectAllFiltered = async (filter: CaseSelectionFilter) => {
     const { ids, total } = await fetchCaseIdsByFilter(filter)
     store.getState().selectMany(ids)
     toast.success(`已全选 ${total} 条用例`)
   }
 
   /** 反选（对称差） */
-  const invertSelection = async (filter: TestCaseFilter) => {
+  const invertSelection = async (filter: CaseSelectionFilter) => {
     const { ids } = await fetchCaseIdsByFilter(filter)
     store.getState().invertWith(ids)
     const invertedCount = ids.length - manualCaseIds.length

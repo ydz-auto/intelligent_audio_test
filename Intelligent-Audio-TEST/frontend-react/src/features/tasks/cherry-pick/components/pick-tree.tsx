@@ -240,7 +240,7 @@ function BranchRow({
         ) : (
           <span className='min-w-0 flex-1 truncate font-medium'>{branch.name}</span>
         )}
-        {/* §3.7.1 用例级：CaseIdBadge（点击复制）+ 算法徽章（§11-7 剩余元信息落地后补全） */}
+        {/* §3.7.1 用例级：CaseIdBadge（点击复制）+ 算法徽章（§11-7 元信息已随分支携带） */}
         {branch.level === 'case' && branch.caseId && <CaseIdBadge caseId={branch.caseId} />}
         {branch.level === 'case' && branch.algorithmType && (
           <Badge variant='secondary' className='shrink-0 font-mono text-[10px]'>

@@ -31,30 +31,33 @@ export const LOG_LEVEL_ROW_TINT: Record<string, string> = {
   CRITICAL: 'bg-rose-50/40 dark:bg-rose-950/20',
 }
 
+/** Select 选项（value/label 成对；直接作 base-ui Select 的 items，关闭态才能显示 label） */
+export type LogSelectOption = { value: string; label: string }
+
 /** 分类选项（后端 category 原值；Vue LogView logView.ts:119） */
-export const LOG_CATEGORY_OPTIONS = [
+export const LOG_CATEGORY_OPTIONS: LogSelectOption[] = [
   { value: 'all', label: '所有分类' },
   { value: 'system', label: '系统日志' },
   { value: 'test', label: '测试日志' },
   { value: 'error', label: '错误日志' },
-] as const
+]
 
 /** 模块选项（后端 module 原值；Vue logView.ts:120 TestType.API='api'/E2E='e2e'/device） */
-export const LOG_MODULE_OPTIONS = [
+export const LOG_MODULE_OPTIONS: LogSelectOption[] = [
   { value: 'all', label: '所有模块' },
   { value: 'api', label: 'API模块' },
   { value: 'e2e', label: 'E2E测试' },
   { value: 'device', label: '设备管理' },
-] as const
+]
 
 /** 标记筛选选项（后端 mark 原值；Vue logView.ts:121） */
-export const LOG_MARK_FILTER_OPTIONS = [
+export const LOG_MARK_FILTER_OPTIONS: LogSelectOption[] = [
   { value: 'all', label: '所有标记' },
   { value: 'yellow', label: '黄色标记' },
   { value: 'red', label: '红色标记' },
   { value: 'green', label: '绿色标记' },
   { value: 'blue', label: '蓝色标记' },
-] as const
+]
 
 /** 视图范围 Tabs（§4.1「全部/仅自己」，log:manage 显；仅自己=请求附 user_id） */
 export const LOG_SCOPE_OPTIONS = [
@@ -79,11 +82,11 @@ export const LOG_DEFAULT_PAGE_SIZE = 20
 export const LOG_SEARCH_DEBOUNCE_MS = 300
 
 /** 日志导出格式（§7.9 格式 Select；后端 LogExportRequest.format 取值 txt/json/csv/excel，界面只列三种） */
-export const LOG_EXPORT_FORMATS = [
+export const LOG_EXPORT_FORMATS: LogSelectOption[] = [
   { value: 'txt', label: '文本' },
   { value: 'json', label: 'JSON' },
   { value: 'csv', label: 'CSV' },
-] as const
+]
 
 /** 实时监控轮询间隔档位（§7.11；2s/5s/10s/30s/60s） */
 export const REALTIME_POLL_INTERVALS = [

@@ -1,7 +1,8 @@
 /**
  * 音频上传任务 store（infrastructure 层；16_设备域.md §5.4 上传进度卡数据源）。
- * 多上传任务入队 + 暂停/继续/取消/优先级；进度全本地计算（服务端 GET /audios/upload/progress
- * 前端未接，§11-18 缺口）；localStorage 'audioUploadTasks' 持久化，刷新自动恢复（§5.4）。
+ * 多上传任务入队 + 暂停/继续/取消/优先级；进度/速率/预计剩余全部来自真实上传链路
+ * （audio-upload-api 分片回调 → updateTask，INT-1512 移除本地模拟推进）；
+ * localStorage 'audioUploadTasks' 持久化，刷新自动恢复（§5.4）。
  */
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
@@ -18,7 +19,7 @@ export interface AudioUploadTask {
   id: string
   /** 任务名（示例「批量导入 {n} 个文件」） */
   name: string
-  /** 总体进度 0-100 */
+  /** 总体进度 0-100（真实上传链路回调驱动） */
   progress: number
   paused: boolean
   /** 任务优先级（1 高 / 2 中 / 3 低） */
@@ -26,26 +27,22 @@ export interface AudioUploadTask {
   files: UploadFileItem[]
   /** 当前文件行（含导入速度/预计剩余时间） */
   currentFile: UploadFileItem | null
-  /** 导入速度（MB/s） */
+  /** 实测导入速度（MB/s；按已上传字节/耗时计算） */
   speed: number
-  /** 预计剩余时间（秒） */
+  /** 预计剩余时间（秒；按剩余字节/实测速度推算） */
   etaSeconds: number
   createdAt: string
-  /** 真实上传任务（INT-714：由 audio-upload-api 驱动进度；进度卡不自动 advance） */
-  real?: boolean
 }
 
 type AudioUploadState = {
   tasks: AudioUploadTask[]
-  /** 入队新上传任务（upload-dialog 提交后调用） */
+  /** 入队新上传任务（upload-dialog 提交后调用；files 带真实文件大小） */
   enqueueTask: (input: {
     name: string
-    fileNames: string[]
-    real?: boolean
+    files: Array<{ name: string; size: number }>
   }) => string
-  /** 真实上传任务进度更新（INT-714；audio-upload-api 驱动） */
+  /** 真实上传任务进度更新（audio-upload-api 驱动进度） */
   updateTask: (id: string, patch: Partial<AudioUploadTask>) => void
-  advanceProgress: (id: string) => void
   setPaused: (id: string, paused: boolean) => void
   cancelTask: (id: string) => void
   setPriority: (id: string, priority: 1 | 2 | 3) => void
@@ -66,26 +63,23 @@ export const useAudioUploadStore = create<AudioUploadState>()(
           return match ? Math.max(max, Number(match[1])) : max
         }, 0) + 1
         const id = `upload-${nextSeq}`
+        const files: UploadFileItem[] = input.files.map((file, index) => ({
+          name: file.name,
+          size: file.size,
+          status: index === 0 ? 'uploading' : 'pending',
+        }))
         const task: AudioUploadTask = {
           id,
           name: input.name,
           progress: 2,
           paused: false,
           priority: 2,
-          files: input.fileNames.map((name, index) => ({
-            name,
-            size: 1_024_000 + index * 512_000,
-            status: index === 0 ? 'uploading' : 'pending',
-          })),
-          currentFile: {
-            name: input.fileNames[0] ?? '',
-            size: 1_024_000,
-            status: 'uploading',
-          },
-          speed: 6.4,
-          etaSeconds: 42,
+          files,
+          currentFile: files[0] ?? null,
+          // 速率/剩余时间由首片上传完成后的真实回调回填（不再预置估算值）
+          speed: 0,
+          etaSeconds: 0,
           createdAt: new Date().toISOString(),
-          real: input.real ?? false,
         }
         set({ tasks: [task, ...get().tasks] })
         return id
@@ -96,36 +90,6 @@ export const useAudioUploadStore = create<AudioUploadState>()(
           tasks: get().tasks.map((task) =>
             task.id === id ? { ...task, ...patch } : task
           ),
-        })
-      },
-
-      advanceProgress: (id) => {
-        set({
-          tasks: get().tasks.map((task) => {
-            // 真实上传任务由 audio-upload-api 驱动进度，本地模拟不再推进（INT-714）
-            if (task.id !== id || task.paused || task.progress >= 100 || task.real) return task
-            const next = Math.min(task.progress + 3, 100)
-            const total = task.files.length
-            const activeIndex = Math.min(
-              Math.floor((next / 100) * total),
-              total - 1
-            )
-            return {
-              ...task,
-              progress: next,
-              speed: Number((task.speed + (Math.random() - 0.5) * 0.8).toFixed(1)),
-              etaSeconds: Math.max(0, task.etaSeconds - 2),
-              files: task.files.map((file, index) => {
-                if (index < activeIndex) return { ...file, status: 'success' }
-                if (index === activeIndex) return { ...file, status: 'uploading' }
-                return file
-              }),
-              currentFile: {
-                ...task.files[activeIndex],
-                status: 'uploading',
-              },
-            }
-          }),
         })
       },
 
@@ -193,6 +157,12 @@ export const useAudioUploadStore = create<AudioUploadState>()(
     {
       name: 'audioUploadTasks',
       storage: createJSONStorage(() => localStorage),
+      // 刷新后未完成任务的上传链路已中断、后端也无续传接口，旧百分比不再变化；
+      // 只恢复已完成任务，避免恢复出一张永久停在中途的进度卡（INT-1512：不用假推进补齐）。
+      onRehydrateStorage: () => (state) => {
+        if (!state) return
+        state.tasks = state.tasks.filter((task) => task.progress >= 100)
+      },
     }
   )
 )

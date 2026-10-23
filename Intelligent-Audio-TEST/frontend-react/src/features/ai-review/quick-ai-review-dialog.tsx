@@ -78,6 +78,9 @@ export function QuickAiReviewDialog({
   const [error, setError] = useState<string | null>(null)
   /** 本次发起的记录 id（执行中按它从历史定位推进状态） */
   const [recordId, setRecordId] = useState<number | null>(null)
+  /** INT-1545：本次发起记录的归属任务 id（容器任务下结果归属源任务，后端把
+   * ai_reviews 写在该任务下；轮询历史按它查，不能用页面 taskId——否则永远查不到） */
+  const [recordTaskId, setRecordTaskId] = useState<number | null>(null)
 
   // 弹窗关闭（忽略/待查）后重置状态机
   useEffect(() => {
@@ -86,16 +89,20 @@ export function QuickAiReviewDialog({
       setRecord(null)
       setError(null)
       setRecordId(null)
+      setRecordTaskId(null)
     }
   }, [open])
 
   // 真实后端异步执行：发起返回 pending/running → 每 3s 轮询历史推进到 completed/failed
+  // INT-1545：轮询键用发起响应 item 的 task_id（记录归属任务）；容器任务下页面 taskId
+  // 是该合并任务、结果归属源任务，按页面 taskId 查历史恒空 → 永久「执行中」
   useEffect(() => {
     if (!recordId || !open) return
+    const historyTaskId = recordTaskId ?? taskId
     const timer = window.setInterval(() => {
       void (async () => {
         try {
-          const history = await fetchAiReviewHistory(taskId)
+          const history = await fetchAiReviewHistory(historyTaskId)
           const current = history.find((r) => r.id === recordId)
           if (!current) return
           if (current.status === 'completed') {
@@ -118,7 +125,7 @@ export function QuickAiReviewDialog({
       })()
     }, 3000)
     return () => window.clearInterval(timer)
-  }, [recordId, open, taskId])
+  }, [recordId, recordTaskId, open, taskId])
 
   const handleLaunch = async () => {
     setPhase('running')
@@ -129,6 +136,8 @@ export function QuickAiReviewDialog({
         dimensionIds: dimensionIds?.length ? dimensionIds : undefined,
       })
       setRecord(created)
+      // 记录归属任务：优先取后端返回的 item.task_id（容器任务下 = 结果所属源任务）
+      setRecordTaskId(created.taskId || results[0]?.sourceTaskId || taskId)
       if (created.status === 'completed') {
         setPhase('completed')
       } else if (created.status === 'failed' || created.status === 'canceled') {

@@ -342,7 +342,7 @@ export function ReportViewPage() {
         onOpenChange={setExportOpen}
         scope={report.name}
         count={1}
-        onExport={(format) => void reportActions.exportReport([report.id], format)}
+        onExport={(format) => reportActions.exportReport([report.id], format)}
       />
       <PublishReportDialog
         open={publishOpen}

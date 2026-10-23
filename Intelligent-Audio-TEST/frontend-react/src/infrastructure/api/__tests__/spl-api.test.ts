@@ -2,6 +2,7 @@
  * spl-api 真实接口单测（接线卡 INT-649）：
  * 列表/统计/播放设备引用/校准历史 URL 与 per_page 契约、snake→camel 映射、
  * 创建/编辑/删除/校准请求体契约（顶层 snake_case，calibration_data.points 实机 camelCase）。
+ * INT-1502 补测试音：播放设备 device_unique_id 查询、/spl/test-tone 与 /stop 请求体。
  * fetch 走统一 client（INT-605 基座）。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -12,9 +13,12 @@ import {
   createSplMapping,
   deleteSplMapping,
   fetchPlaybackDeviceRefs,
+  fetchPlaybackDeviceUniqueId,
   fetchSplHistory,
   fetchSplMappings,
   fetchSplStats,
+  playSplTestTone,
+  stopSplTestTone,
   updateSplMapping,
 } from '@/infrastructure/api/spl-api'
 import { authTokenStore } from '@/infrastructure/storage/auth-token'
@@ -297,6 +301,66 @@ describe('spl-api 真实接口（INT-649）', () => {
       expect(url).toBe(`${API_BASE_URL}/spl/5/calibrate`)
       expect(init.method).toBe('POST')
       expect(init.body).toBeUndefined()
+    })
+  })
+
+  describe('测试音（INT-1502；§6.5）', () => {
+    it('fetchPlaybackDeviceUniqueId GET /playback-devices/{id} 取 device_unique_id', async () => {
+      queueResponses(
+        jsonResponse({
+          success: true,
+          code: 0,
+          data: { id: 3, name: '音箱0°', model: 'RME Fireface 802', device_unique_id: 'speaker-0' },
+        })
+      )
+      const uniqueId = await fetchPlaybackDeviceUniqueId(3)
+      expect(uniqueId).toBe('speaker-0')
+      const [url, init] = lastCall()
+      expect(url).toBe(`${API_BASE_URL}/playback-devices/3`)
+      expect(init.method).toBe('GET')
+    })
+
+    it('playSplTestTone POST /spl/test-tone 提交 snake_case 请求体', async () => {
+      queueResponses(
+        jsonResponse({
+          success: true,
+          code: 0,
+          message: '测试音频已播放',
+          data: { devices: [], duration: 5 },
+        })
+      )
+      await playSplTestTone({
+        gainValue: 50 + -10 / 0.24,
+        gainOffset: -10,
+        targetSpl: 55,
+        uniqueId: 'speaker-0',
+      })
+      const [url, init] = lastCall()
+      expect(url).toBe(`${API_BASE_URL}/spl/test-tone`)
+      expect(init.method).toBe('POST')
+      const body = JSON.parse(String(init.body)) as Record<string, unknown>
+      expect(body).toMatchObject({
+        gain_value: 50 + -10 / 0.24,
+        gain_offset: -10,
+        target_spl: 55,
+        unique_id: 'speaker-0',
+      })
+    })
+
+    it('stopSplTestTone POST /spl/test-tone/stop 提交 unique_id', async () => {
+      queueResponses(
+        jsonResponse({
+          success: true,
+          code: 0,
+          message: '测试音已停止',
+          data: { stopped_count: 1 },
+        })
+      )
+      await stopSplTestTone('speaker-0')
+      const [url, init] = lastCall()
+      expect(url).toBe(`${API_BASE_URL}/spl/test-tone/stop`)
+      expect(init.method).toBe('POST')
+      expect(JSON.parse(String(init.body))).toEqual({ unique_id: 'speaker-0' })
     })
   })
 })

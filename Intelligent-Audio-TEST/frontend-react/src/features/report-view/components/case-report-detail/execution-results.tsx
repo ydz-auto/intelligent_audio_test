@@ -517,6 +517,10 @@ export function ExecutionResults({
                               play_order: audio.play_order,
                               noise_spl: audio.noise_spl,
                               device_name: audio.device_name,
+                              // INT-1547 P2-2：透传真实地址/时长（相对路径由 Modal 经
+                              // GET /audios/{id}/stream 换预签名地址后播放）
+                              url: audio.url,
+                              duration: audio.duration,
                             })
                           }
                         >

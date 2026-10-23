@@ -1,7 +1,8 @@
 /**
  * 用例层组织列表测试（18_挑选合并交互重设计.md §3.8.3 用例层组织，INT-1125 定稿 / INT-1127 实施）。
- * 设备/结果类型视图用例层与用例视图顶层共用：分组视图/标签视图 + 平铺/交叉，
- * 候选未返分组/标签字段 → 全落「未分组」/「未设置标签」兜底桶；组织控件可视图级单渲（showControls）。
+ * 设备/结果类型视图用例层与用例视图顶层共用：分组视图/标签视图 + 平铺/交叉；
+ * INT-1497 §11-7：分支携真实分组/标签/时长 → 按真名聚合；字段缺省才落「未分组」/「未设置标签」兜底桶；
+ * 组织控件可视图级单渲（showControls）。
  */
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
@@ -44,6 +45,40 @@ const CASE_BRANCHES: PickTreeBranch[] = [
   },
 ]
 
+/** §11-7 真名分支：c1/c2 同组「拒识用例组」，c1 双标签、c2 无标签，c3 无分组 */
+const REAL_BRANCHES: PickTreeBranch[] = [
+  {
+    ...CASE_BRANCHES[0],
+    key: 'pcase:c1',
+    tags: ['拒识', '多轮拒识'],
+    groupId: 'g1',
+    groupName: '拒识用例组',
+    totalDuration: 12.09,
+    rounds: 3,
+  },
+  {
+    ...CASE_BRANCHES[1],
+    key: 'pcase:c2',
+    tags: [],
+    groupId: 'g1',
+    groupName: '拒识用例组',
+    totalDuration: null,
+    rounds: null,
+  },
+  {
+    ...CASE_BRANCHES[1],
+    key: 'pcase:c3',
+    name: '用例003',
+    caseId: 'c3',
+    tags: ['静默拒识'],
+    groupId: null,
+    groupName: null,
+    totalDuration: 3.5,
+    rounds: 2,
+    children: [],
+  },
+]
+
 function setup(
   props: Partial<Parameters<typeof PickCaseOrgList>[0]> = {}
 ) {
@@ -77,9 +112,27 @@ describe('PickCaseOrgList（§3.8.3 用例层组织，INT-1125）', () => {
     expect(screen.getAllByText('2 条').length).toBeGreaterThan(0)
   })
 
-  it('标签视图 → 未设置标签兜底桶（候选无标签字段，§11-7 落地前）', () => {
+  it('标签视图 → 未设置标签兜底桶（分支缺省标签字段）', () => {
     setup({ org: 'tag' })
     expect(screen.getByText('未设置标签')).toBeInTheDocument()
+  })
+
+  it('分组视图按真实分组名聚合（§11-7）：真名桶 + 缺省行落「未分组」，卡显真实标签/时长/轮次', () => {
+    setup({ branches: REAL_BRANCHES })
+    expect(screen.getByText('拒识用例组')).toBeInTheDocument()
+    expect(screen.getByText('未分组')).toBeInTheDocument() // 仅 c3（groupId=null）落兜底桶
+    expect(screen.getByText('用例001')).toBeInTheDocument()
+    expect(screen.getAllByText('拒识').length).toBeGreaterThan(0) // 用例卡标签行真名
+    expect(screen.getByText('12s')).toBeInTheDocument() // duration 12.09 → 时长徽章
+    expect(screen.getByText('3 轮')).toBeInTheDocument() // rounds 徽章
+  })
+
+  it('标签视图按真实标签聚合（§11-7）：多标签用例多次呈现，无标签用例落「未设置标签」', () => {
+    setup({ branches: REAL_BRANCHES, org: 'tag' })
+    expect(screen.getAllByText('多轮拒识').length).toBeGreaterThan(0) // 标签子组头 + 用例卡标签
+    expect(screen.getAllByText('静默拒识').length).toBeGreaterThan(0)
+    expect(screen.getByText('未设置标签')).toBeInTheDocument() // c2 tags=[]
+    expect(screen.queryByText('未分组')).not.toBeInTheDocument() // 标签视图不出现分组兜底桶
   })
 
   it('分组视图 + 按标签交叉：未设置标签子组头', () => {

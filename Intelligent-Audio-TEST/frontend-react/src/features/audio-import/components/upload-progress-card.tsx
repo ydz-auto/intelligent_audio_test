@@ -1,9 +1,9 @@
 /**
  * 上传进度卡（§5.4 UploadProgressCard 平移换壳，newAPI Card/Progress/Button + sonner）。
  * 有活跃上传任务时固定于内容区顶部；多任务入队 + 暂停/继续/取消/优先级（audio-upload-store）；
- * 进度全本地计算（服务端 progress 未接，§11-18）。状态文案分档 §5.4 progressStatusText。
+ * 进度取自真实分片上传链路回调（INT-1512：不再本地定时推进，速率/预计剩余为实测值）。
+ * 状态文案分档 §5.4 progressStatusText。
  */
-import { useEffect } from 'react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -29,10 +29,8 @@ import {
 
 function progressStatusText(progress: number): string {
   if (progress <= 2) return '准备中...'
-  if (progress <= 15) return '正在校验文件 (MD5)...'
-  if (progress <= 20) return '正在同步上传状态...'
-  if (progress < 95) return '正在上传文件...'
-  if (progress < 100) return '正在完成导入...'
+  if (progress < 90) return '正在上传文件...'
+  if (progress < 100) return '正在合并文件...'
   return '导入完成'
 }
 
@@ -106,16 +104,20 @@ function UploadTaskCard({ task }: { task: AudioUploadTask }) {
         </span>
       </div>
 
-      {/* 当前文件行（导入速度/预计剩余时间） */}
+      {/* 当前文件行（实测导入速度/预计剩余时间；速率未算出前不显示估算值） */}
       {task.currentFile && !done && (
         <div className='bg-muted/40 mt-2 flex flex-wrap items-center gap-2 rounded-md px-2.5 py-1.5 text-xs'>
           <span className='min-w-0 flex-1 truncate'>{task.currentFile.name}</span>
-          <span className='text-muted-foreground font-mono tabular-nums'>
-            {task.speed.toFixed(1)} MB/s
-          </span>
-          <span className='text-muted-foreground font-mono tabular-nums'>
-            预计剩余 {task.etaSeconds}s
-          </span>
+          {task.speed > 0 && (
+            <span className='text-muted-foreground font-mono tabular-nums'>
+              {task.speed.toFixed(1)} MB/s
+            </span>
+          )}
+          {task.speed > 0 && (
+            <span className='text-muted-foreground font-mono tabular-nums'>
+              预计剩余 {task.etaSeconds}s
+            </span>
+          )}
         </div>
       )}
 
@@ -208,18 +210,6 @@ function UploadTaskCard({ task }: { task: AudioUploadTask }) {
 /** 上传进度卡容器（消费 audio-upload-store；有活跃任务时显，§5.4） */
 export function UploadProgressCard() {
   const tasks = useAudioUploadStore((s) => s.tasks)
-  const advanceProgress = useAudioUploadStore((s) => s.advanceProgress)
-
-  // 本地进度推进（mock 演示；接线后服务端进度，§11-18）
-  useEffect(() => {
-    if (tasks.length === 0) return
-    const timer = window.setInterval(() => {
-      for (const task of tasks) {
-        if (!task.paused && task.progress < 100) advanceProgress(task.id)
-      }
-    }, 600)
-    return () => window.clearInterval(timer)
-  }, [tasks, advanceProgress])
 
   if (tasks.length === 0) return null
 

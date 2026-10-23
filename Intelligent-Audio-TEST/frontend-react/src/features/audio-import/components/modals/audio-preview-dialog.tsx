@@ -6,11 +6,16 @@
  * - 实验室播放 = POST /audios/{id}/preview（BatchPlaybackRequest：
  *   playback_device_id | playback_device_ids | device_unique_ids + spl + offset）→ 后端扬声器播放；
  *   停止 = POST /audios/{id}/stop-preview。
+ * INT-1512：实验室播放的播放设备下拉改真实 GET /playback-devices（与上传选项同一缓存），
+ *   默认首台真实设备、无设备时留空占位且不允许提交，不再用静态假设备；
+ *   播放模式下拉回显中文选项名（原来显示 raw value frontend/laboratory）。
  */
 import { Play, Square } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
+import { usePlaybackDevices } from '@/application/audio/usePlaybackDevices'
+import { DEFAULT_SPL } from '@/features/audio-import/constants'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -35,10 +40,6 @@ import {
   stopPreview,
   stream,
 } from '@/infrastructure/api/audios-api'
-import {
-  MOCK_DEFAULT_SPL,
-  MOCK_PLAYBACK_DEVICES,
-} from '@/infrastructure/mock/audio-mock'
 import { formatDuration } from '@/features/audio-import/lib/format'
 
 export type AudioPreviewDialogProps = {
@@ -54,11 +55,28 @@ export function AudioPreviewDialog(props: AudioPreviewDialogProps) {
   const [playing, setPlaying] = useState(false)
   const [pending, setPending] = useState(false)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
-  const [playbackDeviceId, setPlaybackDeviceId] = useState('1')
-  const [spl, setSpl] = useState(String(MOCK_DEFAULT_SPL))
+  // 播放设备取真实 GET /playback-devices（与上传选项弹窗同一 React Query 缓存）
+  const [playbackDeviceId, setPlaybackDeviceId] = useState('')
+  const [spl, setSpl] = useState(String(DEFAULT_SPL))
   const [offset, setOffset] = useState('0')
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const audio = props.audio
+  const playbackDevicesQuery = usePlaybackDevices()
+  const playbackDevices = playbackDevicesQuery.data ?? []
+  const selectedPlaybackDevice = playbackDevices.find(
+    (device) => String(device.id) === playbackDeviceId
+  )
+
+  // 默认播放设备：首台真实设备；设备列表变化后原选中项失效则回退（无设备时保持空占位，不提交假 ID）
+  useEffect(() => {
+    if (!props.open) return
+    const stillValid = playbackDevices.some(
+      (device) => String(device.id) === playbackDeviceId
+    )
+    if (stillValid) return
+    const first = playbackDevices[0]
+    setPlaybackDeviceId(first ? String(first.id) : '')
+  }, [props.open, playbackDevices, playbackDeviceId])
 
   // 打开弹窗复位（重复打开/切换音频不残留上一状态）
   useEffect(() => {
@@ -92,6 +110,10 @@ export function AudioPreviewDialog(props: AudioPreviewDialogProps) {
 
   const handlePlay = async () => {
     if (!audio || pending) return
+    if (playbackMode === 'laboratory' && !playbackDeviceId) {
+      toast.error('请选择播放设备')
+      return
+    }
     setPending(true)
     try {
       if (playbackMode === 'frontend') {
@@ -100,7 +122,7 @@ export function AudioPreviewDialog(props: AudioPreviewDialogProps) {
         setPlaying(true)
       } else {
         const result = await preview(audio.id, {
-          playbackDeviceId: playbackDeviceId ? Number(playbackDeviceId) : null,
+          playbackDeviceId: Number(playbackDeviceId),
           spl: spl ? Number(spl) : null,
           offset: offset ? Number(offset) : 0,
         })
@@ -232,7 +254,9 @@ export function AudioPreviewDialog(props: AudioPreviewDialogProps) {
                 <span className='text-muted-foreground text-xs'>播放模式</span>
                 <Select value={playbackMode} onValueChange={handleModeChange}>
                   <SelectTrigger size='sm' className='w-44' aria-label='播放模式'>
-                    <SelectValue />
+                    <SelectValue>
+                      {playbackMode === 'laboratory' ? '实验室播放' : '浏览器播放'}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value='frontend'>浏览器播放</SelectItem>
@@ -258,7 +282,7 @@ export function AudioPreviewDialog(props: AudioPreviewDialogProps) {
                     <Select
                       value={playbackDeviceId}
                       onValueChange={(value) =>
-                        setPlaybackDeviceId(value ?? '1')
+                        setPlaybackDeviceId(value ?? '')
                       }
                     >
                       <SelectTrigger
@@ -266,12 +290,25 @@ export function AudioPreviewDialog(props: AudioPreviewDialogProps) {
                         size='sm'
                         className='w-44'
                       >
-                        <SelectValue />
+                        <SelectValue
+                          placeholder={
+                            playbackDevicesQuery.isLoading
+                              ? '加载中…'
+                              : playbackDevices.length === 0
+                                ? '暂无可用播放设备'
+                                : '选择播放设备'
+                          }
+                        >
+                          {selectedPlaybackDevice
+                            ? `${selectedPlaybackDevice.name}${selectedPlaybackDevice.model ? `（${selectedPlaybackDevice.model}）` : ''}`
+                            : ''}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
-                        {MOCK_PLAYBACK_DEVICES.map((device) => (
+                        {playbackDevices.map((device) => (
                           <SelectItem key={device.id} value={String(device.id)}>
-                            {device.name}（{device.model}）
+                            {device.name}
+                            {device.model ? `（${device.model}）` : ''}
                           </SelectItem>
                         ))}
                       </SelectContent>

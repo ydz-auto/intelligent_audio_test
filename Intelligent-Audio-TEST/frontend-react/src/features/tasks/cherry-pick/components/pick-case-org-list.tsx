@@ -3,7 +3,8 @@
  * 分组视图/标签视图 Tabs + 平铺/交叉子视图 + 用例卡（PickCaseCard）+ 子组头（CaseSubGroupHeader）——
  * 供用例视图顶层与设备/结果类型视图用例层（每 result_type/设备 节点下）共用；
  * 复用 case-sub-view-toggle.tsx + sub-view-aggregation.ts 同款语义。
- * 候选未返 tags/groupId（§11-7）→ 用例层全落「未分组」/「未设置标签」兜底桶，组织控件常显。
+ * INT-1497 §11-7：候选已返用例域真名 tags/group_id/group_name/duration/rounds，
+ * 用例层按真实分组/标签聚合，仅在字段缺省（null/空）时落「未分组」/「未设置标签」兜底桶。
  */
 import { useMemo, useState } from 'react'
 
@@ -29,13 +30,14 @@ import { CaseSubGroupHeader } from '@/features/testcases/components/case-sub-gro
 import { PickCaseCard } from '@/features/tasks/cherry-pick/components/pick-case-card'
 import { PickTree } from '@/features/tasks/cherry-pick/components/pick-tree'
 
-/** 用例组织聚合入参（候选未返分组/标签字段 → 空集/null，全落兜底桶） */
+/** 用例组织聚合入参（用例级分支携带 §11-7 真名；字段缺省才落兜底桶） */
 interface CaseBranchItem extends SubViewCaseItem {
   branch: PickTreeBranch
   tags: string[]
-  groupId: null
-  groupName: null
-  totalDuration: null
+  groupId: string | null
+  groupName: string | null
+  totalDuration: number | null
+  rounds: number | null
 }
 
 /** 组织控件（分组视图/标签视图 + 平铺/交叉子视图）——设备/结果类型视图在视图级渲染一次 */
@@ -74,9 +76,6 @@ export function PickCaseOrgControls({
         onValueChange={onSubViewChange}
         options={org === 'group' ? GROUP_SUB_VIEW_OPTIONS : TAG_SUB_VIEW_OPTIONS}
       />
-      <span className='text-muted-foreground/70 ml-auto text-[11px]'>
-        候选未返分组/标签字段，按「未分组」/「未设置标签」组织（§11-7）
-      </span>
     </div>
   )
 }
@@ -130,15 +129,16 @@ export function PickCaseOrgList({
     () =>
       branches.map((b) => ({
         branch: b,
-        tags: [],
-        groupId: null,
-        groupName: null,
-        totalDuration: null,
+        tags: b.tags ?? [],
+        groupId: b.groupId ?? null,
+        groupName: b.groupName ?? null,
+        totalDuration: b.totalDuration ?? null,
+        rounds: b.rounds ?? null,
       })),
     [branches]
   )
 
-  /** 组织层（分组视图=按用例分组聚合，标签视图=按标签聚合；候选无分组/标签字段 → 单一兜底桶） */
+  /** 组织层（分组视图=按用例分组聚合，标签视图=按标签聚合；字段缺省才落兜底桶） */
   const orgGroups = useMemo(() => {
     if (org === 'group') return groupCasesByCaseGroup(caseItems)
     return groupCasesByTag(caseItems, [])
@@ -160,6 +160,9 @@ export function PickCaseOrgList({
         name={b.name}
         caseId={b.caseId}
         algorithmType={b.algorithmType}
+        tags={b.tags}
+        totalDuration={b.totalDuration}
+        rounds={b.rounds}
         count={b.count}
         state={getBranchSelectionState(b, selectedIds)}
         onToggle={(select) => onToggleBranch(b, select)}

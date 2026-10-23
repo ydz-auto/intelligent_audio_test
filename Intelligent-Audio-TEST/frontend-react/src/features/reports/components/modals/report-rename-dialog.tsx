@@ -2,7 +2,7 @@
  * 报告重命名 / 描述编辑 Dialog（规范 §5.5，report:update）：
  * 名称*（Input）+ 描述（Textarea）→ PUT /reports/{id}（name/description）。
  */
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -38,13 +38,17 @@ export function ReportRenameDialog({
   const [description, setDescription] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  const handleOpenChange = (next: boolean) => {
-    if (next && report) {
-      setName(report.name)
-      setDescription(report.description ?? '')
+  // INT-1547 P2-1：打开即回填当前名称/描述。父组件点「编辑」直接置 open=true（不经过
+  // onOpenChange），只在 onOpenChange 里初始化会留下空表单，保存时把名称整体覆盖为空。
+  // 仅在打开的那一次回填：避免打开的弹窗因外部数据刷新重置，冲掉正在输入的草稿。
+  const wasOpenRef = useRef(false)
+  useEffect(() => {
+    if (open && !wasOpenRef.current) {
+      setName(report?.name ?? '')
+      setDescription(report?.description ?? '')
     }
-    onOpenChange(next)
-  }
+    wasOpenRef.current = open
+  }, [open, report])
 
   const handleSubmit = async () => {
     if (!report || !name.trim()) return
@@ -58,7 +62,7 @@ export function ReportRenameDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='sm:max-w-lg'>
         <DialogHeader>
           <DialogTitle>编辑报告</DialogTitle>

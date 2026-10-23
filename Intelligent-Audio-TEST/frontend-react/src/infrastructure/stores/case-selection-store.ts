@@ -4,7 +4,7 @@
  * （用例集属敏感流程态，不进 URL 防超长）。
  */
 import { create } from 'zustand'
-import type { TestCaseFilter } from '@/infrastructure/api/test-execution-api'
+import type { CaseSelectionFilter } from '@/domain/models/testExecution'
 
 type CaseSelectionState = {
   /** 手动勾选（含全选结果/反选落点）的用例 id 集 */
@@ -14,12 +14,14 @@ type CaseSelectionState = {
   /** 反选补齐：手动勾选 a 条 · 反选补齐 b 条（汇总行口径透明） */
   invertAdded: string[]
   /**
-   * 当前筛选条件（关键字/分组/标签/评估维度/算法；INT-646 代码审计 P2——
-   * filter-all 圈定按该筛选而非仅算法维度；StepCases 持续同步，
-   * launch 时随启动流程传入 createTask）。
+   * 当前筛选条件（关键字/分组名/标签/评估维度/算法）。INT-646 代码审计 P2 要求
+   * filter-all 圈定按该筛选而非仅算法维度；INT-1544 由 StepCases 随页面筛选持续
+   * 同步（组件卸载后仍保留到启动），launch 时随启动流程传入 createTask。
    */
-  filter: TestCaseFilter
-  setFilter: (filter: TestCaseFilter) => void
+  filter: CaseSelectionFilter
+  /** 当前筛选条件下的用例总数（步骤一列表 total，随筛选同步；启动弹窗摘要按此显数） */
+  filterAllTotal: number
+  setFilter: (filter: CaseSelectionFilter, filteredTotal?: number) => void
   toggleCase: (id: string) => void
   /** 正选当前页/全量圈定（POST /testcases/ids 全量 id 集落点） */
   selectMany: (ids: string[]) => void
@@ -42,7 +44,12 @@ export const useCaseSelectionStore = create<CaseSelectionState>((set) => ({
   filterAllMode: true,
   invertAdded: [],
   filter: {},
-  setFilter: (filter) => set({ filter }),
+  filterAllTotal: 0,
+  setFilter: (filter, filteredTotal) =>
+    set((s) => ({
+      filter,
+      filterAllTotal: filteredTotal ?? s.filterAllTotal,
+    })),
 
   toggleCase: (id) =>
     set((s) => ({
@@ -90,7 +97,9 @@ export const useCaseSelectionStore = create<CaseSelectionState>((set) => ({
     }),
 
   clearSelection: () =>
-    set({ manualCaseIds: [], invertAdded: [], filterAllMode: true, filter: {} }),
+    // INT-1544：只清选择态，不清筛选条件——筛选是步骤一页面态，由 StepCases 同步维护；
+    // 在「清空选择」里一并清掉会让界面仍是「全部 1 条」而 filter-all 圈定回退全库
+    set({ manualCaseIds: [], invertAdded: [], filterAllMode: true }),
 
   materializeAll: (allIds) =>
     set({ manualCaseIds: allIds, invertAdded: [], filterAllMode: false }),

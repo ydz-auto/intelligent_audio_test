@@ -3,6 +3,8 @@
  * 按分类聚合卡（Collapsible 组头：分类 icon + 组名 + 计数 Badge + 描述 + 组内全选
  * Checkbox + 「添加维度」钮 + 分类行操作「编辑分类/删除分类」ghost 钮）。
  * 分类删除前拦截：分类下含维度时删除钮禁用 + Tooltip；组内嵌同款维度表格。
+ * 空分类（维度已删光）仍渲染分组卡，否则「删除分类」入口随之消失、分类永远删不掉
+ * （INT-1550）；可删除判定用该分类不受筛选影响的维度总数，避免筛选后误判为空分类。
  */
 import { ChevronDown, Folder, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
@@ -23,7 +25,11 @@ import { cn } from '@/lib/utils'
 export interface DimensionGroup {
   key: string
   category: EvaluationCategory | null
+  /** 当前筛选口径下的组内维度（空分类分组为 []） */
   items: HierarchicalDimension[]
+  /** 该分类下的维度总数（不受筛选影响；分类「可删除」判定必须用总数——
+   *  否则筛掉维度后会把有维度的分类误判为空分类，INT-1550） */
+  totalCount: number
 }
 
 export function GroupedDimensionList({
@@ -92,7 +98,7 @@ export function GroupedDimensionList({
           group.items.length > 0 &&
           group.items.every((item) => selectedIds.has(item.id))
         const canDeleteCategory =
-          !!group.category && group.items.length === 0
+          !!group.category && group.totalCount === 0
 
         return (
           <div
@@ -139,7 +145,9 @@ export function GroupedDimensionList({
                   {group.category?.name ?? '未分类'}
                 </span>
                 <span className='bg-muted text-muted-foreground shrink-0 rounded-full px-1.5 text-xs tabular-nums'>
-                  {group.items.length}
+                  {group.items.length === group.totalCount
+                    ? group.totalCount
+                    : `${group.items.length}/${group.totalCount}`}
                 </span>
                 {group.category?.description && (
                   <span className='text-muted-foreground hidden truncate text-xs sm:inline'>
@@ -217,7 +225,7 @@ export function GroupedDimensionList({
                       />
                       <TooltipContent>
                         {!canDeleteCategory
-                          ? `该分类下还有 ${group.items.length} 个维度，请先迁移或删除维度`
+                          ? `该分类下还有 ${group.totalCount} 个维度，请先迁移或删除维度`
                           : !canManage
                             ? '无 evaluation:category_manage 权限'
                             : '删除分类'}
@@ -228,31 +236,39 @@ export function GroupedDimensionList({
               </div>
             </div>
 
-            {/* 组内容（组内嵌同款表格） */}
+            {/* 组内容（组内嵌同款表格；空分类也保留分组，删除入口才可达——INT-1550） */}
             {!collapsed && (
               <div className='p-3'>
-                <DimensionTable
-                  items={group.items}
-                  selectedIds={selectedIds}
-                  onToggleSelection={onToggleSelection}
-                  showHeaderCheckbox={false}
-                  categories={group.category ? [group.category] : []}
-                  canManage={canManage}
-                  canRead={canRead}
-                  canMoveUp={canMoveUp}
-                  canMoveDown={canMoveDown}
-                  weightPendingIds={weightPendingIds}
-                  algorithmLabels={algorithmLabels}
-                  onEdit={onEdit}
-                  onDelete={onDelete}
-                  onDuplicate={onDuplicate}
-                  onAddSub={onAddSub}
-                  onTestApi={onTestApi}
-                  onRuleCalc={onRuleCalc}
-                  onToggleStatus={onToggleStatus}
-                  onMove={onMove}
-                  onWeightCommit={onWeightCommit}
-                />
+                {group.items.length === 0 ? (
+                  <p className='text-muted-foreground px-1 py-3 text-sm'>
+                    {group.totalCount === 0
+                      ? '该分类下暂无维度'
+                      : '当前筛选下无匹配维度'}
+                  </p>
+                ) : (
+                  <DimensionTable
+                    items={group.items}
+                    selectedIds={selectedIds}
+                    onToggleSelection={onToggleSelection}
+                    showHeaderCheckbox={false}
+                    categories={group.category ? [group.category] : []}
+                    canManage={canManage}
+                    canRead={canRead}
+                    canMoveUp={canMoveUp}
+                    canMoveDown={canMoveDown}
+                    weightPendingIds={weightPendingIds}
+                    algorithmLabels={algorithmLabels}
+                    onEdit={onEdit}
+                    onDelete={onDelete}
+                    onDuplicate={onDuplicate}
+                    onAddSub={onAddSub}
+                    onTestApi={onTestApi}
+                    onRuleCalc={onRuleCalc}
+                    onToggleStatus={onToggleStatus}
+                    onMove={onMove}
+                    onWeightCommit={onWeightCommit}
+                  />
+                )}
               </div>
             )}
           </div>

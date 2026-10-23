@@ -49,13 +49,17 @@ import { useAudioListBatch, type RoundAudioLike } from '@/application/testcases/
 import { usePlaybackDevices } from '@/application/devices/use-devices'
 import { fetchAudioLibrary } from '@/infrastructure/api/audioLibraryApi'
 import type { RoundAudioDraft } from '@/features/testcases/modals/round-config/round-nav'
-import type { MockDevice } from '@/features/testcases/modals/round-config/audio-list-types'
+import type { PlaybackDeviceOption } from '@/features/testcases/modals/round-config/audio-list-types'
 import { BatchDevicePanel } from '@/features/testcases/modals/round-config/batch-device-panel'
 import { BatchSplPanel } from '@/features/testcases/modals/round-config/batch-spl-panel'
 import { CrossDevicePanel } from '@/features/testcases/modals/round-config/cross-device-panel'
 import { TagDevicePanel } from '@/features/testcases/modals/round-config/tag-device-panel'
 import { TagInterleavePanel } from '@/features/testcases/modals/round-config/tag-interleave-panel'
 import { AudioSelectDialog } from '@/features/testcases/modals/audio/audio-select-dialog'
+import {
+  AudioPreviewConfigDialog,
+  type PreviewAudioItem,
+} from '@/features/testcases/modals/audio-preview-config-dialog'
 
 /** 真实播放设备（/playback-devices）→ 面板/Select 展示项「{设备名} (通道 {n}) [干声/噪声]」 */
 function toDeviceOption(d: {
@@ -63,7 +67,7 @@ function toDeviceOption(d: {
   name: string
   channelIndex?: number | null
   deviceType?: string | null
-}): MockDevice {
+}): PlaybackDeviceOption {
   return {
     id: String(d.id),
     name: d.name,
@@ -116,7 +120,7 @@ export function AudioListStep({
 }) {
   const devicesQuery = usePlaybackDevices()
   /** 真实播放设备（Select + 批量工具面板共用） */
-  const deviceOptions = useMemo<MockDevice[]>(
+  const deviceOptions = useMemo<PlaybackDeviceOption[]>(
     () => (devicesQuery.data ?? []).map(toDeviceOption),
     [devicesQuery.data]
   )
@@ -174,6 +178,8 @@ export function AudioListStep({
   const [pickingFromLibrary, setPickingFromLibrary] = useState(false)
   /** 单卡更换音频（replacingIndex 非空 → 音频库子弹窗单选确认） */
   const [replacingIndex, setReplacingIndex] = useState<number | null>(null)
+  /** 单卡试听对象（INT-1424：试听按钮 → 真实音频试听配置弹窗） */
+  const [previewItem, setPreviewItem] = useState<PreviewAudioItem | null>(null)
 
   // 行身份变更（复制/标签交错克隆/批量工具）时清理失效勾选
   useEffect(() => {
@@ -242,7 +248,9 @@ export function AudioListStep({
       </div>
 
       {value.length === 0 ? (
-        <p className='text-muted-foreground py-6 text-center text-sm'>尚未添加音频，点击下方「添加音频」</p>
+        <p className='text-muted-foreground py-6 text-center text-sm'>
+          尚未添加音频，点击下方「从音频库选择」
+        </p>
       ) : (
         value.map((audio, index) => {
           const device = deviceOptions.find((d) => d.id === audio.deviceId)
@@ -264,9 +272,32 @@ export function AudioListStep({
                 <span className='text-muted-foreground min-w-0 flex-1 truncate text-xs'>{audio.audioName ?? '—'}</span>
                 <span className='text-muted-foreground/60 font-mono text-xs tabular-nums'>{duration ?? ''}</span>
                 <div className='ms-auto flex shrink-0 items-center gap-0.5'>
-                  <Button type='button' variant='ghost' size='icon-sm' aria-label='试听' className='size-7'>
-                    <Play aria-hidden='true' className='size-3.5' />
-                  </Button>
+                  {audio.audioId != null && (
+                    <Button
+                      type='button'
+                      variant='ghost'
+                      size='icon-sm'
+                      aria-label='试听'
+                      className='size-7'
+                      onClick={() =>
+                        setPreviewItem({
+                          id: audio.audioId as number | string,
+                          name: audio.audioName,
+                          spl: audio.spl,
+                          // 音频库时长兜底：实验室播放无浏览器流，播放器总时长靠它（INT-1424 UX 复核）
+                          duration:
+                            audioLibrary.get(String(audio.audioId))?.duration ?? audio.duration ?? null,
+                          deviceLabels: device
+                            ? [`${device.name} (通道 ${device.channel}) [${device.type}]`]
+                            : [],
+                          // 实验室播放按用例配置的播放设备发送（INT-1424 终审 P2-2）
+                          deviceIds: audio.deviceId ? [audio.deviceId] : [],
+                        })
+                      }
+                    >
+                      <Play aria-hidden='true' className='size-3.5' />
+                    </Button>
+                  )}
                   <Button
                     type='button'
                     variant='ghost'
@@ -365,15 +396,7 @@ export function AudioListStep({
       )}
 
       <div className='flex flex-wrap items-center gap-2'>
-        <Button
-          type='button'
-          variant='outline'
-          size='sm'
-          className='h-8 gap-1'
-          onClick={() => setPickingFromLibrary(true)}
-        >
-          + 添加音频
-        </Button>
+        {/* INT-1424：音频库导入为唯一入口（删除重复的「+ 添加音频」按钮，交互语义保留） */}
         <Button
           type='button'
           variant='outline'
@@ -488,6 +511,14 @@ export function AudioListStep({
             toast.success(`已添加 ${selected.length} 个音频到轮次`)
           }
         }}
+      />
+
+      {/* 试听配置弹窗（INT-1424：真实音频流播放，无「演示」toast） */}
+      <AudioPreviewConfigDialog
+        open={previewItem != null}
+        onOpenChange={(open) => !open && setPreviewItem(null)}
+        caseItem={null}
+        audioItem={previewItem}
       />
     </div>
   )

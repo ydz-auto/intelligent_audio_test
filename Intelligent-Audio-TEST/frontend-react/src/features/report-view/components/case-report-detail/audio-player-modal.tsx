@@ -17,6 +17,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { stream } from '@/infrastructure/api/audios-api'
+
+/** 绝对外链（http/https）可直接作 <audio src>；相对路径/缺失时走 GET /audios/{id}/stream */
+function toDirectPlayableUrl(url?: string): string {
+  return url && /^https?:\/\//i.test(url) ? url : ''
+}
 
 export interface PlaybackDeviceInfo {
   name?: string
@@ -76,13 +82,28 @@ function formatTime(seconds: number): string {
 }
 
 export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModalProps) {
-  const duration = useMemo(() => mockDuration(audio), [audio])
   const [playing, setPlaying] = useState(false)
   const [current, setCurrent] = useState(0)
   const [dragging, setDragging] = useState(false)
   const [playError, setPlayError] = useState('')
+  /** GET /audios/{id}/stream 换取的预签名播放地址（audio.url 非绝对外链时用） */
+  const [streamUrl, setStreamUrl] = useState('')
+  const [resolving, setResolving] = useState(false)
+  /** 真实流的媒体时长（loadedmetadata 回填；无真实流时按 audio_id 派生演示值） */
+  const [mediaDuration, setMediaDuration] = useState(0)
   const barRef = useRef<HTMLDivElement>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
+
+  const directUrl = toDirectPlayableUrl(audio?.url)
+  const audioId =
+    typeof audio?.audio_id === 'number'
+      ? audio.audio_id
+      : /^\d+$/.test(String(audio?.audio_id ?? ''))
+        ? Number(audio?.audio_id)
+        : null
+  const playUrl = directUrl || streamUrl
+  const isRealStream = Boolean(playUrl)
+  const duration = mediaDuration > 0 ? mediaDuration : mockDuration(audio)
 
   const stop = useCallback(() => {
     setPlaying(false)
@@ -100,13 +121,40 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
       setPlaying(false)
       setCurrent(0)
       setPlayError('')
+      setMediaDuration(0)
     } else {
       setCurrent(0)
       setPlayError('')
+      setMediaDuration(0)
     }
   }, [open])
 
-  const isRealStream = Boolean(audio?.url)
+  // INT-1547 P2-2：report_service 给的 audios[].url 是网关相对路径（/api/audios/play/{id}，
+  // 该路由未挂载，FEAT INT-1556）；有 audio_id 时统一经 GET /audios/{id}/stream 换预签名地址，
+  // 取不到才退化为模拟播放。
+  useEffect(() => {
+    if (!open || directUrl || audioId === null) {
+      setStreamUrl('')
+      setResolving(false)
+      return
+    }
+    let cancelled = false
+    setStreamUrl('')
+    setResolving(true)
+    void stream(audioId)
+      .then((url) => {
+        if (!cancelled) setStreamUrl(url)
+      })
+      .catch(() => {
+        if (!cancelled) setPlayError('音频播放地址获取失败，暂以模拟播放演示')
+      })
+      .finally(() => {
+        if (!cancelled) setResolving(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, directUrl, audioId])
 
   // 真实流事件接线（timeupdate/ended/error → 进度/时长/错误）
   useEffect(() => {
@@ -116,7 +164,10 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
       if (!dragging) setCurrent(el.currentTime)
     }
     const onLoadedMeta = () => {
-      if (Number.isFinite(el.duration) && el.duration > 0) setCurrent(0)
+      if (Number.isFinite(el.duration) && el.duration > 0) {
+        setMediaDuration(el.duration)
+        setCurrent(0)
+      }
     }
     const onEnded = () => {
       setPlaying(false)
@@ -162,9 +213,8 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
     }
     setPlaying(true)
     const el = audioRef.current
-    if (isRealStream && el && audio?.url) {
+    if (isRealStream && el) {
       try {
-        if (el.src !== audio.url) el.src = audio.url
         void el.play().catch(() => {
           setPlaying(false)
           setPlayError('音频播放失败，请检查音频文件是否有效')
@@ -209,8 +259,8 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
         </DialogHeader>
         {audio ? (
           <div className='space-y-4'>
-            {/* 真实 <audio>（无 url 时不挂 src，仅作为结构/事件载体；接线后填 url） */}
-            <audio ref={audioRef} preload='metadata' className='hidden' />
+            {/* 真实 <audio>：playUrl（外链或预签名地址）就绪即挂载，preload 取媒体时长/元数据 */}
+            <audio ref={audioRef} src={playUrl || undefined} preload='metadata' className='hidden' />
 
             {/* 错误提示（照 V9.7.10 error-message，可关闭） */}
             {playError && (
@@ -329,9 +379,11 @@ export function AudioPlayerModal({ open, onOpenChange, audio }: AudioPlayerModal
             <p className='text-muted-foreground text-center text-xs'>
               {playing
                 ? '播放中…'
-                : isRealStream
-                  ? '点击播放按钮预览音频'
-                  : '点击播放按钮预览音频（mock，进度为模拟播放）'}
+                : resolving
+                  ? '正在获取音频地址…'
+                  : isRealStream
+                    ? '点击播放按钮预览音频'
+                    : '点击播放按钮预览音频（mock，进度为模拟播放）'}
             </p>
           </div>
         ) : (

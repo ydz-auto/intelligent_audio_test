@@ -26,6 +26,7 @@ import type { TestCase, EvaluationDimension } from '@/domain/models/testCase'
 import type { TestAlgorithmOption } from '@/domain/models/algorithm'
 import type { ReportDetailData } from '@/domain/models/report'
 import { request } from '@/infrastructure/api/client'
+import { fetchCaseIdsByFilter } from '@/infrastructure/api/testcases-ids-api'
 import { apiConfigFromDto, apiHealthFromDto } from '@/infrastructure/adapters/apiConfigAdapter'
 import { extractEndpointApiKeys } from '@/infrastructure/adapters/api-keys'
 import { deviceFromDto } from '@/infrastructure/adapters/deviceAdapter'
@@ -37,7 +38,6 @@ import {
   type GroupListDataDto,
   type LogListDataDto,
   type TaskStartDataDto,
-  type TestCaseIdsResultDto,
   type TestCaseTagListDataDto,
   toGroupFacetOptions,
   toLogItems,
@@ -82,14 +82,6 @@ export async function fetchTestAlgorithmOptions(): Promise<TestAlgorithmOption[]
     id: item.value ?? '',
     name: item.name ?? item.value ?? '',
   }))
-}
-
-/** 全量圈定（步骤二「全选结果」；POST /testcases/ids 按筛选条件圈定全量 id） */
-export async function fetchCaseIdsByFilter(
-  filter: TestCaseFilter
-): Promise<{ ids: string[]; total: number }> {
-  const dto = await request<TestCaseIdsResultDto>('POST', '/testcases/ids', toTestCaseQuery(filter))
-  return { ids: dto?.ids ?? [], total: dto?.total ?? (dto?.ids ?? []).length }
 }
 
 /** 用例分组 facet（GET /groups，per_page=100） */
@@ -155,10 +147,13 @@ export async function fetchFlowReport(reportId: number): Promise<ReportDetailDat
 export async function createTask(input: TaskLaunchInput): Promise<{ id: number }> {
   const caseIds = input.filterAllMode
     // filter-all：按启动时当前筛选条件全量圈定（INT-646 代码审计 P2——不再是仅算法维度；
-    // caseFilter 由 case-selection store 随启动流程传入，未带时回退仅算法口径）
-    ? (await fetchCaseIdsByFilter(
-        input.caseFilter ?? { algorithmType: input.algorithmType ?? undefined }
-      )).ids
+    // INT-1544：caseFilter 由步骤一持续同步进 case-selection store，键与 ids 端点一致）
+    ? (
+        await fetchCaseIdsByFilter({
+          ...(input.caseFilter ?? {}),
+          algorithmType: input.caseFilter?.algorithmType ?? input.algorithmType ?? undefined,
+        })
+      ).ids
     : input.testCaseIds
   // INT-1433：逐目标设备类型分配 → case_devices（所选用例 × 选中目标展开；后端按
   // (case_id, device_type, device_id) 落多条 TaskCase——websocket_api Realtime 路由可达

@@ -1,6 +1,8 @@
 /**
  * 评估策略节值序列化单测（11_用例域.md §5.1.3 用例承载契约）。
- * serializeEvaluationStrategy：none→清空；reference→{strategy_id, overrides?}；create→存量直载。
+ * serializeEvaluationStrategy(value, dims, noise)：
+ * none/create（内联态）→ config.dimensions/config.background_noise 直载（两个独立节值）；
+ * reference → { strategy_id, overrides? } 并清空存量直载字段。
  */
 import { describe, expect, it } from 'vitest'
 
@@ -24,26 +26,26 @@ const noise = {
 }
 
 describe('serializeEvaluationStrategy（§5.1.3 契约）', () => {
-  it('null / none → 清空 evaluationStrategy 与存量直载字段', () => {
-    expect(serializeEvaluationStrategy(null)).toEqual({
+  it('null / none → evaluationStrategy 清空，独立节值直载', () => {
+    expect(serializeEvaluationStrategy(null, [], null)).toEqual({
       evaluationStrategy: null,
       dimensions: [],
       backgroundNoise: null,
     })
-    expect(serializeEvaluationStrategy({ mode: 'none' })).toEqual({
+    expect(serializeEvaluationStrategy({ mode: 'none' }, dims, noise)).toEqual({
       evaluationStrategy: null,
-      dimensions: [],
-      backgroundNoise: null,
+      dimensions: dims,
+      backgroundNoise: noise,
     })
   })
 
-  it('引用无覆盖 → evaluationStrategy = { strategy_id }，overrides 缺省', () => {
+  it('引用无覆盖 → evaluationStrategy = { strategy_id }，overrides 缺省，清存量直载', () => {
     const value: EvaluationStrategyEditorValue = {
       mode: 'reference',
       strategyId: 'str-1',
       overrides: null,
     }
-    expect(serializeEvaluationStrategy(value)).toEqual({
+    expect(serializeEvaluationStrategy(value, dims, noise)).toEqual({
       evaluationStrategy: { strategyId: 'str-1' },
       dimensions: [],
       backgroundNoise: null,
@@ -56,7 +58,7 @@ describe('serializeEvaluationStrategy（§5.1.3 契约）', () => {
       strategyId: 'str-1',
       overrides: { dimensions: dims },
     }
-    const payload = serializeEvaluationStrategy(value)
+    const payload = serializeEvaluationStrategy(value, [], null)
     expect(payload.evaluationStrategy?.strategyId).toBe('str-1')
     expect(payload.evaluationStrategy?.overrides).toEqual({ dimensions: dims })
     expect(payload.dimensions).toEqual([])
@@ -68,24 +70,22 @@ describe('serializeEvaluationStrategy（§5.1.3 契约）', () => {
       strategyId: 'str-3',
       overrides: { backgroundNoise: noise },
     }
-    const payload = serializeEvaluationStrategy(value)
+    const payload = serializeEvaluationStrategy(value, [], null)
     expect(payload.evaluationStrategy?.overrides).toEqual({ backgroundNoise: noise })
   })
 
-  it('新建（内联未存为策略）→ config.dimensions / config.background_noise 直载（无 strategy_id，向后兼容）', () => {
+  it('新建（内联未存为策略）→ 独立节 config.dimensions / config.background_noise 直载（无 strategy_id，向后兼容）', () => {
     const value: EvaluationStrategyEditorValue = {
       mode: 'create',
-      inlineDimensions: dims,
-      inlineBackgroundNoise: noise,
     }
-    const payload = serializeEvaluationStrategy(value)
+    const payload = serializeEvaluationStrategy(value, dims, noise)
     expect(payload.evaluationStrategy).toBeNull()
     expect(payload.dimensions).toEqual(dims)
     expect(payload.backgroundNoise).toEqual(noise)
   })
 
   it('create 空内容 → 清空（等价未配置）', () => {
-    expect(serializeEvaluationStrategy({ mode: 'create' })).toEqual({
+    expect(serializeEvaluationStrategy({ mode: 'create' }, [], null)).toEqual({
       evaluationStrategy: null,
       dimensions: [],
       backgroundNoise: null,

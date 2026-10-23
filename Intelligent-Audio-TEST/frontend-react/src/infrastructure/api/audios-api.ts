@@ -110,6 +110,24 @@ export async function fetchAudioTags(): Promise<string[]> {
   return dto?.items ?? []
 }
 
+/**
+ * 单条音频时长（秒）兜底：后端无 GET /audios/{id} 详情端点，按文件名 keyword 检索
+ * POST /audios 后按 id 命中（唯一命中时直接取），供播放器实验室播放对齐总时长
+ * （设备端播放无浏览器音频流，取不到 metadata）。
+ */
+export async function fetchAudioDuration(
+  id: number,
+  name: string | null | undefined
+): Promise<number | null> {
+  if (!name) return null
+  const result = await fetchAudios({ keyword: name, perPage: 10 })
+  const hit =
+    result.items.find((item) => item.id === id) ??
+    (result.items.length === 1 ? result.items[0] : undefined)
+  const duration = hit?.duration
+  return duration != null && duration > 0 ? duration : null
+}
+
 /** 文件夹树（POST /audios/folder-tree；depth=10 全量渲染，响应信封内 data.tree.folders 为顶层节点） */
 export async function fetchFolderTree(): Promise<AudioFolderNode[]> {
   const dto = await request<FolderTreeDto>('POST', '/audios/folder-tree', {

@@ -149,7 +149,9 @@ export function ResultSection({
             id='dim-result-min'
             type='number'
             aria-invalid={Boolean(formState.errors.resultMin)}
-            {...register('resultMin', { valueAsNumber: true })}
+            // deps：最小值变化时连带校验最大值（min≥max 的 superRefine 错误挂在 resultMax 上，
+            // 只校验自身字段时该错误不产出 → 行内提示不出现；INT-1551）
+            {...register('resultMin', { valueAsNumber: true, deps: ['resultMax'] })}
           />
           {formState.errors.resultMin && (
             <p className='text-destructive text-xs'>
@@ -165,7 +167,7 @@ export function ResultSection({
             id='dim-result-max'
             type='number'
             aria-invalid={Boolean(formState.errors.resultMax)}
-            {...register('resultMax', { valueAsNumber: true })}
+            {...register('resultMax', { valueAsNumber: true, deps: ['resultMin'] })}
           />
           {formState.errors.resultMax && (
             <p className='text-destructive text-xs'>

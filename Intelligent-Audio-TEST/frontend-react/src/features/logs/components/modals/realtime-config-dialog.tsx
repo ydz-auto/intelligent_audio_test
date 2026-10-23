@@ -37,6 +37,12 @@ export type RealtimeConfigDialogProps = {
   onConfigChange: (patch: Partial<LogRealtimeConfig>) => void
 }
 
+/** 轮询间隔 Select 选项（value=秒数字符串，与 Select 的 value 同口径；作 items 供关闭态回显 label） */
+const POLL_INTERVAL_ITEMS = REALTIME_POLL_INTERVALS.map((option) => ({
+  value: String(option.value / 1000),
+  label: option.label,
+}))
+
 export function RealtimeConfigDialog(props: RealtimeConfigDialogProps) {
   const { config } = props
 
@@ -63,6 +69,7 @@ export function RealtimeConfigDialog(props: RealtimeConfigDialogProps) {
               onValueChange={(v) =>
                 props.onConfigChange({ pollIntervalMs: Number(v ?? 5) * 1000 })
               }
+              items={POLL_INTERVAL_ITEMS}
             >
               <SelectTrigger id='realtime-poll-interval' className='w-32' size='sm'>
                 <SelectValue />

@@ -39,7 +39,12 @@ export interface TaskListItemDto {
   updated_at: string | null
   is_favorite: boolean | null
   /** INT-339：挑选合并容器标记（专有关系表存在性判定，§5.4） */
-  is_cherry_pick: boolean | null
+  is_cherry_pick?: boolean | null
+  /** INT-577：合并方式（whole=整任务合并 / picked=结果挑选；普通任务后端省略该键） */
+  merge_type?: string | null
+  /** INT-577：容器来源任务数 / 来源结果数（普通任务省略） */
+  source_task_count?: number | null
+  source_result_count?: number | null
   deleted: boolean | null
   deleted_at: string | null
   deleted_by_user_id: number | null

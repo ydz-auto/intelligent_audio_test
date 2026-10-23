@@ -140,7 +140,11 @@ export function ApiRmsSplFormDialog(props: ApiRmsSplFormDialogProps) {
           {!isEdit && (
             <div className='space-y-2'>
               <Label required>关联被测 API</Label>
-              <Select value={apiId} onValueChange={(value) => setApiId(value ?? '')}>
+              <Select
+                value={apiId}
+                onValueChange={(value) => setApiId(value ?? '')}
+                items={apiOptions}
+              >
                 <SelectTrigger size='sm' className='w-full' aria-label='关联被测 API'>
                   <SelectValue placeholder='请选择被测 API（API 1:N 映射）' />
                 </SelectTrigger>

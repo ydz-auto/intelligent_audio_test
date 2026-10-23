@@ -7,10 +7,13 @@
 
 export interface CalibrationPointDto {
   spl: number | null
-  gainOffset: number | null
-  digitalGain: number | null
-  baseLevel: number | null
-  finalLevel: number | null
+  /** 前端/表单写入键（camelCase 原样透传 JSONB） */
+  gainOffset?: number | null
+  /** 后端模拟校准写入键（device_service calibrate 写 `{"gain": n, "spl": x}`，INT-1503 实测） */
+  gain?: number | null
+  digitalGain?: number | null
+  baseLevel?: number | null
+  finalLevel?: number | null
 }
 
 export interface CalibrationDataDto {
@@ -103,6 +106,19 @@ export interface SplMappingUpdateDto {
 export interface SplCalibrationResultDto {
   id: number
   calibration_status: string
+}
+
+/** 测试音播放请求（schemas/spl.py:56-60 PlayTestToneRequest） */
+export interface SplTestToneRequestDto {
+  gain_value: number
+  gain_offset: number | null
+  target_spl: number | null
+  unique_id: string | null
+}
+
+/** 测试音停止请求（schemas/spl.py:63-64 StopTestToneRequest） */
+export interface SplTestToneStopRequestDto {
+  unique_id: string | null
 }
 
 /** 播放设备引用（GET /playback-devices 子集） */

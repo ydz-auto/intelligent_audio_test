@@ -109,6 +109,9 @@ export const CONVERT_BITRATE_OPTIONS = [
   { value: '320', label: '320 kbps' },
 ] as const
 
+/** 默认声压级（§6.16 上传 / §6.14 试听共用；后端允许区间 30-120，沿用旧版默认 65 dB） */
+export const DEFAULT_SPL = 65
+
 /** 上传音频类型（§6.16 radio） */
 export const UPLOAD_AUDIO_TYPE_OPTIONS = AUDIO_TYPE_OPTIONS
 

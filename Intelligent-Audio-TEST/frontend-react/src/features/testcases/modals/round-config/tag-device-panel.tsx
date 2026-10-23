@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import type { MockDevice } from '@/features/testcases/modals/round-config/audio-list-types'
+import type { PlaybackDeviceOption } from '@/features/testcases/modals/round-config/audio-list-types'
 
 export function TagDevicePanel({
   open,
@@ -33,7 +33,7 @@ export function TagDevicePanel({
   onOpenChange: (open: boolean) => void
   /** 可选标签源（mock 标签源 MOCK_TAGS） */
   tags: string[]
-  devices: MockDevice[]
+  devices: PlaybackDeviceOption[]
   /** 确认：标签 → 目标设备 */
   onConfirm: (tag: string, deviceId: string) => void
 }) {

@@ -1,6 +1,6 @@
 /**
  * 声压级映射管理页状态类型（features/spl-mapping）。
- * §4.1 validateSearch 语义的 mock 阶段本地态；接线后 URL 化。
+ * §4.1 validateSearch 语义的本地筛选状态（尚未 URL 化；数据来自真实接口）。
  */
 
 import type { SplDeviceType } from '@/domain/models/splMapping'

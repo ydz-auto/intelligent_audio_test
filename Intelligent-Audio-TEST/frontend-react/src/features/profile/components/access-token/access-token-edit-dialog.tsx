@@ -236,6 +236,7 @@ export function AccessTokenEditDialog(props: AccessTokenEditDialogProps) {
             <Select
               value={expiry}
               onValueChange={handleExpiryChange}
+              items={ACCESS_TOKEN_EXPIRY_PRESETS}
             >
               <SelectTrigger id='access-token-edit-expiry' size='sm' className='w-full'>
                 <SelectValue />

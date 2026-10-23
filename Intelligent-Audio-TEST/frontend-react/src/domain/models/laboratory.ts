@@ -2,7 +2,7 @@
  * 实验室领域模型（domain 层；16_设备域.md §6.26/INT-487 落位）。
  * 形态对照 doc/总架构/实验室扩展功能设计.md §4.1/§5.4.1：
  * id/code/name/building/floor/roomNumber/status/deviceCount/playbackDeviceCount/testCaseCount。
- * 后端 `/api/laboratories` CRUD 未实现（§11-24），mock 先行；入口禁用 + Tooltip 待后端立项。
+ * 后端 /api/v1/laboratories CRUD（INT-655）已可用，列表/详情/写操作走真实端点。
  */
 export type LaboratoryStatus = 'active' | 'inactive' | 'maintenance'
 

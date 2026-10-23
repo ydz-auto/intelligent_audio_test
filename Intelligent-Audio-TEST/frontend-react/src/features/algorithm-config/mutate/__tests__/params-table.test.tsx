@@ -5,11 +5,14 @@
  */
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { describe, expect, it } from 'vitest'
 
 import type { AlgorithmFormValues } from '@/features/algorithm-config/types'
 import { ParamsTable } from '../params-table'
+import { algorithmFormSchema } from '../algorithm-form-schema'
 import type { AlgorithmOption } from '../annotation-code-select'
 
 const ALGORITHM_OPTIONS: AlgorithmOption[] = [
@@ -76,6 +79,27 @@ function buildValues(): AlgorithmFormValues {
 function Harness({ values = buildValues() }: { values?: AlgorithmFormValues }) {
   const form = useForm<AlgorithmFormValues>({ defaultValues: values })
   return <ParamsTable form={form} algorithmOptions={ALGORITHM_OPTIONS} />
+}
+
+/** 挂发布严格 schema 的 Harness（范围约束字段级校验用） */
+function ValidatingHarness({ values }: { values: AlgorithmFormValues }) {
+  const form = useForm<AlgorithmFormValues>({
+    mode: 'onChange',
+    resolver: zodResolver(algorithmFormSchema),
+    defaultValues: values,
+  })
+  useEffect(() => {
+    void form.trigger()
+  }, [form])
+  return <ParamsTable form={form} algorithmOptions={ALGORITHM_OPTIONS} />
+}
+
+function withRange(minValue: string, maxValue: string): AlgorithmFormValues {
+  const values = buildValues()
+  values.caseParams = [
+    { ...values.caseParams[0], paramType: 'number', minValue, maxValue },
+  ]
+  return values
 }
 
 describe('ParamsTable 统一参数表（§6.4）', () => {
@@ -145,6 +169,26 @@ describe('ParamsTable 统一参数表（§6.4）', () => {
     await user.click(annotation)
     expect(screen.getByRole('option', { name: '语音识别（asr_v3）' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: '机器翻译（mt_2026）' })).toBeInTheDocument()
+  })
+})
+
+describe('ParamsTable 范围约束字段级校验（INT-1540）', () => {
+  it('min>max：范围单元格渲染红字，min/max 均置 aria-invalid', async () => {
+    render(<ValidatingHarness values={withRange('10', '5')} />)
+
+    expect(await screen.findByText('最小值不能大于最大值')).toBeInTheDocument()
+    expect(screen.getByLabelText('最小值')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByLabelText('最大值')).toHaveAttribute('aria-invalid', 'true')
+  })
+
+  it('min≤max：无红字，字段不置 aria-invalid', async () => {
+    render(<ValidatingHarness values={withRange('0', '10')} />)
+
+    await screen.findByLabelText('最小值')
+    expect(screen.queryByText('最小值不能大于最大值')).not.toBeInTheDocument()
+    expect(screen.queryByText('最大值不能小于最小值')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('最小值')).toHaveAttribute('aria-invalid', 'false')
+    expect(screen.getByLabelText('最大值')).toHaveAttribute('aria-invalid', 'false')
   })
 })
 

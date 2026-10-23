@@ -12,6 +12,9 @@ export type CalibrationStatus = 'calibrated' | 'uncalibrated'
 /** 播放设备类型（device_type dry/noise → 干声/噪声，§4.2 徽章依据） */
 export type SplDeviceType = 'dry' | 'noise'
 
+/** 校准点集基础电平（dBFS，§6.7 口径：表单与后端模拟校准同基准，最终电平 = 本值 + 增益偏移） */
+export const CALIBRATION_BASE_LEVEL_DBFS = -30
+
 /** 校准点（CalibrationPointSchema 实测五字段） */
 export interface CalibrationPoint {
   /** 实测声压级（SPL，dB） */
@@ -71,6 +74,22 @@ export interface SplHistoryItem {
   distance: number | null
   testFrequency: number | null
   createdAt: string | null
+}
+
+/**
+ * 测试音播放入参（§6.5；POST /spl/test-tone → PlayTestToneRequest
+ * gain_value/gain_offset/target_spl/unique_id，V9.7.10 handleTestSPL 同源）。
+ * gain_value 为硬件增益刻度 0-100（V9.7.10 `50 + gainOffset / 0.24` 换算）。
+ */
+export interface SplTestToneInput {
+  /** 硬件增益刻度（gain_value，默认 50） */
+  gainValue: number
+  /** 增益偏移（dB，gain_offset） */
+  gainOffset: number | null
+  /** 目标声压级（dB，target_spl，缺省后端 65） */
+  targetSpl: number | null
+  /** 播放设备系统唯一标识（unique_id） */
+  uniqueId: string | null
 }
 
 /** 播放设备引用（关联播放设备 facet/列渲染；GET /playback-devices 子集） */

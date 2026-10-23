@@ -67,6 +67,12 @@ export interface TestCasesFilterToolbarProps {
   cases: TestCaseListItem[]
   /** 回收站「全部恢复」 */
   onRestoreAll: () => void
+  /** 标签数据源查询失败（INT-1560）：facet 显示错误态 + 重试，不得落成「暂无标签」空态 */
+  tagsError?: boolean
+  /** 标签数据源加载中（重试期间避免闪一下「暂无标签」） */
+  tagsLoading?: boolean
+  /** 标签数据源重试（refetch） */
+  onRetryTags?: () => void
   /** readOnly 观察态（10_测试执行.md §3.1.1）：收藏/回收站切换、全部恢复、重置隐藏 */
   readOnly?: boolean
 }
@@ -149,11 +155,19 @@ function TagFacet({
   value,
   tags,
   caseCounts,
+  error,
+  loading,
+  onRetry,
   onChange,
 }: {
   value: string | null
   tags: TagItem[]
   caseCounts: Record<string, number>
+  /** 标签数据源查询失败（INT-1560）：错误态 + 重试，不得显示「暂无标签」 */
+  error: boolean
+  /** 标签数据源加载中（重试期间不闪「暂无标签」） */
+  loading: boolean
+  onRetry?: () => void
   onChange: (value: string | null) => void
 }) {
   const [open, setOpen] = useState(false)
@@ -219,7 +233,25 @@ function TagFacet({
         />
       </PopoverTrigger>
       <PopoverContent align='start' className='max-w-72 min-w-56 p-1.5'>
-        {tags.length === 0 ? (
+        {error ? (
+          <div className='flex flex-col items-center gap-2 px-3 py-4 text-center'>
+            <p className='text-destructive text-sm'>标签加载失败</p>
+            {onRetry && (
+              <Button
+                variant='outline'
+                size='sm'
+                className='h-7'
+                onClick={onRetry}
+              >
+                重试
+              </Button>
+            )}
+          </div>
+        ) : loading ? (
+          <p className='text-muted-foreground px-3 py-4 text-center text-sm'>
+            加载中…
+          </p>
+        ) : tags.length === 0 ? (
           <p className='text-muted-foreground px-3 py-4 text-center text-sm'>
             暂无标签
           </p>
@@ -544,6 +576,9 @@ export function TestCasesFilterToolbar({
   onCopyTag,
   cases,
   onRestoreAll,
+  tagsError = false,
+  tagsLoading = false,
+  onRetryTags,
   readOnly = false,
 }: TestCasesFilterToolbarProps) {
   const searchRef = useRef<HTMLInputElement>(null)
@@ -616,6 +651,9 @@ export function TestCasesFilterToolbar({
           value={filters.tag ?? null}
           tags={tags}
           caseCounts={tagCaseCounts}
+          error={tagsError}
+          loading={tagsLoading}
+          onRetry={onRetryTags}
           onChange={(tag) => update({ tag })}
         />
         {/* 评估维度 facet（INT-1030：按 分组→主维度→子维度 单选，全站一致性；「全部」清除） */}

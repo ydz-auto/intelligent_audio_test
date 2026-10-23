@@ -2,12 +2,14 @@
  * 物理域 SPL 映射表单（§6.7；Dialog sm:max-w-2xl）。
  * 标题「添加增益映射/编辑增益映射」；字段=映射名称* / 描述/关联播放设备/设备类型/测量距离/
  * 目标声压级/数字增益/测试频率/校准点集（增益偏移/基础电平-30 只读/最终电平只读警告/实测 SPL
- * + 测试·停止钮，同 §6.5）。
+ * + 测试·停止钮，同 §6.5）。测试音接真实后端（INT-1502）：播放前按 device_id 取
+ * 播放设备 device_unique_id，POST /spl/test-tone 成功后进入播放态，停止/关窗
+ * POST /spl/test-tone/stop；未选设备提示「请先选择关联设备」且不下发请求。
  * 校准重置交互（§6.7）：编辑已校准映射时修改测量距离或测试频率 → ConfirmDialog
  * 「修改测量距离/测试频率将使校准重置为未校准，确定继续吗？」；确认后置 uncalibrated。
  */
 import { Play, Square, Trash2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -31,8 +33,15 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import type { PlaybackDeviceRef, SplMapping } from '@/domain/models/splMapping'
+import { CALIBRATION_BASE_LEVEL_DBFS } from '@/domain/models/splMapping'
 import { DEVICE_TYPE_OPTIONS } from '@/features/spl-mapping/constants'
-import { useSplMutations } from '@/application/spl/useSplMappings'
+import { ApiError } from '@/infrastructure/api/api-error'
+import {
+  resolvePlaybackDeviceUniqueId,
+  stopSplTestToneQuietly,
+  useSplMutations,
+  useSplTestTone,
+} from '@/application/spl/useSplMappings'
 
 export type SplMappingFormDialogProps = {
   open: boolean
@@ -46,6 +55,12 @@ interface PointDraft {
   spl: string
 }
 
+/** 设备类型 Select 的 value→label 映射（缺 items 时闭合态显示 raw value「dry/noise」） */
+const DEVICE_TYPE_SELECT_ITEMS = DEVICE_TYPE_OPTIONS.map((option) => ({
+  value: option.value,
+  label: option.label,
+}))
+
 /** 默认点集（编辑新建态：按 §11-12 模拟校准口径 5 点占位） */
 const DEFAULT_POINTS: PointDraft[] = [
   { gainOffset: '-10', spl: '55' },
@@ -54,9 +69,14 @@ const DEFAULT_POINTS: PointDraft[] = [
   { gainOffset: '20', spl: '85' },
 ]
 
+/** §6.5 canTestSPL：增益偏移有值（含 0）才可播放测试音 */
+const canPlayTestTone = (point: PointDraft): boolean =>
+  point.gainOffset !== '' && !Number.isNaN(Number(point.gainOffset))
+
 export function SplMappingFormDialog(props: SplMappingFormDialogProps) {
   const isEdit = props.mapping != null
   const { create, update } = useSplMutations()
+  const { play: playTone, stop: stopTone } = useSplTestTone()
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -68,7 +88,10 @@ export function SplMappingFormDialog(props: SplMappingFormDialogProps) {
   const [testFrequency, setTestFrequency] = useState('1000')
   const [points, setPoints] = useState<PointDraft[]>(DEFAULT_POINTS)
   const [playingIndex, setPlayingIndex] = useState<number | null>(null)
+  const [tonePending, setTonePending] = useState(false)
   const [pending, setPending] = useState(false)
+  /** 正在播放的测试音所属播放设备唯一标识（停止请求 unique_id 来源） */
+  const playingUniqueIdRef = useRef<string | null>(null)
   // 校准重置确认（§6.7：已校准映射改距离/频率 → 二次确认）
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
   const [pendingPatch, setPendingPatch] = useState<Partial<SplMapping> | null>(null)
@@ -95,8 +118,21 @@ export function SplMappingFormDialog(props: SplMappingFormDialogProps) {
         : DEFAULT_POINTS
     )
     setPlayingIndex(null)
+    setTonePending(false)
+    playingUniqueIdRef.current = null
     setCalibrationReset(false)
   }, [props.open, props.mapping])
+
+  // 卸载兜底：仍有测试音在播 → POST /spl/test-tone/stop（§6.5，V9.7.10 onUnmounted 同源）
+  useEffect(() => {
+    return () => {
+      const uniqueId = playingUniqueIdRef.current
+      if (uniqueId) {
+        playingUniqueIdRef.current = null
+        void stopSplTestToneQuietly(uniqueId)
+      }
+    }
+  }, [])
 
   if (!props.open) return null
 
@@ -139,10 +175,83 @@ export function SplMappingFormDialog(props: SplMappingFormDialogProps) {
   const patchPoint = (index: number, patch: Partial<PointDraft>) =>
     setPoints((prev) => prev.map((point, i) => (i === index ? { ...point, ...patch } : point)))
 
-  /** §6.5 测试音播放（mock：播放中态 2s；接线后 POST /spl/test-tone） */
-  const playTestTone = (index: number) => {
-    setPlayingIndex(index)
-    window.setTimeout(() => setPlayingIndex((prev) => (prev === index ? null : prev)), 2000)
+  /**
+   * 停止测试音（§6.5；POST /spl/test-tone/stop{unique_id}）。
+   * 播放态以请求结果为准：停止成功才灭播放中态，失败保留并提示后端 message。
+   */
+  const stopTestTone = async () => {
+    const uniqueId = playingUniqueIdRef.current
+    setTonePending(true)
+    try {
+      await stopTone.mutateAsync(uniqueId)
+      playingUniqueIdRef.current = null
+      setPlayingIndex(null)
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.userMessage : '停止测试音失败，请重试')
+    } finally {
+      setTonePending(false)
+    }
+  }
+
+  /**
+   * 播放测试音（§6.5；POST /spl/test-tone{gain_value/gain_offset/target_spl/unique_id}）。
+   * 未选关联播放设备 → 提示且不下发请求；unique_id 由 GET /playback-devices/{id} 取
+   * device_unique_id（V9.7.10 handleTestSPL 同源）。播放态以响应结果为准（不再 2s 假计时）。
+   */
+  const playTestTone = async (index: number) => {
+    if (tonePending) return
+    if (!deviceId) {
+      toast.error('请先选择关联设备')
+      return
+    }
+    const point = points[index]
+    if (!point) return
+    const gainOffset = point.gainOffset === '' ? Number.NaN : Number(point.gainOffset)
+    if (Number.isNaN(gainOffset)) {
+      toast.error('请先填写增益偏移')
+      return
+    }
+
+    setTonePending(true)
+    try {
+      const uniqueId = await resolvePlaybackDeviceUniqueId(Number(deviceId))
+      if (!uniqueId) {
+        toast.error('关联播放设备缺少系统唯一标识，无法播放测试音')
+        return
+      }
+      // 同时只播一路：切换行播放前先停止上一条（§6.5）
+      if (playingIndex != null && playingIndex !== index) {
+        await stopSplTestToneQuietly(playingUniqueIdRef.current)
+        playingUniqueIdRef.current = null
+        setPlayingIndex(null)
+      }
+      const spl = point.spl === '' ? null : Number(point.spl)
+      await playTone.mutateAsync({
+        // 硬件增益刻度换算同 V9.7.10 `50 + gainOffset / 0.24`
+        gainValue: 50 + gainOffset / 0.24,
+        gainOffset,
+        targetSpl: spl != null && !Number.isNaN(spl) ? spl : null,
+        uniqueId,
+      })
+      playingUniqueIdRef.current = uniqueId
+      setPlayingIndex(index)
+      toast.success('测试音已播放')
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.userMessage : '测试音播放失败，请重试')
+    } finally {
+      setTonePending(false)
+    }
+  }
+
+  /** 弹窗关闭（取消/遮罩/ESC/保存成功）：仍在播放则先停止测试音 */
+  const handleOpenChange = (open: boolean) => {
+    if (!open && playingUniqueIdRef.current) {
+      const uniqueId = playingUniqueIdRef.current
+      playingUniqueIdRef.current = null
+      setPlayingIndex(null)
+      void stopSplTestToneQuietly(uniqueId)
+    }
+    props.onOpenChange(open)
   }
 
   const handleSave = async () => {
@@ -159,8 +268,10 @@ export function SplMappingFormDialog(props: SplMappingFormDialogProps) {
             spl: point.spl ? Number(point.spl) : null,
             gainOffset: point.gainOffset ? Number(point.gainOffset) : null,
             digitalGain: point.gainOffset ? Number(point.gainOffset) : null,
-            baseLevel: -30,
-            finalLevel: point.gainOffset ? -30 + Number(point.gainOffset) : null,
+            baseLevel: CALIBRATION_BASE_LEVEL_DBFS,
+            finalLevel: point.gainOffset
+              ? CALIBRATION_BASE_LEVEL_DBFS + Number(point.gainOffset)
+              : null,
           })),
       }
       const base = {
@@ -186,7 +297,7 @@ export function SplMappingFormDialog(props: SplMappingFormDialogProps) {
         await create.mutateAsync({ ...base, calibrationStatus: null, isCurrent: false })
         toast.success('增益映射创建成功')
       }
-      props.onOpenChange(false)
+      handleOpenChange(false)
     } catch {
       toast.error('保存失败，请重试')
     } finally {
@@ -195,11 +306,13 @@ export function SplMappingFormDialog(props: SplMappingFormDialogProps) {
   }
 
   const finalLevelOf = (gainOffset: string): string =>
-    gainOffset === '' || Number.isNaN(Number(gainOffset)) ? '—' : `${(-30 + Number(gainOffset)).toFixed(1)} dBFS`
+    gainOffset === '' || Number.isNaN(Number(gainOffset))
+      ? '—'
+      : `${(CALIBRATION_BASE_LEVEL_DBFS + Number(gainOffset)).toFixed(1)} dBFS`
 
   return (
     <>
-      <Dialog open={props.open} onOpenChange={props.onOpenChange}>
+      <Dialog open={props.open} onOpenChange={handleOpenChange}>
         <DialogContent className='sm:max-w-2xl'>
           <DialogHeader>
             <DialogTitle>{isEdit ? '编辑增益映射' : '添加增益映射'}</DialogTitle>
@@ -215,7 +328,20 @@ export function SplMappingFormDialog(props: SplMappingFormDialogProps) {
             </div>
             <div className='space-y-2'>
               <Label>关联播放设备</Label>
-              <Select value={deviceId} onValueChange={(value) => setDeviceId(value ?? '')}>
+              <Select
+                value={deviceId}
+                items={deviceOptions}
+                onValueChange={(value) => {
+                  // 切换关联设备 → 先停掉在播测试音（unique_id 已失效）
+                  if (playingUniqueIdRef.current) {
+                    const uniqueId = playingUniqueIdRef.current
+                    playingUniqueIdRef.current = null
+                    setPlayingIndex(null)
+                    void stopSplTestToneQuietly(uniqueId)
+                  }
+                  setDeviceId(value ?? '')
+                }}
+              >
                 <SelectTrigger size='sm' className='w-full' aria-label='关联播放设备'>
                   <SelectValue placeholder='不使用声压映射' />
                 </SelectTrigger>
@@ -230,7 +356,11 @@ export function SplMappingFormDialog(props: SplMappingFormDialogProps) {
             </div>
             <div className='space-y-2'>
               <Label>设备类型</Label>
-              <Select value={deviceType} onValueChange={(value) => setDeviceType(value ?? 'dry')}>
+              <Select
+                value={deviceType}
+                items={DEVICE_TYPE_SELECT_ITEMS}
+                onValueChange={(value) => setDeviceType(value ?? 'dry')}
+              >
                 <SelectTrigger size='sm' className='w-full' aria-label='设备类型'>
                   <SelectValue />
                 </SelectTrigger>
@@ -318,7 +448,7 @@ export function SplMappingFormDialog(props: SplMappingFormDialogProps) {
                           const finalLevel =
                             point.gainOffset === '' || Number.isNaN(Number(point.gainOffset))
                               ? null
-                              : -30 + Number(point.gainOffset)
+                              : CALIBRATION_BASE_LEVEL_DBFS + Number(point.gainOffset)
                           return (
                             <tr key={index} className='border-border/50 border-b last:border-b-0'>
                               <td className='px-3 py-1.5'>
@@ -359,8 +489,15 @@ export function SplMappingFormDialog(props: SplMappingFormDialogProps) {
                                     variant='outline'
                                     size='icon-sm'
                                     aria-label={`第 ${index + 1} 行播放测试音`}
+                                    aria-pressed={playingIndex === index}
+                                    disabled={
+                                      tonePending ||
+                                      (playingIndex !== index && !canPlayTestTone(point))
+                                    }
                                     onClick={() =>
-                                      playingIndex === index ? setPlayingIndex(null) : playTestTone(index)
+                                      playingIndex === index
+                                        ? void stopTestTone()
+                                        : void playTestTone(index)
                                     }
                                   >
                                     {playingIndex === index ? (
@@ -391,7 +528,7 @@ export function SplMappingFormDialog(props: SplMappingFormDialogProps) {
           </section>
 
           <DialogFooter>
-            <Button variant='outline' size='sm' onClick={() => props.onOpenChange(false)}>
+            <Button variant='outline' size='sm' onClick={() => handleOpenChange(false)}>
               取消
             </Button>
             <Button size='sm' onClick={handleSave} disabled={pending}>

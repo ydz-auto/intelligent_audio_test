@@ -1,34 +1,33 @@
 /**
- * 全局背景噪声编辑器（11_用例域.md §5.1.3.2 评估策略字段，原 §5.1.1 常驻节移入）。
- * 受控组件（value/onChange），作策略字段编辑器由评估策略节引用复用（GlobalNoiseEditor 不再
- * 是用例常驻节——抽屉瘦身一半，INT-592 口径）。
+ * 全局背景噪声编辑器（11_用例域.md §5.1.3.2；INT-1424 按负责人口径恢复为用例配置
+ * 独立节，不再嵌在「评估策略」折叠节内；全真数据无 mock）。
+ * 受控组件（value/onChange），作用例级 config.background_noise 字段编辑器。
  * 未配置空态「未配置全局背景噪声，点击"添加全局噪声"开始配置」+「+ 添加全局噪声」ghost 钮
- * （已配置则钮位换「移除」destructive 软钮）；噪声音频卡（文件名+时长+标签 chips+更换/试听）
- * ——点「添加全局噪声/更换」打开音频选择子弹窗（AudioSelectDialog audioType='noise' 单选，
- * 真实 GET /audios 经 infrastructure/api/audioLibraryApi）；声压级 dB number 0-120 step 1；
- * 循环播放 Switch；播放设备 chips 多选（真实 GET /playback-devices，设备名存在但未匹配到 ID
- * 时黄色警示 chip——未匹配判定以真实设备列表为准）。
+ * （已配置则钮位换「移除」destructive 软钮）；噪声音频卡（文件名+时长+标签 chips+更换/试听
+ * ——试听走真实音频流，AudioPreviewConfigDialog）；声压级 dB number 0-120 step 1；
+ * 循环播放 Switch；播放设备 chips 多选（真实 GET /playback-devices 同源，INT-1424
+ * 移除 MOCK_PLAYBACK_DEVICES；设备名存在但未匹配到 ID 时黄色警示 chip）。
  * 数据契约 TestCaseBackgroundNoiseItem { audio_id, audio_name?, audio?, spl, device_ids[],
  *   device_names[]?, loop }（schemas/testcase.py:68-82 extra='allow' 兼容）。
  */
 import { AudioWaveform, Plus, Trash2, TriangleAlert } from 'lucide-react'
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { toast } from 'sonner'
+import { useMemo, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import type {
   TestCaseBackgroundNoiseItem,
 } from '@/domain/models/evaluationStrategy'
+import { usePlaybackDevices } from '@/application/devices/use-devices'
 import { AudioSelectDialog } from '@/features/testcases/modals/audio/audio-select-dialog'
-import { playbackDeviceLabel } from '@/features/testcases/modals/round-config/playback-device-label'
-import { fetchRealPlaybackDevices } from '@/infrastructure/api/playback-api'
+import {
+  AudioPreviewConfigDialog,
+  type PreviewAudioItem,
+} from '@/features/testcases/modals/audio-preview-config-dialog'
 
 const formatDuration = (s: number | null | undefined) =>
   s == null ? '—' : s < 60 ? `${s}s` : s % 60 === 0 ? `${s / 60}m` : `${Math.floor(s / 60)}m ${s % 60}s`
@@ -41,31 +40,52 @@ export function GlobalNoiseEditor({
   value: TestCaseBackgroundNoiseItem | null
   onChange: (next: TestCaseBackgroundNoiseItem | null) => void
 }) {
+  const devicesQuery = usePlaybackDevices()
+  /** 真实播放设备（/playback-devices；chips 多选数据源，INT-1424 移除 mock） */
+  const deviceOptions = useMemo(
+    () =>
+      (devicesQuery.data ?? []).map((d) => ({
+        id: String(d.id),
+        name: d.name,
+        channelIndex: d.channelIndex ?? 1,
+      })),
+    [devicesQuery.data]
+  )
   const [selectingAudio, setSelectingAudio] = useState(false)
+  /** 试听对象（INT-1424：试听 → 真实音频试听配置弹窗） */
+  const [previewItem, setPreviewItem] = useState<PreviewAudioItem | null>(null)
   const configured = value != null
-  const devicesQuery = useQuery({
-    queryKey: ['playback-devices', 'real'],
-    queryFn: fetchRealPlaybackDevices,
-    staleTime: 30_000,
-  })
-  const devices = devicesQuery.data ?? []
 
-  const toggleDevice = (id: number | string) =>
+  const toggleDevice = (id: string) =>
     onChange({
       ...value,
       deviceIds: (() => {
-        const next = new Set((value?.deviceIds ?? []).map(String))
-        if (next.has(String(id))) next.delete(String(id))
-        else next.add(String(id))
-        return [...next].map((v) => (/^\d+$/.test(v) ? Number(v) : v))
+        const next = new Set(value?.deviceIds ?? [])
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return [...next]
       })(),
     })
 
-  /** 播放设备名存在但未匹配到真实设备列表中的 ID（旧配置残留名；黄色警示 chip） */
+  /** 播放设备名存在但未匹配到 ID（旧配置残留名；黄色警示 chip） */
   const unmatchedDeviceNames =
-    devicesQuery.isLoading || devicesQuery.isError
-      ? []
-      : (value?.deviceNames?.filter((name) => !devices.some((d) => d.name === name)) ?? [])
+    value?.deviceNames?.filter(
+      (name) => !deviceOptions.some((d) => d.name === name)
+    ) ?? []
+
+  /** 试听设备标签（已选设备 id → 名称；旧配置名兜底） */
+  const previewDeviceLabels = useMemo(() => {
+    if (!value) return []
+    const labels: string[] = []
+    for (const id of value.deviceIds ?? []) {
+      const hit = deviceOptions.find((d) => d.id === String(id))
+      if (hit) labels.push(`${hit.name} (通道 ${hit.channelIndex})`)
+    }
+    for (const name of value.deviceNames ?? []) {
+      if (!labels.some((l) => l.startsWith(name))) labels.push(name)
+    }
+    return labels
+  }, [value, deviceOptions])
 
   return (
     <div className='space-y-2'>
@@ -137,15 +157,28 @@ export function GlobalNoiseEditor({
             >
               更换
             </Button>
-            <Button
-              type='button'
-              variant='ghost'
-              size='sm'
-              className='h-7'
-              onClick={() => toast.success(`正在试听：${value?.audioName ?? '音频'}（演示）`)}
-            >
-              试听
-            </Button>
+            {value?.audioId != null && (
+              <Button
+                type='button'
+                variant='ghost'
+                size='sm'
+                className='h-7'
+                onClick={() =>
+                  setPreviewItem({
+                    id: value.audioId as number | string,
+                    name: value?.audioName ?? value?.audio?.name ?? null,
+                    spl: value?.spl ?? 0,
+                    // 音频库时长兜底：实验室播放无浏览器流，播放器总时长靠它（INT-1424 UX 复核）
+                    duration: value?.audio?.duration ?? null,
+                    deviceLabels: previewDeviceLabels,
+                    // 实验室播放按全局噪声配置的设备发送（INT-1424 终审 P2-2）
+                    deviceIds: (value?.deviceIds ?? []).map(String),
+                  })
+                }
+              >
+                试听
+              </Button>
+            )}
           </div>
 
           <div className='grid gap-x-6 gap-y-3 sm:grid-cols-2'>
@@ -174,54 +207,39 @@ export function GlobalNoiseEditor({
             </div>
           </div>
 
-          {/* 播放设备（可多选）chips —— 真实 GET /playback-devices */}
+          {/* 播放设备（可多选）chips（真实 /playback-devices） */}
           <div className='space-y-1.5'>
             <Label className='text-sm'>播放设备（可多选）</Label>
-            {devicesQuery.isLoading ? (
-              <div className='text-muted-foreground flex h-8 items-center gap-2 text-xs'>
-                <Spinner className='size-3.5' />
-                加载播放设备...
-              </div>
-            ) : devicesQuery.isError ? (
-              <p className='text-destructive text-xs'>播放设备加载失败，请稍后重试</p>
-            ) : (
-              <div className='flex flex-wrap gap-1.5'>
-                {devices.length === 0 ? (
-                  <p className='text-muted-foreground/70 text-xs'>暂无可用的播放设备</p>
-                ) : (
-                  devices.map((d) => {
-                    const checked = (value?.deviceIds ?? [])
-                      .map(String)
-                      .includes(String(d.id))
-                    return (
-                      <button
-                        key={d.id}
-                        type='button'
-                        aria-pressed={checked}
-                        onClick={() => toggleDevice(d.id)}
-                        className={cn(
-                          'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
-                          checked
-                            ? 'bg-primary/10 border-primary/40 text-primary font-medium'
-                            : 'hover:bg-accent border-border text-muted-foreground'
-                        )}
-                      >
-                        {playbackDeviceLabel(d)}
-                      </button>
-                    )
-                  })
-                )}
-                {unmatchedDeviceNames.map((name) => (
-                  <span
-                    key={name}
-                    className='flex items-center gap-1 rounded-full border border-yellow-500/50 bg-yellow-500/10 px-2.5 py-1 text-xs text-yellow-700 dark:text-yellow-400'
+            <div className='flex flex-wrap gap-1.5'>
+              {deviceOptions.map((d) => {
+                const checked = (value?.deviceIds ?? []).map(String).includes(d.id)
+                return (
+                  <button
+                    key={d.id}
+                    type='button'
+                    aria-pressed={checked}
+                    onClick={() => toggleDevice(d.id)}
+                    className={cn(
+                      'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
+                      checked
+                        ? 'bg-primary/10 border-primary/40 text-primary font-medium'
+                        : 'hover:bg-accent border-border text-muted-foreground'
+                    )}
                   >
-                    <TriangleAlert aria-hidden='true' className='size-3.5 shrink-0' />
-                    未匹配到播放设备ID：{name}
-                  </span>
-                ))}
-              </div>
-            )}
+                    {d.name} (通道 {d.channelIndex})
+                  </button>
+                )
+              })}
+              {unmatchedDeviceNames.map((name) => (
+                <span
+                  key={name}
+                  className='flex items-center gap-1 rounded-full border border-yellow-500/50 bg-yellow-500/10 px-2.5 py-1 text-xs text-yellow-700 dark:text-yellow-400'
+                >
+                  <TriangleAlert aria-hidden='true' className='size-3.5 shrink-0' />
+                  未匹配到播放设备ID：{name}
+                </span>
+              ))}
+            </div>
             <p className='text-muted-foreground/70 text-xs'>
               留空表示不指定播放设备；存在旧配置设备名但未匹配到 ID 时显示警示。
             </p>
@@ -252,6 +270,14 @@ export function GlobalNoiseEditor({
             },
           })
         }}
+      />
+
+      {/* 试听配置弹窗（真实音频流） */}
+      <AudioPreviewConfigDialog
+        open={previewItem != null}
+        onOpenChange={(open) => !open && setPreviewItem(null)}
+        caseItem={null}
+        audioItem={previewItem}
       />
     </div>
   )

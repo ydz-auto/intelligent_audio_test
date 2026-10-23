@@ -7,6 +7,8 @@
  * api_name/result_type/algorithm_type；购物车快照已返 source_result_type。缺名时后端返回
  * case_id 兜底（case_name）或 null（device_name/api_name），前端按设计降级展示
  * （§3.7.1「用例不可用/设备不可用/API不可用 {前 8 位 id}…」），不写兼容层。
+ * INT-1497 §11-7 落地后：候选行另返 tags/group_id/group_name/duration/rounds（用例域真名），
+ * 用例层组织（分组视图/标签视图）与 compact 用例卡直接消费。
  */
 import type { TaskReportsDto } from '@/infrastructure/dto/task.dto'
 
@@ -19,6 +21,16 @@ export interface CherryPickCandidateDto {
   case_id: string
   /** §11-2：用例名（缺名时后端兜底返回 case_id 原文，adapter 判等降级） */
   case_name: string | null
+  /** INT-1497 §11-7：用例标签名（用例域 tags 真名；缺省 null/[] → 未设置标签兜底桶） */
+  tags: string[] | null
+  /** INT-1497 §11-7：用例分组 id（缺省 null → 未分组兜底桶） */
+  group_id: string | null
+  /** INT-1497 §11-7：用例分组名（缺名时分组视图以 group_id 兜底） */
+  group_name: string | null
+  /** INT-1497 §11-7：用例时长（秒） */
+  duration: number | null
+  /** INT-1497 §11-7：用例轮次 */
+  rounds: number | null
   device_id: number | null
   /** §11-2：设备名（TestResult 归属二选一，缺省 null） */
   device_name: string | null

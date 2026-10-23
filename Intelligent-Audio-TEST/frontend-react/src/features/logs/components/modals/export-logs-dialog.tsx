@@ -81,7 +81,11 @@ export function ExportLogsDialog(props: ExportLogsDialogProps) {
           <label htmlFor='log-export-format' className='text-muted-foreground text-sm'>
             格式
           </label>
-          <Select value={format} onValueChange={(v) => setFormat((v ?? 'txt') as LogExportInput['format'])}>
+          <Select
+            value={format}
+            onValueChange={(v) => setFormat((v ?? 'txt') as LogExportInput['format'])}
+            items={LOG_EXPORT_FORMATS}
+          >
             <SelectTrigger id='log-export-format' className='w-36' size='sm'>
               <SelectValue />
             </SelectTrigger>

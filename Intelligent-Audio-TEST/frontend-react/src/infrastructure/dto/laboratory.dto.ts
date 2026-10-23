@@ -1,7 +1,6 @@
 /**
  * 实验室 DTO（infrastructure/dto 层——snake_case 唯一出现层；16_设备域.md §6.26/INT-487）。
- * 数据契约按 doc/总架构/实验室扩展功能设计.md §5.1（GET/POST/PUT/DELETE /api/laboratories
- * + /{id}/summary）设计；后端 `/api/laboratories` CRUD 未实现（§11-24），mock 先行。
+ * 数据契约 INT-655 laboratory_bp.py /laboratories 实测（LaboratoryItem 字段逐项对齐）。
  */
 import type { LaboratoryStatus } from '@/domain/models/laboratory'
 

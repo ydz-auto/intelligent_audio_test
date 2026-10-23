@@ -6,7 +6,6 @@
  * + 播放设备 select（真实 /playback-devices）+ 默认声压级 + 用例分组 radio + 继承音频标签 boolean。
  */
 import { Check, Info } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
 
 import {
   useEvaluationDimensions,
@@ -24,9 +23,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { usePlaybackDevices } from '@/application/audio/usePlaybackDevices'
 import { cn } from '@/lib/utils'
 import { DimensionPicker } from '@/features/testcases/modals/round-config/dimension-picker'
-import { fetchPlaybackDevices } from '@/infrastructure/api/audio-upload-api'
 import {
   CASE_GROUP_OPTIONS,
   UPLOAD_AUDIO_TYPE_OPTIONS,
@@ -97,11 +96,7 @@ export function UploadOptions(props: UploadOptionsProps) {
   const uploadDimensions = uploadDimsQuery.data ?? []
   const categoriesQuery = useEvaluationCategories()
   const categories = categoriesQuery.data ?? []
-  const playbackDevicesQuery = useQuery({
-    queryKey: ['playback-devices'],
-    queryFn: fetchPlaybackDevices,
-    staleTime: 5 * 60_000,
-  })
+  const playbackDevicesQuery = usePlaybackDevices()
   const playbackDevices = playbackDevicesQuery.data ?? []
   const selectedPlaybackDevice = playbackDevices.find(
     (device) => String(device.id) === props.playbackDevice

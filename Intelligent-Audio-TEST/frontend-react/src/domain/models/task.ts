@@ -54,6 +54,14 @@ export interface TaskListItem {
   created_at: string | null
   updated_at: string | null
   is_favorite: boolean | null
+  /** 挑选合并容器标记（TaskCherryPickRelation 存在性判定，INT-339） */
+  is_cherry_pick: boolean
+  /** 合并方式（whole=整任务合并 / picked=结果挑选；普通任务 null，INT-577） */
+  merge_type: MergeType | null
+  /** 容器来源任务数（列表次行「来源 {n} 个任务」，INT-577） */
+  source_task_count: number | null
+  /** 容器来源结果数（列表次行「· 结果 {m} 条」，INT-577；上游可缺省） */
+  source_result_count: number | null
   deleted: boolean | null
   deleted_at: string | null
   deleted_by_user_id: number | null
@@ -62,6 +70,9 @@ export interface TaskListItem {
   apis: TaskApiBrief[]
   source_tasks: TaskSourceBrief[]
 }
+
+/** 合并容器的合并方式（task.py TaskListItem.merge_type：whole / picked） */
+export type MergeType = 'whole' | 'picked'
 
 export interface TaskReportItem {
   id: number
