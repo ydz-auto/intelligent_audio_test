@@ -1049,6 +1049,9 @@ message ListLogsRequest {
 message ListTestCaseGroupsRequest {
   string algorithm_type = 1;  // 可选，按算法类型过滤
   string search = 2;          // 可选，搜索关键词
+  // INT-1470：可选分页下推（0 或缺省 = 不分页，返回全部分组，旧调用方行为不变）
+  int32 page = 3;             // 可选，页码（1 起）
+  int32 per_page = 4;         // 可选，每页条数；page > 0 时生效
 }
 message GetTestCaseGroupsByIdsRequest {
   repeated string group_ids = 1;  // TestCaseGroup ID 列表

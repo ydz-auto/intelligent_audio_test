@@ -52,13 +52,28 @@ class TestCaseGroupMixin:
     def list_groups(self, algorithm_type: str = '', search: str = '',
                     dimension_id: int = None,
                     keyword: str = None) -> list:
-        """查询 TestCaseGroup 列表（过滤逻辑删除，返回 dict 列表）。
+        """查询 TestCaseGroup 列表（旧口径：不分页，返回全量 dict 列表）。"""
+        return self.list_groups_page(
+            algorithm_type=algorithm_type, search=search,
+            dimension_id=dimension_id, keyword=keyword)['items']
+
+    def list_groups_page(self, algorithm_type: str = '', search: str = '',
+                         dimension_id: int = None, keyword: str = None,
+                         page: int = 0, per_page: int = 0) -> Dict[str, Any]:
+        """查询 TestCaseGroup 列表 + 过滤后总数（INT-1470 分页下推）。
+
+        page > 0 且 per_page > 0 时在 SQL 侧分页（offset/limit），分组计数也只
+        对当前页分组聚合；page / per_page 缺省或为 0 = 不分页（旧调用方行为不
+        变，total == len(items)）。
 
         多维筛选：algorithm_type / dimension_id / keyword
         其中 dimension_id / keyword 按用例级条件统计各分组下匹配的用例数，
         只返回含匹配用例的分组。
         INT-423：私有分组对非 owner 不可见（共享 + 自己创建的私有行）。
         """
+        page = int(page or 0)
+        per_page = int(per_page or 0)
+        paginate = page > 0 and per_page > 0
         session = get_db_session()
         try:
             _vis_uid, _vis_admin = visibility_identity()
@@ -71,40 +86,67 @@ class TestCaseGroupMixin:
             if algorithm_type:
                 query = query.filter(TestCaseGroup.algorithm_type == algorithm_type)
 
-            # 多维筛选：按用例级条件过滤分组
+            # 多维筛选：按用例级条件过滤分组（该口径需先物化匹配分组集合，不下推分页）
+            matched_counts = None
             if dimension_id or keyword:
-                case_counts = self._count_group_matched_cases(
+                matched_counts = self._count_group_matched_cases(
                     session, dimension_id, keyword)
-                query = query.filter(TestCaseGroup.id.in_(list(case_counts.keys())))
-            else:
-                # INT-1470 P1：无用例级筛选时也带回分组计数（口径同
-                # GetTestCaseStats group_by=group_id：未删除 + 私有可见性），
-                # 网关据此在一次 RPC 内拿到列表与计数，省掉逐请求的第二次聚合
-                case_counts = self._count_group_matched_cases(session, None, None)
+                query = query.filter(TestCaseGroup.id.in_(list(matched_counts.keys())))
 
+            total = query.count() if paginate else None
+            # 跨页去重/不丢行需要确定性排序（无 ORDER BY 时 offset/limit 的
+            # 结果集顺序不保证稳定）
+            query = query.order_by(
+                TestCaseGroup.created_at.asc(), TestCaseGroup.id.asc())
+            if paginate:
+                query = query.offset((page - 1) * per_page).limit(per_page)
             rows = query.all()
-            return [{
+            if total is None:
+                total = len(rows)
+
+            page_ids = [str(r.id) for r in rows]
+            if matched_counts is not None:
+                case_counts = matched_counts
+            else:
+                # INT-1470：计数聚合收敛到当前页分组（未删除 + 私有可见性，
+                # algorithm_type 口径与列表一致，与 GetTestCaseStats 同口径）
+                case_counts = self._count_group_matched_cases(
+                    session, None, None, algorithm_type=algorithm_type,
+                    group_ids=page_ids)
+
+            return {'total': total, 'items': [{
                 'id': str(r.id),
                 'name': r.name,
                 'description': getattr(r, 'description', ''),
                 'algorithm_type': getattr(r, 'algorithm_type', ''),
                 'test_case_count': case_counts.get(str(r.id), 0),
-            } for r in rows]
+            } for r in rows]}
         finally:
             session.close()
 
-    def _count_group_matched_cases(self, session, dimension_id, keyword) -> Dict[str, int]:
+    def _count_group_matched_cases(self, session, dimension_id, keyword,
+                                   algorithm_type: str = '',
+                                   group_ids: List[str] = None) -> Dict[str, int]:
         """按用例级筛选条件统计各分组下匹配用例数 {group_id: count}。
 
+        group_ids 非 None 时只聚合这些分组（INT-1470：计数只算当前页）；
+        algorithm_type 非空时与列表口径一致，只计该算法类型的用例。
         INT-423：私有用例对非 owner 不计数（与 query_testcases 同口径）。
         """
         from task_service.infrastructure.visibility_context import visibility_identity
+        if group_ids is not None and not group_ids:
+            # 空页无需聚合（in_([]) 恒空，省一次全表扫描）
+            return {}
         _vis_uid, _vis_admin = visibility_identity()
         case_filters = [
             TestCase.deleted == False,  # noqa: E712
             visible_condition(
                 TestCase.created_by_user_id, TestCase.visibility, _vis_uid, _vis_admin),
         ]
+        if algorithm_type:
+            case_filters.append(TestCase.algorithm_type == algorithm_type)
+        if group_ids is not None:
+            case_filters.append(TestCase.group_id.in_(group_ids))
         if dimension_id:
             case_filters.append(build_dim_id_filter(str(dimension_id)))
         if keyword:
