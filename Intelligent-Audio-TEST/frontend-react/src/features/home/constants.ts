@@ -186,6 +186,12 @@ export const STATS_BAR = {
   label: '平台规模',
   anonymousText: '登录后可查看平台实时规模',
   anonymousAction: '登录',
+  /**
+   * API 在线率告警阈值（03_首页.md §3.2「在线率低于阈值时该项标 Alert 色并附故障告警角标」；
+   * 阈值收敛在此，不在组件里写魔法数字）。
+   */
+  apiOnlineRateAlertThreshold: 0.8,
+  apiAlertBadge: '故障告警',
 } as const
 
 /** ② 从这里开始 */
