@@ -22,6 +22,7 @@ import {
   useTagMutations,
   useTags,
 } from '@/application/tags/useTags'
+import { ErrorState } from '@/components/error-state'
 import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
 import {
   Card,
@@ -233,6 +234,8 @@ export function TagManagementPage() {
             <CategoryTreeCard
               categories={categories}
               loading={categoriesQuery.isLoading}
+              error={categoriesQuery.isError}
+              onRetry={() => void categoriesQuery.refetch()}
               total={categoriesQuery.data?.length ?? 0}
               uncategorizedCount={uncategorizedCount}
               selectedCategoryId={selectedCategoryId}
@@ -256,6 +259,8 @@ export function TagManagementPage() {
             <TagTableCard
               tags={tags}
               loading={tagsQuery.isLoading}
+              error={tagsQuery.isError}
+              onRetry={() => void tagsQuery.refetch()}
               total={tags.length}
               currentCategoryName={currentCategoryName}
               showCategoryColumn={selectedCategoryId === null}
@@ -321,6 +326,8 @@ export function TagManagementPage() {
 function CategoryTreeCard({
   categories,
   loading,
+  error,
+  onRetry,
   total,
   uncategorizedCount,
   selectedCategoryId,
@@ -336,6 +343,9 @@ function CategoryTreeCard({
 }: {
   categories: TagCategory[]
   loading: boolean
+  /** 查询失败：显示错误态（不得把接口失败渲染成「暂无数据」） */
+  error: boolean
+  onRetry: () => void
   total: number
   uncategorizedCount: number
   selectedCategoryId: number | null
@@ -386,7 +396,7 @@ function CategoryTreeCard({
             标签分类
           </span>
           <span className='text-muted-foreground text-xs font-normal tabular-nums'>
-            共 {total} 个
+            {error ? '共 — 个' : `共 ${total} 个`}
           </span>
         </CardTitle>
         <CardAction>
@@ -429,6 +439,13 @@ function CategoryTreeCard({
               <Skeleton key={i} className='h-8 w-full rounded-md' />
             ))}
           </div>
+        ) : error ? (
+          <ErrorState
+            className='min-h-48'
+            title='分类加载失败'
+            description='标签分类获取失败，请重试'
+            onRetry={onRetry}
+          />
         ) : (
           <div className='space-y-0.5'>
             {visible.map((cat) => {
@@ -608,6 +625,8 @@ function CategoryTreeCard({
 function TagTableCard({
   tags,
   loading,
+  error,
+  onRetry,
   total,
   currentCategoryName,
   showCategoryColumn,
@@ -624,6 +643,9 @@ function TagTableCard({
 }: {
   tags: TagItem[]
   loading: boolean
+  /** 查询失败：显示错误态（不得把接口失败渲染成「暂无标签」空态） */
+  error: boolean
+  onRetry: () => void
   total: number
   currentCategoryName: string
   showCategoryColumn: boolean
@@ -643,7 +665,7 @@ function TagTableCard({
 
   const visible = useMemo(() => tags.slice(0, visibleCount), [tags, visibleCount])
   const hasMore = visibleCount < tags.length
-  const isEmpty = !loading && tags.length === 0
+  const isEmpty = !loading && !error && tags.length === 0
 
   const handleScroll = useCallback(() => {
     const el = scrollRef.current
@@ -670,7 +692,7 @@ function TagTableCard({
         <CardTitle className='flex flex-wrap items-center gap-2'>
           <span className='truncate'>{currentCategoryName}</span>
           <span className='text-muted-foreground text-xs font-normal tabular-nums'>
-            共 {total} 个标签
+            {error ? '共 — 个标签' : `共 ${total} 个标签`}
           </span>
         </CardTitle>
       </CardHeader>
@@ -713,6 +735,14 @@ function TagTableCard({
             {Array.from({ length: 5 }).map((_, i) => (
               <Skeleton key={i} className='h-11 w-full rounded-none border-b' />
             ))}
+          </div>
+        ) : error ? (
+          <div className='bg-card ring-foreground/10 rounded-xl ring-1'>
+            <ErrorState
+              title='标签加载失败'
+              description='标签列表获取失败，请重试'
+              onRetry={onRetry}
+            />
           </div>
         ) : isEmpty ? (
           <div className='bg-card ring-foreground/10 rounded-xl ring-1'>

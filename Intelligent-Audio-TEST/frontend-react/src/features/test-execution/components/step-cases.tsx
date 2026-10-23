@@ -523,6 +523,9 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
         isFiltered={isFiltered}
         groups={groups}
         tags={tags}
+        tagsError={tagsQuery.isError}
+        tagsLoading={tagsQuery.isLoading}
+        onRetryTags={() => void tagsQuery.refetch()}
         dimensions={dimensions}
         categories={categories}
         tagCategories={tagCategories}
