@@ -96,3 +96,105 @@ describe('mergeChunks（上传合并载荷）', () => {
     })
   })
 })
+
+/**
+ * §5.7.3 / §5.7.4 / §5.7.7 三档轮次范围载荷（INT-1614）：
+ * 设备逐轮写 rounds[].audios[].playback_device_id；维度逐轮写 rounds[].evaluation.dimensions；
+ * 顶层 dimensions 在「所有轮次」档放 single+multi、「指定/逐轮」档只放 multi（条目必带 name）。
+ */
+describe('mergeChunks（三档轮次范围载荷）', () => {
+  const dims = [
+    { id: 3, name: '识别准确率', weight: 50, round_scope: 'single' as const },
+    { id: 4, name: '唤醒成功率', round_scope: 'single' as const },
+  ]
+  const multi = [{ id: 7, name: '对话连贯性', round_scope: 'multi' as const }]
+  const rounds = [
+    { round_number: 1, audios: [{ audio_name: 'a.wav', play_order: 1 }] },
+    { round_number: 2, audios: [{ audio_name: 'b.wav', play_order: 1 }] },
+    { round_number: 3, audios: [{ audio_name: 'c.wav', play_order: 1 }] },
+  ]
+
+  beforeEach(() => {
+    postMock.mockReset()
+    postMock.mockResolvedValue({ audio_id: 7, name: 'c.wav', test_case_id: 'tc1', test_case_count: 1 })
+  })
+
+  it('所有轮次：各轮同一设备、顶层放 single+multi、轮内不写 evaluation', async () => {
+    await mergeChunks('task-1', 'file-3', 'c.wav', baseConfig({
+      rounds,
+      dimensions: dims,
+      multiDimensions: multi,
+      playbackDeviceId: 12,
+      dimensionPlan: { mode: 'all', uniformIds: [3, 4], specificRounds: [1], perRoundIds: {} },
+      devicePlan: { mode: 'all', uniformId: 12, specificRounds: [1], perRoundIds: {} },
+    }))
+    const payload = postMock.mock.calls[0][1]
+    expect(payload.default_playback_device_id).toBe(12)
+    expect(
+      payload.test_case_config.rounds.map(
+        (r: { audios: Array<{ playback_device_id?: number }> }) => r.audios[0].playback_device_id
+      )
+    ).toEqual([12, 12, 12])
+    expect(payload.test_case_config.rounds[0]).not.toHaveProperty('evaluation')
+    expect(payload.dimensions).toEqual([...dims, ...multi])
+  })
+
+  it('指定轮次：只有勾中轮写设备与维度，未勾中轮写空维度，顶层只放 multi', async () => {
+    await mergeChunks('task-1', 'file-3', 'c.wav', baseConfig({
+      rounds,
+      dimensions: dims,
+      multiDimensions: multi,
+      playbackDeviceId: 12,
+      dimensionPlan: { mode: 'specific', uniformIds: [3], specificRounds: [2], perRoundIds: {} },
+      devicePlan: { mode: 'specific', uniformId: 12, specificRounds: [2], perRoundIds: {} },
+    }))
+    const payload = postMock.mock.calls[0][1]
+    const sent = payload.test_case_config.rounds
+    expect(sent[0].audios[0]).not.toHaveProperty('playback_device_id')
+    expect(sent[1].audios[0].playback_device_id).toBe(12)
+    expect(sent[2].audios[0]).not.toHaveProperty('playback_device_id')
+    expect(sent[0].evaluation).toEqual({ dimensions: [] })
+    expect(sent[1].evaluation).toEqual({ dimensions: [dims[0]] })
+    expect(sent[2].evaluation).toEqual({ dimensions: [] })
+    expect(payload.dimensions).toEqual(multi)
+  })
+
+  it('逐轮设置：各轮各自设备与维度，未设置轮不写设备', async () => {
+    await mergeChunks('task-1', 'file-3', 'c.wav', baseConfig({
+      rounds,
+      dimensions: dims,
+      multiDimensions: multi,
+      playbackDeviceId: 12,
+      dimensionPlan: {
+        mode: 'per_round',
+        uniformIds: [],
+        specificRounds: [1],
+        perRoundIds: { 1: [3], 2: [4], 3: [] },
+      },
+      devicePlan: {
+        mode: 'per_round',
+        uniformId: null,
+        specificRounds: [1],
+        perRoundIds: { 1: 12, 2: 13 },
+      },
+    }))
+    const payload = postMock.mock.calls[0][1]
+    const sent = payload.test_case_config.rounds
+    expect(sent[0].audios[0].playback_device_id).toBe(12)
+    expect(sent[1].audios[0].playback_device_id).toBe(13)
+    expect(sent[2].audios[0]).not.toHaveProperty('playback_device_id')
+    expect(sent[0].evaluation).toEqual({ dimensions: [dims[0]] })
+    expect(sent[1].evaluation).toEqual({ dimensions: [dims[1]] })
+    expect(sent[2].evaluation).toEqual({ dimensions: [] })
+    expect(payload.dimensions).toEqual(multi)
+  })
+
+  it('多轮整体维度条目带 name（读侧 TestCaseDimensionItem.name 必填，审计 P3-2）', async () => {
+    await mergeChunks('task-1', 'file-1', 'a.wav', baseConfig({
+      dimensions: [],
+      multiDimensions: multi,
+    }))
+    const payload = postMock.mock.calls[0][1]
+    expect(payload.dimensions).toEqual([{ id: 7, name: '对话连贯性', round_scope: 'multi' }])
+  })
+})

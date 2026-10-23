@@ -11,6 +11,10 @@
  * md5 不做浏览器计算（无 spark-md5 依赖），注册传空串，后端不据此秒传；同批同名文件避免重复入库。
  */
 import { apiClient } from './client'
+import type {
+  UploadDevicePlan,
+  UploadDimensionPlan,
+} from '@/domain/models/uploadRoundScope'
 
 /** 上传任务初始化（POST /upload/init） */
 export async function initUploadTask(): Promise<string> {
@@ -121,6 +125,16 @@ export interface UploadRoundConfig {
   [key: string]: unknown
 }
 
+/** 提交的评估维度条目（§5.7.7：`{id, name, weight, threshold, round_scope}`；name 必填） */
+export interface UploadDimensionItem {
+  id: number
+  name: string
+  weight?: number
+  threshold?: number
+  /** single = 单轮维度（轮内 evaluation.dimensions）；multi = 多轮整体（顶层 dimensions 归并） */
+  round_scope: 'single' | 'multi'
+}
+
 /** 生成测试用例配置（merge 载荷 test_case_config；照 TestCaseUploadConfig/RoundConfigItem 实测） */
 export interface UploadTestCaseConfig {
   /** 是否生成测试用例（原 test_types.length>0 语义；用例类型由后端默认落库） */
@@ -129,7 +143,15 @@ export interface UploadTestCaseConfig {
   rounds?: UploadRoundConfig[]
   algorithmType: string | null
   algorithmParams: Array<{ field_code: string; field_value: unknown }>
-  dimensions: number[]
+  /** 单轮维度条目（各轮实际用到的 id 并集，含 name/weight；§5.7.7） */
+  dimensions: UploadDimensionItem[]
+  /** 多轮整体维度条目（顶层 round_scope='multi'；§5.7.7 阶段 B） */
+  multiDimensions?: UploadDimensionItem[]
+  /** 维度三档计划（§5.7.3）；不传 = dimensions 统一作用于所有轮次（阶段 A 口径） */
+  dimensionPlan?: UploadDimensionPlan
+  /** 播放设备三档计划（§5.7.4）；不传 = playbackDeviceId 统一作用于所有轮次 */
+  devicePlan?: UploadDevicePlan
+  /** 顶层 default_playback_device_id（all/specific = 统一值、per_round = 第 1 轮值；§5.7.7） */
   playbackDeviceId: number | null
   spl: number
   noiseAudioId: number | null
@@ -150,12 +172,62 @@ export interface MergeChunksResult {
   testCaseCount: number
 }
 
+/** 维度 id 集 → 提交条目（元数据取 config.dimensions 目录；缺目录时回退「维度 {id}」保证 name 必填） */
+function toDimensionItems(
+  config: UploadTestCaseConfig,
+  ids: number[]
+): UploadDimensionItem[] {
+  return ids.map((id) => {
+    const numeric = Number(id)
+    const found = config.dimensions.find((d) => d.id === numeric)
+    return found ?? { id: numeric, name: `维度 ${numeric}`, round_scope: 'single' }
+  })
+}
+
+/**
+ * 单轮播放设备取值（§5.7.4 / §5.7.7）：
+ * - 所有轮次：统一值；
+ * - 指定轮次：勾中轮用统一值，未勾中的轮不写（保留 JSON 标注值 / 后端兜底）；
+ * - 逐轮设置：各轮各自值，未设置的轮不写。
+ */
+function resolveRoundDeviceId(
+  config: UploadTestCaseConfig,
+  roundNumber: number
+): number | null {
+  const plan = config.devicePlan
+  if (!plan || plan.mode === 'all') return config.playbackDeviceId
+  if (plan.mode === 'specific') {
+    return plan.specificRounds.includes(roundNumber) ? plan.uniformId : null
+  }
+  return plan.perRoundIds[roundNumber] ?? null
+}
+
+/**
+ * 单轮评估维度取值（§5.7.3 / §5.7.7 阶段 B）：
+ * - 所有轮次：轮内不写（统一集走顶层 dimensions，避免与顶层双口径）；
+ * - 指定轮次 / 逐轮设置：轮内显式写（含空数组），顶层只放 multi。
+ */
+function resolveRoundDimensions(
+  config: UploadTestCaseConfig,
+  roundNumber: number
+): UploadDimensionItem[] | null {
+  const plan = config.dimensionPlan
+  if (!plan || plan.mode === 'all') return null
+  if (plan.mode === 'specific') {
+    return toDimensionItems(
+      config,
+      plan.specificRounds.includes(roundNumber) ? plan.uniformIds : []
+    )
+  }
+  return toDimensionItems(config, plan.perRoundIds[roundNumber] ?? [])
+}
+
 /**
  * merge 载荷轮次（§5.7.6/§5.7.7）：
  * - 整组 rounds 优先（文件夹导入的 JSON 用例解析结果 / 按文件夹推断），缺省时按当前文件单轮；
  * - `round_number` 一律按数组下标重写 1..N（JSON 里原有编号可能缺省或乱序）；
- * - 播放设备写进每轮 `audios[].playback_device_id`（当前只有统一一档 = 所有轮次同一 id），
- *   顶层另发 `default_playback_device_id`——建用例链路只读它作缺省兜底，不承载逐轮语义。
+ * - 播放设备按三档写进 `audios[].playback_device_id`（只补空缺，不覆盖 JSON 自带值）；
+ * - 评估维度按三档写 `rounds[].evaluation.dimensions`（「所有轮次」档不写，走顶层统一集）。
  */
 function buildMergeRounds(
   config: UploadTestCaseConfig,
@@ -165,15 +237,40 @@ function buildMergeRounds(
     config.rounds && config.rounds.length > 0
       ? config.rounds
       : [{ round_number: 1, audios: [{ audio_name: filename, play_order: 1 }] }]
-  return source.map((round, index) => ({
-    ...round,
-    round_number: index + 1,
-    audios: (round.audios ?? []).map((audio) =>
-      config.playbackDeviceId != null && audio.playback_device_id == null
-        ? { ...audio, playback_device_id: config.playbackDeviceId }
-        : { ...audio }
-    ),
-  }))
+  return source.map((round, index) => {
+    const roundNumber = index + 1
+    const deviceId = resolveRoundDeviceId(config, roundNumber)
+    const roundDimensions = config.createTestCase
+      ? resolveRoundDimensions(config, roundNumber)
+      : null
+    return {
+      ...round,
+      round_number: roundNumber,
+      audios: (round.audios ?? []).map((audio) =>
+        deviceId != null && audio.playback_device_id == null
+          ? { ...audio, playback_device_id: deviceId }
+          : { ...audio }
+      ),
+      ...(roundDimensions != null
+        ? { evaluation: { dimensions: roundDimensions } }
+        : {}),
+    }
+  })
+}
+
+/**
+ * 顶层 dimensions（§5.7.7）：
+ * - 「所有轮次」档 = 统一 single 集 + multi 集（后端对未自带 evaluation 的轮次回填该集）；
+ * - 「指定轮次」/「逐轮设置」= 只放 multi（逐轮 single 已写在轮内，顶层不放逐轮维度）。
+ */
+function buildTopLevelDimensions(
+  config: UploadTestCaseConfig
+): UploadDimensionItem[] | undefined {
+  if (!config.createTestCase) return undefined
+  const multi = config.multiDimensions ?? []
+  const plan = config.dimensionPlan
+  if (!plan || plan.mode === 'all') return [...config.dimensions, ...multi]
+  return multi
 }
 
 /** 合并分片 + 按需生成测试用例（POST /upload/merge） */
@@ -198,7 +295,8 @@ export async function mergeChunks(
     algorithm_type: config.algorithmType ?? '',
     algorithm_params: config.algorithmParams,
     algorithm_relations: [],
-    dimensions: createTestCase ? config.dimensions : undefined,
+    // 顶层 dimensions：所有轮次档 = single + multi；逐轮/指定轮档 = 只放 multi（§5.7.7）
+    dimensions: buildTopLevelDimensions(config),
     tags: config.tags,
     inherit_tags: config.inheritTags,
     spl: config.spl,
