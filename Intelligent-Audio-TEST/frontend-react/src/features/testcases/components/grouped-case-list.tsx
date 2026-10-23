@@ -311,6 +311,7 @@ export function GroupedCaseList({
   groups,
   cases,
   loading,
+  groupsLoading,
   trash,
   hasQueryFilters,
   filters,
@@ -325,6 +326,8 @@ export function GroupedCaseList({
   groups: TestCaseGroup[]
   cases: TestCaseListItem[]
   loading: boolean
+  /** 分组列表加载（INT-1284：分组卡渲染以 /groups 为准；缺省沿用 loading，兼容旧调用） */
+  groupsLoading?: boolean
   trash: boolean
   /** 非回收站筛选是否激活（搜索/分组/标签/维度）——回收站空态区分「真空」与「筛选无匹配」 */
   hasQueryFilters: boolean
@@ -425,7 +428,9 @@ export function GroupedCaseList({
     }
   }
 
-  if (loading) {
+  // INT-1284：骨架以分组列表加载为准（/groups 快）；分组到位后即使用例列表仍加载
+  // （/testcases 单页响应慢），也立即渲染分组卡（计数取 test_case_count），不阻塞卡渲染。
+  if (groupsLoading ?? loading) {
     return (
       <div className='space-y-3'>
         {Array.from({ length: 4 }).map((_, i) => (

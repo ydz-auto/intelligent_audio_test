@@ -541,7 +541,6 @@ export function StepCases({ readOnly, view }: StepCasesProps) {
             filters={effectiveFilters}
             trash={filters.trash ?? false}
             hasQueryFilters={hasQueryFilters}
-            filters={{ ...filters, algorithmType: filters.algorithmType ?? algorithmType }}
             selected={selectedSet}
             tagRegistry={tags}
             callbacks={canManage ? rowCallbacks : undefined}
