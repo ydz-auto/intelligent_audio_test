@@ -59,6 +59,9 @@ export function useGroupCases(
     /** 本组首次加载中（尚无已累加数据）——展开空组显示加载骨架 */
     isLoading: query.isLoading && items.length === 0,
     isFetching: query.isFetching,
+    /** 查询失败（INT-1605）：空组文案不得把接口失败伪装成「该分组暂无用例」 */
+    isError: query.isError,
+    refetch: () => void query.refetch(),
     loadMore: () => setPage((p) => p + 1),
   }
 }
