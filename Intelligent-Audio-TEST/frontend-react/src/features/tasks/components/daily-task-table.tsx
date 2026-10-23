@@ -38,6 +38,7 @@ import {
 import { Progress } from '@/features/tasks/components/ui/progress'
 import { TaskBulkActions } from '@/features/tasks/components/task-bulk-actions'
 import { TaskRowActions } from '@/features/tasks/components/task-row-actions'
+import { MERGE_TYPE_LABELS } from '@/features/tasks/cherry-pick/constants'
 
 /** 列显隐选项（视图下拉，§3.5；任务类型概念已移除——INT-1241，不再有「类型」列） */
 const COLUMN_OPTIONS = [
@@ -382,6 +383,18 @@ export function DailyTaskTable({
                 total > 0 ? Math.round((completed / total) * 100) : 0
               const failedProgress =
                 total > 0 ? Math.round((failed / total) * 100) : 0
+              // INT-1498：挑选合并容器标识（merge_type 为准；旧后端仅返 is_cherry_pick 时按结果挑选）
+              const mergeType = task.merge_type ?? (task.is_cherry_pick ? 'picked' : null)
+              const sourceCount = task.source_task_count ?? task.source_tasks.length
+              const mergeDesc = mergeType
+                ? [
+                    MERGE_TYPE_LABELS[mergeType],
+                    sourceCount > 0 ? `来源 ${sourceCount} 个任务` : null,
+                    task.source_result_count != null ? `结果 ${task.source_result_count} 条` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')
+                : null
 
               return (
                 <tr
@@ -417,11 +430,22 @@ export function DailyTaskTable({
                             />
                           )}
                           <span className='truncate'>{task.name}</span>
+                          {mergeType && (
+                            <Badge
+                              variant={mergeType === 'whole' ? 'secondary' : 'outline'}
+                              className='shrink-0'
+                              title={mergeDesc ?? undefined}
+                            >
+                              挑选合并
+                            </Badge>
+                          )}
                         </span>
                         <span className='text-muted-foreground block truncate'>
                           {disabled
                             ? `删除时间 ${formatDateTime(task.deleted_at)} · 删除人 ${task.deleted_by_user_id ? `用户#${task.deleted_by_user_id}` : '—'}`
-                            : (task.description ?? '')}
+                            : mergeDesc
+                              ? `${mergeDesc}${task.description ? ` · ${task.description}` : ''}`
+                              : (task.description ?? '')}
                         </span>
                       </button>
                     </td>

@@ -8,6 +8,7 @@
 import type { CherryPickContainer } from '@/domain/models/cherryPick'
 import type {
   CherryPickTask,
+  MergeType,
   PublishedTaskDetail,
   PublishedTaskExecuteResult,
   PublishedTaskItem,
@@ -29,8 +30,19 @@ import type {
   TaskRetryResultDto,
 } from '@/infrastructure/dto/task.dto'
 
+/**
+ * 合并方式归一（INT-577）：后端 merge_type 为准；旧版本仅返 is_cherry_pick 时
+ * 按 picked 兜底（该字段本身即结果挑选容器判定）。
+ */
+function toMergeType(dto: TaskListItemDto): MergeType | null {
+  if (dto.merge_type === 'whole' || dto.merge_type === 'picked') return dto.merge_type
+  return dto.is_cherry_pick ? 'picked' : null
+}
+
 /** TaskListItem：后端同构字段 + api_count 派生 */
 export function toTaskListItem(dto: TaskListItemDto): TaskListItem {
+  const isCherryPick = dto.is_cherry_pick ?? false
+  const sourceTasks = dto.source_tasks ?? []
   return {
     id: dto.id,
     name: dto.name,
@@ -54,13 +66,17 @@ export function toTaskListItem(dto: TaskListItemDto): TaskListItem {
     created_at: dto.created_at,
     updated_at: dto.updated_at,
     is_favorite: dto.is_favorite,
+    is_cherry_pick: isCherryPick,
+    merge_type: toMergeType(dto),
+    source_task_count: dto.source_task_count ?? (sourceTasks.length || null),
+    source_result_count: dto.source_result_count ?? null,
     deleted: dto.deleted,
     deleted_at: dto.deleted_at,
     deleted_by_user_id: dto.deleted_by_user_id,
     reports: dto.reports,
     devices: dto.devices ?? [],
     apis: dto.apis ?? [],
-    source_tasks: dto.source_tasks ?? [],
+    source_tasks: sourceTasks,
   }
 }
 
