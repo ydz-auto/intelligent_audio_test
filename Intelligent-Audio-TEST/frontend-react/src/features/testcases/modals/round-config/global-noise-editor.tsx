@@ -28,6 +28,7 @@ import {
   AudioPreviewConfigDialog,
   type PreviewAudioItem,
 } from '@/features/testcases/modals/audio-preview-config-dialog'
+import { playbackDeviceLabel } from '@/features/testcases/modals/round-config/playback-device-label'
 
 const formatDuration = (s: number | null | undefined) =>
   s == null ? '—' : s < 60 ? `${s}s` : s % 60 === 0 ? `${s / 60}m` : `${Math.floor(s / 60)}m ${s % 60}s`
@@ -43,12 +44,7 @@ export function GlobalNoiseEditor({
   const devicesQuery = usePlaybackDevices()
   /** 真实播放设备（/playback-devices；chips 多选数据源，INT-1424 移除 mock） */
   const deviceOptions = useMemo(
-    () =>
-      (devicesQuery.data ?? []).map((d) => ({
-        id: String(d.id),
-        name: d.name,
-        channelIndex: d.channelIndex ?? 1,
-      })),
+    () => (devicesQuery.data ?? []).map((d) => ({ id: String(d.id), device: d })),
     [devicesQuery.data]
   )
   const [selectingAudio, setSelectingAudio] = useState(false)
@@ -70,7 +66,7 @@ export function GlobalNoiseEditor({
   /** 播放设备名存在但未匹配到 ID（旧配置残留名；黄色警示 chip） */
   const unmatchedDeviceNames =
     value?.deviceNames?.filter(
-      (name) => !deviceOptions.some((d) => d.name === name)
+      (name) => !deviceOptions.some((d) => d.device.name === name)
     ) ?? []
 
   /** 试听设备标签（已选设备 id → 名称；旧配置名兜底） */
@@ -79,7 +75,7 @@ export function GlobalNoiseEditor({
     const labels: string[] = []
     for (const id of value.deviceIds ?? []) {
       const hit = deviceOptions.find((d) => d.id === String(id))
-      if (hit) labels.push(`${hit.name} (通道 ${hit.channelIndex})`)
+      if (hit) labels.push(playbackDeviceLabel(hit.device))
     }
     for (const name of value.deviceNames ?? []) {
       if (!labels.some((l) => l.startsWith(name))) labels.push(name)
@@ -226,7 +222,7 @@ export function GlobalNoiseEditor({
                         : 'hover:bg-accent border-border text-muted-foreground'
                     )}
                   >
-                    {d.name} (通道 {d.channelIndex})
+                    {playbackDeviceLabel(d.device)}
                   </button>
                 )
               })}
