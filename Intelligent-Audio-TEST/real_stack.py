@@ -107,6 +107,11 @@ def _base_env() -> dict:
             f'真实库栈必须显式指向共享业务库 {SHARED_BUSINESS_DB_NAME}。')
     # Redis 独立 DB index，避免与 5000 段 / parallel 栈缓存互踩
     env['REDIS_URL'] = 'redis://localhost:6379/2'
+    # 事件总线频道前缀（INT-1235）：真实栈与 5000 段共用同一 Redis 实例、
+    # pub/sub 通道跨 DB index 全局共享；真实栈用独立前缀 real_ 隔离通道名，
+    # 否则 5000 段发布的事件会被真实栈 SSE 转发（主库悬空 id 404，INT-1227）。
+    # 所有服务（发布 + 网关订阅）必须同一前缀，否则丢事件。
+    env['EVENT_CHANNEL_PREFIX'] = os.environ.get('EVENT_CHANNEL_PREFIX', 'real_')
     # 业务日志落 worktree 之外
     env['LOG_ROOT_DIR'] = LOG_DIR
     # 认证：dev（表单登录，INT-1195 账号）；VITE_AUTH_MODE 与后端同值防错位
