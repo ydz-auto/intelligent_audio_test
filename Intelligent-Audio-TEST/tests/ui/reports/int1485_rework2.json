@@ -1,0 +1,38 @@
+[
+  {
+    "step": "ENV-rework2-start 环境核对",
+    "ok": true,
+    "detail": "health={'status': 'ok', 'service': 'api_gateway', 'version': 'V9.7.31', 'database': 'intelligent_audio_test'} frontend=lib-react.5c68ee069a.js",
+    "evidence": {}
+  },
+  {
+    "step": "K12a 夹具：自建角色 + 归属用户",
+    "ok": true,
+    "detail": "role_id=82 user_id=446 create_user=201/0",
+    "evidence": {}
+  },
+  {
+    "step": "K12 被引用角色删除：409 + 文案可见",
+    "ok": true,
+    "detail": "DELETE=[{'method': 'DELETE', 'url': '/api/v1/auth/roles/82', 'status': 409, 'body': '', 'resp': '{\"success\":false,\"code\":203,\"message\":\"角色仍被 1 个用户引用，请先迁移用户角色\"}'}] 确认框静态提示=True toast可见=True 角色仍在=True body_tail=员系统内置13测试工程师tester测试工程师（含测试主管）系统内置914算法工程师algo_engineer算法工程师（含质量负责人）系统内置481设备管理员device_admin设备管理员系统内置311游客guest游客系统内置102接线测试_引用角色_1023225308接线测试_引用角色_1023225308被引用删除预检探针自定义11角色仍被 1 个用户引用，请先迁移用户角色     ",
+    "evidence": {}
+  },
+  {
+    "step": "K12b 夹具清理",
+    "ok": true,
+    "detail": "role_left=False user_left=False",
+    "evidence": {}
+  },
+  {
+    "step": "K13 空名称提交：400 后提示文案",
+    "ok": true,
+    "detail": "POST=[{'method': 'POST', 'url': '/api/v1/auth/roles', 'status': 400, 'body': '{\"name\":\"\",\"description\":\"\",\"permission_codes\":[]}', 'resp': '{\"success\":false,\"code\":100,\"message\":\"name 为必填项\"}'}] 弹窗仍在=False body_tail=角色的权限控制（RBAC）：角色绑定权限串，用户归属角色角色权限变更后即时生效，用户归属角色决定其基线权限范围+ 新建角色角色名称描述类型权限数用户数超级管理员admin超级管理员系统内置13测试工程师tester测试工程师（含测试主管）系统内置914算法工程师algo_engineer算法工程师（含质量负责人）系统内置481设备管理员device_admin设备管理员系统内置311游客guest游客系统内置102角色保存失败     ",
+    "evidence": {}
+  },
+  {
+    "step": "ENV-rework2-end 环境核对",
+    "ok": true,
+    "detail": "health={'status': 'ok', 'service': 'api_gateway', 'version': 'V9.7.31', 'database': 'intelligent_audio_test'} frontend=lib-react.5c68ee069a.js",
+    "evidence": {}
+  }
+]
