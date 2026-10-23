@@ -39,16 +39,16 @@ export default defineConfig(({ envMode }) => {
       // ws:true 启用 engine upgrade。
       proxy: {
         '/api': {
-          target: 'http://localhost:5000',
+          target: 'http://localhost:5700',
           changeOrigin: true,
         },
         '/ws': {
-          target: 'http://localhost:5000',
+          target: 'http://localhost:5700',
           changeOrigin: true,
           ws: true,
         },
         '/socket.io': {
-          target: 'http://localhost:5000',
+          target: 'http://localhost:5700',
           changeOrigin: true,
           ws: true,
         },

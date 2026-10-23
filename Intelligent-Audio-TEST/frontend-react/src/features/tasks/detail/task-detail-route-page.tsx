@@ -9,20 +9,28 @@
  * /tasks/:id（§4.1 口径保留）。
  */
 import { Link } from '@tanstack/react-router'
-import { ChevronLeft } from 'lucide-react'
+import { ChevronLeft, Pencil } from 'lucide-react'
 import { useState } from 'react'
 
+import { usePermissions } from '@/application/hooks/use-permissions'
 import { useTaskDetail } from '@/application/tasks/use-task-detail'
 import { Button } from '@/components/ui/button'
 import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
+import {
+  RenameTaskDialog,
+  type RenameTaskTarget,
+} from '@/features/tasks/components/rename-task-dialog'
 import { TaskDetailContent } from '@/features/tasks/detail/task-detail-content'
 import { CaseDetailDialog } from '@/features/test-execution/modals/case-detail-dialog'
 
 export function TaskDetailRoutePage({ taskId }: { taskId: number }) {
+  const { hasPermission } = usePermissions()
   const detailQuery = useTaskDetail(taskId)
   const name = detailQuery.data?.name ?? '任务详情'
   // 关联用例行点击 → 用例执行详情模态窗（09 §4.4 onCaseSelect → 10 §5.2，INT-1066）
   const [caseDetail, setCaseDetail] = useState<{ caseId: string } | null>(null)
+  // 重命名（INT-1290：详情页「重命名」→ 名称编辑弹窗，保存后经 ['tasks'] 前缀刷新详情）
+  const [renameTask, setRenameTask] = useState<RenameTaskTarget | null>(null)
 
   return (
     <>
@@ -50,6 +58,17 @@ export function TaskDetailRoutePage({ taskId }: { taskId: number }) {
         <SectionPageLayout.Title>{name}</SectionPageLayout.Title>
 
         <SectionPageLayout.Actions>
+          {hasPermission('task:update') && detailQuery.data && (
+            <Button
+              size='sm'
+              variant='outline'
+              className='h-7 gap-1.5'
+              onClick={() => setRenameTask({ id: taskId, name: detailQuery.data!.name })}
+            >
+              <Pencil aria-hidden='true' className='size-3.5' />
+              重命名
+            </Button>
+          )}
           <Button
             size='sm'
             variant='outline'
@@ -79,6 +98,13 @@ export function TaskDetailRoutePage({ taskId }: { taskId: number }) {
       }}
       taskId={taskId}
       caseId={caseDetail?.caseId ?? ''}
+    />
+
+    {/* 重命名（INT-1290：详情页名称编辑弹窗） */}
+    <RenameTaskDialog
+      open={renameTask != null}
+      onOpenChange={(open) => !open && setRenameTask(null)}
+      task={renameTask}
     />
   </>
 
