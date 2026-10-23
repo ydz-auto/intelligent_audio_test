@@ -74,21 +74,24 @@ export function PickStep({
   /** 批量「加入挑选」预选任务：非空 → 跳过阶段 1 直达阶段 2（§3.8.2/§6.1） */
   presetTaskIds?: number[]
 }) {
-  const options = usePickFilterOptions()
   /** 阶段 1 服务端排序（INT-1496 sort_by/sort_order；取代原客户端状态权重排序） */
   const [sortBy, setSortBy] = useState<PickableTaskSortBy>('status')
   const [sortOrder, setSortOrder] = useState<PickableTaskSortOrder>('asc')
   // 阶段 1 任务清单（pickable-tasks 任务级聚合 + 服务端分页排序，不受阶段 2 任务筛选影响）
   const pickableTasksQuery = usePickableTasks({ sortBy, sortOrder })
-  const candidatesQuery = useCherryPickCandidates(filters)
+  const [phase, setPhase] = useState<'tasks' | 'results'>(
+    presetTaskIds && presetTaskIds.length > 0 ? 'results' : 'tasks'
+  )
+  // 阶段 2 候选与筛选选项只在阶段 2 发起：阶段 1 的 Network 只应有 pickable-tasks（INT-1509）
+  const candidatesQuery = useCherryPickCandidates(filters, {
+    enabled: phase === 'results',
+  })
+  const options = usePickFilterOptions(phase === 'results')
   const caseView = useCherryPickCaseView(candidatesQuery.data)
   const deviceView = useCherryPickDeviceView(candidatesQuery.data)
   const resultTypeView = useCherryPickResultTypeView(candidatesQuery.data)
   const addEntries = usePickCartStore((s) => s.addEntries)
 
-  const [phase, setPhase] = useState<'tasks' | 'results'>(
-    presetTaskIds && presetTaskIds.length > 0 ? 'results' : 'tasks'
-  )
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<number>>(
     () => new Set(presetTaskIds ?? filters.taskIds)
   )
@@ -105,13 +108,12 @@ export function PickStep({
   /** 阶段 1 任务行（服务端已按 sort_by/sort_order 排序，前端不再聚合/重排） */
   const taskRows = pickableTasksQuery.items
 
-  /** 任务名映射（阶段 2 任务集摘要条；pickable-tasks 为全量清单，选项作补充） */
+  /** 任务名映射（阶段 2 任务集摘要条；pickable-tasks 即全量可挑选任务清单） */
   const taskNameById = useMemo(() => {
     const map = new Map<number, string>()
     for (const t of pickableTasksQuery.items) map.set(t.taskId, t.taskName)
-    for (const t of options.tasks) if (!map.has(t.id)) map.set(t.id, t.name)
     return map
-  }, [pickableTasksQuery.items, options.tasks])
+  }, [pickableTasksQuery.items])
 
   /** 状态同步（§3.8.2）：清单刷新后剔除已不可挑选的旧任务，返回上一步/切换排序不残留 */
   useEffect(() => {

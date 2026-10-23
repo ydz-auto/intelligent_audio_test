@@ -152,6 +152,9 @@ export function PickTaskStage({
               / 共 {total} 个可挑选任务
             </span>
           )}
+          {total > tasks.length && (
+            <span className='text-destructive'> （已加载 {tasks.length}/{total}）</span>
+          )}
         </span>
         <span className='text-muted-foreground/70 ml-auto text-xs'>
           仅已完成、执行失败、已停止的终态任务可挑选
@@ -252,10 +255,12 @@ export function PickTaskStage({
           >
             清空
           </Button>
-          <span className='text-muted-foreground/70 text-xs'>
-            全选当前筛选将选中命中全部 {kw ? filtered.length : total} 个任务
-            {kw ? '（搜索命中）' : '（跨页，不受每页条数限制）'}
-          </span>
+          {total > 0 && (
+            <span className='text-muted-foreground/70 text-xs'>
+              全选当前筛选将选中命中全部 {kw ? filtered.length : total} 个任务
+              {kw ? '（搜索命中）' : '（跨页，不受每页条数限制）'}
+            </span>
+          )}
         </div>
         <Button
           size='sm'

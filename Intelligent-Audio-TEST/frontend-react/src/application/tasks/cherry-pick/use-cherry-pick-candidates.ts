@@ -90,8 +90,13 @@ export function useSlowPending(
   return { isSlow, restartSlow }
 }
 
-/** 候选行查询（多条件 AND）；用例名慢路径背景拉取，就绪后二次装饰 caseName（§11-2 降级 → 名称） */
-export function useCherryPickCandidates(filters: PickFilters) {
+/** 候选行查询（多条件 AND）；用例名慢路径背景拉取，就绪后二次装饰 caseName（§11-2 降级 → 名称）。
+ *  `enabled=false`（挑选向导阶段 1）时不发起——阶段 1 只走 pickable-tasks（INT-1509）。 */
+export function useCherryPickCandidates(
+  filters: PickFilters,
+  options: { enabled?: boolean } = {}
+) {
+  const enabled = options.enabled ?? true
   const queryClient = useQueryClient()
   // INT-1280：retryNonce 进入查询键——无数据慢查询的 refetch 会被 query-core 去重到在途
   // retryer 而不重发（见 query.fetch「仅已有数据才 cancelRefetch」），重试必须换键生成全新查询。
@@ -106,11 +111,13 @@ export function useCherryPickCandidates(filters: PickFilters) {
     queryKey: candidatesQueryKey,
     queryFn: () => fetchCherryPickCandidates(toApiFilters(filters)),
     staleTime: 15_000,
+    enabled,
   })
   const caseNamesQuery = useQuery({
     queryKey: ['cherry-pick', 'case-names'],
     queryFn: fetchPickCaseNames,
     staleTime: 5 * 60_000,
+    enabled,
   })
   // INT-1280：候选在途超阈值 → isSlow，UI 给可重试反馈而非无限骨架屏
   const { isSlow, restartSlow } = useSlowPending(
@@ -192,17 +199,20 @@ export function usePickableTasks(params: {
 
 /** 筛选器选项（来源任务/设备/结果类型，动态选项数据源 §3.4）。
  *  来源任务与阶段 1 清单同源（pickable-tasks）；设备/结果类型仍由阶段 2
- *  candidates facet 提供（一次查询同时出两类选项，§11-3 降级不在本卡范围）。 */
-export function usePickFilterOptions() {
+ *  candidates facet 提供（一次查询同时出两类选项，§11-3 降级不在本卡范围）。
+ *  `enabled=false`（阶段 1）时整组不发起——阶段 1 只允许打一条 pickable-tasks。 */
+export function usePickFilterOptions(enabled = true) {
   const tasks = useQuery({
     queryKey: ['cherry-pick', 'options', 'tasks'],
     queryFn: fetchPickableTaskOptions,
     staleTime: 60_000,
+    enabled,
   })
   const facets = useQuery({
     queryKey: ['cherry-pick', 'options', 'facets'],
     queryFn: fetchCandidateFacets,
     staleTime: 60_000,
+    enabled,
   })
   return {
     tasks: tasks.data ?? [],
