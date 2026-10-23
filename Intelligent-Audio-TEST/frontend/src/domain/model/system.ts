@@ -36,8 +36,10 @@ export interface SystemUser {
   status?: string
   roleId?: number | null
   roleName?: string
-  /** 生效权限（角色基线 ∪ overrides）——列表「生效权限数」列口径 */
+  /** 生效权限（角色基线 ∪ overrides）权限码全集——仅详情查询；列表条目为空数组 */
   permissions?: string[]
+  /** 生效权限数（列表列口径，INT-1465 列表接口返回的 permission_count；详情走 permissions.length） */
+  permissionCount: number
   /** 附加权限 overrides 明细（仅详情查询返回；granted 过滤后的权限码列表） */
   extraPermissions?: string[]
   createdAt?: string

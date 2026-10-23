@@ -81,7 +81,7 @@
                     {{ statusLabel(user.status) }}
                   </span>
                 </td>
-                <td class="secondary-col mono">{{ user.permissions?.length ?? 0 }}</td>
+                <td class="secondary-col mono">{{ user.permissionCount ?? 0 }}</td>
                 <td class="secondary-col">{{ (user.createdAt || '').slice(0, 10) }}</td>
                 <td class="core-col action-col">
                   <div class="table-actions">
@@ -426,7 +426,8 @@ async function openPermissions(user: SystemUser) {
     permSelected.value = [...(detail.extraPermissions ?? [])]
   } catch (e: any) {
     // 详情拉取失败：回退列表行基线并提示，页面仍可编辑
-    permSelected.value = [...(user.permissions ?? [])]
+    // （INT-1465 列表已瘦身：列表行不含 permissions 全集，基线只能用 overrides 明细，同样为空）
+    permSelected.value = [...(user.extraPermissions ?? [])]
     error.value = friendlyApiError(e, '加载用户权限明细失败')
   }
 }

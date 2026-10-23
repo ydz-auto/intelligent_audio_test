@@ -23,7 +23,7 @@ import type {
 
 /** 用户条目 → Domain */
 export function toSystemUser(dto: UserItemDto | null | undefined): SystemUser {
-  if (!dto) return { id: 0, username: '', extraPermissions: [] }
+  if (!dto) return { id: 0, username: '', extraPermissions: [], permissionCount: 0 }
   return {
     id: toSafeNumber(dto.id),
     username: dto.username ?? '',
@@ -32,6 +32,8 @@ export function toSystemUser(dto: UserItemDto | null | undefined): SystemUser {
     roleId: dto.role_id ?? null,
     roleName: dto.role_name ?? '',
     permissions: dto.permissions ?? [],
+    // 列表生效权限数（INT-1465 列表瘦身：后端只回 permission_count，不再回 permissions 全集）
+    permissionCount: toSafeNumber(dto.permission_count),
     // 附加权限 overrides 明细（仅详情查询返回；list 不含 → []）
     extraPermissions: (dto.overrides ?? [])
       .filter(o => o.granted)

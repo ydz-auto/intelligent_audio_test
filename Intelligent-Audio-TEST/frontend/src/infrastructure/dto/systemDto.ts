@@ -21,7 +21,10 @@ export interface UserItemDto {
   status?: string
   role_id?: number | null
   role_name?: string
+  /** 生效权限（角色基线 ∪ overrides）权限码全集——仅详情查询返回（INT-1465 列表已瘦身） */
   permissions?: string[]
+  /** 生效权限数（列表专用，INT-1465 列表瘦身后替代 permissions 全集；详情不返回） */
+  permission_count?: number
   /** 附加权限 override 明细（仅详情查询返回；列表不含） */
   overrides?: PermissionOverrideDto[]
   created_at?: string

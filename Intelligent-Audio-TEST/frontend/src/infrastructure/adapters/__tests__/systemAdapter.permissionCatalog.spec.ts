@@ -114,7 +114,18 @@ describe('toSystemUser（用户详情 overrides → extraPermissions）', () => 
     expect(toSystemUser({ id: 2, username: 'bob' }).extraPermissions).toEqual([]);
   });
 
+  it('列表 permission_count → permissionCount（INT-1465 列表瘦身，不再回 permissions 全集）', () => {
+    const result = toSystemUser({ id: 3, username: 'carol', role_name: 'tester', permission_count: 91 });
+    expect(result.permissionCount).toBe(91);
+    // 列表条目不再携带 permissions → 兜底空数组，列口径只认 permissionCount
+    expect(result.permissions).toEqual([]);
+  });
+
+  it('缺 permission_count（详情条目 / 旧契约）→ permissionCount 兜底 0，不产生 NaN', () => {
+    expect(toSystemUser({ id: 4, username: 'dave' }).permissionCount).toBe(0);
+  });
+
   it('null 兜底', () => {
-    expect(toSystemUser(null)).toEqual({ id: 0, username: '', extraPermissions: [] });
+    expect(toSystemUser(null)).toEqual({ id: 0, username: '', extraPermissions: [], permissionCount: 0 });
   });
 });
