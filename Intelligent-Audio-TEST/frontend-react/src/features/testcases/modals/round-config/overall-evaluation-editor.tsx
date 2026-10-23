@@ -68,8 +68,14 @@ export function OverallEvaluationEditor({
           name: d.name,
           weight: defaultParams().weight,
           threshold: defaultParams().threshold,
+          // INT-1424：LLM Judge 默认值取维度自身 llmJudgeConfig，缺省对照 V9.7.10（gpt-4 / default）
           ...(llmJudge
-            ? { llmJudgeConfig: { model: 'claude-3-sonnet', promptTemplate: 'default' } }
+            ? {
+                llmJudgeConfig: {
+                  model: d.llmJudgeConfig?.model ?? 'gpt-4',
+                  promptTemplate: d.llmJudgeConfig?.promptTemplate ?? 'default',
+                },
+              }
             : {}),
         }
       })
@@ -90,7 +96,7 @@ export function OverallEvaluationEditor({
               ...(patch.model || patch.promptTemplate
                 ? {
                     llmJudgeConfig: {
-                      model: patch.model ?? v.llmJudgeConfig?.model ?? 'claude-3-sonnet',
+                      model: patch.model ?? v.llmJudgeConfig?.model ?? 'gpt-4',
                       promptTemplate:
                         patch.promptTemplate ?? v.llmJudgeConfig?.promptTemplate ?? 'default',
                     },

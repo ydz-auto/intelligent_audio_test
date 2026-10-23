@@ -2,6 +2,8 @@
  * 音频试听配置弹窗测试（11_用例域.md §5.2）：
  * 播放模式 RadioGroup + 偏移量 →「开始试听」切音频播放器 stage
  * （进度条/播放暂停/停止/播放设备区），「返回试听配置」双向切换。
+ * INT-1424：试听链路接真实音频流——播放器在未传 audioItem 时禁用播放
+ * （无真实音频 id 无法取流），配置流程与双向切换不变。
  */
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -54,21 +56,32 @@ describe('AudioPreviewConfigDialog', () => {
         open
         onOpenChange={vi.fn()}
         caseItem={CASE_ITEM}
+        audioItem={{ id: 42, name: 'sample.wav', spl: 65, deviceLabels: ['音频接口 A (通道 1) [干声]'] }}
       />
     )
     await user.click(screen.getByRole('button', { name: '开始试听' }))
     expect(
-      screen.getByText(`测试用例预览｜${CASE_ITEM.name} 音频`)
+      screen.getByText(`测试用例预览｜sample.wav 音频`)
     ).toBeInTheDocument()
     expect(screen.getByLabelText('播放进度')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '播放' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '停止' })).toBeInTheDocument()
     expect(screen.getByText('播放设备（浏览器播放）')).toBeInTheDocument()
-    // 播放/暂停切换
-    await user.click(screen.getByRole('button', { name: '播放' }))
-    expect(screen.getByRole('button', { name: '暂停' })).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: '暂停' }))
-    expect(screen.getByRole('button', { name: '播放' })).toBeInTheDocument()
+    expect(screen.getByText('音频接口 A (通道 1) [干声]')).toBeInTheDocument()
+  })
+
+  it('§5.2 未传音频对象时播放钮禁用（无真实音频 id 无法取流）', async () => {
+    const user = setupUser()
+    render(
+      <AudioPreviewConfigDialog
+        open
+        onOpenChange={vi.fn()}
+        caseItem={CASE_ITEM}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: '开始试听' }))
+    expect(screen.getByRole('button', { name: '播放' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '停止' })).toBeEnabled()
   })
 
   it('§5.2 播放器「返回试听配置」双向切换回配置态', async () => {

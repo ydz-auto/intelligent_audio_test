@@ -58,7 +58,7 @@ import type { TestCaseListItem } from '@/domain/models/testCase'
 import type { TestCaseGroup } from '@/domain/models/testCaseGroup'
 import type { TagItem } from '@/domain/models/testTag'
 import type {
-  CaseEvaluationStrategy,
+  EvaluationStrategy,
   TestCaseBackgroundNoiseItem,
   TestCaseDimensionItem,
 } from '@/domain/models/evaluationStrategy'
@@ -88,6 +88,8 @@ import { AudioListStep } from '@/features/testcases/modals/round-config/audio-li
 import { NoiseInterferenceStep } from '@/features/testcases/modals/round-config/noise-interference-step'
 import { serializeVoiceprint } from '@/features/testcases/modals/round-config/round-noise-codec'
 import { EvaluationStep } from '@/features/testcases/modals/round-config/evaluation-step'
+import { GlobalNoiseEditor } from '@/features/testcases/modals/round-config/global-noise-editor'
+import { OverallEvaluationEditor } from '@/features/testcases/modals/round-config/overall-evaluation-editor'
 import { ReferenceStep } from '@/features/testcases/modals/round-config/reference-step'
 import {
   EvaluationStrategyEditor,
@@ -181,41 +183,63 @@ function CaseTagInput({
 }
 
 /**
- * 存量 config → 评估策略节初始值（编辑回填 §5.1.3；config 值内 snake_case 契约 →
- * camelCase Domain，editor 直接消费）。
- * - config.evaluationStrategy（引用态 {strategy_id, overrides}）→ initialValue；
- * - 存量直载 config.dimensions / config.background_noise → legacy 字段（无 strategy 时
- *   等价内联策略，映射「新建策略」模式并提示可另存为复用策略）。
+ * 存量 config → 抽屉状态初始值（编辑回填 §5.1.3；INT-1424 结构：两个独立节承载
+ * config.dimensions/config.background_noise，评估策略节承载 config.evaluationStrategy）。
+ * - config.evaluationStrategy（引用态 {strategy_id, overrides}）→ 引用模式，
+ *   独立节显示策略解析值（覆盖优先）；存量直载字段由引用态物化，不单独回填；
+ * - 无 strategy_id 的存量内联配置（config.dimensions / config.background_noise）→
+ *   mode='none'，独立节直载（等价内联策略，执行口径不变——向后兼容）。
  */
-function strategyEditorInitial(
-  config: Record<string, unknown> | null | undefined
+function resolveStrategyState(
+  config: Record<string, unknown> | null | undefined,
+  strategies: EvaluationStrategy[]
 ): {
-  initialValue: CaseEvaluationStrategy | null
-  legacyDimensions: TestCaseDimensionItem[]
-  legacyBackgroundNoise: TestCaseBackgroundNoiseItem | null
+  strategyValue: EvaluationStrategyEditorValue
+  overallDims: TestCaseDimensionItem[]
+  globalNoise: TestCaseBackgroundNoiseItem | null
 } {
   const rawStrategy = config?.evaluationStrategy as
-    | { strategy_id?: string | null; overrides?: { dimensions?: TestCaseDimensionItem[]; background_noise?: TestCaseBackgroundNoiseItem | null } }
-    | null
-  const rawOverrides = rawStrategy?.overrides
-  const overrides =
-    rawOverrides != null &&
-    (rawOverrides.dimensions != null || rawOverrides.background_noise != null)
-      ? {
-          ...(rawOverrides.dimensions != null ? { dimensions: rawOverrides.dimensions } : {}),
-          ...(rawOverrides.background_noise != null
-            ? { backgroundNoise: rawOverrides.background_noise }
-            : {}),
+    | {
+        strategy_id?: string | null
+        overrides?: {
+          dimensions?: TestCaseDimensionItem[]
+          background_noise?: TestCaseBackgroundNoiseItem | null
         }
-      : null
+      }
+    | null
+  if (rawStrategy?.strategy_id) {
+    const strategy = strategies.find((s) => String(s.id) === String(rawStrategy.strategy_id))
+    const rawOverrides = rawStrategy.overrides
+    const overrides =
+      rawOverrides != null &&
+      (rawOverrides.dimensions != null || rawOverrides.background_noise != null)
+        ? {
+            ...(rawOverrides.dimensions != null ? { dimensions: rawOverrides.dimensions } : {}),
+            ...(rawOverrides.background_noise != null
+              ? { backgroundNoise: rawOverrides.background_noise }
+              : {}),
+          }
+        : null
+    return {
+      strategyValue: {
+        mode: 'reference',
+        strategyId: rawStrategy.strategy_id ?? null,
+        overrides,
+      },
+      overallDims: (overrides?.dimensions ??
+        strategy?.dimensions ??
+        []) as TestCaseDimensionItem[],
+      globalNoise: (overrides?.backgroundNoise ??
+        strategy?.backgroundNoise ??
+        null) as TestCaseBackgroundNoiseItem | null,
+    }
+  }
   return {
-    initialValue: rawStrategy
-      ? { strategyId: rawStrategy.strategy_id ?? null, ...(overrides ? { overrides } : {}) }
-      : null,
-    legacyDimensions: (Array.isArray(config?.dimensions)
+    strategyValue: { mode: 'none', strategyId: null, overrides: null },
+    overallDims: (Array.isArray(config?.dimensions)
       ? config.dimensions
       : []) as TestCaseDimensionItem[],
-    legacyBackgroundNoise: (config?.background_noise ?? null) as TestCaseBackgroundNoiseItem | null,
+    globalNoise: (config?.background_noise ?? null) as TestCaseBackgroundNoiseItem | null,
   }
 }
 
@@ -260,12 +284,60 @@ export function CaseMutateDrawer({
     useAlgorithmOptions()
   const [rounds, setRounds] = useState<RoundDraft[]>(defaultRounds())
   const [activeRound, setActiveRound] = useState(1)
-  /** 评估策略节值（§5.1.3；保存时序列化为 config.evaluationStrategy / 存量直载字段） */
-  const [strategyValue, setStrategyValue] = useState<EvaluationStrategyEditorValue | null>(null)
-  /** 编辑态评估策略节初始值（存量 config 回填；「未触碰」与「显式不使用」以此区分） */
-  const { initialValue, legacyDimensions, legacyBackgroundNoise } = strategyEditorInitial(
-    caseItem?.config
-  )
+  /** 评估策略节值（§5.1.3；受控：mode/strategyId/overrides） */
+  const [strategyValue, setStrategyValue] = useState<EvaluationStrategyEditorValue>({
+    mode: 'none',
+    strategyId: null,
+    overrides: null,
+  })
+  /** INT-1424：整体评估维度独立节（config.dimensions 内联承载；引用态为覆盖值解析后回填） */
+  const [overallDims, setOverallDims] = useState<TestCaseDimensionItem[]>([])
+  /** INT-1424：全局背景噪声独立节（config.background_noise 内联承载） */
+  const [globalNoise, setGlobalNoise] = useState<TestCaseBackgroundNoiseItem | null>(null)
+
+  /** 引用态解析的策略对象（独立节显示覆盖优先策略值；脱离引用时固化为内联值） */
+  const selectedStrategy =
+    strategies.find((s) => String(s.id) === String(strategyValue?.strategyId)) ?? null
+
+  /** 整体评估维度独立节展示值（引用态=覆盖优先策略值；内联态=overallDims） */
+  const displayDims =
+    strategyValue?.mode === 'reference'
+      ? (strategyValue.overrides?.dimensions ?? selectedStrategy?.dimensions ?? [])
+      : overallDims
+  /** 全局背景噪声独立节展示值 */
+  const displayNoise =
+    strategyValue?.mode === 'reference'
+      ? (strategyValue.overrides?.backgroundNoise ?? selectedStrategy?.backgroundNoise ?? null)
+      : globalNoise
+
+  /** 独立节变更（引用态写入覆盖值；内联态写入用例配置） */
+  const setSectionDims = (next: TestCaseDimensionItem[]) => {
+    if (strategyValue?.mode === 'reference') {
+      setStrategyValue({
+        ...strategyValue,
+        overrides: { ...(strategyValue.overrides ?? {}), dimensions: next },
+      })
+    } else setOverallDims(next)
+  }
+  const setSectionNoise = (next: TestCaseBackgroundNoiseItem | null) => {
+    if (strategyValue?.mode === 'reference') {
+      setStrategyValue({
+        ...strategyValue,
+        overrides: { ...(strategyValue.overrides ?? {}), backgroundNoise: next },
+      })
+    } else setGlobalNoise(next)
+  }
+
+  /** 策略节变更：脱离引用/新建时把当前展示值固化为用例内联配置（值不丢） */
+  const handleStrategyChange = (next: EvaluationStrategyEditorValue) => {
+    if (next.mode === 'reference') {
+      setStrategyValue(next)
+      return
+    }
+    setOverallDims(displayDims)
+    setGlobalNoise(displayNoise)
+    setStrategyValue(next)
+  }
 
   const groupOptions = [
     ...groups.map((g) => ({ value: g.id, label: g.name })),
@@ -408,8 +480,9 @@ export function CaseMutateDrawer({
       })
       .filter((e) => e.params.length > 0)
 
-    // 评估策略节（§5.1.3 契约）：未触碰（strategyValue=null）保留存量字段；三模式改写如下
-    const strategyPayload = serializeEvaluationStrategy(strategyValue)
+    // 评估策略节（§5.1.3 契约）：引用态写 strategyId/strategyOverrides + 清存量直载字段；
+    // none / create（内联态）写独立节 config.dimensions/config.background_noise + 显式 '' 清引用
+    const strategyPayload = serializeEvaluationStrategy(strategyValue, overallDims, globalNoise)
     let strategyId: string | null | undefined
     let strategyOverrides: Record<string, unknown> | null | undefined
     if (strategyValue?.mode === 'reference') {
@@ -420,24 +493,15 @@ export function CaseMutateDrawer({
       // 引用态：清存量直载字段（策略写时物化到 config.dimensions/background_noise）
       delete config.dimensions
       delete config.background_noise
-      delete config.evaluationStrategy
-    } else if (strategyValue?.mode === 'create') {
+    } else {
       config.dimensions = strategyPayload.dimensions
       config.background_noise = strategyPayload.backgroundNoise
-      delete config.evaluationStrategy
       // 后端契约：strategy_id=null 沿用既有引用；只有显式空字符串 '' 才清引用
       // （testcase_crud_service.py _resolve_strategy_config：None 沿用、'' 清引用并返空配置）。
-      // INT-922 审计 P2：引用态用例显式「不使用」/「新建内联」必须发 ''，否则旧引用不清、
-      // 旧策略物化回填覆盖内联编辑。
-      strategyId = ''
-      strategyOverrides = null
-    } else if (strategyValue?.mode === 'none') {
-      delete config.dimensions
-      delete config.background_noise
-      delete config.evaluationStrategy
       strategyId = ''
       strategyOverrides = null
     }
+    delete config.evaluationStrategy
 
     const payload: TestCaseMutatePayload = {
       name: nameValue.trim(),
@@ -510,10 +574,11 @@ export function CaseMutateDrawer({
     setActiveRound(1)
     setStep('算法参数')
     setNewGroupName('')
-    // INT-922 审计 P1：评估策略节未触碰（strategyValue=null）时保存保留存量字段，
-    // 否则 EvaluationStrategyEditor 挂载即 onChange 输出 mode='none' 会在保存时
-    // 删除 config.dimensions / config.background_noise / config.evaluationStrategy
-    setStrategyValue(null)
+    // INT-1424：两个独立节 + 评估策略节按存量 config 回填（引用态解析策略值；内联态直载）
+    const resolved = resolveStrategyState(caseItem?.config, strategies)
+    setStrategyValue(resolved.strategyValue)
+    setOverallDims(resolved.overallDims)
+    setGlobalNoise(resolved.globalNoise)
   }, [open, caseItem, presetGroupId])
 
   return (
@@ -703,17 +768,36 @@ export function CaseMutateDrawer({
               </div>
             </section>
 
-            {/* 评估配置 · 默认折叠「进阶」区（§5.1.3 评估策略节，INT-592 瘦身核心） */}
+            {/* 整体评估维度（INT-1424：独立常驻节，不在「评估策略」折叠节内；引用态=覆盖优先策略值） */}
             <section className='border-border/60 border-t pt-4'>
-              <EvaluationStrategyEditor
-                key={isEdit && caseItem ? caseItem.id : 'create'}
-                initialValue={initialValue}
-                legacyDimensions={legacyDimensions}
-                legacyBackgroundNoise={legacyBackgroundNoise}
+              <OverallEvaluationEditor
+                key={isEdit && caseItem ? `dims-${caseItem.id}` : 'dims-create'}
                 dimensions={dimensions}
                 categories={categories}
                 algorithmType={algorithmType}
-                onChange={setStrategyValue}
+                value={displayDims}
+                onChange={setSectionDims}
+              />
+            </section>
+
+            {/* 全局背景噪声（INT-1424：独立常驻节） */}
+            <section className='border-border/60 border-t pt-4'>
+              <GlobalNoiseEditor
+                key={isEdit && caseItem ? `noise-${caseItem.id}` : 'noise-create'}
+                value={displayNoise}
+                onChange={setSectionNoise}
+              />
+            </section>
+
+            {/* 评估策略（INT-1424：仅策略复用——引用/新建，不吞并上方两个独立节） */}
+            <section className='border-border/60 border-t pt-4'>
+              <EvaluationStrategyEditor
+                key={isEdit && caseItem ? `strategy-${caseItem.id}` : 'strategy-create'}
+                value={strategyValue}
+                onChange={handleStrategyChange}
+                dimensions={dimensions}
+                currentDimensions={displayDims}
+                currentBackgroundNoise={displayNoise}
               />
             </section>
           </div>

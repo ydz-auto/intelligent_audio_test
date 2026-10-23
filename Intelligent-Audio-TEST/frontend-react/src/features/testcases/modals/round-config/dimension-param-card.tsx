@@ -1,8 +1,8 @@
 /**
  * 已选维度参数卡（用例编辑抽屉 §5.1 / §5.1.2 共用）。
  * 每维度：名称 + LLM Judge 徽章 + 移除钮；权重 number 0-100 默认 50 + 阈值 number 0-100 默认 80
- * （非 LLM Judge）；LLM Judge 时 模型 Select（gpt-4/gpt-4o/gpt-3.5-turbo/claude-3-opus/claude-3-sonnet）
- * + Prompt 模板 Select（default/accuracy/fluency/relevance）。
+ * （非 LLM Judge）；LLM Judge 时 模型 Select + Prompt 模板 Select（选项对照 V9.7.10
+ * OverallEvaluationEditor.vue llmModelOptions/llmPromptOptions，INT-1424 移除 MOCK_ 前缀）。
  * 数据契约 config.dimensions 项 = { id, name, weight, threshold, (llmJudgeConfig: {model, promptTemplate}) }
  */
 import { SlidersHorizontal } from 'lucide-react'
@@ -28,10 +28,10 @@ export interface DimensionParamValue {
   promptTemplate?: string
 }
 
-/** mock LLM 模型选项（接线后读算法 schema/维度配置） */
-const MOCK_LLM_MODELS = ['gpt-4', 'gpt-4o', 'gpt-3.5-turbo', 'claude-3-opus', 'claude-3-sonnet']
-/** mock Prompt 模板选项 */
-const MOCK_PROMPT_TEMPLATES = ['default', 'accuracy', 'fluency', 'relevance']
+/** LLM 模型选项（对照 V9.7.10 OverallEvaluationEditor llmModelOptions） */
+const LLM_MODELS = ['gpt-4', 'gpt-4o', 'gpt-3.5-turbo', 'claude-3-opus', 'claude-3-sonnet']
+/** Prompt 模板选项（对照 V9.7.10 llmPromptOptions） */
+const PROMPT_TEMPLATES = ['default', 'accuracy', 'fluency', 'relevance']
 
 export function DimensionParamCard({
   dimension,
@@ -45,8 +45,13 @@ export function DimensionParamCard({
   onRemove: () => void
 }) {
   const llmJudge = dimension.resultType === 'llm_judge'
-  const [model, setModel] = useState(params.model ?? MOCK_LLM_MODELS[4])
-  const [prompt, setPrompt] = useState(params.promptTemplate ?? MOCK_PROMPT_TEMPLATES[0])
+  // 默认值：维度自身 llmJudgeConfig 优先，缺省对照 V9.7.10（gpt-4 / default）
+  const [model, setModel] = useState(
+    params.model ?? dimension.llmJudgeConfig?.model ?? LLM_MODELS[0]
+  )
+  const [prompt, setPrompt] = useState(
+    params.promptTemplate ?? dimension.llmJudgeConfig?.promptTemplate ?? PROMPT_TEMPLATES[0]
+  )
 
   const commit = (patch: Partial<DimensionParamValue>) => {
     onChange(patch)
@@ -113,7 +118,7 @@ export function DimensionParamCard({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {MOCK_LLM_MODELS.map((m) => (
+                  {LLM_MODELS.map((m) => (
                     <SelectItem key={m} value={m}>
                       {m}
                     </SelectItem>
@@ -131,7 +136,7 @@ export function DimensionParamCard({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {MOCK_PROMPT_TEMPLATES.map((t) => (
+                  {PROMPT_TEMPLATES.map((t) => (
                     <SelectItem key={t} value={t}>
                       {t}
                     </SelectItem>

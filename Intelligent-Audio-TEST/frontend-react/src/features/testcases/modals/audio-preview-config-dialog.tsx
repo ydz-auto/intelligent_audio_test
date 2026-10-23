@@ -1,11 +1,12 @@
 /**
  * 音频试听配置弹窗（11_用例域.md §5.2，Dialog sm:max-w-md）。
  * 播放模式 RadioGroup「浏览器播放/实验室播放」+ 偏移量 Input（number 秒，默认 0）
- * + 主钮「开始试听」；载荷 POST /testcases/{id}/preview 携带 offset+preview_type（接线批次）。
- * 可视稿演示态：开始试听后 toast 演示。
+ * + 主钮「开始试听」；载荷 POST /audios/{id}/preview（实验室）或 GET /audios/{id}/stream
+ * （浏览器，真实音频流播放，INT-1424 移除 toast 演示）。
+ * 试听对象经 audioItem 传入（音频列表卡「试听」/全局噪声「试听」）；用例行预览
+ * （previewCase 入口）未带 audioItem 时回退用例 config.rounds[0].audios[0]。
  */
 import { useState } from 'react'
-import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -20,19 +21,44 @@ import { Input } from '@/components/ui/input'
 import { AudioPlayerPanel } from '@/features/testcases/modals/audio-player-dialog'
 import type { TestCaseListItem } from '@/domain/models/testCase'
 
+/** 试听对象（音频列表卡/全局噪声传入） */
+export interface PreviewAudioItem {
+  id: number | string
+  name?: string | null
+  spl?: number | null
+  /** 播放设备展示标签（实验室播放=用例配置设备；浏览器可为空） */
+  deviceLabels?: string[]
+}
+
+/** 用例 config 首轮首个音频回退（previewCase 入口无显式 audioItem 时） */
+function firstRoundAudio(caseItem: TestCaseListItem | null): PreviewAudioItem | null {
+  if (!caseItem) return null
+  const rounds = (caseItem.config as Record<string, unknown> | undefined)?.rounds as
+    | Array<{ audios?: Array<{ audio_id?: number | string | null; audio_name?: string | null }> }>
+    | undefined
+  const first = rounds?.[0]?.audios?.[0]
+  if (!first?.audio_id) return null
+  return { id: first.audio_id, name: first.audio_name ?? null }
+}
+
 export function AudioPreviewConfigDialog({
   open,
   onOpenChange,
   caseItem,
+  audioItem,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   caseItem: TestCaseListItem | null
+  /** 试听对象（可选；缺省回退用例首轮首个音频） */
+  audioItem?: PreviewAudioItem | null
 }) {
   const [mode, setMode] = useState<'frontend' | 'backend'>('frontend')
   const [offset, setOffset] = useState('0')
   /** 试听编排阶段：config=播放模式/偏移量配置；playing=音频播放器（§5.2） */
   const [stage, setStage] = useState<'config' | 'playing'>('config')
+
+  const target = audioItem ?? firstRoundAudio(caseItem)
 
   return (
     <Dialog
@@ -45,21 +71,31 @@ export function AudioPreviewConfigDialog({
       <DialogContent className={stage === 'playing' ? 'sm:max-w-lg' : 'sm:max-w-md'}>
         <DialogHeader>
           <DialogTitle>
-            {stage === 'playing' && caseItem
-              ? `测试用例预览｜${caseItem.name} 音频`
+            {stage === 'playing'
+              ? `测试用例预览｜${target?.name ?? caseItem?.name ?? '音频'} 音频`
               : '音频试听配置'}
           </DialogTitle>
           <DialogDescription>
             {stage === 'playing'
               ? '浏览器播放或实验室扬声器试听中'
-              : caseItem
-                ? `用例「${caseItem.name}」`
-                : '预览所选用例的音频'}
+              : target?.name
+                ? `音频「${target.name}」`
+                : caseItem
+                  ? `用例「${caseItem.name}」`
+                  : '预览所选用例的音频'}
           </DialogDescription>
         </DialogHeader>
 
         {stage === 'playing' ? (
-          <AudioPlayerPanel mode={mode} onBack={() => setStage('config')} />
+          <AudioPlayerPanel
+            mode={mode}
+            audioId={target?.id ?? null}
+            audioName={target?.name ?? null}
+            deviceLabels={target?.deviceLabels ?? []}
+            spl={target?.spl ?? 65}
+            offset={Number(offset) || 0}
+            onBack={() => setStage('config')}
+          />
         ) : (
           <div className='space-y-4'>
             <div className='space-y-1.5'>
@@ -113,14 +149,7 @@ export function AudioPreviewConfigDialog({
             <Button variant='outline' onClick={() => onOpenChange(false)}>
               取消
             </Button>
-            <Button
-              onClick={() => {
-                toast.success('已开始试听（演示）')
-                setStage('playing')
-              }}
-            >
-              开始试听
-            </Button>
+            <Button onClick={() => setStage('playing')}>开始试听</Button>
           </DialogFooter>
         )}
       </DialogContent>

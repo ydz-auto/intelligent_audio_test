@@ -2,55 +2,216 @@
  * 音频播放器（11_用例域.md §5.2，Dialog `sm:max-w-lg` 内容态面板）。
  * 进度条（Slider 可点击/拖拽定位）+ 时间 `{current}/{duration}` tabular-nums +
  * 控制钮（播放/暂停、停止）+ 播放设备信息区（勾选设备「✓ {设备名}」）+ 错误条（Alert destructive 可关闭）。
- * 由 AudioPreviewConfigDialog 内嵌渲染（「开始试听」后切换 stage 呈现），
- * 播放进度 1s 步进模拟；接线后接 audio 流真实时长与播放状态。
+ * 由 AudioPreviewConfigDialog 内嵌渲染（「开始试听」后切换 stage 呈现）。
+ * 真实链路（对照 V9.7.10 AudioPlayerModal.vue，INT-1424 移除 mock）：
+ * - 浏览器播放：GET /audios/{id}/stream → OSS 预签名 URL → HTMLAudioElement 播放，
+ *   进度/时长取自音频流 metadata（无 mock 时长）；
+ * - 实验室播放：POST /audios/{id}/preview 通知后端扬声器输出，进度按墙钟推进
+ *   （设备端播放无浏览器流；offset 作为起点），停止/暂停走 POST /audios/{id}/stop-preview。
  */
 import { Pause, Play, Square, TriangleAlert, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
-
-/** mock 音频时长（秒；接线后取真实音频流时长） */
-const MOCK_DURATION = 42
-
-/** mock 勾选设备（实验室播放=用例配置设备；浏览器播放=前端播放无设备限制演示） */
-const MOCK_DEVICES = ['音频接口 A (通道 1) [干声]', '音频接口 B (通道 2) [噪声]']
+import { preview, stopPreview, stream } from '@/infrastructure/api/audios-api'
 
 const formatClock = (s: number): string => {
   const m = Math.floor(s / 60)
-  const sec = s % 60
+  const sec = Math.floor(s % 60)
   return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
 }
 
 export function AudioPlayerPanel({
   mode,
+  audioId,
+  audioName,
+  deviceLabels = [],
+  spl,
+  offset = 0,
   onBack,
 }: {
   mode: 'frontend' | 'backend'
+  /** 音频 id（null 时不发起播放，仅展示空态） */
+  audioId: number | string | null
+  /** 音频文件名（标题区展示） */
+  audioName?: string | null
+  /** 播放设备标签（实验室播放=用例配置设备名列表；浏览器播放可为空） */
+  deviceLabels?: string[]
+  /** 实验室播放声压级（dB） */
+  spl?: number | null
+  /** 实验室播放起点偏移（秒） */
+  offset?: number
   /** 返回试听配置（§5.2 播放器→配置双向切换） */
   onBack: () => void
 }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null)
   const [current, setCurrent] = useState(0)
+  const [duration, setDuration] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // 音频元素生命周期（浏览器播放载体；加载/播放/seek 共用一个实例）
   useEffect(() => {
-    if (!playing) return
-    const timer = window.setInterval(() => {
-      setCurrent((c) => (c >= MOCK_DURATION ? MOCK_DURATION : c + 1))
-    }, 1000)
-    return () => window.clearInterval(timer)
-  }, [playing])
+    const el = new Audio()
+    el.preload = 'metadata'
+    el.crossOrigin = 'anonymous'
+    const onMetadata = () => {
+      if (Number.isFinite(el.duration) && el.duration > 0) setDuration(el.duration)
+    }
+    const onTime = () => setCurrent(el.currentTime)
+    const onEnded = () => {
+      setPlaying(false)
+      setCurrent(0)
+    }
+    const onError = () => {
+      setError('音频加载失败，请确认音频文件存在且格式有效')
+      setPlaying(false)
+    }
+    el.addEventListener('loadedmetadata', onMetadata)
+    el.addEventListener('timeupdate', onTime)
+    el.addEventListener('ended', onEnded)
+    el.addEventListener('error', onError)
+    audioRef.current = el
+    return () => {
+      el.pause()
+      el.removeEventListener('loadedmetadata', onMetadata)
+      el.removeEventListener('timeupdate', onTime)
+      el.removeEventListener('ended', onEnded)
+      el.removeEventListener('error', onError)
+      el.removeAttribute('src')
+      el.load()
+      audioRef.current = null
+    }
+  }, [])
 
-  // 播完自动停止（副作用不放进 state updater——StrictMode 下 updater 双调用安全）
+  // 浏览器播放：取真实流地址并装载（V9.7.31 契约 JSON 预签名 URL）
   useEffect(() => {
-    if (playing && current >= MOCK_DURATION) setPlaying(false)
-  }, [playing, current])
+    if (mode !== 'frontend' || audioId == null) return
+    let cancelled = false
+    setError(null)
+    setDuration(0)
+    setCurrent(0)
+    setPlaying(false)
+    void stream(Number(audioId))
+      .then((url) => {
+        if (cancelled || !audioRef.current) return
+        audioRef.current.src = url
+        return audioRef.current.load()
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : '获取音频流失败')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [mode, audioId])
+
+  // 实验室播放：进度按墙钟推进（设备端播放无浏览器流；offset 为起点）
+  useEffect(() => {
+    if (mode !== 'backend') return
+    if (!playing) return
+    const start = performance.now()
+    const base = offset > 0 ? offset : 0
+    const timer = window.setInterval(() => {
+      setCurrent(base + (performance.now() - start) / 1000)
+    }, 250)
+    return () => window.clearInterval(timer)
+  }, [mode, playing, offset])
+
+  /** 浏览器播放：真正播放/暂停当前音频元素 */
+  const toggleFrontend = async () => {
+    const el = audioRef.current
+    if (!el || !el.src) return
+    if (playing) {
+      el.pause()
+      setPlaying(false)
+      return
+    }
+    setError(null)
+    try {
+      await el.play()
+      setPlaying(true)
+    } catch {
+      setError('音频播放失败，请检查音频文件是否有效')
+    }
+  }
+
+  /** 实验室播放：通知后端设备输出 */
+  const startBackend = async () => {
+    if (audioId == null) return
+    setError(null)
+    const result = await preview(Number(audioId), {
+      playbackDeviceId: null,
+      deviceUniqueIds: [],
+      spl: spl ?? 65,
+      offset: offset > 0 ? offset : undefined,
+    })
+    if (!result.success) {
+      setError(result.message ?? '实验室播放启动失败')
+      return
+    }
+    setCurrent(offset > 0 ? offset : 0)
+    setPlaying(true)
+  }
+
+  const stopBackend = async () => {
+    setPlaying(false)
+    setCurrent(0)
+    if (audioId == null) return
+    await stopPreview(Number(audioId))
+  }
+
+  const togglePlay = () => {
+    if (mode === 'frontend') void toggleFrontend()
+    else if (playing) {
+      setPlaying(false)
+      if (audioId != null) void stopPreview(Number(audioId))
+    } else void startBackend()
+  }
+
+  const stop = () => {
+    if (mode === 'frontend') {
+      const el = audioRef.current
+      if (el) {
+        el.pause()
+        el.currentTime = 0
+      }
+      setPlaying(false)
+      setCurrent(0)
+    } else void stopBackend()
+  }
+
+  /** 进度 seek（浏览器播放直接跳转；实验室播放由后端以新 offset 重发） */
+  const onSeek = (value: number | readonly number[]) => {
+    const target = Array.isArray(value) ? (value[0] ?? 0) : value
+    if (mode === 'frontend') {
+      const el = audioRef.current
+      if (el && Number.isFinite(el.duration) && el.duration > 0) {
+        el.currentTime = Math.min(target, el.duration)
+        setCurrent(el.currentTime)
+      }
+    } else if (audioId != null) {
+      setCurrent(target)
+      void preview(Number(audioId), {
+        playbackDeviceId: null,
+        deviceUniqueIds: [],
+        spl: spl ?? 65,
+        offset: target,
+      })
+    }
+  }
+
+  const realDuration = duration > 0 ? duration : Math.max(current, 0)
 
   return (
     <div className='space-y-4'>
+      {audioName && (
+        <p className='text-muted-foreground truncate text-sm' title={audioName}>
+          {audioName}
+        </p>
+      )}
       {error && (
         <Alert variant='destructive'>
           <TriangleAlert aria-hidden='true' className='size-4 shrink-0' />
@@ -68,13 +229,13 @@ export function AudioPlayerPanel({
 
       <Slider
         min={0}
-        max={MOCK_DURATION}
-        value={current}
+        max={Math.max(realDuration, 1)}
+        value={Math.min(current, realDuration)}
         aria-label='播放进度'
-        onValueChange={(v) => setCurrent(Array.isArray(v) ? v[0] : v)}
+        onValueChange={onSeek}
       />
       <p className='text-muted-foreground font-mono text-xs tabular-nums'>
-        {formatClock(current)} / {formatClock(MOCK_DURATION)}
+        {formatClock(current)} / {formatClock(realDuration)}
       </p>
 
       <div className='flex flex-wrap items-center gap-2'>
@@ -82,7 +243,8 @@ export function AudioPlayerPanel({
           size='sm'
           className='h-8 gap-1.5'
           aria-label={playing ? '暂停' : '播放'}
-          onClick={() => setPlaying((p) => !p)}
+          disabled={audioId == null}
+          onClick={togglePlay}
         >
           {playing ? (
             <Pause aria-hidden='true' className='size-4' />
@@ -96,10 +258,7 @@ export function AudioPlayerPanel({
           variant='outline'
           className='h-8 gap-1.5'
           aria-label='停止'
-          onClick={() => {
-            setPlaying(false)
-            setCurrent(0)
-          }}
+          onClick={stop}
         >
           <Square aria-hidden='true' className='size-4' />
           停止
@@ -110,12 +269,18 @@ export function AudioPlayerPanel({
         <p className='text-muted-foreground text-xs font-medium'>
           播放设备{mode === 'backend' ? '（实验室播放）' : '（浏览器播放）'}
         </p>
-        {MOCK_DEVICES.map((d) => (
-          <p key={d} className='flex items-center gap-1.5 text-sm'>
-            <span className='text-primary'>✓</span>
-            {d}
+        {deviceLabels.length === 0 ? (
+          <p className='text-muted-foreground/70 text-sm'>
+            {mode === 'backend' ? '未配置播放设备' : '浏览器直接播放，无需指定设备'}
           </p>
-        ))}
+        ) : (
+          deviceLabels.map((d) => (
+            <p key={d} className='flex items-center gap-1.5 text-sm'>
+              <span className='text-primary'>✓</span>
+              {d}
+            </p>
+          ))
+        )}
       </div>
 
       <div className='flex justify-end'>

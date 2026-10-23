@@ -199,6 +199,15 @@ export function AudioSelectDialog({
     [data, selected]
   )
 
+  /** 全选当前页（V9.7.10 AudioListComponent 全选当前页语义；含标签/文件夹过滤后可见集） */
+  const selectCurrentPage = () => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      filtered.forEach((a) => next.add(Number(a.id)))
+      return next
+    })
+  }
+
   const handleConfirm = () => {
     onConfirm(selectedAudios)
     onOpenChange(false)
@@ -450,10 +459,35 @@ export function AudioSelectDialog({
         {/* 底部计数 + 操作 */}
         <DialogFooter>
           <div className='flex w-full flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between'>
-            <p className='text-muted-foreground shrink-0 text-xs tabular-nums'>
-              当前页 {pageItems.length} 个音频 ({summarizeDuration(pageItems)}) ｜ 已选择{' '}
-              {selectedAudios.length} 个 ({summarizeDuration(selectedAudios)})
-            </p>
+            <div className='flex shrink-0 items-center gap-3'>
+              <p className='text-muted-foreground text-xs tabular-nums'>
+                当前页 {pageItems.length} 个音频 ({summarizeDuration(pageItems)}) ｜ 已选择{' '}
+                {selectedAudios.length} 个 ({summarizeDuration(selectedAudios)})
+              </p>
+              {!isSingle && (
+                <div className='flex items-center gap-1'>
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    size='sm'
+                    className='h-7 px-2 text-xs'
+                    onClick={selectCurrentPage}
+                  >
+                    全选本页
+                  </Button>
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    size='sm'
+                    className='h-7 px-2 text-xs'
+                    disabled={selected.size === 0}
+                    onClick={() => setSelected(new Set())}
+                  >
+                    清空选择
+                  </Button>
+                </div>
+              )}
+            </div>
             <div className='flex shrink-0 items-center justify-end gap-2'>
               <Button variant='outline' size='sm' onClick={() => onOpenChange(false)}>
                 取消
