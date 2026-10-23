@@ -24,9 +24,12 @@ def _require_login(request: Request):
     AuthMiddleware 注入 request.state.user_id：JWT=真实用户；
     access token（BE2 INT-1149 合入后）= 查证用户；AUTH_MODE=off 无 token
     回落 dev_user（user_id=0）视为未登录 → 401。
+    例外：AUTH_MODE=off（开放模式，整站无需登录）时放行 dev_user——skill
+    包为静态模板无敏感数据，与「开放模式即可用全部功能」语义一致（INT-1150 跟进）。
     """
+    from api_gateway.config.config import Config
     user_id = getattr(request.state, 'user_id', None)
-    if not user_id:
+    if not user_id and Config.AUTH_MODE != 'off':
         return JSONResponse(status_code=401, content={'detail': '未登录或令牌无效'})
     return None
 
