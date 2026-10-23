@@ -53,6 +53,7 @@ python scripts/migrations/202610/backfill_log_operator_int806.py --apply  # ㉞ 
 python scripts/migrations/202610/add_evaluation_deleted_by_int841.py      # ㉟ evaluation categories/dimensions 补 deleted_by_user_id（INT-841，软删操作人列）
 python scripts/migrations/202610/add_benchmark_operator_columns_int844.py  # ㊱ 基准线管理操作人 user_id 补齐（INT-844：benchmark_sources/benchmark_metric_mappings 补 created_by_user_id+updated_by_user_id，benchmark_baselines/benchmark_reports 补 created_by_user_id + created_by 索引）
 python scripts/migrations/202610/add_api_proxy_columns.py                 # ㊲ apis 加 proxy_type/proxy_url 两列（INT-839 被测 API 网络代理；两列均可 NULL，存量行不迁移数据）
+python scripts/migrations/202610/add_derived_test_type_int1469.py --apply # ㊳ test_cases 补执行口径派生列 derived_test_type + 存量回填 + 索引（INT-1469 用例域列表/统计/取 ID 的 test_type 过滤下推 SQL；回填口径 = shared.utils.testcase_helpers.derive_case_test_type；默认 dry-run）
 ```
 
 > ✅ **2026-09-07 全量迁移记录**：当前环境已执行 ①③④⑧（`remove_foreign_keys_and_soft_delete` 12 步 + `add_audit_columns` 补 24 处 + `add_reevaluated_at` + `add_pass_threshold_to_eval_params`），执行后 `UndefinedColumn` 类报错全部消除。②⑤⑥⑦⑨ 视功能需要执行。
@@ -143,6 +144,7 @@ python scripts/migrations/202610/add_api_proxy_columns.py                 # ㊲ 
 | [add_evaluation_deleted_by_int841.py](202610/add_evaluation_deleted_by_int841.py) | evaluation categories/dimensions 补软删操作人列（INT-841） | `categories` / `dimensions` 补 `deleted_by_user_id BIGINT NULL`（created_by/updated_by 已由 add_audit_columns 补齐；软删路径无删除人列可写）；补 `created_by_user_id` 索引兜底（幂等）；全新库 create_all 已含，执行为全 SKIP；幂等，支持 `--dry-run` |
 | [add_api_proxy_columns.py](202610/add_api_proxy_columns.py) | `apis` 加网络代理两列（INT-839） | `proxy_type VARCHAR(20)`（http/https/socks5/socks5h，NULL=不用代理）+ `proxy_url VARCHAR(255)`（`user:pass@host:port`，不含 scheme，认证段必填）；两列均可 NULL，存量行不迁移数据（老数据 NULL 不报错，回归行为不变）；幂等（逐列 information_schema 检查，列已存在即 SKIP），支持 `--dry-run` |
 | [add_access_tokens_table.py](202610/add_access_tokens_table.py) | 建 `access_tokens` 表（INT-1140 Access Token + skill/MCP 鉴权令牌） | 外部 agent/skill/MCP 鉴权令牌：`user_id BIGINT` / `name VARCHAR(100)` / `token_hash VARCHAR(64)`（SHA-256，`uq_access_tokens_token_hash` 唯一）/ `token_hint VARCHAR(10)`（末 4 位掩码）/ `scopes JSON`（RBAC 权限码列表，空=继承用户全部权限）/ `expires_at TIMESTAMP NULL`（NULL=永不过期）/ `status VARCHAR(20)`（enabled\|disabled）/ `last_used_at` / `last_used_ip VARCHAR(50)` / `deleted_at`（软删+status，对齐收藏/回收站语义）；索引 `ix_access_tokens_user_id(user_id)`；无外键；全新库 create_all 已含，执行为全 SKIP；幂等（缺唯一约束自愈），支持 `--dry-run` |
+| [add_derived_test_type_int1469.py](202610/add_derived_test_type_int1469.py) | `test_cases` 补执行口径派生列 `derived_test_type`（INT-1469 用例域性能优化） | 用例不存储类型（⑯ 已删 `test_cases.test_type`），执行口径由 config 形态 + 上传双变体名后缀派生；列表/统计/取 ID 原先物化全量 config 后 Python 过滤（1 万用例实测 ~500ms/请求），改为写时物化该列（task_service ORM `before_insert`/`before_update` 统一刷新，口径 = `derive_case_test_type`）后 SQL 等值过滤。列 `varchar(10) NOT NULL DEFAULT 'api'` + 索引 `ix_test_cases_derived_test_type`；回填按值比对只写有差异的行；幂等，默认 dry-run，`--apply` 执行；全新库 `create_all` 已含列与索引 |
 
 ## 新增迁移脚本约定
 
