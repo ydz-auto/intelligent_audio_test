@@ -337,6 +337,26 @@ def test_update_legacy_windows_path_writes_normalized_key(monkeypatch):
     assert not result['data']['referenceParamsPath'].startswith('D:')
 
 
+# ==================== 无法归一的路径 ====================
+
+
+def test_update_unrecognized_path_fails_with_500_and_path(monkeypatch):
+    """无法归一的原始绝对路径不能被当成 category 写进错误桶。"""
+    raw = r'E:\export\round_1.json'
+    testcase = _make_case(
+        config={'rounds': [{'round_number': 1}]},
+        ref_params=[{'round_number': 1, 'reference_params_path': raw}],
+    )
+    service, repo = _crud_service(testcase, monkeypatch)
+
+    result = service.update_ref_params(CASE_ID, 1, {'referenceParams': REF_PARAMS})
+
+    assert result['success'] is False
+    assert result['code'] == 500
+    assert raw in result['message']
+    assert repo.committed == 0
+
+
 # ==================== 网关状态码 ====================
 
 

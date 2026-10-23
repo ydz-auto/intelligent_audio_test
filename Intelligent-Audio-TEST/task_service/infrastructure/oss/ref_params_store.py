@@ -227,10 +227,20 @@ def read_ref_params(path: str) -> List[Dict[str, Any]]:
 
 
 def write_ref_params(path: str, params: List[Dict[str, Any]]) -> str:
-    """写参考参数内容，返回实际写入的存储路径（oss:// 或本地降级 local://）。"""
+    """写参考参数内容，返回实际写入的存储路径（oss:// 或本地降级 local://）。
+
+    只接受归一化后的带 scheme 路径：无法归一的原始绝对路径直接报错，
+    避免按 `D:` 之类的伪 category 写进错误桶（调用方回 500 并带路径）。
+    """
     from shared.infrastructure.storage import storage
 
+    if not (path.startswith(_SCHEME_OSS) or path.startswith(_SCHEME_LOCAL)):
+        raise ValueError(f'无法识别的参考参数存储路径（需 oss:// 或 local://）: {path}')
+
     _, category, key = _split_storage_path(path)
+    if not category or not key:
+        raise ValueError(f'参考参数存储路径缺少 category/key: {path}')
+
     payload = json.dumps(params, ensure_ascii=False, indent=2).encode('utf-8')
     return storage.save_bytes(payload, category, key,
                               content_type='application/json')
