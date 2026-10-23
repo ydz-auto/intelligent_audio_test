@@ -102,7 +102,7 @@ function DeviceParamRows({ params }: { params: DeviceApiParam[] }) {
   if (params.length === 0) {
     return (
       <tr>
-        <td colSpan={6} className='text-muted-foreground px-3 py-4 text-center'>
+        <td colSpan={7} className='text-muted-foreground px-3 py-4 text-center'>
           无设备参数
         </td>
       </tr>
@@ -122,6 +122,7 @@ function DeviceParamRows({ params }: { params: DeviceApiParam[] }) {
         {labelOf(PARAM_DIRECTION_OPTIONS, param.direction)}
       </td>
       <td className='px-3 py-2'>{param.required ? '是' : '否'}</td>
+      <td className='px-3 py-2 font-mono text-xs'>{param.defaultValue || '—'}</td>
       <td className='text-muted-foreground max-w-56 truncate px-3 py-2 text-xs' title={param.helpText ?? ''}>
         {param.helpText || '—'}
       </td>
@@ -191,12 +192,12 @@ export function AlgorithmDetailDialog(props: AlgorithmDetailDialogProps) {
                     <TabsTrigger value='case'>用例参数（{algorithm.caseParams.length}）</TabsTrigger>
                   </TabsList>
                   <TabsContent value='device' className='pt-2'>
-                    <StaticTable headers={['参数代码', '参数名称', '类型', '方向', '必填', '帮助文本']}>
+                    <StaticTable headers={['参数代码', '参数名称', '类型', '方向', '必填', '默认值', '帮助文本']}>
                       <DeviceParamRows params={algorithm.deviceParams} />
                     </StaticTable>
                   </TabsContent>
                   <TabsContent value='api' className='pt-2'>
-                    <StaticTable headers={['参数代码', '参数名称', '类型', '方向', '必填', '帮助文本']}>
+                    <StaticTable headers={['参数代码', '参数名称', '类型', '方向', '必填', '默认值', '帮助文本']}>
                       <DeviceParamRows params={algorithm.apiParams} />
                     </StaticTable>
                   </TabsContent>
