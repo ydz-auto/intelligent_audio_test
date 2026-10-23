@@ -1,6 +1,6 @@
 """API Gateway 领域配置"""
 import os
-from shared.infrastructure.config import BaseConfig
+from shared.infrastructure.config import BaseConfig, _get_int
 
 
 class Config(BaseConfig):
@@ -101,6 +101,13 @@ class Config(BaseConfig):
     # 容器网络后如需显式指定内部入口，设 MCP_SELF_FORWARD_BASE
     # （如 http://api_gateway:5000）。
     MCP_SELF_FORWARD_BASE = os.environ.get('MCP_SELF_FORWARD_BASE', '')
+
+    # ===== 报告对比（INT-1406）=====
+    # 跨任务大结果集同步聚合的 GenerateCompareReport gRPC 调用显式超时（秒）。
+    # 客户端默认 deadline 为 60s（GRPC_CLIENT_DEADLINE_SECONDS），跨任务大结果集
+    # 同步聚合实测 >60s → DEADLINE_EXCEEDED → 网关 400；此配置显式放宽该调用。
+    GRPC_REPORT_COMPARE_TIMEOUT_SECONDS: int = _get_int(
+        'GRPC_REPORT_COMPARE_TIMEOUT_SECONDS', 600)
 
     @classmethod
     def validate(cls):
