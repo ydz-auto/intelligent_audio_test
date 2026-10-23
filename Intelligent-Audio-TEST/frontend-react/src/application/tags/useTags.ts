@@ -20,6 +20,7 @@ import {
   deleteCategory,
   deleteTag,
   fetchTagCategories,
+  fetchTagNames,
   fetchTags,
   updateCategory,
   updateTag,
@@ -64,6 +65,19 @@ export function useTags(categoryId: number | null, keyword?: string) {
       }
       return items
     },
+    staleTime: 30_000,
+  })
+}
+
+/**
+ * 标签名候选（`['tags','names']`，11_用例域.md §4.3 / §5.1）：用例表单标签 Combobox
+ * 按键入词服务端搜索（GET /tags/names?keyword）。标签改名/增删后 invalidate(['tags'])
+ * 前缀失效自动刷新。keyword 空串即首屏候选。
+ */
+export function useTagNames(keyword?: string) {
+  return useQuery({
+    queryKey: ['tags', 'names', keyword ?? ''],
+    queryFn: () => fetchTagNames(keyword),
     staleTime: 30_000,
   })
 }

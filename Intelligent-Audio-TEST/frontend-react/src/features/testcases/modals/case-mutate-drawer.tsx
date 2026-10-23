@@ -1,6 +1,7 @@
 /**
  * 新增/编辑用例抽屉（11_用例域.md §5.1，Sheet `sm:max-w-[1280px]`，testcase:create/update）。
- * 单栏纵向分节（节间 border-b）：基本信息（双列栅格）/标签（TagInput chips + 已有标签建议）/
+ * 单栏纵向分节（节间 border-b）：基本信息（双列栅格）/标签（CaseTagCombobox：TagInput chips +
+ * GET /tags/names 建议下拉 + 「新建」创建项，INT-1591 §5.1）/
  * 描述/关联算法/轮次配置（左 RoundNav 180px + 右步骤区横向锚点 Tabs line：
  * 算法参数→音频列表→噪声与干扰→评估维度→参考参数，五步全字段表单）/
  * 【评估配置·默认折叠】评估策略节（§5.1.3 折叠节，默认收起：三模式 RadioGroup + 引用摘要卡 +
@@ -22,7 +23,6 @@ import { Sparkles } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -67,6 +67,7 @@ import {
   updateTestCase,
   type TestCaseMutatePayload,
 } from '@/infrastructure/api/testcases-api'
+import { CaseTagCombobox } from '@/features/testcases/modals/case-tag-combobox'
 import {
   RoundNav,
   newRoundEvaluation,
@@ -99,88 +100,6 @@ import {
 import { useEvaluationStrategies } from '@/application/testcases/useEvaluationStrategies'
 
 const STEPS = ['算法参数', '音频列表', '噪声与干扰', '评估维度', '参考参数'] as const
-
-/** 迷你标签输入（§5.2.1 TagInput 语义：回车/逗号添加 + 已有标签建议区） */
-function CaseTagInput({
-  value,
-  onChange,
-  available,
-}: {
-  value: string[]
-  onChange: (next: string[]) => void
-  available: TagItem[]
-}) {
-  const [draft, setDraft] = useState('')
-
-  const add = (name: string) => {
-    const trimmed = name.trim()
-    if (!trimmed || value.includes(trimmed)) return
-    onChange([...value, trimmed])
-  }
-
-  const suggestions = available.filter(
-    (t) => !value.includes(t.name) && t.name.includes(draft.trim())
-  )
-
-  return (
-    <div className='space-y-2'>
-      <div className='flex flex-wrap items-center gap-1.5 rounded-lg border p-2'>
-        {value.map((name) => (
-          <Badge key={name} variant='secondary' className='gap-1 rounded-md px-1.5'>
-            {name}
-            <button
-              type='button'
-              aria-label={`移除标签 ${name}`}
-              className='hover:text-destructive text-muted-foreground'
-              onClick={() => onChange(value.filter((v) => v !== name))}
-            >
-              ✕
-            </button>
-          </Badge>
-        ))}
-        <Input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ',') {
-              e.preventDefault()
-              add(draft)
-              setDraft('')
-            }
-          }}
-          placeholder='输入标签，按回车或逗号添加'
-          className='h-7 w-full min-w-40 border-none shadow-none focus-visible:ring-0 sm:w-56'
-        />
-      </div>
-      {suggestions.length > 0 && (
-        <div className='flex flex-wrap gap-1.5'>
-          {suggestions.slice(0, 8).map((tag) => (
-            <button
-              key={tag.id}
-              type='button'
-              className='hover:bg-accent flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs transition-colors'
-              onClick={() => {
-                add(tag.name)
-                setDraft('')
-              }}
-              style={{ color: tag.color ?? undefined }}
-            >
-              <span
-                aria-hidden='true'
-                className='size-1.5 rounded-full'
-                style={{ backgroundColor: tag.color ?? '#94a3b8' }}
-              />
-              {tag.name}
-              <span className='text-muted-foreground text-[10px]'>
-                {tag.categoryName}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
 
 /**
  * 存量 config → 抽屉状态初始值（编辑回填 §5.1.3；INT-1424 结构：两个独立节承载
@@ -547,6 +466,8 @@ export function CaseMutateDrawer({
       })
       onOpenChange(false)
       void queryClient.invalidateQueries({ queryKey: ['testcases'] })
+      // 新建标签名（「新建「{词}」」落 chip）后建议候选同步刷新
+      void queryClient.invalidateQueries({ queryKey: ['tags'] })
       // 新建分组时分组列表一并刷新（分组头行/筛选选项）
       if (groupValue === '__new__') {
         void queryClient.invalidateQueries({ queryKey: ['testcase-groups'] })
@@ -667,7 +588,7 @@ export function CaseMutateDrawer({
             {/* 标签 */}
             <section className='border-border/60 border-t pt-4'>
               <Label className='mb-2'>标签</Label>
-              <CaseTagInput value={tagValue} onChange={setTagValue} available={tags} />
+              <CaseTagCombobox value={tagValue} onChange={setTagValue} />
             </section>
 
             {/* 描述 */}
