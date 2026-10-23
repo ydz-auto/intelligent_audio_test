@@ -1,0 +1,188 @@
+{
+  "steps": [
+    {
+      "name": "名称留空提交被前端拦截",
+      "errors": [
+        "请输入角色名称"
+      ],
+      "posted": 0,
+      "aria_invalid": "true"
+    },
+    {
+      "name": "名称全空格提交被前端拦截",
+      "errors": [
+        "请输入角色名称"
+      ],
+      "posted": 0
+    },
+    {
+      "name": "合法创建",
+      "requests": [
+        {
+          "method": "POST",
+          "url": "/api/v1/auth/roles",
+          "status": 201,
+          "req": "{\"name\":\"接线测试_INT1586_空名校验\",\"description\":\"\",\"permission_codes\":[\"log:read\",\"log:manage\",\"log:websocket\"]}",
+          "resp": "{\"success\":true,\"code\":0,\"message\":\"创建成功\",\"data\":{\"role_id\":84},\"notice\":\"权限变更对已签发令牌不即时生效，最长延迟至令牌过期（24h）；强失效（Redis 黑名单）本期未实现\"}"
+        }
+      ],
+      "toasts": [
+        "角色已创建"
+      ],
+      "selected": 3,
+      "log_badge": "已选 3/3"
+    },
+    {
+      "name": "GET 回读新角色",
+      "readback": [
+        {
+          "id": 84,
+          "name": "接线测试_INT1586_空名校验",
+          "description": "",
+          "permissions": [
+            "log:read",
+            "log:manage",
+            "log:websocket"
+          ],
+          "is_system": false
+        }
+      ]
+    },
+    {
+      "name": "后端拒绝（重名 admin）",
+      "requests": [
+        {
+          "method": "POST",
+          "url": "/api/v1/auth/roles",
+          "status": 400,
+          "req": "{\"name\":\"admin\",\"description\":\"重名失败保留描述\",\"permission_codes\":[\"home:read\",\"home:refresh\"]}",
+          "resp": "{\"success\":false,\"code\":203,\"message\":\"角色名已存在: admin\"}"
+        }
+      ],
+      "toasts": [
+        "角色名已存在: admin"
+      ],
+      "dialog_open": true,
+      "input_name": "admin",
+      "desc": "重名失败保留描述",
+      "selected": 2
+    },
+    {
+      "name": "失败后改名重提",
+      "requests": [
+        {
+          "method": "POST",
+          "url": "/api/v1/auth/roles",
+          "status": 201,
+          "req": "{\"name\":\"接线测试_INT1586_空名校验改名\",\"description\":\"重名失败保留描述\",\"permission_codes\":[\"home:read\",\"home:refresh\"]}",
+          "resp": "{\"success\":true,\"code\":0,\"message\":\"创建成功\",\"data\":{\"role_id\":85},\"notice\":\"权限变更对已签发令牌不即时生效，最长延迟至令牌过期（24h）；强失效（Redis 黑名单）本期未实现\"}"
+        }
+      ],
+      "toasts": [
+        "角色已创建"
+      ]
+    },
+    {
+      "name": "编辑态清空名称被拦截",
+      "errors": [
+        "请输入角色名称"
+      ],
+      "posted": 0,
+      "confirm_open": false
+    },
+    {
+      "name": "编辑态后端拒绝（重名）",
+      "requests": [
+        {
+          "method": "PUT",
+          "url": "/api/v1/auth/roles/85",
+          "status": 400,
+          "req": "{\"name\":\"admin\",\"description\":\"重名失败保留描述\"}",
+          "resp": "{\"success\":false,\"code\":203,\"message\":\"角色名已存在: admin\"}"
+        }
+      ],
+      "toasts": [
+        "角色名已存在: admin"
+      ],
+      "dialog_open": true,
+      "input_name": "admin",
+      "selected": 2
+    },
+    {
+      "name": "编辑态失败后重提成功",
+      "requests": [],
+      "permissions": [
+        {
+          "method": "POST",
+          "url": "/api/v1/auth/roles/85/permissions",
+          "status": 200,
+          "req": "{\"permission_codes\":[\"home:read\",\"home:refresh\"]}",
+          "resp": "{\"success\":true,\"code\":0,\"message\":\"角色权限已更新\",\"notice\":\"权限变更对已签发令牌不即时生效，最长延迟至令牌过期（24h）；强失效（Redis 黑名单）本期未实现\"}"
+        }
+      ],
+      "toasts": [
+        "角色权限已更新"
+      ]
+    },
+    {
+      "name": "删除失败 toast 透出后端 message",
+      "requests": [
+        {
+          "method": "DELETE",
+          "url": "/api/v1/auth/roles/86",
+          "status": 409,
+          "req": "",
+          "resp": "synthetic-409"
+        }
+      ],
+      "toasts": [
+        "该角色仍有用户归属，请先转移用户"
+      ]
+    },
+    {
+      "name": "深色：空名校验态",
+      "errors": [
+        "请输入角色名称"
+      ],
+      "posted": 0
+    },
+    {
+      "name": "深色：失败保留态",
+      "dialog_open": true,
+      "toasts": [
+        "角色名已存在: admin"
+      ],
+      "requests": [
+        {
+          "method": "POST",
+          "url": "/api/v1/auth/roles",
+          "status": 400,
+          "req": "{\"name\":\"admin\",\"description\":\"\",\"permission_codes\":[]}",
+          "resp": "{\"success\":false,\"code\":203,\"message\":\"角色名已存在: admin\"}"
+        }
+      ]
+    },
+    {
+      "name": "清理本卡角色",
+      "deleted": [
+        {
+          "id": 84,
+          "name": "接线测试_INT1586_空名校验",
+          "status": 200
+        },
+        {
+          "id": 85,
+          "name": "接线测试_INT1586_空名校验改名",
+          "status": 200
+        },
+        {
+          "id": 86,
+          "name": "接线测试_INT1586_删除回归",
+          "status": 200
+        }
+      ],
+      "remaining": []
+    }
+  ],
+  "failed": []
+}
